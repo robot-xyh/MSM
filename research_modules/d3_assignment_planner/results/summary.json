@@ -1,0 +1,57 @@
+{
+  "config": {
+    "delta": 0.2,
+    "duration_s": 100.0,
+    "force_fallback": false,
+    "hz": 2.0,
+    "min_dwell": 2.0,
+    "output_dir": "/home/linux/Documents/MSM/research_modules/d3_assignment_planner/results",
+    "resources": 8,
+    "seed": 20260630,
+    "targets": 8
+  },
+  "summaries": [
+    {
+      "case": "no_hysteresis",
+      "changed_edges_total": 96,
+      "delta": 0.0,
+      "duration_s": 100.0,
+      "enable_hysteresis": 0,
+      "high_threat_count": 324,
+      "hz": 2.0,
+      "mean_cost": 16.306737974724147,
+      "min_dwell": 0.0,
+      "reassignment_events": 33,
+      "resources": 8,
+      "runtime_max_ms": 0.5841850070282817,
+      "runtime_mean_ms": 0.25376931989740115,
+      "runtime_p95_ms": 0.5357811060093809,
+      "steps": 200,
+      "targets": 8,
+      "total_cost": 3261.3475949448293,
+      "unassigned_high_threat_count": 0,
+      "unassigned_high_threat_ratio": 0.0
+    },
+    {
+      "case": "hysteresis_delta_0.2",
+      "changed_edges_total": 46,
+      "delta": 0.2,
+      "duration_s": 100.0,
+      "enable_hysteresis": 1,
+      "high_threat_count": 324,
+      "hz": 2.0,
+      "mean_cost": 16.90035522678788,
+      "min_dwell": 2.0,
+      "reassignment_events": 12,
+      "resources": 8,
+      "runtime_max_ms": 0.2167690108763054,
+      "runtime_mean_ms": 0.18265017555677332,
+      "runtime_p95_ms": 0.2033084980212152,
+      "steps": 200,
+      "targets": 8,
+      "total_cost": 3380.071045357576,
+      "unassigned_high_threat_count": 0,
+      "unassigned_high_threat_ratio": 0.0
+    }
+  ]
+}

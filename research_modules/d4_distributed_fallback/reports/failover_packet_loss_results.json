@@ -1,0 +1,857 @@
+[
+  {
+    "assignment_completion_rate": 1.0,
+    "assignments": {
+      "task-1": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-1",
+        "score": 12.093333333333332,
+        "task_id": "task-1"
+      },
+      "task-2": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-3",
+        "score": 9.003333333333334,
+        "task_id": "task-2"
+      },
+      "task-3": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-2",
+        "score": 12.283333333333331,
+        "task_id": "task-3"
+      },
+      "task-4": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-4",
+        "score": 6.383333333333334,
+        "task_id": "task-4"
+      }
+    },
+    "center_failure_at_s": 30.0,
+    "conflict_count": 4,
+    "consensus_rounds": 5,
+    "converged": true,
+    "estimated_bytes": 22404,
+    "health_transitions": {
+      "node-1": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        },
+        {
+          "epoch": 1,
+          "from_state": "failed",
+          "reason": "fallback_leader_elected",
+          "time_s": 34.0,
+          "to_state": "degraded"
+        }
+      ],
+      "node-2": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ],
+      "node-3": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ],
+      "node-4": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ],
+      "node-5": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ]
+    },
+    "messages_delivered": 80,
+    "messages_dropped": 0,
+    "messages_sent": 80,
+    "node_count": 5,
+    "packet_loss": 0.0,
+    "takeover_completed_at_s": 36.0,
+    "takeover_started_at_s": 34.0,
+    "takeover_time_s": 6.0,
+    "task_count": 4
+  },
+  {
+    "assignment_completion_rate": 1.0,
+    "assignments": {
+      "task-1": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-1",
+        "score": 12.093333333333332,
+        "task_id": "task-1"
+      },
+      "task-2": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-3",
+        "score": 9.003333333333334,
+        "task_id": "task-2"
+      },
+      "task-3": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-2",
+        "score": 12.283333333333331,
+        "task_id": "task-3"
+      },
+      "task-4": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-4",
+        "score": 6.383333333333334,
+        "task_id": "task-4"
+      }
+    },
+    "center_failure_at_s": 30.0,
+    "conflict_count": 4,
+    "consensus_rounds": 5,
+    "converged": true,
+    "estimated_bytes": 22404,
+    "health_transitions": {
+      "node-1": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        },
+        {
+          "epoch": 1,
+          "from_state": "failed",
+          "reason": "fallback_leader_elected",
+          "time_s": 34.0,
+          "to_state": "degraded"
+        }
+      ],
+      "node-2": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ],
+      "node-3": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ],
+      "node-4": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ],
+      "node-5": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ]
+    },
+    "messages_delivered": 77,
+    "messages_dropped": 3,
+    "messages_sent": 80,
+    "node_count": 5,
+    "packet_loss": 0.05,
+    "takeover_completed_at_s": 36.0,
+    "takeover_started_at_s": 34.0,
+    "takeover_time_s": 6.0,
+    "task_count": 4
+  },
+  {
+    "assignment_completion_rate": 1.0,
+    "assignments": {
+      "task-1": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-1",
+        "score": 12.093333333333332,
+        "task_id": "task-1"
+      },
+      "task-2": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-3",
+        "score": 9.003333333333334,
+        "task_id": "task-2"
+      },
+      "task-3": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-2",
+        "score": 12.283333333333331,
+        "task_id": "task-3"
+      },
+      "task-4": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-4",
+        "score": 6.383333333333334,
+        "task_id": "task-4"
+      }
+    },
+    "center_failure_at_s": 30.0,
+    "conflict_count": 8,
+    "consensus_rounds": 6,
+    "converged": true,
+    "estimated_bytes": 32404,
+    "health_transitions": {
+      "node-1": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        },
+        {
+          "epoch": 1,
+          "from_state": "failed",
+          "reason": "fallback_leader_elected",
+          "time_s": 34.0,
+          "to_state": "degraded"
+        }
+      ],
+      "node-2": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ],
+      "node-3": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ],
+      "node-4": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ],
+      "node-5": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ]
+    },
+    "messages_delivered": 91,
+    "messages_dropped": 9,
+    "messages_sent": 100,
+    "node_count": 5,
+    "packet_loss": 0.1,
+    "takeover_completed_at_s": 36.5,
+    "takeover_started_at_s": 34.0,
+    "takeover_time_s": 6.5,
+    "task_count": 4
+  },
+  {
+    "assignment_completion_rate": 1.0,
+    "assignments": {
+      "task-1": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-1",
+        "score": 12.093333333333332,
+        "task_id": "task-1"
+      },
+      "task-2": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-3",
+        "score": 9.003333333333334,
+        "task_id": "task-2"
+      },
+      "task-3": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-2",
+        "score": 12.283333333333331,
+        "task_id": "task-3"
+      },
+      "task-4": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-4",
+        "score": 6.383333333333334,
+        "task_id": "task-4"
+      }
+    },
+    "center_failure_at_s": 30.0,
+    "conflict_count": 4,
+    "consensus_rounds": 5,
+    "converged": true,
+    "estimated_bytes": 22404,
+    "health_transitions": {
+      "node-1": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        },
+        {
+          "epoch": 1,
+          "from_state": "failed",
+          "reason": "fallback_leader_elected",
+          "time_s": 34.0,
+          "to_state": "degraded"
+        }
+      ],
+      "node-2": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ],
+      "node-3": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ],
+      "node-4": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ],
+      "node-5": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ]
+    },
+    "messages_delivered": 63,
+    "messages_dropped": 17,
+    "messages_sent": 80,
+    "node_count": 5,
+    "packet_loss": 0.2,
+    "takeover_completed_at_s": 36.0,
+    "takeover_started_at_s": 34.0,
+    "takeover_time_s": 6.0,
+    "task_count": 4
+  },
+  {
+    "assignment_completion_rate": 1.0,
+    "assignments": {
+      "task-1": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-1",
+        "score": 12.093333333333332,
+        "task_id": "task-1"
+      },
+      "task-2": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-3",
+        "score": 9.003333333333334,
+        "task_id": "task-2"
+      },
+      "task-3": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-2",
+        "score": 12.283333333333331,
+        "task_id": "task-3"
+      },
+      "task-4": {
+        "epoch": 1,
+        "mode": "fallback_continuity",
+        "owner": "node-4",
+        "score": 6.383333333333334,
+        "task_id": "task-4"
+      }
+    },
+    "center_failure_at_s": 30.0,
+    "conflict_count": 9,
+    "consensus_rounds": 7,
+    "converged": true,
+    "estimated_bytes": 41920,
+    "health_transitions": {
+      "node-1": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        },
+        {
+          "epoch": 1,
+          "from_state": "failed",
+          "reason": "fallback_leader_elected",
+          "time_s": 34.0,
+          "to_state": "degraded"
+        }
+      ],
+      "node-2": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ],
+      "node-3": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ],
+      "node-4": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ],
+      "node-5": [
+        {
+          "epoch": 1,
+          "from_state": "normal",
+          "reason": "heartbeat_jitter",
+          "time_s": 31.0,
+          "to_state": "degraded"
+        },
+        {
+          "epoch": 1,
+          "from_state": "degraded",
+          "reason": "heartbeat_stale",
+          "time_s": 32.0,
+          "to_state": "suspect"
+        },
+        {
+          "epoch": 1,
+          "from_state": "suspect",
+          "reason": "heartbeat_failure_timeout",
+          "time_s": 34.0,
+          "to_state": "failed"
+        }
+      ]
+    },
+    "messages_delivered": 73,
+    "messages_dropped": 47,
+    "messages_sent": 120,
+    "node_count": 5,
+    "packet_loss": 0.35,
+    "takeover_completed_at_s": 37.0,
+    "takeover_started_at_s": 34.0,
+    "takeover_time_s": 7.0,
+    "task_count": 4
+  }
+]

@@ -1,0 +1,225 @@
+# D4 Distributed Fallback Plan
+
+## Scope And Safety Boundary
+
+This module is limited to research simulation, offline evaluation, and minimum continuity after a center C2 outage. It exchanges coarse summaries through an in-memory simulated network only. It does not model real fire-control parameters, damage effects, live radio frequencies, hardware drivers, automatic disposition, or bypass of human authorization.
+
+## Engineering And Scientific Problem
+
+Centralized C2 normally owns the freshest fused tracks and assignment plan. After the center becomes unavailable, peer nodes may only have stale plans, local summaries, and intermittent peer communication. The engineering question is how to preserve minimum continuity without creating duplicate assignments or conflicting local plans.
+
+Scientific questions:
+
+- How quickly can a small peer group detect C2 failure and enter a safe degraded coordination mode?
+- How many consensus rounds are needed for coarse task/resource summaries under packet loss and delay?
+- What conflict rate remains when only summaries are exchanged?
+- What communication overhead is introduced by bundle and winner-state diffusion?
+- How should peer decisions be merged back when the center returns without immediate authority thrash?
+
+## C2Health State Machine
+
+States:
+
+- `normal`: heartbeat and digest checks are current.
+- `degraded`: heartbeat or digest quality is reduced, but continuity can still follow the center or a valid backup lease.
+- `suspect`: heartbeat is stale, digests conflict, or peer observations disagree.
+- `failed`: quorum or timeout indicates center unavailability.
+
+Transitions:
+
+```text
+normal
+  -> degraded : heartbeat jitter or digest age exceeds warning threshold
+  -> suspect  : heartbeat is stale, digest conflict appears, or center messages are out of order
+
+degraded
+  -> normal  : heartbeat and assignment digest recover for the required stable window
+  -> suspect : backup lease conflict, summary conflict, or degraded timer expires
+  -> failed  : explicit fail quorum or hard timeout
+
+suspect
+  -> normal  : dual-track center and peer checks match for the stable window
+  -> failed  : stale heartbeat exceeds failure timeout or peer quorum confirms outage
+  -> degraded: valid backup lease exists but center recovery is not fully verified
+
+failed
+  -> degraded: peer quorum elects a fallback leader or backup lease remains valid
+  -> normal  : center recovery passes dual-track merge and human-gated acceptance flag
+```
+
+Each transition records state, timestamp, reason, and epoch. The implementation treats `normal` as the only full-center mode. `degraded`, `suspect`, and `failed` only permit continuity-oriented planning.
+
+## Summary Interfaces
+
+`TrackSummary`:
+
+- `track_id`: stable synthetic identifier used only in simulation.
+- `coarse_cell`: coarse grid label, not precise coordinates.
+- `age_s`: summary age in seconds.
+- `confidence_band`: `low`, `medium`, or `high`.
+- `source_count`: number of independent contributing sources.
+- `epoch`: monotonic planning epoch.
+
+`ResourceSummary`:
+
+- `node_id`: simulated peer identifier.
+- `capability_class`: coarse capability such as `observe`, `relay`, or `hold`.
+- `availability_band`: `none`, `low`, `medium`, or `high`.
+- `comm_band`: `poor`, `limited`, or `good`.
+- `operator_hold`: when true, the resource cannot receive new fallback assignments.
+- `epoch`: monotonic planning epoch.
+
+`BidState`:
+
+- `task_id`: synthetic continuity task identifier.
+- `bidder`: node identifier.
+- `score`: normalized utility score, not a real-world effect estimate.
+- `constraints_hash`: digest of coarse local constraints.
+- `epoch`: planning epoch.
+- `round_id`: CBBA consensus round.
+
+All summaries are coarse, versioned by epoch, and safe for offline simulation logs.
+
+## CBBA Formulation
+
+Let agents be \(i \in \mathcal{A}\), continuity tasks \(j \in \mathcal{T}\), and each agent's bundle \(b_i = [j_1, ..., j_k]\) with \(k \le L\). Each agent computes a local score:
+
+\[
+s_{ij} = w_c C_j + w_a A_i + w_q Q_{ij} - w_r R_{ij}
+\]
+
+where \(C_j\) is track confidence rank, \(A_i\) is resource availability rank, \(Q_{ij}\) is coarse capability match, and \(R_{ij}\) is an offline risk/constraint penalty. These are synthetic ranks only.
+
+Marginal gain for inserting task \(j\) into bundle \(b_i\):
+
+\[
+\Delta_{ij}(b_i) = S_i(b_i \oplus j) - S_i(b_i)
+\]
+
+The local bid is:
+
+\[
+y_{ij} = \max(0, \Delta_{ij})
+\]
+
+Winner and bid vectors:
+
+\[
+z_{ij} = \arg\max_{a \in \mathcal{A}} (y_{aj}, -\text{tie\_rank}(a))
+\]
+
+\[
+y^*_{ij} = \max_{a \in \mathcal{A}} y_{aj}
+\]
+
+Conflict resolution uses deterministic tie-breaking by higher score, then lower node id, then lower constraints hash. When a node loses a winner entry for a task in its bundle, it releases that task and all later bundle entries, then rebuilds bids from remaining feasible tasks.
+
+Convergence expectation for this simulator: with a connected peer graph, deterministic tie-breaking, bounded bundle length \(L\), static task summaries, and reliable eventual message delivery, winner vectors converge in \(O(D \cdot |\mathcal{T}|)\) consensus propagation rounds, where \(D\) is network diameter. Packet loss and delay increase wall-clock takeover time but not the deterministic fixed point if enough rounds are allowed.
+
+Communication overhead per consensus round is:
+
+\[
+O(|E| \cdot |\mathcal{T}|)
+\]
+
+for peer edges \(E\), because each message carries compact winner/bid state per known task. With \(N\) nodes, a full mesh has \(O(N^2 |\mathcal{T}|)\) per round; sparse relay graphs reduce bytes but may increase diameter and rounds.
+
+## Center Recovery Dual-Track Merge
+
+When center updates resume, fallback plans are not discarded immediately.
+
+Dual-track merge stages:
+
+1. Keep center track/assignment log and fallback peer log side by side.
+2. Compare epochs, summary digests, and assignment ownership.
+3. Mark exact matches as `accepted`.
+4. Mark center-only or peer-only assignments as `review`.
+5. Mark duplicate owners or stale summaries as `conflict`.
+6. Return to `normal` only when the merged log has no unresolved conflicts and the caller supplies a human-gated acceptance flag.
+
+This prevents immediate dual-master behavior after a short center recovery.
+
+## Takeover Priority
+
+1. Valid ground backup lease.
+2. High-altitude tethered reconnaissance UAV acting as a secondary regional node.
+3. Resource-cluster representative elected by deterministic peer priority.
+4. CBBA fallback negotiation for continuity-only assignments.
+5. If no quorum or convergence, choose `hold`, `continue_observe`, or `return_safe` placeholders for offline evaluation.
+
+## Secondary Reconnaissance Node Assumption
+
+This phase assumes several high-altitude tethered reconnaissance UAVs can act
+as secondary regional nodes. They are modeled as `ResourceSummary` records with
+`node_role=secondary_recon`, optional `coverage_cell`, and usually
+`coordinator_only=True`.
+
+Degraded hierarchy:
+
+```text
+center C2 available
+  -> center C2 failed: secondary reconnaissance node coordinates its local area
+  -> secondary node unavailable: cluster representative / fully distributed CBBA
+  -> no convergence: hold / continue-observe placeholder for offline evaluation
+```
+
+Secondary nodes do not own center-level authority. They keep continuity,
+forward local summaries, and provide scoped coordination until the center
+recovers and dual-track merge is accepted.
+
+## Simulation Scenarios
+
+Primary scenario:
+
+- 3 to 5 simulated nodes.
+- Center heartbeat is normal until `t = 30s`.
+- Center then fails.
+- Simulated peer network applies 0.1 to 0.5 second delivery delay.
+- Packet loss is configurable.
+- Nodes exchange summaries and CBBA winner states through in-memory queues.
+
+Fault variants:
+
+- Heartbeat stale transition from `normal` to `suspect` to `failed`.
+- Packet loss during CBBA rounds.
+- Summary replay with stale epoch.
+- Duplicate tentative assignment conflict.
+- Center recovers with incomplete log and requires degraded review.
+
+Metrics:
+
+- Takeover time.
+- Consensus rounds.
+- Assignment completion rate.
+- Conflict count.
+- Communication overhead in message count and estimated bytes.
+
+## Code Interfaces
+
+Python package:
+
+- `models.py`: enums and dataclasses for health state, summaries, bids, assignments, metrics, and messages.
+- `network.py`: in-memory simulated network with delay and packet loss.
+- `cbba.py`: simplified CBBA negotiator.
+- `coordinator.py`: `FailoverCoordinator` with health detection, leader election, degraded planning, and merge recovery.
+- `simulation.py`: scenario runner and metric aggregation.
+
+CLI:
+
+- `scripts/run_failover_simulation.py`: runs the default 5-node center-failure scenario and prints metrics JSON.
+
+Tests:
+
+- Health-state transitions.
+- CBBA convergence and duplicate-owner conflict resolution.
+- Failover coordinator takeover and center recovery merge.
+- Simulated packet loss/delay metrics smoke test.
+
+## Deliverables
+
+- `PLAN.md`: this plan.
+- Python implementation under `d4_distributed_fallback/`.
+- Unit tests under `tests/`.
+- Simulation script under `scripts/`.
+- Experiment report under `reports/EXPERIMENT_REPORT.md`.
+- AirSim integration plan under `reports/AIRSIM_INTEGRATION_PLAN.md`, limited to offline adapter interfaces and synthetic logs.

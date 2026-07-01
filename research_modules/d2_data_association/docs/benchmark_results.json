@@ -1,0 +1,566 @@
+[
+  {
+    "scenario": "crossing",
+    "associator": "gnn",
+    "seed": 7,
+    "steps": 36,
+    "metrics": {
+      "frame_count": 36,
+      "id_switch_count": 0,
+      "track_continuity": 0.9861111111111112,
+      "coverage_continuity": 0.9861111111111112,
+      "identity_continuity": 0.9861111111111112,
+      "duplicate_assignment_count": 0,
+      "rmse": 0.5170237852007535,
+      "assignment_count": 71,
+      "runtime_seconds_by_associator": {
+        "GNNHungarianAssociator": 0.011220519023481756
+      },
+      "confusion_matrix": {
+        "A": {
+          "T001": 36
+        },
+        "B": {
+          "T002": 35
+        }
+      },
+      "active_track_count": 2,
+      "total_track_count": 6,
+      "state_transition_count": 16
+    },
+    "elapsed_seconds": 0.012010466001811437
+  },
+  {
+    "scenario": "crossing",
+    "associator": "jpda",
+    "seed": 7,
+    "steps": 36,
+    "metrics": {
+      "frame_count": 36,
+      "id_switch_count": 0,
+      "track_continuity": 0.9861111111111112,
+      "coverage_continuity": 0.9861111111111112,
+      "identity_continuity": 0.9861111111111112,
+      "duplicate_assignment_count": 0,
+      "rmse": 0.5170237852007535,
+      "assignment_count": 71,
+      "runtime_seconds_by_associator": {
+        "JPDAAssociator": 0.013344059989321977
+      },
+      "confusion_matrix": {
+        "A": {
+          "T001": 36
+        },
+        "B": {
+          "T002": 35
+        }
+      },
+      "active_track_count": 2,
+      "total_track_count": 7,
+      "state_transition_count": 16
+    },
+    "elapsed_seconds": 0.0140397580107674
+  },
+  {
+    "scenario": "crossing",
+    "associator": "mht",
+    "seed": 7,
+    "steps": 36,
+    "metrics": {
+      "frame_count": 36,
+      "id_switch_count": 0,
+      "track_continuity": 0.9861111111111112,
+      "coverage_continuity": 0.9861111111111112,
+      "identity_continuity": 0.9861111111111112,
+      "duplicate_assignment_count": 0,
+      "rmse": 0.5170237852007535,
+      "assignment_count": 71,
+      "runtime_seconds_by_associator": {
+        "MHTAssociator": 0.02220505298464559
+      },
+      "confusion_matrix": {
+        "A": {
+          "T001": 36
+        },
+        "B": {
+          "T002": 35
+        }
+      },
+      "active_track_count": 2,
+      "total_track_count": 8,
+      "state_transition_count": 17
+    },
+    "elapsed_seconds": 0.02295599899662193
+  },
+  {
+    "scenario": "formation",
+    "associator": "gnn",
+    "seed": 7,
+    "steps": 36,
+    "metrics": {
+      "frame_count": 36,
+      "id_switch_count": 0,
+      "track_continuity": 0.9777777777777779,
+      "coverage_continuity": 0.9777777777777779,
+      "identity_continuity": 0.9777777777777779,
+      "duplicate_assignment_count": 0,
+      "rmse": 0.5116361741473091,
+      "assignment_count": 176,
+      "runtime_seconds_by_associator": {
+        "GNNHungarianAssociator": 0.023333427991019562
+      },
+      "confusion_matrix": {
+        "F1": {
+          "T001": 35
+        },
+        "F2": {
+          "T005": 36
+        },
+        "F3": {
+          "T002": 35
+        },
+        "F4": {
+          "T003": 34
+        },
+        "F5": {
+          "T004": 36
+        }
+      },
+      "active_track_count": 6,
+      "total_track_count": 10,
+      "state_transition_count": 22
+    },
+    "elapsed_seconds": 0.024206732006859966
+  },
+  {
+    "scenario": "formation",
+    "associator": "jpda",
+    "seed": 7,
+    "steps": 36,
+    "metrics": {
+      "frame_count": 36,
+      "id_switch_count": 0,
+      "track_continuity": 0.9777777777777779,
+      "coverage_continuity": 0.9777777777777779,
+      "identity_continuity": 0.9777777777777779,
+      "duplicate_assignment_count": 0,
+      "rmse": 0.5116361741473091,
+      "assignment_count": 176,
+      "runtime_seconds_by_associator": {
+        "JPDAAssociator": 0.19112525699893013
+      },
+      "confusion_matrix": {
+        "F1": {
+          "T001": 35
+        },
+        "F2": {
+          "T005": 36
+        },
+        "F3": {
+          "T002": 35
+        },
+        "F4": {
+          "T003": 34
+        },
+        "F5": {
+          "T004": 36
+        }
+      },
+      "active_track_count": 6,
+      "total_track_count": 12,
+      "state_transition_count": 22
+    },
+    "elapsed_seconds": 0.19210106099490076
+  },
+  {
+    "scenario": "formation",
+    "associator": "mht",
+    "seed": 7,
+    "steps": 36,
+    "metrics": {
+      "frame_count": 36,
+      "id_switch_count": 0,
+      "track_continuity": 0.9777777777777779,
+      "coverage_continuity": 0.9777777777777779,
+      "identity_continuity": 0.9777777777777779,
+      "duplicate_assignment_count": 0,
+      "rmse": 0.5116361741473091,
+      "assignment_count": 176,
+      "runtime_seconds_by_associator": {
+        "MHTAssociator": 0.6882704890304012
+      },
+      "confusion_matrix": {
+        "F1": {
+          "T001": 35
+        },
+        "F2": {
+          "T005": 36
+        },
+        "F3": {
+          "T002": 35
+        },
+        "F4": {
+          "T003": 34
+        },
+        "F5": {
+          "T004": 36
+        }
+      },
+      "active_track_count": 6,
+      "total_track_count": 13,
+      "state_transition_count": 24
+    },
+    "elapsed_seconds": 0.6895864630059805
+  },
+  {
+    "scenario": "occlusion",
+    "associator": "gnn",
+    "seed": 7,
+    "steps": 36,
+    "metrics": {
+      "frame_count": 36,
+      "id_switch_count": 27,
+      "track_continuity": 0.6481481481481481,
+      "coverage_continuity": 0.8981481481481483,
+      "identity_continuity": 0.6481481481481481,
+      "duplicate_assignment_count": 0,
+      "rmse": 0.6293444598753708,
+      "assignment_count": 97,
+      "runtime_seconds_by_associator": {
+        "GNNHungarianAssociator": 0.00759802597167436
+      },
+      "confusion_matrix": {
+        "O1": {
+          "T001": 12,
+          "T003": 21,
+          "T002": 2
+        },
+        "O2": {
+          "T003": 11,
+          "T001": 14,
+          "T002": 1
+        },
+        "O3": {
+          "T002": 33,
+          "T001": 3
+        }
+      },
+      "active_track_count": 4,
+      "total_track_count": 6,
+      "state_transition_count": 16
+    },
+    "elapsed_seconds": 0.008129289009957574
+  },
+  {
+    "scenario": "occlusion",
+    "associator": "jpda",
+    "seed": 7,
+    "steps": 36,
+    "metrics": {
+      "frame_count": 36,
+      "id_switch_count": 23,
+      "track_continuity": 0.6851851851851851,
+      "coverage_continuity": 0.8981481481481483,
+      "identity_continuity": 0.6851851851851851,
+      "duplicate_assignment_count": 0,
+      "rmse": 0.6284095478342456,
+      "assignment_count": 97,
+      "runtime_seconds_by_associator": {
+        "JPDAAssociator": 0.011644519996480085
+      },
+      "confusion_matrix": {
+        "O1": {
+          "T001": 13,
+          "T003": 22
+        },
+        "O2": {
+          "T003": 9,
+          "T001": 17
+        },
+        "O3": {
+          "T002": 11,
+          "T005": 25
+        }
+      },
+      "active_track_count": 4,
+      "total_track_count": 7,
+      "state_transition_count": 18
+    },
+    "elapsed_seconds": 0.012166170999989845
+  },
+  {
+    "scenario": "occlusion",
+    "associator": "mht",
+    "seed": 7,
+    "steps": 36,
+    "metrics": {
+      "frame_count": 36,
+      "id_switch_count": 23,
+      "track_continuity": 0.6851851851851851,
+      "coverage_continuity": 0.8981481481481483,
+      "identity_continuity": 0.6851851851851851,
+      "duplicate_assignment_count": 0,
+      "rmse": 0.6284095478342456,
+      "assignment_count": 97,
+      "runtime_seconds_by_associator": {
+        "MHTAssociator": 0.03977652300090995
+      },
+      "confusion_matrix": {
+        "O1": {
+          "T001": 13,
+          "T003": 22
+        },
+        "O2": {
+          "T003": 9,
+          "T001": 17
+        },
+        "O3": {
+          "T002": 11,
+          "T005": 25
+        }
+      },
+      "active_track_count": 4,
+      "total_track_count": 7,
+      "state_transition_count": 18
+    },
+    "elapsed_seconds": 0.040408036002190784
+  },
+  {
+    "scenario": "missed",
+    "associator": "gnn",
+    "seed": 7,
+    "steps": 36,
+    "metrics": {
+      "frame_count": 36,
+      "id_switch_count": 2,
+      "track_continuity": 0.6666666666666666,
+      "coverage_continuity": 0.6805555555555556,
+      "identity_continuity": 0.6666666666666666,
+      "duplicate_assignment_count": 0,
+      "rmse": 0.7143978929834098,
+      "assignment_count": 98,
+      "runtime_seconds_by_associator": {
+        "GNNHungarianAssociator": 0.008404703985434026
+      },
+      "confusion_matrix": {
+        "M1": {
+          "T001": 25
+        },
+        "M2": {
+          "T002": 23
+        },
+        "M3": {
+          "T003": 24,
+          "T002": 1
+        },
+        "M4": {
+          "T004": 25
+        }
+      },
+      "active_track_count": 4,
+      "total_track_count": 6,
+      "state_transition_count": 31
+    },
+    "elapsed_seconds": 0.008935821999330074
+  },
+  {
+    "scenario": "missed",
+    "associator": "jpda",
+    "seed": 7,
+    "steps": 36,
+    "metrics": {
+      "frame_count": 36,
+      "id_switch_count": 2,
+      "track_continuity": 0.6666666666666666,
+      "coverage_continuity": 0.6805555555555556,
+      "identity_continuity": 0.6666666666666666,
+      "duplicate_assignment_count": 0,
+      "rmse": 0.7143978929834098,
+      "assignment_count": 98,
+      "runtime_seconds_by_associator": {
+        "JPDAAssociator": 0.012598025990882888
+      },
+      "confusion_matrix": {
+        "M1": {
+          "T001": 25
+        },
+        "M2": {
+          "T002": 23
+        },
+        "M3": {
+          "T003": 24,
+          "T002": 1
+        },
+        "M4": {
+          "T004": 25
+        }
+      },
+      "active_track_count": 4,
+      "total_track_count": 6,
+      "state_transition_count": 31
+    },
+    "elapsed_seconds": 0.013118508999468759
+  },
+  {
+    "scenario": "missed",
+    "associator": "mht",
+    "seed": 7,
+    "steps": 36,
+    "metrics": {
+      "frame_count": 36,
+      "id_switch_count": 2,
+      "track_continuity": 0.6666666666666666,
+      "coverage_continuity": 0.6805555555555556,
+      "identity_continuity": 0.6666666666666666,
+      "duplicate_assignment_count": 0,
+      "rmse": 0.7143978929834098,
+      "assignment_count": 98,
+      "runtime_seconds_by_associator": {
+        "MHTAssociator": 0.04906856994784903
+      },
+      "confusion_matrix": {
+        "M1": {
+          "T001": 25
+        },
+        "M2": {
+          "T002": 23
+        },
+        "M3": {
+          "T003": 24,
+          "T002": 1
+        },
+        "M4": {
+          "T004": 25
+        }
+      },
+      "active_track_count": 4,
+      "total_track_count": 6,
+      "state_transition_count": 31
+    },
+    "elapsed_seconds": 0.04969535500276834
+  },
+  {
+    "scenario": "false_alarms",
+    "associator": "gnn",
+    "seed": 7,
+    "steps": 36,
+    "metrics": {
+      "frame_count": 36,
+      "id_switch_count": 18,
+      "track_continuity": 0.8263888888888888,
+      "coverage_continuity": 0.9513888888888888,
+      "identity_continuity": 0.8263888888888888,
+      "duplicate_assignment_count": 0,
+      "rmse": 0.6592636955348542,
+      "assignment_count": 137,
+      "runtime_seconds_by_associator": {
+        "GNNHungarianAssociator": 0.025228451966540888
+      },
+      "confusion_matrix": {
+        "C1": {
+          "T006": 33
+        },
+        "C2": {
+          "T001": 34,
+          "T025": 1
+        },
+        "C3": {
+          "T004": 26,
+          "T002": 9
+        },
+        "C4": {
+          "T002": 24,
+          "T015": 1,
+          "T004": 9
+        }
+      },
+      "active_track_count": 12,
+      "total_track_count": 35,
+      "state_transition_count": 107
+    },
+    "elapsed_seconds": 0.025829093996435404
+  },
+  {
+    "scenario": "false_alarms",
+    "associator": "jpda",
+    "seed": 7,
+    "steps": 36,
+    "metrics": {
+      "frame_count": 36,
+      "id_switch_count": 11,
+      "track_continuity": 0.875,
+      "coverage_continuity": 0.9513888888888888,
+      "identity_continuity": 0.875,
+      "duplicate_assignment_count": 0,
+      "rmse": 0.6573529122357648,
+      "assignment_count": 137,
+      "runtime_seconds_by_associator": {
+        "JPDAAssociator": 0.4387135719298385
+      },
+      "confusion_matrix": {
+        "C1": {
+          "T006": 33
+        },
+        "C2": {
+          "T001": 33,
+          "T031": 2
+        },
+        "C3": {
+          "T004": 30,
+          "T002": 5
+        },
+        "C4": {
+          "T002": 29,
+          "T004": 4,
+          "T001": 1
+        }
+      },
+      "active_track_count": 17,
+      "total_track_count": 51,
+      "state_transition_count": 128
+    },
+    "elapsed_seconds": 0.43990474099700805
+  },
+  {
+    "scenario": "false_alarms",
+    "associator": "mht",
+    "seed": 7,
+    "steps": 36,
+    "metrics": {
+      "frame_count": 36,
+      "id_switch_count": 20,
+      "track_continuity": 0.8125,
+      "coverage_continuity": 0.9513888888888888,
+      "identity_continuity": 0.8125,
+      "duplicate_assignment_count": 0,
+      "rmse": 0.6533450134118616,
+      "assignment_count": 137,
+      "runtime_seconds_by_associator": {
+        "MHTAssociator": 1.026910017884802
+      },
+      "confusion_matrix": {
+        "C1": {
+          "T006": 33
+        },
+        "C2": {
+          "T001": 33,
+          "T004": 2
+        },
+        "C3": {
+          "T004": 25,
+          "T029": 1,
+          "T002": 9
+        },
+        "C4": {
+          "T002": 25,
+          "T004": 7,
+          "T001": 2
+        }
+      },
+      "active_track_count": 17,
+      "total_track_count": 63,
+      "state_transition_count": 140
+    },
+    "elapsed_seconds": 1.0282973039866192
+  }
+]

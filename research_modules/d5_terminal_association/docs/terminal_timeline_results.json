@@ -1,0 +1,1486 @@
+{
+  "ambiguous": 8,
+  "decisions": {
+    "ambiguous": 8,
+    "hold": 19,
+    "locked": 84,
+    "reacquire": 9
+  },
+  "frames": 120,
+  "global_track_id_mutations": 0,
+  "hold": 19,
+  "lock_correct": 84,
+  "lock_precision": 1.0,
+  "lock_wrong": 0,
+  "reacquire": 9,
+  "terminal_association_correct_rate_all_frames": 0.7,
+  "timeline": [
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.16383194743915483
+        ]
+      ],
+      "decision": "locked",
+      "frame": 0,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.1756184590334214
+        ]
+      ],
+      "decision": "locked",
+      "frame": 1,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.3062102939226804
+        ]
+      ],
+      "decision": "locked",
+      "frame": 2,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.269005313529307
+        ]
+      ],
+      "decision": "locked",
+      "frame": 3,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.16077439637793212
+        ]
+      ],
+      "decision": "locked",
+      "frame": 4,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.24561273077567522
+        ]
+      ],
+      "decision": "locked",
+      "frame": 5,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.17092790385069231
+        ]
+      ],
+      "decision": "locked",
+      "frame": 6,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.3460175458677125
+        ]
+      ],
+      "decision": "locked",
+      "frame": 7,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.17168243502611477
+        ]
+      ],
+      "decision": "locked",
+      "frame": 8,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.17902935568423595
+        ]
+      ],
+      "decision": "locked",
+      "frame": 9,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.19854291682821823
+        ]
+      ],
+      "decision": "locked",
+      "frame": 10,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.1924342493316228
+        ]
+      ],
+      "decision": "locked",
+      "frame": 11,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.17536988463388534
+        ]
+      ],
+      "decision": "locked",
+      "frame": 12,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.21615681732252706
+        ]
+      ],
+      "decision": "locked",
+      "frame": 13,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.22368550443216706
+        ]
+      ],
+      "decision": "locked",
+      "frame": 14,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.1849805074676557
+        ]
+      ],
+      "decision": "locked",
+      "frame": 15,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2121508910505769
+        ]
+      ],
+      "decision": "locked",
+      "frame": 16,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.1927746228323029
+        ]
+      ],
+      "decision": "locked",
+      "frame": 17,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.1792134350804844
+        ]
+      ],
+      "decision": "locked",
+      "frame": 18,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.27922386250731507
+        ]
+      ],
+      "decision": "locked",
+      "frame": 19,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2574022202383263
+        ]
+      ],
+      "decision": "locked",
+      "frame": 20,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.1902981252423678
+        ]
+      ],
+      "decision": "locked",
+      "frame": 21,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2013665386866419
+        ]
+      ],
+      "decision": "locked",
+      "frame": 22,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.18761779888235372
+        ]
+      ],
+      "decision": "locked",
+      "frame": 23,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.19238993445173408
+        ]
+      ],
+      "decision": "locked",
+      "frame": 24,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.6201221625708642
+        ]
+      ],
+      "decision": "locked",
+      "frame": 25,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.1875781424609873
+        ]
+      ],
+      "decision": "locked",
+      "frame": 26,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2346658314970956
+        ]
+      ],
+      "decision": "locked",
+      "frame": 27,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2094545216249357
+        ]
+      ],
+      "decision": "locked",
+      "frame": 28,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.4043633874325483
+        ]
+      ],
+      "decision": "locked",
+      "frame": 29,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2699875524663711
+        ]
+      ],
+      "decision": "locked",
+      "frame": 30,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.19255455210159686
+        ]
+      ],
+      "decision": "locked",
+      "frame": 31,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.1994203881285163
+        ]
+      ],
+      "decision": "locked",
+      "frame": 32,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.1646355981437399
+        ]
+      ],
+      "decision": "locked",
+      "frame": 33,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.17604788892800158
+        ]
+      ],
+      "decision": "locked",
+      "frame": 34,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.20179382633714363
+        ],
+        [
+          "L_unknown",
+          0.8893901430708162
+        ]
+      ],
+      "decision": "ambiguous",
+      "frame": 35,
+      "local_track_id": "L_assigned",
+      "reason": "insufficient_best_second_margin"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.319130167719762
+        ],
+        [
+          "L_unknown",
+          0.6709716851497872
+        ]
+      ],
+      "decision": "ambiguous",
+      "frame": 36,
+      "local_track_id": "L_assigned",
+      "reason": "insufficient_best_second_margin"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.28493362379262255
+        ],
+        [
+          "L_unknown",
+          1.1307220831971052
+        ]
+      ],
+      "decision": "ambiguous",
+      "frame": 37,
+      "local_track_id": "L_assigned",
+      "reason": "insufficient_best_second_margin"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.21760584924863244
+        ],
+        [
+          "L_unknown",
+          1.0869131737632107
+        ]
+      ],
+      "decision": "ambiguous",
+      "frame": 38,
+      "local_track_id": "L_assigned",
+      "reason": "insufficient_best_second_margin"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.17149526240433158
+        ],
+        [
+          "L_unknown",
+          0.9499982707200575
+        ]
+      ],
+      "decision": "ambiguous",
+      "frame": 39,
+      "local_track_id": "L_assigned",
+      "reason": "insufficient_best_second_margin"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.16788721062390471
+        ],
+        [
+          "L_unknown",
+          0.8243425867835168
+        ]
+      ],
+      "decision": "ambiguous",
+      "frame": 40,
+      "local_track_id": "L_assigned",
+      "reason": "insufficient_best_second_margin"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.25225303672509564
+        ],
+        [
+          "L_unknown",
+          0.756891548162758
+        ]
+      ],
+      "decision": "ambiguous",
+      "frame": 41,
+      "local_track_id": "L_assigned",
+      "reason": "insufficient_best_second_margin"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2796060156239728
+        ],
+        [
+          "L_unknown",
+          0.7651307301745124
+        ]
+      ],
+      "decision": "ambiguous",
+      "frame": 42,
+      "local_track_id": "L_assigned",
+      "reason": "insufficient_best_second_margin"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.17233196638830345
+        ]
+      ],
+      "decision": "locked",
+      "frame": 43,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2184334182736609
+        ]
+      ],
+      "decision": "locked",
+      "frame": 44,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.1765075343198648
+        ]
+      ],
+      "decision": "locked",
+      "frame": 45,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.22774803753594614
+        ]
+      ],
+      "decision": "locked",
+      "frame": 46,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.20974466693367255
+        ]
+      ],
+      "decision": "locked",
+      "frame": 47,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.16256427452548905
+        ]
+      ],
+      "decision": "locked",
+      "frame": 48,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.22780918424137675
+        ]
+      ],
+      "decision": "locked",
+      "frame": 49,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.259786770806298
+        ]
+      ],
+      "decision": "locked",
+      "frame": 50,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.16074334990706418
+        ]
+      ],
+      "decision": "locked",
+      "frame": 51,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [],
+      "decision": "reacquire",
+      "frame": 52,
+      "local_track_id": null,
+      "reason": "no_local_track_inside_projection_gate"
+    },
+    {
+      "candidate_costs": [],
+      "decision": "reacquire",
+      "frame": 53,
+      "local_track_id": null,
+      "reason": "no_local_track_inside_projection_gate"
+    },
+    {
+      "candidate_costs": [],
+      "decision": "reacquire",
+      "frame": 54,
+      "local_track_id": null,
+      "reason": "no_local_track_inside_projection_gate"
+    },
+    {
+      "candidate_costs": [],
+      "decision": "reacquire",
+      "frame": 55,
+      "local_track_id": null,
+      "reason": "no_local_track_inside_projection_gate"
+    },
+    {
+      "candidate_costs": [],
+      "decision": "reacquire",
+      "frame": 56,
+      "local_track_id": null,
+      "reason": "no_local_track_inside_projection_gate"
+    },
+    {
+      "candidate_costs": [],
+      "decision": "reacquire",
+      "frame": 57,
+      "local_track_id": null,
+      "reason": "no_local_track_inside_projection_gate"
+    },
+    {
+      "candidate_costs": [],
+      "decision": "reacquire",
+      "frame": 58,
+      "local_track_id": null,
+      "reason": "no_local_track_inside_projection_gate"
+    },
+    {
+      "candidate_costs": [],
+      "decision": "reacquire",
+      "frame": 59,
+      "local_track_id": null,
+      "reason": "no_local_track_inside_projection_gate"
+    },
+    {
+      "candidate_costs": [],
+      "decision": "reacquire",
+      "frame": 60,
+      "local_track_id": null,
+      "reason": "no_local_track_inside_projection_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2605254526027188
+        ]
+      ],
+      "decision": "locked",
+      "frame": 61,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.22989667158613275
+        ]
+      ],
+      "decision": "locked",
+      "frame": 62,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.22308871417824858
+        ]
+      ],
+      "decision": "locked",
+      "frame": 63,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2878387557571577
+        ]
+      ],
+      "decision": "locked",
+      "frame": 64,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.5072766379514304
+        ]
+      ],
+      "decision": "locked",
+      "frame": 65,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.17265514722687228
+        ]
+      ],
+      "decision": "locked",
+      "frame": 66,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.20109701081109999
+        ]
+      ],
+      "decision": "locked",
+      "frame": 67,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.21606315059431122
+        ]
+      ],
+      "decision": "locked",
+      "frame": 68,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.20029117670630764
+        ]
+      ],
+      "decision": "locked",
+      "frame": 69,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.5417036182549528
+        ]
+      ],
+      "decision": "locked",
+      "frame": 70,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.3623713546890431
+        ]
+      ],
+      "decision": "locked",
+      "frame": 71,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.2100971183
+        ],
+        [
+          "L_friend",
+          1000016.1583060022
+        ]
+      ],
+      "decision": "hold",
+      "frame": 72,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.4379242936
+        ],
+        [
+          "L_friend",
+          1000016.1170354288
+        ]
+      ],
+      "decision": "hold",
+      "frame": 73,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.1904161397
+        ],
+        [
+          "L_friend",
+          1000016.0848904259
+        ]
+      ],
+      "decision": "hold",
+      "frame": 74,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.1848384208
+        ],
+        [
+          "L_friend",
+          1000016.2273294707
+        ]
+      ],
+      "decision": "hold",
+      "frame": 75,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.2152961367
+        ],
+        [
+          "L_friend",
+          1000016.1668346841
+        ]
+      ],
+      "decision": "hold",
+      "frame": 76,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.2616694799
+        ],
+        [
+          "L_friend",
+          1000016.1412270449
+        ]
+      ],
+      "decision": "hold",
+      "frame": 77,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.4706641015
+        ],
+        [
+          "L_friend",
+          1000016.082018607
+        ]
+      ],
+      "decision": "hold",
+      "frame": 78,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.16839551891743224
+        ]
+      ],
+      "decision": "locked",
+      "frame": 79,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.19756591854544409
+        ]
+      ],
+      "decision": "locked",
+      "frame": 80,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.19093714503107234
+        ]
+      ],
+      "decision": "locked",
+      "frame": 81,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.37883360193579463
+        ]
+      ],
+      "decision": "locked",
+      "frame": 82,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2201369323224921
+        ]
+      ],
+      "decision": "locked",
+      "frame": 83,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.17705803493178068
+        ]
+      ],
+      "decision": "locked",
+      "frame": 84,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.3514735422198423
+        ]
+      ],
+      "decision": "locked",
+      "frame": 85,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.19519730371936805
+        ]
+      ],
+      "decision": "locked",
+      "frame": 86,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.17007941607750038
+        ]
+      ],
+      "decision": "locked",
+      "frame": 87,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.30246007063329355
+        ]
+      ],
+      "decision": "locked",
+      "frame": 88,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2509901772907469
+        ]
+      ],
+      "decision": "locked",
+      "frame": 89,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.16491157764099407
+        ]
+      ],
+      "decision": "locked",
+      "frame": 90,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2396716288507571
+        ]
+      ],
+      "decision": "locked",
+      "frame": 91,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.19244857941298005
+        ]
+      ],
+      "decision": "locked",
+      "frame": 92,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.2021561841
+        ]
+      ],
+      "decision": "hold",
+      "frame": 93,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.18395915318491796
+        ]
+      ],
+      "decision": "locked",
+      "frame": 94,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.18622532140782644
+        ]
+      ],
+      "decision": "locked",
+      "frame": 95,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2143641883844089
+        ]
+      ],
+      "decision": "locked",
+      "frame": 96,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.23211444649080135
+        ]
+      ],
+      "decision": "locked",
+      "frame": 97,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.1722358119053092
+        ]
+      ],
+      "decision": "locked",
+      "frame": 98,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2361888931052464
+        ]
+      ],
+      "decision": "locked",
+      "frame": 99,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2051640226499185
+        ]
+      ],
+      "decision": "locked",
+      "frame": 100,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.2442768379
+        ]
+      ],
+      "decision": "hold",
+      "frame": 101,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2052266902456796
+        ]
+      ],
+      "decision": "locked",
+      "frame": 102,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.1947232614
+        ]
+      ],
+      "decision": "hold",
+      "frame": 103,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2997453066410457
+        ]
+      ],
+      "decision": "locked",
+      "frame": 104,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.3707400811871907
+        ]
+      ],
+      "decision": "locked",
+      "frame": 105,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.3763265712
+        ]
+      ],
+      "decision": "hold",
+      "frame": 106,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.2922430542729797
+        ]
+      ],
+      "decision": "locked",
+      "frame": 107,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.1967006405
+        ]
+      ],
+      "decision": "hold",
+      "frame": 108,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.19932869073568035
+        ]
+      ],
+      "decision": "locked",
+      "frame": 109,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.3916334144
+        ]
+      ],
+      "decision": "hold",
+      "frame": 110,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.2222497868
+        ]
+      ],
+      "decision": "hold",
+      "frame": 111,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.165383071346896
+        ]
+      ],
+      "decision": "locked",
+      "frame": 112,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.1920167365
+        ]
+      ],
+      "decision": "hold",
+      "frame": 113,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_distractor",
+          8.197393692395448
+        ],
+        [
+          "L_assigned",
+          1000000.1742673262
+        ]
+      ],
+      "decision": "hold",
+      "frame": 114,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_distractor",
+          9.271964792154952
+        ],
+        [
+          "L_assigned",
+          1000000.2074102863
+        ]
+      ],
+      "decision": "hold",
+      "frame": 115,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.23617553432250232
+        ]
+      ],
+      "decision": "locked",
+      "frame": 116,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.3536831945
+        ]
+      ],
+      "decision": "hold",
+      "frame": 117,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          0.4623071857744821
+        ],
+        [
+          "L_distractor",
+          7.644565072698679
+        ]
+      ],
+      "decision": "locked",
+      "frame": 118,
+      "local_track_id": "L_assigned",
+      "reason": "unique_candidate_inside_gate"
+    },
+    {
+      "candidate_costs": [
+        [
+          "L_assigned",
+          1000000.160900516
+        ]
+      ],
+      "decision": "hold",
+      "frame": 119,
+      "local_track_id": "L_assigned",
+      "reason": "verified_friend_overlap_inside_gate"
+    }
+  ]
+}
