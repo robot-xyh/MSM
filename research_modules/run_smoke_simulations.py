@@ -20,9 +20,9 @@ COMMANDS = [
             "--targets",
             "3",
             "--duration",
-            "60",
+            "8",
             "--dt",
-            "0.1",
+            "0.5",
             "--seed",
             "7",
             "--output",
@@ -76,6 +76,38 @@ COMMANDS = [
             "research_modules/d6_evaluation_metrics/outputs/integration_smoke",
         ],
     ),
+    (
+        "D7",
+        "research_modules/d7_proportional_guidance",
+        [
+            "-c",
+            (
+                "from d7_proportional_guidance import GuidanceConfig, simulate_guidance_episode; "
+                "records, summary = simulate_guidance_episode(config=GuidanceConfig(max_duration_s=3.0, dt_s=0.1, terminal_switch_range_m=700.0)); "
+                "print({'records': len(records), 'terminal_mode_entered': summary['terminal_mode_entered'], 'final_range_m': round(summary['final_range_m'], 3)})"
+            ),
+        ],
+    ),
+    (
+        "IntegratedSimulation",
+        (
+            "research_modules",
+            "research_modules/d1_sensor_fusion/src",
+            "research_modules/d2_data_association",
+            "research_modules/d3_assignment_planner/src",
+            "research_modules/d4_distributed_fallback",
+            "research_modules/d5_terminal_association/src",
+            "research_modules/d6_evaluation_metrics",
+            "research_modules/d7_proportional_guidance",
+        ),
+        [
+            "research_modules/integrated_simulation/run_batch.py",
+            "--duration",
+            "6",
+            "--output",
+            "research_modules/integrated_simulation/outputs/smoke",
+        ],
+    ),
 ]
 
 
@@ -83,7 +115,10 @@ def main() -> int:
     failures: list[str] = []
     for name, pythonpath, args in COMMANDS:
         env = os.environ.copy()
-        env["PYTHONPATH"] = str(ROOT / pythonpath)
+        if isinstance(pythonpath, tuple):
+            env["PYTHONPATH"] = os.pathsep.join(str(ROOT / item) for item in pythonpath)
+        else:
+            env["PYTHONPATH"] = str(ROOT / pythonpath)
         cmd = [sys.executable, *[str(ROOT / arg) if arg.endswith(".py") else arg for arg in args]]
         print(f"\n=== {name}: {' '.join(cmd)} ===")
         completed = subprocess.run(cmd, cwd=ROOT, env=env, check=False)

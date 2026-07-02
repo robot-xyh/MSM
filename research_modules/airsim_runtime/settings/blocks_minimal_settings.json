@@ -1,0 +1,44 @@
+{
+  "SeeDocsAt": "https://microsoft.github.io/AirSim/settings/",
+  "SettingsVersion": 1.2,
+  "SimMode": "Multirotor",
+  "EnableRpc": true,
+  "RpcEnabled": true,
+  "ApiServerPort": 41451,
+  "LocalHostIp": "127.0.0.1",
+  "ClockSpeed": 1.0,
+  "ViewMode": "NoDisplay",
+  "CameraDefaults": {
+    "CaptureSettings": [
+      {
+        "ImageType": 0,
+        "Width": 640,
+        "Height": 480,
+        "FOV_Degrees": 90,
+        "MotionBlurAmount": 0
+      }
+    ]
+  },
+  "Vehicles": {
+    "Drone1": {
+      "VehicleType": "SimpleFlight",
+      "DefaultVehicleState": "Inactive",
+      "AutoCreate": true,
+      "AllowAPIAlways": true,
+      "EnableCollisionPassthrogh": false,
+      "EnableCollisions": true,
+      "EnableTrace": false,
+      "IsFpvVehicle": true,
+      "X": 0,
+      "Y": 0,
+      "Z": 0,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0,
+      "RC": {
+        "RemoteControlID": 0,
+        "AllowAPIWhenDisconnected": true
+      }
+    }
+  }
+}

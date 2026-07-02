@@ -18,6 +18,7 @@ SUITES = [
     ("D4", "research_modules/d4_distributed_fallback", "research_modules/d4_distributed_fallback/tests"),
     ("D5", "research_modules/d5_terminal_association/src", "research_modules/d5_terminal_association/tests"),
     ("D6", "research_modules/d6_evaluation_metrics", "research_modules/d6_evaluation_metrics/tests"),
+    ("D7", "research_modules/d7_proportional_guidance", "research_modules/d7_proportional_guidance/tests"),
     (
         "Integration",
         (
@@ -25,10 +26,54 @@ SUITES = [
             "research_modules/d1_sensor_fusion/src",
             "research_modules/d2_data_association",
             "research_modules/d3_assignment_planner/src",
+            "research_modules/d4_distributed_fallback",
             "research_modules/d5_terminal_association/src",
             "research_modules/d6_evaluation_metrics",
+            "research_modules/d7_proportional_guidance",
         ),
         "research_modules/integration_tests",
+    ),
+    (
+        "IntegratedSimulation",
+        (
+            "research_modules",
+            "research_modules/d1_sensor_fusion/src",
+            "research_modules/d2_data_association",
+            "research_modules/d3_assignment_planner/src",
+            "research_modules/d4_distributed_fallback",
+            "research_modules/d5_terminal_association/src",
+            "research_modules/d6_evaluation_metrics",
+            "research_modules/d7_proportional_guidance",
+        ),
+        "research_modules/integrated_simulation/tests",
+    ),
+    (
+        "AirSimDryRun",
+        (
+            "research_modules",
+            "research_modules/d1_sensor_fusion/src",
+            "research_modules/d2_data_association",
+            "research_modules/d3_assignment_planner/src",
+            "research_modules/d4_distributed_fallback",
+            "research_modules/d5_terminal_association/src",
+            "research_modules/d6_evaluation_metrics",
+            "research_modules/d7_proportional_guidance",
+        ),
+        "research_modules/airsim_dryrun/tests",
+    ),
+    (
+        "AirSimRuntime",
+        (
+            "research_modules",
+            "research_modules/d1_sensor_fusion/src",
+            "research_modules/d2_data_association",
+            "research_modules/d3_assignment_planner/src",
+            "research_modules/d4_distributed_fallback",
+            "research_modules/d5_terminal_association/src",
+            "research_modules/d6_evaluation_metrics",
+            "research_modules/d7_proportional_guidance",
+        ),
+        "research_modules/airsim_runtime/tests",
     ),
 ]
 

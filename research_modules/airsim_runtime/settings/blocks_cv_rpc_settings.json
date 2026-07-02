@@ -1,0 +1,29 @@
+{
+  "SeeDocsAt": "https://microsoft.github.io/AirSim/settings/",
+  "SettingsVersion": 1.2,
+  "SimMode": "ComputerVision",
+  "EnableRpc": true,
+  "RpcEnabled": true,
+  "ApiServerPort": 41451,
+  "LocalHostIp": "127.0.0.1",
+  "ClockSpeed": 1.0,
+  "ViewMode": "NoDisplay",
+  "CameraDefaults": {
+    "CaptureSettings": [
+      {
+        "ImageType": 0,
+        "Width": 640,
+        "Height": 480,
+        "FOV_Degrees": 90,
+        "MotionBlurAmount": 0
+      },
+      {
+        "ImageType": 5,
+        "Width": 640,
+        "Height": 480,
+        "FOV_Degrees": 90,
+        "MotionBlurAmount": 0
+      }
+    ]
+  }
+}
