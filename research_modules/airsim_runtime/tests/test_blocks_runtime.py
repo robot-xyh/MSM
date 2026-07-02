@@ -270,6 +270,39 @@ def test_real_runtime_moves_actor_targets_and_captures_builtin_detections(tmp_pa
     assert frame.metadata["detection_count"] == 1
 
 
+def test_real_runtime_control_helpers_call_multirotor_api(tmp_path: Path) -> None:
+    fake_client = FakeAirSimClient()
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+        client_kind="multirotor",
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        resource_vehicle_names=("Interceptor1", "Interceptor2"),
+        intercept_altitude_ned_z=-2.0,
+    )
+
+    runtime.prepare_interceptor_control(config)
+    runtime.command_velocity_z(
+        config,
+        vehicle_name="Interceptor1",
+        velocity_ned=(3.0, 4.0, 0.0),
+        duration_s=0.1,
+    )
+    collision = runtime.collision_info("Interceptor1")
+    runtime.land_and_release_interceptors(("Interceptor1", "Interceptor2"), land=True)
+
+    assert ("enableApiControl", True, "Interceptor1") in fake_client.control_calls
+    assert ("armDisarm", True, "Interceptor2") in fake_client.control_calls
+    assert ("takeoffAsync", "Interceptor1") in fake_client.control_calls
+    assert ("moveToZAsync", "Interceptor1", -2.0) in fake_client.control_calls
+    assert ("moveByVelocityZAsync", "Interceptor1", 3.0, 4.0, -2.0, 0.1) in fake_client.control_calls
+    assert ("landAsync", "Interceptor2") in fake_client.control_calls
+    assert collision["has_collided"] is False
+
+
 def test_blocks_frame_adapters_feed_d1_and_integrated_models() -> None:
     frame = _sample_frame()
 
@@ -338,6 +371,36 @@ def test_blocks_orchestrator_runs_mock_capture_and_integrated_replay(tmp_path: P
     assert result.output_paths["airsim_blocks_summary"].exists()
 
 
+def test_blocks_orchestrator_runs_mock_controlled_intercept(tmp_path: Path) -> None:
+    config = BlocksSmokeConfig(
+        episode_id="pytest_intercept",
+        duration_s=0.2,
+        dt_s=0.1,
+        output_root=tmp_path,
+        launch_blocks=False,
+        connection_timeout_s=0.1,
+        include_integrated_pipeline=False,
+        execute_intercept=True,
+        control_dt_s=0.1,
+        intercept_max_duration_s=0.2,
+        intercept_terminal_switch_range_m=1.0,
+    )
+    runtime = FakeBlocksRuntime()
+    orchestrator = AirSimBlocksSmokeOrchestrator(runtime=runtime)
+
+    result = orchestrator.run(config)
+
+    assert result.connected is True
+    assert result.metadata["control_api_used"] is True
+    assert result.metadata["intercept"]["command_record_count"] > 0
+    assert result.output_paths["intercept_summary"].exists()
+    assert result.output_paths["control_commands"].exists()
+    assert result.output_paths["intercept_trajectory_plot"].exists()
+    summary = json.loads(result.output_paths["intercept_summary"].read_text(encoding="utf-8"))
+    assert summary["control_api_used"] is True
+    assert summary["pair_count"] == 1
+
+
 def test_blocks_orchestrator_reconnects_after_initial_rpc_failure(tmp_path: Path) -> None:
     config = BlocksSmokeConfig(
         episode_id="pytest_reconnect",
@@ -389,6 +452,14 @@ class FakeAirSimModule:
     class ImageType:
         Scene = 0
 
+    class DrivetrainType:
+        ForwardOnly = 1
+
+    class YawMode:
+        def __init__(self, is_rate=False, yaw_or_rate=0.0):
+            self.is_rate = is_rate
+            self.yaw_or_rate = yaw_or_rate
+
     class Vector3r:
         def __init__(self, x_val=0.0, y_val=0.0, z_val=0.0):
             self.x_val = x_val
@@ -413,12 +484,43 @@ class FakeAirSimClient:
         self.spawned_objects: list[str] = []
         self.destroyed_objects: list[str] = []
         self.detection_filters: dict[str, list[str]] = {}
+        self.control_calls: list[tuple] = []
 
     def ping(self):
         return True
 
     def reset(self):
         return None
+
+    def enableApiControl(self, is_enabled, vehicle_name=""):
+        self.control_calls.append(("enableApiControl", is_enabled, vehicle_name))
+
+    def armDisarm(self, arm, vehicle_name=""):
+        self.control_calls.append(("armDisarm", arm, vehicle_name))
+        return True
+
+    def takeoffAsync(self, timeout_sec=20, vehicle_name=""):
+        self.control_calls.append(("takeoffAsync", vehicle_name))
+        return _future()
+
+    def moveToZAsync(self, z, velocity, timeout_sec=3e38, yaw_mode=None, lookahead=-1, adaptive_lookahead=1, vehicle_name=""):
+        self.control_calls.append(("moveToZAsync", vehicle_name, z))
+        return _future()
+
+    def moveByVelocityZAsync(self, vx, vy, z, duration, *args, vehicle_name=""):
+        self.control_calls.append(("moveByVelocityZAsync", vehicle_name, vx, vy, z, duration))
+        return _future()
+
+    def hoverAsync(self, vehicle_name=""):
+        self.control_calls.append(("hoverAsync", vehicle_name))
+        return _future()
+
+    def landAsync(self, timeout_sec=60, vehicle_name=""):
+        self.control_calls.append(("landAsync", vehicle_name))
+        return _future()
+
+    def simGetCollisionInfo(self, vehicle_name=""):
+        return SimpleNamespace(has_collided=False, object_name="", object_id=-1, time_stamp=0)
 
     def listVehicles(self):
         return ["Interceptor", "Intruder"]
@@ -496,6 +598,26 @@ class FakeBlocksRuntime:
 
     def reset(self):
         return None
+
+    def prepare_interceptor_control(self, config):
+        self.control_prepared = True
+
+    def command_velocity_z(self, config, *, vehicle_name, velocity_ned, duration_s):
+        commands = getattr(self, "velocity_commands", [])
+        commands.append((vehicle_name, velocity_ned, duration_s))
+        self.velocity_commands = commands
+
+    def hover_interceptor(self, vehicle_name):
+        hovers = getattr(self, "hover_calls", [])
+        hovers.append(vehicle_name)
+        self.hover_calls = hovers
+
+    def land_and_release_interceptors(self, vehicle_names, *, land=True):
+        self.released_vehicle_names = tuple(vehicle_names)
+        self.release_land = land
+
+    def collision_info(self, vehicle_name):
+        return {"ok": True, "has_collided": False, "object_name": "", "object_id": -1}
 
     def sample_frame(self, config, frame_index, timestamp, output_dir):
         frame = _sample_frame(timestamp=timestamp, frame_index=frame_index)
@@ -602,6 +724,10 @@ def _vector(x: float, y: float, z: float):
 
 def _vector2(x: float, y: float):
     return SimpleNamespace(x_val=x, y_val=y)
+
+
+def _future():
+    return SimpleNamespace(join=lambda: None)
 
 
 def _detection(name: str):

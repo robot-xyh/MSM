@@ -65,6 +65,9 @@ class AirSimBlocksSequenceOrchestrator:
                 process_manager=process_manager,
             )
             for spec in episode_specs:
+                execute_episode_intercept = (
+                    base_config.execute_intercept and spec.episode_id == "episode_006_full_flow"
+                )
                 config = replace(
                     base_config,
                     episode_id=spec.episode_id,
@@ -73,6 +76,7 @@ class AirSimBlocksSequenceOrchestrator:
                     dt_s=spec.dt_s,
                     output_root=sequence_dir,
                     include_integrated_pipeline=spec.include_integrated_pipeline,
+                    execute_intercept=execute_episode_intercept,
                     launch_blocks=False,
                     metadata={**base_config.metadata, "sequence_id": sequence_id, "focus": spec.focus},
                 )
@@ -89,7 +93,9 @@ class AirSimBlocksSequenceOrchestrator:
             output_paths={},
             metadata={
                 "real_airsim_used": True,
-                "control_api_used": False,
+                "control_api_used": any(
+                    bool(result.metadata.get("control_api_used")) for result in episode_results
+                ),
                 "settings_path": str(base_config.settings_path.resolve()),
                 "episode_count": len(episode_results),
                 "episode_order": [spec.episode_id for spec in episode_specs],

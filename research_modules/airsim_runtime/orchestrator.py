@@ -23,6 +23,7 @@ from .adapters import (
     truth_summary_from_blocks_frames,
 )
 from .blocks import BlocksProcessManager
+from .intercept import run_controlled_intercept_episode
 from .models import BlocksSmokeConfig, BlocksSmokeResult
 from .real_runtime import RealAirSimRuntimeClient
 
@@ -65,11 +66,38 @@ class AirSimBlocksSmokeOrchestrator:
         try:
             self._wait_for_connection(runtime, config.connection_timeout_s, process_manager)
             runtime.reset()
+            self._wait_for_connection(runtime, config.connection_timeout_s, process_manager)
             setup_episode = getattr(runtime, "setup_episode", None)
             if callable(setup_episode):
                 setup_episode(config)
                 episode_setup = True
-            frames = self._capture_frames(runtime, config)
+            intercept_output_paths: dict[str, Path] = {}
+            intercept_metadata: dict[str, Any] = {}
+            if config.execute_intercept:
+                intercept_result = run_controlled_intercept_episode(runtime, config, output_dir)
+                frames = intercept_result.frames
+                intercept_output_paths = dict(intercept_result.output_paths)
+                intercept_metadata = {
+                    "success_count": intercept_result.success_count,
+                    "pair_count": len(intercept_result.pairs),
+                    "command_record_count": len(intercept_result.command_records),
+                    "pairs": [
+                        {
+                            "resource_id": pair.resource_id,
+                            "vehicle_name": pair.vehicle_name,
+                            "target_id": pair.target_id,
+                            "status": pair.status,
+                            "abort_reason": pair.abort_reason,
+                            "min_range_m": None
+                            if pair.min_range_m == float("inf")
+                            else pair.min_range_m,
+                            "time_to_intercept_s": pair.time_to_intercept_s,
+                        }
+                        for pair in intercept_result.pairs
+                    ],
+                }
+            else:
+                frames = self._capture_frames(runtime, config)
             raw_log = _write_frames_jsonl(frames, output_dir / "blocks_frames.jsonl")
             integrated = (
                 self._run_integrated_replay(config, frames, output_dir)
@@ -83,16 +111,17 @@ class AirSimBlocksSmokeOrchestrator:
                 vehicle_names=_vehicle_names(frames),
                 image_ok_count=sum(1 for frame in frames if frame.metadata.get("image", {}).get("ok")),
                 lidar_ok_count=sum(1 for frame in frames if frame.metadata.get("lidar", {}).get("ok")),
-                output_paths={"blocks_frames_jsonl": raw_log},
+                output_paths={"blocks_frames_jsonl": raw_log, **intercept_output_paths},
                 integrated_result=integrated,
                 metadata={
                     "real_airsim_used": True,
                     "runtime": "Blocks",
                     "settings_path": str(config.settings_path.resolve()),
                     "module_order": list(self.MODULE_ORDER),
-                    "control_api_used": False,
+                    "control_api_used": bool(config.execute_intercept),
                     "actor_target_count": len(config.target_actor_specs),
                     "detection_count": sum(len(frame.visual_detections) for frame in frames),
+                    "intercept": intercept_metadata,
                     "first_frame": _frame_summary(frames[0]) if frames else {},
                     "last_frame": _frame_summary(frames[-1]) if frames else {},
                 },

@@ -50,6 +50,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--connection-timeout", type=float, default=90.0)
     parser.add_argument("--client-timeout", type=float, default=2.0)
     parser.add_argument(
+        "--execute-intercept",
+        action="store_true",
+        help="Execute SimpleFlight PN control in episode_006_full_flow.",
+    )
+    parser.add_argument("--control-dt", type=float, default=0.1)
+    parser.add_argument("--intercept-speed", type=float, default=6.0)
+    parser.add_argument("--intercept-altitude-z", type=float, default=-2.0)
+    parser.add_argument("--intercept-radius", type=float, default=0.75)
+    parser.add_argument("--intercept-max-duration", type=float, default=8.0)
+    parser.add_argument("--intercept-terminal-range", type=float, default=8.0)
+    parser.add_argument("--intercept-detection-timeout", type=float, default=1.0)
+    parser.add_argument(
         "--blocks-arg",
         action="append",
         default=None,
@@ -73,7 +85,9 @@ def main() -> int:
             "lidar_vehicle_names": ("Interceptor1", "Interceptor2"),
             "target_vehicle_names": (),
             "resource_vehicle_names": ("Interceptor1", "Interceptor2"),
-            "target_actor_specs": default_2v2_actor_target_specs(),
+            "target_actor_specs": default_2v2_actor_target_specs(
+                target_z=args.intercept_altitude_z if args.execute_intercept else -2.0
+            ),
             "detection_filter_names": ("MSM_TargetActor_*",),
             "metadata": {"runtime_mode": "actor_2v2"},
         }
@@ -93,6 +107,15 @@ def main() -> int:
         prefer_nvidia_offload=not args.no_nvidia_offload,
         connection_timeout_s=args.connection_timeout,
         client_timeout_s=args.client_timeout,
+        client_kind="multirotor" if args.execute_intercept else "vehicle",
+        execute_intercept=args.execute_intercept,
+        control_dt_s=args.control_dt,
+        intercept_speed_mps=args.intercept_speed,
+        intercept_altitude_ned_z=args.intercept_altitude_z,
+        intercept_radius_m=args.intercept_radius,
+        intercept_max_duration_s=args.intercept_max_duration,
+        intercept_terminal_switch_range_m=args.intercept_terminal_range,
+        intercept_detection_timeout_s=args.intercept_detection_timeout,
         **actor_config,
     )
     episode_specs = tuple(

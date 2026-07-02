@@ -65,6 +65,17 @@ class BlocksSmokeConfig:
     detection_radius_cm: int = 80 * 100
     destroy_spawned_actor_targets: bool = True
     include_integrated_pipeline: bool = True
+    execute_intercept: bool = False
+    control_dt_s: float = 0.1
+    intercept_speed_mps: float = 6.0
+    intercept_altitude_ned_z: float = -2.0
+    intercept_radius_m: float = 0.75
+    intercept_max_duration_s: float = 8.0
+    intercept_navigation_constant: float = 3.0
+    intercept_terminal_switch_range_m: float = 8.0
+    intercept_detection_timeout_s: float = 1.0
+    intercept_takeoff_timeout_s: float = 10.0
+    intercept_land_after: bool = True
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def timestamps(self) -> list[float]:
@@ -137,21 +148,24 @@ class BlocksSequenceResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-def default_2v2_actor_target_specs() -> tuple[BlocksActorTargetSpec, ...]:
+def default_2v2_actor_target_specs(
+    *,
+    target_z: float = -2.0,
+) -> tuple[BlocksActorTargetSpec, ...]:
     """Default crossing horizontal actor targets for the first Blocks 2v2 run."""
 
     return (
         BlocksActorTargetSpec(
             object_id="TGT-001",
             actor_name="MSM_TargetActor_1",
-            start_ned=(12.0, -6.0, -2.0),
+            start_ned=(12.0, -6.0, float(target_z)),
             velocity_ned=(2.0, 0.6, 0.0),
             fallback_actor_name="OrangeBall",
         ),
         BlocksActorTargetSpec(
             object_id="TGT-002",
             actor_name="MSM_TargetActor_2",
-            start_ned=(12.0, 6.0, -2.0),
+            start_ned=(12.0, 6.0, float(target_z)),
             velocity_ned=(2.0, -0.6, 0.0),
             fallback_actor_name="PulsingCone",
         ),

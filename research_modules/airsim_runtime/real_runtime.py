@@ -1,4 +1,4 @@
-"""Read-only real AirSim runtime client for Blocks smoke tests."""
+"""Real AirSim runtime client for Blocks smoke and controlled intercept tests."""
 
 from __future__ import annotations
 
@@ -23,9 +23,9 @@ from .models import BlocksActorTargetSpec, BlocksSmokeConfig
 class RealAirSimRuntimeClient:
     """Thin wrapper over the AirSim Python API.
 
-    The wrapper uses read/reset APIs plus simulator actor pose APIs for
-    non-vehicle targets. It never enables API control, arms vehicles, takes off,
-    or sends vehicle movement commands.
+    The default smoke path uses read/reset APIs plus simulator actor pose APIs
+    for non-vehicle targets. Explicit controlled-intercept episodes call the
+    control helpers below to enable SimpleFlight API control.
     """
 
     def __init__(
@@ -83,6 +83,122 @@ class RealAirSimRuntimeClient:
 
     def reset(self) -> None:
         self.client.reset()
+        time.sleep(1.0)
+        self.reconnect()
+
+    def prepare_interceptor_control(self, config: BlocksSmokeConfig) -> None:
+        """Enable API control, arm, take off, and settle at intercept altitude."""
+
+        for vehicle_name in config.resource_vehicle_names:
+            self.client.enableApiControl(True, vehicle_name=vehicle_name)
+            self.client.armDisarm(True, vehicle_name=vehicle_name)
+        for vehicle_name in config.resource_vehicle_names:
+            _join_future(
+                self.client.takeoffAsync(
+                    timeout_sec=config.intercept_takeoff_timeout_s,
+                    vehicle_name=vehicle_name,
+                )
+            )
+        for vehicle_name in config.resource_vehicle_names:
+            target_z = _local_z_from_global_z(
+                config,
+                vehicle_name,
+                config.intercept_altitude_ned_z,
+            )
+            _join_future(
+                self.client.moveToZAsync(
+                    target_z,
+                    max(1.0, min(config.intercept_speed_mps, 3.0)),
+                    timeout_sec=config.intercept_takeoff_timeout_s,
+                    vehicle_name=vehicle_name,
+                )
+            )
+            _join_future(self.client.hoverAsync(vehicle_name=vehicle_name))
+
+    def command_velocity_z(
+        self,
+        config: BlocksSmokeConfig,
+        *,
+        vehicle_name: str,
+        velocity_ned: tuple[float, float, float],
+        duration_s: float,
+    ) -> None:
+        """Send a horizontal velocity command while holding configured NED Z."""
+
+        target_z = _local_z_from_global_z(
+            config,
+            vehicle_name,
+            config.intercept_altitude_ned_z,
+        )
+        vx, vy, _vz = velocity_ned
+        yaw_deg = float(np.degrees(np.arctan2(vy, vx))) if abs(vx) + abs(vy) > 1e-9 else 0.0
+        drivetrain_type = getattr(getattr(self.airsim, "DrivetrainType", object), "ForwardOnly", 0)
+        yaw_mode_factory = getattr(self.airsim, "YawMode", None)
+        yaw_mode = yaw_mode_factory(False, yaw_deg) if callable(yaw_mode_factory) else None
+        if yaw_mode is None:
+            future = self.client.moveByVelocityZAsync(
+                float(vx),
+                float(vy),
+                float(target_z),
+                float(duration_s),
+                vehicle_name=vehicle_name,
+            )
+        else:
+            future = self.client.moveByVelocityZAsync(
+                float(vx),
+                float(vy),
+                float(target_z),
+                float(duration_s),
+                drivetrain_type,
+                yaw_mode,
+                vehicle_name=vehicle_name,
+            )
+        _join_future(future)
+
+    def hover_interceptor(self, vehicle_name: str) -> None:
+        _join_future(self.client.hoverAsync(vehicle_name=vehicle_name))
+
+    def land_and_release_interceptors(
+        self,
+        vehicle_names: tuple[str, ...],
+        *,
+        land: bool = True,
+    ) -> None:
+        """Best-effort stop for controlled episodes."""
+
+        for vehicle_name in vehicle_names:
+            try:
+                _join_future(self.client.hoverAsync(vehicle_name=vehicle_name))
+            except Exception:
+                pass
+        if land:
+            for vehicle_name in vehicle_names:
+                try:
+                    _join_future(self.client.landAsync(vehicle_name=vehicle_name))
+                except Exception:
+                    pass
+        for vehicle_name in vehicle_names:
+            try:
+                self.client.armDisarm(False, vehicle_name=vehicle_name)
+            except Exception:
+                pass
+            try:
+                self.client.enableApiControl(False, vehicle_name=vehicle_name)
+            except Exception:
+                pass
+
+    def collision_info(self, vehicle_name: str) -> dict[str, Any]:
+        try:
+            info = self.client.simGetCollisionInfo(vehicle_name=vehicle_name)
+        except Exception as exc:
+            return {"ok": False, "reason": f"{type(exc).__name__}: {exc}", "has_collided": False}
+        return {
+            "ok": True,
+            "has_collided": bool(getattr(info, "has_collided", False)),
+            "object_name": str(getattr(info, "object_name", "")),
+            "object_id": int(getattr(info, "object_id", -1)),
+            "time_stamp": int(getattr(info, "time_stamp", 0)),
+        }
 
     def setup_episode(self, config: BlocksSmokeConfig) -> None:
         """Prepare actor targets and camera detection filters for one episode."""
@@ -127,14 +243,14 @@ class RealAirSimRuntimeClient:
 
     def list_vehicles(self) -> tuple[str, ...]:
         last_error: Exception | None = None
-        for attempt in range(3):
+        for attempt in range(20):
             try:
                 return tuple(str(name) for name in self.client.listVehicles())
             except Exception as exc:
                 last_error = exc
-                if attempt < 2:
+                if attempt < 19:
                     self.reconnect()
-                    time.sleep(0.25)
+                    time.sleep(0.5)
         assert last_error is not None
         raise last_error
 
@@ -641,3 +757,18 @@ def _vehicle_start_offset(config: BlocksSmokeConfig, vehicle_name: str) -> tuple
         float(vehicle.get("Y", 0.0)),
         float(vehicle.get("Z", 0.0)),
     )
+
+
+def _local_z_from_global_z(
+    config: BlocksSmokeConfig,
+    vehicle_name: str,
+    global_z: float,
+) -> float:
+    start = _vehicle_start_offset(config, vehicle_name)
+    return float(global_z - start[2])
+
+
+def _join_future(future: Any) -> None:
+    join = getattr(future, "join", None)
+    if callable(join):
+        join()

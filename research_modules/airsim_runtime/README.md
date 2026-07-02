@@ -1,13 +1,15 @@
 # AirSim Blocks Runtime
 
-This package runs the first real AirSim Blocks gate. It starts Blocks with a
+This package runs the first real AirSim Blocks gates. It starts Blocks with a
 repository-local settings file, connects through the Python RPC API, samples
 vehicle poses, actor targets, scene images, LiDAR metadata, AirSim built-in
 detections, scene objects, and replays the captured frames into the existing
 D1-D7 integration.
 
-It does not arm, take off, move, or command vehicles. The 2v2 actor scenario
-moves only non-vehicle Unreal actors with `simSetObjectPose`.
+The default path is read-only. When `--execute-intercept` is passed, only
+`episode_006_full_flow` enables SimpleFlight API control for the interceptor
+vehicles. Intruders remain non-vehicle Unreal actors moved with
+`simSetObjectPose`, and target recognition uses AirSim `simGetDetections`.
 
 ## Run
 
@@ -51,6 +53,36 @@ python3 research_modules/airsim_runtime/run_blocks_sequence.py \
   --blocks-arg=-NoSound
 ```
 
+Run the first controlled 2v2 intercept. Main still launches Blocks once and
+resets between episodes; the first five episodes stay read-only/replay, and the
+last episode arms `Interceptor1/2`, takes off, and sends D7 PN velocity commands:
+
+```bash
+python3 research_modules/airsim_runtime/run_blocks_sequence.py \
+  --actor-2v2 \
+  --execute-intercept \
+  --sequence-id blocks_2v2_actor_intercept_001 \
+  --duration 8.0 \
+  --dt 0.2 \
+  --control-dt 0.1 \
+  --intercept-speed 6.0 \
+  --intercept-altitude-z -5.0 \
+  --intercept-radius 0.75 \
+  --intercept-detection-timeout 5.0 \
+  --blocks-arg=-windowed \
+  --blocks-arg=-ResX=640 \
+  --blocks-arg=-ResY=480 \
+  --blocks-arg=-NoVSync \
+  --blocks-arg=-NoHMD \
+  --blocks-arg=-NoSound
+```
+
+The default detection timeout is conservative (`1.0s`). For the first Blocks
+impact-style validation, `5.0s` keeps the controller committed after terminal
+lock even if AirSim's built-in detector briefly loses the close target. The
+example uses `-5m` NED altitude to keep the intercept path above Blocks scene
+obstacles; read-only actor runs still default to `-2m`.
+
 Default sequence order:
 
 ```text
@@ -66,8 +98,8 @@ Use `--no-launch` when Blocks is already running with compatible settings.
 By default the launcher adds `-windowed -ResX=640 -ResY=480 -NoVSync` and
 NVIDIA PRIME offload environment variables to reduce first-run rendering risk.
 The smoke client defaults to AirSim `VehicleClient`, matching the official
-camera/LiDAR examples for read-only sensing. Use `--client-kind multirotor`
-only when a later control episode intentionally needs multirotor-specific APIs.
+camera/LiDAR examples for read-only sensing. `--execute-intercept`
+automatically switches the runtime client to AirSim `MultirotorClient`.
 
 The bundled settings use `VehicleType: SimpleFlight`, `ViewMode: NoDisplay`,
 `DefaultVehicleState: Inactive`, ground-level `Z: 0`, enabled collisions, and
@@ -76,9 +108,12 @@ the smoke test has an RPC connection and keeps the main render path light.
 Control episodes should explicitly request API control, arm, take off, and
 command hover or motion at the start of each episode instead of starting airborne.
 
-Outputs are written under `research_modules/airsim_runtime/outputs/<episode-id>/`,
+Outputs are written under
+`research_modules/airsim_runtime/outputs/<sequence-id>/<episode-id>/`,
 including `airsim_blocks_summary.json`, raw frame JSONL, sample images, Blocks
-stdout/stderr, and integrated replay metrics.
+stdout/stderr, integrated replay metrics, and for controlled episodes:
+`intercept_summary.json`, `control_commands.csv`, and
+`airsim_3d_intercept_trajectories.png`.
 
 ## AirSim Docs And Source Findings
 

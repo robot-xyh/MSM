@@ -1,11 +1,12 @@
 """Real AirSim Blocks smoke runtime.
 
-This package is limited to simulator smoke checks and offline replay into the
-existing research modules. It does not arm, take off, move, or command vehicles;
-2v2 target motion is represented by non-vehicle actor pose scripting.
+This package is limited to simulator smoke checks, offline replay, and explicit
+AirSim-only SimpleFlight control episodes. 2v2 target motion is represented by
+non-vehicle actor pose scripting.
 """
 
 from .blocks import BlocksProcessManager
+from .intercept import InterceptRunResult, run_controlled_intercept_episode
 from .models import BlocksActorTargetSpec, BlocksSmokeConfig, default_2v2_actor_target_specs
 from .orchestrator import AirSimBlocksSmokeOrchestrator, run_blocks_smoke
 from .real_runtime import RealAirSimRuntimeClient
@@ -17,8 +18,10 @@ __all__ = [
     "BlocksActorTargetSpec",
     "BlocksProcessManager",
     "BlocksSmokeConfig",
+    "InterceptRunResult",
     "RealAirSimRuntimeClient",
     "default_2v2_actor_target_specs",
+    "run_controlled_intercept_episode",
     "run_blocks_sequence",
     "run_blocks_smoke",
 ]
