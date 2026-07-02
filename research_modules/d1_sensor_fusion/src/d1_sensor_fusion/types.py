@@ -11,6 +11,7 @@ CANONICAL_OBSERVATION_FRAMES = {
     "radar": {"ned"},
     "acoustic": {"ned"},
     "eo": {"pixel"},
+    "lidar": {"ned"},
 }
 
 

@@ -8,12 +8,15 @@ from .metrics import (
     TerminalRecord,
     TrackRecord,
 )
+from .jsonl import dump_episode_log_jsonl, load_episode_log_jsonl
 from .reporting import ReportGenerator
 
 __all__ = [
     "AssignmentRecord",
+    "dump_episode_log_jsonl",
     "EpisodeMetrics",
     "EventRecord",
+    "load_episode_log_jsonl",
     "MetricsCollector",
     "ReportGenerator",
     "TerminalRecord",

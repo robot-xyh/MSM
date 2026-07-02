@@ -179,6 +179,16 @@ def eo_covariance_from_bbox(
     return np.diag([base_sigma**2, base_sigma**2])
 
 
+def lidar_covariance(distance: float, confidence: float = 0.9) -> np.ndarray:
+    """Offline dry-run covariance for a synthetic lidar position sample."""
+
+    distance = max(float(distance), 1.0)
+    confidence = float(np.clip(confidence, 0.05, 1.0))
+    sigma_xy = (0.35 + 0.0025 * distance) / confidence
+    sigma_z = (0.50 + 0.0035 * distance) / confidence
+    return np.diag([sigma_xy**2, sigma_xy**2, sigma_z**2])
+
+
 def measurement_model_for(observation: SensorObservation) -> MeasurementModel:
     modality = observation.modality.lower()
     if modality == "radar":
@@ -234,6 +244,27 @@ def measurement_model_for(observation: SensorObservation) -> MeasurementModel:
 
         return MeasurementModel(
             z=observation.measurement.reshape(-1)[:2],
+            r=r,
+            h_fn=h_fn,
+            h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
+            angle_indices=(),
+        )
+
+    if modality == "lidar":
+        sensor_position = sensor_position_from_metadata(observation)
+        z = observation.measurement.reshape(-1)[:3]
+        distance = float(np.linalg.norm(z - sensor_position))
+        r = (
+            observation.covariance
+            if observation.covariance is not None
+            else lidar_covariance(distance, observation.confidence)
+        )
+
+        def h_fn(x: np.ndarray) -> np.ndarray:
+            return np.asarray(x[:3], dtype=float)
+
+        return MeasurementModel(
+            z=z,
             r=r,
             h_fn=h_fn,
             h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),

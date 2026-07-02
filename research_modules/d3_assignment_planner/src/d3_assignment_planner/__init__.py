@@ -6,6 +6,11 @@ logic, hardware drivers, autonomous disposition, and authorization bypasses.
 """
 
 from .costs import CostMatrixResult, CostModel
+from .airsim_dry_run_adapter import (
+    AirSimDryRunAssignmentAdapter,
+    adapt_airsim_global_tracks,
+    adapt_airsim_resource_states,
+)
 from .models import (
     Assignment,
     AssignmentPlan,
@@ -22,6 +27,7 @@ __all__ = [
     "Assignment",
     "AssignmentPlan",
     "AssignmentPlanner",
+    "AirSimDryRunAssignmentAdapter",
     "CostMatrixResult",
     "CostModel",
     "CostWeights",
@@ -32,4 +38,6 @@ __all__ = [
     "SolverResult",
     "StalePlanError",
     "TargetTrack",
+    "adapt_airsim_global_tracks",
+    "adapt_airsim_resource_states",
 ]
