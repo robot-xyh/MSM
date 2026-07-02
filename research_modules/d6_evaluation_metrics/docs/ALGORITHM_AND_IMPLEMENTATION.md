@@ -104,6 +104,104 @@ degraded_completion_rate =
 
 D4 后续扩展建议：在 `EventRecord.metadata` 中透传 `coordination_mode`, `leader_role`, `coverage_cell`。这样 D6 可以区分“中心节点失效后由二级侦察节点接管”和“完全无中心 CBBA/拍卖式协商”的性能差异。
 
+#### 3.4.1 主动降级评估指标
+
+D4 主动降级不同于被动故障接管。被动降级由中心节点、二级节点或通信链路失效触发；主动降级由系统质量风险触发，例如 D1 定位不确定度升高、D2 关联风险升高、D3 分配冲突、D5 末端与中心航迹不一致。D6 的职责是离线评估主动降级是否必要、是否过度，以及是否减少错误绑定、ID Switch 和重复分配。
+
+建议新增以下 D6 侧离线指标：
+
+| 指标 | 定义 | 解释 |
+|---|---|---|
+| `passive_failover_count` | `count(degradation_mode == passive)` | 被动故障接管次数，用于与主动降级分开统计 |
+| `active_degradation_count` | `count(degradation_mode == active)` | 主动降级决策次数 |
+| `active_degradation_precision` | `necessary_active_degradation_count / active_degradation_count` | 主动降级的必要性精度，越高说明越少过度触发 |
+| `unnecessary_active_degradation_count` | `count(active degradation labelled unnecessary)` | 离线复核为不必要的主动降级次数 |
+| `terminal_center_disagreement_count` | `count(terminal_center_disagreement events)` | D5 末端局部关联与中心航迹/分配不一致的次数 |
+| `time_to_active_degradation_decision` | `t(active_degradation_decision) - t(first_risk_trigger)` | 从风险信号出现到主动降级决策的延迟 |
+| `post_degradation_id_switch_delta` | `id_switch_rate_after - id_switch_rate_before` | 主动降级前后 ID Switch 变化，负值表示改善 |
+| `post_degradation_assignment_conflict_delta` | `duplicate_assignment_rate_after - duplicate_assignment_rate_before` | 主动降级前后重复分配冲突变化，负值表示改善 |
+
+`active_degradation_precision` 需要离线必要性标签或一致的后验判据。推荐优先使用评估标签：
+
+```text
+necessary_active_degradation_count =
+  count(active degradation with metadata.review_label == necessary)
+
+active_degradation_precision =
+  necessary_active_degradation_count / max(active_degradation_count, 1)
+```
+
+当没有人工或规则复核标签时，可用保守后验判据生成研究用标签：若主动降级前窗口内存在明确风险触发，且降级后窗口内 `id_switch_rate`、`duplicate_assignment_rate`、`terminal_ambiguous_or_hold_rate` 至少一项下降，同时 `track_continuity` 未显著恶化，则暂记为 `necessary_candidate`。该标签只用于离线统计，不得用于在线自动处置或授权。
+
+前后窗口建议：
+
+```text
+pre_window  = [t_decision - W_pre, t_decision)
+post_window = [t_stable, t_stable + W_post]
+
+id_switch_rate_before = id_switch_count(pre_window) / window_duration
+id_switch_rate_after  = id_switch_count(post_window) / window_duration
+
+duplicate_assignment_rate_before = duplicate_assignment_count(pre_window) / plan_snapshot_count(pre_window)
+duplicate_assignment_rate_after  = duplicate_assignment_count(post_window) / plan_snapshot_count(post_window)
+```
+
+`W_pre` 和 `W_post` 的默认建议为 5-15 秒，正式实验中应固定窗口长度，并在报告中说明。若 `t_stable` 不存在，则该次主动降级只计入决策次数和未完成降级，不参与后窗口改善率统计。
+
+#### 3.4.2 主动降级日志字段合同
+
+主动降级可统一通过 `EventRecord` 进入 D6。推荐事件类型：
+
+| 事件类型 | 触发模块 | 用途 |
+|---|---|---|
+| `degradation_risk_trigger` | D1/D2/D3/D5 | 记录主动降级前的风险信号 |
+| `active_degradation_decision` | D4 | 记录 D4 已做出主动降级决策 |
+| `passive_failover_start` | D4 | 记录被动故障接管开始 |
+| `degraded_stable` | D4 | 记录降级状态稳定 |
+| `terminal_center_disagreement` | D5/D4 | 记录末端局部关联与中心态势不一致 |
+| `degradation_review_label` | D6/离线复核 | 记录离线必要性标签 |
+
+必需或推荐的 `EventRecord.metadata` 字段：
+
+| 字段 | 取值 | 含义 |
+|---|---|---|
+| `degradation_mode` | `passive` 或 `active` | 区分被动故障接管和主动质量降级 |
+| `trigger_sources` | `d1_uncertainty`, `d2_association`, `d3_assignment`, `d5_terminal`, `mixed` | 主动降级触发源；多源同时触发时使用 `mixed`，并可附 `source_details` |
+| `selected_coordinator` | `center`, `secondary_node`, `distributed_cbba` | 降级后由谁负责协调；只表示离线状态，不表示 D6 发出指令 |
+| `coverage_cell` | 例如 `north_sector` | 二级节点或局部分布式协商覆盖的小区 |
+| `arbiter_score` | `0.0-1.0` 或实现定义标量 | D4 仲裁器给出的主动降级风险分数 |
+| `trigger_timestamp` | 秒 | 最早风险触发时间，用于计算决策延迟 |
+| `decision_timestamp` | 秒 | 主动降级决策时间；通常等于事件 `timestamp` |
+| `review_label` | `necessary`, `unnecessary`, `unknown` | 离线复核标签，用于计算主动降级精度 |
+| `source_scores` | dict | D1-D5 各风险源分数，例如定位协方差、关联熵、分配冲突率、末端不一致分数 |
+
+示例：
+
+```python
+EventRecord(
+    timestamp=42.8,
+    event_type="active_degradation_decision",
+    actor_id="d4_arbiter",
+    metadata={
+        "degradation_mode": "active",
+        "trigger_sources": "mixed",
+        "selected_coordinator": "secondary_node",
+        "coverage_cell": "north_sector",
+        "arbiter_score": 0.82,
+        "trigger_timestamp": 40.9,
+        "decision_timestamp": 42.8,
+        "source_scores": {
+            "d1_uncertainty": 0.71,
+            "d2_association": 0.76,
+            "d3_assignment": 0.34,
+            "d5_terminal": 0.88,
+        },
+    },
+)
+```
+
+D6 只消费这些字段进行离线统计；不根据 `arbiter_score` 生成实时切换、控制或处置动作。
+
 ### 3.5 末端配准指标
 
 ```text
@@ -283,6 +381,42 @@ p05 / p95
 
 当指标偏态明显时，例如 `id_switch_count` 或 `constraint_violation_count` 大量为 0、少数 episode 很高，应额外采用 bootstrap 置信区间或非参数检验。当前实现先输出可解释的基础统计量，并在报告中提示长尾风险。
 
+### 8.1 主动降级批量评估设计
+
+主动降级应按“降级前后窗口”做成对比较，而不是只统计触发次数。推荐每个 episode 记录所有 `active_degradation_decision`，并围绕每个决策构造前后窗口：
+
+```text
+pre_window  = [t_decision - W_pre, t_decision)
+post_window = [t_stable, t_stable + W_post]
+```
+
+批量报告应至少输出以下对比：
+
+| 对比项 | 前窗口 | 后窗口 | 期望方向 |
+|---|---|---|---|
+| ID Switch | `id_switch_rate_before` | `id_switch_rate_after` | 下降 |
+| 重复分配 | `duplicate_assignment_rate_before` | `duplicate_assignment_rate_after` | 下降 |
+| 末端歧义 | `ambiguous_fov_rate_before` | `ambiguous_fov_rate_after` | 下降 |
+| 友方 hold | `friend_overlap_hold_rate_before` | `friend_overlap_hold_rate_after` | 不上升或下降 |
+| 末端 reacquire | `terminal_reacquire_rate_before` | `terminal_reacquire_rate_after` | 下降 |
+| 任务连续性 | `track_continuity_before` | `track_continuity_after` | 不显著下降 |
+
+建议分组维度：
+
+- `degradation_mode`: `passive` vs `active`。
+- `trigger_sources`: D1 不确定度、D2 关联风险、D3 分配失效、D5 末端不一致、mixed。
+- `selected_coordinator`: center、secondary_node、distributed_cbba。
+- `coverage_cell`: 二级节点或局部分布式覆盖区域。
+- `arbiter_score` 分桶：例如 `[0.5, 0.7)`, `[0.7, 0.85)`, `[0.85, 1.0]`。
+
+关键解释原则：
+
+1. `active_degradation_count` 高但 `active_degradation_precision` 低，说明主动降级过度。
+2. `post_degradation_id_switch_delta` 和 `post_degradation_assignment_conflict_delta` 均为负，说明主动降级可能降低身份错配和分配冲突。
+3. 若冲突下降但 `track_continuity` 明显下降，说明降级可能过于保守，需要 D4 调整仲裁阈值。
+4. 若 `terminal_center_disagreement_count` 高但主动降级未触发，说明 D5-D4 的风险上报或 D4 仲裁阈值可能偏钝。
+5. 若 `selected_coordinator=distributed_cbba` 时共识轮数过高，应单独报告通信和一致性成本。
+
 ## 9. 图表与曲线
 
 现有批量示例生成以下图表：
@@ -337,6 +471,56 @@ D6 后续可基于这些字段输出分组统计：
 - 完全无中心 CBBA 的平均 `consensus_rounds`。
 - 不同 `coverage_cell` 的降级完成率。
 
+D4 主动降级建议沿用同一 `EventRecord` 通道，但必须显式区分 `degradation_mode`：
+
+```python
+EventRecord(
+    timestamp=t_decision,
+    event_type="active_degradation_decision",
+    actor_id="d4_arbiter",
+    metadata={
+        "degradation_mode": "active",
+        "trigger_sources": "d2_association",
+        "selected_coordinator": "secondary_node",
+        "coverage_cell": "north_sector",
+        "arbiter_score": 0.79,
+        "trigger_timestamp": t_first_trigger,
+        "review_label": "unknown",
+    },
+)
+```
+
+被动降级建议写成：
+
+```python
+EventRecord(
+    timestamp=t_failure,
+    event_type="passive_failover_start",
+    actor_id="c2_health_monitor",
+    metadata={
+        "degradation_mode": "passive",
+        "trigger_sources": "c2_failure",
+        "selected_coordinator": "secondary_node",
+        "coverage_cell": "north_sector",
+    },
+)
+```
+
+主动降级复核标签建议由离线评估脚本或人工复核写入，不应由实时节点在运行时自证：
+
+```python
+EventRecord(
+    timestamp=t_review,
+    event_type="degradation_review_label",
+    actor_id="offline_evaluator",
+    metadata={
+        "decision_event_id": "active_deg_0042",
+        "review_label": "necessary",
+        "reason": "post-window id_switch and duplicate assignment rates decreased",
+    },
+)
+```
+
 D5 的二级侦察图像 cue 建议增加以下终端或事件字段：
 
 ```python
@@ -388,6 +572,7 @@ python3 research_modules/d6_evaluation_metrics/scripts/run_batch_example.py --se
 - OSPA、MOTA/MOTP 只在文档中给出公式和扩展方向，未作为默认输出字段。
 - 终端 cue 使用情况尚未进入 `EpisodeMetrics` 的默认字段。
 - 降级统计尚未按 `coordination_mode/leader_role/coverage_cell` 自动分组。
+- 主动降级统计尚未进入 `EpisodeMetrics` 的默认字段；当前文档先定义日志合同、公式和批量评估方法。
 - 合成日志不是 AirSim 物理回放，不能代表真实传感器或真实通信系统。
 - 置信区间使用正态近似，强偏态指标应进一步采用 bootstrap。
 
@@ -398,4 +583,4 @@ python3 research_modules/d6_evaluation_metrics/scripts/run_batch_example.py --se
 3. 增加 D5 `recon_cue_used_count` 与 cue/非 cue 末端指标对比。
 4. 增加 AirSim 回放适配器，将仿真导出的 CSV/JSONL 转换为 D6 数据类。
 5. 在报告中加入场景因素分组表，例如“目标密度 vs ID Switch vs 终端歧义”。
-
+6. 增加主动降级窗口评估器，输出 `passive_failover_count`, `active_degradation_count`, `active_degradation_precision`, `unnecessary_active_degradation_count`, `terminal_center_disagreement_count`, `time_to_active_degradation_decision`, `post_degradation_id_switch_delta`, `post_degradation_assignment_conflict_delta`。

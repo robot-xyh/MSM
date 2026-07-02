@@ -42,6 +42,8 @@ D5 的目标不是最大化 `locked` 数量，而是把不确定情况显式降�
 - `candidate_costs`：候选代价排序，用于复盘。
 - `recon_cue_used`：本次决策是否实际使用二级侦察 cue 降低代价。
 
+面向 D4 主动降级仲裁，D5 还应在离线日志或接口层派生 `TerminalConsistencySummary`。它不是新的处置命令，而是把若干帧 `TerminalAssociation` 压缩为“中心/二级分配是否仍与末端视觉证据一致”的状态摘要。
+
 ## 4. 算法主流程
 
 1. 校验 `Assignment.authorization_state`，未授权直接 `hold`。
@@ -188,7 +190,188 @@ D5 将二级节点输入建模为 `ReconImageCue`，用于辅助本地视觉候�
 - 置信度：`confidence` 只调节负代价大小，不改变门控和授权流程。
 - 指标：D6 应记录 `recon_cue_used_count`、cue 命中后 `locked` 比例、cue 相关误配次数和 stale cue 被拒次数。
 
-## 10. 关键接口
+## 10. 多无人机重叠视场下的终端视觉跨视场配准
+
+### 10.1 问题场景
+
+考虑两个拦截资源的相机具有部分重叠视场：
+
+- 无人机 1 看到目标 1/2/3，生成本地轨迹 `UAV1:cam0:L1/L2/L3`。
+- 无人机 2 看到目标 2/3/4，生成本地轨迹 `UAV2:cam0:L1/L2/L3`。
+
+这里的 `local_track_id` 只在本资源、本相机、本帧或短时间窗口内有效。`UAV1:cam0:L2` 和 `UAV2:cam0:L2` 名称相同并不表示同一目标；名称不同也不表示不同目标。跨视场配准必须以 D2 维护的 `global_track_id` 为唯一全局身份锚点，通过相机几何、时间戳、姿态和协方差门控，把多个本地观测被动关联到已有全局航迹。
+
+D5 的原则不变：跨视场模块只能输出关联证据和一致性摘要，不能创建、改写或换绑 `global_track_id`。
+
+### 10.2 当前程序覆盖与缺口
+
+当前 D5 程序已经覆盖：
+
+- 单机视场内多个本地候选的几何门控和代价排序。
+- “相机最近目标不等于分配目标”的单机测试。
+- 友方身份正向确认导致的 `hold`。
+- 二级侦察 `ReconImageCue` 的资源 scope 约束。
+- `global_track_id` 不被 D5 修改的不变式。
+
+尚未完整实现：
+
+- 多无人机、多相机观测的统一观测总线。
+- 不同相机的 `local_track_id` 命名空间隔离。
+- 跨相机时间戳对齐、相机姿态校验和观测协方差融合。
+- `CrossViewAssociation` 或 `TerminalCrossViewFusion` 级别的跨视场候选融合。
+
+因此，下面内容是后续接口和算法设计建议，不表示当前代码已具备完整跨无人机多相机融合能力。
+
+### 10.3 推荐数据结构扩展
+
+当前 `LocalVisualTrack` 字段适合单机相机内关联。跨视场时建议扩展或包装为 `CrossViewObservation`，至少包含：
+
+```python
+@dataclass(frozen=True)
+class CrossViewObservation:
+    observation_id: str
+    resource_id: str
+    camera_id: str
+    frame_id: str
+    local_track_id: str
+    measurement_timestamp: float
+    arrival_timestamp: float
+    center_px: np.ndarray
+    bbox: tuple[float, float, float, float] | None
+    covariance_px: np.ndarray
+    bearing_rate: np.ndarray
+    category: str
+    quality: float
+    mot_history_length: int
+    camera_model: CameraModel
+    camera_pose_covariance: np.ndarray | None
+    candidate_global_track_ids: tuple[str, ...] = ()
+```
+
+也可以直接给 `LocalVisualTrack` 增加以下字段：
+
+- `resource_id`：无人机或拦截资源 ID。
+- `camera_id`：相机 ID，例如 `front_rgb`。
+- `frame_id`：图像帧坐标系 ID。
+- `camera_pose` 或 `camera_model`：量测时刻的相机姿态和内参。
+- `covariance` 或 `covariance_px`：本地像素观测不确定性。
+- `measurement_timestamp` 与 `arrival_timestamp`：支持异步到达和延迟统计。
+
+推荐输出结构：
+
+```python
+@dataclass(frozen=True)
+class CrossViewAssociation:
+    global_track_id: str
+    observations: tuple[str, ...]  # CrossViewObservation.observation_id
+    per_view_costs: dict[str, float]
+    fused_confidence: float
+    consistency_state: str  # consistent | ambiguous | conflict | unknown
+    reason: str
+
+@dataclass(frozen=True)
+class CrossViewTrackEvidence:
+    global_track_id: str
+    associations: tuple[CrossViewAssociation, ...]
+    fused_confidence: float
+    covariance_summary: dict[str, float]
+    conflict_state: str
+    evidence_source_count: int
+```
+
+跨视场融合器可以命名为 `TerminalCrossViewFusion`，观测汇聚层可以命名为 `TerminalObservationBus`。`TerminalObservationBus` 只负责收集、排序、过期剔除和日志记录，不拥有分配权。
+
+### 10.4 跨视场关联流程
+
+对于 UAV1 看到目标 1/2/3、UAV2 看到目标 2/3/4 的场景，建议流程如下：
+
+1. 对每个相机观测建立唯一观测键：
+
+```text
+obs_key = resource_id + "/" + camera_id + "/" + frame_id + "/" + local_track_id
+```
+
+2. 对 D2 输出的每个 `GlobalTrack`，分别按 UAV1 和 UAV2 的 `measurement_timestamp` 做时间预测。
+3. 用各自的 `CameraModel` 将同一个 `GlobalTrack` 投影到每个相机平面。
+4. 在每个相机内使用像素马氏距离做门控，得到局部候选：
+
+```text
+d2_i,j,k = (z_i,k - project_j(camera_i))^T S_i,j^-1 (z_i,k - project_j(camera_i))
+```
+
+其中 `i` 是相机/资源，`j` 是 `global_track_id`，`k` 是本地观测。
+
+5. 为每个候选计算综合代价：
+
+```text
+C_i,j,k =
+  w_geo * d2_i,j,k
+  + w_time * |measurement_timestamp_i - track_timestamp_j|
+  + w_pose * pose_uncertainty_i
+  + w_cov * trace(covariance_px_i,k)
+  + w_rate * bearing_rate_error_i,j,k
+  + w_category * category_mismatch
+  + w_quality * mot_quality_penalty
+  + w_friend * friend_conflict_penalty
+  + w_recon * recon_cue_bonus
+```
+
+6. 对同一 `global_track_id` 汇聚多个视场证据。例如：
+
+```text
+G_T2 <- UAV1:cam0:L2 + UAV2:cam0:L1
+G_T3 <- UAV1:cam0:L3 + UAV2:cam0:L2
+```
+
+7. 若两个视场都支持同一全局航迹且时间差、姿态误差和代价 margin 满足阈值，则输出 `CrossViewAssociation.consistency_state="consistent"`。
+8. 若 UAV1 和 UAV2 对目标 2/3 的候选交换、代价接近或姿态协方差过大，则输出 `ambiguous`，不强制跨视场绑定。
+9. 若某个本地观测与已验证友方身份重叠，则对应全局候选进入 `conflict/hold`，不得被其他视场的弱证据覆盖。
+10. 若观测无法投影到任何已有 `global_track_id`，D5 只输出 unmatched/unknown 证据，由 D1/D2 决定是否新建或删除航迹。
+
+### 10.5 时间戳、相机姿态与协方差
+
+跨视场配准比单机配准更依赖时空基准：
+
+- 使用 `measurement_timestamp` 做几何投影时间，不能用晚到的 `arrival_timestamp` 直接投影。
+- `arrival_timestamp - measurement_timestamp` 应进入日志，用于分析通信延迟和 cue 过期。
+- 每个相机姿态必须对应量测时刻；若姿态来自插值，应记录插值误差或姿态协方差。
+- 相机姿态不确定性应扩大像素门控，而不是把投影点当作精确值。
+- 高速相对运动时，不同无人机相机之间超过阈值的时间差应导致 `ambiguous/unknown`。
+
+### 10.6 二级侦察 cue 在跨视场中的使用
+
+`ReconImageCue` 在跨视场中仍是辅助证据，不是全局身份来源。推荐规则：
+
+- 二级节点原始像素 cue 必须分别重投影到 UAV1、UAV2 等目标相机平面。
+- `image_frame_id` 应标识重投影后的目标相机帧，例如 `UAV1/front_rgb`；原始二级相机帧放入 `metadata.source_image_frame_id`。
+- `scoped_resource_ids=("UAV1", "UAV2")` 表示该 cue 只允许这两个资源使用。
+- 对 UAV1 生效的 cue 不应自动对 UAV2 生效，除非已重投影到 UAV2 的相机平面并在 scope 内。
+- cue 只能降低 `C_recon`，不能绕过几何门控、版本校验、友方 `hold` 或 D3/D4 分配。
+
+### 10.7 接口建议
+
+建议新增两个层次：
+
+```python
+class TerminalObservationBus:
+    def publish_observation(self, observation: CrossViewObservation) -> None: ...
+    def window(self, start_time: float, end_time: float) -> list[CrossViewObservation]: ...
+```
+
+```python
+class TerminalCrossViewFusion:
+    def associate(
+        self,
+        global_tracks: list[GlobalTrack],
+        observations: list[CrossViewObservation],
+        recon_image_cues: list[ReconImageCue],
+        current_time: float,
+    ) -> list[CrossViewAssociation]: ...
+```
+
+主程序仍可对每个资源调用现有 `TerminalAssociator.decide()` 生成单机 `TerminalAssociation`；跨视场层再基于多个 `TerminalAssociation` 和 `CrossViewAssociation` 派生全局一致性摘要。这样可以保持现有单机逻辑稳定，同时逐步扩展多相机能力。
+
+## 11. 关键接口
 
 ```python
 associator = TerminalAssociator()
@@ -220,7 +403,7 @@ decision = associator.decide(
 
 推荐使用关键字参数传入 `current_time` 和 `recon_image_cues`，避免把 cue 误传为相机或时间位置参数。
 
-## 11. 参数与调参建议
+## 12. 参数与调参建议
 
 | 参数 | 默认含义 | 调参建议 |
 |---|---|---|
@@ -235,7 +418,7 @@ decision = associator.decide(
 
 调参顺序建议：先固定几何门控和友方规则，再调 MOT 质量阈值，最后调 cue 权重。不要用 cue 奖励弥补坐标帧错误。
 
-## 12. 仿真验证与指标
+## 13. 仿真验证与指标
 
 现有仿真位于 `simulations/run_terminal_association_sim.py`，覆盖多目标、友方重叠、未知目标接近和遮挡。图表和结果写入 `docs/EXPERIMENT_REPORT.md`。
 
@@ -252,10 +435,20 @@ decision = associator.decide(
 - `global_track_id_rewrite_count`
 - `terminal_id_switch_count`
 - `recon_cue_used_count`
+- `candidate_cost_margin`
+- `terminal_lock_age_s`
+- `consecutive_ambiguous_frames`
+- `consecutive_hold_frames`
+- `consecutive_reacquire_frames`
+- `terminal_consistency_state`
+- `cross_view_association_accuracy`
+- `cross_view_id_switch_count`
+- `cross_view_ambiguous_count`
+- `cross_view_duplicate_local_id_count`
 
 其中 `global_track_id_rewrite_count` 期望恒为 0；`wrong_locked_count` 比 `locked` 数量更重要。
 
-## 13. 与其他模块的接口关系
+## 14. 与其他模块的接口关系
 
 | 模块 | 与 D5 的关系 |
 |---|---|
@@ -266,7 +459,135 @@ decision = associator.decide(
 
 D5 可以把 `TerminalAssociation` 回传给 D2/D3/D4 作为置信度和歧义事件，但不能直接触发重新分配或局部换绑。
 
-## 14. 实施结构
+## 15. 面向 D4 主动降级的一致性与冲突信号
+
+D4 主动降级策略需要判断“中心或二级节点给出的分配是否仍被末端视觉证据支持”。D5 不做降级决策，只提供可解释、带时间连续性的末端一致性信号。D4 可将这些信号与 D1/D2 航迹质量、D3 分配版本、通信健康状态和二级节点覆盖状态结合，决定是否请求二级 cue、继续观测、切换二级节点仲裁或进入分布式协商。
+
+### 15.1 D5 可提供的基础信号
+
+| 信号 | 来源 | 含义 | 给 D4/D3 的用途 |
+|---|---|---|---|
+| `decision_state` | `TerminalAssociation` | 当前帧为 `locked/ambiguous/hold/reacquire` | 主状态输入 |
+| `association_confidence` | `TerminalAssociation` | 当前最佳候选的几何和质量置信度 | 判断锁定质量是否稳定 |
+| `ambiguity_score` | `TerminalAssociation` | 候选区分度不足程度 | 判断是否需要二级 cue 或继续观测 |
+| `friend_conflict_state` | `TerminalAssociation` | 是否存在已验证友方或可疑身份重叠 | 防止错误换绑和冲突升级 |
+| `candidate_cost_margin` | `candidate_costs` 派生 | 最佳候选与次优候选代价差 | 判断最佳候选是否足够唯一 |
+| `recon_cue_used` | `TerminalAssociation` | 是否使用二级侦察 cue 降低代价 | 区分“自相机稳定锁定”和“依赖二级 cue” |
+| `terminal_lock_age_s` | 时序状态派生 | 连续 `locked` 且目标版本一致的持续时间 | 判断锁定是否稳定 |
+| `consecutive_ambiguous_frames` | 时序状态派生 | 连续歧义帧数 | 触发请求二级 cue 或继续观测 |
+| `consecutive_hold_frames` | 时序状态派生 | 连续保守暂停帧数 | 触发友方冲突或版本冲突上报 |
+| `consecutive_reacquire_frames` | 时序状态派生 | 连续重捕获失败帧数 | 触发 D4 主动仲裁候选 |
+| `local_best_conflicts_with_assignment` | 被动全局候选比较派生 | 本地长期最佳视觉候选不支持当前分配 | 触发主动仲裁，但不得本地换绑 |
+
+`candidate_cost_margin` 建议按候选代价排序计算：
+
+```text
+if len(candidate_costs) >= 2:
+    candidate_cost_margin = cost_2nd_best - cost_best
+else:
+    candidate_cost_margin = +inf
+```
+
+margin 越小，表示候选越难区分。若仅有一个候选但其总代价高，也不应把 `+inf` margin 误解为可靠锁定，仍需结合 `association_confidence` 和 `decision_state`。
+
+### 15.2 TerminalConsistencySummary 字段建议
+
+建议 D5 在接口或日志层增加如下摘要结构。该结构可以由连续帧 `TerminalAssociation` 派生，不要求 D5 直接修改 D3/D4 分配。
+
+```python
+@dataclass(frozen=True)
+class TerminalConsistencySummary:
+    resource_id: str
+    assigned_global_track_id: str
+    assignment_version: int
+    timestamp: float
+    decision_state: str
+    consistency_state: str  # consistent | inconsistent | unknown | conflict
+    association_confidence: float
+    ambiguity_score: float
+    friend_conflict_state: str
+    candidate_cost_margin: float
+    recon_cue_used: bool
+    terminal_lock_age_s: float
+    consecutive_ambiguous_frames: int
+    consecutive_hold_frames: int
+    consecutive_reacquire_frames: int
+    local_track_id: str | None
+    competing_global_track_id: str | None
+    recommended_d4_action: str  # observe | request_secondary_cue | report_conflict | arbitrate
+    reason: str
+```
+
+字段解释：
+
+- `consistency_state="consistent"`：分配 ID 与版本一致，且当前帧或一段时间内有稳定 `locked` 证据。
+- `consistency_state="inconsistent"`：本地被动比较显示长期最佳视觉候选不支持当前 `assigned_global_track_id`，或版本/候选关系持续冲突。
+- `consistency_state="unknown"`：信息不足，例如连续 `ambiguous` 或 `reacquire`，无法确认分配是否错误。
+- `consistency_state="conflict"`：已验证友方重叠、授权/版本冲突或身份冲突；此时不应自动换绑。
+- `competing_global_track_id` 只允许来自 D2 已存在的全局航迹被动比较结果，用于上报仲裁；D5 不能把它写回为新的分配 ID。
+- `recommended_d4_action` 只是仲裁建议，不是执行动作。D4 仍需结合系统级风险和健康状态决定。
+
+### 15.3 一致性判定规则
+
+推荐的 D5 侧判定逻辑：
+
+| 场景 | D5 一致性状态 | 给 D4 的建议 |
+|---|---|---|
+| `locked`，`assigned_global_track_id` 存在，`assignment_version` 一致，置信度高，margin 足够 | `consistent` | `observe`，不触发主动降级 |
+| `locked` 但依赖 `recon_cue_used=True`，且自相机置信度中等 | `consistent` 或 `unknown` | 继续观测并记录 cue 依赖，必要时请求二级节点持续 cue |
+| 多帧 `ambiguous`，无友方重叠 | `unknown` | `request_secondary_cue` 或继续观测 |
+| 已验证友方重叠导致 `hold` | `conflict` | `report_conflict`，不自动换绑，不把未知/友方解释为分配目标 |
+| 版本不一致或授权状态不满足导致 `hold` | `conflict` | 上报 D3/D4 版本冲突，等待仲裁 |
+| 多帧 `reacquire`，且 D1/D2 航迹不确定性、D3 分配风险或通信健康风险较高 | `unknown` | `arbitrate`，建议 D4 主动仲裁 |
+| 被动全局候选比较显示本地最佳视觉候选长期不是 `assigned_global_track_id` | `inconsistent` | `arbitrate`，触发主动仲裁；D5 不本地改写 ID |
+| 单帧低置信 `ambiguous/reacquire` | `unknown` | 不立即降级，继续观测 |
+
+主动降级触发应使用“连续帧 + 风险门限”，避免单帧图像噪声导致频繁切换。建议初始阈值：
+
+- `consecutive_ambiguous_frames >= 5`：请求二级侦察节点 cue 或继续观测。
+- `consecutive_reacquire_frames >= 5` 且 D1/D2/D3 任一风险高：建议 D4 主动仲裁。
+- `consecutive_hold_frames >= 2` 且 `friend_conflict_state="verified_friend_overlap"`：上报友方冲突，禁止本地换绑。
+- `local_best_conflicts_with_assignment` 持续 `>= 3` 个评估周期：建议 D4 仲裁中心/二级节点分配。
+- `terminal_lock_age_s >= 1.0` 且 `candidate_cost_margin >= min_lock_margin`：认为末端一致性较稳定。
+
+这些阈值只用于离线仿真初值，应通过 D6 批量实验评估误报率、漏报率和仲裁频率。
+
+### 15.4 本地最佳候选不等于分配目标的处理
+
+为支持“本地最优视觉候选长期不是 assigned_global_track_id”的检测，D5 可在不改变当前 `decide()` 保守语义的前提下，增加一个被动一致性观测流程：
+
+1. 对 D2 提供的若干 `GlobalTrack` 同时执行 `project_tracks_to_image()`。
+2. 对本地 `LocalVisualTrack[]` 构造全局候选代价矩阵。
+3. 比较当前 `Assignment.assigned_global_track_id` 的最佳候选与其他全局航迹的最佳候选。
+4. 若其他全局航迹长期拥有更低代价、更高置信度且版本新鲜，则设置 `local_best_conflicts_with_assignment=True`，并填充 `competing_global_track_id`。
+5. 该结果只上报 D4/D3 仲裁，禁止 D5 本地改写 `assigned_global_track_id`。
+
+该流程是“被动一致性检查”，不是局部分配器。它尤其适合中心节点可能延迟、二级节点 cue 覆盖不完整或多目标交叉后分配关系可疑的离线分析场景。
+
+### 15.5 D4 主动降级接口建议
+
+D5 建议向 D4 发布或记录如下事件流：
+
+```text
+/terminal/consistency_summary
+```
+
+每条消息包含：
+
+- 当前 `TerminalConsistencySummary`。
+- 最近窗口统计，例如 `window_size_frames`、`locked_ratio`、`ambiguous_ratio`、`hold_ratio`、`reacquire_ratio`。
+- 最近一次 `ReconImageCue` 使用情况和 cue 来源节点。
+- 最近一次友方冲突状态。
+
+D4 使用建议：
+
+- `consistent`：不因 D5 触发主动降级。
+- `unknown + ambiguous`：优先请求二级侦察 cue 或延长观测窗口。
+- `conflict + verified_friend_overlap`：进入冲突上报和保守等待，不自动换绑。
+- `unknown + reacquire` 且系统风险高：主动仲裁，可考虑二级节点接管或重新分配。
+- `inconsistent`：主动仲裁中心/二级分配关系，但仍由 D4/D3 生成新计划版本。
+
+## 16. 实施结构
 
 ```text
 research_modules/d5_terminal_association/
@@ -296,12 +617,15 @@ research_modules/d5_terminal_association/
 - 单元测试只放入 `tests/`。
 - 离线仿真脚本只放入 `simulations/`。
 
-## 15. 局限与后续工作
+## 17. 局限与后续工作
 
 当前实现的主要局限：
 
 - `ReconImageCue` 还没有内置新鲜度和目标相机帧强校验，需由调用方预处理保证。
 - 仿真脚本尚未批量生成二级 cue 场景，`recon_cue_used_count` 需要接入 D6 或本模块实验统计。
+- `TerminalConsistencySummary` 目前是接口与日志建议，尚未实现为代码数据类。
+- 本地最佳候选与全局分配的被动一致性比较尚未形成独立测试场景。
+- 跨无人机多相机融合尚未完整实现；`CrossViewObservation`、`CrossViewAssociation`、`CrossViewTrackEvidence`、`TerminalCrossViewFusion` 和 `TerminalObservationBus` 仍是接口建议。
 - 当前时间预测为简化常速度模型，不替代 D2 跟踪器。
 - 当前身份声明是仿真模型，不接入真实 Remote ID、MAVLink 或 DDS 安全栈。
 - 小目标图像检测质量对 MOT 输入影响很大，需要通过 AirSim 离线回放进一步评估。
@@ -311,5 +635,9 @@ research_modules/d5_terminal_association/
 1. 在离线仿真中加入已重投影 `ReconImageCue`、过期 cue 和跨资源 cue 的对照场景。
 2. 增加 cue 新鲜度、frame 语义和空 scope 策略的显式配置。
 3. 把 `recon_cue_used_count`、stale cue 拒绝次数和 cue 相关误配计入 D6。
-4. 用 AirSim 标注框和离线 MOT 输出比较 ByteTrack、BoT-SORT、Deep SORT 的输入质量。
-5. 建立失败样本库，重点保存友方重叠、目标交叉、遮挡恢复和跨相机 cue 错配案例。
+4. 实现 `TerminalConsistencySummary` 的离线派生器，统计 lock age、连续状态帧数和 cost margin。
+5. 增加本地最佳候选长期偏离中心分配的被动一致性测试。
+6. 实现 `TerminalObservationBus` 和 `TerminalCrossViewFusion` 的离线原型，覆盖 UAV1 看到 1/2/3、UAV2 看到 2/3/4 的重叠视场场景。
+7. 给 `LocalVisualTrack` 或其包装结构增加 `resource_id/camera_id/frame_id/camera_pose/covariance`。
+8. 用 AirSim 标注框和离线 MOT 输出比较 ByteTrack、BoT-SORT、Deep SORT 的输入质量。
+9. 建立失败样本库，重点保存友方重叠、目标交叉、遮挡恢复、多相机时间错位和跨相机 cue 错配案例。

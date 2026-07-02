@@ -38,8 +38,11 @@ python3 research_modules/d6_evaluation_metrics/scripts/run_batch_example.py --se
 | 跟踪 | `track_rmse`, `track_continuity`, `id_switch_count` |
 | 分配 | `duplicate_assignment_count`, `unassigned_high_threat_count` |
 | 降级 | `failover_time`, `consensus_rounds`, `degraded_completion_rate` |
+| 主动降级扩展 | `passive_failover_count`, `active_degradation_count`, `active_degradation_precision`, `unnecessary_active_degradation_count`, `terminal_center_disagreement_count`, `time_to_active_degradation_decision`, `post_degradation_id_switch_delta`, `post_degradation_assignment_conflict_delta` |
 | 末端 | `terminal_association_accuracy`, `terminal_id_switch_count`, `ambiguous_fov_event_count`, `friend_overlap_hold_count`, `time_to_terminal_lock` |
 | 安全 | `constraint_violation_count`, `human_override_count` |
+
+主动降级扩展目前是 D6 文档侧定义的离线评估合同，详见 `docs/ALGORITHM_AND_IMPLEMENTATION.md`。正式纳入代码前，D4 应在 `EventRecord.metadata` 中提供 `degradation_mode`, `trigger_sources`, `selected_coordinator`, `coverage_cell`, `arbiter_score`, `trigger_timestamp` 等字段。
 
 ## 5. 图表与曲线
 

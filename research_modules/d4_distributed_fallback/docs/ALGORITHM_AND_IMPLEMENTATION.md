@@ -2,7 +2,12 @@
 
 ## 1. 模块定位
 
-D4 负责中心 C2 失效后的离线降级协同研究。它不替代 D3 的中心化最优分配，也不直接驱动 D5 的末端视觉锁定；它只在中心失效、信息不完整、通信受限的仿真条件下，维持最低限度的计划连续性，并把所有降级行为记录给 D6 评估。
+D4 负责离线降级协同研究，包含两类模式：
+
+- 被动降级 `passive_failover`：中心 C2 被摧毁、失效或经 quorum 判定不可用，系统从中心 C2 降到二级节点，再降到完全无中心 CBBA/拍卖。
+- 主动降级 `active_degradation`：中心 C2 尚未失效，但 D1/D2/D3/D5 的风险证据显示当前中心或二级分配已不再可靠，需要由 D4 仲裁是否请求重分配、请求二级节点辅助，或临时降到区域/分布式协同。
+
+它不替代 D3 的中心化最优分配，也不直接驱动 D5 的末端视觉锁定；它只在中心失效、信息不完整、通信受限或局部关联证据冲突的仿真条件下，维持最低限度的计划连续性，并把所有降级行为记录给 D6 评估。
 
 本模块边界固定为离线科研仿真：只处理粗粒度 `TrackSummary`、`ResourceSummary`、CBBA 状态和审计日志；不实现真实无线链路、飞控接口、硬件驱动、火控参数、毁伤模型、自动处置或授权绕过。
 
@@ -14,6 +19,10 @@ D4 负责中心 C2 失效后的离线降级协同研究。它不替代 D3 的中
 - `ResourceSummary[]`：来自资源状态管理或 D3 上一版计划的资源摘要，字段包括 `node_id`、`capability_class`、`availability_band`、`comm_band`、`operator_hold`、`takeover_priority`、`lease_epoch`、`node_role`、`coordinator_only`、`coverage_cell`、`epoch`。
 - `C2` 健康输入：heartbeat 状态、assignment digest 是否一致、center epoch、peer fail votes。
 - `SimulatedNetwork`：内存网络，提供延迟、丢包和消息计数。
+- `TrackUncertaintySummary`：来自 D1 的定位不确定度摘要，包含 `position_sigma_m`、`covariance_trace`、`measurement_age_s` 和 `coverage_cell`。
+- `AssociationRiskSummary`：来自 D2 的关联风险摘要，包含 `ambiguity_score`、`id_switch_count`、`duplicate_track_count` 和 `track_continuity`。
+- `AssignmentValiditySummary`：来自 D3 的分配有效性摘要，包含 `global_track_id`、`assigned_resource_id`、`plan_version`、`is_current`、`plan_age_s` 和 `cost_margin`。
+- `TerminalAssociationSummary`：由 D5 的 `TerminalAssociation` 归一化得到，包含末端 `resource_id`、`decision_state`、`association_confidence`、`ambiguity_score`、连续非锁定帧数、连续不一致帧数、友方冲突标记和当前 `coverage_cell`。
 
 ### 2.2 输出
 
@@ -21,6 +30,7 @@ D4 负责中心 C2 失效后的离线降级协同研究。它不替代 D3 的中
 - `HealthTransition[]`：状态转移审计日志。
 - `MergeResult`：中心恢复后的双轨合并结果，区分 `accepted/review/conflicts`。
 - `final_views["coordination_mode"]`：当前已写入 `state/leader_id/leader_role/coverage_cell`，建议后续在仿真 metrics 中继续透传，便于 D6 区分二级节点接管与完全分布式 CBBA。
+- `ActiveDegradationDecision`：主动/被动仲裁结果，字段包括 `mode`、`action`、`reason`、`target_node_id`、`coverage_cell`、`terminal_consistent`、`risk_factors` 和 `requires_human_review`。
 
 ## 3. C2Health 状态机
 
@@ -101,6 +111,64 @@ takeover_priority
 - `node_id`：最后使用确定性 tie-break，保证并行节点选择一致。
 
 当前实现中 `GROUND_BACKUP` 和 `SECONDARY_RECON` 都映射为 `coordination_mode="secondary_node"`。这表示“仍有区域/备份协调者”，不是完全无中心。若需要更细审计，后续可拆分为 `ground_backup_node` 与 `secondary_recon_node`。
+
+### 4.3 被动降级与主动降级
+
+D4 将降级触发源分成两类，避免把“中心真的失效”和“中心仍在但局部证据不可信”混为一类。
+
+| 模式 | 触发源 | 典型证据 | 首选动作 |
+|---|---|---|---|
+| `passive_failover` | C2 被摧毁、失效、heartbeat 超时、peer quorum 判定失败 | `C2Health.FAILED`、中心 epoch 停滞、assignment digest 长时间不可用 | 二级节点接管；无二级节点时进入 CBBA |
+| `active_degradation` | C2 未失效，但分辨率、定位、关联或分配证据不足 | D1 协方差增大、D2 ID switch 风险上升、D3 plan stale、D5 末端长期 `ambiguous/hold/reacquire` 或本地候选与分配目标不一致 | 仲裁后请求中心重分配、请求二级辅助、主动降到二级节点或分布式 |
+
+被动降级是“控制中心不可用”的结构性问题；主动降级是“中心计划仍存在但局部证据不支持继续执行”的一致性问题。主动降级不能直接绕过 D3/D5 的版本、授权和身份规则，它只是给出保守协调建议。
+
+### 4.4 主动降级仲裁器
+
+`ActiveDegradationArbiter` 是 D4 侧新增的离线规则仲裁器。它不订阅真实链路，也不发布控制命令；它只把 D1/D2/D3/D5 的摘要统一为一个 `ActiveDegradationDecision`，供仿真和 D6 评估。
+
+伪接口：
+
+```python
+decision = ActiveDegradationArbiter().evaluate(
+    track_uncertainty=TrackUncertaintySummary(...),
+    association_risk=AssociationRiskSummary(...),
+    assignment_validity=AssignmentValiditySummary(...),
+    terminal_association=TerminalAssociationSummary(...),
+    c2_health=C2Health.NORMAL,
+    secondary_nodes=[ResourceSummary(...)]
+)
+```
+
+输入语义：
+
+- `TrackUncertaintySummary`：D1 的定位质量，重点看位置标准差、协方差迹和量测年龄。
+- `AssociationRiskSummary`：D2 的身份连续性风险，重点看 ambiguity、ID switch、重复航迹和 track continuity。
+- `AssignmentValiditySummary`：D3 的分配是否仍有效，重点看 plan version、是否 current、计划年龄和 cost margin。
+- `TerminalAssociationSummary`：D5 的末端视觉配准结果，重点看是否 `locked`、是否来自 D3 指派的 `assigned_resource_id`、是否连续多帧非锁定、是否与 assigned `global_track_id` 一致，以及是否存在友方冲突。
+- `C2Health`：判断是主动降级还是被动降级。若已为 `failed`，仲裁器直接走 `passive_failover`。
+- `secondary_nodes`：二级节点健康和覆盖信息，使用 `ResourceSummary.node_role`、`availability_band`、`operator_hold`、`coverage_cell` 判断可用性。
+
+决策规则：
+
+| 条件 | D4 决策 |
+|---|---|
+| D5 与中心/二级分配一致，且 D1/D2/D3 风险低 | `mode=none`，`action=continue_center` |
+| D1/D2 风险上升，但 D5 仍一致，且二级节点覆盖该区域 | `active_degradation + request_secondary_assist`，请求二级节点提供区域观测/cue，不直接完全分布式 |
+| D3 分配 stale、非 current 或 cost margin 过低，但 D5 仍一致 | `active_degradation + request_center_replan`，优先中心滚动重分配 |
+| D5 单窗口不一致但未连续恶化 | 请求中心重分配或二级辅助，先不进入完全无中心 |
+| D5 连续多帧 `ambiguous/hold/reacquire`，或本地候选与分配目标长期不一致 | 触发主动仲裁；二级节点健康且覆盖该 `coverage_cell` 时 `degrade_to_secondary` |
+| 二级节点不可用、不可达或不覆盖当前区域 | `degrade_to_distributed`，进入 CBBA/拍卖式保底协商 |
+| 友方冲突或身份证据冲突 | `hold_for_review`，只输出审计和人工复核需求 |
+
+当前实现使用轻量规则阈值表达风险：
+
+- D1：`position_sigma_m >= 20m` 记为中风险，`>= 50m` 记为高风险；`covariance_trace` 和量测年龄也会增加风险因子。
+- D2：`ambiguity_score`、`id_switch_count`、`duplicate_track_count`、`track_continuity` 共同判断身份连续性。
+- D3：`is_current=False`、`plan_age_s` 超限或 `cost_margin` 过低表示分配有效性下降。
+- D5：`association_confidence` 低、`ambiguity_score` 高、连续非锁定帧数或连续 mismatch 帧数达到阈值时触发主动仲裁。
+
+这些阈值是离线仿真默认值，不代表真实传感器或真实系统参数。后续应由 D6 批量实验做敏感性分析。
 
 ## 5. CBBA、拍卖和合同网协议
 
@@ -184,6 +252,16 @@ O(|E|\cdot|\mathcal{T}|)
 3. 无冲突、无 review 且 `human_accept=True` 才恢复 `normal`。
 4. 否则保持 `degraded`，等待上层重新确认。
 
+### 6.4 主动降级流程
+
+1. 中心 C2 仍处于 `normal/degraded/suspect`，但 D4 收到 D1/D2/D3/D5 的风险摘要。
+2. `ActiveDegradationArbiter.evaluate()` 先判断 D5 末端结果是否与 D3 分配的 `global_track_id` 一致。
+3. 若 D5 一致且风险低，继续当前中心计划。
+4. 若 D5 一致但 D1/D2/D3 风险上升，优先请求中心滚动重分配或请求二级节点补充观测，不直接进入完全分布式。
+5. 若 D5 连续多帧 `ambiguous/hold/reacquire`，或本地视觉候选与分配目标长期不一致，进入主动降级仲裁。
+6. 仲裁时优先选择覆盖当前 `coverage_cell` 的健康二级节点；无可用二级节点时才进入完全无中心 CBBA/拍卖。
+7. 所有主动降级结果均输出 `ActiveDegradationDecision`，交给 D6 记录，不允许本地节点自行改写 `global_track_id`。
+
 ## 7. 关键接口
 
 ### 7.1 `FailoverCoordinator`
@@ -198,11 +276,29 @@ O(|E|\cdot|\mathcal{T}|)
 
 - `run(tasks, resources, network, start_time_s)`：运行多轮 bundle building 和 winner consensus。
 
-### 7.3 数据结构
+### 7.3 `ActiveDegradationArbiter`
+
+- `evaluate(track_uncertainty, association_risk, assignment_validity, terminal_association, c2_health, secondary_nodes)`：输出主动/被动仲裁决策。
+
+输出动作包括：
+
+- `continue_center`：继续中心计划。
+- `request_center_replan`：请求 D3 滚动重分配。
+- `request_secondary_assist`：请求覆盖区二级节点补充观测摘要或图像 cue。
+- `degrade_to_secondary`：主动或被动降到二级节点区域协调。
+- `degrade_to_distributed`：无可用二级节点时进入完全无中心 CBBA/拍卖。
+- `hold_for_review`：友方冲突或身份冲突时只保持审计和人工复核。
+
+### 7.4 数据结构
 
 - `TrackSummary`：只保留粗粒度任务摘要，不携带高精度状态。
 - `ResourceSummary`：描述资源/节点角色、可用性、通信质量、租约和覆盖区域。
 - `CBBAResult`：用于 D6 的降级指标来源。
+- `TrackUncertaintySummary`：D1 定位不确定度摘要。
+- `AssociationRiskSummary`：D2 多目标关联风险摘要。
+- `AssignmentValiditySummary`：D3 分配有效性摘要。
+- `TerminalAssociationSummary`：D5 末端视觉配准摘要。
+- `ActiveDegradationDecision`：D4 仲裁结果。
 
 ## 8. 参数与调参建议
 
@@ -218,6 +314,12 @@ O(|E|\cdot|\mathcal{T}|)
 | `max_rounds` | `CBBANegotiator` | 丢包或稀疏网络下需增大 |
 | `round_period_s` | `CBBANegotiator` | 影响 takeover duration 和消息传播 |
 | `packet_loss/min_delay/max_delay` | `SimulatedNetwork` | 用于通信退化敏感性实验 |
+| `position_sigma_medium_m/high_m` | `ActiveDegradationConfig` | D1 定位风险门限，需按仿真传感器精度标定 |
+| `association_ambiguity_medium/high` | `ActiveDegradationConfig` | D2 关联不确定度门限 |
+| `max_plan_age_s/min_cost_margin` | `ActiveDegradationConfig` | D3 分配 stale 和有效性门限 |
+| `terminal_confidence_min` | `ActiveDegradationConfig` | D5 locked 最低置信度 |
+| `non_locked_frame_limit` | `ActiveDegradationConfig` | 连续 `ambiguous/hold/reacquire` 触发主动仲裁的帧数 |
+| `mismatch_frame_limit` | `ActiveDegradationConfig` | 末端候选与分配目标长期不一致的触发帧数 |
 
 二级节点调参建议：
 
@@ -240,6 +342,15 @@ python3 research_modules/d4_distributed_fallback/scripts/run_failover_simulation
 - `test_center_failure_degrades_to_secondary_recon_node_before_distributed_cbba`
 - `test_secondary_unavailable_falls_back_to_distributed_cbba`
 
+主动降级仲裁由 `tests/test_active_degradation.py` 覆盖：
+
+- 低风险且 D5 一致时继续中心计划。
+- D1/D2 风险上升但 D5 一致时请求二级辅助，不直接完全分布式。
+- D3 分配无效但 D5 一致时请求中心滚动重分配。
+- D5 持续不一致且二级节点覆盖时主动降到二级节点。
+- 二级节点不可用或不覆盖当前区域时主动降到分布式 CBBA/拍卖。
+- `C2Health.FAILED` 时走 `passive_failover`。
+
 后续建议新增一个显式二级节点仿真场景：
 
 1. 在资源集中加入 `sec-1`，设置 `node_role=SECONDARY_RECON`、`coordinator_only=True`、`coverage_cell="cell-north"`。
@@ -260,6 +371,11 @@ D4 应向 D6 输出或支持计算：
 - `coordination_mode`：`secondary_node` 或 `distributed_cbba`。
 - `leader_role`：`ground_backup/secondary_recon/cluster_representative/interceptor`。
 - `coverage_cell`：二级节点覆盖区域。
+- `degradation_mode`：`none/passive_failover/active_degradation`。
+- `degradation_action`：继续、请求重分配、请求二级辅助、降到二级、降到分布式或 hold。
+- `active_degradation_reason`：主动仲裁触发原因。
+- `risk_factors`：D1/D2/D3/D5 风险因子列表。
+- `terminal_consistent`：D5 末端关联是否与分配目标一致。
 
 当前 `coordination_mode` 已存在于 `CBBAResult.final_views`，但 `run_failover_simulation()` 尚未透传到顶层 metrics。建议后续补齐，避免实验报告把二级节点接管和完全分布式 CBBA 混在一起统计。
 
@@ -267,11 +383,11 @@ D4 应向 D6 输出或支持计算：
 
 ### D3 集中式分配
 
-D3 是中心存在时的主分配模块。D4 不应覆盖 D3 的正常计划，只缓存 digest、version、epoch 和资源摘要。中心失效时，D4 使用上一版可验证计划作为降级基准；中心恢复后，D4 必须通过 `merge_recovery()` 与 D3 新计划对齐。
+D3 是中心存在时的主分配模块。D4 不应覆盖 D3 的正常计划，只缓存 digest、version、epoch 和资源摘要。中心失效时，D4 使用上一版可验证计划作为降级基准；中心恢复后，D4 必须通过 `merge_recovery()` 与 D3 新计划对齐。主动降级中，如果 `AssignmentValiditySummary` 显示计划过期、非 current 或 cost margin 过低，D4 的首选动作是 `request_center_replan`，不是直接完全分布式。
 
 ### D5 终端视觉配准
 
-二级侦察节点健康时，可把区域图像 cue 或观测摘要传给小范围拦截资源，帮助 D5 做末端候选匹配。D4 只负责描述 cue 的来源、作用域和版本，不负责像素几何配准。D5 必须继续执行授权、plan version、友方身份和 `global_track_id` 不改写规则。
+二级侦察节点健康时，可把区域图像 cue 或观测摘要传给小范围拦截资源，帮助 D5 做末端候选匹配。D4 只负责描述 cue 的来源、作用域和版本，不负责像素几何配准。D5 必须继续执行授权、plan version、友方身份和 `global_track_id` 不改写规则。主动降级中，D5 的多帧 `ambiguous/hold/reacquire` 或长期目标不一致是触发仲裁的强证据；单帧不一致只请求辅助或重分配，避免过度切换。
 
 ### D6 评估
 
@@ -286,6 +402,8 @@ D6 消费 D4 的 transition log、CBBAResult 和 merge result，计算 failover�
 - `coordination_mode/leader_role/coverage_cell` 尚未在默认 metrics 顶层透传。
 - CBBA 打分函数是合成基线，没有与 D3 的真实中心化代价函数完全对齐。
 - 网络模型是内存队列，只用于延迟/丢包统计，不代表真实链路。
+- 主动降级仲裁器目前是规则基线，未接入真实 D1/D2/D3/D5 消息，只通过摘要 dataclass 做离线验证。
+- D5 `TerminalAssociation` 当前在 D4 内归一化为 `TerminalAssociationSummary`，跨模块字段合同还需要主智能体统一。
 
 后续工作：
 
@@ -295,4 +413,4 @@ D6 消费 D4 的 transition log、CBBAResult 和 merge result，计算 failover�
 4. 增加合同网和单轮拍卖 baseline，与 CBBA 对比收敛轮数和冲突率。
 5. 把 D3 的 plan version、authorization state 和 D5 的 cue 审计字段纳入降级日志。
 6. 增加中心恢复后的多轮稳定窗口，而不是只依赖一次合并调用。
-
+7. 将主动降级决策接入系统级日志，交给 D6 统计 `active_degradation_count`、`false_degradation_rate` 和 `terminal_disagreement_duration`。

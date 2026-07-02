@@ -261,7 +261,145 @@ python3 research_modules/d2_data_association/scripts/run_simulation.py --steps 3
 
 这些指标必须进入 D6，因为单看 RMSE 可能掩盖身份交换；单看命中或覆盖也可能掩盖重复分配。
 
-## 13. 跨模块接口关系
+## 13. 面向 D4 主动降级的关联风险信号
+
+D4 的主动降级不是被动等待中心节点失效，而是在中心或二级节点仍存在时，根据态势质量判断当前中心化分配链路是否需要重评估、切换到二级节点辅助，或进入分布式协同对照。D2 不直接决定降级，也不改变 D3 的分配计划；D2 只提供“关联不确定度与 ID 风险”信号，供 D3/D4/D6 在离线仿真中仲裁。
+
+### 13.1 D2 可提供的触发信号
+
+| 信号 | 数据来源 | 含义 | 风险解释 |
+|---|---|---|---|
+| `association_ambiguity` | `AssociationResult.ambiguity_score` | 候选代价差距是否变小 | 越接近 1，说明多个候选观测都合理，GNN 硬关联更容易选错 |
+| `cost_margin` | `cost_matrix` 每行最小和次小有效代价 | 最优匹配相对次优匹配的优势 | margin 小表示航迹身份容易交换 |
+| `gating_overlap_ratio` | `candidate_counts_by_track`、`candidate_counts_by_detection` | 多条航迹共享观测候选或单条航迹有多个候选 | 交叉、密集编队、协方差膨胀时会升高 |
+| `id_switch_rate` | `MetricsRecorder.id_switch_count` 窗口增量 | 单位时间 ID Switch 增长速度 | 直接说明 `global_track_id` 连续性已经失稳 |
+| `continuity_drop` | `track_continuity` / `identity_continuity` 窗口变化 | 身份连续性下降 | 说明目标仍被覆盖，但身份键可能不稳定 |
+| `duplicate_track_risk` | `duplicate_assignment_count`、混淆矩阵 | 同一真值或观测被多个航迹解释 | 会污染 D3 的一对一资源分配输入 |
+| `state_regression_count` | `TrackTransition` | `engageable/confirmed -> lost` 或高质量航迹退化 | 说明下游可用航迹数量正在下降 |
+| `jpda_recommended` | 候选数、歧义分数、门控重叠 | 是否建议从 GNN 升级到 JPDA 对照 | 适合短时交叉、遮挡恢复和多候选软关联 |
+| `mht_recommended` | 连续多帧歧义、遮挡历史、ID 证据冲突 | 是否建议启用 MHT 对照 | 适合需要跨多帧回溯的持续遮挡或反复交换 |
+| `d5_disagreement` | D5 终端关联反馈，若接入 | 中心航迹预测与终端局部观测长期不一致 | 说明中心身份链路可能与末端视觉证据冲突 |
+
+这些信号不等同于“目标处置建议”。它们只表示 D2 对当前 `global_track_id` 稳定性的可信程度。
+
+### 13.2 `AssociationRiskSummary` 建议结构
+
+建议在后续接口中新增 D2 风险摘要，而不是让 D4 直接解析完整代价矩阵。字段建议如下：
+
+```text
+AssociationRiskSummary
+  timestamp: float
+  window_start: float
+  window_end: float
+  source_module: "D2"
+  associator_type: str
+  global_risk_score: float        # 0.0 nominal, 1.0 critical
+  risk_level: nominal | elevated | high | critical
+  affected_global_track_ids: list[str]
+  association_ambiguity_ema: float
+  mean_cost_margin: float
+  low_margin_pair_count: int
+  mean_candidates_per_track: float
+  multi_candidate_track_ratio: float
+  shared_detection_candidate_ratio: float
+  id_switch_rate: float
+  track_continuity: float
+  continuity_drop: float
+  duplicate_assignment_delta: int
+  state_regression_count: int
+  engageable_to_lost_count: int
+  d5_disagreement_count: int       # optional feedback field
+  jpda_recommended: bool
+  mht_recommended: bool
+  recommend_active_reevaluation: bool
+  evidence: list[str]
+```
+
+`window_start/window_end` 应采用滑动窗口，例如 3-10 秒或 5-20 帧。单帧歧义只应触发“观察/重评估”，连续窗口异常才建议 D4 进入主动降级仲裁，避免偶发噪声导致模式抖动。
+
+### 13.3 风险评分建议
+
+一个可解释的离线评分可以采用加权归一化：
+
+```text
+S = 0.25 * ambiguity_term
+  + 0.20 * gate_overlap_term
+  + 0.20 * id_switch_term
+  + 0.15 * continuity_drop_term
+  + 0.10 * duplicate_term
+  + 0.10 * state_regression_term
+```
+
+各分项建议定义：
+
+- `ambiguity_term = EMA(AssociationResult.ambiguity_score)`。
+- `gate_overlap_term = max(multi_candidate_track_ratio, shared_detection_candidate_ratio)`。
+- `id_switch_term = clamp(id_switch_delta / window_frames, 0, 1)`。
+- `continuity_drop_term = clamp(previous_continuity - current_continuity, 0, 1)`。
+- `duplicate_term = clamp(duplicate_assignment_delta / max(1, matched_pair_count), 0, 1)`。
+- `state_regression_term = clamp(state_regression_count / max(1, active_track_count), 0, 1)`。
+
+风险等级建议：
+
+| `global_risk_score` | `risk_level` | D2 解释 |
+|---:|---|---|
+| `< 0.25` | `nominal` | GNN 关联稳定，正常记录 |
+| `0.25-0.50` | `elevated` | 有局部歧义，建议 D3 延迟不必要重分配并继续观察 |
+| `0.50-0.75` | `high` | 身份连续性存在明显风险，建议 D4 主动重评估中心/二级节点链路 |
+| `>= 0.75` | `critical` | 多指标同时恶化，建议 D4 进入主动降级仲裁并请求 JPDA/MHT 对照结果 |
+
+阈值应通过离线仿真标定，不应直接用于真实系统。
+
+### 13.4 从现有日志提取风险
+
+当前 D2 已经记录或输出多数所需证据：
+
+- `AssociationResult.ambiguity_score`：直接作为歧义基础项。
+- `AssociationResult.cost_matrix`：计算每条航迹的最小/次小代价 margin。
+- `AssociationResult.metadata["candidate_counts_by_track"]`：统计多候选航迹比例。
+- `AssociationResult.metadata["candidate_counts_by_detection"]`：统计共享观测候选比例。
+- `AssociationResult.unmatched_track_ids`：结合航迹状态，统计高质量航迹漏配。
+- `MetricsRecorder.id_switch_count`：窗口差分得到 `id_switch_rate`。
+- `MetricsRecorder.track_continuity`：窗口差分得到 `continuity_drop`。
+- `MetricsRecorder.duplicate_assignment_count`：窗口差分得到重复解释风险。
+- `Tracker.state_transitions`：筛选 `confirmed/engageable -> lost/dropped` 得到退化计数。
+
+代价 margin 计算示例：
+
+```text
+valid_costs = sorted(row[row < LARGE_COST])
+if len(valid_costs) >= 2:
+    margin = valid_costs[1] - valid_costs[0]
+else:
+    margin = +inf
+low_margin = margin < margin_threshold
+```
+
+`margin_threshold` 可先取 `1.0-2.0` 的马氏距离代价差作为离线实验初值，再用交叉和编队场景标定。
+
+### 13.5 主动重评估触发条件
+
+以下情况应提示 D3/D4 进入主动重评估，而不是继续信任上一版分配：
+
+- 多目标交叉窗口内 `id_switch_rate` 上升，且 `association_ambiguity_ema > 0.5`。
+- 多个 `GlobalTrack` 同时把同一观测列为门内候选，`shared_detection_candidate_ratio` 持续升高。
+- `engageable` 航迹连续回退到 `lost`，导致 D3 的可分配目标集合不稳定。
+- `duplicate_assignment_count` 在窗口内增长，说明同一目标可能被多个全局身份解释。
+- D5 末端视觉配准长期报告“分配目标不在预期投影门内”或多个局部目标都可匹配同一 `global_track_id`。
+- GNN 输出稳定但 JPDA 边缘概率分散，说明硬关联结果可能只是任意打破平局。
+- MHT 多分支长期不能收敛到单一低代价历史，说明需要 D4 引入二级节点或分布式视角进行独立交叉校验。
+
+### 13.6 给 D4/D3 的接口建议
+
+D2 建议向 D4/D3 发布低频风险摘要，例如 1-2 Hz，而不是每帧发布完整矩阵。推荐消费方式：
+
+- D3：当 `risk_level >= elevated` 时，提高重分配迟滞，避免在身份不稳定窗口内频繁改分配；当 `risk_level >= high` 时，请求使用 `confirmed/engageable` 且低风险的航迹子集重新计算分配。
+- D4：当 `risk_level >= high` 且持续超过 `min_risk_dwell_time` 时，进入主动降级仲裁，比较中心节点、二级侦察节点和局部分布式节点的航迹一致性。
+- D6：记录 `AssociationRiskSummary`，用于统计主动降级是否真正减少 ID Switch、重复分配和末端不一致事件。
+
+D2 只给出 `recommend_active_reevaluation`、`jpda_recommended` 和 `mht_recommended` 等研究信号。是否切换二级节点、是否进入分布式协同，必须由 D4 在综合 D1/D3/D5 信号后决定。
+
+## 14. 跨模块接口关系
 
 ### D1 -> D2
 
@@ -279,7 +417,7 @@ D5 使用 `global_track_id` 将中心航迹投影到终端相机平面。D5 可�
 
 D6 消费 `AssociationLogEntry`、`TrackTransition`、`MetricsRecorder.summary()` 和混淆矩阵，用于批量实验统计、失败案例定位和算法对比。
 
-## 14. 局限与后续工作
+## 15. 局限与后续工作
 
 当前实现的主要局限：
 
@@ -296,3 +434,4 @@ D6 消费 `AssociationLogEntry`、`TrackTransition`、`MetricsRecorder.summary()
 - 增加 JPDA/MHT 与 Stone Soup 的离线基准对照。
 - 把 D5 的终端关联反馈作为低权重身份证据接入，但保持 D2 对 `global_track_id` 的唯一管理权。
 - 将 `ambiguity_score`、候选数、协方差重叠率作为自动切换 JPDA/MHT 的触发器。
+- 增加 `AssociationRiskSummary` 的离线生成器，把 D2 风险信号以低频摘要形式交给 D3/D4/D6。

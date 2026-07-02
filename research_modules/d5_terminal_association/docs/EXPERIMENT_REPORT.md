@@ -43,7 +43,41 @@ Sigma_px = J Sigma_w J^T + Sigma_measurement
 
 未知身份不等于敌方身份；`ambiguous` 和 `hold` 不得被下游解释为自动授权。
 
-## 5. 二级侦察节点图像 cue
+## 5. 多无人机重叠视场配准现状
+
+当前程序已覆盖单机视场内多目标候选、友方 `hold`、二级 cue 作用域和 `global_track_id` 不变式。例如，单机相机中同时存在分配目标、干扰目标、友方目标和未知目标时，D5 通过中心航迹投影、像素马氏门控和候选代价排序选择本地候选，或保守输出 `ambiguous/hold/reacquire`。
+
+尚未完整实现跨无人机多相机融合。对于“无人机 1 看到目标 1/2/3、无人机 2 看到目标 2/3/4”的场景，后续需要把 `local_track_id` 限定在 `(resource_id, camera_id, frame_id)` 命名空间内，再通过以下信息做跨视场关联：
+
+- D2 已有 `global_track_id` 的时间预测。
+- 每个无人机相机的 `measurement_timestamp`、相机姿态和内参。
+- 全局航迹投影到各相机平面的像素位置与协方差。
+- 本地观测的像素协方差、MOT 质量和候选代价。
+- 已重投影到目标相机平面的二级侦察 `ReconImageCue`。
+
+建议新增 `CrossViewObservation`、`CrossViewAssociation`、`TerminalCrossViewFusion` 或 `TerminalObservationBus`，只做离线跨视场配准和一致性评估。D5 仍不得创建、改写或换绑 `global_track_id`。
+
+## 6. 面向 D4 主动降级的一致性信号
+
+主动降级需要 D4 判断“末端视觉证据是否仍支持中心或二级节点分配”。D5 侧不做降级决策，但可以提供如下离线信号：
+
+- `decision_state`、`association_confidence`、`ambiguity_score` 和 `friend_conflict_state`。
+- 候选代价间隔 `candidate_cost_margin`，用于判断最佳候选是否唯一。
+- `recon_cue_used`，用于区分自相机锁定与依赖二级侦察 cue 的锁定。
+- `terminal_lock_age_s`，用于衡量连续锁定稳定性。
+- 连续 `ambiguous/hold/reacquire` 帧数，用于避免单帧噪声触发仲裁。
+
+推荐判定：
+
+- `locked` 且全局 ID/版本一致：末端一致，不触发主动降级。
+- 多帧 `ambiguous`：请求二级节点 cue 或继续观测。
+- 已验证友方重叠 `hold`：上报冲突，不自动换绑。
+- 多帧 `reacquire` 且 D1/D2/D3 风险高：建议 D4 主动仲裁。
+- 本地最佳视觉候选长期不支持 `assigned_global_track_id`：触发主动仲裁，但 D5 不改写 `global_track_id`。
+
+更完整的字段建议见 `ALGORITHM_AND_IMPLEMENTATION.md` 中的 `TerminalConsistencySummary`。
+
+## 7. 二级侦察节点图像 cue
 
 本阶段假设存在若干高空系留侦察无人机作为二级节点。中心节点正常时，二级节点持续向其覆盖小区内的若干拦截资源发送侦察图像或图像平面 cue。中心节点失效时，D4 可把局部协调权降级到二级节点；二级节点失效后才进入完全无中心协商。
 
@@ -58,7 +92,7 @@ D5 对二级节点图像 cue 的使用原则：
 
 更完整的算法原理、数学模型和接口说明见 `ALGORITHM_AND_IMPLEMENTATION.md`。
 
-## 6. 仿真场景
+## 8. 仿真场景
 
 运行命令：
 
@@ -74,16 +108,17 @@ python3 research_modules/d5_terminal_association/simulations/run_terminal_associ
 - 一个未知目标在部分帧靠近分配目标投影，制造歧义。
 - 分配目标短时遮挡，触发 `reacquire`。
 - 友方目标与分配投影重叠，触发 `hold`。
+- 后续扩展：UAV1 看到目标 1/2/3、UAV2 看到目标 2/3/4 的跨视场配准，验证重复本地 ID、相机姿态误差、时间戳错位和二级 cue 重投影。
 
-## 7. 图表与曲线
+## 9. 图表与曲线
 
-### 7.1 末端决策时间线
+### 9.1 末端决策时间线
 
 ![D5 末端决策时间线与累计曲线](terminal_decision_timeline.png)
 
 上图第一部分展示每一帧的终端决策状态，第二部分展示 `locked/ambiguous/hold/reacquire` 的累计数量。该图用于分析保守策略是否在遮挡、友方重叠和歧义区域主动降级，而不是盲目锁定。
 
-## 8. 基线结果
+## 10. 基线结果
 
 | 指标 | 数值 |
 |---|---:|
@@ -96,6 +131,8 @@ python3 research_modules/d5_terminal_association/simulations/run_terminal_associ
 | 全帧正确 locked 比例 | 0.7 |
 | `global_track_id` 改写次数 | 0 |
 
-## 9. 结论
+## 11. 结论
 
 D5 的目标不是最大化锁定次数，而是避免错误绑定和友方冲突。当前实现默认要求 assignment 版本匹配，并在未授权、版本不一致、短 MOT 历史或低质量检测时输出 `hold/ambiguous`。二级侦察节点 cue 可以提升局部关联的可解释性，但不能成为授权或身份确认的替代品。这使 D5 可以作为 D3/D4 分配计划与 D6 终端评估之间的保守安全门。
+
+跨视场配准是下一阶段能力：它应把多个无人机相机的本地观测共同配准到 D2 已有 `global_track_id`，但不改变 D5 “只报告关联证据、不改写全局 ID、不输出处置动作”的边界。

@@ -48,6 +48,18 @@ decision = associator.decide(
 - `hold`: 已验证友方与候选重叠，或版本不一致。
 - `reacquire`: 无候选通过门限，或投影不可用。
 
+## 主动降级仲裁信号
+
+D5 可把连续帧 `TerminalAssociation` 派生为 `TerminalConsistencySummary` 建议字段，供 D4 判断中心/二级节点分配与末端视觉证据是否一致。建议包含 `decision_state`、`association_confidence`、`ambiguity_score`、`friend_conflict_state`、candidate cost margin、`recon_cue_used`、terminal lock age，以及连续 `ambiguous/hold/reacquire` 帧数。
+
+该摘要只用于离线一致性评估和 D4 仲裁输入。D5 不触发降级、不重写 `global_track_id`、不生成新分配计划。
+
+## 跨视场配准设计
+
+当前程序已覆盖单机视场内多目标候选、友方 `hold`、二级侦察 cue 作用域和保守 `global_track_id` 不变式；尚未完整实现多无人机、多相机的跨视场融合。
+
+后续集成建议把 `local_track_id` 明确限定在 `(resource_id, camera_id, frame_id)` 命名空间内，并新增 `CrossViewObservation`、`CrossViewAssociation`、`TerminalCrossViewFusion` 或 `TerminalObservationBus`。跨视场逻辑只把多个本地观测配准到 D2 已存在的 `global_track_id`，不得由 D5 创建、改写或换绑全局 ID。
+
 ## 二级侦察节点输入
 
 高空系留侦察无人机可作为二级节点向覆盖小区内的拦截资源发送 `ReconImageCue`。该 cue 只在 `scoped_resource_ids` 限定范围内降低关联代价，用于帮助末端相机把本地视觉轨迹配准到中心分配的 `global_track_id`。它不能替代授权、版本校验、友方正向认证或本地 MOT 质量门槛，也不能触发局部节点自行改写 `global_track_id`。

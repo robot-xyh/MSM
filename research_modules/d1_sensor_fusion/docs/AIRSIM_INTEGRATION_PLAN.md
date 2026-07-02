@@ -26,6 +26,13 @@ AirSim's default local coordinates are close to NED, so the first integration sh
 
 ## Sensor Bridges
 
+Dry-run fixture bridge:
+
+- Use `observations_from_airsim_dry_run_fixture()` for the first integration gate.
+- The fixture is plain Python data with `frames[].timestamp`, `targets[].state_ned`, and synthetic sensor configs.
+- It does not import or call AirSim; it only converts fake episode records into `SensorObservation[]`.
+- Every emitted observation contains `measurement_timestamp`, `arrival_timestamp`, `frame_id`, `measurement`, `covariance`, `confidence`, and dry-run metadata.
+
 Radar bridge:
 
 - Read target truth from AirSim for research simulation only.
@@ -46,6 +53,12 @@ EO bridge:
 - Use low confidence, small boxes, truncation, and occlusion to inflate covariance.
 - Treat EO as a projection constraint, not direct 3D position truth.
 
+Synthetic lidar bridge:
+
+- Optional dry-run modality for simulated NED position samples.
+- Emit `SensorObservation(modality="lidar", frame_id="ned")` with a 3x3 position covariance.
+- Treat lidar as a local offline measurement source for integration testing only, not a real hardware driver.
+
 ## Fusion Node Contract
 
 Input:
@@ -54,7 +67,7 @@ Input:
 SensorObservation(
     observation_id=...,
     sensor_id=...,
-    modality="radar" | "acoustic" | "eo",
+    modality="radar" | "acoustic" | "eo" | "lidar",
     measurement_timestamp=sim_capture_time,
     arrival_timestamp=fusion_receive_time,
     frame_id="ned" or "pixel",

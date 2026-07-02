@@ -1,6 +1,6 @@
 # D1 Sensor Fusion Module
 
-Offline research module for radar, acoustic, and EO heterogeneous observation fusion. The module estimates six-state NED `GlobalTrack` objects with covariance.
+Offline research module for radar, acoustic, EO, and optional synthetic lidar heterogeneous observation fusion. The module estimates six-state NED `GlobalTrack` objects with covariance.
 
 ## Scope
 
@@ -35,6 +35,22 @@ The script writes:
 - `reports/EXPERIMENT_REPORT.md`
 - `reports/tracks_xy.png`
 - `reports/rmse_latency_ablation.png`
+
+## AirSim Dry-Run Fixture
+
+The module includes a no-AirSim dependency dry-run adapter for integration tests:
+
+```python
+from d1_sensor_fusion import (
+    make_minimal_airsim_dry_run_fixture,
+    observations_from_airsim_dry_run_fixture,
+)
+
+fixture = make_minimal_airsim_dry_run_fixture(include_lidar=True)
+observations = observations_from_airsim_dry_run_fixture(fixture)
+```
+
+The adapter emits `SensorObservation[]` with `measurement_timestamp`, `arrival_timestamp`, `frame_id`, and `covariance` filled for synthetic radar, acoustic, EO, and optional lidar observations.
 
 ## Main Interfaces
 

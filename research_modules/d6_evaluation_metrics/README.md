@@ -9,6 +9,8 @@ Offline evaluation module for detection, tracking, assignment, degradation, term
 - Chinese experiment report with generated figures: `EXPERIMENT_REPORT.md`
 - Offline AirSim ingestion plan: `AIRSIM_INTEGRATION_PLAN.md`
 
+The detailed notes now include the offline metric contract for D4 active degradation evaluation: passive vs active degradation counts, trigger-source metadata, coordinator selection fields, and before/after-window deltas for ID switches and assignment conflicts.
+
 ## Boundary
 
 This module only evaluates recorded or synthetic logs. It does not participate in real-time decisions, does not emit control commands, does not provide fire-control parameters, does not model damage, does not automate disposal actions, and does not bypass human authorization.

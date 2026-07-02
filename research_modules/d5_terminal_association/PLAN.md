@@ -23,6 +23,14 @@ D5 只面向科研仿真、离线回放和保守的终端视觉配准评估。�
 - `CameraModel`：相机内参、外参、图像尺寸和测量协方差。
 - `ReconImageCue[]`：来自 D4 二级高空系留侦察节点的局部图像 cue。
 
+跨视场扩展输入建议：
+
+- `resource_id/camera_id/frame_id`：给每个本地视觉轨迹建立唯一观测命名空间，避免不同无人机都使用 `track_1` 时发生冲突。
+- `camera_pose` 或完整 `CameraModel`：记录每个相机在量测时刻的世界到相机变换。
+- `measurement_timestamp/arrival_timestamp`：区分图像形成时刻和数据到达时刻，便于跨视场时间对齐。
+- `covariance` 或 `covariance_px`：描述本地像素检测的不确定性，不把框中心当作确定值。
+- `CrossViewObservation`：把上述字段和 `LocalVisualTrack` 封装为跨视场观测。
+
 输出：
 
 - `TerminalAssociation`：包含中心分配 ID、本地候选 ID、置信度、歧义度、友方冲突状态、决策状态、候选代价和 cue 使用标记。
@@ -112,7 +120,31 @@ D5 将该输入表示为 `ReconImageCue`：
 - 空 `scoped_resource_ids` 当前可视为广播 cue；若实验要求严格小范围分发，应改为显式广播标记或视为空无效。
 - 后续应加入 cue 新鲜度、目标相机帧校验和 `recon_cue_used_count` 指标。
 
-## 7. 实施流程
+## 7. 多无人机重叠视场配准计划
+
+典型场景：无人机 1 的相机看到目标 1/2/3，无人机 2 的相机看到目标 2/3/4。两个相机的 `local_track_id` 只在本机本相机内有效，例如 `UAV1:cam0:L2` 与 `UAV2:cam0:L2` 可能指向不同目标，也可能分别是同一个 `global_track_id` 的两个观测。D5 的跨视场目标是把这些本地观测配准到 D2 已存在的 `global_track_id`，而不是在本地创造新的全局 ID。
+
+建议流程：
+
+1. `TerminalObservationBus` 收集每架无人机的 `CrossViewObservation`，每条观测携带资源、相机、帧、时间戳、相机姿态、像素协方差和本地 MOT 信息。
+2. 对 D2 的每个 `GlobalTrack` 按各自相机的 `measurement_timestamp` 做时间预测。
+3. 将同一个 `GlobalTrack` 分别投影到 UAV1、UAV2 等相机平面，得到每个视场内的像素预测和协方差。
+4. 在每个相机内先做像素马氏门控，形成局部候选代价。
+5. 对重叠视场中的共享目标 2/3，比较多相机候选是否同时支持同一 `global_track_id`。
+6. 对时间差过大、相机姿态不可信、协方差过大或候选代价接近的情况输出 `ambiguous/unknown`，不强行跨视场绑定。
+7. 二级侦察 cue 先重投影到每个目标相机平面，再按 `scoped_resource_ids` 对相应资源降低候选代价。
+
+建议新增接口：
+
+- `CrossViewObservation`：单个本地视觉观测的跨视场封装。
+- `CrossViewAssociation`：一个 `global_track_id` 与多个 `(resource_id, camera_id, local_track_id)` 的关联结果。
+- `CrossViewTrackEvidence`：按 `global_track_id` 汇总多个跨视场关联、置信度、冲突状态和协方差摘要，供 D4/D6 使用。
+- `TerminalCrossViewFusion`：消费 D2 航迹、多资源相机、局部观测和 cue，输出跨视场关联摘要。
+- `TerminalObservationBus`：只做观测汇聚和日志，不拥有分配权。
+
+当前程序已经覆盖单机视场内多目标候选、友方 `hold`、二级 cue 作用域和 `global_track_id` 不变式；尚未完整实现跨无人机多相机融合。该能力应作为后续离线仿真扩展，不改变 D5 不改写 `global_track_id` 的边界。
+
+## 8. 实施流程
 
 1. 读取 D3/D4 分配，确认授权状态和版本。
 2. 从 D2 航迹表中查找中心分配的 `global_track_id`。
@@ -124,8 +156,9 @@ D5 将该输入表示为 `ReconImageCue`：
 8. 调用 `build_cost_matrix()` 构造候选代价。
 9. 调用 `decide()` 输出 `TerminalAssociation`。
 10. 记录候选代价、身份冲突、决策状态和 cue 使用情况，交给 D6 离线评估。
+11. 后续跨视场扩展中，额外由 `TerminalCrossViewFusion` 对多个资源的 `CrossViewObservation` 做被动一致性汇总，并只向 D3/D4/D6 上报摘要。
 
-## 8. 代码模块划分
+## 9. 代码模块划分
 
 ```text
 research_modules/d5_terminal_association/
@@ -156,7 +189,7 @@ research_modules/d5_terminal_association/
 - `simulations/`：生成离线合成场景和实验结果。
 - `docs/`：保存算法说明、实验报告、图表和 AirSim 离线计划。
 
-## 9. 关键接口
+## 10. 关键接口
 
 推荐全部使用关键字参数调用，尤其是 `current_time` 和 `recon_image_cues`：
 
@@ -179,7 +212,21 @@ decision = associator.decide(
 - `TerminalAssociator.decide(assignment, global_tracks, local_tracks, identity_claims=(), camera=None, current_time=None, recon_image_cues=())`
 - `IdentityChecker.parse_claims(raw_messages, current_time)`
 
-## 10. 仿真场景设计
+跨视场扩展接口建议：
+
+```python
+cross_view_result = terminal_cross_view_fusion.associate(
+    global_tracks=global_tracks,
+    observations=cross_view_observations,
+    cameras=camera_models_by_resource,
+    recon_image_cues=reprojected_recon_cues,
+    current_time=current_time,
+)
+```
+
+该接口只输出 `CrossViewAssociation` 或一致性摘要，不产生新分配计划。
+
+## 11. 仿真场景设计
 
 初始仿真使用简单图像平面和质点投影，不涉及真实飞控或硬件：
 
@@ -196,8 +243,11 @@ decision = associator.decide(
 - stale cue。
 - 跨资源 cue。
 - 空 `scoped_resource_ids` 语义对照。
+- UAV1 看到目标 1/2/3、UAV2 看到目标 2/3/4 的重叠视场配准。
+- 相同 `local_track_id` 在不同无人机中重复出现的命名空间冲突测试。
+- 相机姿态误差、时间戳错位和高协方差观测导致的跨视场 `ambiguous`。
 
-## 11. 指标
+## 12. 指标
 
 D5 至少记录：
 
@@ -212,10 +262,14 @@ D5 至少记录：
 - `terminal_id_switch_count`
 - `global_track_id_rewrite_count`
 - `recon_cue_used_count`
+- `cross_view_association_accuracy`
+- `cross_view_id_switch_count`
+- `cross_view_ambiguous_count`
+- `cross_view_duplicate_local_id_count`
 
 其中 `global_track_id_rewrite_count` 应始终为 0。
 
-## 12. 预期交付物
+## 13. 预期交付物
 
 - 根目录 `PLAN.md` 和 `README.md`。
 - `docs/ALGORITHM_AND_IMPLEMENTATION.md`：中文算法原理与实施方案。
@@ -223,10 +277,11 @@ D5 至少记录：
 - `docs/AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放与接口计划。
 - Python 源码、单元测试和离线仿真脚本。
 
-## 13. 局限与后续工作
+## 14. 局限与后续工作
 
 - 目前 `ReconImageCue` 的新鲜度和相机帧一致性主要由调用方保证。
 - 当前仿真尚未批量生成二级 cue 场景。
+- 当前程序尚未完整实现跨无人机多相机融合；`CrossViewObservation`、`CrossViewAssociation`、`CrossViewTrackEvidence` 和 `TerminalCrossViewFusion` 仍是接口建议。
 - 当前身份声明为离线仿真抽象，不连接真实通信或安全中间件。
 - 本地 MOT 质量对小目标场景影响大，需要 AirSim 离线回放进一步评估。
 - D5 输出只用于评估和上游复盘，不应被解释为自动处置命令。

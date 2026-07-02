@@ -193,7 +193,90 @@ and change_count <= max_changes_per_window
 
 版本逻辑是降级场景的关键：D4 使用 D3 计划作为中心化基线时，必须拒绝更旧版本覆盖当前计划。D3 自身也通过 `StalePlanError` 防止 stale previous plan 继续滚动。
 
-## 8. 实施流程
+## 8. 面向 D4 主动降级的计划有效性判据
+
+D4 的降级可分为两类：一类是中心节点宕机、心跳丢失或通信中断导致的被动降级；另一类是中心节点仍在线，但原 `AssignmentPlan` 在当前态势下已经不可靠，需要主动请求二级节点或分布式协同介入。D3 不直接决定 D4 的降级执行方式，但应提供可审计的计划有效性摘要，帮助 D4 判断是中心滚动重分配即可解决，还是需要进入主动降级仲裁。
+
+### 8.1 D3 可提供的主动降级触发信号
+
+D3 侧建议持续计算以下信号，并写入计划日志或单独的 `AssignmentValiditySummary`：
+
+- `plan_age_s`：当前计划从 `created_at` 到评估时刻的年龄。超过规划周期上限时，优先触发中心重分配；若连续无法生成新计划，再请求 D4 仲裁。
+- `plan_version_stale`：调用方持有的 `plan_id/version` 与 D3 最新版本不一致。stale plan 不应被 D4、D5 或二级节点继续当作主计划使用。
+- `assignment_cost_growth`：旧 assignment 在当前代价矩阵上的成本增长量，可定义为 `J_old_current - J_old_at_accept`。
+- `new_vs_old_cost_ratio`：候选计划与旧计划重评分成本的比值，可定义为 `J_new / max(J_old_current, eps)`。该值明显小于 1 表示中心重分配有收益；该值接近或大于 1 且风险持续升高，说明单纯重分配可能不能解决。
+- `resource_state_change_count`：资源状态突变数量，例如 `available -> degraded/unavailable`、`operator_hold=True`、`busy_until` 延长等。
+- `window_failure_count`：接近窗口或任务窗口失效的目标数量，例如 `window_cost` 越过不可接受阈值、目标不再 `assignable` 或原边进入 `feasibility_by_resource=False`。
+- `hysteresis_hold_count`：迟滞反复保持旧计划的次数。若连续 `held_by_hysteresis` 且 `candidate_total_cost` 持续低于旧计划，说明中心仍可通过解除迟滞或调整权重解决；若保持期间 D5 多帧不一致，则应请求 D4 仲裁。
+- `high_threat_unassigned_count`：高威胁目标未分配数量。若中心仍有可用资源且仅因权重导致未分配，优先中心重分配；若资源区域或观测链路不足，转 D4。
+- `d2_uncertainty_level`：来自 D2 的关联不确定性、ID Switch 风险或协方差升高摘要。
+- `d5_consistency_state`：来自 D5 的末端一致性状态，如 `consistent`、`ambiguous`、`friend_overlap_hold`、`multi_frame_inconsistent`。
+
+这些信号都是离线仿真和候选计划有效性指标，不表示真实处置命令。
+
+### 8.2 `AssignmentValiditySummary` 建议结构
+
+建议 D3 在每个规划周期额外发布或记录如下摘要，供 D4 和 D6 消费：
+
+```python
+AssignmentValiditySummary(
+    plan_id: str,
+    version: int,
+    evaluated_at: float,
+    plan_age_s: float,
+    plan_version_stale: bool,
+    previous_total_cost_current: float,
+    candidate_total_cost: float,
+    assignment_cost_growth: float,
+    new_vs_old_cost_ratio: float,
+    resource_state_change_count: int,
+    window_failure_count: int,
+    hysteresis_hold_count: int,
+    high_threat_unassigned_count: int,
+    d2_uncertainty_level: str,      # low | medium | high
+    d5_consistency_state: str,      # consistent | ambiguous | multi_frame_inconsistent | friend_overlap_hold
+    validity_state: str,           # valid | replan_recommended | d4_arbitration_requested | invalid_hold
+    recommended_action: str,       # keep_plan | central_replan | request_d4_secondary_node | request_d4_distributed | hold_for_observation
+    reasons: tuple[str, ...],
+)
+```
+
+当前代码尚未实现该数据类；本节定义的是 D3 对 D4 的接口建议。若后续实现，应保持字段只描述计划有效性、成本变化、版本时效和跨模块一致性，不加入真实硬件、火控或自动处置含义。
+
+### 8.3 中心重分配与 D4 主动降级的边界
+
+D3 建议按三层判断：
+
+1. `keep_plan`：计划版本新、`plan_age_s` 在允许范围内、旧 assignment 当前仍可行、D5 多帧一致、D2 不确定性低或中等。此时即使 D1/D2 风险小幅升高，也可通过迟滞保持计划，避免抖动。
+2. `central_replan`：中心节点在线，资源和目标仍在中心视野/通信范围内，`J_new` 明显低于 `J_old_current`，或资源状态突变但 Hungarian 能生成可行新计划。此时应由 D3 发布新版本 `AssignmentPlan`，而不是立刻请求 D4 主动降级。
+3. `request_d4_arbitration`：中心仍在线，但 D3 发现计划失效不是单次重分配能解决，例如高动态延迟导致计划持续过期、D2 ID/协方差风险高且 D5 多帧不一致、多个资源状态突变使中心计划频繁 stale、或高威胁目标持续未分配。此时 D3 只发出仲裁请求，由 D4 决定降级到二级节点还是完全分布式。
+
+### 8.4 典型组合策略
+
+| D1/D2 风险 | D5 末端一致性 | D3 成本/版本状态 | D3 建议动作 |
+|---|---|---|---|
+| 协方差升高但 ID 连续 | D5 一致 | 成本轻微升高，计划未 stale | `keep_plan` 或 `central_replan` |
+| 关联不确定性升高 | D5 一致 | `J_new` 明显优于旧计划 | `central_replan`，输出新版本 |
+| ID Switch 风险高 | D5 多帧不一致 | 旧计划成本恶化或窗口失效 | `request_d4_secondary_node`，请求二级节点利用局部侦察和区域通信仲裁 |
+| 资源状态突变较多 | D5 局部一致 | 旧计划不可行，中心可重算 | `central_replan`，标记 `accepted_previous_infeasible` |
+| 计划版本频繁 stale | D5 不一致或资源反馈延迟 | 重分配反复被迟滞/版本冲突阻断 | `request_d4_secondary_node` 或 `request_d4_distributed` |
+| 高威胁目标持续未分配 | D5 无法确认 | 中心候选计划也不可行 | `hold_for_observation` 并请求 D4 仲裁，不由 D3 本地升级处置 |
+
+核心原则是：D1/D2 风险上升但 D5 仍稳定时，优先保持或中心重分配；D5 连续多帧不一致、友方重叠保持、或 D3 计划代价恶化超过阈值时，D3 应请求 D4 主动降级仲裁。
+
+### 8.5 建议阈值与仿真记录
+
+具体阈值应在离线实验中扫描，而不是固定为真实系统参数。初始仿真可记录：
+
+- `max_plan_age_s = 2 到 3 个规划周期`。
+- `cost_growth_ratio_threshold = 1.25`，即旧计划当前成本较接受时增长 25% 以上时进入重分配检查。
+- `new_vs_old_replan_ratio = 0.85`，即候选计划较旧计划有 15% 以上改善时优先中心重分配。
+- `d4_arbitration_hold_limit = 3`，即连续多次迟滞保持且跨模块一致性恶化时请求 D4。
+- `d5_inconsistent_frame_limit = 3`，即 D5 多帧不一致不再由 D3 单独解释为普通成本波动。
+
+D6 应将这些阈值、触发次数和最终 `recommended_action` 进入批量统计，以比较“中心重分配优先”和“主动降级优先”两类策略的稳定性。
+
+## 9. 实施流程
 
 当前代码路径如下：
 
@@ -216,7 +299,7 @@ plan = planner.plan(
 )
 ```
 
-## 9. 参数与调参建议
+## 10. 参数与调参建议
 
 建议按以下顺序调参：
 
@@ -229,7 +312,9 @@ plan = planner.plan(
 
 所有权重都应记录到实验配置和 D6 日志，避免只报告命中率而无法解释分配行为。
 
-## 10. 仿真验证与图表
+主动降级相关阈值建议单独扫描，不与基础 Hungarian 权重混在一次实验中调整。优先固定 `CostWeights`，再分别扫描 `max_plan_age_s`、`cost_growth_ratio_threshold`、`new_vs_old_replan_ratio`、`d4_arbitration_hold_limit` 和 `d5_inconsistent_frame_limit`，观察重分配次数、D4 仲裁请求次数、计划 stale 次数和 D5 终端一致性变化。
+
+## 11. 仿真验证与图表
 
 当前离线仿真位于 `simulations/run_rolling_assignment.py`。默认配置为：
 
@@ -247,19 +332,19 @@ python3 simulations/run_rolling_assignment.py
 
 实验报告见 `docs/EXPERIMENT_REPORT.md`，自动生成报告见 `results/EXPERIMENT_REPORT_GENERATED.md`。
 
-### 10.1 成本与重分配曲线
+### 11.1 成本与重分配曲线
 
 ![D3 分配成本与重分配曲线](../results/cost_reassignment.png)
 
 该曲线展示迟滞策略降低重分配事件，但会使部分时刻保留旧计划，因此总成本略高。
 
-### 10.2 权重敏感性曲线
+### 11.2 权重敏感性曲线
 
 ![D3 权重敏感性曲线](../results/weight_sensitivity.png)
 
 该曲线用于观察不同代价项权重对平均成本、高威胁未分配比例和重分配次数的影响。后续批量实验应由 D6 汇总多个随机种子下的均值、标准差和置信区间。
 
-## 11. 评估指标
+## 12. 评估指标
 
 D3 本模块直接关注：
 
@@ -271,28 +356,39 @@ D3 本模块直接关注：
 - `candidate_total_cost` 与 `previous_total_cost_current`：迟滞决策解释变量。
 - `runtime_ms`、`p95_runtime_ms`：规划实时性指标。
 - `stale_plan_reject_count`：过期计划拒绝次数，建议由集成测试或 D6 汇总。
+- `assignment_validity_state_count`：`valid/replan_recommended/d4_arbitration_requested/invalid_hold` 的计数。
+- `d4_arbitration_request_count`：D3 请求 D4 主动降级仲裁的次数。
+- `plan_age_violation_count`：计划年龄超过阈值的次数。
+- `cost_growth_violation_count`：旧计划当前成本增长超过阈值的次数。
+- `hysteresis_repeated_hold_count`：迟滞连续保持且跨模块一致性恶化的次数。
 
 这些指标应通过 D6 统一记录，并与 D2 的 `id_switch_count`、D5 的 `terminal_association_accuracy`、D4 的 `failover_time` 联合分析。
 
-## 12. 跨模块接口关系
+## 13. 跨模块接口关系
 
-### 12.1 与 D2 多目标跟踪
+### 13.1 与 D2 多目标跟踪
 
 D2 提供稳定 `global_track_id` 和航迹质量。D3 不应自行合并、拆分或重命名目标 ID；如果 D2 报告 ID Switch 风险高，D3 应通过更高 `covariance` 或 `assignable=False` 降低错误分配概率。
 
-### 12.2 与 D4 降级接管
+### 13.2 与 D4 降级接管
 
 中心节点正常时，D3 的 `AssignmentPlan` 是主计划。中心失效时，D4 应把最新有效版本作为降级协商基线；二级节点或完全分布式 CBBA 只能在版本更新和时效规则内接管，不能用旧版本覆盖新计划。中心恢复后，应对比计划版本、时间戳和 assignment 差异，不应立即强行夺权。
 
-### 12.3 与 D5 末端视觉配准
+D4 主动降级场景下，D3 应额外提供 `AssignmentValiditySummary` 或等价日志字段。D4 可以按 `recommended_action` 处理：`central_replan` 由 D3 继续发布新版本；`request_d4_secondary_node` 交给二级侦察/区域节点仲裁；`request_d4_distributed` 才进入完全分布式协同。D3 不应越权选择具体降级节点，只提供计划有效性、版本、成本和跨模块一致性证据。
+
+### 13.3 与 D5 末端视觉配准
 
 D5 使用 `AssignmentPlan.assignments` 判断某个资源应在视场中锁定哪个 `global_track_id`。D5 可以回传 `TerminalAssociation`、`IdentityClaim`、模糊视场事件或友方重叠状态，D3 可将这些反馈转化为 `fov_difficulty`、`conflict_risk`、`operator_hold` 或 `feasibility_by_resource`。D5 不允许本地改写 D3 的 `global_track_id` 或自行换绑全局 assignment。
 
-### 12.4 与 D6 系统评估
+对主动降级判断，D5 的一致性比单帧视觉结果更重要。若 D5 仅单帧模糊但后续恢复一致，D3 可保持或重分配；若 D5 连续多帧不一致、出现友方重叠保持或本地 MOT 与全局计划长期冲突，D3 应将 `d5_consistency_state` 写入有效性摘要并建议 D4 仲裁。
+
+### 13.4 与 D6 系统评估
 
 D6 消费 D3 的计划日志、成本分解、版本变化和决策状态。D3 应保证每次规划输出可复现、可追溯，并保留足够元数据支持批量实验对比。
 
-## 13. 局限与后续工作
+D6 还应统计 `AssignmentValiditySummary` 的状态分布，区分中心滚动重分配、D4 主动降级仲裁和被动失效降级，避免把所有降级都归因于中心节点宕机。
+
+## 14. 局限与后续工作
 
 当前实现的主要局限：
 
@@ -301,10 +397,12 @@ D6 消费 D3 的计划日志、成本分解、版本变化和决策状态。D3 �
 - `conflict_risk` 是外部传入的边级摘要，未在 D3 内部计算真实轨迹冲突。
 - `human_authorization_state` 当前强制为 `required`，模块不实现授权工作流。
 - 仿真覆盖 8v8 滚动场景，仍需扩展到不同目标密度、通信降级和 D5 末端模糊反馈闭环。
+- `AssignmentValiditySummary` 目前是接口建议，尚未实现为代码数据类或日志记录器。
 
 后续建议：
 
 - 与 D2/D5 建立统一反馈字段，把 ID Switch 风险、终端模糊和友方重叠映射到 D3 代价项。
 - 为 D4 增加计划版本冲突和中心恢复合并的集成测试。
+- 为 D4 主动降级增加 D3 侧有效性评估器，输出 `AssignmentValiditySummary` 并由 D6 统计触发原因。
 - 在保持接口不变的前提下实现 OR-Tools 最小费用流可选后端。
 - 由 D6 批量运行多随机种子、多权重、多密度场景，输出统一中文实验报告和图表。

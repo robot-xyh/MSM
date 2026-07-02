@@ -2,11 +2,11 @@
 
 ## Scope And Safety Boundary
 
-This module is limited to research simulation, offline evaluation, and minimum continuity after a center C2 outage. It exchanges coarse summaries through an in-memory simulated network only. It does not model real fire-control parameters, damage effects, live radio frequencies, hardware drivers, automatic disposition, or bypass of human authorization.
+This module is limited to research simulation, offline evaluation, and minimum continuity after a center C2 outage or a simulated active-degradation arbitration event. It exchanges coarse summaries through an in-memory simulated network only. It does not model real fire-control parameters, damage effects, live radio frequencies, hardware drivers, automatic disposition, or bypass of human authorization.
 
 ## Engineering And Scientific Problem
 
-Centralized C2 normally owns the freshest fused tracks and assignment plan. After the center becomes unavailable, peer nodes may only have stale plans, local summaries, and intermittent peer communication. The engineering question is how to preserve minimum continuity without creating duplicate assignments or conflicting local plans.
+Centralized C2 normally owns the freshest fused tracks and assignment plan. After the center becomes unavailable, peer nodes may only have stale plans, local summaries, and intermittent peer communication. In addition, the center may remain alive while high uncertainty, stale assignment validity, or terminal visual disagreement makes the current plan locally unsafe to trust. The engineering question is how to preserve minimum continuity without creating duplicate assignments or conflicting local plans, while separating passive failover from active degradation.
 
 Scientific questions:
 
@@ -15,6 +15,32 @@ Scientific questions:
 - What conflict rate remains when only summaries are exchanged?
 - What communication overhead is introduced by bundle and winner-state diffusion?
 - How should peer decisions be merged back when the center returns without immediate authority thrash?
+- When the center is alive, how should D4 arbitrate among D1 localization uncertainty, D2 association risk, D3 assignment validity, and D5 terminal association disagreement?
+- When should the system request center replanning or secondary-node assistance instead of immediately entering fully distributed CBBA?
+
+## Passive Failover And Active Degradation
+
+`passive_failover` is triggered by center unavailability:
+
+- heartbeat failure timeout;
+- peer quorum confirming outage;
+- stale center epoch or unavailable assignment digest long enough to enter `failed`;
+- secondary node failure after center outage, which then falls back to distributed CBBA.
+
+`active_degradation` is triggered while the center is not failed:
+
+- D1 reports increasing localization covariance or stale measurements;
+- D2 reports high association ambiguity, ID switch, duplicate tracks, or low continuity;
+- D3 reports stale/non-current assignment, low cost margin, or plan-version risk;
+- D5 reports repeated `ambiguous`, `hold`, `reacquire`, or persistent mismatch between terminal visual candidates and the assigned `global_track_id`.
+
+The active path is conservative:
+
+1. If D5 remains consistent and D1/D2/D3 risk is low, continue the center plan.
+2. If D1/D2/D3 risk rises but D5 remains consistent, prefer center rolling replanning or secondary-node assistance.
+3. If D5 disagreement persists across multiple frames, select a healthy secondary node covering the `coverage_cell`.
+4. If no secondary node is available or the local region is partitioned, fall back to distributed CBBA/auction-style negotiation.
+5. Friend/identity conflict only produces a hold/review decision in this offline module.
 
 ## C2Health State Machine
 
@@ -67,7 +93,18 @@ Each transition records state, timestamp, reason, and epoch. The implementation 
 - `availability_band`: `none`, `low`, `medium`, or `high`.
 - `comm_band`: `poor`, `limited`, or `good`.
 - `operator_hold`: when true, the resource cannot receive new fallback assignments.
+- `node_role`: `ground_backup`, `secondary_recon`, `cluster_representative`, or `interceptor`.
+- `coordinator_only`: when true, the node coordinates or observes but does not own executable fallback tasks.
+- `coverage_cell`: coarse region covered by a secondary node.
 - `epoch`: monotonic planning epoch.
+
+Active-degradation summaries:
+
+- `TrackUncertaintySummary`: D1 localization uncertainty, covariance trace, measurement age, and coverage cell.
+- `AssociationRiskSummary`: D2 ambiguity, ID switch count, duplicate track count, and continuity.
+- `AssignmentValiditySummary`: D3 assigned track/resource, plan version, freshness, and cost margin.
+- `TerminalAssociationSummary`: D5 terminal decision state, confidence, ambiguity, mismatch duration, and friend-conflict flag.
+- `ActiveDegradationDecision`: D4 output with mode, action, reason, target node, coverage cell, risk factors, and terminal consistency.
 
 `BidState`:
 
@@ -202,6 +239,7 @@ Python package:
 - `network.py`: in-memory simulated network with delay and packet loss.
 - `cbba.py`: simplified CBBA negotiator.
 - `coordinator.py`: `FailoverCoordinator` with health detection, leader election, degraded planning, and merge recovery.
+- `active_degradation.py`: `ActiveDegradationArbiter` with passive/active degradation decision rules.
 - `simulation.py`: scenario runner and metric aggregation.
 
 CLI:
@@ -213,6 +251,7 @@ Tests:
 - Health-state transitions.
 - CBBA convergence and duplicate-owner conflict resolution.
 - Failover coordinator takeover and center recovery merge.
+- Active degradation arbitration for consistent, risky, terminal-disagreement, secondary-node, and distributed fallback cases.
 - Simulated packet loss/delay metrics smoke test.
 
 ## Deliverables

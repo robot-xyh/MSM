@@ -218,7 +218,150 @@ a95 = sqrt(chi2_2_0.95 * max_eigenvalue(P_xy))
 - `buffer_horizon = 6.0`
 - `bucket_size = 0.1`
 
-## 8. 主要实施流程
+## 8. 面向 D4 主动降级的不确定度信号
+
+D4 的主动降级不是由中心节点失效触发，而是由态势质量不足触发：中心节点仍可运行，但全局定位分辨率、时间新鲜度或多源一致性已经不足以支撑稳定集中式分配。D1 应向 D3/D4/D5 提供可解释的不确定度摘要，使系统在离线仿真中能区分“节点坏了”和“中心态势仍在但质量不够好”。
+
+### 8.1 D1 可提供的核心信号
+
+D1 侧可从 `GlobalTrack` 和近期观测历史派生以下信号：
+
+- 位置协方差迹 `position_cov_trace = trace(P_xyz)`：衡量三维位置总体不确定度。
+- 水平协方差椭圆 `a95_xy`：由 `P_xy` 最大特征值计算，适合表达平面定位分辨率。
+- 垂向不确定度 `sigma_z = sqrt(P_zz)`：用于区分水平可用但高度不稳定的航迹。
+- 速度协方差迹 `velocity_cov_trace = trace(P_vxvyvz)`：衡量预测未来接近窗口时的不确定度。
+- 量测延迟 `measurement_latency = published_at - last_measurement_timestamp` 或单观测 `arrival_timestamp - measurement_timestamp`：用于判断观测是否已经落后于分配周期。
+- 连续外推时长 `extrapolation_age = published_at - valid_at`：表示当前发布航迹距离最近有效滤波时刻的时间差。
+- 轨迹桶 `track_bucket = floor(valid_at / bucket_size)`：用于 D3/D4 判断不同航迹摘要是否属于同一时间离散窗口。
+- 航迹等级 `track_level`：`handover`、`stable`、`coarse` 的质量门控结果。
+- 多源支持 `source_support`：雷达、声学、EO 最近窗口内的支持数量和比例。
+- 观测一致性 `last_nis` 或 NIS 通过率：雷达、EO、声学与预测状态是否一致的统计证据。
+- 降级趋势 `track_level_drop`：从 `handover` 退到 `stable/coarse`，或从 `stable` 退到 `coarse`。
+
+这些信号不包含处置指令，只描述定位质量、时间新鲜度和多源一致性。
+
+### 8.2 `TrackUncertaintySummary` 建议结构
+
+建议 D1 在后续接口中为每条 `GlobalTrack` 生成摘要，作为 D3 代价函数和 D4 主动降级判断的输入。示例字段如下：
+
+```python
+TrackUncertaintySummary(
+    global_track_id: str,
+    valid_at: float,
+    published_at: float,
+    track_bucket: int,
+    track_level: str,
+    position_cov_trace: float,
+    velocity_cov_trace: float,
+    a95_xy_m: float,
+    sigma_z_m: float,
+    covariance_growth_rate: float | None,
+    measurement_latency_s: float,
+    extrapolation_age_s: float,
+    source_support: dict[str, int],
+    source_diversity_count: int,
+    last_nis: float | None,
+    nis_pass_rate: float | None,
+    handover_readiness: float,
+    quality_flags: tuple[str, ...],
+)
+```
+
+字段计算建议：
+
+- `valid_at` 取 `GlobalTrack.metadata["valid_at"]`，缺省时取 `GlobalTrack.timestamp`。
+- `published_at` 取 `GlobalTrack.metadata["published_at"]`，缺省时取当前回放时刻。
+- `track_bucket = FusionAdapter._bucket(valid_at)`，用于跨模块对齐同一决策周期。
+- `position_cov_trace = trace(covariance[:3, :3])`。
+- `velocity_cov_trace = trace(covariance[3:, 3:])`。
+- `a95_xy_m` 使用 D1 现有 `covariance_a95()` 逻辑。
+- `sigma_z_m = sqrt(covariance[2, 2])`。
+- `measurement_latency_s` 优先取最近观测的 `arrival_timestamp - measurement_timestamp`，只有航迹摘要时可退化为 `published_at - valid_at`。
+- `covariance_growth_rate` 可用最近两个摘要的 `position_cov_trace` 差分除以时间差。
+- `source_diversity_count` 统计最近窗口中非零支持的传感器类型数。
+- `handover_readiness` 建议归一化到 `[0, 1]`，由 `a95_xy_m`、`source_diversity_count`、`track_level`、NIS 通过率和延迟共同计算。
+
+一个保守的 `handover_readiness` 原型可定义为：
+
+```text
+readiness = min(
+    clamp(handover_threshold_m / max(a95_xy_m, eps), 0, 1),
+    clamp(latency_budget_s / max(measurement_latency_s, eps), 0, 1),
+    source_diversity_score,
+    nis_consistency_score,
+    level_score
+)
+```
+
+其中 `level_score` 可令 `handover=1.0`、`stable=0.6`、`coarse=0.2`。该指标只用于科研仿真中的质量门控，不代表授权状态。
+
+### 8.3 主动降级触发信号
+
+以下情况说明中心节点仍在线，但中心态势质量可能不足，D4 可考虑从集中式分配切换到二级节点区域协同，或在更差条件下降级为分布式协同：
+
+- 协方差突增：`position_cov_trace` 或 `a95_xy_m` 在短窗口内快速增加，例如超过上一窗口的 1.5-2.0 倍。
+- 连续外推过长：`extrapolation_age_s` 超过 D3 分配周期，说明当前发布航迹主要靠预测维持。
+- 延迟超过分配周期：`measurement_latency_s > assignment_period_s`，集中式分配可能基于过期态势。
+- 速度不确定度过高：`velocity_cov_trace` 增大，导致 D3 的接近窗口预测不稳定。
+- 多源不一致：雷达与 EO 的创新/NIS 长时间偏高，或同一目标在不同传感器下的残差方向系统性偏离。
+- 航迹等级回退：关键目标从 `handover` 回退到 `stable/coarse`，或 `stable` 回退到 `coarse`。
+- 传感器支持退化：`source_diversity_count` 从多源降到单源，尤其是 EO 或雷达连续缺失。
+- 空域局部质量不均：中心全局仍可用，但某个 `coverage_cell` 内多数航迹 `handover_readiness` 偏低，此时更适合交给该区域二级节点重新融合和协调。
+
+主动降级应使用迟滞和持续时间约束，避免单帧噪声导致频繁切换。建议 D4 在仿真中采用：
+
+```text
+active_degrade = bad_quality_ratio >= ratio_threshold
+                 and median_duration >= min_hold_time
+                 and affected_tracks include high_priority_tracks
+```
+
+其中 `bad_quality_ratio` 可按区域或全局统计 `handover_readiness < readiness_threshold` 的航迹比例。恢复集中式模式也应满足更严格的恢复门限，例如连续多个周期 `readiness` 回升并且延迟低于预算。
+
+### 8.4 面向 D3/D4/D5 的使用方式
+
+D3 使用方式：
+
+- 将 `a95_xy_m`、`position_cov_trace`、`velocity_cov_trace` 加入分配代价，避免对高不确定目标做频繁重分配。
+- 当 `track_bucket` 落后于当前分配周期时，提高该目标代价或保持原分配。
+- 当 `handover_readiness` 降低但未触发 D4 降级时，增加分配迟滞，减少抖动。
+
+D4 使用方式：
+
+- 以区域为单位聚合 `TrackUncertaintySummary`，判断是全局主动降级还是局部交给二级侦察节点。
+- 区分被动降级与主动降级：被动降级来自心跳/节点状态；主动降级来自 D1 不确定度、D3 重分配失败反馈和 D5 末端配准反馈。
+- 中心仍在线但某区域 `measurement_latency_s`、`a95_xy_m`、`handover_readiness` 长时间不达标时，优先切换到覆盖该区域的二级节点。
+- 若二级节点也无法提供新鲜观测或局部摘要，则再进入完全无中心的分布式协同。
+
+D5 使用方式：
+
+- 用 `a95_xy_m` 和完整协方差传播到图像平面，决定终端投影门限大小。
+- 当 `handover_readiness` 低或航迹等级回退时，终端应倾向 `ambiguous/hold/reacquire`，而不是自行改写 `global_track_id`。
+- D5 的 `TerminalAssociation` 反馈可回传 D1/D4，作为“中心预测与局部视觉不一致”的辅助信号。
+
+### 8.5 给 D4 的接口建议
+
+D1 到 D4 的建议消息可按周期发布，粒度为“单航迹摘要 + 区域聚合摘要”：
+
+```python
+TrackUncertaintySummary[]  # 每条航迹
+FusionQualityRegionSummary(
+    coverage_cell: str,
+    published_at: float,
+    track_count: int,
+    median_a95_xy_m: float,
+    p90_a95_xy_m: float,
+    stale_track_ratio: float,
+    handover_ready_ratio: float,
+    multi_source_ratio: float,
+    active_degrade_recommendation: str,  # "none" | "secondary_node" | "distributed_review"
+    reasons: tuple[str, ...],
+)
+```
+
+`active_degrade_recommendation` 只表达态势质量建议，不直接改变任务状态。D4 应结合自身 `C2Health`、D3 分配版本、D5 末端反馈和人工授权状态后再决定降级模式。
+
+## 9. 主要实施流程
 
 离线融合主流程：
 
@@ -236,10 +379,10 @@ a95 = sqrt(chi2_2_0.95 * max_eigenvalue(P_xy))
 - `src/d1_sensor_fusion/types.py`：输入输出数据结构。
 - `src/d1_sensor_fusion/observations.py`：雷达、声学、EO 观测模型和协方差。
 - `src/d1_sensor_fusion/ekf.py`：EKF 预测、更新和数值雅可比。
-- `src/d1_sensor_fusion/fusion.py`：融合适配器、延迟补偿、关联和分级。
+- `src/d1_sensor_fusion/fusion.py`：融合适配器、延迟补偿、关联、分级和不确定度摘要的建议来源。
 - `src/d1_sensor_fusion/simulation.py`：离线质点仿真、图表和报告生成。
 
-## 9. 参数与调参建议
+## 10. 参数与调参建议
 
 - `process_noise`：机动越强取值越大。过小会导致转弯目标滞后，过大会导致协方差膨胀和分级保守。
 - `association_gate`：越大越容易关联，越小越容易新建或漏关联。D1 只做基础关联，密集交叉场景应交给 D2。
@@ -249,8 +392,9 @@ a95 = sqrt(chi2_2_0.95 * max_eigenvalue(P_xy))
 - 雷达协方差：根据仿真距离、杂波、遮挡或信噪比调大，不要为了降低 RMSE 人为压小。
 - EO 协方差：小目标、逆光、遮挡、截断框应增加像素协方差。
 - 声学协方差：声源混叠、风噪或低置信度时应显著放大。
+- 主动降级门限：建议先用 D6 批量实验确定 `a95_xy_m`、`measurement_latency_s`、`handover_readiness` 的经验分位数，再设置区域级迟滞门限。
 
-## 10. 仿真验证与图表
+## 11. 仿真验证与图表
 
 当前仿真入口：
 
@@ -287,10 +431,20 @@ python3 research_modules/d1_sensor_fusion/scripts/run_simulation.py \
 - `observation_count`
 - `mean_radar_latency_s`
 
-## 11. 跨模块接口关系
+建议后续为主动降级增加指标：
+
+- `median_a95_xy_m`
+- `p90_a95_xy_m`
+- `stale_track_ratio`
+- `handover_ready_ratio`
+- `active_degrade_event_count`
+- `active_degrade_lead_time_s`
+
+## 12. 跨模块接口关系
 
 - D2：消费 D1 的 `GlobalTrack`，进一步执行多目标数据关联和稳定 `global_track_id` 管理。D1 的基础关联不替代 D2 的 GNN/JPDA/MHT。
 - D3：使用 `state`、`covariance`、`track_level` 和威胁/质量字段构造分配代价。高协方差航迹应提高分配惩罚。
+- D4：消费 D1 的 `TrackUncertaintySummary` 和区域质量摘要，用于区分被动降级与主动降级；主动降级只表达态势质量不足，不代表节点失效。
 - D5：使用 `GlobalTrack` 的 NED 状态和协方差投影到局部相机平面。D5 不应直接使用 D1 内部单次传感器观测改写终端绑定。
 - D6：消费 D1 输出和日志，统计 RMSE、连续性、分级准确率、延迟补偿收益等指标。
 
@@ -300,8 +454,9 @@ python3 research_modules/d1_sensor_fusion/scripts/run_simulation.py \
 - 所有航迹保留协方差。
 - D1 输出坐标系为 NED。
 - `handover_track` 仅代表研究质量等级，不代表授权或自动处置。
+- 主动降级信号只描述定位质量、延迟和一致性，不直接触发真实控制或处置动作。
 
-## 12. 局限与后续工作
+## 13. 局限与后续工作
 
 当前局限：
 
@@ -310,6 +465,7 @@ python3 research_modules/d1_sensor_fusion/scripts/run_simulation.py \
 - 仅实现 EKF fallback，UKF、IMM 和 Stone Soup OOSM 对照仍为后续扩展。
 - 坐标转换工具以接口约定为主，尚未集成 ROS 2 `tf2`。
 - 仿真为质点模型和合成传感器，不代表真实传感器标定误差全集。
+- `TrackUncertaintySummary` 当前为接口设计建议，尚未落地为代码数据类。
 
 后续建议：
 
@@ -318,3 +474,4 @@ python3 research_modules/d1_sensor_fusion/scripts/run_simulation.py \
 3. 增加 IMM-CV/CA/CT 运动模型，输出模型概率供 D2 使用。
 4. 将 D1 观测日志与 D6 统一事件记录格式对齐。
 5. 在 AirSim 离线回放中验证相机外参误差、遮挡和时间同步误差对 `handover_track` 的影响。
+6. 将 `TrackUncertaintySummary` 和 `FusionQualityRegionSummary` 实现为离线日志结构，供 D4 主动降级策略和 D6 批量统计使用。

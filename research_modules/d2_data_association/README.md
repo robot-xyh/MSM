@@ -49,7 +49,7 @@ python3 scripts/run_simulation.py \
 
 ## Documentation
 
-Read `docs/ALGORITHM_AND_IMPLEMENTATION.md` first for the Chinese design guide covering GNN/Hungarian, JPDA, MHT, gating, lifecycle management, metrics, and D1/D3/D5/D6 interfaces. `docs/EXPERIMENT_REPORT.md` keeps the benchmark interpretation and figure references.
+Read `docs/ALGORITHM_AND_IMPLEMENTATION.md` first for the Chinese design guide covering GNN/Hungarian, JPDA, MHT, gating, lifecycle management, proactive degradation risk signals, metrics, and D1/D3/D4/D5/D6 interfaces. `docs/EXPERIMENT_REPORT.md` keeps the benchmark interpretation and figure references.
 
 ## Optional Integrations
 

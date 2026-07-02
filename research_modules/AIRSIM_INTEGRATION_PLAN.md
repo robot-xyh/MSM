@@ -39,6 +39,43 @@ Fusion uses NED as the working state frame. WGS84 remains an external georeferen
 5. Center-node failure injection and degraded-plan replay.
 6. Batch logging through D6 with fixed random seeds and scenario metadata.
 
+## Phase 1 Dry-Run Implementation
+
+Implemented package: `research_modules/airsim_dryrun/`.
+
+This phase does not start AirSim. `FakeAirSimRuntimeClient` creates deterministic
+frames containing NED truth, resource states, camera metadata, visual detections,
+and center/secondary node-health flags. `observations_from_airsim_frame()`
+converts those frames into D1 `SensorObservation` records while preserving
+`measurement_timestamp`, `arrival_timestamp`, `frame_id`, covariance, and
+`real_airsim_used=false`.
+
+`AirSimDryRunOrchestrator` owns the main runtime sequence:
+
+```text
+fake reset
+-> fake frames
+-> D1 observation provider
+-> D2 association
+-> D3 assignment
+-> D5 terminal association
+-> D4 degradation arbitration
+-> D7 proportional-guidance records
+-> D6 metrics and reports
+```
+
+Run the current dry-run gate from the repository root:
+
+```bash
+python3 research_modules/airsim_dryrun/run_airsim_dry_run.py \
+  --scenario nominal_5v5 \
+  --episode-id episode_001 \
+  --output research_modules/airsim_dryrun/outputs/episode_001
+```
+
+The command writes the normal integrated episode artifacts plus
+`airsim_dry_run_summary.json`. The summary must keep `real_airsim_used=false`.
+
 ## Validation Gates
 
 Before any AirSim run is accepted:
