@@ -11,3 +11,7 @@ env/
 .DS_Store
 *.tmp
 *.log
+
+# Local simulator binaries and generated experiment outputs.
+Blocks/
+research_modules/**/outputs/
