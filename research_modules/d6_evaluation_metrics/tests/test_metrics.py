@@ -7,6 +7,7 @@ import pytest
 from d6_evaluation_metrics import (
     AssignmentRecord,
     EventRecord,
+    LinkRecord,
     MetricsCollector,
     TerminalRecord,
     TrackRecord,
@@ -261,6 +262,156 @@ def test_terminal_events_are_deduplicated_across_records_and_events() -> None:
     assert metrics.friend_overlap_hold_count == 1
 
 
+def test_link_metrics_from_link_records_and_event_metadata() -> None:
+    collector = MetricsCollector()
+    collector.extend_links(
+        [
+            LinkRecord(
+                timestamp=1.0,
+                source_node_id="I1",
+                target_node_id="C2",
+                link_type="c2_direct",
+                message_type="track_update",
+                sequence_id=2,
+                sent_timestamp=1.0,
+                received_timestamp=1.08,
+                measurement_timestamp=0.9,
+                payload_kind="track",
+                stale_after_s=0.1,
+            ),
+            LinkRecord(
+                timestamp=1.1,
+                source_node_id="I1",
+                target_node_id="C2",
+                link_type="c2_direct",
+                message_type="track_update",
+                sequence_id=1,
+                sent_timestamp=1.1,
+                received_timestamp=1.16,
+                payload_kind="track",
+            ),
+            LinkRecord(
+                timestamp=2.0,
+                source_node_id="TETHER",
+                target_node_id="I1",
+                link_type="video_cue",
+                message_type="video_metadata",
+                payload_kind="video_metadata",
+                delivered=True,
+                sent_timestamp=2.0,
+                received_timestamp=2.04,
+            ),
+            LinkRecord(
+                timestamp=2.1,
+                source_node_id="TETHER",
+                target_node_id="I1",
+                link_type="video_cue",
+                message_type="video_metadata",
+                payload_kind="video_metadata",
+                delivered=False,
+            ),
+            LinkRecord(
+                timestamp=2.2,
+                source_node_id="TETHER",
+                target_node_id="I1",
+                link_type="video_cue",
+                message_type="bbox",
+                payload_kind="bbox",
+                delivered=True,
+                sent_timestamp=2.2,
+                received_timestamp=2.23,
+            ),
+        ]
+    )
+    collector.add_event(
+        EventRecord(
+            timestamp=3.0,
+            event_type="consensus_stable",
+            metadata={"consensus_start_timestamp": 2.5},
+        )
+    )
+
+    metrics = collector.compute_episode("episode")
+
+    assert metrics.cross_node_latency_ms == pytest.approx(52.5)
+    assert metrics.message_drop_rate == pytest.approx(1.0 / 5.0)
+    assert metrics.out_of_order_count == 1
+    assert metrics.stale_track_update_count == 1
+    assert metrics.video_metadata_delivery_rate == pytest.approx(0.5)
+    assert metrics.bbox_delivery_rate == pytest.approx(1.0)
+    assert metrics.consensus_latency_s == pytest.approx(0.5)
+
+
+def test_multi_view_and_d7_guidance_gate_metrics() -> None:
+    collector = MetricsCollector()
+    collector.extend_terminals(
+        [
+            TerminalRecord(
+                timestamp=10.0,
+                resource_id="R1",
+                assigned_global_track_id="G1",
+                local_track_id="L1",
+                decision_state="locked",
+            ),
+            TerminalRecord(
+                timestamp=10.0,
+                resource_id="R2",
+                assigned_global_track_id="G1",
+                local_track_id="L2",
+                decision_state="locked",
+            ),
+        ]
+    )
+    collector.extend_events(
+        [
+            EventRecord(
+                timestamp=11.0,
+                event_type="multi_view_consensus_result",
+                metadata={"consensus_reached": True},
+            ),
+            EventRecord(
+                timestamp=11.5,
+                event_type="multi_view_consensus_result",
+                metadata={"consensus_reached": False},
+            ),
+            EventRecord(timestamp=12.0, event_type="cross_view_conflict"),
+            EventRecord(
+                timestamp=13.0,
+                event_type="d7_control_command",
+                metadata={
+                    "guidance_law": "pn",
+                    "camera_quality_gate_pass": True,
+                    "los_quality_gate_pass": True,
+                    "maneuver_margin_gate_pass": False,
+                },
+            ),
+            EventRecord(
+                timestamp=13.5,
+                event_type="terminal_switch_rejected",
+                metadata={
+                    "guidance_law": "pn",
+                    "terminal_switch_reject_reason": "camera_quality",
+                    "camera_quality_gate_pass": False,
+                    "los_quality_gate_pass": True,
+                    "maneuver_margin_gate_pass": True,
+                },
+            ),
+        ]
+    )
+
+    metrics = collector.compute_episode("episode")
+
+    assert metrics.multi_view_consensus_rate == pytest.approx(0.5)
+    assert metrics.cross_view_conflict_count == 1
+    assert metrics.duplicate_terminal_lock_count == 1
+    assert metrics.camera_quality_gate_pass_rate == pytest.approx(0.5)
+    assert metrics.los_quality_gate_pass_rate == pytest.approx(1.0)
+    assert metrics.maneuver_margin_gate_pass_rate == pytest.approx(0.5)
+    assert metrics.terminal_switch_reject_count == 1
+    assert metrics.metadata["guidance_law_counts"] == {"pn": 2}
+    assert metrics.metadata["terminal_switch_reject_reasons"] == {"camera_quality": 1}
+
+
 def test_episode_metrics_contains_all_required_names() -> None:
     required = {
         "detection_probability",
@@ -279,6 +430,20 @@ def test_episode_metrics_contains_all_required_names() -> None:
         "ambiguous_fov_event_count",
         "friend_overlap_hold_count",
         "time_to_terminal_lock",
+        "multi_view_consensus_rate",
+        "cross_view_conflict_count",
+        "duplicate_terminal_lock_count",
+        "cross_node_latency_ms",
+        "message_drop_rate",
+        "out_of_order_count",
+        "stale_track_update_count",
+        "video_metadata_delivery_rate",
+        "bbox_delivery_rate",
+        "consensus_latency_s",
+        "camera_quality_gate_pass_rate",
+        "los_quality_gate_pass_rate",
+        "maneuver_margin_gate_pass_rate",
+        "terminal_switch_reject_count",
         "constraint_violation_count",
         "human_override_count",
     }

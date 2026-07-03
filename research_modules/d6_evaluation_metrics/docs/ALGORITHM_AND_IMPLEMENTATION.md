@@ -4,7 +4,7 @@
 
 D6 是系统级离线评估模块，负责消费 D1-D5 产生的记录、仿真日志和评估真值，输出可复现的指标、表格、报告和曲线。D6 不参与实时任务决策，不发布控制指令，不提供火控参数，不建模毁伤效果，不自动处置目标，也不绕过人工授权。
 
-本模块解决的问题不是“某次是否成功”，而是“系统在哪个环节稳定、在哪个环节失效”。因此不能只报告命中率。单一命中率会掩盖探测虚警、航迹断裂、ID Switch、重复分配、降级接管失败、末端误配准和安全约束触发等问题。D6 将这些问题拆成六类指标：探测、跟踪、分配、降级、末端配准和安全约束。
+本模块解决的问题不是“某次是否成功”，而是“系统在哪个环节稳定、在哪个环节失效”。因此不能只报告命中率。单一命中率会掩盖探测虚警、航迹断裂、ID Switch、重复分配、降级接管失败、末端误配准、跨节点通信异常、D7 末端切换门控失败和安全约束触发等问题。D6 将这些问题拆成八类指标：探测、跟踪、分配、降级、末端配准、通信链路、导引门控和安全约束。
 
 ## 2. 输入输出
 
@@ -15,6 +15,7 @@ D6 是系统级离线评估模块，负责消费 D1-D5 产生的记录、仿真�
 | 航迹记录 | `TrackRecord` | D1/D2 | `timestamp`, `global_track_id`, `truth_id`, `position`, `truth_position`, `covariance_trace`, `track_state` |
 | 分配记录 | `AssignmentRecord` | D3/D4 | `timestamp`, `plan_id`, `version`, `resource_id`, `global_track_id`, `authorization_state`, `active`, `truth_id` |
 | 系统事件 | `EventRecord` | D1-D5/仿真器 | `timestamp`, `event_type`, `actor_id`, `value`, `metadata` |
+| 通信记录 | `LinkRecord` | C2/二级节点/拦截机/仿真器 | `source_node_id`, `target_node_id`, `link_type`, `payload_kind`, `sent_timestamp`, `received_timestamp`, `sequence_id`, `delivered` |
 | 末端记录 | `TerminalRecord` | D5 | `resource_id`, `assigned_global_track_id`, `local_track_id`, `decision_state`, `friend_conflict_state`, `association_correct` |
 | 真值摘要 | `truth_summary` | 仿真器/离线标注 | `truth_timestamps`, `high_threat_ids`, `high_threat_by_timestamp`, `scenario` |
 
@@ -28,7 +29,7 @@ D6 是系统级离线评估模块，负责消费 D1-D5 产生的记录、仿真�
 | `episode_metrics.csv` | `outputs/*/` | 每个 episode 一行，便于统计检验 |
 | `summary_metrics.csv` | `outputs/*/` | 均值、标准差、置信区间和分位数 |
 | `batch_report.md` | `outputs/*/` | 自动生成的中文批量报告 |
-| `plots/*.png` | `outputs/*/plots/` | 六类指标柱状图和关键指标分布曲线 |
+| `plots/*.png` | `outputs/*/plots/` | 分类指标柱状图和关键指标分布曲线 |
 
 ## 3. 指标体系与事件来源
 
@@ -231,7 +232,106 @@ time_to_terminal_lock =
 
 D5 后续扩展建议：增加 `recon_cue_used_count`，用于统计二级侦察节点图像 cue 被 D5 采纳为辅助证据的次数。该指标应只说明 cue 被用于离线配准评估，不代表自动授权或局部节点改写 `global_track_id`。
 
-### 3.6 安全约束指标
+#### 3.5.1 多视角与无 PNG 评估
+
+main 通信假设允许拦截机之间、拦截机与中心/二级节点、拦截机与系留无人机、系留无人机与中心之间进行数据或视频元数据通信。D6 不需要保存 PNG 截图即可评估多视角末端关联，只要求日志保留：
+
+```text
+timestamp
+resource_id / producer_node_id / consumer_node_id
+camera_id / stream_id
+bbox_xyxy
+camera_intrinsics
+camera_extrinsics
+assigned_global_track_id
+object_name
+truth_label / validation_label
+```
+
+新增多视角指标：
+
+```text
+multi_view_consensus_rate =
+  successful multi_view_consensus events / consensus attempts
+
+cross_view_conflict_count =
+  count(cross_view_conflict or metadata.cross_view_conflict)
+
+duplicate_terminal_lock_count =
+  count(same timestamp and same assigned_global_track_id locked by multiple resources)
+```
+
+这些指标用于解释末端关联错误、重复锁定和 D4 主动降级触发原因。视频元数据可以来自中心、二级系留节点、拦截机或拦截机间转发；D6 只统计链路和一致性，不改变 `global_track_id` 或 `AssignmentPlan`。
+
+### 3.6 通信链路指标
+
+`LinkRecord` 是可选输入。如果集成侧已经使用 `EventRecord` 统一记录事件，也可以把同名字段放入 `EventRecord.metadata`。D6 会把两者归一化为通信样本。
+
+```text
+cross_node_latency_ms =
+  mean((received_timestamp - sent_timestamp) * 1000)
+
+message_drop_rate =
+  dropped_messages / attempted_messages
+
+out_of_order_count =
+  explicit out_of_order events + decreasing sequence IDs per stream
+
+stale_track_update_count =
+  count(track payload latency > stale_after_s)
+
+video_metadata_delivery_rate =
+  delivered video_metadata payloads / attempted video_metadata payloads
+
+bbox_delivery_rate =
+  delivered bbox payloads / attempted bbox payloads
+
+consensus_latency_s =
+  mean(consensus_start_to_stable latency or consensus/bid link latency)
+```
+
+推荐 `EventRecord.metadata` / `LinkRecord` 字段：
+
+```text
+source_node_id
+target_node_id
+relay_node_id
+link_type: c2_direct | secondary_relay | interceptor_peer | video_cue
+message_type
+sequence_id
+sent_timestamp
+received_timestamp
+measurement_timestamp
+arrival_timestamp
+payload_kind: track | bbox | video_metadata | assignment | terminal_association | bid
+delivered
+stale_after_s
+```
+
+### 3.7 D7 PNG Gate 与末端切换门控指标
+
+D7 中段到末端的切换需要同时满足身份一致、相机质量、LOS 质量、机动余量和窗口条件。D6 从 D7 control command 或 event metadata 中读取门控结果：
+
+```text
+guidance_law
+terminal_switch_reject_reason
+camera_quality_gate_pass
+los_quality_gate_pass
+maneuver_margin_gate_pass
+```
+
+对应指标：
+
+```text
+camera_quality_gate_pass_rate
+los_quality_gate_pass_rate
+maneuver_margin_gate_pass_rate
+terminal_switch_reject_count
+```
+
+其中 `terminal_switch_reject_reason` 会进入 `EpisodeMetrics.metadata["terminal_switch_reject_reasons"]`，`guidance_law` 会进入 `EpisodeMetrics.metadata["guidance_law_counts"]`，用于报告 PN/LOS/Pure Pursuit 等导引律在不同门控条件下的分布。PNG 不作为必需输入；只要检测框、相机参数、时间戳和门控结果可追溯，D6 就能完成离线评估。
+
+### 3.8 安全约束指标
 
 ```text
 constraint_violation_count = count(safety constraint violation events)
@@ -281,7 +381,7 @@ OSPA_p,c(X,Y) =
 离线日志/仿真真值
         |
         v
-适配器转换为 TrackRecord / AssignmentRecord / EventRecord / TerminalRecord
+适配器转换为 TrackRecord / AssignmentRecord / EventRecord / LinkRecord / TerminalRecord
         |
         v
 MetricsCollector.add_*()
@@ -299,7 +399,7 @@ ReportGenerator -> CSV / Markdown / PNG 图表
 核心流程：
 
 1. 对齐时间轴，将所有源数据转换为 episode 内单调秒级时间。
-2. 将 D1-D5 日志转换为 D6 数据类。
+2. 将 D1-D7 日志转换为 D6 数据类。
 3. 提供 `truth_summary`，至少包含真值时间戳；若要评估高威胁未分配，需提供高威胁集合。
 4. 调用 `MetricsCollector.compute_episode()` 生成单 episode 指标。
 5. 批量运行多个随机种子和场景因素。
@@ -314,6 +414,7 @@ collector = MetricsCollector(ambiguous_fov_threshold=0.6)
 collector.add_track(track_record)
 collector.add_assignment(assignment_record)
 collector.add_event(event_record)
+collector.add_link(link_record)
 collector.add_terminal(terminal_record)
 
 metrics = collector.compute_episode(

@@ -34,6 +34,33 @@ p = K [R_cw | t_cw] P_w
 
 MOT 的 `local_track_id` 只作为本地观测 ID，不得替代或重写 `global_track_id`。
 
+### ComputerVision 5v5 多镜头压力输入
+
+本轮 D4/D5 专项测试采用 AirSim ComputerVision Vehicle 场景的离线检测合同，不要求 D5 导入 AirSim 或调用仿真 API。推荐几何假设：
+
+- 5 个 `Interceptor_Cam_*` 主镜头。
+- 5 个目标，目标距拦截镜头约 50m。
+- 目标间距约 20m，镜头间距约 20m，使每个主镜头视场内出现多个目标。
+- 一个或多个高空系留二级侦察镜头，比目标高约 200m，分辨率更高，覆盖全局视野。
+
+每个主镜头的 `simGetDetections` 结果应被转换为：
+
+```text
+DetectionInfo / fixture bbox
+-> LocalVisualTrack(local_track_id, center_px, bbox, category, quality, timestamp)
+-> TerminalObservationBus.publish_local_track(...)
+```
+
+若已经完成单机配准，则继续发布：
+
+```text
+TerminalAssociation
+-> TerminalObservationBus.publish_terminal_association(...)
+-> CrossViewAssociation summary
+```
+
+D5 只生成 `LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim`、`ReconImageCue` 和 `TerminalObservationBus/cross_view summaries`。不得生成 `AssignmentPlan`，不得改写 `global_track_id`。
+
 ## 身份声明输入
 
 将合作对象元数据转换为模拟身份消息：
@@ -90,6 +117,20 @@ AirSim 场景中可加入高空系留侦察无人机作为二级节点。二级�
 7. 调用 `TerminalAssociator.decide(...)`。
 8. 记录 `locked/ambiguous/hold/reacquire`、候选成本、cue 使用情况、正确性和 ID 不变式。
 
+ComputerVision 5v5 专项回放中，额外执行：
+
+1. 对所有 `Interceptor_Cam_*` 分别调用检测转换 helper，统计每个镜头检测数量。
+2. 对每个资源发布本地观测和终端关联结果。
+3. 对二级系留侦察镜头发布已重投影的 `ReconImageCue`；过期或不可用 cue 必须显式标记。
+4. 调用 `TerminalObservationBus.cross_view_associations()` 汇总重叠视场支持。
+5. 调用 `compute_terminal_stress_metrics()` 和 `summarize_degradation_case()` 生成 D5 证据。
+
+三类证据输出语义：
+
+- `no_degradation`：终端 `locked` 与 D3 分配及评估真值一致，无持续歧义或冲突。
+- `degrade_to_secondary`：终端局部证据与中心分配持续不一致或歧义，且二级侦察 cue 新鲜可用。
+- `degrade_to_distributed`：终端局部证据与中心分配持续不一致或歧义，但二级 cue 不可用、过期或被标记失效，只能给 D4 提供分散降级证据。
+
 ## 指标
 
 - 终端关联正确率。
@@ -99,6 +140,12 @@ AirSim 场景中可加入高空系留侦察无人机作为二级节点。二级�
 - `hold` 次数，尤其是友方重叠触发次数。
 - `reacquire` 次数和遮挡恢复耗时。
 - 输入 `global_track_id` 变更次数，期望恒为 0。
+- `per_camera_detection_count`。
+- `multi_target_fov_rate`。
+- `cross_view_overlap_count`。
+- `duplicate_terminal_lock_risk`。
+- `terminal_lock_accuracy`。
+- `ambiguous_fov_event_count`。
 
 ## 防护约束
 

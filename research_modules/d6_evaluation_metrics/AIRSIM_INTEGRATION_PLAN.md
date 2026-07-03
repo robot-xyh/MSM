@@ -39,6 +39,29 @@ Expected AirSim-side artifacts:
 
 No live API calls are required for metric generation.
 
+### Current Blocks Replay JSONL Adapter
+
+For the current ComputerVision 5v5 replay path, D6 can evaluate the main
+runtime outputs directly through `load_blocks_replay_jsonl()`:
+
+| Runtime artifact | D6 use |
+|---|---|
+| `blocks_frames.jsonl` | Builds `truth_summary`, visual `TrackRecord`, `TerminalRecord`, bbox `LinkRecord`, video-metadata `LinkRecord`, and multi-view consensus/conflict events |
+| `blocks_sensor_observations.jsonl` | Adds delivered D1 replay observations and communication `LinkRecord` entries for latency, drop, sequence, and stale-update metrics |
+
+`blocks_frames.jsonl` is sufficient for metadata-only CV evaluation when it
+contains `truth_objects`, `cameras`, `metadata.images` or camera status,
+`visual_detections`, `bbox_xyxy`, `local_track_id`, `object_id`, object labels,
+camera intrinsics/extrinsics, and timestamps. PNG screenshots are optional and
+are only diagnostic evidence; D6 metrics do not require them.
+
+`blocks_sensor_observations.jsonl` should preserve `measurement_timestamp`,
+`arrival_timestamp`, `metadata.truth_id`, and optional `communication` fields:
+`source_node_id`, `target_node_id`, `payload_kind`, `sequence_id`,
+`sent_timestamp`, `received_timestamp`, `delivered`, and `stale_after_s`.
+These fields let D6 compute cross-node latency, drop rate, out-of-order counts,
+and stale track updates without connecting to AirSim or any live link.
+
 ## Timestamp Alignment
 
 All records should be transformed to a common monotonic episode clock:

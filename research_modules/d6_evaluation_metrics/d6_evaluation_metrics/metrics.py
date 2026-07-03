@@ -63,6 +63,27 @@ class EventRecord:
 
 
 @dataclass(frozen=True)
+class LinkRecord:
+    """Optional cross-node communication record for offline evaluation."""
+
+    timestamp: float
+    source_node_id: str
+    target_node_id: str | None = None
+    relay_node_id: str | None = None
+    link_type: str = "data"
+    message_type: str = "data"
+    sequence_id: int | str | None = None
+    sent_timestamp: float | None = None
+    received_timestamp: float | None = None
+    measurement_timestamp: float | None = None
+    arrival_timestamp: float | None = None
+    payload_kind: str = "data"
+    delivered: bool = True
+    stale_after_s: float | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class TerminalRecord:
     """Offline terminal registration record.
 
@@ -105,6 +126,20 @@ class EpisodeMetrics:
     ambiguous_fov_event_count: int = 0
     friend_overlap_hold_count: int = 0
     time_to_terminal_lock: float = 0.0
+    multi_view_consensus_rate: float = 0.0
+    cross_view_conflict_count: int = 0
+    duplicate_terminal_lock_count: int = 0
+    cross_node_latency_ms: float = 0.0
+    message_drop_rate: float = 0.0
+    out_of_order_count: int = 0
+    stale_track_update_count: int = 0
+    video_metadata_delivery_rate: float = 0.0
+    bbox_delivery_rate: float = 0.0
+    consensus_latency_s: float = 0.0
+    camera_quality_gate_pass_rate: float = 0.0
+    los_quality_gate_pass_rate: float = 0.0
+    maneuver_margin_gate_pass_rate: float = 0.0
+    terminal_switch_reject_count: int = 0
     constraint_violation_count: int = 0
     human_override_count: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -128,6 +163,20 @@ class EpisodeMetrics:
             "ambiguous_fov_event_count",
             "friend_overlap_hold_count",
             "time_to_terminal_lock",
+            "multi_view_consensus_rate",
+            "cross_view_conflict_count",
+            "duplicate_terminal_lock_count",
+            "cross_node_latency_ms",
+            "message_drop_rate",
+            "out_of_order_count",
+            "stale_track_update_count",
+            "video_metadata_delivery_rate",
+            "bbox_delivery_rate",
+            "consensus_latency_s",
+            "camera_quality_gate_pass_rate",
+            "los_quality_gate_pass_rate",
+            "maneuver_margin_gate_pass_rate",
+            "terminal_switch_reject_count",
             "constraint_violation_count",
             "human_override_count",
         ]
@@ -156,6 +205,41 @@ class MetricsCollector:
     }
     AMBIGUOUS_FOV_EVENTS = {"ambiguous_fov", "terminal_ambiguous_fov"}
     FRIEND_HOLD_EVENTS = {"friend_overlap_hold", "friend_conflict_hold"}
+    MESSAGE_DROP_EVENTS = {
+        "message_drop",
+        "link_drop",
+        "packet_drop",
+        "communication_drop",
+    }
+    OUT_OF_ORDER_EVENTS = {
+        "out_of_order_message",
+        "message_out_of_order",
+        "link_out_of_order",
+    }
+    STALE_TRACK_EVENTS = {"stale_track_update", "stale_track_summary"}
+    MULTI_VIEW_CONSENSUS_EVENTS = {
+        "multi_view_consensus",
+        "multi_view_consensus_result",
+        "cross_view_consensus",
+    }
+    MULTI_VIEW_CONSENSUS_FAILURE_EVENTS = {
+        "multi_view_consensus_failed",
+        "cross_view_consensus_failed",
+    }
+    CROSS_VIEW_CONFLICT_EVENTS = {
+        "cross_view_conflict",
+        "multi_view_conflict",
+        "terminal_cross_view_conflict",
+    }
+    DUPLICATE_TERMINAL_LOCK_EVENTS = {
+        "duplicate_terminal_lock",
+        "terminal_duplicate_lock",
+    }
+    TERMINAL_SWITCH_REJECT_EVENTS = {
+        "terminal_switch_reject",
+        "terminal_switch_rejected",
+        "d7_terminal_switch_reject",
+    }
     FOV_ENTRY_STATES = {"fov_entry", "entered_fov", "terminal_fov_entry"}
     LOCK_STATES = {"locked", "lock", "terminal_lock"}
     ASSOCIATION_STATES = {"associated", "locked", "lock", "terminal_lock"}
@@ -172,6 +256,7 @@ class MetricsCollector:
         self.track_records: list[TrackRecord] = []
         self.assignment_records: list[AssignmentRecord] = []
         self.event_records: list[EventRecord] = []
+        self.link_records: list[LinkRecord] = []
         self.terminal_records: list[TerminalRecord] = []
 
     def add_track(self, record: TrackRecord) -> None:
@@ -182,6 +267,9 @@ class MetricsCollector:
 
     def add_event(self, record: EventRecord) -> None:
         self.event_records.append(record)
+
+    def add_link(self, record: LinkRecord) -> None:
+        self.link_records.append(record)
 
     def add_terminal(self, record: TerminalRecord) -> None:
         self.terminal_records.append(record)
@@ -194,6 +282,9 @@ class MetricsCollector:
 
     def extend_events(self, records: Iterable[EventRecord]) -> None:
         self.event_records.extend(records)
+
+    def extend_links(self, records: Iterable[LinkRecord]) -> None:
+        self.link_records.extend(records)
 
     def extend_terminals(self, records: Iterable[TerminalRecord]) -> None:
         self.terminal_records.extend(records)
@@ -225,6 +316,9 @@ class MetricsCollector:
         assignment = self._compute_assignment_metrics(truth_summary)
         degradation = self._compute_degradation_metrics()
         terminal = self._compute_terminal_metrics()
+        link = self._compute_link_metrics()
+        guidance_gate = self._compute_guidance_gate_metrics()
+        guidance_metadata = guidance_gate.pop("_metadata", {})
         safety = self._compute_safety_metrics()
 
         for metric_group in (
@@ -233,6 +327,8 @@ class MetricsCollector:
             assignment,
             degradation,
             terminal,
+            link,
+            guidance_gate,
             safety,
         ):
             for key, value in metric_group.items():
@@ -242,8 +338,10 @@ class MetricsCollector:
             "track_record_count": len(self.track_records),
             "assignment_record_count": len(self.assignment_records),
             "event_record_count": len(self.event_records),
+            "link_record_count": len(self.link_records),
             "terminal_record_count": len(self.terminal_records),
             "offline_only": True,
+            **guidance_metadata,
         }
         return metrics
 
@@ -252,6 +350,7 @@ class MetricsCollector:
             "tracks": [asdict(record) for record in self.track_records],
             "assignments": [asdict(record) for record in self.assignment_records],
             "events": [asdict(record) for record in self.event_records],
+            "links": [asdict(record) for record in self.link_records],
             "terminals": [asdict(record) for record in self.terminal_records],
         }
 
@@ -260,6 +359,7 @@ class MetricsCollector:
         timestamps.extend(record.timestamp for record in self.track_records)
         timestamps.extend(record.timestamp for record in self.assignment_records)
         timestamps.extend(record.timestamp for record in self.event_records)
+        timestamps.extend(record.timestamp for record in self.link_records)
         timestamps.extend(record.timestamp for record in self.terminal_records)
         if not timestamps:
             return 0.0
@@ -500,8 +600,10 @@ class MetricsCollector:
         terminal_id_switch_count = self._count_terminal_id_switches()
         ambiguous_fov_event_count = len(self._terminal_event_keys("ambiguous"))
         friend_overlap_hold_count = len(self._terminal_event_keys("friend_hold"))
-
         time_to_terminal_lock = self._compute_time_to_terminal_lock()
+        multi_view_consensus_rate = self._compute_multi_view_consensus_rate()
+        cross_view_conflict_count = self._compute_cross_view_conflict_count()
+        duplicate_terminal_lock_count = self._compute_duplicate_terminal_lock_count()
 
         return {
             "terminal_association_accuracy": terminal_association_accuracy,
@@ -509,6 +611,9 @@ class MetricsCollector:
             "ambiguous_fov_event_count": ambiguous_fov_event_count,
             "friend_overlap_hold_count": friend_overlap_hold_count,
             "time_to_terminal_lock": time_to_terminal_lock,
+            "multi_view_consensus_rate": multi_view_consensus_rate,
+            "cross_view_conflict_count": cross_view_conflict_count,
+            "duplicate_terminal_lock_count": duplicate_terminal_lock_count,
         }
 
     def _count_terminal_id_switches(self) -> int:
@@ -595,6 +700,275 @@ class MetricsCollector:
         ]
         return _mean(lock_deltas)
 
+    def _compute_multi_view_consensus_rate(self) -> float:
+        attempts = 0
+        successes = 0
+        for record in self.event_records:
+            event_type = _event_type(record)
+            metadata = record.metadata
+            has_consensus_field = any(
+                key in metadata
+                for key in (
+                    "multi_view_consensus",
+                    "consensus",
+                    "consensus_reached",
+                    "multi_view_consensus_reached",
+                )
+            )
+            if (
+                event_type in self.MULTI_VIEW_CONSENSUS_EVENTS
+                or event_type in self.MULTI_VIEW_CONSENSUS_FAILURE_EVENTS
+                or has_consensus_field
+            ):
+                attempts += 1
+                if event_type in self.MULTI_VIEW_CONSENSUS_FAILURE_EVENTS:
+                    default = False
+                else:
+                    default = event_type in self.MULTI_VIEW_CONSENSUS_EVENTS
+                successes += int(
+                    _bool_from_metadata(
+                        metadata,
+                        (
+                            "multi_view_consensus",
+                            "consensus_reached",
+                            "multi_view_consensus_reached",
+                            "consensus",
+                        ),
+                        default=default,
+                    )
+                )
+        return successes / attempts if attempts else 0.0
+
+    def _compute_cross_view_conflict_count(self) -> int:
+        return sum(
+            1
+            for record in self.event_records
+            if _event_type(record) in self.CROSS_VIEW_CONFLICT_EVENTS
+            or _bool_from_metadata(
+                record.metadata,
+                ("cross_view_conflict", "multi_view_conflict"),
+                default=False,
+            )
+        )
+
+    def _compute_duplicate_terminal_lock_count(self) -> int:
+        duplicate_events = sum(
+            1
+            for record in self.event_records
+            if _event_type(record) in self.DUPLICATE_TERMINAL_LOCK_EVENTS
+            or _bool_from_metadata(record.metadata, ("duplicate_terminal_lock",), default=False)
+        )
+        locks_by_snapshot: dict[tuple[float, str], set[str]] = defaultdict(set)
+        for record in self.terminal_records:
+            if _state(record.decision_state) not in self.LOCK_STATES:
+                continue
+            if record.assigned_global_track_id is None:
+                continue
+            locks_by_snapshot[
+                (float(record.timestamp), str(record.assigned_global_track_id))
+            ].add(record.resource_id)
+        duplicate_record_count = sum(
+            1 for resources in locks_by_snapshot.values() if len(resources) > 1
+        )
+        return duplicate_events + duplicate_record_count
+
+    def _compute_link_metrics(self) -> dict[str, float | int]:
+        link_items = self._communication_items()
+        delivered_items = [item for item in link_items if item["delivered"]]
+        latencies_s = [
+            latency_s
+            for item in delivered_items
+            for latency_s in [_communication_latency_s(item)]
+            if latency_s is not None
+        ]
+
+        dropped_count = sum(1 for item in link_items if not item["delivered"])
+        total_messages = len(link_items)
+        message_drop_rate = dropped_count / total_messages if total_messages else 0.0
+
+        return {
+            "cross_node_latency_ms": _mean(latencies_s) * 1000.0,
+            "message_drop_rate": message_drop_rate,
+            "out_of_order_count": self._compute_out_of_order_count(link_items),
+            "stale_track_update_count": self._compute_stale_track_update_count(link_items),
+            "video_metadata_delivery_rate": _delivery_rate(
+                link_items,
+                {
+                    "video_metadata",
+                    "video",
+                    "video_cue",
+                    "video_metadata_delivery",
+                    "video_metadata_delivered",
+                },
+            ),
+            "bbox_delivery_rate": _delivery_rate(
+                link_items,
+                {
+                    "bbox",
+                    "bboxes",
+                    "detection_bbox",
+                    "detection_box",
+                    "bbox_delivery",
+                    "bbox_delivered",
+                },
+            ),
+            "consensus_latency_s": self._compute_consensus_latency_s(link_items),
+        }
+
+    def _communication_items(self) -> list[dict[str, Any]]:
+        items = [_link_record_to_item(record) for record in self.link_records]
+        for record in self.event_records:
+            item = _event_to_communication_item(record)
+            if item is not None:
+                items.append(item)
+        return items
+
+    def _compute_out_of_order_count(self, link_items: Sequence[Mapping[str, Any]]) -> int:
+        explicit_count = sum(
+            1
+            for record in self.event_records
+            if _event_type(record) in self.OUT_OF_ORDER_EVENTS
+            or _bool_from_metadata(record.metadata, ("out_of_order",), default=False)
+        )
+        previous_by_stream: dict[tuple[str, str, str, str], int] = {}
+        sequence_count = 0
+        ordered_items = sorted(
+            link_items,
+            key=lambda item: float(
+                item.get("received_timestamp")
+                or item.get("arrival_timestamp")
+                or item.get("timestamp")
+                or 0.0
+            ),
+        )
+        for item in ordered_items:
+            if not item.get("delivered", True):
+                continue
+            sequence = _sequence_int(item.get("sequence_id"))
+            if sequence is None:
+                continue
+            stream_key = (
+                str(item.get("source_node_id") or ""),
+                str(item.get("target_node_id") or ""),
+                str(item.get("link_type") or ""),
+                str(item.get("message_type") or item.get("payload_kind") or ""),
+            )
+            previous = previous_by_stream.get(stream_key)
+            if previous is not None and sequence < previous:
+                sequence_count += 1
+            previous_by_stream[stream_key] = max(previous or sequence, sequence)
+        return explicit_count + sequence_count
+
+    def _compute_stale_track_update_count(
+        self,
+        link_items: Sequence[Mapping[str, Any]],
+    ) -> int:
+        explicit_count = sum(
+            1
+            for record in self.event_records
+            if _event_type(record) in self.STALE_TRACK_EVENTS
+            or _bool_from_metadata(record.metadata, ("stale", "stale_track_update"), default=False)
+        )
+        stale_count = 0
+        for item in link_items:
+            if not item.get("delivered", True):
+                continue
+            if _payload_kind(item) not in {"track", "track_summary", "global_track"}:
+                continue
+            stale_after_s = _optional_float_value(item.get("stale_after_s"))
+            if stale_after_s is None:
+                continue
+            age_s = _track_update_age_s(item)
+            if age_s is not None and age_s > stale_after_s:
+                stale_count += 1
+        return explicit_count + stale_count
+
+    def _compute_consensus_latency_s(
+        self,
+        link_items: Sequence[Mapping[str, Any]],
+    ) -> float:
+        latencies: list[float] = []
+        for record in self.event_records:
+            for key in ("consensus_latency_s", "consensus_latency"):
+                value = _metadata_float(record.metadata, key)
+                if value is not None:
+                    latencies.append(value)
+            start_timestamp = _metadata_float(record.metadata, "consensus_start_timestamp")
+            if start_timestamp is not None and _event_type(record) in {
+                "consensus_stable",
+                "consensus_complete",
+            }:
+                latencies.append(max(0.0, record.timestamp - start_timestamp))
+
+        for item in link_items:
+            if not item.get("delivered", True):
+                continue
+            if _payload_kind(item) not in {"consensus", "bid", "bid_state"}:
+                continue
+            latency_s = _communication_latency_s(item)
+            if latency_s is not None:
+                latencies.append(latency_s)
+        return _mean(latencies)
+
+    def _compute_guidance_gate_metrics(self) -> dict[str, Any]:
+        camera_values: list[bool] = []
+        los_values: list[bool] = []
+        maneuver_values: list[bool] = []
+        terminal_switch_reject_count = 0
+        guidance_law_counts: dict[str, int] = defaultdict(int)
+        reject_reasons: dict[str, int] = defaultdict(int)
+
+        for record in self.event_records:
+            metadata = record.metadata
+            guidance_law = metadata.get("guidance_law")
+            if guidance_law is not None:
+                guidance_law_counts[str(guidance_law)] += 1
+
+            _append_gate_value(
+                camera_values,
+                metadata,
+                ("camera_quality_gate_pass", "camera_gate_pass", "camera_gate"),
+            )
+            _append_gate_value(
+                los_values,
+                metadata,
+                ("los_quality_gate_pass", "los_gate_pass", "los_gate"),
+            )
+            _append_gate_value(
+                maneuver_values,
+                metadata,
+                (
+                    "maneuver_margin_gate_pass",
+                    "maneuver_gate_pass",
+                    "maneuver_margin_gate",
+                    "maneuver_gate",
+                ),
+            )
+
+            reject_reason = metadata.get("terminal_switch_reject_reason")
+            rejected = _event_type(record) in self.TERMINAL_SWITCH_REJECT_EVENTS
+            rejected = rejected or reject_reason is not None
+            rejected = rejected or _bool_from_metadata(
+                metadata,
+                ("terminal_switch_rejected", "terminal_switch_reject"),
+                default=False,
+            )
+            if rejected:
+                terminal_switch_reject_count += 1
+                if reject_reason is not None:
+                    reject_reasons[str(reject_reason)] += 1
+
+        return {
+            "camera_quality_gate_pass_rate": _bool_rate(camera_values),
+            "los_quality_gate_pass_rate": _bool_rate(los_values),
+            "maneuver_margin_gate_pass_rate": _bool_rate(maneuver_values),
+            "terminal_switch_reject_count": terminal_switch_reject_count,
+            "_metadata": {
+                "guidance_law_counts": dict(guidance_law_counts),
+                "terminal_switch_reject_reasons": dict(reject_reasons),
+            },
+        }
+
     def _compute_safety_metrics(self) -> dict[str, int]:
         constraint_violation_count = sum(
             1
@@ -622,6 +996,224 @@ def _event_type(record: EventRecord) -> str:
 
 def _mean(values: Sequence[float]) -> float:
     return float(sum(values) / len(values)) if values else 0.0
+
+
+def _bool_rate(values: Sequence[bool]) -> float:
+    return sum(1 for value in values if value) / len(values) if values else 0.0
+
+
+def _link_record_to_item(record: LinkRecord) -> dict[str, Any]:
+    return {
+        "timestamp": record.timestamp,
+        "source_node_id": record.source_node_id,
+        "target_node_id": record.target_node_id,
+        "relay_node_id": record.relay_node_id,
+        "link_type": record.link_type,
+        "message_type": record.message_type,
+        "sequence_id": record.sequence_id,
+        "sent_timestamp": record.sent_timestamp,
+        "received_timestamp": record.received_timestamp,
+        "measurement_timestamp": record.measurement_timestamp,
+        "arrival_timestamp": record.arrival_timestamp,
+        "payload_kind": record.payload_kind,
+        "delivered": bool(record.delivered),
+        "stale_after_s": record.stale_after_s,
+        "metadata": dict(record.metadata),
+    }
+
+
+def _event_to_communication_item(record: EventRecord) -> dict[str, Any] | None:
+    metadata = record.metadata
+    event_type = _event_type(record)
+    communication_keys = {
+        "source_node_id",
+        "target_node_id",
+        "relay_node_id",
+        "link_type",
+        "message_type",
+        "sequence_id",
+        "sent_timestamp",
+        "received_timestamp",
+        "measurement_timestamp",
+        "arrival_timestamp",
+        "payload_kind",
+        "stale_after_s",
+        "delivered",
+        "cross_node_latency_ms",
+        "latency_ms",
+        "latency_s",
+    }
+    communication_events = {
+        "link_message",
+        "message_delivery",
+        "communication_message",
+        "communication_link",
+        "link_delivery",
+        "video_metadata_delivery",
+        "video_metadata_delivered",
+        "bbox_delivery",
+        "bbox_delivered",
+        "consensus_message",
+        "bid_message",
+    }
+    drop_events = {
+        "message_drop",
+        "link_drop",
+        "packet_drop",
+        "communication_drop",
+    }
+    if not (
+        event_type in communication_events
+        or event_type in drop_events
+        or any(key in metadata for key in communication_keys)
+    ):
+        return None
+
+    delivered_default = event_type not in drop_events
+    return {
+        "timestamp": record.timestamp,
+        "source_node_id": metadata.get("source_node_id") or record.actor_id,
+        "target_node_id": metadata.get("target_node_id"),
+        "relay_node_id": metadata.get("relay_node_id"),
+        "link_type": metadata.get("link_type", ""),
+        "message_type": metadata.get("message_type", event_type),
+        "sequence_id": metadata.get("sequence_id"),
+        "sent_timestamp": metadata.get("sent_timestamp"),
+        "received_timestamp": metadata.get("received_timestamp"),
+        "measurement_timestamp": metadata.get("measurement_timestamp"),
+        "arrival_timestamp": metadata.get("arrival_timestamp"),
+        "payload_kind": metadata.get("payload_kind") or metadata.get("message_type") or event_type,
+        "delivered": _bool_from_metadata(
+            metadata,
+            ("delivered", "message_delivered"),
+            default=delivered_default,
+        ),
+        "stale_after_s": metadata.get("stale_after_s"),
+        "metadata": dict(metadata),
+    }
+
+
+def _communication_latency_s(item: Mapping[str, Any]) -> float | None:
+    metadata = item.get("metadata", {})
+    if isinstance(metadata, Mapping):
+        for key in ("cross_node_latency_ms", "latency_ms"):
+            value = _metadata_float(metadata, key)
+            if value is not None:
+                return max(0.0, value / 1000.0)
+        value = _metadata_float(metadata, "latency_s")
+        if value is not None:
+            return max(0.0, value)
+
+    received_timestamp = _optional_float_value(item.get("received_timestamp"))
+    sent_timestamp = _optional_float_value(item.get("sent_timestamp"))
+    if received_timestamp is not None and sent_timestamp is not None:
+        return max(0.0, received_timestamp - sent_timestamp)
+
+    arrival_timestamp = _optional_float_value(item.get("arrival_timestamp"))
+    measurement_timestamp = _optional_float_value(item.get("measurement_timestamp"))
+    if arrival_timestamp is not None and measurement_timestamp is not None:
+        return max(0.0, arrival_timestamp - measurement_timestamp)
+    return None
+
+
+def _track_update_age_s(item: Mapping[str, Any]) -> float | None:
+    measurement_timestamp = _optional_float_value(item.get("measurement_timestamp"))
+    if measurement_timestamp is None:
+        measurement_timestamp = _optional_float_value(item.get("valid_at"))
+    if measurement_timestamp is None:
+        return _communication_latency_s(item)
+
+    received_timestamp = _optional_float_value(item.get("received_timestamp"))
+    if received_timestamp is None:
+        received_timestamp = _optional_float_value(item.get("arrival_timestamp"))
+    if received_timestamp is None:
+        received_timestamp = _optional_float_value(item.get("timestamp"))
+    if received_timestamp is None:
+        return _communication_latency_s(item)
+    return max(0.0, received_timestamp - measurement_timestamp)
+
+
+def _delivery_rate(
+    link_items: Sequence[Mapping[str, Any]],
+    payload_kinds: set[str],
+) -> float:
+    attempts = [
+        item
+        for item in link_items
+        if _payload_kind(item) in payload_kinds
+    ]
+    if not attempts:
+        return 0.0
+    delivered = sum(1 for item in attempts if item.get("delivered", True))
+    return delivered / len(attempts)
+
+
+def _payload_kind(item: Mapping[str, Any]) -> str:
+    return _state(str(item.get("payload_kind") or item.get("message_type") or ""))
+
+
+def _sequence_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _metadata_float(metadata: Mapping[str, Any], key: str) -> float | None:
+    if key not in metadata or metadata[key] is None:
+        return None
+    return float(metadata[key])
+
+
+def _optional_float_value(value: Any) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
+def _bool_from_metadata(
+    metadata: Mapping[str, Any],
+    keys: Sequence[str],
+    *,
+    default: bool,
+) -> bool:
+    for key in keys:
+        if key in metadata:
+            return _as_bool(metadata[key], default=default)
+    return default
+
+
+def _as_bool(value: Any, *, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, Mapping):
+        for key in ("passed", "pass", "ok", "value"):
+            if key in value:
+                return _as_bool(value[key], default=default)
+        return default
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"true", "t", "yes", "y", "1", "pass", "passed", "ok"}:
+        return True
+    if text in {"false", "f", "no", "n", "0", "fail", "failed", "reject", "rejected"}:
+        return False
+    return default
+
+
+def _append_gate_value(
+    values: list[bool],
+    metadata: Mapping[str, Any],
+    keys: Sequence[str],
+) -> None:
+    for key in keys:
+        if key in metadata:
+            values.append(_as_bool(metadata[key], default=False))
+            return
 
 
 def _euclidean_distance(

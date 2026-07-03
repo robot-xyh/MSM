@@ -1,9 +1,11 @@
 """Offline D6 evaluation metrics package."""
 
+from .blocks_replay import load_blocks_replay_jsonl, truth_summary_from_blocks_frames
 from .metrics import (
     AssignmentRecord,
     EpisodeMetrics,
     EventRecord,
+    LinkRecord,
     MetricsCollector,
     TerminalRecord,
     TrackRecord,
@@ -16,9 +18,12 @@ __all__ = [
     "dump_episode_log_jsonl",
     "EpisodeMetrics",
     "EventRecord",
+    "LinkRecord",
+    "load_blocks_replay_jsonl",
     "load_episode_log_jsonl",
     "MetricsCollector",
     "ReportGenerator",
     "TerminalRecord",
     "TrackRecord",
+    "truth_summary_from_blocks_frames",
 ]

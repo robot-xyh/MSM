@@ -10,6 +10,7 @@ from typing import Any, Iterable, Mapping
 from .metrics import (
     AssignmentRecord,
     EventRecord,
+    LinkRecord,
     MetricsCollector,
     TerminalRecord,
     TrackRecord,
@@ -22,7 +23,7 @@ def load_episode_log_jsonl(path: str | Path) -> tuple[MetricsCollector, dict[str
     The supported schema is intentionally small and simulator-agnostic:
     each line is a JSON object with ``record_type`` and ``payload`` keys.
     ``record_type`` may be ``truth_summary``, ``track``, ``assignment``,
-    ``event``, or ``terminal``. Unknown record types are rejected so interface
+    ``event``, ``link``, or ``terminal``. Unknown record types are rejected so interface
     tests catch schema drift early.
     """
 
@@ -51,6 +52,8 @@ def load_episode_log_jsonl(path: str | Path) -> tuple[MetricsCollector, dict[str
                 )
             elif record_type == "event":
                 collector.add_event(EventRecord(**_filter_payload(EventRecord, payload)))
+            elif record_type == "link":
+                collector.add_link(LinkRecord(**_filter_payload(LinkRecord, payload)))
             elif record_type == "terminal":
                 collector.add_terminal(TerminalRecord(**_filter_payload(TerminalRecord, payload)))
             else:

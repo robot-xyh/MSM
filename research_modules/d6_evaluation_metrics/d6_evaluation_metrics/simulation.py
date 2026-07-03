@@ -148,6 +148,8 @@ def write_episode_log_jsonl(
             stream.write(_json_record("assignment", asdict(record)) + "\n")
         for record in collector.event_records:
             stream.write(_json_record("event", asdict(record)) + "\n")
+        for record in collector.link_records:
+            stream.write(_json_record("link", asdict(record)) + "\n")
         for record in collector.terminal_records:
             stream.write(_json_record("terminal", asdict(record)) + "\n")
     return path

@@ -211,20 +211,51 @@ D5 的原则不变：跨视场模块只能输出关联证据和一致性摘要�
 - “相机最近目标不等于分配目标”的单机测试。
 - 友方身份正向确认导致的 `hold`。
 - 二级侦察 `ReconImageCue` 的资源 scope 约束。
+- 最小 `TerminalObservationBus` 跨节点摘要汇总。
+- `CrossViewAssociation` 对多视角支持和重复终端锁定风险的被动表达。
 - `global_track_id` 不被 D5 修改的不变式。
 
 尚未完整实现：
 
-- 多无人机、多相机观测的统一观测总线。
-- 不同相机的 `local_track_id` 命名空间隔离。
+- 完整多无人机、多相机几何融合。
 - 跨相机时间戳对齐、相机姿态校验和观测协方差融合。
-- `CrossViewAssociation` 或 `TerminalCrossViewFusion` 级别的跨视场候选融合。
+- `TerminalCrossViewFusion` 级别的跨视场候选融合和协方差级别复核。
 
-因此，下面内容是后续接口和算法设计建议，不表示当前代码已具备完整跨无人机多相机融合能力。
+因此，当前代码具备“摘要层跨视角汇总”能力，但不表示已经具备完整跨无人机多相机几何融合能力。
 
 ### 10.3 推荐数据结构扩展
 
-当前 `LocalVisualTrack` 字段适合单机相机内关联。跨视场时建议扩展或包装为 `CrossViewObservation`，至少包含：
+当前实现新增了摘要层结构：
+
+```python
+@dataclass(frozen=True)
+class TerminalObservation:
+    resource_id: str
+    source_node_id: str
+    link_type: str
+    timestamp: float
+    local_track: LocalVisualTrack | None
+    terminal_association: TerminalAssociation | None
+    identity_claims: tuple[IdentityClaim, ...]
+    recon_image_cues: tuple[ReconImageCue, ...]
+    camera_id: str | None
+    frame_id: str | None
+    arrival_timestamp: float | None
+
+@dataclass(frozen=True)
+class CrossViewAssociation:
+    global_track_id: str
+    supporting_resource_ids: tuple[str, ...]
+    local_track_ids: tuple[str, ...]
+    ambiguity_score: float
+    duplicate_terminal_lock_risk: bool
+    source_node_id: str
+    link_type: str
+```
+
+`TerminalObservationBus` 使用 D3/D4/D5 已产生的 `TerminalAssociation.assigned_global_track_id` 分组，不新建全局 ID。`local_track_ids` 被命名空间化为 `resource_id/camera_id:local_track_id`，避免不同无人机都使用 `L1`、`track_1` 时发生冲突。
+
+完整跨视场几何融合时，仍建议扩展或包装为 `CrossViewObservation`，至少包含：
 
 ```python
 @dataclass(frozen=True)
@@ -257,11 +288,11 @@ class CrossViewObservation:
 - `covariance` 或 `covariance_px`：本地像素观测不确定性。
 - `measurement_timestamp` 与 `arrival_timestamp`：支持异步到达和延迟统计。
 
-推荐输出结构：
+后续完整几何融合可增加更细粒度的输出结构，避免与当前摘要层 `CrossViewAssociation` 混淆：
 
 ```python
 @dataclass(frozen=True)
-class CrossViewAssociation:
+class CrossViewGeometricAssociation:
     global_track_id: str
     observations: tuple[str, ...]  # CrossViewObservation.observation_id
     per_view_costs: dict[str, float]
@@ -272,14 +303,14 @@ class CrossViewAssociation:
 @dataclass(frozen=True)
 class CrossViewTrackEvidence:
     global_track_id: str
-    associations: tuple[CrossViewAssociation, ...]
+    associations: tuple[CrossViewGeometricAssociation, ...]
     fused_confidence: float
     covariance_summary: dict[str, float]
     conflict_state: str
     evidence_source_count: int
 ```
 
-跨视场融合器可以命名为 `TerminalCrossViewFusion`，观测汇聚层可以命名为 `TerminalObservationBus`。`TerminalObservationBus` 只负责收集、排序、过期剔除和日志记录，不拥有分配权。
+跨视场融合器可以命名为 `TerminalCrossViewFusion`。当前已实现的 `TerminalObservationBus` 属于更轻量的摘要汇聚层，只负责收集终端摘要、按既有全局 ID 分组并输出风险信号，不拥有分配权。
 
 ### 10.4 跨视场关联流程
 
@@ -323,7 +354,7 @@ G_T2 <- UAV1:cam0:L2 + UAV2:cam0:L1
 G_T3 <- UAV1:cam0:L3 + UAV2:cam0:L2
 ```
 
-7. 若两个视场都支持同一全局航迹且时间差、姿态误差和代价 margin 满足阈值，则输出 `CrossViewAssociation.consistency_state="consistent"`。
+7. 若两个视场都支持同一全局航迹且时间差、姿态误差和代价 margin 满足阈值，则后续完整几何融合器可输出 `CrossViewGeometricAssociation.consistency_state="consistent"`。
 8. 若 UAV1 和 UAV2 对目标 2/3 的候选交换、代价接近或姿态协方差过大，则输出 `ambiguous`，不强制跨视场绑定。
 9. 若某个本地观测与已验证友方身份重叠，则对应全局候选进入 `conflict/hold`，不得被其他视场的弱证据覆盖。
 10. 若观测无法投影到任何已有 `global_track_id`，D5 只输出 unmatched/unknown 证据，由 D1/D2 决定是否新建或删除航迹。
@@ -350,13 +381,32 @@ G_T3 <- UAV1:cam0:L3 + UAV2:cam0:L2
 
 ### 10.7 接口建议
 
-建议新增两个层次：
+当前已实现最小摘要总线：
 
 ```python
-class TerminalObservationBus:
-    def publish_observation(self, observation: CrossViewObservation) -> None: ...
-    def window(self, start_time: float, end_time: float) -> list[CrossViewObservation]: ...
+bus = TerminalObservationBus()
+
+bus.publish_terminal_association(
+    resource_id="UAV1",
+    source_node_id="UAV1",
+    link_type="interceptor_peer",
+    timestamp=current_time,
+    terminal_association=decision_uav1,
+    local_track=local_track_uav1,
+    camera_id="front_rgb",
+    frame_id="UAV1/front_rgb",
+)
+
+cross_view = bus.cross_view_associations()
 ```
+
+在 UAV1 看到 1/2/3、UAV2 看到 2/3/4 的测试中，`cross_view_associations()` 会产生：
+
+- `G2/G3`：`supporting_resource_ids=("UAV1", "UAV2")`，表示多视角支持。
+- `G1/G4`：仅保留单视角支持。
+- 对同一个 `global_track_id` 出现多个资源 `locked` 时，设置 `duplicate_terminal_lock_risk=True`。该字段只上报给 D3/D4/D6，不修改既有分配。
+
+后续完整几何融合建议新增第二层：
 
 ```python
 class TerminalCrossViewFusion:
@@ -366,7 +416,7 @@ class TerminalCrossViewFusion:
         observations: list[CrossViewObservation],
         recon_image_cues: list[ReconImageCue],
         current_time: float,
-    ) -> list[CrossViewAssociation]: ...
+    ) -> list[CrossViewGeometricAssociation]: ...
 ```
 
 主程序仍可对每个资源调用现有 `TerminalAssociator.decide()` 生成单机 `TerminalAssociation`；跨视场层再基于多个 `TerminalAssociation` 和 `CrossViewAssociation` 派生全局一致性摘要。这样可以保持现有单机逻辑稳定，同时逐步扩展多相机能力。
@@ -403,6 +453,53 @@ decision = associator.decide(
 
 推荐使用关键字参数传入 `current_time` 和 `recon_image_cues`，避免把 cue 误传为相机或时间位置参数。
 
+跨视角摘要可在每个资源完成 `decide()` 后写入总线：
+
+```python
+bus.publish_terminal_association(
+    resource_id=assignment.resource_id,
+    source_node_id=assignment.resource_id,
+    link_type="interceptor_peer",
+    timestamp=current_time,
+    terminal_association=decision,
+    local_track=matched_local_track,
+    recon_image_cues=reprojected_recon_cues,
+    camera_id="front_rgb",
+    frame_id=f"{assignment.resource_id}/front_rgb",
+)
+
+cross_view_summary = bus.cross_view_associations()
+```
+
+`cross_view_summary` 只用于 D3/D4/D6 的一致性、重复锁定风险和多视角支持分析，不生成新的 `AssignmentPlan`。
+
+AirSim ComputerVision dry-run 检测输入可先转为本地观测：
+
+```python
+tracks = publish_sim_detections_as_local_observations(
+    bus=bus,
+    detections=sim_get_detections_like_records,
+    resource_id="Interceptor_Cam_1",
+    camera_id="front_rgb",
+    frame_id="Interceptor_Cam_1/front_rgb",
+    timestamp=measurement_timestamp,
+    arrival_timestamp=arrival_timestamp,
+)
+
+metrics = compute_terminal_stress_metrics(
+    observations=bus.observations(),
+    cross_view_associations=bus.cross_view_associations(),
+)
+
+evidence = summarize_degradation_case(
+    observations=bus.observations(),
+    cross_view_associations=bus.cross_view_associations(),
+    current_time=current_time,
+)
+```
+
+`evidence.case_name` 只能作为 D4 仲裁输入，不是分配计划。
+
 ## 12. 参数与调参建议
 
 | 参数 | 默认含义 | 调参建议 |
@@ -421,6 +518,8 @@ decision = associator.decide(
 ## 13. 仿真验证与指标
 
 现有仿真位于 `simulations/run_terminal_association_sim.py`，覆盖多目标、友方重叠、未知目标接近和遮挡。图表和结果写入 `docs/EXPERIMENT_REPORT.md`。
+
+AirSim ComputerVision 5v5 专项测试采用纯离线数据合同：5 个 `Interceptor_Cam_*` 主镜头、5 个目标，目标距镜头约 50m，目标间距和镜头间距约 20m，使每个主镜头视场内出现多个目标。二级系留侦察镜头比目标高约 200m，输出高分辨率全局视野 cue；进入 D5 前必须重投影到目标拦截机相机平面。
 
 建议 D5 独立统计：
 
@@ -445,6 +544,18 @@ decision = associator.decide(
 - `cross_view_id_switch_count`
 - `cross_view_ambiguous_count`
 - `cross_view_duplicate_local_id_count`
+- `per_camera_detection_count`
+- `multi_target_fov_rate`
+- `cross_view_overlap_count`
+- `duplicate_terminal_lock_risk`
+- `terminal_lock_accuracy`
+- `ambiguous_fov_event_count`
+
+5v5 专项三类 D5 证据：
+
+- `no_degradation`：终端锁定与 D3 分配及离线评估真值一致。
+- `degrade_to_secondary`：中心分配与终端局部/二级证据持续不一致或歧义，且二级 `ReconImageCue` 新鲜可用。
+- `degrade_to_distributed`：同样不一致或歧义，但二级证据不可用、过期或失效，只能给 D4 提供分散降级证据。
 
 其中 `global_track_id_rewrite_count` 期望恒为 0；`wrong_locked_count` 比 `locked` 数量更重要。
 
@@ -601,12 +712,17 @@ research_modules/d5_terminal_association/
 ├── simulations/
 │   └── run_terminal_association_sim.py
 ├── src/d5_terminal_association/
+│   ├── airsim_cv_adapter.py
 │   ├── associator.py
 │   ├── geometry.py
 │   ├── identity.py
+│   ├── observation_bus.py
 │   └── models.py
 └── tests/
-    └── test_terminal_association.py
+    ├── test_airsim_cv_5v5_evidence.py
+    ├── test_terminal_association.py
+    ├── test_airsim_dry_run_interface.py
+    └── test_terminal_observation_bus.py
 ```
 
 结构规则：
@@ -617,6 +733,9 @@ research_modules/d5_terminal_association/
 - 单元测试只放入 `tests/`。
 - 离线仿真脚本只放入 `simulations/`。
 
+其中 `observation_bus.py` 是本次新增的最小跨视角摘要层，只输出 `CrossViewAssociation` 支持关系和风险信号，不参与分配或控制。
+`airsim_cv_adapter.py` 是 5v5 ComputerVision dry-run 适配层，只把检测框转换为 `LocalVisualTrack`/`TerminalObservation`，并计算 D5 证据指标；它不导入 AirSim、不调用仿真器、不生成 `AssignmentPlan`。
+
 ## 17. 局限与后续工作
 
 当前实现的主要局限：
@@ -625,7 +744,7 @@ research_modules/d5_terminal_association/
 - 仿真脚本尚未批量生成二级 cue 场景，`recon_cue_used_count` 需要接入 D6 或本模块实验统计。
 - `TerminalConsistencySummary` 目前是接口与日志建议，尚未实现为代码数据类。
 - 本地最佳候选与全局分配的被动一致性比较尚未形成独立测试场景。
-- 跨无人机多相机融合尚未完整实现；`CrossViewObservation`、`CrossViewAssociation`、`CrossViewTrackEvidence`、`TerminalCrossViewFusion` 和 `TerminalObservationBus` 仍是接口建议。
+- 已实现最小 `TerminalObservationBus` 与 `CrossViewAssociation`，但跨无人机多相机几何融合尚未完整实现；`CrossViewObservation`、`CrossViewTrackEvidence` 和 `TerminalCrossViewFusion` 仍是接口建议。
 - 当前时间预测为简化常速度模型，不替代 D2 跟踪器。
 - 当前身份声明是仿真模型，不接入真实 Remote ID、MAVLink 或 DDS 安全栈。
 - 小目标图像检测质量对 MOT 输入影响很大，需要通过 AirSim 离线回放进一步评估。
@@ -637,7 +756,7 @@ research_modules/d5_terminal_association/
 3. 把 `recon_cue_used_count`、stale cue 拒绝次数和 cue 相关误配计入 D6。
 4. 实现 `TerminalConsistencySummary` 的离线派生器，统计 lock age、连续状态帧数和 cost margin。
 5. 增加本地最佳候选长期偏离中心分配的被动一致性测试。
-6. 实现 `TerminalObservationBus` 和 `TerminalCrossViewFusion` 的离线原型，覆盖 UAV1 看到 1/2/3、UAV2 看到 2/3/4 的重叠视场场景。
+6. 扩展 `TerminalObservationBus` 的窗口、过期剔除和统计接口，并实现 `TerminalCrossViewFusion` 的离线原型，覆盖 UAV1 看到 1/2/3、UAV2 看到 2/3/4 的重叠视场几何融合场景。
 7. 给 `LocalVisualTrack` 或其包装结构增加 `resource_id/camera_id/frame_id/camera_pose/covariance`。
 8. 用 AirSim 标注框和离线 MOT 输出比较 ByteTrack、BoT-SORT、Deep SORT 的输入质量。
 9. 建立失败样本库，重点保存友方重叠、目标交叉、遮挡恢复、多相机时间错位和跨相机 cue 错配案例。

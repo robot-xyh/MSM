@@ -96,6 +96,19 @@ def test_d6_loads_airsim_dry_run_jsonl_schema_and_computes_episode_metrics(tmp_p
                     "metadata": {"dry_run": True},
                 },
             },
+            {
+                "record_type": "link",
+                "payload": {
+                    "timestamp": 4.1,
+                    "source_node_id": "tether_01",
+                    "target_node_id": "R1",
+                    "link_type": "video_cue",
+                    "payload_kind": "video_metadata",
+                    "sent_timestamp": 4.0,
+                    "received_timestamp": 4.1,
+                    "delivered": True,
+                },
+            },
         ],
         tmp_path / "airsim_phase1_dry_run.jsonl",
     )
@@ -114,6 +127,9 @@ def test_d6_loads_airsim_dry_run_jsonl_schema_and_computes_episode_metrics(tmp_p
     assert metrics.ambiguous_fov_event_count == 2
     assert metrics.friend_overlap_hold_count == 1
     assert metrics.human_override_count == 1
+    assert metrics.metadata["link_record_count"] == 1
+    assert metrics.cross_node_latency_ms == pytest.approx(100.0)
+    assert metrics.video_metadata_delivery_rate == pytest.approx(1.0)
 
 
 def test_d6_rejects_unknown_dry_run_record_type(tmp_path: Path) -> None:

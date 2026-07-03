@@ -24,6 +24,12 @@ python3 research_modules/d5_terminal_association/simulations/run_terminal_associ
 - `TerminalAssociator.build_cost_matrix(projections, local_tracks, identity_claims, recon_image_cues=(), resource_id=None)`
 - `TerminalAssociator.decide(assignment, global_tracks, local_tracks, identity_claims, camera, current_time=None, recon_image_cues=())`
 - `IdentityChecker.parse_claims(raw_messages, current_time)`
+- `TerminalObservationBus.publish_terminal_association(...)`
+- `TerminalObservationBus.cross_view_associations()`
+- `local_visual_tracks_from_sim_detections(...)`
+- `publish_sim_detections_as_local_observations(...)`
+- `compute_terminal_stress_metrics(...)`
+- `summarize_degradation_case(...)`
 
 推荐使用关键字参数传入时间和二级侦察 cue，避免误用位置参数：
 
@@ -56,15 +62,33 @@ D5 可把连续帧 `TerminalAssociation` 派生为 `TerminalConsistencySummary` 
 
 ## 跨视场配准设计
 
-当前程序已覆盖单机视场内多目标候选、友方 `hold`、二级侦察 cue 作用域和保守 `global_track_id` 不变式；尚未完整实现多无人机、多相机的跨视场融合。
+当前程序已覆盖单机视场内多目标候选、友方 `hold`、二级侦察 cue 作用域和保守 `global_track_id` 不变式，并新增最小 `TerminalObservationBus` 与 `CrossViewAssociation`。该总线用于收集多架拦截无人机、二级节点或 peer 链路发布的 `LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim` 和 `ReconImageCue` 摘要，按既有 `global_track_id` 被动汇总多视角支持关系。
 
-后续集成建议把 `local_track_id` 明确限定在 `(resource_id, camera_id, frame_id)` 命名空间内，并新增 `CrossViewObservation`、`CrossViewAssociation`、`TerminalCrossViewFusion` 或 `TerminalObservationBus`。跨视场逻辑只把多个本地观测配准到 D2 已存在的 `global_track_id`，不得由 D5 创建、改写或换绑全局 ID。
+示例：UAV1 看到目标 1/2/3，UAV2 看到目标 2/3/4 时，目标 2/3 会形成包含 `("UAV1", "UAV2")` 的多视角支持摘要；目标 1/4 保持单视角支持。若多个资源同时 `locked` 同一 `global_track_id`，D5 只输出 `duplicate_terminal_lock_risk=True`，供 D3/D4 仲裁，不会改写分配。
+
+当前实现仍不是完整的多相机几何融合器。后续若要处理相机姿态协方差、跨相机时间对齐和三维重投影，应在 `TerminalObservationBus` 之上扩展 `TerminalCrossViewFusion`。
 
 ## 二级侦察节点输入
 
 高空系留侦察无人机可作为二级节点向覆盖小区内的拦截资源发送 `ReconImageCue`。该 cue 只在 `scoped_resource_ids` 限定范围内降低关联代价，用于帮助末端相机把本地视觉轨迹配准到中心分配的 `global_track_id`。它不能替代授权、版本校验、友方正向认证或本地 MOT 质量门槛，也不能触发局部节点自行改写 `global_track_id`。
 
 `ReconImageCue.center_px` 必须已经处在当前拦截资源相机平面。若 cue 来自二级侦察节点自己的相机，需要先重投影到本地相机帧，再与 `LocalVisualTrack.center_px` 比较。
+
+在跨视角总线中，系留无人机视频 cue 只作为几何门控和复核证据随 `TerminalObservation` 记录。它可以增加 `recon_cue_used_count`，但不能创建新的 `global_track_id`、不能替代 D2 航迹，也不能让本地节点换绑分配目标。
+
+## AirSim ComputerVision 5v5 专项适配
+
+D5 提供不依赖 AirSim Python 包的 dry-run 适配器，用于消费 `simGetDetections` 风格的检测框 fixture。推荐 5v5 压测几何为：目标距拦截镜头约 50m，目标间距约 20m，拦截镜头间距约 20m；二级系留侦察镜头比目标高约 200m，分辨率更高并提供全局视野。
+
+处理链路：
+
+1. 每个 `Interceptor_Cam_*` 的检测框转换为 `LocalVisualTrack`。
+2. 多镜头本地观测写入 `TerminalObservationBus`。
+3. 单机 `TerminalAssociation` 和二级 `ReconImageCue` 作为被动证据发布。
+4. `cross_view_associations()` 汇总重叠视场支持和重复锁定风险。
+5. `summarize_degradation_case()` 输出 `no_degradation`、`degrade_to_secondary` 或 `degrade_to_distributed` 证据标签。
+
+建议指标包括 `per_camera_detection_count`、`multi_target_fov_rate`、`cross_view_overlap_count`、`duplicate_terminal_lock_risk`、`terminal_lock_accuracy` 和 `ambiguous_fov_event_count`。这些指标只供 D4/D6 仲裁和评估使用；D5 不生成 `AssignmentPlan`，不改写 `global_track_id`。
 
 ## 边界
 

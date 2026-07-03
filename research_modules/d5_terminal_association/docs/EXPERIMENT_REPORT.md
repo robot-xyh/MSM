@@ -47,7 +47,14 @@ Sigma_px = J Sigma_w J^T + Sigma_measurement
 
 当前程序已覆盖单机视场内多目标候选、友方 `hold`、二级 cue 作用域和 `global_track_id` 不变式。例如，单机相机中同时存在分配目标、干扰目标、友方目标和未知目标时，D5 通过中心航迹投影、像素马氏门控和候选代价排序选择本地候选，或保守输出 `ambiguous/hold/reacquire`。
 
-尚未完整实现跨无人机多相机融合。对于“无人机 1 看到目标 1/2/3、无人机 2 看到目标 2/3/4”的场景，后续需要把 `local_track_id` 限定在 `(resource_id, camera_id, frame_id)` 命名空间内，再通过以下信息做跨视场关联：
+当前已实现最小 `TerminalObservationBus` 与 `CrossViewAssociation` 摘要层。对于“无人机 1 看到目标 1/2/3、无人机 2 看到目标 2/3/4”的场景，单元测试验证了：
+
+- 目标 2/3 可以被汇总为 `("UAV1", "UAV2")` 的多视角支持。
+- 目标 1/4 保持单视角支持，不被错误丢弃。
+- 相同 `global_track_id` 被多个资源同时 `locked` 时，只输出 `duplicate_terminal_lock_risk=True`，不改变 D3/D4 分配。
+- `local_track_id` 在摘要中按 `resource_id/camera_id:local_track_id` 命名空间化，避免不同无人机本地 ID 冲突。
+
+完整跨无人机多相机几何融合尚未实现。后续仍需要通过以下信息做跨视场关联：
 
 - D2 已有 `global_track_id` 的时间预测。
 - 每个无人机相机的 `measurement_timestamp`、相机姿态和内参。
@@ -55,7 +62,7 @@ Sigma_px = J Sigma_w J^T + Sigma_measurement
 - 本地观测的像素协方差、MOT 质量和候选代价。
 - 已重投影到目标相机平面的二级侦察 `ReconImageCue`。
 
-建议新增 `CrossViewObservation`、`CrossViewAssociation`、`TerminalCrossViewFusion` 或 `TerminalObservationBus`，只做离线跨视场配准和一致性评估。D5 仍不得创建、改写或换绑 `global_track_id`。
+建议在当前 `TerminalObservationBus` 之上继续新增 `CrossViewObservation` 与 `TerminalCrossViewFusion`，只做离线跨视场配准和一致性评估。D5 仍不得创建、改写或换绑 `global_track_id`。
 
 ## 6. 面向 D4 主动降级的一致性信号
 
@@ -110,6 +117,18 @@ python3 research_modules/d5_terminal_association/simulations/run_terminal_associ
 - 友方目标与分配投影重叠，触发 `hold`。
 - 后续扩展：UAV1 看到目标 1/2/3、UAV2 看到目标 2/3/4 的跨视场配准，验证重复本地 ID、相机姿态误差、时间戳错位和二级 cue 重投影。
 
+### 8.1 ComputerVision 5v5 专项 dry-run
+
+新增 D5-only 单元测试覆盖 AirSim ComputerVision 风格输入，不导入 AirSim、不调用控制 API：
+
+- 5 个 `Interceptor_Cam_*` 主镜头，每个镜头 3 个检测框，验证 `per_camera_detection_count` 和 `multi_target_fov_rate`。
+- 目标距主镜头约 50m，目标间距和镜头间距约 20m 的压测假设由 `AirSimCVScenarioSpec` 固化。
+- 二级系留侦察镜头高约 200m，输出已重投影到本地镜头的 `ReconImageCue`。
+- UAV1 看到 1/2/3、UAV2 看到 2/3/4，验证 `cross_view_overlap_count` 和 `duplicate_terminal_lock_risk`。
+- `no_degradation`、`degrade_to_secondary`、`degrade_to_distributed` 三类证据 case 均有测试覆盖。
+
+D5 在该专项中仍只输出 `LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim`、`ReconImageCue`、`TerminalObservationBus` 和 `CrossViewAssociation` 摘要，不生成 `AssignmentPlan`。
+
 ## 9. 图表与曲线
 
 ### 9.1 末端决策时间线
@@ -130,6 +149,17 @@ python3 research_modules/d5_terminal_association/simulations/run_terminal_associ
 | locked precision | 1.0 |
 | 全帧正确 locked 比例 | 0.7 |
 | `global_track_id` 改写次数 | 0 |
+
+## 10.1 5v5 专项新增指标
+
+| 指标 | 含义 |
+|---|---|
+| `per_camera_detection_count` | 每个拦截镜头的检测数量 |
+| `multi_target_fov_rate` | 视场内至少两个目标的镜头比例 |
+| `cross_view_overlap_count` | 同一 `global_track_id` 被多个视角支持的数量 |
+| `duplicate_terminal_lock_risk` | 多资源同时锁定同一全局目标的风险信号 |
+| `terminal_lock_accuracy` | 带离线真值的 locked 关联正确率 |
+| `ambiguous_fov_event_count` | 视场歧义事件数量 |
 
 ## 11. 结论
 

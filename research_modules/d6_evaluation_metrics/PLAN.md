@@ -21,6 +21,8 @@ The scientific problem is to avoid reducing system quality to a single success o
 - How often does assignment create duplicate coverage or leave high-priority objects unassigned?
 - How quickly and reliably does the system recover into a degraded operating mode after failures?
 - How accurate and stable is terminal association after an object enters a local field of view?
+- How healthy are cross-node data/video links, and do stale or out-of-order updates explain downstream conflicts?
+- Do D7 terminal-switch gates reject unsafe or low-quality switches before they contaminate terminal metrics?
 - How frequently do safety constraints, human holds, or human overrides interrupt autonomy?
 
 ## 3. Metric Families and Formulas
@@ -115,6 +117,58 @@ human_override_count = count human override or human rejection events
 
 Safety counts are treated as first-class outputs, not filtered away by success labels.
 
+### 3.8 Communication Link Metrics
+
+`LinkRecord` is optional. The same contract may be carried through
+`EventRecord.metadata` when an integration runner already logs events. D6 reads
+only offline metadata and never opens live communication channels.
+
+```text
+cross_node_latency_ms = mean((received_timestamp - sent_timestamp) * 1000)
+message_drop_rate = dropped_messages / attempted_messages
+out_of_order_count = explicit out-of-order events + decreasing sequence IDs
+stale_track_update_count = track payloads whose latency exceeds stale_after_s
+video_metadata_delivery_rate = delivered video_metadata payloads / attempts
+bbox_delivery_rate = delivered bbox payloads / attempts
+consensus_latency_s = mean consensus/bid latency or consensus start-to-stable time
+```
+
+Recommended fields:
+
+```text
+source_node_id, target_node_id, relay_node_id, link_type, message_type,
+sequence_id, sent_timestamp, received_timestamp, measurement_timestamp,
+arrival_timestamp, payload_kind, delivered, stale_after_s
+```
+
+### 3.9 Multi-View and D7 Guidance-Gate Metrics
+
+Multi-view metrics are derived from terminal records and D5/D7 event metadata:
+
+```text
+multi_view_consensus_rate = successful multi-view consensus / consensus attempts
+cross_view_conflict_count = count cross-view conflict events
+duplicate_terminal_lock_count = count duplicate terminal locks by target/timestamp
+camera_quality_gate_pass_rate = passed camera-quality gates / gate attempts
+los_quality_gate_pass_rate = passed LOS-quality gates / gate attempts
+maneuver_margin_gate_pass_rate = passed maneuver-margin gates / gate attempts
+terminal_switch_reject_count = count D7 terminal-switch rejection events
+```
+
+D7 control-command or event metadata may include:
+
+```text
+guidance_law
+terminal_switch_reject_reason
+camera_quality_gate_pass
+los_quality_gate_pass
+maneuver_margin_gate_pass
+```
+
+PNG screenshots are not required for these metrics. D6 can evaluate D5/D7
+offline when metadata preserves bounding boxes, camera intrinsics/extrinsics,
+timestamps, assigned global track IDs, object labels, and gate outcomes.
+
 ## 4. Experimental Factors and Response Variables
 
 Experimental factors:
@@ -127,7 +181,10 @@ Experimental factors:
 - Assignment resource count and high-threat object ratio.
 - Central failure time and degraded-mode stability delay.
 - Communication consensus-round distribution.
+- Cross-node data/video latency, drops, stale track updates, and out-of-order messages.
 - Terminal field-of-view ambiguity probability.
+- Multi-view consensus/conflict probability.
+- D7 camera, LOS, and maneuver gate pass/reject probability.
 - Friend-overlap hold probability.
 - Human override probability.
 
@@ -137,7 +194,9 @@ Response variables:
 - Tracking: `track_rmse`, `track_continuity`, `id_switch_count`.
 - Assignment: `duplicate_assignment_count`, `unassigned_high_threat_count`.
 - Degradation: `failover_time`, `consensus_rounds`, `degraded_completion_rate`.
-- Terminal: `terminal_association_accuracy`, `terminal_id_switch_count`, `ambiguous_fov_event_count`, `friend_overlap_hold_count`, `time_to_terminal_lock`.
+- Terminal: `terminal_association_accuracy`, `terminal_id_switch_count`, `ambiguous_fov_event_count`, `friend_overlap_hold_count`, `time_to_terminal_lock`, `multi_view_consensus_rate`, `cross_view_conflict_count`, `duplicate_terminal_lock_count`.
+- Communication: `cross_node_latency_ms`, `message_drop_rate`, `out_of_order_count`, `stale_track_update_count`, `video_metadata_delivery_rate`, `bbox_delivery_rate`, `consensus_latency_s`.
+- Guidance gate: `camera_quality_gate_pass_rate`, `los_quality_gate_pass_rate`, `maneuver_margin_gate_pass_rate`, `terminal_switch_reject_count`.
 - Safety: `constraint_violation_count`, `human_override_count`.
 
 ## 5. Statistical Methods
@@ -173,6 +232,7 @@ Where assumptions are weak or distributions are strongly skewed, the report must
 TrackRecord
 AssignmentRecord
 EventRecord
+LinkRecord
 TerminalRecord
 EpisodeMetrics
 ```
@@ -184,6 +244,7 @@ MetricsCollector
   add_track(record)
   add_assignment(record)
   add_event(record)
+  add_link(record)
   add_terminal(record)
   compute_episode(episode_id, seed, duration, truth_summary)
 

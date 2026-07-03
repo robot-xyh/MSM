@@ -265,3 +265,96 @@ class TerminalAssociation:
     reason: str = ""
     candidate_costs: list[tuple[str, float]] = field(default_factory=list)
     recon_cue_used: bool = False
+
+
+@dataclass(frozen=True)
+class TerminalObservation:
+    """Cross-node terminal observation summary.
+
+    This is a passive bus payload. It can carry local visual evidence,
+    terminal association output, identity claims, and secondary reconnaissance
+    cues, but it does not own or alter any `global_track_id`.
+    """
+
+    resource_id: str
+    source_node_id: str
+    link_type: str
+    timestamp: float
+    local_track: LocalVisualTrack | None = None
+    terminal_association: TerminalAssociation | None = None
+    identity_claims: tuple[IdentityClaim, ...] = ()
+    recon_image_cues: tuple[ReconImageCue, ...] = ()
+    camera_id: str | None = None
+    frame_id: str | None = None
+    arrival_timestamp: float | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.resource_id:
+            raise ValueError("resource_id must be non-empty")
+        if not self.source_node_id:
+            raise ValueError("source_node_id must be non-empty")
+        if not self.link_type:
+            raise ValueError("link_type must be non-empty")
+        if (
+            self.local_track is None
+            and self.terminal_association is None
+            and not self.identity_claims
+            and not self.recon_image_cues
+        ):
+            raise ValueError("TerminalObservation must carry at least one payload")
+        object.__setattr__(self, "timestamp", float(self.timestamp))
+        if self.arrival_timestamp is not None:
+            object.__setattr__(self, "arrival_timestamp", float(self.arrival_timestamp))
+        object.__setattr__(self, "identity_claims", tuple(self.identity_claims))
+        object.__setattr__(self, "recon_image_cues", tuple(self.recon_image_cues))
+        object.__setattr__(self, "metadata", dict(self.metadata))
+
+
+@dataclass(frozen=True)
+class CrossViewAssociation:
+    """Passive cross-view evidence grouped by an existing global track ID.
+
+    `duplicate_terminal_lock_risk` is only a signal for D3/D4 arbitration. D5
+    still does not change assignments or rewrite global IDs.
+    """
+
+    global_track_id: str
+    supporting_resource_ids: tuple[str, ...]
+    local_track_ids: tuple[str, ...]
+    ambiguity_score: float
+    duplicate_terminal_lock_risk: bool
+    source_node_id: str
+    link_type: str
+    source_node_ids: tuple[str, ...] = ()
+    link_types: tuple[str, ...] = ()
+    decision_states: tuple[str, ...] = ()
+    association_confidences: tuple[float, ...] = ()
+    friend_conflict_states: tuple[str, ...] = ()
+    recon_cue_used_count: int = 0
+    support_count: int = 0
+    reason: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.global_track_id:
+            raise ValueError("global_track_id must be non-empty")
+        if not self.source_node_id:
+            raise ValueError("source_node_id must be non-empty")
+        if not self.link_type:
+            raise ValueError("link_type must be non-empty")
+        object.__setattr__(self, "supporting_resource_ids", _as_string_tuple(self.supporting_resource_ids))
+        object.__setattr__(self, "local_track_ids", _as_string_tuple(self.local_track_ids))
+        object.__setattr__(self, "source_node_ids", _as_string_tuple(self.source_node_ids))
+        object.__setattr__(self, "link_types", _as_string_tuple(self.link_types))
+        object.__setattr__(self, "decision_states", _as_string_tuple(self.decision_states))
+        object.__setattr__(self, "friend_conflict_states", _as_string_tuple(self.friend_conflict_states))
+        object.__setattr__(
+            self,
+            "association_confidences",
+            tuple(float(np.clip(value, 0.0, 1.0)) for value in self.association_confidences),
+        )
+        object.__setattr__(self, "ambiguity_score", float(np.clip(self.ambiguity_score, 0.0, 1.0)))
+        object.__setattr__(self, "recon_cue_used_count", int(self.recon_cue_used_count))
+        object.__setattr__(self, "support_count", int(self.support_count))
+        object.__setattr__(self, "metadata", dict(self.metadata))
