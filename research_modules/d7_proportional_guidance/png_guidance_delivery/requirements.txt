@@ -1,0 +1,9 @@
+numpy
+opencv-python
+airsim
+msgpack-rpc-python
+pymavlink
+matplotlib
+ultralytics
+lap
+opencv-contrib-python

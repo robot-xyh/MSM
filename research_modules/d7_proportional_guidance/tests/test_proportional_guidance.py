@@ -6,6 +6,9 @@ from d7_proportional_guidance import (
     GuidanceConfig,
     GuidanceMode,
     GuidanceState,
+    PngGuidanceConfig,
+    SimpleFlightPngGuidanceFilter,
+    VisionGuidanceObservation,
     compute_proportional_navigation_command,
     simulate_guidance_episode,
 )
@@ -93,3 +96,123 @@ def test_records_include_guidance_geometry_fields() -> None:
         assert math.isfinite(record.closing_speed_mps)
         data = record.as_dict()
         assert {"mode", "range_m", "los_angle_rad", "closing_speed_mps"} <= set(data)
+
+
+def test_visual_png_gate_rejects_small_single_frame_detection() -> None:
+    tracker = SimpleFlightPngGuidanceFilter(
+        PngGuidanceConfig(
+            image_width_px=640,
+            image_height_px=480,
+            min_bbox_area_ratio=0.01,
+            min_stable_frames=2,
+            law="png_vm",
+        )
+    )
+    obs = VisionGuidanceObservation(
+        timestamp_s=0.0,
+        bbox_xyxy=(318.0, 238.0, 322.0, 242.0),
+        detection_confidence=0.95,
+        local_track_id="L1",
+        assigned_global_track_id="G1",
+    )
+
+    command = tracker.evaluate(
+        obs,
+        current_heading_rad=0.0,
+        current_speed_mps=6.0,
+        intercept_speed_mps=6.0,
+        relative_position_ned=(20.0, 0.0, 0.0),
+        relative_velocity_ned=(-4.0, 0.0, 0.0),
+    )
+
+    assert command.quality.terminal_switch_allowed is False
+    assert command.quality.camera_quality_gate_passed is False
+    assert command.quality.reject_reason == "bbox_area_too_small"
+
+
+def test_visual_png_gate_passes_after_stable_quality_observations() -> None:
+    tracker = SimpleFlightPngGuidanceFilter(
+        PngGuidanceConfig(
+            dt_s=0.1,
+            image_width_px=640,
+            image_height_px=480,
+            focal_length_px=320.0,
+            min_bbox_area_ratio=0.001,
+            min_stable_frames=2,
+            edge_margin_ratio=0.01,
+            law="png_vm",
+        )
+    )
+    observations = [
+        VisionGuidanceObservation(
+            timestamp_s=0.0,
+            bbox_xyxy=(300.0, 220.0, 360.0, 280.0),
+            detection_confidence=0.9,
+            local_track_id="L1",
+            assigned_global_track_id="G1",
+        ),
+        VisionGuidanceObservation(
+            timestamp_s=0.1,
+            bbox_xyxy=(302.0, 220.0, 362.0, 280.0),
+            detection_confidence=0.9,
+            local_track_id="L1",
+            assigned_global_track_id="G1",
+        ),
+        VisionGuidanceObservation(
+            timestamp_s=0.2,
+            bbox_xyxy=(304.0, 220.0, 364.0, 280.0),
+            detection_confidence=0.9,
+            local_track_id="L1",
+            assigned_global_track_id="G1",
+        ),
+    ]
+
+    command = None
+    for obs in observations:
+        command = tracker.evaluate(
+            obs,
+            current_heading_rad=0.0,
+            current_speed_mps=6.0,
+            intercept_speed_mps=6.0,
+            relative_position_ned=(20.0, 1.0, 0.0),
+            relative_velocity_ned=(-4.0, 0.0, 0.0),
+        )
+
+    assert command is not None
+    assert command.quality.camera_quality_gate_passed is True
+    assert command.quality.los_quality_gate_passed is True
+    assert command.quality.maneuver_margin_gate_passed is True
+    assert command.quality.terminal_switch_allowed is True
+    assert command.guidance_law == "png_vm"
+
+
+def test_visual_png_gate_rejects_when_not_closing() -> None:
+    tracker = SimpleFlightPngGuidanceFilter(
+        PngGuidanceConfig(
+            dt_s=0.1,
+            min_bbox_area_ratio=0.001,
+            min_stable_frames=2,
+            edge_margin_ratio=0.01,
+        )
+    )
+    command = None
+    for timestamp in (0.0, 0.1, 0.2):
+        command = tracker.evaluate(
+            VisionGuidanceObservation(
+                timestamp_s=timestamp,
+                bbox_xyxy=(300.0, 220.0, 360.0, 280.0),
+                detection_confidence=0.9,
+                local_track_id="L1",
+                assigned_global_track_id="G1",
+            ),
+            current_heading_rad=0.0,
+            current_speed_mps=6.0,
+            intercept_speed_mps=6.0,
+            relative_position_ned=(20.0, 0.0, 0.0),
+            relative_velocity_ned=(2.0, 0.0, 0.0),
+        )
+
+    assert command is not None
+    assert command.quality.terminal_switch_allowed is False
+    assert command.quality.maneuver_margin_gate_passed is False
+    assert command.quality.reject_reason == "not_closing"

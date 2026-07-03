@@ -24,9 +24,22 @@ research_modules/d7_proportional_guidance/
 
 - `radar_midcourse`：使用抽象 GlobalTrack/雷达航迹估计，计算中段二维 PN 指令。
 - `vision_terminal`：使用抽象像素/LOS 观测估计，计算末段二维 PN 指令。
+- `SimpleFlightPngGuidanceFilter`：从 `png_guidance_delivery` 抽取的轻量视觉 PNG gate，支持 bbox 质量、LOS-rate、TTC/VM 增益和机动裕度判断。
 - 输出 LOS angle、LOS rate、closing speed、range、模式、横向加速度限幅、转向率限幅和离线质点轨迹记录。
 - `simulate_guidance_episode` 支持单个 resource-target pair 的离线闭环，返回 `records` 和 `summary`。
 - `guidance_records_from_assignment_dry_run` 接收 assignment/resource/target estimate 三类普通 Python 数据，输出一条 `radar_midcourse` 和一条 `vision_terminal` 干运行记录。
+
+## PNG guidance delivery 融合边界
+
+`png_guidance_delivery` 已复制到本模块下作为算法来源和复现实验资料。主线当前只吸收其中与 SimpleFlight/AirSim detect 兼容的算法核：
+
+- 相机检测框到视线角的几何转换。
+- LOS-rate 滑窗质量判断。
+- bbox 面积扩张 TTC 估计。
+- `png_ttc` 与 `png_vm` 两种终端导引增益。
+- bbox 太小、贴边、检测不连续、视觉延迟过高、机动裕度不足时拒绝切入视觉终端。
+
+以下内容暂不接入主线：PX4 Offboard、MAVLink body-rate/attitude、YOLO/TensorRT、真实飞控解锁和实机安全流程。AirSim 当前阶段继续使用 SimpleFlight `moveByVelocityZAsync`，视觉输入来自 AirSim `simGetDetections` 的 bbox 和相机元数据，不默认保存 PNG 图像。
 
 ## 运行测试
 
@@ -42,6 +55,9 @@ python3 -m pytest research_modules/d7_proportional_guidance/tests
 from d7_proportional_guidance import (
     GuidanceConfig,
     GuidanceState,
+    PngGuidanceConfig,
+    SimpleFlightPngGuidanceFilter,
+    VisionGuidanceObservation,
     simulate_guidance_episode,
 )
 
@@ -58,6 +74,27 @@ target = GuidanceState("T0", 0.0, (1200.0, 150.0), (-20.0, 0.0))
 records, summary = simulate_guidance_episode(pursuer, target, config)
 print(summary["min_range_m"], summary["terminal_mode_entered"])
 print(records[0].los_angle_rad, records[0].closing_speed_mps)
+```
+
+视觉 PNG gate 示例：
+
+```python
+gate = SimpleFlightPngGuidanceFilter(PngGuidanceConfig(law="png_vm"))
+cmd = gate.evaluate(
+    VisionGuidanceObservation(
+        timestamp_s=0.2,
+        bbox_xyxy=(300.0, 220.0, 360.0, 280.0),
+        detection_confidence=0.9,
+        local_track_id="R1:det-1",
+        assigned_global_track_id="TGT-001",
+    ),
+    current_heading_rad=0.0,
+    current_speed_mps=6.0,
+    intercept_speed_mps=6.0,
+    relative_position_ned=(20.0, 1.0, 0.0),
+    relative_velocity_ned=(-4.0, 0.0, 0.0),
+)
+print(cmd.quality.terminal_switch_allowed, cmd.quality.reject_reason)
 ```
 
 AirSim phase-1 干运行接口只接受离线夹具或 DTO，不导入 `airsim`，不连接仿真器，也不调用车辆控制 API：

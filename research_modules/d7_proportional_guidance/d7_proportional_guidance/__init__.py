@@ -16,6 +16,13 @@ from .models import (
 )
 from .pn import compute_pn_command, compute_proportional_navigation_command
 from .simulator import simulate_guidance_episode, summarize_guidance_records
+from .vision_png import (
+    PngGuidanceCommand,
+    PngGuidanceConfig,
+    SimpleFlightPngGuidanceFilter,
+    VisionGuidanceObservation,
+    VisionGuidanceQuality,
+)
 
 __all__ = [
     "AIRSIM_PHASE1_DRY_RUN_BOUNDARY",
@@ -24,6 +31,11 @@ __all__ = [
     "GuidanceMode",
     "GuidanceRecord",
     "GuidanceState",
+    "PngGuidanceCommand",
+    "PngGuidanceConfig",
+    "SimpleFlightPngGuidanceFilter",
+    "VisionGuidanceObservation",
+    "VisionGuidanceQuality",
     "compute_pn_command",
     "compute_proportional_navigation_command",
     "guidance_records_from_airsim_dry_run_fixture",
