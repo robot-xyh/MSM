@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
+from .models import GuidanceMode
+
 
 EFFECTIVE_AUTHORIZATION_STATES = frozenset(
     {
@@ -170,6 +172,36 @@ def evaluate_terminal_png_contract(
         return TerminalPngContractDecision(False, "terminal_identity_mismatch", **base)
 
     return TerminalPngContractDecision(True, "", **base)
+
+
+def guidance_mode_from_terminal_contract(
+    decision: TerminalPngContractDecision,
+    *,
+    handover_pending: bool,
+    terminal_locked: bool,
+) -> GuidanceMode:
+    """Map a terminal contract result to an explicit D7 log state."""
+
+    if terminal_locked and decision.allowed:
+        return GuidanceMode.VISION_TERMINAL
+    if not handover_pending:
+        return GuidanceMode.RADAR_MIDCOURSE
+    if decision.allowed:
+        return GuidanceMode.HANDOVER_PENDING
+
+    reason = decision.reject_reason
+    if reason in {
+        "d5_not_locked",
+        "terminal_identity_mismatch",
+        "assignment_version_mismatch",
+        "d4_terminal_inconsistent",
+    }:
+        return GuidanceMode.REACQUIRE
+    if reason in {"d4_hold_for_review", "friend_conflict", "assignment_not_authorized"}:
+        return GuidanceMode.HOLD
+    if reason in {"assignment_revoked", "assignment_expired", "d4_reassign_pending"}:
+        return GuidanceMode.ABORT_REVOKE
+    return GuidanceMode.HANDOVER_PENDING
 
 
 def coerce_assignment_guidance_binding(

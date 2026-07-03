@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 
 from .models import GuidanceConfig, GuidanceMode, GuidanceRecord, GuidanceState
-from .pn import compute_proportional_navigation_command
+from .pn import compute_proportional_navigation_command, compute_pure_pursuit_command
 
 
 def simulate_guidance_episode(
@@ -65,16 +65,7 @@ def simulate_guidance_episode(
             rng=rng,
             previous_relative_estimate=previous_relative_estimate,
         )
-        command = compute_proportional_navigation_command(
-            pursuer=pursuer,
-            target=target_estimate,
-            dt_s=cfg.dt_s,
-            navigation_constant=cfg.navigation_constant,
-            mode=mode,
-            max_lateral_accel_mps2=cfg.max_lateral_accel_mps2,
-            max_turn_rate_radps=cfg.max_turn_rate_radps,
-            min_speed_mps=cfg.min_speed_mps,
-        )
+        command = _compute_guidance_command(cfg, pursuer, target_estimate, mode)
 
         records.append(
             GuidanceRecord(
@@ -154,9 +145,37 @@ def summarize_guidance_records(
             record.mode == GuidanceMode.VISION_TERMINAL for record in records
         ),
         "mode_sequence": modes,
+        "guidance_law": config.guidance_law if config else "pn",
         "stopped_on_intercept_radius": stopped_on_radius,
         "boundary": "offline_2d_point_mass_only",
     }
+
+
+def _compute_guidance_command(
+    cfg: GuidanceConfig,
+    pursuer: GuidanceState,
+    target_estimate: GuidanceState,
+    mode: GuidanceMode,
+):
+    if cfg.guidance_law == "pure_pursuit":
+        return compute_pure_pursuit_command(
+            pursuer=pursuer,
+            target=target_estimate,
+            dt_s=cfg.dt_s,
+            mode=mode,
+            max_turn_rate_radps=cfg.max_turn_rate_radps,
+            min_speed_mps=cfg.min_speed_mps,
+        )
+    return compute_proportional_navigation_command(
+        pursuer=pursuer,
+        target=target_estimate,
+        dt_s=cfg.dt_s,
+        navigation_constant=cfg.navigation_constant,
+        mode=mode,
+        max_lateral_accel_mps2=cfg.max_lateral_accel_mps2,
+        max_turn_rate_radps=cfg.max_turn_rate_radps,
+        min_speed_mps=cfg.min_speed_mps,
+    )
 
 
 def _should_use_terminal_mode(

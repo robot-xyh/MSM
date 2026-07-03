@@ -14,7 +14,11 @@ from .models import (
     GuidanceRecord,
     GuidanceState,
 )
-from .pn import compute_pn_command, compute_proportional_navigation_command
+from .pn import (
+    compute_pn_command,
+    compute_proportional_navigation_command,
+    compute_pure_pursuit_command,
+)
 from .simulator import simulate_guidance_episode, summarize_guidance_records
 from .terminal_gate import (
     AssignmentGuidanceBinding,
@@ -23,6 +27,7 @@ from .terminal_gate import (
     coerce_assignment_guidance_binding,
     coerce_d4_guidance_permission,
     evaluate_terminal_png_contract,
+    guidance_mode_from_terminal_contract,
 )
 from .vision_png import (
     PngGuidanceCommand,
@@ -53,7 +58,9 @@ __all__ = [
     "coerce_d4_guidance_permission",
     "compute_pn_command",
     "compute_proportional_navigation_command",
+    "compute_pure_pursuit_command",
     "evaluate_terminal_png_contract",
+    "guidance_mode_from_terminal_contract",
     "guidance_records_from_airsim_dry_run_fixture",
     "guidance_records_from_airsim_phase1_dry_run",
     "guidance_records_from_assignment_dry_run",

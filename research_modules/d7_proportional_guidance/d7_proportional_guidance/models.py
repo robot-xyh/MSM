@@ -11,7 +11,11 @@ class GuidanceMode(str, Enum):
     """Offline guidance observation mode."""
 
     RADAR_MIDCOURSE = "radar_midcourse"
+    HANDOVER_PENDING = "handover_pending"
     VISION_TERMINAL = "vision_terminal"
+    HOLD = "hold"
+    REACQUIRE = "reacquire"
+    ABORT_REVOKE = "abort_revoke"
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,7 @@ class GuidanceConfig:
     vision_range_noise_fraction: float = 0.0
     vision_focal_length_px: float = 800.0
     vision_image_center_x_px: float = 640.0
+    guidance_law: str = "pn"
     random_seed: int | None = None
 
     def __post_init__(self) -> None:
@@ -63,6 +68,8 @@ class GuidanceConfig:
         _require_nonnegative("vision_los_noise_rad", self.vision_los_noise_rad)
         _require_nonnegative("vision_range_noise_fraction", self.vision_range_noise_fraction)
         _require_positive("vision_focal_length_px", self.vision_focal_length_px)
+        if self.guidance_law not in {"pn", "pure_pursuit"}:
+            raise ValueError("guidance_law must be 'pn' or 'pure_pursuit'")
         if self.terminal_switch_time_s is not None:
             _require_nonnegative("terminal_switch_time_s", self.terminal_switch_time_s)
 

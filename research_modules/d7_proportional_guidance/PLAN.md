@@ -108,9 +108,9 @@ heading_next = heading + omega_limited * dt
 
 ### 数据模型
 
-- `GuidanceMode`：`radar_midcourse`、`vision_terminal`。
+- `GuidanceMode`：`radar_midcourse`、`handover_pending`、`vision_terminal`、`hold`、`reacquire`、`abort_revoke`。
 - `GuidanceState`：二维位置、速度、时间戳、来源和可选元数据。
-- `GuidanceConfig`：步长、PN 系数、加速度限制、转向率限制、末段切换阈值、噪声参数。
+- `GuidanceConfig`：步长、导引律选择 `guidance_law`、PN 系数、加速度限制、转向率限制、末段切换阈值、噪声参数。当前 `guidance_law` 支持 `pn` 和 `pure_pursuit`。
 - `GuidanceCommand`：单步 PN 输出，包含 LOS、closing speed、原始/限幅加速度、原始/限幅转向率、期望航向。
 - `GuidanceRecord`：离线 episode 的逐步记录，包含 truth、estimate、observation 和 PN 字段。
 - `PngGuidanceConfig`：视觉 PNG gate 参数，包括 bbox、LOS、TTC、机动裕度和导引律。
@@ -124,9 +124,14 @@ heading_next = heading + omega_limited * dt
   - 输入：pursuer state、target estimate、`dt_s`、`navigation_constant`、mode 和限制参数。
   - 输出：`GuidanceCommand`。
 
+- `compute_pure_pursuit_command(...)`
+  - 输入：pursuer state、target estimate、`dt_s`、mode 和转向率限制参数。
+  - 输出：`GuidanceCommand`。
+  - 用途：作为 Pure Pursuit baseline 与 PN 对照；当前为本地轻量实现，不引入 PythonRobotics 依赖。
+
 - `simulate_guidance_episode(...)`
   - 输入：初始 pursuer/target 状态、`GuidanceConfig`、resource/target 标识。
-  - 过程：`radar_midcourse` 中段闭环，满足阈值后切换到 `vision_terminal`。
+  - 过程：按 `guidance_law` 选择 PN 或 Pure Pursuit；`radar_midcourse` 中段闭环，满足阈值后切换到 `vision_terminal`。
   - 输出：`list[GuidanceRecord]` 和 `summary` 字典。
 
 - `summarize_guidance_records(...)`
@@ -143,16 +148,20 @@ heading_next = heading + omega_limited * dt
   - 输出：`terminal_switch_allowed_rate`、样本数、允许数、拒绝数和拒绝原因计数。
   - 边界：只统计已有 gate 输出，不重新实现 D6 指标聚合或 runtime gate 判定。
 
+- `guidance_mode_from_terminal_contract(...)`
+  - 输入：D3/D4/D5 terminal PNG contract 判定、handover pending 和 terminal locked 状态。
+  - 输出：显式 D7 日志状态。D5 未锁定、版本/身份不一致映射为 `reacquire`；友方冲突、D4 hold 或授权缺失映射为 `hold`；assignment revoked/expired/reassign pending 映射为 `abort_revoke`。
+
 ## 交付物
 
 - `PLAN.md`：中文工程计划、数学模型、接口说明和边界。
 - `README.md`：中文模块说明、运行命令、示例代码。
 - `d7_proportional_guidance/models.py`：dataclass 和模式枚举。
-- `d7_proportional_guidance/pn.py`：经典二维 PN 计算函数。
+- `d7_proportional_guidance/pn.py`：经典二维 PN 计算函数和 Pure Pursuit baseline。
 - `d7_proportional_guidance/simulator.py`：单 resource-target pair 离线闭环仿真。
 - `d7_proportional_guidance/vision_png.py`：从 delivery 包抽取的 SimpleFlight 兼容视觉 PNG gate。
 - `d7_proportional_guidance/__init__.py`：核心 API 导出。
-- `tests/`：pytest 覆盖距离收敛、模式切换、限幅和记录字段。
+- `tests/`：pytest 覆盖距离收敛、PN/Pure Pursuit 模式切换、限幅、terminal contract 状态映射和记录字段。
 
 ## 后续集成建议
 

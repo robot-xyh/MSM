@@ -127,6 +127,83 @@ def compute_proportional_navigation_command(
 compute_pn_command = compute_proportional_navigation_command
 
 
+def compute_pure_pursuit_command(
+    pursuer: GuidanceState,
+    target: GuidanceState,
+    dt_s: float,
+    mode: GuidanceMode | str = GuidanceMode.RADAR_MIDCOURSE,
+    max_turn_rate_radps: float | None = None,
+    min_speed_mps: float = EPS,
+) -> GuidanceCommand:
+    """Compute a simple planar pure-pursuit heading command.
+
+    The command points the pursuer toward the current estimated target
+    position. It is intentionally a lightweight baseline and does not import
+    PythonRobotics or any external path-tracking package.
+    """
+
+    if dt_s <= 0.0:
+        raise ValueError("dt_s must be positive")
+    if max_turn_rate_radps is not None and max_turn_rate_radps < 0.0:
+        raise ValueError("max_turn_rate_radps must be nonnegative")
+
+    guidance_mode = _coerce_mode(mode)
+    pursuer_position = _xy_array(pursuer.position_m)
+    pursuer_velocity = _xy_array(pursuer.velocity_mps)
+    target_position = _xy_array(target.position_m)
+    target_velocity = _xy_array(target.velocity_mps)
+
+    relative_position = target_position - pursuer_position
+    relative_velocity = target_velocity - pursuer_velocity
+    range_m = float(np.linalg.norm(relative_position))
+    los_angle_rad = 0.0 if range_m <= EPS else math.atan2(float(relative_position[1]), float(relative_position[0]))
+    los_rate_radps = 0.0 if range_m <= EPS else float(_cross2(relative_position, relative_velocity) / (range_m * range_m))
+    closing_speed_mps = 0.0 if range_m <= EPS else float(-np.dot(relative_position, relative_velocity) / range_m)
+
+    speed_mps = float(np.linalg.norm(pursuer_velocity))
+    current_heading_rad = (
+        math.atan2(float(pursuer_velocity[1]), float(pursuer_velocity[0]))
+        if speed_mps > min_speed_mps
+        else los_angle_rad
+    )
+    heading_error_rad = _wrap_pi(los_angle_rad - current_heading_rad)
+    commanded_turn_rate_radps = heading_error_rad / dt_s
+    limited_turn_rate_radps = _clip_optional(commanded_turn_rate_radps, max_turn_rate_radps)
+    desired_heading_rad = _wrap_pi(current_heading_rad + limited_turn_rate_radps * dt_s)
+    limited_lateral_accel_mps2 = limited_turn_rate_radps * speed_mps
+    acceleration_vector = _lateral_accel_vector(
+        pursuer_velocity,
+        limited_lateral_accel_mps2,
+        speed_mps,
+        min_speed_mps,
+    )
+
+    return GuidanceCommand(
+        mode=guidance_mode,
+        range_m=range_m,
+        los_angle_rad=los_angle_rad,
+        los_rate_radps=los_rate_radps,
+        closing_speed_mps=closing_speed_mps,
+        commanded_lateral_accel_mps2=commanded_turn_rate_radps * speed_mps,
+        limited_lateral_accel_mps2=limited_lateral_accel_mps2,
+        commanded_turn_rate_radps=commanded_turn_rate_radps,
+        limited_turn_rate_radps=limited_turn_rate_radps,
+        heading_correction_rad=limited_turn_rate_radps * dt_s,
+        current_heading_rad=current_heading_rad,
+        desired_heading_rad=desired_heading_rad,
+        acceleration_vector_mps2=(float(acceleration_vector[0]), float(acceleration_vector[1])),
+        saturated_accel=False,
+        saturated_turn_rate=abs(limited_turn_rate_radps - commanded_turn_rate_radps) > 1e-9,
+        metadata={
+            "guidance_law": "pure_pursuit",
+            "dt_s": float(dt_s),
+            "pursuer_speed_mps": speed_mps,
+            "target_source": target.source,
+            "heading_error_rad": heading_error_rad,
+        },
+    )
+
+
 def _coerce_mode(mode: GuidanceMode | str) -> GuidanceMode:
     if isinstance(mode, GuidanceMode):
         return mode

@@ -24,11 +24,24 @@ research_modules/d7_proportional_guidance/
 
 - `radar_midcourse`：使用抽象 GlobalTrack/雷达航迹估计，计算中段二维 PN 指令。
 - `vision_terminal`：使用抽象像素/LOS 观测估计，计算末段二维 PN 指令。
+- `pure_pursuit`：轻量纯追踪 baseline，通过 `GuidanceConfig.guidance_law="pure_pursuit"` 启用，用于和默认 PN 做离线对照；没有引入 PythonRobotics 依赖。
 - `SimpleFlightPngGuidanceFilter`：从 `png_guidance_delivery` 抽取的轻量视觉 PNG gate，支持 bbox 质量、LOS-rate、TTC/VM 增益和机动裕度判断。
+- `guidance_mode_from_terminal_contract(...)`：把 D3/D4/D5 末端合同结果映射为显式 D7 日志状态，包括 `handover_pending`、`hold`、`reacquire` 和 `abort_revoke`。
 - `terminal_switch_allowed_rate` / `summarize_terminal_switch_quality`：对 D7 已输出的 gate 结果做离线通过率统计，不重新执行 runtime gate 逻辑。
 - 输出 LOS angle、LOS rate、closing speed、range、模式、横向加速度限幅、转向率限幅和离线质点轨迹记录。
 - `simulate_guidance_episode` 支持单个 resource-target pair 的离线闭环，返回 `records` 和 `summary`。
 - `guidance_records_from_assignment_dry_run` 接收 assignment/resource/target estimate 三类普通 Python 数据，输出一条 `radar_midcourse` 和一条 `vision_terminal` 干运行记录。
+
+## 5v5 AirSim runtime 接入边界
+
+D7 不拥有 AirSim 5v5 控制状态机，也不创建 `InterceptPair`。main/runtime 应为每个资源-目标 pair 独立持有 D3 binding、D4 permission、D5 `TerminalAssociation` 和一个 `SimpleFlightPngGuidanceFilter` 实例。D7 侧 API 已按 pair 纯函数/实例状态工作：
+
+- 中段用 `compute_proportional_navigation_command(..., mode=GuidanceMode.RADAR_MIDCOURSE)` 输出 radar PN 几何量。
+- 末端先调用 `evaluate_terminal_png_contract(...)`；只有 D3/D4/D5 合同通过时，才调用该 pair 自己的 `SimpleFlightPngGuidanceFilter(PngGuidanceConfig(law="png_vm"))`。
+- 合同拒绝时 runtime 应继续记录 `terminal_contract_reject_reason`，并保持中段/保守状态，不把拒绝归因到视觉 gate。
+- 每个 time-series 样本建议保留 `resource_id`、`target_id`、`mode`、`guidance_law`、`terminal_switch_allowed`、`terminal_switch_reject_reason`、`terminal_contract_reject_reason`、`ttc_s`、D4/D5 状态和 plan/version 字段。
+
+`tests/test_proportional_guidance.py::test_five_parallel_pairs_keep_independent_terminal_gate_and_png_time_series` 覆盖 5 个 pair 的并行 D7 合同、`png_vm`、TTC 和 time-series 字段形状，防止不同 pair 共用视觉滤波状态。
 
 ## PNG guidance delivery 融合边界
 
@@ -86,6 +99,14 @@ print(summary["min_range_m"], summary["terminal_mode_entered"])
 print(records[0].los_angle_rad, records[0].closing_speed_mps)
 ```
 
+Pure Pursuit 对照示例：
+
+```python
+pp_config = GuidanceConfig(guidance_law="pure_pursuit", dt_s=0.05)
+records, summary = simulate_guidance_episode(pursuer, target, pp_config)
+print(summary["guidance_law"], summary["min_range_m"])
+```
+
 视觉 PNG gate 示例：
 
 ```python
@@ -137,6 +158,7 @@ PY
 - 角度为弧度 `rad`，角速度/LOS rate 为 `rad/s`。
 - `GuidanceRecord.range_m` 是真实二维几何距离；`los_angle_rad` 和 `closing_speed_mps` 来自当前模式的估计状态。
 - `GuidanceCommand` 中 `commanded_*` 为原始 PN 计算值，`limited_*` 为加速度和转向率约束后的值。
+- `GuidanceMode` 当前包括 `radar_midcourse`、`handover_pending`、`vision_terminal`、`hold`、`reacquire`、`abort_revoke`。`hold/reacquire/abort_revoke` 是日志和状态机语义，不表示绕过 D3/D4/D5 授权链路的本地重分配。
 
 ## 边界
 
