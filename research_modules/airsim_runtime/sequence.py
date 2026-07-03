@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .blocks import BlocksProcessManager
+from .d4d5_stress import write_d4d5_sequence_report
 from .models import BlocksEpisodeSpec, BlocksSequenceResult, BlocksSmokeConfig, BlocksSmokeResult
 from .orchestrator import AirSimBlocksSmokeOrchestrator
 from .real_runtime import RealAirSimRuntimeClient
@@ -20,6 +21,30 @@ DEFAULT_BLOCKS_EPISODES: tuple[BlocksEpisodeSpec, ...] = (
     BlocksEpisodeSpec("episode_004_d5_terminal", "D5 terminal association replay"),
     BlocksEpisodeSpec("episode_005_d4_degradation", "D4 degradation replay"),
     BlocksEpisodeSpec("episode_006_full_flow", "D1-D7 full integrated replay"),
+)
+
+D4D5_STRESS_EPISODES: tuple[BlocksEpisodeSpec, ...] = (
+    BlocksEpisodeSpec(
+        "case_001_no_degradation",
+        "D5 consistent terminal evidence and D4 continue-center arbitration",
+        scenario_name="blocks_cv_5v5_d4d5_stress",
+        include_integrated_pipeline=True,
+        metadata={"d4d5_stress_case": "no_degradation"},
+    ),
+    BlocksEpisodeSpec(
+        "case_002_degrade_to_secondary",
+        "D5 terminal disagreement with secondary recon available",
+        scenario_name="blocks_cv_5v5_d4d5_stress",
+        include_integrated_pipeline=True,
+        metadata={"d4d5_stress_case": "degrade_to_secondary"},
+    ),
+    BlocksEpisodeSpec(
+        "case_003_degrade_to_distributed",
+        "D5 terminal disagreement with secondary recon unavailable",
+        scenario_name="blocks_cv_5v5_d4d5_stress",
+        include_integrated_pipeline=True,
+        metadata={"d4d5_stress_case": "degrade_to_distributed"},
+    ),
 )
 
 
@@ -78,7 +103,12 @@ class AirSimBlocksSequenceOrchestrator:
                     include_integrated_pipeline=spec.include_integrated_pipeline,
                     execute_intercept=execute_episode_intercept,
                     launch_blocks=False,
-                    metadata={**base_config.metadata, "sequence_id": sequence_id, "focus": spec.focus},
+                    metadata={
+                        **base_config.metadata,
+                        **spec.metadata,
+                        "sequence_id": sequence_id,
+                        "focus": spec.focus,
+                    },
                 )
                 result = smoke_orchestrator.run(config)
                 result.metadata["sequence_id"] = sequence_id
@@ -102,6 +132,16 @@ class AirSimBlocksSequenceOrchestrator:
                 "blocks_launched_once": True,
             },
         )
+        if base_config.metadata.get("d4d5_stress_enabled"):
+            report_path = write_d4d5_sequence_report(
+                sequence_dir / "D4_D5_5V5_STRESS_AIRSIM_REPORT.md",
+                [
+                    result.metadata.get("d4d5_stress", {})
+                    for result in episode_results
+                    if result.metadata.get("d4d5_stress")
+                ],
+            )
+            sequence_result.output_paths["d4d5_stress_sequence_report"] = report_path
         summary_path = _write_sequence_summary(sequence_dir / "blocks_sequence_summary.json", sequence_result)
         sequence_result.output_paths["blocks_sequence_summary"] = summary_path
         return sequence_result

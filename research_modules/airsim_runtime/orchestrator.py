@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, replace
+from dataclasses import asdict, is_dataclass, replace
 import json
 from pathlib import Path
 import time
@@ -23,6 +23,7 @@ from .adapters import (
     truth_summary_from_blocks_frames,
 )
 from .blocks import BlocksProcessManager
+from .d4d5_stress import run_d4d5_stress_analysis
 from .intercept import run_controlled_intercept_episode
 from .models import BlocksSmokeConfig, BlocksSmokeResult
 from .real_runtime import RealAirSimRuntimeClient
@@ -99,9 +100,25 @@ class AirSimBlocksSmokeOrchestrator:
             else:
                 frames = self._capture_frames(runtime, config)
             raw_log = _write_frames_jsonl(frames, output_dir / "blocks_frames.jsonl")
+            sensor_log = _write_sensor_observations_jsonl(
+                frames,
+                output_dir / "blocks_sensor_observations.jsonl",
+                config,
+            )
             integrated = (
                 self._run_integrated_replay(config, frames, output_dir)
                 if config.include_integrated_pipeline
+                else None
+            )
+            d4d5_stress = (
+                run_d4d5_stress_analysis(
+                    frames,
+                    output_dir,
+                    case_name=str(config.metadata.get("d4d5_stress_case", "no_degradation")),
+                    resource_vehicle_names=config.resource_vehicle_names,
+                    secondary_camera_vehicle_names=config.secondary_camera_vehicle_names,
+                )
+                if config.metadata.get("d4d5_stress_enabled")
                 else None
             )
             result = BlocksSmokeResult(
@@ -111,7 +128,12 @@ class AirSimBlocksSmokeOrchestrator:
                 vehicle_names=_vehicle_names(frames),
                 image_ok_count=sum(1 for frame in frames if frame.metadata.get("image", {}).get("ok")),
                 lidar_ok_count=sum(1 for frame in frames if frame.metadata.get("lidar", {}).get("ok")),
-                output_paths={"blocks_frames_jsonl": raw_log, **intercept_output_paths},
+                output_paths={
+                    "blocks_frames_jsonl": raw_log,
+                    "blocks_sensor_observations_jsonl": sensor_log,
+                    **intercept_output_paths,
+                    **({} if d4d5_stress is None else d4d5_stress.output_paths),
+                },
                 integrated_result=integrated,
                 metadata={
                     "real_airsim_used": True,
@@ -120,8 +142,13 @@ class AirSimBlocksSmokeOrchestrator:
                     "module_order": list(self.MODULE_ORDER),
                     "control_api_used": bool(config.execute_intercept),
                     "actor_target_count": len(config.target_actor_specs),
+                    "resource_vehicle_names": list(config.resource_vehicle_names),
+                    "camera_vehicle_names": list(config.effective_camera_vehicle_names()),
+                    "secondary_camera_vehicle_names": list(config.secondary_camera_vehicle_names),
+                    "capture_lidar": bool(config.capture_lidar),
                     "detection_count": sum(len(frame.visual_detections) for frame in frames),
                     "intercept": intercept_metadata,
+                    "d4d5_stress": {} if d4d5_stress is None else d4d5_stress.metrics,
                     "first_frame": _frame_summary(frames[0]) if frames else {},
                     "last_frame": _frame_summary(frames[-1]) if frames else {},
                 },
@@ -209,7 +236,11 @@ class AirSimBlocksSmokeOrchestrator:
         def observation_provider(arrival_timestamp: float) -> list[object]:
             measurement_time = max(0.0, arrival_timestamp - config.radar_latency_s)
             frame = nearest_frame(frames, measurement_time)
-            return observations_from_blocks_frame(frame, arrival_timestamp=arrival_timestamp)
+            return observations_from_blocks_frame(
+                frame,
+                arrival_timestamp=arrival_timestamp,
+                include_lidar=config.capture_lidar,
+            )
 
         def truth_provider(timestamp: float):
             return truth_states_from_blocks_frame(nearest_frame(frames, timestamp))
@@ -268,6 +299,39 @@ def _write_frames_jsonl(frames: list[AirSimFrame], path: Path) -> Path:
     return path
 
 
+def _write_sensor_observations_jsonl(
+    frames: list[AirSimFrame],
+    path: Path,
+    config: BlocksSmokeConfig,
+) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as stream:
+        for frame in frames:
+            observations = observations_from_blocks_frame(
+                frame,
+                arrival_timestamp=frame.timestamp + config.radar_latency_s,
+                include_lidar=config.capture_lidar,
+            )
+            for observation in observations:
+                payload = {
+                    "observation_id": observation.observation_id,
+                    "sensor_id": observation.sensor_id,
+                    "modality": observation.modality,
+                    "measurement_timestamp": observation.measurement_timestamp,
+                    "arrival_timestamp": observation.arrival_timestamp,
+                    "frame_id": observation.frame_id,
+                    "measurement": observation.measurement,
+                    "covariance": observation.covariance,
+                    "classification_hint": observation.classification_hint,
+                    "confidence": observation.confidence,
+                    "quality_flags": list(observation.quality_flags),
+                    "metadata": observation.metadata,
+                    "communication": observation.communication_metadata,
+                }
+                stream.write(json.dumps(_jsonable(payload), ensure_ascii=False, sort_keys=True) + "\n")
+    return path
+
+
 def _write_summary(path: Path, result: BlocksSmokeResult) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -299,8 +363,14 @@ def _frame_to_dict(frame: AirSimFrame) -> dict[str, Any]:
 
 
 def _jsonable(value: Any) -> Any:
+    if is_dataclass(value):
+        return _jsonable(asdict(value))
     if hasattr(value, "tolist"):
         return value.tolist()
+    if hasattr(value, "item"):
+        return value.item()
+    if isinstance(value, Path):
+        return str(value)
     if isinstance(value, dict):
         return {str(key): _jsonable(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
@@ -334,7 +404,12 @@ def _frame_summary(frame: AirSimFrame) -> dict[str, Any]:
         "resource_count": len(frame.resources),
         "image": frame.metadata.get("image", {}),
         "lidar": frame.metadata.get("lidar", {}),
+        "camera_vehicle_names": frame.metadata.get("camera_vehicle_names", []),
+        "resource_vehicle_names": frame.metadata.get("resource_vehicle_names", []),
+        "secondary_camera_vehicle_names": frame.metadata.get("secondary_camera_vehicle_names", []),
         "detection_count": len(frame.visual_detections),
+        "cv_camera_guidance_count": len(frame.metadata.get("cv_camera_guidance", [])),
+        "cv_camera_guidance_sample": frame.metadata.get("cv_camera_guidance", [])[:3],
         "actor_targets": frame.metadata.get("actor_targets", []),
         "scene_object_count": frame.metadata.get("scene_object_count", 0),
     }

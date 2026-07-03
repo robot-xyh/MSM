@@ -24,7 +24,15 @@ for rel in (
         sys.path.insert(0, path)
 
 from airsim_runtime import run_blocks_smoke
-from airsim_runtime.models import BlocksSmokeConfig
+from airsim_runtime.models import (
+    BlocksSmokeConfig,
+    default_cv_5v5_actor_target_specs,
+    default_cv_5v5_camera_vehicle_names,
+    default_cv_5v5_secondary_vehicle_names,
+)
+
+DEFAULT_SETTINGS = "research_modules/airsim_runtime/settings/blocks_smoke_settings.json"
+CV_5V5_SETTINGS = "research_modules/airsim_runtime/settings/blocks_cv_5v5_settings.json"
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,7 +44,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--blocks-script", default="Blocks/LinuxBlocks1.8.1/LinuxNoEditor/Blocks.sh")
     parser.add_argument(
         "--settings",
-        default="research_modules/airsim_runtime/settings/blocks_smoke_settings.json",
+        default=DEFAULT_SETTINGS,
+    )
+    parser.add_argument(
+        "--cv-5v5",
+        action="store_true",
+        help="Run one ComputerVision 5v5 actor-target replay episode.",
+    )
+    parser.add_argument("--cv-camera-follow-distance", type=float, default=14.0)
+    parser.add_argument(
+        "--cv-reassignment-time",
+        type=float,
+        default=None,
+        help="ComputerVision 5v5 secondary reassignment time. Defaults to half the duration.",
     )
     parser.add_argument("--connection-timeout", type=float, default=90.0)
     parser.add_argument("--client-timeout", type=float, default=2.0)
@@ -48,6 +68,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--camera-vehicle-name", default="Interceptor")
     parser.add_argument("--camera-name", default="0")
+    parser.add_argument("--save-images", action="store_true", help="Persist sampled Scene PNG frames.")
     parser.add_argument("--lidar-vehicle-name", default="Interceptor")
     parser.add_argument("--lidar-name", default="LidarSensor1")
     parser.add_argument("--target-vehicles", default="Intruder")
@@ -66,29 +87,66 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    config = BlocksSmokeConfig(
-        episode_id=args.episode_id,
-        duration_s=args.duration,
-        dt_s=args.dt,
-        output_root=Path(args.output_root),
-        blocks_script=Path(args.blocks_script),
-        settings_path=Path(args.settings),
-        blocks_args=tuple(args.blocks_arg)
+    settings_path = Path(args.settings)
+    mode_config = {
+        "target_vehicle_names": _parse_csv(args.target_vehicles),
+        "resource_vehicle_names": _parse_csv(args.resource_vehicles),
+    }
+    if args.cv_5v5:
+        if args.settings == DEFAULT_SETTINGS:
+            settings_path = Path(CV_5V5_SETTINGS)
+        cv_resources = default_cv_5v5_camera_vehicle_names()
+        cv_secondaries = default_cv_5v5_secondary_vehicle_names()
+        mode_config = {
+            "scenario_name": "blocks_cv_5v5",
+            "camera_vehicle_name": cv_resources[0],
+            "camera_vehicle_names": cv_resources,
+            "secondary_camera_vehicle_names": cv_secondaries,
+            "capture_lidar": False,
+            "cv_camera_follow_assignments": True,
+            "cv_camera_follow_distance_m": args.cv_camera_follow_distance,
+            "cv_secondary_look_at_enabled": True,
+            "cv_reassignment_time_s": (
+                args.cv_reassignment_time
+                if args.cv_reassignment_time is not None
+                else max(args.dt, args.duration * 0.5)
+            ),
+            "lidar_vehicle_name": cv_resources[0],
+            "lidar_vehicle_names": (),
+            "target_vehicle_names": (),
+            "resource_vehicle_names": cv_resources,
+            "target_actor_specs": default_cv_5v5_actor_target_specs(target_z=-10.0),
+            "detection_filter_names": ("MSM_TargetActor_*",),
+            "detection_radius_cm": 160 * 100,
+            "metadata": {
+                "runtime_mode": "computer_vision_5v5",
+                "secondary_camera_vehicle_names": cv_secondaries,
+            },
+        }
+    config_kwargs = {
+        "episode_id": args.episode_id,
+        "duration_s": args.duration,
+        "dt_s": args.dt,
+        "output_root": Path(args.output_root),
+        "blocks_script": Path(args.blocks_script),
+        "settings_path": settings_path,
+        "blocks_args": tuple(args.blocks_arg)
         if args.blocks_arg is not None
         else BlocksSmokeConfig().blocks_args,
-        prefer_nvidia_offload=not args.no_nvidia_offload,
-        launch_blocks=not args.no_launch,
-        connection_timeout_s=args.connection_timeout,
-        client_timeout_s=args.client_timeout,
-        client_kind=args.client_kind,
-        camera_vehicle_name=args.camera_vehicle_name,
-        camera_name=args.camera_name,
-        lidar_vehicle_name=args.lidar_vehicle_name,
-        lidar_name=args.lidar_name,
-        target_vehicle_names=_parse_csv(args.target_vehicles),
-        resource_vehicle_names=_parse_csv(args.resource_vehicles),
-        include_integrated_pipeline=not args.no_integrated_pipeline,
-    )
+        "prefer_nvidia_offload": not args.no_nvidia_offload,
+        "launch_blocks": not args.no_launch,
+        "connection_timeout_s": args.connection_timeout,
+        "client_timeout_s": args.client_timeout,
+        "client_kind": args.client_kind,
+        "camera_vehicle_name": args.camera_vehicle_name,
+        "camera_name": args.camera_name,
+        "save_images": args.save_images,
+        "lidar_vehicle_name": args.lidar_vehicle_name,
+        "lidar_name": args.lidar_name,
+        "include_integrated_pipeline": not args.no_integrated_pipeline,
+    }
+    config_kwargs.update(mode_config)
+    config = BlocksSmokeConfig(**config_kwargs)
     result = run_blocks_smoke(config)
     print(f"episode_id={result.episode_id}")
     print(f"connected={result.connected}")

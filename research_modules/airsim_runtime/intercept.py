@@ -16,7 +16,14 @@ from typing import Any
 import numpy as np
 
 from airsim_dryrun.models import AirSimFrame
-from d7_proportional_guidance import GuidanceMode, GuidanceState, compute_pn_command
+from d7_proportional_guidance import (
+    GuidanceMode,
+    GuidanceState,
+    PngGuidanceConfig,
+    SimpleFlightPngGuidanceFilter,
+    VisionGuidanceObservation,
+    compute_pn_command,
+)
 
 from .models import BlocksSmokeConfig
 
@@ -33,6 +40,9 @@ class InterceptPair:
     time_to_intercept_s: float | None = None
     last_detection_s: float | None = None
     terminal_locked: bool = False
+    terminal_handover_pending: bool = False
+    visual_filter: SimpleFlightPngGuidanceFilter | None = None
+    terminal_switch_reject_reason: str = ""
 
 
 @dataclass
@@ -49,7 +59,19 @@ class InterceptCommandRecord:
     los_rate_radps: float
     closing_speed_mps: float
     terminal_locked: bool
+    terminal_handover_pending: bool
     detection_seen: bool
+    guidance_law: str
+    camera_quality_gate_passed: bool
+    los_quality_gate_passed: bool
+    maneuver_margin_gate_passed: bool
+    terminal_switch_allowed: bool
+    terminal_switch_reject_reason: str
+    bbox_area_ratio: float
+    los_rate_variance_radps2: float
+    ttc_s: float | None
+    maneuver_margin: float
+    control_saturated: bool
     collision_seen: bool
     collision_object_name: str
     status: str
@@ -160,12 +182,13 @@ def _step_pairs(
             _record_command(config, frame.timestamp, pair, range_m, (0.0, 0.0, 0.0), None, True, collision, command_records)
             continue
 
-        visible_targets = detections.get(pair.resource_id, set())
-        detection_seen = pair.target_id in visible_targets
+        visible_detection = _assigned_detection(frame, pair)
+        detection_seen = visible_detection is not None
         if detection_seen:
             pair.last_detection_s = frame.timestamp
         in_terminal_range = range_m <= config.intercept_terminal_switch_range_m
-        pair.terminal_locked = pair.terminal_locked or (in_terminal_range and detection_seen)
+        if in_terminal_range:
+            pair.terminal_handover_pending = True
         if in_terminal_range and not detection_seen:
             last_seen = pair.last_detection_s
             if last_seen is None or frame.timestamp - last_seen > config.intercept_detection_timeout_s:
@@ -181,6 +204,7 @@ def _step_pairs(
             resource_velocity,
             target_position,
             target_velocity,
+            visible_detection,
         )
         if resource_position[2] > 0.25:
             _abort_pair(runtime, pair, "below_ground_or_invalid_altitude")
@@ -213,6 +237,7 @@ def _pn_velocity_command(
     resource_velocity: np.ndarray,
     target_position: np.ndarray,
     target_velocity: np.ndarray,
+    visible_detection: Any | None,
 ) -> tuple[tuple[float, float, float], Any]:
     pursuer_speed = float(np.linalg.norm(resource_velocity[:2]))
     if pursuer_speed < 0.5:
@@ -249,6 +274,42 @@ def _pn_velocity_command(
         max_lateral_accel_mps2=20.0,
         max_turn_rate_radps=0.9,
     )
+    if pair.terminal_handover_pending and visible_detection is not None:
+        visual_filter = _visual_filter_for_pair(config, pair)
+        current_heading = math.atan2(float(resource_velocity[1]), float(resource_velocity[0]))
+        observation = _vision_observation_from_detection(frame_timestamp=timestamp, pair=pair, detection=visible_detection)
+        visual_command = visual_filter.evaluate(
+            observation,
+            current_heading_rad=current_heading,
+            current_speed_mps=max(float(np.linalg.norm(resource_velocity[:2])), config.intercept_speed_mps),
+            intercept_speed_mps=config.intercept_speed_mps,
+            relative_position_ned=tuple(float(value) for value in (target_position - resource_position)),
+            relative_velocity_ned=tuple(float(value) for value in (target_velocity - resource_velocity)),
+            command_z_ned_m=0.0,
+        )
+        pair.terminal_switch_reject_reason = visual_command.quality.reject_reason
+        if visual_command.quality.terminal_switch_allowed:
+            pair.terminal_locked = True
+        if pair.terminal_locked:
+            command.metadata.update(
+                {
+                    "mode_override": GuidanceMode.VISION_TERMINAL.value,
+                    "guidance_law": visual_command.guidance_law,
+                    "camera_quality_gate_passed": visual_command.quality.camera_quality_gate_passed,
+                    "los_quality_gate_passed": visual_command.quality.los_quality_gate_passed,
+                    "maneuver_margin_gate_passed": visual_command.quality.maneuver_margin_gate_passed,
+                    "terminal_switch_allowed": visual_command.quality.terminal_switch_allowed,
+                    "terminal_switch_reject_reason": visual_command.quality.reject_reason,
+                    "bbox_area_ratio": visual_command.quality.bbox_area_ratio,
+                    "los_rate_variance_radps2": visual_command.quality.los_rate_variance_radps2,
+                    "ttc_s": visual_command.quality.ttc_s,
+                    "maneuver_margin": visual_command.quality.maneuver_margin,
+                    "control_saturated": visual_command.control_saturated,
+                }
+            )
+            return visual_command.velocity_ned, command
+        command.metadata.update(_visual_metadata(visual_command))
+
     if pair.terminal_locked:
         heading = math.atan2(
             float(target_position[1] - resource_position[1]),
@@ -264,6 +325,66 @@ def _pn_velocity_command(
         ),
         command,
     )
+
+
+def _visual_filter_for_pair(
+    config: BlocksSmokeConfig,
+    pair: InterceptPair,
+) -> SimpleFlightPngGuidanceFilter:
+    if pair.visual_filter is None:
+        pair.visual_filter = SimpleFlightPngGuidanceFilter(
+            PngGuidanceConfig(
+                dt_s=config.control_dt_s,
+                image_width_px=640,
+                image_height_px=480,
+                focal_length_px=320.0,
+                min_bbox_area_ratio=config.intercept_min_bbox_area_ratio,
+                min_detection_confidence=config.intercept_min_detection_confidence,
+                min_stable_frames=config.intercept_min_stable_detection_frames,
+                max_visual_latency_s=config.intercept_max_visual_latency_s,
+                navigation_constant=config.intercept_navigation_constant,
+                law=config.intercept_guidance_law,  # type: ignore[arg-type]
+            )
+        )
+    return pair.visual_filter
+
+
+def _vision_observation_from_detection(
+    *,
+    frame_timestamp: float,
+    pair: InterceptPair,
+    detection: Any,
+) -> VisionGuidanceObservation:
+    return VisionGuidanceObservation(
+        timestamp_s=float(frame_timestamp),
+        frame_timestamp_s=float(getattr(detection, "timestamp", frame_timestamp)),
+        bbox_xyxy=tuple(float(value) for value in detection.bbox_xyxy),
+        detection_confidence=float(getattr(detection, "confidence", 0.0)),
+        local_track_id=str(getattr(detection, "local_track_id", "")) or None,
+        assigned_global_track_id=pair.target_id,
+        camera_id=str(getattr(detection, "camera_id", "")) or None,
+        metadata={
+            "visual_latency_s": max(0.0, float(frame_timestamp) - float(getattr(detection, "timestamp", frame_timestamp))),
+            "source_node_id": pair.resource_id,
+            "payload_kind": "bbox",
+        },
+    )
+
+
+def _visual_metadata(visual_command: Any) -> dict[str, Any]:
+    return {
+        "guidance_law": visual_command.guidance_law,
+        "camera_quality_gate_passed": visual_command.quality.camera_quality_gate_passed,
+        "los_quality_gate_passed": visual_command.quality.los_quality_gate_passed,
+        "maneuver_margin_gate_passed": visual_command.quality.maneuver_margin_gate_passed,
+        "terminal_switch_allowed": visual_command.quality.terminal_switch_allowed,
+        "terminal_switch_reject_reason": visual_command.quality.reject_reason,
+        "bbox_area_ratio": visual_command.quality.bbox_area_ratio,
+        "los_rate_variance_radps2": visual_command.quality.los_rate_variance_radps2,
+        "ttc_s": visual_command.quality.ttc_s,
+        "maneuver_margin": visual_command.quality.maneuver_margin,
+        "control_saturated": visual_command.control_saturated,
+    }
 
 
 def _initial_pairs(frame: AirSimFrame) -> list[InterceptPair]:
@@ -301,6 +422,25 @@ def _detections_by_resource(frame: AirSimFrame) -> dict[str, set[str]]:
     return detections
 
 
+def _assigned_detection(frame: AirSimFrame, pair: InterceptPair) -> Any | None:
+    vehicle_to_resource = {
+        str(resource.metadata.get("airsim_vehicle_name")): resource.resource_id
+        for resource in frame.resources
+        if resource.metadata.get("airsim_vehicle_name")
+    }
+    candidates = []
+    for detection in frame.visual_detections:
+        owner = str(detection.camera_id).split(":", 1)[0]
+        if vehicle_to_resource.get(owner) != pair.resource_id:
+            continue
+        if str(detection.object_id) != pair.target_id:
+            continue
+        candidates.append(detection)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: float(getattr(item, "confidence", 0.0)))
+
+
 def _is_assigned_target_collision(collision: dict[str, Any], target: Any) -> bool:
     if not bool(collision.get("has_collided", False)):
         return False
@@ -336,7 +476,7 @@ def _record_command(
             resource_id=pair.resource_id,
             vehicle_name=pair.vehicle_name,
             target_id=pair.target_id,
-            mode=(pn_command.mode.value if pn_command is not None else ("vision_terminal" if pair.terminal_locked else "radar_midcourse")),
+            mode=_command_mode(pn_command, pair),
             range_m=float(range_m),
             command_vx_mps=float(velocity_command[0]),
             command_vy_mps=float(velocity_command[1]),
@@ -344,7 +484,19 @@ def _record_command(
             los_rate_radps=float(getattr(pn_command, "los_rate_radps", 0.0) if pn_command is not None else 0.0),
             closing_speed_mps=float(getattr(pn_command, "closing_speed_mps", 0.0) if pn_command is not None else 0.0),
             terminal_locked=bool(pair.terminal_locked),
+            terminal_handover_pending=bool(pair.terminal_handover_pending),
             detection_seen=bool(detection_seen),
+            guidance_law=str(_command_metadata(pn_command, "guidance_law", "radar_pn" if not pair.terminal_locked else "los")),
+            camera_quality_gate_passed=bool(_command_metadata(pn_command, "camera_quality_gate_passed", False)),
+            los_quality_gate_passed=bool(_command_metadata(pn_command, "los_quality_gate_passed", False)),
+            maneuver_margin_gate_passed=bool(_command_metadata(pn_command, "maneuver_margin_gate_passed", False)),
+            terminal_switch_allowed=bool(_command_metadata(pn_command, "terminal_switch_allowed", pair.terminal_locked)),
+            terminal_switch_reject_reason=str(_command_metadata(pn_command, "terminal_switch_reject_reason", pair.terminal_switch_reject_reason)),
+            bbox_area_ratio=float(_command_metadata(pn_command, "bbox_area_ratio", 0.0) or 0.0),
+            los_rate_variance_radps2=float(_command_metadata(pn_command, "los_rate_variance_radps2", 0.0) or 0.0),
+            ttc_s=_optional_float(_command_metadata(pn_command, "ttc_s", None)),
+            maneuver_margin=float(_command_metadata(pn_command, "maneuver_margin", 0.0) or 0.0),
+            control_saturated=bool(_command_metadata(pn_command, "control_saturated", getattr(pn_command, "is_saturated", False) if pn_command is not None else False)),
             collision_seen=bool(collision_seen),
             collision_object_name=str(collision.get("object_name") or ""),
             status=pair.status,
@@ -355,6 +507,31 @@ def _record_command(
 
 def _recorded_collision_seen(collision: dict[str, Any]) -> bool:
     return bool(collision.get("target_collision_seen", False))
+
+
+def _command_metadata(command: Any | None, key: str, default: Any) -> Any:
+    if command is None:
+        return default
+    metadata = getattr(command, "metadata", {}) or {}
+    return metadata.get(key, default)
+
+
+def _command_mode(command: Any | None, pair: InterceptPair) -> str:
+    if command is None:
+        return "vision_terminal" if pair.terminal_locked else "radar_midcourse"
+    mode = _command_metadata(command, "mode_override", None)
+    if mode is not None:
+        return str(mode)
+    return str(command.mode.value)
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _control_timestamps(config: BlocksSmokeConfig) -> list[float]:
@@ -390,7 +567,7 @@ def _write_intercept_outputs(
             "intercept_max_duration_s": config.intercept_max_duration_s,
             "terminal_switch_range_m": config.intercept_terminal_switch_range_m,
         },
-        "pairs": [asdict(pair) for pair in pairs],
+        "pairs": [_pair_summary(pair) for pair in pairs],
         "record_count": len(command_records),
     }
     for pair in summary["pairs"]:
@@ -404,6 +581,23 @@ def _write_intercept_outputs(
     _write_trajectory_plot(frames, plot_path)
     paths["intercept_trajectory_plot"] = plot_path
     return paths
+
+
+def _pair_summary(pair: InterceptPair) -> dict[str, Any]:
+    return {
+        "resource_id": pair.resource_id,
+        "vehicle_name": pair.vehicle_name,
+        "target_id": pair.target_id,
+        "active": pair.active,
+        "status": pair.status,
+        "abort_reason": pair.abort_reason,
+        "min_range_m": pair.min_range_m,
+        "time_to_intercept_s": pair.time_to_intercept_s,
+        "last_detection_s": pair.last_detection_s,
+        "terminal_locked": pair.terminal_locked,
+        "terminal_handover_pending": pair.terminal_handover_pending,
+        "terminal_switch_reject_reason": pair.terminal_switch_reject_reason,
+    }
 
 
 def _write_trajectory_plot(frames: list[AirSimFrame], path: Path) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,10 +18,19 @@ from airsim_runtime.adapters import (
     truth_states_from_blocks_frame,
 )
 from airsim_runtime.blocks import BlocksProcessManager
-from airsim_runtime.models import BlocksActorTargetSpec, BlocksEpisodeSpec, BlocksSmokeConfig
+from airsim_runtime.d4d5_stress import run_d4d5_stress_analysis
+from airsim_runtime.models import (
+    BlocksActorTargetSpec,
+    BlocksEpisodeSpec,
+    BlocksSmokeConfig,
+    default_cv_5v5_actor_target_specs,
+    default_cv_5v5_d4d5_stress_actor_target_specs,
+    default_cv_5v5_camera_vehicle_names,
+    default_cv_5v5_secondary_vehicle_names,
+)
 from airsim_runtime.orchestrator import AirSimBlocksSmokeOrchestrator
 from airsim_runtime.real_runtime import RealAirSimRuntimeClient
-from airsim_runtime.sequence import AirSimBlocksSequenceOrchestrator
+from airsim_runtime.sequence import AirSimBlocksSequenceOrchestrator, D4D5_STRESS_EPISODES
 
 
 def test_repo_blocks_settings_are_valid_and_enable_lidar() -> None:
@@ -75,6 +85,64 @@ def test_computer_vision_settings_are_available_for_rpc_diagnostics() -> None:
     assert settings["ApiServerPort"] == 41451
     assert settings["ViewMode"] == "NoDisplay"
     assert "Vehicles" not in settings
+
+
+def test_computer_vision_5v5_settings_define_camera_actors() -> None:
+    settings_path = Path("research_modules/airsim_runtime/settings/blocks_cv_5v5_settings.json")
+
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+
+    resources = default_cv_5v5_camera_vehicle_names()
+    secondaries = default_cv_5v5_secondary_vehicle_names()
+    assert settings["SimMode"] == "ComputerVision"
+    assert settings["EnableRpc"] is True
+    assert settings["ApiServerPort"] == 41451
+    assert set(settings["Vehicles"]) == {*resources, *secondaries}
+    for name in (*resources, *secondaries):
+        assert settings["Vehicles"][name]["VehicleType"] == "ComputerVision"
+        assert "Sensors" not in settings["Vehicles"][name]
+
+
+def test_computer_vision_5v5_d4d5_stress_settings_define_requested_geometry() -> None:
+    settings_path = Path("research_modules/airsim_runtime/settings/blocks_cv_5v5_d4d5_stress_settings.json")
+
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+
+    resources = default_cv_5v5_camera_vehicle_names()
+    secondaries = default_cv_5v5_secondary_vehicle_names()
+    vehicles = settings["Vehicles"]
+    assert settings["SimMode"] == "ComputerVision"
+    assert set(vehicles) == {*resources, *secondaries}
+    assert [vehicles[name]["Y"] for name in resources] == [-40, -20, 0, 20, 40]
+    assert all(vehicles[name]["X"] == 0 for name in resources)
+    assert [vehicles[name]["Z"] for name in secondaries] == [-60, -60]
+    assert "Cameras" not in vehicles["Secondary_Recon_1"]
+
+
+def test_default_cv_5v5_actor_specs_are_five_crossing_targets() -> None:
+    specs = default_cv_5v5_actor_target_specs(target_z=-10.0)
+
+    assert len(specs) == 5
+    assert [spec.object_id for spec in specs] == [
+        "TGT-001",
+        "TGT-002",
+        "TGT-003",
+        "TGT-004",
+        "TGT-005",
+    ]
+    assert specs[0].position_at(2.0)[2] == -10.0
+    assert specs[0].position_at(2.0)[1] > specs[0].start_ned[1]
+    assert specs[-1].position_at(2.0)[1] < specs[-1].start_ned[1]
+
+
+def test_default_cv_5v5_d4d5_stress_actor_specs_match_requested_geometry() -> None:
+    specs = default_cv_5v5_d4d5_stress_actor_target_specs()
+
+    assert len(specs) == 5
+    assert [spec.start_ned[0] for spec in specs] == [50.0] * 5
+    assert [spec.start_ned[1] for spec in specs] == [-40.0, -20.0, 0.0, 20.0, 40.0]
+    assert all(spec.start_ned[2] == -10.0 for spec in specs)
+    assert all(spec.scale == (10.0, 10.0, 10.0) for spec in specs)
 
 
 def test_actor_2v2_settings_use_two_inactive_interceptors_without_intruder_vehicle() -> None:
@@ -225,6 +293,22 @@ def test_real_runtime_samples_mock_airsim_frame(tmp_path: Path) -> None:
     assert frame.truth_objects[0].position_ned[1] == -20.0
     assert frame.resources[0].resource_id == "INT-01"
     assert frame.resources[0].position_ned[0] == 0.0
+    assert frame.metadata["image"]["saved"] is False
+    assert "path" not in frame.metadata["image"]
+
+
+def test_real_runtime_can_opt_in_to_persist_sampled_images(tmp_path: Path) -> None:
+    fake_client = FakeAirSimClient()
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+    )
+    config = BlocksSmokeConfig(output_root=tmp_path, duration_s=0.0, save_images=True)
+
+    frame = runtime.sample_frame(config, frame_index=0, timestamp=0.0, output_dir=tmp_path)
+
+    assert frame.metadata["image"]["saved"] is True
     assert Path(frame.metadata["image"]["path"]).exists()
 
 
@@ -268,6 +352,203 @@ def test_real_runtime_moves_actor_targets_and_captures_builtin_detections(tmp_pa
     assert frame.visual_detections[0].object_id == "TGT-001"
     assert frame.visual_detections[0].bbox_xyxy == (10.0, 20.0, 30.0, 40.0)
     assert frame.metadata["detection_count"] == 1
+
+
+def test_real_runtime_captures_computer_vision_5v5_cameras(tmp_path: Path) -> None:
+    settings_path = tmp_path / "cv5v5_settings.json"
+    resources = default_cv_5v5_camera_vehicle_names()
+    secondaries = default_cv_5v5_secondary_vehicle_names()
+    settings_path.write_text(
+        json.dumps(
+            {
+                "SimMode": "ComputerVision",
+                "Vehicles": {
+                    name: {"VehicleType": "ComputerVision", "X": 0, "Y": index * 4, "Z": -10}
+                    for index, name in enumerate((*resources, *secondaries))
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake_client = FakeAirSimClient(vehicle_names=(*resources, *secondaries))
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        settings_path=settings_path,
+        scenario_name="blocks_cv_5v5",
+        duration_s=0.0,
+        camera_vehicle_name=resources[0],
+        camera_vehicle_names=resources,
+        secondary_camera_vehicle_names=secondaries,
+        capture_lidar=False,
+        target_vehicle_names=(),
+        resource_vehicle_names=resources,
+        target_actor_specs=default_cv_5v5_actor_target_specs(target_z=-10.0),
+        detection_filter_names=("MSM_TargetActor_*",),
+    )
+
+    runtime.setup_episode(config)
+    frame = runtime.sample_frame(config, frame_index=0, timestamp=1.0, output_dir=tmp_path)
+    runtime.teardown_episode(config)
+
+    assert len(frame.truth_objects) == 5
+    assert len(frame.resources) == 5
+    assert len(frame.cameras) == 7
+    assert frame.metadata["secondary_camera_vehicle_names"] == list(secondaries)
+    assert frame.metadata["lidar"]["ok"] is False
+    assert frame.metadata["lidar"]["reason"] == "no_lidar_vehicle"
+    assert len(frame.metadata["images"]) == 7
+    assert all(name in fake_client.detection_filters for name in (*resources, *secondaries))
+    assert len(frame.visual_detections) == 35
+    assert {detection.camera_id.split(":", 1)[0] for detection in frame.visual_detections} == {
+        *resources,
+        *secondaries,
+    }
+
+
+def test_real_runtime_orients_cv_cameras_toward_initial_and_secondary_assignments(
+    tmp_path: Path,
+) -> None:
+    settings_path = tmp_path / "cv5v5_settings.json"
+    resources = default_cv_5v5_camera_vehicle_names()
+    secondaries = default_cv_5v5_secondary_vehicle_names()
+    settings_path.write_text(
+        json.dumps(
+            {
+                "SimMode": "ComputerVision",
+                "Vehicles": {
+                    name: {"VehicleType": "ComputerVision", "X": 0, "Y": index * 4, "Z": -10}
+                    for index, name in enumerate((*resources, *secondaries))
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake_client = FakeAirSimClient(vehicle_names=(*resources, *secondaries))
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        settings_path=settings_path,
+        scenario_name="blocks_cv_5v5",
+        duration_s=0.0,
+        camera_vehicle_name=resources[0],
+        camera_vehicle_names=resources,
+        secondary_camera_vehicle_names=secondaries,
+        capture_lidar=False,
+        cv_camera_follow_assignments=True,
+        cv_camera_follow_distance_m=12.0,
+        cv_reassignment_time_s=1.0,
+        target_vehicle_names=(),
+        resource_vehicle_names=resources,
+        target_actor_specs=default_cv_5v5_actor_target_specs(target_z=-10.0),
+        detection_filter_names=("MSM_TargetActor_*",),
+    )
+
+    runtime.setup_episode(config)
+    initial = runtime.sample_frame(config, frame_index=0, timestamp=0.5, output_dir=tmp_path)
+    secondary = runtime.sample_frame(config, frame_index=1, timestamp=1.5, output_dir=tmp_path)
+    runtime.teardown_episode(config)
+
+    initial_guidance = {
+        item["vehicle_name"]: item for item in initial.metadata["cv_camera_guidance"]
+    }
+    secondary_guidance = {
+        item["vehicle_name"]: item for item in secondary.metadata["cv_camera_guidance"]
+    }
+    assert initial_guidance["Interceptor_Cam_2"]["target_id"] == "TGT-002"
+    assert initial_guidance["Interceptor_Cam_2"]["assignment_phase"] == "initial_assignment"
+    assert secondary_guidance["Interceptor_Cam_2"]["target_id"] == "TGT-003"
+    assert secondary_guidance["Interceptor_Cam_3"]["target_id"] == "TGT-002"
+    assert secondary_guidance["Interceptor_Cam_2"]["assignment_phase"] == "secondary_reassignment"
+    assert secondary_guidance["Interceptor_Cam_2"]["pose_update_ok"] is True
+    assert "yaw_deg" in secondary_guidance["Interceptor_Cam_2"]
+    assert "pitch_deg" in secondary_guidance["Secondary_Recon_1"]
+    assert "Interceptor_Cam_2" in fake_client.vehicle_poses
+
+
+def test_real_runtime_d4d5_stress_geometry_and_secondary_camera_dimensions(tmp_path: Path) -> None:
+    settings_path = Path("research_modules/airsim_runtime/settings/blocks_cv_5v5_d4d5_stress_settings.json")
+    resources = default_cv_5v5_camera_vehicle_names()
+    secondaries = default_cv_5v5_secondary_vehicle_names()
+    fake_client = FakeAirSimClient(vehicle_names=(*resources, *secondaries))
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        settings_path=settings_path,
+        scenario_name="blocks_cv_5v5_d4d5_stress",
+        duration_s=0.0,
+        camera_vehicle_name=resources[0],
+        camera_vehicle_names=resources,
+        secondary_camera_vehicle_names=secondaries,
+        capture_lidar=False,
+        cv_camera_follow_assignments=True,
+        cv_camera_follow_distance_m=50.0,
+        target_vehicle_names=(),
+        resource_vehicle_names=resources,
+        target_actor_specs=default_cv_5v5_d4d5_stress_actor_target_specs(),
+        detection_filter_names=("MSM_TargetActor_*",),
+    )
+
+    runtime.setup_episode(config)
+    frame = runtime.sample_frame(config, frame_index=0, timestamp=0.0, output_dir=tmp_path)
+    runtime.teardown_episode(config)
+
+    target_y = [truth.position_ned[1] for truth in frame.truth_objects]
+    resource_y = [resource.position_ned[1] for resource in frame.resources]
+    cameras = {camera.owner_id: camera for camera in frame.cameras}
+    assert target_y == [-40.0, -20.0, 0.0, 20.0, 40.0]
+    assert resource_y == [-40.0, -20.0, 0.0, 20.0, 40.0]
+    assert cameras["Secondary_Recon_1"].position_ned[2] == -60.0
+    assert cameras["Secondary_Recon_1"].width == 640
+    assert cameras["Interceptor_Cam_1"].width == 640
+
+
+def test_d4d5_stress_analysis_outputs_expected_case_actions(tmp_path: Path) -> None:
+    frames = _cv5v5_stress_frames(tmp_path)
+    resources = default_cv_5v5_camera_vehicle_names()
+    secondaries = default_cv_5v5_secondary_vehicle_names()
+
+    no_degrade = run_d4d5_stress_analysis(
+        frames,
+        tmp_path / "no_degradation",
+        case_name="no_degradation",
+        resource_vehicle_names=resources,
+        secondary_camera_vehicle_names=secondaries,
+    )
+    secondary = run_d4d5_stress_analysis(
+        frames,
+        tmp_path / "secondary",
+        case_name="degrade_to_secondary",
+        resource_vehicle_names=resources,
+        secondary_camera_vehicle_names=secondaries,
+    )
+    distributed = run_d4d5_stress_analysis(
+        frames,
+        tmp_path / "distributed",
+        case_name="degrade_to_distributed",
+        resource_vehicle_names=resources,
+        secondary_camera_vehicle_names=secondaries,
+    )
+
+    assert no_degrade.metrics["dominant_d4_action"] == "continue_center"
+    assert secondary.metrics["d4_action_counts"]["degrade_to_secondary"] >= 1
+    assert secondary.metrics["selected_secondary_node_id"] == "SEC-01"
+    assert distributed.metrics["d4_action_counts"]["degrade_to_distributed"] >= 1
+    assert no_degrade.metrics["multi_target_fov_rate"] == 1.0
+    assert no_degrade.metrics["secondary_global_view_rate"] == 1.0
+    assert no_degrade.output_paths["d4d5_stress_case_report"].exists()
 
 
 def test_real_runtime_control_helpers_call_multirotor_api(tmp_path: Path) -> None:
@@ -371,6 +652,63 @@ def test_blocks_orchestrator_runs_mock_capture_and_integrated_replay(tmp_path: P
     assert result.output_paths["airsim_blocks_summary"].exists()
 
 
+def test_blocks_orchestrator_runs_mock_cv_5v5_integrated_replay(tmp_path: Path) -> None:
+    settings_path = tmp_path / "cv5v5_settings.json"
+    resources = default_cv_5v5_camera_vehicle_names()
+    secondaries = default_cv_5v5_secondary_vehicle_names()
+    settings_path.write_text(
+        json.dumps(
+            {
+                "SimMode": "ComputerVision",
+                "Vehicles": {
+                    name: {"VehicleType": "ComputerVision", "X": 0, "Y": index * 4, "Z": -10}
+                    for index, name in enumerate((*resources, *secondaries))
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake_client = FakeAirSimClient(vehicle_names=(*resources, *secondaries))
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+    )
+    config = BlocksSmokeConfig(
+        episode_id="pytest_cv5v5",
+        scenario_name="blocks_cv_5v5",
+        duration_s=1.0,
+        dt_s=0.5,
+        output_root=tmp_path,
+        settings_path=settings_path,
+        launch_blocks=False,
+        connection_timeout_s=0.1,
+        camera_vehicle_name=resources[0],
+        camera_vehicle_names=resources,
+        secondary_camera_vehicle_names=secondaries,
+        capture_lidar=False,
+        target_vehicle_names=(),
+        resource_vehicle_names=resources,
+        target_actor_specs=default_cv_5v5_actor_target_specs(target_z=-10.0),
+        detection_filter_names=("MSM_TargetActor_*",),
+    )
+    orchestrator = AirSimBlocksSmokeOrchestrator(runtime=runtime)
+
+    result = orchestrator.run(config)
+
+    assert result.connected is True
+    assert result.frame_count == 3
+    assert result.integrated_result is not None
+    assert result.integrated_result.metadata["real_airsim_used"] is True
+    assert result.metadata["actor_target_count"] == 5
+    assert result.metadata["resource_vehicle_names"] == list(resources)
+    assert result.metadata["secondary_camera_vehicle_names"] == list(secondaries)
+    assert result.metadata["capture_lidar"] is False
+    assert result.metadata["detection_count"] == 105
+    assert result.output_paths["blocks_frames_jsonl"].exists()
+    assert result.output_paths["blocks_sensor_observations_jsonl"].exists()
+
+
 def test_blocks_orchestrator_runs_mock_controlled_intercept(tmp_path: Path) -> None:
     config = BlocksSmokeConfig(
         episode_id="pytest_intercept",
@@ -383,7 +721,9 @@ def test_blocks_orchestrator_runs_mock_controlled_intercept(tmp_path: Path) -> N
         execute_intercept=True,
         control_dt_s=0.1,
         intercept_max_duration_s=0.2,
-        intercept_terminal_switch_range_m=1.0,
+        intercept_terminal_switch_range_m=100.0,
+        intercept_min_bbox_area_ratio=0.001,
+        intercept_min_stable_detection_frames=2,
     )
     runtime = FakeBlocksRuntime()
     orchestrator = AirSimBlocksSmokeOrchestrator(runtime=runtime)
@@ -399,6 +739,10 @@ def test_blocks_orchestrator_runs_mock_controlled_intercept(tmp_path: Path) -> N
     summary = json.loads(result.output_paths["intercept_summary"].read_text(encoding="utf-8"))
     assert summary["control_api_used"] is True
     assert summary["pair_count"] == 1
+    commands = result.output_paths["control_commands"].read_text(encoding="utf-8")
+    assert "guidance_law" in commands
+    assert "camera_quality_gate_passed" in commands
+    assert "terminal_switch_reject_reason" in commands
 
 
 def test_blocks_orchestrator_reconnects_after_initial_rpc_failure(tmp_path: Path) -> None:
@@ -448,6 +792,57 @@ def test_blocks_sequence_runner_reuses_one_blocks_process(tmp_path: Path) -> Non
     assert (tmp_path / "pytest_sequence" / "episode_a" / "airsim_blocks_summary.json").exists()
 
 
+def test_blocks_sequence_runner_writes_d4d5_stress_sequence_report(tmp_path: Path) -> None:
+    resources = default_cv_5v5_camera_vehicle_names()
+    secondaries = default_cv_5v5_secondary_vehicle_names()
+    fake_client = FakeAirSimClient(vehicle_names=(*resources, *secondaries))
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+    )
+    process_manager = FakeSequenceProcessManager(tmp_path / "sequence")
+    config = BlocksSmokeConfig(
+        episode_id="base",
+        scenario_name="blocks_cv_5v5_d4d5_stress",
+        duration_s=0.0,
+        output_root=tmp_path,
+        settings_path=Path("research_modules/airsim_runtime/settings/blocks_cv_5v5_d4d5_stress_settings.json"),
+        launch_blocks=False,
+        connection_timeout_s=0.1,
+        camera_vehicle_name=resources[0],
+        camera_vehicle_names=resources,
+        secondary_camera_vehicle_names=secondaries,
+        capture_lidar=False,
+        cv_camera_follow_assignments=True,
+        cv_camera_follow_distance_m=50.0,
+        target_vehicle_names=(),
+        resource_vehicle_names=resources,
+        target_actor_specs=default_cv_5v5_d4d5_stress_actor_target_specs(),
+        detection_filter_names=("MSM_TargetActor_*",),
+        metadata={"d4d5_stress_enabled": True},
+    )
+    specs = tuple(replace(spec, duration_s=0.0, include_integrated_pipeline=False) for spec in D4D5_STRESS_EPISODES)
+    orchestrator = AirSimBlocksSequenceOrchestrator(
+        runtime=runtime,
+        process_manager=process_manager,
+    )
+
+    result = orchestrator.run(config, sequence_id="pytest_d4d5_stress", episode_specs=specs)
+
+    assert result.connected is True
+    assert len(result.episode_results) == 3
+    assert result.output_paths["d4d5_stress_sequence_report"].exists()
+    assert result.output_paths["blocks_sequence_summary"].exists()
+    actions = [
+        episode.metadata["d4d5_stress"]["dominant_d4_action"]
+        for episode in result.episode_results
+    ]
+    assert actions[0] == "continue_center"
+    assert "degrade_to_secondary" in result.episode_results[1].metadata["d4d5_stress"]["d4_action_counts"]
+    assert "degrade_to_distributed" in result.episode_results[2].metadata["d4d5_stress"]["d4_action_counts"]
+
+
 class FakeAirSimModule:
     class ImageType:
         Scene = 0
@@ -466,9 +861,17 @@ class FakeAirSimModule:
             self.y_val = y_val
             self.z_val = z_val
 
+    class Quaternionr:
+        def __init__(self, x_val=0.0, y_val=0.0, z_val=0.0, w_val=1.0):
+            self.x_val = x_val
+            self.y_val = y_val
+            self.z_val = z_val
+            self.w_val = w_val
+
     class Pose:
-        def __init__(self, position_val=None):
+        def __init__(self, position_val=None, orientation_val=None):
             self.position = position_val or FakeAirSimModule.Vector3r()
+            self.orientation = orientation_val or FakeAirSimModule.Quaternionr()
 
     class ImageRequest:
         def __init__(self, camera_name, image_type, pixels_as_float=False, compress=True):
@@ -479,12 +882,14 @@ class FakeAirSimModule:
 
 
 class FakeAirSimClient:
-    def __init__(self) -> None:
+    def __init__(self, vehicle_names: tuple[str, ...] = ("Interceptor", "Intruder")) -> None:
         self.object_poses = {}
+        self.vehicle_poses = {}
         self.spawned_objects: list[str] = []
         self.destroyed_objects: list[str] = []
         self.detection_filters: dict[str, list[str]] = {}
         self.control_calls: list[tuple] = []
+        self.vehicle_names = tuple(vehicle_names)
 
     def ping(self):
         return True
@@ -523,10 +928,10 @@ class FakeAirSimClient:
         return SimpleNamespace(has_collided=False, object_name="", object_id=-1, time_stamp=0)
 
     def listVehicles(self):
-        return ["Interceptor", "Intruder"]
+        return list(self.vehicle_names)
 
     def simGetVehiclePose(self, vehicle_name):
-        return _pose(0.0, 0.0, -0.1)
+        return self.vehicle_poses.get(vehicle_name, _pose(0.0, 0.0, -0.1))
 
     def getMultirotorState(self, vehicle_name=""):
         velocity = _vector(0.0, 0.0, 0.0)
@@ -535,7 +940,7 @@ class FakeAirSimClient:
         )
 
     def simGetCameraInfo(self, camera_name, vehicle_name=""):
-        return SimpleNamespace(pose=_pose(0.0, 0.0, -2.0))
+        return SimpleNamespace(pose=self.vehicle_poses.get(vehicle_name, _pose(0.0, 0.0, -2.0)))
 
     def simGetImages(self, requests, vehicle_name="", external=False):
         png_header = b"\x89PNG\r\n\x1a\n"
@@ -547,6 +952,10 @@ class FakeAirSimClient:
                 image_type=0,
             )
         ]
+
+    def simSetVehiclePose(self, pose, ignore_collision=True, vehicle_name=""):
+        self.vehicle_poses[vehicle_name] = pose
+        return True
 
     def getLidarData(self, lidar_name="", vehicle_name=""):
         return SimpleNamespace(point_cloud=[0.0, 0.0, 0.0, 1.0, 1.0, 1.0], time_stamp=123)
@@ -701,6 +1110,19 @@ def _sample_frame(timestamp: float = 0.0, frame_index: int = 0) -> AirSimFrame:
                 timestamp=timestamp,
                 position_ned=(0.0, 0.0, -2.0),
                 coverage_cell="cell-north",
+                metadata={"airsim_vehicle_name": "Interceptor"},
+            ),
+        ),
+        visual_detections=(
+            AirSimDetectionBox(
+                detection_id=f"det-{frame_index}",
+                camera_id="Interceptor:0",
+                object_id="TGT-001",
+                local_track_id="Interceptor:0:MSM_TargetActor_1",
+                timestamp=timestamp,
+                center_px=(320.0 + frame_index, 240.0),
+                bbox_xyxy=(290.0 + frame_index, 210.0, 350.0 + frame_index, 270.0),
+                confidence=0.95,
             ),
         ),
         metadata={
@@ -712,6 +1134,41 @@ def _sample_frame(timestamp: float = 0.0, frame_index: int = 0) -> AirSimFrame:
             "scene_object_count": 2,
         },
     )
+
+
+def _cv5v5_stress_frames(tmp_path: Path) -> list[AirSimFrame]:
+    resources = default_cv_5v5_camera_vehicle_names()
+    secondaries = default_cv_5v5_secondary_vehicle_names()
+    fake_client = FakeAirSimClient(vehicle_names=(*resources, *secondaries))
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        settings_path=Path("research_modules/airsim_runtime/settings/blocks_cv_5v5_d4d5_stress_settings.json"),
+        scenario_name="blocks_cv_5v5_d4d5_stress",
+        duration_s=0.0,
+        camera_vehicle_name=resources[0],
+        camera_vehicle_names=resources,
+        secondary_camera_vehicle_names=secondaries,
+        capture_lidar=False,
+        cv_camera_follow_assignments=True,
+        cv_camera_follow_distance_m=50.0,
+        target_vehicle_names=(),
+        resource_vehicle_names=resources,
+        target_actor_specs=default_cv_5v5_d4d5_stress_actor_target_specs(),
+        detection_filter_names=("MSM_TargetActor_*",),
+    )
+    runtime.setup_episode(config)
+    try:
+        return [
+            runtime.sample_frame(config, frame_index=0, timestamp=0.0, output_dir=tmp_path),
+            runtime.sample_frame(config, frame_index=1, timestamp=0.5, output_dir=tmp_path),
+        ]
+    finally:
+        runtime.teardown_episode(config)
 
 
 def _pose(x: float, y: float, z: float):

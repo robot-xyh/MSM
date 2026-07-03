@@ -24,11 +24,22 @@ for rel in (
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from airsim_runtime.models import BlocksSmokeConfig, default_2v2_actor_target_specs
-from airsim_runtime.sequence import DEFAULT_BLOCKS_EPISODES, run_blocks_sequence
+from airsim_runtime.models import (
+    BlocksSmokeConfig,
+    default_2v2_actor_target_specs,
+    default_cv_5v5_actor_target_specs,
+    default_cv_5v5_d4d5_stress_actor_target_specs,
+    default_cv_5v5_camera_vehicle_names,
+    default_cv_5v5_secondary_vehicle_names,
+)
+from airsim_runtime.sequence import D4D5_STRESS_EPISODES, DEFAULT_BLOCKS_EPISODES, run_blocks_sequence
 
 DEFAULT_SETTINGS = "research_modules/airsim_runtime/settings/blocks_smoke_settings.json"
 ACTOR_2V2_SETTINGS = "research_modules/airsim_runtime/settings/blocks_2v2_actor_settings.json"
+CV_5V5_SETTINGS = "research_modules/airsim_runtime/settings/blocks_cv_5v5_settings.json"
+CV_5V5_D4D5_STRESS_SETTINGS = (
+    "research_modules/airsim_runtime/settings/blocks_cv_5v5_d4d5_stress_settings.json"
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,6 +58,23 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Run two SimpleFlight interceptor resources against two moving non-vehicle actor targets.",
     )
+    parser.add_argument(
+        "--cv-5v5",
+        action="store_true",
+        help="Run five ComputerVision camera resources against five moving actor targets.",
+    )
+    parser.add_argument(
+        "--cv-5v5-d4d5-stress",
+        action="store_true",
+        help="Run the dedicated 5v5 D5 terminal association and D4 degradation stress sequence.",
+    )
+    parser.add_argument("--cv-camera-follow-distance", type=float, default=14.0)
+    parser.add_argument(
+        "--cv-reassignment-time",
+        type=float,
+        default=None,
+        help="ComputerVision 5v5 secondary reassignment time. Defaults to half the duration.",
+    )
     parser.add_argument("--connection-timeout", type=float, default=90.0)
     parser.add_argument("--client-timeout", type=float, default=2.0)
     parser.add_argument(
@@ -61,6 +89,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--intercept-max-duration", type=float, default=8.0)
     parser.add_argument("--intercept-terminal-range", type=float, default=8.0)
     parser.add_argument("--intercept-detection-timeout", type=float, default=1.0)
+    parser.add_argument("--save-images", action="store_true", help="Persist sampled Scene PNG frames.")
     parser.add_argument(
         "--blocks-arg",
         action="append",
@@ -73,10 +102,29 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.actor_2v2 and args.cv_5v5:
+        raise SystemExit("--actor-2v2 and --cv-5v5 are mutually exclusive")
+    selected_modes = [args.actor_2v2, args.cv_5v5, args.cv_5v5_d4d5_stress]
+    if sum(1 for selected in selected_modes if selected) > 1:
+        raise SystemExit("--actor-2v2, --cv-5v5, and --cv-5v5-d4d5-stress are mutually exclusive")
+    if (args.cv_5v5 or args.cv_5v5_d4d5_stress) and args.execute_intercept:
+        raise SystemExit("ComputerVision 5v5 modes are read-only and cannot be combined with --execute-intercept")
     settings_path = Path(args.settings)
     if args.actor_2v2 and args.settings == DEFAULT_SETTINGS:
         settings_path = Path(ACTOR_2V2_SETTINGS)
-    scenario_name = "blocks_actor_2v2" if args.actor_2v2 else "blocks_readonly_smoke"
+    if args.cv_5v5 and args.settings == DEFAULT_SETTINGS:
+        settings_path = Path(CV_5V5_SETTINGS)
+    if args.cv_5v5_d4d5_stress and args.settings == DEFAULT_SETTINGS:
+        settings_path = Path(CV_5V5_D4D5_STRESS_SETTINGS)
+    scenario_name = (
+        "blocks_actor_2v2"
+        if args.actor_2v2
+        else "blocks_cv_5v5"
+        if args.cv_5v5
+        else "blocks_cv_5v5_d4d5_stress"
+        if args.cv_5v5_d4d5_stress
+        else "blocks_readonly_smoke"
+    )
     actor_config = (
         {
             "camera_vehicle_name": "Interceptor1",
@@ -94,6 +142,45 @@ def main() -> int:
         if args.actor_2v2
         else {}
     )
+    if args.cv_5v5 or args.cv_5v5_d4d5_stress:
+        cv_resources = default_cv_5v5_camera_vehicle_names()
+        cv_secondaries = default_cv_5v5_secondary_vehicle_names()
+        target_specs = (
+            default_cv_5v5_d4d5_stress_actor_target_specs(target_z=-10.0)
+            if args.cv_5v5_d4d5_stress
+            else default_cv_5v5_actor_target_specs(target_z=-10.0)
+        )
+        follow_distance = 50.0 if args.cv_5v5_d4d5_stress else args.cv_camera_follow_distance
+        actor_config = {
+            "camera_vehicle_name": cv_resources[0],
+            "camera_vehicle_names": cv_resources,
+            "secondary_camera_vehicle_names": cv_secondaries,
+            "capture_lidar": False,
+            "cv_camera_follow_assignments": True,
+            "cv_camera_follow_distance_m": follow_distance,
+            "cv_secondary_look_at_enabled": True,
+            "cv_reassignment_time_s": (
+                args.cv_reassignment_time
+                if args.cv_reassignment_time is not None
+                else max(args.dt, args.duration * 0.5)
+            ),
+            "lidar_vehicle_name": cv_resources[0],
+            "lidar_vehicle_names": (),
+            "target_vehicle_names": (),
+            "resource_vehicle_names": cv_resources,
+            "target_actor_specs": target_specs,
+            "detection_filter_names": ("MSM_TargetActor_*",),
+            "detection_radius_cm": (260 if args.cv_5v5_d4d5_stress else 160) * 100,
+            "metadata": {
+                "runtime_mode": (
+                    "computer_vision_5v5_d4d5_stress"
+                    if args.cv_5v5_d4d5_stress
+                    else "computer_vision_5v5"
+                ),
+                "secondary_camera_vehicle_names": cv_secondaries,
+                "d4d5_stress_enabled": bool(args.cv_5v5_d4d5_stress),
+            },
+        }
     base_config = BlocksSmokeConfig(
         scenario_name=scenario_name,
         duration_s=args.duration,
@@ -108,6 +195,7 @@ def main() -> int:
         connection_timeout_s=args.connection_timeout,
         client_timeout_s=args.client_timeout,
         client_kind="multirotor" if args.execute_intercept else "vehicle",
+        save_images=args.save_images,
         execute_intercept=args.execute_intercept,
         control_dt_s=args.control_dt,
         intercept_speed_mps=args.intercept_speed,
@@ -118,9 +206,10 @@ def main() -> int:
         intercept_detection_timeout_s=args.intercept_detection_timeout,
         **actor_config,
     )
+    selected_episode_specs = D4D5_STRESS_EPISODES if args.cv_5v5_d4d5_stress else DEFAULT_BLOCKS_EPISODES
     episode_specs = tuple(
         replace(spec, scenario_name=scenario_name, duration_s=args.duration, dt_s=args.dt)
-        for spec in DEFAULT_BLOCKS_EPISODES
+        for spec in selected_episode_specs
     )
     result = run_blocks_sequence(
         base_config,

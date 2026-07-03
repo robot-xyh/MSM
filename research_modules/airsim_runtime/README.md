@@ -10,6 +10,10 @@ The default path is read-only. When `--execute-intercept` is passed, only
 `episode_006_full_flow` enables SimpleFlight API control for the interceptor
 vehicles. Intruders remain non-vehicle Unreal actors moved with
 `simSetObjectPose`, and target recognition uses AirSim `simGetDetections`.
+D7 terminal handoff uses the SimpleFlight-compatible PNG guidance gate: AirSim
+detection boxes must pass bbox, LOS-rate, visual latency, and maneuver-margin
+checks before the controller switches from `radar_midcourse` to
+`vision_terminal`.
 
 ## Run
 
@@ -52,6 +56,70 @@ python3 research_modules/airsim_runtime/run_blocks_sequence.py \
   --blocks-arg=-NoHMD \
   --blocks-arg=-NoSound
 ```
+
+By default, sampled camera frames are checked but not written as PNG files. Add
+`--save-images` only when debugging camera views or AirSim detection boxes.
+
+Run the ComputerVision 5v5 D1-D5 replay sequence. All interceptor and secondary
+nodes are `ComputerVision` camera vehicles; targets remain spawned/moved actors.
+This mode validates fusion, association, assignment, terminal visual
+registration, and degradation arbitration without SimpleFlight dynamics:
+
+```bash
+python3 research_modules/airsim_runtime/run_blocks_sequence.py \
+  --cv-5v5 \
+  --sequence-id blocks_cv_5v5_sequence_001 \
+  --duration 6.0 \
+  --dt 0.5 \
+  --blocks-arg=-windowed \
+  --blocks-arg=-ResX=640 \
+  --blocks-arg=-ResY=480 \
+  --blocks-arg=-NoVSync \
+  --blocks-arg=-NoHMD \
+  --blocks-arg=-NoSound
+```
+
+The CV 5v5 settings define `Interceptor_Cam_1..5` plus
+`Secondary_Recon_1..2`. Main samples every camera with explicit `vehicle_name`,
+records `simGetDetections` boxes, and feeds synthetic radar/acoustic/EO
+observations into D1 using the same actor truth with latency and covariance.
+LiDAR capture is disabled in this mode because the vehicles are camera-only CV
+nodes.
+During capture, main also updates CV camera poses with `simSetVehiclePose`.
+`Interceptor_Cam_i` follows the currently assigned target at a configurable
+standoff distance and the pose orientation is set to look at that target. The
+default secondary reassignment swaps the second and third camera targets halfway
+through the episode, so both initial assignment and reassignment views are
+validated. `Secondary_Recon_1/2` keep overwatch positions and rotate toward
+their coverage-cell target centroids.
+
+Run the dedicated D4/D5 5v5 stress sequence:
+
+```bash
+python3 research_modules/airsim_runtime/run_blocks_sequence.py \
+  --cv-5v5-d4d5-stress \
+  --sequence-id blocks_cv_5v5_d4d5_stress_001 \
+  --duration 6.0 \
+  --dt 0.5 \
+  --blocks-arg=-windowed \
+  --blocks-arg=-ResX=640 \
+  --blocks-arg=-ResY=480 \
+  --blocks-arg=-NoVSync \
+  --blocks-arg=-NoHMD \
+  --blocks-arg=-NoSound
+```
+
+This profile uses `settings/blocks_cv_5v5_d4d5_stress_settings.json`. The five
+targets start about 50 m in front of the interceptor cameras, target spacing is
+20 m, interceptor camera spacing is 20 m, and the two secondary reconnaissance
+cameras are about 50 m above the target layer.
+Targets use a 4 m visual scale so AirSim `simGetDetections` reliably produces
+multi-target terminal frames; this profile tests D5/D4 logic, not small-object
+detection limits. Main runs three reset-separated cases: no degradation,
+degrade to secondary node, and degrade to distributed mode. Outputs include
+`d5_terminal_observations.jsonl`, `d5_cross_view_associations.json`,
+`d4_decisions.jsonl`, per-case reports, and the aggregate
+`D4_D5_5V5_STRESS_AIRSIM_REPORT.md`.
 
 Run the first controlled 2v2 intercept. Main still launches Blocks once and
 resets between episodes; the first five episodes stay read-only/replay, and the
@@ -107,13 +175,25 @@ disabled collision passthrough. This prevents multirotors from falling before
 the smoke test has an RPC connection and keeps the main render path light.
 Control episodes should explicitly request API control, arm, take off, and
 command hover or motion at the start of each episode instead of starting airborne.
+For D1-D5 ComputerVision replay, use
+`settings/blocks_cv_5v5_settings.json`; those vehicles have no physics, gravity,
+LiDAR, arming, or collision behavior.
 
 Outputs are written under
 `research_modules/airsim_runtime/outputs/<sequence-id>/<episode-id>/`,
-including `airsim_blocks_summary.json`, raw frame JSONL, sample images, Blocks
-stdout/stderr, integrated replay metrics, and for controlled episodes:
+including `airsim_blocks_summary.json`, raw frame JSONL, camera metadata, Blocks
+stdout/stderr, `blocks_sensor_observations.jsonl` D1 replay inputs, integrated
+replay metrics, and for controlled episodes:
 `intercept_summary.json`, `control_commands.csv`, and
 `airsim_3d_intercept_trajectories.png`.
+`control_commands.csv` includes D7 `guidance_law`, terminal handoff state,
+camera/LOS/maneuver gate booleans, and `terminal_switch_reject_reason`.
+Camera PNG screenshots are omitted unless `--save-images` is used.
+For CV 5v5, the handoff from visual capture to D5 is metadata-only:
+`blocks_frames.jsonl` stores per-camera image status, camera pose, detection
+bbox, local track id, actor/object id for offline truth evaluation, and
+timestamps. D5 consumes the bbox metadata and never rewrites D2/D3
+`global_track_id`.
 
 ## AirSim Docs And Source Findings
 

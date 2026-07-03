@@ -1,0 +1,103 @@
+{
+  "SeeDocsAt": "https://microsoft.github.io/AirSim/settings/",
+  "SettingsVersion": 1.2,
+  "SimMode": "ComputerVision",
+  "EnableRpc": true,
+  "RpcEnabled": true,
+  "ApiServerPort": 41451,
+  "LocalHostIp": "127.0.0.1",
+  "ClockSpeed": 1.0,
+  "ViewMode": "NoDisplay",
+  "CameraDefaults": {
+    "CaptureSettings": [
+      {
+        "ImageType": 0,
+        "Width": 640,
+        "Height": 480,
+        "FOV_Degrees": 90,
+        "MotionBlurAmount": 0
+      },
+      {
+        "ImageType": 5,
+        "Width": 640,
+        "Height": 480,
+        "FOV_Degrees": 90,
+        "MotionBlurAmount": 0
+      }
+    ]
+  },
+  "SubWindows": [
+    {
+      "WindowID": 0,
+      "CameraName": "0",
+      "ImageType": 0,
+      "Visible": false,
+      "External": false
+    }
+  ],
+  "Vehicles": {
+    "Interceptor_Cam_1": {
+      "VehicleType": "ComputerVision",
+      "X": 0,
+      "Y": -24,
+      "Z": -10,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0
+    },
+    "Interceptor_Cam_2": {
+      "VehicleType": "ComputerVision",
+      "X": 0,
+      "Y": -12,
+      "Z": -10,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0
+    },
+    "Interceptor_Cam_3": {
+      "VehicleType": "ComputerVision",
+      "X": 0,
+      "Y": 0,
+      "Z": -10,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0
+    },
+    "Interceptor_Cam_4": {
+      "VehicleType": "ComputerVision",
+      "X": 0,
+      "Y": 12,
+      "Z": -10,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0
+    },
+    "Interceptor_Cam_5": {
+      "VehicleType": "ComputerVision",
+      "X": 0,
+      "Y": 24,
+      "Z": -10,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0
+    },
+    "Secondary_Recon_1": {
+      "VehicleType": "ComputerVision",
+      "X": -12,
+      "Y": -34,
+      "Z": -32,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0
+    },
+    "Secondary_Recon_2": {
+      "VehicleType": "ComputerVision",
+      "X": -12,
+      "Y": 34,
+      "Z": -32,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0
+    }
+  }
+}

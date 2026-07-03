@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import math
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -277,6 +279,11 @@ class RealAirSimRuntimeClient:
                 if vehicle_name in vehicles
             )
         )
+        cv_camera_guidance = self._update_cv_camera_poses_for_assignments(
+            config,
+            timestamp,
+            truth_objects,
+        )
         resources = tuple(
             self._resource_for_vehicle(
                 vehicle_name,
@@ -299,11 +306,15 @@ class RealAirSimRuntimeClient:
             self._capture_image(config, frame_index, output_dir, camera_vehicle_name=vehicle_name)
             for vehicle_name in camera_vehicle_names
         ]
-        lidar_metas = [
-            self._capture_lidar(config, lidar_vehicle_name=vehicle_name)
-            for vehicle_name in config.effective_lidar_vehicle_names()
-            if not vehicles or vehicle_name in vehicles
-        ]
+        lidar_metas = (
+            [
+                self._capture_lidar(config, lidar_vehicle_name=vehicle_name)
+                for vehicle_name in config.effective_lidar_vehicle_names()
+                if not vehicles or vehicle_name in vehicles
+            ]
+            if config.capture_lidar
+            else []
+        )
         visual_detections, detection_meta = self._capture_detections(
             config,
             frame_index=frame_index,
@@ -332,6 +343,10 @@ class RealAirSimRuntimeClient:
                 "lidars": lidar_metas,
                 "detections": detection_meta,
                 "detection_count": len(visual_detections),
+                "camera_vehicle_names": list(camera_vehicle_names),
+                "resource_vehicle_names": list(config.resource_vehicle_names),
+                "secondary_camera_vehicle_names": list(config.secondary_camera_vehicle_names),
+                "cv_camera_guidance": cv_camera_guidance,
                 "actor_targets": self._episode_setup_metadata.get("actor_targets", []),
                 "scene_object_count": len(scene_objects),
                 "scene_objects_sample": scene_objects[:20],
@@ -445,15 +460,18 @@ class RealAirSimRuntimeClient:
             info = self.client.simGetCameraInfo(config.camera_name, vehicle_name)
             pose = info.pose
             position = _vector3_from_airsim(pose.position)
+            start = _vehicle_start_offset(config, vehicle_name)
+            position = tuple(position[index] + start[index] for index in range(3))
         except Exception:
             position = (0.0, 0.0, 0.0)
+        width, height = _camera_dimensions_from_settings(config, vehicle_name, config.camera_name)
         return AirSimCameraInfo(
             camera_id=f"{vehicle_name}:{config.camera_name}",
             owner_id=vehicle_name,
             timestamp=timestamp,
             position_ned=position,
-            width=640,
-            height=480,
+            width=width,
+            height=height,
         )
 
     def _capture_image(
@@ -480,17 +498,21 @@ class RealAirSimRuntimeClient:
             data = bytes(response.image_data_uint8)
             if not data:
                 return {"ok": False, "reason": "empty_image_data"}
-            image_path = output_dir / f"frame_{frame_index:04d}_{vehicle_name}_scene.png"
-            image_path.write_bytes(data)
-            return {
+            metadata = {
                 "ok": True,
-                "path": str(image_path),
+                "saved": False,
                 "width": int(response.width),
                 "height": int(response.height),
                 "image_type": int(response.image_type),
                 "camera_vehicle_name": vehicle_name,
                 "camera_name": config.camera_name,
             }
+            if config.save_images:
+                image_path = output_dir / f"frame_{frame_index:04d}_{vehicle_name}_scene.png"
+                image_path.write_bytes(data)
+                metadata["saved"] = True
+                metadata["path"] = str(image_path)
+            return metadata
         except Exception as exc:
             return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
 
@@ -655,6 +677,104 @@ class RealAirSimRuntimeClient:
                     }
                 )
 
+    def _update_cv_camera_poses_for_assignments(
+        self,
+        config: BlocksSmokeConfig,
+        timestamp: float,
+        truth_objects: tuple[AirSimTruthObject, ...],
+    ) -> list[dict[str, Any]]:
+        if not config.cv_camera_follow_assignments or not config.target_actor_specs:
+            return []
+        truth_by_id = {truth.object_id: truth for truth in truth_objects}
+        guidance: list[dict[str, Any]] = []
+        for vehicle_name in config.resource_vehicle_names:
+            target_id, phase = _cv_assignment_target_id(config, vehicle_name, timestamp)
+            target = truth_by_id.get(target_id)
+            if target is None:
+                guidance.append(
+                    {
+                        "vehicle_name": vehicle_name,
+                        "role": "interceptor_camera",
+                        "target_id": target_id,
+                        "assignment_phase": phase,
+                        "pose_update_ok": False,
+                        "reason": "target_not_available",
+                    }
+                )
+                continue
+            start = _vehicle_start_offset(config, vehicle_name)
+            position = _follow_position(
+                start,
+                target.position_ned,
+                follow_distance_m=config.cv_camera_follow_distance_m,
+            )
+            pose_update = self._set_vehicle_pose_look_at(config, vehicle_name, position, target.position_ned)
+            guidance.append(
+                {
+                    "vehicle_name": vehicle_name,
+                    "role": "interceptor_camera",
+                    "target_id": target_id,
+                    "assignment_phase": phase,
+                    "position_ned": position,
+                    "look_at_ned": target.position_ned,
+                    **pose_update,
+                }
+            )
+
+        if config.cv_secondary_look_at_enabled:
+            for vehicle_name in config.secondary_camera_vehicle_names:
+                target_position = _secondary_look_at_position(config, vehicle_name, truth_objects)
+                if target_position is None:
+                    continue
+                position = _vehicle_start_offset(config, vehicle_name)
+                pose_update = self._set_vehicle_pose_look_at(config, vehicle_name, position, target_position)
+                guidance.append(
+                    {
+                        "vehicle_name": vehicle_name,
+                        "role": "secondary_recon_camera",
+                        "target_id": "coverage_centroid",
+                        "assignment_phase": "secondary_overwatch",
+                        "position_ned": position,
+                        "look_at_ned": target_position,
+                        **pose_update,
+                    }
+                )
+        return guidance
+
+    def _set_vehicle_pose_look_at(
+        self,
+        config: BlocksSmokeConfig,
+        vehicle_name: str,
+        position_ned: tuple[float, float, float],
+        target_ned: tuple[float, float, float],
+    ) -> dict[str, Any]:
+        pitch, roll, yaw = _look_at_euler_ned(position_ned, target_ned)
+        orientation = self._quaternion_from_euler(pitch, roll, yaw)
+        try:
+            start = _vehicle_start_offset(config, vehicle_name)
+            local_position = tuple(position_ned[index] - start[index] for index in range(3))
+            pose = self._pose_from_position_orientation(local_position, orientation)
+            result = self.client.simSetVehiclePose(
+                pose,
+                ignore_collision=True,
+                vehicle_name=vehicle_name,
+            )
+            ok = result is not False
+            reason = "updated" if ok else "airsim_returned_false"
+        except Exception as exc:
+            ok = False
+            reason = f"{type(exc).__name__}: {exc}"
+        return {
+            "pose_update_ok": ok,
+            "reason": reason,
+            "yaw_rad": yaw,
+            "pitch_rad": pitch,
+            "roll_rad": roll,
+            "yaw_deg": math.degrees(yaw),
+            "pitch_deg": math.degrees(pitch),
+            "roll_deg": math.degrees(roll),
+        }
+
     def _set_actor_pose(self, actor_name: str, position_ned: tuple[float, float, float]) -> bool:
         try:
             return bool(self.client.simSetObjectPose(actor_name, self._pose_from_position(position_ned), True))
@@ -691,6 +811,37 @@ class RealAirSimRuntimeClient:
 
     def _pose_from_position(self, position_ned: tuple[float, float, float]) -> Any:
         return self.airsim.Pose(position_val=self._vector3(*position_ned))
+
+    def _pose_from_position_orientation(
+        self,
+        position_ned: tuple[float, float, float],
+        orientation: Any,
+    ) -> Any:
+        position = self._vector3(*position_ned)
+        try:
+            return self.airsim.Pose(position_val=position, orientation_val=orientation)
+        except TypeError:
+            pose = self.airsim.Pose(position_val=position)
+            try:
+                pose.orientation = orientation
+            except Exception:
+                pass
+            return pose
+
+    def _quaternion_from_euler(self, pitch: float, roll: float, yaw: float) -> Any:
+        to_quaternion = getattr(self.airsim, "to_quaternion", None)
+        if callable(to_quaternion):
+            return to_quaternion(float(pitch), float(roll), float(yaw))
+        quaternion_cls = getattr(self.airsim, "Quaternionr", None)
+        quat = _quaternion_components_from_euler(pitch, roll, yaw)
+        if callable(quaternion_cls):
+            return quaternion_cls(quat["x"], quat["y"], quat["z"], quat["w"])
+        return SimpleNamespace(
+            x_val=quat["x"],
+            y_val=quat["y"],
+            z_val=quat["z"],
+            w_val=quat["w"],
+        )
 
     def _vector3(self, x: float, y: float, z: float) -> Any:
         return self.airsim.Vector3r(float(x), float(y), float(z))
@@ -744,6 +895,101 @@ def _box3d_to_dict(box: Any | None) -> dict[str, Any]:
     }
 
 
+def _cv_assignment_target_id(
+    config: BlocksSmokeConfig,
+    vehicle_name: str,
+    timestamp: float,
+) -> tuple[str, str]:
+    resource_names = tuple(config.resource_vehicle_names)
+    target_specs = tuple(config.target_actor_specs)
+    if not target_specs:
+        return ("", "unassigned")
+    try:
+        index = resource_names.index(vehicle_name)
+    except ValueError:
+        index = 0
+    target_index = min(index, len(target_specs) - 1)
+    phase = "initial_assignment"
+    if config.cv_reassignment_time_s is not None and timestamp >= config.cv_reassignment_time_s:
+        phase = "secondary_reassignment"
+        if target_index == 1 and len(target_specs) > 2:
+            target_index = 2
+        elif target_index == 2 and len(target_specs) > 1:
+            target_index = 1
+    return target_specs[target_index].object_id, phase
+
+
+def _follow_position(
+    start_ned: tuple[float, float, float],
+    target_ned: tuple[float, float, float],
+    *,
+    follow_distance_m: float,
+) -> tuple[float, float, float]:
+    start = np.asarray(start_ned, dtype=float)
+    target = np.asarray(target_ned, dtype=float)
+    direction = start - target
+    horizontal = direction.copy()
+    horizontal[2] = 0.0
+    norm = float(np.linalg.norm(horizontal))
+    if norm < 1e-6:
+        horizontal = np.array([-1.0, 0.0, 0.0], dtype=float)
+        norm = 1.0
+    unit = horizontal / norm
+    position = target.copy()
+    position[:2] = target[:2] + unit[:2] * max(float(follow_distance_m), 1.0)
+    position[2] = start[2]
+    return tuple(float(value) for value in position)
+
+
+def _secondary_look_at_position(
+    config: BlocksSmokeConfig,
+    vehicle_name: str,
+    truth_objects: tuple[AirSimTruthObject, ...],
+) -> tuple[float, float, float] | None:
+    if not truth_objects:
+        return None
+    if config.metadata.get("d4d5_stress_enabled"):
+        positions = np.asarray([truth.position_ned for truth in truth_objects], dtype=float)
+        centroid = np.mean(positions, axis=0)
+        return tuple(float(value) for value in centroid)
+    expected_cell = "cell-north" if vehicle_name.endswith("_1") else "cell-south"
+    selected = [truth for truth in truth_objects if truth.coverage_cell == expected_cell]
+    if not selected:
+        selected = list(truth_objects)
+    positions = np.asarray([truth.position_ned for truth in selected], dtype=float)
+    centroid = np.mean(positions, axis=0)
+    return tuple(float(value) for value in centroid)
+
+
+def _look_at_euler_ned(
+    position_ned: tuple[float, float, float],
+    target_ned: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    position = np.asarray(position_ned, dtype=float)
+    target = np.asarray(target_ned, dtype=float)
+    direction = target - position
+    yaw = math.atan2(float(direction[1]), float(direction[0]))
+    horizontal = math.hypot(float(direction[0]), float(direction[1]))
+    pitch = -math.atan2(float(direction[2]), max(horizontal, 1e-6))
+    roll = 0.0
+    return pitch, roll, yaw
+
+
+def _quaternion_components_from_euler(pitch: float, roll: float, yaw: float) -> dict[str, float]:
+    cy = math.cos(yaw * 0.5)
+    sy = math.sin(yaw * 0.5)
+    cp = math.cos(pitch * 0.5)
+    sp = math.sin(pitch * 0.5)
+    cr = math.cos(roll * 0.5)
+    sr = math.sin(roll * 0.5)
+    return {
+        "w": cr * cp * cy + sr * sp * sy,
+        "x": sr * cp * cy - cr * sp * sy,
+        "y": cr * sp * cy + sr * cp * sy,
+        "z": cr * cp * sy - sr * sp * cy,
+    }
+
+
 def _vehicle_start_offset(config: BlocksSmokeConfig, vehicle_name: str) -> tuple[float, float, float]:
     """Initial AirSim vehicle offset in PlayerStart NED coordinates.
 
@@ -757,6 +1003,26 @@ def _vehicle_start_offset(config: BlocksSmokeConfig, vehicle_name: str) -> tuple
         float(vehicle.get("Y", 0.0)),
         float(vehicle.get("Z", 0.0)),
     )
+
+
+def _camera_dimensions_from_settings(
+    config: BlocksSmokeConfig,
+    vehicle_name: str,
+    camera_name: str,
+) -> tuple[int, int]:
+    settings = config._settings()
+    vehicles = settings.get("Vehicles", {})
+    vehicle = vehicles.get(vehicle_name, {}) if isinstance(vehicles, dict) else {}
+    cameras = vehicle.get("Cameras", {}) if isinstance(vehicle, dict) else {}
+    camera = cameras.get(camera_name, {}) if isinstance(cameras, dict) else {}
+    capture_settings = camera.get("CaptureSettings")
+    if not capture_settings:
+        defaults = settings.get("CameraDefaults", {})
+        capture_settings = defaults.get("CaptureSettings", []) if isinstance(defaults, dict) else []
+    for item in capture_settings if isinstance(capture_settings, list) else []:
+        if int(item.get("ImageType", 0)) == 0:
+            return (int(item.get("Width", 640)), int(item.get("Height", 480)))
+    return (640, 480)
 
 
 def _local_z_from_global_z(

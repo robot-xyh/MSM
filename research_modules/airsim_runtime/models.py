@@ -54,7 +54,14 @@ class BlocksSmokeConfig:
     client_kind: str = "vehicle"
     camera_vehicle_name: str = "Interceptor"
     camera_vehicle_names: tuple[str, ...] = ()
+    secondary_camera_vehicle_names: tuple[str, ...] = ()
     camera_name: str = "0"
+    save_images: bool = False
+    capture_lidar: bool = True
+    cv_camera_follow_assignments: bool = False
+    cv_camera_follow_distance_m: float = 14.0
+    cv_secondary_look_at_enabled: bool = True
+    cv_reassignment_time_s: float | None = None
     lidar_vehicle_name: str = "Interceptor"
     lidar_vehicle_names: tuple[str, ...] = ()
     lidar_name: str = "LidarSensor1"
@@ -74,6 +81,11 @@ class BlocksSmokeConfig:
     intercept_navigation_constant: float = 3.0
     intercept_terminal_switch_range_m: float = 8.0
     intercept_detection_timeout_s: float = 1.0
+    intercept_guidance_law: str = "png_vm"
+    intercept_min_bbox_area_ratio: float = 0.0008
+    intercept_min_detection_confidence: float = 0.55
+    intercept_min_stable_detection_frames: int = 2
+    intercept_max_visual_latency_s: float = 0.35
     intercept_takeoff_timeout_s: float = 10.0
     intercept_land_after: bool = True
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -101,7 +113,8 @@ class BlocksSmokeConfig:
         return self.output_root / self.episode_id
 
     def effective_camera_vehicle_names(self) -> tuple[str, ...]:
-        return self.camera_vehicle_names or (self.camera_vehicle_name,)
+        primary = self.camera_vehicle_names or (self.camera_vehicle_name,)
+        return tuple(dict.fromkeys((*primary, *self.secondary_camera_vehicle_names)))
 
     def effective_lidar_vehicle_names(self) -> tuple[str, ...]:
         return self.lidar_vehicle_names or (self.lidar_vehicle_name,)
@@ -135,6 +148,7 @@ class BlocksEpisodeSpec:
     duration_s: float = 2.0
     dt_s: float = 0.5
     include_integrated_pipeline: bool = True
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -170,3 +184,71 @@ def default_2v2_actor_target_specs(
             fallback_actor_name="PulsingCone",
         ),
     )
+
+
+def default_cv_5v5_camera_vehicle_names() -> tuple[str, ...]:
+    """Default ComputerVision interceptor camera vehicle names."""
+
+    return tuple(f"Interceptor_Cam_{index}" for index in range(1, 6))
+
+
+def default_cv_5v5_secondary_vehicle_names() -> tuple[str, ...]:
+    """Default ComputerVision secondary recon camera vehicle names."""
+
+    return ("Secondary_Recon_1", "Secondary_Recon_2")
+
+
+def default_cv_5v5_actor_target_specs(
+    *,
+    target_z: float = -10.0,
+) -> tuple[BlocksActorTargetSpec, ...]:
+    """Default crossing actor targets for ComputerVision 5v5 replay."""
+
+    starts_y = (-20.0, -10.0, 0.0, 10.0, 20.0)
+    velocities_y = (1.2, 0.6, 0.0, -0.6, -1.2)
+    threats = (0.92, 0.88, 0.74, 0.66, 0.61)
+    specs: list[BlocksActorTargetSpec] = []
+    for index in range(5):
+        coverage_cell = "cell-north" if index < 3 else "cell-south"
+        specs.append(
+            BlocksActorTargetSpec(
+                object_id=f"TGT-{index + 1:03d}",
+                actor_name=f"MSM_TargetActor_{index + 1}",
+                start_ned=(35.0 + 4.0 * index, starts_y[index], float(target_z)),
+                velocity_ned=(1.4 + 0.1 * index, velocities_y[index], 0.0),
+                threat_score=threats[index],
+                coverage_cell=coverage_cell,
+                fallback_actor_name=None,
+            )
+        )
+    return tuple(specs)
+
+
+def default_cv_5v5_d4d5_stress_actor_target_specs(
+    *,
+    target_z: float = -10.0,
+    target_distance_m: float = 50.0,
+    target_spacing_m: float = 20.0,
+    target_scale_m: float = 10.0,
+) -> tuple[BlocksActorTargetSpec, ...]:
+    """5v5 D4/D5 stress geometry with 50 m camera standoff and 20 m spacing."""
+
+    starts_y = tuple((index - 2) * float(target_spacing_m) for index in range(5))
+    velocities_y = (0.7, 0.35, 0.0, -0.35, -0.7)
+    threats = (0.94, 0.88, 0.80, 0.72, 0.66)
+    specs: list[BlocksActorTargetSpec] = []
+    for index, start_y in enumerate(starts_y):
+        coverage_cell = "cell-north" if index < 3 else "cell-south"
+        specs.append(
+            BlocksActorTargetSpec(
+                object_id=f"TGT-{index + 1:03d}",
+                actor_name=f"MSM_TargetActor_{index + 1}",
+                start_ned=(float(target_distance_m), float(start_y), float(target_z)),
+                velocity_ned=(0.8 + 0.1 * index, velocities_y[index], 0.0),
+                scale=(float(target_scale_m), float(target_scale_m), float(target_scale_m)),
+                threat_score=threats[index],
+                coverage_cell=coverage_cell,
+                fallback_actor_name=None,
+            )
+        )
+    return tuple(specs)

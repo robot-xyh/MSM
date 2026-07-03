@@ -38,10 +38,18 @@ def observations_from_blocks_frame(
     for observation in observations:
         observation.observation_id = observation.observation_id.replace("dry_", "blocks_", 1)
         observation.sensor_id = observation.sensor_id.replace("DRY-", "BLOCKS-")
+        observation.source_node_id = observation.source_node_id or "MAIN-C2"
+        observation.target_node_id = observation.target_node_id or "D1-FUSION"
+        observation.link_type = observation.link_type or "c2_replay"
+        observation.sent_timestamp = observation.sent_timestamp or observation.measurement_timestamp
+        observation.received_timestamp = observation.received_timestamp or observation.arrival_timestamp
+        observation.payload_kind = observation.payload_kind or f"{observation.modality}_observation"
+        observation.stale_after_s = observation.stale_after_s or 1.5
         observation.metadata["dry_run"] = False
         observation.metadata["real_airsim_used"] = True
         observation.metadata["runtime"] = "Blocks"
         observation.metadata["frame_metadata"] = _compact_frame_metadata(frame.metadata)
+        observation.metadata.update(observation.communication_metadata)
     return observations
 
 
@@ -193,6 +201,9 @@ def _compact_frame_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
         "image": metadata.get("image", {}),
         "lidar": metadata.get("lidar", {}),
         "vehicle_names": metadata.get("vehicle_names", []),
+        "camera_vehicle_names": metadata.get("camera_vehicle_names", []),
+        "resource_vehicle_names": metadata.get("resource_vehicle_names", []),
+        "secondary_camera_vehicle_names": metadata.get("secondary_camera_vehicle_names", []),
         "scene_object_count": metadata.get("scene_object_count", 0),
     }
 
