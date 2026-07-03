@@ -12,6 +12,16 @@ from .active_degradation import (
     TerminalDecisionState,
     TrackUncertaintySummary,
 )
+from .adapter import (
+    D4ArbitrationAdapter,
+    D4ArbitrationResult,
+    D4DecisionRecord,
+    build_assignment_validity_summary,
+    build_association_risk_summary,
+    build_communication_summary,
+    build_terminal_association_summary,
+    build_track_uncertainty_summary,
+)
 from .cbba import CBBANegotiator
 from .coordinator import FailoverCoordinator
 from .models import (
@@ -41,6 +51,9 @@ __all__ = [
     "CommBand",
     "CommunicationSummary",
     "ConfidenceBand",
+    "D4ArbitrationAdapter",
+    "D4ArbitrationResult",
+    "D4DecisionRecord",
     "DegradationAction",
     "DegradationMode",
     "FailoverCoordinator",
@@ -52,4 +65,9 @@ __all__ = [
     "TerminalDecisionState",
     "TrackSummary",
     "TrackUncertaintySummary",
+    "build_assignment_validity_summary",
+    "build_association_risk_summary",
+    "build_communication_summary",
+    "build_terminal_association_summary",
+    "build_track_uncertainty_summary",
 ]

@@ -140,6 +140,12 @@ class EpisodeMetrics:
     los_quality_gate_pass_rate: float = 0.0
     maneuver_margin_gate_pass_rate: float = 0.0
     terminal_switch_reject_count: int = 0
+    intercept_success_count: int = 0
+    collision_intercept_count: int = 0
+    range_intercept_count: int = 0
+    time_to_intercept_s: float = 0.0
+    min_range_m: float = 0.0
+    gate_reject_count: int = 0
     constraint_violation_count: int = 0
     human_override_count: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -177,6 +183,12 @@ class EpisodeMetrics:
             "los_quality_gate_pass_rate",
             "maneuver_margin_gate_pass_rate",
             "terminal_switch_reject_count",
+            "intercept_success_count",
+            "collision_intercept_count",
+            "range_intercept_count",
+            "time_to_intercept_s",
+            "min_range_m",
+            "gate_reject_count",
             "constraint_violation_count",
             "human_override_count",
         ]
@@ -240,6 +252,13 @@ class MetricsCollector:
         "terminal_switch_rejected",
         "d7_terminal_switch_reject",
     }
+    INTERCEPT_SUCCESS_STATUSES = {"collision_intercept", "range_intercept"}
+    INTERCEPT_PAIR_SUMMARY_EVENTS = {
+        "d7_intercept_pair_summary",
+        "intercept_pair_summary",
+    }
+    INTERCEPT_SUMMARY_EVENTS = {"d7_intercept_summary", "intercept_summary"}
+    D7_CONTROL_COMMAND_EVENTS = {"d7_control_command", "control_command"}
     FOV_ENTRY_STATES = {"fov_entry", "entered_fov", "terminal_fov_entry"}
     LOCK_STATES = {"locked", "lock", "terminal_lock"}
     ASSOCIATION_STATES = {"associated", "locked", "lock", "terminal_lock"}
@@ -319,6 +338,8 @@ class MetricsCollector:
         link = self._compute_link_metrics()
         guidance_gate = self._compute_guidance_gate_metrics()
         guidance_metadata = guidance_gate.pop("_metadata", {})
+        intercept = self._compute_intercept_metrics()
+        intercept_metadata = intercept.pop("_metadata", {})
         safety = self._compute_safety_metrics()
 
         for metric_group in (
@@ -329,6 +350,7 @@ class MetricsCollector:
             terminal,
             link,
             guidance_gate,
+            intercept,
             safety,
         ):
             for key, value in metric_group.items():
@@ -342,6 +364,7 @@ class MetricsCollector:
             "terminal_record_count": len(self.terminal_records),
             "offline_only": True,
             **guidance_metadata,
+            **intercept_metadata,
         }
         return metrics
 
@@ -915,6 +938,7 @@ class MetricsCollector:
         los_values: list[bool] = []
         maneuver_values: list[bool] = []
         terminal_switch_reject_count = 0
+        gate_reject_count = 0
         guidance_law_counts: dict[str, int] = defaultdict(int)
         reject_reasons: dict[str, int] = defaultdict(int)
 
@@ -927,25 +951,36 @@ class MetricsCollector:
             _append_gate_value(
                 camera_values,
                 metadata,
-                ("camera_quality_gate_pass", "camera_gate_pass", "camera_gate"),
+                (
+                    "camera_quality_gate_pass",
+                    "camera_quality_gate_passed",
+                    "camera_gate_pass",
+                    "camera_gate",
+                ),
             )
             _append_gate_value(
                 los_values,
                 metadata,
-                ("los_quality_gate_pass", "los_gate_pass", "los_gate"),
+                (
+                    "los_quality_gate_pass",
+                    "los_quality_gate_passed",
+                    "los_gate_pass",
+                    "los_gate",
+                ),
             )
             _append_gate_value(
                 maneuver_values,
                 metadata,
                 (
                     "maneuver_margin_gate_pass",
+                    "maneuver_margin_gate_passed",
                     "maneuver_gate_pass",
                     "maneuver_margin_gate",
                     "maneuver_gate",
                 ),
             )
 
-            reject_reason = metadata.get("terminal_switch_reject_reason")
+            reject_reason = _metadata_text(metadata, "terminal_switch_reject_reason")
             rejected = _event_type(record) in self.TERMINAL_SWITCH_REJECT_EVENTS
             rejected = rejected or reject_reason is not None
             rejected = rejected or _bool_from_metadata(
@@ -953,20 +988,179 @@ class MetricsCollector:
                 ("terminal_switch_rejected", "terminal_switch_reject"),
                 default=False,
             )
+            if not rejected:
+                rejected = _gate_reject_from_metadata(metadata)
             if rejected:
                 terminal_switch_reject_count += 1
+                gate_reject_count += 1
                 if reject_reason is not None:
-                    reject_reasons[str(reject_reason)] += 1
+                    reject_reasons[reject_reason] += 1
 
         return {
             "camera_quality_gate_pass_rate": _bool_rate(camera_values),
             "los_quality_gate_pass_rate": _bool_rate(los_values),
             "maneuver_margin_gate_pass_rate": _bool_rate(maneuver_values),
             "terminal_switch_reject_count": terminal_switch_reject_count,
+            "gate_reject_count": gate_reject_count,
             "_metadata": {
                 "guidance_law_counts": dict(guidance_law_counts),
                 "terminal_switch_reject_reasons": dict(reject_reasons),
             },
+        }
+
+    def _compute_intercept_metrics(self) -> dict[str, Any]:
+        summary_success_count: int | None = None
+        pair_events: list[EventRecord] = []
+        command_events: list[EventRecord] = []
+
+        for record in self.event_records:
+            event_type = _event_type(record)
+            if event_type in self.INTERCEPT_SUMMARY_EVENTS:
+                value = _metadata_int(record.metadata, "success_count")
+                if value is not None:
+                    summary_success_count = value
+            elif event_type in self.INTERCEPT_PAIR_SUMMARY_EVENTS:
+                pair_events.append(record)
+            elif event_type in self.D7_CONTROL_COMMAND_EVENTS:
+                command_events.append(record)
+
+        if pair_events:
+            result = self._intercept_metrics_from_pair_events(
+                pair_events,
+                summary_success_count=summary_success_count,
+            )
+        else:
+            result = self._intercept_metrics_from_command_events(command_events)
+            if summary_success_count is not None:
+                result["intercept_success_count"] = summary_success_count
+
+        result["_metadata"] = {
+            **result.get("_metadata", {}),
+            "intercept_summary_success_count": summary_success_count,
+            "intercept_pair_event_count": len(pair_events),
+            "d7_control_command_event_count": len(command_events),
+        }
+        return result
+
+    def _intercept_metrics_from_pair_events(
+        self,
+        records: Sequence[EventRecord],
+        *,
+        summary_success_count: int | None,
+    ) -> dict[str, Any]:
+        collision_count = 0
+        range_count = 0
+        time_to_intercepts: list[float] = []
+        min_ranges: list[float] = []
+        status_counts: dict[str, int] = defaultdict(int)
+
+        for record in records:
+            metadata = record.metadata
+            status = _state(str(metadata.get("status") or ""))
+            if status:
+                status_counts[status] += 1
+            if status == "collision_intercept":
+                collision_count += 1
+            elif status == "range_intercept":
+                range_count += 1
+
+            min_range = _metadata_float(metadata, "min_range_m")
+            if min_range is not None:
+                min_ranges.append(min_range)
+
+            if status in self.INTERCEPT_SUCCESS_STATUSES:
+                time_to_intercept = _metadata_float(metadata, "time_to_intercept_s")
+                if time_to_intercept is not None:
+                    time_to_intercepts.append(time_to_intercept)
+
+        success_count = (
+            summary_success_count
+            if summary_success_count is not None
+            else collision_count + range_count
+        )
+        return {
+            "intercept_success_count": success_count,
+            "collision_intercept_count": collision_count,
+            "range_intercept_count": range_count,
+            "time_to_intercept_s": _mean(time_to_intercepts),
+            "min_range_m": min(min_ranges) if min_ranges else 0.0,
+            "_metadata": {"intercept_status_counts": dict(status_counts)},
+        }
+
+    def _intercept_metrics_from_command_events(
+        self,
+        records: Sequence[EventRecord],
+    ) -> dict[str, Any]:
+        by_pair: dict[tuple[str, str], list[EventRecord]] = defaultdict(list)
+        for record in records:
+            resource_id = str(record.metadata.get("resource_id") or record.actor_id or "")
+            target_id = str(record.metadata.get("target_id") or "")
+            by_pair[(resource_id, target_id)].append(record)
+
+        collision_count = 0
+        range_count = 0
+        time_to_intercepts: list[float] = []
+        min_ranges: list[float] = []
+        status_counts: dict[str, int] = defaultdict(int)
+
+        for pair_records in by_pair.values():
+            ordered = sorted(pair_records, key=lambda record: record.timestamp)
+            statuses = [
+                _state(str(record.metadata.get("status") or ""))
+                for record in ordered
+                if record.metadata.get("status")
+            ]
+            final_status = statuses[-1] if statuses else ""
+            any_collision_seen = any(
+                _bool_from_metadata(
+                    record.metadata,
+                    ("collision_seen", "target_collision_seen"),
+                    default=False,
+                )
+                for record in ordered
+            )
+            status = final_status
+            if status not in self.INTERCEPT_SUCCESS_STATUSES and any_collision_seen:
+                status = "collision_intercept"
+            if status:
+                status_counts[status] += 1
+
+            if status == "collision_intercept":
+                collision_count += 1
+            elif status == "range_intercept":
+                range_count += 1
+
+            pair_ranges = [
+                value
+                for record in ordered
+                for value in [_metadata_float(record.metadata, "range_m")]
+                if value is not None
+            ]
+            if pair_ranges:
+                min_ranges.append(min(pair_ranges))
+
+            if status in self.INTERCEPT_SUCCESS_STATUSES:
+                for record in ordered:
+                    record_status = _state(str(record.metadata.get("status") or ""))
+                    collision_seen = _bool_from_metadata(
+                        record.metadata,
+                        ("collision_seen", "target_collision_seen"),
+                        default=False,
+                    )
+                    if (
+                        record_status in self.INTERCEPT_SUCCESS_STATUSES
+                        or collision_seen
+                    ):
+                        time_to_intercepts.append(float(record.timestamp))
+                        break
+
+        return {
+            "intercept_success_count": collision_count + range_count,
+            "collision_intercept_count": collision_count,
+            "range_intercept_count": range_count,
+            "time_to_intercept_s": _mean(time_to_intercepts),
+            "min_range_m": min(min_ranges) if min_ranges else 0.0,
+            "_metadata": {"intercept_status_counts": dict(status_counts)},
         }
 
     def _compute_safety_metrics(self) -> dict[str, int]:
@@ -1167,6 +1361,18 @@ def _metadata_float(metadata: Mapping[str, Any], key: str) -> float | None:
     return float(metadata[key])
 
 
+def _metadata_int(metadata: Mapping[str, Any], key: str) -> int | None:
+    value = _metadata_float(metadata, key)
+    return None if value is None else int(value)
+
+
+def _metadata_text(metadata: Mapping[str, Any], key: str) -> str | None:
+    if key not in metadata or metadata[key] is None:
+        return None
+    text = str(metadata[key]).strip()
+    return text or None
+
+
 def _optional_float_value(value: Any) -> float | None:
     if value is None:
         return None
@@ -1214,6 +1420,36 @@ def _append_gate_value(
         if key in metadata:
             values.append(_as_bool(metadata[key], default=False))
             return
+
+
+def _gate_reject_from_metadata(metadata: Mapping[str, Any]) -> bool:
+    gate_keys = (
+        "camera_quality_gate_pass",
+        "camera_quality_gate_passed",
+        "los_quality_gate_pass",
+        "los_quality_gate_passed",
+        "maneuver_margin_gate_pass",
+        "maneuver_margin_gate_passed",
+    )
+    present_gate_values = [
+        _as_bool(metadata[key], default=False)
+        for key in gate_keys
+        if key in metadata
+    ]
+    if not present_gate_values:
+        return False
+
+    terminal_switch_allowed = _bool_from_metadata(
+        metadata,
+        ("terminal_switch_allowed",),
+        default=True,
+    )
+    terminal_handover_pending = _bool_from_metadata(
+        metadata,
+        ("terminal_handover_pending",),
+        default=False,
+    )
+    return terminal_handover_pending and not terminal_switch_allowed and not all(present_gate_values)
 
 
 def _euclidean_distance(

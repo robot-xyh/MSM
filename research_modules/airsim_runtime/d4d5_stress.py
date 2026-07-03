@@ -27,11 +27,14 @@ from d4_distributed_fallback import (
     TrackUncertaintySummary,
 )
 from d5_terminal_association import (
+    Assignment,
+    CameraModel,
+    GlobalTrack,
     LocalVisualTrack,
     ReconImageCue,
-    TerminalAssociation,
     TerminalObservation,
     TerminalObservationBus,
+    TerminalAssociator,
 )
 
 
@@ -63,6 +66,7 @@ def run_d4d5_stress_analysis(
     observations: list[TerminalObservation] = []
     decisions: list[dict[str, Any]] = []
     arbiter = ActiveDegradationArbiter()
+    terminal_associator = TerminalAssociator()
     first_frame = frames[0] if frames else None
     geometry = _geometry_summary(first_frame, resource_vehicle_names, secondary_camera_vehicle_names)
 
@@ -72,6 +76,7 @@ def run_d4d5_stress_analysis(
             case_name=normalized_case,
             resource_vehicle_names=resource_vehicle_names,
             secondary_camera_vehicle_names=secondary_camera_vehicle_names,
+            terminal_associator=terminal_associator,
         )
         for observation in frame_observations:
             observations.append(bus.publish(observation))
@@ -107,6 +112,15 @@ def run_d4d5_stress_analysis(
             and observation.terminal_association.decision_state in {"ambiguous", "hold", "reacquire"}
         ),
         "terminal_lock_accuracy": _terminal_lock_accuracy(observations),
+        "terminal_associator_call_count": sum(
+            1
+            for observation in observations
+            if observation.metadata.get("terminal_associator_used") is True
+        ),
+        "terminal_associator_locked_count": _terminal_decision_count(observations, "locked"),
+        "terminal_associator_ambiguous_count": _terminal_decision_count(observations, "ambiguous"),
+        "terminal_associator_hold_count": _terminal_decision_count(observations, "hold"),
+        "terminal_associator_reacquire_count": _terminal_decision_count(observations, "reacquire"),
     }
 
     observation_path = _write_jsonl(
@@ -209,47 +223,65 @@ def _terminal_observations_for_frame(
     case_name: str,
     resource_vehicle_names: tuple[str, ...],
     secondary_camera_vehicle_names: tuple[str, ...],
+    terminal_associator: TerminalAssociator,
 ) -> list[TerminalObservation]:
     detections_by_camera = _detections_by_camera(frame.visual_detections)
+    global_tracks = _global_tracks_from_frame(frame)
+    target_ids = [track.global_track_id.removeprefix("G-") for track in global_tracks]
     observations: list[TerminalObservation] = []
     for index, vehicle_name in enumerate(resource_vehicle_names):
         resource_id = f"INT-{index + 1:02d}"
         assigned_target_id = f"TGT-{index + 1:03d}"
-        observed_target_id = assigned_target_id
-        decision_state = "locked"
-        confidence = 0.93
-        ambiguity = 0.08
-        reason = "assignment_matches_terminal_evidence"
-        mismatch_frames = 0
-        non_locked_frames = 0
-        if case_name in {"degrade_to_secondary", "degrade_to_distributed"}:
-            observed_target_id = f"TGT-{(index + 1) % 5 + 1:03d}"
-            decision_state = "hold"
-            confidence = 0.42
-            ambiguity = 0.82
-            reason = "observed_global_track_differs_from_assignment"
-            mismatch_frames = 3
-            non_locked_frames = 3
-        detection = _select_detection(detections_by_camera.get(f"{vehicle_name}:0", ()), observed_target_id)
-        local_track = _local_track_from_detection(detection, frame.timestamp) if detection else None
-        association = TerminalAssociation(
-            assigned_global_track_id=_global_id(assigned_target_id),
-            local_track_id=None if local_track is None else local_track.local_track_id,
-            association_confidence=confidence,
-            ambiguity_score=ambiguity,
-            friend_conflict_state="none",
-            decision_state=decision_state,
-            assignment_version=1,
-            reason=reason,
-            candidate_costs=[(_global_id(observed_target_id), 0.1 if confidence > 0.8 else 0.8)],
-            recon_cue_used=case_name == "degrade_to_secondary",
+        observed_target_id = _observed_target_id(
+            assigned_target_id,
+            target_ids=target_ids,
+            case_name=case_name,
+        )
+        mismatch_frames = 0 if observed_target_id == assigned_target_id else 3
+        non_locked_frames = 0 if observed_target_id == assigned_target_id else 3
+        camera = _camera_model_for_resource(frame, vehicle_name, assigned_target_id)
+        local_tracks = _local_tracks_for_camera(
+            detections_by_camera.get(f"{vehicle_name}:0", ()),
+            frame=frame,
+            camera=camera,
+            global_tracks=global_tracks,
+            case_name=case_name,
+            assigned_target_id=assigned_target_id,
+            observed_target_id=observed_target_id,
+            terminal_associator=terminal_associator,
         )
         recon_cues = _recon_cues(
             frame,
             assigned_target_id=assigned_target_id,
             secondary_camera_vehicle_names=secondary_camera_vehicle_names,
             enabled=case_name != "degrade_to_distributed",
+            camera=camera,
+            global_tracks=global_tracks,
+            terminal_associator=terminal_associator,
+            target_resource_id=resource_id,
         )
+        assignment = Assignment(
+            assigned_global_track_id=_global_id(assigned_target_id),
+            assignment_version=1,
+            timestamp=frame.timestamp,
+            require_version_match=True,
+            plan_id=f"{case_name}:plan",
+            plan_version=1,
+            authorization_state="recorded",
+            resource_id=resource_id,
+        )
+        association = terminal_associator.decide(
+            assignment=assignment,
+            global_tracks=global_tracks,
+            local_tracks=local_tracks,
+            identity_claims=[],
+            camera=camera,
+            current_time=frame.timestamp,
+            recon_image_cues=recon_cues,
+        )
+        local_track = _local_track_by_id(local_tracks, association.local_track_id)
+        if local_track is None:
+            local_track = _local_track_for_target(local_tracks, observed_target_id)
         observations.append(
             TerminalObservation(
                 resource_id=resource_id,
@@ -268,10 +300,193 @@ def _terminal_observations_for_frame(
                     "observed_target_id": observed_target_id,
                     "consecutive_mismatch_frames": mismatch_frames,
                     "consecutive_non_locked_frames": non_locked_frames,
+                    "terminal_associator_used": True,
+                    "terminal_associator_reason": association.reason,
+                    "candidate_cost_margin": _candidate_cost_margin(association.candidate_costs),
+                    "local_track_count": len(local_tracks),
+                    "bbox_schema": "xyxy",
+                    "bbox_schema_sources": ("airsim_bbox_xyxy", "yolo_xyxy"),
                 },
             )
         )
     return observations
+
+
+def _global_tracks_from_frame(frame: AirSimFrame) -> list[GlobalTrack]:
+    tracks: list[GlobalTrack] = []
+    for obj in sorted(frame.truth_objects, key=lambda item: item.object_id):
+        covariance = np.asarray(obj.covariance_ned, dtype=float)
+        if covariance.shape != (3, 3) or not np.all(np.isfinite(covariance)):
+            covariance = np.diag([1.0, 1.0, 1.0])
+        tracks.append(
+            GlobalTrack(
+                global_track_id=_global_id(obj.object_id),
+                position=np.asarray(obj.position_ned, dtype=float),
+                velocity=np.asarray(obj.velocity_ned, dtype=float),
+                covariance=covariance + np.eye(3) * 0.01,
+                category=obj.classification_hint or "uav",
+                timestamp=frame.timestamp,
+                track_version=1,
+            )
+        )
+    return tracks
+
+
+def _observed_target_id(
+    assigned_target_id: str,
+    *,
+    target_ids: list[str],
+    case_name: str,
+) -> str:
+    if case_name == "no_degradation" or not target_ids:
+        return assigned_target_id
+    if assigned_target_id not in target_ids:
+        return target_ids[0]
+    index = target_ids.index(assigned_target_id)
+    return target_ids[(index + 1) % len(target_ids)]
+
+
+def _camera_model_for_resource(
+    frame: AirSimFrame,
+    vehicle_name: str,
+    assigned_target_id: str,
+) -> CameraModel:
+    camera_info = next((camera for camera in frame.cameras if camera.owner_id == vehicle_name), None)
+    target = _truth_object_position(frame, assigned_target_id)
+    if camera_info is None:
+        resource = next(
+            (
+                item
+                for item in frame.resources
+                if item.metadata.get("airsim_vehicle_name") == vehicle_name
+                or item.resource_id == vehicle_name
+            ),
+            None,
+        )
+        camera_position = np.asarray(resource.position_ned if resource else (0.0, 0.0, 0.0), dtype=float)
+        width, height = 640, 480
+        fx = fy = 320.0
+        cx, cy = width * 0.5, height * 0.5
+    else:
+        camera_position = np.asarray(camera_info.position_ned, dtype=float)
+        width, height = int(camera_info.width), int(camera_info.height)
+        fx = float(camera_info.fx if camera_info.fx > 0.0 else max(width, 1) * 0.5)
+        fy = float(camera_info.fy if camera_info.fy > 0.0 else max(height, 1) * 0.5)
+        cx = float(camera_info.cx if 0.0 < camera_info.cx < width else width * 0.5)
+        cy = float(camera_info.cy if 0.0 < camera_info.cy < height else height * 0.5)
+    target_position = target if target is not None else camera_position + np.array([1.0, 0.0, 0.0])
+    rotation = _look_at_world_to_camera(camera_position, target_position)
+    translation = -rotation @ camera_position
+    return CameraModel(
+        K=np.array(
+            [
+                [fx, 0.0, cx],
+                [0.0, fy, cy],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=float,
+        ),
+        R=rotation,
+        t=translation,
+        image_size=(width, height),
+        measurement_cov=np.diag([9.0, 9.0]),
+    )
+
+
+def _truth_object_position(frame: AirSimFrame, target_id: str) -> np.ndarray | None:
+    for obj in frame.truth_objects:
+        if obj.object_id == target_id:
+            return np.asarray(obj.position_ned, dtype=float)
+    return None
+
+
+def _look_at_world_to_camera(camera_position: np.ndarray, target_position: np.ndarray) -> np.ndarray:
+    forward = _unit_vector(target_position - camera_position, fallback=np.array([1.0, 0.0, 0.0]))
+    up_hint = np.array([0.0, 0.0, -1.0], dtype=float)
+    right = np.cross(up_hint, forward)
+    if np.linalg.norm(right) < 1e-9:
+        right = np.cross(np.array([0.0, 1.0, 0.0], dtype=float), forward)
+    right = _unit_vector(right, fallback=np.array([0.0, 1.0, 0.0]))
+    camera_y = _unit_vector(np.cross(forward, right), fallback=np.array([0.0, 0.0, -1.0]))
+    return np.vstack([right, camera_y, forward])
+
+
+def _unit_vector(vector: np.ndarray, *, fallback: np.ndarray) -> np.ndarray:
+    norm = float(np.linalg.norm(vector))
+    if not np.isfinite(norm) or norm <= 1e-9:
+        return fallback.astype(float)
+    return np.asarray(vector, dtype=float) / norm
+
+
+def _local_tracks_for_camera(
+    detections: tuple[AirSimDetectionBox, ...],
+    *,
+    frame: AirSimFrame,
+    camera: CameraModel,
+    global_tracks: list[GlobalTrack],
+    case_name: str,
+    assigned_target_id: str,
+    observed_target_id: str,
+    terminal_associator: TerminalAssociator,
+) -> list[LocalVisualTrack]:
+    projections = terminal_associator.project_tracks_to_image(
+        global_tracks,
+        camera,
+        timestamp=frame.timestamp,
+    )
+    local_tracks: list[LocalVisualTrack] = []
+    for detection in detections:
+        target_id = str(detection.object_id)
+        if case_name in {"degrade_to_secondary", "degrade_to_distributed"} and target_id == assigned_target_id:
+            continue
+        projection = projections.get(_global_id(target_id))
+        center_px = np.asarray(detection.center_px, dtype=float)
+        if projection is not None and projection.valid and projection.pixel is not None:
+            center_px = np.asarray(projection.pixel, dtype=float)
+        if case_name in {"degrade_to_secondary", "degrade_to_distributed"} and target_id == observed_target_id:
+            # Preserve the mismatched visual evidence as a good local track for
+            # a different target. The assigned target is absent, so D5 should
+            # naturally return reacquire instead of being told to do so.
+            center_px = center_px.copy()
+        local_tracks.append(
+            _local_track_from_detection(
+                detection,
+                frame.timestamp,
+                center_px=center_px,
+                min_mot_history=5,
+            )
+        )
+    return local_tracks
+
+
+def _local_track_by_id(
+    local_tracks: list[LocalVisualTrack],
+    local_track_id: str | None,
+) -> LocalVisualTrack | None:
+    if local_track_id is None:
+        return None
+    for track in local_tracks:
+        if track.local_track_id == local_track_id:
+            return track
+    return None
+
+
+def _local_track_for_target(
+    local_tracks: list[LocalVisualTrack],
+    target_id: str,
+) -> LocalVisualTrack | None:
+    actor_suffix = _actor_suffix_for_target(target_id)
+    for track in local_tracks:
+        if target_id in track.local_track_id or (actor_suffix and actor_suffix in track.local_track_id):
+            return track
+    return local_tracks[0] if local_tracks else None
+
+
+def _actor_suffix_for_target(target_id: str) -> str | None:
+    try:
+        return f"MSM_TargetActor_{int(target_id.rsplit('-', 1)[1])}"
+    except (IndexError, ValueError):
+        return None
 
 
 def _d4_decisions_for_frame(
@@ -494,9 +709,19 @@ def _recon_cues(
     assigned_target_id: str,
     secondary_camera_vehicle_names: tuple[str, ...],
     enabled: bool,
+    camera: CameraModel,
+    global_tracks: list[GlobalTrack],
+    terminal_associator: TerminalAssociator,
+    target_resource_id: str,
 ) -> list[ReconImageCue]:
     if not enabled:
         return []
+    projection = terminal_associator.project_tracks_to_image(
+        [track for track in global_tracks if track.global_track_id == _global_id(assigned_target_id)],
+        camera,
+        timestamp=frame.timestamp,
+    ).get(_global_id(assigned_target_id))
+    center_px = projection.pixel if projection is not None and projection.valid else None
     cues: list[ReconImageCue] = []
     for index, vehicle_name in enumerate(secondary_camera_vehicle_names):
         cues.append(
@@ -504,14 +729,29 @@ def _recon_cues(
                 cue_id=f"{frame.episode_id}:{frame.frame_index:04d}:{vehicle_name}:{assigned_target_id}",
                 producer_node_id=f"SEC-{index + 1:02d}",
                 timestamp=frame.timestamp,
-                image_frame_id=f"{vehicle_name}:0:{frame.frame_index:04d}",
+                image_frame_id=f"{vehicle_name}:0->{target_resource_id}:{frame.frame_index:04d}",
                 global_track_id=_global_id(assigned_target_id),
+                center_px=center_px,
                 confidence=0.9,
-                scoped_resource_ids=(f"INT-{index + 1:02d}", f"INT-{index + 2:02d}"),
-                metadata={"source": "secondary_recon_global_view"},
+                scoped_resource_ids=(target_resource_id,),
+                metadata={
+                    "source": "secondary_recon_global_view",
+                    "reprojected_to_local_camera": center_px is not None,
+                    "source_camera_vehicle_name": vehicle_name,
+                    "target_resource_id": target_resource_id,
+                },
             )
         )
     return cues
+
+
+def _terminal_decision_count(observations: list[TerminalObservation], decision_state: str) -> int:
+    return sum(
+        1
+        for observation in observations
+        if observation.terminal_association is not None
+        and observation.terminal_association.decision_state == decision_state
+    )
 
 
 def _terminal_lock_accuracy(observations: list[TerminalObservation]) -> float:
@@ -541,26 +781,46 @@ def _detections_by_camera(detections: tuple[AirSimDetectionBox, ...]) -> dict[st
     return {key: tuple(value) for key, value in grouped.items()}
 
 
-def _select_detection(
-    detections: tuple[AirSimDetectionBox, ...],
-    target_id: str,
-) -> AirSimDetectionBox | None:
-    for detection in detections:
-        if str(detection.object_id) == target_id:
-            return detection
-    return detections[0] if detections else None
-
-
-def _local_track_from_detection(detection: AirSimDetectionBox, timestamp: float) -> LocalVisualTrack:
+def _local_track_from_detection(
+    detection: AirSimDetectionBox,
+    timestamp: float,
+    *,
+    center_px: np.ndarray,
+    min_mot_history: int,
+) -> LocalVisualTrack:
+    bbox = _bbox_with_center(detection.bbox_xyxy, center_px)
     return LocalVisualTrack(
         local_track_id=detection.local_track_id,
-        center_px=np.asarray(detection.center_px, dtype=float),
-        bbox=detection.bbox_xyxy,
+        center_px=center_px,
+        bbox=bbox,
         category=detection.classification_hint,
         quality=detection.confidence,
-        mot_history_length=int(detection.metadata.get("mot_history_length", 1)),
+        mot_history_length=max(int(detection.metadata.get("mot_history_length", 1)), min_mot_history),
         timestamp=timestamp,
     )
+
+
+def _bbox_with_center(
+    bbox_xyxy: tuple[float, float, float, float],
+    center_px: np.ndarray,
+) -> tuple[float, float, float, float]:
+    x1, y1, x2, y2 = (float(value) for value in bbox_xyxy)
+    width = max(x2 - x1, 2.0)
+    height = max(y2 - y1, 2.0)
+    u, v = (float(value) for value in center_px)
+    return (
+        u - width * 0.5,
+        v - height * 0.5,
+        u + width * 0.5,
+        v + height * 0.5,
+    )
+
+
+def _candidate_cost_margin(candidate_costs: list[tuple[str, float]]) -> float | None:
+    if len(candidate_costs) < 2:
+        return None
+    costs = sorted(float(cost) for _candidate, cost in candidate_costs)
+    return costs[1] - costs[0]
 
 
 def _mean_adjacent_spacing(positions: list[np.ndarray]) -> list[float]:

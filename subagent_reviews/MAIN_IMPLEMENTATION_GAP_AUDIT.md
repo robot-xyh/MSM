@@ -1,7 +1,7 @@
 # Main 实现差距总审计
 
-**审计来源**：D1-D7 子智能体分别对照 `subagent_reviews/*_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md` 和各自 `research_modules/` 代码完成自查。  
-**审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。  
+**审计来源**：D1-D7 子智能体分别对照 `subagent_reviews/*_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md` 和各自 `research_modules/` 代码完成自查。
+**审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
 ## 1. 总体结论
@@ -73,30 +73,36 @@ D1 NumPy EKF/FusionAdapter
 |---|---|---|---|---|
 | D1 多传感器融合 | `SensorObservation -> NumPy EKF/FusionAdapter -> GlobalTrack`；雷达/声学/EO/合成 LiDAR；延迟补偿；协方差；AirSim dry-run | Stone Soup/FilterPy 后端、UKF/IMM、ROS2 tf2、真实 AirSim CV 直连、Track-to-Track fusion | JSONL/CSV schema、外部依赖、真实相机/传感器外参 | `subagent_reviews/D1_IMPLEMENTATION_GAP_AUDIT.md` |
 | D2 数据关联 | GNN/Hungarian、马氏门控、二维 Kalman、轻量 JPDA/MHT、IDSW/连续性、dry-run adapter | 完整 EKF/UKF/IMM、Stone Soup/FilterPy、原生 3D NED、5v5 crossing 压测、自动关联风险滑窗 | D1->D2 强类型合同、5v5 replay、风险阈值 | `subagent_reviews/D2_IMPLEMENTATION_GAP_AUDIT.md` |
-| D3 目标分配 | SciPy Hungarian、fallback DP、滚动重分配、迟滞、版本化计划、D5 feedback helper、AirSim dry-run | OR-Tools Min Cost Flow、`AssignmentValiditySummary`、D5 feedback 自动写回代价、AirSim runtime 直连 | D5/D6 重复锁定聚合、D4 主动降级字段、复杂约束定义 | `subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md` |
-| D4 降级接管 | C2Health、被动降级、主动降级、二级侦察节点模型、CommunicationSummary、轻量 CBBA、中心恢复合并 | MIT/CA-CBBA 适配、拍卖/合同网、真实视频 cue adapter、二级节点生命周期、D1-D5 summary 自动适配 | main 统一 EventRecord、D1-D5 summary、二级 heartbeat/coverage/link freshness | `subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md` |
-| D5 末端视觉配准 | 单相机几何投影、马氏门控、保守 `locked/ambiguous/hold/reacquire`、模拟身份、跨视角摘要、禁止改写 ID | ByteTrack/BoT-SORT/Deep SORT、tf2、OpenDroneID Core、MAVLink signing、AprilTag、solvePnP、AirSim stress 真实调用 `TerminalAssociator` | 图像帧/检测器、协议报文、相机标定、D4/D5 stress 输入结构 | `subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md` |
-| D6 评估指标 | 本地 EpisodeMetrics、JSONL、Blocks replay、POD/FAR/RMSE/IDSW/assignment/failover/terminal/communication、批量图表 | Stone Soup metrics、TrackEval、SCRIMMAGE、OSPA/GOSPA/HOTA/IDF1、D7 拦截成功指标 adapter、主动降级细分 | 标准帧级匹配表、D4 metadata、D7 guidance summary schema | `subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md` |
-| D7 比例导引 | 经典二维 PN、离线 radar->vision 记录、SimpleFlight 2v2 actor 拦截、AirSim detect、视觉 PNG gate、assigned collision 判据 | D5 locked + D3 version 门控、Pure Pursuit 正式 baseline、FRPN、严格视觉 PN、PX4/MAVLink 主线、YOLO+ByteTrack 主线、D6 guidance adapter | `AssignmentGuidanceBinding`、D5 TerminalAssociation 流、授权状态、相机/机动能力模型 | `subagent_reviews/D7_IMPLEMENTATION_GAP_AUDIT.md` |
+| D3 目标分配 | SciPy Hungarian、fallback DP、滚动重分配、迟滞、版本化计划、D5 feedback helper、D7 `AssignmentGuidanceBinding`、AirSim dry-run | OR-Tools Min Cost Flow、`AssignmentValiditySummary`、D5 feedback 自动写回代价、AirSim runtime 直连 | D5/D6 重复锁定聚合、D4 主动降级字段、复杂约束定义 | `subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md` |
+| D4 降级接管 | C2Health、被动降级、主动降级、二级侦察节点模型、CommunicationSummary、轻量 CBBA、中心恢复合并、D4 arbitration adapter | MIT/CA-CBBA 适配、拍卖/合同网、真实视频 cue adapter、二级节点生命周期、main bus 写入 | main 统一调用 D4 adapter、二级 heartbeat/coverage/link freshness | `subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md` |
+| D5 末端视觉配准 | 单相机几何投影、马氏门控、保守 `locked/ambiguous/hold/reacquire`、模拟身份、跨视角摘要、禁止改写 ID、AirSim stress 调用正式 `TerminalAssociator` | ByteTrack/BoT-SORT/Deep SORT、tf2、OpenDroneID Core、MAVLink signing、AprilTag、solvePnP、真实图像链路 | 图像帧/检测器、协议报文、相机标定、D4/D5 stress 真值标签 | `subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md` |
+| D6 评估指标 | 本地 EpisodeMetrics、JSONL、Blocks replay、POD/FAR/RMSE/IDSW/assignment/failover/terminal/communication、D7 intercept adapter、批量图表 | Stone Soup metrics、TrackEval、SCRIMMAGE、OSPA/GOSPA/HOTA/IDF1、主动降级细分、完整 guidance time-series adapter | 标准帧级匹配表、D4 metadata、D7 guidance records/summaries schema | `subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md` |
+| D7 比例导引 | 经典二维 PN、离线 radar->vision 记录、SimpleFlight 2v2 actor 拦截、AirSim detect、D3/D4/D5 terminal PNG gate、assigned collision 判据、D6 可消费 summary | Pure Pursuit 正式 baseline、FRPN、严格视觉 PN、PX4/MAVLink 主线、YOLO+ByteTrack 主线、main 5v5 plan-driven 控制 | 真实 D3/D4/D5 runtime bus、D5 状态迁移、相机/机动能力模型 | `subagent_reviews/D7_IMPLEMENTATION_GAP_AUDIT.md` |
 
 ## 4. 当前最重要的缺口
 
-### P0：端到端闭环接口缺口
+### P0：本轮已补齐的端到端接口缺口
 
-1. **D5 到 D7 的门控未接上**  
-   D7 进入视觉末端还没有严格要求 D5 `TerminalAssociation(decision_state="locked")`、`assigned_global_track_id` 与 D3 一致、版本一致和授权有效。
+1. **D3 到 D7 的版本化绑定已实现**
+   D3 新增 `AssignmentGuidanceBinding` 与 `guidance_bindings_from_assignment_plan()`，D7 可消费 `plan_id/version/resource_id/assigned_global_track_id/authorization_state` 等字段。
 
-2. **D3 到 D7 的版本化绑定缺失**  
-   AirSim 控制闭环当前按初始 pair/assigned object 绑定，不是完整 `AssignmentPlan(plan_id/version)` 驱动。
+2. **D4 主动降级输入 adapter 已实现**
+   D4 新增 `D4ArbitrationAdapter`、`D4DecisionRecord` 与 `D4ArbitrationResult`，可把 D1/D2/D3/D5-like summary 转为主动降级仲裁输入，并输出 D6 `EventRecord` 兼容 metadata。
 
-3. **D4 主动降级输入仍需 main 适配**  
-   D4 已有 `ActiveDegradationArbiter`，但 D1 协方差、D2 ID switch、D3 plan validity、D5 terminal mismatch 还没有稳定自动转为 D4 summary。
+3. **D5 AirSim stress 已调用正式关联器**
+   `d4d5_stress.py` 已从 frame/replay 构造 `GlobalTrack`、`CameraModel`、`LocalVisualTrack`、`Assignment` 和二级侦察 cue，并调用 `TerminalAssociator.decide()`。
 
-4. **D5 AirSim stress 没有真实调用正式关联器**  
-   `d4d5_stress.py` 目前手工构造 `TerminalAssociation`，验证了 D4 case 和 D5 evidence 格式，但没有验证 `TerminalAssociator.decide()` 在 AirSim replay 中的几何门控结果。
+4. **D7 末端 PNG 合同门控已实现**
+   D7 新增 `terminal_gate.py`，在 AirSim controlled intercept 进入 `SimpleFlightPngGuidanceFilter` 前校验 D3 binding、D4 permission/action、D5 `locked`、ID/version 一致、授权状态和友方冲突。
 
-5. **D6 还没有正式消费 D7 拦截闭环结果**  
-   D7 已输出 `control_commands.csv` 和 `intercept_summary.json`，D6 还缺 guidance/intercept adapter，把最小距离、碰撞对象、成功类型、gate reject 纳入 `EpisodeMetrics`。
+5. **D6 已能消费 D7 拦截闭环结果**
+   D6 新增 `intercept_replay.py`，可读取 `control_commands.csv` 与 `intercept_summary.json`，把成功类型、最小距离、拦截时间、碰撞/距离命中和 gate reject 纳入 `EpisodeMetrics`。
+
+### P1：仍需 main 统筹的运行时闭环
+
+1. main 需要把真实 D1/D2/D3/D4/D5 流接入同一个 5v5 AirSim 控制状态机，替换当前 2v2 controlled intercept 中的 simulation-only binding/association。
+2. D5 的 `locked/ambiguous/hold/reacquire` 状态迁移、丢锁、重捕获、friend conflict 和 duplicate lock 事件需要进入 D7 pair state machine 和 D6 指标。
+3. D4 主动/被动降级细分指标需要在 D6 中按二级节点、分布式模式、触发原因和窗口前后效果做聚合。
 
 ### P1：开源对照与压力测试缺口
 
@@ -104,23 +110,20 @@ D1 NumPy EKF/FusionAdapter
 2. D4 需要 CBBA vs auction vs centralized Hungarian gap 的同场景 benchmark。
 3. D5 需要先把 ByteTrack 作为可选 adapter 接入 `LocalVisualTrack`，再评估 BoT-SORT/Deep SORT。
 4. D7 需要正式 Pure Pursuit baseline 和 PN/visual PN 对照实验。
-5. D6 需要把 D4 主动降级和 D7 guidance summary 变成正式指标，再考虑 TrackEval/Stone Soup metrics。
+5. D6 需要把 D4 主动降级细分和 D7 完整 guidance time-series/分组统计变成正式指标，再考虑 TrackEval/Stone Soup metrics。
 
 ## 5. 建议实施顺序
 
-1. **先补 P0 数据合同**  
-   定义 `AssignmentGuidanceBinding`、`D4DecisionRecord`、`TerminalConsistencySummary`、`GuidanceRecord`/`InterceptSummary` 的统一字段。
+1. **保持 P0 合同回归**
+   继续用 D3-D7 与 AirSim runtime 测试覆盖 `AssignmentGuidanceBinding`、`D4DecisionRecord`、`TerminalAssociation`、D7 terminal gate 和 D6 intercept adapter。
 
-2. **把 D5 正式关联器接入 AirSim D4/D5 stress**  
-   从 replay frame 构造 `GlobalTrack[]`、`Assignment`、`CameraModel`、`LocalVisualTrack[]`，调用 `TerminalAssociator.decide()`，保留当前手工 case 作为对照。
+2. **把 P0 合同接入 main runtime bus**
+   main 负责把 D3 plan/version、D4 action、D5 terminal decision、资源状态和 D7 控制 pair 合并到同一个 5v5 AirSim episode state machine。
 
-3. **把 D7 视觉末端切换改为由 D3+D5+D4 共同授权**  
-   只有 D3 plan/version 有效、D5 locked 且 ID 一致、D4 没有 hold/reassign、相机/机动 gate 通过时，才允许进入视觉 PNG。
+3. **补 P1 级评估字段**
+   D6 继续补主动降级细分、完整 guidance records/summaries、D5 状态迁移和多视角一致性分组报告。
 
-4. **补 D6 guidance/intercept adapter**  
-   读取 D7 `control_commands.csv` 和 `intercept_summary.json`，输出 `intercept_success_count`、`min_range_m`、`time_to_intercept_s`、`collision_intercept_count`、`gate_reject_count`。
-
-5. **随后做开源对照，不替换主线**  
+4. **随后做开源对照，不替换主线**
    Stone Soup、FilterPy、TrackEval、ByteTrack、MIT/CA-CBBA、OR-Tools 都建议以 optional benchmark/adapter 方式接入，先生成同场景对照报告，再决定是否进入默认运行路径。
 
 ## 6. 子智能体交付文件
@@ -132,4 +135,3 @@ D1 NumPy EKF/FusionAdapter
 - `subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md`
 - `subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md`
 - `subagent_reviews/D7_IMPLEMENTATION_GAP_AUDIT.md`
-

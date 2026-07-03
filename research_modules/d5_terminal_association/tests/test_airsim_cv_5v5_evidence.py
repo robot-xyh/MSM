@@ -135,6 +135,37 @@ def test_detection_parser_accepts_airsim_box2d_shape_without_airsim_import() -> 
     assert tracks[0].quality == 0.75
 
 
+def test_detection_parser_accepts_runtime_bbox_xyxy_and_yolo_xyxy_schema() -> None:
+    detections = [
+        {
+            "bbox_xyxy": (12.0, 24.0, 52.0, 64.0),
+            "classification_hint": "uav",
+            "confidence": 0.88,
+            "local_track_id": "airsim-det-1",
+        },
+        {
+            "xyxy": (100.0, 120.0, 140.0, 160.0),
+            "class_name": "uav",
+            "score": 0.91,
+            "track_id": "yolo-track-1",
+        },
+    ]
+
+    tracks = local_visual_tracks_from_sim_detections(
+        detections,
+        resource_id="Interceptor_Cam_1",
+        camera_id="front_rgb",
+        timestamp=3.0,
+    )
+
+    assert tracks[0].local_track_id == "airsim-det-1"
+    assert tracks[0].bbox == (12.0, 24.0, 52.0, 64.0)
+    np.testing.assert_allclose(tracks[0].center_px, np.array([32.0, 44.0]))
+    assert tracks[1].local_track_id == "yolo-track-1"
+    assert tracks[1].bbox == (100.0, 120.0, 140.0, 160.0)
+    np.testing.assert_allclose(tracks[1].center_px, np.array([120.0, 140.0]))
+
+
 def test_5v5_overlap_bus_metrics_duplicate_risk_and_lock_accuracy() -> None:
     bus = TerminalObservationBus()
     fixtures = [

@@ -17,12 +17,15 @@ import numpy as np
 
 from airsim_dryrun.models import AirSimFrame
 from d7_proportional_guidance import (
+    AssignmentGuidanceBinding,
+    D4GuidancePermission,
     GuidanceMode,
     GuidanceState,
     PngGuidanceConfig,
     SimpleFlightPngGuidanceFilter,
     VisionGuidanceObservation,
     compute_pn_command,
+    evaluate_terminal_png_contract,
 )
 
 from .models import BlocksSmokeConfig
@@ -43,6 +46,10 @@ class InterceptPair:
     terminal_handover_pending: bool = False
     visual_filter: SimpleFlightPngGuidanceFilter | None = None
     terminal_switch_reject_reason: str = ""
+    terminal_contract_reject_reason: str = ""
+    guidance_binding: AssignmentGuidanceBinding | None = None
+    d4_permission: D4GuidancePermission | None = None
+    terminal_association: Any | None = None
 
 
 @dataclass
@@ -60,6 +67,12 @@ class InterceptCommandRecord:
     closing_speed_mps: float
     terminal_locked: bool
     terminal_handover_pending: bool
+    plan_id: str
+    plan_version: int
+    track_version: int
+    d4_action: str
+    d5_decision_state: str
+    terminal_contract_reject_reason: str
     detection_seen: bool
     guidance_law: str
     camera_quality_gate_passed: bool
@@ -186,6 +199,8 @@ def _step_pairs(
         detection_seen = visible_detection is not None
         if detection_seen:
             pair.last_detection_s = frame.timestamp
+        pair.d4_permission = _d4_permission_for_pair(frame, pair)
+        pair.terminal_association = _terminal_association_for_pair(frame, pair, visible_detection)
         in_terminal_range = range_m <= config.intercept_terminal_switch_range_m
         if in_terminal_range:
             pair.terminal_handover_pending = True
@@ -275,9 +290,32 @@ def _pn_velocity_command(
         max_turn_rate_radps=0.9,
     )
     if pair.terminal_handover_pending and visible_detection is not None:
-        visual_filter = _visual_filter_for_pair(config, pair)
         current_heading = math.atan2(float(resource_velocity[1]), float(resource_velocity[0]))
         observation = _vision_observation_from_detection(frame_timestamp=timestamp, pair=pair, detection=visible_detection)
+        contract = evaluate_terminal_png_contract(
+            binding=pair.guidance_binding,
+            d4_permission=pair.d4_permission,
+            terminal_association=pair.terminal_association,
+            observation=observation,
+            timestamp_s=timestamp,
+            resource_id=pair.resource_id,
+        )
+        pair.terminal_contract_reject_reason = contract.reject_reason
+        if not contract.allowed:
+            command.metadata.update(
+                {
+                    "terminal_contract_allowed": False,
+                    "terminal_contract_reject_reason": contract.reject_reason,
+                    "d4_action": contract.d4_action,
+                    "d5_decision_state": contract.d5_decision_state,
+                    "plan_id": contract.plan_id,
+                    "plan_version": contract.plan_version,
+                    "track_version": contract.track_version,
+                }
+            )
+            return _midcourse_velocity(config, command), command
+
+        visual_filter = _visual_filter_for_pair(config, pair)
         visual_command = visual_filter.evaluate(
             observation,
             current_heading_rad=current_heading,
@@ -293,6 +331,13 @@ def _pn_velocity_command(
         if pair.terminal_locked:
             command.metadata.update(
                 {
+                    "terminal_contract_allowed": True,
+                    "terminal_contract_reject_reason": "",
+                    "d4_action": contract.d4_action,
+                    "d5_decision_state": contract.d5_decision_state,
+                    "plan_id": contract.plan_id,
+                    "plan_version": contract.plan_version,
+                    "track_version": contract.track_version,
                     "mode_override": GuidanceMode.VISION_TERMINAL.value,
                     "guidance_law": visual_command.guidance_law,
                     "camera_quality_gate_passed": visual_command.quality.camera_quality_gate_passed,
@@ -308,7 +353,18 @@ def _pn_velocity_command(
                 }
             )
             return visual_command.velocity_ned, command
-        command.metadata.update(_visual_metadata(visual_command))
+        command.metadata.update(
+            {
+                "terminal_contract_allowed": True,
+                "terminal_contract_reject_reason": "",
+                "d4_action": contract.d4_action,
+                "d5_decision_state": contract.d5_decision_state,
+                "plan_id": contract.plan_id,
+                "plan_version": contract.plan_version,
+                "track_version": contract.track_version,
+                **_visual_metadata(visual_command),
+            }
+        )
 
     if pair.terminal_locked:
         heading = math.atan2(
@@ -317,13 +373,21 @@ def _pn_velocity_command(
         )
     else:
         heading = command.desired_heading_rad
+    return _velocity_from_heading(config, heading), command
+
+
+def _midcourse_velocity(config: BlocksSmokeConfig, command: Any) -> tuple[float, float, float]:
+    return _velocity_from_heading(config, float(command.desired_heading_rad))
+
+
+def _velocity_from_heading(
+    config: BlocksSmokeConfig,
+    heading_rad: float,
+) -> tuple[float, float, float]:
     return (
-        (
-            float(config.intercept_speed_mps * math.cos(heading)),
-            float(config.intercept_speed_mps * math.sin(heading)),
-            0.0,
-        ),
-        command,
+        float(config.intercept_speed_mps * math.cos(heading_rad)),
+        float(config.intercept_speed_mps * math.sin(heading_rad)),
+        0.0,
     )
 
 
@@ -361,7 +425,11 @@ def _vision_observation_from_detection(
         bbox_xyxy=tuple(float(value) for value in detection.bbox_xyxy),
         detection_confidence=float(getattr(detection, "confidence", 0.0)),
         local_track_id=str(getattr(detection, "local_track_id", "")) or None,
-        assigned_global_track_id=pair.target_id,
+        assigned_global_track_id=(
+            pair.guidance_binding.assigned_global_track_id
+            if pair.guidance_binding is not None
+            else pair.target_id
+        ),
         camera_id=str(getattr(detection, "camera_id", "")) or None,
         metadata={
             "visual_latency_s": max(0.0, float(frame_timestamp) - float(getattr(detection, "timestamp", frame_timestamp))),
@@ -401,6 +469,8 @@ def _initial_pairs(frame: AirSimFrame) -> list[InterceptPair]:
                 resource_id=resource.resource_id,
                 vehicle_name=vehicle_name,
                 target_id=target.object_id,
+                guidance_binding=_binding_for_pair(frame, resource, target, vehicle_name),
+                d4_permission=_d4_permission_for_pair(frame, None),
             )
         )
     return pairs
@@ -439,6 +509,205 @@ def _assigned_detection(frame: AirSimFrame, pair: InterceptPair) -> Any | None:
     if not candidates:
         return None
     return max(candidates, key=lambda item: float(getattr(item, "confidence", 0.0)))
+
+
+def _binding_for_pair(
+    frame: AirSimFrame,
+    resource: Any,
+    target: Any,
+    vehicle_name: str,
+) -> AssignmentGuidanceBinding:
+    explicit = _matching_metadata_record(
+        frame.metadata.get("assignment_guidance_bindings"),
+        resource_id=str(resource.resource_id),
+        target_id=str(target.object_id),
+    )
+    if explicit is not None:
+        return AssignmentGuidanceBinding(
+            plan_id=str(_record_value(explicit, "plan_id", "airsim_control_plan")),
+            plan_version=int(_record_value(explicit, "plan_version", 1)),
+            assignment_id=_optional_record_string(explicit, "assignment_id"),
+            resource_id=str(_record_value(explicit, "resource_id", resource.resource_id)),
+            vehicle_name=str(_record_value(explicit, "vehicle_name", vehicle_name)),
+            assigned_global_track_id=str(
+                _record_value(explicit, "assigned_global_track_id", target.object_id)
+            ),
+            track_version=int(_record_value(explicit, "track_version", 1)),
+            authorization_state=str(_record_value(explicit, "authorization_state", "recorded")),
+            assignment_validity_state=str(
+                _record_value(explicit, "assignment_validity_state", "current")
+            ),
+            created_at_s=float(_record_value(explicit, "created_at_s", frame.timestamp)),
+            expires_at_s=_optional_record_float(explicit, "expires_at_s"),
+            target_actor_name=_optional_record_string(explicit, "target_actor_name"),
+            target_object_id=_optional_record_string(explicit, "target_object_id"),
+            target_mesh_aliases=_mesh_aliases_from_record(explicit),
+            metadata=dict(_record_value(explicit, "metadata", {}) or {}),
+        )
+
+    target_metadata = getattr(target, "metadata", {}) or {}
+    actor_name = str(target_metadata.get("airsim_actor_name") or "")
+    aliases = tuple(
+        item
+        for item in (
+            actor_name,
+            str(target.object_id),
+            *tuple(str(value) for value in target_metadata.get("mesh_aliases", ()) or ()),
+        )
+        if item
+    )
+    return AssignmentGuidanceBinding(
+        plan_id=str(frame.metadata.get("plan_id", "airsim_control_plan")),
+        plan_version=int(frame.metadata.get("plan_version", 1)),
+        assignment_id=f"{resource.resource_id}:{target.object_id}",
+        resource_id=str(resource.resource_id),
+        vehicle_name=vehicle_name,
+        assigned_global_track_id=str(target.object_id),
+        track_version=int(frame.metadata.get("track_version", 1)),
+        authorization_state=str(frame.metadata.get("authorization_state", "recorded")),
+        assignment_validity_state=str(frame.metadata.get("assignment_validity_state", "current")),
+        created_at_s=float(frame.metadata.get("plan_created_at_s", frame.timestamp)),
+        target_actor_name=actor_name or None,
+        target_object_id=str(target.object_id),
+        target_mesh_aliases=aliases,
+        metadata={"source": "airsim_control_simulated_binding"},
+    )
+
+
+def _d4_permission_for_pair(frame: AirSimFrame, pair: InterceptPair | None) -> D4GuidancePermission:
+    target_id = "" if pair is None else pair.target_id
+    resource_id = "" if pair is None else pair.resource_id
+    explicit = _matching_metadata_record(
+        frame.metadata.get("d4_guidance_permissions"),
+        resource_id=resource_id,
+        target_id=target_id,
+    )
+    if explicit is None:
+        explicit = frame.metadata.get("d4_guidance_permission")
+    if explicit is None:
+        return D4GuidancePermission()
+    return D4GuidancePermission(
+        action=str(_record_value(explicit, "action", "continue_center")),
+        mode=str(_record_value(explicit, "mode", "none")),
+        reason=str(_record_value(explicit, "reason", "")),
+        target_node_id=_optional_record_string(explicit, "target_node_id"),
+        terminal_consistent=bool(_record_value(explicit, "terminal_consistent", True)),
+        requires_human_review=bool(_record_value(explicit, "requires_human_review", False)),
+        new_plan_id=_optional_record_string(explicit, "new_plan_id"),
+        new_plan_version=_optional_record_int(explicit, "new_plan_version"),
+        metadata=dict(_record_value(explicit, "metadata", {}) or {}),
+    )
+
+
+def _terminal_association_for_pair(
+    frame: AirSimFrame,
+    pair: InterceptPair,
+    visible_detection: Any | None,
+) -> Any | None:
+    explicit = _matching_metadata_record(
+        frame.metadata.get("terminal_associations"),
+        resource_id=pair.resource_id,
+        target_id=pair.target_id,
+    )
+    if explicit is not None:
+        return explicit
+    if visible_detection is None or pair.guidance_binding is None:
+        return None
+    # Simulation-only adapter: current 2v2 controlled intercept has no D5 bus,
+    # so make the D5-shaped evidence explicit before D7 contract validation.
+    return {
+        "assigned_global_track_id": pair.guidance_binding.assigned_global_track_id,
+        "local_track_id": getattr(visible_detection, "local_track_id", None),
+        "association_confidence": float(getattr(visible_detection, "confidence", 0.0)),
+        "ambiguity_score": 0.0,
+        "friend_conflict_state": "none",
+        "decision_state": "locked",
+        "assignment_version": pair.guidance_binding.track_version,
+        "reason": "airsim_assigned_detection_simulated_d5_lock",
+    }
+
+
+def _matching_metadata_record(
+    records: Any,
+    *,
+    resource_id: str,
+    target_id: str,
+) -> Any | None:
+    if records is None:
+        return None
+    if isinstance(records, dict):
+        for key in (
+            f"{resource_id}:{target_id}",
+            f"{target_id}:{resource_id}",
+            resource_id,
+            target_id,
+        ):
+            if key in records:
+                return records[key]
+        if _record_matches(records, resource_id, target_id):
+            return records
+        return None
+    try:
+        iterable = tuple(records)
+    except TypeError:
+        return records if _record_matches(records, resource_id, target_id) else None
+    for record in iterable:
+        if _record_matches(record, resource_id, target_id):
+            return record
+    return None
+
+
+def _record_matches(record: Any, resource_id: str, target_id: str) -> bool:
+    record_resource = _optional_record_string(record, "resource_id")
+    record_target = (
+        _optional_record_string(record, "assigned_global_track_id")
+        or _optional_record_string(record, "target_id")
+        or _optional_record_string(record, "global_track_id")
+    )
+    resource_ok = not resource_id or record_resource in {None, resource_id}
+    target_aliases = {target_id, f"G-{target_id}"}
+    if target_id.startswith("G-"):
+        target_aliases.add(target_id.removeprefix("G-"))
+    target_ok = not target_id or record_target is None or record_target in target_aliases
+    return resource_ok and target_ok
+
+
+def _record_value(record: Any, name: str, default: Any) -> Any:
+    if isinstance(record, dict):
+        return record.get(name, default)
+    return getattr(record, name, default)
+
+
+def _optional_record_string(record: Any, name: str) -> str | None:
+    value = _record_value(record, name, None)
+    if value is None:
+        return None
+    text = str(value)
+    return text if text else None
+
+
+def _optional_record_int(record: Any, name: str) -> int | None:
+    value = _record_value(record, name, None)
+    if value is None:
+        return None
+    return int(value)
+
+
+def _optional_record_float(record: Any, name: str) -> float | None:
+    value = _record_value(record, name, None)
+    if value is None:
+        return None
+    return float(value)
+
+
+def _mesh_aliases_from_record(record: Any) -> tuple[str, ...]:
+    aliases = _record_value(record, "target_mesh_aliases", ())
+    if isinstance(aliases, str):
+        return (aliases,) if aliases else ()
+    try:
+        return tuple(str(item) for item in aliases if str(item))
+    except TypeError:
+        return (str(aliases),)
 
 
 def _is_assigned_target_collision(collision: dict[str, Any], target: Any) -> bool:
@@ -485,6 +754,18 @@ def _record_command(
             closing_speed_mps=float(getattr(pn_command, "closing_speed_mps", 0.0) if pn_command is not None else 0.0),
             terminal_locked=bool(pair.terminal_locked),
             terminal_handover_pending=bool(pair.terminal_handover_pending),
+            plan_id=str(_command_metadata(pn_command, "plan_id", _pair_plan_id(pair))),
+            plan_version=int(_command_metadata(pn_command, "plan_version", _pair_plan_version(pair)) or 0),
+            track_version=int(_command_metadata(pn_command, "track_version", _pair_track_version(pair)) or 0),
+            d4_action=str(_command_metadata(pn_command, "d4_action", _pair_d4_action(pair))),
+            d5_decision_state=str(_command_metadata(pn_command, "d5_decision_state", _pair_d5_state(pair))),
+            terminal_contract_reject_reason=str(
+                _command_metadata(
+                    pn_command,
+                    "terminal_contract_reject_reason",
+                    pair.terminal_contract_reject_reason,
+                )
+            ),
             detection_seen=bool(detection_seen),
             guidance_law=str(_command_metadata(pn_command, "guidance_law", "radar_pn" if not pair.terminal_locked else "los")),
             camera_quality_gate_passed=bool(_command_metadata(pn_command, "camera_quality_gate_passed", False)),
@@ -514,6 +795,36 @@ def _command_metadata(command: Any | None, key: str, default: Any) -> Any:
         return default
     metadata = getattr(command, "metadata", {}) or {}
     return metadata.get(key, default)
+
+
+def _pair_plan_id(pair: InterceptPair) -> str:
+    if pair.guidance_binding is None:
+        return ""
+    return pair.guidance_binding.plan_id
+
+
+def _pair_plan_version(pair: InterceptPair) -> int:
+    if pair.guidance_binding is None:
+        return 0
+    return int(pair.guidance_binding.plan_version)
+
+
+def _pair_track_version(pair: InterceptPair) -> int:
+    if pair.guidance_binding is None:
+        return 0
+    return int(pair.guidance_binding.track_version)
+
+
+def _pair_d4_action(pair: InterceptPair) -> str:
+    if pair.d4_permission is None:
+        return ""
+    return pair.d4_permission.action
+
+
+def _pair_d5_state(pair: InterceptPair) -> str:
+    if pair.terminal_association is None:
+        return ""
+    return str(_record_value(pair.terminal_association, "decision_state", ""))
 
 
 def _command_mode(command: Any | None, pair: InterceptPair) -> str:
@@ -597,6 +908,12 @@ def _pair_summary(pair: InterceptPair) -> dict[str, Any]:
         "terminal_locked": pair.terminal_locked,
         "terminal_handover_pending": pair.terminal_handover_pending,
         "terminal_switch_reject_reason": pair.terminal_switch_reject_reason,
+        "terminal_contract_reject_reason": pair.terminal_contract_reject_reason,
+        "plan_id": _pair_plan_id(pair),
+        "plan_version": _pair_plan_version(pair),
+        "track_version": _pair_track_version(pair),
+        "d4_action": _pair_d4_action(pair),
+        "d5_decision_state": _pair_d5_state(pair),
     }
 
 

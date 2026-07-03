@@ -248,7 +248,7 @@ def summarize_degradation_case(
 
 
 def _extract_bbox(detection: Any) -> tuple[float, float, float, float]:
-    bbox = _get_any(detection, "bbox", "box", "box2d", "box2D")
+    bbox = _get_any(detection, "bbox", "bbox_xyxy", "xyxy", "box", "box2d", "box2D")
     if bbox is None:
         raise ValueError("detection must contain bbox or box2D")
     if isinstance(bbox, Mapping):

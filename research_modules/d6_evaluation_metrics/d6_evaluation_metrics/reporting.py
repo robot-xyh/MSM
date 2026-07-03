@@ -62,6 +62,12 @@ class ReportGenerator:
             "los_quality_gate_pass_rate",
             "maneuver_margin_gate_pass_rate",
             "terminal_switch_reject_count",
+            "intercept_success_count",
+            "collision_intercept_count",
+            "range_intercept_count",
+            "time_to_intercept_s",
+            "min_range_m",
+            "gate_reject_count",
         ],
         "safety": [
             "constraint_violation_count",

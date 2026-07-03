@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 
 from d7_proportional_guidance import (
+    AssignmentGuidanceBinding,
+    D4GuidancePermission,
     GuidanceConfig,
     GuidanceMode,
     GuidanceState,
@@ -10,6 +12,7 @@ from d7_proportional_guidance import (
     SimpleFlightPngGuidanceFilter,
     VisionGuidanceObservation,
     compute_proportional_navigation_command,
+    evaluate_terminal_png_contract,
     simulate_guidance_episode,
 )
 
@@ -216,3 +219,139 @@ def test_visual_png_gate_rejects_when_not_closing() -> None:
     assert command.quality.terminal_switch_allowed is False
     assert command.quality.maneuver_margin_gate_passed is False
     assert command.quality.reject_reason == "not_closing"
+
+
+def test_terminal_png_contract_allows_only_consistent_locked_handoff() -> None:
+    binding = _binding()
+    terminal = {
+        "assigned_global_track_id": "G1",
+        "local_track_id": "R1:0:L1",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 4,
+    }
+    observation = {"assigned_global_track_id": "G1"}
+
+    decision = evaluate_terminal_png_contract(
+        binding=binding,
+        d4_permission=D4GuidancePermission(action="continue_center"),
+        terminal_association=terminal,
+        observation=observation,
+        timestamp_s=1.0,
+        resource_id="R1",
+    )
+
+    assert decision.allowed is True
+    assert decision.reject_reason == ""
+    assert decision.plan_id == "plan-1"
+    assert decision.d5_decision_state == "locked"
+
+
+def test_terminal_png_contract_rejects_non_locked_d5_state() -> None:
+    terminal = {
+        "assigned_global_track_id": "G1",
+        "decision_state": "ambiguous",
+        "friend_conflict_state": "none",
+        "assignment_version": 4,
+    }
+
+    decision = evaluate_terminal_png_contract(
+        binding=_binding(),
+        d4_permission=D4GuidancePermission(action="continue_center"),
+        terminal_association=terminal,
+    )
+
+    assert decision.allowed is False
+    assert decision.reject_reason == "d5_not_locked"
+
+
+def test_terminal_png_contract_rejects_identity_and_version_mismatch() -> None:
+    wrong_id = {
+        "assigned_global_track_id": "G2",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 4,
+    }
+    wrong_version = {
+        "assigned_global_track_id": "G1",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 5,
+    }
+
+    id_decision = evaluate_terminal_png_contract(
+        binding=_binding(),
+        d4_permission=D4GuidancePermission(action="continue_center"),
+        terminal_association=wrong_id,
+    )
+    version_decision = evaluate_terminal_png_contract(
+        binding=_binding(),
+        d4_permission=D4GuidancePermission(action="continue_center"),
+        terminal_association=wrong_version,
+    )
+
+    assert id_decision.reject_reason == "terminal_identity_mismatch"
+    assert version_decision.reject_reason == "assignment_version_mismatch"
+
+
+def test_terminal_png_contract_rejects_unauthorized_and_d4_hold() -> None:
+    terminal = {
+        "assigned_global_track_id": "G1",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 4,
+    }
+
+    unauthorized = evaluate_terminal_png_contract(
+        binding=_binding(authorization_state="required"),
+        d4_permission=D4GuidancePermission(action="continue_center"),
+        terminal_association=terminal,
+    )
+    d4_hold = evaluate_terminal_png_contract(
+        binding=_binding(),
+        d4_permission=D4GuidancePermission(action="hold_for_review", requires_human_review=True),
+        terminal_association=terminal,
+    )
+    d4_reassign = evaluate_terminal_png_contract(
+        binding=_binding(),
+        d4_permission=D4GuidancePermission(action="request_center_replan"),
+        terminal_association=terminal,
+    )
+
+    assert unauthorized.reject_reason == "assignment_not_authorized"
+    assert d4_hold.reject_reason == "d4_hold_for_review"
+    assert d4_reassign.reject_reason == "d4_reassign_pending"
+
+
+def test_terminal_png_contract_rejects_d4_terminal_inconsistent() -> None:
+    terminal = {
+        "assigned_global_track_id": "G1",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 4,
+    }
+
+    decision = evaluate_terminal_png_contract(
+        binding=_binding(),
+        d4_permission=D4GuidancePermission(action="continue_center", terminal_consistent=False),
+        terminal_association=terminal,
+    )
+
+    assert decision.allowed is False
+    assert decision.reject_reason == "d4_terminal_inconsistent"
+
+
+def _binding(authorization_state: str = "approved") -> AssignmentGuidanceBinding:
+    return AssignmentGuidanceBinding(
+        plan_id="plan-1",
+        plan_version=2,
+        assignment_id="assign-1",
+        resource_id="R1",
+        vehicle_name="Interceptor1",
+        assigned_global_track_id="G1",
+        track_version=4,
+        authorization_state=authorization_state,
+        target_actor_name="MSM_TargetActor_1",
+        target_object_id="TGT-001",
+        target_mesh_aliases=("MSM_TargetActor_1", "TGT-001"),
+    )

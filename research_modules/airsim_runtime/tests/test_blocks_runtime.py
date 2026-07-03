@@ -548,7 +548,44 @@ def test_d4d5_stress_analysis_outputs_expected_case_actions(tmp_path: Path) -> N
     assert distributed.metrics["d4_action_counts"]["degrade_to_distributed"] >= 1
     assert no_degrade.metrics["multi_target_fov_rate"] == 1.0
     assert no_degrade.metrics["secondary_global_view_rate"] == 1.0
+    assert no_degrade.metrics["terminal_associator_call_count"] == len(frames) * len(resources)
+    assert no_degrade.metrics["terminal_associator_locked_count"] >= len(resources)
+    assert secondary.metrics["terminal_associator_reacquire_count"] >= 1
+    assert distributed.metrics["terminal_associator_reacquire_count"] >= 1
     assert no_degrade.output_paths["d4d5_stress_case_report"].exists()
+    observation_lines = no_degrade.output_paths["d5_terminal_observations_jsonl"].read_text(
+        encoding="utf-8"
+    ).splitlines()
+    assert observation_lines
+    assert all(json.loads(line)["metadata"]["terminal_associator_used"] is True for line in observation_lines)
+
+
+def test_d4d5_stress_analysis_invokes_terminal_associator_decide(tmp_path: Path, monkeypatch) -> None:
+    import airsim_runtime.d4d5_stress as d4d5_stress_module
+
+    frames = _cv5v5_stress_frames(tmp_path)
+    resources = default_cv_5v5_camera_vehicle_names()
+    secondaries = default_cv_5v5_secondary_vehicle_names()
+
+    class SpyTerminalAssociator(d4d5_stress_module.TerminalAssociator):
+        call_count = 0
+
+        def decide(self, *args, **kwargs):
+            SpyTerminalAssociator.call_count += 1
+            return super().decide(*args, **kwargs)
+
+    monkeypatch.setattr(d4d5_stress_module, "TerminalAssociator", SpyTerminalAssociator)
+
+    result = d4d5_stress_module.run_d4d5_stress_analysis(
+        frames,
+        tmp_path / "spy",
+        case_name="no_degradation",
+        resource_vehicle_names=resources,
+        secondary_camera_vehicle_names=secondaries,
+    )
+
+    assert SpyTerminalAssociator.call_count == len(frames) * len(resources)
+    assert result.metrics["terminal_associator_call_count"] == SpyTerminalAssociator.call_count
 
 
 def test_real_runtime_control_helpers_call_multirotor_api(tmp_path: Path) -> None:
@@ -743,6 +780,65 @@ def test_blocks_orchestrator_runs_mock_controlled_intercept(tmp_path: Path) -> N
     assert "guidance_law" in commands
     assert "camera_quality_gate_passed" in commands
     assert "terminal_switch_reject_reason" in commands
+    assert "terminal_contract_reject_reason" in commands
+    assert "d4_action" in commands
+    assert "d5_decision_state" in commands
+
+
+def test_controlled_intercept_blocks_png_when_d5_is_not_locked(tmp_path: Path) -> None:
+    config = BlocksSmokeConfig(
+        episode_id="pytest_intercept_d5_hold",
+        duration_s=0.2,
+        dt_s=0.1,
+        output_root=tmp_path,
+        launch_blocks=False,
+        connection_timeout_s=0.1,
+        include_integrated_pipeline=False,
+        execute_intercept=True,
+        control_dt_s=0.1,
+        intercept_max_duration_s=0.2,
+        intercept_terminal_switch_range_m=100.0,
+        intercept_min_bbox_area_ratio=0.001,
+        intercept_min_stable_detection_frames=2,
+    )
+    runtime = D5AmbiguousFakeRuntime()
+    orchestrator = AirSimBlocksSmokeOrchestrator(runtime=runtime)
+
+    result = orchestrator.run(config)
+
+    commands = result.output_paths["control_commands"].read_text(encoding="utf-8")
+    summary = json.loads(result.output_paths["intercept_summary"].read_text(encoding="utf-8"))
+    assert "d5_not_locked" in commands
+    assert summary["pairs"][0]["terminal_locked"] is False
+    assert summary["pairs"][0]["terminal_contract_reject_reason"] == "d5_not_locked"
+
+
+def test_controlled_intercept_blocks_png_when_d4_holds_for_review(tmp_path: Path) -> None:
+    config = BlocksSmokeConfig(
+        episode_id="pytest_intercept_d4_hold",
+        duration_s=0.2,
+        dt_s=0.1,
+        output_root=tmp_path,
+        launch_blocks=False,
+        connection_timeout_s=0.1,
+        include_integrated_pipeline=False,
+        execute_intercept=True,
+        control_dt_s=0.1,
+        intercept_max_duration_s=0.2,
+        intercept_terminal_switch_range_m=100.0,
+        intercept_min_bbox_area_ratio=0.001,
+        intercept_min_stable_detection_frames=2,
+    )
+    runtime = D4HoldFakeRuntime()
+    orchestrator = AirSimBlocksSmokeOrchestrator(runtime=runtime)
+
+    result = orchestrator.run(config)
+
+    commands = result.output_paths["control_commands"].read_text(encoding="utf-8")
+    summary = json.loads(result.output_paths["intercept_summary"].read_text(encoding="utf-8"))
+    assert "d4_hold_for_review" in commands
+    assert summary["pairs"][0]["terminal_locked"] is False
+    assert summary["pairs"][0]["terminal_contract_reject_reason"] == "d4_hold_for_review"
 
 
 def test_blocks_orchestrator_reconnects_after_initial_rpc_failure(tmp_path: Path) -> None:
@@ -1037,6 +1133,42 @@ class FakeBlocksRuntime:
         frame.metadata["lidar"] = {"ok": True, "point_count": 2}
         frame.metadata["vehicle_names"] = ["Interceptor", "Intruder"]
         return frame
+
+
+class D5AmbiguousFakeRuntime(FakeBlocksRuntime):
+    def sample_frame(self, config, frame_index, timestamp, output_dir):
+        frame = super().sample_frame(config, frame_index, timestamp, output_dir)
+        metadata = {
+            **frame.metadata,
+            "terminal_associations": [
+                {
+                    "resource_id": "INT-01",
+                    "assigned_global_track_id": "TGT-001",
+                    "local_track_id": "Interceptor:0:MSM_TargetActor_1",
+                    "association_confidence": 0.4,
+                    "ambiguity_score": 0.8,
+                    "friend_conflict_state": "none",
+                    "decision_state": "ambiguous",
+                    "assignment_version": 1,
+                }
+            ],
+        }
+        return AirSimFrame(**{**frame.__dict__, "metadata": metadata})
+
+
+class D4HoldFakeRuntime(FakeBlocksRuntime):
+    def sample_frame(self, config, frame_index, timestamp, output_dir):
+        frame = super().sample_frame(config, frame_index, timestamp, output_dir)
+        metadata = {
+            **frame.metadata,
+            "d4_guidance_permission": {
+                "action": "hold_for_review",
+                "mode": "active_degradation",
+                "reason": "terminal_friend_conflict",
+                "requires_human_review": True,
+            },
+        }
+        return AirSimFrame(**{**frame.__dict__, "metadata": metadata})
 
 
 class ReconnectingFakeRuntime(FakeBlocksRuntime):
