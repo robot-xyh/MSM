@@ -1,0 +1,293 @@
+{
+  "SeeDocsAt": "https://microsoft.github.io/AirSim/settings/",
+  "SettingsVersion": 1.2,
+  "SimMode": "Multirotor",
+  "EnableRpc": true,
+  "RpcEnabled": true,
+  "ApiServerPort": 41451,
+  "LocalHostIp": "127.0.0.1",
+  "ClockSpeed": 1.0,
+  "ViewMode": "NoDisplay",
+  "CameraDefaults": {
+    "CaptureSettings": [
+      {
+        "ImageType": 0,
+        "Width": 640,
+        "Height": 480,
+        "FOV_Degrees": 120,
+        "MotionBlurAmount": 0
+      }
+    ]
+  },
+  "SubWindows": [
+    {
+      "WindowID": 0,
+      "CameraName": "0",
+      "ImageType": 0,
+      "Visible": false,
+      "External": false
+    }
+  ],
+  "Vehicles": {
+    "Interceptor1": {
+      "VehicleType": "SimpleFlight",
+      "DefaultVehicleState": "Inactive",
+      "AutoCreate": true,
+      "AllowAPIAlways": true,
+      "EnableCollisionPassthrogh": false,
+      "EnableCollisions": true,
+      "EnableTrace": false,
+      "X": 0,
+      "Y": -20,
+      "Z": 0,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0,
+      "IsFpvVehicle": true,
+      "Cameras": {
+        "0": {
+          "X": 0,
+          "Y": 0,
+          "Z": 0,
+          "Pitch": 0,
+          "Roll": 0,
+          "Yaw": 0
+        }
+      },
+      "Sensors": {
+        "LidarSensor1": {
+          "SensorType": 6,
+          "Enabled": true,
+          "NumberOfChannels": 4,
+          "Range": 80,
+          "PointsPerSecond": 8000,
+          "RotationsPerSecond": 5,
+          "HorizontalFOVStart": -45,
+          "HorizontalFOVEnd": 45,
+          "VerticalFOVUpper": 5,
+          "VerticalFOVLower": -20,
+          "X": 0,
+          "Y": 0,
+          "Z": -0.2,
+          "Roll": 0,
+          "Pitch": 0,
+          "Yaw": 0,
+          "DrawDebugPoints": false,
+          "DataFrame": "VehicleInertialFrame"
+        }
+      },
+      "RC": {
+        "RemoteControlID": 0,
+        "AllowAPIWhenDisconnected": true
+      }
+    },
+    "Interceptor2": {
+      "VehicleType": "SimpleFlight",
+      "DefaultVehicleState": "Inactive",
+      "AutoCreate": true,
+      "AllowAPIAlways": true,
+      "EnableCollisionPassthrogh": false,
+      "EnableCollisions": true,
+      "EnableTrace": false,
+      "X": 0,
+      "Y": -10,
+      "Z": 0,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0,
+      "IsFpvVehicle": false,
+      "Cameras": {
+        "0": {
+          "X": 0,
+          "Y": 0,
+          "Z": 0,
+          "Pitch": 0,
+          "Roll": 0,
+          "Yaw": 0
+        }
+      },
+      "Sensors": {
+        "LidarSensor1": {
+          "SensorType": 6,
+          "Enabled": true,
+          "NumberOfChannels": 4,
+          "Range": 80,
+          "PointsPerSecond": 8000,
+          "RotationsPerSecond": 5,
+          "HorizontalFOVStart": -45,
+          "HorizontalFOVEnd": 45,
+          "VerticalFOVUpper": 5,
+          "VerticalFOVLower": -20,
+          "X": 0,
+          "Y": 0,
+          "Z": -0.2,
+          "Roll": 0,
+          "Pitch": 0,
+          "Yaw": 0,
+          "DrawDebugPoints": false,
+          "DataFrame": "VehicleInertialFrame"
+        }
+      },
+      "RC": {
+        "RemoteControlID": 1,
+        "AllowAPIWhenDisconnected": true
+      }
+    },
+    "Interceptor3": {
+      "VehicleType": "SimpleFlight",
+      "DefaultVehicleState": "Inactive",
+      "AutoCreate": true,
+      "AllowAPIAlways": true,
+      "EnableCollisionPassthrogh": false,
+      "EnableCollisions": true,
+      "EnableTrace": false,
+      "X": 0,
+      "Y": 0,
+      "Z": 0,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0,
+      "IsFpvVehicle": false,
+      "Cameras": {
+        "0": {
+          "X": 0,
+          "Y": 0,
+          "Z": 0,
+          "Pitch": 0,
+          "Roll": 0,
+          "Yaw": 0
+        }
+      },
+      "Sensors": {
+        "LidarSensor1": {
+          "SensorType": 6,
+          "Enabled": true,
+          "NumberOfChannels": 4,
+          "Range": 80,
+          "PointsPerSecond": 8000,
+          "RotationsPerSecond": 5,
+          "HorizontalFOVStart": -45,
+          "HorizontalFOVEnd": 45,
+          "VerticalFOVUpper": 5,
+          "VerticalFOVLower": -20,
+          "X": 0,
+          "Y": 0,
+          "Z": -0.2,
+          "Roll": 0,
+          "Pitch": 0,
+          "Yaw": 0,
+          "DrawDebugPoints": false,
+          "DataFrame": "VehicleInertialFrame"
+        }
+      },
+      "RC": {
+        "RemoteControlID": 2,
+        "AllowAPIWhenDisconnected": true
+      }
+    },
+    "Interceptor4": {
+      "VehicleType": "SimpleFlight",
+      "DefaultVehicleState": "Inactive",
+      "AutoCreate": true,
+      "AllowAPIAlways": true,
+      "EnableCollisionPassthrogh": false,
+      "EnableCollisions": true,
+      "EnableTrace": false,
+      "X": 0,
+      "Y": 10,
+      "Z": 0,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0,
+      "IsFpvVehicle": false,
+      "Cameras": {
+        "0": {
+          "X": 0,
+          "Y": 0,
+          "Z": 0,
+          "Pitch": 0,
+          "Roll": 0,
+          "Yaw": 0
+        }
+      },
+      "Sensors": {
+        "LidarSensor1": {
+          "SensorType": 6,
+          "Enabled": true,
+          "NumberOfChannels": 4,
+          "Range": 80,
+          "PointsPerSecond": 8000,
+          "RotationsPerSecond": 5,
+          "HorizontalFOVStart": -45,
+          "HorizontalFOVEnd": 45,
+          "VerticalFOVUpper": 5,
+          "VerticalFOVLower": -20,
+          "X": 0,
+          "Y": 0,
+          "Z": -0.2,
+          "Roll": 0,
+          "Pitch": 0,
+          "Yaw": 0,
+          "DrawDebugPoints": false,
+          "DataFrame": "VehicleInertialFrame"
+        }
+      },
+      "RC": {
+        "RemoteControlID": 3,
+        "AllowAPIWhenDisconnected": true
+      }
+    },
+    "Interceptor5": {
+      "VehicleType": "SimpleFlight",
+      "DefaultVehicleState": "Inactive",
+      "AutoCreate": true,
+      "AllowAPIAlways": true,
+      "EnableCollisionPassthrogh": false,
+      "EnableCollisions": true,
+      "EnableTrace": false,
+      "X": 0,
+      "Y": 20,
+      "Z": 0,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0,
+      "IsFpvVehicle": false,
+      "Cameras": {
+        "0": {
+          "X": 0,
+          "Y": 0,
+          "Z": 0,
+          "Pitch": 0,
+          "Roll": 0,
+          "Yaw": 0
+        }
+      },
+      "Sensors": {
+        "LidarSensor1": {
+          "SensorType": 6,
+          "Enabled": true,
+          "NumberOfChannels": 4,
+          "Range": 80,
+          "PointsPerSecond": 8000,
+          "RotationsPerSecond": 5,
+          "HorizontalFOVStart": -45,
+          "HorizontalFOVEnd": 45,
+          "VerticalFOVUpper": 5,
+          "VerticalFOVLower": -20,
+          "X": 0,
+          "Y": 0,
+          "Z": -0.2,
+          "Roll": 0,
+          "Pitch": 0,
+          "Yaw": 0,
+          "DrawDebugPoints": false,
+          "DataFrame": "VehicleInertialFrame"
+        }
+      },
+      "RC": {
+        "RemoteControlID": 4,
+        "AllowAPIWhenDisconnected": true
+      }
+    }
+  }
+}

@@ -40,6 +40,29 @@ python3 research_modules/airsim_runtime/run_blocks_sequence.py \
   --blocks-arg=-NoSound
 ```
 
+Run multiple random seeds without restarting Blocks for every seed:
+
+```bash
+python3 research_modules/airsim_runtime/run_blocks_sequence.py \
+  --cv-5v5 \
+  --batch-seeds 1,2,3,4,5 \
+  --sequence-id blocks_cv_5v5_batch_001 \
+  --duration 6.0 \
+  --dt 0.5 \
+  --blocks-arg=-windowed \
+  --blocks-arg=-ResX=640 \
+  --blocks-arg=-ResY=480 \
+  --blocks-arg=-NoVSync \
+  --blocks-arg=-NoHMD \
+  --blocks-arg=-NoSound
+```
+
+When `--batch-seeds` contains more than one seed, main now starts Blocks once,
+runs each seed as a separate sequence, resets between sequences/episodes, and
+then stops Blocks at the end. The batch summary records
+`batch_mode=single_blocks_reset_loop` and
+`blocks_launched_once_for_batch=true`.
+
 Run the first 2v2 actor-target sequence. Intruders are spawned/moved actors,
 not SimpleFlight vehicles, and target recognition uses AirSim `simGetDetections`:
 
@@ -145,6 +168,42 @@ python3 research_modules/airsim_runtime/run_blocks_sequence.py \
   --blocks-arg=-NoSound
 ```
 
+Run the controlled 5v5 intercept. This uses five SimpleFlight interceptors
+(`Interceptor1..5`) from
+`settings/blocks_5v5_actor_tuned_settings.json` and five moved actor targets
+(`MSM_TargetActor_1..5`). The D7 midcourse law is radar PN; terminal visual PNG
+is only entered after the per-pair D3/D4/D5 contract and camera/LOS/maneuver
+gates pass:
+
+```bash
+python3 research_modules/airsim_runtime/run_blocks_sequence.py \
+  --actor-5v5 \
+  --execute-intercept \
+  --sequence-id p1_5v5_intercept_20260703 \
+  --duration 8.0 \
+  --dt 0.2 \
+  --control-dt 0.1 \
+  --intercept-speed 6.0 \
+  --intercept-altitude-z -5.0 \
+  --intercept-radius 0.75 \
+  --intercept-terminal-range 8.0 \
+  --intercept-detection-timeout 5.0 \
+  --intercept-yaw-mode look_at_target \
+  --actor-target-distance 20.0 \
+  --actor-target-speed-scale 0.25 \
+  --target-scale-m 2.0 \
+  --blocks-arg=-windowed \
+  --blocks-arg=-ResX=640 \
+  --blocks-arg=-ResY=480 \
+  --blocks-arg=-NoVSync \
+  --blocks-arg=-NoHMD \
+  --blocks-arg=-NoSound
+```
+
+The 5v5 run writes `P1_5V5_INTERCEPT_AIRSIM_REPORT_20260703.md` in the
+sequence output directory. Each pair owns an independent D7 visual filter; do
+not share terminal PNG state across interceptors.
+
 The default detection timeout is conservative (`1.0s`). For the first Blocks
 impact-style validation, `5.0s` keeps the controller committed after terminal
 lock even if AirSim's built-in detector briefly loses the close target. The
@@ -187,7 +246,10 @@ replay metrics, and for controlled episodes:
 `intercept_summary.json`, `control_commands.csv`, and
 `airsim_3d_intercept_trajectories.png`.
 `control_commands.csv` includes D7 `guidance_law`, terminal handoff state,
-camera/LOS/maneuver gate booleans, and `terminal_switch_reject_reason`.
+camera/LOS/maneuver gate booleans, `terminal_switch_reject_reason`,
+`terminal_contract_reject_reason`, D4/D5 state fields, and plan/version
+metadata. Terminal contract rejects are logged as explicit D7 states such as
+`hold`, `reacquire`, or `abort_revoke` where possible.
 Camera PNG screenshots are omitted unless `--save-images` is used.
 For CV 5v5, the handoff from visual capture to D5 is metadata-only:
 `blocks_frames.jsonl` stores per-camera image status, camera pose, detection

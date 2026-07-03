@@ -195,6 +195,42 @@ def default_2v2_actor_target_specs(
     )
 
 
+def default_5v5_actor_target_specs(
+    *,
+    target_z: float = -5.0,
+    target_distance_m: float = 35.0,
+    target_spacing_m: float = 10.0,
+    asset_name: str = "1M_Cube_Chamfer",
+    target_scale_m: float = 2.0,
+    target_speed_scale: float = 1.0,
+) -> tuple[BlocksActorTargetSpec, ...]:
+    """Default crossing horizontal actor targets for controlled 5v5 intercept."""
+
+    starts_y = tuple((index - 2) * float(target_spacing_m) for index in range(5))
+    velocities_y = (0.8, 0.4, 0.0, -0.4, -0.8)
+    threats = (0.95, 0.90, 0.84, 0.78, 0.72)
+    specs: list[BlocksActorTargetSpec] = []
+    for index, start_y in enumerate(starts_y):
+        specs.append(
+            BlocksActorTargetSpec(
+                object_id=f"TGT-{index + 1:03d}",
+                actor_name=f"MSM_TargetActor_{index + 1}",
+                start_ned=(float(target_distance_m) + 2.0 * index, float(start_y), float(target_z)),
+                velocity_ned=(
+                    (1.2 + 0.1 * index) * float(target_speed_scale),
+                    velocities_y[index] * float(target_speed_scale),
+                    0.0,
+                ),
+                asset_name=asset_name,
+                scale=(float(target_scale_m), float(target_scale_m), float(target_scale_m)),
+                threat_score=threats[index],
+                coverage_cell="cell-north" if index < 3 else "cell-south",
+                fallback_actor_name=None,
+            )
+        )
+    return tuple(specs)
+
+
 def default_cv_5v5_camera_vehicle_names() -> tuple[str, ...]:
     """Default ComputerVision interceptor camera vehicle names."""
 

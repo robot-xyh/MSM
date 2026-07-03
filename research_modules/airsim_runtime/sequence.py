@@ -13,6 +13,8 @@ from .models import BlocksEpisodeSpec, BlocksSequenceResult, BlocksSmokeConfig, 
 from .orchestrator import AirSimBlocksSmokeOrchestrator
 from .real_runtime import RealAirSimRuntimeClient
 
+BatchSequenceRun = tuple[BlocksSmokeConfig, str, tuple[BlocksEpisodeSpec, ...]]
+
 
 DEFAULT_BLOCKS_EPISODES: tuple[BlocksEpisodeSpec, ...] = (
     BlocksEpisodeSpec("episode_001_d1_sensor", "D1 sensor capture", include_integrated_pipeline=False),
@@ -65,6 +67,7 @@ class AirSimBlocksSequenceOrchestrator:
         *,
         sequence_id: str = "blocks_sequence_001",
         episode_specs: tuple[BlocksEpisodeSpec, ...] = DEFAULT_BLOCKS_EPISODES,
+        manage_process: bool = True,
     ) -> BlocksSequenceResult:
         output_root = base_config.output_root
         sequence_dir = output_root / sequence_id
@@ -83,7 +86,8 @@ class AirSimBlocksSequenceOrchestrator:
             client_kind=base_config.client_kind,
         )
         episode_results: list[BlocksSmokeResult] = []
-        process_manager.start()
+        if manage_process:
+            process_manager.start()
         try:
             smoke_orchestrator = AirSimBlocksSmokeOrchestrator(
                 runtime=runtime,
@@ -115,7 +119,8 @@ class AirSimBlocksSequenceOrchestrator:
                 result.metadata["focus"] = spec.focus
                 episode_results.append(result)
         finally:
-            process_manager.stop()
+            if manage_process:
+                process_manager.stop()
         sequence_result = BlocksSequenceResult(
             sequence_id=sequence_id,
             connected=all(result.connected for result in episode_results),
@@ -130,6 +135,7 @@ class AirSimBlocksSequenceOrchestrator:
                 "episode_count": len(episode_results),
                 "episode_order": [spec.episode_id for spec in episode_specs],
                 "blocks_launched_once": True,
+                "process_managed_by_sequence": bool(manage_process),
             },
         )
         if base_config.metadata.get("d4d5_stress_enabled"):
@@ -158,6 +164,60 @@ def run_blocks_sequence(
         sequence_id=sequence_id,
         episode_specs=episode_specs,
     )
+
+
+def run_blocks_batch_sequences(
+    runs: tuple[BatchSequenceRun, ...],
+    *,
+    batch_id: str = "blocks_batch_001",
+    runtime: RealAirSimRuntimeClient | None = None,
+    process_manager: BlocksProcessManager | None = None,
+) -> tuple[BlocksSequenceResult, ...]:
+    """Run multiple seed sequences under one Blocks process.
+
+    This avoids the unstable per-seed Blocks restart pattern where the AirSim
+    RPC port can remain open after the previous process exits.
+    """
+
+    if not runs:
+        return ()
+    first_config = runs[0][0]
+    batch_dir = first_config.output_root / batch_id
+    process = process_manager or BlocksProcessManager(
+        blocks_script=first_config.blocks_script,
+        settings_path=first_config.settings_path,
+        output_dir=batch_dir,
+        extra_args=first_config.blocks_args,
+        prefer_nvidia_offload=first_config.prefer_nvidia_offload,
+    )
+    shared_runtime = runtime or RealAirSimRuntimeClient(
+        ip=first_config.api_server_host(),
+        port=first_config.api_server_port(),
+        timeout_value=first_config.client_timeout_s,
+        client_kind=first_config.client_kind,
+    )
+    orchestrator = AirSimBlocksSequenceOrchestrator(
+        runtime=shared_runtime,
+        process_manager=process,
+    )
+    results: list[BlocksSequenceResult] = []
+    process.start()
+    try:
+        for base_config, sequence_id, episode_specs in runs:
+            config = replace(base_config, launch_blocks=False)
+            result = orchestrator.run(
+                config,
+                sequence_id=sequence_id,
+                episode_specs=episode_specs,
+                manage_process=False,
+            )
+            result.metadata["batch_id"] = batch_id
+            result.metadata["batch_mode"] = "single_blocks_reset_loop"
+            result.metadata["blocks_launched_once_for_batch"] = True
+            results.append(result)
+    finally:
+        process.stop()
+    return tuple(results)
 
 
 def _write_sequence_summary(path: Path, result: BlocksSequenceResult) -> Path:

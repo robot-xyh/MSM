@@ -26,6 +26,7 @@ from d7_proportional_guidance import (
     VisionGuidanceObservation,
     compute_pn_command,
     evaluate_terminal_png_contract,
+    guidance_mode_from_terminal_contract,
 )
 
 from .models import BlocksSmokeConfig
@@ -310,6 +311,11 @@ def _pn_velocity_command(
         )
         pair.terminal_contract_reject_reason = contract.reject_reason
         if not contract.allowed:
+            guidance_mode = guidance_mode_from_terminal_contract(
+                contract,
+                handover_pending=pair.terminal_handover_pending,
+                terminal_locked=pair.terminal_locked,
+            )
             command.metadata.update(
                 {
                     "terminal_contract_allowed": False,
@@ -319,6 +325,8 @@ def _pn_velocity_command(
                     "plan_id": contract.plan_id,
                     "plan_version": contract.plan_version,
                     "track_version": contract.track_version,
+                    "mode_override": guidance_mode.value,
+                    "guidance_law": "radar_pn",
                 }
             )
             return _midcourse_velocity(config, command), command

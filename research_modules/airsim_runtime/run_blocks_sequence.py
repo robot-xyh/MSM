@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -27,15 +28,22 @@ for rel in (
 from airsim_runtime.models import (
     BlocksSmokeConfig,
     default_2v2_actor_target_specs,
+    default_5v5_actor_target_specs,
     default_cv_5v5_actor_target_specs,
     default_cv_5v5_d4d5_stress_actor_target_specs,
     default_cv_5v5_camera_vehicle_names,
     default_cv_5v5_secondary_vehicle_names,
 )
-from airsim_runtime.sequence import D4D5_STRESS_EPISODES, DEFAULT_BLOCKS_EPISODES, run_blocks_sequence
+from airsim_runtime.sequence import (
+    D4D5_STRESS_EPISODES,
+    DEFAULT_BLOCKS_EPISODES,
+    run_blocks_batch_sequences,
+    run_blocks_sequence,
+)
 
 DEFAULT_SETTINGS = "research_modules/airsim_runtime/settings/blocks_smoke_settings.json"
 ACTOR_2V2_SETTINGS = "research_modules/airsim_runtime/settings/blocks_2v2_actor_settings.json"
+ACTOR_5V5_TUNED_SETTINGS = "research_modules/airsim_runtime/settings/blocks_5v5_actor_tuned_settings.json"
 CV_5V5_SETTINGS = "research_modules/airsim_runtime/settings/blocks_cv_5v5_settings.json"
 CV_5V5_D4D5_STRESS_SETTINGS = (
     "research_modules/airsim_runtime/settings/blocks_cv_5v5_d4d5_stress_settings.json"
@@ -69,6 +77,11 @@ def parse_args() -> argparse.Namespace:
         "--actor-2v2",
         action="store_true",
         help="Run two SimpleFlight interceptor resources against two moving non-vehicle actor targets.",
+    )
+    parser.add_argument(
+        "--actor-5v5",
+        action="store_true",
+        help="Run five SimpleFlight interceptor resources against five moving non-vehicle actor targets.",
     )
     parser.add_argument(
         "--cv-5v5",
@@ -119,6 +132,24 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--target-asset-name", default="1M_Cube_Chamfer")
     parser.add_argument("--target-scale-m", type=float, default=None)
+    parser.add_argument(
+        "--actor-target-distance",
+        type=float,
+        default=None,
+        help="Initial NED X distance for actor targets in controlled 5v5 mode.",
+    )
+    parser.add_argument(
+        "--actor-target-spacing",
+        type=float,
+        default=None,
+        help="Initial lateral target spacing for actor targets in controlled 5v5 mode.",
+    )
+    parser.add_argument(
+        "--actor-target-speed-scale",
+        type=float,
+        default=1.0,
+        help="Velocity multiplier for actor targets in controlled 5v5 mode.",
+    )
     parser.add_argument("--target-detection-filter", default="MSM_TargetActor_*")
     parser.add_argument("--save-images", action="store_true", help="Persist sampled Scene PNG frames.")
     parser.add_argument(
@@ -138,27 +169,54 @@ def main() -> int:
         args.execute_intercept = True
     if args.cv_5v5_d4d5_stress_200m:
         args.cv_5v5_d4d5_stress = True
-    selected_modes = [args.actor_2v2, args.cv_5v5, args.cv_5v5_d4d5_stress]
+    selected_modes = [args.actor_2v2, args.actor_5v5, args.cv_5v5, args.cv_5v5_d4d5_stress]
     if sum(1 for selected in selected_modes if selected) > 1:
-        raise SystemExit("--actor-2v2, --cv-5v5, and --cv-5v5-d4d5-stress are mutually exclusive")
+        raise SystemExit(
+            "--actor-2v2, --actor-5v5, --cv-5v5, and --cv-5v5-d4d5-stress are mutually exclusive"
+        )
     if (args.cv_5v5 or args.cv_5v5_d4d5_stress) and args.execute_intercept:
         raise SystemExit("ComputerVision 5v5 modes are read-only and cannot be combined with --execute-intercept")
     seeds = _parse_batch_seeds(args.batch_seeds, default=args.seed)
-    results = []
-    for seed in seeds:
-        sequence_id = args.sequence_id if len(seeds) == 1 else f"{args.sequence_id}_seed{seed:03d}"
-        result = _run_one_sequence(args, seed=seed, sequence_id=sequence_id)
-        results.append(result)
+    if len(seeds) == 1:
+        results = [_run_one_sequence(args, seed=seeds[0], sequence_id=args.sequence_id)]
+    else:
+        runs = tuple(
+            _build_sequence_run(
+                args,
+                seed=seed,
+                sequence_id=f"{args.sequence_id}_seed{seed:03d}",
+            )
+            for seed in seeds
+        )
+        results = list(run_blocks_batch_sequences(runs, batch_id=args.sequence_id))
+    for result in results:
         _print_sequence_result(result)
+    if args.actor_5v5 and args.execute_intercept:
+        _write_5v5_intercept_report(args, results)
     if len(results) > 1:
         _write_batch_summary(args, seeds, results)
     return 0
 
 
 def _run_one_sequence(args: argparse.Namespace, *, seed: int, sequence_id: str):
+    base_config, selected_sequence_id, episode_specs = _build_sequence_run(
+        args,
+        seed=seed,
+        sequence_id=sequence_id,
+    )
+    return run_blocks_sequence(
+        base_config,
+        sequence_id=selected_sequence_id,
+        episode_specs=episode_specs,
+    )
+
+
+def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str):
     settings_path = Path(args.settings)
     if args.actor_2v2 and args.settings == DEFAULT_SETTINGS:
         settings_path = Path(ACTOR_2V2_TUNED_SETTINGS if args.terminal_handoff_tuned else ACTOR_2V2_SETTINGS)
+    if args.actor_5v5 and args.settings == DEFAULT_SETTINGS:
+        settings_path = Path(ACTOR_5V5_TUNED_SETTINGS)
     if args.cv_5v5 and args.settings == DEFAULT_SETTINGS:
         settings_path = Path(CV_5V5_SETTINGS)
     if args.cv_5v5_d4d5_stress and args.settings == DEFAULT_SETTINGS:
@@ -170,6 +228,8 @@ def _run_one_sequence(args: argparse.Namespace, *, seed: int, sequence_id: str):
     scenario_name = (
         "blocks_actor_2v2"
         if args.actor_2v2
+        else "blocks_actor_5v5"
+        if args.actor_5v5
         else "blocks_cv_5v5"
         if args.cv_5v5
         else "blocks_cv_5v5_d4d5_stress"
@@ -190,8 +250,9 @@ def _run_one_sequence(args: argparse.Namespace, *, seed: int, sequence_id: str):
             if item
         )
     )
-    actor_config = (
-        {
+    actor_config = {}
+    if args.actor_2v2:
+        actor_config = {
             "camera_vehicle_name": "Interceptor1",
             "camera_vehicle_names": ("Interceptor1", "Interceptor2"),
             "lidar_vehicle_name": "Interceptor1",
@@ -210,9 +271,40 @@ def _run_one_sequence(args: argparse.Namespace, *, seed: int, sequence_id: str):
                 "target_asset_name": args.target_asset_name,
             },
         }
-        if args.actor_2v2
-        else {}
-    )
+    if args.actor_5v5:
+        actor_5v5_resources = tuple(f"Interceptor{index}" for index in range(1, 6))
+        actor_config = {
+            "camera_vehicle_name": actor_5v5_resources[0],
+            "camera_vehicle_names": actor_5v5_resources,
+            "lidar_vehicle_name": actor_5v5_resources[0],
+            "lidar_vehicle_names": actor_5v5_resources,
+            "target_vehicle_names": (),
+            "resource_vehicle_names": actor_5v5_resources,
+            "target_actor_specs": default_5v5_actor_target_specs(
+                target_z=args.intercept_altitude_z if args.execute_intercept else -5.0,
+                target_distance_m=args.actor_target_distance
+                if args.actor_target_distance is not None
+                else 35.0,
+                target_spacing_m=args.actor_target_spacing
+                if args.actor_target_spacing is not None
+                else 10.0,
+                asset_name=args.target_asset_name,
+                target_scale_m=target_scale_m or 2.0,
+                target_speed_scale=args.actor_target_speed_scale,
+            ),
+            "detection_filter_names": detection_filters,
+            "metadata": {
+                "runtime_mode": "actor_5v5",
+                "target_asset_name": args.target_asset_name,
+                "actor_target_distance_m": args.actor_target_distance
+                if args.actor_target_distance is not None
+                else 35.0,
+                "actor_target_spacing_m": args.actor_target_spacing
+                if args.actor_target_spacing is not None
+                else 10.0,
+                "actor_target_speed_scale": args.actor_target_speed_scale,
+            },
+        }
     if args.cv_5v5 or args.cv_5v5_d4d5_stress:
         cv_resources = default_cv_5v5_camera_vehicle_names()
         cv_secondaries = default_cv_5v5_secondary_vehicle_names()
@@ -299,12 +391,7 @@ def _run_one_sequence(args: argparse.Namespace, *, seed: int, sequence_id: str):
         replace(spec, scenario_name=scenario_name, duration_s=args.duration, dt_s=args.dt)
         for spec in selected_episode_specs
     )
-    result = run_blocks_sequence(
-        base_config,
-        sequence_id=sequence_id,
-        episode_specs=episode_specs,
-    )
-    return result
+    return base_config, sequence_id, episode_specs
 
 
 def _print_sequence_result(result) -> None:
@@ -331,13 +418,12 @@ def _parse_batch_seeds(raw: str | None, *, default: int) -> list[int]:
 
 
 def _write_batch_summary(args: argparse.Namespace, seeds: list[int], results: list[object]) -> Path:
-    import json
-
     output_dir = Path(args.output_root) / args.sequence_id
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / "blocks_batch_summary.json"
     payload = {
         "sequence_id": args.sequence_id,
+        "batch_mode": "single_blocks_reset_loop",
         "seed_count": len(seeds),
         "seeds": seeds,
         "results": [
@@ -356,6 +442,7 @@ def _write_batch_summary(args: argparse.Namespace, seeds: list[int], results: li
         "# AirSim Batch Report",
         "",
         f"- Sequence prefix: `{args.sequence_id}`",
+        "- Batch mode: `single_blocks_reset_loop`",
         f"- Seed count: {len(seeds)}",
         f"- Seeds: {', '.join(str(seed) for seed in seeds)}",
         "",
@@ -369,6 +456,110 @@ def _write_batch_summary(args: argparse.Namespace, seeds: list[int], results: li
         )
     report.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
+
+
+def _write_5v5_intercept_report(args: argparse.Namespace, results: list[object]) -> Path:
+    output_dir = Path(args.output_root) / args.sequence_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report_path = output_dir / "P1_5V5_INTERCEPT_AIRSIM_REPORT_20260703.md"
+    lines = [
+        "# P1 5v5 AirSim 真拦截测试报告",
+        "",
+        "## 测试配置",
+        "",
+        f"- Sequence ID: `{args.sequence_id}`",
+        "- Runtime: Blocks + SimpleFlight interceptors + moved actor targets",
+        "- Target detection: AirSim `simGetDetections` metadata, PNG not saved by default",
+        f"- Duration: `{args.duration}` s, dt: `{args.dt}` s, control dt: `{args.control_dt}` s",
+        f"- Intercept speed: `{args.intercept_speed}` m/s",
+        f"- Intercept altitude NED Z: `{args.intercept_altitude_z}` m",
+        f"- Intercept radius: `{args.intercept_radius}` m",
+        f"- Terminal switch range: `{args.intercept_terminal_range}` m",
+        f"- Actor target distance: `{args.actor_target_distance if args.actor_target_distance is not None else 35.0}` m",
+        f"- Actor target spacing: `{args.actor_target_spacing if args.actor_target_spacing is not None else 10.0}` m",
+        f"- Actor target speed scale: `{args.actor_target_speed_scale}`",
+        "",
+        "## 结果汇总",
+        "",
+        "| Sequence | Connected | Pair Count | Success | Command Records | Summary |",
+        "| --- | --- | ---: | ---: | ---: | --- |",
+    ]
+    for result in results:
+        episode = _controlled_episode_from_result(result)
+        intercept = {} if episode is None else episode.metadata.get("intercept", {})
+        output_paths = {} if episode is None else episode.output_paths
+        summary_path = output_paths.get("intercept_summary")
+        lines.append(
+            f"| `{result.sequence_id}` | {result.connected} | "
+            f"{intercept.get('pair_count', 0)} | {intercept.get('success_count', 0)} | "
+            f"{intercept.get('command_record_count', 0)} | "
+            f"`{summary_path}` |"
+        )
+    lines.extend(["", "## 分 pair 状态", "", "| Resource | Vehicle | Target | Status | Min Range m | Time s | Abort |", "| --- | --- | --- | --- | ---: | ---: | --- |"])
+    for result in results:
+        episode = _controlled_episode_from_result(result)
+        if episode is None:
+            continue
+        summary_path = episode.output_paths.get("intercept_summary")
+        if summary_path is None or not Path(summary_path).exists():
+            continue
+        summary = json.loads(Path(summary_path).read_text(encoding="utf-8"))
+        for pair in summary.get("pairs", []) or []:
+            lines.append(
+                "| "
+                f"{pair.get('resource_id', '')} | "
+                f"{pair.get('vehicle_name', '')} | "
+                f"{pair.get('target_id', '')} | "
+                f"{pair.get('status', '')} | "
+                f"{_fmt(pair.get('min_range_m'))} | "
+                f"{_fmt(pair.get('time_to_intercept_s'))} | "
+                f"{pair.get('abort_reason') or ''} |"
+            )
+    lines.extend(["", "## D6 / D7 指标文件", ""])
+    for result in results:
+        episode = _controlled_episode_from_result(result)
+        if episode is None:
+            continue
+        paths = episode.output_paths
+        integrated_paths = {}
+        if episode.integrated_result is not None:
+            integrated_paths = episode.integrated_result.output_paths
+        lines.extend(
+            [
+                f"- `{result.sequence_id}` control commands: `{paths.get('control_commands')}`",
+                f"- `{result.sequence_id}` intercept summary: `{paths.get('intercept_summary')}`",
+                f"- `{result.sequence_id}` D6 merged metrics: `{integrated_paths.get('d7_execution_metrics')}`",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "## 结论口径",
+            "",
+            "- `collision_intercept` 和 `range_intercept` 计为闭环成功。",
+            "- `timeout` 表示 SimpleFlight 控制和日志链路完成，但在最大时长内未达到拦截半径或碰撞判据。",
+            "- `terminal_switch_allowed`、`terminal_contract_reject_reason` 和 `guidance_law` 以 `control_commands.csv` 为准。",
+            "- 本报告只汇总执行结果；完整探测、关联、分配、降级和末端指标以集成 D6 报告为准。",
+        ]
+    )
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return report_path
+
+
+def _controlled_episode_from_result(result: object):
+    for episode in getattr(result, "episode_results", ()):
+        if episode.metadata.get("control_api_used"):
+            return episode
+    return None
+
+
+def _fmt(value: object) -> str:
+    if value is None:
+        return ""
+    try:
+        return f"{float(value):.3f}"
+    except (TypeError, ValueError):
+        return str(value)
 
 
 if __name__ == "__main__":

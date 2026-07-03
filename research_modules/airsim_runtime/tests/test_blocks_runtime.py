@@ -23,6 +23,7 @@ from airsim_runtime.models import (
     BlocksActorTargetSpec,
     BlocksEpisodeSpec,
     BlocksSmokeConfig,
+    default_5v5_actor_target_specs,
     default_cv_5v5_actor_target_specs,
     default_cv_5v5_d4d5_stress_actor_target_specs,
     default_cv_5v5_camera_vehicle_names,
@@ -30,7 +31,11 @@ from airsim_runtime.models import (
 )
 from airsim_runtime.orchestrator import AirSimBlocksSmokeOrchestrator
 from airsim_runtime.real_runtime import RealAirSimRuntimeClient
-from airsim_runtime.sequence import AirSimBlocksSequenceOrchestrator, D4D5_STRESS_EPISODES
+from airsim_runtime.sequence import (
+    AirSimBlocksSequenceOrchestrator,
+    D4D5_STRESS_EPISODES,
+    run_blocks_batch_sequences,
+)
 
 
 def test_repo_blocks_settings_are_valid_and_enable_lidar() -> None:
@@ -72,6 +77,27 @@ def test_minimal_blocks_settings_are_available_for_rpc_diagnostics() -> None:
     assert settings["Vehicles"]["Drone1"]["EnableCollisions"] is True
     assert settings["Vehicles"]["Drone1"]["EnableCollisionPassthrogh"] is False
     assert "Sensors" not in settings["Vehicles"]["Drone1"]
+
+
+def test_5v5_actor_tuned_settings_define_five_simpleflight_interceptors() -> None:
+    settings_path = Path("research_modules/airsim_runtime/settings/blocks_5v5_actor_tuned_settings.json")
+
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+
+    assert settings["SimMode"] == "Multirotor"
+    assert settings["EnableRpc"] is True
+    assert settings["ApiServerPort"] == 41451
+    assert list(settings["Vehicles"]) == [f"Interceptor{index}" for index in range(1, 6)]
+    assert [settings["Vehicles"][name]["Y"] for name in settings["Vehicles"]] == [-20, -10, 0, 10, 20]
+    for index, vehicle in enumerate(settings["Vehicles"].values()):
+        assert vehicle["VehicleType"] == "SimpleFlight"
+        assert vehicle["DefaultVehicleState"] == "Inactive"
+        assert vehicle["AllowAPIAlways"] is True
+        assert vehicle["EnableCollisions"] is True
+        assert vehicle["EnableCollisionPassthrogh"] is False
+        assert vehicle["Z"] == 0
+        assert vehicle["RC"]["RemoteControlID"] == index
+        assert vehicle["Sensors"]["LidarSensor1"]["Enabled"] is True
 
 
 def test_computer_vision_settings_are_available_for_rpc_diagnostics() -> None:
@@ -133,6 +159,25 @@ def test_default_cv_5v5_actor_specs_are_five_crossing_targets() -> None:
     assert specs[0].position_at(2.0)[2] == -10.0
     assert specs[0].position_at(2.0)[1] > specs[0].start_ned[1]
     assert specs[-1].position_at(2.0)[1] < specs[-1].start_ned[1]
+
+
+def test_default_5v5_actor_specs_are_five_controlled_intercept_targets() -> None:
+    specs = default_5v5_actor_target_specs(target_z=-5.0)
+
+    assert len(specs) == 5
+    assert [spec.object_id for spec in specs] == [
+        "TGT-001",
+        "TGT-002",
+        "TGT-003",
+        "TGT-004",
+        "TGT-005",
+    ]
+    assert [spec.actor_name for spec in specs] == [f"MSM_TargetActor_{index}" for index in range(1, 6)]
+    assert [spec.start_ned[1] for spec in specs] == [-20.0, -10.0, 0.0, 10.0, 20.0]
+    assert specs[0].position_at(2.0)[2] == -5.0
+    assert specs[0].position_at(2.0)[1] > specs[0].start_ned[1]
+    assert specs[-1].position_at(2.0)[1] < specs[-1].start_ned[1]
+    assert all(spec.scale == (2.0, 2.0, 2.0) for spec in specs)
 
 
 def test_default_cv_5v5_d4d5_stress_actor_specs_match_requested_geometry() -> None:
@@ -874,6 +919,49 @@ def test_blocks_orchestrator_runs_mock_controlled_intercept(tmp_path: Path) -> N
     assert "d5_decision_state" in commands
 
 
+def test_blocks_orchestrator_runs_mock_5v5_controlled_intercept(tmp_path: Path) -> None:
+    resources = tuple(f"Interceptor{index}" for index in range(1, 6))
+    config = BlocksSmokeConfig(
+        episode_id="pytest_intercept_5v5",
+        duration_s=0.2,
+        dt_s=0.1,
+        output_root=tmp_path,
+        launch_blocks=False,
+        connection_timeout_s=0.1,
+        include_integrated_pipeline=False,
+        execute_intercept=True,
+        control_dt_s=0.1,
+        intercept_max_duration_s=0.2,
+        intercept_terminal_switch_range_m=100.0,
+        intercept_min_bbox_area_ratio=0.001,
+        intercept_min_stable_detection_frames=1,
+        camera_vehicle_name=resources[0],
+        camera_vehicle_names=resources,
+        lidar_vehicle_name=resources[0],
+        lidar_vehicle_names=resources,
+        target_vehicle_names=(),
+        resource_vehicle_names=resources,
+        target_actor_specs=default_5v5_actor_target_specs(target_z=-5.0),
+    )
+    runtime = FiveVFiveFakeBlocksRuntime()
+    orchestrator = AirSimBlocksSmokeOrchestrator(runtime=runtime)
+
+    result = orchestrator.run(config)
+
+    assert result.connected is True
+    assert result.metadata["control_api_used"] is True
+    assert result.metadata["intercept"]["pair_count"] == 5
+    assert len(result.metadata["intercept"]["pairs"]) == 5
+    assert result.metadata["intercept"]["command_record_count"] >= 5
+    assert runtime.released_vehicle_names == resources
+    summary = json.loads(result.output_paths["intercept_summary"].read_text(encoding="utf-8"))
+    assert summary["pair_count"] == 5
+    assert [pair["vehicle_name"] for pair in summary["pairs"]] == list(resources)
+    commands = result.output_paths["control_commands"].read_text(encoding="utf-8")
+    assert "Interceptor5" in commands
+    assert "terminal_switch_allowed" in commands
+
+
 def test_controlled_intercept_blocks_png_when_d5_is_not_locked(tmp_path: Path) -> None:
     config = BlocksSmokeConfig(
         episode_id="pytest_intercept_d5_hold",
@@ -975,6 +1063,49 @@ def test_blocks_sequence_runner_reuses_one_blocks_process(tmp_path: Path) -> Non
     assert runtime.reset_count == 2
     assert result.output_paths["blocks_sequence_summary"].exists()
     assert (tmp_path / "pytest_sequence" / "episode_a" / "airsim_blocks_summary.json").exists()
+
+
+def test_blocks_batch_runner_reuses_one_blocks_process_across_seeds(tmp_path: Path) -> None:
+    runtime = CountingFakeBlocksRuntime()
+    process_manager = FakeSequenceProcessManager(tmp_path / "batch_process")
+    specs = (
+        BlocksEpisodeSpec("episode_a", "D1", duration_s=0.0, include_integrated_pipeline=False),
+        BlocksEpisodeSpec("episode_b", "full", duration_s=0.0, include_integrated_pipeline=False),
+    )
+    runs = tuple(
+        (
+            BlocksSmokeConfig(
+                episode_id="base",
+                duration_s=0.0,
+                output_root=tmp_path,
+                seed=seed,
+                launch_blocks=False,
+                connection_timeout_s=0.1,
+            ),
+            f"pytest_batch_seed{seed:03d}",
+            specs,
+        )
+        for seed in (1, 2, 3)
+    )
+
+    results = run_blocks_batch_sequences(
+        runs,
+        batch_id="pytest_batch",
+        runtime=runtime,
+        process_manager=process_manager,
+    )
+
+    assert len(results) == 3
+    assert process_manager.start_count == 1
+    assert process_manager.stop_count == 1
+    assert runtime.reset_count == 6
+    assert [result.sequence_id for result in results] == [
+        "pytest_batch_seed001",
+        "pytest_batch_seed002",
+        "pytest_batch_seed003",
+    ]
+    assert all(result.metadata["batch_mode"] == "single_blocks_reset_loop" for result in results)
+    assert (tmp_path / "pytest_batch_seed001" / "episode_a" / "airsim_blocks_summary.json").exists()
 
 
 def test_blocks_sequence_runner_writes_d4d5_stress_sequence_report(tmp_path: Path) -> None:
@@ -1231,6 +1362,23 @@ class FakeBlocksRuntime:
         return frame
 
 
+class FiveVFiveFakeBlocksRuntime(FakeBlocksRuntime):
+    def sample_frame(self, config, frame_index, timestamp, output_dir):
+        frame = _sample_5v5_frame(timestamp=timestamp, frame_index=frame_index)
+        frame.metadata["image"] = {"ok": True, "width": 640, "height": 480}
+        frame.metadata["images"] = [
+            {"ok": True, "width": 640, "height": 480, "camera_vehicle_name": name}
+            for name in config.resource_vehicle_names
+        ]
+        frame.metadata["lidar"] = {"ok": True, "point_count": 2}
+        frame.metadata["lidars"] = [
+            {"ok": True, "point_count": 2, "lidar_vehicle_name": name}
+            for name in config.resource_vehicle_names
+        ]
+        frame.metadata["vehicle_names"] = list(config.resource_vehicle_names)
+        return frame
+
+
 class D5AmbiguousFakeRuntime(FakeBlocksRuntime):
     def sample_frame(self, config, frame_index, timestamp, output_dir):
         frame = super().sample_frame(config, frame_index, timestamp, output_dir)
@@ -1360,6 +1508,68 @@ def _sample_frame(timestamp: float = 0.0, frame_index: int = 0) -> AirSimFrame:
             "lidar": {"ok": True, "point_count": 2},
             "vehicle_names": ["Interceptor", "Intruder"],
             "scene_object_count": 2,
+        },
+    )
+
+
+def _sample_5v5_frame(timestamp: float = 0.0, frame_index: int = 0) -> AirSimFrame:
+    resource_y = (-20.0, -10.0, 0.0, 10.0, 20.0)
+    truth_objects = []
+    resources = []
+    detections = []
+    for index, y_value in enumerate(resource_y, start=1):
+        target_id = f"TGT-{index:03d}"
+        vehicle_name = f"Interceptor{index}"
+        actor_name = f"MSM_TargetActor_{index}"
+        truth_objects.append(
+            AirSimTruthObject(
+                object_id=target_id,
+                object_type="target",
+                timestamp=timestamp,
+                position_ned=(35.0 + index, y_value, -5.0),
+                velocity_ned=(0.0, 0.0, 0.0),
+                threat_score=0.9,
+                coverage_cell="cell-north" if index <= 3 else "cell-south",
+                metadata={"airsim_actor_name": actor_name},
+            )
+        )
+        resources.append(
+            AirSimResourceState(
+                resource_id=f"INT-{index:02d}",
+                timestamp=timestamp,
+                position_ned=(0.0, y_value, -5.0),
+                velocity_ned=(0.0, 0.0, 0.0),
+                coverage_cell="cell-north" if index <= 3 else "cell-south",
+                metadata={"airsim_vehicle_name": vehicle_name},
+            )
+        )
+        detections.append(
+            AirSimDetectionBox(
+                detection_id=f"det-{frame_index}-{index}",
+                camera_id=f"{vehicle_name}:0",
+                object_id=target_id,
+                local_track_id=f"{vehicle_name}:0:{actor_name}",
+                timestamp=timestamp,
+                center_px=(320.0, 240.0),
+                bbox_xyxy=(285.0, 205.0, 355.0, 275.0),
+                confidence=0.95,
+            )
+        )
+    return AirSimFrame(
+        episode_id="pytest_blocks_5v5",
+        scenario_name="blocks_actor_5v5",
+        frame_index=frame_index,
+        timestamp=timestamp,
+        truth_objects=tuple(truth_objects),
+        resources=tuple(resources),
+        visual_detections=tuple(detections),
+        metadata={
+            "runtime": "Blocks",
+            "real_airsim_used": True,
+            "image": {"ok": True},
+            "lidar": {"ok": True, "point_count": 2},
+            "vehicle_names": [f"Interceptor{index}" for index in range(1, 6)],
+            "scene_object_count": 5,
         },
     )
 
