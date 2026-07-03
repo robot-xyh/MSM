@@ -17,6 +17,7 @@ from .metrics import MetricsRecorder
 from .models import (
     AssociationLogEntry,
     AssociationResult,
+    AssociationRiskSummary,
     Detection,
     GlobalTrack,
     MatchedPair,
@@ -28,6 +29,7 @@ from .tracker import Tracker
 
 __all__ = [
     "AssociationLogEntry",
+    "AssociationRiskSummary",
     "AssociationResult",
     "DataAssociator",
     "Detection",

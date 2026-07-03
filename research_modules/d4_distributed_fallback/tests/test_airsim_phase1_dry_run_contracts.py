@@ -15,8 +15,11 @@ from d4_distributed_fallback.models import (
     AvailabilityBand,
     C2Health,
     CommBand,
+    CommunicationSummary,
     ConfidenceBand,
+    LinkType,
     NodeRole,
+    PayloadKind,
     ResourceSummary,
     TrackSummary,
 )
@@ -86,6 +89,23 @@ def _fake_phase1_task() -> TrackSummary:
     )
 
 
+def _fake_secondary_video_link(
+    received_timestamp: float = 10.0,
+    stale_after_s: float = 2.0,
+) -> CommunicationSummary:
+    return CommunicationSummary(
+        source_node_id="sec-north-1",
+        target_node_id="int-1",
+        relay_node_id=None,
+        link_type=LinkType.VIDEO_CUE,
+        sent_timestamp=received_timestamp - 0.2,
+        received_timestamp=received_timestamp,
+        payload_kind=PayloadKind.VIDEO_METADATA,
+        stale_after_s=stale_after_s,
+        sequence_id="sec-north-1:frame:10",
+    )
+
+
 def _track_uncertainty(position_sigma_m: float = 12.0) -> TrackUncertaintySummary:
     return TrackUncertaintySummary(
         track_id="track-north-1",
@@ -123,6 +143,7 @@ def _terminal_summary(
     observed_global_track_id: str | None = "track-north-1",
     non_locked_frames: int = 0,
     mismatch_frames: int = 0,
+    cross_view_risk_score: float = 0.0,
 ) -> TerminalAssociationSummary:
     return TerminalAssociationSummary(
         resource_id="int-1",
@@ -135,7 +156,111 @@ def _terminal_summary(
         consecutive_non_locked_frames=non_locked_frames,
         consecutive_mismatch_frames=mismatch_frames,
         friend_conflict=False,
+        cross_view_risk_score=cross_view_risk_score,
+        cross_view_support_count=2,
     )
+
+
+def test_case_001_no_degradation_continue_center() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track_uncertainty(position_sigma_m=10.0),
+        association_risk=_association_risk(ambiguity_score=0.05),
+        assignment_validity=_assignment_validity(),
+        terminal_association=_terminal_summary(),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=_fake_phase1_resources(secondary_available=True),
+        communication_summaries=[_fake_secondary_video_link()],
+        current_time_s=10.5,
+    )
+
+    assert decision.mode == DegradationMode.NONE
+    assert decision.action == DegradationAction.CONTINUE_CENTER
+    assert decision.target_node_id is None
+    assert decision.terminal_consistent
+    assert decision.risk_factors == ()
+
+
+def test_case_002_degrade_to_secondary_after_high_dynamic_terminal_mismatch() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track_uncertainty(position_sigma_m=55.0),
+        association_risk=_association_risk(ambiguity_score=0.75),
+        assignment_validity=_assignment_validity(),
+        terminal_association=_terminal_summary(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id="track-north-2",
+            non_locked_frames=3,
+            mismatch_frames=2,
+            cross_view_risk_score=0.8,
+        ),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=_fake_phase1_resources(secondary_available=True),
+        communication_summaries=[_fake_secondary_video_link()],
+        current_time_s=10.5,
+    )
+
+    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.action == DegradationAction.DEGRADE_TO_SECONDARY
+    assert decision.target_node_id == "sec-north-1"
+    assert not decision.terminal_consistent
+    assert "d1_track_uncertainty_high" in decision.risk_factors
+    assert "d2_association_ambiguity_high" in decision.risk_factors
+    assert "d5_cross_view_risk_high" in decision.risk_factors
+    assert "terminal_persistent_disagreement" in decision.risk_factors
+
+
+def test_case_003_degrade_to_distributed_when_center_or_secondary_unavailable() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track_uncertainty(position_sigma_m=55.0),
+        association_risk=_association_risk(ambiguity_score=0.75),
+        assignment_validity=_assignment_validity(),
+        terminal_association=_terminal_summary(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id="track-north-2",
+            non_locked_frames=3,
+            mismatch_frames=2,
+            cross_view_risk_score=0.8,
+        ),
+        c2_health=C2Health.FAILED,
+        secondary_nodes=_fake_phase1_resources(secondary_available=True),
+        communication_summaries=[_fake_secondary_video_link(received_timestamp=10.0, stale_after_s=1.0)],
+        current_time_s=12.0,
+    )
+
+    assert decision.mode == DegradationMode.PASSIVE_FAILOVER
+    assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
+    assert decision.target_node_id is None
+    assert "d5_cross_view_risk_high" in decision.risk_factors
+
+
+def test_decision_metrics_contains_main_required_d4_fields() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track_uncertainty(position_sigma_m=55.0),
+        association_risk=_association_risk(ambiguity_score=0.75),
+        assignment_validity=_assignment_validity(),
+        terminal_association=_terminal_summary(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id="track-north-2",
+            non_locked_frames=3,
+            mismatch_frames=2,
+        ),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=_fake_phase1_resources(secondary_available=True),
+    )
+
+    metrics = decision.to_metrics(
+        failover_time=1.5,
+        secondary_selected_rate=1.0,
+        distributed_conflict_count=0,
+    )
+
+    assert metrics["d4_action"] == "degrade_to_secondary"
+    assert metrics["degradation_mode"] == "active_degradation"
+    assert metrics["target_node_id"] == "sec-north-1"
+    assert metrics["terminal_consistent"] is False
+    assert metrics["failover_time"] == 1.5
+    assert metrics["secondary_selected_rate"] == 1.0
+    assert metrics["distributed_conflict_count"] == 0
+    assert "terminal_persistent_disagreement" in metrics["risk_factors"]
 
 
 def test_fake_airsim_center_failed_passively_degrades_to_secondary_node() -> None:
@@ -190,6 +315,8 @@ def test_fake_airsim_uncertainty_with_consistent_terminal_requests_active_second
         terminal_association=_terminal_summary(),
         c2_health=C2Health.NORMAL,
         secondary_nodes=_fake_phase1_resources(secondary_available=True),
+        communication_summaries=[_fake_secondary_video_link()],
+        current_time_s=10.5,
     )
 
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
@@ -244,6 +371,28 @@ def test_fake_airsim_terminal_mismatch_actively_degrades_to_distributed_without_
     assert decision.coverage_cell == "cell-north"
 
 
+def test_fake_airsim_terminal_mismatch_with_stale_secondary_link_degrades_to_distributed() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track_uncertainty(),
+        association_risk=_association_risk(),
+        assignment_validity=_assignment_validity(),
+        terminal_association=_terminal_summary(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id="track-north-2",
+            non_locked_frames=3,
+            mismatch_frames=2,
+        ),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=_fake_phase1_resources(secondary_available=True),
+        communication_summaries=[_fake_secondary_video_link(received_timestamp=10.0, stale_after_s=1.0)],
+        current_time_s=12.0,
+    )
+
+    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
+    assert decision.target_node_id is None
+
+
 def test_fake_airsim_decision_payload_is_bus_serializable_without_airsim_types() -> None:
     decision = ActiveDegradationArbiter().evaluate(
         track_uncertainty=_track_uncertainty(position_sigma_m=35.0),
@@ -269,4 +418,3 @@ def test_fake_airsim_decision_payload_is_bus_serializable_without_airsim_types()
         ],
         "requires_human_review": False,
     }
-

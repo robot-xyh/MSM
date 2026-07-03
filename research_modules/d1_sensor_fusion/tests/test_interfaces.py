@@ -24,6 +24,47 @@ def test_sensor_observation_latency_and_bucket() -> None:
     assert adapter._bucket(1.23) == 12
 
 
+def test_sensor_observation_normalizes_cross_node_metadata() -> None:
+    obs = SensorObservation(
+        observation_id="eo_peer_001",
+        sensor_id="interceptor_cam_01",
+        modality="eo",
+        measurement_timestamp=1.0,
+        arrival_timestamp=1.4,
+        frame_id="pixel",
+        measurement=np.array([640.0, 360.0]),
+        covariance=np.eye(2),
+        metadata={
+            "source_node_id": "INT-01",
+            "target_node_id": "C2",
+            "relay_node_id": "TETHER-01",
+            "link_type": "secondary_relay",
+            "sent_timestamp": "1.1",
+            "received_timestamp": 1.35,
+            "payload_kind": "bbox",
+            "stale_after_s": 0.4,
+            "source_support": {"eo": 1},
+        },
+    )
+
+    assert obs.source_node_id == "INT-01"
+    assert obs.target_node_id == "C2"
+    assert obs.relay_node_id == "TETHER-01"
+    assert obs.link_type == "secondary_relay"
+    assert obs.payload_kind == "bbox"
+    assert obs.sent_timestamp == 1.1
+    assert obs.received_timestamp == 1.35
+    assert obs.communication_latency == pytest.approx(0.25)
+    assert obs.source_support == {"eo": 1}
+    assert obs.metadata["source_node_id"] == "INT-01"
+    assert obs.is_stale_at(1.8)
+
+    copied = obs.with_measurement_timestamp(1.2)
+    assert copied.source_node_id == obs.source_node_id
+    assert copied.metadata["payload_kind"] == "bbox"
+    assert copied.source_support == {"eo": 1}
+
+
 def test_radar_covariance_grows_with_range() -> None:
     near = radar_covariance_from_range(100.0)
     far = radar_covariance_from_range(800.0)
@@ -68,6 +109,47 @@ def test_fusion_adapter_required_methods_create_and_update_track() -> None:
     predicted = adapter.predict_track(updated, 1.5)
     assert predicted.timestamp == 1.5
     assert predicted.covariance.shape == (6, 6)
+
+
+def test_global_track_metadata_carries_cross_node_fields() -> None:
+    adapter = FusionAdapter(latency_compensation=True)
+    sensor_position = np.zeros(3)
+    state = np.array([120.0, 20.0, -15.0, 4.0, 1.0, 0.0])
+    radar_z = radar_h(state, sensor_position)
+    tracks = adapter.process(
+        SensorObservation(
+            observation_id="radar_comm_birth",
+            sensor_id="radar",
+            modality="radar",
+            measurement_timestamp=2.0,
+            arrival_timestamp=2.5,
+            frame_id="ned",
+            measurement=radar_z,
+            covariance=radar_covariance_from_range(radar_z[0]),
+            metadata={"sensor_position_ned": sensor_position},
+            source_node_id="C2",
+            target_node_id="INT-01",
+            relay_node_id="TETHER-01",
+            link_type="secondary_relay",
+            sent_timestamp=2.1,
+            received_timestamp=2.45,
+            payload_kind="track",
+            stale_after_s=0.8,
+        )
+    )
+
+    assert len(tracks) == 1
+    metadata = tracks[0].metadata
+    assert metadata["source_node_id"] == "C2"
+    assert metadata["target_node_id"] == "INT-01"
+    assert metadata["relay_node_id"] == "TETHER-01"
+    assert metadata["link_type"] == "secondary_relay"
+    assert metadata["payload_kind"] == "track"
+    assert metadata["latest_measurement_timestamp"] == 2.0
+    assert metadata["latest_arrival_timestamp"] == 2.5
+    assert metadata["latest_communication_latency_s"] == pytest.approx(0.35)
+    assert metadata["source_support"] == {"radar": 1}
+    assert metadata["source_node_ids"] == ("C2",)
 
 
 def test_delayed_non_radar_association_uses_measurement_time() -> None:

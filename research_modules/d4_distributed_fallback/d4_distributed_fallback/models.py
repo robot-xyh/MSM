@@ -40,6 +40,24 @@ class NodeRole(str, Enum):
     INTERCEPTOR = "interceptor"
 
 
+class LinkType(str, Enum):
+    C2_DIRECT = "c2_direct"
+    SECONDARY_RELAY = "secondary_relay"
+    INTERCEPTOR_PEER = "interceptor_peer"
+    VIDEO_CUE = "video_cue"
+
+
+class PayloadKind(str, Enum):
+    TRACK = "track"
+    BBOX = "bbox"
+    VIDEO_METADATA = "video_metadata"
+    ASSIGNMENT = "assignment"
+    TERMINAL_ASSOCIATION = "terminal_association"
+    BID = "bid"
+    RESOURCE_SUMMARY = "resource_summary"
+    HEALTH = "health"
+
+
 @dataclass(frozen=True)
 class TrackSummary:
     track_id: str
@@ -66,6 +84,33 @@ class ResourceSummary:
     node_role: NodeRole = NodeRole.INTERCEPTOR
     coordinator_only: bool = False
     coverage_cell: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_jsonable(self)
+
+
+@dataclass(frozen=True)
+class CommunicationSummary:
+    source_node_id: str
+    target_node_id: str
+    relay_node_id: str | None
+    link_type: LinkType
+    sent_timestamp: float
+    received_timestamp: float
+    payload_kind: PayloadKind
+    stale_after_s: float
+    sequence_id: str | None = None
+
+    @property
+    def latency_s(self) -> float:
+        return max(0.0, self.received_timestamp - self.sent_timestamp)
+
+    def is_stale(self, current_time_s: float | None = None) -> bool:
+        reference_time = self.received_timestamp if current_time_s is None else current_time_s
+        return reference_time - self.received_timestamp > self.stale_after_s
+
+    def involves_node(self, node_id: str) -> bool:
+        return node_id in {self.source_node_id, self.target_node_id, self.relay_node_id}
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)

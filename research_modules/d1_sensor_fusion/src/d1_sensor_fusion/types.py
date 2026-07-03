@@ -14,6 +14,18 @@ CANONICAL_OBSERVATION_FRAMES = {
     "lidar": {"ned"},
 }
 
+COMMUNICATION_METADATA_KEYS = (
+    "source_node_id",
+    "target_node_id",
+    "relay_node_id",
+    "link_type",
+    "sent_timestamp",
+    "received_timestamp",
+    "payload_kind",
+    "stale_after_s",
+    "source_support",
+)
+
 
 class TrackLevel(str, Enum):
     """Research quality level for a fused track."""
@@ -45,6 +57,15 @@ class SensorObservation:
     confidence: float = 1.0
     quality_flags: tuple[str, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
+    source_node_id: str | None = None
+    target_node_id: str | None = None
+    relay_node_id: str | None = None
+    link_type: str | None = None
+    sent_timestamp: float | None = None
+    received_timestamp: float | None = None
+    payload_kind: str | None = None
+    stale_after_s: float | None = None
+    source_support: dict[str, int] | None = None
 
     def __post_init__(self) -> None:
         self.modality = str(self.modality).lower()
@@ -64,10 +85,34 @@ class SensorObservation:
         if self.covariance is not None:
             self.covariance = np.asarray(self.covariance, dtype=float)
         self.confidence = float(np.clip(self.confidence, 0.0, 1.0))
+        self.metadata = dict(self.metadata or {})
+        self._normalize_communication_metadata()
 
     @property
     def latency(self) -> float:
         return self.arrival_timestamp - self.measurement_timestamp
+
+    @property
+    def communication_latency(self) -> float | None:
+        if self.sent_timestamp is None or self.received_timestamp is None:
+            return None
+        return self.received_timestamp - self.sent_timestamp
+
+    @property
+    def communication_metadata(self) -> dict[str, Any]:
+        return {
+            key: getattr(self, key)
+            for key in COMMUNICATION_METADATA_KEYS
+            if getattr(self, key) is not None
+        }
+
+    def is_stale_at(self, timestamp: float) -> bool:
+        if self.stale_after_s is None:
+            return False
+        reference = self.received_timestamp
+        if reference is None:
+            reference = self.arrival_timestamp
+        return float(timestamp) - float(reference) > self.stale_after_s
 
     def with_measurement_timestamp(self, timestamp: float) -> "SensorObservation":
         """Return a shallow copy with a modified measurement timestamp."""
@@ -85,7 +130,49 @@ class SensorObservation:
             confidence=self.confidence,
             quality_flags=tuple(self.quality_flags),
             metadata=dict(self.metadata),
+            source_node_id=self.source_node_id,
+            target_node_id=self.target_node_id,
+            relay_node_id=self.relay_node_id,
+            link_type=self.link_type,
+            sent_timestamp=self.sent_timestamp,
+            received_timestamp=self.received_timestamp,
+            payload_kind=self.payload_kind,
+            stale_after_s=self.stale_after_s,
+            source_support=None if self.source_support is None else dict(self.source_support),
         )
+
+    def _normalize_communication_metadata(self) -> None:
+        for key in (
+            "source_node_id",
+            "target_node_id",
+            "relay_node_id",
+            "link_type",
+            "payload_kind",
+        ):
+            value = getattr(self, key)
+            if value is None:
+                value = self.metadata.get(key)
+            if value is not None:
+                value = str(value)
+                setattr(self, key, value)
+                self.metadata[key] = value
+
+        for key in ("sent_timestamp", "received_timestamp", "stale_after_s"):
+            value = getattr(self, key)
+            if value is None:
+                value = self.metadata.get(key)
+            if value is not None:
+                value = float(value)
+                setattr(self, key, value)
+                self.metadata[key] = value
+
+        support = self.source_support
+        if support is None:
+            support = self.metadata.get("source_support")
+        if support is not None:
+            normalized = {str(key): int(value) for key, value in dict(support).items()}
+            self.source_support = normalized
+            self.metadata["source_support"] = normalized
 
 
 @dataclass

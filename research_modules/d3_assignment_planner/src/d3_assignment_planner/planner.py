@@ -102,6 +102,7 @@ class AssignmentPlanner:
             assignments,
             previous_plan,
         )
+        assignments = self._annotate_assignment_context(assignments, version)
         if unassigned_target_ids is None:
             unassigned_target_ids = tuple(
                 matrix_result.target_ids[index]
@@ -128,7 +129,16 @@ class AssignmentPlanner:
             metadata={
                 "configured_human_authorization_state": self.config.human_authorization_state,
                 "forced_human_authorization_state": "required",
+                "source_node_id": self.config.source_node_id,
+                "target_node_id": self.config.target_node_id,
+                "link_type": self.config.link_type,
+                "plan_version": version,
+                "stale_after_s": self.config.stale_after_s,
             },
+            source_node_id=self.config.source_node_id,
+            target_node_id=self.config.target_node_id,
+            link_type=self.config.link_type,
+            stale_after_s=self.config.stale_after_s,
         )
 
     def _assignments_from_solver(
@@ -352,6 +362,34 @@ class AssignmentPlanner:
             )
             total_penalty += penalty
         return tuple(adjusted), total_penalty
+
+    def _annotate_assignment_context(
+        self,
+        assignments: tuple[Assignment, ...],
+        version: int,
+    ) -> tuple[Assignment, ...]:
+        annotated: list[Assignment] = []
+        for assignment in assignments:
+            metadata = {
+                **dict(assignment.metadata),
+                "source_node_id": self.config.source_node_id,
+                "target_node_id": assignment.resource_id,
+                "link_type": self.config.link_type,
+                "plan_version": version,
+                "stale_after_s": self.config.stale_after_s,
+            }
+            annotated.append(
+                replace(
+                    assignment,
+                    source_node_id=self.config.source_node_id,
+                    target_node_id=assignment.resource_id,
+                    link_type=self.config.link_type,
+                    plan_version=version,
+                    stale_after_s=self.config.stale_after_s,
+                    metadata=metadata,
+                )
+            )
+        return tuple(annotated)
 
     @staticmethod
     def _change_count(previous_map: dict[str, str], candidate_map: dict[str, str]) -> int:

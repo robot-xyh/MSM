@@ -22,7 +22,8 @@ D4 负责离线降级协同研究，包含两类模式：
 - `TrackUncertaintySummary`：来自 D1 的定位不确定度摘要，包含 `position_sigma_m`、`covariance_trace`、`measurement_age_s` 和 `coverage_cell`。
 - `AssociationRiskSummary`：来自 D2 的关联风险摘要，包含 `ambiguity_score`、`id_switch_count`、`duplicate_track_count` 和 `track_continuity`。
 - `AssignmentValiditySummary`：来自 D3 的分配有效性摘要，包含 `global_track_id`、`assigned_resource_id`、`plan_version`、`is_current`、`plan_age_s` 和 `cost_margin`。
-- `TerminalAssociationSummary`：由 D5 的 `TerminalAssociation` 归一化得到，包含末端 `resource_id`、`decision_state`、`association_confidence`、`ambiguity_score`、连续非锁定帧数、连续不一致帧数、友方冲突标记和当前 `coverage_cell`。
+- `TerminalAssociationSummary`：由 D5 的 `TerminalAssociation` 归一化得到，包含末端 `resource_id`、`decision_state`、`association_confidence`、`ambiguity_score`、连续非锁定帧数、连续不一致帧数、友方冲突、重复末端锁定标记、cross-view 风险和当前 `coverage_cell`。
+- `CommunicationSummary[]`：来自 main 通信层的离线链路摘要，字段包括 `source_node_id`、`target_node_id`、`relay_node_id`、`link_type`、`sent_timestamp`、`received_timestamp`、`payload_kind` 和 `stale_after_s`。
 
 ### 2.2 输出
 
@@ -30,7 +31,7 @@ D4 负责离线降级协同研究，包含两类模式：
 - `HealthTransition[]`：状态转移审计日志。
 - `MergeResult`：中心恢复后的双轨合并结果，区分 `accepted/review/conflicts`。
 - `final_views["coordination_mode"]`：当前已写入 `state/leader_id/leader_role/coverage_cell`，建议后续在仿真 metrics 中继续透传，便于 D6 区分二级节点接管与完全分布式 CBBA。
-- `ActiveDegradationDecision`：主动/被动仲裁结果，字段包括 `mode`、`action`、`reason`、`target_node_id`、`coverage_cell`、`terminal_consistent`、`risk_factors` 和 `requires_human_review`。
+- `ActiveDegradationDecision`：主动/被动仲裁结果，字段包括 `mode`、`action`、`reason`、`target_node_id`、`coverage_cell`、`terminal_consistent`、`risk_factors` 和 `requires_human_review`；`to_metrics()` 输出 main/D6 所需 D4 指标字段。
 
 ## 3. C2Health 状态机
 
@@ -148,6 +149,7 @@ decision = ActiveDegradationArbiter().evaluate(
 - `TerminalAssociationSummary`：D5 的末端视觉配准结果，重点看是否 `locked`、是否来自 D3 指派的 `assigned_resource_id`、是否连续多帧非锁定、是否与 assigned `global_track_id` 一致，以及是否存在友方冲突。
 - `C2Health`：判断是主动降级还是被动降级。若已为 `failed`，仲裁器直接走 `passive_failover`。
 - `secondary_nodes`：二级节点健康和覆盖信息，使用 `ResourceSummary.node_role`、`availability_band`、`operator_hold`、`coverage_cell` 判断可用性。
+- `communication_summaries`：可选通信摘要。若传入，二级节点必须存在未过期的 `c2_direct`、`secondary_relay` 或 `video_cue` 链路，才可被视为主动辅助/接管候选。
 
 决策规则：
 
@@ -160,13 +162,16 @@ decision = ActiveDegradationArbiter().evaluate(
 | D5 连续多帧 `ambiguous/hold/reacquire`，或本地候选与分配目标长期不一致 | 触发主动仲裁；二级节点健康且覆盖该 `coverage_cell` 时 `degrade_to_secondary` |
 | 二级节点不可用、不可达或不覆盖当前区域 | `degrade_to_distributed`，进入 CBBA/拍卖式保底协商 |
 | 友方冲突或身份证据冲突 | `hold_for_review`，只输出审计和人工复核需求 |
+| `duplicate_terminal_lock=True` | 不视为 D5 一致，进入主动仲裁，优先请求二级辅助或中心复核 |
+| `cross_view_risk_score` 高 | 不视为稳定一致，进入主动仲裁，优先二级节点辅助/接管 |
 
 当前实现使用轻量规则阈值表达风险：
 
 - D1：`position_sigma_m >= 20m` 记为中风险，`>= 50m` 记为高风险；`covariance_trace` 和量测年龄也会增加风险因子。
 - D2：`ambiguity_score`、`id_switch_count`、`duplicate_track_count`、`track_continuity` 共同判断身份连续性。
 - D3：`is_current=False`、`plan_age_s` 超限或 `cost_margin` 过低表示分配有效性下降。
-- D5：`association_confidence` 低、`ambiguity_score` 高、连续非锁定帧数或连续 mismatch 帧数达到阈值时触发主动仲裁。
+- D5：`association_confidence` 低、`ambiguity_score` 高、重复末端锁定、cross-view 风险高、连续非锁定帧数或连续 mismatch 帧数达到阈值时触发主动仲裁。`friend_conflict` 优先级最高，直接 `hold_for_review`。
+- 通信：传入通信摘要时，二级节点链路超过 `stale_after_s` 会被视为不可用；只有二级节点不可用时，主动持续不一致才降到 `distributed_cbba/auction`。
 
 这些阈值是离线仿真默认值，不代表真实传感器或真实系统参数。后续应由 D6 批量实验做敏感性分析。
 
@@ -258,9 +263,11 @@ O(|E|\cdot|\mathcal{T}|)
 2. `ActiveDegradationArbiter.evaluate()` 先判断 D5 末端结果是否与 D3 分配的 `global_track_id` 一致。
 3. 若 D5 一致且风险低，继续当前中心计划。
 4. 若 D5 一致但 D1/D2/D3 风险上升，优先请求中心滚动重分配或请求二级节点补充观测，不直接进入完全分布式。
-5. 若 D5 连续多帧 `ambiguous/hold/reacquire`，或本地视觉候选与分配目标长期不一致，进入主动降级仲裁。
-6. 仲裁时优先选择覆盖当前 `coverage_cell` 的健康二级节点；无可用二级节点时才进入完全无中心 CBBA/拍卖。
-7. 所有主动降级结果均输出 `ActiveDegradationDecision`，交给 D6 记录，不允许本地节点自行改写 `global_track_id`。
+5. 若 `friend_conflict=True`，直接 `hold_for_review`。
+6. 若 `duplicate_terminal_lock=True`，不视为一致锁定，进入主动仲裁。
+7. 若 D5 连续多帧 `ambiguous/hold/reacquire`，或本地视觉候选与分配目标长期不一致，进入主动降级仲裁。
+8. 仲裁时优先选择覆盖当前 `coverage_cell` 且链路新鲜的健康二级节点；无可用二级节点时才进入完全无中心 CBBA/拍卖。
+9. 所有主动降级结果均输出 `ActiveDegradationDecision`，交给 D6 记录，不允许本地节点自行改写 `global_track_id`。
 
 ## 7. 关键接口
 
@@ -279,6 +286,7 @@ O(|E|\cdot|\mathcal{T}|)
 ### 7.3 `ActiveDegradationArbiter`
 
 - `evaluate(track_uncertainty, association_risk, assignment_validity, terminal_association, c2_health, secondary_nodes)`：输出主动/被动仲裁决策。
+- 可选参数：`communication_summaries` 和 `current_time_s`。传入后，二级节点必须有未过期链路摘要才可用于 `request_secondary_assist` 或 `degrade_to_secondary`。
 
 输出动作包括：
 
@@ -289,6 +297,17 @@ O(|E|\cdot|\mathcal{T}|)
 - `degrade_to_distributed`：无可用二级节点时进入完全无中心 CBBA/拍卖。
 - `hold_for_review`：友方冲突或身份冲突时只保持审计和人工复核。
 
+`ActiveDegradationDecision.to_metrics()` 输出：
+
+- `d4_action`
+- `degradation_mode`
+- `target_node_id`
+- `risk_factors`
+- `terminal_consistent`
+- `failover_time`
+- `secondary_selected_rate`
+- `distributed_conflict_count`
+
 ### 7.4 数据结构
 
 - `TrackSummary`：只保留粗粒度任务摘要，不携带高精度状态。
@@ -298,6 +317,7 @@ O(|E|\cdot|\mathcal{T}|)
 - `AssociationRiskSummary`：D2 多目标关联风险摘要。
 - `AssignmentValiditySummary`：D3 分配有效性摘要。
 - `TerminalAssociationSummary`：D5 末端视觉配准摘要。
+- `CommunicationSummary`：D4 通信新鲜度摘要，表达源节点、目标节点、可选中继节点、链路类型、发送/接收时间、载荷类型和过期时间。
 - `ActiveDegradationDecision`：D4 仲裁结果。
 
 ## 8. 参数与调参建议
@@ -318,8 +338,10 @@ O(|E|\cdot|\mathcal{T}|)
 | `association_ambiguity_medium/high` | `ActiveDegradationConfig` | D2 关联不确定度门限 |
 | `max_plan_age_s/min_cost_margin` | `ActiveDegradationConfig` | D3 分配 stale 和有效性门限 |
 | `terminal_confidence_min` | `ActiveDegradationConfig` | D5 locked 最低置信度 |
+| `cross_view_risk_high` | `ActiveDegradationConfig` | D5 多视角冲突/支持不足风险门限 |
 | `non_locked_frame_limit` | `ActiveDegradationConfig` | 连续 `ambiguous/hold/reacquire` 触发主动仲裁的帧数 |
 | `mismatch_frame_limit` | `ActiveDegradationConfig` | 末端候选与分配目标长期不一致的触发帧数 |
+| `stale_after_s` | `CommunicationSummary` | 二级链路过期时间；过期后不再作为可用二级辅助 |
 
 二级节点调参建议：
 

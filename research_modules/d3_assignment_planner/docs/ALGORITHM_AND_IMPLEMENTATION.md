@@ -37,6 +37,8 @@ D3 是集中式资源-目标分配模块，输入来自 D2 的稳定 `GlobalTrac
 - `total_cost`、`candidate_total_cost`、`previous_total_cost_current`：当前采用计划、候选计划和旧计划重评分成本。
 - `decision_state`：如 `accepted`、`unchanged`、`held_by_hysteresis`、`accepted_previous_infeasible`。
 - `human_authorization_state`：强制输出为 `required`，即候选计划仍需外部授权层处理。
+- `source_node_id`、`target_node_id`、`link_type`、`plan_version`、`stale_after_s`：跨中心、二级节点和资源节点传递计划时的通信合同字段。
+- `terminal_feedback_state`、`duplicate_terminal_lock_risk`：D5 末端反馈和重复锁定风险摘要，仅用于 hold/replan/arbitration 决策，不允许本地改写全局 ID。
 
 过期版本不得覆盖新版本。`AssignmentPlanner.plan(..., expected_previous_version=...)` 会检查输入旧计划版本；内部还记录最新 `plan_id/version`，若调用方提交 stale plan，则抛出 `StalePlanError`。
 
@@ -264,7 +266,20 @@ D3 建议按三层判断：
 
 核心原则是：D1/D2 风险上升但 D5 仍稳定时，优先保持或中心重分配；D5 连续多帧不一致、友方重叠保持、或 D3 计划代价恶化超过阈值时，D3 应请求 D4 主动降级仲裁。
 
-### 8.5 建议阈值与仿真记录
+### 8.5 末端反馈 helper 合同
+
+D3 提供 `evaluate_terminal_feedback(...)` 作为集成层最小 helper，用于把 D5 末端反馈转为保守分配建议：
+
+| D5 反馈或风险 | D3 建议 | 约束 |
+|---|---|---|
+| `ambiguous` / `hold` | `hold` | 保持原 `assigned_global_track_id`，等待更多证据 |
+| `reacquire` | `replan` | 中心重新计算 `AssignmentPlan`，不允许本地换绑 |
+| `mismatch` | `secondary_arbitration` | 请求 D4 二级节点仲裁 |
+| `duplicate_terminal_lock_risk=True` | `secondary_arbitration` | 抑制重复锁定，进入二级节点/中心协调 |
+
+该 helper 的输出 `allow_local_rebind` 始终为 `False`。正常态仍采用 Hungarian；复杂约束升级 OR-Tools Min Cost Flow；中心计划不可信但二级节点可用时，优先二级节点仲裁，再进入 CBBA/拍卖式保底。
+
+### 8.6 建议阈值与仿真记录
 
 具体阈值应在离线实验中扫描，而不是固定为真实系统参数。初始仿真可记录：
 

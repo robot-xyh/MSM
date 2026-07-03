@@ -10,6 +10,7 @@
 
 - 将雷达、声学、光电三类异构观测标准化为统一 `SensorObservation`。
 - 以 `measurement_timestamp` 为滤波更新时间，以 `arrival_timestamp` 记录链路延迟和乱序到达。
+- 保留跨节点通信元数据，如 `source_node_id`、`target_node_id`、`relay_node_id`、`link_type`、`sent_timestamp`、`received_timestamp`、`payload_kind`、`stale_after_s` 和 `source_support`。
 - 在统一 NED 坐标下维护 `GlobalTrack`，输出状态、协方差、质量等级和传感器支持。
 - 对延迟雷达观测进行 fixed-lag 缓存、测量时刻更新和重传播，比较补偿前后误差。
 - 在没有 FilterPy、Stone Soup 依赖时，提供可运行的 NumPy/SciPy fallback。

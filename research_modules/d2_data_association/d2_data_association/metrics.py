@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from math import sqrt
 from typing import Iterable
 
-from .models import AssociationLogEntry, AssociationResult
+from .models import AssociationLogEntry, AssociationResult, AssociationRiskSummary
 
 
 @dataclass(slots=True)
@@ -33,6 +33,17 @@ class MetricsRecorder:
     runtime_seconds_by_associator: dict[str, float] = field(
         default_factory=lambda: defaultdict(float)
     )
+    d5_disagreement_count: int = 0
+    risk_frame_count: int = 0
+    association_ambiguity_sum: float = 0.0
+    covariance_overlap_rate_sum: float = 0.0
+    latest_association_ambiguity: float = 0.0
+    latest_duplicate_track_risk: float = 0.0
+    latest_covariance_overlap_rate: float = 0.0
+    max_duplicate_track_risk: float = 0.0
+    max_covariance_overlap_rate: float = 0.0
+    source_node_ids: set[str] = field(default_factory=set)
+    link_types: set[str] = field(default_factory=set)
 
     def record_frame(
         self,
@@ -86,6 +97,9 @@ class MetricsRecorder:
                 self.truth_identity_stable_frame_count[truth_id] += 1
             self.last_truth_to_track[truth_id] = representative_track_id
 
+        risk_summary = _risk_summary_from_result(association_result)
+        self._record_risk_summary(risk_summary)
+
         log_entry = AssociationLogEntry(
             timestamp=association_result.timestamp,
             associator_type=association_result.associator_type,
@@ -95,11 +109,33 @@ class MetricsRecorder:
             ambiguity_score=association_result.ambiguity_score,
             runtime_seconds=runtime_seconds,
             metadata=association_result.metadata,
+            source_node_id=association_result.source_node_id,
+            link_type=association_result.link_type,
+            risk_summary=risk_summary,
         )
         self.association_logs.append(log_entry)
         self.runtime_seconds_by_associator[association_result.associator_type] += (
             runtime_seconds
         )
+
+    def _record_risk_summary(self, risk_summary: AssociationRiskSummary) -> None:
+        self.risk_frame_count += 1
+        self.d5_disagreement_count += risk_summary.d5_disagreement_count
+        self.latest_association_ambiguity = risk_summary.association_ambiguity
+        self.latest_duplicate_track_risk = risk_summary.duplicate_track_risk
+        self.latest_covariance_overlap_rate = risk_summary.covariance_overlap_rate
+        self.association_ambiguity_sum += risk_summary.association_ambiguity
+        self.covariance_overlap_rate_sum += risk_summary.covariance_overlap_rate
+        self.max_duplicate_track_risk = max(
+            self.max_duplicate_track_risk, risk_summary.duplicate_track_risk
+        )
+        self.max_covariance_overlap_rate = max(
+            self.max_covariance_overlap_rate, risk_summary.covariance_overlap_rate
+        )
+        if risk_summary.source_node_id:
+            self.source_node_ids.add(risk_summary.source_node_id)
+        if risk_summary.link_type:
+            self.link_types.add(risk_summary.link_type)
 
     @property
     def track_continuity(self) -> float:
@@ -142,6 +178,16 @@ class MetricsRecorder:
         }
 
     def summary(self) -> dict[str, object]:
+        mean_association_ambiguity = (
+            self.association_ambiguity_sum / self.risk_frame_count
+            if self.risk_frame_count
+            else 0.0
+        )
+        mean_covariance_overlap_rate = (
+            self.covariance_overlap_rate_sum / self.risk_frame_count
+            if self.risk_frame_count
+            else 0.0
+        )
         return {
             "frame_count": self.frame_count,
             "id_switch_count": self.id_switch_count,
@@ -149,6 +195,16 @@ class MetricsRecorder:
             "coverage_continuity": self.coverage_continuity,
             "identity_continuity": self.identity_continuity,
             "duplicate_assignment_count": self.duplicate_assignment_count,
+            "d5_disagreement_count": self.d5_disagreement_count,
+            "duplicate_track_risk": self.latest_duplicate_track_risk,
+            "max_duplicate_track_risk": self.max_duplicate_track_risk,
+            "association_ambiguity": self.latest_association_ambiguity,
+            "mean_association_ambiguity": mean_association_ambiguity,
+            "covariance_overlap_rate": self.latest_covariance_overlap_rate,
+            "mean_covariance_overlap_rate": mean_covariance_overlap_rate,
+            "max_covariance_overlap_rate": self.max_covariance_overlap_rate,
+            "source_node_ids": sorted(self.source_node_ids),
+            "link_types": sorted(self.link_types),
             "rmse": self.rmse,
             "assignment_count": int(sum(sum(c.values()) for c in self.confusion_matrix.values())),
             "runtime_seconds_by_associator": dict(self.runtime_seconds_by_associator),
@@ -166,3 +222,31 @@ def _representative_track_id(track_ids: list[str]) -> str | None:
         return None
     counts = Counter(track_ids)
     return sorted(counts, key=lambda track_id: (-counts[track_id], track_id))[0]
+
+
+def _risk_summary_from_result(
+    association_result: AssociationResult,
+) -> AssociationRiskSummary:
+    if association_result.risk_summary is not None:
+        return association_result.risk_summary
+
+    metadata = association_result.metadata
+    return AssociationRiskSummary(
+        timestamp=association_result.timestamp,
+        source_node_id=association_result.source_node_id
+        or _optional_string(metadata.get("source_node_id")),
+        link_type=association_result.link_type or _optional_string(metadata.get("link_type")),
+        d5_disagreement_count=int(metadata.get("d5_disagreement_count", 0)),
+        duplicate_track_risk=float(metadata.get("duplicate_track_risk", 0.0)),
+        association_ambiguity=float(
+            metadata.get("association_ambiguity", association_result.ambiguity_score)
+        ),
+        covariance_overlap_rate=float(metadata.get("covariance_overlap_rate", 0.0)),
+        metadata=dict(metadata.get("risk_metadata", {})),
+    )
+
+
+def _optional_string(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)

@@ -33,6 +33,9 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 - 被动降级链路：中心 C2 失效 -> 高空系留二级侦察节点/地面备份 -> 完全无中心 CBBA。
 - 主动降级仲裁：中心未失效但 D1/D2/D3/D5 风险升高时，输出继续、请求中心重分配、请求二级辅助、降到二级节点或分布式的离线决策。
 - 二级节点建模：`NodeRole.SECONDARY_RECON`、`coordinator_only`、`coverage_cell`、lease/priority。
+- 增强通信摘要：`CommunicationSummary` 记录 `source_node_id`、`target_node_id`、`relay_node_id`、`link_type`、`sent_timestamp`、`received_timestamp`、`payload_kind`、`stale_after_s`，用于判断二级节点辅助链路是否新鲜。
+- D5 cross-view 风险：`TerminalAssociationSummary.cross_view_risk_score` 和 `duplicate_terminal_lock` 会阻止“误判为一致锁定”。
+- 指标输出：`ActiveDegradationDecision.to_metrics()` 输出 `d4_action`、`degradation_mode`、`target_node_id`、`risk_factors`、`terminal_consistent`、`failover_time`、`secondary_selected_rate`、`distributed_conflict_count`。
 - CBBA 风格协商：用于二级节点不可用后的连续性分配基线。
 - 与 D3/D5/D6 的接口：接收上一版分配摘要，向 D5 提供区域观测/cue 语义，向 D6 输出接管、共识和冲突指标。
 
@@ -44,3 +47,6 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 - D1/D2 风险升高但 D5 仍一致：优先 `request_secondary_assist`。
 - D3 分配 stale 或无效但 D5 仍一致：优先 `request_center_replan`。
 - D5 多帧 `ambiguous/hold/reacquire` 或长期不一致：二级节点覆盖则 `degrade_to_secondary`，否则 `degrade_to_distributed`。
+- D5 `friend_conflict=True`：强制 `hold_for_review`；`duplicate_terminal_lock=True` 不视为一致锁定。
+- 若传入通信摘要，二级节点必须有未过期的 `secondary_relay`、`video_cue` 或 `c2_direct` 链路才可作为主动辅助/接管目标。
+- 5v5 AirSim ComputerVision 专项 case：`case_001_no_degradation` 期望 `continue_center`；`case_002_degrade_to_secondary` 期望二级节点优先；`case_003_degrade_to_distributed` 期望二级不可用/过期后才分布式。

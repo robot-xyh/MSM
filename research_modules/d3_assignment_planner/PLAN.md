@@ -68,6 +68,8 @@ Operationally abstract constraints:
 - Plans carry monotonically increasing versions.
 - Published plans require human authorization state `required`.
 - Previous assignments can be retained under hysteresis when still feasible.
+- Cross-node assignment messages carry `source_node_id`, `target_node_id`, `link_type`, `plan_version`, and `stale_after_s`.
+- Terminal feedback from D5 is advisory: `ambiguous/hold` keeps the plan on hold, `reacquire` requests central replan, and `mismatch` or duplicate terminal lock risk requests D4 secondary-node arbitration. No local resource may rewrite `global_track_id`.
 
 Future min-cost-flow constraints:
 
@@ -115,6 +117,7 @@ Recommendation:
 
 - Use Hungarian for the implemented NumPy/SciPy baseline and fallback.
 - Keep an interface boundary for min-cost-flow so future OR-Tools integration does not change planner-facing APIs.
+- Prefer D4 secondary-node arbitration before CBBA/auction when center plans become unreliable but regional tethered/secondary nodes remain available.
 
 ## Simulation Plan
 

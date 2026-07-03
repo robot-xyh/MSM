@@ -10,6 +10,9 @@ from .motion import wrap_angle
 from .types import SensorObservation
 
 
+VIDEO_DERIVED_PAYLOAD_KINDS = ("bbox", "video_metadata", "camera_metadata")
+
+
 @dataclass
 class CameraModel:
     """Pinhole camera model for offline EO projection constraints."""

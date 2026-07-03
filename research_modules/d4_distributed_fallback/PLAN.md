@@ -32,7 +32,7 @@ Scientific questions:
 - D1 reports increasing localization covariance or stale measurements;
 - D2 reports high association ambiguity, ID switch, duplicate tracks, or low continuity;
 - D3 reports stale/non-current assignment, low cost margin, or plan-version risk;
-- D5 reports repeated `ambiguous`, `hold`, `reacquire`, or persistent mismatch between terminal visual candidates and the assigned `global_track_id`.
+- D5 reports repeated `ambiguous`, `hold`, `reacquire`, persistent mismatch between terminal visual candidates and the assigned `global_track_id`, duplicate terminal locks, cross-view risk, or friend-conflict states.
 
 The active path is conservative:
 
@@ -41,6 +41,7 @@ The active path is conservative:
 3. If D5 disagreement persists across multiple frames, select a healthy secondary node covering the `coverage_cell`.
 4. If no secondary node is available or the local region is partitioned, fall back to distributed CBBA/auction-style negotiation.
 5. Friend/identity conflict only produces a hold/review decision in this offline module.
+6. When communication summaries are available, secondary-node assistance requires a fresh data/video link record; stale secondary links are treated as unavailable.
 
 ## C2Health State Machine
 
@@ -103,8 +104,29 @@ Active-degradation summaries:
 - `TrackUncertaintySummary`: D1 localization uncertainty, covariance trace, measurement age, and coverage cell.
 - `AssociationRiskSummary`: D2 ambiguity, ID switch count, duplicate track count, and continuity.
 - `AssignmentValiditySummary`: D3 assigned track/resource, plan version, freshness, and cost margin.
-- `TerminalAssociationSummary`: D5 terminal decision state, confidence, ambiguity, mismatch duration, and friend-conflict flag.
+- `TerminalAssociationSummary`: D5 terminal decision state, confidence, ambiguity, mismatch duration, duplicate terminal lock, cross-view risk, and friend-conflict flag.
 - `ActiveDegradationDecision`: D4 output with mode, action, reason, target node, coverage cell, risk factors, and terminal consistency.
+
+Decision metrics:
+
+- `d4_action`
+- `degradation_mode`
+- `target_node_id`
+- `risk_factors`
+- `terminal_consistent`
+- `failover_time`
+- `secondary_selected_rate`
+- `distributed_conflict_count`
+
+Enhanced communication summary:
+
+- `CommunicationSummary.source_node_id`: message producer.
+- `CommunicationSummary.target_node_id`: intended consumer.
+- `CommunicationSummary.relay_node_id`: optional relay, usually a secondary node.
+- `CommunicationSummary.link_type`: `c2_direct`, `secondary_relay`, `interceptor_peer`, or `video_cue`.
+- `CommunicationSummary.sent_timestamp` / `received_timestamp`: used to compute latency.
+- `CommunicationSummary.payload_kind`: `track`, `bbox`, `video_metadata`, `assignment`, `terminal_association`, `bid`, `resource_summary`, or `health`.
+- `CommunicationSummary.stale_after_s`: freshness deadline used by active-degradation arbitration.
 
 `BidState`:
 

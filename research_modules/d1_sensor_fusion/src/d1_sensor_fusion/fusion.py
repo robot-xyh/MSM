@@ -9,7 +9,7 @@ import numpy as np
 from .ekf import EKFState, ekf_update, predict_to
 from .motion import wrap_residual
 from .observations import measurement_model_for, radar_state_from_observation
-from .types import GlobalTrack, SensorObservation, TrackLevel
+from .types import COMMUNICATION_METADATA_KEYS, GlobalTrack, SensorObservation, TrackLevel
 
 CHI2_2_95 = 5.991464547107979
 
@@ -150,6 +150,7 @@ class FusionAdapter:
         record.source_support[observation.modality] += 1
         if observation.classification_hint:
             record.identity_likelihood[observation.classification_hint] += observation.confidence
+        self._update_record_metadata_from_observation(record, observation)
         state, nises = self._replay_record(record, current_time)
         record.current_state = state
         record.recent_nis = deque(nises[-50:], maxlen=50)
@@ -185,7 +186,10 @@ class FusionAdapter:
             identity_likelihood=identity_likelihood,
             created_timestamp=observation.measurement_timestamp,
             hits=1,
-            metadata={"truth_id": observation.metadata.get("truth_id")},
+            metadata={
+                "truth_id": observation.metadata.get("truth_id"),
+                **_metadata_from_observation(observation),
+            },
         )
         self.tracks[track_id] = record
         return record
@@ -301,6 +305,20 @@ class FusionAdapter:
                 kept.append(obs)
         record.observations = kept
 
+    def _update_record_metadata_from_observation(
+        self,
+        record: TrackRecord,
+        observation: SensorObservation,
+    ) -> None:
+        record.metadata.update(_metadata_from_observation(observation))
+        if observation.metadata.get("truth_id") is not None:
+            record.metadata.setdefault("truth_id", observation.metadata.get("truth_id"))
+        source_node_id = observation.source_node_id or observation.metadata.get("source_node_id")
+        if source_node_id:
+            existing = set(record.metadata.get("source_node_ids", ()))
+            existing.add(str(source_node_id))
+            record.metadata["source_node_ids"] = tuple(sorted(existing))
+
     def _to_global_track(self, record: TrackRecord) -> GlobalTrack:
         level = self._classify(record)
         likelihood_sum = sum(record.identity_likelihood.values())
@@ -319,6 +337,7 @@ class FusionAdapter:
                 "published_at": self.current_time,
                 "hits": record.hits,
                 "latency_compensation": self.latency_compensation,
+                "source_support": dict(record.source_support),
             }
         )
         return GlobalTrack(
@@ -359,3 +378,23 @@ class FusionAdapter:
         for observation in sorted(observations, key=lambda obs: obs.arrival_timestamp):
             tracks = self.process(observation)
         return tracks
+
+
+def _metadata_from_observation(observation: SensorObservation) -> dict:
+    metadata = {
+        "latest_observation_id": observation.observation_id,
+        "latest_sensor_id": observation.sensor_id,
+        "latest_modality": observation.modality,
+        "latest_measurement_timestamp": observation.measurement_timestamp,
+        "latest_arrival_timestamp": observation.arrival_timestamp,
+        "latest_observation_latency_s": observation.latency,
+    }
+    if observation.communication_latency is not None:
+        metadata["latest_communication_latency_s"] = observation.communication_latency
+    for key in COMMUNICATION_METADATA_KEYS:
+        value = getattr(observation, key)
+        if value is not None:
+            metadata[key] = dict(value) if key == "source_support" else value
+    if observation.source_node_id:
+        metadata["source_node_ids"] = (observation.source_node_id,)
+    return metadata

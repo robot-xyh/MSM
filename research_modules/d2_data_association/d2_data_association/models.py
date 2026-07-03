@@ -19,6 +19,44 @@ class TrackLifecycleState(str, Enum):
     DROPPED = "dropped"
 
 
+@dataclass(slots=True)
+class AssociationRiskSummary:
+    """Weak cross-view association risk evidence for offline coordination.
+
+    D2 remains the authority for `global_track_id`. Cross-node, D5 terminal,
+    secondary-node, or interceptor-peer inputs represented here are weak
+    evidence for risk scoring only; they do not rewrite global track identity.
+    """
+
+    timestamp: float
+    source_node_id: str | None = None
+    link_type: str | None = None
+    d5_disagreement_count: int = 0
+    duplicate_track_risk: float = 0.0
+    association_ambiguity: float = 0.0
+    covariance_overlap_rate: float = 0.0
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.timestamp = float(self.timestamp)
+        self.d5_disagreement_count = int(self.d5_disagreement_count)
+        self.duplicate_track_risk = float(self.duplicate_track_risk)
+        self.association_ambiguity = float(self.association_ambiguity)
+        self.covariance_overlap_rate = float(self.covariance_overlap_rate)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "timestamp": self.timestamp,
+            "source_node_id": self.source_node_id,
+            "link_type": self.link_type,
+            "d5_disagreement_count": self.d5_disagreement_count,
+            "duplicate_track_risk": self.duplicate_track_risk,
+            "association_ambiguity": self.association_ambiguity,
+            "covariance_overlap_rate": self.covariance_overlap_rate,
+            "metadata": _json_ready(self.metadata),
+        }
+
+
 def _as_vector(value: Any, size: int, name: str) -> np.ndarray:
     array = np.asarray(value, dtype=float).reshape(-1)
     if array.shape != (size,):
@@ -204,6 +242,9 @@ class AssociationResult:
     cost_matrix: np.ndarray | None = None
     distance_matrix: np.ndarray | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    source_node_id: str | None = None
+    link_type: str | None = None
+    risk_summary: AssociationRiskSummary | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -219,6 +260,11 @@ class AssociationResult:
             if self.distance_matrix is None
             else self.distance_matrix.tolist(),
             "metadata": _json_ready(self.metadata),
+            "source_node_id": self.source_node_id,
+            "link_type": self.link_type,
+            "risk_summary": None
+            if self.risk_summary is None
+            else self.risk_summary.to_dict(),
         }
 
 
@@ -232,6 +278,9 @@ class AssociationLogEntry:
     ambiguity_score: float
     runtime_seconds: float
     metadata: dict[str, Any] = field(default_factory=dict)
+    source_node_id: str | None = None
+    link_type: str | None = None
+    risk_summary: AssociationRiskSummary | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -243,6 +292,11 @@ class AssociationLogEntry:
             "ambiguity_score": self.ambiguity_score,
             "runtime_seconds": self.runtime_seconds,
             "metadata": _json_ready(self.metadata),
+            "source_node_id": self.source_node_id,
+            "link_type": self.link_type,
+            "risk_summary": None
+            if self.risk_summary is None
+            else self.risk_summary.to_dict(),
         }
 
 

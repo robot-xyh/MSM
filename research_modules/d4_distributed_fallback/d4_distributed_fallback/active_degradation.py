@@ -6,7 +6,15 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .coordinator import SECONDARY_NODE_ROLES
-from .models import AvailabilityBand, C2Health, ResourceSummary, to_jsonable
+from .models import (
+    AvailabilityBand,
+    C2Health,
+    CommunicationSummary,
+    LinkType,
+    PayloadKind,
+    ResourceSummary,
+    to_jsonable,
+)
 
 
 class DegradationMode(str, Enum):
@@ -72,6 +80,9 @@ class TerminalAssociationSummary:
     consecutive_non_locked_frames: int = 0
     consecutive_mismatch_frames: int = 0
     friend_conflict: bool = False
+    duplicate_terminal_lock: bool = False
+    cross_view_risk_score: float = 0.0
+    cross_view_support_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -86,6 +97,7 @@ class ActiveDegradationConfig:
     min_cost_margin: float = 0.10
     terminal_confidence_min: float = 0.65
     terminal_ambiguity_high: float = 0.55
+    cross_view_risk_high: float = 0.65
     non_locked_frame_limit: int = 3
     mismatch_frame_limit: int = 2
 
@@ -104,6 +116,23 @@ class ActiveDegradationDecision:
     def to_dict(self) -> dict[str, object]:
         return to_jsonable(self)
 
+    def to_metrics(
+        self,
+        failover_time: float | None = None,
+        secondary_selected_rate: float = 0.0,
+        distributed_conflict_count: int = 0,
+    ) -> dict[str, object]:
+        return {
+            "d4_action": self.action.value,
+            "degradation_mode": self.mode.value,
+            "target_node_id": self.target_node_id,
+            "risk_factors": list(self.risk_factors),
+            "terminal_consistent": self.terminal_consistent,
+            "failover_time": failover_time,
+            "secondary_selected_rate": secondary_selected_rate,
+            "distributed_conflict_count": distributed_conflict_count,
+        }
+
 
 class ActiveDegradationArbiter:
     """Rule-based arbiter for active/passive D4 degradation studies."""
@@ -119,9 +148,16 @@ class ActiveDegradationArbiter:
         terminal_association: TerminalAssociationSummary,
         c2_health: C2Health,
         secondary_nodes: list[ResourceSummary],
+        communication_summaries: list[CommunicationSummary] | None = None,
+        current_time_s: float | None = None,
     ) -> ActiveDegradationDecision:
         coverage_cell = track_uncertainty.coverage_cell or terminal_association.coverage_cell
-        secondary = self._select_secondary_node(secondary_nodes, coverage_cell)
+        secondary = self._select_secondary_node(
+            secondary_nodes,
+            coverage_cell,
+            communication_summaries=communication_summaries,
+            current_time_s=current_time_s,
+        )
         terminal_consistent = self._terminal_is_consistent(
             assignment_validity,
             terminal_association,
@@ -133,16 +169,6 @@ class ActiveDegradationArbiter:
             terminal_association,
         )
 
-        if c2_health == C2Health.FAILED:
-            return self._fallback_decision(
-                DegradationMode.PASSIVE_FAILOVER,
-                secondary,
-                coverage_cell,
-                terminal_consistent,
-                risk_factors,
-                "center_failed_passive_failover",
-            )
-
         if terminal_association.friend_conflict:
             return ActiveDegradationDecision(
                 mode=DegradationMode.ACTIVE_DEGRADATION,
@@ -152,6 +178,16 @@ class ActiveDegradationArbiter:
                 terminal_consistent=False,
                 risk_factors=(*risk_factors, "terminal_friend_conflict"),
                 requires_human_review=True,
+            )
+
+        if c2_health == C2Health.FAILED:
+            return self._fallback_decision(
+                DegradationMode.PASSIVE_FAILOVER,
+                secondary,
+                coverage_cell,
+                terminal_consistent,
+                risk_factors,
+                "center_failed_passive_failover",
             )
 
         if self._terminal_requires_active_arbitration(terminal_association):
@@ -276,6 +312,10 @@ class ActiveDegradationArbiter:
             factors.append("d3_assignment_cost_margin_low")
         if terminal.resource_id != assignment.assigned_resource_id:
             factors.append("d5_resource_assignment_mismatch")
+        if terminal.duplicate_terminal_lock:
+            factors.append("d5_duplicate_terminal_lock")
+        if terminal.cross_view_risk_score >= cfg.cross_view_risk_high:
+            factors.append("d5_cross_view_risk_high")
         if terminal.ambiguity_score >= cfg.terminal_ambiguity_high:
             factors.append("d5_terminal_ambiguity_high")
         if terminal.association_confidence < cfg.terminal_confidence_min:
@@ -288,6 +328,10 @@ class ActiveDegradationArbiter:
         terminal: TerminalAssociationSummary,
     ) -> bool:
         if terminal.friend_conflict:
+            return False
+        if terminal.duplicate_terminal_lock:
+            return False
+        if terminal.cross_view_risk_score >= self.config.cross_view_risk_high:
             return False
         if terminal.decision_state != TerminalDecisionState.LOCKED:
             return False
@@ -332,6 +376,8 @@ class ActiveDegradationArbiter:
     def _select_secondary_node(
         resources: list[ResourceSummary],
         coverage_cell: str,
+        communication_summaries: list[CommunicationSummary] | None = None,
+        current_time_s: float | None = None,
     ) -> ResourceSummary | None:
         candidates = [
             resource
@@ -340,6 +386,11 @@ class ActiveDegradationArbiter:
             and not resource.operator_hold
             and resource.availability_band != AvailabilityBand.NONE
             and (resource.coverage_cell in {None, "", coverage_cell})
+            and ActiveDegradationArbiter._secondary_link_is_usable(
+                resource,
+                communication_summaries,
+                current_time_s,
+            )
         ]
         if not candidates:
             return None
@@ -351,3 +402,33 @@ class ActiveDegradationArbiter:
             )
         )
         return candidates[0]
+
+    @staticmethod
+    def _secondary_link_is_usable(
+        resource: ResourceSummary,
+        communication_summaries: list[CommunicationSummary] | None,
+        current_time_s: float | None,
+    ) -> bool:
+        if communication_summaries is None:
+            return True
+        usable_link_types = {
+            LinkType.C2_DIRECT,
+            LinkType.SECONDARY_RELAY,
+            LinkType.VIDEO_CUE,
+        }
+        usable_payloads = {
+            PayloadKind.TRACK,
+            PayloadKind.BBOX,
+            PayloadKind.VIDEO_METADATA,
+            PayloadKind.ASSIGNMENT,
+            PayloadKind.TERMINAL_ASSOCIATION,
+            PayloadKind.RESOURCE_SUMMARY,
+            PayloadKind.HEALTH,
+        }
+        return any(
+            summary.involves_node(resource.node_id)
+            and summary.link_type in usable_link_types
+            and summary.payload_kind in usable_payloads
+            and not summary.is_stale(current_time_s)
+            for summary in communication_summaries
+        )

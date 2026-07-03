@@ -22,6 +22,9 @@ D1 负责把异步雷达、声学和光电观测统一成带协方差的 `Global
 - `covariance`：量测协方差，缺省时由观测模型按距离、置信度或框大小生成。
 - `classification_hint`、`confidence`、`quality_flags`：分类提示、置信度和遮挡/小框等质量标记。
 - `metadata`：传感器位置、相机内外参、bbox、仿真真值 ID 等辅助信息。
+- 通信元数据：可直接填字段，也可放入 `metadata`，包括 `source_node_id`、`target_node_id`、`relay_node_id`、`link_type`、`sent_timestamp`、`received_timestamp`、`payload_kind`、`stale_after_s` 和 `source_support`。
+
+跨节点通信字段用于离线评估链路延迟、转发路径、载荷类型和观测新鲜度。它们不改变传感器量测模型，也不产生控制或处置动作。
 
 ### 2.2 输出：`GlobalTrack`
 
@@ -32,6 +35,8 @@ x = [px, py, pz, vx, vy, vz]^T
 ```
 
 `GlobalTrack` 同时携带 `6x6` 协方差、`track_level`、`source_support`、`identity_likelihood` 和元数据。`metadata.frame_id="ned"` 表示融合工作空间，`valid_at` 表示航迹状态有效时刻，`published_at` 表示当前发布时刻。
+
+`FusionAdapter` 会把最近观测的通信字段、`latest_measurement_timestamp`、`latest_arrival_timestamp`、`latest_observation_latency_s` 和 `latest_communication_latency_s` 写入 `GlobalTrack.metadata`。下游 D3/D4/D5/D7 可据此判断观测是否过期、是否来自二级节点中继、是否是拦截机 peer 数据或视频检测摘要。
 
 ## 3. 时间基准与 OOSM 处理
 
@@ -76,6 +81,7 @@ z: down
 2. EO 观测保留为像素框中心 `frame_id="pixel"`，但必须在 `metadata` 中提供相机内参、相机 NED 位置和 `rotation_world_to_camera`。
 3. 若输入来自 WGS84，应先固定局部原点，转换为本地 ENU，再按轴定义转换到 NED。
 4. 不允许把像素框、声学方位或单次雷达点直接当作三维真值；它们只能通过观测模型和协方差影响航迹。
+5. 视频/图像通信只进入检测框、相机元数据、时间戳、置信度和协方差；D1 不要求保存 PNG 或原始视频帧。
 
 ## 5. 传感器观测模型
 

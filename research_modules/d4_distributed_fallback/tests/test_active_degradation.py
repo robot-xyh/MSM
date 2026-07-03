@@ -14,7 +14,10 @@ from d4_distributed_fallback.models import (
     AvailabilityBand,
     C2Health,
     CommBand,
+    CommunicationSummary,
+    LinkType,
     NodeRole,
+    PayloadKind,
     ResourceSummary,
 )
 
@@ -80,6 +83,24 @@ def _secondary(available: bool = True, coverage_cell: str = "cell-north") -> Res
         node_role=NodeRole.SECONDARY_RECON,
         coordinator_only=True,
         coverage_cell=coverage_cell,
+    )
+
+
+def _secondary_link(
+    received_timestamp: float = 10.0,
+    stale_after_s: float = 1.0,
+    payload_kind: PayloadKind = PayloadKind.VIDEO_METADATA,
+) -> CommunicationSummary:
+    return CommunicationSummary(
+        source_node_id="sec-1",
+        target_node_id="int-1",
+        relay_node_id=None,
+        link_type=LinkType.VIDEO_CUE,
+        sent_timestamp=received_timestamp - 0.1,
+        received_timestamp=received_timestamp,
+        payload_kind=payload_kind,
+        stale_after_s=stale_after_s,
+        sequence_id="sec-1:10",
     )
 
 
@@ -226,3 +247,95 @@ def test_terminal_from_different_resource_is_not_consistent() -> None:
     assert decision.action == DegradationAction.REQUEST_SECONDARY_ASSIST
     assert not decision.terminal_consistent
     assert "d5_resource_assignment_mismatch" in decision.risk_factors
+
+
+def test_fresh_secondary_link_supports_active_secondary_assist() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(position_sigma_m=30.0),
+        association_risk=_association(ambiguity_score=0.4),
+        assignment_validity=_assignment(),
+        terminal_association=_terminal(),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+        communication_summaries=[_secondary_link(received_timestamp=10.0, stale_after_s=2.0)],
+        current_time_s=10.5,
+    )
+
+    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.action == DegradationAction.REQUEST_SECONDARY_ASSIST
+    assert decision.target_node_id == "sec-1"
+
+
+def test_stale_secondary_link_allows_distributed_only_after_persistent_terminal_mismatch() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=_terminal(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id="track-2",
+            consecutive_non_locked_frames=3,
+            consecutive_mismatch_frames=2,
+        ),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+        communication_summaries=[_secondary_link(received_timestamp=10.0, stale_after_s=1.0)],
+        current_time_s=12.0,
+    )
+
+    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
+    assert decision.target_node_id is None
+
+
+def test_duplicate_terminal_lock_is_not_treated_as_consistent() -> None:
+    terminal = TerminalAssociationSummary(
+        resource_id="int-1",
+        assigned_global_track_id="track-1",
+        observed_global_track_id="track-1",
+        decision_state=TerminalDecisionState.LOCKED,
+        association_confidence=0.9,
+        ambiguity_score=0.05,
+        coverage_cell="cell-north",
+        duplicate_terminal_lock=True,
+    )
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=terminal,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+    )
+
+    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.action == DegradationAction.REQUEST_SECONDARY_ASSIST
+    assert not decision.terminal_consistent
+    assert "d5_duplicate_terminal_lock" in decision.risk_factors
+
+
+def test_friend_conflict_holds_even_when_center_failed() -> None:
+    terminal = TerminalAssociationSummary(
+        resource_id="int-1",
+        assigned_global_track_id="track-1",
+        observed_global_track_id="track-1",
+        decision_state=TerminalDecisionState.LOCKED,
+        association_confidence=0.9,
+        ambiguity_score=0.05,
+        coverage_cell="cell-north",
+        friend_conflict=True,
+    )
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=terminal,
+        c2_health=C2Health.FAILED,
+        secondary_nodes=[_secondary()],
+    )
+
+    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.action == DegradationAction.HOLD_FOR_REVIEW
+    assert decision.requires_human_review

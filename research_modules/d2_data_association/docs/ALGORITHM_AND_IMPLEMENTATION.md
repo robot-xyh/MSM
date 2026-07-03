@@ -284,7 +284,7 @@ D4 的主动降级不是被动等待中心节点失效，而是在中心或二�
 
 ### 13.2 `AssociationRiskSummary` 建议结构
 
-建议在后续接口中新增 D2 风险摘要，而不是让 D4 直接解析完整代价矩阵。字段建议如下：
+建议在 D2 风险摘要中表达跨视角弱证据和跨节点通信来源，而不是让 D4 直接解析完整代价矩阵。D2 仍是 `global_track_id` 权威；D5、二级节点和拦截机只能提交弱证据、候选 ID 和风险提示，不能直接改写规范 ID。字段建议如下：
 
 ```text
 AssociationRiskSummary
@@ -292,6 +292,8 @@ AssociationRiskSummary
   window_start: float
   window_end: float
   source_module: "D2"
+  source_node_id: str | None
+  link_type: c2_direct | secondary_relay | interceptor_peer | video_cue | None
   associator_type: str
   global_risk_score: float        # 0.0 nominal, 1.0 critical
   risk_level: nominal | elevated | high | critical

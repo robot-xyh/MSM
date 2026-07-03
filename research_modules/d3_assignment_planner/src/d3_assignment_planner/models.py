@@ -8,6 +8,10 @@ from typing import Any, Mapping
 
 CostBreakdown = dict[str, float]
 
+TERMINAL_FEEDBACK_HOLD_STATES = frozenset({"ambiguous", "hold"})
+TERMINAL_FEEDBACK_REPLAN_STATES = frozenset({"reacquire"})
+TERMINAL_FEEDBACK_ARBITRATION_STATES = frozenset({"mismatch"})
+
 
 @dataclass(frozen=True)
 class TargetTrack:
@@ -66,6 +70,10 @@ class PlannerConfig:
     human_authorization_state: str = "required"
     max_changes_per_window: int | None = None
     reassignment_switch_penalty: float = 0.0
+    source_node_id: str = "d3_central"
+    target_node_id: str | None = None
+    link_type: str = "c2_direct"
+    stale_after_s: float | None = None
 
 
 @dataclass(frozen=True)
@@ -77,6 +85,14 @@ class Assignment:
     cost: float
     cost_breakdown: CostBreakdown
     feasibility_state: str = "feasible"
+    source_node_id: str | None = None
+    target_node_id: str | None = None
+    link_type: str | None = None
+    plan_version: int | None = None
+    stale_after_s: float | None = None
+    terminal_feedback_state: str | None = None
+    duplicate_terminal_lock_risk: bool = False
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -99,11 +115,35 @@ class AssignmentPlan:
     candidate_total_cost: float | None = None
     previous_total_cost_current: float | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    source_node_id: str | None = None
+    target_node_id: str | None = None
+    link_type: str | None = None
+    stale_after_s: float | None = None
+    terminal_feedback_state: str | None = None
+    duplicate_terminal_lock_risk: bool = False
 
     def assignment_map(self) -> dict[str, str]:
         """Return target_id -> resource_id for assigned targets."""
 
         return {item.target_id: item.resource_id for item in self.assignments}
+
+    @property
+    def plan_version(self) -> int:
+        """Alias used by cross-node messages."""
+
+        return self.version
+
+
+@dataclass(frozen=True)
+class AssignmentFeedbackDecision:
+    """D3 recommendation after terminal feedback or duplicate-lock risk."""
+
+    recommended_action: str
+    terminal_feedback_state: str
+    duplicate_terminal_lock_risk: bool = False
+    allow_local_rebind: bool = False
+    reasons: tuple[str, ...] = ()
+    plan_version: int | None = None
 
 
 @dataclass(frozen=True)
@@ -124,3 +164,60 @@ class SolverResult:
     objective_value: float
     solver_name: str
     status: str = "optimal"
+
+
+def evaluate_terminal_feedback(
+    terminal_feedback_state: str | None,
+    duplicate_terminal_lock_risk: bool = False,
+    plan_version: int | None = None,
+) -> AssignmentFeedbackDecision:
+    """Return a conservative D3 recommendation for terminal feedback.
+
+    The result never permits a local resource to rewrite `global_track_id`; it
+    only recommends hold, central replan, or D4 secondary arbitration.
+    """
+
+    state = (terminal_feedback_state or "consistent").strip().lower()
+    reasons: list[str] = []
+
+    if duplicate_terminal_lock_risk:
+        reasons.append("duplicate_terminal_lock_risk")
+        return AssignmentFeedbackDecision(
+            recommended_action="secondary_arbitration",
+            terminal_feedback_state=state,
+            duplicate_terminal_lock_risk=True,
+            reasons=tuple(reasons),
+            plan_version=plan_version,
+        )
+
+    if state in TERMINAL_FEEDBACK_ARBITRATION_STATES:
+        reasons.append(f"terminal_feedback_{state}")
+        return AssignmentFeedbackDecision(
+            recommended_action="secondary_arbitration",
+            terminal_feedback_state=state,
+            reasons=tuple(reasons),
+            plan_version=plan_version,
+        )
+    if state in TERMINAL_FEEDBACK_REPLAN_STATES:
+        reasons.append(f"terminal_feedback_{state}")
+        return AssignmentFeedbackDecision(
+            recommended_action="replan",
+            terminal_feedback_state=state,
+            reasons=tuple(reasons),
+            plan_version=plan_version,
+        )
+    if state in TERMINAL_FEEDBACK_HOLD_STATES:
+        reasons.append(f"terminal_feedback_{state}")
+        return AssignmentFeedbackDecision(
+            recommended_action="hold",
+            terminal_feedback_state=state,
+            reasons=tuple(reasons),
+            plan_version=plan_version,
+        )
+
+    return AssignmentFeedbackDecision(
+        recommended_action="continue",
+        terminal_feedback_state=state,
+        reasons=("terminal_feedback_consistent",),
+        plan_version=plan_version,
+    )

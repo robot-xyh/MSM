@@ -187,3 +187,33 @@ def test_reassignment_switch_penalty_is_exposed_in_breakdown() -> None:
 
     assert assignment.resource_id == "R2"
     assert assignment.cost_breakdown["reassignment_switch_penalty"] == 2.5
+
+
+def test_plan_and_assignments_expose_cross_node_contract_fields() -> None:
+    config = PlannerConfig(
+        enable_hysteresis=False,
+        source_node_id="center-c2",
+        target_node_id="all-interceptors",
+        link_type="c2_direct",
+        stale_after_s=1.5,
+    )
+    planner = _planner(config)
+
+    plan = planner.plan(
+        [TargetTrack("T1", 0.9, 0.1, 0.1)],
+        [ResourceState("R1")],
+        timestamp=4.0,
+    )
+    assignment = plan.assignments[0]
+
+    assert plan.plan_version == 1
+    assert plan.source_node_id == "center-c2"
+    assert plan.target_node_id == "all-interceptors"
+    assert plan.link_type == "c2_direct"
+    assert plan.stale_after_s == 1.5
+    assert plan.metadata["plan_version"] == 1
+    assert assignment.source_node_id == "center-c2"
+    assert assignment.target_node_id == "R1"
+    assert assignment.link_type == "c2_direct"
+    assert assignment.plan_version == 1
+    assert assignment.stale_after_s == 1.5
