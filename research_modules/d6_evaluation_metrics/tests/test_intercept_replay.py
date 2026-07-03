@@ -131,6 +131,13 @@ def test_d7_control_commands_derives_gate_and_intercept_metrics(tmp_path: Path) 
     )
 
     collector = load_d7_intercept_outputs(control_commands_path=commands_path)
+    terminal_switch_allowed_values = [
+        record.metadata["terminal_switch_allowed"]
+        for record in collector.event_records
+        if "terminal_switch_allowed" in record.metadata
+    ]
+    assert terminal_switch_allowed_values == [False, True]
+
     metrics = collector.compute_episode("control_commands_fixture")
 
     assert metrics.intercept_success_count == 2
@@ -141,6 +148,7 @@ def test_d7_control_commands_derives_gate_and_intercept_metrics(tmp_path: Path) 
     assert metrics.camera_quality_gate_pass_rate == pytest.approx(1.0)
     assert metrics.los_quality_gate_pass_rate == pytest.approx(1.0)
     assert metrics.maneuver_margin_gate_pass_rate == pytest.approx(0.5)
+    assert metrics.terminal_switch_allowed_rate == pytest.approx(0.5)
     assert metrics.terminal_switch_reject_count == 1
     assert metrics.gate_reject_count == 1
     assert metrics.metadata["guidance_law_counts"] == {"png_vm": 2, "radar_pn": 1}
@@ -183,6 +191,7 @@ def test_d7_control_commands_accepts_legacy_columns(tmp_path: Path) -> None:
     assert metrics.min_range_m == pytest.approx(0.72)
     assert metrics.gate_reject_count == 0
     assert metrics.camera_quality_gate_pass_rate == 0.0
+    assert metrics.terminal_switch_allowed_rate == 0.0
 
 
 def _write_csv(path: Path, rows: list[dict[str, str]]) -> None:

@@ -161,6 +161,36 @@ def test_actor_2v2_settings_use_two_inactive_interceptors_without_intruder_vehic
         assert vehicle["Sensors"]["LidarSensor1"]["SensorType"] == 6
 
 
+def test_actor_2v2_tuned_settings_use_wide_fov_for_terminal_handoff() -> None:
+    settings_path = Path("research_modules/airsim_runtime/settings/blocks_2v2_actor_tuned_settings.json")
+
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+
+    assert settings["SimMode"] == "Multirotor"
+    assert set(settings["Vehicles"]) == {"Interceptor1", "Interceptor2"}
+    capture = settings["CameraDefaults"]["CaptureSettings"][0]
+    assert capture["Width"] == 640
+    assert capture["Height"] == 480
+    assert capture["FOV_Degrees"] == 120
+
+
+def test_computer_vision_5v5_d4d5_stress_200m_settings_define_high_recon_geometry() -> None:
+    settings_path = Path("research_modules/airsim_runtime/settings/blocks_cv_5v5_d4d5_stress_200m_settings.json")
+
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+
+    resources = default_cv_5v5_camera_vehicle_names()
+    secondaries = default_cv_5v5_secondary_vehicle_names()
+    vehicles = settings["Vehicles"]
+    assert settings["SimMode"] == "ComputerVision"
+    assert set(vehicles) == {*resources, *secondaries}
+    assert [vehicles[name]["Z"] for name in resources] == [-10, -10, -10, -10, -10]
+    assert [vehicles[name]["Z"] for name in secondaries] == [-210, -210]
+    secondary_capture = vehicles["Secondary_Recon_1"]["Cameras"]["0"]["CaptureSettings"][0]
+    assert secondary_capture["Width"] == 1280
+    assert secondary_capture["Height"] == 720
+
+
 def test_blocks_smoke_config_reads_rpc_endpoint_from_settings(tmp_path: Path) -> None:
     settings_path = tmp_path / "settings.json"
     settings_path.write_text(
@@ -548,16 +578,75 @@ def test_d4d5_stress_analysis_outputs_expected_case_actions(tmp_path: Path) -> N
     assert distributed.metrics["d4_action_counts"]["degrade_to_distributed"] >= 1
     assert no_degrade.metrics["multi_target_fov_rate"] == 1.0
     assert no_degrade.metrics["secondary_global_view_rate"] == 1.0
+    assert no_degrade.metrics["secondary_network_global_view_rate"] == 1.0
+    assert no_degrade.metrics["cross_view_association_count"] == len(resources)
+    assert no_degrade.metrics["duplicate_terminal_lock_risk"] is False
+    assert no_degrade.metrics["secondary_bbox_area_px_stats"] == {
+        "count": len(frames) * len(secondaries) * 5,
+        "min": 400.0,
+        "max": 400.0,
+        "mean": 400.0,
+        "median": 400.0,
+        "sum": float(len(frames) * len(secondaries) * 5 * 400),
+    }
     assert no_degrade.metrics["terminal_associator_call_count"] == len(frames) * len(resources)
     assert no_degrade.metrics["terminal_associator_locked_count"] >= len(resources)
     assert secondary.metrics["terminal_associator_reacquire_count"] >= 1
     assert distributed.metrics["terminal_associator_reacquire_count"] >= 1
     assert no_degrade.output_paths["d4d5_stress_case_report"].exists()
+    report_text = no_degrade.output_paths["d4d5_stress_case_report"].read_text(encoding="utf-8")
+    for metric_name in (
+        "secondary_height_above_targets_m",
+        "secondary_bbox_area_px_stats",
+        "secondary_network_global_view_rate",
+        "cross_view_association_count",
+        "duplicate_terminal_lock_risk",
+    ):
+        assert metric_name in report_text
     observation_lines = no_degrade.output_paths["d5_terminal_observations_jsonl"].read_text(
         encoding="utf-8"
     ).splitlines()
     assert observation_lines
     assert all(json.loads(line)["metadata"]["terminal_associator_used"] is True for line in observation_lines)
+    assert {
+        json.loads(line)["terminal_association"]["assigned_global_track_id"]
+        for line in observation_lines
+    } == {f"G-TGT-{index + 1:03d}" for index in range(len(resources))}
+
+
+def test_d4d5_stress_analysis_reports_frame_secondary_height_above_targets_200m(
+    tmp_path: Path,
+) -> None:
+    frames = _cv5v5_stress_frames(tmp_path)
+    secondaries = set(default_cv_5v5_secondary_vehicle_names())
+    target_z = sum(truth.position_ned[2] for truth in frames[0].truth_objects) / len(frames[0].truth_objects)
+    secondary_z = target_z - 200.0
+    high_secondary_frames = [
+        replace(
+            frame,
+            cameras=tuple(
+                replace(camera, position_ned=(camera.position_ned[0], camera.position_ned[1], secondary_z))
+                if camera.owner_id in secondaries
+                else camera
+                for camera in frame.cameras
+            ),
+        )
+        for frame in frames
+    ]
+
+    result = run_d4d5_stress_analysis(
+        high_secondary_frames,
+        tmp_path / "height_200m",
+        case_name="no_degradation",
+        resource_vehicle_names=default_cv_5v5_camera_vehicle_names(),
+        secondary_camera_vehicle_names=default_cv_5v5_secondary_vehicle_names(),
+    )
+
+    assert result.metrics["geometry"]["secondary_height_above_targets_m"] == 200.0
+    assert result.metrics["secondary_height_above_targets_m"] == 200.0
+    report_text = result.output_paths["d4d5_stress_case_report"].read_text(encoding="utf-8")
+    assert "`secondary_height_above_targets_m`: 200.00" in report_text
+    assert "secondary_bbox_area_px_stats" in report_text
 
 
 def test_d4d5_stress_analysis_invokes_terminal_associator_decide(tmp_path: Path, monkeypatch) -> None:
@@ -929,6 +1018,13 @@ def test_blocks_sequence_runner_writes_d4d5_stress_sequence_report(tmp_path: Pat
     assert result.connected is True
     assert len(result.episode_results) == 3
     assert result.output_paths["d4d5_stress_sequence_report"].exists()
+    sequence_report = result.output_paths["d4d5_stress_sequence_report"].read_text(encoding="utf-8")
+    for metric_name in (
+        "secondary_network_global_view_rate",
+        "cross_view_association_count",
+        "duplicate_terminal_lock_risk",
+    ):
+        assert metric_name in sequence_report
     assert result.output_paths["blocks_sequence_summary"].exists()
     actions = [
         episode.metadata["d4d5_stress"]["dominant_d4_action"]
@@ -1107,9 +1203,9 @@ class FakeBlocksRuntime:
     def prepare_interceptor_control(self, config):
         self.control_prepared = True
 
-    def command_velocity_z(self, config, *, vehicle_name, velocity_ned, duration_s):
+    def command_velocity_z(self, config, *, vehicle_name, velocity_ned, duration_s, yaw_deg_override=None):
         commands = getattr(self, "velocity_commands", [])
-        commands.append((vehicle_name, velocity_ned, duration_s))
+        commands.append((vehicle_name, velocity_ned, duration_s, yaw_deg_override))
         self.velocity_commands = commands
 
     def hover_interceptor(self, vehicle_name):

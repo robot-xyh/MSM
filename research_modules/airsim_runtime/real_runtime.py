@@ -124,6 +124,7 @@ class RealAirSimRuntimeClient:
         vehicle_name: str,
         velocity_ned: tuple[float, float, float],
         duration_s: float,
+        yaw_deg_override: float | None = None,
     ) -> None:
         """Send a horizontal velocity command while holding configured NED Z."""
 
@@ -133,7 +134,13 @@ class RealAirSimRuntimeClient:
             config.intercept_altitude_ned_z,
         )
         vx, vy, _vz = velocity_ned
-        yaw_deg = float(np.degrees(np.arctan2(vy, vx))) if abs(vx) + abs(vy) > 1e-9 else 0.0
+        yaw_deg = (
+            float(yaw_deg_override)
+            if yaw_deg_override is not None
+            else float(np.degrees(np.arctan2(vy, vx)))
+            if abs(vx) + abs(vy) > 1e-9
+            else 0.0
+        )
         drivetrain_type = getattr(getattr(self.airsim, "DrivetrainType", object), "ForwardOnly", 0)
         yaw_mode_factory = getattr(self.airsim, "YawMode", None)
         yaw_mode = yaw_mode_factory(False, yaw_deg) if callable(yaw_mode_factory) else None

@@ -32,6 +32,11 @@ class BlocksProcessManager:
             raise FileNotFoundError(f"Blocks script not found: {script}")
         if not settings.exists():
             raise FileNotFoundError(f"AirSim settings file not found: {settings}")
+        if not self._wait_for_rpc_port_closed(timeout_s=60.0):
+            settings_payload = self._read_settings()
+            host = str(settings_payload.get("LocalHostIp") or "127.0.0.1")
+            port = int(settings_payload.get("ApiServerPort", 41451))
+            raise RuntimeError(f"AirSim RPC port {host}:{port} is still open before Blocks launch")
         self.output_dir.mkdir(parents=True, exist_ok=True)
         log_path = self.output_dir / "blocks_stdout_stderr.log"
         log_stream = log_path.open("w", encoding="utf-8")
@@ -57,15 +62,18 @@ class BlocksProcessManager:
         if self.process is None:
             return
         if self.process.poll() is not None:
+            self._wait_for_rpc_port_closed(timeout_s=timeout_s)
             return
         self.process.terminate()
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             if self.process.poll() is not None:
+                self._wait_for_rpc_port_closed(timeout_s=max(0.0, deadline - time.monotonic()))
                 return
             time.sleep(0.2)
         self.process.kill()
         self.process.wait(timeout=5.0)
+        self._wait_for_rpc_port_closed(timeout_s=timeout_s)
 
     def is_running(self) -> bool:
         return self.process is not None and self.process.poll() is None
@@ -151,6 +159,17 @@ class BlocksProcessManager:
             return json.loads(self.settings_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             return {}
+
+    def _wait_for_rpc_port_closed(self, timeout_s: float = 8.0) -> bool:
+        settings = self._read_settings()
+        host = str(settings.get("LocalHostIp") or "127.0.0.1")
+        port = int(settings.get("ApiServerPort", 41451))
+        deadline = time.monotonic() + max(0.0, timeout_s)
+        while time.monotonic() < deadline:
+            if _tcp_port_status(host, port) != "open":
+                return True
+            time.sleep(0.2)
+        return _tcp_port_status(host, port) != "open"
 
 
 def _tcp_port_status(host: str, port: int) -> str:

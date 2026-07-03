@@ -61,6 +61,7 @@ class ReportGenerator:
             "camera_quality_gate_pass_rate",
             "los_quality_gate_pass_rate",
             "maneuver_margin_gate_pass_rate",
+            "terminal_switch_allowed_rate",
             "terminal_switch_reject_count",
             "intercept_success_count",
             "collision_intercept_count",

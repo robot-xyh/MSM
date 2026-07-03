@@ -21,6 +21,12 @@ D7 提供一个可被主流程接入的离线二维比例导引研究模块。�
 - `LAW=TTC` 的 TTC 增益调度和 `LAW=VM` 的固定 `N * V_m` 思路。
 - bbox 太小、贴边、检测不连续、视觉延迟高、机动裕度不足时拒绝切换。
 
+命名口径：
+
+- 当前 main/runtime 默认目标 actor 和 AirSim detect filter 为 `MSM_TargetActor_*`，实际对象名通常类似 `MSM_TargetActor_1`。
+- 当前 runtime 默认目标 asset 为 `1M_Cube_Chamfer`。
+- `png_guidance_delivery` 内历史默认仍为 `Intruder*` mesh filter 和 `IntruderActor` actor name；它们只作为 delivery 复现实验与旧日志的 legacy alias。
+
 暂不接入：
 
 - PX4 Offboard、MAVLink、body-rate、attitude 控制。
@@ -132,6 +138,11 @@ heading_next = heading + omega_limited * dt
   - 过程：验证 D5 视觉目标的 bbox 质量、LOS-rate、TTC、闭合速度和机动裕度。
   - 输出：`PngGuidanceCommand`。若 gate 未通过，`terminal_switch_allowed=False`，调用方保持 `handover_pending` 或回退中段 PN。
 
+- `terminal_switch_allowed_rate(...)` / `summarize_terminal_switch_quality(...)`
+  - 输入：D7 已生成的 `PngGuidanceCommand`、`VisionGuidanceQuality` 或持久化 metadata 字典。
+  - 输出：`terminal_switch_allowed_rate`、样本数、允许数、拒绝数和拒绝原因计数。
+  - 边界：只统计已有 gate 输出，不重新实现 D6 指标聚合或 runtime gate 判定。
+
 ## 交付物
 
 - `PLAN.md`：中文工程计划、数学模型、接口说明和边界。
@@ -150,6 +161,8 @@ heading_next = heading + omega_limited * dt
 AirSim runtime 集成要求：
 
 - 当前阶段只使用 SimpleFlight `moveByVelocityZAsync`。
+- 当前 runtime 目标 actor/detection filter 使用 `MSM_TargetActor_*`，目标 asset 使用 `1M_Cube_Chamfer`。
+- `Intruder*`/`IntruderActor` 只作为 `png_guidance_delivery` 和历史日志的 legacy alias，不应作为新 runtime handoff 的默认目标名。
 - 目标检测输入来自 AirSim `simGetDetections` 的 bbox，不依赖默认保存 PNG。
 - 进入视觉终端前必须同时满足 D5 locked/版本一致、bbox 质量、LOS 质量、机动裕度和窗口门槛。
 - 若 gate 失败，记录 `terminal_switch_reject_reason`，并保持 `handover_pending` 或回退 `radar_midcourse`。

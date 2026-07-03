@@ -25,6 +25,7 @@ research_modules/d7_proportional_guidance/
 - `radar_midcourse`：使用抽象 GlobalTrack/雷达航迹估计，计算中段二维 PN 指令。
 - `vision_terminal`：使用抽象像素/LOS 观测估计，计算末段二维 PN 指令。
 - `SimpleFlightPngGuidanceFilter`：从 `png_guidance_delivery` 抽取的轻量视觉 PNG gate，支持 bbox 质量、LOS-rate、TTC/VM 增益和机动裕度判断。
+- `terminal_switch_allowed_rate` / `summarize_terminal_switch_quality`：对 D7 已输出的 gate 结果做离线通过率统计，不重新执行 runtime gate 逻辑。
 - 输出 LOS angle、LOS rate、closing speed、range、模式、横向加速度限幅、转向率限幅和离线质点轨迹记录。
 - `simulate_guidance_episode` 支持单个 resource-target pair 的离线闭环，返回 `records` 和 `summary`。
 - `guidance_records_from_assignment_dry_run` 接收 assignment/resource/target estimate 三类普通 Python 数据，输出一条 `radar_midcourse` 和一条 `vision_terminal` 干运行记录。
@@ -40,6 +41,15 @@ research_modules/d7_proportional_guidance/
 - bbox 太小、贴边、检测不连续、视觉延迟过高、机动裕度不足时拒绝切入视觉终端。
 
 以下内容暂不接入主线：PX4 Offboard、MAVLink body-rate/attitude、YOLO/TensorRT、真实飞控解锁和实机安全流程。AirSim 当前阶段继续使用 SimpleFlight `moveByVelocityZAsync`，视觉输入来自 AirSim `simGetDetections` 的 bbox 和相机元数据，不默认保存 PNG 图像。
+
+## AirSim 目标命名约定
+
+本次核对 `png_guidance_delivery` 后，D7 文档采用以下命名口径：
+
+- 当前 main/runtime 默认目标 actor 和检测过滤名为 `MSM_TargetActor_*`，实际 spawn 名通常类似 `MSM_TargetActor_1`。D7 与 D5/D6 的运行时日志、handoff 记录和新测试应优先使用这个命名。
+- runtime 默认目标 asset 为 `1M_Cube_Chamfer`。
+- `png_guidance_delivery` 复现实验脚本仍保留历史默认：`--mesh Intruder*`、`--intruder-actor-name IntruderActor`，其中 truth/gimbal/strapdown actor 路径默认 `--intruder-actor-asset 1M_Cube_Chamfer`。`Intruder*`/`IntruderActor` 仅作为 legacy alias 和旧报告复现口径。
+- 旧 baseline 文档中出现的 `Quadrotor1` 是历史 actor asset 记录，不是当前 runtime 默认目标 asset。
 
 ## 运行测试
 

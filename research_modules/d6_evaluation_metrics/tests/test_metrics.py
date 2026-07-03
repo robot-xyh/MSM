@@ -383,6 +383,7 @@ def test_multi_view_and_d7_guidance_gate_metrics() -> None:
                     "camera_quality_gate_pass": True,
                     "los_quality_gate_passed": True,
                     "maneuver_margin_gate_pass": False,
+                    "terminal_switch_allowed": False,
                 },
             ),
             EventRecord(
@@ -407,6 +408,7 @@ def test_multi_view_and_d7_guidance_gate_metrics() -> None:
     assert metrics.camera_quality_gate_pass_rate == pytest.approx(0.5)
     assert metrics.los_quality_gate_pass_rate == pytest.approx(1.0)
     assert metrics.maneuver_margin_gate_pass_rate == pytest.approx(0.5)
+    assert metrics.terminal_switch_allowed_rate == pytest.approx(0.0)
     assert metrics.terminal_switch_reject_count == 1
     assert metrics.gate_reject_count == 1
     assert metrics.metadata["guidance_law_counts"] == {"pn": 2}
@@ -444,6 +446,7 @@ def test_episode_metrics_contains_all_required_names() -> None:
         "camera_quality_gate_pass_rate",
         "los_quality_gate_pass_rate",
         "maneuver_margin_gate_pass_rate",
+        "terminal_switch_allowed_rate",
         "terminal_switch_reject_count",
         "intercept_success_count",
         "collision_intercept_count",

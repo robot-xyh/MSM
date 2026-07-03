@@ -82,10 +82,13 @@ class BlocksSmokeConfig:
     intercept_terminal_switch_range_m: float = 8.0
     intercept_detection_timeout_s: float = 1.0
     intercept_guidance_law: str = "png_vm"
+    intercept_yaw_mode: str = "velocity"
     intercept_min_bbox_area_ratio: float = 0.0008
     intercept_min_detection_confidence: float = 0.55
     intercept_min_stable_detection_frames: int = 2
     intercept_max_visual_latency_s: float = 0.35
+    target_asset_name: str = "1M_Cube_Chamfer"
+    target_detection_filter: str = "MSM_TargetActor_*"
     intercept_takeoff_timeout_s: float = 10.0
     intercept_land_after: bool = True
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -165,6 +168,8 @@ class BlocksSequenceResult:
 def default_2v2_actor_target_specs(
     *,
     target_z: float = -2.0,
+    asset_name: str = "1M_Cube_Chamfer",
+    target_scale_m: float = 1.0,
 ) -> tuple[BlocksActorTargetSpec, ...]:
     """Default crossing horizontal actor targets for the first Blocks 2v2 run."""
 
@@ -174,6 +179,8 @@ def default_2v2_actor_target_specs(
             actor_name="MSM_TargetActor_1",
             start_ned=(12.0, -6.0, float(target_z)),
             velocity_ned=(2.0, 0.6, 0.0),
+            asset_name=asset_name,
+            scale=(float(target_scale_m), float(target_scale_m), float(target_scale_m)),
             fallback_actor_name="OrangeBall",
         ),
         BlocksActorTargetSpec(
@@ -181,6 +188,8 @@ def default_2v2_actor_target_specs(
             actor_name="MSM_TargetActor_2",
             start_ned=(12.0, 6.0, float(target_z)),
             velocity_ned=(2.0, -0.6, 0.0),
+            asset_name=asset_name,
+            scale=(float(target_scale_m), float(target_scale_m), float(target_scale_m)),
             fallback_actor_name="PulsingCone",
         ),
     )
@@ -201,6 +210,8 @@ def default_cv_5v5_secondary_vehicle_names() -> tuple[str, ...]:
 def default_cv_5v5_actor_target_specs(
     *,
     target_z: float = -10.0,
+    asset_name: str = "1M_Cube_Chamfer",
+    target_scale_m: float = 1.0,
 ) -> tuple[BlocksActorTargetSpec, ...]:
     """Default crossing actor targets for ComputerVision 5v5 replay."""
 
@@ -216,6 +227,8 @@ def default_cv_5v5_actor_target_specs(
                 actor_name=f"MSM_TargetActor_{index + 1}",
                 start_ned=(35.0 + 4.0 * index, starts_y[index], float(target_z)),
                 velocity_ned=(1.4 + 0.1 * index, velocities_y[index], 0.0),
+                asset_name=asset_name,
+                scale=(float(target_scale_m), float(target_scale_m), float(target_scale_m)),
                 threat_score=threats[index],
                 coverage_cell=coverage_cell,
                 fallback_actor_name=None,
@@ -230,6 +243,7 @@ def default_cv_5v5_d4d5_stress_actor_target_specs(
     target_distance_m: float = 50.0,
     target_spacing_m: float = 20.0,
     target_scale_m: float = 10.0,
+    asset_name: str = "1M_Cube_Chamfer",
 ) -> tuple[BlocksActorTargetSpec, ...]:
     """5v5 D4/D5 stress geometry with 50 m camera standoff and 20 m spacing."""
 
@@ -245,6 +259,7 @@ def default_cv_5v5_d4d5_stress_actor_target_specs(
                 actor_name=f"MSM_TargetActor_{index + 1}",
                 start_ned=(float(target_distance_m), float(start_y), float(target_z)),
                 velocity_ned=(0.8 + 0.1 * index, velocities_y[index], 0.0),
+                asset_name=asset_name,
                 scale=(float(target_scale_m), float(target_scale_m), float(target_scale_m)),
                 threat_score=threats[index],
                 coverage_cell=coverage_cell,

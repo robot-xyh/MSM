@@ -139,6 +139,7 @@ class EpisodeMetrics:
     camera_quality_gate_pass_rate: float = 0.0
     los_quality_gate_pass_rate: float = 0.0
     maneuver_margin_gate_pass_rate: float = 0.0
+    terminal_switch_allowed_rate: float = 0.0
     terminal_switch_reject_count: int = 0
     intercept_success_count: int = 0
     collision_intercept_count: int = 0
@@ -182,6 +183,7 @@ class EpisodeMetrics:
             "camera_quality_gate_pass_rate",
             "los_quality_gate_pass_rate",
             "maneuver_margin_gate_pass_rate",
+            "terminal_switch_allowed_rate",
             "terminal_switch_reject_count",
             "intercept_success_count",
             "collision_intercept_count",
@@ -937,6 +939,7 @@ class MetricsCollector:
         camera_values: list[bool] = []
         los_values: list[bool] = []
         maneuver_values: list[bool] = []
+        terminal_switch_allowed_values: list[bool] = []
         terminal_switch_reject_count = 0
         gate_reject_count = 0
         guidance_law_counts: dict[str, int] = defaultdict(int)
@@ -944,9 +947,18 @@ class MetricsCollector:
 
         for record in self.event_records:
             metadata = record.metadata
+            event_type = _event_type(record)
             guidance_law = metadata.get("guidance_law")
             if guidance_law is not None:
                 guidance_law_counts[str(guidance_law)] += 1
+
+            if (
+                event_type in self.D7_CONTROL_COMMAND_EVENTS
+                and "terminal_switch_allowed" in metadata
+            ):
+                terminal_switch_allowed_values.append(
+                    _as_bool(metadata["terminal_switch_allowed"], default=False)
+                )
 
             _append_gate_value(
                 camera_values,
@@ -981,7 +993,7 @@ class MetricsCollector:
             )
 
             reject_reason = _metadata_text(metadata, "terminal_switch_reject_reason")
-            rejected = _event_type(record) in self.TERMINAL_SWITCH_REJECT_EVENTS
+            rejected = event_type in self.TERMINAL_SWITCH_REJECT_EVENTS
             rejected = rejected or reject_reason is not None
             rejected = rejected or _bool_from_metadata(
                 metadata,
@@ -1000,6 +1012,7 @@ class MetricsCollector:
             "camera_quality_gate_pass_rate": _bool_rate(camera_values),
             "los_quality_gate_pass_rate": _bool_rate(los_values),
             "maneuver_margin_gate_pass_rate": _bool_rate(maneuver_values),
+            "terminal_switch_allowed_rate": _bool_rate(terminal_switch_allowed_values),
             "terminal_switch_reject_count": terminal_switch_reject_count,
             "gate_reject_count": gate_reject_count,
             "_metadata": {

@@ -30,6 +30,8 @@ from .vision_png import (
     SimpleFlightPngGuidanceFilter,
     VisionGuidanceObservation,
     VisionGuidanceQuality,
+    summarize_terminal_switch_quality,
+    terminal_switch_allowed_rate,
 )
 
 __all__ = [
@@ -58,4 +60,6 @@ __all__ = [
     "make_minimal_airsim_dry_run_fixture",
     "simulate_guidance_episode",
     "summarize_guidance_records",
+    "summarize_terminal_switch_quality",
+    "terminal_switch_allowed_rate",
 ]

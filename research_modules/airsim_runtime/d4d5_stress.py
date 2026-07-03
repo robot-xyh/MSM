@@ -100,6 +100,7 @@ def run_d4d5_stress_analysis(
     metrics: dict[str, Any] = {
         "case_name": normalized_case,
         "geometry": geometry,
+        "secondary_height_above_targets_m": geometry.get("secondary_height_above_targets_m", 0.0),
         **detection_metrics,
         **d4_metrics,
         "terminal_observation_count": len(observations),
@@ -183,13 +184,14 @@ def write_d4d5_sequence_report(
         [
             "## 三类降级结果",
             "",
-            "| Case | D4主动作 | 模式 | 二级节点 | 多目标视场率 | 单二级全局视野 | 二级组全局视野 | 终端准确率 | 歧义事件 |",
-            "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
+            "| Case | D4主动作 | 模式 | 二级节点 | 多目标视场率 | 单二级全局视野 | `secondary_network_global_view_rate` | 二级bbox均值(px^2) | `cross_view_association_count` | `duplicate_terminal_lock_risk` | 终端准确率 | 歧义事件 |",
+            "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: |",
         ]
     )
     for metrics in case_metrics:
+        bbox_stats = metrics.get("secondary_bbox_area_px_stats", {})
         lines.append(
-            "| {case} | {action} | {mode} | {secondary} | {fov:.2f} | {recon:.2f} | {network:.2f} | {acc:.2f} | {ambiguous} |".format(
+            "| {case} | {action} | {mode} | {secondary} | {fov:.2f} | {recon:.2f} | {network:.2f} | {bbox_mean:.2f} | {cross_view} | {duplicate} | {acc:.2f} | {ambiguous} |".format(
                 case=metrics.get("case_name", ""),
                 action=metrics.get("dominant_d4_action", ""),
                 mode=metrics.get("dominant_degradation_mode", ""),
@@ -197,6 +199,9 @@ def write_d4d5_sequence_report(
                 fov=float(metrics.get("multi_target_fov_rate", 0.0)),
                 recon=float(metrics.get("secondary_global_view_rate", 0.0)),
                 network=float(metrics.get("secondary_network_global_view_rate", 0.0)),
+                bbox_mean=float(bbox_stats.get("mean", 0.0)),
+                cross_view=int(metrics.get("cross_view_association_count", 0)),
+                duplicate=bool(metrics.get("duplicate_terminal_lock_risk", False)),
                 acc=float(metrics.get("terminal_lock_accuracy", 0.0)),
                 ambiguous=int(metrics.get("ambiguous_fov_event_count", 0)),
             )
@@ -584,6 +589,10 @@ def _detection_metrics(
     per_camera_max: Counter[str] = Counter()
     raw_overlap: dict[str, set[str]] = defaultdict(set)
     secondary_network_global_frame_count = 0
+    secondary_bbox_areas: list[float] = []
+    secondary_bbox_areas_by_camera: dict[str, list[float]] = defaultdict(list)
+    secondary_camera_ids = tuple(f"{name}:0" for name in secondary_camera_vehicle_names)
+    secondary_camera_id_set = set(secondary_camera_ids)
     for frame in frames:
         by_camera = _detections_by_camera(frame.visual_detections)
         secondary_frame_objects: set[str] = set()
@@ -591,12 +600,14 @@ def _detection_metrics(
             per_camera_max[camera_id] = max(per_camera_max[camera_id], len(detections))
             for detection in detections:
                 raw_overlap[str(detection.object_id)].add(camera_id)
-                if camera_id in {f"{name}:0" for name in secondary_camera_vehicle_names}:
+                if camera_id in secondary_camera_id_set:
                     secondary_frame_objects.add(str(detection.object_id))
+                    area = _bbox_area_px(detection.bbox_xyxy)
+                    secondary_bbox_areas.append(area)
+                    secondary_bbox_areas_by_camera[camera_id].append(area)
         if len(secondary_frame_objects) >= 5:
             secondary_network_global_frame_count += 1
     primary_camera_ids = tuple(f"{name}:0" for name in resource_vehicle_names)
-    secondary_camera_ids = tuple(f"{name}:0" for name in secondary_camera_vehicle_names)
     primary_multi = sum(1 for camera_id in primary_camera_ids if per_camera_max[camera_id] >= 2)
     secondary_global = sum(1 for camera_id in secondary_camera_ids if per_camera_max[camera_id] >= 5)
     return {
@@ -604,6 +615,11 @@ def _detection_metrics(
         "multi_target_fov_rate": primary_multi / max(len(primary_camera_ids), 1),
         "secondary_global_view_rate": secondary_global / max(len(secondary_camera_ids), 1),
         "secondary_network_global_view_rate": secondary_network_global_frame_count / max(len(frames), 1),
+        "secondary_bbox_area_px_stats": _numeric_stats(secondary_bbox_areas),
+        "secondary_bbox_area_by_camera_px_stats": {
+            camera_id: _numeric_stats(secondary_bbox_areas_by_camera.get(camera_id, []))
+            for camera_id in secondary_camera_ids
+        },
         "cross_view_overlap_count": sum(1 for cameras in raw_overlap.values() if len(cameras) > 1),
         "raw_detection_count": sum(sum(1 for _ in frame.visual_detections) for frame in frames),
     }
@@ -832,6 +848,32 @@ def _mean_adjacent_spacing(positions: list[np.ndarray]) -> list[float]:
     ]
 
 
+def _bbox_area_px(bbox_xyxy: tuple[float, float, float, float]) -> float:
+    x1, y1, x2, y2 = (float(value) for value in bbox_xyxy)
+    return max(0.0, x2 - x1) * max(0.0, y2 - y1)
+
+
+def _numeric_stats(values: list[float]) -> dict[str, float | int]:
+    if not values:
+        return {
+            "count": 0,
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "median": 0.0,
+            "sum": 0.0,
+        }
+    array = np.asarray(values, dtype=float)
+    return {
+        "count": int(array.size),
+        "min": float(np.min(array)),
+        "max": float(np.max(array)),
+        "mean": float(np.mean(array)),
+        "median": float(np.median(array)),
+        "sum": float(np.sum(array)),
+    }
+
+
 def _global_id(target_id: str) -> str:
     return f"G-{target_id}"
 
@@ -861,6 +903,7 @@ def _write_json(path: Path, payload: Any) -> Path:
 
 
 def _write_case_report(path: Path, metrics: dict[str, Any], decisions: list[dict[str, Any]]) -> Path:
+    bbox_stats = metrics.get("secondary_bbox_area_px_stats", {})
     lines = [
         f"# D4/D5 5v5 Stress Case - {metrics.get('case_name')}",
         "",
@@ -872,6 +915,16 @@ def _write_case_report(path: Path, metrics: dict[str, Any], decisions: list[dict
         f"- 二级镜头相对目标高度：{metrics.get('geometry', {}).get('secondary_height_above_targets_m', 0.0):.2f} m",
         f"- 多目标视场率：{metrics.get('multi_target_fov_rate', 0.0):.2f}",
         f"- 二级全局视野率：{metrics.get('secondary_global_view_rate', 0.0):.2f}",
+        f"- 二级组全局视野率 `secondary_network_global_view_rate`：{metrics.get('secondary_network_global_view_rate', 0.0):.2f}",
+        f"- 二级 bbox 面积统计 `secondary_bbox_area_px_stats`：count={bbox_stats.get('count', 0)}, min={bbox_stats.get('min', 0.0):.2f}, mean={bbox_stats.get('mean', 0.0):.2f}, median={bbox_stats.get('median', 0.0):.2f}, max={bbox_stats.get('max', 0.0):.2f}",
+        "",
+        "## 指标合同",
+        "",
+        f"- `secondary_height_above_targets_m`: {metrics.get('secondary_height_above_targets_m', 0.0):.2f}",
+        f"- `secondary_bbox_area_px_stats`: {bbox_stats}",
+        f"- `secondary_network_global_view_rate`: {metrics.get('secondary_network_global_view_rate', 0.0):.2f}",
+        f"- `cross_view_association_count`: {metrics.get('cross_view_association_count', 0)}",
+        f"- `duplicate_terminal_lock_risk`: {metrics.get('duplicate_terminal_lock_risk', False)}",
         "",
         "## D4 仲裁",
         "",
@@ -883,9 +936,10 @@ def _write_case_report(path: Path, metrics: dict[str, Any], decisions: list[dict
         "## 末端关联",
         "",
         f"- 终端观测数量：{metrics.get('terminal_observation_count', 0)}",
+        f"- 跨视角关联数量 `cross_view_association_count`：{metrics.get('cross_view_association_count', 0)}",
         f"- 终端锁定准确率：{metrics.get('terminal_lock_accuracy', 0.0):.2f}",
         f"- 歧义/保持事件：{metrics.get('ambiguous_fov_event_count', 0)}",
-        f"- 重复锁定风险：{metrics.get('duplicate_terminal_lock_risk', False)}",
+        f"- 重复锁定风险 `duplicate_terminal_lock_risk`：{metrics.get('duplicate_terminal_lock_risk', False)}",
         "",
         "## 决策样例",
         "",

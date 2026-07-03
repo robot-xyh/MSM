@@ -152,6 +152,7 @@ duplicate_terminal_lock_count = count duplicate terminal locks by target/timesta
 camera_quality_gate_pass_rate = passed camera-quality gates / gate attempts
 los_quality_gate_pass_rate = passed LOS-quality gates / gate attempts
 maneuver_margin_gate_pass_rate = passed maneuver-margin gates / gate attempts
+terminal_switch_allowed_rate = terminal_switch_allowed=True D7 control commands / D7 control commands with terminal_switch_allowed
 terminal_switch_reject_count = count D7 terminal-switch rejection events
 ```
 
@@ -163,6 +164,7 @@ terminal_switch_reject_reason
 camera_quality_gate_pass
 los_quality_gate_pass
 maneuver_margin_gate_pass
+terminal_switch_allowed
 ```
 
 PNG screenshots are not required for these metrics. D6 can evaluate D5/D7
@@ -196,7 +198,7 @@ Response variables:
 - Degradation: `failover_time`, `consensus_rounds`, `degraded_completion_rate`.
 - Terminal: `terminal_association_accuracy`, `terminal_id_switch_count`, `ambiguous_fov_event_count`, `friend_overlap_hold_count`, `time_to_terminal_lock`, `multi_view_consensus_rate`, `cross_view_conflict_count`, `duplicate_terminal_lock_count`.
 - Communication: `cross_node_latency_ms`, `message_drop_rate`, `out_of_order_count`, `stale_track_update_count`, `video_metadata_delivery_rate`, `bbox_delivery_rate`, `consensus_latency_s`.
-- Guidance gate: `camera_quality_gate_pass_rate`, `los_quality_gate_pass_rate`, `maneuver_margin_gate_pass_rate`, `terminal_switch_reject_count`.
+- Guidance gate: `camera_quality_gate_pass_rate`, `los_quality_gate_pass_rate`, `maneuver_margin_gate_pass_rate`, `terminal_switch_allowed_rate`, `terminal_switch_reject_count`.
 - Safety: `constraint_violation_count`, `human_override_count`.
 
 ## 5. Statistical Methods

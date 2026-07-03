@@ -10,6 +10,7 @@ from typing import Any
 
 import numpy as np
 from airsim_dryrun.models import AirSimAdapterResult, AirSimFrame
+from d6_evaluation_metrics import EpisodeMetrics, ReportGenerator, load_d7_intercept_outputs
 from d5_terminal_association import CameraModel
 from integrated_simulation import IntegratedEpisodeRunner
 from integrated_simulation.scenario import make_standard_scenario
@@ -109,6 +110,12 @@ class AirSimBlocksSmokeOrchestrator:
                 self._run_integrated_replay(config, frames, output_dir)
                 if config.include_integrated_pipeline
                 else None
+            )
+            integrated = _merge_d7_execution_metrics(
+                integrated,
+                output_dir,
+                intercept_output_paths,
+                config,
             )
             d4d5_stress = (
                 run_d4d5_stress_analysis(
@@ -285,6 +292,110 @@ class AirSimBlocksSmokeOrchestrator:
                 "record_counts": episode.metadata.get("record_counts", {}),
             },
         )
+
+
+def _merge_d7_execution_metrics(
+    integrated: AirSimAdapterResult | None,
+    output_dir: Path,
+    intercept_output_paths: dict[str, Path],
+    config: BlocksSmokeConfig,
+) -> AirSimAdapterResult | None:
+    if integrated is None or not config.execute_intercept:
+        return integrated
+    control_commands_path = intercept_output_paths.get("control_commands")
+    intercept_summary_path = intercept_output_paths.get("intercept_summary")
+    if control_commands_path is None and intercept_summary_path is None:
+        return integrated
+    collector = load_d7_intercept_outputs(
+        control_commands_path=control_commands_path,
+        intercept_summary_path=intercept_summary_path,
+    )
+    d7_metrics = collector.compute_episode(
+        f"{config.episode_id}_d7_execution",
+        seed=config.seed,
+        duration=config.intercept_max_duration_s,
+    )
+    d7_metrics_payload = d7_metrics.to_dict()
+    d7_metrics_path = output_dir / "integrated_replay" / "d7_execution_metrics.json"
+    d7_metrics_path.parent.mkdir(parents=True, exist_ok=True)
+    d7_metrics_path.write_text(
+        json.dumps(d7_metrics_payload, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    merged_metrics = dict(integrated.metrics)
+    for key, value in d7_metrics_payload.items():
+        if key == "metadata":
+            merged_metadata = dict(merged_metrics.get("metadata", {}) or {})
+            merged_metadata.update(value)
+            merged_metrics["metadata"] = merged_metadata
+        elif key not in {"episode_id", "seed", "duration"}:
+            merged_metrics[key] = value
+
+    output_paths = dict(integrated.output_paths)
+    output_paths["d7_execution_metrics"] = d7_metrics_path
+    _merge_integrated_metrics_file(output_paths.get("metrics_json"), merged_metrics)
+    _rewrite_integrated_d6_reports(output_paths, merged_metrics)
+    return replace(
+        integrated,
+        metrics=merged_metrics,
+        output_paths=output_paths,
+        metadata={
+            **integrated.metadata,
+            "control_api_used": True,
+            "d7_execution_metrics_path": str(d7_metrics_path),
+        },
+    )
+
+
+def _merge_integrated_metrics_file(path: Path | None, merged_metrics: dict[str, Any]) -> None:
+    if path is None or not path.exists():
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return
+    if not isinstance(payload, dict):
+        return
+    payload["metrics"] = merged_metrics
+    metadata = dict(payload.get("metadata", {}) or {})
+    metadata["d7_execution_metrics_merged"] = True
+    payload["metadata"] = metadata
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def _rewrite_integrated_d6_reports(
+    output_paths: dict[str, Path],
+    merged_metrics: dict[str, Any],
+) -> None:
+    try:
+        episode_metrics = _episode_metrics_from_payload(merged_metrics)
+    except TypeError:
+        return
+    generator = ReportGenerator()
+    episode_csv = output_paths.get("episode_metrics_csv")
+    summary_csv = output_paths.get("summary_csv")
+    report_md = output_paths.get("report_md")
+    if episode_csv is not None:
+        generator.write_episode_csv([episode_metrics], episode_csv)
+    if summary_csv is not None:
+        generator.write_summary_csv([episode_metrics], summary_csv)
+    if report_md is not None:
+        generator.write_markdown_report(
+            [episode_metrics],
+            report_md,
+            title=f"集成离线评估报告 - {merged_metrics.get('episode_id', 'episode')}",
+        )
+
+
+def _episode_metrics_from_payload(payload: dict[str, Any]) -> EpisodeMetrics:
+    fields = getattr(EpisodeMetrics, "__dataclass_fields__", {})
+    values = {name: payload[name] for name in fields if name in payload}
+    values.setdefault("episode_id", str(payload.get("episode_id", "d7_execution_merged")))
+    return EpisodeMetrics(**values)
 
 
 def run_blocks_smoke(config: BlocksSmokeConfig | None = None) -> BlocksSmokeResult:

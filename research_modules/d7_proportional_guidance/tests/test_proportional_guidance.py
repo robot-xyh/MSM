@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from d7_proportional_guidance import (
     AssignmentGuidanceBinding,
     D4GuidancePermission,
@@ -14,6 +16,8 @@ from d7_proportional_guidance import (
     compute_proportional_navigation_command,
     evaluate_terminal_png_contract,
     simulate_guidance_episode,
+    summarize_terminal_switch_quality,
+    terminal_switch_allowed_rate,
 )
 
 
@@ -189,6 +193,90 @@ def test_visual_png_gate_passes_after_stable_quality_observations() -> None:
     assert command.guidance_law == "png_vm"
 
 
+def test_tuned_visual_png_allows_terminal_switch_after_stable_los_window() -> None:
+    config = _tuned_png_config()
+    commands = _evaluate_tuned_png_sequence(
+        config,
+        [
+            VisionGuidanceObservation(
+                timestamp_s=index * config.dt_s,
+                bbox_xyxy=(288.0, 208.0, 352.0, 272.0),
+                detection_confidence=0.9,
+                local_track_id="L1",
+                assigned_global_track_id="G1",
+            )
+            for index in range(6)
+        ],
+    )
+
+    quality = commands[-1].quality
+
+    assert quality.camera_quality_gate_passed is True
+    assert quality.los_quality_gate_passed is True
+    assert quality.maneuver_margin_gate_passed is True
+    assert quality.terminal_switch_allowed is True
+    assert quality.reject_reason == ""
+    assert quality.stable_frame_count == 6
+    assert quality.edge_margin_ratio > config.edge_margin_ratio
+    assert quality.closing_speed_mps > config.min_closing_speed_mps
+    assert quality.los_rate_variance_radps2 <= config.max_los_rate_variance_radps2
+    assert terminal_switch_allowed_rate(commands) == pytest.approx(4 / 6)
+    assert summarize_terminal_switch_quality(commands) == {
+        "sample_count": 6,
+        "allowed_count": 4,
+        "rejected_count": 2,
+        "terminal_switch_allowed_rate": pytest.approx(4 / 6),
+        "reject_reasons": {
+            "stable_frame_count_low": 1,
+            "los_rate_window_too_short": 1,
+        },
+    }
+
+
+def test_tuned_visual_png_rejects_edge_bbox_with_stable_reason() -> None:
+    config = _tuned_png_config()
+    commands = _evaluate_tuned_png_sequence(
+        config,
+        [
+            VisionGuidanceObservation(
+                timestamp_s=index * config.dt_s,
+                bbox_xyxy=(4.0, 208.0, 68.0, 272.0),
+                detection_confidence=0.9,
+                local_track_id="L1",
+                assigned_global_track_id="G1",
+            )
+            for index in range(6)
+        ],
+    )
+
+    assert terminal_switch_allowed_rate(commands) == 0.0
+    assert {command.quality.reject_reason for command in commands} == {"bbox_near_image_edge"}
+    assert all(command.quality.terminal_switch_allowed is False for command in commands)
+    assert all(command.quality.camera_quality_gate_passed is False for command in commands)
+
+
+def test_tuned_visual_png_rejects_unstable_bbox_with_stable_reason() -> None:
+    config = _tuned_png_config()
+    commands = _evaluate_tuned_png_sequence(
+        config,
+        [
+            VisionGuidanceObservation(
+                timestamp_s=index * config.dt_s,
+                bbox_xyxy=(288.0, 208.0, 352.0, 272.0),
+                detection_confidence=0.9,
+                local_track_id=f"L{index}",
+                assigned_global_track_id="G1",
+            )
+            for index in range(6)
+        ],
+    )
+
+    assert terminal_switch_allowed_rate(commands) == 0.0
+    assert {command.quality.reject_reason for command in commands} == {"stable_frame_count_low"}
+    assert all(command.quality.terminal_switch_allowed is False for command in commands)
+    assert all(command.quality.stable_frame_count == 1 for command in commands)
+
+
 def test_visual_png_gate_rejects_when_not_closing() -> None:
     tracker = SimpleFlightPngGuidanceFilter(
         PngGuidanceConfig(
@@ -355,3 +443,39 @@ def _binding(authorization_state: str = "approved") -> AssignmentGuidanceBinding
         target_object_id="TGT-001",
         target_mesh_aliases=("MSM_TargetActor_1", "TGT-001"),
     )
+
+
+def _tuned_png_config() -> PngGuidanceConfig:
+    return PngGuidanceConfig(
+        dt_s=0.1,
+        image_width_px=640,
+        image_height_px=480,
+        focal_length_px=320.0,
+        min_bbox_area_ratio=0.001,
+        min_detection_confidence=0.55,
+        min_stable_frames=2,
+        edge_margin_ratio=0.03,
+        max_los_rate_variance_radps2=2.0,
+        los_rate_window=5,
+        max_visual_latency_s=0.35,
+        navigation_constant=3.0,
+        law="png_vm",
+    )
+
+
+def _evaluate_tuned_png_sequence(
+    config: PngGuidanceConfig,
+    observations: list[VisionGuidanceObservation],
+) -> list:
+    tracker = SimpleFlightPngGuidanceFilter(config)
+    return [
+        tracker.evaluate(
+            observation,
+            current_heading_rad=0.0,
+            current_speed_mps=6.0,
+            intercept_speed_mps=6.0,
+            relative_position_ned=(20.0, 0.0, 0.0),
+            relative_velocity_ned=(-4.0, 0.0, 0.0),
+        )
+        for observation in observations
+    ]

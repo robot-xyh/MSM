@@ -230,6 +230,7 @@ def _step_pairs(
             vehicle_name=pair.vehicle_name,
             velocity_ned=velocity_command,
             duration_s=config.control_dt_s,
+            yaw_deg_override=_yaw_override_deg(config, resource_position, target_position),
         )
         _record_command(
             config,
@@ -289,8 +290,15 @@ def _pn_velocity_command(
         max_lateral_accel_mps2=20.0,
         max_turn_rate_radps=0.9,
     )
+    predicted_resource_velocity = np.asarray(_midcourse_velocity(config, command), dtype=float)
     if pair.terminal_handover_pending and visible_detection is not None:
-        current_heading = math.atan2(float(resource_velocity[1]), float(resource_velocity[0]))
+        if str(config.intercept_yaw_mode).lower() == "look_at_target":
+            current_heading = math.atan2(
+                float(target_position[1] - resource_position[1]),
+                float(target_position[0] - resource_position[0]),
+            )
+        else:
+            current_heading = math.atan2(float(resource_velocity[1]), float(resource_velocity[0]))
         observation = _vision_observation_from_detection(frame_timestamp=timestamp, pair=pair, detection=visible_detection)
         contract = evaluate_terminal_png_contract(
             binding=pair.guidance_binding,
@@ -319,10 +327,10 @@ def _pn_velocity_command(
         visual_command = visual_filter.evaluate(
             observation,
             current_heading_rad=current_heading,
-            current_speed_mps=max(float(np.linalg.norm(resource_velocity[:2])), config.intercept_speed_mps),
+            current_speed_mps=max(float(np.linalg.norm(predicted_resource_velocity[:2])), config.intercept_speed_mps),
             intercept_speed_mps=config.intercept_speed_mps,
             relative_position_ned=tuple(float(value) for value in (target_position - resource_position)),
-            relative_velocity_ned=tuple(float(value) for value in (target_velocity - resource_velocity)),
+            relative_velocity_ned=tuple(float(value) for value in (target_velocity - predicted_resource_velocity)),
             command_z_ned_m=0.0,
         )
         pair.terminal_switch_reject_reason = visual_command.quality.reject_reason
@@ -374,6 +382,19 @@ def _pn_velocity_command(
     else:
         heading = command.desired_heading_rad
     return _velocity_from_heading(config, heading), command
+
+
+def _yaw_override_deg(
+    config: BlocksSmokeConfig,
+    resource_position: np.ndarray,
+    target_position: np.ndarray,
+) -> float | None:
+    if str(config.intercept_yaw_mode).lower() != "look_at_target":
+        return None
+    relative = target_position - resource_position
+    if abs(float(relative[0])) + abs(float(relative[1])) < 1e-9:
+        return None
+    return float(math.degrees(math.atan2(float(relative[1]), float(relative[0]))))
 
 
 def _midcourse_velocity(config: BlocksSmokeConfig, command: Any) -> tuple[float, float, float]:

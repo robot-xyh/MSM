@@ -318,6 +318,7 @@ terminal_switch_reject_reason
 camera_quality_gate_pass
 los_quality_gate_pass
 maneuver_margin_gate_pass
+terminal_switch_allowed
 ```
 
 对应指标：
@@ -326,10 +327,11 @@ maneuver_margin_gate_pass
 camera_quality_gate_pass_rate
 los_quality_gate_pass_rate
 maneuver_margin_gate_pass_rate
+terminal_switch_allowed_rate
 terminal_switch_reject_count
 ```
 
-其中 `terminal_switch_reject_reason` 会进入 `EpisodeMetrics.metadata["terminal_switch_reject_reasons"]`，`guidance_law` 会进入 `EpisodeMetrics.metadata["guidance_law_counts"]`，用于报告 PN/LOS/Pure Pursuit 等导引律在不同门控条件下的分布。PNG 不作为必需输入；只要检测框、相机参数、时间戳和门控结果可追溯，D6 就能完成离线评估。
+其中 `terminal_switch_allowed_rate` 的口径为 `terminal_switch_allowed=True` 的 D7 control command 数 / 有 `terminal_switch_allowed` 字段的 D7 control command 数；空缺字段不进入分母。`terminal_switch_reject_reason` 会进入 `EpisodeMetrics.metadata["terminal_switch_reject_reasons"]`，`guidance_law` 会进入 `EpisodeMetrics.metadata["guidance_law_counts"]`，用于报告 PN/LOS/Pure Pursuit 等导引律在不同门控条件下的分布。PNG 不作为必需输入；只要检测框、相机参数、时间戳和门控结果可追溯，D6 就能完成离线评估。
 
 ### 3.8 安全约束指标
 

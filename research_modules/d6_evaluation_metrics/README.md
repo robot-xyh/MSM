@@ -22,7 +22,11 @@ events. PNG frames are not required for metric computation when logs preserve
 bounding boxes, camera intrinsics/extrinsics, timestamps, assigned global track
 IDs, object labels, and gate outcomes. D7 events may report `guidance_law`,
 `terminal_switch_reject_reason`, `camera_quality_gate_pass`,
-`los_quality_gate_pass`, and `maneuver_margin_gate_pass`.
+`los_quality_gate_pass`, `maneuver_margin_gate_pass`, and
+`terminal_switch_allowed`. Supported D7 guidance metrics include
+`camera_quality_gate_pass_rate`, `los_quality_gate_pass_rate`,
+`maneuver_margin_gate_pass_rate`, `terminal_switch_allowed_rate`,
+`terminal_switch_reject_count`, and intercept outcome counts.
 
 ## AirSim Blocks Replay Inputs
 

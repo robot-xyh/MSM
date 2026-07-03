@@ -9,10 +9,10 @@ real vehicle control paths.
 
 from __future__ import annotations
 
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass, field
 import math
-from typing import Any, Literal
+from typing import Any, Iterable, Literal, Mapping
 
 import numpy as np
 
@@ -318,10 +318,83 @@ class SimpleFlightPngGuidanceFilter:
         return float(accel_cmd / speed_for_turn)
 
 
+def terminal_switch_allowed_rate(samples: Iterable[Any]) -> float:
+    """Return the fraction of samples whose existing gate result allowed handoff."""
+
+    return float(summarize_terminal_switch_quality(samples)["terminal_switch_allowed_rate"])
+
+
+def summarize_terminal_switch_quality(samples: Iterable[Any]) -> dict[str, Any]:
+    """Summarize already-computed terminal switch quality samples.
+
+    This helper is intentionally passive: it never reruns the camera/LOS/maneuver
+    gate and only counts ``terminal_switch_allowed`` values already emitted by
+    D7 command/quality objects or persisted metadata dictionaries.
+    """
+
+    sample_count = 0
+    allowed_count = 0
+    reject_reasons: Counter[str] = Counter()
+    for sample in samples:
+        allowed = _quality_bool(_quality_value(sample, "terminal_switch_allowed"))
+        if allowed is None:
+            continue
+        sample_count += 1
+        if allowed:
+            allowed_count += 1
+        else:
+            reason = _quality_text(_quality_value(sample, "reject_reason"))
+            if reason is None:
+                reason = _quality_text(_quality_value(sample, "terminal_switch_reject_reason"))
+            if reason:
+                reject_reasons[reason] += 1
+
+    rejected_count = sample_count - allowed_count
+    return {
+        "sample_count": sample_count,
+        "allowed_count": allowed_count,
+        "rejected_count": rejected_count,
+        "terminal_switch_allowed_rate": allowed_count / sample_count if sample_count else 0.0,
+        "reject_reasons": dict(reject_reasons),
+    }
+
+
 def _bearing_from_bbox(observation: VisionGuidanceObservation, cfg: PngGuidanceConfig) -> float:
     center_x, _center_y = observation.center_px
     cx = cfg.image_width_px * 0.5
     return float(math.atan((center_x - cx) / cfg.focal_length_px))
+
+
+def _quality_value(sample: Any, name: str) -> Any:
+    if isinstance(sample, PngGuidanceCommand):
+        sample = sample.quality
+    if isinstance(sample, Mapping):
+        return sample.get(name)
+    return getattr(sample, name, None)
+
+
+def _quality_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if not text:
+        return None
+    if text in {"true", "t", "yes", "y", "1", "pass", "passed", "ok"}:
+        return True
+    if text in {"false", "f", "no", "n", "0", "fail", "failed", "reject", "rejected"}:
+        return False
+    return None
+
+
+def _quality_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _edge_margin_ratio(

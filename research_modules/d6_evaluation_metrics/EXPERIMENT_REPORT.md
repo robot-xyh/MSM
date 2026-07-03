@@ -39,7 +39,9 @@ python3 research_modules/d6_evaluation_metrics/scripts/run_batch_example.py --se
 | 分配 | `duplicate_assignment_count`, `unassigned_high_threat_count` |
 | 降级 | `failover_time`, `consensus_rounds`, `degraded_completion_rate` |
 | 主动降级扩展 | `passive_failover_count`, `active_degradation_count`, `active_degradation_precision`, `unnecessary_active_degradation_count`, `terminal_center_disagreement_count`, `time_to_active_degradation_decision`, `post_degradation_id_switch_delta`, `post_degradation_assignment_conflict_delta` |
-| 末端 | `terminal_association_accuracy`, `terminal_id_switch_count`, `ambiguous_fov_event_count`, `friend_overlap_hold_count`, `time_to_terminal_lock` |
+| 末端 | `terminal_association_accuracy`, `terminal_id_switch_count`, `ambiguous_fov_event_count`, `friend_overlap_hold_count`, `time_to_terminal_lock`, `multi_view_consensus_rate`, `cross_view_conflict_count`, `duplicate_terminal_lock_count` |
+| 通信 | `cross_node_latency_ms`, `message_drop_rate`, `out_of_order_count`, `stale_track_update_count`, `video_metadata_delivery_rate`, `bbox_delivery_rate`, `consensus_latency_s` |
+| 导引门控 | `camera_quality_gate_pass_rate`, `los_quality_gate_pass_rate`, `maneuver_margin_gate_pass_rate`, `terminal_switch_allowed_rate`, `terminal_switch_reject_count`, `intercept_success_count`, `collision_intercept_count`, `range_intercept_count`, `time_to_intercept_s`, `min_range_m`, `gate_reject_count` |
 | 安全 | `constraint_violation_count`, `human_override_count` |
 
 主动降级扩展目前是 D6 文档侧定义的离线评估合同，详见 `docs/ALGORITHM_AND_IMPLEMENTATION.md`。正式纳入代码前，D4 应在 `EventRecord.metadata` 中提供 `degradation_mode`, `trigger_sources`, `selected_coordinator`, `coverage_cell`, `arbiter_score`, `trigger_timestamp` 等字段。
