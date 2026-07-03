@@ -9,6 +9,8 @@
 - `../reports/EXPERIMENT_REPORT.md`：当前实验结果、指标表和丢包率曲线。
 - `../reports/AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放数据如何映射到 D4 摘要模型。
 
+当前 D4 侧 P1 状态见 `../PLAN.md` 的 `P1 Gap Status`：已补二级节点生命周期摘要、主动降级迟滞/防抖配置、D6-compatible decision event metadata 和对应测试；轻量 CBBA 保持不变，未新增 MIT/CA-CBBA、auction 或 contract-net。
+
 ## 阅读顺序
 
 1. 先读 `../PLAN.md`，确认边界和状态机。

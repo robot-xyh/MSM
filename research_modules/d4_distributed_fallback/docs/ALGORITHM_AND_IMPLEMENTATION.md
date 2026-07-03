@@ -16,7 +16,7 @@ D4 负责离线降级协同研究，包含两类模式：
 ### 2.1 输入
 
 - `TrackSummary[]`：来自 D1/D2 的全局航迹摘要，字段包括 `track_id`、`coarse_cell`、`age_s`、`confidence_band`、`source_count`、`epoch`。
-- `ResourceSummary[]`：来自资源状态管理或 D3 上一版计划的资源摘要，字段包括 `node_id`、`capability_class`、`availability_band`、`comm_band`、`operator_hold`、`takeover_priority`、`lease_epoch`、`node_role`、`coordinator_only`、`coverage_cell`、`epoch`。
+- `ResourceSummary[]`：来自资源状态管理或 D3 上一版计划的资源摘要，字段包括 `node_id`、`capability_class`、`availability_band`、`comm_band`、`operator_hold`、`takeover_priority`、`lease_epoch`、`node_role`、`coordinator_only`、`coverage_cell`、`heartbeat_timestamp_s`、`heartbeat_stale_after_s`、`epoch`。
 - `C2` 健康输入：heartbeat 状态、assignment digest 是否一致、center epoch、peer fail votes。
 - `SimulatedNetwork`：内存网络，提供延迟、丢包和消息计数。
 - `TrackUncertaintySummary`：来自 D1 的定位不确定度摘要，包含 `position_sigma_m`、`covariance_trace`、`measurement_age_s` 和 `coverage_cell`。
@@ -32,6 +32,8 @@ D4 负责离线降级协同研究，包含两类模式：
 - `MergeResult`：中心恢复后的双轨合并结果，区分 `accepted/review/conflicts`。
 - `final_views["coordination_mode"]`：当前已写入 `state/leader_id/leader_role/coverage_cell`，建议后续在仿真 metrics 中继续透传，便于 D6 区分二级节点接管与完全分布式 CBBA。
 - `ActiveDegradationDecision`：主动/被动仲裁结果，字段包括 `mode`、`action`、`reason`、`target_node_id`、`coverage_cell`、`terminal_consistent`、`risk_factors` 和 `requires_human_review`；`to_metrics()` 输出 main/D6 所需 D4 指标字段。
+- `SecondaryNodeLifecycleSummary`：二级节点生命周期摘要，字段包括 `heartbeat`、`lease_epoch`、`coverage_cell`、`video_cue_freshness_s`、`link_stale` 和 `secondary_available`。
+- `D4DecisionRecord.to_event_record_kwargs()`：输出 D6 `EventRecord` 兼容事件，metadata 包含 `degradation_mode`、`selected_coordinator`、`coverage_cell`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp`、`review_label`，并保留 `d4_degradation_mode` 等 D4 原始字段。
 
 ## 3. C2Health 状态机
 
@@ -80,6 +82,8 @@ D4 负责离线降级协同研究，包含两类模式：
 - `capability_class="tethered_recon"` 或 `"secondary_c2"`：用于 leader 排序和审计。
 - `coordinator_only=True`：表示该节点只做区域协调和观测摘要，不作为执行资源参与任务所有权分配。
 - `coverage_cell`：表示节点覆盖的粗粒度小区或区域，后续应作为多区域接管过滤条件。
+- `heartbeat_timestamp_s` / `heartbeat_stale_after_s`：表示最近心跳和过期门限；心跳过期时二级节点不作为辅助或接管候选。
+- `lease_epoch`：表示二级节点租约版本；同等优先级下新租约优先。
 
 当二级节点健康时，它可以作为区域协调者，向覆盖范围内的拦截资源提供：
 
@@ -150,6 +154,7 @@ decision = ActiveDegradationArbiter().evaluate(
 - `C2Health`：判断是主动降级还是被动降级。若已为 `failed`，仲裁器直接走 `passive_failover`。
 - `secondary_nodes`：二级节点健康和覆盖信息，使用 `ResourceSummary.node_role`、`availability_band`、`operator_hold`、`coverage_cell` 判断可用性。
 - `communication_summaries`：可选通信摘要。若传入，二级节点必须存在未过期的 `c2_direct`、`secondary_relay` 或 `video_cue` 链路，才可被视为主动辅助/接管候选。
+- 二级生命周期：`summarize_secondary_lifecycle()` 会输出每个二级节点的 heartbeat age、lease epoch、coverage cell、video cue freshness、link stale 和 `secondary_available`，adapter 会把该摘要放入结果供 D6 审计。
 
 决策规则：
 
@@ -172,6 +177,7 @@ decision = ActiveDegradationArbiter().evaluate(
 - D3：`is_current=False`、`plan_age_s` 超限或 `cost_margin` 过低表示分配有效性下降。
 - D5：`association_confidence` 低、`ambiguity_score` 高、重复末端锁定、cross-view 风险高、连续非锁定帧数或连续 mismatch 帧数达到阈值时触发主动仲裁。`friend_conflict` 优先级最高，直接 `hold_for_review`。
 - 通信：传入通信摘要时，二级节点链路超过 `stale_after_s` 会被视为不可用；只有二级节点不可用时，主动持续不一致才降到 `distributed_cbba/auction`。
+- 迟滞/防抖：`ActiveDegradationConfig` 提供 `min_dwell_s`、`release_consecutive_consistent_frames`、`risk_window_size` 和 `risk_window_threshold`。默认值保持轻量单步行为；复用同一个 arbiter 时，可要求多窗口风险满足阈值才从辅助升级到二级/分布式降级，并要求满足最短 dwell 和连续低风险 release 条件后才回到 `continue_center`。
 
 这些阈值是离线仿真默认值，不代表真实传感器或真实系统参数。后续应由 D6 批量实验做敏感性分析。
 
@@ -318,7 +324,9 @@ O(|E|\cdot|\mathcal{T}|)
 - `AssignmentValiditySummary`：D3 分配有效性摘要。
 - `TerminalAssociationSummary`：D5 末端视觉配准摘要。
 - `CommunicationSummary`：D4 通信新鲜度摘要，表达源节点、目标节点、可选中继节点、链路类型、发送/接收时间、载荷类型和过期时间。
+- `SecondaryNodeLifecycleSummary`：二级节点生命周期摘要，表达 heartbeat、lease、coverage、video cue freshness、link stale 和最终可用性。
 - `ActiveDegradationDecision`：D4 仲裁结果。
+- `D4DecisionRecord`：D4 adapter 事件记录，可直接转换为 D6 `EventRecord` kwargs。
 
 ## 8. 参数与调参建议
 
@@ -341,6 +349,10 @@ O(|E|\cdot|\mathcal{T}|)
 | `cross_view_risk_high` | `ActiveDegradationConfig` | D5 多视角冲突/支持不足风险门限 |
 | `non_locked_frame_limit` | `ActiveDegradationConfig` | 连续 `ambiguous/hold/reacquire` 触发主动仲裁的帧数 |
 | `mismatch_frame_limit` | `ActiveDegradationConfig` | 末端候选与分配目标长期不一致的触发帧数 |
+| `risk_window_size/risk_window_threshold` | `ActiveDegradationConfig` | 主动降级窗口化风险阈值，用于防止单窗口噪声直接升级 |
+| `min_dwell_s` | `ActiveDegradationConfig` | 主动/被动降级决策的最短保持时间 |
+| `release_consecutive_consistent_frames` | `ActiveDegradationConfig` | 释放降级并回到中心计划前所需的连续低风险一致帧数 |
+| `heartbeat_timestamp_s/heartbeat_stale_after_s` | `ResourceSummary` | 二级节点生命周期心跳和过期门限 |
 | `stale_after_s` | `CommunicationSummary` | 二级链路过期时间；过期后不再作为可用二级辅助 |
 
 二级节点调参建议：
@@ -393,11 +405,15 @@ D4 应向 D6 输出或支持计算：
 - `coordination_mode`：`secondary_node` 或 `distributed_cbba`。
 - `leader_role`：`ground_backup/secondary_recon/cluster_representative/interceptor`。
 - `coverage_cell`：二级节点覆盖区域。
-- `degradation_mode`：`none/passive_failover/active_degradation`。
+- `degradation_mode`：D6 事件 metadata 使用 `none/passive/active`；D4 原始枚举另存为 `d4_degradation_mode`。
+- `selected_coordinator`：`center/secondary_node/distributed_cbba/hold_review`。
+- `trigger_reason` / `trigger_timestamp` / `decision_timestamp`：D6 主动降级评估所需触发和决策时间。
+- `review_label`：离线复核标签，默认为 `unknown`。
 - `degradation_action`：继续、请求重分配、请求二级辅助、降到二级、降到分布式或 hold。
 - `active_degradation_reason`：主动仲裁触发原因。
 - `risk_factors`：D1/D2/D3/D5 风险因子列表。
 - `terminal_consistent`：D5 末端关联是否与分配目标一致。
+- `secondary_available/link_stale/video_cue_freshness_s`：二级节点生命周期和链路 freshness 审计字段。
 
 当前 `coordination_mode` 已存在于 `CBBAResult.final_views`，但 `run_failover_simulation()` 尚未透传到顶层 metrics。建议后续补齐，避免实验报告把二级节点接管和完全分布式 CBBA 混在一起统计。
 
@@ -420,19 +436,19 @@ D6 消费 D4 的 transition log、CBBAResult 和 merge result，计算 failover�
 当前局限：
 
 - 默认仿真未构造 `secondary_recon`，二级节点路径主要由单元测试覆盖。
-- `coverage_cell` 已记录但未参与 leader 过滤，无法直接评估多区域接管。
+- 主动仲裁已按 `coverage_cell` 过滤二级节点；被动 coordinator 的全局 leader 选择仍未按每个任务覆盖区拆分。
 - `coordination_mode/leader_role/coverage_cell` 尚未在默认 metrics 顶层透传。
 - CBBA 打分函数是合成基线，没有与 D3 的真实中心化代价函数完全对齐。
 - 网络模型是内存队列，只用于延迟/丢包统计，不代表真实链路。
-- 主动降级仲裁器目前是规则基线，未接入真实 D1/D2/D3/D5 消息，只通过摘要 dataclass 做离线验证。
+- 主动降级仲裁器目前是规则基线，已包含 dwell/release/window 防抖配置，但未用 5v5 批量 episode 标定阈值。
 - D5 `TerminalAssociation` 当前在 D4 内归一化为 `TerminalAssociationSummary`，跨模块字段合同还需要主智能体统一。
 
 后续工作：
 
 1. 增加二级节点默认或可选仿真场景。
-2. 按 `coverage_cell` 限制二级节点接管范围，并增加多区域测试。
+2. 增加多 `coverage_cell`、多二级节点租约冲突的 episode 级仿真。
 3. 将 `coordination_mode/leader_role/coverage_cell` 透传到 D6 metrics。
-4. 增加合同网和单轮拍卖 baseline，与 CBBA 对比收敛轮数和冲突率。
+4. 保留轻量 CBBA 为当前默认基线；如后续需要，另行评估 MIT CBBA/CA-CBBA/auction/contract-net 的许可证、依赖和同场景 benchmark。
 5. 把 D3 的 plan version、authorization state 和 D5 的 cue 审计字段纳入降级日志。
 6. 增加中心恢复后的多轮稳定窗口，而不是只依赖一次合并调用。
 7. 将主动降级决策接入系统级日志，交给 D6 统计 `active_degradation_count`、`false_degradation_rate` 和 `terminal_disagreement_duration`。

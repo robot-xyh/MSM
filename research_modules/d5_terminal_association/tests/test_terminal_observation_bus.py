@@ -70,6 +70,12 @@ def test_cross_view_bus_groups_overlapping_uav_views_without_rewriting_global_id
     assert by_global_id["G3"].local_track_ids == ("UAV1/front_rgb:L3", "UAV2/front_rgb:L2")
     assert by_global_id["G2"].duplicate_terminal_lock_risk is True
     assert by_global_id["G3"].duplicate_terminal_lock_risk is True
+    assert by_global_id["G2"].duplicate_lock_resource_ids == ("UAV1", "UAV2")
+    assert by_global_id["G3"].duplicate_lock_resource_ids == ("UAV1", "UAV2")
+    assert by_global_id["G2"].metadata["observed_global_track_ids_by_resource"] == {
+        "UAV1": ("G1", "G2", "G3"),
+        "UAV2": ("G2", "G3", "G4"),
+    }
 
     assert by_global_id["G1"].supporting_resource_ids == ("UAV1",)
     assert by_global_id["G4"].supporting_resource_ids == ("UAV2",)
@@ -143,3 +149,34 @@ def test_local_only_observations_are_stored_but_do_not_create_global_association
 
     assert len(bus.observations()) == 1
     assert bus.cross_view_associations() == []
+
+
+def test_bus_flags_same_local_track_locked_to_multiple_global_ids() -> None:
+    bus = TerminalObservationBus()
+    bus.publish_terminal_association(
+        resource_id="UAV1",
+        source_node_id="UAV1",
+        link_type="interceptor_peer",
+        timestamp=20.0,
+        terminal_association=_locked("G1", "L-shared"),
+        local_track=_local("L-shared"),
+        camera_id="front_rgb",
+        frame_id="UAV1/front_rgb",
+    )
+    bus.publish_terminal_association(
+        resource_id="UAV1",
+        source_node_id="UAV1",
+        link_type="interceptor_peer",
+        timestamp=20.1,
+        terminal_association=_locked("G2", "L-shared"),
+        local_track=_local("L-shared"),
+        camera_id="front_rgb",
+        frame_id="UAV1/front_rgb",
+    )
+
+    by_global_id = {item.global_track_id: item for item in bus.cross_view_associations()}
+
+    assert by_global_id["G1"].duplicate_terminal_lock_risk is True
+    assert by_global_id["G2"].duplicate_terminal_lock_risk is True
+    assert by_global_id["G1"].duplicate_local_track_ids == ("UAV1/front_rgb:L-shared",)
+    assert by_global_id["G2"].duplicate_local_track_ids == ("UAV1/front_rgb:L-shared",)

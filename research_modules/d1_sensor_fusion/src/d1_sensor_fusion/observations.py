@@ -74,6 +74,21 @@ class MeasurementModel:
     angle_indices: tuple[int, ...] = ()
 
 
+@dataclass(frozen=True)
+class RadarCovarianceConfig:
+    """Distance-dependent radar measurement covariance parameters."""
+
+    min_distance_m: float = 1.0
+    range_sigma_base_m: float = 2.0
+    range_sigma_per_m: float = 0.012
+    azimuth_sigma_base_deg: float = 0.25
+    azimuth_sigma_per_m_deg: float = 0.0008
+    elevation_sigma_base_deg: float = 0.35
+    elevation_sigma_per_m_deg: float = 0.0010
+    radial_velocity_sigma_base_mps: float = 0.35
+    radial_velocity_sigma_per_m_mps: float = 0.0015
+
+
 def sensor_position_from_metadata(observation: SensorObservation) -> np.ndarray:
     return np.asarray(observation.metadata.get("sensor_position_ned", [0.0, 0.0, 0.0]), dtype=float)
 
@@ -95,16 +110,25 @@ def radar_h(state: np.ndarray, sensor_position: np.ndarray) -> np.ndarray:
     )
 
 
-def radar_covariance_from_range(distance: float) -> np.ndarray:
-    distance = max(float(distance), 1.0)
-    sigma_range = 2.0 + 0.012 * distance
-    sigma_angle = np.deg2rad(0.25 + 0.0008 * distance)
-    sigma_elevation = np.deg2rad(0.35 + 0.0010 * distance)
-    sigma_rv = 0.35 + 0.0015 * distance
+def radar_covariance_from_range(
+    distance: float,
+    config: RadarCovarianceConfig | dict | None = None,
+) -> np.ndarray:
+    cfg = _radar_covariance_config(config)
+    distance = max(float(distance), cfg.min_distance_m)
+    sigma_range = cfg.range_sigma_base_m + cfg.range_sigma_per_m * distance
+    sigma_angle = np.deg2rad(cfg.azimuth_sigma_base_deg + cfg.azimuth_sigma_per_m_deg * distance)
+    sigma_elevation = np.deg2rad(
+        cfg.elevation_sigma_base_deg + cfg.elevation_sigma_per_m_deg * distance
+    )
+    sigma_rv = cfg.radial_velocity_sigma_base_mps + cfg.radial_velocity_sigma_per_m_mps * distance
     return np.diag([sigma_range**2, sigma_angle**2, sigma_elevation**2, sigma_rv**2])
 
 
-def radar_state_from_observation(observation: SensorObservation) -> tuple[np.ndarray, np.ndarray]:
+def radar_state_from_observation(
+    observation: SensorObservation,
+    covariance_config: RadarCovarianceConfig | dict | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
     sensor_position = sensor_position_from_metadata(observation)
     z = observation.measurement.reshape(-1)
     rho, azimuth, elevation = z[:3]
@@ -125,7 +149,7 @@ def radar_state_from_observation(observation: SensorObservation) -> tuple[np.nda
 
     r = observation.covariance
     if r is None:
-        r = radar_covariance_from_range(float(rho))
+        r = radar_covariance_from_range(float(rho), covariance_config)
     sigma_rho, sigma_az, sigma_el, sigma_rv = np.sqrt(np.diag(r))
     tangential = max(float(rho), 1.0) * max(float(sigma_az), float(sigma_el))
     covariance = np.diag(
@@ -192,14 +216,17 @@ def lidar_covariance(distance: float, confidence: float = 0.9) -> np.ndarray:
     return np.diag([sigma_xy**2, sigma_xy**2, sigma_z**2])
 
 
-def measurement_model_for(observation: SensorObservation) -> MeasurementModel:
+def measurement_model_for(
+    observation: SensorObservation,
+    radar_covariance_config: RadarCovarianceConfig | dict | None = None,
+) -> MeasurementModel:
     modality = observation.modality.lower()
     if modality == "radar":
         sensor_position = sensor_position_from_metadata(observation)
         r = (
             observation.covariance
             if observation.covariance is not None
-            else radar_covariance_from_range(float(observation.measurement[0]))
+            else radar_covariance_from_range(float(observation.measurement[0]), radar_covariance_config)
         )
 
         def h_fn(x: np.ndarray) -> np.ndarray:
@@ -275,3 +302,11 @@ def measurement_model_for(observation: SensorObservation) -> MeasurementModel:
         )
 
     raise ValueError(f"Unsupported modality: {observation.modality}")
+
+
+def _radar_covariance_config(config: RadarCovarianceConfig | dict | None) -> RadarCovarianceConfig:
+    if config is None:
+        return RadarCovarianceConfig()
+    if isinstance(config, RadarCovarianceConfig):
+        return config
+    return RadarCovarianceConfig(**dict(config))

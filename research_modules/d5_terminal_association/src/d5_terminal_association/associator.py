@@ -51,6 +51,8 @@ class AssociationConfig:
     quality_penalty_weight: float = 2.0
     recon_cue_bonus: float = 2.0
     recon_cue_center_threshold_px: float = 30.0
+    max_recon_cue_age_s: float | None = 1.0
+    allow_broadcast_recon_cue: bool = True
     friend_center_threshold_px: float = 20.0
     friend_iou_threshold: float = 0.05
     projection_regularization: float = 1e-6
@@ -99,6 +101,8 @@ class TerminalAssociator:
         identity_claims: Iterable[IdentityClaim] = (),
         recon_image_cues: Iterable[ReconImageCue] = (),
         resource_id: str | None = None,
+        current_time: float | None = None,
+        frame_id: str | None = None,
     ) -> CostMatrixResult:
         """Build a gated association cost matrix.
 
@@ -116,7 +120,15 @@ class TerminalAssociator:
         for row, global_id in enumerate(global_ids):
             projection = projections[global_id]
             for col, local in enumerate(locals_list):
-                breakdown = self._pair_cost(projection, local, claims, cues, resource_id)
+                breakdown = self._pair_cost(
+                    projection,
+                    local,
+                    claims,
+                    cues,
+                    resource_id,
+                    current_time,
+                    frame_id,
+                )
                 costs[row, col] = breakdown.total_cost
                 breakdowns[(global_id, local.local_track_id)] = breakdown
 
@@ -136,6 +148,7 @@ class TerminalAssociator:
         camera: CameraModel | None = None,
         current_time: float | None = None,
         recon_image_cues: Iterable[ReconImageCue] = (),
+        frame_id: str | None = None,
     ) -> TerminalAssociation:
         """Return a conservative terminal association decision.
 
@@ -206,6 +219,8 @@ class TerminalAssociator:
             claims,
             recon_image_cues=cues,
             resource_id=assignment.resource_id,
+            current_time=projection_time,
+            frame_id=frame_id,
         )
         row = cost_result.costs[0] if cost_result.costs.shape[0] else np.array([])
         feasible_indices = [
@@ -301,6 +316,8 @@ class TerminalAssociator:
         identity_claims: list[IdentityClaim],
         recon_image_cues: list[ReconImageCue],
         resource_id: str | None,
+        current_time: float | None,
+        frame_id: str | None,
     ) -> CostBreakdown:
         if not projection.valid:
             return self._blocked_breakdown(projection.global_track_id, local_track.local_track_id, "none")
@@ -328,6 +345,8 @@ class TerminalAssociator:
             local_track,
             recon_image_cues,
             resource_id,
+            current_time,
+            frame_id,
         )
         friend_state = self.identity_checker.friend_conflict_state(
             local_track,
@@ -406,11 +425,11 @@ class TerminalAssociator:
         local_track: LocalVisualTrack,
         recon_image_cues: list[ReconImageCue],
         resource_id: str | None,
+        current_time: float | None,
+        frame_id: str | None,
     ) -> float:
         for cue in recon_image_cues:
-            if cue.global_track_id is not None and cue.global_track_id != projection.global_track_id:
-                continue
-            if cue.scoped_resource_ids and resource_id not in cue.scoped_resource_ids:
+            if not self._recon_cue_is_applicable(cue, projection, resource_id, current_time, frame_id):
                 continue
             if cue.center_px is None:
                 continue
@@ -418,6 +437,45 @@ class TerminalAssociator:
             if distance <= self.config.recon_cue_center_threshold_px:
                 return -self.config.recon_cue_bonus * cue.confidence
         return 0.0
+
+    def _recon_cue_is_applicable(
+        self,
+        cue: ReconImageCue,
+        projection: ProjectionResult,
+        resource_id: str | None,
+        current_time: float | None,
+        frame_id: str | None,
+    ) -> bool:
+        if cue.confidence <= 0.0 or cue.metadata.get("expired") is True:
+            return False
+        if cue.global_track_id is not None and cue.global_track_id != projection.global_track_id:
+            return False
+        if cue.scoped_resource_ids:
+            if resource_id is None or resource_id not in cue.scoped_resource_ids:
+                return False
+        elif not self.config.allow_broadcast_recon_cue:
+            return False
+        if self.config.max_recon_cue_age_s is not None and current_time is not None:
+            age_s = float(current_time) - cue.timestamp
+            if age_s < 0.0 or age_s > self.config.max_recon_cue_age_s:
+                return False
+        if frame_id is not None and not self._recon_cue_matches_frame(cue, frame_id):
+            return False
+        return True
+
+    @staticmethod
+    def _recon_cue_matches_frame(cue: ReconImageCue, frame_id: str) -> bool:
+        target_frame_id = cue.metadata.get("target_frame_id")
+        source_frame_id = cue.metadata.get("source_image_frame_id")
+        reprojected = cue.metadata.get("reprojected_to_local_camera") is True
+
+        if cue.image_frame_id == frame_id:
+            if source_frame_id is not None and source_frame_id != frame_id:
+                return reprojected
+            return True
+        if target_frame_id == frame_id:
+            return reprojected
+        return False
 
     def _confidence(self, breakdown: CostBreakdown, local_track: LocalVisualTrack) -> float:
         if not np.isfinite(breakdown.mahalanobis_d2):

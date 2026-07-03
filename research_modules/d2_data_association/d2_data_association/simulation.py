@@ -18,7 +18,14 @@ from .models import Detection
 from .tracker import Tracker
 
 ASSOCIATOR_NAMES = ("gnn", "jpda", "mht")
-SCENARIO_NAMES = ("crossing", "formation", "occlusion", "missed", "false_alarms")
+SCENARIO_NAMES = (
+    "crossing",
+    "crossing_dense_5v5",
+    "formation",
+    "occlusion",
+    "missed",
+    "false_alarms",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +100,22 @@ def build_scenario_spec(name: str) -> ScenarioSpec:
             miss_probability=0.02,
             false_alarm_rate=0.15,
             bounds=(-22.0, 22.0, -12.0, 12.0),
+        )
+    if name == "crossing_dense_5v5":
+        return ScenarioSpec(
+            name=name,
+            targets=[
+                TruthTarget("D1", np.array([-12.0, -1.20]), np.array([0.78, 0.08])),
+                TruthTarget("D2", np.array([-12.0, -0.45]), np.array([0.80, 0.03])),
+                TruthTarget("D3", np.array([-12.0, 0.25]), np.array([0.82, -0.02])),
+                TruthTarget("D4", np.array([12.0, 0.95]), np.array([-0.79, -0.06])),
+                TruthTarget("D5", np.array([12.0, 1.55]), np.array([-0.81, -0.11])),
+            ],
+            measurement_noise_std=0.18,
+            miss_probability=0.0,
+            false_alarm_rate=0.0,
+            bounds=(-16.0, 16.0, -5.0, 5.0),
+            feature_noise_std=0.02,
         )
     if name == "formation":
         targets = [

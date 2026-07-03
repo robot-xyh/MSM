@@ -10,10 +10,11 @@ from .dry_run_adapter import (
     DryRunAssociationFrame,
     DryRunAssociationResult,
     build_default_dry_run_tracker,
+    detections_from_d1_global_tracks,
     detections_from_airsim_frame,
     run_airsim_dry_run_association,
 )
-from .metrics import MetricsRecorder
+from .metrics import AssociationRiskSummaryWindowGenerator, MetricsRecorder
 from .models import (
     AssociationLogEntry,
     AssociationResult,
@@ -29,6 +30,7 @@ from .tracker import Tracker
 
 __all__ = [
     "AssociationLogEntry",
+    "AssociationRiskSummaryWindowGenerator",
     "AssociationRiskSummary",
     "AssociationResult",
     "DataAssociator",
@@ -46,6 +48,7 @@ __all__ = [
     "TrackTransition",
     "Tracker",
     "build_default_dry_run_tracker",
+    "detections_from_d1_global_tracks",
     "detections_from_airsim_frame",
     "run_airsim_dry_run_association",
 ]

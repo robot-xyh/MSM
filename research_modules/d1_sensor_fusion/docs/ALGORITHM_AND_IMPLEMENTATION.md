@@ -102,7 +102,7 @@ elevation = atan2(-rz, sqrt(rx^2 + ry^2))
 radial_velocity = dot(v, r / ||r||)
 ```
 
-当前代码的距离相关协方差原则为：
+当前代码的默认距离相关协方差原则为：
 
 ```text
 sigma_range = 2.0 + 0.012 * range
@@ -112,6 +112,8 @@ sigma_radial_velocity = 0.35 + 0.0015 * range
 ```
 
 含义是：距离越远，距离、角度和径向速度不确定性越高。雷达是当前唯一可初始化新航迹的传感器，因为它能提供三维几何和径向速度骨架。
+
+默认系数由 `RadarCovarianceConfig` 表达，`radar_covariance_from_range(..., config=...)`、`FusionAdapter(radar_covariance_config=...)` 和 dry-run 雷达 sensor config 中的 `covariance_config` 都可覆盖这些参数。未传配置时保持上述默认行为。
 
 ### 5.2 声学
 
@@ -471,7 +473,9 @@ python3 research_modules/d1_sensor_fusion/scripts/run_simulation.py \
 - 仅实现 EKF fallback，UKF、IMM 和 Stone Soup OOSM 对照仍为后续扩展。
 - 坐标转换工具以接口约定为主，尚未集成 ROS 2 `tf2`。
 - 仿真为质点模型和合成传感器，不代表真实传感器标定误差全集。
-- `TrackUncertaintySummary` 当前为接口设计建议，尚未落地为代码数据类。
+- `TrackUncertaintySummary` 已落地为 D1 代码数据类，`FusionAdapter.track_uncertainty_summaries()` 可导出每条航迹的 `track_id/global_track_id`、`position_covariance_trace`、`a95_m`、`track_level`、`measurement_age_s`、`source_support`、`coverage_cell`、`measurement_timestamp`、`arrival_timestamp`、`valid_at` 和 `published_at`。
+- D1 已提供 `blocks_sensor_observations.jsonl` reader/replay 基线，可读回 main/AirSim runtime 写出的 D1 JSONL 观测并回放 `FusionAdapter`。
+- D1 已提供 source lineage 去重基线，按同一 source/sequence/payload lineage 抑制 relay 或重复投递造成的二次更新；未知相关性的跨节点 Track-to-Track fusion 和协方差交叉仍未实现。
 
 后续建议：
 
@@ -480,4 +484,4 @@ python3 research_modules/d1_sensor_fusion/scripts/run_simulation.py \
 3. 增加 IMM-CV/CA/CT 运动模型，输出模型概率供 D2 使用。
 4. 将 D1 观测日志与 D6 统一事件记录格式对齐。
 5. 在 AirSim 离线回放中验证相机外参误差、遮挡和时间同步误差对 `handover_track` 的影响。
-6. 将 `TrackUncertaintySummary` 和 `FusionQualityRegionSummary` 实现为离线日志结构，供 D4 主动降级策略和 D6 批量统计使用。
+6. 在 `TrackUncertaintySummary` 基线之上补 `FusionQualityRegionSummary`，供 D4 主动降级策略和 D6 批量统计使用。

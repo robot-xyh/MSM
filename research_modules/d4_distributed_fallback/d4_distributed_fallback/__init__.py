@@ -11,6 +11,7 @@ from .active_degradation import (
     TerminalAssociationSummary,
     TerminalDecisionState,
     TrackUncertaintySummary,
+    summarize_secondary_lifecycle,
 )
 from .adapter import (
     D4ArbitrationAdapter,
@@ -35,6 +36,7 @@ from .models import (
     NodeRole,
     PayloadKind,
     ResourceSummary,
+    SecondaryNodeLifecycleSummary,
     TrackSummary,
 )
 
@@ -61,6 +63,7 @@ __all__ = [
     "NodeRole",
     "PayloadKind",
     "ResourceSummary",
+    "SecondaryNodeLifecycleSummary",
     "TerminalAssociationSummary",
     "TerminalDecisionState",
     "TrackSummary",
@@ -70,4 +73,5 @@ __all__ = [
     "build_communication_summary",
     "build_terminal_association_summary",
     "build_track_uncertainty_summary",
+    "summarize_secondary_lifecycle",
 ]

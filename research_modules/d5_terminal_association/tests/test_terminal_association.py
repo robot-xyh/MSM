@@ -262,6 +262,110 @@ def test_secondary_recon_cue_lowers_cost_only_for_scoped_resource() -> None:
     assert out_of_scope.breakdowns[("G-assigned", "assigned_visual")].recon_cue_cost == 0.0
 
 
+def test_secondary_recon_cue_age_frame_and_reprojection_rules() -> None:
+    associator = TerminalAssociator(AssociationConfig(max_recon_cue_age_s=1.0))
+    camera = make_camera()
+    track = make_track("G-assigned")
+    projection = associator.project_tracks_to_image([track], camera)
+    local = make_local("assigned_visual", (320.0, 240.0))
+
+    valid_reprojected = ReconImageCue(
+        cue_id="cue-valid",
+        producer_node_id="secondary-recon-1",
+        timestamp=9.5,
+        image_frame_id="R-1/front_rgb",
+        global_track_id="G-assigned",
+        center_px=np.array([320.0, 240.0]),
+        confidence=0.8,
+        scoped_resource_ids=("R-1",),
+        metadata={
+            "source_image_frame_id": "secondary-recon-1/wide_rgb",
+            "target_frame_id": "R-1/front_rgb",
+            "reprojected_to_local_camera": True,
+        },
+    )
+    stale = ReconImageCue(
+        cue_id="cue-stale",
+        producer_node_id="secondary-recon-1",
+        timestamp=8.0,
+        image_frame_id="R-1/front_rgb",
+        global_track_id="G-assigned",
+        center_px=np.array([320.0, 240.0]),
+        confidence=0.8,
+        scoped_resource_ids=("R-1",),
+        metadata={
+            "source_image_frame_id": "secondary-recon-1/wide_rgb",
+            "target_frame_id": "R-1/front_rgb",
+            "reprojected_to_local_camera": True,
+        },
+    )
+    wrong_frame = ReconImageCue(
+        cue_id="cue-wrong-frame",
+        producer_node_id="secondary-recon-1",
+        timestamp=9.5,
+        image_frame_id="secondary-recon-1/wide_rgb",
+        global_track_id="G-assigned",
+        center_px=np.array([320.0, 240.0]),
+        confidence=0.8,
+        scoped_resource_ids=("R-1",),
+        metadata={"source_image_frame_id": "secondary-recon-1/wide_rgb"},
+    )
+    wrong_scope = ReconImageCue(
+        cue_id="cue-wrong-scope",
+        producer_node_id="secondary-recon-1",
+        timestamp=9.5,
+        image_frame_id="R-1/front_rgb",
+        global_track_id="G-assigned",
+        center_px=np.array([320.0, 240.0]),
+        confidence=0.8,
+        scoped_resource_ids=("R-2",),
+        metadata={
+            "source_image_frame_id": "secondary-recon-1/wide_rgb",
+            "target_frame_id": "R-1/front_rgb",
+            "reprojected_to_local_camera": True,
+        },
+    )
+
+    valid = associator.build_cost_matrix(
+        projection,
+        [local],
+        recon_image_cues=[valid_reprojected],
+        resource_id="R-1",
+        current_time=10.0,
+        frame_id="R-1/front_rgb",
+    )
+    stale_result = associator.build_cost_matrix(
+        projection,
+        [local],
+        recon_image_cues=[stale],
+        resource_id="R-1",
+        current_time=10.0,
+        frame_id="R-1/front_rgb",
+    )
+    wrong_frame_result = associator.build_cost_matrix(
+        projection,
+        [local],
+        recon_image_cues=[wrong_frame],
+        resource_id="R-1",
+        current_time=10.0,
+        frame_id="R-1/front_rgb",
+    )
+    wrong_scope_result = associator.build_cost_matrix(
+        projection,
+        [local],
+        recon_image_cues=[wrong_scope],
+        resource_id="R-1",
+        current_time=10.0,
+        frame_id="R-1/front_rgb",
+    )
+
+    key = ("G-assigned", "assigned_visual")
+    assert valid.breakdowns[key].recon_cue_cost < 0.0
+    assert stale_result.breakdowns[key].recon_cue_cost == 0.0
+    assert wrong_frame_result.breakdowns[key].recon_cue_cost == 0.0
+    assert wrong_scope_result.breakdowns[key].recon_cue_cost == 0.0
+
+
 def test_secondary_recon_cue_cannot_override_unauthorized_assignment() -> None:
     associator = TerminalAssociator()
     camera = make_camera()

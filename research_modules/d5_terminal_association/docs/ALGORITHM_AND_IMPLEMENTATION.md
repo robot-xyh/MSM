@@ -180,13 +180,14 @@ D5 将二级节点输入建模为 `ReconImageCue`，用于辅助本地视觉候�
 - `image_frame_id` 应表示 cue 所属图像帧；推荐在预处理后写成目标相机帧，例如 `interceptor_R1/front_camera`，并在 `metadata` 中保留原始二级节点帧。
 - 未重投影的二级相机像素不能直接和拦截机本地像素相减，否则会产生错误代价。
 
-### 9.3 推荐约束
+### 9.3 已实现约束
 
-当前代码支持 cue 降低代价，后续实验建议增加以下约束：
+当前代码支持 cue 降低代价，并在 `AssociationConfig` 与 `build_cost_matrix()/decide()` 中实现以下约束：
 
-- 新鲜度：加入 `max_recon_cue_age_s`，超过阈值的 cue 不参与代价。
-- 帧一致性：加入 `target_camera_frame_id` 或 `is_reprojected_to_local_camera=true` 标记。
-- 资源范围：`scoped_resource_ids` 非空表示仅对指定资源生效；空值当前语义可视为广播 cue。若实验阶段要求严格小范围分发，建议把空 scope 视为无效或显式写为 `broadcast_allowed=true`。
+- 新鲜度：`max_recon_cue_age_s` 默认 1 秒；超过阈值或来自未来的 cue 不参与代价。
+- 帧一致性：调用方传入 `frame_id` 时，cue 必须位于该目标相机帧，或通过 `metadata["target_frame_id"]` 指向该目标帧。
+- 重投影：若 `metadata["source_image_frame_id"]` 与目标帧不同，或 cue 通过 `target_frame_id` 指向目标帧，则必须设置 `metadata["reprojected_to_local_camera"] == True`。
+- 资源范围：`scoped_resource_ids` 非空表示仅对指定资源生效；空值按 `allow_broadcast_recon_cue` 配置决定是否视为广播 cue。
 - 置信度：`confidence` 只调节负代价大小，不改变门控和授权流程。
 - 指标：D6 应记录 `recon_cue_used_count`、cue 命中后 `locked` 比例、cue 相关误配次数和 stale cue 被拒次数。
 
@@ -603,7 +604,7 @@ margin 越小，表示候选越难区分。若仅有一个候选但其总代价�
 
 ### 15.2 TerminalConsistencySummary 字段建议
 
-建议 D5 在接口或日志层增加如下摘要结构。该结构可以由连续帧 `TerminalAssociation` 派生，不要求 D5 直接修改 D3/D4 分配。
+D5 已在接口层增加如下摘要结构。该结构由连续帧 `TerminalAssociation` 派生，不要求也不允许 D5 直接修改 D3/D4 分配。
 
 ```python
 @dataclass(frozen=True)
@@ -620,11 +621,24 @@ class TerminalConsistencySummary:
     candidate_cost_margin: float
     recon_cue_used: bool
     terminal_lock_age_s: float
+    consecutive_locked_frames: int
     consecutive_ambiguous_frames: int
     consecutive_hold_frames: int
     consecutive_reacquire_frames: int
     local_track_id: str | None
+    previous_decision_state: str | None
+    lock_lifecycle_state: str
+    lost_lock_event: bool
+    lock_reacquired_event: bool
+    event_summary: str
     competing_global_track_id: str | None
+    local_best_conflicts_with_assignment: bool
+    duplicate_terminal_lock_risk: bool
+    duplicate_lock_resource_ids: tuple[str, ...]
+    duplicate_local_track_ids: tuple[str, ...]
+    cross_view_support_count: int
+    cross_view_supporting_resource_ids: tuple[str, ...]
+    cross_view_decision_states: tuple[str, ...]
     recommended_d4_action: str  # observe | request_secondary_cue | report_conflict | arbitrate
     reason: str
 ```
@@ -634,8 +648,10 @@ class TerminalConsistencySummary:
 - `consistency_state="consistent"`：分配 ID 与版本一致，且当前帧或一段时间内有稳定 `locked` 证据。
 - `consistency_state="inconsistent"`：本地被动比较显示长期最佳视觉候选不支持当前 `assigned_global_track_id`，或版本/候选关系持续冲突。
 - `consistency_state="unknown"`：信息不足，例如连续 `ambiguous` 或 `reacquire`，无法确认分配是否错误。
-- `consistency_state="conflict"`：已验证友方重叠、授权/版本冲突或身份冲突；此时不应自动换绑。
+- `consistency_state="conflict"`：已验证友方重叠、授权/版本冲突、身份冲突或重复锁定风险；此时不应自动换绑。
 - `competing_global_track_id` 只允许来自 D2 已存在的全局航迹被动比较结果，用于上报仲裁；D5 不能把它写回为新的分配 ID。
+- `lost_lock_event` 和 `lock_reacquired_event` 只表达状态迁移事件，用于 D4/D6 统计丢锁和重捕获耗时。
+- `cross_view_support_count` 与 `duplicate_terminal_lock_risk` 来自 `TerminalObservationBus.cross_view_associations()`，用于把单资源状态与多视角支持/重复锁定风险统一到同一摘要。
 - `recommended_d4_action` 只是仲裁建议，不是执行动作。D4 仍需结合系统级风险和健康状态决定。
 
 ### 15.3 一致性判定规则
@@ -740,23 +756,18 @@ research_modules/d5_terminal_association/
 
 当前实现的主要局限：
 
-- `ReconImageCue` 还没有内置新鲜度和目标相机帧强校验，需由调用方预处理保证。
 - 仿真脚本尚未批量生成二级 cue 场景，`recon_cue_used_count` 需要接入 D6 或本模块实验统计。
-- `TerminalConsistencySummary` 目前是接口与日志建议，尚未实现为代码数据类。
 - 本地最佳候选与全局分配的被动一致性比较尚未形成独立测试场景。
-- 已实现最小 `TerminalObservationBus` 与 `CrossViewAssociation`，但跨无人机多相机几何融合尚未完整实现；`CrossViewObservation`、`CrossViewTrackEvidence` 和 `TerminalCrossViewFusion` 仍是接口建议。
+- 已实现最小 `TerminalObservationBus`、`CrossViewAssociation` 与 `TerminalConsistencySummary`，但跨无人机多相机几何融合尚未完整实现；`CrossViewObservation`、`CrossViewTrackEvidence` 和 `TerminalCrossViewFusion` 仍是接口建议。
 - 当前时间预测为简化常速度模型，不替代 D2 跟踪器。
 - 当前身份声明是仿真模型，不接入真实 Remote ID、MAVLink 或 DDS 安全栈。
 - 小目标图像检测质量对 MOT 输入影响很大，需要通过 AirSim 离线回放进一步评估。
 
 后续优先级：
 
-1. 在离线仿真中加入已重投影 `ReconImageCue`、过期 cue 和跨资源 cue 的对照场景。
-2. 增加 cue 新鲜度、frame 语义和空 scope 策略的显式配置。
-3. 把 `recon_cue_used_count`、stale cue 拒绝次数和 cue 相关误配计入 D6。
-4. 实现 `TerminalConsistencySummary` 的离线派生器，统计 lock age、连续状态帧数和 cost margin。
-5. 增加本地最佳候选长期偏离中心分配的被动一致性测试。
-6. 扩展 `TerminalObservationBus` 的窗口、过期剔除和统计接口，并实现 `TerminalCrossViewFusion` 的离线原型，覆盖 UAV1 看到 1/2/3、UAV2 看到 2/3/4 的重叠视场几何融合场景。
-7. 给 `LocalVisualTrack` 或其包装结构增加 `resource_id/camera_id/frame_id/camera_pose/covariance`。
+1. 把 `recon_cue_used_count`、stale cue 拒绝次数和 cue 相关误配计入 D6。
+2. 增加本地最佳候选长期偏离中心分配的被动一致性测试。
+3. 扩展 `TerminalObservationBus` 的窗口、过期剔除和统计接口，并实现 `TerminalCrossViewFusion` 的离线原型，覆盖 UAV1 看到 1/2/3、UAV2 看到 2/3/4 的重叠视场几何融合场景。
+4. 给 `LocalVisualTrack` 或其包装结构增加 `resource_id/camera_id/frame_id/camera_pose/covariance`。
 8. 用 AirSim 标注框和离线 MOT 输出比较 ByteTrack、BoT-SORT、Deep SORT 的输入质量。
 9. 建立失败样本库，重点保存友方重叠、目标交叉、遮挡恢复、多相机时间错位和跨相机 cue 错配案例。

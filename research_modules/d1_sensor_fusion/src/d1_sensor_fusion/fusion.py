@@ -8,8 +8,18 @@ import numpy as np
 
 from .ekf import EKFState, ekf_update, predict_to
 from .motion import wrap_residual
-from .observations import measurement_model_for, radar_state_from_observation
-from .types import COMMUNICATION_METADATA_KEYS, GlobalTrack, SensorObservation, TrackLevel
+from .observations import (
+    RadarCovarianceConfig,
+    measurement_model_for,
+    radar_state_from_observation,
+)
+from .types import (
+    COMMUNICATION_METADATA_KEYS,
+    GlobalTrack,
+    SensorObservation,
+    TrackLevel,
+    TrackUncertaintySummary,
+)
 
 CHI2_2_95 = 5.991464547107979
 
@@ -53,6 +63,8 @@ class FusionAdapter:
         association_gate: float = 40.0,
         latency_compensation: bool = True,
         use_truth_hints_for_association: bool = False,
+        radar_covariance_config: RadarCovarianceConfig | dict | None = None,
+        source_deduplication: bool = True,
     ) -> None:
         self.process_noise = float(process_noise)
         self.bucket_size = float(bucket_size)
@@ -62,9 +74,17 @@ class FusionAdapter:
         self.association_gate = float(association_gate)
         self.latency_compensation = bool(latency_compensation)
         self.use_truth_hints_for_association = bool(use_truth_hints_for_association)
+        self.radar_covariance_config = (
+            radar_covariance_config
+            if isinstance(radar_covariance_config, RadarCovarianceConfig)
+            else RadarCovarianceConfig(**dict(radar_covariance_config or {}))
+        )
+        self.source_deduplication = bool(source_deduplication)
         self.tracks: dict[str, TrackRecord] = {}
         self.current_time = 0.0
         self._next_track_id = 1
+        self._processed_lineage_keys: set[tuple] = set()
+        self.duplicate_observation_count = 0
 
     def _bucket(self, timestamp: float) -> int:
         """Return the fixed-lag cache bucket for a timestamp."""
@@ -81,6 +101,10 @@ class FusionAdapter:
             effective = observation.with_measurement_timestamp(observation.arrival_timestamp)
 
         self._predict_all_to(current_time)
+        if self._is_duplicate_observation(effective):
+            self.duplicate_observation_count += 1
+            return self.global_tracks()
+
         track_id = self._associate(effective)
         if track_id is None:
             record = self._create_track(effective, current_time)
@@ -144,6 +168,11 @@ class FusionAdapter:
 
         record = self.tracks[track_id]
         current_time = self.current_time if current_time is None else float(current_time)
+        if self._is_duplicate_observation(observation):
+            self.duplicate_observation_count += 1
+            record.current_state = predict_to(record.current_state, current_time, self.process_noise)
+            return self._to_global_track(record)
+
         if observation.observation_id not in {obs.observation_id for obs in record.observations}:
             record.observations.append(observation)
         record.hits += 1
@@ -155,10 +184,58 @@ class FusionAdapter:
         record.current_state = state
         record.recent_nis = deque(nises[-50:], maxlen=50)
         self._prune_record(record, current_time)
+        self._mark_observation_processed(observation)
         return self._to_global_track(record)
 
     def global_tracks(self) -> list[GlobalTrack]:
         return [self._to_global_track(record) for record in self.tracks.values()]
+
+    def track_uncertainty_summaries(self) -> list[TrackUncertaintySummary]:
+        return [self.track_uncertainty_summary(track) for track in self.global_tracks()]
+
+    def track_uncertainty_summary(self, track: GlobalTrack) -> TrackUncertaintySummary:
+        metadata = dict(track.metadata)
+        valid_at = float(metadata.get("valid_at", track.timestamp))
+        published_at = float(metadata.get("published_at", self.current_time))
+        measurement_timestamp = _optional_float(metadata.get("latest_measurement_timestamp"))
+        arrival_timestamp = _optional_float(metadata.get("latest_arrival_timestamp"))
+        if measurement_timestamp is not None:
+            measurement_age_s = max(0.0, published_at - measurement_timestamp)
+        else:
+            measurement_age_s = max(0.0, published_at - valid_at)
+
+        position_trace = float(np.trace(track.covariance[:3, :3]))
+        velocity_trace = float(np.trace(track.covariance[3:, 3:]))
+        a95 = float(metadata.get("a95_m", covariance_a95(track.covariance)))
+        source_support = {str(key): int(value) for key, value in track.source_support.items()}
+        source_diversity_count = sum(1 for count in source_support.values() if count > 0)
+        readiness = self._handover_readiness(
+            track.track_level,
+            a95,
+            measurement_age_s,
+            source_diversity_count,
+            track.last_nis,
+        )
+        return TrackUncertaintySummary(
+            track_id=track.global_track_id,
+            global_track_id=track.global_track_id,
+            valid_at=valid_at,
+            published_at=published_at,
+            track_bucket=self._bucket(valid_at),
+            track_level=track.track_level.value,
+            position_covariance_trace=position_trace,
+            velocity_covariance_trace=velocity_trace,
+            a95_m=a95,
+            measurement_age_s=measurement_age_s,
+            source_support=source_support,
+            coverage_cell=_optional_str(metadata.get("coverage_cell")),
+            measurement_timestamp=measurement_timestamp,
+            arrival_timestamp=arrival_timestamp,
+            source_diversity_count=source_diversity_count,
+            last_nis=track.last_nis,
+            handover_readiness=readiness,
+            quality_flags=tuple(metadata.get("quality_flags", ())),
+        )
 
     def _create_track(
         self,
@@ -167,7 +244,10 @@ class FusionAdapter:
     ) -> TrackRecord | None:
         if observation.modality != "radar":
             return None
-        state, covariance = radar_state_from_observation(observation)
+        if self._is_duplicate_observation(observation):
+            self.duplicate_observation_count += 1
+            return None
+        state, covariance = radar_state_from_observation(observation, self.radar_covariance_config)
         initial = EKFState(state, covariance, observation.measurement_timestamp)
         current = predict_to(initial, current_time, self.process_noise)
         track_id = f"global_track_{self._next_track_id:03d}"
@@ -192,6 +272,7 @@ class FusionAdapter:
             },
         )
         self.tracks[track_id] = record
+        self._mark_observation_processed(observation)
         return record
 
     def _predict_all_to(self, timestamp: float) -> None:
@@ -223,7 +304,10 @@ class FusionAdapter:
         try:
             state_at_measurement = self._state_at(record, observation.measurement_timestamp)
             if observation.modality == "radar":
-                obs_state, obs_cov = radar_state_from_observation(observation)
+                obs_state, obs_cov = radar_state_from_observation(
+                    observation,
+                    self.radar_covariance_config,
+                )
                 diff = obs_state[:3] - state_at_measurement.state[:3]
                 s = obs_cov[:3, :3] + state_at_measurement.covariance[:3, :3]
                 s = s + 1e-6 * np.eye(3)
@@ -233,7 +317,7 @@ class FusionAdapter:
             return np.inf
 
     def _innovation_nis(self, state: EKFState, observation: SensorObservation) -> float:
-        model = measurement_model_for(observation)
+        model = measurement_model_for(observation, self.radar_covariance_config)
         h = model.h_fn(state.state)
         h_j = model.h_jacobian_fn(state.state)
         residual = wrap_residual(model.z - h, model.angle_indices)
@@ -265,7 +349,7 @@ class FusionAdapter:
             if observation.measurement_timestamp > until_time + 1e-9:
                 continue
             state = predict_to(state, observation.measurement_timestamp, self.process_noise)
-            model = measurement_model_for(observation)
+            model = measurement_model_for(observation, self.radar_covariance_config)
             state, nis = ekf_update(
                 state,
                 model.z,
@@ -288,7 +372,7 @@ class FusionAdapter:
         )
         if earliest.observation_id == record.initial_observation_id:
             return
-        state, covariance = radar_state_from_observation(earliest)
+        state, covariance = radar_state_from_observation(earliest, self.radar_covariance_config)
         record.initial_state = EKFState(state, covariance, earliest.measurement_timestamp)
         record.initial_observation_id = earliest.observation_id
         record.created_timestamp = earliest.measurement_timestamp
@@ -338,6 +422,7 @@ class FusionAdapter:
                 "hits": record.hits,
                 "latency_compensation": self.latency_compensation,
                 "source_support": dict(record.source_support),
+                "duplicate_observation_count": self.duplicate_observation_count,
             }
         )
         return GlobalTrack(
@@ -373,6 +458,46 @@ class FusionAdapter:
             return TrackLevel.STABLE
         return TrackLevel.COARSE
 
+    def _handover_readiness(
+        self,
+        level: TrackLevel,
+        a95_m: float,
+        measurement_age_s: float,
+        source_diversity_count: int,
+        last_nis: float | None,
+    ) -> float:
+        eps = 1e-6
+        covariance_score = min(1.0, self.handover_threshold_m / max(float(a95_m), eps))
+        latency_budget_s = max(self.bucket_size, 1.0)
+        latency_score = min(1.0, latency_budget_s / max(float(measurement_age_s), eps))
+        source_score = min(1.0, source_diversity_count / 2.0)
+        if last_nis is None:
+            nis_score = 1.0
+        else:
+            nis_score = 1.0 if last_nis <= self.association_gate else 0.35
+        level_score = {
+            TrackLevel.HANDOVER: 1.0,
+            TrackLevel.STABLE: 0.6,
+            TrackLevel.COARSE: 0.2,
+            TrackLevel.LOST: 0.0,
+        }[level]
+        return float(
+            np.clip(
+                min(covariance_score, latency_score, source_score, nis_score, level_score),
+                0.0,
+                1.0,
+            )
+        )
+
+    def _is_duplicate_observation(self, observation: SensorObservation) -> bool:
+        if not self.source_deduplication:
+            return False
+        return observation.source_lineage_key in self._processed_lineage_keys
+
+    def _mark_observation_processed(self, observation: SensorObservation) -> None:
+        if self.source_deduplication:
+            self._processed_lineage_keys.add(observation.source_lineage_key)
+
     def ingest_many(self, observations: Iterable[SensorObservation]) -> list[GlobalTrack]:
         tracks: list[GlobalTrack] = []
         for observation in sorted(observations, key=lambda obs: obs.arrival_timestamp):
@@ -397,4 +522,19 @@ def _metadata_from_observation(observation: SensorObservation) -> dict:
             metadata[key] = dict(value) if key == "source_support" else value
     if observation.source_node_id:
         metadata["source_node_ids"] = (observation.source_node_id,)
+    for key in ("coverage_cell", "quality_flags"):
+        if key in observation.metadata:
+            metadata[key] = observation.metadata[key]
     return metadata
+
+
+def _optional_float(value) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
+def _optional_str(value) -> str | None:
+    if value is None:
+        return None
+    return str(value)

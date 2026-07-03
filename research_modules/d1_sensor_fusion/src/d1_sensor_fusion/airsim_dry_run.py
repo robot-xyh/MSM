@@ -176,7 +176,7 @@ def _observation_for_sensor(
         measurement = radar_h(state, sensor_position)
         measurement[1] = wrap_angle(measurement[1])
         measurement[2] = wrap_angle(measurement[2])
-        covariance = radar_covariance_from_range(measurement[0])
+        covariance = radar_covariance_from_range(measurement[0], config.get("covariance_config"))
         return SensorObservation(
             observation_id=f"dry_radar_{target_id}_{frame_index:04d}",
             sensor_id=sensor_id,

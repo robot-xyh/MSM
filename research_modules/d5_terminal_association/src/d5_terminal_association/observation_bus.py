@@ -126,6 +126,10 @@ class TerminalObservationBus:
         """
 
         grouped: dict[str, list[TerminalObservation]] = defaultdict(list)
+        locked_local_to_global: dict[str, list[str]] = defaultdict(list)
+        locked_global_to_resources: dict[str, list[str]] = defaultdict(list)
+        observed_global_ids_by_resource: dict[str, list[str]] = defaultdict(list)
+
         for observation in self._observations:
             association = observation.terminal_association
             if association is None:
@@ -133,6 +137,23 @@ class TerminalObservationBus:
             if association.local_track_id is None and association.decision_state == "reacquire":
                 continue
             grouped[association.assigned_global_track_id].append(observation)
+            observed_global_ids_by_resource[observation.resource_id].append(
+                association.assigned_global_track_id
+            )
+            if association.decision_state == "locked" and association.local_track_id is not None:
+                local_key = _namespaced_local_id(observation)
+                locked_local_to_global[local_key].append(association.assigned_global_track_id)
+                locked_global_to_resources[association.assigned_global_track_id].append(
+                    observation.resource_id
+                )
+
+        duplicate_local_ids_by_global: dict[str, list[str]] = defaultdict(list)
+        for local_id, global_ids in locked_local_to_global.items():
+            unique_global_ids = _unique(global_ids)
+            if len(unique_global_ids) <= 1:
+                continue
+            for global_id in unique_global_ids:
+                duplicate_local_ids_by_global[global_id].append(local_id)
 
         associations: list[CrossViewAssociation] = []
         for global_track_id, observations in grouped.items():
@@ -165,7 +186,9 @@ class TerminalObservationBus:
                 (float(np.clip(association.ambiguity_score, 0.0, 1.0)) for association in terminal_associations),
                 default=1.0,
             )
-            duplicate_risk = len(locked_resources) > 1
+            duplicate_lock_resource_ids = _unique(locked_global_to_resources[global_track_id])
+            duplicate_local_track_ids = _unique(duplicate_local_ids_by_global[global_track_id])
+            duplicate_risk = len(duplicate_lock_resource_ids) > 1 or bool(duplicate_local_track_ids)
             reason = "multi_view_support" if len(supporting_resource_ids) > 1 else "single_view_support"
             if duplicate_risk:
                 reason = "duplicate_terminal_lock_risk"
@@ -190,7 +213,15 @@ class TerminalObservationBus:
                         1 for association in terminal_associations if association.recon_cue_used
                     ),
                     support_count=len(supporting_resource_ids),
+                    duplicate_lock_resource_ids=duplicate_lock_resource_ids,
+                    duplicate_local_track_ids=duplicate_local_track_ids,
                     reason=reason,
+                    metadata={
+                        "observed_global_track_ids_by_resource": {
+                            resource_id: _unique(global_ids)
+                            for resource_id, global_ids in observed_global_ids_by_resource.items()
+                        }
+                    },
                 )
             )
 

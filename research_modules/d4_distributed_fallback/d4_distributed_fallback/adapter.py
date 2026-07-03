@@ -24,14 +24,15 @@ from .active_degradation import (
     TerminalAssociationSummary,
     TerminalDecisionState,
     TrackUncertaintySummary,
+    summarize_secondary_lifecycle,
 )
 from .models import (
-    AvailabilityBand,
     C2Health,
     CommunicationSummary,
     LinkType,
     PayloadKind,
     ResourceSummary,
+    SecondaryNodeLifecycleSummary,
     to_jsonable,
 )
 
@@ -54,6 +55,11 @@ class D4DecisionRecord:
     mode: DegradationMode
     action: DegradationAction
     reason: str
+    selected_coordinator: str
+    trigger_reason: str
+    trigger_timestamp: float
+    decision_timestamp: float
+    review_label: str = "unknown"
     plan_id: str | None = None
     plan_version: int | None = None
     track_version: int | None = None
@@ -64,6 +70,7 @@ class D4DecisionRecord:
     c2_health: C2Health = C2Health.NORMAL
     secondary_available: bool = False
     communication_fresh: bool | None = None
+    secondary_lifecycle: tuple[SecondaryNodeLifecycleSummary, ...] = ()
     requires_human_review: bool = False
     arbitration_source: str = "d4_arbitration_adapter"
 
@@ -75,8 +82,14 @@ class D4DecisionRecord:
 
         return {
             "d4_action": self.action.value,
-            "degradation_mode": self.mode.value,
+            "degradation_mode": _d6_degradation_mode(self.mode),
+            "d4_degradation_mode": self.mode.value,
             "d4_reason": self.reason,
+            "selected_coordinator": self.selected_coordinator,
+            "trigger_reason": self.trigger_reason,
+            "trigger_timestamp": self.trigger_timestamp,
+            "decision_timestamp": self.decision_timestamp,
+            "review_label": self.review_label,
             "resource_id": self.resource_id,
             "global_track_id": self.global_track_id,
             "plan_id": self.plan_id,
@@ -89,6 +102,7 @@ class D4DecisionRecord:
             "c2_health": self.c2_health.value,
             "secondary_available": self.secondary_available,
             "communication_fresh": self.communication_fresh,
+            "secondary_lifecycle": to_jsonable(self.secondary_lifecycle),
             "requires_human_review": self.requires_human_review,
             "arbitration_source": self.arbitration_source,
         }
@@ -98,7 +112,7 @@ class D4DecisionRecord:
 
         return {
             "timestamp": self.timestamp,
-            "event_type": "d4_arbitration_decision",
+            "event_type": _d6_event_type(self.mode),
             "actor_id": self.resource_id,
             "severity": "info" if self.mode == DegradationMode.NONE else "warning",
             "note": self.reason,
@@ -115,6 +129,7 @@ class D4ArbitrationResult:
     assignment_validity: AssignmentValiditySummary
     terminal_association: TerminalAssociationSummary
     communication_summaries: tuple[CommunicationSummary, ...]
+    secondary_lifecycle: tuple[SecondaryNodeLifecycleSummary, ...]
     decision: ActiveDegradationDecision
     record: D4DecisionRecord
 
@@ -126,6 +141,7 @@ class D4ArbitrationResult:
                 "association_risk": to_jsonable(self.association_risk),
                 "assignment_validity": to_jsonable(self.assignment_validity),
                 "terminal_association": to_jsonable(self.terminal_association),
+                "secondary_lifecycle": to_jsonable(self.secondary_lifecycle),
             }
         )
         return metadata
@@ -161,6 +177,8 @@ class D4ArbitrationAdapter:
         expected_plan_version: int | None = None,
         track_version: int | None = None,
         plan_id: str | None = None,
+        trigger_timestamp: float | None = None,
+        review_label: str = "unknown",
     ) -> D4ArbitrationResult:
         """Build summaries, run the arbiter, and return a decision record."""
 
@@ -217,6 +235,12 @@ class D4ArbitrationAdapter:
             )
             if item is not None
         )
+        lifecycle = summarize_secondary_lifecycle(
+            list(secondary_nodes),
+            resolved_coverage,
+            communication_summaries=list(communications) if communications else None,
+            current_time_s=timestamp,
+        )
         health = _c2_health(c2_health)
         decision = self.arbiter.evaluate(
             track_uncertainty=track_summary,
@@ -235,6 +259,11 @@ class D4ArbitrationAdapter:
             mode=decision.mode,
             action=decision.action,
             reason=decision.reason,
+            selected_coordinator=_selected_coordinator(decision.action),
+            trigger_reason=decision.reason,
+            trigger_timestamp=float(trigger_timestamp if trigger_timestamp is not None else timestamp),
+            decision_timestamp=float(timestamp),
+            review_label=review_label,
             plan_id=plan_id or _string_or_none(_get(plan, "plan_id")),
             plan_version=_optional_int(_get(plan, "version", _get(plan, "plan_version"))),
             track_version=track_version or _optional_int(_metadata(track).get("track_version")),
@@ -243,8 +272,9 @@ class D4ArbitrationAdapter:
             terminal_consistent=decision.terminal_consistent,
             risk_factors=decision.risk_factors,
             c2_health=health,
-            secondary_available=_secondary_available(secondary_nodes),
+            secondary_available=_secondary_available(lifecycle),
             communication_fresh=_communication_fresh(communications, timestamp),
+            secondary_lifecycle=lifecycle,
             requires_human_review=decision.requires_human_review,
         )
         return D4ArbitrationResult(
@@ -253,6 +283,7 @@ class D4ArbitrationAdapter:
             assignment_validity=assignment_summary,
             terminal_association=terminal_summary,
             communication_summaries=communications,
+            secondary_lifecycle=lifecycle,
             decision=decision,
             record=record,
         )
@@ -635,11 +666,8 @@ def _payload_kind(value: Any) -> PayloadKind:
     return aliases.get(raw, PayloadKind.RESOURCE_SUMMARY)
 
 
-def _secondary_available(nodes: Sequence[ResourceSummary]) -> bool:
-    return any(
-        node.availability_band != AvailabilityBand.NONE and not node.operator_hold
-        for node in nodes
-    )
+def _secondary_available(nodes: Sequence[SecondaryNodeLifecycleSummary]) -> bool:
+    return any(node.secondary_available for node in nodes)
 
 
 def _communication_fresh(records: Sequence[CommunicationSummary], timestamp: float) -> bool | None:
@@ -654,3 +682,35 @@ def dataclass_to_dict(value: Any) -> dict[str, Any]:
     if is_dataclass(value):
         return to_jsonable(asdict(value))
     return to_jsonable(value)
+
+
+def _d6_degradation_mode(mode: DegradationMode) -> str:
+    if mode == DegradationMode.ACTIVE_DEGRADATION:
+        return "active"
+    if mode == DegradationMode.PASSIVE_FAILOVER:
+        return "passive"
+    return "none"
+
+
+def _d6_event_type(mode: DegradationMode) -> str:
+    if mode == DegradationMode.ACTIVE_DEGRADATION:
+        return "active_degradation_decision"
+    if mode == DegradationMode.PASSIVE_FAILOVER:
+        return "passive_failover_start"
+    return "d4_arbitration_decision"
+
+
+def _selected_coordinator(action: DegradationAction) -> str:
+    if action in {
+        DegradationAction.CONTINUE_CENTER,
+        DegradationAction.REQUEST_CENTER_REPLAN,
+    }:
+        return "center"
+    if action in {
+        DegradationAction.REQUEST_SECONDARY_ASSIST,
+        DegradationAction.DEGRADE_TO_SECONDARY,
+    }:
+        return "secondary_node"
+    if action == DegradationAction.DEGRADE_TO_DISTRIBUTED:
+        return "distributed_cbba"
+    return "hold_review"

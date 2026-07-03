@@ -218,32 +218,45 @@ D3 侧建议持续计算以下信号，并写入计划日志或单独的 `Assign
 
 ### 8.2 `AssignmentValiditySummary` 建议结构
 
-建议 D3 在每个规划周期额外发布或记录如下摘要，供 D4 和 D6 消费：
+当前 D3 已实现精简版 `AssignmentValiditySummary`，用于把 main/D4/D6 需要的 P1 运行时摘要从 `AssignmentPlan` 中稳定导出：
 
 ```python
 AssignmentValiditySummary(
     plan_id: str,
     version: int,
-    evaluated_at: float,
     plan_age_s: float,
-    plan_version_stale: bool,
-    previous_total_cost_current: float,
-    candidate_total_cost: float,
-    assignment_cost_growth: float,
-    new_vs_old_cost_ratio: float,
-    resource_state_change_count: int,
-    window_failure_count: int,
-    hysteresis_hold_count: int,
-    high_threat_unassigned_count: int,
-    d2_uncertainty_level: str,      # low | medium | high
-    d5_consistency_state: str,      # consistent | ambiguous | multi_frame_inconsistent | friend_overlap_hold
-    validity_state: str,           # valid | replan_recommended | d4_arbitration_requested | invalid_hold
-    recommended_action: str,       # keep_plan | central_replan | request_d4_secondary_node | request_d4_distributed | hold_for_observation
-    reasons: tuple[str, ...],
+    assignment_latency_s: float,
+    cost_margin: float,
+    stale_plan_version: bool,
+    duplicate_assignment_count: int,
+    unassigned_high_threat_count: int,
 )
 ```
 
-当前代码尚未实现该数据类；本节定义的是 D3 对 D4 的接口建议。若后续实现，应保持字段只描述计划有效性、成本变化、版本时效和跨模块一致性，不加入真实硬件、火控或自动处置含义。
+导出 helper 为：
+
+```python
+summary = assignment_validity_summary_from_plan(
+    plan,
+    evaluated_at=t_now,
+    latest_version=latest_version,
+    latest_plan_id=latest_plan_id,
+    assignment_latency_s=latency_s,
+    tracks=tracks,
+    high_threat_threshold=0.7,
+)
+```
+
+字段含义：
+
+- `plan_age_s`：`evaluated_at - plan.created_at`。
+- `assignment_latency_s`：由调用方传入，或通过 `input_timestamp_s`/计划 metadata 派生；缺省为 `0.0`。
+- `cost_margin`：优先使用 `previous_total_cost_current - candidate_total_cost`，正值表示候选计划相对旧计划重评分更便宜。
+- `stale_plan_version`：调用方提供的最新 `plan_id/version` 与该计划不一致时为真。
+- `duplicate_assignment_count`：同一目标被多个资源分配或同一资源被多个目标分配的异常计数。
+- `unassigned_high_threat_count`：未分配集合中高威胁目标数量，可由 `tracks` 和 `high_threat_threshold` 或显式 high-threat ID 集合计算。
+
+该 summary 只描述计划有效性、成本变化、版本时效和跨模块一致性，不包含真实硬件、火控或自动处置含义。更细的 D2 不确定性、D5 多帧一致性、D4 主动降级执行状态仍由 main/D4 在运行时闭环里聚合。
 
 ### 8.3 中心重分配与 D4 主动降级的边界
 
@@ -272,12 +285,20 @@ D3 提供 `evaluate_terminal_feedback(...)` 作为集成层最小 helper，用�
 
 | D5 反馈或风险 | D3 建议 | 约束 |
 |---|---|---|
-| `ambiguous` / `hold` | `hold` | 保持原 `assigned_global_track_id`，等待更多证据 |
+| `ambiguous` / `hold` / `friend_overlap_hold` | `hold` | 保持原 `assigned_global_track_id`，等待更多证据 |
 | `reacquire` | `replan` | 中心重新计算 `AssignmentPlan`，不允许本地换绑 |
-| `mismatch` | `secondary_arbitration` | 请求 D4 二级节点仲裁 |
+| `mismatch` / `multi_frame_inconsistent` / `cross_view_conflict` | `secondary_arbitration` | 请求 D4 二级节点仲裁 |
 | `duplicate_terminal_lock_risk=True` | `secondary_arbitration` | 抑制重复锁定，进入二级节点/中心协调 |
 
-该 helper 的输出 `allow_local_rebind` 始终为 `False`。正常态仍采用 Hungarian；复杂约束升级 OR-Tools Min Cost Flow；中心计划不可信但二级节点可用时，优先二级节点仲裁，再进入 CBBA/拍卖式保底。
+该 helper 的输出 `allow_local_rebind` 始终为 `False`，并显式带有 `main_action` 与 `planner_metadata`。`planner_metadata` 当前包含：
+
+- `operator_hold_suggested`：`hold` 时建议 main 将对应资源输入映射为 `ResourceState.operator_hold=True`。
+- `prohibit_assignment_suggested`、`prohibited_edges`：`secondary_arbitration` 或重复末端锁定时建议 main 对当前边做禁配/二级仲裁处理。
+- `feasibility_suggestion`、`feasibility_by_resource`：用于把禁配或可行性复核写回下一轮 `TargetTrack.feasibility_by_resource`。
+- `fov_difficulty_suggestion`、`fov_difficulty_by_resource`：用于把末端视场困难写回下一轮 `TargetTrack.fov_difficulty_by_resource`。
+- `d7_gate_action`、`d4_request`：供 main 驱动 D7 gate 或 D4 仲裁请求。
+
+正常态仍采用 Hungarian；复杂约束升级 OR-Tools Min Cost Flow；中心计划不可信但二级节点可用时，优先二级节点仲裁，再进入 CBBA/拍卖式保底。本轮未实现 OR-Tools Min Cost Flow 或 CP-SAT。
 
 ### 8.6 建议阈值与仿真记录
 
@@ -412,12 +433,12 @@ D6 还应统计 `AssignmentValiditySummary` 的状态分布，区分中心滚动
 - `conflict_risk` 是外部传入的边级摘要，未在 D3 内部计算真实轨迹冲突。
 - `human_authorization_state` 当前强制为 `required`，模块不实现授权工作流。
 - 仿真覆盖 8v8 滚动场景，仍需扩展到不同目标密度、通信降级和 D5 末端模糊反馈闭环。
-- `AssignmentValiditySummary` 目前是接口建议，尚未实现为代码数据类或日志记录器。
+- `AssignmentValiditySummary` 已实现为代码数据类，并可通过 `assignment_validity_summary_from_plan(...)` 从 `AssignmentPlan` 导出；D6-compatible assignment record 也可由 `assignment_records_from_plan(...)` 生成。后续局限在于真实运行时是否持续写入这些摘要，而不是 D3 模块缺少数据结构。
 
 后续建议：
 
 - 与 D2/D5 建立统一反馈字段，把 ID Switch 风险、终端模糊和友方重叠映射到 D3 代价项。
 - 为 D4 增加计划版本冲突和中心恢复合并的集成测试。
-- 为 D4 主动降级增加 D3 侧有效性评估器，输出 `AssignmentValiditySummary` 并由 D6 统计触发原因。
+- 在 main 运行时持续调用 D3 侧有效性评估器，输出 `AssignmentValiditySummary` 并由 D6 统计触发原因。
 - 在保持接口不变的前提下实现 OR-Tools 最小费用流可选后端。
 - 由 D6 批量运行多随机种子、多权重、多密度场景，输出统一中文实验报告和图表。

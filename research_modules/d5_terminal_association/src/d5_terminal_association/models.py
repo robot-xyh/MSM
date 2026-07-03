@@ -193,6 +193,7 @@ class ReconImageCue:
         object.__setattr__(self, "bbox", _optional_bbox(self.bbox))
         object.__setattr__(self, "confidence", float(np.clip(self.confidence, 0.0, 1.0)))
         object.__setattr__(self, "scoped_resource_ids", _as_string_tuple(self.scoped_resource_ids))
+        object.__setattr__(self, "metadata", dict(self.metadata))
 
 
 @dataclass(frozen=True)
@@ -265,6 +266,7 @@ class TerminalAssociation:
     reason: str = ""
     candidate_costs: list[tuple[str, float]] = field(default_factory=list)
     recon_cue_used: bool = False
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -333,6 +335,8 @@ class CrossViewAssociation:
     friend_conflict_states: tuple[str, ...] = ()
     recon_cue_used_count: int = 0
     support_count: int = 0
+    duplicate_lock_resource_ids: tuple[str, ...] = ()
+    duplicate_local_track_ids: tuple[str, ...] = ()
     reason: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -350,6 +354,10 @@ class CrossViewAssociation:
         object.__setattr__(self, "decision_states", _as_string_tuple(self.decision_states))
         object.__setattr__(self, "friend_conflict_states", _as_string_tuple(self.friend_conflict_states))
         object.__setattr__(
+            self, "duplicate_lock_resource_ids", _as_string_tuple(self.duplicate_lock_resource_ids)
+        )
+        object.__setattr__(self, "duplicate_local_track_ids", _as_string_tuple(self.duplicate_local_track_ids))
+        object.__setattr__(
             self,
             "association_confidences",
             tuple(float(np.clip(value, 0.0, 1.0)) for value in self.association_confidences),
@@ -357,4 +365,72 @@ class CrossViewAssociation:
         object.__setattr__(self, "ambiguity_score", float(np.clip(self.ambiguity_score, 0.0, 1.0)))
         object.__setattr__(self, "recon_cue_used_count", int(self.recon_cue_used_count))
         object.__setattr__(self, "support_count", int(self.support_count))
+        object.__setattr__(self, "metadata", dict(self.metadata))
+
+
+@dataclass(frozen=True)
+class TerminalConsistencySummary:
+    """Window/state summary for D4/D6 consumers.
+
+    This summary is derived from one resource's terminal association stream and
+    optional cross-view summaries. It is an advisory signal only; it does not
+    create assignments or alter center-owned global track IDs.
+    """
+
+    resource_id: str
+    assigned_global_track_id: str
+    assignment_version: int
+    timestamp: float
+    decision_state: str
+    consistency_state: str
+    association_confidence: float
+    ambiguity_score: float
+    friend_conflict_state: str
+    candidate_cost_margin: float
+    recon_cue_used: bool
+    terminal_lock_age_s: float
+    consecutive_locked_frames: int
+    consecutive_ambiguous_frames: int
+    consecutive_hold_frames: int
+    consecutive_reacquire_frames: int
+    local_track_id: str | None = None
+    previous_decision_state: str | None = None
+    lock_lifecycle_state: str = "unknown"
+    lost_lock_event: bool = False
+    lock_reacquired_event: bool = False
+    event_summary: str = ""
+    competing_global_track_id: str | None = None
+    local_best_conflicts_with_assignment: bool = False
+    duplicate_terminal_lock_risk: bool = False
+    duplicate_lock_resource_ids: tuple[str, ...] = ()
+    duplicate_local_track_ids: tuple[str, ...] = ()
+    cross_view_support_count: int = 0
+    cross_view_supporting_resource_ids: tuple[str, ...] = ()
+    cross_view_decision_states: tuple[str, ...] = ()
+    recommended_d4_action: str = "observe"
+    reason: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.resource_id:
+            raise ValueError("resource_id must be non-empty")
+        if not self.assigned_global_track_id:
+            raise ValueError("assigned_global_track_id must be non-empty")
+        object.__setattr__(self, "timestamp", float(self.timestamp))
+        object.__setattr__(
+            self, "association_confidence", float(np.clip(self.association_confidence, 0.0, 1.0))
+        )
+        object.__setattr__(self, "ambiguity_score", float(np.clip(self.ambiguity_score, 0.0, 1.0)))
+        object.__setattr__(self, "terminal_lock_age_s", max(0.0, float(self.terminal_lock_age_s)))
+        object.__setattr__(self, "consecutive_locked_frames", int(self.consecutive_locked_frames))
+        object.__setattr__(self, "consecutive_ambiguous_frames", int(self.consecutive_ambiguous_frames))
+        object.__setattr__(self, "consecutive_hold_frames", int(self.consecutive_hold_frames))
+        object.__setattr__(self, "consecutive_reacquire_frames", int(self.consecutive_reacquire_frames))
+        object.__setattr__(self, "duplicate_lock_resource_ids", _as_string_tuple(self.duplicate_lock_resource_ids))
+        object.__setattr__(self, "duplicate_local_track_ids", _as_string_tuple(self.duplicate_local_track_ids))
+        object.__setattr__(
+            self, "cross_view_supporting_resource_ids", _as_string_tuple(self.cross_view_supporting_resource_ids)
+        )
+        object.__setattr__(self, "cross_view_decision_states", _as_string_tuple(self.cross_view_decision_states))
+        object.__setattr__(self, "cross_view_support_count", int(self.cross_view_support_count))
         object.__setattr__(self, "metadata", dict(self.metadata))

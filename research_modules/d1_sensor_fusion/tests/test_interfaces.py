@@ -5,7 +5,12 @@ import pytest
 
 from d1_sensor_fusion.compat import FilterPyBackendPlaceholder, StoneSoupAdapterPlaceholder
 from d1_sensor_fusion.fusion import FusionAdapter
-from d1_sensor_fusion.observations import acoustic_covariance, radar_covariance_from_range, radar_h
+from d1_sensor_fusion.observations import (
+    RadarCovarianceConfig,
+    acoustic_covariance,
+    radar_covariance_from_range,
+    radar_h,
+)
 from d1_sensor_fusion.types import SensorObservation
 
 
@@ -73,6 +78,18 @@ def test_radar_covariance_grows_with_range() -> None:
     assert far[3, 3] > near[3, 3]
 
 
+def test_radar_covariance_config_preserves_default_and_can_be_tuned() -> None:
+    default = radar_covariance_from_range(250.0)
+    explicit_default = radar_covariance_from_range(250.0, RadarCovarianceConfig())
+    tuned = radar_covariance_from_range(
+        250.0,
+        RadarCovarianceConfig(range_sigma_base_m=4.0, range_sigma_per_m=0.02),
+    )
+
+    assert np.allclose(default, explicit_default)
+    assert tuned[0, 0] > default[0, 0]
+
+
 def test_fusion_adapter_required_methods_create_and_update_track() -> None:
     adapter = FusionAdapter(latency_compensation=True)
     sensor_position = np.zeros(3)
@@ -109,6 +126,89 @@ def test_fusion_adapter_required_methods_create_and_update_track() -> None:
     predicted = adapter.predict_track(updated, 1.5)
     assert predicted.timestamp == 1.5
     assert predicted.covariance.shape == (6, 6)
+
+
+def test_track_uncertainty_summary_exports_required_fields() -> None:
+    adapter = FusionAdapter(latency_compensation=True)
+    sensor_position = np.zeros(3)
+    state = np.array([120.0, 20.0, -15.0, 4.0, 1.0, 0.0])
+    radar_z = radar_h(state, sensor_position)
+
+    adapter.process(
+        SensorObservation(
+            observation_id="radar_summary_birth",
+            sensor_id="radar",
+            modality="radar",
+            measurement_timestamp=1.0,
+            arrival_timestamp=1.25,
+            frame_id="ned",
+            measurement=radar_z,
+            covariance=radar_covariance_from_range(radar_z[0]),
+            metadata={"sensor_position_ned": sensor_position, "coverage_cell": "cell-a"},
+        )
+    )
+
+    summary = adapter.track_uncertainty_summaries()[0]
+    payload = summary.to_dict()
+    assert payload["track_id"] == payload["global_track_id"]
+    assert payload["position_covariance_trace"] > 0.0
+    assert payload["a95_m"] > 0.0
+    assert payload["track_level"] == "coarse"
+    assert payload["measurement_age_s"] == pytest.approx(0.25)
+    assert payload["source_support"] == {"radar": 1}
+    assert payload["coverage_cell"] == "cell-a"
+    assert payload["measurement_timestamp"] == 1.0
+    assert payload["arrival_timestamp"] == 1.25
+    assert payload["valid_at"] == 1.25
+    assert payload["published_at"] == 1.25
+
+
+def test_source_lineage_deduplicates_relay_repeated_payloads() -> None:
+    adapter = FusionAdapter(latency_compensation=True)
+    sensor_position = np.zeros(3)
+    state = np.array([120.0, 20.0, -15.0, 4.0, 1.0, 0.0])
+    radar_z = radar_h(state, sensor_position)
+    base_metadata = {
+        "sensor_position_ned": sensor_position,
+        "sequence_id": 42,
+        "payload_hash": "same-payload",
+    }
+
+    first = SensorObservation(
+        observation_id="radar_lineage_direct",
+        sensor_id="radar",
+        modality="radar",
+        measurement_timestamp=0.0,
+        arrival_timestamp=0.2,
+        frame_id="ned",
+        measurement=radar_z,
+        covariance=radar_covariance_from_range(radar_z[0]),
+        metadata=base_metadata,
+        source_node_id="NODE-A",
+        payload_kind="radar_observation",
+    )
+    duplicate = SensorObservation(
+        observation_id="radar_lineage_relay",
+        sensor_id="radar",
+        modality="radar",
+        measurement_timestamp=0.0,
+        arrival_timestamp=0.3,
+        frame_id="ned",
+        measurement=radar_z,
+        covariance=radar_covariance_from_range(radar_z[0]),
+        metadata=base_metadata,
+        source_node_id="NODE-A",
+        relay_node_id="RELAY-1",
+        payload_kind="radar_observation",
+    )
+
+    adapter.process(first)
+    tracks = adapter.process(duplicate)
+
+    assert len(tracks) == 1
+    assert tracks[0].metadata["hits"] == 1
+    assert tracks[0].source_support == {"radar": 1}
+    assert tracks[0].metadata["duplicate_observation_count"] == 1
 
 
 def test_global_track_metadata_carries_cross_node_fields() -> None:

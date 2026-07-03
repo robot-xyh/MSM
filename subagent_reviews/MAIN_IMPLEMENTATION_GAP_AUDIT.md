@@ -20,12 +20,14 @@ D1 NumPy EKF/FusionAdapter
 
 已经落地的主要是**自研轻量实现和少量成熟 Python 科学计算库**：NumPy、SciPy、OpenCV `projectPoints`、AirSim `simGetDetections` metadata、SimpleFlight 控制、D7 delivery 包中的 YOLO+ByteTrack 可选链路。
 
+**2026-07-03 P1 补充状态**：D1-D7 已完成本轮不引入重型开源栈的 P1 接口补齐：D1 增加不确定性摘要、Blocks JSONL replay、可配置雷达协方差和 source lineage 去重；D2 增加 `crossing_dense_5v5`、GNN/JPDA/MHT 对照、风险滑窗和 D1 adapter；D3 增加 `AssignmentValiditySummary`、D6 assignment record export 和更完整末端反馈 metadata；D4 增加二级节点生命周期、主动降级防抖和 D6-compatible event metadata；D5 增加 `TerminalConsistencySummary`、丢锁/重捕获摘要、跨视角重复锁定风险和二级 cue 规则；D6 增加主动/被动降级、D4 CSV、D7 guidance time-series 和分组报告字段；D7 增加 Pure Pursuit baseline、显式 handoff/hold/reacquire/revoke 状态和 terminal contract reject log；main AirSim runtime 的 batch seeds 改为单次 Blocks 启动 + reset 循环。
+
 尚未落地的主要是**完整外部工程栈或高阶研究对照**：Stone Soup、FilterPy、ROS 2 `tf2/message_filters`、OpenDroneID Core、MAVLink signing 验证、DDS Security、AprilTag、BoT-SORT、Deep SORT、SCRIMMAGE、TrackEval/py-motmetrics、正式 OR-Tools Min Cost Flow、完整 MIT/CA-CBBA 适配、PX4/MAVLink 主线控制。
 
 未实现的共同原因主要有四类：
 
 1. **当前阶段优先轻量可复现**：默认测试不依赖 ROS、Stone Soup、AirSim 实时服务、PX4 或 GPU。
-2. **main 数据总线尚未完全冻结**：D1-D5 summary、D7 guidance summary、D6 EpisodeMetrics 之间仍有字段需要统一。
+2. **main 数据总线仍需真实 episode 校验**：D1-D7 已有 P1 summary/record 基线，下一步是让 AirSim/integrated runtime 在同一 episode 中持续写入这些字段并做多 seed 校准。
 3. **真实图像/通信/身份源缺失**：MOT、Remote ID、MAVLink signing、AprilTag 需要真实图像帧、协议报文、密钥和时间同步。
 4. **高阶算法需要基准场景支撑**：IMM、JPDA/MHT 完整版、FRPN、MPC、OSPA/HOTA 等应在 5v5 crossing、遮挡、主动降级和 AirSim replay 稳定后再做对照。
 
@@ -46,7 +48,7 @@ D1 NumPy EKF/FusionAdapter
 | JPDA | 密集交叉软关联 | **轻量对照版**，非完整生产级 | D2 | 仅枚举小规模假设，不做完整概率混合更新 | Stone Soup 对照、密集交叉基准、参数标定 | P1 |
 | MHT | 多扫描假设跟踪 | **有界 placeholder** | D2 | 完整 MHT 延迟/内存高，不适合资源节点 | N-scan pruning、分簇、中心算力假设 | P2 |
 | PN 比例导引 | 单目标/中段默认导引 | **已实现** | D7 | 当前是二维经典 PN 和 SimpleFlight gate | 三维状态、D5/D3 门控、真实飞控约束 | P0 |
-| Pure Pursuit | 对照 baseline | 行为片段存在，未成独立算法/实验 | D7 | 当前作为 LOS heading 保底，不是正式 baseline | 函数、配置、测试、PN 对照批量实验 | P1 |
+| Pure Pursuit | 对照 baseline | **已实现轻量 baseline**。D7 提供 `compute_pure_pursuit_command()` 和 `GuidanceConfig.guidance_law=\"pure_pursuit\"` | D7 | 未直接引入 PythonRobotics，有意保持轻依赖 | 多 seed PN/Pure Pursuit 对照报告、AirSim controlled 选择开关 | P1 已完成基线 |
 | 改进 PN / FRPN | 高机动增强导引 | 未实现 | D7 | 当前先稳定经典 PN 与接口 | 目标加速度估计、公式选型、机动场景 | P1 |
 | 视觉 PN / PNG | 末端视觉导引 | **部分实现** | D7 | 已有 bbox gate、LOS-rate、TTC/VM，仍非严格纯视觉闭环 | D5 locked、距离/闭合速度估计、相机标定 | P0/P1 |
 | AirSim `simGetDetections` | CV 检测框输入 | **已使用** | D5, D7, main runtime | D5 不直接调 AirSim，只消费 fixture/replay；D7/main 调用 runtime | 稳定 detection schema、camera/object ID 映射 | P0 |
@@ -59,7 +61,7 @@ D1 NumPy EKF/FusionAdapter
 | MAVLink signing | 消息来源认证 | 未在 D5 实现；D7 delivery 有 MAVLink 控制路径 | D5, D7 | 当前没有真实 MAVLink telemetry/signing key 管理 | MAVLink source、签名库、密钥策略 | P2 |
 | DDS Security | ROS 2 中间件认证 | 未实现 | D5, main | 当前无 ROS 2/DDS runtime | enclave、证书、权限文件、节点映射 | P3 |
 | AprilTag | 合作视觉标签 | 未实现 | D5 | 当前无图像帧和 tag detector | 图像流、tag ID 映射、误检评估 | P2 |
-| MIT CBBA / CBBA-Python / CA-CBBA | 分布式降级对照 | 未接入；自研轻量 CBBA | D4 | 外部项目接口/许可证/依赖和 summary bus 不匹配 | adapter、同场景 benchmark、许可证审查 | P1 |
+| MIT CBBA / CBBA-Python / CA-CBBA | 分布式降级对照 | 未接入；自研轻量 CBBA | D4 | 外部项目接口/许可证/依赖和 summary bus 不匹配；本轮 P1 明确暂不构造外部开源算法 | adapter、同场景 benchmark、许可证审查 | P2 |
 | 拍卖算法 | 分布式保底 baseline | 未单独实现 | D4 | 当前 CBBA 机制覆盖拍卖式思想，但无独立 baseline | bid/award/rollback 协议和测试 | P1 |
 | 合同网协议 | 分布式任务协商对照 | 未实现 | D4 | 非 5v5 最小闭环必需 | announce-bid-award 状态机 | P2 |
 | SCRIMMAGE | 大规模多智能体仿真 | 未实现 | D6/main | 当前优先 AirSim CV 5v5 和质点仿真 | SCRIMMAGE 输出样例、ID 映射、时钟对齐 | P3 |
@@ -71,13 +73,13 @@ D1 NumPy EKF/FusionAdapter
 
 | 模块 | 已实现主线 | 关键未实现项 | 直接阻塞条件 | 详细文件 |
 |---|---|---|---|---|
-| D1 多传感器融合 | `SensorObservation -> NumPy EKF/FusionAdapter -> GlobalTrack`；雷达/声学/EO/合成 LiDAR；延迟补偿；协方差；AirSim dry-run | Stone Soup/FilterPy 后端、UKF/IMM、ROS2 tf2、真实 AirSim CV 直连、Track-to-Track fusion | JSONL/CSV schema、外部依赖、真实相机/传感器外参 | `subagent_reviews/D1_IMPLEMENTATION_GAP_AUDIT.md` |
-| D2 数据关联 | GNN/Hungarian、马氏门控、二维 Kalman、轻量 JPDA/MHT、IDSW/连续性、dry-run adapter | 完整 EKF/UKF/IMM、Stone Soup/FilterPy、原生 3D NED、5v5 crossing 压测、自动关联风险滑窗 | D1->D2 强类型合同、5v5 replay、风险阈值 | `subagent_reviews/D2_IMPLEMENTATION_GAP_AUDIT.md` |
-| D3 目标分配 | SciPy Hungarian、fallback DP、滚动重分配、迟滞、版本化计划、D5 feedback helper、D7 `AssignmentGuidanceBinding`、AirSim dry-run | OR-Tools Min Cost Flow、`AssignmentValiditySummary`、D5 feedback 自动写回代价、AirSim runtime 直连 | D5/D6 重复锁定聚合、D4 主动降级字段、复杂约束定义 | `subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md` |
-| D4 降级接管 | C2Health、被动降级、主动降级、二级侦察节点模型、CommunicationSummary、轻量 CBBA、中心恢复合并、D4 arbitration adapter | MIT/CA-CBBA 适配、拍卖/合同网、真实视频 cue adapter、二级节点生命周期、main bus 写入 | main 统一调用 D4 adapter、二级 heartbeat/coverage/link freshness | `subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md` |
-| D5 末端视觉配准 | 单相机几何投影、马氏门控、保守 `locked/ambiguous/hold/reacquire`、模拟身份、跨视角摘要、禁止改写 ID、AirSim stress 调用正式 `TerminalAssociator` | ByteTrack/BoT-SORT/Deep SORT、tf2、OpenDroneID Core、MAVLink signing、AprilTag、solvePnP、真实图像链路 | 图像帧/检测器、协议报文、相机标定、D4/D5 stress 真值标签 | `subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md` |
-| D6 评估指标 | 本地 EpisodeMetrics、JSONL、Blocks replay、POD/FAR/RMSE/IDSW/assignment/failover/terminal/communication、D7 intercept adapter、批量图表 | Stone Soup metrics、TrackEval、SCRIMMAGE、OSPA/GOSPA/HOTA/IDF1、主动降级细分、完整 guidance time-series adapter | 标准帧级匹配表、D4 metadata、D7 guidance records/summaries schema | `subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md` |
-| D7 比例导引 | 经典二维 PN、离线 radar->vision 记录、SimpleFlight 2v2 actor 拦截、AirSim detect、D3/D4/D5 terminal PNG gate、assigned collision 判据、D6 可消费 summary | Pure Pursuit 正式 baseline、FRPN、严格视觉 PN、PX4/MAVLink 主线、YOLO+ByteTrack 主线、main 5v5 plan-driven 控制 | 真实 D3/D4/D5 runtime bus、D5 状态迁移、相机/机动能力模型 | `subagent_reviews/D7_IMPLEMENTATION_GAP_AUDIT.md` |
+| D1 多传感器融合 | `SensorObservation -> NumPy EKF/FusionAdapter -> GlobalTrack`；雷达/声学/EO/合成 LiDAR；延迟补偿；协方差；AirSim dry-run；`TrackUncertaintySummary`；Blocks JSONL replay；source de-dup | Stone Soup/FilterPy 后端、UKF/IMM、ROS2 tf2、真实 AirSim CV 直连、Track-to-Track fusion | CSV schema、外部依赖、真实相机/传感器外参、跨节点相关性 | `subagent_reviews/D1_IMPLEMENTATION_GAP_AUDIT.md` |
+| D2 数据关联 | GNN/Hungarian、马氏门控、二维 Kalman、轻量 JPDA/MHT、IDSW/连续性、dry-run adapter、`crossing_dense_5v5`、风险滑窗、D1 adapter | 完整 EKF/UKF/IMM、Stone Soup/FilterPy、原生 3D NED、真实 AirSim CV replay 压测 | 5v5 replay 样本、风险阈值、三维跟踪策略 | `subagent_reviews/D2_IMPLEMENTATION_GAP_AUDIT.md` |
+| D3 目标分配 | SciPy Hungarian、fallback DP、滚动重分配、迟滞、版本化计划、D5 feedback helper、D7 `AssignmentGuidanceBinding`、`AssignmentValiditySummary`、D6 assignment record export、AirSim dry-run | OR-Tools Min Cost Flow、D5 feedback 自动写回真实代价、AirSim runtime 直连 | D5/D6 重复锁定聚合、D4 主动降级事件、复杂约束定义 | `subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md` |
+| D4 降级接管 | C2Health、被动降级、主动降级、二级侦察节点模型、`SecondaryNodeLifecycleSummary`、CommunicationSummary、主动降级防抖、轻量 CBBA、中心恢复合并、D4 arbitration adapter、D6-compatible event metadata | MIT/CA-CBBA 适配、独立拍卖/合同网、真实视频 cue adapter、main bus 写入 | main 统一调用 D4 adapter、二级 heartbeat/coverage/link freshness 的真实 episode 维护 | `subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md` |
+| D5 末端视觉配准 | 单相机几何投影、马氏门控、保守 `locked/ambiguous/hold/reacquire`、模拟身份、跨视角摘要、`TerminalConsistencySummary`、丢锁/重捕获、重复锁定风险、禁止改写 ID、AirSim stress 调用正式 `TerminalAssociator` | ByteTrack/BoT-SORT/Deep SORT、tf2、OpenDroneID Core、MAVLink signing、AprilTag、solvePnP、真实图像链路、跨相机几何联合优化 | 图像帧/检测器、协议报文、相机标定、D4/D5 stress 真值标签 | `subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md` |
+| D6 评估指标 | 本地 EpisodeMetrics、JSONL、Blocks replay、POD/FAR/RMSE/IDSW/assignment/failover/terminal/communication、D4 active/passive degradation、D7 intercept/guidance time-series adapter、批量图表和分组报告 | Stone Soup metrics、TrackEval、SCRIMMAGE、OSPA/GOSPA/HOTA/IDF1、主动降级必要性标签 | 标准帧级匹配表、真实 D4 metadata、D7 多 seed guidance records/summaries | `subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md` |
+| D7 比例导引 | 经典二维 PN、Pure Pursuit baseline、离线 radar->vision 记录、SimpleFlight 2v2 actor 拦截、AirSim detect、D3/D4/D5 terminal PNG gate、显式 handoff/hold/reacquire/revoke 状态、assigned collision 判据、D6 可消费 summary/time-series | FRPN、严格视觉 PN、PX4/MAVLink 主线、YOLO+ByteTrack 主线、main 5v5 plan-driven 控制 | 真实 D3/D4/D5 runtime bus、D5 状态迁移、相机/机动能力模型 | `subagent_reviews/D7_IMPLEMENTATION_GAP_AUDIT.md` |
 
 ## 4. 当前最重要的缺口
 
@@ -98,30 +100,38 @@ D1 NumPy EKF/FusionAdapter
 5. **D6 已能消费 D7 拦截闭环结果**
    D6 新增 `intercept_replay.py`，可读取 `control_commands.csv` 与 `intercept_summary.json`，把成功类型、最小距离、拦截时间、碰撞/距离命中和 gate reject 纳入 `EpisodeMetrics`。
 
+### P1：本轮已补齐的模块接口基线
+
+1. **D1-D7 P1 模块接口已补齐**
+   详见第 3 节各子模块：不确定性摘要、关联风险滑窗、分配有效性摘要、主动降级生命周期/防抖、末端一致性摘要、D6 分组指标和 D7 Pure Pursuit/显式 reject 状态均已落地。
+
+2. **AirSim batch seed 运行模式已调整**
+   `--batch-seeds` 现在通过一次 Blocks 启动和多次 reset 顺序运行，降低端口残留和重复启动风险；batch summary 写入 `single_blocks_reset_loop`。
+
 ### P1：仍需 main 统筹的运行时闭环
 
 1. main 需要把真实 D1/D2/D3/D4/D5 流接入同一个 5v5 AirSim 控制状态机，替换当前 2v2 controlled intercept 中的 simulation-only binding/association。
 2. D5 的 `locked/ambiguous/hold/reacquire` 状态迁移、丢锁、重捕获、friend conflict 和 duplicate lock 事件需要进入 D7 pair state machine 和 D6 指标。
-3. D4 主动/被动降级细分指标需要在 D6 中按二级节点、分布式模式、触发原因和窗口前后效果做聚合。
+3. D4 主动/被动降级细分指标已由 D6 提供基础聚合，但 main 仍需在真实 episode 中写入二级节点、分布式模式、触发原因和窗口前后效果。
 
 ### P1：开源对照与压力测试缺口
 
-1. D2 需要 deterministic 5v5 crossing/dense fixture，比较 GNN、轻量 JPDA、轻量 MHT 的 IDSW 与耗时。
+1. D2 已有 deterministic 5v5 crossing/dense fixture；后续需要真实 AirSim CV replay 压测。
 2. D4 需要 CBBA vs auction vs centralized Hungarian gap 的同场景 benchmark。
 3. D5 需要先把 ByteTrack 作为可选 adapter 接入 `LocalVisualTrack`，再评估 BoT-SORT/Deep SORT。
-4. D7 需要正式 Pure Pursuit baseline 和 PN/visual PN 对照实验。
-5. D6 需要把 D4 主动降级细分和 D7 完整 guidance time-series/分组统计变成正式指标，再考虑 TrackEval/Stone Soup metrics。
+4. D7 已有 Pure Pursuit baseline；后续需要 PN/Pure Pursuit/visual PN 多 seed 对照实验。
+5. D6 已有 D4 主动降级细分和 D7 guidance time-series/分组统计基线；后续再考虑 TrackEval/Stone Soup metrics。
 
 ## 5. 建议实施顺序
 
 1. **保持 P0 合同回归**
    继续用 D3-D7 与 AirSim runtime 测试覆盖 `AssignmentGuidanceBinding`、`D4DecisionRecord`、`TerminalAssociation`、D7 terminal gate 和 D6 intercept adapter。
 
-2. **把 P0 合同接入 main runtime bus**
-   main 负责把 D3 plan/version、D4 action、D5 terminal decision、资源状态和 D7 控制 pair 合并到同一个 5v5 AirSim episode state machine。
+2. **把 P1 合同接入 main runtime bus**
+   main 负责把 D3 plan/version、D4 action、D5 terminal decision、资源状态和 D7 控制 pair 合并到同一个 5v5 AirSim episode state machine，并写入 D6 已支持的分组/降级/guidance 字段。
 
-3. **补 P1 级评估字段**
-   D6 继续补主动降级细分、完整 guidance records/summaries、D5 状态迁移和多视角一致性分组报告。
+3. **跑多 seed 校准**
+   使用单次 Blocks 启动 reset 循环跑 CV 5v5、D4/D5 stress 和 2v2 intercept，校准 D4 防抖、D5 一致性、D7 terminal handoff 和 D6 分组指标。
 
 4. **随后做开源对照，不替换主线**
    Stone Soup、FilterPy、TrackEval、ByteTrack、MIT/CA-CBBA、OR-Tools 都建议以 optional benchmark/adapter 方式接入，先生成同场景对照报告，再决定是否进入默认运行路径。

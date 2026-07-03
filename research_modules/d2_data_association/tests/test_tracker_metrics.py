@@ -1,17 +1,28 @@
 from __future__ import annotations
 
 import numpy as np
+from pathlib import Path
+import sys
 
 import pytest
 
 from d2_data_association import Detection, GNNHungarianAssociator, Tracker
-from d2_data_association.metrics import MetricsRecorder
+from d2_data_association.metrics import (
+    AssociationRiskSummaryWindowGenerator,
+    MetricsRecorder,
+)
 from d2_data_association.models import (
     AssociationResult,
     AssociationRiskSummary,
     MatchedPair,
     TrackLifecycleState,
 )
+
+D6_MODULE_ROOT = Path(__file__).resolve().parents[2] / "d6_evaluation_metrics"
+if str(D6_MODULE_ROOT) not in sys.path:
+    sys.path.insert(0, str(D6_MODULE_ROOT))
+
+from d6_evaluation_metrics import MetricsCollector, TrackRecord
 
 
 def detection(step: int, x: float, truth_id: str = "A") -> Detection:
@@ -213,3 +224,104 @@ def test_metrics_accepts_risk_fields_from_association_metadata() -> None:
     assert summary["covariance_overlap_rate"] == pytest.approx(0.15)
     assert summary["source_node_ids"] == ["secondary-recon-1"]
     assert summary["link_types"] == ["secondary_relay"]
+
+
+def test_risk_summary_window_generator_uses_cost_candidates_idsw_and_d5() -> None:
+    generator = AssociationRiskSummaryWindowGenerator(window_size=3)
+    first = AssociationResult(
+        timestamp=1.0,
+        matched_pairs=[MatchedPair("T1", "D1", 0.2)],
+        unmatched_track_ids=[],
+        unmatched_detection_ids=[],
+        ambiguity_score=0.2,
+        associator_type="test",
+        cost_matrix=np.array([[0.2, 0.25], [0.3, 0.4]]),
+        metadata={
+            "candidate_counts_by_track": {"T1": 2, "T2": 2},
+            "candidate_counts_by_detection": {"D1": 2, "D2": 2},
+            "d5_disagreement_count": 1,
+            "source_node_id": "d5-terminal",
+            "link_type": "terminal_feedback",
+        },
+    )
+    second = AssociationResult(
+        timestamp=2.0,
+        matched_pairs=[MatchedPair("T2", "D2", 0.1)],
+        unmatched_track_ids=[],
+        unmatched_detection_ids=[],
+        ambiguity_score=0.1,
+        associator_type="test",
+        cost_matrix=np.array([[0.1, 1.5], [0.2, 0.21]]),
+        metadata={
+            "candidate_counts_by_track": {"T1": 1, "T2": 2},
+            "candidate_counts_by_detection": {"D1": 2, "D2": 1},
+            "d5_disagreement_count": 2,
+        },
+    )
+
+    summary = generator.update(first, id_switch_delta=0, track_continuity=1.0)
+    assert summary.covariance_overlap_rate == pytest.approx(1.0)
+    assert summary.d5_disagreement_count == 1
+
+    summary = generator.update(second, id_switch_delta=1, track_continuity=0.5)
+    assert summary.d5_disagreement_count == 3
+    assert summary.duplicate_track_risk >= 0.5
+    assert summary.association_ambiguity > 0.1
+    assert summary.source_node_id == "d5-terminal"
+    assert summary.link_type == "terminal_feedback"
+    assert summary.metadata["id_switch_delta_sum"] == 1
+    assert summary.metadata["mean_candidate_count"] > 1.0
+
+
+def test_d2_id_switch_count_matches_d6_episode_counting_convention() -> None:
+    frames = [
+        (0.0, "A", "T1"),
+        (1.0, "A", "T1"),
+        (2.0, "A", "T2"),
+        (0.0, "B", "T3"),
+        (1.0, "B", "T3"),
+        (2.0, "B", "T4"),
+        (3.0, "B", "T4"),
+    ]
+
+    d2_metrics = MetricsRecorder()
+    d6_collector = MetricsCollector()
+    for timestamp, truth_id, track_id in frames:
+        d2_metrics.record_frame(
+            timestamp=timestamp,
+            truth_ids_present=[truth_id],
+            association_result=AssociationResult(
+                timestamp=timestamp,
+                matched_pairs=[MatchedPair(track_id, f"{truth_id}-{timestamp}", 0.0)],
+                unmatched_track_ids=[],
+                unmatched_detection_ids=[],
+                ambiguity_score=0.0,
+                associator_type="test",
+            ),
+            assignments=[(truth_id, track_id, 0.0)],
+            runtime_seconds=0.0,
+        )
+        d6_collector.add_track(
+            TrackRecord(
+                timestamp=timestamp,
+                global_track_id=track_id,
+                truth_id=truth_id,
+                position=(0.0, 0.0),
+                truth_position=(0.0, 0.0),
+            )
+        )
+
+    d6_metrics = d6_collector.compute_episode(
+        "d2_d6_idsw_contract",
+        truth_summary={
+            "truth_timestamps": {
+                "A": [0.0, 1.0, 2.0],
+                "B": [0.0, 1.0, 2.0, 3.0],
+            }
+        },
+        scenario_group="contract",
+        batch_seed=0,
+    )
+
+    assert d2_metrics.id_switch_count == 2
+    assert d2_metrics.id_switch_count == d6_metrics.id_switch_count

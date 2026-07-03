@@ -2,12 +2,112 @@
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
 from math import sqrt
 from typing import Iterable
 
+import numpy as np
+
 from .models import AssociationLogEntry, AssociationResult, AssociationRiskSummary
+
+
+@dataclass(slots=True)
+class AssociationRiskSummaryWindowGenerator:
+    """Generate sliding-window association risk summaries from D2 evidence."""
+
+    window_size: int = 5
+    _frames: deque[dict[str, float | int | str | None]] = field(
+        default_factory=deque, init=False
+    )
+
+    def __post_init__(self) -> None:
+        if self.window_size <= 0:
+            raise ValueError("window_size must be positive")
+
+    def update(
+        self,
+        association_result: AssociationResult,
+        *,
+        id_switch_delta: int = 0,
+        track_continuity: float = 0.0,
+    ) -> AssociationRiskSummary:
+        """Return a risk summary using the latest frame plus window history."""
+
+        metadata = association_result.metadata
+        frame = {
+            "timestamp": float(association_result.timestamp),
+            "association_ambiguity": _association_ambiguity_from_result(
+                association_result
+            ),
+            "candidate_overlap_rate": _candidate_overlap_rate(metadata),
+            "mean_candidate_count": _mean_candidate_count(metadata),
+            "cost_margin_risk": _cost_margin_risk(association_result.cost_matrix),
+            "id_switch_delta": int(id_switch_delta),
+            "continuity_risk": max(0.0, 1.0 - float(track_continuity)),
+            "d5_disagreement_count": int(metadata.get("d5_disagreement_count", 0)),
+            "source_node_id": association_result.source_node_id
+            or _optional_string(metadata.get("source_node_id")),
+            "link_type": association_result.link_type
+            or _optional_string(metadata.get("link_type")),
+        }
+        self._frames.append(frame)
+        while len(self._frames) > self.window_size:
+            self._frames.popleft()
+
+        window = list(self._frames)
+        association_ambiguity = _mean_float(window, "association_ambiguity")
+        candidate_overlap_rate = _mean_float(window, "candidate_overlap_rate")
+        cost_margin_risk = _mean_float(window, "cost_margin_risk")
+        id_switch_delta_sum = sum(int(item["id_switch_delta"]) for item in window)
+        continuity_risk = _mean_float(window, "continuity_risk")
+        d5_disagreement_count = sum(
+            int(item["d5_disagreement_count"]) for item in window
+        )
+        candidate_count_risk = min(
+            1.0, max(0.0, (_mean_float(window, "mean_candidate_count") - 1.0) / 4.0)
+        )
+
+        duplicate_track_risk = max(
+            float(metadata.get("duplicate_track_risk", 0.0)),
+            candidate_overlap_rate,
+            min(1.0, id_switch_delta_sum / max(1, self.window_size)),
+            continuity_risk,
+        )
+        association_ambiguity = max(
+            float(metadata.get("association_ambiguity", association_ambiguity)),
+            association_ambiguity,
+            candidate_count_risk,
+            cost_margin_risk,
+        )
+        covariance_overlap_rate = max(
+            float(metadata.get("covariance_overlap_rate", 0.0)),
+            candidate_overlap_rate,
+        )
+
+        return AssociationRiskSummary(
+            timestamp=association_result.timestamp,
+            source_node_id=_latest_string(window, "source_node_id"),
+            link_type=_latest_string(window, "link_type"),
+            d5_disagreement_count=d5_disagreement_count,
+            duplicate_track_risk=duplicate_track_risk,
+            association_ambiguity=association_ambiguity,
+            covariance_overlap_rate=covariance_overlap_rate,
+            metadata={
+                "window_size": len(window),
+                "configured_window_size": self.window_size,
+                "id_switch_delta": int(id_switch_delta),
+                "id_switch_delta_sum": id_switch_delta_sum,
+                "d5_disagreement_delta": int(
+                    metadata.get("d5_disagreement_count", 0)
+                ),
+                "track_continuity": float(track_continuity),
+                "mean_candidate_count": _mean_float(window, "mean_candidate_count"),
+                "candidate_overlap_rate": candidate_overlap_rate,
+                "cost_margin_risk": cost_margin_risk,
+                **dict(metadata.get("risk_metadata", {})),
+            },
+        )
 
 
 @dataclass(slots=True)
@@ -44,6 +144,9 @@ class MetricsRecorder:
     max_covariance_overlap_rate: float = 0.0
     source_node_ids: set[str] = field(default_factory=set)
     link_types: set[str] = field(default_factory=set)
+    risk_summary_generator: AssociationRiskSummaryWindowGenerator = field(
+        default_factory=AssociationRiskSummaryWindowGenerator
+    )
 
     def record_frame(
         self,
@@ -61,6 +164,7 @@ class MetricsRecorder:
 
         del timestamp
         self.frame_count += 1
+        id_switch_count_before = self.id_switch_count
         truth_ids = {truth_id for truth_id in truth_ids_present if truth_id is not None}
         for truth_id in truth_ids:
             self.truth_frame_count[truth_id] += 1
@@ -97,7 +201,12 @@ class MetricsRecorder:
                 self.truth_identity_stable_frame_count[truth_id] += 1
             self.last_truth_to_track[truth_id] = representative_track_id
 
-        risk_summary = _risk_summary_from_result(association_result)
+        risk_summary = _risk_summary_from_result(
+            association_result,
+            generator=self.risk_summary_generator,
+            id_switch_delta=self.id_switch_count - id_switch_count_before,
+            track_continuity=self.track_continuity,
+        )
         self._record_risk_summary(risk_summary)
 
         log_entry = AssociationLogEntry(
@@ -120,7 +229,11 @@ class MetricsRecorder:
 
     def _record_risk_summary(self, risk_summary: AssociationRiskSummary) -> None:
         self.risk_frame_count += 1
-        self.d5_disagreement_count += risk_summary.d5_disagreement_count
+        self.d5_disagreement_count += int(
+            risk_summary.metadata.get(
+                "d5_disagreement_delta", risk_summary.d5_disagreement_count
+            )
+        )
         self.latest_association_ambiguity = risk_summary.association_ambiguity
         self.latest_duplicate_track_risk = risk_summary.duplicate_track_risk
         self.latest_covariance_overlap_rate = risk_summary.covariance_overlap_rate
@@ -220,15 +333,24 @@ def _duplicate_count(items: list[str]) -> int:
 def _representative_track_id(track_ids: list[str]) -> str | None:
     if not track_ids:
         return None
-    counts = Counter(track_ids)
-    return sorted(counts, key=lambda track_id: (-counts[track_id], track_id))[0]
+    return track_ids[0]
 
 
 def _risk_summary_from_result(
     association_result: AssociationResult,
+    *,
+    generator: AssociationRiskSummaryWindowGenerator | None = None,
+    id_switch_delta: int = 0,
+    track_continuity: float = 0.0,
 ) -> AssociationRiskSummary:
     if association_result.risk_summary is not None:
         return association_result.risk_summary
+    if generator is not None:
+        return generator.update(
+            association_result,
+            id_switch_delta=id_switch_delta,
+            track_continuity=track_continuity,
+        )
 
     metadata = association_result.metadata
     return AssociationRiskSummary(
@@ -250,3 +372,64 @@ def _optional_string(value: object) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _association_ambiguity_from_result(association_result: AssociationResult) -> float:
+    metadata = association_result.metadata
+    if "association_ambiguity" in metadata:
+        return float(metadata["association_ambiguity"])
+    return float(association_result.ambiguity_score)
+
+
+def _candidate_overlap_rate(metadata: dict[str, object]) -> float:
+    counts = []
+    for key in ("candidate_counts_by_track", "candidate_counts_by_detection"):
+        value = metadata.get(key)
+        if isinstance(value, dict):
+            counts.extend(int(count) for count in value.values())
+    if not counts:
+        return 0.0
+    return sum(1 for count in counts if count > 1) / len(counts)
+
+
+def _mean_candidate_count(metadata: dict[str, object]) -> float:
+    counts = []
+    for key in ("candidate_counts_by_track", "candidate_counts_by_detection"):
+        value = metadata.get(key)
+        if isinstance(value, dict):
+            counts.extend(int(count) for count in value.values())
+    if not counts:
+        return 0.0
+    return float(sum(counts) / len(counts))
+
+
+def _cost_margin_risk(cost_matrix: object) -> float:
+    if cost_matrix is None:
+        return 0.0
+    matrix = np.asarray(cost_matrix, dtype=float)
+    if matrix.ndim != 2 or matrix.size == 0:
+        return 0.0
+    row_risks: list[float] = []
+    for row in matrix:
+        finite = sorted(
+            float(value) for value in row if np.isfinite(value) and value < 1.0e8
+        )
+        if len(finite) < 2:
+            continue
+        margin = max(finite[1] - finite[0], 0.0)
+        row_risks.append(1.0 / (1.0 + margin))
+    return float(sum(row_risks) / len(row_risks)) if row_risks else 0.0
+
+
+def _mean_float(items: list[dict[str, object]], key: str) -> float:
+    if not items:
+        return 0.0
+    return float(sum(float(item[key]) for item in items) / len(items))
+
+
+def _latest_string(items: list[dict[str, object]], key: str) -> str | None:
+    for item in reversed(items):
+        value = item.get(key)
+        if value is not None:
+            return str(value)
+    return None

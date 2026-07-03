@@ -13,6 +13,7 @@ from .models import (
     LinkType,
     PayloadKind,
     ResourceSummary,
+    SecondaryNodeLifecycleSummary,
     to_jsonable,
 )
 
@@ -100,6 +101,10 @@ class ActiveDegradationConfig:
     cross_view_risk_high: float = 0.65
     non_locked_frame_limit: int = 3
     mismatch_frame_limit: int = 2
+    min_dwell_s: float = 0.0
+    release_consecutive_consistent_frames: int = 1
+    risk_window_size: int = 1
+    risk_window_threshold: int = 1
 
 
 @dataclass(frozen=True)
@@ -139,6 +144,10 @@ class ActiveDegradationArbiter:
 
     def __init__(self, config: ActiveDegradationConfig | None = None) -> None:
         self.config = config or ActiveDegradationConfig()
+        self._last_degradation_time_s: float | None = None
+        self._last_degradation_decision: ActiveDegradationDecision | None = None
+        self._release_consistent_frames = 0
+        self._risk_window: list[bool] = []
 
     def evaluate(
         self,
@@ -168,86 +177,187 @@ class ActiveDegradationArbiter:
             assignment_validity,
             terminal_association,
         )
+        risk_window_met = self._update_risk_window(
+            bool(risk_factors) or not terminal_consistent or c2_health == C2Health.FAILED
+        )
 
         if terminal_association.friend_conflict:
-            return ActiveDegradationDecision(
-                mode=DegradationMode.ACTIVE_DEGRADATION,
-                action=DegradationAction.HOLD_FOR_REVIEW,
-                reason="terminal_friend_conflict",
-                coverage_cell=coverage_cell,
+            return self._apply_hysteresis(
+                ActiveDegradationDecision(
+                    mode=DegradationMode.ACTIVE_DEGRADATION,
+                    action=DegradationAction.HOLD_FOR_REVIEW,
+                    reason="terminal_friend_conflict",
+                    coverage_cell=coverage_cell,
+                    terminal_consistent=False,
+                    risk_factors=(*risk_factors, "terminal_friend_conflict"),
+                    requires_human_review=True,
+                ),
+                current_time_s,
                 terminal_consistent=False,
                 risk_factors=(*risk_factors, "terminal_friend_conflict"),
-                requires_human_review=True,
             )
 
         if c2_health == C2Health.FAILED:
-            return self._fallback_decision(
-                DegradationMode.PASSIVE_FAILOVER,
-                secondary,
-                coverage_cell,
-                terminal_consistent,
-                risk_factors,
-                "center_failed_passive_failover",
+            return self._apply_hysteresis(
+                self._fallback_decision(
+                    DegradationMode.PASSIVE_FAILOVER,
+                    secondary,
+                    coverage_cell,
+                    terminal_consistent,
+                    risk_factors,
+                    "center_failed_passive_failover",
+                ),
+                current_time_s,
+                terminal_consistent=terminal_consistent,
+                risk_factors=risk_factors,
             )
 
-        if self._terminal_requires_active_arbitration(terminal_association):
-            return self._fallback_decision(
-                DegradationMode.ACTIVE_DEGRADATION,
-                secondary,
-                coverage_cell,
-                terminal_consistent,
-                (*risk_factors, "terminal_persistent_disagreement"),
-                "terminal_persistent_disagreement",
+        if self._terminal_requires_active_arbitration(terminal_association) and risk_window_met:
+            return self._apply_hysteresis(
+                self._fallback_decision(
+                    DegradationMode.ACTIVE_DEGRADATION,
+                    secondary,
+                    coverage_cell,
+                    terminal_consistent,
+                    (*risk_factors, "terminal_persistent_disagreement"),
+                    "terminal_persistent_disagreement",
+                ),
+                current_time_s,
+                terminal_consistent=terminal_consistent,
+                risk_factors=(*risk_factors, "terminal_persistent_disagreement"),
             )
 
         if terminal_consistent and not risk_factors:
-            return ActiveDegradationDecision(
-                mode=DegradationMode.NONE,
-                action=DegradationAction.CONTINUE_CENTER,
-                reason="terminal_consistent_and_risk_low",
-                coverage_cell=coverage_cell,
+            return self._apply_hysteresis(
+                ActiveDegradationDecision(
+                    mode=DegradationMode.NONE,
+                    action=DegradationAction.CONTINUE_CENTER,
+                    reason="terminal_consistent_and_risk_low",
+                    coverage_cell=coverage_cell,
+                    terminal_consistent=True,
+                ),
+                current_time_s,
                 terminal_consistent=True,
+                risk_factors=(),
             )
 
         if terminal_consistent:
             if self._assignment_is_primary_risk(risk_factors) or secondary is None:
-                return ActiveDegradationDecision(
-                    mode=DegradationMode.ACTIVE_DEGRADATION,
-                    action=DegradationAction.REQUEST_CENTER_REPLAN,
-                    reason="risk_rising_terminal_still_consistent",
-                    coverage_cell=coverage_cell,
+                return self._apply_hysteresis(
+                    ActiveDegradationDecision(
+                        mode=DegradationMode.ACTIVE_DEGRADATION,
+                        action=DegradationAction.REQUEST_CENTER_REPLAN,
+                        reason="risk_rising_terminal_still_consistent",
+                        coverage_cell=coverage_cell,
+                        terminal_consistent=True,
+                        risk_factors=risk_factors,
+                    ),
+                    current_time_s,
                     terminal_consistent=True,
                     risk_factors=risk_factors,
                 )
-            return ActiveDegradationDecision(
-                mode=DegradationMode.ACTIVE_DEGRADATION,
-                action=DegradationAction.REQUEST_SECONDARY_ASSIST,
-                reason="risk_rising_request_secondary_assist",
-                target_node_id=secondary.node_id,
-                coverage_cell=coverage_cell,
+            return self._apply_hysteresis(
+                ActiveDegradationDecision(
+                    mode=DegradationMode.ACTIVE_DEGRADATION,
+                    action=DegradationAction.REQUEST_SECONDARY_ASSIST,
+                    reason="risk_rising_request_secondary_assist",
+                    target_node_id=secondary.node_id,
+                    coverage_cell=coverage_cell,
+                    terminal_consistent=True,
+                    risk_factors=risk_factors,
+                ),
+                current_time_s,
                 terminal_consistent=True,
                 risk_factors=risk_factors,
             )
 
         if secondary is not None:
-            return ActiveDegradationDecision(
-                mode=DegradationMode.ACTIVE_DEGRADATION,
-                action=DegradationAction.REQUEST_SECONDARY_ASSIST,
-                reason="terminal_inconsistent_single_window",
-                target_node_id=secondary.node_id,
-                coverage_cell=coverage_cell,
+            return self._apply_hysteresis(
+                ActiveDegradationDecision(
+                    mode=DegradationMode.ACTIVE_DEGRADATION,
+                    action=DegradationAction.REQUEST_SECONDARY_ASSIST,
+                    reason="terminal_inconsistent_single_window",
+                    target_node_id=secondary.node_id,
+                    coverage_cell=coverage_cell,
+                    terminal_consistent=False,
+                    risk_factors=risk_factors,
+                ),
+                current_time_s,
                 terminal_consistent=False,
                 risk_factors=risk_factors,
             )
 
-        return ActiveDegradationDecision(
-            mode=DegradationMode.ACTIVE_DEGRADATION,
-            action=DegradationAction.REQUEST_CENTER_REPLAN,
-            reason="terminal_inconsistent_no_secondary_single_window",
-            coverage_cell=coverage_cell,
+        return self._apply_hysteresis(
+            ActiveDegradationDecision(
+                mode=DegradationMode.ACTIVE_DEGRADATION,
+                action=DegradationAction.REQUEST_CENTER_REPLAN,
+                reason="terminal_inconsistent_no_secondary_single_window",
+                coverage_cell=coverage_cell,
+                terminal_consistent=False,
+                risk_factors=risk_factors,
+            ),
+            current_time_s,
             terminal_consistent=False,
             risk_factors=risk_factors,
         )
+
+    def _update_risk_window(self, risk_signal: bool) -> bool:
+        size = max(1, int(self.config.risk_window_size))
+        threshold = max(1, int(self.config.risk_window_threshold))
+        self._risk_window.append(bool(risk_signal))
+        if len(self._risk_window) > size:
+            self._risk_window = self._risk_window[-size:]
+        return sum(1 for item in self._risk_window if item) >= min(threshold, size)
+
+    def _apply_hysteresis(
+        self,
+        decision: ActiveDegradationDecision,
+        current_time_s: float | None,
+        *,
+        terminal_consistent: bool,
+        risk_factors: tuple[str, ...],
+    ) -> ActiveDegradationDecision:
+        low_risk_release = terminal_consistent and not risk_factors
+        if low_risk_release:
+            self._release_consistent_frames += 1
+        else:
+            self._release_consistent_frames = 0
+
+        if (
+            decision.mode == DegradationMode.NONE
+            and self._last_degradation_decision is not None
+            and not self._release_condition_met(current_time_s)
+        ):
+            held = self._last_degradation_decision
+            return ActiveDegradationDecision(
+                mode=held.mode,
+                action=held.action,
+                reason="release_condition_pending",
+                target_node_id=held.target_node_id,
+                coverage_cell=held.coverage_cell,
+                terminal_consistent=True,
+                risk_factors=("release_condition_pending",),
+                requires_human_review=held.requires_human_review,
+            )
+
+        if decision.mode == DegradationMode.NONE:
+            self._last_degradation_decision = None
+            self._last_degradation_time_s = None
+            return decision
+
+        self._last_degradation_decision = decision
+        if current_time_s is not None:
+            self._last_degradation_time_s = float(current_time_s)
+        return decision
+
+    def _release_condition_met(self, current_time_s: float | None) -> bool:
+        required_frames = max(1, int(self.config.release_consecutive_consistent_frames))
+        frames_ok = self._release_consistent_frames >= required_frames
+        dwell = max(0.0, float(self.config.min_dwell_s))
+        if current_time_s is None or self._last_degradation_time_s is None:
+            return frames_ok and dwell == 0.0
+        dwell_ok = (float(current_time_s) - self._last_degradation_time_s) >= dwell
+        return frames_ok and dwell_ok
 
     def _fallback_decision(
         self,
@@ -386,6 +496,10 @@ class ActiveDegradationArbiter:
             and not resource.operator_hold
             and resource.availability_band != AvailabilityBand.NONE
             and (resource.coverage_cell in {None, "", coverage_cell})
+            and ActiveDegradationArbiter._secondary_heartbeat_is_usable(
+                resource,
+                current_time_s,
+            )
             and ActiveDegradationArbiter._secondary_link_is_usable(
                 resource,
                 communication_summaries,
@@ -402,6 +516,17 @@ class ActiveDegradationArbiter:
             )
         )
         return candidates[0]
+
+    @staticmethod
+    def _secondary_heartbeat_is_usable(
+        resource: ResourceSummary,
+        current_time_s: float | None,
+    ) -> bool:
+        if current_time_s is None or resource.heartbeat_timestamp_s is None:
+            return True
+        return float(current_time_s) - float(resource.heartbeat_timestamp_s) <= float(
+            resource.heartbeat_stale_after_s
+        )
 
     @staticmethod
     def _secondary_link_is_usable(
@@ -432,3 +557,69 @@ class ActiveDegradationArbiter:
             and not summary.is_stale(current_time_s)
             for summary in communication_summaries
         )
+
+
+def summarize_secondary_lifecycle(
+    resources: list[ResourceSummary],
+    coverage_cell: str,
+    communication_summaries: list[CommunicationSummary] | None = None,
+    current_time_s: float | None = None,
+) -> tuple[SecondaryNodeLifecycleSummary, ...]:
+    summaries: list[SecondaryNodeLifecycleSummary] = []
+    for resource in resources:
+        if resource.node_role not in SECONDARY_NODE_ROLES:
+            continue
+        heartbeat_age = None
+        if current_time_s is not None and resource.heartbeat_timestamp_s is not None:
+            heartbeat_age = max(0.0, float(current_time_s) - float(resource.heartbeat_timestamp_s))
+        video_freshness = _video_cue_freshness_s(
+            resource,
+            communication_summaries,
+            current_time_s,
+        )
+        link_stale = None
+        if communication_summaries is not None:
+            link_stale = not ActiveDegradationArbiter._secondary_link_is_usable(
+                resource,
+                communication_summaries,
+                current_time_s,
+            )
+        secondary_available = (
+            not resource.operator_hold
+            and resource.availability_band != AvailabilityBand.NONE
+            and (resource.coverage_cell in {None, "", coverage_cell})
+            and ActiveDegradationArbiter._secondary_heartbeat_is_usable(resource, current_time_s)
+            and not bool(link_stale)
+        )
+        summaries.append(
+            SecondaryNodeLifecycleSummary(
+                node_id=resource.node_id,
+                heartbeat_timestamp_s=resource.heartbeat_timestamp_s,
+                heartbeat_age_s=heartbeat_age,
+                lease_epoch=int(resource.lease_epoch),
+                coverage_cell=resource.coverage_cell,
+                video_cue_freshness_s=video_freshness,
+                link_stale=link_stale,
+                secondary_available=secondary_available,
+                heartbeat=resource.heartbeat_timestamp_s,
+                video_cue_freshness=video_freshness,
+            )
+        )
+    return tuple(summaries)
+
+
+def _video_cue_freshness_s(
+    resource: ResourceSummary,
+    communication_summaries: list[CommunicationSummary] | None,
+    current_time_s: float | None,
+) -> float | None:
+    if communication_summaries is None or current_time_s is None:
+        return None
+    ages = [
+        max(0.0, float(current_time_s) - summary.received_timestamp)
+        for summary in communication_summaries
+        if summary.involves_node(resource.node_id)
+        and summary.link_type == LinkType.VIDEO_CUE
+        and summary.payload_kind in {PayloadKind.BBOX, PayloadKind.VIDEO_METADATA}
+    ]
+    return min(ages) if ages else None

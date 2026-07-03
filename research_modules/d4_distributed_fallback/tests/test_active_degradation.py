@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from d4_distributed_fallback.active_degradation import (
     ActiveDegradationArbiter,
+    ActiveDegradationConfig,
     AssignmentValiditySummary,
     AssociationRiskSummary,
     DegradationAction,
@@ -9,6 +10,7 @@ from d4_distributed_fallback.active_degradation import (
     TerminalAssociationSummary,
     TerminalDecisionState,
     TrackUncertaintySummary,
+    summarize_secondary_lifecycle,
 )
 from d4_distributed_fallback.models import (
     AvailabilityBand,
@@ -83,6 +85,8 @@ def _secondary(available: bool = True, coverage_cell: str = "cell-north") -> Res
         node_role=NodeRole.SECONDARY_RECON,
         coordinator_only=True,
         coverage_cell=coverage_cell,
+        heartbeat_timestamp_s=10.0,
+        heartbeat_stale_after_s=2.0,
     )
 
 
@@ -339,3 +343,110 @@ def test_friend_conflict_holds_even_when_center_failed() -> None:
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
     assert decision.action == DegradationAction.HOLD_FOR_REVIEW
     assert decision.requires_human_review
+
+
+def test_stale_secondary_heartbeat_prevents_secondary_takeover() -> None:
+    stale_secondary = _secondary()
+    stale_secondary = ResourceSummary(
+        **{
+            **stale_secondary.to_dict(),
+            "availability_band": AvailabilityBand.HIGH,
+            "comm_band": CommBand.GOOD,
+            "node_role": NodeRole.SECONDARY_RECON,
+            "heartbeat_timestamp_s": 7.0,
+            "heartbeat_stale_after_s": 1.0,
+        }
+    )
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=_terminal(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id="track-2",
+            consecutive_non_locked_frames=3,
+            consecutive_mismatch_frames=2,
+        ),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[stale_secondary],
+        communication_summaries=[_secondary_link(received_timestamp=10.0, stale_after_s=2.0)],
+        current_time_s=10.0,
+    )
+
+    lifecycle = summarize_secondary_lifecycle(
+        [stale_secondary],
+        "cell-north",
+        communication_summaries=[_secondary_link(received_timestamp=10.0, stale_after_s=2.0)],
+        current_time_s=10.0,
+    )
+
+    assert lifecycle[0].heartbeat_age_s == 3.0
+    assert lifecycle[0].heartbeat == 7.0
+    assert lifecycle[0].video_cue_freshness_s == 0.0
+    assert lifecycle[0].video_cue_freshness == 0.0
+    assert lifecycle[0].link_stale is False
+    assert lifecycle[0].secondary_available is False
+    assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
+
+
+def test_windowed_risk_threshold_debounces_persistent_mismatch_escalation() -> None:
+    arbiter = ActiveDegradationArbiter(
+        ActiveDegradationConfig(risk_window_size=2, risk_window_threshold=2)
+    )
+    kwargs = dict(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=_terminal(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id="track-2",
+            consecutive_non_locked_frames=3,
+            consecutive_mismatch_frames=2,
+        ),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+        current_time_s=10.0,
+    )
+
+    first = arbiter.evaluate(**kwargs)
+    second = arbiter.evaluate(**{**kwargs, "current_time_s": 10.1})
+
+    assert first.action == DegradationAction.REQUEST_SECONDARY_ASSIST
+    assert first.reason == "terminal_inconsistent_single_window"
+    assert second.action == DegradationAction.DEGRADE_TO_SECONDARY
+    assert second.reason == "terminal_persistent_disagreement"
+
+
+def test_min_dwell_and_release_frames_hold_degradation_before_release() -> None:
+    arbiter = ActiveDegradationArbiter(
+        ActiveDegradationConfig(min_dwell_s=5.0, release_consecutive_consistent_frames=2)
+    )
+    high_risk = dict(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=_terminal(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id="track-2",
+            consecutive_non_locked_frames=3,
+            consecutive_mismatch_frames=2,
+        ),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+        current_time_s=10.0,
+    )
+    low_risk = {
+        **high_risk,
+        "terminal_association": _terminal(),
+        "current_time_s": 12.0,
+    }
+
+    degraded = arbiter.evaluate(**high_risk)
+    held = arbiter.evaluate(**low_risk)
+    released = arbiter.evaluate(**{**low_risk, "current_time_s": 16.0})
+
+    assert degraded.action == DegradationAction.DEGRADE_TO_SECONDARY
+    assert held.action == DegradationAction.DEGRADE_TO_SECONDARY
+    assert held.reason == "release_condition_pending"
+    assert released.action == DegradationAction.CONTINUE_CENTER

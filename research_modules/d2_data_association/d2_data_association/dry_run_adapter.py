@@ -70,6 +70,104 @@ def build_default_dry_run_tracker() -> Tracker:
     )
 
 
+def detections_from_d1_global_tracks(
+    tracks: Iterable[Any],
+    *,
+    detection_id_prefix: str | None = None,
+) -> tuple[float, list[Detection], list[str]]:
+    """Convert D1 six-state NED GlobalTrack objects to D2 detections.
+
+    D1 publishes `[north, east, down, vn, ve, vd]` tracks with 6x6 covariance.
+    D2 only consumes horizontal association evidence, so this adapter projects
+    state and covariance to the N-E plane while preserving sensing and arrival
+    timestamps in metadata.
+    """
+
+    detections: list[Detection] = []
+    truth_ids: list[str] = []
+    frame_timestamp: float | None = None
+    for track in tracks:
+        metadata = dict(_mapping_or_empty(getattr(track, "metadata", {})))
+        frame_id = str(metadata.get("frame_id", "ned")).lower()
+        if frame_id != "ned":
+            raise ValueError(f"D1 GlobalTrack must use NED coordinates, got {frame_id!r}")
+
+        global_track_id = str(getattr(track, "global_track_id"))
+        state = np.asarray(getattr(track, "state"), dtype=float).reshape(-1)
+        if state.size < 6:
+            raise ValueError("D1 GlobalTrack state must contain six NED components")
+        covariance = np.asarray(getattr(track, "covariance"), dtype=float)
+        if covariance.shape != (6, 6):
+            raise ValueError("D1 GlobalTrack covariance must have shape (6, 6)")
+
+        track_timestamp = float(getattr(track, "timestamp"))
+        measurement_timestamp = float(
+            _first_present(
+                track,
+                ("measurement_timestamp", "valid_at"),
+                metadata.get(
+                    "measurement_timestamp",
+                    metadata.get("valid_at", track_timestamp),
+                ),
+            )
+        )
+        arrival_timestamp = float(
+            _first_present(
+                track,
+                ("arrival_timestamp", "published_at", "received_timestamp"),
+                metadata.get(
+                    "arrival_timestamp",
+                    metadata.get(
+                        "published_at",
+                        metadata.get("received_timestamp", track_timestamp),
+                    ),
+                ),
+            )
+        )
+        if frame_timestamp is None or measurement_timestamp > frame_timestamp:
+            frame_timestamp = measurement_timestamp
+
+        truth_id = _optional_string(
+            metadata.get("truth_id", metadata.get("ground_truth_id"))
+        )
+        if truth_id is not None:
+            truth_ids.append(truth_id)
+
+        detection_id = _optional_string(metadata.get("detection_id"))
+        if detection_id is None:
+            detection_id = (
+                global_track_id
+                if detection_id_prefix is None
+                else f"{detection_id_prefix}-{global_track_id}"
+            )
+
+        detection_metadata = dict(metadata)
+        detection_metadata.update(
+            {
+                "source_format": "d1_global_track",
+                "frame_id": "ned",
+                "global_track_id": global_track_id,
+                "measurement_timestamp": measurement_timestamp,
+                "arrival_timestamp": arrival_timestamp,
+                "source_track_timestamp": track_timestamp,
+                "covariance_projection": "ned_6d_to_xy",
+            }
+        )
+        detections.append(
+            Detection(
+                detection_id=detection_id,
+                timestamp=measurement_timestamp,
+                position=state[:2].copy(),
+                covariance=covariance[:2, :2].copy(),
+                truth_id=truth_id,
+                confidence=float(metadata.get("confidence", 1.0)),
+                metadata=detection_metadata,
+            )
+        )
+
+    return float(frame_timestamp or 0.0), detections, sorted(set(truth_ids))
+
+
 def detections_from_airsim_frame(
     frame: Any,
     *,
@@ -99,7 +197,7 @@ def detections_from_airsim_frame(
         item_timestamp = float(
             _first_present(
                 item,
-                ("measurement_timestamp", "timestamp", "sim_time", "time"),
+                ("measurement_timestamp", "valid_at", "timestamp", "sim_time", "time"),
                 timestamp,
             )
         )
@@ -112,7 +210,7 @@ def detections_from_airsim_frame(
         detection_id = _optional_string(
             _first_present(
                 item,
-                ("detection_id", "id", "track_id", "object_id", "name"),
+                ("detection_id", "id", "track_id", "global_track_id", "object_id", "name"),
                 None,
             )
         )
@@ -124,8 +222,21 @@ def detections_from_airsim_frame(
         metadata = dict(_mapping_or_empty(_first_present(item, ("metadata",), {})))
         metadata.setdefault("source_format", "airsim_dry_run")
         metadata.setdefault("source_detection_id", detection_id)
+        metadata.setdefault("measurement_timestamp", item_timestamp)
+        arrival_timestamp = _first_present(
+            item,
+            ("arrival_timestamp", "published_at", "received_timestamp"),
+            metadata.get("arrival_timestamp", metadata.get("published_at", timestamp)),
+        )
+        metadata.setdefault("arrival_timestamp", float(arrival_timestamp))
         if truth_id is not None:
             metadata.setdefault("truth_id", truth_id)
+        global_track_id = _optional_string(
+            _first_present(item, ("global_track_id",), None)
+        )
+        if global_track_id is not None:
+            metadata.setdefault("global_track_id", global_track_id)
+            metadata.setdefault("frame_id", "ned")
         truth_position = _optional_position_xy(
             _first_present(item, ("truth_position", "ground_truth_position"), None)
         )

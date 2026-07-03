@@ -84,6 +84,25 @@ class ResourceSummary:
     node_role: NodeRole = NodeRole.INTERCEPTOR
     coordinator_only: bool = False
     coverage_cell: str | None = None
+    heartbeat_timestamp_s: float | None = None
+    heartbeat_stale_after_s: float = 2.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_jsonable(self)
+
+
+@dataclass(frozen=True)
+class SecondaryNodeLifecycleSummary:
+    node_id: str
+    heartbeat_timestamp_s: float | None
+    heartbeat_age_s: float | None
+    lease_epoch: int
+    coverage_cell: str | None
+    video_cue_freshness_s: float | None
+    link_stale: bool | None
+    secondary_available: bool
+    heartbeat: float | None = None
+    video_cue_freshness: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)

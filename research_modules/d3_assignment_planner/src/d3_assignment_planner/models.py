@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 
 CostBreakdown = dict[str, float]
 
-TERMINAL_FEEDBACK_HOLD_STATES = frozenset({"ambiguous", "hold"})
+TERMINAL_FEEDBACK_HOLD_STATES = frozenset(
+    {"ambiguous", "hold", "friend_overlap_hold"}
+)
 TERMINAL_FEEDBACK_REPLAN_STATES = frozenset({"reacquire"})
-TERMINAL_FEEDBACK_ARBITRATION_STATES = frozenset({"mismatch"})
+TERMINAL_FEEDBACK_ARBITRATION_STATES = frozenset(
+    {"mismatch", "multi_frame_inconsistent", "cross_view_conflict"}
+)
 EFFECTIVE_GUIDANCE_AUTH_STATES = frozenset(
     {"recorded", "authorized", "approved", "human_approved", "operator_approved"}
 )
@@ -149,6 +153,35 @@ class AssignmentPlan:
         """Alias used by cross-node messages."""
 
         return self.version
+
+
+@dataclass(frozen=True)
+class AssignmentValiditySummary:
+    """Compact D3 plan-validity summary for main/D4/D6 consumers."""
+
+    plan_id: str
+    version: int
+    plan_age_s: float
+    assignment_latency_s: float
+    cost_margin: float
+    stale_plan_version: bool
+    duplicate_assignment_count: int
+    unassigned_high_threat_count: int
+
+
+@dataclass(frozen=True)
+class AssignmentRecord:
+    """D3-to-D6 assignment log record with D6-compatible field names."""
+
+    timestamp: float
+    plan_id: str
+    version: int
+    resource_id: str
+    global_track_id: str | None
+    cost_breakdown: Mapping[str, float] = field(default_factory=dict)
+    authorization_state: str = "recorded"
+    active: bool = True
+    truth_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -417,6 +450,8 @@ class AssignmentFeedbackDecision:
     allow_local_rebind: bool = False
     reasons: tuple[str, ...] = ()
     plan_version: int | None = None
+    main_action: str = "continue"
+    planner_metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -443,6 +478,9 @@ def evaluate_terminal_feedback(
     terminal_feedback_state: str | None,
     duplicate_terminal_lock_risk: bool = False,
     plan_version: int | None = None,
+    *,
+    resource_id: str | None = None,
+    target_id: str | None = None,
 ) -> AssignmentFeedbackDecision:
     """Return a conservative D3 recommendation for terminal feedback.
 
@@ -455,45 +493,289 @@ def evaluate_terminal_feedback(
 
     if duplicate_terminal_lock_risk:
         reasons.append("duplicate_terminal_lock_risk")
-        return AssignmentFeedbackDecision(
-            recommended_action="secondary_arbitration",
-            terminal_feedback_state=state,
+        return _feedback_decision(
+            action="secondary_arbitration",
+            state=state,
             duplicate_terminal_lock_risk=True,
-            reasons=tuple(reasons),
+            reasons=reasons,
             plan_version=plan_version,
+            resource_id=resource_id,
+            target_id=target_id,
         )
 
     if state in TERMINAL_FEEDBACK_ARBITRATION_STATES:
         reasons.append(f"terminal_feedback_{state}")
-        return AssignmentFeedbackDecision(
-            recommended_action="secondary_arbitration",
-            terminal_feedback_state=state,
-            reasons=tuple(reasons),
+        return _feedback_decision(
+            action="secondary_arbitration",
+            state=state,
+            reasons=reasons,
             plan_version=plan_version,
+            resource_id=resource_id,
+            target_id=target_id,
         )
     if state in TERMINAL_FEEDBACK_REPLAN_STATES:
         reasons.append(f"terminal_feedback_{state}")
-        return AssignmentFeedbackDecision(
-            recommended_action="replan",
-            terminal_feedback_state=state,
-            reasons=tuple(reasons),
+        return _feedback_decision(
+            action="replan",
+            state=state,
+            reasons=reasons,
             plan_version=plan_version,
+            resource_id=resource_id,
+            target_id=target_id,
         )
     if state in TERMINAL_FEEDBACK_HOLD_STATES:
         reasons.append(f"terminal_feedback_{state}")
-        return AssignmentFeedbackDecision(
-            recommended_action="hold",
-            terminal_feedback_state=state,
-            reasons=tuple(reasons),
+        return _feedback_decision(
+            action="hold",
+            state=state,
+            reasons=reasons,
             plan_version=plan_version,
+            resource_id=resource_id,
+            target_id=target_id,
         )
 
-    return AssignmentFeedbackDecision(
-        recommended_action="continue",
-        terminal_feedback_state=state,
-        reasons=("terminal_feedback_consistent",),
+    return _feedback_decision(
+        action="continue",
+        state=state,
+        reasons=["terminal_feedback_consistent"],
         plan_version=plan_version,
+        resource_id=resource_id,
+        target_id=target_id,
     )
+
+
+def assignment_validity_summary_from_plan(
+    plan: AssignmentPlan,
+    *,
+    evaluated_at: float,
+    latest_version: int | None = None,
+    latest_plan_id: str | None = None,
+    assignment_latency_s: float | None = None,
+    input_timestamp_s: float | None = None,
+    tracks: Iterable[TargetTrack] | None = None,
+    high_threat_target_ids: Iterable[str] | None = None,
+    high_threat_threshold: float = 0.7,
+) -> AssignmentValiditySummary:
+    """Build a compact validity summary from one D3 assignment plan."""
+
+    return AssignmentValiditySummary(
+        plan_id=plan.plan_id,
+        version=plan.version,
+        plan_age_s=max(0.0, float(evaluated_at) - plan.created_at),
+        assignment_latency_s=_assignment_latency_s(
+            plan=plan,
+            assignment_latency_s=assignment_latency_s,
+            input_timestamp_s=input_timestamp_s,
+        ),
+        cost_margin=_cost_margin(plan),
+        stale_plan_version=_stale_plan_version(
+            plan=plan,
+            latest_version=latest_version,
+            latest_plan_id=latest_plan_id,
+        ),
+        duplicate_assignment_count=_duplicate_assignment_count(plan.assignments),
+        unassigned_high_threat_count=_unassigned_high_threat_count(
+            plan=plan,
+            tracks=tracks,
+            high_threat_target_ids=high_threat_target_ids,
+            high_threat_threshold=high_threat_threshold,
+        ),
+    )
+
+
+def assignment_records_from_plan(
+    plan: AssignmentPlan,
+    *,
+    timestamp: float | None = None,
+    authorization_state: str | None = "recorded",
+    truth_id_by_target: Mapping[str, str] | None = None,
+    active: bool = True,
+) -> tuple[AssignmentRecord, ...]:
+    """Export D6-compatible assignment records from a D3 plan."""
+
+    record_timestamp = plan.created_at if timestamp is None else float(timestamp)
+    record_auth = (
+        plan.human_authorization_state
+        if authorization_state is None
+        else authorization_state
+    )
+    truth_id_by_target = truth_id_by_target or {}
+    return tuple(
+        AssignmentRecord(
+            timestamp=record_timestamp,
+            plan_id=plan.plan_id,
+            version=plan.version,
+            resource_id=assignment.resource_id,
+            global_track_id=assignment.target_id,
+            cost_breakdown=dict(assignment.cost_breakdown),
+            authorization_state=record_auth,
+            active=active and assignment.feasibility_state == "feasible",
+            truth_id=truth_id_by_target.get(assignment.target_id),
+        )
+        for assignment in plan.assignments
+    )
+
+
+def _feedback_decision(
+    *,
+    action: str,
+    state: str,
+    reasons: list[str],
+    plan_version: int | None,
+    resource_id: str | None,
+    target_id: str | None,
+    duplicate_terminal_lock_risk: bool = False,
+) -> AssignmentFeedbackDecision:
+    return AssignmentFeedbackDecision(
+        recommended_action=action,
+        terminal_feedback_state=state,
+        duplicate_terminal_lock_risk=duplicate_terminal_lock_risk,
+        allow_local_rebind=False,
+        reasons=tuple(reasons),
+        plan_version=plan_version,
+        main_action=action,
+        planner_metadata=_feedback_planner_metadata(
+            action=action,
+            state=state,
+            reasons=reasons,
+            plan_version=plan_version,
+            resource_id=resource_id,
+            target_id=target_id,
+            duplicate_terminal_lock_risk=duplicate_terminal_lock_risk,
+        ),
+    )
+
+
+def _feedback_planner_metadata(
+    *,
+    action: str,
+    state: str,
+    reasons: list[str],
+    plan_version: int | None,
+    resource_id: str | None,
+    target_id: str | None,
+    duplicate_terminal_lock_risk: bool,
+) -> dict[str, Any]:
+    operator_hold = action == "hold"
+    prohibit_assignment = action == "secondary_arbitration"
+    increase_fov = action in {"hold", "replan", "secondary_arbitration"}
+    metadata: dict[str, Any] = {
+        "main_action": action,
+        "planner_recommended_action": action,
+        "terminal_feedback_state": state,
+        "duplicate_terminal_lock_risk": duplicate_terminal_lock_risk,
+        "allow_local_rebind": False,
+        "operator_hold_suggested": operator_hold,
+        "prohibit_assignment_suggested": prohibit_assignment,
+        "feasibility_suggestion": (
+            "temporarily_mark_current_edge_infeasible"
+            if prohibit_assignment
+            else "review_current_edge"
+            if action == "replan"
+            else "unchanged"
+        ),
+        "fov_difficulty_suggestion": (
+            "increase_current_edge" if increase_fov else "unchanged"
+        ),
+        "d7_gate_action": "hold" if action != "continue" else "continue",
+        "d4_request": (
+            "secondary_arbitration" if action == "secondary_arbitration" else None
+        ),
+        "reasons": tuple(reasons),
+        "plan_version": plan_version,
+    }
+    if resource_id is not None:
+        metadata["resource_id"] = resource_id
+        metadata["resource_update"] = {
+            "resource_id": resource_id,
+            "operator_hold": operator_hold,
+        }
+    if target_id is not None:
+        metadata["target_id"] = target_id
+    if resource_id is not None and target_id is not None:
+        if prohibit_assignment:
+            metadata["prohibited_edges"] = (
+                {"target_id": target_id, "resource_id": resource_id},
+            )
+            metadata["feasibility_by_resource"] = {resource_id: False}
+        else:
+            metadata["prohibited_edges"] = ()
+            metadata["feasibility_by_resource"] = {}
+        metadata["fov_difficulty_by_resource"] = (
+            {resource_id: 1.0} if increase_fov else {}
+        )
+    return metadata
+
+
+def _assignment_latency_s(
+    *,
+    plan: AssignmentPlan,
+    assignment_latency_s: float | None,
+    input_timestamp_s: float | None,
+) -> float:
+    if assignment_latency_s is not None:
+        return max(0.0, float(assignment_latency_s))
+    source_timestamp = input_timestamp_s
+    for key in ("input_timestamp_s", "measurement_timestamp", "valid_at"):
+        if source_timestamp is None and key in plan.metadata:
+            source_timestamp = float(plan.metadata[key])
+    if source_timestamp is None:
+        return 0.0
+    return max(0.0, plan.created_at - float(source_timestamp))
+
+
+def _cost_margin(plan: AssignmentPlan) -> float:
+    if plan.previous_total_cost_current is not None and plan.candidate_total_cost is not None:
+        return float(plan.previous_total_cost_current - plan.candidate_total_cost)
+    if plan.candidate_total_cost is not None:
+        return float(plan.total_cost - plan.candidate_total_cost)
+    return 0.0
+
+
+def _stale_plan_version(
+    *,
+    plan: AssignmentPlan,
+    latest_version: int | None,
+    latest_plan_id: str | None,
+) -> bool:
+    if latest_version is not None and plan.version != latest_version:
+        return True
+    if latest_plan_id is not None and plan.plan_id != latest_plan_id:
+        return True
+    return False
+
+
+def _duplicate_assignment_count(assignments: Iterable[Assignment]) -> int:
+    target_to_resources: dict[str, set[str]] = {}
+    resource_to_targets: dict[str, set[str]] = {}
+    for assignment in assignments:
+        target_to_resources.setdefault(assignment.target_id, set()).add(assignment.resource_id)
+        resource_to_targets.setdefault(assignment.resource_id, set()).add(assignment.target_id)
+    duplicate_targets = sum(
+        1 for resources in target_to_resources.values() if len(resources) > 1
+    )
+    duplicate_resources = sum(
+        1 for targets in resource_to_targets.values() if len(targets) > 1
+    )
+    return duplicate_targets + duplicate_resources
+
+
+def _unassigned_high_threat_count(
+    *,
+    plan: AssignmentPlan,
+    tracks: Iterable[TargetTrack] | None,
+    high_threat_target_ids: Iterable[str] | None,
+    high_threat_threshold: float,
+) -> int:
+    if high_threat_target_ids is None:
+        high_threat = {
+            track.track_id
+            for track in tracks or ()
+            if track.threat_score >= high_threat_threshold
+        }
+    else:
+        high_threat = {str(target_id) for target_id in high_threat_target_ids}
+    return sum(1 for target_id in plan.unassigned_target_ids if target_id in high_threat)
 
 
 def _guidance_binding_state(
@@ -511,7 +793,7 @@ def _guidance_binding_state(
         return GUIDANCE_BINDING_STALE
     if assignment.resource_id in hold_resource_ids:
         return GUIDANCE_BINDING_HOLD
-    if _terminal_feedback_state(plan, assignment) in {"ambiguous", "hold", "reacquire", "mismatch"}:
+    if _terminal_feedback_state(plan, assignment) in TERMINAL_FEEDBACK_HOLD_STATES | TERMINAL_FEEDBACK_REPLAN_STATES | TERMINAL_FEEDBACK_ARBITRATION_STATES:
         return GUIDANCE_BINDING_HOLD
     if plan.duplicate_terminal_lock_risk or assignment.duplicate_terminal_lock_risk:
         return GUIDANCE_BINDING_HOLD
@@ -537,7 +819,7 @@ def _guidance_revoke_reason(
     if assignment.resource_id in hold_resource_ids:
         return "resource_hold_requested"
     terminal_feedback_state = _terminal_feedback_state(plan, assignment)
-    if terminal_feedback_state in {"ambiguous", "hold", "reacquire", "mismatch"}:
+    if terminal_feedback_state in TERMINAL_FEEDBACK_HOLD_STATES | TERMINAL_FEEDBACK_REPLAN_STATES | TERMINAL_FEEDBACK_ARBITRATION_STATES:
         return f"terminal_feedback_{terminal_feedback_state}"
     if plan.duplicate_terminal_lock_risk or assignment.duplicate_terminal_lock_risk:
         return "duplicate_terminal_lock_risk"

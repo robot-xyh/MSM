@@ -97,6 +97,8 @@ Each transition records state, timestamp, reason, and epoch. The implementation 
 - `node_role`: `ground_backup`, `secondary_recon`, `cluster_representative`, or `interceptor`.
 - `coordinator_only`: when true, the node coordinates or observes but does not own executable fallback tasks.
 - `coverage_cell`: coarse region covered by a secondary node.
+- `heartbeat_timestamp_s`: latest secondary-node heartbeat time when available.
+- `heartbeat_stale_after_s`: heartbeat age threshold used to mark a secondary node unavailable.
 - `epoch`: monotonic planning epoch.
 
 Active-degradation summaries:
@@ -106,6 +108,8 @@ Active-degradation summaries:
 - `AssignmentValiditySummary`: D3 assigned track/resource, plan version, freshness, and cost margin.
 - `TerminalAssociationSummary`: D5 terminal decision state, confidence, ambiguity, mismatch duration, duplicate terminal lock, cross-view risk, and friend-conflict flag.
 - `ActiveDegradationDecision`: D4 output with mode, action, reason, target node, coverage cell, risk factors, and terminal consistency.
+- `SecondaryNodeLifecycleSummary`: D4 secondary-node lifecycle output with `heartbeat`, `lease_epoch`, `coverage_cell`, `video_cue_freshness_s`, `link_stale`, and final `secondary_available`.
+- `D4DecisionRecord`: adapter output that can be converted to D6 `EventRecord` kwargs. Metadata includes `degradation_mode`, `selected_coordinator`, `coverage_cell`, `trigger_reason`, `trigger_timestamp`, `decision_timestamp`, and `review_label`.
 
 Decision metrics:
 
@@ -117,6 +121,13 @@ Decision metrics:
 - `failover_time`
 - `secondary_selected_rate`
 - `distributed_conflict_count`
+
+Active-degradation debounce and hysteresis configuration:
+
+- `mismatch_frame_limit`: consecutive terminal mismatch frames required before persistent disagreement can escalate.
+- `risk_window_size` and `risk_window_threshold`: rolling risk window used to debounce persistent terminal disagreement.
+- `min_dwell_s`: minimum time to remain in a degraded decision before release.
+- `release_consecutive_consistent_frames`: consecutive low-risk, terminal-consistent frames required before returning to `continue_center`.
 
 Enhanced communication summary:
 
@@ -284,3 +295,21 @@ Tests:
 - Simulation script under `scripts/`.
 - Experiment report under `reports/EXPERIMENT_REPORT.md`.
 - AirSim integration plan under `reports/AIRSIM_INTEGRATION_PLAN.md`, limited to offline adapter interfaces and synthetic logs.
+
+## P1 Gap Status
+
+Completed in D4 module:
+
+- Secondary node lifecycle fields and summaries: heartbeat, lease epoch, coverage cell, video cue freshness, stale link state, and final `secondary_available`.
+- Active-degradation debounce and hysteresis configuration: dwell, release condition, consecutive mismatch frame threshold, and rolling risk window threshold.
+- D6-compatible decision event output from `D4ArbitrationAdapter`.
+- Tests for lifecycle availability, dwell/release behavior, windowed mismatch debounce, and D6 metadata fields.
+
+Intentionally unchanged:
+
+- The local lightweight CBBA remains the only distributed fallback baseline.
+- MIT CBBA, CA-CBBA, standalone auction, and contract-net integrations were not added.
+
+Remaining outside this D4 module:
+
+- Main/integrated runtime must call `D4ArbitrationAdapter` during real episodes and write the returned event kwargs into the D6 collector.

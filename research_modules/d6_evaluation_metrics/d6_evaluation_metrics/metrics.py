@@ -109,6 +109,8 @@ class EpisodeMetrics:
 
     episode_id: str
     seed: int | None = None
+    scenario_group: str = "unlabeled"
+    batch_seed: int | None = None
     duration: float = 0.0
     detection_probability: float = 0.0
     false_alarm_rate: float = 0.0
@@ -121,6 +123,11 @@ class EpisodeMetrics:
     failover_time: float = 0.0
     consensus_rounds: float = 0.0
     degraded_completion_rate: float = 0.0
+    active_degradation_count: int = 0
+    passive_failover_count: int = 0
+    secondary_node_takeover_count: int = 0
+    distributed_fallback_count: int = 0
+    failover_active_window_delta_s: float = 0.0
     terminal_association_accuracy: float = 0.0
     terminal_id_switch_count: int = 0
     ambiguous_fov_event_count: int = 0
@@ -140,7 +147,10 @@ class EpisodeMetrics:
     los_quality_gate_pass_rate: float = 0.0
     maneuver_margin_gate_pass_rate: float = 0.0
     terminal_switch_allowed_rate: float = 0.0
+    terminal_takeover_rate: float = 0.0
     terminal_switch_reject_count: int = 0
+    mode_switch_count: int = 0
+    terminal_contract_reject_count: int = 0
     intercept_success_count: int = 0
     collision_intercept_count: int = 0
     range_intercept_count: int = 0
@@ -165,6 +175,11 @@ class EpisodeMetrics:
             "failover_time",
             "consensus_rounds",
             "degraded_completion_rate",
+            "active_degradation_count",
+            "passive_failover_count",
+            "secondary_node_takeover_count",
+            "distributed_fallback_count",
+            "failover_active_window_delta_s",
             "terminal_association_accuracy",
             "terminal_id_switch_count",
             "ambiguous_fov_event_count",
@@ -184,7 +199,10 @@ class EpisodeMetrics:
             "los_quality_gate_pass_rate",
             "maneuver_margin_gate_pass_rate",
             "terminal_switch_allowed_rate",
+            "terminal_takeover_rate",
             "terminal_switch_reject_count",
+            "mode_switch_count",
+            "terminal_contract_reject_count",
             "intercept_success_count",
             "collision_intercept_count",
             "range_intercept_count",
@@ -207,6 +225,30 @@ class MetricsCollector:
 
     CENTRAL_FAILURE_EVENTS = {"central_failure", "coordinator_failure"}
     DEGRADED_STABLE_EVENTS = {"degraded_stable", "failover_stable"}
+    ACTIVE_DEGRADATION_EVENTS = {
+        "active_degradation",
+        "active_degradation_decision",
+        "d4_active_degradation",
+        "d4_active_degradation_decision",
+    }
+    PASSIVE_FAILOVER_EVENTS = {
+        "passive_failover",
+        "passive_failover_complete",
+        "passive_failover_stable",
+        "d4_passive_failover",
+    }
+    SECONDARY_NODE_TAKEOVER_EVENTS = {
+        "secondary_node_takeover",
+        "secondary_takeover",
+        "secondary_takeover_complete",
+        "d4_secondary_node_takeover",
+    }
+    DISTRIBUTED_FALLBACK_EVENTS = {
+        "distributed_fallback",
+        "distributed_fallback_active",
+        "distributed_fallback_complete",
+        "d4_distributed_fallback",
+    }
     CONSTRAINT_VIOLATION_EVENTS = {
         "constraint_violation",
         "safety_constraint_violation",
@@ -261,6 +303,12 @@ class MetricsCollector:
     }
     INTERCEPT_SUMMARY_EVENTS = {"d7_intercept_summary", "intercept_summary"}
     D7_CONTROL_COMMAND_EVENTS = {"d7_control_command", "control_command"}
+    D7_GUIDANCE_RECORD_EVENTS = {"d7_guidance_record", "guidance_record"}
+    D7_GUIDANCE_SUMMARY_EVENTS = {"d7_guidance_summary", "guidance_summary"}
+    D7_GUIDANCE_PAIR_SUMMARY_EVENTS = {
+        "d7_guidance_pair_summary",
+        "guidance_pair_summary",
+    }
     FOV_ENTRY_STATES = {"fov_entry", "entered_fov", "terminal_fov_entry"}
     LOCK_STATES = {"locked", "lock", "terminal_lock"}
     ASSOCIATION_STATES = {"associated", "locked", "lock", "terminal_lock"}
@@ -316,8 +364,18 @@ class MetricsCollector:
         seed: int | None = None,
         duration: float | None = None,
         truth_summary: Mapping[str, Any] | None = None,
+        scenario_group: str | None = None,
+        batch_seed: int | None = None,
     ) -> EpisodeMetrics:
         truth_summary = truth_summary or {}
+        resolved_scenario_group = scenario_group or _scenario_group_from_truth_summary(
+            truth_summary
+        )
+        resolved_batch_seed = batch_seed
+        if resolved_batch_seed is None:
+            resolved_batch_seed = _batch_seed_from_truth_summary(truth_summary)
+        if resolved_batch_seed is None:
+            resolved_batch_seed = seed
         episode_duration = (
             float(duration)
             if duration is not None
@@ -326,6 +384,8 @@ class MetricsCollector:
         metrics = EpisodeMetrics(
             episode_id=episode_id,
             seed=seed,
+            scenario_group=resolved_scenario_group,
+            batch_seed=resolved_batch_seed,
             duration=episode_duration,
         )
 
@@ -336,6 +396,7 @@ class MetricsCollector:
         tracking = self._compute_tracking_metrics(truth_summary)
         assignment = self._compute_assignment_metrics(truth_summary)
         degradation = self._compute_degradation_metrics()
+        degradation_metadata = degradation.pop("_metadata", {})
         terminal = self._compute_terminal_metrics()
         link = self._compute_link_metrics()
         guidance_gate = self._compute_guidance_gate_metrics()
@@ -365,6 +426,9 @@ class MetricsCollector:
             "link_record_count": len(self.link_records),
             "terminal_record_count": len(self.terminal_records),
             "offline_only": True,
+            "scenario_group": resolved_scenario_group,
+            "batch_seed": resolved_batch_seed,
+            **degradation_metadata,
             **guidance_metadata,
             **intercept_metadata,
         }
@@ -564,21 +628,68 @@ class MetricsCollector:
             "unassigned_high_threat_count": unassigned_high_threat_count,
         }
 
-    def _compute_degradation_metrics(self) -> dict[str, float]:
+    def _compute_degradation_metrics(self) -> dict[str, Any]:
         sorted_events = sorted(self.event_records, key=lambda record: record.timestamp)
         pending_failures: deque[EventRecord] = deque()
         failover_times: list[float] = []
+        failover_active_window_deltas: list[float] = []
+        active_window_timestamps: deque[float] = deque()
         consensus_round_values: list[float] = []
         degraded_completed = 0
         degraded_failed = 0
+        active_degradation_count = 0
+        passive_failover_count = 0
+        secondary_node_takeover_count = 0
+        distributed_fallback_count = 0
+        trigger_reasons: dict[str, int] = defaultdict(int)
 
         for record in sorted_events:
             event_type = _event_type(record)
+            active, passive, secondary, distributed = self._degradation_classification(record)
+            if active:
+                active_degradation_count += 1
+                active_window_timestamps.append(record.timestamp)
+            if passive:
+                passive_failover_count += 1
+            if secondary:
+                secondary_node_takeover_count += 1
+            if distributed:
+                distributed_fallback_count += 1
+
+            trigger_reason = (
+                _metadata_text(record.metadata, "trigger_reason")
+                or _metadata_text(record.metadata, "reason")
+                or _metadata_text(record.metadata, "failover_reason")
+                or _metadata_text(record.metadata, "degradation_reason")
+            )
+            if trigger_reason is not None and (active or passive or secondary or distributed):
+                trigger_reasons[trigger_reason] += 1
+
+            explicit_delta = self._failover_active_window_delta_from_metadata(record)
+            if explicit_delta is not None:
+                failover_active_window_deltas.append(explicit_delta)
+
             if event_type in self.CENTRAL_FAILURE_EVENTS:
                 pending_failures.append(record)
             elif event_type in self.DEGRADED_STABLE_EVENTS and pending_failures:
                 failure = pending_failures.popleft()
                 failover_times.append(max(0.0, record.timestamp - failure.timestamp))
+            if (
+                passive
+                or secondary
+                or distributed
+                or event_type in self.DEGRADED_STABLE_EVENTS
+            ) and explicit_delta is None:
+                while active_window_timestamps and active_window_timestamps[0] > record.timestamp:
+                    active_window_timestamps.popleft()
+                prior_active = None
+                for timestamp in active_window_timestamps:
+                    if timestamp <= record.timestamp:
+                        prior_active = timestamp
+                    else:
+                        break
+                if prior_active is not None:
+                    failover_active_window_deltas.append(record.timestamp - prior_active)
             elif event_type == "consensus_rounds":
                 value = _event_numeric_value(record, "rounds")
                 if value is not None:
@@ -599,7 +710,84 @@ class MetricsCollector:
             "failover_time": failover_time,
             "consensus_rounds": consensus_rounds,
             "degraded_completion_rate": degraded_completion_rate,
+            "active_degradation_count": active_degradation_count,
+            "passive_failover_count": passive_failover_count,
+            "secondary_node_takeover_count": secondary_node_takeover_count,
+            "distributed_fallback_count": distributed_fallback_count,
+            "failover_active_window_delta_s": _mean(failover_active_window_deltas),
+            "_metadata": {
+                "trigger_reason_distribution": dict(trigger_reasons),
+                "failover_active_window_deltas_s": failover_active_window_deltas,
+            },
         }
+
+    def _degradation_classification(
+        self,
+        record: EventRecord,
+    ) -> tuple[bool, bool, bool, bool]:
+        event_type = _event_type(record)
+        metadata = record.metadata
+        mode = _state(str(metadata.get("mode") or metadata.get("degradation_mode") or ""))
+        action = _state(str(metadata.get("action") or ""))
+        fallback_type = _state(str(metadata.get("fallback_type") or ""))
+        d4_state = _state(str(metadata.get("d4_state") or metadata.get("d4_mode") or ""))
+
+        active = (
+            event_type in self.ACTIVE_DEGRADATION_EVENTS
+            or mode == "active_degradation"
+            or d4_state == "active_degradation"
+            or _bool_from_metadata(metadata, ("active_degradation",), default=False)
+        )
+        passive = (
+            event_type in self.PASSIVE_FAILOVER_EVENTS
+            or mode == "passive_failover"
+            or fallback_type == "passive_failover"
+            or _bool_from_metadata(metadata, ("passive_failover",), default=False)
+        )
+        secondary = (
+            event_type in self.SECONDARY_NODE_TAKEOVER_EVENTS
+            or action in {
+                "secondary_node_takeover",
+                "takeover_secondary",
+                "request_secondary_assist",
+            }
+            or fallback_type in {"secondary_node_takeover", "secondary_takeover"}
+            or _bool_from_metadata(metadata, ("secondary_node_takeover",), default=False)
+        )
+        distributed = (
+            event_type in self.DISTRIBUTED_FALLBACK_EVENTS
+            or mode == "distributed_fallback"
+            or fallback_type == "distributed_fallback"
+            or _bool_from_metadata(metadata, ("distributed_fallback",), default=False)
+        )
+        return active, passive, secondary, distributed
+
+    def _failover_active_window_delta_from_metadata(
+        self,
+        record: EventRecord,
+    ) -> float | None:
+        metadata = record.metadata
+        for key in (
+            "failover_active_window_delta_s",
+            "active_window_delta_s",
+            "failover_window_delta_s",
+        ):
+            value = _metadata_float(metadata, key)
+            if value is not None:
+                return max(0.0, value)
+
+        active_window_end = _metadata_float(metadata, "active_window_end_s")
+        if active_window_end is None:
+            active_window_end = _metadata_float(metadata, "active_window_end_timestamp")
+        failover_timestamp = (
+            _metadata_float(metadata, "failover_timestamp_s")
+            or _metadata_float(metadata, "failover_timestamp")
+            or _metadata_float(metadata, "takeover_timestamp_s")
+            or _metadata_float(metadata, "takeover_timestamp")
+        )
+        if active_window_end is not None and failover_timestamp is not None:
+            return max(0.0, failover_timestamp - active_window_end)
+        return None
 
     def _compute_terminal_metrics(self) -> dict[str, float | int]:
         accuracy_attempts = 0
@@ -942,18 +1130,62 @@ class MetricsCollector:
         terminal_switch_allowed_values: list[bool] = []
         terminal_switch_reject_count = 0
         gate_reject_count = 0
+        mode_switch_count = 0
+        terminal_contract_reject_count = 0
         guidance_law_counts: dict[str, int] = defaultdict(int)
         reject_reasons: dict[str, int] = defaultdict(int)
+        contract_reject_reasons: dict[str, int] = defaultdict(int)
+        guidance_mode_counts: dict[str, int] = defaultdict(int)
+        d4_state_counts: dict[str, int] = defaultdict(int)
+        d5_state_counts: dict[str, int] = defaultdict(int)
+        plan_version_counts: dict[str, int] = defaultdict(int)
+        guidance_law_by_pair: dict[tuple[str, str], tuple[float, str]] = {}
+        reject_reasons_by_pair: dict[tuple[str, str], set[str]] = defaultdict(set)
+        plan_ids: set[str] = set()
 
         for record in self.event_records:
             metadata = record.metadata
             event_type = _event_type(record)
             guidance_law = metadata.get("guidance_law")
             if guidance_law is not None:
-                guidance_law_counts[str(guidance_law)] += 1
+                guidance_law_text = str(guidance_law)
+                guidance_law_counts[guidance_law_text] += 1
+                pair_key = _intercept_pair_key(record)
+                if pair_key is not None:
+                    previous = guidance_law_by_pair.get(pair_key)
+                    if previous is None or record.timestamp >= previous[0]:
+                        guidance_law_by_pair[pair_key] = (
+                            record.timestamp,
+                            guidance_law_text,
+                        )
+            mode = _metadata_text(metadata, "mode")
+            if mode is not None:
+                guidance_mode_counts[mode] += 1
+            d4_state = _metadata_text(metadata, "d4_state") or _metadata_text(
+                metadata, "d4_mode"
+            )
+            if d4_state is not None:
+                d4_state_counts[d4_state] += 1
+            d5_state = _metadata_text(metadata, "d5_state") or _metadata_text(
+                metadata, "terminal_state"
+            )
+            if d5_state is not None:
+                d5_state_counts[d5_state] += 1
+            plan_id = _metadata_text(metadata, "plan_id")
+            if plan_id is not None:
+                plan_ids.add(plan_id)
+            plan_version = _metadata_text(metadata, "plan_version") or _metadata_text(
+                metadata, "version"
+            )
+            if plan_version is not None:
+                plan_version_counts[plan_version] += 1
+
+            if _bool_from_metadata(metadata, ("mode_switch",), default=False):
+                mode_switch_count += 1
 
             if (
-                event_type in self.D7_CONTROL_COMMAND_EVENTS
+                event_type
+                in self.D7_CONTROL_COMMAND_EVENTS | self.D7_GUIDANCE_RECORD_EVENTS
                 and "terminal_switch_allowed" in metadata
             ):
                 terminal_switch_allowed_values.append(
@@ -992,7 +1224,10 @@ class MetricsCollector:
                 ),
             )
 
-            reject_reason = _metadata_text(metadata, "terminal_switch_reject_reason")
+            reject_reason = (
+                _metadata_text(metadata, "terminal_switch_reject_reason")
+                or _metadata_text(metadata, "terminal_contract_reject_reason")
+            )
             rejected = event_type in self.TERMINAL_SWITCH_REJECT_EVENTS
             rejected = rejected or reject_reason is not None
             rejected = rejected or _bool_from_metadata(
@@ -1007,6 +1242,17 @@ class MetricsCollector:
                 gate_reject_count += 1
                 if reject_reason is not None:
                     reject_reasons[reject_reason] += 1
+                    pair_key = _intercept_pair_key(record)
+                    if pair_key is not None:
+                        reject_reasons_by_pair[pair_key].add(reject_reason)
+
+            contract_reject_reason = _metadata_text(
+                metadata,
+                "terminal_contract_reject_reason",
+            )
+            if contract_reject_reason is not None:
+                terminal_contract_reject_count += 1
+                contract_reject_reasons[contract_reject_reason] += 1
 
         return {
             "camera_quality_gate_pass_rate": _bool_rate(camera_values),
@@ -1014,15 +1260,30 @@ class MetricsCollector:
             "maneuver_margin_gate_pass_rate": _bool_rate(maneuver_values),
             "terminal_switch_allowed_rate": _bool_rate(terminal_switch_allowed_values),
             "terminal_switch_reject_count": terminal_switch_reject_count,
+            "mode_switch_count": mode_switch_count,
+            "terminal_contract_reject_count": terminal_contract_reject_count,
             "gate_reject_count": gate_reject_count,
             "_metadata": {
                 "guidance_law_counts": dict(guidance_law_counts),
+                "guidance_law_pair_counts": _count_guidance_laws_by_pair(
+                    guidance_law_by_pair
+                ),
                 "terminal_switch_reject_reasons": dict(reject_reasons),
+                "terminal_switch_reject_reason_pair_counts": _count_reject_reasons_by_pair(
+                    reject_reasons_by_pair
+                ),
+                "terminal_contract_reject_reasons": dict(contract_reject_reasons),
+                "guidance_mode_counts": dict(guidance_mode_counts),
+                "d4_state_counts": dict(d4_state_counts),
+                "d5_state_counts": dict(d5_state_counts),
+                "plan_version_counts": dict(plan_version_counts),
+                "plan_ids": sorted(plan_ids),
             },
         }
 
     def _compute_intercept_metrics(self) -> dict[str, Any]:
         summary_success_count: int | None = None
+        summary_pair_count: int | None = None
         pair_events: list[EventRecord] = []
         command_events: list[EventRecord] = []
 
@@ -1032,6 +1293,9 @@ class MetricsCollector:
                 value = _metadata_int(record.metadata, "success_count")
                 if value is not None:
                     summary_success_count = value
+                pair_count = _metadata_int(record.metadata, "pair_count")
+                if pair_count is not None:
+                    summary_pair_count = pair_count
             elif event_type in self.INTERCEPT_PAIR_SUMMARY_EVENTS:
                 pair_events.append(record)
             elif event_type in self.D7_CONTROL_COMMAND_EVENTS:
@@ -1047,9 +1311,23 @@ class MetricsCollector:
             if summary_success_count is not None:
                 result["intercept_success_count"] = summary_success_count
 
+        terminal_takeover = self._terminal_takeover_metrics(
+            pair_events,
+            command_events,
+            summary_pair_count=summary_pair_count,
+        )
+        result.update(
+            {
+                key: value
+                for key, value in terminal_takeover.items()
+                if key != "_metadata"
+            }
+        )
         result["_metadata"] = {
             **result.get("_metadata", {}),
+            **terminal_takeover.get("_metadata", {}),
             "intercept_summary_success_count": summary_success_count,
+            "intercept_summary_pair_count": summary_pair_count,
             "intercept_pair_event_count": len(pair_events),
             "d7_control_command_event_count": len(command_events),
         }
@@ -1098,6 +1376,39 @@ class MetricsCollector:
             "time_to_intercept_s": _mean(time_to_intercepts),
             "min_range_m": min(min_ranges) if min_ranges else 0.0,
             "_metadata": {"intercept_status_counts": dict(status_counts)},
+        }
+
+    def _terminal_takeover_metrics(
+        self,
+        pair_events: Sequence[EventRecord],
+        command_events: Sequence[EventRecord],
+        *,
+        summary_pair_count: int | None,
+    ) -> dict[str, Any]:
+        observed_pairs: set[tuple[str, str]] = set()
+        terminal_takeover_pairs: set[tuple[str, str]] = set()
+        for record in list(pair_events) + list(command_events):
+            pair_key = _intercept_pair_key(record)
+            if pair_key is None:
+                continue
+            observed_pairs.add(pair_key)
+            if _terminal_takeover_from_metadata(record.metadata):
+                terminal_takeover_pairs.add(pair_key)
+
+        denominator = (
+            summary_pair_count
+            if summary_pair_count is not None and summary_pair_count > 0
+            else len(observed_pairs)
+        )
+        terminal_takeover_rate = (
+            len(terminal_takeover_pairs) / denominator if denominator else 0.0
+        )
+        return {
+            "terminal_takeover_rate": terminal_takeover_rate,
+            "_metadata": {
+                "terminal_takeover_pair_count": len(terminal_takeover_pairs),
+                "terminal_takeover_pair_denominator": denominator,
+            },
         }
 
     def _intercept_metrics_from_command_events(
@@ -1195,6 +1506,64 @@ class MetricsCollector:
 
 def _state(value: str | None) -> str:
     return (value or "").strip().lower()
+
+
+def _intercept_pair_key(record: EventRecord) -> tuple[str, str] | None:
+    resource_id = (
+        _metadata_text(record.metadata, "resource_id")
+        or _metadata_text(record.metadata, "vehicle_name")
+        or record.actor_id
+    )
+    target_id = _metadata_text(record.metadata, "target_id") or _metadata_text(
+        record.metadata,
+        "global_track_id",
+    )
+    if resource_id is None and target_id is None:
+        return None
+    return (str(resource_id or ""), str(target_id or ""))
+
+
+def _terminal_takeover_from_metadata(metadata: Mapping[str, Any]) -> bool:
+    if _bool_from_metadata(
+        metadata,
+        (
+            "terminal_locked",
+            "terminal_switch_allowed",
+            "terminal_mode_entered",
+            "terminal_takeover",
+        ),
+        default=False,
+    ):
+        return True
+    mode = _metadata_text(metadata, "mode") or _metadata_text(metadata, "guidance_mode")
+    if _state(mode) in {
+        "terminal",
+        "vision_terminal",
+        "terminal_guidance",
+        "vision_terminal_guidance",
+    }:
+        return True
+    guidance_law = _metadata_text(metadata, "guidance_law")
+    return _state(guidance_law) in {"png_vm", "png_ttc", "los"}
+
+
+def _count_guidance_laws_by_pair(
+    guidance_law_by_pair: Mapping[tuple[str, str], tuple[float, str]],
+) -> dict[str, int]:
+    counts: dict[str, int] = defaultdict(int)
+    for _, guidance_law in guidance_law_by_pair.values():
+        counts[guidance_law] += 1
+    return dict(counts)
+
+
+def _count_reject_reasons_by_pair(
+    reject_reasons_by_pair: Mapping[tuple[str, str], set[str]],
+) -> dict[str, int]:
+    counts: dict[str, int] = defaultdict(int)
+    for reasons in reject_reasons_by_pair.values():
+        for reason in reasons:
+            counts[reason] += 1
+    return dict(counts)
 
 
 def _event_type(record: EventRecord) -> str:
@@ -1463,6 +1832,50 @@ def _gate_reject_from_metadata(metadata: Mapping[str, Any]) -> bool:
         default=False,
     )
     return terminal_handover_pending and not terminal_switch_allowed and not all(present_gate_values)
+
+
+def _scenario_group_from_truth_summary(truth_summary: Mapping[str, Any]) -> str:
+    explicit = truth_summary.get("scenario_group") or truth_summary.get("scenario_type")
+    if explicit is None:
+        scenario = truth_summary.get("scenario", {})
+        if isinstance(scenario, Mapping):
+            explicit = scenario.get("group") or scenario.get("scenario_group")
+            if explicit is None:
+                explicit = scenario.get("name")
+    text = _state(str(explicit or ""))
+    if not text:
+        return "unlabeled"
+    if text in {
+        "normal",
+        "secondary_200m",
+        "distributed",
+        "terminal_handoff_tuned",
+        "multi_view_inconsistent",
+    }:
+        return text
+    if "secondary" in text and "200" in text:
+        return "secondary_200m"
+    if "distributed" in text:
+        return "distributed"
+    if "terminal" in text and ("handoff" in text or "handover" in text) and "tuned" in text:
+        return "terminal_handoff_tuned"
+    if "multi" in text and "view" in text and "inconsistent" in text:
+        return "multi_view_inconsistent"
+    if "normal" in text or "baseline" in text:
+        return "normal"
+    return text
+
+
+def _batch_seed_from_truth_summary(truth_summary: Mapping[str, Any]) -> int | None:
+    for key in ("batch_seed", "seed"):
+        if key in truth_summary and truth_summary[key] is not None:
+            return int(truth_summary[key])
+    scenario = truth_summary.get("scenario", {})
+    if isinstance(scenario, Mapping):
+        for key in ("batch_seed", "seed"):
+            if key in scenario and scenario[key] is not None:
+                return int(scenario[key])
+    return None
 
 
 def _euclidean_distance(

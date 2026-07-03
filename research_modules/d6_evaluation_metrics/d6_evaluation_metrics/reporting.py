@@ -37,6 +37,11 @@ class ReportGenerator:
             "failover_time",
             "consensus_rounds",
             "degraded_completion_rate",
+            "active_degradation_count",
+            "passive_failover_count",
+            "secondary_node_takeover_count",
+            "distributed_fallback_count",
+            "failover_active_window_delta_s",
         ],
         "terminal": [
             "terminal_association_accuracy",
@@ -62,7 +67,10 @@ class ReportGenerator:
             "los_quality_gate_pass_rate",
             "maneuver_margin_gate_pass_rate",
             "terminal_switch_allowed_rate",
+            "terminal_takeover_rate",
             "terminal_switch_reject_count",
+            "mode_switch_count",
+            "terminal_contract_reject_count",
             "intercept_success_count",
             "collision_intercept_count",
             "range_intercept_count",
@@ -116,7 +124,13 @@ class ReportGenerator:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         rows = [episode.to_dict() for episode in episodes]
-        fieldnames = ["episode_id", "seed", "duration"] + EpisodeMetrics.metric_names()
+        fieldnames = [
+            "episode_id",
+            "seed",
+            "batch_seed",
+            "scenario_group",
+            "duration",
+        ] + EpisodeMetrics.metric_names()
         with path.open("w", newline="", encoding="utf-8") as stream:
             writer = csv.DictWriter(stream, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
@@ -130,8 +144,24 @@ class ReportGenerator:
     ) -> Path:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        rows = self.summarize(episodes)
+        episode_list = list(episodes)
+        rows = _scoped_summary_rows("all", "all", self.summarize(episode_list))
+        for scenario_group in _ordered_scenario_groups(episode_list):
+            scoped_episodes = [
+                episode
+                for episode in episode_list
+                if episode.scenario_group == scenario_group
+            ]
+            rows.extend(
+                _scoped_summary_rows(
+                    scenario_group,
+                    _batch_seed_range_text(scoped_episodes),
+                    self.summarize(scoped_episodes),
+                )
+            )
         fieldnames = [
+            "scenario_group",
+            "batch_seed",
             "metric",
             "count",
             "mean",
@@ -159,6 +189,17 @@ class ReportGenerator:
         path.parent.mkdir(parents=True, exist_ok=True)
         episode_list = list(episodes)
         summary_rows = self.summarize(episode_list)
+        scenario_rows = [
+            (
+                scenario_group,
+                [
+                    episode
+                    for episode in episode_list
+                    if episode.scenario_group == scenario_group
+                ],
+            )
+            for scenario_group in _ordered_scenario_groups(episode_list)
+        ]
 
         lines = [
             f"# {title}",
@@ -168,6 +209,7 @@ class ReportGenerator:
             "",
             f"- Episode 数量: {len(episode_list)}",
             f"- 随机种子范围: {_seed_range_text(episode_list)}",
+            f"- 场景分组: {', '.join(_ordered_scenario_groups(episode_list)) or 'not recorded'}",
             "",
             "## 1. 汇总表",
             "",
@@ -182,10 +224,36 @@ class ReportGenerator:
                 )
             )
 
+        if scenario_rows:
+            lines.extend(
+                [
+                    "",
+                    "## 2. 场景分组",
+                    "",
+                    "| 场景 | Episode 数量 | Batch seed | active_degradation_count | passive_failover_count | mode_switch_count | terminal_contract_reject_count |",
+                    "|---|---:|---|---:|---:|---:|---:|",
+                ]
+            )
+            for scenario_group, scoped_episodes in scenario_rows:
+                lines.append(
+                    "| {scenario_group} | {count} | {batch_seed} | {active:.6g} | {passive:.6g} | {mode_switch:.6g} | {contract_reject:.6g} |".format(
+                        scenario_group=scenario_group,
+                        count=len(scoped_episodes),
+                        batch_seed=_batch_seed_range_text(scoped_episodes),
+                        active=_mean_metric(scoped_episodes, "active_degradation_count"),
+                        passive=_mean_metric(scoped_episodes, "passive_failover_count"),
+                        mode_switch=_mean_metric(scoped_episodes, "mode_switch_count"),
+                        contract_reject=_mean_metric(
+                            scoped_episodes,
+                            "terminal_contract_reject_count",
+                        ),
+                    )
+                )
+
         lines.extend(
             [
                 "",
-                "## 2. 图表与曲线",
+                "## 3. 图表与曲线",
                 "",
                 "![探测指标图](plots/detection_metrics.png)",
                 "",
@@ -205,7 +273,7 @@ class ReportGenerator:
                 "",
                 "![关键指标分布图](plots/selected_metric_distributions.png)",
                 "",
-                "## 3. 解读说明",
+                "## 4. 解读说明",
                 "",
                 "- 探测、跟踪、分配、降级、末端配准、通信、导引门控和安全指标分开报告，避免单一命中率掩盖问题。",
                 "- 计数类指标应与比例类指标一起检查，少量但严重的安全事件可能被总体成功率掩盖。",
@@ -320,6 +388,35 @@ def _empty_summary_row(metric_name: str) -> dict[str, Any]:
     }
 
 
+def _scoped_summary_rows(
+    scenario_group: str,
+    batch_seed: str,
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "scenario_group": scenario_group,
+            "batch_seed": batch_seed,
+            **row,
+        }
+        for row in rows
+    ]
+
+
+def _ordered_scenario_groups(episodes: list[EpisodeMetrics]) -> list[str]:
+    preferred_order = [
+        "normal",
+        "secondary_200m",
+        "distributed",
+        "terminal_handoff_tuned",
+        "multi_view_inconsistent",
+    ]
+    present = {episode.scenario_group for episode in episodes if episode.scenario_group}
+    ordered = [group for group in preferred_order if group in present]
+    ordered.extend(sorted(present - set(ordered)))
+    return ordered
+
+
 def _seed_range_text(episodes: list[EpisodeMetrics]) -> str:
     seeds = sorted(episode.seed for episode in episodes if episode.seed is not None)
     if not seeds:
@@ -327,3 +424,18 @@ def _seed_range_text(episodes: list[EpisodeMetrics]) -> str:
     if len(seeds) == 1:
         return str(seeds[0])
     return f"{seeds[0]}..{seeds[-1]}"
+
+
+def _batch_seed_range_text(episodes: list[EpisodeMetrics]) -> str:
+    seeds = sorted(episode.batch_seed for episode in episodes if episode.batch_seed is not None)
+    if not seeds:
+        return "not recorded"
+    if len(seeds) == 1:
+        return str(seeds[0])
+    return f"{seeds[0]}..{seeds[-1]}"
+
+
+def _mean_metric(episodes: list[EpisodeMetrics], metric_name: str) -> float:
+    if not episodes:
+        return 0.0
+    return float(np.mean([float(getattr(episode, metric_name)) for episode in episodes]))

@@ -26,6 +26,10 @@ python3 research_modules/d5_terminal_association/simulations/run_terminal_associ
 - `IdentityChecker.parse_claims(raw_messages, current_time)`
 - `TerminalObservationBus.publish_terminal_association(...)`
 - `TerminalObservationBus.cross_view_associations()`
+- `TerminalConsistencyTracker.update(...)`
+- `summarize_terminal_consistency(...)`
+- `annotate_visual_png_handoff(...)`
+- `bbox_area_stability(...)`
 - `local_visual_tracks_from_sim_detections(...)`
 - `publish_sim_detections_as_local_observations(...)`
 - `compute_terminal_stress_metrics(...)`
@@ -56,15 +60,27 @@ decision = associator.decide(
 
 ## 主动降级仲裁信号
 
-D5 可把连续帧 `TerminalAssociation` 派生为 `TerminalConsistencySummary` 建议字段，供 D4 判断中心/二级节点分配与末端视觉证据是否一致。建议包含 `decision_state`、`association_confidence`、`ambiguity_score`、`friend_conflict_state`、candidate cost margin、`recon_cue_used`、terminal lock age，以及连续 `ambiguous/hold/reacquire` 帧数。
+D5 可通过 `TerminalConsistencyTracker` 把连续帧 `TerminalAssociation` 派生为 `TerminalConsistencySummary`，供 D4/D6 判断中心/二级节点分配与末端视觉证据是否一致。摘要包含 `decision_state`、`association_confidence`、`ambiguity_score`、`friend_conflict_state`、candidate cost margin、`recon_cue_used`、terminal lock age、连续 `locked/ambiguous/hold/reacquire` 帧数、丢锁/重捕获事件、`duplicate_terminal_lock_risk` 和 `cross_view_support_count`。
 
 该摘要只用于离线一致性评估和 D4 仲裁输入。D5 不触发降级、不重写 `global_track_id`、不生成新分配计划。
+
+## 视觉 PNG 接管建议
+
+D5 可在 `TerminalAssociation.metadata` 或 `TerminalConsistencySummary.metadata` 中输出视觉 PNG 提前接管建议，但不决定导引律、不调用控制、不修改 `global_track_id`。D7/main 仍需独立检查相机、LOS、机动裕度和自身 terminal gate。
+
+默认配置把当前 AirSim Blocks 5v5 大目标 actor 的经验值写成可调区间，而不是固定 30m 门限：
+
+- 远距候选区 `30-50m`：只允许准备/预锁定，`visual_png_prelock_recommended=True`，不直接建议视觉接管。
+- 中距候选区 `15-30m`：若 bbox 面积连续稳定、D3/D4/D5 一致、无友方冲突和重复锁定，且 `time_to_go`、检测延迟和 D7 机动裕度可接受，可输出 `handoff_recommended=True`。
+- 近距强制评估区 `5-15m`：若检测稳定则优先建议视觉 PNG；若 bbox 不稳定则建议保持或回退 radar PN，避免过早触发 `terminal_detection_timeout`。
+
+bbox 稳定性默认要求同一 `local_track_id` 或同一 assigned track 窗口连续 `N=4` 帧可见，`bbox_area_ratio` 的变异系数 `CV <= 0.30`，可在 `VisualPngHandoffConfig` 中调整为 `N=3-5`、`CV=0.25-0.35`。输出字段包括 `handoff_recommended`、`handoff_reason`、`recommended_range_band`、`bbox_stability_score`、`bbox_area_cv`、`range_to_assigned_track_m` 和 `time_to_go_s`。
 
 ## 跨视场配准设计
 
 当前程序已覆盖单机视场内多目标候选、友方 `hold`、二级侦察 cue 作用域和保守 `global_track_id` 不变式，并新增最小 `TerminalObservationBus` 与 `CrossViewAssociation`。该总线用于收集多架拦截无人机、二级节点或 peer 链路发布的 `LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim` 和 `ReconImageCue` 摘要，按既有 `global_track_id` 被动汇总多视角支持关系。
 
-示例：UAV1 看到目标 1/2/3，UAV2 看到目标 2/3/4 时，目标 2/3 会形成包含 `("UAV1", "UAV2")` 的多视角支持摘要；目标 1/4 保持单视角支持。若多个资源同时 `locked` 同一 `global_track_id`，D5 只输出 `duplicate_terminal_lock_risk=True`，供 D3/D4 仲裁，不会改写分配。
+示例：UAV1 看到目标 1/2/3，UAV2 看到目标 2/3/4 时，目标 2/3 会形成包含 `("UAV1", "UAV2")` 的多视角支持摘要；目标 1/4 保持单视角支持。总线在 `metadata["observed_global_track_ids_by_resource"]` 中保留各资源看到的目标集合。若多个资源同时 `locked` 同一 `global_track_id`，或同一本地轨迹被锁到多个全局 ID，D5 只输出 `duplicate_terminal_lock_risk=True`、`duplicate_lock_resource_ids` 或 `duplicate_local_track_ids`，供 D3/D4 仲裁，不会改写分配。
 
 当前实现仍不是完整的多相机几何融合器。后续若要处理相机姿态协方差、跨相机时间对齐和三维重投影，应在 `TerminalObservationBus` 之上扩展 `TerminalCrossViewFusion`。
 
@@ -74,11 +90,20 @@ D5 可把连续帧 `TerminalAssociation` 派生为 `TerminalConsistencySummary` 
 
 `ReconImageCue.center_px` 必须已经处在当前拦截资源相机平面。若 cue 来自二级侦察节点自己的相机，需要先重投影到本地相机帧，再与 `LocalVisualTrack.center_px` 比较。
 
+cue 使用规则：
+
+- `scoped_resource_ids` 非空时，仅指定资源可使用；为空时按配置允许广播。
+- `current_time` 存在时，超过 `AssociationConfig.max_recon_cue_age_s` 或来自未来的 cue 不参与代价。
+- `frame_id` 存在时，`image_frame_id` 必须等于目标相机帧；若通过 `metadata["target_frame_id"]` 指向目标相机帧，则必须同时有 `metadata["reprojected_to_local_camera"] == True`。
+- 若 `metadata["source_image_frame_id"]` 与目标帧不同，也必须显式标记已重投影。
+
 在跨视角总线中，系留无人机视频 cue 只作为几何门控和复核证据随 `TerminalObservation` 记录。它可以增加 `recon_cue_used_count`，但不能创建新的 `global_track_id`、不能替代 D2 航迹，也不能让本地节点换绑分配目标。
 
 ## AirSim ComputerVision 5v5 专项适配
 
 D5 提供不依赖 AirSim Python 包的 dry-run 适配器，用于消费 `simGetDetections` 风格的检测框 fixture。推荐 5v5 压测几何为：目标距拦截镜头约 50m，目标间距约 20m，拦截镜头间距约 20m；二级系留侦察镜头比目标高约 200m，分辨率更高并提供全局视野。
+
+当前主线使用捷联固定相机和 AirSim detect bbox，不默认运行 YOLO。为了减少机架遮挡，建议 main/D7/AirSim settings 将拦截机相机沿机体系前向前移约 `0.5m`；D5 只消费更新后的 `CameraModel` 外参，不直接修改相机安装或 AirSim settings。
 
 处理链路：
 

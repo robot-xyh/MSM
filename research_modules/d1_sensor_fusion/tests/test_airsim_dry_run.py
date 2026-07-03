@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import json
+
 import numpy as np
 
 from d1_sensor_fusion import FusionAdapter
 from d1_sensor_fusion.airsim_dry_run import (
     make_minimal_airsim_dry_run_fixture,
     observations_from_airsim_dry_run_fixture,
+)
+from d1_sensor_fusion.replay import (
+    read_blocks_sensor_observations_jsonl,
+    replay_blocks_sensor_observations_jsonl,
 )
 
 
@@ -63,3 +69,79 @@ def test_airsim_dry_run_observations_feed_fusion_adapter() -> None:
     assert np.isfinite(track.covariance).all()
     assert track.source_support["radar"] >= 1
     assert track.source_support["lidar"] >= 1
+
+
+def test_blocks_sensor_observations_jsonl_reader_replays_fusion_adapter(tmp_path) -> None:
+    fixture = make_minimal_airsim_dry_run_fixture(include_lidar=True)
+    observations = observations_from_airsim_dry_run_fixture(fixture)
+    jsonl_path = tmp_path / "blocks_sensor_observations.jsonl"
+    with jsonl_path.open("w", encoding="utf-8") as stream:
+        for observation in observations:
+            payload = {
+                "observation_id": observation.observation_id.replace("dry_", "blocks_", 1),
+                "sensor_id": observation.sensor_id,
+                "modality": observation.modality,
+                "measurement_timestamp": observation.measurement_timestamp,
+                "arrival_timestamp": observation.arrival_timestamp,
+                "frame_id": observation.frame_id,
+                "measurement": observation.measurement.tolist(),
+                "covariance": observation.covariance.tolist(),
+                "classification_hint": observation.classification_hint,
+                "confidence": observation.confidence,
+                "quality_flags": list(observation.quality_flags),
+                "metadata": {
+                    key: _jsonable(value)
+                    for key, value in observation.metadata.items()
+                    if key != "camera_model"
+                },
+                "communication": {
+                    "source_node_id": "MAIN-C2",
+                    "target_node_id": "D1-FUSION",
+                    "link_type": "c2_replay",
+                    "sent_timestamp": observation.measurement_timestamp,
+                    "received_timestamp": observation.arrival_timestamp,
+                    "payload_kind": f"{observation.modality}_observation",
+                    "stale_after_s": 1.5,
+                },
+            }
+            if observation.modality == "eo":
+                camera = observation.metadata["camera_model"]
+                payload["metadata"]["camera_model"] = {
+                    "position_ned": camera.position_ned.tolist(),
+                    "rotation_world_to_camera": camera.rotation_world_to_camera.tolist(),
+                    "fx": camera.fx,
+                    "fy": camera.fy,
+                    "cx": camera.cx,
+                    "cy": camera.cy,
+                    "width": camera.width,
+                    "height": camera.height,
+                }
+            stream.write(json.dumps(payload) + "\n")
+
+    loaded = read_blocks_sensor_observations_jsonl(jsonl_path)
+    tracks = replay_blocks_sensor_observations_jsonl(
+        jsonl_path,
+        FusionAdapter(
+            process_noise=8.0,
+            association_gate=45.0,
+            latency_compensation=True,
+            use_truth_hints_for_association=True,
+        ),
+    )
+
+    assert len(loaded) == len(observations)
+    assert loaded[0].source_node_id == "MAIN-C2"
+    assert loaded[0].payload_kind.endswith("_observation")
+    assert len(tracks) == 1
+    assert tracks[0].metadata["source_node_ids"] == ("MAIN-C2",)
+    assert tracks[0].source_support["radar"] >= 1
+
+
+def _jsonable(value):
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, dict):
+        return {key: _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    return value

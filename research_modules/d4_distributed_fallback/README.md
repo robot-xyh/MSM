@@ -32,10 +32,13 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 - `C2Health` 状态机：`normal -> degraded -> suspect -> failed`，中心恢复需双轨合并，不能只靠 heartbeat。
 - 被动降级链路：中心 C2 失效 -> 高空系留二级侦察节点/地面备份 -> 完全无中心 CBBA。
 - 主动降级仲裁：中心未失效但 D1/D2/D3/D5 风险升高时，输出继续、请求中心重分配、请求二级辅助、降到二级节点或分布式的离线决策。
-- 二级节点建模：`NodeRole.SECONDARY_RECON`、`coordinator_only`、`coverage_cell`、lease/priority。
+- 二级节点建模：`NodeRole.SECONDARY_RECON`、`coordinator_only`、`coverage_cell`、`lease_epoch`、heartbeat、video cue freshness、link stale 和 priority。
+- 二级节点生命周期摘要：`SecondaryNodeLifecycleSummary` 输出 `heartbeat`、`lease_epoch`、`coverage_cell`、`video_cue_freshness_s`、`link_stale` 和 `secondary_available`，供 D4 仲裁与 D6 日志审计。
 - 增强通信摘要：`CommunicationSummary` 记录 `source_node_id`、`target_node_id`、`relay_node_id`、`link_type`、`sent_timestamp`、`received_timestamp`、`payload_kind`、`stale_after_s`，用于判断二级节点辅助链路是否新鲜。
+- 主动降级迟滞/防抖：`ActiveDegradationConfig` 提供 `min_dwell_s`、`release_consecutive_consistent_frames`、`mismatch_frame_limit`、`risk_window_size` 和 `risk_window_threshold`；默认保持轻量单步规则，复用 arbiter 时可启用 dwell/release 行为。
 - D5 cross-view 风险：`TerminalAssociationSummary.cross_view_risk_score` 和 `duplicate_terminal_lock` 会阻止“误判为一致锁定”。
 - 指标输出：`ActiveDegradationDecision.to_metrics()` 输出 `d4_action`、`degradation_mode`、`target_node_id`、`risk_factors`、`terminal_consistent`、`failover_time`、`secondary_selected_rate`、`distributed_conflict_count`。
+- D6 兼容事件：`D4ArbitrationAdapter` 输出 `EventRecord` kwargs，metadata 含 `degradation_mode`、`selected_coordinator`、`coverage_cell`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp` 和 `review_label`，并保留 `d4_degradation_mode` 兼容 D4 原始枚举。
 - CBBA 风格协商：用于二级节点不可用后的连续性分配基线。
 - 与 D3/D5/D6 的接口：接收上一版分配摘要，向 D5 提供区域观测/cue 语义，向 D6 输出接管、共识和冲突指标。
 
@@ -49,4 +52,11 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 - D5 多帧 `ambiguous/hold/reacquire` 或长期不一致：二级节点覆盖则 `degrade_to_secondary`，否则 `degrade_to_distributed`。
 - D5 `friend_conflict=True`：强制 `hold_for_review`；`duplicate_terminal_lock=True` 不视为一致锁定。
 - 若传入通信摘要，二级节点必须有未过期的 `secondary_relay`、`video_cue` 或 `c2_direct` 链路才可作为主动辅助/接管目标。
+- 若二级节点 `heartbeat_timestamp_s` 超过 `heartbeat_stale_after_s`，即使视频链路摘要新鲜，也不会被选为二级接管目标。
 - 5v5 AirSim ComputerVision 专项 case：`case_001_no_degradation` 期望 `continue_center`；`case_002_degrade_to_secondary` 期望二级节点优先；`case_003_degrade_to_distributed` 期望二级不可用/过期后才分布式。
+
+## P1 状态
+
+- 已完成：二级节点 lifecycle summary、主动降级 dwell/release/window 防抖配置、D6-compatible decision event metadata、对应单元测试。
+- 保持不变：轻量 CBBA 仍是完全无中心保底基线；未接入 MIT CBBA、CA-CBBA、独立 auction 或 contract-net。
+- 仍属 main/runtime 侧后续：真实 AirSim episode 中统一调用 `D4ArbitrationAdapter`、写入 D6 collector、按 episode 聚合主动/被动降级指标。

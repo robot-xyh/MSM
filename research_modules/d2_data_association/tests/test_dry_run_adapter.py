@@ -1,15 +1,25 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
+import sys
 from types import SimpleNamespace
 
 import numpy as np
 
 from d2_data_association import (
+    detections_from_d1_global_tracks,
     detections_from_airsim_frame,
     run_airsim_dry_run_association,
 )
 import d2_data_association.dry_run_adapter as dry_run_adapter
+
+D1_SRC_ROOT = Path(__file__).resolve().parents[2] / "d1_sensor_fusion" / "src"
+if str(D1_SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(D1_SRC_ROOT))
+
+from d1_sensor_fusion.types import GlobalTrack as D1GlobalTrack
+from d1_sensor_fusion.types import TrackLevel
 
 
 def test_detections_from_airsim_frame_accepts_tracks_key_and_3d_covariance() -> None:
@@ -43,6 +53,8 @@ def test_detections_from_airsim_frame_accepts_tracks_key_and_3d_covariance() -> 
     assert detection.covariance[1, 1] == 0.3
     assert detection.metadata["sensor"] == "synthetic_radar"
     assert detection.metadata["source_format"] == "airsim_dry_run"
+    assert detection.metadata["measurement_timestamp"] == 0.75
+    assert detection.metadata["arrival_timestamp"] == 1.0
 
 
 def test_detections_from_airsim_frame_accepts_x_val_y_val_positions() -> None:
@@ -107,6 +119,44 @@ def test_airsim_dry_run_association_preserves_metrics_fields() -> None:
     assert len(result.association_logs) == 4
     assert bus_message["metrics"]["id_switch_count"] == result.metrics["id_switch_count"]
     assert bus_message["metrics"]["track_continuity"] == result.metrics["track_continuity"]
+
+
+def test_d1_global_track_adapter_projects_ned_state_covariance_and_timestamps() -> None:
+    covariance = np.eye(6)
+    covariance[0, 0] = 0.4
+    covariance[1, 1] = 0.6
+    covariance[0, 1] = 0.05
+    covariance[1, 0] = 0.05
+    track = D1GlobalTrack(
+        global_track_id="G-A",
+        state=np.array([12.0, -3.0, -20.0, 1.0, 0.5, 0.0]),
+        covariance=covariance,
+        timestamp=10.25,
+        track_level=TrackLevel.STABLE,
+        metadata={
+            "frame_id": "ned",
+            "measurement_timestamp": 10.0,
+            "arrival_timestamp": 10.4,
+            "truth_id": "A",
+        },
+    )
+
+    timestamp, detections, truth_ids = detections_from_d1_global_tracks([track])
+
+    assert timestamp == 10.0
+    assert truth_ids == ["A"]
+    assert len(detections) == 1
+    detection = detections[0]
+    assert detection.detection_id == "G-A"
+    assert detection.timestamp == 10.0
+    assert detection.position.tolist() == [12.0, -3.0]
+    assert detection.covariance.tolist() == [[0.4, 0.05], [0.05, 0.6]]
+    assert detection.metadata["frame_id"] == "ned"
+    assert detection.metadata["source_format"] == "d1_global_track"
+    assert detection.metadata["global_track_id"] == "G-A"
+    assert detection.metadata["measurement_timestamp"] == 10.0
+    assert detection.metadata["arrival_timestamp"] == 10.4
+    assert detection.metadata["covariance_projection"] == "ned_6d_to_xy"
 
 
 def test_dry_run_adapter_does_not_import_airsim() -> None:

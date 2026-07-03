@@ -105,6 +105,8 @@ def _secondary(available: bool = True) -> ResourceSummary:
         node_role=NodeRole.SECONDARY_RECON,
         coordinator_only=True,
         coverage_cell="cell-north",
+        heartbeat_timestamp_s=9.9,
+        heartbeat_stale_after_s=2.0,
     )
 
 
@@ -134,6 +136,12 @@ def test_adapter_maps_low_risk_inputs_to_continue_center_event_metadata() -> Non
     metadata = event_kwargs["metadata"]
     assert metadata["d4_action"] == "continue_center"
     assert metadata["degradation_mode"] == "none"
+    assert metadata["d4_degradation_mode"] == "none"
+    assert metadata["selected_coordinator"] == "center"
+    assert metadata["trigger_reason"] == "terminal_consistent_and_risk_low"
+    assert metadata["trigger_timestamp"] == 10.0
+    assert metadata["decision_timestamp"] == 10.0
+    assert metadata["review_label"] == "unknown"
     assert metadata["global_track_id"] == "G-TGT-001"
     assert metadata["plan_version"] == 3
 
@@ -213,6 +221,9 @@ def test_adapter_prefers_distributed_when_secondary_link_is_stale() -> None:
 
     assert build_communication_summary(stale_link).is_stale(10.0)
     assert result.record.communication_fresh is False
+    assert result.record.secondary_available is False
+    assert result.secondary_lifecycle[0].link_stale is True
+    assert result.secondary_lifecycle[0].secondary_available is False
     assert result.decision.mode == DegradationMode.ACTIVE_DEGRADATION
     assert result.decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
     assert result.decision.target_node_id is None
@@ -246,6 +257,54 @@ def test_adapter_selects_secondary_when_persistent_mismatch_has_fresh_secondary_
     )
 
     assert result.record.communication_fresh is True
+    assert result.record.secondary_available is True
+    assert result.secondary_lifecycle[0].video_cue_freshness_s is not None
+    assert abs(result.secondary_lifecycle[0].video_cue_freshness_s - 0.1) < 1e-9
     assert result.decision.mode == DegradationMode.ACTIVE_DEGRADATION
     assert result.decision.action == DegradationAction.DEGRADE_TO_SECONDARY
     assert result.decision.target_node_id == "SEC-1"
+
+
+def test_adapter_outputs_d6_compatible_active_decision_event_fields() -> None:
+    result = D4ArbitrationAdapter().evaluate(
+        timestamp=10.0,
+        trigger_timestamp=8.5,
+        review_label="necessary",
+        track=_track(position_sigma_m=60.0),
+        association_metrics=_metrics(ambiguity=0.8, id_switches=1, continuity=0.55),
+        plan=_plan(created_at=5.0),
+        assignment=_assignment(),
+        terminal_association=_terminal(decision_state="reacquire", confidence=0.35, ambiguity=0.9),
+        observed_global_track_id="G-TGT-002",
+        consecutive_non_locked_frames=3,
+        consecutive_mismatch_frames=2,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+        communication_records=[
+            {
+                "source_node_id": "SEC-1",
+                "target_node_id": "INT-01",
+                "link_type": "video_cue",
+                "payload_kind": "video_metadata",
+                "sent_timestamp": 9.8,
+                "received_timestamp": 9.9,
+                "stale_after_s": 1.0,
+            }
+        ],
+    )
+
+    event = result.record.to_event_record_kwargs()
+    metadata = event["metadata"]
+
+    assert event["event_type"] == "active_degradation_decision"
+    assert metadata["degradation_mode"] == "active"
+    assert metadata["d4_degradation_mode"] == "active_degradation"
+    assert metadata["selected_coordinator"] == "secondary_node"
+    assert metadata["coverage_cell"] == "cell-north"
+    assert metadata["trigger_reason"] == "terminal_persistent_disagreement"
+    assert metadata["trigger_timestamp"] == 8.5
+    assert metadata["decision_timestamp"] == 10.0
+    assert metadata["review_label"] == "necessary"
+    assert metadata["secondary_lifecycle"][0]["heartbeat"] == 9.9
+    assert abs(metadata["secondary_lifecycle"][0]["video_cue_freshness"] - 0.1) < 1e-9
+    assert metadata["secondary_lifecycle"][0]["secondary_available"] is True

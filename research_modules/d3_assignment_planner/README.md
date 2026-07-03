@@ -45,4 +45,11 @@ The default run uses 8 targets, 8 resources, 100 seconds, and 2 Hz. It compares 
 - `reacquire` -> `replan`
 - `mismatch` or duplicate terminal lock risk -> `secondary_arbitration`
 
+The feedback decision includes `main_action` and `planner_metadata` so main can apply a conservative integration action without local rebinding. The metadata explicitly carries `operator_hold_suggested`, `prohibit_assignment_suggested`, `feasibility_suggestion`, `fov_difficulty_suggestion`, optional `feasibility_by_resource`, optional `fov_difficulty_by_resource`, and optional `prohibited_edges`.
+
+D3 also exports:
+
+- `assignment_validity_summary_from_plan(...)` -> `AssignmentValiditySummary(plan_id, version, plan_age_s, assignment_latency_s, cost_margin, stale_plan_version, duplicate_assignment_count, unassigned_high_threat_count)`.
+- `assignment_records_from_plan(...)` -> D6-compatible `AssignmentRecord` rows with `timestamp`, `plan_id`, `version`, `resource_id`, `global_track_id`, `cost_breakdown`, `authorization_state`, `active`, and `truth_id`.
+
 Local resources must not rewrite `global_track_id`; D3 publishes versioned candidate plans for review. Normal operation uses Hungarian assignment, complex constraints should upgrade to OR-Tools Min Cost Flow, and D4 secondary-node arbitration is preferred before CBBA-style fallback.

@@ -26,7 +26,12 @@ IDs, object labels, and gate outcomes. D7 events may report `guidance_law`,
 `terminal_switch_allowed`. Supported D7 guidance metrics include
 `camera_quality_gate_pass_rate`, `los_quality_gate_pass_rate`,
 `maneuver_margin_gate_pass_rate`, `terminal_switch_allowed_rate`,
-`terminal_switch_reject_count`, and intercept outcome counts.
+`terminal_takeover_rate`, `terminal_switch_reject_count`, and intercept outcome
+counts. `terminal_takeover_rate` is an offline unique-pair ratio derived from
+recorded `terminal_locked`, `terminal_switch_allowed`, `vision_terminal` mode,
+`terminal_mode_entered`, or visual terminal guidance law (`png_vm`, `png_ttc`,
+or `los`) evidence in D7 output logs. Handover-pending and detection-seen flags
+alone are not counted as terminal takeover.
 
 ## AirSim Blocks Replay Inputs
 
