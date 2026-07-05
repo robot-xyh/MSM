@@ -178,6 +178,94 @@ def test_degradation_and_safety_metrics() -> None:
     assert metrics.human_override_count == 1
 
 
+def test_episode_scale_counts_use_runtime_counts_not_scenario_name() -> None:
+    collector = MetricsCollector()
+
+    metrics = collector.compute_episode(
+        "blocks_cv_5v5_runtime_n3",
+        truth_summary={
+            "drone_count": 3,
+            "resource_count": 3,
+            "target_count": 4,
+            "camera_count": 6,
+            "scenario": {"name": "blocks_cv_5v5"},
+        },
+    )
+
+    assert metrics.scenario_group == "blocks_cv_5v5"
+    assert metrics.drone_count == 3
+    assert metrics.resource_count == 3
+    assert metrics.target_count == 4
+    assert metrics.camera_count == 6
+    assert metrics.metadata["drone_count"] == 3
+    assert metrics.metadata["resource_count"] == 3
+    assert metrics.metadata["target_count"] == 4
+    assert metrics.metadata["camera_count"] == 6
+
+
+def test_blocks_2v2_degradation_reassignment_png_metrics() -> None:
+    collector = MetricsCollector()
+    collector.extend_events(
+        [
+            EventRecord(
+                timestamp=1.0,
+                event_type="d4_active_degradation_decision",
+                metadata={
+                    "mode": "active_degradation",
+                    "action": "degrade_to_secondary",
+                    "assignment_phase": "secondary_reassignment",
+                },
+            ),
+            EventRecord(
+                timestamp=1.2,
+                event_type="d7_control_command",
+                actor_id="INT-01",
+                metadata={
+                    "resource_id": "INT-01",
+                    "target_id": "TGT-001",
+                    "mode": "radar_midcourse",
+                    "terminal_switch_allowed": False,
+                    "terminal_switch_reject_reason": "d4_reassign_pending",
+                },
+            ),
+            EventRecord(
+                timestamp=2.0,
+                event_type="d7_control_command",
+                actor_id="INT-01",
+                metadata={
+                    "resource_id": "INT-01",
+                    "target_id": "TGT-001",
+                    "mode": "vision_terminal",
+                    "guidance_law": "png_vm",
+                    "mode_switch": True,
+                    "terminal_switch_allowed": True,
+                    "terminal_mode_entered": True,
+                },
+            ),
+            EventRecord(
+                timestamp=2.1,
+                event_type="terminal_lock",
+                actor_id="INT-01",
+                metadata={
+                    "assigned_global_track_id": "TGT-001",
+                    "local_track_id": "L-VIS-001",
+                },
+            ),
+        ]
+    )
+
+    metrics = collector.compute_episode("blocks_2v2_active_degrade")
+
+    assert metrics.active_degradation_count == 1
+    assert metrics.secondary_node_takeover_count == 1
+    assert metrics.secondary_reassignment_count == 1
+    assert metrics.d4_reassign_pending_count == 1
+    assert metrics.terminal_lock_count == 1
+    assert metrics.visual_png_switch_count == 1
+    assert metrics.terminal_switch_allowed_rate == pytest.approx(0.5)
+    assert metrics.terminal_switch_reject_count == 1
+
+
 def test_terminal_metrics() -> None:
     collector = MetricsCollector()
     collector.add_terminal(
@@ -224,6 +312,7 @@ def test_terminal_metrics() -> None:
     assert metrics.ambiguous_fov_event_count == 1
     assert metrics.friend_overlap_hold_count == 1
     assert metrics.time_to_terminal_lock == pytest.approx(2.0)
+    assert metrics.terminal_lock_count == 2
 
 
 def test_terminal_events_are_deduplicated_across_records_and_events() -> None:
@@ -431,6 +520,8 @@ def test_episode_metrics_contains_all_required_names() -> None:
         "active_degradation_count",
         "passive_failover_count",
         "secondary_node_takeover_count",
+        "secondary_reassignment_count",
+        "d4_reassign_pending_count",
         "distributed_fallback_count",
         "failover_active_window_delta_s",
         "terminal_association_accuracy",
@@ -438,6 +529,7 @@ def test_episode_metrics_contains_all_required_names() -> None:
         "ambiguous_fov_event_count",
         "friend_overlap_hold_count",
         "time_to_terminal_lock",
+        "terminal_lock_count",
         "multi_view_consensus_rate",
         "cross_view_conflict_count",
         "duplicate_terminal_lock_count",
@@ -452,6 +544,7 @@ def test_episode_metrics_contains_all_required_names() -> None:
         "los_quality_gate_pass_rate",
         "maneuver_margin_gate_pass_rate",
         "terminal_switch_allowed_rate",
+        "visual_png_switch_count",
         "terminal_takeover_rate",
         "terminal_switch_reject_count",
         "mode_switch_count",

@@ -42,6 +42,14 @@ def test_load_blocks_replay_jsonl_evaluates_raw_frames_without_png(tmp_path: Pat
     }
     assert truth_summary["scenario"]["source"] == "blocks_frames_jsonl"
     assert truth_summary["scenario"]["offline_only"] is True
+    assert truth_summary["scenario"]["resource_count"] == 2
+    assert truth_summary["scenario"]["drone_count"] == 2
+    assert truth_summary["scenario"]["target_count"] == 2
+    assert truth_summary["scenario"]["camera_count"] == 2
+    assert metrics.resource_count == 2
+    assert metrics.target_count == 2
+    assert metrics.camera_count == 2
+    assert metrics.drone_count == 2
     assert metrics.detection_probability == pytest.approx(1.0)
     assert metrics.terminal_association_accuracy == pytest.approx(1.0)
     assert metrics.multi_view_consensus_rate == pytest.approx(1.0)

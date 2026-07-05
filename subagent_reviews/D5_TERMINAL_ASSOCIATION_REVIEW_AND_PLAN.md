@@ -22,9 +22,11 @@ D5 使用这些 cue 的原则：
 
 建议 `ReconImageCue` 的 `image_frame_id` 使用目标相机帧，例如 `UAV1/front_rgb`；原始二级节点相机帧放入 `metadata.source_image_frame_id`。`scoped_resource_ids` 必须限定 cue 可用资源，例如 `["UAV1", "UAV2"]`，避免未覆盖资源错误使用 cue。
 
-### 0.2 本轮 5v5 AirSim ComputerVision D4/D5 专项适配
+### 0.2 本轮 AirSim ComputerVision N-v-N D4/D5 专项适配
 
-D5 已补充 dry-run 适配层，用于消费 `simGetDetections` 风格检测框 fixture，不导入 AirSim、不调用控制 API。专项几何假设为：5 个 `Interceptor_Cam_*` 主镜头，5 个目标，目标距主镜头约 50m，目标间距约 20m，镜头间距约 20m，使每个主镜头视场内出现多个目标；二级系留侦察镜头比目标高约 200m，分辨率更高并提供全局视野 cue。
+D5 已补充 dry-run 适配层，用于消费 `simGetDetections` 风格检测框 fixture，不导入 AirSim、不调用控制 API。5v5 只是 stress baseline：5 个 `Interceptor_Cam_*` 主镜头、5 个目标，目标距主镜头约 50m，目标间距约 20m，镜头间距约 20m，使每个主镜头视场内出现多个目标；二级系留侦察镜头比目标高约 200m，分辨率更高并提供全局视野 cue。真实 N-v-N 数量由 main runtime 的 `--drone-count N` 统一控制，D5 只按 `LocalVisualTrack[]`、`GlobalTrack[]`、camera/resource 列表和 bus observation 长度运行。
+
+在线配准只使用 bbox、时间戳、本地 MOT ID、类别/置信度和相机几何。AirSim detection 的 `object_id`、`actor_name`、truth ID 只能作为离线评估标签，不能参与 `TerminalAssociator`、`TerminalObservationBus` 或跨视角一致性判断。
 
 D5 输出边界保持不变：
 

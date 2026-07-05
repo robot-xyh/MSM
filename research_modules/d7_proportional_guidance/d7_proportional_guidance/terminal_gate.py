@@ -141,6 +141,10 @@ def evaluate_terminal_png_contract(
         return TerminalPngContractDecision(False, BLOCKING_D4_ACTION_REASONS[action], **base)
     if not permission.terminal_consistent:
         return TerminalPngContractDecision(False, "d4_terminal_inconsistent", **base)
+    if permission.new_plan_id is not None and permission.new_plan_id != assignment.plan_id:
+        return TerminalPngContractDecision(False, "d4_plan_mismatch", **base)
+    if permission.new_plan_version is not None and permission.new_plan_version != assignment.plan_version:
+        return TerminalPngContractDecision(False, "d4_plan_mismatch", **base)
     if action not in ALLOWED_D4_ACTIONS:
         return TerminalPngContractDecision(False, "d4_action_not_allowed", **base)
 
@@ -195,6 +199,7 @@ def guidance_mode_from_terminal_contract(
         "terminal_identity_mismatch",
         "assignment_version_mismatch",
         "d4_terminal_inconsistent",
+        "d4_plan_mismatch",
     }:
         return GuidanceMode.REACQUIRE
     if reason in {"d4_hold_for_review", "friend_conflict", "assignment_not_authorized"}:

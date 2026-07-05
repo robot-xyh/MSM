@@ -111,6 +111,8 @@ class AssignmentPlanner:
         computed_total_cost = solver_result.objective_value
         if total_cost is None:
             computed_total_cost += switch_penalty_total
+        target_count = len(matrix_result.target_ids)
+        resource_count = len(matrix_result.resource_ids)
         return AssignmentPlan(
             plan_id=f"d3-plan-{uuid4().hex[:12]}",
             version=version,
@@ -120,6 +122,8 @@ class AssignmentPlanner:
             total_cost=computed_total_cost if total_cost is None else total_cost,
             created_at=timestamp,
             last_changed_at=timestamp if last_changed_at is None else last_changed_at,
+            resource_count=resource_count,
+            target_count=target_count,
             human_authorization_state="required",
             decision_state=decision_state,
             changed=changed,
@@ -134,6 +138,9 @@ class AssignmentPlanner:
                 "link_type": self.config.link_type,
                 "plan_version": version,
                 "stale_after_s": self.config.stale_after_s,
+                "resource_count": resource_count,
+                "target_count": target_count,
+                "assignment_matrix_shape": [target_count, resource_count],
             },
             source_node_id=self.config.source_node_id,
             target_node_id=self.config.target_node_id,

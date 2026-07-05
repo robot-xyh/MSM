@@ -97,7 +97,8 @@ communication or control interfaces.
 
 - Parser tests with tiny synthetic AirSim-like JSON/CSV fixtures.
 - Quantization tests that verify precise fields are discarded after cell assignment.
-- Replay smoke test with 3 to 5 simulated nodes.
+- Replay smoke tests driven by `--drone-count`/summary-list length, with 2v2
+  and 5v5 retained only as baseline cases.
 - Merge recovery test where the center replay log intentionally lags the fallback log.
 
 ## Non-Goals

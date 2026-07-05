@@ -4,6 +4,8 @@ Offline research module for reducing ID switches in synthetic multi-target track
 
 Safety boundary: this module is limited to simulation and offline evaluation. It does not contain real fire-control parameters, damage logic, hardware drivers, live flight control, automatic disposition, or authorization bypass.
 
+Target-count boundary: D2 consumes the `tracks` and `detections` lists passed to each frame and does not hard-code 2v2 or 5v5. Named scenarios such as `crossing_dense_5v5` are repeatable benchmark fixtures; main runtime `--drone-count` choices should appear only through the input collections sent to D2.
+
 ## Contents
 
 - `d2_data_association/models.py`: `Detection`, `GlobalTrack`, `AssociationResult`, and lifecycle data classes.

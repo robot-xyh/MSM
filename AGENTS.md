@@ -1,45 +1,89 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Project Structure
 
-This repository is currently empty aside from this contributor guide. As code is added, keep the top-level layout predictable:
+MSM is a Python research and simulation repository for a C-UAS multi-UAV interception workflow.
 
-- `src/` for application or library source code.
-- `tests/` for automated tests that mirror `src/` structure.
-- `assets/` for static files such as images, fixtures, sample data, or generated media.
-- `docs/` for longer design notes, usage guides, or architecture records.
+- `research_modules/` contains D1-D7 research modules, integration contracts, integrated point-mass simulation, AirSim dry-run adapters, and real AirSim runtime code.
+- `research_modules/airsim_runtime/` owns real AirSim Blocks orchestration, settings generation, episode sequencing, SimpleFlight control tests, and AirSim output reports.
+- `subagent_reviews/` contains module reviews, GAP audits, and main-level integration decisions.
+- `agents/` contains stable project subagent definitions. Use these before spawning or resuming subagents.
+- `legacy doc/` contains historical source reports.
+- `research_modules/airsim_runtime/outputs/` contains generated experiment outputs. Do not treat these as source unless the user asks to preserve a specific report.
 
-Avoid placing implementation files directly in the repository root unless they are standard project entry points such as `Makefile`, `package.json`, `pyproject.toml`, or `README.md`.
+## Build And Test Commands
 
-## Build, Test, and Development Commands
+Run commands from the repository root.
 
-No build or test tooling is present yet. When tooling is introduced, document the canonical commands here and prefer commands that work from the repository root. Examples:
+```bash
+PYTHONPATH=research_modules/d1_sensor_fusion/src pytest -q research_modules/d1_sensor_fusion/tests
+PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_data_association/tests
+python3 -m pytest -q research_modules/d3_assignment_planner/tests
+PYTHONPATH=research_modules/d4_distributed_fallback python3 -m pytest -q research_modules/d4_distributed_fallback/tests
+pytest -q research_modules/d5_terminal_association/tests
+pytest -q research_modules/d6_evaluation_metrics/tests
+python3 -m pytest -q research_modules/d7_proportional_guidance/tests
+pytest -q research_modules/airsim_runtime/tests/test_blocks_runtime.py
+```
 
-- `npm test` or `pytest` to run the full test suite.
-- `npm run lint` or `ruff check .` to run static checks.
-- `make build` to produce production artifacts.
-- `make dev` or `npm run dev` to start a local development server.
+Use `python3 -m py_compile` for quick syntax checks on changed Python entry points.
 
-If a command requires environment variables or generated files, document those prerequisites next to the command.
+## Agent Workflow
 
-## Coding Style & Naming Conventions
+Main agent is the global orchestrator. D1-D7 are module owners.
 
-Follow the formatter and linter configured for the language in use. If no formatter exists yet, add one before the codebase grows. Use descriptive file and symbol names, keep modules focused, and prefer lower-case directory names such as `src/api/` or `tests/unit/`.
+Before creating subagents, read `agents/README.md` and the relevant role file:
 
-Do not mix unrelated formatting changes with functional edits. Keep generated files out of source directories unless the project explicitly requires them.
+- `agents/main-agent.md`
+- `agents/d1_sensor_fusion.md`
+- `agents/d2_data_association.md`
+- `agents/d3_assignment_planner.md`
+- `agents/d4_distributed_fallback.md`
+- `agents/d5_terminal_association.md`
+- `agents/d6_evaluation_metrics.md`
+- `agents/d7_proportional_guidance.md`
 
-## Testing Guidelines
+Subagent rules:
 
-Add tests with each meaningful behavior change. Mirror source paths where practical, for example `src/parser/reader.py` with `tests/parser/test_reader.py`. Use clear test names that describe behavior and expected outcomes.
+- Do not keep all D1-D7 open. The concurrent subagent limit is 6.
+- Close completed subagents immediately.
+- Do not store ephemeral agent IDs as long-term truth.
+- Every subagent task must define owned paths and tests.
+- Subagents must not modify files outside their ownership boundary unless main explicitly coordinates it.
+- Main owns AirSim launch/reset/episode order/log collection and final reports.
 
-When adding test tooling, include one command that runs the complete suite locally and in CI.
+## Core System Rules
 
-## Commit & Pull Request Guidelines
+- Simulation scale is set by main through `--drone-count N`; algorithms must not hard-code 2v2 or 5v5.
+- 2v2 and 5v5 are baseline scenario names, not algorithm limits.
+- Keep `measurement_timestamp` and `arrival_timestamp` when handling observations.
+- Carry covariance on observations and tracks.
+- Use NED as the fusion working frame; WGS84 is only an external reference.
+- `global_track_id` is center-owned. D5 and D7 must never rewrite or locally rebind it.
+- Every assignment plan is versioned, and stale versions must be rejected.
+- D2 and D6 must keep `id_switch_count` explicit.
 
-This directory is not currently a Git repository, so no existing commit convention is available. Once Git history exists, prefer short imperative commit subjects such as `Add parser validation` or `Fix asset loading`.
+## AirSim Runtime Rules
 
-Pull requests should include a concise summary, test results, linked issues when applicable, and screenshots or recordings for visible UI changes.
+- Use one AirSim Blocks launch with reset-separated episodes when possible.
+- Do not save PNG screenshots by default. Use `--save-images` only when debugging camera views.
+- Intruder targets in current AirSim interception tests are moved actor targets, not SimpleFlight vehicles.
+- Target detection currently uses AirSim `simGetDetections` metadata unless a specific YOLO path is requested.
+- For ComputerVision tests, online D5 association must not use AirSim truth IDs; truth IDs are offline evaluation labels only.
+- SimpleFlight control tests should report `control_commands.csv`, `intercept_summary.json`, D6 metrics, and a Markdown report.
 
-## Agent-Specific Instructions
+## Coding Style
 
-Before editing, inspect the current tree and preserve user-created files. Do not overwrite `AGENTS.md` without an explicit request.
+- Keep edits scoped to the requested module.
+- Do not mix broad formatting churn with functional changes.
+- Prefer dataclasses and typed interfaces already used in the repo.
+- Use `rg` for search.
+- Use `apply_patch` for manual file edits.
+
+## Generated Outputs
+
+Generated AirSim and experiment outputs may be large. Keep them in module output folders. Only cite or preserve outputs that are relevant to the current user request.
+
+## Commit Guidance
+
+Before commit/push requests, inspect `git status --short`. Do not revert unrelated user or generated changes. If committing in batches, group by subsystem: runtime, D1-D7 module, docs/reports.

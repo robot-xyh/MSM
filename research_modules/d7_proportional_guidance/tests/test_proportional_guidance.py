@@ -467,6 +467,134 @@ def test_terminal_png_contract_rejects_d4_terminal_inconsistent() -> None:
     assert decision.reject_reason == "d4_terminal_inconsistent"
 
 
+def test_2v2_active_secondary_visual_png_requires_effective_secondary_plan() -> None:
+    primary_binding = _binding_for_pair("R1", "G1", 21)
+    primary_terminal = {
+        "assigned_global_track_id": "G1",
+        "local_track_id": "R1:0:L1",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 21,
+    }
+
+    degraded = evaluate_terminal_png_contract(
+        binding=primary_binding,
+        d4_permission=D4GuidancePermission(
+            action="degrade_to_secondary",
+            target_node_id="secondary-1",
+            new_plan_id="plan-2v2-secondary",
+            new_plan_version=2,
+        ),
+        terminal_association=primary_terminal,
+        observation={"assigned_global_track_id": "G1"},
+        timestamp_s=2.0,
+        resource_id="R1",
+    )
+
+    assert degraded.allowed is False
+    assert degraded.reject_reason == "d4_reassign_pending"
+    assert guidance_mode_from_terminal_contract(
+        degraded,
+        handover_pending=True,
+        terminal_locked=False,
+    ) == GuidanceMode.ABORT_REVOKE
+
+    secondary_binding = AssignmentGuidanceBinding(
+        plan_id="plan-2v2-secondary",
+        plan_version=2,
+        assignment_id="assign-R2-G1",
+        resource_id="R2",
+        vehicle_name="Interceptor_R2",
+        assigned_global_track_id="G1",
+        track_version=22,
+        authorization_state="approved",
+        target_actor_name="MSM_TargetActor_1",
+        target_object_id="G1",
+        target_mesh_aliases=("MSM_TargetActor_1", "G1"),
+    )
+    secondary_terminal = {
+        "assigned_global_track_id": "G1",
+        "local_track_id": "R2:0:L1",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 22,
+    }
+    stale_plan = evaluate_terminal_png_contract(
+        binding=secondary_binding,
+        d4_permission=D4GuidancePermission(
+            action="request_secondary_assist",
+            target_node_id="secondary-1",
+            new_plan_id="plan-2v2-secondary",
+            new_plan_version=1,
+        ),
+        terminal_association=secondary_terminal,
+        observation={"assigned_global_track_id": "G1"},
+        timestamp_s=2.2,
+        resource_id="R2",
+    )
+
+    assert stale_plan.allowed is False
+    assert stale_plan.reject_reason == "d4_plan_mismatch"
+
+    active_secondary = evaluate_terminal_png_contract(
+        binding=secondary_binding,
+        d4_permission=D4GuidancePermission(
+            action="request_secondary_assist",
+            target_node_id="secondary-1",
+            new_plan_id="plan-2v2-secondary",
+            new_plan_version=2,
+        ),
+        terminal_association=secondary_terminal,
+        observation={"assigned_global_track_id": "G1"},
+        timestamp_s=2.3,
+        resource_id="R2",
+    )
+    continue_center = evaluate_terminal_png_contract(
+        binding=secondary_binding,
+        d4_permission=D4GuidancePermission(
+            action="continue_center",
+            target_node_id="secondary-1",
+            new_plan_id="plan-2v2-secondary",
+            new_plan_version=2,
+        ),
+        terminal_association=secondary_terminal,
+        observation={"assigned_global_track_id": "G1"},
+        timestamp_s=2.4,
+        resource_id="R2",
+    )
+
+    assert active_secondary.allowed is True
+    assert continue_center.allowed is True
+
+    tracker = SimpleFlightPngGuidanceFilter(_tuned_png_config())
+    command = None
+    for index, half_size in enumerate((30.0, 34.0, 38.0), start=1):
+        command = tracker.evaluate(
+            VisionGuidanceObservation(
+                timestamp_s=2.4 + index * 0.1,
+                bbox_xyxy=(320.0 - half_size, 240.0 - half_size, 320.0 + half_size, 240.0 + half_size),
+                detection_confidence=0.9,
+                local_track_id="R2:0:L1",
+                assigned_global_track_id="G1",
+            ),
+            current_heading_rad=0.0,
+            current_speed_mps=8.0,
+            intercept_speed_mps=8.0,
+            relative_position_ned=(32.0, 0.5, 0.0),
+            relative_velocity_ned=(-5.0, 0.0, 0.0),
+        )
+
+    assert command is not None
+    assert command.guidance_law == "png_vm"
+    assert command.quality.terminal_switch_allowed is True
+    assert command.quality.ttc_s is not None
+    assert guidance_mode_from_terminal_contract(
+        active_secondary,
+        handover_pending=True,
+        terminal_locked=True,
+    ) == GuidanceMode.VISION_TERMINAL
+
+
 def test_terminal_contract_maps_reject_reasons_to_guidance_log_modes() -> None:
     ambiguous = evaluate_terminal_png_contract(
         binding=_binding(),
@@ -516,15 +644,20 @@ def test_terminal_contract_maps_reject_reasons_to_guidance_log_modes() -> None:
     ) == GuidanceMode.ABORT_REVOKE
 
 
-def test_five_parallel_pairs_keep_independent_terminal_gate_and_png_time_series() -> None:
+@pytest.mark.parametrize("pair_count", [1, 3, 5, 7])
+def test_runtime_sized_pairs_keep_independent_terminal_gate_and_png_time_series(
+    pair_count: int,
+) -> None:
     config = _tuned_png_config()
     filters = {
         pair_index: SimpleFlightPngGuidanceFilter(config)
-        for pair_index in range(5)
+        for pair_index in range(pair_count)
     }
     records = []
+    d5_reject_indices = {pair_count - 2} if pair_count >= 3 else set()
+    d4_hold_indices = {pair_count - 1} if pair_count >= 3 else set()
 
-    for pair_index in range(5):
+    for pair_index in range(pair_count):
         resource_id = f"R{pair_index + 1}"
         target_id = f"G{pair_index + 1}"
         track_version = 40 + pair_index
@@ -537,9 +670,9 @@ def test_five_parallel_pairs_keep_independent_terminal_gate_and_png_time_series(
             "friend_conflict_state": "none",
             "assignment_version": track_version,
         }
-        if pair_index == 3:
+        if pair_index in d5_reject_indices:
             terminal_association["decision_state"] = "ambiguous"
-        if pair_index == 4:
+        if pair_index in d4_hold_indices:
             d4_permission = D4GuidancePermission(
                 action="hold_for_review",
                 requires_human_review=True,
@@ -573,6 +706,7 @@ def test_five_parallel_pairs_keep_independent_terminal_gate_and_png_time_series(
                 "resource_id": resource_id,
                 "target_id": target_id,
                 "mode": midcourse.mode.value,
+                "control_context_id": f"{resource_id}->{target_id}",
                 "guidance_law": "radar_pn",
                 "terminal_switch_allowed": False,
                 "terminal_contract_reject_reason": "",
@@ -616,6 +750,7 @@ def test_five_parallel_pairs_keep_independent_terminal_gate_and_png_time_series(
                         "timestamp_s": timestamp_s,
                         "resource_id": resource_id,
                         "target_id": target_id,
+                        "control_context_id": f"{resource_id}->{target_id}",
                         "mode": GuidanceMode.VISION_TERMINAL.value,
                         "guidance_law": command.guidance_law,
                         "local_track_id": command.metadata["local_track_id"],
@@ -632,6 +767,7 @@ def test_five_parallel_pairs_keep_independent_terminal_gate_and_png_time_series(
                         "timestamp_s": timestamp_s,
                         "resource_id": resource_id,
                         "target_id": target_id,
+                        "control_context_id": f"{resource_id}->{target_id}",
                         "mode": guidance_mode_from_terminal_contract(
                             decision,
                             handover_pending=True,
@@ -644,25 +780,35 @@ def test_five_parallel_pairs_keep_independent_terminal_gate_and_png_time_series(
                     }
                 )
 
-    assert len(records) == 20
-    assert {record["resource_id"] for record in records} == {
-        "R1",
-        "R2",
-        "R3",
-        "R4",
-        "R5",
+    expected_resources = {f"R{index + 1}" for index in range(pair_count)}
+    rejected_resources = {
+        f"R{index + 1}" for index in d5_reject_indices | d4_hold_indices
     }
+    expected_allowed_resources = expected_resources - rejected_resources
+
+    assert len(records) == pair_count * 4
+    assert {record["resource_id"] for record in records} == expected_resources
+    assert {record["control_context_id"] for record in records} == {
+        f"R{index + 1}->G{index + 1}" for index in range(pair_count)
+    }
+    assert {
+        record["resource_id"]
+        for record in records
+        if record["guidance_law"] == "radar_pn" and record["timestamp_s"] == 0.0
+    } == expected_resources
 
     allowed_terminal_records = [
         record
         for record in records
         if record["guidance_law"] == "png_vm" and record["terminal_switch_allowed"]
     ]
-    assert {record["resource_id"] for record in allowed_terminal_records} == {"R1", "R2", "R3"}
+    assert {
+        record["resource_id"] for record in allowed_terminal_records
+    } == expected_allowed_resources
     assert all(record["ttc_s"] is not None and record["ttc_s"] > 0.0 for record in allowed_terminal_records)
     assert summarize_terminal_switch_quality(allowed_terminal_records) == {
-        "sample_count": 3,
-        "allowed_count": 3,
+        "sample_count": len(expected_allowed_resources),
+        "allowed_count": len(expected_allowed_resources),
         "rejected_count": 0,
         "terminal_switch_allowed_rate": 1.0,
         "reject_reasons": {},
@@ -674,8 +820,8 @@ def test_five_parallel_pairs_keep_independent_terminal_gate_and_png_time_series(
         if record["terminal_contract_reject_reason"]
     }
     assert reject_reasons == {
-        "R4": "d5_not_locked",
-        "R5": "d4_hold_for_review",
+        **{f"R{index + 1}": "d5_not_locked" for index in d5_reject_indices},
+        **{f"R{index + 1}": "d4_hold_for_review" for index in d4_hold_indices},
     }
     final_png_records_by_resource = {
         record["resource_id"]: record
@@ -684,17 +830,16 @@ def test_five_parallel_pairs_keep_independent_terminal_gate_and_png_time_series(
     assert {
         resource_id: record["stable_frame_count"]
         for resource_id, record in final_png_records_by_resource.items()
-    } == {"R1": 3, "R2": 3, "R3": 3}
+    } == {resource_id: 3 for resource_id in expected_allowed_resources}
     assert {
         resource_id: record["local_track_id"]
         for resource_id, record in final_png_records_by_resource.items()
     } == {
-        "R1": "R1:0:L1",
-        "R2": "R2:0:L2",
-        "R3": "R3:0:L3",
+        resource_id: f"{resource_id}:0:L{resource_id.removeprefix('R')}"
+        for resource_id in expected_allowed_resources
     }
     assert not any(
-        record["resource_id"] in {"R4", "R5"} and record["guidance_law"] == "png_vm"
+        record["resource_id"] in rejected_resources and record["guidance_law"] == "png_vm"
         for record in records
     )
 
@@ -721,7 +866,7 @@ def _binding_for_pair(
     track_version: int,
 ) -> AssignmentGuidanceBinding:
     return AssignmentGuidanceBinding(
-        plan_id="plan-5v5",
+        plan_id="plan-runtime-n",
         plan_version=7,
         assignment_id=f"assign-{resource_id}-{target_id}",
         resource_id=resource_id,

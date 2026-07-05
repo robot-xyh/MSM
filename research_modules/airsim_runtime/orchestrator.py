@@ -25,6 +25,7 @@ from .adapters import (
 )
 from .blocks import BlocksProcessManager
 from .d4d5_stress import run_d4d5_stress_analysis
+from .episode_bus import run_main_episode_bus
 from .intercept import run_controlled_intercept_episode
 from .models import BlocksSmokeConfig, BlocksSmokeResult
 from .real_runtime import RealAirSimRuntimeClient
@@ -106,6 +107,11 @@ class AirSimBlocksSmokeOrchestrator:
                 output_dir / "blocks_sensor_observations.jsonl",
                 config,
             )
+            main_episode_bus = run_main_episode_bus(
+                config,
+                frames,
+                output_dir / "main_episode_bus",
+            )
             integrated = (
                 self._run_integrated_replay(config, frames, output_dir)
                 if config.include_integrated_pipeline
@@ -138,6 +144,7 @@ class AirSimBlocksSmokeOrchestrator:
                 output_paths={
                     "blocks_frames_jsonl": raw_log,
                     "blocks_sensor_observations_jsonl": sensor_log,
+                    **main_episode_bus.output_paths,
                     **intercept_output_paths,
                     **({} if d4d5_stress is None else d4d5_stress.output_paths),
                 },
@@ -154,6 +161,15 @@ class AirSimBlocksSmokeOrchestrator:
                     "secondary_camera_vehicle_names": list(config.secondary_camera_vehicle_names),
                     "capture_lidar": bool(config.capture_lidar),
                     "detection_count": sum(len(frame.visual_detections) for frame in frames),
+                    "main_episode_bus": {
+                        "frame_count": main_episode_bus.frame_count,
+                        "record_counts": main_episode_bus.summary.get("record_counts", {}),
+                        "module_order": main_episode_bus.summary.get("module_order", []),
+                        "output_paths": {
+                            key: str(value)
+                            for key, value in main_episode_bus.output_paths.items()
+                        },
+                    },
                     "intercept": intercept_metadata,
                     "d4d5_stress": {} if d4d5_stress is None else d4d5_stress.metrics,
                     "first_frame": _frame_summary(frames[0]) if frames else {},

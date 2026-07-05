@@ -329,6 +329,10 @@ def _control_command_metadata(row: Mapping[str, Any], *, source_path: Path) -> d
         "terminal_contract_reject_reason": _optional_text(
             row.get("terminal_contract_reject_reason")
         ),
+        "degradation_mode": _optional_text(row.get("d4_mode") or row.get("degradation_mode")),
+        "action": _optional_text(row.get("d4_action") or row.get("action")),
+        "assignment_phase": _optional_text(row.get("assignment_phase")),
+        "target_node_id": _optional_text(row.get("d4_target_node_id") or row.get("target_node_id")),
         "d4_state": _optional_text(
             row.get("d4_state") or row.get("d4_mode") or row.get("d4_action")
         ),

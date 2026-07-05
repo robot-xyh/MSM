@@ -34,9 +34,9 @@ p = K [R_cw | t_cw] P_w
 
 MOT 的 `local_track_id` 只作为本地观测 ID，不得替代或重写 `global_track_id`。
 
-### ComputerVision 5v5 多镜头压力输入
+### ComputerVision N-v-N 多镜头压力输入
 
-本轮 D4/D5 专项测试采用 AirSim ComputerVision Vehicle 场景的离线检测合同，不要求 D5 导入 AirSim 或调用仿真 API。推荐几何假设：
+本轮 D4/D5 专项测试采用 AirSim ComputerVision Vehicle 场景的离线检测合同，不要求 D5 导入 AirSim 或调用仿真 API。数量由 main runtime 的 `--drone-count N` 统一控制；D5 按传入的 `LocalVisualTrack[]`、`GlobalTrack[]`、camera/resource 列表和 bus observation 长度运行。5v5 只是 stress baseline，推荐几何假设：
 
 - 5 个 `Interceptor_Cam_*` 主镜头。
 - 5 个目标，目标距拦截镜头约 50m。
@@ -50,6 +50,8 @@ DetectionInfo / fixture bbox
 -> LocalVisualTrack(local_track_id, center_px, bbox, category, quality, timestamp)
 -> TerminalObservationBus.publish_local_track(...)
 ```
+
+在线转换不得使用 AirSim detection 的 `object_id`、`actor_name` 或 truth ID 来生成、过滤或改写 `LocalVisualTrack`/`TerminalAssociation`。这些真值字段只能作为离线评估标签写入单独 metadata 或 evaluation map。
 
 若已经完成单机配准，则继续发布：
 
@@ -117,9 +119,9 @@ AirSim 场景中可加入高空系留侦察无人机作为二级节点。二级�
 7. 调用 `TerminalAssociator.decide(...)`。
 8. 记录 `locked/ambiguous/hold/reacquire`、候选成本、cue 使用情况、正确性和 ID 不变式。
 
-ComputerVision 5v5 专项回放中，额外执行：
+ComputerVision N-v-N 专项回放中，额外执行：
 
-1. 对所有 `Interceptor_Cam_*` 分别调用检测转换 helper，统计每个镜头检测数量。
+1. 对 runtime 当前提供的所有 camera/resource 分别调用检测转换 helper，统计每个镜头检测数量。
 2. 对每个资源发布本地观测和终端关联结果。
 3. 对二级系留侦察镜头发布已重投影的 `ReconImageCue`；过期或不可用 cue 必须显式标记。
 4. 调用 `TerminalObservationBus.cross_view_associations()` 汇总重叠视场支持。

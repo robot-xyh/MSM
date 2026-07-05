@@ -194,7 +194,7 @@ research_modules/d5_terminal_association/
 主要职责：
 
 - `models.py`：定义 `GlobalTrack`、`LocalVisualTrack`、`Assignment`、`IdentityClaim`、`ReconImageCue` 和 `TerminalAssociation`。
-- `airsim_cv_adapter.py`：转换 `simGetDetections` 风格检测框，生成 5v5 ComputerVision 压测指标和三类降级证据摘要。
+- `airsim_cv_adapter.py`：转换 `simGetDetections` 风格检测框，生成 N-v-N ComputerVision 压测指标和三类降级证据摘要；5v5 只是 stress baseline。
 - `observation_bus.py`：定义最小跨节点 `TerminalObservationBus` 汇总逻辑，输出 `CrossViewAssociation` 风险与支撑摘要。
 - `geometry.py`：实现投影、协方差传播和马氏距离。
 - `identity.py`：解析仿真身份声明并判断友方冲突。
@@ -281,7 +281,7 @@ cross_view_result = terminal_cross_view_fusion.associate(
 - 跨资源 cue。
 - 空 `scoped_resource_ids` 语义对照。
 - UAV1 看到目标 1/2/3、UAV2 看到目标 2/3/4 的重叠视场配准。
-- 5v5 ComputerVision 压测：目标距主镜头约 50m、目标间距 20m、镜头间距 20m，每个主镜头视场内至少两个目标。
+- N-v-N ComputerVision 压测：数量由 main runtime 的 `--drone-count N` 统一控制；5v5 baseline 使用目标距主镜头约 50m、目标间距 20m、镜头间距 20m，每个主镜头视场内至少两个目标。
 - 二级系留侦察镜头比目标高约 200m，输出已重投影到拦截机相机平面的 `ReconImageCue`。
 - 相同 `local_track_id` 在不同无人机中重复出现的命名空间冲突测试。
 - 相机姿态误差、时间戳错位和高协方差观测导致的跨视场 `ambiguous`。
@@ -327,7 +327,7 @@ D5 至少记录：
 
 - 目前 `ReconImageCue` 的新鲜度和相机帧一致性主要由调用方保证。
 - 当前仿真尚未批量生成二级 cue 场景。
-- 已实现最小 `TerminalObservationBus`、`CrossViewAssociation` 和 5v5 ComputerVision dry-run evidence helper，但尚未完整实现跨无人机多相机几何融合；`CrossViewObservation`、`CrossViewTrackEvidence` 和 `TerminalCrossViewFusion` 仍是接口建议。
+- 已实现最小 `TerminalObservationBus`、`CrossViewAssociation` 和 N-v-N ComputerVision dry-run evidence helper，但尚未完整实现跨无人机多相机几何融合；`CrossViewObservation`、`CrossViewTrackEvidence` 和 `TerminalCrossViewFusion` 仍是接口建议。
 - 当前身份声明为离线仿真抽象，不连接真实通信或安全中间件。
 - 本地 MOT 质量对小目标场景影响大，需要 AirSim 离线回放进一步评估。
 - D5 输出只用于评估和上游复盘，不应被解释为自动处置命令。

@@ -17,7 +17,7 @@
 
 ```bash
 PYTHONPATH=research_modules/d4_distributed_fallback \
-python3 research_modules/d4_distributed_fallback/scripts/run_failover_simulation.py
+python3 research_modules/d4_distributed_fallback/scripts/run_failover_simulation.py --drone-count 5
 ```
 
 运行 D4 测试：
@@ -53,7 +53,8 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 - D5 `friend_conflict=True`：强制 `hold_for_review`；`duplicate_terminal_lock=True` 不视为一致锁定。
 - 若传入通信摘要，二级节点必须有未过期的 `secondary_relay`、`video_cue` 或 `c2_direct` 链路才可作为主动辅助/接管目标。
 - 若二级节点 `heartbeat_timestamp_s` 超过 `heartbeat_stale_after_s`，即使视频链路摘要新鲜，也不会被选为二级接管目标。
-- 5v5 AirSim ComputerVision 专项 case：`case_001_no_degradation` 期望 `continue_center`；`case_002_degrade_to_secondary` 期望二级节点优先；`case_003_degrade_to_distributed` 期望二级不可用/过期后才分布式。
+- `--drone-count`/main runtime 的 N 只决定输入摘要数量；D4 按实际 `TrackSummary[]`、`ResourceSummary[]` 和二级节点列表长度运行，不在仲裁里固定 2v2 或 5v5。
+- 2v2/5v5 AirSim ComputerVision 专项 case 只作为测试 baseline：`case_001_no_degradation` 期望 `continue_center`；`case_002_degrade_to_secondary` 期望二级节点优先；`case_003_degrade_to_distributed` 期望二级不可用/过期后才分布式。
 
 ## P1 状态
 

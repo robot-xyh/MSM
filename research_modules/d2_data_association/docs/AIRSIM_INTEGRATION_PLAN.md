@@ -53,6 +53,40 @@ for frame in offline_log:
 summary = tracker.metrics.summary()
 ```
 
+## Target Count and Replan Identity Contract
+
+D2 does not infer target count from a scenario name and does not require a
+fixed 2v2 or 5v5 shape. For every replay frame, the associators build their
+cost matrices from the actual `len(active_tracks)` by `len(detections)` input
+sets, and the `Tracker` creates, updates, loses, or drops tracks from those
+sets. Main runtime scenarios may choose the target/drone count through their
+own `--drone-count` parameter; D2 consumes only the detections/tracks it is
+given for that frame.
+
+`DryRunAssociationResult.to_bus_message()` exports all current
+`global_track_id` values through `active_tracks` and `global_track_ids`. The
+export list is derived from the tracker state and is not truncated or padded to
+a fixed count before D3/D5/D6 handoff.
+
+The AirSim Blocks 2v2 active-degradation path is a baseline fixture for this
+identity contract. In that path, D2 owns the `global_track_id` namespace across
+central-plan and secondary-node replan phases. A replan frame may change
+`source_node_id`, `link_type`, detection ids, or assignment authority, but it
+must be applied to the same `Tracker` instance/state when it represents the
+same replay episode. D2 then updates the existing `GlobalTrack` by association
+and Kalman prediction/update rather than minting a new global id.
+
+The acceptance condition for a no-ID-switch replan is:
+
+- each physical target keeps the same `global_track_id` before and after the
+  central-plan to secondary-node transition;
+- `MetricsRecorder.summary()["id_switch_count"] == 0`;
+- `DryRunAssociationResult.to_bus_message()` exposes the same
+  `id_switch_count` for D4/D6 handoff checks.
+
+This is covered by
+`tests/test_dry_run_adapter.py::test_airsim_2v2_replan_keeps_global_track_ids_and_records_no_id_switch`.
+
 ## Evaluation Outputs
 
 - Per-frame association logs.

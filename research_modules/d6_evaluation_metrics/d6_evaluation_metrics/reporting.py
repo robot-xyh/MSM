@@ -40,6 +40,8 @@ class ReportGenerator:
             "active_degradation_count",
             "passive_failover_count",
             "secondary_node_takeover_count",
+            "secondary_reassignment_count",
+            "d4_reassign_pending_count",
             "distributed_fallback_count",
             "failover_active_window_delta_s",
         ],
@@ -49,6 +51,7 @@ class ReportGenerator:
             "ambiguous_fov_event_count",
             "friend_overlap_hold_count",
             "time_to_terminal_lock",
+            "terminal_lock_count",
             "multi_view_consensus_rate",
             "cross_view_conflict_count",
             "duplicate_terminal_lock_count",
@@ -67,6 +70,7 @@ class ReportGenerator:
             "los_quality_gate_pass_rate",
             "maneuver_margin_gate_pass_rate",
             "terminal_switch_allowed_rate",
+            "visual_png_switch_count",
             "terminal_takeover_rate",
             "terminal_switch_reject_count",
             "mode_switch_count",
@@ -129,6 +133,7 @@ class ReportGenerator:
             "seed",
             "batch_seed",
             "scenario_group",
+            *EpisodeMetrics.scale_names(),
             "duration",
         ] + EpisodeMetrics.metric_names()
         with path.open("w", newline="", encoding="utf-8") as stream:
@@ -145,23 +150,25 @@ class ReportGenerator:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         episode_list = list(episodes)
-        rows = _scoped_summary_rows("all", "all", self.summarize(episode_list))
-        for scenario_group in _ordered_scenario_groups(episode_list):
-            scoped_episodes = [
-                episode
-                for episode in episode_list
-                if episode.scenario_group == scenario_group
-            ]
+        rows = _scoped_summary_rows(
+            "all",
+            "all",
+            _scale_scope_values(episode_list),
+            self.summarize(episode_list),
+        )
+        for scenario_group, scoped_episodes in _scenario_scale_rows(episode_list):
             rows.extend(
                 _scoped_summary_rows(
                     scenario_group,
                     _batch_seed_range_text(scoped_episodes),
+                    _scale_scope_values(scoped_episodes),
                     self.summarize(scoped_episodes),
                 )
             )
         fieldnames = [
             "scenario_group",
             "batch_seed",
+            *EpisodeMetrics.scale_names(),
             "metric",
             "count",
             "mean",
@@ -189,17 +196,7 @@ class ReportGenerator:
         path.parent.mkdir(parents=True, exist_ok=True)
         episode_list = list(episodes)
         summary_rows = self.summarize(episode_list)
-        scenario_rows = [
-            (
-                scenario_group,
-                [
-                    episode
-                    for episode in episode_list
-                    if episode.scenario_group == scenario_group
-                ],
-            )
-            for scenario_group in _ordered_scenario_groups(episode_list)
-        ]
+        scenario_rows = _scenario_scale_rows(episode_list)
 
         lines = [
             f"# {title}",
@@ -210,6 +207,10 @@ class ReportGenerator:
             f"- Episode 数量: {len(episode_list)}",
             f"- 随机种子范围: {_seed_range_text(episode_list)}",
             f"- 场景分组: {', '.join(_ordered_scenario_groups(episode_list)) or 'not recorded'}",
+            f"- Drone count: {_scale_range_text(episode_list, 'drone_count')}",
+            f"- Resource count: {_scale_range_text(episode_list, 'resource_count')}",
+            f"- Target count: {_scale_range_text(episode_list, 'target_count')}",
+            f"- Camera count: {_scale_range_text(episode_list, 'camera_count')}",
             "",
             "## 1. 汇总表",
             "",
@@ -230,14 +231,18 @@ class ReportGenerator:
                     "",
                     "## 2. 场景分组",
                     "",
-                    "| 场景 | Episode 数量 | Batch seed | active_degradation_count | passive_failover_count | mode_switch_count | terminal_contract_reject_count |",
-                    "|---|---:|---|---:|---:|---:|---:|",
+                    "| 场景 | Drone count | Resource count | Target count | Camera count | Episode 数量 | Batch seed | active_degradation_count | passive_failover_count | mode_switch_count | terminal_contract_reject_count |",
+                    "|---|---|---|---|---|---:|---|---:|---:|---:|---:|",
                 ]
             )
             for scenario_group, scoped_episodes in scenario_rows:
                 lines.append(
-                    "| {scenario_group} | {count} | {batch_seed} | {active:.6g} | {passive:.6g} | {mode_switch:.6g} | {contract_reject:.6g} |".format(
+                    "| {scenario_group} | {drone_count} | {resource_count} | {target_count} | {camera_count} | {count} | {batch_seed} | {active:.6g} | {passive:.6g} | {mode_switch:.6g} | {contract_reject:.6g} |".format(
                         scenario_group=scenario_group,
+                        drone_count=_scale_range_text(scoped_episodes, "drone_count"),
+                        resource_count=_scale_range_text(scoped_episodes, "resource_count"),
+                        target_count=_scale_range_text(scoped_episodes, "target_count"),
+                        camera_count=_scale_range_text(scoped_episodes, "camera_count"),
                         count=len(scoped_episodes),
                         batch_seed=_batch_seed_range_text(scoped_episodes),
                         active=_mean_metric(scoped_episodes, "active_degradation_count"),
@@ -391,16 +396,40 @@ def _empty_summary_row(metric_name: str) -> dict[str, Any]:
 def _scoped_summary_rows(
     scenario_group: str,
     batch_seed: str,
+    scale_values: dict[str, str],
     rows: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     return [
         {
             "scenario_group": scenario_group,
             "batch_seed": batch_seed,
+            **scale_values,
             **row,
         }
         for row in rows
     ]
+
+
+def _scenario_scale_rows(
+    episodes: list[EpisodeMetrics],
+) -> list[tuple[str, list[EpisodeMetrics]]]:
+    rows: list[tuple[str, list[EpisodeMetrics]]] = []
+    for scenario_group in _ordered_scenario_groups(episodes):
+        scoped = [
+            episode
+            for episode in episodes
+            if episode.scenario_group == scenario_group
+        ]
+        grouped: dict[tuple[int, int, int, int], list[EpisodeMetrics]] = {}
+        for episode in scoped:
+            key = tuple(
+                _episode_scale_value(episode, scale_name)
+                for scale_name in EpisodeMetrics.scale_names()
+            )
+            grouped.setdefault(key, []).append(episode)
+        for key in sorted(grouped):
+            rows.append((scenario_group, grouped[key]))
+    return rows
 
 
 def _ordered_scenario_groups(episodes: list[EpisodeMetrics]) -> list[str]:
@@ -415,6 +444,41 @@ def _ordered_scenario_groups(episodes: list[EpisodeMetrics]) -> list[str]:
     ordered = [group for group in preferred_order if group in present]
     ordered.extend(sorted(present - set(ordered)))
     return ordered
+
+
+def _scale_scope_values(episodes: list[EpisodeMetrics]) -> dict[str, str]:
+    return {
+        scale_name: _scale_range_text(episodes, scale_name)
+        for scale_name in EpisodeMetrics.scale_names()
+    }
+
+
+def _scale_range_text(episodes: list[EpisodeMetrics], scale_name: str) -> str:
+    values = sorted(
+        {
+            value
+            for value in (
+                _episode_scale_value(episode, scale_name)
+                for episode in episodes
+            )
+            if value > 0
+        }
+    )
+    if not values:
+        return "not recorded"
+    if len(values) == 1:
+        return str(values[0])
+    return f"{values[0]}..{values[-1]}"
+
+
+def _episode_scale_value(episode: EpisodeMetrics, scale_name: str) -> int:
+    value = getattr(episode, scale_name, 0)
+    if value is None:
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _seed_range_text(episodes: list[EpisodeMetrics]) -> str:

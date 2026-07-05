@@ -46,6 +46,10 @@ class DryRunAssociationResult:
         return [track.to_dict() for track in self.tracker.active_tracks()]
 
     @property
+    def global_track_ids(self) -> list[str]:
+        return [track.global_track_id for track in self.tracker.active_tracks()]
+
+    @property
     def association_logs(self) -> list[dict[str, Any]]:
         return [entry.to_dict() for entry in self.tracker.metrics.association_logs]
 
@@ -55,6 +59,7 @@ class DryRunAssociationResult:
         return {
             "module": "D2",
             "active_tracks": self.active_tracks,
+            "global_track_ids": self.global_track_ids,
             "association_logs": self.association_logs,
             "metrics": dict(self.metrics),
             "id_switch_count": self.metrics["id_switch_count"],

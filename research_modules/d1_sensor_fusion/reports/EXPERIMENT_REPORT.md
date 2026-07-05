@@ -7,6 +7,7 @@ This report covers offline research simulation only. It does not include real fi
 ## Scenario
 
 - Targets: 3
+- Baseline: this checked-in report is a historical 3-target baseline; integrated runs size D1 inputs from main `--drone-count N`.
 - Duration: 8.0 s
 - Base step: 0.50 s
 - Seed: 7

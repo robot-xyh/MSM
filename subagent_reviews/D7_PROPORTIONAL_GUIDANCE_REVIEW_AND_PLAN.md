@@ -45,13 +45,15 @@ research_modules/d7_proportional_guidance/
 
 该模块已经提供 `GuidanceState`、`GuidanceConfig`、`GuidanceCommand`、`GuidanceRecord`、`compute_proportional_navigation_command()` 和 `simulate_guidance_episode()`。它是二维质点研究模型，记录 `range_m`、`los_angle_rad`、`los_rate_radps`、`closing_speed_mps`、`commanded_lateral_accel_mps2`、`limited_lateral_accel_mps2`、`limited_turn_rate_radps` 和 `mode_switch`。
 
-第二条是 AirSim 2v2 actor 受控拦截：
+第二条是 AirSim 2v2 actor 受控拦截 baseline：
 
 ```text
 research_modules/airsim_runtime/intercept.py
 ```
 
 该实现中，拦截无人机使用 SimpleFlight，多旋翼控制接口由 main 显式启用、解锁、起飞并发送 `moveByVelocityZAsync` 速度/高度命令。目标不是 AirSim 车辆，不使用 SimpleFlight，而是非车辆 Unreal actor，由 main 通过 `simSetObjectPose` 按水平速度移动。目标识别使用 AirSim `simGetDetections` 检测框。
+
+数量边界需要和 baseline 区分：main runtime 的无人机/目标数量由 `--drone-count N` 统一控制。D7 不应假设 2v2 或 5v5；main 应为 D3 输出的每个有效 assignment pair 创建独立 D7 控制上下文，分别持有 D3 binding、D4 permission、D5 locked evidence、初段位置 PNG/PN 记录状态和末端视觉 PNG filter。
 
 当前 Blocks 稳定闭环采用：
 
@@ -469,15 +471,15 @@ Blocks launch/reset
 -> hover / land / release
 ```
 
-拦截无人机是 SimpleFlight 多旋翼；目标 actor 不是车辆。这样避免目标机也受到 SimpleFlight 飞控和碰撞物理的额外状态影响，便于主流程精确设置 2v2 水平穿越目标。
+拦截无人机是 SimpleFlight 多旋翼；目标 actor 不是车辆。这样避免目标机也受到 SimpleFlight 飞控和碰撞物理的额外状态影响，便于主流程精确设置 2v2 水平穿越 baseline 目标。该 baseline 不能扩展为 main runtime 的固定数量假设；N-pair 控制必须由 main 按 `--drone-count` 和有效 assignment pair 显式创建 D7 上下文。
 
 ### 6.2 目标 actor 与检测
 
 目标配置来自 `BlocksActorTargetSpec`：
 
 ```text
-- object_id: TGT-001 / TGT-002
-- actor_name: MSM_TargetActor_1 / MSM_TargetActor_2
+- object_id: TGT-001 ... TGT-N
+- actor_name: MSM_TargetActor_1 ... MSM_TargetActor_N
 - start_ned
 - velocity_ned
 - asset_name
@@ -510,8 +512,8 @@ simGetDetections
 
 当前实现适合作为 Blocks 第一阶段稳定闭环：
 
-- 2v2 actor 目标水平移动。
-- 两架 SimpleFlight 拦截无人机发速度/高度命令。
+- 2v2 actor baseline 目标水平移动。
+- baseline 中两架 SimpleFlight 拦截无人机发速度/高度命令；main runtime N-pair 执行时应按每个有效 pair 独立发命令和记日志。
 - 中段 PN 使用二维 NED 平面。
 - 末端使用 D5 检测锁定后的 LOS heading 追踪。
 - 成功严格绑定 assigned target 的 range 或 collision object。
@@ -545,7 +547,7 @@ simGetDetections
 - `assigned_global_track_id` 不匹配时禁止进入 `vision_terminal`。
 - D5 `ambiguous/hold/reacquire` 不会导致 D7 换绑目标。
 
-### 7.2 AirSim 2v2 actor 测试
+### 7.2 AirSim actor baseline 与 N-pair 测试
 
 受控 2v2 episode 应验证：
 
@@ -555,6 +557,13 @@ simGetDetections
 - `simGetDetections` 能返回 assigned actor 的 bbox。
 - `control_commands.csv` 和 `intercept_summary.json` 写出。
 - 未指定 `--save-images` 时不写 PNG。
+
+N-pair runtime 回归还应验证：
+
+- `--drone-count N` 只由 main runtime 解释，D7 不读取固定数量常量。
+- main 对每个有效 assignment pair 创建独立 D7 控制上下文。
+- 初段位置 PNG/PN 和末端视觉 PNG 的 time-series 都按 `resource_id/target_id/assignment_id` 隔离。
+- D5 `locked`、D3 assignment/version、相机 bbox/LOS 稳定性、机动裕度和距离/闭合条件逐 pair 判定，任一 pair 拒绝不影响其他 pair。
 
 ### 7.3 成功与失败判据
 
@@ -619,7 +628,8 @@ status == timeout
 
 ### 8.1 短期：固化当前 Blocks 稳定闭环
 
-- 保持 2v2 actor target 和 SimpleFlight interceptor 的架构。
+- 保持 2v2 actor target 和 SimpleFlight interceptor 作为 baseline 架构。
+- 对 main runtime，按 `--drone-count N` 为每个有效 assignment pair 创建独立 D7 控制上下文，不共享视觉 filter 状态。
 - 明确 `collision_intercept` 必须匹配 assigned actor/object name。
 - 在 summary 中保留 `time_to_intercept_s`、`min_range_m`、`status`、`abort_reason` 和 `collision_object_name`。
 - 默认继续不保存 PNG，只保存检测框和相机元数据。
@@ -644,10 +654,11 @@ status == timeout
 
 ## 9. 结论
 
-D7 当前已经具备可测试的经典 PN 研究模块和 AirSim 2v2 actor 拦截闭环。架构上应继续坚持三条原则：
+D7 当前已经具备可测试的经典 PN 研究模块和 AirSim 2v2 actor 拦截 baseline。架构上应继续坚持四条原则：
 
 1. 目标 ID 来自 D1/D2/D3/D5，D7 不创建、不关联、不改绑。
 2. 中段使用全局航迹 PN，末端必须由 D5 对同一 `assigned_global_track_id` 锁定后进入视觉导引。
 3. AirSim 成功判据必须绑定 assigned actor/object name；撞地或撞错对象不能算成功。
+4. main runtime 由 `--drone-count N` 控制规模，并为每个有效 assignment pair 创建独立 D7 控制上下文；2v2 只能作为 baseline，不是数量假设。
 
 下一阶段的主要增量不是重写当前稳定闭环，而是在保持状态机和日志兼容的前提下，把末端 LOS 追踪升级为严格像素 LOS-rate visual PN，并把所有切换、超时、碰撞对象和最小距离纳入 D6 指标体系。

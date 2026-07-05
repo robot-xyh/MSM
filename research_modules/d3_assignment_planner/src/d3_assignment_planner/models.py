@@ -23,6 +23,8 @@ GUIDANCE_BINDING_STALE = "stale"
 GUIDANCE_BINDING_REVOKED = "revoked"
 GUIDANCE_BINDING_REASSIGNED = "reassigned"
 GUIDANCE_BINDING_HOLD = "hold"
+ASSIGNMENT_PLAN_SCHEMA_V1 = "assignment_plan_v1"
+SECONDARY_PLAN_SCHEMA_V2 = "secondary_plan_v2"
 GUIDANCE_BINDING_STATES = frozenset(
     {
         GUIDANCE_BINDING_ACTIVE,
@@ -142,6 +144,8 @@ class AssignmentPlan:
     stale_after_s: float | None = None
     terminal_feedback_state: str | None = None
     duplicate_terminal_lock_risk: bool = False
+    resource_count: int = 0
+    target_count: int = 0
 
     def assignment_map(self) -> dict[str, str]:
         """Return target_id -> resource_id for assigned targets."""
@@ -167,6 +171,8 @@ class AssignmentValiditySummary:
     stale_plan_version: bool
     duplicate_assignment_count: int
     unassigned_high_threat_count: int
+    resource_count: int = 0
+    target_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -200,6 +206,7 @@ class AssignmentGuidanceBinding:
     target_id: str
     authorization_state: str = "required"
     guidance_phase: str = "radar_midcourse"
+    plan_schema: str = ASSIGNMENT_PLAN_SCHEMA_V1
     binding_state: str = "active"
     created_at: float = 0.0
     stale_after_s: float | None = None
@@ -325,6 +332,7 @@ class AssignmentGuidanceBinding:
             "authorization_state": self.authorization_state,
             "human_authorization_state": self.human_authorization_state,
             "guidance_phase": self.guidance_phase,
+            "plan_schema": self.plan_schema,
             "binding_state": self.binding_state,
             "assignment_validity_state": self.assignment_validity_state,
             "created_at_s": self.created_at_s,
@@ -362,6 +370,7 @@ def guidance_bindings_from_assignment_plan(
     resource_vehicle_map = resource_vehicle_map or {}
     target_alias_map = target_alias_map or {}
     now = plan.created_at if now_s is None else float(now_s)
+    plan_schema = _plan_schema(plan)
     previous_by_resource = (
         {item.resource_id: item.target_id for item in previous_plan.assignments}
         if previous_plan is not None
@@ -414,6 +423,7 @@ def guidance_bindings_from_assignment_plan(
                 target_id=target_id,
                 authorization_state=plan.human_authorization_state,
                 guidance_phase=guidance_phase,
+                plan_schema=plan_schema,
                 binding_state=binding_state,
                 created_at=plan.created_at,
                 stale_after_s=stale_after_s,
@@ -429,6 +439,7 @@ def guidance_bindings_from_assignment_plan(
                 metadata={
                     "assignment_cost": assignment.cost,
                     "assignment_feasibility_state": assignment.feasibility_state,
+                    "plan_schema": plan_schema,
                     "plan_decision_state": plan.decision_state,
                     "previous_plan_id": plan.previous_plan_id,
                     "previous_target_for_resource": previous_target_id,
@@ -580,6 +591,8 @@ def assignment_validity_summary_from_plan(
             high_threat_target_ids=high_threat_target_ids,
             high_threat_threshold=high_threat_threshold,
         ),
+        resource_count=_plan_resource_count(plan),
+        target_count=_plan_target_count(plan),
     )
 
 
@@ -778,6 +791,20 @@ def _unassigned_high_threat_count(
     return sum(1 for target_id in plan.unassigned_target_ids if target_id in high_threat)
 
 
+def _plan_resource_count(plan: AssignmentPlan) -> int:
+    if plan.resource_count:
+        return plan.resource_count
+    return len({assignment.resource_id for assignment in plan.assignments})
+
+
+def _plan_target_count(plan: AssignmentPlan) -> int:
+    if plan.target_count:
+        return plan.target_count
+    target_ids = {assignment.target_id for assignment in plan.assignments}
+    target_ids.update(plan.unassigned_target_ids)
+    return len(target_ids)
+
+
 def _guidance_binding_state(
     *,
     plan: AssignmentPlan,
@@ -832,6 +859,14 @@ def _guidance_revoke_reason(
 
 def _terminal_feedback_state(plan: AssignmentPlan, assignment: Assignment) -> str | None:
     return assignment.terminal_feedback_state or plan.terminal_feedback_state
+
+
+def _plan_schema(plan: AssignmentPlan) -> str:
+    for key in ("plan_schema", "plan_type", "schema"):
+        value = plan.metadata.get(key)
+        if value:
+            return str(value)
+    return ASSIGNMENT_PLAN_SCHEMA_V1
 
 
 def _resource_actor_name(

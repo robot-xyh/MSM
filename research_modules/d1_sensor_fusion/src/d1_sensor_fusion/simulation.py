@@ -42,22 +42,18 @@ def generate_truth(
     dt: float = 0.1,
     extension_s: float = 2.5,
 ) -> dict[str, dict[str, np.ndarray]]:
-    target_count = int(np.clip(target_count, 1, 3))
+    target_count = max(1, int(target_count))
     times = np.arange(0.0, duration_s + extension_s + 0.5 * dt, dt)
-    initial_states = [
-        np.array([160.0, -70.0, -25.0, 5.8, 1.8, -0.02], dtype=float),
-        np.array([230.0, 90.0, -32.0, 3.0, -6.5, 0.03], dtype=float),
-        np.array([130.0, 60.0, -22.0, 4.5, 3.0, 0.0], dtype=float),
-    ]
     truth: dict[str, dict[str, np.ndarray]] = {}
     for target_idx in range(target_count):
         states = np.zeros((times.size, 6), dtype=float)
-        states[0] = initial_states[target_idx]
+        states[0] = _initial_state_for_target(target_idx)
+        motion_mode = target_idx % 3
         for idx in range(1, times.size):
             t = times[idx - 1]
-            if target_idx == 0:
+            if motion_mode == 0:
                 states[idx] = ca_truth_step(states[idx - 1], np.zeros(3), dt)
-            elif target_idx == 1:
+            elif motion_mode == 1:
                 states[idx] = coordinated_turn_truth_step(states[idx - 1], turn_rate=0.025, dt=dt)
             else:
                 acceleration = np.array(
@@ -67,6 +63,33 @@ def generate_truth(
                 states[idx] = ca_truth_step(states[idx - 1], acceleration, dt)
         truth[f"target_{target_idx + 1:02d}"] = {"times": times, "states": states}
     return truth
+
+
+def _initial_state_for_target(target_idx: int) -> np.ndarray:
+    baseline_states = (
+        np.array([160.0, -70.0, -25.0, 5.8, 1.8, -0.02], dtype=float),
+        np.array([230.0, 90.0, -32.0, 3.0, -6.5, 0.03], dtype=float),
+        np.array([130.0, 60.0, -22.0, 4.5, 3.0, 0.0], dtype=float),
+    )
+    if target_idx < len(baseline_states):
+        return baseline_states[target_idx].copy()
+
+    extra_idx = target_idx - len(baseline_states)
+    angle = 2.0 * np.pi * ((extra_idx * 0.61803398875) % 1.0)
+    radius = 170.0 + 30.0 * (extra_idx % 4)
+    speed = 4.0 + 0.35 * (extra_idx % 6)
+    heading = angle + np.pi / 2.0
+    return np.array(
+        [
+            185.0 + radius * np.cos(angle),
+            radius * np.sin(angle),
+            -24.0 - 2.0 * (extra_idx % 5),
+            speed * np.cos(heading),
+            speed * np.sin(heading),
+            0.02 * ((extra_idx % 3) - 1),
+        ],
+        dtype=float,
+    )
 
 
 def _state_at_grid(truth_item: dict[str, np.ndarray], index: int) -> np.ndarray:

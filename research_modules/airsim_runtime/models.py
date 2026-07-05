@@ -165,6 +165,166 @@ class BlocksSequenceResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+def default_interceptor_vehicle_names(count: int, *, prefix: str = "Interceptor") -> tuple[str, ...]:
+    """Return deterministic SimpleFlight interceptor names for a run size."""
+
+    _validate_count(count)
+    return tuple(f"{prefix}{index}" for index in range(1, int(count) + 1))
+
+
+def default_cv_camera_vehicle_names(count: int = 5, *, prefix: str = "Interceptor_Cam_") -> tuple[str, ...]:
+    """Return deterministic ComputerVision camera vehicle names for a run size."""
+
+    _validate_count(count)
+    return tuple(f"{prefix}{index}" for index in range(1, int(count) + 1))
+
+
+def default_cv_secondary_vehicle_names(count: int = 2, *, prefix: str = "Secondary_Recon_") -> tuple[str, ...]:
+    """Return deterministic secondary recon camera names."""
+
+    _validate_count(count)
+    return tuple(f"{prefix}{index}" for index in range(1, int(count) + 1))
+
+
+def default_actor_target_specs(
+    *,
+    count: int,
+    target_z: float,
+    target_distance_m: float,
+    target_spacing_m: float,
+    asset_name: str = "1M_Cube_Chamfer",
+    target_scale_m: float = 1.0,
+    target_speed_scale: float = 1.0,
+    x_spacing_m: float = 0.0,
+    x_speed_base_mps: float = 1.0,
+    x_speed_step_mps: float = 0.1,
+    y_speed_span_mps: float = 0.8,
+) -> tuple[BlocksActorTargetSpec, ...]:
+    """Generate N moved actor targets centered laterally around the camera row."""
+
+    _validate_count(count)
+    y_positions = _centered_positions(int(count), float(target_spacing_m))
+    y_velocities = _symmetric_velocities(int(count), float(y_speed_span_mps))
+    specs: list[BlocksActorTargetSpec] = []
+    for index, start_y in enumerate(y_positions):
+        object_id = f"TGT-{index + 1:03d}"
+        specs.append(
+            BlocksActorTargetSpec(
+                object_id=object_id,
+                actor_name=f"MSM_TargetActor_{index + 1}",
+                start_ned=(
+                    float(target_distance_m) + float(x_spacing_m) * index,
+                    float(start_y),
+                    float(target_z),
+                ),
+                velocity_ned=(
+                    (float(x_speed_base_mps) + float(x_speed_step_mps) * index)
+                    * float(target_speed_scale),
+                    y_velocities[index] * float(target_speed_scale),
+                    0.0,
+                ),
+                asset_name=asset_name,
+                scale=(float(target_scale_m), float(target_scale_m), float(target_scale_m)),
+                threat_score=max(0.5, 0.95 - 0.06 * index),
+                coverage_cell="cell-north" if index < max(1, int(count + 1) // 2) else "cell-south",
+                fallback_actor_name=None,
+            )
+        )
+    return tuple(specs)
+
+
+def write_dynamic_multirotor_settings(
+    path: Path,
+    *,
+    vehicle_names: tuple[str, ...],
+    y_spacing_m: float = 10.0,
+    tuned_terminal_camera: bool = False,
+    fov_degrees: float = 120.0,
+    lidar_range_m: float = 80.0,
+    api_port: int = 41451,
+) -> Path:
+    """Write an AirSim SimpleFlight settings file for N interceptor vehicles."""
+
+    _validate_count(len(vehicle_names))
+    vehicles: dict[str, Any] = {}
+    y_positions = _centered_positions(len(vehicle_names), float(y_spacing_m))
+    for index, (name, y_pos) in enumerate(zip(vehicle_names, y_positions, strict=True)):
+        vehicles[name] = _simpleflight_vehicle_settings(
+            index=index,
+            y_pos=float(y_pos),
+            tuned_terminal_camera=tuned_terminal_camera,
+            lidar_range_m=lidar_range_m,
+        )
+    payload = _base_settings("Multirotor", fov_degrees=fov_degrees, api_port=api_port)
+    payload["Vehicles"] = vehicles
+    return _write_settings(path, payload)
+
+
+def write_dynamic_computer_vision_settings(
+    path: Path,
+    *,
+    camera_vehicle_names: tuple[str, ...],
+    secondary_vehicle_names: tuple[str, ...] = (),
+    camera_spacing_m: float = 20.0,
+    camera_z: float = -10.0,
+    secondary_height_above_targets_m: float = 50.0,
+    target_z: float = -10.0,
+    fov_degrees: float = 90.0,
+    width: int = 640,
+    height: int = 480,
+    secondary_width: int | None = None,
+    secondary_height: int | None = None,
+    api_port: int = 41451,
+) -> Path:
+    """Write an AirSim ComputerVision settings file for N cameras."""
+
+    _validate_count(len(camera_vehicle_names))
+    vehicles: dict[str, Any] = {}
+    for name, y_pos in zip(
+        camera_vehicle_names,
+        _centered_positions(len(camera_vehicle_names), float(camera_spacing_m)),
+        strict=True,
+    ):
+        vehicles[name] = _computer_vision_vehicle_settings(
+            x=0.0,
+            y=float(y_pos),
+            z=float(camera_z),
+        )
+    secondary_spacing = max(float(camera_spacing_m) * max(1, len(camera_vehicle_names) - 1), camera_spacing_m)
+    for index, name in enumerate(secondary_vehicle_names):
+        y_pos = _centered_positions(max(1, len(secondary_vehicle_names)), secondary_spacing)[index]
+        vehicle = _computer_vision_vehicle_settings(
+            x=50.0,
+            y=float(y_pos),
+            z=float(target_z) - abs(float(secondary_height_above_targets_m)),
+        )
+        if secondary_width is not None and secondary_height is not None:
+            vehicle["Cameras"] = {
+                "0": {
+                    "CaptureSettings": [
+                        {
+                            "ImageType": 0,
+                            "Width": int(secondary_width),
+                            "Height": int(secondary_height),
+                            "FOV_Degrees": float(fov_degrees),
+                            "MotionBlurAmount": 0,
+                        }
+                    ]
+                }
+            }
+        vehicles[name] = vehicle
+    payload = _base_settings(
+        "ComputerVision",
+        fov_degrees=fov_degrees,
+        width=width,
+        height=height,
+        api_port=api_port,
+        include_depth=True,
+    )
+    payload["Vehicles"] = vehicles
+    return _write_settings(path, payload)
+
+
 def default_2v2_actor_target_specs(
     *,
     target_z: float = -2.0,
@@ -206,41 +366,31 @@ def default_5v5_actor_target_specs(
 ) -> tuple[BlocksActorTargetSpec, ...]:
     """Default crossing horizontal actor targets for controlled 5v5 intercept."""
 
-    starts_y = tuple((index - 2) * float(target_spacing_m) for index in range(5))
-    velocities_y = (0.8, 0.4, 0.0, -0.4, -0.8)
-    threats = (0.95, 0.90, 0.84, 0.78, 0.72)
-    specs: list[BlocksActorTargetSpec] = []
-    for index, start_y in enumerate(starts_y):
-        specs.append(
-            BlocksActorTargetSpec(
-                object_id=f"TGT-{index + 1:03d}",
-                actor_name=f"MSM_TargetActor_{index + 1}",
-                start_ned=(float(target_distance_m) + 2.0 * index, float(start_y), float(target_z)),
-                velocity_ned=(
-                    (1.2 + 0.1 * index) * float(target_speed_scale),
-                    velocities_y[index] * float(target_speed_scale),
-                    0.0,
-                ),
-                asset_name=asset_name,
-                scale=(float(target_scale_m), float(target_scale_m), float(target_scale_m)),
-                threat_score=threats[index],
-                coverage_cell="cell-north" if index < 3 else "cell-south",
-                fallback_actor_name=None,
-            )
-        )
-    return tuple(specs)
+    return default_actor_target_specs(
+        count=5,
+        target_z=target_z,
+        target_distance_m=target_distance_m,
+        target_spacing_m=target_spacing_m,
+        asset_name=asset_name,
+        target_scale_m=target_scale_m,
+        target_speed_scale=target_speed_scale,
+        x_spacing_m=2.0,
+        x_speed_base_mps=1.2,
+        x_speed_step_mps=0.1,
+        y_speed_span_mps=0.8,
+    )
 
 
 def default_cv_5v5_camera_vehicle_names() -> tuple[str, ...]:
     """Default ComputerVision interceptor camera vehicle names."""
 
-    return tuple(f"Interceptor_Cam_{index}" for index in range(1, 6))
+    return default_cv_camera_vehicle_names(5)
 
 
 def default_cv_5v5_secondary_vehicle_names() -> tuple[str, ...]:
     """Default ComputerVision secondary recon camera vehicle names."""
 
-    return ("Secondary_Recon_1", "Secondary_Recon_2")
+    return default_cv_secondary_vehicle_names(2)
 
 
 def default_cv_5v5_actor_target_specs(
@@ -251,26 +401,19 @@ def default_cv_5v5_actor_target_specs(
 ) -> tuple[BlocksActorTargetSpec, ...]:
     """Default crossing actor targets for ComputerVision 5v5 replay."""
 
-    starts_y = (-20.0, -10.0, 0.0, 10.0, 20.0)
-    velocities_y = (1.2, 0.6, 0.0, -0.6, -1.2)
-    threats = (0.92, 0.88, 0.74, 0.66, 0.61)
-    specs: list[BlocksActorTargetSpec] = []
-    for index in range(5):
-        coverage_cell = "cell-north" if index < 3 else "cell-south"
-        specs.append(
-            BlocksActorTargetSpec(
-                object_id=f"TGT-{index + 1:03d}",
-                actor_name=f"MSM_TargetActor_{index + 1}",
-                start_ned=(35.0 + 4.0 * index, starts_y[index], float(target_z)),
-                velocity_ned=(1.4 + 0.1 * index, velocities_y[index], 0.0),
-                asset_name=asset_name,
-                scale=(float(target_scale_m), float(target_scale_m), float(target_scale_m)),
-                threat_score=threats[index],
-                coverage_cell=coverage_cell,
-                fallback_actor_name=None,
-            )
-        )
-    return tuple(specs)
+    return default_actor_target_specs(
+        count=5,
+        target_z=target_z,
+        target_distance_m=35.0,
+        target_spacing_m=10.0,
+        asset_name=asset_name,
+        target_scale_m=target_scale_m,
+        target_speed_scale=1.0,
+        x_spacing_m=4.0,
+        x_speed_base_mps=1.4,
+        x_speed_step_mps=0.1,
+        y_speed_span_mps=1.2,
+    )
 
 
 def default_cv_5v5_d4d5_stress_actor_target_specs(
@@ -283,23 +426,163 @@ def default_cv_5v5_d4d5_stress_actor_target_specs(
 ) -> tuple[BlocksActorTargetSpec, ...]:
     """5v5 D4/D5 stress geometry with 50 m camera standoff and 20 m spacing."""
 
-    starts_y = tuple((index - 2) * float(target_spacing_m) for index in range(5))
-    velocities_y = (0.7, 0.35, 0.0, -0.35, -0.7)
-    threats = (0.94, 0.88, 0.80, 0.72, 0.66)
-    specs: list[BlocksActorTargetSpec] = []
-    for index, start_y in enumerate(starts_y):
-        coverage_cell = "cell-north" if index < 3 else "cell-south"
-        specs.append(
-            BlocksActorTargetSpec(
-                object_id=f"TGT-{index + 1:03d}",
-                actor_name=f"MSM_TargetActor_{index + 1}",
-                start_ned=(float(target_distance_m), float(start_y), float(target_z)),
-                velocity_ned=(0.8 + 0.1 * index, velocities_y[index], 0.0),
-                asset_name=asset_name,
-                scale=(float(target_scale_m), float(target_scale_m), float(target_scale_m)),
-                threat_score=threats[index],
-                coverage_cell=coverage_cell,
-                fallback_actor_name=None,
-            )
+    return default_actor_target_specs(
+        count=5,
+        target_z=target_z,
+        target_distance_m=target_distance_m,
+        target_spacing_m=target_spacing_m,
+        asset_name=asset_name,
+        target_scale_m=target_scale_m,
+        target_speed_scale=1.0,
+        x_spacing_m=0.0,
+        x_speed_base_mps=0.8,
+        x_speed_step_mps=0.1,
+        y_speed_span_mps=0.7,
+    )
+
+
+def _validate_count(count: int) -> None:
+    if int(count) <= 0:
+        raise ValueError("count must be positive")
+
+
+def _centered_positions(count: int, spacing: float) -> tuple[float, ...]:
+    center = (int(count) - 1) * 0.5
+    return tuple((index - center) * float(spacing) for index in range(int(count)))
+
+
+def _symmetric_velocities(count: int, span: float) -> tuple[float, ...]:
+    if int(count) == 1:
+        return (0.0,)
+    center = (int(count) - 1) * 0.5
+    return tuple(-((index - center) / center) * float(span) for index in range(int(count)))
+
+
+def _base_settings(
+    sim_mode: str,
+    *,
+    fov_degrees: float,
+    width: int = 640,
+    height: int = 480,
+    api_port: int,
+    include_depth: bool = False,
+) -> dict[str, Any]:
+    capture_settings: list[dict[str, Any]] = [
+        {
+            "ImageType": 0,
+            "Width": int(width),
+            "Height": int(height),
+            "FOV_Degrees": float(fov_degrees),
+            "MotionBlurAmount": 0,
+        }
+    ]
+    if include_depth:
+        capture_settings.append(
+            {
+                "ImageType": 5,
+                "Width": int(width),
+                "Height": int(height),
+                "FOV_Degrees": float(fov_degrees),
+                "MotionBlurAmount": 0,
+            }
         )
-    return tuple(specs)
+    return {
+        "SeeDocsAt": "https://microsoft.github.io/AirSim/settings/",
+        "SettingsVersion": 1.2,
+        "SimMode": sim_mode,
+        "EnableRpc": True,
+        "RpcEnabled": True,
+        "ApiServerPort": int(api_port),
+        "LocalHostIp": "127.0.0.1",
+        "ClockSpeed": 1.0,
+        "ViewMode": "NoDisplay",
+        "CameraDefaults": {"CaptureSettings": capture_settings},
+        "SubWindows": [
+            {
+                "WindowID": 0,
+                "CameraName": "0",
+                "ImageType": 0,
+                "Visible": False,
+                "External": False,
+            }
+        ],
+    }
+
+
+def _simpleflight_vehicle_settings(
+    *,
+    index: int,
+    y_pos: float,
+    tuned_terminal_camera: bool,
+    lidar_range_m: float,
+) -> dict[str, Any]:
+    return {
+        "VehicleType": "SimpleFlight",
+        "DefaultVehicleState": "Inactive",
+        "AutoCreate": True,
+        "AllowAPIAlways": True,
+        "EnableCollisionPassthrogh": False,
+        "EnableCollisions": True,
+        "EnableTrace": False,
+        "X": 0,
+        "Y": float(y_pos),
+        "Z": 0,
+        "Pitch": 0,
+        "Roll": 0,
+        "Yaw": 0,
+        "IsFpvVehicle": index == 0,
+        "Cameras": {
+            "0": {
+                "X": 0.5 if tuned_terminal_camera else 0,
+                "Y": 0,
+                "Z": 0,
+                "Pitch": 0,
+                "Roll": 0,
+                "Yaw": 0,
+            }
+        },
+        "Sensors": {
+            "LidarSensor1": {
+                "SensorType": 6,
+                "Enabled": True,
+                "NumberOfChannels": 4,
+                "Range": float(lidar_range_m),
+                "PointsPerSecond": 8000,
+                "RotationsPerSecond": 5,
+                "HorizontalFOVStart": -45,
+                "HorizontalFOVEnd": 45,
+                "VerticalFOVUpper": 5,
+                "VerticalFOVLower": -20,
+                "X": 0,
+                "Y": 0,
+                "Z": -0.2,
+                "Roll": 0,
+                "Pitch": 0,
+                "Yaw": 0,
+                "DrawDebugPoints": False,
+                "DataFrame": "VehicleInertialFrame",
+            }
+        },
+        "RC": {
+            "RemoteControlID": int(index),
+            "AllowAPIWhenDisconnected": True,
+        },
+    }
+
+
+def _computer_vision_vehicle_settings(*, x: float, y: float, z: float) -> dict[str, Any]:
+    return {
+        "VehicleType": "ComputerVision",
+        "X": float(x),
+        "Y": float(y),
+        "Z": float(z),
+        "Pitch": 0,
+        "Roll": 0,
+        "Yaw": 0,
+    }
+
+
+def _write_settings(path: Path, payload: dict[str, Any]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    return path

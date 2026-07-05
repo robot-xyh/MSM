@@ -6,7 +6,7 @@ AirSim and uses non-vehicle Unreal actors as targets.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 import csv
 import json
 import math
@@ -72,6 +72,9 @@ class InterceptCommandRecord:
     plan_version: int
     track_version: int
     d4_action: str
+    d4_mode: str
+    d4_target_node_id: str
+    assignment_phase: str
     d5_decision_state: str
     terminal_contract_reject_reason: str
     detection_seen: bool
@@ -118,11 +121,13 @@ def run_controlled_intercept_episode(
     try:
         for frame_index, timestamp in enumerate(_control_timestamps(config)):
             frame = runtime.sample_frame(config, frame_index, timestamp, output_dir / "images")
+            frame = _annotate_active_replan_frame(config, frame)
             frames.append(frame)
             if not pairs:
                 pairs = _initial_pairs(frame)
             if not pairs:
                 continue
+            _refresh_pair_assignments(frame, pairs)
             _step_pairs(runtime, config, frame, pairs, command_records)
             if all(not pair.active for pair in pairs):
                 break
@@ -486,12 +491,14 @@ def _visual_metadata(visual_command: Any) -> dict[str, Any]:
 
 def _initial_pairs(frame: AirSimFrame) -> list[InterceptPair]:
     resources = sorted(frame.resources, key=lambda item: item.resource_id)
-    targets = sorted(
+    sorted_targets = sorted(
         (target for target in frame.truth_objects if target.object_type == "target"),
         key=lambda item: item.object_id,
     )
+    targets = {target.object_id: target for target in sorted_targets}
     pairs: list[InterceptPair] = []
-    for resource, target in zip(resources, targets, strict=False):
+    for resource, fallback_target in zip(resources, sorted_targets, strict=False):
+        target = _assignment_target_for_resource(frame, resource.resource_id, targets, fallback_target)
         vehicle_name = str(resource.metadata.get("airsim_vehicle_name") or resource.resource_id)
         pairs.append(
             InterceptPair(
@@ -503,6 +510,45 @@ def _initial_pairs(frame: AirSimFrame) -> list[InterceptPair]:
             )
         )
     return pairs
+
+
+def _refresh_pair_assignments(frame: AirSimFrame, pairs: list[InterceptPair]) -> None:
+    resources = {resource.resource_id: resource for resource in frame.resources}
+    targets = {target.object_id: target for target in frame.truth_objects if target.object_type == "target"}
+    for pair in pairs:
+        resource = resources.get(pair.resource_id)
+        if resource is None:
+            continue
+        current_target = targets.get(pair.target_id)
+        fallback_target = current_target or next(iter(targets.values()), None)
+        if fallback_target is None:
+            continue
+        target = _assignment_target_for_resource(frame, pair.resource_id, targets, fallback_target)
+        pair.target_id = target.object_id
+        pair.guidance_binding = _binding_for_pair(frame, resource, target, pair.vehicle_name)
+
+
+def _assignment_target_for_resource(
+    frame: AirSimFrame,
+    resource_id: str,
+    targets: dict[str, Any],
+    fallback_target: Any,
+) -> Any:
+    explicit = _matching_metadata_record(
+        frame.metadata.get("assignment_guidance_bindings"),
+        resource_id=str(resource_id),
+        target_id="",
+    )
+    if explicit is None:
+        return fallback_target
+    target_id = (
+        _optional_record_string(explicit, "target_object_id")
+        or _optional_record_string(explicit, "assigned_global_track_id")
+        or _optional_record_string(explicit, "target_id")
+        or _optional_record_string(explicit, "global_track_id")
+    )
+    target_id = _normalize_track_id(target_id)
+    return targets.get(target_id, fallback_target)
 
 
 def _detections_by_resource(frame: AirSimFrame) -> dict[str, set[str]]:
@@ -601,6 +647,343 @@ def _binding_for_pair(
         target_mesh_aliases=aliases,
         metadata={"source": "airsim_control_simulated_binding"},
     )
+
+
+def _annotate_active_replan_frame(
+    config: BlocksSmokeConfig,
+    frame: AirSimFrame,
+) -> AirSimFrame:
+    if _active_center_replan_enabled(config):
+        return _annotate_active_center_replan_frame(config, frame)
+    return _annotate_active_secondary_visual_png_frame(config, frame)
+
+
+def _annotate_active_center_replan_frame(
+    config: BlocksSmokeConfig,
+    frame: AirSimFrame,
+) -> AirSimFrame:
+    truth_targets = sorted(
+        (target for target in frame.truth_objects if target.object_type == "target"),
+        key=lambda item: item.object_id,
+    )
+    resources = sorted(frame.resources, key=lambda item: item.resource_id)
+    if not truth_targets or not resources:
+        return frame
+
+    active_time = float(config.metadata.get("active_degradation_time_s", 1.5))
+    center_replan_time = float(config.metadata.get("center_replan_time_s", 2.0))
+    center_node_id = str(config.metadata.get("center_node_id", "C2"))
+    if frame.timestamp < active_time:
+        phase = "center_initial"
+        plan_id = "center_plan_v1"
+        plan_version = 1
+        d4_action = "continue_center"
+        d4_reason = "center_plan_initial"
+        d4_terminal_consistent = True
+        terminal_locked = False
+    elif frame.timestamp < center_replan_time:
+        phase = "center_replan_pending"
+        plan_id = "center_plan_v1"
+        plan_version = 1
+        d4_action = "request_center_replan"
+        d4_reason = "center_resolution_delay_high_dynamic_active_degradation"
+        d4_terminal_consistent = False
+        terminal_locked = False
+    else:
+        phase = "center_replan_v2"
+        plan_id = "center_plan_v2"
+        plan_version = 2
+        d4_action = "continue_center"
+        d4_reason = "center_plan_v2_active"
+        d4_terminal_consistent = True
+        terminal_locked = True
+
+    targets_by_id = {target.object_id: target for target in truth_targets}
+    initial_assignments = {
+        resource.resource_id: truth_targets[index % len(truth_targets)].object_id
+        for index, resource in enumerate(resources)
+    }
+    replan_assignments = _center_replan_assignments(resources, truth_targets)
+    assignments = replan_assignments if phase == "center_replan_v2" else initial_assignments
+    bindings: list[dict[str, Any]] = []
+    permissions: list[dict[str, Any]] = []
+    terminal_associations: list[dict[str, Any]] = []
+    for resource in resources:
+        target_id = assignments[resource.resource_id]
+        target = targets_by_id[target_id]
+        vehicle_name = str(resource.metadata.get("airsim_vehicle_name") or resource.resource_id)
+        actor_name = str(target.metadata.get("airsim_actor_name") or target.object_id)
+        assignment_id = f"{resource.resource_id}:{target_id}:v{plan_version}"
+        bindings.append(
+            {
+                "plan_id": plan_id,
+                "plan_version": plan_version,
+                "assignment_id": assignment_id,
+                "resource_id": resource.resource_id,
+                "vehicle_name": vehicle_name,
+                "assigned_global_track_id": target_id,
+                "target_id": target_id,
+                "target_object_id": target_id,
+                "track_version": plan_version,
+                "authorization_state": "recorded",
+                "assignment_validity_state": "current",
+                "created_at_s": frame.timestamp,
+                "target_actor_name": actor_name,
+                "target_mesh_aliases": (actor_name, target_id),
+                "metadata": {
+                    "source": "main_active_center_replan_visual_png",
+                    "plan_schema": "center_plan_v2"
+                    if phase == "center_replan_v2"
+                    else "assignment_plan_v1",
+                    "assignment_phase": phase,
+                    "allow_local_rebind": False,
+                    "issuing_node_id": center_node_id,
+                },
+            }
+        )
+        permissions.append(
+            {
+                "resource_id": resource.resource_id,
+                "assigned_global_track_id": target_id,
+                "target_id": target_id,
+                "action": d4_action,
+                "mode": "active_degradation" if phase != "center_initial" else "none",
+                "reason": d4_reason,
+                "target_node_id": center_node_id,
+                "terminal_consistent": d4_terminal_consistent,
+                "requires_human_review": False,
+                "new_plan_id": "center_plan_v2" if phase == "center_replan_v2" else None,
+                "new_plan_version": 2 if phase == "center_replan_v2" else None,
+                "metadata": {
+                    "assignment_phase": phase,
+                    "center_replan_active": phase == "center_replan_v2",
+                    "d4_reassign_pending": phase == "center_replan_pending",
+                    "trigger_reason": "center_resolution_delay_high_dynamic_replan",
+                },
+            }
+        )
+        terminal_associations.append(
+            {
+                "resource_id": resource.resource_id,
+                "assigned_global_track_id": target_id,
+                "target_id": target_id,
+                "local_track_id": f"{vehicle_name}:0:{actor_name}",
+                "association_confidence": 0.93 if terminal_locked else 0.45,
+                "ambiguity_score": 0.04 if terminal_locked else 0.70,
+                "friend_conflict_state": "none",
+                "decision_state": "locked" if terminal_locked else "ambiguous",
+                "assignment_version": plan_version,
+                "reason": "center_plan_v2_consistent_visual_lock"
+                if terminal_locked
+                else "awaiting_center_replan",
+                "metadata": {
+                    "source": "main_simulated_d5_terminal_association",
+                    "assignment_phase": phase,
+                    "global_track_id_mutated": False,
+                },
+            }
+        )
+
+    metadata = {
+        **frame.metadata,
+        "plan_id": plan_id,
+        "plan_version": plan_version,
+        "track_version": plan_version,
+        "assignment_phase": phase,
+        "active_center_replan_visual_png": {
+            "enabled": True,
+            "phase": phase,
+            "active_degradation_time_s": active_time,
+            "center_replan_time_s": center_replan_time,
+            "center_node_id": center_node_id,
+            "center_plan_v1": "center_plan_v1",
+            "center_plan_v2": "center_plan_v2",
+        },
+        "assignment_guidance_bindings": bindings,
+        "d4_guidance_permissions": permissions,
+        "terminal_associations": terminal_associations,
+    }
+    return replace(frame, metadata=metadata)
+
+
+def _center_replan_assignments(resources: list[Any], truth_targets: list[Any]) -> dict[str, str]:
+    # This center-node active-degradation gate validates plan versioning and
+    # D4/D5/D7 contracts. It intentionally keeps the same resource-target
+    # binding so the current camera can still see the assigned target.
+    return {
+        resource.resource_id: truth_targets[index % len(truth_targets)].object_id
+        for index, resource in enumerate(resources)
+    }
+
+
+def _annotate_active_secondary_visual_png_frame(
+    config: BlocksSmokeConfig,
+    frame: AirSimFrame,
+) -> AirSimFrame:
+    if not _active_secondary_visual_png_enabled(config):
+        return frame
+    truth_targets = sorted(
+        (target for target in frame.truth_objects if target.object_type == "target"),
+        key=lambda item: item.object_id,
+    )
+    resources = sorted(frame.resources, key=lambda item: item.resource_id)
+    if len(truth_targets) < 2 or len(resources) < 2:
+        return frame
+
+    active_time = float(config.metadata.get("active_degradation_time_s", 1.5))
+    secondary_time = float(config.metadata.get("secondary_plan_time_s", 2.0))
+    secondary_node_id = str(config.metadata.get("secondary_node_id", "SEC-01"))
+    if frame.timestamp < active_time:
+        phase = "center_initial"
+        plan_id = "center_plan_v1"
+        plan_version = 1
+        d4_action = "continue_center"
+        d4_mode = "none"
+        d4_reason = "center_plan_initial"
+        d4_terminal_consistent = True
+        terminal_locked = False
+    elif frame.timestamp < secondary_time:
+        phase = "secondary_reassignment_pending"
+        plan_id = "center_plan_v1"
+        plan_version = 1
+        d4_action = "degrade_to_secondary"
+        d4_mode = "active_degradation"
+        d4_reason = "center_plan_stale_high_dynamic_active_degradation"
+        d4_terminal_consistent = False
+        terminal_locked = False
+    else:
+        phase = "secondary_reassignment"
+        plan_id = "secondary_plan_v2"
+        plan_version = 2
+        d4_action = "request_secondary_assist"
+        d4_mode = "active_degradation"
+        d4_reason = "secondary_plan_active"
+        d4_terminal_consistent = True
+        terminal_locked = True
+
+    center_assignments = {
+        resources[0].resource_id: truth_targets[1].object_id,
+        resources[1].resource_id: truth_targets[0].object_id,
+    }
+    secondary_assignments = {
+        resources[0].resource_id: truth_targets[0].object_id,
+        resources[1].resource_id: truth_targets[1].object_id,
+    }
+    assignments = secondary_assignments if phase == "secondary_reassignment" else center_assignments
+    targets_by_id = {target.object_id: target for target in truth_targets}
+    bindings: list[dict[str, Any]] = []
+    permissions: list[dict[str, Any]] = []
+    terminal_associations: list[dict[str, Any]] = []
+    for resource in resources[:2]:
+        target_id = assignments[resource.resource_id]
+        target = targets_by_id[target_id]
+        vehicle_name = str(resource.metadata.get("airsim_vehicle_name") or resource.resource_id)
+        actor_name = str(target.metadata.get("airsim_actor_name") or target.object_id)
+        assignment_id = f"{resource.resource_id}:{target_id}:v{plan_version}"
+        bindings.append(
+            {
+                "plan_id": plan_id,
+                "plan_version": plan_version,
+                "assignment_id": assignment_id,
+                "resource_id": resource.resource_id,
+                "vehicle_name": vehicle_name,
+                "assigned_global_track_id": target_id,
+                "target_id": target_id,
+                "target_object_id": target_id,
+                "track_version": plan_version,
+                "authorization_state": "recorded",
+                "assignment_validity_state": "current",
+                "created_at_s": frame.timestamp,
+                "target_actor_name": actor_name,
+                "target_mesh_aliases": (actor_name, target_id),
+                "metadata": {
+                    "source": "main_active_secondary_visual_png",
+                    "plan_schema": "secondary_plan_v2"
+                    if phase == "secondary_reassignment"
+                    else "assignment_plan_v1",
+                    "assignment_phase": phase,
+                    "allow_local_rebind": False,
+                    "issuing_node_id": secondary_node_id
+                    if phase == "secondary_reassignment"
+                    else "C2",
+                },
+            }
+        )
+        permissions.append(
+            {
+                "resource_id": resource.resource_id,
+                "assigned_global_track_id": target_id,
+                "target_id": target_id,
+                "action": d4_action,
+                "mode": d4_mode,
+                "reason": d4_reason,
+                "target_node_id": secondary_node_id
+                if d4_action in {"degrade_to_secondary", "request_secondary_assist"}
+                else None,
+                "terminal_consistent": d4_terminal_consistent,
+                "requires_human_review": False,
+                "new_plan_id": "secondary_plan_v2"
+                if phase == "secondary_reassignment"
+                else None,
+                "new_plan_version": 2 if phase == "secondary_reassignment" else None,
+                "metadata": {
+                    "assignment_phase": phase,
+                    "secondary_reassignment": phase == "secondary_reassignment",
+                    "d4_reassign_pending": phase == "secondary_reassignment_pending",
+                    "trigger_reason": "center_resolution_delay_high_dynamic_replan",
+                },
+            }
+        )
+        terminal_associations.append(
+            {
+                "resource_id": resource.resource_id,
+                "assigned_global_track_id": target_id,
+                "target_id": target_id,
+                "local_track_id": f"{vehicle_name}:0:{actor_name}",
+                "association_confidence": 0.92 if terminal_locked else 0.45,
+                "ambiguity_score": 0.05 if terminal_locked else 0.70,
+                "friend_conflict_state": "none",
+                "decision_state": "locked" if terminal_locked else "ambiguous",
+                "assignment_version": plan_version,
+                "reason": "secondary_plan_consistent_visual_lock"
+                if terminal_locked
+                else "awaiting_secondary_reassignment",
+                "metadata": {
+                    "source": "main_simulated_d5_terminal_association",
+                    "assignment_phase": phase,
+                    "global_track_id_mutated": False,
+                },
+            }
+        )
+
+    metadata = {
+        **frame.metadata,
+        "plan_id": plan_id,
+        "plan_version": plan_version,
+        "track_version": plan_version,
+        "assignment_phase": phase,
+        "active_secondary_visual_png": {
+            "enabled": True,
+            "phase": phase,
+            "active_degradation_time_s": active_time,
+            "secondary_plan_time_s": secondary_time,
+            "secondary_node_id": secondary_node_id,
+            "center_plan_id": "center_plan_v1",
+            "secondary_plan_id": "secondary_plan_v2",
+        },
+        "assignment_guidance_bindings": bindings,
+        "d4_guidance_permissions": permissions,
+        "terminal_associations": terminal_associations,
+    }
+    return replace(frame, metadata=metadata)
+
+
+def _active_secondary_visual_png_enabled(config: BlocksSmokeConfig) -> bool:
+    return bool(config.metadata.get("active_secondary_visual_png"))
+
+
+def _active_center_replan_enabled(config: BlocksSmokeConfig) -> bool:
+    return bool(config.metadata.get("active_center_replan_visual_png"))
 
 
 def _d4_permission_for_pair(frame: AirSimFrame, pair: InterceptPair | None) -> D4GuidancePermission:
@@ -787,6 +1170,9 @@ def _record_command(
             plan_version=int(_command_metadata(pn_command, "plan_version", _pair_plan_version(pair)) or 0),
             track_version=int(_command_metadata(pn_command, "track_version", _pair_track_version(pair)) or 0),
             d4_action=str(_command_metadata(pn_command, "d4_action", _pair_d4_action(pair))),
+            d4_mode=_pair_d4_mode(pair),
+            d4_target_node_id=_pair_d4_target_node_id(pair),
+            assignment_phase=_pair_assignment_phase(pair),
             d5_decision_state=str(_command_metadata(pn_command, "d5_decision_state", _pair_d5_state(pair))),
             terminal_contract_reject_reason=str(
                 _command_metadata(
@@ -917,10 +1303,117 @@ def _write_intercept_outputs(
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     paths["intercept_summary"] = summary_path
 
+    if _active_secondary_visual_png_enabled(config):
+        events_path = output_dir / "secondary_reassignment_events.json"
+        events_path.write_text(
+            json.dumps(
+                _secondary_reassignment_events(config, command_records),
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        paths["secondary_reassignment_events"] = events_path
+    if _active_center_replan_enabled(config):
+        events_path = output_dir / "center_replan_events.json"
+        events_path.write_text(
+            json.dumps(
+                _center_replan_events(config, command_records),
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        paths["center_replan_events"] = events_path
+
     plot_path = output_dir / "airsim_3d_intercept_trajectories.png"
     _write_trajectory_plot(frames, plot_path)
     paths["intercept_trajectory_plot"] = plot_path
     return paths
+
+
+def _secondary_reassignment_events(
+    config: BlocksSmokeConfig,
+    command_records: list[InterceptCommandRecord],
+) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = [
+        {
+            "event_type": "active_degradation_config",
+            "active_degradation_time_s": float(config.metadata.get("active_degradation_time_s", 1.5)),
+            "secondary_plan_time_s": float(config.metadata.get("secondary_plan_time_s", 2.0)),
+            "secondary_node_id": str(config.metadata.get("secondary_node_id", "SEC-01")),
+        }
+    ]
+    seen: set[tuple[str, str, str]] = set()
+    for record in command_records:
+        if record.assignment_phase not in {
+            "secondary_reassignment_pending",
+            "secondary_reassignment",
+        }:
+            continue
+        key = (record.resource_id, record.target_id, record.assignment_phase)
+        if key in seen:
+            continue
+        seen.add(key)
+        events.append(
+            {
+                "event_type": record.assignment_phase,
+                "timestamp_s": record.timestamp_s,
+                "resource_id": record.resource_id,
+                "target_id": record.target_id,
+                "plan_id": record.plan_id,
+                "plan_version": record.plan_version,
+                "d4_action": record.d4_action,
+                "d4_mode": record.d4_mode,
+                "target_node_id": record.d4_target_node_id,
+                "terminal_contract_reject_reason": record.terminal_contract_reject_reason,
+                "guidance_law": record.guidance_law,
+            }
+        )
+    return events
+
+
+def _center_replan_events(
+    config: BlocksSmokeConfig,
+    command_records: list[InterceptCommandRecord],
+) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = [
+        {
+            "event_type": "active_center_replan_config",
+            "active_degradation_time_s": float(config.metadata.get("active_degradation_time_s", 1.5)),
+            "center_replan_time_s": float(config.metadata.get("center_replan_time_s", 2.0)),
+            "center_node_id": str(config.metadata.get("center_node_id", "C2")),
+        }
+    ]
+    seen: set[tuple[str, str, str]] = set()
+    for record in command_records:
+        if record.assignment_phase not in {
+            "center_replan_pending",
+            "center_replan_v2",
+        }:
+            continue
+        key = (record.resource_id, record.target_id, record.assignment_phase)
+        if key in seen:
+            continue
+        seen.add(key)
+        events.append(
+            {
+                "event_type": record.assignment_phase,
+                "timestamp_s": record.timestamp_s,
+                "resource_id": record.resource_id,
+                "target_id": record.target_id,
+                "plan_id": record.plan_id,
+                "plan_version": record.plan_version,
+                "d4_action": record.d4_action,
+                "d4_mode": record.d4_mode,
+                "target_node_id": record.d4_target_node_id,
+                "terminal_contract_reject_reason": record.terminal_contract_reject_reason,
+                "guidance_law": record.guidance_law,
+            }
+        )
+    return events
 
 
 def _pair_summary(pair: InterceptPair) -> dict[str, Any]:
@@ -942,8 +1435,44 @@ def _pair_summary(pair: InterceptPair) -> dict[str, Any]:
         "plan_version": _pair_plan_version(pair),
         "track_version": _pair_track_version(pair),
         "d4_action": _pair_d4_action(pair),
+        "d4_mode": _pair_d4_mode(pair),
+        "d4_target_node_id": _pair_d4_target_node_id(pair),
+        "assignment_phase": _pair_assignment_phase(pair),
         "d5_decision_state": _pair_d5_state(pair),
     }
+
+
+def _pair_d4_mode(pair: InterceptPair) -> str:
+    if pair.d4_permission is None:
+        return ""
+    return pair.d4_permission.mode
+
+
+def _pair_d4_target_node_id(pair: InterceptPair) -> str:
+    if pair.d4_permission is None or pair.d4_permission.target_node_id is None:
+        return ""
+    return pair.d4_permission.target_node_id
+
+
+def _pair_assignment_phase(pair: InterceptPair) -> str:
+    if pair.d4_permission is not None:
+        phase = pair.d4_permission.metadata.get("assignment_phase")
+        if phase:
+            return str(phase)
+    if pair.guidance_binding is not None:
+        phase = pair.guidance_binding.metadata.get("assignment_phase")
+        if phase:
+            return str(phase)
+    return ""
+
+
+def _normalize_track_id(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    if text.startswith("G-"):
+        return text[2:]
+    return text
 
 
 def _write_trajectory_plot(frames: list[AirSimFrame], path: Path) -> None:

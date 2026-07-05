@@ -111,6 +111,10 @@ class EpisodeMetrics:
     seed: int | None = None
     scenario_group: str = "unlabeled"
     batch_seed: int | None = None
+    drone_count: int = 0
+    resource_count: int = 0
+    target_count: int = 0
+    camera_count: int = 0
     duration: float = 0.0
     detection_probability: float = 0.0
     false_alarm_rate: float = 0.0
@@ -126,6 +130,8 @@ class EpisodeMetrics:
     active_degradation_count: int = 0
     passive_failover_count: int = 0
     secondary_node_takeover_count: int = 0
+    secondary_reassignment_count: int = 0
+    d4_reassign_pending_count: int = 0
     distributed_fallback_count: int = 0
     failover_active_window_delta_s: float = 0.0
     terminal_association_accuracy: float = 0.0
@@ -133,6 +139,7 @@ class EpisodeMetrics:
     ambiguous_fov_event_count: int = 0
     friend_overlap_hold_count: int = 0
     time_to_terminal_lock: float = 0.0
+    terminal_lock_count: int = 0
     multi_view_consensus_rate: float = 0.0
     cross_view_conflict_count: int = 0
     duplicate_terminal_lock_count: int = 0
@@ -147,6 +154,7 @@ class EpisodeMetrics:
     los_quality_gate_pass_rate: float = 0.0
     maneuver_margin_gate_pass_rate: float = 0.0
     terminal_switch_allowed_rate: float = 0.0
+    visual_png_switch_count: int = 0
     terminal_takeover_rate: float = 0.0
     terminal_switch_reject_count: int = 0
     mode_switch_count: int = 0
@@ -178,6 +186,8 @@ class EpisodeMetrics:
             "active_degradation_count",
             "passive_failover_count",
             "secondary_node_takeover_count",
+            "secondary_reassignment_count",
+            "d4_reassign_pending_count",
             "distributed_fallback_count",
             "failover_active_window_delta_s",
             "terminal_association_accuracy",
@@ -185,6 +195,7 @@ class EpisodeMetrics:
             "ambiguous_fov_event_count",
             "friend_overlap_hold_count",
             "time_to_terminal_lock",
+            "terminal_lock_count",
             "multi_view_consensus_rate",
             "cross_view_conflict_count",
             "duplicate_terminal_lock_count",
@@ -199,6 +210,7 @@ class EpisodeMetrics:
             "los_quality_gate_pass_rate",
             "maneuver_margin_gate_pass_rate",
             "terminal_switch_allowed_rate",
+            "visual_png_switch_count",
             "terminal_takeover_rate",
             "terminal_switch_reject_count",
             "mode_switch_count",
@@ -211,6 +223,15 @@ class EpisodeMetrics:
             "gate_reject_count",
             "constraint_violation_count",
             "human_override_count",
+        ]
+
+    @classmethod
+    def scale_names(cls) -> list[str]:
+        return [
+            "drone_count",
+            "resource_count",
+            "target_count",
+            "camera_count",
         ]
 
     def to_dict(self) -> dict[str, Any]:
@@ -242,6 +263,19 @@ class MetricsCollector:
         "secondary_takeover",
         "secondary_takeover_complete",
         "d4_secondary_node_takeover",
+    }
+    SECONDARY_REASSIGNMENT_EVENTS = {
+        "secondary_reassignment",
+        "secondary_node_reassignment",
+        "d4_secondary_reassignment",
+        "d4_reassign_to_secondary",
+        "degrade_to_secondary",
+    }
+    D4_REASSIGN_PENDING_EVENTS = {
+        "d4_reassign_pending",
+        "reassign_pending",
+        "assignment_reassign_pending",
+        "terminal_reassign_pending",
     }
     DISTRIBUTED_FALLBACK_EVENTS = {
         "distributed_fallback",
@@ -376,6 +410,7 @@ class MetricsCollector:
             resolved_batch_seed = _batch_seed_from_truth_summary(truth_summary)
         if resolved_batch_seed is None:
             resolved_batch_seed = seed
+        scale_counts = self._episode_scale_counts(truth_summary)
         episode_duration = (
             float(duration)
             if duration is not None
@@ -386,6 +421,7 @@ class MetricsCollector:
             seed=seed,
             scenario_group=resolved_scenario_group,
             batch_seed=resolved_batch_seed,
+            **scale_counts,
             duration=episode_duration,
         )
 
@@ -428,6 +464,7 @@ class MetricsCollector:
             "offline_only": True,
             "scenario_group": resolved_scenario_group,
             "batch_seed": resolved_batch_seed,
+            **scale_counts,
             **degradation_metadata,
             **guidance_metadata,
             **intercept_metadata,
@@ -457,6 +494,77 @@ class MetricsCollector:
         if high == low:
             return high if high > 0 else 0.0
         return high - low
+
+    def _episode_scale_counts(self, truth_summary: Mapping[str, Any]) -> dict[str, int]:
+        target_count = _target_count_from_truth_summary(truth_summary)
+        resource_count = _resource_count_from_truth_summary(truth_summary)
+        camera_count = _camera_count_from_truth_summary(truth_summary)
+        drone_count = _drone_count_from_truth_summary(truth_summary)
+
+        if target_count is None:
+            target_count = self._infer_target_count_from_records()
+        if resource_count is None:
+            resource_count = self._infer_resource_count_from_records()
+        if camera_count is None:
+            camera_count = self._infer_camera_count_from_records()
+        if drone_count is None:
+            drone_count = resource_count
+
+        return {
+            "drone_count": int(drone_count or 0),
+            "resource_count": int(resource_count or 0),
+            "target_count": int(target_count or 0),
+            "camera_count": int(camera_count or 0),
+        }
+
+    def _infer_target_count_from_records(self) -> int:
+        target_ids: set[str] = set()
+        for record in self.track_records:
+            if record.truth_id is not None:
+                target_ids.add(str(record.truth_id))
+        for record in self.assignment_records:
+            target_key = _assignment_target_key(record)
+            if target_key is not None:
+                target_ids.add(target_key)
+        for record in self.terminal_records:
+            if record.assigned_global_track_id is not None:
+                target_ids.add(str(record.assigned_global_track_id))
+            if record.expected_global_track_id is not None:
+                target_ids.add(str(record.expected_global_track_id))
+        for record in self.event_records:
+            target_id = (
+                _metadata_text(record.metadata, "target_id")
+                or _metadata_text(record.metadata, "truth_id")
+                or _metadata_text(record.metadata, "global_track_id")
+                or _metadata_text(record.metadata, "assigned_global_track_id")
+            )
+            if target_id is not None:
+                target_ids.add(target_id)
+        return len(target_ids)
+
+    def _infer_resource_count_from_records(self) -> int:
+        resource_ids: set[str] = set()
+        for record in self.assignment_records:
+            resource_ids.add(str(record.resource_id))
+        for record in self.terminal_records:
+            resource_ids.add(str(record.resource_id))
+        for record in self.event_records:
+            resource_id = (
+                _metadata_text(record.metadata, "resource_id")
+                or _metadata_text(record.metadata, "vehicle_name")
+                or record.actor_id
+            )
+            if resource_id is not None:
+                resource_ids.add(str(resource_id))
+        return len(resource_ids)
+
+    def _infer_camera_count_from_records(self) -> int:
+        camera_ids: set[str] = set()
+        for record in self.link_records:
+            _add_camera_id_from_metadata(camera_ids, record.metadata)
+        for record in self.event_records:
+            _add_camera_id_from_metadata(camera_ids, record.metadata)
+        return len(camera_ids)
 
     def _compute_detection_metrics(
         self,
@@ -641,11 +749,15 @@ class MetricsCollector:
         passive_failover_count = 0
         secondary_node_takeover_count = 0
         distributed_fallback_count = 0
+        secondary_reassignment_count = 0
+        d4_reassign_pending_count = 0
         trigger_reasons: dict[str, int] = defaultdict(int)
 
         for record in sorted_events:
             event_type = _event_type(record)
-            active, passive, secondary, distributed = self._degradation_classification(record)
+            classification = self._degradation_classification(record)
+            active, passive, secondary, distributed = classification[:4]
+            secondary_reassignment, d4_reassign_pending = classification[4:]
             if active:
                 active_degradation_count += 1
                 active_window_timestamps.append(record.timestamp)
@@ -655,6 +767,10 @@ class MetricsCollector:
                 secondary_node_takeover_count += 1
             if distributed:
                 distributed_fallback_count += 1
+            if secondary_reassignment:
+                secondary_reassignment_count += 1
+            if d4_reassign_pending:
+                d4_reassign_pending_count += 1
 
             trigger_reason = (
                 _metadata_text(record.metadata, "trigger_reason")
@@ -713,6 +829,8 @@ class MetricsCollector:
             "active_degradation_count": active_degradation_count,
             "passive_failover_count": passive_failover_count,
             "secondary_node_takeover_count": secondary_node_takeover_count,
+            "secondary_reassignment_count": secondary_reassignment_count,
+            "d4_reassign_pending_count": d4_reassign_pending_count,
             "distributed_fallback_count": distributed_fallback_count,
             "failover_active_window_delta_s": _mean(failover_active_window_deltas),
             "_metadata": {
@@ -724,11 +842,20 @@ class MetricsCollector:
     def _degradation_classification(
         self,
         record: EventRecord,
-    ) -> tuple[bool, bool, bool, bool]:
+    ) -> tuple[bool, bool, bool, bool, bool, bool]:
         event_type = _event_type(record)
         metadata = record.metadata
         mode = _state(str(metadata.get("mode") or metadata.get("degradation_mode") or ""))
         action = _state(str(metadata.get("action") or ""))
+        assignment_phase = _state(str(metadata.get("assignment_phase") or ""))
+        reject_reason = _state(
+            str(
+                metadata.get("reject_reason")
+                or metadata.get("terminal_switch_reject_reason")
+                or metadata.get("terminal_contract_reject_reason")
+                or ""
+            )
+        )
         fallback_type = _state(str(metadata.get("fallback_type") or ""))
         d4_state = _state(str(metadata.get("d4_state") or metadata.get("d4_mode") or ""))
 
@@ -750,9 +877,41 @@ class MetricsCollector:
                 "secondary_node_takeover",
                 "takeover_secondary",
                 "request_secondary_assist",
+                "degrade_to_secondary",
             }
             or fallback_type in {"secondary_node_takeover", "secondary_takeover"}
             or _bool_from_metadata(metadata, ("secondary_node_takeover",), default=False)
+        )
+        secondary_reassignment = (
+            event_type in self.SECONDARY_REASSIGNMENT_EVENTS
+            or mode == "secondary_reassignment"
+            or action
+            in {
+                "secondary_reassignment",
+                "reassign_to_secondary",
+                "degrade_to_secondary",
+                "request_secondary_assist",
+                "takeover_secondary",
+            }
+            or assignment_phase == "secondary_reassignment"
+            or fallback_type
+            in {
+                "secondary_reassignment",
+                "secondary_node_reassignment",
+                "degrade_to_secondary",
+            }
+            or _bool_from_metadata(
+                metadata,
+                ("secondary_reassignment", "reassign_to_secondary"),
+                default=False,
+            )
+        )
+        d4_reassign_pending = (
+            event_type in self.D4_REASSIGN_PENDING_EVENTS
+            or action in {"reassign", "request_center_replan"}
+            or reject_reason == "d4_reassign_pending"
+            or d4_state == "reassign_pending"
+            or _bool_from_metadata(metadata, ("d4_reassign_pending",), default=False)
         )
         distributed = (
             event_type in self.DISTRIBUTED_FALLBACK_EVENTS
@@ -760,7 +919,7 @@ class MetricsCollector:
             or fallback_type == "distributed_fallback"
             or _bool_from_metadata(metadata, ("distributed_fallback",), default=False)
         )
-        return active, passive, secondary, distributed
+        return active, passive, secondary, distributed, secondary_reassignment, d4_reassign_pending
 
     def _failover_active_window_delta_from_metadata(
         self,
@@ -814,6 +973,7 @@ class MetricsCollector:
         ambiguous_fov_event_count = len(self._terminal_event_keys("ambiguous"))
         friend_overlap_hold_count = len(self._terminal_event_keys("friend_hold"))
         time_to_terminal_lock = self._compute_time_to_terminal_lock()
+        terminal_lock_count = self._compute_terminal_lock_count()
         multi_view_consensus_rate = self._compute_multi_view_consensus_rate()
         cross_view_conflict_count = self._compute_cross_view_conflict_count()
         duplicate_terminal_lock_count = self._compute_duplicate_terminal_lock_count()
@@ -824,6 +984,7 @@ class MetricsCollector:
             "ambiguous_fov_event_count": ambiguous_fov_event_count,
             "friend_overlap_hold_count": friend_overlap_hold_count,
             "time_to_terminal_lock": time_to_terminal_lock,
+            "terminal_lock_count": terminal_lock_count,
             "multi_view_consensus_rate": multi_view_consensus_rate,
             "cross_view_conflict_count": cross_view_conflict_count,
             "duplicate_terminal_lock_count": duplicate_terminal_lock_count,
@@ -912,6 +1073,21 @@ class MetricsCollector:
             if key in locks and locks[key] >= entry_time
         ]
         return _mean(lock_deltas)
+
+    def _compute_terminal_lock_count(self) -> int:
+        keys: set[tuple[str, float, str, str | None, str | None]] = set()
+        for record in self.terminal_records:
+            if _state(record.decision_state) in self.LOCK_STATES:
+                keys.add(_terminal_event_key_from_record("terminal_lock", record))
+        for record in self.event_records:
+            if _event_type(record) == "terminal_lock" or _bool_from_metadata(
+                record.metadata,
+                ("terminal_locked",),
+                default=False,
+            ):
+                keys.add(_terminal_event_key_from_event("terminal_lock", record))
+        return len(keys)
+
 
     def _compute_multi_view_consensus_rate(self) -> float:
         attempts = 0
@@ -1131,6 +1307,7 @@ class MetricsCollector:
         terminal_switch_reject_count = 0
         gate_reject_count = 0
         mode_switch_count = 0
+        visual_png_switch_count = 0
         terminal_contract_reject_count = 0
         guidance_law_counts: dict[str, int] = defaultdict(int)
         reject_reasons: dict[str, int] = defaultdict(int)
@@ -1182,6 +1359,8 @@ class MetricsCollector:
 
             if _bool_from_metadata(metadata, ("mode_switch",), default=False):
                 mode_switch_count += 1
+            if _visual_png_switch_from_event(record):
+                visual_png_switch_count += 1
 
             if (
                 event_type
@@ -1259,6 +1438,7 @@ class MetricsCollector:
             "los_quality_gate_pass_rate": _bool_rate(los_values),
             "maneuver_margin_gate_pass_rate": _bool_rate(maneuver_values),
             "terminal_switch_allowed_rate": _bool_rate(terminal_switch_allowed_values),
+            "visual_png_switch_count": visual_png_switch_count,
             "terminal_switch_reject_count": terminal_switch_reject_count,
             "mode_switch_count": mode_switch_count,
             "terminal_contract_reject_count": terminal_contract_reject_count,
@@ -1545,6 +1725,38 @@ def _terminal_takeover_from_metadata(metadata: Mapping[str, Any]) -> bool:
         return True
     guidance_law = _metadata_text(metadata, "guidance_law")
     return _state(guidance_law) in {"png_vm", "png_ttc", "los"}
+
+
+def _visual_png_switch_from_event(record: EventRecord) -> bool:
+    metadata = record.metadata
+    event_type = _event_type(record)
+    if _bool_from_metadata(
+        metadata,
+        (
+            "visual_png_switch",
+            "vision_png_switch",
+            "png_switch",
+            "switched_to_visual_png",
+        ),
+        default=False,
+    ):
+        return True
+    guidance_law = _state(_metadata_text(metadata, "guidance_law"))
+    mode = _state(_metadata_text(metadata, "mode") or _metadata_text(metadata, "guidance_mode"))
+    return (
+        event_type
+        in {
+            "visual_png_switch",
+            "vision_png_switch",
+            "d7_visual_png_switch",
+        }
+        or guidance_law in {"png_vm", "png_ttc", "visual_png", "vision_png"}
+        and (
+            _bool_from_metadata(metadata, ("mode_switch",), default=False)
+            or mode in {"vision_terminal", "visual_png", "vision_png"}
+            or _bool_from_metadata(metadata, ("terminal_mode_entered",), default=False)
+        )
+    )
 
 
 def _count_guidance_laws_by_pair(
@@ -1876,6 +2088,132 @@ def _batch_seed_from_truth_summary(truth_summary: Mapping[str, Any]) -> int | No
             if key in scenario and scenario[key] is not None:
                 return int(scenario[key])
     return None
+
+
+def _target_count_from_truth_summary(truth_summary: Mapping[str, Any]) -> int | None:
+    explicit = _count_from_truth_summary(
+        truth_summary,
+        (
+            "target_count",
+            "truth_count",
+            "truth_object_count",
+            "target_object_count",
+        ),
+    )
+    if explicit is not None:
+        return explicit
+    truth_timestamps = _truth_timestamps_by_id(truth_summary)
+    if truth_timestamps:
+        return len(truth_timestamps)
+    return _count_from_truth_summary(truth_summary, ("drone_count",))
+
+
+def _resource_count_from_truth_summary(truth_summary: Mapping[str, Any]) -> int | None:
+    return _count_from_truth_summary(
+        truth_summary,
+        (
+            "resource_count",
+            "drone_count",
+            "uav_count",
+            "vehicle_count",
+            "interceptor_count",
+        ),
+    )
+
+
+def _camera_count_from_truth_summary(truth_summary: Mapping[str, Any]) -> int | None:
+    return _count_from_truth_summary(
+        truth_summary,
+        (
+            "camera_count",
+            "camera_node_count",
+            "camera_resource_count",
+        ),
+    )
+
+
+def _drone_count_from_truth_summary(truth_summary: Mapping[str, Any]) -> int | None:
+    return _count_from_truth_summary(
+        truth_summary,
+        (
+            "drone_count",
+            "uav_count",
+            "resource_count",
+            "vehicle_count",
+        ),
+    )
+
+
+def _count_from_truth_summary(
+    truth_summary: Mapping[str, Any],
+    keys: Sequence[str],
+) -> int | None:
+    mappings = _truth_summary_count_mappings(truth_summary)
+    for mapping in mappings:
+        for key in keys:
+            if key not in mapping:
+                continue
+            value = _optional_int_value(mapping[key])
+            if value is not None:
+                return value
+    return None
+
+
+def _truth_summary_count_mappings(
+    truth_summary: Mapping[str, Any],
+) -> list[Mapping[str, Any]]:
+    mappings: list[Mapping[str, Any]] = [truth_summary]
+    scenario = truth_summary.get("scenario", {})
+    if isinstance(scenario, Mapping):
+        mappings.append(scenario)
+
+    for mapping in list(mappings):
+        for nested_key in ("counts", "metadata", "scale"):
+            nested = mapping.get(nested_key)
+            if isinstance(nested, Mapping):
+                mappings.append(nested)
+    return mappings
+
+
+def _optional_int_value(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return int(float(text))
+    except ValueError:
+        return None
+
+
+def _add_camera_id_from_metadata(camera_ids: set[str], metadata: Mapping[str, Any]) -> None:
+    camera_id = _metadata_text(metadata, "camera_id")
+    if camera_id is not None:
+        camera_ids.add(camera_id)
+        return
+
+    camera = metadata.get("camera")
+    if isinstance(camera, Mapping):
+        nested_camera_id = _metadata_text(camera, "camera_id")
+        if nested_camera_id is not None:
+            camera_ids.add(nested_camera_id)
+            return
+
+    owner = (
+        _metadata_text(metadata, "camera_vehicle_name")
+        or _metadata_text(metadata, "owner_id")
+        or _metadata_text(metadata, "vehicle_name")
+    )
+    camera_name = _metadata_text(metadata, "camera_name")
+    if owner is not None and camera_name is not None:
+        camera_ids.add(f"{owner}:{camera_name}")
+    elif camera_name is not None:
+        camera_ids.add(camera_name)
 
 
 def _euclidean_distance(

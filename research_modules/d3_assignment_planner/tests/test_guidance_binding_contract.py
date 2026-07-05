@@ -1,6 +1,8 @@
 from d3_assignment_planner import (
     Assignment,
     AssignmentPlan,
+    SECONDARY_PLAN_SCHEMA_V2,
+    assignment_validity_summary_from_plan,
     guidance_bindings_from_assignment_plan,
 )
 
@@ -175,3 +177,66 @@ def test_guidance_binding_marks_reassignment_from_previous_plan() -> None:
     assert binding.assigned_global_track_id == "T01"
     assert binding.metadata["previous_target_for_resource"] == "T00"
     assert binding.metadata["resource_reassigned"] is True
+
+
+def test_secondary_plan_v2_binding_after_center_plan_invalidates() -> None:
+    center_plan = _plan(
+        _assignment(target_id="T00", resource_id="R01"),
+        plan_id="CENTER-PLAN-001",
+        version=1,
+        created_at=0.0,
+        stale_after_s=1.0,
+    )
+    secondary_plan = _plan(
+        Assignment(
+            target_id="T01",
+            resource_id="R01",
+            cost=1.25,
+            cost_breakdown={"total": 1.25},
+            feasibility_state="feasible",
+            plan_version=2,
+            stale_after_s=2.0,
+            metadata={"resource_actor_name": "CV_R01"},
+        ),
+        plan_id="SECONDARY-PLAN-002",
+        version=2,
+        created_at=2.0,
+        stale_after_s=2.0,
+    )
+    secondary_plan = AssignmentPlan(
+        **{
+            **secondary_plan.__dict__,
+            "previous_plan_id": center_plan.plan_id,
+            "source_node_id": "d4-secondary-published",
+            "target_node_id": "interceptor-group",
+            "link_type": "d4_secondary_relay",
+            "metadata": {"plan_schema": SECONDARY_PLAN_SCHEMA_V2},
+        }
+    )
+
+    center_summary = assignment_validity_summary_from_plan(
+        center_plan,
+        evaluated_at=2.1,
+        latest_plan_id=secondary_plan.plan_id,
+        latest_version=secondary_plan.version,
+    )
+    (binding,) = guidance_bindings_from_assignment_plan(
+        secondary_plan,
+        previous_plan=center_plan,
+        now_s=2.1,
+    )
+
+    assert center_summary.stale_plan_version is True
+    assert center_summary.plan_age_s == 2.1
+    assert binding.plan_id == "SECONDARY-PLAN-002"
+    assert binding.plan_version == 2
+    assert binding.plan_schema == SECONDARY_PLAN_SCHEMA_V2
+    assert binding.to_assignment_metadata()["plan_schema"] == SECONDARY_PLAN_SCHEMA_V2
+    assert binding.source_node_id == "d4-secondary-published"
+    assert binding.target_node_id == "interceptor-group"
+    assert binding.link_type == "d4_secondary_relay"
+    assert binding.metadata["previous_plan_id"] == center_plan.plan_id
+    assert binding.metadata["previous_target_for_resource"] == "T00"
+    assert binding.metadata["resource_reassigned"] is True
+    assert binding.metadata["allow_local_rebind"] is False
+    assert "selected_secondary_node_id" not in binding.metadata

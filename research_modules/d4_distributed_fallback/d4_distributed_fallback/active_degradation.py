@@ -139,6 +139,26 @@ class ActiveDegradationDecision:
         }
 
 
+@dataclass(frozen=True)
+class D7SecondaryHandoff:
+    """D4-to-D7 handoff gate for secondary-node active degradation."""
+
+    phase: int
+    d4_action: DegradationAction
+    d7_action: DegradationAction | None
+    target_node_id: str | None
+    reassignment_complete: bool
+    visual_png_allowed: bool
+    current_plan_id: str | None = None
+    current_plan_version: int | None = None
+    new_plan_id: str | None = None
+    new_plan_version: int | None = None
+    reason: str = ""
+
+    def to_dict(self) -> dict[str, object]:
+        return to_jsonable(self)
+
+
 class ActiveDegradationArbiter:
     """Rule-based arbiter for active/passive D4 degradation studies."""
 
@@ -557,6 +577,71 @@ class ActiveDegradationArbiter:
             and not summary.is_stale(current_time_s)
             for summary in communication_summaries
         )
+
+
+def build_d7_secondary_handoff(
+    decision: ActiveDegradationDecision,
+    *,
+    current_plan_id: str | None = None,
+    current_plan_version: int | None = None,
+    new_plan_id: str | None = None,
+    new_plan_version: int | None = None,
+    secondary_plan_active: bool = False,
+    terminal_consistent_after_plan: bool = False,
+) -> D7SecondaryHandoff:
+    """Build the two-stage D4/D7 handoff for secondary active degradation.
+
+    Stage 1 is the frame where D4 emits ``degrade_to_secondary``. It means the
+    secondary node has been selected but reassignment has not completed, so D7
+    must not enter visual PNG on that frame. Stage 2 begins only after the
+    secondary plan is active and carries the new plan id/version to D7.
+    """
+
+    if decision.action != DegradationAction.DEGRADE_TO_SECONDARY:
+        return D7SecondaryHandoff(
+            phase=2,
+            d4_action=decision.action,
+            d7_action=decision.action,
+            target_node_id=decision.target_node_id,
+            reassignment_complete=True,
+            visual_png_allowed=decision.action
+            in {DegradationAction.CONTINUE_CENTER, DegradationAction.REQUEST_SECONDARY_ASSIST},
+            current_plan_id=current_plan_id,
+            current_plan_version=current_plan_version,
+            new_plan_id=new_plan_id,
+            new_plan_version=new_plan_version,
+            reason=decision.reason,
+        )
+
+    plan_ready = secondary_plan_active and new_plan_id is not None and new_plan_version is not None
+    if not plan_ready:
+        return D7SecondaryHandoff(
+            phase=1,
+            d4_action=decision.action,
+            d7_action=None,
+            target_node_id=decision.target_node_id,
+            reassignment_complete=False,
+            visual_png_allowed=False,
+            current_plan_id=current_plan_id,
+            current_plan_version=current_plan_version,
+            reason="secondary_reassignment_pending",
+        )
+
+    return D7SecondaryHandoff(
+        phase=2,
+        d4_action=decision.action,
+        d7_action=DegradationAction.CONTINUE_CENTER
+        if terminal_consistent_after_plan
+        else DegradationAction.REQUEST_SECONDARY_ASSIST,
+        target_node_id=decision.target_node_id,
+        reassignment_complete=True,
+        visual_png_allowed=True,
+        current_plan_id=current_plan_id,
+        current_plan_version=current_plan_version,
+        new_plan_id=new_plan_id,
+        new_plan_version=new_plan_version,
+        reason="secondary_plan_active",
+    )
 
 
 def summarize_secondary_lifecycle(

@@ -27,12 +27,18 @@ for rel in (
 
 from airsim_runtime.models import (
     BlocksSmokeConfig,
+    default_actor_target_specs,
     default_2v2_actor_target_specs,
     default_5v5_actor_target_specs,
     default_cv_5v5_actor_target_specs,
     default_cv_5v5_d4d5_stress_actor_target_specs,
     default_cv_5v5_camera_vehicle_names,
     default_cv_5v5_secondary_vehicle_names,
+    default_cv_camera_vehicle_names,
+    default_cv_secondary_vehicle_names,
+    default_interceptor_vehicle_names,
+    write_dynamic_computer_vision_settings,
+    write_dynamic_multirotor_settings,
 )
 from airsim_runtime.sequence import (
     D4D5_STRESS_EPISODES,
@@ -74,14 +80,45 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_SETTINGS,
     )
     parser.add_argument(
+        "--drone-count",
+        type=int,
+        default=None,
+        help=(
+            "Set N for the current AirSim scenario. Main generates N resources, "
+            "N actor targets, and a matching temporary settings file."
+        ),
+    )
+    parser.add_argument(
+        "--secondary-count",
+        type=int,
+        default=2,
+        help="Number of high recon secondary ComputerVision nodes for CV scenarios.",
+    )
+    parser.add_argument(
         "--actor-2v2",
         action="store_true",
         help="Run two SimpleFlight interceptor resources against two moving non-vehicle actor targets.",
     )
     parser.add_argument(
+        "--actor-2v2-active-secondary-visual-png",
+        action="store_true",
+        help=(
+            "Run the dedicated 2v2 active-degradation scenario: center plan, "
+            "secondary reassignment, then D5/D7 visual PNG handoff."
+        ),
+    )
+    parser.add_argument(
         "--actor-5v5",
         action="store_true",
         help="Run five SimpleFlight interceptor resources against five moving non-vehicle actor targets.",
+    )
+    parser.add_argument(
+        "--actor-5v5-active-center-replan",
+        action="store_true",
+        help=(
+            "Run controlled 5v5 intercept with D4 active-degradation evidence, "
+            "but keep reassignment under the center node as center_plan_v2."
+        ),
     )
     parser.add_argument(
         "--cv-5v5",
@@ -124,6 +161,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--intercept-max-duration", type=float, default=8.0)
     parser.add_argument("--intercept-terminal-range", type=float, default=8.0)
     parser.add_argument("--intercept-detection-timeout", type=float, default=1.0)
+    parser.add_argument("--active-degradation-time", type=float, default=1.5)
+    parser.add_argument("--secondary-plan-time", type=float, default=2.0)
+    parser.add_argument("--center-replan-time", type=float, default=2.0)
     parser.add_argument(
         "--intercept-yaw-mode",
         choices=("velocity", "look_at_target"),
@@ -164,6 +204,19 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.actor_2v2_active_secondary_visual_png:
+        args.actor_2v2 = True
+        args.execute_intercept = True
+        args.terminal_handoff_tuned = True
+        if args.intercept_terminal_range == 8.0:
+            args.intercept_terminal_range = 30.0
+    if args.actor_5v5_active_center_replan:
+        args.actor_5v5 = True
+        args.execute_intercept = True
+        if args.intercept_terminal_range == 8.0:
+            args.intercept_terminal_range = 30.0
+        if args.intercept_yaw_mode is None:
+            args.intercept_yaw_mode = "look_at_target"
     if args.terminal_handoff_tuned:
         args.actor_2v2 = True
         args.execute_intercept = True
@@ -193,6 +246,8 @@ def main() -> int:
         _print_sequence_result(result)
     if args.actor_5v5 and args.execute_intercept:
         _write_5v5_intercept_report(args, results)
+    if args.actor_2v2_active_secondary_visual_png:
+        _write_2v2_active_secondary_report(args, results)
     if len(results) > 1:
         _write_batch_summary(args, seeds, results)
     return 0
@@ -212,6 +267,7 @@ def _run_one_sequence(args: argparse.Namespace, *, seed: int, sequence_id: str):
 
 
 def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str):
+    drone_count = _resolve_drone_count(args)
     settings_path = Path(args.settings)
     if args.actor_2v2 and args.settings == DEFAULT_SETTINGS:
         settings_path = Path(ACTOR_2V2_TUNED_SETTINGS if args.terminal_handoff_tuned else ACTOR_2V2_SETTINGS)
@@ -226,7 +282,11 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             else CV_5V5_D4D5_STRESS_SETTINGS
         )
     scenario_name = (
-        "blocks_actor_2v2"
+        "blocks_actor_2v2_active_secondary_visual_png"
+        if args.actor_2v2_active_secondary_visual_png
+        else "blocks_actor_5v5_active_center_replan"
+        if args.actor_5v5_active_center_replan
+        else "blocks_actor_2v2"
         if args.actor_2v2
         else "blocks_actor_5v5"
         if args.actor_5v5
@@ -236,6 +296,17 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         if args.cv_5v5_d4d5_stress
         else "blocks_readonly_smoke"
     )
+    if drone_count is not None:
+        if args.actor_2v2_active_secondary_visual_png:
+            scenario_name = f"blocks_actor_n{drone_count}_active_secondary_visual_png"
+        elif args.actor_5v5_active_center_replan:
+            scenario_name = f"blocks_actor_n{drone_count}_active_center_replan"
+        elif args.actor_2v2 or args.actor_5v5:
+            scenario_name = f"blocks_actor_n{drone_count}"
+        elif args.cv_5v5_d4d5_stress:
+            scenario_name = f"blocks_cv_n{drone_count}_d4d5_stress"
+        elif args.cv_5v5:
+            scenario_name = f"blocks_cv_n{drone_count}"
     target_scale_m = (
         args.target_scale_m
         if args.target_scale_m is not None
@@ -243,6 +314,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         if args.terminal_handoff_tuned
         else None
     )
+    generated_settings_dir = Path(args.output_root) / sequence_id / "generated_settings"
     detection_filters = tuple(
         dict.fromkeys(
             item
@@ -252,27 +324,83 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
     )
     actor_config = {}
     if args.actor_2v2:
+        actor_count = drone_count or 2
+        actor_resources = default_interceptor_vehicle_names(actor_count)
+        if args.drone_count is not None:
+            settings_path = write_dynamic_multirotor_settings(
+                generated_settings_dir / f"blocks_actor_n{actor_count}_settings.json",
+                vehicle_names=actor_resources,
+                y_spacing_m=args.actor_target_spacing
+                if args.actor_target_spacing is not None
+                else 16.0,
+                tuned_terminal_camera=bool(args.terminal_handoff_tuned),
+                fov_degrees=120.0,
+                lidar_range_m=60.0 if args.terminal_handoff_tuned else 80.0,
+            )
         actor_config = {
-            "camera_vehicle_name": "Interceptor1",
-            "camera_vehicle_names": ("Interceptor1", "Interceptor2"),
-            "lidar_vehicle_name": "Interceptor1",
-            "lidar_vehicle_names": ("Interceptor1", "Interceptor2"),
+            "camera_vehicle_name": actor_resources[0],
+            "camera_vehicle_names": actor_resources,
+            "lidar_vehicle_name": actor_resources[0],
+            "lidar_vehicle_names": actor_resources,
             "target_vehicle_names": (),
-            "resource_vehicle_names": ("Interceptor1", "Interceptor2"),
-            "target_actor_specs": default_2v2_actor_target_specs(
-                target_z=args.intercept_altitude_z if args.execute_intercept else -2.0,
-                asset_name=args.target_asset_name,
-                target_scale_m=target_scale_m or 1.0,
+            "resource_vehicle_names": actor_resources,
+            "target_actor_specs": (
+                default_actor_target_specs(
+                    count=actor_count,
+                    target_z=args.intercept_altitude_z if args.execute_intercept else -2.0,
+                    target_distance_m=args.actor_target_distance
+                    if args.actor_target_distance is not None
+                    else 12.0,
+                    target_spacing_m=args.actor_target_spacing
+                    if args.actor_target_spacing is not None
+                    else 12.0,
+                    asset_name=args.target_asset_name,
+                    target_scale_m=target_scale_m or 1.0,
+                    target_speed_scale=args.actor_target_speed_scale,
+                    x_spacing_m=0.0,
+                    x_speed_base_mps=2.0,
+                    x_speed_step_mps=0.0,
+                    y_speed_span_mps=0.6,
+                )
+                if args.drone_count is not None
+                else default_2v2_actor_target_specs(
+                    target_z=args.intercept_altitude_z if args.execute_intercept else -2.0,
+                    asset_name=args.target_asset_name,
+                    target_scale_m=target_scale_m or 1.0,
+                )
             ),
             "detection_filter_names": detection_filters,
             "metadata": {
-                "runtime_mode": "actor_2v2",
+                "runtime_mode": (
+                    "actor_nvN_active_secondary_visual_png"
+                    if args.drone_count is not None and args.actor_2v2_active_secondary_visual_png
+                    else "actor_nvN"
+                    if args.drone_count is not None
+                    else "actor_2v2"
+                ),
+                "drone_count": actor_count,
                 "terminal_handoff_tuned": bool(args.terminal_handoff_tuned),
                 "target_asset_name": args.target_asset_name,
+                "active_secondary_visual_png": bool(args.actor_2v2_active_secondary_visual_png),
+                "active_degradation_time_s": float(args.active_degradation_time),
+                "secondary_plan_time_s": float(args.secondary_plan_time),
+                "secondary_node_id": "SEC-01",
             },
         }
     if args.actor_5v5:
-        actor_5v5_resources = tuple(f"Interceptor{index}" for index in range(1, 6))
+        actor_count = drone_count or 5
+        actor_5v5_resources = default_interceptor_vehicle_names(actor_count)
+        if args.drone_count is not None:
+            settings_path = write_dynamic_multirotor_settings(
+                generated_settings_dir / f"blocks_actor_n{actor_count}_settings.json",
+                vehicle_names=actor_5v5_resources,
+                y_spacing_m=args.actor_target_spacing
+                if args.actor_target_spacing is not None
+                else 10.0,
+                tuned_terminal_camera=False,
+                fov_degrees=120.0,
+                lidar_range_m=80.0,
+            )
         actor_config = {
             "camera_vehicle_name": actor_5v5_resources[0],
             "camera_vehicle_names": actor_5v5_resources,
@@ -280,22 +408,47 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             "lidar_vehicle_names": actor_5v5_resources,
             "target_vehicle_names": (),
             "resource_vehicle_names": actor_5v5_resources,
-            "target_actor_specs": default_5v5_actor_target_specs(
-                target_z=args.intercept_altitude_z if args.execute_intercept else -5.0,
-                target_distance_m=args.actor_target_distance
-                if args.actor_target_distance is not None
-                else 35.0,
-                target_spacing_m=args.actor_target_spacing
-                if args.actor_target_spacing is not None
-                else 10.0,
-                asset_name=args.target_asset_name,
-                target_scale_m=target_scale_m or 2.0,
-                target_speed_scale=args.actor_target_speed_scale,
+            "target_actor_specs": (
+                default_actor_target_specs(
+                    count=actor_count,
+                    target_z=args.intercept_altitude_z if args.execute_intercept else -5.0,
+                    target_distance_m=args.actor_target_distance
+                    if args.actor_target_distance is not None
+                    else 35.0,
+                    target_spacing_m=args.actor_target_spacing
+                    if args.actor_target_spacing is not None
+                    else 10.0,
+                    asset_name=args.target_asset_name,
+                    target_scale_m=target_scale_m or 2.0,
+                    target_speed_scale=args.actor_target_speed_scale,
+                    x_spacing_m=2.0,
+                    x_speed_base_mps=1.2,
+                    x_speed_step_mps=0.1,
+                    y_speed_span_mps=0.8,
+                )
+                if args.drone_count is not None
+                else default_5v5_actor_target_specs(
+                    target_z=args.intercept_altitude_z if args.execute_intercept else -5.0,
+                    target_distance_m=args.actor_target_distance
+                    if args.actor_target_distance is not None
+                    else 35.0,
+                    target_spacing_m=args.actor_target_spacing
+                    if args.actor_target_spacing is not None
+                    else 10.0,
+                    asset_name=args.target_asset_name,
+                    target_scale_m=target_scale_m or 2.0,
+                    target_speed_scale=args.actor_target_speed_scale,
+                )
             ),
             "detection_filter_names": detection_filters,
             "metadata": {
-                "runtime_mode": "actor_5v5",
+                "runtime_mode": "actor_nvN" if args.drone_count is not None else "actor_5v5",
+                "drone_count": actor_count,
                 "target_asset_name": args.target_asset_name,
+                "active_center_replan_visual_png": bool(args.actor_5v5_active_center_replan),
+                "active_degradation_time_s": float(args.active_degradation_time),
+                "center_replan_time_s": float(args.center_replan_time),
+                "center_node_id": "C2",
                 "actor_target_distance_m": args.actor_target_distance
                 if args.actor_target_distance is not None
                 else 35.0,
@@ -306,19 +459,91 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             },
         }
     if args.cv_5v5 or args.cv_5v5_d4d5_stress:
-        cv_resources = default_cv_5v5_camera_vehicle_names()
-        cv_secondaries = default_cv_5v5_secondary_vehicle_names()
-        target_specs = (
-            default_cv_5v5_d4d5_stress_actor_target_specs(
+        cv_count = drone_count or 5
+        cv_resources = (
+            default_cv_camera_vehicle_names(cv_count)
+            if args.drone_count is not None
+            else default_cv_5v5_camera_vehicle_names()
+        )
+        cv_secondaries = (
+            default_cv_secondary_vehicle_names(args.secondary_count)
+            if args.drone_count is not None or args.secondary_count != 2
+            else default_cv_5v5_secondary_vehicle_names()
+        )
+        if args.drone_count is not None or args.secondary_count != 2:
+            settings_path = write_dynamic_computer_vision_settings(
+                generated_settings_dir / f"blocks_cv_n{cv_count}_settings.json",
+                camera_vehicle_names=cv_resources,
+                secondary_vehicle_names=cv_secondaries,
+                camera_spacing_m=args.actor_target_spacing
+                if args.actor_target_spacing is not None
+                else (20.0 if args.cv_5v5_d4d5_stress else 12.0),
+                camera_z=-10.0,
                 target_z=-10.0,
-                target_scale_m=target_scale_m or 10.0,
-                asset_name=args.target_asset_name,
+                secondary_height_above_targets_m=200.0
+                if args.cv_5v5_d4d5_stress_200m
+                else 50.0,
+                fov_degrees=90.0,
+                secondary_width=1280 if args.cv_5v5_d4d5_stress_200m else None,
+                secondary_height=720 if args.cv_5v5_d4d5_stress_200m else None,
+            )
+        target_specs = (
+            (
+                default_actor_target_specs(
+                    count=cv_count,
+                    target_z=-10.0,
+                    target_distance_m=args.actor_target_distance
+                    if args.actor_target_distance is not None
+                    else 50.0,
+                    target_spacing_m=args.actor_target_spacing
+                    if args.actor_target_spacing is not None
+                    else 20.0,
+                    asset_name=args.target_asset_name,
+                    target_scale_m=target_scale_m or 10.0,
+                    target_speed_scale=args.actor_target_speed_scale,
+                    x_spacing_m=0.0,
+                    x_speed_base_mps=0.8,
+                    x_speed_step_mps=0.1,
+                    y_speed_span_mps=0.7,
+                )
+                if args.drone_count is not None
+                else default_cv_5v5_d4d5_stress_actor_target_specs(
+                    target_z=-10.0,
+                    target_distance_m=args.actor_target_distance
+                    if args.actor_target_distance is not None
+                    else 50.0,
+                    target_spacing_m=args.actor_target_spacing
+                    if args.actor_target_spacing is not None
+                    else 20.0,
+                    target_scale_m=target_scale_m or 10.0,
+                    asset_name=args.target_asset_name,
+                )
             )
             if args.cv_5v5_d4d5_stress
-            else default_cv_5v5_actor_target_specs(
-                target_z=-10.0,
-                asset_name=args.target_asset_name,
-                target_scale_m=target_scale_m or 1.0,
+            else (
+                default_actor_target_specs(
+                    count=cv_count,
+                    target_z=-10.0,
+                    target_distance_m=args.actor_target_distance
+                    if args.actor_target_distance is not None
+                    else 35.0,
+                    target_spacing_m=args.actor_target_spacing
+                    if args.actor_target_spacing is not None
+                    else 10.0,
+                    asset_name=args.target_asset_name,
+                    target_scale_m=target_scale_m or 1.0,
+                    target_speed_scale=args.actor_target_speed_scale,
+                    x_spacing_m=4.0,
+                    x_speed_base_mps=1.4,
+                    x_speed_step_mps=0.1,
+                    y_speed_span_mps=1.2,
+                )
+                if args.drone_count is not None
+                else default_cv_5v5_actor_target_specs(
+                    target_z=-10.0,
+                    asset_name=args.target_asset_name,
+                    target_scale_m=target_scale_m or 1.0,
+                )
             )
         )
         follow_distance = 50.0 if args.cv_5v5_d4d5_stress else args.cv_camera_follow_distance
@@ -344,10 +569,15 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             "detection_radius_cm": (260 if args.cv_5v5_d4d5_stress else 160) * 100,
             "metadata": {
                 "runtime_mode": (
-                    "computer_vision_5v5_d4d5_stress"
+                    "computer_vision_nvN_d4d5_stress"
+                    if args.drone_count is not None and args.cv_5v5_d4d5_stress
+                    else "computer_vision_nvN"
+                    if args.drone_count is not None
+                    else "computer_vision_5v5_d4d5_stress"
                     if args.cv_5v5_d4d5_stress
                     else "computer_vision_5v5"
                 ),
+                "drone_count": cv_count,
                 "secondary_camera_vehicle_names": cv_secondaries,
                 "d4d5_stress_enabled": bool(args.cv_5v5_d4d5_stress),
                 "secondary_height_target_m": 200.0 if args.cv_5v5_d4d5_stress_200m else 50.0,
@@ -392,6 +622,14 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         for spec in selected_episode_specs
     )
     return base_config, sequence_id, episode_specs
+
+
+def _resolve_drone_count(args: argparse.Namespace) -> int | None:
+    if args.drone_count is None:
+        return None
+    if args.drone_count <= 0:
+        raise SystemExit("--drone-count must be positive")
+    return int(args.drone_count)
 
 
 def _print_sequence_result(result) -> None:
@@ -478,24 +716,29 @@ def _write_5v5_intercept_report(args: argparse.Namespace, results: list[object])
         f"- Actor target distance: `{args.actor_target_distance if args.actor_target_distance is not None else 35.0}` m",
         f"- Actor target spacing: `{args.actor_target_spacing if args.actor_target_spacing is not None else 10.0}` m",
         f"- Actor target speed scale: `{args.actor_target_speed_scale}`",
+        f"- Active center replan: `{bool(args.actor_5v5_active_center_replan)}`",
+        f"- Active degradation time: `{args.active_degradation_time}` s",
+        f"- Center replan time: `{args.center_replan_time}` s",
         "",
         "## 结果汇总",
         "",
-        "| Sequence | Connected | Pair Count | Success | Command Records | Summary |",
-        "| --- | --- | ---: | ---: | ---: | --- |",
+        "| Sequence | Connected | Pair Count | Success | Command Records | Center Replan Events | Summary |",
+        "| --- | --- | ---: | ---: | ---: | --- | --- |",
     ]
     for result in results:
         episode = _controlled_episode_from_result(result)
         intercept = {} if episode is None else episode.metadata.get("intercept", {})
         output_paths = {} if episode is None else episode.output_paths
         summary_path = output_paths.get("intercept_summary")
+        center_events_path = output_paths.get("center_replan_events")
         lines.append(
             f"| `{result.sequence_id}` | {result.connected} | "
             f"{intercept.get('pair_count', 0)} | {intercept.get('success_count', 0)} | "
             f"{intercept.get('command_record_count', 0)} | "
+            f"`{center_events_path}` | "
             f"`{summary_path}` |"
         )
-    lines.extend(["", "## 分 pair 状态", "", "| Resource | Vehicle | Target | Status | Min Range m | Time s | Abort |", "| --- | --- | --- | --- | ---: | ---: | --- |"])
+    lines.extend(["", "## 分 pair 状态", "", "| Resource | Vehicle | Target | Status | Min Range m | Time s | D4 | D5 | Plan | PNG Reject | Abort |", "| --- | --- | --- | --- | ---: | ---: | --- | --- | --- | --- | --- |"])
     for result in results:
         episode = _controlled_episode_from_result(result)
         if episode is None:
@@ -513,6 +756,10 @@ def _write_5v5_intercept_report(args: argparse.Namespace, results: list[object])
                 f"{pair.get('status', '')} | "
                 f"{_fmt(pair.get('min_range_m'))} | "
                 f"{_fmt(pair.get('time_to_intercept_s'))} | "
+                f"{pair.get('d4_action', '')} | "
+                f"{pair.get('d5_decision_state', '')} | "
+                f"{pair.get('plan_id', '')}/v{pair.get('plan_version', '')} | "
+                f"{pair.get('terminal_contract_reject_reason') or pair.get('terminal_switch_reject_reason') or ''} | "
                 f"{pair.get('abort_reason') or ''} |"
             )
     lines.extend(["", "## D6 / D7 指标文件", ""])
@@ -528,6 +775,7 @@ def _write_5v5_intercept_report(args: argparse.Namespace, results: list[object])
             [
                 f"- `{result.sequence_id}` control commands: `{paths.get('control_commands')}`",
                 f"- `{result.sequence_id}` intercept summary: `{paths.get('intercept_summary')}`",
+                f"- `{result.sequence_id}` center replan events: `{paths.get('center_replan_events')}`",
                 f"- `{result.sequence_id}` D6 merged metrics: `{integrated_paths.get('d7_execution_metrics')}`",
             ]
         )
@@ -540,6 +788,93 @@ def _write_5v5_intercept_report(args: argparse.Namespace, results: list[object])
             "- `timeout` 表示 SimpleFlight 控制和日志链路完成，但在最大时长内未达到拦截半径或碰撞判据。",
             "- `terminal_switch_allowed`、`terminal_contract_reject_reason` 和 `guidance_law` 以 `control_commands.csv` 为准。",
             "- 本报告只汇总执行结果；完整探测、关联、分配、降级和末端指标以集成 D6 报告为准。",
+        ]
+    )
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return report_path
+
+
+def _write_2v2_active_secondary_report(args: argparse.Namespace, results: list[object]) -> Path:
+    output_dir = Path(args.output_root) / args.sequence_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report_path = output_dir / "P1_2V2_ACTIVE_SECONDARY_VISUAL_PNG_REPORT_20260703.md"
+    lines = [
+        "# P1 2v2 主动降级-二级重分配-视觉 PNG AirSim 报告",
+        "",
+        "## 测试配置",
+        "",
+        f"- Sequence ID: `{args.sequence_id}`",
+        "- Runtime: Blocks + SimpleFlight interceptors + moved actor targets",
+        "- Target detection: AirSim `simGetDetections` metadata, PNG not saved by default",
+        "- Flow: center plan -> D4 active degradation -> secondary plan v2 -> D5 locked -> D7 visual PNG",
+        f"- Active degradation time: `{args.active_degradation_time}` s",
+        f"- Secondary plan time: `{args.secondary_plan_time}` s",
+        f"- Terminal switch range: `{args.intercept_terminal_range}` m",
+        f"- Intercept speed: `{args.intercept_speed}` m/s",
+        f"- Target asset: `{args.target_asset_name}`",
+        "",
+        "## 结果汇总",
+        "",
+        "| Sequence | Connected | Pair Count | Success | PNG Switch | D4 Pending | Secondary Plan | Summary |",
+        "| --- | --- | ---: | ---: | ---: | ---: | --- | --- |",
+    ]
+    for result in results:
+        episode = _controlled_episode_from_result(result)
+        intercept = {} if episode is None else episode.metadata.get("intercept", {})
+        integrated = {} if episode is None or episode.integrated_result is None else episode.integrated_result.metrics
+        metadata = integrated.get("metadata", {}) if isinstance(integrated, dict) else {}
+        output_paths = {} if episode is None else episode.output_paths
+        lines.append(
+            f"| `{result.sequence_id}` | {result.connected} | "
+            f"{intercept.get('pair_count', 0)} | {intercept.get('success_count', 0)} | "
+            f"{integrated.get('visual_png_switch_count', 0) if isinstance(integrated, dict) else 0} | "
+            f"{integrated.get('d4_reassign_pending_count', 0) if isinstance(integrated, dict) else 0} | "
+            f"{'secondary_plan_v2' if 'secondary_plan_v2' in metadata.get('plan_ids', []) else '-'} | "
+            f"`{output_paths.get('intercept_summary')}` |"
+        )
+    lines.extend(["", "## 分 pair 状态", "", "| Resource | Vehicle | Target | Status | Min Range m | D4 | D5 | Plan | PNG Reject |", "| --- | --- | --- | --- | ---: | --- | --- | --- | --- |"])
+    for result in results:
+        episode = _controlled_episode_from_result(result)
+        if episode is None:
+            continue
+        summary_path = episode.output_paths.get("intercept_summary")
+        if summary_path is None or not Path(summary_path).exists():
+            continue
+        summary = json.loads(Path(summary_path).read_text(encoding="utf-8"))
+        for pair in summary.get("pairs", []) or []:
+            lines.append(
+                "| "
+                f"{pair.get('resource_id', '')} | "
+                f"{pair.get('vehicle_name', '')} | "
+                f"{pair.get('target_id', '')} | "
+                f"{pair.get('status', '')} | "
+                f"{_fmt(pair.get('min_range_m'))} | "
+                f"{pair.get('d4_action', '')} | "
+                f"{pair.get('d5_decision_state', '')} | "
+                f"{pair.get('plan_id', '')}/v{pair.get('plan_version', '')} | "
+                f"{pair.get('terminal_contract_reject_reason') or pair.get('terminal_switch_reject_reason') or ''} |"
+            )
+    lines.extend(["", "## 输出文件", ""])
+    for result in results:
+        episode = _controlled_episode_from_result(result)
+        if episode is None:
+            continue
+        integrated_paths = {} if episode.integrated_result is None else episode.integrated_result.output_paths
+        lines.extend(
+            [
+                f"- `{result.sequence_id}` control commands: `{episode.output_paths.get('control_commands')}`",
+                f"- `{result.sequence_id}` secondary events: `{episode.output_paths.get('secondary_reassignment_events')}`",
+                f"- `{result.sequence_id}` D6 merged metrics: `{integrated_paths.get('d7_execution_metrics')}`",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "## 验收口径",
+            "",
+            "- `degrade_to_secondary` 阶段应出现 `d4_reassign_pending`，此时 D7 不能进入视觉 PNG。",
+            "- `secondary_plan_v2` 生效后，D5 `locked` 且计划一致时，D7 才允许 `guidance_law=png_vm`。",
+            "- D5 只输出关联证据，不改写 `global_track_id`。",
         ]
     )
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

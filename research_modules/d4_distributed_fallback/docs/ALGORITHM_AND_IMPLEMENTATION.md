@@ -164,11 +164,16 @@ decision = ActiveDegradationArbiter().evaluate(
 | D1/D2 风险上升，但 D5 仍一致，且二级节点覆盖该区域 | `active_degradation + request_secondary_assist`，请求二级节点提供区域观测/cue，不直接完全分布式 |
 | D3 分配 stale、非 current 或 cost margin 过低，但 D5 仍一致 | `active_degradation + request_center_replan`，优先中心滚动重分配 |
 | D5 单窗口不一致但未连续恶化 | 请求中心重分配或二级辅助，先不进入完全无中心 |
-| D5 连续多帧 `ambiguous/hold/reacquire`，或本地候选与分配目标长期不一致 | 触发主动仲裁；二级节点健康且覆盖该 `coverage_cell` 时 `degrade_to_secondary` |
+| D5 连续多帧 `ambiguous/hold/reacquire`，或本地候选与分配目标长期不一致 | 触发主动仲裁；二级节点健康且覆盖该 `coverage_cell` 时输出阶段 1 `degrade_to_secondary` |
 | 二级节点不可用、不可达或不覆盖当前区域 | `degrade_to_distributed`，进入 CBBA/拍卖式保底协商 |
 | 友方冲突或身份证据冲突 | `hold_for_review`，只输出审计和人工复核需求 |
 | `duplicate_terminal_lock=True` | 不视为 D5 一致，进入主动仲裁，优先请求二级辅助或中心复核 |
 | `cross_view_risk_score` 高 | 不视为稳定一致，进入主动仲裁，优先二级节点辅助/接管 |
+
+主动降级到二级节点采用两阶段语义，防止 D7 在重分配尚未完成的同一帧直接进入视觉 PNG：
+
+1. 阶段 1：D4 输出 `degrade_to_secondary` 只表示已经选择二级节点并启动重分配；`build_d7_secondary_handoff()` 返回 `phase=1`、`reassignment_complete=false`、`visual_png_allowed=false`，且不输出 D7 动作。D7 不应在该帧进入视觉 PNG。
+2. 阶段 2：二级节点的新 plan 已生效后，`build_d7_secondary_handoff()` 返回 `phase=2`、`reassignment_complete=true`，并携带 `new_plan_id` 与 `new_plan_version`。若新 plan 下 D5 仍需二级 cue，则对 D7 输出 `request_secondary_assist`；若新 plan 下末端一致，则输出 `continue_center`。
 
 当前实现使用轻量规则阈值表达风险：
 
@@ -299,9 +304,11 @@ O(|E|\cdot|\mathcal{T}|)
 - `continue_center`：继续中心计划。
 - `request_center_replan`：请求 D3 滚动重分配。
 - `request_secondary_assist`：请求覆盖区二级节点补充观测摘要或图像 cue。
-- `degrade_to_secondary`：主动或被动降到二级节点区域协调。
+- `degrade_to_secondary`：主动或被动降到二级节点区域协调；在主动降级场景中这是阶段 1 接管触发，表示二级重分配未完成，不是 D7 视觉 PNG 放行。
 - `degrade_to_distributed`：无可用二级节点时进入完全无中心 CBBA/拍卖。
 - `hold_for_review`：友方冲突或身份冲突时只保持审计和人工复核。
+
+`D7SecondaryHandoff`/`build_d7_secondary_handoff()` 用于把 `degrade_to_secondary` 转换为 D7 可消费的两阶段门控结果。阶段 1 不携带 `new_plan_id/new_plan_version` 且 `visual_png_allowed=false`；阶段 2 必须携带 `new_plan_id/new_plan_version`，并把 D7 动作限制为 `request_secondary_assist` 或 `continue_center`。
 
 `ActiveDegradationDecision.to_metrics()` 输出：
 

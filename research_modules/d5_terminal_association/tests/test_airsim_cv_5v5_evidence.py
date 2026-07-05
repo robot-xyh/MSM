@@ -79,7 +79,7 @@ def _secondary_cue(global_id: str, *, timestamp: float = 10.0, expired: bool = F
     )
 
 
-def test_airsim_cv_detection_fixtures_generate_local_visual_tracks_and_bus_observations() -> None:
+def test_airsim_cv_scenario_defaults_are_stress_baseline_not_runtime_limit() -> None:
     spec = AirSimCVScenarioSpec()
     assert spec.interceptor_count == 5
     assert spec.target_count == 5
@@ -88,8 +88,15 @@ def test_airsim_cv_detection_fixtures_generate_local_visual_tracks_and_bus_obser
     assert spec.interceptor_camera_spacing_m == 20.0
     assert spec.secondary_recon_height_offset_m == 200.0
 
+    runtime_spec = AirSimCVScenarioSpec(interceptor_count=7, target_count=7)
+    assert runtime_spec.interceptor_count == 7
+    assert runtime_spec.target_count == 7
+
+
+def test_airsim_cv_detection_fixtures_follow_runtime_camera_count() -> None:
+    spec = AirSimCVScenarioSpec(interceptor_count=7, target_count=7)
     bus = TerminalObservationBus()
-    for index in range(1, 6):
+    for index in range(1, spec.interceptor_count + 1):
         resource_id = f"Interceptor_Cam_{index}"
         tracks = publish_sim_detections_as_local_observations(
             bus,
@@ -105,7 +112,7 @@ def test_airsim_cv_detection_fixtures_generate_local_visual_tracks_and_bus_obser
 
     metrics = compute_terminal_stress_metrics(bus.observations(), bus.cross_view_associations())
 
-    assert len(metrics.per_camera_detection_count) == 5
+    assert len(metrics.per_camera_detection_count) == spec.interceptor_count
     assert all(count == 3 for count in metrics.per_camera_detection_count.values())
     assert metrics.multi_target_fov_rate == 1.0
     assert metrics.cross_view_overlap_count == 0
@@ -164,6 +171,34 @@ def test_detection_parser_accepts_runtime_bbox_xyxy_and_yolo_xyxy_schema() -> No
     assert tracks[1].local_track_id == "yolo-track-1"
     assert tracks[1].bbox == (100.0, 120.0, 140.0, 160.0)
     np.testing.assert_allclose(tracks[1].center_px, np.array([120.0, 140.0]))
+
+
+def test_detection_parser_ignores_airsim_truth_identity_fields_online() -> None:
+    detections = [
+        {
+            "bbox_xyxy": (12.0, 24.0, 52.0, 64.0),
+            "object_id": "TGT_TRUE_1",
+            "actor_name": "TargetActor_1",
+            "confidence": 0.88,
+        },
+        {
+            "bbox_xyxy": (100.0, 120.0, 140.0, 160.0),
+            "object_id": "TGT_TRUE_2",
+            "actor_name": "TargetActor_2",
+            "confidence": 0.91,
+        },
+    ]
+
+    tracks = local_visual_tracks_from_sim_detections(
+        detections,
+        resource_id="Interceptor_Cam_1",
+        camera_id="front_rgb",
+        timestamp=3.0,
+    )
+
+    assert [track.local_track_id for track in tracks] == ["front_rgb_det_0", "front_rgb_det_1"]
+    assert all("TGT_TRUE" not in track.local_track_id for track in tracks)
+    np.testing.assert_allclose(tracks[0].center_px, np.array([32.0, 44.0]))
 
 
 def test_5v5_overlap_bus_metrics_duplicate_risk_and_lock_accuracy() -> None:

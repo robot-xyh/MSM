@@ -9,7 +9,7 @@ Offline evaluation module for detection, tracking, assignment, degradation, term
 - Chinese experiment report with generated figures: `EXPERIMENT_REPORT.md`
 - Offline AirSim ingestion plan: `AIRSIM_INTEGRATION_PLAN.md`
 
-The detailed notes now include the offline metric contract for D4 active degradation evaluation: passive vs active degradation counts, trigger-source metadata, coordinator selection fields, and before/after-window deltas for ID switches and assignment conflicts.
+The detailed notes now include the offline metric contract for D4 active degradation evaluation: passive vs active degradation counts, secondary reassignment, D4 reassign-pending gates, trigger-source metadata, coordinator selection fields, and before/after-window deltas for ID switches and assignment conflicts. The current implemented specialty metrics include `active_degradation_count`, `secondary_reassignment_count`, `d4_reassign_pending_count`, `terminal_lock_count`, `visual_png_switch_count`, `terminal_switch_allowed_rate`, and `id_switch_count`.
 
 D6 also accepts optional `LinkRecord` entries or equivalent `EventRecord.metadata`
 for cross-node communication evaluation. Supported derived metrics include

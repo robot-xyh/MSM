@@ -16,7 +16,14 @@ from d1_sensor_fusion.simulation import run_simulation  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run D1 offline sensor-fusion simulation.")
-    parser.add_argument("--targets", type=int, default=3, choices=[1, 2, 3])
+    parser.add_argument(
+        "--drone-count",
+        dest="target_count",
+        type=int,
+        default=3,
+        metavar="N",
+        help="Number of target truth tracks to generate.",
+    )
     parser.add_argument("--duration", type=float, default=60.0)
     parser.add_argument("--dt", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=7)
@@ -27,13 +34,16 @@ def parse_args() -> argparse.Namespace:
         help="Directory for plots and Markdown report.",
     )
     parser.add_argument("--no-plots", action="store_true")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.target_count < 1:
+        parser.error("--drone-count must be at least 1")
+    return args
 
 
 def main() -> int:
     args = parse_args()
     result = run_simulation(
-        target_count=args.targets,
+        target_count=args.target_count,
         duration_s=args.duration,
         dt=args.dt,
         seed=args.seed,

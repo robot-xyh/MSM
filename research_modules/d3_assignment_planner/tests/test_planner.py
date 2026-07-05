@@ -44,6 +44,27 @@ def test_planner_assigns_lowest_cost_pairs() -> None:
     assert plan.human_authorization_state == "required"
 
 
+def test_planner_records_dynamic_non_5v5_problem_size() -> None:
+    config = PlannerConfig(enable_hysteresis=False)
+    planner = _planner(config)
+    tracks = [
+        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
+        TargetTrack("T2", 0.8, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
+        TargetTrack("T3", 0.6, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.2, "R2": 0.2}),
+    ]
+    resources = [ResourceState("R1"), ResourceState("R2")]
+
+    plan = planner.plan(tracks, resources, timestamp=0.0)
+
+    assert plan.resource_count == 2
+    assert plan.target_count == 3
+    assert plan.metadata["resource_count"] == 2
+    assert plan.metadata["target_count"] == 3
+    assert plan.metadata["assignment_matrix_shape"] == [3, 2]
+    assert len(plan.assignments) == 2
+    assert plan.unassigned_target_ids == ("T3",)
+
+
 def test_hysteresis_holds_when_dwell_time_is_too_short() -> None:
     config = PlannerConfig(delta=0.2, min_dwell=2.0)
     planner = _planner(config)

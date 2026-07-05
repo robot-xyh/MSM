@@ -21,6 +21,8 @@ D2 负责把 D1 输出的多源融合观测或初始航迹整理成稳定的 `gl
 
 在系统集成中，D1 的 `GlobalTrack` 可通过适配器转换为 D2 的 `Detection` 或直接扩展为带状态预测的航迹输入。关键要求是保留时间戳、协方差和来源元数据。
 
+每帧输入数量由调用方提供的集合决定。D2 不从场景名推断固定 2v2/5v5 数量，也不把 main runtime 的 `--drone-count` 复制为内部常量；关联器按实际 `active_tracks` 与 `detections` 长度构造 `N x M` 代价矩阵，Tracker 按未匹配观测动态建轨、按漏检动态丢失或删除航迹。
+
 ### 2.2 输出
 
 D2 输出更新后的 `GlobalTrack` 列表和 `AssociationResult`：
@@ -31,6 +33,8 @@ D2 输出更新后的 `GlobalTrack` 列表和 `AssociationResult`：
 - `lifecycle_state`：`tentative / confirmed / engageable / lost / dropped`。
 - `matched_pairs`、`unmatched_track_ids`、`unmatched_detection_ids`：每帧关联结果。
 - `ambiguity_score`、`rejected_pairs`、`metadata`：解释失败和歧义来源。
+
+输出给 D3/D5/D6 的 `global_track_id` 集合来自当前活动航迹列表，不截断或填充到固定数量。5v5 或 2v2 只表示某些离线 fixture 的规模，不是输出合同的一部分。
 
 ## 3. 数学模型
 
@@ -84,7 +88,7 @@ C_ij = d_ij^2 + w_f * feature_cost_ij
 
 适用边界：
 
-- 目标数量中小，当前仿真为 2-6 个目标。
+- 目标数量中小；算法复杂度由每帧 `N` 条活动航迹和 `M` 个观测决定，而不是固定 2v2/5v5。
 - 每条航迹门内候选较少，典型候选数接近 1。
 - 观测频率稳定，短时漏检可由预测维持。
 - 交叉持续时间短，外观或类别特征能提供辅助区分。
@@ -143,7 +147,7 @@ L(H_k) = Π matched exp(-0.5 d_ij^2)
 β_ij = Σ P(H_k | Z), for H_k containing (i, j)
 ```
 
-当前实现枚举小规模联合假设，并以 `min_marginal_probability` 选出非冲突匹配。它适合作为 2-6 目标交叉、遮挡和高歧义帧的研究对照。
+当前实现枚举小规模联合假设，并以 `min_marginal_probability` 选出非冲突匹配。它适合作为中小规模目标交叉、遮挡和高歧义帧的研究对照；目标/观测数增加时依赖 `max_joint_hypotheses` 截断，而不是固定数量假设。
 
 建议触发 JPDA 的条件：
 
@@ -237,10 +241,13 @@ summary = tracker.metrics.summary()
 内置仿真场景：
 
 - `crossing`：两目标交叉。
+- `crossing_dense_5v5`：确定性 dense/crossing 5v5 基线 fixture。
 - `formation`：五目标近距编队。
 - `occlusion`：三目标短时遮挡。
 - `missed`：随机漏检。
 - `false_alarms`：虚警杂波。
+
+这些场景用于回归和算法对照，保留固定规模是为了结果可重复。实际 D2 关联链路仍按输入帧内 `detections` 和 `active_tracks` 的长度运行；main runtime 用 `--drone-count` 选择的目标数量只需体现在传入 D2 的观测/航迹集合中。
 
 运行示例：
 
@@ -413,7 +420,7 @@ D3 依赖稳定的 `global_track_id`、状态、协方差和生命周期状态�
 
 ### D2 -> D5
 
-D5 使用 `global_track_id` 将中心航迹投影到终端相机平面。D5 可以回传终端关联置信度和身份冲突事件，但不得自行改写 D2 的规范 `global_track_id`。
+D5 使用 `global_track_id` 将中心航迹投影到终端相机平面。D5 可以回传终端关联置信度和身份冲突事件，但不得自行改写 D2 的规范 `global_track_id`。D2 向 D3/D5 暴露的是当前活动航迹集合中的全部 `global_track_id`，数量随输入和航迹生命周期变化，不依赖固定 2v2/5v5 配置。
 
 ### D2 -> D6
 

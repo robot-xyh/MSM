@@ -1,6 +1,6 @@
 # D3 中心化资源-目标分配综述及子方案
 
-**定位**: 在 5 对 5 及更多目标场景中，由中心节点生成滚动 `AssignmentPlan`，并通过迟滞逻辑避免频繁重分配。  
+**定位**: 在由 main runtime `--drone-count` 决定的 N 对 N 或非等量资源/目标场景中，由中心节点生成滚动 `AssignmentPlan`，并通过迟滞逻辑避免频繁重分配；5v5 只作为示例和基准场景。
 **边界**: 本文只讨论抽象资源-目标匹配、离线评估和人工授权前的候选计划，不包含真实火控参数、毁伤模型或自动处置流程。
 
 ---
@@ -24,7 +24,7 @@
 
 滚动窗口优化是动态场景常见方法：每个周期只提交近期计划，远期计划保持可调整。为了避免抖动，常用策略包括切换惩罚、最小保持时间、双阈值、版本锁和收益门限。例如只有新方案总代价相对旧方案改善超过阈值，才允许切换。
 
-本文推荐：5 对 5 首先使用 SciPy Hungarian；当出现容量、禁配、备份资源或多轮窗口约束时，用 OR-Tools Min Cost Flow；更复杂逻辑再进入 CP-SAT/MILP 离线研究。
+本文推荐：N 对 N 一对一基线优先使用 SciPy Hungarian，5v5 仅作为默认示例/基准；当出现容量、禁配、备份资源或多轮窗口约束时，用 OR-Tools Min Cost Flow；更复杂逻辑再进入 CP-SAT/MILP 离线研究。
 
 ---
 
@@ -65,6 +65,8 @@ AssignmentPlan
 - plan_id
 - version
 - window_id
+- resource_count
+- target_count
 - assignments
 - total_cost
 - created_at
@@ -226,11 +228,11 @@ AssignmentGuidanceBinding
 
 ---
 
-## 9. 2v2/5v5 滚动重分配执行顺序与迟滞原则
+## 9. N 配置滚动重分配执行顺序与迟滞原则
 
 ### 9.1 2v2 场景
 
-2v2 适合做最小闭环测试，重点验证 ID 稳定、版本号、迟滞和 D5 末端反馈：
+2v2 适合做最小闭环测试，重点验证 ID 稳定、版本号、迟滞和 D5 末端反馈；它和 5v5 一样都不是算法常量：
 
 1. D2 输出两个稳定 `global_track_id`，D3 构建 2x2 成本矩阵。
 2. D3 使用 Hungarian 生成初始 `AssignmentPlan(version=1)`。
@@ -240,19 +242,19 @@ AssignmentGuidanceBinding
 
 2v2 默认迟滞建议：`delta=0.2`，`min_dwell=2` 个规划周期，单窗口最多允许 1 条 assignment 变化。这样可以清楚观察每一次换配的原因。
 
-### 9.2 5v5 场景
+### 9.2 N 对 N 场景
 
-5v5 是主验证场景，重点是避免频繁抖动、重复分配和高优先级目标长期未分配：
+运行时 N 由 main `--drone-count` 统一设置，5v5 是基准示例。重点是避免频繁抖动、重复分配和高优先级目标长期未分配：
 
-1. D2 输出 5 个以上 `GlobalTrack`，D3 过滤 `confirmed/engageable` 航迹。
+1. D2 输出 N 个或更多 `GlobalTrack`，D3 过滤 `confirmed/engageable` 航迹。
 2. D3 将资源状态、D5 视场难度、D1/D2 协方差和冲突风险合成成本矩阵。
 3. 中心节点正常时，每个规划周期先计算候选 Hungarian 计划，但不立即替换旧计划。
 4. 若旧计划仍可行，只有满足 `J_new < (1-delta) * J_old`、`dwell_time > min_dwell`、`change_count <= max_changes_per_window` 才接受换配。
 5. 若旧计划不可行，例如资源失效、目标 dropped、禁配边出现，则允许绕过收益门限，标记 `accepted_previous_infeasible`。
-6. 若 D5 多视角关联与中心/二级计划连续不一致，D3 请求 D4 `secondary_arbitration`，而不是在 5 架资源之间直接重写 `global_track_id`。
+6. 若 D5 多视角关联与中心/二级计划连续不一致，D3 请求 D4 `secondary_arbitration`，而不是在本地资源之间直接重写 `global_track_id`。
 7. 若二级节点也无法提供一致计划，D4 才进入完全分布式协同；D3 只保留最新中心计划作为回滚和审计基线。
 
-5v5 默认迟滞建议：`delta=0.2`，`min_dwell=2.0s`，`max_changes_per_window=2`，连续 3 次 `held_by_hysteresis` 且 D5 不一致时请求 D4 主动降级仲裁。D6 应统计 `reassignment_count`、`duplicate_assignment_count`、`unassigned_high_threat_count`、`stale_plan_version_count` 和 `secondary_arbitration_count`。
+N 对 N 基准迟滞建议可从 5v5 参数开始扫描：`delta=0.2`，`min_dwell=2.0s`，`max_changes_per_window=2`，连续 3 次 `held_by_hysteresis` 且 D5 不一致时请求 D4 主动降级仲裁。D6 应统计 `resource_count`、`target_count`、`reassignment_count`、`duplicate_assignment_count`、`unassigned_high_threat_count`、`stale_plan_version_count` 和 `secondary_arbitration_count`。
 
 ---
 

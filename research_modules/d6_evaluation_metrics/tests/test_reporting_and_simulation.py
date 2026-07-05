@@ -59,6 +59,10 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
             seed=11,
             batch_seed=101,
             scenario_group="normal",
+            drone_count=2,
+            resource_count=2,
+            target_count=2,
+            camera_count=2,
             active_degradation_count=0,
             mode_switch_count=1,
         ),
@@ -67,6 +71,10 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
             seed=12,
             batch_seed=102,
             scenario_group="secondary_200m",
+            drone_count=5,
+            resource_count=5,
+            target_count=5,
+            camera_count=5,
             active_degradation_count=2,
             passive_failover_count=1,
             mode_switch_count=3,
@@ -94,9 +102,15 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
 
     assert "scenario_group" in episode_text
     assert "batch_seed" in episode_text
+    assert "drone_count" in episode_text
+    assert "resource_count" in episode_text
+    assert "target_count" in episode_text
+    assert "camera_count" in episode_text
+    assert "drone_count" in summary_text
     assert "normal" in summary_text
     assert "secondary_200m" in summary_text
     assert "场景分组" in report_text
+    assert "Drone count" in report_text
     assert "terminal_contract_reject_count" in report_text
 
 

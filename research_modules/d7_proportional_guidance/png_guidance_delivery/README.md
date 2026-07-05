@@ -149,7 +149,16 @@ a_cmd = N * V_m * (omega_LOS x lambda_I)
 
 其中 `N` 默认 `3.0`，`V_m = speed_ratio * intruder_speed`。该模式不依赖检测框面积，因此适合排查 TTC 面积噪声或近距裁切问题。
 
-## 7. 预期结果
+## 7. Blocks 2v2 active-secondary 合同
+
+本交付包的 truth/gimbal/strapdown 脚本可复现实验导引律。AirSim Blocks 2v2 仍保留为 active-secondary baseline；main runtime 的实际仿真数量由 `--drone-count N` 决定，D7 主线必须按每个有效 assignment pair 独立创建控制上下文和视觉 PNG filter，不从 2v2 baseline 推导固定数量。进入视觉 PNG 还必须经过 D3/D4/D5 合同门控：
+
+- D4 `degrade_to_secondary` 只表示主动降级和二级重分配正在发生，D7 必须按 `d4_reassign_pending` 拒绝视觉 PNG。
+- 二级 plan 生效后，D4 action 必须是 `request_secondary_assist` 或 `continue_center`，并且 `new_plan_id/new_plan_version` 与 D3 binding 一致。
+- D5 必须为 `decision_state=locked`，目标 identity 和 assignment/version 与二级 binding 一致。
+- 只有上述合同通过后，捷联视觉 PNG/TTC/VM 观测链才允许进入 `mode=vision_terminal`，并以 `guidance_law=png_vm` 记录二级 pair 的视觉导引输出。
+
+## 8. 预期结果
 
 最近一次完整诊断结果见 `docs/BodyRate_三问题线实施实验报告.md`。典型结论如下：
 
@@ -168,7 +177,7 @@ a_cmd = N * V_m * (omega_LOS x lambda_I)
 - 再用 `MODE=strapdown LAW=TTC` 和 AirSim detect 确认固定相机视觉闭环。
 - 最后切换 YOLO 或 PX4 SITL，逐项排查识别连续性、LOS/KF、PX4 响应和推力饱和。
 
-## 8. 安全边界
+## 9. 安全边界
 
 当前代码中存在可向 PX4 Offboard 下发 `SET_ATTITUDE_TARGET` 的接口，但本交付包不允许直接作为实机飞行代码使用。实机前必须至少完成：
 
@@ -178,7 +187,7 @@ a_cmd = N * V_m * (omega_LOS x lambda_I)
 - 设置遥控器 kill switch、围栏、低速限幅和人工接管。
 - 在低速、低高度、无桨或安全网环境逐步验证。
 
-## 9. 版本
+## 10. 版本
 
 源仓库提交：`d786d2e`
 打包日期：`2026-07-02`

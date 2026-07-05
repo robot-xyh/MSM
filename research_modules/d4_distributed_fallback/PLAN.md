@@ -241,7 +241,9 @@ recovers and dual-track merge is accepted.
 
 Primary scenario:
 
-- 3 to 5 simulated nodes.
+- Simulated node/resource count follows the supplied `ResourceSummary[]` length
+  or the CLI `--drone-count` value; 2v2 and 5v5 are retained only as baseline
+  tests.
 - Center heartbeat is normal until `t = 30s`.
 - Center then fails.
 - Simulated peer network applies 0.1 to 0.5 second delivery delay.

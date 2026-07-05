@@ -99,6 +99,7 @@ def truth_summary_from_blocks_frames(frames: Iterable[Mapping[str, Any]]) -> dic
             "frame_count": len(timestamps),
             "target_count": len(timestamps_by_id),
             "resource_count": resource_count,
+            "drone_count": resource_count,
             "camera_count": camera_count,
             "source": "blocks_frames_jsonl",
             "offline_only": True,

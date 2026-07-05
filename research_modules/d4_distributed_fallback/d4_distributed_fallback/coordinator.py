@@ -117,16 +117,30 @@ class FailoverCoordinator:
             )
         return self.health
 
-    def elect_leader(self, resources: Iterable[ResourceSummary]) -> str | None:
-        leader = self.elect_leader_resource(resources)
+    def elect_leader(
+        self,
+        resources: Iterable[ResourceSummary],
+        tasks: Iterable[TrackSummary] | None = None,
+    ) -> str | None:
+        leader = self.elect_leader_resource(resources, tasks=tasks)
         self.leader_id = None if leader is None else leader.node_id
         return self.leader_id
 
-    def elect_leader_resource(self, resources: Iterable[ResourceSummary]) -> ResourceSummary | None:
+    def elect_leader_resource(
+        self,
+        resources: Iterable[ResourceSummary],
+        tasks: Iterable[TrackSummary] | None = None,
+    ) -> ResourceSummary | None:
+        task_cells = {
+            task.coarse_cell
+            for task in tasks or ()
+            if task.coarse_cell not in {None, ""}
+        }
         candidates = [
             resource
             for resource in resources
             if not resource.operator_hold and resource.availability_band != AvailabilityBand.NONE
+            and self._resource_covers_task_cells(resource, task_cells)
         ]
         if not candidates:
             self.leader_id = None
@@ -159,7 +173,7 @@ class FailoverCoordinator:
             self.update_health(now_s)
         if self.health != C2Health.FAILED:
             return self._safe_hold_result(now_s, "center_not_failed")
-        leader_resource = self.elect_leader_resource(resources)
+        leader_resource = self.elect_leader_resource(resources, tasks=tasks)
         if leader_resource is None:
             self._transition(C2Health.SUSPECT, now_s, "no_eligible_fallback_leader")
             return self._safe_hold_result(now_s, "no_eligible_fallback_leader")
@@ -289,3 +303,13 @@ class FailoverCoordinator:
         if leader.node_role in SECONDARY_NODE_ROLES:
             return "secondary_node"
         return "distributed_cbba"
+
+    @staticmethod
+    def _resource_covers_task_cells(resource: ResourceSummary, task_cells: set[str]) -> bool:
+        if not task_cells or resource.node_role not in SECONDARY_NODE_ROLES:
+            return True
+        return (
+            resource.coverage_cell is None
+            or resource.coverage_cell == ""
+            or resource.coverage_cell in task_cells
+        )

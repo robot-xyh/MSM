@@ -6,7 +6,7 @@ This module is limited to research simulation and offline evaluation of multi-ta
 
 ## Engineering and Scientific Problem
 
-Dense multi-target tracking can preserve geometric accuracy while losing identity consistency. The D2 problem is to reduce ID switches when 2-6 targets cross, fly in close formation, undergo short occlusions, produce missed detections, or appear with false alarms.
+Dense multi-target tracking can preserve geometric accuracy while losing identity consistency. The D2 problem is to reduce ID switches when the caller-provided target set crosses, flies in close formation, undergoes short occlusions, produces missed detections, or appears with false alarms. Built-in fixtures use small fixed counts for repeatability, but the runtime associators consume the actual track and detection collections they receive.
 
 Engineering goals:
 
@@ -49,7 +49,7 @@ Complexity:
 
 - Cost construction: `O(NM)` for `N` tracks and `M` detections.
 - Hungarian solve: `O(max(N, M)^3)`.
-- Recommended for nominal 2-6 target simulations and low ambiguity frames.
+- Recommended for nominal low-ambiguity frames where `N` tracks and `M` detections remain within the caller's simulation budget.
 
 ## JPDA Probability Model
 
@@ -121,10 +121,13 @@ Transitions are driven by hit streak, total hits, misses, covariance trace, and 
 The simulation suite covers:
 
 - 2-target crossing with noisy detections.
+- Deterministic dense/crossing 5v5 as a baseline fixture.
 - 4-6 target close formation with small spacing.
 - Short occlusion window with missing detections.
 - Random missed detections.
 - False alarms/clutter.
+
+These scenario sizes are regression fixtures, not algorithmic assumptions. The GNN, JPDA, MHT, Tracker, and metrics paths build their per-frame work from `len(active_tracks)` and `len(detections)`, so main runtime `--drone-count` scenarios are represented by the input lists passed into D2.
 
 Each scenario runs GNN, JPDA, and MHT and records:
 

@@ -23,12 +23,14 @@ PYTHONPATH=research_modules/d1_sensor_fusion/src pytest research_modules/d1_sens
 ```bash
 PYTHONPATH=research_modules/d1_sensor_fusion/src \
 python3 research_modules/d1_sensor_fusion/scripts/run_simulation.py \
-  --targets 3 \
+  --drone-count 3 \
   --duration 60 \
   --dt 0.1 \
   --seed 7 \
   --output research_modules/d1_sensor_fusion/reports
 ```
+
+The command above is the historical 3-target baseline. In integrated runs, main owns the scenario size and passes N via `--drone-count`; D1 consumes the resulting N target truth/observation sources without a 2v2 or 5v5 cap.
 
 The script writes:
 
@@ -64,6 +66,15 @@ adapter = FusionAdapter()
 tracks = adapter.ingest_many(observations)
 summaries = adapter.track_uncertainty_summaries()
 ```
+
+For the current Blocks N-actor integration, D1 expects upstream runtime logs to provide
+simulation-derived observations from AirSim truth and `simGetDetections`/detector boxes. D1
+receives the N target truth/observation sources provided by main and sizes `SensorObservation[]`
+ingest and `GlobalTrack` output from those input arrays. Historical 2v2 and 5v5 logs are baselines,
+not algorithm limits. These records must include `measurement_timestamp`, `arrival_timestamp`,
+`measurement`, and `covariance`. D1 then publishes `GlobalTrack` objects with `position`,
+`velocity`, and 6x6 `covariance`. This is a simulation contract only; it does not claim real radar,
+acoustic, or lidar hardware is connected.
 
 ## Main Interfaces
 

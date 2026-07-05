@@ -117,14 +117,16 @@ python3 research_modules/d5_terminal_association/simulations/run_terminal_associ
 - 友方目标与分配投影重叠，触发 `hold`。
 - 后续扩展：UAV1 看到目标 1/2/3、UAV2 看到目标 2/3/4 的跨视场配准，验证重复本地 ID、相机姿态误差、时间戳错位和二级 cue 重投影。
 
-### 8.1 ComputerVision 5v5 专项 dry-run
+### 8.1 ComputerVision N-v-N 专项 dry-run
 
 新增 D5-only 单元测试覆盖 AirSim ComputerVision 风格输入，不导入 AirSim、不调用控制 API：
 
-- 5 个 `Interceptor_Cam_*` 主镜头，每个镜头 3 个检测框，验证 `per_camera_detection_count` 和 `multi_target_fov_rate`。
-- 目标距主镜头约 50m，目标间距和镜头间距约 20m 的压测假设由 `AirSimCVScenarioSpec` 固化。
+- N-v-N 数量由 main runtime 的 `--drone-count N` 统一控制；D5 按传入的 camera/resource、`LocalVisualTrack[]` 和 `GlobalTrack[]` 长度运行。
+- 5v5 只是 stress baseline；当前 baseline 使用 5 个 `Interceptor_Cam_*` 主镜头，每个镜头 3 个检测框，验证 `per_camera_detection_count` 和 `multi_target_fov_rate`。
+- 目标距主镜头约 50m，目标间距和镜头间距约 20m 的压测假设由 `AirSimCVScenarioSpec` 作为可调 baseline 保存。
 - 二级系留侦察镜头高约 200m，输出已重投影到本地镜头的 `ReconImageCue`。
 - UAV1 看到 1/2/3、UAV2 看到 2/3/4，验证 `cross_view_overlap_count` 和 `duplicate_terminal_lock_risk`。
+- 在线配准不读取 AirSim detection 的 `object_id`、`actor_name` 或 truth ID；这些字段只允许用于离线 accuracy/mismatch 评估。
 - `no_degradation`、`degrade_to_secondary`、`degrade_to_distributed` 三类证据 case 均有测试覆盖。
 
 D5 在该专项中仍只输出 `LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim`、`ReconImageCue`、`TerminalObservationBus` 和 `CrossViewAssociation` 摘要，不生成 `AssignmentPlan`。
@@ -150,7 +152,7 @@ D5 在该专项中仍只输出 `LocalVisualTrack`、`TerminalAssociation`、`Ide
 | 全帧正确 locked 比例 | 0.7 |
 | `global_track_id` 改写次数 | 0 |
 
-## 10.1 5v5 专项新增指标
+## 10.1 N-v-N 专项新增指标
 
 | 指标 | 含义 |
 |---|---|

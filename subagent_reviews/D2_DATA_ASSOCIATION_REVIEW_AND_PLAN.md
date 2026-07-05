@@ -15,6 +15,7 @@
 - 在目标密集、交叉或遮挡时可插拔升级 JPDA/MHT。
 - 使用 IMM-EKF/UKF 改善机动预测。
 - 强制记录 `id_switch_count`、`track_continuity` 和 `duplicate_assignment_count`。
+- 关联器和 Tracker 按每帧输入的 `tracks`/`detections` 集合长度运行；2v2、5v5 只作为仿真 fixture 或验收场景，不写入算法假设。
 
 ---
 
@@ -22,7 +23,7 @@
 
 2015-2026 年多目标跟踪主线仍是“运动预测 + 门控 + 数据关联 + 航迹管理”。
 
-GNN/Hungarian 是硬关联方法。它把每个观测分配给一个航迹，优点是计算轻、延迟低、解释性强，适合 5 对 5 初始验证。缺点是当目标距离很近、交叉或并行运动时，一次错误匹配会造成 ID Switch。
+GNN/Hungarian 是硬关联方法。它把每个观测分配给一个航迹，优点是计算轻、延迟低、解释性强，适合 5v5 等初始验证 fixture，也适合 main runtime 通过 `--drone-count` 传入的其他中小规模集合。缺点是当目标距离很近、交叉或并行运动时，一次错误匹配会造成 ID Switch。
 
 JPDA 是软关联方法。它对多个候选观测计算联合概率，再对每条航迹做边缘化更新。相比 GNN，JPDA 在交叉和不确定关联时更稳，但目标过密时存在航迹合并风险。
 
@@ -228,6 +229,8 @@ critical:
 
 D2 不决定是否切换二级节点或分布式协同；D2 只发布风险证据，D4 综合 D1 定位质量、D3 分配抖动和 D5 末端反馈后做仲裁。
 
+风险摘要中的 `affected_global_track_ids`、`candidate_global_track_ids` 和 D3/D5 消费的航迹列表都应由当前活动航迹集合派生，不应按 2 或 5 个目标预分配、补齐或截断。
+
 ### 7.3 输出给 D7 比例导引的稳定目标状态要求
 
 D7 的中段 PN 需要连续、低抖动、可解释的目标状态。D2 不输出导引指令，只提供目标状态质量门槛。建议 D7 只能消费满足以下条件的 `GlobalTrack`：
@@ -274,12 +277,12 @@ StableTargetState
 | 测试 | 设置 | 指标 |
 |------|------|------|
 | 两目标交叉 | 两条航迹交叉，加入噪声 | `id_switch_count` |
-| 编队密集 | 5目标平行接近 | `track_continuity` |
+| 编队密集 | 5目标平行接近，作为 baseline fixture | `track_continuity` |
 | 漏检 | 随机丢失观测 | `lost_to_confirmed_rate` |
 | 杂波 | 增加虚假观测 | `false_track_count` |
 | 算法对比 | GNN vs JPDA vs MHT | IDSW、延迟、运行时间 |
 
-GNN 是默认基线。JPDA/MHT 不要求所有场景绝对优于 GNN，但必须输出可解释的失败模式。
+GNN 是默认基线。JPDA/MHT 不要求所有场景绝对优于 GNN，但必须输出可解释的失败模式。除固定 fixture 外，应至少保留一个非 2/5 数量的合同测试，证明 `global_track_id` 输出和指标统计来自输入集合长度。
 
 ---
 

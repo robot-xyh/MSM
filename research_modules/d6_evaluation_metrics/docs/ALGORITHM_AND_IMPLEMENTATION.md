@@ -115,6 +115,8 @@ D4 主动降级不同于被动故障接管。被动降级由中心节点、二�
 |---|---|---|
 | `passive_failover_count` | `count(degradation_mode == passive)` | 被动故障接管次数，用于与主动降级分开统计 |
 | `active_degradation_count` | `count(degradation_mode == active)` | 主动降级决策次数 |
+| `secondary_reassignment_count` | `count(secondary_reassignment / degrade_to_secondary / request_secondary_assist)` | 二级节点重分配次数；兼容 D4 `action=request_secondary_assist` 与 Blocks `assignment_phase=secondary_reassignment` |
+| `d4_reassign_pending_count` | `count(d4_reassign_pending reject/event/metadata)` | D4 重分配未完成导致 D7 末端切换暂拒次数 |
 | `active_degradation_precision` | `necessary_active_degradation_count / active_degradation_count` | 主动降级的必要性精度，越高说明越少过度触发 |
 | `unnecessary_active_degradation_count` | `count(active degradation labelled unnecessary)` | 离线复核为不必要的主动降级次数 |
 | `terminal_center_disagreement_count` | `count(terminal_center_disagreement events)` | D5 末端局部关联与中心航迹/分配不一致的次数 |
@@ -259,6 +261,9 @@ cross_view_conflict_count =
 
 duplicate_terminal_lock_count =
   count(same timestamp and same assigned_global_track_id locked by multiple resources)
+
+terminal_lock_count =
+  count(unique terminal_lock events or TerminalRecord decision_state == locked)
 ```
 
 这些指标用于解释末端关联错误、重复锁定和 D4 主动降级触发原因。视频元数据可以来自中心、二级系留节点、拦截机或拦截机间转发；D6 只统计链路和一致性，不改变 `global_track_id` 或 `AssignmentPlan`。
@@ -328,11 +333,12 @@ camera_quality_gate_pass_rate
 los_quality_gate_pass_rate
 maneuver_margin_gate_pass_rate
 terminal_switch_allowed_rate
+visual_png_switch_count
 terminal_takeover_rate
 terminal_switch_reject_count
 ```
 
-其中 `terminal_switch_allowed_rate` 的口径为 `terminal_switch_allowed=True` 的 D7 control command 数 / 有 `terminal_switch_allowed` 字段的 D7 control command 数；空缺字段不进入分母。`terminal_takeover_rate` 按 episode 内 unique `(resource_id, target_id)` pair 计算，pair 出现 `terminal_locked=True`、`terminal_switch_allowed=True`、`vision_terminal` mode、`terminal_mode_entered=True`，或 `guidance_law` 为 `png_vm` / `png_ttc` / `los` 时记为已由末端接管；分母优先使用 `intercept_summary.json` 的 `pair_count`，否则使用已观测 pair 数。`terminal_handover_pending` 和 `detection_seen` 只表示接管候选或探测可见，不能单独算作 takeover。`terminal_switch_reject_reason` 会进入 `EpisodeMetrics.metadata["terminal_switch_reject_reasons"]`，去重到 pair 维度的拒绝原因会进入 `EpisodeMetrics.metadata["terminal_switch_reject_reason_pair_counts"]`；`guidance_law` 会进入 `EpisodeMetrics.metadata["guidance_law_counts"]`，pair 维度最后一次导引律会进入 `EpisodeMetrics.metadata["guidance_law_pair_counts"]`，用于报告 PN/LOS/Pure Pursuit 等导引律在不同门控条件下的分布。PNG 不作为必需输入；只要检测框、相机参数、时间戳和门控结果可追溯，D6 就能完成离线评估。
+其中 `terminal_switch_allowed_rate` 的口径为 `terminal_switch_allowed=True` 的 D7 control command 数 / 有 `terminal_switch_allowed` 字段的 D7 control command 数；空缺字段不进入分母。`visual_png_switch_count` 统计显式 `visual_png_switch` / `vision_png_switch` / `d7_visual_png_switch` 事件，或 `guidance_law=png_vm/png_ttc` 且伴随 `mode_switch=True`、`terminal_mode_entered=True` 或 `mode=vision_terminal/visual_png/vision_png` 的 D7 记录。`terminal_takeover_rate` 按 episode 内 unique `(resource_id, target_id)` pair 计算，pair 出现 `terminal_locked=True`、`terminal_switch_allowed=True`、`vision_terminal` mode、`terminal_mode_entered=True`，或 `guidance_law` 为 `png_vm` / `png_ttc` / `los` 时记为已由末端接管；分母优先使用 `intercept_summary.json` 的 `pair_count`，否则使用已观测 pair 数。`terminal_handover_pending` 和 `detection_seen` 只表示接管候选或探测可见，不能单独算作 takeover。`terminal_switch_reject_reason` 会进入 `EpisodeMetrics.metadata["terminal_switch_reject_reasons"]`，去重到 pair 维度的拒绝原因会进入 `EpisodeMetrics.metadata["terminal_switch_reject_reason_pair_counts"]`；`guidance_law` 会进入 `EpisodeMetrics.metadata["guidance_law_counts"]`，pair 维度最后一次导引律会进入 `EpisodeMetrics.metadata["guidance_law_pair_counts"]`，用于报告 PN/LOS/Pure Pursuit 等导引律在不同门控条件下的分布。PNG 不作为必需输入；只要检测框、相机参数、时间戳和门控结果可追溯，D6 就能完成离线评估。
 
 ### 3.8 安全约束指标
 

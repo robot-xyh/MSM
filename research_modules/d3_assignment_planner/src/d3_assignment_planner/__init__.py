@@ -12,6 +12,7 @@ from .airsim_dry_run_adapter import (
     adapt_airsim_resource_states,
 )
 from .models import (
+    ASSIGNMENT_PLAN_SCHEMA_V1,
     Assignment,
     AssignmentFeedbackDecision,
     AssignmentGuidanceBinding,
@@ -21,6 +22,7 @@ from .models import (
     CostWeights,
     PlannerConfig,
     ResourceState,
+    SECONDARY_PLAN_SCHEMA_V2,
     SolverResult,
     TargetTrack,
     assignment_records_from_plan,
@@ -33,6 +35,7 @@ from .solver import FallbackAssignmentSolver, HungarianAssignmentSolver
 
 __all__ = [
     "Assignment",
+    "ASSIGNMENT_PLAN_SCHEMA_V1",
     "AssignmentFeedbackDecision",
     "AssignmentGuidanceBinding",
     "AssignmentPlan",
@@ -47,6 +50,7 @@ __all__ = [
     "HungarianAssignmentSolver",
     "PlannerConfig",
     "ResourceState",
+    "SECONDARY_PLAN_SCHEMA_V2",
     "SolverResult",
     "StalePlanError",
     "TargetTrack",

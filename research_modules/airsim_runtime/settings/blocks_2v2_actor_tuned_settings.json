@@ -46,7 +46,7 @@
       "IsFpvVehicle": true,
       "Cameras": {
         "0": {
-          "X": 0,
+          "X": 0.5,
           "Y": 0,
           "Z": 0,
           "Pitch": 0,
@@ -98,7 +98,7 @@
       "IsFpvVehicle": false,
       "Cameras": {
         "0": {
-          "X": 0,
+          "X": 0.5,
           "Y": 0,
           "Z": 0,
           "Pitch": 0,

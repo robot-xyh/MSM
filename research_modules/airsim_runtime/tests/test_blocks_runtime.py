@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+
+import numpy as np
 
 from airsim_dryrun.models import (
     AirSimDetectionBox,
@@ -12,30 +15,49 @@ from airsim_dryrun.models import (
     AirSimTruthObject,
 )
 from airsim_runtime.adapters import (
+    geometric_local_visual_tracks_from_blocks_frame,
     local_visual_tracks_from_blocks_frame,
+    offline_truth_map_from_blocks_frame,
     observations_from_blocks_frame,
     resources_from_blocks_frame,
     truth_states_from_blocks_frame,
 )
 from airsim_runtime.blocks import BlocksProcessManager
 from airsim_runtime.d4d5_stress import run_d4d5_stress_analysis
+from airsim_runtime.episode_bus import run_main_episode_bus
 from airsim_runtime.models import (
     BlocksActorTargetSpec,
     BlocksEpisodeSpec,
     BlocksSmokeConfig,
+    default_actor_target_specs,
     default_5v5_actor_target_specs,
     default_cv_5v5_actor_target_specs,
     default_cv_5v5_d4d5_stress_actor_target_specs,
     default_cv_5v5_camera_vehicle_names,
     default_cv_5v5_secondary_vehicle_names,
+    default_cv_camera_vehicle_names,
+    default_interceptor_vehicle_names,
+    write_dynamic_computer_vision_settings,
+    write_dynamic_multirotor_settings,
 )
 from airsim_runtime.orchestrator import AirSimBlocksSmokeOrchestrator
 from airsim_runtime.real_runtime import RealAirSimRuntimeClient
+from airsim_runtime.run_blocks_sequence import _build_sequence_run, parse_args
 from airsim_runtime.sequence import (
     AirSimBlocksSequenceOrchestrator,
     D4D5_STRESS_EPISODES,
     run_blocks_batch_sequences,
 )
+from d5_terminal_association import (
+    AssociationConfig,
+    CameraModel,
+    GlobalTrack,
+    TerminalAssociator,
+    associate_tracks_to_detections_geometrically,
+    camera_model_from_airsim_camera_info,
+    evaluate_associations_offline,
+)
+from d6_evaluation_metrics import load_episode_log_jsonl
 
 
 def test_repo_blocks_settings_are_valid_and_enable_lidar() -> None:
@@ -161,6 +183,118 @@ def test_default_cv_5v5_actor_specs_are_five_crossing_targets() -> None:
     assert specs[-1].position_at(2.0)[1] < specs[-1].start_ned[1]
 
 
+def test_dynamic_n_actor_specs_and_vehicle_names_are_centered() -> None:
+    resources = default_interceptor_vehicle_names(3)
+    cameras = default_cv_camera_vehicle_names(4)
+    specs = default_actor_target_specs(
+        count=3,
+        target_z=-10.0,
+        target_distance_m=40.0,
+        target_spacing_m=12.0,
+        target_scale_m=2.0,
+    )
+
+    assert resources == ("Interceptor1", "Interceptor2", "Interceptor3")
+    assert cameras == ("Interceptor_Cam_1", "Interceptor_Cam_2", "Interceptor_Cam_3", "Interceptor_Cam_4")
+    assert [spec.object_id for spec in specs] == ["TGT-001", "TGT-002", "TGT-003"]
+    assert [spec.start_ned[1] for spec in specs] == [-12.0, 0.0, 12.0]
+    assert all(spec.scale == (2.0, 2.0, 2.0) for spec in specs)
+
+
+def test_dynamic_n_settings_files_match_requested_vehicle_count(tmp_path: Path) -> None:
+    multirotor_path = write_dynamic_multirotor_settings(
+        tmp_path / "n3_multirotor.json",
+        vehicle_names=default_interceptor_vehicle_names(3),
+        y_spacing_m=8.0,
+        tuned_terminal_camera=True,
+    )
+    cv_path = write_dynamic_computer_vision_settings(
+        tmp_path / "n4_cv.json",
+        camera_vehicle_names=default_cv_camera_vehicle_names(4),
+        secondary_vehicle_names=("Secondary_Recon_1",),
+        camera_spacing_m=20.0,
+        secondary_height_above_targets_m=200.0,
+        target_z=-10.0,
+        secondary_width=1280,
+        secondary_height=720,
+    )
+
+    multirotor = json.loads(multirotor_path.read_text(encoding="utf-8"))
+    cv = json.loads(cv_path.read_text(encoding="utf-8"))
+    assert multirotor["SimMode"] == "Multirotor"
+    assert list(multirotor["Vehicles"]) == ["Interceptor1", "Interceptor2", "Interceptor3"]
+    assert [multirotor["Vehicles"][name]["Y"] for name in multirotor["Vehicles"]] == [-8.0, 0.0, 8.0]
+    assert all(vehicle["Cameras"]["0"]["X"] == 0.5 for vehicle in multirotor["Vehicles"].values())
+    assert cv["SimMode"] == "ComputerVision"
+    assert set(cv["Vehicles"]) == {
+        "Interceptor_Cam_1",
+        "Interceptor_Cam_2",
+        "Interceptor_Cam_3",
+        "Interceptor_Cam_4",
+        "Secondary_Recon_1",
+    }
+    assert [cv["Vehicles"][f"Interceptor_Cam_{index}"]["Y"] for index in range(1, 5)] == [
+        -30.0,
+        -10.0,
+        10.0,
+        30.0,
+    ]
+    assert cv["Vehicles"]["Secondary_Recon_1"]["Z"] == -210.0
+    assert cv["Vehicles"]["Secondary_Recon_1"]["Cameras"]["0"]["CaptureSettings"][0]["Width"] == 1280
+
+
+def test_sequence_builder_uses_dynamic_n_scenario_names(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--actor-5v5",
+            "--drone-count",
+            "3",
+            "--output-root",
+            str(tmp_path),
+            "--sequence-id",
+            "pytest_actor_n3",
+        ],
+    )
+    actor_args = parse_args()
+    actor_config, _, _ = _build_sequence_run(actor_args, seed=7, sequence_id=actor_args.sequence_id)
+
+    assert actor_config.scenario_name == "blocks_actor_n3"
+    assert actor_config.metadata["runtime_mode"] == "actor_nvN"
+    assert actor_config.metadata["drone_count"] == 3
+    assert len(actor_config.resource_vehicle_names) == 3
+    assert len(actor_config.target_actor_specs) == 3
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--cv-5v5",
+            "--drone-count",
+            "4",
+            "--secondary-count",
+            "1",
+            "--output-root",
+            str(tmp_path),
+            "--sequence-id",
+            "pytest_cv_n4",
+        ],
+    )
+    cv_args = parse_args()
+    cv_config, _, _ = _build_sequence_run(cv_args, seed=7, sequence_id=cv_args.sequence_id)
+
+    assert cv_config.scenario_name == "blocks_cv_n4"
+    assert cv_config.metadata["runtime_mode"] == "computer_vision_nvN"
+    assert cv_config.metadata["drone_count"] == 4
+    assert len(cv_config.resource_vehicle_names) == 4
+    assert len(cv_config.camera_vehicle_names) == 4
+    assert len(cv_config.secondary_camera_vehicle_names) == 1
+    assert len(cv_config.target_actor_specs) == 4
+
+
 def test_default_5v5_actor_specs_are_five_controlled_intercept_targets() -> None:
     specs = default_5v5_actor_target_specs(target_z=-5.0)
 
@@ -217,6 +351,8 @@ def test_actor_2v2_tuned_settings_use_wide_fov_for_terminal_handoff() -> None:
     assert capture["Width"] == 640
     assert capture["Height"] == 480
     assert capture["FOV_Degrees"] == 120
+    assert settings["Vehicles"]["Interceptor1"]["Cameras"]["0"]["X"] == 0.5
+    assert settings["Vehicles"]["Interceptor2"]["Cameras"]["0"]["X"] == 0.5
 
 
 def test_computer_vision_5v5_d4d5_stress_200m_settings_define_high_recon_geometry() -> None:
@@ -800,6 +936,275 @@ def test_blocks_detection_adapter_feeds_d5_local_visual_tracks() -> None:
     assert local_truth_map["Interceptor1:0:MSM_TargetActor_1"] == "G-001"
 
 
+def test_blocks_detection_adapter_does_not_override_bbox_center_by_default() -> None:
+    frame = _sample_frame()
+    frame = AirSimFrame(
+        **{
+            **frame.__dict__,
+            "visual_detections": (
+                AirSimDetectionBox(
+                    detection_id="det-1",
+                    camera_id="Interceptor:0",
+                    object_id="TGT-001",
+                    local_track_id="Interceptor:0:MSM_TargetActor_1",
+                    timestamp=0.0,
+                    center_px=(20.0, 30.0),
+                    bbox_xyxy=(10.0, 20.0, 30.0, 40.0),
+                    confidence=1.0,
+                    classification_hint="uav",
+                ),
+            ),
+        }
+    )
+    d2_track = SimpleNamespace(truth_id="TGT-001", global_track_id="G-001")
+    terminal_track = SimpleNamespace(
+        global_track_id="G-001",
+        position=np.array([0.0, 0.0, 20.0]),
+        velocity=np.zeros(3),
+        covariance=np.eye(3),
+        category="uav",
+        timestamp=0.0,
+        track_version=0,
+    )
+    camera = CameraModel(
+        K=np.array([[160.0, 0.0, 320.0], [0.0, 160.0, 240.0], [0.0, 0.0, 1.0]]),
+        R=np.eye(3),
+        t=np.zeros(3),
+        image_size=(640, 480),
+    )
+
+    local_tracks, _truth_map = local_visual_tracks_from_blocks_frame(
+        frame,
+        [d2_track],
+        terminal_tracks=[terminal_track],
+        terminal_associator=TerminalAssociator(),
+        terminal_camera=camera,
+    )
+
+    assert tuple(local_tracks[0].center_px) == (20.0, 30.0)
+
+
+def test_geometric_adapter_ignores_wrong_object_ids_for_online_assignment() -> None:
+    frame = _sample_frame()
+    frame = AirSimFrame(
+        **{
+            **frame.__dict__,
+            "visual_detections": (
+                AirSimDetectionBox(
+                    detection_id="det-right",
+                    camera_id="Interceptor:0",
+                    object_id="TGT-001",
+                    local_track_id="det-right",
+                    timestamp=0.0,
+                    center_px=(1.0, 1.0),
+                    bbox_xyxy=(328.0, 232.0, 344.0, 248.0),
+                    confidence=0.95,
+                    classification_hint="uav",
+                ),
+                AirSimDetectionBox(
+                    detection_id="det-left",
+                    camera_id="Interceptor:0",
+                    object_id="TGT-002",
+                    local_track_id="det-left",
+                    timestamp=0.0,
+                    center_px=(999.0, 999.0),
+                    bbox_xyxy=(296.0, 232.0, 312.0, 248.0),
+                    confidence=0.95,
+                    classification_hint="uav",
+                ),
+            ),
+        }
+    )
+    local_tracks = geometric_local_visual_tracks_from_blocks_frame(frame)
+    camera = camera_model_from_airsim_camera_info(
+        SimpleNamespace(
+            fx=160.0,
+            fy=160.0,
+            cx=320.0,
+            cy=240.0,
+            width=640,
+            height=480,
+            position_ned=(0.0, 0.0, 0.0),
+            rotation_world_to_camera=np.eye(3),
+        ),
+        measurement_sigma_px=20.0,
+    )
+    global_tracks = [
+        GlobalTrack(
+            global_track_id="G-left",
+            position=np.array([-2.0, 0.0, 20.0]),
+            velocity=np.zeros(3),
+            covariance=np.diag([0.1, 0.1, 0.1]),
+            category="uav",
+        ),
+        GlobalTrack(
+            global_track_id="G-right",
+            position=np.array([2.0, 0.0, 20.0]),
+            velocity=np.zeros(3),
+            covariance=np.diag([0.1, 0.1, 0.1]),
+            category="uav",
+        ),
+    ]
+
+    result = associate_tracks_to_detections_geometrically(
+        global_tracks,
+        local_tracks,
+        camera,
+        config=AssociationConfig(gate_chi2=25.0, min_lock_margin=1.0),
+        timestamp=0.0,
+    )
+
+    assert {track.local_track_id: tuple(track.center_px) for track in local_tracks} == {
+        "det-right": (336.0, 240.0),
+        "det-left": (304.0, 240.0),
+    }
+    assert result.assignments == {"G-left": "det-left", "G-right": "det-right"}
+
+    truth_map = offline_truth_map_from_blocks_frame(
+        frame,
+        [
+            SimpleNamespace(truth_id="TGT-001", global_track_id="G-left"),
+            SimpleNamespace(truth_id="TGT-002", global_track_id="G-right"),
+        ],
+    )
+    metrics = evaluate_associations_offline(result, truth_map)
+    assert truth_map == {"det-right": "G-left", "det-left": "G-right"}
+    assert metrics.evaluated_count == 2
+    assert metrics.id_mismatch_count == 2
+    assert metrics.association_accuracy == 0.0
+
+
+def test_real_runtime_camera_metadata_uses_settings_intrinsics_and_pose(tmp_path: Path) -> None:
+    settings_path = tmp_path / "cv_2v2_settings.json"
+    settings_path.write_text(
+        json.dumps(
+            {
+                "SimMode": "ComputerVision",
+                "CameraDefaults": {
+                    "CaptureSettings": [
+                        {"ImageType": 0, "Width": 640, "Height": 480, "FOV_Degrees": 120}
+                    ]
+                },
+                "Vehicles": {
+                    "Cam1": {
+                        "VehicleType": "ComputerVision",
+                        "X": 10,
+                        "Y": -4,
+                        "Z": -2,
+                        "Yaw": 90,
+                        "Cameras": {"0": {"X": 0.5, "Y": 0.0, "Z": 0.0}},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake_client = FakeAirSimClient(vehicle_names=("Cam1",))
+    fake_client.vehicle_poses["Cam1"] = SimpleNamespace(
+        position=_vector(0.5, 0.0, 0.0),
+        orientation=FakeAirSimModule.Quaternionr(0.0, 0.0, 0.70710678, 0.70710678),
+    )
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_kwargs: fake_client,
+        airsim_module=FakeAirSimModule,
+    )
+    config = BlocksSmokeConfig(
+        settings_path=settings_path,
+        camera_vehicle_name="Cam1",
+        camera_vehicle_names=("Cam1",),
+        resource_vehicle_names=(),
+        target_vehicle_names=(),
+        capture_lidar=False,
+    )
+
+    frame = runtime.sample_frame(config, frame_index=0, timestamp=0.0, output_dir=tmp_path)
+
+    camera = frame.cameras[0]
+    assert camera.width == 640
+    assert camera.height == 480
+    np.testing.assert_allclose(camera.fx, 184.752086, atol=1e-5)
+    assert camera.cx == 320.0
+    assert camera.cy == 240.0
+    assert camera.position_ned == (10.5, -4.0, -2.0)
+    assert not np.allclose(np.asarray(camera.rotation_world_to_camera), np.eye(3))
+
+
+def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None:
+    resources = tuple(f"Interceptor{index}" for index in range(1, 6))
+    frames = [
+        _sample_5v5_frame(timestamp=float(index) * 0.5, frame_index=index)
+        for index in range(3)
+    ]
+    config = BlocksSmokeConfig(
+        episode_id="pytest_main_bus_5v5",
+        scenario_name="blocks_actor_n5",
+        duration_s=1.0,
+        dt_s=0.5,
+        output_root=tmp_path,
+        launch_blocks=False,
+        resource_vehicle_names=resources,
+        camera_vehicle_names=resources,
+        target_vehicle_names=(),
+    )
+
+    result = run_main_episode_bus(config, frames, tmp_path / "main_bus")
+
+    assert result.frame_count == 3
+    for path in result.output_paths.values():
+        assert path.exists()
+    collector, truth_summary = load_episode_log_jsonl(
+        result.output_paths["main_episode_bus_jsonl"]
+    )
+    assert truth_summary["target_count"] == 5
+    assert truth_summary["resource_count"] == 5
+    assert truth_summary["drone_count"] == 5
+    assert len(collector.track_records) >= 15
+    assert len(collector.assignment_records) >= 5
+    assert len(collector.terminal_records) >= 5
+    assert len(collector.link_records) >= 15
+
+    ticks = [
+        json.loads(line)
+        for line in result.output_paths["main_episode_bus_ticks_jsonl"]
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert len(ticks) == 3
+    first_observation = ticks[0]["d1"]["observations"][0]
+    assert first_observation["measurement_timestamp"] == 0.0
+    assert first_observation["arrival_timestamp"] == 0.2
+    assert first_observation["covariance_trace"] is not None
+    assert "id_switch_count" in ticks[-1]["d2"]
+    assert "track_continuity" in ticks[-1]["d2"]
+    assert ticks[-1]["d3"]["resource_count"] == 5
+    assert ticks[-1]["d3"]["target_count"] == 5
+    assert ticks[-1]["d3"]["plan_version"] >= 1
+    assert ticks[-1]["d5"]["terminal_association_count"] == 5
+
+    d4_events = [
+        event for event in collector.event_records if event.event_type == "active_degradation_decision"
+    ]
+    assert d4_events
+    assert all("d4_action" in event.metadata for event in d4_events)
+    assert all("degradation_mode" in event.metadata for event in d4_events)
+    d7_events = [
+        event for event in collector.event_records if event.event_type == "d7_guidance_record"
+    ]
+    assert d7_events
+    assert all("plan_version" in event.metadata for event in d7_events)
+    assert all("d4_action" in event.metadata for event in d7_events)
+    assert all("d5_decision_state" in event.metadata for event in d7_events)
+    assert all("terminal_switch_allowed" in event.metadata for event in d7_events)
+    assert all(
+        event.metadata["global_track_id"] == event.metadata["target_id"]
+        for event in d7_events
+    )
+    assert all(
+        record.assigned_global_track_id == record.expected_global_track_id
+        for record in collector.terminal_records
+    )
+
+
 def test_blocks_orchestrator_runs_mock_capture_and_integrated_replay(tmp_path: Path) -> None:
     config = BlocksSmokeConfig(
         episode_id="pytest_blocks",
@@ -820,6 +1225,8 @@ def test_blocks_orchestrator_runs_mock_capture_and_integrated_replay(tmp_path: P
     assert result.lidar_ok_count == 3
     assert result.integrated_result is not None
     assert result.integrated_result.metadata["real_airsim_used"] is True
+    assert result.metadata["main_episode_bus"]["record_counts"]["ticks"] == 3
+    assert result.output_paths["main_episode_bus_jsonl"].exists()
     assert result.output_paths["airsim_blocks_summary"].exists()
 
 
@@ -878,6 +1285,8 @@ def test_blocks_orchestrator_runs_mock_cv_5v5_integrated_replay(tmp_path: Path) 
     assert result.metadata["detection_count"] == 105
     assert result.output_paths["blocks_frames_jsonl"].exists()
     assert result.output_paths["blocks_sensor_observations_jsonl"].exists()
+    assert result.output_paths["main_episode_bus_jsonl"].exists()
+    assert result.metadata["main_episode_bus"]["record_counts"]["ticks"] == 3
 
 
 def test_blocks_orchestrator_runs_mock_controlled_intercept(tmp_path: Path) -> None:
@@ -960,6 +1369,142 @@ def test_blocks_orchestrator_runs_mock_5v5_controlled_intercept(tmp_path: Path) 
     commands = result.output_paths["control_commands"].read_text(encoding="utf-8")
     assert "Interceptor5" in commands
     assert "terminal_switch_allowed" in commands
+
+
+def test_controlled_5v5_active_center_replan_visual_png(tmp_path: Path) -> None:
+    resources = tuple(f"Interceptor{index}" for index in range(1, 6))
+    config = BlocksSmokeConfig(
+        episode_id="pytest_intercept_5v5_active_center",
+        scenario_name="blocks_actor_5v5_active_center_replan",
+        duration_s=0.4,
+        dt_s=0.1,
+        output_root=tmp_path,
+        launch_blocks=False,
+        connection_timeout_s=0.1,
+        include_integrated_pipeline=True,
+        execute_intercept=True,
+        control_dt_s=0.1,
+        intercept_max_duration_s=0.4,
+        intercept_terminal_switch_range_m=100.0,
+        intercept_min_bbox_area_ratio=0.001,
+        intercept_min_stable_detection_frames=1,
+        intercept_yaw_mode="look_at_target",
+        camera_vehicle_name=resources[0],
+        camera_vehicle_names=resources,
+        lidar_vehicle_name=resources[0],
+        lidar_vehicle_names=resources,
+        target_vehicle_names=(),
+        resource_vehicle_names=resources,
+        target_actor_specs=default_5v5_actor_target_specs(target_z=-5.0),
+        metadata={
+            "active_center_replan_visual_png": True,
+            "active_degradation_time_s": 0.1,
+            "center_replan_time_s": 0.2,
+            "center_node_id": "C2",
+        },
+    )
+    runtime = FiveVFiveFakeBlocksRuntime()
+    orchestrator = AirSimBlocksSmokeOrchestrator(runtime=runtime)
+
+    result = orchestrator.run(config)
+
+    assert result.connected is True
+    assert result.output_paths["center_replan_events"].exists()
+    summary = json.loads(result.output_paths["intercept_summary"].read_text(encoding="utf-8"))
+    assert summary["pair_count"] == 5
+    assert {pair["plan_id"] for pair in summary["pairs"]} == {"center_plan_v2"}
+    assert {pair["d4_action"] for pair in summary["pairs"]} == {"continue_center"}
+    commands = result.output_paths["control_commands"].read_text(encoding="utf-8")
+    assert "request_center_replan" in commands
+    assert "d4_reassign_pending" in commands
+    assert "center_plan_v2" in commands
+    assert "png_vm" in commands
+    events = json.loads(result.output_paths["center_replan_events"].read_text(encoding="utf-8"))
+    assert {event["event_type"] for event in events} >= {
+        "active_center_replan_config",
+        "center_replan_pending",
+        "center_replan_v2",
+    }
+    assert result.integrated_result is not None
+    metrics = result.integrated_result.metrics
+    assert metrics["active_degradation_count"] >= 1
+    assert metrics["d4_reassign_pending_count"] >= 1
+    assert metrics["terminal_lock_count"] >= 1
+    assert metrics["visual_png_switch_count"] >= 1
+    assert "center_plan_v2" in metrics["metadata"]["plan_ids"]
+
+
+def test_controlled_2v2_active_degradation_secondary_plan_visual_png(
+    tmp_path: Path,
+) -> None:
+    resources = ("Interceptor1", "Interceptor2")
+    config = BlocksSmokeConfig(
+        episode_id="pytest_intercept_2v2_active_secondary",
+        scenario_name="blocks_actor_2v2_active_secondary_visual_png",
+        duration_s=0.4,
+        dt_s=0.1,
+        output_root=tmp_path,
+        launch_blocks=False,
+        connection_timeout_s=0.1,
+        include_integrated_pipeline=True,
+        execute_intercept=True,
+        control_dt_s=0.1,
+        intercept_max_duration_s=0.4,
+        intercept_terminal_switch_range_m=100.0,
+        intercept_min_bbox_area_ratio=0.001,
+        intercept_min_stable_detection_frames=1,
+        intercept_yaw_mode="look_at_target",
+        camera_vehicle_name=resources[0],
+        camera_vehicle_names=resources,
+        lidar_vehicle_name=resources[0],
+        lidar_vehicle_names=resources,
+        target_vehicle_names=(),
+        resource_vehicle_names=resources,
+        target_actor_specs=(
+            BlocksActorTargetSpec(
+                object_id="TGT-001",
+                actor_name="MSM_TargetActor_1",
+                start_ned=(12.0, -6.0, -2.0),
+                velocity_ned=(0.0, 0.0, 0.0),
+            ),
+            BlocksActorTargetSpec(
+                object_id="TGT-002",
+                actor_name="MSM_TargetActor_2",
+                start_ned=(12.0, 6.0, -2.0),
+                velocity_ned=(0.0, 0.0, 0.0),
+            ),
+        ),
+        metadata={
+            "active_secondary_visual_png": True,
+            "active_degradation_time_s": 0.1,
+            "secondary_plan_time_s": 0.2,
+            "secondary_node_id": "SEC-01",
+        },
+    )
+    runtime = TwoVTwoActiveSecondaryFakeRuntime()
+    orchestrator = AirSimBlocksSmokeOrchestrator(runtime=runtime)
+
+    result = orchestrator.run(config)
+
+    assert result.connected is True
+    assert result.output_paths["secondary_reassignment_events"].exists()
+    summary = json.loads(result.output_paths["intercept_summary"].read_text(encoding="utf-8"))
+    assert summary["pair_count"] == 2
+    assert {pair["plan_id"] for pair in summary["pairs"]} == {"secondary_plan_v2"}
+    assert {pair["target_id"] for pair in summary["pairs"]} == {"TGT-001", "TGT-002"}
+    commands = result.output_paths["control_commands"].read_text(encoding="utf-8")
+    assert "degrade_to_secondary" in commands
+    assert "d4_reassign_pending" in commands
+    assert "secondary_plan_v2" in commands
+    assert "png_vm" in commands
+    assert result.integrated_result is not None
+    metrics = result.integrated_result.metrics
+    assert metrics["active_degradation_count"] >= 1
+    assert metrics["secondary_reassignment_count"] >= 1
+    assert metrics["d4_reassign_pending_count"] >= 1
+    assert metrics["terminal_lock_count"] >= 1
+    assert metrics["visual_png_switch_count"] >= 1
+    assert "secondary_plan_v2" in metrics["metadata"]["plan_ids"]
 
 
 def test_controlled_intercept_blocks_png_when_d5_is_not_locked(tmp_path: Path) -> None:
@@ -1379,6 +1924,23 @@ class FiveVFiveFakeBlocksRuntime(FakeBlocksRuntime):
         return frame
 
 
+class TwoVTwoActiveSecondaryFakeRuntime(FakeBlocksRuntime):
+    def sample_frame(self, config, frame_index, timestamp, output_dir):
+        frame = _sample_2v2_frame(timestamp=timestamp, frame_index=frame_index)
+        frame.metadata["image"] = {"ok": True, "width": 640, "height": 480}
+        frame.metadata["images"] = [
+            {"ok": True, "width": 640, "height": 480, "camera_vehicle_name": name}
+            for name in config.resource_vehicle_names
+        ]
+        frame.metadata["lidar"] = {"ok": True, "point_count": 2}
+        frame.metadata["lidars"] = [
+            {"ok": True, "point_count": 2, "lidar_vehicle_name": name}
+            for name in config.resource_vehicle_names
+        ]
+        frame.metadata["vehicle_names"] = list(config.resource_vehicle_names)
+        return frame
+
+
 class D5AmbiguousFakeRuntime(FakeBlocksRuntime):
     def sample_frame(self, config, frame_index, timestamp, output_dir):
         frame = super().sample_frame(config, frame_index, timestamp, output_dir)
@@ -1570,6 +2132,83 @@ def _sample_5v5_frame(timestamp: float = 0.0, frame_index: int = 0) -> AirSimFra
             "lidar": {"ok": True, "point_count": 2},
             "vehicle_names": [f"Interceptor{index}" for index in range(1, 6)],
             "scene_object_count": 5,
+        },
+    )
+
+
+def _sample_2v2_frame(timestamp: float = 0.0, frame_index: int = 0) -> AirSimFrame:
+    truth_objects = (
+        AirSimTruthObject(
+            object_id="TGT-001",
+            object_type="target",
+            timestamp=timestamp,
+            position_ned=(12.0, -6.0, -2.0),
+            velocity_ned=(0.0, 0.0, 0.0),
+            threat_score=0.9,
+            coverage_cell="cell-north",
+            metadata={"airsim_actor_name": "MSM_TargetActor_1"},
+        ),
+        AirSimTruthObject(
+            object_id="TGT-002",
+            object_type="target",
+            timestamp=timestamp,
+            position_ned=(12.0, 6.0, -2.0),
+            velocity_ned=(0.0, 0.0, 0.0),
+            threat_score=0.9,
+            coverage_cell="cell-north",
+            metadata={"airsim_actor_name": "MSM_TargetActor_2"},
+        ),
+    )
+    resources = (
+        AirSimResourceState(
+            resource_id="INT-01",
+            timestamp=timestamp,
+            position_ned=(0.0, -8.0, -2.0),
+            velocity_ned=(0.0, 0.0, 0.0),
+            coverage_cell="cell-north",
+            metadata={"airsim_vehicle_name": "Interceptor1"},
+        ),
+        AirSimResourceState(
+            resource_id="INT-02",
+            timestamp=timestamp,
+            position_ned=(0.0, 8.0, -2.0),
+            velocity_ned=(0.0, 0.0, 0.0),
+            coverage_cell="cell-north",
+            metadata={"airsim_vehicle_name": "Interceptor2"},
+        ),
+    )
+    detections = []
+    for vehicle_name in ("Interceptor1", "Interceptor2"):
+        for target_index, target_id in enumerate(("TGT-001", "TGT-002"), start=1):
+            actor_name = f"MSM_TargetActor_{target_index}"
+            offset = (target_index - 1) * 80.0
+            detections.append(
+                AirSimDetectionBox(
+                    detection_id=f"det-{frame_index}-{vehicle_name}-{target_id}",
+                    camera_id=f"{vehicle_name}:0",
+                    object_id=target_id,
+                    local_track_id=f"{vehicle_name}:0:{actor_name}",
+                    timestamp=timestamp,
+                    center_px=(300.0 + offset + frame_index, 240.0),
+                    bbox_xyxy=(270.0 + offset + frame_index, 210.0, 330.0 + offset + frame_index, 270.0),
+                    confidence=0.95,
+                )
+            )
+    return AirSimFrame(
+        episode_id="pytest_blocks_2v2_active_secondary",
+        scenario_name="blocks_actor_2v2_active_secondary_visual_png",
+        frame_index=frame_index,
+        timestamp=timestamp,
+        truth_objects=truth_objects,
+        resources=resources,
+        visual_detections=tuple(detections),
+        metadata={
+            "runtime": "Blocks",
+            "real_airsim_used": True,
+            "image": {"ok": True},
+            "lidar": {"ok": True, "point_count": 2},
+            "vehicle_names": ["Interceptor1", "Interceptor2"],
+            "scene_object_count": 2,
         },
     )
 

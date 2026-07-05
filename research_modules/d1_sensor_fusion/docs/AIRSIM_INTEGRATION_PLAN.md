@@ -78,6 +78,16 @@ SensorObservation(
 )
 ```
 
+Blocks N-actor gate:
+
+- Runtime evidence should be logged as JSONL `SensorObservation` records for each actor target.
+- D1 接收 main 提供的 N 个 target truth/观测源，并按输入数组长度处理 `SensorObservation[]` 和 `GlobalTrack[]`; historical 2v2/5v5 logs are baselines, not algorithm limits.
+- Required observation fields are `measurement_timestamp`, `arrival_timestamp`, `measurement`, and `covariance`.
+- Current AirSim evidence is simulation-derived: target truth for radar-like spherical records and
+  `simGetDetections`/detector boxes for EO pixel records.
+- Radar, acoustic, and lidar entries in this phase are synthetic research observations, not proof
+  of real hardware integration.
+
 Output:
 
 ```python
@@ -90,6 +100,10 @@ GlobalTrack(
     source_support={...},
 )
 ```
+
+Downstream modules should consume `GlobalTrack.position`, `GlobalTrack.velocity`, and
+`GlobalTrack.covariance` plus timing metadata such as `latest_measurement_timestamp` and
+`latest_arrival_timestamp` from `GlobalTrack.metadata`.
 
 `handover` is only a simulation quality label. It is not an authorization state and must not be connected directly to any action chain.
 

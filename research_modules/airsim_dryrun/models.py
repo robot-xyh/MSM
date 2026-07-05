@@ -76,10 +76,10 @@ class AirSimCameraInfo:
     )
     fx: float = 320.0
     fy: float = 320.0
-    cx: float = 640.0
-    cy: float = 360.0
-    width: int = 1280
-    height: int = 720
+    cx: float = 320.0
+    cy: float = 240.0
+    width: int = 640
+    height: int = 480
 
 
 @dataclass(frozen=True)

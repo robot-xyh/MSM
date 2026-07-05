@@ -21,7 +21,13 @@ DEGRADATION_CASES = {"no_degradation", "degrade_to_secondary", "degrade_to_distr
 
 @dataclass(frozen=True)
 class AirSimCVScenarioSpec:
-    """Geometry assumptions for the 5v5 ComputerVision dry-run."""
+    """Geometry assumptions for an N-v-N ComputerVision stress dry-run.
+
+    The default count remains the historical 5v5 stress baseline. Runtime
+    simulations must pass the current drone/target count through their input
+    `LocalVisualTrack[]`, `GlobalTrack[]`, and camera collections instead of
+    relying on this default.
+    """
 
     interceptor_count: int = 5
     target_count: int = 5
@@ -45,7 +51,7 @@ class AirSimCVScenarioSpec:
 
 @dataclass(frozen=True)
 class TerminalStressMetrics:
-    """D5-only metrics for 5v5 multi-camera terminal evidence."""
+    """D5-only metrics for N-v-N multi-camera terminal evidence."""
 
     per_camera_detection_count: dict[str, int]
     multi_target_fov_rate: float
@@ -97,7 +103,12 @@ def local_visual_tracks_from_sim_detections(
     default_category: str = "unknown",
     default_quality: float = 0.8,
 ) -> list[LocalVisualTrack]:
-    """Convert `simGetDetections`-like records to `LocalVisualTrack` objects."""
+    """Convert detection bbox records to `LocalVisualTrack` objects.
+
+    AirSim truth fields such as `object_id` and `actor_name` are intentionally
+    ignored here. They may be carried by callers only as offline evaluation
+    labels outside the online association path.
+    """
 
     tracks: list[LocalVisualTrack] = []
     for index, detection in enumerate(detections):
@@ -164,7 +175,7 @@ def compute_terminal_stress_metrics(
     *,
     ambiguity_threshold: float = 0.5,
 ) -> TerminalStressMetrics:
-    """Compute D5-only 5v5 evidence metrics from bus outputs."""
+    """Compute D5-only N-v-N evidence metrics from bus outputs."""
 
     observation_list = list(observations)
     cross_view = tuple(cross_view_associations)

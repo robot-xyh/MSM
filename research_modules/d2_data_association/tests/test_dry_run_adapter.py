@@ -121,6 +121,96 @@ def test_airsim_dry_run_association_preserves_metrics_fields() -> None:
     assert bus_message["metrics"]["track_continuity"] == result.metrics["track_continuity"]
 
 
+def test_airsim_dry_run_exports_global_track_ids_for_input_sized_episode() -> None:
+    target_offsets = [0.0, 12.0, 24.0]
+    frames = []
+    for step in range(4):
+        detections = []
+        for target_index, y_offset in enumerate(target_offsets):
+            truth_id = f"target-{target_index}"
+            detections.append(
+                {
+                    "detection_id": f"{truth_id}-{step}",
+                    "truth_id": truth_id,
+                    "position": {
+                        "x": float(step),
+                        "y": y_offset,
+                        "z": -10.0,
+                    },
+                    "covariance": [[0.2, 0.0], [0.0, 0.2]],
+                    "truth_position": [float(step), y_offset],
+                }
+            )
+        frames.append(
+            {
+                "timestamp": float(step),
+                "detections": detections,
+                "truth_ids_present": [f"target-{index}" for index in range(3)],
+            }
+        )
+
+    result = run_airsim_dry_run_association(frames)
+    bus_message = result.to_bus_message()
+
+    assert result.metrics["id_switch_count"] == 0
+    assert len(result.active_tracks) == 3
+    assert len(bus_message["global_track_ids"]) == 3
+    assert bus_message["global_track_ids"] == [
+        track["global_track_id"] for track in bus_message["active_tracks"]
+    ]
+    assert set(bus_message["global_track_ids"]) == {"T001", "T002", "T003"}
+    assert all("global_track_id" in track for track in bus_message["active_tracks"])
+
+
+def test_airsim_2v2_replan_keeps_global_track_ids_and_records_no_id_switch() -> None:
+    frames = []
+    for step in range(4):
+        secondary = step >= 2
+        source_node_id = "secondary-node-1" if secondary else "central-planner"
+        link_type = "secondary_replan" if secondary else "central_plan"
+        prefix = "secondary" if secondary else "central"
+        frames.append(
+            {
+                "timestamp": float(step),
+                "detections": [
+                    {
+                        "detection_id": f"{prefix}-A-{step}",
+                        "truth_id": "target-A",
+                        "position": {"x": float(step), "y": 0.0, "z": -10.0},
+                        "covariance": [[0.2, 0.0], [0.0, 0.2]],
+                        "truth_position": [float(step), 0.0],
+                        "metadata": {
+                            "source_node_id": source_node_id,
+                            "link_type": link_type,
+                        },
+                    },
+                    {
+                        "detection_id": f"{prefix}-B-{step}",
+                        "truth_id": "target-B",
+                        "position": {"x": float(step), "y": 25.0, "z": -10.0},
+                        "covariance": [[0.2, 0.0], [0.0, 0.2]],
+                        "truth_position": [float(step), 25.0],
+                        "metadata": {
+                            "source_node_id": source_node_id,
+                            "link_type": link_type,
+                        },
+                    },
+                ],
+                "truth_ids_present": ["target-A", "target-B"],
+            }
+        )
+
+    result = run_airsim_dry_run_association(frames)
+    bus_message = result.to_bus_message()
+
+    assert result.metrics["id_switch_count"] == 0
+    assert bus_message["id_switch_count"] == 0
+    assert bus_message["metrics"]["id_switch_count"] == 0
+    assert result.metrics["track_continuity"] == 1.0
+    assert result.metrics["confusion_matrix"]["target-A"] == {"T001": 4}
+    assert result.metrics["confusion_matrix"]["target-B"] == {"T002": 4}
+
+
 def test_d1_global_track_adapter_projects_ned_state_covariance_and_timestamps() -> None:
     covariance = np.eye(6)
     covariance[0, 0] = 0.4

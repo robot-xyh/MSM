@@ -18,6 +18,10 @@ from airsim_dryrun.models import (
     AirSimResourceState,
     AirSimTruthObject,
 )
+from d5_terminal_association.airsim_geometry import (
+    intrinsics_from_capture_settings,
+    rotation_world_to_opencv_camera_from_quaternion,
+)
 
 from .models import BlocksActorTargetSpec, BlocksSmokeConfig
 
@@ -469,16 +473,30 @@ class RealAirSimRuntimeClient:
             position = _vector3_from_airsim(pose.position)
             start = _vehicle_start_offset(config, vehicle_name)
             position = tuple(position[index] + start[index] for index in range(3))
+            orientation = getattr(pose, "orientation", None)
+            rotation_world_to_camera = (
+                rotation_world_to_opencv_camera_from_quaternion(orientation)
+                if orientation is not None
+                else None
+            )
         except Exception:
-            position = (0.0, 0.0, 0.0)
-        width, height = _camera_dimensions_from_settings(config, vehicle_name, config.camera_name)
+            position = _camera_position_from_settings(config, vehicle_name, config.camera_name)
+            rotation_world_to_camera = None
+        intrinsics = _camera_intrinsics_from_settings(config, vehicle_name, config.camera_name)
+        if rotation_world_to_camera is None:
+            rotation_world_to_camera = _rotation_from_settings_or_identity(config, vehicle_name, config.camera_name)
         return AirSimCameraInfo(
             camera_id=f"{vehicle_name}:{config.camera_name}",
             owner_id=vehicle_name,
             timestamp=timestamp,
             position_ned=position,
-            width=width,
-            height=height,
+            rotation_world_to_camera=tuple(tuple(float(value) for value in row) for row in rotation_world_to_camera),
+            fx=float(intrinsics.K[0, 0]),
+            fy=float(intrinsics.K[1, 1]),
+            cx=float(intrinsics.K[0, 2]),
+            cy=float(intrinsics.K[1, 2]),
+            width=intrinsics.width,
+            height=intrinsics.height,
         )
 
     def _capture_image(
@@ -1017,6 +1035,24 @@ def _camera_dimensions_from_settings(
     vehicle_name: str,
     camera_name: str,
 ) -> tuple[int, int]:
+    intrinsics = _camera_intrinsics_from_settings(config, vehicle_name, camera_name)
+    return (intrinsics.width, intrinsics.height)
+
+
+def _camera_intrinsics_from_settings(
+    config: BlocksSmokeConfig,
+    vehicle_name: str,
+    camera_name: str,
+) -> Any:
+    capture = _scene_capture_settings(config, vehicle_name, camera_name)
+    return intrinsics_from_capture_settings(capture)
+
+
+def _scene_capture_settings(
+    config: BlocksSmokeConfig,
+    vehicle_name: str,
+    camera_name: str,
+) -> dict[str, Any]:
     settings = config._settings()
     vehicles = settings.get("Vehicles", {})
     vehicle = vehicles.get(vehicle_name, {}) if isinstance(vehicles, dict) else {}
@@ -1028,8 +1064,62 @@ def _camera_dimensions_from_settings(
         capture_settings = defaults.get("CaptureSettings", []) if isinstance(defaults, dict) else []
     for item in capture_settings if isinstance(capture_settings, list) else []:
         if int(item.get("ImageType", 0)) == 0:
-            return (int(item.get("Width", 640)), int(item.get("Height", 480)))
-    return (640, 480)
+            return dict(item)
+    return {"ImageType": 0, "Width": 640, "Height": 480, "FOV_Degrees": 90}
+
+
+def _camera_position_from_settings(
+    config: BlocksSmokeConfig,
+    vehicle_name: str,
+    camera_name: str,
+) -> tuple[float, float, float]:
+    start = _vehicle_start_offset(config, vehicle_name)
+    camera = _camera_mount_settings(config, vehicle_name, camera_name)
+    return (
+        start[0] + float(camera.get("X", 0.0)),
+        start[1] + float(camera.get("Y", 0.0)),
+        start[2] + float(camera.get("Z", 0.0)),
+    )
+
+
+def _rotation_from_settings_or_identity(
+    config: BlocksSmokeConfig,
+    vehicle_name: str,
+    camera_name: str,
+) -> np.ndarray:
+    vehicle = _vehicle_settings(config, vehicle_name)
+    camera = _camera_mount_settings(config, vehicle_name, camera_name)
+    pitch = math.radians(float(vehicle.get("Pitch", 0.0)) + float(camera.get("Pitch", 0.0)))
+    roll = math.radians(float(vehicle.get("Roll", 0.0)) + float(camera.get("Roll", 0.0)))
+    yaw = math.radians(float(vehicle.get("Yaw", 0.0)) + float(camera.get("Yaw", 0.0)))
+    quat = _quaternion_components_from_euler(pitch, roll, yaw)
+    orientation = SimpleNamespace(
+        w_val=quat["w"],
+        x_val=quat["x"],
+        y_val=quat["y"],
+        z_val=quat["z"],
+    )
+    return rotation_world_to_opencv_camera_from_quaternion(orientation)
+
+
+def _vehicle_settings(config: BlocksSmokeConfig, vehicle_name: str) -> dict[str, Any]:
+    vehicles = config._settings().get("Vehicles", {})
+    vehicle = vehicles.get(vehicle_name, {}) if isinstance(vehicles, dict) else {}
+    return dict(vehicle) if isinstance(vehicle, dict) else {}
+
+
+def _camera_mount_settings(
+    config: BlocksSmokeConfig,
+    vehicle_name: str,
+    camera_name: str,
+) -> dict[str, Any]:
+    vehicle = _vehicle_settings(config, vehicle_name)
+    cameras = vehicle.get("Cameras", {}) if isinstance(vehicle, dict) else {}
+    camera = cameras.get(camera_name, {}) if isinstance(cameras, dict) else {}
+    if isinstance(camera, dict):
+        return dict(camera)
+    defaults = config._settings().get("CameraDefaults", {})
+    return dict(defaults) if isinstance(defaults, dict) else {}
 
 
 def _local_z_from_global_z(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Sequence
 
 from .coordinator import FailoverCoordinator
 from .models import (
@@ -57,8 +57,8 @@ def default_tasks(task_count: int = 4, epoch: int = 1) -> list[TrackSummary]:
 
 
 def run_failover_simulation(
-    node_count: int = 5,
-    task_count: int = 4,
+    node_count: int | None = None,
+    task_count: int | None = None,
     failure_at_s: float = 30.0,
     end_time_s: float = 45.0,
     dt_s: float = 0.5,
@@ -66,13 +66,35 @@ def run_failover_simulation(
     min_delay_s: float = 0.1,
     max_delay_s: float = 0.5,
     seed: int = 7,
+    resources: Sequence[ResourceSummary] | None = None,
+    tasks: Sequence[TrackSummary] | None = None,
 ) -> dict[str, Any]:
-    if not 3 <= node_count <= 5:
-        raise ValueError("node_count must be between 3 and 5 for this scenario")
     epoch = 1
-    resources = default_resources(node_count=node_count, epoch=epoch)
-    tasks = default_tasks(task_count=min(task_count, node_count), epoch=epoch)
-    node_ids = [resource.node_id for resource in resources]
+    if resources is None:
+        resolved_node_count = 5 if node_count is None else int(node_count)
+        if resolved_node_count < 1:
+            raise ValueError("node_count must be at least 1")
+        resource_list = default_resources(node_count=resolved_node_count, epoch=epoch)
+    else:
+        resource_list = list(resources)
+        if node_count is not None and int(node_count) != len(resource_list):
+            raise ValueError("node_count must match len(resources) when resources are provided")
+        if not resource_list:
+            raise ValueError("resources must include at least one node")
+        resolved_node_count = len(resource_list)
+
+    if tasks is None:
+        resolved_task_count = resolved_node_count if task_count is None else int(task_count)
+        if resolved_task_count < 0:
+            raise ValueError("task_count must be non-negative")
+        task_list = default_tasks(task_count=resolved_task_count, epoch=epoch)
+    else:
+        task_list = list(tasks)
+        if task_count is not None and int(task_count) != len(task_list):
+            raise ValueError("task_count must match len(tasks) when tasks are provided")
+    node_ids = [resource.node_id for resource in resource_list]
+    if len(set(node_ids)) != len(node_ids):
+        raise ValueError("resources must have unique node_id values")
     coordinators = {
         node_id: FailoverCoordinator(
             node_id=node_id,
@@ -101,7 +123,7 @@ def run_failover_simulation(
             for coordinator in coordinators.values()
             if coordinator.health == C2Health.FAILED
         ]
-        quorum = node_count // 2 + 1
+        quorum = resolved_node_count // 2 + 1
         if cbba_result is None and len(failed_nodes) >= quorum:
             takeover_started_at_s = now_s
             network = SimulatedNetwork(
@@ -112,12 +134,12 @@ def run_failover_simulation(
                 seed=seed,
             )
             cbba_result = coordinators[node_ids[0]].plan_degraded(
-                tasks=tasks,
-                resources=resources,
+                tasks=task_list,
+                resources=resource_list,
                 network=network,
                 now_s=now_s,
                 bundle_limit=1,
-                max_rounds=18,
+                max_rounds=max(18, len(node_ids) + len(task_list) + 4),
                 round_period_s=0.5,
             )
             takeover_completed_at_s = now_s + cbba_result.duration_s
@@ -130,8 +152,8 @@ def run_failover_simulation(
     }
     if cbba_result is None:
         return {
-            "node_count": node_count,
-            "task_count": len(tasks),
+            "node_count": resolved_node_count,
+            "task_count": len(task_list),
             "center_failure_at_s": failure_at_s,
             "takeover_time_s": None,
             "takeover_started_at_s": takeover_started_at_s,
@@ -145,8 +167,8 @@ def run_failover_simulation(
         for task_id, assignment in sorted(cbba_result.assignments.items())
     }
     return {
-        "node_count": node_count,
-        "task_count": len(tasks),
+        "node_count": resolved_node_count,
+        "task_count": len(task_list),
         "center_failure_at_s": failure_at_s,
         "takeover_started_at_s": takeover_started_at_s,
         "takeover_completed_at_s": takeover_completed_at_s,

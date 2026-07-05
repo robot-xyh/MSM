@@ -37,6 +37,8 @@ def test_assignment_validity_summary_exports_required_fields() -> None:
     assert summary.stale_plan_version is True
     assert summary.duplicate_assignment_count == 0
     assert summary.unassigned_high_threat_count == 1
+    assert summary.resource_count == 1
+    assert summary.target_count == 2
 
 
 def test_assignment_validity_summary_counts_duplicate_targets_and_resources() -> None:

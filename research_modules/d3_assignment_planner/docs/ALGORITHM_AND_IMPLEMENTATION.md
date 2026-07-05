@@ -412,6 +412,8 @@ D2 提供稳定 `global_track_id` 和航迹质量。D3 不应自行合并、拆�
 
 D4 主动降级场景下，D3 应额外提供 `AssignmentValiditySummary` 或等价日志字段。D4 可以按 `recommended_action` 处理：`central_replan` 由 D3 继续发布新版本；`request_d4_secondary_node` 交给二级侦察/区域节点仲裁；`request_d4_distributed` 才进入完全分布式协同。D3 不应越权选择具体降级节点，只提供计划有效性、版本、成本和跨模块一致性证据。
 
+若 D4/main 发布二级计划，应在 `AssignmentPlan.metadata["plan_schema"]` 中标记 `secondary_plan_v2`，并提供外部确定的 `source_node_id`/`target_node_id`/`link_type`。D3 的 `AssignmentGuidanceBinding` 会原样携带该 schema、`plan_id` 和 `plan_version`，并保持 `allow_local_rebind=False`；D3 不推断或选择具体二级节点。
+
 ### 13.3 与 D5 末端视觉配准
 
 D5 使用 `AssignmentPlan.assignments` 判断某个资源应在视场中锁定哪个 `global_track_id`。D5 可以回传 `TerminalAssociation`、`IdentityClaim`、模糊视场事件或友方重叠状态，D3 可将这些反馈转化为 `fov_difficulty`、`conflict_risk`、`operator_hold` 或 `feasibility_by_resource`。D5 不允许本地改写 D3 的 `global_track_id` 或自行换绑全局 assignment。

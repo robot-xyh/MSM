@@ -32,16 +32,29 @@ research_modules/d7_proportional_guidance/
 - `simulate_guidance_episode` 支持单个 resource-target pair 的离线闭环，返回 `records` 和 `summary`。
 - `guidance_records_from_assignment_dry_run` 接收 assignment/resource/target estimate 三类普通 Python 数据，输出一条 `radar_midcourse` 和一条 `vision_terminal` 干运行记录。
 
-## 5v5 AirSim runtime 接入边界
+## N-pair AirSim runtime 接入边界
 
-D7 不拥有 AirSim 5v5 控制状态机，也不创建 `InterceptPair`。main/runtime 应为每个资源-目标 pair 独立持有 D3 binding、D4 permission、D5 `TerminalAssociation` 和一个 `SimpleFlightPngGuidanceFilter` 实例。D7 侧 API 已按 pair 纯函数/实例状态工作：
+D7 不拥有 AirSim 控制状态机，也不创建 `InterceptPair`。仿真规模由 main runtime 的 `--drone-count N` 统一决定；main 应在每次仿真中枚举 D3 输出的有效 assignment pair，并为每个 pair 创建独立 D7 控制上下文。该上下文至少持有 resource/target ID、D3 binding、D4 permission、D5 `TerminalAssociation`、初段位置 PNG/PN 记录状态和该 pair 自己的 `SimpleFlightPngGuidanceFilter` 实例。D7 侧 API 已按 pair 纯函数/实例状态工作，不假设固定 2v2 或 5v5：
 
 - 中段用 `compute_proportional_navigation_command(..., mode=GuidanceMode.RADAR_MIDCOURSE)` 输出 radar PN 几何量。
 - 末端先调用 `evaluate_terminal_png_contract(...)`；只有 D3/D4/D5 合同通过时，才调用该 pair 自己的 `SimpleFlightPngGuidanceFilter(PngGuidanceConfig(law="png_vm"))`。
 - 合同拒绝时 runtime 应继续记录 `terminal_contract_reject_reason`，并保持中段/保守状态，不把拒绝归因到视觉 gate。
 - 每个 time-series 样本建议保留 `resource_id`、`target_id`、`mode`、`guidance_law`、`terminal_switch_allowed`、`terminal_switch_reject_reason`、`terminal_contract_reject_reason`、`ttc_s`、D4/D5 状态和 plan/version 字段。
 
-`tests/test_proportional_guidance.py::test_five_parallel_pairs_keep_independent_terminal_gate_and_png_time_series` 覆盖 5 个 pair 的并行 D7 合同、`png_vm`、TTC 和 time-series 字段形状，防止不同 pair 共用视觉滤波状态。
+`tests/test_proportional_guidance.py::test_runtime_sized_pairs_keep_independent_terminal_gate_and_png_time_series` 覆盖 1/3/5/7 个 pair 的并行 D7 合同、初段 radar PN、`png_vm`、TTC 和 time-series 字段形状，防止不同 pair 共用视觉滤波状态。2v2 actor 拦截仍可作为 baseline 和 active-secondary 合同回归，但不能作为 main runtime 的数量假设。
+
+## 2v2 active-secondary 视觉 PNG 合同
+
+AirSim Blocks 2v2 主动降级链路采用保守解释：D4 `degrade_to_secondary` 是重分配发起事件，不是 D7 视觉终端授权。D7 必须把它视为 `d4_reassign_pending`，日志模式映射为 `abort_revoke`，即使当前位置 PN、TTC、检测框和 D5 旧锁定状态看起来可用，也不能调用视觉 PNG。
+
+二级节点 plan 生效后，D7 才能评估视觉 PNG。进入 `mode=vision_terminal` 且输出 `guidance_law=png_vm` 的必要条件是：
+
+- D3 binding 已切到二级 resource/plan/version，且 assignment 仍为 authorized/current。
+- D4 action 为 `request_secondary_assist` 或 `continue_center`，并且可选的 `new_plan_id/new_plan_version` 与当前 D3 binding 一致。
+- D5 terminal association 为 `decision_state=locked`，无 friend conflict，`assigned_global_track_id` 和 `assignment_version` 与当前 binding 一致。
+- 当前视觉观测的 `assigned_global_track_id` 与 binding 一致，随后才允许调用该二级 pair 自己的 `SimpleFlightPngGuidanceFilter(PngGuidanceConfig(law="png_vm"))`。
+
+`tests/test_proportional_guidance.py::test_2v2_active_secondary_visual_png_requires_effective_secondary_plan` 固化该合同：主动降级阶段拒绝为 `d4_reassign_pending`；二级 plan 版本不一致拒绝为 `d4_plan_mismatch`；二级 plan 生效且 D5 locked 后才产生 `png_vm`/`vision_terminal`。
 
 ## PNG guidance delivery 融合边界
 

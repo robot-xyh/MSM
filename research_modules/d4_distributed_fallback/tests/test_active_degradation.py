@@ -227,6 +227,84 @@ def test_secondary_outside_coverage_is_not_selected() -> None:
     assert decision.target_node_id is None
 
 
+def test_active_arbitration_selects_secondary_from_dynamic_resource_list() -> None:
+    resources = [
+        ResourceSummary(
+            "sec-south",
+            "tethered_recon",
+            AvailabilityBand.HIGH,
+            CommBand.GOOD,
+            takeover_priority=1,
+            lease_epoch=9,
+            epoch=1,
+            node_role=NodeRole.SECONDARY_RECON,
+            coordinator_only=True,
+            coverage_cell="cell-south",
+            heartbeat_timestamp_s=10.0,
+        ),
+        ResourceSummary(
+            "sec-north-primary",
+            "tethered_recon",
+            AvailabilityBand.HIGH,
+            CommBand.GOOD,
+            takeover_priority=20,
+            lease_epoch=3,
+            epoch=1,
+            node_role=NodeRole.SECONDARY_RECON,
+            coordinator_only=True,
+            coverage_cell="cell-north",
+            heartbeat_timestamp_s=10.0,
+        ),
+        ResourceSummary(
+            "sec-north-backup",
+            "tethered_recon",
+            AvailabilityBand.HIGH,
+            CommBand.GOOD,
+            takeover_priority=30,
+            lease_epoch=4,
+            epoch=1,
+            node_role=NodeRole.SECONDARY_RECON,
+            coordinator_only=True,
+            coverage_cell="cell-north",
+            heartbeat_timestamp_s=10.0,
+        ),
+        ResourceSummary(
+            "int-1",
+            "observe",
+            AvailabilityBand.HIGH,
+            CommBand.GOOD,
+            epoch=1,
+            node_role=NodeRole.INTERCEPTOR,
+            coverage_cell="cell-north",
+        ),
+    ]
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=_terminal(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id="track-2",
+            consecutive_non_locked_frames=3,
+            consecutive_mismatch_frames=2,
+        ),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=resources,
+        current_time_s=10.5,
+    )
+    lifecycle = summarize_secondary_lifecycle(resources, "cell-north", current_time_s=10.5)
+
+    assert decision.action == DegradationAction.DEGRADE_TO_SECONDARY
+    assert decision.target_node_id == "sec-north-primary"
+    assert len(lifecycle) == 3
+    assert {node.node_id for node in lifecycle} == {
+        "sec-south",
+        "sec-north-primary",
+        "sec-north-backup",
+    }
+
+
 def test_terminal_from_different_resource_is_not_consistent() -> None:
     terminal = TerminalAssociationSummary(
         resource_id="int-2",

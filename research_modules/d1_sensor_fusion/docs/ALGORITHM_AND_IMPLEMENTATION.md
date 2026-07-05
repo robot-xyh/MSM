@@ -409,7 +409,7 @@ FusionQualityRegionSummary(
 ```bash
 PYTHONPATH=research_modules/d1_sensor_fusion/src \
 python3 research_modules/d1_sensor_fusion/scripts/run_simulation.py \
-  --targets 3 \
+  --drone-count 3 \
   --duration 60 \
   --dt 0.1 \
   --seed 7 \
@@ -418,7 +418,9 @@ python3 research_modules/d1_sensor_fusion/scripts/run_simulation.py \
 
 实验覆盖：
 
-- 1-3 个目标，包含常速度、转弯和轻机动。
+- `--drone-count 3` 是历史 3-target baseline；集成运行由 main 的 `--drone-count N` 决定规模。
+- D1 接收 main 提供的 N 个 target truth/观测源，按输入数组长度融合，不在算法路径写死 2 或 5。
+- N 个目标，循环覆盖常速度、转弯和轻机动。
 - 雷达 0.5-2.0 s 延迟，协方差随距离增长。
 - 声学粗方位和声纹式分类提示。
 - EO 像素框投影和 bbox/置信度相关协方差。

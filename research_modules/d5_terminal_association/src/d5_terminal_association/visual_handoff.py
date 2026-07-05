@@ -20,10 +20,10 @@ from .models import CameraModel, LocalVisualTrack, TerminalAssociation
 class VisualPngHandoffConfig:
     """Configurable gates for advisory visual terminal handoff.
 
-    The default ranges are tuned for the current AirSim Blocks 5v5 large-actor
-    tests.  They are not universal constants and should be changed when target
-    size, camera FOV, resolution, detector latency, or interceptor dynamics
-    change.
+    The default ranges are tuned for the current AirSim Blocks large-actor
+    stress baseline. They are not universal constants and should be changed
+    when target size, camera FOV, resolution, detector latency, or interceptor
+    dynamics change.
     """
 
     far_prepare_range_m: tuple[float, float] = (30.0, 50.0)

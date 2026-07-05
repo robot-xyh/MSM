@@ -63,6 +63,46 @@ then stops Blocks at the end. The batch summary records
 `batch_mode=single_blocks_reset_loop` and
 `blocks_launched_once_for_batch=true`.
 
+## N-Drone Parameter
+
+Main now owns the run-size parameter. For AirSim actor/CV scenarios, pass
+`--drone-count N`; main generates N resources, N moved actor targets, and a
+matching AirSim settings file under the run output directory. D1-D7 consume the
+resulting arrays and must not assume a fixed 2v2 or 5v5 size.
+
+Examples:
+
+```bash
+python3 research_modules/airsim_runtime/run_blocks_sequence.py \
+  --cv-5v5 \
+  --drone-count 3 \
+  --secondary-count 1 \
+  --sequence-id blocks_cv_n3_sequence_001 \
+  --duration 4.0 \
+  --dt 0.5
+```
+
+```bash
+python3 research_modules/airsim_runtime/run_blocks_sequence.py \
+  --actor-5v5 \
+  --execute-intercept \
+  --drone-count 4 \
+  --sequence-id blocks_actor_n4_intercept_001 \
+  --duration 8.0 \
+  --dt 0.2 \
+  --control-dt 0.1
+```
+
+For D5 geometric registration:
+
+```bash
+python3 research_modules/airsim_runtime/run_d5_geometric_registration.py \
+  --drone-count 4 \
+  --episode-id d5_cv_n4_geometric_001 \
+  --duration 6.0 \
+  --dt 0.5
+```
+
 Run the first 2v2 actor-target sequence. Intruders are spawned/moved actors,
 not SimpleFlight vehicles, and target recognition uses AirSim `simGetDetections`:
 
@@ -221,6 +261,40 @@ episode_005_d4_degradation -> reset
 episode_006_full_flow
 ```
 
+## Main Episode Bus
+
+Every Blocks smoke episode now also runs the main-owned episode bus on the
+captured `AirSimFrame[]`. This is additive to the older `integrated_replay`:
+the bus consumes the same real AirSim frames and writes one D6-compatible
+episode log that keeps the D1-D7 runtime state together:
+
+```text
+AirSimFrame
+-> D1 SensorObservation / GlobalTrack
+-> D2 associated tracks, id_switch_count, continuity
+-> D3 AssignmentPlan, version, AssignmentGuidanceBinding
+-> D5 TerminalAssociation and cross-view terminal observations
+-> D4 active/passive degradation decision events
+-> D7 PN/PNG guidance records and terminal contract gate state
+-> D6 MetricsCollector JSONL
+```
+
+The output directory contains:
+
+- `main_episode_bus/main_episode_bus.jsonl`: D6 records with
+  `truth_summary`, `track`, `assignment`, `event`, `link`, and `terminal`.
+- `main_episode_bus/main_episode_bus_ticks.jsonl`: per-frame D1-D7 debug
+  snapshots, including D1 timestamps/covariance, D2 ID metrics, D3 plan
+  version, D4 actions, D5 decision states, and D7 gate rejects.
+- `main_episode_bus/main_episode_bus_metrics.json`: D6 episode metrics from
+  the bus records.
+- `main_episode_bus/main_episode_bus_summary.json`: final module summaries and
+  record counts.
+
+`airsim_blocks_summary.json` includes the same paths and `main_episode_bus`
+metadata. Online D5 association in this bus uses geometric detection data only;
+AirSim object IDs are carried only as offline scoring labels.
+
 Use `--no-launch` when Blocks is already running with compatible settings.
 By default the launcher adds `-windowed -ResX=640 -ResY=480 -NoVSync` and
 NVIDIA PRIME offload environment variables to reduce first-run rendering risk.
@@ -242,7 +316,7 @@ Outputs are written under
 `research_modules/airsim_runtime/outputs/<sequence-id>/<episode-id>/`,
 including `airsim_blocks_summary.json`, raw frame JSONL, camera metadata, Blocks
 stdout/stderr, `blocks_sensor_observations.jsonl` D1 replay inputs, integrated
-replay metrics, and for controlled episodes:
+replay metrics, main episode bus JSONL/ticks/metrics/summary, and for controlled episodes:
 `intercept_summary.json`, `control_commands.csv`, and
 `airsim_3d_intercept_trajectories.png`.
 `control_commands.csv` includes D7 `guidance_law`, terminal handoff state,

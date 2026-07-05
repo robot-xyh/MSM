@@ -1,0 +1,26 @@
+# MSM project-only MCP template.
+#
+# Codex CLI stores `codex mcp add` entries in the global ~/.codex/config.toml.
+# Do not copy this file into the global config unless these MCP servers should
+# start for every project.
+#
+# Use scripts/codex_with_project_mcp.sh from this repository instead.
+
+[mcp_servers.msm-repo]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/home/linux/Documents/MSM"]
+
+[mcp_servers.arxiv]
+command = "npx"
+args = ["-y", "@cyanheads/arxiv-mcp-server"]
+
+[mcp_servers.semanticscholar]
+command = "npx"
+args = ["-y", "@xbghc/semanticscholar-mcp"]
+
+# GitHub remains disabled by default because it needs a token.
+# [mcp_servers.github]
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-github"]
+# [mcp_servers.github.env]
+# GITHUB_PERSONAL_ACCESS_TOKEN = "replace-with-token-or-export-in-shell"

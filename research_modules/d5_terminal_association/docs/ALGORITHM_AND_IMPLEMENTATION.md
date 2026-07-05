@@ -148,6 +148,8 @@ D5 只把 MOT 历史长度和质量作为置信度线索。若 `mot_history_leng
 
 `unknown` 是身份状态，不是对抗结论。未知对象不能被 D5 自动升级为任何处置含义。
 
+AirSim Blocks 2v2 主动降级后，二级节点重分配计划只能改变输入的 `Assignment`，不能改变 D5 的身份边界。D5 对 `simGetDetections` 检测框的处理顺序是：先把 bbox 转为 `LocalVisualTrack`，再只针对 `assigned_global_track_id` 建立投影门控和候选代价；若输出视觉 PNG 证据，还必须额外满足离线真值/评估元数据与 `assigned_global_track_id` 一致、bbox 面积窗口稳定、无重复锁定风险且 `friend_conflict_state == "none"`。不满足这些条件时，D5 输出 `ambiguous/hold/reacquire`，或在评估摘要中标记 `locked_mismatch` 并阻断 handoff；任何情况下都禁止创建、改写或换绑 `global_track_id`。
+
 ## 8. 友方与合作身份正向确认
 
 D5 支持的身份来源在仿真中可以映射为 `IdentityClaim`：
@@ -520,7 +522,9 @@ evidence = summarize_degradation_case(
 
 现有仿真位于 `simulations/run_terminal_association_sim.py`，覆盖多目标、友方重叠、未知目标接近和遮挡。图表和结果写入 `docs/EXPERIMENT_REPORT.md`。
 
-AirSim ComputerVision 5v5 专项测试采用纯离线数据合同：5 个 `Interceptor_Cam_*` 主镜头、5 个目标，目标距镜头约 50m，目标间距和镜头间距约 20m，使每个主镜头视场内出现多个目标。二级系留侦察镜头比目标高约 200m，输出高分辨率全局视野 cue；进入 D5 前必须重投影到目标拦截机相机平面。
+AirSim ComputerVision 压测采用纯离线数据合同。5v5 是历史 stress baseline：5 个 `Interceptor_Cam_*` 主镜头、5 个目标，目标距镜头约 50m，目标间距和镜头间距约 20m，使每个主镜头视场内出现多个目标。真实 N-v-N 仿真由 main runtime 的 `--drone-count N` 统一控制；D5 不固定 2/5 个相机或目标，只按传入的 `LocalVisualTrack[]`、`GlobalTrack[]`、`CameraModel[]/camera map` 和 `TerminalObservation[]` 长度迭代。二级系留侦察镜头比目标高约 200m，输出高分辨率全局视野 cue；进入 D5 前必须重投影到目标拦截机相机平面。
+
+在线几何配准不得使用 AirSim detection 的 `object_id`、`actor_name` 或 truth ID。D5 只从 detection bbox 生成 `LocalVisualTrack.center_px/bbox`，再结合相机几何、D2 `GlobalTrack` 和 D3/D4 `Assignment` 做投影门控；truth label 只能放在离线评估 metadata 中计算 accuracy、mismatch 或 stress report。
 
 建议 D5 独立统计：
 
@@ -552,7 +556,7 @@ AirSim ComputerVision 5v5 专项测试采用纯离线数据合同：5 个 `Inter
 - `terminal_lock_accuracy`
 - `ambiguous_fov_event_count`
 
-5v5 专项三类 D5 证据：
+N-v-N stress 三类 D5 证据：
 
 - `no_degradation`：终端锁定与 D3 分配及离线评估真值一致。
 - `degrade_to_secondary`：中心分配与终端局部/二级证据持续不一致或歧义，且二级 `ReconImageCue` 新鲜可用。
@@ -750,7 +754,7 @@ research_modules/d5_terminal_association/
 - 离线仿真脚本只放入 `simulations/`。
 
 其中 `observation_bus.py` 是本次新增的最小跨视角摘要层，只输出 `CrossViewAssociation` 支持关系和风险信号，不参与分配或控制。
-`airsim_cv_adapter.py` 是 5v5 ComputerVision dry-run 适配层，只把检测框转换为 `LocalVisualTrack`/`TerminalObservation`，并计算 D5 证据指标；它不导入 AirSim、不调用仿真器、不生成 `AssignmentPlan`。
+`airsim_cv_adapter.py` 是 N-v-N ComputerVision dry-run 适配层，5v5 仅作为 stress baseline；它只把检测框转换为 `LocalVisualTrack`/`TerminalObservation`，并计算 D5 证据指标，不导入 AirSim、不调用仿真器、不生成 `AssignmentPlan`。
 
 ## 17. 局限与后续工作
 

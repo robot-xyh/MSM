@@ -170,6 +170,8 @@ heading_next = heading + omega_limited * dt
 AirSim runtime 集成要求：
 
 - 当前阶段只使用 SimpleFlight `moveByVelocityZAsync`。
+- main runtime 用 `--drone-count N` 决定本次仿真的无人机/目标数量；D7 不读取固定数量，也不假设 2v2/5v5。
+- main 必须为每个有效 D3 assignment pair 创建独立 D7 控制上下文，分别运行初段位置 PNG/PN 和末端视觉 PNG gate/filter，不能在多个 pair 之间共享 `SimpleFlightPngGuidanceFilter` 的 LOS/TTC/稳定帧状态。
 - 当前 runtime 目标 actor/detection filter 使用 `MSM_TargetActor_*`，目标 asset 使用 `1M_Cube_Chamfer`。
 - `Intruder*`/`IntruderActor` 只作为 `png_guidance_delivery` 和历史日志的 legacy alias，不应作为新 runtime handoff 的默认目标名。
 - 目标检测输入来自 AirSim `simGetDetections` 的 bbox，不依赖默认保存 PNG。

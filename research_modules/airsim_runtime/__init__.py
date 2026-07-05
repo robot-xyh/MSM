@@ -6,15 +6,22 @@ non-vehicle actor pose scripting.
 """
 
 from .blocks import BlocksProcessManager
+from .episode_bus import MainAirSimEpisodeBus, MainEpisodeBusResult, run_main_episode_bus
 from .intercept import InterceptRunResult, run_controlled_intercept_episode
 from .models import (
     BlocksActorTargetSpec,
     BlocksSmokeConfig,
     default_2v2_actor_target_specs,
+    default_actor_target_specs,
     default_cv_5v5_actor_target_specs,
     default_cv_5v5_d4d5_stress_actor_target_specs,
     default_cv_5v5_camera_vehicle_names,
     default_cv_5v5_secondary_vehicle_names,
+    default_cv_camera_vehicle_names,
+    default_cv_secondary_vehicle_names,
+    default_interceptor_vehicle_names,
+    write_dynamic_computer_vision_settings,
+    write_dynamic_multirotor_settings,
 )
 from .orchestrator import AirSimBlocksSmokeOrchestrator, run_blocks_smoke
 from .real_runtime import RealAirSimRuntimeClient
@@ -27,13 +34,22 @@ __all__ = [
     "BlocksProcessManager",
     "BlocksSmokeConfig",
     "InterceptRunResult",
+    "MainAirSimEpisodeBus",
+    "MainEpisodeBusResult",
     "RealAirSimRuntimeClient",
     "default_2v2_actor_target_specs",
+    "default_actor_target_specs",
     "default_cv_5v5_actor_target_specs",
     "default_cv_5v5_d4d5_stress_actor_target_specs",
     "default_cv_5v5_camera_vehicle_names",
     "default_cv_5v5_secondary_vehicle_names",
+    "default_cv_camera_vehicle_names",
+    "default_cv_secondary_vehicle_names",
+    "default_interceptor_vehicle_names",
+    "write_dynamic_computer_vision_settings",
+    "write_dynamic_multirotor_settings",
     "run_controlled_intercept_episode",
+    "run_main_episode_bus",
     "run_blocks_sequence",
     "run_blocks_smoke",
 ]

@@ -122,12 +122,14 @@ def local_visual_tracks_from_blocks_frame(
     terminal_associator: Any | None = None,
     terminal_camera: Any | None = None,
     timestamp: float | None = None,
+    use_projected_detection_centers: bool = False,
 ) -> tuple[list[LocalVisualTrack], dict[str, str]] | None:
     """Convert AirSim built-in detections into D5 local visual tracks.
 
-    The returned map is local_track_id -> center-owned global_track_id. D5 still
-    cannot create or rewrite global IDs; it only reports which local visual
-    detection supports an already established D2 track.
+    The returned map is local_track_id -> center-owned global_track_id for
+    offline evaluation only. D5 online association must use the returned bbox
+    center, not AirSim object IDs. Projection-based center replacement is a
+    legacy synthetic convenience and is disabled unless explicitly requested.
     """
 
     if not frame.visual_detections:
@@ -165,7 +167,12 @@ def local_visual_tracks_from_blocks_frame(
         center_px = np.asarray(detection.center_px, dtype=float)
         bbox = detection.bbox_xyxy
         projection = projections.get(global_track_id)
-        if projection is not None and projection.valid and projection.pixel is not None:
+        if (
+            use_projected_detection_centers
+            and projection is not None
+            and projection.valid
+            and projection.pixel is not None
+        ):
             raw_width = max(float(detection.bbox_xyxy[2] - detection.bbox_xyxy[0]), 2.0)
             raw_height = max(float(detection.bbox_xyxy[3] - detection.bbox_xyxy[1]), 2.0)
             center_px = np.asarray(projection.pixel, dtype=float)
@@ -175,6 +182,10 @@ def local_visual_tracks_from_blocks_frame(
                 float(center_px[0] + raw_width * 0.5),
                 float(center_px[1] + raw_height * 0.5),
             )
+        metadata = dict(detection.metadata)
+        metadata["projection_center_override_enabled"] = bool(use_projected_detection_centers)
+        if projection is not None and projection.valid and projection.pixel is not None:
+            metadata["projected_px"] = [float(projection.pixel[0]), float(projection.pixel[1])]
         local_track = LocalVisualTrack(
             local_track_id=local_track_id,
             center_px=center_px,
@@ -182,12 +193,61 @@ def local_visual_tracks_from_blocks_frame(
             bearing_rate=np.zeros(2, dtype=float),
             category=detection.classification_hint,
             quality=float(detection.confidence),
-            mot_history_length=int(detection.metadata.get("mot_history_length", 1)),
+            mot_history_length=int(metadata.get("mot_history_length", 1)),
             timestamp=detection.timestamp,
         )
         local_tracks.append(local_track)
         local_truth_map[local_track.local_track_id] = global_track_id
     return local_tracks, local_truth_map
+
+
+def geometric_local_visual_tracks_from_blocks_frame(frame: AirSimFrame) -> list[LocalVisualTrack]:
+    """Convert AirSim detections for real geometric D5 online association.
+
+    This path intentionally does not read `object_id`, `actor_name`, truth
+    labels, or D2 track truth mappings. It preserves detector-local identity and
+    computes the measurement center from `bbox_xyxy`.
+    """
+
+    local_tracks: list[LocalVisualTrack] = []
+    for index, detection in enumerate(frame.visual_detections):
+        x1, y1, x2, y2 = (float(value) for value in detection.bbox_xyxy)
+        local_track_id = str(detection.local_track_id or detection.detection_id or f"{detection.camera_id}:{index}")
+        local_tracks.append(
+            LocalVisualTrack(
+                local_track_id=local_track_id,
+                center_px=np.array([(x1 + x2) * 0.5, (y1 + y2) * 0.5], dtype=float),
+                bbox=(x1, y1, x2, y2),
+                bearing_rate=np.zeros(2, dtype=float),
+                category=detection.classification_hint,
+                quality=float(detection.confidence),
+                mot_history_length=int(detection.metadata.get("mot_history_length", 1)),
+                timestamp=detection.timestamp,
+            )
+        )
+    return local_tracks
+
+
+def offline_truth_map_from_blocks_frame(
+    frame: AirSimFrame,
+    d2_tracks: list[Any],
+) -> dict[str, str]:
+    """Build local_track_id -> global_track_id labels for offline evaluation.
+
+    This function uses AirSim truth IDs and must not feed online association.
+    """
+
+    truth_to_global = {
+        str(track.truth_id): str(track.global_track_id)
+        for track in d2_tracks
+        if getattr(track, "truth_id", None) is not None
+    }
+    truth_map: dict[str, str] = {}
+    for detection in frame.visual_detections:
+        global_track_id = truth_to_global.get(str(detection.object_id))
+        if global_track_id is not None:
+            truth_map[str(detection.local_track_id)] = global_track_id
+    return truth_map
 
 
 def nearest_frame(frames: list[AirSimFrame], timestamp: float) -> AirSimFrame:
