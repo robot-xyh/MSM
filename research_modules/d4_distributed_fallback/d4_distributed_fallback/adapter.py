@@ -8,9 +8,9 @@ change assignments, or call any simulator/control API.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass, replace
 from enum import Enum
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
 
@@ -29,10 +29,12 @@ from .active_degradation import (
 from .models import (
     C2Health,
     CommunicationSummary,
+    DistributedVisualEvidenceSummary,
     LinkType,
     PayloadKind,
     ResourceSummary,
     SecondaryNodeLifecycleSummary,
+    TrackSummary,
     to_jsonable,
 )
 
@@ -466,6 +468,71 @@ def build_terminal_association_summary(
     )
 
 
+def build_distributed_visual_evidence_summary(
+    evidence: Any,
+    *,
+    expected_global_track_id: str | None = None,
+) -> DistributedVisualEvidenceSummary:
+    """Normalize D5 distributed visual evidence without importing D5 classes.
+
+    Accepts D5 `DistributedTerminalAssociation`,
+    `CrossPeerAssociationHypothesis`, equivalent dictionaries, or sequences of
+    those objects. The returned summary is advisory input for D4 CBBA scoring;
+    it never creates or rewrites center-owned global track IDs.
+    """
+
+    if isinstance(evidence, DistributedVisualEvidenceSummary):
+        return evidence
+
+    items = _visual_evidence_items(evidence)
+    if not items:
+        return DistributedVisualEvidenceSummary()
+
+    summaries = [
+        _single_visual_evidence_summary(item, expected_global_track_id=expected_global_track_id)
+        for item in items
+    ]
+    return _merge_visual_evidence_summaries(
+        summaries,
+        expected_global_track_id=expected_global_track_id,
+    )
+
+
+def attach_distributed_visual_evidence(
+    track: TrackSummary,
+    evidence: Any,
+) -> TrackSummary:
+    """Return a TrackSummary copy with normalized D5 visual evidence attached."""
+
+    summary = build_distributed_visual_evidence_summary(
+        evidence,
+        expected_global_track_id=track.track_id,
+    )
+    return replace(track, visual_evidence=summary)
+
+
+def merge_distributed_visual_evidence_into_tracks(
+    tracks: Sequence[TrackSummary],
+    evidence: Any,
+) -> list[TrackSummary]:
+    """Attach D5 visual evidence to matching D4 tracks by upstream global ID."""
+
+    items = _visual_evidence_items(evidence)
+    by_track_id: dict[str, list[Any]] = {}
+    for item in items:
+        for track_id in _candidate_global_track_ids(item):
+            by_track_id.setdefault(track_id, []).append(item)
+
+    merged: list[TrackSummary] = []
+    for track in tracks:
+        matched = by_track_id.get(track.track_id, ())
+        if matched:
+            merged.append(attach_distributed_visual_evidence(track, matched))
+        else:
+            merged.append(track)
+    return merged
+
+
 def build_communication_summary(record: Any) -> CommunicationSummary | None:
     if record is None:
         return None
@@ -493,6 +560,258 @@ def build_communication_summary(record: Any) -> CommunicationSummary | None:
         stale_after_s=_first_float(_get(record, "stale_after_s"), 1.0),
         sequence_id=_string_or_none(_get(record, "sequence_id")),
     )
+
+
+def _visual_evidence_items(evidence: Any) -> list[Any]:
+    if evidence is None:
+        return []
+    if isinstance(evidence, DistributedVisualEvidenceSummary):
+        return [evidence]
+    if isinstance(evidence, Mapping):
+        return [evidence]
+    if isinstance(evidence, (str, bytes)):
+        return [evidence]
+    if isinstance(evidence, Sequence):
+        return list(evidence)
+    return [evidence]
+
+
+def _single_visual_evidence_summary(
+    item: Any,
+    *,
+    expected_global_track_id: str | None,
+) -> DistributedVisualEvidenceSummary:
+    metadata = _metadata(item)
+    hypotheses = _tuple_values(_get(item, "hypotheses", ()))
+    state = (_string_or_none(_get(item, "decision_state", _get(item, "support_state"))) or "").lower()
+    recommended_action = (
+        _string_or_none(_get(item, "recommended_d4_action", metadata.get("recommended_d4_action"))) or ""
+    ).lower()
+    reason = (
+        _string_or_none(_get(item, "reason", metadata.get("hypothesis_reason", metadata.get("reason"))))
+        or ""
+    ).lower()
+
+    resources = _unique_strings(
+        _tuple_values(_get(item, "supporting_resource_ids", ()))
+        or _tuple_values(_get(item, "visual_support_resource_ids", ()))
+        or [_get(item, "resource_id")]
+    )
+    resource_id = _string_or_none(_get(item, "resource_id"))
+    assigned_id = _string_or_none(
+        _get(item, "assigned_global_track_id", metadata.get("assigned_global_track_id"))
+    )
+    assigned_ids = _unique_strings(
+        _tuple_values(_get(item, "assigned_global_track_ids", metadata.get("assigned_global_track_ids", ())))
+    )
+    if assigned_id and assigned_id not in assigned_ids:
+        assigned_ids = (*assigned_ids, assigned_id)
+    stale_ids = _unique_strings(
+        _tuple_values(
+            _get(
+                item,
+                "stale_assigned_global_track_ids",
+                metadata.get("stale_assigned_global_track_ids", ()),
+            )
+        )
+    )
+
+    duplicate_resources = _unique_strings(
+        _tuple_values(
+            _get(
+                item,
+                "duplicate_lock_resource_ids",
+                metadata.get("duplicate_lock_resource_ids", ()),
+            )
+        )
+    )
+    duplicate_risk = bool(
+        _get(item, "duplicate_terminal_lock_risk", False)
+        or _get(item, "duplicate_lock_risk", False)
+        or bool(duplicate_resources)
+    )
+    friend_state = (_string_or_none(_get(item, "friend_conflict_state")) or "none").lower()
+    friend_conflict = bool(_get(item, "friend_conflict", False)) or friend_state in FRIEND_CONFLICT_STATES
+    global_conflict = bool(_get(item, "global_track_id_conflict", False)) or len(assigned_ids) > 1
+    local_conflict = bool(_get(item, "local_id_conflict", False))
+
+    confidence = _first_float(
+        _get(item, "association_confidence"),
+        _get(item, "confidence"),
+        metadata.get("association_confidence"),
+        0.0,
+    )
+    ambiguity = _first_float(
+        _get(item, "ambiguity_score"),
+        metadata.get("ambiguity_score"),
+        0.0,
+    )
+    support_count = _first_int(
+        _get(item, "support_count"),
+        metadata.get("support_count"),
+        len(resources),
+    )
+    hypothesis_count = max(
+        _first_int(_get(item, "hypothesis_count"), metadata.get("hypothesis_count"), 0),
+        len(hypotheses),
+        1,
+    )
+
+    missing_global_id = not bool(assigned_id)
+    if expected_global_track_id is not None and assigned_id is None:
+        missing_global_id = True
+    stale_global_id = bool(stale_ids) or "stale_assigned_global_track_id" in reason
+    if expected_global_track_id is not None and assigned_id not in {None, expected_global_track_id}:
+        global_conflict = True
+
+    hold_state = state == "hold" or recommended_action in {"arbitrate", "report_conflict"}
+    ambiguous_state = state == "ambiguous" or global_conflict or local_conflict
+    hypothesis_only = state == "hypothesis_only" or (
+        not assigned_id and "hypothesis" in reason
+    )
+    hold_resources = resources if hold_state else ()
+    ambiguous_resources = resources if ambiguous_state else ()
+
+    risk_reasons = _unique_strings(
+        item
+        for item in (
+            reason,
+            friend_state if friend_conflict else "",
+            "duplicate_terminal_lock_risk" if duplicate_risk else "",
+            "stale_assigned_global_track_id" if stale_global_id else "",
+            "missing_global_track_id" if missing_global_id else "",
+            "global_track_id_conflict" if global_conflict else "",
+            "local_track_id_conflict" if local_conflict else "",
+        )
+        if item
+    )
+    nested = [
+        _single_visual_evidence_summary(hypothesis, expected_global_track_id=expected_global_track_id)
+        for hypothesis in hypotheses
+    ]
+    base = DistributedVisualEvidenceSummary(
+        visual_support_resource_ids=resources,
+        hold_resource_ids=hold_resources,
+        ambiguous_resource_ids=ambiguous_resources,
+        duplicate_lock_resource_ids=duplicate_resources,
+        assigned_global_track_id=assigned_id,
+        terminal_confidence=confidence,
+        terminal_ambiguity=ambiguity,
+        hypothesis_count=0 if hypotheses else hypothesis_count,
+        support_count=max(support_count, len(resources)),
+        decision_states=_unique_strings([state] if state else ()),
+        risk_reasons=risk_reasons,
+        hypothesis_only=hypothesis_only,
+        stale_global_track_id=stale_global_id,
+        missing_global_track_id=missing_global_id,
+        duplicate_terminal_lock_risk=duplicate_risk,
+        friend_conflict=friend_conflict,
+        global_track_id_conflict=global_conflict,
+        local_id_conflict=local_conflict,
+    )
+    if nested:
+        return _merge_visual_evidence_summaries(
+            [base, *nested],
+            expected_global_track_id=expected_global_track_id,
+        )
+    return base
+
+
+def _merge_visual_evidence_summaries(
+    summaries: Sequence[DistributedVisualEvidenceSummary],
+    *,
+    expected_global_track_id: str | None,
+) -> DistributedVisualEvidenceSummary:
+    usable = [summary for summary in summaries if summary.has_evidence]
+    if not usable:
+        return DistributedVisualEvidenceSummary()
+
+    assigned_ids = _unique_strings(summary.assigned_global_track_id for summary in usable)
+    assigned_id = assigned_ids[0] if len(assigned_ids) == 1 else None
+    global_conflict = len(assigned_ids) > 1 or any(summary.global_track_id_conflict for summary in usable)
+    if expected_global_track_id is not None and assigned_id not in {None, expected_global_track_id}:
+        global_conflict = True
+
+    support_ids = _unique_strings(
+        resource
+        for summary in usable
+        for resource in summary.visual_support_resource_ids
+    )
+    hold_ids = _unique_strings(resource for summary in usable for resource in summary.hold_resource_ids)
+    ambiguous_ids = _unique_strings(
+        resource for summary in usable for resource in summary.ambiguous_resource_ids
+    )
+    duplicate_ids = _unique_strings(
+        resource for summary in usable for resource in summary.duplicate_lock_resource_ids
+    )
+    decision_states = _unique_strings(state for summary in usable for state in summary.decision_states)
+    risk_reasons = _unique_strings(reason for summary in usable for reason in summary.risk_reasons)
+    stale_global_id = any(summary.stale_global_track_id for summary in usable)
+    missing_global_id = any(summary.missing_global_track_id for summary in usable)
+    if expected_global_track_id is not None and not assigned_ids:
+        missing_global_id = True
+        risk_reasons = _unique_strings((*risk_reasons, "missing_global_track_id"))
+    if global_conflict:
+        risk_reasons = _unique_strings((*risk_reasons, "global_track_id_conflict"))
+
+    return DistributedVisualEvidenceSummary(
+        visual_support_resource_ids=support_ids,
+        hold_resource_ids=hold_ids,
+        ambiguous_resource_ids=ambiguous_ids,
+        duplicate_lock_resource_ids=duplicate_ids,
+        assigned_global_track_id=assigned_id,
+        terminal_confidence=max(summary.terminal_confidence for summary in usable),
+        terminal_ambiguity=max(summary.terminal_ambiguity for summary in usable),
+        hypothesis_count=sum(summary.hypothesis_count for summary in usable),
+        support_count=max([len(support_ids), *(summary.support_count for summary in usable)]),
+        decision_states=decision_states,
+        risk_reasons=risk_reasons,
+        hypothesis_only=any(summary.hypothesis_only for summary in usable),
+        stale_global_track_id=stale_global_id,
+        missing_global_track_id=missing_global_id,
+        duplicate_terminal_lock_risk=any(summary.duplicate_terminal_lock_risk for summary in usable),
+        friend_conflict=any(summary.friend_conflict for summary in usable),
+        global_track_id_conflict=global_conflict,
+        local_id_conflict=any(summary.local_id_conflict for summary in usable),
+    )
+
+
+def _candidate_global_track_ids(item: Any) -> tuple[str, ...]:
+    metadata = _metadata(item)
+    assigned = _string_or_none(_get(item, "assigned_global_track_id"))
+    assigned_ids = _unique_strings(
+        _tuple_values(_get(item, "assigned_global_track_ids", metadata.get("assigned_global_track_ids", ())))
+    )
+    if assigned and assigned not in assigned_ids:
+        assigned_ids = (*assigned_ids, assigned)
+    if assigned_ids:
+        return assigned_ids
+    return _unique_strings(
+        (
+            _get(item, "global_track_id"),
+            _get(item, "track_id"),
+            metadata.get("global_track_id"),
+            metadata.get("truth_global_track_id"),
+        )
+    )
+
+
+def _tuple_values(value: Any) -> tuple[Any, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, (str, bytes)):
+        return (value,)
+    if isinstance(value, Mapping):
+        return tuple(value.values())
+    if isinstance(value, Sequence):
+        return tuple(value)
+    if isinstance(value, Iterable):
+        return tuple(value)
+    return (value,)
+
+
+def _unique_strings(values: Any) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(str(value) for value in _tuple_values(values) if value is not None and str(value)))
 
 
 def _get(obj: Any, name: str, default: Any = None) -> Any:

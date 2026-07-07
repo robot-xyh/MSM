@@ -95,9 +95,26 @@ UAV2 camera sees: target 2, target 3, target 4
 | MAVLink signing / DDS Security | 消息来源认证 | 需与任务清单交叉验证 |
 | AprilTag | 合作视觉标识 | 近距实验辅助 |
 
+### 3.1 当前实际接入状态
+
+当前仓库内 D5 只接入了轻量、可离线复现的几何和证据层，不应把上表开源项理解为已经完整工程化：
+
+| 项目 | 当前状态 |
+|------|----------|
+| OpenCV `projectPoints` | 已用于单相机投影；OpenCV 不可用时退回针孔模型。当前不做真实 calibration、`solvePnP`、PnP RANSAC 或 bundle adjustment。 |
+| AirSim `simGetDetections` | 已有 dry-run bbox adapter，兼容 `box2D`、`bbox_xyxy`、`xyxy` 等 fixture/schema。在线转换忽略 `object_id`、`actor_name`、actor truth ID。 |
+| YOLO | 仅兼容常见输出 schema；D5 不加载权重、不运行 detector、不管理 GPU 或 class map。 |
+| ByteTrack / BoT-SORT / Deep SORT | 仅作为未来本地 MOT 来源；当前没有 tracker 状态、ReID embedding、遮挡恢复、IDSW/IDF1 统计。 |
+| ROS 2 `tf2/message_filters` | 只是未来坐标变换和时间同步方案；D5 当前不启动 ROS graph，不订阅 topic。 |
+| OpenDroneID / MAVLink signing / DDS Security | 仅通过 `IdentityClaim` 抽象表达仿真身份声明；未接真实报文、密钥、证书或白名单。 |
+| AprilTag | 仅作为未来实验室合作目标标识方案；当前没有图像 detector 或 tag ID 到平台身份的可信映射。 |
+| Distributed visual association | 已实现 P0 metadata-only DTO 与 `TerminalCrossViewFusion`，输出 peer evidence；未实现三维重投影、三角化或跨相机联合优化。 |
+
 ---
 
 ## 4. 处理链路
+
+目标工程链路如下，其中 `tf2`、ByteTrack/BoT-SORT/Deep SORT 是预期上游能力，不是当前 D5 代码内已运行组件：
 
 ```text
 AssignmentPlan.assigned_global_track_id
@@ -110,6 +127,20 @@ AssignmentPlan.assigned_global_track_id
 -> IdentityClaim做友方正向确认
 -> 输出 locked | ambiguous | hold | reacquire
 ```
+
+当前已实现的 P0 路径是：
+
+```text
+Assignment.assigned_global_track_id
+-> D2 GlobalTrack + CameraModel
+-> projectTracksToImage / cv2.projectPoints fallback
+-> LocalVisualTrack[]  # 来自 fixture、AirSim bbox adapter 或外部 detector/tracker schema
+-> TerminalAssociator.decide()
+-> TerminalAssociation
+-> TerminalObservationBus / TerminalCrossViewFusion / TerminalConsistencySummary
+```
+
+在线 D5 禁止使用 AirSim `object_id`、`actor_name` 或 actor truth ID。truth ID 只允许作为离线评分标签，计算 `terminal_lock_accuracy`、`locked_mismatch` 或测试断言。
 
 ### 4.1 多视角跨视场处理链路
 
@@ -126,6 +157,20 @@ UAV2 LocalVisualTrack[]
 -> 跨视角合并同一global_track_id的支持证据
 -> 输出CrossViewAssociation / TerminalConsistencySummary
 ```
+
+完全无中心时，当前 P0 metadata-only 链路为：
+
+```text
+DistributedVisualObservation[]
++ VisualTrackletSummary[]
++ PeerCameraState[]
+-> TerminalCrossViewFusion.build_hypotheses()
+-> CrossPeerAssociationHypothesis
+-> DistributedTerminalAssociation
+-> D4/D6 distributed evidence
+```
+
+该链路基于时间窗口、bearing/center_px、bearing rate、bbox area/scale rate、类别/置信度、像素协方差和姿态协方差匹配 peer 视觉 tracklet。缺失或 stale `assigned_global_track_id` 输出 `hypothesis_only/hold`；重复锁定、友方冲突、local/global ID 冲突输出 `hold/ambiguous`。D5 不创建全局 ID，不分配资源。
 
 核心原则：
 
@@ -178,19 +223,16 @@ UAV2/front/L_a, UAV2/front/L_b, UAV2/front/L_c
 
 ## 5. 数据结构
 
+当前 `LocalVisualTrack` 保持单相机本地检测/MOT 输出的轻量结构，跨资源命名空间由 `TerminalObservationBus` 或 distributed DTO 提供；不要把 `local_track_id` 字符串直接跨无人机比较。
+
 ```text
 LocalVisualTrack
 - local_track_id
-- resource_id        # 建议扩展，避免跨无人机ID冲突
-- camera_id          # 建议扩展，标识相机
-- frame_id           # 建议扩展，标识图像帧/坐标系
 - bbox
 - center_px
-- covariance_px      # 建议扩展，本地像素观测不确定性
-- camera_pose        # 建议扩展，量测时刻相机姿态或CameraModel引用
 - bearing_rate
 - mot_history_length
-- candidate_global_track_ids
+- timestamp
 - quality
 
 TerminalAssociation
@@ -210,31 +252,31 @@ IdentityClaim
 - timestamp
 ```
 
-建议新增跨视场结构：
+已实现跨视场摘要结构：
 
 ```text
-CrossViewObservation
-- observation_id
+TerminalObservation
 - resource_id
+- source_node_id
+- link_type
+- timestamp
+- arrival_timestamp
 - camera_id
 - frame_id
-- local_track_id
-- measurement_timestamp
-- arrival_timestamp
-- center_px
-- bbox
-- covariance_px
-- camera_pose / camera_model
-- mot_history_length
-- quality
+- local_track
+- terminal_association
+- identity_claims
+- recon_image_cues
 
 CrossViewAssociation
 - global_track_id
-- supporting_observations: [(resource_id, camera_id, local_track_id)]
-- per_view_costs
-- fused_confidence
-- consistency_state: consistent | ambiguous | conflict | unknown
+- supporting_resource_ids
+- local_track_ids  # resource/camera:local_track_id
+- ambiguity_score
 - duplicate_terminal_lock_risk
+- support_count
+- duplicate_lock_resource_ids
+- duplicate_local_track_ids
 
 TerminalConsistencySummary
 - resource_id
@@ -248,6 +290,45 @@ TerminalConsistencySummary
 - mismatch_with_assignment
 - recommended_d4_action: observe | request_secondary_cue | report_conflict | arbitrate
 ```
+
+已实现完全分布式 P0 metadata-only 结构：
+
+```text
+DistributedVisualObservation
+- resource_id / camera_id / frame_id / local_track_id
+- measurement_timestamp / arrival_timestamp
+- center_px or bearing
+- covariance_px or covariance
+- bbox / bearing_rate / category / confidence
+- assigned_global_track_id / assigned_global_track_stale
+- friend_conflict_state
+
+VisualTrackletSummary
+- resource/camera/local_track namespace
+- bbox_area / scale_rate / observation_count
+- assigned_global_track_ids / stale_assigned_global_track_ids
+
+PeerCameraState
+- resource_id / camera_id / frame_id
+- pose_covariance
+- optional position_ned / orientation_quat_xyzw
+
+CrossPeerAssociationHypothesis
+- participant_tracklet_keys
+- supporting_resource_ids
+- support_state
+- duplicate_terminal_lock_risk
+- global_track_id_conflict / local_id_conflict
+
+DistributedTerminalAssociation
+- decision_state: locked | ambiguous | hold | hypothesis_only
+- assigned_global_track_id
+- supporting_resource_ids
+- local_track_ids
+- recommended_d4_action
+```
+
+后续真实多相机三维几何融合仍可新增 `CrossViewObservation/CrossViewTrackEvidence`，携带完整 `CameraModel`、三维候选、重投影残差和协方差摘要；该扩展仍不能改变 D5 不改写 `global_track_id` 的边界。
 
 ---
 
@@ -385,7 +466,7 @@ def cross_view_association(global_tracks, observations_by_resource, cameras, ass
 
 ## 9. 与 D4 主动降级的仲裁接口
 
-D5 是 D4 主动降级的重要观测源，但不是降级决策者。D4 需要判断中心/二级节点分配与末端视觉证据是否一致：
+D5 是 D4 主动降级的重要观测源，但不是降级决策者。D4 需要判断中心/二级节点分配与末端视觉证据是否一致，并可把 D5 的 distributed evidence 作为 CBBA/分布式仲裁风险加权输入：
 
 | D5 输出 | D4 含义 | 建议动作 |
 |---------|---------|----------|
@@ -395,6 +476,8 @@ D5 是 D4 主动降级的重要观测源，但不是降级决策者。D4 需要�
 | 多帧 `reacquire` | 视场内无法确认分配目标 | D4 结合 D1/D2/D3 风险主动仲裁 |
 | `mismatch_with_assignment=True` | 本地最佳视觉证据长期不支持当前 AssignmentPlan | D4 仲裁中心/二级节点分配 |
 | `duplicate_terminal_lock_risk=True` | 多资源可能重复锁定同一目标 | D4/D3 调整主备资源或计划版本 |
+| `DistributedTerminalAssociation.decision_state="hypothesis_only"` | peer 视觉证据存在但缺少 current global ID 或单视角不足 | 观察或请求 D2/D3/D4 更新，不让 D5 本地建 ID |
+| `DistributedTerminalAssociation.decision_state="hold/ambiguous"` | stale ID、重复锁定、友方冲突、global/local ID 冲突或跨 peer 置信不足 | D4 进行风险加权和仲裁，D5 不解除冲突 |
 
 主动降级触发建议使用连续帧统计，避免单帧检测噪声导致抖动：
 
@@ -403,7 +486,7 @@ D5 是 D4 主动降级的重要观测源，但不是降级决策者。D4 需要�
 - `friend_conflict_state="verified_friend_overlap"` 连续出现：上报冲突并保持 `hold`。
 - 同一 `global_track_id` 被多个资源 `locked` 且计划不允许多资源协同：上报重复锁定风险。
 
-无论 D4 是否决定降级到二级节点或分布式协商，D5 都只能输出视觉配准和身份确认证据，不得直接生成新 AssignmentPlan。
+无论 D4 是否决定降级到二级节点或分布式协商，D5 都只能输出视觉配准和身份确认证据，不得直接生成新 `AssignmentPlan`，不得选择主备资源，不得改写 `global_track_id`。
 
 ---
 
@@ -411,11 +494,12 @@ D5 是 D4 主动降级的重要观测源，但不是降级决策者。D4 需要�
 
 D7 负责末端视觉比例导引或 LOS 角速率导引时，必须以 D5 的保守锁定结果为前置条件。接口原则：
 
-1. 只有 `TerminalAssociation.decision_state == "locked"`，且 `assigned_global_track_id` 与 D3/D4 当前 AssignmentPlan 一致时，D7 才能使用该视觉目标作为 `visual PN / LOS` 输入。
-2. D7 输入应包含 `assigned_global_track_id`、`resource_id`、`local_track_id`、图像中心、LOS 角速率、时间戳和置信度。
-3. 若 D5 输出 `ambiguous/hold/reacquire/mismatch`，D7 只能进入保持、继续观测或等待上级计划更新的状态，不能自行选择另一个本地目标。
-4. D7 严禁根据本地相机“更近”或“更清晰”的目标直接改绑 `global_track_id`。
-5. 若二级侦察 cue 参与锁定，D7 应记录 `recon_cue_used=True`，用于 D6 评估 cue 依赖和误锁风险。
+1. 只有 `TerminalAssociation.decision_state == "locked"`，且 `assigned_global_track_id` 与 D3/D4 当前 AssignmentPlan 一致时，D7 才能考虑该视觉目标作为 `visual PN / LOS` 输入。
+2. 视觉 PNG 切换还必须满足 bbox 连续稳定、无友方冲突、无重复终端锁定风险、检测延迟与机动裕度可接受，并通过 D4/D3 gate。
+3. D7 输入应包含 `assigned_global_track_id`、`resource_id`、`local_track_id`、图像中心、LOS 角速率、时间戳、置信度和 D5 handoff/prelock metadata。
+4. 若 D5 输出 `ambiguous/hold/reacquire/hypothesis_only/mismatch`，或 `annotate_visual_png_handoff()` 给出 `assignment_mismatch`、`duplicate_terminal_lock_risk`、`bbox_area_unstable` 等阻断原因，D7 只能进入保持、继续观测或等待上级计划更新的状态，不能自行选择另一个本地目标。
+5. D7 严禁根据本地相机“更近”或“更清晰”的目标直接改绑 `global_track_id`。
+6. 若二级侦察 cue 参与锁定，D7 应记录 `recon_cue_used=True`，用于 D6 评估 cue 依赖和误锁风险。
 
 推荐 D5 -> D7 消息：
 

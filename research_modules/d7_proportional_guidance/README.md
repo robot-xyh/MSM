@@ -14,6 +14,13 @@ research_modules/d7_proportional_guidance/
     models.py
     pn.py
     simulator.py
+    terminal_gate.py
+    vision_png.py
+  png_guidance_delivery/
+    README.md
+    docs/
+    examples/
+    vision_guidance/
   tests/
     conftest.py
     test_airsim_phase1_dry_run.py
@@ -31,6 +38,24 @@ research_modules/d7_proportional_guidance/
 - 输出 LOS angle、LOS rate、closing speed、range、模式、横向加速度限幅、转向率限幅和离线质点轨迹记录。
 - `simulate_guidance_episode` 支持单个 resource-target pair 的离线闭环，返回 `records` 和 `summary`。
 - `guidance_records_from_assignment_dry_run` 接收 assignment/resource/target estimate 三类普通 Python 数据，输出一条 `radar_midcourse` 和一条 `vision_terminal` 干运行记录。
+
+## 当前实现状态快照
+
+截至当前代码和测试，D7 的“已实现”范围分为模块本地实现和 main/AirSim runtime 消费两层：
+
+- 模块本地已实现经典二维 PN/PNG 几何核：`compute_proportional_navigation_command()` 使用位置/速度估计计算 `N * V_c * lambda_dot`，可用于中段雷达/全局航迹 PN，也可作为位置比例导引的离线上限模型。
+- 模块本地已实现末端视觉 PNG gate：`SimpleFlightPngGuidanceFilter` 从 bbox 中心计算 bearing/LOS-rate，支持 `law="png_vm"` 和 `law="png_ttc"`，并输出 SimpleFlight 可消费的水平 `velocity_ned`。
+- 模块本地已实现每个 assignment pair 独立状态：视觉 PNG filter 是实例状态，保存 `local_track_id`、稳定帧、LOS-rate 窗口和 bbox 面积窗口；D7 不提供全局单例，也不假设 2v2/5v5。
+- runtime 已实际消费 D7 API：`research_modules/airsim_runtime/intercept.py` 为每个 `InterceptPair` 持有独立 `visual_filter`、`guidance_binding`、D4 permission 和 D5-shaped terminal association，并把 `PngGuidanceCommand.velocity_ned` 交给 SimpleFlight `moveByVelocityZAsync` 链路。D7 模块本身不直接连接 AirSim。
+- runtime 默认 `intercept_guidance_law="png_vm"`；`png_ttc` 在 D7 API 和 delivery 复现实验中可用，但不是当前默认 AirSim controlled intercept 路径。
+
+当前切换策略不是单一距离阈值：
+
+- D7 离线仿真的 `GuidanceConfig.terminal_switch_range_m` 默认是 `250.0m`，只用于二维质点研究。
+- AirSim controlled intercept 的默认 `intercept_terminal_switch_range_m` 是 `8.0m`，命令行可通过 `--intercept-terminal-range` 改动；若测试使用 `30m` 左右的 `relative_position_ned`，那是 gate/回归夹具，不是算法硬编码常量。
+- 进入视觉 PNG 前必须先通过 D3/D4/D5 contract，再通过 bbox 面积、置信度、边缘距离、稳定帧、视觉延迟、LOS-rate 方差、TTC/闭合速度和机动裕度 gate。默认稳定帧阈值为 `min_stable_frames=2`，测试覆盖首帧/LOS 窗口不足时拒绝，稳定后才允许切换。
+- D5 必须为 `decision_state="locked"`，且 `assigned_global_track_id`、`assignment_version` 与当前 D3 binding 一致；观测中的 `assigned_global_track_id` 若不一致，D7 仍拒绝视觉 PNG。
+- D4 `request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed` 均被保守映射为 `d4_reassign_pending`，D7 必须阻断视觉 PNG，直到新的中心/二级 plan 生效并与 D3 binding 一致。
 
 ## N-pair AirSim runtime 接入边界
 

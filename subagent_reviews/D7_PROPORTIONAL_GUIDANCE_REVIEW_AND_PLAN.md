@@ -5,6 +5,33 @@
 
 ---
 
+## 0. 当前状态修订
+
+截至当前代码和测试，D7 已经从“离线 PN 研究模块”扩展为可被 main/runtime 消费的导引合同模块，但它仍不拥有 AirSim 启停、episode 编排或真实车辆控制。
+
+已实现：
+
+- 中段雷达/全局航迹 PN：`compute_proportional_navigation_command()` 使用二维位置/速度估计计算 `N * V_c * lambda_dot`，支持限幅和日志字段。
+- 末端视觉 PNG：`SimpleFlightPngGuidanceFilter` 使用 bbox center、LOS-rate、bbox 面积 TTC、闭合速度和机动裕度输出 `png_vm/png_ttc/los` 速度命令；runtime 默认 `png_vm`。
+- 每个 assignment pair 独立状态：runtime 的 `InterceptPair.visual_filter` 和 D7 filter 实例分别保存稳定帧、LOS-rate 窗口、TTC 面积窗口和 local track 状态；D7 测试覆盖 1/3/5/7 pair。
+- D3/D4/D5 gate：D7 校验 assignment 授权/current、plan/version、D4 action、D5 `locked`、friend conflict、D5 `assigned_global_track_id`、D5 `assignment_version` 和观测 global ID。
+- D4 保守阻断：`request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed` 均必须拒绝视觉 PNG，记录 `d4_reassign_pending`。
+- SimpleFlight 命令：D7 输出 `velocity_ned`，main/runtime 负责 `moveByVelocityZAsync`；D7 本模块不直接连接 AirSim。
+
+部分实现：
+
+- AirSim SimpleFlight 真实控制已在 main/runtime 层接入 D7，但真实 D3/D4/D5 bus 仍需从模拟 metadata 过渡到持续事件流。
+- 相机前移 `0.5m`、`120deg` FOV 和 `look_at_target`/CV look-at 已在 runtime/settings/tests 中接入；D7 主线只消费 bbox 和固定焦距近似，不管理真实相机外参。
+- `png_guidance_delivery` 的 truth/gimbal/strapdown、PX4/MAVLink/body-rate、YOLO/ByteTrack 是方案和复现实验包；主线只抽取轻量 gate 与 SimpleFlight 速度命令。
+
+未实现：
+
+- 更真实机动约束、3D PN、FRPN/augmented PN、MPC/NMPC。
+- 硬件飞控、实机 PX4 Offboard、MAVLink body-rate/attitude 默认主线。
+- YOLO/ByteTrack 图像检测直接闭环控制；下一步应先做离线 replay adapter。
+
+---
+
 ## 1. 目标与边界
 
 D7 的目标是在已有 D1-D6 主流程之后补齐“导引律”层，使系统从版本化分配结果进入可评估的中段/末端闭环。它只做比例导引及其改进型导引律，不负责上游态势生成或身份判断。
@@ -14,7 +41,7 @@ D7 负责：
 - 基于 `GlobalTrack` 或雷达/全局航迹估计计算 `radar_midcourse` 比例导引。
 - 基于 D5 已锁定的末端视觉目标计算 `vision_terminal` 视觉 PN 或 LOS 追踪。
 - 维护导引阶段状态机：`launch/takeoff -> radar_midcourse -> handover_pending -> vision_terminal -> hit/abort`。
-- 输出 `GuidanceRecord`、AirSim `control_commands.csv` 和 episode summary，供 D6 统计。
+- 输出 `GuidanceRecord` 和 D7 gate/command metadata；AirSim runtime 负责写出 `control_commands.csv` 和 episode summary，供 D6 统计。
 - 记录 LOS、LOS-rate、闭合速度、导航比、限幅加速度、限幅转向率、最小距离、碰撞对象和终端检测超时等字段。
 
 D7 不负责：
@@ -58,7 +85,7 @@ research_modules/airsim_runtime/intercept.py
 当前 Blocks 稳定闭环采用：
 
 - 中段：使用 actor 真值/全局航迹等价估计调用 D7 PN，输出二维期望航向和速度命令。
-- 末端：进入 `terminal_locked` 后采用目标相对方位的 LOS 追踪，让控制器稳定追向已分配目标。
+- 末端：进入 terminal handoff 后先过 D3/D4/D5 contract；contract 通过后调用该 pair 自己的 `SimpleFlightPngGuidanceFilter`，若 bbox/LOS/TTC/机动 gate 通过则进入 `vision_terminal` 并使用 `png_vm`/`png_ttc` 速度命令；未通过时保持中段 PN 或保守 LOS heading。
 - 成功判据：`range_m <= intercept_radius_m` 或碰撞对象名匹配已分配 actor/object name。
 - 失败判据：资源/目标缺失、末端检测超时、异常高度、episode 超时等。
 
@@ -73,8 +100,8 @@ research_modules/airsim_runtime/intercept.py
 
 需要明确的限制：
 
-- 当前 AirSim 末端已具备视觉 gate 和 `png_ttc/png_vm` 速度命令接口，但仍是 SimpleFlight 速度控制，不是 PX4 body-rate 闭环。
-- 严格像素 `center_px -> bearing -> bearing_rate -> visual PN` 已以轻量形式接入；更复杂的 strapdown body-rate、YOLO、TTC relaxed baseline 保留为 delivery 参考，不进主线。
+- 当前 AirSim 末端已实际消费视觉 gate 和 `png_vm` 速度命令；`png_ttc` 在 D7 API 和 delivery 中可用，但不是 runtime 默认导引律。
+- 严格像素 `center_px -> bearing -> bearing_rate -> visual PN` 已以轻量形式接入 D7 gate；更复杂的 strapdown body-rate、YOLO、KF、TTC relaxed baseline 保留为 delivery 参考，不进主线。
 - AirSim 默认不保存相机 PNG，只保留检测框、相机/图像元数据、D5 所需的本地视觉观测字段和拦截控制日志；`--save-images` 只用于调试。
 - 碰撞不能只看 `has_collided=True`。只有 `collision_object_name` 包含 assigned actor name 或 assigned object id 时，才算 `collision_intercept`；撞地、撞障碍、撞其他目标都不能记为成功。
 
@@ -189,7 +216,7 @@ LocalVisualTrack / AirSimDetectionBox:
 - mot_history_length
 ```
 
-当前 Blocks 稳定实现中，进入 `terminal_locked` 后使用相对位置直接计算 LOS heading，并发送水平速度追踪命令。严格视觉 PN 的下一阶段应将检测框中心转换为相机视线角：
+当前 Blocks 控制实现中，进入 terminal handoff 后先构造 `VisionGuidanceObservation`，再由 D7 gate 将检测框中心转换为相机视线角。若 contract 和 gate 通过，runtime 使用 `PngGuidanceCommand.velocity_ned`；若未锁定或 gate 失败，则继续中段 PN 或保守 LOS heading。核心像素链路为：
 
 ```text
 relative_bearing = atan((center_px.x - cx) / fx)
@@ -198,10 +225,10 @@ los_rate = finite_difference(los_angle, dt)
 a_n = N * V_c_estimate * los_rate
 ```
 
-如果缺少可靠距离或闭合速度，末端可采用两级策略：
+如果缺少可靠距离或闭合速度，末端仍采用两级策略：
 
 1. `vision_los_tracking`: 只用像素中心偏差/LOS heading 做稳定追踪。
-2. `vision_pn`: 在检测连续、时间戳稳定、像素 LOS-rate 和距离估计可靠后启用严格 visual PN。
+2. `vision_png`: 在 D3/D4/D5 contract 通过，检测连续、时间戳稳定、像素 LOS-rate、TTC/闭合速度和机动裕度可靠后启用 `png_vm` 或 `png_ttc`。
 
 ---
 
@@ -300,8 +327,8 @@ launch/takeoff
 
 行为：
 
-- 当前 Blocks 稳定实现采用 LOS heading 追踪。
-- 下一阶段可切换到像素 LOS-rate visual PN。
+- 当前 Blocks runtime 在 gate 通过时采用 `SimpleFlightPngGuidanceFilter` 输出的视觉 PNG 速度命令，默认 `guidance_law=png_vm`。
+- 若视觉 gate 暂未通过但仍处于 handoff，保持中段 PN 或保守 LOS heading，不把失败归因为目标重绑。
 - 继续检查 assigned target 检测是否存在；短时丢失可用 `last_detection_s` 保持，但超过阈值必须 abort。
 
 出口到 `hit`：
@@ -515,12 +542,12 @@ simGetDetections
 - 2v2 actor baseline 目标水平移动。
 - baseline 中两架 SimpleFlight 拦截无人机发速度/高度命令；main runtime N-pair 执行时应按每个有效 pair 独立发命令和记日志。
 - 中段 PN 使用二维 NED 平面。
-- 末端使用 D5 检测锁定后的 LOS heading 追踪。
+- 末端使用 D5 locked 和 D3/D4/D5 contract 允许后的 D7 视觉 PNG gate；gate 通过时使用 `png_vm`/`png_ttc` 速度命令，未通过时保持保守 PN/LOS。
 - 成功严格绑定 assigned target 的 range 或 collision object。
 
 限制和下一步：
 
-- 严格像素 LOS-rate visual PN 尚未实装到 AirSim 控制闭环。
+- 轻量像素 LOS-rate visual PNG 已接入；还缺真实相机模型、距离/闭合速度估计、图像 replay 和 YOLO/ByteTrack 事件流。
 - `simGetDetections` 是 AirSim 内置检测，不等价于真实视觉模型。
 - 当前 actor 目标速度简单，适合验证接口和状态机；复杂机动应在后续离线批量实验中加入。
 - `collision_intercept` 对 Blocks 物理和 actor mesh 有依赖，因此必须同时保留 `range_intercept` 作为可复现补充判据。
@@ -635,30 +662,30 @@ status == timeout
 - 默认继续不保存 PNG，只保存检测框和相机元数据。
 - 将 `handover_pending` 显式写入日志状态，即使控制命令仍沿用中段 PN。
 
-### 8.2 中期：接入 D5 locked 门控
+### 8.2 P1：接入真实 D5 locked 事件流
 
-- 将 `TerminalAssociation(decision_state="locked")` 作为 `vision_terminal` 的唯一入口。
-- 校验 `assigned_global_track_id`、`assignment_version`、`plan_version`。
-- 对 `ambiguous/hold/reacquire` 分别输出保守行为，不切换目标。
+- D7 API 已将 `TerminalAssociation(decision_state="locked")` 作为 `vision_terminal` 的必要入口；P1 是把真实 D5 event bus 持续接入 runtime。
+- 持续校验 `assigned_global_track_id`、`assignment_version`、`plan_version`，并把不一致写成 `terminal_contract_reject_reason`。
+- 对 `ambiguous/hold/reacquire` 分别输出保守行为，不切换目标，不改写 `global_track_id`。
 - 把 D5 检测超时和锁定丢失写成 D6 可统计事件。
 
-### 8.3 后续：严格像素 LOS-rate visual PN
+### 8.3 后续：视觉 PNG 回放与真实检测闭环
 
-- 从 `bbox_xyxy` / `center_px` 和相机内参计算 `relative_bearing_rad`。
-- 对同一 `local_track_id` 做时间连续性检查，计算 `los_rate_radps`。
-- 引入距离估计来源：D2 全局航迹预测、双目/多视角估计、或 AirSim truth-only 实验标签。
-- 在 `GuidanceRecord.observation` 中区分 `source="vision_los_tracking"` 与 `source="vision_pixel_pn"`。
-- 使用离线回放先评估 LOS-rate 噪声、丢检和限幅，再进入 AirSim 控制闭环。
+- 将 `simGetDetections` bbox、YOLO/ByteTrack bbox 和离线 replay 统一成 D5 local track / D7 `VisionGuidanceObservation`。
+- 对同一 `local_track_id` 做时间连续性、measurement age、丢检重捕获和 LOS-rate 噪声评估。
+- 引入距离/闭合速度估计来源：D2 全局航迹预测、多视角估计、或 AirSim truth-only 离线标签；控制主线不得使用 truth ID 做在线身份绑定。
+- 在日志中区分 `source="airsim_detect_metadata"`、`source="yolo_replay"`、`source="truth_only_eval"`，并保留 `terminal_switch_reject_reason`。
+- 先用离线 replay 评估 LOS-rate、TTC 面积噪声、近距裁切和限幅，再决定是否让 YOLO/ByteTrack 进入 AirSim 控制闭环。
 
 ---
 
 ## 9. 结论
 
-D7 当前已经具备可测试的经典 PN 研究模块和 AirSim 2v2 actor 拦截 baseline。架构上应继续坚持四条原则：
+D7 当前已经具备可测试的经典 PN 研究模块、D3/D4/D5 terminal contract、SimpleFlight 视觉 PNG gate，以及被 AirSim controlled intercept 消费的 N-pair 导引上下文。架构上应继续坚持四条原则：
 
 1. 目标 ID 来自 D1/D2/D3/D5，D7 不创建、不关联、不改绑。
 2. 中段使用全局航迹 PN，末端必须由 D5 对同一 `assigned_global_track_id` 锁定后进入视觉导引。
 3. AirSim 成功判据必须绑定 assigned actor/object name；撞地或撞错对象不能算成功。
 4. main runtime 由 `--drone-count N` 控制规模，并为每个有效 assignment pair 创建独立 D7 控制上下文；2v2 只能作为 baseline，不是数量假设。
 
-下一阶段的主要增量不是重写当前稳定闭环，而是在保持状态机和日志兼容的前提下，把末端 LOS 追踪升级为严格像素 LOS-rate visual PN，并把所有切换、超时、碰撞对象和最小距离纳入 D6 指标体系。
+下一阶段 P1 是把真实 D3/D4/D5 bus 接入 N-pair runtime、做 PN/Pure Pursuit/`png_vm`/`png_ttc` 多 seed 对照、构建 YOLO/ByteTrack 离线 replay adapter，并持续回归 D4 replan/degradation 期间的视觉 PNG 阻断。P2 是在 SimpleFlight 闭环稳定后评估 FRPN/augmented PN、三维机动约束和 PX4/MAVLink/body-rate 独立实验迁移条件。

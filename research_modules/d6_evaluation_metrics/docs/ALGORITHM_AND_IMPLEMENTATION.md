@@ -1,41 +1,62 @@
-# D6 系统级评估指标体系：算法原理与实施方案
+# D6 系统级评估指标体系：算法原理与当前实现
 
 ## 1. 模块定位
 
-D6 是系统级离线评估模块，负责消费 D1-D5 产生的记录、仿真日志和评估真值，输出可复现的指标、表格、报告和曲线。D6 不参与实时任务决策，不发布控制指令，不提供火控参数，不建模毁伤效果，不自动处置目标，也不绕过人工授权。
+D6 是 MSM 的系统级离线评估模块。它消费 D1-D7、main runtime、AirSim Blocks replay、合成仿真和人工/规则标注产生的日志，输出 episode 级指标、CSV、Markdown 报告和 PNG 图表。
 
-本模块解决的问题不是“某次是否成功”，而是“系统在哪个环节稳定、在哪个环节失效”。因此不能只报告命中率。单一命中率会掩盖探测虚警、航迹断裂、ID Switch、重复分配、降级接管失败、末端误配准、跨节点通信异常、D7 末端切换门控失败和安全约束触发等问题。D6 将这些问题拆成八类指标：探测、跟踪、分配、降级、末端配准、通信链路、导引门控和安全约束。
+D6 不参与实时控制，不发布航迹、分配、降级、末端配准或导引命令，不生成 fire-control 参数、毁伤逻辑、自动处置动作，也不绕过人工授权。所有 truth label、高威胁标签和 review label 都是评估侧信息，不能回写在线控制链路。
 
-## 2. 输入输出
+系统评估不能只看单一成功率。D6 把失效拆为探测、跟踪、分配、降级、末端、通信、导引门控和安全八类，避免 ID Switch、重复分配、D4 reassign pending、D5 末端误配准、D7 terminal gate reject 或安全约束被总体命中率掩盖。
 
-### 2.1 输入记录
+D2/D6 强制规则：`id_switch_count` 必须作为显式指标保留。
 
-| 输入类型 | 数据类 | 来源模块 | 主要字段 |
-|---|---|---|---|
-| 航迹记录 | `TrackRecord` | D1/D2 | `timestamp`, `global_track_id`, `truth_id`, `position`, `truth_position`, `covariance_trace`, `track_state` |
-| 分配记录 | `AssignmentRecord` | D3/D4 | `timestamp`, `plan_id`, `version`, `resource_id`, `global_track_id`, `authorization_state`, `active`, `truth_id` |
-| 系统事件 | `EventRecord` | D1-D5/仿真器 | `timestamp`, `event_type`, `actor_id`, `value`, `metadata` |
-| 通信记录 | `LinkRecord` | C2/二级节点/拦截机/仿真器 | `source_node_id`, `target_node_id`, `link_type`, `payload_kind`, `sent_timestamp`, `received_timestamp`, `sequence_id`, `delivered` |
-| 末端记录 | `TerminalRecord` | D5 | `resource_id`, `assigned_global_track_id`, `local_track_id`, `decision_state`, `friend_conflict_state`, `association_correct` |
-| 真值摘要 | `truth_summary` | 仿真器/离线标注 | `truth_timestamps`, `high_threat_ids`, `high_threat_by_timestamp`, `scenario` |
+## 2. 输入输出模型
 
-所有输入都必须是离线记录。D6 可以消费 AirSim 回放、JSONL、CSV 或其他算法输出转换后的数据，但不连接实时控制接口。
+### 2.1 输入数据类
 
-### 2.2 输出产物
-
-| 输出 | 位置 | 用途 |
+| 数据类 | 当前用途 | 关键字段 |
 |---|---|---|
-| `EpisodeMetrics` | 内存对象/CSV | 单 episode 标量指标 |
-| `episode_metrics.csv` | `outputs/*/` | 每个 episode 一行，便于统计检验 |
-| `summary_metrics.csv` | `outputs/*/` | 均值、标准差、置信区间和分位数 |
-| `batch_report.md` | `outputs/*/` | 自动生成的中文批量报告 |
-| `plots/*.png` | `outputs/*/plots/` | 分类指标柱状图和关键指标分布曲线 |
+| `TrackRecord` | 探测、跟踪、ID switch、RMSE、continuity | `timestamp`, `global_track_id`, `truth_id`, `position`, `truth_position`, `covariance_trace`, `track_state`, `association_source` |
+| `AssignmentRecord` | 分配重复、高威胁未分配 | `timestamp`, `plan_id`, `version`, `resource_id`, `global_track_id`, `authorization_state`, `active`, `truth_id` |
+| `EventRecord` | 降级、安全、末端事件、D7 gate、通信 metadata | `timestamp`, `event_type`, `actor_id`, `value`, `metadata` |
+| `LinkRecord` | 跨节点通信、video metadata、bbox delivery | `source_node_id`, `target_node_id`, `sequence_id`, `sent_timestamp`, `received_timestamp`, `measurement_timestamp`, `arrival_timestamp`, `payload_kind`, `delivered`, `stale_after_s` |
+| `TerminalRecord` | D5 末端配准、local ID switch、lock/hold/ambiguity | `resource_id`, `assigned_global_track_id`, `local_track_id`, `decision_state`, `ambiguity_score`, `friend_conflict_state`, `expected_global_track_id`, `association_correct` |
+| `truth_summary` | 真值机会、高威胁标签、规模字段、场景 metadata | `truth_timestamps`, `total_truth_opportunities`, `high_threat_ids`, `high_threat_by_timestamp`, `scenario` |
 
-## 3. 指标体系与事件来源
+### 2.2 输出
 
-### 3.1 探测指标
+| 输出 | 当前状态 |
+|---|---|
+| `EpisodeMetrics` | 已实现，包含全部标量指标和 `metadata` |
+| `episode_metrics.csv` | 已实现，每个 episode 一行 |
+| `summary_metrics.csv` | 已实现，全局与场景/规模分组统计 |
+| `batch_report.md` | 已实现，中文 Markdown 报告 |
+| `plots/*.png` | 已实现，按指标族输出 PNG 图 |
 
-设 `TP` 为与真值匹配的探测记录数，`FP` 为虚警记录数，`FN` 为真值存在但未被探测到的机会数，`T` 为 episode 时长。
+## 3. 规模归一化
+
+`EpisodeMetrics` 显式保留：
+
+```text
+drone_count
+resource_count
+target_count
+camera_count
+```
+
+计算口径：
+
+1. 优先使用 `truth_summary` 顶层字段或 `truth_summary["scenario"]` 字段。
+2. Blocks replay 从 `resources`、`truth_objects`、`cameras` 计算实际规模。
+3. 缺失时从 assignment、terminal、event、link metadata 中推断资源、目标和相机集合。
+4. `drone_count` 缺失时默认等于 `resource_count`。
+5. `2v2`、`5v5` 只作为 baseline 场景名，不作为算法规模或报告分母。
+
+测试已覆盖 `scenario.name="blocks_cv_5v5"` 但实际 `drone/resource/target/camera=3/3/4/6` 的情况，D6 输出实际规模。
+
+## 4. 指标体系
+
+### 4.1 探测
 
 ```text
 detection_probability = TP / (TP + FN)
@@ -43,169 +64,91 @@ false_alarm_rate = FP / T
 missed_detection_rate = FN / (TP + FN)
 ```
 
-事件来源：
+实现来源：
 
-- `TrackRecord.truth_id != None` 计入候选 `TP`。
-- `TrackRecord.truth_id == None` 或 `EventRecord.event_type == "false_alarm"` 计入 `FP`。
-- `truth_summary.truth_timestamps` 定义每个目标在每个时间戳的真值机会。
+- `TrackRecord.truth_id is not None` 与 `truth_summary.truth_timestamps` 匹配为 TP。
+- `TrackRecord.truth_id is None` 和 `EventRecord(event_type="false_alarm")` 计入 FP。
+- `truth_summary.total_truth_opportunities` 或 `truth_timestamps` 定义总机会数。
 
-解释要点：探测概率高但虚警率高，会给 D2 关联和 D3 分配制造额外负担；漏检率低但航迹不连续，也可能导致后续交接失败。
-
-### 3.2 跟踪指标
-
-位置误差使用真值位置和估计位置的欧氏距离：
+### 4.2 跟踪
 
 ```text
-track_rmse = sqrt(mean(||p_est - p_truth||^2))
-track_continuity = matched_truth_timestamps / truth_timestamps
-id_switch_count = count(global_track_id changes for the same truth_id)
+track_rmse = sqrt(mean(||position - truth_position||^2))
+track_continuity = matched_truth_timestamp_pairs / truth_timestamp_pairs
+id_switch_count = count(global_track_id changes for the same truth_id over time)
 ```
 
-事件来源：
+`id_switch_count` 以 `truth_id` 分组、按 timestamp 排序，统计同一真值目标对应 `global_track_id` 的变化次数。D6 只统计，不修改 D2/main 中心维护的 `global_track_id`。
 
-- `TrackRecord.position` 与 `TrackRecord.truth_position` 计算 `track_rmse`。
-- `TrackRecord.truth_id` 与 `truth_summary.truth_timestamps` 计算 `track_continuity`。
-- 对同一 `truth_id` 按时间排序，若 `global_track_id` 改变，则累加 `id_switch_count`。
-
-解释要点：RMSE 衡量几何精度，continuity 衡量覆盖稳定性，ID Switch 衡量身份保持能力。多目标交叉场景中，即使 RMSE 不高，ID Switch 也可能导致 D3 分配到错误目标。
-
-### 3.3 分配指标
+### 4.3 分配
 
 ```text
 duplicate_assignment_count =
   count(targets assigned to more than one active resource in the same plan snapshot)
 
 unassigned_high_threat_count =
-  count(high_threat targets without an effective active assignment)
+  count(high-threat targets without active effective assignment)
 ```
 
-事件来源：
+有效分配要求：
 
-- `AssignmentRecord.active == True`。
-- `authorization_state` 必须在 `recorded/authorized/approved/human_approved/operator_approved` 等有效状态内。
-- `truth_summary.high_threat_by_timestamp` 或 `high_threat_ids` 定义评估侧高威胁目标集合。
+- `AssignmentRecord.active == True`
+- `authorization_state` 属于 `recorded/authorized/approved/human_approved/operator_approved`
+- 同一 `(timestamp, plan_id, version)` 内比较资源和目标
 
-解释要点：D6 只统计分配结果，不生成新分配。未授权的候选分配不会被算作有效分配，避免把“待审批方案”误计为“已执行方案”。
+D6 不拒绝 stale plan、不生成 replan；版本化 `AssignmentPlan` 的在线合同由 D3/main 负责，D6 只在离线报告中统计结果。
 
-### 3.4 降级指标
+### 4.4 降级
+
+基础指标：
 
 ```text
-failover_time = t(degraded_stable) - t(central_failure)
-consensus_rounds = mean(consensus_round event values)
+failover_time = mean(t(degraded_stable) - t(central_failure))
+consensus_rounds = mean(consensus_rounds event values)
 degraded_completion_rate =
-  degraded_task_completed / (degraded_task_completed + degraded_task_failed)
+  degraded_task_completed / (degraded_task_completed + degraded_task_failed_or_cancelled)
 ```
 
-事件来源：
-
-- `central_failure` 或 `coordinator_failure` 标记中心失效。
-- `degraded_stable` 或 `failover_stable` 标记降级模式稳定。
-- `consensus_rounds` 的 `value` 或 `metadata.rounds` 提供协商轮数。
-- `degraded_task_completed/failed/cancelled` 统计降级任务完成率。
-
-D4 后续扩展建议：在 `EventRecord.metadata` 中透传 `coordination_mode`, `leader_role`, `coverage_cell`。这样 D6 可以区分“中心节点失效后由二级侦察节点接管”和“完全无中心 CBBA/拍卖式协商”的性能差异。
-
-#### 3.4.1 主动降级评估指标
-
-D4 主动降级不同于被动故障接管。被动降级由中心节点、二级节点或通信链路失效触发；主动降级由系统质量风险触发，例如 D1 定位不确定度升高、D2 关联风险升高、D3 分配冲突、D5 末端与中心航迹不一致。D6 的职责是离线评估主动降级是否必要、是否过度，以及是否减少错误绑定、ID Switch 和重复分配。
-
-建议新增以下 D6 侧离线指标：
-
-| 指标 | 定义 | 解释 |
-|---|---|---|
-| `passive_failover_count` | `count(degradation_mode == passive)` | 被动故障接管次数，用于与主动降级分开统计 |
-| `active_degradation_count` | `count(degradation_mode == active)` | 主动降级决策次数 |
-| `secondary_reassignment_count` | `count(secondary_reassignment / degrade_to_secondary / request_secondary_assist)` | 二级节点重分配次数；兼容 D4 `action=request_secondary_assist` 与 Blocks `assignment_phase=secondary_reassignment` |
-| `d4_reassign_pending_count` | `count(d4_reassign_pending reject/event/metadata)` | D4 重分配未完成导致 D7 末端切换暂拒次数 |
-| `active_degradation_precision` | `necessary_active_degradation_count / active_degradation_count` | 主动降级的必要性精度，越高说明越少过度触发 |
-| `unnecessary_active_degradation_count` | `count(active degradation labelled unnecessary)` | 离线复核为不必要的主动降级次数 |
-| `terminal_center_disagreement_count` | `count(terminal_center_disagreement events)` | D5 末端局部关联与中心航迹/分配不一致的次数 |
-| `time_to_active_degradation_decision` | `t(active_degradation_decision) - t(first_risk_trigger)` | 从风险信号出现到主动降级决策的延迟 |
-| `post_degradation_id_switch_delta` | `id_switch_rate_after - id_switch_rate_before` | 主动降级前后 ID Switch 变化，负值表示改善 |
-| `post_degradation_assignment_conflict_delta` | `duplicate_assignment_rate_after - duplicate_assignment_rate_before` | 主动降级前后重复分配冲突变化，负值表示改善 |
-
-`active_degradation_precision` 需要离线必要性标签或一致的后验判据。推荐优先使用评估标签：
+D4 主/被动降级扩展已进入 `EpisodeMetrics`：
 
 ```text
-necessary_active_degradation_count =
-  count(active degradation with metadata.review_label == necessary)
-
-active_degradation_precision =
-  necessary_active_degradation_count / max(active_degradation_count, 1)
+active_degradation_count
+passive_failover_count
+secondary_node_takeover_count
+secondary_reassignment_count
+d4_reassign_pending_count
+distributed_fallback_count
+failover_active_window_delta_s
 ```
 
-当没有人工或规则复核标签时，可用保守后验判据生成研究用标签：若主动降级前窗口内存在明确风险触发，且降级后窗口内 `id_switch_rate`、`duplicate_assignment_rate`、`terminal_ambiguous_or_hold_rate` 至少一项下降，同时 `track_continuity` 未显著恶化，则暂记为 `necessary_candidate`。该标签只用于离线统计，不得用于在线自动处置或授权。
+识别来源：
 
-前后窗口建议：
+- `EventRecord.event_type`：`active_degradation_decision`、`passive_failover`、`secondary_node_takeover`、`secondary_reassignment`、`d4_reassign_pending`、`distributed_fallback` 等。
+- `metadata.mode/degradation_mode/action/assignment_phase/fallback_type/d4_state`。
+- D7 reject reason 中的 `d4_reassign_pending`。
+- D4 active-degradation CSV loader。
+
+`EpisodeMetrics.metadata` 当前保留：
 
 ```text
-pre_window  = [t_decision - W_pre, t_decision)
-post_window = [t_stable, t_stable + W_post]
-
-id_switch_rate_before = id_switch_count(pre_window) / window_duration
-id_switch_rate_after  = id_switch_count(post_window) / window_duration
-
-duplicate_assignment_rate_before = duplicate_assignment_count(pre_window) / plan_snapshot_count(pre_window)
-duplicate_assignment_rate_after  = duplicate_assignment_count(post_window) / plan_snapshot_count(post_window)
+trigger_reason_distribution
+failover_active_window_deltas_s
 ```
 
-`W_pre` 和 `W_post` 的默认建议为 5-15 秒，正式实验中应固定窗口长度，并在报告中说明。若 `t_stable` 不存在，则该次主动降级只计入决策次数和未完成降级，不参与后窗口改善率统计。
+尚未正式输出的主动降级质量指标：
 
-#### 3.4.2 主动降级日志字段合同
-
-主动降级可统一通过 `EventRecord` 进入 D6。推荐事件类型：
-
-| 事件类型 | 触发模块 | 用途 |
-|---|---|---|
-| `degradation_risk_trigger` | D1/D2/D3/D5 | 记录主动降级前的风险信号 |
-| `active_degradation_decision` | D4 | 记录 D4 已做出主动降级决策 |
-| `passive_failover_start` | D4 | 记录被动故障接管开始 |
-| `degraded_stable` | D4 | 记录降级状态稳定 |
-| `terminal_center_disagreement` | D5/D4 | 记录末端局部关联与中心态势不一致 |
-| `degradation_review_label` | D6/离线复核 | 记录离线必要性标签 |
-
-必需或推荐的 `EventRecord.metadata` 字段：
-
-| 字段 | 取值 | 含义 |
-|---|---|---|
-| `degradation_mode` | `passive` 或 `active` | 区分被动故障接管和主动质量降级 |
-| `trigger_sources` | `d1_uncertainty`, `d2_association`, `d3_assignment`, `d5_terminal`, `mixed` | 主动降级触发源；多源同时触发时使用 `mixed`，并可附 `source_details` |
-| `selected_coordinator` | `center`, `secondary_node`, `distributed_cbba` | 降级后由谁负责协调；只表示离线状态，不表示 D6 发出指令 |
-| `coverage_cell` | 例如 `north_sector` | 二级节点或局部分布式协商覆盖的小区 |
-| `arbiter_score` | `0.0-1.0` 或实现定义标量 | D4 仲裁器给出的主动降级风险分数 |
-| `trigger_timestamp` | 秒 | 最早风险触发时间，用于计算决策延迟 |
-| `decision_timestamp` | 秒 | 主动降级决策时间；通常等于事件 `timestamp` |
-| `review_label` | `necessary`, `unnecessary`, `unknown` | 离线复核标签，用于计算主动降级精度 |
-| `source_scores` | dict | D1-D5 各风险源分数，例如定位协方差、关联熵、分配冲突率、末端不一致分数 |
-
-示例：
-
-```python
-EventRecord(
-    timestamp=42.8,
-    event_type="active_degradation_decision",
-    actor_id="d4_arbiter",
-    metadata={
-        "degradation_mode": "active",
-        "trigger_sources": "mixed",
-        "selected_coordinator": "secondary_node",
-        "coverage_cell": "north_sector",
-        "arbiter_score": 0.82,
-        "trigger_timestamp": 40.9,
-        "decision_timestamp": 42.8,
-        "source_scores": {
-            "d1_uncertainty": 0.71,
-            "d2_association": 0.76,
-            "d3_assignment": 0.34,
-            "d5_terminal": 0.88,
-        },
-    },
-)
+```text
+active_degradation_precision
+unnecessary_active_degradation_count
+terminal_center_disagreement_count
+time_to_active_degradation_decision
+post_degradation_id_switch_delta
+post_degradation_assignment_conflict_delta
 ```
 
-D6 只消费这些字段进行离线统计；不根据 `arbiter_score` 生成实时切换、控制或处置动作。
+原因是这些指标需要 main/D4 提供 `review_label`、`trigger_timestamp`、`decision_timestamp`、`selected_coordinator`、`coverage_cell` 和固定 pre/post 窗口。没有这些字段时，D6 不能离线判定主动降级是否必要，只能统计事件和已给出的窗口 delta。
 
-### 3.5 末端配准指标
+### 4.5 末端配准
 
 ```text
 terminal_association_accuracy =
@@ -214,63 +157,33 @@ terminal_association_accuracy =
 terminal_id_switch_count =
   count(local_track_id changes for the same assigned_global_track_id)
 
-ambiguous_fov_event_count =
-  count(unique ambiguous terminal field-of-view events)
-
-friend_overlap_hold_count =
-  count(unique friend-overlap hold events)
-
 time_to_terminal_lock =
-  first locked time - first fov_entry time
+  first terminal_lock time - first fov_entry time
 ```
 
-事件来源：
-
-- `TerminalRecord.association_correct` 或 `expected_global_track_id` 判断末端配准是否正确。
-- 同一 `assigned_global_track_id` 下 `local_track_id` 变化计入 `terminal_id_switch_count`。
-- `TerminalRecord.ambiguity_score >= ambiguous_fov_threshold` 或 `EventRecord.event_type == "ambiguous_fov"` 计入视场歧义。
-- `friend_conflict_state` 为 hold/overlap 类状态，或 `friend_overlap_hold` 事件，计入友方重叠 hold。
-- `decision_state == "fov_entry"` 到 `"locked"` 的时间差计入锁定时间。
-
-D5 后续扩展建议：增加 `recon_cue_used_count`，用于统计二级侦察节点图像 cue 被 D5 采纳为辅助证据的次数。该指标应只说明 cue 被用于离线配准评估，不代表自动授权或局部节点改写 `global_track_id`。
-
-#### 3.5.1 多视角与无 PNG 评估
-
-main 通信假设允许拦截机之间、拦截机与中心/二级节点、拦截机与系留无人机、系留无人机与中心之间进行数据或视频元数据通信。D6 不需要保存 PNG 截图即可评估多视角末端关联，只要求日志保留：
+当前字段：
 
 ```text
-timestamp
-resource_id / producer_node_id / consumer_node_id
-camera_id / stream_id
-bbox_xyxy
-camera_intrinsics
-camera_extrinsics
-assigned_global_track_id
-object_name
-truth_label / validation_label
+terminal_association_accuracy
+terminal_id_switch_count
+ambiguous_fov_event_count
+friend_overlap_hold_count
+time_to_terminal_lock
+terminal_lock_count
+multi_view_consensus_rate
+cross_view_conflict_count
+duplicate_terminal_lock_count
 ```
 
-新增多视角指标：
+来源：
 
-```text
-multi_view_consensus_rate =
-  successful multi_view_consensus events / consensus attempts
+- `TerminalRecord.decision_state`、`ambiguity_score`、`friend_conflict_state`、`association_correct`。
+- `EventRecord`：`terminal_lock`、`terminal_fov_entry`、`terminal_ambiguous_fov`、`friend_overlap_hold`、`multi_view_consensus_result`、`cross_view_conflict`、`duplicate_terminal_lock`。
+- Blocks replay 的 bbox、相机内外参、camera ID、object label 和 truth label。
 
-cross_view_conflict_count =
-  count(cross_view_conflict or metadata.cross_view_conflict)
+D5 负责在线身份确认和跨视角一致性；D6 只统计结果，不改写 `global_track_id`。
 
-duplicate_terminal_lock_count =
-  count(same timestamp and same assigned_global_track_id locked by multiple resources)
-
-terminal_lock_count =
-  count(unique terminal_lock events or TerminalRecord decision_state == locked)
-```
-
-这些指标用于解释末端关联错误、重复锁定和 D4 主动降级触发原因。视频元数据可以来自中心、二级系留节点、拦截机或拦截机间转发；D6 只统计链路和一致性，不改变 `global_track_id` 或 `AssignmentPlan`。
-
-### 3.6 通信链路指标
-
-`LinkRecord` 是可选输入。如果集成侧已经使用 `EventRecord` 统一记录事件，也可以把同名字段放入 `EventRecord.metadata`。D6 会把两者归一化为通信样本。
+### 4.6 通信链路
 
 ```text
 cross_node_latency_ms =
@@ -280,10 +193,10 @@ message_drop_rate =
   dropped_messages / attempted_messages
 
 out_of_order_count =
-  explicit out_of_order events + decreasing sequence IDs per stream
+  explicit out-of-order events + decreasing sequence IDs per stream
 
 stale_track_update_count =
-  count(track payload latency > stale_after_s)
+  track payload latency/age > stale_after_s
 
 video_metadata_delivery_rate =
   delivered video_metadata payloads / attempted video_metadata payloads
@@ -292,41 +205,14 @@ bbox_delivery_rate =
   delivered bbox payloads / attempted bbox payloads
 
 consensus_latency_s =
-  mean(consensus_start_to_stable latency or consensus/bid link latency)
+  mean(consensus start-to-stable latency or consensus/bid link latency)
 ```
 
-推荐 `EventRecord.metadata` / `LinkRecord` 字段：
+`measurement_timestamp` 和 `arrival_timestamp` 必须保留。D6 用它们评估 stale track update，但不改变 D1 的时间合同。
 
-```text
-source_node_id
-target_node_id
-relay_node_id
-link_type: c2_direct | secondary_relay | interceptor_peer | video_cue
-message_type
-sequence_id
-sent_timestamp
-received_timestamp
-measurement_timestamp
-arrival_timestamp
-payload_kind: track | bbox | video_metadata | assignment | terminal_association | bid
-delivered
-stale_after_s
-```
+### 4.7 D7 gate、visual PNG switch 与拦截
 
-### 3.7 D7 PNG Gate 与末端切换门控指标
-
-D7 中段到末端的切换需要同时满足身份一致、相机质量、LOS 质量、机动余量和窗口条件。D6 从 D7 control command 或 event metadata 中读取门控结果：
-
-```text
-guidance_law
-terminal_switch_reject_reason
-camera_quality_gate_pass
-los_quality_gate_pass
-maneuver_margin_gate_pass
-terminal_switch_allowed
-```
-
-对应指标：
+当前字段：
 
 ```text
 camera_quality_gate_pass_rate
@@ -336,361 +222,173 @@ terminal_switch_allowed_rate
 visual_png_switch_count
 terminal_takeover_rate
 terminal_switch_reject_count
+mode_switch_count
+terminal_contract_reject_count
+intercept_success_count
+collision_intercept_count
+range_intercept_count
+time_to_intercept_s
+min_range_m
+gate_reject_count
 ```
 
-其中 `terminal_switch_allowed_rate` 的口径为 `terminal_switch_allowed=True` 的 D7 control command 数 / 有 `terminal_switch_allowed` 字段的 D7 control command 数；空缺字段不进入分母。`visual_png_switch_count` 统计显式 `visual_png_switch` / `vision_png_switch` / `d7_visual_png_switch` 事件，或 `guidance_law=png_vm/png_ttc` 且伴随 `mode_switch=True`、`terminal_mode_entered=True` 或 `mode=vision_terminal/visual_png/vision_png` 的 D7 记录。`terminal_takeover_rate` 按 episode 内 unique `(resource_id, target_id)` pair 计算，pair 出现 `terminal_locked=True`、`terminal_switch_allowed=True`、`vision_terminal` mode、`terminal_mode_entered=True`，或 `guidance_law` 为 `png_vm` / `png_ttc` / `los` 时记为已由末端接管；分母优先使用 `intercept_summary.json` 的 `pair_count`，否则使用已观测 pair 数。`terminal_handover_pending` 和 `detection_seen` 只表示接管候选或探测可见，不能单独算作 takeover。`terminal_switch_reject_reason` 会进入 `EpisodeMetrics.metadata["terminal_switch_reject_reasons"]`，去重到 pair 维度的拒绝原因会进入 `EpisodeMetrics.metadata["terminal_switch_reject_reason_pair_counts"]`；`guidance_law` 会进入 `EpisodeMetrics.metadata["guidance_law_counts"]`，pair 维度最后一次导引律会进入 `EpisodeMetrics.metadata["guidance_law_pair_counts"]`，用于报告 PN/LOS/Pure Pursuit 等导引律在不同门控条件下的分布。PNG 不作为必需输入；只要检测框、相机参数、时间戳和门控结果可追溯，D6 就能完成离线评估。
+来源：
 
-### 3.8 安全约束指标
+- `d7_control_command` / `control_command` event metadata。
+- `d7_guidance_record`、`d7_guidance_summary`、`d7_guidance_pair_summary`。
+- `d7_intercept_summary`、`d7_intercept_pair_summary`。
+- `control_commands.csv`、`guidance_records.csv`、`guidance_summaries.json`、`intercept_summary.json`。
+
+规则：
+
+- `terminal_switch_allowed_rate` 的分母只包含带 `terminal_switch_allowed` 字段的 D7 command。
+- `visual_png_switch_count` 统计视觉 PNG/PNG guidance mode switch，不要求保存 PNG 文件。
+- `terminal_takeover_rate` 按 unique `(resource_id, target_id)` pair 统计；`terminal_handover_pending` 和 `detection_seen` 不能单独算 takeover。
+- reject reason、guidance law、D4/D5 state、plan/version 会进入 `EpisodeMetrics.metadata`，用于报告分组解释。
+
+### 4.8 安全
 
 ```text
-constraint_violation_count = count(safety constraint violation events)
-human_override_count = count(human override/rejection events)
+constraint_violation_count
+human_override_count
 ```
 
-事件来源：
+安全事件是一级指标，不能被总体成功率平均掉。D6 只统计约束触发和人工覆盖/拒绝事件，不做在线干预。
 
-- `constraint_violation` 或 `safety_constraint_violation`。
-- `human_override`, `human_reject`, `human_rejection`, `operator_override`。
+## 5. 已实现适配器
 
-解释要点：安全事件是一级指标，不应被总体成功率平均掉。即使其他指标良好，安全约束频繁触发也说明策略不可接受或评估场景设置过激。
-
-## 4. 与 OSPA、CLEAR MOT、MOTA/MOTP 的关系
-
-标准多目标跟踪评估中常见三类指标：
-
-- OSPA：同时度量定位误差和目标数量误差，适合比较不同多目标估计器的集合误差。
-- CLEAR MOT：将漏检、虚警、ID Switch 和定位误差统一到 MOT 指标框架。
-- MOTA/MOTP：MOTA 侧重综合准确率，MOTP 侧重匹配目标的定位精度。
-
-典型公式如下：
-
-```text
-MOTP = sum_t sum_i d(t, i) / sum_t m_t
-
-MOTA = 1 - sum_t(FN_t + FP_t + IDSW_t) / sum_t GT_t
-```
-
-OSPA 对真值集合 `X` 和估计集合 `Y` 定义截断距离和阶数：
-
-```text
-OSPA_p,c(X,Y) =
-  (1/n * (min_pi sum_i min(c, d(x_i, y_pi(i)))^p + c^p * |n-m|))^(1/p)
-```
-
-本项目保留这些指标作为对照和后续扩展，但默认输出更可解释的工程指标，原因是：
-
-1. D1-D5 的工程问题跨越探测、分配、降级和末端身份认证，不只是 MOT benchmark。
-2. MOTA 这类综合指标容易把严重安全事件或少量 ID Switch 平均掉。
-3. 工程排障需要知道问题来自虚警、漏检、ID 交换、重复分配、降级慢还是末端歧义。
-4. 当前代码实现的指标可直接从 D1-D5 日志字段计算，便于单元测试和批量实验复现。
-
-## 5. 实施流程
-
-```text
-离线日志/仿真真值
-        |
-        v
-适配器转换为 TrackRecord / AssignmentRecord / EventRecord / LinkRecord / TerminalRecord
-        |
-        v
-MetricsCollector.add_*()
-        |
-        v
-compute_episode(episode_id, seed, duration, truth_summary)
-        |
-        v
-EpisodeMetrics
-        |
-        v
-ReportGenerator -> CSV / Markdown / PNG 图表
-```
-
-核心流程：
-
-1. 对齐时间轴，将所有源数据转换为 episode 内单调秒级时间。
-2. 将 D1-D7 日志转换为 D6 数据类。
-3. 提供 `truth_summary`，至少包含真值时间戳；若要评估高威胁未分配，需提供高威胁集合。
-4. 调用 `MetricsCollector.compute_episode()` 生成单 episode 指标。
-5. 批量运行多个随机种子和场景因素。
-6. 使用 `ReportGenerator` 生成表格、Markdown 报告和曲线。
-
-## 6. 关键接口
-
-### 6.1 指标收集器
-
-```python
-collector = MetricsCollector(ambiguous_fov_threshold=0.6)
-collector.add_track(track_record)
-collector.add_assignment(assignment_record)
-collector.add_event(event_record)
-collector.add_link(link_record)
-collector.add_terminal(terminal_record)
-
-metrics = collector.compute_episode(
-    episode_id="case_001",
-    seed=1,
-    duration=60.0,
-    truth_summary=truth_summary,
-)
-```
-
-### 6.2 报告生成器
-
-```python
-report_generator = ReportGenerator()
-report_generator.write_episode_csv(episodes, "episode_metrics.csv")
-report_generator.write_summary_csv(episodes, "summary_metrics.csv")
-report_generator.write_markdown_report(episodes, "batch_report.md")
-report_generator.write_plots(episodes, "plots")
-```
-
-### 6.3 批量脚本
-
-```bash
-python3 research_modules/d6_evaluation_metrics/scripts/run_batch_example.py --seeds 100
-```
-
-输出默认位于：
-
-```text
-research_modules/d6_evaluation_metrics/outputs/example_batch/
-```
-
-## 7. 参数与调参建议
-
-| 参数/字段 | 默认或建议 | 调参影响 |
-|---|---:|---|
-| `ambiguous_fov_threshold` | `0.6` | 越低越容易计入视场歧义，适合保守评估；越高则只统计严重歧义 |
-| 批量随机种子数 | `100` | 种子越多，均值和置信区间越稳定，计算和报告体积增加 |
-| episode 时长 | `60 s` 示例 | 时间越长越能暴露长尾 ID Switch 和降级恢复问题 |
-| 高威胁标签粒度 | 按时间戳提供优先 | `high_threat_by_timestamp` 比静态 `high_threat_ids` 更适合动态场景 |
-| 虚警事件来源 | 记录或事件均可 | 若同时记录，需在上游避免重复标注同一虚警 |
-
-建议在正式对比中固定以下条件：随机种子列表、目标数量、噪声水平、遮挡概率、中心故障时间、二级节点可用性、终端视场歧义概率。每次只改变一个算法变量，便于解释差异来源。
-
-## 8. 批量实验设计
-
-批量实验至少包含三层设计：
-
-| 层级 | 示例因素 | 目的 |
+| 适配器 | 输入 | 输出/用途 |
 |---|---|---|
-| 场景因素 | 目标数量、目标密度、机动强度、遮挡概率 | 验证算法在不同难度下的稳定性 |
-| 系统因素 | 探测噪声、D2 关联器、D3 分配权重、D4 降级模式、D5 cue 可用性 | 比较不同工程方案 |
-| 随机因素 | 固定随机种子集合 | 估计均值、标准差和置信区间 |
+| `load_episode_log_jsonl()` | D6 标准化 JSONL | `MetricsCollector` + `truth_summary` |
+| `load_blocks_replay_jsonl()` | `blocks_frames.jsonl`、可选 `blocks_sensor_observations.jsonl` | Blocks truth、视觉检测、terminal、通信和规模字段 |
+| `load_d4_active_degradation_decisions()` | D4 active-degradation CSV | D4 主动降级事件 |
+| `load_d7_intercept_outputs()` | D7 control/intercept CSV/JSON | D7 gate、visual switch、takeover、intercept 指标 |
+| `load_d7_guidance_timeseries()` | D7 guidance/control/intercept CSV/JSON | D7 time-series 与 metadata |
 
-统计输出包括：
+所有适配器都只读文件，不 import AirSim，不调用车辆控制 API。
+
+## 6. AirSim 与 D4/D5/D7 integrated metrics 状态
+
+D6 侧已经具备消费能力：
+
+- Blocks：truth summary、实际规模字段、visual detection、terminal records、video metadata/bbox links、多视角 consensus/conflict。
+- D4：active/passive、secondary takeover/reassignment、D4 reassign pending、distributed fallback。
+- D5：terminal association、local ID switch、lock、ambiguity、friend hold、多视角一致/冲突/重复锁定。
+- D7：gate pass/reject、visual PNG switch、terminal takeover、mode switch、contract reject、intercept 结果。
+
+仍需 main runtime bus/episode 写盘接线：
+
+- 在同一 episode 目录持续写出 Blocks、D4、D5、D7、D6 标准化日志。
+- 保持统一 episode clock 和实际规模字段。
+- main 汇总时把多个 loader 的记录合并到同一个 `MetricsCollector`。
+- D5 的 terminal consistency、cross-view conflict、duplicate lock、friend hold 和 validation label 需要稳定回灌。
+- D4 的 `review_label` 和窗口统计需要稳定回灌，才能计算主动降级必要性/精度。
+
+## 7. PNG 策略
+
+PNG 截图不是指标主线输入。D6 依赖 metadata：
 
 ```text
+bbox_xyxy
+camera_intrinsics
+camera_extrinsics
+timestamp
+resource_id
+camera_id
+local_track_id
+assigned_global_track_id
+object_name
+truth_label / validation_label
+gate outcome
+```
+
+`--save-images` 只用于调试视角或人工复核。`visual_png_switch_count` 表示 D7 切换到视觉 PNG/PNG guidance 相关模式，不表示必须保存 PNG 文件。
+
+## 8. 与 OSPA、CLEAR MOT、HOTA/IDF1 的关系
+
+D6 当前默认输出工程可解释指标，而不是完整外部 MOT benchmark：
+
+- 已有本地 POD/FAR/MAR、RMSE、continuity、`id_switch_count`。
+- OSPA/GOSPA 只在文档中保留公式和扩展方向，未进入 `EpisodeMetrics.metric_names()`。
+- CLEAR MOT/MOTA/MOTP/HOTA/IDF1 未接 TrackEval 或 py-motmetrics。
+- Stone Soup 未 import，也没有 Track/Detection/GroundTruthPath adapter。
+
+原因：
+
+1. 当前系统评估跨越探测、分配、降级、通信、末端和导引，不只是 MOT benchmark。
+2. 默认测试需要轻依赖、可离线、可在 CI 中快速运行。
+3. 外部 evaluator 需要稳定帧级 truth-track/detection 匹配表、遮挡/重现规则、IoU/距离门限和依赖版本。
+
+## 9. 批量统计与报告
+
+当前 `ReportGenerator` 输出：
+
+- `episode_metrics.csv`
+- `summary_metrics.csv`
+- `batch_report.md`
+- `plots/detection_metrics.png`
+- `plots/tracking_metrics.png`
+- `plots/assignment_metrics.png`
+- `plots/degradation_metrics.png`
+- `plots/terminal_metrics.png`
+- `plots/communication_metrics.png`
+- `plots/guidance_metrics.png`
+- `plots/safety_metrics.png`
+- `plots/selected_metric_distributions.png`
+
+统计量：
+
+```text
+count
 mean
 sample_std
-stderr = sample_std / sqrt(N)
-ci95 = mean +/- 1.96 * stderr
+stderr
+normal-approximation 95% CI
 median
-p05 / p95
+p05
+p95
 ```
 
-当指标偏态明显时，例如 `id_switch_count` 或 `constraint_violation_count` 大量为 0、少数 episode 很高，应额外采用 bootstrap 置信区间或非参数检验。当前实现先输出可解释的基础统计量，并在报告中提示长尾风险。
+偏态或长尾指标，例如 `id_switch_count`、`constraint_violation_count`、`terminal_switch_reject_count`，正式论文/报告应补 bootstrap 或非参数 CI。当前实现主要服务工程回归和批量对比。
 
-### 8.1 主动降级批量评估设计
+## 10. 未实现项与原因
 
-主动降级应按“降级前后窗口”做成对比较，而不是只统计触发次数。推荐每个 episode 记录所有 `active_degradation_decision`，并围绕每个决策构造前后窗口：
-
-```text
-pre_window  = [t_decision - W_pre, t_decision)
-post_window = [t_stable, t_stable + W_post]
-```
-
-批量报告应至少输出以下对比：
-
-| 对比项 | 前窗口 | 后窗口 | 期望方向 |
+| 项目 | 当前状态 | 原因 | 缺少条件 |
 |---|---|---|---|
-| ID Switch | `id_switch_rate_before` | `id_switch_rate_after` | 下降 |
-| 重复分配 | `duplicate_assignment_rate_before` | `duplicate_assignment_rate_after` | 下降 |
-| 末端歧义 | `ambiguous_fov_rate_before` | `ambiguous_fov_rate_after` | 下降 |
-| 友方 hold | `friend_overlap_hold_rate_before` | `friend_overlap_hold_rate_after` | 不上升或下降 |
-| 末端 reacquire | `terminal_reacquire_rate_before` | `terminal_reacquire_rate_after` | 下降 |
-| 任务连续性 | `track_continuity_before` | `track_continuity_after` | 不显著下降 |
+| Stone Soup metrics | 未实现直接依赖和 adapter | 保持轻依赖；D1/D2 输出未冻结到 Stone Soup 对象 | 版本锁定、对象映射、测试 fixture、门限合同 |
+| OSPA/GOSPA | 未输出字段 | 需要帧级集合序列 | cutoff/order、truth/estimate set、birth/death/遮挡规则 |
+| TrackEval/py-motmetrics | 未实现 | 需要 MOTChallenge/accumulator 输入 | 帧级匹配表、IoU/距离门限、依赖安装策略 |
+| HOTA/IDF1 | 未实现 | 需要完整帧级身份评估 | D2/D5 稳定输出、重现/遮挡规则 |
+| AirSim 原生 recording parser | 未实现 | 当前 Blocks JSONL 已满足主线；原生 recording schema 差异大 | 样例数据、字段版本、NED/相机/时间轴映射 |
+| Live AirSim replay | 未实现且非 D6 目标 | D6 只能离线读日志 | 由 main runtime replay 并导出日志 |
+| SCRIMMAGE metrics bridge | 未实现 | 当前无 SCRIMMAGE 输出样例和 schema | ID 映射、通信事件字段、episode clock、批量目录 |
 
-建议分组维度：
+## 11. P1 下一步
 
-- `degradation_mode`: `passive` vs `active`。
-- `trigger_sources`: D1 不确定度、D2 关联风险、D3 分配失效、D5 末端不一致、mixed。
-- `selected_coordinator`: center、secondary_node、distributed_cbba。
-- `coverage_cell`: 二级节点或局部分布式覆盖区域。
-- `arbiter_score` 分桶：例如 `[0.5, 0.7)`, `[0.7, 0.85)`, `[0.85, 1.0]`。
+1. main integrated episode 汇总接线：统一写出并合并 Blocks、D4、D5、D7 和 D6 标准化日志。
+2. D4 主动降级必要性：补 `review_label`、trigger/decision timestamp、selected coordinator、coverage cell 和 pre/post 窗口。
+3. D5 末端 AirSim 回灌：补 terminal consistency、cross-view conflict、duplicate lock、friend hold、terminal-center disagreement 和 validation label。
+4. D7 多 seed 报告：稳定 guidance/control/intercept 文件产出，并保留 plan/version、D4/D5 state、guidance law、reject reason。
+5. 报告增强：按实际规模字段和 scenario group 输出 D4/D5/D7 分组解释。
 
-关键解释原则：
+## 12. P2 下一步
 
-1. `active_degradation_count` 高但 `active_degradation_precision` 低，说明主动降级过度。
-2. `post_degradation_id_switch_delta` 和 `post_degradation_assignment_conflict_delta` 均为负，说明主动降级可能降低身份错配和分配冲突。
-3. 若冲突下降但 `track_continuity` 明显下降，说明降级可能过于保守，需要 D4 调整仲裁阈值。
-4. 若 `terminal_center_disagreement_count` 高但主动降级未触发，说明 D5-D4 的风险上报或 D4 仲裁阈值可能偏钝。
-5. 若 `selected_coordinator=distributed_cbba` 时共识轮数过高，应单独报告通信和一致性成本。
+1. 定义帧级 truth/detection/track 匹配表。
+2. 接入 py-motmetrics 或 TrackEval 作为可选 benchmark。
+3. 接入 Stone Soup/OSPA/GOSPA 作为论文级对照。
+4. 增加 AirSim 原生 recording parser，仅在 Blocks JSONL 不足时推进。
+5. 增加 bootstrap/非参数 CI。
+6. 仅在 AirSim 无法回答通信或多机规模问题时，评估 SCRIMMAGE bridge。
 
-## 9. 图表与曲线
-
-现有批量示例生成以下图表：
-
-- 探测指标图：`outputs/example_batch/plots/detection_metrics.png`
-- 跟踪指标图：`outputs/example_batch/plots/tracking_metrics.png`
-- 分配指标图：`outputs/example_batch/plots/assignment_metrics.png`
-- 降级指标图：`outputs/example_batch/plots/degradation_metrics.png`
-- 末端指标图：`outputs/example_batch/plots/terminal_metrics.png`
-- 安全指标图：`outputs/example_batch/plots/safety_metrics.png`
-- 关键指标分布曲线：`outputs/example_batch/plots/selected_metric_distributions.png`
-
-根目录 `EXPERIMENT_REPORT.md` 已引用这些图表。D6 的图表用于观察均值、置信区间和长尾分布，不用于实时决策。
-
-## 10. 与 D1-D5 的接口关系
-
-| 模块 | D6 消费内容 | 评估重点 |
-|---|---|---|
-| D1 多传感器融合 | `TrackRecord`, 协方差摘要、真值匹配 | 探测概率、虚警率、RMSE、协方差相关诊断 |
-| D2 多目标关联 | 稳定 `global_track_id`、ID 变更日志 | `id_switch_count`, `track_continuity` |
-| D3 集中式分配 | `AssignmentRecord`, plan version, 授权状态 | 重复分配、高威胁未分配、版本有效性 |
-| D4 降级接管 | `EventRecord`, consensus rounds, degraded task events | 接管时间、协商轮数、降级完成率 |
-| D5 末端配准 | `TerminalRecord`, 友方冲突和歧义事件 | 末端配准准确率、终端 ID Switch、hold 和 lock 时间 |
-
-跨模块硬约束：
-
-- D6 只读取日志，不回写任务、航迹或分配。
-- 上游必须保留时间戳、版本和授权状态；否则 D6 只能给出不完整统计。
-- 高威胁标签和真值标签是评估侧标注，不能被 D6 用于在线决策。
-- 本地终端身份和 `global_track_id` 的一致性由 D5 负责，D6 只统计结果。
-
-## 11. D4/D5 新扩展的日志建议
-
-D4 的二级节点降级链路建议增加以下事件元数据：
-
-```python
-EventRecord(
-    timestamp=t,
-    event_type="degraded_stable",
-    actor_id="secondary_recon_01",
-    metadata={
-        "coordination_mode": "secondary_node",
-        "leader_role": "secondary_recon",
-        "coverage_cell": "north_sector",
-    },
-)
-```
-
-D6 后续可基于这些字段输出分组统计：
-
-- 二级节点接管平均 `failover_time`。
-- 完全无中心 CBBA 的平均 `consensus_rounds`。
-- 不同 `coverage_cell` 的降级完成率。
-
-D4 主动降级建议沿用同一 `EventRecord` 通道，但必须显式区分 `degradation_mode`：
-
-```python
-EventRecord(
-    timestamp=t_decision,
-    event_type="active_degradation_decision",
-    actor_id="d4_arbiter",
-    metadata={
-        "degradation_mode": "active",
-        "trigger_sources": "d2_association",
-        "selected_coordinator": "secondary_node",
-        "coverage_cell": "north_sector",
-        "arbiter_score": 0.79,
-        "trigger_timestamp": t_first_trigger,
-        "review_label": "unknown",
-    },
-)
-```
-
-被动降级建议写成：
-
-```python
-EventRecord(
-    timestamp=t_failure,
-    event_type="passive_failover_start",
-    actor_id="c2_health_monitor",
-    metadata={
-        "degradation_mode": "passive",
-        "trigger_sources": "c2_failure",
-        "selected_coordinator": "secondary_node",
-        "coverage_cell": "north_sector",
-    },
-)
-```
-
-主动降级复核标签建议由离线评估脚本或人工复核写入，不应由实时节点在运行时自证：
-
-```python
-EventRecord(
-    timestamp=t_review,
-    event_type="degradation_review_label",
-    actor_id="offline_evaluator",
-    metadata={
-        "decision_event_id": "active_deg_0042",
-        "review_label": "necessary",
-        "reason": "post-window id_switch and duplicate assignment rates decreased",
-    },
-)
-```
-
-D5 的二级侦察图像 cue 建议增加以下终端或事件字段：
-
-```python
-EventRecord(
-    timestamp=t,
-    event_type="recon_cue_used",
-    actor_id="R03",
-    metadata={
-        "producer_node_id": "secondary_recon_01",
-        "assigned_global_track_id": "G12",
-        "coverage_cell": "north_sector",
-    },
-)
-```
-
-D6 后续可扩展：
-
-```text
-recon_cue_used_count = count(recon_cue_used events)
-terminal_accuracy_with_cue / terminal_accuracy_without_cue
-time_to_terminal_lock_with_cue / time_to_terminal_lock_without_cue
-```
-
-这些扩展只能用于离线评估，不能被解释为 cue 自动授权或自动目标处置。
-
-## 12. 仿真验证
-
-当前示例仿真是轻量合成日志生成器，不是物理拦截仿真。它覆盖：
-
-- 多目标真值轨迹和带噪声航迹记录。
-- 漏检和虚警。
-- 随机 ID Switch。
-- 分配重复和高威胁未分配。
-- 中心失效、降级稳定、共识轮数和降级任务结果。
-- 末端 FOV、锁定、歧义、友方 hold 和本地 ID Switch。
-- 安全约束违反和人工覆盖事件。
-
-推荐验证命令：
+## 13. 推荐验证
 
 ```bash
-python3 -m pytest research_modules/d6_evaluation_metrics/tests
+pytest -q research_modules/d6_evaluation_metrics/tests
 python3 research_modules/d6_evaluation_metrics/scripts/run_batch_example.py --seeds 100
 ```
 
-## 13. 局限与后续工作
+文档/空白检查：
 
-当前局限：
-
-- OSPA、MOTA/MOTP 只在文档中给出公式和扩展方向，未作为默认输出字段。
-- 终端 cue 使用情况尚未进入 `EpisodeMetrics` 的默认字段。
-- 降级统计尚未按 `coordination_mode/leader_role/coverage_cell` 自动分组。
-- 主动降级统计尚未进入 `EpisodeMetrics` 的默认字段；当前文档先定义日志合同、公式和批量评估方法。
-- 合成日志不是 AirSim 物理回放，不能代表真实传感器或真实通信系统。
-- 置信区间使用正态近似，强偏态指标应进一步采用 bootstrap。
-
-后续工作：
-
-1. 增加 OSPA/CLEAR MOT 适配器，用于与 Stone Soup、TrackEval 或 py-motmetrics 对照。
-2. 在 `EventRecord.metadata` 解析 D4 的二级节点字段，输出分组降级统计。
-3. 增加 D5 `recon_cue_used_count` 与 cue/非 cue 末端指标对比。
-4. 增加 AirSim 回放适配器，将仿真导出的 CSV/JSONL 转换为 D6 数据类。
-5. 在报告中加入场景因素分组表，例如“目标密度 vs ID Switch vs 终端歧义”。
-6. 增加主动降级窗口评估器，输出 `passive_failover_count`, `active_degradation_count`, `active_degradation_precision`, `unnecessary_active_degradation_count`, `terminal_center_disagreement_count`, `time_to_active_degradation_decision`, `post_degradation_id_switch_delta`, `post_degradation_assignment_conflict_delta`。
+```bash
+git diff --check -- research_modules/d6_evaluation_metrics subagent_reviews/D6_*
+```

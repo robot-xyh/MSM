@@ -37,9 +37,10 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 - 增强通信摘要：`CommunicationSummary` 记录 `source_node_id`、`target_node_id`、`relay_node_id`、`link_type`、`sent_timestamp`、`received_timestamp`、`payload_kind`、`stale_after_s`，用于判断二级节点辅助链路是否新鲜。
 - 主动降级迟滞/防抖：`ActiveDegradationConfig` 提供 `min_dwell_s`、`release_consecutive_consistent_frames`、`mismatch_frame_limit`、`risk_window_size` 和 `risk_window_threshold`；默认保持轻量单步规则，复用 arbiter 时可启用 dwell/release 行为。
 - D5 cross-view 风险：`TerminalAssociationSummary.cross_view_risk_score` 和 `duplicate_terminal_lock` 会阻止“误判为一致锁定”。
+- 完全无中心视觉证据接入：`DistributedVisualEvidenceSummary`、`build_distributed_visual_evidence_summary()` 和 `merge_distributed_visual_evidence_into_tracks()` 可用 duck typing/dict 消费 D5 的 distributed terminal association / cross-peer hypothesis，不导入 D5 类型，也不创建或改写 `global_track_id`。
 - 指标输出：`ActiveDegradationDecision.to_metrics()` 输出 `d4_action`、`degradation_mode`、`target_node_id`、`risk_factors`、`terminal_consistent`、`failover_time`、`secondary_selected_rate`、`distributed_conflict_count`。
 - D6 兼容事件：`D4ArbitrationAdapter` 输出 `EventRecord` kwargs，metadata 含 `degradation_mode`、`selected_coordinator`、`coverage_cell`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp` 和 `review_label`，并保留 `d4_degradation_mode` 兼容 D4 原始枚举。
-- CBBA 风格协商：用于二级节点不可用后的连续性分配基线。
+- CBBA 风格协商：用于二级节点不可用后的连续性分配基线；D5 视觉支持会提高对应资源出价，`hold`、友方冲突、过期/缺失/冲突 `global_track_id` 会阻止可执行出价，重复锁定风险进入 `assignment_audit` 且不允许多个 owner。
 - 与 D3/D5/D6 的接口：接收上一版分配摘要，向 D5 提供区域观测/cue 语义，向 D6 输出接管、共识和冲突指标。
 
 ## 主动降级入口
@@ -53,11 +54,12 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 - D5 `friend_conflict=True`：强制 `hold_for_review`；`duplicate_terminal_lock=True` 不视为一致锁定。
 - 若传入通信摘要，二级节点必须有未过期的 `secondary_relay`、`video_cue` 或 `c2_direct` 链路才可作为主动辅助/接管目标。
 - 若二级节点 `heartbeat_timestamp_s` 超过 `heartbeat_stale_after_s`，即使视频链路摘要新鲜，也不会被选为二级接管目标。
+- 当中心和二级节点都不可用时，D4 使用 D5 分布式视觉证据作为 CBBA 的风险/代价输入：多资源视觉支持只增加对应资源的出价，不构造“虚拟中心”，也不重新绑定 `global_track_id`。
 - `--drone-count`/main runtime 的 N 只决定输入摘要数量；D4 按实际 `TrackSummary[]`、`ResourceSummary[]` 和二级节点列表长度运行，不在仲裁里固定 2v2 或 5v5。
 - 2v2/5v5 AirSim ComputerVision 专项 case 只作为测试 baseline：`case_001_no_degradation` 期望 `continue_center`；`case_002_degrade_to_secondary` 期望二级节点优先；`case_003_degrade_to_distributed` 期望二级不可用/过期后才分布式。
 
 ## P1 状态
 
-- 已完成：二级节点 lifecycle summary、主动降级 dwell/release/window 防抖配置、D6-compatible decision event metadata、对应单元测试。
+- 已完成：二级节点 lifecycle summary、主动降级 dwell/release/window 防抖配置、D6-compatible decision event metadata、D5 distributed visual evidence -> CBBA 风险加权、对应单元测试。
 - 保持不变：轻量 CBBA 仍是完全无中心保底基线；未接入 MIT CBBA、CA-CBBA、独立 auction 或 contract-net。
 - 仍属 main/runtime 侧后续：真实 AirSim episode 中统一调用 `D4ArbitrationAdapter`、写入 D6 collector、按 episode 聚合主动/被动降级指标。

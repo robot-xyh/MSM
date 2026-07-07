@@ -4,17 +4,18 @@
 
 **审计边界**：仅评估 D2 离线科研仿真与数据关联模块，不涉及真实飞控、硬件、火控、毁伤或自动处置逻辑。
 
-**结论摘要**：D2 已实现可运行的 GNN/Hungarian 主线、二维常速度 Kalman 航迹管理、简化 JPDA、有界 MHT 接口、IDSW/连续性指标、弱证据风险摘要和 AirSim dry-run 适配。本轮 P1 已补 `crossing_dense_5v5` 确定性场景、GNN/JPDA/MHT 同场对照、`AssociationRiskSummaryWindowGenerator` 滑窗风险生成器，以及 D1 `GlobalTrack` 到 D2 `Detection` 的模块内 adapter 基线。D2 运行链路按每帧输入的 `active_tracks` 和 `detections` 长度构造关联，不假设固定 2v2/5v5；5v5 仅是可重复 baseline fixture。未实现项仍集中在完整 EKF/UKF/IMM、Stone Soup/FilterPy 实际适配、生产级 JPDA/MHT 和原生 3D GlobalTrack 跟踪。
+**结论摘要**：D2 已实现可运行的 GNN/Hungarian 主线、二维常速度 Kalman 航迹管理、可插拔 `DataAssociator`、简化 JPDA、有界 MHT 接口、IDSW/连续性指标、弱证据风险摘要和 AirSim dry-run 适配。本轮 P1 已补 `crossing_dense_5v5` 确定性场景、GNN/JPDA/MHT 同场对照、`AssociationRiskSummaryWindowGenerator` 滑窗风险生成器，以及 D1 `GlobalTrack` 到 D2 `Detection` 的模块内 adapter 基线。D2 运行链路按每帧输入的 `active_tracks` 和 `detections` 长度构造关联，不假设固定 2v2/5v5；5v5 仅是可重复 baseline fixture。D2 输出的稳定 `global_track_id` 是 D3 分配、D4 主动降级证据、D5 末端配准和 D6 指标评估的共同键；D2/D6 必须显式保留 `id_switch_count`。未实现项仍集中在完整 EKF/UKF/IMM、Stone Soup/FilterPy 实际适配、生产级 JPDA/MHT 和原生 3D GlobalTrack 跟踪。
 
 ## 1. 总体判断
 
-D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再升级 JPDA/MHT”的主流共识，也与 `MAIN_IMPLEMENTATION_GAP_AUDIT.md` 的 P0/P1 口径一致：P0 主线是轻量可运行的 Hungarian/ID 指标/dry-run，P1 已补 5v5 dense/crossing 对照、风险滑窗和 D1 adapter 基线。工程策略是正确的：运行路径只依赖 NumPy/SciPy，Stone Soup 与 FilterPy 暂作为外部验证和未来适配目标。D2 不复制 main runtime 的 `--drone-count` 为内部常量，而是消费调用方传入的观测/航迹集合。主要差距集中在更高阶运动模型、完整第三方框架适配、三维航迹原生支持和更贴近真实 AirSim ComputerVision 回放的压力测试。
+D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再用 JPDA/MHT 做研究对照”的主流共识，也与 `MAIN_IMPLEMENTATION_GAP_AUDIT.md` 的 P0/P1 口径一致：P0 主线是轻量可运行的 Hungarian/ID 指标/dry-run，P1 已补 5v5 dense/crossing 对照、风险滑窗和 D1 adapter 基线。工程策略是正确的：运行路径只依赖 NumPy/SciPy，Stone Soup 与 FilterPy 暂作为外部验证和未来适配目标。D2 不复制 main runtime 的 `--drone-count` 为内部常量，而是消费调用方传入的观测/航迹集合。主要差距集中在更高阶运动模型、完整第三方框架适配、三维航迹原生支持和更贴近真实 AirSim ComputerVision 回放的压力测试。
 
 ## 2. 明确状态分区
 
 ### 2.1 已实现
 
 - **GNN/Hungarian 主线**：`GNNHungarianAssociator` 调用 SciPy `linear_sum_assignment`，每帧由实际 `tracks` 与 `detections` 构造代价矩阵，输出匹配、未匹配、拒配原因、代价矩阵、歧义分数和候选计数。
+- **可插拔关联器接口**：`DataAssociator` 已作为统一插件边界，`Tracker` 消费 `AssociationResult`，因此 GNN、JPDA、MHT 可共享状态机、metrics 和风险摘要。
 - **马氏门控与二维 Kalman 航迹管理**：`build_gated_cost_matrix()`、`Tracker` 和 `[x,y,vx,vy]` 常速度预测/更新已可运行，生命周期覆盖 `tentative/confirmed/engageable/lost/dropped`。
 - **核心指标**：`MetricsRecorder.summary()` 已输出 `id_switch_count`、`track_continuity`/`identity_continuity`、`coverage_continuity`、`duplicate_assignment_count`、RMSE、confusion matrix 和 runtime。
 - **crossing/dense fixture**：`crossing_dense_5v5` 已作为确定性 baseline fixture 加入，可同场比较 GNN、JPDA、MHT；该 fixture 不改变关联器按输入集合长度运行的边界。
@@ -28,7 +29,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - **MHT**：`MHTAssociator` 已有 bounded branch、短历史和 pruning 参数，能作为 MHT-compatible research placeholder；但不是完整 MHT，没有 N-scan pruning、分簇、长期假设树管理和中心算力策略。
 - **EKF 表述**：D2 当前只有二维线性 Kalman fallback。主审计中“EKF/滤波主线 P0 可用”在 D2 侧应理解为轻量 Kalman 航迹预测可用，不代表 D2 已实现非线性 EKF。
 - **3D NED 支持**：D2 可消费 D1 6D NED 输入并投影到水平 N-E 平面，但 D2 原生状态仍固定为 `[x,y,vx,vy]`，不是 `[px,py,pz,vx,vy,vz]` 三维跟踪器。
-- **D6/集成输出**：D2 summary 与 association logs 已具备 IDSW、continuity、duplicate、risk 字段，且有 D2/D6 IDSW 口径测试；但 episode 级 JSONL schema 和真实 main runtime 写入仍由 main/D6 固化。
+- **D6/集成输出**：D2 summary 与 association logs 已具备 IDSW、continuity、duplicate、risk 字段，且有 D2/D6 `id_switch_count` 口径测试；但 episode 级 JSONL schema 和真实 main runtime 写入仍由 main/D6 固化。
 
 ### 2.3 未实现
 
@@ -61,11 +62,19 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - **P2/P3**：建立 Stone Soup/FilterPy optional benchmark，先用于离线对照 JPDA/MHT/EKF/UKF/IMM，不进入默认运行路径。
 - **P3**：在多 seed replay 证明收益后，再做 JPDA/MHT 自动升级策略和切换迟滞。
 
+### 2.7 `global_track_id` 下游消费合同
+
+- **D3**：D3 以 D2 输出的 `global_track_id`、状态、协方差和 `lifecycle_state` 构造资源-目标分配代价。D2 应提供当前活动航迹集合；D3 应优先消费 `confirmed/engageable`，对 `tentative`、长期 `lost` 或高风险航迹提高代价或延迟分配。D2 不生成 `AssignmentPlan`，也不修改 D3 的 plan version。
+- **D4**：D4 消费 D2 `AssociationRiskSummary`、`id_switch_count` delta、continuity、duplicate risk、D5 disagreement、`source_node_id` 和 `link_type` 作为主动降级证据。D2 只发布关联风险，不决定 `continue_center`、`request_center_replan`、`degrade_to_secondary` 或 `degrade_to_distributed`。
+- **D5**：D5 使用 `global_track_id` 做终端视觉投影和候选配准，可回传 `TerminalAssociation`、`IdentityClaim`、候选 ID 与不一致事件作为弱证据。D5 不得改写、重绑或本地覆盖 D2 的规范 `global_track_id`。
+- **D6**：D6 消费 association logs、TrackTransition、summary 和 confusion matrix。D2/D6 必须显式保留 `id_switch_count`：同一 truth 的代表 `global_track_id` 变化就是 ID Switch，不能用 RMSE、覆盖率或命中数替代。
+
 ## 3. 实现差距表
 
 | 预期项 | 当前状态 | 证据文件 | 未实现原因 | 缺失条件 | 建议优先级 |
 |---|---|---|---|---|---|
 | GNN/Hungarian 默认关联主线 | 已实现。`GNNHungarianAssociator` 使用 SciPy `linear_sum_assignment`，支持马氏门控、代价矩阵、拒配原因、候选数元数据，并按实际 `len(tracks)`/`len(detections)` 运行 | `research_modules/d2_data_association/d2_data_association/associators.py`；`tests/test_gating_and_associators.py` | 不适用 | 继续保留 5v5 高密交叉基准作为 fixture，不把规模写成运行假设 | P0 已满足，持续维护 |
+| 可插拔 `DataAssociator` 接口 | 已实现。GNN、JPDA、MHT 均返回统一 `AssociationResult`，可复用 `Tracker`、metrics、risk summary 和 dry-run 输出 | `associators.py`；`tracker.py`；`tests/test_gating_and_associators.py` | 不适用 | 后续外部库 adapter 必须继续返回 `AssociationResult`，不得把外部对象泄漏到系统总线 | P0 已满足 |
 | 马氏距离门控 | 已实现。`mahalanobis_squared()`、`build_gated_cost_matrix()` 输出候选数和拒配对 | `research_modules/d2_data_association/d2_data_association/gating.py`；`tests/test_gating_and_associators.py` | 不适用 | 可增加协方差交叠率自动计算 | P0 已满足 |
 | 二维常速度 Kalman 航迹管理 | 已实现。`Tracker` 使用 `[x,y,vx,vy]`、线性预测和 Joseph 更新，含 tentative/confirmed/engageable/lost/dropped 状态机 | `research_modules/d2_data_association/d2_data_association/tracker.py`；`tests/test_tracker_metrics.py` | 不适用 | 若接 D1 3D NED，需要三维状态或投影适配策略固定 | P0 已满足 |
 | EKF | D2 未实现完整非线性 EKF。当前是二维线性 Kalman fallback；主审计中“EKF/滤波主线 P0 可用”对 D2 的含义是轻量 Kalman 跟踪可用，不是 D2 EKF 已实现 | `tracker.py`；`docs/ALGORITHM_AND_IMPLEMENTATION.md`；`MAIN_IMPLEMENTATION_GAP_AUDIT.md` | Phase-1 使用二维质点/线性观测，暂不需要雅可比和非线性量测 | 需要三维 NED、雷达球坐标/相机投影量测、非线性观测模型 | P2 |
@@ -75,7 +84,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 | MHT | 部分实现。`MHTAssociator` 保留有界分支和短历史，是 MHT-compatible research placeholder；非完整 MHT | `associators.py`；`tests/test_gating_and_associators.py` | 完整 MHT 复杂度高，当前只做中心/离线对照接口 | 需要 N-scan pruning、分簇、假设管理策略和中心节点算力假设 | P2 |
 | Stone Soup | 未实际集成。仅有可用性检测和占位转换函数 | `research_modules/d2_data_association/d2_data_association/compat.py` | 避免把 Stone Soup 对象暴露到系统总线；当前环境保持轻依赖 | 需要独立 research env 安装 Stone Soup、定义 adapter 映射和对照报告 | P2 |
 | FilterPy | 未实际集成。仅可用性检测和 `to_filterpy_state()` 占位 | `compat.py` | 当前 Tracker 已有线性 Kalman fallback；FilterPy 作为未来 EKF/UKF/IMM 原型 | 需要确定是否引入依赖、状态/量测模型、测试场景 | P2/P3 |
-| `id_switch_count` | 已实现。`MetricsRecorder` 根据 truth-to-track 代表 ID 变化计数 | `metrics.py`；`tests/test_tracker_metrics.py`；`simulation.py` | 不适用 | 集成场景必须提供 `truth_id`，否则无法评估真实 IDSW | P0 已满足 |
+| `id_switch_count` | 已实现。`MetricsRecorder` 根据 truth-to-track 代表 ID 变化计数，且测试验证 D2 与 D6 episode 计数口径一致 | `metrics.py`；`tests/test_tracker_metrics.py`；`simulation.py` | 不适用 | 集成场景必须提供离线 `truth_id`，否则只能输出风险摘要，不能评估真实 IDSW | P0 已满足，D2/D6 强制保留 |
 | `track_continuity` / `identity_continuity` | 已实现。`track_continuity` 是 `identity_continuity` 别名，同时有 `coverage_continuity` | `metrics.py`；`tests/test_tracker_metrics.py` | 不适用 | 需要 D6 统一消费并区分覆盖连续性与身份连续性 | P0 已满足 |
 | `duplicate_assignment_count` | 已实现。统计同帧重复 detection/track 和同 truth 多 track | `metrics.py`；`tests/test_tracker_metrics.py` | 不适用 | 后续可扩展为滑窗 duplicate-track risk 自动评分 | P0 已满足 |
 | 跨视角弱证据风险字段 | 已实现最小数据合同。`AssociationRiskSummary` 支持 `source_node_id`、`link_type`、`d5_disagreement_count`、`duplicate_track_risk`、`association_ambiguity`、`covariance_overlap_rate` | `models.py`；`metrics.py`；`tests/test_tracker_metrics.py` | 不适用 | 尚缺真实 D5/二级节点消息流和跨节点回放样本 | P1 已完成基线 |
@@ -97,7 +106,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - 马氏门控、候选计数、歧义分数、拒配原因已输出。
 - Tracker 具备基本航迹生命周期管理和 ID 评估闭环。
 - 关联器、Tracker 和 metrics 均按输入集合长度运行；2v2/5v5 只作为可重复测试场景。
-- `id_switch_count`、`track_continuity`、`duplicate_assignment_count` 已进入 summary。
+- `id_switch_count`、`track_continuity`、`duplicate_assignment_count` 已进入 summary，且 D2/D6 对 `id_switch_count` 的计数规则已有合同测试。
 - AirSim dry-run/replay-style 适配满足“无 AirSim SDK import、无真实 simulator call”的约束。
 - 集成层已能把 D1/D2/D3/D4/D5/D6 串入 `nominal_5v5` replay，D2 P0 主线已进入系统级离线闭环。
 
@@ -108,7 +117,14 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - D1 `GlobalTrack` 到 D2 `Detection` 的模块内 adapter 基线已经可用，仍保持松耦合字段读取；当前是 NED 6D 到 D2 2D 水平面的投影，不是 D2 原生 3D tracker。
 - D6/集成层仍需统一 D2 内部 IDSW 与 episode IDSW 的统计口径，并把 association logs/risk summary 纳入稳定 JSONL schema。
 
-### 4.3 暂不实现的合理项
+### 4.3 多目标交叉、密集编队与 ID Switch 剩余风险
+
+- **多目标交叉**：GNN/Hungarian 是单帧硬判决。交叉窗口内最优/次优代价 margin 过小时，硬关联可能任意打破平局，并在后续 Kalman update 中吸收错误观测。JPDA/MHT 可用于对照和风险暴露，但当前 JPDA 没有概率混合状态更新，MHT 没有完整 N-scan 和长期假设管理，不能宣称已消除交叉 ID Switch。
+- **密集编队**：多条航迹共享门内候选时，`candidate_counts_by_track`、`candidate_counts_by_detection` 和协方差重叠会升高。当前 feature cost 是简单向量差异；若外观、类别或声纹特征不稳定，仍可能发生 ID 交换或重复航迹解释。
+- **ID Switch 可观测性**：`id_switch_count` 依赖离线 `truth_id`。真实在线路径没有 truth label 时，D2 只能发布风险摘要和弱证据，不能把在线风险摘要当成真实 IDSW ground truth。D6 应在带 truth 的仿真或 replay 中计算最终 IDSW。
+- **规模风险**：D2 不写死 2v2/5v5，但 GNN 仍有 Hungarian 复杂度，JPDA/MHT 仍会随候选数增长。更大 N 需要分簇、预算、截断或只做离线对照。
+
+### 4.4 暂不实现的合理项
 
 - 完整 Stone Soup/FilterPy 适配暂不应进入核心运行路径。主流方案建议它们作为研究对照和原型工具，而不是直接污染统一数据总线。
 - 完整 MHT 不适合资源节点，当前有界 MHT placeholder 满足离线接口验证；生产级 MHT 需要中心算力、剪枝策略和更完整的场景基准。
@@ -122,12 +138,15 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 2. **P1 已完成基线：D1->D2 adapter contract**
    D2 已能消费 D1-like `GlobalTrack`，下一步不是重写 adapter，而是冻结 replay schema、坐标系和 timestamp 字段。
 
-3. **P2：引入三维状态或三维到二维的统一策略**
+3. **P1：固化下游消费 schema 与风险阈值**
+   让 main/D6 用真实或稳定导出的 5v5 AirSim CV replay 写入 D2 association logs 和 risk summary，校准 cost margin、candidate overlap、D5 disagreement、IDSW delta 和 continuity 阈值；同时保持非 2/5 数量合同测试。
+
+4. **P2：引入三维状态或三维到二维的统一策略**
    如果 D5 终端投影、D7 中段 PN 都需要三维状态，D2 需要升级为 3D `[px,py,pz,vx,vy,vz]` 或明确只输出二维关联 ID、三维状态由 D1 提供。
 
-4. **P2/P3：外部库对照环境**
+5. **P2/P3：外部库对照环境**
    单独建立 Stone Soup/FilterPy optional benchmark，不纳入默认测试路径。用于验证 JPDA/MHT、EKF/UKF/IMM 在高密交叉和强机动场景下是否优于当前轻量实现。
 
 ## 6. 审计结论
 
-D2 已经具备端到端集成的最小可用能力：输入检测、维护全局航迹 ID、执行 GNN/Hungarian、记录 IDSW/连续性、输出风险摘要和 dry-run bus message。它还具备 JPDA/MHT 的轻量可插拔对照、5v5 dense/crossing 压测、D1 NED 投影 adapter 和滑窗风险摘要。当前 D2 责任范围内没有固定 2v2/5v5 数量依赖；`global_track_id` 输出随活动航迹集合变化，可供 D3/D5 按集合消费。主要未完成项不是基础功能，而是高保真第三方对照、三维机动模型、原生 3D NED 跟踪和真实 AirSim CV replay 压力测试。建议暂缓将 Stone Soup/FilterPy 或完整 MHT 引入默认运行路径。
+D2 已经具备端到端集成的最小可用能力：输入检测、维护全局航迹 ID、执行 GNN/Hungarian、记录 IDSW/连续性、输出风险摘要和 dry-run bus message。它还具备 JPDA/MHT 的轻量可插拔对照、5v5 dense/crossing 压测、D1 NED 投影 adapter 和滑窗风险摘要。当前 D2 责任范围内没有固定 2v2/5v5 数量依赖；`global_track_id` 输出随活动航迹集合变化，可供 D3 分配、D4 风险仲裁、D5 终端配准和 D6 指标评估按集合消费。主要未完成项不是基础功能，而是高保真第三方对照、三维机动模型、原生 3D NED 跟踪和真实 AirSim CV replay 压力测试。建议暂缓将 Stone Soup/FilterPy 或完整 MHT 引入默认运行路径。

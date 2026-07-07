@@ -23,17 +23,20 @@ D5 只面向科研仿真、离线回放和保守的终端视觉配准评估。�
 - `CameraModel`：相机内参、外参、图像尺寸和测量协方差。
 - `ReconImageCue[]`：来自 D4 二级高空系留侦察节点的局部图像 cue。
 
-跨视场扩展输入建议：
+完全分布式跨视场输入：
 
 - `resource_id/camera_id/frame_id`：给每个本地视觉轨迹建立唯一观测命名空间，避免不同无人机都使用 `track_1` 时发生冲突。
-- `camera_pose` 或完整 `CameraModel`：记录每个相机在量测时刻的世界到相机变换。
+- `PeerCameraState`：记录每个 peer 相机在量测时刻的姿态协方差和可选位姿元数据。
 - `measurement_timestamp/arrival_timestamp`：区分图像形成时刻和数据到达时刻，便于跨视场时间对齐。
 - `covariance` 或 `covariance_px`：描述本地像素检测的不确定性，不把框中心当作确定值。
-- `CrossViewObservation`：把上述字段和 `LocalVisualTrack` 封装为跨视场观测。
+- `DistributedVisualObservation`：把上述字段和本地 `local_track_id`、bearing、bbox、类别、置信度封装为跨 peer 视觉观测。
+- `VisualTrackletSummary`：按 `resource/camera:local_track_id` 汇总观测窗口，保留 bbox 面积、scale rate、bearing rate 和可选 `assigned_global_track_id` 状态。
 
 输出：
 
 - `TerminalAssociation`：包含中心分配 ID、本地候选 ID、置信度、歧义度、友方冲突状态、决策状态、候选代价和 cue 使用标记。
+- `CrossPeerAssociationHypothesis`：完全分布式模式下的跨 peer metadata-only 视觉假设，不创建全局 ID。
+- `DistributedTerminalAssociation`：供 D4 完全分布式决策消费的保守摘要；missing/stale global ID、重复锁定、友方冲突或局部 ID 冲突时不得输出 `locked`。
 
 ## 4. 简化数学模型
 
@@ -99,6 +102,37 @@ C = C_geo + C_rate + C_category + C_quality + C_friend + C_recon
 
 ByteTrack、BoT-SORT、Deep SORT 只作为本地 MOT 输入来源。它们输出的 `local_track_id` 不能替代 `global_track_id`。
 
+### 5.1 当前代码与测试状态
+
+本节按当前 `src/d5_terminal_association/` 和 `tests/` 状态记录能力边界，避免把计划项写成已接入工程栈。
+
+已实现并有测试或代码支撑的能力：
+
+- `GlobalTrack -> CameraModel -> image projection`：`GlobalTrack` 是 frozen dataclass，`geometry.py` 和 `airsim_geometry.py` 支持投影、协方差传播、马氏门控和 AirSim camera info 到 D5 `CameraModel` 的离线转换。OpenCV 可用时使用 `cv2.projectPoints`；不可用时退回针孔模型。
+- `LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim`、`ReconImageCue`：核心 DTO 已落地。`TerminalAssociator.decide()` 只核对 `Assignment.assigned_global_track_id`，输出 `locked/ambiguous/hold/reacquire`，不会选择另一个全局 ID 作为新分配。
+- 保守 `decision_state`：未授权、版本不一致、已验证友方重叠时 `hold`；候选接近、质量不足或身份声明不可靠时 `ambiguous`；无有效投影或无门内候选时 `reacquire`；只有唯一、稳定、版本一致且无友方冲突时才 `locked`。
+- AirSim truth ID 隔离：`local_visual_tracks_from_sim_detections()` 明确忽略 `object_id`、`actor_name` 等真值字段；truth label 只可在 `TerminalObservation.metadata` 或离线 evaluator 中用于 `terminal_lock_accuracy`、`locked_mismatch` 等评分。
+- 跨视角 distributed visual association DTO 与 fusion：`DistributedVisualObservation`、`VisualTrackletSummary`、`PeerCameraState`、`CrossPeerAssociationHypothesis`、`DistributedTerminalAssociation` 和 `TerminalCrossViewFusion` 已实现 P0 metadata-only 融合。融合基于 measurement/arrival timestamp、bearing 或像素中心、bearing rate、bbox area/scale rate、类别/置信度、像素协方差和姿态协方差做 gating/cost；SciPy 可用时用 Hungarian，缺失时退回纯 Python 唯一匹配。
+- 完全无中心下多相机 peer evidence 输出：缺失或 stale `assigned_global_track_id` 时输出 `hypothesis_only/hold`，重复锁定、友方冲突或 local/global ID 冲突时输出 `hold/ambiguous` 风险证据；不会创建新 `global_track_id`。
+- D7 视觉 PNG 前置证据：`annotate_visual_png_handoff()` 已在 `TerminalAssociation.metadata` 上附加 bbox 面积稳定性、距离区间、TGO、延迟和机动裕度建议。该建议只给 D7/main 做 gate 输入，不决定导引律。
+
+部分实现或仅作为 adapter/抽象的能力：
+
+- 真实工程几何配准：当前消费已有 `CameraModel.K/R/t/dist_coeffs`，并能离线验证投影误差；没有完整标定采集、`calibrateCamera`、`solvePnP`/PnP RANSAC、bundle adjustment 或在线外参漂移估计链路。
+- YOLO：仅兼容常见 `xyxy/bbox_xyxy/class_name/confidence/track_id` 输出 schema，可把结果转为 `LocalVisualTrack`；D5 不加载 `best.pt`、不运行 YOLO 推理，也不管理 GPU/阈值/class map。
+- ByteTrack、BoT-SORT、Deep SORT：仅作为预期 `LocalVisualTrack` 来源写入方案；当前没有真实 tracker cache、遮挡恢复、ReID embedding 或 IDSW 统计实现。
+- OpenCV：已用于投影与可选畸变参数消费；未实现标定工作流和真实图像角点/AprilTag 检测。
+- ROS 2 `tf2/message_filters`：仅作为未来坐标/时间同步方案；D5 当前不启动 ROS graph，不订阅 topic，不消费 bag。
+- OpenDroneID、MAVLink signing、DDS Security、AprilTag：`IdentityChecker` 只解析仿真/fixture 风格身份字典并生成 `IdentityClaim`；未接入真实广播报文、密钥、证书、tag detector 或硬件链路。
+
+未实现的真实工程能力及原因：
+
+- 真实多目标检测器：缺少连续 RGB/PNG stream、detector runtime、权重加载策略、class map、置信度阈值和算力预算；当前默认只消费检测框 metadata。
+- 真实 MOT：缺少帧间 tracker 状态、遮挡恢复、ReID、IDSW/IDF1 离线真值和 tracker 依赖；当前 `local_track_id` 只是输入字段。
+- 真实标定链：缺少标定图像、标定板/AprilTag 角点、相机-机体系-世界系同步姿态、重投影误差验收阈值和 drift 告警流程。
+- 真实身份认证链路：缺少 OpenDroneID/MAVLink/DDS 实际报文、密钥和白名单管理、时钟一致性、消息来源到平台身份的可信映射。
+- 跨相机三维联合优化：缺少多相机同步 `CameraModel`、D2 航迹预测合同、三角化候选、重投影残差模型和 D4/D6 消费协议；当前只承诺 metadata-only peer evidence。
+
 ## 6. 二级侦察节点 cue 计划
 
 本阶段假设存在若干高空系留侦察无人机作为二级区域节点。中心节点正常时，二级节点向覆盖小区内的拦截资源发送图像 cue；中心节点失效时，D4 可降级到二级节点协调；二级节点也失效时才进入完全无中心协商。
@@ -118,7 +152,7 @@ D5 将该输入表示为 `ReconImageCue`：
 - 未重投影的二级相机像素不能直接与 `LocalVisualTrack.center_px` 比较。
 - cue 只能降低候选代价，不能绕过授权、版本校验、友方确认和 MOT 质量门槛。
 - 空 `scoped_resource_ids` 当前可视为广播 cue；若实验要求严格小范围分发，应改为显式广播标记或视为空无效。
-- 后续应加入 cue 新鲜度、目标相机帧校验和 `recon_cue_used_count` 指标。
+- 当前实现已加入 cue 新鲜度、目标相机帧校验、重投影标记校验和 `recon_cue_used` 决策标记；`recon_cue_used_count` 仍需进入 D6/main 统一日志。
 
 ## 7. 多无人机重叠视场配准计划
 
@@ -126,7 +160,7 @@ D5 将该输入表示为 `ReconImageCue`：
 
 建议流程：
 
-1. 当前 `TerminalObservationBus` 收集每架无人机的 `TerminalObservation` 摘要；后续完整几何融合时再引入 `CrossViewObservation`，携带资源、相机、帧、时间戳、相机姿态、像素协方差和本地 MOT 信息。
+1. 当前 `TerminalObservationBus` 收集每架无人机的 `TerminalObservation` 摘要；完全分布式 metadata-only 路径使用 `DistributedVisualObservation` 和 `VisualTrackletSummary` 携带资源、相机、帧、时间戳、协方差和本地 MOT 命名空间信息。
 2. 对 D2 的每个 `GlobalTrack` 按各自相机的 `measurement_timestamp` 做时间预测。
 3. 将同一个 `GlobalTrack` 分别投影到 UAV1、UAV2 等相机平面，得到每个视场内的像素预测和协方差。
 4. 在每个相机内先做像素马氏门控，形成局部候选代价。
@@ -134,21 +168,18 @@ D5 将该输入表示为 `ReconImageCue`：
 6. 对时间差过大、相机姿态不可信、协方差过大或候选代价接近的情况输出 `ambiguous/unknown`，不强行跨视场绑定。
 7. 二级侦察 cue 先重投影到每个目标相机平面，再按 `scoped_resource_ids` 对相应资源降低候选代价。
 
-当前已实现最小接口：
+当前已实现接口：
 
 - `TerminalObservation`：单条跨节点末端摘要，可携带 `LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim` 和 `ReconImageCue`。
 - `TerminalObservationBus`：被动收集多资源/多链路摘要，按既有 `global_track_id` 生成跨视角汇总。
 - `CrossViewAssociation`：表达一个 `global_track_id` 的 `supporting_resource_ids`、命名空间化 `local_track_ids`、`ambiguity_score`、`duplicate_terminal_lock_risk`、来源节点和链路类型。
+- `DistributedVisualObservation`、`VisualTrackletSummary`、`PeerCameraState`：完全分布式 metadata-only 跨 peer 输入 DTO。
+- `TerminalCrossViewFusion`：基于时间窗口、bearing、bearing rate、bbox area/scale rate、类别/置信度、像素协方差和姿态协方差做 gating/cost，并使用 Hungarian 或纯 Python fallback 做唯一匹配。
+- `CrossPeerAssociationHypothesis`、`DistributedTerminalAssociation`：向 D4 输出支持假设、`hypothesis_only/hold/ambiguous/locked` 状态、重复终端锁定风险和命名空间化 local track IDs。
 
 该最小实现覆盖 UAV1 看到目标 1/2/3、UAV2 看到目标 2/3/4 的摘要层逻辑：目标 2/3 得到多视角支持，目标 1/4 保持单视角支持；重复锁定只上报风险，不改分配。
 
-后续完整几何融合建议新增接口：
-
-- `CrossViewObservation`：单个本地视觉观测的跨视场封装。
-- `CrossViewTrackEvidence`：按 `global_track_id` 汇总多个跨视场关联、置信度、冲突状态和协方差摘要，供 D4/D6 使用。
-- `TerminalCrossViewFusion`：消费 D2 航迹、多资源相机、局部观测和 cue，输出跨视场关联摘要。
-
-当前程序已经覆盖单机视场内多目标候选、友方 `hold`、二级 cue 作用域、跨节点摘要汇总和 `global_track_id` 不变式；尚未完整实现跨无人机多相机几何融合。该能力应作为后续离线仿真扩展，不改变 D5 不改写 `global_track_id` 的边界。
+当前 `TerminalCrossViewFusion` 是 P0 metadata-only 融合器，不做三维重投影、三角化、bundle adjustment、真实图像 ReID 或 D4 分配决策。后续完整几何融合可新增 `CrossViewTrackEvidence`，把相机几何重投影和 D2 航迹预测纳入同一摘要，但仍不改变 D5 不改写 `global_track_id` 的边界。
 
 ## 8. 实施流程
 
@@ -163,7 +194,7 @@ D5 将该输入表示为 `ReconImageCue`：
 9. 调用 `decide()` 输出 `TerminalAssociation`。
 10. 记录候选代价、身份冲突、决策状态和 cue 使用情况，交给 D6 离线评估。
 11. 当前可由 `TerminalObservationBus` 汇总多个资源的 `TerminalAssociation` 摘要，向 D3/D4/D6 上报 `CrossViewAssociation` 支持关系和重复锁定风险。
-12. 后续完整跨视场扩展中，再由 `TerminalCrossViewFusion` 对多个资源的 `CrossViewObservation` 做几何融合，并只向 D3/D4/D6 上报摘要。
+12. 完全分布式模式可由 `TerminalCrossViewFusion` 对多个资源的 `DistributedVisualObservation` 或 `VisualTrackletSummary` 做 metadata-only 跨 peer 融合，并只向 D4/D6 上报 `CrossPeerAssociationHypothesis` 和 `DistributedTerminalAssociation`。
 
 ## 9. 代码模块划分
 
@@ -180,22 +211,36 @@ research_modules/d5_terminal_association/
 │   └── run_terminal_association_sim.py
 ├── src/d5_terminal_association/
 │   ├── airsim_cv_adapter.py
+│   ├── airsim_geometry.py
 │   ├── associator.py
+│   ├── consistency.py
 │   ├── geometry.py
 │   ├── identity.py
 │   ├── observation_bus.py
+│   ├── terminal_cross_view_fusion.py
+│   ├── visual_handoff.py
 │   └── models.py
 └── tests/
+    ├── test_airsim_cv_2v2_secondary_plan.py
+    ├── test_airsim_cv_5v5_evidence.py
+    ├── test_distributed_cross_view_fusion.py
+    ├── test_geometric_registration_validation.py
     ├── test_terminal_association.py
     ├── test_airsim_dry_run_interface.py
-    └── test_terminal_observation_bus.py
+    ├── test_terminal_consistency.py
+    ├── test_terminal_observation_bus.py
+    └── test_visual_handoff.py
 ```
 
 主要职责：
 
 - `models.py`：定义 `GlobalTrack`、`LocalVisualTrack`、`Assignment`、`IdentityClaim`、`ReconImageCue` 和 `TerminalAssociation`。
 - `airsim_cv_adapter.py`：转换 `simGetDetections` 风格检测框，生成 N-v-N ComputerVision 压测指标和三类降级证据摘要；5v5 只是 stress baseline。
+- `airsim_geometry.py`：提供 AirSim 相机内外参到 D5 投影模型的离线转换和几何匹配验证辅助，不读取 AirSim truth 做在线关联。
 - `observation_bus.py`：定义最小跨节点 `TerminalObservationBus` 汇总逻辑，输出 `CrossViewAssociation` 风险与支撑摘要。
+- `terminal_cross_view_fusion.py`：定义完全分布式 metadata-only 跨 peer 假设生成，输出 `CrossPeerAssociationHypothesis` 和 `DistributedTerminalAssociation`。
+- `consistency.py`：把连续帧 `TerminalAssociation`、跨视角摘要和冲突状态压缩为 `TerminalConsistencySummary`。
+- `visual_handoff.py`：给 D7/main 输出视觉 PNG handoff advisory metadata，检查 locked、bbox 稳定、分配一致和重复锁定风险。
 - `geometry.py`：实现投影、协方差传播和马氏距离。
 - `identity.py`：解析仿真身份声明并判断友方冲突。
 - `associator.py`：实现投影、代价矩阵和保守决策。
@@ -227,6 +272,9 @@ decision = associator.decide(
 - `TerminalObservationBus.publish_terminal_association(...)`
 - `TerminalObservationBus.publish_local_track(...)`
 - `TerminalObservationBus.cross_view_associations()`
+- `TerminalCrossViewFusion.summarize_observations(...)`
+- `TerminalCrossViewFusion.build_hypotheses(...)`
+- `TerminalCrossViewFusion.associate(...)`
 - `local_visual_tracks_from_sim_detections(...)`
 - `publish_sim_detections_as_local_observations(...)`
 - `compute_terminal_stress_metrics(...)`
@@ -249,19 +297,19 @@ bus.publish_terminal_association(
 cross_view = bus.cross_view_associations()
 ```
 
-后续完整跨视场几何融合接口建议：
+完全分布式 metadata-only 跨视场接口：
 
 ```python
-cross_view_result = terminal_cross_view_fusion.associate(
-    global_tracks=global_tracks,
-    observations=cross_view_observations,
-    cameras=camera_models_by_resource,
-    recon_image_cues=reprojected_recon_cues,
-    current_time=current_time,
+distributed = terminal_cross_view_fusion.associate(
+    observations=distributed_visual_observations,
+    tracklet_summaries=peer_tracklet_summaries,
+    camera_states=peer_camera_states,
+    current_assigned_global_track_ids=current_ids,
+    stale_assigned_global_track_ids=stale_ids,
 )
 ```
 
-该接口只输出 `CrossViewAssociation` 或一致性摘要，不产生新分配计划。
+该接口只输出 `DistributedTerminalAssociation`，每条摘要携带 `CrossPeerAssociationHypothesis`；不产生新分配计划，不创建或换绑 `global_track_id`。
 
 ## 11. 仿真场景设计
 
@@ -280,7 +328,7 @@ cross_view_result = terminal_cross_view_fusion.associate(
 - stale cue。
 - 跨资源 cue。
 - 空 `scoped_resource_ids` 语义对照。
-- UAV1 看到目标 1/2/3、UAV2 看到目标 2/3/4 的重叠视场配准。
+- UAV1 看到目标 1/2/3、UAV2 看到目标 2/3/4 的重叠视场 metadata-only 配准。
 - N-v-N ComputerVision 压测：数量由 main runtime 的 `--drone-count N` 统一控制；5v5 baseline 使用目标距主镜头约 50m、目标间距 20m、镜头间距 20m，每个主镜头视场内至少两个目标。
 - 二级系留侦察镜头比目标高约 200m，输出已重投影到拦截机相机平面的 `ReconImageCue`。
 - 相同 `local_track_id` 在不同无人机中重复出现的命名空间冲突测试。
@@ -325,9 +373,23 @@ D5 至少记录：
 
 ## 14. 局限与后续工作
 
-- 目前 `ReconImageCue` 的新鲜度和相机帧一致性主要由调用方保证。
-- 当前仿真尚未批量生成二级 cue 场景。
-- 已实现最小 `TerminalObservationBus`、`CrossViewAssociation` 和 N-v-N ComputerVision dry-run evidence helper，但尚未完整实现跨无人机多相机几何融合；`CrossViewObservation`、`CrossViewTrackEvidence` 和 `TerminalCrossViewFusion` 仍是接口建议。
-- 当前身份声明为离线仿真抽象，不连接真实通信或安全中间件。
-- 本地 MOT 质量对小目标场景影响大，需要 AirSim 离线回放进一步评估。
-- D5 输出只用于评估和上游复盘，不应被解释为自动处置命令。
+- `ReconImageCue` 的 scope、age、frame 和重投影标记已有代码校验，但真实二级侦察图像反投影/重投影链路尚未接入；当前 cue 仍主要来自 fixture 或预处理结果。
+- 已实现 `TerminalObservationBus`、`CrossViewAssociation`、`TerminalCrossViewFusion` 和 N-v-N ComputerVision dry-run evidence helper。
+- 尚未完整实现跨无人机多相机三维几何融合；`CrossViewTrackEvidence` 仍是后续接口建议。
+- 当前身份声明为离线仿真抽象，不连接真实 OpenDroneID、MAVLink signing、DDS Security 或 AprilTag detector。
+- 本地 MOT 质量对小目标场景影响大；当前不运行 ByteTrack、BoT-SORT、Deep SORT 或真实 YOLO，只消费它们可能输出的 bbox/track schema。
+- D5 输出只用于 D4/D6/D7 的证据、评估和上游复盘，不应被解释为自动处置命令。
+
+P1 下一步：
+
+- 把 AirSim CV replay 中的 projected pixel、pixel error、mahalanobis、gate_pass、candidate margin、`locked_mismatch`、`duplicate_terminal_lock_risk`、`recon_cue_used_count` 和 visual PNG advisory metadata 接入 main/D6 日志。
+- 增加可选 detector/tracker adapter，优先 ByteTrack/YOLO schema 到 `LocalVisualTrack` 的离线输入适配；adapter 必须保持 truth ID 隔离，并证明 tracker ID 不能替代 `global_track_id`。
+- 增强 D4 消费接口：把 `DistributedTerminalAssociation.recommended_d4_action`、`duplicate_lock_resource_ids`、`hypothesis_only/hold/ambiguous` 原因和连续帧 `TerminalConsistencySummary` 作为 CBBA 风险加权输入。
+- 增加本地最佳视觉候选长期偏离 `assigned_global_track_id` 的被动一致性测试；输出只给 D4 仲裁，不允许 D5 换绑。
+
+P2 下一步：
+
+- 建立离线标定/几何验证链：OpenCV calibration、`solvePnP`/PnP RANSAC、重投影误差阈值、外参 drift 告警和多相机 frame/timestamp 对齐检查。
+- 在现有 metadata-only `TerminalCrossViewFusion` 之上设计三维跨相机几何融合，输出 D2 航迹预测残差、三角化一致性、pose covariance 和 conflict state。
+- 接入至少一种真实身份来源作为 `IdentityClaim` adapter，例如 OpenDroneID 回放、MAVLink signing 回放或 AprilTag 图像检测；未知或校验失败只能降低可信度，不能升级为敌方或锁定目标。
+- 评估 BoT-SORT/Deep SORT/ReID 是否适合小型无人机图像；若图像尺寸、纹理和算力不足，应保持 ByteTrack/几何门控为默认基线。

@@ -11,6 +11,32 @@ D7 提供一个可被主流程接入的离线二维比例导引研究模块。�
 
 本模块只做离线二维质点运动、算法解释、日志评估和可视化准备；不提供真实飞控接口、硬件驱动、实时通信、火控参数、毁伤模型、自动处置或授权绕过逻辑。
 
+## 当前代码与测试状态
+
+当前 D7 主线已经落地的能力如下：
+
+- **中段雷达 PN/PNG**：`pn.py` 的 `compute_proportional_navigation_command()` 使用二维位置和速度估计计算 `a_n = N * V_c * lambda_dot`，记录 LOS angle、LOS-rate、closing speed、range、限幅加速度和限幅转向率。`simulator.py` 和 `airsim_dry_run.py` 把上游 GlobalTrack/actor track 等价估计映射为 `GuidanceState(source="global_track" | "airsim_actor_track")`。
+- **末端视觉 PNG**：`vision_png.py` 的 `SimpleFlightPngGuidanceFilter` 从 bbox 中心计算 bearing/LOS，维护 LOS-rate 窗口和 bbox 面积窗口，支持 `los`、`png_ttc`、`png_vm` 三种轻量末端输出，其中 runtime 默认走 `png_vm`。
+- **每个 assignment pair 独立导引状态**：D7 filter 是实例状态，包含 `local_track_id`、稳定帧、LOS-rate history 和 TTC 面积窗口。单元测试覆盖 1/3/5/7 个 pair 并行，验证不同 pair 不共享视觉 filter 状态。
+- **SimpleFlight 控制命令抽象**：D7 输出的是 `PngGuidanceCommand.velocity_ned`，适配 SimpleFlight 高层速度接口。真实 AirSim 控制调用位于 main/runtime 的 `intercept.py`，通过 `command_velocity_z()`/`moveByVelocityZAsync` 下发；D7 模块本身不直接调用 AirSim。
+- **D3/D4/D5 gate**：`terminal_gate.py` 已实现 `AssignmentGuidanceBinding`、`D4GuidancePermission` 和 `evaluate_terminal_png_contract()`，校验授权、current/expiry、plan/version、D4 action、D5 `locked`、friend conflict、D5 `assigned_global_track_id`、D5 `assignment_version` 和观测 `assigned_global_track_id`。
+- **D4 保守阻断**：`request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed`、`reassign` 均映射为 `d4_reassign_pending`，`guidance_mode_from_terminal_contract()` 将其映射为 `abort_revoke`，视觉 PNG 不会被调用。
+- **D5 锁定一致性**：只有 `decision_state="locked"`、无 friend conflict、`assigned_global_track_id` 与当前 D3 binding 一致、`assignment_version == track_version` 时才允许视觉 PNG；D7 不因为本地检测结果更近或更清晰而重绑 `global_track_id`。
+- **切换策略实际状态**：离线二维仿真的 `terminal_switch_range_m` 默认 `250.0m`；AirSim runtime 默认 `intercept_terminal_switch_range_m=8.0m`，可由 CLI 改动；测试中的 `30m` 级相对距离是视觉 gate 回归夹具，不是硬编码策略。bbox 稳定默认至少 2 帧，同时还要求面积、置信度、边缘、视觉延迟、LOS-rate 方差、TTC/闭合速度和机动裕度满足 gate。
+
+当前“部分实现”的能力如下：
+
+- AirSim SimpleFlight 真实控制已在 main/runtime 层接入 D7 API，并能输出 `control_commands.csv`、`intercept_summary.json` 和 D6 可消费字段；但真实 D3/D4/D5 runtime bus 仍主要靠 frame metadata/模拟 terminal association 驱动，尚不是完整线上状态总线。
+- 相机 `X=0.5m` 前移、`640x480`/`120deg` FOV、`look_at_target` yaw 或 ComputerVision 相机朝向目标已在 AirSim runtime/settings/tests 中接入；D7 主线只消费 bbox 和固定 `focal_length_px` 近似，不直接管理真实相机外参、畸变或姿态估计。
+- `png_guidance_delivery` 的 truth/gimbal/strapdown、PX4、MAVLink body-rate、YOLO/ByteTrack 代码作为复现实验资料随 D7 保存；主线只抽取 bbox-to-bearing、LOS-rate、TTC/VM 增益和 SimpleFlight 速度命令这一轻量核。
+
+当前未实现且不应在文档中表述为已接入的能力：
+
+- 更真实的机动约束、3D PN、目标加速度补偿、FRPN/augmented PN、MPC/NMPC。
+- 硬件飞控、实机 PX4 Offboard、MAVLink body-rate/attitude 作为默认 main runtime 控制路径。
+- YOLO/ByteTrack/真实视觉检测闭环直接控制 D7 主线；现阶段只允许作为 delivery 或未来离线 replay adapter。
+- D7 本地分配、授权、重分配或 `global_track_id` 改写。
+
 ## PNG guidance delivery 学习与融合
 
 已验证的 `png_guidance_delivery` 包含 truth、gimbal、strapdown 三类 AirSim PNG 验证路径。D7 主线只吸收其中对当前 SimpleFlight Blocks 仿真直接有用的算法核：
@@ -20,6 +46,12 @@ D7 提供一个可被主流程接入的离线二维比例导引研究模块。�
 - bbox 面积扩张估计 TTC。
 - `LAW=TTC` 的 TTC 增益调度和 `LAW=VM` 的固定 `N * V_m` 思路。
 - bbox 太小、贴边、检测不连续、视觉延迟高、机动裕度不足时拒绝切换。
+
+两类 delivery 方案在系统中的融合口径如下：
+
+- **位置比例导引 / truth PNG**：delivery 的 `truth` 路径使用目标真实相对位置和速度验证 PNG 上限。D7 主线不调用 delivery 的 truth 脚本，而是用 `compute_proportional_navigation_command()` 和 AirSim actor/global-track 等价估计实现同一类位置 PN/PNG 几何。实际代码路径是 `d7_proportional_guidance/pn.py`、`simulator.py`、`airsim_dry_run.py`，以及 main/runtime 的 `intercept.py` 中段控制。
+- **TTC 捷联比例导引 / strapdown PNG**：delivery 的 `strapdown` 路径把固定相机 bbox 转成 LOS/LOS-rate，并用 bbox 面积扩张估计 TTC。D7 主线不接入它的完整相机姿态、KF、YOLO、body-rate 或 PX4 控制，而是在 `vision_png.py` 中保留轻量 TTC/VM gate：`PngGuidanceConfig(law="png_ttc")` 使用 TTC 增益，`law="png_vm"` 使用固定 `N * V_m` 思路。实际 AirSim controlled intercept 默认 `png_vm`，`png_ttc` 目前主要是 D7 API/复现实验可用能力。
+- **文档化状态**：delivery 仍是方案、报告和复现实验包；D7 README/PLAN/GAP 只把其中已抽取到 `vision_png.py` 或 runtime 实际调用的内容列为主线实现。
 
 命名口径：
 
@@ -34,6 +66,19 @@ D7 提供一个可被主流程接入的离线二维比例导引研究模块。�
 - 自动 arm/offboard 或任何真实平台控制流程。
 
 主线新增 `SimpleFlightPngGuidanceFilter`，它输出 SimpleFlight 速度命令和 gate 质量字段，不直接调用 AirSim API。
+
+## D3/D4/D5 切换合同
+
+D7 的末端视觉 PNG 入口必须按以下顺序保守判定：
+
+1. D3 binding 必须存在、授权有效、assignment current，且 plan/version/track_version 未过期。
+2. D4 action 必须允许末端继续。`continue`、`continue_center`、`request_secondary_assist` 可进入后续检查；`request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed`、`reassign` 均表示当前绑定正在重分配或降级，D7 必须记录 `d4_reassign_pending` 并阻断视觉 PNG。
+3. 若 D4 提供 `new_plan_id/new_plan_version`，必须与当前 D3 binding 一致，否则拒绝为 `d4_plan_mismatch`。
+4. D5 terminal association 必须 `decision_state="locked"` 且无 friend conflict；`ambiguous`、`hold`、`reacquire` 只能让 D7 保持 `handover_pending`、`hold` 或 `reacquire` 日志状态，不能本地换目标。
+5. D5 的 `assigned_global_track_id` 必须与 D3 binding 的 `assigned_global_track_id` 一致，D5 的 `assignment_version` 必须等于 D3 binding 的 `track_version`；观测 bbox 上携带的 `assigned_global_track_id` 若不一致也必须拒绝。
+6. 只有 contract 通过后，D7 才评估该 pair 自己的 `SimpleFlightPngGuidanceFilter`；若 bbox/LOS/TTC/机动 gate 不通过，记录 `terminal_switch_reject_reason` 并保持中段/等待状态。
+
+D7 不分配目标、不授权、不创建或改写 `global_track_id`，也不把本地 `local_track_id` 升级为全局身份。
 
 ## 工程问题
 
@@ -177,3 +222,16 @@ AirSim runtime 集成要求：
 - 目标检测输入来自 AirSim `simGetDetections` 的 bbox，不依赖默认保存 PNG。
 - 进入视觉终端前必须同时满足 D5 locked/版本一致、bbox 质量、LOS 质量、机动裕度和窗口门槛。
 - 若 gate 失败，记录 `terminal_switch_reject_reason`，并保持 `handover_pending` 或回退 `radar_midcourse`。
+
+P1 下一步：
+
+- 把真实 D3 plan/version、D4 action、D5 `TerminalAssociation` 事件流接入同一个 N-pair AirSim state machine，减少 runtime metadata 模拟状态。
+- 固化 PN vs Pure Pursuit vs `png_vm`/`png_ttc` 的多 seed 对照，并由 D6 统一统计 `min_range_m`、`time_to_intercept_s`、`terminal_contract_reject_reason`、`terminal_switch_reject_reason` 和 `visual_png_switch_count`。
+- 为 YOLO/ByteTrack 先做离线 replay adapter，只生成 D5 local tracks 和 D7 bbox/LOS gate 摘要，不直接进入控制主线。
+- 继续回归 D4 `request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed` 保守阻断，确保 D7 不在重分配窗口使用旧锁定视觉 PNG。
+
+P2 下一步：
+
+- 在 SimpleFlight 闭环稳定后评估 FRPN/augmented PN/目标加速度补偿，但必须先准备高机动目标 fixture 和 D6 对照指标。
+- 将 PX4/MAVLink/body-rate 保持为独立 delivery 实验路径；只有完成 Offboard 状态机、推力/坐标/限幅标定和安全流程后，才考虑从实验路径迁移。
+- 评估 3D PN、真实相机标定、相机外参/畸变、硬件飞控和 MPC/NMPC；这些不是当前 D7 主线阻塞项。

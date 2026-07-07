@@ -1,205 +1,319 @@
-# AirSim Offline Integration Plan
+# D6 AirSim 离线集成计划
 
-Detailed Chinese algorithm and implementation notes are maintained in `docs/ALGORITHM_AND_IMPLEMENTATION.md`. This file focuses only on offline AirSim log ingestion.
+本文只描述 D6 如何离线消费 AirSim/main runtime 已写盘产物。D6 不连接 AirSim client，不调用 `simGetDetections`、vehicle control、reset、pose 或任何实时 API；AirSim 启停、reset、episode 顺序、日志写盘和最终报告调度由 main runtime 负责。
 
-## Boundary
+## 1. 边界
 
-The D6 AirSim integration is offline-only. It must ingest AirSim recordings, simulator metadata, and offline algorithm logs after a run has ended. It must not connect the evaluator to live AirSim control APIs for real-time tasking, must not emit control commands, and must not generate fire-control parameters, damage logic, automated disposal actions, or authorization bypasses.
+D6 AirSim 集成是 offline-only：
 
-## Goal
+- 输入是已经保存的 JSONL、CSV、JSON、metadata 和可选 PNG 路径。
+- D6 不订阅 runtime bus，不向 D1-D7 回写指标，不触发 replan/failover/guidance。
+- D6 不读取在线 truth ID 参与控制；truth label 只用于离线评估。
+- D6 不生成 fire-control 参数、毁伤逻辑、自动处置或授权绕过流程。
 
-Convert AirSim-derived logs into D6 records:
+## 2. 当前已实现的离线入口
 
-```text
-TrackRecord
-AssignmentRecord
-EventRecord
-TerminalRecord
-```
+| 入口 | 当前输入 | 已实现能力 | 未覆盖 |
+|---|---|---|---|
+| `load_blocks_replay_jsonl()` | `blocks_frames.jsonl`、可选 `blocks_sensor_observations.jsonl` | 构建 truth summary、规模字段、视觉 track、terminal records、video metadata/bbox link records、D1 replay observation links、多视角 consensus/conflict 基线事件 | 不扫描 episode 目录，不解析 AirSim 原生 recording，不调用 AirSim |
+| `load_episode_log_jsonl()` | 标准化 `truth_summary/track/assignment/event/link/terminal` JSONL | 读取 D6 统一记录模型，未知 record type 报错 | 不负责上游 schema 转换 |
+| `load_d4_active_degradation_decisions()` | D4 active-degradation CSV | 读取主动降级、二级协助、触发原因和窗口 delta metadata | 不判断主动降级必要性，除非 main/D4 提供 review label |
+| `load_d7_intercept_outputs()` | `control_commands.csv`、`intercept_summary.json` | 读取 gate、visual PNG switch、terminal takeover、拦截结果、reject reason | 不运行 D7，不发控制 |
+| `load_d7_guidance_timeseries()` | `guidance_records.csv`、`guidance_summaries.json`，可合并 control/intercept 输出 | 读取 mode switch、D4/D5 state、plan/version、guidance law、terminal contract reject | 不负责保证 main 每个 episode 都写出这些文件 |
 
-Then compute:
+## 3. Blocks Replay JSONL 合同
 
-```text
-EpisodeMetrics
-```
+### 3.1 `blocks_frames.jsonl`
 
-and generate CSV tables, Markdown reports, and PNG plots using `ReportGenerator`.
-
-## Offline Data Inputs
-
-Expected AirSim-side artifacts:
-
-- AirSim recording files with timestamped pose/state records.
-- Optional camera frame metadata and frame paths.
-- Ground-truth object tracks exported from the simulator scenario configuration or post-run labels.
-- Offline detection and tracking outputs produced by separate algorithms.
-- Offline assignment logs produced by a planner under test.
-- Offline degradation and safety event logs.
-- Offline terminal registration logs, if a terminal camera or local association algorithm is evaluated.
-
-No live API calls are required for metric generation.
-
-### Current Blocks Replay JSONL Adapter
-
-For the current ComputerVision 5v5 replay path, D6 can evaluate the main
-runtime outputs directly through `load_blocks_replay_jsonl()`:
-
-| Runtime artifact | D6 use |
-|---|---|
-| `blocks_frames.jsonl` | Builds `truth_summary`, visual `TrackRecord`, `TerminalRecord`, bbox `LinkRecord`, video-metadata `LinkRecord`, and multi-view consensus/conflict events |
-| `blocks_sensor_observations.jsonl` | Adds delivered D1 replay observations and communication `LinkRecord` entries for latency, drop, sequence, and stale-update metrics |
-
-`blocks_frames.jsonl` is sufficient for metadata-only CV evaluation when it
-contains `truth_objects`, `cameras`, `metadata.images` or camera status,
-`visual_detections`, `bbox_xyxy`, `local_track_id`, `object_id`, object labels,
-camera intrinsics/extrinsics, and timestamps. PNG screenshots are optional and
-are only diagnostic evidence; D6 metrics do not require them.
-
-`blocks_sensor_observations.jsonl` should preserve `measurement_timestamp`,
-`arrival_timestamp`, `metadata.truth_id`, and optional `communication` fields:
-`source_node_id`, `target_node_id`, `payload_kind`, `sequence_id`,
-`sent_timestamp`, `received_timestamp`, `delivered`, and `stale_after_s`.
-These fields let D6 compute cross-node latency, drop rate, out-of-order counts,
-and stale track updates without connecting to AirSim or any live link.
-
-## Timestamp Alignment
-
-All records should be transformed to a common monotonic episode clock:
+每行代表一个 AirSim Blocks frame。D6 当前消费字段：
 
 ```text
-episode_time = source_timestamp - episode_start_timestamp
+episode_id
+scenario_name
+timestamp
+truth_objects[]
+resources[]
+cameras[]
+visual_detections[]
+metadata.images[] 或 metadata.image
 ```
 
-Recommended validation checks:
+`truth_objects[]` 推荐字段：
 
-- Timestamps are non-negative.
-- All streams cover the expected episode interval.
-- Frame timestamps can be matched to truth timestamps within a declared tolerance.
-- Time units are documented as seconds.
-
-## Schema Mapping
-
-### Tracking
-
-Map offline tracker rows to `TrackRecord`:
-
-| Source field | D6 field |
-|---|---|
-| tracker timestamp | `timestamp` |
-| global track identifier | `global_track_id` |
-| evaluator truth label, if available | `truth_id` |
-| estimated position | `position` |
-| truth position, if available | `truth_position` |
-| covariance trace or uncertainty proxy | `covariance_trace` |
-| track lifecycle state | `track_state` |
-| source stream name | `association_source` |
-
-If truth labels are not available, D6 can still count false-alarm-like records if the source marks them, but detection probability and missed detection rate require truth opportunity counts.
-
-### Assignment
-
-Map offline planner snapshots to `AssignmentRecord`:
-
-| Source field | D6 field |
-|---|---|
-| planner timestamp | `timestamp` |
-| plan identifier | `plan_id` |
-| plan version | `version` |
-| resource identifier | `resource_id` |
-| assigned global track | `global_track_id` |
-| offline cost terms | `cost_breakdown` |
-| logged authorization state | `authorization_state` |
-| active/inactive flag | `active` |
-| evaluator truth label, if available | `truth_id` |
-
-D6 counts duplicate assignment and unassigned high-priority evaluated targets. It does not recommend new assignments.
-
-### Degradation and Safety Events
-
-Map post-run event logs to `EventRecord`:
-
-| Event | D6 `event_type` |
-|---|---|
-| central coordinator failure | `central_failure` |
-| degraded mode stable | `degraded_stable` |
-| consensus round count | `consensus_rounds` with `value` |
-| degraded task completed | `degraded_task_completed` |
-| degraded task failed | `degraded_task_failed` |
-| safety constraint violation | `constraint_violation` |
-| human override/rejection | `human_override` or `human_rejection` |
-
-### Terminal Registration
-
-Map local camera or terminal association logs to `TerminalRecord`:
-
-| Source field | D6 field |
-|---|---|
-| local timestamp | `timestamp` |
-| resource/camera identifier | `resource_id` |
-| assigned global target | `assigned_global_track_id` |
-| local visual or terminal track | `local_track_id` |
-| field-of-view or lock state | `decision_state` |
-| ambiguity score | `ambiguity_score` |
-| friend-overlap state | `friend_conflict_state` |
-| evaluator expected global target | `expected_global_track_id` |
-| evaluator correctness label | `association_correct` |
-
-Recommended terminal `decision_state` values:
-
-- `fov_entry`
-- `locked`
-- `observed`
-
-## Truth Summary Contract
-
-`MetricsCollector.compute_episode(..., truth_summary=...)` accepts:
-
-```python
-truth_summary = {
-    "truth_timestamps": {
-        "T00": [0.0, 1.0, 2.0],
-        "T01": [0.0, 1.0, 2.0],
-    },
-    "high_threat_ids": ["T00"],
-    "high_threat_by_timestamp": {
-        0.0: ["T00"],
-        5.0: ["T00"],
-    },
-    "scenario": {
-        "name": "airsim_replay_case_001",
-        "time_unit": "seconds",
-    },
-}
+```text
+object_id
+object_type = target
+position_ned
+velocity_ned
+threat_score
 ```
 
-The `high_threat_*` labels are evaluator-side priority labels for metrics only. They must not be used by D6 to generate real-time tasking.
+D6 用它构建：
 
-## Proposed Adapter Workflow
+- `truth_summary.truth_timestamps`
+- `truth_summary.total_truth_opportunities`
+- `truth_summary.high_threat_ids`
+- `truth_summary.high_threat_by_timestamp`
+- `truth_summary.scenario.target_count`
 
-1. Export AirSim recording artifacts after the simulation run.
-2. Convert AirSim timestamps to episode time.
-3. Convert tracker, planner, event, and terminal logs to D6 dataclasses.
-4. Build `truth_summary` from simulator labels.
-5. Run `MetricsCollector.compute_episode`.
-6. Repeat for all seeds or scenario variants.
-7. Run `ReportGenerator` to write tables and charts.
-8. Archive command line, input file checksums, and package versions.
+`resources[]` 推荐字段：
 
-## Validation Tests Before Use
+```text
+resource_id
+metadata.airsim_vehicle_name
+```
 
-- One AirSim recording with known truth timestamps converts to the expected `truth_summary`.
-- A known false record increments `false_alarm_rate`.
-- A deliberate track ID change increments `id_switch_count`.
-- A deliberate duplicate planner snapshot increments `duplicate_assignment_count`.
-- A synthetic central failure and stable marker produce the expected `failover_time`.
-- A terminal FOV entry and lock marker produce the expected `time_to_terminal_lock`.
-- Constraint and human override events appear in the safety counts.
+D6 用它映射 AirSim vehicle/camera owner 到资源 ID，并计算 `resource_count/drone_count`。
 
-## Non-Goals
+`cameras[]` 推荐字段：
 
-- No live AirSim vehicle control.
-- No online replanning.
-- No target engagement recommendation.
-- No fire-control, weapon-effect, or damage modeling.
-- No automatic disposal or response action.
-- No bypass of human authorization or review.
+```text
+camera_id
+owner_id
+fx
+fy
+cx
+cy
+width
+height
+position_ned
+rotation_world_to_camera
+```
+
+D6 用它计算 `camera_count`，并把相机内外参保存在 bbox `LinkRecord.metadata` 中，支持无 PNG 的多视角/末端评估。
+
+`visual_detections[]` 推荐字段：
+
+```text
+camera_id
+object_id
+detection_id
+local_track_id
+bbox_xyxy
+center_px
+confidence
+metadata.airsim_detection_name
+object_name
+```
+
+D6 当前转换为：
+
+- `TrackRecord`：`association_source="blocks_visual_detection"`。
+- `TerminalRecord`：`decision_state="associated"`，用于末端配准准确率。
+- `LinkRecord(payload_kind="bbox")`：用于 bbox delivery、多视角和通信统计。
+- `EventRecord(event_type="multi_view_consensus_result")`：同一 object 被多个 camera 检出时生成。
+- `EventRecord(event_type="cross_view_conflict")`：同一 local track 关联多个 object 时生成。
+
+`metadata.images[]` 推荐字段：
+
+```text
+camera_vehicle_name
+camera_name
+ok
+saved
+path
+width
+height
+```
+
+D6 当前转换为 `LinkRecord(payload_kind="video_metadata")`。`metadata.images[].path` 是否存在只进入 `png_saved` 元数据；PNG 不参与指标计算。
+
+### 3.2 `blocks_sensor_observations.jsonl`
+
+每行代表一个 D1 replay observation 或传感/通信样本。D6 当前消费字段：
+
+```text
+observation_id
+sensor_id
+modality
+measurement_timestamp
+arrival_timestamp
+metadata.truth_id
+metadata.source_node_id
+metadata.target_node_id
+metadata.sequence_id
+metadata.delivered
+metadata.stale_after_s
+communication.*
+```
+
+`communication` 推荐字段：
+
+```text
+source_node_id
+target_node_id
+relay_node_id
+link_type
+payload_kind
+sequence_id
+sent_timestamp
+received_timestamp
+delivered
+stale_after_s
+```
+
+D6 当前转换为：
+
+- delivered 且带 `metadata.truth_id` 的 observation -> `TrackRecord`。
+- 每条 observation -> `LinkRecord`，用于 `cross_node_latency_ms`、`message_drop_rate`、`out_of_order_count`、`stale_track_update_count`。
+
+必须保留 `measurement_timestamp` 与 `arrival_timestamp`。这既是 D1 时间合同，也是 D6 stale/latency 指标的来源。
+
+## 4. D4/D5/D7 AirSim 产物回灌状态
+
+### 4.1 D4
+
+D6 已实现：
+
+- 读取 D4 active-degradation CSV。
+- 从 event/control metadata 识别 active/passive failover、secondary takeover、secondary reassignment、D4 reassign pending、distributed fallback。
+- 输出 `active_degradation_count`、`passive_failover_count`、`secondary_node_takeover_count`、`secondary_reassignment_count`、`d4_reassign_pending_count`、`distributed_fallback_count`、`failover_active_window_delta_s`。
+
+仍需 main/D4 接线：
+
+- 在真实 AirSim episode 中持续写出 D4 decision/event 日志。
+- 写入 `trigger_timestamp`、`decision_timestamp`、`selected_coordinator`、`coverage_cell`、`review_label`。
+- 固定 pre/post 窗口统计，才能正式输出主动降级必要性和改善 delta。
+
+### 4.2 D5
+
+D6 已实现：
+
+- `TerminalRecord` 末端准确率、local ID switch、FOV 歧义、friend overlap hold、lock time。
+- Blocks bbox/camera metadata 的无 PNG 多视角基线。
+- `multi_view_consensus_rate`、`cross_view_conflict_count`、`duplicate_terminal_lock_count`。
+
+仍需 main/D5 接线：
+
+- 把 D5 terminal association、identity claim、cross-view conflict、duplicate lock、friend overlap hold 和 terminal-center disagreement 事件写成 D6 可读 JSONL/CSV。
+- 保留 `assigned_global_track_id`、`local_track_id`、`resource_id/camera_id`、validation label、bbox、相机内外参和 timestamp。
+- 确保在线 D5 不使用 AirSim truth ID；truth/validation label 只在离线日志或 D6 评估阶段使用。
+
+### 4.3 D7
+
+D6 已实现：
+
+- 读取 D7 `control_commands.csv`、`intercept_summary.json`、`guidance_records.csv`、`guidance_summaries.json`。
+- 输出 gate pass rate、terminal switch allowed/reject、visual PNG switch、terminal takeover、mode switch、terminal contract reject、intercept success/counts、min range、time to intercept。
+- 将 guidance law、D4/D5 state、plan/version、reject reason 写入 `EpisodeMetrics.metadata`。
+
+仍需 main/D7 接线：
+
+- 在每个 integrated AirSim episode 中稳定产出这些 D7 文件。
+- 保持 D3 assignment plan version、D4 action/state、D5 terminal state 和 D7 guidance law 的同一时间轴。
+- 在 main 汇总时调用 D6 loader 合并到同一 episode metrics，而不是仅保留独立 D7 报告。
+
+## 5. Integrated Episode Metrics 的推荐流程
+
+main runtime 推荐按以下顺序写盘和评估：
+
+1. 启动或复用 AirSim Blocks，按 reset 分隔 episode。
+2. 写出 `blocks_frames.jsonl` 和 `blocks_sensor_observations.jsonl`。
+3. 写出 D4 decision/event CSV/JSONL。
+4. 写出 D5 terminal/multi-view JSONL 或转换后的 D6 `terminal/event/link` 记录。
+5. 写出 D7 `guidance_records.csv`、`guidance_summaries.json`、`control_commands.csv`、`intercept_summary.json`。
+6. main 调用 D6 loaders，把所有记录合并进一个 `MetricsCollector`。
+7. 调用 `compute_episode()`，传入同一 `truth_summary`、`episode_id`、`seed/batch_seed` 和实际规模字段。
+8. 批量调用 `ReportGenerator` 输出 CSV、Markdown、PNG。
+
+D6 代码已经具备第 6-8 步的模块能力；第 1-5 步以及跨文件合并调度属于 main runtime。
+
+## 6. 时间、坐标和规模合同
+
+时间：
+
+- 所有流使用 episode 内单调秒级时间。
+- 外部 timestamp 应转换为 `episode_time = source_timestamp - episode_start_timestamp`。
+- `measurement_timestamp` 和 `arrival_timestamp` 必须保留。
+
+坐标：
+
+- D6 不做控制坐标转换。
+- NED 是 D1/D6 融合和评估工作帧。
+- WGS84 只作为外部参考；若进入 D6，需要先由上游转换或同时标注 frame。
+
+规模：
+
+- `drone_count/resource_count/target_count/camera_count` 必须来自日志字段或可验证记录集合。
+- `2v2/5v5` 只作为场景名和 baseline label，不能当成规模分母。
+- N-v-N episode 必须显式记录实际资源、目标和相机数量。
+
+## 7. PNG 与视觉 metadata 策略
+
+D6 不需要 PNG 截图来计算默认指标。PNG 只作为调试或人工复核证据。默认指标依赖：
+
+```text
+bbox_xyxy
+camera_intrinsics
+camera_extrinsics
+timestamp
+resource_id
+camera_id
+local_track_id
+assigned_global_track_id
+object_name
+truth_label / validation_label
+gate outcome
+```
+
+`visual_png_switch_count` 的 “PNG” 指导引模式/视觉 PNG 切换含义，不表示必须保存 PNG 图像文件。
+
+## 8. 未实现项
+
+### 8.1 AirSim 原生 recording parser
+
+未实现。当前只支持 main runtime 的 Blocks JSONL。原因：
+
+- Blocks JSONL 已包含 D6 需要的 truth、camera、bbox、observation 和 communication metadata。
+- AirSim 原生 recording 字段和版本差异大，需要单独的 schema 样例。
+- 原生 recording 到 NED、camera frame、resource ID、target ID 和 episode clock 的映射尚未固定。
+
+缺少条件：
+
+- 至少一个原生 recording 样例目录。
+- 字段版本说明。
+- 坐标和时间对齐规则。
+- 与 Blocks JSONL 对照的测试 fixture。
+
+### 8.2 Live AirSim replay/API
+
+未实现，且不属于 D6 默认目标。D6 不应连接 live AirSim 或控制车辆。若未来需要 replay，仍应由 main runtime 执行 replay 并导出 D6 可读日志。
+
+### 8.3 SCRIMMAGE 统计接口
+
+未实现。原因：
+
+- 当前仿真主线是 AirSim Blocks 和合成日志。
+- 仓库没有 SCRIMMAGE message schema、episode 输出或 ID 映射样例。
+- SCRIMMAGE 的通信/资源/目标/episode clock 需要独立映射。
+
+缺少条件：
+
+- SCRIMMAGE 输出样例。
+- agent/resource/target ID 映射。
+- 通信事件字段。
+- episode clock 对齐规则。
+- 批量目录结构和 CI fixture。
+
+## 9. 验证建议
+
+D6 模块测试：
+
+```bash
+pytest -q research_modules/d6_evaluation_metrics/tests
+```
+
+文档和空白检查：
+
+```bash
+git diff --check -- research_modules/d6_evaluation_metrics subagent_reviews/D6_*
+```
+
+AirSim 集成验收样例应至少覆盖：
+
+- `blocks_frames.jsonl` 不保存 PNG 时仍能计算 detection、terminal、multi-view 和规模字段。
+- `blocks_sensor_observations.jsonl` 能计算 latency/drop/stale。
+- D4 active-degradation CSV 能生成 active/passive/secondary/pending 指标。
+- D5 terminal/multi-view 事件能进入 terminal metrics。
+- D7 control/guidance/intercept 文件能进入 gate/intercept metrics。
+- `scenario_name="5v5"` 但实际 `resource_count/target_count/camera_count` 不等于 5 时，D6 按实际字段输出。

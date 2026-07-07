@@ -26,6 +26,9 @@ python3 research_modules/d5_terminal_association/simulations/run_terminal_associ
 - `IdentityChecker.parse_claims(raw_messages, current_time)`
 - `TerminalObservationBus.publish_terminal_association(...)`
 - `TerminalObservationBus.cross_view_associations()`
+- `TerminalCrossViewFusion.summarize_observations(...)`
+- `TerminalCrossViewFusion.build_hypotheses(...)`
+- `TerminalCrossViewFusion.associate(...)`
 - `TerminalConsistencyTracker.update(...)`
 - `summarize_terminal_consistency(...)`
 - `annotate_visual_png_handoff(...)`
@@ -50,6 +53,30 @@ decision = associator.decide(
 ```
 
 详细算法原理、数学模型和实施流程见 `docs/ALGORITHM_AND_IMPLEMENTATION.md`。
+
+## 当前状态总览
+
+已实现：
+
+- `GlobalTrack` 投影到图像平面、像素协方差传播、马氏门控和保守候选排序。
+- `LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim`、`ReconImageCue`、`TerminalObservation`、`CrossViewAssociation`、`DistributedVisualObservation`、`VisualTrackletSummary`、`PeerCameraState`、`CrossPeerAssociationHypothesis` 和 `DistributedTerminalAssociation` 等 DTO。
+- `locked/ambiguous/hold/reacquire` 保守状态机；D5 只核对当前 `assigned_global_track_id`，不会把本地最佳或最近目标改写成新的全局身份。
+- 跨视角 distributed visual association P0：`TerminalObservationBus` 汇总多资源终端证据，`TerminalCrossViewFusion` 在完全无中心场景输出 metadata-only 多相机 peer evidence。
+- AirSim `simGetDetections` 风格 bbox dry-run adapter；在线路径只消费 bbox、时间戳、本地 ID、类别/置信度、相机几何和协方差。
+- D7 视觉 PNG 前置证据：`annotate_visual_png_handoff()` 只在 D5 `locked`、`assigned_global_track_id` 一致、bbox 稳定、无重复锁定风险且 D4/D3 gate 允许时输出 handoff/prelock 建议。
+
+部分实现或仅为抽象/adapter：
+
+- OpenCV 已用于投影和可选畸变参数消费；真实 `calibrateCamera`、`solvePnP`/PnP RANSAC、标定板/AprilTag 标定链未接入。
+- YOLO 仅兼容 `xyxy/bbox_xyxy/class_name/confidence/track_id` 输出 schema；D5 不运行 detector、不加载权重。
+- ByteTrack、BoT-SORT、Deep SORT 仅作为未来本地 MOT 输入来源；当前没有 tracker 状态、ReID、遮挡恢复或 IDSW 计算。
+- OpenDroneID、MAVLink signing、DDS Security、AprilTag 只通过仿真字典归一化为 `IdentityClaim`；未接入真实报文、密钥、证书或 tag detector。
+- ROS 2 `tf2/message_filters` 只是未来时间同步和坐标树方案；D5 当前不运行 ROS 2 节点。
+
+未实现：
+
+- 真实多目标检测器、真实 MOT、真实标定链、真实身份认证链路和跨相机三维联合优化。缺少条件包括连续图像流、detector/tracker 依赖、标定样本、真实身份报文/密钥、同步相机位姿、三维候选和 D4/D6 消费协议。
+- 在线 D5 不得使用 AirSim `object_id`、`actor_name` 或 actor truth ID。truth ID 只能作为离线评分标签进入 metadata/evaluator，用于 `terminal_lock_accuracy`、`locked_mismatch` 等指标。
 
 ## 决策状态
 
@@ -76,13 +103,18 @@ D5 可在 `TerminalAssociation.metadata` 或 `TerminalConsistencySummary.metadat
 
 bbox 稳定性默认要求同一 `local_track_id` 或同一 assigned track 窗口连续 `N=4` 帧可见，`bbox_area_ratio` 的变异系数 `CV <= 0.30`，可在 `VisualPngHandoffConfig` 中调整为 `N=3-5`、`CV=0.25-0.35`。输出字段包括 `handoff_recommended`、`handoff_reason`、`recommended_range_band`、`bbox_stability_score`、`bbox_area_cv`、`range_to_assigned_track_m` 和 `time_to_go_s`。
 
-## 跨视场配准设计
+## 完全分布式跨视场视觉假设
 
-当前程序已覆盖单机视场内多目标候选、友方 `hold`、二级侦察 cue 作用域和保守 `global_track_id` 不变式，并新增最小 `TerminalObservationBus` 与 `CrossViewAssociation`。该总线用于收集多架拦截无人机、二级节点或 peer 链路发布的 `LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim` 和 `ReconImageCue` 摘要，按既有 `global_track_id` 被动汇总多视角支持关系。
+当前程序已覆盖单机视场内多目标候选、友方 `hold`、二级侦察 cue 作用域和保守 `global_track_id` 不变式，并提供两层跨视场证据：
 
-示例：UAV1 看到目标 1/2/3，UAV2 看到目标 2/3/4 时，目标 2/3 会形成包含 `("UAV1", "UAV2")` 的多视角支持摘要；目标 1/4 保持单视角支持。总线在 `metadata["observed_global_track_ids_by_resource"]` 中保留各资源看到的目标集合。若多个资源同时 `locked` 同一 `global_track_id`，或同一本地轨迹被锁到多个全局 ID，D5 只输出 `duplicate_terminal_lock_risk=True`、`duplicate_lock_resource_ids` 或 `duplicate_local_track_ids`，供 D3/D4 仲裁，不会改写分配。
+- `TerminalObservationBus`：被动收集多架拦截无人机、二级节点或 peer 链路发布的 `LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim` 和 `ReconImageCue` 摘要，按既有 `global_track_id` 汇总支持关系。
+- `TerminalCrossViewFusion`：在完全分布式模式下消费 `DistributedVisualObservation`、`VisualTrackletSummary` 和 `PeerCameraState`，基于时间窗口、bearing、bearing rate、bbox area/scale rate、类别/置信度、像素协方差和相机姿态协方差生成 `CrossPeerAssociationHypothesis` 与 `DistributedTerminalAssociation`。
 
-当前实现仍不是完整的多相机几何融合器。后续若要处理相机姿态协方差、跨相机时间对齐和三维重投影，应在 `TerminalObservationBus` 之上扩展 `TerminalCrossViewFusion`。
+示例：UAV1 看到目标 1/2/3，UAV2 看到目标 2/3/4 时，目标 2/3 会形成包含 `("UAV1", "UAV2")` 的多视角支持摘要；目标 1/4 保持单视角支持。局部 ID 按 `resource/camera:local_track_id` 命名空间处理，因此 `UAV1/front:track_1` 与 `UAV2/front:track_1` 不会被误认为同一本地轨迹。若多个资源同时持有同一 current `assigned_global_track_id`，或同一本地命名空间出现全局 ID 冲突，D5 只输出 `duplicate_terminal_lock_risk=True`、`hold/ambiguous/hypothesis_only` 等保守状态，供 D4 仲裁，不会改写分配。
+
+`TerminalCrossViewFusion` 使用 Hungarian 匹配；若 SciPy 不可用，会退回纯 Python 最小代价唯一匹配。缺失或 stale `global_track_id` 时只输出 `hypothesis_only/hold`，不会输出 `locked`。未知类别不会被升级为敌方。
+
+当前实现仍是 metadata-only P0 融合器，不做三维重投影、三角化、多相机 bundle adjustment、真实图像 ReID 或 D4 分配决策。
 
 ## 二级侦察节点输入
 
@@ -112,7 +144,7 @@ D5 提供不依赖 AirSim Python 包的 dry-run 适配器，用于消费 `simGet
 1. 每个当前 runtime camera/resource 的检测框转换为 `LocalVisualTrack`。
 2. 多镜头本地观测写入 `TerminalObservationBus`。
 3. 单机 `TerminalAssociation` 和二级 `ReconImageCue` 作为被动证据发布。
-4. `cross_view_associations()` 汇总重叠视场支持和重复锁定风险。
+4. `cross_view_associations()` 或 `TerminalCrossViewFusion.associate()` 汇总重叠视场支持、metadata-only 分布式假设和重复锁定风险。
 5. `summarize_degradation_case()` 输出 `no_degradation`、`degrade_to_secondary` 或 `degrade_to_distributed` 证据标签。
 
 建议指标包括 `per_camera_detection_count`、`multi_target_fov_rate`、`cross_view_overlap_count`、`duplicate_terminal_lock_risk`、`terminal_lock_accuracy` 和 `ambiguous_fov_event_count`。这些指标只供 D4/D6 仲裁和评估使用；D5 不生成 `AssignmentPlan`，不改写 `global_track_id`。

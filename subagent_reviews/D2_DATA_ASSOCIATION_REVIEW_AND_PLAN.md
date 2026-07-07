@@ -1,59 +1,94 @@
 # D2 多目标跟踪与数据关联综述及子方案
 
-**定位**: 维护稳定的 `global_track_id`，在目标交叉、编队密集、漏检和杂波条件下抑制 ID Switch。  
-**边界**: 本文只讨论科研仿真中的多目标跟踪、数据关联、状态机和指标记录，不包含真实火控参数、毁伤逻辑或自动处置流程。
+**定位**：维护稳定的 `global_track_id`，在目标交叉、密集编队、漏检、遮挡和虚警条件下抑制 ID Switch。
+**边界**：本文只讨论科研仿真、离线回放、多目标跟踪、数据关联、状态机和指标记录，不包含真实飞控、火控、毁伤、自动处置或绕过人工授权的流程。
+**当前代码口径**：已落地的是 GNN/Hungarian、可插拔 `DataAssociator`、二维常速度 Kalman fallback、Track 状态机、IDSW/continuity/duplicate 指标、风险摘要、D1 投影 adapter 和 AirSim dry-run adapter。JPDA/MHT 是可执行研究对照；IMM/EKF/UKF、Stone Soup、FilterPy 仍是未来对照或 adapter 计划。
 
 ---
 
 ## 1. 研究问题
 
-多目标场景中，系统最大的风险之一是“目标还在，但身份换了”。如果 `T1` 与 `T3` 在交叉后被互换，后续分配、末端视觉锁定和评估指标都会失真。
+多目标场景中，系统风险不只来自位置误差，还来自“目标还在，但身份换了”。如果同一物理目标在交叉或遮挡恢复后被另一个 `global_track_id` 接续，后续 D3 分配、D4 降级仲裁、D5 终端视觉配准和 D6 episode 指标都会失真。
 
-本子系统的目标是：
+D2 子系统目标：
 
 - 使用 GNN/Hungarian 作为默认工程基线。
-- 在目标密集、交叉或遮挡时可插拔升级 JPDA/MHT。
-- 使用 IMM-EKF/UKF 改善机动预测。
-- 强制记录 `id_switch_count`、`track_continuity` 和 `duplicate_assignment_count`。
-- 关联器和 Tracker 按每帧输入的 `tracks`/`detections` 集合长度运行；2v2、5v5 只作为仿真 fixture 或验收场景，不写入算法假设。
+- 通过 `DataAssociator` 接口保持 GNN、JPDA、MHT 可替换。
+- 用 `Tracker` 管理 `tentative/confirmed/engageable/lost/dropped` 状态机。
+- 强制记录 `id_switch_count`、`track_continuity`、`identity_continuity`、`coverage_continuity` 和 `duplicate_assignment_count`。
+- 输出 association logs 和 `AssociationRiskSummary`，供 D3/D4/D5/D6 消费。
+- 关联器和 Tracker 按每帧输入的 `tracks`/`detections` 集合长度运行；2v2、5v5 只作为 fixture 或验收场景，不写入算法假设。
+
+D2/D6 的系统规则必须保留：`id_switch_count` 是强制显式指标，不能被 RMSE、覆盖率或命中数替代。当前测试已验证 D2 `MetricsRecorder.id_switch_count` 与 D6 episode IDSW 口径一致。
 
 ---
 
-## 2. 文献综述要点
+## 2. 当前实现状态
 
-2015-2026 年多目标跟踪主线仍是“运动预测 + 门控 + 数据关联 + 航迹管理”。
+### 2.1 已实现
 
-GNN/Hungarian 是硬关联方法。它把每个观测分配给一个航迹，优点是计算轻、延迟低、解释性强，适合 5v5 等初始验证 fixture，也适合 main runtime 通过 `--drone-count` 传入的其他中小规模集合。缺点是当目标距离很近、交叉或并行运动时，一次错误匹配会造成 ID Switch。
+- **GNN/Hungarian**：`GNNHungarianAssociator` 通过 `scipy.optimize.linear_sum_assignment` 求解一对一匹配，代价来自马氏距离和可选 feature cost。
+- **马氏门控**：`build_gated_cost_matrix()` 生成 `N x M` cost/distance matrix，记录 `candidate_counts_by_track`、`candidate_counts_by_detection` 和 `RejectedPair`。
+- **可插拔关联器**：`DataAssociator.associate()` 是统一接口，`Tracker` 只消费 `AssociationResult`。
+- **二维 Kalman fallback**：`Tracker` 使用 `[x,y,vx,vy]` 和 4x4 covariance 做常速度预测、Joseph update、建轨和漏检处理。
+- **Track 状态机**：代码中只有 `tentative -> confirmed -> engageable -> lost -> dropped`，并支持 lost 后重新命中回到 `confirmed` 或 `engageable`。
+- **核心指标**：`MetricsRecorder.summary()` 输出 `id_switch_count`、`track_continuity`、`identity_continuity`、`coverage_continuity`、`duplicate_assignment_count`、RMSE、confusion matrix、runtime。
+- **风险摘要**：`AssociationRiskSummaryWindowGenerator` 已从候选重叠、cost margin、IDSW delta、continuity risk、D5 disagreement 和 metadata 生成滑窗风险。
+- **N 规模输入**：关联器按 `len(active_tracks)` 和 `len(detections)` 构造矩阵；dry-run 测试包含 3 目标 episode，输出 3 个活动 `global_track_id`。
+- **D1 adapter**：`detections_from_d1_global_tracks()` 把 D1 6D NED `GlobalTrack` 投影为 D2 2D `Detection`，保留 `measurement_timestamp`、`arrival_timestamp`、covariance 投影和 metadata。
+- **AirSim dry-run adapter**：支持 synthetic AirSim-style dict/object，不 import `airsim`，可从 `detections/tracks/objects`、`x/y`、`x_val/y_val` 和 2x2/3x3 covariance 生成 D2 输入。
 
-JPDA 是软关联方法。它对多个候选观测计算联合概率，再对每条航迹做边缘化更新。相比 GNN，JPDA 在交叉和不确定关联时更稳，但目标过密时存在航迹合并风险。
+### 2.2 部分实现
 
-MHT 是延迟决策方法。它保留多帧假设树，通过剪枝选择全局更合理的解释。MHT 对遮挡和交叉更强，但计算和内存成本高，不建议部署在资源节点，只适合中心节点或离线评估。
+- **JPDA**：`JPDAAssociator` 已能枚举小规模联合假设、计算边缘概率并输出接口兼容 `AssociationResult`。它是可执行研究对照，不是完整 JPDA filter；当前没有概率混合状态更新、完整协方差融合、track coalescence 抑制或大规模分簇策略。
+- **MHT**：`MHTAssociator` 已维护有界 branch、短历史、漏检/虚警惩罚和 pruning 参数。它是 MHT-compatible research placeholder，不是完整 MHT；当前没有 N-scan pruning、长期假设树管理、分簇或中心算力策略。
+- **3D NED 适配**：D2 可消费 D1 6D NED 输入并投影到水平面，但 D2 原生状态仍是二维 `[x,y,vx,vy]`，不是三维 tracker。
+- **D6 集成**：D2 summary 和 logs 已含 D6 所需指标，且有 D2/D6 `id_switch_count` 合同测试；episode 级 JSONL schema 和最终报告仍由 main/D6 固化。
 
-IMM-EKF/UKF 不是关联算法，但能改善机动目标预测。目标机动模型切换明显时，IMM 可同时维护匀速、转弯、加速等模型概率，从而降低门控和关联错误。
+### 2.3 未实现
+
+- **IMM/EKF/UKF**：代码中没有 FilterPy `IMMEstimator`、EKF、UKF、sigma points、CV/CA/CT 模型集或模型转移概率。当前是二维线性 Kalman fallback。
+- **Stone Soup 实际适配**：未创建 Stone Soup Detection/Track/JPDA/MHT 对象；`compat.py` 只有 availability check 和 placeholder。
+- **FilterPy 实际适配**：未创建 FilterPy filter 或 IMM 对象；`to_filterpy_state()` 是 placeholder。
+- **自动算法升级**：当前由 CLI 或调用方显式选择 GNN/JPDA/MHT，`Tracker` 未按风险阈值自动切换。
+- **真实 AirSim ComputerVision replay 压测**：现有 adapter 是 synthetic/replay-style，不直接连接 AirSim runtime，也不消费真实 `simGetDetections` episode JSONL。
+- **原生 3D tracker 和 OOSM 回溯**：当前 D2 不维护 6D 状态，不做异步量测回溯平滑。
 
 ---
 
-## 3. 开源代码选型
+## 3. 方法综述
 
-| 工具 | 可复用内容 | 适用方式 |
-|------|------------|----------|
-| Stone Soup | GNN、JPDA、MHT、轨迹管理、指标示例 | 中心节点科研验证主框架 |
-| FilterPy | EKF、UKF、IMMEstimator | 运动模型和滤波器原型 |
-| SciPy | `linear_sum_assignment` | GNN/Hungarian底层求解器 |
-| py-motmetrics / CLEAR MOT | ID Switch、MOTA等指标 | 离线评估参考 |
+2015-2026 年多目标跟踪主线仍是“运动预测 + 门控 + 数据关联 + 航迹管理”。D2 当前落地的是这条主线的轻量可测版本。
 
-二次开发建议：
+**GNN/Hungarian** 是硬关联方法。它把每个观测分配给最多一个航迹，优点是计算轻、延迟低、解释性强，适合默认运行和低歧义回放。缺点是在目标距离很近、交叉或并行运动时，一次错误匹配会造成 ID Switch。
 
-1. 不直接把 Stone Soup 对象暴露为系统总线消息。
-2. 封装统一 `DataAssociator` 接口，让 GNN/JPDA/MHT 可替换。
-3. 所有关联器必须输出代价、拒配原因和歧义分数。
-4. 指标记录器独立于关联器，避免算法切换后指标不可比。
+**JPDA** 是软关联方法。它对多个候选观测计算联合概率，再对每条航迹做边缘概率。D2 当前实现能做小规模联合假设对照，但没有完整概率状态融合。它适合分析交叉和遮挡恢复中的不确定性，不宜被文档写成生产级 JPDA。
+
+**MHT** 是延迟决策方法。它保留多帧假设树，通过剪枝选择全局更合理的解释。D2 当前有 bounded branch 对照实现，但不包含完整 MHT 所需的 N-scan、分簇和长期树管理。MHT 更适合中心节点或离线评估，不建议部署到资源受限节点。
+
+**IMM/EKF/UKF** 不是数据关联算法，而是运动预测增强。它们可能降低机动目标预测误差，从而减少门控重叠和 ID Switch，但当前 D2 代码未实现。后续只有在强机动场景证明常速度模型是主要瓶颈时，才应引入。
 
 ---
 
-## 4. 子系统架构
+## 4. 开源工具选型与实际使用
 
-### 4.1 类图
+| 工具 | 预期可复用内容 | 当前 D2 状态 | 原因和条件 |
+|---|---|---|---|
+| SciPy | `linear_sum_assignment` | 已实际使用 | 默认 GNN/Hungarian 求解器，轻依赖、可测试 |
+| NumPy | 状态、协方差、矩阵运算 | 已实际使用 | 默认运行路径基础依赖 |
+| Stone Soup | 完整 GNN/JPDA/MHT、轨迹管理示例 | 未实际使用，仅 availability/placeholder | 需要独立 research env、adapter 映射、固定 replay benchmark；不应把 Stone Soup 对象暴露到系统总线 |
+| FilterPy | EKF、UKF、IMMEstimator | 未实际使用，仅 availability/placeholder | 需要明确机动模型、非线性量测、状态维度和测试门限 |
+| py-motmetrics/CLEAR MOT | 离线 MOTA/IDF1 等指标参考 | 未使用 | 当前 D2/D6 先固化 `id_switch_count`、continuity、duplicate 和 confusion matrix |
+
+实际工程原则：
+
+- 默认测试不能依赖 Stone Soup、FilterPy、AirSim SDK、ROS 或 GPU。
+- 外部库只能作为 optional benchmark 或 adapter，不进入 D2 默认 bus contract。
+- 所有关联器必须输出统一 `AssociationResult`，以便 D3/D4/D5/D6 不感知底层算法对象。
+
+---
+
+## 5. 子系统架构
 
 ```text
 abstract DataAssociator
@@ -63,37 +98,45 @@ GNNHungarianAssociator --|> DataAssociator
 JPDAAssociator         --|> DataAssociator
 MHTAssociator          --|> DataAssociator
 
-TrackManager
+Tracker
   + predict_all(timestamp)
-  + update(association_result)
-  + create_tentative_tracks()
-  + prune_lost_tracks()
+  + associator.associate(...)
+  + Kalman update matched tracks
+  + mark missed tracks
+  + create tentative tracks
+  + record metrics
 
-TrackStateMachine
-  tentative -> confirmed -> engageable -> engaged -> lost -> dropped
+TrackLifecycleState
+  tentative -> confirmed -> engageable -> lost -> dropped
 
 MetricsRecorder
   id_switch_count
-  track_continuity
+  track_continuity / identity_continuity / coverage_continuity
   duplicate_assignment_count
+  association_logs
+  risk summaries
 ```
 
-### 4.2 关联结果
+`AssociationResult` 当前关键字段：
 
 ```text
-AssociationResult
-- timestamp
-- matched_pairs: [(global_track_id, detection_id, cost)]
-- unmatched_tracks
-- unmatched_detections
-- ambiguity_score
-- associator_type
-- rejected_pairs_with_reason
+timestamp
+matched_pairs: [(track_id, detection_id, cost, probability)]
+unmatched_track_ids
+unmatched_detection_ids
+ambiguity_score
+associator_type
+rejected_pairs
+cost_matrix
+distance_matrix
+metadata
+source_node_id / link_type
+risk_summary
 ```
 
 ---
 
-## 5. 核心伪代码
+## 6. 核心伪代码
 
 ```python
 class DataAssociator:
@@ -102,201 +145,172 @@ class DataAssociator:
 
 class GNNHungarianAssociator(DataAssociator):
     def associate(self, tracks, detections, timestamp):
-        cost = gated_mahalanobis_cost(tracks, detections)
-        rows, cols = linear_sum_assignment(cost)
-        return reject_pairs_above_gate(rows, cols, cost)
+        cost = build_gated_cost_matrix(tracks, detections)
+        rows, cols = linear_sum_assignment(cost.cost_matrix)
+        return AssociationResult(...)
 
 class JPDAAssociator(DataAssociator):
     def associate(self, tracks, detections, timestamp):
         hypotheses = enumerate_valid_joint_hypotheses(tracks, detections)
         marginals = marginalize_probabilities(hypotheses)
-        return weighted_association_result(marginals)
+        return select_non_conflicting_marginal_matches(marginals)
 
 class MHTAssociator(DataAssociator):
     def associate(self, tracks, detections, timestamp):
-        tree = expand_hypothesis_tree(tracks, detections)
-        pruned = prune_by_score_and_depth(tree)
-        return best_branch_or_deferred_result(pruned)
+        branches = expand_bounded_branches(tracks, detections)
+        return best_branch_current_frame(branches)
 ```
 
 指标记录：
 
 ```python
-class MetricsRecorder:
-    def update_identity(self, truth_id, track_id):
-        old = self.last_truth_to_track.get(truth_id)
-        if old is not None and old != track_id:
-            self.id_switch_count += 1
-        self.last_truth_to_track[truth_id] = track_id
+def update_identity(truth_id, track_id):
+    old = last_truth_to_track.get(truth_id)
+    if old is not None and old != track_id:
+        id_switch_count += 1
+    last_truth_to_track[truth_id] = track_id
+```
+
+注意：`truth_id` 只用于离线评估；在线 ComputerVision 路径不得用 AirSim truth ID 做 D5/D2 实时身份绑定。
+
+---
+
+## 7. D2 输出给 D3/D4/D5/D6 的合同
+
+### 7.1 D3 分配规划
+
+D3 使用 D2 的 `global_track_id`、状态、协方差、生命周期和风险字段构造分配代价。推荐 D3 优先消费 `confirmed` 和 `engageable` 航迹；对 `tentative`、长期 `lost`、高 `association_ambiguity` 或高 `duplicate_track_risk` 的航迹提高代价或延迟重分配。
+
+D2 不生成 `AssignmentPlan`，不维护 plan version，也不接受 D3 将 `global_track_id` 重命名。每个 assignment plan 的版本化和 stale rejection 仍由 D3 负责。
+
+### 7.2 D4 主动降级
+
+D2 只向 D4 提供关联风险证据，不决定降级模式。可用证据包括：
+
+- `id_switch_count` 和滑窗 delta。
+- `track_continuity` / `identity_continuity` 下降。
+- `duplicate_assignment_count` 和 `duplicate_track_risk`。
+- `association_ambiguity`、cost margin risk、candidate overlap。
+- `covariance_overlap_rate`。
+- `d5_disagreement_count`。
+- `source_node_id` 和 `link_type`。
+
+D4 应综合 D1 定位质量、D3 分配抖动、D5 终端反馈和 D2 风险摘要，再决定 `continue_center`、`request_center_replan`、`degrade_to_secondary` 或 `degrade_to_distributed`。D2 不直接切换二级节点或分布式模式。
+
+### 7.3 D5 末端关联
+
+D5 使用 `global_track_id` 做中心航迹到终端相机候选的映射。D5 可以回传：
+
+- `TerminalAssociation.association_confidence`。
+- `candidate_global_track_ids`。
+- `decision_state`。
+- 末端不一致事件。
+- `IdentityClaim` 的 verified/stale/unverified/spoof_suspected 状态。
+
+D5 反馈只能作为弱证据进入 D2 风险摘要或身份置信调整，不允许直接改写、重绑或本地覆盖 D2 的规范 `global_track_id`。
+
+### 7.4 D6 指标评估
+
+D6 消费 D2 `AssociationLogEntry`、`TrackTransition`、summary 和 confusion matrix。D2 与 D6 必须显式保留 `id_switch_count`：同一 truth 的代表 `global_track_id` 变化就是 ID Switch。当前测试已验证 D2/D6 对该规则的一致计数。
+
+---
+
+## 8. 主动降级风险摘要
+
+当前 D2 已实现轻量 `AssociationRiskSummary`，字段包括：
+
+- `timestamp`
+- `source_node_id`
+- `link_type`
+- `d5_disagreement_count`
+- `duplicate_track_risk`
+- `association_ambiguity`
+- `covariance_overlap_rate`
+- `metadata`
+
+窗口生成器当前使用：
+
+- `AssociationResult.ambiguity_score`。
+- `AssociationResult.cost_matrix` 的最小/次小 cost margin。
+- `candidate_counts_by_track` 和 `candidate_counts_by_detection`。
+- `id_switch_delta`。
+- `track_continuity`。
+- metadata 中的 D5 disagreement、source node、link type。
+
+后续可在不改变 D2 身份权威边界的情况下增加：
+
+- `affected_global_track_ids`。
+- `risk_level`。
+- `jpda_recommended` / `mht_recommended`。
+- `recommend_active_reevaluation`。
+- `state_regression_count`。
+
+这些字段应由当前活动航迹集合和 association logs 派生，不应按固定 2 或 5 个目标生成。
+
+---
+
+## 9. 剩余风险
+
+### 9.1 多目标交叉
+
+GNN 在交叉窗口内只能做单帧硬判决。如果两条航迹的最优和次优候选代价差距很小，GNN 可能任意打破平局，造成后续 ID Switch。JPDA/MHT 对照能暴露歧义，但当前实现还不足以承诺消除该风险。
+
+### 9.2 密集编队
+
+密集编队会提升协方差重叠和共享候选比例。当前 feature cost 是简单向量距离，若特征来源不稳定，仍可能出现目标间身份交换或重复航迹解释。
+
+### 9.3 ID Switch 观测限制
+
+`id_switch_count` 依赖离线 `truth_id`。真实在线路径没有 truth label 时，D2 只能输出风险摘要和弱证据，不能宣称在线已知道真实 IDSW。D6 应在离线 replay 或带 truth label 的仿真中计算最终 IDSW。
+
+### 9.4 规模和复杂度
+
+D2 不写死 2v2/5v5，但复杂度仍随 N 增长。GNN/Hungarian 约为 `O(max(N,M)^3)`；JPDA 假设枚举会组合爆炸；MHT 分支扩展随时间和候选数增长。更大规模需要分簇、预算、截断和离线 benchmark 支撑。
+
+---
+
+## 10. 测试方案
+
+| 测试 | 当前覆盖 | 指标 |
+|---|---|---|
+| 马氏门控 | 已覆盖 near/far gate | rejected reason、candidate count |
+| GNN/Hungarian | 已覆盖一对一匹配 | 无重复 detection/track |
+| JPDA | 已覆盖 marginal output | hypothesis count、marginal shape |
+| MHT | 已覆盖接口兼容 | branch count、history bound |
+| Track 状态机 | 已覆盖 engageable/lost/dropped | lifecycle transition |
+| D2 metrics | 已覆盖 IDSW/continuity/duplicate/confusion | summary 字段 |
+| D2/D6 IDSW 口径 | 已覆盖 | `id_switch_count` 一致 |
+| AirSim dry-run | 已覆盖 synthetic frames | bus message、association logs |
+| N 规模输入 | 已覆盖 3 target episode | `global_track_ids` 长度来自输入 |
+| dense 5v5 fixture | 已覆盖 deterministic compare | GNN/JPDA/MHT IDSW、continuity、runtime |
+
+默认验收命令：
+
+```bash
+PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_data_association/tests
 ```
 
 ---
 
-## 6. 状态机
+## 11. P1/P2 下一步
 
-```text
-tentative:
-  新观测生成，尚未稳定
+### P1
 
-confirmed:
-  连续命中达到阈值，航迹可参与融合显示
+- 用真实或稳定导出的 AirSim ComputerVision replay 校准 D2 risk summary，特别是 cost margin、candidate overlap、D5 disagreement 和 IDSW delta。
+- 固化 D2->D3/D4/D5/D6 的 JSONL/log schema，确保 `global_track_id`、`id_switch_count` 和风险字段稳定。
+- 扩展 dense/crossing 多 seed sweep，保留非 2/5 数量合同测试，防止算法和文档回退到固定规模假设。
+- 明确 JPDA/MHT 只在高歧义回放中作为对照或建议，不默认替代 GNN 主线。
 
-engageable:
-  航迹质量、协方差和身份置信度达到分配候选条件
+### P2
 
-engaged:
-  已被AssignmentPlan引用
-
-lost:
-  短时未观测到，但仍保留预测
-
-dropped:
-  超时或质量发散，移出活动表
-```
-
-任何状态变化都必须写入 `TrackRecord`，并带原因字段。
+- 决定是否升级原生 3D NED tracker；若升级，先定义三维状态、协方差、门控和 D1/D5 投影合同。
+- 建立 Stone Soup optional benchmark，用于完整 JPDA/MHT 离线对照。
+- 建立 FilterPy optional benchmark，用于 EKF/UKF/IMM 预测器原型。
+- 设计 JPDA/MHT 自动升级阈值和迟滞，但必须先通过 D4/D6 回放证据证明收益。
 
 ---
 
-## 7. 多视角末端反馈与主动降级接口
-
-### 7.1 与 D5 多视角末端反馈的关系
-
-D5 可能同时接收多个拦截无人机的末端视觉结果。典型情况包括：
-
-- 多个拦截无人机都看到同一个目标。
-- 某些拦截无人机视场内出现多个候选目标。
-- 某些拦截无人机未看到分配目标，只看到友方、未知目标或局部遮挡。
-- 二级侦察节点给局部拦截无人机发送图像 cue，形成中心航迹、二级视角和末端相机之间的多视角约束。
-
-D2 的原则是：`global_track_id` 只能由 D2 的全局数据关联链路维护，D5 的 `TerminalAssociation` 和 `IdentityClaim` 只能作为弱证据输入，不允许直接改写规范 ID。
-
-建议的弱证据使用方式：
-
-```text
-D5 TerminalAssociation
-  -> association_confidence
-  -> ambiguity_score
-  -> friend_conflict_state
-  -> decision_state: locked / ambiguous / hold / reacquire
-  -> candidate_global_track_ids
-```
-
-```text
-D5 IdentityClaim
-  -> claim_type: cooperative_id / remote_id / visual_tag
-  -> auth_state: verified / stale / unverified / spoof_suspected
-```
-
-D2 可以使用这些信息调整航迹置信度或风险摘要：
-
-- 多个 D5 视角稳定支持同一 `global_track_id`：提高该航迹的身份连续性置信，但不跳过 D2 门控。
-- D5 报告多个局部目标都可匹配同一 `global_track_id`：提高 `association_ambiguity` 和 `duplicate_track_risk`。
-- D5 报告分配目标长期不在投影门内：标记 `d5_disagreement`，提示 D3/D4 重评估。
-- `IdentityClaim` 为 verified friendly：作为正向友方证据进入安全约束，但不能反向证明未知目标为敌方。
-- `spoof_suspected`、`stale` 或 `unverified`：只能降低身份置信或触发 hold/observe，不得驱动 ID 改绑。
-
-### 7.2 输出给 D4 主动降级的风险量
-
-D4 主动降级需要判断“中心/二级节点仍存在，但当前全局关联和分配是否已经不可靠”。D2 应输出低频 `AssociationRiskSummary` 或等价字段，至少包含：
-
-| 风险量 | 来源 | 解释 |
-|--------|------|------|
-| `id_switch_count` / `id_switch_rate` | `MetricsRecorder` 滑窗差分 | ID 在交叉或遮挡后是否频繁交换 |
-| `track_continuity` 下降 | `identity_continuity` / `track_continuity` | 目标仍被覆盖，但身份连续性变差 |
-| 协方差交叠率 | 航迹协方差椭圆或门控候选重叠 | 多个航迹的不确定区域重叠，硬关联风险升高 |
-| 重复航迹风险 | `duplicate_assignment_count`、混淆矩阵 | 同一目标被多个 `global_track_id` 解释 |
-| 关联歧义 | `AssociationResult.ambiguity_score`、代价 margin | 最优与次优候选差距过小 |
-| 检测漏失时间 | `misses`、`last_update_time`、`lost` 状态持续时长 | 高质量航迹长期未被观测，分配输入可能过期 |
-| JPDA/MHT 升级建议 | 候选数、歧义、遮挡历史 | 提示 D4 请求软关联或多假设对照 |
-| D5 长期不一致 | `TerminalAssociation` 回传 | 中心预测与末端视角持续冲突 |
-
-建议风险等级：
-
-```text
-nominal:
-  GNN 关联清晰，ID 连续性稳定
-
-elevated:
-  单帧或局部歧义升高，建议 D3 提高重分配迟滞
-
-high:
-  多帧 ID 风险持续，建议 D4 主动重评估中心/二级节点链路
-
-critical:
-  IDSW、重复航迹和末端不一致同时恶化，建议 D4 进入主动降级仲裁
-```
-
-D2 不决定是否切换二级节点或分布式协同；D2 只发布风险证据，D4 综合 D1 定位质量、D3 分配抖动和 D5 末端反馈后做仲裁。
-
-风险摘要中的 `affected_global_track_ids`、`candidate_global_track_ids` 和 D3/D5 消费的航迹列表都应由当前活动航迹集合派生，不应按 2 或 5 个目标预分配、补齐或截断。
-
-### 7.3 输出给 D7 比例导引的稳定目标状态要求
-
-D7 的中段 PN 需要连续、低抖动、可解释的目标状态。D2 不输出导引指令，只提供目标状态质量门槛。建议 D7 只能消费满足以下条件的 `GlobalTrack`：
-
-- `lifecycle_state` 为 `confirmed` 或 `engageable`。
-- `global_track_id` 在最近滑窗内无 ID Switch，或 `id_switch_rate` 低于配置门限。
-- `track_continuity` / `identity_continuity` 高于配置门限。
-- 位置和速度协方差低于 D7 接口门限，且 `last_update_time` 未超时。
-- 当前航迹没有被标记为重复航迹或高歧义航迹。
-- 若 D5 回传末端关联冲突，该 `GlobalTrack` 应暂缓进入 PN 输入，等待 D4/D3 重评估。
-
-推荐向 D7 提供的字段：
-
-```text
-StableTargetState
-- global_track_id
-- timestamp
-- position
-- velocity
-- covariance
-- lifecycle_state
-- identity_confidence
-- continuity_score
-- association_risk_level
-- stale_time
-```
-
-只有稳定目标状态可用于中段 PN 仿真；`tentative`、`lost`、`dropped` 或 `risk_level >= high` 的航迹不应进入 D7 主输入。
-
-### 7.4 工程改进检查
-
-当前 D2 工程路线应保持：
-
-- 默认关联器为 GNN/Hungarian，作为低延迟、可解释、可测试的主线。
-- JPDA/MHT 作为交叉密集、遮挡恢复和多候选歧义场景的可插拔升级项。
-- IMM-EKF/UKF 作为后续运动预测增强，不替代数据关联接口。
-- 所有关联器必须输出 `AssociationResult`，包括匹配、拒配、代价矩阵、歧义分数和元数据。
-- `id_switch_count`、`track_continuity`、`duplicate_assignment_count`、协方差交叠、检测漏失时间和 D5 不一致事件必须进入 D6 评估。
-
----
-
-## 8. 测试方案
-
-| 测试 | 设置 | 指标 |
-|------|------|------|
-| 两目标交叉 | 两条航迹交叉，加入噪声 | `id_switch_count` |
-| 编队密集 | 5目标平行接近，作为 baseline fixture | `track_continuity` |
-| 漏检 | 随机丢失观测 | `lost_to_confirmed_rate` |
-| 杂波 | 增加虚假观测 | `false_track_count` |
-| 算法对比 | GNN vs JPDA vs MHT | IDSW、延迟、运行时间 |
-
-GNN 是默认基线。JPDA/MHT 不要求所有场景绝对优于 GNN，但必须输出可解释的失败模式。除固定 fixture 外，应至少保留一个非 2/5 数量的合同测试，证明 `global_track_id` 输出和指标统计来自输入集合长度。
-
----
-
-## 9. 交付物
-
-1. GNN/JPDA/MHT/IMM-EKF/UKF 适用边界综述。
-2. Stone Soup 与 FilterPy 复用性报告。
-3. `DataAssociator` 抽象接口与三类实现设计。
-4. 航迹状态机与指标记录器设计。
-5. 交叉航迹单元测试和算法对比报告。
-
----
-
-## 10. 参考资料
+## 12. 参考资料
 
 - Stone Soup: <https://github.com/dstl/Stone-Soup>
 - Stone Soup JPDA tutorial: <https://stonesoup.readthedocs.io/en/latest/auto_tutorials/08_JPDATutorial.html>

@@ -34,6 +34,16 @@ p = K [R_cw | t_cw] P_w
 
 MOT 的 `local_track_id` 只作为本地观测 ID，不得替代或重写 `global_track_id`。
 
+### 当前实际实现状态
+
+当前 D5 已实现的是 AirSim ComputerVision bbox dry-run adapter 和相机几何离线验证辅助：
+
+- 已接入：`simGetDetections` 风格 `box2D/bbox_xyxy/xyxy` schema 转 `LocalVisualTrack`，`TerminalObservationBus` 汇总多相机观测，`TerminalCrossViewFusion` 输出 metadata-only peer evidence。
+- 部分接入：OpenCV 用于 `projectPoints` 投影和可选畸变参数消费；YOLO 仅兼容输出 schema；OpenDroneID/MAVLink/DDS/AprilTag 仅可通过仿真字典转为 `IdentityClaim`。
+- 未接入：真实 YOLO 推理、ByteTrack/BoT-SORT/Deep SORT tracker、OpenCV calibration/`solvePnP` 标定链、ROS 2 `tf2/message_filters`、真实 OpenDroneID/MAVLink/DDS/AprilTag 身份认证链路。
+
+因此，若 main/runtime 提供真实 detector 或 tracker 输出，D5 只消费归一化后的 bbox、类别、置信度、时间戳和本地 track ID；D5 不负责运行 detector/tracker，也不把 tracker ID 提升为全局身份。
+
 ### ComputerVision N-v-N 多镜头压力输入
 
 本轮 D4/D5 专项测试采用 AirSim ComputerVision Vehicle 场景的离线检测合同，不要求 D5 导入 AirSim 或调用仿真 API。数量由 main runtime 的 `--drone-count N` 统一控制；D5 按传入的 `LocalVisualTrack[]`、`GlobalTrack[]`、camera/resource 列表和 bus observation 长度运行。5v5 只是 stress baseline，推荐几何假设：

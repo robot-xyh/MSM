@@ -1,317 +1,284 @@
-# D4 Distributed Fallback Plan
+# D4 分布式协同与降级接管计划
 
-## Scope And Safety Boundary
+## 1. 范围与安全边界
 
-This module is limited to research simulation, offline evaluation, and minimum continuity after a center C2 outage or a simulated active-degradation arbitration event. It exchanges coarse summaries through an in-memory simulated network only. It does not model real fire-control parameters, damage effects, live radio frequencies, hardware drivers, automatic disposition, or bypass of human authorization.
+D4 只负责 C-UAS 工作流中的离线科研仿真、降级仲裁、二级节点接管建模、完全无中心保底协商和评估日志。模块输入是粗粒度摘要，通信只使用内存网络或 main/runtime 提供的链路摘要；模块不拥有真实 AirSim episode 调度、真实通信链路、视频帧传输、飞控接口、硬件驱动、火控参数、毁伤模型、自动处置或授权绕过逻辑。
 
-## Engineering And Scientific Problem
+中心 C2 正常时，D3 仍是中心化分配的权威来源，`global_track_id` 仍由中心/上游航迹体系拥有。D4 在任何模式下都不得创建、改写或本地重绑定 `global_track_id`，只能复制上游 ID 做一致性检查、风险加权和审计。
 
-Centralized C2 normally owns the freshest fused tracks and assignment plan. After the center becomes unavailable, peer nodes may only have stale plans, local summaries, and intermittent peer communication. In addition, the center may remain alive while high uncertainty, stale assignment validity, or terminal visual disagreement makes the current plan locally unsafe to trust. The engineering question is how to preserve minimum continuity without creating duplicate assignments or conflicting local plans, while separating passive failover from active degradation.
+## 2. 工程问题
 
-Scientific questions:
+中心节点正常时，系统依赖 D1/D2 的融合航迹、D3 的版本化 `AssignmentPlan`、D5 的末端视觉关联和 D6 的评估日志。当中心节点失效或局部分配证据不可信时，D4 需要回答以下问题：
 
-- How quickly can a small peer group detect C2 failure and enter a safe degraded coordination mode?
-- How many consensus rounds are needed for coarse task/resource summaries under packet loss and delay?
-- What conflict rate remains when only summaries are exchanged?
-- What communication overhead is introduced by bundle and winner-state diffusion?
-- How should peer decisions be merged back when the center returns without immediate authority thrash?
-- When the center is alive, how should D4 arbitrate among D1 localization uncertainty, D2 association risk, D3 assignment validity, and D5 terminal association disagreement?
-- When should the system request center replanning or secondary-node assistance instead of immediately entering fully distributed CBBA?
+- 如何区分中心真的失效的被动降级，与中心仍在线但计划风险升高的主动降级。
+- 如何在中心失效后优先选择地面备份或高空/系留二级侦察节点，而不是直接进入完全无中心协商。
+- 二级节点不可用时，如何使用轻量 CBBA 保底维持连续性，同时避免重复 owner、过期 ID、友方冲突和不收敛计划被发布。
+- D1 不确定度、D2 关联风险、D3 plan/version/freshness 和 D5 terminal/cross-view 证据如何统一成 D4 仲裁动作。
+- D5 distributed visual evidence 如何在完全无中心模式下影响 CBBA 出价，而不是构造虚拟中心或重新绑定 `global_track_id`。
+- 中心恢复时如何通过双轨合并避免短暂 heartbeat 恢复导致双主。
+- D4 输出如何进入 D6 event metadata 和后续 main runtime bus。
 
-## Passive Failover And Active Degradation
+## 3. 当前总体状态
 
-`passive_failover` is triggered by center unavailability:
+D4 模块内已经完成一个可测试的离线 P1 骨架：`C2Health`、被动降级、二级节点 lifecycle、主动降级仲裁、D1/D2/D3/D5 adapter、D5 distributed visual evidence 归一化、完全无中心 CBBA 风险加权、`assignment_audit`、D6-compatible event metadata、中心恢复基础合并和 N 规模输入均已存在。
 
-- heartbeat failure timeout;
-- peer quorum confirming outage;
-- stale center epoch or unavailable assignment digest long enough to enter `failed`;
-- secondary node failure after center outage, which then falls back to distributed CBBA.
+仍需明确的是，这些实现主要停留在 D4 模块内和摘要级 dry-run/test 层。真实 main runtime bus 的 episode 接线、D3 在收到 `request_center_replan` 后自动生成新版计划、secondary takeover 后 plan id/version 回传 D7 的闭环，都还不是 D4 模块内已完成能力。
 
-`active_degradation` is triggered while the center is not failed:
+## 4. 被动降级与主动降级
 
-- D1 reports increasing localization covariance or stale measurements;
-- D2 reports high association ambiguity, ID switch, duplicate tracks, or low continuity;
-- D3 reports stale/non-current assignment, low cost margin, or plan-version risk;
-- D5 reports repeated `ambiguous`, `hold`, `reacquire`, persistent mismatch between terminal visual candidates and the assigned `global_track_id`, duplicate terminal locks, cross-view risk, or friend-conflict states.
+### 4.1 被动降级
 
-The active path is conservative:
+`passive_failover` 处理中心 C2 不可用：
 
-1. If D5 remains consistent and D1/D2/D3 risk is low, continue the center plan.
-2. If D1/D2/D3 risk rises but D5 remains consistent, prefer center rolling replanning or secondary-node assistance.
-3. If D5 disagreement persists across multiple frames, select a healthy secondary node covering the `coverage_cell`.
-4. If no secondary node is available or the local region is partitioned, fall back to distributed CBBA/auction-style negotiation.
-5. Friend/identity conflict only produces a hold/review decision in this offline module.
-6. When communication summaries are available, secondary-node assistance requires a fresh data/video link record; stale secondary links are treated as unavailable.
+- heartbeat 超过 hard timeout；
+- peer quorum 判定中心失败；
+- assignment digest 或中心摘要长期不可用；
+- center epoch 过期或倒退；
+- 中心恢复后与 fallback 双轨日志无法合并。
 
-## C2Health State Machine
+被动降级顺序：
 
-States:
+```text
+center C2 normal
+  -> C2 failed
+  -> ground_backup / secondary_recon 接管区域协调
+  -> secondary 不可用时进入 cluster representative / distributed CBBA
+  -> CBBA 不收敛时 safe hold / continue observe / review
+```
 
-- `normal`: heartbeat and digest checks are current.
-- `degraded`: heartbeat or digest quality is reduced, but continuity can still follow the center or a valid backup lease.
-- `suspect`: heartbeat is stale, digests conflict, or peer observations disagree.
-- `failed`: quorum or timeout indicates center unavailability.
+### 4.2 主动降级
 
-Transitions:
+`active_degradation` 处理中心未失效但局部证据不支持继续执行当前计划：
+
+- D1：定位协方差、位置 sigma 或量测年龄过高；
+- D2：ambiguity、`id_switch_count`、重复航迹或 continuity 风险升高；
+- D3：plan stale、非 current、plan version 不匹配或 cost margin 过低；
+- D5：`ambiguous/hold/reacquire` 多帧持续、视觉候选与 assigned `global_track_id` 不一致、重复末端锁定、cross-view 高风险或 friend conflict。
+
+主动降级的保守顺序：
+
+1. D5 与 D3 分配一致且 D1/D2/D3 风险低：`continue_center`。
+2. D3 版本/时效/代价风险是主因且 D5 仍一致：`request_center_replan`。
+3. D1/D2 风险升高但 D5 仍一致：`request_secondary_assist`。
+4. D5 单窗口不一致但未满足持续触发：请求中心重分配或二级辅助，不直接全分布式。
+5. D5 多帧不一致且有健康二级节点覆盖当前 `coverage_cell`：`degrade_to_secondary`。
+6. 二级节点不可用、链路过期、heartbeat 过期或不覆盖区域：`degrade_to_distributed`。
+7. `friend_conflict=True` 或身份证据冲突：`hold_for_review`，不发布新计划。
+
+## 5. `C2Health` 状态机
+
+状态：
+
+- `normal`：中心 heartbeat、digest 和 epoch 可信。
+- `degraded`：中心质量下降，或 fallback/二级节点正在维持连续性。
+- `suspect`：heartbeat stale、digest conflict、center epoch stale、peer 观察不一致或恢复待合并。
+- `failed`：heartbeat hard timeout 或 peer quorum 判定中心不可用。
+
+主要迁移：
 
 ```text
 normal
-  -> degraded : heartbeat jitter or digest age exceeds warning threshold
-  -> suspect  : heartbeat is stale, digest conflict appears, or center messages are out of order
+  -> degraded : heartbeat jitter / warning threshold
+  -> suspect  : heartbeat stale / digest conflict / center epoch stale
 
 degraded
-  -> normal  : heartbeat and assignment digest recover for the required stable window
-  -> suspect : backup lease conflict, summary conflict, or degraded timer expires
-  -> failed  : explicit fail quorum or hard timeout
+  -> suspect  : backup lease conflict / summary conflict / recovery pending merge
+  -> failed   : peer quorum failed / heartbeat failure timeout
+  -> normal   : dual-track merge accepted
 
 suspect
-  -> normal  : dual-track center and peer checks match for the stable window
-  -> failed  : stale heartbeat exceeds failure timeout or peer quorum confirms outage
-  -> degraded: valid backup lease exists but center recovery is not fully verified
+  -> degraded : fallback leader or secondary node keeps continuity
+  -> failed   : hard timeout or quorum
+  -> normal   : center/fallback logs cleanly merge and human_accept=True
 
 failed
-  -> degraded: peer quorum elects a fallback leader or backup lease remains valid
-  -> normal  : center recovery passes dual-track merge and human-gated acceptance flag
+  -> degraded : fallback leader elected or secondary takeover starts
+  -> suspect  : center heartbeat/digest recovered but merge not accepted
+  -> normal   : only after clean merge and explicit acceptance
 ```
 
-Each transition records state, timestamp, reason, and epoch. The implementation treats `normal` as the only full-center mode. `degraded`, `suspect`, and `failed` only permit continuity-oriented planning.
+当前代码证据：
 
-## Summary Interfaces
+- `FailoverCoordinator.observe_center()` 在 heartbeat/digest 恢复后进入 `suspect`，不直接回 `normal`。
+- `update_health()` 覆盖 heartbeat warning/stale/failure 和 peer quorum。
+- `merge_recovery()` 只比较 assignment owner/epoch 的基础版双轨合并；冲突或 review 未清空时保持 `degraded`。
 
-`TrackSummary`:
+## 6. 摘要接口
 
-- `track_id`: stable synthetic identifier used only in simulation.
-- `coarse_cell`: coarse grid label, not precise coordinates.
-- `age_s`: summary age in seconds.
-- `confidence_band`: `low`, `medium`, or `high`.
-- `source_count`: number of independent contributing sources.
-- `epoch`: monotonic planning epoch.
+### 6.1 被动降级和 CBBA 摘要
 
-`ResourceSummary`:
+- `TrackSummary`：`track_id`、`coarse_cell`、`age_s`、`confidence_band`、`source_count`、`epoch`、`visual_evidence`。
+- `ResourceSummary`：`node_id`、`capability_class`、`availability_band`、`comm_band`、`operator_hold`、`takeover_priority`、`lease_epoch`、`node_role`、`coordinator_only`、`coverage_cell`、`heartbeat_timestamp_s`、`heartbeat_stale_after_s`、`epoch`。
+- `BidState`：`task_id`、`bidder`、`score`、`constraints_hash`、`epoch`、`round_id`。
+- `CBBAResult`：assignments、rounds、converged、conflict/completion/message/byte 指标、`final_views`、`assignment_audit`。
 
-- `node_id`: simulated peer identifier.
-- `capability_class`: coarse capability such as `observe`, `relay`, or `hold`.
-- `availability_band`: `none`, `low`, `medium`, or `high`.
-- `comm_band`: `poor`, `limited`, or `good`.
-- `operator_hold`: when true, the resource cannot receive new fallback assignments.
-- `node_role`: `ground_backup`, `secondary_recon`, `cluster_representative`, or `interceptor`.
-- `coordinator_only`: when true, the node coordinates or observes but does not own executable fallback tasks.
-- `coverage_cell`: coarse region covered by a secondary node.
-- `heartbeat_timestamp_s`: latest secondary-node heartbeat time when available.
-- `heartbeat_stale_after_s`: heartbeat age threshold used to mark a secondary node unavailable.
-- `epoch`: monotonic planning epoch.
+### 6.2 主动降级摘要
 
-Active-degradation summaries:
+- `TrackUncertaintySummary`：D1 定位质量，含 `position_sigma_m`、`covariance_trace`、`velocity_sigma_mps`、`measurement_age_s` 和 `coverage_cell`。
+- `AssociationRiskSummary`：D2 关联风险，含 `ambiguity_score`、`id_switch_count`、`duplicate_track_count`、`track_continuity`。
+- `AssignmentValiditySummary`：D3 分配有效性，含 `global_track_id`、`assigned_resource_id`、`plan_version`、`is_current`、`plan_age_s`、`cost_margin`。
+- `TerminalAssociationSummary`：D5 末端关联，含 `decision_state`、confidence、ambiguity、observed/assigned `global_track_id`、连续非锁定/不一致帧数、friend conflict、duplicate lock、cross-view 风险。
+- `CommunicationSummary`：链路摘要，含 source/target/relay、`link_type`、sent/received timestamp、`payload_kind`、`stale_after_s`、sequence id。
+- `SecondaryNodeLifecycleSummary`：二级节点 heartbeat age、lease、coverage、video cue freshness、link stale、`secondary_available`。
+- `D4DecisionRecord`：adapter 输出，可转为 D6 `EventRecord` kwargs。
 
-- `TrackUncertaintySummary`: D1 localization uncertainty, covariance trace, measurement age, and coverage cell.
-- `AssociationRiskSummary`: D2 ambiguity, ID switch count, duplicate track count, and continuity.
-- `AssignmentValiditySummary`: D3 assigned track/resource, plan version, freshness, and cost margin.
-- `TerminalAssociationSummary`: D5 terminal decision state, confidence, ambiguity, mismatch duration, duplicate terminal lock, cross-view risk, and friend-conflict flag.
-- `ActiveDegradationDecision`: D4 output with mode, action, reason, target node, coverage cell, risk factors, and terminal consistency.
-- `SecondaryNodeLifecycleSummary`: D4 secondary-node lifecycle output with `heartbeat`, `lease_epoch`, `coverage_cell`, `video_cue_freshness_s`, `link_stale`, and final `secondary_available`.
-- `D4DecisionRecord`: adapter output that can be converted to D6 `EventRecord` kwargs. Metadata includes `degradation_mode`, `selected_coordinator`, `coverage_cell`, `trigger_reason`, `trigger_timestamp`, `decision_timestamp`, and `review_label`.
+### 6.3 D5 分布式视觉证据摘要
 
-Decision metrics:
+`DistributedVisualEvidenceSummary` 用于完全无中心 CBBA 的风险加权，字段包括：
 
-- `d4_action`
-- `degradation_mode`
-- `target_node_id`
-- `risk_factors`
-- `terminal_consistent`
-- `failover_time`
-- `secondary_selected_rate`
-- `distributed_conflict_count`
+- `visual_support_resource_ids`、`hold_resource_ids`、`ambiguous_resource_ids`、`duplicate_lock_resource_ids`；
+- upstream `assigned_global_track_id`；
+- terminal confidence/ambiguity、hypothesis/support count；
+- `hypothesis_only`、`stale_global_track_id`、`missing_global_track_id`、`duplicate_terminal_lock_risk`；
+- `friend_conflict`、`global_track_id_conflict`、`local_id_conflict` 和 `risk_reasons`。
 
-Active-degradation debounce and hysteresis configuration:
+D4 的 adapter 使用 duck typing/dict 归一化 D5 distributed terminal association 或 cross-peer hypothesis，不导入 D5 类型，也不生成新 ID。
 
-- `mismatch_frame_limit`: consecutive terminal mismatch frames required before persistent disagreement can escalate.
-- `risk_window_size` and `risk_window_threshold`: rolling risk window used to debounce persistent terminal disagreement.
-- `min_dwell_s`: minimum time to remain in a degraded decision before release.
-- `release_consecutive_consistent_frames`: consecutive low-risk, terminal-consistent frames required before returning to `continue_center`.
+## 7. CBBA 保底模型
 
-Enhanced communication summary:
+当前完全无中心模式使用本地轻量 `CBBANegotiator`。它不是 MIT CBBA/CA-CBBA 的外部实现，也不是独立 single-round auction 或 contract-net。
 
-- `CommunicationSummary.source_node_id`: message producer.
-- `CommunicationSummary.target_node_id`: intended consumer.
-- `CommunicationSummary.relay_node_id`: optional relay, usually a secondary node.
-- `CommunicationSummary.link_type`: `c2_direct`, `secondary_relay`, `interceptor_peer`, or `video_cue`.
-- `CommunicationSummary.sent_timestamp` / `received_timestamp`: used to compute latency.
-- `CommunicationSummary.payload_kind`: `track`, `bbox`, `video_metadata`, `assignment`, `terminal_association`, `bid`, `resource_summary`, or `health`.
-- `CommunicationSummary.stale_after_s`: freshness deadline used by active-degradation arbitration.
+任务为 `TrackSummary`，资源为可执行 `ResourceSummary`；`coordinator_only=True` 的二级节点只参与协调审计，不作为执行资源出价。
 
-`BidState`:
-
-- `task_id`: synthetic continuity task identifier.
-- `bidder`: node identifier.
-- `score`: normalized utility score, not a real-world effect estimate.
-- `constraints_hash`: digest of coarse local constraints.
-- `epoch`: planning epoch.
-- `round_id`: CBBA consensus round.
-
-All summaries are coarse, versioned by epoch, and safe for offline simulation logs.
-
-## CBBA Formulation
-
-Let agents be \(i \in \mathcal{A}\), continuity tasks \(j \in \mathcal{T}\), and each agent's bundle \(b_i = [j_1, ..., j_k]\) with \(k \le L\). Each agent computes a local score:
-
-\[
-s_{ij} = w_c C_j + w_a A_i + w_q Q_{ij} - w_r R_{ij}
-\]
-
-where \(C_j\) is track confidence rank, \(A_i\) is resource availability rank, \(Q_{ij}\) is coarse capability match, and \(R_{ij}\) is an offline risk/constraint penalty. These are synthetic ranks only.
-
-Marginal gain for inserting task \(j\) into bundle \(b_i\):
-
-\[
-\Delta_{ij}(b_i) = S_i(b_i \oplus j) - S_i(b_i)
-\]
-
-The local bid is:
-
-\[
-y_{ij} = \max(0, \Delta_{ij})
-\]
-
-Winner and bid vectors:
-
-\[
-z_{ij} = \arg\max_{a \in \mathcal{A}} (y_{aj}, -\text{tie\_rank}(a))
-\]
-
-\[
-y^*_{ij} = \max_{a \in \mathcal{A}} y_{aj}
-\]
-
-Conflict resolution uses deterministic tie-breaking by higher score, then lower node id, then lower constraints hash. When a node loses a winner entry for a task in its bundle, it releases that task and all later bundle entries, then rebuilds bids from remaining feasible tasks.
-
-Convergence expectation for this simulator: with a connected peer graph, deterministic tie-breaking, bounded bundle length \(L\), static task summaries, and reliable eventual message delivery, winner vectors converge in \(O(D \cdot |\mathcal{T}|)\) consensus propagation rounds, where \(D\) is network diameter. Packet loss and delay increase wall-clock takeover time but not the deterministic fixed point if enough rounds are allowed.
-
-Communication overhead per consensus round is:
-
-\[
-O(|E| \cdot |\mathcal{T}|)
-\]
-
-for peer edges \(E\), because each message carries compact winner/bid state per known task. With \(N\) nodes, a full mesh has \(O(N^2 |\mathcal{T}|)\) per round; sparse relay graphs reduce bytes but may increase diameter and rounds.
-
-## Center Recovery Dual-Track Merge
-
-When center updates resume, fallback plans are not discarded immediately.
-
-Dual-track merge stages:
-
-1. Keep center track/assignment log and fallback peer log side by side.
-2. Compare epochs, summary digests, and assignment ownership.
-3. Mark exact matches as `accepted`.
-4. Mark center-only or peer-only assignments as `review`.
-5. Mark duplicate owners or stale summaries as `conflict`.
-6. Return to `normal` only when the merged log has no unresolved conflicts and the caller supplies a human-gated acceptance flag.
-
-This prevents immediate dual-master behavior after a short center recovery.
-
-## Takeover Priority
-
-1. Valid ground backup lease.
-2. High-altitude tethered reconnaissance UAV acting as a secondary regional node.
-3. Resource-cluster representative elected by deterministic peer priority.
-4. CBBA fallback negotiation for continuity-only assignments.
-5. If no quorum or convergence, choose `hold`, `continue_observe`, or `return_safe` placeholders for offline evaluation.
-
-## Secondary Reconnaissance Node Assumption
-
-This phase assumes several high-altitude tethered reconnaissance UAVs can act
-as secondary regional nodes. They are modeled as `ResourceSummary` records with
-`node_role=secondary_recon`, optional `coverage_cell`, and usually
-`coordinator_only=True`.
-
-Degraded hierarchy:
+合成打分基线：
 
 ```text
-center C2 available
-  -> center C2 failed: secondary reconnaissance node coordinates its local area
-  -> secondary node unavailable: cluster representative / fully distributed CBBA
-  -> no convergence: hold / continue-observe placeholder for offline evaluation
+score = 2.0 * confidence
+      + 1.4 * availability
+      + 0.5 * comm
+      + 1.2 * capability_match
+      + 1.0 * source_bonus
+      - 0.8 * age_penalty
+      + D5_visual_adjustment
 ```
 
-Secondary nodes do not own center-level authority. They keep continuity,
-forward local summaries, and provide scoped coordination until the center
-recovers and dual-track merge is accepted.
+winner/bid 扩散使用确定性 tie-break：更高 score、更新 epoch、较小 bidder id、较小 constraints hash。节点失去 bundle 中的任务后会释放该任务及后续任务，再重建 bundle。
 
-## Simulation Scenarios
+### 7.1 D5 visual evidence 风险加权
 
-Primary scenario:
+D5 分布式视觉证据在 CBBA 中只作为风险/代价项：
 
-- Simulated node/resource count follows the supplied `ResourceSummary[]` length
-  or the CLI `--drone-count` value; 2v2 and 5v5 are retained only as baseline
-  tests.
-- Center heartbeat is normal until `t = 30s`.
-- Center then fails.
-- Simulated peer network applies 0.1 to 0.5 second delivery delay.
-- Packet loss is configurable.
-- Nodes exchange summaries and CBBA winner states through in-memory queues.
+- 支持同一个 upstream `global_track_id` 的 peer evidence 会提高对应资源出价。
+- `hypothesis_only` 只给弱正向加权。
+- `hold`、friend conflict、stale/missing/conflicting `global_track_id` 会阻止该任务产生可执行 bid。
+- local/global ID conflict 会扣分或阻止执行，取决于风险类型。
+- duplicate terminal lock 会进入 `assignment_audit` 并强惩罚相关资源；CBBA 的 single-winner 规则仍保证一个任务只有一个 owner。
+- D4 不构造虚拟中心 Hungarian，不把多 peer 视觉支持转化为中心化 cost matrix，不改写 `global_track_id`。
 
-Fault variants:
+### 7.2 收敛与失败边界
 
-- Heartbeat stale transition from `normal` to `suspect` to `failed`.
-- Packet loss during CBBA rounds.
-- Summary replay with stale epoch.
-- Duplicate tentative assignment conflict.
-- Center recovers with incomplete log and requires degraded review.
+在连通 peer 图、静态 epoch、确定性 tie-break、有限 bundle length 和足够轮数下，winner view 预期收敛。丢包和延迟会增加 takeover wall-clock time；若 `converged=False`，`plan_degraded()` 不应把空 assignments 当成有效计划发布，只保留审计。
 
-Metrics:
+通信复杂度为：
 
-- Takeover time.
-- Consensus rounds.
-- Assignment completion rate.
-- Conflict count.
-- Communication overhead in message count and estimated bytes.
+```text
+O(|E| * |T|)
+```
 
-## Code Interfaces
+全连接 N 节点约为 `O(N^2 * |T|)`；稀疏链路减少单轮消息量，但增加传播轮数。
 
-Python package:
+## 8. 二级节点 lifecycle 与接管
 
-- `models.py`: enums and dataclasses for health state, summaries, bids, assignments, metrics, and messages.
-- `network.py`: in-memory simulated network with delay and packet loss.
-- `cbba.py`: simplified CBBA negotiator.
-- `coordinator.py`: `FailoverCoordinator` with health detection, leader election, degraded planning, and merge recovery.
-- `active_degradation.py`: `ActiveDegradationArbiter` with passive/active degradation decision rules.
-- `simulation.py`: scenario runner and metric aggregation.
+二级节点在代码中通过 `NodeRole.GROUND_BACKUP` 和 `NodeRole.SECONDARY_RECON` 建模。可用性判断包括：
 
-CLI:
+- `availability_band != none`；
+- `operator_hold=False`；
+- `coverage_cell` 为空或覆盖当前区域；
+- heartbeat 未超过 `heartbeat_stale_after_s`；
+- 若传入 `CommunicationSummary[]`，必须存在新鲜的 `c2_direct`、`secondary_relay` 或 `video_cue` 等可用链路。
 
-- `scripts/run_failover_simulation.py`: runs the default 5-node center-failure scenario and prints metrics JSON.
+被动降级中，`FailoverCoordinator.elect_leader_resource()` 的排序为：
 
-Tests:
+```text
+takeover_priority
+-> node_role rank
+-> newer lease_epoch
+-> availability
+-> comm
+-> capability
+-> node_id
+```
 
-- Health-state transitions.
-- CBBA convergence and duplicate-owner conflict resolution.
-- Failover coordinator takeover and center recovery merge.
-- Active degradation arbitration for consistent, risky, terminal-disagreement, secondary-node, and distributed fallback cases.
-- Simulated packet loss/delay metrics smoke test.
+主动降级中，`ActiveDegradationArbiter._select_secondary_node()` 会按覆盖区、heartbeat 和链路 freshness 过滤候选，再按 `takeover_priority -> lease_epoch -> node_id` 排序。
 
-## Deliverables
+## 9. D6 事件与指标
 
-- `PLAN.md`: this plan.
-- Python implementation under `d4_distributed_fallback/`.
-- Unit tests under `tests/`.
-- Simulation script under `scripts/`.
-- Experiment report under `reports/EXPERIMENT_REPORT.md`.
-- AirSim integration plan under `reports/AIRSIM_INTEGRATION_PLAN.md`, limited to offline adapter interfaces and synthetic logs.
+`D4DecisionRecord.to_event_record_kwargs()` 当前可输出 D6 兼容字段：
 
-## P1 Gap Status
+- `event_type`：`d4_arbitration_decision`、`active_degradation_decision` 或 `passive_failover_start`；
+- `severity`：正常继续中心为 `info`，降级/hold 为 `warning`；
+- metadata：`d4_action`、`degradation_mode`、`d4_degradation_mode`、`selected_coordinator`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp`、`review_label`、resource/track/plan/version、`coverage_cell`、`terminal_consistent`、`risk_factors`、`secondary_available`、`communication_fresh`、`secondary_lifecycle`、`requires_human_review`。
 
-Completed in D4 module:
+`ActiveDegradationDecision.to_metrics()` 可输出 `d4_action`、`degradation_mode`、`target_node_id`、`risk_factors`、`terminal_consistent`、`failover_time`、`secondary_selected_rate` 和 `distributed_conflict_count`。
 
-- Secondary node lifecycle fields and summaries: heartbeat, lease epoch, coverage cell, video cue freshness, stale link state, and final `secondary_available`.
-- Active-degradation debounce and hysteresis configuration: dwell, release condition, consecutive mismatch frame threshold, and rolling risk window threshold.
-- D6-compatible decision event output from `D4ArbitrationAdapter`.
-- Tests for lifecycle availability, dwell/release behavior, windowed mismatch debounce, and D6 metadata fields.
+## 10. N 规模输入
 
-Intentionally unchanged:
+D4 不写死 2v2 或 5v5。当前行为：
 
-- The local lightweight CBBA remains the only distributed fallback baseline.
-- MIT CBBA, CA-CBBA, standalone auction, and contract-net integrations were not added.
+- `run_failover_simulation()` 按 `resources`/`tasks` 实际列表长度运行；若未传列表，则按 `node_count`/`task_count` 构造摘要。
+- CLI `--drone-count N` 只决定默认资源/任务数量，`--nodes` 是 legacy alias。
+- CBBA 使用 `node_ids`、`TrackSummary[]` 和 `ResourceSummary[]` 长度运行。
+- 2v2/5v5 只作为 AirSim baseline 或测试命名，不是算法限制。
 
-Remaining outside this D4 module:
+## 11. 已实现
 
-- Main/integrated runtime must call `D4ArbitrationAdapter` during real episodes and write the returned event kwargs into the D6 collector.
+| 能力 | 当前状态 | 代码/测试证据 |
+|---|---|---|
+| `C2Health` | `normal/degraded/suspect/failed`、heartbeat warning/stale/failure、peer quorum、digest conflict、center epoch stale、恢复待合并 | `coordinator.py`、`models.py`、`tests/test_health.py` |
+| 被动降级 | 中心 failed 后才执行 `plan_degraded()`；可选 ground backup/secondary/representative；不收敛不发布有效 assignments | `coordinator.py`、`tests/test_coordinator.py` |
+| 二级节点 lifecycle | heartbeat、lease、coverage、video cue freshness、link stale、`secondary_available` | `active_degradation.py`、`models.py`、`tests/test_active_degradation.py` |
+| 主动降级仲裁 | 输出 `continue_center`、`request_center_replan`、`request_secondary_assist`、`degrade_to_secondary`、`degrade_to_distributed`、`hold_for_review` | `active_degradation.py`、`tests/test_active_degradation.py` |
+| D1/D2/D3/D5 adapter | duck typing/dict 读取 covariance/age、ambiguity/IDSW/continuity、plan/version/freshness/cost、terminal/cross-view/friend conflict | `adapter.py`、`tests/test_arbitration_adapter.py` |
+| D5 distributed visual evidence normalization | `build_distributed_visual_evidence_summary()`、`attach_distributed_visual_evidence()`、`merge_distributed_visual_evidence_into_tracks()` | `adapter.py`、`tests/test_arbitration_adapter.py` |
+| 完全无中心 CBBA 风险加权 | D5 visual support 调整出价；hold/friend/stale/missing/conflicting ID 阻止 bid；duplicate lock 风险审计 | `cbba.py`、`tests/test_cbba.py` |
+| `assignment_audit` | 输出 owner、visual support、hold/ambiguous/duplicate IDs、confidence/ambiguity、hypothesis、ID 风险和 reason | `cbba.py`、`tests/test_cbba.py` |
+| D6 event metadata | `D4DecisionRecord.to_event_record_kwargs()` 输出 D6-compatible kwargs 和 metadata | `adapter.py`、`tests/test_arbitration_adapter.py` |
+| D7 二级接管门控辅助 | `build_d7_secondary_handoff()` 阶段 1 不放行 visual PNG，阶段 2 必须带新 plan id/version | `active_degradation.py`、`tests/test_airsim_phase1_dry_run_contracts.py` |
+| N 规模输入 | 仿真、CBBA 和测试按输入列表长度运行 | `simulation.py`、`scripts/run_failover_simulation.py`、`tests/test_simulation.py`、`tests/test_cbba.py` |
+
+## 12. 部分实现
+
+| 能力 | 已有部分 | 未完成部分 | 缺少条件 |
+|---|---|---|---|
+| main runtime bus 真实 episode 接线 | D4 adapter 可消费对象/dict 摘要并返回 D6 event kwargs | main/AirSim runtime 尚未保证每个真实 episode 都统一调用 D4 adapter 和写 D6 collector | main 需要在 episode 状态机中提供 D1/D2/D3/D5 摘要、LinkRecord-like 通信记录、batch seed 和 event sink |
+| D3 `request_center_replan` 自动调用 | D4 能输出 `request_center_replan` 并说明风险因素 | D4 不调用 D3 planner，也不生成新版 `AssignmentPlan` | main 监听 D4 action，D3 发布新 plan id/version，并拒绝 stale plan |
+| secondary takeover plan version 闭环 | D4 能选择二级节点，D7 handoff helper 能表达两阶段 gate | 二级节点新 plan 生成、plan owner、plan id/version 回传和 D7 控制状态机不是 D4 内闭环 | main/D3/D7 需要定义 secondary plan schema、版本策略、恢复合并和 D7 gate 接线 |
+| 完整 C2 双轨审计 | 已记录 health transition 和 assignment-only merge | 尚未比较完整 track digest、plan digest、terminal lock、communication link、D5/D7 gate 状态 | main/runtime 需要持久化中心和 fallback 双轨 episode log，D6 消费 merge outcome |
+| D5 distributed visual evidence 运行时合流 | D4 模块内可把 D5 多 peer evidence merge 到 `TrackSummary.visual_evidence` | 真实 episode 中 D5 多 peer 输出是否持续进入 D4 仍属 main 接线 | main 在 no-center case 调用 `merge_distributed_visual_evidence_into_tracks()` 或等价接线 |
+| CBBA 与中心化最优 gap | D4 输出 completion/conflict/rounds/messages/assignment audit | 尚未与 D3 Hungarian/Min Cost Flow/OR-Tools 同场景 cost matrix 做 gap benchmark | D3/main 保存中心化 cost matrix/current plan，D6 计算 cost/completion/conflict gap |
+
+## 13. 未实现
+
+| 未实现项 | 当前结论 | 为什么未实现 | 缺少条件 | 优先级 |
+|---|---|---|---|---|
+| MIT CBBA / CBBA-Python / CA-CBBA | 未接入外部实现；当前只有本地轻量 CBBA | 外部实现的数据模型、依赖、许可证、异步通信语义和 D4 summary bus 不一致；默认测试不能依赖外部工程 | 许可证/版本审查、adapter、可重复 benchmark、D6 收敛/通信开销报告 | P2 |
+| 独立 auction baseline | 未单独实现 single-round auction | 当前 `CBBANegotiator` 有 winner/bid 共识和 D5 visual evidence 加权，但不是独立拍卖状态机 | 定义 bid/award/rollback、reserve/confirm、重复任务消解和失败回滚测试 | P1/P2 |
+| Contract Net | 未实现 manager/contractor announce-bid-award 状态机 | 二级节点健康时仍需和 D3 plan version 对齐；manager 失效后还要 fallback 到 peer consensus | 消息类型、超时、拒绝/重招标、manager 失效和 D3 映射规则 | P2 |
+| 真实通信/视频链路 | 未实现 socket、ROS 2 topic、mesh、视频帧传输或无线协议 | D4 边界是摘要和内存网络，真实链路属于 main/runtime/D5/D1 | runtime 生成 LinkRecord/video metadata；D5/D1 处理图像、检测、标定和 cue schema | P2/P3 |
+| 虚拟中心 Hungarian | 明确不实现为 no-center fallback | 完全无中心模式不能伪造中心权威或改写 `global_track_id`；中心化最优属于 D3/main | 若要对照，只能做离线 benchmark，不得替代 D4 CBBA 保底 | 不做主线 |
+| D4 直接生成系统级 `AssignmentPlan` | 未实现完整系统级封装 | D3/main 拥有 plan schema、plan owner、版本策略和 stale rejection | D3 plan contract、secondary owner 规则、D7 gate 回传、D6 日志闭环 | P1 main/D3 |
+
+## 14. P1/P2 下一步
+
+P1：
+
+1. main/integrated runtime 在真实 episode 中统一调用 `D4ArbitrationAdapter.evaluate()`，把 D1/D2/D3/D5 摘要、通信记录和 D5 distributed visual evidence 接入 D4。
+2. main 将 `D4DecisionRecord.to_event_record_kwargs()` 写入 D6 collector，并按 active/passive、secondary/distributed、coverage、seed 聚合。
+3. main/D3 监听 `request_center_replan`，生成新版 `AssignmentPlan`，并把 plan id/version 返还给 D4/D7 gate。
+4. main/D3/D7 定义 secondary takeover 后的新 plan owner、plan id/version、D7 two-stage handoff 和恢复合并规则。
+5. D4/D6 增加 CBBA vs D3 中心化 cost matrix 的 gap benchmark，保留轻量 CBBA 为默认保底。
+
+P2：
+
+1. 评估 MIT CBBA/CA-CBBA/CBBA-Python 的许可证、依赖、消息语义和同场景 benchmark，把它们作为 optional benchmark 而不是默认替换。
+2. 实现独立 single-round auction baseline，用同一 `TrackSummary[]`/`ResourceSummary[]`/D5 evidence 输入与 CBBA 对照。
+3. 设计 Contract Net 的 manager/contractor 状态机、超时、拒绝/重招标和 manager 失效回退规则。
+4. 扩展 `merge_recovery()`，加入 track digest、plan digest、terminal lock、communication link、D5/D7 gate 状态和多轮稳定窗口。
+5. 在 AirSim stress 中标定主动降级阈值、dwell/release、false degradation rate 和 secondary freshness。
+
+## 15. 验收命令
+
+```bash
+git diff --check -- research_modules/d4_distributed_fallback subagent_reviews/D4_*
+PYTHONPATH=research_modules/d4_distributed_fallback python3 -m pytest -q research_modules/d4_distributed_fallback/tests
+```

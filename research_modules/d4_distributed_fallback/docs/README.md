@@ -9,7 +9,7 @@
 - `../reports/EXPERIMENT_REPORT.md`：当前实验结果、指标表和丢包率曲线。
 - `../reports/AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放数据如何映射到 D4 摘要模型。
 
-当前 D4 侧 P1 状态见 `../PLAN.md` 的 `P1 Gap Status`：已补二级节点生命周期摘要、主动降级迟滞/防抖配置、D6-compatible decision event metadata 和对应测试；轻量 CBBA 保持不变，未新增 MIT/CA-CBBA、auction 或 contract-net。
+当前 D4 侧状态见 `../PLAN.md` 的“已实现 / 部分实现 / 未实现 / P1/P2 下一步”：已补二级节点 lifecycle、主动降级迟滞/防抖、D6-compatible event metadata、D5 distributed visual evidence -> CBBA 风险加权、`assignment_audit` 和 N 规模输入；轻量 CBBA 仍是完全无中心保底，不构造虚拟中心 Hungarian，未新增 MIT/CA-CBBA、独立 auction 或 contract-net。
 
 ## 阅读顺序
 

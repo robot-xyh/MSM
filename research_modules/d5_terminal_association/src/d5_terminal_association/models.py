@@ -27,10 +27,29 @@ def _as_matrix(values: Any, shape: tuple[int, int], name: str) -> np.ndarray:
     return array.copy()
 
 
+def _as_square_matrix(values: Any, name: str) -> np.ndarray:
+    array = np.asarray(values, dtype=float)
+    if array.ndim != 2 or array.shape[0] != array.shape[1]:
+        raise ValueError(f"{name} must be a square matrix, got {array.shape}")
+    return array.copy()
+
+
 def _optional_vector(values: Any | None, size: int, name: str) -> np.ndarray | None:
     if values is None:
         return None
     return _as_vector(values, size, name)
+
+
+def _optional_matrix(values: Any | None, shape: tuple[int, int], name: str) -> np.ndarray | None:
+    if values is None:
+        return None
+    return _as_matrix(values, shape, name)
+
+
+def _optional_square_matrix(values: Any | None, name: str) -> np.ndarray | None:
+    if values is None:
+        return None
+    return _as_square_matrix(values, name)
 
 
 def _optional_bbox(values: Any | None) -> tuple[float, float, float, float] | None:
@@ -49,6 +68,26 @@ def _as_string_tuple(values: Any | None) -> tuple[str, ...]:
     if values is None:
         return ()
     return tuple(str(value) for value in values)
+
+
+def _optional_string(value: Any | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text if text else None
+
+
+def _visual_tracklet_key(resource_id: str, camera_id: str | None, local_track_id: str) -> str:
+    if camera_id:
+        return f"{resource_id}/{camera_id}:{local_track_id}"
+    return f"{resource_id}:{local_track_id}"
+
+
+def _bbox_area(bbox: tuple[float, float, float, float] | None) -> float:
+    if bbox is None:
+        return 0.0
+    x1, y1, x2, y2 = bbox
+    return max(0.0, x2 - x1) * max(0.0, y2 - y1)
 
 
 @dataclass(frozen=True)
@@ -126,6 +165,181 @@ class LocalVisualTrack:
         object.__setattr__(self, "quality", float(np.clip(self.quality, 0.0, 1.0)))
         if self.mot_history_length < 0:
             raise ValueError("mot_history_length must be non-negative")
+
+
+@dataclass(frozen=True)
+class DistributedVisualObservation:
+    """Metadata-only peer visual observation for distributed terminal fusion.
+
+    The observation may reference an existing assigned global track, but that
+    reference is advisory input only. D5 does not create, rewrite, or locally
+    rebind global track IDs.
+    """
+
+    resource_id: str
+    local_track_id: str
+    measurement_timestamp: float
+    arrival_timestamp: float
+    frame_id: str
+    covariance_px: np.ndarray | None = None
+    center_px: np.ndarray | None = None
+    bbox: tuple[float, float, float, float] | None = None
+    bearing: np.ndarray | None = None
+    bearing_rate: np.ndarray | None = None
+    covariance: np.ndarray | None = None
+    camera_id: str | None = None
+    category: str = "unknown"
+    confidence: float = 1.0
+    assigned_global_track_id: str | None = None
+    assigned_global_track_stale: bool = False
+    source_node_id: str | None = None
+    friend_conflict_state: str = "none"
+    metadata: dict[str, Any] = field(default_factory=dict)
+    tracklet_key: str = field(default="", init=False)
+
+    def __post_init__(self) -> None:
+        if not self.resource_id:
+            raise ValueError("resource_id must be non-empty")
+        if not self.local_track_id:
+            raise ValueError("local_track_id must be non-empty")
+        if not self.frame_id:
+            raise ValueError("frame_id must be non-empty")
+        object.__setattr__(self, "measurement_timestamp", float(self.measurement_timestamp))
+        object.__setattr__(self, "arrival_timestamp", float(self.arrival_timestamp))
+        object.__setattr__(self, "center_px", _optional_vector(self.center_px, 2, "center_px"))
+        object.__setattr__(self, "bbox", _optional_bbox(self.bbox))
+        object.__setattr__(self, "bearing", _optional_vector(self.bearing, 2, "bearing"))
+        object.__setattr__(self, "bearing_rate", _optional_vector(self.bearing_rate, 2, "bearing_rate"))
+        object.__setattr__(self, "covariance_px", _optional_matrix(self.covariance_px, (2, 2), "covariance_px"))
+        object.__setattr__(self, "covariance", _optional_square_matrix(self.covariance, "covariance"))
+        if self.covariance_px is None and self.covariance is None:
+            raise ValueError("DistributedVisualObservation requires covariance_px or covariance")
+        if self.center_px is None and self.bearing is None:
+            raise ValueError("DistributedVisualObservation requires center_px or bearing")
+        object.__setattr__(self, "camera_id", _optional_string(self.camera_id))
+        object.__setattr__(self, "assigned_global_track_id", _optional_string(self.assigned_global_track_id))
+        object.__setattr__(self, "source_node_id", _optional_string(self.source_node_id))
+        object.__setattr__(self, "confidence", float(np.clip(self.confidence, 0.0, 1.0)))
+        object.__setattr__(self, "metadata", dict(self.metadata))
+        object.__setattr__(
+            self,
+            "tracklet_key",
+            _visual_tracklet_key(self.resource_id, self.camera_id, self.local_track_id),
+        )
+
+
+@dataclass(frozen=True)
+class VisualTrackletSummary:
+    """Per-resource/camera/local-track summary for cross-peer matching."""
+
+    resource_id: str
+    local_track_id: str
+    measurement_timestamp: float
+    arrival_timestamp: float
+    frame_id: str
+    covariance_px: np.ndarray | None = None
+    center_px: np.ndarray | None = None
+    bbox: tuple[float, float, float, float] | None = None
+    bearing: np.ndarray | None = None
+    bearing_rate: np.ndarray | None = None
+    covariance: np.ndarray | None = None
+    camera_id: str | None = None
+    category: str = "unknown"
+    confidence: float = 1.0
+    bbox_area: float = 0.0
+    scale_rate: float = 0.0
+    observation_count: int = 1
+    first_measurement_timestamp: float | None = None
+    assigned_global_track_id: str | None = None
+    assigned_global_track_ids: tuple[str, ...] = ()
+    stale_assigned_global_track_ids: tuple[str, ...] = ()
+    assigned_global_track_stale: bool = False
+    source_observation_ids: tuple[str, ...] = ()
+    friend_conflict_state: str = "none"
+    metadata: dict[str, Any] = field(default_factory=dict)
+    tracklet_key: str = field(default="", init=False)
+
+    def __post_init__(self) -> None:
+        if not self.resource_id:
+            raise ValueError("resource_id must be non-empty")
+        if not self.local_track_id:
+            raise ValueError("local_track_id must be non-empty")
+        if not self.frame_id:
+            raise ValueError("frame_id must be non-empty")
+        object.__setattr__(self, "measurement_timestamp", float(self.measurement_timestamp))
+        object.__setattr__(self, "arrival_timestamp", float(self.arrival_timestamp))
+        object.__setattr__(self, "center_px", _optional_vector(self.center_px, 2, "center_px"))
+        object.__setattr__(self, "bbox", _optional_bbox(self.bbox))
+        object.__setattr__(self, "bearing", _optional_vector(self.bearing, 2, "bearing"))
+        object.__setattr__(self, "bearing_rate", _optional_vector(self.bearing_rate, 2, "bearing_rate"))
+        object.__setattr__(self, "covariance_px", _optional_matrix(self.covariance_px, (2, 2), "covariance_px"))
+        object.__setattr__(self, "covariance", _optional_square_matrix(self.covariance, "covariance"))
+        if self.covariance_px is None and self.covariance is None:
+            raise ValueError("VisualTrackletSummary requires covariance_px or covariance")
+        if self.center_px is None and self.bearing is None:
+            raise ValueError("VisualTrackletSummary requires center_px or bearing")
+        object.__setattr__(self, "camera_id", _optional_string(self.camera_id))
+        object.__setattr__(self, "confidence", float(np.clip(self.confidence, 0.0, 1.0)))
+        object.__setattr__(self, "bbox_area", max(0.0, float(self.bbox_area or _bbox_area(self.bbox))))
+        object.__setattr__(self, "scale_rate", float(self.scale_rate))
+        object.__setattr__(self, "observation_count", int(self.observation_count))
+        if self.observation_count <= 0:
+            raise ValueError("observation_count must be positive")
+        first_time = self.measurement_timestamp if self.first_measurement_timestamp is None else self.first_measurement_timestamp
+        object.__setattr__(self, "first_measurement_timestamp", float(first_time))
+        assigned_id = _optional_string(self.assigned_global_track_id)
+        assigned_ids = tuple(dict.fromkeys(_as_string_tuple(self.assigned_global_track_ids)))
+        if assigned_id is not None and assigned_id not in assigned_ids:
+            assigned_ids = assigned_ids + (assigned_id,)
+        if assigned_id is None and len(assigned_ids) == 1:
+            assigned_id = assigned_ids[0]
+        if len(assigned_ids) > 1:
+            assigned_id = None
+        stale_ids = tuple(dict.fromkeys(_as_string_tuple(self.stale_assigned_global_track_ids)))
+        stale = bool(self.assigned_global_track_stale or any(track_id in stale_ids for track_id in assigned_ids))
+        object.__setattr__(self, "assigned_global_track_id", assigned_id)
+        object.__setattr__(self, "assigned_global_track_ids", assigned_ids)
+        object.__setattr__(self, "stale_assigned_global_track_ids", stale_ids)
+        object.__setattr__(self, "assigned_global_track_stale", stale)
+        object.__setattr__(self, "source_observation_ids", _as_string_tuple(self.source_observation_ids))
+        object.__setattr__(self, "metadata", dict(self.metadata))
+        object.__setattr__(
+            self,
+            "tracklet_key",
+            _visual_tracklet_key(self.resource_id, self.camera_id, self.local_track_id),
+        )
+
+
+@dataclass(frozen=True)
+class PeerCameraState:
+    """Peer camera state metadata used for pose-quality gating."""
+
+    resource_id: str
+    measurement_timestamp: float
+    arrival_timestamp: float
+    frame_id: str
+    pose_covariance: np.ndarray
+    camera_id: str | None = None
+    position_ned: np.ndarray | None = None
+    orientation_quat_xyzw: np.ndarray | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.resource_id:
+            raise ValueError("resource_id must be non-empty")
+        if not self.frame_id:
+            raise ValueError("frame_id must be non-empty")
+        object.__setattr__(self, "measurement_timestamp", float(self.measurement_timestamp))
+        object.__setattr__(self, "arrival_timestamp", float(self.arrival_timestamp))
+        object.__setattr__(self, "pose_covariance", _as_square_matrix(self.pose_covariance, "pose_covariance"))
+        object.__setattr__(self, "camera_id", _optional_string(self.camera_id))
+        object.__setattr__(self, "position_ned", _optional_vector(self.position_ned, 3, "position_ned"))
+        object.__setattr__(
+            self,
+            "orientation_quat_xyzw",
+            _optional_vector(self.orientation_quat_xyzw, 4, "orientation_quat_xyzw"),
+        )
+        object.__setattr__(self, "metadata", dict(self.metadata))
 
 
 @dataclass(frozen=True)
@@ -365,6 +579,146 @@ class CrossViewAssociation:
         object.__setattr__(self, "ambiguity_score", float(np.clip(self.ambiguity_score, 0.0, 1.0)))
         object.__setattr__(self, "recon_cue_used_count", int(self.recon_cue_used_count))
         object.__setattr__(self, "support_count", int(self.support_count))
+        object.__setattr__(self, "metadata", dict(self.metadata))
+
+
+@dataclass(frozen=True)
+class CrossPeerAssociationHypothesis:
+    """Metadata-only cross-peer visual association hypothesis.
+
+    This is an evidence packet for D4 distributed decisions. It can reference
+    existing assigned global IDs, but it is not a new global track and does not
+    authorize assignment changes.
+    """
+
+    hypothesis_id: str
+    resource_id: str
+    local_track_id: str
+    measurement_timestamp: float
+    arrival_timestamp: float
+    frame_id: str
+    covariance_px: np.ndarray | None
+    participant_tracklet_keys: tuple[str, ...]
+    supporting_resource_ids: tuple[str, ...]
+    local_track_ids: tuple[str, ...]
+    frame_ids: tuple[str, ...]
+    assigned_global_track_id: str | None = None
+    assigned_global_track_ids: tuple[str, ...] = ()
+    stale_assigned_global_track_ids: tuple[str, ...] = ()
+    support_count: int = 0
+    total_cost: float = 0.0
+    confidence: float = 0.0
+    ambiguity_score: float = 1.0
+    max_time_skew_s: float = 0.0
+    category: str = "unknown"
+    support_state: str = "hypothesis_only"
+    duplicate_terminal_lock_risk: bool = False
+    global_track_id_conflict: bool = False
+    local_id_conflict: bool = False
+    friend_conflict_state: str = "none"
+    reason: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.hypothesis_id:
+            raise ValueError("hypothesis_id must be non-empty")
+        if not self.resource_id:
+            raise ValueError("resource_id must be non-empty")
+        if not self.local_track_id:
+            raise ValueError("local_track_id must be non-empty")
+        if not self.frame_id:
+            raise ValueError("frame_id must be non-empty")
+        object.__setattr__(self, "measurement_timestamp", float(self.measurement_timestamp))
+        object.__setattr__(self, "arrival_timestamp", float(self.arrival_timestamp))
+        object.__setattr__(self, "covariance_px", _optional_matrix(self.covariance_px, (2, 2), "covariance_px"))
+        if self.covariance_px is None:
+            raise ValueError("CrossPeerAssociationHypothesis requires covariance_px")
+        object.__setattr__(self, "participant_tracklet_keys", _as_string_tuple(self.participant_tracklet_keys))
+        object.__setattr__(self, "supporting_resource_ids", _as_string_tuple(self.supporting_resource_ids))
+        object.__setattr__(self, "local_track_ids", _as_string_tuple(self.local_track_ids))
+        object.__setattr__(self, "frame_ids", _as_string_tuple(self.frame_ids))
+        assigned_id = _optional_string(self.assigned_global_track_id)
+        assigned_ids = tuple(dict.fromkeys(_as_string_tuple(self.assigned_global_track_ids)))
+        if assigned_id is not None and assigned_id not in assigned_ids:
+            assigned_ids = assigned_ids + (assigned_id,)
+        if assigned_id is None and len(assigned_ids) == 1:
+            assigned_id = assigned_ids[0]
+        if len(assigned_ids) > 1:
+            assigned_id = None
+        object.__setattr__(self, "assigned_global_track_id", assigned_id)
+        object.__setattr__(self, "assigned_global_track_ids", assigned_ids)
+        object.__setattr__(
+            self, "stale_assigned_global_track_ids", _as_string_tuple(self.stale_assigned_global_track_ids)
+        )
+        object.__setattr__(self, "support_count", int(self.support_count))
+        object.__setattr__(self, "total_cost", float(self.total_cost))
+        object.__setattr__(self, "confidence", float(np.clip(self.confidence, 0.0, 1.0)))
+        object.__setattr__(self, "ambiguity_score", float(np.clip(self.ambiguity_score, 0.0, 1.0)))
+        object.__setattr__(self, "max_time_skew_s", max(0.0, float(self.max_time_skew_s)))
+        object.__setattr__(self, "metadata", dict(self.metadata))
+
+
+@dataclass(frozen=True)
+class DistributedTerminalAssociation:
+    """Conservative distributed-mode terminal association summary.
+
+    `assigned_global_track_id`, when present, is copied from current upstream
+    assignment context. Missing or stale global IDs keep the output in
+    `hypothesis_only` or `hold` states instead of `locked`.
+    """
+
+    association_id: str
+    resource_id: str
+    local_track_id: str
+    measurement_timestamp: float
+    arrival_timestamp: float
+    frame_id: str
+    covariance_px: np.ndarray | None
+    decision_state: str
+    assigned_global_track_id: str | None = None
+    participant_tracklet_keys: tuple[str, ...] = ()
+    supporting_resource_ids: tuple[str, ...] = ()
+    local_track_ids: tuple[str, ...] = ()
+    hypotheses: tuple[CrossPeerAssociationHypothesis, ...] = ()
+    selected_hypothesis_id: str | None = None
+    association_confidence: float = 0.0
+    ambiguity_score: float = 1.0
+    duplicate_terminal_lock_risk: bool = False
+    duplicate_lock_resource_ids: tuple[str, ...] = ()
+    duplicate_local_track_ids: tuple[str, ...] = ()
+    global_track_id_conflict: bool = False
+    local_id_conflict: bool = False
+    friend_conflict_state: str = "none"
+    recommended_d4_action: str = "observe"
+    reason: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.association_id:
+            raise ValueError("association_id must be non-empty")
+        if not self.resource_id:
+            raise ValueError("resource_id must be non-empty")
+        if not self.local_track_id:
+            raise ValueError("local_track_id must be non-empty")
+        if not self.frame_id:
+            raise ValueError("frame_id must be non-empty")
+        object.__setattr__(self, "measurement_timestamp", float(self.measurement_timestamp))
+        object.__setattr__(self, "arrival_timestamp", float(self.arrival_timestamp))
+        object.__setattr__(self, "covariance_px", _optional_matrix(self.covariance_px, (2, 2), "covariance_px"))
+        if self.covariance_px is None:
+            raise ValueError("DistributedTerminalAssociation requires covariance_px")
+        object.__setattr__(self, "assigned_global_track_id", _optional_string(self.assigned_global_track_id))
+        object.__setattr__(self, "participant_tracklet_keys", _as_string_tuple(self.participant_tracklet_keys))
+        object.__setattr__(self, "supporting_resource_ids", _as_string_tuple(self.supporting_resource_ids))
+        object.__setattr__(self, "local_track_ids", _as_string_tuple(self.local_track_ids))
+        object.__setattr__(self, "hypotheses", tuple(self.hypotheses))
+        object.__setattr__(self, "selected_hypothesis_id", _optional_string(self.selected_hypothesis_id))
+        object.__setattr__(
+            self, "association_confidence", float(np.clip(self.association_confidence, 0.0, 1.0))
+        )
+        object.__setattr__(self, "ambiguity_score", float(np.clip(self.ambiguity_score, 0.0, 1.0)))
+        object.__setattr__(self, "duplicate_lock_resource_ids", _as_string_tuple(self.duplicate_lock_resource_ids))
+        object.__setattr__(self, "duplicate_local_track_ids", _as_string_tuple(self.duplicate_local_track_ids))
         object.__setattr__(self, "metadata", dict(self.metadata))
 
 

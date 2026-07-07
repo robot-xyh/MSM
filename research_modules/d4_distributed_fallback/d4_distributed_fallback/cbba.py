@@ -132,7 +132,67 @@ class CBBAAgent:
         source_bonus = min(task.source_count, 3) * 0.15
         vector = np.array([confidence, availability, comm, capability, source_bonus, age_penalty])
         weights = np.array([2.0, 1.4, 0.5, 1.2, 1.0, -0.8])
-        return float(np.dot(vector, weights))
+        base_score = float(np.dot(vector, weights))
+        visual_adjustment = self._distributed_visual_adjustment(task)
+        if visual_adjustment is None:
+            return 0.0
+        return max(0.0, base_score + visual_adjustment)
+
+    def _distributed_visual_adjustment(self, task: TrackSummary) -> float | None:
+        """Convert D5 peer-visual evidence into a conservative CBBA score term.
+
+        D4 treats this evidence as advisory. It never creates a new global ID;
+        missing, stale, or conflicting global IDs disable executable bids for
+        the affected task because CBBA cannot safely anchor the visual tracklet
+        to the center-owned tactical picture.
+        """
+
+        evidence = task.visual_evidence
+        if not evidence.has_evidence:
+            return 0.0
+
+        if evidence.friend_conflict:
+            return None
+        if (
+            evidence.stale_global_track_id
+            or evidence.missing_global_track_id
+            or evidence.global_track_id_conflict
+        ):
+            return None
+        if self.node_id in evidence.hold_resource_ids:
+            return None
+
+        adjustment = 0.0
+        support_set = set(evidence.visual_support_resource_ids)
+        ambiguous_set = set(evidence.ambiguous_resource_ids)
+        duplicate_set = set(evidence.duplicate_lock_resource_ids)
+
+        if self.node_id in support_set:
+            if evidence.hypothesis_only:
+                adjustment += min(0.75, 0.25 + 0.4 * evidence.terminal_confidence)
+            else:
+                adjustment += min(
+                    2.75,
+                    0.6
+                    + 1.4 * evidence.terminal_confidence
+                    + 0.25 * min(evidence.support_count, 4),
+                )
+        elif support_set:
+            adjustment -= 1.25
+
+        if self.node_id in ambiguous_set:
+            adjustment -= 1.25
+        adjustment -= min(max(evidence.terminal_ambiguity, 0.0), 1.0) * 1.0
+
+        if evidence.duplicate_terminal_lock_risk:
+            if self.node_id in duplicate_set:
+                adjustment -= 2.5
+            else:
+                adjustment -= 0.75
+
+        if evidence.local_id_conflict:
+            adjustment -= 1.0
+        return adjustment
 
     def _capability_match(self, task: TrackSummary) -> float:
         if self.resource.capability_class == "observe":
@@ -243,6 +303,7 @@ class CBBANegotiator:
             estimated_bytes=stats.estimated_bytes,
             duration_s=max(0.0, now_s - start_time_s),
             final_views=final_views,
+            assignment_audit=self._assignment_audit(tasks, assignments),
         )
 
     @staticmethod
@@ -291,3 +352,35 @@ class CBBANegotiator:
             )
             for task_id, bid in sorted(best_by_task.items())
         }
+
+    @staticmethod
+    def _assignment_audit(
+        tasks: list[TrackSummary],
+        assignments: dict[str, Assignment],
+    ) -> dict[str, dict[str, object]]:
+        audit: dict[str, dict[str, object]] = {}
+        for task in tasks:
+            evidence = task.visual_evidence
+            if not evidence.has_evidence:
+                continue
+            assignment = assignments.get(task.track_id)
+            audit[task.track_id] = {
+                "owner": assignment.owner if assignment else None,
+                "visual_support_resource_ids": evidence.visual_support_resource_ids,
+                "hold_resource_ids": evidence.hold_resource_ids,
+                "ambiguous_resource_ids": evidence.ambiguous_resource_ids,
+                "duplicate_lock_resource_ids": evidence.duplicate_lock_resource_ids,
+                "terminal_confidence": evidence.terminal_confidence,
+                "terminal_ambiguity": evidence.terminal_ambiguity,
+                "hypothesis_count": evidence.hypothesis_count,
+                "support_count": evidence.support_count,
+                "hypothesis_only": evidence.hypothesis_only,
+                "stale_global_track_id": evidence.stale_global_track_id,
+                "missing_global_track_id": evidence.missing_global_track_id,
+                "duplicate_terminal_lock_risk": evidence.duplicate_terminal_lock_risk,
+                "friend_conflict": evidence.friend_conflict,
+                "global_track_id_conflict": evidence.global_track_id_conflict,
+                "local_id_conflict": evidence.local_id_conflict,
+                "risk_reasons": evidence.risk_reasons,
+            }
+        return audit

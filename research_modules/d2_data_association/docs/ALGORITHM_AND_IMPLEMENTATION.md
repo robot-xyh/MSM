@@ -2,7 +2,7 @@
 
 ## 1. 模块定位
 
-D2 负责把 D1 输出的多源融合观测或初始航迹整理成稳定的 `global_track_id` 序列。它解决的核心问题不是“位置是否足够准”，而是“同一个目标在交叉、遮挡、漏检和虚警条件下是否仍由同一个全局身份连续表示”。D2 输出供 D3 做资源-目标分配，供 D5 做末端视觉配准，供 D6 计算系统级指标。
+D2 负责把 D1 输出的多源融合观测或初始航迹整理成稳定的 `global_track_id` 序列。它解决的核心问题不是“位置是否足够准”，而是“同一个目标在交叉、遮挡、漏检和虚警条件下是否仍由同一个全局身份连续表示”。D2 输出供 D3 做资源-目标分配，供 D4 做主动降级风险仲裁证据，供 D5 做末端视觉配准，供 D6 计算系统级指标。
 
 本模块仅用于离线科研仿真与日志回放评估，不包含真实飞控、硬件驱动、火控、毁伤、自动处置或授权绕过逻辑。
 
@@ -34,7 +34,7 @@ D2 输出更新后的 `GlobalTrack` 列表和 `AssociationResult`：
 - `matched_pairs`、`unmatched_track_ids`、`unmatched_detection_ids`：每帧关联结果。
 - `ambiguity_score`、`rejected_pairs`、`metadata`：解释失败和歧义来源。
 
-输出给 D3/D5/D6 的 `global_track_id` 集合来自当前活动航迹列表，不截断或填充到固定数量。5v5 或 2v2 只表示某些离线 fixture 的规模，不是输出合同的一部分。
+输出给 D3/D4/D5/D6 的 `global_track_id` 集合来自当前活动航迹列表，不截断或填充到固定数量。5v5 或 2v2 只表示某些离线 fixture 的规模，不是输出合同的一部分。
 
 ## 3. 数学模型
 
@@ -176,15 +176,15 @@ MHT 适合研究这些情况：
 
 局限是复杂度随时间和候选数呈指数趋势，必须依赖剪枝、N-scan、分簇或场景分区。当前实现是有界研究接口，不应被解释为完整工业级 MHT。
 
-## 8. IMM-EKF/UKF 的意义
+## 8. IMM-EKF/UKF 的意义与当前状态
 
-当前可执行基线使用常速度 Kalman 预测。若目标存在明显机动，预测误差会扩大，导致门控变宽或候选交叠，从而间接增加 ID Switch。IMM-EKF/UKF 的作用是改善预测质量，而不是替代数据关联：
+当前可执行基线使用二维常速度 Kalman 预测；代码中没有 EKF、UKF、IMMEstimator、CV/CA/CT 模型集或模型转移概率。若目标存在明显机动，预测误差会扩大，导致门控变宽或候选交叠，从而间接增加 ID Switch。IMM-EKF/UKF 的作用是未来改善预测质量，而不是替代数据关联：
 
 - EKF：适合轻度非线性观测或二维/三维运动学扩展，计算轻。
 - UKF：适合非线性更强、雅可比难维护的模型。
 - IMM：并行维护常速度、常加速度、协调转弯等模型，并根据模型概率融合预测。
 
-推荐路径是先保持 D2 的 `DataAssociator` 接口不变，把预测器从常速度 Kalman 替换为 IMM-EKF/UKF，再比较 `id_switch_count` 和 `identity_continuity` 是否改善。
+推荐路径是先保持 D2 的 `DataAssociator` 接口不变，建立 FilterPy 或自研 optional benchmark，再比较强机动场景下 `id_switch_count` 和 `identity_continuity` 是否确实改善。只有在 replay 证明确有收益后，才考虑把预测器从常速度 Kalman 升级为 IMM-EKF/UKF。
 
 ## 9. 主要实施流程
 
@@ -420,11 +420,11 @@ D3 依赖稳定的 `global_track_id`、状态、协方差和生命周期状态�
 
 ### D2 -> D5
 
-D5 使用 `global_track_id` 将中心航迹投影到终端相机平面。D5 可以回传终端关联置信度和身份冲突事件，但不得自行改写 D2 的规范 `global_track_id`。D2 向 D3/D5 暴露的是当前活动航迹集合中的全部 `global_track_id`，数量随输入和航迹生命周期变化，不依赖固定 2v2/5v5 配置。
+D5 使用 `global_track_id` 将中心航迹投影到终端相机平面。D5 可以回传终端关联置信度和身份冲突事件，但不得自行改写 D2 的规范 `global_track_id`。D2 向 D3/D4/D5/D6 暴露的是当前活动航迹集合中的全部 `global_track_id`，数量随输入和航迹生命周期变化，不依赖固定 2v2/5v5 配置。
 
 ### D2 -> D6
 
-D6 消费 `AssociationLogEntry`、`TrackTransition`、`MetricsRecorder.summary()` 和混淆矩阵，用于批量实验统计、失败案例定位和算法对比。
+D6 消费 `AssociationLogEntry`、`TrackTransition`、`MetricsRecorder.summary()` 和混淆矩阵，用于批量实验统计、失败案例定位和算法对比。D2/D6 必须显式保留 `id_switch_count`：同一 truth 的代表 `global_track_id` 变化就是 ID Switch，不能只用 RMSE、覆盖率或命中数替代身份连续性。
 
 ## 15. 局限与后续工作
 
@@ -435,6 +435,7 @@ D6 消费 `AssociationLogEntry`、`TrackTransition`、`MetricsRecorder.summary()
 - MHT 是有界接口和对照基线，缺少完整 N-scan、分簇和高级剪枝。
 - 特征代价为简单欧氏差异，尚未区分类别置信、外观 embedding、声纹等来源。
 - OOSM 和异步传感器回溯主要由 D1 处理，D2 当前假设输入帧已按时间整理。
+- Stone Soup 和 FilterPy 仅有 optional availability 检测和 placeholder adapter，未进入默认运行路径。
 
 建议后续工作：
 
@@ -443,4 +444,4 @@ D6 消费 `AssociationLogEntry`、`TrackTransition`、`MetricsRecorder.summary()
 - 增加 JPDA/MHT 与 Stone Soup 的离线基准对照。
 - 把 D5 的终端关联反馈作为低权重身份证据接入，但保持 D2 对 `global_track_id` 的唯一管理权。
 - 将 `ambiguity_score`、候选数、协方差重叠率作为自动切换 JPDA/MHT 的触发器。
-- 增加 `AssociationRiskSummary` 的离线生成器，把 D2 风险信号以低频摘要形式交给 D3/D4/D6。
+- 用真实或稳定导出的 AirSim ComputerVision replay 校准已实现的 `AssociationRiskSummaryWindowGenerator`，把 D2 风险信号以稳定低频摘要形式交给 D3/D4/D6。

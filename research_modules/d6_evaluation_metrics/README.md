@@ -1,83 +1,73 @@
 # D6 Evaluation Metrics
 
-Offline evaluation module for detection, tracking, assignment, degradation, terminal registration, communication-link, D7 guidance-gate, and safety metrics.
+D6 是 MSM 的离线评估与报告模块。它只消费已经写盘的日志、CSV、JSON/JSONL 和仿真真值，输出 `EpisodeMetrics`、CSV、Markdown 报告和 PNG 图表；不参与 D1-D7 的实时控制链路，不生成任务、分配、导引、授权、火控、毁伤或自动处置动作。
 
-## Documentation
+## 当前能力
 
-- Detailed Chinese algorithm and implementation notes: `docs/ALGORITHM_AND_IMPLEMENTATION.md`
-- Document index: `docs/README.md`
-- Chinese experiment report with generated figures: `EXPERIMENT_REPORT.md`
-- Offline AirSim ingestion plan: `AIRSIM_INTEGRATION_PLAN.md`
+已实现的核心数据模型：
 
-The detailed notes now include the offline metric contract for D4 active degradation evaluation: passive vs active degradation counts, secondary reassignment, D4 reassign-pending gates, trigger-source metadata, coordinator selection fields, and before/after-window deltas for ID switches and assignment conflicts. The current implemented specialty metrics include `active_degradation_count`, `secondary_reassignment_count`, `d4_reassign_pending_count`, `terminal_lock_count`, `visual_png_switch_count`, `terminal_switch_allowed_rate`, and `id_switch_count`.
+- `EpisodeMetrics`：单 episode 标量指标对象，包含规模字段 `drone_count/resource_count/target_count/camera_count`。
+- `TrackRecord`：探测和跟踪记录，保留 `global_track_id`、`truth_id`、位置、真值位置、协方差摘要和来源。
+- `AssignmentRecord`：分配快照，保留 `plan_id`、`version`、资源、目标、授权状态和评估侧真值标签。
+- `EventRecord`：通用事件记录，用于降级、安全、D5/D7 gate、通信元数据等。
+- `LinkRecord`：跨节点通信记录，支持 latency/drop/out-of-order/stale/video metadata/bbox delivery。
+- `TerminalRecord`：末端配准记录，支持局部视觉 ID、锁定、歧义、友方 overlap hold 和正确性标签。
 
-D6 also accepts optional `LinkRecord` entries or equivalent `EventRecord.metadata`
-for cross-node communication evaluation. Supported derived metrics include
-`cross_node_latency_ms`, `message_drop_rate`, `out_of_order_count`,
-`stale_track_update_count`, `video_metadata_delivery_rate`,
-`bbox_delivery_rate`, and `consensus_latency_s`.
+已实现的指标族：
 
-For D5/D7 integration, D6 consumes metadata-only video evidence and D7 gate
-events. PNG frames are not required for metric computation when logs preserve
-bounding boxes, camera intrinsics/extrinsics, timestamps, assigned global track
-IDs, object labels, and gate outcomes. D7 events may report `guidance_law`,
-`terminal_switch_reject_reason`, `camera_quality_gate_pass`,
-`los_quality_gate_pass`, `maneuver_margin_gate_pass`, and
-`terminal_switch_allowed`. Supported D7 guidance metrics include
-`camera_quality_gate_pass_rate`, `los_quality_gate_pass_rate`,
-`maneuver_margin_gate_pass_rate`, `terminal_switch_allowed_rate`,
-`terminal_takeover_rate`, `terminal_switch_reject_count`, and intercept outcome
-counts. `terminal_takeover_rate` is an offline unique-pair ratio derived from
-recorded `terminal_locked`, `terminal_switch_allowed`, `vision_terminal` mode,
-`terminal_mode_entered`, or visual terminal guidance law (`png_vm`, `png_ttc`,
-or `los`) evidence in D7 output logs. Handover-pending and detection-seen flags
-alone are not counted as terminal takeover.
+- 探测：`detection_probability`、`false_alarm_rate`、`missed_detection_rate`。
+- 跟踪：`track_rmse`、`track_continuity`、强制显式保留的 `id_switch_count`。
+- 分配：`duplicate_assignment_count`、`unassigned_high_threat_count`。
+- 降级：`failover_time`、`consensus_rounds`、`degraded_completion_rate`、`active_degradation_count`、`passive_failover_count`、`secondary_node_takeover_count`、`secondary_reassignment_count`、`d4_reassign_pending_count`、`distributed_fallback_count`、`failover_active_window_delta_s`。
+- 末端：`terminal_association_accuracy`、`terminal_id_switch_count`、`ambiguous_fov_event_count`、`friend_overlap_hold_count`、`time_to_terminal_lock`、`terminal_lock_count`、`multi_view_consensus_rate`、`cross_view_conflict_count`、`duplicate_terminal_lock_count`。
+- 通信：`cross_node_latency_ms`、`message_drop_rate`、`out_of_order_count`、`stale_track_update_count`、`video_metadata_delivery_rate`、`bbox_delivery_rate`、`consensus_latency_s`。
+- D7 gate 与拦截统计：`camera_quality_gate_pass_rate`、`los_quality_gate_pass_rate`、`maneuver_margin_gate_pass_rate`、`terminal_switch_allowed_rate`、`visual_png_switch_count`、`terminal_takeover_rate`、`terminal_switch_reject_count`、`mode_switch_count`、`terminal_contract_reject_count`、`intercept_success_count`、`collision_intercept_count`、`range_intercept_count`、`time_to_intercept_s`、`min_range_m`、`gate_reject_count`。
+- 安全：`constraint_violation_count`、`human_override_count`。
 
-## AirSim Blocks Replay Inputs
+D2/D6 的硬规则仍然保留：`id_switch_count` 必须显式输出，不能被综合准确率隐藏。
 
-D6 can directly ingest the main runtime's metadata-only Blocks replay files:
+## 规模归一化
 
-- `blocks_frames.jsonl` for truth objects, camera metadata, image status,
-  detection boxes, local visual IDs, object labels, and timestamps.
-- `blocks_sensor_observations.jsonl` for D1 replay observations and optional
-  communication metadata such as source/target node, timestamps, sequence ID,
-  payload kind, delivery state, and stale threshold.
+D6 按实际 `drone_count/resource_count/target_count/camera_count` 归一化和分组。规模优先来自 `truth_summary` 或 Blocks replay 的资源、目标和相机字段；缺失时才从已记录的资源、目标、终端和相机元数据推断。`2v2`、`5v5` 只作为 baseline 场景名，不能用于推断算法规模或报告分母。
 
-Use `load_blocks_replay_jsonl()` for offline evaluation. It reads files from
-disk only; it does not import AirSim, connect to a simulator, or call vehicle
-control APIs.
+## AirSim 与 Runtime 输入
 
-```python
-from d6_evaluation_metrics import load_blocks_replay_jsonl
+D6 已有离线 loader，但不直接连接 AirSim：
 
-collector, truth_summary = load_blocks_replay_jsonl(
-    "research_modules/airsim_runtime/outputs/cv5v5_verify_001/blocks_frames.jsonl",
-    "research_modules/airsim_runtime/outputs/cv5v5_verify_001/blocks_sensor_observations.jsonl",
-)
-metrics = collector.compute_episode("cv5v5_verify_001", truth_summary=truth_summary)
-```
+- `load_blocks_replay_jsonl()` 读取 main runtime 写出的 `blocks_frames.jsonl` 和可选 `blocks_sensor_observations.jsonl`。
+- `load_d4_active_degradation_decisions()` 读取 D4 主动降级 CSV。
+- `load_d7_intercept_outputs()` / `load_d7_guidance_timeseries()` 读取 D7 `control_commands.csv`、`intercept_summary.json`、`guidance_records.csv`、`guidance_summaries.json`。
+- `load_episode_log_jsonl()` 读取 D6 标准化 dry-run JSONL。
 
-## Boundary
+这些 loader 都是 file/offline-only。D4/D5/D7 的 AirSim 产物是否进入 integrated episode metrics，取决于 main runtime 是否在同一 episode 目录持续写出上述文件，并在汇总脚本中调用 D6 loader。D6 已能消费这些产物；尚未拥有 live bus 订阅、AirSim 原生 recording 通用解析器或自动跨目录 episode 聚合调度。
 
-This module only evaluates recorded or synthetic logs. It does not participate in real-time decisions, does not emit control commands, does not provide fire-control parameters, does not model damage, does not automate disposal actions, and does not bypass human authorization.
+## PNG 策略
 
-## Run Tests
+PNG 截图不是 D6 计算指标的必需输入。D6 可用 bbox、相机内外参、timestamp、资源/相机 ID、`assigned_global_track_id`、object label、truth/validation label 和 D7 gate 结果计算多视角、末端和 visual PNG switch 指标。`--save-images` 只应在调试视角时启用；指标主线依赖 metadata。
 
-From the repository root:
+## 文档
+
+- 模块计划：`PLAN.md`
+- AirSim 离线集成计划：`AIRSIM_INTEGRATION_PLAN.md`
+- 详细算法与实施说明：`docs/ALGORITHM_AND_IMPLEMENTATION.md`
+- 文档索引：`docs/README.md`
+- 示例实验报告：`EXPERIMENT_REPORT.md`
+
+## 运行测试
+
+从仓库根目录运行：
 
 ```bash
-python3 -m pytest research_modules/d6_evaluation_metrics/tests
+pytest -q research_modules/d6_evaluation_metrics/tests
 ```
 
-## Run 100-Seed Example
-
-From the repository root:
+## 运行 100 Seed 示例
 
 ```bash
 python3 research_modules/d6_evaluation_metrics/scripts/run_batch_example.py --seeds 100
 ```
 
-Default outputs:
+默认输出：
 
 ```text
 research_modules/d6_evaluation_metrics/outputs/example_batch/
@@ -88,26 +78,43 @@ research_modules/d6_evaluation_metrics/outputs/example_batch/
   plots/*.png
 ```
 
-## Core API
+## 核心 API 示例
 
 ```python
-from d6_evaluation_metrics import MetricsCollector, ReportGenerator
-from d6_evaluation_metrics import LinkRecord
-from d6_evaluation_metrics import TrackRecord, AssignmentRecord, EventRecord, TerminalRecord
+from d6_evaluation_metrics import (
+    AssignmentRecord,
+    EventRecord,
+    LinkRecord,
+    MetricsCollector,
+    ReportGenerator,
+    TerminalRecord,
+    TrackRecord,
+)
 
 collector = MetricsCollector()
-collector.add_track(TrackRecord(timestamp=0.0, global_track_id="G0", truth_id="T0"))
+collector.add_track(
+    TrackRecord(
+        timestamp=0.0,
+        global_track_id="G0",
+        truth_id="T0",
+        position=(0.0, 0.0, -10.0),
+        truth_position=(0.0, 0.0, -10.0),
+    )
+)
+collector.add_event(EventRecord(timestamp=1.0, event_type="terminal_lock"))
 collector.add_link(
     LinkRecord(
-        timestamp=0.1,
+        timestamp=1.0,
         source_node_id="interceptor_01",
         target_node_id="center",
         payload_kind="track",
-        sent_timestamp=0.0,
-        received_timestamp=0.1,
+        sent_timestamp=0.9,
+        received_timestamp=1.0,
     )
 )
 metrics = collector.compute_episode(episode_id="example", duration=10.0)
 ```
 
-The package is intentionally lightweight and uses only Python standard library, NumPy, matplotlib, and pytest for tests.
+## 未接入项
+
+Stone Soup metrics、TrackEval/py-motmetrics、OSPA/GOSPA/HOTA/IDF1、AirSim 原生 recording replay 和 SCRIMMAGE metrics bridge 当前都没有实际 import、adapter 或测试。原因是这些能力需要稳定的帧级 truth-track/detection 匹配表、依赖版本、坐标/时钟合同、样例数据和 CI 容差。它们是 P2/P3 的可选外部 benchmark，不替代当前本地离线指标主线。

@@ -11,10 +11,15 @@ from d4_distributed_fallback import (
     D4ArbitrationAdapter,
     DegradationAction,
     DegradationMode,
+    DistributedVisualEvidenceSummary,
     NodeRole,
     ResourceSummary,
+    TrackSummary,
     build_communication_summary,
+    build_distributed_visual_evidence_summary,
+    merge_distributed_visual_evidence_into_tracks,
 )
+from d4_distributed_fallback.models import ConfidenceBand
 
 
 def _track(position_sigma_m: float = 5.0) -> SimpleNamespace:
@@ -263,6 +268,74 @@ def test_adapter_selects_secondary_when_persistent_mismatch_has_fresh_secondary_
     assert result.decision.mode == DegradationMode.ACTIVE_DEGRADATION
     assert result.decision.action == DegradationAction.DEGRADE_TO_SECONDARY
     assert result.decision.target_node_id == "SEC-1"
+
+
+def test_adapter_normalizes_d5_distributed_visual_evidence_without_d5_import() -> None:
+    evidence = {
+        "decision_state": "hypothesis_only",
+        "assigned_global_track_id": "G-TGT-001",
+        "supporting_resource_ids": ("INT-01", "INT-02"),
+        "association_confidence": 0.71,
+        "ambiguity_score": 0.32,
+        "hypotheses": (
+            {
+                "assigned_global_track_id": "G-TGT-001",
+                "supporting_resource_ids": ("INT-02",),
+                "support_count": 1,
+                "metadata": {"hypothesis_reason": "peer_bearing_bbox_consistent"},
+            },
+        ),
+        "metadata": {"support_count": 2},
+    }
+
+    summary = build_distributed_visual_evidence_summary(
+        evidence,
+        expected_global_track_id="G-TGT-001",
+    )
+
+    assert isinstance(summary, DistributedVisualEvidenceSummary)
+    assert summary.visual_support_resource_ids == ("INT-01", "INT-02")
+    assert summary.assigned_global_track_id == "G-TGT-001"
+    assert summary.hypothesis_only
+    assert summary.support_count == 2
+    assert summary.missing_global_track_id is False
+    assert summary.global_track_id_conflict is False
+
+
+def test_adapter_merges_d5_visual_evidence_into_matching_tracks_by_global_id() -> None:
+    tracks = [
+        TrackSummary(
+            track_id="G-TGT-001",
+            coarse_cell="cell-a",
+            age_s=1.0,
+            confidence_band=ConfidenceBand.HIGH,
+            source_count=2,
+            epoch=1,
+        ),
+        TrackSummary(
+            track_id="G-TGT-002",
+            coarse_cell="cell-b",
+            age_s=1.0,
+            confidence_band=ConfidenceBand.HIGH,
+            source_count=2,
+            epoch=1,
+        ),
+    ]
+    evidence = [
+        SimpleNamespace(
+            decision_state="locked",
+            assigned_global_track_id="G-TGT-002",
+            supporting_resource_ids=("INT-03",),
+            association_confidence=0.88,
+            ambiguity_score=0.08,
+        )
+    ]
+
+    merged = merge_distributed_visual_evidence_into_tracks(tracks, evidence)
+
+    assert not merged[0].visual_evidence.has_evidence
+    assert merged[1].visual_evidence.visual_support_resource_ids == ("INT-03",)
+    assert merged[1].visual_evidence.assigned_global_track_id == "G-TGT-002"
 
 
 def test_adapter_outputs_d6_compatible_active_decision_event_fields() -> None:

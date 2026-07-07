@@ -28,6 +28,7 @@ D2 的核心任务是维护稳定的 `global_track_id`。本轮实验比较 GNN/
 | 场景 | 说明 |
 |---|---|
 | `crossing` | 两目标中心交叉 |
+| `crossing_dense_5v5` | 确定性 dense/crossing 5v5 baseline fixture，用于同场比较 GNN/JPDA/MHT |
 | `formation` | 五目标近距编队 |
 | `occlusion` | 三目标短时遮挡 |
 | `missed` | 四目标随机漏检 |
@@ -56,4 +57,4 @@ python3 research_modules/d2_data_association/scripts/run_simulation.py --steps 3
 
 ## 7. 结论
 
-D2 的默认路线仍建议为 `GNN/Hungarian + EKF/UKF`。当候选门内观测数量升高、目标轨迹交叉或 `identity_continuity` 快速下降时，再启用 JPDA/MHT 对照。D2 输出的 `global_track_id` 是后续 D3 分配和 D5 终端锁定的核心键，不能由下游模块改写。
+D2 当前默认路线是 `GNN/Hungarian + 二维常速度 Kalman fallback`。当候选门内观测数量升高、目标轨迹交叉或 `identity_continuity` 快速下降时，再启用 JPDA/MHT 做离线对照；IMM/EKF/UKF、Stone Soup 和 FilterPy 仍是未来 optional benchmark 或 adapter 方向，不是当前默认代码路径。D2 输出的 `global_track_id` 是后续 D3 分配、D4 主动降级证据、D5 终端配准和 D6 指标评估的核心键，不能由下游模块改写。D2/D6 必须保留显式 `id_switch_count`。

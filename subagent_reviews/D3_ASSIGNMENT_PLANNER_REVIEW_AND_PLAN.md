@@ -5,6 +5,29 @@
 
 ---
 
+## 0. 当前代码状态摘要
+
+截至 2026-07-06，D3 代码已经实现：
+
+- SciPy Hungarian / `linear_sum_assignment` 主线，带 dummy unassignment 列。
+- 无 SciPy 时的小规模 `FallbackAssignmentSolver` 位掩码 DP fallback。
+- `AssignmentPlan(plan_id, version, window_id, resource_count, target_count)` 和 `assignment_matrix_shape` 规模 metadata。
+- `StalePlanError`，拒绝旧 `previous_plan`、旧 `plan_id` 或不匹配的 `expected_previous_version`。
+- 迟滞重分配：`delta`、`min_dwell`、`max_changes_per_window`、`reassignment_switch_penalty`。
+- D5 terminal feedback helper，始终 `allow_local_rebind=False`。
+- D7 `AssignmentGuidanceBinding`，携带 `assigned_global_track_id`、`plan_version`、binding state、source/target/link 和 `allow_local_rebind=False`。
+- `AssignmentValiditySummary` 和 D6-compatible `AssignmentRecord` 导出。
+- synthetic AirSim dry-run adapter，不 import AirSim，不控制 Blocks runtime。
+
+当前只是部分实现或未实现：
+
+- `MinCostFlowAssignmentSolver` 只是 OR-Tools 预留接口，`solve()` 当前抛出 `NotImplementedError`。
+- `secondary_plan_v2` 只有 schema/binding 兼容测试，没有二级节点 owner、epoch、租约、版本 supersede 和中心恢复合并闭环。
+- D4 `request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed` 仍由 main/D4 消费 D3 证据后触发，D3 不自动调用。
+- D3 不负责末端视觉重绑，不改写 `global_track_id`。
+
+---
+
 ## 1. 研究问题
 
 初始分配不是一次性决策。目标会丢失、航迹质量会变化、资源状态会变化，末端配准也可能返回 `ambiguous` 或 `hold`。如果每一帧都重新求最优，系统会频繁抖动；如果完全不重分配，则会漏掉更合理的计划。
@@ -24,7 +47,7 @@
 
 滚动窗口优化是动态场景常见方法：每个周期只提交近期计划，远期计划保持可调整。为了避免抖动，常用策略包括切换惩罚、最小保持时间、双阈值、版本锁和收益门限。例如只有新方案总代价相对旧方案改善超过阈值，才允许切换。
 
-本文推荐：N 对 N 一对一基线优先使用 SciPy Hungarian，5v5 仅作为默认示例/基准；当出现容量、禁配、备份资源或多轮窗口约束时，用 OR-Tools Min Cost Flow；更复杂逻辑再进入 CP-SAT/MILP 离线研究。
+本文推荐：N 对 N 或非等量 M/N 一对一基线优先使用 SciPy Hungarian，5v5 仅作为默认示例/基准；当出现容量、禁配、备份资源或多轮窗口约束时，再把当前预留的 OR-Tools Min Cost Flow 后端实现为可运行求解器；更复杂逻辑再进入 CP-SAT/MILP 离线研究。
 
 ---
 
@@ -33,10 +56,10 @@
 | 工具 | 适用场景 | 优点 | 限制 |
 |------|----------|------|------|
 | SciPy `linear_sum_assignment` | 一对一矩阵分配 | 简洁、快、稳定 | 难表达复杂约束 |
-| OR-Tools Min Cost Flow | 容量、禁配、分组、时间窗 | 约束强 | 需要建图和整数代价缩放 |
-| OR-Tools CP-SAT | 复杂逻辑约束 | 表达能力强 | 不适合高频滚动主线 |
+| OR-Tools Min Cost Flow | 容量、禁配、分组、时间窗 | 约束强，适合后续复杂约束 | 当前仅预留接口；需要 optional dependency、建图和整数代价缩放 |
+| OR-Tools CP-SAT | 复杂逻辑约束 | 表达能力强 | 当前未实现，不适合高频滚动主线 |
 
-推荐先写统一 `AssignmentSolver` 接口，底层可切换 Hungarian 或 Min Cost Flow。
+当前已落地 Hungarian/fallback 主线和 `MinCostFlowAssignmentSolver` 保留边界。后续接入 OR-Tools 时，应保持 `AssignmentPlan`、D7 binding 和 D6 export 的外部合同不变。
 
 ---
 
@@ -51,15 +74,20 @@ ResourceState
 - capability_class
 - health_score
 - busy_until
-- last_assignment
 - operator_hold
+- load_penalty
+- fov_difficulty / conflict_risk
+- metadata
 
 Assignment
 - resource_id
-- global_track_id
+- target_id  # 等价引用 D2/中心维护的 global_track_id
 - cost
 - cost_breakdown
 - feasibility_state
+- source_node_id / target_node_id / link_type
+- plan_version
+- stale_after_s
 
 AssignmentPlan
 - plan_id
@@ -71,27 +99,32 @@ AssignmentPlan
 - total_cost
 - created_at
 - human_authorization_state
+- decision_state
+- source_node_id / target_node_id / link_type
+- stale_after_s
 ```
 
 ### 4.2 类图
 
 ```text
 AssignmentPlanner
-  + build_cost_matrix()
-  + solve()
-  + apply_hysteresis()
-  + publish_plan()
+  + plan(tracks, resources, timestamp, previous_plan=None, expected_previous_version=None)
+  - _apply_hysteresis()
+  - _validate_previous_plan()
+  - _remember_plan()
 
-AssignmentSolver
-  + solve(cost_model, constraints)
+CostModel
+  + build_matrix(tracks, resources, timestamp)
+  + edge_cost(track, resource, timestamp)
 
-HungarianSolver --|> AssignmentSolver
-MinCostFlowSolver --|> AssignmentSolver
+HungarianAssignmentSolver
+  + solve(cost_matrix, unassigned_costs)
 
-HysteresisManager
-  + min_hold_time
-  + min_switch_gain
-  + max_changes_per_window
+FallbackAssignmentSolver
+  + solve(cost_matrix, unassigned_costs)
+
+MinCostFlowAssignmentSolver
+  + solve(...)  # 当前为 OR-Tools 预留接口，抛出 NotImplementedError
 ```
 
 ---
@@ -119,29 +152,30 @@ assignment_cost =
 
 ```python
 class AssignmentPlanner:
-    def plan(self, tracks, resources, previous_plan):
-        feasible_tracks = filter_engageable_tracks(tracks)
-        feasible_resources = filter_available_resources(resources)
-
-        cost = self.build_cost_matrix(feasible_tracks, feasible_resources)
-        candidate = self.solver.solve(cost)
-
-        candidate = self.hysteresis.apply(candidate, previous_plan)
-        candidate.version = previous_plan.version + 1
+    def plan(self, tracks, resources, timestamp, previous_plan=None, expected_previous_version=None):
+        validate_previous_plan(previous_plan, expected_previous_version)
+        matrix = CostModel.build_matrix(tracks, resources, timestamp)
+        candidate = HungarianAssignmentSolver.solve(matrix, unassigned_costs)
+        candidate = build_assignment_plan(candidate, resource_count=len(resources), target_count=len(tracks))
         candidate.human_authorization_state = "required"
+        if previous_plan is None:
+            remember_latest_plan(candidate)
+            return candidate
+        candidate = apply_hysteresis(candidate, previous_plan, matrix, timestamp)
+        remember_latest_plan(candidate)
         return candidate
 
 class HysteresisManager:
     def apply(self, candidate, previous):
-        gain = previous.total_cost - candidate.total_cost
-        if gain < self.min_switch_gain:
-            return previous.keep_with_new_window()
-
-        if count_changes(candidate, previous) > self.max_changes_per_window:
-            candidate = limit_changes(candidate, previous)
-
-        return keep_assignments_within_min_hold(candidate, previous)
+        old_cost = rescore_previous_assignment_on_current_matrix(previous)
+        if previous_infeasible:
+            return accept(candidate, "accepted_previous_infeasible")
+        if not enough_gain_or_dwell_or_change_budget(candidate, old_cost):
+            return keep_previous_assignments_with_new_version("held_by_hysteresis")
+        return accept(candidate, "accepted_gain_and_dwell")
 ```
+
+当前实现还会拒绝 stale `previous_plan`，并把每轮 `resource_count`、`target_count` 和 `assignment_matrix_shape` 写入计划。
 
 ---
 
@@ -163,7 +197,7 @@ class HysteresisManager:
 
 D4 现在区分被动降级和主动降级。被动降级来自中心节点心跳、通信或进程失效；主动降级发生在中心节点仍工作，但 D3 发现当前 `AssignmentPlan` 在态势上已经不可靠，例如定位误差增大、关联不确定性升高、计划版本过期、assignment 成本快速恶化，或 D5 末端视觉连续反馈不一致。
 
-D3 在该场景下的职责不是直接选择二级节点或完全分布式方案，而是输出可审计的计划有效性证据，并约束下游不得本地改绑：
+D3 在该场景下的职责不是直接选择二级节点或完全分布式方案，也不是自动调用 D4 action，而是输出可审计的计划有效性证据，并约束下游不得本地改绑：
 
 ```text
 D5 末端反馈 -> D3 计划有效性评估 -> keep / hold / replan / secondary_arbitration
@@ -200,11 +234,11 @@ D3 应向 D4 发布或记录以下 `AssignmentValiditySummary` 字段，用于�
 valid -> central_replan -> secondary_arbitration -> distributed_arbitration -> hold_for_observation
 ```
 
-如果 `cost_margin` 显示中心 Hungarian 可以显著改善，且 `stale_plan_version=False`，应优先中心重分配；如果 `assignment_latency`、`stale_plan_version`、`duplicate_assignment_count` 或 D5 多帧不一致同时出现，应请求 D4 主动降级仲裁。
+如果 `cost_margin` 显示中心 Hungarian 可以显著改善，且 `stale_plan_version=False`，应由 main/D4 优先触发 `request_center_replan`。如果 `assignment_latency`、`stale_plan_version`、`duplicate_assignment_count` 或 D5 多帧不一致同时出现，应请求 D4 主动降级仲裁。D3 当前只给出 summary 和 metadata，不直接执行 `request_center_replan`、`degrade_to_secondary` 或 `degrade_to_distributed`。
 
 ### 8.3 D3 与 D7 比例导引的接口
 
-D7 比例导引只应消费 D3/D4 确认过的版本化分配，不应自行选择目标。D3 输出给 D7 的最小接口建议为：
+D7 比例导引只应消费 D3/D4 确认过的版本化分配，不应自行选择目标。D3 当前输出给 D7 的接口是 `AssignmentGuidanceBinding`：
 
 ```text
 AssignmentGuidanceBinding
@@ -217,7 +251,7 @@ AssignmentGuidanceBinding
 - human_authorization_state
 ```
 
-中段 PN 使用 `assigned_global_track_id` 对应的 D2/D1 航迹预测作为导引目标；进入末端视觉 PN 后，D7 必须继承同一个 `global_track_id`。如果 D5 在末端发现视觉目标与该 `global_track_id` 不一致，D7 不得切换目标，而应进入 `hold/reacquire`，并把不一致事件回传 D5/D3/D4。
+中段 PN 使用 `assigned_global_track_id` 对应的 D2/D1 航迹预测作为导引目标；进入末端视觉 PNG 后，D7 必须继承同一个 `global_track_id`。如果 D5 在末端发现视觉目标与该 `global_track_id` 不一致，D7 不得切换目标，而应进入 `hold/reacquire`，并把不一致事件回传 D5/D3/D4。
 
 因此 D3 到 D7 的约束是：
 
@@ -225,6 +259,8 @@ AssignmentGuidanceBinding
 - `assigned_global_track_id` 在中段和末端保持一致。
 - `guidance_phase` 只描述仿真阶段，不代表真实控制或处置命令。
 - `human_authorization_state` 必须保持 `required` 或外部授权层明确状态，D3 不提供绕过授权字段。
+- D4 action 为 `request_center_replan`、`degrade_to_secondary` 或 `degrade_to_distributed` 时，D7 应阻断视觉 PNG。
+- D5 terminal association 未达到 `locked` 或 binding 为 `stale/revoked/hold/reassigned` 时，D7 不得进入目标重绑。
 
 ---
 
@@ -260,13 +296,13 @@ N 对 N 基准迟滞建议可从 5v5 参数开始扫描：`delta=0.2`，`min_dwe
 
 ## 10. 离线验证
 
-生成 5x5、10x10、20x20 场景，固定随机种子，比较：
+当前已实现的离线验证主要覆盖 Hungarian/fallback、迟滞、stale 拒绝、D7 binding、D5 feedback helper、D6 export 和 synthetic dry-run adapter。后续可生成 2v2、5v5、8v8、10x10、20x20 和非等量 M/N 场景，固定随机种子，比较：
 
 ```text
 Hungarian without hysteresis
 Hungarian with hysteresis
-MinCostFlow with constraints
-MinCostFlow with hysteresis
+MinCostFlow with constraints      # P1/P2 后端实现后再加入
+MinCostFlow with hysteresis       # P1/P2 后端实现后再加入
 ```
 
 指标：

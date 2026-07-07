@@ -59,6 +59,49 @@ class PayloadKind(str, Enum):
 
 
 @dataclass(frozen=True)
+class DistributedVisualEvidenceSummary:
+    """D5-style distributed terminal visual evidence consumed by D4 CBBA.
+
+    The global track id, when present, is copied from upstream evidence only.
+    D4 uses it for matching/risk checks and never creates or rewrites it.
+    """
+
+    visual_support_resource_ids: tuple[str, ...] = ()
+    hold_resource_ids: tuple[str, ...] = ()
+    ambiguous_resource_ids: tuple[str, ...] = ()
+    duplicate_lock_resource_ids: tuple[str, ...] = ()
+    assigned_global_track_id: str | None = None
+    terminal_confidence: float = 0.0
+    terminal_ambiguity: float = 0.0
+    hypothesis_count: int = 0
+    support_count: int = 0
+    decision_states: tuple[str, ...] = ()
+    risk_reasons: tuple[str, ...] = ()
+    hypothesis_only: bool = False
+    stale_global_track_id: bool = False
+    missing_global_track_id: bool = False
+    duplicate_terminal_lock_risk: bool = False
+    friend_conflict: bool = False
+    global_track_id_conflict: bool = False
+    local_id_conflict: bool = False
+
+    @property
+    def has_evidence(self) -> bool:
+        return bool(
+            self.visual_support_resource_ids
+            or self.hold_resource_ids
+            or self.ambiguous_resource_ids
+            or self.duplicate_lock_resource_ids
+            or self.decision_states
+            or self.risk_reasons
+            or self.hypothesis_count
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_jsonable(self)
+
+
+@dataclass(frozen=True)
 class TrackSummary:
     track_id: str
     coarse_cell: str
@@ -66,6 +109,9 @@ class TrackSummary:
     confidence_band: ConfidenceBand
     source_count: int
     epoch: int = 0
+    visual_evidence: DistributedVisualEvidenceSummary = field(
+        default_factory=DistributedVisualEvidenceSummary
+    )
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)
@@ -219,6 +265,7 @@ class CBBAResult:
     estimated_bytes: int
     duration_s: float
     final_views: dict[str, dict[str, str]] = field(default_factory=dict)
+    assignment_audit: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)

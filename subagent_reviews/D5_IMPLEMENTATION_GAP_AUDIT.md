@@ -14,9 +14,16 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 -> TerminalObservationBus / TerminalConsistencySummary
 ```
 
-已落地的能力包括：单相机 `cv2.projectPoints`/针孔投影 fallback、像素协方差传播、马氏几何门控、保守 `locked/ambiguous/hold/reacquire` 决策、`LocalVisualTrack`/`TerminalAssociation`/`IdentityClaim`/`ReconImageCue` 数据结构、二级 cue 作用域和重投影校验、跨视角摘要层、重复锁定风险、一致性摘要、AirSim `simGetDetections` 风格 bbox adapter、YOLO 常见 `xyxy` bbox schema 兼容、AirSim 相机内外参转换和离线几何配准验证。
+已落地的能力包括：单相机 `cv2.projectPoints`/针孔投影 fallback、像素协方差传播、马氏几何门控、保守 `locked/ambiguous/hold/reacquire` 决策、`LocalVisualTrack`/`TerminalAssociation`/`IdentityClaim`/`ReconImageCue` 数据结构、二级 cue 作用域和重投影校验、跨视角摘要层、完全分布式 metadata-only 跨 peer 视觉假设生成、重复锁定风险、一致性摘要、AirSim `simGetDetections` 风格 bbox adapter、YOLO 常见 `xyxy` bbox schema 兼容、AirSim 相机内外参转换和离线几何配准验证。
 
 未落地的是完整真实图像/MOT/身份/标定工程栈：ByteTrack、BoT-SORT、Deep SORT、OpenDroneID Core、MAVLink signing、DDS Security、AprilTag、OpenCV calibration/`solvePnP`、ROS 2 `tf2/message_filters`、真实二级侦察图像反投影再重投影链路，以及跨相机几何联合优化器。
+
+## 跨模块合同结论
+
+- 与 D4：D5 输出的是 terminal visual evidence，不是分配结果。`CrossViewAssociation`、`TerminalConsistencySummary`、`DistributedTerminalAssociation`、`duplicate_terminal_lock_risk`、`hypothesis_only/hold/ambiguous` 原因和 `recommended_d4_action` 可作为 D4 CBBA/主动降级的风险加权输入；D5 不生成 `AssignmentPlan`，不选择主备资源，不改写、不新建、不换绑 `global_track_id`。
+- 与 D7：D7 视觉 PNG 切换必须依赖 D5 `locked`、当前 D3/D4 `assigned_global_track_id` 一致、bbox 连续稳定、无友方冲突、无重复锁定风险，并通过 D4/D3 gate。D5 的 `visual_png_prelock_recommended` 或 `handoff_recommended` 只是前置证据；D7 仍需独立检查 LOS、相机状态、导引律、机动裕度、检测延迟和 terminal gate。
+- 与 AirSim/runtime：在线 D5 不能使用 AirSim `object_id`、`actor_name`、actor truth ID 或离线 truth map 做关联、过滤、换绑或锁定。truth ID 只允许在离线评估 metadata/evaluator 中计算 `terminal_lock_accuracy`、`locked_mismatch`、stress report 和测试断言。
+- 与规模参数：2v2 与 5v5 只是 baseline 和 stress scenario 名称。D5 算法按传入的 `LocalVisualTrack[]`、`GlobalTrack[]`、camera/resource 列表、`TerminalObservation[]` 或 peer DTO 数组长度运行，不写死资源数或目标数。
 
 ## 已实现
 
@@ -33,10 +40,17 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 | `IdentityClaim` 抽象 | 已实现模拟层。`identity.py::IdentityChecker.parse_claims()` 可把 Remote ID/OpenDroneID 风格 dict 和通用签名字段转为 `IdentityClaim`；verified friend overlap 触发 `hold`。 | 只做正向友方确认；未知不升级。 |
 | 二级节点 cue | 已实现摘要/代价基线。`ReconImageCue` 有 producer、frame、global ID、center/bbox、confidence、scope、metadata；`associator.py` 校验 scope、age、frame 和 `reprojected_to_local_camera` 后给代价 bonus。 | cue 不能绕过授权、版本、友方冲突和 MOT 质量门槛。 |
 | 跨视角重复锁定 | 已实现摘要层。`observation_bus.py::cross_view_associations()` 按既有全局 ID 汇总多资源支持，命名空间化 local ID，并输出 `duplicate_terminal_lock_risk`。 | 只上报给 D3/D4 仲裁，不解除锁定，不改计划。 |
+| 完全分布式跨 peer 视觉假设 | 已实现 P0 metadata-only。`terminal_cross_view_fusion.py::TerminalCrossViewFusion` 消费 `DistributedVisualObservation`、`VisualTrackletSummary` 和 `PeerCameraState`，基于时间、bearing、bearing rate、bbox area/scale rate、类别/置信度、像素协方差和姿态协方差 gating/cost，输出 `CrossPeerAssociationHypothesis` 与 `DistributedTerminalAssociation`。 | 使用 Hungarian；SciPy 不可用时退回纯 Python 最小代价唯一匹配。missing/stale `global_track_id`、重复锁定、友方冲突或 local/global ID 冲突不会输出 `locked`。 |
 | 一致性摘要 | 已实现。`consistency.py::TerminalConsistencyTracker` 输出 `TerminalConsistencySummary`，包含 lock age、连续 ambiguous/hold/reacquire、丢锁/重捕获、重复锁定风险、cross-view support 和 `recommended_d4_action`。 | 是 D4/D6 advisory summary，不替代 D4 仲裁。 |
 | 二级计划 2v2 语义 | 已实现测试覆盖。`test_airsim_cv_2v2_secondary_plan.py` 覆盖二级 plan 输入后只锁定 `assigned_global_track_id`、locked mismatch 只进入问题统计、不改写 ID、友方冲突阻断。 | 2v2 是测试语义，不是算法规模上限。 |
 | N-v-N stress 指标 | 已实现 D5 helper。`compute_terminal_stress_metrics()` 与 `summarize_degradation_case()` 输出 per-camera count、multi-target FOV、cross-view overlap、duplicate risk、lock accuracy、ambiguous count 和三类 degradation evidence。 | 5v5 只是默认 stress baseline；`AirSimCVScenarioSpec` 支持传入不同数量。 |
 | 视觉 PNG handoff 建议 | 已实现 advisory metadata。`visual_handoff.py::annotate_visual_png_handoff()` 在已有 `TerminalAssociation` 上附加 bbox 稳定、距离区间、TGO、延迟和 maneuver margin 等建议。 | D5 不决定导引律；D7/main 仍需独立 gate。 |
+
+已实现项的安全边界：
+
+- `locked` 只表示“当前分配 ID 的视觉候选被保守支持”，不是处置授权。
+- `hypothesis_only` 只表示“peer metadata 之间可能支持同一视觉目标”，没有 current `assigned_global_track_id` 时不能升级为 `locked`。
+- 重复锁定、友方冲突、stale ID、global/local ID 冲突都只输出风险和仲裁建议，不在 D5 内解除冲突。
 
 ## 部分实现
 
@@ -46,9 +60,16 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 | OpenCV `solvePnP` | 文档已列为推荐链路。 | 代码未调用 `cv2.solvePnP` 或 PnP RANSAC。 | 当前 D5 假设上游提供 `CameraModel.R/t`，没有足够 2D-3D 匹配点。 | 稳定 2D-3D 对应、PnP RANSAC 策略、外参漂移判据、离线标定样本。 | P2 |
 | OpenDroneID / Remote ID | `IdentityChecker` 可解析 `protocol=OpenDroneID` 风格字典并给出 verified/stale/spoof_suspected。 | 未接 OpenDroneID Core C，未解析真实广播报文。 | 缺少真实 Remote ID 数据源、签名/来源校验和平台白名单。 | OpenDroneID decoder、密钥/白名单、位置一致性检查、时间同步。 | P1/P2 |
 | MAVLink signing | `IdentityChecker` 可消费 `signed/signature_valid` 风格模拟字段。 | 未验证真实 MAVLink signing，也没有 key 管理。 | 当前没有 MAVLink telemetry source。 | MAVLink 消息流、签名校验库、系统 ID/组件 ID 策略、密钥和时钟策略。 | P2 |
-| 跨视角目标关联 | `TerminalObservationBus` 和 `CrossViewAssociation` 已做摘要层分组、support count、duplicate lock 风险。 | 没有多相机几何联合优化、时间对齐、姿态协方差或 per-view cost 融合。 | 当前只需要向 D3/D4/D6 提供安全摘要，尚无完整跨相机观测合同。 | `CrossViewObservation`、每相机 `CameraModel`、measurement/arrival timestamp、D2 `GlobalTrack[]`、跨相机代价函数。 | P2 |
+| 跨视角高阶几何优化 | `TerminalObservationBus`、`CrossViewAssociation` 和 `TerminalCrossViewFusion` 已覆盖摘要层与 metadata-only P0 假设生成，包含 measurement/arrival timestamp、协方差、frame/resource/local ID 命名空间和姿态协方差 cost。 | 没有三维重投影、三角化、bundle adjustment、D2 航迹联合预测或跨相机几何优化。 | P0 只需要 metadata-only 分布式假设供 D4 消费；真实 3D 几何需要更完整的相机/D2 合同。 | 每相机 `CameraModel`、D2 `GlobalTrack[]`、时间同步、三维候选生成、几何残差模型。 | P2 |
 | 二级侦察图像 cue | 已有 `ReconImageCue`、scope/age/frame/reprojection 校验和代价 bonus。 | 没有从二级相机图像检测结果反投影到 3D 再重投影到拦截机相机。 | 缺少二级相机真实 detection、pose、深度/三维目标估计。 | 二级相机标定和 pose、目标三维估计、cue 新鲜度策略、目标相机 frame 映射。 | P2 |
 | MOT 输入质量 | 使用 `local_track_id`、`mot_history_length`、`quality` 做锁定门槛。 | 不维护帧间 tracker 状态，不计算 ID switch。 | 当前 D5 只定义 LocalVisualTrack 消费合同。 | 图像帧或 detector stream、帧率、tracker cache、真值 IDSW 评估。 | P1 |
+
+部分实现项的口径：
+
+- “接入 OpenCV”当前只代表投影/畸变参数消费，不代表已经具备真实标定链。
+- “兼容 YOLO”当前只代表 bbox schema adapter，不代表已经运行 YOLO detector。
+- “支持 OpenDroneID/MAVLink/DDS/AprilTag”当前只代表 `IdentityClaim` 抽象可表达这些来源，不代表真实协议或 detector 已接入。
+- “支持 distributed visual association”当前只代表 metadata-only peer evidence，不代表完成三维几何配准、三角化或跨相机 bundle adjustment。
 
 ## 未实现
 
@@ -61,8 +82,15 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 | AprilTag | 当前不处理图像帧，也没有 tag detector。 | RGB/灰度图、AprilTag detector、tag ID 到友方平台映射、误检/漏检评估。 | P2。 |
 | ROS 2 `tf2/message_filters` | 仓库当前是 Python 离线/AirSim runtime，不启动 ROS 图。 | 带戳 topic schema、frame tree、ApproximateTime/ExactTime 同步策略、bag/replay。 | P3。 |
 | 真实图像保存/处理 | D5 默认 metadata-only，不保存 PNG；图像链路不应成为当前逻辑依赖。 | 若接入 MOT/AprilTag，需要图像帧、存储策略、离线复盘格式。 | P2。 |
-| 跨相机几何联合优化器 `TerminalCrossViewFusion` | 目前只有摘要层，不具备跨相机姿态/时间/协方差联合建模。 | `CrossViewObservation`、多相机 `CameraModel`、同步时间戳、融合代价、冲突状态机。 | P2。 |
+| 跨相机三维联合优化器 | 当前 `TerminalCrossViewFusion` 是 metadata-only P0，不做三维相机几何联合优化。 | 多相机 `CameraModel`、D2 航迹预测、同步时间戳、三维候选、重投影残差、冲突状态机。 | P2。 |
 | 真实 YOLO 推理链路 | 仅兼容 YOLO 常见 `xyxy` 输出 schema；没有加载权重或运行 detector。 | 图像流、权重、class map、置信度阈值、CPU/GPU 预算、评估样本。 | P1/P2，取决于 main 是否要求图像 detector。 |
+
+按工程链路归纳的未实现项：
+
+- 真实多目标检测器：没有连续 RGB/PNG frame 输入、detector runtime、权重加载、class map、阈值策略、硬件加速和误检/漏检评估。
+- 真实 MOT：没有 ByteTrack/BoT-SORT/Deep SORT tracker cache、遮挡恢复、ReID embedding、frame-to-frame IDSW 统计和 MOT 真值。
+- 真实标定链：没有标定图像、棋盘/AprilTag 角点、相机-机体系-世界系同步姿态、`calibrateCamera`/`solvePnP` 验证、重投影误差报告和外参漂移告警。
+- 真实身份认证链路：没有 OpenDroneID/MAVLink/DDS 实际报文、密钥/证书/白名单管理、时间同步、消息来源到平台身份的可信映射，也没有 AprilTag detector。
 
 ## 未实现原因归纳
 
@@ -88,13 +116,16 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 
 | 优先级 | 任务 | 验收建议 |
 |---|---|---|
-| P0 | 保持现有安全合同回归：D5 不改写 `global_track_id`、不使用 AirSim truth 在线关联、friend overlap `hold`、二级 cue 需 frame/scope/age/reprojection 校验。 | `pytest -q research_modules/d5_terminal_association/tests`。 |
+| P0 | 保持现有安全合同回归：D5 不改写 `global_track_id`、不使用 AirSim truth 在线关联、friend overlap `hold`、二级 cue 需 frame/scope/age/reprojection 校验，完全分布式 metadata-only 跨 peer 假设在 missing/stale global ID 或 duplicate risk 时不得 `locked`。 | `pytest -q research_modules/d5_terminal_association/tests`。 |
 | P1 | 将 `airsim_geometry.py` 的相机转换、几何匹配结果和 `TerminalConsistencySummary` 纳入 main runtime/D6 日志字段。 | AirSim CV replay 中记录 projected pixel、pixel error、mahalanobis、gate_pass、locked mismatch 和 duplicate lock。 |
+| P1 | 把 D5 distributed evidence 接入 D4 CBBA/主动降级风险加权输入。 | D4 可消费 `CrossViewAssociation`、`DistributedTerminalAssociation.recommended_d4_action`、`hypothesis_only/hold/ambiguous` 原因、`duplicate_lock_resource_ids` 和连续帧 `TerminalConsistencySummary`；D5 仍不生成分配。 |
+| P1 | 固化 D7 视觉 PNG 前置证据合同。 | D7 仅在 D5 `locked`、当前 `assigned_global_track_id` 一致、bbox 稳定、无重复锁定风险、D4/D3 gate 通过时进入视觉 PNG；测试覆盖 assignment mismatch、friend conflict、unstable bbox 和 duplicate risk 阻断。 |
 | P1 | 增加可选 ByteTrack adapter，只把 tracker 输出转为 `LocalVisualTrack`，不让 tracker ID 替代 `global_track_id`。 | 单测覆盖短遮挡、低置信检测和 local ID switch，D5 仍只锁定 assigned ID。 |
 | P1 | 明确 YOLO detector adapter 边界：D5 接收 `xyxy/class/confidence/track_id/timestamp`，不在 D5 内运行控制或分配。 | schema fixture 和 truth 隔离测试。 |
 | P2 | 实现 solvePnP/calibration 离线验证工具。 | 标定样本、PnP RANSAC、重投影误差阈值和外参漂移告警。 |
-| P2 | 设计 `CrossViewObservation`/`TerminalCrossViewFusion`，把摘要层升级为跨相机几何融合。 | UAV1 `{G1,G2,G3}`、UAV2 `{G2,G3,G4}` 场景中输出 per-view cost、timestamp skew、pose covariance 和 conflict state。 |
+| P2 | 在现有 `TerminalCrossViewFusion` 之上设计三维跨相机几何融合。 | 在 metadata-only cost 之外输出 D2 航迹预测、三维重投影残差、timestamp skew、pose covariance 和 conflict state。 |
 | P2 | 接入真实 OpenDroneID/MAVLink signing/AprilTag 之一作为 `IdentityClaim` adapter。 | 真实或回放报文/图像 fixture，验证 stale/spoof/unverified/verified 状态不会把未知目标升级。 |
+| P2 | 评估 BoT-SORT/Deep SORT/ReID 是否适合小型无人机 AirSim/真实图像。 | 有连续图像、算力预算、IDF1/IDSW 评估；若小目标纹理不足，保持几何门控 + ByteTrack/schema adapter 为默认基线。 |
 | P3 | ROS 2 `tf2/message_filters` 和 DDS Security。 | 仅在项目转为 ROS 2 runtime 后实施。 |
 
 ## 关键代码依据
@@ -106,6 +137,7 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 - `research_modules/d5_terminal_association/src/d5_terminal_association/airsim_geometry.py`
 - `research_modules/d5_terminal_association/src/d5_terminal_association/identity.py`
 - `research_modules/d5_terminal_association/src/d5_terminal_association/observation_bus.py`
+- `research_modules/d5_terminal_association/src/d5_terminal_association/terminal_cross_view_fusion.py`
 - `research_modules/d5_terminal_association/src/d5_terminal_association/consistency.py`
 - `research_modules/d5_terminal_association/src/d5_terminal_association/visual_handoff.py`
 - `research_modules/d5_terminal_association/tests/test_terminal_association.py`
@@ -113,5 +145,6 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 - `research_modules/d5_terminal_association/tests/test_airsim_cv_2v2_secondary_plan.py`
 - `research_modules/d5_terminal_association/tests/test_geometric_registration_validation.py`
 - `research_modules/d5_terminal_association/tests/test_terminal_observation_bus.py`
+- `research_modules/d5_terminal_association/tests/test_distributed_cross_view_fusion.py`
 - `research_modules/d5_terminal_association/tests/test_terminal_consistency.py`
 - `research_modules/d5_terminal_association/tests/test_visual_handoff.py`
