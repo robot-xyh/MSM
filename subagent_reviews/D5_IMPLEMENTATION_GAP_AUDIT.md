@@ -14,9 +14,9 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 -> TerminalObservationBus / TerminalConsistencySummary
 ```
 
-已落地的能力包括：单相机 `cv2.projectPoints`/针孔投影 fallback、像素协方差传播、马氏几何门控、保守 `locked/ambiguous/hold/reacquire` 决策、`LocalVisualTrack`/`TerminalAssociation`/`IdentityClaim`/`ReconImageCue` 数据结构、二级 cue 作用域和重投影校验、跨视角摘要层、完全分布式 metadata-only 跨 peer 视觉假设生成、重复锁定风险、一致性摘要、AirSim `simGetDetections` 风格 bbox adapter、YOLO/ByteTrack 离线 schema adapter、AirSim 相机内外参转换、离线几何配准验证和可写盘 geometry/consistency/handoff metadata。
+已落地的能力包括：单相机 `cv2.projectPoints`/针孔投影 fallback、像素协方差传播、马氏几何门控、保守 `locked/ambiguous/hold/reacquire` 决策、`LocalVisualTrack`/`TerminalAssociation`/`IdentityClaim`/`ReconImageCue` 数据结构、二级 cue 作用域和重投影校验、跨视角摘要层、完全分布式 metadata-only 跨 peer 视觉假设生成、重复锁定风险、一致性摘要、AirSim `simGetDetections` 风格 bbox adapter、YOLO/ByteTrack 离线 schema adapter、YOLOv8 + ByteTrack/BoT-SORT frame adapter、确定性 IoU fallback tracker、AirSim 相机内外参转换、离线几何配准验证和可写盘 geometry/consistency/handoff metadata。
 
-未落地的是完整真实图像/MOT/身份/标定工程栈：ByteTrack、BoT-SORT、Deep SORT、OpenDroneID Core、MAVLink signing、DDS Security、AprilTag、OpenCV calibration/`solvePnP`、ROS 2 `tf2/message_filters`、真实二级侦察图像反投影再重投影链路，以及跨相机几何联合优化器。
+未落地的是完整 runtime 工程栈：main/AirSim 连续图像流接入、GPU/CPU 部署与多 seed 阈值标定、Deep SORT/ReID、OpenDroneID Core、MAVLink signing、DDS Security、AprilTag、OpenCV calibration/`solvePnP`、ROS 2 `tf2/message_filters`、真实二级侦察图像反投影再重投影链路，以及跨相机几何联合优化器。
 
 2026-07-07 复核状态：`TerminalConsistencyTracker` 连续窗口已按 `resource_id + assigned_global_track_id` 维护，D3 对同一资源/目标滚动发布新的 `assignment_version` 不会清空连续视觉状态。该能力已由 `test_consistency_streak_survives_plan_version_updates_for_same_assignment_pair` 覆盖。D5 已补充 projected pixel、pixel error、Mahalanobis、gate pass、friend conflict、measurement age、duplicate-risk advisory、LOS/measurement-age handoff blockers 和离线 YOLO/ByteTrack truth 隔离测试。D5 的一致性输出仍是 advisory summary，只供 D4/D6/D7 作为证据消费，不触发降级、不生成 `AssignmentPlan`、不改写 `global_track_id`。
 
@@ -31,12 +31,12 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 
 | 能力项 | 当前状态与证据 | 说明 |
 |---|---|---|
-| `LocalVisualTrack` | 已实现。`models.py` 定义本地轨迹；`airsim_cv_adapter.py::local_visual_tracks_from_sim_detections()` 和 `local_visual_tracks_from_offline_yolo_bytetrack()` 可从 AirSim/YOLO/ByteTrack 风格 bbox 生成中心点、bbox、质量、类别和 `mot_history_length`。 | 只标准化检测/MOT 输出，不运行真实 tracker，不携带 truth/global ID。 |
+| `LocalVisualTrack` | 已实现。`models.py` 定义本地轨迹；`airsim_cv_adapter.py::local_visual_tracks_from_sim_detections()`、`local_visual_tracks_from_offline_yolo_bytetrack()` 和 `yolo_mot_adapter.py::YoloMotAdapter.process_frame()` 可从 AirSim bbox、离线 schema 或图像帧 detector/tracker 输出生成中心点、bbox、质量、类别和 `mot_history_length`。 | 只标准化本地检测/MOT 输出，不携带 truth/global ID；tracker ID 只能是本地 ID。 |
 | `TerminalAssociation` | 已实现。`associator.py::TerminalAssociator.decide()` 只评估 `Assignment.assigned_global_track_id`，输出 `locked/ambiguous/hold/reacquire`、候选代价、友方冲突、cue 使用标记和 per-pair geometry log metadata。 | 不是重分配器，不会选择另一个全局 ID 作为新分配。 |
 | OpenCV `projectPoints` / 几何门控 | 已实现单相机版。`geometry.py::_project_pixel()` 优先调用 `cv2.projectPoints`，不可用时退回针孔公式；`project_track()` 传播协方差，`mahalanobis_d2()` 做像素马氏距离。 | 只消费已有 `CameraModel.K/R/t/dist_coeffs`，不估计标定参数。 |
 | AirSim 相机几何 adapter | 已实现模块内验证辅助。`airsim_geometry.py` 提供 FOV 到 K、AirSim quaternion 到 OpenCV camera rotation、`camera_model_from_airsim_camera_info()`、`associate_tracks_to_detections_geometrically()` 和 `GeometricAssociationResult.to_log_records()`。 | 用于 D5 几何验证；不调用 AirSim API，也不依赖 object truth；main/D6 仍需接入实际日志 sink。 |
 | AirSim `simGetDetections` bbox adapter | 已实现 dry-run 适配。`airsim_cv_adapter.py` 接受 `box2D`、`bbox_xyxy`、`xyxy` 等 schema，发布到 `TerminalObservationBus`。 | 不导入 AirSim；真实采集由 main/runtime 负责。 |
-| YOLO/ByteTrack 离线 adapter | 已实现 schema 兼容。测试覆盖 `xyxy/bbox_xyxy`、低置信检测、重复 `track_id` 命名空间化、tracker ID 不替代 assigned global ID。 | 不是 YOLO 推理链路，也不加载 detector/tracker；短遮挡恢复和 IDSW/IDF1 未实现。 |
+| YOLOv8 + ByteTrack/BoT-SORT adapter | 已实现模块 adapter。`YoloMotAdapter` 默认权重路径为 `/home/linux/Documents/MSM/research_modules/d5_terminal_association/best.pt` 且允许覆盖；可请求 ultralytics ByteTrack/BoT-SORT，缺依赖/权重/原生 tracker 时返回 `unavailable` 或使用确定性 IoU fallback。测试覆盖 mock YOLO 输出、连续帧 local track ID 稳定、truth/global 字段隔离和无 ultralytics 状态。 | D5 不采集 AirSim 图像流、不管理 GPU/CPU 部署、不把 tracker ID 替代 `global_track_id`；真实 runtime 接线归 main。 |
 | AirSim truth ID 隔离 | 已实现并测试。`airsim_cv_adapter.py` 明确忽略 `object_id/actor_name/truth_id/global_track_id`；`test_detection_parser_ignores_airsim_truth_identity_fields_online()` 和离线 YOLO/ByteTrack adapter 测试覆盖；`airsim_geometry.py::evaluate_associations_offline()` 才读取 truth label。 | 在线关联只用 bbox、时间、相机几何、本地 ID、类别和置信度。 |
 | `global_track_id` 不变式 | 已实现。`GlobalTrack` frozen；`TerminalAssociator` 记录输入 ID 并 `_assert_global_ids_unchanged()`；`TerminalObservationBus` 只按已有 `assigned_global_track_id` 分组。 | D5 只输出 evidence，不能成为分配权威。 |
 | `IdentityClaim` 抽象 | 已实现模拟层。`identity.py::IdentityChecker.parse_claims()` 可把 Remote ID/OpenDroneID 风格 dict 和通用签名字段转为 `IdentityClaim`；verified friend overlap 触发 `hold`。 | 只做正向友方确认；未知不升级。 |
@@ -69,7 +69,7 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 部分实现项的口径：
 
 - “接入 OpenCV”当前只代表投影/畸变参数消费，不代表已经具备真实标定链。
-- “兼容 YOLO”当前只代表 bbox schema adapter，不代表已经运行 YOLO detector。
+- “兼容 YOLO”当前代表已有 bbox schema adapter 和 `YoloMotAdapter` frame adapter；不代表 main runtime 已把 AirSim 连续图像流、部署参数和多 seed 标定闭环接好。
 - “支持 OpenDroneID/MAVLink/DDS/AprilTag”当前只代表 `IdentityClaim` 抽象可表达这些来源，不代表真实协议或 detector 已接入。
 - “支持 distributed visual association”当前只代表 metadata-only peer evidence，不代表完成三维几何配准、三角化或跨相机 bundle adjustment。
 
@@ -77,20 +77,20 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 
 | 未实现项 | 未实现原因 | 缺少条件 | 下一步优先级 |
 |---|---|---|---|
-| 真实 ByteTrack tracker runtime | schema adapter 已完成，但当前只消费 bbox/MOT 抽象输出，未引入真实图像帧、detector 和第三方 tracker 依赖。 | RGB/PNG frame 或稳定 detector bbox stream、ByteTrack 依赖、类别/置信度 schema、MOT 真值。 | P1：接真实 detector/tracker stream，不替换 D5 几何主线。 |
-| BoT-SORT | 需要相机运动补偿、ReID 和检测器链路，超出当前 metadata-only dry-run。 | 连续图像、相机运动估计、BoT-SORT 依赖、ReID 模型、算力预算。 | P2：真实图像链路后再评估。 |
+| main runtime 图像流接入 | D5 已提供 `YoloMotAdapter`，但 AirSim/main 尚需把连续 RGB/PNG frame、camera/resource/frame_id/timestamp 和参数覆盖传入该 adapter。 | RGB/PNG frame 或稳定 detector bbox stream、runtime 参数、日志 sink、episode/seed 配置。 | P1：main 接线，不替换 D5 几何主线。 |
+| BoT-SORT 工程质量评估 | D5 可请求 ultralytics BoT-SORT 或退回 IoU tracker，但小目标运动相机质量未评估。 | 连续图像、相机运动估计、BoT-SORT 依赖、ReID 模型、算力预算、IDF1/IDSW 真值。 | P2：真实图像链路后再评估。 |
 | Deep SORT | 小型无人机外观纹理弱，当前没有 embedding 提取或外观真值。 | 图像帧、检测器、embedding 模型、IDSW/IDF1 评估数据。 | P2：作为对照，不作为默认主线。 |
 | DDS Security | D5 不运行 ROS 2/DDS middleware。 | ROS 2 runtime、enclave、证书、权限文件、节点身份到 `IdentityClaim` 的映射。 | P2：仅在 ROS 2/DDS runtime 或回放链路确定后实施。 |
 | AprilTag | 当前不处理图像帧，也没有 tag detector。 | RGB/灰度图、AprilTag detector、tag ID 到友方平台映射、误检/漏检评估。 | P2。 |
 | ROS 2 `tf2/message_filters` | 仓库当前是 Python 离线/AirSim runtime，不启动 ROS 图。 | 带戳 topic schema、frame tree、ApproximateTime/ExactTime 同步策略、bag/replay。 | P2：仅在项目进入 ROS 2 runtime 或 bag replay 后实施。 |
 | 真实图像保存/处理 | D5 默认 metadata-only，不保存 PNG；图像链路不应成为当前逻辑依赖。 | 若接入 MOT/AprilTag，需要图像帧、存储策略、离线复盘格式。 | P2。 |
 | 跨相机三维联合优化器 | 当前 `TerminalCrossViewFusion` 是 metadata-only P0，不做三维相机几何联合优化。 | 多相机 `CameraModel`、D2 航迹预测、同步时间戳、三维候选、重投影残差、冲突状态机。 | P2。 |
-| 真实 YOLO 推理链路 | 仅兼容 YOLO 常见 `xyxy` 输出 schema；没有加载权重或运行 detector。 | 图像流、权重、class map、置信度阈值、CPU/GPU 预算、评估样本。 | P1/P2，取决于 main 是否要求图像 detector。 |
+| YOLOv8 runtime 部署标定 | D5 adapter 已能加载默认 `best.pt` 或覆盖路径并运行/适配 detector 输出；缺少 main episode 中的部署参数、算力预算和多 seed 标定。 | 图像流、class map、置信度阈值、CPU/GPU 预算、评估样本和 seed 结果。 | P1：main runtime 接线和多 seed 标定。 |
 
 按工程链路归纳的未实现项：
 
-- 真实多目标检测器：没有连续 RGB/PNG frame 输入、detector runtime、权重加载、class map、阈值策略、硬件加速和误检/漏检评估。
-- 真实 MOT：没有 ByteTrack/BoT-SORT/Deep SORT tracker cache、遮挡恢复、ReID embedding、frame-to-frame IDSW 统计和 MOT 真值。
+- 真实多目标检测器：D5 已有 YOLOv8 frame adapter；main 仍缺连续 RGB/PNG frame 输入接线、class map、阈值策略、硬件加速和误检/漏检评估。
+- 真实 MOT：D5 已有 ByteTrack/BoT-SORT 请求路径和 IoU fallback；仍缺长遮挡恢复、ReID embedding、frame-to-frame IDSW 统计和 MOT 真值。
 - 真实标定链：没有标定图像、棋盘/AprilTag 角点、相机-机体系-世界系同步姿态、`calibrateCamera`/`solvePnP` 验证、重投影误差报告和外参漂移告警。
 - 真实身份认证链路：没有 OpenDroneID/MAVLink/DDS 实际报文、密钥/证书/白名单管理、时间同步、消息来源到平台身份的可信映射，也没有 AprilTag detector。
 
@@ -106,7 +106,7 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 
 | 条件 | 影响能力 | 归属/来源 |
 |---|---|---|
-| 连续 RGB/PNG 或 detector bbox stream | ByteTrack、BoT-SORT、Deep SORT、AprilTag、真实 YOLO | main/AirSim runtime 或外部 detector |
+| 连续 RGB/PNG 或 detector bbox stream | main 接 `YoloMotAdapter`、ByteTrack、BoT-SORT、Deep SORT、AprilTag | main/AirSim runtime 或外部 detector |
 | 准确相机 K/R/t/dist、时间戳和 frame_id | `projectPoints` 准确性、solvePnP/calibration、跨相机融合 | main/runtime 或标定流程 |
 | 2D-3D 匹配点和重投影误差样本 | `solvePnP`、标定质量评估 | 标定/仿真 fixture |
 | Remote ID/MAVLink/DDS 真实报文和密钥 | OpenDroneID、MAVLink signing、DDS Security | 通信/身份层 |
@@ -123,7 +123,7 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 | Geometry log fields | `TerminalAssociation.metadata`、`CandidateBreakdown.to_log_dict()` 和 `GeometricAssociationResult.to_log_records()` 输出 projected pixel、bbox center、pixel error、Mahalanobis、gate pass、candidate margin、measurement age、friend conflict、selected pair 与 duplicate-risk advisory。 | D5 只产出字段；main/D6 若要落盘 JSONL/CSV 需在其 owned paths 接入。 |
 | `TerminalConsistencySummary` 连续窗口 | `TerminalConsistencyTracker` 按 `resource_id + assigned_global_track_id` 维护窗口；`assignment_version` 仅进入摘要审计。 | advisory summary，不触发降级，不生成分配计划。 |
 | AirSim truth ID 在线隔离 | AirSim/YOLO/ByteTrack adapter 忽略 `object_id`、`actor_name`、`truth_id`、`true_global_track_id`、`global_track_id` 等真值/全局字段；truth 只进入离线 evaluator/metadata。 | 在线关联只消费 bbox、时间、相机几何、本地 ID、类别和置信度。 |
-| YOLO/ByteTrack 离线 schema adapter | `local_visual_tracks_from_offline_yolo_bytetrack()` 将 `xyxy/bbox_xyxy/class_name/confidence/track_id/tracker_id` 转为命名空间化 `LocalVisualTrack`，重复 tracker ID 会加后缀。 | 不运行 YOLO/ByteTrack，不加载权重，不维护 tracker 状态。 |
+| YOLOv8 frame adapter | `YoloMotAdapter.process_frame()` 将图像帧或 mock detector 输出转为命名空间化 `LocalVisualTrack`；原生 ByteTrack/BoT-SORT 不可用时 `IouFallbackTracker` 保持 deterministic local ID 连续性，并在 metadata 中标明 `tracker_backend`。 | 真实 AirSim frame stream 接入、部署参数和多 seed 标定仍由 main/runtime 完成。 |
 | D4 evidence | `CrossViewAssociation`、`DistributedTerminalAssociation.recommended_d4_action`、`duplicate_lock_resource_ids`、`hypothesis_only/hold/ambiguous` 原因和连续帧 `TerminalConsistencySummary` 已可作为 D4/D6 evidence。 | D5 不仲裁、不授权、不创建或换绑 `global_track_id`。 |
 | D7 visual PNG 前置证据 | `annotate_visual_png_handoff()` 输出 handoff/prelock、gate pass、blockers、measurement age、LOS rate、bbox stability、range band、timing 和 maneuver metadata；assignment mismatch、friend/duplicate risk、unstable bbox、stale measurement age、missing LOS 会阻断。 | D5 不决定导引律，D7/main 仍需独立 terminal gate。 |
 
@@ -132,7 +132,7 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 | 优先级 | 任务 | 验收建议 |
 |---|---|---|
 | P0 | 保持现有安全合同回归：D5 不改写 `global_track_id`、不使用 AirSim truth 在线关联、friend overlap `hold`、二级 cue 需 frame/scope/age/reprojection 校验，完全分布式 metadata-only 跨 peer 假设在 missing/stale global ID 或 duplicate risk 时不得 `locked`。 | `pytest -q research_modules/d5_terminal_association/tests`。 |
-| P1 | 接入真实图像 detector/tracker 输入链路。 | 用连续 RGB/PNG 或外部 detector bbox stream 驱动 YOLO/ByteTrack runtime adapter，输出仍只归一化为 `LocalVisualTrack`；在线逻辑不得读 truth/global 字段，tracker ID 不替代 `global_track_id`。 |
+| P1 | main runtime 图像流接入。 | 用 AirSim 连续 RGB/PNG 或外部 detector bbox stream 调用 `YoloMotAdapter.process_frame()`，传入 resource/camera/frame_id/timestamp 和权重/后端参数；输出仍只归一化为 `LocalVisualTrack`，在线逻辑不得读 truth/global 字段，tracker ID 不替代 `global_track_id`。 |
 | P1 | 多 seed 阈值校准。 | 跨 seed/episode 报告 `gate_chi2`、candidate margin、bbox stability、handoff range、measurement age、LOS availability、ambiguity 和 quality 阈值对 `locked_mismatch`、false handoff、ambiguous/reacquire 抖动和 `terminal_id_switch_count` 的影响。 |
 | P2 | 实现 solvePnP/calibration 离线验证工具。 | 标定样本、2D-3D 对应、PnP RANSAC、重投影误差阈值和外参漂移告警。 |
 | P2 | 评估 BoT-SORT/Deep SORT/ReID 是否适合小型无人机 AirSim/真实图像。 | 有连续图像、算力预算、IDF1/IDSW 评估；若小目标纹理不足，保持几何门控 + ByteTrack/schema adapter 为默认基线。 |
@@ -146,6 +146,7 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 - `research_modules/d5_terminal_association/src/d5_terminal_association/associator.py`
 - `research_modules/d5_terminal_association/src/d5_terminal_association/airsim_cv_adapter.py`
 - `research_modules/d5_terminal_association/src/d5_terminal_association/airsim_geometry.py`
+- `research_modules/d5_terminal_association/src/d5_terminal_association/yolo_mot_adapter.py`
 - `research_modules/d5_terminal_association/src/d5_terminal_association/identity.py`
 - `research_modules/d5_terminal_association/src/d5_terminal_association/observation_bus.py`
 - `research_modules/d5_terminal_association/src/d5_terminal_association/terminal_cross_view_fusion.py`
@@ -159,3 +160,4 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 - `research_modules/d5_terminal_association/tests/test_distributed_cross_view_fusion.py`
 - `research_modules/d5_terminal_association/tests/test_terminal_consistency.py`
 - `research_modules/d5_terminal_association/tests/test_visual_handoff.py`
+- `research_modules/d5_terminal_association/tests/test_yolo_mot_adapter.py`

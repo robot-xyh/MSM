@@ -67,6 +67,14 @@ from .visual_handoff import (
     expected_bbox_area_ratio,
     range_band_for_handoff,
 )
+from .yolo_mot_adapter import (
+    DEFAULT_YOLOV8_WEIGHTS_PATH,
+    IouFallbackTracker,
+    YoloMotAdapter,
+    YoloMotAdapterConfig,
+    YoloMotFrameResult,
+    YoloMotUnavailableError,
+)
 
 __all__ = [
     "AssociationConfig",
@@ -85,6 +93,7 @@ __all__ = [
     "GlobalTrack",
     "IdentityChecker",
     "IdentityClaim",
+    "IouFallbackTracker",
     "LocalVisualTrack",
     "OfflineAssociationMetrics",
     "PeerCameraState",
@@ -103,7 +112,12 @@ __all__ = [
     "TerminalStressMetrics",
     "VisualTrackletSummary",
     "BBoxStability",
+    "DEFAULT_YOLOV8_WEIGHTS_PATH",
     "VisualPngHandoffConfig",
+    "YoloMotAdapter",
+    "YoloMotAdapterConfig",
+    "YoloMotFrameResult",
+    "YoloMotUnavailableError",
     "annotate_visual_png_handoff",
     "associate_tracks_to_detections_geometrically",
     "bbox_area_stability",

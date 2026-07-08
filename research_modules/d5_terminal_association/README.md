@@ -35,6 +35,7 @@ python3 research_modules/d5_terminal_association/simulations/run_terminal_associ
 - `bbox_area_stability(...)`
 - `local_visual_tracks_from_sim_detections(...)`
 - `local_visual_tracks_from_offline_yolo_bytetrack(...)`
+- `YoloMotAdapter.process_frame(...)`
 - `publish_sim_detections_as_local_observations(...)`
 - `compute_terminal_stress_metrics(...)`
 - `summarize_degradation_case(...)`
@@ -63,23 +64,23 @@ decision = associator.decide(
 - `LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim`、`ReconImageCue`、`TerminalObservation`、`CrossViewAssociation`、`DistributedVisualObservation`、`VisualTrackletSummary`、`PeerCameraState`、`CrossPeerAssociationHypothesis` 和 `DistributedTerminalAssociation` 等 DTO。
 - `locked/ambiguous/hold/reacquire` 保守状态机；D5 只核对当前 `assigned_global_track_id`，不会把本地最佳或最近目标改写成新的全局身份。
 - 跨视角 distributed visual association P0：`TerminalObservationBus` 汇总多资源终端证据，`TerminalCrossViewFusion` 在完全无中心场景输出 metadata-only 多相机 peer evidence。
-- AirSim `simGetDetections` 风格 bbox dry-run adapter，以及离线 YOLO/ByteTrack schema adapter；在线路径只消费 bbox、时间戳、本地 ID、类别/置信度、相机几何和协方差。
+- AirSim `simGetDetections` 风格 bbox dry-run adapter、离线 YOLO/ByteTrack schema adapter，以及 `YoloMotAdapter` 图像帧入口。默认权重路径为 `/home/linux/Documents/MSM/research_modules/d5_terminal_association/best.pt`，可通过参数覆盖；真实 `ultralytics` ByteTrack/BoT-SORT 路径不可用时，adapter 使用确定性 IoU fallback tracker，并在 `YoloMotFrameResult.metadata["tracker_backend"]` 标明实际后端。在线路径只消费 bbox、时间戳、本地 MOT ID、类别/置信度、相机几何和协方差。
 - D7 视觉 PNG 前置证据：`annotate_visual_png_handoff()` 只在 D5 `locked`、当前 `assigned_global_track_id` 一致、friend/duplicate 风险安全、bbox 稳定、LOS rate 可用、measurement age 新鲜且 D4/D3 gate 允许时输出 handoff/prelock 建议。
 
 部分实现或仅为抽象/adapter：
 
 - OpenCV 已用于投影和可选畸变参数消费；真实 `calibrateCamera`、`solvePnP`/PnP RANSAC、标定板/AprilTag 标定链未接入。
-- YOLO/ByteTrack 离线 adapter 仅兼容 `xyxy/bbox_xyxy/class_name/confidence/track_id/tracker_id` 输出 schema，并只返回 `LocalVisualTrack`；D5 不运行 detector、不加载权重，不让 tracker ID 替代 `global_track_id`。
-- ByteTrack、BoT-SORT、Deep SORT 仍未作为真实在线 tracker 接入；当前没有 tracker 状态、ReID、遮挡恢复或 IDSW 计算，只有 schema 回放适配。
+- YOLOv8/ByteTrack/BoT-SORT adapter 已能消费图像帧或 mock detector 输出并返回 `LocalVisualTrack`；无 `ultralytics`、权重缺失或原生 tracker 不可用时返回清晰 `unavailable` 状态或退回 IoU tracker。该 adapter 不采集 AirSim 图像流、不管理 GPU 部署，也不让 tracker ID 替代 `global_track_id`。
+- ByteTrack、BoT-SORT 的真实质量依赖上游 `ultralytics` 和连续图像输入；Deep SORT/ReID 仍未接入。IoU fallback 只提供确定性本地 ID 连续性，不声明遮挡恢复或 IDSW/IDF1 工程质量。
 - OpenDroneID、MAVLink signing、DDS Security、AprilTag 只通过仿真字典归一化为 `IdentityClaim`；未接入真实报文、密钥、证书或 tag detector。
 - ROS 2 `tf2/message_filters` 只是未来时间同步和坐标树方案；D5 当前不运行 ROS 2 节点。
 
 未实现：
 
-- 真实多目标检测器、真实 MOT、真实标定链、真实身份认证链路和跨相机三维联合优化。缺少条件包括连续图像流、detector/tracker 依赖、标定样本、真实身份报文/密钥、同步相机位姿、三维候选和 D4/D6 消费协议。
+- AirSim/main runtime 的连续图像流接入、真实 detector/tracker 部署、多 seed 阈值标定、真实标定链、真实身份认证链路和跨相机三维联合优化。D5 已提供 YOLOv8 + ByteTrack/BoT-SORT 模块适配器；main 仍需把 AirSim RGB/PNG frame、camera/resource/frame_id/timestamp 和运行参数接入该 adapter。
 - 在线 D5 不得使用 AirSim `object_id`、`actor_name` 或 actor truth ID。truth ID 只能作为离线评分标签进入 metadata/evaluator，用于 `terminal_lock_accuracy`、`locked_mismatch` 等指标。
 
-剩余 P1/P2 聚焦真实工程链路，而不是 D5 侧 evidence 字段：P1 为真实图像 detector/tracker 输入链路和多 seed 阈值校准；P2 为 BoT-SORT/Deep SORT/ReID 评估、OpenDroneID Core/MAVLink signing/DDS Security/AprilTag 的真实 `IdentityClaim` adapter、OpenCV calibration/`solvePnP` 以及 ROS 2 `tf2/message_filters`。geometry log fields、D4 evidence、D7 visual PNG 前置证据、AirSim truth ID 在线隔离和 YOLO/ByteTrack 离线 schema adapter 已在 D5 侧补齐。
+剩余 P1/P2 聚焦真实工程链路，而不是 D5 侧 evidence 字段：P1 为 main runtime 图像流接入 `YoloMotAdapter` 和多 seed 阈值校准；P2 为 BoT-SORT/Deep SORT/ReID 评估、OpenDroneID Core/MAVLink signing/DDS Security/AprilTag 的真实 `IdentityClaim` adapter、OpenCV calibration/`solvePnP` 以及 ROS 2 `tf2/message_filters`。geometry log fields、D4 evidence、D7 visual PNG 前置证据、AirSim truth ID 在线隔离、YOLO/ByteTrack 离线 schema adapter 和 YOLOv8 frame adapter 已在 D5 侧补齐。
 
 ## 决策状态
 

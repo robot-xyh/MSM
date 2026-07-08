@@ -103,8 +103,8 @@ UAV2 camera sees: target 2, target 3, target 4
 |------|----------|
 | OpenCV `projectPoints` | 已用于单相机投影；OpenCV 不可用时退回针孔模型。当前不做真实 calibration、`solvePnP`、PnP RANSAC 或 bundle adjustment。 |
 | AirSim `simGetDetections` | 已有 dry-run bbox adapter，兼容 `box2D`、`bbox_xyxy`、`xyxy` 等 fixture/schema。在线转换忽略 `object_id`、`actor_name`、actor truth ID。 |
-| YOLO / ByteTrack | 已有离线 schema adapter，可把 `xyxy/bbox_xyxy/class_name/confidence/track_id/tracker_id` 转为 `LocalVisualTrack`，并忽略 truth/global 字段。D5 不加载权重、不运行 detector/tracker、不管理 GPU 或 class map。 |
-| BoT-SORT / Deep SORT | 仅作为未来本地 MOT 来源；当前没有 tracker 状态、ReID embedding、遮挡恢复、IDSW/IDF1 统计。 |
+| YOLOv8 / ByteTrack | 已有离线 schema adapter 和 `YoloMotAdapter` frame adapter。默认权重路径为 `/home/linux/Documents/MSM/research_modules/d5_terminal_association/best.pt`，可参数覆盖；可请求 ultralytics ByteTrack，缺依赖/权重/原生 tracker 时返回 `unavailable` 或退回确定性 IoU tracker。在线转换忽略 truth/global 字段。 |
+| BoT-SORT / Deep SORT | `YoloMotAdapter` 可请求 ultralytics BoT-SORT；Deep SORT/ReID 仍作为未来对照。BoT-SORT/Deep SORT 的小目标质量、遮挡恢复、IDSW/IDF1 和算力预算仍需真实图像链路后评估。 |
 | ROS 2 `tf2/message_filters` | 只是未来坐标变换和时间同步方案；D5 当前不启动 ROS graph，不订阅 topic。 |
 | OpenDroneID / MAVLink signing / DDS Security | 仅通过 `IdentityClaim` 抽象表达仿真身份声明；未接真实报文、密钥、证书或白名单。 |
 | AprilTag | 仅作为未来实验室合作目标标识方案；当前没有图像 detector 或 tag ID 到平台身份的可信映射。 |
@@ -561,9 +561,9 @@ optional actor/object_name
 
 ### 11.1 当前 P1 补齐状态与剩余聚焦
 
-D5 侧 P1 已补齐项包括：geometry log fields（projected pixel、bbox center、pixel error、Mahalanobis、gate pass、measurement age、friend conflict、selected pair、duplicate-risk advisory）、`TerminalConsistencySummary` 按 `resource_id + assigned_global_track_id` 维护连续窗口、D4 advisory evidence、D7 visual PNG handoff/prelock blockers、AirSim truth ID 在线隔离，以及 YOLO/ByteTrack 离线 schema adapter。上述输出都是 evidence 或 adapter，不赋予 D5 分配、授权、降级或导引控制权。
+D5 侧 P1 已补齐项包括：geometry log fields（projected pixel、bbox center、pixel error、Mahalanobis、gate pass、measurement age、friend conflict、selected pair、duplicate-risk advisory）、`TerminalConsistencySummary` 按 `resource_id + assigned_global_track_id` 维护连续窗口、D4 advisory evidence、D7 visual PNG handoff/prelock blockers、AirSim truth ID 在线隔离、YOLO/ByteTrack 离线 schema adapter，以及 YOLOv8 + ByteTrack/BoT-SORT frame adapter 和确定性 IoU fallback tracker。上述输出都是 evidence 或 adapter，不赋予 D5 分配、授权、降级或导引控制权。
 
-剩余 P1 聚焦真实图像 detector/tracker 输入链路和多 seed 阈值校准。剩余 P2 聚焦 BoT-SORT/Deep SORT/ReID 评估、OpenDroneID Core/MAVLink signing/DDS Security/AprilTag 的真实 `IdentityClaim` adapter、OpenCV calibration/`solvePnP`、ROS 2 `tf2/message_filters` 和后续三维几何验证。在线 D5 仍不得使用 AirSim truth ID 或 tracker ID 生成、改写、换绑 `global_track_id`。
+剩余 P1 聚焦 main runtime 图像流接入 `YoloMotAdapter` 和多 seed 阈值校准。剩余 P2 聚焦 BoT-SORT/Deep SORT/ReID 质量评估、OpenDroneID Core/MAVLink signing/DDS Security/AprilTag 的真实 `IdentityClaim` adapter、OpenCV calibration/`solvePnP`、ROS 2 `tf2/message_filters` 和后续三维几何验证。在线 D5 仍不得使用 AirSim truth ID 或 tracker ID 生成、改写、换绑 `global_track_id`。
 
 ---
 
