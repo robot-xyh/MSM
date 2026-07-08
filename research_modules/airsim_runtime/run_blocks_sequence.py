@@ -170,7 +170,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Velocity yaw is the legacy mode; look_at_target keeps the camera pointed at the assigned target.",
     )
-    parser.add_argument("--target-asset-name", default="1M_Cube_Chamfer")
+    parser.add_argument("--target-asset-name", default="Quadrotor1")
     parser.add_argument("--target-scale-m", type=float, default=None)
     parser.add_argument(
         "--actor-target-distance",
@@ -191,6 +191,26 @@ def parse_args() -> argparse.Namespace:
         help="Velocity multiplier for actor targets in controlled 5v5 mode.",
     )
     parser.add_argument("--target-detection-filter", default="MSM_TargetActor_*")
+    parser.add_argument(
+        "--detection-backend",
+        choices=("airsim", "yolo"),
+        default="airsim",
+        help="Use AirSim simGetDetections metadata or D5 YOLOv8+MOT image detection.",
+    )
+    parser.add_argument(
+        "--yolo-weights",
+        default="research_modules/d5_terminal_association/best.pt",
+        help="YOLOv8 weights path used when --detection-backend yolo.",
+    )
+    parser.add_argument(
+        "--yolo-tracker-backend",
+        choices=("bytetrack", "botsort", "iou_fallback"),
+        default="bytetrack",
+        help="D5 MOT backend requested for YOLO detections.",
+    )
+    parser.add_argument("--yolo-confidence", type=float, default=0.25)
+    parser.add_argument("--no-yolo-native-tracker", action="store_true")
+    parser.add_argument("--no-yolo-iou-fallback", action="store_true")
     parser.add_argument("--save-images", action="store_true", help="Persist sampled Scene PNG frames.")
     parser.add_argument(
         "--blocks-arg",
@@ -614,6 +634,12 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         ),
         target_asset_name=args.target_asset_name,
         target_detection_filter=args.target_detection_filter,
+        detection_backend=args.detection_backend,
+        yolo_weights_path=Path(args.yolo_weights),
+        yolo_tracker_backend=args.yolo_tracker_backend,
+        yolo_confidence_threshold=args.yolo_confidence,
+        yolo_use_native_tracker=not args.no_yolo_native_tracker,
+        yolo_allow_iou_fallback=not args.no_yolo_iou_fallback,
         **actor_config,
     )
     selected_episode_specs = D4D5_STRESS_EPISODES if args.cv_5v5_d4d5_stress else DEFAULT_BLOCKS_EPISODES
@@ -707,7 +733,7 @@ def _write_5v5_intercept_report(args: argparse.Namespace, results: list[object])
         "",
         f"- Sequence ID: `{args.sequence_id}`",
         "- Runtime: Blocks + SimpleFlight interceptors + moved actor targets",
-        "- Target detection: AirSim `simGetDetections` metadata, PNG not saved by default",
+        f"- Target detection: {_target_detection_report_line(args)}",
         f"- Duration: `{args.duration}` s, dt: `{args.dt}` s, control dt: `{args.control_dt}` s",
         f"- Intercept speed: `{args.intercept_speed}` m/s",
         f"- Intercept altitude NED Z: `{args.intercept_altitude_z}` m",
@@ -805,7 +831,7 @@ def _write_2v2_active_secondary_report(args: argparse.Namespace, results: list[o
         "",
         f"- Sequence ID: `{args.sequence_id}`",
         "- Runtime: Blocks + SimpleFlight interceptors + moved actor targets",
-        "- Target detection: AirSim `simGetDetections` metadata, PNG not saved by default",
+        f"- Target detection: {_target_detection_report_line(args)}",
         "- Flow: center plan -> D4 active degradation -> secondary plan v2 -> D5 locked -> D7 visual PNG",
         f"- Active degradation time: `{args.active_degradation_time}` s",
         f"- Secondary plan time: `{args.secondary_plan_time}` s",
@@ -886,6 +912,16 @@ def _controlled_episode_from_result(result: object):
         if episode.metadata.get("control_api_used"):
             return episode
     return None
+
+
+def _target_detection_report_line(args: argparse.Namespace) -> str:
+    if getattr(args, "detection_backend", "airsim") == "yolo":
+        return (
+            "D5 YOLOv8 + MOT in-memory images, "
+            f"weights `{args.yolo_weights}`, tracker `{args.yolo_tracker_backend}`, "
+            "PNG not saved by default"
+        )
+    return "AirSim `simGetDetections` metadata, PNG not saved by default"
 
 
 def _fmt(value: object) -> str:

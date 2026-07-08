@@ -52,6 +52,7 @@ from d5_terminal_association import (
     AssociationConfig,
     CameraModel,
     GlobalTrack,
+    LocalVisualTrack,
     TerminalAssociator,
     associate_tracks_to_detections_geometrically,
     camera_model_from_airsim_camera_info,
@@ -199,6 +200,13 @@ def test_dynamic_n_actor_specs_and_vehicle_names_are_centered() -> None:
     assert [spec.object_id for spec in specs] == ["TGT-001", "TGT-002", "TGT-003"]
     assert [spec.start_ned[1] for spec in specs] == [-12.0, 0.0, 12.0]
     assert all(spec.scale == (2.0, 2.0, 2.0) for spec in specs)
+    assert {spec.asset_name for spec in specs} == {"Quadrotor1"}
+
+
+def test_actor_target_defaults_use_drone_mesh_for_yolo_terminal_tests() -> None:
+    assert BlocksActorTargetSpec("TGT-001", "MSM_TargetActor_1", (0.0, 0.0, -2.0), (0.0, 0.0, 0.0)).asset_name == "Quadrotor1"
+    assert BlocksSmokeConfig().target_asset_name == "Quadrotor1"
+    assert {spec.asset_name for spec in default_5v5_actor_target_specs()} == {"Quadrotor1"}
 
 
 def test_dynamic_n_settings_files_match_requested_vehicle_count(tmp_path: Path) -> None:
@@ -563,6 +571,76 @@ def test_real_runtime_moves_actor_targets_and_captures_builtin_detections(tmp_pa
     assert frame.visual_detections[0].object_id == "TGT-001"
     assert frame.visual_detections[0].bbox_xyxy == (10.0, 20.0, 30.0, 40.0)
     assert frame.metadata["detection_count"] == 1
+
+
+def test_real_runtime_yolo_backend_uses_d5_adapter_without_simgetdetections(
+    tmp_path: Path,
+) -> None:
+    class CountingFakeAirSimClient(FakeAirSimClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.sim_get_detections_count = 0
+
+        def simGetDetections(self, camera_name, image_type, vehicle_name="", external=False):
+            self.sim_get_detections_count += 1
+            return super().simGetDetections(camera_name, image_type, vehicle_name, external)
+
+    class FakeYoloAdapter:
+        def process_frame(self, frame, *, resource_id, camera_id, timestamp, frame_id=None):
+            return SimpleNamespace(
+                tracks=(
+                    LocalVisualTrack(
+                        local_track_id=f"{camera_id}/yolov8_iou_fallback:track:7",
+                        center_px=np.array([25.0, 35.0], dtype=float),
+                        bbox=(10.0, 20.0, 40.0, 50.0),
+                        bearing_rate=np.zeros(2, dtype=float),
+                        category="uav",
+                        quality=0.82,
+                        mot_history_length=3,
+                        timestamp=timestamp,
+                    ),
+                ),
+                status="ok",
+                detector_backend="fake_yolov8",
+                tracker_backend="iou_fallback",
+                metadata={
+                    "tracker_backend": "iou_fallback",
+                    "requested_tracker_backend": "bytetrack",
+                    "raw_detection_count": 1,
+                    "accepted_detection_count": 1,
+                },
+            )
+
+    fake_client = CountingFakeAirSimClient()
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+        yolo_adapter_factory=lambda _config: FakeYoloAdapter(),
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        duration_s=0.0,
+        camera_vehicle_name="Interceptor",
+        camera_vehicle_names=("Interceptor",),
+        resource_vehicle_names=("Interceptor",),
+        detection_backend="yolo",
+        yolo_tracker_backend="bytetrack",
+    )
+
+    frame = runtime.sample_frame(config, frame_index=0, timestamp=1.0, output_dir=tmp_path)
+
+    assert fake_client.sim_get_detections_count == 0
+    assert frame.metadata["detections"][0]["backend"] == "yolo"
+    assert frame.metadata["detections"][0]["detector_backend"] == "fake_yolov8"
+    assert frame.metadata["detections"][0]["tracker_backend"] == "iou_fallback"
+    assert frame.visual_detections
+    detection = frame.visual_detections[0]
+    assert detection.object_id.startswith("local_yolo_track:")
+    assert detection.local_track_id.endswith("track:7")
+    assert detection.metadata["source"] == "yolov8_mot"
+    assert detection.metadata["mot_history_length"] == 3
+    assert "TargetActor" not in detection.object_id
 
 
 def test_real_runtime_captures_computer_vision_5v5_cameras(tmp_path: Path) -> None:

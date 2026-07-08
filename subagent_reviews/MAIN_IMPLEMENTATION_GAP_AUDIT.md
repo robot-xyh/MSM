@@ -20,9 +20,9 @@ D1 NumPy EKF/FusionAdapter
 -> D6 离线 EpisodeMetrics / JSONL / Blocks replay 评估
 ```
 
-已经落地的主要是**自研轻量实现和少量成熟 Python 科学计算库**：NumPy、SciPy、OpenCV `projectPoints`、AirSim `simGetDetections` metadata、SimpleFlight 控制、D7 delivery 包中的 YOLO+ByteTrack 可选链路。
+已经落地的主要是**自研轻量实现和少量成熟 Python 科学计算库**：NumPy、SciPy、OpenCV `projectPoints`、AirSim `simGetDetections` metadata、D5 YOLOv8 + ByteTrack/BoT-SORT/IoU fallback adapter、SimpleFlight 控制、D7 delivery 包中的 YOLO+ByteTrack 可选链路。
 
-**2026-07-08 子智能体复核状态**：D1-D7 已分别重审并更新各自 PLAN/GAP 文件，所有子 GAP 均明确拆分为“已实现、部分实现、未实现、未实现原因、缺少条件、下一步优先级”。本轮确认：D1 的 replay schema v1、legacy JSONL、最小 CSV reader/replay、latency/OOSM audit 和区域质量摘要已实现；D2 的 replay helper、5v5 dense/crossing fixture、风险阈值敏感性和显式 ID 指标已实现；D3 的 D5 feedback writeback、secondary takeover DTO/helper、D7 binding、owner/version/source metadata 和 D6 export 已实现；D4 的主动降级硬/软风险分层、二级节点 lifecycle、secondary takeover metadata、D5 evidence 到 CBBA 和 cost gap helper 已实现；D5 的几何日志、handoff advisory、一致性窗口、truth ID 在线隔离和 YOLO/ByteTrack 离线 schema adapter 已实现；D6 的 execution/contract 双口径、实际规模分组、主动降级精度和 D7 replay 指标已实现；D7 的 runtime bus、comparison/replay helper、N-pair 状态、D4 gate blocking、owner/version gate 和 terminal contract gate 已实现。
+**2026-07-08 子智能体复核状态**：D1-D7 已分别重审并更新各自 PLAN/GAP 文件，所有子 GAP 均明确拆分为“已实现、部分实现、未实现、未实现原因、缺少条件、下一步优先级”。本轮确认：D1 的 replay schema v1、legacy JSONL、最小 CSV reader/replay、latency/OOSM audit 和区域质量摘要已实现；D2 的 replay helper、5v5 dense/crossing fixture、风险阈值敏感性和显式 ID 指标已实现；D3 的 D5 feedback writeback、secondary takeover DTO/helper、D7 binding、owner/version/source metadata 和 D6 export 已实现；D4 的主动降级硬/软风险分层、二级节点 lifecycle、secondary takeover metadata、D5 evidence 到 CBBA 和 cost gap helper 已实现；D5 的几何日志、handoff advisory、一致性窗口、truth ID 在线隔离、YOLO/ByteTrack 离线 schema adapter、可运行 YOLOv8 + ByteTrack/BoT-SORT/IoU fallback adapter 已实现；D6 的 execution/contract 双口径、实际规模分组、主动降级精度和 D7 replay 指标已实现；D7 的 runtime bus、comparison/replay helper、N-pair 状态、D4 gate blocking、owner/version gate 和 terminal contract gate 已实现。
 
 尚未落地的主要是**完整外部工程栈或高阶研究对照**：Stone Soup、FilterPy、ROS 2 `tf2/message_filters`、OpenDroneID Core、MAVLink signing 验证、DDS Security、AprilTag、BoT-SORT、Deep SORT、SCRIMMAGE、TrackEval/py-motmetrics、正式 OR-Tools Min Cost Flow、完整 MIT/CA-CBBA 适配、PX4/MAVLink 主线控制。
 
@@ -30,7 +30,7 @@ D1 NumPy EKF/FusionAdapter
 
 1. **当前阶段优先轻量可复现**：默认测试不依赖 ROS、Stone Soup、AirSim 实时服务、PX4 或 GPU。
 2. **main runtime bus 接口基线已接入**：AirSim runtime 已在同一 episode 中持续写入 D1-D7 summary/record 和 D6 JSONL；2026-07-08 已把执行拦截结果回灌到正式 main bus metrics，接入 D5 feedback、二级接管 owner/version 和 D7 runtime bus，并保留 raw contract metrics；下一步仍需真实 Blocks 多 seed 校准。
-3. **真实图像/通信/身份源缺失**：MOT、Remote ID、MAVLink signing、AprilTag 需要真实图像帧、协议报文、密钥和时间同步。
+3. **真实图像/通信/身份源仍需标定**：D5 已能运行 YOLOv8 + MOT 并由 main runtime 显式接线；Remote ID、MAVLink signing、AprilTag 仍需要真实报文、密钥和时间同步，YOLO/MOT 仍需要 AirSim 多 seed 阈值标定。
 4. **高阶算法需要基准场景支撑**：IMM、JPDA/MHT 完整版、FRPN、MPC、OSPA/HOTA 等应在 5v5 crossing、遮挡、主动降级和 AirSim replay 稳定后再做对照。
 
 ## 2. 横向开源/共识方案落地状态
@@ -56,7 +56,7 @@ D1 NumPy EKF/FusionAdapter
 | AirSim `simGetDetections` | CV 检测框输入 | **已使用** | D5, D7, main runtime | D5 不直接调 AirSim，只消费 fixture/replay；D7/main 调用 runtime | 稳定 detection schema、camera/object ID 映射 | P0 |
 | OpenCV `projectPoints` | 图像投影和门控 | **已实现单相机主线**。D5 优先调用 `cv2.projectPoints`，无 OpenCV 时有针孔 fallback，并传播像素协方差 | D5 | 未实现 calibration/solvePnP/跨相机联合优化 | 准确 K/R/t/dist、标定样本、PnP 2D-3D 对应 | P0 已可用，P2 标定增强 |
 | OpenCV calibration / `solvePnP` | 相机标定、外参估计 | 未实现 | D5 | 当前假设 AirSim/runtime 提供相机参数 | 2D-3D 匹配点、标定图、PnP RANSAC | P2 |
-| ByteTrack | 局部 MOT 默认候选 | **未进入主线**。D5 只消费 `LocalVisualTrack` 抽象和 YOLO/ByteTrack 常见输出 schema；D7 delivery 包含 YOLO+ByteTrack 实验路径但 main 默认不启用 | D5, D7 | 默认不保存 PNG，不引入 Ultralytics/lap/CUDA；MOT ID 不得替代 `global_track_id` | 图像帧、YOLO 权重、class id、GPU/CPU 预算、MOT IDSW 标签 | P1 离线 adapter，P2 主线评估 |
+| YOLOv8 + ByteTrack/BoT-SORT | 局部检测/MOT 默认候选 | **P1 已接入显式运行路径**。D5 `YoloMotAdapter` 可加载 `best.pt`，优先 ByteTrack/BoT-SORT，失败时 deterministic IoU fallback；main runtime 可用 `--detection-backend yolo` 将内存图像送入 D5，并转换为现有 detection contract | D5, main runtime, D7 | 默认仍不保存 PNG；MOT ID 只作为 `LocalVisualTrack.local_track_id`，不得替代 `global_track_id` | AirSim 多 seed 阈值、class id、GPU/CPU 预算、MOT IDSW 标签 | P1 接线已完成，P1/P2 标定 |
 | BoT-SORT | 运动相机 MOT | 未实现 | D5 | 需要相机运动补偿、ReID 和检测器链 | 图像序列、依赖、ReID 模型 | P2 |
 | Deep SORT | 外观辅助 MOT | 未实现 | D5 | 当前小目标外观未建模 | embedding 模型、图像帧、IDSW 真值 | P2 |
 | OpenDroneID / Remote ID | 友方身份正向声明 | **模拟实现** | D5 | 只解析 `protocol=OpenDroneID` 风格 dict，未接 Core C | 报文解码器、白名单、签名/位置一致性 | P1 |
@@ -79,7 +79,7 @@ D1 NumPy EKF/FusionAdapter
 | D2 数据关联 | GNN/Hungarian、马氏门控、二维 Kalman、轻量 JPDA/MHT、IDSW/连续性、dry-run adapter、`crossing_dense_5v5`、风险滑窗、D1 adapter | 完整 EKF/UKF/IMM、Stone Soup/FilterPy、原生 3D NED、真实 AirSim CV replay 压测 | 5v5 replay 样本、风险阈值、三维跟踪策略 | `subagent_reviews/D2_IMPLEMENTATION_GAP_AUDIT.md` |
 | D3 目标分配 | SciPy Hungarian、fallback DP、滚动重分配、迟滞、版本化计划、D5 feedback helper、D7 `AssignmentGuidanceBinding`、`AssignmentValiditySummary`、D6 assignment record export、AirSim dry-run、main episode bus plan/version 输出 | OR-Tools Min Cost Flow、D5 feedback 自动写回真实代价 | D5/D6 重复锁定聚合校准、复杂约束定义 | `subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md` |
 | D4 降级接管 | C2Health、被动降级、主动降级、二级侦察节点模型、`SecondaryNodeLifecycleSummary`、CommunicationSummary、主动降级防抖、轻量 CBBA、中心恢复合并、D4 arbitration adapter、D6-compatible event metadata、main episode bus D4 event 写入 | MIT/CA-CBBA 适配、独立拍卖/合同网、真实视频 cue adapter | 二级 heartbeat/coverage/link freshness 的真实 Blocks 多 seed 校准 | `subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md` |
-| D5 末端视觉配准 | `GlobalTrack -> CameraModel -> projected image point -> LocalVisualTrack -> TerminalAssociation`；OpenCV `projectPoints`/fallback；马氏门控；保守 `locked/ambiguous/hold/reacquire`；AirSim/YOLO bbox schema adapter；truth ID 在线隔离；二级 cue；跨视角摘要；`TerminalConsistencySummary`；视觉 PNG handoff advisory；main episode bus terminal record；禁止改写 ID | ByteTrack/BoT-SORT/Deep SORT 实际 tracker、OpenDroneID Core、MAVLink signing、DDS Security、AprilTag、solvePnP/calibration、ROS2 tf2、真实图像链路、跨相机几何联合优化 | 图像帧/检测器、协议报文/密钥、相机标定样本、二级节点真实 pose/detection | `subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md` |
+| D5 末端视觉配准 | `GlobalTrack -> CameraModel -> projected image point -> LocalVisualTrack -> TerminalAssociation`；OpenCV `projectPoints`/fallback；马氏门控；保守 `locked/ambiguous/hold/reacquire`；AirSim bbox adapter；YOLOv8 + MOT runtime adapter；truth ID 在线隔离；二级 cue；跨视角摘要；`TerminalConsistencySummary`；视觉 PNG handoff advisory；main episode bus terminal record；禁止改写 ID | Deep SORT/ReID、OpenDroneID Core、MAVLink signing、DDS Security、AprilTag、solvePnP/calibration、ROS2 tf2、跨相机几何联合优化 | 协议报文/密钥、相机标定样本、二级节点真实 pose/detection、真实 AirSim 多 seed YOLO/MOT 阈值标定 | `subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md` |
 | D6 评估指标 | 本地 EpisodeMetrics、JSONL、Blocks replay、POD/FAR/RMSE/IDSW/assignment/failover/terminal/communication、D4 active/passive degradation、D7 intercept/guidance time-series adapter、批量图表和分组报告 | Stone Soup metrics、TrackEval、SCRIMMAGE、OSPA/GOSPA/HOTA/IDF1、主动降级必要性标签 | 标准帧级匹配表、真实 D4 metadata、D7 多 seed guidance records/summaries | `subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md` |
 | D7 比例导引 | 经典二维 PN、雷达中段 PN、Pure Pursuit baseline、离线 radar->vision 质点闭环、AirSim phase-1 dry-run、SimpleFlight 视觉 PNG gate、TTC/VM 捷联导引核心、D3/D4/D5 terminal contract gate、显式 handoff/hold/reacquire/revoke、N-pair 独立 filter 单测、D6 guidance time-series 字段、main episode bus D7 guidance event 写入 | FRPN/augmented PN、严格 3D PN、严格视觉闭环、PX4/MAVLink 主线、YOLO+ByteTrack 主线检测、MPC/NMPC、ViSP/ROS2 | D5 状态迁移真实标定、相机/距离/闭合速度估计、平台动力学/飞控约束、多 seed 对照 | `subagent_reviews/D7_IMPLEMENTATION_GAP_AUDIT.md` |
 
@@ -119,8 +119,8 @@ D1 NumPy EKF/FusionAdapter
 3. **D4/D5/D7 的状态迁移需要真实 episode 校准**
    `locked/ambiguous/hold/reacquire`、锁定丢失、重捕获、friend conflict、duplicate lock、`request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed` 和 terminal contract reject 需要在多 seed AirSim replay 中统一记录与评估。本轮已修正软 cost margin 造成的 replan 抖动，并把“无冲突持续重捕获”与“真实 terminal mismatch”分离，但阈值仍需 5v5/multi-seed 统计确认。
 
-4. **真实图像/协议/标定链路尚未进入默认主线**
-   ByteTrack、BoT-SORT、Deep SORT、OpenDroneID Core、MAVLink signing、DDS Security、AprilTag、solvePnP/calibration 和 ROS2 tf2/message_filters 仍需真实图像帧、报文、密钥、相机外参、时间同步和依赖隔离。
+4. **YOLO/MOT 已有显式运行路径，真实协议/标定链路仍待推进**
+   D5 YOLOv8 + ByteTrack/BoT-SORT/IoU fallback adapter 和 main `--detection-backend yolo` 接线已完成；Deep SORT/ReID、OpenDroneID Core、MAVLink signing、DDS Security、AprilTag、solvePnP/calibration 和 ROS2 tf2/message_filters 仍需真实图像/报文、密钥、相机外参、时间同步和依赖隔离。
 
 5. **高阶算法仍需作为 optional benchmark 接入**
    UKF/IMM、完整 JPDA/MHT、Stone Soup、FilterPy、OR-Tools Min Cost Flow、MIT/CA-CBBA、TrackEval/py-motmetrics、OSPA/GOSPA/HOTA/IDF1、FRPN、MPC、PX4/MAVLink 都不应直接替换当前轻量主线，应先在同场景对照报告中验证收益。
@@ -130,7 +130,7 @@ D1 NumPy EKF/FusionAdapter
 1. main 继续用 `MainAirSimEpisodeBus` 做 Blocks episode 的统一 DTO/record 总线，并保持 `main_episode_bus.jsonl` 可由 D6 `load_episode_log_jsonl()` 反读。
 2. main 在真实 Blocks 多 seed 中校准 D3 `AssignmentPlan`、D3 `AssignmentGuidanceBinding`、D4 action、D5 terminal decision 和 D7 guidance records 的状态迁移阈值。
 3. main/AirSim runtime 继续固化 Blocks JSONL/replay schema，保留实际目标数、资源数、相机数、bbox、相机内外参、truth offline label、plan/version、D4/D5/D7 状态字段，并避免在线 D5 使用 truth ID。
-4. D5 已实现 ByteTrack/YOLO 离线 schema adapter。下一步只在有真实图像或检测框回放时接入 detector/tracker；adapter 只输出 `LocalVisualTrack`，不允许 tracker ID 替代 `global_track_id`。
+4. D5 已实现 YOLOv8 + MOT runtime adapter，main 已接入显式 YOLO 检测后端。下一步用真实 AirSim 多 seed 校准 `best.pt`、置信度、tracker backend、目标尺度和 FOV 条件；adapter 只输出 `LocalVisualTrack`，不允许 tracker ID 替代 `global_track_id`。
 5. D6 已实现主动降级必要性最小指标口径。下一步要求 main/D4 在真实 multi-seed episode 中持续写出 review/window 字段，形成可比较的 active degradation precision 和 unnecessary active degradation count。
 
 ## 5. 建议实施顺序

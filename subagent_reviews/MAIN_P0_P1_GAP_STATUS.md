@@ -2,7 +2,7 @@
 
 **审计目标**：把 D1-D7 当前 P0/P1 缺口集中到一个 main 可调度清单，避免各模块 GAP 文件之间口径分散。
 **审计边界**：本文件只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控、自动处置或授权绕过。
-**当前结论**：未发现新的 P0 阻塞断链。P0 重点是保持现有跨模块合同、安全门控和测试回归不退化。2026-07-08 已完成 D1-D7 P1 基线补齐和 main runtime bus 接线复核：执行指标回灌、`request_center_replan -> D3 new plan version -> D7 gate`、D5 feedback 写回 D3、二级接管 plan owner/version、D7 N-pair runtime bus、controlled intercept 中心/二级重分配到视觉 PNG 门控均已通过测试。D1-D7 owner 已同步更新各自 PLAN/GAP/review 文件，避免把已完成 P1 接口继续列为未完成。D4 现在把无冲突的持续 D5 `ambiguous/reacquire` 视为本地重捕获/二级 cue 问题，而不是中心分配失效。剩余 P1 主要是真实 AirSim 多 seed 校准、真实图像/协议/标定适配和 D6 长期报告口径扩展。
+**当前结论**：未发现新的 P0 阻塞断链。P0 重点是保持现有跨模块合同、安全门控和测试回归不退化。2026-07-08 已完成 D1-D7 P1 基线补齐和 main runtime bus 接线复核：执行指标回灌、`request_center_replan -> D3 new plan version -> D7 gate`、D5 feedback 写回 D3、二级接管 plan owner/version、D7 N-pair runtime bus、controlled intercept 中心/二级重分配到视觉 PNG 门控均已通过测试。D5 已新增可运行 YOLOv8 + ByteTrack/BoT-SORT/IoU fallback adapter，main runtime 已新增显式 `--detection-backend yolo` 接线，默认仍保持 AirSim detect fallback。D1-D7 owner 已同步更新各自 PLAN/GAP/review 文件，避免把已完成 P1 接口继续列为未完成。D4 现在把无冲突的持续 D5 `ambiguous/reacquire` 视为本地重捕获/二级 cue 问题，而不是中心分配失效。剩余 P1 主要是真实 AirSim 多 seed 校准、真实图像/协议/标定适配和 D6 长期报告口径扩展。
 
 ## P0 状态
 
@@ -33,11 +33,11 @@
 | D4 | 独立 auction baseline 是否后置 | 未单独实现；当前 CBBA 覆盖 winner/bid 思想 | bid/award/rollback 协议和测试预算 | 若进入 P1/P2，需与 CBBA 同输入对照；默认本轮不实现 |
 | D5/main/D6 | AirSim geometry、TerminalConsistencySummary 全量写盘 | **P1 基线已补齐**：D5 geometry log fields、handoff advisory、consistency 连续窗口和 main event/snapshot 字段已接入 | 真实多 seed 下 projected pixel、Mahalanobis、duplicate risk 的长期统计 | D6 能按 episode/seed 统计 terminal lock、ambiguous、hold、duplicate risk 和重捕获连续性 |
 | D5/D7 | 视觉 PNG 前置证据合同固化 | **P1 基线已补齐**：D5 handoff advisory、D7 D3/D4/D5 gate、center/secondary controlled intercept owner/version 回归均通过 | 真实 bbox 稳定窗口、measurement age、duplicate risk、friend conflict 多 seed 校准 | D7 仅在 D5 locked、assigned ID 一致、D3/D4 gate 通过时视觉 PNG |
-| D5 | ByteTrack/YOLO 离线 adapter | **P1 schema adapter 已补齐**：可读 YOLO/ByteTrack bbox/MOT 风格输出并保持 truth ID 在线隔离；未运行真实 detector/tracker | 图像帧或 bbox stream、权重/class map、依赖隔离、truth 离线标签 | adapter 只输出 `LocalVisualTrack`，tracker ID 不替代 `global_track_id` |
+| D5/main | YOLOv8 + MOT detector adapter | **P1 基线已补齐**：D5 可加载 `best.pt` 运行 YOLOv8，优先 ByteTrack/BoT-SORT，缺依赖时 deterministic IoU fallback；main runtime 可用 `--detection-backend yolo` 将内存图像送入 D5 adapter | 真实 AirSim 多 seed 目标尺寸、置信度、tracker backend 和 FOV 阈值标定 | adapter 只输出 `LocalVisualTrack`，tracker ID 不替代 `global_track_id` |
 | D6/main | D4/D5/D7 产物统一回灌 | **P1 基线已补齐**：执行拦截时，main 将 `control_commands.csv` 和 `intercept_summary.json` 中的成功数、碰撞拦截数、guidance law、terminal reject 等回灌到正式 main bus metrics；raw contract metrics 单独保留 | episode clock、records merge order、review label 和多 seed 报告 | `EpisodeMetrics` 能从一个 episode 目录汇总 Blocks/D4/D5/D7 指标，且执行前 contract 指标与执行后 intercept 指标不混淆 |
 | D6 | 主动降级必要性/精度 | **P1 基线已补齐**：`metric_scope`、`active_degradation_precision`、`unnecessary_active_degradation_count` 和 review label/后验最小口径已实现 | 真实 episode 持续写出 review/window 字段 | 输出 active_degradation_precision 和 unnecessary_active_degradation_count |
 | D7/main/D6 | N-pair runtime bus 与多 seed PN/Pure Pursuit/PNG 对照 | **P1 基线已补齐**：D7 `runtime_bus.py`、`comparison.py`、`replay.py` 已实现，main 已注入每 pair D3/D4/D5 状态并写 D7 runtime summary | 真实多 seed grouped guidance report | 多 seed 报告输出 min range、mode switch、terminal reject、visual PNG switch |
-| D7/D5 | YOLO/ByteTrack replay 到 D7 bbox/LOS gate | **P1 离线 adapter 已补齐**：D7 bbox/LOS replay 可消费 YOLO/ByteTrack 或 AirSim bbox schema；默认 SimpleFlight 控制仍使用 AirSim detect metadata | 真实图像/检测框回放、失败回退策略、多 seed 样本 | replay 可生成 D7 gate 摘要，不直接控制 SimpleFlight |
+| D7/D5/main | YOLO/MOT 到 D7 bbox/LOS gate | **P1 接线已补齐**：D5 运行 adapter 输出 `LocalVisualTrack`，main runtime 将 YOLO/MOT track 转为现有 detection contract，D7 bbox/LOS replay 可消费 YOLO/ByteTrack 或 AirSim bbox schema | 真实图像/检测框回放、失败回退策略、多 seed 样本 | replay 可生成 D7 gate 摘要；默认控制仍需 D3/D4/D5 gate 全部通过 |
 
 ## 本轮 Subagent 补充规则
 

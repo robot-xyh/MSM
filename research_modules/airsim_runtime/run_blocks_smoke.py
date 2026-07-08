@@ -68,6 +68,26 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--camera-vehicle-name", default="Interceptor")
     parser.add_argument("--camera-name", default="0")
+    parser.add_argument(
+        "--detection-backend",
+        choices=("airsim", "yolo"),
+        default="airsim",
+        help="Use AirSim simGetDetections metadata or D5 YOLOv8+MOT image detection.",
+    )
+    parser.add_argument(
+        "--yolo-weights",
+        default="research_modules/d5_terminal_association/best.pt",
+        help="YOLOv8 weights path used when --detection-backend yolo.",
+    )
+    parser.add_argument(
+        "--yolo-tracker-backend",
+        choices=("bytetrack", "botsort", "iou_fallback"),
+        default="bytetrack",
+        help="D5 MOT backend requested for YOLO detections.",
+    )
+    parser.add_argument("--yolo-confidence", type=float, default=0.25)
+    parser.add_argument("--no-yolo-native-tracker", action="store_true")
+    parser.add_argument("--no-yolo-iou-fallback", action="store_true")
     parser.add_argument("--save-images", action="store_true", help="Persist sampled Scene PNG frames.")
     parser.add_argument("--lidar-vehicle-name", default="Interceptor")
     parser.add_argument("--lidar-name", default="LidarSensor1")
@@ -140,6 +160,12 @@ def main() -> int:
         "client_kind": args.client_kind,
         "camera_vehicle_name": args.camera_vehicle_name,
         "camera_name": args.camera_name,
+        "detection_backend": args.detection_backend,
+        "yolo_weights_path": Path(args.yolo_weights),
+        "yolo_tracker_backend": args.yolo_tracker_backend,
+        "yolo_confidence_threshold": args.yolo_confidence,
+        "yolo_use_native_tracker": not args.no_yolo_native_tracker,
+        "yolo_allow_iou_fallback": not args.no_yolo_iou_fallback,
         "save_images": args.save_images,
         "lidar_vehicle_name": args.lidar_vehicle_name,
         "lidar_name": args.lidar_name,

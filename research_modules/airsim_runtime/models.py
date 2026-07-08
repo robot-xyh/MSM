@@ -20,7 +20,7 @@ class BlocksActorTargetSpec:
     actor_name: str
     start_ned: Vector3
     velocity_ned: Vector3
-    asset_name: str = "1M_Cube_Chamfer"
+    asset_name: str = "Quadrotor1"
     scale: Vector3 = (1.0, 1.0, 1.0)
     threat_score: float = 0.9
     coverage_cell: str = "cell-north"
@@ -68,8 +68,14 @@ class BlocksSmokeConfig:
     target_vehicle_names: tuple[str, ...] = ("Intruder",)
     resource_vehicle_names: tuple[str, ...] = ("Interceptor",)
     target_actor_specs: tuple[BlocksActorTargetSpec, ...] = ()
+    detection_backend: str = "airsim"
     detection_filter_names: tuple[str, ...] = ("MSM_TargetActor_*",)
     detection_radius_cm: int = 80 * 100
+    yolo_weights_path: Path = Path("research_modules/d5_terminal_association/best.pt")
+    yolo_tracker_backend: str = "bytetrack"
+    yolo_confidence_threshold: float = 0.25
+    yolo_use_native_tracker: bool = True
+    yolo_allow_iou_fallback: bool = True
     destroy_spawned_actor_targets: bool = True
     include_integrated_pipeline: bool = True
     execute_intercept: bool = False
@@ -87,7 +93,7 @@ class BlocksSmokeConfig:
     intercept_min_detection_confidence: float = 0.55
     intercept_min_stable_detection_frames: int = 2
     intercept_max_visual_latency_s: float = 0.35
-    target_asset_name: str = "1M_Cube_Chamfer"
+    target_asset_name: str = "Quadrotor1"
     target_detection_filter: str = "MSM_TargetActor_*"
     intercept_takeoff_timeout_s: float = 10.0
     intercept_land_after: bool = True
@@ -192,7 +198,7 @@ def default_actor_target_specs(
     target_z: float,
     target_distance_m: float,
     target_spacing_m: float,
-    asset_name: str = "1M_Cube_Chamfer",
+    asset_name: str = "Quadrotor1",
     target_scale_m: float = 1.0,
     target_speed_scale: float = 1.0,
     x_spacing_m: float = 0.0,
@@ -328,7 +334,7 @@ def write_dynamic_computer_vision_settings(
 def default_2v2_actor_target_specs(
     *,
     target_z: float = -2.0,
-    asset_name: str = "1M_Cube_Chamfer",
+    asset_name: str = "Quadrotor1",
     target_scale_m: float = 1.0,
 ) -> tuple[BlocksActorTargetSpec, ...]:
     """Default crossing horizontal actor targets for the first Blocks 2v2 run."""
@@ -360,7 +366,7 @@ def default_5v5_actor_target_specs(
     target_z: float = -5.0,
     target_distance_m: float = 35.0,
     target_spacing_m: float = 10.0,
-    asset_name: str = "1M_Cube_Chamfer",
+    asset_name: str = "Quadrotor1",
     target_scale_m: float = 2.0,
     target_speed_scale: float = 1.0,
 ) -> tuple[BlocksActorTargetSpec, ...]:
@@ -396,7 +402,7 @@ def default_cv_5v5_secondary_vehicle_names() -> tuple[str, ...]:
 def default_cv_5v5_actor_target_specs(
     *,
     target_z: float = -10.0,
-    asset_name: str = "1M_Cube_Chamfer",
+    asset_name: str = "Quadrotor1",
     target_scale_m: float = 1.0,
 ) -> tuple[BlocksActorTargetSpec, ...]:
     """Default crossing actor targets for ComputerVision 5v5 replay."""
@@ -422,7 +428,7 @@ def default_cv_5v5_d4d5_stress_actor_target_specs(
     target_distance_m: float = 50.0,
     target_spacing_m: float = 20.0,
     target_scale_m: float = 10.0,
-    asset_name: str = "1M_Cube_Chamfer",
+    asset_name: str = "Quadrotor1",
 ) -> tuple[BlocksActorTargetSpec, ...]:
     """5v5 D4/D5 stress geometry with 50 m camera standoff and 20 m spacing."""
 

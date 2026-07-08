@@ -22,6 +22,11 @@ from d5_terminal_association.airsim_geometry import (
     intrinsics_from_capture_settings,
     rotation_world_to_opencv_camera_from_quaternion,
 )
+from d5_terminal_association import (
+    LocalVisualTrack,
+    YoloMotAdapter,
+    YoloMotAdapterConfig,
+)
 
 from .models import BlocksActorTargetSpec, BlocksSmokeConfig
 
@@ -42,6 +47,7 @@ class RealAirSimRuntimeClient:
         port: int = 41451,
         timeout_value: float = 2.0,
         client_kind: str = "vehicle",
+        yolo_adapter_factory: Callable[[YoloMotAdapterConfig], YoloMotAdapter] | None = None,
     ) -> None:
         self.ip = ip
         self.port = port
@@ -59,6 +65,9 @@ class RealAirSimRuntimeClient:
         self.airsim = airsim_module
         self.client_factory = client_factory
         self.client = self._new_client()
+        self._yolo_adapter_factory = yolo_adapter_factory
+        self._yolo_mot_adapters: dict[str, YoloMotAdapter] = {}
+        self._scene_image_frame_cache: dict[tuple[int, str, str], tuple[Any, dict[str, Any]]] = {}
         self._active_actor_targets: dict[str, dict[str, Any]] = {}
         self._episode_setup_metadata: dict[str, Any] = {}
         self._detection_history: dict[str, int] = {}
@@ -219,6 +228,8 @@ class RealAirSimRuntimeClient:
         self._active_actor_targets = {}
         self._episode_setup_metadata = {"actor_targets": [], "detection_filters": []}
         self._detection_history = {}
+        self._yolo_mot_adapters = {}
+        self._scene_image_frame_cache = {}
         if config.target_actor_specs:
             self._destroy_stale_actor_targets(config)
             for spec in config.target_actor_specs:
@@ -532,6 +543,19 @@ class RealAirSimRuntimeClient:
                 "camera_vehicle_name": vehicle_name,
                 "camera_name": config.camera_name,
             }
+            if str(config.detection_backend).lower() in {"yolo", "yolov8", "yolo_mot"}:
+                decoded, decode_backend = _decode_scene_image_bytes(data)
+                self._scene_image_frame_cache[
+                    (frame_index, vehicle_name, config.camera_name)
+                ] = (
+                    decoded,
+                    {
+                        **metadata,
+                        "byte_count": len(data),
+                        "decode_backend": decode_backend,
+                    },
+                )
+                metadata["decode_backend"] = decode_backend
             if config.save_images:
                 image_path = output_dir / f"frame_{frame_index:04d}_{vehicle_name}_scene.png"
                 image_path.write_bytes(data)
@@ -569,6 +593,22 @@ class RealAirSimRuntimeClient:
         timestamp: float,
         camera_vehicle_names: tuple[str, ...],
     ) -> tuple[tuple[AirSimDetectionBox, ...], list[dict[str, Any]]]:
+        backend = str(config.detection_backend).lower()
+        if backend in {"yolo", "yolov8", "yolo_mot"}:
+            return self._capture_yolo_mot_detections(
+                config,
+                frame_index=frame_index,
+                timestamp=timestamp,
+                camera_vehicle_names=camera_vehicle_names,
+            )
+        if backend not in {"airsim", "detect", "simgetdetections", "airsim_builtin"}:
+            return (), [
+                {
+                    "ok": False,
+                    "backend": backend,
+                    "reason": f"unsupported detection_backend {config.detection_backend!r}",
+                }
+            ]
         detections: list[AirSimDetectionBox] = []
         metadata: list[dict[str, Any]] = []
         for vehicle_name in camera_vehicle_names:
@@ -625,6 +665,135 @@ class RealAirSimRuntimeClient:
                     )
                 )
         return tuple(detections), metadata
+
+    def _capture_yolo_mot_detections(
+        self,
+        config: BlocksSmokeConfig,
+        *,
+        frame_index: int,
+        timestamp: float,
+        camera_vehicle_names: tuple[str, ...],
+    ) -> tuple[tuple[AirSimDetectionBox, ...], list[dict[str, Any]]]:
+        detections: list[AirSimDetectionBox] = []
+        metadata: list[dict[str, Any]] = []
+        for vehicle_name in camera_vehicle_names:
+            camera_id = f"{vehicle_name}:{config.camera_name}"
+            resource_id = _resource_id_for_vehicle(config, vehicle_name)
+            image_frame, image_meta = self._capture_scene_image_frame(
+                config,
+                frame_index=frame_index,
+                camera_vehicle_name=vehicle_name,
+            )
+            if image_frame is None:
+                metadata.append(
+                    {
+                        "ok": False,
+                        "backend": "yolo",
+                        "camera_vehicle_name": vehicle_name,
+                        "camera_name": config.camera_name,
+                        "reason": image_meta.get("reason", "image_unavailable"),
+                        "image": image_meta,
+                    }
+                )
+                continue
+            adapter = self._yolo_mot_adapter(config, camera_id)
+            result = adapter.process_frame(
+                image_frame,
+                resource_id=resource_id,
+                camera_id=camera_id,
+                frame_id=f"{camera_id}:{frame_index:04d}",
+                timestamp=timestamp,
+            )
+            result_meta = {
+                "ok": result.status == "ok",
+                "backend": "yolo",
+                "camera_vehicle_name": vehicle_name,
+                "camera_name": config.camera_name,
+                "camera_id": camera_id,
+                "resource_id": resource_id,
+                "status": result.status,
+                "detector_backend": result.detector_backend,
+                "tracker_backend": result.tracker_backend,
+                "count": len(result.tracks),
+                "image": image_meta,
+                **dict(result.metadata),
+            }
+            metadata.append(result_meta)
+            for index, track in enumerate(result.tracks):
+                detections.append(
+                    _detection_from_yolo_track(
+                        track,
+                        camera_id=camera_id,
+                        frame_index=frame_index,
+                        detection_index=index,
+                        timestamp=timestamp,
+                        result_metadata=result_meta,
+                    )
+                )
+        return tuple(detections), metadata
+
+    def _capture_scene_image_frame(
+        self,
+        config: BlocksSmokeConfig,
+        *,
+        frame_index: int,
+        camera_vehicle_name: str,
+    ) -> tuple[Any | None, dict[str, Any]]:
+        cached = self._scene_image_frame_cache.get(
+            (frame_index, camera_vehicle_name, config.camera_name)
+        )
+        if cached is not None:
+            return cached
+        try:
+            request = self.airsim.ImageRequest(
+                config.camera_name,
+                self.airsim.ImageType.Scene,
+                False,
+                True,
+            )
+            responses = self.client.simGetImages([request], vehicle_name=camera_vehicle_name)
+            if not responses:
+                return None, {"ok": False, "reason": "no_image_response"}
+            response = responses[0]
+            data = bytes(response.image_data_uint8)
+            if not data:
+                return None, {"ok": False, "reason": "empty_image_data"}
+            decoded, decode_backend = _decode_scene_image_bytes(data)
+            return decoded, {
+                "ok": True,
+                "width": int(response.width),
+                "height": int(response.height),
+                "image_type": int(response.image_type),
+                "camera_vehicle_name": camera_vehicle_name,
+                "camera_name": config.camera_name,
+                "byte_count": len(data),
+                "decode_backend": decode_backend,
+            }
+        except Exception as exc:
+            return None, {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
+
+    def _yolo_mot_adapter(
+        self,
+        config: BlocksSmokeConfig,
+        camera_id: str,
+    ) -> YoloMotAdapter:
+        adapter = self._yolo_mot_adapters.get(camera_id)
+        if adapter is not None:
+            return adapter
+        adapter_config = YoloMotAdapterConfig(
+            weights_path=config.yolo_weights_path,
+            tracker_backend=config.yolo_tracker_backend,
+            confidence_threshold=config.yolo_confidence_threshold,
+            use_native_ultralytics_tracker=config.yolo_use_native_tracker,
+            allow_iou_fallback=config.yolo_allow_iou_fallback,
+        )
+        adapter = (
+            self._yolo_adapter_factory(adapter_config)
+            if self._yolo_adapter_factory is not None
+            else YoloMotAdapter(adapter_config)
+        )
+        self._yolo_mot_adapters[camera_id] = adapter
+        return adapter
 
     def _scene_objects(self) -> list[str]:
         try:
@@ -1028,6 +1197,60 @@ def _vehicle_start_offset(config: BlocksSmokeConfig, vehicle_name: str) -> tuple
         float(vehicle.get("Y", 0.0)),
         float(vehicle.get("Z", 0.0)),
     )
+
+
+def _resource_id_for_vehicle(config: BlocksSmokeConfig, vehicle_name: str) -> str:
+    try:
+        index = tuple(config.resource_vehicle_names).index(vehicle_name)
+    except ValueError:
+        return vehicle_name
+    return f"INT-{index + 1:02d}"
+
+
+def _detection_from_yolo_track(
+    track: LocalVisualTrack,
+    *,
+    camera_id: str,
+    frame_index: int,
+    detection_index: int,
+    timestamp: float,
+    result_metadata: dict[str, Any],
+) -> AirSimDetectionBox:
+    bbox = tuple(float(value) for value in track.bbox)
+    center = (float(track.center_px[0]), float(track.center_px[1]))
+    local_track_id = str(track.local_track_id)
+    return AirSimDetectionBox(
+        detection_id=f"{camera_id}:{frame_index:04d}:yolo:{detection_index}",
+        camera_id=camera_id,
+        object_id=f"local_yolo_track:{local_track_id}",
+        local_track_id=local_track_id,
+        timestamp=float(timestamp),
+        center_px=center,
+        bbox_xyxy=bbox,
+        confidence=float(track.quality),
+        classification_hint=str(track.category),
+        metadata={
+            "source": "yolov8_mot",
+            "detector_backend": result_metadata.get("detector_backend"),
+            "tracker_backend": result_metadata.get("tracker_backend"),
+            "requested_tracker_backend": result_metadata.get("requested_tracker_backend"),
+            "detector_status": result_metadata.get("status"),
+            "mot_history_length": int(track.mot_history_length),
+        },
+    )
+
+
+def _decode_scene_image_bytes(data: bytes) -> tuple[Any, str]:
+    try:
+        import cv2  # type: ignore
+
+        encoded = np.frombuffer(data, dtype=np.uint8)
+        decoded = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+        if decoded is not None:
+            return decoded, "cv2_imdecode"
+    except Exception:
+        pass
+    return data, "raw_bytes"
 
 
 def _camera_dimensions_from_settings(

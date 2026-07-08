@@ -9,10 +9,13 @@ D1-D7 integration.
 The default path is read-only. When `--execute-intercept` is passed, only
 `episode_006_full_flow` enables SimpleFlight API control for the interceptor
 vehicles. Intruders remain non-vehicle Unreal actors moved with
-`simSetObjectPose`, and target recognition uses AirSim `simGetDetections`.
-D7 terminal handoff uses the SimpleFlight-compatible PNG guidance gate: AirSim
-detection boxes must pass bbox, LOS-rate, visual latency, and maneuver-margin
-checks before the controller switches from `radar_midcourse` to
+`simSetObjectPose`. Target recognition defaults to AirSim `simGetDetections`,
+but `--detection-backend yolo` routes in-memory Scene images through D5
+YOLOv8 + MOT using `research_modules/d5_terminal_association/best.pt` unless a
+different `--yolo-weights` path is supplied. D7 terminal handoff uses the
+SimpleFlight-compatible PNG guidance gate: detector boxes must pass bbox,
+LOS-rate, visual latency, and maneuver-margin checks before the controller
+switches from `radar_midcourse` to
 `vision_terminal`.
 
 ## Run
@@ -104,7 +107,8 @@ python3 research_modules/airsim_runtime/run_d5_geometric_registration.py \
 ```
 
 Run the first 2v2 actor-target sequence. Intruders are spawned/moved actors,
-not SimpleFlight vehicles, and target recognition uses AirSim `simGetDetections`:
+not SimpleFlight vehicles. The default target-recognition backend is AirSim
+`simGetDetections`; add `--detection-backend yolo` to use D5 YOLOv8 + MOT:
 
 ```bash
 python3 research_modules/airsim_runtime/run_blocks_sequence.py \
@@ -120,8 +124,19 @@ python3 research_modules/airsim_runtime/run_blocks_sequence.py \
   --blocks-arg=-NoSound
 ```
 
+YOLOv8 + ByteTrack/BoT-SORT input can be enabled without saving PNG frames:
+
+```bash
+python3 research_modules/airsim_runtime/run_blocks_sequence.py \
+  --actor-2v2 \
+  --execute-intercept \
+  --detection-backend yolo \
+  --yolo-weights research_modules/d5_terminal_association/best.pt \
+  --yolo-tracker-backend bytetrack
+```
+
 By default, sampled camera frames are checked but not written as PNG files. Add
-`--save-images` only when debugging camera views or AirSim detection boxes.
+`--save-images` only when debugging camera views or detection boxes.
 
 Run the ComputerVision 5v5 D1-D5 replay sequence. All interceptor and secondary
 nodes are `ComputerVision` camera vehicles; targets remain spawned/moved actors.
@@ -144,7 +159,7 @@ python3 research_modules/airsim_runtime/run_blocks_sequence.py \
 
 The CV 5v5 settings define `Interceptor_Cam_1..5` plus
 `Secondary_Recon_1..2`. Main samples every camera with explicit `vehicle_name`,
-records `simGetDetections` boxes, and feeds synthetic radar/acoustic/EO
+records detector boxes, and feeds synthetic radar/acoustic/EO
 observations into D1 using the same actor truth with latency and covariance.
 LiDAR capture is disabled in this mode because the vehicles are camera-only CV
 nodes.
@@ -176,9 +191,11 @@ This profile uses `settings/blocks_cv_5v5_d4d5_stress_settings.json`. The five
 targets start about 50 m in front of the interceptor cameras, target spacing is
 20 m, interceptor camera spacing is 20 m, and the two secondary reconnaissance
 cameras are about 50 m above the target layer.
-Targets use a 4 m visual scale so AirSim `simGetDetections` reliably produces
-multi-target terminal frames; this profile tests D5/D4 logic, not small-object
-detection limits. Main runs three reset-separated cases: no degradation,
+Targets use the Blocks AirSim `Quadrotor1` actor asset by default and a 4 m
+visual scale so the default AirSim detector reliably produces multi-target
+terminal frames; this profile tests D5/D4 logic, not small-object detection
+limits. Pass `--target-asset-name 1M_Cube_Chamfer` only for legacy geometry
+baseline replay. Main runs three reset-separated cases: no degradation,
 degrade to secondary node, and degrade to distributed mode. Outputs include
 `d5_terminal_observations.jsonl`, `d5_cross_view_associations.json`,
 `d4_decisions.jsonl`, per-case reports, and the aggregate
@@ -211,9 +228,11 @@ python3 research_modules/airsim_runtime/run_blocks_sequence.py \
 Run the controlled 5v5 intercept. This uses five SimpleFlight interceptors
 (`Interceptor1..5`) from
 `settings/blocks_5v5_actor_tuned_settings.json` and five moved actor targets
-(`MSM_TargetActor_1..5`). The D7 midcourse law is radar PN; terminal visual PNG
-is only entered after the per-pair D3/D4/D5 contract and camera/LOS/maneuver
-gates pass:
+(`MSM_TargetActor_1..5`). The target actor asset defaults to the Blocks AirSim
+drone mesh `Quadrotor1`, which matches the YOLO UAV detector path better than
+the old cube actor. The D7 midcourse law is radar PN; terminal visual PNG is
+only entered after the per-pair D3/D4/D5 contract and camera/LOS/maneuver gates
+pass:
 
 ```bash
 python3 research_modules/airsim_runtime/run_blocks_sequence.py \
@@ -348,7 +367,8 @@ timestamps. D5 consumes the bbox metadata and never rewrites D2/D3
   before emitting global NED records.
 - `docs/object_detection.md` and `PythonClient/detection/detection.py` show
   `simSetDetectionFilterRadius`, `simAddDetectionFilterMeshName`, and
-  `simGetDetections` for per-camera object detection.
+  `simGetDetections` for per-camera object detection. The runtime can instead
+  use D5 YOLOv8 + MOT when `--detection-backend yolo` is selected.
 - `PythonClient/environment/create_objects.py` shows `simSpawnObject`, and
   `PythonClient/computer_vision/objects.py` shows `simSetObjectPose` for Blocks
   actors such as `OrangeBall` and `PulsingCone`.
