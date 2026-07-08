@@ -176,6 +176,13 @@ class TerminalAssociator:
                 friend_state="none",
                 decision="hold",
                 reason="assignment_not_authorized",
+                metadata={
+                    "assigned_global_track_id": assignment.assigned_global_track_id,
+                    "assignment_version": assignment.assignment_version,
+                    "authorization_state": assignment.authorization_state,
+                    "gate_pass_count": 0,
+                    "candidate_pair_logs": [],
+                },
             )
 
         if assigned is None:
@@ -187,6 +194,13 @@ class TerminalAssociator:
                 friend_state="none",
                 decision="reacquire",
                 reason="assigned_global_track_not_available",
+                metadata={
+                    "assigned_global_track_id": assignment.assigned_global_track_id,
+                    "assignment_version": assignment.assignment_version,
+                    "available_global_track_ids": list(input_global_ids),
+                    "gate_pass_count": 0,
+                    "candidate_pair_logs": [],
+                },
             )
 
         if assignment.require_version_match and assigned.track_version != assignment.assignment_version:
@@ -198,6 +212,13 @@ class TerminalAssociator:
                 friend_state="none",
                 decision="hold",
                 reason="assignment_version_mismatch",
+                metadata={
+                    "assigned_global_track_id": assignment.assigned_global_track_id,
+                    "assignment_version": assignment.assignment_version,
+                    "global_track_version": assigned.track_version,
+                    "gate_pass_count": 0,
+                    "candidate_pair_logs": [],
+                },
             )
 
         projections = self.project_tracks_to_image([assigned], camera, timestamp=projection_time)
@@ -211,6 +232,12 @@ class TerminalAssociator:
                 friend_state="none",
                 decision="reacquire",
                 reason=f"projection_invalid:{projection.reason}",
+                metadata=self._projection_metadata(
+                    assignment=assignment,
+                    projection=projection,
+                    projection_time=projection_time,
+                )
+                | {"gate_pass_count": 0, "candidate_pair_logs": []},
             )
 
         cost_result = self.build_cost_matrix(
@@ -228,6 +255,13 @@ class TerminalAssociator:
             for index, value in enumerate(row)
             if np.isfinite(value) and value < self.config.cost_inf
         ]
+        decision_metadata = self._decision_metadata(
+            assignment=assignment,
+            projection=projection,
+            projection_time=projection_time,
+            cost_result=cost_result,
+            feasible_indices=feasible_indices,
+        )
 
         if not feasible_indices:
             self._assert_global_ids_unchanged(input_global_ids, global_list)
@@ -239,6 +273,7 @@ class TerminalAssociator:
                 friend_state="none",
                 decision="reacquire",
                 reason="no_local_track_inside_projection_gate",
+                metadata=decision_metadata,
             )
 
         # A verified friend overlapping any gated candidate forces hold.
@@ -261,6 +296,14 @@ class TerminalAssociator:
                 decision="hold",
                 reason="verified_friend_overlap_inside_gate",
                 candidate_costs=self._candidate_costs(cost_result, feasible_indices),
+                metadata=self._decision_metadata(
+                    assignment=assignment,
+                    projection=projection,
+                    projection_time=projection_time,
+                    cost_result=cost_result,
+                    feasible_indices=feasible_indices,
+                    selected_local_track_id=local_id,
+                ),
             )
 
         ordered = sorted(feasible_indices, key=lambda index: row[index])
@@ -307,6 +350,14 @@ class TerminalAssociator:
             reason=reason,
             candidate_costs=self._candidate_costs(cost_result, feasible_indices),
             recon_cue_used=best_breakdown.recon_cue_cost < 0.0,
+            metadata=self._decision_metadata(
+                assignment=assignment,
+                projection=projection,
+                projection_time=projection_time,
+                cost_result=cost_result,
+                feasible_indices=feasible_indices,
+                selected_local_track_id=best_local_id,
+            ),
         )
 
     def _pair_cost(
@@ -319,8 +370,20 @@ class TerminalAssociator:
         current_time: float | None,
         frame_id: str | None,
     ) -> CostBreakdown:
+        projected_px = _projection_pixel_tuple(projection)
+        bbox_center_px = (float(local_track.center_px[0]), float(local_track.center_px[1]))
+        pixel_error_px = _pixel_error_px(projection, local_track)
+        measurement_age_s = _measurement_age_s(local_track, current_time)
         if not projection.valid:
-            return self._blocked_breakdown(projection.global_track_id, local_track.local_track_id, "none")
+            return self._blocked_breakdown(
+                projection.global_track_id,
+                local_track.local_track_id,
+                "none",
+                projected_px=projected_px,
+                bbox_center_px=bbox_center_px,
+                pixel_error_px=pixel_error_px,
+                measurement_age_s=measurement_age_s,
+            )
 
         d2 = mahalanobis_d2(local_track.center_px, projection)
         if d2 > self.config.gate_chi2:
@@ -335,6 +398,10 @@ class TerminalAssociator:
                 quality_cost=0.0,
                 gated=False,
                 friend_conflict_state="none",
+                projected_px=projected_px,
+                bbox_center_px=bbox_center_px,
+                pixel_error_px=pixel_error_px,
+                measurement_age_s=measurement_age_s,
             )
 
         rate_cost = self._rate_cost(projection, local_track)
@@ -368,6 +435,10 @@ class TerminalAssociator:
             gated=True,
             friend_conflict_state=friend_state,
             recon_cue_cost=float(recon_cue_cost),
+            projected_px=projected_px,
+            bbox_center_px=bbox_center_px,
+            pixel_error_px=pixel_error_px,
+            measurement_age_s=measurement_age_s,
         )
 
     def _blocked_breakdown(
@@ -375,6 +446,11 @@ class TerminalAssociator:
         global_track_id: str,
         local_track_id: str,
         friend_state: str,
+        *,
+        projected_px: tuple[float, float] | None = None,
+        bbox_center_px: tuple[float, float] | None = None,
+        pixel_error_px: float | None = None,
+        measurement_age_s: float | None = None,
     ) -> CostBreakdown:
         return CostBreakdown(
             global_track_id=global_track_id,
@@ -387,6 +463,10 @@ class TerminalAssociator:
             quality_cost=0.0,
             gated=False,
             friend_conflict_state=friend_state,
+            projected_px=projected_px,
+            bbox_center_px=bbox_center_px,
+            pixel_error_px=pixel_error_px,
+            measurement_age_s=measurement_age_s,
         )
 
     def _rate_cost(self, projection: ProjectionResult, local_track: LocalVisualTrack) -> float:
@@ -543,6 +623,7 @@ class TerminalAssociator:
         reason: str,
         candidate_costs: list[tuple[str, float]] | None = None,
         recon_cue_used: bool = False,
+        metadata: dict | None = None,
     ) -> TerminalAssociation:
         return TerminalAssociation(
             assigned_global_track_id=assignment.assigned_global_track_id,
@@ -555,6 +636,7 @@ class TerminalAssociator:
             reason=reason,
             candidate_costs=candidate_costs or [],
             recon_cue_used=recon_cue_used,
+            metadata=metadata or {},
         )
 
     def _candidate_costs(
@@ -576,3 +658,87 @@ class TerminalAssociator:
         observed_ids = tuple(track.global_track_id for track in global_tracks)
         if observed_ids != expected_ids:
             raise RuntimeError("terminal association attempted to alter global_track_id values")
+
+    def _projection_metadata(
+        self,
+        *,
+        assignment: Assignment,
+        projection: ProjectionResult,
+        projection_time: float | None,
+    ) -> dict:
+        return {
+            "assigned_global_track_id": assignment.assigned_global_track_id,
+            "assignment_version": assignment.assignment_version,
+            "resource_id": assignment.resource_id,
+            "projection_timestamp": projection_time,
+            "projection_valid": projection.valid,
+            "projection_reason": projection.reason,
+            "projection_depth_m": float(projection.depth),
+            "projected_px": (
+                [float(projection.pixel[0]), float(projection.pixel[1])]
+                if projection.pixel is not None
+                else None
+            ),
+            "projection_covariance_px": (
+                np.asarray(projection.covariance_px, dtype=float).tolist()
+                if projection.covariance_px is not None
+                else None
+            ),
+        }
+
+    def _decision_metadata(
+        self,
+        *,
+        assignment: Assignment,
+        projection: ProjectionResult,
+        projection_time: float | None,
+        cost_result: CostMatrixResult,
+        feasible_indices: list[int],
+        selected_local_track_id: str | None = None,
+    ) -> dict:
+        pair_logs = [
+            cost_result.breakdowns[(assignment.assigned_global_track_id, local_id)].to_log_record()
+            for local_id in cost_result.local_track_ids
+        ]
+        selected_pair = None
+        if selected_local_track_id is not None:
+            selected_pair = cost_result.breakdowns[
+                (assignment.assigned_global_track_id, selected_local_track_id)
+            ].to_log_record()
+        metadata = self._projection_metadata(
+            assignment=assignment,
+            projection=projection,
+            projection_time=projection_time,
+        )
+        metadata.update(
+            {
+                "gate_chi2": self.config.gate_chi2,
+                "gate_pass_count": len(feasible_indices),
+                "gate_pass_local_track_ids": [
+                    cost_result.local_track_ids[index] for index in feasible_indices
+                ],
+                "selected_local_track_id": selected_local_track_id,
+                "selected_pair": selected_pair,
+                "candidate_pair_logs": pair_logs,
+                "duplicate_terminal_lock_risk": False,
+            }
+        )
+        return metadata
+
+
+def _projection_pixel_tuple(projection: ProjectionResult) -> tuple[float, float] | None:
+    if projection.pixel is None:
+        return None
+    return (float(projection.pixel[0]), float(projection.pixel[1]))
+
+
+def _pixel_error_px(projection: ProjectionResult, local_track: LocalVisualTrack) -> float | None:
+    if projection.pixel is None:
+        return None
+    return float(np.linalg.norm(local_track.center_px - projection.pixel))
+
+
+def _measurement_age_s(local_track: LocalVisualTrack, current_time: float | None) -> float | None:
+    if current_time is None:
+        return None
+    return float(current_time) - float(local_track.timestamp)

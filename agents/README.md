@@ -6,6 +6,9 @@
 
 - main agent 负责全局编排、AirSim runtime、跨模块接口、总报告和最终验证。
 - D1-D7 只负责各自模块，不跨模块改文件。
+- 严格执行链路是：main 下发任务，所属 D-agent 自己修改 owned paths 并自测，main 汇总、集成验证和报告结果。
+- main 不直接替代 D1-D7 更新模块算法、README、PLAN、GAP 或 review；除非用户明确要求紧急 hotfix。若 main 已经临时代改，必须在最终说明中标明，并要求所属 D-agent 复核和补齐文档状态。
+- 每次模块能力变化后，所属 D-agent 必须检查 README/PLAN/GAP/review 是否需要同步更新；需要时在同一任务内完成。
 - 同时打开的 subagent 不超过 6 个；D1-D7 全参与时分两批执行。
 - 不把一次会话中的 agent ID 写成长期事实；长期事实写入代码、模块文档、GAP 审计和本目录角色定义。
 - 每次分派任务必须写清文件范围、验收命令、不得 revert 他人改动。
@@ -44,6 +47,6 @@
 - 不修改其他模块；
 - 不 revert 他人改动；
 - 2v2/5v5 只作为 baseline，算法按输入数组长度运行；
-- 完成后更新对应 README/PLAN/GAP；
+- 完成后检查并按需更新对应 README/PLAN/GAP/review；
 - 运行 <tests> 并汇报结果。
 ```

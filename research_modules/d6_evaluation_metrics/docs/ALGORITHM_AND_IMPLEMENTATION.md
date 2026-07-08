@@ -276,11 +276,13 @@ D6 侧已经具备消费能力：
 - D5：terminal association、local ID switch、lock、ambiguity、friend hold、多视角一致/冲突/重复锁定。
 - D7：gate pass/reject、visual PNG switch、terminal takeover、mode switch、contract reject、intercept 结果。
 
+截至 2026-07-07，main/orchestrator 已完成 D7 真实执行指标的正式回灌：`control_commands.csv` 与 `intercept_summary.json` 会在执行后合并到正式 `main_episode_bus_metrics.json`；执行前合同检查口径保留为 `main_episode_bus_contract_metrics.json`。D6 文档和报告口径以正式 metrics 表示执行后系统结果，以 raw contract metrics 表示 D3/D4/D5/D7 gate 诊断结果。
+
 仍需 main runtime bus/episode 写盘接线：
 
 - 在同一 episode 目录持续写出 Blocks、D4、D5、D7、D6 标准化日志。
 - 保持统一 episode clock 和实际规模字段。
-- main 汇总时把多个 loader 的记录合并到同一个 `MetricsCollector`。
+- main 汇总时把多个 loader 的记录合并到同一个 `MetricsCollector`；D7 real execution 的单次正式指标合并已完成，但多 seed、5v5/N-v-N 和非默认 episode 仍需要持续验证。
 - D5 的 terminal consistency、cross-view conflict、duplicate lock、friend hold 和 validation label 需要稳定回灌。
 - D4 的 `review_label` 和窗口统计需要稳定回灌，才能计算主动降级必要性/精度。
 
@@ -365,10 +367,10 @@ p95
 
 ## 11. P1 下一步
 
-1. main integrated episode 汇总接线：统一写出并合并 Blocks、D4、D5、D7 和 D6 标准化日志。
+1. main integrated episode 汇总接线：D7 real execution metrics 已进入正式 `main_episode_bus_metrics.json`，raw `main_episode_bus_contract_metrics.json` 已保留；继续补 D4/D5 全量事件、多 seed、5v5/N-v-N 和报告分组。
 2. D4 主动降级必要性：补 `review_label`、trigger/decision timestamp、selected coordinator、coverage cell 和 pre/post 窗口。
 3. D5 末端 AirSim 回灌：补 terminal consistency、cross-view conflict、duplicate lock、friend hold、terminal-center disagreement 和 validation label。
-4. D7 多 seed 报告：稳定 guidance/control/intercept 文件产出，并保留 plan/version、D4/D5 state、guidance law、reject reason。
+4. D7 多 seed 报告：稳定 guidance/control/intercept 文件产出并进入正式 metrics，保留 plan/version、D4/D5 state、guidance law、reject reason。
 5. 报告增强：按实际规模字段和 scenario group 输出 D4/D5/D7 分组解释。
 
 ## 12. P2 下一步

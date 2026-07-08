@@ -20,6 +20,7 @@ def _association(
     reason: str = "fixture",
     cue_used: bool = False,
     costs: list[tuple[str, float]] | None = None,
+    assignment_version: int = 2,
 ) -> TerminalAssociation:
     return TerminalAssociation(
         assigned_global_track_id="G1",
@@ -28,7 +29,7 @@ def _association(
         ambiguity_score=ambiguity,
         friend_conflict_state=friend_state,
         decision_state=decision,
-        assignment_version=2,
+        assignment_version=assignment_version,
         reason=reason,
         candidate_costs=costs or [("L1", 1.0), ("L2", 5.5)],
         recon_cue_used=cue_used,
@@ -106,6 +107,41 @@ def test_consistency_summary_recommends_secondary_cue_and_arbitration_after_stre
     assert second_ambiguous.recommended_d4_action == "request_secondary_cue"
     assert first_reacquire.recommended_d4_action == "observe"
     assert second_reacquire.recommended_d4_action == "arbitrate"
+
+
+def test_consistency_streak_survives_plan_version_updates_for_same_assignment_pair() -> None:
+    tracker = TerminalConsistencyTracker(
+        TerminalConsistencyConfig(ambiguous_frames_for_secondary=2)
+    )
+
+    first = tracker.update(
+        resource_id="UAV1",
+        timestamp=1.0,
+        association=_association(
+            decision="ambiguous",
+            confidence=0.4,
+            ambiguity=0.8,
+            assignment_version=2,
+        ),
+    )
+    second = tracker.update(
+        resource_id="UAV1",
+        timestamp=1.1,
+        association=_association(
+            decision="ambiguous",
+            confidence=0.4,
+            ambiguity=0.8,
+            assignment_version=3,
+        ),
+    )
+
+    assert first.consecutive_ambiguous_frames == 1
+    assert second.assignment_version == 3
+    assert second.consecutive_ambiguous_frames == 2
+    assert second.recommended_d4_action == "request_secondary_cue"
+    assert second.metadata["consistency_window_key"] == "UAV1:G1"
+    assert second.metadata["assignment_version_resets_window"] is False
+    assert second.to_metadata()["assignment_version_resets_window"] is False
 
 
 def test_consistency_summary_reports_friend_and_duplicate_lock_conflicts() -> None:

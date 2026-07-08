@@ -25,7 +25,7 @@ from .adapters import (
 )
 from .blocks import BlocksProcessManager
 from .d4d5_stress import run_d4d5_stress_analysis
-from .episode_bus import run_main_episode_bus
+from .episode_bus import MainEpisodeBusResult, run_main_episode_bus
 from .intercept import run_controlled_intercept_episode
 from .models import BlocksSmokeConfig, BlocksSmokeResult
 from .real_runtime import RealAirSimRuntimeClient
@@ -112,6 +112,12 @@ class AirSimBlocksSmokeOrchestrator:
                 frames,
                 output_dir / "main_episode_bus",
             )
+            main_episode_bus = _merge_main_bus_execution_metrics(
+                main_episode_bus,
+                output_dir,
+                intercept_output_paths,
+                config,
+            )
             integrated = (
                 self._run_integrated_replay(config, frames, output_dir)
                 if config.include_integrated_pipeline
@@ -165,6 +171,9 @@ class AirSimBlocksSmokeOrchestrator:
                         "frame_count": main_episode_bus.frame_count,
                         "record_counts": main_episode_bus.summary.get("record_counts", {}),
                         "module_order": main_episode_bus.summary.get("module_order", []),
+                        "execution_metrics_merged": bool(
+                            main_episode_bus.summary.get("execution_metrics_merged", False)
+                        ),
                         "output_paths": {
                             key: str(value)
                             for key, value in main_episode_bus.output_paths.items()
@@ -361,6 +370,126 @@ def _merge_d7_execution_metrics(
             "control_api_used": True,
             "d7_execution_metrics_path": str(d7_metrics_path),
         },
+    )
+
+
+MAIN_BUS_EXECUTION_METRIC_KEYS = frozenset(
+    {
+        "camera_quality_gate_pass_rate",
+        "los_quality_gate_pass_rate",
+        "maneuver_margin_gate_pass_rate",
+        "terminal_switch_allowed_rate",
+        "visual_png_switch_count",
+        "terminal_switch_reject_count",
+        "mode_switch_count",
+        "terminal_contract_reject_count",
+        "gate_reject_count",
+        "intercept_success_count",
+        "collision_intercept_count",
+        "range_intercept_count",
+        "time_to_intercept_s",
+        "min_range_m",
+        "terminal_takeover_rate",
+    }
+)
+
+MAIN_BUS_EXECUTION_METADATA_KEYS = frozenset(
+    {
+        "d7_control_command_event_count",
+        "guidance_law_counts",
+        "guidance_law_pair_counts",
+        "guidance_mode_counts",
+        "intercept_pair_event_count",
+        "intercept_status_counts",
+        "intercept_summary_pair_count",
+        "intercept_summary_success_count",
+        "terminal_switch_reject_reason_pair_counts",
+        "terminal_switch_reject_reasons",
+        "terminal_contract_reject_reasons",
+        "terminal_takeover_pair_count",
+        "terminal_takeover_pair_denominator",
+    }
+)
+
+
+def _merge_main_bus_execution_metrics(
+    main_episode_bus: MainEpisodeBusResult,
+    output_dir: Path,
+    intercept_output_paths: dict[str, Path],
+    config: BlocksSmokeConfig,
+) -> MainEpisodeBusResult:
+    if not config.execute_intercept:
+        return main_episode_bus
+    control_commands_path = intercept_output_paths.get("control_commands")
+    intercept_summary_path = intercept_output_paths.get("intercept_summary")
+    if control_commands_path is None and intercept_summary_path is None:
+        return main_episode_bus
+
+    metrics_path = main_episode_bus.output_paths.get("main_episode_bus_metrics_json")
+    summary_path = main_episode_bus.output_paths.get("main_episode_bus_summary_json")
+    raw_metrics_path = output_dir / "main_episode_bus" / "main_episode_bus_contract_metrics.json"
+    if metrics_path is not None and metrics_path.exists():
+        raw_metrics_path.write_text(metrics_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    collector = load_d7_intercept_outputs(
+        control_commands_path=control_commands_path,
+        intercept_summary_path=intercept_summary_path,
+    )
+    d7_metrics = collector.compute_episode(
+        f"{config.episode_id}_d7_execution",
+        seed=config.seed,
+        duration=config.intercept_max_duration_s,
+    ).to_dict()
+
+    merged_metrics = dict(main_episode_bus.metrics)
+    for key in MAIN_BUS_EXECUTION_METRIC_KEYS:
+        if key in d7_metrics:
+            merged_metrics[key] = d7_metrics[key]
+
+    merged_metadata = dict(merged_metrics.get("metadata", {}) or {})
+    d7_metadata = dict(d7_metrics.get("metadata", {}) or {})
+    for key in MAIN_BUS_EXECUTION_METADATA_KEYS:
+        if key in d7_metadata:
+            merged_metadata[key] = d7_metadata[key]
+    merged_metadata["main_episode_bus_execution_metrics_merged"] = True
+    merged_metadata["main_episode_bus_contract_metrics_path"] = str(raw_metrics_path)
+    merged_metrics["metadata"] = merged_metadata
+
+    output_paths = dict(main_episode_bus.output_paths)
+    output_paths["main_episode_bus_contract_metrics_json"] = raw_metrics_path
+    if metrics_path is not None:
+        metrics_path.write_text(
+            json.dumps(
+                {
+                    "metrics": merged_metrics,
+                    "metadata": {
+                        "record_counts": main_episode_bus.summary.get("record_counts", {}),
+                        "main_episode_bus_execution_metrics_merged": True,
+                        "contract_metrics_path": str(raw_metrics_path),
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+
+    summary = dict(main_episode_bus.summary)
+    summary["metrics"] = merged_metrics
+    summary["execution_metrics_merged"] = True
+    summary["contract_metrics_path"] = str(raw_metrics_path)
+    if summary_path is not None:
+        summary_path.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+
+    return replace(
+        main_episode_bus,
+        metrics=merged_metrics,
+        summary=summary,
+        output_paths=output_paths,
     )
 
 

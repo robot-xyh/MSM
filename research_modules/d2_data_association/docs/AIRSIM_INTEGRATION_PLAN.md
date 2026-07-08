@@ -37,11 +37,16 @@ Recommended adapter stages:
 4. Estimate or configure measurement covariance per sensor source.
 5. Emit one `Detection` per observation per timestamp.
 
-No live AirSim API calls are needed for baseline replay. A future reader can be implemented as:
+No live AirSim API calls are needed for baseline replay. The current D2-owned reader and report path is:
 
 ```text
-AirSimLogReader -> DetectionBatch -> Tracker.step(...) -> MetricsRecorder.summary()
+load_airsim_replay_frames(JSON/JSONL)
+  -> run_airsim_replay_association(...)
+  -> ReplayAssociationReport / association_logs.jsonl
+  -> run_threshold_sensitivity(...)
 ```
+
+This remains an offline reader. AirSim launch, ComputerVision metadata capture, and episode JSONL production are main/runtime responsibilities.
 
 ## Replay Loop
 
@@ -52,6 +57,8 @@ for frame in offline_log:
     tracker.step(detections, frame.timestamp, truth_ids_present)
 summary = tracker.metrics.summary()
 ```
+
+The helper `run_airsim_replay_association()` wraps this loop and returns `id_switch_count`, `track_continuity`, `duplicate_assignment_count`, per-frame association logs, active `global_track_ids`, and a D4-aligned soft/hard risk summary.
 
 ## Target Count and Replan Identity Contract
 
@@ -90,10 +97,15 @@ This is covered by
 ## Evaluation Outputs
 
 - Per-frame association logs.
+- `ReplayAssociationReport` JSON via `write_replay_association_report()`.
+- Association log JSONL via `write_association_logs_jsonl()`.
 - Track lifecycle transitions.
 - `id_switch_count`
 - `track_continuity`
 - `duplicate_assignment_count`
+- D4-aligned soft risk summary: association ambiguity, candidate overlap, cost margin, D5 disagreement.
+- D4-aligned hard risk summary: IDSW delta, duplicate assignment/track risk, continuity collapse.
+- Threshold sensitivity rows from `run_threshold_sensitivity()`.
 - RMSE when truth positions are available.
 - Truth-to-track confusion matrix.
 
@@ -106,6 +118,7 @@ This is covered by
 ## Acceptance Checks
 
 - AirSim replay works without network or simulator connection.
+- 5-target AirSim-like JSONL replay produces association logs, metrics, soft/hard risk summary, and threshold sensitivity rows.
 - No command/control topics or APIs are imported by the D2 adapter.
 - Missing optional fields produce explicit warnings or default covariance/feature behavior.
 - Metrics from AirSim replay can be compared against synthetic simulation metrics with the same recorder.

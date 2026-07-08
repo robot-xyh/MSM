@@ -14,7 +14,7 @@ D1 负责把异步雷达、声学和光电观测统一成带协方差的 `Global
 
 - `observation_id`：观测唯一编号。
 - `sensor_id`：传感器编号，如 `radar_ground_01`。
-- `modality`：`radar`、`acoustic` 或 `eo`。
+- `modality`：`radar`、`acoustic`、`eo` 或 optional dry-run/replay `lidar`。
 - `measurement_timestamp`：传感器实际采样时刻。
 - `arrival_timestamp`：融合节点收到观测的时刻。
 - `frame_id`：当前实现要求雷达/声学为 `ned`，EO 为 `pixel`。
@@ -151,6 +151,24 @@ EO 协方差由检测框大小、置信度和质量标记决定：
 
 EO 是强方向约束，但不是直接三维位置观测。它适合降低横向不确定性，并为 D5 末端投影配准提供一致的几何基础。
 
+### 5.4 合成 LiDAR
+
+当前 LiDAR 只作为 dry-run/replay 中的合成 NED 三维位置观测：
+
+```text
+z_lidar = [px, py, pz]^T
+h_lidar(x) = x[0:3]
+```
+
+默认协方差随距离和置信度放大：
+
+```text
+sigma_xy = (0.35 + 0.0025 * distance) / confidence
+sigma_z = (0.50 + 0.0035 * distance) / confidence
+```
+
+该模型用于保持 D1 的多源观测合同和 AirSim-like dry-run 回归，不代表 AirSim LiDAR plugin、真实雷达/激光硬件或硬件驱动已接入。当前仍由雷达初始化新航迹，LiDAR 作为已有航迹的三维位置更新源。
+
 ## 6. 滤波算法原理
 
 ### 6.1 默认运动模型
@@ -248,34 +266,35 @@ D1 侧可从 `GlobalTrack` 和近期观测历史派生以下信号：
 
 这些信号不包含处置指令，只描述定位质量、时间新鲜度和多源一致性。
 
-### 8.2 `TrackUncertaintySummary` 建议结构
+### 8.2 `TrackUncertaintySummary` 当前字段与 P1 扩展
 
-建议 D1 在后续接口中为每条 `GlobalTrack` 生成摘要，作为 D3 代价函数和 D4 主动降级判断的输入。示例字段如下：
+当前 D1 已落地单航迹 `TrackUncertaintySummary`，并可通过 `FusionAdapter.track_uncertainty_summaries()` 导出，作为 D3/D4/D5/D6 的离线质量输入。已实现字段如下：
 
 ```python
 TrackUncertaintySummary(
+    track_id: str,
     global_track_id: str,
     valid_at: float,
     published_at: float,
     track_bucket: int,
     track_level: str,
-    position_cov_trace: float,
-    velocity_cov_trace: float,
-    a95_xy_m: float,
-    sigma_z_m: float,
-    covariance_growth_rate: float | None,
-    measurement_latency_s: float,
-    extrapolation_age_s: float,
+    position_covariance_trace: float,
+    velocity_covariance_trace: float,
+    a95_m: float,
+    measurement_age_s: float,
     source_support: dict[str, int],
+    coverage_cell: str | None,
+    measurement_timestamp: float | None,
+    arrival_timestamp: float | None,
+    covariance_growth_rate: float | None,
     source_diversity_count: int,
     last_nis: float | None,
-    nis_pass_rate: float | None,
     handover_readiness: float,
     quality_flags: tuple[str, ...],
 )
 ```
 
-字段计算建议：
+当前字段计算规则：
 
 - `valid_at` 取 `GlobalTrack.metadata["valid_at"]`，缺省时取 `GlobalTrack.timestamp`。
 - `published_at` 取 `GlobalTrack.metadata["published_at"]`，缺省时取当前回放时刻。
@@ -283,11 +302,12 @@ TrackUncertaintySummary(
 - `position_cov_trace = trace(covariance[:3, :3])`。
 - `velocity_cov_trace = trace(covariance[3:, 3:])`。
 - `a95_xy_m` 使用 D1 现有 `covariance_a95()` 逻辑。
-- `sigma_z_m = sqrt(covariance[2, 2])`。
-- `measurement_latency_s` 优先取最近观测的 `arrival_timestamp - measurement_timestamp`，只有航迹摘要时可退化为 `published_at - valid_at`。
-- `covariance_growth_rate` 可用最近两个摘要的 `position_cov_trace` 差分除以时间差。
-- `source_diversity_count` 统计最近窗口中非零支持的传感器类型数。
+- `measurement_age_s` 使用 `published_at - latest_measurement_timestamp`。
+- `covariance_growth_rate` 当前可为空，后续可用最近两个摘要的 `position_cov_trace` 差分除以时间差。
+- `source_diversity_count` 统计当前摘要中非零支持的传感器类型数；后续 D6/区域窗口可扩展为最近窗口统计。
 - `handover_readiness` 建议归一化到 `[0, 1]`，由 `a95_xy_m`、`source_diversity_count`、`track_level`、NIS 通过率和延迟共同计算。
+
+D1 已落地 `FusionQualityRegionSummary`、`LatencyAuditSummary`、OOSM/stale/replay/duplicate 计数和最小 CSV replay。剩余 P1 摘要扩展集中在区域时间窗口、协方差增长率窗口、D6 长期批量 JSONL/CSV schema 和真实样本回归。
 
 一个保守的 `handover_readiness` 原型可定义为：
 
@@ -326,6 +346,8 @@ active_degrade = bad_quality_ratio >= ratio_threshold
 
 其中 `bad_quality_ratio` 可按区域或全局统计 `handover_readiness < readiness_threshold` 的航迹比例。恢复集中式模式也应满足更严格的恢复门限，例如连续多个周期 `readiness` 回升并且延迟低于预算。
 
+2026-07-07 P1 复核后，D4 已把硬风险和软质量风险拆分。D1 的高协方差、低 freshness、source gap、低 handover readiness 或单帧等级回退只能作为软质量证据；除非持续窗口内与 D3 plan stale/version mismatch、D5 终端冲突、D2 ID 风险或 C2 health 异常共同成立，否则不应直接触发 `request_center_replan`、二级接管或分布式降级。
+
 ### 8.4 面向 D3/D4/D5 的使用方式
 
 D3 使用方式：
@@ -347,9 +369,9 @@ D5 使用方式：
 - 当 `handover_readiness` 低或航迹等级回退时，终端应倾向 `ambiguous/hold/reacquire`，而不是自行改写 `global_track_id`。
 - D5 的 `TerminalAssociation` 反馈可回传 D1/D4，作为“中心预测与局部视觉不一致”的辅助信号。
 
-### 8.5 给 D4 的接口建议
+### 8.5 给 D4 的目标接口
 
-D1 到 D4 的建议消息可按周期发布，粒度为“单航迹摘要 + 区域聚合摘要”：
+D1 到 D4 的目标消息可按周期发布，粒度为“单航迹摘要 + 区域聚合摘要”。当前已落地单航迹 `TrackUncertaintySummary[]`、延迟审计 `LatencyAuditSummary` 和轻量区域聚合 `FusionQualityRegionSummary[]`；剩余 P1 是窗口化区域趋势，不是区域摘要基线：
 
 ```python
 TrackUncertaintySummary[]  # 每条航迹
@@ -357,17 +379,25 @@ FusionQualityRegionSummary(
     coverage_cell: str,
     published_at: float,
     track_count: int,
-    median_a95_xy_m: float,
-    p90_a95_xy_m: float,
-    stale_track_ratio: float,
-    handover_ready_ratio: float,
-    multi_source_ratio: float,
-    active_degrade_recommendation: str,  # "none" | "secondary_node" | "distributed_review"
-    reasons: tuple[str, ...],
+    coarse_track_count: int,
+    stable_track_count: int,
+    handover_track_count: int,
+    stale_track_count: int,
+    mean_a95_m: float,
+    max_a95_m: float,
+    max_measurement_age_s: float,
+    mean_handover_readiness: float,
+    source_support: dict[str, int],
+    source_gap_modalities: tuple[str, ...],
+    quality_flags: tuple[str, ...],
 )
 ```
 
+D1 不输出 `active_degrade_recommendation`。若需要 active degrade decision、median/p90 趋势或 lead-time 指标，应由 D4/D6 在 D1 区域摘要的时间窗口之上计算。
+
 `active_degrade_recommendation` 只表达态势质量建议，不直接改变任务状态。D4 应结合自身 `C2Health`、D3 分配版本、D5 末端反馈和人工授权状态后再决定降级模式。
+
+严格 subagent 流程下，D1 only owns this evidence contract: D1 子智能体负责维护本模块代码、README、PLAN、GAP 和 review；main 负责把这些证据接入 AirSim runtime bus、收集 D6 指标并汇总跨模块结论。
 
 ## 9. 主要实施流程
 
@@ -387,7 +417,7 @@ FusionQualityRegionSummary(
 - `src/d1_sensor_fusion/types.py`：输入输出数据结构。
 - `src/d1_sensor_fusion/observations.py`：雷达、声学、EO 观测模型和协方差。
 - `src/d1_sensor_fusion/ekf.py`：EKF 预测、更新和数值雅可比。
-- `src/d1_sensor_fusion/fusion.py`：融合适配器、延迟补偿、关联、分级和不确定度摘要的建议来源。
+- `src/d1_sensor_fusion/fusion.py`：融合适配器、延迟补偿、关联、分级和不确定度摘要导出。
 - `src/d1_sensor_fusion/simulation.py`：离线质点仿真、图表和报告生成。
 
 ## 10. 参数与调参建议
@@ -454,7 +484,7 @@ python3 research_modules/d1_sensor_fusion/scripts/run_simulation.py \
 
 - D2：消费 D1 的 `GlobalTrack`，进一步执行多目标数据关联和稳定 `global_track_id` 管理。D1 的基础关联不替代 D2 的 GNN/JPDA/MHT。
 - D3：使用 `state`、`covariance`、`track_level` 和威胁/质量字段构造分配代价。高协方差航迹应提高分配惩罚。
-- D4：消费 D1 的 `TrackUncertaintySummary` 和区域质量摘要，用于区分被动降级与主动降级；主动降级只表达态势质量不足，不代表节点失效。
+- D4：当前可消费 D1 的 `TrackUncertaintySummary`、`LatencyAuditSummary` 和轻量 `FusionQualityRegionSummary` 区分被动降级与主动降级候选；区域时间窗口和最终降级仲裁仍由 D4/D6 后续补齐。主动降级只表达态势质量不足，不代表节点失效。
 - D5：使用 `GlobalTrack` 的 NED 状态和协方差投影到局部相机平面。D5 不应直接使用 D1 内部单次传感器观测改写终端绑定。
 - D6：消费 D1 输出和日志，统计 RMSE、连续性、分级准确率、延迟补偿收益等指标。
 
@@ -476,14 +506,29 @@ python3 research_modules/d1_sensor_fusion/scripts/run_simulation.py \
 - 坐标转换工具以接口约定为主，尚未集成 ROS 2 `tf2`。
 - 仿真为质点模型和合成传感器，不代表真实传感器标定误差全集。
 - `TrackUncertaintySummary` 已落地为 D1 代码数据类，`FusionAdapter.track_uncertainty_summaries()` 可导出每条航迹的 `track_id/global_track_id`、`position_covariance_trace`、`a95_m`、`track_level`、`measurement_age_s`、`source_support`、`coverage_cell`、`measurement_timestamp`、`arrival_timestamp`、`valid_at` 和 `published_at`。
-- D1 已提供 `blocks_sensor_observations.jsonl` reader/replay 基线，可读回 main/AirSim runtime 写出的 D1 JSONL 观测并回放 `FusionAdapter`。
+- D1 已提供 replay schema v1、legacy `blocks_sensor_observations.jsonl` 兼容、最小 CSV reader/replay、`LatencyAuditSummary` 和轻量 `FusionQualityRegionSummary`，可读回 main/AirSim runtime 或人工审计写出的 D1 观测并回放 `FusionAdapter`。
 - D1 已提供 source lineage 去重基线，按同一 source/sequence/payload lineage 抑制 relay 或重复投递造成的二次更新；未知相关性的跨节点 Track-to-Track fusion 和协方差交叉仍未实现。
 
 后续建议：
 
-1. 增加 WGS84/ENU/NED 转换实用函数和单元测试。
-2. 增加 UKF 后端，对比强非线性 EO 场景。
-3. 增加 IMM-CV/CA/CT 运动模型，输出模型概率供 D2 使用。
-4. 将 D1 观测日志与 D6 统一事件记录格式对齐。
-5. 在 AirSim 离线回放中验证相机外参误差、遮挡和时间同步误差对 `handover_track` 的影响。
-6. 在 `TrackUncertaintySummary` 基线之上补 `FusionQualityRegionSummary`，供 D4 主动降级策略和 D6 批量统计使用。
+P1 主线补强：
+
+已完成基线：
+
+1. 已固化 `blocks_sensor_observations.jsonl`/未来 `sensor_observations.jsonl` 的 schema v1，并明确 camera metadata、communication metadata、source lineage 和可选评估标签字段。
+2. 已增加最小 CSV reader/replay，便于 D6 长期批量统计和人工审计。
+3. 已在 `TrackUncertaintySummary` 基线之上补轻量 `FusionQualityRegionSummary`，聚合 coverage cell、source gap、freshness、a95 和 handover readiness。
+4. 已为 OOSM/fixed-lag replay 增加 `LatencyAuditSummary`，包括 max/mean latency、OOSM replay 次数、stale/OOSM count、replay history 和重复观测计数。
+
+剩余 P1：
+
+1. 增加来自 main/shared runtime 的 AirSim CV/Blocks fixture，覆盖 `simGetDetections`/detector boxes、actor label、camera metadata、timestamp、bbox covariance 和 N actor 输出，并形成真实样本回归。
+2. 将 D1 观测、摘要和 replay 审计日志与 D6 长期批量 JSONL/CSV schema 对齐。
+3. 补区域时间窗口、freshness/source-gap 趋势和更细 NIS 统计。
+4. 补 `covariance_growth_rate` 的窗口化计算、阈值和真实样本回归。
+
+P2/P3 或后置对照：
+
+1. FilterPy、Stone Soup、UKF、IMM 和 Track-to-Track fusion 只作为离线对照或算法升级项，不替换当前 NumPy EKF fallback。
+2. OpenCV calibration、畸变校正、`projectPoints` 和 `solvePnP` 继续与 D5 视觉几何边界对齐，D1 保持 bbox/camera metadata/协方差合同。
+3. ROS 2 `tf2/message_filters` 等 topic/runtime 能力等 main/shared runtime、tf tree、bag/replay 和 topic schema 稳定后再评估。

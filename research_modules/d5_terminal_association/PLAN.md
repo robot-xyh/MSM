@@ -108,19 +108,20 @@ ByteTrack、BoT-SORT、Deep SORT 只作为本地 MOT 输入来源。它们输出
 
 已实现并有测试或代码支撑的能力：
 
-- `GlobalTrack -> CameraModel -> image projection`：`GlobalTrack` 是 frozen dataclass，`geometry.py` 和 `airsim_geometry.py` 支持投影、协方差传播、马氏门控和 AirSim camera info 到 D5 `CameraModel` 的离线转换。OpenCV 可用时使用 `cv2.projectPoints`；不可用时退回针孔模型。
+- `GlobalTrack -> CameraModel -> image projection`：`GlobalTrack` 是 frozen dataclass，`geometry.py` 和 `airsim_geometry.py` 支持投影、协方差传播、马氏门控和 AirSim camera info 到 D5 `CameraModel` 的离线转换。OpenCV 可用时使用 `cv2.projectPoints`；不可用时退回针孔模型。`TerminalAssociator.decide()` 和 `GeometricAssociationResult.to_log_records()` 已提供 projected pixel、bbox center、pixel error、Mahalanobis、gate pass、friend conflict、measurement age、selected pair 和 duplicate-risk advisory 字段，供 main/D6 后续写盘。
 - `LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim`、`ReconImageCue`：核心 DTO 已落地。`TerminalAssociator.decide()` 只核对 `Assignment.assigned_global_track_id`，输出 `locked/ambiguous/hold/reacquire`，不会选择另一个全局 ID 作为新分配。
 - 保守 `decision_state`：未授权、版本不一致、已验证友方重叠时 `hold`；候选接近、质量不足或身份声明不可靠时 `ambiguous`；无有效投影或无门内候选时 `reacquire`；只有唯一、稳定、版本一致且无友方冲突时才 `locked`。
-- AirSim truth ID 隔离：`local_visual_tracks_from_sim_detections()` 明确忽略 `object_id`、`actor_name` 等真值字段；truth label 只可在 `TerminalObservation.metadata` 或离线 evaluator 中用于 `terminal_lock_accuracy`、`locked_mismatch` 等评分。
+- AirSim truth ID 隔离：`local_visual_tracks_from_sim_detections()` 和 `local_visual_tracks_from_offline_yolo_bytetrack()` 明确忽略 `object_id`、`actor_name`、`truth_id`、`true_global_track_id` 等真值字段；truth label 只可在 `TerminalObservation.metadata` 或离线 evaluator 中用于 `terminal_lock_accuracy`、`locked_mismatch` 等评分。
 - 跨视角 distributed visual association DTO 与 fusion：`DistributedVisualObservation`、`VisualTrackletSummary`、`PeerCameraState`、`CrossPeerAssociationHypothesis`、`DistributedTerminalAssociation` 和 `TerminalCrossViewFusion` 已实现 P0 metadata-only 融合。融合基于 measurement/arrival timestamp、bearing 或像素中心、bearing rate、bbox area/scale rate、类别/置信度、像素协方差和姿态协方差做 gating/cost；SciPy 可用时用 Hungarian，缺失时退回纯 Python 唯一匹配。
 - 完全无中心下多相机 peer evidence 输出：缺失或 stale `assigned_global_track_id` 时输出 `hypothesis_only/hold`，重复锁定、友方冲突或 local/global ID 冲突时输出 `hold/ambiguous` 风险证据；不会创建新 `global_track_id`。
-- D7 视觉 PNG 前置证据：`annotate_visual_png_handoff()` 已在 `TerminalAssociation.metadata` 上附加 bbox 面积稳定性、距离区间、TGO、延迟和机动裕度建议。该建议只给 D7/main 做 gate 输入，不决定导引律。
+- D7 视觉 PNG 前置证据：`annotate_visual_png_handoff()` 已在 `TerminalAssociation.metadata` 上附加 bbox 面积稳定性、距离区间、TGO、延迟、measurement age、LOS rate、friend/duplicate 风险和机动裕度建议。该建议只给 D7/main 做 gate 输入，不决定导引律。
+- D4/D6 一致性摘要：`TerminalConsistencyTracker` 已按 `resource_id + assigned_global_track_id` 维护连续窗口；`assignment_version` 只随摘要审计输出，不作为窗口 key。因此同一资源持续执行同一全局目标时，D3 plan version 滚动更新不会清空连续 `locked/ambiguous/hold/reacquire` 状态。该摘要只作为 advisory evidence，不触发降级、不生成分配计划、不改写 `global_track_id`。
 
 部分实现或仅作为 adapter/抽象的能力：
 
 - 真实工程几何配准：当前消费已有 `CameraModel.K/R/t/dist_coeffs`，并能离线验证投影误差；没有完整标定采集、`calibrateCamera`、`solvePnP`/PnP RANSAC、bundle adjustment 或在线外参漂移估计链路。
-- YOLO：仅兼容常见 `xyxy/bbox_xyxy/class_name/confidence/track_id` 输出 schema，可把结果转为 `LocalVisualTrack`；D5 不加载 `best.pt`、不运行 YOLO 推理，也不管理 GPU/阈值/class map。
-- ByteTrack、BoT-SORT、Deep SORT：仅作为预期 `LocalVisualTrack` 来源写入方案；当前没有真实 tracker cache、遮挡恢复、ReID embedding 或 IDSW 统计实现。
+- YOLO/ByteTrack：已提供离线 schema adapter，可将常见 `xyxy/bbox_xyxy/class_name/confidence/track_id/tracker_id` 输出转为 `LocalVisualTrack`，并命名空间化 tracker ID；D5 不加载 `best.pt`、不运行 YOLO 推理，也不管理 GPU/阈值/class map。
+- ByteTrack、BoT-SORT、Deep SORT：仍仅作为预期 `LocalVisualTrack` 来源；当前没有真实 tracker cache、遮挡恢复、ReID embedding 或 IDSW 统计实现。
 - OpenCV：已用于投影与可选畸变参数消费；未实现标定工作流和真实图像角点/AprilTag 检测。
 - ROS 2 `tf2/message_filters`：仅作为未来坐标/时间同步方案；D5 当前不启动 ROS graph，不订阅 topic，不消费 bag。
 - OpenDroneID、MAVLink signing、DDS Security、AprilTag：`IdentityChecker` 只解析仿真/fixture 风格身份字典并生成 `IdentityClaim`；未接入真实广播报文、密钥、证书、tag detector 或硬件链路。
@@ -377,19 +378,25 @@ D5 至少记录：
 - 已实现 `TerminalObservationBus`、`CrossViewAssociation`、`TerminalCrossViewFusion` 和 N-v-N ComputerVision dry-run evidence helper。
 - 尚未完整实现跨无人机多相机三维几何融合；`CrossViewTrackEvidence` 仍是后续接口建议。
 - 当前身份声明为离线仿真抽象，不连接真实 OpenDroneID、MAVLink signing、DDS Security 或 AprilTag detector。
-- 本地 MOT 质量对小目标场景影响大；当前不运行 ByteTrack、BoT-SORT、Deep SORT 或真实 YOLO，只消费它们可能输出的 bbox/track schema。
+- 本地 MOT 质量对小目标场景影响大；当前不运行 ByteTrack、BoT-SORT、Deep SORT 或真实 YOLO，只通过离线 adapter 消费它们可能输出的 bbox/track schema。
 - D5 输出只用于 D4/D6/D7 的证据、评估和上游复盘，不应被解释为自动处置命令。
 
-P1 下一步：
+P1 补齐状态：
 
-- 把 AirSim CV replay 中的 projected pixel、pixel error、mahalanobis、gate_pass、candidate margin、`locked_mismatch`、`duplicate_terminal_lock_risk`、`recon_cue_used_count` 和 visual PNG advisory metadata 接入 main/D6 日志。
-- 增加可选 detector/tracker adapter，优先 ByteTrack/YOLO schema 到 `LocalVisualTrack` 的离线输入适配；adapter 必须保持 truth ID 隔离，并证明 tracker ID 不能替代 `global_track_id`。
-- 增强 D4 消费接口：把 `DistributedTerminalAssociation.recommended_d4_action`、`duplicate_lock_resource_ids`、`hypothesis_only/hold/ambiguous` 原因和连续帧 `TerminalConsistencySummary` 作为 CBBA 风险加权输入。
-- 增加本地最佳视觉候选长期偏离 `assigned_global_track_id` 的被动一致性测试；输出只给 D4 仲裁，不允许 D5 换绑。
+- 已完成 D5 侧 AirSim CV replay 可写盘字段：projected pixel、bbox center、pixel error、Mahalanobis、gate pass、candidate margin、measurement age、friend conflict、selected pair、`duplicate_terminal_lock_risk` advisory、`recon_cue_used_count` 和 visual PNG advisory metadata。main/D6 若需要实际 JSONL/CSV sink，应在 runtime/D6 owned path 接入这些 D5 输出字段。
+- 已完成 `TerminalConsistencySummary` 连续窗口修正：`TerminalConsistencyTracker` 按 `resource_id + assigned_global_track_id` 维护窗口，`assignment_version` 只做摘要审计字段。同一资源持续执行同一全局目标时，滚动 plan version 不会清空连续 `locked/ambiguous/hold/reacquire` 状态。
+- 已完成 D4 evidence 输出：`CrossViewAssociation`、`DistributedTerminalAssociation.recommended_d4_action`、`duplicate_lock_resource_ids`、`hypothesis_only/hold/ambiguous` 原因和连续帧 `TerminalConsistencySummary` 均为 D4/D6 advisory evidence；D5 不触发降级、不生成 `AssignmentPlan`、不选择主备资源。
+- 已完成 D7 visual PNG 前置证据：`annotate_visual_png_handoff()` 输出 handoff/prelock 建议、gate pass、blockers、measurement age、LOS availability、bbox stability、range band、timing 和 maneuver metadata；assignment mismatch、friend conflict、duplicate risk、unstable bbox、stale measurement age 或 missing LOS 都会阻断建议。
+- 已完成 AirSim truth ID 在线隔离和 YOLO/ByteTrack 离线 schema adapter：AirSim `object_id`、`actor_name`、`truth_id`、`true_global_track_id` 或 `global_track_id` 输入字段不会进入在线关联；truth 只允许进入离线 evaluator/metadata 统计。YOLO/ByteTrack row 只转为命名空间化 `LocalVisualTrack`，tracker ID 不替代 `global_track_id`。
 
-P2 下一步：
+剩余 P1：
+
+- 接入真实图像 detector/tracker 输入链路：消费连续 RGB/PNG 或外部 detector bbox stream，验证真实 YOLO/ByteTrack runtime 输出到 `LocalVisualTrack` 的 adapter，不在 D5 内执行分配、控制或 truth 绑定。
+- 多 seed 阈值校准：跨 seed/episode 标定 `gate_chi2`、候选 margin、bbox 稳定窗口、handoff range、measurement age、LOS availability、ambiguity 和 quality 阈值，报告 `locked_mismatch`、false handoff、ambiguous/reacquire 抖动和 `terminal_id_switch_count`。
+
+剩余 P2：
 
 - 建立离线标定/几何验证链：OpenCV calibration、`solvePnP`/PnP RANSAC、重投影误差阈值、外参 drift 告警和多相机 frame/timestamp 对齐检查。
-- 在现有 metadata-only `TerminalCrossViewFusion` 之上设计三维跨相机几何融合，输出 D2 航迹预测残差、三角化一致性、pose covariance 和 conflict state。
-- 接入至少一种真实身份来源作为 `IdentityClaim` adapter，例如 OpenDroneID 回放、MAVLink signing 回放或 AprilTag 图像检测；未知或校验失败只能降低可信度，不能升级为敌方或锁定目标。
-- 评估 BoT-SORT/Deep SORT/ReID 是否适合小型无人机图像；若图像尺寸、纹理和算力不足，应保持 ByteTrack/几何门控为默认基线。
+- 在真实图像链路后评估 BoT-SORT、Deep SORT 和 ReID 是否适合小型无人机图像；用 IDF1/IDSW、遮挡恢复和算力预算决定是否只保留 ByteTrack + 几何门控基线。
+- 接入真实身份来源作为 `IdentityClaim` adapter：OpenDroneID Core/MAVLink signing/DDS Security/AprilTag 至少一种回放或 fixture。未知、过期、伪造或校验失败只能降低可信度，不能升级为敌方或锁定目标。
+- ROS 2 `tf2/message_filters` 只在项目进入 ROS 2 runtime 或 bag replay 后实施，目标是维护带戳 frame tree 和相机/航迹时间同步，不改变 D5 不改写 `global_track_id` 的边界。

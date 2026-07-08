@@ -33,7 +33,8 @@ D4 负责离线降级协同研究，包含两类模式：
 - `final_views["coordination_mode"]`：当前已写入 `state/leader_id/leader_role/coverage_cell`，建议后续在仿真 metrics 中继续透传，便于 D6 区分二级节点接管与完全分布式 CBBA。
 - `ActiveDegradationDecision`：主动/被动仲裁结果，字段包括 `mode`、`action`、`reason`、`target_node_id`、`coverage_cell`、`terminal_consistent`、`risk_factors` 和 `requires_human_review`；`to_metrics()` 输出 main/D6 所需 D4 指标字段。
 - `SecondaryNodeLifecycleSummary`：二级节点生命周期摘要，字段包括 `heartbeat`、`lease_epoch`、`coverage_cell`、`video_cue_freshness_s`、`link_stale` 和 `secondary_available`。
-- `D4DecisionRecord.to_event_record_kwargs()`：输出 D6 `EventRecord` 兼容事件，metadata 包含 `degradation_mode`、`selected_coordinator`、`coverage_cell`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp`、`review_label`，并保留 `d4_degradation_mode` 等 D4 原始字段。
+- `D4DecisionRecord.to_event_record_kwargs()`：输出 D6 `EventRecord` 兼容事件，metadata 包含 `degradation_mode`、`selected_coordinator`、`coverage_cell`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp`、`review_label`、secondary takeover plan lifecycle、`active_plan_owner`，并保留 `d4_degradation_mode` 等 D4 原始字段。
+- `CBBACostGapBenchmark`：离线 benchmark 输出，使用 D3/main 提供的中心 plan 和 cost matrix，对比 D4 CBBA 的 cost/completion/conflict/message 差距；D4 不运行中心化 Hungarian。
 
 ## 3. C2Health 状态机
 
@@ -124,7 +125,7 @@ D4 将降级触发源分成两类，避免把“中心真的失效”和“中�
 | 模式 | 触发源 | 典型证据 | 首选动作 |
 |---|---|---|---|
 | `passive_failover` | C2 被摧毁、失效、heartbeat 超时、peer quorum 判定失败 | `C2Health.FAILED`、中心 epoch 停滞、assignment digest 长时间不可用 | 二级节点接管；无二级节点时进入 CBBA |
-| `active_degradation` | C2 未失效，但分辨率、定位、关联或分配证据不足 | D1 协方差增大、D2 ID switch 风险上升、D3 plan stale、D5 末端长期 `ambiguous/hold/reacquire` 或本地候选与分配目标不一致 | 仲裁后请求中心重分配、请求二级辅助、主动降到二级节点或分布式 |
+| `active_degradation` | C2 未失效，但分辨率、定位、关联或分配证据不足 | D1 协方差增大、D2 ID switch 风险上升、D3 plan stale/not current、D5 本地候选与分配目标不一致；cost margin 低、低置信度、无冲突 `ambiguous/reacquire` 只作为软证据 | 仲裁后继续中心、请求中心重分配、请求二级辅助、主动降到二级节点或分布式 |
 
 被动降级是“控制中心不可用”的结构性问题；主动降级是“中心计划仍存在但局部证据不支持继续执行”的一致性问题。主动降级不能直接绕过 D3/D5 的版本、授权和身份规则，它只是给出保守协调建议。
 
@@ -162,10 +163,11 @@ decision = ActiveDegradationArbiter().evaluate(
 |---|---|
 | D5 与中心/二级分配一致，且 D1/D2/D3 风险低 | `mode=none`，`action=continue_center` |
 | D1/D2 风险上升，但 D5 仍一致，且二级节点覆盖该区域 | `active_degradation + request_secondary_assist`，请求二级节点提供区域观测/cue，不直接完全分布式 |
-| D3 分配 stale、非 current 或 cost margin 过低，但 D5 仍一致 | `active_degradation + request_center_replan`，优先中心滚动重分配 |
-| D5 单窗口不一致但未连续恶化 | 请求中心重分配或二级辅助，先不进入完全无中心 |
-| D5 连续多帧 `ambiguous/hold/reacquire`，或本地候选与分配目标长期不一致 | 触发主动仲裁；二级节点健康且覆盖该 `coverage_cell` 时输出阶段 1 `degrade_to_secondary` |
-| 二级节点不可用、不可达或不覆盖当前区域 | `degrade_to_distributed`，进入 CBBA/拍卖式保底协商 |
+| D3 分配 stale 或非 current，但 D5 仍一致 | `active_degradation + request_center_replan`，优先中心滚动重分配 |
+| 只有 `d3_assignment_cost_margin_low`、D5 低置信度或无冲突 `ambiguous/reacquire` | `continue_center` 或 `request_secondary_assist`，继续观察，不触发中心重规划或分布式降级 |
+| D5 单窗口不一致但未连续恶化 | 若无硬风险则继续观察；若需要补充视角且二级节点可用，则请求二级辅助 |
+| D5 连续多帧不一致且存在 observed global track mismatch、资源错配、重复锁定、cross-view 高风险或友方/身份冲突 | 触发主动仲裁；二级节点健康且覆盖该 `coverage_cell` 时输出阶段 1 `degrade_to_secondary` |
+| 硬不一致持续且二级节点不可用、不可达或不覆盖当前区域 | `degrade_to_distributed`，进入 CBBA/拍卖式保底协商 |
 | 友方冲突或身份证据冲突 | `hold_for_review`，只输出审计和人工复核需求 |
 | `duplicate_terminal_lock=True` | 不视为 D5 一致，进入主动仲裁，优先请求二级辅助或中心复核 |
 | `cross_view_risk_score` 高 | 不视为稳定一致，进入主动仲裁，优先二级节点辅助/接管 |
@@ -179,8 +181,8 @@ decision = ActiveDegradationArbiter().evaluate(
 
 - D1：`position_sigma_m >= 20m` 记为中风险，`>= 50m` 记为高风险；`covariance_trace` 和量测年龄也会增加风险因子。
 - D2：`ambiguity_score`、`id_switch_count`、`duplicate_track_count`、`track_continuity` 共同判断身份连续性。
-- D3：`is_current=False`、`plan_age_s` 超限或 `cost_margin` 过低表示分配有效性下降。
-- D5：`association_confidence` 低、`ambiguity_score` 高、重复末端锁定、cross-view 风险高、连续非锁定帧数或连续 mismatch 帧数达到阈值时触发主动仲裁。`friend_conflict` 优先级最高，直接 `hold_for_review`。
+- D3：`is_current=False` 和 `plan_age_s` 超限是硬分配风险；`cost_margin` 过低是软计划风险，单独出现时表示需要观察/迟滞，不直接请求中心重规划。
+- D5：重复末端锁定、资源错配、observed `global_track_id` mismatch、cross-view 高风险和 friend conflict 是硬证据；`association_confidence` 低、`ambiguity_score` 高、无冲突连续非锁定帧属于软证据，默认继续中心或请求二级 cue。`friend_conflict` 优先级最高，直接 `hold_for_review`。
 - 通信：传入通信摘要时，二级节点链路超过 `stale_after_s` 会被视为不可用；只有二级节点不可用时，主动持续不一致才降到 `distributed_cbba/auction`。
 - 迟滞/防抖：`ActiveDegradationConfig` 提供 `min_dwell_s`、`release_consecutive_consistent_frames`、`risk_window_size` 和 `risk_window_threshold`。默认值保持轻量单步行为；复用同一个 arbiter 时，可要求多窗口风险满足阈值才从辅助升级到二级/分布式降级，并要求满足最短 dwell 和连续低风险 release 条件后才回到 `continue_center`。
 
@@ -244,6 +246,20 @@ O(|E|\cdot|\mathcal{T}|)
 
 与 D3 的中心化 Hungarian 或最小费用流相比，CBBA 不保证全局最优。它的目标是中心失效时的保底一致性，而不是替代中心化最优计划。
 
+### 5.5 CBBA cost gap benchmark
+
+`build_cbba_cost_gap_benchmark()` 用于同场景离线对照：
+
+```python
+benchmark = build_cbba_cost_gap_benchmark(
+    cbba_result,
+    center_assignments={"track-1": "int-1"},
+    cost_by_task_resource={"track-1": {"int-1": 1.0, "int-2": 1.4}},
+)
+```
+
+其中 `center_assignments` 和 `cost_by_task_resource` 必须来自 D3/main 的中心化计划和 cost matrix。D4 只计算 `cbba_total_cost`、`center_total_cost`、`absolute_cost_gap`、`relative_cost_gap`、completion gap、conflict/round/message 指标和缺失 cost pair 审计，不接入 MIT/CA-CBBA，也不在完全无中心路径构造虚拟中心。
+
 ## 6. 实施流程
 
 ### 6.1 正常运行
@@ -273,12 +289,14 @@ O(|E|\cdot|\mathcal{T}|)
 1. 中心 C2 仍处于 `normal/degraded/suspect`，但 D4 收到 D1/D2/D3/D5 的风险摘要。
 2. `ActiveDegradationArbiter.evaluate()` 先判断 D5 末端结果是否与 D3 分配的 `global_track_id` 一致。
 3. 若 D5 一致且风险低，继续当前中心计划。
-4. 若 D5 一致但 D1/D2/D3 风险上升，优先请求中心滚动重分配或请求二级节点补充观测，不直接进入完全分布式。
-5. 若 `friend_conflict=True`，直接 `hold_for_review`。
-6. 若 `duplicate_terminal_lock=True`，不视为一致锁定，进入主动仲裁。
-7. 若 D5 连续多帧 `ambiguous/hold/reacquire`，或本地视觉候选与分配目标长期不一致，进入主动降级仲裁。
-8. 仲裁时优先选择覆盖当前 `coverage_cell` 且链路新鲜的健康二级节点；无可用二级节点时才进入完全无中心 CBBA/拍卖。
-9. 所有主动降级结果均输出 `ActiveDegradationDecision`，交给 D6 记录，不允许本地节点自行改写 `global_track_id`。
+4. 若 D5 一致但 D3 stale/not current 等硬分配风险上升，优先请求中心滚动重分配；若只是 cost margin 低，则继续观察。
+5. 若 D5 一致但 D1/D2 风险上升，优先请求二级节点补充观测，不直接进入完全分布式。
+6. 若 `friend_conflict=True`，直接 `hold_for_review`。
+7. 若 `duplicate_terminal_lock=True`，不视为一致锁定，进入主动仲裁。
+8. 若 D5 连续多帧 `ambiguous/hold/reacquire` 但没有 observed mismatch、资源错配、重复锁定或友方冲突，则只继续中心或请求二级 cue。
+9. 若本地视觉候选与分配目标长期不一致，或出现资源错配、重复锁定、cross-view 高风险等硬证据，进入主动降级仲裁。
+10. 仲裁时优先选择覆盖当前 `coverage_cell` 且链路新鲜的健康二级节点；无可用二级节点时才进入完全无中心 CBBA/拍卖。
+11. 所有主动降级结果均输出 `ActiveDegradationDecision`，交给 D6 记录，不允许本地节点自行改写 `global_track_id`。
 
 ## 7. 关键接口
 
@@ -310,6 +328,14 @@ O(|E|\cdot|\mathcal{T}|)
 
 `D7SecondaryHandoff`/`build_d7_secondary_handoff()` 用于把 `degrade_to_secondary` 转换为 D7 可消费的两阶段门控结果。阶段 1 不携带 `new_plan_id/new_plan_version` 且 `visual_png_allowed=false`；阶段 2 必须携带 `new_plan_id/new_plan_version`，并把 D7 动作限制为 `request_secondary_assist` 或 `continue_center`。
 
+`SecondaryTakeoverPlanMetadata`/`build_secondary_takeover_plan_metadata()` 是 D4 record 的 plan lifecycle 合同。它区分：
+
+- `pending_secondary_plan`：D4 已选择二级节点并触发重分配，但当前 active plan owner 仍是 center 或上游当前 owner；metadata 记录 source node、当前 plan id/version 和 supersedes 字段。
+- `secondary_plan_active`：main/D3 已回填二级 plan id/version 并标记 active；metadata 记录 `active_plan_owner=secondary_node` 和 `secondary_reassignment_complete=true`。
+- `not_applicable`：非二级接管动作，D4 只保留当前 active owner。
+
+D4 不在这个 metadata 中创建系统级 `AssignmentPlan`，只给 main/D3/D7 提供可消费状态。
+
 `ActiveDegradationDecision.to_metrics()` 输出：
 
 - `d4_action`
@@ -333,7 +359,9 @@ O(|E|\cdot|\mathcal{T}|)
 - `CommunicationSummary`：D4 通信新鲜度摘要，表达源节点、目标节点、可选中继节点、链路类型、发送/接收时间、载荷类型和过期时间。
 - `SecondaryNodeLifecycleSummary`：二级节点生命周期摘要，表达 heartbeat、lease、coverage、video cue freshness、link stale 和最终可用性。
 - `ActiveDegradationDecision`：D4 仲裁结果。
-- `D4DecisionRecord`：D4 adapter 事件记录，可直接转换为 D6 `EventRecord` kwargs。
+- `D4DecisionRecord`：D4 adapter 事件记录，可直接转换为 D6 `EventRecord` kwargs，含 secondary takeover plan lifecycle metadata。
+- `SecondaryTakeoverPlanMetadata`：D4 二级接管 metadata，表达 pending/active plan 状态、source node、当前/二级 plan id/version 和 supersedes 关系。
+- `CBBACostGapBenchmark`：D4 CBBA 与 D3 中心化 cost baseline 的离线对照字段。
 
 ## 8. 参数与调参建议
 
@@ -351,7 +379,7 @@ O(|E|\cdot|\mathcal{T}|)
 | `packet_loss/min_delay/max_delay` | `SimulatedNetwork` | 用于通信退化敏感性实验 |
 | `position_sigma_medium_m/high_m` | `ActiveDegradationConfig` | D1 定位风险门限，需按仿真传感器精度标定 |
 | `association_ambiguity_medium/high` | `ActiveDegradationConfig` | D2 关联不确定度门限 |
-| `max_plan_age_s/min_cost_margin` | `ActiveDegradationConfig` | D3 分配 stale 和有效性门限 |
+| `max_plan_age_s/min_cost_margin` | `ActiveDegradationConfig` | `max_plan_age_s` 是 D3 stale 硬门限；`min_cost_margin` 是软计划裕度门限，单独出现时只观察/迟滞 |
 | `terminal_confidence_min` | `ActiveDegradationConfig` | D5 locked 最低置信度 |
 | `cross_view_risk_high` | `ActiveDegradationConfig` | D5 多视角冲突/支持不足风险门限 |
 | `non_locked_frame_limit` | `ActiveDegradationConfig` | 连续 `ambiguous/hold/reacquire` 触发主动仲裁的帧数 |
@@ -421,18 +449,20 @@ D4 应向 D6 输出或支持计算：
 - `risk_factors`：D1/D2/D3/D5 风险因子列表。
 - `terminal_consistent`：D5 末端关联是否与分配目标一致。
 - `secondary_available/link_stale/video_cue_freshness_s`：二级节点生命周期和链路 freshness 审计字段。
+- `secondary_takeover_state/active_plan_owner/secondary_plan_source_node_id/secondary_plan_id/secondary_plan_version`：二级接管 pending/active 状态和 plan metadata。
+- `cbba_total_cost/center_total_cost/absolute_cost_gap/relative_cost_gap/completion_rate_gap`：CBBA 与 D3 中心化基线的离线 cost gap benchmark 字段。
 
-当前 `coordination_mode` 已存在于 `CBBAResult.final_views`，但 `run_failover_simulation()` 尚未透传到顶层 metrics。建议后续补齐，避免实验报告把二级节点接管和完全分布式 CBBA 混在一起统计。
+当前 `coordination_mode` 已存在于 `CBBAResult.final_views`，但 `run_failover_simulation()` 尚未透传到顶层 metrics。建议后续补齐，避免实验报告把二级节点接管和完全分布式 CBBA 混在一起统计。CBBA cost gap benchmark 需要 main/D3 保存同场景 cost matrix/current plan，D4 helper 只负责单场景计算。
 
 ## 11. 与 D3/D5/D6 的接口关系
 
 ### D3 集中式分配
 
-D3 是中心存在时的主分配模块。D4 不应覆盖 D3 的正常计划，只缓存 digest、version、epoch 和资源摘要。中心失效时，D4 使用上一版可验证计划作为降级基准；中心恢复后，D4 必须通过 `merge_recovery()` 与 D3 新计划对齐。主动降级中，如果 `AssignmentValiditySummary` 显示计划过期、非 current 或 cost margin 过低，D4 的首选动作是 `request_center_replan`，不是直接完全分布式。
+D3 是中心存在时的主分配模块。D4 不应覆盖 D3 的正常计划，只缓存 digest、version、epoch 和资源摘要。中心失效时，D4 使用上一版可验证计划作为降级基准；中心恢复后，D4 必须通过 `merge_recovery()` 与 D3 新计划对齐。主动降级中，如果 `AssignmentValiditySummary` 显示计划过期或非 current，D4 的首选动作是 `request_center_replan`，不是直接完全分布式；如果只是 `cost_margin` 过低，D4 将其视为软证据，继续中心或请求二级 cue，等待 D3/main 的正常滚动迟滞处理。
 
 ### D5 终端视觉配准
 
-二级侦察节点健康时，可把区域图像 cue 或观测摘要传给小范围拦截资源，帮助 D5 做末端候选匹配。D4 只负责描述 cue 的来源、作用域和版本，不负责像素几何配准。D5 必须继续执行授权、plan version、友方身份和 `global_track_id` 不改写规则。主动降级中，D5 的多帧 `ambiguous/hold/reacquire` 或长期目标不一致是触发仲裁的强证据；单帧不一致只请求辅助或重分配，避免过度切换。
+二级侦察节点健康时，可把区域图像 cue 或观测摘要传给小范围拦截资源，帮助 D5 做末端候选匹配。D4 只负责描述 cue 的来源、作用域和版本，不负责像素几何配准。D5 必须继续执行授权、plan version、友方身份和 `global_track_id` 不改写规则。主动降级中，D5 的长期目标不一致、资源错配、重复锁定或友方冲突是触发仲裁的强证据；无冲突的多帧 `ambiguous/hold/reacquire` 是软证据，优先请求二级 cue 或继续观察，避免过度切换。
 
 ### D6 评估
 

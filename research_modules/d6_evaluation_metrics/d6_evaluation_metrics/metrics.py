@@ -111,6 +111,7 @@ class EpisodeMetrics:
     seed: int | None = None
     scenario_group: str = "unlabeled"
     batch_seed: int | None = None
+    metric_scope: str = "not_recorded"
     drone_count: int = 0
     resource_count: int = 0
     target_count: int = 0
@@ -128,6 +129,8 @@ class EpisodeMetrics:
     consensus_rounds: float = 0.0
     degraded_completion_rate: float = 0.0
     active_degradation_count: int = 0
+    active_degradation_precision: float = 0.0
+    unnecessary_active_degradation_count: int = 0
     passive_failover_count: int = 0
     secondary_node_takeover_count: int = 0
     secondary_reassignment_count: int = 0
@@ -184,6 +187,8 @@ class EpisodeMetrics:
             "consensus_rounds",
             "degraded_completion_rate",
             "active_degradation_count",
+            "active_degradation_precision",
+            "unnecessary_active_degradation_count",
             "passive_failover_count",
             "secondary_node_takeover_count",
             "secondary_reassignment_count",
@@ -400,9 +405,13 @@ class MetricsCollector:
         truth_summary: Mapping[str, Any] | None = None,
         scenario_group: str | None = None,
         batch_seed: int | None = None,
+        metric_scope: str | None = None,
     ) -> EpisodeMetrics:
         truth_summary = truth_summary or {}
         resolved_scenario_group = scenario_group or _scenario_group_from_truth_summary(
+            truth_summary
+        )
+        resolved_metric_scope = metric_scope or _metric_scope_from_truth_summary(
             truth_summary
         )
         resolved_batch_seed = batch_seed
@@ -421,6 +430,7 @@ class MetricsCollector:
             seed=seed,
             scenario_group=resolved_scenario_group,
             batch_seed=resolved_batch_seed,
+            metric_scope=resolved_metric_scope,
             **scale_counts,
             duration=episode_duration,
         )
@@ -464,6 +474,7 @@ class MetricsCollector:
             "offline_only": True,
             "scenario_group": resolved_scenario_group,
             "batch_seed": resolved_batch_seed,
+            "metric_scope": resolved_metric_scope,
             **scale_counts,
             **degradation_metadata,
             **guidance_metadata,
@@ -752,6 +763,10 @@ class MetricsCollector:
         secondary_reassignment_count = 0
         d4_reassign_pending_count = 0
         trigger_reasons: dict[str, int] = defaultdict(int)
+        active_degradation_necessary_count = 0
+        unnecessary_active_degradation_count = 0
+        active_degradation_reviewed_count = 0
+        active_degradation_review_label_counts: dict[str, int] = defaultdict(int)
 
         for record in sorted_events:
             event_type = _event_type(record)
@@ -761,6 +776,16 @@ class MetricsCollector:
             if active:
                 active_degradation_count += 1
                 active_window_timestamps.append(record.timestamp)
+                review_label = _active_degradation_review_label(record)
+                review_class = _active_degradation_review_class(review_label)
+                if review_label is not None:
+                    active_degradation_review_label_counts[review_label] += 1
+                if review_class is not None:
+                    active_degradation_reviewed_count += 1
+                    if review_class == "necessary":
+                        active_degradation_necessary_count += 1
+                    else:
+                        unnecessary_active_degradation_count += 1
             if passive:
                 passive_failover_count += 1
             if secondary:
@@ -821,12 +846,19 @@ class MetricsCollector:
         degraded_completion_rate = (
             degraded_completed / degraded_total if degraded_total else 0.0
         )
+        active_degradation_precision = (
+            active_degradation_necessary_count / active_degradation_reviewed_count
+            if active_degradation_reviewed_count
+            else 0.0
+        )
 
         return {
             "failover_time": failover_time,
             "consensus_rounds": consensus_rounds,
             "degraded_completion_rate": degraded_completion_rate,
             "active_degradation_count": active_degradation_count,
+            "active_degradation_precision": active_degradation_precision,
+            "unnecessary_active_degradation_count": unnecessary_active_degradation_count,
             "passive_failover_count": passive_failover_count,
             "secondary_node_takeover_count": secondary_node_takeover_count,
             "secondary_reassignment_count": secondary_reassignment_count,
@@ -836,6 +868,11 @@ class MetricsCollector:
             "_metadata": {
                 "trigger_reason_distribution": dict(trigger_reasons),
                 "failover_active_window_deltas_s": failover_active_window_deltas,
+                "active_degradation_reviewed_count": active_degradation_reviewed_count,
+                "active_degradation_necessary_count": active_degradation_necessary_count,
+                "active_degradation_review_label_counts": dict(
+                    active_degradation_review_label_counts
+                ),
             },
         }
 
@@ -1682,6 +1719,183 @@ class MetricsCollector:
             "constraint_violation_count": constraint_violation_count,
             "human_override_count": human_override_count,
         }
+
+
+
+def _metric_scope_from_truth_summary(truth_summary: Mapping[str, Any]) -> str:
+    for mapping in _truth_summary_count_mappings(truth_summary):
+        for key in (
+            "metric_scope",
+            "metrics_scope",
+            "evaluation_scope",
+            "metrics_kind",
+            "source_scope",
+        ):
+            if key in mapping and mapping[key] is not None:
+                return _normalize_metric_scope(mapping[key])
+        for key in ("source_path", "metrics_path", "metrics_file"):
+            if key in mapping and mapping[key] is not None:
+                scoped = _normalize_metric_scope(mapping[key])
+                if scoped != "not_recorded":
+                    return scoped
+    return "not_recorded"
+
+
+def _normalize_metric_scope(value: Any) -> str:
+    text = _state(str(value or ""))
+    if not text:
+        return "not_recorded"
+    normalized = text.replace("-", "_").replace(" ", "_")
+    if "contract" in normalized:
+        return "contract"
+    if (
+        normalized in {"exec", "executed", "execution", "runtime", "actual"}
+        or "execution" in normalized
+    ):
+        return "execution"
+    if "main_episode_bus_metrics" in normalized:
+        return "execution"
+    return normalized
+
+
+def _active_degradation_review_label(record: EventRecord) -> str | None:
+    metadata = record.metadata
+    for key in (
+        "review_label",
+        "active_degradation_review_label",
+        "degradation_review_label",
+        "active_degradation_label",
+    ):
+        label = _metadata_text(metadata, key)
+        if label is not None:
+            return _normalized_label(label)
+
+    for key in (
+        "active_degradation_necessary",
+        "degradation_necessary",
+        "necessary_active_degradation",
+        "was_necessary",
+    ):
+        if key in metadata:
+            necessary = _as_bool(metadata[key], default=False)
+            return "necessary" if necessary else "unnecessary"
+
+    for key in (
+        "post_window_outcome",
+        "post_active_outcome",
+        "active_degradation_outcome",
+        "review_outcome",
+    ):
+        label = _metadata_text(metadata, key)
+        if label is not None:
+            return _normalized_label(label)
+
+    risk_reduction = _active_degradation_risk_reduction(metadata)
+    if risk_reduction is not None:
+        return "risk_reduced" if risk_reduction > 0.0 else "no_risk_reduction"
+    return None
+
+
+def _active_degradation_review_class(label: str | None) -> str | None:
+    if label is None:
+        return None
+    normalized = _normalized_label(label)
+    necessary_labels = {
+        "necessary",
+        "needed",
+        "required",
+        "warranted",
+        "justified",
+        "true_positive",
+        "tp",
+        "useful",
+        "beneficial",
+        "improved",
+        "stabilized",
+        "stabilised",
+        "risk_reduced",
+        "coverage_restored",
+        "reassign_completed",
+        "secondary_takeover_success",
+        "prevented_failover",
+    }
+    unnecessary_labels = {
+        "unnecessary",
+        "not_needed",
+        "unneeded",
+        "false_positive",
+        "fp",
+        "avoidable",
+        "spurious",
+        "no_improvement",
+        "unchanged",
+        "worse",
+        "failed",
+        "no_risk_reduction",
+    }
+    if normalized in necessary_labels:
+        return "necessary"
+    if normalized in unnecessary_labels:
+        return "unnecessary"
+    return None
+
+
+def _normalized_label(value: Any) -> str:
+    return _state(str(value)).replace("-", "_").replace(" ", "_")
+
+
+def _active_degradation_risk_reduction(metadata: Mapping[str, Any]) -> float | None:
+    for key in (
+        "risk_reduction",
+        "risk_reduction_score",
+        "post_window_risk_reduction",
+        "coverage_gap_reduction",
+    ):
+        value = _metadata_float_if_present(metadata, key)
+        if value is not None:
+            return value
+
+    pre_risk = _first_metadata_float(
+        metadata,
+        (
+            "pre_window_risk_score",
+            "pre_active_risk_score",
+            "risk_score_before",
+            "pre_window_coverage_gap_count",
+        ),
+    )
+    post_risk = _first_metadata_float(
+        metadata,
+        (
+            "post_window_risk_score",
+            "post_active_risk_score",
+            "risk_score_after",
+            "post_window_coverage_gap_count",
+        ),
+    )
+    if pre_risk is None or post_risk is None:
+        return None
+    return pre_risk - post_risk
+
+
+def _first_metadata_float(
+    metadata: Mapping[str, Any],
+    keys: Sequence[str],
+) -> float | None:
+    for key in keys:
+        value = _metadata_float_if_present(metadata, key)
+        if value is not None:
+            return value
+    return None
+
+
+def _metadata_float_if_present(metadata: Mapping[str, Any], key: str) -> float | None:
+    if key not in metadata or metadata[key] is None:
+        return None
+    try:
+        return float(metadata[key])
+    except (TypeError, ValueError):
+        return None
 
 
 def _state(value: str | None) -> str:

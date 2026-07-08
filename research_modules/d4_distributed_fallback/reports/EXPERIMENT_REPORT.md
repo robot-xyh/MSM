@@ -47,9 +47,11 @@ D4 验证中心节点异常时的保底策略：
 |---|---|
 | D5 与分配目标一致，且 D1/D2/D3 风险低 | `continue_center` |
 | D1/D2 风险上升但 D5 一致 | `request_secondary_assist`，请求二级节点辅助观测/cue |
-| D3 分配 stale 或 cost margin 过低但 D5 一致 | `request_center_replan` |
-| D5 多帧非锁定或长期不一致，二级节点覆盖该区域 | `degrade_to_secondary` |
-| D5 长期不一致且二级节点不可用/不覆盖 | `degrade_to_distributed` |
+| D3 分配 stale/not current 且 D5 一致 | `request_center_replan` |
+| 仅 cost margin 过低且 D5 一致 | `continue_center` 或请求二级 cue，继续观察 |
+| D5 多帧非锁定但无观测 ID mismatch、资源错配、重复锁定或友方冲突 | `continue_center` 或 `request_secondary_assist` |
+| D5 多帧硬不一致，二级节点覆盖该区域 | `degrade_to_secondary` |
+| D5 多帧硬不一致且二级节点不可用/不覆盖 | `degrade_to_distributed` |
 | 友方身份冲突 | `hold_for_review` |
 
 该逻辑已由 `tests/test_active_degradation.py` 的规则测试覆盖。当前报告图表仍是被动降级/CBBA 通信退化曲线；主动降级的批量统计曲线应在后续 D6 集成后生成。

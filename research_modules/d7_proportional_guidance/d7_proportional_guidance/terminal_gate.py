@@ -46,6 +46,7 @@ class AssignmentGuidanceBinding:
     assigned_global_track_id: str
     track_version: int
     authorization_state: str
+    owner_node_id: str | None = None
     assignment_id: str | None = None
     assignment_validity_state: str = "current"
     created_at_s: float = 0.0
@@ -91,6 +92,8 @@ class TerminalPngContractDecision:
     d5_decision_state: str = ""
     plan_id: str | None = None
     plan_version: int | None = None
+    owner_node_id: str | None = None
+    d4_target_node_id: str | None = None
     track_version: int | None = None
 
 
@@ -117,6 +120,7 @@ def evaluate_terminal_png_contract(
         "d4_action": _string_value(d4_permission, "action", default=""),
         "plan_id": assignment.plan_id,
         "plan_version": assignment.plan_version,
+        "owner_node_id": assignment.owner_node_id,
         "track_version": assignment.track_version,
     }
 
@@ -134,6 +138,7 @@ def evaluate_terminal_png_contract(
 
     permission = coerce_d4_guidance_permission(d4_permission)
     base["d4_action"] = permission.action
+    base["d4_target_node_id"] = permission.target_node_id
     action = permission.action.lower()
     if permission.requires_human_review:
         return TerminalPngContractDecision(False, "d4_hold_for_review", **base)
@@ -145,6 +150,11 @@ def evaluate_terminal_png_contract(
         return TerminalPngContractDecision(False, "d4_plan_mismatch", **base)
     if permission.new_plan_version is not None and permission.new_plan_version != assignment.plan_version:
         return TerminalPngContractDecision(False, "d4_plan_mismatch", **base)
+    if permission.target_node_id is not None:
+        if assignment.owner_node_id is None:
+            return TerminalPngContractDecision(False, "d4_owner_missing", **base)
+        if permission.target_node_id != assignment.owner_node_id:
+            return TerminalPngContractDecision(False, "d4_owner_mismatch", **base)
     if action not in ALLOWED_D4_ACTIONS:
         return TerminalPngContractDecision(False, "d4_action_not_allowed", **base)
 
@@ -200,6 +210,8 @@ def guidance_mode_from_terminal_contract(
         "assignment_version_mismatch",
         "d4_terminal_inconsistent",
         "d4_plan_mismatch",
+        "d4_owner_missing",
+        "d4_owner_mismatch",
     }:
         return GuidanceMode.REACQUIRE
     if reason in {"d4_hold_for_review", "friend_conflict", "assignment_not_authorized"}:
@@ -218,6 +230,9 @@ def coerce_assignment_guidance_binding(
     return AssignmentGuidanceBinding(
         plan_id=_required_string(value, "plan_id"),
         plan_version=_required_int(value, "plan_version"),
+        owner_node_id=_optional_string_value(value, "owner_node_id")
+        or _optional_string_value(value, "plan_owner_id")
+        or _optional_string_value(value, "owner_node"),
         assignment_id=_optional_string_value(value, "assignment_id"),
         resource_id=_required_string(value, "resource_id"),
         vehicle_name=_required_string(value, "vehicle_name"),
@@ -245,7 +260,11 @@ def coerce_d4_guidance_permission(
         action=_string_value(value, "action", default="continue_center"),
         mode=_string_value(value, "mode", default="none"),
         reason=_string_value(value, "reason", default=""),
-        target_node_id=_optional_string_value(value, "target_node_id"),
+        target_node_id=_optional_string_value(value, "target_node_id")
+        or _optional_string_value(value, "new_plan_owner_id")
+        or _optional_string_value(value, "new_owner_node_id")
+        or _optional_string_value(value, "plan_owner_id")
+        or _optional_string_value(value, "owner_node_id"),
         terminal_consistent=bool(_value(value, "terminal_consistent", default=True)),
         requires_human_review=bool(_value(value, "requires_human_review", default=False)),
         new_plan_id=_optional_string_value(value, "new_plan_id"),

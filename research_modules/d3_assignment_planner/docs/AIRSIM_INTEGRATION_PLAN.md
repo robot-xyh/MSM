@@ -17,7 +17,7 @@ AssignmentPlanner.plan(
 )
 ```
 
-The output remains an abstract `AssignmentPlan` with `human_authorization_state="required"`.
+The output remains an abstract `AssignmentPlan`. Its default authorization state is `human_authorization_state="required"`, while AirSim validation may set `PlannerConfig.human_authorization_state` to a record-only state such as `"recorded"` for contract testing. D3 does not interpret that field as autonomous disposition authority.
 
 ## Proposed Data Flow
 
@@ -108,7 +108,15 @@ Output candidate plan record:
   "plan_id": "d3-plan-example",
   "version": 42,
   "created_at": 12.5,
-  "human_authorization_state": "required",
+  "human_authorization_state": "recorded",
+  "metadata": {
+    "configured_human_authorization_state": "recorded",
+    "effective_human_authorization_state": "recorded",
+    "active_plan_owner": "center",
+    "replan_reason": "request_center_replan",
+    "supersedes_plan_id": "d3-plan-previous",
+    "supersedes_plan_version": 41
+  },
   "decision_state": "held_by_hysteresis",
   "assignments": [
     {"target_id": "T01", "resource_id": "R03", "cost": 1.73}
@@ -123,8 +131,9 @@ Output candidate plan record:
 - Unit tests must pass before AirSim adapter tests.
 - Adapter tests should replay a short fixture and verify stable IDs, normalized ranges, and deterministic planner output.
 - No output channel may be connected to vehicle control or hardware control.
-- Every published candidate plan must preserve `human_authorization_state="required"`.
+- Every published candidate plan must preserve the configured `human_authorization_state`; the default remains `"required"`, while record-only AirSim gates may use `"recorded"`.
 - Logs must include `decision_state`, version, total cost, and per-assignment cost breakdown.
+- When main/D4 requests `request_center_replan`, the next D3 plan must increment version and main/runtime must log `replan_reason`, `supersedes_plan_id`, `supersedes_plan_version`, and `active_plan_owner="center"`.
 
 ## Future OR-Tools Path
 

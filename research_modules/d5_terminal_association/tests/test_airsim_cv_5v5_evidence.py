@@ -9,6 +9,7 @@ from d5_terminal_association import (
     TerminalAssociation,
     TerminalObservationBus,
     compute_terminal_stress_metrics,
+    local_visual_tracks_from_offline_yolo_bytetrack,
     local_visual_tracks_from_sim_detections,
     publish_sim_detections_as_local_observations,
     summarize_degradation_case,
@@ -199,6 +200,99 @@ def test_detection_parser_ignores_airsim_truth_identity_fields_online() -> None:
     assert [track.local_track_id for track in tracks] == ["front_rgb_det_0", "front_rgb_det_1"]
     assert all("TGT_TRUE" not in track.local_track_id for track in tracks)
     np.testing.assert_allclose(tracks[0].center_px, np.array([32.0, 44.0]))
+
+
+def test_offline_yolo_bytetrack_adapter_outputs_only_local_visual_track_schema() -> None:
+    tracks = local_visual_tracks_from_offline_yolo_bytetrack(
+        [
+            {
+                "xyxy": (10.0, 20.0, 50.0, 60.0),
+                "track_id": "G-truth-looking-id",
+                "class_name": "uav",
+                "confidence": 0.92,
+                "truth_id": "G1",
+                "global_track_id": "G1",
+                "object_id": "TargetActor_1",
+                "actor_name": "TargetActor_1",
+                "timestamp": 4.0,
+                "track_age": 6,
+            },
+            {
+                "bbox_xyxy": (80.0, 100.0, 110.0, 130.0),
+                "tracker_id": "G-truth-looking-id",
+                "label": "uav",
+                "score": 0.18,
+                "true_global_track_id": "G2",
+                "timestamp": 4.0,
+                "track_age": 1,
+            },
+        ],
+        resource_id="INT-1",
+        camera_id="front_rgb",
+    )
+
+    assert [track.local_track_id for track in tracks] == [
+        "front_rgb/offline_yolo_bytetrack:track:G-truth-looking-id",
+        "front_rgb/offline_yolo_bytetrack:track:G-truth-looking-id#dup1",
+    ]
+    assert all(not hasattr(track, "global_track_id") for track in tracks)
+    assert tracks[0].quality == 0.92
+    assert tracks[1].quality == 0.18
+    assert tracks[0].mot_history_length == 6
+    assert tracks[1].mot_history_length == 1
+    np.testing.assert_allclose(tracks[0].center_px, np.array([30.0, 40.0]))
+
+
+def test_offline_tracker_id_cannot_replace_assigned_global_track_id() -> None:
+    from d5_terminal_association import Assignment, CameraModel, GlobalTrack, TerminalAssociator
+
+    camera = CameraModel(
+        K=np.array(
+            [
+                [160.0, 0.0, 320.0],
+                [0.0, 160.0, 240.0],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=float,
+        ),
+        R=np.eye(3),
+        t=np.zeros(3),
+        image_size=(640, 480),
+        measurement_cov=np.diag([4.0, 4.0]),
+    )
+    assigned = GlobalTrack(
+        global_track_id="G-assigned",
+        position=np.array([0.0, 0.0, 20.0], dtype=float),
+        covariance=np.diag([0.02, 0.02, 0.02]),
+        category="uav",
+        timestamp=5.0,
+    )
+    local_tracks = local_visual_tracks_from_offline_yolo_bytetrack(
+        [
+            {
+                "xyxy": (312.0, 232.0, 328.0, 248.0),
+                "track_id": "G-wrong-tracker-id",
+                "confidence": 0.94,
+                "track_age": 5,
+                "truth_id": "G-other",
+            }
+        ],
+        resource_id="INT-1",
+        camera_id="front_rgb",
+        timestamp=5.0,
+    )
+
+    decision = TerminalAssociator().decide(
+        Assignment("G-assigned", resource_id="INT-1"),
+        [assigned],
+        local_tracks,
+        camera=camera,
+        current_time=5.0,
+    )
+
+    assert decision.decision_state == "locked"
+    assert decision.assigned_global_track_id == "G-assigned"
+    assert decision.local_track_id == "front_rgb/offline_yolo_bytetrack:track:G-wrong-tracker-id"
 
 
 def test_5v5_overlap_bus_metrics_duplicate_risk_and_lock_accuracy() -> None:

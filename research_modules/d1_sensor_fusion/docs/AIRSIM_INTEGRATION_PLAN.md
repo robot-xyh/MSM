@@ -131,25 +131,25 @@ GlobalTrack(
 3. D1 使用 `read_blocks_sensor_observations_jsonl()` 读回观测，并按 `arrival_timestamp` replay。
 4. 分别运行 latency-compensated 与 uncompensated fusion，比较 RMSE、连续性、分级准确性和延迟补偿效果。
 5. 对 N actor 合同，D1 应按输入数组长度输出对应 `GlobalTrack[]`，不依赖 2v2/5v5 固定数量。
-6. 评估结果可交给 D6 汇总；D1 当前仍需补长期 schema version、CSV reader、区域质量摘要和 OOSM replay 计数。
+6. 评估结果可交给 D6 汇总；D1 已提供 replay schema v1/legacy JSONL 兼容、最小 CSV reader、`LatencyAuditSummary` 和轻量 `FusionQualityRegionSummary`，后续仍需与 D6 对齐长期批量 schema、区域时间窗口和协方差增长率窗口。
 
 ## 7. 对 D2-D7 的接口影响
 
 - **D2**: 使用 D1 的 `global_track_id`、协方差、时间戳和 `source_support` 做关联连续性；truth ID 只作为离线标签，不能替代在线 `id_switch_count`。
 - **D3**: 使用 `track_level`、`a95_m`、`measurement_age_s` 和 source diversity 判断分配候选质量；D3 仍负责版本化 `AssignmentPlan` 和 stale plan 拒绝。
-- **D4**: 可消费 `TrackUncertaintySummary` 做态势质量判断；D1 尚未输出区域级主动降级仲裁，最终降级仍由 D4 结合 C2 health、D3 版本和 D5/D7 反馈决定。
+- **D4**: 可消费 `TrackUncertaintySummary`、`LatencyAuditSummary` 和轻量 `FusionQualityRegionSummary` 做态势质量判断；D1 不输出区域级主动降级仲裁，最终降级仍由 D4 结合 C2 health、D3 版本和 D5/D7 反馈决定。
 - **D5**: 可用 D1 的 NED 航迹、协方差、EO bbox/camera metadata lineage 做投影门控；D5 不得改写 `global_track_id`。
-- **D6**: 可统计 D1 RMSE、连续性、分级、latency ablation、source diversity 和 duplicate count；P1 需补批量 schema。
+- **D6**: 可统计 D1 RMSE、连续性、分级、latency ablation、`TrackUncertaintySummary`、`LatencyAuditSummary`、`FusionQualityRegionSummary`、source diversity 和 duplicate count；剩余 P1 是长期批量 schema、区域时间窗口和协方差增长率窗口。
 - **D7**: 只应使用 `stable`/`handover` 航迹作为离线中段导引输入，并根据协方差和 freshness 门控；D1 不提供飞控或自动处置接口。
 
 ## 8. 后续 P1/P2
 
 ### P1
 
-- 固化 `blocks_sensor_observations.jsonl`/未来 `sensor_observations.jsonl` schema version。
-- 增加来自 main/shared runtime 的真实 AirSim CV detection fixture，覆盖 bbox、camera metadata、actor label、timestamp 和 covariance。
-- 补 CSV reader 或 JSONL-to-CSV 转换，便于 D6 与人工审计。
-- 在 `TrackUncertaintySummary` 上补区域质量摘要、协方差增长率、latency 窗口、OOSM replay 计数和 source gap。
+- 已完成 `blocks_sensor_observations.jsonl`/未来 `sensor_observations.jsonl` schema v1、legacy JSONL 兼容、最小 CSV reader/replay、latency/OOSM audit 和轻量区域质量摘要。
+- 增加来自 main/shared runtime 的真实 AirSim CV detection fixture，覆盖 bbox、camera metadata、actor label、timestamp、covariance 和 N actor 输出，并形成真实样本回归。
+- 与 D6 对齐长期批量 JSONL/CSV schema，稳定 `TrackUncertaintySummary[]`、`LatencyAuditSummary` 和 `FusionQualityRegionSummary[]` 字段。
+- 补区域时间窗口、freshness/source-gap 趋势、协方差增长率窗口和更细 NIS 统计。
 - 保持 D1 不直连真实 AirSim runtime bus，由 main/shared runtime 继续拥有 AirSim 启停和日志写出。
 
 ### P2

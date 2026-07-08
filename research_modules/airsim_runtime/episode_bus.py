@@ -7,7 +7,7 @@ writes D6-compatible records plus a per-frame debug snapshot.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass, replace
 import json
 import math
 from pathlib import Path
@@ -25,9 +25,16 @@ from d3_assignment_planner import (
     CostWeights,
     PlannerConfig,
     StalePlanError,
+    apply_terminal_feedback_to_planner_inputs,
     guidance_bindings_from_assignment_plan,
+    prepare_secondary_takeover_plan,
 )
-from d4_distributed_fallback import C2Health, D4ArbitrationAdapter
+from d4_distributed_fallback import (
+    ActiveDegradationArbiter,
+    ActiveDegradationConfig,
+    C2Health,
+    D4ArbitrationAdapter,
+)
 from d5_terminal_association import (
     Assignment as TerminalAssignment,
     CameraModel,
@@ -37,6 +44,7 @@ from d5_terminal_association import (
     TerminalAssociation,
     TerminalConsistencyTracker,
     TerminalObservationBus,
+    annotate_visual_png_handoff,
     camera_model_from_airsim_camera_info,
 )
 from d6_evaluation_metrics import (
@@ -49,11 +57,14 @@ from d6_evaluation_metrics import (
 )
 from d7_proportional_guidance import (
     D4GuidancePermission,
+    D7RuntimeBus,
+    D7RuntimePairInput,
     GuidanceMode,
     GuidanceState,
     compute_pn_command,
     evaluate_terminal_png_contract,
     guidance_mode_from_terminal_contract,
+    summarize_runtime_bus_outputs,
 )
 from integrated_simulation.adapters import (
     d1_tracks_to_d2_detections,
@@ -139,7 +150,13 @@ class MainAirSimEpisodeBus:
             engageable_hits=3,
             engageable_covariance_trace=120.0,
         )
-        planner_config = PlannerConfig(delta=0.2, min_dwell=1.0)
+        planner_config = PlannerConfig(
+            delta=0.2,
+            min_dwell=1.0,
+            human_authorization_state=str(
+                config.metadata.get("main_bus_human_authorization_state", "recorded")
+            ),
+        )
         self.assignment_planner = AssignmentPlanner(
             cost_model=CostModel(
                 weights=CostWeights(
@@ -154,10 +171,20 @@ class MainAirSimEpisodeBus:
             ),
             config=planner_config,
         )
-        self.d4 = D4ArbitrationAdapter()
+        self.d4 = D4ArbitrationAdapter(
+            ActiveDegradationArbiter(
+                ActiveDegradationConfig(
+                    min_dwell_s=0.5,
+                    release_consecutive_consistent_frames=2,
+                    risk_window_size=3,
+                    risk_window_threshold=2,
+                )
+            )
+        )
         self.terminal = TerminalAssociator()
         self.terminal_consistency = TerminalConsistencyTracker()
         self.terminal_bus = TerminalObservationBus()
+        self.d7_runtime_bus = D7RuntimeBus()
         self.collector = MetricsCollector()
         self.current_plan: AssignmentPlan | None = None
         self.previous_plan: AssignmentPlan | None = None
@@ -166,6 +193,11 @@ class MainAirSimEpisodeBus:
         self._last_d4_by_pair: dict[tuple[str, str], Any] = {}
         self._last_d5_by_pair: dict[tuple[str, str], TerminalAssociation] = {}
         self._last_d7_mode_by_pair: dict[tuple[str, str], str] = {}
+        self._pending_center_replan_reason: str | None = None
+        self._pending_secondary_takeover: dict[str, Any] | None = None
+        self._pending_terminal_feedback: list[dict[str, Any]] = []
+        self._last_terminal_feedback_writeback: dict[str, Any] = {}
+        self._last_d7_runtime_summary: dict[str, Any] = {}
         self.ticks: list[MainEpisodeBusTick] = []
 
     def process_frame(self, frame: AirSimFrame) -> MainEpisodeBusTick:
@@ -226,6 +258,13 @@ class MainAirSimEpisodeBus:
                 "guidance_binding_count": len(self.current_bindings),
                 "resource_count": len(resources),
                 "target_count": len(truth_states),
+                "active_plan_owner": None
+                if self.current_plan is None
+                else self.current_plan.metadata.get("active_plan_owner", "center"),
+                "plan_schema": None
+                if self.current_plan is None
+                else self.current_plan.metadata.get("plan_schema"),
+                "terminal_feedback_writeback": self._last_terminal_feedback_writeback,
             },
             d4={
                 "decision_count": len(d4_results),
@@ -252,6 +291,7 @@ class MainAirSimEpisodeBus:
                     for event in d7_events
                     if event.metadata.get("terminal_contract_reject_reason")
                 ],
+                "runtime_bus": self._last_d7_runtime_summary,
             },
             record_counts=self._record_counts(),
         )
@@ -292,6 +332,8 @@ class MainAirSimEpisodeBus:
             "d2_metrics": self.tracker.metrics.summary(),
             "current_plan": None if self.current_plan is None else _plan_summary(self.current_plan),
             "guidance_binding_count": len(self.current_bindings),
+            "last_terminal_feedback_writeback": self._last_terminal_feedback_writeback,
+            "last_d7_runtime_summary": self._last_d7_runtime_summary,
             "last_d4_actions": {
                 f"{resource_id}:{track_id}": result.record.action.value
                 for (resource_id, track_id), result in self._last_d4_by_pair.items()
@@ -348,17 +390,56 @@ class MainAirSimEpisodeBus:
     ) -> bool:
         if not d2_tracks or not resources:
             return False
-        if self.current_plan is not None and timestamp + 1e-9 < self._next_assignment_time_s:
+        forced_replan_reason = self._pending_center_replan_reason
+        secondary_takeover = self._pending_secondary_takeover
+        if forced_replan_reason is None and secondary_takeover is not None:
+            forced_replan_reason = str(
+                secondary_takeover.get("reason") or "d4_degrade_to_secondary"
+            )
+        if (
+            self.current_plan is not None
+            and forced_replan_reason is None
+            and not self._pending_terminal_feedback
+            and timestamp + 1e-9 < self._next_assignment_time_s
+        ):
             return False
 
         target_tracks = d2_tracks_to_target_tracks(d2_tracks, truth_by_id, resources)
         if not target_tracks:
             return False
+        resource_states = resources_to_d3(resources)
+        feedback_writeback = None
+        if self._pending_terminal_feedback:
+            feedback_writeback = apply_terminal_feedback_to_planner_inputs(
+                target_tracks,
+                resource_states,
+                self._pending_terminal_feedback,
+            )
+            target_tracks = list(feedback_writeback.tracks)
+            resource_states = list(feedback_writeback.resources)
+            self._last_terminal_feedback_writeback = _jsonable(feedback_writeback.metadata)
+            self.collector.add_event(
+                EventRecord(
+                    timestamp=timestamp,
+                    event_type="d3_terminal_feedback_writeback",
+                    actor_id="D3",
+                    metadata={
+                        **_jsonable(feedback_writeback.metadata),
+                        "prohibited_edges": _jsonable(feedback_writeback.prohibited_edges),
+                        "hold_resource_ids": list(feedback_writeback.hold_resource_ids),
+                        "updated_target_ids": list(feedback_writeback.updated_target_ids),
+                        "updated_resource_ids": list(feedback_writeback.updated_resource_ids),
+                    },
+                )
+            )
+            self._pending_terminal_feedback = []
+        else:
+            self._last_terminal_feedback_writeback = {"feedback_count": 0}
         previous = self.current_plan
         try:
             plan = self.assignment_planner.plan(
                 target_tracks,
-                resources_to_d3(resources),
+                resource_states,
                 timestamp=timestamp,
                 previous_plan=previous,
                 expected_previous_version=None if previous is None else previous.version,
@@ -366,10 +447,41 @@ class MainAirSimEpisodeBus:
         except StalePlanError:
             plan = self.assignment_planner.plan(
                 target_tracks,
-                resources_to_d3(resources),
+                resource_states,
                 timestamp=timestamp,
                 previous_plan=None,
             )
+        if forced_replan_reason is not None and previous is not None:
+            plan = replace(
+                plan,
+                decision_state="center_replan_accepted",
+                metadata={
+                    **dict(plan.metadata),
+                    "replan_reason": forced_replan_reason,
+                    "supersedes_plan_id": previous.plan_id,
+                    "supersedes_plan_version": previous.version,
+                    "active_plan_owner": "center",
+                },
+            )
+            self._pending_center_replan_reason = None
+        if secondary_takeover is not None and previous is not None:
+            source_node_id = str(
+                secondary_takeover.get("secondary_plan_source_node_id")
+                or secondary_takeover.get("target_node_id")
+                or secondary_takeover.get("selected_coordinator")
+                or "SEC-NORTH"
+            )
+            plan = prepare_secondary_takeover_plan(
+                plan,
+                supersedes_plan=previous,
+                secondary_node_id=source_node_id,
+                takeover_reason=str(
+                    secondary_takeover.get("reason") or "d4_degrade_to_secondary"
+                ),
+                target_node_id="D7-GUIDANCE",
+                lease_expires_at_s=timestamp + max(float(self.config.dt_s) * 4.0, 1.0),
+            )
+            self._pending_secondary_takeover = None
         self.previous_plan = previous
         self.current_plan = plan
         self._next_assignment_time_s = timestamp + max(float(self.config.dt_s), 1e-6)
@@ -396,6 +508,17 @@ class MainAirSimEpisodeBus:
                     "resource_count": plan.resource_count,
                     "target_count": plan.target_count,
                     "decision_state": plan.decision_state,
+                    "human_authorization_state": plan.human_authorization_state,
+                    "replan_reason": plan.metadata.get("replan_reason"),
+                    "supersedes_plan_id": plan.metadata.get("supersedes_plan_id"),
+                    "supersedes_plan_version": plan.metadata.get("supersedes_plan_version"),
+                    "plan_schema": plan.metadata.get("plan_schema"),
+                    "active_plan_owner": plan.metadata.get("active_plan_owner", "center"),
+                    "owner_node_id": plan.metadata.get("owner_node_id"),
+                    "selected_secondary_node_id": plan.metadata.get("selected_secondary_node_id"),
+                    "terminal_feedback_writeback_applied": bool(
+                        feedback_writeback is not None
+                    ),
                 },
             )
         )
@@ -453,6 +576,31 @@ class MainAirSimEpisodeBus:
                 recon_image_cues=recon_cues,
                 frame_id=f"{frame.episode_id}:{frame.frame_index:04d}:{assignment.resource_id}",
             )
+            local_track = _local_track_by_id(scoped_local_tracks, decision.local_track_id)
+            duplicate_risk_hint = bool(
+                cross_view_before.get(decision.assigned_global_track_id)
+                and cross_view_before[
+                    decision.assigned_global_track_id
+                ].duplicate_terminal_lock_risk
+            )
+            decision = annotate_visual_png_handoff(
+                decision,
+                local_track_history=scoped_local_tracks,
+                image_size=camera.image_size,
+                range_to_assigned_track_m=_range_for_terminal_context(
+                    frame,
+                    assignment.resource_id,
+                    d2_by_id.get(assignment.target_id),
+                ),
+                closing_speed_mps=float(self.config.intercept_speed_mps),
+                measurement_age_s=None
+                if local_track is None
+                else max(0.0, timestamp - float(local_track.timestamp)),
+                current_time=timestamp,
+                assignment_consistent=True,
+                current_assigned_global_track_id=assignment.target_id,
+                duplicate_terminal_lock_risk=duplicate_risk_hint,
+            )
             observed_global_track_id = (
                 local_truth_map.get(decision.local_track_id)
                 if decision.local_track_id is not None
@@ -494,6 +642,14 @@ class MainAirSimEpisodeBus:
                 cross_view_association=cross_view_before.get(decision.assigned_global_track_id),
                 metadata={"source": "main_airsim_episode_bus"},
             )
+            self._pending_terminal_feedback.append(
+                _terminal_feedback_metadata(
+                    assignment=assignment,
+                    decision=decision,
+                    consistency=consistency,
+                    local_track=local_track,
+                )
+            )
             context = _TerminalDecisionContext(
                 assignment=assignment,
                 terminal_assignment=terminal_assignment,
@@ -522,6 +678,7 @@ class MainAirSimEpisodeBus:
             return []
         timestamp = float(frame.timestamp)
         d2_by_id = {track.global_track_id: track for track in d2_tracks}
+        resources_by_id = {resource.resource_id: resource for resource in resources}
         cross_view = {
             item.global_track_id: item for item in self.terminal_bus.cross_view_associations()
         }
@@ -550,6 +707,7 @@ class MainAirSimEpisodeBus:
                 c2_health=health,
                 secondary_nodes=secondary_nodes,
                 communication_records=communication_records,
+                coverage_cell=getattr(resources_by_id.get(assignment.resource_id), "coverage_cell", None),
                 resource_id=assignment.resource_id,
                 global_track_id=assignment.target_id,
                 observed_global_track_id=None,
@@ -559,10 +717,27 @@ class MainAirSimEpisodeBus:
                 expected_plan_version=self.current_plan.version,
                 track_version=self.current_plan.version,
                 plan_id=self.current_plan.plan_id,
+                active_plan_owner=str(
+                    self.current_plan.metadata.get("active_plan_owner", "center")
+                ),
+                secondary_plan_id=self.current_plan.plan_id
+                if self.current_plan.metadata.get("active_plan_owner") == "secondary"
+                else None,
+                secondary_plan_version=self.current_plan.version
+                if self.current_plan.metadata.get("active_plan_owner") == "secondary"
+                else None,
+                secondary_plan_active=self.current_plan.metadata.get("active_plan_owner")
+                == "secondary",
+                secondary_plan_source_node_id=self.current_plan.metadata.get("owner_node_id")
+                or self.current_plan.metadata.get("selected_secondary_node_id"),
                 trigger_timestamp=timestamp,
             )
             self.collector.add_event(EventRecord(**result.record.to_event_record_kwargs()))
             self._last_d4_by_pair[(assignment.resource_id, assignment.target_id)] = result
+            if result.record.action.value == "request_center_replan":
+                self._pending_center_replan_reason = result.record.reason
+            if result.record.action.value == "degrade_to_secondary":
+                self._pending_secondary_takeover = result.record.to_event_metadata()
             results.append(result)
         return results
 
@@ -592,6 +767,7 @@ class MainAirSimEpisodeBus:
             for binding in self.current_bindings
         }
         events: list[EventRecord] = []
+        runtime_outputs: list[Any] = []
         for assignment in self.current_plan.assignments:
             pair = (assignment.resource_id, assignment.target_id)
             resource = resources_by_id.get(assignment.resource_id)
@@ -602,8 +778,9 @@ class MainAirSimEpisodeBus:
             if resource is None or track is None or binding is None:
                 continue
             d4_permission = _d4_permission(d4_result)
+            binding_for_d7 = _binding_for_d7(binding)
             contract = evaluate_terminal_png_contract(
-                binding=binding,
+                binding=binding_for_d7,
                 d4_permission=d4_permission,
                 terminal_association=terminal_association,
                 observation=None,
@@ -612,6 +789,33 @@ class MainAirSimEpisodeBus:
             )
             range_m = _range_resource_to_track(resource, track)
             handover_pending = range_m <= float(self.config.intercept_terminal_switch_range_m)
+            runtime_output = self.d7_runtime_bus.evaluate_pair(
+                D7RuntimePairInput(
+                    binding=binding_for_d7,
+                    d4_permission=d4_permission,
+                    terminal_association=terminal_association,
+                    observation=_vision_observation_for_d7(
+                        d5_by_pair.get(pair),
+                        terminal_contexts,
+                        assignment.resource_id,
+                        assignment.target_id,
+                        timestamp,
+                    ),
+                    timestamp_s=timestamp,
+                    resource_id=assignment.resource_id,
+                    handover_pending=handover_pending,
+                    terminal_locked=bool(contract.allowed),
+                    current_speed_mps=max(float(self.config.intercept_speed_mps), 1.0),
+                    intercept_speed_mps=max(float(self.config.intercept_speed_mps), 1.0),
+                    relative_position_ned=_relative_position_resource_to_track(resource, track),
+                    relative_velocity_ned=_relative_velocity_resource_to_track(resource, track),
+                    metadata={
+                        "source": "main_airsim_episode_bus",
+                        "range_m": range_m,
+                    },
+                )
+            )
+            runtime_outputs.append(runtime_output)
             mode = guidance_mode_from_terminal_contract(
                 contract,
                 handover_pending=handover_pending,
@@ -656,6 +860,19 @@ class MainAirSimEpisodeBus:
                 "camera_quality_gate_passed": terminal_association is not None,
                 "los_quality_gate_passed": True,
                 "maneuver_margin_gate_passed": True,
+                "d7_runtime_bus_boundary": runtime_output.metadata.get("boundary"),
+                "d7_runtime_control_context_id": runtime_output.control_context_id,
+                "d7_runtime_visual_png_enabled": runtime_output.visual_png_enabled,
+                "d7_runtime_terminal_switch_allowed": runtime_output.terminal_switch_allowed,
+                "d7_runtime_terminal_switch_reject_reason": (
+                    runtime_output.terminal_switch_reject_reason or None
+                ),
+                "d7_runtime_guidance_law": runtime_output.guidance_law,
+                "d7_runtime_stable_frame_count": runtime_output.stable_frame_count,
+                "d7_runtime_ttc_s": runtime_output.ttc_s,
+                "d7_runtime_los_rate_radps": runtime_output.los_rate_radps,
+                "owner_node_id": runtime_output.owner_node_id,
+                "d4_target_node_id": runtime_output.d4_target_node_id,
             }
             events.append(
                 EventRecord(
@@ -665,6 +882,7 @@ class MainAirSimEpisodeBus:
                     metadata={key: value for key, value in metadata.items() if value is not None},
                 )
             )
+        self._last_d7_runtime_summary = summarize_runtime_bus_outputs(runtime_outputs)
         return events
 
     def _record_frame_links(self, frame: AirSimFrame, observations: list[SensorObservation]) -> None:
@@ -786,7 +1004,7 @@ def _video_link_records(frame: AirSimFrame) -> list[LinkRecord]:
                 timestamp=float(frame.timestamp),
                 source_node_id=owner or "unknown_camera",
                 target_node_id="MAIN-RUNTIME-BUS",
-                link_type="video_metadata",
+                link_type="video_cue",
                 message_type="video_metadata",
                 sent_timestamp=float(frame.timestamp),
                 received_timestamp=float(frame.timestamp),
@@ -942,6 +1160,12 @@ def _plan_summary(plan: AssignmentPlan) -> dict[str, Any]:
         "target_count": plan.target_count,
         "decision_state": plan.decision_state,
         "changed": plan.changed,
+        "plan_schema": plan.metadata.get("plan_schema"),
+        "active_plan_owner": plan.metadata.get("active_plan_owner", "center"),
+        "owner_node_id": plan.metadata.get("owner_node_id"),
+        "selected_secondary_node_id": plan.metadata.get("selected_secondary_node_id"),
+        "supersedes_plan_id": plan.metadata.get("supersedes_plan_id"),
+        "supersedes_plan_version": plan.metadata.get("supersedes_plan_version"),
         "assignments": [
             {
                 "resource_id": assignment.resource_id,
@@ -1085,15 +1309,101 @@ def _d4_permission(d4_result: Any | None) -> D4GuidancePermission:
     if d4_result is None:
         return D4GuidancePermission()
     record = d4_result.record
+    metadata = record.to_event_metadata()
+    action = record.action.value
+    if (
+        action == "degrade_to_secondary"
+        and metadata.get("secondary_takeover_state") == "secondary_plan_active"
+        and metadata.get("secondary_plan_id") is not None
+        and metadata.get("secondary_plan_version") is not None
+    ):
+        action = "request_secondary_assist"
     return D4GuidancePermission(
-        action=record.action.value,
+        action=action,
         mode=record.mode.value,
         reason=record.reason,
-        target_node_id=record.target_node_id,
+        target_node_id=record.target_node_id or metadata.get("secondary_plan_source_node_id"),
         terminal_consistent=record.terminal_consistent,
         requires_human_review=record.requires_human_review,
-        metadata=record.to_event_metadata(),
+        new_plan_id=metadata.get("secondary_plan_id"),
+        new_plan_version=metadata.get("secondary_plan_version"),
+        metadata=metadata,
     )
+
+
+def _binding_for_d7(binding: Any) -> dict[str, Any]:
+    if hasattr(binding, "to_assignment_metadata"):
+        payload = dict(binding.to_assignment_metadata())
+    else:
+        payload = dict(_jsonable(binding))
+    metadata = dict(payload.get("metadata") or {})
+    payload.setdefault("owner_node_id", metadata.get("owner_node_id") or payload.get("source_node_id"))
+    payload.setdefault("vehicle_name", payload.get("resource_actor_name") or payload.get("resource_id"))
+    payload.setdefault("authorization_state", payload.get("human_authorization_state", "recorded"))
+    payload.setdefault("assignment_validity_state", payload.get("assignment_validity_state", "current"))
+    return payload
+
+
+def _vision_observation_for_d7(
+    terminal_association: TerminalAssociation | None,
+    terminal_contexts: Iterable[_TerminalDecisionContext],
+    resource_id: str,
+    target_id: str,
+    timestamp: float,
+) -> dict[str, Any] | None:
+    if terminal_association is None:
+        return None
+    context = next(
+        (
+            item
+            for item in terminal_contexts
+            if item.assignment.resource_id == resource_id and item.assignment.target_id == target_id
+        ),
+        None,
+    )
+    if context is None or context.local_track is None or context.local_track.bbox is None:
+        return None
+    local_track = context.local_track
+    metadata = dict(terminal_association.metadata)
+    return {
+        "timestamp_s": float(local_track.timestamp),
+        "frame_timestamp_s": float(timestamp),
+        "bbox_xyxy": tuple(local_track.bbox),
+        "detection_confidence": float(local_track.quality),
+        "local_track_id": local_track.local_track_id,
+        "assigned_global_track_id": terminal_association.assigned_global_track_id,
+        "camera_id": metadata.get("camera_id"),
+        "measurement_age_s": max(0.0, float(timestamp) - float(local_track.timestamp)),
+        "metadata": {
+            "source": "main_d5_local_visual_track",
+            "measurement_age_s": max(0.0, float(timestamp) - float(local_track.timestamp)),
+            "visual_png_handoff_recommended": metadata.get("visual_png_handoff_recommended"),
+            "visual_png_handoff_blockers": metadata.get("visual_png_handoff_blockers"),
+        },
+    }
+
+
+def _relative_position_resource_to_track(
+    resource: ResourcePlatform,
+    track: Any,
+) -> tuple[float, float, float]:
+    resource_position = np.asarray(resource.position, dtype=float)
+    target_position = np.asarray(
+        [track.state[0], track.state[1], resource_position[2]],
+        dtype=float,
+    )
+    relative = target_position - resource_position
+    return (float(relative[0]), float(relative[1]), float(relative[2]))
+
+
+def _relative_velocity_resource_to_track(
+    resource: ResourcePlatform,
+    track: Any,
+) -> tuple[float, float, float]:
+    resource_velocity = np.asarray(getattr(resource, "velocity", (0.0, 0.0, 0.0)), dtype=float)
+    target_velocity = np.asarray([track.state[2], track.state[3], 0.0], dtype=float)
+    relative = target_velocity - resource_velocity
+    return (float(relative[0]), float(relative[1]), float(relative[2]))
 
 
 def _pn_command_for_pair(
@@ -1145,6 +1455,123 @@ def _range_resource_to_track(resource: ResourcePlatform, track: Any) -> float:
     resource_position = np.asarray(resource.position, dtype=float)
     target_position = np.asarray([track.state[0], track.state[1], resource_position[2]], dtype=float)
     return float(np.linalg.norm(target_position - resource_position))
+
+
+def _range_for_terminal_context(
+    frame: AirSimFrame,
+    resource_id: str,
+    track: Any | None,
+) -> float | None:
+    if track is None:
+        return None
+    resource = next((item for item in frame.resources if item.resource_id == resource_id), None)
+    if resource is None:
+        return None
+    resource_platform = ResourcePlatform(
+        resource_id=resource.resource_id,
+        position=np.asarray(resource.position_ned, dtype=float),
+        coverage_cell=resource.coverage_cell,
+        health_score=resource.health_score,
+        status=resource.status,
+    )
+    return _range_resource_to_track(resource_platform, track)
+
+
+def _terminal_feedback_metadata(
+    *,
+    assignment: Any,
+    decision: TerminalAssociation,
+    consistency: Any | None,
+    local_track: LocalVisualTrack | None,
+) -> dict[str, Any]:
+    consistency_metadata = (
+        consistency.to_metadata()
+        if consistency is not None and hasattr(consistency, "to_metadata")
+        else {}
+    )
+    decision_metadata = dict(decision.metadata)
+    duplicate_risk = bool(
+        consistency_metadata.get("duplicate_terminal_lock_risk")
+        or decision_metadata.get("duplicate_terminal_lock_risk")
+    )
+    friend_conflict = decision.friend_conflict_state != "none"
+    consistency_state = str(consistency_metadata.get("consistency_state", "unknown"))
+    terminal_state = _terminal_feedback_state(
+        decision.decision_state,
+        consistency_state=consistency_state,
+        duplicate_risk=duplicate_risk,
+        friend_conflict=friend_conflict,
+    )
+    recommended_action = _terminal_feedback_action(terminal_state, duplicate_risk)
+    metadata: dict[str, Any] = {
+        "source": "main_airsim_episode_bus_d5_feedback",
+        "target_id": assignment.target_id,
+        "global_track_id": assignment.target_id,
+        "assigned_global_track_id": decision.assigned_global_track_id,
+        "resource_id": assignment.resource_id,
+        "terminal_feedback_state": terminal_state,
+        "recommended_action": recommended_action,
+        "main_action": recommended_action,
+        "d7_gate_action": "hold" if recommended_action != "continue" else "continue",
+        "allow_local_rebind": False,
+        "duplicate_terminal_lock_risk": duplicate_risk,
+        "friend_conflict_state": decision.friend_conflict_state,
+        "decision_state": decision.decision_state,
+        "association_confidence": decision.association_confidence,
+        "ambiguity_score": decision.ambiguity_score,
+        "local_track_id": decision.local_track_id,
+        "visual_png_handoff_recommended": decision_metadata.get(
+            "visual_png_handoff_recommended"
+        ),
+        "visual_png_handoff_blockers": decision_metadata.get(
+            "visual_png_handoff_blockers"
+        ),
+        "measurement_age_s": decision_metadata.get("measurement_age_s"),
+        "consistency": consistency_metadata,
+    }
+    if local_track is not None:
+        metadata["bbox_xyxy"] = list(local_track.bbox) if local_track.bbox is not None else None
+        metadata["local_track_quality"] = local_track.quality
+    if duplicate_risk or friend_conflict:
+        metadata["d4_request"] = "secondary_arbitration"
+        metadata["prohibit_assignment_suggested"] = True
+        metadata["prohibited_edges"] = (
+            {"target_id": assignment.target_id, "resource_id": assignment.resource_id},
+        )
+    elif decision.decision_state == "hold":
+        metadata["operator_hold_suggested"] = True
+    if (
+        recommended_action != "continue"
+        and not bool(decision_metadata.get("visual_png_gate_pass", False))
+    ):
+        metadata["fov_difficulty_suggestion"] = "increase_current_edge"
+    return metadata
+
+
+def _terminal_feedback_state(
+    decision_state: str,
+    *,
+    consistency_state: str,
+    duplicate_risk: bool,
+    friend_conflict: bool,
+) -> str:
+    if duplicate_risk:
+        return "cross_view_conflict"
+    if friend_conflict:
+        return "friend_overlap_hold"
+    if consistency_state == "conflict":
+        return "cross_view_conflict"
+    if decision_state == "hold":
+        return decision_state
+    return "consistent"
+
+
+def _terminal_feedback_action(terminal_state: str, duplicate_risk: bool) -> str:
+    if duplicate_risk or terminal_state in {"cross_view_conflict", "mismatch", "multi_frame_inconsistent"}:
+        return "secondary_arbitration"
+    if terminal_state in {"hold", "friend_overlap_hold"}:
+        return "hold"
+    return "continue"
 
 
 def _non_locked_count(consistency: Any | None) -> int:

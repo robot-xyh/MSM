@@ -19,9 +19,11 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 - `Tracker` 使用 `[x, y, vx, vy]` 状态、4x4 covariance、Joseph update 和确定性状态机。
 - `TrackLifecycleState` 当前枚举为 `tentative -> confirmed -> engageable -> lost -> dropped`，没有 `engaged` 状态。
 - `MetricsRecorder.summary()` 输出 `id_switch_count`、`track_continuity`、`identity_continuity`、`coverage_continuity`、`duplicate_assignment_count`、RMSE、confusion matrix、runtime 和关联风险字段。
-- `AssociationRiskSummaryWindowGenerator` 可从代价矩阵、候选数、cost margin、ID switch delta、continuity 和 D5 disagreement 生成滑窗风险摘要。
+- `AssociationRiskSummaryWindowGenerator` 可从代价矩阵、候选数、cost margin、ID switch delta、duplicate delta、continuity 和 D5 disagreement 生成滑窗风险摘要。
+- `RiskThresholds` 和 `classify_risk_summary()` 已把 D2 风险证据拆为 D4 对齐的软风险与硬风险。
 - `detections_from_d1_global_tracks()` 可把 D1 六维 NED `GlobalTrack` 投影为 D2 二维 `Detection`，保留 `measurement_timestamp`、`arrival_timestamp`、2D covariance 投影、`global_track_id` 和 metadata。
 - `run_airsim_dry_run_association()` 支持 synthetic AirSim-style frame，不 import `airsim`，并在 bus message 中导出当前活动航迹和 `global_track_ids`。
+- `load_airsim_replay_frames()` 可读取离线 JSON/JSONL replay，`run_airsim_replay_association()` 输出 association logs、summary 和风险分层，`run_threshold_sensitivity()` 输出 gate/risk threshold 敏感性矩阵。
 - 测试包含 3 目标 dry-run episode，证明输出数量来自输入集合长度；同时包含 2v2 replan baseline，证明中心/二级切换时可保持稳定 `global_track_id`。
 - D2/D6 必须显式保留 `id_switch_count` 的系统规则已有合同测试：D2 `MetricsRecorder.id_switch_count` 与 D6 episode 统计口径一致。
 
@@ -100,13 +102,25 @@ D2 已实现并测试以下核心指标：
 - `confusion_matrix`：truth-to-track 分布。
 - `runtime_seconds_by_associator`：算法耗时。
 
-风险摘要已经有代码基线：`AssociationRiskSummaryWindowGenerator` 从候选重叠、cost margin、ID switch delta、continuity risk、D5 disagreement 和 metadata 生成 `AssociationRiskSummary`，并进入 `AssociationLogEntry` 与 summary 字段。
+风险摘要已经有代码基线：`AssociationRiskSummaryWindowGenerator` 从候选重叠、cost margin、ID switch delta、duplicate assignment delta、continuity risk、D5 disagreement 和 metadata 生成 `AssociationRiskSummary`，并进入 `AssociationLogEntry` 与 summary 字段。`classify_risk_summary()` 使用 `RiskThresholds` 将软风险（ambiguity/cost margin/candidate overlap/D5 disagreement）和硬风险（IDSW、duplicate、continuity collapse）分层输出，供 D4/D6 回放标定使用。
 
 ### 4.5 N 规模输入与 dry-run bus 输出
 
 D2 已有非 2/5 数量测试：3 目标 synthetic AirSim-style dry-run episode 产生 3 个活动航迹和 3 个 `global_track_ids`。这证明 `global_track_id` 输出数量由输入帧和 Tracker 状态决定，而不是由场景名决定。
 
 2v2 active-degradation/replan 测试是身份合同 baseline：中心到二级节点切换时，如果同一 replay episode 使用同一个 Tracker 状态，D2 应通过关联和 Kalman update 保持同一 physical target 的 `global_track_id`，并保持 `id_switch_count == 0`。
+
+### 4.6 AirSim-style replay 与阈值敏感性 helper
+
+D2 侧 P1 已补离线 replay 读写和阈值敏感性 helper：
+
+- `load_airsim_replay_frames(path)` 读取 JSON/JSONL，支持顶层 frame、`frames` 数组以及混合 episode JSONL 中的 `frame`/`d2_frame`/`airsim_frame` payload。
+- `run_airsim_replay_association(frames, gate_thresholds=...)` 复用现有 Tracker，输出 `ReplayAssociationReport`，其中包含 `id_switch_count`、`track_continuity`、`duplicate_assignment_count`、association logs、当前 `global_track_ids` 和软/硬风险摘要。
+- `write_replay_association_report()` 与 `write_association_logs_jsonl()` 固化 D2-owned report/log 输出格式，便于 main/D6 后续消费。
+- `run_threshold_sensitivity()` 对 gate threshold 与 risk threshold profile 做离线 sweep，逐项输出 `id_switch_count`、`track_continuity`、`duplicate_assignment_count` 和 risk summary。
+- `tests/test_replay.py` 覆盖 5 目标 AirSim-like JSONL replay、变量目标数 sensitivity、软/硬风险分类和无 AirSim SDK import。
+
+该 helper 不连接 AirSim runtime，也不从场景名推断目标数量；真实 ComputerVision 图像/metadata 采集、episode JSONL 生产和跨模块 schema 发布仍由 main/runtime/D6 负责。
 
 ## 5. 部分实现能力
 
@@ -175,7 +189,7 @@ IMM、EKF、UKF 目前是研究计划项，不是已落地代码。D2 的 `Track
 
 - 原生 3D NED tracker：当前 `Detection` 固定二维，`GlobalTrack` 固定四维状态。
 - JPDA/MHT 自动升级：当前由仿真 CLI 或调用方显式选择 associator，`Tracker` 内没有按风险阈值自动切换。
-- 真实 AirSim ComputerVision replay 压测：现有 adapter 是 synthetic/replay-style，不 import AirSim SDK，也不直接消费真实 runtime JSONL。
+- 真实 AirSim runtime 采集链路：D2 已能消费离线 JSON/JSONL AirSim-like replay 并输出 association report/log，但不接 AirSim SDK、不采集 ComputerVision 图像/metadata，也不负责 main/D6 episode JSONL 生产。
 - OOSM 回溯和平滑：当前假设输入帧已按时间整理。
 - py-motmetrics/CLEAR MOT：仅可作为未来离线评估参考，当前未作为依赖或测试路径。
 
@@ -190,6 +204,12 @@ D2 不生成 D3 `AssignmentPlan`，也不修改分配版本。D3 的 versioned p
 ### 7.2 D4
 
 D4 不直接使用 D2 结果切换系统模式，而是把 D2 的 `AssociationRiskSummary`、`id_switch_count`、continuity、duplicate risk、D5 disagreement 和 source/link metadata 作为主动降级证据。D2 只发布风险证据，例如 `association_ambiguity`、`duplicate_track_risk`、`covariance_overlap_rate`；是否请求中心重规划、二级节点接管或分布式协同由 D4 综合 D1/D3/D5 信号仲裁。
+
+2026-07-07 的 main runtime bus / D4 P1 修复后，D2 风险证据在 D4 中应按以下分层解释：
+
+- **软风险证据**：`association_ambiguity`、cost margin risk、candidate overlap、短时 D5 disagreement。它们表示当前硬关联不确定，默认只支持继续观察、提高 D3 迟滞、请求二级节点 cue 或进入离线 JPDA/MHT 对照，不应单帧触发 `request_center_replan`。
+- **硬风险证据**：`id_switch_count` 或窗口 delta 大于 0、`duplicate_assignment_count`/`duplicate_track_risk` 增长、`track_continuity` 低于阈值。这些说明规范 `global_track_id` 连续性已经受损或重复解释已经发生，可作为 D4 主动仲裁的硬证据。
+- **D2 边界**：D2 不知道 D3 plan 是否过期，也不判断 D5 末端锁定是否授权。D2 只把上述证据写入 summary/log；D4 再结合 D1、D3、D5 和通信/二级节点状态选择 `continue_center`、`request_center_replan`、`request_secondary_assist`、`degrade_to_secondary` 或 `degrade_to_distributed`。
 
 ### 7.3 D5
 
@@ -221,15 +241,17 @@ GNN 是硬关联，交叉帧的最优/次优代价 margin 可能很小。一旦�
 
 ### P1
 
-- 用真实或稳定导出的 5v5 AirSim ComputerVision replay JSONL 校准 `AssociationRiskSummaryWindowGenerator` 的窗口长度、cost margin、candidate overlap、D5 disagreement 和 IDSW delta 阈值。
-- 固化 D2 association log schema，确保 D3/D4/D5/D6 可稳定消费 `global_track_id`、risk summary、source node、link type 和 D2/D6 `id_switch_count` 口径。
-- 增加多 seed dense/crossing、短遮挡、漏检、虚警 sweep，明确哪些场景 GNN 足够，哪些场景才需要 JPDA/MHT 对照。
+- D2-owned P1 已完成：`replay.py`、AirSim-like JSON/JSONL replay helper、5 目标 association report/log、threshold sensitivity、软/硬风险分层、D1 adapter、`crossing_dense_5v5` fixture、显式 `id_switch_count`/continuity/duplicate 指标均已落地并有测试覆盖。
+- 剩余 P1 集成输入：由 main/runtime/D6 生产真实或稳定导出的 5v5 AirSim ComputerVision replay JSONL，D2 只消费该离线输入，不直接连接 AirSim SDK。
+- 剩余 P1 评估标签：为真实 replay 固化离线 `truth_id`/truth position 标签，保证 `id_switch_count`、continuity 和 duplicate 只在离线评估中使用真值，不进入在线身份绑定。
+- 剩余 P1 阈值治理：给 gate threshold 与 `RiskThresholds` 增加版本/配置记录，让 association logs、risk summary 和 D6 报告能回放同一阈值口径。
+- 剩余 P1 风险标定：基于多 seed 真实 5v5 AirSim dense/crossing、短遮挡、漏检、虚警 replay 校准软风险误触发率和硬风险漏报率，明确哪些场景 GNN 足够，哪些场景才需要 JPDA/MHT 对照。
 - 保留并扩展非 2/5 数量的合同测试，防止未来把目标数写死到算法或文档。
 
 ### P2
 
 - 决定 D2 是否升级原生 3D NED tracker；若升级，先定义 `[px, py, pz, vx, vy, vz]`、6x6 covariance、三维门控和 D1/D5 投影合同。
-- 建立 Stone Soup optional benchmark，只用于离线对照完整 JPDA/MHT，不进入默认运行路径。
+- 建立 Stone Soup optional benchmark，只用于离线对照完整 JPDA/MHT，不进入默认运行路径；当前轻量 JPDA/MHT 已是可执行对照，不应再被列为 P1 未完成项。
 - 建立 FilterPy optional benchmark，只用于 EKF/UKF/IMM 原型和强机动场景对照。
 - 设计 JPDA/MHT 自动升级策略，但必须包含切换迟滞、D4/D6 阈值认可和回放证据，避免算法抖动。
 

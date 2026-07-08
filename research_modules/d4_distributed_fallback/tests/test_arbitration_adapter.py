@@ -14,6 +14,7 @@ from d4_distributed_fallback import (
     DistributedVisualEvidenceSummary,
     NodeRole,
     ResourceSummary,
+    SecondaryTakeoverPlanState,
     TrackSummary,
     build_communication_summary,
     build_distributed_visual_evidence_summary,
@@ -73,12 +74,13 @@ def _plan(version: int = 3, created_at: float = 9.5) -> SimpleNamespace:
     )
 
 
-def _assignment() -> SimpleNamespace:
+def _assignment(cost_margin: float | None = None) -> SimpleNamespace:
     return SimpleNamespace(
         target_id="G-TGT-001",
         resource_id="INT-01",
         cost=0.3,
         plan_version=3,
+        cost_margin=cost_margin,
     )
 
 
@@ -146,9 +148,30 @@ def test_adapter_maps_low_risk_inputs_to_continue_center_event_metadata() -> Non
     assert metadata["trigger_reason"] == "terminal_consistent_and_risk_low"
     assert metadata["trigger_timestamp"] == 10.0
     assert metadata["decision_timestamp"] == 10.0
-    assert metadata["review_label"] == "unknown"
+    assert metadata["review_label"] == "continue_center"
     assert metadata["global_track_id"] == "G-TGT-001"
     assert metadata["plan_version"] == 3
+
+
+def test_adapter_keeps_soft_margin_and_low_terminal_confidence_as_observe_more() -> None:
+    result = D4ArbitrationAdapter().evaluate(
+        timestamp=10.0,
+        track=_track(),
+        association_result=_association_result(),
+        association_metrics=_metrics(),
+        plan=_plan(),
+        assignment=_assignment(cost_margin=0.02),
+        terminal_association=_terminal(confidence=0.4),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[],
+    )
+
+    assert result.decision.mode == DegradationMode.NONE
+    assert result.decision.action == DegradationAction.CONTINUE_CENTER
+    assert result.decision.reason == "terminal_transient_observe_more"
+    assert result.record.review_label == "observe_more_not_degradation"
+    assert "d3_assignment_cost_margin_low" in result.record.risk_factors
+    assert "d5_terminal_confidence_low" in result.record.risk_factors
 
 
 def test_adapter_holds_for_review_on_verified_friend_conflict_even_if_center_failed() -> None:
@@ -268,6 +291,54 @@ def test_adapter_selects_secondary_when_persistent_mismatch_has_fresh_secondary_
     assert result.decision.mode == DegradationMode.ACTIVE_DEGRADATION
     assert result.decision.action == DegradationAction.DEGRADE_TO_SECONDARY
     assert result.decision.target_node_id == "SEC-1"
+
+
+def test_adapter_exposes_secondary_takeover_pending_and_active_plan_metadata() -> None:
+    kwargs = dict(
+        timestamp=10.0,
+        track=_track(position_sigma_m=60.0),
+        association_metrics=_metrics(ambiguity=0.8, id_switches=1, continuity=0.55),
+        plan=_plan(created_at=5.0),
+        assignment=_assignment(),
+        terminal_association=_terminal(decision_state="reacquire", confidence=0.35, ambiguity=0.9),
+        observed_global_track_id="G-TGT-002",
+        consecutive_non_locked_frames=3,
+        consecutive_mismatch_frames=2,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+    )
+
+    pending = D4ArbitrationAdapter().evaluate(**kwargs)
+    pending_metadata = pending.record.to_event_metadata()
+
+    assert pending.decision.action == DegradationAction.DEGRADE_TO_SECONDARY
+    assert pending.record.secondary_takeover.state == (
+        SecondaryTakeoverPlanState.PENDING_SECONDARY_PLAN
+    )
+    assert pending.record.active_plan_owner == "center"
+    assert pending_metadata["secondary_takeover_state"] == "pending_secondary_plan"
+    assert pending_metadata["secondary_plan_source_node_id"] == "SEC-1"
+    assert pending_metadata["secondary_plan_id"] is None
+    assert pending_metadata["secondary_reassignment_complete"] is False
+    assert pending_metadata["secondary_supersedes_plan_id"] == "d3-plan-test"
+    assert pending_metadata["secondary_supersedes_plan_version"] == 3
+
+    active = D4ArbitrationAdapter().evaluate(
+        **kwargs,
+        secondary_plan_id="secondary-plan-004",
+        secondary_plan_version=4,
+        secondary_plan_active=True,
+    )
+    active_metadata = active.record.to_event_metadata()
+
+    assert active.record.secondary_takeover.state == (
+        SecondaryTakeoverPlanState.SECONDARY_PLAN_ACTIVE
+    )
+    assert active.record.active_plan_owner == "secondary_node"
+    assert active_metadata["secondary_takeover_state"] == "secondary_plan_active"
+    assert active_metadata["secondary_plan_id"] == "secondary-plan-004"
+    assert active_metadata["secondary_plan_version"] == 4
+    assert active_metadata["secondary_reassignment_complete"] is True
 
 
 def test_adapter_normalizes_d5_distributed_visual_evidence_without_d5_import() -> None:

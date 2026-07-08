@@ -188,11 +188,13 @@ def test_episode_scale_counts_use_runtime_counts_not_scenario_name() -> None:
             "resource_count": 3,
             "target_count": 4,
             "camera_count": 6,
+            "metric_scope": "contract_metrics",
             "scenario": {"name": "blocks_cv_5v5"},
         },
     )
 
     assert metrics.scenario_group == "blocks_cv_5v5"
+    assert metrics.metric_scope == "contract"
     assert metrics.drone_count == 3
     assert metrics.resource_count == 3
     assert metrics.target_count == 4
@@ -201,6 +203,51 @@ def test_episode_scale_counts_use_runtime_counts_not_scenario_name() -> None:
     assert metrics.metadata["resource_count"] == 3
     assert metrics.metadata["target_count"] == 4
     assert metrics.metadata["camera_count"] == 6
+    assert metrics.metadata["metric_scope"] == "contract"
+
+
+def test_active_degradation_review_labels_and_posterior_rules() -> None:
+    collector = MetricsCollector()
+    collector.extend_events(
+        [
+            EventRecord(
+                timestamp=1.0,
+                event_type="d4_active_degradation_decision",
+                metadata={"review_label": "necessary"},
+            ),
+            EventRecord(
+                timestamp=2.0,
+                event_type="d4_active_degradation_decision",
+                metadata={"review_label": "false_positive"},
+            ),
+            EventRecord(
+                timestamp=3.0,
+                event_type="d4_active_degradation_decision",
+                metadata={
+                    "pre_window_risk_score": 0.8,
+                    "post_window_risk_score": 0.2,
+                },
+            ),
+            EventRecord(
+                timestamp=4.0,
+                event_type="d4_active_degradation_decision",
+                metadata={"trigger_reason": "operator_probe"},
+            ),
+        ]
+    )
+
+    metrics = collector.compute_episode("active_review_fixture")
+
+    assert metrics.active_degradation_count == 4
+    assert metrics.active_degradation_precision == pytest.approx(2.0 / 3.0)
+    assert metrics.unnecessary_active_degradation_count == 1
+    assert metrics.metadata["active_degradation_reviewed_count"] == 3
+    assert metrics.metadata["active_degradation_necessary_count"] == 2
+    assert metrics.metadata["active_degradation_review_label_counts"] == {
+        "false_positive": 1,
+        "necessary": 1,
+        "risk_reduced": 1,
+    }
 
 
 def test_blocks_2v2_degradation_reassignment_png_metrics() -> None:
@@ -518,6 +565,8 @@ def test_episode_metrics_contains_all_required_names() -> None:
         "consensus_rounds",
         "degraded_completion_rate",
         "active_degradation_count",
+        "active_degradation_precision",
+        "unnecessary_active_degradation_count",
         "passive_failover_count",
         "secondary_node_takeover_count",
         "secondary_reassignment_count",

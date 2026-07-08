@@ -619,7 +619,7 @@ N-v-N stress 三类 D5 证据：
 | D6 评估体系 | 消费 `TerminalAssociation`、候选代价、身份冲突和 cue 使用日志 |
 | D7 比例导引/视觉 PNG | 只能在 D5 `locked`、`assigned_global_track_id` 与 D3/D4 当前计划一致、bbox 稳定、无重复锁定风险且 D4/D3 gate 允许时使用视觉目标；D5 只给 handoff/prelock advisory，不决定导引律 |
 
-D5 可以把 `TerminalAssociation` 回传给 D2/D3/D4 作为置信度和歧义事件，但不能直接触发重新分配或局部换绑。
+D5 可以把 `TerminalAssociation` 和 `TerminalConsistencySummary` 回传给 D2/D3/D4 作为置信度、歧义事件和仲裁建议，但不能直接触发重新分配、主动降级或局部换绑。
 
 D5 与 D7 的硬约束是：D7 视觉 PNG 切换必须同时满足 D5 `locked`、一致的 `assigned_global_track_id`、稳定检测框和 D4/D3 gate。若 D5 输出 `ambiguous/hold/reacquire/hypothesis_only`，或 `annotate_visual_png_handoff()` 给出 `assignment_mismatch`、`duplicate_terminal_lock_risk`、`bbox_area_unstable` 等阻断原因，D7 只能保持现有导引/等待上级计划，不得根据本地相机目标自行改绑。
 
@@ -637,7 +637,7 @@ D4 主动降级策略需要判断“中心或二级节点给出的分配是否�
 | `friend_conflict_state` | `TerminalAssociation` | 是否存在已验证友方或可疑身份重叠 | 防止错误换绑和冲突升级 |
 | `candidate_cost_margin` | `candidate_costs` 派生 | 最佳候选与次优候选代价差 | 判断最佳候选是否足够唯一 |
 | `recon_cue_used` | `TerminalAssociation` | 是否使用二级侦察 cue 降低代价 | 区分“自相机稳定锁定”和“依赖二级 cue” |
-| `terminal_lock_age_s` | 时序状态派生 | 连续 `locked` 且目标版本一致的持续时间 | 判断锁定是否稳定 |
+| `terminal_lock_age_s` | 时序状态派生 | 同一资源持续 `locked` 同一 `assigned_global_track_id` 的时间 | 判断锁定是否稳定 |
 | `consecutive_ambiguous_frames` | 时序状态派生 | 连续歧义帧数 | 触发请求二级 cue 或继续观测 |
 | `consecutive_hold_frames` | 时序状态派生 | 连续保守暂停帧数 | 触发友方冲突或版本冲突上报 |
 | `consecutive_reacquire_frames` | 时序状态派生 | 连续重捕获失败帧数 | 触发 D4 主动仲裁候选 |
@@ -657,6 +657,8 @@ margin 越小，表示候选越难区分。若仅有一个候选但其总代价�
 ### 15.2 TerminalConsistencySummary 字段建议
 
 D5 已在接口层增加如下摘要结构。该结构由连续帧 `TerminalAssociation` 派生，不要求也不允许 D5 直接修改 D3/D4 分配。
+
+截至 2026-07-07，`TerminalConsistencyTracker` 的时序状态 key 固定为 `resource_id + assigned_global_track_id`。`assignment_version` 仍随摘要输出给 D4/D6 审计，但不参与连续窗口 key；因此同一资源持续执行同一全局目标时，D3 滚动发布新的 plan version 不会清空连续 `ambiguous/hold/reacquire/locked` 计数，也不会重置锁定生命周期。若 `assigned_global_track_id` 变化，则进入新的窗口。
 
 ```python
 @dataclass(frozen=True)
@@ -704,7 +706,7 @@ class TerminalConsistencySummary:
 - `competing_global_track_id` 只允许来自 D2 已存在的全局航迹被动比较结果，用于上报仲裁；D5 不能把它写回为新的分配 ID。
 - `lost_lock_event` 和 `lock_reacquired_event` 只表达状态迁移事件，用于 D4/D6 统计丢锁和重捕获耗时。
 - `cross_view_support_count` 与 `duplicate_terminal_lock_risk` 来自 `TerminalObservationBus.cross_view_associations()`，用于把单资源状态与多视角支持/重复锁定风险统一到同一摘要。
-- `recommended_d4_action` 只是仲裁建议，不是执行动作。D4 仍需结合系统级风险和健康状态决定。
+- `recommended_d4_action` 只是仲裁建议，不是执行动作，也不是降级触发器。D4 仍需结合系统级风险和健康状态决定。
 
 ### 15.3 一致性判定规则
 

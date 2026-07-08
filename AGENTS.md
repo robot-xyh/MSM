@@ -45,6 +45,10 @@ Before creating subagents, read `agents/README.md` and the relevant role file:
 
 Subagent rules:
 
+- Strict execution flow for module work: main dispatches the task, the owning subagent edits its own files and runs its own tests, and main only integrates, verifies, and summarizes the result.
+- Main must not directly implement or document D1-D7 module-owned logic, GAP updates, PLAN updates, or review updates unless the user explicitly authorizes an emergency main-owned hotfix.
+- If main performs an emergency cross-module hotfix, main must mark that fact in the final answer and then ask the owning subagent to review and align its README/PLAN/GAP before the work is considered complete.
+- For any module capability change, the owning subagent must check whether its README, PLAN, GAP audit, and review file need updates; if they do, the owning subagent updates them in the same task.
 - Do not keep all D1-D7 open. The concurrent subagent limit is 6.
 - Close completed subagents immediately.
 - Do not store ephemeral agent IDs as long-term truth.

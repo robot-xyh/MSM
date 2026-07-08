@@ -9,10 +9,13 @@ from .active_degradation import (
     D7SecondaryHandoff,
     DegradationAction,
     DegradationMode,
+    SecondaryTakeoverPlanMetadata,
+    SecondaryTakeoverPlanState,
     TerminalAssociationSummary,
     TerminalDecisionState,
     TrackUncertaintySummary,
     build_d7_secondary_handoff,
+    build_secondary_takeover_plan_metadata,
     summarize_secondary_lifecycle,
 )
 from .adapter import (
@@ -28,12 +31,13 @@ from .adapter import (
     build_terminal_association_summary,
     build_track_uncertainty_summary,
 )
-from .cbba import CBBANegotiator
+from .cbba import CBBANegotiator, build_cbba_cost_gap_benchmark
 from .coordinator import FailoverCoordinator
 from .models import (
     Assignment,
     AvailabilityBand,
     C2Health,
+    CBBACostGapBenchmark,
     CommBand,
     CommunicationSummary,
     ConfidenceBand,
@@ -55,6 +59,7 @@ __all__ = [
     "AssociationRiskSummary",
     "AvailabilityBand",
     "C2Health",
+    "CBBACostGapBenchmark",
     "CBBANegotiator",
     "CommBand",
     "CommunicationSummary",
@@ -72,6 +77,8 @@ __all__ = [
     "PayloadKind",
     "ResourceSummary",
     "SecondaryNodeLifecycleSummary",
+    "SecondaryTakeoverPlanMetadata",
+    "SecondaryTakeoverPlanState",
     "TerminalAssociationSummary",
     "TerminalDecisionState",
     "TrackSummary",
@@ -82,6 +89,8 @@ __all__ = [
     "build_communication_summary",
     "build_distributed_visual_evidence_summary",
     "build_d7_secondary_handoff",
+    "build_secondary_takeover_plan_metadata",
+    "build_cbba_cost_gap_benchmark",
     "build_terminal_association_summary",
     "build_track_uncertainty_summary",
     "merge_distributed_visual_evidence_into_tracks",

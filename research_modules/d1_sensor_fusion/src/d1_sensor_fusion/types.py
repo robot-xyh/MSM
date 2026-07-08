@@ -329,6 +329,74 @@ class TrackUncertaintySummary:
         }
 
 
+@dataclass(frozen=True)
+class LatencyAuditSummary:
+    """Fusion replay/latency counters exported for downstream audit."""
+
+    observation_count: int
+    replay_count: int
+    oosm_observation_count: int
+    stale_observation_count: int
+    stale_or_oosm_observation_count: int
+    max_delay_s: float
+    mean_delay_s: float
+    duplicate_observation_count: int
+    max_replay_observation_count: int
+    latency_compensation: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "observation_count": self.observation_count,
+            "replay_count": self.replay_count,
+            "oosm_observation_count": self.oosm_observation_count,
+            "stale_observation_count": self.stale_observation_count,
+            "stale_or_oosm_observation_count": self.stale_or_oosm_observation_count,
+            "max_delay_s": self.max_delay_s,
+            "mean_delay_s": self.mean_delay_s,
+            "duplicate_observation_count": self.duplicate_observation_count,
+            "max_replay_observation_count": self.max_replay_observation_count,
+            "latency_compensation": self.latency_compensation,
+        }
+
+
+@dataclass(frozen=True)
+class FusionQualityRegionSummary:
+    """Coverage-cell quality aggregate derived from track summaries."""
+
+    coverage_cell: str
+    published_at: float
+    track_count: int
+    coarse_track_count: int
+    stable_track_count: int
+    handover_track_count: int
+    stale_track_count: int
+    mean_a95_m: float
+    max_a95_m: float
+    max_measurement_age_s: float
+    mean_handover_readiness: float
+    source_support: dict[str, int]
+    source_gap_modalities: tuple[str, ...] = ()
+    quality_flags: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "coverage_cell": self.coverage_cell,
+            "published_at": self.published_at,
+            "track_count": self.track_count,
+            "coarse_track_count": self.coarse_track_count,
+            "stable_track_count": self.stable_track_count,
+            "handover_track_count": self.handover_track_count,
+            "stale_track_count": self.stale_track_count,
+            "mean_a95_m": self.mean_a95_m,
+            "max_a95_m": self.max_a95_m,
+            "max_measurement_age_s": self.max_measurement_age_s,
+            "mean_handover_readiness": self.mean_handover_readiness,
+            "source_support": dict(self.source_support),
+            "source_gap_modalities": tuple(self.source_gap_modalities),
+            "quality_flags": tuple(self.quality_flags),
+        }
+
+
 def _lineage_scalar(value: Any) -> Any:
     if isinstance(value, np.ndarray):
         return tuple(np.asarray(value).reshape(-1).tolist())

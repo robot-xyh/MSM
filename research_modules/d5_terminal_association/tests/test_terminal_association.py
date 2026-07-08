@@ -109,6 +109,37 @@ def test_decide_locks_assigned_projection_not_nearest_local_track() -> None:
     assert decision.local_track_id == "assigned_visual"
 
 
+def test_decision_metadata_records_geometry_gate_and_measurement_age_fields() -> None:
+    associator = TerminalAssociator()
+    camera = make_camera()
+    assigned = make_track("G-assigned")
+
+    decision = associator.decide(
+        Assignment("G-assigned", resource_id="R-1"),
+        [assigned],
+        [make_local("assigned_visual", (320.0, 240.0))],
+        [],
+        camera,
+        current_time=1.25,
+        frame_id="R-1/front_rgb",
+    )
+
+    selected = decision.metadata["selected_pair"]
+    assert decision.decision_state == "locked"
+    assert selected["global_track_id"] == "G-assigned"
+    assert selected["local_track_id"] == "assigned_visual"
+    assert selected["projected_px"] == [320.0, 240.0]
+    assert selected["bbox_center_px"] == [320.0, 240.0]
+    assert selected["pixel_error_px"] == 0.0
+    assert selected["mahalanobis_d2"] == 0.0
+    assert selected["gate_pass"] is True
+    assert selected["friend_conflict_state"] == "none"
+    assert selected["measurement_age_s"] == 1.25
+    assert decision.metadata["gate_pass_count"] == 1
+    assert decision.metadata["duplicate_terminal_lock_risk"] is False
+    assert decision.metadata["candidate_pair_logs"][0]["gate_pass"] is True
+
+
 def test_ambiguous_when_two_candidates_have_close_costs() -> None:
     associator = TerminalAssociator(AssociationConfig(min_lock_margin=3.0))
     camera = make_camera()

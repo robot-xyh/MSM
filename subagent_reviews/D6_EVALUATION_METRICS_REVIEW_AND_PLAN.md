@@ -2,7 +2,7 @@
 
 **定位**：D6 建立覆盖探测、跟踪、分配、降级、末端配准、通信、D7 gate/intercept 和安全约束的离线评估体系，支持批量实验统计和报告图表。
 **边界**：D6 只消费日志，不参与实时控制，不生成任务、分配、导引、火控、毁伤、自动处置或授权绕过流程。
-**规模规则**：指标按实际 `drone_count/resource_count/target_count/camera_count` 归一化和分组，不从 `2v2/5v5` 场景名推断规模。
+**规模规则**：指标按实际 `drone_count/resource_count/target_count/camera_count` 归一化，并按 `metric_scope/seed/scenario_group/scale` 分组，不从 `2v2/5v5` 场景名推断规模。
 **ID 规则**：D2/D6 必须保留显式 `id_switch_count`。
 
 ## 1. 研究问题
@@ -22,12 +22,13 @@ D6 的目标是把 D1-D7 和 main runtime 的离线日志统一为可比较、�
 - D4：`load_d4_active_degradation_decisions()` 读取 active-degradation CSV。
 - D7：`load_d7_intercept_outputs()`、`load_d7_guidance_timeseries()` 读取 control/guidance/intercept CSV/JSON。
 - 报告：episode CSV、summary CSV、Markdown、PNG 图表和批量统计。
+- main/orchestrator 2026-07-07 已把 D7 真实执行指标合并进正式 `main_episode_bus_metrics.json`，并把执行前合同检查保留为 `main_episode_bus_contract_metrics.json`；D6 只消费这些写盘结果，不参与控制。
 
-部分实现：
+部分实现 / 剩余 P1：
 
-- D4/D5/D7 的 D6 侧消费能力已具备，但完整 integrated episode metrics 仍需要 main runtime 在同一 episode 目录写盘、对齐时间轴并调用多个 loader 合并。
-- D5 多视角和 terminal 指标已实现基础能力，但真实 AirSim episode 是否全量回灌 terminal consistency、validation label、cross-view conflict、duplicate lock 等事件取决于 main/D5 日志接线。
-- D4 主动降级已能统计次数、secondary takeover/reassignment、pending 和窗口 delta；主动降级必要性/精度仍需 review label 或后验判据。
+- D7 real execution 的正式/contract 双口径已完成主线；D6 已补 `metric_scope` 和按 seed/scenario/实际规模分组的报告口径。剩余工作是多 seed、5v5/N-v-N 和非默认 episode 持续采用同一双口径。
+- D6 已具备 D4/D5/D7/Blocks 离线消费能力，但真实 integrated episode 仍需要 main runtime 在同一 episode 目录写盘、对齐时间轴并调用多个 loader 合并。
+- D4 主动降级已能统计次数、secondary takeover/reassignment、pending、窗口 delta、`active_degradation_precision` 和 `unnecessary_active_degradation_count`；必要性/精度只消费真实 episode 写出的 review label 或后验字段，缺 label 不进入 precision 分母。
 
 未实现：
 
@@ -51,6 +52,8 @@ D6 的目标是把 D1-D7 和 main runtime 的离线日志统一为可比较、�
 | 降级 | `consensus_rounds` | 离线记录的协商轮数均值 |
 | 降级 | `degraded_completion_rate` | 降级任务完成比例 |
 | 降级 | `active_degradation_count` | D4 主动降级决策次数 |
+| 降级 | `active_degradation_precision` | 有 review/后验标签的主动降级中必要标签比例 |
+| 降级 | `unnecessary_active_degradation_count` | 有 review/后验标签且判为不必要的主动降级次数 |
 | 降级 | `passive_failover_count` | 被动 failover 次数 |
 | 降级 | `secondary_node_takeover_count` | 二级节点接管/协助次数 |
 | 降级 | `secondary_reassignment_count` | 二级节点重分配次数 |
@@ -229,12 +232,13 @@ D5 不得本地改写 `global_track_id`。D6 只统计末端绑定与中心/评�
 
 - D4 active-degradation CSV loader。
 - 主/被动降级、secondary takeover/reassignment、distributed fallback、D4 reassign pending、触发原因分布。
+- `review_label`、`active_degradation_necessary`、`post_window_outcome`、trigger/decision timestamp、selected coordinator、coverage cell 和 pre/post window 字段离线消费。
 
 仍需 main/D4：
 
 - 持续写出真实 episode 的 D4 决策日志。
-- 增加 `review_label`、`trigger_timestamp`、`decision_timestamp`、`selected_coordinator`、`coverage_cell`。
-- 固定 pre/post 窗口，支持必要性和改善 delta。
+- 在每个 episode 稳定提供 `review_label`、`trigger_timestamp`、`decision_timestamp`、`selected_coordinator`、`coverage_cell`。
+- 固定 pre/post 窗口，支持真实数据中的必要性、改善 delta、decision latency、ID switch delta 和 assignment conflict delta。
 
 ### 5.3 D5
 
@@ -256,10 +260,15 @@ D5 不得本地改写 `global_track_id`。D6 只统计末端绑定与中心/评�
 - gate pass rate、switch allowed/reject、visual PNG switch、takeover rate、mode switch、contract reject、intercept counts。
 - `metadata` 中保留 guidance law、reject reason、D4/D5 state、plan/version。
 
+main/orchestrator 已完成：
+
+- 真实执行后的 `control_commands.csv` 与 `intercept_summary.json` 合并进正式 `main_episode_bus_metrics.json`。
+- 执行前合同检查口径保留为 `main_episode_bus_contract_metrics.json`，用于诊断 gate/reject，而不覆盖执行后拦截结果。
+
 仍需 main/D7：
 
 - 每个 integrated AirSim episode 稳定写出 D7 文件。
-- main 在总评估阶段调用 D6 loader 合并 D7 记录。
+- 在多 seed、5v5/N-v-N 和非默认 episode 中保持正式 metrics 与 raw contract metrics 的双口径，并让 D6 报告继续按 `metric_scope/seed/scenario_group/scale` 分组。
 
 ## 6. 开源工具与外部 benchmark
 
@@ -315,6 +324,7 @@ p95
 ```text
 实验名称：
 episode / batch seed：
+metric_scope：execution / contract / not_recorded
 scenario_group：
 实际规模：
 - drone_count:
@@ -342,6 +352,8 @@ scenario_group：
 
 降级：
 - active_degradation_count:
+- active_degradation_precision:
+- unnecessary_active_degradation_count:
 - passive_failover_count:
 - secondary_node_takeover_count:
 - secondary_reassignment_count:
@@ -398,20 +410,18 @@ D7 gate/intercept：
 
 ## 9. P1 下一步
 
-1. main integrated episode 汇总接线：同一 episode 目录写出 Blocks、D4、D5、D7 和 D6 标准化日志，并合并到一个 `MetricsCollector`。
-2. D4 主动降级必要性：补 review label、trigger/decision timestamp、selected coordinator、coverage cell 和 pre/post 窗口。
-3. D5 末端 AirSim 回灌：补 terminal-center disagreement、cross-view conflict、duplicate lock、friend hold 和 validation label。
-4. D7 多 seed 汇总：稳定输出 guidance/control/intercept 文件并保留 plan/version、D4/D5 state、guidance law、reject reason。
-5. 报告增强：按实际规模字段输出 D4/D5/D7 分组解读。
+1. 真实 episode review/window 写盘：main/D4 稳定写出 review label、trigger/decision timestamp、selected coordinator、coverage cell、pre/post window 和后验 outcome/risk 字段；D6 不从事件名推断必要性。
+2. 多 seed 报告口径：在 2v2、5v5、N-v-N 和非默认 episode 批量运行中持续保留 `metric_scope=execution/contract`、seed/scenario/实际规模字段和 D7 guidance/control/intercept metadata。
+3. 真实 episode 日志完整性：D4/D5/D7/Blocks 产物持续落到同一 episode clock 和目录，D6 汇总阶段调用 loader 合并；D6 继续只消费日志，不参与控制、重规划或导引。
 
 ## 10. P2 下一步
 
 1. 定义 frame-level truth/detection/track 匹配表。
-2. 接入 py-motmetrics 或 TrackEval 作为可选 MOT benchmark。
+2. 接入 TrackEval 或 py-motmetrics 作为可选 MOT benchmark。
 3. 接入 Stone Soup 与 OSPA/GOSPA 作为论文级对照。
-4. 仅在 Blocks JSONL 不足时增加 AirSim 原生 recording parser。
-5. 为长尾指标增加 bootstrap/非参数 CI。
-6. 有真实 SCRIMMAGE schema 和样例后再评估 SCRIMMAGE bridge。
+4. 为长尾指标增加 bootstrap/非参数 CI。
+5. 有真实 SCRIMMAGE schema 和样例后再把 SCRIMMAGE bridge 作为 P3 可选项评估。
+6. 仅在 Blocks JSONL 不足时增加 AirSim 原生 recording parser。
 
 ## 11. 验收命令
 

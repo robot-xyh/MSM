@@ -47,14 +47,15 @@ Sigma_px = J Sigma_w J^T + Sigma_measurement
 
 当前程序已覆盖单机视场内多目标候选、友方 `hold`、二级 cue 作用域和 `global_track_id` 不变式。例如，单机相机中同时存在分配目标、干扰目标、友方目标和未知目标时，D5 通过中心航迹投影、像素马氏门控和候选代价排序选择本地候选，或保守输出 `ambiguous/hold/reacquire`。
 
-当前已实现最小 `TerminalObservationBus` 与 `CrossViewAssociation` 摘要层。对于“无人机 1 看到目标 1/2/3、无人机 2 看到目标 2/3/4”的场景，单元测试验证了：
+当前已实现最小 `TerminalObservationBus`、`CrossViewAssociation` 摘要层，以及完全分布式 metadata-only `TerminalCrossViewFusion` peer evidence。对于“无人机 1 看到目标 1/2/3、无人机 2 看到目标 2/3/4”的场景，单元测试验证了：
 
 - 目标 2/3 可以被汇总为 `("UAV1", "UAV2")` 的多视角支持。
 - 目标 1/4 保持单视角支持，不被错误丢弃。
 - 相同 `global_track_id` 被多个资源同时 `locked` 时，只输出 `duplicate_terminal_lock_risk=True`，不改变 D3/D4 分配。
 - `local_track_id` 在摘要中按 `resource_id/camera_id:local_track_id` 命名空间化，避免不同无人机本地 ID 冲突。
+- `TerminalCrossViewFusion` 在 missing/stale `assigned_global_track_id`、重复锁定、友方冲突或 local/global ID 冲突时输出 `hypothesis_only/hold/ambiguous`，不得输出 `locked`。
 
-完整跨无人机多相机几何融合尚未实现。后续仍需要通过以下信息做跨视场关联：
+完整跨无人机多相机三维几何融合尚未实现。后续几何增强仍需要通过以下信息做跨视场关联：
 
 - D2 已有 `global_track_id` 的时间预测。
 - 每个无人机相机的 `measurement_timestamp`、相机姿态和内参。
@@ -62,7 +63,7 @@ Sigma_px = J Sigma_w J^T + Sigma_measurement
 - 本地观测的像素协方差、MOT 质量和候选代价。
 - 已重投影到目标相机平面的二级侦察 `ReconImageCue`。
 
-建议在当前 `TerminalObservationBus` 之上继续新增 `CrossViewObservation` 与 `TerminalCrossViewFusion`，只做离线跨视场配准和一致性评估。D5 仍不得创建、改写或换绑 `global_track_id`。
+建议在当前 `TerminalObservationBus` 和 metadata-only `TerminalCrossViewFusion` 之上继续新增 `CrossViewObservation` 与几何层 `CrossViewTrackEvidence`，只做离线跨视场配准和一致性评估。D5 仍不得创建、改写或换绑 `global_track_id`。
 
 ## 6. 面向 D4 主动降级的一致性信号
 
@@ -73,6 +74,8 @@ Sigma_px = J Sigma_w J^T + Sigma_measurement
 - `recon_cue_used`，用于区分自相机锁定与依赖二级侦察 cue 的锁定。
 - `terminal_lock_age_s`，用于衡量连续锁定稳定性。
 - 连续 `ambiguous/hold/reacquire` 帧数，用于避免单帧噪声触发仲裁。
+
+2026-07-07 后，连续帧统计按 `resource_id + assigned_global_track_id` 保持，不把同一 assignment pair 的 D3 `assignment_version` 滚动更新当成新目标。因此 D4 可以看到真实的末端视觉连续性，而不是被计划版本号变化打断。D5 的输出仍是 advisory summary，不触发降级、不生成计划、不改写 `global_track_id`。
 
 推荐判定：
 
@@ -137,7 +140,7 @@ D5 在该专项中仍只输出 `LocalVisualTrack`、`TerminalAssociation`、`Ide
 
 ![D5 末端决策时间线与累计曲线](terminal_decision_timeline.png)
 
-上图第一部分展示每一帧的终端决策状态，第二部分展示 `locked/ambiguous/hold/reacquire` 的累计数量。该图用于分析保守策略是否在遮挡、友方重叠和歧义区域主动降级，而不是盲目锁定。
+上图第一部分展示每一帧的终端决策状态，第二部分展示 `locked/ambiguous/hold/reacquire` 的累计数量。该图用于分析保守策略是否在遮挡、友方重叠和歧义区域进入 `hold/ambiguous/reacquire`，并向 D4 提供仲裁建议，而不是盲目锁定或由 D5 触发降级。
 
 ## 10. 基线结果
 
@@ -167,4 +170,4 @@ D5 在该专项中仍只输出 `LocalVisualTrack`、`TerminalAssociation`、`Ide
 
 D5 的目标不是最大化锁定次数，而是避免错误绑定和友方冲突。当前实现默认要求 assignment 版本匹配，并在未授权、版本不一致、短 MOT 历史或低质量检测时输出 `hold/ambiguous`。二级侦察节点 cue 可以提升局部关联的可解释性，但不能成为授权或身份确认的替代品。这使 D5 可以作为 D3/D4 分配计划与 D6 终端评估之间的保守安全门。
 
-跨视场配准是下一阶段能力：它应把多个无人机相机的本地观测共同配准到 D2 已有 `global_track_id`，但不改变 D5 “只报告关联证据、不改写全局 ID、不输出处置动作”的边界。
+跨视场摘要层和 metadata-only peer evidence 已作为 P0 能力落地；下一阶段是多相机三维几何融合和 main/D4/D6 消费闭环。无论后续扩展到何种几何层，D5 都只报告关联证据，不改写全局 ID，也不输出处置动作。

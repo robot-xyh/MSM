@@ -12,6 +12,66 @@ import numpy as np
 from .models import AssociationLogEntry, AssociationResult, AssociationRiskSummary
 
 
+@dataclass(frozen=True, slots=True)
+class RiskThresholds:
+    """Threshold profile used to split soft and hard association risk."""
+
+    profile_name: str = "default"
+    soft_association_ambiguity: float = 0.45
+    soft_candidate_overlap_rate: float = 0.30
+    soft_cost_margin_risk: float = 0.45
+    soft_d5_disagreement_count: int = 1
+    hard_id_switch_delta: int = 1
+    hard_duplicate_assignment_delta: int = 1
+    hard_duplicate_track_risk: float = 0.65
+    hard_track_continuity: float = 0.75
+
+    def to_dict(self) -> dict[str, float | int | str]:
+        return {
+            "profile_name": self.profile_name,
+            "soft_association_ambiguity": self.soft_association_ambiguity,
+            "soft_candidate_overlap_rate": self.soft_candidate_overlap_rate,
+            "soft_cost_margin_risk": self.soft_cost_margin_risk,
+            "soft_d5_disagreement_count": self.soft_d5_disagreement_count,
+            "hard_id_switch_delta": self.hard_id_switch_delta,
+            "hard_duplicate_assignment_delta": self.hard_duplicate_assignment_delta,
+            "hard_duplicate_track_risk": self.hard_duplicate_track_risk,
+            "hard_track_continuity": self.hard_track_continuity,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class RiskBreakdown:
+    """D4-facing interpretation of one D2 risk summary."""
+
+    timestamp: float
+    soft_risk_score: float
+    hard_risk_score: float
+    soft_risk_reasons: tuple[str, ...]
+    hard_risk_reasons: tuple[str, ...]
+    thresholds: RiskThresholds
+
+    @property
+    def has_soft_risk(self) -> bool:
+        return bool(self.soft_risk_reasons)
+
+    @property
+    def has_hard_risk(self) -> bool:
+        return bool(self.hard_risk_reasons)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "timestamp": self.timestamp,
+            "has_soft_risk": self.has_soft_risk,
+            "has_hard_risk": self.has_hard_risk,
+            "soft_risk_score": self.soft_risk_score,
+            "hard_risk_score": self.hard_risk_score,
+            "soft_risk_reasons": list(self.soft_risk_reasons),
+            "hard_risk_reasons": list(self.hard_risk_reasons),
+            "thresholds": self.thresholds.to_dict(),
+        }
+
+
 @dataclass(slots=True)
 class AssociationRiskSummaryWindowGenerator:
     """Generate sliding-window association risk summaries from D2 evidence."""
@@ -30,6 +90,7 @@ class AssociationRiskSummaryWindowGenerator:
         association_result: AssociationResult,
         *,
         id_switch_delta: int = 0,
+        duplicate_assignment_delta: int = 0,
         track_continuity: float = 0.0,
     ) -> AssociationRiskSummary:
         """Return a risk summary using the latest frame plus window history."""
@@ -44,6 +105,7 @@ class AssociationRiskSummaryWindowGenerator:
             "mean_candidate_count": _mean_candidate_count(metadata),
             "cost_margin_risk": _cost_margin_risk(association_result.cost_matrix),
             "id_switch_delta": int(id_switch_delta),
+            "duplicate_assignment_delta": int(duplicate_assignment_delta),
             "continuity_risk": max(0.0, 1.0 - float(track_continuity)),
             "d5_disagreement_count": int(metadata.get("d5_disagreement_count", 0)),
             "source_node_id": association_result.source_node_id
@@ -60,6 +122,9 @@ class AssociationRiskSummaryWindowGenerator:
         candidate_overlap_rate = _mean_float(window, "candidate_overlap_rate")
         cost_margin_risk = _mean_float(window, "cost_margin_risk")
         id_switch_delta_sum = sum(int(item["id_switch_delta"]) for item in window)
+        duplicate_assignment_delta_sum = sum(
+            int(item["duplicate_assignment_delta"]) for item in window
+        )
         continuity_risk = _mean_float(window, "continuity_risk")
         d5_disagreement_count = sum(
             int(item["d5_disagreement_count"]) for item in window
@@ -72,6 +137,7 @@ class AssociationRiskSummaryWindowGenerator:
             float(metadata.get("duplicate_track_risk", 0.0)),
             candidate_overlap_rate,
             min(1.0, id_switch_delta_sum / max(1, self.window_size)),
+            min(1.0, duplicate_assignment_delta_sum / max(1, self.window_size)),
             continuity_risk,
         )
         association_ambiguity = max(
@@ -98,6 +164,8 @@ class AssociationRiskSummaryWindowGenerator:
                 "configured_window_size": self.window_size,
                 "id_switch_delta": int(id_switch_delta),
                 "id_switch_delta_sum": id_switch_delta_sum,
+                "duplicate_assignment_delta": int(duplicate_assignment_delta),
+                "duplicate_assignment_delta_sum": duplicate_assignment_delta_sum,
                 "d5_disagreement_delta": int(
                     metadata.get("d5_disagreement_count", 0)
                 ),
@@ -165,6 +233,7 @@ class MetricsRecorder:
         del timestamp
         self.frame_count += 1
         id_switch_count_before = self.id_switch_count
+        duplicate_assignment_count_before = self.duplicate_assignment_count
         truth_ids = {truth_id for truth_id in truth_ids_present if truth_id is not None}
         for truth_id in truth_ids:
             self.truth_frame_count[truth_id] += 1
@@ -205,6 +274,10 @@ class MetricsRecorder:
             association_result,
             generator=self.risk_summary_generator,
             id_switch_delta=self.id_switch_count - id_switch_count_before,
+            duplicate_assignment_delta=(
+                self.duplicate_assignment_count
+                - duplicate_assignment_count_before
+            ),
             track_continuity=self.track_continuity,
         )
         self._record_risk_summary(risk_summary)
@@ -341,6 +414,7 @@ def _risk_summary_from_result(
     *,
     generator: AssociationRiskSummaryWindowGenerator | None = None,
     id_switch_delta: int = 0,
+    duplicate_assignment_delta: int = 0,
     track_continuity: float = 0.0,
 ) -> AssociationRiskSummary:
     if association_result.risk_summary is not None:
@@ -349,6 +423,7 @@ def _risk_summary_from_result(
         return generator.update(
             association_result,
             id_switch_delta=id_switch_delta,
+            duplicate_assignment_delta=duplicate_assignment_delta,
             track_continuity=track_continuity,
         )
 
@@ -365,6 +440,79 @@ def _risk_summary_from_result(
         ),
         covariance_overlap_rate=float(metadata.get("covariance_overlap_rate", 0.0)),
         metadata=dict(metadata.get("risk_metadata", {})),
+    )
+
+
+def classify_risk_summary(
+    risk_summary: AssociationRiskSummary,
+    *,
+    thresholds: RiskThresholds | None = None,
+) -> RiskBreakdown:
+    """Split a D2 risk summary into D4-aligned soft and hard evidence."""
+
+    active_thresholds = thresholds if thresholds is not None else RiskThresholds()
+    metadata = risk_summary.metadata
+    candidate_overlap_rate = float(metadata.get("candidate_overlap_rate", 0.0))
+    cost_margin_risk = float(metadata.get("cost_margin_risk", 0.0))
+    id_switch_delta = int(metadata.get("id_switch_delta", 0))
+    id_switch_delta_sum = int(metadata.get("id_switch_delta_sum", id_switch_delta))
+    duplicate_assignment_delta = int(metadata.get("duplicate_assignment_delta", 0))
+    duplicate_assignment_delta_sum = int(
+        metadata.get("duplicate_assignment_delta_sum", duplicate_assignment_delta)
+    )
+    track_continuity = float(metadata.get("track_continuity", 1.0))
+    d5_disagreement_delta = int(
+        metadata.get(
+            "d5_disagreement_delta",
+            risk_summary.d5_disagreement_count,
+        )
+    )
+
+    soft_reasons: list[str] = []
+    soft_scores = [
+        risk_summary.association_ambiguity,
+        candidate_overlap_rate,
+        cost_margin_risk,
+    ]
+    if (
+        risk_summary.association_ambiguity
+        >= active_thresholds.soft_association_ambiguity
+    ):
+        soft_reasons.append("association_ambiguity")
+    if candidate_overlap_rate >= active_thresholds.soft_candidate_overlap_rate:
+        soft_reasons.append("candidate_overlap")
+    if cost_margin_risk >= active_thresholds.soft_cost_margin_risk:
+        soft_reasons.append("cost_margin")
+    if d5_disagreement_delta >= active_thresholds.soft_d5_disagreement_count:
+        soft_reasons.append("d5_disagreement")
+        soft_scores.append(1.0)
+
+    hard_reasons: list[str] = []
+    hard_scores = [
+        risk_summary.duplicate_track_risk,
+        max(0.0, 1.0 - track_continuity),
+    ]
+    if id_switch_delta_sum >= active_thresholds.hard_id_switch_delta:
+        hard_reasons.append("id_switch")
+        hard_scores.append(1.0)
+    if (
+        duplicate_assignment_delta_sum
+        >= active_thresholds.hard_duplicate_assignment_delta
+    ):
+        hard_reasons.append("duplicate_assignment")
+        hard_scores.append(1.0)
+    if risk_summary.duplicate_track_risk >= active_thresholds.hard_duplicate_track_risk:
+        hard_reasons.append("duplicate_track")
+    if track_continuity < active_thresholds.hard_track_continuity:
+        hard_reasons.append("continuity_collapse")
+
+    return RiskBreakdown(
+        timestamp=risk_summary.timestamp,
+        soft_risk_score=max(soft_scores) if soft_scores else 0.0,
+        hard_risk_score=max(hard_scores) if hard_scores else 0.0,
+        soft_risk_reasons=tuple(soft_reasons),
+        hard_risk_reasons=tuple(hard_reasons),
+        thresholds=active_thresholds,
     )
 
 

@@ -42,6 +42,8 @@ D3 不负责：
 
 `AssignmentPlanner` 内部记录最新 `plan_id/version`。调用方若传入旧 `previous_plan`，或 `expected_previous_version` 与计划版本不一致，会触发 `StalePlanError`。因此 stale plan 不允许覆盖当前计划。
 
+`PlannerConfig.human_authorization_state` 当前会直接写入 `AssignmentPlan.human_authorization_state`，并同步记录到 `metadata["configured_human_authorization_state"]` 和 `metadata["effective_human_authorization_state"]`。这允许 main runtime 在仿真中使用 `"recorded"` 等记录态授权，而不是让 D3 固定输出 `"required"`。
+
 ### 2.3 滚动重分配与迟滞
 
 每个 planning tick 的处理顺序是：
@@ -85,6 +87,8 @@ and change_count <= max_changes_per_window
 
 `TargetTrack` 支持 `fov_difficulty_by_resource`、`conflict_risk_by_resource`、`feasibility_by_resource`，可由 main 把 D5/D4/D2 的反馈映射进下一轮 D3 输入。`ResourceState` 支持 `status`、`health_score`、`busy_until`、`operator_hold`、`load_penalty`、`capability_class`。这些字段按输入数组长度运行，不依赖 2v2 或 5v5 常量。
 
+`apply_terminal_feedback_to_planner_inputs()` 已把 D5 feedback metadata 映射为下一轮 D3 DTO：duplicate/prohibited/feasibility metadata 写入 `TargetTrack.feasibility_by_resource=False` 并形成禁配边；fov/friend metadata 写入 `TargetTrack.fov_difficulty_by_resource`；friend/hold metadata 写入 `ResourceState.operator_hold=True`。该 helper 始终 `allow_local_rebind=False`，只消费 main/D5 已聚合的 metadata，不自行做视觉身份判断。
+
 ### 2.5 D7 guidance binding
 
 D3 已实现 `guidance_bindings_from_assignment_plan()`：
@@ -102,6 +106,8 @@ D7 PN/PNG gating 的含义是：D7 只能消费当前版本且未被 D4/D5 gate 
 D3 已实现以下 helper：
 
 - `evaluate_terminal_feedback(...)`：把 D5 反馈映射为 `hold`、`replan` 或 `secondary_arbitration`，始终 `allow_local_rebind=False`。
+- `apply_terminal_feedback_to_planner_inputs(...)`：把 D5 duplicate/friend/fov/feasibility metadata 写回下一轮 `TargetTrack[]/ResourceState[]`，让成本矩阵或禁配边实际生效。
+- `prepare_secondary_takeover_plan(...)`：在 D4/main 已选定二级节点后，校验新 plan version 大于被 supersede 的中心 plan，并写入 `secondary_plan_v2`、owner/source node、superseded plan id/version、可选 epoch/lease 和 `allow_local_rebind=False`。
 - `assignment_validity_summary_from_plan(...)`：导出 `AssignmentValiditySummary(plan_age_s, assignment_latency_s, cost_margin, stale_plan_version, duplicate_assignment_count, unassigned_high_threat_count, resource_count, target_count)`。
 - `assignment_records_from_plan(...)`：导出 D6-compatible `AssignmentRecord(timestamp, plan_id, version, resource_id, global_track_id, cost_breakdown, authorization_state, active, truth_id)`。
 - `AirSimDryRunAssignmentAdapter`：接收 synthetic AirSim-style dict/object，不 import AirSim，不控制 Blocks runtime。
@@ -119,39 +125,47 @@ D3 已实现以下 helper：
 - 当前主线是一对一 optional assignment，Hungarian 已能表达中心化 baseline 和非等量 M/N 场景。
 - OR-Tools 依赖未纳入 D3 默认测试环境，贸然加入会影响轻量回归。
 - 复杂约束 schema 尚未固定，包括资源容量、目标需求、备份资源、分组配额、禁配边、时间展开网络和整数代价缩放。
-- D4 主动/被动降级和 D5 末端反馈闭环尚未完全接入 main runtime，过早实现最小费用流会先增加建模复杂度，未必提升当前闭环能力。
+- 当前主线剩余风险集中在真实多 seed/N 规模校准和 D5 feedback 权重阈值标定；过早实现最小费用流会先增加建模复杂度，未必提升当前闭环能力。
 
 计划策略：
 
-- P1/P2 以 optional dependency 接入 OR-Tools。
+- P2/非本轮以 optional dependency 接入 OR-Tools。
 - 无 OR-Tools 环境仍保持 Hungarian/fallback 测试通过。
 - 只有当容量、备份资源、多窗口或区域配额进入真实仿真输入时，才把 Min-Cost Flow 升为可运行后端。
 
-## 4. 尚未实现的闭环
+## 4. 已接入闭环与待校准项
 
-### 4.1 二级节点完整 plan owner/version 闭环
+### 4.1 Secondary takeover owner/version 状态
 
-当前 D3 已能识别并转发 `secondary_plan_v2` schema，并在 D7 binding 中携带二级计划的 `plan_id/version/source_node_id/target_node_id/link_type`。但完整闭环尚未实现：
+当前 D3 已能识别并转发 `secondary_plan_v2` schema，并在 D7 binding 中携带二级计划的 `plan_id/version/source_node_id/target_node_id/link_type`。`prepare_secondary_takeover_plan()` 补齐了 D3 侧 DTO 规则：二级 plan version 必须大于被 supersede 的中心 plan；`source_node_id/owner_node_id/selected_secondary_node_id` 必须来自 D4/main 传入的 secondary node；metadata 记录 `supersedes_plan_id`、`supersedes_plan_version`、`active_plan_owner="secondary"`、可选 leader epoch/lease，且 `allow_local_rebind=False`。
+
+main runtime 已接入 secondary owner/version/source 记录。D3 侧 remaining work 不再是 DTO 或版本补齐，而是随真实多 seed episode 校准这些记录是否在二级接管、中心恢复和 stale 拒绝场景中稳定出现。
+
+D3 边界保持不变：
 
 - D3 不选择 `selected_secondary_node_id`。
-- D3 不维护二级 owner 的租约、leader epoch、接管原因或中心恢复合并状态。
-- 二级计划发布后，谁是 plan owner、哪些版本有效、中心计划如何被二级计划 supersede、中心恢复后如何拒绝旧二级计划，这些仍属 main/D4 的后续集成。
+- D3 不维护二级 owner 的实际租约计时、leader 选举或中心恢复合并状态。
+- 二级计划发布后，哪些 runtime 版本有效、中心恢复后如何拒绝旧二级计划或合并状态，仍属 main/D4 的 runtime policy，不列为 D3 DTO 缺口。
 
-### 4.2 D4 request_center_replan 自动调用
+### 4.2 D4 request_center_replan 中心重规划闭环
 
 D3 的 terminal feedback helper 可以返回 `main_action="replan"` 或 `main_action="secondary_arbitration"`，并在 metadata 中给出 `d4_request`、`d7_gate_action`、禁配边或 `operator_hold` 建议。但当前没有 D3 内部自动调用 D4：
 
 - `request_center_replan` 是否触发，由 main/D4 根据 D3 summary、D5 状态、D2 不确定性和 C2Health 综合决定。
 - D3 不直接发 D4 action，不执行 `degrade_to_secondary` 或 `degrade_to_distributed`。
 - D3 只能提供版本、成本、stale、重复分配、高威胁未分配和 D5 feedback 证据。
+- 当 D4/main 触发 `request_center_replan` 并再次调用 D3 时，D3 会生成新的版本化 `AssignmentPlan`。
+- 当前 main runtime 已把该中心重规划接入 AirSim episode bus：触发重规划后，新计划 metadata/log 记录 `replan_reason`、`supersedes_plan_id`、`supersedes_plan_version` 和 `active_plan_owner="center"`。
+- D3 侧验收重点变为保持版本递增、stale `previous_plan` 拒绝、`human_authorization_state` 配置透传和 D7 binding 当前版本约束不退化。
 
-### 4.3 真实 AirSim runtime 闭环
+### 4.3 真实 AirSim runtime 接线与校准
 
-D3 有 synthetic dry-run adapter，但真实 AirSim Blocks 的 tick-to-plan-to-gate 闭环仍由 main/runtime 接线：
+D3 有 synthetic dry-run adapter，不直接导入 AirSim。真实 AirSim Blocks 的 tick-to-plan-to-gate 闭环由 main/runtime 接线，当前已覆盖 D3 plan/binding/summary/record、D5 feedback writeback、中心重规划 owner/version 和 secondary owner/version 记录。D3 后续重点是校准，而不是再补接口字段：
 
-- main 把 `--drone-count N`、D1/D2 航迹、资源状态、D5 末端反馈转为 D3 输入。
-- D3 输出计划、binding、summary、record。
-- main/D4/D5/D7/D6 消费这些 DTO 并写统一 episode log。
+- 在 2v2、5v5、8v8、非等量 M/N 和 crossing/dense 场景中跑真实多 seed。
+- 检查 D5 feedback writeback 后的 `operator_hold`、`feasibility_by_resource`、`fov_difficulty_by_resource` 是否产生稳定、可解释的重规划结果。
+- 检查 center/secondary plan owner、version、source、supersede metadata 和 D6 assignment records 是否在 episode log 中可稳定聚合。
+- 用 D6 指标回看 D3 参数，特别是 `delta/min_dwell/max_changes_per_window/reassignment_switch_penalty` 与 D5 feedback 权重阈值。
 
 ## 5. 跨模块接口影响
 
@@ -167,6 +181,8 @@ D3 有 synthetic dry-run adapter，但真实 AirSim Blocks 的 tick-to-plan-to-g
 
 推荐顺序是：中心仍可用且 Hungarian 能改善时先 `request_center_replan`；中心计划连续 stale、D5 多帧不一致或 D2/D1 不确定性升高时进入 `degrade_to_secondary`/二级仲裁；二级不可用后再由 D4 进入分布式 fallback。
 
+`request_center_replan` 完成后，main/runtime 已把新中心计划登记为 active owner/version，并记录它 supersede 的旧计划版本；D3 只保证新计划版本化和旧计划拒绝。二级 takeover 完成后，D3 可通过 `prepare_secondary_takeover_plan()` 登记 secondary owner/source、superseded center version 和可选 epoch/lease metadata；main/runtime 已接入 secondary owner/version/source 记录，D4/main 仍负责 secondary node 选择、租约执行、当前 owner 仲裁和中心恢复时的 stale secondary plan 拒绝策略。
+
 ### 5.2 D5 terminal association
 
 D5 是末端视觉配准模块，不是分配模块。D3 文档和 DTO 必须保持以下约束：
@@ -174,7 +190,7 @@ D5 是末端视觉配准模块，不是分配模块。D3 文档和 DTO 必须保
 - D5 不重新分配目标。
 - D5 不创建、不改写、不换绑 `global_track_id`。
 - D3 对 D5 的输入只发布“资源当前应关注哪个全局目标”的版本化 assignment。
-- D5 反馈只能被 main 映射为下一轮 D3 的 `operator_hold`、`feasibility_by_resource`、`fov_difficulty_by_resource` 或 D4/D7 gate，不允许本地视觉直接改写 assignment。
+- D5 反馈只能通过 main/D3 DTO 映射为下一轮 D3 的 `operator_hold`、`feasibility_by_resource`、`fov_difficulty_by_resource` 或 D4/D7 gate，不允许本地视觉直接改写 assignment。D3 侧 `apply_terminal_feedback_to_planner_inputs()` 已提供该映射，main/runtime 已在 episode bus 中调用和记录；后续 D3 工作是长期标定 `fov_difficulty`、禁配边、hold/replan/secondary_arbitration 阈值和迟滞参数的相互影响。
 
 ### 5.3 D7 PN/PNG gating
 
@@ -207,18 +223,14 @@ P1 集成时，main 应保证：
 
 ### P1
 
-- main/runtime 接线：把 AirSim/point-mass episode 中的 tracks/resources/D5 feedback 转为 D3 输入，并记录 D3 plan/binding/summary/record。
-- D4 主动降级消费：由 D4/main 根据 `AssignmentValiditySummary`、C2Health、D5 多帧一致性和 D2 不确定性决定 `request_center_replan`、`degrade_to_secondary` 或 `degrade_to_distributed`。
-- D5 feedback 闭环：main 消费 `evaluate_terminal_feedback()` metadata，写回下一轮 `ResourceState.operator_hold`、`TargetTrack.feasibility_by_resource`、`TargetTrack.fov_difficulty_by_resource` 和 D7 gate。
-- D7 gating 集成测试：验证 stale/revoked/hold/reassigned binding、D4 action 和 D5 lock 状态共同阻断或允许 PN/PNG。
-- D6 指标记录：持续统计 `resource_count`、`target_count`、`stale_plan_version`、`duplicate_assignment_count`、`unassigned_high_threat_count`、`reassignment_count`、`secondary_arbitration_count`。
+- 真实多 seed 校准：在 AirSim/point-mass 2v2、5v5、8v8、非等量 M/N、crossing/dense 场景中验证 D3 plan/binding/summary/record、D5 feedback writeback、center replan owner/version/source 和 secondary owner/version/source 记录稳定可聚合。
+- D5 feedback 权重阈值长期标定：基于 D6 records 扫描 `fov_difficulty_by_resource`、`feasibility_by_resource`、duplicate/friend/hold/reacquire 状态、`delta/min_dwell/max_changes_per_window/reassignment_switch_penalty`，收敛 hold/replan/secondary_arbitration 触发阈值。
+- 合同保持回归：D7 只接受当前有效 binding/version；D5 不本地 rebind 或改写 `global_track_id`；`AssignmentPlan` 继续版本化并拒绝 stale previous plan；D6 assignment record export 字段保持兼容。
 
 ### P2
 
-- 完整 secondary plan owner/version 闭环：由 D4/main 定义二级 owner、epoch、租约、版本 supersede、中心恢复合并和 stale secondary plan 拒绝。
 - OR-Tools Min-Cost Flow 可选后端：实现容量、备份资源、禁配边、分组配额或多窗口约束，并保持 Hungarian 为默认轻量路径。
-- 多规模参数扫描：覆盖 2v2、5v5、8v8、非等量 M/N、目标交叉和视场混叠场景，扫描 `delta/min_dwell/max_changes_per_window/reassignment_switch_penalty`。
-- D3-D4-D5-D7 联合回归：验证 D5 不一致不会触发本地 rebind，D4 降级 action 会阻断 D7 terminal PNG，D3 stale plan 不能覆盖新版本。
+- 大规模参数扫描：扩展到 10x10、20x20 和更高密度混叠场景，形成 D5 feedback 权重、迟滞参数和 assignment quality 的长期对照表。
 
 ## 8. 验收命令
 

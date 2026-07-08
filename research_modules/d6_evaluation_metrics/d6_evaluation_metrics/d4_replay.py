@@ -55,10 +55,73 @@ def _active_degradation_metadata(
         "trigger_reason": _optional_text(
             row.get("trigger_reason") or row.get("reason") or row.get("failover_reason")
         ),
+        "review_label": _optional_text(
+            row.get("review_label")
+            or row.get("active_degradation_review_label")
+            or row.get("degradation_review_label")
+        ),
+        "active_degradation_necessary": _optional_bool(
+            row.get("active_degradation_necessary")
+            or row.get("degradation_necessary")
+            or row.get("was_necessary")
+        ),
+        "post_window_outcome": _optional_text(
+            row.get("post_window_outcome")
+            or row.get("post_active_outcome")
+            or row.get("review_outcome")
+        ),
+        "trigger_timestamp_s": _first_float(
+            row,
+            "trigger_timestamp_s",
+            "trigger_timestamp",
+            "trigger_time_s",
+        ),
+        "decision_timestamp_s": _first_float(
+            row,
+            "decision_timestamp_s",
+            "decision_timestamp",
+            "decision_time_s",
+        ),
+        "selected_coordinator": _optional_text(
+            row.get("selected_coordinator")
+            or row.get("selected_coordinator_id")
+            or row.get("coordinator_id")
+        ),
+        "coverage_cell": _optional_text(row.get("coverage_cell")),
         "target_node_id": _optional_text(row.get("target_node_id")),
         "terminal_consistent": _optional_bool(row.get("terminal_consistent")),
         "risk_factors": _split_text(row.get("risk_factors")),
+        "risk_reduction": _first_float(
+            row,
+            "risk_reduction",
+            "risk_reduction_score",
+            "post_window_risk_reduction",
+        ),
+        "pre_window_risk_score": _first_float(
+            row,
+            "pre_window_risk_score",
+            "pre_active_risk_score",
+            "risk_score_before",
+        ),
+        "post_window_risk_score": _first_float(
+            row,
+            "post_window_risk_score",
+            "post_active_risk_score",
+            "risk_score_after",
+        ),
         "fallback_type": _optional_text(row.get("fallback_type")),
+        "pre_window_start_s": _first_float(
+            row,
+            "pre_window_start_s",
+            "pre_window_start",
+        ),
+        "pre_window_end_s": _first_float(row, "pre_window_end_s", "pre_window_end"),
+        "post_window_start_s": _first_float(
+            row,
+            "post_window_start_s",
+            "post_window_start",
+        ),
+        "post_window_end_s": _first_float(row, "post_window_end_s", "post_window_end"),
         "active_window_start_s": _first_float(
             row,
             "active_window_start_s",

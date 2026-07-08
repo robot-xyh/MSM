@@ -103,8 +103,8 @@ UAV2 camera sees: target 2, target 3, target 4
 |------|----------|
 | OpenCV `projectPoints` | 已用于单相机投影；OpenCV 不可用时退回针孔模型。当前不做真实 calibration、`solvePnP`、PnP RANSAC 或 bundle adjustment。 |
 | AirSim `simGetDetections` | 已有 dry-run bbox adapter，兼容 `box2D`、`bbox_xyxy`、`xyxy` 等 fixture/schema。在线转换忽略 `object_id`、`actor_name`、actor truth ID。 |
-| YOLO | 仅兼容常见输出 schema；D5 不加载权重、不运行 detector、不管理 GPU 或 class map。 |
-| ByteTrack / BoT-SORT / Deep SORT | 仅作为未来本地 MOT 来源；当前没有 tracker 状态、ReID embedding、遮挡恢复、IDSW/IDF1 统计。 |
+| YOLO / ByteTrack | 已有离线 schema adapter，可把 `xyxy/bbox_xyxy/class_name/confidence/track_id/tracker_id` 转为 `LocalVisualTrack`，并忽略 truth/global 字段。D5 不加载权重、不运行 detector/tracker、不管理 GPU 或 class map。 |
+| BoT-SORT / Deep SORT | 仅作为未来本地 MOT 来源；当前没有 tracker 状态、ReID embedding、遮挡恢复、IDSW/IDF1 统计。 |
 | ROS 2 `tf2/message_filters` | 只是未来坐标变换和时间同步方案；D5 当前不启动 ROS graph，不订阅 topic。 |
 | OpenDroneID / MAVLink signing / DDS Security | 仅通过 `IdentityClaim` 抽象表达仿真身份声明；未接真实报文、密钥、证书或白名单。 |
 | AprilTag | 仅作为未来实验室合作目标标识方案；当前没有图像 detector 或 tag ID 到平台身份的可信映射。 |
@@ -486,7 +486,9 @@ D5 是 D4 主动降级的重要观测源，但不是降级决策者。D4 需要�
 - `friend_conflict_state="verified_friend_overlap"` 连续出现：上报冲突并保持 `hold`。
 - 同一 `global_track_id` 被多个资源 `locked` 且计划不允许多资源协同：上报重复锁定风险。
 
-无论 D4 是否决定降级到二级节点或分布式协商，D5 都只能输出视觉配准和身份确认证据，不得直接生成新 `AssignmentPlan`，不得选择主备资源，不得改写 `global_track_id`。
+2026-07-07 代码状态：`TerminalConsistencyTracker` 的连续窗口按 `resource_id + assigned_global_track_id` 维护，`assignment_version` 只作为摘要审计字段输出，不作为窗口 key。因此 D3 对同一资源/目标滚动发布新的 plan version 时，不会清空 D5 的连续 `ambiguous/hold/reacquire/locked` 计数；只有 `assigned_global_track_id` 实际变化才进入新的窗口。
+
+无论 D4 是否决定降级到二级节点或分布式协商，D5 都只能输出视觉配准、身份确认和 advisory summary，不得直接生成新 `AssignmentPlan`，不得选择主备资源，不得触发降级动作，不得改写 `global_track_id`。
 
 ---
 
@@ -495,9 +497,9 @@ D5 是 D4 主动降级的重要观测源，但不是降级决策者。D4 需要�
 D7 负责末端视觉比例导引或 LOS 角速率导引时，必须以 D5 的保守锁定结果为前置条件。接口原则：
 
 1. 只有 `TerminalAssociation.decision_state == "locked"`，且 `assigned_global_track_id` 与 D3/D4 当前 AssignmentPlan 一致时，D7 才能考虑该视觉目标作为 `visual PN / LOS` 输入。
-2. 视觉 PNG 切换还必须满足 bbox 连续稳定、无友方冲突、无重复终端锁定风险、检测延迟与机动裕度可接受，并通过 D4/D3 gate。
+2. 视觉 PNG 切换还必须满足 bbox 连续稳定、无友方冲突、无重复终端锁定风险、LOS rate 可用、measurement age 新鲜、检测延迟与机动裕度可接受，并通过 D4/D3 gate。
 3. D7 输入应包含 `assigned_global_track_id`、`resource_id`、`local_track_id`、图像中心、LOS 角速率、时间戳、置信度和 D5 handoff/prelock metadata。
-4. 若 D5 输出 `ambiguous/hold/reacquire/hypothesis_only/mismatch`，或 `annotate_visual_png_handoff()` 给出 `assignment_mismatch`、`duplicate_terminal_lock_risk`、`bbox_area_unstable` 等阻断原因，D7 只能进入保持、继续观测或等待上级计划更新的状态，不能自行选择另一个本地目标。
+4. 若 D5 输出 `ambiguous/hold/reacquire/hypothesis_only/mismatch`，或 `annotate_visual_png_handoff()` 给出 `assignment_mismatch`、`duplicate_terminal_lock_risk`、`bbox_area_unstable`、`measurement_age_stale`、`los_rate_unavailable` 等阻断原因，D7 只能进入保持、继续观测或等待上级计划更新的状态，不能自行选择另一个本地目标。
 5. D7 严禁根据本地相机“更近”或“更清晰”的目标直接改绑 `global_track_id`。
 6. 若二级侦察 cue 参与锁定，D7 应记录 `recon_cue_used=True`，用于 D6 评估 cue 依赖和误锁风险。
 
@@ -514,6 +516,8 @@ VisualLockForGuidance
 - bearing_rate
 - association_confidence
 - measurement_timestamp
+- measurement_age_s
+- visual_png_handoff_blockers
 - camera_id / frame_id
 - recon_cue_used
 ```
@@ -526,11 +530,11 @@ VisualLockForGuidance
 
 AirSim Blocks 阶段一适配应保持离线/仿真边界：
 
-- 视觉输入优先来自 `simGetDetections` 或离线检测器输出的检测框，再归一化为 `LocalVisualTrack`。
+- 视觉输入优先来自 `simGetDetections` 或离线检测器/tracker 输出的检测框，再归一化为 `LocalVisualTrack`；YOLO/ByteTrack adapter 只做 schema 转换，不运行实际依赖。
 - 相机输入必须包含相机内参、相机位姿、图像时间戳和图像尺寸，转换为 D5 `CameraModel`。
 - AirSim 默认不要求保存 PNG。若主程序选择保存图像，只能作为离线复盘和可视化，不应成为 D5 逻辑依赖。
 - `actor/object_name` 可以作为仿真真值辅助评估 `association_correct`，用于 D6 指标计算和测试断言。
-- 正式 D5 关联逻辑不能依赖 `actor/object_name` 作弊。运行时配准必须基于 `GlobalTrack` 投影、局部检测框、时间戳、相机姿态、协方差门控、身份声明和 cue。
+- 正式 D5 关联逻辑不能依赖 `actor/object_name`、`truth_id` 或 `global_track_id` 输入字段作弊。运行时配准必须基于 `GlobalTrack` 投影、局部检测框、时间戳、相机姿态、协方差门控、身份声明和 cue。
 - Blocks 中同一目标在不同相机下可能产生不同检测框和本地 ID，必须通过 `global_track_id` 投影门控和跨视角证据合并处理。
 - 不调用 AirSim 控制 API，不输出控制量、拦截点、毁伤判断或自动处置动作。
 
@@ -539,6 +543,9 @@ AirSim Blocks 阶段一适配应保持离线/仿真边界：
 ```text
 AirSim detection bbox
 -> LocalVisualTrack(resource_id, camera_id, frame_id, center_px, bbox, timestamp)
+
+Offline YOLO/ByteTrack row
+-> LocalVisualTrack(local_track_id namespaced by camera/source tracker id)
 
 AirSim camera metadata
 -> CameraModel(K, R_cw, t_cw, image_size, measurement_cov)
@@ -549,6 +556,14 @@ D2 GlobalTrack
 optional actor/object_name
 -> evaluator-only truth label, never used in association decision
 ```
+
+---
+
+### 11.1 当前 P1 补齐状态与剩余聚焦
+
+D5 侧 P1 已补齐项包括：geometry log fields（projected pixel、bbox center、pixel error、Mahalanobis、gate pass、measurement age、friend conflict、selected pair、duplicate-risk advisory）、`TerminalConsistencySummary` 按 `resource_id + assigned_global_track_id` 维护连续窗口、D4 advisory evidence、D7 visual PNG handoff/prelock blockers、AirSim truth ID 在线隔离，以及 YOLO/ByteTrack 离线 schema adapter。上述输出都是 evidence 或 adapter，不赋予 D5 分配、授权、降级或导引控制权。
+
+剩余 P1 聚焦真实图像 detector/tracker 输入链路和多 seed 阈值校准。剩余 P2 聚焦 BoT-SORT/Deep SORT/ReID 评估、OpenDroneID Core/MAVLink signing/DDS Security/AprilTag 的真实 `IdentityClaim` adapter、OpenCV calibration/`solvePnP`、ROS 2 `tf2/message_filters` 和后续三维几何验证。在线 D5 仍不得使用 AirSim truth ID 或 tracker ID 生成、改写、换绑 `global_track_id`。
 
 ---
 

@@ -33,6 +33,9 @@ class VisualPngHandoffConfig:
     max_bbox_area_cv: float = 0.30
     min_bbox_area_ratio: float = 0.0008
     max_detection_latency_s: float = 0.35
+    max_measurement_age_s: float = 0.35
+    require_los_rate: bool = True
+    max_los_rate_px_s: float | None = None
     min_time_to_go_s: float = 0.60
     min_d7_maneuver_margin: float = 0.0
     stable_confidence: float = 0.60
@@ -67,8 +70,12 @@ def annotate_visual_png_handoff(
     range_to_assigned_track_m: float | None = None,
     closing_speed_mps: float | None = None,
     detection_latency_s: float | None = None,
+    measurement_age_s: float | None = None,
+    los_rate_px_s: Iterable[float] | np.ndarray | None = None,
+    current_time: float | None = None,
     d7_maneuver_margin: float | None = None,
     assignment_consistent: bool = True,
+    current_assigned_global_track_id: str | None = None,
     duplicate_terminal_lock_risk: bool = False,
     config: VisualPngHandoffConfig | None = None,
 ) -> TerminalAssociation:
@@ -81,8 +88,31 @@ def annotate_visual_png_handoff(
     """
 
     cfg = config or VisualPngHandoffConfig()
+    history = tuple(local_track_history)
+    if current_assigned_global_track_id is not None:
+        assignment_consistent = (
+            assignment_consistent
+            and current_assigned_global_track_id == association.assigned_global_track_id
+        )
+    measurement_age_s = _resolved_measurement_age_s(
+        history,
+        association.local_track_id,
+        current_time=current_time,
+        measurement_age_s=measurement_age_s,
+        detection_latency_s=detection_latency_s,
+    )
+    los_rate_tuple = _resolved_los_rate_px_s(history, association.local_track_id, los_rate_px_s)
+    los_rate_norm = _los_rate_norm(los_rate_tuple)
+    handoff_blockers = _handoff_blockers(
+        association=association,
+        assignment_consistent=assignment_consistent,
+        duplicate_terminal_lock_risk=duplicate_terminal_lock_risk,
+        measurement_age_s=measurement_age_s,
+        los_rate_norm_px_s=los_rate_norm,
+        config=cfg,
+    )
     stability = bbox_area_stability(
-        local_track_history,
+        history,
         image_size=image_size,
         local_track_id=association.local_track_id,
         config=cfg,
@@ -90,11 +120,6 @@ def annotate_visual_png_handoff(
     range_band = range_band_for_handoff(range_to_assigned_track_m, cfg)
     time_to_go_s = _time_to_go(range_to_assigned_track_m, closing_speed_mps)
 
-    blocked_reason = _blocked_reason(
-        association=association,
-        assignment_consistent=assignment_consistent,
-        duplicate_terminal_lock_risk=duplicate_terminal_lock_risk,
-    )
     timing_ok = _timing_ok(
         time_to_go_s=time_to_go_s,
         detection_latency_s=detection_latency_s,
@@ -104,9 +129,9 @@ def annotate_visual_png_handoff(
 
     handoff_recommended = False
     prelock_recommended = False
-    reason = blocked_reason or stability.reason
+    reason = handoff_blockers[0] if handoff_blockers else stability.reason
 
-    if blocked_reason is None and stability.stable:
+    if not handoff_blockers and stability.stable:
         if range_band == "far_prepare":
             prelock_recommended = True
             reason = "far_range_bbox_area_stable_prepare"
@@ -123,7 +148,7 @@ def annotate_visual_png_handoff(
             reason = "inside_min_range_stable_evaluate_immediately" if timing_ok else "inside_min_range_timing_not_ready"
         else:
             reason = "range_outside_visual_handoff_window"
-    elif blocked_reason is None and range_band == "near_priority":
+    elif not handoff_blockers and range_band == "near_priority":
         reason = "near_range_bbox_unstable_keep_radar_pn"
 
     metadata = {
@@ -132,6 +157,8 @@ def annotate_visual_png_handoff(
         "visual_png_handoff_recommended": handoff_recommended,
         "visual_png_prelock_recommended": prelock_recommended,
         "handoff_reason": reason,
+        "visual_png_gate_pass": handoff_recommended,
+        "visual_png_handoff_blockers": list(handoff_blockers),
         "recommended_range_band": range_band,
         "bbox_stability_score": stability.bbox_stability_score,
         "bbox_area_stability_score": stability.bbox_stability_score,
@@ -151,7 +178,20 @@ def annotate_visual_png_handoff(
         "closing_speed_mps": closing_speed_mps,
         "time_to_go_s": time_to_go_s,
         "detection_latency_s": detection_latency_s,
+        "measurement_age_s": measurement_age_s,
+        "measurement_age_ok": _measurement_age_ok(measurement_age_s, cfg),
+        "los_rate_px_s": list(los_rate_tuple) if los_rate_tuple is not None else None,
+        "los_rate_norm_px_s": los_rate_norm,
+        "los_rate_available": los_rate_tuple is not None,
+        "los_rate_ok": _los_rate_ok(los_rate_norm, cfg),
+        "bbox_gate_pass": stability.stable,
+        "decision_locked_gate_pass": association.decision_state == "locked",
+        "assignment_consistency_gate_pass": assignment_consistent,
+        "friend_conflict_gate_pass": association.friend_conflict_state == "none",
+        "duplicate_risk_gate_pass": not duplicate_terminal_lock_risk,
+        "timing_gate_pass": timing_ok,
         "d7_maneuver_margin": d7_maneuver_margin,
+        "current_assigned_global_track_id": current_assigned_global_track_id,
         "assignment_consistent": assignment_consistent,
         "duplicate_terminal_lock_risk": duplicate_terminal_lock_risk,
     }
@@ -272,23 +312,116 @@ def _time_to_go(
     return float(range_to_assigned_track_m) / float(closing_speed_mps)
 
 
-def _blocked_reason(
+def _handoff_blockers(
     *,
     association: TerminalAssociation,
     assignment_consistent: bool,
     duplicate_terminal_lock_risk: bool,
-) -> str | None:
+    measurement_age_s: float | None,
+    los_rate_norm_px_s: float | None,
+    config: VisualPngHandoffConfig,
+) -> tuple[str, ...]:
+    blockers: list[str] = []
     if association.decision_state != "locked":
-        return f"decision_not_locked:{association.decision_state}"
+        blockers.append(f"decision_not_locked:{association.decision_state}")
     if association.friend_conflict_state != "none":
-        return f"friend_conflict:{association.friend_conflict_state}"
+        blockers.append(f"friend_conflict:{association.friend_conflict_state}")
     if not assignment_consistent:
-        return "assignment_mismatch"
+        blockers.append("assignment_mismatch")
     if duplicate_terminal_lock_risk:
-        return "duplicate_terminal_lock_risk"
+        blockers.append("duplicate_terminal_lock_risk")
     if association.local_track_id is None:
-        return "no_local_track"
+        blockers.append("no_local_track")
+    if not _measurement_age_ok(measurement_age_s, config):
+        if measurement_age_s is None:
+            blockers.append("measurement_age_unknown")
+        elif measurement_age_s < 0.0:
+            blockers.append("measurement_timestamp_in_future")
+        else:
+            blockers.append("measurement_age_stale")
+    if not _los_rate_ok(los_rate_norm_px_s, config):
+        if los_rate_norm_px_s is None:
+            blockers.append("los_rate_unavailable")
+        else:
+            blockers.append("los_rate_exceeds_limit")
+    return tuple(blockers)
+
+
+def _resolved_measurement_age_s(
+    local_track_history: Iterable[LocalVisualTrack],
+    local_track_id: str | None,
+    *,
+    current_time: float | None,
+    measurement_age_s: float | None,
+    detection_latency_s: float | None,
+) -> float | None:
+    if measurement_age_s is not None:
+        return float(measurement_age_s)
+    if current_time is not None:
+        matching_timestamps = [
+            float(track.timestamp)
+            for track in local_track_history
+            if local_track_id is None or track.local_track_id == local_track_id
+        ]
+        if matching_timestamps:
+            return float(current_time) - max(matching_timestamps)
+    if detection_latency_s is not None:
+        return float(detection_latency_s)
     return None
+
+
+def _resolved_los_rate_px_s(
+    local_track_history: Iterable[LocalVisualTrack],
+    local_track_id: str | None,
+    los_rate_px_s: Iterable[float] | np.ndarray | None,
+) -> tuple[float, float] | None:
+    if los_rate_px_s is not None:
+        values = np.asarray(tuple(los_rate_px_s), dtype=float).reshape(-1)
+        if values.shape != (2,):
+            raise ValueError("los_rate_px_s must have shape (2,)")
+        return (float(values[0]), float(values[1]))
+    matching = [
+        track
+        for track in local_track_history
+        if local_track_id is None or track.local_track_id == local_track_id
+    ]
+    if not matching:
+        return None
+    latest = max(matching, key=lambda track: track.timestamp)
+    return (float(latest.bearing_rate[0]), float(latest.bearing_rate[1]))
+
+
+def _los_rate_norm(los_rate_px_s: tuple[float, float] | None) -> float | None:
+    if los_rate_px_s is None:
+        return None
+    value = float(np.linalg.norm(np.asarray(los_rate_px_s, dtype=float)))
+    if not np.isfinite(value):
+        return None
+    return value
+
+
+def _measurement_age_ok(
+    measurement_age_s: float | None,
+    config: VisualPngHandoffConfig,
+) -> bool:
+    if measurement_age_s is None:
+        return False
+    if not np.isfinite(measurement_age_s):
+        return False
+    return 0.0 <= float(measurement_age_s) <= config.max_measurement_age_s
+
+
+def _los_rate_ok(
+    los_rate_norm_px_s: float | None,
+    config: VisualPngHandoffConfig,
+) -> bool:
+    if los_rate_norm_px_s is None:
+        return not config.require_los_rate
+    if not np.isfinite(los_rate_norm_px_s):
+        return False
+    if config.max_los_rate_px_s is None:
+        return True
+    return float(los_rate_norm_px_s) <= config.max_los_rate_px_s
 
 
 def _timing_ok(

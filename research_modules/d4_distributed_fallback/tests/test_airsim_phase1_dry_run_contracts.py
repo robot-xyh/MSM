@@ -432,7 +432,7 @@ def test_fake_airsim_terminal_mismatch_actively_degrades_to_secondary_when_avail
     assert "terminal_persistent_disagreement" in decision.risk_factors
 
 
-def test_fake_airsim_terminal_mismatch_actively_degrades_to_distributed_without_secondary() -> None:
+def test_fake_airsim_terminal_reacquire_without_secondary_continues_center() -> None:
     decision = ActiveDegradationArbiter().evaluate(
         track_uncertainty=_track_uncertainty(),
         association_risk=_association_risk(),
@@ -442,6 +442,28 @@ def test_fake_airsim_terminal_mismatch_actively_degrades_to_distributed_without_
             observed_global_track_id=None,
             non_locked_frames=3,
             mismatch_frames=0,
+        ),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=_fake_phase1_resources(secondary_available=False),
+    )
+
+    assert decision.mode == DegradationMode.NONE
+    assert decision.action == DegradationAction.CONTINUE_CENTER
+    assert decision.reason == "terminal_persistent_reacquire_no_secondary"
+    assert decision.target_node_id is None
+    assert decision.coverage_cell == "cell-north"
+
+
+def test_fake_airsim_terminal_mismatch_actively_degrades_to_distributed_without_secondary() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track_uncertainty(),
+        association_risk=_association_risk(),
+        assignment_validity=_assignment_validity(),
+        terminal_association=_terminal_summary(
+            decision_state=TerminalDecisionState.AMBIGUOUS,
+            observed_global_track_id="track-north-2",
+            non_locked_frames=3,
+            mismatch_frames=2,
         ),
         c2_health=C2Health.NORMAL,
         secondary_nodes=_fake_phase1_resources(secondary_available=False),

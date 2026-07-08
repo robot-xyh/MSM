@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Iterable, Mapping
 
 
@@ -466,6 +466,22 @@ class AssignmentFeedbackDecision:
 
 
 @dataclass(frozen=True)
+class TerminalFeedbackWriteback:
+    """Next-round D3 inputs after applying conservative D5 feedback metadata."""
+
+    tracks: tuple[TargetTrack, ...]
+    resources: tuple[ResourceState, ...]
+    prohibited_edges: tuple[Mapping[str, str], ...] = ()
+    hold_resource_ids: tuple[str, ...] = ()
+    updated_target_ids: tuple[str, ...] = ()
+    updated_resource_ids: tuple[str, ...] = ()
+    d7_gate_action: str = "continue"
+    d4_requests: tuple[str, ...] = ()
+    allow_local_rebind: bool = False
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class SolverAssignment:
     """Index-level solver output for a real target-resource edge."""
 
@@ -555,6 +571,246 @@ def evaluate_terminal_feedback(
     )
 
 
+def apply_terminal_feedback_to_planner_inputs(
+    tracks: Iterable[TargetTrack],
+    resources: Iterable[ResourceState],
+    feedback_metadata: (
+        AssignmentFeedbackDecision
+        | Mapping[str, Any]
+        | Iterable[AssignmentFeedbackDecision | Mapping[str, Any]]
+        | None
+    ),
+    *,
+    fov_cap: float = 1.0,
+) -> TerminalFeedbackWriteback:
+    """Apply D5 feedback metadata to the next D3 planning inputs.
+
+    This helper only maps already-authoritative metadata into D3's own input
+    DTOs. It does not infer visual identity, choose a secondary node, or allow
+    local `global_track_id` rebinding.
+    """
+
+    track_tuple = tuple(tracks)
+    resource_tuple = tuple(resources)
+    metadata_items = _feedback_metadata_items(feedback_metadata)
+    if not metadata_items:
+        return TerminalFeedbackWriteback(
+            tracks=track_tuple,
+            resources=resource_tuple,
+            metadata={
+                "feedback_count": 0,
+                "allow_local_rebind": False,
+            },
+        )
+
+    target_feasibility: dict[str, dict[str, bool]] = {}
+    target_fov: dict[str, dict[str, float]] = {}
+    hold_resource_ids: list[str] = []
+    hold_resource_set: set[str] = set()
+    prohibited_edges: list[tuple[str, str]] = []
+    prohibited_edge_set: set[tuple[str, str]] = set()
+    d4_requests: list[str] = []
+    d7_gate_action = "continue"
+
+    def add_hold(resource_id: str | None) -> None:
+        if resource_id and resource_id not in hold_resource_set:
+            hold_resource_set.add(resource_id)
+            hold_resource_ids.append(resource_id)
+
+    def add_prohibited_edge(target_id: str | None, resource_id: str | None) -> None:
+        if not target_id or not resource_id:
+            return
+        edge = (target_id, resource_id)
+        if edge not in prohibited_edge_set:
+            prohibited_edge_set.add(edge)
+            prohibited_edges.append(edge)
+        target_feasibility.setdefault(target_id, {})[resource_id] = False
+
+    def add_fov(target_id: str | None, resource_id: str | None, value: Any) -> None:
+        if not target_id or not resource_id:
+            return
+        try:
+            numeric_value = float(value)
+        except (TypeError, ValueError):
+            numeric_value = fov_cap
+        target_fov.setdefault(target_id, {})[resource_id] = max(
+            target_fov.get(target_id, {}).get(resource_id, 0.0),
+            _clamp01_model(numeric_value),
+        )
+
+    for metadata in metadata_items:
+        target_id = _metadata_text(
+            metadata,
+            "target_id",
+            "global_track_id",
+            "assigned_global_track_id",
+        )
+        resource_id = _metadata_text(
+            metadata,
+            "resource_id",
+            "assigned_resource_id",
+            "owner",
+        )
+        action = _metadata_text(
+            metadata,
+            "main_action",
+            "planner_recommended_action",
+            "recommended_action",
+        )
+        terminal_state = _metadata_text(metadata, "terminal_feedback_state")
+        fov_suggestion = _metadata_text(metadata, "fov_difficulty_suggestion")
+        feasibility_suggestion = _metadata_text(metadata, "feasibility_suggestion")
+        d4_request = _metadata_text(metadata, "d4_request")
+        gate_action = _metadata_text(metadata, "d7_gate_action")
+
+        if d4_request:
+            _append_unique(d4_requests, d4_request)
+        if gate_action and gate_action != "continue":
+            d7_gate_action = gate_action
+        elif action and action != "continue" and d7_gate_action == "continue":
+            d7_gate_action = "hold"
+
+        resource_update = metadata.get("resource_update")
+        if isinstance(resource_update, Mapping):
+            update_resource_id = (
+                _metadata_text(resource_update, "resource_id") or resource_id
+            )
+            if _metadata_bool(resource_update.get("operator_hold")):
+                add_hold(update_resource_id)
+
+        if (
+            _metadata_bool(metadata.get("operator_hold_suggested"))
+            or action == "hold"
+            or terminal_state == "friend_overlap_hold"
+        ):
+            add_hold(resource_id)
+
+        if _metadata_bool(metadata.get("duplicate_terminal_lock_risk")):
+            add_prohibited_edge(target_id, resource_id)
+
+        raw_edges = metadata.get("prohibited_edges") or ()
+        if isinstance(raw_edges, Mapping):
+            raw_edges = (raw_edges,)
+        for raw_edge in raw_edges:
+            if not isinstance(raw_edge, Mapping):
+                continue
+            add_prohibited_edge(
+                _metadata_text(
+                    raw_edge,
+                    "target_id",
+                    "global_track_id",
+                    "assigned_global_track_id",
+                )
+                or target_id,
+                _metadata_text(
+                    raw_edge,
+                    "resource_id",
+                    "assigned_resource_id",
+                    "owner",
+                )
+                or resource_id,
+            )
+
+        raw_feasibility = metadata.get("feasibility_by_resource")
+        if isinstance(raw_feasibility, Mapping) and target_id:
+            for raw_resource_id, raw_feasible in raw_feasibility.items():
+                update_resource_id = str(raw_resource_id)
+                feasible = _metadata_bool(raw_feasible)
+                target_feasibility.setdefault(target_id, {})[
+                    update_resource_id
+                ] = feasible
+                if not feasible:
+                    add_prohibited_edge(target_id, update_resource_id)
+
+        if (
+            _metadata_bool(metadata.get("prohibit_assignment_suggested"))
+            or feasibility_suggestion == "temporarily_mark_current_edge_infeasible"
+        ):
+            add_prohibited_edge(target_id, resource_id)
+
+        raw_fov = metadata.get("fov_difficulty_by_resource")
+        if isinstance(raw_fov, Mapping) and target_id:
+            for raw_resource_id, raw_value in raw_fov.items():
+                add_fov(target_id, str(raw_resource_id), raw_value)
+
+        if fov_suggestion == "increase_current_edge":
+            add_fov(target_id, resource_id, fov_cap)
+
+    updated_target_ids: list[str] = []
+    updated_tracks: list[TargetTrack] = []
+    for track in track_tuple:
+        feasibility = dict(track.feasibility_by_resource)
+        fov = dict(track.fov_difficulty_by_resource)
+        changed = False
+        if track.track_id in target_feasibility:
+            feasibility.update(target_feasibility[track.track_id])
+            changed = True
+        if track.track_id in target_fov:
+            for resource_id, value in target_fov[track.track_id].items():
+                fov[resource_id] = max(float(fov.get(resource_id, 0.0)), value)
+            changed = True
+        if changed:
+            updated_target_ids.append(track.track_id)
+            updated_tracks.append(
+                replace(
+                    track,
+                    feasibility_by_resource=feasibility,
+                    fov_difficulty_by_resource=fov,
+                    metadata={
+                        **dict(track.metadata),
+                        "terminal_feedback_writeback_applied": True,
+                    },
+                )
+            )
+        else:
+            updated_tracks.append(track)
+
+    updated_resource_ids: list[str] = []
+    updated_resources: list[ResourceState] = []
+    for resource in resource_tuple:
+        if resource.resource_id in hold_resource_set and not resource.operator_hold:
+            updated_resource_ids.append(resource.resource_id)
+            updated_resources.append(
+                replace(
+                    resource,
+                    operator_hold=True,
+                    metadata={
+                        **dict(resource.metadata),
+                        "terminal_feedback_writeback_applied": True,
+                    },
+                )
+            )
+        else:
+            updated_resources.append(resource)
+
+    edge_metadata = tuple(
+        {"target_id": target_id, "resource_id": resource_id}
+        for target_id, resource_id in prohibited_edges
+    )
+    metadata = {
+        "feedback_count": len(metadata_items),
+        "prohibited_edges": edge_metadata,
+        "hold_resource_ids": tuple(hold_resource_ids),
+        "updated_target_ids": tuple(updated_target_ids),
+        "updated_resource_ids": tuple(updated_resource_ids),
+        "d7_gate_action": d7_gate_action,
+        "d4_requests": tuple(d4_requests),
+        "allow_local_rebind": False,
+    }
+    return TerminalFeedbackWriteback(
+        tracks=tuple(updated_tracks),
+        resources=tuple(updated_resources),
+        prohibited_edges=edge_metadata,
+        hold_resource_ids=tuple(hold_resource_ids),
+        updated_target_ids=tuple(updated_target_ids),
+        updated_resource_ids=tuple(updated_resource_ids),
+        d7_gate_action=d7_gate_action,
+        d4_requests=tuple(d4_requests),
+        allow_local_rebind=False,
+        metadata=metadata,
+    )
+
+
 def assignment_validity_summary_from_plan(
     plan: AssignmentPlan,
     *,
@@ -627,6 +883,151 @@ def assignment_records_from_plan(
         )
         for assignment in plan.assignments
     )
+
+
+def prepare_secondary_takeover_plan(
+    plan: AssignmentPlan,
+    *,
+    supersedes_plan: AssignmentPlan,
+    secondary_node_id: str,
+    takeover_reason: str = "d4_degrade_to_secondary",
+    target_node_id: str | None = None,
+    link_type: str = "d4_secondary_relay",
+    lease_expires_at_s: float | None = None,
+    leader_epoch: int | None = None,
+) -> AssignmentPlan:
+    """Annotate a D4/main-selected secondary takeover plan for D7 gating.
+
+    D3 does not select the secondary node. This helper validates that the
+    candidate plan supersedes the previous active plan and then stamps the
+    owner/source/version metadata needed by D7 and D6 consumers.
+    """
+
+    owner_node_id = secondary_node_id.strip()
+    if not owner_node_id:
+        raise ValueError("secondary_node_id is required for secondary takeover")
+    if plan.version <= supersedes_plan.version:
+        raise ValueError(
+            "secondary takeover plan version must be newer than the superseded plan"
+        )
+    if plan.previous_plan_id not in {None, supersedes_plan.plan_id}:
+        raise ValueError("secondary takeover plan does not supersede the given plan")
+
+    plan_target_node_id = target_node_id or plan.target_node_id or supersedes_plan.target_node_id
+    metadata: dict[str, Any] = {
+        **dict(plan.metadata),
+        "plan_schema": SECONDARY_PLAN_SCHEMA_V2,
+        "plan_owner": "secondary",
+        "active_plan_owner": "secondary",
+        "owner_node_id": owner_node_id,
+        "selected_secondary_node_id": owner_node_id,
+        "source_node_id": owner_node_id,
+        "target_node_id": plan_target_node_id,
+        "link_type": link_type,
+        "takeover_reason": takeover_reason,
+        "supersedes_plan_id": supersedes_plan.plan_id,
+        "supersedes_plan_version": supersedes_plan.version,
+        "previous_plan_id": supersedes_plan.plan_id,
+        "previous_plan_version": supersedes_plan.version,
+        "plan_version": plan.version,
+        "allow_local_rebind": False,
+    }
+    if lease_expires_at_s is not None:
+        metadata["secondary_lease_expires_at_s"] = float(lease_expires_at_s)
+    if leader_epoch is not None:
+        metadata["secondary_leader_epoch"] = int(leader_epoch)
+
+    assignments: list[Assignment] = []
+    for assignment in plan.assignments:
+        assignment_target_node_id = assignment.target_node_id or assignment.resource_id
+        assignments.append(
+            replace(
+                assignment,
+                source_node_id=owner_node_id,
+                target_node_id=assignment_target_node_id,
+                link_type=link_type,
+                plan_version=plan.version,
+                metadata={
+                    **dict(assignment.metadata),
+                    "plan_schema": SECONDARY_PLAN_SCHEMA_V2,
+                    "plan_owner": "secondary",
+                    "active_plan_owner": "secondary",
+                    "owner_node_id": owner_node_id,
+                    "selected_secondary_node_id": owner_node_id,
+                    "source_node_id": owner_node_id,
+                    "target_node_id": assignment_target_node_id,
+                    "link_type": link_type,
+                    "takeover_reason": takeover_reason,
+                    "supersedes_plan_id": supersedes_plan.plan_id,
+                    "supersedes_plan_version": supersedes_plan.version,
+                    "plan_version": plan.version,
+                    "allow_local_rebind": False,
+                },
+            )
+        )
+
+    return replace(
+        plan,
+        assignments=tuple(assignments),
+        previous_plan_id=supersedes_plan.plan_id,
+        source_node_id=owner_node_id,
+        target_node_id=plan_target_node_id,
+        link_type=link_type,
+        metadata=metadata,
+    )
+
+
+def _feedback_metadata_items(
+    feedback_metadata: (
+        AssignmentFeedbackDecision
+        | Mapping[str, Any]
+        | Iterable[AssignmentFeedbackDecision | Mapping[str, Any]]
+        | None
+    ),
+) -> tuple[Mapping[str, Any], ...]:
+    if feedback_metadata is None:
+        return ()
+    if isinstance(feedback_metadata, AssignmentFeedbackDecision):
+        return (feedback_metadata.planner_metadata,)
+    if isinstance(feedback_metadata, Mapping):
+        return (feedback_metadata,)
+    items: list[Mapping[str, Any]] = []
+    for item in feedback_metadata:
+        if isinstance(item, AssignmentFeedbackDecision):
+            items.append(item.planner_metadata)
+        elif isinstance(item, Mapping):
+            items.append(item)
+        else:
+            raise TypeError("feedback metadata entries must be mappings or decisions")
+    return tuple(items)
+
+
+def _metadata_text(metadata: Mapping[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = metadata.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None
+
+
+def _metadata_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
+def _append_unique(values: list[str], value: str) -> None:
+    if value not in values:
+        values.append(value)
+
+
+def _clamp01_model(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
 
 
 def _feedback_decision(

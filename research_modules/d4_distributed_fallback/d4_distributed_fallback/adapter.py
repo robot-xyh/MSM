@@ -8,7 +8,7 @@ change assignments, or call any simulator/control API.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, is_dataclass, replace
+from dataclasses import asdict, dataclass, field, is_dataclass, replace
 from enum import Enum
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -21,9 +21,11 @@ from .active_degradation import (
     AssociationRiskSummary,
     DegradationAction,
     DegradationMode,
+    SecondaryTakeoverPlanMetadata,
     TerminalAssociationSummary,
     TerminalDecisionState,
     TrackUncertaintySummary,
+    build_secondary_takeover_plan_metadata,
     summarize_secondary_lifecycle,
 )
 from .models import (
@@ -64,6 +66,16 @@ class D4DecisionRecord:
     review_label: str = "unknown"
     plan_id: str | None = None
     plan_version: int | None = None
+    active_plan_owner: str = "center"
+    secondary_takeover: SecondaryTakeoverPlanMetadata = field(
+        default_factory=lambda: build_secondary_takeover_plan_metadata(
+            ActiveDegradationDecision(
+                mode=DegradationMode.NONE,
+                action=DegradationAction.CONTINUE_CENTER,
+                reason="not_applicable",
+            )
+        )
+    )
     track_version: int | None = None
     target_node_id: str | None = None
     coverage_cell: str | None = None
@@ -96,6 +108,19 @@ class D4DecisionRecord:
             "global_track_id": self.global_track_id,
             "plan_id": self.plan_id,
             "plan_version": self.plan_version,
+            "active_plan_owner": self.active_plan_owner,
+            "secondary_takeover_state": self.secondary_takeover.state.value,
+            "secondary_takeover": self.secondary_takeover.to_dict(),
+            "secondary_plan_source_node_id": self.secondary_takeover.secondary_plan_source_node_id,
+            "secondary_plan_id": self.secondary_takeover.secondary_plan_id,
+            "secondary_plan_version": self.secondary_takeover.secondary_plan_version,
+            "secondary_supersedes_plan_id": self.secondary_takeover.secondary_supersedes_plan_id,
+            "secondary_supersedes_plan_version": (
+                self.secondary_takeover.secondary_supersedes_plan_version
+            ),
+            "secondary_reassignment_complete": (
+                self.secondary_takeover.secondary_reassignment_complete
+            ),
             "track_version": self.track_version,
             "target_node_id": self.target_node_id,
             "coverage_cell": self.coverage_cell,
@@ -179,6 +204,11 @@ class D4ArbitrationAdapter:
         expected_plan_version: int | None = None,
         track_version: int | None = None,
         plan_id: str | None = None,
+        active_plan_owner: str = "center",
+        secondary_plan_id: str | None = None,
+        secondary_plan_version: int | None = None,
+        secondary_plan_active: bool = False,
+        secondary_plan_source_node_id: str | None = None,
         trigger_timestamp: float | None = None,
         review_label: str = "unknown",
     ) -> D4ArbitrationResult:
@@ -254,6 +284,22 @@ class D4ArbitrationAdapter:
             communication_summaries=list(communications) if communications else None,
             current_time_s=timestamp,
         )
+        resolved_plan_id = plan_id or _string_or_none(_get(plan, "plan_id"))
+        resolved_plan_version = _optional_int(
+            _get(plan, "version", _get(plan, "plan_version"))
+        )
+        if resolved_plan_version is None:
+            resolved_plan_version = assignment_summary.plan_version
+        secondary_takeover = build_secondary_takeover_plan_metadata(
+            decision,
+            current_plan_id=resolved_plan_id,
+            current_plan_version=resolved_plan_version,
+            current_plan_owner=active_plan_owner,
+            secondary_plan_id=secondary_plan_id,
+            secondary_plan_version=secondary_plan_version,
+            secondary_plan_active=secondary_plan_active,
+            secondary_plan_source_node_id=secondary_plan_source_node_id,
+        )
         record = D4DecisionRecord(
             timestamp=float(timestamp),
             resource_id=resolved_resource_id,
@@ -265,9 +311,11 @@ class D4ArbitrationAdapter:
             trigger_reason=decision.reason,
             trigger_timestamp=float(trigger_timestamp if trigger_timestamp is not None else timestamp),
             decision_timestamp=float(timestamp),
-            review_label=review_label,
-            plan_id=plan_id or _string_or_none(_get(plan, "plan_id")),
-            plan_version=_optional_int(_get(plan, "version", _get(plan, "plan_version"))),
+            review_label=_review_label_for_decision(decision, explicit=review_label),
+            plan_id=resolved_plan_id,
+            plan_version=resolved_plan_version,
+            active_plan_owner=secondary_takeover.active_plan_owner,
+            secondary_takeover=secondary_takeover,
             track_version=track_version or _optional_int(_metadata(track).get("track_version")),
             target_node_id=decision.target_node_id,
             coverage_cell=decision.coverage_cell or resolved_coverage,
@@ -289,6 +337,31 @@ class D4ArbitrationAdapter:
             decision=decision,
             record=record,
         )
+
+
+def _review_label_for_decision(
+    decision: ActiveDegradationDecision,
+    *,
+    explicit: str = "unknown",
+) -> str:
+    if explicit and explicit != "unknown":
+        return explicit
+    if decision.mode == DegradationMode.PASSIVE_FAILOVER:
+        return "passive_failover"
+    if decision.reason == "terminal_transient_observe_more":
+        return "observe_more_not_degradation"
+    if decision.action == DegradationAction.REQUEST_CENTER_REPLAN:
+        return "center_replan_candidate"
+    if decision.action in {
+        DegradationAction.REQUEST_SECONDARY_ASSIST,
+        DegradationAction.DEGRADE_TO_SECONDARY,
+    }:
+        return "secondary_takeover_candidate"
+    if decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED:
+        return "distributed_fallback_candidate"
+    if decision.action == DegradationAction.HOLD_FOR_REVIEW:
+        return "human_review_required"
+    return "continue_center"
 
 
 def build_track_uncertainty_summary(

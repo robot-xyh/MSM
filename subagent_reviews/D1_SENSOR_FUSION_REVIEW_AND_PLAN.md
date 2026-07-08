@@ -161,9 +161,18 @@ a95 = sqrt(chi2_2_0.95 * lambda_max(P_xy))
 
 本节补充 D1 在当前主线架构中的接口责任。D4 已引入主动降级，D5 需要多视角目标关联，D7 使用比例导引作为离线仿真中的中段导引模块。D1 不输出控制指令，也不参与处置决策，只输出带时间、坐标和不确定度的数据合同。
 
+### 6.0 2026-07-07 P1 复核更新
+
+main runtime bus 已把 D1-D7 DTO/summary/record 接入真实 AirSim episode 状态机，并将 D7 执行结果回灌到正式 episode metrics；D3 已补充中心重规划后的 plan owner/version；D4 已把主动降级硬风险与软质量风险拆分；D5 已修正终端一致性窗口。对 D1 的影响是接口语义收紧，而不是新增算法职责：
+
+- D1 的 `TrackUncertaintySummary` 是 D3/D4/D5/D6 的质量证据，不是降级动作或授权状态。
+- D1 的高协方差、低 freshness、source gap 或 handover readiness 下降，需要由 D4 结合 C2 health、D3 plan freshness、D5 terminal evidence 和持续窗口仲裁；不应由单帧软风险直接触发主动降级。
+- D1 不生成 D3 `AssignmentPlan` 版本，不决定二级/分布式接管，也不修改 D7 PN/PNG 控制律。
+- 严格 subagent 流程下，D1 owned README/PLAN/GAP/review 状态由 D1 子智能体自行维护和测试；main 只做集成汇总。
+
 ### 6.1 面向 D4 主动降级的不确定度信号
 
-D4 的主动降级需要判断“中心节点仍在线，但中心态势质量不足”。当前 D1 已把单航迹质量指标随 `GlobalTrack.metadata` 或 `TrackUncertaintySummary` 输出给 D3/D4；区域聚合、主动降级 hint 和最终降级仲裁仍不在 D1 当前实现内。
+D4 的主动降级需要判断“中心节点仍在线，但中心态势质量不足”。当前 D1 已把单航迹质量指标随 `GlobalTrack.metadata` 或 `TrackUncertaintySummary` 输出给 D3/D4，并提供轻量 `FusionQualityRegionSummary` 按 `coverage_cell` 聚合区域质量；主动降级 hint 和最终降级仲裁仍不在 D1 当前实现内。
 
 ```text
 TrackUncertaintySummary
@@ -195,7 +204,7 @@ TrackUncertaintySummary
 - `handover_track` 不能稳定维持，频繁回退到 `stable_track/coarse_track`。
 - 雷达与 EO 的 NIS 长时间偏高，说明多源观测不一致。
 
-后续如果加入区域摘要，D1 只能给出质量建议，例如：
+当前区域摘要只能作为质量证据。若后续需要 D1 给出显式质量建议，也只能是建议字段，例如：
 
 ```text
 active_degrade_hint = none | regional_secondary_node | distributed_review
@@ -246,14 +255,22 @@ D5 的末端关联结果可作为 D1/D4 的反馈信号，但不得由 D5 本地
 3. **声学弱约束边界**：当前代码只允许 radar 初始化新航迹；声学作为方位/类别弱约束参与更新，不会单独生成三维 `GlobalTrack`。
 4. **EO 无截图合同**：D1 EO 观测只需要 bbox、中心像素、相机元数据、时间戳和协方差；dry-run 与 JSONL replay 测试不依赖 PNG。
 5. **source lineage 去重**：相同 source/sequence/payload 经 relay 重复投递时不会重复更新航迹，`duplicate_observation_count` 会进入 metadata。
+6. **replay schema v1/legacy 兼容**：`sensor_observations.jsonl` 使用 `d1.sensor_observation.v1`，既有无版本 `blocks_sensor_observations.jsonl` 作为 legacy 兼容输入。
+7. **CSV replay 最小支持**：已提供 `read_sensor_observations_csv()`/`replay_sensor_observations_csv()`，CSV 中 measurement/covariance 使用 JSON array，metadata/communication/source_support 使用 JSON object。
+8. **延迟补偿审计字段**：已提供 `LatencyAuditSummary`，记录 max/mean delay、OOSM replay 次数、stale/OOSM count、duplicate count 和最大 replay 历史长度。
+9. **区域质量摘要**：已提供轻量 `FusionQualityRegionSummary`，在单航迹 `TrackUncertaintySummary` 之上按 `coverage_cell` 聚合 source gap、freshness、a95、handover readiness 和 stale track count。
 
-仍需补充：
+剩余 P1：
 
-1. **延迟补偿审计字段**：除 `latency_compensation=True/False` 外，还应记录最近窗口 `mean_latency_s`、`max_latency_s`、OOSM replay 次数和 replay 成本，供 D4 主动降级与 D6 统计。
-2. **区域质量摘要**：在单航迹 `TrackUncertaintySummary` 之上按 `coverage_cell` 聚合雷达、EO、声学最近窗口缺口，形成区域级 `sensor_coverage_gap` 或 `FusionQualityRegionSummary`。
-3. **D6 批量 schema**：需要把 `TrackUncertaintySummary[]`、延迟窗口、协方差增长率和区域摘要整理成 D6 可长期回归的 JSONL/CSV schema。
-4. **真实 Blocks/CV fixture**：D1 已能读 `blocks_sensor_observations.jsonl`，但还需要更多来自 main/shared runtime 的真实 AirSim CV detection 字段样本，避免只覆盖 dry-run 结构。
-5. **开源对照后端**：FilterPy、Stone Soup、OpenCV、ROS 2 仍未接入；只有在对照场景、依赖环境和收益指标明确后再作为 P2 或 P2 后置扩展。
+1. **D6 长期批量 schema**：需要把 `TrackUncertaintySummary[]`、`LatencyAuditSummary`、协方差增长率窗口和区域摘要整理成 D6 可长期回归的稳定 JSONL/CSV schema。
+2. **区域时间窗口**：需要在轻量 `FusionQualityRegionSummary` 上补 windowed freshness、source-gap、a95 和 handover readiness 趋势。
+3. **协方差增长率窗口**：`covariance_growth_rate` 字段已保留，仍需窗口化计算、阈值和真实样本回归。
+4. **真实 Blocks/CV fixture**：D1 已能读 `blocks_sensor_observations.jsonl`/`sensor_observations.jsonl` 和最小 CSV，但还需要更多来自 main/shared runtime 的真实 AirSim CV detection 字段样本，避免只覆盖 dry-run 结构。
+
+P2/后置：
+
+1. **开源对照后端**：FilterPy、Stone Soup、OpenCV、ROS 2 仍未接入；只有在对照场景、依赖环境和收益指标明确后再作为 P2 或 P2 后置扩展。
+2. **D1 直连 AirSim runtime**：D1 当前不直接调用 `simGetDetections` 或 AirSim API；P1 只要求消费 main/shared runtime 写出的 JSONL/CSV fixture。
 
 ---
 
@@ -266,7 +283,7 @@ D5 的末端关联结果可作为 D1/D4 的反馈信号，但不得由 D5 本地
 | 声学粗方位 | 大角度不确定观测 | 只收窄方位，不强行定位 |
 | 光电像素框 | 小框、遮挡、低置信度 | `R`放大，避免误配准 |
 | 坐标错误 | 错误外参版本 | 触发质量告警，不发布高置信航迹 |
-| 主动降级信号 | 协方差突增、观测延迟、传感器缺口 | 当前输出单航迹质量摘要；`active_degrade_hint` 与区域仲裁为后续扩展 |
+| 主动降级信号 | 协方差突增、观测延迟、传感器缺口 | 当前输出单航迹质量摘要、latency/OOSM audit 和轻量区域质量摘要；`active_degrade_hint` 与最终区域仲裁仍由后续 D4/系统规则处理 |
 | D5无截图交接 | 仅相机元数据和检测框 | 已支持不依赖PNG，输出可投影航迹和EO协方差 |
 | D7航迹输入 | `stable/handover` 航迹和6x6协方差 | D7可读取位置、速度、时间戳和质量状态 |
 
@@ -279,7 +296,7 @@ D5 的末端关联结果可作为 D1/D4 的反馈信号，但不得由 D5 本地
 3. 数据结构：`SensorObservation`、`CanonicalDetection`、`GlobalTrack`。
 4. 接口伪代码：`FusionAdapter`、`DelayCompensator`、`TrackFilter`。
 5. 雷达误差分档：`coarse_track`、`stable_track`、`handover_track`。
-6. 主动降级接口：`TrackUncertaintySummary` 已落地；区域质量摘要和 D4 降级建议字段仍为后续工作。
+6. 主动降级接口：`TrackUncertaintySummary`、`LatencyAuditSummary` 和轻量 `FusionQualityRegionSummary` 已落地；D4 降级建议字段和最终仲裁仍为后续工作。
 7. D5/D7接口合同：无截图 EO 输入、投影所需状态协方差、中段航迹质量门控。
 
 ---

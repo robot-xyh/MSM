@@ -20,9 +20,11 @@ D4 只负责 C-UAS 工作流中的离线科研仿真、降级仲裁、二级节�
 
 ## 3. 当前总体状态
 
-D4 模块内已经完成一个可测试的离线 P1 骨架：`C2Health`、被动降级、二级节点 lifecycle、主动降级仲裁、D1/D2/D3/D5 adapter、D5 distributed visual evidence 归一化、完全无中心 CBBA 风险加权、`assignment_audit`、D6-compatible event metadata、中心恢复基础合并和 N 规模输入均已存在。
+D4 模块内已经完成一个可测试的离线 P1 骨架：`C2Health`、被动降级、二级节点 lifecycle、主动降级仲裁、主动降级硬/软风险分层、secondary takeover plan lifecycle metadata、D1/D2/D3/D5 adapter、D5 distributed visual evidence 归一化、完全无中心 CBBA 风险加权、CBBA cost gap benchmark helper、`assignment_audit`、D6-compatible event metadata、中心恢复基础合并和 N 规模输入均已存在。
 
-仍需明确的是，这些实现主要停留在 D4 模块内和摘要级 dry-run/test 层。真实 main runtime bus 的 episode 接线、D3 在收到 `request_center_replan` 后自动生成新版计划、secondary takeover 后 plan id/version 回传 D7 的闭环，都还不是 D4 模块内已完成能力。
+截至 2026-07-08，main/runtime 已完成 P1 基线接线：episode bus 已消费 D4 adapter 输出，`request_center_replan` 可触发 D3 新 plan version，secondary takeover owner/version 已回灌给 D3/D7，controlled 2v2 secondary visual PNG 回归已通过。D4 模块边界保持不变：D4 不生成系统级 `AssignmentPlan`，只提供 `pending_secondary_plan`/`secondary_plan_active` metadata、仲裁记录和 CBBA 保底结果供 main/D3/D7 消费。
+
+剩余 P1 主要是运行层校准，而不是 D4 文档或接口缺口：真实 D4/D5 stress 多 seed 阈值、review label、secondary heartbeat/link freshness、D5 peer evidence 合流和 D6 长期聚合口径仍需在 Blocks/AirSim episode 中标定。
 
 ## 4. 被动降级与主动降级
 
@@ -52,18 +54,19 @@ center C2 normal
 
 - D1：定位协方差、位置 sigma 或量测年龄过高；
 - D2：ambiguity、`id_switch_count`、重复航迹或 continuity 风险升高；
-- D3：plan stale、非 current、plan version 不匹配或 cost margin 过低；
-- D5：`ambiguous/hold/reacquire` 多帧持续、视觉候选与 assigned `global_track_id` 不一致、重复末端锁定、cross-view 高风险或 friend conflict。
+- D3：plan stale、非 current、plan version 不匹配是硬风险；cost margin 过低是软证据，只说明当前方案容易抖动，不能单独触发中心重规划。
+- D5：视觉候选与 assigned `global_track_id` 不一致、资源错配、重复末端锁定、cross-view 高风险或 friend conflict 是硬证据；无冲突的 `ambiguous/hold/reacquire` 多帧持续是软证据，优先继续观察或请求二级 cue。
 
 主动降级的保守顺序：
 
 1. D5 与 D3 分配一致且 D1/D2/D3 风险低：`continue_center`。
-2. D3 版本/时效/代价风险是主因且 D5 仍一致：`request_center_replan`。
+2. D3 版本/时效硬风险是主因且 D5 仍一致：`request_center_replan`。
 3. D1/D2 风险升高但 D5 仍一致：`request_secondary_assist`。
-4. D5 单窗口不一致但未满足持续触发：请求中心重分配或二级辅助，不直接全分布式。
-5. D5 多帧不一致且有健康二级节点覆盖当前 `coverage_cell`：`degrade_to_secondary`。
-6. 二级节点不可用、链路过期、heartbeat 过期或不覆盖区域：`degrade_to_distributed`。
-7. `friend_conflict=True` 或身份证据冲突：`hold_for_review`，不发布新计划。
+4. 只有 cost margin 过低、D5 低置信度或无冲突 `ambiguous/reacquire` 时：`continue_center` 或 `request_secondary_assist`，继续观察，不重规划、不降级。
+5. D5 单窗口不一致但未满足持续触发：若无硬风险则继续观察；若有二级覆盖且需要补充视角，则请求二级辅助。
+6. D5 多帧不一致且存在 observed mismatch、资源错配、重复锁定或友方/身份冲突等硬证据时，才触发主动降级：有健康二级节点覆盖当前 `coverage_cell` 则 `degrade_to_secondary`。
+7. 二级节点不可用、链路过期、heartbeat 过期或不覆盖区域，且硬不一致仍持续时才 `degrade_to_distributed`。
+8. `friend_conflict=True` 或身份证据冲突：`hold_for_review`，不发布新计划。
 
 ## 5. `C2Health` 状态机
 
@@ -110,7 +113,7 @@ failed
 - `TrackSummary`：`track_id`、`coarse_cell`、`age_s`、`confidence_band`、`source_count`、`epoch`、`visual_evidence`。
 - `ResourceSummary`：`node_id`、`capability_class`、`availability_band`、`comm_band`、`operator_hold`、`takeover_priority`、`lease_epoch`、`node_role`、`coordinator_only`、`coverage_cell`、`heartbeat_timestamp_s`、`heartbeat_stale_after_s`、`epoch`。
 - `BidState`：`task_id`、`bidder`、`score`、`constraints_hash`、`epoch`、`round_id`。
-- `CBBAResult`：assignments、rounds、converged、conflict/completion/message/byte 指标、`final_views`、`assignment_audit`。
+- `CBBAResult`：assignments、rounds、converged、conflict/completion/message/byte 指标、`final_views`、`assignment_audit`、可选 `cost_gap_benchmark`。
 
 ### 6.2 主动降级摘要
 
@@ -120,9 +123,19 @@ failed
 - `TerminalAssociationSummary`：D5 末端关联，含 `decision_state`、confidence、ambiguity、observed/assigned `global_track_id`、连续非锁定/不一致帧数、friend conflict、duplicate lock、cross-view 风险。
 - `CommunicationSummary`：链路摘要，含 source/target/relay、`link_type`、sent/received timestamp、`payload_kind`、`stale_after_s`、sequence id。
 - `SecondaryNodeLifecycleSummary`：二级节点 heartbeat age、lease、coverage、video cue freshness、link stale、`secondary_available`。
-- `D4DecisionRecord`：adapter 输出，可转为 D6 `EventRecord` kwargs。
+- `D4DecisionRecord`：adapter 输出，可转为 D6 `EventRecord` kwargs，包含 `active_plan_owner` 和 secondary takeover metadata。
 
-### 6.3 D5 分布式视觉证据摘要
+### 6.3 二级接管 plan lifecycle metadata
+
+D4 不生成完整系统级 `AssignmentPlan`，但在 `degrade_to_secondary` 触发时通过 `SecondaryTakeoverPlanMetadata` 给 main/D3/D7 提供可消费状态：
+
+- `not_applicable`：非二级接管动作；当前 active plan owner 仍是 center、distributed_cbba 或 hold_review。
+- `pending_secondary_plan`：D4 已选择二级节点并触发重分配，但新的二级 plan 尚未生效；`active_plan_owner` 仍为当前 plan owner，`pending_plan_owner=secondary_node`，并记录 `secondary_plan_source_node_id`、当前 plan id/version 和 supersedes 字段。
+- `secondary_plan_active`：main/D3 已回填新的二级 plan id/version 且标记 active；`active_plan_owner=secondary_node`，`secondary_reassignment_complete=True`。D7 只能在该状态和两阶段 handoff 允许时继续后续视觉 PNG gate。
+
+metadata 字段包括 `secondary_takeover_state`、`active_plan_owner`、`secondary_plan_source_node_id`、`secondary_plan_id/version`、`secondary_supersedes_plan_id/version` 和 `secondary_reassignment_complete`。
+
+### 6.4 D5 分布式视觉证据摘要
 
 `DistributedVisualEvidenceSummary` 用于完全无中心 CBBA 的风险加权，字段包括：
 
@@ -177,6 +190,16 @@ O(|E| * |T|)
 
 全连接 N 节点约为 `O(N^2 * |T|)`；稀疏链路减少单轮消息量，但增加传播轮数。
 
+### 7.3 CBBA vs 中心化 cost gap benchmark
+
+`build_cbba_cost_gap_benchmark()` 只做离线对照，不在完全无中心路径运行中心化 Hungarian。输入必须来自 D3/main：
+
+- `center_assignments`：D3 当前中心化计划或 Hungarian/Min Cost Flow 结果的 task -> owner 映射；
+- `cost_by_task_resource`：同一场景下 D3 保存的 task/resource cost matrix；
+- `CBBAResult`：D4 轻量 CBBA 的 assignments、completion、conflict、rounds 和 message 指标。
+
+输出 `CBBACostGapBenchmark`，字段包括 `cbba_total_cost`、`center_total_cost`、`absolute_cost_gap`、`relative_cost_gap`、assignment/completion 差距、CBBA conflict/round/message 指标、缺失 task 和缺失 cost pair 审计。若任一已分配 task/resource cost 缺失，总 cost/gap 保持 `None`，避免伪造可比结果。
+
 ## 8. 二级节点 lifecycle 与接管
 
 二级节点在代码中通过 `NodeRole.GROUND_BACKUP` 和 `NodeRole.SECONDARY_RECON` 建模。可用性判断包括：
@@ -207,7 +230,7 @@ takeover_priority
 
 - `event_type`：`d4_arbitration_decision`、`active_degradation_decision` 或 `passive_failover_start`；
 - `severity`：正常继续中心为 `info`，降级/hold 为 `warning`；
-- metadata：`d4_action`、`degradation_mode`、`d4_degradation_mode`、`selected_coordinator`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp`、`review_label`、resource/track/plan/version、`coverage_cell`、`terminal_consistent`、`risk_factors`、`secondary_available`、`communication_fresh`、`secondary_lifecycle`、`requires_human_review`。
+- metadata：`d4_action`、`degradation_mode`、`d4_degradation_mode`、`selected_coordinator`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp`、`review_label`、resource/track/plan/version、`active_plan_owner`、`secondary_takeover_state`、`secondary_plan_source_node_id`、`secondary_plan_id/version`、`secondary_supersedes_plan_id/version`、`secondary_reassignment_complete`、`coverage_cell`、`terminal_consistent`、`risk_factors`、`secondary_available`、`communication_fresh`、`secondary_lifecycle`、`requires_human_review`。
 
 `ActiveDegradationDecision.to_metrics()` 可输出 `d4_action`、`degradation_mode`、`target_node_id`、`risk_factors`、`terminal_consistent`、`failover_time`、`secondary_selected_rate` 和 `distributed_conflict_count`。
 
@@ -227,54 +250,57 @@ D4 不写死 2v2 或 5v5。当前行为：
 | `C2Health` | `normal/degraded/suspect/failed`、heartbeat warning/stale/failure、peer quorum、digest conflict、center epoch stale、恢复待合并 | `coordinator.py`、`models.py`、`tests/test_health.py` |
 | 被动降级 | 中心 failed 后才执行 `plan_degraded()`；可选 ground backup/secondary/representative；不收敛不发布有效 assignments | `coordinator.py`、`tests/test_coordinator.py` |
 | 二级节点 lifecycle | heartbeat、lease、coverage、video cue freshness、link stale、`secondary_available` | `active_degradation.py`、`models.py`、`tests/test_active_degradation.py` |
-| 主动降级仲裁 | 输出 `continue_center`、`request_center_replan`、`request_secondary_assist`、`degrade_to_secondary`、`degrade_to_distributed`、`hold_for_review` | `active_degradation.py`、`tests/test_active_degradation.py` |
+| 主动降级仲裁 | 输出 `continue_center`、`request_center_replan`、`request_secondary_assist`、`degrade_to_secondary`、`degrade_to_distributed`、`hold_for_review`；2026-07-07 已区分硬风险和软证据，避免 cost margin 低、低终端置信度或无冲突 `ambiguous/reacquire` 导致每帧重规划/降级 | `active_degradation.py`、`tests/test_active_degradation.py` |
 | D1/D2/D3/D5 adapter | duck typing/dict 读取 covariance/age、ambiguity/IDSW/continuity、plan/version/freshness/cost、terminal/cross-view/friend conflict | `adapter.py`、`tests/test_arbitration_adapter.py` |
 | D5 distributed visual evidence normalization | `build_distributed_visual_evidence_summary()`、`attach_distributed_visual_evidence()`、`merge_distributed_visual_evidence_into_tracks()` | `adapter.py`、`tests/test_arbitration_adapter.py` |
 | 完全无中心 CBBA 风险加权 | D5 visual support 调整出价；hold/friend/stale/missing/conflicting ID 阻止 bid；duplicate lock 风险审计 | `cbba.py`、`tests/test_cbba.py` |
 | `assignment_audit` | 输出 owner、visual support、hold/ambiguous/duplicate IDs、confidence/ambiguity、hypothesis、ID 风险和 reason | `cbba.py`、`tests/test_cbba.py` |
 | D6 event metadata | `D4DecisionRecord.to_event_record_kwargs()` 输出 D6-compatible kwargs 和 metadata | `adapter.py`、`tests/test_arbitration_adapter.py` |
 | D7 二级接管门控辅助 | `build_d7_secondary_handoff()` 阶段 1 不放行 visual PNG，阶段 2 必须带新 plan id/version | `active_degradation.py`、`tests/test_airsim_phase1_dry_run_contracts.py` |
+| secondary takeover plan metadata | `SecondaryTakeoverPlanMetadata` 输出 pending/active 状态、当前/二级 plan id/version、source node、supersedes plan 和 reassignment complete 字段；D4 不生成系统级 `AssignmentPlan` | `active_degradation.py`、`adapter.py`、`tests/test_arbitration_adapter.py` |
+| CBBA vs 中心化 cost gap helper | `build_cbba_cost_gap_benchmark()` 对比 D4 CBBA result 与 D3/main 提供的中心 plan/cost matrix，输出 cost/completion/conflict/message gap 字段 | `models.py`、`cbba.py`、`tests/test_cbba.py` |
+| main/runtime P1 消费基线 | main 已接入 D4 adapter event、`request_center_replan -> D3 new version`、secondary takeover owner/version 和 D7 owner gate；controlled 2v2 secondary visual PNG 回归已通过。此项为 main-owned 集成证据，D4 只消费/输出 metadata | `research_modules/airsim_runtime/tests/test_blocks_runtime.py::test_main_episode_bus_marks_secondary_takeover_plan_for_d7`、`::test_controlled_2v2_active_degradation_secondary_plan_visual_png` |
 | N 规模输入 | 仿真、CBBA 和测试按输入列表长度运行 | `simulation.py`、`scripts/run_failover_simulation.py`、`tests/test_simulation.py`、`tests/test_cbba.py` |
 
 ## 12. 部分实现
 
 | 能力 | 已有部分 | 未完成部分 | 缺少条件 |
 |---|---|---|---|
-| main runtime bus 真实 episode 接线 | D4 adapter 可消费对象/dict 摘要并返回 D6 event kwargs | main/AirSim runtime 尚未保证每个真实 episode 都统一调用 D4 adapter 和写 D6 collector | main 需要在 episode 状态机中提供 D1/D2/D3/D5 摘要、LinkRecord-like 通信记录、batch seed 和 event sink |
-| D3 `request_center_replan` 自动调用 | D4 能输出 `request_center_replan` 并说明风险因素 | D4 不调用 D3 planner，也不生成新版 `AssignmentPlan` | main 监听 D4 action，D3 发布新 plan id/version，并拒绝 stale plan |
-| secondary takeover plan version 闭环 | D4 能选择二级节点，D7 handoff helper 能表达两阶段 gate | 二级节点新 plan 生成、plan owner、plan id/version 回传和 D7 控制状态机不是 D4 内闭环 | main/D3/D7 需要定义 secondary plan schema、版本策略、恢复合并和 D7 gate 接线 |
+| main runtime bus 真实 episode 接线 | D4 adapter 可消费对象/dict 摘要并返回 D6 event kwargs；main/runtime P1 基线已持续调用 adapter、写 D4/D6 event，并保留 D1/D2/D3/D5 摘要 | 真实 Blocks 多 seed 下的阈值、review label、secondary heartbeat/link freshness 和 D5 peer evidence 合流仍未标定 | main 需要用相同 adapter schema 跑 D4/D5 stress 多 seed，并输出可比较 D6 聚合 |
+| D3 `request_center_replan` 自动调用 | D4 能输出 `request_center_replan` 并说明风险因素；main 已监听该 action 并触发 D3 新 plan version | 真实多 seed 下仍需确认硬 stale/not-current 和真实 terminal mismatch 的触发频率，避免软风险回归成每帧 replan | main/D3 保持 owner/version/supersedes 字段和 stale rejection，并用多 seed 报告校准 |
+| secondary takeover plan owner/version 闭环 | D4 能选择二级节点，D7 handoff helper 能表达两阶段 gate，D4 record metadata 能区分 `pending_secondary_plan` 与 `secondary_plan_active`；main/D3/D7 已完成 owner/version P1 基线和 controlled 2v2 secondary visual PNG 回归 | 真实 Blocks 多 seed 中 secondary heartbeat、coverage、link freshness、plan activation delay 和恢复合并窗口仍未标定 | main/D3/D7 保持 secondary plan id/version 回填，并用 D4/D5 stress 多 seed 校准 freshness 与 gate 迁移 |
 | 完整 C2 双轨审计 | 已记录 health transition 和 assignment-only merge | 尚未比较完整 track digest、plan digest、terminal lock、communication link、D5/D7 gate 状态 | main/runtime 需要持久化中心和 fallback 双轨 episode log，D6 消费 merge outcome |
-| D5 distributed visual evidence 运行时合流 | D4 模块内可把 D5 多 peer evidence merge 到 `TrackSummary.visual_evidence` | 真实 episode 中 D5 多 peer 输出是否持续进入 D4 仍属 main 接线 | main 在 no-center case 调用 `merge_distributed_visual_evidence_into_tracks()` 或等价接线 |
-| CBBA 与中心化最优 gap | D4 输出 completion/conflict/rounds/messages/assignment audit | 尚未与 D3 Hungarian/Min Cost Flow/OR-Tools 同场景 cost matrix 做 gap benchmark | D3/main 保存中心化 cost matrix/current plan，D6 计算 cost/completion/conflict gap |
+| D4/D5 stress 统一口径 | D4 合同测试已有 case_001/002/003，adapter 可接收 D5 terminal/cross-peer evidence；main/runtime 已有基线 stress 与 controlled regression 接线 | 仍需真实 Blocks 多 seed 统计 false degradation、reacquire、secondary freshness 和 D5 peer evidence 的分布 | main/runtime 使用同一 adapter record/event schema 跑多 seed，并固定 D6 汇总字段 |
+| D5 distributed visual evidence 运行时合流 | D4 模块内可把 D5 多 peer evidence merge 到 `TrackSummary.visual_evidence` | 真实多 seed no-center case 中 D5 多 peer 输出到 D4 `TrackSummary.visual_evidence` 的合流频率和风险权重仍需标定 | main 在 no-center case 持续调用 `merge_distributed_visual_evidence_into_tracks()` 或等价接线 |
+| CBBA 与中心化最优 gap | D4 已有 `CBBACostGapBenchmark` 和 `build_cbba_cost_gap_benchmark()`，可对 D3/main 提供的中心 plan/cost matrix 计算 cost/completion/conflict/message gap | 真实 episode 还未持续保存同场景 D3 cost matrix/current plan，也未由 D6 汇总多 seed gap | main/D3 保存中心化 cost matrix/current plan，D6 聚合 benchmark 输出 |
 
 ## 13. 未实现
 
 | 未实现项 | 当前结论 | 为什么未实现 | 缺少条件 | 优先级 |
 |---|---|---|---|---|
 | MIT CBBA / CBBA-Python / CA-CBBA | 未接入外部实现；当前只有本地轻量 CBBA | 外部实现的数据模型、依赖、许可证、异步通信语义和 D4 summary bus 不一致；默认测试不能依赖外部工程 | 许可证/版本审查、adapter、可重复 benchmark、D6 收敛/通信开销报告 | P2 |
-| 独立 auction baseline | 未单独实现 single-round auction | 当前 `CBBANegotiator` 有 winner/bid 共识和 D5 visual evidence 加权，但不是独立拍卖状态机 | 定义 bid/award/rollback、reserve/confirm、重复任务消解和失败回滚测试 | P1/P2 |
+| 独立 auction baseline | 未单独实现 single-round auction，后置为可选对照基线 | 当前 `CBBANegotiator` 有 winner/bid 共识和 D5 visual evidence 加权，但不是独立拍卖状态机；P1 主线先保证 adapter 接线和 CBBA gap benchmark | 定义 bid/award/rollback、reserve/confirm、重复任务消解和失败回滚测试 | P2 后置 |
 | Contract Net | 未实现 manager/contractor announce-bid-award 状态机 | 二级节点健康时仍需和 D3 plan version 对齐；manager 失效后还要 fallback 到 peer consensus | 消息类型、超时、拒绝/重招标、manager 失效和 D3 映射规则 | P2 |
 | 真实通信/视频链路 | 未实现 socket、ROS 2 topic、mesh、视频帧传输或无线协议 | D4 边界是摘要和内存网络，真实链路属于 main/runtime/D5/D1 | runtime 生成 LinkRecord/video metadata；D5/D1 处理图像、检测、标定和 cue schema | P2/P3 |
 | 虚拟中心 Hungarian | 明确不实现为 no-center fallback | 完全无中心模式不能伪造中心权威或改写 `global_track_id`；中心化最优属于 D3/main | 若要对照，只能做离线 benchmark，不得替代 D4 CBBA 保底 | 不做主线 |
-| D4 直接生成系统级 `AssignmentPlan` | 未实现完整系统级封装 | D3/main 拥有 plan schema、plan owner、版本策略和 stale rejection | D3 plan contract、secondary owner 规则、D7 gate 回传、D6 日志闭环 | P1 main/D3 |
+| D4 直接生成系统级 `AssignmentPlan` | 不作为 D4 能力实现；D4 只输出仲裁/metadata/CBBA 保底结果 | D3/main 拥有 plan schema、plan owner、版本策略和 stale rejection；main P1 已接入 secondary owner/version 消费基线 | D4 继续保持不生成系统级计划，必要字段通过 `SecondaryTakeoverPlanMetadata` 输出 | 非 D4 主线 |
 
 ## 14. P1/P2 下一步
 
 P1：
 
-1. main/integrated runtime 在真实 episode 中统一调用 `D4ArbitrationAdapter.evaluate()`，把 D1/D2/D3/D5 摘要、通信记录和 D5 distributed visual evidence 接入 D4。
-2. main 将 `D4DecisionRecord.to_event_record_kwargs()` 写入 D6 collector，并按 active/passive、secondary/distributed、coverage、seed 聚合。
-3. main/D3 监听 `request_center_replan`，生成新版 `AssignmentPlan`，并把 plan id/version 返还给 D4/D7 gate。
-4. main/D3/D7 定义 secondary takeover 后的新 plan owner、plan id/version、D7 two-stage handoff 和恢复合并规则。
-5. D4/D6 增加 CBBA vs D3 中心化 cost matrix 的 gap benchmark，保留轻量 CBBA 为默认保底。
+1. 使用真实 Blocks/AirSim D4/D5 stress 多 seed 校准 `ActiveDegradationArbiter` 阈值、dwell/release、review label、false degradation rate、terminal mismatch/reacquire 分布和 D6 聚合字段。
+2. 校准 secondary heartbeat、coverage、lease、video cue freshness、link stale、plan activation delay 和恢复合并窗口，确保二级接管只在新鲜链路与覆盖条件满足时从 pending 进入 active。
+3. 在完全无中心 case 中持续把 D5 distributed visual evidence 合流到 `TrackSummary.visual_evidence`，并用多 seed 报告确认 CBBA completion/conflict/cost gap/round/message 指标。
+4. main/D3 继续保存同场景中心化 cost matrix/current plan，D6 聚合 D4 `CBBACostGapBenchmark` 多 seed 指标；轻量 CBBA 仍为默认保底。
 
 P2：
 
 1. 评估 MIT CBBA/CA-CBBA/CBBA-Python 的许可证、依赖、消息语义和同场景 benchmark，把它们作为 optional benchmark 而不是默认替换。
-2. 实现独立 single-round auction baseline，用同一 `TrackSummary[]`/`ResourceSummary[]`/D5 evidence 输入与 CBBA 对照。
+2. 在多 seed CBBA gap benchmark 稳定后，可选实现独立 single-round auction baseline，用同一 `TrackSummary[]`/`ResourceSummary[]`/D5 evidence 输入与 CBBA 对照。
 3. 设计 Contract Net 的 manager/contractor 状态机、超时、拒绝/重招标和 manager 失效回退规则。
 4. 扩展 `merge_recovery()`，加入 track digest、plan digest、terminal lock、communication link、D5/D7 gate 状态和多轮稳定窗口。
-5. 在 AirSim stress 中标定主动降级阈值、dwell/release、false degradation rate 和 secondary freshness。
+5. 若 P1 多 seed 校准暴露恢复抖动，再扩展 `merge_recovery()` 的多轮稳定窗口和状态审计。
 
 ## 15. 验收命令
 

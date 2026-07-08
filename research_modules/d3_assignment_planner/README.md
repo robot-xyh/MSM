@@ -45,12 +45,19 @@ The default run uses 8 targets, 8 resources, 100 seconds, and 2 Hz. It compares 
 - `reacquire` -> `replan`
 - `mismatch` or duplicate terminal lock risk -> `secondary_arbitration`
 
-The feedback decision includes `main_action` and `planner_metadata` so main can apply a conservative integration action without local rebinding. The metadata explicitly carries `operator_hold_suggested`, `prohibit_assignment_suggested`, `feasibility_suggestion`, `fov_difficulty_suggestion`, optional `feasibility_by_resource`, optional `fov_difficulty_by_resource`, and optional `prohibited_edges`.
+The feedback decision includes `main_action` and `planner_metadata` so main can apply a conservative integration action without local rebinding. The metadata explicitly carries `operator_hold_suggested`, `prohibit_assignment_suggested`, `feasibility_suggestion`, `fov_difficulty_suggestion`, optional `feasibility_by_resource`, optional `fov_difficulty_by_resource`, and optional `prohibited_edges`. `apply_terminal_feedback_to_planner_inputs(...)` maps that metadata into next-round `TargetTrack` and `ResourceState` DTOs: duplicate/explicit prohibited edges become `feasibility_by_resource=False`, fov/friend feedback increases `fov_difficulty_by_resource`, and friend/hold feedback sets `ResourceState.operator_hold`.
 
 D3 also exports:
 
 - `assignment_validity_summary_from_plan(...)` -> `AssignmentValiditySummary(plan_id, version, plan_age_s, assignment_latency_s, cost_margin, stale_plan_version, duplicate_assignment_count, unassigned_high_threat_count)`.
 - `assignment_records_from_plan(...)` -> D6-compatible `AssignmentRecord` rows with `timestamp`, `plan_id`, `version`, `resource_id`, `global_track_id`, `cost_breakdown`, `authorization_state`, `active`, and `truth_id`.
 - `guidance_bindings_from_assignment_plan(...)` -> versioned `AssignmentGuidanceBinding` rows. Bindings carry `plan_schema`; D4-published `secondary_plan_v2` plans are bound by plan/version and validity state only.
+- `prepare_secondary_takeover_plan(...)` -> stamps a D4/main-selected secondary takeover candidate with `secondary_plan_v2`, owner/source node, superseded center plan id/version, optional leader epoch/lease metadata, and `allow_local_rebind=False`. The helper rejects tied or older secondary versions.
 
-Local resources must not rewrite `global_track_id`; D3 publishes versioned candidate plans for review. For `secondary_plan_v2`, D3 does not choose a concrete secondary node; D4/main supplies the issuing node metadata and D3 only exports plan validity and binding evidence. Normal operation uses Hungarian assignment, complex constraints should upgrade to OR-Tools Min Cost Flow, and D4 secondary-node arbitration is preferred before CBBA-style fallback.
+`PlannerConfig.human_authorization_state` is the source of the plan authorization field. The planner records both `configured_human_authorization_state` and `effective_human_authorization_state` in plan metadata so main can run record-only simulation gates without hard-coding D3 to `"required"`.
+
+For active degradation recovery, D3 does not emit D4 actions itself. When main/D4 requests `request_center_replan`, main calls D3 again with the current `previous_plan`; D3 publishes the next `AssignmentPlan.version`, and main/runtime annotates the bus record with `replan_reason`, `supersedes_plan_id`, `supersedes_plan_version`, and `active_plan_owner="center"`. D7 must only accept the current plan/binding version and must reject stale, revoked, hold, or reassigned bindings.
+
+Main/runtime has connected D5 feedback writeback and secondary owner/version/source recording. Remaining D3 work is calibration: run real multi-seed episodes across N scales and tune D5 feedback weights/thresholds with D6 assignment records.
+
+Local resources must not rewrite `global_track_id`; D3 publishes versioned candidate plans for review. For `secondary_plan_v2`, D3 does not choose a concrete secondary node or enforce runtime leases; D4/main supplies the issuing node and recovery policy, while D3 validates the plan version and exports owner/source/version binding evidence. Normal operation uses Hungarian assignment, complex constraints remain an optional OR-Tools Min Cost Flow upgrade, and D4 secondary-node arbitration is preferred before CBBA-style fallback.

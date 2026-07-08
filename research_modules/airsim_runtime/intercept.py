@@ -609,6 +609,11 @@ def _binding_for_pair(
             ),
             track_version=int(_record_value(explicit, "track_version", 1)),
             authorization_state=str(_record_value(explicit, "authorization_state", "recorded")),
+            owner_node_id=(
+                _optional_record_string(explicit, "owner_node_id")
+                or _optional_record_string(explicit, "source_node_id")
+                or _optional_record_string(explicit, "issuing_node_id")
+            ),
             assignment_validity_state=str(
                 _record_value(explicit, "assignment_validity_state", "current")
             ),
@@ -724,6 +729,8 @@ def _annotate_active_center_replan_frame(
                 "assigned_global_track_id": target_id,
                 "target_id": target_id,
                 "target_object_id": target_id,
+                "owner_node_id": center_node_id,
+                "source_node_id": center_node_id,
                 "track_version": plan_version,
                 "authorization_state": "recorded",
                 "assignment_validity_state": "current",
@@ -880,6 +887,7 @@ def _annotate_active_secondary_visual_png_frame(
         vehicle_name = str(resource.metadata.get("airsim_vehicle_name") or resource.resource_id)
         actor_name = str(target.metadata.get("airsim_actor_name") or target.object_id)
         assignment_id = f"{resource.resource_id}:{target_id}:v{plan_version}"
+        owner_node_id = secondary_node_id if phase == "secondary_reassignment" else "C2"
         bindings.append(
             {
                 "plan_id": plan_id,
@@ -890,6 +898,8 @@ def _annotate_active_secondary_visual_png_frame(
                 "assigned_global_track_id": target_id,
                 "target_id": target_id,
                 "target_object_id": target_id,
+                "owner_node_id": owner_node_id,
+                "source_node_id": owner_node_id,
                 "track_version": plan_version,
                 "authorization_state": "recorded",
                 "assignment_validity_state": "current",
@@ -903,9 +913,7 @@ def _annotate_active_secondary_visual_png_frame(
                     else "assignment_plan_v1",
                     "assignment_phase": phase,
                     "allow_local_rebind": False,
-                    "issuing_node_id": secondary_node_id
-                    if phase == "secondary_reassignment"
-                    else "C2",
+                    "issuing_node_id": owner_node_id,
                 },
             }
         )

@@ -124,7 +124,7 @@ class AssignmentPlanner:
             last_changed_at=timestamp if last_changed_at is None else last_changed_at,
             resource_count=resource_count,
             target_count=target_count,
-            human_authorization_state="required",
+            human_authorization_state=self.config.human_authorization_state,
             decision_state=decision_state,
             changed=changed,
             solver_name=solver_result.solver_name,
@@ -132,7 +132,7 @@ class AssignmentPlanner:
             candidate_total_cost=solver_result.objective_value,
             metadata={
                 "configured_human_authorization_state": self.config.human_authorization_state,
-                "forced_human_authorization_state": "required",
+                "effective_human_authorization_state": self.config.human_authorization_state,
                 "source_node_id": self.config.source_node_id,
                 "target_node_id": self.config.target_node_id,
                 "link_type": self.config.link_type,

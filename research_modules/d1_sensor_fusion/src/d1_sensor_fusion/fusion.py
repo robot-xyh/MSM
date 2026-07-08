@@ -15,7 +15,9 @@ from .observations import (
 )
 from .types import (
     COMMUNICATION_METADATA_KEYS,
+    FusionQualityRegionSummary,
     GlobalTrack,
+    LatencyAuditSummary,
     SensorObservation,
     TrackLevel,
     TrackUncertaintySummary,
@@ -85,6 +87,14 @@ class FusionAdapter:
         self._next_track_id = 1
         self._processed_lineage_keys: set[tuple] = set()
         self.duplicate_observation_count = 0
+        self.observation_count = 0
+        self.replay_count = 0
+        self.oosm_observation_count = 0
+        self.stale_observation_count = 0
+        self.stale_or_oosm_observation_count = 0
+        self.max_delay_s = 0.0
+        self._latency_delay_sum_s = 0.0
+        self.max_replay_observation_count = 0
 
     def _bucket(self, timestamp: float) -> int:
         """Return the fixed-lag cache bucket for a timestamp."""
@@ -94,8 +104,10 @@ class FusionAdapter:
     def process(self, observation: SensorObservation) -> list[GlobalTrack]:
         """Process one arrived observation and return current global tracks."""
 
+        previous_time = self.current_time
         current_time = max(self.current_time, float(observation.arrival_timestamp))
         self.current_time = current_time
+        self._record_latency_audit(observation, previous_time, current_time)
         effective = observation
         if not self.latency_compensation:
             effective = observation.with_measurement_timestamp(observation.arrival_timestamp)
@@ -173,8 +185,11 @@ class FusionAdapter:
             record.current_state = predict_to(record.current_state, current_time, self.process_noise)
             return self._to_global_track(record)
 
+        inserted_observation = False
         if observation.observation_id not in {obs.observation_id for obs in record.observations}:
             record.observations.append(observation)
+            inserted_observation = True
+        self._record_replay_audit(record, inserted_observation)
         record.hits += 1
         record.source_support[observation.modality] += 1
         if observation.classification_hint:
@@ -235,6 +250,79 @@ class FusionAdapter:
             last_nis=track.last_nis,
             handover_readiness=readiness,
             quality_flags=tuple(metadata.get("quality_flags", ())),
+        )
+
+    def latency_audit_summary(self) -> LatencyAuditSummary:
+        mean_delay_s = (
+            self._latency_delay_sum_s / self.observation_count
+            if self.observation_count > 0
+            else 0.0
+        )
+        return LatencyAuditSummary(
+            observation_count=self.observation_count,
+            replay_count=self.replay_count,
+            oosm_observation_count=self.oosm_observation_count,
+            stale_observation_count=self.stale_observation_count,
+            stale_or_oosm_observation_count=self.stale_or_oosm_observation_count,
+            max_delay_s=self.max_delay_s,
+            mean_delay_s=mean_delay_s,
+            duplicate_observation_count=self.duplicate_observation_count,
+            max_replay_observation_count=self.max_replay_observation_count,
+            latency_compensation=self.latency_compensation,
+        )
+
+    def region_quality_summaries(
+        self,
+        required_modalities: Iterable[str] = ("radar", "eo", "acoustic"),
+        stale_age_s: float | None = None,
+    ) -> list[FusionQualityRegionSummary]:
+        grouped: dict[str, list[TrackUncertaintySummary]] = {}
+        for summary in self.track_uncertainty_summaries():
+            coverage_cell = summary.coverage_cell or "unassigned"
+            grouped.setdefault(coverage_cell, []).append(summary)
+
+        stale_threshold = max(self.bucket_size, 1.0) if stale_age_s is None else float(stale_age_s)
+        required = tuple(str(modality) for modality in required_modalities)
+        return [
+            self._region_quality_summary(coverage_cell, grouped[coverage_cell], required, stale_threshold)
+            for coverage_cell in sorted(grouped)
+        ]
+
+    def _region_quality_summary(
+        self,
+        coverage_cell: str,
+        summaries: list[TrackUncertaintySummary],
+        required_modalities: tuple[str, ...],
+        stale_age_s: float,
+    ) -> FusionQualityRegionSummary:
+        source_support: Counter = Counter()
+        quality_flags: set[str] = set()
+        for summary in summaries:
+            source_support.update(summary.source_support)
+            quality_flags.update(str(flag) for flag in summary.quality_flags)
+
+        a95_values = [summary.a95_m for summary in summaries]
+        readiness_values = [summary.handover_readiness for summary in summaries]
+        age_values = [summary.measurement_age_s for summary in summaries]
+        level_counts = Counter(summary.track_level for summary in summaries)
+        source_gap_modalities = tuple(
+            modality for modality in required_modalities if source_support.get(modality, 0) <= 0
+        )
+        return FusionQualityRegionSummary(
+            coverage_cell=coverage_cell,
+            published_at=max(summary.published_at for summary in summaries),
+            track_count=len(summaries),
+            coarse_track_count=int(level_counts.get(TrackLevel.COARSE.value, 0)),
+            stable_track_count=int(level_counts.get(TrackLevel.STABLE.value, 0)),
+            handover_track_count=int(level_counts.get(TrackLevel.HANDOVER.value, 0)),
+            stale_track_count=sum(1 for age in age_values if age > stale_age_s),
+            mean_a95_m=float(np.mean(a95_values)) if a95_values else 0.0,
+            max_a95_m=float(max(a95_values)) if a95_values else 0.0,
+            max_measurement_age_s=float(max(age_values)) if age_values else 0.0,
+            mean_handover_readiness=float(np.mean(readiness_values)) if readiness_values else 0.0,
+            source_support={str(key): int(value) for key, value in source_support.items()},
+            source_gap_modalities=source_gap_modalities,
+            quality_flags=tuple(sorted(quality_flags)),
         )
 
     def _create_track(
@@ -423,6 +511,7 @@ class FusionAdapter:
                 "latency_compensation": self.latency_compensation,
                 "source_support": dict(record.source_support),
                 "duplicate_observation_count": self.duplicate_observation_count,
+                "latency_audit": self.latency_audit_summary().to_dict(),
             }
         )
         return GlobalTrack(
@@ -487,6 +576,38 @@ class FusionAdapter:
                 0.0,
                 1.0,
             )
+        )
+
+    def _record_latency_audit(
+        self,
+        observation: SensorObservation,
+        previous_time: float,
+        current_time: float,
+    ) -> None:
+        delay_s = max(0.0, float(observation.latency))
+        self.observation_count += 1
+        self._latency_delay_sum_s += delay_s
+        self.max_delay_s = max(self.max_delay_s, delay_s)
+
+        is_oosm = observation.measurement_timestamp < float(previous_time) - 1e-9
+        is_stale = observation.is_stale_at(current_time)
+        if observation.stale_after_s is not None and delay_s > observation.stale_after_s:
+            is_stale = True
+
+        if is_oosm:
+            self.oosm_observation_count += 1
+        if is_stale:
+            self.stale_observation_count += 1
+        if is_oosm or is_stale:
+            self.stale_or_oosm_observation_count += 1
+
+    def _record_replay_audit(self, record: TrackRecord, inserted_observation: bool) -> None:
+        if not inserted_observation:
+            return
+        self.replay_count += 1
+        self.max_replay_observation_count = max(
+            self.max_replay_observation_count,
+            len(record.observations),
         )
 
     def _is_duplicate_observation(self, observation: SensorObservation) -> bool:

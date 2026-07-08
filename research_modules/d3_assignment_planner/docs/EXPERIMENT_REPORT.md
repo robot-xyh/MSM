@@ -11,7 +11,7 @@ D3 研究多目标、多资源条件下的滚动分配稳定性。重点验证�
 - Hungarian 是否能作为 5v5 及更大规模的一对一分配基线。
 - 迟滞逻辑是否能减少频繁重分配。
 - 代价函数是否显式包含接近窗口、航迹不确定性、威胁权重、资源状态、视场难度和冲突风险。
-- 分配计划是否版本化，并保持 `human_authorization_state="required"`。
+- 分配计划是否版本化，并验证默认 `human_authorization_state="required"` 与 `PlannerConfig` 配置化授权状态透传。
 
 完整算法原理、接口契约和调参建议见 [ALGORITHM_AND_IMPLEMENTATION.md](ALGORITHM_AND_IMPLEMENTATION.md)。
 

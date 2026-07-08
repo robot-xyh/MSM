@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
+from typing import Mapping
 
 import numpy as np
 
@@ -11,6 +12,7 @@ from .models import (
     Assignment,
     AvailabilityBand,
     BidState,
+    CBBACostGapBenchmark,
     CBBAResult,
     CommBand,
     ConfidenceBand,
@@ -384,3 +386,117 @@ class CBBANegotiator:
                 "risk_reasons": evidence.risk_reasons,
             }
         return audit
+
+
+def build_cbba_cost_gap_benchmark(
+    cbba_result: CBBAResult,
+    *,
+    center_assignments: Mapping[str, str | Assignment],
+    cost_by_task_resource: Mapping[str, Mapping[str, float]],
+    benchmark_source: str = "d3_hungarian_cost_matrix",
+    attach_to_result: bool = False,
+) -> CBBACostGapBenchmark:
+    """Compare a D4 CBBA result with a D3 centralized plan on the same costs.
+
+    D4 does not run Hungarian or min-cost flow here. The centralized owner for
+    each task must come from D3/main, together with the cost matrix used for
+    that plan. This helper only computes the offline benchmark deltas.
+    """
+
+    center_owner_by_task = {
+        str(task_id): _assignment_owner(owner)
+        for task_id, owner in center_assignments.items()
+    }
+    cbba_owner_by_task = {
+        str(task_id): assignment.owner
+        for task_id, assignment in cbba_result.assignments.items()
+    }
+    task_ids = tuple(
+        sorted(
+            set(cost_by_task_resource)
+            | set(center_owner_by_task)
+            | set(cbba_owner_by_task)
+        )
+    )
+    center_costs, missing_center_costs = _assignment_costs(
+        center_owner_by_task,
+        cost_by_task_resource,
+    )
+    cbba_costs, missing_cbba_costs = _assignment_costs(
+        cbba_owner_by_task,
+        cost_by_task_resource,
+    )
+    center_total = _total_cost_or_none(center_costs, missing_center_costs)
+    cbba_total = _total_cost_or_none(cbba_costs, missing_cbba_costs)
+    absolute_gap = None
+    relative_gap = None
+    if cbba_total is not None and center_total is not None:
+        absolute_gap = cbba_total - center_total
+        if abs(center_total) > 1e-12:
+            relative_gap = absolute_gap / abs(center_total)
+
+    per_task_gap: dict[str, float | None] = {}
+    for task_id in task_ids:
+        center_cost = center_costs.get(task_id)
+        cbba_cost = cbba_costs.get(task_id)
+        per_task_gap[task_id] = (
+            cbba_cost - center_cost
+            if center_cost is not None and cbba_cost is not None
+            else None
+        )
+
+    center_completion = len(center_owner_by_task) / len(task_ids) if task_ids else 1.0
+    benchmark = CBBACostGapBenchmark(
+        benchmark_source=benchmark_source,
+        cbba_total_cost=cbba_total,
+        center_total_cost=center_total,
+        absolute_cost_gap=absolute_gap,
+        relative_cost_gap=relative_gap,
+        cbba_assignment_count=len(cbba_owner_by_task),
+        center_assignment_count=len(center_owner_by_task),
+        common_assignment_count=len(set(cbba_owner_by_task) & set(center_owner_by_task)),
+        cbba_completion_rate=cbba_result.completion_rate,
+        center_completion_rate=center_completion,
+        completion_rate_gap=cbba_result.completion_rate - center_completion,
+        cbba_conflict_count=cbba_result.conflict_count,
+        cbba_consensus_rounds=cbba_result.consensus_rounds,
+        cbba_messages_sent=cbba_result.messages_sent,
+        missing_cbba_task_ids=tuple(
+            sorted(set(center_owner_by_task) - set(cbba_owner_by_task))
+        ),
+        extra_cbba_task_ids=tuple(
+            sorted(set(cbba_owner_by_task) - set(center_owner_by_task))
+        ),
+        missing_cost_pairs=tuple(sorted(set(missing_center_costs) | set(missing_cbba_costs))),
+        per_task_cost_gap=per_task_gap,
+    )
+    if attach_to_result:
+        cbba_result.cost_gap_benchmark = benchmark
+    return benchmark
+
+
+def _assignment_owner(owner: str | Assignment) -> str:
+    if isinstance(owner, Assignment):
+        return owner.owner
+    return str(owner)
+
+
+def _assignment_costs(
+    owner_by_task: Mapping[str, str],
+    cost_by_task_resource: Mapping[str, Mapping[str, float]],
+) -> tuple[dict[str, float], list[str]]:
+    costs: dict[str, float] = {}
+    missing: list[str] = []
+    for task_id, owner in owner_by_task.items():
+        task_costs = cost_by_task_resource.get(task_id)
+        if task_costs is None or owner not in task_costs:
+            missing.append(f"{task_id}:{owner}")
+            continue
+        costs[task_id] = float(task_costs[owner])
+    return costs, missing
+
+
+def _total_cost_or_none(costs: Mapping[str, float], missing_costs: list[str]) -> float | None:
+    if missing_costs:
+        return None
+    return float(sum(costs.values()))

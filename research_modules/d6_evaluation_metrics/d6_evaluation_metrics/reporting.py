@@ -38,6 +38,8 @@ class ReportGenerator:
             "consensus_rounds",
             "degraded_completion_rate",
             "active_degradation_count",
+            "active_degradation_precision",
+            "unnecessary_active_degradation_count",
             "passive_failover_count",
             "secondary_node_takeover_count",
             "secondary_reassignment_count",
@@ -133,6 +135,7 @@ class ReportGenerator:
             "seed",
             "batch_seed",
             "scenario_group",
+            "metric_scope",
             *EpisodeMetrics.scale_names(),
             "duration",
         ] + EpisodeMetrics.metric_names()
@@ -153,12 +156,18 @@ class ReportGenerator:
         rows = _scoped_summary_rows(
             "all",
             "all",
+            "all",
+            "all",
             _scale_scope_values(episode_list),
             self.summarize(episode_list),
         )
-        for scenario_group, scoped_episodes in _scenario_scale_rows(episode_list):
+        for metric_scope, seed, scenario_group, scoped_episodes in (
+            _metric_scope_seed_scenario_scale_rows(episode_list)
+        ):
             rows.extend(
                 _scoped_summary_rows(
+                    metric_scope,
+                    seed,
                     scenario_group,
                     _batch_seed_range_text(scoped_episodes),
                     _scale_scope_values(scoped_episodes),
@@ -166,6 +175,8 @@ class ReportGenerator:
                 )
             )
         fieldnames = [
+            "metric_scope",
+            "seed",
             "scenario_group",
             "batch_seed",
             *EpisodeMetrics.scale_names(),
@@ -196,7 +207,7 @@ class ReportGenerator:
         path.parent.mkdir(parents=True, exist_ok=True)
         episode_list = list(episodes)
         summary_rows = self.summarize(episode_list)
-        scenario_rows = _scenario_scale_rows(episode_list)
+        scenario_rows = _metric_scope_seed_scenario_scale_rows(episode_list)
 
         lines = [
             f"# {title}",
@@ -207,6 +218,7 @@ class ReportGenerator:
             f"- Episode 数量: {len(episode_list)}",
             f"- 随机种子范围: {_seed_range_text(episode_list)}",
             f"- 场景分组: {', '.join(_ordered_scenario_groups(episode_list)) or 'not recorded'}",
+            f"- Metrics scope: {_metric_scope_range_text(episode_list)}",
             f"- Drone count: {_scale_range_text(episode_list, 'drone_count')}",
             f"- Resource count: {_scale_range_text(episode_list, 'resource_count')}",
             f"- Target count: {_scale_range_text(episode_list, 'target_count')}",
@@ -229,15 +241,17 @@ class ReportGenerator:
             lines.extend(
                 [
                     "",
-                    "## 2. 场景分组",
+                    "## 2. 口径/种子/场景分组",
                     "",
-                    "| 场景 | Drone count | Resource count | Target count | Camera count | Episode 数量 | Batch seed | active_degradation_count | passive_failover_count | mode_switch_count | terminal_contract_reject_count |",
-                    "|---|---|---|---|---|---:|---|---:|---:|---:|---:|",
+                    "| Metrics scope | Seed | 场景 | Drone count | Resource count | Target count | Camera count | Episode 数量 | Batch seed | active_degradation_count | active_degradation_precision | unnecessary_active_degradation_count | passive_failover_count | mode_switch_count | terminal_contract_reject_count |",
+                    "|---|---|---|---|---|---|---|---:|---|---:|---:|---:|---:|---:|---:|",
                 ]
             )
-            for scenario_group, scoped_episodes in scenario_rows:
+            for metric_scope, seed, scenario_group, scoped_episodes in scenario_rows:
                 lines.append(
-                    "| {scenario_group} | {drone_count} | {resource_count} | {target_count} | {camera_count} | {count} | {batch_seed} | {active:.6g} | {passive:.6g} | {mode_switch:.6g} | {contract_reject:.6g} |".format(
+                    "| {metric_scope} | {seed} | {scenario_group} | {drone_count} | {resource_count} | {target_count} | {camera_count} | {count} | {batch_seed} | {active:.6g} | {active_precision:.6g} | {unnecessary:.6g} | {passive:.6g} | {mode_switch:.6g} | {contract_reject:.6g} |".format(
+                        metric_scope=metric_scope,
+                        seed=seed,
                         scenario_group=scenario_group,
                         drone_count=_scale_range_text(scoped_episodes, "drone_count"),
                         resource_count=_scale_range_text(scoped_episodes, "resource_count"),
@@ -246,6 +260,14 @@ class ReportGenerator:
                         count=len(scoped_episodes),
                         batch_seed=_batch_seed_range_text(scoped_episodes),
                         active=_mean_metric(scoped_episodes, "active_degradation_count"),
+                        active_precision=_mean_metric(
+                            scoped_episodes,
+                            "active_degradation_precision",
+                        ),
+                        unnecessary=_mean_metric(
+                            scoped_episodes,
+                            "unnecessary_active_degradation_count",
+                        ),
                         passive=_mean_metric(scoped_episodes, "passive_failover_count"),
                         mode_switch=_mean_metric(scoped_episodes, "mode_switch_count"),
                         contract_reject=_mean_metric(
@@ -394,6 +416,8 @@ def _empty_summary_row(metric_name: str) -> dict[str, Any]:
 
 
 def _scoped_summary_rows(
+    metric_scope: str,
+    seed: str,
     scenario_group: str,
     batch_seed: str,
     scale_values: dict[str, str],
@@ -401,6 +425,8 @@ def _scoped_summary_rows(
 ) -> list[dict[str, Any]]:
     return [
         {
+            "metric_scope": metric_scope,
+            "seed": seed,
             "scenario_group": scenario_group,
             "batch_seed": batch_seed,
             **scale_values,
@@ -410,26 +436,59 @@ def _scoped_summary_rows(
     ]
 
 
-def _scenario_scale_rows(
+def _metric_scope_seed_scenario_scale_rows(
     episodes: list[EpisodeMetrics],
-) -> list[tuple[str, list[EpisodeMetrics]]]:
-    rows: list[tuple[str, list[EpisodeMetrics]]] = []
-    for scenario_group in _ordered_scenario_groups(episodes):
-        scoped = [
-            episode
-            for episode in episodes
-            if episode.scenario_group == scenario_group
-        ]
-        grouped: dict[tuple[int, int, int, int], list[EpisodeMetrics]] = {}
-        for episode in scoped:
-            key = tuple(
-                _episode_scale_value(episode, scale_name)
-                for scale_name in EpisodeMetrics.scale_names()
-            )
-            grouped.setdefault(key, []).append(episode)
-        for key in sorted(grouped):
-            rows.append((scenario_group, grouped[key]))
+) -> list[tuple[str, str, str, list[EpisodeMetrics]]]:
+    grouped: dict[tuple[str, int, str, tuple[int, ...]], list[EpisodeMetrics]] = {}
+    for episode in episodes:
+        scale_key = tuple(
+            _episode_scale_value(episode, scale_name)
+            for scale_name in EpisodeMetrics.scale_names()
+        )
+        key = (
+            _episode_metric_scope_value(episode),
+            _episode_seed_sort_value(episode),
+            episode.scenario_group,
+            scale_key,
+        )
+        grouped.setdefault(key, []).append(episode)
+
+    rows: list[tuple[str, str, str, list[EpisodeMetrics]]] = []
+    for key, scoped in sorted(grouped.items(), key=_grouped_row_sort_key):
+        metric_scope, _, scenario_group, _ = key
+        rows.append((metric_scope, _seed_range_text(scoped), scenario_group, scoped))
     return rows
+
+
+def _grouped_row_sort_key(
+    item: tuple[tuple[str, int, str, tuple[int, ...]], list[EpisodeMetrics]],
+) -> tuple[tuple[int, str], int, tuple[int, str], tuple[int, ...]]:
+    key, _ = item
+    metric_scope, seed, scenario_group, scale_key = key
+    return (
+        _metric_scope_sort_key(metric_scope),
+        seed,
+        _scenario_group_sort_key(scenario_group),
+        scale_key,
+    )
+
+
+def _metric_scope_sort_key(metric_scope: str) -> tuple[int, str]:
+    preferred = {"execution": 0, "contract": 1, "not_recorded": 2}
+    return (preferred.get(metric_scope, 100), metric_scope)
+
+
+def _scenario_group_sort_key(scenario_group: str) -> tuple[int, str]:
+    preferred_order = [
+        "normal",
+        "secondary_200m",
+        "distributed",
+        "terminal_handoff_tuned",
+        "multi_view_inconsistent",
+    ]
+    if scenario_group in preferred_order:
+        return (preferred_order.index(scenario_group), scenario_group)
+    return (len(preferred_order), scenario_group)
 
 
 def _ordered_scenario_groups(episodes: list[EpisodeMetrics]) -> list[str]:
@@ -444,6 +503,17 @@ def _ordered_scenario_groups(episodes: list[EpisodeMetrics]) -> list[str]:
     ordered = [group for group in preferred_order if group in present]
     ordered.extend(sorted(present - set(ordered)))
     return ordered
+
+
+def _metric_scope_range_text(episodes: list[EpisodeMetrics]) -> str:
+    scopes = sorted(
+        {_episode_metric_scope_value(episode) for episode in episodes},
+        key=_metric_scope_sort_key,
+    )
+    scopes = [scope for scope in scopes if scope and scope != "not_recorded"]
+    if not scopes:
+        return "not recorded"
+    return ", ".join(scopes)
 
 
 def _scale_scope_values(episodes: list[EpisodeMetrics]) -> dict[str, str]:
@@ -469,6 +539,18 @@ def _scale_range_text(episodes: list[EpisodeMetrics], scale_name: str) -> str:
     if len(values) == 1:
         return str(values[0])
     return f"{values[0]}..{values[-1]}"
+
+
+def _episode_metric_scope_value(episode: EpisodeMetrics) -> str:
+    scope = getattr(episode, "metric_scope", None)
+    text = str(scope or "").strip().lower()
+    return text or "not_recorded"
+
+
+def _episode_seed_sort_value(episode: EpisodeMetrics) -> int:
+    if episode.seed is None:
+        return -1
+    return int(episode.seed)
 
 
 def _episode_scale_value(episode: EpisodeMetrics, scale_name: str) -> int:

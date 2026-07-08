@@ -39,8 +39,10 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 - D5 cross-view 风险：`TerminalAssociationSummary.cross_view_risk_score` 和 `duplicate_terminal_lock` 会阻止“误判为一致锁定”。
 - 完全无中心视觉证据接入：`DistributedVisualEvidenceSummary`、`build_distributed_visual_evidence_summary()` 和 `merge_distributed_visual_evidence_into_tracks()` 可用 duck typing/dict 消费 D5 的 distributed terminal association / cross-peer hypothesis，不导入 D5 类型，也不创建或改写 `global_track_id`。
 - 指标输出：`ActiveDegradationDecision.to_metrics()` 输出 `d4_action`、`degradation_mode`、`target_node_id`、`risk_factors`、`terminal_consistent`、`failover_time`、`secondary_selected_rate`、`distributed_conflict_count`。
-- D6 兼容事件：`D4ArbitrationAdapter` 输出 `EventRecord` kwargs，metadata 含 `degradation_mode`、`selected_coordinator`、`coverage_cell`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp` 和 `review_label`，并保留 `d4_degradation_mode` 兼容 D4 原始枚举。
+- D6 兼容事件：`D4ArbitrationAdapter` 输出 `EventRecord` kwargs，metadata 含 `degradation_mode`、`selected_coordinator`、`coverage_cell`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp`、`review_label`、secondary takeover plan lifecycle 和 `active_plan_owner`，并保留 `d4_degradation_mode` 兼容 D4 原始枚举。
+- 二级接管 plan metadata：`SecondaryTakeoverPlanMetadata` 明确 `not_applicable`、`pending_secondary_plan`、`secondary_plan_active` 三种状态，记录当前 plan id/version、二级 plan id/version、source node、supersedes plan 和 reassignment 是否完成；D4 不生成完整系统级 `AssignmentPlan`。
 - CBBA 风格协商：用于二级节点不可用后的连续性分配基线；D5 视觉支持会提高对应资源出价，`hold`、友方冲突、过期/缺失/冲突 `global_track_id` 会阻止可执行出价，重复锁定风险进入 `assignment_audit` 且不允许多个 owner。
+- CBBA gap benchmark：`build_cbba_cost_gap_benchmark()` 使用 D3/main 提供的中心 plan 与 cost matrix，计算 D4 CBBA 相对中心 Hungarian/Min Cost Flow 基线的 cost/completion/conflict/message 差距；D4 不在 no-center 路径运行虚拟中心 Hungarian。
 - 与 D3/D5/D6 的接口：接收上一版分配摘要，向 D5 提供区域观测/cue 语义，向 D6 输出接管、共识和冲突指标。
 
 ## 主动降级入口
@@ -49,8 +51,9 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 
 - D5 与分配目标一致且风险低：`continue_center`。
 - D1/D2 风险升高但 D5 仍一致：优先 `request_secondary_assist`。
-- D3 分配 stale 或无效但 D5 仍一致：优先 `request_center_replan`。
-- D5 多帧 `ambiguous/hold/reacquire` 或长期不一致：二级节点覆盖则 `degrade_to_secondary`，否则 `degrade_to_distributed`。
+- D3 分配 `is_current=False` 或 `plan_age_s` stale 属于硬风险，D5 仍一致时优先 `request_center_replan`；`d3_assignment_cost_margin_low` 属于软证据，单独出现时只继续观察或请求二级 cue，不触发每帧重规划。
+- D5 多帧 `ambiguous/hold/reacquire` 但没有 observed global track mismatch、资源错配、重复锁定或友方冲突时，不视为分配失效：有二级覆盖则 `request_secondary_assist`，否则 `continue_center` 并继续观察。
+- D5 长期不一致且存在 observed global track mismatch、资源错配、重复锁定、cross-view 高风险或友方冲突等硬证据时，才进入中心重规划、`degrade_to_secondary` 或 `degrade_to_distributed`。
 - D5 `friend_conflict=True`：强制 `hold_for_review`；`duplicate_terminal_lock=True` 不视为一致锁定。
 - 若传入通信摘要，二级节点必须有未过期的 `secondary_relay`、`video_cue` 或 `c2_direct` 链路才可作为主动辅助/接管目标。
 - 若二级节点 `heartbeat_timestamp_s` 超过 `heartbeat_stale_after_s`，即使视频链路摘要新鲜，也不会被选为二级接管目标。
@@ -60,6 +63,8 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 
 ## P1 状态
 
-- 已完成：二级节点 lifecycle summary、主动降级 dwell/release/window 防抖配置、D6-compatible decision event metadata、D5 distributed visual evidence -> CBBA 风险加权、对应单元测试。
+- 已完成：二级节点 lifecycle summary、secondary takeover pending/active metadata、主动降级 dwell/release/window 防抖配置、主动降级硬/软风险分层、D6-compatible decision event metadata、D5 distributed visual evidence -> 完全无中心 CBBA 风险加权、CBBA vs D3 中心化 cost gap benchmark helper、对应单元测试。
+- 已完成的 main/runtime P1 基线：episode bus 已接入 D4 adapter event，`request_center_replan` 可触发 D3 new plan version，secondary takeover owner/version 已回灌给 D3/D7，controlled 2v2 secondary visual PNG 回归已通过。该项为 main-owned 集成，D4 仍只输出仲裁/metadata，不生成系统级 `AssignmentPlan`。
 - 保持不变：轻量 CBBA 仍是完全无中心保底基线；未接入 MIT CBBA、CA-CBBA、独立 auction 或 contract-net。
-- 仍属 main/runtime 侧后续：真实 AirSim episode 中统一调用 `D4ArbitrationAdapter`、写入 D6 collector、按 episode 聚合主动/被动降级指标。
+- 剩余 P1：真实 AirSim/Blocks D4/D5 stress 多 seed 校准，secondary heartbeat/link freshness、video cue freshness、plan activation delay、D5 peer evidence 合流和 D6 长期聚合口径。
+- 后置 optional 对照：独立 single-round auction baseline、MIT/CA-CBBA/CBBA-Python adapter 和 Contract Net 均不是当前保底主线；完全无中心默认仍使用轻量 CBBA。

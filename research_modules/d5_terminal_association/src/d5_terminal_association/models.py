@@ -77,6 +77,24 @@ def _optional_string(value: Any | None) -> str | None:
     return text if text else None
 
 
+def _finite_float_or_none(value: float | None) -> float | None:
+    if value is None:
+        return None
+    value = float(value)
+    if not np.isfinite(value):
+        return None
+    return value
+
+
+def _optional_pair_tuple(values: Any | None) -> tuple[float, float] | None:
+    if values is None:
+        return None
+    array = np.asarray(values, dtype=float).reshape(-1)
+    if array.shape != (2,):
+        raise ValueError(f"pair must have shape (2,), got {array.shape}")
+    return (float(array[0]), float(array[1]))
+
+
 def _visual_tracklet_key(resource_id: str, camera_id: str | None, local_track_id: str) -> str:
     if camera_id:
         return f"{resource_id}/{camera_id}:{local_track_id}"
@@ -449,6 +467,37 @@ class CostBreakdown:
     gated: bool
     friend_conflict_state: str = "none"
     recon_cue_cost: float = 0.0
+    projected_px: tuple[float, float] | None = None
+    bbox_center_px: tuple[float, float] | None = None
+    pixel_error_px: float | None = None
+    measurement_age_s: float | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "projected_px", _optional_pair_tuple(self.projected_px))
+        object.__setattr__(self, "bbox_center_px", _optional_pair_tuple(self.bbox_center_px))
+        object.__setattr__(self, "pixel_error_px", _finite_float_or_none(self.pixel_error_px))
+        object.__setattr__(self, "measurement_age_s", _finite_float_or_none(self.measurement_age_s))
+
+    def to_log_record(self) -> dict[str, Any]:
+        """Return a JSON-friendly per-pair geometry/cost log record."""
+
+        return {
+            "global_track_id": self.global_track_id,
+            "local_track_id": self.local_track_id,
+            "projected_px": list(self.projected_px) if self.projected_px is not None else None,
+            "bbox_center_px": list(self.bbox_center_px) if self.bbox_center_px is not None else None,
+            "pixel_error_px": self.pixel_error_px,
+            "mahalanobis_d2": _finite_float_or_none(self.mahalanobis_d2),
+            "gate_pass": bool(self.gated),
+            "total_cost": _finite_float_or_none(self.total_cost),
+            "rate_cost": _finite_float_or_none(self.rate_cost),
+            "category_cost": _finite_float_or_none(self.category_cost),
+            "friend_cost": _finite_float_or_none(self.friend_cost),
+            "quality_cost": _finite_float_or_none(self.quality_cost),
+            "recon_cue_cost": _finite_float_or_none(self.recon_cue_cost),
+            "friend_conflict_state": self.friend_conflict_state,
+            "measurement_age_s": self.measurement_age_s,
+        }
 
 
 @dataclass(frozen=True)
@@ -788,3 +837,44 @@ class TerminalConsistencySummary:
         object.__setattr__(self, "cross_view_decision_states", _as_string_tuple(self.cross_view_decision_states))
         object.__setattr__(self, "cross_view_support_count", int(self.cross_view_support_count))
         object.__setattr__(self, "metadata", dict(self.metadata))
+
+    def to_metadata(self) -> dict[str, Any]:
+        """Return D4/D6/D7-consumable consistency metadata."""
+
+        return {
+            "resource_id": self.resource_id,
+            "assigned_global_track_id": self.assigned_global_track_id,
+            "assignment_version": self.assignment_version,
+            "timestamp": self.timestamp,
+            "decision_state": self.decision_state,
+            "consistency_state": self.consistency_state,
+            "association_confidence": self.association_confidence,
+            "ambiguity_score": self.ambiguity_score,
+            "friend_conflict_state": self.friend_conflict_state,
+            "candidate_cost_margin": _finite_float_or_none(self.candidate_cost_margin),
+            "recon_cue_used": self.recon_cue_used,
+            "terminal_lock_age_s": self.terminal_lock_age_s,
+            "consecutive_locked_frames": self.consecutive_locked_frames,
+            "consecutive_ambiguous_frames": self.consecutive_ambiguous_frames,
+            "consecutive_hold_frames": self.consecutive_hold_frames,
+            "consecutive_reacquire_frames": self.consecutive_reacquire_frames,
+            "local_track_id": self.local_track_id,
+            "previous_decision_state": self.previous_decision_state,
+            "lock_lifecycle_state": self.lock_lifecycle_state,
+            "lost_lock_event": self.lost_lock_event,
+            "lock_reacquired_event": self.lock_reacquired_event,
+            "event_summary": self.event_summary,
+            "competing_global_track_id": self.competing_global_track_id,
+            "local_best_conflicts_with_assignment": self.local_best_conflicts_with_assignment,
+            "duplicate_terminal_lock_risk": self.duplicate_terminal_lock_risk,
+            "duplicate_lock_resource_ids": list(self.duplicate_lock_resource_ids),
+            "duplicate_local_track_ids": list(self.duplicate_local_track_ids),
+            "cross_view_support_count": self.cross_view_support_count,
+            "cross_view_supporting_resource_ids": list(self.cross_view_supporting_resource_ids),
+            "cross_view_decision_states": list(self.cross_view_decision_states),
+            "recommended_d4_action": self.recommended_d4_action,
+            "reason": self.reason,
+            "consistency_window_key": f"{self.resource_id}:{self.assigned_global_track_id}",
+            "assignment_version_resets_window": False,
+            "metadata": dict(self.metadata),
+        }

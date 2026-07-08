@@ -289,6 +289,21 @@ D4 的主动降级不是被动等待中心节点失效，而是在中心或二�
 
 这些信号不等同于“目标处置建议”。它们只表示 D2 对当前 `global_track_id` 稳定性的可信程度。
 
+### 13.1.1 与 D4 P1 仲裁的软/硬风险分层
+
+2026-07-07 的 D4 主动降级 P1 修复后，D4 不再把所有 D2 不确定性都视为立即重规划或降级条件。D2 输出到 D4 的证据应分为两层：
+
+| D2 证据 | D4 解释 | 建议动作 |
+|---|---|---|
+| `association_ambiguity` 中等/偏高 | 软风险，表示 GNN 硬关联候选接近 | 继续观察、提高 D3 迟滞、请求二级节点 cue 或离线 JPDA 对照 |
+| cost margin 小、candidate overlap 高 | 软风险，表示密集/交叉窗口内身份不确定 | 不单独触发 `request_center_replan`，需要窗口持续或其他硬证据 |
+| 短时 D5 disagreement | 软风险，可能是终端相机视角/检测稳定性问题 | 结合 D5 一致性窗口判断，优先观察或二级 cue |
+| `id_switch_count` 或窗口 delta 增长 | 硬风险，说明规范身份已经发生切换 | 可作为 D4 主动仲裁硬证据 |
+| `duplicate_assignment_count`、`duplicate_track_risk` 增长 | 硬风险，说明同一目标/观测可能被重复解释 | 可触发中心重规划或二级/分布式校验 |
+| `track_continuity` 低于阈值 | 硬风险，说明身份连续性已经明显退化 | 可与 D1/D3/D5 证据共同触发主动仲裁 |
+
+因此 D2 生成 `AssociationRiskSummary` 时应保留原始计数、窗口 delta 和 ambiguity 分数，而不是只给一个单一 `risk_score`。当前代码用 `RiskThresholds` 和 `classify_risk_summary()` 把每帧风险摘要转换为 soft/hard `RiskBreakdown`，并在 replay helper 的 `summarize_replay_risk()` / `run_threshold_sensitivity()` 中输出帧数、原因集合和最高分。D4 需要区分“需要观察的不确定性”和“已经破坏身份连续性的硬证据”。这也是防止 nominal 2v2/5v5 场景中单帧 ambiguity 或低 cost margin 反复触发 `request_center_replan` 的关键。
+
 ### 13.2 `AssociationRiskSummary` 建议结构
 
 建议在 D2 风险摘要中表达跨视角弱证据和跨节点通信来源，而不是让 D4 直接解析完整代价矩阵。D2 仍是 `global_track_id` 权威；D5、二级节点和拦截机只能提交弱证据、候选 ID 和风险提示，不能直接改写规范 ID。字段建议如下：
@@ -444,4 +459,5 @@ D6 消费 `AssociationLogEntry`、`TrackTransition`、`MetricsRecorder.summary()
 - 增加 JPDA/MHT 与 Stone Soup 的离线基准对照。
 - 把 D5 的终端关联反馈作为低权重身份证据接入，但保持 D2 对 `global_track_id` 的唯一管理权。
 - 将 `ambiguity_score`、候选数、协方差重叠率作为自动切换 JPDA/MHT 的触发器。
-- 用真实或稳定导出的 AirSim ComputerVision replay 校准已实现的 `AssociationRiskSummaryWindowGenerator`，把 D2 风险信号以稳定低频摘要形式交给 D3/D4/D6。
+- D2-owned 已提供 `load_airsim_replay_frames()`、`run_airsim_replay_association()` 和 `run_threshold_sensitivity()`，可用 AirSim-like JSON/JSONL replay 输出 association logs、IDSW/continuity/duplicate 和 soft/hard risk summary。
+- 剩余集成工作是用真实或稳定导出的 AirSim ComputerVision replay 生产 D2 输入，并让 main/D6 固化 episode JSONL schema；随后用该 replay 校准 `AssociationRiskSummaryWindowGenerator`、`RiskThresholds` 和 D4 仲裁阈值。

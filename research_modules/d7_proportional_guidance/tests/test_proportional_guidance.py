@@ -6,18 +6,28 @@ import pytest
 
 from d7_proportional_guidance import (
     AssignmentGuidanceBinding,
+    BBOX_LOS_REPLAY_BOUNDARY,
+    D7_RUNTIME_BUS_BOUNDARY,
+    D7RuntimeBus,
+    D7RuntimePairInput,
     D4GuidancePermission,
+    DEFAULT_COMPARISON_STRATEGIES,
     GuidanceConfig,
     GuidanceMode,
     GuidanceState,
     PngGuidanceConfig,
     SimpleFlightPngGuidanceFilter,
     VisionGuidanceObservation,
+    bbox_replay_detection_to_observation,
     compute_proportional_navigation_command,
     compute_pure_pursuit_command,
     evaluate_terminal_png_contract,
+    evaluate_bbox_los_replay,
     guidance_mode_from_terminal_contract,
+    run_guidance_strategy_comparison,
     simulate_guidance_episode,
+    summarize_guidance_strategy_comparison,
+    summarize_runtime_bus_outputs,
     summarize_terminal_switch_quality,
     terminal_switch_allowed_rate,
 )
@@ -502,6 +512,7 @@ def test_2v2_active_secondary_visual_png_requires_effective_secondary_plan() -> 
     secondary_binding = AssignmentGuidanceBinding(
         plan_id="plan-2v2-secondary",
         plan_version=2,
+        owner_node_id="secondary-1",
         assignment_id="assign-R2-G1",
         resource_id="R2",
         vehicle_name="Interceptor_R2",
@@ -844,6 +855,446 @@ def test_runtime_sized_pairs_keep_independent_terminal_gate_and_png_time_series(
     )
 
 
+def test_runtime_bus_injects_n_pairs_with_independent_filters_and_summary() -> None:
+    config = _tuned_png_config()
+    bus = D7RuntimeBus(config)
+    pair_count = 4
+    all_outputs = []
+
+    for sample_index, half_size in enumerate((28.0, 32.0, 36.0), start=1):
+        pair_inputs = []
+        for pair_index in range(pair_count):
+            resource_id = f"R{pair_index + 1}"
+            target_id = f"G{pair_index + 1}"
+            track_version = 70 + pair_index
+            pair_inputs.append(
+                D7RuntimePairInput(
+                    binding=_binding_for_pair(resource_id, target_id, track_version),
+                    d4_permission=D4GuidancePermission(
+                        action="continue_center",
+                        target_node_id="center",
+                        new_plan_id="plan-runtime-n",
+                        new_plan_version=7,
+                    ),
+                    terminal_association={
+                        "assigned_global_track_id": target_id,
+                        "local_track_id": f"{resource_id}:BT:{pair_index + 1}",
+                        "decision_state": "locked",
+                        "friend_conflict_state": "none",
+                        "assignment_version": track_version,
+                    },
+                    observation={
+                        "timestamp_s": sample_index * config.dt_s,
+                        "bbox_xyxy": (
+                            320.0 + pair_index * 3.0 - half_size,
+                            240.0 - half_size,
+                            320.0 + pair_index * 3.0 + half_size,
+                            240.0 + half_size,
+                        ),
+                        "confidence": 0.9,
+                        "bytetrack_id": f"{resource_id}:BT:{pair_index + 1}",
+                        "assigned_global_track_id": target_id,
+                        "camera_id": "front_center",
+                        "measurement_age_s": 0.02,
+                    },
+                    current_heading_rad=0.0,
+                    current_speed_mps=8.0,
+                    intercept_speed_mps=8.0,
+                    relative_position_ned=(30.0 + pair_index, 1.0, 0.0),
+                    relative_velocity_ned=(-5.0, 0.0, 0.0),
+                )
+            )
+        all_outputs.extend(bus.inject_state(pair_inputs))
+
+    allowed = [output for output in all_outputs if output.visual_png_enabled]
+    summary = summarize_runtime_bus_outputs(all_outputs)
+
+    assert len(all_outputs) == pair_count * 3
+    assert len(bus.control_context_ids) == pair_count
+    assert summary["boundary"] == D7_RUNTIME_BUS_BOUNDARY
+    assert summary["control_context_count"] == pair_count
+    assert summary["visual_png_switch_count"] == pair_count
+    assert summary["guidance_law_counts"]["png_vm"] == pair_count
+    assert {output.control_context_id for output in allowed} == {
+        f"R{index + 1}->G{index + 1}" for index in range(pair_count)
+    }
+    assert {output.stable_frame_count for output in allowed} == {3}
+    assert all(output.selected_velocity_ned is not None for output in allowed)
+    assert all(
+        output.png_command is not None
+        and output.png_command.metadata["camera_id"] == "front_center"
+        for output in allowed
+    )
+
+
+def test_runtime_bus_resets_filter_when_same_pair_plan_signature_changes() -> None:
+    config = _tuned_png_config()
+    bus = D7RuntimeBus(config)
+    plan_1 = AssignmentGuidanceBinding(
+        plan_id="plan-center-1",
+        plan_version=1,
+        owner_node_id="center",
+        assignment_id="assign-R1-G1",
+        resource_id="R1",
+        vehicle_name="Interceptor_R1",
+        assigned_global_track_id="G1",
+        track_version=10,
+        authorization_state="approved",
+    )
+    terminal_1 = {
+        "assigned_global_track_id": "G1",
+        "local_track_id": "R1:BT:1",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 10,
+    }
+
+    plan_1_outputs = [
+        bus.evaluate_pair(
+            D7RuntimePairInput(
+                binding=plan_1,
+                d4_permission=D4GuidancePermission(
+                    action="continue_center",
+                    target_node_id="center",
+                    new_plan_id="plan-center-1",
+                    new_plan_version=1,
+                ),
+                terminal_association=terminal_1,
+                observation=_runtime_observation(
+                    timestamp_s=index * config.dt_s,
+                    half_size=half_size,
+                ),
+                current_heading_rad=0.0,
+                current_speed_mps=8.0,
+                intercept_speed_mps=8.0,
+                relative_position_ned=(30.0, 1.0, 0.0),
+                relative_velocity_ned=(-5.0, 0.0, 0.0),
+            )
+        )
+        for index, half_size in enumerate((28.0, 32.0, 36.0), start=1)
+    ]
+    assert plan_1_outputs[-1].visual_png_enabled is True
+    assert plan_1_outputs[-1].stable_frame_count == 3
+
+    blocked_replan = bus.evaluate_pair(
+        D7RuntimePairInput(
+            binding=plan_1,
+            d4_permission=D4GuidancePermission(
+                action="request_center_replan",
+                target_node_id="secondary-1",
+                new_plan_id="plan-secondary-2",
+                new_plan_version=2,
+            ),
+            terminal_association=terminal_1,
+            observation=_runtime_observation(timestamp_s=0.5, half_size=40.0),
+            current_heading_rad=0.0,
+            current_speed_mps=8.0,
+            intercept_speed_mps=8.0,
+            relative_position_ned=(28.0, 1.0, 0.0),
+            relative_velocity_ned=(-5.0, 0.0, 0.0),
+        )
+    )
+    assert blocked_replan.visual_png_enabled is False
+    assert blocked_replan.guidance_law == "radar_pn"
+    assert blocked_replan.terminal_contract_reject_reason == "d4_reassign_pending"
+    assert blocked_replan.mode == GuidanceMode.ABORT_REVOKE
+
+    plan_2 = AssignmentGuidanceBinding(
+        plan_id="plan-secondary-2",
+        plan_version=2,
+        owner_node_id="secondary-1",
+        assignment_id="assign-R1-G1-secondary",
+        resource_id="R1",
+        vehicle_name="Interceptor_R1",
+        assigned_global_track_id="G1",
+        track_version=11,
+        authorization_state="approved",
+    )
+    terminal_2 = {
+        "assigned_global_track_id": "G1",
+        "local_track_id": "R1:BT:1",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 11,
+    }
+    first_new_plan_sample = bus.evaluate_pair(
+        D7RuntimePairInput(
+            binding=plan_2,
+            d4_permission=D4GuidancePermission(
+                action="request_secondary_assist",
+                target_node_id="secondary-1",
+                new_plan_id="plan-secondary-2",
+                new_plan_version=2,
+            ),
+            terminal_association=terminal_2,
+            observation=_runtime_observation(timestamp_s=0.6, half_size=42.0),
+            current_heading_rad=0.0,
+            current_speed_mps=8.0,
+            intercept_speed_mps=8.0,
+            relative_position_ned=(26.0, 1.0, 0.0),
+            relative_velocity_ned=(-5.0, 0.0, 0.0),
+        )
+    )
+
+    assert first_new_plan_sample.terminal_contract_allowed is True
+    assert first_new_plan_sample.visual_png_enabled is False
+    assert first_new_plan_sample.stable_frame_count == 1
+    assert first_new_plan_sample.terminal_switch_reject_reason == "stable_frame_count_low"
+
+
+@pytest.mark.parametrize(
+    "action",
+    ["request_center_replan", "degrade_to_secondary", "degrade_to_distributed"],
+)
+def test_terminal_contract_blocks_d4_reassign_until_new_owner_version_and_d5_lock(
+    action: str,
+) -> None:
+    old_binding = AssignmentGuidanceBinding(
+        plan_id="plan-center-1",
+        plan_version=1,
+        owner_node_id="center",
+        assignment_id="assign-R1-G1",
+        resource_id="R1",
+        vehicle_name="Interceptor_R1",
+        assigned_global_track_id="G1",
+        track_version=10,
+        authorization_state="approved",
+    )
+    old_terminal = {
+        "assigned_global_track_id": "G1",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 10,
+    }
+
+    blocked = evaluate_terminal_png_contract(
+        binding=old_binding,
+        d4_permission=D4GuidancePermission(
+            action=action,
+            target_node_id="secondary-1",
+            new_plan_id="plan-secondary-2",
+            new_plan_version=2,
+        ),
+        terminal_association=old_terminal,
+        observation={"assigned_global_track_id": "G1"},
+        timestamp_s=1.0,
+        resource_id="R1",
+    )
+
+    assert blocked.allowed is False
+    assert blocked.reject_reason == "d4_reassign_pending"
+    assert guidance_mode_from_terminal_contract(
+        blocked,
+        handover_pending=True,
+        terminal_locked=False,
+    ) == GuidanceMode.ABORT_REVOKE
+
+    new_binding = AssignmentGuidanceBinding(
+        plan_id="plan-secondary-2",
+        plan_version=2,
+        owner_node_id="secondary-1",
+        assignment_id="assign-R1-G1-secondary",
+        resource_id="R1",
+        vehicle_name="Interceptor_R1",
+        assigned_global_track_id="G1",
+        track_version=11,
+        authorization_state="approved",
+    )
+    stale_d5 = {
+        "assigned_global_track_id": "G1",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 10,
+    }
+    current_d5 = {
+        "assigned_global_track_id": "G1",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 11,
+    }
+
+    stale_version = evaluate_terminal_png_contract(
+        binding=new_binding,
+        d4_permission=D4GuidancePermission(
+            action="request_secondary_assist",
+            target_node_id="secondary-1",
+            new_plan_id="plan-secondary-2",
+            new_plan_version=2,
+        ),
+        terminal_association=stale_d5,
+        observation={"assigned_global_track_id": "G1"},
+        timestamp_s=1.2,
+        resource_id="R1",
+    )
+    owner_mismatch = evaluate_terminal_png_contract(
+        binding=new_binding,
+        d4_permission=D4GuidancePermission(
+            action="request_secondary_assist",
+            target_node_id="center",
+            new_plan_id="plan-secondary-2",
+            new_plan_version=2,
+        ),
+        terminal_association=current_d5,
+        observation={"assigned_global_track_id": "G1"},
+        timestamp_s=1.3,
+        resource_id="R1",
+    )
+    valid_new_plan = evaluate_terminal_png_contract(
+        binding=new_binding,
+        d4_permission={
+            "action": "request_secondary_assist",
+            "new_plan_owner_id": "secondary-1",
+            "new_plan_id": "plan-secondary-2",
+            "new_plan_version": 2,
+        },
+        terminal_association=current_d5,
+        observation={"assigned_global_track_id": "G1"},
+        timestamp_s=1.4,
+        resource_id="R1",
+    )
+
+    assert stale_version.reject_reason == "assignment_version_mismatch"
+    assert owner_mismatch.reject_reason == "d4_owner_mismatch"
+    assert valid_new_plan.allowed is True
+    assert valid_new_plan.d4_target_node_id == "secondary-1"
+
+
+def test_terminal_contract_rejects_d4_target_owner_without_d3_owner() -> None:
+    binding_without_owner = _binding_for_pair("R1", "G1", 30, owner_node_id=None)
+    terminal = {
+        "assigned_global_track_id": "G1",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 30,
+    }
+
+    decision = evaluate_terminal_png_contract(
+        binding=binding_without_owner,
+        d4_permission=D4GuidancePermission(
+            action="request_secondary_assist",
+            target_node_id="secondary-1",
+            new_plan_id="plan-runtime-n",
+            new_plan_version=7,
+        ),
+        terminal_association=terminal,
+        observation={"assigned_global_track_id": "G1"},
+        timestamp_s=1.0,
+        resource_id="R1",
+    )
+
+    assert decision.allowed is False
+    assert decision.reject_reason == "d4_owner_missing"
+    assert guidance_mode_from_terminal_contract(
+        decision,
+        handover_pending=True,
+        terminal_locked=False,
+    ) == GuidanceMode.REACQUIRE
+
+
+def test_bbox_los_replay_normalizes_yolo_bytetrack_and_stays_offline() -> None:
+    config = _tuned_png_config()
+    detections = [
+        {
+            "timestamp_s": index * config.dt_s,
+            "xywh": (320.0 - half_size, 240.0 - half_size, half_size * 2.0, half_size * 2.0),
+            "score": 0.92,
+            "bytetrack_id": "BT-7",
+            "measurement_age_s": 0.03,
+        }
+        for index, half_size in enumerate((28.0, 31.0, 34.0, 37.0, 40.0, 43.0))
+    ]
+
+    observation = bbox_replay_detection_to_observation(
+        detections[0],
+        source="yolo_bytetrack_replay",
+        assigned_global_track_id="G1",
+        camera_id="front_center",
+        frame_index=0,
+    )
+    assert observation.bbox_xyxy == (292.0, 212.0, 348.0, 268.0)
+    assert observation.local_track_id == "BT-7"
+    assert observation.assigned_global_track_id == "G1"
+    assert observation.camera_id == "front_center"
+    assert observation.metadata["boundary"] == BBOX_LOS_REPLAY_BOUNDARY
+    assert observation.metadata["visual_latency_s"] == pytest.approx(0.03)
+
+    outputs, summary = evaluate_bbox_los_replay(
+        detections,
+        binding=_binding_for_pair("R1", "G1", 42),
+        d4_permission=D4GuidancePermission(
+            action="continue_center",
+            target_node_id="center",
+            new_plan_id="plan-runtime-n",
+            new_plan_version=7,
+        ),
+        terminal_association={
+            "assigned_global_track_id": "G1",
+            "local_track_id": "BT-7",
+            "decision_state": "locked",
+            "friend_conflict_state": "none",
+            "assignment_version": 42,
+        },
+        config=config,
+        source="yolo_bytetrack_replay",
+        assigned_global_track_id="G1",
+        camera_id="front_center",
+        current_heading_rad=0.0,
+        current_speed_mps=8.0,
+        intercept_speed_mps=8.0,
+        relative_position_ned=(30.0, 1.0, 0.0),
+        relative_velocity_ned=(-5.0, 0.0, 0.0),
+    )
+
+    assert summary["boundary"] == BBOX_LOS_REPLAY_BOUNDARY
+    assert summary["replay_source"] == "yolo_bytetrack_replay"
+    assert summary["observation_count"] == len(detections)
+    assert summary["vehicle_control"] is False
+    assert summary["simpleflight_control_called"] is False
+    assert summary["visual_png_switch_count"] > 0
+    assert {output.control_context_id for output in outputs} == {"R1->G1"}
+    assert all(
+        output.as_log_record()["replay_source"] == "yolo_bytetrack_replay"
+        for output in outputs
+    )
+
+
+def test_guidance_strategy_comparison_reports_all_p1_fields() -> None:
+    rows = run_guidance_strategy_comparison(seeds=[1, 2])
+    summary = summarize_guidance_strategy_comparison(rows)
+
+    assert len(rows) == 2 * len(DEFAULT_COMPARISON_STRATEGIES)
+    assert {row.strategy for row in rows} == set(DEFAULT_COMPARISON_STRATEGIES)
+    assert summary["row_count"] == len(rows)
+    assert summary["strategy_count"] == len(DEFAULT_COMPARISON_STRATEGIES)
+    for strategy in DEFAULT_COMPARISON_STRATEGIES:
+        assert summary["strategies"][strategy]["seed_count"] == 2
+
+    for row in rows:
+        data = row.as_dict()
+        assert {
+            "seed",
+            "strategy",
+            "guidance_law",
+            "boundary",
+            "sample_count",
+            "min_range_m",
+            "time_to_intercept_s",
+            "terminal_contract_reject_reasons",
+            "terminal_switch_reject_reasons",
+            "visual_png_switch_count",
+        } <= set(data)
+        assert row.sample_count > 0
+        if row.strategy in {"pn", "pure_pursuit"}:
+            assert row.boundary == "offline_2d_point_mass_only"
+            assert row.min_range_m is not None
+            assert row.final_range_m is not None
+            assert row.visual_png_switch_count == 0
+        else:
+            assert row.boundary == BBOX_LOS_REPLAY_BOUNDARY
+            assert row.metadata["vehicle_control"] is False
+            assert row.visual_png_switch_count > 0
+
+
 def _binding(authorization_state: str = "approved") -> AssignmentGuidanceBinding:
     return AssignmentGuidanceBinding(
         plan_id="plan-1",
@@ -864,10 +1315,12 @@ def _binding_for_pair(
     resource_id: str,
     target_id: str,
     track_version: int,
+    owner_node_id: str | None = "center",
 ) -> AssignmentGuidanceBinding:
     return AssignmentGuidanceBinding(
         plan_id="plan-runtime-n",
         plan_version=7,
+        owner_node_id=owner_node_id,
         assignment_id=f"assign-{resource_id}-{target_id}",
         resource_id=resource_id,
         vehicle_name=f"Interceptor_{resource_id}",
@@ -878,6 +1331,27 @@ def _binding_for_pair(
         target_object_id=target_id,
         target_mesh_aliases=(f"MSM_TargetActor_{target_id.removeprefix('G')}", target_id),
     )
+
+
+def _runtime_observation(
+    *,
+    timestamp_s: float,
+    half_size: float,
+    assigned_global_track_id: str = "G1",
+    local_track_id: str = "R1:BT:1",
+) -> dict:
+    return {
+        "timestamp_s": timestamp_s,
+        "bbox_xyxy": (
+            320.0 - half_size,
+            240.0 - half_size,
+            320.0 + half_size,
+            240.0 + half_size,
+        ),
+        "confidence": 0.9,
+        "local_track_id": local_track_id,
+        "assigned_global_track_id": assigned_global_track_id,
+    }
 
 
 def _tuned_png_config() -> PngGuidanceConfig:

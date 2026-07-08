@@ -15,9 +15,11 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - 马氏门控、二维 `[x,y,vx,vy]` 常速度 Kalman fallback 和 4x4 covariance。
 - `tentative/confirmed/engageable/lost/dropped` Track 状态机。
 - `id_switch_count`、`track_continuity`、`identity_continuity`、`coverage_continuity`、`duplicate_assignment_count`、RMSE、confusion matrix 和 runtime 指标。
-- `AssociationRiskSummaryWindowGenerator` 滑窗风险摘要，汇总代价 margin、候选重叠、IDSW delta、continuity、D5 disagreement、source node 和 link type。
+- `AssociationRiskSummaryWindowGenerator` 滑窗风险摘要，汇总代价 margin、候选重叠、IDSW delta、duplicate delta、continuity、D5 disagreement、source node 和 link type。
+- `RiskThresholds` / `classify_risk_summary()` 软/硬风险分层，按 D4 口径区分 ambiguity/cost margin/candidate overlap 与 IDSW/duplicate/continuity collapse。
 - D1 6D NED `GlobalTrack` 到 D2 2D `Detection` 的投影 adapter，保留 `measurement_timestamp`、`arrival_timestamp`、covariance 和 metadata。
 - AirSim-style dry-run/replay adapter，不 import 或调用 `airsim`，并在 bus message 中导出当前活动 `global_track_ids`。
+- `load_airsim_replay_frames()`、`run_airsim_replay_association()` 和 `run_threshold_sensitivity()` 支持离线 JSON/JSONL replay 读取、association log/report 输出和阈值敏感性汇总。
 
 部分实现：
 
@@ -31,7 +33,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - FilterPy EKF/UKF/IMM 实际 adapter。
 - 原生 3D NED tracker。
 - JPDA/MHT 自动升级触发。
-- 真实 AirSim ComputerVision episode JSONL 压测。
+- 真实 AirSim runtime 录制链路、ComputerVision 图像/metadata 采集和 main/D6 episode JSONL 固化；D2 当前只消费已导出的离线 replay。
 
 ## 目录
 
@@ -39,8 +41,9 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - `d2_data_association/gating.py`：马氏距离、门控代价矩阵和歧义分数。
 - `d2_data_association/associators.py`：`DataAssociator`、`GNNHungarianAssociator`、`JPDAAssociator`、`MHTAssociator`。
 - `d2_data_association/tracker.py`：常速度 Kalman fallback、状态机、建轨、漏检和删除。
-- `d2_data_association/metrics.py`：IDSW、continuity、duplicate、RMSE、confusion matrix、风险摘要。
+- `d2_data_association/metrics.py`：IDSW、continuity、duplicate、RMSE、confusion matrix、风险摘要和软/硬风险分层。
 - `d2_data_association/dry_run_adapter.py`：D1/AirSim-style dry-run 输入适配和 bus message 输出。
+- `d2_data_association/replay.py`：离线 JSON/JSONL replay 读取、association report/log 输出和阈值敏感性 helper。
 - `d2_data_association/simulation.py`：crossing、dense 5v5、formation、occlusion、missed、false alarm 场景。
 - `scripts/run_simulation.py`：CLI benchmark runner。
 - `docs/ALGORITHM_AND_IMPLEMENTATION.md`：中文算法和实现说明。
@@ -53,6 +56,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - D5 和 D7 不得改写、重绑或本地覆盖 D2 的 `global_track_id`。
 - D2/D6 必须显式保留 `id_switch_count`；它不能被 RMSE、覆盖率或命中率替代。
 - D2 输出的 `global_track_ids` 来自当前活动航迹集合，不截断或补齐到固定 2 或 5。
+- D4 当前把 D2 风险分为软/硬两类：`association_ambiguity`、低 cost margin、candidate overlap 属于观察/二级 cue 证据；`id_switch_count` 增量、`duplicate_assignment_count`/`duplicate_track_risk` 和 `track_continuity` 低于阈值属于硬风险证据。D2 只发布证据，不直接触发 `request_center_replan` 或降级。
 
 ## 运行测试
 

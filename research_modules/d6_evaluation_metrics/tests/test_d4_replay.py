@@ -20,6 +20,13 @@ def test_d4_active_degradation_csv_derives_aggregate_metrics(tmp_path: Path) -> 
                 "mode": "active_degradation",
                 "action": "request_secondary_assist",
                 "reason": "terminal_inconsistent_single_window",
+                "review_label": "necessary",
+                "trigger_timestamp_s": "2.5",
+                "decision_timestamp_s": "3.0",
+                "selected_coordinator": "SEC-NORTH",
+                "coverage_cell": "north-east",
+                "pre_window_start_s": "1.5",
+                "post_window_end_s": "4.5",
                 "target_node_id": "SEC-NORTH",
                 "terminal_consistent": "False",
                 "risk_factors": "d2_association_ambiguity_high;d5_terminal_confidence_low",
@@ -31,6 +38,7 @@ def test_d4_active_degradation_csv_derives_aggregate_metrics(tmp_path: Path) -> 
                 "mode": "active_degradation",
                 "action": "request_secondary_assist",
                 "reason": "terminal_inconsistent_single_window",
+                "review_label": "false_positive",
                 "target_node_id": "SEC-NORTH",
                 "terminal_consistent": "False",
                 "risk_factors": "d3_assignment_cost_margin_low",
@@ -42,12 +50,19 @@ def test_d4_active_degradation_csv_derives_aggregate_metrics(tmp_path: Path) -> 
     metrics = collector.compute_episode("d4_fixture")
 
     assert metrics.active_degradation_count == 2
+    assert metrics.active_degradation_precision == pytest.approx(0.5)
+    assert metrics.unnecessary_active_degradation_count == 1
     assert metrics.secondary_node_takeover_count == 2
     assert metrics.passive_failover_count == 0
     assert metrics.distributed_fallback_count == 0
     assert metrics.metadata["trigger_reason_distribution"] == {
         "terminal_inconsistent_single_window": 2
     }
+    assert metrics.metadata["active_degradation_reviewed_count"] == 2
+    assert collector.event_records[0].metadata["trigger_timestamp_s"] == pytest.approx(2.5)
+    assert collector.event_records[0].metadata["decision_timestamp_s"] == pytest.approx(3.0)
+    assert collector.event_records[0].metadata["selected_coordinator"] == "SEC-NORTH"
+    assert collector.event_records[0].metadata["coverage_cell"] == "north-east"
 
 
 def test_d4_failover_active_window_delta_from_events() -> None:

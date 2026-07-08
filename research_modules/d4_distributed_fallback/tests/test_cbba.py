@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from d4_distributed_fallback.cbba import CBBANegotiator
+from d4_distributed_fallback.cbba import CBBANegotiator, build_cbba_cost_gap_benchmark
 from d4_distributed_fallback.models import (
+    Assignment,
     AvailabilityBand,
+    CBBAResult,
     CommBand,
     ConfidenceBand,
+    CBBACostGapBenchmark,
     DistributedVisualEvidenceSummary,
     ResourceSummary,
     TrackSummary,
@@ -124,6 +127,21 @@ def test_cbba_prefers_d5_distributed_visual_support() -> None:
     assert result.assignment_audit["task-1"]["visual_support_resource_ids"] == ("node-2",)
 
 
+def test_no_center_cbba_uses_d5_visual_evidence_as_risk_weighting() -> None:
+    node_ids = ["node-1", "node-2", "node-3"]
+    network = SimulatedNetwork(node_ids=node_ids, packet_loss=0.0, min_delay_s=0.1, max_delay_s=0.1)
+    result = CBBANegotiator(node_ids=node_ids, max_rounds=12).run(
+        tasks=[_visual_task("task-1", support=("node-3",), confidence=0.96)],
+        resources=_resources(node_ids),
+        network=network,
+    )
+
+    assert result.converged
+    assert result.assignments["task-1"].owner == "node-3"
+    assert result.assignment_audit["task-1"]["owner"] == "node-3"
+    assert result.final_views
+
+
 def test_cbba_records_duplicate_terminal_lock_without_multiple_owners() -> None:
     node_ids = ["node-1", "node-2", "node-3"]
     network = SimulatedNetwork(node_ids=node_ids, packet_loss=0.0, min_delay_s=0.1, max_delay_s=0.1)
@@ -186,3 +204,42 @@ def test_cbba_scales_n_peer_n_target_with_visual_support() -> None:
     assert result.completion_rate == 1.0
     for idx in range(count):
         assert result.assignments[f"task-{idx + 1}"].owner == f"node-{idx + 1}"
+
+
+def test_cbba_cost_gap_benchmark_compares_against_d3_center_plan_without_hungarian() -> None:
+    result = CBBAResult(
+        assignments={
+            "task-1": Assignment("task-1", "node-2", 8.0, epoch=1),
+            "task-2": Assignment("task-2", "node-1", 7.0, epoch=1),
+        },
+        consensus_rounds=4,
+        converged=True,
+        conflict_count=1,
+        completion_rate=1.0,
+        messages_sent=12,
+        messages_delivered=12,
+        messages_dropped=0,
+        estimated_bytes=1200,
+        duration_s=2.0,
+    )
+
+    benchmark = build_cbba_cost_gap_benchmark(
+        result,
+        center_assignments={"task-1": "node-1", "task-2": "node-2"},
+        cost_by_task_resource={
+            "task-1": {"node-1": 1.0, "node-2": 3.0},
+            "task-2": {"node-1": 4.0, "node-2": 2.0},
+        },
+        attach_to_result=True,
+    )
+
+    assert isinstance(benchmark, CBBACostGapBenchmark)
+    assert result.cost_gap_benchmark is benchmark
+    assert benchmark.benchmark_source == "d3_hungarian_cost_matrix"
+    assert benchmark.cbba_total_cost == 7.0
+    assert benchmark.center_total_cost == 3.0
+    assert benchmark.absolute_cost_gap == 4.0
+    assert benchmark.relative_cost_gap == 4.0 / 3.0
+    assert benchmark.completion_rate_gap == 0.0
+    assert benchmark.cbba_conflict_count == 1
+    assert benchmark.per_task_cost_gap == {"task-1": 2.0, "task-2": 2.0}

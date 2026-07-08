@@ -34,6 +34,7 @@ python3 research_modules/d5_terminal_association/simulations/run_terminal_associ
 - `annotate_visual_png_handoff(...)`
 - `bbox_area_stability(...)`
 - `local_visual_tracks_from_sim_detections(...)`
+- `local_visual_tracks_from_offline_yolo_bytetrack(...)`
 - `publish_sim_detections_as_local_observations(...)`
 - `compute_terminal_stress_metrics(...)`
 - `summarize_degradation_case(...)`
@@ -58,18 +59,18 @@ decision = associator.decide(
 
 已实现：
 
-- `GlobalTrack` 投影到图像平面、像素协方差传播、马氏门控和保守候选排序。
+- `GlobalTrack` 投影到图像平面、像素协方差传播、马氏门控和保守候选排序；`TerminalAssociation.metadata` 和 `GeometricAssociationResult.to_log_records()` 已输出 projected pixel、bbox center、pixel error、Mahalanobis、gate pass、friend conflict、measurement age 和 duplicate-risk advisory 字段，便于 main/D6 写 JSONL/CSV。
 - `LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim`、`ReconImageCue`、`TerminalObservation`、`CrossViewAssociation`、`DistributedVisualObservation`、`VisualTrackletSummary`、`PeerCameraState`、`CrossPeerAssociationHypothesis` 和 `DistributedTerminalAssociation` 等 DTO。
 - `locked/ambiguous/hold/reacquire` 保守状态机；D5 只核对当前 `assigned_global_track_id`，不会把本地最佳或最近目标改写成新的全局身份。
 - 跨视角 distributed visual association P0：`TerminalObservationBus` 汇总多资源终端证据，`TerminalCrossViewFusion` 在完全无中心场景输出 metadata-only 多相机 peer evidence。
-- AirSim `simGetDetections` 风格 bbox dry-run adapter；在线路径只消费 bbox、时间戳、本地 ID、类别/置信度、相机几何和协方差。
-- D7 视觉 PNG 前置证据：`annotate_visual_png_handoff()` 只在 D5 `locked`、`assigned_global_track_id` 一致、bbox 稳定、无重复锁定风险且 D4/D3 gate 允许时输出 handoff/prelock 建议。
+- AirSim `simGetDetections` 风格 bbox dry-run adapter，以及离线 YOLO/ByteTrack schema adapter；在线路径只消费 bbox、时间戳、本地 ID、类别/置信度、相机几何和协方差。
+- D7 视觉 PNG 前置证据：`annotate_visual_png_handoff()` 只在 D5 `locked`、当前 `assigned_global_track_id` 一致、friend/duplicate 风险安全、bbox 稳定、LOS rate 可用、measurement age 新鲜且 D4/D3 gate 允许时输出 handoff/prelock 建议。
 
 部分实现或仅为抽象/adapter：
 
 - OpenCV 已用于投影和可选畸变参数消费；真实 `calibrateCamera`、`solvePnP`/PnP RANSAC、标定板/AprilTag 标定链未接入。
-- YOLO 仅兼容 `xyxy/bbox_xyxy/class_name/confidence/track_id` 输出 schema；D5 不运行 detector、不加载权重。
-- ByteTrack、BoT-SORT、Deep SORT 仅作为未来本地 MOT 输入来源；当前没有 tracker 状态、ReID、遮挡恢复或 IDSW 计算。
+- YOLO/ByteTrack 离线 adapter 仅兼容 `xyxy/bbox_xyxy/class_name/confidence/track_id/tracker_id` 输出 schema，并只返回 `LocalVisualTrack`；D5 不运行 detector、不加载权重，不让 tracker ID 替代 `global_track_id`。
+- ByteTrack、BoT-SORT、Deep SORT 仍未作为真实在线 tracker 接入；当前没有 tracker 状态、ReID、遮挡恢复或 IDSW 计算，只有 schema 回放适配。
 - OpenDroneID、MAVLink signing、DDS Security、AprilTag 只通过仿真字典归一化为 `IdentityClaim`；未接入真实报文、密钥、证书或 tag detector。
 - ROS 2 `tf2/message_filters` 只是未来时间同步和坐标树方案；D5 当前不运行 ROS 2 节点。
 
@@ -77,6 +78,8 @@ decision = associator.decide(
 
 - 真实多目标检测器、真实 MOT、真实标定链、真实身份认证链路和跨相机三维联合优化。缺少条件包括连续图像流、detector/tracker 依赖、标定样本、真实身份报文/密钥、同步相机位姿、三维候选和 D4/D6 消费协议。
 - 在线 D5 不得使用 AirSim `object_id`、`actor_name` 或 actor truth ID。truth ID 只能作为离线评分标签进入 metadata/evaluator，用于 `terminal_lock_accuracy`、`locked_mismatch` 等指标。
+
+剩余 P1/P2 聚焦真实工程链路，而不是 D5 侧 evidence 字段：P1 为真实图像 detector/tracker 输入链路和多 seed 阈值校准；P2 为 BoT-SORT/Deep SORT/ReID 评估、OpenDroneID Core/MAVLink signing/DDS Security/AprilTag 的真实 `IdentityClaim` adapter、OpenCV calibration/`solvePnP` 以及 ROS 2 `tf2/message_filters`。geometry log fields、D4 evidence、D7 visual PNG 前置证据、AirSim truth ID 在线隔离和 YOLO/ByteTrack 离线 schema adapter 已在 D5 侧补齐。
 
 ## 决策状态
 
@@ -88,6 +91,8 @@ decision = associator.decide(
 ## 主动降级仲裁信号
 
 D5 可通过 `TerminalConsistencyTracker` 把连续帧 `TerminalAssociation` 派生为 `TerminalConsistencySummary`，供 D4/D6 判断中心/二级节点分配与末端视觉证据是否一致。摘要包含 `decision_state`、`association_confidence`、`ambiguity_score`、`friend_conflict_state`、candidate cost margin、`recon_cue_used`、terminal lock age、连续 `locked/ambiguous/hold/reacquire` 帧数、丢锁/重捕获事件、`duplicate_terminal_lock_risk` 和 `cross_view_support_count`。
+
+连续帧窗口按 `resource_id + assigned_global_track_id` 维护，而不是按每次 D3 `assignment_version` 重置。这样同一资源持续执行同一全局目标时，即使中心滚动发布新的 plan version，D5 也能保留末端视觉丢锁/重捕获的连续性；只有 assigned global track 变化才进入新的窗口。
 
 该摘要只用于离线一致性评估和 D4 仲裁输入。D5 不触发降级、不重写 `global_track_id`、不生成新分配计划。
 
@@ -101,7 +106,7 @@ D5 可在 `TerminalAssociation.metadata` 或 `TerminalConsistencySummary.metadat
 - 中距候选区 `15-30m`：若 bbox 面积连续稳定、D3/D4/D5 一致、无友方冲突和重复锁定，且 `time_to_go`、检测延迟和 D7 机动裕度可接受，可输出 `handoff_recommended=True`。
 - 近距强制评估区 `5-15m`：若检测稳定则优先建议视觉 PNG；若 bbox 不稳定则建议保持或回退 radar PN，避免过早触发 `terminal_detection_timeout`。
 
-bbox 稳定性默认要求同一 `local_track_id` 或同一 assigned track 窗口连续 `N=4` 帧可见，`bbox_area_ratio` 的变异系数 `CV <= 0.30`，可在 `VisualPngHandoffConfig` 中调整为 `N=3-5`、`CV=0.25-0.35`。输出字段包括 `handoff_recommended`、`handoff_reason`、`recommended_range_band`、`bbox_stability_score`、`bbox_area_cv`、`range_to_assigned_track_m` 和 `time_to_go_s`。
+bbox 稳定性默认要求同一 `local_track_id` 或同一 assigned track 窗口连续 `N=4` 帧可见，`bbox_area_ratio` 的变异系数 `CV <= 0.30`，可在 `VisualPngHandoffConfig` 中调整为 `N=3-5`、`CV=0.25-0.35`。输出字段包括 `handoff_recommended`、`visual_png_gate_pass`、`visual_png_handoff_blockers`、`handoff_reason`、`recommended_range_band`、`bbox_stability_score`、`bbox_area_cv`、`measurement_age_s`、`measurement_age_ok`、`los_rate_px_s`、`los_rate_ok`、`range_to_assigned_track_m` 和 `time_to_go_s`。
 
 ## 完全分布式跨视场视觉假设
 

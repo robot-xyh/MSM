@@ -5,6 +5,16 @@
 
 ---
 
+## 0. 2026-07-08 P1 状态更新
+
+D4 模块内已补齐 P1 所需的本地输出口径：secondary takeover record metadata 可区分 `pending_secondary_plan` 与 `secondary_plan_active`，并携带当前/二级 plan id/version、source node、supersedes plan 和 reassignment complete 字段；完全无中心 CBBA 已用 D5 distributed visual evidence 做风险加权；`build_cbba_cost_gap_benchmark()` 可用 D3/main 提供的中心 plan 与 cost matrix 计算 CBBA vs 中心化 cost gap。
+
+main/runtime P1 基线也已接入：episode bus 已消费 D4 adapter event，`request_center_replan` 可触发 D3 new plan version，secondary takeover owner/version 已回灌给 D3/D7，controlled 2v2 secondary visual PNG 回归已通过。
+
+边界保持不变：D4 只输出仲裁记录、metadata、CBBA 保底结果和离线 benchmark，不直接生成 D3 系统级 `AssignmentPlan`，不控制 D7，不引入 MIT/CA-CBBA 外部实现。剩余 P1 聚焦真实 D4/D5 stress 多 seed 校准、secondary heartbeat/link freshness、D5 peer evidence 合流和 D6 长期聚合；MIT/CA-CBBA 与独立 auction baseline 仅作为 optional P2 对照。
+
+---
+
 ## 1. 被动降级 vs 主动降级
 
 D4 必须明确区分两类降级，因为触发源、优先级和恢复条件不同。
@@ -58,10 +68,11 @@ passive_failover
 
 active_degradation
   -> continue_center      : D5 与分配一致，D1/D2/D3 风险低
-  -> request_center_replan: D3 分配过期、版本不当前、代价裕度不足
+  -> request_center_replan: D3 分配过期或版本不当前
+  -> continue/assist      : 仅代价裕度不足、低置信度或无冲突 reacquire 时继续观察
   -> request_secondary_assist: D1/D2 风险升高但 D5 仍一致
-  -> degrade_to_secondary : D5 多帧不一致且二级节点覆盖该区域
-  -> degrade_to_distributed: 二级节点不可用或局部分区
+  -> degrade_to_secondary : D5 多帧硬不一致且二级节点覆盖该区域
+  -> degrade_to_distributed: D5 硬不一致持续且二级节点不可用或局部分区
   -> hold_for_review      : friend_conflict 或身份冲突
 ```
 
@@ -161,7 +172,7 @@ D3 应向 D4 提供 `AssignmentValiditySummary`：
 
 - `is_current=False`。
 - `plan_age_s` 超过滚动重分配窗口。
-- `cost_margin` 过低，说明当前分配和备选方案差距很小，容易抖动。
+- `cost_margin` 过低，说明当前分配和备选方案差距很小，容易抖动；这是软证据，单独出现时不触发 `request_center_replan`。
 - D3 计划版本落后于 D5 末端观测时间。
 
 ### 4.4 D5 末端视觉关联
@@ -181,7 +192,7 @@ D5 应向 D4 提供 `TerminalAssociationSummary`：
 
 主动降级风险：
 
-- D5 多帧 `ambiguous/hold/reacquire`。
+- D5 多帧 `ambiguous/hold/reacquire` 但没有观测 ID mismatch、资源错配、重复锁定或友方冲突时，只作为软证据。
 - 本地视觉候选与 D3 分配目标长期不一致。
 - `resource_id` 与 D3 指派资源不一致。
 - `friend_conflict=True`，必须进入 `hold_for_review`，不能降级为自动协商。
@@ -206,20 +217,23 @@ D4 仲裁器的核心原则：能继续中心计划就继续；能请求中心�
 3. 若 D5 与 D3 分配一致，且 D1/D2/D3 风险低：
      -> continue_center
 
-4. 若 D3 版本/代价/时效风险上升，但 D5 仍一致：
+4. 若 D3 版本/时效硬风险上升，但 D5 仍一致：
      -> request_center_replan
 
-5. 若 D1/D2 风险上升，但 D5 仍一致：
+5. 若只有 D3 cost margin 低、D5 低置信度或无冲突 reacquire：
+     -> continue_center 或 request_secondary_assist，继续观察
+
+6. 若 D1/D2 风险上升，但 D5 仍一致：
      -> request_secondary_assist
 
-6. 若 D5 单帧不一致但未持续：
-     -> request_secondary_assist 或 request_center_replan
+7. 若 D5 单帧不一致但未持续：
+     -> 无硬风险则 continue_center；需要补充视角时 request_secondary_assist
 
-7. 若 D5 多帧不一致、长期 reacquire/hold：
+8. 若 D5 多帧硬不一致、长期目标 mismatch、资源错配、重复锁定或友方冲突：
      -> 二级节点覆盖则 degrade_to_secondary
      -> 二级不可用则 degrade_to_distributed
 
-8. 若 CBBA/拍卖不收敛：
+9. 若 CBBA/拍卖不收敛：
      -> hold / continue_observe，只输出审计日志
 ```
 
@@ -273,7 +287,7 @@ CBBA/拍卖结果必须带 epoch、版本和冲突统计。若不收敛，不得
 - 维持局部计划版本。
 - 汇总 D1/D2/D5 的摘要。
 - 协助判断是否需要局部重分配。
-- 对局部资源发布保底 `AssignmentPlan` 元数据。
+- 通过 main/D3 发布保底 plan metadata；D4 只记录 source node、pending/active 状态和 plan id/version，不直接生成系统级 `AssignmentPlan`。
 
 ### 6.3 二级节点失效后
 
@@ -312,6 +326,12 @@ DegradationDecision
 - terminal_consistent
 - requires_human_review
 - source_epoch
+- active_plan_owner
+- secondary_takeover_state: not_applicable | pending_secondary_plan | secondary_plan_active
+- secondary_plan_source_node_id
+- secondary_plan_id
+- secondary_plan_version
+- secondary_reassignment_complete
 - plan_version
 ```
 
@@ -337,23 +357,25 @@ EventRecord
 - details
 ```
 
-### 7.3 AssignmentPlan 元数据
+### 7.3 D4 secondary takeover metadata
 
-降级产生的计划必须显式标注来源：
+D4 record 必须显式标注二级接管来源和生效状态，供 main/D3/D7 生成或消费系统级计划：
 
 ```text
-AssignmentPlan.metadata
-- generated_by: D4
-- degradation_mode
-- coordination_mode: secondary_node | distributed_cbba | auction | hold
-- leader_id
-- leader_role
-- coverage_cell
-- source_plan_version
-- fallback_epoch
-- converged
-- conflict_count
+D4DecisionRecord.metadata
+- active_plan_owner: center | secondary_node | distributed_cbba | hold_review
+- secondary_takeover_state: not_applicable | pending_secondary_plan | secondary_plan_active
+- secondary_plan_source_node_id
+- current_plan_id
+- current_plan_version
+- secondary_plan_id
+- secondary_plan_version
+- secondary_supersedes_plan_id
+- secondary_supersedes_plan_version
+- secondary_reassignment_complete
 ```
+
+规则：`degrade_to_secondary` 的第一帧只表示二级接管待生效，`active_plan_owner` 仍是当前计划 owner；只有 main/D3 回填新的二级 plan id/version 且标记 active 后，D4 metadata 才进入 `secondary_plan_active`。D4 不直接发布完整 `AssignmentPlan`。
 
 ### 7.4 指标
 
@@ -367,6 +389,7 @@ D6 应消费以下 D4 指标：
 - `degraded_completion_rate`
 - `consensus_rounds`
 - `conflict_count`
+- `cbba_total_cost / center_total_cost / absolute_cost_gap / relative_cost_gap`
 - `hold_for_review_count`
 - `terminal_inconsistency_trigger_count`
 
@@ -432,7 +455,8 @@ CBBA 通过 winner/bid 向量扩散和一致性消解，在连通图、确定仲
 | D1 协方差增大但 D5 一致 | 请求二级辅助，不直接分布式 |
 | D2 ID switch 上升但 D5 一致 | 请求二级辅助或中心重分配 |
 | D3 plan stale 但 D5 一致 | `request_center_replan` |
-| D5 多帧 `ambiguous/hold/reacquire` | 主动仲裁；二级覆盖则二级接管 |
+| D5 多帧无冲突 `ambiguous/hold/reacquire` | 继续中心或请求二级 cue，不直接重规划/降级 |
+| D5 多帧硬不一致或资源/身份冲突 | 主动仲裁；二级覆盖则二级接管，否则完全无中心保底 |
 | D5 `friend_conflict=True` | `hold_for_review`，不发布新计划 |
 | CBBA 超时 | 不发布有效 assignment，只写事件 |
 | 中心恢复但日志落后 | 双轨校验失败，保持 degraded/suspect |

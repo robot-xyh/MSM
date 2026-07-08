@@ -14,7 +14,22 @@ from .dry_run_adapter import (
     detections_from_airsim_frame,
     run_airsim_dry_run_association,
 )
-from .metrics import AssociationRiskSummaryWindowGenerator, MetricsRecorder
+from .metrics import (
+    AssociationRiskSummaryWindowGenerator,
+    MetricsRecorder,
+    RiskBreakdown,
+    RiskThresholds,
+    classify_risk_summary,
+)
+from .replay import (
+    ReplayAssociationReport,
+    load_airsim_replay_frames,
+    run_airsim_replay_association,
+    run_threshold_sensitivity,
+    summarize_replay_risk,
+    write_association_logs_jsonl,
+    write_replay_association_report,
+)
 from .models import (
     AssociationLogEntry,
     AssociationResult,
@@ -43,6 +58,16 @@ __all__ = [
     "MHTAssociator",
     "MatchedPair",
     "MetricsRecorder",
+    "RiskBreakdown",
+    "RiskThresholds",
+    "ReplayAssociationReport",
+    "classify_risk_summary",
+    "load_airsim_replay_frames",
+    "run_airsim_replay_association",
+    "run_threshold_sensitivity",
+    "summarize_replay_risk",
+    "write_association_logs_jsonl",
+    "write_replay_association_report",
     "RejectedPair",
     "TrackLifecycleState",
     "TrackTransition",

@@ -48,6 +48,49 @@ class GeometricAssociationPair:
     mahalanobis_d2: float
     gate_pass: bool
     assignment_selected: bool = False
+    total_cost: float | None = None
+    friend_conflict_state: str = "none"
+    measurement_age_s: float | None = None
+    duplicate_terminal_lock_risk: bool = False
+
+    def to_log_record(
+        self,
+        *,
+        frame_id: str | None = None,
+        timestamp: float | None = None,
+        resource_id: str | None = None,
+        camera_id: str | None = None,
+        duplicate_terminal_lock_risk: bool | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return a JSON-friendly AirSim geometry log record."""
+
+        duplicate_risk = (
+            self.duplicate_terminal_lock_risk
+            if duplicate_terminal_lock_risk is None
+            else bool(duplicate_terminal_lock_risk)
+        )
+        record = {
+            "resource_id": resource_id,
+            "camera_id": camera_id,
+            "frame_id": frame_id,
+            "timestamp": timestamp,
+            "global_track_id": self.track_id,
+            "local_track_id": self.local_track_id,
+            "projected_px": list(self.projected_px) if self.projected_px is not None else None,
+            "bbox_center_px": list(self.bbox_center_px),
+            "pixel_error_px": _finite_or_none(self.pixel_error),
+            "mahalanobis_d2": _finite_or_none(self.mahalanobis_d2),
+            "gate_pass": bool(self.gate_pass),
+            "assignment_selected": bool(self.assignment_selected),
+            "total_cost": _finite_or_none(self.total_cost),
+            "friend_conflict_state": self.friend_conflict_state,
+            "measurement_age_s": _finite_or_none(self.measurement_age_s),
+            "duplicate_terminal_lock_risk": duplicate_risk,
+        }
+        if metadata:
+            record["metadata"] = dict(metadata)
+        return record
 
 
 @dataclass(frozen=True)
@@ -58,6 +101,29 @@ class GeometricAssociationResult:
     assignments: dict[str, str]
     ambiguous_count: int
     cost_matrix: CostMatrixResult
+
+    def to_log_records(
+        self,
+        *,
+        resource_id: str | None = None,
+        camera_id: str | None = None,
+        duplicate_terminal_lock_risk_by_track_id: Mapping[str, bool] | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], ...]:
+        """Return JSON-friendly per-pair geometry records for JSONL/CSV sinks."""
+
+        duplicate_risk_by_track = dict(duplicate_terminal_lock_risk_by_track_id or {})
+        return tuple(
+            pair.to_log_record(
+                frame_id=self.frame_id,
+                timestamp=self.timestamp,
+                resource_id=resource_id,
+                camera_id=camera_id,
+                duplicate_terminal_lock_risk=duplicate_risk_by_track.get(pair.track_id),
+                metadata=metadata,
+            )
+            for pair in self.pairs
+        )
 
 
 @dataclass(frozen=True)
@@ -210,6 +276,9 @@ def associate_tracks_to_detections_geometrically(
                     mahalanobis_d2=float(breakdown.mahalanobis_d2),
                     gate_pass=bool(breakdown.gated),
                     assignment_selected=(track_id, local.local_track_id) in selected_pairs,
+                    total_cost=breakdown.total_cost,
+                    friend_conflict_state=breakdown.friend_conflict_state,
+                    measurement_age_s=breakdown.measurement_age_s,
                 )
             )
 
@@ -299,3 +368,12 @@ def _ambiguous_track_count(cost_result: CostMatrixResult, config: AssociationCon
         if len(feasible) >= 2 and feasible[1] - feasible[0] < config.min_lock_margin:
             count += 1
     return count
+
+
+def _finite_or_none(value: float | None) -> float | None:
+    if value is None:
+        return None
+    value = float(value)
+    if not np.isfinite(value):
+        return None
+    return value

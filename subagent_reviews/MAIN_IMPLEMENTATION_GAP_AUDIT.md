@@ -4,6 +4,8 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
+**P0/P1 状态入口**：`subagent_reviews/MAIN_P0_P1_GAP_STATUS.md` 集中维护当前 P0/P1 owner、缺口、缺少条件和验收口径。当前未发现新的 P0 阻塞断链；2026-07-08 已补齐 main runtime bus 执行指标回灌、D4 软风险防抖、无冲突 D5 重捕获不降级策略、`request_center_replan -> D3 new plan version -> D7 gate`、D5 feedback 写回 D3、二级接管 plan owner/version、D7 N-pair runtime bus，以及 controlled intercept 中心/二级重分配到视觉 PNG 的 gate 回归。剩余 P1 主要集中在真实 AirSim 多 seed 校准、真实图像/协议/标定适配和长期报告口径扩展。
+
 ## 1. 总体结论
 
 当前项目已经形成一条可运行的轻量科研主线：
@@ -20,14 +22,14 @@ D1 NumPy EKF/FusionAdapter
 
 已经落地的主要是**自研轻量实现和少量成熟 Python 科学计算库**：NumPy、SciPy、OpenCV `projectPoints`、AirSim `simGetDetections` metadata、SimpleFlight 控制、D7 delivery 包中的 YOLO+ByteTrack 可选链路。
 
-**2026-07-05 子智能体复核状态**：D1-D7 已分别重审并更新各自 GAP 文件，所有子 GAP 均明确拆分为“已实现、部分实现、未实现、未实现原因、缺少条件、下一步优先级”。本轮确认：D1 的 Blocks JSONL reader/replay 已实现；D2 的 D1 adapter、5v5 dense/crossing fixture 和风险滑窗已实现；D3 的 D7 binding、D6 record export、validity summary 和 fallback DP 已实现；D4 的主动降级仲裁、二级节点 lifecycle、D6 event metadata 和轻量 CBBA 已实现；D5 的 AirSim camera geometry adapter、YOLO bbox schema 兼容、truth ID 离线隔离、二级 cue、视觉 PNG handoff 建议和一致性摘要已实现；D6 的实际规模字段、D4 active/passive 指标、D7 intercept/guidance replay 和批量报告已实现；D7 的经典 PN、Pure Pursuit、TTC/VM 视觉 PNG gate、D3/D4/D5 terminal contract gate 和 N-pair 独立上下文测试已实现。
+**2026-07-08 子智能体复核状态**：D1-D7 已分别重审并更新各自 PLAN/GAP 文件，所有子 GAP 均明确拆分为“已实现、部分实现、未实现、未实现原因、缺少条件、下一步优先级”。本轮确认：D1 的 replay schema v1、legacy JSONL、最小 CSV reader/replay、latency/OOSM audit 和区域质量摘要已实现；D2 的 replay helper、5v5 dense/crossing fixture、风险阈值敏感性和显式 ID 指标已实现；D3 的 D5 feedback writeback、secondary takeover DTO/helper、D7 binding、owner/version/source metadata 和 D6 export 已实现；D4 的主动降级硬/软风险分层、二级节点 lifecycle、secondary takeover metadata、D5 evidence 到 CBBA 和 cost gap helper 已实现；D5 的几何日志、handoff advisory、一致性窗口、truth ID 在线隔离和 YOLO/ByteTrack 离线 schema adapter 已实现；D6 的 execution/contract 双口径、实际规模分组、主动降级精度和 D7 replay 指标已实现；D7 的 runtime bus、comparison/replay helper、N-pair 状态、D4 gate blocking、owner/version gate 和 terminal contract gate 已实现。
 
 尚未落地的主要是**完整外部工程栈或高阶研究对照**：Stone Soup、FilterPy、ROS 2 `tf2/message_filters`、OpenDroneID Core、MAVLink signing 验证、DDS Security、AprilTag、BoT-SORT、Deep SORT、SCRIMMAGE、TrackEval/py-motmetrics、正式 OR-Tools Min Cost Flow、完整 MIT/CA-CBBA 适配、PX4/MAVLink 主线控制。
 
 未实现的共同原因主要有四类：
 
 1. **当前阶段优先轻量可复现**：默认测试不依赖 ROS、Stone Soup、AirSim 实时服务、PX4 或 GPU。
-2. **main runtime bus 接口基线已接入**：AirSim runtime 已在同一 episode 中持续写入 D1-D7 summary/record 和 D6 JSONL；下一步仍需真实 Blocks 多 seed 校准。
+2. **main runtime bus 接口基线已接入**：AirSim runtime 已在同一 episode 中持续写入 D1-D7 summary/record 和 D6 JSONL；2026-07-08 已把执行拦截结果回灌到正式 main bus metrics，接入 D5 feedback、二级接管 owner/version 和 D7 runtime bus，并保留 raw contract metrics；下一步仍需真实 Blocks 多 seed 校准。
 3. **真实图像/通信/身份源缺失**：MOT、Remote ID、MAVLink signing、AprilTag 需要真实图像帧、协议报文、密钥和时间同步。
 4. **高阶算法需要基准场景支撑**：IMM、JPDA/MHT 完整版、FRPN、MPC、OSPA/HOTA 等应在 5v5 crossing、遮挡、主动降级和 AirSim replay 稳定后再做对照。
 
@@ -73,7 +75,7 @@ D1 NumPy EKF/FusionAdapter
 
 | 模块 | 已实现主线 | 关键未实现项 | 直接阻塞条件 | 详细文件 |
 |---|---|---|---|---|
-| D1 多传感器融合 | `SensorObservation -> NumPy EKF/FusionAdapter -> GlobalTrack`；measurement/arrival timestamp；NED 六维状态；协方差；雷达/声学/EO/合成 LiDAR；延迟补偿；AirSim dry-run；Blocks JSONL reader/replay；`TrackUncertaintySummary`；source de-dup；N-target 输入 | Stone Soup/FilterPy 后端、UKF/IMM、ROS2 tf2/message_filters、D1 包内真实 AirSim CV 直连、Track-to-Track fusion、CSV reader | 真实相机/传感器外参、稳定 detection schema、外部依赖、跨节点相关性策略 | `subagent_reviews/D1_IMPLEMENTATION_GAP_AUDIT.md` |
+| D1 多传感器融合 | `SensorObservation -> NumPy EKF/FusionAdapter -> GlobalTrack`；measurement/arrival timestamp；NED 六维状态；协方差；雷达/声学/EO/合成 LiDAR；延迟补偿；AirSim dry-run；Blocks JSONL reader/replay；replay schema v1/legacy JSONL；最小 CSV reader/replay；`TrackUncertaintySummary`；`LatencyAuditSummary`；`FusionQualityRegionSummary`；source de-dup；N-target 输入 | Stone Soup/FilterPy 后端、UKF/IMM、ROS2 tf2/message_filters、D1 包内真实 AirSim CV 直连、Track-to-Track fusion、更多真实 Blocks/CV fixture | 真实相机/传感器外参、稳定 detection schema、外部依赖、跨节点相关性策略、D6 长期批量 schema | `subagent_reviews/D1_IMPLEMENTATION_GAP_AUDIT.md` |
 | D2 数据关联 | GNN/Hungarian、马氏门控、二维 Kalman、轻量 JPDA/MHT、IDSW/连续性、dry-run adapter、`crossing_dense_5v5`、风险滑窗、D1 adapter | 完整 EKF/UKF/IMM、Stone Soup/FilterPy、原生 3D NED、真实 AirSim CV replay 压测 | 5v5 replay 样本、风险阈值、三维跟踪策略 | `subagent_reviews/D2_IMPLEMENTATION_GAP_AUDIT.md` |
 | D3 目标分配 | SciPy Hungarian、fallback DP、滚动重分配、迟滞、版本化计划、D5 feedback helper、D7 `AssignmentGuidanceBinding`、`AssignmentValiditySummary`、D6 assignment record export、AirSim dry-run、main episode bus plan/version 输出 | OR-Tools Min Cost Flow、D5 feedback 自动写回真实代价 | D5/D6 重复锁定聚合校准、复杂约束定义 | `subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md` |
 | D4 降级接管 | C2Health、被动降级、主动降级、二级侦察节点模型、`SecondaryNodeLifecycleSummary`、CommunicationSummary、主动降级防抖、轻量 CBBA、中心恢复合并、D4 arbitration adapter、D6-compatible event metadata、main episode bus D4 event 写入 | MIT/CA-CBBA 适配、独立拍卖/合同网、真实视频 cue adapter | 二级 heartbeat/coverage/link freshness 的真实 Blocks 多 seed 校准 | `subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md` |
@@ -95,7 +97,7 @@ D1 NumPy EKF/FusionAdapter
    SciPy Hungarian、fallback DP、迟滞、stale plan 拒绝、版本化 `AssignmentPlan`、D5 feedback helper、`AssignmentGuidanceBinding`、`AssignmentValiditySummary` 和 D6-compatible `AssignmentRecord` 导出已实现。
 
 4. **D4 主动/被动降级仲裁已成型**
-   `C2Health`、被动降级、主动降级、二级节点 lifecycle、communication freshness、D1/D2/D3/D5 evidence adapter、D6 event metadata、轻量 CBBA、D7 two-stage secondary handoff 和中心恢复合并基础版已实现。
+   `C2Health`、被动降级、主动降级、二级节点 lifecycle、communication freshness、D1/D2/D3/D5 evidence adapter、D6 event metadata、轻量 CBBA、D7 two-stage secondary handoff 和中心恢复合并基础版已实现。2026-07-07 已增加硬/软风险分层：`d3_assignment_not_current/stale` 仍触发中心重规划，`d3_assignment_cost_margin_low` 与早期 D5 低置信度只进入观察；无 observed mismatch、资源错配、重复锁定或友方冲突的持续 D5 `ambiguous/reacquire` 不再造成名义场景每帧 `request_center_replan` 或分布式降级。
 
 5. **D5 末端视觉配准安全合同已成型**
    OpenCV `projectPoints`/fallback、像素协方差传播、马氏门控、`LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim`、AirSim/YOLO bbox schema adapter、AirSim truth ID 在线隔离、二级 cue、跨视角重复锁定风险、`TerminalConsistencySummary` 和视觉 PNG handoff advisory 已实现。
@@ -109,13 +111,13 @@ D1 NumPy EKF/FusionAdapter
 ### 4.2 当前最关键的未闭合项
 
 1. **main runtime bus 已完成接口闭合，仍需真实多 seed 校准**
-   `research_modules/airsim_runtime/episode_bus.py` 已由 main 串接 D1 track、D2 risk、D3 plan/version、D4 action、D5 terminal decision、D7 pair state 和 D6 collector，并在每个 Blocks episode 输出 `main_episode_bus.jsonl`、ticks、metrics 和 summary。未闭合的是在真实 Blocks 长时/多 seed 条件下校准阈值、状态迁移和降级必要性标签。
+   `research_modules/airsim_runtime/episode_bus.py` 已由 main 串接 D1 track、D2 risk、D3 plan/version、D4 action、D5 terminal decision、D7 pair state 和 D6 collector，并在每个 Blocks episode 输出 `main_episode_bus.jsonl`、ticks、metrics 和 summary。执行拦截时，main 还会把 `control_commands.csv` 和 `intercept_summary.json` 的成功数、碰撞拦截数、guidance law 和 terminal reject 回灌到正式 metrics，同时保留 contract-only metrics。2026-07-08 已补齐 D5 terminal feedback 到 D3、D4 二级接管 owner/version 到 D3/D7，以及 D7 N-pair runtime summary。未闭合的是在真实 Blocks 长时/多 seed 条件下校准阈值、状态迁移和降级必要性标签。
 
-2. **N-pair 真实控制状态机仍需 main 统筹**
-   D7 已支持每个 assignment pair 独立 filter，但 main 仍需按 `--drone-count N` 为每个有效 pair 注入 `AssignmentGuidanceBinding`、D4 permission/action、D5 `TerminalAssociation`、资源状态、目标估计和 D6 guidance log。
+2. **N-pair 真实控制状态机已有 main 接线，仍需真实多 seed 校准**
+   D7 已支持每个 assignment pair 独立 filter，main runtime bus 已按每个有效 pair 注入 `AssignmentGuidanceBinding`、D4 permission/action、D5 `TerminalAssociation`、资源状态、目标估计并写 D6 guidance log。下一步重点不是再补接口，而是在真实 Blocks 多 seed 下校准终端切换、重捕获和拒绝原因分布。
 
 3. **D4/D5/D7 的状态迁移需要真实 episode 校准**
-   `locked/ambiguous/hold/reacquire`、锁定丢失、重捕获、friend conflict、duplicate lock、`request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed` 和 terminal contract reject 需要在多 seed AirSim replay 中统一记录与评估。
+   `locked/ambiguous/hold/reacquire`、锁定丢失、重捕获、friend conflict、duplicate lock、`request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed` 和 terminal contract reject 需要在多 seed AirSim replay 中统一记录与评估。本轮已修正软 cost margin 造成的 replan 抖动，并把“无冲突持续重捕获”与“真实 terminal mismatch”分离，但阈值仍需 5v5/multi-seed 统计确认。
 
 4. **真实图像/协议/标定链路尚未进入默认主线**
    ByteTrack、BoT-SORT、Deep SORT、OpenDroneID Core、MAVLink signing、DDS Security、AprilTag、solvePnP/calibration 和 ROS2 tf2/message_filters 仍需真实图像帧、报文、密钥、相机外参、时间同步和依赖隔离。
@@ -128,8 +130,8 @@ D1 NumPy EKF/FusionAdapter
 1. main 继续用 `MainAirSimEpisodeBus` 做 Blocks episode 的统一 DTO/record 总线，并保持 `main_episode_bus.jsonl` 可由 D6 `load_episode_log_jsonl()` 反读。
 2. main 在真实 Blocks 多 seed 中校准 D3 `AssignmentPlan`、D3 `AssignmentGuidanceBinding`、D4 action、D5 terminal decision 和 D7 guidance records 的状态迁移阈值。
 3. main/AirSim runtime 继续固化 Blocks JSONL/replay schema，保留实际目标数、资源数、相机数、bbox、相机内外参、truth offline label、plan/version、D4/D5/D7 状态字段，并避免在线 D5 使用 truth ID。
-4. D5 先实现 ByteTrack/YOLO 离线 adapter，只输出 `LocalVisualTrack`，不允许 tracker ID 替代 `global_track_id`。
-5. D6 在真实 multi-seed episode 中补主动降级必要性标签或后验判据，形成 active degradation precision 和 unnecessary active degradation count。
+4. D5 已实现 ByteTrack/YOLO 离线 schema adapter。下一步只在有真实图像或检测框回放时接入 detector/tracker；adapter 只输出 `LocalVisualTrack`，不允许 tracker ID 替代 `global_track_id`。
+5. D6 已实现主动降级必要性最小指标口径。下一步要求 main/D4 在真实 multi-seed episode 中持续写出 review/window 字段，形成可比较的 active degradation precision 和 unnecessary active degradation count。
 
 ## 5. 建议实施顺序
 

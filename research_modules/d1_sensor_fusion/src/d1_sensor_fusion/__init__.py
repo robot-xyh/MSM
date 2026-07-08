@@ -11,15 +11,31 @@ from .airsim_dry_run import (
 from .fusion import FusionAdapter
 from .observations import RadarCovarianceConfig
 from .replay import (
+    REPLAY_SCHEMA_VERSION,
     read_blocks_sensor_observations_jsonl,
+    read_sensor_observations_csv,
+    read_sensor_observations_jsonl,
     replay_blocks_sensor_observations_jsonl,
+    replay_sensor_observations_csv,
+    replay_sensor_observations_jsonl,
+    sensor_observation_from_csv_row,
     sensor_observation_from_jsonl_record,
 )
-from .types import GlobalTrack, SensorObservation, TrackLevel, TrackUncertaintySummary
+from .types import (
+    FusionQualityRegionSummary,
+    GlobalTrack,
+    LatencyAuditSummary,
+    SensorObservation,
+    TrackLevel,
+    TrackUncertaintySummary,
+)
 
 __all__ = [
     "FusionAdapter",
+    "FusionQualityRegionSummary",
     "GlobalTrack",
+    "LatencyAuditSummary",
+    "REPLAY_SCHEMA_VERSION",
     "RadarCovarianceConfig",
     "SensorObservation",
     "TrackLevel",
@@ -27,6 +43,11 @@ __all__ = [
     "make_minimal_airsim_dry_run_fixture",
     "observations_from_airsim_dry_run_fixture",
     "read_blocks_sensor_observations_jsonl",
+    "read_sensor_observations_csv",
+    "read_sensor_observations_jsonl",
     "replay_blocks_sensor_observations_jsonl",
+    "replay_sensor_observations_csv",
+    "replay_sensor_observations_jsonl",
+    "sensor_observation_from_csv_row",
     "sensor_observation_from_jsonl_record",
 ]

@@ -162,6 +162,16 @@ def test_track_uncertainty_summary_exports_required_fields() -> None:
     assert payload["valid_at"] == 1.25
     assert payload["published_at"] == 1.25
 
+    regions = adapter.region_quality_summaries(required_modalities=("radar", "eo"), stale_age_s=0.1)
+    assert len(regions) == 1
+    region_payload = regions[0].to_dict()
+    assert region_payload["coverage_cell"] == "cell-a"
+    assert region_payload["track_count"] == 1
+    assert region_payload["source_support"] == {"radar": 1}
+    assert region_payload["source_gap_modalities"] == ("eo",)
+    assert region_payload["stale_track_count"] == 1
+    assert region_payload["max_measurement_age_s"] == pytest.approx(0.25)
+
 
 def test_source_lineage_deduplicates_relay_repeated_payloads() -> None:
     adapter = FusionAdapter(latency_compensation=True)
@@ -296,6 +306,59 @@ def test_delayed_non_radar_association_uses_measurement_time() -> None:
     assert len(tracks) == 1
     assert tracks[0].source_support["acoustic"] == 1
     assert tracks[0].metadata["frame_id"] == "ned"
+
+
+def test_latency_audit_summary_counts_delay_oosm_and_replay() -> None:
+    adapter = FusionAdapter(latency_compensation=True, association_gate=25.0)
+    sensor_position = np.zeros(3)
+    state0 = np.array([100.0, 20.0, -5.0, 5.0, 0.0, 0.0])
+    state2 = state0.copy()
+    state2[:3] += state0[3:] * 2.0
+
+    for observation_id, timestamp, state in (
+        ("radar_audit_0", 0.0, state0),
+        ("radar_audit_2", 2.0, state2),
+    ):
+        radar_z = radar_h(state, sensor_position)
+        adapter.process(
+            SensorObservation(
+                observation_id=observation_id,
+                sensor_id="radar",
+                modality="radar",
+                measurement_timestamp=timestamp,
+                arrival_timestamp=timestamp,
+                frame_id="ned",
+                measurement=radar_z,
+                covariance=radar_covariance_from_range(radar_z[0]),
+                metadata={"sensor_position_ned": sensor_position},
+            )
+        )
+
+    delayed_acoustic = SensorObservation(
+        observation_id="acoustic_audit_delayed",
+        sensor_id="acoustic",
+        modality="acoustic",
+        measurement_timestamp=1.0,
+        arrival_timestamp=2.8,
+        frame_id="ned",
+        measurement=np.array([np.arctan2(state0[1], state0[0] + 5.0)]),
+        covariance=acoustic_covariance(0.9),
+        confidence=0.9,
+        metadata={"sensor_position_ned": sensor_position},
+        stale_after_s=0.5,
+    )
+    tracks = adapter.process(delayed_acoustic)
+
+    audit = adapter.latency_audit_summary().to_dict()
+    assert audit["observation_count"] == 3
+    assert audit["replay_count"] == 2
+    assert audit["oosm_observation_count"] == 1
+    assert audit["stale_observation_count"] == 1
+    assert audit["stale_or_oosm_observation_count"] == 1
+    assert audit["max_delay_s"] == pytest.approx(1.8)
+    assert audit["mean_delay_s"] == pytest.approx(0.6)
+    assert audit["max_replay_observation_count"] >= 3
+    assert tracks[0].metadata["latency_audit"]["max_delay_s"] == pytest.approx(1.8)
 
 
 def test_observation_rejects_unconverted_external_frame() -> None:

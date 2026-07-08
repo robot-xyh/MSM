@@ -4,7 +4,7 @@
 
 D3 是集中式资源-目标分配模块，输入来自 D2 的稳定 `GlobalTrack`/`global_track_id` 以及资源状态摘要，输出版本化候选 `AssignmentPlan`，供 D5 末端视觉配准知道“本资源当前应关注哪个全局目标”，也供 D4 在中心节点失效时作为降级协商基线。
 
-本模块只研究离线科研仿真中的抽象候选分配。输出计划必须保持 `human_authorization_state="required"`，不得包含真实飞控、硬件驱动、火控参数、毁伤逻辑、自动处置或绕过授权流程。
+本模块只研究离线科研仿真中的抽象候选分配。输出计划默认保持 `human_authorization_state="required"`，但可通过 `PlannerConfig.human_authorization_state` 显式设置为仿真记录态或外部授权层传入的状态；D3 不包含真实飞控、硬件驱动、火控参数、毁伤逻辑、自动处置或绕过授权流程。
 
 ## 2. 输入与输出
 
@@ -36,7 +36,7 @@ D3 是集中式资源-目标分配模块，输入来自 D2 的稳定 `GlobalTrac
 - `unassigned_target_ids`：未被分配的目标。
 - `total_cost`、`candidate_total_cost`、`previous_total_cost_current`：当前采用计划、候选计划和旧计划重评分成本。
 - `decision_state`：如 `accepted`、`unchanged`、`held_by_hysteresis`、`accepted_previous_infeasible`。
-- `human_authorization_state`：强制输出为 `required`，即候选计划仍需外部授权层处理。
+- `human_authorization_state`：来自 `PlannerConfig.human_authorization_state`，默认 `required`；main runtime 可在仿真中使用 `recorded` 等状态，并由外部授权层解释。
 - `source_node_id`、`target_node_id`、`link_type`、`plan_version`、`stale_after_s`：跨中心、二级节点和资源节点传递计划时的通信合同字段。
 - `terminal_feedback_state`、`duplicate_terminal_lock_risk`：D5 末端反馈和重复锁定风险摘要，仅用于 hold/replan/arbitration 决策，不允许本地改写全局 ID。
 
@@ -412,6 +412,8 @@ D2 提供稳定 `global_track_id` 和航迹质量。D3 不应自行合并、拆�
 
 D4 主动降级场景下，D3 应额外提供 `AssignmentValiditySummary` 或等价日志字段。D4 可以按 `recommended_action` 处理：`central_replan` 由 D3 继续发布新版本；`request_d4_secondary_node` 交给二级侦察/区域节点仲裁；`request_d4_distributed` 才进入完全分布式协同。D3 不应越权选择具体降级节点，只提供计划有效性、版本、成本和跨模块一致性证据。
 
+当前 main runtime 已接入中心重规划闭环：`request_center_replan` 完成后会登记新的 `active_plan_owner=center`、`plan_id/version`、`replan_reason`、superseded previous plan 和 stale/rejected plan 归因。D3 侧只负责继续发布版本化 plan/binding evidence，并保持 stale 版本拒绝。仍待 D4/main 完整定义的是二级 takeover 后的 secondary owner、epoch/lease、版本 supersede、中心恢复合并和 stale secondary plan 拒绝规则。
+
 若 D4/main 发布二级计划，应在 `AssignmentPlan.metadata["plan_schema"]` 中标记 `secondary_plan_v2`，并提供外部确定的 `source_node_id`/`target_node_id`/`link_type`。D3 的 `AssignmentGuidanceBinding` 会原样携带该 schema、`plan_id` 和 `plan_version`，并保持 `allow_local_rebind=False`；D3 不推断或选择具体二级节点。
 
 ### 13.3 与 D5 末端视觉配准
@@ -433,7 +435,7 @@ D6 还应统计 `AssignmentValiditySummary` 的状态分布，区分中心滚动
 - 代价特征是归一化抽象量，尚未直接接入 D1/D2 的完整协方差矩阵和时间同步信息。
 - Hungarian 只表达一对一主分配，不支持容量、备份资源或多窗口全局优化。
 - `conflict_risk` 是外部传入的边级摘要，未在 D3 内部计算真实轨迹冲突。
-- `human_authorization_state` 当前强制为 `required`，模块不实现授权工作流。
+- `human_authorization_state` 当前由 `PlannerConfig` 配置，默认 `required`；模块不实现授权工作流，也不把记录态仿真字段解释为处置授权。
 - 仿真覆盖 8v8 滚动场景，仍需扩展到不同目标密度、通信降级和 D5 末端模糊反馈闭环。
 - `AssignmentValiditySummary` 已实现为代码数据类，并可通过 `assignment_validity_summary_from_plan(...)` 从 `AssignmentPlan` 导出；D6-compatible assignment record 也可由 `assignment_records_from_plan(...)` 生成。后续局限在于真实运行时是否持续写入这些摘要，而不是 D3 模块缺少数据结构。
 
@@ -442,5 +444,5 @@ D6 还应统计 `AssignmentValiditySummary` 的状态分布，区分中心滚动
 - 与 D2/D5 建立统一反馈字段，把 ID Switch 风险、终端模糊和友方重叠映射到 D3 代价项。
 - 为 D4 增加计划版本冲突和中心恢复合并的集成测试。
 - 在 main 运行时持续调用 D3 侧有效性评估器，输出 `AssignmentValiditySummary` 并由 D6 统计触发原因。
-- 在保持接口不变的前提下实现 OR-Tools 最小费用流可选后端。
+- P2/非本轮在保持接口不变的前提下实现 OR-Tools 最小费用流可选后端。
 - 由 D6 批量运行多随机种子、多权重、多密度场景，输出统一中文实验报告和图表。

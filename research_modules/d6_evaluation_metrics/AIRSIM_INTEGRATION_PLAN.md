@@ -197,11 +197,17 @@ D6 已实现：
 - 输出 gate pass rate、terminal switch allowed/reject、visual PNG switch、terminal takeover、mode switch、terminal contract reject、intercept success/counts、min range、time to intercept。
 - 将 guidance law、D4/D5 state、plan/version、reject reason 写入 `EpisodeMetrics.metadata`。
 
-仍需 main/D7 接线：
+main/orchestrator 已完成的接线：
+
+- 截至 2026-07-07，真实 AirSim 拦截执行后的 `control_commands.csv` 与 `intercept_summary.json` 已合并到正式 `main_episode_bus_metrics.json`。
+- 执行前合同检查结果另存为 `main_episode_bus_contract_metrics.json`，用于诊断 terminal contract、D4 reassign pending、D5 gate 等，不再覆盖正式执行结果。
+- 正式指标可同时看到 D7 执行结果与 `guidance_law_counts`，避免“执行前集成指标”和“执行后拦截指标”分裂。
+
+仍需 main/D7 持续接线：
 
 - 在每个 integrated AirSim episode 中稳定产出这些 D7 文件。
 - 保持 D3 assignment plan version、D4 action/state、D5 terminal state 和 D7 guidance law 的同一时间轴。
-- 在 main 汇总时调用 D6 loader 合并到同一 episode metrics，而不是仅保留独立 D7 报告。
+- 在多 seed、5v5/N-v-N 和非默认 episode 中维持同样的正式 metrics 合并口径，而不是仅保留独立 D7 报告。
 
 ## 5. Integrated Episode Metrics 的推荐流程
 
@@ -212,11 +218,11 @@ main runtime 推荐按以下顺序写盘和评估：
 3. 写出 D4 decision/event CSV/JSONL。
 4. 写出 D5 terminal/multi-view JSONL 或转换后的 D6 `terminal/event/link` 记录。
 5. 写出 D7 `guidance_records.csv`、`guidance_summaries.json`、`control_commands.csv`、`intercept_summary.json`。
-6. main 调用 D6 loaders，把所有记录合并进一个 `MetricsCollector`。
+6. main 调用 D6 loaders，把所有记录合并进一个 `MetricsCollector`；若执行了真实拦截，还要把 D7 execution metrics 写入正式 `main_episode_bus_metrics.json`，并保留 raw `main_episode_bus_contract_metrics.json`。
 7. 调用 `compute_episode()`，传入同一 `truth_summary`、`episode_id`、`seed/batch_seed` 和实际规模字段。
 8. 批量调用 `ReportGenerator` 输出 CSV、Markdown、PNG。
 
-D6 代码已经具备第 6-8 步的模块能力；第 1-5 步以及跨文件合并调度属于 main runtime。
+D6 代码已经具备第 6-8 步的模块能力；AirSim 启停、episode 顺序、跨文件合并调度和正式/contract metrics 文件写盘属于 main runtime。
 
 ## 6. 时间、坐标和规模合同
 

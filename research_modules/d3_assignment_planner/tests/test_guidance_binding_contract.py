@@ -1,9 +1,12 @@
+from dataclasses import replace
+
 from d3_assignment_planner import (
     Assignment,
     AssignmentPlan,
     SECONDARY_PLAN_SCHEMA_V2,
     assignment_validity_summary_from_plan,
     guidance_bindings_from_assignment_plan,
+    prepare_secondary_takeover_plan,
 )
 
 
@@ -203,15 +206,14 @@ def test_secondary_plan_v2_binding_after_center_plan_invalidates() -> None:
         created_at=2.0,
         stale_after_s=2.0,
     )
-    secondary_plan = AssignmentPlan(
-        **{
-            **secondary_plan.__dict__,
-            "previous_plan_id": center_plan.plan_id,
-            "source_node_id": "d4-secondary-published",
-            "target_node_id": "interceptor-group",
-            "link_type": "d4_secondary_relay",
-            "metadata": {"plan_schema": SECONDARY_PLAN_SCHEMA_V2},
-        }
+    secondary_plan = prepare_secondary_takeover_plan(
+        secondary_plan,
+        supersedes_plan=center_plan,
+        secondary_node_id="secondary-node-2",
+        target_node_id="interceptor-group",
+        takeover_reason="d4_degrade_to_secondary",
+        lease_expires_at_s=4.0,
+        leader_epoch=12,
     )
 
     center_summary = assignment_validity_summary_from_plan(
@@ -232,11 +234,44 @@ def test_secondary_plan_v2_binding_after_center_plan_invalidates() -> None:
     assert binding.plan_version == 2
     assert binding.plan_schema == SECONDARY_PLAN_SCHEMA_V2
     assert binding.to_assignment_metadata()["plan_schema"] == SECONDARY_PLAN_SCHEMA_V2
-    assert binding.source_node_id == "d4-secondary-published"
-    assert binding.target_node_id == "interceptor-group"
+    assert binding.source_node_id == "secondary-node-2"
+    assert binding.target_node_id == "R01"
     assert binding.link_type == "d4_secondary_relay"
     assert binding.metadata["previous_plan_id"] == center_plan.plan_id
     assert binding.metadata["previous_target_for_resource"] == "T00"
     assert binding.metadata["resource_reassigned"] is True
     assert binding.metadata["allow_local_rebind"] is False
-    assert "selected_secondary_node_id" not in binding.metadata
+    assert secondary_plan.metadata["plan_schema"] == SECONDARY_PLAN_SCHEMA_V2
+    assert secondary_plan.metadata["active_plan_owner"] == "secondary"
+    assert secondary_plan.metadata["owner_node_id"] == "secondary-node-2"
+    assert secondary_plan.metadata["selected_secondary_node_id"] == "secondary-node-2"
+    assert secondary_plan.metadata["supersedes_plan_id"] == center_plan.plan_id
+    assert secondary_plan.metadata["supersedes_plan_version"] == center_plan.version
+    assert secondary_plan.metadata["secondary_lease_expires_at_s"] == 4.0
+    assert secondary_plan.metadata["secondary_leader_epoch"] == 12
+
+
+def test_secondary_takeover_rejects_stale_or_tied_version() -> None:
+    center_plan = _plan(
+        _assignment(target_id="T00", resource_id="R01"),
+        plan_id="CENTER-PLAN-001",
+        version=3,
+        created_at=0.0,
+    )
+    stale_candidate = replace(
+        center_plan,
+        plan_id="SECONDARY-PLAN-003",
+        previous_plan_id=center_plan.plan_id,
+        source_node_id="secondary-node-2",
+    )
+
+    try:
+        prepare_secondary_takeover_plan(
+            stale_candidate,
+            supersedes_plan=center_plan,
+            secondary_node_id="secondary-node-2",
+        )
+    except ValueError as exc:
+        assert "newer" in str(exc)
+    else:
+        raise AssertionError("expected stale secondary takeover plan rejection")

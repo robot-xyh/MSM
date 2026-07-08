@@ -80,6 +80,7 @@ def test_middle_range_stable_locked_recommends_visual_png_handoff() -> None:
         closing_speed_mps=8.0,
         detection_latency_s=0.08,
         d7_maneuver_margin=0.25,
+        current_assigned_global_track_id="G-assigned",
     )
 
     assert decision.metadata["recommended_range_band"] == "middle_handoff"
@@ -88,6 +89,13 @@ def test_middle_range_stable_locked_recommends_visual_png_handoff() -> None:
     assert decision.metadata["handoff_reason"] == "bbox_area_stable_middle_range"
     assert decision.metadata["bbox_area_cv"] <= VisualPngHandoffConfig().max_bbox_area_cv
     assert decision.metadata["time_to_go_s"] == 3.0
+    assert decision.metadata["visual_png_gate_pass"] is True
+    assert decision.metadata["visual_png_handoff_blockers"] == []
+    assert decision.metadata["measurement_age_s"] == 0.08
+    assert decision.metadata["measurement_age_ok"] is True
+    assert decision.metadata["los_rate_available"] is True
+    assert decision.metadata["los_rate_ok"] is True
+    assert decision.metadata["assignment_consistency_gate_pass"] is True
 
     summary = summarize_terminal_consistency(
         resource_id="INT-01",
@@ -174,6 +182,33 @@ def test_friend_conflict_and_assignment_mismatch_block_handoff() -> None:
     assert friend_blocked.metadata["handoff_reason"] == "friend_conflict:verified_friend_overlap"
     assert mismatch_blocked.metadata["handoff_recommended"] is False
     assert mismatch_blocked.metadata["handoff_reason"] == "assignment_mismatch"
+
+
+def test_stale_measurement_age_and_missing_los_block_handoff() -> None:
+    stale = annotate_visual_png_handoff(
+        _locked(),
+        local_track_history=_history(),
+        image_size=(640, 480),
+        range_to_assigned_track_m=24.0,
+        closing_speed_mps=8.0,
+        measurement_age_s=0.9,
+        los_rate_px_s=(0.0, 0.0),
+    )
+    no_los = annotate_visual_png_handoff(
+        _locked(),
+        local_track_history=[],
+        image_size=(640, 480),
+        range_to_assigned_track_m=24.0,
+        closing_speed_mps=8.0,
+        measurement_age_s=0.05,
+    )
+
+    assert stale.metadata["handoff_recommended"] is False
+    assert stale.metadata["measurement_age_ok"] is False
+    assert "measurement_age_stale" in stale.metadata["visual_png_handoff_blockers"]
+    assert no_los.metadata["handoff_recommended"] is False
+    assert no_los.metadata["los_rate_available"] is False
+    assert "los_rate_unavailable" in no_los.metadata["visual_png_handoff_blockers"]
 
 
 def test_near_range_unstable_bbox_keeps_radar_pn_and_formula_estimates_area_ratio() -> None:

@@ -2,12 +2,13 @@
 
 **定位**: 在由 main runtime `--drone-count` 决定的 N 对 N 或非等量资源/目标场景中，由中心节点生成滚动 `AssignmentPlan`，并通过迟滞逻辑避免频繁重分配；5v5 只作为示例和基准场景。
 **边界**: 本文只讨论抽象资源-目标匹配、离线评估和人工授权前的候选计划，不包含真实火控参数、毁伤模型或自动处置流程。
+**D3 复核状态 2026-07-08**: P0 无新增缺口；`PlannerConfig.human_authorization_state` 已生效；D5 duplicate/friend/fov/feasibility metadata 可通过 D3 helper 写回下一轮成本或禁配边，main runtime 已接入该 writeback；D4/main 触发 `request_center_replan` 后，main runtime 会再次调用 D3 生成新中心 plan version，并在 episode bus 记录 `replan_reason`、`supersedes_plan_id`、`supersedes_plan_version`、`active_plan_owner=center`；D4/main 选定二级节点后，D3 可生成 `secondary_plan_v2` owner/source/version DTO，main runtime 已接入 secondary owner/version/source 记录；D7 仍只接受当前有效 binding/version。剩余 P1 聚焦真实多 seed 校准和 D5 feedback 权重阈值长期标定，P2 保留 OR-Tools Min Cost Flow optional 后端。
 
 ---
 
 ## 0. 当前代码状态摘要
 
-截至 2026-07-06，D3 代码已经实现：
+截至 2026-07-08，D3 代码已经实现：
 
 - SciPy Hungarian / `linear_sum_assignment` 主线，带 dummy unassignment 列。
 - 无 SciPy 时的小规模 `FallbackAssignmentSolver` 位掩码 DP fallback。
@@ -18,12 +19,16 @@
 - D7 `AssignmentGuidanceBinding`，携带 `assigned_global_track_id`、`plan_version`、binding state、source/target/link 和 `allow_local_rebind=False`。
 - `AssignmentValiditySummary` 和 D6-compatible `AssignmentRecord` 导出。
 - synthetic AirSim dry-run adapter，不 import AirSim，不控制 Blocks runtime。
+- `PlannerConfig.human_authorization_state` 透传到 `AssignmentPlan.human_authorization_state`，并写入 `configured_human_authorization_state` / `effective_human_authorization_state` metadata。
+- `apply_terminal_feedback_to_planner_inputs()` 将 D5 duplicate/friend/fov/feasibility metadata 写回下一轮 `TargetTrack[]/ResourceState[]`。
+- `prepare_secondary_takeover_plan()` 在 D4/main 已选定二级节点后校验版本并写入 `secondary_plan_v2` owner/source/supersede metadata。
 
 当前只是部分实现或未实现：
 
 - `MinCostFlowAssignmentSolver` 只是 OR-Tools 预留接口，`solve()` 当前抛出 `NotImplementedError`。
-- `secondary_plan_v2` 只有 schema/binding 兼容测试，没有二级节点 owner、epoch、租约、版本 supersede 和中心恢复合并闭环。
-- D4 `request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed` 仍由 main/D4 消费 D3 证据后触发，D3 不自动调用。
+- `secondary_plan_v2` 的 D3 DTO/binding 兼容、owner/source、版本 supersede metadata 已实现，main runtime 已接入 secondary owner/version/source 记录；二级节点选择、租约执行、中心恢复合并和 active owner runtime 仲裁仍属 D4/main policy，不列为 D3 DTO 缺口。
+- D4 `request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed` 仍由 main/D4 消费 D3 证据后触发，D3 不自动调用；其中中心 `request_center_replan` 的 owner/version/supersede runtime 记录已由 main 接线，D3 只需保持版本化计划和 stale 拒绝合同。
+- 剩余 D3 P1 是真实多 seed/N 规模校准和 D5 feedback 权重阈值长期标定。
 - D3 不负责末端视觉重绑，不改写 `global_track_id`。
 
 ---
@@ -102,6 +107,15 @@ AssignmentPlan
 - decision_state
 - source_node_id / target_node_id / link_type
 - stale_after_s
+
+TerminalFeedbackWriteback
+- tracks/resources  # 下一轮 D3 输入
+- prohibited_edges
+- hold_resource_ids
+- updated_target_ids / updated_resource_ids
+- d7_gate_action
+- d4_requests
+- allow_local_rebind=False
 ```
 
 ### 4.2 类图
@@ -157,7 +171,7 @@ class AssignmentPlanner:
         matrix = CostModel.build_matrix(tracks, resources, timestamp)
         candidate = HungarianAssignmentSolver.solve(matrix, unassigned_costs)
         candidate = build_assignment_plan(candidate, resource_count=len(resources), target_count=len(tracks))
-        candidate.human_authorization_state = "required"
+        candidate.human_authorization_state = self.config.human_authorization_state
         if previous_plan is None:
             remember_latest_plan(candidate)
             return candidate
@@ -234,7 +248,7 @@ D3 应向 D4 发布或记录以下 `AssignmentValiditySummary` 字段，用于�
 valid -> central_replan -> secondary_arbitration -> distributed_arbitration -> hold_for_observation
 ```
 
-如果 `cost_margin` 显示中心 Hungarian 可以显著改善，且 `stale_plan_version=False`，应由 main/D4 优先触发 `request_center_replan`。如果 `assignment_latency`、`stale_plan_version`、`duplicate_assignment_count` 或 D5 多帧不一致同时出现，应请求 D4 主动降级仲裁。D3 当前只给出 summary 和 metadata，不直接执行 `request_center_replan`、`degrade_to_secondary` 或 `degrade_to_distributed`。
+如果 `cost_margin` 显示中心 Hungarian 可以显著改善，且 `stale_plan_version=False`，应由 main/D4 优先触发 `request_center_replan`。当前 main runtime 已在触发后再次调用 D3，并记录新的 `active_plan_owner=center`、`plan_id/version`、`replan_reason`、superseded previous plan 和 stale/rejected plan 归因。如果 `assignment_latency`、`stale_plan_version`、`duplicate_assignment_count` 或 D5 多帧不一致同时出现，应请求 D4 主动降级仲裁。D3 当前只给出 summary、metadata、feedback writeback 和 secondary takeover DTO，不直接执行 `request_center_replan`、`degrade_to_secondary` 或 `degrade_to_distributed`。
 
 ### 8.3 D3 与 D7 比例导引的接口
 
@@ -258,7 +272,7 @@ AssignmentGuidanceBinding
 - `plan_version` 必须与当前数据总线版本一致。
 - `assigned_global_track_id` 在中段和末端保持一致。
 - `guidance_phase` 只描述仿真阶段，不代表真实控制或处置命令。
-- `human_authorization_state` 必须保持 `required` 或外部授权层明确状态，D3 不提供绕过授权字段。
+- `human_authorization_state` 来自 `PlannerConfig`，默认 `required`，也可由外部授权/仿真记录层显式设置；D3 不提供绕过授权字段。
 - D4 action 为 `request_center_replan`、`degrade_to_secondary` 或 `degrade_to_distributed` 时，D7 应阻断视觉 PNG。
 - D5 terminal association 未达到 `locked` 或 binding 为 `stale/revoked/hold/reassigned` 时，D7 不得进入目标重绑。
 
@@ -288,21 +302,21 @@ AssignmentGuidanceBinding
 4. 若旧计划仍可行，只有满足 `J_new < (1-delta) * J_old`、`dwell_time > min_dwell`、`change_count <= max_changes_per_window` 才接受换配。
 5. 若旧计划不可行，例如资源失效、目标 dropped、禁配边出现，则允许绕过收益门限，标记 `accepted_previous_infeasible`。
 6. 若 D5 多视角关联与中心/二级计划连续不一致，D3 请求 D4 `secondary_arbitration`，而不是在本地资源之间直接重写 `global_track_id`。
-7. 若二级节点也无法提供一致计划，D4 才进入完全分布式协同；D3 只保留最新中心计划作为回滚和审计基线。
+7. 若二级节点也无法提供一致计划，D4 才进入完全分布式协同；D3 只保留最新中心计划作为回滚和审计基线。二级 takeover 的 D3 DTO 规则已要求新 plan version 大于被 supersede 的中心 plan，并写入 owner/source/supersede/epoch/lease metadata；节点选择、租约执行、中心恢复合并和 stale secondary plan runtime 拒绝规则由 D4/main 定义。
 
-N 对 N 基准迟滞建议可从 5v5 参数开始扫描：`delta=0.2`，`min_dwell=2.0s`，`max_changes_per_window=2`，连续 3 次 `held_by_hysteresis` 且 D5 不一致时请求 D4 主动降级仲裁。D6 应统计 `resource_count`、`target_count`、`reassignment_count`、`duplicate_assignment_count`、`unassigned_high_threat_count`、`stale_plan_version_count` 和 `secondary_arbitration_count`。
+N 对 N 基准迟滞建议可从 5v5 参数开始扫描：`delta=0.2`，`min_dwell=2.0s`，`max_changes_per_window=2`，连续 3 次 `held_by_hysteresis` 且 D5 不一致时请求 D4 主动降级仲裁。后续 P1 校准应跨真实多 seed 统计 `resource_count`、`target_count`、`reassignment_count`、`duplicate_assignment_count`、`unassigned_high_threat_count`、`stale_plan_version_count`、`secondary_arbitration_count`、center/secondary owner/version/source 变更，并用 D6 assignment records 反向标定 D5 feedback 权重阈值。
 
 ---
 
 ## 10. 离线验证
 
-当前已实现的离线验证主要覆盖 Hungarian/fallback、迟滞、stale 拒绝、D7 binding、D5 feedback helper、D6 export 和 synthetic dry-run adapter。后续可生成 2v2、5v5、8v8、10x10、20x20 和非等量 M/N 场景，固定随机种子，比较：
+当前已实现的离线验证主要覆盖 Hungarian/fallback、迟滞、stale 拒绝、D7 binding、D5 feedback helper/writeback、secondary takeover DTO、D6 export 和 synthetic dry-run adapter。后续可生成 2v2、5v5、8v8、10x10、20x20 和非等量 M/N 场景，固定随机种子，比较：
 
 ```text
 Hungarian without hysteresis
 Hungarian with hysteresis
-MinCostFlow with constraints      # P1/P2 后端实现后再加入
-MinCostFlow with hysteresis       # P1/P2 后端实现后再加入
+MinCostFlow with constraints      # P2/非本轮后端实现后再加入
+MinCostFlow with hysteresis       # P2/非本轮后端实现后再加入
 ```
 
 指标：

@@ -1179,14 +1179,24 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
     assert ticks[-1]["d3"]["resource_count"] == 5
     assert ticks[-1]["d3"]["target_count"] == 5
     assert ticks[-1]["d3"]["plan_version"] >= 1
+    assert ticks[-1]["d3"]["terminal_feedback_writeback"]["feedback_count"] == 5
+    assert ticks[-1]["d3"]["terminal_feedback_writeback"]["hold_resource_ids"] == []
     assert ticks[-1]["d5"]["terminal_association_count"] == 5
+    assert ticks[-1]["d7"]["runtime_bus"]["sample_count"] == 5
+    assert ticks[-1]["d7"]["runtime_bus"]["control_context_count"] == 5
 
     d4_events = [
-        event for event in collector.event_records if event.event_type == "active_degradation_decision"
+        event
+        for event in collector.event_records
+        if event.event_type
+        in {"active_degradation_decision", "d4_arbitration_decision", "passive_failover_start"}
     ]
     assert d4_events
     assert all("d4_action" in event.metadata for event in d4_events)
     assert all("degradation_mode" in event.metadata for event in d4_events)
+    d4_actions = [event.metadata["d4_action"] for event in d4_events]
+    assert "continue_center" in d4_actions
+    assert d4_actions.count("request_center_replan") < len(d4_actions)
     d7_events = [
         event for event in collector.event_records if event.event_type == "d7_guidance_record"
     ]
@@ -1195,6 +1205,7 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
     assert all("d4_action" in event.metadata for event in d7_events)
     assert all("d5_decision_state" in event.metadata for event in d7_events)
     assert all("terminal_switch_allowed" in event.metadata for event in d7_events)
+    assert all("d7_runtime_bus_boundary" in event.metadata for event in d7_events)
     assert all(
         event.metadata["global_track_id"] == event.metadata["target_id"]
         for event in d7_events
@@ -1202,6 +1213,81 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
     assert all(
         record.assigned_global_track_id == record.expected_global_track_id
         for record in collector.terminal_records
+    )
+
+
+def test_main_episode_bus_marks_secondary_takeover_plan_for_d7(tmp_path: Path) -> None:
+    resources = tuple(f"Interceptor{index}" for index in range(1, 6))
+    secondary_names = ("SEC-NORTH", "SEC-SOUTH")
+    frames = []
+    for index in range(4):
+        frame = _sample_5v5_frame(timestamp=float(index) * 0.5, frame_index=index)
+        frame = replace(
+            frame,
+            center_node_alive=index == 0,
+            secondary_nodes_alive=True,
+            metadata={
+                **frame.metadata,
+                "secondary_camera_vehicle_names": list(secondary_names),
+                "images": [
+                    {
+                        "camera_vehicle_name": secondary_name,
+                        "camera_name": "0",
+                        "ok": True,
+                        "width": 1280,
+                        "height": 720,
+                    }
+                    for secondary_name in secondary_names
+                ],
+            },
+        )
+        frames.append(frame)
+    config = BlocksSmokeConfig(
+        episode_id="pytest_main_bus_secondary_takeover",
+        scenario_name="blocks_actor_n5_secondary_takeover",
+        duration_s=1.5,
+        dt_s=0.5,
+        output_root=tmp_path,
+        launch_blocks=False,
+        resource_vehicle_names=resources,
+        camera_vehicle_names=resources,
+        secondary_camera_vehicle_names=secondary_names,
+        target_vehicle_names=(),
+    )
+
+    result = run_main_episode_bus(config, frames, tmp_path / "main_bus_secondary")
+
+    ticks = [
+        json.loads(line)
+        for line in result.output_paths["main_episode_bus_ticks_jsonl"]
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert ticks[1]["d3"]["active_plan_owner"] == "center"
+    assert "degrade_to_secondary" in ticks[1]["d4"]["actions"]
+    assert "d4_reassign_pending" in ticks[1]["d7"]["terminal_contract_reject_reasons"]
+    assert ticks[2]["d3"]["active_plan_owner"] == "secondary"
+    assert ticks[2]["d3"]["plan_schema"] == "secondary_plan_v2"
+    assert result.summary["current_plan"]["active_plan_owner"] == "secondary"
+    assert result.summary["current_plan"]["plan_schema"] == "secondary_plan_v2"
+    assert result.summary["current_plan"]["owner_node_id"] in secondary_names
+
+    collector, _truth_summary = load_episode_log_jsonl(
+        result.output_paths["main_episode_bus_jsonl"]
+    )
+    d4_events = [
+        event
+        for event in collector.event_records
+        if event.event_type
+        in {"active_degradation_decision", "d4_arbitration_decision", "passive_failover_start"}
+    ]
+    assert any(
+        event.metadata.get("secondary_takeover_state") == "pending_secondary_plan"
+        for event in d4_events
+    )
+    assert any(
+        event.metadata.get("secondary_takeover_state") == "secondary_plan_active"
+        for event in d4_events
     )
 
 
@@ -1319,6 +1405,13 @@ def test_blocks_orchestrator_runs_mock_controlled_intercept(tmp_path: Path) -> N
     summary = json.loads(result.output_paths["intercept_summary"].read_text(encoding="utf-8"))
     assert summary["control_api_used"] is True
     assert summary["pair_count"] == 1
+    assert result.metadata["main_episode_bus"]["execution_metrics_merged"] is True
+    assert result.output_paths["main_episode_bus_contract_metrics_json"].exists()
+    bus_metrics = json.loads(
+        result.output_paths["main_episode_bus_metrics_json"].read_text(encoding="utf-8")
+    )
+    assert bus_metrics["metrics"]["intercept_success_count"] == summary["success_count"]
+    assert bus_metrics["metrics"]["metadata"]["main_episode_bus_execution_metrics_merged"] is True
     commands = result.output_paths["control_commands"].read_text(encoding="utf-8")
     assert "guidance_law" in commands
     assert "camera_quality_gate_passed" in commands

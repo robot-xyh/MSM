@@ -266,6 +266,34 @@ class CBBAResult:
     duration_s: float
     final_views: dict[str, dict[str, str]] = field(default_factory=dict)
     assignment_audit: dict[str, dict[str, Any]] = field(default_factory=dict)
+    cost_gap_benchmark: "CBBACostGapBenchmark | None" = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_jsonable(self)
+
+
+@dataclass(frozen=True)
+class CBBACostGapBenchmark:
+    """Offline comparison between D4 CBBA and a D3 centralized baseline."""
+
+    benchmark_source: str
+    cbba_total_cost: float | None
+    center_total_cost: float | None
+    absolute_cost_gap: float | None
+    relative_cost_gap: float | None
+    cbba_assignment_count: int
+    center_assignment_count: int
+    common_assignment_count: int
+    cbba_completion_rate: float
+    center_completion_rate: float
+    completion_rate_gap: float
+    cbba_conflict_count: int
+    cbba_consensus_rounds: int
+    cbba_messages_sent: int
+    missing_cbba_task_ids: tuple[str, ...] = ()
+    extra_cbba_task_ids: tuple[str, ...] = ()
+    missing_cost_pairs: tuple[str, ...] = ()
+    per_task_cost_gap: dict[str, float | None] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)

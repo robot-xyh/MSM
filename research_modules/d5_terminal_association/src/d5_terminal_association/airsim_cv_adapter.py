@@ -135,6 +135,76 @@ def local_visual_tracks_from_sim_detections(
     return tracks
 
 
+def local_visual_tracks_from_offline_yolo_bytetrack(
+    detections: Iterable[Any],
+    *,
+    resource_id: str,
+    camera_id: str,
+    timestamp: float | None = None,
+    default_category: str = "unknown",
+    default_quality: float = 0.8,
+    default_mot_history_length: int = 1,
+    source_name: str = "offline_yolo_bytetrack",
+) -> list[LocalVisualTrack]:
+    """Convert offline detector/tracker rows to `LocalVisualTrack`.
+
+    This is a schema adapter only. It does not run YOLO, ByteTrack, BoT-SORT,
+    or Deep SORT, and it intentionally ignores AirSim/object truth fields and
+    any supplied `global_track_id`. Tracker IDs are namespaced as local IDs and
+    never become `assigned_global_track_id`.
+    """
+
+    tracks: list[LocalVisualTrack] = []
+    seen_local_ids: dict[str, int] = {}
+    for index, detection in enumerate(detections):
+        bbox = _extract_bbox(detection)
+        x1, y1, x2, y2 = bbox
+        raw_track_id = _get_any(
+            detection,
+            "local_track_id",
+            "track_id",
+            "tracker_id",
+            "byte_track_id",
+            "bytetrack_id",
+            "id",
+        )
+        if raw_track_id is None:
+            base_local_id = f"{camera_id}/{source_name}:det:{index}"
+        else:
+            base_local_id = f"{camera_id}/{source_name}:track:{raw_track_id}"
+        local_id = _unique_local_id(base_local_id, seen_local_ids)
+        category = str(
+            _get_any(detection, "category", "label", "class_name", "class", "name")
+            or default_category
+        )
+        quality = float(
+            _get_any(detection, "confidence", "conf", "score", "quality")
+            or default_quality
+        )
+        measurement_time = _get_any(detection, "timestamp", "measurement_timestamp", "time")
+        track_timestamp = float(timestamp if timestamp is not None else (measurement_time or 0.0))
+        history_length = int(
+            _get_any(detection, "mot_history_length", "track_age", "age")
+            or default_mot_history_length
+        )
+        tracks.append(
+            LocalVisualTrack(
+                local_track_id=local_id,
+                center_px=np.array([(x1 + x2) * 0.5, (y1 + y2) * 0.5], dtype=float),
+                bbox=bbox,
+                bearing_rate=np.asarray(
+                    _get_any(detection, "bearing_rate", "los_rate_px_s") or (0.0, 0.0),
+                    dtype=float,
+                ),
+                category=category,
+                quality=quality,
+                mot_history_length=history_length,
+                timestamp=track_timestamp,
+            )
+        )
+    return tracks
+
+
 def publish_sim_detections_as_local_observations(
     bus: TerminalObservationBus,
     detections: Iterable[Any],
@@ -353,3 +423,11 @@ def _xy(point: Any) -> tuple[float, float]:
         float(_get_any(point, "x_val", "x", "u")),
         float(_get_any(point, "y_val", "y", "v")),
     )
+
+
+def _unique_local_id(base_local_id: str, seen_local_ids: dict[str, int]) -> str:
+    count = seen_local_ids.get(base_local_id, 0)
+    seen_local_ids[base_local_id] = count + 1
+    if count == 0:
+        return base_local_id
+    return f"{base_local_id}#dup{count}"

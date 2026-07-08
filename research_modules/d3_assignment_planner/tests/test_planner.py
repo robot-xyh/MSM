@@ -4,6 +4,10 @@ from d3_assignment_planner import (
     CostWeights,
     PlannerConfig,
     StalePlanError,
+    apply_terminal_feedback_to_planner_inputs,
+    assignment_validity_summary_from_plan,
+    evaluate_terminal_feedback,
+    guidance_bindings_from_assignment_plan,
 )
 from d3_assignment_planner.models import ResourceState, TargetTrack
 from d3_assignment_planner.solver import HungarianAssignmentSolver
@@ -135,6 +139,40 @@ def test_previous_infeasible_plan_is_replaced_even_inside_dwell() -> None:
     assert second.assignment_map() == {"T2": "R2"}
 
 
+def test_d5_duplicate_feedback_writeback_forces_next_round_replan() -> None:
+    config = PlannerConfig(delta=0.2, min_dwell=5.0)
+    planner = _planner(config)
+    tracks = [
+        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 0.4}),
+    ]
+    resources = _resources()
+    first = planner.plan(tracks, resources, timestamp=0.0)
+    decision = evaluate_terminal_feedback(
+        "consistent",
+        duplicate_terminal_lock_risk=True,
+        plan_version=first.version,
+        resource_id="R1",
+        target_id="T1",
+    )
+    writeback = apply_terminal_feedback_to_planner_inputs(
+        tracks,
+        resources,
+        decision,
+    )
+
+    second = planner.plan(
+        writeback.tracks,
+        writeback.resources,
+        timestamp=1.0,
+        previous_plan=first,
+    )
+
+    assert first.assignment_map() == {"T1": "R1"}
+    assert writeback.tracks[0].feasibility_by_resource["R1"] is False
+    assert second.assignment_map() == {"T1": "R2"}
+    assert second.decision_state == "accepted_previous_infeasible"
+
+
 def test_planner_rejects_stale_previous_plan() -> None:
     config = PlannerConfig(enable_hysteresis=False)
     planner = _planner(config)
@@ -155,7 +193,7 @@ def test_planner_rejects_stale_previous_plan() -> None:
         raise AssertionError("expected stale plan rejection")
 
 
-def test_planner_forces_human_authorization_required() -> None:
+def test_planner_respects_configured_human_authorization_state() -> None:
     config = PlannerConfig(enable_hysteresis=False, human_authorization_state="approved")
     planner = _planner(config)
 
@@ -165,8 +203,39 @@ def test_planner_forces_human_authorization_required() -> None:
         timestamp=0.0,
     )
 
-    assert plan.human_authorization_state == "required"
+    assert plan.human_authorization_state == "approved"
     assert plan.metadata["configured_human_authorization_state"] == "approved"
+    assert plan.metadata["effective_human_authorization_state"] == "approved"
+
+
+def test_center_replan_produces_new_version_and_current_d7_binding() -> None:
+    config = PlannerConfig(enable_hysteresis=False, human_authorization_state="approved")
+    planner = _planner(config)
+    first_tracks = [
+        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 0.8}),
+    ]
+    second_tracks = [
+        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.8, "R2": 0.0}),
+    ]
+
+    first = planner.plan(first_tracks, _resources(), timestamp=0.0)
+    second = planner.plan(second_tracks, _resources(), timestamp=1.0, previous_plan=first)
+    stale_summary = assignment_validity_summary_from_plan(
+        first,
+        evaluated_at=1.0,
+        latest_plan_id=second.plan_id,
+        latest_version=second.version,
+    )
+    (binding,) = guidance_bindings_from_assignment_plan(second, previous_plan=first)
+
+    assert second.version == first.version + 1
+    assert second.previous_plan_id == first.plan_id
+    assert second.assignment_map() == {"T1": "R2"}
+    assert stale_summary.stale_plan_version is True
+    assert binding.plan_version == second.version
+    assert binding.resource_id == "R2"
+    assert binding.binding_state == "active"
+    assert binding.metadata["previous_target_for_resource"] is None
 
 
 def test_hysteresis_holds_when_change_limit_exceeded() -> None:

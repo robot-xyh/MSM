@@ -42,7 +42,7 @@ class TerminalConsistencyTracker:
 
     def __init__(self, config: TerminalConsistencyConfig | None = None) -> None:
         self.config = config or TerminalConsistencyConfig()
-        self._states: dict[tuple[str, str, int], _TrackState] = {}
+        self._states: dict[tuple[str, str], _TrackState] = {}
 
     def update(
         self,
@@ -60,7 +60,6 @@ class TerminalConsistencyTracker:
         key = (
             resource_id,
             association.assigned_global_track_id,
-            association.assignment_version,
         )
         state = self._states.setdefault(key, _TrackState())
         previous = state.previous_decision_state
@@ -139,6 +138,20 @@ class TerminalConsistencyTracker:
         summary_metadata = dict(association.metadata)
         if metadata:
             summary_metadata.update(metadata)
+        summary_metadata.update(
+            {
+                "consistency_window_key": f"{resource_id}:{association.assigned_global_track_id}",
+                "assignment_version_resets_window": False,
+                "assignment_version": association.assignment_version,
+                "resource_id": resource_id,
+                "assigned_global_track_id": association.assigned_global_track_id,
+                "decision_state": decision,
+                "duplicate_terminal_lock_risk": duplicate_risk,
+                "cross_view_support_count": (
+                    cross_view_association.support_count if cross_view_association is not None else 0
+                ),
+            }
+        )
 
         return TerminalConsistencySummary(
             resource_id=resource_id,

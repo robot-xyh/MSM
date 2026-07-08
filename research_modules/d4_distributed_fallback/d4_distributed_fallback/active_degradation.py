@@ -40,6 +40,40 @@ class TerminalDecisionState(str, Enum):
     REACQUIRE = "reacquire"
 
 
+class SecondaryTakeoverPlanState(str, Enum):
+    NOT_APPLICABLE = "not_applicable"
+    PENDING_SECONDARY_PLAN = "pending_secondary_plan"
+    SECONDARY_PLAN_ACTIVE = "secondary_plan_active"
+
+
+_HARD_ASSIGNMENT_RISK_FACTORS = frozenset(
+    {
+        "d3_assignment_not_current",
+        "d3_assignment_stale",
+    }
+)
+
+_HARD_ACTIVE_ARBITRATION_RISK_FACTORS = frozenset(
+    {
+        "d1_track_uncertainty_high",
+        "d1_covariance_trace_high",
+        "d1_measurement_stale",
+        "d2_id_switch_observed",
+        "d2_duplicate_track_observed",
+        "d2_track_continuity_low",
+        *_HARD_ASSIGNMENT_RISK_FACTORS,
+        "d5_duplicate_terminal_lock",
+        "d5_resource_assignment_mismatch",
+    }
+)
+
+_SOFT_CENTER_PLAN_RISK_FACTORS = frozenset(
+    {
+        "d3_assignment_cost_margin_low",
+    }
+)
+
+
 @dataclass(frozen=True)
 class TrackUncertaintySummary:
     track_id: str
@@ -159,6 +193,32 @@ class D7SecondaryHandoff:
         return to_jsonable(self)
 
 
+@dataclass(frozen=True)
+class SecondaryTakeoverPlanMetadata:
+    """D4 record metadata for secondary takeover plan lifecycle.
+
+    D4 does not create a D3 AssignmentPlan. This metadata only tells main/D3/D7
+    which plan is still active, which secondary node is the proposed source,
+    and whether a secondary plan id/version has already become active.
+    """
+
+    state: SecondaryTakeoverPlanState
+    active_plan_owner: str
+    pending_plan_owner: str | None = None
+    secondary_plan_source_node_id: str | None = None
+    current_plan_id: str | None = None
+    current_plan_version: int | None = None
+    secondary_plan_id: str | None = None
+    secondary_plan_version: int | None = None
+    secondary_supersedes_plan_id: str | None = None
+    secondary_supersedes_plan_version: int | None = None
+    secondary_reassignment_complete: bool = True
+    reason: str = ""
+
+    def to_dict(self) -> dict[str, object]:
+        return to_jsonable(self)
+
+
 class ActiveDegradationArbiter:
     """Rule-based arbiter for active/passive D4 degradation studies."""
 
@@ -233,6 +293,38 @@ class ActiveDegradationArbiter:
             )
 
         if self._terminal_requires_active_arbitration(terminal_association) and risk_window_met:
+            if not self._terminal_has_assignment_conflict(
+                assignment_validity,
+                terminal_association,
+            ) and not self._risk_requires_active_arbitration(risk_factors):
+                if secondary is not None:
+                    return self._apply_hysteresis(
+                        ActiveDegradationDecision(
+                            mode=DegradationMode.ACTIVE_DEGRADATION,
+                            action=DegradationAction.REQUEST_SECONDARY_ASSIST,
+                            reason="terminal_persistent_reacquire_request_secondary_cue",
+                            target_node_id=secondary.node_id,
+                            coverage_cell=coverage_cell,
+                            terminal_consistent=False,
+                            risk_factors=(*risk_factors, "terminal_persistent_reacquire"),
+                        ),
+                        current_time_s,
+                        terminal_consistent=False,
+                        risk_factors=(*risk_factors, "terminal_persistent_reacquire"),
+                    )
+                return self._apply_hysteresis(
+                    ActiveDegradationDecision(
+                        mode=DegradationMode.NONE,
+                        action=DegradationAction.CONTINUE_CENTER,
+                        reason="terminal_persistent_reacquire_no_secondary",
+                        coverage_cell=coverage_cell,
+                        terminal_consistent=False,
+                        risk_factors=(*risk_factors, "terminal_persistent_reacquire"),
+                    ),
+                    current_time_s,
+                    terminal_consistent=False,
+                    risk_factors=(*risk_factors, "terminal_persistent_reacquire"),
+                )
             return self._apply_hysteresis(
                 self._fallback_decision(
                     DegradationMode.ACTIVE_DEGRADATION,
@@ -262,7 +354,23 @@ class ActiveDegradationArbiter:
             )
 
         if terminal_consistent:
-            if self._assignment_is_primary_risk(risk_factors) or secondary is None:
+            if self._only_soft_center_plan_risk(risk_factors):
+                return self._apply_hysteresis(
+                    ActiveDegradationDecision(
+                        mode=DegradationMode.NONE,
+                        action=DegradationAction.CONTINUE_CENTER,
+                        reason="soft_center_plan_risk_observe_more",
+                        coverage_cell=coverage_cell,
+                        terminal_consistent=True,
+                        risk_factors=risk_factors,
+                    ),
+                    current_time_s,
+                    terminal_consistent=True,
+                    risk_factors=risk_factors,
+                )
+            if self._assignment_is_primary_risk(risk_factors) or (
+                secondary is None and self._risk_requires_active_arbitration(risk_factors)
+            ):
                 return self._apply_hysteresis(
                     ActiveDegradationDecision(
                         mode=DegradationMode.ACTIVE_DEGRADATION,
@@ -278,16 +386,43 @@ class ActiveDegradationArbiter:
                 )
             return self._apply_hysteresis(
                 ActiveDegradationDecision(
-                    mode=DegradationMode.ACTIVE_DEGRADATION,
-                    action=DegradationAction.REQUEST_SECONDARY_ASSIST,
-                    reason="risk_rising_request_secondary_assist",
-                    target_node_id=secondary.node_id,
+                    mode=(
+                        DegradationMode.ACTIVE_DEGRADATION
+                        if secondary is not None
+                        else DegradationMode.NONE
+                    ),
+                    action=(
+                        DegradationAction.REQUEST_SECONDARY_ASSIST
+                        if secondary is not None
+                        else DegradationAction.CONTINUE_CENTER
+                    ),
+                    reason=(
+                        "risk_rising_request_secondary_assist"
+                        if secondary is not None
+                        else "soft_risk_terminal_consistent_observe_more"
+                    ),
+                    target_node_id=secondary.node_id if secondary is not None else None,
                     coverage_cell=coverage_cell,
                     terminal_consistent=True,
                     risk_factors=risk_factors,
                 ),
                 current_time_s,
                 terminal_consistent=True,
+                risk_factors=risk_factors,
+            )
+
+        if not self._risk_requires_active_arbitration(risk_factors):
+            return self._apply_hysteresis(
+                ActiveDegradationDecision(
+                    mode=DegradationMode.NONE,
+                    action=DegradationAction.CONTINUE_CENTER,
+                    reason="terminal_transient_observe_more",
+                    coverage_cell=coverage_cell,
+                    terminal_consistent=False,
+                    risk_factors=risk_factors,
+                ),
+                current_time_s,
+                terminal_consistent=False,
                 risk_factors=risk_factors,
             )
 
@@ -498,9 +633,39 @@ class ActiveDegradationArbiter:
             return True
         return False
 
+    def _terminal_has_assignment_conflict(
+        self,
+        assignment: AssignmentValiditySummary,
+        terminal: TerminalAssociationSummary,
+    ) -> bool:
+        if terminal.friend_conflict:
+            return True
+        if terminal.duplicate_terminal_lock:
+            return True
+        if terminal.resource_id != assignment.assigned_resource_id:
+            return True
+        if terminal.assigned_global_track_id != assignment.global_track_id:
+            return True
+        return (
+            terminal.observed_global_track_id is not None
+            and terminal.observed_global_track_id != assignment.global_track_id
+        )
+
     @staticmethod
     def _assignment_is_primary_risk(risk_factors: tuple[str, ...]) -> bool:
-        return any(factor.startswith("d3_") for factor in risk_factors)
+        return any(factor in _HARD_ASSIGNMENT_RISK_FACTORS for factor in risk_factors)
+
+    @staticmethod
+    def _risk_requires_active_arbitration(risk_factors: tuple[str, ...]) -> bool:
+        """Return whether non-persistent terminal disagreement should escalate now."""
+
+        return any(factor in _HARD_ACTIVE_ARBITRATION_RISK_FACTORS for factor in risk_factors)
+
+    @staticmethod
+    def _only_soft_center_plan_risk(risk_factors: tuple[str, ...]) -> bool:
+        return bool(risk_factors) and all(
+            factor in _SOFT_CENTER_PLAN_RISK_FACTORS for factor in risk_factors
+        )
 
     @staticmethod
     def _select_secondary_node(
@@ -642,6 +807,79 @@ def build_d7_secondary_handoff(
         new_plan_version=new_plan_version,
         reason="secondary_plan_active",
     )
+
+
+def build_secondary_takeover_plan_metadata(
+    decision: ActiveDegradationDecision,
+    *,
+    current_plan_id: str | None = None,
+    current_plan_version: int | None = None,
+    current_plan_owner: str = "center",
+    secondary_plan_id: str | None = None,
+    secondary_plan_version: int | None = None,
+    secondary_plan_active: bool = False,
+    secondary_plan_source_node_id: str | None = None,
+) -> SecondaryTakeoverPlanMetadata:
+    """Build the D4 metadata contract for secondary takeover plan state."""
+
+    source_node_id = secondary_plan_source_node_id or decision.target_node_id
+    if decision.action != DegradationAction.DEGRADE_TO_SECONDARY:
+        return SecondaryTakeoverPlanMetadata(
+            state=SecondaryTakeoverPlanState.NOT_APPLICABLE,
+            active_plan_owner=_active_owner_for_non_secondary(decision, current_plan_owner),
+            current_plan_id=current_plan_id,
+            current_plan_version=current_plan_version,
+            secondary_plan_source_node_id=source_node_id,
+            secondary_plan_id=secondary_plan_id,
+            secondary_plan_version=secondary_plan_version,
+            reason=decision.reason,
+        )
+
+    plan_ready = (
+        secondary_plan_active
+        and secondary_plan_id is not None
+        and secondary_plan_version is not None
+    )
+    if not plan_ready:
+        return SecondaryTakeoverPlanMetadata(
+            state=SecondaryTakeoverPlanState.PENDING_SECONDARY_PLAN,
+            active_plan_owner=current_plan_owner,
+            pending_plan_owner="secondary_node",
+            secondary_plan_source_node_id=source_node_id,
+            current_plan_id=current_plan_id,
+            current_plan_version=current_plan_version,
+            secondary_plan_id=secondary_plan_id,
+            secondary_plan_version=secondary_plan_version,
+            secondary_supersedes_plan_id=current_plan_id,
+            secondary_supersedes_plan_version=current_plan_version,
+            secondary_reassignment_complete=False,
+            reason="secondary_reassignment_pending",
+        )
+
+    return SecondaryTakeoverPlanMetadata(
+        state=SecondaryTakeoverPlanState.SECONDARY_PLAN_ACTIVE,
+        active_plan_owner="secondary_node",
+        secondary_plan_source_node_id=source_node_id,
+        current_plan_id=current_plan_id,
+        current_plan_version=current_plan_version,
+        secondary_plan_id=secondary_plan_id,
+        secondary_plan_version=secondary_plan_version,
+        secondary_supersedes_plan_id=current_plan_id,
+        secondary_supersedes_plan_version=current_plan_version,
+        secondary_reassignment_complete=True,
+        reason="secondary_plan_active",
+    )
+
+
+def _active_owner_for_non_secondary(
+    decision: ActiveDegradationDecision,
+    current_plan_owner: str,
+) -> str:
+    if decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED:
+        return "distributed_cbba"
+    if decision.action == DegradationAction.HOLD_FOR_REVIEW:
+        return "hold_review"
+    return current_plan_owner
 
 
 def summarize_secondary_lifecycle(

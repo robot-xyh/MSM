@@ -157,3 +157,20 @@ def test_geometric_result_reports_pixel_and_mahalanobis_fields() -> None:
     assert pair.mahalanobis_d2 > 0.0
     assert pair.gate_pass is True
     assert pair.assignment_selected is True
+
+    records = result.to_log_records(
+        resource_id="INT-1",
+        camera_id="front_rgb",
+        duplicate_terminal_lock_risk_by_track_id={"G-1": True},
+    )
+    assert records[0]["resource_id"] == "INT-1"
+    assert records[0]["camera_id"] == "front_rgb"
+    assert records[0]["projected_px"] == [320.0, 240.0]
+    assert records[0]["bbox_center_px"] == [323.0, 244.0]
+    assert records[0]["pixel_error_px"] == 5.0
+    assert records[0]["mahalanobis_d2"] == pair.mahalanobis_d2
+    assert records[0]["gate_pass"] is True
+    assert records[0]["assignment_selected"] is True
+    assert records[0]["friend_conflict_state"] == "none"
+    assert records[0]["measurement_age_s"] == 0.0
+    assert records[0]["duplicate_terminal_lock_risk"] is True
