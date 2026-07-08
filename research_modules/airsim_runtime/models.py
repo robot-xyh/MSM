@@ -61,6 +61,8 @@ class BlocksSmokeConfig:
     cv_camera_follow_assignments: bool = False
     cv_camera_follow_distance_m: float = 14.0
     cv_secondary_look_at_enabled: bool = True
+    cv_secondary_mobile_recon_enabled: bool = False
+    cv_secondary_recon_standoff_m: float = 0.0
     cv_reassignment_time_s: float | None = None
     lidar_vehicle_name: str = "Interceptor"
     lidar_vehicle_names: tuple[str, ...] = ()
@@ -276,6 +278,10 @@ def write_dynamic_computer_vision_settings(
     secondary_height_above_targets_m: float = 50.0,
     target_z: float = -10.0,
     fov_degrees: float = 90.0,
+    secondary_fov_degrees: float | None = None,
+    secondary_camera_pitch_deg: float = -90.0,
+    secondary_x_m: float = 50.0,
+    secondary_y_spacing_m: float | None = None,
     width: int = 640,
     height: int = 480,
     secondary_width: int | None = None,
@@ -296,28 +302,47 @@ def write_dynamic_computer_vision_settings(
             y=float(y_pos),
             z=float(camera_z),
         )
-    secondary_spacing = max(float(camera_spacing_m) * max(1, len(camera_vehicle_names) - 1), camera_spacing_m)
+    secondary_spacing = (
+        float(secondary_y_spacing_m)
+        if secondary_y_spacing_m is not None
+        else max(float(camera_spacing_m) * max(1, len(camera_vehicle_names) - 1), camera_spacing_m)
+    )
     for index, name in enumerate(secondary_vehicle_names):
         y_pos = _centered_positions(max(1, len(secondary_vehicle_names)), secondary_spacing)[index]
         vehicle = _computer_vision_vehicle_settings(
-            x=50.0,
+            x=float(secondary_x_m),
             y=float(y_pos),
             z=float(target_z) - abs(float(secondary_height_above_targets_m)),
         )
-        if secondary_width is not None and secondary_height is not None:
-            vehicle["Cameras"] = {
-                "0": {
-                    "CaptureSettings": [
-                        {
-                            "ImageType": 0,
-                            "Width": int(secondary_width),
-                            "Height": int(secondary_height),
-                            "FOV_Degrees": float(fov_degrees),
-                            "MotionBlurAmount": 0,
-                        }
-                    ]
-                }
+        secondary_scene_width = int(secondary_width if secondary_width is not None else width)
+        secondary_scene_height = int(secondary_height if secondary_height is not None else height)
+        secondary_fov = float(secondary_fov_degrees if secondary_fov_degrees is not None else fov_degrees)
+        vehicle["Cameras"] = {
+            "0": {
+                "X": 0,
+                "Y": 0,
+                "Z": 0,
+                "Pitch": float(secondary_camera_pitch_deg),
+                "Roll": 0,
+                "Yaw": 0,
+                "CaptureSettings": [
+                    {
+                        "ImageType": 0,
+                        "Width": secondary_scene_width,
+                        "Height": secondary_scene_height,
+                        "FOV_Degrees": secondary_fov,
+                        "MotionBlurAmount": 0,
+                    },
+                    {
+                        "ImageType": 5,
+                        "Width": secondary_scene_width,
+                        "Height": secondary_scene_height,
+                        "FOV_Degrees": secondary_fov,
+                        "MotionBlurAmount": 0,
+                    },
+                ],
             }
+        }
         vehicles[name] = vehicle
     payload = _base_settings(
         "ComputerVision",

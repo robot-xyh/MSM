@@ -30,11 +30,12 @@ D4 负责离线降级协同研究，包含两类模式：
 - `CBBAResult`：降级分配结果、共识轮数、是否收敛、冲突数、完成率、消息数量和字节估计。
 - `HealthTransition[]`：状态转移审计日志。
 - `MergeResult`：中心恢复后的双轨合并结果，区分 `accepted/review/conflicts`。
-- `final_views["coordination_mode"]`：当前已写入 `state/leader_id/leader_role/coverage_cell`，建议后续在仿真 metrics 中继续透传，便于 D6 区分二级节点接管与完全分布式 CBBA。
+- `final_views["coordination_mode"]`：写入 `state/leader_id/leader_role/coverage_cell`，并由 `build_cbba_d6_metadata()` 和 `run_failover_simulation()` 顶层 metrics 透传，便于 D6 区分二级节点接管与完全分布式 CBBA。
 - `ActiveDegradationDecision`：主动/被动仲裁结果，字段包括 `mode`、`action`、`reason`、`target_node_id`、`coverage_cell`、`terminal_consistent`、`risk_factors` 和 `requires_human_review`；`to_metrics()` 输出 main/D6 所需 D4 指标字段。
 - `SecondaryNodeLifecycleSummary`：二级节点生命周期摘要，字段包括 `heartbeat`、`lease_epoch`、`coverage_cell`、`video_cue_freshness_s`、`link_stale` 和 `secondary_available`。
 - `D4DecisionRecord.to_event_record_kwargs()`：输出 D6 `EventRecord` 兼容事件，metadata 包含 `degradation_mode`、`selected_coordinator`、`coverage_cell`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp`、`review_label`、secondary takeover plan lifecycle、`active_plan_owner`，并保留 `d4_degradation_mode` 等 D4 原始字段。
 - `CBBACostGapBenchmark`：离线 benchmark 输出，使用 D3/main 提供的中心 plan 和 cost matrix，对比 D4 CBBA 的 cost/completion/conflict/message 差距；D4 不运行中心化 Hungarian。
+- `build_cbba_d6_metadata()`：将 `CBBAResult`、`coordination_mode`、`assignment_audit` 和可选 `CBBACostGapBenchmark` 转成 D6 多 seed 报告字段。
 
 ## 3. C2Health 状态机
 
@@ -420,12 +421,12 @@ python3 research_modules/d4_distributed_fallback/scripts/run_failover_simulation
 - 二级节点不可用或不覆盖当前区域时主动降到分布式 CBBA/拍卖。
 - `C2Health.FAILED` 时走 `passive_failover`。
 
-后续建议新增一个显式二级节点仿真场景：
+显式二级节点仿真场景已由 `run_failover_simulation()` summary-list 输入和单元测试覆盖，构造方式为：
 
 1. 在资源集中加入 `sec-1`，设置 `node_role=SECONDARY_RECON`、`coordinator_only=True`、`coverage_cell="cell-north"`。
 2. 让 `task.coarse_cell` 落在该覆盖区。
 3. 对比 `secondary_node` 与 `distributed_cbba` 的接管时间、消息量、冲突数。
-4. 将 `coordination_mode/leader_role/coverage_cell` 透传到 metrics JSON，供 D6 绘制分组统计。
+4. `coordination_mode/leader_role/coverage_cell` 已透传到 metrics JSON，供 D6 绘制分组统计。
 
 ## 10. 指标
 
@@ -452,7 +453,7 @@ D4 应向 D6 输出或支持计算：
 - `secondary_takeover_state/active_plan_owner/secondary_plan_source_node_id/secondary_plan_id/secondary_plan_version`：二级接管 pending/active 状态和 plan metadata。
 - `cbba_total_cost/center_total_cost/absolute_cost_gap/relative_cost_gap/completion_rate_gap`：CBBA 与 D3 中心化基线的离线 cost gap benchmark 字段。
 
-当前 `coordination_mode` 已存在于 `CBBAResult.final_views`，但 `run_failover_simulation()` 尚未透传到顶层 metrics。建议后续补齐，避免实验报告把二级节点接管和完全分布式 CBBA 混在一起统计。CBBA cost gap benchmark 需要 main/D3 保存同场景 cost matrix/current plan，D4 helper 只负责单场景计算。
+当前 `coordination_mode` 已存在于 `CBBAResult.final_views`，并由 `build_cbba_d6_metadata()` 与 `run_failover_simulation()` 透传到顶层 metrics，避免实验报告把二级节点接管和完全分布式 CBBA 混在一起统计。CBBA cost gap benchmark 仍需要 main/D3 保存同场景 cost matrix/current plan，D4 helper 只负责单场景计算与字段归一化。
 
 ## 11. 与 D3/D5/D6 的接口关系
 
@@ -474,7 +475,7 @@ D6 消费 D4 的 transition log、CBBAResult 和 merge result，计算 failover�
 
 - 默认仿真未构造 `secondary_recon`，二级节点路径主要由单元测试覆盖。
 - 主动仲裁已按 `coverage_cell` 过滤二级节点；被动 coordinator 的全局 leader 选择仍未按每个任务覆盖区拆分。
-- `coordination_mode/leader_role/coverage_cell` 尚未在默认 metrics 顶层透传。
+- 默认仿真的默认资源集仍不构造 `secondary_recon`；显式 summary-list 场景已能在 metrics 顶层透传 `coordination_mode/leader_role/coverage_cell`。
 - CBBA 打分函数是合成基线，没有与 D3 的真实中心化代价函数完全对齐。
 - 网络模型是内存队列，只用于延迟/丢包统计，不代表真实链路。
 - 主动降级仲裁器目前是规则基线，已包含 dwell/release/window 防抖配置，但未用 5v5 批量 episode 标定阈值。
@@ -484,7 +485,7 @@ D6 消费 D4 的 transition log、CBBAResult 和 merge result，计算 failover�
 
 1. 增加二级节点默认或可选仿真场景。
 2. 增加多 `coverage_cell`、多二级节点租约冲突的 episode 级仿真。
-3. 将 `coordination_mode/leader_role/coverage_cell` 透传到 D6 metrics。
+3. 在 main/D6 多 seed 报告中持续聚合 `coordination_mode/leader_role/coverage_cell`。
 4. 保留轻量 CBBA 为当前默认基线；如后续需要，另行评估 MIT CBBA/CA-CBBA/auction/contract-net 的许可证、依赖和同场景 benchmark。
 5. 把 D3 的 plan version、authorization state 和 D5 的 cue 审计字段纳入降级日志。
 6. 增加中心恢复后的多轮稳定窗口，而不是只依赖一次合并调用。

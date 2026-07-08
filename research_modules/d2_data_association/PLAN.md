@@ -23,9 +23,14 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 - `RiskThresholds` 和 `classify_risk_summary()` 已把 D2 风险证据拆为 D4 对齐的软风险与硬风险。
 - `detections_from_d1_global_tracks()` 可把 D1 六维 NED `GlobalTrack` 投影为 D2 二维 `Detection`，保留 `measurement_timestamp`、`arrival_timestamp`、2D covariance 投影、`global_track_id` 和 metadata。
 - `run_airsim_dry_run_association()` 支持 synthetic AirSim-style frame，不 import `airsim`，并在 bus message 中导出当前活动航迹和 `global_track_ids`。
-- `load_airsim_replay_frames()` 可读取离线 JSON/JSONL replay，`run_airsim_replay_association()` 输出 association logs、summary 和风险分层，`run_threshold_sensitivity()` 输出 gate/risk threshold 敏感性矩阵。
+- `load_airsim_replay_frames()` 可读取离线 JSON/JSONL replay 并保留 wrapper 中的 seed/episode/scenario 校准元数据，`run_airsim_replay_association()` 输出 association logs、summary、风险分层和 replay metadata，`run_threshold_sensitivity()` 输出 gate/risk threshold 敏感性矩阵、`risk_profile_version` 和软/硬风险聚合字段。
 - 测试包含 3 目标 dry-run episode，证明输出数量来自输入集合长度；同时包含 2v2 replan baseline，证明中心/二级切换时可保持稳定 `global_track_id`。
 - D2/D6 必须显式保留 `id_switch_count` 的系统规则已有合同测试：D2 `MetricsRecorder.id_switch_count` 与 D6 episode 统计口径一致。
+
+### 2.1 P0/P1 缺口快照
+
+- **P0**：无 P0 blocker。GNN/Hungarian、马氏门控、可插拔 `DataAssociator`、`id_switch_count`、`track_continuity`、risk summary、D1 adapter、AirSim dry-run adapter 和按输入集合长度运行的规则均是当前主线并已有测试覆盖。
+- **P1**：D2-owned replay helper、5 目标 AirSim-like association report/log、threshold sensitivity、软/硬风险分层、seed/episode/scenario replay metadata、`RiskThresholds.profile_version`、N-v-N `target_count` fallback、D1 adapter 和 `crossing_dense_5v5` fixture 已完成。真实 AirSim 多 seed association threshold/risk calibration 仍是 P1 集成缺口，需要 main/runtime/D6 提供真实或稳定导出的 5v5 AirSim ComputerVision replay、离线 truth labels、episode 级 gate/risk threshold profile/version 配置来源和稳定 JSONL schema。
 
 ## 3. 输入输出合同
 
@@ -114,11 +119,11 @@ D2 已有非 2/5 数量测试：3 目标 synthetic AirSim-style dry-run episode 
 
 D2 侧 P1 已补离线 replay 读写和阈值敏感性 helper：
 
-- `load_airsim_replay_frames(path)` 读取 JSON/JSONL，支持顶层 frame、`frames` 数组以及混合 episode JSONL 中的 `frame`/`d2_frame`/`airsim_frame` payload。
-- `run_airsim_replay_association(frames, gate_thresholds=...)` 复用现有 Tracker，输出 `ReplayAssociationReport`，其中包含 `id_switch_count`、`track_continuity`、`duplicate_assignment_count`、association logs、当前 `global_track_ids` 和软/硬风险摘要。
+- `load_airsim_replay_frames(path)` 读取 JSON/JSONL，支持顶层 frame、`frames` 数组以及混合 episode JSONL 中的 `frame`/`d2_frame`/`airsim_frame` payload，并把 wrapper/top-level 中的 `seed`、`episode_id`、`scenario_name`、`drone_count` 等校准字段保留为 `replay_metadata`。
+- `run_airsim_replay_association(frames, gate_thresholds=...)` 复用现有 Tracker，输出 `ReplayAssociationReport`，其中包含 `id_switch_count`、`track_continuity`、`duplicate_assignment_count`、association logs、当前 `global_track_ids`、`replay_metadata` 和软/硬风险摘要。
 - `write_replay_association_report()` 与 `write_association_logs_jsonl()` 固化 D2-owned report/log 输出格式，便于 main/D6 后续消费。
-- `run_threshold_sensitivity()` 对 gate threshold 与 risk threshold profile 做离线 sweep，逐项输出 `id_switch_count`、`track_continuity`、`duplicate_assignment_count` 和 risk summary。
-- `tests/test_replay.py` 覆盖 5 目标 AirSim-like JSONL replay、变量目标数 sensitivity、软/硬风险分类和无 AirSim SDK import。
+- `run_threshold_sensitivity()` 对 gate threshold 与 risk threshold profile 做离线 sweep，逐项输出 `id_switch_count`、`track_continuity`、`duplicate_assignment_count`、`risk_profile_version`、seed/episode/scenario 元数据、soft/hard risk frame count、max risk score 和 risk summary。
+- `tests/test_replay.py` 覆盖 5 目标 AirSim-like JSONL replay、wrapper metadata 透传、阈值 profile version、无 truth label N-v-N `target_count` fallback、变量目标数 sensitivity、软/硬风险分类和无 AirSim SDK import。
 
 该 helper 不连接 AirSim runtime，也不从场景名推断目标数量；真实 ComputerVision 图像/metadata 采集、episode JSONL 生产和跨模块 schema 发布仍由 main/runtime/D6 负责。
 
@@ -241,10 +246,10 @@ GNN 是硬关联，交叉帧的最优/次优代价 margin 可能很小。一旦�
 
 ### P1
 
-- D2-owned P1 已完成：`replay.py`、AirSim-like JSON/JSONL replay helper、5 目标 association report/log、threshold sensitivity、软/硬风险分层、D1 adapter、`crossing_dense_5v5` fixture、显式 `id_switch_count`/continuity/duplicate 指标均已落地并有测试覆盖。
+- D2-owned P1 已完成：`replay.py`、AirSim-like JSON/JSONL replay helper、5 目标 association report/log、threshold sensitivity、软/硬风险分层、seed/episode/scenario replay metadata 透传、`RiskThresholds.profile_version`、N-v-N `target_count` fallback、D1 adapter、`crossing_dense_5v5` fixture、显式 `id_switch_count`/continuity/duplicate 指标均已落地并有测试覆盖。
 - 剩余 P1 集成输入：由 main/runtime/D6 生产真实或稳定导出的 5v5 AirSim ComputerVision replay JSONL，D2 只消费该离线输入，不直接连接 AirSim SDK。
 - 剩余 P1 评估标签：为真实 replay 固化离线 `truth_id`/truth position 标签，保证 `id_switch_count`、continuity 和 duplicate 只在离线评估中使用真值，不进入在线身份绑定。
-- 剩余 P1 阈值治理：给 gate threshold 与 `RiskThresholds` 增加版本/配置记录，让 association logs、risk summary 和 D6 报告能回放同一阈值口径。
+- 剩余 P1 阈值治理：main/D6 需要在真实 episode JSONL 和报告中固定并发布 gate threshold、`risk_profile`、`risk_profile_version` 与校准配置来源，让 D2 association logs、risk summary 和 D6 报告能回放同一阈值口径。
 - 剩余 P1 风险标定：基于多 seed 真实 5v5 AirSim dense/crossing、短遮挡、漏检、虚警 replay 校准软风险误触发率和硬风险漏报率，明确哪些场景 GNN 足够，哪些场景才需要 JPDA/MHT 对照。
 - 保留并扩展非 2/5 数量的合同测试，防止未来把目标数写死到算法或文档。
 

@@ -914,7 +914,28 @@ def test_runtime_bus_injects_n_pairs_with_independent_filters_and_summary() -> N
     assert summary["boundary"] == D7_RUNTIME_BUS_BOUNDARY
     assert summary["control_context_count"] == pair_count
     assert summary["visual_png_switch_count"] == pair_count
+    assert summary["visual_png_candidate_count"] == pair_count * 3
+    assert summary["terminal_contract_allowed_count"] == pair_count * 3
+    assert summary["terminal_switch_allowed_count"] == pair_count
+    assert summary["terminal_handoff_state_counts"] == {
+        "switch_gate_rejected": pair_count * 2,
+        "vision_terminal": pair_count,
+    }
+    assert summary["guidance_mode_counts"] == {
+        "handover_pending": pair_count * 2,
+        "vision_terminal": pair_count,
+    }
+    assert summary["d4_action_counts"] == {"continue_center": pair_count * 3}
+    assert summary["d5_decision_state_counts"] == {"locked": pair_count * 3}
+    assert summary["plan_version_counts"] == {"7": pair_count * 3}
     assert summary["guidance_law_counts"]["png_vm"] == pair_count
+    assert summary["png_guidance_law_candidate_counts"] == {"png_vm": pair_count * 3}
+    assert summary["camera_quality_gate_pass_rate"] == pytest.approx(2 / 3)
+    assert summary["los_quality_gate_pass_rate"] == pytest.approx(1 / 3)
+    assert summary["maneuver_margin_gate_pass_rate"] == pytest.approx(1.0)
+    assert summary["bbox_area_ratio_observed_count"] == pair_count * 3
+    assert summary["ttc_s_observed_count"] >= pair_count
+    assert summary["los_rate_abs_radps_observed_count"] == pair_count * 3
     assert {output.control_context_id for output in allowed} == {
         f"R{index + 1}->G{index + 1}" for index in range(pair_count)
     }
@@ -925,6 +946,16 @@ def test_runtime_bus_injects_n_pairs_with_independent_filters_and_summary() -> N
         and output.png_command.metadata["camera_id"] == "front_center"
         for output in allowed
     )
+    allowed_record = allowed[0].as_log_record()
+    assert allowed_record["terminal_mode_entered"] is True
+    assert allowed_record["terminal_handoff_state"] == "vision_terminal"
+    assert allowed_record["camera_quality_gate_passed"] is True
+    assert allowed_record["los_quality_gate_passed"] is True
+    assert allowed_record["maneuver_margin_gate_passed"] is True
+    assert allowed_record["bbox_area_ratio"] > 0.0
+    assert allowed_record["ttc_s"] is not None
+    assert allowed_record["d4_state"] == "continue_center"
+    assert allowed_record["d5_state"] == "locked"
 
 
 def test_runtime_bus_resets_filter_when_same_pair_plan_signature_changes() -> None:
@@ -1040,6 +1071,59 @@ def test_runtime_bus_resets_filter_when_same_pair_plan_signature_changes() -> No
     assert first_new_plan_sample.visual_png_enabled is False
     assert first_new_plan_sample.stable_frame_count == 1
     assert first_new_plan_sample.terminal_switch_reject_reason == "stable_frame_count_low"
+
+
+@pytest.mark.parametrize(
+    "action",
+    ["request_center_replan", "degrade_to_secondary", "degrade_to_distributed"],
+)
+def test_runtime_bus_blocks_visual_png_for_d4_reassign_actions_even_with_good_bbox(
+    action: str,
+) -> None:
+    bus = D7RuntimeBus(_tuned_png_config())
+    output = bus.evaluate_pair(
+        D7RuntimePairInput(
+            binding=_binding_for_pair("R1", "G1", 90),
+            d4_permission=D4GuidancePermission(
+                action=action,
+                target_node_id="secondary-1",
+                new_plan_id="plan-secondary-2",
+                new_plan_version=2,
+            ),
+            terminal_association={
+                "assigned_global_track_id": "G1",
+                "local_track_id": "R1:BT:1",
+                "decision_state": "locked",
+                "friend_conflict_state": "none",
+                "assignment_version": 90,
+            },
+            observation=_runtime_observation(timestamp_s=1.0, half_size=44.0),
+            handover_pending=True,
+            terminal_locked=True,
+            current_heading_rad=0.0,
+            current_speed_mps=8.0,
+            intercept_speed_mps=8.0,
+            relative_position_ned=(25.0, 0.5, 0.0),
+            relative_velocity_ned=(-5.0, 0.0, 0.0),
+        )
+    )
+    summary = summarize_runtime_bus_outputs([output])
+
+    assert output.visual_png_enabled is False
+    assert output.guidance_law == "radar_pn"
+    assert output.mode == GuidanceMode.ABORT_REVOKE
+    assert output.terminal_handoff_state == "contract_rejected"
+    assert output.terminal_contract_reject_reason == "d4_reassign_pending"
+    assert output.png_command is None
+    assert output.png_guidance_law_candidate is None
+    assert output.camera_quality_gate_passed is None
+    assert output.bbox_xyxy == _runtime_observation(timestamp_s=1.0, half_size=44.0)["bbox_xyxy"]
+    assert summary["visual_png_switch_count"] == 0
+    assert summary["visual_png_candidate_count"] == 0
+    assert summary["terminal_contract_reject_reasons"] == {"d4_reassign_pending": 1}
+    assert summary["terminal_handoff_state_counts"] == {"contract_rejected": 1}
+    assert summary["guidance_mode_counts"] == {"abort_revoke": 1}
+    assert summary["d4_action_counts"] == {action: 1}
 
 
 @pytest.mark.parametrize(

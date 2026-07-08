@@ -259,13 +259,18 @@ D5 的末端关联结果可作为 D1/D4 的反馈信号，但不得由 D5 本地
 7. **CSV replay 最小支持**：已提供 `read_sensor_observations_csv()`/`replay_sensor_observations_csv()`，CSV 中 measurement/covariance 使用 JSON array，metadata/communication/source_support 使用 JSON object。
 8. **延迟补偿审计字段**：已提供 `LatencyAuditSummary`，记录 max/mean delay、OOSM replay 次数、stale/OOSM count、duplicate count 和最大 replay 历史长度。
 9. **区域质量摘要**：已提供轻量 `FusionQualityRegionSummary`，在单航迹 `TrackUncertaintySummary` 之上按 `coverage_cell` 聚合 source gap、freshness、a95、handover readiness 和 stale track count。
+10. **2026-07-08 AirSim 多 seed 校准准备**：CSV replay 缺省 `schema_version` 时按 `d1.sensor_observation.v1` 验证并要求 `covariance`；Blocks calibration CSV 回归已覆盖 measurement/arrival timestamps、covariance、NED state、source support、latency/OOSM audit 和区域质量摘要。
+11. **嵌套 EO camera metadata replay**：JSONL/CSV metadata 中的 `camera_model` 字典可恢复相机内外参并参与 EO 投影模型，避免真实 Blocks/CV replay 使用默认相机。
+12. **雷达 cue 侦察粗指向摘要**：已提供 `ReconCueSummary` 和 `summarize_recon_cue_from_tracks()`，可从 `GlobalTrack[]` 或 track-like dict 生成全部目标/指定 `coverage_cell` 子群的协方差加权 `cue_position_ned`、`cue_covariance`、`active_target_ids`、时间戳和基础诊断，供 main/AirSim runtime 控制二级侦察相机指向。
+
+当前 P0 状态：无 P0 blocker。D1 已实现并回归 measurement/arrival timestamp、协方差、NED `GlobalTrack`、N-target 输入和 `ReconCueSummary` 侦察 cue 合同；剩余工作均为 P1/P2 增强或外部 fixture/schema 对齐。
 
 剩余 P1：
 
 1. **D6 长期批量 schema**：需要把 `TrackUncertaintySummary[]`、`LatencyAuditSummary`、协方差增长率窗口和区域摘要整理成 D6 可长期回归的稳定 JSONL/CSV schema。
 2. **区域时间窗口**：需要在轻量 `FusionQualityRegionSummary` 上补 windowed freshness、source-gap、a95 和 handover readiness 趋势。
 3. **协方差增长率窗口**：`covariance_growth_rate` 字段已保留，仍需窗口化计算、阈值和真实样本回归。
-4. **真实 Blocks/CV fixture**：D1 已能读 `blocks_sensor_observations.jsonl`/`sensor_observations.jsonl` 和最小 CSV，但还需要更多来自 main/shared runtime 的真实 AirSim CV detection 字段样本，避免只覆盖 dry-run 结构。
+4. **真实 Blocks/CV fixture**：D1 已能读 `blocks_sensor_observations.jsonl`/`sensor_observations.jsonl` 和 covariance-required CSV，并已有 Blocks calibration CSV 字段保真回归；仍需要更多来自 main/shared runtime 的真实 AirSim CV detection 字段样本，避免只覆盖 dry-run/手工 CSV 结构。
 
 P2/后置：
 
@@ -283,7 +288,8 @@ P2/后置：
 | 声学粗方位 | 大角度不确定观测 | 只收窄方位，不强行定位 |
 | 光电像素框 | 小框、遮挡、低置信度 | `R`放大，避免误配准 |
 | 坐标错误 | 错误外参版本 | 触发质量告警，不发布高置信航迹 |
-| 主动降级信号 | 协方差突增、观测延迟、传感器缺口 | 当前输出单航迹质量摘要、latency/OOSM audit 和轻量区域质量摘要；`active_degrade_hint` 与最终区域仲裁仍由后续 D4/系统规则处理 |
+| 主动降级信号 | 协方差突增、观测延迟、传感器缺口 | 当前输出单航迹质量摘要、latency/OOSM audit 和轻量区域质量摘要；Blocks calibration CSV 回归已固定这些字段的 replay 保真；`active_degrade_hint` 与最终区域仲裁仍由后续 D4/系统规则处理 |
+| 侦察相机粗指向 | `GlobalTrack[]` 或 track-like dict，可选 `coverage_cell` | 输出 `ReconCueSummary`，按协方差 trace 反比加权 centroid，缺协方差使用保守默认并记录诊断 |
 | D5无截图交接 | 仅相机元数据和检测框 | 已支持不依赖PNG，输出可投影航迹和EO协方差 |
 | D7航迹输入 | `stable/handover` 航迹和6x6协方差 | D7可读取位置、速度、时间戳和质量状态 |
 
@@ -296,7 +302,7 @@ P2/后置：
 3. 数据结构：`SensorObservation`、`CanonicalDetection`、`GlobalTrack`。
 4. 接口伪代码：`FusionAdapter`、`DelayCompensator`、`TrackFilter`。
 5. 雷达误差分档：`coarse_track`、`stable_track`、`handover_track`。
-6. 主动降级接口：`TrackUncertaintySummary`、`LatencyAuditSummary` 和轻量 `FusionQualityRegionSummary` 已落地；D4 降级建议字段和最终仲裁仍为后续工作。
+6. 主动降级/侦察 cue 接口：`TrackUncertaintySummary`、`LatencyAuditSummary`、轻量 `FusionQualityRegionSummary` 和 `ReconCueSummary` 已落地；D4 降级建议字段和最终仲裁仍为后续工作。
 7. D5/D7接口合同：无截图 EO 输入、投影所需状态协方差、中段航迹质量门控。
 
 ---

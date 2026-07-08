@@ -140,6 +140,41 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Run the D4/D5 stress sequence with secondary recon cameras 200 m above targets.",
     )
+    parser.add_argument(
+        "--mobile-secondary-recon",
+        action="store_true",
+        help=(
+            "Use mobile high-altitude secondary recon UAVs in CV D4/D5 stress mode. "
+            "Main moves them by simSetVehiclePose and points their gimbals from radar/GlobalTrack cues."
+        ),
+    )
+    parser.add_argument(
+        "--secondary-fov",
+        type=float,
+        default=None,
+        help="Override secondary recon camera FOV in degrees.",
+    )
+    parser.add_argument(
+        "--secondary-width",
+        type=int,
+        default=None,
+        help="Override secondary recon Scene/Depth image width.",
+    )
+    parser.add_argument(
+        "--secondary-height",
+        type=int,
+        default=None,
+        help="Override secondary recon Scene/Depth image height.",
+    )
+    parser.add_argument(
+        "--secondary-recon-standoff",
+        type=float,
+        default=0.0,
+        help=(
+            "Horizontal NED X standoff from the radar-cued target/sub-cluster centroid for "
+            "mobile secondary recon nodes. 0 places the node over the cue."
+        ),
+    )
     parser.add_argument("--cv-camera-follow-distance", type=float, default=14.0)
     parser.add_argument(
         "--cv-reassignment-time",
@@ -490,7 +525,39 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             if args.drone_count is not None or args.secondary_count != 2
             else default_cv_5v5_secondary_vehicle_names()
         )
-        if args.drone_count is not None or args.secondary_count != 2:
+        secondary_height_above_targets_m = 200.0 if args.cv_5v5_d4d5_stress_200m else 50.0
+        default_secondary_fov = (
+            80.0
+            if args.mobile_secondary_recon
+            else 110.0
+            if args.cv_5v5_d4d5_stress_200m
+            else 140.0
+            if args.cv_5v5_d4d5_stress
+            else 90.0
+        )
+        secondary_fov = float(args.secondary_fov if args.secondary_fov is not None else default_secondary_fov)
+        secondary_width = int(
+            args.secondary_width
+            if args.secondary_width is not None
+            else 1920
+            if args.cv_5v5_d4d5_stress_200m
+            else 640
+        )
+        secondary_height = int(
+            args.secondary_height
+            if args.secondary_height is not None
+            else 1080
+            if args.cv_5v5_d4d5_stress_200m
+            else 480
+        )
+        if (
+            args.drone_count is not None
+            or args.secondary_count != 2
+            or args.mobile_secondary_recon
+            or args.secondary_fov is not None
+            or args.secondary_width is not None
+            or args.secondary_height is not None
+        ):
             settings_path = write_dynamic_computer_vision_settings(
                 generated_settings_dir / f"blocks_cv_n{cv_count}_settings.json",
                 camera_vehicle_names=cv_resources,
@@ -500,12 +567,16 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                 else (20.0 if args.cv_5v5_d4d5_stress else 12.0),
                 camera_z=-10.0,
                 target_z=-10.0,
-                secondary_height_above_targets_m=200.0
-                if args.cv_5v5_d4d5_stress_200m
-                else 50.0,
+                secondary_height_above_targets_m=secondary_height_above_targets_m,
                 fov_degrees=90.0,
-                secondary_width=1280 if args.cv_5v5_d4d5_stress_200m else None,
-                secondary_height=720 if args.cv_5v5_d4d5_stress_200m else None,
+                secondary_fov_degrees=secondary_fov,
+                secondary_camera_pitch_deg=0.0
+                if args.mobile_secondary_recon
+                else -90.0
+                if args.cv_5v5_d4d5_stress
+                else 0.0,
+                secondary_width=secondary_width,
+                secondary_height=secondary_height,
             )
         target_specs = (
             (
@@ -574,7 +645,10 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             "capture_lidar": False,
             "cv_camera_follow_assignments": True,
             "cv_camera_follow_distance_m": follow_distance,
-            "cv_secondary_look_at_enabled": True,
+            "cv_secondary_look_at_enabled": bool(args.mobile_secondary_recon)
+            or not bool(args.cv_5v5_d4d5_stress),
+            "cv_secondary_mobile_recon_enabled": bool(args.mobile_secondary_recon),
+            "cv_secondary_recon_standoff_m": float(args.secondary_recon_standoff),
             "cv_reassignment_time_s": (
                 args.cv_reassignment_time
                 if args.cv_reassignment_time is not None
@@ -600,7 +674,41 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                 "drone_count": cv_count,
                 "secondary_camera_vehicle_names": cv_secondaries,
                 "d4d5_stress_enabled": bool(args.cv_5v5_d4d5_stress),
-                "secondary_height_target_m": 200.0 if args.cv_5v5_d4d5_stress_200m else 50.0,
+                "secondary_recon_mode": (
+                    "mobile_recon_gimbal"
+                    if args.mobile_secondary_recon
+                    else "fixed_downlook_secondary"
+                    if args.cv_5v5_d4d5_stress
+                    else "fixed_forward_secondary"
+                ),
+                "secondary_node_role": (
+                    "mobile_high_recon"
+                    if args.mobile_secondary_recon
+                    else "fixed_secondary_recon"
+                ),
+                "secondary_capability_class": (
+                    "mobile_high_recon"
+                    if args.mobile_secondary_recon
+                    else "fixed_downlook_secondary"
+                ),
+                "secondary_guidance_source": (
+                    "radar_global_track_cue"
+                    if args.mobile_secondary_recon
+                    else "fixed_camera_mount"
+                ),
+                "secondary_height_target_m": secondary_height_above_targets_m,
+                "secondary_detection_backend": "airsim_detect",
+                "secondary_camera_mount_pitch_deg": 0.0
+                if args.mobile_secondary_recon
+                else -90.0
+                if args.cv_5v5_d4d5_stress
+                else 0.0,
+                "secondary_camera_fov_degrees": secondary_fov,
+                "secondary_camera_width": secondary_width,
+                "secondary_camera_height": secondary_height,
+                "secondary_recon_standoff_m": float(args.secondary_recon_standoff),
+                "secondary_look_at_runtime_enabled": bool(args.mobile_secondary_recon)
+                or not bool(args.cv_5v5_d4d5_stress),
                 "target_asset_name": args.target_asset_name,
             },
         }

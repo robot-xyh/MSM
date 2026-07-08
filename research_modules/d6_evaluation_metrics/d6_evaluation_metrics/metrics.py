@@ -146,6 +146,19 @@ class EpisodeMetrics:
     multi_view_consensus_rate: float = 0.0
     cross_view_conflict_count: int = 0
     duplicate_terminal_lock_count: int = 0
+    secondary_network_joint_full_view_frame_rate: float = 0.0
+    secondary_network_mean_coverage_ratio: float = 0.0
+    secondary_single_camera_full_view_frame_rate: float = 0.0
+    cross_view_association_count: int = 0
+    secondary_detect_available_but_not_registered_count: int = 0
+    cue_pointing_error_count: int = 0
+    cue_pointing_error_mean_deg: float = 0.0
+    cue_pointing_error_rmse_deg: float = 0.0
+    cue_pointing_error_max_deg: float = 0.0
+    gimbal_pointing_error_count: int = 0
+    gimbal_pointing_error_mean_deg: float = 0.0
+    gimbal_pointing_error_rmse_deg: float = 0.0
+    gimbal_pointing_error_max_deg: float = 0.0
     cross_node_latency_ms: float = 0.0
     message_drop_rate: float = 0.0
     out_of_order_count: int = 0
@@ -204,6 +217,19 @@ class EpisodeMetrics:
             "multi_view_consensus_rate",
             "cross_view_conflict_count",
             "duplicate_terminal_lock_count",
+            "secondary_network_joint_full_view_frame_rate",
+            "secondary_network_mean_coverage_ratio",
+            "secondary_single_camera_full_view_frame_rate",
+            "cross_view_association_count",
+            "secondary_detect_available_but_not_registered_count",
+            "cue_pointing_error_count",
+            "cue_pointing_error_mean_deg",
+            "cue_pointing_error_rmse_deg",
+            "cue_pointing_error_max_deg",
+            "gimbal_pointing_error_count",
+            "gimbal_pointing_error_mean_deg",
+            "gimbal_pointing_error_rmse_deg",
+            "gimbal_pointing_error_max_deg",
             "cross_node_latency_ms",
             "message_drop_rate",
             "out_of_order_count",
@@ -326,6 +352,33 @@ class MetricsCollector:
         "multi_view_conflict",
         "terminal_cross_view_conflict",
     }
+    CROSS_VIEW_ASSOCIATION_EVENTS = {
+        "cross_view_association",
+        "cross_view_association_result",
+        "d5_cross_view_association",
+        "d5_cross_view_association_result",
+        "secondary_cross_view_association",
+    }
+    SECONDARY_DETECT_NOT_REGISTERED_EVENTS = {
+        "secondary_detect_available_but_not_registered",
+        "detect_available_but_not_registered",
+        "d5_secondary_detect_available_but_not_registered",
+        "secondary_detection_not_registered",
+        "d5_registration_miss",
+    }
+    SECONDARY_SENSING_EVENTS = {
+        "secondary_coverage_frame",
+        "secondary_sensing_frame",
+        "secondary_view_frame",
+        "secondary_network_frame",
+        "d4_secondary_coverage",
+        "d5_secondary_view",
+        "d5_secondary_view_frame",
+        "fixed_downlook_secondary_frame",
+        "mobile_recon_gimbal_frame",
+        "cue_pointing_sample",
+        "gimbal_pointing_sample",
+    }
     DUPLICATE_TERMINAL_LOCK_EVENTS = {
         "duplicate_terminal_lock",
         "terminal_duplicate_lock",
@@ -444,6 +497,8 @@ class MetricsCollector:
         degradation = self._compute_degradation_metrics()
         degradation_metadata = degradation.pop("_metadata", {})
         terminal = self._compute_terminal_metrics()
+        secondary_sensing = self._compute_secondary_sensing_metrics(scale_counts)
+        secondary_sensing_metadata = secondary_sensing.pop("_metadata", {})
         link = self._compute_link_metrics()
         guidance_gate = self._compute_guidance_gate_metrics()
         guidance_metadata = guidance_gate.pop("_metadata", {})
@@ -457,6 +512,7 @@ class MetricsCollector:
             assignment,
             degradation,
             terminal,
+            secondary_sensing,
             link,
             guidance_gate,
             intercept,
@@ -477,6 +533,7 @@ class MetricsCollector:
             "metric_scope": resolved_metric_scope,
             **scale_counts,
             **degradation_metadata,
+            **secondary_sensing_metadata,
             **guidance_metadata,
             **intercept_metadata,
         }
@@ -1198,6 +1255,371 @@ class MetricsCollector:
         )
         return duplicate_events + duplicate_record_count
 
+    def _compute_secondary_sensing_metrics(
+        self,
+        scale_counts: Mapping[str, int],
+    ) -> dict[str, Any]:
+        target_count = int(scale_counts.get("target_count") or 0)
+        camera_count = int(scale_counts.get("camera_count") or 0)
+        samples = self._secondary_sensing_samples()
+
+        network_frames: dict[tuple[Any, ...], dict[str, Any]] = {}
+        node_frames: dict[str, dict[tuple[Any, ...], dict[str, Any]]] = defaultdict(dict)
+        single_full_count = 0
+        single_frame_count = 0
+        node_single_counts: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+        cross_view_association_count = 0
+        detect_available_not_registered_count = 0
+        node_cross_counts: dict[str, int] = defaultdict(int)
+        node_not_registered_counts: dict[str, int] = defaultdict(int)
+        cue_errors: list[float] = []
+        gimbal_errors: list[float] = []
+        node_cue_errors: dict[str, list[float]] = defaultdict(list)
+        node_gimbal_errors: dict[str, list[float]] = defaultdict(list)
+
+        for sample in samples:
+            metadata = sample["metadata"]
+            event_type = sample["event_type"]
+            fallback_text = sample["fallback_text"]
+            node_type = (
+                _secondary_node_type(metadata, fallback_text=fallback_text)
+                or "secondary_network"
+            )
+            sample_target_count = _secondary_sample_target_count(
+                metadata,
+                default_target_count=target_count,
+            )
+            sample_camera_count = _secondary_sample_camera_count(
+                metadata,
+                default_camera_count=camera_count,
+            )
+
+            coverage = _secondary_coverage_sample(metadata)
+            if coverage is not None:
+                frame_key = _secondary_frame_key(sample)
+                _add_secondary_frame_coverage(
+                    network_frames,
+                    frame_key,
+                    coverage,
+                    sample_target_count,
+                )
+                _add_secondary_frame_coverage(
+                    node_frames[node_type],
+                    frame_key,
+                    coverage,
+                    sample_target_count,
+                )
+
+            full_count, frame_count = _secondary_single_camera_counts(
+                metadata,
+                coverage,
+                sample_target_count=sample_target_count,
+                sample_camera_count=sample_camera_count,
+            )
+            if frame_count:
+                single_full_count += full_count
+                single_frame_count += frame_count
+                node_single_counts[node_type][0] += full_count
+                node_single_counts[node_type][1] += frame_count
+
+            association_count = self._secondary_cross_view_association_increment(
+                event_type,
+                metadata,
+            )
+            if association_count:
+                cross_view_association_count += association_count
+                node_cross_counts[node_type] += association_count
+
+            not_registered_count = self._secondary_not_registered_increment(
+                event_type,
+                metadata,
+            )
+            if not_registered_count:
+                detect_available_not_registered_count += not_registered_count
+                node_not_registered_counts[node_type] += not_registered_count
+
+            cue_sample_errors = _metadata_angle_values_deg(
+                metadata,
+                degree_keys=(
+                    "cue_pointing_error_deg",
+                    "cue_error_deg",
+                    "cue_angular_error_deg",
+                    "cue_pointing_error_angle_deg",
+                ),
+                radian_keys=(
+                    "cue_pointing_error_rad",
+                    "cue_error_rad",
+                    "cue_angular_error_rad",
+                ),
+            )
+            gimbal_sample_errors = _metadata_angle_values_deg(
+                metadata,
+                degree_keys=(
+                    "gimbal_pointing_error_deg",
+                    "gimbal_error_deg",
+                    "gimbal_angular_error_deg",
+                    "gimbal_pointing_error_angle_deg",
+                    "pointing_error_deg",
+                ),
+                radian_keys=(
+                    "gimbal_pointing_error_rad",
+                    "gimbal_error_rad",
+                    "gimbal_angular_error_rad",
+                    "pointing_error_rad",
+                ),
+            )
+            if cue_sample_errors:
+                cue_errors.extend(cue_sample_errors)
+                node_cue_errors[node_type].extend(cue_sample_errors)
+            if gimbal_sample_errors:
+                gimbal_errors.extend(gimbal_sample_errors)
+                node_gimbal_errors[node_type].extend(gimbal_sample_errors)
+
+        network_stats = _secondary_frame_stats(network_frames)
+        cue_stats = _angle_error_stats(cue_errors)
+        gimbal_stats = _angle_error_stats(gimbal_errors)
+
+        node_type_metrics: dict[str, dict[str, float | int]] = {}
+        node_types = sorted(
+            set(node_frames)
+            | set(node_single_counts)
+            | set(node_cross_counts)
+            | set(node_not_registered_counts)
+            | set(node_cue_errors)
+            | set(node_gimbal_errors)
+        )
+        for node_type in node_types:
+            node_frame_stats = _secondary_frame_stats(node_frames.get(node_type, {}))
+            node_single_full, node_single_total = node_single_counts.get(
+                node_type,
+                [0, 0],
+            )
+            node_cue_stats = _angle_error_stats(node_cue_errors.get(node_type, []))
+            node_gimbal_stats = _angle_error_stats(
+                node_gimbal_errors.get(node_type, [])
+            )
+            node_type_metrics[node_type] = {
+                "secondary_network_joint_full_view_frame_rate": (
+                    node_frame_stats["full_view_frame_rate"]
+                ),
+                "secondary_network_mean_coverage_ratio": (
+                    node_frame_stats["mean_coverage_ratio"]
+                ),
+                "secondary_single_camera_full_view_frame_rate": (
+                    node_single_full / node_single_total
+                    if node_single_total
+                    else 0.0
+                ),
+                "cross_view_association_count": node_cross_counts.get(node_type, 0),
+                "secondary_detect_available_but_not_registered_count": (
+                    node_not_registered_counts.get(node_type, 0)
+                ),
+                "cue_pointing_error_count": node_cue_stats["count"],
+                "cue_pointing_error_mean_deg": node_cue_stats["mean"],
+                "cue_pointing_error_rmse_deg": node_cue_stats["rmse"],
+                "cue_pointing_error_max_deg": node_cue_stats["max"],
+                "gimbal_pointing_error_count": node_gimbal_stats["count"],
+                "gimbal_pointing_error_mean_deg": node_gimbal_stats["mean"],
+                "gimbal_pointing_error_rmse_deg": node_gimbal_stats["rmse"],
+                "gimbal_pointing_error_max_deg": node_gimbal_stats["max"],
+                "frame_count": node_frame_stats["frame_count"],
+                "camera_frame_count": node_single_total,
+            }
+
+        return {
+            "secondary_network_joint_full_view_frame_rate": network_stats[
+                "full_view_frame_rate"
+            ],
+            "secondary_network_mean_coverage_ratio": network_stats[
+                "mean_coverage_ratio"
+            ],
+            "secondary_single_camera_full_view_frame_rate": (
+                single_full_count / single_frame_count if single_frame_count else 0.0
+            ),
+            "cross_view_association_count": cross_view_association_count,
+            "secondary_detect_available_but_not_registered_count": (
+                detect_available_not_registered_count
+            ),
+            "cue_pointing_error_count": cue_stats["count"],
+            "cue_pointing_error_mean_deg": cue_stats["mean"],
+            "cue_pointing_error_rmse_deg": cue_stats["rmse"],
+            "cue_pointing_error_max_deg": cue_stats["max"],
+            "gimbal_pointing_error_count": gimbal_stats["count"],
+            "gimbal_pointing_error_mean_deg": gimbal_stats["mean"],
+            "gimbal_pointing_error_rmse_deg": gimbal_stats["rmse"],
+            "gimbal_pointing_error_max_deg": gimbal_stats["max"],
+            "_metadata": {
+                "secondary_sensing_frame_count": network_stats["frame_count"],
+                "secondary_sensing_camera_frame_count": single_frame_count,
+                "secondary_sensing_target_count": target_count,
+                "secondary_sensing_camera_count": camera_count,
+                "secondary_sensing_node_type_metrics": node_type_metrics,
+                "secondary_sensing_source": "main_d4_d5_event_link_metadata",
+            },
+        }
+
+    def _secondary_sensing_samples(self) -> list[dict[str, Any]]:
+        samples: list[dict[str, Any]] = []
+        for record in self.event_records:
+            metadata = dict(record.metadata)
+            event_type = _event_type(record)
+            fallback_text = " ".join(
+                str(value)
+                for value in (event_type, record.actor_id, record.note)
+                if value is not None
+            )
+            if self._is_secondary_sensing_sample(
+                event_type,
+                metadata,
+                fallback_text,
+            ):
+                samples.append(
+                    {
+                        "timestamp": record.timestamp,
+                        "event_type": event_type,
+                        "metadata": metadata,
+                        "fallback_text": fallback_text,
+                    }
+                )
+
+        for record in self.link_records:
+            metadata = dict(record.metadata)
+            fallback_text = " ".join(
+                str(value)
+                for value in (
+                    record.source_node_id,
+                    record.target_node_id,
+                    record.relay_node_id,
+                    record.link_type,
+                    record.message_type,
+                    record.payload_kind,
+                )
+                if value is not None
+            )
+            if self._is_secondary_sensing_sample("", metadata, fallback_text):
+                samples.append(
+                    {
+                        "timestamp": record.timestamp,
+                        "event_type": "",
+                        "metadata": metadata,
+                        "fallback_text": fallback_text,
+                    }
+                )
+        return samples
+
+    def _is_secondary_sensing_sample(
+        self,
+        event_type: str,
+        metadata: Mapping[str, Any],
+        fallback_text: str,
+    ) -> bool:
+        if event_type in (
+            self.SECONDARY_SENSING_EVENTS
+            | self.CROSS_VIEW_ASSOCIATION_EVENTS
+            | self.SECONDARY_DETECT_NOT_REGISTERED_EVENTS
+            | self.MULTI_VIEW_CONSENSUS_EVENTS
+        ):
+            return True
+        if _secondary_node_type(metadata, fallback_text=fallback_text) is not None:
+            return True
+        return any(key in metadata for key in _SECONDARY_SENSING_METADATA_KEYS)
+
+    def _secondary_cross_view_association_increment(
+        self,
+        event_type: str,
+        metadata: Mapping[str, Any],
+    ) -> int:
+        explicit_count = _first_metadata_int(
+            metadata,
+            (
+                "cross_view_association_count",
+                "cross_view_associated_count",
+                "d5_cross_view_association_count",
+            ),
+        )
+        if explicit_count is not None:
+            return max(0, explicit_count)
+
+        if event_type in self.CROSS_VIEW_ASSOCIATION_EVENTS:
+            success = _bool_from_metadata(
+                metadata,
+                (
+                    "association_success",
+                    "cross_view_association_success",
+                    "associated",
+                    "registered",
+                ),
+                default=True,
+            )
+            return int(success)
+
+        if event_type in self.MULTI_VIEW_CONSENSUS_EVENTS:
+            success = _bool_from_metadata(
+                metadata,
+                (
+                    "multi_view_consensus",
+                    "consensus_reached",
+                    "multi_view_consensus_reached",
+                    "cross_view_association",
+                ),
+                default=True,
+            )
+            return int(success)
+
+        if _bool_from_metadata(
+            metadata,
+            (
+                "cross_view_association",
+                "cross_view_association_success",
+                "d5_cross_view_association",
+            ),
+            default=False,
+        ):
+            return 1
+        return 0
+
+    def _secondary_not_registered_increment(
+        self,
+        event_type: str,
+        metadata: Mapping[str, Any],
+    ) -> int:
+        explicit_count = _first_metadata_int(
+            metadata,
+            (
+                "secondary_detect_available_but_not_registered_count",
+                "detect_available_but_not_registered_count",
+                "d5_registration_miss_count",
+            ),
+        )
+        if explicit_count is not None:
+            return max(0, explicit_count)
+
+        if event_type in self.SECONDARY_DETECT_NOT_REGISTERED_EVENTS:
+            return 1
+
+        detect_available = _bool_from_metadata(
+            metadata,
+            (
+                "secondary_detect_available",
+                "detect_available",
+                "detection_available",
+                "bbox_available",
+            ),
+            default=False,
+        )
+        registration_keys = (
+            "registered",
+            "registration_success",
+            "d5_registered",
+            "terminal_registered",
+            "association_registered",
+        )
+        has_registration_state = any(key in metadata for key in registration_keys)
+        if not detect_available or not has_registration_state:
+            return 0
+        registered = _bool_from_metadata(metadata, registration_keys, default=True)
+        return int(not registered)
+
     def _compute_link_metrics(self) -> dict[str, float | int]:
         link_items = self._communication_items()
         delivered_items = [item for item in link_items if item["delivered"]]
@@ -1720,6 +2142,478 @@ class MetricsCollector:
             "human_override_count": human_override_count,
         }
 
+
+
+_SECONDARY_NODE_TYPE_KEYS = (
+    "secondary_node_type",
+    "node_type",
+    "camera_node_type",
+    "sensor_node_type",
+    "platform_role",
+    "sensor_role",
+    "camera_role",
+    "view_node_type",
+    "source_node_type",
+    "observer_type",
+)
+
+_SECONDARY_SENSING_METADATA_KEYS = {
+    "secondary_network_joint_full_view_frame_rate",
+    "secondary_network_mean_coverage_ratio",
+    "secondary_single_camera_full_view_frame_rate",
+    "cross_view_association_count",
+    "secondary_detect_available_but_not_registered_count",
+    "covered_target_ids",
+    "visible_target_ids",
+    "detected_target_ids",
+    "full_view_target_ids",
+    "covered_target_count",
+    "visible_target_count",
+    "detected_target_count",
+    "coverage_ratio",
+    "secondary_coverage_ratio",
+    "network_coverage_ratio",
+    "joint_full_view",
+    "network_joint_full_view",
+    "single_camera_full_view",
+    "single_camera_full_view_count",
+    "detect_available",
+    "detection_available",
+    "secondary_detect_available",
+    "registration_success",
+    "d5_registered",
+    "cue_pointing_error_deg",
+    "cue_pointing_error_rad",
+    "gimbal_pointing_error_deg",
+    "gimbal_pointing_error_rad",
+    "pointing_error_deg",
+    "pointing_error_rad",
+}
+
+
+def _secondary_node_type(
+    metadata: Mapping[str, Any],
+    *,
+    fallback_text: str = "",
+) -> str | None:
+    for key in _SECONDARY_NODE_TYPE_KEYS:
+        value = _metadata_text(metadata, key)
+        normalized = _normalize_secondary_node_type(value)
+        if normalized is not None:
+            return normalized
+
+    for key in ("camera_id", "camera_name", "source_node_id", "resource_id"):
+        value = _metadata_text(metadata, key)
+        normalized = _normalize_secondary_node_type(value)
+        if normalized is not None:
+            return normalized
+    return _normalize_secondary_node_type(fallback_text)
+
+
+def _normalize_secondary_node_type(value: Any) -> str | None:
+    text = _state(str(value or "")).replace("-", "_").replace(" ", "_")
+    if not text:
+        return None
+    if "fixed_downlook_secondary" in text:
+        return "fixed_downlook_secondary"
+    if "mobile_recon_gimbal" in text:
+        return "mobile_recon_gimbal"
+    if "fixed" in text and ("downlook" in text or "down_look" in text):
+        return "fixed_downlook_secondary"
+    if "secondary" in text and ("downlook" in text or "down_look" in text):
+        return "fixed_downlook_secondary"
+    if "mobile" in text and ("recon" in text or "gimbal" in text):
+        return "mobile_recon_gimbal"
+    if "recon" in text and "gimbal" in text:
+        return "mobile_recon_gimbal"
+    if "gimbal" in text:
+        return "mobile_recon_gimbal"
+    if "secondary" in text:
+        return "secondary_network"
+    return None
+
+
+def _secondary_sample_target_count(
+    metadata: Mapping[str, Any],
+    *,
+    default_target_count: int,
+) -> int:
+    explicit = _first_metadata_int(
+        metadata,
+        (
+            "target_count",
+            "truth_count",
+            "total_target_count",
+            "expected_target_count",
+            "target_object_count",
+        ),
+    )
+    if explicit is not None and explicit > 0:
+        return explicit
+    return max(0, int(default_target_count or 0))
+
+
+def _secondary_sample_camera_count(
+    metadata: Mapping[str, Any],
+    *,
+    default_camera_count: int,
+) -> int:
+    explicit = _first_metadata_int(
+        metadata,
+        (
+            "camera_count",
+            "secondary_camera_count",
+            "single_camera_total_count",
+            "camera_frame_count",
+            "single_camera_frame_count",
+        ),
+    )
+    if explicit is not None and explicit > 0:
+        return explicit
+    return max(0, int(default_camera_count or 0))
+
+
+def _secondary_coverage_sample(
+    metadata: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    target_ids = _metadata_id_set(
+        metadata,
+        (
+            "covered_target_ids",
+            "visible_target_ids",
+            "detected_target_ids",
+            "full_view_target_ids",
+            "target_ids",
+        ),
+    )
+    covered_count = _first_metadata_int(
+        metadata,
+        (
+            "covered_target_count",
+            "visible_target_count",
+            "detected_target_count",
+            "secondary_visible_target_count",
+            "network_covered_target_count",
+            "joint_covered_target_count",
+            "full_view_target_count",
+        ),
+    )
+    coverage_ratio = _first_metadata_float(
+        metadata,
+        (
+            "coverage_ratio",
+            "secondary_coverage_ratio",
+            "network_coverage_ratio",
+            "joint_coverage_ratio",
+            "mean_coverage_ratio",
+            "secondary_network_mean_coverage_ratio",
+        ),
+    )
+    full_view = _secondary_bool_value(
+        metadata,
+        (
+            "network_joint_full_view",
+            "joint_full_view",
+            "full_view",
+            "full_coverage",
+            "all_targets_visible",
+            "all_targets_in_fov",
+            "secondary_network_joint_full_view",
+        ),
+    )
+    if (
+        not target_ids
+        and covered_count is None
+        and coverage_ratio is None
+        and full_view is None
+    ):
+        return None
+    return {
+        "target_ids": target_ids,
+        "covered_count": None if covered_count is None else max(0, covered_count),
+        "coverage_ratio": (
+            None if coverage_ratio is None else _clamp_ratio(coverage_ratio)
+        ),
+        "full_view": full_view,
+    }
+
+
+def _secondary_frame_key(sample: Mapping[str, Any]) -> tuple[Any, ...]:
+    metadata = sample["metadata"]
+    frame_id = (
+        metadata.get("secondary_frame_id")
+        or metadata.get("frame_id")
+        or metadata.get("frame_index")
+        or metadata.get("timestamp")
+        or sample.get("timestamp")
+    )
+    return (frame_id,)
+
+
+def _add_secondary_frame_coverage(
+    frames: dict[tuple[Any, ...], dict[str, Any]],
+    frame_key: tuple[Any, ...],
+    coverage: Mapping[str, Any],
+    target_count: int,
+) -> None:
+    frame = frames.setdefault(
+        frame_key,
+        {
+            "target_count": max(0, int(target_count or 0)),
+            "target_ids": set(),
+            "covered_count": None,
+            "coverage_ratios": [],
+            "full_view_values": [],
+        },
+    )
+    if target_count > 0 and not frame["target_count"]:
+        frame["target_count"] = int(target_count)
+    frame["target_ids"].update(coverage.get("target_ids", set()))
+    covered_count = coverage.get("covered_count")
+    if covered_count is not None:
+        previous = frame.get("covered_count")
+        frame["covered_count"] = max(int(previous or 0), int(covered_count))
+    coverage_ratio = coverage.get("coverage_ratio")
+    if coverage_ratio is not None:
+        frame["coverage_ratios"].append(_clamp_ratio(float(coverage_ratio)))
+    full_view = coverage.get("full_view")
+    if full_view is not None:
+        frame["full_view_values"].append(bool(full_view))
+
+
+def _secondary_frame_stats(
+    frames: Mapping[tuple[Any, ...], Mapping[str, Any]],
+) -> dict[str, float | int]:
+    coverage_ratios: list[float] = []
+    full_view_values: list[bool] = []
+    for frame in frames.values():
+        ratio = _secondary_frame_coverage_ratio(frame)
+        if ratio is not None:
+            coverage_ratios.append(ratio)
+        full_view = _secondary_frame_full_view(frame, ratio)
+        if full_view is not None:
+            full_view_values.append(full_view)
+    return {
+        "full_view_frame_rate": _bool_rate(full_view_values),
+        "mean_coverage_ratio": _mean(coverage_ratios),
+        "frame_count": len(frames),
+    }
+
+
+def _secondary_frame_coverage_ratio(frame: Mapping[str, Any]) -> float | None:
+    target_count = int(frame.get("target_count") or 0)
+    target_ids = frame.get("target_ids", set())
+    if target_count > 0 and target_ids:
+        return _clamp_ratio(len(target_ids) / target_count)
+    covered_count = frame.get("covered_count")
+    if target_count > 0 and covered_count is not None:
+        return _clamp_ratio(float(covered_count) / target_count)
+    ratios = frame.get("coverage_ratios", [])
+    if ratios:
+        return _clamp_ratio(max(float(value) for value in ratios))
+    return None
+
+
+def _secondary_frame_full_view(
+    frame: Mapping[str, Any],
+    coverage_ratio: float | None,
+) -> bool | None:
+    if coverage_ratio is not None:
+        return coverage_ratio >= 1.0
+    values = frame.get("full_view_values", [])
+    if values:
+        return any(bool(value) for value in values)
+    return None
+
+
+def _secondary_single_camera_counts(
+    metadata: Mapping[str, Any],
+    coverage: Mapping[str, Any] | None,
+    *,
+    sample_target_count: int,
+    sample_camera_count: int,
+) -> tuple[int, int]:
+    full_count = _first_metadata_int(
+        metadata,
+        (
+            "single_camera_full_view_count",
+            "secondary_single_camera_full_view_count",
+            "camera_full_view_count",
+        ),
+    )
+    if full_count is not None:
+        total_count = _first_metadata_int(
+            metadata,
+            (
+                "single_camera_total_count",
+                "single_camera_frame_count",
+                "camera_frame_count",
+                "secondary_camera_count",
+                "camera_count",
+            ),
+        )
+        if total_count is None or total_count <= 0:
+            total_count = sample_camera_count or full_count
+        return max(0, full_count), max(max(0, full_count), int(total_count))
+
+    single_full = _secondary_bool_value(
+        metadata,
+        (
+            "single_camera_full_view",
+            "camera_full_view",
+            "secondary_single_camera_full_view",
+        ),
+    )
+    if single_full is not None:
+        return int(single_full), 1
+
+    camera_id = _metadata_text(metadata, "camera_id") or _metadata_text(
+        metadata,
+        "camera_name",
+    )
+    if camera_id is None or coverage is None:
+        return 0, 0
+
+    ratio = _secondary_coverage_ratio_from_sample(coverage, sample_target_count)
+    if ratio is not None:
+        return int(ratio >= 1.0), 1
+    full_view = coverage.get("full_view")
+    if full_view is not None:
+        return int(bool(full_view)), 1
+    return 0, 0
+
+
+def _secondary_coverage_ratio_from_sample(
+    coverage: Mapping[str, Any],
+    target_count: int,
+) -> float | None:
+    target_ids = coverage.get("target_ids", set())
+    if target_count > 0 and target_ids:
+        return _clamp_ratio(len(target_ids) / target_count)
+    covered_count = coverage.get("covered_count")
+    if target_count > 0 and covered_count is not None:
+        return _clamp_ratio(float(covered_count) / target_count)
+    coverage_ratio = coverage.get("coverage_ratio")
+    if coverage_ratio is not None:
+        return _clamp_ratio(float(coverage_ratio))
+    return None
+
+
+def _metadata_id_set(
+    metadata: Mapping[str, Any],
+    keys: Sequence[str],
+) -> set[str]:
+    for key in keys:
+        if key not in metadata:
+            continue
+        values = _id_values(metadata[key])
+        if values:
+            return values
+    return set()
+
+
+def _id_values(value: Any) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, Mapping):
+        ids: set[str] = set()
+        for key in ("target_id", "truth_id", "global_track_id", "object_id", "id"):
+            if key in value and value[key] is not None:
+                ids.add(str(value[key]))
+        if ids:
+            return ids
+        return {str(key) for key in value if str(key).strip()}
+    if isinstance(value, (list, tuple, set)):
+        ids: set[str] = set()
+        for item in value:
+            ids.update(_id_values(item))
+        return ids
+    text = str(value).strip()
+    if not text:
+        return set()
+    if "," in text:
+        return {item.strip() for item in text.split(",") if item.strip()}
+    return {text}
+
+
+def _metadata_angle_values_deg(
+    metadata: Mapping[str, Any],
+    *,
+    degree_keys: Sequence[str],
+    radian_keys: Sequence[str],
+) -> list[float]:
+    values: list[float] = []
+    for key in degree_keys:
+        if key in metadata:
+            values.extend(_metadata_float_values(metadata[key]))
+    for key in radian_keys:
+        if key in metadata:
+            values.extend(
+                math.degrees(value) for value in _metadata_float_values(metadata[key])
+            )
+    return values
+
+
+def _metadata_float_values(value: Any) -> list[float]:
+    if value is None:
+        return []
+    if isinstance(value, Mapping):
+        for key in ("value", "error", "angle", "mean"):
+            if key in value:
+                return _metadata_float_values(value[key])
+        return []
+    if isinstance(value, (list, tuple, set)):
+        values: list[float] = []
+        for item in value:
+            values.extend(_metadata_float_values(item))
+        return values
+    if isinstance(value, str) and "," in value:
+        values: list[float] = []
+        for item in value.split(","):
+            values.extend(_metadata_float_values(item.strip()))
+        return values
+    try:
+        return [float(value)]
+    except (TypeError, ValueError):
+        return []
+
+
+def _angle_error_stats(values: Sequence[float]) -> dict[str, float | int]:
+    magnitudes = [abs(float(value)) for value in values]
+    if not magnitudes:
+        return {"count": 0, "mean": 0.0, "rmse": 0.0, "max": 0.0}
+    return {
+        "count": len(magnitudes),
+        "mean": _mean(magnitudes),
+        "rmse": math.sqrt(sum(value * value for value in magnitudes) / len(magnitudes)),
+        "max": max(magnitudes),
+    }
+
+
+def _secondary_bool_value(
+    metadata: Mapping[str, Any],
+    keys: Sequence[str],
+) -> bool | None:
+    for key in keys:
+        if key in metadata:
+            return _as_bool(metadata[key], default=False)
+    return None
+
+
+def _first_metadata_int(
+    metadata: Mapping[str, Any],
+    keys: Sequence[str],
+) -> int | None:
+    for key in keys:
+        if key in metadata:
+            value = _optional_int_value(metadata[key])
+            if value is not None:
+                return value
+    return None
+
+
+def _clamp_ratio(value: float) -> float:
+    return min(1.0, max(0.0, float(value)))
 
 
 def _metric_scope_from_truth_summary(truth_summary: Mapping[str, Any]) -> str:

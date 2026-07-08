@@ -6,8 +6,11 @@ import pytest
 from d1_sensor_fusion.compat import FilterPyBackendPlaceholder, StoneSoupAdapterPlaceholder
 from d1_sensor_fusion.fusion import FusionAdapter
 from d1_sensor_fusion.observations import (
+    CameraModel,
     RadarCovarianceConfig,
     acoustic_covariance,
+    eo_project,
+    measurement_model_for,
     radar_covariance_from_range,
     radar_h,
 )
@@ -171,6 +174,52 @@ def test_track_uncertainty_summary_exports_required_fields() -> None:
     assert region_payload["source_gap_modalities"] == ("eo",)
     assert region_payload["stale_track_count"] == 1
     assert region_payload["max_measurement_age_s"] == pytest.approx(0.25)
+
+
+def test_eo_measurement_model_uses_nested_replay_camera_model_metadata() -> None:
+    camera_metadata = {
+        "position_ned": [10.0, -5.0, -12.0],
+        "rotation_world_to_camera": [
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0],
+        ],
+        "fx": 720.0,
+        "fy": 710.0,
+        "cx": 640.0,
+        "cy": 360.0,
+        "width": 1280,
+        "height": 720,
+    }
+    state = np.array([130.0, 15.0, -18.0, 2.0, 0.0, 0.0])
+    expected_camera = CameraModel(
+        position_ned=np.asarray(camera_metadata["position_ned"], dtype=float),
+        rotation_world_to_camera=np.asarray(
+            camera_metadata["rotation_world_to_camera"], dtype=float
+        ),
+        fx=camera_metadata["fx"],
+        fy=camera_metadata["fy"],
+        cx=camera_metadata["cx"],
+        cy=camera_metadata["cy"],
+        width=camera_metadata["width"],
+        height=camera_metadata["height"],
+    )
+    observation = SensorObservation(
+        observation_id="eo_replay_camera_model",
+        sensor_id="blocks_camera_01",
+        modality="eo",
+        measurement_timestamp=1.0,
+        arrival_timestamp=1.05,
+        frame_id="pixel",
+        measurement=eo_project(state, expected_camera),
+        covariance=np.eye(2),
+        metadata={"camera_model": camera_metadata},
+    )
+
+    model = measurement_model_for(observation)
+
+    assert np.allclose(model.h_fn(state), eo_project(state, expected_camera))
+    assert model.r.shape == (2, 2)
 
 
 def test_source_lineage_deduplicates_relay_repeated_payloads() -> None:

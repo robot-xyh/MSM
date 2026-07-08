@@ -67,6 +67,36 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
             camera_count=2,
             active_degradation_count=0,
             mode_switch_count=1,
+            secondary_network_joint_full_view_frame_rate=0.5,
+            secondary_network_mean_coverage_ratio=0.75,
+            secondary_single_camera_full_view_frame_rate=0.25,
+            cross_view_association_count=2,
+            secondary_detect_available_but_not_registered_count=1,
+            cue_pointing_error_mean_deg=3.0,
+            gimbal_pointing_error_mean_deg=1.5,
+            metadata={
+                "terminal_switch_reject_reasons": {"camera_quality": 1},
+                "secondary_sensing_node_type_metrics": {
+                    "fixed_downlook_secondary": {
+                        "secondary_network_joint_full_view_frame_rate": 0.4,
+                        "secondary_network_mean_coverage_ratio": 0.7,
+                        "secondary_single_camera_full_view_frame_rate": 0.2,
+                        "cross_view_association_count": 1,
+                        "secondary_detect_available_but_not_registered_count": 1,
+                        "cue_pointing_error_mean_deg": 0.0,
+                        "gimbal_pointing_error_mean_deg": 0.0,
+                    },
+                    "mobile_recon_gimbal": {
+                        "secondary_network_joint_full_view_frame_rate": 0.6,
+                        "secondary_network_mean_coverage_ratio": 0.8,
+                        "secondary_single_camera_full_view_frame_rate": 0.3,
+                        "cross_view_association_count": 1,
+                        "secondary_detect_available_but_not_registered_count": 0,
+                        "cue_pointing_error_mean_deg": 3.0,
+                        "gimbal_pointing_error_mean_deg": 1.5,
+                    },
+                },
+            },
         ),
         EpisodeMetrics(
             episode_id="secondary_001",
@@ -82,6 +112,11 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
             passive_failover_count=1,
             mode_switch_count=3,
             terminal_contract_reject_count=1,
+            metadata={
+                "terminal_contract_reject_reasons": {
+                    "terminal_contract_not_satisfied": 2
+                },
+            },
         ),
     ]
 
@@ -106,6 +141,9 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
     assert "scenario_group" in episode_text
     assert "batch_seed" in episode_text
     assert "metric_scope" in episode_text
+    assert "metadata" in episode_text
+    assert "terminal_switch_reject_reasons" in episode_text
+    assert "secondary_network_joint_full_view_frame_rate" in episode_text
     assert "drone_count" in episode_text
     assert "resource_count" in episode_text
     assert "target_count" in episode_text
@@ -113,6 +151,7 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
     assert "metric_scope" in summary_text
     assert "seed" in summary_text
     assert "drone_count" in summary_text
+    assert "secondary_network_mean_coverage_ratio" in summary_text
     assert "normal" in summary_text
     assert "secondary_200m" in summary_text
     assert "场景分组" in report_text
@@ -122,6 +161,13 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
     assert "Drone count" in report_text
     assert "active_degradation_precision" in report_text
     assert "terminal_contract_reject_count" in report_text
+    assert "二级视角节点对比" in report_text
+    assert "fixed_downlook_secondary" in report_text
+    assert "mobile_recon_gimbal" in report_text
+    assert "secondary_sensing_metrics.png" in report_text
+    assert "Reject reason 分布" in report_text
+    assert "camera_quality" in report_text
+    assert "terminal_contract_not_satisfied" in report_text
 
     summary_rows = list(csv.DictReader(summary_csv.open(encoding="utf-8")))
     active_rows = [

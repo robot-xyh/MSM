@@ -29,12 +29,14 @@ class ReplayAssociationReport:
     association_logs: list[dict[str, Any]]
     risk_summary: dict[str, Any]
     threshold_sensitivity: list[dict[str, Any]] = field(default_factory=list)
+    replay_metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "replay_name": self.replay_name,
             "frame_count": self.frame_count,
             "target_count": self.target_count,
+            "replay_metadata": _json_ready(self.replay_metadata),
             "global_track_ids": list(self.global_track_ids),
             "metrics": _json_ready(self.metrics),
             "association_logs": _json_ready(self.association_logs),
@@ -75,12 +77,17 @@ def run_airsim_replay_association(
     replay_name: str = "airsim_replay",
     tracker: Tracker | None = None,
     risk_thresholds: RiskThresholds | None = None,
+    replay_metadata: Mapping[str, Any] | None = None,
     default_position_variance: float = 1.0,
     gate_thresholds: Sequence[float] | None = None,
 ) -> ReplayAssociationReport:
     """Run D2 association on offline replay frames and return a stable report."""
 
     frame_list = list(frames)
+    metadata = _merge_replay_metadata(
+        _collect_replay_metadata(frame_list),
+        replay_metadata,
+    )
     result = run_airsim_dry_run_association(
         frame_list,
         tracker=tracker,
@@ -98,6 +105,7 @@ def run_airsim_replay_association(
             frame_list,
             gate_thresholds=gate_thresholds,
             risk_thresholds=[thresholds],
+            replay_metadata=metadata,
             default_position_variance=default_position_variance,
         )
         if gate_thresholds is not None
@@ -112,6 +120,7 @@ def run_airsim_replay_association(
         association_logs=association_logs,
         risk_summary=risk_summary,
         threshold_sensitivity=sensitivity,
+        replay_metadata=metadata,
     )
 
 
@@ -120,12 +129,17 @@ def run_threshold_sensitivity(
     *,
     gate_thresholds: Sequence[float] | None = None,
     risk_thresholds: Sequence[RiskThresholds] | None = None,
+    replay_metadata: Mapping[str, Any] | None = None,
     feature_weight: float = 6.0,
     default_position_variance: float = 1.0,
 ) -> list[dict[str, Any]]:
     """Evaluate replay metrics and risk breakdown across threshold profiles."""
 
     frame_list = list(frames)
+    metadata = _merge_replay_metadata(
+        _collect_replay_metadata(frame_list),
+        replay_metadata,
+    )
     gates = tuple(gate_thresholds) if gate_thresholds is not None else (5.99, 9.21, 13.82)
     profiles = tuple(risk_thresholds) if risk_thresholds is not None else (RiskThresholds(),)
     rows: list[dict[str, Any]] = []
@@ -147,17 +161,31 @@ def run_threshold_sensitivity(
                 result.metrics,
                 thresholds=thresholds,
             )
+            soft_frame_count = int(risk_summary["soft_risk_frame_count"])
+            hard_frame_count = int(risk_summary["hard_risk_frame_count"])
             rows.append(
                 {
                     "gate_threshold": float(gate_threshold),
                     "risk_profile": thresholds.profile_name,
+                    "risk_profile_version": thresholds.profile_version,
                     "frame_count": len(frame_list),
                     "target_count": _target_count(frame_list),
+                    "replay_metadata": _json_ready(metadata),
+                    "seed": _metadata_value(metadata, "seed"),
+                    "episode_id": _metadata_value(metadata, "episode_id"),
+                    "scenario_name": _metadata_value(
+                        metadata, "scenario_name", "scenario"
+                    ),
+                    "drone_count": _metadata_value(metadata, "drone_count"),
                     "id_switch_count": result.metrics["id_switch_count"],
                     "track_continuity": result.metrics["track_continuity"],
                     "duplicate_assignment_count": result.metrics[
                         "duplicate_assignment_count"
                     ],
+                    "soft_risk_frame_count": soft_frame_count,
+                    "hard_risk_frame_count": hard_frame_count,
+                    "max_soft_risk_score": risk_summary["max_soft_risk_score"],
+                    "max_hard_risk_score": risk_summary["max_hard_risk_score"],
                     "risk_summary": risk_summary,
                 }
             )
@@ -236,7 +264,11 @@ def _frames_from_payload(payload: Any) -> list[Mapping[str, Any]]:
         for key in ("frames", "replay_frames", "records"):
             value = payload.get(key)
             if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-                return [frame for item in value if (frame := _coerce_frame(item))]
+                return [
+                    _merge_envelope_metadata(frame, payload)
+                    for item in value
+                    if (frame := _coerce_frame(item))
+                ]
         frame = _coerce_frame(payload)
         return [frame] if frame is not None else []
     if isinstance(payload, Sequence) and not isinstance(payload, (str, bytes, bytearray)):
@@ -252,10 +284,10 @@ def _coerce_frame(record: Any) -> Mapping[str, Any] | None:
     for key in ("frame", "d2_frame", "airsim_frame", "association_frame"):
         value = record.get(key)
         if isinstance(value, Mapping) and _is_frame(value):
-            return value
+            return _merge_envelope_metadata(value, record)
     payload = record.get("payload")
     if isinstance(payload, Mapping) and _is_frame(payload):
-        return payload
+        return _merge_envelope_metadata(payload, record)
     return None
 
 
@@ -265,9 +297,17 @@ def _is_frame(value: Mapping[str, Any]) -> bool:
 
 def _target_count(frames: Sequence[Any]) -> int:
     truth_ids: set[str] = set()
+    explicit_counts: list[int] = []
+    max_frame_items = 0
     for frame in frames:
         truth_ids.update(_truth_ids_for_frame(frame))
-    return len(truth_ids)
+        explicit_counts.extend(_explicit_target_counts(frame))
+        max_frame_items = max(max_frame_items, len(_frame_items(frame)))
+    if truth_ids:
+        return len(truth_ids)
+    if explicit_counts:
+        return max(explicit_counts)
+    return max_frame_items
 
 
 def _truth_ids_for_frame(frame: Any) -> set[str]:
@@ -299,6 +339,29 @@ def _frame_items(frame: Any) -> list[Any]:
     return []
 
 
+def _explicit_target_counts(frame: Any) -> list[int]:
+    values = []
+    for key in ("target_count", "drone_count", "intruder_count", "object_count"):
+        value = _first_present(frame, (key,), None)
+        if value is None:
+            continue
+        try:
+            values.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    metadata = _first_present(frame, ("replay_metadata", "metadata"), None)
+    if isinstance(metadata, Mapping):
+        for key in ("target_count", "drone_count", "intruder_count", "object_count"):
+            value = metadata.get(key)
+            if value is None:
+                continue
+            try:
+                values.append(int(value))
+            except (TypeError, ValueError):
+                continue
+    return values
+
+
 def _first_present(item: Any, names: tuple[str, ...], default: Any) -> Any:
     if isinstance(item, Mapping):
         for name in names:
@@ -328,6 +391,100 @@ def _optional_string(value: object) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _merge_envelope_metadata(
+    frame: Mapping[str, Any],
+    envelope: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    metadata = _extract_replay_metadata(envelope)
+    if not metadata:
+        return frame
+    merged = dict(frame)
+    merged["replay_metadata"] = _merge_replay_metadata(
+        _metadata_mapping(frame.get("replay_metadata")),
+        metadata,
+    )
+    for key in ("seed", "episode_id", "scenario_name", "scenario", "drone_count"):
+        if key in metadata and key not in merged:
+            merged[key] = metadata[key]
+    return merged
+
+
+def _collect_replay_metadata(frames: Sequence[Any]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    for frame in frames:
+        if not isinstance(frame, Mapping):
+            continue
+        frame_metadata = _extract_replay_metadata(frame)
+        nested_metadata = _metadata_mapping(frame.get("replay_metadata"))
+        metadata = _merge_replay_metadata(metadata, frame_metadata, nested_metadata)
+    return metadata
+
+
+def _extract_replay_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
+    keys = (
+        "seed",
+        "episode_id",
+        "run_id",
+        "scenario_name",
+        "scenario",
+        "drone_count",
+        "target_count",
+        "intruder_count",
+        "replay_name",
+        "threshold_profile_version",
+    )
+    metadata = {
+        key: record[key]
+        for key in keys
+        if key in record and record[key] is not None
+    }
+    nested = _metadata_mapping(record.get("metadata"))
+    for key in keys:
+        if key in nested and nested[key] is not None:
+            metadata.setdefault(key, nested[key])
+    return metadata
+
+
+def _merge_replay_metadata(
+    *metadata_items: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    for metadata in metadata_items:
+        if metadata is None:
+            continue
+        for key, value in metadata.items():
+            if value is None:
+                continue
+            if key not in merged:
+                merged[str(key)] = value
+                continue
+            if merged[key] == value:
+                continue
+            merged[key] = _append_unique_value(merged[key], value)
+    return merged
+
+
+def _append_unique_value(current: Any, value: Any) -> Any:
+    if isinstance(current, list):
+        values = list(current)
+    else:
+        values = [current]
+    if value not in values:
+        values.append(value)
+    return values
+
+
+def _metadata_mapping(value: Any) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _metadata_value(metadata: Mapping[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in metadata:
+            return _json_ready(metadata[key])
+    return None
 
 
 def _json_ready(value: Any) -> Any:

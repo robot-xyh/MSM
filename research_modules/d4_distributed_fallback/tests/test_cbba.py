@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from d4_distributed_fallback.cbba import CBBANegotiator, build_cbba_cost_gap_benchmark
+from d4_distributed_fallback.cbba import (
+    CBBANegotiator,
+    build_cbba_cost_gap_benchmark,
+    build_cbba_d6_metadata,
+)
 from d4_distributed_fallback.models import (
     Assignment,
     AvailabilityBand,
@@ -243,3 +247,32 @@ def test_cbba_cost_gap_benchmark_compares_against_d3_center_plan_without_hungari
     assert benchmark.completion_rate_gap == 0.0
     assert benchmark.cbba_conflict_count == 1
     assert benchmark.per_task_cost_gap == {"task-1": 2.0, "task-2": 2.0}
+
+    metadata = build_cbba_d6_metadata(
+        result,
+        failover_time_s=1.25,
+        coordination_mode={
+            "state": "distributed_cbba",
+            "leader_id": "node-1",
+            "leader_role": "cluster_representative",
+            "coverage_cell": "cell-north",
+        },
+    )
+
+    assert metadata["d4_action"] == "degrade_to_distributed"
+    assert metadata["coordination_mode"] == "distributed_cbba"
+    assert metadata["selected_coordinator"] == "distributed_cbba"
+    assert metadata["leader_id"] == "node-1"
+    assert metadata["leader_role"] == "cluster_representative"
+    assert metadata["coverage_cell"] == "cell-north"
+    assert metadata["failover_time"] == 1.25
+    assert metadata["degraded_completion_rate"] == 1.0
+    assert metadata["cost_gap_available"] is True
+    assert metadata["cbba_total_cost"] == 7.0
+    assert metadata["center_total_cost"] == 3.0
+    assert metadata["absolute_cost_gap"] == 4.0
+    assert metadata["relative_cost_gap"] == 4.0 / 3.0
+    assert metadata["cost_gap_benchmark"]["per_task_cost_gap"] == {
+        "task-1": 2.0,
+        "task-2": 2.0,
+    }

@@ -50,7 +50,7 @@ The feedback decision includes `main_action` and `planner_metadata` so main can 
 D3 also exports:
 
 - `assignment_validity_summary_from_plan(...)` -> `AssignmentValiditySummary(plan_id, version, plan_age_s, assignment_latency_s, cost_margin, stale_plan_version, duplicate_assignment_count, unassigned_high_threat_count)`.
-- `assignment_records_from_plan(...)` -> D6-compatible `AssignmentRecord` rows with `timestamp`, `plan_id`, `version`, `resource_id`, `global_track_id`, `cost_breakdown`, `authorization_state`, `active`, and `truth_id`.
+- `assignment_records_from_plan(...)` -> D6-compatible `AssignmentRecord` rows with `timestamp`, `plan_id`, `version`, `resource_id`, `global_track_id`, `cost_breakdown`, `authorization_state`, `active`, `truth_id`, plus multi-seed current-plan fields: `window_id`, `decision_state`, `changed`, `resource_count`, `target_count`, `assignment_matrix_shape`, `plan_owner`, `active_plan_owner`, `owner_node_id`, source/target/link, `plan_schema`, `replan_reason`, `takeover_reason`, previous/superseded plan id/version, plan costs, `cost_margin`, and `stale_after_s`.
 - `guidance_bindings_from_assignment_plan(...)` -> versioned `AssignmentGuidanceBinding` rows. Bindings carry `plan_schema`; D4-published `secondary_plan_v2` plans are bound by plan/version and validity state only.
 - `prepare_secondary_takeover_plan(...)` -> stamps a D4/main-selected secondary takeover candidate with `secondary_plan_v2`, owner/source node, superseded center plan id/version, optional leader epoch/lease metadata, and `allow_local_rebind=False`. The helper rejects tied or older secondary versions.
 

@@ -92,6 +92,33 @@ def _secondary(available: bool = True, coverage_cell: str = "cell-north") -> Res
     )
 
 
+def _mobile_high_recon(
+    *,
+    coverage_cell: str = "cell-north",
+    secondary_coverage_ratio: float | None = 0.86,
+    gimbal_pointing_ok: bool | None = True,
+    cue_freshness_s: float | None = 0.2,
+) -> ResourceSummary:
+    return ResourceSummary(
+        node_id="mhr-1",
+        capability_class="mobile_high_recon",
+        availability_band=AvailabilityBand.HIGH,
+        comm_band=CommBand.GOOD,
+        takeover_priority=15,
+        lease_epoch=6,
+        epoch=1,
+        node_role=NodeRole.MOBILE_HIGH_RECON,
+        coordinator_only=True,
+        coverage_cell=coverage_cell,
+        heartbeat_timestamp_s=10.0,
+        heartbeat_stale_after_s=2.0,
+        cue_freshness_s=cue_freshness_s,
+        gimbal_pointing_ok=gimbal_pointing_ok,
+        secondary_coverage_ratio=secondary_coverage_ratio,
+        cross_view_support_count=2,
+    )
+
+
 def _secondary_link(
     received_timestamp: float = 10.0,
     stale_after_s: float = 1.0,
@@ -390,6 +417,100 @@ def test_active_arbitration_selects_secondary_from_dynamic_resource_list() -> No
         "sec-north-primary",
         "sec-north-backup",
     }
+
+
+def test_mobile_high_recon_evidence_does_not_auto_take_over_low_risk_frame() -> None:
+    mobile = _mobile_high_recon()
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=_terminal(),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[mobile],
+        current_time_s=10.1,
+    )
+    lifecycle = summarize_secondary_lifecycle([mobile], "cell-north", current_time_s=10.1)
+
+    assert decision.mode == DegradationMode.NONE
+    assert decision.action == DegradationAction.CONTINUE_CENTER
+    assert decision.target_node_id is None
+    assert lifecycle[0].secondary_available is True
+    assert lifecycle[0].secondary_capability_class == "mobile_high_recon"
+    assert lifecycle[0].is_mobile_high_recon is True
+    assert lifecycle[0].is_fixed_tethered_secondary is False
+    assert lifecycle[0].cue_freshness_s == 0.2
+    assert lifecycle[0].gimbal_pointing_ok is True
+    assert lifecycle[0].secondary_coverage_ratio == 0.86
+    assert lifecycle[0].cross_view_support_count == 2
+
+
+def test_mobile_secondary_role_and_coverage_ratio_can_be_selected_on_hard_mismatch() -> None:
+    mobile = ResourceSummary(
+        node_id="msec-1",
+        capability_class="observe",
+        availability_band=AvailabilityBand.HIGH,
+        comm_band=CommBand.GOOD,
+        takeover_priority=10,
+        lease_epoch=7,
+        epoch=1,
+        node_role="mobile_secondary_recon",
+        coordinator_only=True,
+        coverage_cell="cell-south",
+        heartbeat_timestamp_s=10.0,
+        heartbeat_stale_after_s=2.0,
+        cue_freshness_s=0.1,
+        gimbal_pointing_ok=True,
+        secondary_coverage_ratio=0.72,
+    )
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=_terminal(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id="track-2",
+            consecutive_non_locked_frames=3,
+            consecutive_mismatch_frames=2,
+        ),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[mobile],
+        current_time_s=10.2,
+    )
+    lifecycle = summarize_secondary_lifecycle([mobile], "cell-north", current_time_s=10.2)
+
+    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.action == DegradationAction.DEGRADE_TO_SECONDARY
+    assert decision.target_node_id == "msec-1"
+    assert lifecycle[0].secondary_available is True
+    assert lifecycle[0].secondary_capability_class == "mobile_secondary_recon"
+
+
+def test_mobile_high_recon_bad_gimbal_or_stale_cue_is_not_secondary_candidate() -> None:
+    bad_gimbal = _mobile_high_recon(gimbal_pointing_ok=False)
+    stale_cue = _mobile_high_recon(cue_freshness_s=3.0)
+
+    for mobile in (bad_gimbal, stale_cue):
+        decision = ActiveDegradationArbiter().evaluate(
+            track_uncertainty=_track(),
+            association_risk=_association(),
+            assignment_validity=_assignment(),
+            terminal_association=_terminal(
+                decision_state=TerminalDecisionState.REACQUIRE,
+                observed_global_track_id="track-2",
+                consecutive_non_locked_frames=3,
+                consecutive_mismatch_frames=2,
+            ),
+            c2_health=C2Health.NORMAL,
+            secondary_nodes=[mobile],
+            current_time_s=10.2,
+        )
+
+        assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+        assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
+        assert decision.target_node_id is None
 
 
 def test_terminal_from_different_resource_is_not_consistent() -> None:

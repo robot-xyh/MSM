@@ -57,33 +57,62 @@ def test_airsim_jsonl_replay_runs_5_target_association_and_writes_logs(tmp_path)
     frames = dense_airsim_like_frames()
     replay_path = tmp_path / "airsim_dense_5v5.jsonl"
     replay_path.write_text(
-        "\n".join(json.dumps({"event": "d2_frame", "frame": frame}) for frame in frames)
+        "\n".join(
+            json.dumps(
+                {
+                    "event": "d2_frame",
+                    "seed": 11,
+                    "episode_id": "episode-011",
+                    "scenario_name": "airsim_dense_5v5",
+                    "drone_count": 5,
+                    "frame": frame,
+                }
+            )
+            for frame in frames
+        )
     )
 
     loaded_frames = load_airsim_replay_frames(replay_path)
     report = run_airsim_replay_association(
         loaded_frames,
         replay_name="airsim_dense_5v5",
+        risk_thresholds=RiskThresholds(
+            profile_name="p1_calibration",
+            profile_version="2026-07-08",
+        ),
         gate_thresholds=[5.99, 9.21],
     )
 
     assert report.frame_count == len(frames)
     assert report.target_count == 5
     assert report.metrics["frame_count"] == len(frames)
+    assert report.replay_metadata["seed"] == 11
+    assert report.replay_metadata["episode_id"] == "episode-011"
+    assert report.replay_metadata["scenario_name"] == "airsim_dense_5v5"
+    assert report.replay_metadata["drone_count"] == 5
     assert "id_switch_count" in report.metrics
     assert "track_continuity" in report.metrics
     assert "duplicate_assignment_count" in report.metrics
     assert len(report.association_logs) == len(frames)
     assert len(report.global_track_ids) == 5
     assert report.risk_summary["id_switch_count"] == report.metrics["id_switch_count"]
+    assert report.risk_summary["thresholds"]["profile_version"] == "2026-07-08"
     assert "soft_risk_frame_count" in report.risk_summary
     assert "hard_risk_frame_count" in report.risk_summary
     assert len(report.threshold_sensitivity) == 2
     for row in report.threshold_sensitivity:
         assert row["target_count"] == 5
+        assert row["seed"] == 11
+        assert row["episode_id"] == "episode-011"
+        assert row["scenario_name"] == "airsim_dense_5v5"
+        assert row["drone_count"] == 5
+        assert row["risk_profile"] == "p1_calibration"
+        assert row["risk_profile_version"] == "2026-07-08"
         assert "id_switch_count" in row
         assert "track_continuity" in row
         assert "duplicate_assignment_count" in row
+        assert "soft_risk_frame_count" in row
+        assert "hard_risk_frame_count" in row
         assert "risk_summary" in row
 
     report_path = tmp_path / "d2_report.json"
@@ -94,8 +123,46 @@ def test_airsim_jsonl_replay_runs_5_target_association_and_writes_logs(tmp_path)
     report_json = json.loads(report_path.read_text())
     log_lines = [json.loads(line) for line in logs_path.read_text().splitlines()]
     assert report_json["replay_name"] == "airsim_dense_5v5"
+    assert report_json["replay_metadata"]["seed"] == 11
     assert len(log_lines) == len(frames)
     assert "risk_summary" in log_lines[-1]
+
+
+def test_replay_target_count_falls_back_to_input_count_without_truth_labels() -> None:
+    frames = []
+    for step in range(3):
+        detections = []
+        for index in range(6):
+            detections.append(
+                {
+                    "detection_id": f"det-{step}-{index}",
+                    "position": {
+                        "x": float(step),
+                        "y": float(index * 12),
+                        "z": -15.0,
+                    },
+                    "covariance": [[0.3, 0.0], [0.0, 0.3]],
+                }
+            )
+        frames.append(
+            {
+                "timestamp": float(step),
+                "detections": detections,
+                "replay_metadata": {
+                    "seed": 22,
+                    "episode_id": "episode-022",
+                    "scenario_name": "airsim_nvn_no_truth",
+                },
+            }
+        )
+
+    report = run_airsim_replay_association(frames, replay_name="airsim_nvn_no_truth")
+
+    assert report.target_count == 6
+    assert report.replay_metadata["seed"] == 22
+    assert report.metrics["id_switch_count"] == 0
+    assert "track_continuity" in report.metrics
+    assert len(report.association_logs) == len(frames)
 
 
 def test_threshold_sensitivity_outputs_required_metrics_for_variable_target_count() -> None:

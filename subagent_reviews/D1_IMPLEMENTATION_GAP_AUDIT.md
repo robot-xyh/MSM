@@ -4,24 +4,25 @@
 **范围**: 对照 `subagent_reviews/D1_SENSOR_FUSION_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md`、`research_modules/d1_sensor_fusion` 源码和测试，审计共识算法、开源方案和当前实现差距。  
 **边界**: 本审计只覆盖离线科研仿真、数据合同、传感器观测、航迹融合和评估接口；不涉及真实飞控、硬件驱动、火控、毁伤或自动处置。
 
-**更新时间**: 2026-07-07。
+**更新时间**: 2026-07-08。
 
 ## 1. 总体结论
 
-D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy EKF/FusionAdapter -> GlobalTrack`，支持雷达、声学、EO、可选合成 LiDAR，具备测量时刻/到达时刻分离、fixed-lag replay 延迟补偿、可参数化距离/置信度相关协方差、AirSim dry-run fake fixture、跨节点通信元数据、source lineage 去重基线、`TrackUncertaintySummary` 导出、replay schema v1/legacy JSONL 兼容、最小 CSV reader/replay、`LatencyAuditSummary` 和轻量 `FusionQualityRegionSummary`。D1 接收 main 提供的 N 个 target truth/观测源，并按输入数组长度处理 `SensorObservation[]` 与 `GlobalTrack[]`；真实 AirSim runtime bridge 仍由 shared/main 层负责，D1 不直连 AirSim。
+D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy EKF/FusionAdapter -> GlobalTrack`，支持雷达、声学、EO、可选合成 LiDAR，具备测量时刻/到达时刻分离、fixed-lag replay 延迟补偿、可参数化距离/置信度相关协方差、AirSim dry-run fake fixture、跨节点通信元数据、source lineage 去重基线、`TrackUncertaintySummary` 导出、replay schema v1/legacy JSONL 兼容、最小 CSV reader/replay、`LatencyAuditSummary`、轻量 `FusionQualityRegionSummary` 和 `ReconCueSummary` 粗指向摘要。D1 接收 main 提供的 N 个 target truth/观测源，并按输入数组长度处理 `SensorObservation[]` 与 `GlobalTrack[]`；真实 AirSim runtime bridge 仍由 shared/main 层负责，D1 不直连 AirSim。
 
 尚未实现的主要是外部成熟框架集成：Stone Soup、FilterPy、ROS 2 `tf2`、`message_filters`、UKF、IMM、D1 包内真实 AirSim ComputerVision/Blocks 运行时适配。这些目前有文档计划或占位类，但未作为 D1 运行依赖接入。原因主要是当前阶段强调依赖轻、可复现、离线测试稳定，且缺少 ROS 2 runtime、稳定真实 AirSim detection schema/外参标定链路、长期真实样本回归和多模型评估基准。
 
 优先级建议：
 
-- **P0**: 保持当前 NumPy EKF、传感器观测模型、延迟补偿和 AirSim dry-run 合同稳定。
-- **P1**: `TrackUncertaintySummary` 发布/导出、Blocks JSONL replay reader、可配置雷达协方差参数、source de-dup 基线、schema v1/legacy JSONL 兼容、最小 CSV reader/replay、latency/OOSM audit 和轻量区域质量摘要已完成；下一步集中补更多 AirSim CV detection fixture、D6 长期批量 schema、区域时间窗口、协方差增长率窗口和真实样本回归。2026-07-07 复核确认，main runtime bus、D3 版本化重规划、D4 主动降级软/硬风险拆分、D5 终端一致性窗口修复后，D1 未出现新的 P0 断链。
+- **P0**: 无 P0 blocker；当前 NumPy EKF、传感器观测模型、延迟补偿、AirSim dry-run、measurement/arrival timestamp、协方差和 NED `GlobalTrack` 合同均作为持续回归基线维护。
+- **P1**: `TrackUncertaintySummary` 发布/导出、Blocks JSONL replay reader、可配置雷达协方差参数、source de-dup 基线、schema v1/legacy JSONL 兼容、covariance-required CSV reader/replay、latency/OOSM audit、轻量区域质量摘要、`ReconCueSummary` 粗指向摘要和嵌套 EO camera metadata replay 已完成；下一步集中补更多 AirSim CV detection fixture、D6 长期批量 schema、区域时间窗口、协方差增长率窗口和真实样本回归。2026-07-08 复核确认，D1 可读取真实 Blocks JSONL/CSV replay 并保留 multi-seed calibration 需要的 timestamps、covariance、NED state、source support、latency/OOSM audit、区域质量摘要和二级侦察相机 cue 字段。
 - **P2**: 接入 Stone Soup/FilterPy/OpenCV/UKF/IMM 作为离线对照，不替换 NumPy fallback；ROS 2 `tf2/message_filters` 和真实 AirSim bus 直连只有在运行环境、topic schema 和 main/shared runtime 合同稳定后再评估。
 
 ## 1.1 2026-07-07 P1 复核结论
 
 本次复核背景是 main runtime bus 已将真实 AirSim D7 执行结果回灌到正式 episode metrics，D3 补充了中心重规划后的新 `AssignmentPlan` owner/version 元数据，D4 将主动降级硬风险与软质量风险拆分，D5 修正了终端一致性窗口的 key。D1 侧结论如下：
 
+- **2026-07-08 状态确认**: 无 P0 blocker。`ReconCueSummary` 与 `summarize_recon_cue_from_tracks()` 已进入已实现基线，可从 `GlobalTrack[]` 或 track-like dict 输出移动高空侦察节点的 radar/global-track cue，并保留 measurement/arrival timestamp、协方差和 NED 合同。
 - **无新增 P0**: D1 的 `SensorObservation -> FusionAdapter -> GlobalTrack -> TrackUncertaintySummary` 合同仍满足下游输入要求，测试仍应作为 P0 回归。
 - **D4 接口语义收紧**: D1 的协方差、freshness、latency、source support 和 handover readiness 只能作为态势质量证据。单帧 `coarse/stable` 波动、短时 latency 或低 handover readiness 不应被 D4 直接解释为中心节点失效或立即主动降级；D4 需要结合 D3 plan freshness、D5 terminal evidence、C2 health 和持续窗口仲裁。
 - **D3/D7 使用边界不变**: D3 可把 D1 质量摘要纳入分配代价和 replan 依据，D7 可按 `stable/handover`、协方差和 freshness 做导引门控；D1 不生成 plan version，也不修改 D7 PN/PNG 控制律。
@@ -43,6 +44,7 @@ D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy E
 - `TrackUncertaintySummary` 已实现数据类与导出方法，包含协方差迹、`a95`、等级、measurement age、source support、coverage cell、measurement/arrival timestamp 和 handover readiness。
 - `LatencyAuditSummary` 已实现，导出 max/mean delay、replay count、OOSM/stale count、重复观测数和最大 replay 历史长度。
 - `FusionQualityRegionSummary` 已实现轻量区域聚合，按 `coverage_cell` 汇总 track 数、a95、measurement age、handover readiness、source support、source gap 和 stale track 数。
+- `ReconCueSummary` 已实现轻量侦察相机粗指向摘要，按全部 tracks 或指定 `coverage_cell` 子群输出协方差加权 `cue_position_ned`、`cue_covariance`、`active_target_ids`、measurement/arrival timestamp 和基础诊断。
 - source lineage 去重基线已实现，可抑制同一 source/sequence/payload 经 relay 重复投递导致的重复更新。
 - `generate_truth(target_count=N)` 和 CLI `--drone-count N` 已按输入 N 运行，不把算法限制为 2v2 或 5v5；历史 2v2/5v5/3-target 仅作为 baseline 名称或样例。
 
@@ -52,9 +54,10 @@ D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy E
 - AirSim/Blocks 集成在 D1 侧完成 fake fixture 和 JSONL replay；真实 AirSim 连接、`simGetDetections` 调用、frame capture 和 JSONL 写出属于 main/shared runtime，不在 D1 包内直连。
 - EO 无截图合同已实现，D1 只消费 bbox、相机元数据、时间戳和协方差；但未实现 OpenCV calibration、畸变模型、`solvePnP` 或 `projectPoints` 对照。
 - 合成 LiDAR 仅是 dry-run/replay 观测模型，不是 AirSim LiDAR plugin 或真实硬件桥。
-- `TrackUncertaintySummary` 是单航迹摘要；轻量 `FusionQualityRegionSummary` 已按当前 track summary 聚合。更长时间窗的区域聚合、D6 批量日志 schema、协方差增长率窗口、真实样本回归和更细 NIS 统计仍需后续补齐。
+- `TrackUncertaintySummary` 是单航迹摘要；轻量 `FusionQualityRegionSummary` 和 `ReconCueSummary` 已按当前 track summary/track input 聚合。更长时间窗的区域聚合、D6 批量日志 schema、协方差增长率窗口、真实样本回归和更细 NIS 统计仍需后续补齐。
 - source lineage 去重只解决重复 payload；未知相关性的跨节点 Track-to-Track fusion、协方差交叉和相关性降权尚未实现。
 - JSONL replay schema v1/legacy 兼容和最小 CSV reader 已完成；更多真实 Blocks/CV fixture 回归仍未完成。
+- 2026-07-08 已补强 CSV 缺省 schema 行的 v1/covariance 验证、嵌套 EO camera metadata 解析和 Blocks calibration CSV 回归；更多真实 Blocks/CV fixture 回归仍未完成。
 
 ### 2.3 未实现
 
@@ -94,6 +97,7 @@ D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy E
 | 延迟补偿消融实验 | 已实现。测试要求补偿 RMSE 明显优于未补偿 | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/simulation.py`; `research_modules/d1_sensor_fusion/tests/test_simulation_metrics.py`; `research_modules/d1_sensor_fusion/reports/EXPERIMENT_REPORT.md` | 不适用 | 需要扩大到 main `--drone-count N` 集成、跨节点通信、二级节点转发延迟；历史 2v2/5v5 只作为 baseline | P1 |
 | 协方差输出与航迹分级 | 已实现。输出 6x6 协方差、`a95_m`、`coarse/stable/handover`、NIS 通过率参与分级，并可导出 `TrackUncertaintySummary` 与轻量 `FusionQualityRegionSummary` | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/fusion.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/metrics.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/types.py` | 不适用 | 后续可继续对齐 D4/D6 长期窗口和批量日志字段 | P1 已完成基线 |
 | `TrackUncertaintySummary` / `FusionQualityRegionSummary` | 已实现 D1 单航迹摘要、`FusionAdapter.track_uncertainty_summaries()` 和 `FusionAdapter.region_quality_summaries()` 导出。字段包含 track IDs、协方差迹/a95、等级、measurement age、source support、coverage cell、时间戳、source gap 和 stale track 数 | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/types.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/fusion.py`; `research_modules/d1_sensor_fusion/tests/test_interfaces.py` | 不适用 | 后续可继续补区域时间窗口、协方差增长率窗口、D6 批量日志 schema 和更细 NIS 统计 | P1 已完成基线 |
+| `ReconCueSummary` 侦察粗指向摘要 | 已实现。`summarize_recon_cue_from_tracks()` 可从 `GlobalTrack[]` 或 track-like dict 生成全部目标或指定 `coverage_cell` 的协方差加权 `cue_position_ned`/centroid、`cue_covariance`、`active_target_ids`、时间戳和 `track_count/stale_count/default_covariance_count` 诊断 | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/recon_cue.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/types.py`; `research_modules/d1_sensor_fusion/tests/test_recon_cue.py` | 不适用 | main/AirSim runtime 仍负责消费该摘要并控制二级侦察相机指向；D1 不修改 runtime | P1 已完成基线 |
 | 多传感器来源去重/相关性降权 | 已实现 source lineage 去重基线。相同 source/sequence/payload lineage 或 relay 重复投递不会重复更新同一观测 | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/types.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/fusion.py`; `research_modules/d1_sensor_fusion/tests/test_interfaces.py` | 不适用 | 未实现未知相关性跨节点 Track-to-Track fusion、协方差交叉或相关性降权模型 | P1 已完成基线 |
 | 航迹到航迹融合 / 协方差交叉 | 未实现。Stone Soup Track Fusion 仅在主流方案中列为候选 | `C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/compat.py` | 当前 D1 融合的是观测到航迹，不是多节点 Track-to-Track | 需要节点级 TrackSummary、相关性未知处理、融合权威规则 | P2 |
 | AirSim dry-run fake fixture | 已实现。可从 fake fixture 生成 radar/acoustic/eo/lidar `SensorObservation[]`，不连接真实 AirSim | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/airsim_dry_run.py`; `research_modules/d1_sensor_fusion/tests/test_airsim_dry_run.py`; `research_modules/d1_sensor_fusion/docs/AIRSIM_INTEGRATION_PLAN.md` | 不适用 | 需要继续与 shared/main 的 Blocks JSONL 输出保持回归一致 | P0 |
@@ -101,9 +105,9 @@ D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy E
 | shared/main AirSim Blocks D1 replay 写出 | shared runtime 可从 Blocks frame 生成 `SensorObservation` 并写 `blocks_sensor_observations.jsonl`；D1 包内已能读取该 JSONL 并回放 `FusionAdapter` | `research_modules/airsim_runtime/adapters.py`; `research_modules/airsim_runtime/orchestrator.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/replay.py`; `research_modules/d1_sensor_fusion/tests/test_airsim_dry_run.py` | 不适用 | 后续需继续跟随 schema 演进补更多真实输出回归样本 | P1 已完成基线 |
 | 真实 AirSim ComputerVision / Blocks runtime | 未在 D1 包内实现。D1 只提供 fake fixture 和 `SensorObservation` 类型；真实 AirSim 连接、frame capture、`simGetDetections` 和 JSONL 写出在 main/shared 层 | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/airsim_dry_run.py`; `research_modules/d1_sensor_fusion/docs/AIRSIM_INTEGRATION_PLAN.md`; `research_modules/airsim_runtime/real_runtime.py` | 避免 D1 依赖 AirSim Python 包和 runtime；真实 AirSim orchestration 由 main/shared 层负责 | 需要稳定 Blocks JSONL/detection schema、真实相机外参、actor ID 映射、时间戳来源和长期 fixture 回归 | P1 fixture / P2 后置直连 |
 | AirSim `simGetDetections` 直接适配 | 未实现 D1 直连。当前要求 main/shared runtime 转成 bbox/camera metadata JSONL/CSV 或 fake fixture，D1 负责离线 reader/replay 和字段回归 | `research_modules/d1_sensor_fusion/docs/AIRSIM_INTEGRATION_PLAN.md`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/airsim_dry_run.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/replay.py` | 避免 D1 依赖 AirSim Python 包和 runtime | P1 需要真实 Blocks/CV fixture 覆盖 detection 字段；D1 直连 AirSim API 需等 runtime 合同稳定后再评估 | P1 fixture / P2 后置直连 |
-| JSONL/CSV replay 输入合同 | 已实现 replay schema v1、legacy `blocks_sensor_observations.jsonl` 兼容、未来 `sensor_observations.jsonl` reader 和最小 CSV reader/replay | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/replay.py`; `research_modules/d1_sensor_fusion/tests/test_airsim_dry_run.py`; `research_modules/airsim_runtime/orchestrator.py` | 不适用 | 需要更多真实 Blocks/CV fixture 和 D6 长期批量 schema 对齐 | P1 已完成轻量基线 |
+| JSONL/CSV replay 输入合同 | 已实现 replay schema v1、legacy `blocks_sensor_observations.jsonl` 兼容、未来 `sensor_observations.jsonl` reader 和 CSV reader/replay；CSV 缺省 schema 行按 v1 验证并要求 covariance，Blocks calibration CSV 测试覆盖 timestamps、covariance、source support、NED state、latency/OOSM audit 和区域质量摘要 | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/replay.py`; `research_modules/d1_sensor_fusion/tests/test_airsim_dry_run.py`; `research_modules/airsim_runtime/orchestrator.py` | 不适用 | 需要更多真实 Blocks/CV fixture 和 D6 长期批量 schema 对齐 | P1 已完成轻量基线 |
 | N-target D1 独立真值生成 | 已实现。`generate_truth(target_count=N)` 不再把目标数裁剪到 2/5 或 1-3，命令行统一使用 `--drone-count N`，历史 3 目标输出保留为 baseline | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/simulation.py`; `research_modules/d1_sensor_fusion/scripts/run_simulation.py` | 不适用 | 系统级真值仍由 main/integrated 场景提供，D1 只消费其输出 | P1 已完成基线 |
-| 单元/接口测试 | 已实现。覆盖时间戳、桶、协方差增长与参数化、延迟观测、通信元数据、dry-run、JSONL/CSV replay、source de-dup、TrackUncertaintySummary、LatencyAuditSummary、FusionQualityRegionSummary、N actor 合同和仿真指标 | `research_modules/d1_sensor_fusion/tests/test_interfaces.py`; `research_modules/d1_sensor_fusion/tests/test_airsim_dry_run.py`; `research_modules/d1_sensor_fusion/tests/test_simulation_metrics.py` | 不适用 | 更多真实 AirSim CV 场景和 JSONL/CSV 样本仍可后续扩充；2v2/5v5 只作为 baseline 回归命名 | P0/P1 |
+| 单元/接口测试 | 已实现。覆盖时间戳、桶、协方差增长与参数化、延迟观测、通信元数据、dry-run、JSONL/CSV replay、source de-dup、TrackUncertaintySummary、LatencyAuditSummary、FusionQualityRegionSummary、ReconCueSummary、N actor 合同、嵌套 camera metadata replay、Blocks calibration CSV 字段保真和仿真指标 | `research_modules/d1_sensor_fusion/tests/test_interfaces.py`; `research_modules/d1_sensor_fusion/tests/test_airsim_dry_run.py`; `research_modules/d1_sensor_fusion/tests/test_recon_cue.py`; `research_modules/d1_sensor_fusion/tests/test_simulation_metrics.py` | 不适用 | 更多真实 AirSim CV 场景和 JSONL/CSV 样本仍可后续扩充；2v2/5v5 只作为 baseline 回归命名 | P0/P1 |
 
 ## 4. 主要未实现原因归类
 
@@ -118,7 +122,7 @@ D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy E
 
 - **真实运行环境条件**: ROS 2 runtime、tf tree、topic schema、bag/replay 工具、AirSim Blocks 稳定启动和长期 fixture 样本。
 - **传感器/坐标条件**: 真实或稳定仿真的相机内外参、畸变模型、AirSim detection 字段映射、actor ID 映射、统一时间戳来源和 WGS84/ENU 到 NED 的外部转换合同。
-- **数据合同条件**: `sensor_observations.jsonl` schema v1、legacy Blocks JSONL 兼容、最小 CSV reader 和轻量区域质量摘要已落地；仍需 D6 可消费的长期批量摘要字段、区域时间窗口和 coverage cell 规则细化。
+- **数据合同条件**: `sensor_observations.jsonl` schema v1、legacy Blocks JSONL 兼容、最小 CSV reader、轻量区域质量摘要和 `ReconCueSummary` 粗指向摘要已落地；仍需 D6 可消费的长期批量摘要字段、区域时间窗口和 coverage cell 规则细化。
 - **算法评估条件**: UKF/IMM/Stone Soup/FilterPy 对照场景、强非线性/高机动/多节点相关观测基准、误差门限和与 NumPy EKF fallback 的容差定义。
 - **多节点融合条件**: 节点级 TrackSummary、相关性未知处理策略、协方差交叉/Track-to-Track fusion 权威规则和 source lineage 之外的相关性降权模型。
 
@@ -136,16 +140,18 @@ D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy E
 - D3 可使用 `track_level`、`a95_m`、协方差、`measurement_age_s`、`source_support` 和 `handover_readiness` 判断目标是否进入分配候选。
 - D1 不生成 `AssignmentPlan`，也不管理 plan version；D3 必须继续按版本化计划拒绝 stale input。
 - 如果 D1 航迹只处于 `coarse` 或 measurement age 过大，D3 应倾向继续观测、请求补传感器或保守分配，而不是把低质量航迹当成稳定目标。
+- `ReconCueSummary` 可帮助 main/runtime 指向目标群或 `coverage_cell` 子群，但不替代 D3 的资源分配、版本化计划或重规划逻辑。
 
 ### 6.3 对 D5 末端关联
 
 - D1 已支持 EO bbox/center pixel/camera metadata 的无截图合同，并输出可投影的 NED `GlobalTrack` 与协方差。D5 可用这些字段做相机平面门控和末端身份确认。
+- `ReconCueSummary` 可作为二级侦察相机的粗指向 cue；D5 仍需用自身终端观测做身份确认，不能把 cue 当作在线 truth ID。
 - D5 不得改写 `global_track_id`；末端视觉结果应作为 `TerminalAssociation`、`IdentityClaim` 或反馈证据回流，而不是本地重绑定中心 ID。
 - 当前 D1 未实现 OpenCV calibration、畸变校正、`solvePnP` 或跨视角几何一致性；这些若进入 D5，应通过相机 metadata 和投影残差与 D1 合同对齐。
 
 ### 6.4 对 D6 评估指标
 
-- D6 可消费 D1 已有 RMSE、track continuity、grading accuracy、延迟补偿消融、`TrackUncertaintySummary`、`FusionQualityRegionSummary`、`LatencyAuditSummary`、source diversity 和 duplicate observation count。
+- D6 可消费 D1 已有 RMSE、track continuity、grading accuracy、延迟补偿消融、`TrackUncertaintySummary`、`FusionQualityRegionSummary`、`ReconCueSummary`、`LatencyAuditSummary`、source diversity 和 duplicate observation count。
 - D1 已提供最小 CSV reader、区域质量摘要和 OOSM replay 计数；仍未提供 D6 长期批量 schema、区域时间窗口、协方差增长率窗口和长期区域/freshness 趋势字段。
 - D6 的 `id_switch_count` 仍由 D2/系统日志显式提供；D1 不应用 truth ID 在线替代该指标。
 
@@ -165,11 +171,12 @@ D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy E
 2. **CSV reader/转换工具**: 已实现最小 CSV reader/replay；JSONL-to-CSV 导出工具可在 D6 长期 schema 稳定后再补。
 3. **区域质量摘要**: 已基于 `TrackUncertaintySummary` 增加轻量 `FusionQualityRegionSummary`，聚合 coverage cell、source gap、freshness、a95 和 handover readiness。
 4. **延迟补偿审计**: 已记录 max/mean latency、OOSM replay 次数、stale/OOSM count、重复观测计数和 replay 历史长度。
-5. **source de-dup 与 replay 回归**: source lineage de-dup、Blocks JSONL replay、legacy JSONL 兼容和 N actor 合同已进入测试基线。
+5. **侦察粗指向摘要**: 已提供 `ReconCueSummary`/`summarize_recon_cue_from_tracks()`，覆盖全部 tracks、`coverage_cell` 过滤、缺省协方差保守降权和时间戳保留。
+6. **source de-dup 与 replay 回归**: source lineage de-dup、Blocks JSONL replay、legacy JSONL 兼容和 N actor 合同已进入测试基线。
 
 剩余 P1：
 
-1. **AirSim CV/Blocks fixture 回归**: 增加来自 main/shared runtime 的 `simGetDetections`/detector boxes JSONL/CSV 样本，覆盖 actor label、camera metadata、timestamp、bbox covariance 和 N actor 输出；D1 仍不直连真实 AirSim runtime bus。
+1. **AirSim CV/Blocks fixture 回归**: D1 已有 Blocks calibration CSV 字段保真回归；仍需增加来自 main/shared runtime 的 `simGetDetections`/detector boxes JSONL/CSV 样本，覆盖更多 actor label、camera metadata、timestamp、bbox covariance 和 N actor 输出；D1 仍不直连真实 AirSim runtime bus。
 2. **D6 长期批量 schema**: 对齐 `TrackUncertaintySummary[]`、`LatencyAuditSummary` 和 `FusionQualityRegionSummary[]` 的长期 JSONL/CSV 字段。
 3. **区域时间窗口**: 在轻量区域摘要之上补 windowed freshness/source-gap/a95/handover readiness 趋势。
 4. **协方差增长率窗口**: 为 `covariance_growth_rate` 补窗口化计算、阈值和真实样本回归。

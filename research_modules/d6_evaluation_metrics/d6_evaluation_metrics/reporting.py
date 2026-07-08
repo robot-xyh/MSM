@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 import matplotlib
 
@@ -57,6 +58,17 @@ class ReportGenerator:
             "multi_view_consensus_rate",
             "cross_view_conflict_count",
             "duplicate_terminal_lock_count",
+        ],
+        "secondary_sensing": [
+            "secondary_network_joint_full_view_frame_rate",
+            "secondary_network_mean_coverage_ratio",
+            "secondary_single_camera_full_view_frame_rate",
+            "cross_view_association_count",
+            "secondary_detect_available_but_not_registered_count",
+            "cue_pointing_error_mean_deg",
+            "cue_pointing_error_rmse_deg",
+            "gimbal_pointing_error_mean_deg",
+            "gimbal_pointing_error_rmse_deg",
         ],
         "communication": [
             "cross_node_latency_ms",
@@ -129,7 +141,15 @@ class ReportGenerator:
     ) -> Path:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        rows = [episode.to_dict() for episode in episodes]
+        rows = []
+        for episode in episodes:
+            row = episode.to_dict()
+            row["metadata"] = json.dumps(
+                row.get("metadata", {}),
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            rows.append(row)
         fieldnames = [
             "episode_id",
             "seed",
@@ -138,7 +158,7 @@ class ReportGenerator:
             "metric_scope",
             *EpisodeMetrics.scale_names(),
             "duration",
-        ] + EpisodeMetrics.metric_names()
+        ] + EpisodeMetrics.metric_names() + ["metadata"]
         with path.open("w", newline="", encoding="utf-8") as stream:
             writer = csv.DictWriter(stream, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
@@ -208,6 +228,8 @@ class ReportGenerator:
         episode_list = list(episodes)
         summary_rows = self.summarize(episode_list)
         scenario_rows = _metric_scope_seed_scenario_scale_rows(episode_list)
+        secondary_sensing_rows = _secondary_sensing_comparison_rows(episode_list)
+        reject_reason_rows = _reject_reason_rows(episode_list)
 
         lines = [
             f"# {title}",
@@ -277,10 +299,51 @@ class ReportGenerator:
                     )
                 )
 
+        section_number = 3 if scenario_rows else 2
+        if secondary_sensing_rows:
+            lines.extend(
+                [
+                    "",
+                    f"## {section_number}. 二级视角节点对比",
+                    "",
+                    "该表仅消费 main/D4/D5 已写盘日志，比较固定俯视二级节点与机动高空侦察云台节点；D6 不参与控制、cue 下发或云台指向。",
+                    "",
+                    "| Metrics scope | Seed | 场景 | Node type | Drone count | Resource count | Target count | Camera count | Joint full-view rate | Mean coverage ratio | Single-camera full-view rate | Mean cross-view assoc count | Mean detect-not-registered count | Cue error mean deg | Gimbal error mean deg |",
+                    "|---|---|---|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|",
+                ]
+            )
+            for row in secondary_sensing_rows:
+                lines.append(
+                    "| {metric_scope} | {seed} | {scenario_group} | {node_type} | {drone_count} | {resource_count} | {target_count} | {camera_count} | {joint_full_view_rate:.6g} | {mean_coverage_ratio:.6g} | {single_camera_full_view_rate:.6g} | {cross_view_association_count:.6g} | {detect_not_registered_count:.6g} | {cue_error_mean_deg:.6g} | {gimbal_error_mean_deg:.6g} |".format(
+                        **row
+                    )
+                )
+            section_number += 1
+
+        if reject_reason_rows:
+            lines.extend(
+                [
+                    "",
+                    f"## {section_number}. Reject reason 分布",
+                    "",
+                    "| Metrics scope | Seed | 场景 | Drone count | Resource count | Target count | Camera count | 分布 | Reason | Count |",
+                    "|---|---|---|---|---|---|---|---|---|---:|",
+                ]
+            )
+            for row in reject_reason_rows:
+                lines.append(
+                    "| {metric_scope} | {seed} | {scenario_group} | {drone_count} | {resource_count} | {target_count} | {camera_count} | {distribution} | {reason} | {count} |".format(
+                        **row
+                    )
+                )
+            section_number += 1
+
+        plot_section_number = section_number
+        explanation_section_number = section_number + 1
         lines.extend(
             [
                 "",
-                "## 3. 图表与曲线",
+                f"## {plot_section_number}. 图表与曲线",
                 "",
                 "![探测指标图](plots/detection_metrics.png)",
                 "",
@@ -292,6 +355,8 @@ class ReportGenerator:
                 "",
                 "![末端指标图](plots/terminal_metrics.png)",
                 "",
+                "![二级视角指标图](plots/secondary_sensing_metrics.png)",
+                "",
                 "![通信指标图](plots/communication_metrics.png)",
                 "",
                 "![导引门控指标图](plots/guidance_metrics.png)",
@@ -300,7 +365,7 @@ class ReportGenerator:
                 "",
                 "![关键指标分布图](plots/selected_metric_distributions.png)",
                 "",
-                "## 4. 解读说明",
+                f"## {explanation_section_number}. 解读说明",
                 "",
                 "- 探测、跟踪、分配、降级、末端配准、通信、导引门控和安全指标分开报告，避免单一命中率掩盖问题。",
                 "- 计数类指标应与比例类指标一起检查，少量但严重的安全事件可能被总体成功率掩盖。",
@@ -585,3 +650,229 @@ def _mean_metric(episodes: list[EpisodeMetrics], metric_name: str) -> float:
     if not episodes:
         return 0.0
     return float(np.mean([float(getattr(episode, metric_name)) for episode in episodes]))
+
+
+def _secondary_sensing_comparison_rows(
+    episodes: list[EpisodeMetrics],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for metric_scope, seed, scenario_group, scoped_episodes in (
+        _metric_scope_seed_scenario_scale_rows(episodes)
+    ):
+        if not _has_secondary_sensing_data(scoped_episodes):
+            continue
+
+        common = {
+            "metric_scope": metric_scope,
+            "seed": seed,
+            "scenario_group": scenario_group,
+            "drone_count": _scale_range_text(scoped_episodes, "drone_count"),
+            "resource_count": _scale_range_text(scoped_episodes, "resource_count"),
+            "target_count": _scale_range_text(scoped_episodes, "target_count"),
+            "camera_count": _scale_range_text(scoped_episodes, "camera_count"),
+        }
+        rows.append(
+            {
+                **common,
+                "node_type": "all_secondary_network",
+                "joint_full_view_rate": _mean_metric(
+                    scoped_episodes,
+                    "secondary_network_joint_full_view_frame_rate",
+                ),
+                "mean_coverage_ratio": _mean_metric(
+                    scoped_episodes,
+                    "secondary_network_mean_coverage_ratio",
+                ),
+                "single_camera_full_view_rate": _mean_metric(
+                    scoped_episodes,
+                    "secondary_single_camera_full_view_frame_rate",
+                ),
+                "cross_view_association_count": _mean_metric(
+                    scoped_episodes,
+                    "cross_view_association_count",
+                ),
+                "detect_not_registered_count": _mean_metric(
+                    scoped_episodes,
+                    "secondary_detect_available_but_not_registered_count",
+                ),
+                "cue_error_mean_deg": _mean_metric(
+                    scoped_episodes,
+                    "cue_pointing_error_mean_deg",
+                ),
+                "gimbal_error_mean_deg": _mean_metric(
+                    scoped_episodes,
+                    "gimbal_pointing_error_mean_deg",
+                ),
+            }
+        )
+
+        node_types = _secondary_node_types_for_group(scoped_episodes)
+        for node_type in node_types:
+            rows.append(
+                {
+                    **common,
+                    "node_type": node_type,
+                    "joint_full_view_rate": _mean_secondary_node_metric(
+                        scoped_episodes,
+                        node_type,
+                        "secondary_network_joint_full_view_frame_rate",
+                    ),
+                    "mean_coverage_ratio": _mean_secondary_node_metric(
+                        scoped_episodes,
+                        node_type,
+                        "secondary_network_mean_coverage_ratio",
+                    ),
+                    "single_camera_full_view_rate": _mean_secondary_node_metric(
+                        scoped_episodes,
+                        node_type,
+                        "secondary_single_camera_full_view_frame_rate",
+                    ),
+                    "cross_view_association_count": _mean_secondary_node_metric(
+                        scoped_episodes,
+                        node_type,
+                        "cross_view_association_count",
+                    ),
+                    "detect_not_registered_count": _mean_secondary_node_metric(
+                        scoped_episodes,
+                        node_type,
+                        "secondary_detect_available_but_not_registered_count",
+                    ),
+                    "cue_error_mean_deg": _mean_secondary_node_metric(
+                        scoped_episodes,
+                        node_type,
+                        "cue_pointing_error_mean_deg",
+                    ),
+                    "gimbal_error_mean_deg": _mean_secondary_node_metric(
+                        scoped_episodes,
+                        node_type,
+                        "gimbal_pointing_error_mean_deg",
+                    ),
+                }
+            )
+    return rows
+
+
+def _has_secondary_sensing_data(episodes: list[EpisodeMetrics]) -> bool:
+    metric_names = (
+        "secondary_network_joint_full_view_frame_rate",
+        "secondary_network_mean_coverage_ratio",
+        "secondary_single_camera_full_view_frame_rate",
+        "cross_view_association_count",
+        "secondary_detect_available_but_not_registered_count",
+        "cue_pointing_error_count",
+        "gimbal_pointing_error_count",
+    )
+    if any(any(float(getattr(episode, name)) for name in metric_names) for episode in episodes):
+        return True
+    return any(_secondary_node_metrics(episode) for episode in episodes)
+
+
+def _secondary_node_types_for_group(episodes: list[EpisodeMetrics]) -> list[str]:
+    present = {
+        node_type
+        for episode in episodes
+        for node_type in _secondary_node_metrics(episode)
+    }
+    if present:
+        present.update({"fixed_downlook_secondary", "mobile_recon_gimbal"})
+    preferred = [
+        "fixed_downlook_secondary",
+        "mobile_recon_gimbal",
+        "secondary_network",
+    ]
+    ordered = [node_type for node_type in preferred if node_type in present]
+    ordered.extend(sorted(present - set(ordered)))
+    return ordered
+
+
+def _mean_secondary_node_metric(
+    episodes: list[EpisodeMetrics],
+    node_type: str,
+    metric_name: str,
+) -> float:
+    values = [
+        float(metrics.get(metric_name, 0.0))
+        for episode in episodes
+        for metrics in [_secondary_node_metrics(episode).get(node_type, {})]
+    ]
+    return float(np.mean(values)) if values else 0.0
+
+
+def _secondary_node_metrics(episode: EpisodeMetrics) -> dict[str, Mapping[str, Any]]:
+    metadata = episode.metadata or {}
+    raw = metadata.get("secondary_sensing_node_type_metrics")
+    if not isinstance(raw, Mapping):
+        return {}
+    return {
+        str(node_type): metrics
+        for node_type, metrics in raw.items()
+        if isinstance(metrics, Mapping)
+    }
+
+
+def _reject_reason_rows(episodes: list[EpisodeMetrics]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for metric_scope, seed, scenario_group, scoped_episodes in (
+        _metric_scope_seed_scenario_scale_rows(episodes)
+    ):
+        distributions = _reject_reason_distributions(scoped_episodes)
+        for distribution, reason, count in distributions:
+            rows.append(
+                {
+                    "metric_scope": metric_scope,
+                    "seed": seed,
+                    "scenario_group": scenario_group,
+                    "drone_count": _scale_range_text(scoped_episodes, "drone_count"),
+                    "resource_count": _scale_range_text(
+                        scoped_episodes,
+                        "resource_count",
+                    ),
+                    "target_count": _scale_range_text(scoped_episodes, "target_count"),
+                    "camera_count": _scale_range_text(scoped_episodes, "camera_count"),
+                    "distribution": distribution,
+                    "reason": reason,
+                    "count": count,
+                }
+            )
+    return rows
+
+
+def _reject_reason_distributions(
+    episodes: list[EpisodeMetrics],
+) -> list[tuple[str, str, int]]:
+    counts: dict[tuple[str, str], int] = {}
+    metadata_keys = {
+        "terminal_switch_reject_reasons": "terminal_switch_reject_reasons",
+        "terminal_switch_reject_reason_pair_counts": (
+            "terminal_switch_reject_reason_pair_counts"
+        ),
+        "terminal_contract_reject_reasons": "terminal_contract_reject_reasons",
+    }
+    for episode in episodes:
+        metadata = episode.metadata or {}
+        for metadata_key, label in metadata_keys.items():
+            for reason, count in _metadata_count_mapping(
+                metadata.get(metadata_key)
+            ).items():
+                key = (label, reason)
+                counts[key] = counts.get(key, 0) + count
+    return [
+        (distribution, reason, count)
+        for (distribution, reason), count in sorted(counts.items())
+    ]
+
+
+def _metadata_count_mapping(value: Any) -> dict[str, int]:
+    if not isinstance(value, Mapping):
+        return {}
+    counts: dict[str, int] = {}
+    for key, raw_count in value.items():
+        reason = str(key).strip()
+        if not reason:
+            continue
+        try:
+            count = int(float(raw_count))
+        except (TypeError, ValueError):
+            continue
+        counts[reason] = counts.get(reason, 0) + count
+    return counts

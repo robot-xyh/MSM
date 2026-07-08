@@ -78,6 +78,8 @@ def sensor_observation_from_csv_row(row: dict[str, Any]) -> SensorObservation:
     Minimal CSV support is intentionally conservative: ``measurement`` and
     ``covariance`` cells should contain JSON arrays. ``metadata``,
     ``communication``, and ``source_support`` cells may contain JSON objects.
+    Rows without an explicit schema version are treated as D1 replay schema v1
+    so AirSim calibration CSVs cannot silently drop covariance.
     """
 
     clean = {str(key): value for key, value in row.items() if key is not None}
@@ -94,7 +96,9 @@ def sensor_observation_from_csv_row(row: dict[str, Any]) -> SensorObservation:
             communication[key] = value
 
     record = {
-        "schema_version": clean.get("schema_version") or clean.get("d1_schema_version"),
+        "schema_version": clean.get("schema_version")
+        or clean.get("d1_schema_version")
+        or REPLAY_SCHEMA_VERSION,
         "observation_id": clean.get("observation_id"),
         "sensor_id": clean.get("sensor_id"),
         "modality": clean.get("modality"),

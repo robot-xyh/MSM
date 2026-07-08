@@ -97,6 +97,45 @@ def test_center_failure_degrades_to_secondary_recon_node_before_distributed_cbba
     assert all(assignment.owner != "sec-1" for assignment in result.assignments.values())
 
 
+def test_center_failure_can_degrade_to_mobile_high_recon_secondary_node() -> None:
+    node_ids = ["mhr-1", "int-1", "int-2"]
+    resources = [
+        ResourceSummary(
+            "mhr-1",
+            "mobile_high_recon",
+            AvailabilityBand.HIGH,
+            CommBand.GOOD,
+            takeover_priority=15,
+            lease_epoch=5,
+            epoch=1,
+            node_role=NodeRole.MOBILE_HIGH_RECON,
+            coordinator_only=True,
+            coverage_cell="cell-north",
+            secondary_coverage_ratio=0.9,
+            gimbal_pointing_ok=True,
+            cue_freshness_s=0.1,
+        ),
+        ResourceSummary("int-1", "observe", AvailabilityBand.HIGH, CommBand.GOOD, epoch=1),
+        ResourceSummary("int-2", "observe", AvailabilityBand.HIGH, CommBand.GOOD, epoch=1),
+    ]
+    tasks = [
+        TrackSummary("task-1", "cell-north", 1.0, ConfidenceBand.HIGH, source_count=3, epoch=1),
+    ]
+    coordinator = FailoverCoordinator("int-1", ["mhr-1", "int-2"])
+    coordinator.update_health(5.0)
+    network = SimulatedNetwork(node_ids=node_ids, packet_loss=0.0, min_delay_s=0.1, max_delay_s=0.1)
+
+    result = coordinator.plan_degraded(tasks, resources, network, now_s=5.0, max_rounds=10)
+    mode = result.final_views["coordination_mode"]
+
+    assert coordinator.leader_id == "mhr-1"
+    assert mode["state"] == "secondary_node"
+    assert mode["leader_role"] == "mobile_high_recon"
+    assert mode["leader_capability_class"] == "mobile_high_recon"
+    assert mode["secondary_capability_class"] == "mobile_high_recon"
+    assert all(assignment.owner != "mhr-1" for assignment in result.assignments.values())
+
+
 def test_secondary_unavailable_falls_back_to_distributed_cbba() -> None:
     node_ids = ["sec-1", "int-1", "int-2"]
     resources = [

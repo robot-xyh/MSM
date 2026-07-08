@@ -35,7 +35,10 @@ class CommBand(str, Enum):
 
 class NodeRole(str, Enum):
     GROUND_BACKUP = "ground_backup"
+    FIXED_TETHERED_SECONDARY = "fixed_tethered_secondary"
     SECONDARY_RECON = "secondary_recon"
+    MOBILE_HIGH_RECON = "mobile_high_recon"
+    MOBILE_SECONDARY_RECON = "mobile_secondary_recon"
     CLUSTER_REPRESENTATIVE = "cluster_representative"
     INTERCEPTOR = "interceptor"
 
@@ -132,9 +135,90 @@ class ResourceSummary:
     coverage_cell: str | None = None
     heartbeat_timestamp_s: float | None = None
     heartbeat_stale_after_s: float = 2.0
+    cue_freshness_s: float | None = None
+    gimbal_pointing_ok: bool | None = None
+    secondary_coverage_ratio: float | None = None
+    cross_view_support_count: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)
+
+
+FIXED_TETHERED_SECONDARY_CLASSES = frozenset(
+    {
+        "fixed_tethered_secondary",
+        "tethered_recon",
+        "secondary_c2",
+    }
+)
+MOBILE_SECONDARY_RECON_CLASSES = frozenset(
+    {
+        "mobile_high_recon",
+        "mobile_secondary_recon",
+    }
+)
+SECONDARY_RECON_CAPABILITY_CLASSES = (
+    FIXED_TETHERED_SECONDARY_CLASSES | MOBILE_SECONDARY_RECON_CLASSES
+)
+SECONDARY_NODE_ROLES = frozenset(
+    {
+        NodeRole.GROUND_BACKUP,
+        NodeRole.FIXED_TETHERED_SECONDARY,
+        NodeRole.SECONDARY_RECON,
+        NodeRole.MOBILE_HIGH_RECON,
+        NodeRole.MOBILE_SECONDARY_RECON,
+    }
+)
+SECONDARY_NODE_ROLE_VALUES = frozenset(role.value for role in SECONDARY_NODE_ROLES)
+
+
+def node_role_value(node_role: Any) -> str:
+    if isinstance(node_role, Enum):
+        return str(node_role.value)
+    if node_role is None:
+        return ""
+    text = str(node_role).strip().lower()
+    if text.startswith("noderole."):
+        return text.split(".", 1)[1]
+    return text
+
+
+def capability_class_value(capability_class: Any) -> str:
+    if capability_class is None:
+        return ""
+    return str(capability_class).strip().lower()
+
+
+def secondary_capability_class(resource: Any) -> str:
+    capability = capability_class_value(getattr(resource, "capability_class", ""))
+    role = node_role_value(getattr(resource, "node_role", None))
+    if capability == "mobile_high_recon" or role == NodeRole.MOBILE_HIGH_RECON.value:
+        return "mobile_high_recon"
+    if capability == "mobile_secondary_recon" or role == NodeRole.MOBILE_SECONDARY_RECON.value:
+        return "mobile_secondary_recon"
+    if capability in FIXED_TETHERED_SECONDARY_CLASSES or role == (
+        NodeRole.FIXED_TETHERED_SECONDARY.value
+    ):
+        return "fixed_tethered_secondary"
+    if role == NodeRole.SECONDARY_RECON.value:
+        return "secondary_recon"
+    if role == NodeRole.GROUND_BACKUP.value:
+        return "ground_backup"
+    return capability or role
+
+
+def is_secondary_node_resource(resource: Any) -> bool:
+    role = node_role_value(getattr(resource, "node_role", None))
+    capability = capability_class_value(getattr(resource, "capability_class", ""))
+    return role in SECONDARY_NODE_ROLE_VALUES or capability in SECONDARY_RECON_CAPABILITY_CLASSES
+
+
+def is_mobile_high_recon_resource(resource: Any) -> bool:
+    return secondary_capability_class(resource) == "mobile_high_recon"
+
+
+def is_fixed_tethered_secondary_resource(resource: Any) -> bool:
+    return secondary_capability_class(resource) == "fixed_tethered_secondary"
 
 
 @dataclass(frozen=True)
@@ -149,6 +233,15 @@ class SecondaryNodeLifecycleSummary:
     secondary_available: bool
     heartbeat: float | None = None
     video_cue_freshness: float | None = None
+    capability_class: str | None = None
+    node_role: str | None = None
+    secondary_capability_class: str | None = None
+    cue_freshness_s: float | None = None
+    gimbal_pointing_ok: bool | None = None
+    secondary_coverage_ratio: float | None = None
+    cross_view_support_count: int | None = None
+    is_mobile_high_recon: bool = False
+    is_fixed_tethered_secondary: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)

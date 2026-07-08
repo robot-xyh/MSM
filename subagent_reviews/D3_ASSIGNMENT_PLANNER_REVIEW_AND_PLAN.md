@@ -2,7 +2,14 @@
 
 **定位**: 在由 main runtime `--drone-count` 决定的 N 对 N 或非等量资源/目标场景中，由中心节点生成滚动 `AssignmentPlan`，并通过迟滞逻辑避免频繁重分配；5v5 只作为示例和基准场景。
 **边界**: 本文只讨论抽象资源-目标匹配、离线评估和人工授权前的候选计划，不包含真实火控参数、毁伤模型或自动处置流程。
-**D3 复核状态 2026-07-08**: P0 无新增缺口；`PlannerConfig.human_authorization_state` 已生效；D5 duplicate/friend/fov/feasibility metadata 可通过 D3 helper 写回下一轮成本或禁配边，main runtime 已接入该 writeback；D4/main 触发 `request_center_replan` 后，main runtime 会再次调用 D3 生成新中心 plan version，并在 episode bus 记录 `replan_reason`、`supersedes_plan_id`、`supersedes_plan_version`、`active_plan_owner=center`；D4/main 选定二级节点后，D3 可生成 `secondary_plan_v2` owner/source/version DTO，main runtime 已接入 secondary owner/version/source 记录；D7 仍只接受当前有效 binding/version。剩余 P1 聚焦真实多 seed 校准和 D5 feedback 权重阈值长期标定，P2 保留 OR-Tools Min Cost Flow optional 后端。
+**D3 复核状态 2026-07-08**: 无 P0 blocker；`PlannerConfig.human_authorization_state` 已生效；D5 duplicate/friend/fov/feasibility metadata 可通过 D3 helper 写回下一轮成本或禁配边，main runtime 已接入该 writeback；D4/main 触发 `request_center_replan` 后，main runtime 会再次调用 D3 生成新中心 plan version，并在 episode bus 记录 `replan_reason`、`supersedes_plan_id`、`supersedes_plan_version`、`active_plan_owner=center`；D4/main 选定二级节点后，D3 可生成 `secondary_plan_v2` owner/source/version DTO，main runtime 已接入 secondary owner/version/source 记录；D6 `AssignmentRecord` 已补齐 current-plan owner/source/schema、replan/takeover reason、previous/supersede、迟滞决策、矩阵规模和 cost gap 字段；D7 仍只接受当前有效 binding/version。剩余 P1 聚焦真实多 seed 校准和 D5 feedback 权重阈值长期标定，P2 保留 OR-Tools Min Cost Flow optional 后端。
+
+当前 D3 P0/P1 缺口清单：
+
+- P0：无 P0 blocker。Hungarian/DP fallback、版本化 `AssignmentPlan`、迟滞、D5 feedback helper/writeback、secondary takeover owner/version DTO 和 D7 binding 均已落地。
+- P1：真实多 seed AirSim/point-mass 校准仍需继续，重点验证 owner/version/source、supersede、cost gap、迟滞状态和 D6 records 在不同 N 规模、非等量 M/N、crossing/dense 场景下稳定可聚合。
+- P1：D5 feedback 权重/迟滞阈值长期标定仍需继续，重点扫描 `fov_difficulty_by_resource`、禁配边、operator hold、hold/replan/secondary_arbitration、`delta/min_dwell/max_changes_per_window/reassignment_switch_penalty`。
+- P2：OR-Tools Min Cost Flow、容量/备份资源/时间窗/分组配额等复杂约束仍是 optional 后端，不是当前 P1 blocker。
 
 ---
 
@@ -17,7 +24,7 @@
 - 迟滞重分配：`delta`、`min_dwell`、`max_changes_per_window`、`reassignment_switch_penalty`。
 - D5 terminal feedback helper，始终 `allow_local_rebind=False`。
 - D7 `AssignmentGuidanceBinding`，携带 `assigned_global_track_id`、`plan_version`、binding state、source/target/link 和 `allow_local_rebind=False`。
-- `AssignmentValiditySummary` 和 D6-compatible `AssignmentRecord` 导出。
+- `AssignmentValiditySummary` 和 D6-compatible `AssignmentRecord` 导出；assignment records 携带 multi-seed 分组所需的 owner/source/schema、replan/takeover reason、previous/supersede、迟滞决策、矩阵规模和 cost gap 字段。
 - synthetic AirSim dry-run adapter，不 import AirSim，不控制 Blocks runtime。
 - `PlannerConfig.human_authorization_state` 透传到 `AssignmentPlan.human_authorization_state`，并写入 `configured_human_authorization_state` / `effective_human_authorization_state` metadata。
 - `apply_terminal_feedback_to_planner_inputs()` 将 D5 duplicate/friend/fov/feasibility metadata 写回下一轮 `TargetTrack[]/ResourceState[]`。

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, Sequence
 
+from .cbba import build_cbba_d6_metadata
 from .coordinator import FailoverCoordinator
 from .models import (
     AvailabilityBand,
@@ -166,15 +167,26 @@ def run_failover_simulation(
         task_id: assignment.to_dict()
         for task_id, assignment in sorted(cbba_result.assignments.items())
     }
+    takeover_time_s = None
+    if takeover_completed_at_s is not None:
+        takeover_time_s = round(takeover_completed_at_s - failure_at_s, 3)
+    cbba_report_metadata = build_cbba_d6_metadata(
+        cbba_result,
+        failover_time_s=takeover_time_s,
+    )
     return {
         "node_count": resolved_node_count,
         "task_count": len(task_list),
         "center_failure_at_s": failure_at_s,
         "takeover_started_at_s": takeover_started_at_s,
         "takeover_completed_at_s": takeover_completed_at_s,
-        "takeover_time_s": None
-        if takeover_completed_at_s is None
-        else round(takeover_completed_at_s - failure_at_s, 3),
+        "takeover_time_s": takeover_time_s,
+        "d4_action": cbba_report_metadata["d4_action"],
+        "coordination_mode": cbba_report_metadata["coordination_mode"],
+        "selected_coordinator": cbba_report_metadata["selected_coordinator"],
+        "leader_id": cbba_report_metadata["leader_id"],
+        "leader_role": cbba_report_metadata["leader_role"],
+        "coverage_cell": cbba_report_metadata["coverage_cell"],
         "consensus_rounds": cbba_result.consensus_rounds,
         "assignment_completion_rate": round(cbba_result.completion_rate, 4),
         "conflict_count": cbba_result.conflict_count,
@@ -184,6 +196,7 @@ def run_failover_simulation(
         "estimated_bytes": cbba_result.estimated_bytes,
         "converged": cbba_result.converged,
         "assignments": assignments,
+        "cbba_report_metadata": cbba_report_metadata,
         "health_transitions": transitions,
     }
 

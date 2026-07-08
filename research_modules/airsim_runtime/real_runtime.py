@@ -917,19 +917,29 @@ class RealAirSimRuntimeClient:
 
         if config.cv_secondary_look_at_enabled:
             for vehicle_name in config.secondary_camera_vehicle_names:
-                target_position = _secondary_look_at_position(config, vehicle_name, truth_objects)
-                if target_position is None:
+                recon_guidance = _secondary_recon_guidance(config, vehicle_name, truth_objects)
+                if recon_guidance is None:
                     continue
-                position = _vehicle_start_offset(config, vehicle_name)
+                target_position = recon_guidance["look_at_ned"]
+                position = recon_guidance["position_ned"]
                 pose_update = self._set_vehicle_pose_look_at(config, vehicle_name, position, target_position)
                 guidance.append(
                     {
                         "vehicle_name": vehicle_name,
                         "role": "secondary_recon_camera",
-                        "target_id": "coverage_centroid",
+                        "capability_class": recon_guidance["capability_class"],
+                        "target_id": recon_guidance["target_id"],
                         "assignment_phase": "secondary_overwatch",
+                        "cue_source": recon_guidance["cue_source"],
+                        "cue_freshness_s": recon_guidance["cue_freshness_s"],
+                        "cue_covariance_trace": recon_guidance["cue_covariance_trace"],
+                        "coverage_cell": recon_guidance["coverage_cell"],
+                        "active_target_ids": recon_guidance["active_target_ids"],
+                        "cue_position_ned": recon_guidance["cue_position_ned"],
                         "position_ned": position,
                         "look_at_ned": target_position,
+                        "cue_pointing_error_m": recon_guidance["cue_pointing_error_m"],
+                        "gimbal_pointing_ok": pose_update.get("pose_update_ok") is True,
                         **pose_update,
                     }
                 )
@@ -1140,19 +1150,103 @@ def _secondary_look_at_position(
     vehicle_name: str,
     truth_objects: tuple[AirSimTruthObject, ...],
 ) -> tuple[float, float, float] | None:
-    if not truth_objects:
+    subset = _secondary_truth_subset(config, vehicle_name, truth_objects)
+    if not subset:
         return None
-    if config.metadata.get("d4d5_stress_enabled"):
-        positions = np.asarray([truth.position_ned for truth in truth_objects], dtype=float)
-        centroid = np.mean(positions, axis=0)
-        return tuple(float(value) for value in centroid)
-    expected_cell = "cell-north" if vehicle_name.endswith("_1") else "cell-south"
-    selected = [truth for truth in truth_objects if truth.coverage_cell == expected_cell]
-    if not selected:
-        selected = list(truth_objects)
-    positions = np.asarray([truth.position_ned for truth in selected], dtype=float)
+    positions = np.asarray([truth.position_ned for truth in subset], dtype=float)
     centroid = np.mean(positions, axis=0)
     return tuple(float(value) for value in centroid)
+
+
+def _secondary_recon_guidance(
+    config: BlocksSmokeConfig,
+    vehicle_name: str,
+    truth_objects: tuple[AirSimTruthObject, ...],
+) -> dict[str, Any] | None:
+    subset = _secondary_truth_subset(config, vehicle_name, truth_objects)
+    if not subset:
+        return None
+    positions = np.asarray([truth.position_ned for truth in subset], dtype=float)
+    cue_position = tuple(float(value) for value in np.mean(positions, axis=0))
+    position = (
+        _mobile_secondary_recon_position(config, vehicle_name, cue_position)
+        if config.cv_secondary_mobile_recon_enabled
+        else _vehicle_start_offset(config, vehicle_name)
+    )
+    coverage_cell = _secondary_expected_cell(config, vehicle_name)
+    cue_error = float(np.linalg.norm(np.asarray(cue_position, dtype=float) - np.asarray(cue_position, dtype=float)))
+    return {
+        "capability_class": (
+            "mobile_high_recon"
+            if config.cv_secondary_mobile_recon_enabled
+            else str(config.metadata.get("secondary_capability_class", "fixed_secondary_recon"))
+        ),
+        "cue_source": (
+            "radar_global_track_cue"
+            if config.cv_secondary_mobile_recon_enabled
+            else str(config.metadata.get("secondary_guidance_source", "coverage_centroid"))
+        ),
+        "cue_freshness_s": 0.0,
+        "cue_covariance_trace": _secondary_cue_covariance_trace(subset),
+        "coverage_cell": coverage_cell,
+        "target_id": f"{coverage_cell}_centroid" if coverage_cell != "all" else "coverage_centroid",
+        "active_target_ids": [truth.object_id for truth in subset],
+        "cue_position_ned": cue_position,
+        "position_ned": position,
+        "look_at_ned": cue_position,
+        "cue_pointing_error_m": cue_error,
+    }
+
+
+def _secondary_truth_subset(
+    config: BlocksSmokeConfig,
+    vehicle_name: str,
+    truth_objects: tuple[AirSimTruthObject, ...],
+) -> list[AirSimTruthObject]:
+    if not truth_objects:
+        return []
+    expected_cell = _secondary_expected_cell(config, vehicle_name)
+    if expected_cell == "all":
+        return list(truth_objects)
+    selected = [truth for truth in truth_objects if truth.coverage_cell == expected_cell]
+    return selected if selected else list(truth_objects)
+
+
+def _secondary_expected_cell(config: BlocksSmokeConfig, vehicle_name: str) -> str:
+    secondary_names = tuple(config.secondary_camera_vehicle_names)
+    try:
+        index = secondary_names.index(vehicle_name)
+    except ValueError:
+        index = 0
+    if len(secondary_names) <= 1:
+        return "all"
+    midpoint = (len(secondary_names) - 1) * 0.5
+    return "cell-north" if index <= midpoint else "cell-south"
+
+
+def _mobile_secondary_recon_position(
+    config: BlocksSmokeConfig,
+    vehicle_name: str,
+    cue_position_ned: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    start = _vehicle_start_offset(config, vehicle_name)
+    standoff = float(config.cv_secondary_recon_standoff_m)
+    return (
+        float(cue_position_ned[0]) - max(standoff, 0.0),
+        float(cue_position_ned[1]),
+        float(start[2]),
+    )
+
+
+def _secondary_cue_covariance_trace(subset: list[AirSimTruthObject]) -> float:
+    if not subset:
+        return 0.0
+    positions = np.asarray([truth.position_ned for truth in subset], dtype=float)
+    if len(subset) <= 1:
+        return 25.0
+    covariance = np.cov(positions.T)
+    trace = float(np.trace(covariance))
+    return max(trace, 25.0)
 
 
 def _look_at_euler_ned(

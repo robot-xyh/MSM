@@ -25,13 +25,14 @@ from .adapter import (
     build_assignment_validity_summary,
     build_association_risk_summary,
     build_communication_summary,
+    build_resource_summary,
     build_distributed_visual_evidence_summary,
     attach_distributed_visual_evidence,
     merge_distributed_visual_evidence_into_tracks,
     build_terminal_association_summary,
     build_track_uncertainty_summary,
 )
-from .cbba import CBBANegotiator, build_cbba_cost_gap_benchmark
+from .cbba import CBBANegotiator, build_cbba_cost_gap_benchmark, build_cbba_d6_metadata
 from .coordinator import FailoverCoordinator
 from .models import (
     Assignment,
@@ -46,8 +47,13 @@ from .models import (
     NodeRole,
     PayloadKind,
     ResourceSummary,
+    SECONDARY_NODE_ROLES,
     SecondaryNodeLifecycleSummary,
     TrackSummary,
+    is_fixed_tethered_secondary_resource,
+    is_mobile_high_recon_resource,
+    is_secondary_node_resource,
+    secondary_capability_class,
 )
 
 __all__ = [
@@ -88,11 +94,18 @@ __all__ = [
     "attach_distributed_visual_evidence",
     "build_communication_summary",
     "build_distributed_visual_evidence_summary",
+    "build_resource_summary",
     "build_d7_secondary_handoff",
     "build_secondary_takeover_plan_metadata",
     "build_cbba_cost_gap_benchmark",
+    "build_cbba_d6_metadata",
     "build_terminal_association_summary",
     "build_track_uncertainty_summary",
+    "is_fixed_tethered_secondary_resource",
+    "is_mobile_high_recon_resource",
+    "is_secondary_node_resource",
     "merge_distributed_visual_evidence_into_tracks",
+    "SECONDARY_NODE_ROLES",
+    "secondary_capability_class",
     "summarize_secondary_lifecycle",
 ]

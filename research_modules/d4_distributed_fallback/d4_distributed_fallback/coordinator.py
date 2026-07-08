@@ -16,7 +16,11 @@ from .models import (
     MergeResult,
     NodeRole,
     ResourceSummary,
+    SECONDARY_NODE_ROLES,
     TrackSummary,
+    is_secondary_node_resource,
+    node_role_value,
+    secondary_capability_class,
 )
 from .network import SimulatedNetwork
 
@@ -34,6 +38,9 @@ COMM_RANK = {
 }
 CAPABILITY_RANK = {
     "secondary_c2": 5,
+    "mobile_high_recon": 5,
+    "mobile_secondary_recon": 5,
+    "fixed_tethered_secondary": 4,
     "tethered_recon": 4,
     "relay": 3,
     "observe": 2,
@@ -41,11 +48,14 @@ CAPABILITY_RANK = {
 }
 ROLE_RANK = {
     NodeRole.GROUND_BACKUP: 0,
-    NodeRole.SECONDARY_RECON: 1,
-    NodeRole.CLUSTER_REPRESENTATIVE: 2,
-    NodeRole.INTERCEPTOR: 3,
+    NodeRole.MOBILE_HIGH_RECON: 1,
+    NodeRole.MOBILE_SECONDARY_RECON: 1,
+    NodeRole.FIXED_TETHERED_SECONDARY: 2,
+    NodeRole.SECONDARY_RECON: 2,
+    NodeRole.CLUSTER_REPRESENTATIVE: 3,
+    NodeRole.INTERCEPTOR: 4,
 }
-SECONDARY_NODE_ROLES = {NodeRole.GROUND_BACKUP, NodeRole.SECONDARY_RECON}
+ROLE_RANK_BY_VALUE = {role.value: rank for role, rank in ROLE_RANK.items()}
 
 
 @dataclass
@@ -148,7 +158,7 @@ class FailoverCoordinator:
         candidates.sort(
             key=lambda resource: (
                 int(resource.takeover_priority),
-                ROLE_RANK.get(resource.node_role, 99),
+                ROLE_RANK_BY_VALUE.get(node_role_value(resource.node_role), 99),
                 -int(resource.lease_epoch),
                 -AVAILABILITY_RANK[resource.availability_band],
                 -COMM_RANK[resource.comm_band],
@@ -185,7 +195,11 @@ class FailoverCoordinator:
             if coordination_mode == "secondary_node"
             else "distributed_fallback_elected",
         )
-        executor_resources = [resource for resource in resources if not resource.coordinator_only]
+        executor_resources = [
+            resource
+            for resource in resources
+            if not resource.coordinator_only and not is_secondary_node_resource(resource)
+        ]
         negotiator = CBBANegotiator(
             node_ids=[resource.node_id for resource in executor_resources],
             epoch=self.epoch,
@@ -197,7 +211,9 @@ class FailoverCoordinator:
         self.last_plan.final_views["coordination_mode"] = {
             "state": coordination_mode,
             "leader_id": leader_resource.node_id,
-            "leader_role": leader_resource.node_role.value,
+            "leader_role": node_role_value(leader_resource.node_role),
+            "leader_capability_class": leader_resource.capability_class,
+            "secondary_capability_class": secondary_capability_class(leader_resource),
             "coverage_cell": leader_resource.coverage_cell or "",
         }
         if not self.last_plan.converged:
@@ -300,16 +316,20 @@ class FailoverCoordinator:
 
     @staticmethod
     def _coordination_mode(leader: ResourceSummary) -> str:
-        if leader.node_role in SECONDARY_NODE_ROLES:
+        if is_secondary_node_resource(leader):
             return "secondary_node"
         return "distributed_cbba"
 
     @staticmethod
     def _resource_covers_task_cells(resource: ResourceSummary, task_cells: set[str]) -> bool:
-        if not task_cells or resource.node_role not in SECONDARY_NODE_ROLES:
+        if not task_cells or not is_secondary_node_resource(resource):
             return True
         return (
             resource.coverage_cell is None
             or resource.coverage_cell == ""
             or resource.coverage_cell in task_cells
+            or (
+                resource.secondary_coverage_ratio is not None
+                and resource.secondary_coverage_ratio > 0.0
+            )
         )

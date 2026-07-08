@@ -11,7 +11,7 @@
 
 D5 使用这些 cue 的原则：
 
-- 二级节点 cue 通过 `ReconImageCue` 表示，包含 `producer_node_id`、`image_frame_id`、`global_track_id`、像素中心/框、置信度和 `scoped_resource_ids`。
+- 二级节点 cue 通过 `ReconImageCue` 表示，包含 `producer_node_id`、`image_frame_id`、`global_track_id`、像素中心/框、置信度和 `scoped_resource_ids`。机动高空侦察云台 cue 还可携带 `cue_position_ned`、`look_at_ned`、`gimbal_pointing_metadata`、`cue_pointing_error_m/rad`、`gimbal_track_error_px`、`cue_source`、`capability_class=mobile_high_recon` 和 `coverage_mode=mobile_recon_gimbal`。
 - cue 只在指定小范围资源内生效，不能跨覆盖区使用。
 - cue 只作为视觉关联代价的辅助证据，不能替代中心授权、版本匹配、友方身份认证和本地 MOT 质量门槛。
 - 即使二级节点 cue 与本地相机目标一致，局部节点也只能输出 `TerminalAssociation`，不得自行改写 `global_track_id`。
@@ -26,7 +26,7 @@ D5 使用这些 cue 的原则：
 
 D5 已补充 dry-run 适配层，用于消费 `simGetDetections` 风格检测框 fixture，不导入 AirSim、不调用控制 API。5v5 只是 stress baseline：5 个 `Interceptor_Cam_*` 主镜头、5 个目标，目标距主镜头约 50m，目标间距约 20m，镜头间距约 20m，使每个主镜头视场内出现多个目标；二级系留侦察镜头比目标高约 200m，分辨率更高并提供全局视野 cue。真实 N-v-N 数量由 main runtime 的 `--drone-count N` 统一控制，D5 只按 `LocalVisualTrack[]`、`GlobalTrack[]`、camera/resource 列表和 bus observation 长度运行。
 
-在线配准只使用 bbox、时间戳、本地 MOT ID、类别/置信度和相机几何。AirSim detection 的 `object_id`、`actor_name`、truth ID 只能作为离线评估标签，不能参与 `TerminalAssociator`、`TerminalObservationBus` 或跨视角一致性判断。
+在线配准只使用 bbox、时间戳、本地 MOT ID、类别/置信度和相机几何。AirSim detection 的 `object_id`、`actor_name`、truth ID 只能作为离线评估标签，不能参与 `TerminalAssociator`、`TerminalObservationBus` 或跨视角一致性判断。本轮二级节点先使用 AirSim `simGetDetections` bbox/metadata，不启用 YOLO；若检测记录中的 `track_id`/`detection_id` 只是 actor/truth 字段的同值别名，D5 会回退为相机作用域本地检测 ID。
 
 D5 输出边界保持不变：
 
@@ -41,7 +41,15 @@ D5 输出边界保持不变：
 - `degrade_to_secondary`：终端局部/二级证据与中心分配持续不一致或歧义，且二级 `ReconImageCue` 新鲜可用。
 - `degrade_to_distributed`：同样不一致或歧义，但二级证据不可用、过期或失效，只能提供分散降级证据。
 
-建议指标：`per_camera_detection_count`、`multi_target_fov_rate`、`cross_view_overlap_count`、`duplicate_terminal_lock_risk`、`terminal_lock_accuracy`、`ambiguous_fov_event_count`。
+建议指标：`per_camera_detection_count`、`multi_target_fov_rate`、`cross_view_overlap_count`、`duplicate_terminal_lock_risk`、`terminal_lock_accuracy`、`ambiguous_fov_event_count`。多 seed 报告前可调用 `summarize_multiseed_calibration_readiness()` 被动审计每个 seed 是否具备 local bbox/timestamp、geometry gate log、measurement age、AirSim detect source、YOLO/MOT backend、offline truth label、bbox/handoff advisory 和 duplicate/friend conflict evidence 字段。二级 detect 没有转成有效跨视角关联时调用 `summarize_secondary_visual_coverage_funnel()`，区分“看见目标”“网络联合覆盖”和“形成既有全局 ID 支持”三层指标；该 helper 还可区分 `fixed_downlook_secondary` 与 `mobile_recon_gimbal`，并记录移动云台通过 GlobalTrack/radar cue look-at 补足的目标簇/子簇。
+
+### 0.3 2026-07-08 机动高空侦察节点复测结论
+
+本轮 main 输出为 `research_modules/airsim_runtime/outputs/p1_d4d5_mobile_recon_20260708_055948*`，覆盖 3 个 seed、5v5 D4/D5 stress、200 m 高差、`mobile_recon_gimbal` / `mobile_high_recon`、80 deg FOV、1920x1080。D5 已能识别 `mobile_recon_gimbal`、`radar_global_track_cue`、`mobile_high_recon`，云台指向成功率为 1.0。
+
+结果说明 mobile recon gimbal 证据链已经实现，但还没有解决稳定全覆盖和降级跨视角注册：二级 bbox 均值约 3326-3334 px^2，高于固定俯视 200 m / 110 deg / 1920x1080 对照约 1144-1145 px^2，说明目标“看得更清楚”；但二级网络同帧全覆盖仍为 0.0，平均联合覆盖约 0.65-0.69，主要断点是 `not_all_targets_visible` / `network_union_incomplete`。`no_degradation` 的 `cross_view_association_count` 为 4；`degrade_to_secondary` / `degrade_to_distributed` 的 cross-view 为 0，`secondary_detect_available_but_not_registered_count` 为 65。
+
+D5 当前无 P0 blocker。剩余 P1 聚焦二级节点几何/覆盖策略、multi-camera cross-view registration、真实 YOLO/MOT 多 seed 阈值，以及 AirSim/replay 标定、`solvePnP` 和外参增强。D5 仍不分配、不授权、不改写 `global_track_id`，在线逻辑不得使用 AirSim truth ID。
 
 ---
 
@@ -102,8 +110,11 @@ UAV2 camera sees: target 2, target 3, target 4
 | 项目 | 当前状态 |
 |------|----------|
 | OpenCV `projectPoints` | 已用于单相机投影；OpenCV 不可用时退回针孔模型。当前不做真实 calibration、`solvePnP`、PnP RANSAC 或 bundle adjustment。 |
-| AirSim `simGetDetections` | 已有 dry-run bbox adapter，兼容 `box2D`、`bbox_xyxy`、`xyxy` 等 fixture/schema。在线转换忽略 `object_id`、`actor_name`、actor truth ID。 |
+| AirSim `simGetDetections` | 已有 dry-run bbox adapter，兼容 `box2D`、`bbox_xyxy`、`xyxy` 等 fixture/schema。在线转换忽略 `object_id`、`actor_name`、actor truth ID，并过滤与这些 truth/actor 字段同值的 `track_id/detection_id`。本轮二级节点优先使用该输入口径。 |
 | YOLOv8 / ByteTrack | 已有离线 schema adapter 和 `YoloMotAdapter` frame adapter。默认权重路径为 `/home/linux/Documents/MSM/research_modules/d5_terminal_association/best.pt`，可参数覆盖；可请求 ultralytics ByteTrack，缺依赖/权重/原生 tracker 时返回 `unavailable` 或退回确定性 IoU tracker。在线转换忽略 truth/global 字段。 |
+| Multi-seed calibration readiness | 已有 `summarize_multiseed_calibration_readiness()`，对 D5 输出的 `TerminalObservation` 与 `CrossViewAssociation` 做字段覆盖审计，标出每个 seed 缺少的 required/recommended 报告字段。truth label 只从离线 metadata 计数，不进入在线关联。 |
+| Secondary coverage/funnel diagnostics | 已有 `summarize_secondary_visual_coverage_funnel()`，对普通 replay frame、`TerminalObservation` 和 `CrossViewAssociation` 输出二级覆盖率、联合覆盖率、detect 到 multi-support 漏斗和断点原因。offline target label 只用于覆盖统计，不参与在线绑定。 |
+| Mobile high-recon gimbal cue evidence | 已有 `ReconImageCue` 字段和 coverage/cross-view summary metadata，可记录 `cue_position_ned`、`look_at_ned`、云台指向元数据、cue pointing error、gimbal track error、`radar_global_track_cue`、`mobile_high_recon` 和 `mobile_recon_gimbal`；测试覆盖固定俯视不足时机动云台改善二级网络联合覆盖。 |
 | BoT-SORT / Deep SORT | `YoloMotAdapter` 可请求 ultralytics BoT-SORT；Deep SORT/ReID 仍作为未来对照。BoT-SORT/Deep SORT 的小目标质量、遮挡恢复、IDSW/IDF1 和算力预算仍需真实图像链路后评估。 |
 | ROS 2 `tf2/message_filters` | 只是未来坐标变换和时间同步方案；D5 当前不启动 ROS graph，不订阅 topic。 |
 | OpenDroneID / MAVLink signing / DDS Security | 仅通过 `IdentityClaim` 抽象表达仿真身份声明；未接真实报文、密钥、证书或白名单。 |
@@ -326,9 +337,39 @@ DistributedTerminalAssociation
 - supporting_resource_ids
 - local_track_ids
 - recommended_d4_action
+
+CalibrationSeedReadiness / MultiSeedCalibrationReadiness
+- seed_id / ready / missing_required_fields / missing_recommended_fields
+- source_counts / detector_backend_counts / tracker_backend_counts
+- geometry_log_count / measurement_age_count / local_bbox_count
+- truth_label_count / handoff_advisory_count / bbox_stability_count
+- duplicate_terminal_lock_risk_count / friend_conflict_count
+
+SecondaryVisualCoverageFunnelSummary
+- secondary_single_camera_full_view_frame_rate
+- secondary_network_joint_full_view_frame_rate
+- secondary_camera_frame_visible_target_counts
+- secondary_network_frame_joint_visible_target_counts
+- secondary_single_camera_coverage_ratio_mean / min
+- secondary_network_joint_coverage_ratio_mean / min
+- funnel_counts.detect_count / local_or_recon_cue_count
+- funnel_counts.terminal_association_count / cross_view_association_count / multi_support_count
+- rejection_reason_counts
+- metadata.coverage_mode_counts / capability_class_counts / cue_source_counts
+- metadata.mobile_recon_gimbal_improved_joint_coverage_frame_count
+- metadata.mobile_recon_gimbal_added_target_ids_by_frame
+- metadata.cue_pointing_error_m_by_camera_frame / cue_pointing_error_rad_by_camera_frame
+- metadata.gimbal_track_error_px_by_camera_frame
+
+ReconImageCue mobile gimbal fields
+- cue_position_ned / look_at_ned
+- gimbal_pointing_metadata
+- cue_pointing_error_m / cue_pointing_error_rad
+- gimbal_track_error_px
+- cue_source / capability_class / coverage_mode
 ```
 
-后续真实多相机三维几何融合仍可新增 `CrossViewObservation/CrossViewTrackEvidence`，携带完整 `CameraModel`、三维候选、重投影残差和协方差摘要；该扩展仍不能改变 D5 不改写 `global_track_id` 的边界。
+后续真实多相机三维几何融合仍可新增 `CrossViewObservation/CrossViewTrackEvidence`，携带完整 `CameraModel`、三维候选、重投影残差和协方差摘要；该扩展仍不能改变 D5 不改写 `global_track_id` 的边界。二级覆盖诊断中，`visible_target_ids`/覆盖比例只是离线可见性，`secondary_network_joint_full_view_frame_rate` 是网络并集覆盖，`cross_view_association_count`/`multi_support_count` 才是已形成全局 ID 支持。`mobile_recon_gimbal_improved_joint_coverage_frame_count` 只说明机动云台 evidence 补足固定俯视覆盖，不是 D5 获得云台控制或分配权限。
 
 ---
 
@@ -561,9 +602,11 @@ optional actor/object_name
 
 ### 11.1 当前 P1 补齐状态与剩余聚焦
 
-D5 侧 P1 已补齐项包括：geometry log fields（projected pixel、bbox center、pixel error、Mahalanobis、gate pass、measurement age、friend conflict、selected pair、duplicate-risk advisory）、`TerminalConsistencySummary` 按 `resource_id + assigned_global_track_id` 维护连续窗口、D4 advisory evidence、D7 visual PNG handoff/prelock blockers、AirSim truth ID 在线隔离、YOLO/ByteTrack 离线 schema adapter，以及 YOLOv8 + ByteTrack/BoT-SORT frame adapter 和确定性 IoU fallback tracker。上述输出都是 evidence 或 adapter，不赋予 D5 分配、授权、降级或导引控制权。
+D5 侧 P1 已补齐项包括：geometry log fields（projected pixel、bbox center、pixel error、Mahalanobis、gate pass、measurement age、friend conflict、selected pair、duplicate-risk advisory）、`TerminalConsistencySummary` 按 `resource_id + assigned_global_track_id` 维护连续窗口、D4 advisory evidence、D7 visual PNG handoff/prelock blockers、AirSim truth ID 在线隔离、YOLO/ByteTrack 离线 schema adapter、YOLOv8 + ByteTrack/BoT-SORT frame adapter、确定性 IoU fallback tracker、multi-seed readiness helper、二级覆盖/漏斗诊断 helper，以及 mobile high-recon gimbal cue evidence。2026-07-08 机动高空侦察节点复测中，D5 已识别 `mobile_recon_gimbal`、`radar_global_track_cue` 和 `mobile_high_recon`；二级 bbox 均值约 3326-3334 px^2，对比固定俯视 200 m / 110 deg / 1920x1080 约 1144-1145 px^2，证明 evidence 链路已能让目标“看得更清楚”。上述输出都是 evidence 或 adapter，不赋予 D5 分配、授权、降级、云台控制或导引控制权。
 
-剩余 P1 聚焦 main runtime 图像流接入 `YoloMotAdapter` 和多 seed 阈值校准。剩余 P2 聚焦 BoT-SORT/Deep SORT/ReID 质量评估、OpenDroneID Core/MAVLink signing/DDS Security/AprilTag 的真实 `IdentityClaim` adapter、OpenCV calibration/`solvePnP`、ROS 2 `tf2/message_filters` 和后续三维几何验证。在线 D5 仍不得使用 AirSim truth ID 或 tracker ID 生成、改写、换绑 `global_track_id`。
+P0 状态：无 P0 blocker；D5 不分配、不授权、不改写 `global_track_id`，在线逻辑不得使用 AirSim truth ID。
+
+剩余 P1 聚焦四项：二级节点几何/覆盖策略（当前二级网络同帧全覆盖仍为 0.0，平均联合覆盖约 0.65-0.69，断点为 `not_all_targets_visible` / `network_union_incomplete`）、multi-camera cross-view registration（降级 case cross-view 为 0，`secondary_detect_available_but_not_registered_count` 约 65）、真实 YOLO/MOT 多 seed 阈值，以及 AirSim/replay 标定、`solvePnP` 和外参增强。剩余 P2 聚焦 BoT-SORT/Deep SORT/ReID 质量评估、OpenDroneID Core/MAVLink signing/DDS Security/AprilTag 的真实 `IdentityClaim` adapter、ROS 2 `tf2/message_filters`、真实硬件级标定深化和后续三维几何验证。在线 D5 仍不得使用 AirSim truth ID 或 tracker ID 生成、改写、换绑 `global_track_id`。
 
 ---
 

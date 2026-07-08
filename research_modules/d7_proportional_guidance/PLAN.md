@@ -18,6 +18,7 @@ D7 提供一个可被主流程接入的离线二维比例导引研究模块。�
 - **中段雷达 PN/PNG**：`pn.py` 的 `compute_proportional_navigation_command()` 使用二维位置和速度估计计算 `a_n = N * V_c * lambda_dot`，记录 LOS angle、LOS-rate、closing speed、range、限幅加速度和限幅转向率。`simulator.py` 和 `airsim_dry_run.py` 把上游 GlobalTrack/actor track 等价估计映射为 `GuidanceState(source="global_track" | "airsim_actor_track")`。
 - **末端视觉 PNG**：`vision_png.py` 的 `SimpleFlightPngGuidanceFilter` 从 bbox 中心计算 bearing/LOS，维护 LOS-rate 窗口和 bbox 面积窗口，支持 `los`、`png_ttc`、`png_vm` 三种轻量末端输出，其中 runtime 默认走 `png_vm`。
 - **每个 assignment pair 独立导引状态**：D7 filter 是实例状态，包含 `local_track_id`、稳定帧、LOS-rate history 和 TTC 面积窗口。`runtime_bus.py` 提供 D7-owned N-pair state injection adapter，按 `resource_id -> assigned_global_track_id` 维护独立 filter，并在 plan/version/owner/assignment signature 变化时重置该 pair 状态。单元测试覆盖 1/3/5/7 个 pair 和 `D7RuntimeBus` 任意 N-pair 注入，验证不同 pair 不共享视觉 filter 状态。
+- **runtime bus 状态与 summary 字段**：`D7RuntimePairOutput.as_log_record()` 已暴露 `terminal_handoff_state`、handover/terminal flags、D4/D5 state aliases、plan/version、bbox、camera/LOS/maneuver gate、TTC、LOS-rate、closing speed 和 maneuver margin。`summarize_runtime_bus_outputs()` 聚合 guidance mode、handoff 状态、D4/D5/plan 计数、contract/switch reject reasons、gate pass rate、bbox/TTC/LOS 数值摘要和 `visual_png_switch_count`，供 main episode bus 与 D6 报告消费。
 - **SimpleFlight 控制命令抽象**：D7 输出的是 `PngGuidanceCommand.velocity_ned`，适配 SimpleFlight 高层速度接口。真实 AirSim 控制调用位于 main/runtime 的 `intercept.py`，通过 `command_velocity_z()`/`moveByVelocityZAsync` 下发；D7 模块本身不直接调用 AirSim。
 - **D3/D4/D5 gate**：`terminal_gate.py` 已实现 `AssignmentGuidanceBinding`、`D4GuidancePermission` 和 `evaluate_terminal_png_contract()`，校验授权、current/expiry、plan/version、D4 action、D5 `locked`、friend conflict、D5 `assigned_global_track_id`、D5 `assignment_version` 和观测 `assigned_global_track_id`。
 - **D4 保守阻断**：`request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed`、`reassign` 均映射为 `d4_reassign_pending`，`guidance_mode_from_terminal_contract()` 将其映射为 `abort_revoke`，视觉 PNG 不会被调用。D4 指明 `target_node_id/new_plan_owner_id` 时，D7 要求当前 D3 binding 携带同一 `owner_node_id`，否则拒绝为 `d4_owner_missing` 或 `d4_owner_mismatch`。
@@ -28,6 +29,7 @@ D7 提供一个可被主流程接入的离线二维比例导引研究模块。�
 - **bbox/LOS 离线 replay 接口**：`replay.py` 将 YOLO/ByteTrack、AirSim detect metadata 等 bbox replay 归一为 `VisionGuidanceObservation`，离线评估合同和 bbox/LOS/TTC gate，显式标记 `vehicle_control=False` 和 `simpleflight_control_called=False`。
 - **执行指标回灌**：main/orchestrator 已把 D7 runtime summary 和真实 AirSim D7 控制执行结果接入 episode bus，并合并进正式 `main_episode_bus_metrics.json`；执行前合同诊断保留为 raw `main_episode_bus_contract_metrics.json`。D7 侧只保证输出可消费字段，不在本模块内计算最终 episode 指标。
 - **AirSim P1 回归状态**：controlled 5v5 center replan 已验证 `request_center_replan -> new plan/binding/version -> D7 current binding gate`；2v2 secondary visual PNG gate 已验证 `degrade_to_secondary` 阶段阻断旧锁定，二级 plan/owner/version 生效且 D5 locked 后才允许 `png_vm`。
+- **D4/D5 机动高空侦察 stress 对 D7 的影响**：2026-07-08 main 侧 5v5 D4/D5 stress 覆盖 3 seeds、200m 高差、`mobile_recon_gimbal`、80deg FOV、1920x1080；D4 action 正确，D5 能识别 mobile recon，gimbal OK rate 为 1.0。但二级网络同帧全覆盖仍为 0.0，降级 case cross-view 为 0，`not_registered` 约 65。因此 D7 不能因为移动侦察节点“看得更清楚”就放行视觉 PNG；仍必须同时满足 D3 当前 version/owner、D4 action 允许、D5 `locked` 且 `assigned_global_track_id` 一致，以及 bbox/LOS/闭合速度/距离/机动能力 gate 通过。`degrade_to_secondary`/`degrade_to_distributed` 阶段若 plan owner/version 尚未进入可执行状态，继续阻断视觉 PNG。
 - **切换策略实际状态**：离线二维仿真的 `terminal_switch_range_m` 默认 `250.0m`；AirSim runtime 默认 `intercept_terminal_switch_range_m=8.0m`，可由 CLI 改动；测试中的 `30m` 级相对距离是视觉 gate 回归夹具，不是硬编码策略。bbox 稳定默认至少 2 帧，同时还要求面积、置信度、边缘、视觉延迟、LOS-rate 方差、TTC/闭合速度和机动裕度满足 gate。
 
 当前“部分实现”的能力如下：
@@ -169,7 +171,7 @@ heading_next = heading + omega_limited * dt
 - `VisionGuidanceObservation`：D5/AirSim detect 提供的 bbox、置信度、local/global ID 和时间戳。
 - `VisionGuidanceQuality`：相机质量、LOS 质量、机动裕度和切换拒绝原因。
 - `PngGuidanceCommand`：SimpleFlight 速度命令、导引律、饱和状态和 gate 质量。
-- `D7RuntimeBus` / `D7RuntimePairInput` / `D7RuntimePairOutput`：D7-owned N-pair runtime state injection 和日志字段输出。该 adapter 不创建 assignment、不调用控制 API，只维护每个 pair 的视觉 filter 状态。
+- `D7RuntimeBus` / `D7RuntimePairInput` / `D7RuntimePairOutput`：D7-owned N-pair runtime state injection 和日志字段输出。该 adapter 不创建 assignment、不调用控制 API，只维护每个 pair 的视觉 filter 状态；输出字段包含 terminal handoff 状态、D3/D4/D5 合同字段、bbox/LOS/TTC gate 质量和 D6 常用 summary 计数。
 - `GuidanceStrategyComparisonRow`：PN/Pure Pursuit/`png_vm`/`png_ttc` 对照报告行，包含 D6 可消费的距离、切换、合同拒绝和视觉 gate 拒绝字段。
 
 ### 核心函数
@@ -208,7 +210,7 @@ heading_next = heading + omega_limited * dt
 
 - `D7RuntimeBus.inject_state(...)`
   - 输入：任意长度 assignment pair 状态样本，每个样本包含 D3 binding、D4 permission、D5 terminal association、bbox observation 和当前运动上下文。
-  - 输出：每个 pair 的合同/gate/导引日志字段；每个 `resource_id -> assigned_global_track_id` 独立 filter，plan/version/owner/assignment 变化时重置。
+  - 输出：每个 pair 的合同/gate/导引日志字段；每个 `resource_id -> assigned_global_track_id` 独立 filter，plan/version/owner/assignment 变化时重置。单样本记录包含 `terminal_handoff_state`、`terminal_contract_reject_reason`、`terminal_switch_reject_reason`、D4/D5 state aliases、plan/version、bbox、TTC、LOS-rate 和三类 gate pass。
 
 - `evaluate_bbox_los_replay(...)`
   - 输入：YOLO/ByteTrack、AirSim detect metadata 或其他 bbox replay rows，以及 D3/D4/D5 合同字段。
@@ -249,16 +251,19 @@ AirSim runtime 集成要求：
 
 P1 当前状态：
 
-- D7-owned `runtime_bus.py`、`comparison.py`、`replay.py` 已补齐。N-pair runtime bus、PN/Pure Pursuit/`png_vm`/`png_ttc` 多 seed report rows、bbox/LOS replay、D4 gate blocking、D3/D4/D5 terminal contract gate、owner/version gate 均有 D7 测试覆盖。
+- 无 P0 blocker：PN/PNG、Pure Pursuit baseline、runtime bus、D4/D5 gate 均已实现并由 D7 测试覆盖；D7 仍不分配、不授权、不改写 `global_track_id`。
+- D7-owned `runtime_bus.py`、`comparison.py`、`replay.py` 已补齐。N-pair runtime bus、PN/Pure Pursuit/`png_vm`/`png_ttc` 多 seed report rows、bbox/LOS replay、D4 gate blocking、D3/D4/D5 terminal contract gate、owner/version gate、handoff/guidance summary、bbox/TTC/LOS/gate pass rate 字段均有 D7 测试覆盖。
 - main runtime 已把 D7 runtime summary 接入 episode bus。controlled 5v5 center replan 与 2v2 secondary visual PNG gate 回归已通过，D7 文档不再把这些列为待补能力。
 - D4 `request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed`、`reassign` 仍是保守阻断项；只有 D5 `locked`、D3 version/owner 一致且 D4 action 允许后，才尝试该 pair 的视觉 PNG。
+- mobile recon/gimbal 改善只能作为 D5 观测质量输入，不能绕过 D3/D4/D5 contract 或 bbox/LOS/闭合速度/距离/机动能力 gate；二级网络同帧覆盖不足和降级 cross-view 为 0 时，D7 继续按不可执行 plan owner/version 阻断视觉 PNG。
 
 P1 剩余：
 
-- 用真实 AirSim 多 seed 运行校准 `png_vm`、`png_ttc`、bbox/LOS/TTC gate 阈值、terminal range、视觉延迟和机动裕度，形成阈值版本、seed 分组和 D6/main 汇总口径。
-- 将 D7 comparison rows 和 replay summary 对接到真实 AirSim 多 seed 报告数据源；D7 侧只保证字段稳定，正式报告仍由 main/D6 聚合。
+- 用真实 AirSim 多 seed 运行 PN、Pure Pursuit、`png_vm`、`png_ttc` 对照，校准视觉 gate 阈值、terminal range、视觉延迟、闭合速度/距离估计和机动裕度，形成阈值版本、seed 分组和 D6/main 汇总口径。
+- 将 D7 comparison rows、runtime bus summary 和 replay summary 对接到真实 AirSim 多 seed 报告数据源；D7 侧只保证字段稳定，正式报告仍由 main/D6 聚合。
+- 3D/高度差、机动能力和 FRPN/augmented PN 校准仍是 P1 benchmark：可以进入离线对照和阈值评估，但不能绕过现有 D3/D4/D5 gate 或默认 SimpleFlight 控制边界。
 - YOLO/ByteTrack 真实图像链路只作为离线 replay 或 optional 实验路径：生成 D5 local track 与 D7 bbox/LOS gate 摘要，不进入默认 SimpleFlight controlled intercept。
 
 P2 下一步：
 
-- FRPN/augmented PN/目标加速度补偿、3D PN、真实相机标定、相机外参/畸变、PX4/MAVLink/body-rate、MPC/NMPC 都保持 optional benchmark；必须先有高机动 fixture、平台动力学/安全边界、D6 对照指标和失败回退，不能进入默认 SimpleFlight 控制主线。
+- PX4/MAVLink/body-rate、MPC/NMPC、真实相机外参/畸变和默认控制主线升级保持 P2 optional；必须先有平台动力学/安全边界、D6 对照指标和失败回退，不能进入默认 SimpleFlight 控制主线。

@@ -165,7 +165,9 @@ def test_computer_vision_5v5_d4d5_stress_settings_define_requested_geometry() ->
     assert [vehicles[name]["Y"] for name in resources] == [-40, -20, 0, 20, 40]
     assert all(vehicles[name]["X"] == 0 for name in resources)
     assert [vehicles[name]["Z"] for name in secondaries] == [-60, -60]
-    assert "Cameras" not in vehicles["Secondary_Recon_1"]
+    secondary_camera = vehicles["Secondary_Recon_1"]["Cameras"]["0"]
+    assert secondary_camera["Pitch"] == -90
+    assert secondary_camera["CaptureSettings"][0]["FOV_Degrees"] == 140
 
 
 def test_default_cv_5v5_actor_specs_are_five_crossing_targets() -> None:
@@ -249,6 +251,8 @@ def test_dynamic_n_settings_files_match_requested_vehicle_count(tmp_path: Path) 
     ]
     assert cv["Vehicles"]["Secondary_Recon_1"]["Z"] == -210.0
     assert cv["Vehicles"]["Secondary_Recon_1"]["Cameras"]["0"]["CaptureSettings"][0]["Width"] == 1280
+    assert cv["Vehicles"]["Secondary_Recon_1"]["Cameras"]["0"]["Pitch"] == -90.0
+    assert len(cv["Vehicles"]["Secondary_Recon_1"]["Cameras"]["0"]["CaptureSettings"]) == 2
 
 
 def test_sequence_builder_uses_dynamic_n_scenario_names(tmp_path: Path, monkeypatch) -> None:
@@ -376,8 +380,55 @@ def test_computer_vision_5v5_d4d5_stress_200m_settings_define_high_recon_geometr
     assert [vehicles[name]["Z"] for name in resources] == [-10, -10, -10, -10, -10]
     assert [vehicles[name]["Z"] for name in secondaries] == [-210, -210]
     secondary_capture = vehicles["Secondary_Recon_1"]["Cameras"]["0"]["CaptureSettings"][0]
-    assert secondary_capture["Width"] == 1280
-    assert secondary_capture["Height"] == 720
+    secondary_camera = vehicles["Secondary_Recon_1"]["Cameras"]["0"]
+    assert secondary_capture["Width"] == 1920
+    assert secondary_capture["Height"] == 1080
+    assert secondary_capture["FOV_Degrees"] == 110
+    assert secondary_camera["Pitch"] == -90
+
+
+def test_sequence_builder_mobile_secondary_recon_generates_gimballed_settings(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--cv-5v5-d4d5-stress",
+            "--cv-5v5-d4d5-stress-200m",
+            "--mobile-secondary-recon",
+            "--secondary-fov",
+            "80",
+            "--secondary-width",
+            "1920",
+            "--secondary-height",
+            "1080",
+            "--secondary-recon-standoff",
+            "5",
+            "--output-root",
+            str(tmp_path),
+            "--sequence-id",
+            "pytest_mobile_recon",
+        ],
+    )
+    args = parse_args()
+
+    config, _, _ = _build_sequence_run(args, seed=7, sequence_id=args.sequence_id)
+
+    settings = json.loads(config.settings_path.read_text(encoding="utf-8"))
+    secondary_camera = settings["Vehicles"]["Secondary_Recon_1"]["Cameras"]["0"]
+    secondary_capture = secondary_camera["CaptureSettings"][0]
+    assert config.cv_secondary_mobile_recon_enabled is True
+    assert config.cv_secondary_look_at_enabled is True
+    assert config.cv_secondary_recon_standoff_m == 5.0
+    assert config.metadata["secondary_recon_mode"] == "mobile_recon_gimbal"
+    assert config.metadata["secondary_guidance_source"] == "radar_global_track_cue"
+    assert secondary_camera["Pitch"] == 0.0
+    assert secondary_capture["FOV_Degrees"] == 80.0
+    assert secondary_capture["Width"] == 1920
+    assert secondary_capture["Height"] == 1080
 
 
 def test_blocks_smoke_config_reads_rpc_endpoint_from_settings(tmp_path: Path) -> None:
@@ -761,6 +812,74 @@ def test_real_runtime_orients_cv_cameras_toward_initial_and_secondary_assignment
     assert "yaw_deg" in secondary_guidance["Interceptor_Cam_2"]
     assert "pitch_deg" in secondary_guidance["Secondary_Recon_1"]
     assert "Interceptor_Cam_2" in fake_client.vehicle_poses
+
+
+def test_real_runtime_mobile_secondary_recon_uses_cued_subclusters(tmp_path: Path) -> None:
+    settings_path = write_dynamic_computer_vision_settings(
+        tmp_path / "cv_mobile_recon_settings.json",
+        camera_vehicle_names=default_cv_5v5_camera_vehicle_names(),
+        secondary_vehicle_names=default_cv_5v5_secondary_vehicle_names(),
+        camera_spacing_m=20.0,
+        camera_z=-10.0,
+        target_z=-10.0,
+        secondary_height_above_targets_m=200.0,
+        secondary_fov_degrees=80.0,
+        secondary_camera_pitch_deg=0.0,
+        secondary_width=1920,
+        secondary_height=1080,
+    )
+    resources = default_cv_5v5_camera_vehicle_names()
+    secondaries = default_cv_5v5_secondary_vehicle_names()
+    fake_client = FakeAirSimClient(vehicle_names=(*resources, *secondaries))
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        settings_path=settings_path,
+        scenario_name="blocks_cv_5v5_d4d5_stress",
+        duration_s=0.0,
+        camera_vehicle_name=resources[0],
+        camera_vehicle_names=resources,
+        secondary_camera_vehicle_names=secondaries,
+        capture_lidar=False,
+        cv_camera_follow_assignments=True,
+        cv_camera_follow_distance_m=50.0,
+        cv_secondary_look_at_enabled=True,
+        cv_secondary_mobile_recon_enabled=True,
+        cv_secondary_recon_standoff_m=5.0,
+        target_vehicle_names=(),
+        resource_vehicle_names=resources,
+        target_actor_specs=default_cv_5v5_d4d5_stress_actor_target_specs(),
+        detection_filter_names=("MSM_TargetActor_*",),
+        metadata={
+            "d4d5_stress_enabled": True,
+            "secondary_recon_mode": "mobile_recon_gimbal",
+            "secondary_guidance_source": "radar_global_track_cue",
+        },
+    )
+
+    runtime.setup_episode(config)
+    frame = runtime.sample_frame(config, frame_index=0, timestamp=0.0, output_dir=tmp_path)
+    runtime.teardown_episode(config)
+
+    guidance = {
+        item["vehicle_name"]: item
+        for item in frame.metadata["cv_camera_guidance"]
+        if item["role"] == "secondary_recon_camera"
+    }
+    assert set(guidance) == set(secondaries)
+    assert guidance["Secondary_Recon_1"]["capability_class"] == "mobile_high_recon"
+    assert guidance["Secondary_Recon_1"]["cue_source"] == "radar_global_track_cue"
+    assert guidance["Secondary_Recon_1"]["coverage_cell"] == "cell-north"
+    assert guidance["Secondary_Recon_2"]["coverage_cell"] == "cell-south"
+    assert guidance["Secondary_Recon_1"]["gimbal_pointing_ok"] is True
+    assert guidance["Secondary_Recon_1"]["cue_pointing_error_m"] == 0.0
+    assert "Secondary_Recon_1" in fake_client.vehicle_poses
+    assert guidance["Secondary_Recon_1"]["position_ned"][2] == -210.0
+    assert guidance["Secondary_Recon_1"]["position_ned"][0] < guidance["Secondary_Recon_1"]["cue_position_ned"][0]
 
 
 def test_real_runtime_d4d5_stress_geometry_and_secondary_camera_dimensions(tmp_path: Path) -> None:

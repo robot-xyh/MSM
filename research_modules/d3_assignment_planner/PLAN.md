@@ -109,7 +109,7 @@ D3 已实现以下 helper：
 - `apply_terminal_feedback_to_planner_inputs(...)`：把 D5 duplicate/friend/fov/feasibility metadata 写回下一轮 `TargetTrack[]/ResourceState[]`，让成本矩阵或禁配边实际生效。
 - `prepare_secondary_takeover_plan(...)`：在 D4/main 已选定二级节点后，校验新 plan version 大于被 supersede 的中心 plan，并写入 `secondary_plan_v2`、owner/source node、superseded plan id/version、可选 epoch/lease 和 `allow_local_rebind=False`。
 - `assignment_validity_summary_from_plan(...)`：导出 `AssignmentValiditySummary(plan_age_s, assignment_latency_s, cost_margin, stale_plan_version, duplicate_assignment_count, unassigned_high_threat_count, resource_count, target_count)`。
-- `assignment_records_from_plan(...)`：导出 D6-compatible `AssignmentRecord(timestamp, plan_id, version, resource_id, global_track_id, cost_breakdown, authorization_state, active, truth_id)`。
+- `assignment_records_from_plan(...)`：导出 D6-compatible `AssignmentRecord(timestamp, plan_id, version, resource_id, global_track_id, cost_breakdown, authorization_state, active, truth_id)`，并携带多 seed current-plan 分组字段：`window_id`、`decision_state`、`changed`、`resource_count`、`target_count`、`assignment_matrix_shape`、`plan_owner/active_plan_owner/owner_node_id`、source/target/link、`plan_schema`、`replan_reason/takeover_reason`、previous/superseded plan id/version、plan costs、`cost_margin` 和 `stale_after_s`。
 - `AirSimDryRunAssignmentAdapter`：接收 synthetic AirSim-style dict/object，不 import AirSim，不控制 Blocks runtime。
 
 ## 3. 部分实现：Min-Cost Flow / OR-Tools
@@ -125,7 +125,7 @@ D3 已实现以下 helper：
 - 当前主线是一对一 optional assignment，Hungarian 已能表达中心化 baseline 和非等量 M/N 场景。
 - OR-Tools 依赖未纳入 D3 默认测试环境，贸然加入会影响轻量回归。
 - 复杂约束 schema 尚未固定，包括资源容量、目标需求、备份资源、分组配额、禁配边、时间展开网络和整数代价缩放。
-- 当前主线剩余风险集中在真实多 seed/N 规模校准和 D5 feedback 权重阈值标定；过早实现最小费用流会先增加建模复杂度，未必提升当前闭环能力。
+- 当前主线剩余风险集中在真实多 seed/N 规模校准和 D5 feedback 权重阈值标定；D3 已把 current-plan owner/version/source、cost gap 和矩阵规模字段导出到 D6 assignment records，过早实现最小费用流会先增加建模复杂度，未必提升当前闭环能力。
 
 计划策略：
 
@@ -164,7 +164,7 @@ D3 有 synthetic dry-run adapter，不直接导入 AirSim。真实 AirSim Blocks
 
 - 在 2v2、5v5、8v8、非等量 M/N 和 crossing/dense 场景中跑真实多 seed。
 - 检查 D5 feedback writeback 后的 `operator_hold`、`feasibility_by_resource`、`fov_difficulty_by_resource` 是否产生稳定、可解释的重规划结果。
-- 检查 center/secondary plan owner、version、source、supersede metadata 和 D6 assignment records 是否在 episode log 中可稳定聚合。
+- 检查 center/secondary plan owner、version、source、supersede metadata、cost gap、迟滞决策状态和 D6 assignment records 是否在 episode log 中可稳定聚合。
 - 用 D6 指标回看 D3 参数，特别是 `delta/min_dwell/max_changes_per_window/reassignment_switch_penalty` 与 D5 feedback 权重阈值。
 
 ## 5. 跨模块接口影响
@@ -219,7 +219,11 @@ P1 集成时，main 应保证：
 - 目标数可大于、小于或等于资源数。
 - 2v2、5v5、8v8、非等量 M/N 都使用同一接口。
 
-## 7. 下一步优先级
+## 7. 当前 P0/P1 缺口与下一步优先级
+
+### P0
+
+- 无 P0 blocker。Hungarian/DP fallback、版本化 `AssignmentPlan`、迟滞与 stale 拒绝、D5 feedback helper/writeback、secondary takeover owner/version DTO、D7 binding 和 D6 export 当前均已实现；后续 P0 工作只要求保持回归测试不退化。
 
 ### P1
 

@@ -29,10 +29,13 @@ from .active_degradation import (
     summarize_secondary_lifecycle,
 )
 from .models import (
+    AvailabilityBand,
     C2Health,
+    CommBand,
     CommunicationSummary,
     DistributedVisualEvidenceSummary,
     LinkType,
+    NodeRole,
     PayloadKind,
     ResourceSummary,
     SecondaryNodeLifecycleSummary,
@@ -47,6 +50,16 @@ FRIEND_CONFLICT_STATES = {
     "friend_overlap_hold",
     "blocked_by_friend",
 }
+
+REGISTRATION_BREAKPOINT_TERMS = (
+    "global_binding",
+    "global binding",
+    "global-track binding",
+    "global_track_binding",
+    "registration",
+    "registered",
+    "cross_view_registration",
+)
 
 
 @dataclass(frozen=True)
@@ -80,6 +93,18 @@ class D4DecisionRecord:
     target_node_id: str | None = None
     coverage_cell: str | None = None
     terminal_consistent: bool = False
+    secondary_single_camera_full_view_frame_rate: float | None = None
+    secondary_network_joint_full_view_frame_rate: float | None = None
+    secondary_network_mean_coverage_ratio: float | None = None
+    cue_freshness_s: float | None = None
+    gimbal_pointing_ok: bool | None = None
+    secondary_coverage_ratio: float | None = None
+    cross_view_support_count: int = 0
+    cross_view_association_count: int | None = None
+    cross_view_conversion_gap: float | str | None = None
+    secondary_detect_to_cross_view_reject_reasons: tuple[str, ...] = ()
+    secondary_detect_available_but_not_registered: bool = False
+    secondary_detect_to_cross_view_diagnostic: str | None = None
     risk_factors: tuple[str, ...] = ()
     c2_health: C2Health = C2Health.NORMAL
     secondary_available: bool = False
@@ -125,6 +150,30 @@ class D4DecisionRecord:
             "target_node_id": self.target_node_id,
             "coverage_cell": self.coverage_cell,
             "terminal_consistent": self.terminal_consistent,
+            "secondary_single_camera_full_view_frame_rate": (
+                self.secondary_single_camera_full_view_frame_rate
+            ),
+            "secondary_network_joint_full_view_frame_rate": (
+                self.secondary_network_joint_full_view_frame_rate
+            ),
+            "secondary_network_mean_coverage_ratio": (
+                self.secondary_network_mean_coverage_ratio
+            ),
+            "cue_freshness_s": self.cue_freshness_s,
+            "gimbal_pointing_ok": self.gimbal_pointing_ok,
+            "secondary_coverage_ratio": self.secondary_coverage_ratio,
+            "cross_view_support_count": self.cross_view_support_count,
+            "cross_view_association_count": self.cross_view_association_count,
+            "cross_view_conversion_gap": self.cross_view_conversion_gap,
+            "secondary_detect_to_cross_view_reject_reasons": list(
+                self.secondary_detect_to_cross_view_reject_reasons
+            ),
+            "secondary_detect_available_but_not_registered": (
+                self.secondary_detect_available_but_not_registered
+            ),
+            "secondary_detect_to_cross_view_diagnostic": (
+                self.secondary_detect_to_cross_view_diagnostic
+            ),
             "risk_factors": list(self.risk_factors),
             "c2_health": self.c2_health.value,
             "secondary_available": self.secondary_available,
@@ -191,6 +240,7 @@ class D4ArbitrationAdapter:
         assignment: Any | None = None,
         terminal_association: Any,
         cross_view_summary: Any | None = None,
+        d5_evidence: Any | None = None,
         c2_health: C2Health | str = C2Health.NORMAL,
         secondary_nodes: Sequence[ResourceSummary] = (),
         communication_records: Sequence[Any] = (),
@@ -229,6 +279,11 @@ class D4ArbitrationAdapter:
             or "unknown_resource"
         )
         resolved_coverage = coverage_cell or _coverage_cell(track, assignment, terminal_association)
+        resolved_secondary_nodes = tuple(
+            item
+            for item in (build_resource_summary(node) for node in secondary_nodes)
+            if item is not None
+        )
         track_summary = build_track_uncertainty_summary(
             track,
             timestamp=timestamp,
@@ -258,6 +313,7 @@ class D4ArbitrationAdapter:
             consecutive_non_locked_frames=consecutive_non_locked_frames,
             consecutive_mismatch_frames=consecutive_mismatch_frames,
             cross_view_summary=cross_view_summary,
+            d5_evidence=d5_evidence,
         )
         communications = tuple(
             item
@@ -268,7 +324,7 @@ class D4ArbitrationAdapter:
             if item is not None
         )
         lifecycle = summarize_secondary_lifecycle(
-            list(secondary_nodes),
+            list(resolved_secondary_nodes),
             resolved_coverage,
             communication_summaries=list(communications) if communications else None,
             current_time_s=timestamp,
@@ -280,7 +336,7 @@ class D4ArbitrationAdapter:
             assignment_validity=assignment_summary,
             terminal_association=terminal_summary,
             c2_health=health,
-            secondary_nodes=list(secondary_nodes),
+            secondary_nodes=list(resolved_secondary_nodes),
             communication_summaries=list(communications) if communications else None,
             current_time_s=timestamp,
         )
@@ -320,6 +376,30 @@ class D4ArbitrationAdapter:
             target_node_id=decision.target_node_id,
             coverage_cell=decision.coverage_cell or resolved_coverage,
             terminal_consistent=decision.terminal_consistent,
+            secondary_single_camera_full_view_frame_rate=(
+                terminal_summary.secondary_single_camera_full_view_frame_rate
+            ),
+            secondary_network_joint_full_view_frame_rate=(
+                terminal_summary.secondary_network_joint_full_view_frame_rate
+            ),
+            secondary_network_mean_coverage_ratio=(
+                terminal_summary.secondary_network_mean_coverage_ratio
+            ),
+            cue_freshness_s=terminal_summary.cue_freshness_s,
+            gimbal_pointing_ok=terminal_summary.gimbal_pointing_ok,
+            secondary_coverage_ratio=terminal_summary.secondary_coverage_ratio,
+            cross_view_support_count=terminal_summary.cross_view_support_count,
+            cross_view_association_count=terminal_summary.cross_view_association_count,
+            cross_view_conversion_gap=terminal_summary.cross_view_conversion_gap,
+            secondary_detect_to_cross_view_reject_reasons=(
+                terminal_summary.secondary_detect_to_cross_view_reject_reasons
+            ),
+            secondary_detect_available_but_not_registered=(
+                terminal_summary.secondary_detect_available_but_not_registered
+            ),
+            secondary_detect_to_cross_view_diagnostic=(
+                terminal_summary.secondary_detect_to_cross_view_diagnostic
+            ),
             risk_factors=decision.risk_factors,
             c2_health=health,
             secondary_available=_secondary_available(lifecycle),
@@ -505,9 +585,20 @@ def build_terminal_association_summary(
     consecutive_non_locked_frames: int = 0,
     consecutive_mismatch_frames: int = 0,
     cross_view_summary: Any | None = None,
+    d5_evidence: Any | None = None,
 ) -> TerminalAssociationSummary:
     if isinstance(terminal_association, TerminalAssociationSummary):
-        return terminal_association
+        if cross_view_summary is None and d5_evidence is None:
+            return terminal_association
+        return replace(
+            terminal_association,
+            **_secondary_visual_conversion_fields(
+                terminal_association=terminal_association,
+                cross_view_summary=cross_view_summary,
+                d5_evidence=d5_evidence,
+                cross_view_support_count=terminal_association.cross_view_support_count,
+            ),
+        )
 
     friend_state = (_string_or_none(_get(terminal_association, "friend_conflict_state")) or "none").lower()
     duplicate_lock = bool(
@@ -521,6 +612,13 @@ def build_terminal_association_summary(
     )
     if duplicate_lock:
         cross_view_risk = max(cross_view_risk, 0.75)
+    cross_view_support_count = _cross_view_support_count(cross_view_summary, d5_evidence)
+    secondary_visual_fields = _secondary_visual_conversion_fields(
+        terminal_association=terminal_association,
+        cross_view_summary=cross_view_summary,
+        d5_evidence=d5_evidence,
+        cross_view_support_count=cross_view_support_count,
+    )
 
     return TerminalAssociationSummary(
         resource_id=resource_id,
@@ -537,8 +635,264 @@ def build_terminal_association_summary(
         or friend_state in FRIEND_CONFLICT_STATES,
         duplicate_terminal_lock=duplicate_lock,
         cross_view_risk_score=cross_view_risk,
-        cross_view_support_count=_first_int(_get(cross_view_summary, "support_count"), 0),
+        cross_view_support_count=cross_view_support_count,
+        **secondary_visual_fields,
     )
+
+
+def _secondary_visual_conversion_fields(
+    *,
+    terminal_association: Any,
+    cross_view_summary: Any | None,
+    d5_evidence: Any | None,
+    cross_view_support_count: int,
+) -> dict[str, Any]:
+    sources = (d5_evidence, cross_view_summary, terminal_association)
+    single_camera_rate = _optional_float(
+        _first_evidence_field(sources, "secondary_single_camera_full_view_frame_rate")
+    )
+    network_joint_rate = _optional_float(
+        _first_evidence_field(sources, "secondary_network_joint_full_view_frame_rate")
+    )
+    network_mean_coverage = _optional_float(
+        _first_evidence_field(sources, "secondary_network_mean_coverage_ratio")
+    )
+    cue_freshness = _optional_float(
+        _first_evidence_field_by_names(
+            sources,
+            "cue_freshness_s",
+            "cue_freshness",
+            "secondary_cue_freshness_s",
+            "video_cue_freshness_s",
+        )
+    )
+    gimbal_pointing_ok = _optional_bool(
+        _first_evidence_field_by_names(
+            sources,
+            "gimbal_pointing_ok",
+            "secondary_gimbal_pointing_ok",
+        )
+    )
+    secondary_coverage_ratio = _optional_float(
+        _first_evidence_field_by_names(
+            sources,
+            "secondary_coverage_ratio",
+            "coverage_ratio",
+        )
+    )
+    cross_view_count = _derived_cross_view_association_count(d5_evidence, cross_view_summary)
+    conversion_gap_raw = _first_evidence_field(sources, "cross_view_conversion_gap")
+    conversion_gap = _normalise_conversion_gap(conversion_gap_raw)
+    reject_reasons = _unique_strings(
+        _first_evidence_field(sources, "secondary_detect_to_cross_view_reject_reasons")
+    )
+
+    detect_available = _secondary_detect_available(
+        sources,
+        single_camera_rate=single_camera_rate,
+        network_joint_rate=network_joint_rate,
+        network_mean_coverage=network_mean_coverage,
+        secondary_coverage_ratio=secondary_coverage_ratio,
+    )
+    cross_view_zero = cross_view_count == 0 or (
+        cross_view_count is None and cross_view_support_count == 0
+    )
+    registration_break = _has_registration_breakpoint(reject_reasons) or (
+        _gap_mentions_registration_breakpoint(conversion_gap_raw)
+    )
+    positive_gap = _positive_conversion_gap(conversion_gap_raw)
+    not_registered = detect_available and (cross_view_zero or registration_break)
+    diagnostic = _secondary_detect_diagnostic(
+        not_registered=not_registered,
+        reject_reasons=reject_reasons,
+        cross_view_zero=cross_view_zero,
+        registration_break=registration_break,
+        positive_gap=positive_gap,
+    )
+
+    return {
+        "secondary_single_camera_full_view_frame_rate": single_camera_rate,
+        "secondary_network_joint_full_view_frame_rate": network_joint_rate,
+        "secondary_network_mean_coverage_ratio": network_mean_coverage,
+        "cue_freshness_s": cue_freshness,
+        "gimbal_pointing_ok": gimbal_pointing_ok,
+        "secondary_coverage_ratio": secondary_coverage_ratio,
+        "cross_view_association_count": cross_view_count,
+        "cross_view_conversion_gap": conversion_gap,
+        "secondary_detect_to_cross_view_reject_reasons": reject_reasons,
+        "secondary_detect_available_but_not_registered": not_registered,
+        "secondary_detect_to_cross_view_diagnostic": diagnostic,
+    }
+
+
+def _secondary_detect_diagnostic(
+    *,
+    not_registered: bool,
+    reject_reasons: tuple[str, ...],
+    cross_view_zero: bool,
+    registration_break: bool,
+    positive_gap: bool,
+) -> str | None:
+    if not not_registered:
+        return None
+    reasons = [
+        "secondary_detect_available_but_not_registered",
+        *reject_reasons,
+        "cross_view_association_count_zero" if cross_view_zero else "",
+        "cross_view_conversion_gap" if positive_gap else "",
+        "registration_or_global_binding_break" if registration_break and not reject_reasons else "",
+    ]
+    return ";".join(_unique_strings(item for item in reasons if item))
+
+
+def _secondary_detect_available(
+    sources: Sequence[Any],
+    *,
+    single_camera_rate: float | None,
+    network_joint_rate: float | None,
+    network_mean_coverage: float | None,
+    secondary_coverage_ratio: float | None,
+) -> bool:
+    if any(
+        value is not None and value > 0.0
+        for value in (
+            single_camera_rate,
+            network_joint_rate,
+            network_mean_coverage,
+            secondary_coverage_ratio,
+        )
+    ):
+        return True
+    for field_name in (
+        "secondary_evidence_available",
+        "secondary_detect_available",
+        "secondary_coverage_available",
+        "secondary_network_coverage_available",
+    ):
+        parsed = _optional_bool(_first_evidence_field(sources, field_name))
+        if parsed is not None:
+            return parsed
+    return False
+
+
+def _cross_view_support_count(*sources: Any) -> int:
+    for field_name in ("cross_view_support_count", "support_count"):
+        parsed = _optional_int(_first_evidence_field(sources, field_name))
+        if parsed is not None:
+            return parsed
+
+    for source in sources:
+        items = _cross_view_association_items(source)
+        if items is None:
+            continue
+        if not items:
+            return 0
+        return max(
+            _first_int(
+                _get(item, "support_count"),
+                len(_unique_strings(_get(item, "supporting_resource_ids", ()))),
+                0,
+            )
+            for item in items
+        )
+    return 0
+
+
+def _derived_cross_view_association_count(*sources: Any) -> int | None:
+    for field_name in ("cross_view_association_count", "cross_view_associations_count"):
+        parsed = _optional_int(_first_evidence_field(sources, field_name))
+        if parsed is not None:
+            return parsed
+    for source in sources:
+        items = _cross_view_association_items(source)
+        if items is not None:
+            return len(items)
+    for source in sources:
+        if source is None:
+            continue
+        if _get(source, "support_count") is not None or _get(source, "global_track_id") is not None:
+            return 1
+    return None
+
+
+def _cross_view_association_items(source: Any) -> tuple[Any, ...] | None:
+    if source is None:
+        return None
+    associations = _get(source, "cross_view_associations")
+    if associations is not None:
+        return _tuple_values(associations)
+    if isinstance(source, Mapping):
+        return None
+    if isinstance(source, (str, bytes)):
+        return None
+    if isinstance(source, Sequence):
+        return tuple(source)
+    return None
+
+
+def _first_evidence_field(sources: Sequence[Any], field_name: str) -> Any:
+    for source in sources:
+        value = _evidence_field_value(source, field_name)
+        if value is not None:
+            return value
+    return None
+
+
+def _first_evidence_field_by_names(sources: Sequence[Any], *field_names: str) -> Any:
+    for field_name in field_names:
+        value = _first_evidence_field(sources, field_name)
+        if value is not None:
+            return value
+    return None
+
+
+def _evidence_field_value(source: Any, field_name: str) -> Any:
+    if source is None:
+        return None
+    value = _get(source, field_name)
+    if value is not None:
+        return value
+    metadata = _metadata(source)
+    if field_name in metadata:
+        return metadata[field_name]
+    metrics = _get(source, "metrics")
+    if metrics is not None and metrics is not source:
+        value = _get(metrics, field_name)
+        if value is not None:
+            return value
+        metric_metadata = _metadata(metrics)
+        if field_name in metric_metadata:
+            return metric_metadata[field_name]
+    return None
+
+
+def _normalise_conversion_gap(value: Any) -> float | str | None:
+    if value is None:
+        return None
+    parsed = _optional_float(value)
+    if parsed is not None:
+        return parsed
+    return _string_or_none(value)
+
+
+def _positive_conversion_gap(value: Any) -> bool:
+    parsed = _optional_float(value)
+    return parsed is not None and parsed > 0.0
+
+
+def _has_registration_breakpoint(reasons: Iterable[str]) -> bool:
+    return any(_text_mentions_registration_breakpoint(reason) for reason in reasons)
+
+
+def _gap_mentions_registration_breakpoint(value: Any) -> bool:
+    if value is None:
+        return False
+    return _text_mentions_registration_breakpoint(str(value))
+
+
+def _text_mentions_registration_breakpoint(value: str) -> bool:
+    text = value.lower()
+    return any(term in text for term in REGISTRATION_BREAKPOINT_TERMS)
 
 
 def build_distributed_visual_evidence_summary(
@@ -632,6 +986,72 @@ def build_communication_summary(record: Any) -> CommunicationSummary | None:
         payload_kind=_payload_kind(_get(record, "payload_kind", _get(record, "message_type"))),
         stale_after_s=_first_float(_get(record, "stale_after_s"), 1.0),
         sequence_id=_string_or_none(_get(record, "sequence_id")),
+    )
+
+
+def build_resource_summary(resource: Any) -> ResourceSummary | None:
+    if resource is None:
+        return None
+    if isinstance(resource, ResourceSummary):
+        return resource
+
+    node_id = (
+        _string_or_none(_get(resource, "node_id"))
+        or _string_or_none(_get(resource, "resource_id"))
+        or _string_or_none(_get(resource, "id"))
+    )
+    if node_id is None:
+        return None
+
+    capability = (
+        _string_or_none(_get(resource, "capability_class"))
+        or _string_or_none(_get(resource, "capability"))
+        or "observe"
+    )
+    node_role = _node_role(
+        _get(resource, "node_role", _get(resource, "role")),
+        capability_class=capability,
+    )
+    return ResourceSummary(
+        node_id=node_id,
+        capability_class=capability,
+        availability_band=_availability_band(
+            _get(resource, "availability_band", _get(resource, "availability"))
+        ),
+        comm_band=_comm_band(_get(resource, "comm_band", _get(resource, "comm"))),
+        operator_hold=bool(_get(resource, "operator_hold", False)),
+        takeover_priority=_first_int(_get(resource, "takeover_priority"), 100),
+        lease_epoch=_first_int(_get(resource, "lease_epoch"), 0),
+        epoch=_first_int(_get(resource, "epoch"), 0),
+        node_role=node_role,
+        coordinator_only=bool(_get(resource, "coordinator_only", False)),
+        coverage_cell=_string_or_none(_get(resource, "coverage_cell")),
+        heartbeat_timestamp_s=_optional_float(
+            _get(
+                resource,
+                "heartbeat_timestamp_s",
+                _get(resource, "heartbeat", _get(resource, "last_heartbeat_s")),
+            )
+        ),
+        heartbeat_stale_after_s=_first_float(_get(resource, "heartbeat_stale_after_s"), 2.0),
+        cue_freshness_s=_optional_float(
+            _get(
+                resource,
+                "cue_freshness_s",
+                _get(
+                    resource,
+                    "cue_freshness",
+                    _get(resource, "secondary_cue_freshness_s"),
+                ),
+            )
+        ),
+        gimbal_pointing_ok=_optional_bool(
+            _get(resource, "gimbal_pointing_ok", _get(resource, "secondary_gimbal_pointing_ok"))
+        ),
+        secondary_coverage_ratio=_optional_float(
+            _get(resource, "secondary_coverage_ratio", _get(resource, "coverage_ratio"))
+        ),
+        cross_view_support_count=_optional_int(_get(resource, "cross_view_support_count")),
     )
 
 
@@ -936,6 +1356,21 @@ def _optional_int(value: Any) -> int | None:
         return None
 
 
+def _optional_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"true", "yes", "y", "1", "available"}:
+        return True
+    if text in {"false", "no", "n", "0", "unavailable", "none"}:
+        return False
+    return None
+
+
 def _first_float(*values: Any) -> float:
     for value in values:
         parsed = _optional_float(value)
@@ -1025,6 +1460,62 @@ def _c2_health(value: C2Health | str) -> C2Health:
     if isinstance(value, C2Health):
         return value
     return C2Health(str(value))
+
+
+def _availability_band(value: Any) -> AvailabilityBand:
+    if isinstance(value, AvailabilityBand):
+        return value
+    raw = (_string_or_none(value) or "medium").lower()
+    aliases = {
+        "available": AvailabilityBand.HIGH,
+        "healthy": AvailabilityBand.HIGH,
+        "true": AvailabilityBand.HIGH,
+        "offline": AvailabilityBand.NONE,
+        "unavailable": AvailabilityBand.NONE,
+        "false": AvailabilityBand.NONE,
+    }
+    if raw in {item.value for item in AvailabilityBand}:
+        return AvailabilityBand(raw)
+    return aliases.get(raw, AvailabilityBand.MEDIUM)
+
+
+def _comm_band(value: Any) -> CommBand:
+    if isinstance(value, CommBand):
+        return value
+    raw = (_string_or_none(value) or "good").lower()
+    aliases = {
+        "fresh": CommBand.GOOD,
+        "healthy": CommBand.GOOD,
+        "ok": CommBand.GOOD,
+        "stale": CommBand.LIMITED,
+        "degraded": CommBand.LIMITED,
+        "lost": CommBand.POOR,
+        "none": CommBand.POOR,
+    }
+    if raw in {item.value for item in CommBand}:
+        return CommBand(raw)
+    return aliases.get(raw, CommBand.GOOD)
+
+
+def _node_role(value: Any, *, capability_class: str) -> NodeRole:
+    if isinstance(value, NodeRole):
+        return value
+    raw = (_string_or_none(value) or "").lower()
+    if raw.startswith("noderole."):
+        raw = raw.split(".", 1)[1]
+    if raw in {item.value for item in NodeRole}:
+        return NodeRole(raw)
+
+    capability = capability_class.lower()
+    if capability == NodeRole.MOBILE_HIGH_RECON.value:
+        return NodeRole.MOBILE_HIGH_RECON
+    if capability == NodeRole.MOBILE_SECONDARY_RECON.value:
+        return NodeRole.MOBILE_SECONDARY_RECON
+    if capability == NodeRole.FIXED_TETHERED_SECONDARY.value:
+        return NodeRole.FIXED_TETHERED_SECONDARY
+    if capability in {"tethered_recon", "secondary_c2"}:
+        return NodeRole.SECONDARY_RECON
+    return NodeRole.INTERCEPTOR
 
 
 def _link_type(value: Any, payload_kind: Any = None) -> LinkType:

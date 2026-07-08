@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from .coordinator import SECONDARY_NODE_ROLES
 from .models import (
     AvailabilityBand,
     C2Health,
@@ -14,6 +13,11 @@ from .models import (
     PayloadKind,
     ResourceSummary,
     SecondaryNodeLifecycleSummary,
+    is_fixed_tethered_secondary_resource,
+    is_mobile_high_recon_resource,
+    is_secondary_node_resource,
+    node_role_value,
+    secondary_capability_class,
     to_jsonable,
 )
 
@@ -118,6 +122,17 @@ class TerminalAssociationSummary:
     duplicate_terminal_lock: bool = False
     cross_view_risk_score: float = 0.0
     cross_view_support_count: int = 0
+    secondary_single_camera_full_view_frame_rate: float | None = None
+    secondary_network_joint_full_view_frame_rate: float | None = None
+    secondary_network_mean_coverage_ratio: float | None = None
+    cue_freshness_s: float | None = None
+    gimbal_pointing_ok: bool | None = None
+    secondary_coverage_ratio: float | None = None
+    cross_view_association_count: int | None = None
+    cross_view_conversion_gap: float | str | None = None
+    secondary_detect_to_cross_view_reject_reasons: tuple[str, ...] = ()
+    secondary_detect_available_but_not_registered: bool = False
+    secondary_detect_to_cross_view_diagnostic: str | None = None
 
 
 @dataclass(frozen=True)
@@ -677,14 +692,16 @@ class ActiveDegradationArbiter:
         candidates = [
             resource
             for resource in resources
-            if resource.node_role in SECONDARY_NODE_ROLES
+            if is_secondary_node_resource(resource)
             and not resource.operator_hold
             and resource.availability_band != AvailabilityBand.NONE
-            and (resource.coverage_cell in {None, "", coverage_cell})
+            and ActiveDegradationArbiter._secondary_covers_cell(resource, coverage_cell)
             and ActiveDegradationArbiter._secondary_heartbeat_is_usable(
                 resource,
                 current_time_s,
             )
+            and ActiveDegradationArbiter._secondary_cue_is_usable(resource)
+            and ActiveDegradationArbiter._secondary_gimbal_is_usable(resource)
             and ActiveDegradationArbiter._secondary_link_is_usable(
                 resource,
                 communication_summaries,
@@ -696,11 +713,21 @@ class ActiveDegradationArbiter:
         candidates.sort(
             key=lambda resource: (
                 int(resource.takeover_priority),
+                ActiveDegradationArbiter._secondary_capability_rank(resource),
                 -int(resource.lease_epoch),
                 resource.node_id,
             )
         )
         return candidates[0]
+
+    @staticmethod
+    def _secondary_covers_cell(resource: ResourceSummary, coverage_cell: str) -> bool:
+        if resource.coverage_cell in {None, "", coverage_cell}:
+            return True
+        return (
+            resource.secondary_coverage_ratio is not None
+            and resource.secondary_coverage_ratio > 0.0
+        )
 
     @staticmethod
     def _secondary_heartbeat_is_usable(
@@ -712,6 +739,31 @@ class ActiveDegradationArbiter:
         return float(current_time_s) - float(resource.heartbeat_timestamp_s) <= float(
             resource.heartbeat_stale_after_s
         )
+
+    @staticmethod
+    def _secondary_cue_is_usable(resource: ResourceSummary) -> bool:
+        if resource.cue_freshness_s is None:
+            return True
+        return 0.0 <= float(resource.cue_freshness_s) <= float(resource.heartbeat_stale_after_s)
+
+    @staticmethod
+    def _secondary_gimbal_is_usable(resource: ResourceSummary) -> bool:
+        return resource.gimbal_pointing_ok is not False
+
+    @staticmethod
+    def _secondary_capability_rank(resource: ResourceSummary) -> int:
+        secondary_class = secondary_capability_class(resource)
+        if secondary_class == "mobile_high_recon":
+            return 0
+        if secondary_class == "mobile_secondary_recon":
+            return 1
+        if secondary_class == "fixed_tethered_secondary":
+            return 2
+        if secondary_class == "secondary_recon":
+            return 3
+        if secondary_class == "ground_backup":
+            return 4
+        return 5
 
     @staticmethod
     def _secondary_link_is_usable(
@@ -890,7 +942,7 @@ def summarize_secondary_lifecycle(
 ) -> tuple[SecondaryNodeLifecycleSummary, ...]:
     summaries: list[SecondaryNodeLifecycleSummary] = []
     for resource in resources:
-        if resource.node_role not in SECONDARY_NODE_ROLES:
+        if not is_secondary_node_resource(resource):
             continue
         heartbeat_age = None
         if current_time_s is not None and resource.heartbeat_timestamp_s is not None:
@@ -899,6 +951,11 @@ def summarize_secondary_lifecycle(
             resource,
             communication_summaries,
             current_time_s,
+        )
+        cue_freshness = (
+            resource.cue_freshness_s
+            if resource.cue_freshness_s is not None
+            else video_freshness
         )
         link_stale = None
         if communication_summaries is not None:
@@ -910,10 +967,13 @@ def summarize_secondary_lifecycle(
         secondary_available = (
             not resource.operator_hold
             and resource.availability_band != AvailabilityBand.NONE
-            and (resource.coverage_cell in {None, "", coverage_cell})
+            and ActiveDegradationArbiter._secondary_covers_cell(resource, coverage_cell)
             and ActiveDegradationArbiter._secondary_heartbeat_is_usable(resource, current_time_s)
+            and ActiveDegradationArbiter._secondary_cue_is_usable(resource)
+            and ActiveDegradationArbiter._secondary_gimbal_is_usable(resource)
             and not bool(link_stale)
         )
+        secondary_class = secondary_capability_class(resource)
         summaries.append(
             SecondaryNodeLifecycleSummary(
                 node_id=resource.node_id,
@@ -926,6 +986,15 @@ def summarize_secondary_lifecycle(
                 secondary_available=secondary_available,
                 heartbeat=resource.heartbeat_timestamp_s,
                 video_cue_freshness=video_freshness,
+                capability_class=resource.capability_class,
+                node_role=node_role_value(resource.node_role),
+                secondary_capability_class=secondary_class,
+                cue_freshness_s=cue_freshness,
+                gimbal_pointing_ok=resource.gimbal_pointing_ok,
+                secondary_coverage_ratio=resource.secondary_coverage_ratio,
+                cross_view_support_count=resource.cross_view_support_count,
+                is_mobile_high_recon=is_mobile_high_recon_resource(resource),
+                is_fixed_tethered_secondary=is_fixed_tethered_secondary_resource(resource),
             )
         )
     return tuple(summaries)

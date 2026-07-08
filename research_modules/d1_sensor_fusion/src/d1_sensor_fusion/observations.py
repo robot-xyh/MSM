@@ -41,6 +41,40 @@ class CameraModel:
     def from_metadata(cls, metadata: dict) -> "CameraModel":
         if "camera_model" in metadata and isinstance(metadata["camera_model"], CameraModel):
             return metadata["camera_model"]
+        camera_model = metadata.get("camera_model")
+        if isinstance(camera_model, dict):
+            return cls(
+                position_ned=np.asarray(
+                    camera_model.get(
+                        "position_ned",
+                        camera_model.get(
+                            "camera_position_ned",
+                            metadata.get("camera_position_ned", [0.0, 0.0, -10.0]),
+                        ),
+                    ),
+                    dtype=float,
+                ),
+                rotation_world_to_camera=np.asarray(
+                    camera_model.get(
+                        "rotation_world_to_camera",
+                        metadata.get(
+                            "rotation_world_to_camera",
+                            [
+                                [0.0, 1.0, 0.0],
+                                [0.0, 0.0, 1.0],
+                                [1.0, 0.0, 0.0],
+                            ],
+                        ),
+                    ),
+                    dtype=float,
+                ),
+                fx=float(camera_model.get("fx", metadata.get("fx", 900.0))),
+                fy=float(camera_model.get("fy", metadata.get("fy", 900.0))),
+                cx=float(camera_model.get("cx", metadata.get("cx", 640.0))),
+                cy=float(camera_model.get("cy", metadata.get("cy", 360.0))),
+                width=int(camera_model.get("width", metadata.get("width", 1280))),
+                height=int(camera_model.get("height", metadata.get("height", 720))),
+            )
         return cls(
             position_ned=np.asarray(
                 metadata.get("camera_position_ned", [0.0, 0.0, -10.0]), dtype=float

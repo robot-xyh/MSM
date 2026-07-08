@@ -19,8 +19,8 @@ D2/D6 的硬约束必须保留：`id_switch_count` 是一级显式指标，不�
 
 - 数据模型：`EpisodeMetrics`、`TrackRecord`、`AssignmentRecord`、`EventRecord`、`LinkRecord`、`TerminalRecord`。
 - 收集器：`MetricsCollector.add_track/add_assignment/add_event/add_link/add_terminal()` 和 `compute_episode()`。
-- 日志接口：标准化 JSONL loader、Blocks replay JSONL loader、D4 active-degradation CSV loader、D7 intercept/guidance CSV/JSON loader。
-- 报告接口：`ReportGenerator` 输出 `episode_metrics.csv`、`summary_metrics.csv`、Markdown 报告和分类 PNG 图。
+- 日志接口：标准化 JSONL loader、Blocks replay JSONL loader、main episode bus metrics JSON loader、D4 active-degradation CSV loader、D7 intercept/guidance CSV/JSON loader。
+- 报告接口：`ReportGenerator` 输出 `episode_metrics.csv`、`summary_metrics.csv`、Markdown 报告和分类 PNG 图；episode CSV 保留 metadata JSON，Markdown 在存在数据时输出 fixed downlook secondary vs mobile recon gimbal 对比表和 terminal switch/contract reject reason 分布。
 - 批量统计：count、mean、sample std、stderr、normal-approximation 95% CI、median、p05、p95。
 - 分组统计：按 `metric_scope`、`seed`、`scenario_group` 和实际 `drone_count/resource_count/target_count/camera_count` 分组。
 
@@ -156,7 +156,44 @@ duplicate_terminal_lock_count
 
 D5 仍然负责身份确认和 `global_track_id` 合同；D6 不重绑、不改写本地或全局 ID。
 
-### 3.7 通信指标
+### 3.7 二级视角与侦察云台指标
+
+```text
+secondary_network_joint_full_view_frame_rate
+secondary_network_mean_coverage_ratio
+secondary_single_camera_full_view_frame_rate
+cross_view_association_count
+secondary_detect_available_but_not_registered_count
+cue_pointing_error_count / mean_deg / rmse_deg / max_deg
+gimbal_pointing_error_count / mean_deg / rmse_deg / max_deg
+```
+
+当前来源：
+
+- `EventRecord`/`LinkRecord.metadata` 中的 `secondary_node_type/node_type/camera_node_type`，规范化为 `fixed_downlook_secondary`、`mobile_recon_gimbal` 或 `secondary_network`。
+- main/D4/D5 写盘的覆盖/FOV 记录，例如 `covered_target_ids`、`covered_target_count`、`coverage_ratio`、`joint_full_view`、`single_camera_full_view_count`。
+- D5 跨视角事件，例如 `d5_cross_view_association`、`cross_view_association_count`、`multi_view_consensus_result`。
+- D5 注册缺失事件，例如 `secondary_detect_available_but_not_registered_count`、`detect_available=True` 且 `d5_registered=False`。
+- cue/gimbal 指向误差字段，例如 `cue_pointing_error_deg/rad`、`gimbal_pointing_error_deg/rad`、`pointing_error_deg/rad`。
+
+归一化口径：
+
+- network joint full-view 先按 frame 聚合二级网络覆盖集合，再除以实际 target count，不从 `2v2/5v5` 场景名推断目标数。
+- mean coverage ratio 使用实际 target count；只有日志显式给出 per-frame ratio 时才直接消费 ratio。
+- single-camera full-view rate 使用 camera-frame 分母；分母来自日志显式 camera frame count 或实际 camera count，而不是场景名。
+- `EpisodeMetrics.metadata["secondary_sensing_node_type_metrics"]` 保留 node-type 级指标，报告中对比固定俯视二级节点和机动高空侦察云台节点。
+
+D6 只消费 main/D4/D5 写盘日志，不下发 cue、不控制云台、不触发接管/重分配。
+
+2026-07-08 main 最新 AirSim 机动高空侦察节点测试已验证 D6 侧消费口径：
+
+- 输出目录：`research_modules/airsim_runtime/outputs/p1_d4d5_mobile_recon_20260708_055948*`。
+- 场景：5v5 D4/D5 stress，3 seeds，每个 seed 3 case，5 目标、5 拦截相机、2 个 200 m 高差 `mobile_recon_gimbal/mobile_high_recon` 二级侦察相机，二级相机 80 deg FOV、1920x1080。
+- 运行完整性：每个 episode 13 frames，`connected=True`，`image_ok_count=13`。
+- 关键结果：`secondary_gimbal_pointing_ok_rate=1.0`；`secondary_network_joint_full_view_frame_rate=0.0`；`secondary_network_mean_coverage_ratio` 聚合均值约 0.67，单 case 约 0.62-0.72；二级 bbox mean 约 3.3k px^2；主要断点为 `not_all_targets_visible` 和 `network_union_incomplete`。
+- 结论：相对固定俯视 200 m/110 deg 二级视角，mobile recon 的 bbox 面积明显提升，但网络联合 full-view 仍未解决。D6 记录该结论为离线评估状态，不参与 D4/D5 控制或云台调度。
+
+### 3.8 通信指标
 
 ```text
 cross_node_latency_ms
@@ -193,7 +230,7 @@ delivered
 stale_after_s
 ```
 
-### 3.8 D7 gate、visual PNG switch 与拦截统计
+### 3.9 D7 gate、visual PNG switch 与拦截统计
 
 D6 已能从 D7 `control_commands.csv`、`guidance_records.csv`、`guidance_summaries.json`、`intercept_summary.json` 读取：
 
@@ -221,7 +258,7 @@ gate_reject_count
 
 `terminal_takeover_rate` 按 unique `(resource_id, target_id)` pair 统计，证据包括 `terminal_locked=True`、`terminal_switch_allowed=True`、`vision_terminal` mode、`terminal_mode_entered=True`，或 `guidance_law` 为 `png_vm/png_ttc/los`。`terminal_handover_pending` 和 `detection_seen` 只能说明候选可见，不能单独算 takeover。
 
-### 3.9 安全指标
+### 3.10 安全指标
 
 ```text
 constraint_violation_count
@@ -236,6 +273,7 @@ human_override_count
 |---|---|---|---|
 | `load_episode_log_jsonl()` | 标准化 `truth_summary/track/assignment/event/link/terminal` JSONL | 已实现并测试 | 未知 record type 直接报错，避免 schema drift 静默进入报告 |
 | `load_blocks_replay_jsonl()` | `blocks_frames.jsonl`、可选 `blocks_sensor_observations.jsonl` | 已实现并测试 | 只读文件，不 import AirSim，不调用 runtime API |
+| `load_main_episode_bus_metrics()` / `load_main_episode_bus_metric_files()` | `main_episode_bus_metrics.json`、`main_episode_bus_contract_metrics.json` | 已实现并测试 | 只还原已写盘 `EpisodeMetrics`；不运行 AirSim、不合并控制结果 |
 | `load_d4_active_degradation_decisions()` | D4 active-degradation CSV | 已实现并测试 | 只消费已写盘 review/window 字段；有 label/后验字段才计算必要性，不从事件名判定 |
 | `load_d7_intercept_outputs()` | `control_commands.csv`、`intercept_summary.json` | 已实现并测试 | 只离线评估 D7 输出，不发控制 |
 | `load_d7_guidance_timeseries()` | `guidance_records.csv`、`guidance_summaries.json`、D7 control/intercept 输出 | 已实现并测试 | 保留 D4/D5 state、plan/version、guidance law 和 reject reason metadata |
@@ -254,16 +292,21 @@ human_override_count
 已具备 D6 侧消费能力：
 
 - D4：可读取 active-degradation CSV；可从事件 metadata 中识别 active/passive、secondary takeover/reassignment、distributed fallback、D4 reassign pending、触发原因、review label、trigger/decision timestamp、selected coordinator、coverage cell 和 pre/post window 字段。
-- D5：可通过 `TerminalRecord`、terminal/multi-view event、Blocks bbox/camera metadata 计算末端准确率、ID switch、lock、歧义、friend hold、多视角一致和冲突。
+- main bus：可读取正式 execution `main_episode_bus_metrics.json` 与 raw contract `main_episode_bus_contract_metrics.json`，保留 `metric_scope`、seed/scenario/实际规模字段、D7 guidance/intercept 指标和 reject reason metadata。
+- D5：可通过 `TerminalRecord`、terminal/multi-view event、Blocks bbox/camera metadata 计算末端准确率、ID switch、lock、歧义、friend hold、多视角一致和冲突；可消费 cross-view association、secondary detection available but not registered 和 cue/gimbal pointing error metadata。
 - D7：可读取 control/guidance/intercept CSV/JSON，计算 gate、visual PNG switch、terminal takeover、模式切换、拦截结果和 reject metadata。
 - Blocks CV：可从 `blocks_frames.jsonl` 与 `blocks_sensor_observations.jsonl` 构建 truth summary、规模字段、视觉检测、terminal records、video/bbox link records 和通信链路样本。
 
-剩余 P1 不是 D6 指标实现缺口，而是真实 episode 写盘和批量报告口径的持续性要求：
+P0/P1 状态：
+
+- 无 P0 blocker。D6 离线主线、`id_switch_count` 显式输出、实际规模归一化、main bus metrics loader、D4/D5/D7 写盘消费和二级侦察指标消费均已具备。
+- 剩余 P1 不是 D6 在线控制职责，而是真实 episode 写盘、自动汇总和长期趋势报告的持续性要求：
 
 - 真实 episode 需要持续写出 D4 `review_label`、`trigger_timestamp`、`decision_timestamp`、`selected_coordinator`、`coverage_cell` 和固定 pre/post window 字段；D6 已能消费这些字段并计算主动降级必要性/精度。
 - 同一 episode 目录仍需稳定聚合 Blocks、D4、D5、D7 和 D6 标准化 JSONL/CSV/JSON，并保持同一 episode clock；D6 loader 本身不会扫描 runtime bus、启动 AirSim 或补写上游日志。
 - D5 terminal association、cross-view conflict、duplicate lock、friend overlap hold、validation label 等真实 AirSim 事件应持续进入 D6 可读记录；D6 已有指标和 Blocks metadata 基线。
-- 多 seed、5v5/N-v-N 和非默认 episode 需要继续保持 `metric_scope=execution/contract` 双口径，正式指标采用执行后 metrics，contract metrics 仅用于诊断；报告分组已按 `metric_scope + seed + scenario_group + scale` 实现，不从场景名推断规模。
+- 下一阶段 AirSim 报告需要把 `mobile_recon_gimbal` / `fixed_downlook_secondary` 的 coverage、funnel breakpoint、bbox 和 cue/gimbal 指向指标纳入多 seed 自动汇总和长期趋势，而不仅是单批次手工解读。
+- 多 seed、5v5/N-v-N 和非默认 episode 需要继续保持 `metric_scope=execution/contract` 双口径，正式指标采用执行后 metrics，contract metrics 仅用于诊断；D6 已能直接读取两类 main bus metrics JSON，报告分组已按 `metric_scope + seed + scenario_group + scale` 实现，不从场景名推断规模，并在 metadata/Markdown 中保留 reject reason 分布。
 
 ## 6. 未实现的开源/外部项
 
@@ -281,10 +324,10 @@ human_override_count
 
 D6 报告生成器当前输出：
 
-- `episode_metrics.csv`：每个 episode 一行，包含规模字段和所有 `EpisodeMetrics.metric_names()`。
+- `episode_metrics.csv`：每个 episode 一行，包含规模字段、所有 `EpisodeMetrics.metric_names()` 和 metadata JSON。
 - `summary_metrics.csv`：全局与 `metric_scope + seed + scenario_group + scale` 分组统计。
-- Markdown 报告：中文说明、规模范围、场景分组、汇总表和图表链接。
-- PNG 图表：`detection`、`tracking`、`assignment`、`degradation`、`terminal`、`communication`、`guidance`、`safety` 和 selected metric distributions。
+- Markdown 报告：中文说明、规模范围、场景分组、固定俯视二级节点 vs 机动侦察云台节点对比表、汇总表、reject reason 分布和图表链接。
+- PNG 图表：`detection`、`tracking`、`assignment`、`degradation`、`terminal`、`secondary_sensing`、`communication`、`guidance`、`safety` 和 selected metric distributions。
 
 统计口径：
 
@@ -301,9 +344,11 @@ p05 / p95
 
 ## 8. P1 下一步
 
-1. 真实 episode review/window 写盘：要求 main/D4 在每个真实 episode 持续写出 `review_label`、`trigger_timestamp`、`decision_timestamp`、`selected_coordinator`、`coverage_cell`、pre/post window 和后验 outcome/risk 字段；D6 不从事件名推断必要性。
-2. 多 seed 报告口径验收：在 2v2、5v5、N-v-N 和非默认 episode 批量运行中持续保留 `metric_scope=execution/contract` 双口径、实际规模字段和 seed/scenario 分组；执行指标与 contract metrics 不互相覆盖。
-3. 真实 episode 日志完整性：把 D4/D5/D7/Blocks 产物稳定落到同一 episode clock 和目录，D6 汇总阶段调用对应 loader 合并；D6 继续只消费日志，不参与控制、重规划或导引。
+1. 多 seed 报告自动汇总：把 2026-07-08 `p1_d4d5_mobile_recon_20260708_055948*` 这类跨 seed/case 输出自动汇总为 D6 批量 Markdown/CSV，而不是只依赖 main 的 stress 报告表。
+2. coverage/funnel/gimbal 长期趋势：在 `mobile_recon_gimbal` 与 `fixed_downlook_secondary` 之间持续跟踪 `secondary_network_mean_coverage_ratio`、`secondary_network_joint_full_view_frame_rate`、funnel breakpoint、bbox area、cue/gimbal pointing 指标；当前 mobile recon 已提升 bbox 面积，但 full-view 仍为 0.0。
+3. 真实 episode review/window 写盘：要求 main/D4 在每个真实 episode 持续写出 `review_label`、`trigger_timestamp`、`decision_timestamp`、`selected_coordinator`、`coverage_cell`、pre/post window 和后验 outcome/risk 字段；D6 不从事件名推断必要性，`active_degradation_precision` 必须使用真实 review label/后验字段。
+4. 真实 episode 日志完整性：把 D4/D5/D7/Blocks 产物稳定落到同一 episode clock 和目录，D6 汇总阶段调用对应 loader 合并；D6 继续只消费日志，不参与控制、重规划或导引。
+5. 多 seed 双口径验收：在 2v2、5v5、N-v-N 和非默认 episode 批量运行中持续保留 `metric_scope=execution/contract` 双口径、实际规模字段、seed/scenario 分组和 reject reason metadata；执行指标与 contract metrics 不互相覆盖。
 
 ## 9. P2 下一步
 

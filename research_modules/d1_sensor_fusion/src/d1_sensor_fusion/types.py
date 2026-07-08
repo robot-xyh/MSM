@@ -397,6 +397,62 @@ class FusionQualityRegionSummary:
         }
 
 
+@dataclass(frozen=True)
+class ReconCueSummary:
+    """Compact D1 cue for coarse recon camera pointing over fused tracks."""
+
+    cue_position_ned: np.ndarray
+    cue_covariance: np.ndarray
+    covariance_trace: float
+    active_target_ids: tuple[str, ...]
+    track_count: int
+    stale_count: int
+    total_input_count: int
+    excluded_count: int
+    default_covariance_count: int
+    coverage_cell: str | None = None
+    coverage_cells: tuple[str, ...] = ()
+    measurement_timestamp: float | None = None
+    arrival_timestamp: float | None = None
+    quality_flags: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "cue_position_ned",
+            np.asarray(self.cue_position_ned, dtype=float).reshape(3),
+        )
+        object.__setattr__(
+            self,
+            "cue_covariance",
+            np.asarray(self.cue_covariance, dtype=float).reshape(3, 3),
+        )
+        object.__setattr__(self, "covariance_trace", float(self.covariance_trace))
+
+    @property
+    def centroid_ned(self) -> np.ndarray:
+        return self.cue_position_ned
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "cue_position_ned": self.cue_position_ned.tolist(),
+            "centroid_ned": self.centroid_ned.tolist(),
+            "cue_covariance": self.cue_covariance.tolist(),
+            "covariance_trace": self.covariance_trace,
+            "active_target_ids": tuple(self.active_target_ids),
+            "coverage_cell": self.coverage_cell,
+            "coverage_cells": tuple(self.coverage_cells),
+            "measurement_timestamp": self.measurement_timestamp,
+            "arrival_timestamp": self.arrival_timestamp,
+            "track_count": self.track_count,
+            "stale_count": self.stale_count,
+            "total_input_count": self.total_input_count,
+            "excluded_count": self.excluded_count,
+            "default_covariance_count": self.default_covariance_count,
+            "quality_flags": tuple(self.quality_flags),
+        }
+
+
 def _lineage_scalar(value: Any) -> Any:
     if isinstance(value, np.ndarray):
         return tuple(np.asarray(value).reshape(-1).tolist())

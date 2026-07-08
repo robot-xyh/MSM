@@ -17,6 +17,7 @@ class RiskThresholds:
     """Threshold profile used to split soft and hard association risk."""
 
     profile_name: str = "default"
+    profile_version: str = "unversioned"
     soft_association_ambiguity: float = 0.45
     soft_candidate_overlap_rate: float = 0.30
     soft_cost_margin_risk: float = 0.45
@@ -29,6 +30,7 @@ class RiskThresholds:
     def to_dict(self) -> dict[str, float | int | str]:
         return {
             "profile_name": self.profile_name,
+            "profile_version": self.profile_version,
             "soft_association_ambiguity": self.soft_association_ambiguity,
             "soft_candidate_overlap_rate": self.soft_candidate_overlap_rate,
             "soft_cost_margin_risk": self.soft_cost_margin_risk,

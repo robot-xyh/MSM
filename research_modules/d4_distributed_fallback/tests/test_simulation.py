@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+from d4_distributed_fallback.models import (
+    AvailabilityBand,
+    CommBand,
+    ConfidenceBand,
+    NodeRole,
+    ResourceSummary,
+    TrackSummary,
+)
 from d4_distributed_fallback.simulation import default_resources, default_tasks, run_failover_simulation
 
 
@@ -36,3 +44,62 @@ def test_failover_simulation_uses_summary_list_lengths_when_provided() -> None:
     assert metrics["node_count"] == 6
     assert metrics["task_count"] == 6
     assert metrics["takeover_time_s"] is not None
+
+
+def test_failover_simulation_reports_secondary_coordination_metadata() -> None:
+    resources = [
+        ResourceSummary(
+            node_id="sec-north-1",
+            capability_class="tethered_recon",
+            availability_band=AvailabilityBand.HIGH,
+            comm_band=CommBand.GOOD,
+            takeover_priority=10,
+            lease_epoch=3,
+            epoch=1,
+            node_role=NodeRole.SECONDARY_RECON,
+            coordinator_only=True,
+            coverage_cell="cell-north",
+        ),
+        ResourceSummary(
+            node_id="int-1",
+            capability_class="observe",
+            availability_band=AvailabilityBand.HIGH,
+            comm_band=CommBand.GOOD,
+            epoch=1,
+        ),
+        ResourceSummary(
+            node_id="int-2",
+            capability_class="observe",
+            availability_band=AvailabilityBand.HIGH,
+            comm_band=CommBand.GOOD,
+            epoch=1,
+        ),
+    ]
+    tasks = [
+        TrackSummary(
+            track_id="track-north-1",
+            coarse_cell="cell-north",
+            age_s=1.0,
+            confidence_band=ConfidenceBand.HIGH,
+            source_count=2,
+            epoch=1,
+        )
+    ]
+
+    metrics = run_failover_simulation(
+        resources=resources,
+        tasks=tasks,
+        packet_loss=0.0,
+        seed=19,
+    )
+    report = metrics["cbba_report_metadata"]
+
+    assert metrics["coordination_mode"] == "secondary_node"
+    assert metrics["selected_coordinator"] == "secondary_node"
+    assert metrics["d4_action"] == "degrade_to_secondary"
+    assert metrics["leader_id"] == "sec-north-1"
+    assert metrics["leader_role"] == "secondary_recon"
+    assert metrics["coverage_cell"] == "cell-north"
+    assert report["coordination_mode"] == metrics["coordination_mode"]
+    assert report["consensus_rounds"] == metrics["consensus_rounds"]
+    assert report["cost_gap_available"] is False

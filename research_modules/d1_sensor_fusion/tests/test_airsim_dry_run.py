@@ -201,6 +201,185 @@ def test_sensor_observations_csv_reader_replays_fusion_adapter(tmp_path) -> None
     assert tracks[0].metadata["coverage_cell"] == "cell-csv"
 
 
+def test_blocks_calibration_csv_replay_preserves_audit_and_quality_fields(tmp_path) -> None:
+    csv_path = tmp_path / "blocks_calibration_sensor_observations.csv"
+    fieldnames = [
+        "observation_id",
+        "sensor_id",
+        "modality",
+        "measurement_timestamp",
+        "arrival_timestamp",
+        "frame_id",
+        "measurement",
+        "covariance",
+        "confidence",
+        "quality_flags",
+        "metadata",
+        "communication",
+        "source_support",
+    ]
+    rows = [
+        {
+            "observation_id": "blocks_seed007_radar_000",
+            "sensor_id": "BLOCKS-RADAR-01",
+            "modality": "radar",
+            "measurement_timestamp": "0.0",
+            "arrival_timestamp": "0.2",
+            "frame_id": "ned",
+            "measurement": json.dumps([120.0, 0.0, 0.0, 4.0]),
+            "covariance": json.dumps(np.diag([4.0, 0.01, 0.01, 1.0]).tolist()),
+            "confidence": "0.95",
+            "quality_flags": "blocks_csv",
+            "metadata": json.dumps(
+                {
+                    "sensor_position_ned": [0.0, 0.0, 0.0],
+                    "coverage_cell": "cell-north",
+                    "truth_id": "actor_red_01",
+                    "airsim_frame_index": 0,
+                }
+            ),
+            "communication": json.dumps(
+                {
+                    "source_node_id": "BLOCKS-CAL-SEED-007",
+                    "target_node_id": "D1-FUSION",
+                    "link_type": "c2_replay",
+                    "sent_timestamp": 0.0,
+                    "received_timestamp": 0.2,
+                    "payload_kind": "radar_observation",
+                    "stale_after_s": 0.6,
+                }
+            ),
+            "source_support": json.dumps({"radar": 1}),
+        },
+        {
+            "observation_id": "blocks_seed007_radar_001",
+            "sensor_id": "BLOCKS-RADAR-01",
+            "modality": "radar",
+            "measurement_timestamp": "1.0",
+            "arrival_timestamp": "1.2",
+            "frame_id": "ned",
+            "measurement": json.dumps([124.0, 0.0, 0.0, 4.0]),
+            "covariance": json.dumps(np.diag([4.2, 0.01, 0.01, 1.0]).tolist()),
+            "confidence": "0.95",
+            "quality_flags": "blocks_csv",
+            "metadata": json.dumps(
+                {
+                    "sensor_position_ned": [0.0, 0.0, 0.0],
+                    "coverage_cell": "cell-north",
+                    "truth_id": "actor_red_01",
+                    "airsim_frame_index": 1,
+                }
+            ),
+            "communication": json.dumps(
+                {
+                    "source_node_id": "BLOCKS-CAL-SEED-007",
+                    "target_node_id": "D1-FUSION",
+                    "link_type": "c2_replay",
+                    "sent_timestamp": 1.0,
+                    "received_timestamp": 1.2,
+                    "payload_kind": "radar_observation",
+                    "stale_after_s": 0.6,
+                }
+            ),
+            "source_support": json.dumps({"radar": 1}),
+        },
+        {
+            "observation_id": "blocks_seed007_acoustic_delayed",
+            "sensor_id": "BLOCKS-ACOUSTIC-01",
+            "modality": "acoustic",
+            "measurement_timestamp": "0.5",
+            "arrival_timestamp": "1.4",
+            "frame_id": "ned",
+            "measurement": json.dumps([0.0]),
+            "covariance": json.dumps([[0.02]]),
+            "confidence": "0.82",
+            "quality_flags": "late_replay",
+            "metadata": json.dumps(
+                {
+                    "sensor_position_ned": [0.0, 0.0, 0.0],
+                    "coverage_cell": "cell-north",
+                    "truth_id": "actor_red_01",
+                    "airsim_frame_index": 1,
+                }
+            ),
+            "communication": json.dumps(
+                {
+                    "source_node_id": "BLOCKS-CAL-SEED-007",
+                    "target_node_id": "D1-FUSION",
+                    "link_type": "c2_replay",
+                    "sent_timestamp": 0.5,
+                    "received_timestamp": 1.4,
+                    "payload_kind": "acoustic_observation",
+                    "stale_after_s": 0.4,
+                }
+            ),
+            "source_support": json.dumps({"acoustic": 1}),
+        },
+    ]
+    with csv_path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    loaded = read_sensor_observations_csv(csv_path)
+    adapter = FusionAdapter(
+        association_gate=45.0,
+        latency_compensation=True,
+        use_truth_hints_for_association=True,
+    )
+    tracks = adapter.ingest_many(loaded)
+
+    assert len(loaded) == 3
+    for observation in loaded:
+        assert observation.metadata["d1_replay_schema_version"] == REPLAY_SCHEMA_VERSION
+        assert observation.arrival_timestamp >= observation.measurement_timestamp
+        assert observation.covariance is not None
+        assert np.isfinite(observation.covariance).all()
+        assert observation.metadata["coverage_cell"] == "cell-north"
+        assert observation.source_support == {observation.modality: 1}
+
+    assert len(tracks) == 1
+    track = tracks[0]
+    assert track.metadata["frame_id"] == "ned"
+    assert track.position.shape == (3,)
+    assert track.velocity.shape == (3,)
+    assert track.covariance.shape == (6, 6)
+    assert np.isfinite(track.state).all()
+    assert np.isfinite(track.covariance).all()
+    assert track.source_support["radar"] == 2
+    assert track.source_support["acoustic"] == 1
+    assert track.metadata["latest_measurement_timestamp"] == 0.5
+    assert track.metadata["latest_arrival_timestamp"] == 1.4
+
+    audit = adapter.latency_audit_summary().to_dict()
+    assert audit["observation_count"] == 3
+    assert audit["oosm_observation_count"] == 1
+    assert audit["stale_observation_count"] == 1
+    assert audit["stale_or_oosm_observation_count"] == 1
+    assert np.isclose(audit["max_delay_s"], 0.9)
+    assert audit["replay_count"] >= 2
+
+    summary = adapter.track_uncertainty_summaries()[0].to_dict()
+    assert summary["coverage_cell"] == "cell-north"
+    assert summary["measurement_timestamp"] == 0.5
+    assert summary["arrival_timestamp"] == 1.4
+    assert summary["source_support"] == {"radar": 2, "acoustic": 1}
+    assert np.isclose(summary["measurement_age_s"], 0.9)
+
+    regions = adapter.region_quality_summaries(
+        required_modalities=("radar", "acoustic", "eo"),
+        stale_age_s=0.25,
+    )
+    assert len(regions) == 1
+    region = regions[0].to_dict()
+    assert region["coverage_cell"] == "cell-north"
+    assert region["track_count"] == 1
+    assert region["source_support"] == {"radar": 2, "acoustic": 1}
+    assert region["source_gap_modalities"] == ("eo",)
+    assert region["stale_track_count"] == 1
+    assert np.isclose(region["max_measurement_age_s"], 0.9)
+
+
 def test_blocks_n_actor_jsonl_contract_exports_observations_and_global_tracks(tmp_path) -> None:
     fixture = make_minimal_airsim_dry_run_fixture(include_lidar=False)
     fixture["fixture_id"] = "blocks_n_actor_contract"

@@ -19,7 +19,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - `RiskThresholds` / `classify_risk_summary()` 软/硬风险分层，按 D4 口径区分 ambiguity/cost margin/candidate overlap 与 IDSW/duplicate/continuity collapse。
 - D1 6D NED `GlobalTrack` 到 D2 2D `Detection` 的投影 adapter，保留 `measurement_timestamp`、`arrival_timestamp`、covariance 和 metadata。
 - AirSim-style dry-run/replay adapter，不 import 或调用 `airsim`，并在 bus message 中导出当前活动 `global_track_ids`。
-- `load_airsim_replay_frames()`、`run_airsim_replay_association()` 和 `run_threshold_sensitivity()` 支持离线 JSON/JSONL replay 读取、association log/report 输出和阈值敏感性汇总。
+- `load_airsim_replay_frames()`、`run_airsim_replay_association()` 和 `run_threshold_sensitivity()` 支持离线 JSON/JSONL replay 读取、association log/report 输出、seed/episode/scenario 校准元数据透传、`RiskThresholds.profile_version` 记录和阈值敏感性汇总；无 truth label 的 N-v-N replay 会用输入观测数或显式 count 字段给出 `target_count` fallback。
 
 部分实现：
 
@@ -57,6 +57,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - D2/D6 必须显式保留 `id_switch_count`；它不能被 RMSE、覆盖率或命中率替代。
 - D2 输出的 `global_track_ids` 来自当前活动航迹集合，不截断或补齐到固定 2 或 5。
 - D4 当前把 D2 风险分为软/硬两类：`association_ambiguity`、低 cost margin、candidate overlap 属于观察/二级 cue 证据；`id_switch_count` 增量、`duplicate_assignment_count`/`duplicate_track_risk` 和 `track_continuity` 低于阈值属于硬风险证据。D2 只发布证据，不直接触发 `request_center_replan` 或降级。
+- 多 seed 风险校准的 replay/report 应保留 `seed`、`episode_id`、`scenario_name`/`scenario`、`drone_count`/`target_count`、gate threshold、`risk_profile`、`risk_profile_version`、association logs、`id_switch_count`、`track_continuity`、`duplicate_assignment_count` 和 soft/hard risk summary；真实 IDSW/continuity 评估仍要求离线 `truth_id`/truth position。
 
 ## 运行测试
 

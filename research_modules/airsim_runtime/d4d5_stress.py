@@ -26,6 +26,7 @@ from d4_distributed_fallback import (
     TerminalDecisionState,
     TrackUncertaintySummary,
 )
+from d4_distributed_fallback.adapter import D4ArbitrationAdapter
 from d5_terminal_association import (
     Assignment,
     CameraModel,
@@ -35,6 +36,7 @@ from d5_terminal_association import (
     TerminalObservation,
     TerminalObservationBus,
     TerminalAssociator,
+    summarize_secondary_visual_coverage_funnel,
 )
 
 
@@ -69,6 +71,8 @@ def run_d4d5_stress_analysis(
     terminal_associator = TerminalAssociator()
     first_frame = frames[0] if frames else None
     geometry = _geometry_summary(first_frame, resource_vehicle_names, secondary_camera_vehicle_names)
+    active_target_ids = tuple(_global_id(obj.object_id) for obj in first_frame.truth_objects) if first_frame else ()
+    secondary_camera_ids = tuple(f"{name}:0" for name in secondary_camera_vehicle_names)
 
     for frame in frames:
         frame_observations = _terminal_observations_for_frame(
@@ -91,6 +95,18 @@ def run_d4d5_stress_analysis(
         )
 
     cross_view = bus.cross_view_associations()
+    secondary_funnel = summarize_secondary_visual_coverage_funnel(
+        secondary_frames=_secondary_coverage_frames(
+            frames,
+            secondary_camera_vehicle_names=secondary_camera_vehicle_names,
+        ),
+        observations=observations,
+        cross_view_associations=cross_view,
+        active_target_ids=active_target_ids,
+        secondary_camera_ids=secondary_camera_ids,
+        current_time=frames[-1].timestamp if frames else None,
+    )
+    secondary_funnel_metrics = _secondary_funnel_metrics(secondary_funnel)
     detection_metrics = _detection_metrics(
         frames,
         resource_vehicle_names=resource_vehicle_names,
@@ -102,6 +118,11 @@ def run_d4d5_stress_analysis(
         "geometry": geometry,
         "secondary_height_above_targets_m": geometry.get("secondary_height_above_targets_m", 0.0),
         **detection_metrics,
+        **secondary_funnel_metrics,
+        **_secondary_guidance_metrics(
+            frames,
+            secondary_camera_vehicle_names=secondary_camera_vehicle_names,
+        ),
         **d4_metrics,
         "terminal_observation_count": len(observations),
         "cross_view_association_count": len(cross_view),
@@ -184,21 +205,28 @@ def write_d4d5_sequence_report(
         [
             "## 三类降级结果",
             "",
-            "| Case | D4主动作 | 模式 | 二级节点 | 多目标视场率 | 单二级全局视野 | `secondary_network_global_view_rate` | 二级bbox均值(px^2) | `cross_view_association_count` | `duplicate_terminal_lock_risk` | 终端准确率 | 歧义事件 |",
-            "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: |",
+            "| Case | D4主动作 | 模式 | 二级模式 | 云台OK率 | 二级节点 | 多目标视场率 | 单二级全局视野 | 二级网络联合覆盖 | 网络覆盖均值 | detect->cross-view gap | 主要断点 | 二级bbox均值(px^2) | `cross_view_association_count` | `duplicate_terminal_lock_risk` | 终端准确率 | 歧义事件 |",
+            "| --- | --- | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | --- | ---: | ---: |",
         ]
     )
     for metrics in case_metrics:
         bbox_stats = metrics.get("secondary_bbox_area_px_stats", {})
+        reject_counts = metrics.get("secondary_detect_to_cross_view_reject_reason_counts", {})
+        top_reject = _top_rejection_reason(reject_counts)
         lines.append(
-            "| {case} | {action} | {mode} | {secondary} | {fov:.2f} | {recon:.2f} | {network:.2f} | {bbox_mean:.2f} | {cross_view} | {duplicate} | {acc:.2f} | {ambiguous} |".format(
+            "| {case} | {action} | {mode} | {recon_mode} | {gimbal_ok:.2f} | {secondary} | {fov:.2f} | {recon:.2f} | {network:.2f} | {network_mean:.2f} | {gap:.2f} | {top_reject} | {bbox_mean:.2f} | {cross_view} | {duplicate} | {acc:.2f} | {ambiguous} |".format(
                 case=metrics.get("case_name", ""),
                 action=metrics.get("dominant_d4_action", ""),
                 mode=metrics.get("dominant_degradation_mode", ""),
+                recon_mode=metrics.get("secondary_recon_mode", "-"),
+                gimbal_ok=float(metrics.get("secondary_gimbal_pointing_ok_rate", 0.0)),
                 secondary=metrics.get("selected_secondary_node_id") or "-",
                 fov=float(metrics.get("multi_target_fov_rate", 0.0)),
-                recon=float(metrics.get("secondary_global_view_rate", 0.0)),
-                network=float(metrics.get("secondary_network_global_view_rate", 0.0)),
+                recon=float(metrics.get("secondary_single_camera_full_view_frame_rate", 0.0)),
+                network=float(metrics.get("secondary_network_joint_full_view_frame_rate", 0.0)),
+                network_mean=float(metrics.get("secondary_network_mean_coverage_ratio", 0.0)),
+                gap=float(metrics.get("cross_view_conversion_gap", 0.0)),
+                top_reject=top_reject or "-",
                 bbox_mean=float(bbox_stats.get("mean", 0.0)),
                 cross_view=int(metrics.get("cross_view_association_count", 0)),
                 duplicate=bool(metrics.get("duplicate_terminal_lock_risk", False)),
@@ -215,6 +243,8 @@ def write_d4d5_sequence_report(
             "- `degrade_to_secondary` 用于验证终端证据持续不一致时，二级系留侦察节点优先于完全分散协商。",
             "- `degrade_to_distributed` 用于验证二级节点不可用或链路过期时，D4 才进入完全无中心的分散模式。",
             "- D5 全程只汇报观测、身份和跨视角风险，不创建或改写 `global_track_id`。",
+            "- 兼容字段：`secondary_global_view_rate` 等价于单二级全局视野；`secondary_network_global_view_rate` 等价于二级网络联合覆盖。",
+            "- 单二级全局视野表示单个二级相机同帧看全目标；二级网络联合覆盖表示所有二级相机同帧目标并集看全目标；`cross_view_association_count` 才表示已形成既有 `global_track_id` 支持。",
             "",
         ]
     )
@@ -503,8 +533,14 @@ def _d4_decisions_for_frame(
     secondary_camera_vehicle_names: tuple[str, ...],
 ) -> list[dict[str, Any]]:
     summaries: list[dict[str, Any]] = []
-    secondary_nodes = _secondary_nodes(case_name, secondary_camera_vehicle_names)
+    d4_adapter = D4ArbitrationAdapter(arbiter)
+    secondary_nodes = _secondary_nodes(case_name, secondary_camera_vehicle_names, frame=frame)
     communications = _communication_summaries(case_name, secondary_nodes, frame.timestamp)
+    d5_evidence = _d5_evidence_for_frame(
+        frame,
+        observations,
+        secondary_camera_vehicle_names=secondary_camera_vehicle_names,
+    )
     for observation in observations:
         association = observation.terminal_association
         if association is None:
@@ -549,17 +585,26 @@ def _d4_decisions_for_frame(
             cross_view_risk_score=0.05 if case_name == "no_degradation" else 0.76,
             cross_view_support_count=1,
         )
-        c2_health = C2Health.NORMAL
-        decision = arbiter.evaluate(
-            track_uncertainty,
-            association_risk,
-            assignment_validity,
-            terminal_summary,
-            c2_health,
-            secondary_nodes,
-            communication_summaries=communications,
-            current_time_s=frame.timestamp,
+        result = d4_adapter.evaluate(
+            timestamp=frame.timestamp,
+            track=track_uncertainty,
+            association_result=association_risk,
+            plan=assignment_validity,
+            assignment=assignment_validity,
+            terminal_association=terminal_summary,
+            d5_evidence=d5_evidence,
+            c2_health=C2Health.NORMAL,
+            secondary_nodes=secondary_nodes,
+            communication_records=communications,
+            coverage_cell=track_uncertainty.coverage_cell,
+            resource_id=observation.resource_id,
+            global_track_id=_global_id(assigned_target_id),
+            observed_global_track_id=_global_id(observed_target_id),
+            consecutive_non_locked_frames=int(observation.metadata.get("consecutive_non_locked_frames", 0)),
+            consecutive_mismatch_frames=int(observation.metadata.get("consecutive_mismatch_frames", 0)),
+            trigger_timestamp=frame.timestamp,
         )
+        decision = result.decision
         metrics = decision.to_metrics(
             failover_time=0.0 if decision.action.value == "continue_center" else 1.0,
             secondary_selected_rate=1.0 if decision.target_node_id else 0.0,
@@ -575,6 +620,13 @@ def _d4_decisions_for_frame(
                 "case_name": case_name,
                 **metrics,
                 "reason": decision.reason,
+                "d4_event_metadata": result.record.to_event_metadata(),
+                "secondary_detect_available_but_not_registered": (
+                    result.record.secondary_detect_available_but_not_registered
+                ),
+                "secondary_detect_to_cross_view_diagnostic": (
+                    result.record.secondary_detect_to_cross_view_diagnostic
+                ),
             }
         )
     return summaries
@@ -628,6 +680,11 @@ def _detection_metrics(
 def _d4_metrics(decisions: list[dict[str, Any]]) -> dict[str, Any]:
     action_counts = Counter(str(item.get("d4_action", "")) for item in decisions)
     mode_counts = Counter(str(item.get("degradation_mode", "")) for item in decisions)
+    diagnostic_counts = Counter(
+        str(item.get("secondary_detect_to_cross_view_diagnostic", ""))
+        for item in decisions
+        if item.get("secondary_detect_to_cross_view_diagnostic")
+    )
     selected_secondary = next(
         (item.get("target_node_id") for item in decisions if item.get("target_node_id")),
         None,
@@ -639,7 +696,193 @@ def _d4_metrics(decisions: list[dict[str, Any]]) -> dict[str, Any]:
         "dominant_d4_action": action_counts.most_common(1)[0][0] if action_counts else "",
         "dominant_degradation_mode": mode_counts.most_common(1)[0][0] if mode_counts else "",
         "selected_secondary_node_id": selected_secondary,
+        "secondary_detect_available_but_not_registered_count": sum(
+            1 for item in decisions if item.get("secondary_detect_available_but_not_registered")
+        ),
+        "secondary_detect_to_cross_view_diagnostic_counts": dict(diagnostic_counts),
     }
+
+
+def _secondary_coverage_frames(
+    frames: list[AirSimFrame],
+    *,
+    secondary_camera_vehicle_names: tuple[str, ...],
+) -> list[dict[str, Any]]:
+    secondary_camera_ids = {f"{name}:0" for name in secondary_camera_vehicle_names}
+    coverage_frames: list[dict[str, Any]] = []
+    for frame in frames:
+        active_target_ids = tuple(_global_id(obj.object_id) for obj in frame.truth_objects)
+        by_camera = _detections_by_camera(frame.visual_detections)
+        guidance_by_vehicle = _secondary_guidance_by_vehicle(frame)
+        secondary_cameras: dict[str, dict[str, Any]] = {}
+        for camera_id in sorted(secondary_camera_ids):
+            detections = by_camera.get(camera_id, ())
+            vehicle_name = camera_id.split(":", 1)[0]
+            guidance = guidance_by_vehicle.get(vehicle_name, {})
+            secondary_cameras[camera_id] = {
+                "camera_id": camera_id,
+                "resource_id": vehicle_name,
+                "timestamp": frame.timestamp,
+                "active_target_ids": active_target_ids,
+                "visible_target_ids": tuple(_global_id(detection.object_id) for detection in detections),
+                "detections": [
+                    {
+                        "offline_target_id": _global_id(detection.object_id),
+                        "bbox_xyxy": detection.bbox_xyxy,
+                        "confidence": detection.confidence,
+                    }
+                    for detection in detections
+                ],
+                "is_secondary": True,
+                "capability_class": guidance.get("capability_class"),
+                "cue_source": guidance.get("cue_source"),
+                "cue_position_ned": guidance.get("cue_position_ned"),
+                "look_at_ned": guidance.get("look_at_ned"),
+                "position_ned": guidance.get("position_ned"),
+                "coverage_cell": guidance.get("coverage_cell"),
+                "gimbal_pointing_ok": guidance.get("gimbal_pointing_ok"),
+                "cue_pointing_error_m": guidance.get("cue_pointing_error_m"),
+                "gimbal_pointing_metadata": guidance,
+            }
+        coverage_frames.append(
+            {
+                "frame_id": f"{frame.episode_id}:{frame.frame_index:04d}",
+                "timestamp": frame.timestamp,
+                "active_target_ids": active_target_ids,
+                "secondary_cameras": secondary_cameras,
+            }
+        )
+    return coverage_frames
+
+
+def _secondary_guidance_by_vehicle(frame: AirSimFrame) -> dict[str, dict[str, Any]]:
+    guidance_items = frame.metadata.get("cv_camera_guidance", [])
+    return {
+        str(item.get("vehicle_name")): dict(item)
+        for item in guidance_items
+        if item.get("role") == "secondary_recon_camera" and item.get("vehicle_name")
+    }
+
+
+def _secondary_guidance_metrics(
+    frames: list[AirSimFrame],
+    *,
+    secondary_camera_vehicle_names: tuple[str, ...],
+) -> dict[str, Any]:
+    secondary_names = set(secondary_camera_vehicle_names)
+    guidance_items = [
+        dict(item)
+        for frame in frames
+        for item in frame.metadata.get("cv_camera_guidance", [])
+        if item.get("role") == "secondary_recon_camera"
+        and str(item.get("vehicle_name")) in secondary_names
+    ]
+    pointing_errors = [
+        float(item.get("cue_pointing_error_m", 0.0))
+        for item in guidance_items
+        if item.get("cue_pointing_error_m") is not None
+    ]
+    ok_count = sum(1 for item in guidance_items if item.get("gimbal_pointing_ok") is True)
+    capability_classes = sorted(
+        {str(item.get("capability_class")) for item in guidance_items if item.get("capability_class")}
+    )
+    cue_sources = sorted({str(item.get("cue_source")) for item in guidance_items if item.get("cue_source")})
+    mobile_count = sum(
+        1 for item in guidance_items if str(item.get("capability_class")) == "mobile_high_recon"
+    )
+    return {
+        "secondary_recon_mode": (
+            "mobile_recon_gimbal" if mobile_count > 0 else "fixed_downlook_secondary"
+        ),
+        "secondary_guidance_record_count": len(guidance_items),
+        "secondary_gimbal_pointing_ok_rate": ok_count / max(len(guidance_items), 1),
+        "secondary_cue_pointing_error_m_stats": _numeric_stats(pointing_errors),
+        "secondary_capability_classes": capability_classes,
+        "secondary_cue_sources": cue_sources,
+    }
+
+
+def _secondary_funnel_metrics(summary: Any) -> dict[str, Any]:
+    funnel = summary.funnel_counts
+    rejection_counts = dict(summary.rejection_reason_counts)
+    reject_reasons = tuple(
+        reason for reason, count in rejection_counts.items() if int(count) > 0
+    )
+    cross_view_gap = max(0, int(funnel.detect_count) - int(funnel.cross_view_association_count))
+    return {
+        "secondary_single_camera_full_view_frame_rate": (
+            summary.secondary_single_camera_full_view_frame_rate
+        ),
+        "secondary_network_joint_full_view_frame_rate": (
+            summary.secondary_network_joint_full_view_frame_rate
+        ),
+        "secondary_global_view_rate": summary.secondary_single_camera_full_view_frame_rate,
+        "secondary_network_global_view_rate": (
+            summary.secondary_network_joint_full_view_frame_rate
+        ),
+        "secondary_camera_frame_visible_target_counts": dict(
+            summary.secondary_camera_frame_visible_target_counts
+        ),
+        "secondary_network_frame_joint_visible_target_counts": dict(
+            summary.secondary_network_frame_joint_visible_target_counts
+        ),
+        "secondary_camera_coverage_ratio_mean": dict(
+            summary.secondary_camera_coverage_ratio_mean
+        ),
+        "secondary_camera_coverage_ratio_min": dict(
+            summary.secondary_camera_coverage_ratio_min
+        ),
+        "secondary_single_camera_coverage_ratio_mean": (
+            summary.secondary_single_camera_coverage_ratio_mean
+        ),
+        "secondary_single_camera_coverage_ratio_min": (
+            summary.secondary_single_camera_coverage_ratio_min
+        ),
+        "secondary_network_joint_coverage_ratio_mean": (
+            summary.secondary_network_joint_coverage_ratio_mean
+        ),
+        "secondary_network_joint_coverage_ratio_min": (
+            summary.secondary_network_joint_coverage_ratio_min
+        ),
+        "secondary_network_mean_coverage_ratio": (
+            summary.secondary_network_joint_coverage_ratio_mean
+        ),
+        "secondary_detection_funnel_counts": _jsonable(funnel),
+        "cross_view_association_count": int(funnel.cross_view_association_count),
+        "secondary_multi_support_count": int(funnel.multi_support_count),
+        "secondary_detect_to_cross_view_reject_reason_counts": rejection_counts,
+        "secondary_detect_to_cross_view_reject_reasons": reject_reasons,
+        "cross_view_conversion_gap": float(cross_view_gap),
+        "secondary_detect_available": int(funnel.detect_count) > 0,
+        "secondary_detect_funnel_breakpoint_reasons": tuple(funnel.breakpoint_reasons),
+    }
+
+
+def _d5_evidence_for_frame(
+    frame: AirSimFrame,
+    observations: list[TerminalObservation],
+    *,
+    secondary_camera_vehicle_names: tuple[str, ...],
+) -> dict[str, Any]:
+    secondary_camera_ids = tuple(f"{name}:0" for name in secondary_camera_vehicle_names)
+    frame_bus = TerminalObservationBus()
+    for observation in observations:
+        frame_bus.publish(observation)
+    frame_cross_view = tuple(frame_bus.cross_view_associations())
+    summary = summarize_secondary_visual_coverage_funnel(
+        secondary_frames=_secondary_coverage_frames(
+            [frame],
+            secondary_camera_vehicle_names=secondary_camera_vehicle_names,
+        ),
+        observations=observations,
+        cross_view_associations=frame_cross_view,
+        active_target_ids=tuple(_global_id(obj.object_id) for obj in frame.truth_objects),
+        secondary_camera_ids=secondary_camera_ids,
+        current_time=frame.timestamp,
+    )
+    metrics = _secondary_funnel_metrics(summary)
+    metrics["metadata"] = _jsonable(summary.metadata)
+    return metrics
 
 
 def _geometry_summary(
@@ -677,23 +920,48 @@ def _geometry_summary(
     }
 
 
-def _secondary_nodes(case_name: str, secondary_camera_vehicle_names: tuple[str, ...]) -> list[ResourceSummary]:
+def _secondary_nodes(
+    case_name: str,
+    secondary_camera_vehicle_names: tuple[str, ...],
+    *,
+    frame: AirSimFrame | None = None,
+) -> list[ResourceSummary]:
     if case_name == "degrade_to_distributed":
         return []
-    return [
-        ResourceSummary(
-            node_id=f"SEC-{index + 1:02d}",
-            capability_class="tethered_recon_high_res",
-            availability_band=AvailabilityBand.HIGH,
-            comm_band=CommBand.GOOD,
-            takeover_priority=index + 1,
-            node_role=NodeRole.SECONDARY_RECON,
-            coordinator_only=True,
-            coverage_cell="cell-north" if index == 0 else "cell-south",
-            epoch=1,
+    guidance_by_vehicle = _secondary_guidance_by_vehicle(frame) if frame is not None else {}
+    nodes: list[ResourceSummary] = []
+    for index, vehicle_name in enumerate(secondary_camera_vehicle_names):
+        guidance = guidance_by_vehicle.get(vehicle_name, {})
+        capability = str(guidance.get("capability_class") or "fixed_tethered_secondary")
+        is_mobile = capability in {"mobile_high_recon", "mobile_secondary_recon"}
+        role = NodeRole.MOBILE_HIGH_RECON if is_mobile else NodeRole.FIXED_TETHERED_SECONDARY
+        nodes.append(
+            ResourceSummary(
+                node_id=f"SEC-{index + 1:02d}",
+                capability_class=capability,
+                availability_band=AvailabilityBand.HIGH,
+                comm_band=CommBand.GOOD,
+                takeover_priority=index + 1,
+                node_role=role,
+                coordinator_only=True,
+                coverage_cell=str(
+                    guidance.get("coverage_cell")
+                    or ("cell-north" if index == 0 else "cell-south")
+                ),
+                cue_freshness_s=(
+                    float(guidance["cue_freshness_s"])
+                    if guidance.get("cue_freshness_s") is not None
+                    else None
+                ),
+                gimbal_pointing_ok=(
+                    bool(guidance["gimbal_pointing_ok"])
+                    if guidance.get("gimbal_pointing_ok") is not None
+                    else None
+                ),
+                epoch=1,
+            )
         )
-        for index, _ in enumerate(secondary_camera_vehicle_names)
-    ]
+    return nodes
 
 
 def _communication_summaries(
@@ -904,6 +1172,8 @@ def _write_json(path: Path, payload: Any) -> Path:
 
 def _write_case_report(path: Path, metrics: dict[str, Any], decisions: list[dict[str, Any]]) -> Path:
     bbox_stats = metrics.get("secondary_bbox_area_px_stats", {})
+    reject_counts = metrics.get("secondary_detect_to_cross_view_reject_reason_counts", {})
+    top_reject = _top_rejection_reason(reject_counts) or "-"
     lines = [
         f"# D4/D5 5v5 Stress Case - {metrics.get('case_name')}",
         "",
@@ -913,17 +1183,34 @@ def _write_case_report(path: Path, metrics: dict[str, Any], decisions: list[dict
         f"- 平均主镜头间距：{metrics.get('geometry', {}).get('resource_camera_spacing_m', 0.0):.2f} m",
         f"- 平均初始目标距离：{metrics.get('geometry', {}).get('assigned_target_distance_m', 0.0):.2f} m",
         f"- 二级镜头相对目标高度：{metrics.get('geometry', {}).get('secondary_height_above_targets_m', 0.0):.2f} m",
+        f"- 二级侦察模式：{metrics.get('secondary_recon_mode', 'fixed_downlook_secondary')}",
+        f"- 二级 cue 源：{metrics.get('secondary_cue_sources', [])}",
+        f"- 二级云台指向成功率：{metrics.get('secondary_gimbal_pointing_ok_rate', 0.0):.2f}",
+        f"- 二级 cue 指向误差统计：{metrics.get('secondary_cue_pointing_error_m_stats', {})}",
         f"- 多目标视场率：{metrics.get('multi_target_fov_rate', 0.0):.2f}",
-        f"- 二级全局视野率：{metrics.get('secondary_global_view_rate', 0.0):.2f}",
-        f"- 二级组全局视野率 `secondary_network_global_view_rate`：{metrics.get('secondary_network_global_view_rate', 0.0):.2f}",
+        f"- 单二级全局视野率 `secondary_single_camera_full_view_frame_rate`：{metrics.get('secondary_single_camera_full_view_frame_rate', 0.0):.2f}",
+        f"- 二级网络联合覆盖率 `secondary_network_joint_full_view_frame_rate`：{metrics.get('secondary_network_joint_full_view_frame_rate', 0.0):.2f}",
+        f"- 二级网络平均覆盖比例 `secondary_network_mean_coverage_ratio`：{metrics.get('secondary_network_mean_coverage_ratio', 0.0):.2f}",
         f"- 二级 bbox 面积统计 `secondary_bbox_area_px_stats`：count={bbox_stats.get('count', 0)}, min={bbox_stats.get('min', 0.0):.2f}, mean={bbox_stats.get('mean', 0.0):.2f}, median={bbox_stats.get('median', 0.0):.2f}, max={bbox_stats.get('max', 0.0):.2f}",
         "",
         "## 指标合同",
         "",
         f"- `secondary_height_above_targets_m`: {metrics.get('secondary_height_above_targets_m', 0.0):.2f}",
         f"- `secondary_bbox_area_px_stats`: {bbox_stats}",
-        f"- `secondary_network_global_view_rate`: {metrics.get('secondary_network_global_view_rate', 0.0):.2f}",
+        f"- `secondary_single_camera_full_view_frame_rate`: {metrics.get('secondary_single_camera_full_view_frame_rate', 0.0):.2f}",
+        f"- `secondary_network_joint_full_view_frame_rate`: {metrics.get('secondary_network_joint_full_view_frame_rate', 0.0):.2f}",
+        f"- 兼容 alias `secondary_global_view_rate`: {metrics.get('secondary_global_view_rate', 0.0):.2f}",
+        f"- 兼容 alias `secondary_network_global_view_rate`: {metrics.get('secondary_network_global_view_rate', 0.0):.2f}",
+        f"- `secondary_network_mean_coverage_ratio`: {metrics.get('secondary_network_mean_coverage_ratio', 0.0):.2f}",
+        f"- `secondary_recon_mode`: {metrics.get('secondary_recon_mode', 'fixed_downlook_secondary')}",
+        f"- `secondary_gimbal_pointing_ok_rate`: {metrics.get('secondary_gimbal_pointing_ok_rate', 0.0):.2f}",
+        f"- `secondary_cue_pointing_error_m_stats`: {metrics.get('secondary_cue_pointing_error_m_stats', {})}",
+        f"- `secondary_capability_classes`: {metrics.get('secondary_capability_classes', [])}",
+        f"- `secondary_cue_sources`: {metrics.get('secondary_cue_sources', [])}",
         f"- `cross_view_association_count`: {metrics.get('cross_view_association_count', 0)}",
+        f"- `cross_view_conversion_gap`: {metrics.get('cross_view_conversion_gap', 0.0):.2f}",
+        f"- `secondary_detect_to_cross_view_reject_reason_counts`: {reject_counts}",
+        f"- 主要断点：{top_reject}",
         f"- `duplicate_terminal_lock_risk`: {metrics.get('duplicate_terminal_lock_risk', False)}",
         "",
         "## D4 仲裁",
@@ -932,6 +1219,7 @@ def _write_case_report(path: Path, metrics: dict[str, Any], decisions: list[dict
         f"- 主模式：{metrics.get('dominant_degradation_mode', '')}",
         f"- 选中二级节点：{metrics.get('selected_secondary_node_id') or '-'}",
         f"- 决策数量：{metrics.get('d4_decision_count', 0)}",
+        f"- 二级 detect 可见但未完成配准次数：{metrics.get('secondary_detect_available_but_not_registered_count', 0)}",
         "",
         "## 末端关联",
         "",
@@ -952,6 +1240,19 @@ def _write_case_report(path: Path, metrics: dict[str, Any], decisions: list[dict
     lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
+
+
+def _top_rejection_reason(rejection_counts: Any) -> str:
+    if not isinstance(rejection_counts, dict):
+        return ""
+    ranked = sorted(
+        ((str(reason), int(count)) for reason, count in rejection_counts.items() if int(count) > 0),
+        key=lambda item: (-item[1], item[0]),
+    )
+    if not ranked:
+        return ""
+    reason, count = ranked[0]
+    return f"{reason}:{count}"
 
 
 def _jsonable(value: Any) -> Any:

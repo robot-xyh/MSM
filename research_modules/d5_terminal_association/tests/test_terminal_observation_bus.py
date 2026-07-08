@@ -8,6 +8,7 @@ from d5_terminal_association import (
     ReconImageCue,
     TerminalAssociation,
     TerminalObservationBus,
+    summarize_secondary_visual_coverage_funnel,
 )
 
 
@@ -81,6 +82,14 @@ def test_cross_view_bus_groups_overlapping_uav_views_without_rewriting_global_id
     assert by_global_id["G4"].supporting_resource_ids == ("UAV2",)
     assert by_global_id["G1"].duplicate_terminal_lock_risk is False
     assert by_global_id["G4"].duplicate_terminal_lock_risk is False
+
+    funnel = summarize_secondary_visual_coverage_funnel(
+        observations=bus.observations(),
+        cross_view_associations=by_global_id.values(),
+        secondary_camera_ids=("front_rgb",),
+    )
+    assert funnel.funnel_counts.cross_view_association_count == 4
+    assert funnel.funnel_counts.multi_support_count == 2
 
     assert [obs.terminal_association.assigned_global_track_id for obs in bus.observations()] == submitted_global_ids
 

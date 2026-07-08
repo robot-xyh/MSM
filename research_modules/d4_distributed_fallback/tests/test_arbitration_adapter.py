@@ -153,6 +153,62 @@ def test_adapter_maps_low_risk_inputs_to_continue_center_event_metadata() -> Non
     assert metadata["plan_version"] == 3
 
 
+def test_adapter_consumes_mobile_high_recon_metadata_without_auto_takeover() -> None:
+    mobile_node = {
+        "node_id": "MHR-1",
+        "role": "mobile_high_recon",
+        "capability_class": "mobile_high_recon",
+        "availability_band": "high",
+        "comm_band": "good",
+        "coordinator_only": True,
+        "coverage_cell": "cell-north",
+        "heartbeat_timestamp_s": 9.9,
+        "heartbeat_stale_after_s": 2.0,
+        "cue_freshness": 0.2,
+        "gimbal_pointing_ok": True,
+        "secondary_coverage_ratio": 0.86,
+        "cross_view_support_count": 2,
+    }
+    d5_evidence = {
+        "cue_freshness": 0.15,
+        "gimbal_pointing_ok": True,
+        "secondary_coverage_ratio": 0.86,
+        "cross_view_support_count": 2,
+        "cross_view_association_count": 2,
+    }
+
+    result = D4ArbitrationAdapter().evaluate(
+        timestamp=10.0,
+        track=_track(),
+        association_result=_association_result(),
+        association_metrics=_metrics(),
+        plan=_plan(),
+        assignment=_assignment(),
+        terminal_association=_terminal(),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[mobile_node],
+        d5_evidence=d5_evidence,
+    )
+    metadata = result.record.to_event_metadata()
+    lifecycle = metadata["secondary_lifecycle"][0]
+
+    assert result.decision.mode == DegradationMode.NONE
+    assert result.decision.action == DegradationAction.CONTINUE_CENTER
+    assert result.decision.target_node_id is None
+    assert result.record.secondary_available is True
+    assert metadata["cue_freshness_s"] == 0.15
+    assert metadata["gimbal_pointing_ok"] is True
+    assert metadata["secondary_coverage_ratio"] == 0.86
+    assert metadata["cross_view_support_count"] == 2
+    assert lifecycle["node_id"] == "MHR-1"
+    assert lifecycle["secondary_capability_class"] == "mobile_high_recon"
+    assert lifecycle["is_mobile_high_recon"] is True
+    assert lifecycle["is_fixed_tethered_secondary"] is False
+    assert lifecycle["cue_freshness_s"] == 0.2
+    assert lifecycle["gimbal_pointing_ok"] is True
+    assert lifecycle["secondary_coverage_ratio"] == 0.86
+
+
 def test_adapter_keeps_soft_margin_and_low_terminal_confidence_as_observe_more() -> None:
     result = D4ArbitrationAdapter().evaluate(
         timestamp=10.0,
@@ -291,6 +347,94 @@ def test_adapter_selects_secondary_when_persistent_mismatch_has_fresh_secondary_
     assert result.decision.mode == DegradationMode.ACTIVE_DEGRADATION
     assert result.decision.action == DegradationAction.DEGRADE_TO_SECONDARY
     assert result.decision.target_node_id == "SEC-1"
+
+
+def test_adapter_reports_secondary_detect_visible_without_cross_view_registration() -> None:
+    d5_evidence = {
+        "secondary_single_camera_full_view_frame_rate": 1.0,
+        "secondary_network_joint_full_view_frame_rate": 0.92,
+        "secondary_network_mean_coverage_ratio": 0.88,
+        "cross_view_association_count": 0,
+        "cross_view_conversion_gap": 1.0,
+        "secondary_detect_to_cross_view_reject_reasons": ("global_binding_missing",),
+    }
+
+    result = D4ArbitrationAdapter().evaluate(
+        timestamp=10.0,
+        track=_track(position_sigma_m=25.0),
+        association_metrics=_metrics(),
+        plan=_plan(),
+        assignment=_assignment(),
+        terminal_association=_terminal(),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+        d5_evidence=d5_evidence,
+    )
+
+    metadata = result.record.to_event_metadata()
+    assert result.decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert result.decision.action == DegradationAction.REQUEST_SECONDARY_ASSIST
+    assert metadata["secondary_takeover_state"] == "not_applicable"
+    assert metadata["secondary_detect_available_but_not_registered"] is True
+    assert metadata["secondary_network_joint_full_view_frame_rate"] == 0.92
+    assert metadata["secondary_network_mean_coverage_ratio"] == 0.88
+    assert metadata["cross_view_association_count"] == 0
+    assert metadata["cross_view_conversion_gap"] == 1.0
+    assert metadata["secondary_detect_to_cross_view_reject_reasons"] == [
+        "global_binding_missing"
+    ]
+    assert "secondary_detect_available_but_not_registered" in metadata[
+        "secondary_detect_to_cross_view_diagnostic"
+    ]
+    assert "global_binding_missing" in metadata["secondary_detect_to_cross_view_diagnostic"]
+
+
+def test_adapter_keeps_stale_secondary_link_unselectable_with_detect_evidence() -> None:
+    stale_link = {
+        "source_node_id": "SEC-1",
+        "target_node_id": "INT-01",
+        "link_type": "video_cue",
+        "payload_kind": "video_metadata",
+        "sent_timestamp": 9.0,
+        "received_timestamp": 9.1,
+        "stale_after_s": 0.5,
+    }
+    d5_evidence = {
+        "metadata": {
+            "secondary_network_joint_full_view_frame_rate": 0.96,
+            "secondary_network_mean_coverage_ratio": 0.91,
+            "cross_view_association_count": 0,
+            "secondary_detect_to_cross_view_reject_reasons": (
+                "registration_gate_rejected",
+            ),
+        }
+    }
+
+    result = D4ArbitrationAdapter().evaluate(
+        timestamp=10.0,
+        track=_track(position_sigma_m=60.0),
+        association_metrics=_metrics(ambiguity=0.8, id_switches=1, continuity=0.55),
+        plan=_plan(created_at=5.0),
+        assignment=_assignment(),
+        terminal_association=_terminal(decision_state="reacquire", confidence=0.35, ambiguity=0.9),
+        observed_global_track_id="G-TGT-002",
+        consecutive_non_locked_frames=3,
+        consecutive_mismatch_frames=2,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+        communication_records=[stale_link],
+        d5_evidence=d5_evidence,
+    )
+
+    metadata = result.record.to_event_metadata()
+    assert result.record.secondary_available is False
+    assert result.decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
+    assert result.decision.target_node_id is None
+    assert metadata["selected_coordinator"] == "distributed_cbba"
+    assert metadata["secondary_detect_available_but_not_registered"] is True
+    assert "registration_gate_rejected" in metadata[
+        "secondary_detect_to_cross_view_diagnostic"
+    ]
 
 
 def test_adapter_exposes_secondary_takeover_pending_and_active_plan_metadata() -> None:

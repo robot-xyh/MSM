@@ -18,6 +18,7 @@ from .models import (
     ConfidenceBand,
     ResourceSummary,
     TrackSummary,
+    to_jsonable,
 )
 from .network import SimulatedNetwork
 
@@ -475,6 +476,56 @@ def build_cbba_cost_gap_benchmark(
     return benchmark
 
 
+def build_cbba_d6_metadata(
+    cbba_result: CBBAResult,
+    *,
+    failover_time_s: float | None = None,
+    degradation_mode: str = "passive",
+    coordination_mode: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Build stable D6/multi-seed metadata from a D4 CBBA fallback result.
+
+    D4 does not publish a system-level AssignmentPlan here. The helper only
+    normalizes already-computed CBBA metrics, coordination-mode metadata, audit
+    details, and the optional D3/main-provided cost-gap benchmark.
+    """
+
+    coordination = _coordination_metadata(cbba_result, coordination_mode)
+    mode = str(coordination.get("state") or "distributed_cbba")
+    d4_action = (
+        "degrade_to_secondary"
+        if mode == "secondary_node"
+        else "degrade_to_distributed"
+    )
+    metadata: dict[str, object] = {
+        "d4_action": d4_action,
+        "degradation_mode": degradation_mode,
+        "selected_coordinator": mode,
+        "coordination_mode": mode,
+        "leader_id": coordination.get("leader_id"),
+        "leader_role": coordination.get("leader_role"),
+        "leader_capability_class": coordination.get("leader_capability_class"),
+        "secondary_capability_class": coordination.get("secondary_capability_class"),
+        "coverage_cell": coordination.get("coverage_cell"),
+        "failover_time": failover_time_s,
+        "consensus_rounds": cbba_result.consensus_rounds,
+        "converged": cbba_result.converged,
+        "degraded_completion_rate": cbba_result.completion_rate,
+        "assignment_completion_rate": cbba_result.completion_rate,
+        "assignment_count": len(cbba_result.assignments),
+        "conflict_count": cbba_result.conflict_count,
+        "messages_sent": cbba_result.messages_sent,
+        "messages_delivered": cbba_result.messages_delivered,
+        "messages_dropped": cbba_result.messages_dropped,
+        "estimated_bytes": cbba_result.estimated_bytes,
+        "duration_s": cbba_result.duration_s,
+        "final_views": cbba_result.final_views,
+        "assignment_audit": cbba_result.assignment_audit,
+    }
+    metadata.update(_cost_gap_metadata(cbba_result.cost_gap_benchmark))
+    return to_jsonable(metadata)
+
+
 def _assignment_owner(owner: str | Assignment) -> str:
     if isinstance(owner, Assignment):
         return owner.owner
@@ -500,3 +551,74 @@ def _total_cost_or_none(costs: Mapping[str, float], missing_costs: list[str]) ->
     if missing_costs:
         return None
     return float(sum(costs.values()))
+
+
+def _coordination_metadata(
+    cbba_result: CBBAResult,
+    coordination_mode: Mapping[str, object] | None,
+) -> dict[str, object]:
+    raw = coordination_mode
+    if raw is None:
+        raw = cbba_result.final_views.get("coordination_mode", {})
+    try:
+        metadata = dict(raw or {})
+    except (TypeError, ValueError):
+        metadata = {}
+    return {
+        "state": metadata.get("state") or "distributed_cbba",
+        "leader_id": metadata.get("leader_id"),
+        "leader_role": metadata.get("leader_role"),
+        "leader_capability_class": metadata.get("leader_capability_class"),
+        "secondary_capability_class": metadata.get("secondary_capability_class"),
+        "coverage_cell": metadata.get("coverage_cell"),
+    }
+
+
+def _cost_gap_metadata(
+    benchmark: CBBACostGapBenchmark | None,
+) -> dict[str, object]:
+    if benchmark is None:
+        return {
+            "cost_gap_available": False,
+            "cost_gap_benchmark": None,
+            "benchmark_source": None,
+            "cbba_total_cost": None,
+            "center_total_cost": None,
+            "absolute_cost_gap": None,
+            "relative_cost_gap": None,
+            "cbba_assignment_count": None,
+            "center_assignment_count": None,
+            "common_assignment_count": None,
+            "cbba_completion_rate": None,
+            "center_completion_rate": None,
+            "completion_rate_gap": None,
+            "cbba_conflict_count": None,
+            "cbba_consensus_rounds": None,
+            "cbba_messages_sent": None,
+            "missing_cbba_task_ids": (),
+            "extra_cbba_task_ids": (),
+            "missing_cost_pairs": (),
+            "per_task_cost_gap": {},
+        }
+    return {
+        "cost_gap_available": True,
+        "cost_gap_benchmark": benchmark.to_dict(),
+        "benchmark_source": benchmark.benchmark_source,
+        "cbba_total_cost": benchmark.cbba_total_cost,
+        "center_total_cost": benchmark.center_total_cost,
+        "absolute_cost_gap": benchmark.absolute_cost_gap,
+        "relative_cost_gap": benchmark.relative_cost_gap,
+        "cbba_assignment_count": benchmark.cbba_assignment_count,
+        "center_assignment_count": benchmark.center_assignment_count,
+        "common_assignment_count": benchmark.common_assignment_count,
+        "cbba_completion_rate": benchmark.cbba_completion_rate,
+        "center_completion_rate": benchmark.center_completion_rate,
+        "completion_rate_gap": benchmark.completion_rate_gap,
+        "cbba_conflict_count": benchmark.cbba_conflict_count,
+        "cbba_consensus_rounds": benchmark.cbba_consensus_rounds,
+        "cbba_messages_sent": benchmark.cbba_messages_sent,
+        "missing_cbba_task_ids": benchmark.missing_cbba_task_ids,
+        "extra_cbba_task_ids": benchmark.extra_cbba_task_ids,
+        "missing_cost_pairs": benchmark.missing_cost_pairs,
+        "per_task_cost_gap": benchmark.per_task_cost_gap,
+    }

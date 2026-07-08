@@ -78,9 +78,27 @@ class D7RuntimePairOutput:
     owner_node_id: str | None = None
     d4_target_node_id: str | None = None
     local_track_id: str | None = None
+    terminal_handover_pending: bool = False
+    terminal_locked: bool = False
+    terminal_handoff_state: str = ""
+    terminal_mode_entered: bool = False
+    camera_quality_gate_passed: bool | None = None
+    los_quality_gate_passed: bool | None = None
+    maneuver_margin_gate_passed: bool | None = None
+    bbox_area_ratio: float | None = None
+    edge_margin_ratio: float | None = None
+    detection_confidence: float | None = None
+    bbox_xyxy: tuple[float, float, float, float] | None = None
+    camera_id: str | None = None
+    frame_timestamp_s: float | None = None
+    visual_latency_s: float | None = None
     stable_frame_count: int = 0
     ttc_s: float | None = None
     los_rate_radps: float = 0.0
+    los_rate_variance_radps2: float | None = None
+    closing_speed_mps: float | None = None
+    required_turn_rate_radps: float | None = None
+    maneuver_margin: float | None = None
     png_guidance_law_candidate: str | None = None
     selected_velocity_ned: tuple[float, float, float] | None = None
     png_command: PngGuidanceCommand | None = None
@@ -103,17 +121,37 @@ class D7RuntimePairOutput:
             "terminal_contract_reject_reason": self.terminal_contract_reject_reason,
             "terminal_switch_allowed": self.terminal_switch_allowed,
             "terminal_switch_reject_reason": self.terminal_switch_reject_reason,
+            "terminal_handover_pending": self.terminal_handover_pending,
+            "terminal_locked": self.terminal_locked,
+            "terminal_handoff_state": self.terminal_handoff_state,
+            "terminal_mode_entered": self.terminal_mode_entered,
             "plan_id": self.plan_id,
             "plan_version": self.plan_version,
             "owner_node_id": self.owner_node_id,
             "d4_target_node_id": self.d4_target_node_id,
             "track_version": self.track_version,
             "d4_action": self.d4_action,
+            "d4_state": self.d4_action,
             "d5_decision_state": self.d5_decision_state,
+            "d5_state": self.d5_decision_state,
             "local_track_id": self.local_track_id,
+            "camera_quality_gate_passed": self.camera_quality_gate_passed,
+            "los_quality_gate_passed": self.los_quality_gate_passed,
+            "maneuver_margin_gate_passed": self.maneuver_margin_gate_passed,
+            "bbox_area_ratio": self.bbox_area_ratio,
+            "edge_margin_ratio": self.edge_margin_ratio,
+            "detection_confidence": self.detection_confidence,
+            "bbox_xyxy": self.bbox_xyxy,
+            "camera_id": self.camera_id,
+            "frame_timestamp_s": self.frame_timestamp_s,
+            "visual_latency_s": self.visual_latency_s,
             "stable_frame_count": self.stable_frame_count,
             "ttc_s": self.ttc_s,
             "los_rate_radps": self.los_rate_radps,
+            "los_rate_variance_radps2": self.los_rate_variance_radps2,
+            "closing_speed_mps": self.closing_speed_mps,
+            "required_turn_rate_radps": self.required_turn_rate_radps,
+            "maneuver_margin": self.maneuver_margin,
             "png_guidance_law_candidate": self.png_guidance_law_candidate,
             "selected_velocity_ned": self.selected_velocity_ned,
             **self.metadata,
@@ -178,6 +216,9 @@ class D7RuntimeBus:
             binding=binding,
             control_context_id=control_context_id,
             decision=decision,
+            terminal_handover_pending=pair_input.handover_pending,
+            terminal_locked=pair_input.terminal_locked,
+            observation=observation,
             metadata={
                 "boundary": D7_RUNTIME_BUS_BOUNDARY,
                 **pair_input.metadata,
@@ -196,6 +237,8 @@ class D7RuntimeBus:
                 visual_png_enabled=False,
                 terminal_switch_allowed=False,
                 terminal_switch_reject_reason="",
+                terminal_handoff_state="contract_rejected",
+                terminal_mode_entered=False,
             )
 
         if observation is None:
@@ -206,6 +249,8 @@ class D7RuntimeBus:
                 visual_png_enabled=False,
                 terminal_switch_allowed=False,
                 terminal_switch_reject_reason="vision_observation_missing",
+                terminal_handoff_state="awaiting_observation",
+                terminal_mode_entered=False,
             )
 
         command = self._filters[control_context_id].evaluate(
@@ -218,16 +263,28 @@ class D7RuntimeBus:
             command_z_ned_m=pair_input.command_z_ned_m,
         )
         visual_png_enabled = bool(command.quality.terminal_switch_allowed)
+        quality = command.quality
         return D7RuntimePairOutput(
             **common,
             mode=GuidanceMode.VISION_TERMINAL if visual_png_enabled else GuidanceMode.HANDOVER_PENDING,
             guidance_law=command.guidance_law if visual_png_enabled else "radar_pn",
             visual_png_enabled=visual_png_enabled,
             terminal_switch_allowed=visual_png_enabled,
-            terminal_switch_reject_reason=command.quality.reject_reason,
-            stable_frame_count=command.quality.stable_frame_count,
-            ttc_s=command.quality.ttc_s,
-            los_rate_radps=command.quality.los_rate_radps,
+            terminal_switch_reject_reason=quality.reject_reason,
+            terminal_handoff_state="vision_terminal" if visual_png_enabled else "switch_gate_rejected",
+            terminal_mode_entered=visual_png_enabled,
+            camera_quality_gate_passed=quality.camera_quality_gate_passed,
+            los_quality_gate_passed=quality.los_quality_gate_passed,
+            maneuver_margin_gate_passed=quality.maneuver_margin_gate_passed,
+            bbox_area_ratio=quality.bbox_area_ratio,
+            edge_margin_ratio=quality.edge_margin_ratio,
+            stable_frame_count=quality.stable_frame_count,
+            ttc_s=quality.ttc_s,
+            los_rate_radps=quality.los_rate_radps,
+            los_rate_variance_radps2=quality.los_rate_variance_radps2,
+            closing_speed_mps=quality.closing_speed_mps,
+            required_turn_rate_radps=quality.required_turn_rate_radps,
+            maneuver_margin=quality.maneuver_margin,
             png_guidance_law_candidate=command.guidance_law,
             selected_velocity_ned=command.velocity_ned if visual_png_enabled else None,
             png_command=command,
@@ -280,27 +337,82 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
     contract_rejects: Counter[str] = Counter()
     switch_rejects: Counter[str] = Counter()
     guidance_laws: Counter[str] = Counter()
+    guidance_modes: Counter[str] = Counter()
+    handoff_states: Counter[str] = Counter()
+    d4_actions: Counter[str] = Counter()
+    d5_states: Counter[str] = Counter()
+    plan_versions: Counter[str] = Counter()
+    candidate_laws: Counter[str] = Counter()
     for row in rows:
         guidance_laws[row.guidance_law] += 1
+        guidance_modes[row.mode.value] += 1
+        handoff_states[row.terminal_handoff_state or row.mode.value] += 1
+        if row.d4_action:
+            d4_actions[row.d4_action] += 1
+        if row.d5_decision_state:
+            d5_states[row.d5_decision_state] += 1
+        plan_versions[str(row.plan_version)] += 1
+        if row.png_guidance_law_candidate:
+            candidate_laws[row.png_guidance_law_candidate] += 1
         if row.terminal_contract_reject_reason:
             contract_rejects[row.terminal_contract_reject_reason] += 1
         if row.terminal_switch_reject_reason:
             switch_rejects[row.terminal_switch_reject_reason] += 1
 
     visual_png_switch_count = sum(1 for row in rows if row.visual_png_enabled)
-    return {
+    gate_sample_rows = [row for row in rows if row.camera_quality_gate_passed is not None]
+    ttc_values = [row.ttc_s for row in rows if row.ttc_s is not None]
+    bbox_values = [row.bbox_area_ratio for row in rows if row.bbox_area_ratio is not None]
+    edge_values = [row.edge_margin_ratio for row in rows if row.edge_margin_ratio is not None]
+    los_rate_abs_values = [
+        abs(row.los_rate_radps)
+        for row in gate_sample_rows
+    ]
+    summary = {
         "boundary": D7_RUNTIME_BUS_BOUNDARY,
         "sample_count": len(rows),
         "control_context_count": len({row.control_context_id for row in rows}),
         "control_context_ids": sorted({row.control_context_id for row in rows}),
+        "resource_ids": sorted({row.resource_id for row in rows}),
+        "assigned_global_track_ids": sorted({row.assigned_global_track_id for row in rows}),
+        "assignment_ids": sorted({row.assignment_id for row in rows if row.assignment_id is not None}),
+        "plan_ids": sorted({row.plan_id for row in rows}),
+        "plan_version_counts": dict(plan_versions),
         "visual_png_switch_count": visual_png_switch_count,
+        "visual_png_candidate_count": sum(1 for row in rows if row.png_guidance_law_candidate is not None),
+        "terminal_handover_pending_count": sum(1 for row in rows if row.terminal_handover_pending),
+        "terminal_locked_input_count": sum(1 for row in rows if row.terminal_locked),
+        "terminal_contract_allowed_count": sum(1 for row in rows if row.terminal_contract_allowed),
         "terminal_contract_reject_count": sum(contract_rejects.values()),
         "terminal_contract_reject_reasons": dict(contract_rejects),
+        "terminal_switch_allowed_count": sum(1 for row in rows if row.terminal_switch_allowed),
         "terminal_switch_reject_count": sum(switch_rejects.values()),
         "terminal_switch_reject_reasons": dict(switch_rejects),
         "terminal_switch_allowed_rate": visual_png_switch_count / len(rows) if rows else 0.0,
+        "terminal_contract_allowed_rate": (
+            sum(1 for row in rows if row.terminal_contract_allowed) / len(rows) if rows else 0.0
+        ),
+        "camera_quality_gate_pass_rate": _bool_rate(
+            row.camera_quality_gate_passed for row in gate_sample_rows
+        ),
+        "los_quality_gate_pass_rate": _bool_rate(
+            row.los_quality_gate_passed for row in gate_sample_rows
+        ),
+        "maneuver_margin_gate_pass_rate": _bool_rate(
+            row.maneuver_margin_gate_passed for row in gate_sample_rows
+        ),
         "guidance_law_counts": dict(guidance_laws),
+        "guidance_mode_counts": dict(guidance_modes),
+        "terminal_handoff_state_counts": dict(handoff_states),
+        "d4_action_counts": dict(d4_actions),
+        "d5_decision_state_counts": dict(d5_states),
+        "png_guidance_law_candidate_counts": dict(candidate_laws),
     }
+    summary.update(_numeric_summary("ttc_s", ttc_values))
+    summary.update(_numeric_summary("bbox_area_ratio", bbox_values))
+    summary.update(_numeric_summary("edge_margin_ratio", edge_values))
+    summary.update(_numeric_summary("los_rate_abs_radps", los_rate_abs_values))
+    return summary
 
 
 def _common_output_kwargs(
@@ -309,6 +421,9 @@ def _common_output_kwargs(
     binding: AssignmentGuidanceBinding,
     control_context_id: str,
     decision: TerminalPngContractDecision,
+    terminal_handover_pending: bool,
+    terminal_locked: bool,
+    observation: VisionGuidanceObservation | None,
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
     return {
@@ -327,8 +442,54 @@ def _common_output_kwargs(
         "d4_action": decision.d4_action,
         "d5_decision_state": decision.d5_decision_state,
         "local_track_id": decision.local_track_id,
+        "terminal_handover_pending": terminal_handover_pending,
+        "terminal_locked": terminal_locked,
+        **_observation_output_fields(observation),
         "metadata": metadata,
     }
+
+
+def _observation_output_fields(
+    observation: VisionGuidanceObservation | None,
+) -> dict[str, Any]:
+    if observation is None:
+        return {}
+    return {
+        "detection_confidence": observation.detection_confidence,
+        "bbox_xyxy": observation.bbox_xyxy,
+        "camera_id": observation.camera_id,
+        "frame_timestamp_s": observation.frame_timestamp_s,
+        "visual_latency_s": _metadata_float(observation.metadata, "visual_latency_s"),
+    }
+
+
+def _bool_rate(values: Iterable[bool | None]) -> float:
+    items = [bool(value) for value in values if value is not None]
+    return sum(items) / len(items) if items else 0.0
+
+
+def _numeric_summary(name: str, values: Iterable[float | None]) -> dict[str, Any]:
+    items = [float(value) for value in values if value is not None]
+    if not items:
+        return {
+            f"{name}_observed_count": 0,
+            f"{name}_min": None,
+            f"{name}_mean": None,
+            f"{name}_max": None,
+        }
+    return {
+        f"{name}_observed_count": len(items),
+        f"{name}_min": min(items),
+        f"{name}_mean": sum(items) / len(items),
+        f"{name}_max": max(items),
+    }
+
+
+def _metadata_float(metadata: Mapping[str, Any], name: str) -> float | None:
+    value = metadata.get(name)
+    if value is None:
+        return None
+    return float(value)
 
 
 def _coerce_pair_input(value: D7RuntimePairInput | Mapping[str, Any] | Any) -> D7RuntimePairInput:

@@ -188,6 +188,30 @@ class AssignmentRecord:
     authorization_state: str = "recorded"
     active: bool = True
     truth_id: str | None = None
+    window_id: int | None = None
+    decision_state: str | None = None
+    changed: bool | None = None
+    resource_count: int = 0
+    target_count: int = 0
+    assignment_matrix_shape: tuple[int, int] | None = None
+    plan_owner: str | None = None
+    active_plan_owner: str | None = None
+    owner_node_id: str | None = None
+    source_node_id: str | None = None
+    target_node_id: str | None = None
+    link_type: str | None = None
+    plan_schema: str = ASSIGNMENT_PLAN_SCHEMA_V1
+    replan_reason: str | None = None
+    takeover_reason: str | None = None
+    previous_plan_id: str | None = None
+    previous_plan_version: int | None = None
+    supersedes_plan_id: str | None = None
+    supersedes_plan_version: int | None = None
+    total_cost: float | None = None
+    candidate_total_cost: float | None = None
+    previous_total_cost_current: float | None = None
+    cost_margin: float | None = None
+    stale_after_s: float | None = None
 
 
 @dataclass(frozen=True)
@@ -869,6 +893,29 @@ def assignment_records_from_plan(
         else authorization_state
     )
     truth_id_by_target = truth_id_by_target or {}
+    plan_metadata = dict(plan.metadata)
+    resource_count = _plan_resource_count(plan)
+    target_count = _plan_target_count(plan)
+    assignment_matrix_shape = _assignment_matrix_shape(
+        plan_metadata.get("assignment_matrix_shape"),
+        target_count=target_count,
+        resource_count=resource_count,
+    )
+    plan_owner = _metadata_text(plan_metadata, "plan_owner") or "center"
+    active_plan_owner = (
+        _metadata_text(plan_metadata, "active_plan_owner") or plan_owner
+    )
+    owner_node_id = (
+        _metadata_text(plan_metadata, "owner_node_id")
+        or _metadata_text(plan_metadata, "source_node_id")
+        or plan.source_node_id
+    )
+    previous_plan_version = _metadata_int(plan_metadata.get("previous_plan_version"))
+    if previous_plan_version is None and plan.previous_plan_id and plan.version > 1:
+        previous_plan_version = plan.version - 1
+    supersedes_plan_version = _metadata_int(
+        plan_metadata.get("supersedes_plan_version")
+    )
     return tuple(
         AssignmentRecord(
             timestamp=record_timestamp,
@@ -880,6 +927,40 @@ def assignment_records_from_plan(
             authorization_state=record_auth,
             active=active and assignment.feasibility_state == "feasible",
             truth_id=truth_id_by_target.get(assignment.target_id),
+            window_id=plan.window_id,
+            decision_state=plan.decision_state,
+            changed=plan.changed,
+            resource_count=resource_count,
+            target_count=target_count,
+            assignment_matrix_shape=assignment_matrix_shape,
+            plan_owner=plan_owner,
+            active_plan_owner=active_plan_owner,
+            owner_node_id=owner_node_id,
+            source_node_id=assignment.source_node_id
+            or plan.source_node_id
+            or _metadata_text(plan_metadata, "source_node_id"),
+            target_node_id=assignment.target_node_id
+            or plan.target_node_id
+            or _metadata_text(plan_metadata, "target_node_id"),
+            link_type=assignment.link_type
+            or plan.link_type
+            or _metadata_text(plan_metadata, "link_type"),
+            plan_schema=_plan_schema(plan),
+            replan_reason=_metadata_text(plan_metadata, "replan_reason"),
+            takeover_reason=_metadata_text(plan_metadata, "takeover_reason"),
+            previous_plan_id=plan.previous_plan_id,
+            previous_plan_version=previous_plan_version,
+            supersedes_plan_id=_metadata_text(plan_metadata, "supersedes_plan_id"),
+            supersedes_plan_version=supersedes_plan_version,
+            total_cost=plan.total_cost,
+            candidate_total_cost=plan.candidate_total_cost,
+            previous_total_cost_current=plan.previous_total_cost_current,
+            cost_margin=_cost_margin(plan),
+            stale_after_s=(
+                assignment.stale_after_s
+                if assignment.stale_after_s is not None
+                else plan.stale_after_s
+            ),
         )
         for assignment in plan.assignments
     )
@@ -1019,6 +1100,31 @@ def _metadata_bool(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "y", "on"}
     return bool(value)
+
+
+def _metadata_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _assignment_matrix_shape(
+    value: Any,
+    *,
+    target_count: int,
+    resource_count: int,
+) -> tuple[int, int]:
+    if isinstance(value, (list, tuple)):
+        items = tuple(value)
+        if len(items) == 2:
+            try:
+                return int(items[0]), int(items[1])
+            except (TypeError, ValueError):
+                pass
+    return int(target_count), int(resource_count)
 
 
 def _append_unique(values: list[str], value: str) -> None:

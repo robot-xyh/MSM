@@ -413,6 +413,15 @@ class ReconImageCue:
     confidence: float = 1.0
     scoped_resource_ids: tuple[str, ...] = ()
     source_type: str = "secondary_recon"
+    cue_position_ned: np.ndarray | None = None
+    look_at_ned: np.ndarray | None = None
+    gimbal_pointing_metadata: dict[str, Any] = field(default_factory=dict)
+    cue_pointing_error_m: float | None = None
+    cue_pointing_error_rad: float | None = None
+    gimbal_track_error_px: float | None = None
+    cue_source: str | None = None
+    capability_class: str | None = None
+    coverage_mode: str = "fixed_downlook_secondary"
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -425,6 +434,16 @@ class ReconImageCue:
         object.__setattr__(self, "bbox", _optional_bbox(self.bbox))
         object.__setattr__(self, "confidence", float(np.clip(self.confidence, 0.0, 1.0)))
         object.__setattr__(self, "scoped_resource_ids", _as_string_tuple(self.scoped_resource_ids))
+        object.__setattr__(self, "source_type", str(self.source_type))
+        object.__setattr__(self, "cue_position_ned", _optional_vector(self.cue_position_ned, 3, "cue_position_ned"))
+        object.__setattr__(self, "look_at_ned", _optional_vector(self.look_at_ned, 3, "look_at_ned"))
+        object.__setattr__(self, "gimbal_pointing_metadata", dict(self.gimbal_pointing_metadata))
+        object.__setattr__(self, "cue_pointing_error_m", _finite_float_or_none(self.cue_pointing_error_m))
+        object.__setattr__(self, "cue_pointing_error_rad", _finite_float_or_none(self.cue_pointing_error_rad))
+        object.__setattr__(self, "gimbal_track_error_px", _finite_float_or_none(self.gimbal_track_error_px))
+        object.__setattr__(self, "cue_source", _optional_string(self.cue_source))
+        object.__setattr__(self, "capability_class", _optional_string(self.capability_class))
+        object.__setattr__(self, "coverage_mode", str(self.coverage_mode or "fixed_downlook_secondary"))
         object.__setattr__(self, "metadata", dict(self.metadata))
 
 

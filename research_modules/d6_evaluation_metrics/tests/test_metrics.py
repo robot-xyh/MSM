@@ -551,6 +551,118 @@ def test_multi_view_and_d7_guidance_gate_metrics() -> None:
     assert metrics.metadata["terminal_switch_reject_reasons"] == {"camera_quality": 1}
 
 
+def test_secondary_sensing_metrics_use_actual_target_and_camera_counts() -> None:
+    collector = MetricsCollector()
+    collector.extend_events(
+        [
+            EventRecord(
+                timestamp=0.0,
+                event_type="secondary_coverage_frame",
+                actor_id="fixed-node",
+                metadata={
+                    "secondary_node_type": "fixed_downlook_secondary",
+                    "frame_id": "f0",
+                    "covered_target_ids": ["T1", "T2"],
+                    "single_camera_full_view_count": 1,
+                    "single_camera_total_count": 2,
+                },
+            ),
+            EventRecord(
+                timestamp=0.0,
+                event_type="secondary_coverage_frame",
+                actor_id="mobile-recon",
+                metadata={
+                    "secondary_node_type": "mobile_recon_gimbal",
+                    "frame_id": "f0",
+                    "covered_target_ids": ["T3"],
+                    "single_camera_full_view_count": 0,
+                    "single_camera_total_count": 1,
+                    "cue_pointing_error_deg": 4.0,
+                    "gimbal_pointing_error_deg": 2.0,
+                },
+            ),
+            EventRecord(
+                timestamp=1.0,
+                event_type="secondary_coverage_frame",
+                actor_id="fixed-node",
+                metadata={
+                    "secondary_node_type": "fixed_downlook_secondary",
+                    "frame_id": "f1",
+                    "covered_target_ids": ["T1"],
+                    "single_camera_full_view_count": 0,
+                    "single_camera_total_count": 2,
+                },
+            ),
+            EventRecord(
+                timestamp=1.0,
+                event_type="secondary_coverage_frame",
+                actor_id="mobile-recon",
+                metadata={
+                    "secondary_node_type": "mobile_recon_gimbal",
+                    "frame_id": "f1",
+                    "covered_target_ids": ["T2"],
+                    "single_camera_full_view_count": 0,
+                    "single_camera_total_count": 1,
+                    "cue_pointing_error_deg": 2.0,
+                    "gimbal_pointing_error_deg": 4.0,
+                },
+            ),
+            EventRecord(
+                timestamp=2.0,
+                event_type="d5_cross_view_association",
+                metadata={
+                    "secondary_node_type": "fixed_downlook_secondary",
+                    "target_id": "T1",
+                    "association_success": True,
+                },
+            ),
+            EventRecord(
+                timestamp=3.0,
+                event_type="d5_registration_miss",
+                metadata={
+                    "secondary_node_type": "mobile_recon_gimbal",
+                    "target_id": "T2",
+                    "detect_available": True,
+                    "d5_registered": False,
+                },
+            ),
+        ]
+    )
+
+    metrics = collector.compute_episode(
+        "blocks_cv_5v5_secondary_sensing_n3",
+        truth_summary={
+            "target_count": 3,
+            "camera_count": 6,
+            "resource_count": 3,
+            "drone_count": 3,
+            "scenario": {"name": "blocks_cv_5v5"},
+        },
+    )
+
+    assert metrics.target_count == 3
+    assert metrics.camera_count == 6
+    assert metrics.secondary_network_joint_full_view_frame_rate == pytest.approx(0.5)
+    assert metrics.secondary_network_mean_coverage_ratio == pytest.approx(5.0 / 6.0)
+    assert metrics.secondary_single_camera_full_view_frame_rate == pytest.approx(
+        1.0 / 6.0
+    )
+    assert metrics.cross_view_association_count == 1
+    assert metrics.secondary_detect_available_but_not_registered_count == 1
+    assert metrics.cue_pointing_error_count == 2
+    assert metrics.cue_pointing_error_mean_deg == pytest.approx(3.0)
+    assert metrics.cue_pointing_error_rmse_deg == pytest.approx(math.sqrt(10.0))
+    assert metrics.gimbal_pointing_error_count == 2
+    assert metrics.gimbal_pointing_error_mean_deg == pytest.approx(3.0)
+    assert metrics.gimbal_pointing_error_rmse_deg == pytest.approx(math.sqrt(10.0))
+    node_metrics = metrics.metadata["secondary_sensing_node_type_metrics"]
+    assert set(node_metrics) == {"fixed_downlook_secondary", "mobile_recon_gimbal"}
+    assert node_metrics["fixed_downlook_secondary"][
+        "secondary_network_mean_coverage_ratio"
+    ] == pytest.approx(0.5)
+    assert node_metrics["mobile_recon_gimbal"]["gimbal_pointing_error_count"] == 2
+
+
 def test_episode_metrics_contains_all_required_names() -> None:
     required = {
         "detection_probability",
@@ -582,6 +694,19 @@ def test_episode_metrics_contains_all_required_names() -> None:
         "multi_view_consensus_rate",
         "cross_view_conflict_count",
         "duplicate_terminal_lock_count",
+        "secondary_network_joint_full_view_frame_rate",
+        "secondary_network_mean_coverage_ratio",
+        "secondary_single_camera_full_view_frame_rate",
+        "cross_view_association_count",
+        "secondary_detect_available_but_not_registered_count",
+        "cue_pointing_error_count",
+        "cue_pointing_error_mean_deg",
+        "cue_pointing_error_rmse_deg",
+        "cue_pointing_error_max_deg",
+        "gimbal_pointing_error_count",
+        "gimbal_pointing_error_mean_deg",
+        "gimbal_pointing_error_rmse_deg",
+        "gimbal_pointing_error_max_deg",
         "cross_node_latency_ms",
         "message_drop_rate",
         "out_of_order_count",

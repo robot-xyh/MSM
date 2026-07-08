@@ -8,7 +8,7 @@ cross-view consistency and duplicate-lock risk for D3/D4/D6 consumers.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Iterable
+from typing import Any, Iterable
 
 import numpy as np
 
@@ -192,6 +192,50 @@ class TerminalObservationBus:
             reason = "multi_view_support" if len(supporting_resource_ids) > 1 else "single_view_support"
             if duplicate_risk:
                 reason = "duplicate_terminal_lock_risk"
+            recon_cue_evidence = tuple(
+                _recon_cue_evidence(cue)
+                for observation in observations
+                for cue in observation.recon_image_cues
+            )
+            coverage_modes = _unique(
+                value
+                for value in (
+                    *(
+                        cue.get("coverage_mode")
+                        for cue in recon_cue_evidence
+                    ),
+                    *(
+                        observation.metadata.get("coverage_mode")
+                        for observation in observations
+                    ),
+                )
+            )
+            capability_classes = _unique(
+                value
+                for value in (
+                    *(
+                        cue.get("capability_class")
+                        for cue in recon_cue_evidence
+                    ),
+                    *(
+                        observation.metadata.get("capability_class")
+                        for observation in observations
+                    ),
+                )
+            )
+            cue_sources = _unique(
+                value
+                for value in (
+                    *(
+                        cue.get("cue_source")
+                        for cue in recon_cue_evidence
+                    ),
+                    *(
+                        observation.metadata.get("cue_source")
+                        for observation in observations
+                    ),
+                )
+            )
 
             associations.append(
                 CrossViewAssociation(
@@ -220,7 +264,22 @@ class TerminalObservationBus:
                         "observed_global_track_ids_by_resource": {
                             resource_id: _unique(global_ids)
                             for resource_id, global_ids in observed_global_ids_by_resource.items()
-                        }
+                        },
+                        "coverage_modes": coverage_modes,
+                        "capability_classes": capability_classes,
+                        "cue_sources": cue_sources,
+                        "recon_cue_evidence": recon_cue_evidence,
+                        "mobile_recon_gimbal_support_count": sum(
+                            1
+                            for cue in recon_cue_evidence
+                            if cue.get("coverage_mode") == "mobile_recon_gimbal"
+                            or cue.get("capability_class") == "mobile_high_recon"
+                        ),
+                        "fixed_downlook_secondary_support_count": sum(
+                            1
+                            for cue in recon_cue_evidence
+                            if cue.get("coverage_mode") == "fixed_downlook_secondary"
+                        ),
                     },
                 )
             )
@@ -239,3 +298,30 @@ def _namespaced_local_id(observation: TerminalObservation) -> str:
     if observation.camera_id:
         return f"{observation.resource_id}/{observation.camera_id}:{association.local_track_id}"
     return f"{observation.resource_id}:{association.local_track_id}"
+
+
+def _recon_cue_evidence(cue: ReconImageCue) -> dict[str, Any]:
+    return {
+        "cue_id": cue.cue_id,
+        "producer_node_id": cue.producer_node_id,
+        "image_frame_id": cue.image_frame_id,
+        "global_track_id": cue.global_track_id,
+        "source_type": cue.source_type,
+        "cue_source": cue.cue_source,
+        "capability_class": cue.capability_class,
+        "coverage_mode": cue.coverage_mode,
+        "cue_position_ned": _vector_to_list(cue.cue_position_ned),
+        "look_at_ned": _vector_to_list(cue.look_at_ned),
+        "gimbal_pointing_metadata": dict(cue.gimbal_pointing_metadata),
+        "cue_pointing_error_m": cue.cue_pointing_error_m,
+        "cue_pointing_error_rad": cue.cue_pointing_error_rad,
+        "gimbal_track_error_px": cue.gimbal_track_error_px,
+        "confidence": cue.confidence,
+        "scoped_resource_ids": cue.scoped_resource_ids,
+    }
+
+
+def _vector_to_list(value: np.ndarray | None) -> list[float] | None:
+    if value is None:
+        return None
+    return [float(item) for item in value.tolist()]
