@@ -522,6 +522,8 @@ Blocks launch/reset
 - fallback_actor_name
 ```
 
+当前与 YOLO/视觉 PNG 联调推荐并默认使用 Blocks/AirSim 无人机 mesh asset `Quadrotor1`；main runtime actor asset default 已由 main 同步为 `Quadrotor1`，后续重点是真实 AirSim 验证和阈值/检测调参。`1M_Cube_Chamfer` 只保留给旧接口、旧报告和几何 baseline 复现。D7 delivery 脚本的 `Intruder*`/`IntruderActor` 仍是 legacy alias，不应成为新 runtime handoff 的默认目标命名。
+
 每个采样时刻由 `position_at(timestamp)` 得到目标位置，再通过 `simSetObjectPose` 更新 actor。检测链路通过：
 
 ```text
@@ -670,6 +672,7 @@ status == timeout
 
 - 保持 2v2 actor target 和 SimpleFlight interceptor 作为 baseline 架构。
 - 对 main runtime，按 `--drone-count N` 为每个有效 assignment pair 创建独立 D7 控制上下文，不共享视觉 filter 状态。
+- actor target 默认外观已由 main/runtime 与 D7 delivery 对齐到 `Quadrotor1`；cube asset 仅作为 legacy 几何 baseline 显式复现选项，后续需要真实 AirSim 验证和阈值/检测调参。
 - 明确 `collision_intercept` 必须匹配 assigned actor/object name。
 - 在 summary 中保留 `time_to_intercept_s`、`min_range_m`、`status`、`abort_reason` 和 `collision_object_name`。
 - 默认继续不保存 PNG，只保存检测框和相机元数据。

@@ -67,7 +67,14 @@ def parse_args() -> argparse.Namespace:
         help="Use a spawned scene Actor as the intruder target instead of a second AirSim vehicle.",
     )
     parser.add_argument("--intruder-actor-name", default="IntruderActor")
-    parser.add_argument("--intruder-actor-asset", default="1M_Cube_Chamfer")
+    parser.add_argument(
+        "--intruder-actor-asset",
+        default="Quadrotor1",
+        help=(
+            "Spawn asset for the actor target. Default uses the Blocks Quadrotor1 drone mesh; "
+            "use 1M_Cube_Chamfer only for legacy geometry baselines."
+        ),
+    )
     parser.add_argument("--intruder-actor-scale", type=float, default=2.0)
     parser.add_argument("--intruder-actor-physics", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--intruder-actor-blueprint", action=argparse.BooleanOptionalAction, default=False)

@@ -109,9 +109,9 @@ AirSim Blocks 2v2 主动降级链路采用保守解释：D4 `degrade_to_secondar
 本次核对 `png_guidance_delivery` 后，D7 文档采用以下命名口径：
 
 - 当前 main/runtime 默认目标 actor 和检测过滤名为 `MSM_TargetActor_*`，实际 spawn 名通常类似 `MSM_TargetActor_1`。D7 与 D5/D6 的运行时日志、handoff 记录和新测试应优先使用这个命名。
-- runtime 默认目标 asset 为 `1M_Cube_Chamfer`。
-- `png_guidance_delivery` 复现实验脚本仍保留历史默认：`--mesh Intruder*`、`--intruder-actor-name IntruderActor`，其中 truth/gimbal/strapdown actor 路径默认 `--intruder-actor-asset 1M_Cube_Chamfer`。`Intruder*`/`IntruderActor` 仅作为 legacy alias 和旧报告复现口径。
-- 旧 baseline 文档中出现的 `Quadrotor1` 是历史 actor asset 记录，不是当前 runtime 默认目标 asset。
+- 当前与 YOLO/视觉 PNG 联调推荐并默认使用 Blocks/AirSim 的无人机 mesh asset `Quadrotor1`；main runtime actor asset default 已由 main 同步为 `Quadrotor1`，后续重点是真实 AirSim 验证和阈值/检测调参。
+- `png_guidance_delivery` 复现实验脚本仍保留历史 alias：`--mesh Intruder*`、`--intruder-actor-name IntruderActor`；truth/gimbal/strapdown actor 路径默认 `--intruder-actor-asset Quadrotor1`。`Intruder*`/`IntruderActor` 仅作为 legacy alias 和旧报告复现口径。
+- `1M_Cube_Chamfer` 仅用于旧接口、旧报告或几何 baseline 复现；如需复现 cube 口径，应显式传入 `--intruder-actor-asset 1M_Cube_Chamfer`。
 
 ## 运行测试
 

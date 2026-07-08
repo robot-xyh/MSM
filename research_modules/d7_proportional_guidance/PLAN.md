@@ -62,8 +62,9 @@ D7 提供一个可被主流程接入的离线二维比例导引研究模块。�
 命名口径：
 
 - 当前 main/runtime 默认目标 actor 和 AirSim detect filter 为 `MSM_TargetActor_*`，实际对象名通常类似 `MSM_TargetActor_1`。
-- 当前 runtime 默认目标 asset 为 `1M_Cube_Chamfer`。
-- `png_guidance_delivery` 内历史默认仍为 `Intruder*` mesh filter 和 `IntruderActor` actor name；它们只作为 delivery 复现实验与旧日志的 legacy alias。
+- 当前与 YOLO/视觉 PNG 联调推荐并默认使用 Blocks/AirSim 无人机 mesh asset `Quadrotor1`；main runtime actor asset default 已由 main 同步为 `Quadrotor1`，后续重点是真实 AirSim 验证和阈值/检测调参。
+- `png_guidance_delivery` 内仍保留 `Intruder*` mesh filter 和 `IntruderActor` actor name；它们只作为 delivery 复现实验与旧日志的 legacy alias。
+- `1M_Cube_Chamfer` 只用于旧接口、旧报告或几何 baseline 复现，需要时显式指定 `--intruder-actor-asset 1M_Cube_Chamfer`。
 
 暂不接入：
 
@@ -240,7 +241,7 @@ AirSim runtime 集成要求：
 - 当前阶段只使用 SimpleFlight `moveByVelocityZAsync`。
 - main runtime 用 `--drone-count N` 决定本次仿真的无人机/目标数量；D7 不读取固定数量，也不假设 2v2/5v5。
 - main 必须为每个有效 D3 assignment pair 创建独立 D7 控制上下文，分别运行初段位置 PNG/PN 和末端视觉 PNG gate/filter，不能在多个 pair 之间共享 `SimpleFlightPngGuidanceFilter` 的 LOS/TTC/稳定帧状态。
-- 当前 runtime 目标 actor/detection filter 使用 `MSM_TargetActor_*`，目标 asset 使用 `1M_Cube_Chamfer`。
+- 当前 runtime 目标 actor/detection filter 使用 `MSM_TargetActor_*`；main 已将 runtime actor asset default 同步为 `Quadrotor1`，与 YOLO/视觉 PNG 联调默认外观一致；`1M_Cube_Chamfer` 仅保留为旧接口/几何 baseline 复现选项，后续需要真实 AirSim 验证和阈值/检测调参。
 - `Intruder*`/`IntruderActor` 只作为 `png_guidance_delivery` 和历史日志的 legacy alias，不应作为新 runtime handoff 的默认目标名。
 - 目标检测输入来自 AirSim `simGetDetections` 的 bbox，不依赖默认保存 PNG。
 - 进入视觉终端前必须同时满足 D5 locked/版本一致、bbox 质量、LOS 质量、机动裕度和窗口门槛。

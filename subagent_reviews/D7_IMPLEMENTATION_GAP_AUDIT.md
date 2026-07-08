@@ -16,6 +16,8 @@ D7 当前已经实现可测试的二维位置 PN/PNG 几何核、中段雷达/�
 
 2026-07-08 D7 子智能体复核：D7-owned `runtime_bus.py`、`comparison.py`、`replay.py` 已补齐并由 D7 tests 覆盖。D7RuntimeBus 支持任意 N-pair state injection、每 pair 独立 filter、同一 pair plan/version/owner signature 变化时 reset；comparison 输出 PN/Pure Pursuit/`png_vm`/`png_ttc` 多 seed report rows；replay 将 YOLO/ByteTrack/AirSim bbox rows 离线映射到 D7 bbox/LOS/TTC gate，且显式不调用 SimpleFlight。D4 owner/version gate 已加强：D4 指定接管 owner 时，当前 D3 binding 必须携带同一 owner，旧 lock 或 owner mismatch/missing 均不得进入视觉 PNG。main runtime 已把 D7 runtime summary 接入 episode bus；controlled 5v5 center replan 与 2v2 secondary visual PNG gate 回归已通过。
 
+2026-07-08 D7 actor asset 复核：D7 `png_guidance_delivery` truth/gimbal/strapdown example 的 `--intruder-actor-asset` 默认值已从历史 cube `1M_Cube_Chamfer` 对齐为 Blocks/AirSim 无人机 mesh asset `Quadrotor1`，并新增测试锁定默认值。main runtime 的 actor asset CLI/default 已由 main 同步为 `Quadrotor1`；cube 仅作为旧接口、旧报告或几何 baseline 显式复现选项。后续重点是真实 AirSim 验证和阈值/检测调参。
+
 ## 已实现
 
 | 项 | 实现状态 | 关键证据 | 当前口径 |
@@ -46,7 +48,7 @@ D7 当前已经实现可测试的二维位置 PN/PNG 几何核、中段雷达/�
 |---|---|---|---|---|
 | 真实 AirSim 多 seed calibration | main/runtime 已用 D7 PN/PNG gate 生成速度命令，并通过 SimpleFlight 高层速度接口执行；输出 `control_commands.csv`、`intercept_summary.json`、D7 runtime summary，正式 episode bus metrics 已能合并真实执行结果。 | 需要用真实 AirSim 多 seed 校准 terminal range、`png_vm/png_ttc`、bbox/LOS/TTC gate、视觉延迟、机动裕度和阈值版本，并形成 D6/main 分组报告。 | D7 不能生成 assignment、D4 仲裁或 D5 lock；D7 只提供可消费字段，校准数据和正式报告由 main/D6 组织。 | P1 |
 | 相机前移 0.5m / FOV / 姿态朝向目标 | AirSim settings/tests 已覆盖 tuned terminal camera `X=0.5m`、`640x480`/`120deg` FOV；runtime 支持 `look_at_target` yaw 和 CV camera follow/look-at。 | D7 主线没有直接读取真实 camera intrinsics/extrinsics、畸变、姿态估计，也没有把 FOV 从 runtime 自动传入 `PngGuidanceConfig`。 | D7 当前保持轻量 bbox 几何；相机管理属于 main/runtime。 | P1/P2 |
-| 末端视觉 PNG 与检测闭环 | AirSim detect metadata bbox 可进入 D7 gate；D5-shaped lock 通过后 runtime 可进入 `png_vm`；D7 已提供 bbox/LOS 离线 replay adapter。 | YOLO/ByteTrack 真实图像链路只作为离线 replay 或 optional 实验路径；若接入，也只产出 D5 local track 与 D7 bbox/LOS gate 摘要，不进入默认 SimpleFlight 控制。 | 默认不保存 PNG，不要求 Ultralytics/GPU/权重；先用 replay/calibration 稳定阈值。 | P1 optional |
+| 末端视觉 PNG 与检测闭环 | AirSim detect metadata bbox 可进入 D7 gate；D5-shaped lock 通过后 runtime 可进入 `png_vm`；D7 已提供 bbox/LOS 离线 replay adapter；D7 delivery actor 默认外观和 main runtime actor asset default 均已对齐到无人机 mesh asset `Quadrotor1`。 | YOLO/ByteTrack 真实图像链路只作为离线 replay 或 optional 实验路径；若接入，也只产出 D5 local track 与 D7 bbox/LOS gate 摘要，不进入默认 SimpleFlight 控制；后续需要真实 AirSim 验证和阈值/检测调参。 | 默认不保存 PNG，不要求 Ultralytics/GPU/权重；先用 replay/calibration 稳定阈值。 | P1 optional |
 | TTC 面积通道 | `png_ttc` API 和 delivery TTC 方案已文档化；D7 gate 可估计 bbox area expansion TTC。 | runtime 默认不是 `png_ttc`；TTC 对近距裁切/面积噪声的阈值需要更多 replay 和 D6 对照。 | 先用 `png_vm` 稳定 SimpleFlight 速度链路。 | P1/P2 |
 | 机动能力 gate | PN 有加速度/转向率限幅；视觉 gate 估计 required turn rate、turn capacity、maneuver margin。 | 真实动力学、姿态/推力/延迟、PX4 饱和响应和三维高度通道未建模。 | SimpleFlight 高层速度接口不能代表底层飞控闭环。 | P2 |
 | D6 指标输入 | D7/runtime 日志已有 mode、range、LOS、closing speed、gate reject reason、plan/D4/D5 metadata；正式 main bus metrics 已可合并真实执行结果；D7 已提供 comparison rows 和 replay summary。 | 多 seed N-pair 真实运行报告、阈值版本、分组对照和 raw contract vs execution metrics 双口径说明仍需 main/D6 汇总。 | 指标聚合属于 D6/main，不是 D7 本地测试即可完成。 | P1 |
