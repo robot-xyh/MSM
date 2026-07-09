@@ -201,6 +201,44 @@ degrade to secondary node, and degrade to distributed mode. Outputs include
 `d4_decisions.jsonl`, per-case reports, and the aggregate
 `D4_D5_5V5_STRESS_AIRSIM_REPORT.md`.
 
+Run the P1 D4/D5 calibration matrix when the goal is to compare secondary
+recon geometry rather than one fixed setting:
+
+```bash
+python3 research_modules/airsim_runtime/run_blocks_sequence.py \
+  --p1-calibration-sweep \
+  --sequence-id p1_d4d5_calibration_sweep_001 \
+  --batch-seeds 1,2,3 \
+  --drone-count 5 \
+  --p1-secondary-heights 50,100,200 \
+  --p1-secondary-fovs 60,80,110 \
+  --p1-secondary-counts 1,2,3 \
+  --p1-secondary-standoffs 0,5,15 \
+  --duration 6.0 \
+  --dt 0.5 \
+  --blocks-arg=-windowed \
+  --blocks-arg=-ResX=640 \
+  --blocks-arg=-ResY=480 \
+  --blocks-arg=-NoVSync \
+  --blocks-arg=-NoHMD \
+  --blocks-arg=-NoSound
+```
+
+The sweep uses `ComputerVision` D4/D5 stress episodes with mobile secondary
+recon enabled. Different height/FOV/secondary-count combinations generate
+different AirSim settings, so main launches Blocks once per geometry
+combination and runs all requested seeds inside that combination with reset
+separation. The top-level output contains `p1_calibration_sweep_summary.json`
+and `P1_AIRSIM_CALIBRATION_SWEEP_REPORT.md`, including single-secondary
+coverage, network union coverage, detect-to-registration gap, cross-view
+association count, gimbal pointing, and bbox size metrics. Main also asks D6
+to scan the persisted sequence/episode artifacts and write
+`d6_airsim_calibration/airsim_calibration_records.csv`,
+`d6_airsim_calibration/airsim_calibration_summary.csv`,
+`d6_airsim_calibration/airsim_calibration_summary.json`, and
+`d6_airsim_calibration/airsim_calibration_report.md` for the standard
+multi-seed reporting path.
+
 Run the first controlled 2v2 intercept. Main still launches Blocks once and
 resets between episodes; the first five episodes stay read-only/replay, and the
 last episode arms `Interceptor1/2`, takes off, and sends D7 PN velocity commands:

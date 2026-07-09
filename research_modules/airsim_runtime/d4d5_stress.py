@@ -29,13 +29,17 @@ from d4_distributed_fallback import (
 from d4_distributed_fallback.adapter import D4ArbitrationAdapter
 from d5_terminal_association import (
     Assignment,
+    CameraLocalTrackBatch,
     CameraModel,
+    GlobalTrackBinding,
     GlobalTrack,
     LocalVisualTrack,
     ReconImageCue,
     TerminalObservation,
     TerminalObservationBus,
     TerminalAssociator,
+    camera_model_from_airsim_camera_info,
+    register_local_visual_tracks_to_global_tracks,
     summarize_secondary_visual_coverage_funnel,
 )
 
@@ -82,7 +86,15 @@ def run_d4d5_stress_analysis(
             secondary_camera_vehicle_names=secondary_camera_vehicle_names,
             terminal_associator=terminal_associator,
         )
+        secondary_registration = _secondary_registration_for_frame(
+            frame,
+            secondary_camera_vehicle_names=secondary_camera_vehicle_names,
+            terminal_associator=terminal_associator,
+        )
+        frame_registration_observations = list(secondary_registration.observations)
         for observation in frame_observations:
+            observations.append(bus.publish(observation))
+        for observation in frame_registration_observations:
             observations.append(bus.publish(observation))
         decisions.extend(
             _d4_decisions_for_frame(
@@ -94,6 +106,12 @@ def run_d4d5_stress_analysis(
             )
         )
 
+    sequence_registration = _secondary_registration_for_frames(
+        frames,
+        secondary_camera_vehicle_names=secondary_camera_vehicle_names,
+        terminal_associator=terminal_associator,
+    )
+    registration_candidates = list(sequence_registration.candidates)
     cross_view = bus.cross_view_associations()
     secondary_funnel = summarize_secondary_visual_coverage_funnel(
         secondary_frames=_secondary_coverage_frames(
@@ -123,6 +141,7 @@ def run_d4d5_stress_analysis(
             frames,
             secondary_camera_vehicle_names=secondary_camera_vehicle_names,
         ),
+        **_secondary_registration_candidate_metrics(registration_candidates),
         **d4_metrics,
         "terminal_observation_count": len(observations),
         "cross_view_association_count": len(cross_view),
@@ -153,6 +172,10 @@ def run_d4d5_stress_analysis(
         output_dir / "d5_cross_view_associations.json",
         [_jsonable(item) for item in cross_view],
     )
+    candidate_path = _write_jsonl(
+        output_dir / "d5_detect_to_global_candidates.jsonl",
+        registration_candidates,
+    )
     decision_path = _write_jsonl(output_dir / "d4_decisions.jsonl", decisions)
     metrics_path = _write_json(output_dir / "d4d5_stress_metrics.json", metrics)
     report_path = _write_case_report(
@@ -165,6 +188,7 @@ def run_d4d5_stress_analysis(
         output_paths={
             "d5_terminal_observations_jsonl": observation_path,
             "d5_cross_view_associations_json": cross_view_path,
+            "d5_detect_to_global_candidates_jsonl": candidate_path,
             "d4_decisions_jsonl": decision_path,
             "d4d5_stress_metrics_json": metrics_path,
             "d4d5_stress_case_report": report_path,
@@ -547,9 +571,10 @@ def _d4_decisions_for_frame(
             continue
         assigned_target_id = str(observation.metadata.get("assigned_target_id", "TGT-001"))
         observed_target_id = str(observation.metadata.get("observed_target_id", assigned_target_id))
+        coverage_cell = _coverage_cell_for_target(frame, assigned_target_id)
         track_uncertainty = TrackUncertaintySummary(
             track_id=_global_id(assigned_target_id),
-            coverage_cell="cell-north" if assigned_target_id <= "TGT-003" else "cell-south",
+            coverage_cell=coverage_cell,
             position_sigma_m=8.0 if case_name == "no_degradation" else 38.0,
             covariance_trace=300.0 if case_name == "no_degradation" else 1800.0,
             velocity_sigma_mps=0.4 if case_name == "no_degradation" else 1.8,
@@ -677,6 +702,205 @@ def _detection_metrics(
     }
 
 
+def _secondary_registration_for_frame(
+    frame: AirSimFrame,
+    *,
+    secondary_camera_vehicle_names: tuple[str, ...],
+    terminal_associator: TerminalAssociator,
+) -> Any:
+    global_tracks = _global_tracks_from_frame(frame)
+    active_ids = {_global_id(obj.object_id) for obj in frame.truth_objects}
+    detections_by_camera = _detections_by_camera(frame.visual_detections)
+    secondary_visible_ids = {
+        _global_id(detection.object_id)
+        for camera_name in secondary_camera_vehicle_names
+        for detection in detections_by_camera.get(f"{camera_name}:0", ())
+    }
+    network_union_complete = bool(active_ids) and active_ids.issubset(secondary_visible_ids)
+    batches = _secondary_camera_batches_for_frame(
+        frame,
+        secondary_camera_vehicle_names=secondary_camera_vehicle_names,
+        global_tracks=global_tracks,
+        network_union_complete=network_union_complete,
+    )
+    bindings = tuple(
+        GlobalTrackBinding(
+            global_track_id=track.global_track_id,
+            binding_source="d2_global_track_table",
+            timestamp=frame.timestamp,
+            authorization_state="authorized",
+            metadata={"source": "airsim_stress_global_track"},
+        )
+        for track in global_tracks
+    )
+    return register_local_visual_tracks_to_global_tracks(
+        global_tracks=global_tracks,
+        camera_batches=batches,
+        bindings=bindings,
+        current_time=frame.timestamp,
+        max_binding_age_s=2.0,
+        network_union_complete=network_union_complete,
+    )
+
+
+def _secondary_registration_for_frames(
+    frames: list[AirSimFrame],
+    *,
+    secondary_camera_vehicle_names: tuple[str, ...],
+    terminal_associator: TerminalAssociator,
+) -> Any:
+    if not frames:
+        return register_local_visual_tracks_to_global_tracks(
+            global_tracks=(),
+            camera_batches=(),
+            bindings=(),
+            current_time=0.0,
+            max_binding_age_s=None,
+            network_union_complete=None,
+        )
+    reference_tracks = _global_tracks_from_frame(frames[0])
+    batches: list[CameraLocalTrackBatch] = []
+    for frame in frames:
+        global_tracks = _global_tracks_from_frame(frame)
+        detections_by_camera = _detections_by_camera(frame.visual_detections)
+        active_ids = {_global_id(obj.object_id) for obj in frame.truth_objects}
+        secondary_visible_ids = {
+            _global_id(detection.object_id)
+            for camera_name in secondary_camera_vehicle_names
+            for detection in detections_by_camera.get(f"{camera_name}:0", ())
+        }
+        batches.extend(
+            _secondary_camera_batches_for_frame(
+                frame,
+                secondary_camera_vehicle_names=secondary_camera_vehicle_names,
+                global_tracks=global_tracks,
+                network_union_complete=bool(active_ids) and active_ids.issubset(secondary_visible_ids),
+            )
+        )
+    bindings = tuple(
+        GlobalTrackBinding(
+            global_track_id=track.global_track_id,
+            binding_source="d2_global_track_table",
+            timestamp=None,
+            authorization_state="authorized",
+            metadata={"source": "airsim_stress_global_track_sequence"},
+        )
+        for track in reference_tracks
+    )
+    return register_local_visual_tracks_to_global_tracks(
+        global_tracks=reference_tracks,
+        camera_batches=batches,
+        bindings=bindings,
+        current_time=None,
+        max_binding_age_s=None,
+        network_union_complete=None,
+    )
+
+
+def _secondary_camera_batches_for_frame(
+    frame: AirSimFrame,
+    *,
+    secondary_camera_vehicle_names: tuple[str, ...],
+    global_tracks: list[GlobalTrack],
+    network_union_complete: bool,
+) -> list[CameraLocalTrackBatch]:
+    detections_by_camera = _detections_by_camera(frame.visual_detections)
+    batches: list[CameraLocalTrackBatch] = []
+    for vehicle_name in secondary_camera_vehicle_names:
+        camera_id = f"{vehicle_name}:0"
+        detections = detections_by_camera.get(camera_id, ())
+        camera, camera_pose_source = _camera_model_for_secondary(frame, vehicle_name, global_tracks)
+        local_tracks = tuple(
+            _local_track_from_detection(
+                detection,
+                frame.timestamp,
+                center_px=np.asarray(detection.center_px, dtype=float),
+                min_mot_history=3,
+            )
+            for detection in detections
+        )
+        truth_by_local = {
+            track.local_track_id: _global_id(detection.object_id)
+            for track, detection in zip(local_tracks, detections)
+        }
+        batches.append(
+            CameraLocalTrackBatch(
+                resource_id=vehicle_name,
+                camera_id=camera_id,
+                camera=camera,
+                local_tracks=local_tracks,
+                frame_id=f"{frame.episode_id}:{frame.frame_index:04d}:{camera_id}",
+                timestamp=frame.timestamp,
+                arrival_timestamp=frame.timestamp + 0.05,
+                covariance_px=np.diag([9.0, 9.0]),
+                source_node_id=vehicle_name,
+                link_type="secondary_recon_video_metadata",
+                metadata={
+                    "is_secondary": True,
+                    "camera_pose_source": camera_pose_source,
+                    "offline_truth_by_local_track_id": truth_by_local,
+                    "network_union_complete": network_union_complete,
+                    "truth_id_online_use": "ignored",
+                },
+            )
+        )
+    return batches
+
+
+def _camera_model_for_secondary(
+    frame: AirSimFrame,
+    vehicle_name: str,
+    global_tracks: list[GlobalTrack],
+) -> tuple[CameraModel, str]:
+    camera_info = next((camera for camera in frame.cameras if camera.owner_id == vehicle_name), None)
+    if camera_info is not None:
+        try:
+            return (
+                camera_model_from_airsim_camera_info(
+                    camera_info,
+                    measurement_sigma_px=9.0,
+                ),
+                "airsim_camera_pose",
+            )
+        except Exception:
+            pass
+    if global_tracks:
+        target_position = np.mean([track.position for track in global_tracks], axis=0)
+    else:
+        target_position = np.array([50.0, 0.0, -10.0], dtype=float)
+    if camera_info is None:
+        camera_position = np.array([50.0, 0.0, -60.0], dtype=float)
+        width, height = 640, 480
+        fx = fy = 320.0
+        cx, cy = width * 0.5, height * 0.5
+    else:
+        camera_position = np.asarray(camera_info.position_ned, dtype=float)
+        width, height = int(camera_info.width), int(camera_info.height)
+        fx = float(camera_info.fx if camera_info.fx > 0.0 else max(width, 1) * 0.5)
+        fy = float(camera_info.fy if camera_info.fy > 0.0 else max(height, 1) * 0.5)
+        cx = float(camera_info.cx if 0.0 < camera_info.cx < width else width * 0.5)
+        cy = float(camera_info.cy if 0.0 < camera_info.cy < height else height * 0.5)
+    rotation = _look_at_world_to_camera(camera_position, np.asarray(target_position, dtype=float))
+    translation = -rotation @ camera_position
+    return (
+        CameraModel(
+            K=np.array(
+                [
+                    [fx, 0.0, cx],
+                    [0.0, fy, cy],
+                    [0.0, 0.0, 1.0],
+                ],
+                dtype=float,
+            ),
+            R=rotation,
+            t=translation,
+            image_size=(width, height),
+            measurement_cov=np.diag([9.0, 9.0]),
+        ),
+        "look_at_fallback",
+    )
+
+
 def _d4_metrics(decisions: list[dict[str, Any]]) -> dict[str, Any]:
     action_counts = Counter(str(item.get("d4_action", "")) for item in decisions)
     mode_counts = Counter(str(item.get("degradation_mode", "")) for item in decisions)
@@ -799,6 +1023,44 @@ def _secondary_guidance_metrics(
         "secondary_cue_pointing_error_m_stats": _numeric_stats(pointing_errors),
         "secondary_capability_classes": capability_classes,
         "secondary_cue_sources": cue_sources,
+    }
+
+
+def _secondary_registration_candidate_metrics(candidates: list[Any]) -> dict[str, Any]:
+    candidate_count = len(candidates)
+    selected_count = sum(1 for item in candidates if bool(getattr(item, "selected", False)))
+    stable_count = sum(
+        1 for item in candidates if bool(getattr(item, "stable_cross_view_support", False))
+    )
+    gate_pass_count = sum(1 for item in candidates if bool(getattr(item, "gate_passed", False)))
+    projection_valid_count = sum(
+        1 for item in candidates if bool(getattr(item, "projection_valid", False))
+    )
+    pose_sources = Counter(
+        str(getattr(item, "camera_pose_source", "unknown")) for item in candidates
+    )
+    reject_counts: Counter[str] = Counter()
+    pixel_errors: list[float] = []
+    mahalanobis_values: list[float] = []
+    for item in candidates:
+        for reason in getattr(item, "reject_reasons", ()) or ():
+            reject_counts[str(reason)] += 1
+        pixel_error = getattr(item, "pixel_error_px", None)
+        if pixel_error is not None and np.isfinite(float(pixel_error)):
+            pixel_errors.append(float(pixel_error))
+        mahalanobis_d2 = getattr(item, "mahalanobis_d2", None)
+        if mahalanobis_d2 is not None and np.isfinite(float(mahalanobis_d2)):
+            mahalanobis_values.append(float(mahalanobis_d2))
+    return {
+        "detect_to_global_candidate_count": candidate_count,
+        "registered_candidate_count": selected_count,
+        "stable_cross_view_registration_count": stable_count,
+        "geometry_gate_pass_rate": gate_pass_count / max(candidate_count, 1),
+        "projection_valid_rate": projection_valid_count / max(candidate_count, 1),
+        "camera_pose_source_counts": dict(sorted(pose_sources.items())),
+        "candidate_reject_reason_counts": dict(sorted(reject_counts.items())),
+        "candidate_pixel_error_px_stats": _numeric_stats(pixel_errors),
+        "candidate_mahalanobis_d2_stats": _numeric_stats(mahalanobis_values),
     }
 
 
@@ -946,7 +1208,10 @@ def _secondary_nodes(
                 coordinator_only=True,
                 coverage_cell=str(
                     guidance.get("coverage_cell")
-                    or ("cell-north" if index == 0 else "cell-south")
+                    or _secondary_coverage_cell_for_index(
+                        index,
+                        len(secondary_camera_vehicle_names),
+                    )
                 ),
                 cue_freshness_s=(
                     float(guidance["cue_freshness_s"])
@@ -962,6 +1227,23 @@ def _secondary_nodes(
             )
         )
     return nodes
+
+
+def _coverage_cell_for_target(frame: AirSimFrame, target_id: str) -> str:
+    for obj in frame.truth_objects:
+        if obj.object_id == target_id and obj.coverage_cell:
+            return str(obj.coverage_cell)
+    return "cell-north" if target_id <= "TGT-003" else "cell-south"
+
+
+def _secondary_coverage_cell_for_index(index: int, count: int) -> str:
+    if int(count) <= 1:
+        return "all"
+    if int(count) == 2:
+        return "cell-north" if int(index) == 0 else "cell-south"
+    if int(count) == 3:
+        return ("cell-left", "cell-center", "cell-right")[max(0, min(2, int(index)))]
+    return f"cell-{int(index) + 1:02d}"
 
 
 def _communication_summaries(
@@ -1246,7 +1528,11 @@ def _top_rejection_reason(rejection_counts: Any) -> str:
     if not isinstance(rejection_counts, dict):
         return ""
     ranked = sorted(
-        ((str(reason), int(count)) for reason, count in rejection_counts.items() if int(count) > 0),
+        (
+            (str(reason), int(count))
+            for reason, count in rejection_counts.items()
+            if int(count) > 0 and str(reason) != "registered_to_global_track"
+        ),
         key=lambda item: (-item[1], item[0]),
     )
     if not ranked:

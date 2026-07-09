@@ -381,6 +381,7 @@ class RealAirSimRuntimeClient:
         timestamp: float,
     ) -> tuple[AirSimTruthObject, ...]:
         truth_objects: list[AirSimTruthObject] = []
+        dynamic_coverage_cells = _actor_target_coverage_cells(config, timestamp)
         for spec in config.target_actor_specs:
             item = self._active_actor_targets.get(spec.object_id)
             actor_name = str(item.get("actor_name")) if item else spec.actor_name
@@ -396,7 +397,7 @@ class RealAirSimRuntimeClient:
                     velocity_ned=spec.velocity_ned,
                     classification_hint="uav",
                     threat_score=spec.threat_score,
-                    coverage_cell=spec.coverage_cell,
+                    coverage_cell=dynamic_coverage_cells.get(spec.object_id, spec.coverage_cell),
                     metadata={
                         "airsim_actor_name": actor_name,
                         "actor_asset_name": spec.asset_name,
@@ -1218,10 +1219,48 @@ def _secondary_expected_cell(config: BlocksSmokeConfig, vehicle_name: str) -> st
         index = secondary_names.index(vehicle_name)
     except ValueError:
         index = 0
-    if len(secondary_names) <= 1:
+    return _coverage_cell_for_rank(index, len(secondary_names), len(secondary_names))
+
+
+def _actor_target_coverage_cells(
+    config: BlocksSmokeConfig,
+    timestamp: float,
+) -> dict[str, str]:
+    secondary_count = len(tuple(config.secondary_camera_vehicle_names))
+    if secondary_count <= 0:
+        return {}
+    if not (
+        config.cv_secondary_mobile_recon_enabled
+        or bool(config.metadata.get("d4d5_stress_enabled"))
+    ):
+        return {}
+    positions = sorted(
+        (
+            (spec.object_id, spec.position_at(timestamp)[1])
+            for spec in config.target_actor_specs
+        ),
+        key=lambda item: (float(item[1]), item[0]),
+    )
+    target_count = len(positions)
+    return {
+        object_id: _coverage_cell_for_rank(rank, target_count, secondary_count)
+        for rank, (object_id, _) in enumerate(positions)
+    }
+
+
+def _coverage_cell_for_rank(rank: int, item_count: int, cell_count: int) -> str:
+    if int(cell_count) <= 1:
         return "all"
-    midpoint = (len(secondary_names) - 1) * 0.5
-    return "cell-north" if index <= midpoint else "cell-south"
+    if int(cell_count) == 2:
+        split = max(1, int(item_count + 1) // 2)
+        return "cell-north" if int(rank) < split else "cell-south"
+    if int(cell_count) == 3:
+        bucket = int(((int(rank) + 0.5) * 3.0) / max(int(item_count), 1))
+        bucket = max(0, min(2, bucket))
+        return ("cell-left", "cell-center", "cell-right")[bucket]
+    bucket = int(((int(rank) + 0.5) * int(cell_count)) / max(int(item_count), 1))
+    bucket = max(0, min(int(cell_count) - 1, bucket))
+    return f"cell-{bucket + 1:02d}"
 
 
 def _mobile_secondary_recon_position(

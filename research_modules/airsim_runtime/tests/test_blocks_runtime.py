@@ -42,7 +42,14 @@ from airsim_runtime.models import (
 )
 from airsim_runtime.orchestrator import AirSimBlocksSmokeOrchestrator
 from airsim_runtime.real_runtime import RealAirSimRuntimeClient
-from airsim_runtime.run_blocks_sequence import _build_sequence_run, parse_args
+from airsim_runtime.run_blocks_sequence import (
+    _build_sequence_run,
+    _d4d5_calibration_rows,
+    _parse_float_list,
+    _parse_int_list,
+    _write_p1_calibration_sweep_outputs,
+    parse_args,
+)
 from airsim_runtime.sequence import (
     AirSimBlocksSequenceOrchestrator,
     D4D5_STRESS_EPISODES,
@@ -429,6 +436,124 @@ def test_sequence_builder_mobile_secondary_recon_generates_gimballed_settings(
     assert secondary_capture["FOV_Degrees"] == 80.0
     assert secondary_capture["Width"] == 1920
     assert secondary_capture["Height"] == 1080
+
+
+def test_sequence_builder_accepts_explicit_secondary_height(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--cv-5v5-d4d5-stress",
+            "--mobile-secondary-recon",
+            "--secondary-height-above-targets",
+            "100",
+            "--secondary-fov",
+            "80",
+            "--secondary-width",
+            "1920",
+            "--secondary-height",
+            "1080",
+            "--output-root",
+            str(tmp_path),
+            "--sequence-id",
+            "pytest_mobile_recon_100m",
+        ],
+    )
+    args = parse_args()
+
+    config, _, _ = _build_sequence_run(args, seed=7, sequence_id=args.sequence_id)
+
+    settings = json.loads(config.settings_path.read_text(encoding="utf-8"))
+    secondary = settings["Vehicles"]["Secondary_Recon_1"]
+    assert secondary["Z"] == -110.0
+    assert config.metadata["secondary_height_target_m"] == 100.0
+    assert config.metadata["secondary_camera_fov_degrees"] == 80.0
+
+
+def test_p1_calibration_sweep_helpers_write_summary(tmp_path: Path) -> None:
+    args = SimpleNamespace(sequence_id="pytest_p1_sweep")
+    rows = [
+        {
+            "sequence_id": "pytest_p1_sweep_h50_f80_sec2_st5_seed001",
+            "seed": 1,
+            "case_name": "degrade_to_secondary",
+            "connected": True,
+            "height_m": 50.0,
+            "fov_deg": 80.0,
+            "secondary_count": 2,
+            "standoff_m": 5.0,
+            "d4_action": "degrade_to_secondary",
+            "secondary_network_joint_full_view_frame_rate": 0.5,
+            "secondary_network_mean_coverage_ratio": 0.8,
+            "secondary_single_camera_full_view_frame_rate": 0.25,
+            "secondary_gimbal_pointing_ok_rate": 1.0,
+            "cross_view_association_count": 3,
+            "cross_view_conversion_gap": 0.2,
+            "secondary_detect_available_but_not_registered": 2,
+            "terminal_lock_accuracy": 0.75,
+            "bbox_mean_px2": 3200.0,
+            "top_reject_reason": "geometry_gate_rejected",
+        }
+    ]
+
+    paths = _write_p1_calibration_sweep_outputs(
+        tmp_path,
+        args=args,
+        seeds=[1],
+        combo_count=1,
+        rows=rows,
+        results=[],
+    )
+
+    payload = json.loads(paths["json"].read_text(encoding="utf-8"))
+    report = paths["markdown"].read_text(encoding="utf-8")
+    assert payload["aggregate"]["cross_view_association_count_mean"] == 3.0
+    assert payload["aggregate"]["best_cross_view"]["secondary_count"] == 2
+    assert "d6_report_outputs" in payload
+    assert paths["d6_markdown"].exists()
+    assert paths["d6_summary_json"].exists()
+    assert "detect 未注册均值" in report
+    assert "D6 标准报告输出" in report
+    assert "geometry_gate_rejected" in report
+
+
+def test_p1_calibration_rows_prefer_d6_not_registered_count_field() -> None:
+    result = SimpleNamespace(
+        sequence_id="pytest_p1_sweep_seed001",
+        connected=True,
+        episode_results=[
+            SimpleNamespace(
+                metadata={
+                    "d4d5_stress": {
+                        "case_name": "degrade_to_secondary",
+                        "dominant_d4_action": "degrade_to_secondary",
+                        "secondary_detect_available_but_not_registered_count": 25,
+                        "secondary_detect_available_but_not_registered": 0,
+                        "secondary_bbox_area_px_stats": {"mean": 1234.0},
+                    }
+                }
+            )
+        ],
+    )
+
+    rows = _d4d5_calibration_rows(
+        [result],
+        height_m=200.0,
+        fov_deg=80.0,
+        secondary_count=2,
+        standoff_m=5.0,
+    )
+
+    assert rows[0]["secondary_detect_available_but_not_registered"] == 25
+
+
+def test_p1_sweep_list_parsers() -> None:
+    assert _parse_float_list("50,100,200", option_name="--x") == [50.0, 100.0, 200.0]
+    assert _parse_int_list("1,2,3", option_name="--x") == [1, 2, 3]
 
 
 def test_blocks_smoke_config_reads_rpc_endpoint_from_settings(tmp_path: Path) -> None:
@@ -882,6 +1007,78 @@ def test_real_runtime_mobile_secondary_recon_uses_cued_subclusters(tmp_path: Pat
     assert guidance["Secondary_Recon_1"]["position_ned"][0] < guidance["Secondary_Recon_1"]["cue_position_ned"][0]
 
 
+def test_real_runtime_three_mobile_secondary_recon_nodes_use_three_coverage_cells(
+    tmp_path: Path,
+) -> None:
+    settings_path = write_dynamic_computer_vision_settings(
+        tmp_path / "cv_mobile_recon_3sec_settings.json",
+        camera_vehicle_names=default_cv_5v5_camera_vehicle_names(),
+        secondary_vehicle_names=("Secondary_Recon_1", "Secondary_Recon_2", "Secondary_Recon_3"),
+        camera_spacing_m=20.0,
+        camera_z=-10.0,
+        target_z=-10.0,
+        secondary_height_above_targets_m=200.0,
+        secondary_fov_degrees=80.0,
+        secondary_camera_pitch_deg=0.0,
+        secondary_width=1920,
+        secondary_height=1080,
+    )
+    resources = default_cv_5v5_camera_vehicle_names()
+    secondaries = ("Secondary_Recon_1", "Secondary_Recon_2", "Secondary_Recon_3")
+    fake_client = FakeAirSimClient(vehicle_names=(*resources, *secondaries))
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        settings_path=settings_path,
+        scenario_name="blocks_cv_5v5_d4d5_stress",
+        duration_s=0.0,
+        camera_vehicle_name=resources[0],
+        camera_vehicle_names=resources,
+        secondary_camera_vehicle_names=secondaries,
+        capture_lidar=False,
+        cv_camera_follow_assignments=True,
+        cv_camera_follow_distance_m=50.0,
+        cv_secondary_look_at_enabled=True,
+        cv_secondary_mobile_recon_enabled=True,
+        cv_secondary_recon_standoff_m=5.0,
+        target_vehicle_names=(),
+        resource_vehicle_names=resources,
+        target_actor_specs=default_cv_5v5_d4d5_stress_actor_target_specs(),
+        detection_filter_names=("MSM_TargetActor_*",),
+        metadata={
+            "d4d5_stress_enabled": True,
+            "secondary_recon_mode": "mobile_recon_gimbal",
+            "secondary_guidance_source": "radar_global_track_cue",
+        },
+    )
+
+    runtime.setup_episode(config)
+    frame = runtime.sample_frame(config, frame_index=0, timestamp=0.0, output_dir=tmp_path)
+    runtime.teardown_episode(config)
+
+    guidance = {
+        item["vehicle_name"]: item
+        for item in frame.metadata["cv_camera_guidance"]
+        if item["role"] == "secondary_recon_camera"
+    }
+    truth_by_id = {truth.object_id: truth for truth in frame.truth_objects}
+    assert {
+        guidance[name]["coverage_cell"]
+        for name in secondaries
+    } == {"cell-left", "cell-center", "cell-right"}
+    assert guidance["Secondary_Recon_1"]["active_target_ids"] == ["TGT-001", "TGT-002"]
+    assert guidance["Secondary_Recon_2"]["active_target_ids"] == ["TGT-003"]
+    assert guidance["Secondary_Recon_3"]["active_target_ids"] == ["TGT-004", "TGT-005"]
+    assert truth_by_id["TGT-001"].coverage_cell == "cell-left"
+    assert truth_by_id["TGT-003"].coverage_cell == "cell-center"
+    assert truth_by_id["TGT-005"].coverage_cell == "cell-right"
+    assert all(guidance[name]["gimbal_pointing_ok"] is True for name in secondaries)
+
+
 def test_real_runtime_d4d5_stress_geometry_and_secondary_camera_dimensions(tmp_path: Path) -> None:
     settings_path = Path("research_modules/airsim_runtime/settings/blocks_cv_5v5_d4d5_stress_settings.json")
     resources = default_cv_5v5_camera_vehicle_names()
@@ -985,10 +1182,36 @@ def test_d4d5_stress_analysis_outputs_expected_case_actions(tmp_path: Path) -> N
         encoding="utf-8"
     ).splitlines()
     assert observation_lines
-    assert all(json.loads(line)["metadata"]["terminal_associator_used"] is True for line in observation_lines)
+    observation_payloads = [json.loads(line) for line in observation_lines]
+    assert any(
+        item["metadata"].get("detect_to_global_track_registration") is True
+        for item in observation_payloads
+    )
+    candidate_lines = no_degrade.output_paths["d5_detect_to_global_candidates_jsonl"].read_text(
+        encoding="utf-8"
+    ).splitlines()
+    assert candidate_lines
+    candidate_payloads = [json.loads(line) for line in candidate_lines]
     assert {
-        json.loads(line)["terminal_association"]["assigned_global_track_id"]
-        for line in observation_lines
+        item["camera_pose_source"]
+        for item in candidate_payloads
+    } == {"airsim_camera_pose"}
+    assert all("projection_valid" in item for item in candidate_payloads)
+    assert all(item.get("bbox_area_px", 0.0) > 0.0 for item in candidate_payloads)
+    assert all("stable_cross_view_support" in item for item in candidate_payloads)
+    assert no_degrade.metrics["detect_to_global_candidate_count"] == len(candidate_payloads)
+    assert no_degrade.metrics["camera_pose_source_counts"] == {"airsim_camera_pose": len(candidate_payloads)}
+    assert "projection_valid_rate" in no_degrade.metrics
+    assert "geometry_gate_pass_rate" in no_degrade.metrics
+    assert all(
+        item["metadata"].get("terminal_associator_used") is True
+        or item["metadata"].get("detect_to_global_track_registration") is True
+        for item in observation_payloads
+    )
+    assert {
+        item["terminal_association"]["assigned_global_track_id"]
+        for item in observation_payloads
+        if item.get("terminal_association") is not None
     } == {f"G-TGT-{index + 1:03d}" for index in range(len(resources))}
 
 

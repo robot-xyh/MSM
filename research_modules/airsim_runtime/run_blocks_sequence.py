@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import sys
 from dataclasses import replace
@@ -46,6 +47,7 @@ from airsim_runtime.sequence import (
     run_blocks_batch_sequences,
     run_blocks_sequence,
 )
+from d6_evaluation_metrics import AirSimCalibrationReportGenerator
 
 DEFAULT_SETTINGS = "research_modules/airsim_runtime/settings/blocks_smoke_settings.json"
 ACTOR_2V2_SETTINGS = "research_modules/airsim_runtime/settings/blocks_2v2_actor_settings.json"
@@ -139,6 +141,44 @@ def parse_args() -> argparse.Namespace:
         "--cv-5v5-d4d5-stress-200m",
         action="store_true",
         help="Run the D4/D5 stress sequence with secondary recon cameras 200 m above targets.",
+    )
+    parser.add_argument(
+        "--p1-calibration-sweep",
+        action="store_true",
+        help=(
+            "Run the P1 D4/D5 AirSim calibration matrix. Each geometry/settings "
+            "combination launches Blocks once; seeds inside the same combination "
+            "use reset-separated episodes."
+        ),
+    )
+    parser.add_argument(
+        "--p1-secondary-heights",
+        default="50,100,200",
+        help="Comma-separated secondary recon heights above targets for --p1-calibration-sweep.",
+    )
+    parser.add_argument(
+        "--p1-secondary-fovs",
+        default="60,80,110",
+        help="Comma-separated secondary recon FOV values for --p1-calibration-sweep.",
+    )
+    parser.add_argument(
+        "--p1-secondary-counts",
+        default="1,2,3",
+        help="Comma-separated secondary recon node counts for --p1-calibration-sweep.",
+    )
+    parser.add_argument(
+        "--p1-secondary-standoffs",
+        default="0,5,15",
+        help="Comma-separated secondary recon standoff values for --p1-calibration-sweep.",
+    )
+    parser.add_argument(
+        "--secondary-height-above-targets",
+        type=float,
+        default=None,
+        help=(
+            "Explicit secondary recon height above targets in meters. Overrides "
+            "--cv-5v5-d4d5-stress-200m when provided."
+        ),
     )
     parser.add_argument(
         "--mobile-secondary-recon",
@@ -259,6 +299,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.p1_calibration_sweep:
+        return _run_p1_calibration_sweep(args)
     if args.actor_2v2_active_secondary_visual_png:
         args.actor_2v2 = True
         args.execute_intercept = True
@@ -525,7 +567,13 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             if args.drone_count is not None or args.secondary_count != 2
             else default_cv_5v5_secondary_vehicle_names()
         )
-        secondary_height_above_targets_m = 200.0 if args.cv_5v5_d4d5_stress_200m else 50.0
+        secondary_height_above_targets_m = (
+            float(args.secondary_height_above_targets)
+            if args.secondary_height_above_targets is not None
+            else 200.0
+            if args.cv_5v5_d4d5_stress_200m
+            else 50.0
+        )
         default_secondary_fov = (
             80.0
             if args.mobile_secondary_recon
@@ -787,6 +835,412 @@ def _parse_batch_seeds(raw: str | None, *, default: int) -> list[int]:
     if not seeds:
         raise SystemExit("--batch-seeds did not contain any integer seeds")
     return seeds
+
+
+def _run_p1_calibration_sweep(args: argparse.Namespace) -> int:
+    """Run a D4/D5 geometry calibration matrix from main-owned runtime code."""
+
+    if args.actor_2v2 or args.actor_5v5 or args.cv_5v5:
+        raise SystemExit("--p1-calibration-sweep cannot be combined with actor or generic CV modes")
+    seeds = _parse_batch_seeds(args.batch_seeds, default=args.seed)
+    heights = _parse_float_list(args.p1_secondary_heights, option_name="--p1-secondary-heights")
+    fovs = _parse_float_list(args.p1_secondary_fovs, option_name="--p1-secondary-fovs")
+    secondary_counts = _parse_int_list(args.p1_secondary_counts, option_name="--p1-secondary-counts")
+    standoffs = _parse_float_list(args.p1_secondary_standoffs, option_name="--p1-secondary-standoffs")
+    output_dir = Path(args.output_root) / args.sequence_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    all_results: list[object] = []
+    calibration_rows: list[dict[str, object]] = []
+    combo_count = 0
+
+    for height in heights:
+        for fov in fovs:
+            for secondary_count in secondary_counts:
+                for standoff in standoffs:
+                    combo_count += 1
+                    combo_args = copy.copy(args)
+                    combo_args.cv_5v5_d4d5_stress = True
+                    combo_args.cv_5v5_d4d5_stress_200m = abs(float(height) - 200.0) < 1e-6
+                    combo_args.mobile_secondary_recon = True
+                    combo_args.drone_count = args.drone_count if args.drone_count is not None else 5
+                    combo_args.secondary_height_above_targets = float(height)
+                    combo_args.secondary_fov = float(fov)
+                    combo_args.secondary_count = int(secondary_count)
+                    combo_args.secondary_recon_standoff = float(standoff)
+                    if combo_args.secondary_width is None:
+                        combo_args.secondary_width = 1920
+                    if combo_args.secondary_height is None:
+                        combo_args.secondary_height = 1080
+                    combo_args.sequence_id = (
+                        f"{args.sequence_id}_h{_token(height)}_f{_token(fov)}"
+                        f"_sec{secondary_count}_st{_token(standoff)}"
+                    )
+                    if len(seeds) == 1:
+                        combo_results = [
+                            _run_one_sequence(
+                                combo_args,
+                                seed=seeds[0],
+                                sequence_id=combo_args.sequence_id,
+                            )
+                        ]
+                    else:
+                        runs = tuple(
+                            _build_sequence_run(
+                                combo_args,
+                                seed=seed,
+                                sequence_id=f"{combo_args.sequence_id}_seed{seed:03d}",
+                            )
+                            for seed in seeds
+                        )
+                        combo_results = list(
+                            run_blocks_batch_sequences(runs, batch_id=combo_args.sequence_id)
+                        )
+                    all_results.extend(combo_results)
+                    calibration_rows.extend(
+                        _d4d5_calibration_rows(
+                            combo_results,
+                            height_m=float(height),
+                            fov_deg=float(fov),
+                            secondary_count=int(secondary_count),
+                            standoff_m=float(standoff),
+                        )
+                    )
+                    for result in combo_results:
+                        _print_sequence_result(result)
+
+    report_paths = _write_p1_calibration_sweep_outputs(
+        output_dir,
+        args=args,
+        seeds=seeds,
+        combo_count=combo_count,
+        rows=calibration_rows,
+        results=all_results,
+    )
+    print(f"p1_calibration_summary={report_paths['json'].resolve()}")
+    print(f"p1_calibration_report={report_paths['markdown'].resolve()}")
+    if "d6_markdown" in report_paths:
+        print(f"d6_calibration_report={report_paths['d6_markdown'].resolve()}")
+    return 0
+
+
+def _parse_float_list(raw: str, *, option_name: str) -> list[float]:
+    values: list[float] = []
+    for item in raw.split(","):
+        stripped = item.strip()
+        if not stripped:
+            continue
+        values.append(float(stripped))
+    if not values:
+        raise SystemExit(f"{option_name} did not contain any numeric values")
+    return values
+
+
+def _parse_int_list(raw: str, *, option_name: str) -> list[int]:
+    values: list[int] = []
+    for item in raw.split(","):
+        stripped = item.strip()
+        if not stripped:
+            continue
+        values.append(int(stripped))
+    if not values:
+        raise SystemExit(f"{option_name} did not contain any integer values")
+    if any(value <= 0 for value in values):
+        raise SystemExit(f"{option_name} values must be positive")
+    return values
+
+
+def _token(value: float | int) -> str:
+    text = f"{float(value):g}"
+    return text.replace("-", "m").replace(".", "p")
+
+
+def _d4d5_calibration_rows(
+    results: list[object],
+    *,
+    height_m: float,
+    fov_deg: float,
+    secondary_count: int,
+    standoff_m: float,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for result in results:
+        seed = None
+        for episode in getattr(result, "episode_results", ()):
+            metrics = episode.metadata.get("d4d5_stress")
+            if not metrics:
+                continue
+            if seed is None:
+                seed = _seed_from_sequence_id(str(result.sequence_id))
+            rows.append(
+                {
+                    "sequence_id": result.sequence_id,
+                    "seed": seed,
+                    "case_name": metrics.get("case_name"),
+                    "connected": bool(result.connected),
+                    "height_m": height_m,
+                    "fov_deg": fov_deg,
+                    "secondary_count": secondary_count,
+                    "standoff_m": standoff_m,
+                    "d4_action": metrics.get("dominant_d4_action"),
+                    "secondary_network_joint_full_view_frame_rate": metrics.get(
+                        "secondary_network_joint_full_view_frame_rate", 0.0
+                    ),
+                    "secondary_network_mean_coverage_ratio": metrics.get(
+                        "secondary_network_mean_coverage_ratio", 0.0
+                    ),
+                    "secondary_single_camera_full_view_frame_rate": metrics.get(
+                        "secondary_single_camera_full_view_frame_rate", 0.0
+                    ),
+                    "secondary_gimbal_pointing_ok_rate": metrics.get(
+                        "secondary_gimbal_pointing_ok_rate", 0.0
+                    ),
+                    "cross_view_association_count": metrics.get("cross_view_association_count", 0),
+                    "cross_view_conversion_gap": metrics.get("cross_view_conversion_gap", 0.0),
+                    "projection_valid_rate": metrics.get("projection_valid_rate", 0.0),
+                    "geometry_gate_pass_rate": metrics.get("geometry_gate_pass_rate", 0.0),
+                    "registered_candidate_count": metrics.get("registered_candidate_count", 0),
+                    "stable_cross_view_registration_count": metrics.get(
+                        "stable_cross_view_registration_count",
+                        0,
+                    ),
+                    "detect_to_global_candidate_count": metrics.get(
+                        "detect_to_global_candidate_count",
+                        0,
+                    ),
+                    "secondary_detect_available_but_not_registered": _first_present(
+                        metrics,
+                        "secondary_detect_available_but_not_registered_count",
+                        "secondary_detect_available_but_not_registered",
+                        default=0,
+                    ),
+                    "terminal_lock_accuracy": metrics.get("terminal_lock_accuracy", 0.0),
+                    "bbox_mean_px2": (metrics.get("secondary_bbox_area_px_stats") or {}).get("mean", 0.0),
+                    "top_reject_reason": _top_rejection_reason(
+                        metrics.get("secondary_detect_to_cross_view_reject_reason_counts") or {}
+                    ),
+                }
+            )
+    return rows
+
+
+def _write_p1_calibration_sweep_outputs(
+    output_dir: Path,
+    *,
+    args: argparse.Namespace,
+    seeds: list[int],
+    combo_count: int,
+    rows: list[dict[str, object]],
+    results: list[object],
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    summary_path = output_dir / "p1_calibration_sweep_summary.json"
+    report_path = output_dir / "P1_AIRSIM_CALIBRATION_SWEEP_REPORT.md"
+    payload = {
+        "sequence_id": args.sequence_id,
+        "seed_count": len(seeds),
+        "seeds": seeds,
+        "combination_count": combo_count,
+        "row_count": len(rows),
+        "settings_strategy": "one_blocks_launch_per_geometry_combo_reset_loop_per_seed_batch",
+        "results": [
+            {
+                "sequence_id": result.sequence_id,
+                "connected": bool(result.connected),
+                "episode_count": len(result.episode_results),
+                "summary": str(result.output_paths.get("blocks_sequence_summary")),
+            }
+            for result in results
+        ],
+        "rows": rows,
+        "aggregate": _aggregate_calibration_rows(rows),
+    }
+    summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    report_path.write_text(_p1_calibration_markdown(payload), encoding="utf-8")
+    d6_outputs = _write_d6_p1_calibration_report(output_dir, summary_path, results)
+    payload["d6_report_outputs"] = {key: str(path) for key, path in d6_outputs.items()}
+    summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    report_path.write_text(_p1_calibration_markdown(payload), encoding="utf-8")
+    return {
+        "json": summary_path,
+        "markdown": report_path,
+        **{f"d6_{key}": path for key, path in d6_outputs.items()},
+    }
+
+
+def _write_d6_p1_calibration_report(
+    output_dir: Path,
+    summary_path: Path,
+    results: list[object],
+) -> dict[str, Path]:
+    """Let D6 consume persisted AirSim artifacts and write its standard bundle."""
+
+    input_paths: list[Path] = [summary_path]
+    for result in results:
+        result_summary = getattr(result, "output_paths", {}).get("blocks_sequence_summary")
+        if result_summary is not None:
+            input_paths.append(Path(result_summary))
+    return AirSimCalibrationReportGenerator().write_report_bundle(
+        input_paths,
+        output_dir / "d6_airsim_calibration",
+        title="D6 P1 AirSim 多 Seed 校准报告",
+    )
+
+
+def _aggregate_calibration_rows(rows: list[dict[str, object]]) -> dict[str, object]:
+    if not rows:
+        return {}
+    numeric_keys = (
+        "secondary_network_joint_full_view_frame_rate",
+        "secondary_network_mean_coverage_ratio",
+        "secondary_single_camera_full_view_frame_rate",
+        "secondary_gimbal_pointing_ok_rate",
+        "cross_view_association_count",
+        "cross_view_conversion_gap",
+        "projection_valid_rate",
+        "geometry_gate_pass_rate",
+        "registered_candidate_count",
+        "stable_cross_view_registration_count",
+        "detect_to_global_candidate_count",
+        "secondary_detect_available_but_not_registered",
+        "terminal_lock_accuracy",
+        "bbox_mean_px2",
+    )
+    aggregate: dict[str, object] = {"row_count": len(rows)}
+    for key in numeric_keys:
+        values = [_as_float(row.get(key)) for row in rows]
+        aggregate[f"{key}_mean"] = sum(values) / len(values)
+        aggregate[f"{key}_max"] = max(values)
+        aggregate[f"{key}_min"] = min(values)
+    by_case: dict[str, list[dict[str, object]]] = {}
+    for row in rows:
+        by_case.setdefault(str(row.get("case_name")), []).append(row)
+    aggregate["case_count"] = {case: len(case_rows) for case, case_rows in by_case.items()}
+    aggregate["best_network_full_view"] = _best_row(
+        rows,
+        "secondary_network_joint_full_view_frame_rate",
+    )
+    aggregate["best_cross_view"] = _best_row(rows, "cross_view_association_count")
+    return aggregate
+
+
+def _p1_calibration_markdown(payload: dict[str, object]) -> str:
+    aggregate = payload.get("aggregate") or {}
+    rows = payload.get("rows") or []
+    lines = [
+        "# P1 AirSim 批量校准报告",
+        "",
+        "本报告由 main runtime 汇总生成。D1-D7 模块各自维护算法和指标，main 只负责 AirSim settings、episode 编排、日志收集和总表。",
+        "",
+        "## 配置",
+        "",
+        f"- Sequence ID: `{payload.get('sequence_id')}`",
+        f"- Seeds: `{', '.join(str(seed) for seed in payload.get('seeds', []))}`",
+        f"- Geometry combinations: `{payload.get('combination_count')}`",
+        f"- Result rows: `{payload.get('row_count')}`",
+        f"- Settings strategy: `{payload.get('settings_strategy')}`",
+        "",
+        "## 总体指标",
+        "",
+        f"- 二级网络同帧全覆盖均值: `{_fmt(aggregate.get('secondary_network_joint_full_view_frame_rate_mean'))}`",
+        f"- 二级网络覆盖率均值: `{_fmt(aggregate.get('secondary_network_mean_coverage_ratio_mean'))}`",
+        f"- cross-view association 均值: `{_fmt(aggregate.get('cross_view_association_count_mean'))}`",
+        f"- 投影有效率均值: `{_fmt(aggregate.get('projection_valid_rate_mean'))}`",
+        f"- 几何门通过率均值: `{_fmt(aggregate.get('geometry_gate_pass_rate_mean'))}`",
+        f"- 稳定跨视角注册均值: `{_fmt(aggregate.get('stable_cross_view_registration_count_mean'))}`",
+        f"- detect 未注册均值: `{_fmt(aggregate.get('secondary_detect_available_but_not_registered_mean'))}`",
+        f"- 云台指向 OK 均值: `{_fmt(aggregate.get('secondary_gimbal_pointing_ok_rate_mean'))}`",
+        "",
+        "## 分组合结果",
+        "",
+        "| Height | FOV | Sec | Standoff | Case | Action | NetworkFull | NetworkMean | ProjValid | GatePass | StableReg | CrossView | NotRegistered | BBoxMean | TopReject |",
+        "| ---: | ---: | ---: | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+    ]
+    for row in rows:
+        lines.append(
+            "| "
+            f"{_fmt(row.get('height_m'))} | "
+            f"{_fmt(row.get('fov_deg'))} | "
+            f"{row.get('secondary_count')} | "
+            f"{_fmt(row.get('standoff_m'))} | "
+            f"{row.get('case_name')} | "
+            f"{row.get('d4_action')} | "
+            f"{_fmt(row.get('secondary_network_joint_full_view_frame_rate'))} | "
+            f"{_fmt(row.get('secondary_network_mean_coverage_ratio'))} | "
+            f"{_fmt(row.get('projection_valid_rate'))} | "
+            f"{_fmt(row.get('geometry_gate_pass_rate'))} | "
+            f"{row.get('stable_cross_view_registration_count')} | "
+            f"{row.get('cross_view_association_count')} | "
+            f"{row.get('secondary_detect_available_but_not_registered')} | "
+            f"{_fmt(row.get('bbox_mean_px2'))} | "
+            f"{row.get('top_reject_reason') or '-'} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## 判读口径",
+            "",
+            "- `NetworkFull` 是二级网络同帧目标并集全覆盖，不等同于 D5 已配准成功。",
+            "- `CrossView` 才表示 D5 形成了可供 D4/D6 消费的跨视角支持。",
+            "- `NotRegistered` 高说明二级相机看到了目标，但还没有通过几何/绑定/时间戳门控注册到既有 `global_track_id`。",
+            "- 视觉 PNG 仍必须满足 D3 当前 plan、D4 action allowed、D5 locked 且 ID 一致。",
+            "",
+        ]
+    )
+    d6_outputs = payload.get("d6_report_outputs") or {}
+    if isinstance(d6_outputs, dict) and d6_outputs:
+        lines.extend(
+            [
+                "## D6 标准报告输出",
+                "",
+                f"- Records CSV: `{d6_outputs.get('record_csv')}`",
+                f"- Summary CSV: `{d6_outputs.get('summary_csv')}`",
+                f"- Summary JSON: `{d6_outputs.get('summary_json')}`",
+                f"- Markdown: `{d6_outputs.get('markdown')}`",
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _seed_from_sequence_id(sequence_id: str) -> int | None:
+    marker = "_seed"
+    if marker not in sequence_id:
+        return None
+    tail = sequence_id.rsplit(marker, 1)[-1]
+    digits = "".join(ch for ch in tail if ch.isdigit())
+    return int(digits) if digits else None
+
+
+def _as_float(value: object) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _best_row(rows: list[dict[str, object]], key: str) -> dict[str, object]:
+    return dict(max(rows, key=lambda row: _as_float(row.get(key))))
+
+
+def _top_rejection_reason(reject_counts: dict[str, object]) -> str:
+    if not reject_counts:
+        return ""
+    ranked = [
+        (reason, count)
+        for reason, count in reject_counts.items()
+        if str(reason) != "registered_to_global_track" and _as_float(count) > 0.0
+    ]
+    if not ranked:
+        return ""
+    reason, _ = max(ranked, key=lambda item: _as_float(item[1]))
+    return str(reason)
+
+
+def _first_present(mapping: dict[str, object], *keys: str, default: object = None) -> object:
+    for key in keys:
+        if key in mapping:
+            return mapping[key]
+    return default
 
 
 def _write_batch_summary(args: argparse.Namespace, seeds: list[int], results: list[object]) -> Path:
