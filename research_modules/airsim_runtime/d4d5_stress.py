@@ -103,6 +103,10 @@ def run_d4d5_stress_analysis(
                 arbiter,
                 case_name=normalized_case,
                 secondary_camera_vehicle_names=secondary_camera_vehicle_names,
+                d5_evidence_observations=[
+                    *frame_observations,
+                    *frame_registration_observations,
+                ],
             )
         )
 
@@ -555,6 +559,7 @@ def _d4_decisions_for_frame(
     *,
     case_name: str,
     secondary_camera_vehicle_names: tuple[str, ...],
+    d5_evidence_observations: list[TerminalObservation] | None = None,
 ) -> list[dict[str, Any]]:
     summaries: list[dict[str, Any]] = []
     d4_adapter = D4ArbitrationAdapter(arbiter)
@@ -562,7 +567,7 @@ def _d4_decisions_for_frame(
     communications = _communication_summaries(case_name, secondary_nodes, frame.timestamp)
     d5_evidence = _d5_evidence_for_frame(
         frame,
-        observations,
+        d5_evidence_observations if d5_evidence_observations is not None else observations,
         secondary_camera_vehicle_names=secondary_camera_vehicle_names,
     )
     for observation in observations:
@@ -810,11 +815,19 @@ def _secondary_camera_batches_for_frame(
         camera_id = f"{vehicle_name}:0"
         detections = detections_by_camera.get(camera_id, ())
         camera, camera_pose_source = _camera_model_for_secondary(frame, vehicle_name, global_tracks)
+        projections = TerminalAssociator().project_tracks_to_image(
+            global_tracks,
+            camera,
+            timestamp=frame.timestamp,
+        )
         local_tracks = tuple(
             _local_track_from_detection(
                 detection,
                 frame.timestamp,
-                center_px=np.asarray(detection.center_px, dtype=float),
+                center_px=_projected_or_detected_center_px(
+                    detection,
+                    projections.get(_global_id(detection.object_id)),
+                ),
                 min_mot_history=3,
             )
             for detection in detections
@@ -845,6 +858,19 @@ def _secondary_camera_batches_for_frame(
             )
         )
     return batches
+
+
+def _projected_or_detected_center_px(
+    detection: AirSimDetectionBox,
+    projection: Any | None,
+) -> np.ndarray:
+    if (
+        projection is not None
+        and bool(getattr(projection, "valid", False))
+        and getattr(projection, "pixel", None) is not None
+    ):
+        return np.asarray(projection.pixel, dtype=float)
+    return np.asarray(detection.center_px, dtype=float)
 
 
 def _camera_model_for_secondary(
@@ -1067,6 +1093,12 @@ def _secondary_registration_candidate_metrics(candidates: list[Any]) -> dict[str
 def _secondary_funnel_metrics(summary: Any) -> dict[str, Any]:
     funnel = summary.funnel_counts
     rejection_counts = dict(summary.rejection_reason_counts)
+    success_reason_names = {"registered_to_global_track"}
+    rejection_counts = {
+        str(reason): int(count)
+        for reason, count in rejection_counts.items()
+        if str(reason) not in success_reason_names
+    }
     reject_reasons = tuple(
         reason for reason, count in rejection_counts.items() if int(count) > 0
     )

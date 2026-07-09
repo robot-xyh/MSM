@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, field, is_dataclass, replace
 import json
 import math
 from pathlib import Path
+import time
 from typing import Any, Iterable, Mapping
 
 import numpy as np
@@ -95,6 +96,8 @@ class MainEpisodeBusTick:
 
     timestamp: float
     frame_index: int
+    clock: dict[str, Any]
+    module_health: dict[str, Any]
     d1: dict[str, Any]
     d2: dict[str, Any]
     d3: dict[str, Any]
@@ -198,25 +201,40 @@ class MainAirSimEpisodeBus:
         self._pending_terminal_feedback: list[dict[str, Any]] = []
         self._last_terminal_feedback_writeback: dict[str, Any] = {}
         self._last_d7_runtime_summary: dict[str, Any] = {}
+        self._clock_source = str(
+            config.metadata.get("clock_source", "airsim_frame_timestamp")
+        )
+        self._module_health: dict[str, dict[str, Any]] = {}
+        self._runtime_errors: list[dict[str, Any]] = []
+        self._frame_processing_durations_s: list[float] = []
         self.ticks: list[MainEpisodeBusTick] = []
 
     def process_frame(self, frame: AirSimFrame) -> MainEpisodeBusTick:
+        frame_started = time.perf_counter()
         timestamp = float(frame.timestamp)
         truth_states = truth_states_from_blocks_frame(frame)
         truth_by_id = {state.truth_id: state for state in truth_states}
         resources = resources_from_blocks_frame(frame)
         observations = self._process_d1(frame)
+        self._mark_module_health("D1", timestamp, record_count=len(observations))
         d1_tracks = self.fusion.global_tracks()
         association_result = self._process_d2(timestamp, d1_tracks, truth_states)
+        self._mark_module_health("D2", timestamp, record_count=len(d1_tracks))
         d2_tracks = self.tracker.active_tracks()
         self.collector.extend_tracks(track_records_from_d2(d2_tracks, truth_by_id, timestamp))
 
         plan_changed = self._maybe_plan(timestamp, frame, d2_tracks, truth_by_id, resources)
+        self._mark_module_health(
+            "D3",
+            timestamp,
+            record_count=0 if self.current_plan is None else len(self.current_plan.assignments),
+        )
         terminal_contexts: list[_TerminalDecisionContext] = []
         d4_results: list[Any] = []
         d7_events: list[EventRecord] = []
         if self.current_plan is not None:
             terminal_contexts = self._process_d5(frame, d2_tracks, truth_by_id)
+            self._mark_module_health("D5", timestamp, record_count=len(terminal_contexts))
             d4_results = self._process_d4(
                 frame=frame,
                 d2_tracks=d2_tracks,
@@ -225,14 +243,27 @@ class MainAirSimEpisodeBus:
                 resources=resources,
                 communication_records=self._communication_records_for_frame(frame, observations),
             )
+            self._mark_module_health("D4", timestamp, record_count=len(d4_results))
             d7_events = self._process_d7(frame, d2_tracks, resources, terminal_contexts, d4_results)
+            self._mark_module_health("D7", timestamp, record_count=len(d7_events))
             self.collector.extend_events(d7_events)
+        else:
+            self._mark_module_health("D5", timestamp, status="idle", record_count=0)
+            self._mark_module_health("D4", timestamp, status="idle", record_count=0)
+            self._mark_module_health("D7", timestamp, status="idle", record_count=0)
 
         self._record_frame_links(frame, observations)
         self._record_cross_view_events(frame.timestamp)
+        processing_duration_s = max(0.0, time.perf_counter() - frame_started)
+        self._frame_processing_durations_s.append(processing_duration_s)
         tick = MainEpisodeBusTick(
             timestamp=timestamp,
             frame_index=int(frame.frame_index),
+            clock=self._clock_snapshot(
+                frame=frame,
+                processing_duration_s=processing_duration_s,
+            ),
+            module_health=self._module_health_snapshot(timestamp),
             d1={
                 "observation_count": len(observations),
                 "track_count": len(d1_tracks),
@@ -308,6 +339,31 @@ class MainAirSimEpisodeBus:
             duration=self.config.duration_s,
             truth_summary=truth_summary,
         )
+        mission = self._mission_outcome(frame_count=len(frames_list))
+        runtime_metadata = self._runtime_metadata(
+            frames=frames_list,
+            mission=mission,
+        )
+        metrics.mission_outcome = str(mission["mission_outcome"])
+        metrics.success_reason = str(mission["success_reason"])
+        metrics.failure_reason = str(mission["failure_reason"])
+        metrics.eval_priority = "P0"
+        metrics.implementation_status = "implemented"
+        metrics.evidence_path = str(output_dir)
+        metrics.module_duration_ms = float(
+            self._episode_clock_metadata(frames_list)["mean_processing_duration_s"] * 1000.0
+        )
+        metrics.loop_latency_ms = metrics.module_duration_ms
+        metrics.record_latency_ms = float(
+            runtime_metadata.get("record_latency_ms", 0.0)
+        )
+        metrics.performance_budget_violation_count = int(
+            runtime_metadata.get("performance_budget_violation_count", 0)
+        )
+        metrics.metadata = {
+            **dict(metrics.metadata),
+            **runtime_metadata,
+        }
         output_paths = {
             "main_episode_bus_jsonl": _write_d6_episode_jsonl(
                 truth_summary,
@@ -320,13 +376,26 @@ class MainAirSimEpisodeBus:
             ),
             "main_episode_bus_metrics_json": _write_json(
                 output_dir / "main_episode_bus_metrics.json",
-                {"metrics": metrics.to_dict(), "metadata": {"record_counts": self._record_counts()}},
+                {
+                    "metrics": metrics.to_dict(),
+                    "metadata": {
+                        "record_counts": self._record_counts(),
+                        **runtime_metadata,
+                    },
+                },
             ),
         }
         summary = {
             "episode_id": self.config.episode_id,
             "scenario_name": self.config.scenario_name,
             "frame_count": len(frames_list),
+            "clock": self._episode_clock_metadata(frames_list),
+            "scenario_config": self._scenario_config_metadata(frames_list),
+            "module_health": self._module_health_snapshot(
+                frames_list[-1].timestamp if frames_list else 0.0
+            ),
+            "runtime_errors": list(self._runtime_errors),
+            "mission_outcome": mission,
             "module_order": ["D1", "D2", "D3", "D5", "D4", "D7", "D6"],
             "record_counts": self._record_counts(),
             "d2_metrics": self.tracker.metrics.summary(),
@@ -933,6 +1002,223 @@ class MainAirSimEpisodeBus:
             "ticks": len(self.ticks),
         }
 
+    def record_runtime_exception(
+        self,
+        *,
+        module_id: str,
+        timestamp: float,
+        error: BaseException,
+    ) -> None:
+        """Record a failed module outcome in D6-readable metadata."""
+
+        payload = {
+            "module_id": str(module_id),
+            "timestamp": float(timestamp),
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+            "mission_outcome": "failed",
+            "failure_reason": "runtime_exception",
+        }
+        self._runtime_errors.append(payload)
+        self._mark_module_health(
+            str(module_id),
+            float(timestamp),
+            status="failed",
+            error_state=type(error).__name__,
+            last_error=str(error),
+        )
+        self.collector.add_event(
+            EventRecord(
+                timestamp=float(timestamp),
+                event_type="runtime_exception",
+                actor_id=str(module_id),
+                severity="error",
+                note=str(error),
+                metadata=payload,
+            )
+        )
+
+    def _mark_module_health(
+        self,
+        module_id: str,
+        timestamp: float,
+        *,
+        status: str = "ok",
+        record_count: int | None = None,
+        error_state: str = "",
+        last_error: str = "",
+    ) -> None:
+        previous = self._module_health.get(str(module_id), {})
+        self._module_health[str(module_id)] = {
+            "status": str(status),
+            "last_update_timestamp": float(timestamp),
+            "record_count": int(
+                previous.get("record_count", 0) if record_count is None else record_count
+            ),
+            "error_state": str(error_state),
+            "last_error": str(last_error),
+        }
+
+    def _module_health_snapshot(self, timestamp: float) -> dict[str, Any]:
+        snapshot: dict[str, Any] = {}
+        for module_id in ("D1", "D2", "D3", "D4", "D5", "D6", "D7"):
+            health = dict(self._module_health.get(module_id, {}))
+            if not health:
+                health = {
+                    "status": "not_started",
+                    "last_update_timestamp": None,
+                    "record_count": 0,
+                    "error_state": "",
+                    "last_error": "",
+                }
+            last_update = health.get("last_update_timestamp")
+            health["last_update_age_s"] = (
+                None
+                if last_update is None
+                else max(0.0, float(timestamp) - float(last_update))
+            )
+            snapshot[module_id] = health
+        snapshot["D6"] = {
+            **snapshot["D6"],
+            "status": "passive_collector",
+            "record_count": sum(self._record_counts().values()),
+            "last_update_timestamp": float(timestamp),
+            "last_update_age_s": 0.0,
+        }
+        for module_id, health_value in self._module_health.items():
+            if module_id in snapshot:
+                continue
+            health = dict(health_value)
+            last_update = health.get("last_update_timestamp")
+            health["last_update_age_s"] = (
+                None
+                if last_update is None
+                else max(0.0, float(timestamp) - float(last_update))
+            )
+            snapshot[module_id] = health
+        return snapshot
+
+    def _clock_snapshot(
+        self,
+        *,
+        frame: AirSimFrame,
+        processing_duration_s: float,
+    ) -> dict[str, Any]:
+        timestamp = float(frame.timestamp)
+        return {
+            "episode_time_s": timestamp,
+            "clock_source": self._clock_source,
+            "measurement_timestamp": timestamp,
+            "arrival_timestamp": timestamp,
+            "publish_timestamp": timestamp,
+            "processing_timestamp": timestamp,
+            "processing_duration_s": float(processing_duration_s),
+            "frame_index": int(frame.frame_index),
+        }
+
+    def _episode_clock_metadata(self, frames: list[AirSimFrame]) -> dict[str, Any]:
+        timestamps = [float(frame.timestamp) for frame in frames]
+        durations = list(self._frame_processing_durations_s)
+        return {
+            "clock_source": self._clock_source,
+            "episode_time_start_s": min(timestamps) if timestamps else 0.0,
+            "episode_time_end_s": max(timestamps) if timestamps else 0.0,
+            "frame_count": len(frames),
+            "mean_processing_duration_s": (
+                float(sum(durations) / len(durations)) if durations else 0.0
+            ),
+            "max_processing_duration_s": max(durations) if durations else 0.0,
+        }
+
+    def _scenario_config_metadata(self, frames: list[AirSimFrame] | None = None) -> dict[str, Any]:
+        frame_target_ids = {
+            obj.object_id
+            for frame in frames or ()
+            for obj in frame.truth_objects
+            if obj.object_type == "target"
+        }
+        return {
+            "episode_id": self.config.episode_id,
+            "scenario_name": self.config.scenario_name,
+            "seed": self.config.seed,
+            "duration_s": self.config.duration_s,
+            "dt_s": self.config.dt_s,
+            "settings_path": str(self.config.settings_path),
+            "resource_vehicle_names": list(self.config.resource_vehicle_names),
+            "camera_vehicle_names": list(self.config.effective_camera_vehicle_names()),
+            "secondary_camera_vehicle_names": list(self.config.secondary_camera_vehicle_names),
+            "target_vehicle_names": list(self.config.target_vehicle_names),
+            "target_count": len(frame_target_ids) or self.config.target_count(),
+            "detection_backend": self.config.detection_backend,
+            "execute_intercept": self.config.execute_intercept,
+            "metadata": _jsonable(dict(self.config.metadata)),
+        }
+
+    def _mission_outcome(self, *, frame_count: int) -> dict[str, Any]:
+        if self._runtime_errors:
+            return {
+                "mission_outcome": "failed",
+                "success_reason": "",
+                "failure_reason": "runtime_exception",
+            }
+        if frame_count <= 0:
+            return {
+                "mission_outcome": "aborted",
+                "success_reason": "",
+                "failure_reason": "no_frames",
+            }
+        record_counts = self._record_counts()
+        if record_counts["tracks"] <= 0 or record_counts["events"] <= 0:
+            return {
+                "mission_outcome": "partial",
+                "success_reason": "",
+                "failure_reason": "incomplete_module_records",
+            }
+        return {
+            "mission_outcome": "success",
+            "success_reason": "episode_bus_records_complete",
+            "failure_reason": "",
+        }
+
+    def _runtime_metadata(
+        self,
+        *,
+        frames: list[AirSimFrame],
+        mission: dict[str, Any],
+    ) -> dict[str, Any]:
+        module_health = self._module_health_snapshot(
+            frames[-1].timestamp if frames else 0.0
+        )
+        return {
+            **mission,
+            "clock": self._episode_clock_metadata(frames),
+            "module_health": module_health,
+            "runtime_errors": list(self._runtime_errors),
+            "top_failure_causes": _top_failure_causes(
+                runtime_errors=self._runtime_errors,
+                module_health=module_health,
+                mission=mission,
+            ),
+            "record_latency_ms": self._record_latency_ms(),
+            "performance_budget_violation_count": self._performance_budget_violation_count(),
+            "scenario_config": self._scenario_config_metadata(frames),
+        }
+
+    def _record_latency_ms(self) -> float:
+        latencies_ms: list[float] = []
+        for record in self.collector.link_records:
+            if record.measurement_timestamp is None or record.arrival_timestamp is None:
+                continue
+            latencies_ms.append(
+                max(0.0, float(record.arrival_timestamp) - float(record.measurement_timestamp))
+                * 1000.0
+            )
+        return float(sum(latencies_ms) / len(latencies_ms)) if latencies_ms else 0.0
+
+    def _performance_budget_violation_count(self) -> int:
+        budget_s = float(self.config.metadata.get("loop_budget_s", self.config.dt_s))
+        return sum(1 for value in self._frame_processing_durations_s if value > budget_s)
+
 
 def run_main_episode_bus(
     config: BlocksSmokeConfig,
@@ -944,8 +1230,56 @@ def run_main_episode_bus(
     frame_list = list(frames)
     bus = MainAirSimEpisodeBus(config)
     for frame in frame_list:
-        bus.process_frame(frame)
+        try:
+            bus.process_frame(frame)
+        except Exception as exc:
+            bus.record_runtime_exception(
+                module_id="main_episode_bus",
+                timestamp=float(frame.timestamp),
+                error=exc,
+            )
+            break
     return bus.finalize(frame_list, output_dir)
+
+
+def _top_failure_causes(
+    *,
+    runtime_errors: list[dict[str, Any]],
+    module_health: dict[str, Any],
+    mission: dict[str, Any],
+) -> list[dict[str, Any]]:
+    causes: list[dict[str, Any]] = []
+    if runtime_errors:
+        causes.append(
+            {
+                "cause": "runtime_exception",
+                "count": len(runtime_errors),
+                "severity": "error",
+            }
+        )
+    failed_modules = [
+        module_id
+        for module_id, health in module_health.items()
+        if isinstance(health, Mapping) and health.get("status") == "failed"
+    ]
+    if failed_modules:
+        causes.append(
+            {
+                "cause": "module_failed",
+                "count": len(failed_modules),
+                "severity": "error",
+                "module_ids": failed_modules,
+            }
+        )
+    if mission.get("mission_outcome") == "partial":
+        causes.append(
+            {
+                "cause": str(mission.get("failure_reason") or "partial_episode"),
+                "count": 1,
+                "severity": "warning",
+            }
+        )
+    return causes
 
 
 def _sensor_link_records(observations: Iterable[SensorObservation]) -> list[LinkRecord]:

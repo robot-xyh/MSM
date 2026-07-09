@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+import airsim_runtime.episode_bus as episode_bus_module
 from airsim_dryrun.models import (
     AirSimDetectionBox,
     AirSimFrame,
@@ -1590,6 +1591,11 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
         .splitlines()
     ]
     assert len(ticks) == 3
+    assert ticks[0]["clock"]["clock_source"] == "airsim_frame_timestamp"
+    assert ticks[0]["clock"]["episode_time_s"] == 0.0
+    assert ticks[0]["clock"]["publish_timestamp"] == 0.0
+    assert ticks[0]["module_health"]["D1"]["status"] == "ok"
+    assert ticks[0]["module_health"]["D6"]["status"] == "passive_collector"
     first_observation = ticks[0]["d1"]["observations"][0]
     assert first_observation["measurement_timestamp"] == 0.0
     assert first_observation["arrival_timestamp"] == 0.2
@@ -1634,6 +1640,68 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
         record.assigned_global_track_id == record.expected_global_track_id
         for record in collector.terminal_records
     )
+    metrics_payload = json.loads(
+        result.output_paths["main_episode_bus_metrics_json"].read_text(encoding="utf-8")
+    )
+    metrics_metadata = metrics_payload["metrics"]["metadata"]
+    assert metrics_metadata["mission_outcome"] == "success"
+    assert metrics_metadata["success_reason"] == "episode_bus_records_complete"
+    assert metrics_metadata["clock"]["frame_count"] == 3
+    assert metrics_metadata["module_health"]["D7"]["status"] == "ok"
+    assert metrics_metadata["scenario_config"]["resource_vehicle_names"] == list(resources)
+    summary_payload = json.loads(
+        result.output_paths["main_episode_bus_summary_json"].read_text(encoding="utf-8")
+    )
+    assert summary_payload["mission_outcome"]["mission_outcome"] == "success"
+    assert summary_payload["module_health"]["D6"]["status"] == "passive_collector"
+    assert summary_payload["scenario_config"]["target_count"] == 5
+
+
+def test_main_episode_bus_records_failed_outcome_on_module_exception(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    frame = _sample_5v5_frame(timestamp=0.0, frame_index=0)
+
+    def _raise_observation_error(*_args, **_kwargs):
+        raise RuntimeError("synthetic D1 adapter failure")
+
+    monkeypatch.setattr(
+        episode_bus_module,
+        "observations_from_blocks_frame",
+        _raise_observation_error,
+    )
+    config = BlocksSmokeConfig(
+        episode_id="pytest_main_bus_failure",
+        scenario_name="blocks_actor_n5",
+        duration_s=0.5,
+        dt_s=0.5,
+        output_root=tmp_path,
+        launch_blocks=False,
+        resource_vehicle_names=tuple(f"Interceptor{index}" for index in range(1, 6)),
+        target_vehicle_names=(),
+    )
+
+    result = run_main_episode_bus(config, [frame], tmp_path / "main_bus_failure")
+
+    metrics_payload = json.loads(
+        result.output_paths["main_episode_bus_metrics_json"].read_text(encoding="utf-8")
+    )
+    metrics_metadata = metrics_payload["metrics"]["metadata"]
+    assert metrics_metadata["mission_outcome"] == "failed"
+    assert metrics_metadata["failure_reason"] == "runtime_exception"
+    assert metrics_metadata["module_health"]["main_episode_bus"]["status"] == "failed"
+    assert metrics_metadata["runtime_errors"][0]["error_type"] == "RuntimeError"
+    assert metrics_metadata["top_failure_causes"][0]["cause"] == "runtime_exception"
+
+    collector, _truth_summary = load_episode_log_jsonl(
+        result.output_paths["main_episode_bus_jsonl"]
+    )
+    runtime_events = [
+        event for event in collector.event_records if event.event_type == "runtime_exception"
+    ]
+    assert runtime_events
+    assert runtime_events[0].metadata["failure_reason"] == "runtime_exception"
 
 
 def test_main_episode_bus_marks_secondary_takeover_plan_for_d7(tmp_path: Path) -> None:
