@@ -4,7 +4,24 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
-**P0/P1 状态入口**：`subagent_reviews/MAIN_P0_P1_GAP_STATUS.md` 集中维护当前 P0/P1 owner、缺口、缺少条件和验收口径。当前未发现新的 P0 阻塞断链；2026-07-08 已补齐 main runtime bus 执行指标回灌、D4 软风险防抖、无冲突 D5 重捕获不降级策略、`request_center_replan -> D3 new plan version -> D7 gate`、D5 feedback 写回 D3、二级接管 plan owner/version、D7 N-pair runtime bus，以及 controlled intercept 中心/二级重分配到视觉 PNG 的 gate 回归。main runtime 已新增 P1 D4/D5 calibration sweep，并自动调用 D6 生成标准 records/summary/Markdown 报告 bundle。最新 5v5 registration calibration v2 证明 radar cue + 机动高空侦察云台指向已解决相机姿态/投影有效性问题，并恢复稳定 cross-view registration；剩余 P1 瓶颈转为二级网络全目标覆盖不足、detect 到 global-track 的长期阈值标定、真实 AirSim 多 seed 数据和 D6 长期趋势积累。
+**P0/P1 状态入口**：`subagent_reviews/MAIN_P0_P1_GAP_STATUS.md` 集中维护当前 P0/P1 owner、缺口、缺少条件和验收口径。`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` 已确认：当前未发现新的运行级 P0 阻塞断链，但存在进入可信 AirSim 多 seed、复杂降级和后续封闭场地验证前必须优先补齐的工程化 P0 backlog。2026-07-09 已完成该 backlog 的最小工程闭合：main runtime bus 补齐统一 clock/config/module health/runtime exception outcome；D1-D7 已由各自 owner 完成 P0-A/P0-B/P0-C 修复和文档同步；main runtime 跟进 D4 二级能力合同，修正 D4/D5 stress 的二级注册 evidence 桥接和成功注册原因过滤。P1 仍作为三个月内能力增强和标定项管理；P2/P3 本轮不调整。
+
+## 2026-07-09 P0 实施结果
+
+本轮严格按 “main 下发、D-agent 自改自测、main 汇总验证” 执行。main 只修改 AirSim runtime/总线桥接和 main GAP 文档；D1-D7 各自只改 owned paths。
+
+| Owner | P0 实施结果 | 验证 |
+|---|---|---|
+| main/runtime | episode bus 输出 episode clock、scenario config、D1-D7 module health、runtime errors、mission outcome/root cause/performance metadata；D4/D5 stress bridge 正确把二级注册 evidence 输入 D4，并避免把 `registered_to_global_track` 当作拒绝原因 | `pytest -q research_modules/airsim_runtime/tests/test_blocks_runtime.py` -> 58 passed |
+| D1 | sensor health、covariance floor/ceiling reason、timestamp uncertainty 和 replay summary 已实现 | 30 passed |
+| D2 | motion consistency cost、quality-aware gate baseline、`track_quality/association_risk/quality_metadata` 已实现 | 31 passed |
+| D3 | 资源状态细化、high-threat release、结构化 stale rejection 和 explainable threat baseline 已实现 | 52 passed |
+| D4 | heartbeat smoothing、lease/epoch strictness、secondary capability score、active degradation debounce 已实现；active secondary plan 同 id/version 回归已修复 | 82 passed |
+| D5 | active reacquire、temporal consistency、candidate margin 和 calibration health metadata 已实现 | 78 passed |
+| D6 | mission outcome、failure reason、top failure causes、eval priority/status/evidence path 和 performance metrics 已实现 | 36 passed |
+| D7 | terminal latch、dwell/release/reacquire grace、filtered LOS rate/outlier reject evidence、3D PN benchmark/log 已实现 | 43 passed |
+
+`git diff --check` 通过。D2、D6、runtime 的 matplotlib Axes3D warning 为本机环境 warning，不构成 P0。
 
 ## 1. 总体结论
 

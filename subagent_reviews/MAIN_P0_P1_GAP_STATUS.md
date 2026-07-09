@@ -2,17 +2,108 @@
 
 **审计目标**：把 D1-D7 当前 P0/P1 缺口集中到一个 main 可调度清单，避免各模块 GAP 文件之间口径分散。
 **审计边界**：本文件只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控、自动处置或授权绕过。
-**当前结论**：未发现新的 P0 阻塞断链。P0 重点是保持现有跨模块合同、安全门控和测试回归不退化。2026-07-08 已完成 D1-D7 P1 基线补齐和 main runtime bus 接线复核：执行指标回灌、`request_center_replan -> D3 new plan version -> D7 gate`、D5 feedback 写回 D3、二级接管 plan owner/version、D7 N-pair runtime bus、controlled intercept 中心/二级重分配到视觉 PNG 门控均已通过测试。D5 已新增可运行 YOLOv8 + ByteTrack/BoT-SORT/IoU fallback adapter，main runtime 已新增显式 `--detection-backend yolo` 接线，默认仍保持 AirSim detect fallback。D1-D7 owner 已同步更新各自 PLAN/GAP/review 文件，避免把已完成 P1 接口继续列为未完成。D4 现在把无冲突的持续 D5 `ambiguous/reacquire` 视为本地重捕获/二级 cue 问题，而不是中心分配失效。main runtime 已新增 P1 D4/D5 geometry calibration sweep，并自动调用 D6 生成标准 records/summary/Markdown 报告 bundle。最新 5v5 registration calibration v2 说明，雷达 cue + 机动高空二级侦察云台指向已经解决相机姿态/投影有效性问题，并恢复了稳定 cross-view registration；剩余 P1 瓶颈主要是二级网络全目标覆盖不足、真实 AirSim 多 seed 数据校准、真实图像/协议/标定适配和 D6 长期报告趋势分析。
+**当前结论**：未发现新的 P0 阻塞断链。2026-07-09 已按 EVAL 确认的 P0-A/P0-B/P0-C backlog 完成最小工程闭合：main runtime episode bus 已补齐统一 clock/config/module health/runtime exception outcome；D1-D7 owner 已分别完成本模块 P0 修复和 README/PLAN/GAP 同步；main runtime 已跟进 D4 新二级能力合同，修正 D4/D5 stress 中二级注册 evidence 桥接和成功注册原因过滤。当前 P0 重点转为保持跨模块合同、安全门控和测试回归不退化。剩余缺口主要为 P1：真实 AirSim 多 seed 标定、二级网络全目标覆盖、YOLO/MOT 阈值校准、通信/身份协议真实适配和 D6 长期趋势报告。
+
+## 2026-07-09 P0 实施闭合复核
+
+- **main/runtime P0-A**：`MainAirSimEpisodeBus` tick/metrics 已携带 episode clock、scenario config、D1-D7 module health、runtime errors、mission outcome、failure reason、top failure causes 和性能预算占位。模块异常故障注入能产出明确 `failed/runtime_exception` outcome。
+- **D1 P0-A**：补齐 sensor health summary、协方差 floor/ceiling reason、timestamp uncertainty 元数据与 replay summary。
+- **D2 P0-B/P0-C**：GNN/Hungarian 增加 motion consistency 和 quality-aware gate baseline，输出 `track_quality/association_risk/quality_metadata`。
+- **D3 P0-B/P0-C**：`ResourceState` 增加 energy/availability/load/history failure/intercept feasibility，迟滞增加 high-threat release 和结构化 stale rejection，补齐 explainable threat baseline。
+- **D4 P0-B**：二级节点 heartbeat smoothing、lease/epoch 严格检查、capability score、active degradation hard/soft risk debounce 已完成；同时修复 active secondary plan 与 current secondary plan 同 id/version 时被误判为 non-monotonic 的回归。
+- **D5 P0-B**：补齐基于分配目标投影/历史的 active reacquire、时序一致性稳定窗口和校准健康 metadata，不改写 `global_track_id`。
+- **D6 P0-A/P0-C**：`EpisodeMetrics` 增加 mission outcome、root cause、eval priority/status/evidence path、模块耗时/延迟/预算字段，并更新 reporting/main bus loader。
+- **D7 P0-B/P0-C**：新增 terminal latch、dwell/release/reacquire grace、filtered LOS rate/outlier reject evidence，以及不替代默认 2D PN/PNG 的 3D geometry PN benchmark/log。
+- **main-owned bridge**：`d4d5_stress.py` 将二级注册观测纳入 D4 evidence summary，用 D5 投影几何生成二级可信 bbox 中心，并把 `registered_to_global_track` 从 reject reasons 中过滤，避免把成功注册误判为注册断点。
+- **本轮验收**：D1 30 passed；D2 31 passed；D3 52 passed；D4 82 passed；D5 78 passed；D6 36 passed；D7 43 passed；AirSim runtime 58 passed；`git diff --check` 通过。D2/D6/runtime 的 matplotlib Axes3D warning 为本机环境 warning，不影响 P0。
 
 ## 2026-07-08 文档同步复核
 
 - D1-D7 已按各自 owned paths 同步 `PLAN.md`、`subagent_reviews/Dx_IMPLEMENTATION_GAP_AUDIT.md` 和 review/plan 文件；main 本轮只同步本总表与 `MAIN_IMPLEMENTATION_GAP_AUDIT.md`。
-- 最近完整回归自测结果：D1 28 passed；D2 28 passed；D3 47 passed；D4 75 passed；D5 76 passed；D6 34 passed；D7 40 passed；AirSim runtime 57 passed。D2、D6、runtime 各有 matplotlib Axes3D 环境 warning，均不构成 P0。
+- 最近完整回归自测结果已被 2026-07-09 P0 复核覆盖；旧 2026-07-08 计数只保留为历史基线。
 - main runtime P1 sweep 输出已接 D6 标准报告：`p1_calibration_sweep_summary.json`、`P1_AIRSIM_CALIBRATION_SWEEP_REPORT.md` 之外，会自动生成 `d6_airsim_calibration/airsim_calibration_records.csv`、`airsim_calibration_summary.csv`、`airsim_calibration_summary.json` 和 `airsim_calibration_report.md`。
 - 最新 AirSim 5v5 D4/D5 registration calibration v2 输出目录为 `research_modules/airsim_runtime/outputs/p1_d4d5_registration_calibration_runtime_v2_20260708*`。本轮 smoke 使用 3 个机动高空二级侦察节点、200 m 高差、110 deg FOV、1920x1080、seed=1；包含 `no_degradation`、`degrade_to_secondary`、`degrade_to_distributed` 三类 case，均 connected。
 - D4 动作与预期一致：`no_degradation -> continue_center`，`degrade_to_secondary -> degrade_to_secondary`，`degrade_to_distributed -> degrade_to_distributed`。
 - 机动高空侦察节点状态：`secondary_gimbal_pointing_ok_rate=1.0`，`projection_valid_rate=1.0`，`geometry_gate_pass_rate≈0.474`，稳定跨视角注册约 51/55/53，cross-view association 为 4/4/5。bbox mean 约 1150 px^2，当前校准重点是注册链路和覆盖漏斗，不再使用旧固定俯视 bbox 对比作为主结论。
 - 未闭合点：`secondary_network_joint_full_view_frame_rate` 均值约 0.048、最佳约 0.143，二级网络平均覆盖约 0.771，主要断点为 `not_all_targets_visible` / `network_union_incomplete`；降级 case 仍有 `secondary_detect_available_but_not_registered≈35`。因此视觉 PNG 仍必须保持 D3/D4/D5 gate，不得因二级节点看清而绕过全局分配和配准合同。
+
+## 2026-07-08 EVAL P0/P1 同步口径
+
+**来源**：`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md`。
+
+本轮同步只把 EVAL 中已经确认的 P0/P1 缺口落入 `subagent_reviews/*GAP*` 文件。P2/P3 暂不调整。
+
+口径更新如下：
+
+- **运行级 P0 blocker**：仍未发现。当前离线点质模型、AirSim Blocks smoke、D1-D7 module tests 和 main runtime tests 仍可运行。
+- **工程化 P0 backlog**：EVAL 确认存在一组进入可信 AirSim 多 seed、复杂降级和后续封闭场地验证前应优先补齐的硬化项。这些不是“当前代码不能跑”，而是“如果不补，结果可信度和故障解释力不足”。
+- **P0-A 基础设施可信度**：优先解决统一时间、集中配置、健康状态、异常恢复、D6 outcome/root cause/performance、D1 FDIR-light/协方差边界/时间戳不确定性。
+- **P0-B 安全门控与闭环稳定性**：优先解决 D2 track quality/运动一致性、D3 资源状态/迟滞、D4 heartbeat/lease/二级能力/主动降级防抖、D5 重捕获/时序一致性/校准健康、D7 切换迟滞/LOS 滤波。
+- **P0-C 场景依赖 P0**：若下一阶段继续做 5v5/N-v-N、高差 200 m、密集交叉或可信二级接管，则 D7 3D PN、D3 threat score baseline、D2 quality-aware gate baseline、Main/D6 priority/status tracking 按 P0 执行；若只做 smoke，可作为 P1。
+
+### EVAL 确认的工程化 P0 Backlog
+
+| Owner | P0 类型 | 缺口 | 最小范围 | 验收口径 |
+|---|---|---|---|---|
+| main/runtime | P0-A | 统一时间管理 | 统一 `episode_time`、`measurement_timestamp`、`arrival_timestamp`、`publish_timestamp`、`processing_timestamp` 和 clock source | D1-D7 records 能按同一 episode clock 对齐，D6 输出 latency breakdown |
+| main/runtime | P0-A | 集中配置管理 | 一个 scenario config 生成 AirSim settings、模块参数、seed、资源/目标数量和 D6 metadata | 同一 config 可复现实验目录、settings 和报告字段 |
+| main/runtime | P0-A | 健康监测 | 每个模块输出 lightweight health/status snapshot | episode 中可见 D1-D7 health、record count、last update age、error state |
+| main/runtime | P0-A | 异常处理与恢复 | 模块异常、输入缺失、AirSim RPC 异常输出明确 failed/degraded outcome | 故障注入后系统不中断或产出明确 failed outcome 和 root cause |
+| D6 | P0-A | 系统级任务成功指标 | 定义 `mission_outcome=success/partial/failed/aborted`、success/failure reason | 每个 episode 有系统级 outcome，并能关联 D1-D7 指标 |
+| D6 | P0-A | 根因诊断 | 基于已写盘 records 输出 top failure causes | 报告输出 tracking、assignment、terminal gate、guidance、coverage 等 top causes |
+| D6 | P0-A | 性能监测 | 记录模块耗时、loop latency、record latency、CPU/GPU 预算占位 | episode 输出模块耗时、延迟分布和性能回归标记 |
+| D1 | P0-A | FDIR-light | 传感器级 health、漂移/偏置/丢包/延迟异常计数和隔离建议 | 故障注入下输出 sensor health、fault reason、reject count、恢复状态 |
+| D1 | P0-A | 协方差上下界限制 | 对外推、低质量观测、遮挡和异常观测设置 covariance floor/ceiling 与 reason | 协方差不发散、不虚假收敛，并能由 D6 解释 |
+| D1 | P0-A | 时间戳不确定性建模 | timestamp uncertainty 进入观测/summary 和质量指标 | 注入 10-50 ms 漂移时输出 timing uncertainty 与误差变化曲线 |
+| D2 | P0-B | 航迹质量评分 | 输出 `track_quality` / `association_risk` 给 D3/D5/D6 | 每条 track 有 quality，D3/D5/D6 可消费 |
+| D2 | P0-B | 运动一致性约束 | GNN/Hungarian 代价加入速度方向、加速度异常或短时历史一致性 | crossing/dense replay 输出 motion consistency score 并参与代价 |
+| D3 | P0-B | 资源状态细化 | 增加 energy、availability、intercept feasibility、current load、history failure | ResourceState 影响分配，D6 可解释资源不可行原因 |
+| D3 | P0-B | 增强迟滞逻辑 | 加入切换成本、min dwell、release condition、stale rejection | 重分配次数下降，高威胁目标不因迟滞漏分配 |
+| D4 | P0-B | Heartbeat 平滑 | 短时丢包/延迟用滑动窗口和 suspect/degraded 防抖 | 丢包/延迟注入下误 failover 下降 |
+| D4 | P0-B | Lease 严格管理 | 二级 plan lease、epoch、过期拒绝、恢复双轨审计 | 过期二级 plan 不被 D7/main 执行，恢复后有双轨审计 |
+| D4 | P0-B | 二级能力评估 | 基于 coverage/freshness/stable registration/not-registered 输出 capability score | 区分“可见、已注册、可接管”，并进入 D6 |
+| D4 | P0-B | 主动降级防抖 | 校准 dwell/release、hard/soft risk 和 review label | active degradation false trigger rate 可统计并下降 |
+| D5 | P0-B | 主动重捕获 | 基于预测投影、bbox 历史和搜索窗口支持 reacquire，不改写 `global_track_id` | 遮挡后 reacquire 恢复帧数下降，且不改写 ID |
+| D5 | P0-B | 时序一致性 | bbox/MOT 历史、candidate margin、稳定窗口增强 | terminal locked 率提升，误锁仍为 0 |
+| D5 | P0-B | 相机校准健康监测 | 输出 reprojection error、camera pose source、calibration health、drift warning | D6 可见 projection_valid、reprojection_error、calibration_health |
+| D7 | P0-B | 末端切换迟滞 | 视觉 PNG 切换加入 dwell、release、reacquire grace、reject reason | terminal mode switch 次数下降，reject reason 可解释 |
+| D7 | P0-B | LOS 角速率滤波 | LOS rate 低通、限幅、异常值拒绝 | 输出 filtered LOS rate，近距命令不出现尖峰 |
+| D7 | P0-C | 三维 PN baseline | 高差/3D 场景下实现 3D 几何 PN 对照和日志 | 200 m 高差或 3D target 测试中输出 3D PN 指标 |
+| D3 | P0-C | 动态威胁 baseline | 可解释 threat score：关键区接近、TTC、速度、协方差 | N/M 不匹配或资源不足场景可解释高威胁优先级 |
+| D2 | P0-C | quality-aware 自适应门控 baseline | 基于 track quality / density 调整门限的轻量规则 | dense/crossing/遮挡场景中 ID switch 与误关联下降 |
+| Main/D6 | P0-C | 实施状态追踪字段 | D6 报告加入 `eval_priority`、`implementation_status`、`evidence_path` | 后续报告能追踪 EVAL 建议等级和项目实现状态 |
+
+### EVAL 确认的 P1 Backlog
+
+| Owner | P1 缺口 | 当前边界 | 验收口径 |
+|---|---|---|---|
+| D1 | IMM 多模型滤波 | CV/EKF 主线可用，机动目标误差仍是风险 | CV/CA/CT 或等价模型对照，机动 RMSE 下降 |
+| D1 | 场景自适应协方差 | 基础距离/质量协方差已有，遮挡/杂波/SNR/来源差异规则不足 | replay 中输出 covariance scale reason |
+| D2 | 完整自适应门控策略 | P0-C 只保留 quality-aware baseline | 按密度、quality、协方差一致性自动调整门控并报告 sensitivity |
+| D2 | 工程化 JPDA | 当前轻量 JPDA 不是完整工程实现 | dense/crossing replay 下 JPDA 与 GNN 同场景对比 |
+| D2 | N/M 初始化优化 | 当前状态机可用，虚假航迹率/初始化延迟需标定 | 输出 false track rate、init latency 多 seed 统计 |
+| D2 | 协方差一致性检查 | 当前主要消费 D1 covariance | 输出 NEES/NIS 或等价 consistency flag |
+| D3 | 完整动态威胁评估 | P0-C 保留 explainable threat baseline | threat model 可解释 TTC、保护区、速度、类别、协方差和资源状态 |
+| D3 | 增量分配 | 当前滚动重算可用 | 新目标/资源失效时 plan update latency 下降 |
+| D3 | 时间窗口硬约束 | 当前有窗口代价，缺硬拒绝 | window closed 的边不会被分配 |
+| D3 | OR-Tools Min Cost Flow 接口 | Hungarian 主线稳定，OR-Tools 仍为预留 | 同输入输出 min-cost-flow 对照计划 |
+| D4 | 网络分区检测 | 当前关注中心/二级/分布式，脑裂检测不足 | 网络分区注入下输出 partition state 和 conflict count |
+| D4 | Raft/Leader 选举对照 | 当前轻量接管/CBBA，无成熟选举对照 | 选举与二级接管日志可复现，不绕过执行合同 |
+| D4 | DDS QoS/通信策略 | 当前通信为仿真消息合同 | 丢包、优先级、stale link 可由 D6 统计 |
+| D5 | 多模态友方识别 | `IdentityClaim` 仍主要是仿真/接口 | 至少一个 replay adapter 输出 verified/stale/unverified |
+| D5 | 完整相机在线标定 | P0-B 只做校准健康监测 | 标定样本中估计外参漂移并降低重投影误差 |
+| D5 | 畸变校正 | 当前以针孔/OpenCV 投影为主 | 畸变参数进入 projection，重投影误差下降 |
+| D5 | ReID 辅助 | YOLO/MOT 可接线，无 ReID 外观特征 | 遮挡恢复和密集目标 ID continuity 提升 |
+| D6 | 基线对比框架 | 指标报告已有，A/B 和显著性不足 | 同场景输出 baseline vs enhanced 表格 |
+| D6 | 场景库管理 | scenario 有但覆盖率管理不足 | 标准场景库带 tags、seed、difficulty、expected failure modes |
+| D6 | CI/回归测试 | 当前手动测试为主 | 每次变更产出测试矩阵和性能回归摘要 |
+| D7 | APN 目标机动补偿 | P0-B 先做 LOS 滤波与切换迟滞 | 机动目标 miss distance 下降且不破坏 D3/D4/D5 gate |
+| D7 | 最优制导律 OGL 对照 | PN/PNG 主线可用，OGL 未实现 | OGL 作为研究对照，不替代 PN |
+| D7 | 预测拦截点 | PN 视线率主线，预测点不足 | 输出 predicted intercept point，与 PN 对比 |
+| D7 | 动力学补偿 | SimpleFlight 简化，执行延迟/加速度限制不足 | 命令饱和、响应延迟进入 guidance log |
+| main/runtime | ROS 2 节点化规划/小规模原型 | 现阶段不重写 Python/AirSim runtime | 离线 replay 节点原型保持现有 Python tests |
+| main/runtime | 事件驱动架构 | episode bus 已有记录流，运行时仍偏串行 | 事件 schema 和 replay consumer 稳定 |
+| main/runtime | 状态机标准化 | 各模块有状态，统一状态合同不足 | 状态枚举、transition reason、invalid transition 进入日志 |
 
 ## P0 状态
 
