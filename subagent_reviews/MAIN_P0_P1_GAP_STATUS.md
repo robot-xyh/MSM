@@ -2,7 +2,7 @@
 
 **审计目标**：把 D1-D7 当前 P0/P1 缺口集中到一个 main 可调度清单，避免各模块 GAP 文件之间口径分散。
 **审计边界**：本文件只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控、自动处置或授权绕过。
-**当前结论**：未发现新的 P0 阻塞断链。2026-07-09 已按 EVAL 确认的 P0-A/P0-B/P0-C backlog 完成最小工程闭合：main runtime episode bus 已补齐统一 clock/config/module health/runtime exception outcome；D1-D7 owner 已分别完成本模块 P0 修复和 README/PLAN/GAP 同步；main runtime 已跟进 D4 新二级能力合同，修正 D4/D5 stress 中二级注册 evidence 桥接和成功注册原因过滤。当前 P0 重点转为保持跨模块合同、安全门控和测试回归不退化。剩余缺口主要为 P1：真实 AirSim 多 seed 标定、二级网络全目标覆盖、YOLO/MOT 阈值校准、通信/身份协议真实适配和 D6 长期趋势报告。
+**当前结论**：未发现新的 P0 阻塞断链。2026-07-09 已按 EVAL 确认的 P0-A/P0-B/P0-C backlog 完成最小工程闭合：main runtime episode bus 已补齐统一 clock/config/module health/runtime exception outcome；D1-D7 owner 已分别完成本模块 P0 修复和 README/PLAN/GAP 同步；main runtime 已跟进 D4 新二级能力合同，修正 D4/D5 stress 中二级注册 evidence 桥接和成功注册原因过滤。当前 P0 重点转为保持跨模块合同、安全门控和测试回归不退化。三份 patch 更新到 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` v2.0 后，新增的最高优先级不是替换主线算法，而是把 **D6/main 标准化评估映射最小版** 列为 P0-A 跟踪项：建立 `COURAGEOUS/MDPI/OCEF -> 当前 EpisodeMetrics` 的最小 mapping，并在报告中保留 metric family、evidence path 和 scenario version。剩余缺口主要为 P1：真实 AirSim 多 seed 标定、二级网络全目标覆盖、YOLO/MOT 阈值校准、通信/身份协议真实适配、标准化报告扩展和 D6 长期趋势报告。
 
 ## 2026-07-09 P0 实施闭合复核
 
@@ -41,6 +41,30 @@
 - **P0-B 安全门控与闭环稳定性**：优先解决 D2 track quality/运动一致性、D3 资源状态/迟滞、D4 heartbeat/lease/二级能力/主动降级防抖、D5 重捕获/时序一致性/校准健康、D7 切换迟滞/LOS 滤波。
 - **P0-C 场景依赖 P0**：若下一阶段继续做 5v5/N-v-N、高差 200 m、密集交叉或可信二级接管，则 D7 3D PN、D3 threat score baseline、D2 quality-aware gate baseline、Main/D6 priority/status tracking 按 P0 执行；若只做 smoke，可作为 P1。
 
+## 2026-07-09 Patch v2.0 P0/P1 同步增量
+
+**来源**：`EVAL/FRAMEWORK_EVAL_PATCH_ENGINEERING_PRACTICES.md`、`EVAL/FRAMEWORK_EVAL_PATCH_2026_VERIFIED.md`、`EVAL/FRAMEWORK_EVAL_PATCH_WEBSEARCH_2026.md` 已归并到 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` v2.0。
+
+同步原则：
+
+1. 三个 patch 强化了“标准化评估 + 成熟工程栈 + 规避高风险黑盒路线”，但没有推翻当前轻量主线。
+2. 成熟外部工具不自动升为 P0。OR-Tools、etcd/Raft、ROS 2/DDS、MLflow、Kalibr、Stone Soup、FilterPy 等作为 P1/P2 对照或后续工程化升级，不作为当前 P0 强依赖。
+3. 新增 P0-A 只限定在最小可信闭环硬化：标准化评估映射、复现字段、evidence path、scenario version 和 failure family，不要求一次性复刻完整认证流程。
+4. D1-D7 的模块 owned GAP 由各自子智能体同步；main 只维护本文件和 main/system 条目。
+
+### Patch v2.0 新增 P0/P1 主线
+
+| Owner | 优先级 | 新增/强化缺口 | 当前边界 | 验收口径 |
+|---|---|---|---|---|
+| D6/main | P0-A | 标准化评估映射最小版 | COURAGEOUS、MDPI C-UAS、OCEF 不作为完整认证流程，只做当前指标族映射 | 输出 `engineering_metric -> standard_metric_family`、`scenario_version`、`evidence_path`、`implementation_status`，并能映射到当前 `EpisodeMetrics` |
+| main/runtime | P0-A | 复现纪律和 evidence path 强化 | 固定 seed、settings、算法版本、检测后端、资源/目标数量已由 runtime/D6 metadata 承载，需保持不退化 | 每个 episode 目录可追溯 settings、seed、module health、runtime exception、metrics/report 路径 |
+| D6/main | P1 | COURAGEOUS/MDPI/OCEF 完整标准化报告 | P0 只做最小 mapping；完整标准阶段、场景标签、测试矩阵和复现纪律为 P1 | Markdown/CSV/JSON 报告包含标准指标族、测试阶段、复现字段和 evidence link |
+| D6/main | P1 | baseline vs enhanced 统计对比 | 当前报告已有分组统计和 95% CI 基础字段，显著性/A-B 口径仍需沉淀 | 同场景多 seed 输出 baseline/enhanced 均值、方差、置信区间和差异结论 |
+| D6/main | P1 | 标准场景库和 CI 回归摘要 | 当前 scenario metadata 可写入，尚未形成统一场景库治理 | 场景记录包含 tags、difficulty、expected failure modes、actual scale、seed matrix 和回归状态 |
+| main/runtime | P1 | ROS 2 replay 原型 | 不重写当前 Python/AirSim runtime，只做离线 replay 原型规划 | 能把已写盘 JSONL/CSV 映射为 ROS 2 风格 replay schema，保持当前测试不依赖 ROS |
+| main/runtime | P1 | 结构化日志和配置治理 | 当前 JSONL/metadata 保留，后续明确 schema/version/config provenance | episode 输出 schema version、config version、module version 和 structured event fields |
+| main/runtime | P1 | Docker Compose 开发部署 | 仅用于本地多进程实验，不作为生产部署 | 可复现实验服务组合；不替代单机 Python test/Blocks runtime |
+
 ### EVAL 确认的工程化 P0 Backlog
 
 | Owner | P0 类型 | 缺口 | 最小范围 | 验收口径 |
@@ -52,6 +76,7 @@
 | D6 | P0-A | 系统级任务成功指标 | 定义 `mission_outcome=success/partial/failed/aborted`、success/failure reason | 每个 episode 有系统级 outcome，并能关联 D1-D7 指标 |
 | D6 | P0-A | 根因诊断 | 基于已写盘 records 输出 top failure causes | 报告输出 tracking、assignment、terminal gate、guidance、coverage 等 top causes |
 | D6 | P0-A | 性能监测 | 记录模块耗时、loop latency、record latency、CPU/GPU 预算占位 | episode 输出模块耗时、延迟分布和性能回归标记 |
+| D6/main | P0-A | 标准化评估映射最小版 | 建立 `COURAGEOUS/MDPI/OCEF -> 当前 EpisodeMetrics` 的最小指标族映射 | 报告输出 standard metric family、engineering metric、scenario version、evidence path 和 implementation status |
 | D1 | P0-A | FDIR-light | 传感器级 health、漂移/偏置/丢包/延迟异常计数和隔离建议 | 故障注入下输出 sensor health、fault reason、reject count、恢复状态 |
 | D1 | P0-A | 协方差上下界限制 | 对外推、低质量观测、遮挡和异常观测设置 covariance floor/ceiling 与 reason | 协方差不发散、不虚假收敛，并能由 D6 解释 |
 | D1 | P0-A | 时间戳不确定性建模 | timestamp uncertainty 进入观测/summary 和质量指标 | 注入 10-50 ms 漂移时输出 timing uncertainty 与误差变化曲线 |
@@ -97,6 +122,7 @@
 | D6 | 基线对比框架 | 指标报告已有，A/B 和显著性不足 | 同场景输出 baseline vs enhanced 表格 |
 | D6 | 场景库管理 | scenario 有但覆盖率管理不足 | 标准场景库带 tags、seed、difficulty、expected failure modes |
 | D6 | CI/回归测试 | 当前手动测试为主 | 每次变更产出测试矩阵和性能回归摘要 |
+| D6/main | COURAGEOUS/MDPI/OCEF 完整标准化报告 | P0 只要求最小 mapping，完整标准流程和阶段化测试为 P1 | 报告包含标准指标族、测试阶段、复现纪律字段和 evidence link |
 | D7 | APN 目标机动补偿 | P0-B 先做 LOS 滤波与切换迟滞 | 机动目标 miss distance 下降且不破坏 D3/D4/D5 gate |
 | D7 | 最优制导律 OGL 对照 | PN/PNG 主线可用，OGL 未实现 | OGL 作为研究对照，不替代 PN |
 | D7 | 预测拦截点 | PN 视线率主线，预测点不足 | 输出 predicted intercept point，与 PN 对比 |

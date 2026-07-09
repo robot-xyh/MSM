@@ -8,6 +8,7 @@ import pytest
 
 from d6_evaluation_metrics import (
     AirSimCalibrationReportGenerator,
+    STANDARD_MAPPING_VERSION,
     load_airsim_calibration_records,
     summarize_airsim_calibration_records,
 )
@@ -130,6 +131,7 @@ def test_airsim_calibration_report_bundle_writes_csv_json_and_chinese_markdown(
     assert outputs["record_csv"].exists()
     assert outputs["summary_csv"].exists()
     assert outputs["summary_json"].exists()
+    assert outputs["standard_mapping_csv"].exists()
     assert outputs["markdown"].exists()
 
     summary_rows = list(csv.DictReader(outputs["summary_csv"].open(encoding="utf-8")))
@@ -144,8 +146,17 @@ def test_airsim_calibration_report_bundle_writes_csv_json_and_chinese_markdown(
     assert summary_payload["group_fields"][:3] == ["metric_scope", "seed", "scenario"]
     assert summary_payload["rows"][0]["secondary_count"] == "2"
 
+    mapping_rows = list(
+        csv.DictReader(outputs["standard_mapping_csv"].open(encoding="utf-8"))
+    )
+    assert mapping_rows
+    assert any(row["standard_metric_family"] == "terminal" for row in mapping_rows)
+
     report_text = outputs["markdown"].read_text(encoding="utf-8")
     assert "D6 AirSim 多 Seed 校准报告" in report_text
+    assert "Standard C-UAS Mapping" in report_text
+    assert STANDARD_MAPPING_VERSION in report_text
+    assert "COURAGEOUS/CEN C-UAS testing" in report_text
     assert "Detect-to-registration Funnel" in report_text
     assert "Projection valid" in report_text
     assert "Stable registration" in report_text

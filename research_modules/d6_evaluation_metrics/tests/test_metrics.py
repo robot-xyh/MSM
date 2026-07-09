@@ -9,8 +9,10 @@ from d6_evaluation_metrics import (
     EventRecord,
     LinkRecord,
     MetricsCollector,
+    STANDARD_MAPPING_VERSION,
     TerminalRecord,
     TrackRecord,
+    standard_metric_families,
 )
 
 
@@ -787,6 +789,44 @@ def test_explicit_mission_outcome_and_runtime_exception_abort() -> None:
     assert aborted.mission_outcome == "aborted"
     assert aborted.metadata["root_cause"] == "runtime_exception"
     assert aborted.metadata["top_failure_causes"][0]["cause"] == "runtime_exception"
+
+
+def test_standard_mapping_metadata_and_non_numeric_fields() -> None:
+    collector = MetricsCollector()
+    collector.add_event(
+        EventRecord(
+            timestamp=0.0,
+            event_type="scenario_metadata",
+            metadata={
+                "scenario_version": "event-scenario-v1",
+                "standard_mapping_version": STANDARD_MAPPING_VERSION,
+            },
+        )
+    )
+
+    metrics = collector.compute_episode(
+        episode_id="standard_mapping_fixture",
+        truth_summary={
+            "scenario": {
+                "name": "blocks_cv_5v5",
+                "scenario_version": "scenario-v2",
+            },
+            "standard_mapping_version": STANDARD_MAPPING_VERSION,
+        },
+    )
+
+    assert metrics.scenario_version == "scenario-v2"
+    assert metrics.standard_mapping_version == STANDARD_MAPPING_VERSION
+    assert "mission/root cause=" in metrics.standard_metric_family_summary
+    assert "reproducibility/evidence=" in metrics.standard_metric_family_summary
+    assert metrics.metadata["scenario_version"] == "scenario-v2"
+    assert metrics.metadata["standard_mapping_version"] == STANDARD_MAPPING_VERSION
+    assert metrics.metadata["standard_metric_families"] == standard_metric_families()
+    assert metrics.metadata["standard_mapping"]["version"] == STANDARD_MAPPING_VERSION
+    assert metrics.metadata["standard_mapping"]["mapped_metric_count"] > 0
+    assert "scenario_version" not in metrics.metric_names()
+    assert "standard_mapping_version" not in metrics.metric_names()
+    assert "standard_metric_family_summary" not in metrics.metric_names()
 
 
 def test_episode_metrics_contains_all_required_names() -> None:

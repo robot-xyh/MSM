@@ -22,9 +22,11 @@ D2/D6 强制 `id_switch_count` 的规则已落实：`id_switch_count` 是 `Episo
 
 2026-07-09 D6 已补齐 P0-A/P0-C episode 状态和追踪字段。`EpisodeMetrics`、episode CSV、summary/Markdown 现在输出 `mission_outcome=success/partial/failed/aborted`、`success_reason`、`failure_reason`、`eval_priority`、`implementation_status`、`evidence_path`，并把同名字段冗余进 metadata 便于 main 报告消费。D6 基于 records/metadata 与已计算指标被动派生 `top_failure_causes`、`root_cause`、`failure_cause_scores` 和 `failure_cause_details`，覆盖 tracking、assignment、terminal_gate、guidance、coverage、runtime_exception、communication、safety、performance；不做控制因果推断或回写。性能监测已新增 `module_duration_ms`、`loop_latency_ms`、`record_latency_ms`、`cpu_budget_utilization`、`gpu_budget_utilization`、`performance_budget_violation_count`，summary 和 metadata 均保留，CPU/GPU 缺失时保持 placeholder schema。
 
+2026-07-09 EVAL 三个 patch 进一步确认：当前没有新的运行级 P0 blocker；D6 已实现 mission outcome、根因诊断、性能、可复现字段和 `COURAGEOUS/MDPI/OCEF -> 当前 EpisodeMetrics` 标准化评估映射最小版。映射版本固定为 `cuas-standard-map-v1`，覆盖 mission/root cause、detection、tracking、assignment、degradation、terminal、communication、guidance/intercept、safety、performance、reproducibility/evidence。完整 COURAGEOUS/OCEF 报告、baseline 对比和统计显著性、场景库管理、CI 回归摘要仍列 P1。
+
 ## P0/P1 复核结论
 
-本节按 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` 同步 D6 相关 P0/P1 缺口。口径与 EVAL 保持一致：当前没有运行级 P0 blocker；P0 是进入更可信 AirSim/封闭场地验证前的工程化硬化项，P1 是三个月内的能力增强和回归化工作。D6 继续只消费日志和已写盘 metrics，不参与控制、重规划、降级仲裁、末端配准或导引。
+本节按 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` 以及三个 patch 同步 D6 相关 P0/P1 缺口。口径与 EVAL 保持一致：当前没有运行级 P0 blocker；P0 是进入更可信 AirSim/封闭场地验证前的工程化硬化项，P1 是三个月内的标准化报告、对照统计、场景库和回归化工作。D6 继续只消费日志和已写盘 metrics，不参与控制、重规划、降级仲裁、末端配准或导引。
 
 现有已完成状态保持不降级：`EpisodeMetrics`、`TrackRecord`、`AssignmentRecord`、`EventRecord`、`LinkRecord` 和 `TerminalRecord` 已作为 D6 离线指标主线保留；D7 guidance records 当前由 `guidance_records.csv`、`guidance_summaries.json` loader 转换为 `d7_guidance_record/d7_guidance_summary` 事件 metadata，而不是单独在线控制数据类。`id_switch_count`、实际规模字段、execution/contract 双口径、AirSim calibration bundle、detect-to-registration 漏斗、reject/outcome reason 分布和 D6 只消费日志不控制的边界均保持为已完成能力。
 
@@ -32,13 +34,14 @@ D2/D6 强制 `id_switch_count` 的规则已落实：`id_switch_count` 是 `Episo
 |---|---|---|---|---|
 | P0-A | 系统级任务成功指标 | 已实现，持续真实批次回归 | 每个 episode 已输出 `mission_outcome=success/partial/failed/aborted`、`success_reason`、`failure_reason`；显式 outcome 优先，上游缺失时从 intercept/abort/runtime/safety/部分进展指标被动派生。 | 在真实 AirSim 多 seed、5v5/N-v-N 和非默认 episode 中持续写盘并比较 execution/contract 口径。 |
 | P0-A | failure reason/root cause 根因诊断 | 已实现，持续真实批次回归 | 已输出 terminal switch/contract reject reason、D5 detect-to-registration reject/outcome reason、D4 review label/后验字段和 D7 guidance reject metadata；新增 `top_failure_causes`、`root_cause`、`failure_cause_scores`、`failure_cause_details`。 | 根因类别保持被动消费，覆盖 tracking、assignment、terminal_gate、guidance、coverage、runtime_exception、communication、safety、performance；后续只随真实日志字段扩展。 |
-| P0-A | 性能监测 | 已实现最小 schema，持续真实批次回归 | 新增 `module_duration_ms`、`loop_latency_ms`、`record_latency_ms`、`cpu_budget_utilization`、`gpu_budget_utilization`、`performance_budget_violation_count`；metadata 保留分布和 CPU/GPU placeholder。 | main/D1-D7 真实 episode 持续写 module timing、loop latency、record latency 和 CPU/GPU budget 字段；D6 只消费。 |
-| P0-C | P0/P1 实施状态追踪字段 | 已实现 | `eval_priority`、`implementation_status`、`evidence_path` 已进入 `EpisodeMetrics`、episode CSV、metadata 和 Markdown EVAL Tracking 表。 | main 报告持续填充真实 evidence path，并在 P0/P1 状态表中消费该 schema。 |
-| P1 | 基线对比框架 | P1 待补 | 已有 episode CSV、summary CSV、Markdown、PNG 图、95% CI、按 `metric_scope/seed/scenario_group/actual scale` 分组和 calibration bundle。 | 同一场景输出 baseline vs enhanced 表格，并补统计显著性或等价置信口径。 |
+| P0-A | 性能和可复现字段 | 已实现最小 schema，持续真实批次回归 | 新增 `module_duration_ms`、`loop_latency_ms`、`record_latency_ms`、`cpu_budget_utilization`、`gpu_budget_utilization`、`performance_budget_violation_count`；`eval_priority`、`implementation_status`、`evidence_path` 已进入 `EpisodeMetrics`、episode CSV、metadata 和 Markdown EVAL Tracking 表。 | main/D1-D7 真实 episode 持续写 module timing、loop latency、record latency、CPU/GPU budget、真实 evidence path 和 scenario/version metadata；D6 只消费。 |
+| P0-A | 标准化评估映射最小版 | 已实现，持续真实批次回归 | 新增 `standard_mapping.py`，固定 `cuas-standard-map-v1`，输出 `engineering_metric`、`standard_metric_family`、`standard_sources`、`implementation_status`、`evidence_requirement`；`EpisodeMetrics` 增加 `scenario_version`、`standard_mapping_version`、`standard_metric_family_summary`；episode CSV、metadata、Markdown 和 `standard_metric_mapping.csv` 已输出映射。 | 真实 AirSim 多 seed、5v5/N-v-N 和非默认 episode 持续写真实 `scenario_version`、`evidence_path` 和同一 mapping version；不要求完整认证流程。 |
+| P1 | COURAGEOUS/MDPI/OCEF 完整标准化报告 | P1 待补 | WebSearch patch 确认 COURAGEOUS/CEN、MDPI 综述和 OCEF 可复现纪律是 D6 标准化方向；当前已有本地最小映射、CSV/JSON/Markdown 指标报告。 | 在 P0 最小映射基础上增加测试阶段、复现纪律字段、evidence index、标准场景覆盖和外部审计说明；完整封闭场地/外部审计报告仍依赖 main 提供场景和日志。 |
+| P1 | 基线对比和统计显著性 | P1 待补 | 已有 episode CSV、summary CSV、Markdown、PNG 图、95% CI、按 `metric_scope/seed/scenario_group/actual scale` 分组和 calibration bundle。 | 同一场景输出 baseline vs enhanced 表格，并补多 seed 均值/方差/置信区间或等价统计显著性口径。 |
 | P1 | 场景库管理 | P1 待补 | 已保留 seed、scenario/scenario_group、actual scale 和 AirSim calibration case metadata；`2v2/5v5` 只作为 baseline 名称。 | 标准场景库包含 tags、seed、difficulty、expected failure modes 和覆盖状态；D6 只消费场景 metadata。 |
-| P1 | CI/回归测试 | P1 待补 | 当前有 D6 unit tests、报告生成测试、main bus loader 测试和手动 batch report 链路。 | 每次变更产出实验级测试矩阵、P0/P1 tracking 字段检查和性能回归摘要。 |
+| P1 | CI 回归摘要 | P1 待补 | 当前有 D6 unit tests、报告生成测试、main bus loader 测试和手动 batch report 链路。 | 每次变更产出实验级测试矩阵、P0/P1 tracking 字段检查、性能回归摘要和 evidence path 检查。 |
 
-P1 缺口保持为离线评估能力、真实 episode 写盘和长期趋势问题，不是 D6 在线控制职责：D7 real execution metrics 的正式/contract 双口径已完成；D6 已补 `metric_scope`、seed/scenario/实际规模报告分组、main bus metrics JSON loader、reject reason 分布输出、二级视角/侦察云台 coverage/cross-view/registration/pointing-error 指标、detect-to-registration 分层漏斗、AirSim 多 seed calibration 自动汇总，以及 `active_degradation_precision`/`unnecessary_active_degradation_count` 的 review label/后验最小实现。main runtime P1 sweep 已自动调用 D6 bundle，D6 当前 P1 重点是 baseline 对比、场景库、CI/回归、多 seed 自动汇总回归、coverage/funnel/gimbal/projection/gate/stable registration 长期趋势、active degradation precision 真实标签、D7 guidance reject reason 和 actual scale 分组；剩余项是更多批次的数据沉淀，以及 main/D4/D5/D7 在真实 episode 中持续写出可对齐的 D4/D5/D7/Blocks 文件。
+P1 缺口保持为离线评估能力、真实 episode 写盘和长期趋势问题，不是 D6 在线控制职责：D7 real execution metrics 的正式/contract 双口径已完成；D6 已补 `metric_scope`、seed/scenario/实际规模报告分组、main bus metrics JSON loader、reject reason 分布输出、二级视角/侦察云台 coverage/cross-view/registration/pointing-error 指标、detect-to-registration 分层漏斗、AirSim 多 seed calibration 自动汇总，以及 `active_degradation_precision`/`unnecessary_active_degradation_count` 的 review label/后验最小实现。main runtime P1 sweep 已自动调用 D6 bundle，D6 当前 P1 重点是 COURAGEOUS/MDPI/OCEF 完整报告、baseline 对比和统计显著性、场景库、CI 回归摘要、多 seed 自动汇总回归、coverage/funnel/gimbal/projection/gate/stable registration 长期趋势、active degradation precision 真实标签、D7 guidance reject reason 和 actual scale 分组；剩余项是更多批次的数据沉淀，以及 main/D4/D5/D7 在真实 episode 中持续写出可对齐的 D4/D5/D7/Blocks 文件。D6 按实际 `drone_count/resource_count/target_count/camera_count` 归一化，`2v2/5v5` 只作为 baseline 场景名。
 
 非本轮范围保持 P2/P3 或禁止项：Stone Soup metrics、OSPA/GOSPA、TrackEval/py-motmetrics、HOTA/IDF1、AirSim 原生 recording parser、SCRIMMAGE bridge、live replay/API。它们不替代当前 D6 本地离线指标主线。
 
@@ -63,6 +66,7 @@ P1 缺口保持为离线评估能力、真实 episode 写盘和长期趋势问�
 | D7 terminal gate/visual PNG switch | 已实现 `camera_quality_gate_pass_rate`、`los_quality_gate_pass_rate`、`maneuver_margin_gate_pass_rate`、`terminal_switch_allowed_rate`、`visual_png_switch_count`、`terminal_takeover_rate`、`terminal_switch_reject_count`。 | `metrics.py`; `tests/test_metrics.py`; `tests/test_intercept_replay.py` |
 | 安全指标 | 已实现 `constraint_violation_count`、`human_override_count`。 | `metrics.py`; `tests/test_metrics.py` |
 | 批量统计/报告图表 | 已实现 episode CSV、summary CSV、Markdown、按指标族 PNG 图和 selected distribution 图；summary 包含 count/mean/std/stderr/95% CI/median/p05/p95。 | `reporting.py`; `scripts/run_batch_example.py`; `tests/test_reporting_and_simulation.py` |
+| P0-A 标准化评估映射最小版 | 已实现。`cuas-standard-map-v1` 覆盖 mission/root cause、detection、tracking、assignment、degradation、terminal、communication、guidance/intercept、safety、performance、reproducibility/evidence；`MetricsCollector.compute_episode()` 写入 mapping metadata，`ReportGenerator.write_standard_mapping_csv()` 输出 `standard_metric_mapping.csv`，Markdown 在 `EVAL Tracking` 后输出 `Standard C-UAS Mapping` 表。 | `standard_mapping.py`; `metrics.py`; `reporting.py`; `main_bus.py`; `tests/test_metrics.py`; `tests/test_reporting_and_simulation.py` |
 | JSONL 标准化接口 | 已实现 `truth_summary/track/assignment/event/link/terminal`，未知 record type 报错。 | `jsonl.py`; `tests/test_airsim_dry_run_jsonl.py` |
 | main bus metrics JSON | 已实现。读取 `main_episode_bus_metrics.json` 与 `main_episode_bus_contract_metrics.json`，还原 execution/contract `EpisodeMetrics`，保留 seed/scenario/实际规模和 metadata 分布。 | `main_bus.py`; `tests/test_main_bus_metrics.py` |
 | 二级节点对比与 reject reason 报告输出 | 已实现。episode CSV 保留 metadata JSON；Markdown 在有数据时输出 fixed downlook secondary vs mobile recon gimbal 对比表，以及 terminal switch/contract reject reason 分布。 | `reporting.py`; `tests/test_reporting_and_simulation.py` |
@@ -103,15 +107,20 @@ P1 缺口保持为离线评估能力、真实 episode 写盘和长期趋势问�
 4. AirSim 原生 recording 和 SCRIMMAGE 都需要样例、schema、ID 映射和时钟/坐标对齐规则。
 5. D6 不参与控制是模块边界，所有指标只用于离线报告和回归分析。
 
+## P0 保持回归
+
+1. 标准化评估映射最小版已实现，后续保持 `cuas-standard-map-v1`、`scenario_version`、`standard_mapping_version`、`standard_metric_family_summary`、`standard_metric_mapping.csv` 和 Markdown `Standard C-UAS Mapping` 表回归；D6 仍只消费日志，不参与控制，不要求完整认证或外部平台接入。
+
 ## P1 下一步
 
-1. 基线对比框架：在现有 episode/summary/reporting 基础上增加 baseline vs enhanced 同场景对比、统计显著性或等价置信口径和 `evidence_path`；当前按 scenario/metric_scope/实际规模分组的汇总不等同于正式 A/B baseline。
-2. 场景库管理：把 scenario metadata 扩展为标准场景库，至少包含 tags、seed、difficulty、expected failure modes 和 actual scale；保留 2v2/5v5 作为 baseline 名称，不用作规模推断。
-3. CI/回归测试：形成实验级测试矩阵和性能回归摘要；`eval_priority` / `implementation_status` / `evidence_path` 字段检查已进入 D6 单元测试，后续需要 main CI 持续消费真实 evidence path。
-4. 多 seed 自动汇总与 coverage/funnel/gimbal 长期趋势：用 main runtime P1 calibration sweep 自动生成的 D6 AirSim calibration bundle 持续跟踪 mobile recon 与 fixed downlook 的 coverage、full-view、projection valid、geometry gate pass、registered candidate、stable registration、not-registered、D7 reject、bbox area 和 cue/gimbal pointing 指标；当前 v2 已验证报告链路，剩余是更多真实 AirSim 多 seed/N-v-N 批次和 review labels 形成长期趋势。
-5. active degradation precision 真实标签：main/D4 持续写入 `review_label`、`active_degradation_necessary` 或后验 outcome/risk 字段；D6 不从事件名推断必要性。
-6. 真实 episode 日志完整性：D4/D5/D7/Blocks 产物持续落到同一 episode clock 和目录，D6 汇总阶段调用 loader 合并；D6 不参与控制、重规划或导引。
-7. 多 seed 双口径与 actual scale 报告：在 2v2、5v5、N-v-N 和非默认 episode 批量运行中持续保留 `metric_scope=execution/contract`、seed/scenario/实际规模字段、D7 guidance/control/intercept 元数据、guidance reject reason metadata 和 D4/D5 calibration geometry 字段；D6 已能读取 main bus 双口径 metrics JSON 并输出相应分组。
+1. COURAGEOUS/MDPI/OCEF 完整标准化报告：在 P0 最小映射基础上补测试阶段、复现纪律字段、evidence index、标准场景覆盖和外部审计说明；D6 只消费 main/D1-D7 已写盘日志和 scenario metadata。
+2. 基线对比框架：在现有 episode/summary/reporting 基础上增加 baseline vs enhanced 同场景对比、统计显著性或等价置信口径和 `evidence_path`；当前按 scenario/metric_scope/实际规模分组的汇总不等同于正式 A/B baseline。
+3. 场景库管理：把 scenario metadata 扩展为标准场景库，至少包含 tags、seed、difficulty、expected failure modes 和 actual scale；保留 2v2/5v5 作为 baseline 名称，不用作规模推断。
+4. CI/回归摘要：形成实验级测试矩阵和性能回归摘要；`eval_priority` / `implementation_status` / `evidence_path` 字段检查已进入 D6 单元测试，后续需要 main CI 持续消费真实 evidence path。
+5. 多 seed 自动汇总与 coverage/funnel/gimbal 长期趋势：用 main runtime P1 calibration sweep 自动生成的 D6 AirSim calibration bundle 持续跟踪 mobile recon 与 fixed downlook 的 coverage、full-view、projection valid、geometry gate pass、registered candidate、stable registration、not-registered、D7 reject、bbox area 和 cue/gimbal pointing 指标；当前 v2 已验证报告链路，剩余是更多真实 AirSim 多 seed/N-v-N 批次和 review labels 形成长期趋势。
+6. active degradation precision 真实标签：main/D4 持续写入 `review_label`、`active_degradation_necessary` 或后验 outcome/risk 字段；D6 不从事件名推断必要性。
+7. 真实 episode 日志完整性：D4/D5/D7/Blocks 产物持续落到同一 episode clock 和目录，D6 汇总阶段调用 loader 合并；D6 不参与控制、重规划或导引。
+8. 多 seed 双口径与 actual scale 报告：在 2v2、5v5、N-v-N 和非默认 episode 批量运行中持续保留 `metric_scope=execution/contract`、seed/scenario/实际规模字段、D7 guidance/control/intercept 元数据、guidance reject reason metadata 和 D4/D5 calibration geometry 字段；D6 已能读取 main bus 双口径 metrics JSON 并输出相应分组。
 
 ## P2 下一步
 

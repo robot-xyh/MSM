@@ -20,7 +20,7 @@ D2/D6 的硬约束必须保留：`id_switch_count` 是一级显式指标，不�
 - 数据模型：`EpisodeMetrics`、`TrackRecord`、`AssignmentRecord`、`EventRecord`、`LinkRecord`、`TerminalRecord`。
 - 收集器：`MetricsCollector.add_track/add_assignment/add_event/add_link/add_terminal()` 和 `compute_episode()`。
 - 日志接口：标准化 JSONL loader、Blocks replay JSONL loader、main episode bus metrics JSON loader、D4 active-degradation CSV loader、D7 intercept/guidance CSV/JSON loader、AirSim calibration 多 seed 汇总 loader。
-- 报告接口：`ReportGenerator` 输出 `episode_metrics.csv`、`summary_metrics.csv`、Markdown 报告和分类 PNG 图；`AirSimCalibrationReportGenerator` 输出 `airsim_calibration_records.csv`、`airsim_calibration_summary.csv`、`airsim_calibration_summary.json` 和中文 Markdown。episode CSV 保留 metadata JSON，Markdown 在存在数据时输出 fixed downlook secondary vs mobile recon gimbal 对比表、D4/D5 detect-to-registration 分层漏斗和 terminal switch/contract reject reason 分布。
+- 报告接口：`ReportGenerator` 输出 `episode_metrics.csv`、`summary_metrics.csv`、Markdown 报告、分类 PNG 图和 `standard_metric_mapping.csv`；`AirSimCalibrationReportGenerator` 输出 `airsim_calibration_records.csv`、`airsim_calibration_summary.csv`、`airsim_calibration_summary.json` 和中文 Markdown。episode CSV 保留 metadata JSON 和标准映射非数值字段，Markdown 在 `EVAL Tracking` 后输出 `Standard C-UAS Mapping` 表，并在存在数据时输出 fixed downlook secondary vs mobile recon gimbal 对比表、D4/D5 detect-to-registration 分层漏斗和 terminal switch/contract reject reason 分布。
 - main runtime 接入：`--p1-calibration-sweep` 已在 batch 结束后自动调用 `AirSimCalibrationReportGenerator.write_report_bundle()`，输出 `d6_airsim_calibration/airsim_calibration_records.csv`、`airsim_calibration_summary.csv`、`airsim_calibration_summary.json` 和 `airsim_calibration_report.md`。D6 只消费 sweep 已写盘目录，不启动 AirSim、不控制 camera/gimbal、不参与 D4/D5 降级或配准决策。
 - 批量统计：count、mean、sample std、stderr、normal-approximation 95% CI、median、p05、p95。
 - 分组统计：按 `metric_scope`、`seed`、`scenario_group` 和实际 `drone_count/resource_count/target_count/camera_count` 分组。
@@ -50,6 +50,9 @@ failure_reason
 eval_priority
 implementation_status
 evidence_path
+scenario_version
+standard_mapping_version
+standard_metric_family_summary
 module_duration_ms
 loop_latency_ms
 record_latency_ms
@@ -97,6 +100,43 @@ performance_budget_violation_count
 - `top_failure_causes` / `root_cause` 从 records/metadata 和 D6 已计算指标派生，覆盖 tracking、assignment、terminal_gate、guidance、coverage、runtime_exception、communication、safety、performance；D6 不做控制链路因果推断或回写。
 - 性能监测消费上游写盘的 module duration、loop latency、record latency、CPU/GPU budget utilization 和 budget violation；缺失时输出 0 和 metadata placeholder，便于 main 报告保持 schema 稳定。
 - `eval_priority`、`implementation_status`、`evidence_path` 用于 main 报告追踪 P0/P1 状态，优先来自 truth_summary/metadata。
+
+### 3.1.2 标准化评估映射最小版
+
+P0-A 标准化评估映射最小版已实现，版本固定为 `cuas-standard-map-v1`。D6 只建立离线报告映射，不引入外部认证流程，也不改变 D1-D7/main runtime 控制链路。
+
+映射最小字段：
+
+```text
+engineering_metric
+standard_metric_family
+standard_sources
+implementation_status
+evidence_requirement
+```
+
+覆盖的标准指标族：
+
+```text
+mission/root cause
+detection
+tracking
+assignment
+degradation
+terminal
+communication
+guidance/intercept
+safety
+performance
+reproducibility/evidence
+```
+
+实现口径：
+
+- `standard_mapping.py` 保存 `COURAGEOUS/MDPI/OCEF -> EpisodeMetrics` 的静态映射表。
+- `MetricsCollector.compute_episode()` 从 `truth_summary` 或 event metadata 读取 `scenario_version`，固定写入 `standard_mapping_version=cuas-standard-map-v1`，并在 metadata 中保留 `standard_metric_families`、`standard_metric_family_summary` 和 `standard_mapping` 摘要。
+- `EpisodeMetrics.metric_names()` 不包含 `scenario_version`、`standard_mapping_version`、`standard_metric_family_summary`，避免污染数值统计。
+- `ReportGenerator.write_episode_csv()` 输出这三个非数值字段；`write_markdown_report()` 在 `EVAL Tracking` 后输出 `Standard C-UAS Mapping` 表；`write_standard_mapping_csv()` 输出 `standard_metric_mapping.csv`。
 
 ### 3.2 探测指标
 
@@ -378,9 +418,10 @@ P0/P1 状态：
 
 D6 报告生成器当前输出：
 
-- `episode_metrics.csv`：每个 episode 一行，包含规模字段、所有 `EpisodeMetrics.metric_names()` 和 metadata JSON。
+- `episode_metrics.csv`：每个 episode 一行，包含规模字段、`scenario_version`、`standard_mapping_version`、`standard_metric_family_summary`、所有 `EpisodeMetrics.metric_names()` 和 metadata JSON。
 - `summary_metrics.csv`：全局与 `metric_scope + seed + scenario_group + scale` 分组统计。
-- Markdown 报告：中文说明、规模范围、场景分组、固定俯视二级节点 vs 机动侦察云台节点对比表、汇总表、reject reason 分布和图表链接。
+- `standard_metric_mapping.csv`：输出固定版本 `cuas-standard-map-v1` 的标准映射行，字段为 `engineering_metric/standard_metric_family/standard_sources/implementation_status/evidence_requirement`。
+- Markdown 报告：中文说明、规模范围、场景分组、`Standard C-UAS Mapping` 表、固定俯视二级节点 vs 机动侦察云台节点对比表、汇总表、reject reason 分布和图表链接。
 - PNG 图表：`detection`、`tracking`、`assignment`、`degradation`、`terminal`、`secondary_sensing`、`communication`、`guidance`、`safety` 和 selected metric distributions。
 - AirSim calibration bundle：`airsim_calibration_records.csv` 保留每个 episode/scope 的 d4d5/main bus 字段；`airsim_calibration_summary.csv` 与 JSON 按 `metric_scope/seed/scenario/secondary_height/FOV/secondary_count/detection_backend` 汇总；Markdown 用中文说明 coverage/funnel/gimbal、projection/gate/stable registration、cross-view registration、active degradation precision 和 D7 guidance reject reason。
 
@@ -399,10 +440,13 @@ p05 / p95
 
 ## 8. P1 下一步
 
-1. 多 seed 自动汇总与长期趋势数据沉淀：用 main runtime P1 calibration sweep 自动生成的 D6 AirSim calibration bundle，持续跟踪 `mobile_recon_gimbal` 与 `fixed_downlook_secondary` 的 coverage、full-view、projection valid、geometry gate pass、registered candidate、stable registration、not-registered、D7 reject、bbox area、cue/gimbal pointing 指标；当前 registration calibration v2 已验证报告链路，长期趋势仍需要更多真实 AirSim 多 seed/N-v-N 批次和 review labels。
-2. 真实 episode review/window 写盘：要求 main/D4 在每个真实 episode 持续写出 `review_label`、`trigger_timestamp`、`decision_timestamp`、`selected_coordinator`、`coverage_cell`、pre/post window 和后验 outcome/risk 字段；D6 不从事件名推断必要性，`active_degradation_precision` 必须使用真实 review label/后验字段。
-3. 真实 episode 日志完整性：把 D4/D5/D7/Blocks 产物稳定落到同一 episode clock 和目录，D6 汇总阶段调用对应 loader 合并；D6 继续只消费日志，不参与控制、重规划或导引。
-4. 多 seed 双口径与 actual scale 分组验收：在 2v2、5v5、N-v-N 和非默认 episode 批量运行中持续保留 `metric_scope=execution/contract` 双口径、实际规模字段、seed/scenario 分组、D7 guidance reject reason metadata 和 D4/D5 calibration geometry 字段；执行指标与 contract metrics 不互相覆盖。
+1. COURAGEOUS/MDPI/OCEF 完整标准化报告：在 P0 最小映射基础上补测试阶段、复现纪律字段、evidence index、标准场景覆盖和外部审计需要的说明；D6 仍只消费 main/D1-D7 已写盘日志。
+2. 基线对比和统计显著性：同一场景输出 baseline vs enhanced、多 seed 均值/方差/置信区间或等价显著性口径。
+3. 场景库管理和 CI 回归摘要：由 main 提供 scenario tags、difficulty、expected failure modes、test matrix 和 evidence path，D6 在报告中消费并回归检查。
+4. 多 seed 自动汇总与长期趋势数据沉淀：用 main runtime P1 calibration sweep 自动生成的 D6 AirSim calibration bundle，持续跟踪 `mobile_recon_gimbal` 与 `fixed_downlook_secondary` 的 coverage、full-view、projection valid、geometry gate pass、registered candidate、stable registration、not-registered、D7 reject、bbox area、cue/gimbal pointing 指标；当前 registration calibration v2 已验证报告链路，长期趋势仍需要更多真实 AirSim 多 seed/N-v-N 批次和 review labels。
+5. 真实 episode review/window 写盘：要求 main/D4 在每个真实 episode 持续写出 `review_label`、`trigger_timestamp`、`decision_timestamp`、`selected_coordinator`、`coverage_cell`、pre/post window 和后验 outcome/risk 字段；D6 不从事件名推断必要性，`active_degradation_precision` 必须使用真实 review label/后验字段。
+6. 真实 episode 日志完整性：把 D4/D5/D7/Blocks 产物稳定落到同一 episode clock 和目录，D6 汇总阶段调用对应 loader 合并；D6 继续只消费日志，不参与控制、重规划或导引。
+7. 多 seed 双口径与 actual scale 分组验收：在 2v2、5v5、N-v-N 和非默认 episode 批量运行中持续保留 `metric_scope=execution/contract` 双口径、实际规模字段、seed/scenario 分组、D7 guidance reject reason metadata 和 D4/D5 calibration geometry 字段；执行指标与 contract metrics 不互相覆盖。
 
 ## 9. P2 下一步
 

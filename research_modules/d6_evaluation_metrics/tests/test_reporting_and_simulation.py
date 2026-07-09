@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from d6_evaluation_metrics import ReportGenerator
+from d6_evaluation_metrics import ReportGenerator, STANDARD_MAPPING_VERSION
 from d6_evaluation_metrics.metrics import EpisodeMetrics
 from d6_evaluation_metrics.simulation import (
     generate_synthetic_episode,
@@ -71,6 +71,9 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
             eval_priority="P0-A",
             implementation_status="implemented",
             evidence_path="outputs/normal_001/main_episode_bus_metrics.json",
+            scenario_version="scenario-v2",
+            standard_mapping_version=STANDARD_MAPPING_VERSION,
+            standard_metric_family_summary="mission/root cause=7; detection=3",
             active_degradation_count=0,
             mode_switch_count=1,
             secondary_network_joint_full_view_frame_rate=0.5,
@@ -149,6 +152,9 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
         episodes,
         tmp_path / "report.md",
     )
+    standard_mapping_csv = report_generator.write_standard_mapping_csv(
+        tmp_path / "standard_metric_mapping.csv",
+    )
 
     episode_text = episode_csv.read_text(encoding="utf-8")
     summary_text = summary_csv.read_text(encoding="utf-8")
@@ -163,6 +169,11 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
     assert "eval_priority" in episode_text
     assert "implementation_status" in episode_text
     assert "evidence_path" in episode_text
+    assert "scenario_version" in episode_text
+    assert "standard_mapping_version" in episode_text
+    assert "standard_metric_family_summary" in episode_text
+    assert "scenario-v2" in episode_text
+    assert STANDARD_MAPPING_VERSION in episode_text
     assert "metadata" in episode_text
     assert "terminal_switch_reject_reasons" in episode_text
     assert "secondary_network_joint_full_view_frame_rate" in episode_text
@@ -188,6 +199,11 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
     assert "Mission Outcome / Root Cause" in report_text
     assert "Performance Monitoring" in report_text
     assert "EVAL Tracking" in report_text
+    assert "Standard C-UAS Mapping" in report_text
+    assert STANDARD_MAPPING_VERSION in report_text
+    assert "COURAGEOUS" in report_text
+    assert "mission_outcome" in report_text
+    assert "reproducibility/evidence" in report_text
     assert "outputs/normal_001/main_episode_bus_metrics.json" in report_text
     assert "performance_metrics.png" in report_text
     assert "二级视角节点对比" in report_text
@@ -197,6 +213,29 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
     assert "Reject reason 分布" in report_text
     assert "camera_quality" in report_text
     assert "terminal_contract_not_satisfied" in report_text
+
+    assert standard_mapping_csv.exists()
+    mapping_rows = list(csv.DictReader(standard_mapping_csv.open(encoding="utf-8")))
+    assert mapping_rows
+    assert set(mapping_rows[0]) == {
+        "engineering_metric",
+        "standard_metric_family",
+        "standard_sources",
+        "implementation_status",
+        "evidence_requirement",
+    }
+    assert any(
+        row["engineering_metric"] == "mission_outcome"
+        and row["standard_metric_family"] == "mission/root cause"
+        and "COURAGEOUS" in row["standard_sources"]
+        for row in mapping_rows
+    )
+    assert any(
+        row["engineering_metric"] == "standard_mapping_version"
+        and row["standard_metric_family"] == "reproducibility/evidence"
+        and row["implementation_status"] == "implemented"
+        for row in mapping_rows
+    )
 
     summary_rows = list(csv.DictReader(summary_csv.open(encoding="utf-8")))
     active_rows = [

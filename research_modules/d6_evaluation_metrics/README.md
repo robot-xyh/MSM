@@ -6,7 +6,7 @@ D6 是 MSM 的离线评估与报告模块。它只消费已经写盘的日志、
 
 已实现的核心数据模型：
 
-- `EpisodeMetrics`：单 episode 标量指标对象，包含 `mission_outcome`、`success_reason`、`failure_reason`、`eval_priority`、`implementation_status`、`evidence_path`、`metric_scope` 和规模字段 `drone_count/resource_count/target_count/camera_count`。
+- `EpisodeMetrics`：单 episode 标量指标对象，包含 `mission_outcome`、`success_reason`、`failure_reason`、`eval_priority`、`implementation_status`、`evidence_path`、`scenario_version`、`standard_mapping_version`、`standard_metric_family_summary`、`metric_scope` 和规模字段 `drone_count/resource_count/target_count/camera_count`。
 - `TrackRecord`：探测和跟踪记录，保留 `global_track_id`、`truth_id`、位置、真值位置、协方差摘要和来源。
 - `AssignmentRecord`：分配快照，保留 `plan_id`、`version`、资源、目标、授权状态和评估侧真值标签。
 - `EventRecord`：通用事件记录，用于降级、安全、D5/D7 gate、通信元数据等。
@@ -26,6 +26,7 @@ D6 是 MSM 的离线评估与报告模块。它只消费已经写盘的日志、
 - 安全：`constraint_violation_count`、`human_override_count`。
 - 任务结果/root cause：每个 episode 输出 `mission_outcome=success/partial/failed/aborted`、`success_reason`、`failure_reason`，metadata 保留 `root_cause`、`top_failure_causes`、`failure_cause_scores` 和 `failure_cause_details`；根因只从已写盘 records/metadata 和 D6 指标被动派生，覆盖 tracking、assignment、terminal_gate、guidance、coverage、runtime_exception、communication、safety、performance 等类别。
 - 性能监测：`module_duration_ms`、`loop_latency_ms`、`record_latency_ms`、`cpu_budget_utilization`、`gpu_budget_utilization`、`performance_budget_violation_count` 进入 summary；metadata 保留 module/loop/record latency 分布和 CPU/GPU budget 占位状态。
+- 标准化评估映射最小版：`cuas-standard-map-v1` 已把 `COURAGEOUS/MDPI/OCEF -> EpisodeMetrics` 映射落到 D6。映射字段为 `engineering_metric`、`standard_metric_family`、`standard_sources`、`implementation_status`、`evidence_requirement`，覆盖 mission/root cause、detection、tracking、assignment、degradation、terminal、communication、guidance/intercept、safety、performance、reproducibility/evidence。`MetricsCollector.compute_episode()` 在 metadata 中写入 `standard_mapping_version`、`standard_metric_families`、`scenario_version` 和 `standard_mapping` 摘要；`ReportGenerator.write_standard_mapping_csv()` 可输出 `standard_metric_mapping.csv`，Markdown 报告在 `EVAL Tracking` 后输出 `Standard C-UAS Mapping` 表。
 
 D2/D6 的硬规则仍然保留：`id_switch_count` 必须显式输出，不能被综合准确率隐藏。
 
@@ -60,8 +61,8 @@ P1 二级侦察 detect-to-registration 校准报告已经补齐分层漏斗字�
 
 ## 当前 P0/P1 状态
 
-- P0：P0-A/P0-C 字段已补齐。D6 当前输出 mission outcome、success/failure reason、top failure causes/root cause、性能监测字段和 EVAL tracking schema；仍保持离线消费日志，不参与控制；指标继续按实际规模归一化，不从 `5v5` 名称推断分母。
-- P1：多 seed AirSim 校准 helper/report 已补齐，并已由 main runtime 的 P1 D4/D5 calibration sweep 自动调用；可输出 coverage/funnel/gimbal、detect-to-registration 分层漏斗、cross-view registration、D7 guidance reject reason、active degradation precision 和 actual scale 分组字段。剩余 P1 是让 main/D4/D5/D7 持续写真实多 seed 数据，并用更多 5v5/N-v-N 批次沉淀长期趋势和阈值校准。
+- P0：P0-A/P0-C 字段已补齐。D6 当前输出 mission outcome、success/failure reason、top failure causes/root cause、性能监测字段、EVAL tracking schema 和 `cuas-standard-map-v1` 标准化评估映射最小版；仍保持离线消费日志，不参与控制；指标继续按实际规模归一化，不从 `5v5` 名称推断分母。
+- P1：多 seed AirSim 校准 helper/report 已补齐，并已由 main runtime 的 P1 D4/D5 calibration sweep 自动调用；可输出 coverage/funnel/gimbal、detect-to-registration 分层漏斗、cross-view registration、D7 guidance reject reason、active degradation precision 和 actual scale 分组字段。剩余 P1 是 COURAGEOUS/MDPI/OCEF 完整标准化报告、baseline 对比和统计显著性、场景库管理、CI 回归摘要，以及让 main/D4/D5/D7 持续写真实多 seed 数据并沉淀长期趋势和阈值校准。
 
 ## PNG 策略
 
@@ -135,6 +136,7 @@ collector.add_link(
     )
 )
 metrics = collector.compute_episode(episode_id="example", duration=10.0)
+ReportGenerator().write_standard_mapping_csv("standard_metric_mapping.csv")
 ```
 
 ## 未接入项

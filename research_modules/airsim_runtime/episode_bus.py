@@ -90,6 +90,9 @@ from .adapters import (
 from .models import BlocksSmokeConfig
 
 
+STANDARD_MAPPING_VERSION = "cuas-standard-map-v1"
+
+
 @dataclass(frozen=True)
 class MainEpisodeBusTick:
     """One frame's main bus snapshot for interface debugging."""
@@ -349,7 +352,11 @@ class MainAirSimEpisodeBus:
         metrics.failure_reason = str(mission["failure_reason"])
         metrics.eval_priority = "P0"
         metrics.implementation_status = "implemented"
-        metrics.evidence_path = str(output_dir)
+        metrics.evidence_path = str(output_dir / "main_episode_bus_metrics.json")
+        if hasattr(metrics, "scenario_version"):
+            metrics.scenario_version = _scenario_version(self.config, frames_list)
+        if hasattr(metrics, "standard_mapping_version"):
+            metrics.standard_mapping_version = STANDARD_MAPPING_VERSION
         metrics.module_duration_ms = float(
             self._episode_clock_metadata(frames_list)["mean_processing_duration_s"] * 1000.0
         )
@@ -391,6 +398,8 @@ class MainAirSimEpisodeBus:
             "frame_count": len(frames_list),
             "clock": self._episode_clock_metadata(frames_list),
             "scenario_config": self._scenario_config_metadata(frames_list),
+            "standard_mapping_version": STANDARD_MAPPING_VERSION,
+            "scenario_version": _scenario_version(self.config, frames_list),
             "module_health": self._module_health_snapshot(
                 frames_list[-1].timestamp if frames_list else 0.0
             ),
@@ -1144,6 +1153,8 @@ class MainAirSimEpisodeBus:
             "duration_s": self.config.duration_s,
             "dt_s": self.config.dt_s,
             "settings_path": str(self.config.settings_path),
+            "scenario_version": _scenario_version(self.config, frames),
+            "standard_mapping_version": STANDARD_MAPPING_VERSION,
             "resource_vehicle_names": list(self.config.resource_vehicle_names),
             "camera_vehicle_names": list(self.config.effective_camera_vehicle_names()),
             "secondary_camera_vehicle_names": list(self.config.secondary_camera_vehicle_names),
@@ -1202,6 +1213,8 @@ class MainAirSimEpisodeBus:
             "record_latency_ms": self._record_latency_ms(),
             "performance_budget_violation_count": self._performance_budget_violation_count(),
             "scenario_config": self._scenario_config_metadata(frames),
+            "standard_mapping_version": STANDARD_MAPPING_VERSION,
+            "scenario_version": _scenario_version(self.config, frames),
         }
 
     def _record_latency_ms(self) -> float:
@@ -1418,13 +1431,42 @@ def _truth_summary_for_bus(frames: list[AirSimFrame], config: BlocksSmokeConfig)
             "source": "main_episode_bus",
             "offline_only": False,
             "real_airsim_used": True,
+            "scenario_version": _scenario_version(config, frames),
+            "standard_mapping_version": STANDARD_MAPPING_VERSION,
         },
         "target_count": target_count,
         "resource_count": resource_count,
         "drone_count": resource_count,
         "camera_count": camera_count,
+        "scenario_version": _scenario_version(config, frames),
+        "standard_mapping_version": STANDARD_MAPPING_VERSION,
+        "eval_priority": "P0-A",
+        "implementation_status": "implemented",
         "timestamps": timestamps,
     }
+
+
+def _scenario_version(config: BlocksSmokeConfig, frames: list[AirSimFrame] | None = None) -> str:
+    resource_count = max(
+        [len(config.resource_vehicle_names)]
+        + [len(frame.resources) for frame in frames or ()]
+    )
+    target_count = max(
+        [config.target_count()]
+        + [
+            sum(1 for obj in frame.truth_objects if obj.object_type == "target")
+            for frame in frames or ()
+        ]
+    )
+    camera_count = max(
+        [len(config.effective_camera_vehicle_names())]
+        + [len(frame.cameras) for frame in frames or ()]
+    )
+    backend = str(config.detection_backend or "airsim")
+    return (
+        f"{config.scenario_name}:resources{resource_count}:targets{target_count}:"
+        f"cameras{camera_count}:seed{config.seed}:backend{backend}:v1"
+    )
 
 
 def _write_d6_episode_jsonl(

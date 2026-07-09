@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import signal
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -582,9 +583,17 @@ def test_blocks_process_manager_uses_repo_settings(tmp_path: Path, monkeypatch) 
         def poll(self):
             return 0
 
-    def fake_popen(cmd, cwd, stdout, stderr, text, env):
+    def fake_popen(cmd, cwd, stdout, stderr, text, env, start_new_session):
         calls.append(
-            {"cmd": cmd, "cwd": cwd, "stdout": stdout, "stderr": stderr, "text": text, "env": env}
+            {
+                "cmd": cmd,
+                "cwd": cwd,
+                "stdout": stdout,
+                "stderr": stderr,
+                "text": text,
+                "env": env,
+                "start_new_session": start_new_session,
+            }
         )
         return FakeProcess()
 
@@ -599,6 +608,7 @@ def test_blocks_process_manager_uses_repo_settings(tmp_path: Path, monkeypatch) 
     assert cmd[1] == f"-settings={settings.resolve()}"
     assert "-windowed" in cmd
     assert calls[0]["env"]["__NV_PRIME_RENDER_OFFLOAD"] == "1"
+    assert calls[0]["start_new_session"] is True
 
 
 def test_blocks_process_manager_uses_bash_for_non_executable_script(
@@ -615,7 +625,7 @@ def test_blocks_process_manager_uses_bash_for_non_executable_script(
         def poll(self):
             return 0
 
-    def fake_popen(cmd, cwd, stdout, stderr, text, env):
+    def fake_popen(cmd, cwd, stdout, stderr, text, env, start_new_session):
         calls.append(cmd)
         return FakeProcess()
 
@@ -627,6 +637,52 @@ def test_blocks_process_manager_uses_bash_for_non_executable_script(
     assert calls[0][0] == "bash"
     assert calls[0][1] == str(script.resolve())
     assert calls[0][2] == f"-settings={settings.resolve()}"
+
+
+def test_blocks_process_manager_stop_signals_process_group(
+    tmp_path: Path, monkeypatch
+) -> None:
+    script = tmp_path / "Blocks.sh"
+    settings = tmp_path / "settings.json"
+    script.write_text("#!/bin/sh\n", encoding="utf-8")
+    settings.write_text("{}", encoding="utf-8")
+    signals: list[tuple[int, int]] = []
+
+    class FakeRunningProcess:
+        pid = 2468
+        terminated = False
+
+        def poll(self):
+            return 0 if self.terminated else None
+
+        def terminate(self):
+            raise AssertionError("stop should signal the process group first")
+
+        def kill(self):
+            raise AssertionError("SIGTERM path should not need process.kill")
+
+        def wait(self, timeout=None):
+            self.terminated = True
+            return 0
+
+    process = FakeRunningProcess()
+
+    def fake_killpg(pid: int, signum: int) -> None:
+        signals.append((pid, signum))
+        process.terminated = True
+
+    manager = BlocksProcessManager(script, settings, tmp_path / "out")
+    manager.process = process  # type: ignore[assignment]
+    monkeypatch.setattr("os.killpg", fake_killpg)
+    monkeypatch.setattr(
+        manager,
+        "_wait_for_rpc_port_closed",
+        lambda timeout_s=8.0: True,
+    )
+
+    manager.stop(timeout_s=1.0)
+
+    assert signals == [(2468, signal.SIGTERM)]
 
 
 def test_blocks_process_manager_diagnostics_classify_log(tmp_path: Path) -> None:
@@ -1579,6 +1635,10 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
     assert truth_summary["target_count"] == 5
     assert truth_summary["resource_count"] == 5
     assert truth_summary["drone_count"] == 5
+    assert truth_summary["standard_mapping_version"] == "cuas-standard-map-v1"
+    assert truth_summary["scenario_version"].startswith(
+        "blocks_actor_n5:resources5:targets5:cameras5:seed7:backendairsim:"
+    )
     assert len(collector.track_records) >= 15
     assert len(collector.assignment_records) >= 5
     assert len(collector.terminal_records) >= 5
@@ -1648,13 +1708,25 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
     assert metrics_metadata["success_reason"] == "episode_bus_records_complete"
     assert metrics_metadata["clock"]["frame_count"] == 3
     assert metrics_metadata["module_health"]["D7"]["status"] == "ok"
+    assert metrics_metadata["standard_mapping_version"] == "cuas-standard-map-v1"
+    assert metrics_metadata["scenario_version"].startswith(
+        "blocks_actor_n5:resources5:targets5:cameras5:seed7:backendairsim:"
+    )
     assert metrics_metadata["scenario_config"]["resource_vehicle_names"] == list(resources)
+    assert (
+        metrics_metadata["scenario_config"]["standard_mapping_version"]
+        == "cuas-standard-map-v1"
+    )
     summary_payload = json.loads(
         result.output_paths["main_episode_bus_summary_json"].read_text(encoding="utf-8")
     )
     assert summary_payload["mission_outcome"]["mission_outcome"] == "success"
     assert summary_payload["module_health"]["D6"]["status"] == "passive_collector"
     assert summary_payload["scenario_config"]["target_count"] == 5
+    assert summary_payload["standard_mapping_version"] == "cuas-standard-map-v1"
+    assert summary_payload["scenario_version"].startswith(
+        "blocks_actor_n5:resources5:targets5:cameras5:seed7:backendairsim:"
+    )
 
 
 def test_main_episode_bus_records_failed_outcome_on_module_exception(

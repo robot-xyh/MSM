@@ -18,11 +18,11 @@ D4 当前已经形成可测试的降级骨架，且与主 GAP 的 P1 状态基�
 
 ## EVAL P0/P1 同步
 
-本节仅同步 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` 中已经确认的 D4 P0/P1 条目，不改变下面“已实现/部分实现/未实现”表中已经完成的状态，也不调整 P2/P3 对照项。
+本节仅同步 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` 中已经确认的 D4 P0/P1 条目，不改变下面“已实现/部分实现/未实现”表中已经完成的状态，也不调整 P2/P3 对照项。当前没有新增运行级 P0 blocker；已实现的 P0 项按“保持回归”处理，若后续出现未完成 P0，只能列为 P0 backlog 并绑定明确验收口径。
 
 ### P0-B 降级层级硬化
 
-D4 的 P0-B 硬化继续按四级层级解释，不把单个传感器或终端软证据直接提升成完全分布式降级：
+D4 的 P0-B 硬化继续按四级层级解释，不把单个传感器或终端软证据直接提升成完全分布式降级，也不绕过 D3/D5/D7 gate：
 
 1. **中心正常**：`continue_center` 是默认路径；heartbeat 短时抖动先进入 `suspect/degraded` 观察，不直接判定中心失效。
 2. **主动重规划**：中心仍可用但 D1/D2/D3/D5 证据显示硬风险时，D4 只输出 `request_center_replan`，由 main/D3 发布新版本计划；主动降级防抖继续依赖 dwell/release、硬/软风险分层和三值 review label。
@@ -31,20 +31,21 @@ D4 的 P0-B 硬化继续按四级层级解释，不把单个传感器或终端�
 
 | EVAL P0-B 条目 | D4 当前状态 | 同步后的缺口/验收口径 |
 |---|---|---|
-| Heartbeat 平滑 | 已完成。`FailoverCoordinator` 新增 heartbeat sliding window、miss threshold、`degraded/suspect/failed` dwell；有 heartbeat 样本流时，短时丢包/延迟先进入 degraded/suspect，不直接 failed | `tests/test_health.py::test_heartbeat_window_suppresses_single_delayed_sample_before_failed`；真实 AirSim false failover rate 仍属于 P1 多 seed 校准 |
-| Lease 严格管理 | 已完成 D4 合同层。`SecondaryTakeoverPlanMetadata` 输出 lease epoch/expiry、epoch monotonic、executable、reject reason 和 `recovery_dual_track_audit`；过期或非单调替换二级 plan 保持 pending/not executable；当前 secondary-owned 同 id/version plan 可保持 active，D7 helper 不放行未就绪计划 | `tests/test_arbitration_adapter.py::test_adapter_rejects_expired_secondary_plan_as_not_executable`；`::test_adapter_rejects_non_monotonic_secondary_plan_version`；`::test_adapter_accepts_current_active_secondary_plan_with_same_id_and_version`；系统级执行仍由 main/D3/D7 消费这些字段 |
-| 二级能力评估 | 已完成 D4 合同层。`SecondaryNodeLifecycleSummary` 输出 `secondary_visible`、`secondary_registered`、`secondary_takeover_capable`、`secondary_capability_score/reasons`，接管选择要求 takeover capable；visible-but-not-registered 只可辅助/诊断，不可接管 | `tests/test_active_degradation.py::test_visible_but_not_registered_secondary_is_not_takeover_capable`；`tests/test_arbitration_adapter.py::test_adapter_reports_secondary_detect_visible_without_cross_view_registration` |
-| 主动降级防抖 | 已完成 D4 合同层。保留 `risk_window_size`、`risk_window_threshold`、`min_dwell_s`、release 条件和硬/软风险分层；无冲突 reacquire 不直接降级；adapter 输出 hard/soft risk 和 `active_degradation_false_trigger_candidate` | `tests/test_active_degradation.py::test_no_conflict_reacquire_requests_secondary_cue_without_takeover`；`tests/test_arbitration_adapter.py::test_adapter_marks_unnecessary_active_degradation_as_false_trigger_candidate`；真实 false trigger rate 仍需 P1 多 seed 标定 |
+| Heartbeat 平滑 | 已完成，保持回归。`FailoverCoordinator` 新增 heartbeat sliding window、miss threshold、`degraded/suspect/failed` dwell；有 heartbeat 样本流时，短时丢包/延迟先进入 degraded/suspect，不直接 failed | `tests/test_health.py::test_heartbeat_window_suppresses_single_delayed_sample_before_failed`；真实 AirSim false failover rate 仍属于 P1 多 seed 校准 |
+| Lease/epoch 严格合同 | 已完成 D4 合同层，保持回归。`SecondaryTakeoverPlanMetadata` 输出 lease epoch/expiry、epoch monotonic、executable、reject reason 和 `recovery_dual_track_audit`；过期或非单调替换二级 plan 保持 pending/not executable；当前 secondary-owned 同 id/version plan 可保持 active，D7 helper 不放行未就绪计划 | `tests/test_arbitration_adapter.py::test_adapter_rejects_expired_secondary_plan_as_not_executable`；`::test_adapter_rejects_non_monotonic_secondary_plan_version`；`::test_adapter_accepts_current_active_secondary_plan_with_same_id_and_version`；系统级执行仍由 main/D3/D7 消费这些字段 |
+| 二级能力评估 | 已完成 D4 合同层，保持回归。`SecondaryNodeLifecycleSummary` 输出 `secondary_visible`、`secondary_registered`、`secondary_takeover_capable`、`secondary_capability_score/reasons`，接管选择要求 takeover capable；visible-but-not-registered 只可辅助/诊断，不可接管 | `tests/test_active_degradation.py::test_visible_but_not_registered_secondary_is_not_takeover_capable`；`tests/test_arbitration_adapter.py::test_adapter_reports_secondary_detect_visible_without_cross_view_registration` |
+| 主动降级防抖 | 已完成 D4 合同层，保持回归。保留 `risk_window_size`、`risk_window_threshold`、`min_dwell_s`、release 条件和硬/软风险分层；无冲突 reacquire 不直接降级；adapter 输出 hard/soft risk 和 `active_degradation_false_trigger_candidate` | `tests/test_active_degradation.py::test_no_conflict_reacquire_requests_secondary_cue_without_takeover`；`tests/test_arbitration_adapter.py::test_adapter_marks_unnecessary_active_degradation_as_false_trigger_candidate`；真实 false trigger rate 仍需 P1 多 seed 标定 |
 
 ### P1 边界
 
-以下 D4 条目按 EVAL 保留为 P1 后续项。它们用于增强网络退化、选举对照和通信统计可信度，但不提升为当前 P0，也不替换现有四级降级主线。
+以下 D4 条目按 EVAL 保留为 P1 后续项。它们用于增强网络退化、选举对照、分布式通信效率和通信统计可信度，但不提升为当前 P0，也不替换现有四级降级主线。etcd/Raft/SwarmRaft/DDS 是对照或后续工程化方向，不是当前 P0 强依赖；任何 P1 对照只能丰富 D4 record/D6 统计，不能绕过 D3 plan version、D5 身份/终端 gate 或 D7 handoff gate。D4 主链路 action 合同仍保持 `continue_center`、`request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed`。
 
 | EVAL P1 条目 | 当前边界 | 验收口径 |
 |---|---|---|
-| 网络分区检测 | 当前 D4 有通信 freshness、peer quorum、digest conflict 和内存网络统计，但脑裂/分区状态仍不足；P1 只做检测和审计，不允许分区侧绕过 main/D3/D7 合同 | 网络分区注入下输出 `partition_state`、conflict count、peer view/digest 差异和恢复后的 merge audit |
-| Raft/Leader 选举对照 | 当前默认是二级接管排序和轻量 CBBA，尚无成熟 Raft/leader election 对照；P1 只能作为可复现实验对照，不替代 `degrade_to_secondary`/CBBA 默认路径 | 选举日志可回放，leader change、term/epoch、timeout、conflict 与二级接管结果可被 D6 统计，且不产生执行绕过 |
-| DDS QoS/通信策略 | 当前通信是仿真 summary/内存网络合同，真实 DDS/ROS2 QoS 不属于 D4 直接拥有路径；P1 先建模丢包、优先级、stale link 和消息 freshness | D6 可统计 packet loss、delay、priority、stale link、freshness age 和对 failover/CBBA 收敛的影响 |
+| Raft/SwarmRaft leader election 对照 | 当前默认是二级接管排序和轻量 CBBA，尚无成熟 Raft/SwarmRaft leader election 对照；P1 只能作为可复现实验对照，不替代 `degrade_to_secondary`/CBBA 默认路径，也不要求当前集成 etcd | 选举日志可回放，leader change、term/epoch、timeout、conflict 与二级接管结果可被 D6 统计，且不产生执行绕过 |
+| Event-Driven CBBA 通信优化 | 当前本地轻量 CBBA 已有 round/message/conflict 统计和内存网络 packet loss/delay，但仍按现有协商节奏运行；P1 只评估事件触发消息减少，不替换 no-center 默认保底语义 | 同一任务/资源输入下输出 baseline vs event-driven 的 message count、consensus rounds、conflict rate、completion rate 和 cost gap，且不改写 `global_track_id` 或 D3 plan owner |
+| 网络分区检测与恢复韧性指标 | 当前 D4 有通信 freshness、peer quorum、digest conflict、内存网络统计和 assignment-only merge，但脑裂/分区状态、恢复审计和韧性分数仍不足；P1 只做检测、恢复审计和 D6 指标，不允许分区侧绕过 main/D3/D7 合同 | 网络分区注入下输出 `partition_state`、conflict count、peer view/digest 差异、恢复后的 merge audit 和 `resilience_score`/等价韧性指标 |
+| DDS QoS 通信策略仿真 | 当前通信是仿真 summary/内存网络合同，真实 DDS/ROS2 QoS 不属于 D4 直接拥有路径；P1 先建模丢包、优先级、stale link、message durability/reliability 和消息 freshness，不把 DDS/RTI/ROS2 生产化列为 P0 | D6 可统计 packet loss、delay、priority delivery、stale link、freshness age、QoS profile 和对 failover/CBBA 收敛的影响 |
 
 ## 完全无中心模式边界
 

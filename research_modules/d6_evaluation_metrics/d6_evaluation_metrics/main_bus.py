@@ -8,6 +8,12 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from .metrics import EpisodeMetrics, _normalize_metric_scope
+from .standard_mapping import (
+    STANDARD_MAPPING_VERSION,
+    standard_mapping_summary,
+    standard_metric_families,
+    standard_metric_family_summary as _standard_metric_family_summary,
+)
 
 
 def load_main_episode_bus_metrics(path: str | Path) -> EpisodeMetrics:
@@ -34,6 +40,8 @@ def load_main_episode_bus_metrics(path: str | Path) -> EpisodeMetrics:
     eval_priority_missing = "eval_priority" not in values
     implementation_status_missing = "implementation_status" not in values
     evidence_path_missing = "evidence_path" not in values
+    scenario_version_missing = "scenario_version" not in values
+    standard_family_summary_missing = "standard_metric_family_summary" not in values
 
     metric_scope = _normalize_metric_scope(values.get("metric_scope"))
     if metric_scope == "not_recorded":
@@ -63,12 +71,31 @@ def load_main_episode_bus_metrics(path: str | Path) -> EpisodeMetrics:
         )
     if evidence_path_missing:
         metrics.evidence_path = str(metadata.get("evidence_path") or path)
+    if scenario_version_missing:
+        metrics.scenario_version = str(metadata.get("scenario_version") or "")
+    metrics.standard_mapping_version = STANDARD_MAPPING_VERSION
+    if standard_family_summary_missing:
+        metrics.standard_metric_family_summary = str(
+            metadata.get("standard_metric_family_summary")
+            or _standard_metric_family_summary()
+        )
     metrics.metadata.setdefault("mission_outcome", metrics.mission_outcome)
     metrics.metadata.setdefault("success_reason", metrics.success_reason)
     metrics.metadata.setdefault("failure_reason", metrics.failure_reason)
     metrics.metadata.setdefault("eval_priority", metrics.eval_priority)
     metrics.metadata.setdefault("implementation_status", metrics.implementation_status)
     metrics.metadata.setdefault("evidence_path", metrics.evidence_path)
+    metrics.metadata.setdefault("scenario_version", metrics.scenario_version)
+    metrics.metadata.setdefault(
+        "standard_mapping_version",
+        metrics.standard_mapping_version,
+    )
+    metrics.metadata.setdefault("standard_metric_families", standard_metric_families())
+    metrics.metadata.setdefault(
+        "standard_metric_family_summary",
+        metrics.standard_metric_family_summary,
+    )
+    metrics.metadata.setdefault("standard_mapping", standard_mapping_summary())
     return metrics
 
 

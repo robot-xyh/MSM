@@ -2,14 +2,14 @@
 
 **定位**：维护稳定的 `global_track_id`，在目标交叉、密集编队、漏检、遮挡和虚警条件下抑制 ID Switch。
 **边界**：本文只讨论科研仿真、离线回放、多目标跟踪、数据关联、状态机和指标记录，不包含真实飞控、火控、毁伤、自动处置或绕过人工授权的流程。
-**当前代码口径**：已落地的是 GNN/Hungarian、可插拔 `DataAssociator`、二维常速度 Kalman fallback、Track 状态机、IDSW/continuity/duplicate 指标、风险摘要、D1 投影 adapter、AirSim dry-run adapter、离线 JSON/JSONL replay reader/report、seed/episode/scenario/frame/offline truth label 校准元数据透传、`RiskThresholds.profile_version`、threshold sensitivity helper 和 multi-seed calibration summary helper。JPDA/MHT 是可执行研究对照；IMM/EKF/UKF、Stone Soup、FilterPy 仍是未来对照或 adapter 计划。
+**当前代码口径**：已落地的是 GNN/Hungarian、可插拔 `DataAssociator`、二维常速度 Kalman fallback、Track 状态机、IDSW/continuity/duplicate 指标、风险摘要、track quality/association risk、motion consistency cost、quality-aware gate baseline、D1 投影 adapter、AirSim dry-run adapter、离线 JSON/JSONL replay reader/report、seed/episode/scenario/frame/offline truth label 校准元数据透传、`RiskThresholds.profile_version`、threshold sensitivity helper 和 multi-seed calibration summary helper。JPDA/MHT 是可执行研究对照；BP、SORT/ByteTrack-style fallback、IMM/EKF/UKF、Stone Soup、FilterPy 仍是未来对照或 adapter 计划。
 
 ---
 
 ## 0. P0/P1 缺口快照
 
-- **P0**：无 P0 blocker。GNN/Hungarian、显式 `id_switch_count`、`track_continuity`、risk summary、replay helper 和按输入集合长度运行的规则已是当前主线。
-- **P1**：D2-owned replay/report、risk split、threshold sensitivity、multi-seed summary、metadata/profile version、D1 adapter、5v5 dense/crossing fixture 和 IDSW/continuity 基线已完成；真实 AirSim 多 seed association threshold/risk calibration 的数据生产和批量执行仍是 P1 集成缺口，依赖 main/runtime/D6 提供真实 5v5 AirSim replay、离线 truth labels、episode 级阈值配置来源和稳定 JSONL schema。
+- **P0**：无 P0 blocker。GNN/Hungarian、显式 `id_switch_count`、`track_continuity`、risk summary、replay helper、按输入集合长度运行、航迹质量评分、运动一致性约束和 quality-aware gate baseline 已是当前主线并保持回归。
+- **P1**：D2-owned replay/report、risk split、threshold sensitivity、multi-seed summary、metadata/profile version、D1 adapter、5v5 dense/crossing fixture 和 IDSW/continuity 基线已完成；JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、N/M 初始化和协方差一致性检查，以及真实 AirSim 多 seed association threshold/risk calibration 的数据生产和批量执行仍是 P1 缺口或集成缺口。外部工具/算法只作对照或增强，不是当前 P0 主线。
 - **main/D6 最新状态**：main runtime 已新增 P1 D4/D5 calibration sweep，D6 标准 AirSim calibration report bundle 已能自动生成。D2 不接管 sweep 或报告生成；D2 后续需要把真实 5v5 replay 的 association logs、offline truth labels 和 risk profile/version 对齐到该 bundle 的分组报告口径。
 
 ## 1. 研究问题
@@ -33,8 +33,8 @@ D2/D6 的系统规则必须保留：`id_switch_count` 是强制显式指标，�
 
 ### 2.1 已实现
 
-- **GNN/Hungarian**：`GNNHungarianAssociator` 通过 `scipy.optimize.linear_sum_assignment` 求解一对一匹配，代价来自马氏距离和可选 feature cost。
-- **马氏门控**：`build_gated_cost_matrix()` 生成 `N x M` cost/distance matrix，记录 `candidate_counts_by_track`、`candidate_counts_by_detection` 和 `RejectedPair`。
+- **GNN/Hungarian**：`GNNHungarianAssociator` 通过 `scipy.optimize.linear_sum_assignment` 求解一对一匹配，代价来自马氏距离、可选 feature cost 和 motion consistency cost。
+- **马氏门控**：`build_gated_cost_matrix()` 生成 `N x M` cost/distance matrix，记录 `candidate_counts_by_track`、`candidate_counts_by_detection`、per-track quality-aware gate threshold 和 `RejectedPair`。
 - **可插拔关联器**：`DataAssociator.associate()` 是统一接口，`Tracker` 只消费 `AssociationResult`。
 - **二维 Kalman fallback**：`Tracker` 使用 `[x,y,vx,vy]` 和 4x4 covariance 做常速度预测、Joseph update、建轨和漏检处理。
 - **Track 状态机**：代码中只有 `tentative -> confirmed -> engageable -> lost -> dropped`，并支持 lost 后重新命中回到 `confirmed` 或 `engageable`。
@@ -271,7 +271,7 @@ D6 消费 D2 `AssociationLogEntry`、`TrackTransition`、summary 和 confusion m
 
 ### 9.1 多目标交叉
 
-GNN 在交叉窗口内只能做单帧硬判决。如果两条航迹的最优和次优候选代价差距很小，GNN 可能任意打破平局，造成后续 ID Switch。JPDA/MHT 对照能暴露歧义，但当前实现还不足以承诺消除该风险。
+GNN 在交叉窗口内只能做单帧硬判决。如果两条航迹的最优和次优候选代价差距很小，GNN 可能任意打破平局，造成后续 ID Switch。JPDA/MHT/BP 对照能暴露歧义和 track coalescence 风险，但当前实现还不足以承诺消除该风险。
 
 ### 9.2 密集编队
 
@@ -324,7 +324,7 @@ PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_da
 - 剩余 P1 阈值与标定执行：main/D6 需要发布真实 episode 的 gate/risk threshold profile/version 配置来源，并用多 seed 真实 5v5 dense/crossing、短遮挡、漏检、虚警 replay 调用 D2 helper 校准软风险误触发率和硬风险漏报率。
 - 与最新 runtime 对齐：P1 D4/D5 calibration sweep 和 D6 report bundle 已由 main/D6 提供，D2 后续工作应集中在真实 5v5 AirSim replay 的 association risk profile/version、offline truth labels、ID switch 阈值治理和 D6 分组报告校准。
 - 保留非 2/5 数量合同测试，防止算法和文档回退到固定规模假设。
-- 明确 JPDA/MHT 只在高歧义回放中作为对照或建议，不默认替代 GNN 主线。
+- 明确 JPDA/MHT/BP 和 SORT/ByteTrack-style fallback 只在高歧义回放、fallback 对照或视觉 MOT 场景中作为对照或建议，不默认替代 GNN 主线。
 
 ### P2
 

@@ -11,6 +11,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .main_bus import load_main_episode_bus_metrics
 from .metrics import EpisodeMetrics
+from .standard_mapping import standard_mapping_summary
 
 
 GROUP_FIELDS = [
@@ -240,6 +241,14 @@ class AirSimCalibrationReportGenerator:
     ) -> Path:
         return write_airsim_calibration_summary_json(rows, path)
 
+    def write_standard_mapping_csv(
+        self,
+        path: str | Path,
+    ) -> Path:
+        from .reporting import ReportGenerator
+
+        return ReportGenerator().write_standard_mapping_csv(path)
+
     def write_markdown_report(
         self,
         records: Iterable[AirSimCalibrationRecord | Mapping[str, Any]],
@@ -273,6 +282,9 @@ class AirSimCalibrationReportGenerator:
             "summary_json": self.write_summary_json(
                 rows,
                 output_dir / "airsim_calibration_summary.json",
+            ),
+            "standard_mapping_csv": self.write_standard_mapping_csv(
+                output_dir / "standard_metric_mapping.csv",
             ),
             "markdown": self.write_markdown_report(
                 records,
@@ -618,17 +630,37 @@ def write_airsim_calibration_markdown(
             )
         )
 
+    mapping_summary = standard_mapping_summary()
+    family_counts = mapping_summary.get("family_counts", {})
+    sources = mapping_summary.get("standard_sources", [])
+    families = mapping_summary.get("standard_metric_families", [])
     lines.extend(
         [
             "",
-            "## 4. 解读口径",
+            "## 4. Standard C-UAS Mapping",
+            "",
+            f"- Mapping version: {mapping_summary['version']}",
+            f"- 标准来源: {', '.join(sources) if sources else 'not_recorded'}",
+            f"- 覆盖的指标族: {', '.join(families) if families else 'not_recorded'}",
+            "",
+            "| Metric family | Mapped metric count |",
+            "|---|---:|",
+        ]
+    )
+    for family in families:
+        lines.append(f"| {_markdown_cell(family)} | {int(family_counts.get(family, 0) or 0)} |")
+
+    lines.extend(
+        [
+            "",
+            "## 5. 解读口径",
             "",
             "- coverage/full-view/gimbal 指标来自 main/D4/D5 已写盘的 D4D5 stress 或 main bus metadata，用于长期趋势比较。",
             "- active degradation precision 只使用 main/D4 写出的 review label 或后验字段；缺少标签时不会由事件名自证必要性。",
             "- D7 reject reason 同时汇总 terminal switch 与 terminal contract reject 分布，用于 execution/contract 对照。",
             "- 规模字段使用 runtime metrics 或日志中的实际 count 字段；报告不从 `2v2/5v5` 场景名推断目标数、资源数或相机数。",
             "",
-            "## 5. 文件索引",
+            "## 6. 文件索引",
             "",
         ]
     )
@@ -1494,6 +1526,11 @@ def _compact_json(value: Any) -> str:
     if value in (None, {}, []):
         return ""
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _markdown_cell(value: Any) -> str:
+    text = str(value or "").replace("\n", " ").replace("|", "\\|")
+    return text or "not_recorded"
 
 
 def _format_optional_number(value: Any) -> str:

@@ -14,6 +14,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from .metrics import EpisodeMetrics
+from .standard_mapping import (
+    STANDARD_MAPPING_CSV_FIELDNAMES,
+    STANDARD_MAPPING_VERSION,
+    standard_mapping_csv_rows,
+    standard_mapping_family_rows,
+)
 
 
 class ReportGenerator:
@@ -172,11 +178,29 @@ class ReportGenerator:
             "eval_priority",
             "implementation_status",
             "evidence_path",
+            "scenario_version",
+            "standard_mapping_version",
+            "standard_metric_family_summary",
         ] + EpisodeMetrics.metric_names() + ["metadata"]
         with path.open("w", newline="", encoding="utf-8") as stream:
             writer = csv.DictWriter(stream, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(rows)
+        return path
+
+    def write_standard_mapping_csv(
+        self,
+        path: str | Path,
+    ) -> Path:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(
+                stream,
+                fieldnames=STANDARD_MAPPING_CSV_FIELDNAMES,
+            )
+            writer.writeheader()
+            writer.writerows(standard_mapping_csv_rows())
         return path
 
     def write_summary_csv(
@@ -264,6 +288,8 @@ class ReportGenerator:
             f"- Camera count: {_scale_range_text(episode_list, 'camera_count')}",
             f"- Mission outcome: {_mission_outcome_range_text(episode_list)}",
             f"- EVAL priority: {_eval_priority_range_text(episode_list)}",
+            f"- Scenario version: {_scenario_version_range_text(episode_list)}",
+            f"- Standard mapping version: {_standard_mapping_version_range_text(episode_list)}",
             "",
             "## Mission Outcome / Root Cause",
             "",
@@ -305,6 +331,25 @@ class ReportGenerator:
         for row in eval_rows:
             lines.append(
                 "| {episode_id} | {eval_priority} | {implementation_status} | {evidence_path} |".format(
+                    **row
+                )
+            )
+
+        lines.extend(
+            [
+                "",
+                "## Standard C-UAS Mapping",
+                "",
+                f"- Mapping version: {_standard_mapping_version_range_text(episode_list)}",
+                f"- Scenario version: {_scenario_version_range_text(episode_list)}",
+                "",
+                "| Engineering metric | Standard metric family | Standard sources | Implementation status | Evidence requirement |",
+                "|---|---|---|---|---|",
+            ]
+        )
+        for row in _standard_mapping_report_rows():
+            lines.append(
+                "| {engineering_metric} | {standard_metric_family} | {standard_sources} | {implementation_status} | {evidence_requirement} |".format(
                     **row
                 )
             )
@@ -660,6 +705,27 @@ def _eval_priority_range_text(episodes: list[EpisodeMetrics]) -> str:
     return ", ".join(priorities) if priorities else "not recorded"
 
 
+def _scenario_version_range_text(episodes: list[EpisodeMetrics]) -> str:
+    versions = sorted(
+        {
+            str(episode.scenario_version)
+            for episode in episodes
+            if episode.scenario_version
+        }
+    )
+    return ", ".join(versions) if versions else "not recorded"
+
+
+def _standard_mapping_version_range_text(episodes: list[EpisodeMetrics]) -> str:
+    versions = sorted(
+        {
+            str(episode.standard_mapping_version or STANDARD_MAPPING_VERSION)
+            for episode in episodes
+        }
+    )
+    return ", ".join(versions) if versions else STANDARD_MAPPING_VERSION
+
+
 def _mission_outcome_rows(episodes: list[EpisodeMetrics]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for episode in episodes:
@@ -730,6 +796,27 @@ def _eval_tracking_rows(episodes: list[EpisodeMetrics]) -> list[dict[str, str]]:
                     episode.implementation_status or "not recorded"
                 ),
                 "evidence_path": _markdown_cell(episode.evidence_path or "not recorded"),
+            }
+        )
+    return rows
+
+
+def _standard_mapping_report_rows() -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for row in standard_mapping_family_rows():
+        rows.append(
+            {
+                "engineering_metric": _markdown_cell(row["engineering_metric"]),
+                "standard_metric_family": _markdown_cell(
+                    row["standard_metric_family"]
+                ),
+                "standard_sources": _markdown_cell(row["standard_sources"]),
+                "implementation_status": _markdown_cell(
+                    row["implementation_status"]
+                ),
+                "evidence_requirement": _markdown_cell(
+                    row["evidence_requirement"]
+                ),
             }
         )
     return rows

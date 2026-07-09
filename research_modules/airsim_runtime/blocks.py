@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import signal
 import socket
 import subprocess
 import time
@@ -55,6 +56,7 @@ class BlocksProcessManager:
             stderr=subprocess.STDOUT,
             text=True,
             env=env,
+            start_new_session=True,
         )
         return self.process
 
@@ -62,16 +64,24 @@ class BlocksProcessManager:
         if self.process is None:
             return
         if self.process.poll() is not None:
+            if self._wait_for_rpc_port_closed(timeout_s=timeout_s):
+                return
+            self._signal_process_group(signal.SIGTERM)
+            if self._wait_for_rpc_port_closed(timeout_s=timeout_s):
+                return
+            self._signal_process_group(signal.SIGKILL)
             self._wait_for_rpc_port_closed(timeout_s=timeout_s)
             return
-        self.process.terminate()
+        if not self._signal_process_group(signal.SIGTERM):
+            self.process.terminate()
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             if self.process.poll() is not None:
                 self._wait_for_rpc_port_closed(timeout_s=max(0.0, deadline - time.monotonic()))
                 return
             time.sleep(0.2)
-        self.process.kill()
+        if not self._signal_process_group(signal.SIGKILL):
+            self.process.kill()
         self.process.wait(timeout=5.0)
         self._wait_for_rpc_port_closed(timeout_s=timeout_s)
 
@@ -170,6 +180,19 @@ class BlocksProcessManager:
                 return True
             time.sleep(0.2)
         return _tcp_port_status(host, port) != "open"
+
+    def _signal_process_group(self, signum: int) -> bool:
+        if self.process is None:
+            return False
+        try:
+            os.killpg(self.process.pid, signum)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return False
+        except OSError:
+            return False
+        return True
 
 
 def _tcp_port_status(host: str, port: int) -> str:

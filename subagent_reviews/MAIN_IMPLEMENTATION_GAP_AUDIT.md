@@ -4,7 +4,7 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
-**P0/P1 状态入口**：`subagent_reviews/MAIN_P0_P1_GAP_STATUS.md` 集中维护当前 P0/P1 owner、缺口、缺少条件和验收口径。`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` 已确认：当前未发现新的运行级 P0 阻塞断链，但存在进入可信 AirSim 多 seed、复杂降级和后续封闭场地验证前必须优先补齐的工程化 P0 backlog。2026-07-09 已完成该 backlog 的最小工程闭合：main runtime bus 补齐统一 clock/config/module health/runtime exception outcome；D1-D7 已由各自 owner 完成 P0-A/P0-B/P0-C 修复和文档同步；main runtime 跟进 D4 二级能力合同，修正 D4/D5 stress 的二级注册 evidence 桥接和成功注册原因过滤。P1 仍作为三个月内能力增强和标定项管理；P2/P3 本轮不调整。
+**P0/P1 状态入口**：`subagent_reviews/MAIN_P0_P1_GAP_STATUS.md` 集中维护当前 P0/P1 owner、缺口、缺少条件和验收口径。`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` v2.0 已确认：当前未发现新的运行级 P0 阻塞断链，但存在进入可信 AirSim 多 seed、复杂降级和后续封闭场地验证前必须优先补齐的工程化 P0 backlog。2026-07-09 已完成该 backlog 的最小工程闭合：main runtime bus 补齐统一 clock/config/module health/runtime exception outcome；D1-D7 已由各自 owner 完成 P0-A/P0-B/P0-C 修复和文档同步；main runtime 跟进 D4 二级能力合同，修正 D4/D5 stress 的二级注册 evidence 桥接和成功注册原因过滤。三份 patch 归并后新增的 P0-A 重点是 D6/main 的标准化评估映射最小版：`COURAGEOUS/MDPI/OCEF -> 当前 EpisodeMetrics`、standard metric family、scenario version 和 evidence path。P1 仍作为三个月内能力增强、标准化报告扩展和标定项管理；P2/P3 本轮不调整。
 
 ## 2026-07-09 P0 实施结果
 
@@ -154,6 +154,7 @@ D1 NumPy EKF/FusionAdapter
 4. main/D4/D5/D6 继续跑机动高空侦察节点 5v5 stress，分别统计单相机全局视野率、二级网络联合覆盖率、detect-to-registration 转换率、`secondary_detect_available_but_not_registered` 和 cross-view association。
 5. D5 已实现 YOLOv8 + MOT runtime adapter，main 已接入显式 YOLO 检测后端。下一步用真实 AirSim 多 seed 校准 `best.pt`、置信度、tracker backend、目标尺度和 FOV 条件；adapter 只输出 `LocalVisualTrack`，不允许 tracker ID 替代 `global_track_id`。
 6. D6 已实现主动降级必要性最小指标口径，main P1 sweep 已自动生成 D6 标准报告 bundle。下一步要求 main/D4 在真实 multi-seed episode 中持续写出 review/window 字段，形成可比较的 active degradation precision 和 unnecessary active degradation count。
+7. D6/main 按 patch v2.0 新增 P0-A 口径补齐标准化评估映射最小版：先把当前工程指标映射到 COURAGEOUS、MDPI C-UAS、OCEF 的指标族，并在报告中保留 `standard_metric_family`、`scenario_version`、`evidence_path`、`implementation_status`；完整标准流程、场景库和显著性对比留作 P1。
 
 ## 5. 建议实施顺序
 

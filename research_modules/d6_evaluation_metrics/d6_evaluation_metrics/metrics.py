@@ -12,6 +12,13 @@ from dataclasses import asdict, dataclass, field
 import math
 from typing import Any, Iterable, Mapping, Sequence
 
+from .standard_mapping import (
+    STANDARD_MAPPING_VERSION,
+    standard_mapping_summary,
+    standard_metric_families,
+    standard_metric_family_summary as _standard_metric_family_summary,
+)
+
 
 Position = Sequence[float]
 
@@ -123,6 +130,9 @@ class EpisodeMetrics:
     eval_priority: str = "P0"
     implementation_status: str = "implemented"
     evidence_path: str = ""
+    scenario_version: str = ""
+    standard_mapping_version: str = STANDARD_MAPPING_VERSION
+    standard_metric_family_summary: str = ""
     detection_probability: float = 0.0
     false_alarm_rate: float = 0.0
     missed_detection_rate: float = 0.0
@@ -517,6 +527,14 @@ class MetricsCollector:
         if resolved_batch_seed is None:
             resolved_batch_seed = seed
         scale_counts = self._episode_scale_counts(truth_summary)
+        scenario_version = _scenario_version_from_sources(
+            truth_summary,
+            self.event_records,
+        )
+        standard_mapping_version = _standard_mapping_version_from_sources(
+            truth_summary,
+            self.event_records,
+        )
         episode_duration = (
             float(duration)
             if duration is not None
@@ -530,6 +548,9 @@ class MetricsCollector:
             metric_scope=resolved_metric_scope,
             **scale_counts,
             duration=episode_duration,
+            scenario_version=scenario_version,
+            standard_mapping_version=standard_mapping_version,
+            standard_metric_family_summary=_standard_metric_family_summary(),
         )
 
         detection = self._compute_detection_metrics(
@@ -594,6 +615,11 @@ class MetricsCollector:
             "eval_priority": metrics.eval_priority,
             "implementation_status": metrics.implementation_status,
             "evidence_path": metrics.evidence_path,
+            "scenario_version": metrics.scenario_version,
+            "standard_mapping_version": metrics.standard_mapping_version,
+            "standard_metric_families": standard_metric_families(),
+            "standard_metric_family_summary": metrics.standard_metric_family_summary,
+            "standard_mapping": standard_mapping_summary(),
             **scale_counts,
             **degradation_metadata,
             **secondary_sensing_metadata,
@@ -3601,6 +3627,52 @@ def _metric_scope_from_truth_summary(truth_summary: Mapping[str, Any]) -> str:
                 if scoped != "not_recorded":
                     return scoped
     return "not_recorded"
+
+
+def _scenario_version_from_sources(
+    truth_summary: Mapping[str, Any],
+    records: Sequence[EventRecord],
+) -> str:
+    keys = (
+        "scenario_version",
+        "scenario_config_version",
+        "scenario_schema_version",
+        "scenario_definition_version",
+        "config_version",
+    )
+    for mapping in _truth_summary_count_mappings(truth_summary):
+        for key in keys:
+            value = _metadata_text(mapping, key)
+            if value is not None:
+                return value
+    for record in records:
+        for key in keys:
+            value = _metadata_text(record.metadata, key)
+            if value is not None:
+                return value
+    return ""
+
+
+def _standard_mapping_version_from_sources(
+    truth_summary: Mapping[str, Any],
+    records: Sequence[EventRecord],
+) -> str:
+    keys = (
+        "standard_mapping_version",
+        "standard_metric_mapping_version",
+        "cuas_standard_mapping_version",
+    )
+    for mapping in _truth_summary_count_mappings(truth_summary):
+        for key in keys:
+            value = _metadata_text(mapping, key)
+            if value == STANDARD_MAPPING_VERSION:
+                return value
+    for record in records:
+        for key in keys:
+            value = _metadata_text(record.metadata, key)
+            if value == STANDARD_MAPPING_VERSION:
+                return value
+    return STANDARD_MAPPING_VERSION
 
 
 def _normalize_metric_scope(value: Any) -> str:
