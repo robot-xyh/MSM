@@ -5,6 +5,7 @@ from d3_assignment_planner import (
     PlannerConfig,
     StalePlanError,
     apply_terminal_feedback_to_planner_inputs,
+    assignment_records_from_plan,
     assignment_validity_summary_from_plan,
     evaluate_terminal_feedback,
     guidance_bindings_from_assignment_plan,
@@ -95,6 +96,17 @@ def test_hysteresis_holds_when_dwell_time_is_too_short() -> None:
     assert second.last_changed_at == first.last_changed_at
     assert second.candidate_total_cost == 0.0
     assert second.previous_total_cost_current == 1.6
+    assert second.metadata["hysteresis_state"] == "held"
+    assert second.metadata["hysteresis_reason"] == "min_dwell_not_met"
+    assert second.metadata["hysteresis_reasons"] == ("min_dwell_not_met",)
+    assert second.metadata["hysteresis_dwell_ok"] is False
+
+    record = assignment_records_from_plan(second)[0]
+    assert record.hysteresis_state == "held"
+    assert record.hysteresis_reason == "min_dwell_not_met"
+    assert record.hysteresis_reasons == ("min_dwell_not_met",)
+    assert record.hysteresis_dwell_ok is False
+    assert record.hysteresis_candidate_change_count == 2
 
 
 def test_hysteresis_accepts_when_gain_and_dwell_pass() -> None:
@@ -121,6 +133,47 @@ def test_hysteresis_accepts_when_gain_and_dwell_pass() -> None:
     assert second.decision_state == "accepted_gain_and_dwell"
     assert second.changed is True
     assert second.previous_total_cost_current == 1.6
+    assert second.metadata["hysteresis_state"] == "released"
+    assert second.metadata["hysteresis_release_reason"] == "gain_dwell_change_limit_passed"
+
+
+def test_hysteresis_releases_when_high_threat_unassigned_target_improves() -> None:
+    config = PlannerConfig(delta=0.9, min_dwell=10.0, high_threat_threshold=0.7)
+    planner = _planner(config)
+    initial_tracks = [
+        TargetTrack("T1", 0.1, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0}),
+        TargetTrack(
+            "T2",
+            0.95,
+            0.1,
+            0.1,
+            fov_difficulty_by_resource={"R1": 0.0},
+            feasibility_by_resource={"R1": False},
+        ),
+    ]
+    shifted_tracks = [
+        TargetTrack("T1", 0.1, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0}),
+        TargetTrack("T2", 0.95, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0}),
+    ]
+    resources = [ResourceState("R1")]
+
+    first = planner.plan(initial_tracks, resources, timestamp=0.0)
+    second = planner.plan(
+        shifted_tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=first,
+    )
+
+    assert first.assignment_map() == {"T1": "R1"}
+    assert first.unassigned_target_ids == ("T2",)
+    assert second.assignment_map() == {"T2": "R1"}
+    assert second.decision_state == "accepted_high_threat_release"
+    assert second.metadata["hysteresis_state"] == "released"
+    assert second.metadata["hysteresis_release_reason"] == "high_threat_unassigned_reduced"
+    assert second.metadata["hysteresis_high_threat_release"] is True
+    assert second.metadata["hysteresis_previous_high_threat_unassigned_count"] == 1
+    assert second.metadata["hysteresis_candidate_high_threat_unassigned_count"] == 0
 
 
 def test_previous_infeasible_plan_is_replaced_even_inside_dwell() -> None:
@@ -189,6 +242,9 @@ def test_planner_rejects_stale_previous_plan() -> None:
         planner.plan(tracks, _resources(), timestamp=2.0, previous_plan=first)
     except StalePlanError as exc:
         assert "stale" in str(exc)
+        assert exc.reason == "stale_previous_version"
+        assert exc.to_metadata()["stale_reject_reason"] == "stale_previous_version"
+        assert exc.to_metadata()["latest_plan_version"] == second.version
     else:
         raise AssertionError("expected stale plan rejection")
 

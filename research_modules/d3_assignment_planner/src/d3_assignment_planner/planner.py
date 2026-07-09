@@ -20,6 +20,38 @@ from .solver import HungarianAssignmentSolver
 class StalePlanError(ValueError):
     """Raised when a rolling planner is asked to extend an obsolete plan."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: str,
+        previous_plan_id: str | None = None,
+        previous_version: int | None = None,
+        expected_previous_version: int | None = None,
+        latest_plan_id: str | None = None,
+        latest_version: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.previous_plan_id = previous_plan_id
+        self.previous_version = previous_version
+        self.expected_previous_version = expected_previous_version
+        self.latest_plan_id = latest_plan_id
+        self.latest_version = latest_version
+
+    def to_metadata(self) -> dict[str, object]:
+        """Return D6/main-friendly stale rejection metadata."""
+
+        return {
+            "stale_plan_rejected": True,
+            "stale_reject_reason": self.reason,
+            "previous_plan_id": self.previous_plan_id,
+            "previous_plan_version": self.previous_version,
+            "expected_previous_version": self.expected_previous_version,
+            "latest_plan_id": self.latest_plan_id,
+            "latest_plan_version": self.latest_version,
+        }
+
 
 class AssignmentPlanner:
     """Build, solve, and hysteresis-filter abstract candidate plans."""
@@ -71,6 +103,11 @@ class AssignmentPlanner:
                 changed=changed,
                 decision_state="accepted_no_hysteresis",
                 last_changed_at=timestamp if changed else previous_plan.last_changed_at,
+                metadata={
+                    **dict(candidate.metadata),
+                    "hysteresis_state": "disabled",
+                    "hysteresis_reason": "hysteresis_disabled",
+                },
             ))
         return self._remember_plan(self._apply_hysteresis(
             candidate=candidate,
@@ -141,6 +178,12 @@ class AssignmentPlanner:
                 "resource_count": resource_count,
                 "target_count": target_count,
                 "assignment_matrix_shape": [target_count, resource_count],
+                "hysteresis_enabled": self.config.enable_hysteresis,
+                "hysteresis_delta": self.config.delta,
+                "hysteresis_min_dwell_s": self.config.min_dwell,
+                "hysteresis_max_changes_per_window": self.config.max_changes_per_window,
+                "reassignment_switch_penalty": self.config.reassignment_switch_penalty,
+                "high_threat_threshold": self.config.high_threat_threshold,
             },
             source_node_id=self.config.source_node_id,
             target_node_id=self.config.target_node_id,
@@ -187,6 +230,16 @@ class AssignmentPlanner:
         same_assignment = candidate.assignment_map() == {
             item.target_id: item.resource_id for item in previous_assignments
         }
+        dwell_time = timestamp - previous_plan.last_changed_at
+        change_count = self._change_count(previous_plan.assignment_map(), candidate.assignment_map())
+        previous_high_threat_unassigned = self._high_threat_unassigned_count(
+            matrix_result,
+            previous_unassigned,
+        )
+        candidate_high_threat_unassigned = self._high_threat_unassigned_count(
+            matrix_result,
+            candidate.unassigned_target_ids,
+        )
         if same_assignment:
             return replace(
                 candidate,
@@ -197,21 +250,48 @@ class AssignmentPlanner:
                 total_cost=previous_cost,
                 assignments=previous_assignments,
                 unassigned_target_ids=previous_unassigned,
+                metadata={
+                    **dict(candidate.metadata),
+                    **self._hysteresis_metadata(
+                        state="unchanged",
+                        reason="same_assignment",
+                        reasons=("same_assignment",),
+                        dwell_time=dwell_time,
+                        previous_cost=previous_cost,
+                        candidate_cost=candidate.total_cost,
+                        change_count=change_count,
+                        improvement_ok=True,
+                        dwell_ok=True,
+                        change_limit_ok=True,
+                        previous_feasible=previous_feasible,
+                        previous_high_threat_unassigned=previous_high_threat_unassigned,
+                        candidate_high_threat_unassigned=candidate_high_threat_unassigned,
+                    ),
+                },
             )
 
-        dwell_time = timestamp - previous_plan.last_changed_at
         improvement_ok = candidate.total_cost < (1.0 - self.config.delta) * previous_cost
         dwell_ok = dwell_time > self.config.min_dwell
-        change_count = self._change_count(previous_plan.assignment_map(), candidate.assignment_map())
         change_limit_ok = (
             self.config.max_changes_per_window is None
             or change_count <= self.config.max_changes_per_window
         )
+        high_threat_release = (
+            candidate_high_threat_unassigned < previous_high_threat_unassigned
+        )
+        release_ok = (
+            improvement_ok and dwell_ok and change_limit_ok
+        ) or high_threat_release
 
-        if previous_feasible and not (improvement_ok and dwell_ok and change_limit_ok):
+        if previous_feasible and not release_ok:
             hold_reason = "held_by_hysteresis"
             if improvement_ok and dwell_ok and not change_limit_ok:
                 hold_reason = "held_by_change_limit"
+            hold_reasons = self._hold_reasons(
+                improvement_ok=improvement_ok,
+                dwell_ok=dwell_ok,
+                change_limit_ok=change_limit_ok,
+            )
             solver_result = SolverResult(
                 assignments=(),
                 unassigned_target_indices=(),
@@ -238,14 +318,33 @@ class AssignmentPlanner:
                 previous_total_cost_current=previous_cost,
                 metadata={
                     **dict(held_plan.metadata),
-                    "candidate_change_count": change_count,
-                    "max_changes_per_window": self.config.max_changes_per_window,
+                    **self._hysteresis_metadata(
+                        state="held",
+                        reason=hold_reasons[0],
+                        reasons=hold_reasons,
+                        dwell_time=dwell_time,
+                        previous_cost=previous_cost,
+                        candidate_cost=candidate.total_cost,
+                        change_count=change_count,
+                        improvement_ok=improvement_ok,
+                        dwell_ok=dwell_ok,
+                        change_limit_ok=change_limit_ok,
+                        previous_feasible=previous_feasible,
+                        previous_high_threat_unassigned=previous_high_threat_unassigned,
+                        candidate_high_threat_unassigned=candidate_high_threat_unassigned,
+                    ),
                 },
             )
 
         reason = "accepted_previous_infeasible"
+        release_reason = "previous_assignment_infeasible"
         if previous_feasible:
-            reason = "accepted_gain_and_dwell"
+            if high_threat_release:
+                reason = "accepted_high_threat_release"
+                release_reason = "high_threat_unassigned_reduced"
+            else:
+                reason = "accepted_gain_and_dwell"
+                release_reason = "gain_dwell_change_limit_passed"
         return replace(
             candidate,
             decision_state=reason,
@@ -253,8 +352,24 @@ class AssignmentPlanner:
             previous_total_cost_current=previous_cost,
             metadata={
                 **dict(candidate.metadata),
-                "candidate_change_count": change_count,
-                "max_changes_per_window": self.config.max_changes_per_window,
+                **self._hysteresis_metadata(
+                    state="released",
+                    reason=release_reason,
+                    reasons=(release_reason,),
+                    release_reason=release_reason,
+                    release_condition=reason,
+                    dwell_time=dwell_time,
+                    previous_cost=previous_cost,
+                    candidate_cost=candidate.total_cost,
+                    change_count=change_count,
+                    improvement_ok=improvement_ok,
+                    dwell_ok=dwell_ok,
+                    change_limit_ok=change_limit_ok,
+                    previous_feasible=previous_feasible,
+                    previous_high_threat_unassigned=previous_high_threat_unassigned,
+                    candidate_high_threat_unassigned=candidate_high_threat_unassigned,
+                    high_threat_release=high_threat_release,
+                ),
             },
         )
 
@@ -323,15 +438,35 @@ class AssignmentPlanner:
         if expected_previous_version is not None and previous_plan.version != expected_previous_version:
             raise StalePlanError(
                 f"previous_plan version {previous_plan.version} does not match "
-                f"expected_previous_version {expected_previous_version}"
+                f"expected_previous_version {expected_previous_version}",
+                reason="expected_previous_version_mismatch",
+                previous_plan_id=previous_plan.plan_id,
+                previous_version=previous_plan.version,
+                expected_previous_version=expected_previous_version,
+                latest_plan_id=self._latest_plan_id,
+                latest_version=self._latest_version or None,
             )
         if self._latest_version and previous_plan.version != self._latest_version:
             raise StalePlanError(
                 f"previous_plan version {previous_plan.version} is stale; "
-                f"latest version is {self._latest_version}"
+                f"latest version is {self._latest_version}",
+                reason="stale_previous_version",
+                previous_plan_id=previous_plan.plan_id,
+                previous_version=previous_plan.version,
+                expected_previous_version=expected_previous_version,
+                latest_plan_id=self._latest_plan_id,
+                latest_version=self._latest_version,
             )
         if self._latest_plan_id is not None and previous_plan.plan_id != self._latest_plan_id:
-            raise StalePlanError("previous_plan_id does not match the planner's active plan")
+            raise StalePlanError(
+                "previous_plan_id does not match the planner's active plan",
+                reason="stale_previous_plan_id",
+                previous_plan_id=previous_plan.plan_id,
+                previous_version=previous_plan.version,
+                expected_previous_version=expected_previous_version,
+                latest_plan_id=self._latest_plan_id,
+                latest_version=self._latest_version or None,
+            )
 
     def _remember_plan(self, plan: AssignmentPlan) -> AssignmentPlan:
         self._latest_version = plan.version
@@ -397,6 +532,90 @@ class AssignmentPlanner:
                 )
             )
         return tuple(annotated)
+
+    def _hysteresis_metadata(
+        self,
+        *,
+        state: str,
+        reason: str,
+        reasons: tuple[str, ...],
+        dwell_time: float,
+        previous_cost: float,
+        candidate_cost: float,
+        change_count: int,
+        improvement_ok: bool,
+        dwell_ok: bool,
+        change_limit_ok: bool,
+        previous_feasible: bool,
+        previous_high_threat_unassigned: int,
+        candidate_high_threat_unassigned: int,
+        release_reason: str | None = None,
+        release_condition: str | None = None,
+        high_threat_release: bool = False,
+    ) -> dict[str, object]:
+        cost_margin = previous_cost - candidate_cost
+        return {
+            "hysteresis_state": state,
+            "hysteresis_reason": reason,
+            "hysteresis_reasons": reasons,
+            "hysteresis_release_reason": release_reason,
+            "hysteresis_release_condition": release_condition,
+            "hysteresis_dwell_time_s": max(0.0, float(dwell_time)),
+            "hysteresis_min_dwell_s": self.config.min_dwell,
+            "hysteresis_delta": self.config.delta,
+            "hysteresis_previous_feasible": previous_feasible,
+            "hysteresis_improvement_ok": improvement_ok,
+            "hysteresis_dwell_ok": dwell_ok,
+            "hysteresis_change_limit_ok": change_limit_ok,
+            "hysteresis_high_threat_release": high_threat_release,
+            "hysteresis_previous_high_threat_unassigned_count": previous_high_threat_unassigned,
+            "hysteresis_candidate_high_threat_unassigned_count": candidate_high_threat_unassigned,
+            "candidate_change_count": change_count,
+            "max_changes_per_window": self.config.max_changes_per_window,
+            "hysteresis_candidate_change_count": change_count,
+            "hysteresis_max_changes_per_window": self.config.max_changes_per_window,
+            "hysteresis_previous_total_cost_current": previous_cost,
+            "hysteresis_candidate_total_cost": candidate_cost,
+            "hysteresis_cost_margin": cost_margin,
+            "hysteresis_required_relative_gain": self.config.delta,
+            "reassignment_switch_penalty": self.config.reassignment_switch_penalty,
+        }
+
+    @staticmethod
+    def _hold_reasons(
+        *,
+        improvement_ok: bool,
+        dwell_ok: bool,
+        change_limit_ok: bool,
+    ) -> tuple[str, ...]:
+        reasons: list[str] = []
+        if not improvement_ok:
+            reasons.append("improvement_below_delta")
+        if not dwell_ok:
+            reasons.append("min_dwell_not_met")
+        if not change_limit_ok:
+            reasons.append("change_limit_exceeded")
+        return tuple(reasons) or ("held_by_hysteresis",)
+
+    def _high_threat_unassigned_count(
+        self,
+        matrix_result: CostMatrixResult,
+        unassigned_target_ids: tuple[str, ...],
+    ) -> int:
+        if not unassigned_target_ids:
+            return 0
+        threat_by_target = {
+            target_id: threat
+            for target_id, threat in zip(
+                matrix_result.target_ids,
+                matrix_result.target_threat_scores,
+            )
+        }
+        return sum(
+            1
+            for target_id in unassigned_target_ids
+            if threat_by_target.get(target_id, 0.0) >= self.config.high_threat_threshold
+        )
 
     @staticmethod
     def _change_count(previous_map: dict[str, str], candidate_map: dict[str, str]) -> int:

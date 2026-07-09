@@ -34,6 +34,10 @@ class PngGuidanceConfig:
     edge_margin_ratio: float = 0.03
     max_los_rate_variance_radps2: float = 2.0
     los_rate_window: int = 5
+    los_rate_filter_alpha: float = 0.45
+    max_los_rate_radps: float | None = None
+    max_los_rate_step_radps: float | None = None
+    reject_los_rate_outliers: bool = True
     max_visual_latency_s: float = 0.35
     navigation_constant: float = 3.0
     min_closing_speed_mps: float = 0.2
@@ -44,6 +48,9 @@ class PngGuidanceConfig:
     ttc_slow_s: float = 6.0
     ttc_min_gain: float = 0.5
     ttc_max_gain: float = 5.0
+    terminal_dwell_frames: int = 1
+    terminal_release_frames: int = 1
+    terminal_reacquire_grace_frames: int = 0
     law: PngGuidanceLaw = "png_vm"
 
     def __post_init__(self) -> None:
@@ -57,8 +64,20 @@ class PngGuidanceConfig:
             raise ValueError("min_stable_frames must be at least one")
         if self.los_rate_window < 2:
             raise ValueError("los_rate_window must be at least two")
+        if not 0.0 < self.los_rate_filter_alpha <= 1.0:
+            raise ValueError("los_rate_filter_alpha must be in (0, 1]")
+        if self.max_los_rate_radps is not None and self.max_los_rate_radps <= 0.0:
+            raise ValueError("max_los_rate_radps must be positive when set")
+        if self.max_los_rate_step_radps is not None and self.max_los_rate_step_radps <= 0.0:
+            raise ValueError("max_los_rate_step_radps must be positive when set")
         if self.max_turn_rate_radps < 0.0 or self.max_lateral_accel_mps2 < 0.0:
             raise ValueError("guidance limits must be nonnegative")
+        if self.terminal_dwell_frames < 1:
+            raise ValueError("terminal_dwell_frames must be at least one")
+        if self.terminal_release_frames < 1:
+            raise ValueError("terminal_release_frames must be at least one")
+        if self.terminal_reacquire_grace_frames < 0:
+            raise ValueError("terminal_reacquire_grace_frames must be nonnegative")
         if self.law not in {"los", "png_ttc", "png_vm"}:
             raise ValueError("law must be one of 'los', 'png_ttc', or 'png_vm'")
 
@@ -110,7 +129,11 @@ class VisionGuidanceQuality:
     edge_margin_ratio: float = 0.0
     los_angle_rad: float = 0.0
     los_rate_radps: float = 0.0
+    raw_los_rate_radps: float = 0.0
+    filtered_los_rate_radps: float = 0.0
     los_rate_variance_radps2: float = 0.0
+    los_rate_clamped: bool = False
+    los_rate_outlier_rejected: bool = False
     closing_speed_mps: float = 0.0
     ttc_s: float | None = None
     required_turn_rate_radps: float = 0.0
@@ -139,6 +162,7 @@ class SimpleFlightPngGuidanceFilter:
         self._stable_count = 0
         self._last_los_angle: float | None = None
         self._last_timestamp: float | None = None
+        self._filtered_los_rate: float | None = None
         self._area_window: deque[tuple[float, float]] = deque(maxlen=self.config.los_rate_window)
         self._los_rate_window: deque[float] = deque(maxlen=self.config.los_rate_window)
 
@@ -147,6 +171,7 @@ class SimpleFlightPngGuidanceFilter:
         self._stable_count = 0
         self._last_los_angle = None
         self._last_timestamp = None
+        self._filtered_los_rate = None
         self._area_window.clear()
         self._los_rate_window.clear()
 
@@ -177,11 +202,19 @@ class SimpleFlightPngGuidanceFilter:
 
         timestamp = float(observation.frame_timestamp_s or observation.timestamp_s)
         los_angle = _wrap_pi(current_heading_rad + _bearing_from_bbox(observation, cfg))
-        los_rate, los_var, los_ok, los_reason = self._update_los(timestamp, los_angle)
+        (
+            raw_los_rate,
+            filtered_los_rate,
+            los_var,
+            los_ok,
+            los_reason,
+            los_rate_clamped,
+            los_rate_outlier_rejected,
+        ) = self._update_los(timestamp, los_angle)
         ttc_s = self._estimate_ttc(timestamp, observation.area_px2)
         closing_speed = _closing_speed(relative_position_ned, relative_velocity_ned)
         turn_rate_cmd = self._turn_rate_command(
-            los_rate=los_rate,
+            los_rate=filtered_los_rate,
             ttc_s=ttc_s,
             closing_speed_mps=closing_speed,
         )
@@ -222,8 +255,12 @@ class SimpleFlightPngGuidanceFilter:
             bbox_area_ratio=float(area_ratio),
             edge_margin_ratio=float(margin_ratio),
             los_angle_rad=float(los_angle),
-            los_rate_radps=float(los_rate),
+            los_rate_radps=float(filtered_los_rate),
+            raw_los_rate_radps=float(raw_los_rate),
+            filtered_los_rate_radps=float(filtered_los_rate),
             los_rate_variance_radps2=float(los_var),
+            los_rate_clamped=bool(los_rate_clamped),
+            los_rate_outlier_rejected=bool(los_rate_outlier_rejected),
             closing_speed_mps=float(closing_speed),
             ttc_s=ttc_s,
             required_turn_rate_radps=float(required_turn_rate),
@@ -240,6 +277,10 @@ class SimpleFlightPngGuidanceFilter:
                 "local_track_id": observation.local_track_id,
                 "assigned_global_track_id": observation.assigned_global_track_id,
                 "camera_id": observation.camera_id,
+                "raw_los_rate_radps": float(raw_los_rate),
+                "filtered_los_rate_radps": float(filtered_los_rate),
+                "los_rate_clamped": bool(los_rate_clamped),
+                "los_rate_outlier_rejected": bool(los_rate_outlier_rejected),
             },
         )
 
@@ -263,23 +304,77 @@ class SimpleFlightPngGuidanceFilter:
             return False, "visual_latency_high"
         return True, ""
 
-    def _update_los(self, timestamp: float, los_angle: float) -> tuple[float, float, bool, str]:
+    def _update_los(
+        self,
+        timestamp: float,
+        los_angle: float,
+    ) -> tuple[float, float, float, bool, str, bool, bool]:
         cfg = self.config
         if self._last_timestamp is None or self._last_los_angle is None:
             self._last_timestamp = timestamp
             self._last_los_angle = los_angle
-            return 0.0, 0.0, False, "los_history_too_short"
+            self._filtered_los_rate = 0.0
+            return 0.0, 0.0, 0.0, False, "los_history_too_short", False, False
         dt = max(1e-6, timestamp - self._last_timestamp)
-        los_rate = _wrap_pi(los_angle - self._last_los_angle) / dt
+        raw_los_rate = _wrap_pi(los_angle - self._last_los_angle) / dt
         self._last_timestamp = timestamp
         self._last_los_angle = los_angle
-        self._los_rate_window.append(float(los_rate))
+
+        previous_filtered = self._filtered_los_rate
+        if previous_filtered is None:
+            filtered_los_rate = float(raw_los_rate)
+        else:
+            alpha = cfg.los_rate_filter_alpha
+            filtered_los_rate = float(alpha * raw_los_rate + (1.0 - alpha) * previous_filtered)
+
+        los_rate_clamped = False
+        los_rate_outlier_rejected = False
+        if cfg.max_los_rate_step_radps is not None and previous_filtered is not None:
+            step = filtered_los_rate - previous_filtered
+            if abs(step) > cfg.max_los_rate_step_radps:
+                filtered_los_rate = previous_filtered + math.copysign(cfg.max_los_rate_step_radps, step)
+                los_rate_clamped = True
+                los_rate_outlier_rejected = True
+        if cfg.max_los_rate_radps is not None and abs(filtered_los_rate) > cfg.max_los_rate_radps:
+            filtered_los_rate = float(np.clip(filtered_los_rate, -cfg.max_los_rate_radps, cfg.max_los_rate_radps))
+            los_rate_clamped = True
+            if abs(raw_los_rate) > cfg.max_los_rate_radps:
+                los_rate_outlier_rejected = True
+
+        self._filtered_los_rate = filtered_los_rate
+        self._los_rate_window.append(float(filtered_los_rate))
         if len(self._los_rate_window) < 2:
-            return float(los_rate), 0.0, False, "los_rate_window_too_short"
+            return (
+                float(raw_los_rate),
+                float(filtered_los_rate),
+                0.0,
+                False,
+                "los_rate_window_too_short",
+                los_rate_clamped,
+                los_rate_outlier_rejected,
+            )
         los_var = float(np.var(np.asarray(self._los_rate_window, dtype=float)))
+        if los_rate_outlier_rejected and cfg.reject_los_rate_outliers:
+            return (
+                float(raw_los_rate),
+                float(filtered_los_rate),
+                los_var,
+                False,
+                "los_rate_spike_rejected",
+                los_rate_clamped,
+                los_rate_outlier_rejected,
+            )
         if los_var > cfg.max_los_rate_variance_radps2:
-            return float(los_rate), los_var, False, "los_rate_variance_high"
-        return float(los_rate), los_var, True, ""
+            return (
+                float(raw_los_rate),
+                float(filtered_los_rate),
+                los_var,
+                False,
+                "los_rate_variance_high",
+                los_rate_clamped,
+                los_rate_outlier_rejected,
+            )
+        return float(raw_los_rate), float(filtered_los_rate), los_var, True, "", los_rate_clamped, los_rate_outlier_rejected
 
     def _estimate_ttc(self, timestamp: float, area_px2: float) -> float | None:
         self._area_window.append((float(timestamp), float(area_px2)))

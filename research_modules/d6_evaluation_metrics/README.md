@@ -6,7 +6,7 @@ D6 是 MSM 的离线评估与报告模块。它只消费已经写盘的日志、
 
 已实现的核心数据模型：
 
-- `EpisodeMetrics`：单 episode 标量指标对象，包含 `metric_scope` 和规模字段 `drone_count/resource_count/target_count/camera_count`。
+- `EpisodeMetrics`：单 episode 标量指标对象，包含 `mission_outcome`、`success_reason`、`failure_reason`、`eval_priority`、`implementation_status`、`evidence_path`、`metric_scope` 和规模字段 `drone_count/resource_count/target_count/camera_count`。
 - `TrackRecord`：探测和跟踪记录，保留 `global_track_id`、`truth_id`、位置、真值位置、协方差摘要和来源。
 - `AssignmentRecord`：分配快照，保留 `plan_id`、`version`、资源、目标、授权状态和评估侧真值标签。
 - `EventRecord`：通用事件记录，用于降级、安全、D5/D7 gate、通信元数据等。
@@ -24,6 +24,8 @@ D6 是 MSM 的离线评估与报告模块。它只消费已经写盘的日志、
 - 通信：`cross_node_latency_ms`、`message_drop_rate`、`out_of_order_count`、`stale_track_update_count`、`video_metadata_delivery_rate`、`bbox_delivery_rate`、`consensus_latency_s`。
 - D7 gate 与拦截统计：`camera_quality_gate_pass_rate`、`los_quality_gate_pass_rate`、`maneuver_margin_gate_pass_rate`、`terminal_switch_allowed_rate`、`visual_png_switch_count`、`terminal_takeover_rate`、`terminal_switch_reject_count`、`mode_switch_count`、`terminal_contract_reject_count`、`intercept_success_count`、`collision_intercept_count`、`range_intercept_count`、`time_to_intercept_s`、`min_range_m`、`gate_reject_count`。
 - 安全：`constraint_violation_count`、`human_override_count`。
+- 任务结果/root cause：每个 episode 输出 `mission_outcome=success/partial/failed/aborted`、`success_reason`、`failure_reason`，metadata 保留 `root_cause`、`top_failure_causes`、`failure_cause_scores` 和 `failure_cause_details`；根因只从已写盘 records/metadata 和 D6 指标被动派生，覆盖 tracking、assignment、terminal_gate、guidance、coverage、runtime_exception、communication、safety、performance 等类别。
+- 性能监测：`module_duration_ms`、`loop_latency_ms`、`record_latency_ms`、`cpu_budget_utilization`、`gpu_budget_utilization`、`performance_budget_violation_count` 进入 summary；metadata 保留 module/loop/record latency 分布和 CPU/GPU budget 占位状态。
 
 D2/D6 的硬规则仍然保留：`id_switch_count` 必须显式输出，不能被综合准确率隐藏。
 
@@ -58,7 +60,7 @@ P1 二级侦察 detect-to-registration 校准报告已经补齐分层漏斗字�
 
 ## 当前 P0/P1 状态
 
-- P0：无 P0 blocker。D6 当前边界仍是离线消费日志，不参与控制；指标继续按实际规模归一化，不从 `5v5` 名称推断分母。
+- P0：P0-A/P0-C 字段已补齐。D6 当前输出 mission outcome、success/failure reason、top failure causes/root cause、性能监测字段和 EVAL tracking schema；仍保持离线消费日志，不参与控制；指标继续按实际规模归一化，不从 `5v5` 名称推断分母。
 - P1：多 seed AirSim 校准 helper/report 已补齐，并已由 main runtime 的 P1 D4/D5 calibration sweep 自动调用；可输出 coverage/funnel/gimbal、detect-to-registration 分层漏斗、cross-view registration、D7 guidance reject reason、active degradation precision 和 actual scale 分组字段。剩余 P1 是让 main/D4/D5/D7 持续写真实多 seed 数据，并用更多 5v5/N-v-N 批次沉淀长期趋势和阈值校准。
 
 ## PNG 策略

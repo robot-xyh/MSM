@@ -44,6 +44,18 @@ resource_count
 target_count
 camera_count
 duration
+mission_outcome
+success_reason
+failure_reason
+eval_priority
+implementation_status
+evidence_path
+module_duration_ms
+loop_latency_ms
+record_latency_ms
+cpu_budget_utilization
+gpu_budget_utilization
+performance_budget_violation_count
 metadata
 ```
 
@@ -56,6 +68,35 @@ metadata
 - `2v2/5v5` 只保留为 baseline 场景名，不能作为分母或规模推断来源。
 
 测试已覆盖 `episode_id/scenario.name` 含 `5v5`，但实际规模为 `3/3/4/6` 的情况，D6 按实际字段输出。
+
+### 3.1.1 Mission outcome、root cause、性能和 EVAL tracking
+
+P0-A/P0-C 字段已进入 D6 episode 主线：
+
+```text
+mission_outcome in {success, partial, failed, aborted}
+success_reason
+failure_reason
+root_cause
+top_failure_causes
+eval_priority
+implementation_status
+evidence_path
+module_duration_ms
+loop_latency_ms
+record_latency_ms
+cpu_budget_utilization
+gpu_budget_utilization
+performance_budget_violation_count
+```
+
+实现口径：
+
+- `mission_outcome` 优先消费 `truth_summary` 或 event metadata 中显式写盘的 outcome；缺失时基于 intercept success、required success count、abort/runtime exception、安全事件和部分进展被动派生。
+- `success_reason`、`failure_reason` 优先使用上游写盘原因；缺失时由 D6 根据指标摘要生成简短解释。
+- `top_failure_causes` / `root_cause` 从 records/metadata 和 D6 已计算指标派生，覆盖 tracking、assignment、terminal_gate、guidance、coverage、runtime_exception、communication、safety、performance；D6 不做控制链路因果推断或回写。
+- 性能监测消费上游写盘的 module duration、loop latency、record latency、CPU/GPU budget utilization 和 budget violation；缺失时输出 0 和 metadata placeholder，便于 main 报告保持 schema 稳定。
+- `eval_priority`、`implementation_status`、`evidence_path` 用于 main 报告追踪 P0/P1 状态，优先来自 truth_summary/metadata。
 
 ### 3.2 探测指标
 

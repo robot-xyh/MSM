@@ -100,6 +100,14 @@ class ReportGenerator:
             "constraint_violation_count",
             "human_override_count",
         ],
+        "performance": [
+            "module_duration_ms",
+            "loop_latency_ms",
+            "record_latency_ms",
+            "cpu_budget_utilization",
+            "gpu_budget_utilization",
+            "performance_budget_violation_count",
+        ],
     }
 
     def summarize(self, episodes: Iterable[EpisodeMetrics]) -> list[dict[str, Any]]:
@@ -158,6 +166,12 @@ class ReportGenerator:
             "metric_scope",
             *EpisodeMetrics.scale_names(),
             "duration",
+            "mission_outcome",
+            "success_reason",
+            "failure_reason",
+            "eval_priority",
+            "implementation_status",
+            "evidence_path",
         ] + EpisodeMetrics.metric_names() + ["metadata"]
         with path.open("w", newline="", encoding="utf-8") as stream:
             writer = csv.DictWriter(stream, fieldnames=fieldnames, extrasaction="ignore")
@@ -230,6 +244,9 @@ class ReportGenerator:
         scenario_rows = _metric_scope_seed_scenario_scale_rows(episode_list)
         secondary_sensing_rows = _secondary_sensing_comparison_rows(episode_list)
         reject_reason_rows = _reject_reason_rows(episode_list)
+        mission_rows = _mission_outcome_rows(episode_list)
+        performance_rows = _performance_monitoring_rows(episode_list)
+        eval_rows = _eval_tracking_rows(episode_list)
 
         lines = [
             f"# {title}",
@@ -245,12 +262,62 @@ class ReportGenerator:
             f"- Resource count: {_scale_range_text(episode_list, 'resource_count')}",
             f"- Target count: {_scale_range_text(episode_list, 'target_count')}",
             f"- Camera count: {_scale_range_text(episode_list, 'camera_count')}",
+            f"- Mission outcome: {_mission_outcome_range_text(episode_list)}",
+            f"- EVAL priority: {_eval_priority_range_text(episode_list)}",
             "",
-            "## 1. 汇总表",
+            "## Mission Outcome / Root Cause",
             "",
-            "| 指标 | 均值 | 标准差 | 95% CI 下界 | 95% CI 上界 | 中位数 | P05 | P95 |",
-            "|---|---:|---:|---:|---:|---:|---:|---:|",
+            "| Episode | Outcome | Success reason | Failure reason | Root cause | Top failure causes |",
+            "|---|---|---|---|---|---|",
         ]
+        for row in mission_rows:
+            lines.append(
+                "| {episode_id} | {mission_outcome} | {success_reason} | {failure_reason} | {root_cause} | {top_failure_causes} |".format(
+                    **row
+                )
+            )
+
+        lines.extend(
+            [
+                "",
+                "## Performance Monitoring",
+                "",
+                "| Episode | Module duration ms | Loop latency ms | Record latency ms | CPU budget util | GPU budget util | Budget violations |",
+                "|---|---:|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for row in performance_rows:
+            lines.append(
+                "| {episode_id} | {module_duration_ms:.6g} | {loop_latency_ms:.6g} | {record_latency_ms:.6g} | {cpu_budget_utilization:.6g} | {gpu_budget_utilization:.6g} | {performance_budget_violation_count:.6g} |".format(
+                    **row
+                )
+            )
+
+        lines.extend(
+            [
+                "",
+                "## EVAL Tracking",
+                "",
+                "| Episode | Priority | Implementation status | Evidence path |",
+                "|---|---|---|---|",
+            ]
+        )
+        for row in eval_rows:
+            lines.append(
+                "| {episode_id} | {eval_priority} | {implementation_status} | {evidence_path} |".format(
+                    **row
+                )
+            )
+
+        lines.extend(
+            [
+                "",
+                "## 1. 汇总表",
+                "",
+                "| 指标 | 均值 | 标准差 | 95% CI 下界 | 95% CI 上界 | 中位数 | P05 | P95 |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|",
+            ]
+        )
         for row in summary_rows:
             lines.append(
                 "| {metric} | {mean:.6g} | {std:.6g} | {ci95_low:.6g} | "
@@ -362,6 +429,8 @@ class ReportGenerator:
                 "![导引门控指标图](plots/guidance_metrics.png)",
                 "",
                 "![安全指标图](plots/safety_metrics.png)",
+                "",
+                "![性能指标图](plots/performance_metrics.png)",
                 "",
                 "![关键指标分布图](plots/selected_metric_distributions.png)",
                 "",
@@ -579,6 +648,96 @@ def _metric_scope_range_text(episodes: list[EpisodeMetrics]) -> str:
     if not scopes:
         return "not recorded"
     return ", ".join(scopes)
+
+
+def _mission_outcome_range_text(episodes: list[EpisodeMetrics]) -> str:
+    outcomes = sorted({str(episode.mission_outcome or "failed") for episode in episodes})
+    return ", ".join(outcomes) if outcomes else "not recorded"
+
+
+def _eval_priority_range_text(episodes: list[EpisodeMetrics]) -> str:
+    priorities = sorted({str(episode.eval_priority or "not_recorded") for episode in episodes})
+    return ", ".join(priorities) if priorities else "not recorded"
+
+
+def _mission_outcome_rows(episodes: list[EpisodeMetrics]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for episode in episodes:
+        metadata = episode.metadata or {}
+        root_cause = str(metadata.get("root_cause") or "none")
+        top_failure_causes = _top_failure_causes_text(
+            metadata.get("top_failure_causes"),
+        )
+        rows.append(
+            {
+                "episode_id": _markdown_cell(episode.episode_id),
+                "mission_outcome": _markdown_cell(episode.mission_outcome),
+                "success_reason": _markdown_cell(episode.success_reason or "not recorded"),
+                "failure_reason": _markdown_cell(episode.failure_reason or "not recorded"),
+                "root_cause": _markdown_cell(root_cause),
+                "top_failure_causes": _markdown_cell(top_failure_causes),
+            }
+        )
+    return rows
+
+
+def _top_failure_causes_text(value: Any) -> str:
+    if not isinstance(value, list) or not value:
+        return "none"
+    parts = []
+    for item in value[:3]:
+        if isinstance(item, Mapping):
+            cause = str(item.get("cause") or "unknown")
+            score = item.get("score")
+            if score is None:
+                parts.append(cause)
+            else:
+                parts.append(f"{cause}({float(score):.3g})")
+        else:
+            parts.append(str(item))
+    return ", ".join(parts) if parts else "none"
+
+
+def _performance_monitoring_rows(
+    episodes: list[EpisodeMetrics],
+) -> list[dict[str, float | str]]:
+    rows: list[dict[str, float | str]] = []
+    for episode in episodes:
+        rows.append(
+            {
+                "episode_id": _markdown_cell(episode.episode_id),
+                "module_duration_ms": float(episode.module_duration_ms),
+                "loop_latency_ms": float(episode.loop_latency_ms),
+                "record_latency_ms": float(episode.record_latency_ms),
+                "cpu_budget_utilization": float(episode.cpu_budget_utilization),
+                "gpu_budget_utilization": float(episode.gpu_budget_utilization),
+                "performance_budget_violation_count": float(
+                    episode.performance_budget_violation_count
+                ),
+            }
+        )
+    return rows
+
+
+def _eval_tracking_rows(episodes: list[EpisodeMetrics]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for episode in episodes:
+        rows.append(
+            {
+                "episode_id": _markdown_cell(episode.episode_id),
+                "eval_priority": _markdown_cell(episode.eval_priority or "not recorded"),
+                "implementation_status": _markdown_cell(
+                    episode.implementation_status or "not recorded"
+                ),
+                "evidence_path": _markdown_cell(episode.evidence_path or "not recorded"),
+            }
+        )
+    return rows
+
+
+def _markdown_cell(value: Any) -> str:
+    text = str(value or "").replace("\n", " ").replace("|", "\\|")
+    return text or "not recorded"
 
 
 def _scale_scope_values(episodes: list[EpisodeMetrics]) -> dict[str, str]:

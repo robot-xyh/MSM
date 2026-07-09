@@ -65,6 +65,12 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
             resource_count=2,
             target_count=2,
             camera_count=2,
+            mission_outcome="partial",
+            success_reason="terminal_lock_count=1",
+            failure_reason="tracking: id_switch_count=1",
+            eval_priority="P0-A",
+            implementation_status="implemented",
+            evidence_path="outputs/normal_001/main_episode_bus_metrics.json",
             active_degradation_count=0,
             mode_switch_count=1,
             secondary_network_joint_full_view_frame_rate=0.5,
@@ -74,7 +80,17 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
             secondary_detect_available_but_not_registered_count=1,
             cue_pointing_error_mean_deg=3.0,
             gimbal_pointing_error_mean_deg=1.5,
+            module_duration_ms=12.0,
+            loop_latency_ms=20.0,
+            record_latency_ms=3.0,
+            cpu_budget_utilization=0.5,
+            gpu_budget_utilization=0.1,
+            performance_budget_violation_count=1,
             metadata={
+                "root_cause": "tracking",
+                "top_failure_causes": [
+                    {"cause": "tracking", "score": 1.0, "details": ["id_switch_count=1"]}
+                ],
                 "terminal_switch_reject_reasons": {"camera_quality": 1},
                 "secondary_sensing_node_type_metrics": {
                     "fixed_downlook_secondary": {
@@ -141,6 +157,12 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
     assert "scenario_group" in episode_text
     assert "batch_seed" in episode_text
     assert "metric_scope" in episode_text
+    assert "mission_outcome" in episode_text
+    assert "success_reason" in episode_text
+    assert "failure_reason" in episode_text
+    assert "eval_priority" in episode_text
+    assert "implementation_status" in episode_text
+    assert "evidence_path" in episode_text
     assert "metadata" in episode_text
     assert "terminal_switch_reject_reasons" in episode_text
     assert "secondary_network_joint_full_view_frame_rate" in episode_text
@@ -152,6 +174,8 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
     assert "seed" in summary_text
     assert "drone_count" in summary_text
     assert "secondary_network_mean_coverage_ratio" in summary_text
+    assert "module_duration_ms" in summary_text
+    assert "performance_budget_violation_count" in summary_text
     assert "normal" in summary_text
     assert "secondary_200m" in summary_text
     assert "场景分组" in report_text
@@ -161,6 +185,11 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
     assert "Drone count" in report_text
     assert "active_degradation_precision" in report_text
     assert "terminal_contract_reject_count" in report_text
+    assert "Mission Outcome / Root Cause" in report_text
+    assert "Performance Monitoring" in report_text
+    assert "EVAL Tracking" in report_text
+    assert "outputs/normal_001/main_episode_bus_metrics.json" in report_text
+    assert "performance_metrics.png" in report_text
     assert "二级视角节点对比" in report_text
     assert "fixed_downlook_secondary" in report_text
     assert "mobile_recon_gimbal" in report_text

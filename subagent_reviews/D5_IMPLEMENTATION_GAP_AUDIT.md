@@ -24,7 +24,22 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 
 2026-07-08 P1 calibration sweep 集成复核：main runtime 已新增 P1 D4/D5 calibration sweep，可扫描二级高度、FOV、二级节点数量和 standoff，并在每个组合内运行多 seed D4/D5 stress。D4/D5 stress 链路已可把 D5 detect-to-global-track registration 产生的 `TerminalObservation`、`CrossViewAssociation`、registration reason、secondary coverage funnel 和 mobile gimbal metadata 写入统一 observation/report 流；D6 标准报告 bundle 已由 main runtime 自动生成，包含 `d6_airsim_calibration/airsim_calibration_records.csv`、`airsim_calibration_summary.csv`、`airsim_calibration_summary.json` 和 `airsim_calibration_report.md`。因此 D5 当前没有“缺 registration helper 或缺标准报告输入合同”的 P1 接口缺口，剩余 P1 是真实 AirSim 多 seed 的阈值、外参、覆盖几何和二级/分布式降级 case 验收。
 
-P0 状态：无 P0 blocker。D5 安全合同仍保持为不分配、不授权、不改写 `global_track_id`，在线逻辑不得使用 AirSim truth ID；这些约束继续作为回归测试要求，而不是当前阻塞项。
+P0 状态：无当前运行级 P0 blocker。按 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md`，D5 同步为“无阻塞 + 工程化 P0-B 硬化项”的口径：D5 安全合同仍保持为不分配、不授权、不改写 `global_track_id`，在线逻辑不得使用 AirSim truth ID；truth ID 只能作为离线评分标签。2026-07-09 已闭合 P0-B 主动重捕获、时序一致性和 calibration health 最小硬化范围；P0-B 不引入 ReID、不做完整在线标定，也不让局部 tracker ID、友方身份或二级 cue 绕过 assignment 一致性。
+
+| EVAL P0-B 项 | 当前状态 | 已闭合实现 | 验收口径 |
+|---|---|---|---|
+| 主动重捕获 | 已闭合。 | `TerminalAssociator` 保留 per `resource_id + assigned_global_track_id` 历史；正常 gate 失败时用 GlobalTrack 预测投影、上次 bbox/MOT 历史和 search window 主动寻找同一 assigned track。同一 MOT ID 可快速恢复；MOT ID 更换需先通过 bbox 历史和 stable window。 | `test_active_reacquire_recovers_assigned_track_from_search_window` 和 `test_reacquire_with_new_mot_id_requires_stable_bbox_history` 覆盖；恢复仍只输出当前 `assigned_global_track_id`，不创建、不改写、不换绑 `global_track_id`。 |
+| 时序一致性 | 已闭合。 | 重捕获后加强 `candidate_cost_margin`、stable window、bbox area ratio、MOT history、measurement stale/OOSM 和 friend/version/authorization 阻断；`TerminalConsistencyTracker` 的 stable 判定使用明确 margin、稳定帧和 lock age/inf margin。 | `pytest -q research_modules/d5_terminal_association/tests` 覆盖；stale、assignment mismatch、friend conflict、duplicate risk 仍不得升级为 `locked`。 |
+| 相机校准健康监测 | 已闭合。 | `TerminalAssociation.metadata`、`TerminalConsistencySummary.to_metadata()`、registration candidate/observation/result summary 输出 `projection_valid`、`reprojection_error`/`reprojection_error_px`、`camera_pose_source`、`camera_pose_source_trusted`、`calibration_health`、`calibration_health_reason`、`drift_warning`、health/source counts 和重投影误差摘要。 | `test_decision_metadata_records_geometry_gate_and_measurement_age_fields` 与 `test_registration_logs_pose_source_bbox_area_and_offline_truth_without_using_truth_for_binding` 覆盖；P0-B 只监测/告警，不做在线标定。 |
+
+P1 状态：以下是 EVAL 确认的 D5 P1 能力增强项。它们不覆盖上表 P0-B 的最小硬化范围，也不得改变 D5 不分配、不换绑 `global_track_id` 和 truth ID 仅离线评分的边界。
+
+| EVAL P1 项 | 当前状态保留 | P1 后续边界 |
+|---|---|---|
+| 多模态友方识别 | `IdentityClaim` 抽象和 simulated Remote ID/OpenDroneID 风格字段已可表达 verified/stale/spoof/unverified，verified friend overlap 会触发 `hold`。 | 至少接入一个 replay adapter，将 Remote ID/MAVLink/DDS/AprilTag 等来源归一化为 `IdentityClaim`；未知或 stale 不升级目标，不绕过几何门控和 assignment 一致性。 |
+| 完整相机在线标定 | `CameraModel` 已消费 K/R/t/dist，`projectPoints` 可使用畸变参数；`solvePnP`/calibration 仍未落地。 | 基于 replay/标定样本建立 2D-3D 对应、PnP/RANSAC、外参漂移估计和重投影误差验收；目标是降低重投影误差，而不是替代上游 `GlobalTrack` 或 D3/D4 gate。 |
+| 畸变校正 | `dist_coeffs` 字段和 OpenCV 投影消费路径已存在。 | 将广角/针孔畸变参数完整接入 projection、registration 和误差报告，量化畸变校正前后的重投影误差变化。 |
+| ReID 辅助 | YOLO/MOT adapter、ByteTrack/BoT-SORT 请求路径和 deterministic IoU fallback 已存在，但没有外观 embedding。 | ReID 仅作为遮挡恢复和密集目标下的辅助特征，不替代几何门控、assignment 一致性或 `global_track_id`；truth ID 只用于离线 ID continuity 评分。 |
 
 ## 跨模块合同结论
 
@@ -144,15 +159,25 @@ P0 状态：无 P0 blocker。D5 安全合同仍保持为不分配、不授权、
 | D4 evidence | `CrossViewAssociation`、`DistributedTerminalAssociation.recommended_d4_action`、`duplicate_lock_resource_ids`、`hypothesis_only/hold/ambiguous` 原因和连续帧 `TerminalConsistencySummary` 已可作为 D4/D6 evidence。 | D5 不仲裁、不授权、不创建或换绑 `global_track_id`。 |
 | D7 visual PNG 前置证据 | `annotate_visual_png_handoff()` 输出 handoff/prelock、gate pass、blockers、measurement age、LOS rate、bbox stability、range band、timing 和 maneuver metadata；assignment mismatch、friend/duplicate risk、unstable bbox、stale measurement age、missing LOS 会阻断。 | D5 不决定导引律，D7/main 仍需独立 terminal gate。 |
 
+### P0-B 已闭合
+
+| 优先级 | 任务 | 验收结果 |
+|---|---|---|
+| P0-B | 主动重捕获。 | 已实现 GlobalTrack 预测投影 + bbox/MOT 历史 + search window 的 assigned-track reacquire；测试覆盖遮挡后同一 MOT ID 快速恢复、MOT ID 更换需稳定窗口，且不改写 `global_track_id`。 |
+| P0-B | 时序一致性。 | 已加强 candidate margin、stable window、bbox/MOT history、stale/OOSM 和保守 hold/ambiguous 阻断；`TerminalConsistencyTracker` stable 判定不再把任意正 margin 视为稳定。 |
+| P0-B | 相机校准健康监测。 | 已输出 projection valid、reprojection error、camera pose source/trust、calibration health、drift warning、registration health counts 和误差摘要，供 D6/main 直接消费。 |
+
 ### 剩余 P1/P2
 
 | 优先级 | 任务 | 验收建议 |
 |---|---|---|
-| P0 | 无 P0 blocker；保持现有安全合同回归。 | `pytest -q research_modules/d5_terminal_association/tests` 覆盖 D5 不改写 `global_track_id`、不使用 AirSim truth 在线关联、friend overlap `hold`、二级 cue frame/scope/age/reprojection 校验，以及 missing/stale global ID 或 duplicate risk 时不得 `locked`。 |
+| P1 | 多模态友方识别。 | 将至少一个 Remote ID/MAVLink/DDS/AprilTag replay 来源归一化为 `IdentityClaim`，输出 verified/stale/unverified/spoof 状态；未知或 stale 不升级目标，verified friend 仍只触发保守阻断。 |
+| P1 | 完整相机在线标定。 | 在 replay/标定样本中接入 2D-3D 对应、`solvePnP`/PnP RANSAC、外参漂移估计和重投影误差验收；P0 只要求健康监测，P1 才推进完整在线标定。 |
+| P1 | 畸变校正。 | 将 `CameraModel.dist_coeffs` 从可消费字段推进为完整投影/registration/误差报告链路，量化广角或针孔畸变校正带来的重投影误差变化。 |
+| P1 | ReID 辅助。 | 在 YOLO/MOT adapter 和 IoU fallback 之外增加外观 embedding/replay 对照，只作为遮挡恢复和密集目标 ID continuity 辅助，不替代几何 gate、assignment 一致性或既有 `global_track_id`。 |
 | P1 | 二级节点几何/覆盖策略。 | 基于 `p1_d4d5_registration_calibration_runtime_v2_20260708*` 继续调整高空侦察节点站位、视场/分辨率、look-at 扫描/子簇策略和 full-view 判据；当前 `projection_valid_rate=1.0` 且 cross-view association 已非 0，验收重点是提高 full-view mean≈0.048 和 coverage mean≈0.771，降低 `not_all_targets_visible` / `network_union_incomplete`，并减少降级 case not-registered 35/35。 |
 | P1 | Multi-camera cross-view registration 多 seed 标定。 | D5 helper、main P1 sweep 和 D6 bundle 输入合同已完成；后续用真实 sweep 数据校准 `GlobalTrack`、D2/D3 binding、per-camera `K/R/t`、timestamp/covariance、二级 `LocalVisualTrack` 和 gate/margin，落盘并分析 `registered_to_global_track` / `geometry_gate_rejected` 等 reasons，验收 `degrade_to_secondary` / `degrade_to_distributed` 不再停留在 offline visible-only。 |
 | P1 | 真实 YOLO/MOT 多 seed 阈值。 | 用 AirSim 连续 RGB/PNG 或外部 detector bbox stream 调用 `YoloMotAdapter.process_frame()`，跨 seed 标定 `gate_chi2`、candidate margin、bbox stability、handoff range、measurement age、LOS availability、ambiguity 和 quality 阈值，并报告 `locked_mismatch`、false handoff、ambiguous/reacquire 抖动和 `terminal_id_switch_count`。 |
-| P1 | AirSim/replay 标定、`solvePnP`、外参增强。 | 建立离线标定样本、2D-3D 对应、PnP RANSAC、重投影误差阈值、外参 drift 告警和多相机 frame/timestamp 对齐检查；真实硬件级标定链可继续作为 P2 深化。 |
 | P2 | 评估 BoT-SORT/Deep SORT/ReID 是否适合小型无人机 AirSim/真实图像。 | 有连续图像、算力预算、IDF1/IDSW 评估；若小目标纹理不足，保持几何门控 + ByteTrack/schema adapter 为默认基线。 |
 | P2 | 接入真实身份来源为 `IdentityClaim` adapter：OpenDroneID Core、MAVLink signing、DDS Security 或 AprilTag。 | 真实或回放报文/图像 fixture，验证 stale/spoof/unverified/verified 状态不会把未知目标升级，也不会绕过几何门控和 assignment 一致性。 |
 | P2 | ROS 2 `tf2/message_filters` 坐标/时间同步链路。 | 仅在项目进入 ROS 2 runtime 或 bag replay 后实施；验收 frame tree、带戳 transform、相机/航迹同步和 D5 `CameraModel` 转换一致性。 |

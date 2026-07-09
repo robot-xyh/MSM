@@ -34,6 +34,10 @@ class GNNHungarianAssociator(DataAssociator):
 
     gate_threshold: float = 9.21
     feature_weight: float = 1.0
+    motion_weight: float = 1.0
+    quality_aware_gate: bool = True
+    min_gate_threshold: float = 4.0
+    max_gate_threshold: float = 16.0
     large_cost: float = LARGE_COST
 
     def associate(
@@ -50,11 +54,16 @@ class GNNHungarianAssociator(DataAssociator):
             self.gate_threshold,
             self.large_cost,
             self.feature_weight,
+            self.motion_weight,
+            self.quality_aware_gate,
+            self.min_gate_threshold,
+            self.max_gate_threshold,
         )
 
         matched_pairs: list[MatchedPair] = []
         matched_track_rows: set[int] = set()
         matched_detection_cols: set[int] = set()
+        matched_col_by_row: dict[int, int] = {}
         rejected = list(gated.rejected_pairs)
 
         if track_list and detection_list:
@@ -62,7 +71,8 @@ class GNNHungarianAssociator(DataAssociator):
             for row, col in zip(row_indices, col_indices, strict=True):
                 cost = float(gated.cost_matrix[row, col])
                 distance = float(gated.distance_matrix[row, col])
-                if cost >= self.large_cost or distance > self.gate_threshold:
+                gate_limit = float(gated.gate_threshold_matrix[row, col])
+                if cost >= self.large_cost or distance > gate_limit:
                     rejected.append(
                         RejectedPair(
                             track_id=track_list[row].global_track_id,
@@ -82,6 +92,7 @@ class GNNHungarianAssociator(DataAssociator):
                 )
                 matched_track_rows.add(row)
                 matched_detection_cols.add(col)
+                matched_col_by_row[row] = col
 
         unmatched_track_ids = [
             track.global_track_id
@@ -108,9 +119,38 @@ class GNNHungarianAssociator(DataAssociator):
             metadata={
                 "gate_threshold": self.gate_threshold,
                 "feature_weight": self.feature_weight,
+                "motion_weight": self.motion_weight,
+                "quality_aware_gate": self.quality_aware_gate,
+                "quality_aware_gate_bounds": {
+                    "min_gate_threshold": self.min_gate_threshold,
+                    "max_gate_threshold": self.max_gate_threshold,
+                },
                 "solver": "scipy.optimize.linear_sum_assignment",
                 "candidate_counts_by_track": gated.candidate_counts_by_track,
                 "candidate_counts_by_detection": gated.candidate_counts_by_detection,
+                "gate_thresholds_by_track": gated.gate_thresholds_by_track,
+                "gate_threshold_matrix": gated.gate_threshold_matrix,
+                "target_density_by_track": gated.target_density_by_track,
+                "position_covariance_trace_by_track": (
+                    gated.position_covariance_trace_by_track
+                ),
+                "pre_association_track_quality_by_track": gated.track_quality_by_track,
+                "previous_association_risk_by_track": (
+                    gated.previous_association_risk_by_track
+                ),
+                "motion_consistency_cost_matrix": gated.motion_cost_matrix,
+                "motion_consistency_by_pair": _motion_consistency_by_pair(
+                    track_list,
+                    detection_list,
+                    gated.motion_cost_matrix,
+                ),
+                "motion_consistency_by_track": _motion_consistency_by_track(
+                    track_list,
+                    gated.motion_cost_matrix,
+                    gated.cost_matrix,
+                    matched_col_by_row,
+                    self.large_cost,
+                ),
             },
         )
 
@@ -471,6 +511,44 @@ def _candidate_indices_by_track(
         valid = sorted(valid.tolist(), key=lambda col: float(cost_matrix[row, col]))
         candidates.append(valid[:max_candidates_per_track])
     return candidates
+
+
+def _motion_consistency_by_pair(
+    tracks: list[GlobalTrack],
+    detections: list[Detection],
+    motion_cost_matrix: np.ndarray,
+) -> dict[str, float]:
+    return {
+        f"{track.global_track_id}->{detection.detection_id}": float(
+            motion_cost_matrix[row, col]
+        )
+        for row, track in enumerate(tracks)
+        for col, detection in enumerate(detections)
+    }
+
+
+def _motion_consistency_by_track(
+    tracks: list[GlobalTrack],
+    motion_cost_matrix: np.ndarray,
+    cost_matrix: np.ndarray,
+    matched_col_by_row: dict[int, int],
+    large_cost: float,
+) -> dict[str, float]:
+    by_track: dict[str, float] = {}
+    for row, track in enumerate(tracks):
+        if row in matched_col_by_row:
+            by_track[track.global_track_id] = float(
+                motion_cost_matrix[row, matched_col_by_row[row]]
+            )
+            continue
+        valid_cols = np.where(cost_matrix[row] < large_cost)[0]
+        if valid_cols.size:
+            by_track[track.global_track_id] = float(
+                np.min(motion_cost_matrix[row, valid_cols])
+            )
+        else:
+            by_track[track.global_track_id] = 0.0
+    return by_track
 
 
 def _enumerate_assignments(

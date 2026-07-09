@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from math import sqrt
 from typing import Any, Iterable, Mapping
 
 
@@ -64,6 +65,14 @@ class ResourceState:
     fov_difficulty: float = 0.0
     conflict_risk: float = 0.0
     capability_class: str = "generic"
+    energy_fraction: float = 1.0
+    availability_score: float = 1.0
+    current_load: float = 0.0
+    history_failure_rate: float = 0.0
+    intercept_feasibility_by_target: Mapping[str, bool] = field(default_factory=dict)
+    intercept_feasibility_score_by_target: Mapping[str, float] = field(
+        default_factory=dict
+    )
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -255,6 +264,35 @@ class AssignmentRecord:
     previous_total_cost_current: float | None = None
     cost_margin: float | None = None
     stale_after_s: float | None = None
+    stale_plan_rejected: bool = False
+    stale_reject_reason: str | None = None
+    latest_plan_id: str | None = None
+    latest_plan_version: int | None = None
+    hysteresis_state: str | None = None
+    hysteresis_reason: str | None = None
+    hysteresis_reasons: tuple[str, ...] = ()
+    hysteresis_release_reason: str | None = None
+    hysteresis_release_condition: str | None = None
+    hysteresis_dwell_time_s: float | None = None
+    hysteresis_min_dwell_s: float | None = None
+    hysteresis_delta: float | None = None
+    hysteresis_candidate_change_count: int | None = None
+    hysteresis_max_changes_per_window: int | None = None
+    hysteresis_improvement_ok: bool | None = None
+    hysteresis_dwell_ok: bool | None = None
+    hysteresis_change_limit_ok: bool | None = None
+    hysteresis_high_threat_release: bool | None = None
+
+
+@dataclass(frozen=True)
+class ThreatScoreBaseline:
+    """Explainable baseline threat score assembled from simple scene terms."""
+
+    threat_score: float
+    components: Mapping[str, float] = field(default_factory=dict)
+    weights: Mapping[str, float] = field(default_factory=dict)
+    reasons: tuple[str, ...] = ()
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -566,6 +604,106 @@ class SolverResult:
     objective_value: float
     solver_name: str
     status: str = "optimal"
+
+
+def compose_threat_score_baseline(
+    *,
+    target_state: str = "confirmed",
+    distance_to_critical_zone_m: float | None = None,
+    time_to_critical_zone_s: float | None = None,
+    speed_mps: float | None = None,
+    covariance: float | Mapping[str, Any] | Iterable[Any] | None = None,
+    position_ned: Iterable[float] | None = None,
+    velocity_ned: Iterable[float] | None = None,
+    critical_zone_center_ned: Iterable[float] | None = None,
+    critical_zone_radius_m: float = 0.0,
+    proximity_horizon_m: float = 500.0,
+    ttc_horizon_s: float = 60.0,
+    ttc_urgent_s: float = 5.0,
+    speed_reference_mps: float = 40.0,
+    weights: Mapping[str, float] | None = None,
+) -> ThreatScoreBaseline:
+    """Compose a minimal explainable target threat baseline.
+
+    This is intentionally a baseline composer, not a full threat assessment
+    model. It combines proximity to a protected/critical zone, TTC, speed,
+    covariance uncertainty, and target state into a normalized score.
+    """
+
+    position = _vector3(position_ned)
+    velocity = _vector3(velocity_ned)
+    center = _vector3(critical_zone_center_ned)
+
+    computed_distance = None
+    if distance_to_critical_zone_m is not None:
+        computed_distance = float(distance_to_critical_zone_m)
+    elif position is not None and center is not None:
+        computed_distance = max(
+            0.0,
+            _distance(position, center) - max(0.0, float(critical_zone_radius_m)),
+        )
+
+    computed_speed = (
+        float(speed_mps)
+        if speed_mps is not None
+        else _speed(velocity)
+        if velocity is not None
+        else None
+    )
+    computed_ttc = (
+        float(time_to_critical_zone_s)
+        if time_to_critical_zone_s is not None
+        else _time_to_critical_zone(
+            position=position,
+            velocity=velocity,
+            center=center,
+            distance_to_critical_zone_m=computed_distance,
+        )
+    )
+
+    component_weights = dict(
+        weights
+        or {
+            "critical_zone_proximity": 0.30,
+            "time_to_critical_zone": 0.30,
+            "speed": 0.15,
+            "covariance": 0.10,
+            "target_state": 0.15,
+        }
+    )
+    components = {
+        "critical_zone_proximity": _proximity_component(
+            computed_distance,
+            proximity_horizon_m=proximity_horizon_m,
+        ),
+        "time_to_critical_zone": _ttc_component(
+            computed_ttc,
+            ttc_horizon_s=ttc_horizon_s,
+            ttc_urgent_s=ttc_urgent_s,
+        ),
+        "speed": _speed_component(
+            computed_speed,
+            speed_reference_mps=speed_reference_mps,
+        ),
+        "covariance": _covariance_component(covariance),
+        "target_state": _target_state_component(target_state),
+    }
+    score = _weighted_component_score(components, component_weights)
+    reasons = _threat_baseline_reasons(components, target_state)
+    return ThreatScoreBaseline(
+        threat_score=score,
+        components=components,
+        weights=component_weights,
+        reasons=reasons,
+        metadata={
+            "target_state": str(target_state).strip().lower(),
+            "distance_to_critical_zone_m": computed_distance,
+            "time_to_critical_zone_s": computed_ttc,
+            "speed_mps": computed_speed,
+            "critical_zone_radius_m": float(critical_zone_radius_m),
+            "baseline": "d3_explainable_threat_score_v1",
+        },
+    )
 
 
 def evaluate_terminal_feedback(
@@ -1031,6 +1169,55 @@ def assignment_records_from_plan(
                 if assignment.stale_after_s is not None
                 else plan.stale_after_s
             ),
+            stale_plan_rejected=_metadata_bool(
+                plan_metadata.get("stale_plan_rejected")
+            ),
+            stale_reject_reason=_metadata_text(
+                plan_metadata,
+                "stale_reject_reason",
+            ),
+            latest_plan_id=_metadata_text(plan_metadata, "latest_plan_id"),
+            latest_plan_version=_metadata_int(
+                plan_metadata.get("latest_plan_version")
+            ),
+            hysteresis_state=_metadata_text(plan_metadata, "hysteresis_state"),
+            hysteresis_reason=_metadata_text(plan_metadata, "hysteresis_reason"),
+            hysteresis_reasons=_metadata_text_tuple(
+                plan_metadata.get("hysteresis_reasons")
+            ),
+            hysteresis_release_reason=_metadata_text(
+                plan_metadata,
+                "hysteresis_release_reason",
+            ),
+            hysteresis_release_condition=_metadata_text(
+                plan_metadata,
+                "hysteresis_release_condition",
+            ),
+            hysteresis_dwell_time_s=_metadata_float(
+                plan_metadata.get("hysteresis_dwell_time_s")
+            ),
+            hysteresis_min_dwell_s=_metadata_float(
+                plan_metadata.get("hysteresis_min_dwell_s")
+            ),
+            hysteresis_delta=_metadata_float(plan_metadata.get("hysteresis_delta")),
+            hysteresis_candidate_change_count=_metadata_int(
+                plan_metadata.get("hysteresis_candidate_change_count")
+            ),
+            hysteresis_max_changes_per_window=_metadata_int(
+                plan_metadata.get("hysteresis_max_changes_per_window")
+            ),
+            hysteresis_improvement_ok=_metadata_bool_optional(
+                plan_metadata.get("hysteresis_improvement_ok")
+            ),
+            hysteresis_dwell_ok=_metadata_bool_optional(
+                plan_metadata.get("hysteresis_dwell_ok")
+            ),
+            hysteresis_change_limit_ok=_metadata_bool_optional(
+                plan_metadata.get("hysteresis_change_limit_ok")
+            ),
+            hysteresis_high_threat_release=_metadata_bool_optional(
+                plan_metadata.get("hysteresis_high_threat_release")
+            ),
         )
         for assignment in plan.assignments
     )
@@ -1281,6 +1468,191 @@ def prepare_secondary_takeover_plan(
         link_type=link_type,
         metadata=metadata,
     )
+
+
+def _vector3(value: Iterable[float] | None) -> tuple[float, float, float] | None:
+    if value is None or isinstance(value, (str, bytes)):
+        return None
+    try:
+        items = tuple(float(item) for item in value)
+    except (TypeError, ValueError):
+        return None
+    if len(items) < 2:
+        return None
+    if len(items) == 2:
+        return items[0], items[1], 0.0
+    return items[0], items[1], items[2]
+
+
+def _distance(
+    a: tuple[float, float, float],
+    b: tuple[float, float, float],
+) -> float:
+    return sqrt(sum((left - right) ** 2 for left, right in zip(a, b)))
+
+
+def _speed(value: tuple[float, float, float] | None) -> float | None:
+    if value is None:
+        return None
+    return sqrt(sum(component * component for component in value))
+
+
+def _time_to_critical_zone(
+    *,
+    position: tuple[float, float, float] | None,
+    velocity: tuple[float, float, float] | None,
+    center: tuple[float, float, float] | None,
+    distance_to_critical_zone_m: float | None,
+) -> float | None:
+    if distance_to_critical_zone_m is not None and distance_to_critical_zone_m <= 0.0:
+        return 0.0
+    if position is None or velocity is None or center is None:
+        return None
+    distance_to_center = _distance(position, center)
+    if distance_to_center <= 0.0:
+        return 0.0
+    unit_to_center = tuple((center[index] - position[index]) / distance_to_center for index in range(3))
+    closing_speed = sum(velocity[index] * unit_to_center[index] for index in range(3))
+    if closing_speed <= 0.0:
+        return None
+    distance = max(0.0, float(distance_to_critical_zone_m or distance_to_center))
+    return distance / closing_speed
+
+
+def _proximity_component(
+    distance_to_critical_zone_m: float | None,
+    *,
+    proximity_horizon_m: float,
+) -> float:
+    if distance_to_critical_zone_m is None:
+        return 0.5
+    if distance_to_critical_zone_m <= 0.0:
+        return 1.0
+    horizon = max(1.0, float(proximity_horizon_m))
+    return _clamp01_model(1.0 - float(distance_to_critical_zone_m) / horizon)
+
+
+def _ttc_component(
+    time_to_critical_zone_s: float | None,
+    *,
+    ttc_horizon_s: float,
+    ttc_urgent_s: float,
+) -> float:
+    if time_to_critical_zone_s is None:
+        return 0.5
+    ttc = max(0.0, float(time_to_critical_zone_s))
+    urgent = max(0.0, float(ttc_urgent_s))
+    horizon = max(urgent + 1.0, float(ttc_horizon_s))
+    if ttc <= urgent:
+        return 1.0
+    if ttc >= horizon:
+        return 0.0
+    return _clamp01_model(1.0 - (ttc - urgent) / (horizon - urgent))
+
+
+def _speed_component(
+    speed_mps: float | None,
+    *,
+    speed_reference_mps: float,
+) -> float:
+    if speed_mps is None:
+        return 0.5
+    reference = max(1.0, float(speed_reference_mps))
+    return _clamp01_model(float(speed_mps) / reference)
+
+
+def _covariance_component(value: float | Mapping[str, Any] | Iterable[Any] | None) -> float:
+    if value is None:
+        return 0.5
+    if isinstance(value, (int, float)):
+        return _clamp01_model(float(value))
+    if isinstance(value, Mapping):
+        for key in ("normalized", "quality", "trace", "covariance"):
+            nested = value.get(key)
+            if isinstance(nested, (int, float)):
+                return _clamp01_model(float(nested))
+        return 0.5
+    trace = _matrix_trace_model(value)
+    if trace is None:
+        return 0.5
+    trace = max(0.0, trace)
+    return _clamp01_model(trace / (trace + 1.0))
+
+
+def _matrix_trace_model(value: Any) -> float | None:
+    if not isinstance(value, Iterable) or isinstance(value, (str, bytes, Mapping)):
+        return None
+    items = tuple(value)
+    if not items:
+        return 0.0
+    first = items[0]
+    if isinstance(first, Iterable) and not isinstance(first, (str, bytes, Mapping)):
+        total = 0.0
+        for index, row in enumerate(items):
+            row_items = tuple(row)
+            if index < len(row_items):
+                try:
+                    total += float(row_items[index])
+                except (TypeError, ValueError):
+                    pass
+        return total
+    total = 0.0
+    for item in items:
+        try:
+            total += float(item)
+        except (TypeError, ValueError):
+            pass
+    return total
+
+
+def _target_state_component(target_state: str) -> float:
+    state = str(target_state or "unknown").strip().lower()
+    return {
+        "hostile": 1.0,
+        "engageable": 0.90,
+        "inbound": 0.90,
+        "confirmed": 0.75,
+        "tracked": 0.70,
+        "tentative": 0.45,
+        "unknown": 0.50,
+        "lost": 0.0,
+        "dropped": 0.0,
+        "deleted": 0.0,
+    }.get(state, 0.50)
+
+
+def _weighted_component_score(
+    components: Mapping[str, float],
+    weights: Mapping[str, float],
+) -> float:
+    weighted_total = 0.0
+    weight_total = 0.0
+    for name, value in components.items():
+        weight = max(0.0, float(weights.get(name, 0.0)))
+        weighted_total += weight * _clamp01_model(value)
+        weight_total += weight
+    if weight_total <= 0.0:
+        return 0.0
+    return _clamp01_model(weighted_total / weight_total)
+
+
+def _threat_baseline_reasons(
+    components: Mapping[str, float],
+    target_state: str,
+) -> tuple[str, ...]:
+    reasons: list[str] = ["baseline_composed"]
+    if components.get("critical_zone_proximity", 0.0) >= 0.75:
+        reasons.append("critical_zone_proximity")
+    if components.get("time_to_critical_zone", 0.0) >= 0.75:
+        reasons.append("short_time_to_critical_zone")
+    if components.get("speed", 0.0) >= 0.75:
+        reasons.append("high_speed")
+    if components.get("covariance", 0.0) >= 0.75:
+        reasons.append("high_covariance_uncertainty")
+    state = str(target_state or "unknown").strip().lower()
+    if state:
+        reasons.append(f"target_state_{state}")
+    return tuple(reasons)
 
 
 def _feedback_metadata_items(
@@ -1623,6 +1995,35 @@ def _metadata_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _metadata_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _metadata_bool_optional(value: Any) -> bool | None:
+    if value is None:
+        return None
+    return _metadata_bool(value)
+
+
+def _metadata_text_tuple(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        text = value.strip()
+        return (text,) if text else ()
+    try:
+        items = tuple(value)
+    except TypeError:
+        text = str(value).strip()
+        return (text,) if text else ()
+    return tuple(str(item).strip() for item in items if str(item).strip())
 
 
 def _assignment_matrix_shape(

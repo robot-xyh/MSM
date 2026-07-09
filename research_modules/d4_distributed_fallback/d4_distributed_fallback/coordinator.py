@@ -66,10 +66,17 @@ class FailoverCoordinator:
     heartbeat_warning_s: float = 1.0
     heartbeat_stale_s: float = 2.0
     heartbeat_failure_s: float = 4.0
+    heartbeat_window_size: int = 5
+    heartbeat_degraded_window_threshold: int = 1
+    heartbeat_suspect_window_threshold: int = 2
+    heartbeat_failure_window_threshold: int = 3
+    heartbeat_suspect_dwell_s: float = 0.0
+    heartbeat_failure_dwell_s: float = 0.0
     stable_recovery_s: float = 2.0
     health: C2Health = C2Health.NORMAL
     last_heartbeat_s: float = 0.0
     last_good_digest_s: float = 0.0
+    heartbeat_history: list[tuple[float, bool]] = field(default_factory=list)
     transition_log: list[HealthTransition] = field(default_factory=list)
     leader_id: str | None = None
     last_plan: CBBAResult | None = None
@@ -85,6 +92,7 @@ class FailoverCoordinator:
         digest_ok: bool = True,
         center_epoch: int | None = None,
     ) -> C2Health:
+        self._record_heartbeat_sample(now_s, heartbeat_ok)
         if center_epoch is not None and center_epoch < self.epoch:
             return self._transition(C2Health.SUSPECT, now_s, "center_epoch_stale")
         if heartbeat_ok:
@@ -113,11 +121,46 @@ class FailoverCoordinator:
         if peer_fail_votes >= quorum:
             return self._transition(C2Health.FAILED, now_s, "peer_quorum_failed")
         heartbeat_age = now_s - self.last_heartbeat_s
-        if heartbeat_age > self.heartbeat_failure_s:
-            return self._transition(C2Health.FAILED, now_s, "heartbeat_failure_timeout")
-        if heartbeat_age > self.heartbeat_stale_s:
-            return self._transition(C2Health.SUSPECT, now_s, "heartbeat_stale")
+        had_samples = bool(self.heartbeat_history)
         if heartbeat_age > self.heartbeat_warning_s:
+            self._record_heartbeat_sample(now_s, False)
+        miss_count = self._heartbeat_window_miss_count()
+        if heartbeat_age > self.heartbeat_failure_s:
+            if not had_samples or (
+                miss_count >= self._heartbeat_threshold(
+                    self.heartbeat_failure_window_threshold
+                )
+                and self._state_dwell_met(
+                    C2Health.SUSPECT,
+                    now_s,
+                    self.heartbeat_failure_dwell_s,
+                )
+            ):
+                return self._transition(
+                    C2Health.FAILED,
+                    now_s,
+                    "heartbeat_failure_timeout",
+                )
+            return self._transition(
+                C2Health.SUSPECT,
+                now_s,
+                "heartbeat_failure_window_pending",
+            )
+        if (
+            heartbeat_age > self.heartbeat_stale_s
+            or miss_count >= self._heartbeat_threshold(self.heartbeat_suspect_window_threshold)
+        ):
+            if not self._state_dwell_met(
+                C2Health.DEGRADED,
+                now_s,
+                self.heartbeat_suspect_dwell_s,
+            ):
+                return self._transition(C2Health.DEGRADED, now_s, "heartbeat_stale_pending")
+            return self._transition(C2Health.SUSPECT, now_s, "heartbeat_stale")
+        if (
+            heartbeat_age > self.heartbeat_warning_s
+            or miss_count >= self._heartbeat_threshold(self.heartbeat_degraded_window_threshold)
+        ):
             return self._transition(C2Health.DEGRADED, now_s, "heartbeat_jitter")
         if self.health != C2Health.NORMAL:
             return self._transition(
@@ -126,6 +169,39 @@ class FailoverCoordinator:
                 "heartbeat_recovered_pending_merge",
             )
         return self.health
+
+    def _record_heartbeat_sample(self, now_s: float, ok: bool) -> None:
+        if self.heartbeat_history and self.heartbeat_history[-1][0] == float(now_s):
+            self.heartbeat_history[-1] = (float(now_s), bool(ok))
+        else:
+            self.heartbeat_history.append((float(now_s), bool(ok)))
+        window_size = max(1, int(self.heartbeat_window_size))
+        if len(self.heartbeat_history) > window_size:
+            self.heartbeat_history = self.heartbeat_history[-window_size:]
+
+    def _heartbeat_window_miss_count(self) -> int:
+        return sum(1 for _, ok in self.heartbeat_history[-self._heartbeat_window_size() :] if not ok)
+
+    def _heartbeat_window_size(self) -> int:
+        return max(1, int(self.heartbeat_window_size))
+
+    def _heartbeat_threshold(self, configured: int) -> int:
+        return max(1, min(int(configured), self._heartbeat_window_size()))
+
+    def _state_dwell_met(self, state: C2Health, now_s: float, dwell_s: float) -> bool:
+        dwell = max(0.0, float(dwell_s))
+        if dwell == 0.0:
+            return True
+        if self.health != state:
+            return False
+        entered_at = None
+        for transition in reversed(self.transition_log):
+            if transition.to_state == state:
+                entered_at = transition.time_s
+                break
+        if entered_at is None:
+            return False
+        return float(now_s) - float(entered_at) >= dwell
 
     def elect_leader(
         self,

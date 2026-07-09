@@ -663,6 +663,132 @@ def test_secondary_sensing_metrics_use_actual_target_and_camera_counts() -> None
     assert node_metrics["mobile_recon_gimbal"]["gimbal_pointing_error_count"] == 2
 
 
+def test_mission_root_cause_performance_and_eval_tracking_fields() -> None:
+    collector = MetricsCollector()
+    collector.extend_tracks(
+        [
+            TrackRecord(
+                timestamp=0.0,
+                global_track_id="G-T1-A",
+                truth_id="T1",
+                position=(0.0, 0.0),
+                truth_position=(0.0, 0.0),
+            ),
+            TrackRecord(
+                timestamp=1.0,
+                global_track_id="G-T1-B",
+                truth_id="T1",
+                position=(1.0, 0.0),
+                truth_position=(1.0, 0.0),
+            ),
+        ]
+    )
+    collector.extend_events(
+        [
+            EventRecord(
+                timestamp=1.2,
+                event_type="terminal_switch_rejected",
+                metadata={
+                    "terminal_switch_reject_reason": "camera_quality",
+                    "camera_quality_gate_pass": False,
+                    "terminal_handover_pending": True,
+                    "terminal_switch_allowed": False,
+                },
+            ),
+            EventRecord(
+                timestamp=1.5,
+                event_type="secondary_coverage_frame",
+                metadata={
+                    "secondary_node_type": "mobile_recon_gimbal",
+                    "frame_id": "f0",
+                    "covered_target_ids": ["T1"],
+                    "target_count": 2,
+                },
+            ),
+            EventRecord(
+                timestamp=2.0,
+                event_type="module_performance",
+                actor_id="D6",
+                metadata={
+                    "module": "D6",
+                    "module_duration_ms": 12.0,
+                    "loop_latency_s": 0.02,
+                    "record_latency_ms": 3.0,
+                    "cpu_budget_utilization": 0.5,
+                    "gpu_usage_percent": 10.0,
+                    "budget_exceeded": True,
+                },
+            ),
+        ]
+    )
+
+    metrics = collector.compute_episode(
+        episode_id="p0_eval_tracking",
+        truth_summary={
+            "target_count": 2,
+            "required_intercept_count": 2,
+            "high_threat_by_timestamp": {0.0: ["T1", "T2"]},
+            "eval_priority": "P0-A",
+            "implementation_status": "implemented",
+            "evidence_path": "outputs/p0_eval_tracking/main_episode_bus_metrics.json",
+        },
+    )
+
+    assert metrics.mission_outcome == "partial"
+    assert metrics.eval_priority == "P0-A"
+    assert metrics.implementation_status == "implemented"
+    assert metrics.evidence_path.endswith("main_episode_bus_metrics.json")
+    assert metrics.module_duration_ms == pytest.approx(12.0)
+    assert metrics.loop_latency_ms == pytest.approx(20.0)
+    assert metrics.record_latency_ms == pytest.approx(3.0)
+    assert metrics.cpu_budget_utilization == pytest.approx(0.5)
+    assert metrics.gpu_budget_utilization == pytest.approx(0.1)
+    assert metrics.performance_budget_violation_count == 1
+    assert metrics.metadata["performance"]["module_duration_ms"]["count"] == 1
+    assert metrics.metadata["performance"]["cpu_budget"]["placeholder"] is False
+
+    causes = {item["cause"] for item in metrics.metadata["top_failure_causes"]}
+    assert {"tracking", "assignment", "terminal_gate", "guidance", "coverage"} <= causes
+    assert metrics.metadata["root_cause"] in causes
+    assert "intercept_success_count=0/2" in str(
+        metrics.metadata["failure_cause_details"]["guidance"]
+    )
+
+
+def test_explicit_mission_outcome_and_runtime_exception_abort() -> None:
+    explicit = MetricsCollector().compute_episode(
+        "explicit_success",
+        truth_summary={
+            "mission_outcome": "success",
+            "success_reason": "all_required_targets_intercepted",
+            "eval_priority": "P0-C",
+            "implementation_status": "implemented",
+            "evidence_path": "reports/episode_metrics.csv",
+        },
+    )
+
+    assert explicit.mission_outcome == "success"
+    assert explicit.success_reason == "all_required_targets_intercepted"
+    assert explicit.eval_priority == "P0-C"
+    assert explicit.evidence_path == "reports/episode_metrics.csv"
+
+    collector = MetricsCollector()
+    collector.add_event(
+        EventRecord(
+            timestamp=3.0,
+            event_type="runtime_exception",
+            severity="fatal",
+            metadata={"failure_cause": "runtime_exception"},
+        )
+    )
+
+    aborted = collector.compute_episode("runtime_abort")
+
+    assert aborted.mission_outcome == "aborted"
+    assert aborted.metadata["root_cause"] == "runtime_exception"
+    assert aborted.metadata["top_failure_causes"][0]["cause"] == "runtime_exception"
+
+
 def test_episode_metrics_contains_all_required_names() -> None:
     required = {
         "detection_probability",
@@ -731,6 +857,12 @@ def test_episode_metrics_contains_all_required_names() -> None:
         "gate_reject_count",
         "constraint_violation_count",
         "human_override_count",
+        "module_duration_ms",
+        "loop_latency_ms",
+        "record_latency_ms",
+        "cpu_budget_utilization",
+        "gpu_budget_utilization",
+        "performance_budget_violation_count",
     }
 
     assert set(MetricsCollector().compute_episode("episode").metric_names()) == required

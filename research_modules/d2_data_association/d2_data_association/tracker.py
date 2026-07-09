@@ -10,6 +10,7 @@ import numpy as np
 
 from .associators import DataAssociator, GNNHungarianAssociator
 from .gating import POSITION_H
+from .gating import estimate_track_quality, track_position_covariance_trace
 from .metrics import MetricsRecorder
 from .models import (
     AssociationResult,
@@ -81,6 +82,7 @@ class Tracker:
             detection.detection_id: detection for detection in detection_list
         }
         assignments_for_metrics: list[tuple[str, str, float | None]] = []
+        created_track_ids: set[str] = set()
 
         for pair in result.matched_pairs:
             track = self.tracks[pair.track_id]
@@ -102,12 +104,14 @@ class Tracker:
             for detection_id in result.unmatched_detection_ids:
                 detection = detections_by_id[detection_id]
                 new_track = self._create_track(detection)
+                created_track_ids.add(new_track.global_track_id)
                 squared_error = _truth_squared_error(new_track, detection)
                 if detection.truth_id is not None:
                     assignments_for_metrics.append(
                         (detection.truth_id, new_track.global_track_id, squared_error)
                     )
 
+        self._refresh_track_quality_and_risk(result, created_track_ids)
         runtime = perf_counter() - start_time
         self.metrics.record_frame(
             timestamp=timestamp,
@@ -306,6 +310,89 @@ class Tracker:
         track.transition_log.append(transition)
         self.state_transitions.append(transition)
 
+    def _refresh_track_quality_and_risk(
+        self,
+        result: AssociationResult,
+        created_track_ids: set[str],
+    ) -> None:
+        matched_track_ids = {pair.track_id for pair in result.matched_pairs}
+        candidate_counts = _float_mapping(
+            result.metadata.get("candidate_counts_by_track", {})
+        )
+        motion_by_track = _float_mapping(
+            result.metadata.get("motion_consistency_by_track", {})
+        )
+        gate_thresholds = _float_mapping(
+            result.metadata.get("gate_thresholds_by_track", {})
+        )
+        target_density_by_track = _float_mapping(
+            result.metadata.get("target_density_by_track", {})
+        )
+
+        track_quality_by_track: dict[str, float] = {}
+        association_risk_by_track: dict[str, float] = {}
+        quality_metadata_by_track: dict[str, dict[str, Any]] = {}
+
+        for track in self.active_tracks():
+            track_id = track.global_track_id
+            quality = estimate_track_quality(track)
+            candidate_count = int(candidate_counts.get(track_id, 0.0))
+            motion_cost = float(motion_by_track.get(track_id, 0.0))
+            matched_this_frame = track_id in matched_track_ids
+            created_this_frame = track_id in created_track_ids
+            association_risk, risk_components = _track_association_risk(
+                track=track,
+                track_quality=quality,
+                candidate_count=candidate_count,
+                motion_consistency_cost=motion_cost,
+                matched_this_frame=matched_this_frame,
+                created_this_frame=created_this_frame,
+                drop_miss_threshold=self.drop_miss_threshold,
+            )
+            metadata = {
+                "track_quality": quality,
+                "association_risk": association_risk,
+                "position_covariance_trace": track_position_covariance_trace(track),
+                "candidate_count": candidate_count,
+                "motion_consistency_cost": motion_cost,
+                "target_density": float(target_density_by_track.get(track_id, 0.0)),
+                "gate_threshold": gate_thresholds.get(track_id),
+                "matched_this_frame": matched_this_frame,
+                "created_this_frame": created_this_frame,
+                "risk_components": risk_components,
+            }
+            track.track_quality = quality
+            track.association_risk = association_risk
+            track.quality_metadata = metadata
+            track_quality_by_track[track_id] = quality
+            association_risk_by_track[track_id] = association_risk
+            quality_metadata_by_track[track_id] = metadata
+
+        if track_quality_by_track:
+            quality_values = list(track_quality_by_track.values())
+            risk_values = list(association_risk_by_track.values())
+            mean_quality = float(sum(quality_values) / len(quality_values))
+            min_quality = float(min(quality_values))
+            max_association_risk = float(max(risk_values))
+            low_quality_track_count = sum(1 for value in quality_values if value < 0.5)
+        else:
+            mean_quality = 0.0
+            min_quality = 0.0
+            max_association_risk = 0.0
+            low_quality_track_count = 0
+
+        result.metadata.update(
+            {
+                "track_quality_by_track": track_quality_by_track,
+                "association_risk_by_track": association_risk_by_track,
+                "track_quality_metadata_by_track": quality_metadata_by_track,
+                "mean_track_quality": mean_quality,
+                "min_track_quality": min_quality,
+                "max_track_association_risk": max_association_risk,
+                "low_quality_track_count": low_quality_track_count,
+            }
+        )
+
 
 def _truth_squared_error(track: GlobalTrack, detection: Detection) -> float | None:
     truth_position = detection.metadata.get("truth_position")
@@ -314,6 +401,60 @@ def _truth_squared_error(track: GlobalTrack, detection: Detection) -> float | No
     truth_position_array = np.asarray(truth_position, dtype=float).reshape(2)
     residual = track.position - truth_position_array
     return float(residual.T @ residual)
+
+
+def _track_association_risk(
+    *,
+    track: GlobalTrack,
+    track_quality: float,
+    candidate_count: int,
+    motion_consistency_cost: float,
+    matched_this_frame: bool,
+    created_this_frame: bool,
+    drop_miss_threshold: int,
+) -> tuple[float, dict[str, float]]:
+    quality_risk = 0.55 * max(0.0, 1.0 - track_quality)
+    candidate_risk = min(0.30, max(0, candidate_count - 1) * 0.12)
+    motion_risk = min(0.25, max(0.0, motion_consistency_cost) / 3.0 * 0.25)
+    miss_risk = min(
+        0.35,
+        max(0.0, float(track.misses)) / max(float(drop_miss_threshold), 1.0) * 0.35,
+    )
+    unmatched_risk = 0.0 if matched_this_frame or created_this_frame else 0.18
+    lifecycle_risk = _lifecycle_association_risk(track.lifecycle_state)
+    created_risk = 0.05 if created_this_frame else 0.0
+    components = {
+        "quality_risk": quality_risk,
+        "candidate_risk": candidate_risk,
+        "motion_risk": motion_risk,
+        "miss_risk": miss_risk,
+        "unmatched_risk": unmatched_risk,
+        "lifecycle_risk": lifecycle_risk,
+        "created_risk": created_risk,
+    }
+    return float(np.clip(sum(components.values()), 0.0, 1.0)), components
+
+
+def _lifecycle_association_risk(state: TrackLifecycleState) -> float:
+    if state == TrackLifecycleState.DROPPED:
+        return 0.50
+    if state == TrackLifecycleState.LOST:
+        return 0.28
+    if state == TrackLifecycleState.TENTATIVE:
+        return 0.08
+    return 0.0
+
+
+def _float_mapping(value: object) -> dict[str, float]:
+    if not isinstance(value, Mapping):
+        return {}
+    result: dict[str, float] = {}
+    for key, item in value.items():
+        try:
+            result[str(key)] = float(item)
+        except (TypeError, ValueError):
+            continue
+    return result
 
 
 def _merge_association_metadata(

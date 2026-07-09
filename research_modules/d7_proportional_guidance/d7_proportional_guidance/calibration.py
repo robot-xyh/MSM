@@ -256,6 +256,12 @@ def _summarize_benchmark_fields(rows: list[dict[str, Any]]) -> dict[str, Any]:
             _numeric_values(rows, ("height_delta_m", "altitude_delta_m", "vertical_separation_m"))
         ),
         "range_3d_m": _numeric_summary(_numeric_values(rows, ("range_3d_m", "range_3d_estimate_m"))),
+        "pn3d_los_rate_norm_radps": _numeric_summary(
+            _numeric_values(rows, ("pn3d_los_rate_norm_radps", "los_rate_3d_norm_radps"))
+        ),
+        "pn3d_commanded_accel_norm_mps2": _numeric_summary(
+            _numeric_values(rows, ("pn3d_commanded_accel_norm_mps2", "accel_3d_norm_mps2"))
+        ),
         "frpn_benchmark_score": _numeric_summary(
             _numeric_values(rows, ("frpn_benchmark_score", "frpn_score"))
         ),
@@ -342,8 +348,14 @@ def _coerce_record(record: Any) -> dict[str, Any]:
             "bbox_area_ratio",
             "visual_latency_s",
             "maneuver_margin",
+            "raw_los_rate_radps",
+            "filtered_los_rate_radps",
+            "los_rate_clamped",
+            "los_rate_outlier_rejected",
             "height_delta_m",
             "range_3d_m",
+            "pn3d_los_rate_norm_radps",
+            "pn3d_commanded_accel_norm_mps2",
             "frpn_benchmark_score",
         )
         data = {

@@ -30,6 +30,10 @@ def load_main_episode_bus_metrics(path: str | Path) -> EpisodeMetrics:
 
     values = _episode_metric_values(metrics_payload)
     values.setdefault("episode_id", _episode_id_from_payload(metrics_payload, path))
+    mission_outcome_missing = "mission_outcome" not in values
+    eval_priority_missing = "eval_priority" not in values
+    implementation_status_missing = "implementation_status" not in values
+    evidence_path_missing = "evidence_path" not in values
 
     metric_scope = _normalize_metric_scope(values.get("metric_scope"))
     if metric_scope == "not_recorded":
@@ -48,7 +52,24 @@ def load_main_episode_bus_metrics(path: str | Path) -> EpisodeMetrics:
     metadata.setdefault("source_path", str(path))
     values["metadata"] = metadata
 
-    return EpisodeMetrics(**values)
+    metrics = EpisodeMetrics(**values)
+    if mission_outcome_missing:
+        _backfill_mission_status(metrics)
+    if eval_priority_missing:
+        metrics.eval_priority = str(metadata.get("eval_priority") or "P0")
+    if implementation_status_missing:
+        metrics.implementation_status = str(
+            metadata.get("implementation_status") or "implemented"
+        )
+    if evidence_path_missing:
+        metrics.evidence_path = str(metadata.get("evidence_path") or path)
+    metrics.metadata.setdefault("mission_outcome", metrics.mission_outcome)
+    metrics.metadata.setdefault("success_reason", metrics.success_reason)
+    metrics.metadata.setdefault("failure_reason", metrics.failure_reason)
+    metrics.metadata.setdefault("eval_priority", metrics.eval_priority)
+    metrics.metadata.setdefault("implementation_status", metrics.implementation_status)
+    metrics.metadata.setdefault("evidence_path", metrics.evidence_path)
+    return metrics
 
 
 def load_main_episode_bus_metric_files(
@@ -92,3 +113,34 @@ def _metric_scope_from_payload_or_path(
         if scope != "not_recorded":
             return scope
     return _normalize_metric_scope(path.name)
+
+
+def _backfill_mission_status(metrics: EpisodeMetrics) -> None:
+    required_success_count = int(metrics.target_count or 0)
+    if required_success_count <= 0 and metrics.intercept_success_count > 0:
+        required_success_count = int(metrics.intercept_success_count)
+
+    if (
+        required_success_count > 0
+        and metrics.intercept_success_count >= required_success_count
+        and metrics.constraint_violation_count == 0
+        and metrics.human_override_count == 0
+    ):
+        metrics.mission_outcome = "success"
+        metrics.success_reason = (
+            "intercept_success_count="
+            f"{metrics.intercept_success_count}/{required_success_count}"
+        )
+        return
+
+    if metrics.intercept_success_count > 0:
+        metrics.mission_outcome = "partial"
+        metrics.success_reason = (
+            "partial_intercept_success_count="
+            f"{metrics.intercept_success_count}/{required_success_count or 'unknown'}"
+        )
+        metrics.failure_reason = "not_all_required_intercepts_confirmed"
+        return
+
+    metrics.mission_outcome = "failed"
+    metrics.failure_reason = "no_success_evidence"

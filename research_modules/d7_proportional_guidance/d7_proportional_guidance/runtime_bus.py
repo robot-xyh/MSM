@@ -13,6 +13,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from .pn import compute_three_dimensional_pn_benchmark
 from .models import GuidanceMode
 from .terminal_gate import (
     AssignmentGuidanceBinding,
@@ -31,6 +32,26 @@ from .vision_png import (
 
 
 D7_RUNTIME_BUS_BOUNDARY = "d7_runtime_bus_state_injection_only_no_vehicle_control"
+
+REACQUIRE_CONTRACT_REJECT_REASONS = frozenset(
+    {
+        "d5_not_locked",
+        "terminal_identity_mismatch",
+        "assignment_version_mismatch",
+        "d4_terminal_inconsistent",
+        "d4_plan_mismatch",
+        "d4_owner_missing",
+        "d4_owner_mismatch",
+    }
+)
+
+
+@dataclass
+class _TerminalLatchState:
+    terminal_active: bool = False
+    candidate_allowed_streak: int = 0
+    candidate_rejected_streak: int = 0
+    reacquire_grace_remaining: int = 0
 
 
 @dataclass(frozen=True)
@@ -95,10 +116,28 @@ class D7RuntimePairOutput:
     stable_frame_count: int = 0
     ttc_s: float | None = None
     los_rate_radps: float = 0.0
+    raw_los_rate_radps: float | None = None
+    filtered_los_rate_radps: float | None = None
     los_rate_variance_radps2: float | None = None
+    los_rate_clamped: bool = False
+    los_rate_outlier_rejected: bool = False
     closing_speed_mps: float | None = None
     required_turn_rate_radps: float | None = None
     maneuver_margin: float | None = None
+    terminal_dwell_active: bool = False
+    terminal_release_grace_active: bool = False
+    terminal_reacquire_grace_active: bool = False
+    terminal_latch_active: bool = False
+    terminal_dwell_frames: int = 1
+    terminal_release_frames: int = 1
+    terminal_reacquire_grace_frames: int = 0
+    height_delta_m: float | None = None
+    horizontal_range_m: float | None = None
+    range_3d_m: float | None = None
+    pn3d_los_rate_norm_radps: float | None = None
+    pn3d_commanded_accel_norm_mps2: float | None = None
+    pn3d_benchmark_only: bool = False
+    pn3d_default_api_replaced: bool = False
     png_guidance_law_candidate: str | None = None
     selected_velocity_ned: tuple[float, float, float] | None = None
     png_command: PngGuidanceCommand | None = None
@@ -148,10 +187,28 @@ class D7RuntimePairOutput:
             "stable_frame_count": self.stable_frame_count,
             "ttc_s": self.ttc_s,
             "los_rate_radps": self.los_rate_radps,
+            "raw_los_rate_radps": self.raw_los_rate_radps,
+            "filtered_los_rate_radps": self.filtered_los_rate_radps,
             "los_rate_variance_radps2": self.los_rate_variance_radps2,
+            "los_rate_clamped": self.los_rate_clamped,
+            "los_rate_outlier_rejected": self.los_rate_outlier_rejected,
             "closing_speed_mps": self.closing_speed_mps,
             "required_turn_rate_radps": self.required_turn_rate_radps,
             "maneuver_margin": self.maneuver_margin,
+            "terminal_dwell_active": self.terminal_dwell_active,
+            "terminal_release_grace_active": self.terminal_release_grace_active,
+            "terminal_reacquire_grace_active": self.terminal_reacquire_grace_active,
+            "terminal_latch_active": self.terminal_latch_active,
+            "terminal_dwell_frames": self.terminal_dwell_frames,
+            "terminal_release_frames": self.terminal_release_frames,
+            "terminal_reacquire_grace_frames": self.terminal_reacquire_grace_frames,
+            "height_delta_m": self.height_delta_m,
+            "horizontal_range_m": self.horizontal_range_m,
+            "range_3d_m": self.range_3d_m,
+            "pn3d_los_rate_norm_radps": self.pn3d_los_rate_norm_radps,
+            "pn3d_commanded_accel_norm_mps2": self.pn3d_commanded_accel_norm_mps2,
+            "pn3d_benchmark_only": self.pn3d_benchmark_only,
+            "pn3d_default_api_replaced": self.pn3d_default_api_replaced,
             "png_guidance_law_candidate": self.png_guidance_law_candidate,
             "selected_velocity_ned": self.selected_velocity_ned,
             **self.metadata,
@@ -165,6 +222,7 @@ class D7RuntimeBus:
         self.config = config or PngGuidanceConfig()
         self._filters: dict[str, SimpleFlightPngGuidanceFilter] = {}
         self._binding_signatures: dict[str, tuple[str, int, str | None, int, str | None]] = {}
+        self._terminal_latches: dict[str, _TerminalLatchState] = {}
 
     @property
     def control_context_ids(self) -> tuple[str, ...]:
@@ -173,10 +231,12 @@ class D7RuntimeBus:
     def reset(self) -> None:
         self._filters.clear()
         self._binding_signatures.clear()
+        self._terminal_latches.clear()
 
     def reset_pair(self, control_context_id: str) -> None:
         self._filters.pop(control_context_id, None)
         self._binding_signatures.pop(control_context_id, None)
+        self._terminal_latches.pop(control_context_id, None)
 
     def inject_state(
         self,
@@ -195,6 +255,8 @@ class D7RuntimeBus:
         if self._binding_signatures.get(control_context_id) != signature:
             self._filters[control_context_id] = SimpleFlightPngGuidanceFilter(self.config)
             self._binding_signatures[control_context_id] = signature
+            self._terminal_latches[control_context_id] = _TerminalLatchState()
+        latch = self._terminal_latches.setdefault(control_context_id, _TerminalLatchState())
 
         observation = (
             coerce_vision_guidance_observation(pair_input.observation)
@@ -219,6 +281,9 @@ class D7RuntimeBus:
             terminal_handover_pending=pair_input.handover_pending,
             terminal_locked=pair_input.terminal_locked,
             observation=observation,
+            relative_position_ned=pair_input.relative_position_ned,
+            relative_velocity_ned=pair_input.relative_velocity_ned,
+            navigation_constant=self.config.navigation_constant,
             metadata={
                 "boundary": D7_RUNTIME_BUS_BOUNDARY,
                 **pair_input.metadata,
@@ -226,6 +291,12 @@ class D7RuntimeBus:
         )
 
         if not decision.allowed:
+            self._filters[control_context_id].reset()
+            latch.terminal_active = False
+            latch.candidate_allowed_streak = 0
+            latch.candidate_rejected_streak = 0
+            if decision.reject_reason in REACQUIRE_CONTRACT_REJECT_REASONS:
+                latch.reacquire_grace_remaining = self.config.terminal_reacquire_grace_frames
             return D7RuntimePairOutput(
                 **common,
                 mode=guidance_mode_from_terminal_contract(
@@ -239,6 +310,10 @@ class D7RuntimeBus:
                 terminal_switch_reject_reason="",
                 terminal_handoff_state="contract_rejected",
                 terminal_mode_entered=False,
+                terminal_latch_active=latch.terminal_active,
+                terminal_dwell_frames=self.config.terminal_dwell_frames,
+                terminal_release_frames=self.config.terminal_release_frames,
+                terminal_reacquire_grace_frames=self.config.terminal_reacquire_grace_frames,
             )
 
         if observation is None:
@@ -251,6 +326,10 @@ class D7RuntimeBus:
                 terminal_switch_reject_reason="vision_observation_missing",
                 terminal_handoff_state="awaiting_observation",
                 terminal_mode_entered=False,
+                terminal_latch_active=latch.terminal_active,
+                terminal_dwell_frames=self.config.terminal_dwell_frames,
+                terminal_release_frames=self.config.terminal_release_frames,
+                terminal_reacquire_grace_frames=self.config.terminal_reacquire_grace_frames,
             )
 
         command = self._filters[control_context_id].evaluate(
@@ -262,16 +341,22 @@ class D7RuntimeBus:
             relative_velocity_ned=pair_input.relative_velocity_ned,
             command_z_ned_m=pair_input.command_z_ned_m,
         )
-        visual_png_enabled = bool(command.quality.terminal_switch_allowed)
         quality = command.quality
+        latch_decision = _apply_terminal_latch(
+            latch,
+            candidate_allowed=bool(quality.terminal_switch_allowed),
+            candidate_reject_reason=quality.reject_reason,
+            config=self.config,
+        )
+        visual_png_enabled = bool(latch_decision["visual_png_enabled"])
         return D7RuntimePairOutput(
             **common,
             mode=GuidanceMode.VISION_TERMINAL if visual_png_enabled else GuidanceMode.HANDOVER_PENDING,
             guidance_law=command.guidance_law if visual_png_enabled else "radar_pn",
             visual_png_enabled=visual_png_enabled,
             terminal_switch_allowed=visual_png_enabled,
-            terminal_switch_reject_reason=quality.reject_reason,
-            terminal_handoff_state="vision_terminal" if visual_png_enabled else "switch_gate_rejected",
+            terminal_switch_reject_reason=str(latch_decision["terminal_switch_reject_reason"]),
+            terminal_handoff_state=str(latch_decision["terminal_handoff_state"]),
             terminal_mode_entered=visual_png_enabled,
             camera_quality_gate_passed=quality.camera_quality_gate_passed,
             los_quality_gate_passed=quality.los_quality_gate_passed,
@@ -281,10 +366,21 @@ class D7RuntimeBus:
             stable_frame_count=quality.stable_frame_count,
             ttc_s=quality.ttc_s,
             los_rate_radps=quality.los_rate_radps,
+            raw_los_rate_radps=quality.raw_los_rate_radps,
+            filtered_los_rate_radps=quality.filtered_los_rate_radps,
             los_rate_variance_radps2=quality.los_rate_variance_radps2,
+            los_rate_clamped=quality.los_rate_clamped,
+            los_rate_outlier_rejected=quality.los_rate_outlier_rejected,
             closing_speed_mps=quality.closing_speed_mps,
             required_turn_rate_radps=quality.required_turn_rate_radps,
             maneuver_margin=quality.maneuver_margin,
+            terminal_dwell_active=bool(latch_decision["terminal_dwell_active"]),
+            terminal_release_grace_active=bool(latch_decision["terminal_release_grace_active"]),
+            terminal_reacquire_grace_active=bool(latch_decision["terminal_reacquire_grace_active"]),
+            terminal_latch_active=latch.terminal_active,
+            terminal_dwell_frames=self.config.terminal_dwell_frames,
+            terminal_release_frames=self.config.terminal_release_frames,
+            terminal_reacquire_grace_frames=self.config.terminal_reacquire_grace_frames,
             png_guidance_law_candidate=command.guidance_law,
             selected_velocity_ned=command.velocity_ned if visual_png_enabled else None,
             png_command=command,
@@ -368,6 +464,23 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         abs(row.los_rate_radps)
         for row in gate_sample_rows
     ]
+    filtered_los_rate_abs_values = [
+        abs(row.filtered_los_rate_radps)
+        for row in gate_sample_rows
+        if row.filtered_los_rate_radps is not None
+    ]
+    raw_los_rate_abs_values = [
+        abs(row.raw_los_rate_radps)
+        for row in gate_sample_rows
+        if row.raw_los_rate_radps is not None
+    ]
+    height_delta_values = [row.height_delta_m for row in rows if row.height_delta_m is not None]
+    range_3d_values = [row.range_3d_m for row in rows if row.range_3d_m is not None]
+    pn3d_los_rate_values = [
+        row.pn3d_los_rate_norm_radps
+        for row in rows
+        if row.pn3d_los_rate_norm_radps is not None
+    ]
     summary = {
         "boundary": D7_RUNTIME_BUS_BOUNDARY,
         "sample_count": len(rows),
@@ -389,6 +502,13 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         "terminal_switch_reject_count": sum(switch_rejects.values()),
         "terminal_switch_reject_reasons": dict(switch_rejects),
         "terminal_switch_allowed_rate": visual_png_switch_count / len(rows) if rows else 0.0,
+        "terminal_dwell_active_count": sum(1 for row in rows if row.terminal_dwell_active),
+        "terminal_release_grace_active_count": sum(1 for row in rows if row.terminal_release_grace_active),
+        "terminal_reacquire_grace_active_count": sum(1 for row in rows if row.terminal_reacquire_grace_active),
+        "los_rate_clamped_count": sum(1 for row in rows if row.los_rate_clamped),
+        "los_rate_outlier_rejected_count": sum(1 for row in rows if row.los_rate_outlier_rejected),
+        "pn3d_benchmark_sample_count": sum(1 for row in rows if row.pn3d_benchmark_only),
+        "pn3d_default_api_replaced": any(row.pn3d_default_api_replaced for row in rows),
         "terminal_contract_allowed_rate": (
             sum(1 for row in rows if row.terminal_contract_allowed) / len(rows) if rows else 0.0
         ),
@@ -412,7 +532,76 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
     summary.update(_numeric_summary("bbox_area_ratio", bbox_values))
     summary.update(_numeric_summary("edge_margin_ratio", edge_values))
     summary.update(_numeric_summary("los_rate_abs_radps", los_rate_abs_values))
+    summary.update(_numeric_summary("filtered_los_rate_abs_radps", filtered_los_rate_abs_values))
+    summary.update(_numeric_summary("raw_los_rate_abs_radps", raw_los_rate_abs_values))
+    summary.update(_numeric_summary("height_delta_m", height_delta_values))
+    summary.update(_numeric_summary("range_3d_m", range_3d_values))
+    summary.update(_numeric_summary("pn3d_los_rate_norm_radps", pn3d_los_rate_values))
     return summary
+
+
+def _apply_terminal_latch(
+    latch: _TerminalLatchState,
+    *,
+    candidate_allowed: bool,
+    candidate_reject_reason: str,
+    config: PngGuidanceConfig,
+) -> dict[str, Any]:
+    if candidate_allowed:
+        latch.candidate_allowed_streak += 1
+        latch.candidate_rejected_streak = 0
+        if latch.reacquire_grace_remaining > 0:
+            latch.reacquire_grace_remaining -= 1
+            return {
+                "visual_png_enabled": False,
+                "terminal_switch_reject_reason": "reacquire_grace_active",
+                "terminal_handoff_state": "reacquire_grace",
+                "terminal_dwell_active": False,
+                "terminal_release_grace_active": False,
+                "terminal_reacquire_grace_active": True,
+            }
+        if latch.candidate_allowed_streak < config.terminal_dwell_frames:
+            return {
+                "visual_png_enabled": False,
+                "terminal_switch_reject_reason": "terminal_dwell_active",
+                "terminal_handoff_state": "terminal_dwell",
+                "terminal_dwell_active": True,
+                "terminal_release_grace_active": False,
+                "terminal_reacquire_grace_active": False,
+            }
+        latch.terminal_active = True
+        return {
+            "visual_png_enabled": True,
+            "terminal_switch_reject_reason": "",
+            "terminal_handoff_state": "vision_terminal",
+            "terminal_dwell_active": False,
+            "terminal_release_grace_active": False,
+            "terminal_reacquire_grace_active": False,
+        }
+
+    latch.candidate_allowed_streak = 0
+    if latch.terminal_active:
+        latch.candidate_rejected_streak += 1
+        if latch.candidate_rejected_streak < config.terminal_release_frames:
+            return {
+                "visual_png_enabled": False,
+                "terminal_switch_reject_reason": candidate_reject_reason or "terminal_release_grace_active",
+                "terminal_handoff_state": "terminal_release_grace",
+                "terminal_dwell_active": False,
+                "terminal_release_grace_active": True,
+                "terminal_reacquire_grace_active": False,
+            }
+        latch.terminal_active = False
+    else:
+        latch.candidate_rejected_streak = 0
+    return {
+        "visual_png_enabled": False,
+        "terminal_switch_reject_reason": candidate_reject_reason,
+        "terminal_handoff_state": "switch_gate_rejected",
+        "terminal_dwell_active": False,
+        "terminal_release_grace_active": False,
+        "terminal_reacquire_grace_active": False,
+    }
 
 
 def _common_output_kwargs(
@@ -424,6 +613,9 @@ def _common_output_kwargs(
     terminal_handover_pending: bool,
     terminal_locked: bool,
     observation: VisionGuidanceObservation | None,
+    relative_position_ned: tuple[float, float, float] | None,
+    relative_velocity_ned: tuple[float, float, float] | None,
+    navigation_constant: float,
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
     return {
@@ -445,6 +637,11 @@ def _common_output_kwargs(
         "terminal_handover_pending": terminal_handover_pending,
         "terminal_locked": terminal_locked,
         **_observation_output_fields(observation),
+        **_pn3d_output_fields(
+            relative_position_ned=relative_position_ned,
+            relative_velocity_ned=relative_velocity_ned,
+            navigation_constant=navigation_constant,
+        ),
         "metadata": metadata,
     }
 
@@ -460,6 +657,30 @@ def _observation_output_fields(
         "camera_id": observation.camera_id,
         "frame_timestamp_s": observation.frame_timestamp_s,
         "visual_latency_s": _metadata_float(observation.metadata, "visual_latency_s"),
+    }
+
+
+def _pn3d_output_fields(
+    *,
+    relative_position_ned: tuple[float, float, float] | None,
+    relative_velocity_ned: tuple[float, float, float] | None,
+    navigation_constant: float,
+) -> dict[str, Any]:
+    if relative_position_ned is None or relative_velocity_ned is None:
+        return {}
+    benchmark = compute_three_dimensional_pn_benchmark(
+        relative_position_ned=relative_position_ned,
+        relative_velocity_ned=relative_velocity_ned,
+        navigation_constant=navigation_constant,
+    )
+    return {
+        "height_delta_m": benchmark.height_delta_m,
+        "horizontal_range_m": benchmark.horizontal_range_m,
+        "range_3d_m": benchmark.range_3d_m,
+        "pn3d_los_rate_norm_radps": benchmark.los_rate_norm_radps,
+        "pn3d_commanded_accel_norm_mps2": benchmark.commanded_accel_norm_mps2,
+        "pn3d_benchmark_only": benchmark.benchmark_only,
+        "pn3d_default_api_replaced": benchmark.default_pn_png_api_replaced,
     }
 
 

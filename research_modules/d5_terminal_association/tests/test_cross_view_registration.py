@@ -149,8 +149,16 @@ def test_registration_logs_pose_source_bbox_area_and_offline_truth_without_using
     assert candidate.bbox_area_px == 1600.0
     assert candidate.metadata["gate_pass"] is True
     assert candidate.metadata["projection_valid"] is True
+    assert candidate.metadata["reprojection_error"] == 0.0
+    assert candidate.metadata["calibration_health"] == "healthy"
+    assert candidate.metadata["drift_warning"] is False
     assert candidate.metadata["offline_truth_global_id"] == "G-truth-other"
     assert result.observations[0].terminal_association.assigned_global_track_id == "G-assigned"
+    assert result.observations[0].terminal_association.metadata["reprojection_error"] == 0.0
+    assert result.observations[0].terminal_association.metadata["calibration_health"] == "healthy"
+    assert result.metadata["calibration_health_counts"]["healthy"] == 1
+    assert result.metadata["projection_valid_count"] == 1
+    assert result.metadata["drift_warning_count"] == 0
     assert "G-truth-other" not in str(result.observations[0].terminal_association.metadata)
 
 

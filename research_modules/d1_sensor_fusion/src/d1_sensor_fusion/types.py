@@ -78,6 +78,7 @@ class SensorObservation:
     payload_kind: str | None = None
     stale_after_s: float | None = None
     source_support: dict[str, int] | None = None
+    timestamp_uncertainty_s: float | None = None
 
     def __post_init__(self) -> None:
         self.modality = str(self.modality).lower()
@@ -99,6 +100,7 @@ class SensorObservation:
         self.confidence = float(np.clip(self.confidence, 0.0, 1.0))
         self.metadata = dict(self.metadata or {})
         self._normalize_communication_metadata()
+        self._normalize_timestamp_uncertainty()
 
     @property
     def latency(self) -> float:
@@ -186,6 +188,7 @@ class SensorObservation:
             payload_kind=self.payload_kind,
             stale_after_s=self.stale_after_s,
             source_support=None if self.source_support is None else dict(self.source_support),
+            timestamp_uncertainty_s=self.timestamp_uncertainty_s,
         )
 
     def _normalize_communication_metadata(self) -> None:
@@ -220,6 +223,41 @@ class SensorObservation:
             normalized = {str(key): int(value) for key, value in dict(support).items()}
             self.source_support = normalized
             self.metadata["source_support"] = normalized
+
+    def _normalize_timestamp_uncertainty(self) -> None:
+        candidates: list[float] = []
+        if self.timestamp_uncertainty_s is not None:
+            candidates.append(abs(float(self.timestamp_uncertainty_s)))
+
+        for key in (
+            "timestamp_uncertainty_s",
+            "timing_uncertainty_s",
+            "clock_drift_s",
+            "clock_offset_s",
+            "timestamp_drift_s",
+            "timestamp_jitter_s",
+        ):
+            value = self.metadata.get(key)
+            if value is not None:
+                candidates.append(abs(float(value)))
+
+        for key in (
+            "timestamp_uncertainty_ms",
+            "timing_uncertainty_ms",
+            "clock_drift_ms",
+            "timestamp_jitter_ms",
+        ):
+            value = self.metadata.get(key)
+            if value is not None:
+                candidates.append(abs(float(value)) / 1000.0)
+
+        if self.arrival_timestamp < self.measurement_timestamp:
+            candidates.append(self.measurement_timestamp - self.arrival_timestamp)
+
+        uncertainty = max(candidates) if candidates else 0.0
+        self.timestamp_uncertainty_s = float(uncertainty)
+        self.metadata["timestamp_uncertainty_s"] = self.timestamp_uncertainty_s
+        self.metadata["timing_uncertainty_s"] = self.timestamp_uncertainty_s
 
     def _payload_fingerprint(self) -> tuple[Any, ...]:
         measurement = tuple(np.round(self.measurement.reshape(-1), decimals=9).tolist())
@@ -296,6 +334,8 @@ class TrackUncertaintySummary:
     coverage_cell: str | None = None
     measurement_timestamp: float | None = None
     arrival_timestamp: float | None = None
+    timestamp_uncertainty_s: float = 0.0
+    covariance_limit_reasons: tuple[str, ...] = ()
     covariance_growth_rate: float | None = None
     source_diversity_count: int = 0
     last_nis: float | None = None
@@ -321,11 +361,55 @@ class TrackUncertaintySummary:
             "coverage_cell": self.coverage_cell,
             "measurement_timestamp": self.measurement_timestamp,
             "arrival_timestamp": self.arrival_timestamp,
+            "timestamp_uncertainty_s": self.timestamp_uncertainty_s,
+            "timing_uncertainty_s": self.timestamp_uncertainty_s,
+            "covariance_limit_reasons": tuple(self.covariance_limit_reasons),
             "covariance_growth_rate": self.covariance_growth_rate,
             "source_diversity_count": self.source_diversity_count,
             "last_nis": self.last_nis,
             "handover_readiness": self.handover_readiness,
             "quality_flags": tuple(self.quality_flags),
+        }
+
+
+@dataclass(frozen=True)
+class SensorHealthSummary:
+    """Per-sensor FDIR-light status derived inside the D1 fusion adapter."""
+
+    sensor_id: str
+    status: str
+    fault_reason: str | None
+    reject_count: int
+    isolation_hint: str | None
+    recovery_state: str
+    observation_count: int = 0
+    duplicate_count: int = 0
+    oosm_count: int = 0
+    stale_count: int = 0
+    low_quality_count: int = 0
+    anomalous_covariance_count: int = 0
+    timestamp_uncertainty_s: float = 0.0
+    latest_observation_timestamp: float | None = None
+    fault_reasons: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "sensor_id": self.sensor_id,
+            "status": self.status,
+            "fault_reason": self.fault_reason,
+            "reject_count": self.reject_count,
+            "isolation_hint": self.isolation_hint,
+            "recovery_state": self.recovery_state,
+            "observation_count": self.observation_count,
+            "duplicate_count": self.duplicate_count,
+            "oosm_count": self.oosm_count,
+            "stale_count": self.stale_count,
+            "low_quality_count": self.low_quality_count,
+            "anomalous_covariance_count": self.anomalous_covariance_count,
+            "timestamp_uncertainty_s": self.timestamp_uncertainty_s,
+            "timing_uncertainty_s": self.timestamp_uncertainty_s,
+            "latest_observation_timestamp": self.latest_observation_timestamp,
+            "fault_reasons": tuple(self.fault_reasons),
         }
 
 

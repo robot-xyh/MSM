@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, deque
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass, replace
 from typing import Any, Iterable
 
 import numpy as np
@@ -10,14 +10,20 @@ from .ekf import EKFState, ekf_update, predict_to
 from .motion import wrap_residual
 from .observations import (
     RadarCovarianceConfig,
+    acoustic_covariance,
+    eo_covariance_from_bbox,
+    lidar_covariance,
     measurement_model_for,
+    radar_covariance_from_range,
     radar_state_from_observation,
+    sensor_position_from_metadata,
 )
 from .types import (
     COMMUNICATION_METADATA_KEYS,
     FusionQualityRegionSummary,
     GlobalTrack,
     LatencyAuditSummary,
+    SensorHealthSummary,
     SensorObservation,
     TrackLevel,
     TrackUncertaintySummary,
@@ -52,7 +58,60 @@ OBSERVATION_METADATA_LINEAGE_KEYS = (
     "cue_position_ned",
     "cue_covariance",
     "coverage_cells",
+    "timestamp_uncertainty_s",
+    "timing_uncertainty_s",
+    "clock_drift_s",
+    "clock_offset_s",
+    "timestamp_drift_s",
+    "timestamp_jitter_s",
+    "observation_covariance_limit_reasons",
+    "track_covariance_limit_reasons",
+    "covariance_limit_reasons",
+    "covariance_limited",
+    "covariance_limit_applied",
+    "covariance_scale_reason",
+    "observation_covariance_anomaly",
 )
+LOW_QUALITY_FLAGS = frozenset(
+    {
+        "low_quality",
+        "poor_quality",
+        "low_confidence",
+        "degraded",
+        "poor_snr",
+        "clutter",
+        "occluded",
+        "partial_occlusion",
+    }
+)
+OCCLUSION_FLAGS = frozenset({"occluded", "partial_occlusion"})
+TRACK_COVARIANCE_FLOOR_DIAG = np.array([0.25, 0.25, 0.25, 0.04, 0.04, 0.04], dtype=float)
+TRACK_COVARIANCE_CEILING_DIAG = np.array(
+    [1_000_000.0, 1_000_000.0, 1_000_000.0, 10_000.0, 10_000.0, 10_000.0],
+    dtype=float,
+)
+MEASUREMENT_COVARIANCE_CEILING = 1.0e6
+MEASUREMENT_COVARIANCE_FLOORS = {
+    "radar": np.array([1.0e-2, 1.0e-8, 1.0e-8, 1.0e-4], dtype=float),
+    "acoustic": np.array([1.0e-8], dtype=float),
+    "eo": np.array([0.25, 0.25], dtype=float),
+    "lidar": np.array([1.0e-2, 1.0e-2, 1.0e-2], dtype=float),
+}
+
+
+def _state_bound_diag(
+    value: Iterable[float] | None,
+    default: np.ndarray,
+    name: str,
+) -> np.ndarray:
+    if value is None:
+        return np.asarray(default, dtype=float).copy()
+    array = np.asarray(tuple(value), dtype=float).reshape(-1)
+    if array.size != 6:
+        raise ValueError(f"{name} must contain six diagonal bounds")
+    if not np.isfinite(array).all() or np.any(array <= 0.0):
+        raise ValueError(f"{name} must contain positive finite values")
+    return array
 
 
 def covariance_a95(covariance: np.ndarray) -> float:
@@ -73,7 +132,25 @@ class TrackRecord:
     recent_nis: deque[float] = field(default_factory=lambda: deque(maxlen=50))
     created_timestamp: float = 0.0
     hits: int = 0
+    covariance_limit_reasons: Counter = field(default_factory=Counter)
     metadata: dict = field(default_factory=dict)
+
+
+@dataclass
+class SensorHealthState:
+    sensor_id: str
+    observation_count: int = 0
+    duplicate_count: int = 0
+    reject_count: int = 0
+    oosm_count: int = 0
+    stale_count: int = 0
+    low_quality_count: int = 0
+    anomalous_covariance_count: int = 0
+    timestamp_uncertainty_count: int = 0
+    max_timestamp_uncertainty_s: float = 0.0
+    latest_observation_timestamp: float | None = None
+    fault_reasons: Counter = field(default_factory=Counter)
+    nominal_after_fault_count: int = 0
 
 
 class FusionAdapter:
@@ -96,6 +173,12 @@ class FusionAdapter:
         use_truth_hints_for_association: bool = False,
         radar_covariance_config: RadarCovarianceConfig | dict | None = None,
         source_deduplication: bool = True,
+        covariance_floor_diag: Iterable[float] | None = None,
+        covariance_ceiling_diag: Iterable[float] | None = None,
+        long_extrapolation_s: float = 3.0,
+        low_quality_confidence_threshold: float = 0.5,
+        timestamp_uncertainty_fault_s: float = 0.05,
+        sensor_isolation_reject_threshold: int = 3,
     ) -> None:
         self.process_noise = float(process_noise)
         self.bucket_size = float(bucket_size)
@@ -111,7 +194,24 @@ class FusionAdapter:
             else RadarCovarianceConfig(**dict(radar_covariance_config or {}))
         )
         self.source_deduplication = bool(source_deduplication)
+        self.covariance_floor_diag = _state_bound_diag(
+            covariance_floor_diag,
+            TRACK_COVARIANCE_FLOOR_DIAG,
+            "covariance_floor_diag",
+        )
+        self.covariance_ceiling_diag = _state_bound_diag(
+            covariance_ceiling_diag,
+            TRACK_COVARIANCE_CEILING_DIAG,
+            "covariance_ceiling_diag",
+        )
+        if np.any(self.covariance_ceiling_diag < self.covariance_floor_diag):
+            raise ValueError("covariance_ceiling_diag must be greater than covariance_floor_diag")
+        self.long_extrapolation_s = float(long_extrapolation_s)
+        self.low_quality_confidence_threshold = float(low_quality_confidence_threshold)
+        self.timestamp_uncertainty_fault_s = float(timestamp_uncertainty_fault_s)
+        self.sensor_isolation_reject_threshold = int(sensor_isolation_reject_threshold)
         self.tracks: dict[str, TrackRecord] = {}
+        self.sensor_health: dict[str, SensorHealthState] = {}
         self.current_time = 0.0
         self._next_track_id = 1
         self._processed_lineage_keys: set[tuple] = set()
@@ -133,10 +233,16 @@ class FusionAdapter:
     def process(self, observation: SensorObservation) -> list[GlobalTrack]:
         """Process one arrived observation and return current global tracks."""
 
+        observation = self._prepare_observation(observation)
         previous_time = self.current_time
         current_time = max(self.current_time, float(observation.arrival_timestamp))
         self.current_time = current_time
-        self._record_latency_audit(observation, previous_time, current_time)
+        is_oosm, is_stale = self._record_latency_audit(observation, previous_time, current_time)
+        self._record_sensor_observation(
+            observation,
+            is_oosm=is_oosm,
+            is_stale=is_stale,
+        )
         effective = observation
         if not self.latency_compensation:
             effective = observation.with_measurement_timestamp(observation.arrival_timestamp)
@@ -144,12 +250,18 @@ class FusionAdapter:
         self._predict_all_to(current_time)
         if self._is_duplicate_observation(effective):
             self.duplicate_observation_count += 1
+            self._record_sensor_fault(effective, "duplicate_observation", rejected=True)
             return self.global_tracks()
 
         track_id = self._associate(effective)
         if track_id is None:
             record = self._create_track(effective, current_time)
             if record is None:
+                self._record_sensor_fault(
+                    effective,
+                    "unsupported_track_initializer",
+                    rejected=True,
+                )
                 self._predict_all_to(current_time)
                 return self.global_tracks()
             track_id = record.track_id
@@ -162,6 +274,7 @@ class FusionAdapter:
         """Predict an internal or detached track to `timestamp`."""
 
         if isinstance(track, GlobalTrack):
+            previous_timestamp = float(track.timestamp)
             state = predict_to(
                 EKFState(track.state, track.covariance, track.timestamp),
                 timestamp,
@@ -169,12 +282,21 @@ class FusionAdapter:
             )
             out = track.copy()
             out.state = state.state
-            out.covariance = state.covariance
+            reasons = []
+            if float(timestamp) - previous_timestamp > self.long_extrapolation_s:
+                reasons.append("long_extrapolation")
+            out.covariance, applied = self._limit_state_covariance(state.covariance, reasons)
             out.timestamp = state.timestamp
+            self._update_metadata_covariance_reasons(out.metadata, applied)
             return out
 
         record = self.tracks[str(track)]
+        previous_timestamp = float(record.current_state.timestamp)
         record.current_state = predict_to(record.current_state, timestamp, self.process_noise)
+        reasons = []
+        if float(timestamp) - previous_timestamp > self.long_extrapolation_s:
+            reasons.append("long_extrapolation")
+        self._limit_record_covariance(record, reasons)
         return self._to_global_track(record)
 
     def update_at_measurement_time(
@@ -189,13 +311,25 @@ class FusionAdapter:
         observation log and replays the state to `current_time`.
         """
 
+        observation = self._prepare_observation(observation)
         current_time = (
             float(observation.arrival_timestamp) if current_time is None else float(current_time)
+        )
+        self._record_sensor_observation(
+            observation,
+            is_oosm=observation.measurement_timestamp < current_time - 1e-9,
+            is_stale=observation.is_stale_at(current_time),
         )
         if track_id is None:
             track_id = self._associate(observation)
         if track_id is None:
             record = self._create_track(observation, current_time)
+            if record is None:
+                self._record_sensor_fault(
+                    observation,
+                    "unsupported_track_initializer",
+                    rejected=True,
+                )
             return None if record is None else self._to_global_track(record)
         return self.compensate_latency(track_id, observation, current_time)
 
@@ -207,11 +341,14 @@ class FusionAdapter:
     ) -> GlobalTrack:
         """Insert an observation by measurement time and replay to current time."""
 
+        observation = self._prepare_observation(observation)
         record = self.tracks[track_id]
         current_time = self.current_time if current_time is None else float(current_time)
         if self._is_duplicate_observation(observation):
             self.duplicate_observation_count += 1
+            self._record_sensor_fault(observation, "duplicate_observation", rejected=True)
             record.current_state = predict_to(record.current_state, current_time, self.process_noise)
+            self._limit_record_covariance(record)
             return self._to_global_track(record)
 
         inserted_observation = False
@@ -227,6 +364,7 @@ class FusionAdapter:
         state, nises = self._replay_record(record, current_time)
         record.current_state = state
         record.recent_nis = deque(nises[-50:], maxlen=50)
+        self._limit_record_covariance(record)
         self._prune_record(record, current_time)
         self._mark_observation_processed(observation)
         return self._to_global_track(record)
@@ -237,12 +375,23 @@ class FusionAdapter:
     def track_uncertainty_summaries(self) -> list[TrackUncertaintySummary]:
         return [self.track_uncertainty_summary(track) for track in self.global_tracks()]
 
+    def sensor_health_summaries(self) -> list[SensorHealthSummary]:
+        return [
+            self._sensor_health_summary(self.sensor_health[sensor_id])
+            for sensor_id in sorted(self.sensor_health)
+        ]
+
     def track_uncertainty_summary(self, track: GlobalTrack) -> TrackUncertaintySummary:
         metadata = dict(track.metadata)
         valid_at = float(metadata.get("valid_at", track.timestamp))
         published_at = float(metadata.get("published_at", self.current_time))
         measurement_timestamp = _optional_float(metadata.get("latest_measurement_timestamp"))
         arrival_timestamp = _optional_float(metadata.get("latest_arrival_timestamp"))
+        timestamp_uncertainty_s = _optional_float(
+            metadata.get("latest_timestamp_uncertainty_s", metadata.get("timestamp_uncertainty_s"))
+        )
+        if timestamp_uncertainty_s is None:
+            timestamp_uncertainty_s = 0.0
         if measurement_timestamp is not None:
             measurement_age_s = max(0.0, published_at - measurement_timestamp)
         else:
@@ -275,6 +424,8 @@ class FusionAdapter:
             coverage_cell=_optional_str(metadata.get("coverage_cell")),
             measurement_timestamp=measurement_timestamp,
             arrival_timestamp=arrival_timestamp,
+            timestamp_uncertainty_s=float(timestamp_uncertainty_s),
+            covariance_limit_reasons=_metadata_reasons(metadata.get("covariance_limit_reasons")),
             source_diversity_count=source_diversity_count,
             last_nis=track.last_nis,
             handover_readiness=readiness,
@@ -395,6 +546,7 @@ class FusionAdapter:
                 **_metadata_from_observation(observation),
             },
         )
+        self._limit_record_covariance(record)
         self.tracks[track_id] = record
         self._mark_observation_processed(observation)
         return record
@@ -402,7 +554,12 @@ class FusionAdapter:
     def _predict_all_to(self, timestamp: float) -> None:
         for record in self.tracks.values():
             if record.current_state.timestamp < timestamp - 1e-12:
+                previous_timestamp = float(record.current_state.timestamp)
                 record.current_state = predict_to(record.current_state, timestamp, self.process_noise)
+                reasons = []
+                if float(timestamp) - previous_timestamp > self.long_extrapolation_s:
+                    reasons.append("long_extrapolation")
+                self._limit_record_covariance(record, reasons)
 
     def _associate(self, observation: SensorObservation) -> str | None:
         if not self.tracks:
@@ -519,6 +676,8 @@ class FusionAdapter:
         observation: SensorObservation,
     ) -> None:
         record.metadata.update(_metadata_from_observation(observation))
+        for reason in _metadata_reasons(observation.metadata.get("covariance_limit_reasons")):
+            record.covariance_limit_reasons[reason] += 1
         if observation.metadata.get("truth_id") is not None:
             record.metadata.setdefault("truth_id", observation.metadata.get("truth_id"))
         source_node_id = observation.source_node_id or observation.metadata.get("source_node_id")
@@ -528,6 +687,7 @@ class FusionAdapter:
             record.metadata["source_node_ids"] = tuple(sorted(existing))
 
     def _to_global_track(self, record: TrackRecord) -> GlobalTrack:
+        self._limit_record_covariance(record)
         level = self._classify(record)
         likelihood_sum = sum(record.identity_likelihood.values())
         identity_likelihood = (
@@ -548,7 +708,15 @@ class FusionAdapter:
                 "source_support": dict(record.source_support),
                 "duplicate_observation_count": self.duplicate_observation_count,
                 "latency_audit": self.latency_audit_summary().to_dict(),
+                "sensor_health": {
+                    summary.sensor_id: summary.to_dict()
+                    for summary in self.sensor_health_summaries()
+                },
             }
+        )
+        self._update_metadata_covariance_reasons(
+            metadata,
+            tuple(sorted(record.covariance_limit_reasons)),
         )
         return GlobalTrack(
             global_track_id=record.track_id,
@@ -614,12 +782,289 @@ class FusionAdapter:
             )
         )
 
+    def _prepare_observation(self, observation: SensorObservation) -> SensorObservation:
+        covariance, reasons, anomaly = self._limited_observation_covariance(observation)
+        metadata = dict(observation.metadata)
+        metadata["timestamp_uncertainty_s"] = float(observation.timestamp_uncertainty_s or 0.0)
+        metadata["timing_uncertainty_s"] = float(observation.timestamp_uncertainty_s or 0.0)
+        if reasons:
+            existing = set(_metadata_reasons(metadata.get("covariance_limit_reasons")))
+            all_reasons = tuple(sorted(existing | set(reasons)))
+            metadata["observation_covariance_limit_reasons"] = tuple(reasons)
+            metadata["covariance_limit_reasons"] = all_reasons
+            metadata["covariance_limited"] = True
+            metadata["covariance_limit_applied"] = True
+        if anomaly:
+            metadata["observation_covariance_anomaly"] = True
+        scale_reason = self._covariance_scale_reason(observation)
+        if scale_reason is not None:
+            metadata["covariance_scale_reason"] = scale_reason
+        return replace(observation, covariance=covariance, metadata=metadata)
+
+    def _limited_observation_covariance(
+        self,
+        observation: SensorObservation,
+    ) -> tuple[np.ndarray, tuple[str, ...], bool]:
+        reasons: list[str] = []
+        anomaly = False
+        default_covariance = self._default_measurement_covariance(observation)
+        expected_dim = default_covariance.shape[0]
+        covariance = observation.covariance
+        if covariance is None:
+            covariance = default_covariance
+        else:
+            try:
+                covariance = np.asarray(covariance, dtype=float)
+                if covariance.ndim == 0:
+                    covariance = covariance.reshape(1, 1)
+                if covariance.ndim == 1:
+                    size = int(np.sqrt(covariance.size))
+                    if size * size == covariance.size:
+                        covariance = covariance.reshape(size, size)
+                    elif covariance.size == expected_dim:
+                        covariance = np.diag(covariance)
+                if covariance.shape != (expected_dim, expected_dim):
+                    reasons.append("observation_covariance_shape_reset")
+                    anomaly = True
+                    covariance = default_covariance
+            except (TypeError, ValueError):
+                reasons.append("observation_covariance_invalid_reset")
+                anomaly = True
+                covariance = default_covariance
+
+        covariance = np.asarray(covariance, dtype=float)
+        if not np.isfinite(covariance).all():
+            reasons.append("observation_covariance_nonfinite_reset")
+            anomaly = True
+            covariance = default_covariance
+
+        covariance = 0.5 * (covariance + covariance.T)
+        quality_scale = self._observation_quality_covariance_scale(observation)
+        if quality_scale > 1.0:
+            covariance = covariance * quality_scale
+            reasons.append(self._covariance_scale_reason(observation) or "low_quality_observation")
+
+        floor = MEASUREMENT_COVARIANCE_FLOORS.get(
+            observation.modality,
+            np.full(expected_dim, 1.0e-8, dtype=float),
+        )
+        if floor.size != expected_dim:
+            floor = np.resize(floor, expected_dim)
+        ceiling = np.full(expected_dim, MEASUREMENT_COVARIANCE_CEILING, dtype=float)
+        covariance, bound_reasons = _limit_covariance_diagonal(
+            covariance,
+            floor,
+            ceiling,
+            floor_reason="observation_covariance_floor",
+            ceiling_reason="observation_covariance_ceiling",
+        )
+        reasons.extend(bound_reasons)
+        if any(
+            reason
+            in {
+                "observation_covariance_shape_reset",
+                "observation_covariance_invalid_reset",
+                "observation_covariance_nonfinite_reset",
+                "observation_covariance_floor",
+                "observation_covariance_ceiling",
+            }
+            for reason in reasons
+        ):
+            anomaly = True
+        return covariance, tuple(dict.fromkeys(reasons)), anomaly
+
+    def _default_measurement_covariance(self, observation: SensorObservation) -> np.ndarray:
+        if observation.modality == "radar":
+            distance = float(observation.measurement.reshape(-1)[0])
+            return radar_covariance_from_range(distance, self.radar_covariance_config)
+        if observation.modality == "acoustic":
+            return acoustic_covariance(observation.confidence)
+        if observation.modality == "eo":
+            bbox = observation.metadata.get("bbox")
+            if bbox is None:
+                bbox = observation.metadata.get("bbox_xyxy")
+            return eo_covariance_from_bbox(bbox, observation.confidence, observation.quality_flags)
+        if observation.modality == "lidar":
+            sensor_position = sensor_position_from_metadata(observation)
+            z = observation.measurement.reshape(-1)[:3]
+            distance = float(np.linalg.norm(z - sensor_position))
+            return lidar_covariance(distance, observation.confidence)
+        raise ValueError(f"Unsupported modality: {observation.modality}")
+
+    def _observation_quality_covariance_scale(self, observation: SensorObservation) -> float:
+        flags = {str(flag).lower() for flag in observation.quality_flags}
+        scale = 1.0
+        if observation.confidence < self.low_quality_confidence_threshold:
+            confidence = max(float(observation.confidence), 0.05)
+            scale = max(scale, self.low_quality_confidence_threshold / confidence)
+        if flags & OCCLUSION_FLAGS:
+            scale = max(scale, 2.0)
+        if flags & (LOW_QUALITY_FLAGS - OCCLUSION_FLAGS):
+            scale = max(scale, 1.5)
+        return float(min(scale, 4.0))
+
+    def _covariance_scale_reason(self, observation: SensorObservation) -> str | None:
+        flags = {str(flag).lower() for flag in observation.quality_flags}
+        if flags & OCCLUSION_FLAGS:
+            return "occluded_observation"
+        if observation.confidence < self.low_quality_confidence_threshold or (
+            flags & (LOW_QUALITY_FLAGS - OCCLUSION_FLAGS)
+        ):
+            return "low_quality_observation"
+        return None
+
+    def _limit_record_covariance(
+        self,
+        record: TrackRecord,
+        reasons: Iterable[str] = (),
+    ) -> None:
+        covariance, applied = self._limit_state_covariance(record.current_state.covariance, reasons)
+        record.current_state = EKFState(
+            record.current_state.state,
+            covariance,
+            record.current_state.timestamp,
+        )
+        for reason in applied:
+            record.covariance_limit_reasons[str(reason)] += 1
+        if applied:
+            self._update_metadata_covariance_reasons(record.metadata, tuple(applied))
+
+    def _limit_state_covariance(
+        self,
+        covariance: np.ndarray,
+        reasons: Iterable[str] = (),
+    ) -> tuple[np.ndarray, tuple[str, ...]]:
+        base_reasons = [str(reason) for reason in reasons]
+        covariance = np.asarray(covariance, dtype=float)
+        if covariance.shape != (6, 6) or not np.isfinite(covariance).all():
+            covariance = np.diag(self.covariance_ceiling_diag)
+            base_reasons.append("track_covariance_invalid_reset")
+        covariance = 0.5 * (covariance + covariance.T)
+        covariance, bound_reasons = _limit_covariance_diagonal(
+            covariance,
+            self.covariance_floor_diag,
+            self.covariance_ceiling_diag,
+            floor_reason="track_covariance_floor",
+            ceiling_reason="track_covariance_ceiling",
+        )
+        base_reasons.extend(bound_reasons)
+        return covariance, tuple(dict.fromkeys(base_reasons))
+
+    def _update_metadata_covariance_reasons(
+        self,
+        metadata: dict,
+        reasons: Iterable[str],
+    ) -> None:
+        _update_metadata_covariance_reasons(metadata, reasons)
+
+    def _record_sensor_observation(
+        self,
+        observation: SensorObservation,
+        *,
+        is_oosm: bool,
+        is_stale: bool,
+    ) -> None:
+        state = self.sensor_health.setdefault(
+            observation.sensor_id,
+            SensorHealthState(sensor_id=observation.sensor_id),
+        )
+        state.observation_count += 1
+        state.latest_observation_timestamp = float(observation.arrival_timestamp)
+        state.max_timestamp_uncertainty_s = max(
+            state.max_timestamp_uncertainty_s,
+            float(observation.timestamp_uncertainty_s or 0.0),
+        )
+
+        faults: list[str] = []
+        if is_oosm:
+            state.oosm_count += 1
+            faults.append("oosm_observation")
+        if is_stale:
+            state.stale_count += 1
+            faults.append("stale_observation")
+        if self._covariance_scale_reason(observation) is not None:
+            state.low_quality_count += 1
+            faults.append(self._covariance_scale_reason(observation) or "low_quality_observation")
+        if observation.metadata.get("observation_covariance_anomaly"):
+            state.anomalous_covariance_count += 1
+            faults.append("anomalous_covariance")
+        if float(observation.timestamp_uncertainty_s or 0.0) >= self.timestamp_uncertainty_fault_s:
+            state.timestamp_uncertainty_count += 1
+            faults.append("timestamp_uncertainty")
+
+        if faults:
+            for reason in dict.fromkeys(faults):
+                state.fault_reasons[str(reason)] += 1
+            state.nominal_after_fault_count = 0
+        elif state.fault_reasons:
+            state.nominal_after_fault_count += 1
+
+    def _record_sensor_fault(
+        self,
+        observation: SensorObservation,
+        reason: str,
+        *,
+        rejected: bool,
+    ) -> None:
+        state = self.sensor_health.setdefault(
+            observation.sensor_id,
+            SensorHealthState(sensor_id=observation.sensor_id),
+        )
+        if rejected:
+            state.reject_count += 1
+        if reason == "duplicate_observation":
+            state.duplicate_count += 1
+        state.fault_reasons[str(reason)] += 1
+        state.nominal_after_fault_count = 0
+
+    def _sensor_health_summary(self, state: SensorHealthState) -> SensorHealthSummary:
+        fault_reasons = tuple(sorted(state.fault_reasons))
+        fault_reason = _most_common_reason(state.fault_reasons)
+        status = self._sensor_status(state)
+        return SensorHealthSummary(
+            sensor_id=state.sensor_id,
+            status=status,
+            fault_reason=fault_reason,
+            reject_count=state.reject_count,
+            isolation_hint=_isolation_hint(fault_reason, status),
+            recovery_state=self._sensor_recovery_state(state, status),
+            observation_count=state.observation_count,
+            duplicate_count=state.duplicate_count,
+            oosm_count=state.oosm_count,
+            stale_count=state.stale_count,
+            low_quality_count=state.low_quality_count,
+            anomalous_covariance_count=state.anomalous_covariance_count,
+            timestamp_uncertainty_s=state.max_timestamp_uncertainty_s,
+            latest_observation_timestamp=state.latest_observation_timestamp,
+            fault_reasons=fault_reasons,
+        )
+
+    def _sensor_status(self, state: SensorHealthState) -> str:
+        if (
+            state.reject_count >= self.sensor_isolation_reject_threshold
+            or state.anomalous_covariance_count >= self.sensor_isolation_reject_threshold
+            or state.stale_count + state.oosm_count >= self.sensor_isolation_reject_threshold
+        ):
+            return "isolated"
+        if state.fault_reasons:
+            return "degraded"
+        return "nominal"
+
+    def _sensor_recovery_state(self, state: SensorHealthState, status: str) -> str:
+        if status == "isolated":
+            return "isolation_recommended"
+        if status == "degraded" and state.nominal_after_fault_count > 0:
+            return "recovering"
+        if status == "degraded":
+            return "monitoring_fault"
+        return "healthy"
+
     def _record_latency_audit(
         self,
         observation: SensorObservation,
         previous_time: float,
         current_time: float,
-    ) -> None:
+    ) -> tuple[bool, bool]:
         delay_s = max(0.0, float(observation.latency))
         self.observation_count += 1
         self._latency_delay_sum_s += delay_s
@@ -636,6 +1081,7 @@ class FusionAdapter:
             self.stale_observation_count += 1
         if is_oosm or is_stale:
             self.stale_or_oosm_observation_count += 1
+        return is_oosm, is_stale
 
     def _record_replay_audit(self, record: TrackRecord, inserted_observation: bool) -> None:
         if not inserted_observation:
@@ -670,6 +1116,9 @@ def _metadata_from_observation(observation: SensorObservation) -> dict:
         "latest_measurement_timestamp": observation.measurement_timestamp,
         "latest_arrival_timestamp": observation.arrival_timestamp,
         "latest_observation_latency_s": observation.latency,
+        "latest_timestamp_uncertainty_s": float(observation.timestamp_uncertainty_s or 0.0),
+        "timestamp_uncertainty_s": float(observation.timestamp_uncertainty_s or 0.0),
+        "timing_uncertainty_s": float(observation.timestamp_uncertainty_s or 0.0),
     }
     if observation.communication_latency is not None:
         metadata["latest_communication_latency_s"] = observation.communication_latency
@@ -685,6 +1134,82 @@ def _metadata_from_observation(observation: SensorObservation) -> dict:
     if observation.quality_flags and "quality_flags" not in metadata:
         metadata["quality_flags"] = tuple(str(flag) for flag in observation.quality_flags)
     return metadata
+
+
+def _limit_covariance_diagonal(
+    covariance: np.ndarray,
+    floor_diag: np.ndarray,
+    ceiling_diag: np.ndarray,
+    *,
+    floor_reason: str,
+    ceiling_reason: str,
+) -> tuple[np.ndarray, tuple[str, ...]]:
+    covariance = np.asarray(covariance, dtype=float)
+    floor_diag = np.asarray(floor_diag, dtype=float).reshape(-1)
+    ceiling_diag = np.asarray(ceiling_diag, dtype=float).reshape(-1)
+    if covariance.shape != (floor_diag.size, floor_diag.size):
+        raise ValueError("covariance shape does not match diagonal bounds")
+
+    reasons: list[str] = []
+    bounded = 0.5 * (covariance + covariance.T)
+    diag = np.diag(bounded).copy()
+    if np.any(diag < floor_diag):
+        reasons.append(floor_reason)
+    if np.any(diag > ceiling_diag):
+        reasons.append(ceiling_reason)
+    clipped_diag = np.clip(diag, floor_diag, ceiling_diag)
+    np.fill_diagonal(bounded, clipped_diag)
+
+    for row in range(bounded.shape[0]):
+        for col in range(row + 1, bounded.shape[1]):
+            limit = 0.999 * np.sqrt(max(bounded[row, row], 0.0) * max(bounded[col, col], 0.0))
+            bounded[row, col] = float(np.clip(bounded[row, col], -limit, limit))
+            bounded[col, row] = bounded[row, col]
+    return bounded, tuple(dict.fromkeys(reasons))
+
+
+def _metadata_reasons(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, dict):
+        return tuple(str(key) for key, count in value.items() if int(count) > 0)
+    return tuple(str(item) for item in value)
+
+
+def _update_metadata_covariance_reasons(metadata: dict, reasons: Iterable[str]) -> None:
+    existing = set(_metadata_reasons(metadata.get("covariance_limit_reasons")))
+    incoming = {str(reason) for reason in reasons if str(reason)}
+    if not incoming:
+        return
+    merged = tuple(sorted(existing | incoming))
+    metadata["covariance_limit_reasons"] = merged
+    metadata["track_covariance_limit_reasons"] = merged
+    metadata["covariance_limited"] = True
+    metadata["covariance_limit_applied"] = True
+
+
+def _most_common_reason(counter: Counter) -> str | None:
+    if not counter:
+        return None
+    return str(counter.most_common(1)[0][0])
+
+
+def _isolation_hint(fault_reason: str | None, status: str) -> str | None:
+    if status == "nominal":
+        return None
+    if fault_reason in {"oosm_observation", "stale_observation", "timestamp_uncertainty"}:
+        return "check_clock_sync"
+    if fault_reason == "duplicate_observation":
+        return "suppress_duplicate_payload"
+    if fault_reason == "anomalous_covariance":
+        return "validate_sensor_covariance"
+    if fault_reason in {"low_quality_observation", "occluded_observation"}:
+        return "downweight_sensor"
+    if fault_reason == "unsupported_track_initializer":
+        return "hold_until_radar_initializer"
+    return "monitor_sensor"
 
 
 def _optional_float(value) -> float | None:

@@ -43,3 +43,24 @@ def test_recovered_heartbeat_requires_merge_before_normal() -> None:
 
     assert state == C2Health.SUSPECT
     assert coordinator.transition_log[-1].reason == "center_digest_recovered_pending_merge"
+
+
+def test_heartbeat_window_suppresses_single_delayed_sample_before_failed() -> None:
+    coordinator = FailoverCoordinator(
+        node_id="node-1",
+        peer_ids=["node-2", "node-3"],
+        heartbeat_warning_s=1.0,
+        heartbeat_stale_s=2.0,
+        heartbeat_failure_s=4.0,
+        heartbeat_window_size=4,
+        heartbeat_failure_window_threshold=3,
+    )
+
+    coordinator.observe_center(0.0, heartbeat_ok=True)
+
+    assert coordinator.observe_center(4.2, heartbeat_ok=False) == C2Health.SUSPECT
+    assert coordinator.health != C2Health.FAILED
+    assert coordinator.observe_center(4.7, heartbeat_ok=False) == C2Health.SUSPECT
+    assert coordinator.health != C2Health.FAILED
+    assert coordinator.observe_center(5.2, heartbeat_ok=False) == C2Health.FAILED
+    assert coordinator.transition_log[-1].reason == "heartbeat_failure_timeout"

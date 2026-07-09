@@ -222,6 +222,10 @@ def test_adapter_consumes_mobile_high_recon_metadata_without_auto_takeover() -> 
     assert abs(metadata["secondary_network_full_view_gap"] - 0.14) < 1e-9
     assert metadata["secondary_diagnostic_node_id"] == "MHR-1"
     assert metadata["secondary_diagnostic_coverage_ratio"] == 0.86
+    assert metadata["secondary_diagnostic_visible"] is True
+    assert metadata["secondary_diagnostic_registered"] is True
+    assert metadata["secondary_diagnostic_takeover_capable"] is True
+    assert metadata["secondary_diagnostic_capability_score"] > 0.0
 
 
 def test_adapter_keeps_soft_margin_and_low_terminal_confidence_as_observe_more() -> None:
@@ -244,6 +248,13 @@ def test_adapter_keeps_soft_margin_and_low_terminal_confidence_as_observe_more()
     assert result.record.review_label_detail == "observe_more_not_degradation"
     assert "d3_assignment_cost_margin_low" in result.record.risk_factors
     assert "d5_terminal_confidence_low" in result.record.risk_factors
+    metadata = result.record.to_event_metadata()
+    assert metadata["hard_risk_factors"] == []
+    assert metadata["soft_risk_factors"] == [
+        "d3_assignment_cost_margin_low",
+        "d5_terminal_confidence_low",
+    ]
+    assert metadata["active_degradation_false_trigger_candidate"] is False
 
 
 def test_adapter_holds_for_review_on_verified_friend_conflict_even_if_center_failed() -> None:
@@ -407,6 +418,13 @@ def test_adapter_reports_secondary_detect_visible_without_cross_view_registratio
         "secondary_detect_to_cross_view_diagnostic"
     ]
     assert "global_binding_missing" in metadata["secondary_detect_to_cross_view_diagnostic"]
+    lifecycle = metadata["secondary_lifecycle"][0]
+    assert lifecycle["secondary_visible"] is True
+    assert lifecycle["secondary_registered"] is False
+    assert lifecycle["secondary_takeover_capable"] is False
+    assert metadata["secondary_diagnostic_visible"] is True
+    assert metadata["secondary_diagnostic_registered"] is False
+    assert metadata["secondary_diagnostic_takeover_capable"] is False
 
 
 def test_adapter_keeps_stale_secondary_link_unselectable_with_detect_evidence() -> None:
@@ -490,6 +508,12 @@ def test_adapter_exposes_secondary_takeover_pending_and_active_plan_metadata() -
     assert pending_metadata["secondary_plan_pending_duration_s"] == 0.0
     assert pending_metadata["secondary_supersedes_plan_id"] == "d3-plan-test"
     assert pending_metadata["secondary_supersedes_plan_version"] == 3
+    assert pending_metadata["secondary_plan_lease_epoch"] == 5
+    assert pending_metadata["secondary_plan_lease_valid"] is True
+    assert pending_metadata["secondary_plan_executable"] is False
+    assert pending_metadata["recovery_dual_track_audit"]["center_track_plan_id"] == (
+        "d3-plan-test"
+    )
 
     active = D4ArbitrationAdapter().evaluate(
         **kwargs,
@@ -497,6 +521,7 @@ def test_adapter_exposes_secondary_takeover_pending_and_active_plan_metadata() -
         secondary_plan_id="secondary-plan-004",
         secondary_plan_version=4,
         secondary_plan_active=True,
+        secondary_plan_lease_expires_at_s=12.0,
     )
     active_metadata = active.record.to_event_metadata()
 
@@ -511,6 +536,100 @@ def test_adapter_exposes_secondary_takeover_pending_and_active_plan_metadata() -
     assert active_metadata["secondary_takeover_success"] is True
     assert active_metadata["secondary_plan_activation_delay_s"] == 2.0
     assert active_metadata["secondary_plan_pending_duration_s"] is None
+    assert active_metadata["secondary_plan_lease_valid"] is True
+    assert active_metadata["secondary_plan_epoch_monotonic"] is True
+    assert active_metadata["secondary_plan_executable"] is True
+
+
+def test_adapter_accepts_current_active_secondary_plan_with_same_id_and_version() -> None:
+    result = D4ArbitrationAdapter().evaluate(
+        timestamp=10.0,
+        trigger_timestamp=8.0,
+        track=_track(position_sigma_m=60.0),
+        association_metrics=_metrics(ambiguity=0.8, id_switches=1, continuity=0.55),
+        plan=_plan(version=4, created_at=8.0),
+        assignment=_assignment(),
+        terminal_association=_terminal(decision_state="reacquire", confidence=0.35, ambiguity=0.9),
+        observed_global_track_id="G-TGT-002",
+        consecutive_non_locked_frames=3,
+        consecutive_mismatch_frames=2,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+        active_plan_owner="secondary",
+        secondary_plan_id="d3-plan-test",
+        secondary_plan_version=4,
+        secondary_plan_active=True,
+        secondary_plan_lease_expires_at_s=12.0,
+    )
+    metadata = result.record.to_event_metadata()
+
+    assert result.record.secondary_takeover.state == (
+        SecondaryTakeoverPlanState.SECONDARY_PLAN_ACTIVE
+    )
+    assert metadata["secondary_takeover_state"] == "secondary_plan_active"
+    assert metadata["secondary_plan_id"] == "d3-plan-test"
+    assert metadata["secondary_plan_version"] == 4
+    assert metadata["secondary_plan_epoch_monotonic"] is True
+    assert metadata["secondary_plan_executable"] is True
+    assert metadata["secondary_plan_reject_reason"] is None
+    assert metadata["secondary_takeover_success"] is True
+
+
+def test_adapter_rejects_expired_secondary_plan_as_not_executable() -> None:
+    result = D4ArbitrationAdapter().evaluate(
+        timestamp=10.0,
+        trigger_timestamp=8.0,
+        track=_track(position_sigma_m=60.0),
+        association_metrics=_metrics(ambiguity=0.8, id_switches=1, continuity=0.55),
+        plan=_plan(created_at=5.0),
+        assignment=_assignment(),
+        terminal_association=_terminal(decision_state="reacquire", confidence=0.35, ambiguity=0.9),
+        observed_global_track_id="G-TGT-002",
+        consecutive_non_locked_frames=3,
+        consecutive_mismatch_frames=2,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+        secondary_plan_id="secondary-plan-expired",
+        secondary_plan_version=4,
+        secondary_plan_active=True,
+        secondary_plan_lease_expires_at_s=9.9,
+    )
+    metadata = result.record.to_event_metadata()
+
+    assert result.record.secondary_takeover.state == (
+        SecondaryTakeoverPlanState.PENDING_SECONDARY_PLAN
+    )
+    assert result.record.active_plan_owner == "center"
+    assert metadata["secondary_plan_lease_valid"] is False
+    assert metadata["secondary_plan_executable"] is False
+    assert metadata["secondary_plan_reject_reason"] == "secondary_plan_lease_expired"
+    assert metadata["secondary_takeover_success"] is False
+
+
+def test_adapter_rejects_non_monotonic_secondary_plan_version() -> None:
+    result = D4ArbitrationAdapter().evaluate(
+        timestamp=10.0,
+        trigger_timestamp=8.0,
+        track=_track(position_sigma_m=60.0),
+        association_metrics=_metrics(ambiguity=0.8, id_switches=1, continuity=0.55),
+        plan=_plan(created_at=5.0),
+        assignment=_assignment(),
+        terminal_association=_terminal(decision_state="reacquire", confidence=0.35, ambiguity=0.9),
+        observed_global_track_id="G-TGT-002",
+        consecutive_non_locked_frames=3,
+        consecutive_mismatch_frames=2,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+        secondary_plan_id="secondary-plan-stale",
+        secondary_plan_version=3,
+        secondary_plan_active=True,
+        secondary_plan_lease_expires_at_s=12.0,
+    )
+    metadata = result.record.to_event_metadata()
+
+    assert metadata["secondary_plan_epoch_monotonic"] is False
+    assert metadata["secondary_plan_executable"] is False
+    assert metadata["secondary_plan_reject_reason"] == "secondary_plan_epoch_not_monotonic"
 
 
 def test_adapter_normalizes_d5_distributed_visual_evidence_without_d5_import() -> None:
@@ -635,3 +754,29 @@ def test_adapter_outputs_d6_compatible_active_decision_event_fields() -> None:
     assert metadata["secondary_lifecycle"][0]["secondary_available"] is True
     assert metadata["secondary_diagnostic_node_id"] == "SEC-1"
     assert metadata["secondary_diagnostic_link_fresh"] is True
+
+
+def test_adapter_marks_unnecessary_active_degradation_as_false_trigger_candidate() -> None:
+    result = D4ArbitrationAdapter().evaluate(
+        timestamp=10.0,
+        trigger_timestamp=8.5,
+        review_label="unnecessary",
+        track=_track(position_sigma_m=60.0),
+        association_metrics=_metrics(ambiguity=0.8, id_switches=1, continuity=0.55),
+        plan=_plan(created_at=5.0),
+        assignment=_assignment(),
+        terminal_association=_terminal(decision_state="reacquire", confidence=0.35, ambiguity=0.9),
+        observed_global_track_id="G-TGT-002",
+        consecutive_non_locked_frames=3,
+        consecutive_mismatch_frames=2,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+    )
+    metadata = result.record.to_event_metadata()
+
+    assert result.decision.action == DegradationAction.DEGRADE_TO_SECONDARY
+    assert metadata["active_degradation_false_trigger_candidate"] is True
+    assert metadata["active_degradation_false_trigger_reason"] == (
+        "terminal_persistent_disagreement"
+    )
+    assert "terminal_persistent_disagreement" in metadata["hard_risk_factors"]

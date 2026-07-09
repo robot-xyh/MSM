@@ -14,7 +14,12 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
 
-from .associator import AUTHORIZED_ASSIGNMENT_STATES, AssociationConfig, TerminalAssociator
+from .associator import (
+    AUTHORIZED_ASSIGNMENT_STATES,
+    AssociationConfig,
+    TerminalAssociator,
+    calibration_health_metadata,
+)
 from .models import (
     Assignment,
     CameraModel,
@@ -174,9 +179,12 @@ class DetectToGlobalTrackCandidate:
     projected_px: tuple[float, float] | None = None
     bbox_center_px: tuple[float, float] | None = None
     pixel_error_px: float | None = None
+    reprojection_error: float | None = None
     covariance_px: np.ndarray | None = None
     projection_valid: bool = False
     camera_pose_source: str = "look_at_fallback"
+    calibration_health: str = "unknown"
+    drift_warning: bool = False
     bbox_area_px: float | None = None
     offline_truth_global_id: str | None = None
     stable_cross_view_support: bool = False
@@ -201,10 +209,21 @@ class DetectToGlobalTrackCandidate:
         object.__setattr__(self, "projected_px", _optional_pair(self.projected_px))
         object.__setattr__(self, "bbox_center_px", _optional_pair(self.bbox_center_px))
         object.__setattr__(self, "pixel_error_px", _finite_or_none(self.pixel_error_px))
+        reprojection_error = _finite_or_none(
+            self.reprojection_error if self.reprojection_error is not None else self.pixel_error_px
+        )
+        object.__setattr__(self, "reprojection_error", reprojection_error)
         if self.covariance_px is not None:
             object.__setattr__(self, "covariance_px", _as_matrix(self.covariance_px, (2, 2), "covariance_px"))
         object.__setattr__(self, "projection_valid", bool(self.projection_valid))
         object.__setattr__(self, "camera_pose_source", _camera_pose_source_value(self.camera_pose_source))
+        health = calibration_health_metadata(
+            projection_valid=self.projection_valid,
+            reprojection_error=self.reprojection_error,
+            camera_pose_source=self.camera_pose_source,
+        )
+        object.__setattr__(self, "calibration_health", str(health["calibration_health"]))
+        object.__setattr__(self, "drift_warning", bool(health["drift_warning"]))
         object.__setattr__(self, "bbox_area_px", _finite_or_none(self.bbox_area_px))
         object.__setattr__(self, "offline_truth_global_id", _optional_string(self.offline_truth_global_id))
         object.__setattr__(self, "stable_cross_view_support", bool(self.stable_cross_view_support))
@@ -218,10 +237,16 @@ class DetectToGlobalTrackCandidate:
         metadata.update(
             {
                 "pixel_error_px": self.pixel_error_px,
+                "reprojection_error": self.reprojection_error,
+                "reprojection_error_px": self.reprojection_error,
                 "mahalanobis_d2": self.mahalanobis_d2,
                 "gate_pass": self.gate_passed,
                 "projection_valid": self.projection_valid,
                 "camera_pose_source": self.camera_pose_source,
+                "camera_pose_source_trusted": health["camera_pose_source_trusted"],
+                "calibration_health": self.calibration_health,
+                "calibration_health_reason": health["calibration_health_reason"],
+                "drift_warning": self.drift_warning,
                 "bbox_area_px": self.bbox_area_px,
                 "offline_truth_global_id": self.offline_truth_global_id,
                 "stable_cross_view_support": self.stable_cross_view_support,
@@ -392,6 +417,7 @@ def register_local_visual_tracks_to_global_tracks(
             "camera_pose_source_policy": CAMERA_POSE_SOURCES,
             "stability_window_frames": stability.window_frames,
             "stability_required_gate_passes": stability.required_gate_passes,
+            **_calibration_summary_metadata(candidates),
         },
     )
 
@@ -551,6 +577,15 @@ def _publish_registered(
         for active_row in range(costs.shape[0])
         if isfinite(float(costs[active_row, record.col]))
     ]
+    calibration = calibration_health_metadata(
+        projection_valid=record.projection_valid,
+        reprojection_error=record.pixel_error_px,
+        camera_pose_source=record.camera_pose_source,
+        good_error_px=config.calibration_good_reprojection_error_px,
+        warn_error_px=config.calibration_warn_reprojection_error_px,
+        drift_error_px=config.calibration_drift_reprojection_error_px,
+        trusted_camera_pose_sources=config.trusted_camera_pose_sources,
+    )
     metadata = {
         "detect_to_global_track_registration": True,
         "detect_registration_reject_reasons": (REGISTERED_TO_GLOBAL_TRACK_REASON,),
@@ -561,8 +596,14 @@ def _publish_registered(
         "projected_px": _projection_pixel_list(record.projection),
         "bbox_center_px": _vector_list(local_track.center_px),
         "pixel_error_px": _finite_or_none(record.pixel_error_px),
+        "reprojection_error": _finite_or_none(record.pixel_error_px),
+        "reprojection_error_px": _finite_or_none(record.pixel_error_px),
         "projection_valid": record.projection_valid,
         "camera_pose_source": record.camera_pose_source,
+        "camera_pose_source_trusted": calibration["camera_pose_source_trusted"],
+        "calibration_health": calibration["calibration_health"],
+        "calibration_health_reason": calibration["calibration_health_reason"],
+        "drift_warning": calibration["drift_warning"],
         "bbox_area_px": _finite_or_none(record.bbox_area_px),
         "binding_source": binding.binding_source,
         "plan_id": binding.plan_id,
@@ -605,10 +646,16 @@ def _publish_registered(
             "detect_registration_reject_reasons": (REGISTERED_TO_GLOBAL_TRACK_REASON,),
             "binding_source": binding.binding_source,
             "pixel_error_px": _finite_or_none(record.pixel_error_px),
+            "reprojection_error": _finite_or_none(record.pixel_error_px),
+            "reprojection_error_px": _finite_or_none(record.pixel_error_px),
             "mahalanobis_d2": _finite_or_none(record.mahalanobis_d2),
             "gate_pass": True,
             "projection_valid": record.projection_valid,
             "camera_pose_source": record.camera_pose_source,
+            "camera_pose_source_trusted": calibration["camera_pose_source_trusted"],
+            "calibration_health": calibration["calibration_health"],
+            "calibration_health_reason": calibration["calibration_health_reason"],
+            "drift_warning": calibration["drift_warning"],
             "bbox_area_px": _finite_or_none(record.bbox_area_px),
             "registration_stability_state": "candidate",
             "stable_cross_view_support": False,
@@ -810,6 +857,11 @@ def _pair_candidate(
 ) -> DetectToGlobalTrackCandidate:
     projection = record.projection
     decision_state = "registered" if selected else "candidate" if record.gate_passed else "rejected"
+    calibration = calibration_health_metadata(
+        projection_valid=projection.valid,
+        reprojection_error=record.pixel_error_px,
+        camera_pose_source=record.camera_pose_source,
+    )
     return DetectToGlobalTrackCandidate(
         resource_id=batch.resource_id,
         camera_id=batch.camera_id,
@@ -826,9 +878,12 @@ def _pair_candidate(
         projected_px=_projection_pixel_tuple(projection),
         bbox_center_px=_vector_tuple(record.local_track.center_px),
         pixel_error_px=record.pixel_error_px,
+        reprojection_error=record.pixel_error_px,
         covariance_px=record.covariance_px,
         projection_valid=record.projection_valid,
         camera_pose_source=record.camera_pose_source,
+        calibration_health=calibration["calibration_health"],
+        drift_warning=calibration["drift_warning"],
         bbox_area_px=record.bbox_area_px,
         offline_truth_global_id=record.offline_truth_global_id,
         assignment_version=record.binding.assignment_version,
@@ -839,6 +894,12 @@ def _pair_candidate(
             "projection_depth_m": float(projection.depth),
             "gate_pass": record.gate_passed,
             "camera_pose_source": record.camera_pose_source,
+            "camera_pose_source_trusted": calibration["camera_pose_source_trusted"],
+            "calibration_health": calibration["calibration_health"],
+            "calibration_health_reason": calibration["calibration_health_reason"],
+            "drift_warning": calibration["drift_warning"],
+            "reprojection_error": _finite_or_none(record.pixel_error_px),
+            "reprojection_error_px": _finite_or_none(record.pixel_error_px),
             "bbox_area_px": _finite_or_none(record.bbox_area_px),
             "offline_truth_global_id": record.offline_truth_global_id,
             "binding_source": record.binding.binding_source,
@@ -858,6 +919,11 @@ def _local_only_candidate(
 ) -> DetectToGlobalTrackCandidate:
     bbox_area_px = _bbox_area_px_for_track(batch, local_track)
     camera_pose_source = _camera_pose_source_from_batch(batch)
+    calibration = calibration_health_metadata(
+        projection_valid=False,
+        reprojection_error=None,
+        camera_pose_source=camera_pose_source,
+    )
     return DetectToGlobalTrackCandidate(
         resource_id=batch.resource_id,
         camera_id=batch.camera_id,
@@ -874,6 +940,8 @@ def _local_only_candidate(
         bbox_center_px=_vector_tuple(local_track.center_px),
         projection_valid=False,
         camera_pose_source=camera_pose_source,
+        calibration_health=calibration["calibration_health"],
+        drift_warning=calibration["drift_warning"],
         bbox_area_px=bbox_area_px,
         offline_truth_global_id=_offline_truth_global_id(batch, local_track),
         metadata={
@@ -881,6 +949,12 @@ def _local_only_candidate(
             "gate_pass": False,
             "projection_valid": False,
             "camera_pose_source": camera_pose_source,
+            "camera_pose_source_trusted": calibration["camera_pose_source_trusted"],
+            "calibration_health": calibration["calibration_health"],
+            "calibration_health_reason": calibration["calibration_health_reason"],
+            "drift_warning": calibration["drift_warning"],
+            "reprojection_error": None,
+            "reprojection_error_px": None,
             "bbox_area_px": _finite_or_none(bbox_area_px),
         },
     )
@@ -1200,6 +1274,31 @@ def _online_metadata(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
     if not metadata:
         return {}
     return {str(key): value for key, value in metadata.items() if str(key) not in TRUTH_OR_GLOBAL_FIELD_NAMES}
+
+
+def _calibration_summary_metadata(
+    candidates: Sequence[DetectToGlobalTrackCandidate],
+) -> dict[str, Any]:
+    health_counts: dict[str, int] = {}
+    pose_source_counts: dict[str, int] = {}
+    errors = [
+        error
+        for error in (_finite_or_none(candidate.reprojection_error) for candidate in candidates)
+        if error is not None
+    ]
+    for candidate in candidates:
+        health_counts[candidate.calibration_health] = health_counts.get(candidate.calibration_health, 0) + 1
+        pose_source_counts[candidate.camera_pose_source] = pose_source_counts.get(candidate.camera_pose_source, 0) + 1
+    return {
+        "calibration_health_counts": health_counts,
+        "camera_pose_source_counts": pose_source_counts,
+        "projection_valid_count": sum(1 for candidate in candidates if candidate.projection_valid),
+        "projection_invalid_count": sum(1 for candidate in candidates if not candidate.projection_valid),
+        "drift_warning_count": sum(1 for candidate in candidates if candidate.drift_warning),
+        "reprojection_error_count": len(errors),
+        "reprojection_error_mean_px": float(np.mean(errors)) if errors else None,
+        "reprojection_error_max_px": float(np.max(errors)) if errors else None,
+    }
 
 
 def _count_reasons(counts: dict[str, int], reasons: Iterable[str]) -> None:

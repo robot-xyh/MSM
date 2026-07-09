@@ -7,6 +7,8 @@ from d3_assignment_planner import (
     CostWeights,
     PlannerConfig,
     StalePlanError,
+    adapt_airsim_global_tracks,
+    adapt_airsim_resource_states,
 )
 from d3_assignment_planner.solver import HungarianAssignmentSolver
 
@@ -137,3 +139,43 @@ def test_dry_run_adapter_keeps_stale_version_checks_intact() -> None:
             previous_plan=first,
             expected_previous_version=first.version,
         )
+
+
+def test_dry_run_adapter_maps_resource_state_and_threat_baseline_fields() -> None:
+    (track,) = adapt_airsim_global_tracks(
+        [
+            {
+                "global_track_id": "T1",
+                "track_state": "engageable",
+                "position_ned": (100.0, 0.0, 0.0),
+                "velocity_ned": (-20.0, 0.0, 0.0),
+                "critical_zone_center_ned": (0.0, 0.0, 0.0),
+                "critical_zone_radius_m": 20.0,
+                "covariance": 0.2,
+            }
+        ]
+    )
+    (resource,) = adapt_airsim_resource_states(
+        [
+            {
+                "resource_id": "R1",
+                "energy_fraction": 0.6,
+                "availability_score": 0.7,
+                "current_load": 0.25,
+                "history_failure_rate": 0.1,
+                "intercept_feasibility_by_target": {"T1": False},
+                "intercept_feasibility_score_by_target": {"T1": 0.0},
+            }
+        ],
+        timestamp=0.0,
+    )
+
+    assert track.threat_score > 0.75
+    assert track.metadata["threat_score_source"] == "d3_explainable_baseline"
+    assert "threat_score_baseline" in track.metadata
+    assert resource.energy_fraction == 0.6
+    assert resource.availability_score == 0.7
+    assert resource.current_load == 0.25
+    assert resource.history_failure_rate == 0.1
+    assert resource.intercept_feasibility_by_target["T1"] is False
+    assert resource.intercept_feasibility_score_by_target["T1"] == 0.0

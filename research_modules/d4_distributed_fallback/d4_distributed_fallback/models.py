@@ -129,6 +129,7 @@ class ResourceSummary:
     operator_hold: bool = False
     takeover_priority: int = 100
     lease_epoch: int = 0
+    lease_expires_at_s: float | None = None
     epoch: int = 0
     node_role: NodeRole = NodeRole.INTERCEPTOR
     coordinator_only: bool = False
@@ -231,6 +232,8 @@ class SecondaryNodeLifecycleSummary:
     video_cue_freshness_s: float | None
     link_stale: bool | None
     secondary_available: bool
+    lease_expires_at_s: float | None = None
+    lease_expired: bool | None = None
     coverage_matches_requested_cell: bool = False
     heartbeat_stale: bool | None = None
     cue_stale: bool | None = None
@@ -246,6 +249,11 @@ class SecondaryNodeLifecycleSummary:
     cross_view_support_count: int | None = None
     is_mobile_high_recon: bool = False
     is_fixed_tethered_secondary: bool = False
+    secondary_visible: bool = False
+    secondary_registered: bool = False
+    secondary_takeover_capable: bool = False
+    secondary_capability_score: float = 0.0
+    secondary_capability_reasons: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)

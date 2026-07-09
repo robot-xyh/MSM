@@ -131,10 +131,17 @@ def test_decision_metadata_records_geometry_gate_and_measurement_age_fields() ->
     assert selected["projected_px"] == [320.0, 240.0]
     assert selected["bbox_center_px"] == [320.0, 240.0]
     assert selected["pixel_error_px"] == 0.0
+    assert selected["reprojection_error"] == 0.0
+    assert selected["reprojection_error_px"] == 0.0
     assert selected["mahalanobis_d2"] == 0.0
     assert selected["gate_pass"] is True
     assert selected["friend_conflict_state"] == "none"
     assert selected["measurement_age_s"] == 1.25
+    assert decision.metadata["projection_valid"] is True
+    assert decision.metadata["reprojection_error"] == 0.0
+    assert decision.metadata["camera_pose_source"] == "unknown"
+    assert decision.metadata["calibration_health"] == "healthy"
+    assert decision.metadata["drift_warning"] is False
     assert decision.metadata["gate_pass_count"] == 1
     assert decision.metadata["duplicate_terminal_lock_risk"] is False
     assert decision.metadata["candidate_pair_logs"][0]["gate_pass"] is True
@@ -242,6 +249,96 @@ def test_reacquire_when_no_local_track_inside_gate() -> None:
 
     assert decision.decision_state == "reacquire"
     assert decision.local_track_id is None
+
+
+def test_active_reacquire_recovers_assigned_track_from_search_window() -> None:
+    associator = TerminalAssociator()
+    camera = make_camera()
+    assigned = make_track("G-assigned")
+    before_ids = [assigned.global_track_id]
+    assignment = Assignment("G-assigned", resource_id="R-1")
+
+    locked = associator.decide(
+        assignment,
+        [assigned],
+        [make_local("mot-7", (320.0, 240.0))],
+        [],
+        camera,
+        current_time=0.0,
+        camera_pose_source="runtime_guidance_pose",
+    )
+    lost = associator.decide(
+        assignment,
+        [assigned],
+        [],
+        [],
+        camera,
+        current_time=0.1,
+        camera_pose_source="runtime_guidance_pose",
+    )
+    reacquired = associator.decide(
+        assignment,
+        [assigned],
+        [make_local("mot-7", (350.0, 240.0))],
+        [],
+        camera,
+        current_time=0.2,
+        camera_pose_source="runtime_guidance_pose",
+    )
+
+    assert locked.decision_state == "locked"
+    assert lost.decision_state == "reacquire"
+    assert reacquired.decision_state == "locked"
+    assert reacquired.reason == "reacquired_assigned_track_in_search_window"
+    assert reacquired.assigned_global_track_id == "G-assigned"
+    assert reacquired.local_track_id == "mot-7"
+    assert [assigned.global_track_id] == before_ids
+    assert reacquired.metadata["active_reacquire"] is True
+    assert reacquired.metadata["reacquire_search_window"]["source"] == "global_track_prediction_bbox_mot_history"
+    assert reacquired.metadata["reacquire_search_window"]["selected_local_track_id"] == "mot-7"
+    assert reacquired.metadata["camera_pose_source"] == "runtime_guidance_pose"
+    assert reacquired.metadata["truth_id_online_use"] == "ignored"
+
+
+def test_reacquire_with_new_mot_id_requires_stable_bbox_history() -> None:
+    associator = TerminalAssociator()
+    camera = make_camera()
+    assigned = make_track("G-assigned")
+    assignment = Assignment("G-assigned", resource_id="R-1")
+
+    associator.decide(
+        assignment,
+        [assigned],
+        [make_local("mot-old", (320.0, 240.0))],
+        [],
+        camera,
+        current_time=0.0,
+    )
+    associator.decide(assignment, [assigned], [], [], camera, current_time=0.1)
+    first_new_id = associator.decide(
+        assignment,
+        [assigned],
+        [make_local("mot-new", (350.0, 240.0))],
+        [],
+        camera,
+        current_time=0.2,
+    )
+    second_new_id = associator.decide(
+        assignment,
+        [assigned],
+        [make_local("mot-new", (351.0, 240.0))],
+        [],
+        camera,
+        current_time=0.3,
+    )
+
+    assert first_new_id.decision_state == "ambiguous"
+    assert first_new_id.reason == "reacquire_candidate_not_temporally_stable"
+    assert first_new_id.assigned_global_track_id == "G-assigned"
+    assert second_new_id.decision_state == "locked"
+    assert second_new_id.reason == "reacquired_assigned_track_in_search_window"
+    assert second_new_id.assigned_global_track_id == "G-assigned"
+    assert second_new_id.metadata["reacquire_candidates"][0]["stability_count"] == 2
 
 
 def test_rate_and_category_costs_are_reflected_in_matrix() -> None:

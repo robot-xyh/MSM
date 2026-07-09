@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass, field
 import math
 from typing import Iterable
 
@@ -11,6 +12,28 @@ from .models import GuidanceCommand, GuidanceMode, GuidanceState
 
 
 EPS = 1e-9
+
+
+@dataclass(frozen=True)
+class ThreeDimensionalPnBenchmark:
+    """Advisory 3D geometry PN fields that do not replace the default 2D API."""
+
+    range_3d_m: float
+    horizontal_range_m: float
+    height_delta_m: float
+    closing_speed_mps: float
+    los_rate_norm_radps: float
+    los_rate_vector_ned: tuple[float, float, float]
+    commanded_accel_vector_ned_mps2: tuple[float, float, float]
+    commanded_accel_norm_mps2: float
+    navigation_constant: float
+    benchmark_only: bool = True
+    default_pn_png_api_replaced: bool = False
+    d3_d4_d5_gate_bypassed: bool = False
+    metadata: dict[str, object] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, object]:
+        return asdict(self)
 
 
 def compute_proportional_navigation_command(
@@ -127,6 +150,59 @@ def compute_proportional_navigation_command(
 compute_pn_command = compute_proportional_navigation_command
 
 
+def compute_three_dimensional_pn_benchmark(
+    *,
+    relative_position_ned: tuple[float, float, float] | np.ndarray,
+    relative_velocity_ned: tuple[float, float, float] | np.ndarray,
+    navigation_constant: float,
+) -> ThreeDimensionalPnBenchmark:
+    """Compute report-only 3D PN geometry from relative NED state.
+
+    This helper is intentionally benchmark/advisory only.  It does not change
+    ``compute_proportional_navigation_command()``, does not emit a vehicle
+    command, and does not bypass D3/D4/D5 terminal gates.
+    """
+
+    if navigation_constant <= 0.0:
+        raise ValueError("navigation_constant must be positive")
+    r = _xyz_array(relative_position_ned)
+    v = _xyz_array(relative_velocity_ned)
+    range_3d_m = float(np.linalg.norm(r))
+    horizontal_range_m = float(np.linalg.norm(r[:2]))
+    height_delta_m = float(r[2])
+    if range_3d_m <= EPS:
+        los_rate_vector = np.zeros(3, dtype=float)
+        closing_speed_mps = 0.0
+    else:
+        los_unit = r / range_3d_m
+        closing_speed_mps = float(-np.dot(los_unit, v))
+        los_rate_vector = (v - los_unit * float(np.dot(los_unit, v))) / range_3d_m
+    accel_vector = float(navigation_constant * closing_speed_mps) * los_rate_vector
+    return ThreeDimensionalPnBenchmark(
+        range_3d_m=range_3d_m,
+        horizontal_range_m=horizontal_range_m,
+        height_delta_m=height_delta_m,
+        closing_speed_mps=closing_speed_mps,
+        los_rate_norm_radps=float(np.linalg.norm(los_rate_vector)),
+        los_rate_vector_ned=(
+            float(los_rate_vector[0]),
+            float(los_rate_vector[1]),
+            float(los_rate_vector[2]),
+        ),
+        commanded_accel_vector_ned_mps2=(
+            float(accel_vector[0]),
+            float(accel_vector[1]),
+            float(accel_vector[2]),
+        ),
+        commanded_accel_norm_mps2=float(np.linalg.norm(accel_vector)),
+        navigation_constant=float(navigation_constant),
+        metadata={
+            "benchmark_guidance_law": "pn_3d_geometry",
+            "three_dimensional_guidance_replaces_default": False,
+        },
+    )
+
+
 def compute_pure_pursuit_command(
     pursuer: GuidanceState,
     target: GuidanceState,
@@ -214,6 +290,13 @@ def _xy_array(values: Iterable[float]) -> np.ndarray:
     array = np.asarray(tuple(values), dtype=float)
     if array.shape != (2,):
         raise ValueError("state vectors must contain exactly two values")
+    return array
+
+
+def _xyz_array(values: Iterable[float]) -> np.ndarray:
+    array = np.asarray(tuple(values), dtype=float)
+    if array.shape != (3,):
+        raise ValueError("3D state vectors must contain exactly three values")
     return array
 
 

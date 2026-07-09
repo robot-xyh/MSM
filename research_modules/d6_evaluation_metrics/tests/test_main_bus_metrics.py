@@ -75,6 +75,12 @@ def test_load_main_episode_bus_metrics_preserves_execution_scope_and_metadata(
     assert metrics.resource_count == 3
     assert metrics.target_count == 4
     assert metrics.camera_count == 6
+    assert metrics.mission_outcome == "partial"
+    assert metrics.success_reason == "partial_intercept_success_count=1/4"
+    assert metrics.failure_reason == "not_all_required_intercepts_confirmed"
+    assert metrics.eval_priority == "P0"
+    assert metrics.implementation_status == "implemented"
+    assert metrics.evidence_path == str(path)
     assert metrics.active_degradation_precision == pytest.approx(0.5)
     assert metrics.unnecessary_active_degradation_count == 1
     assert metrics.terminal_lock_count == 2
@@ -137,3 +143,5 @@ def test_load_main_episode_bus_metric_files_infers_contract_scope_from_filename(
     assert contract.resource_count == 4
     assert contract.target_count == 3
     assert contract.camera_count == 5
+    assert contract.mission_outcome == "failed"
+    assert contract.failure_reason == "no_success_evidence"

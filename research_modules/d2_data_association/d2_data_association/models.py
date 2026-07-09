@@ -144,6 +144,9 @@ class GlobalTrack:
     last_detection_id: str | None = None
     truth_id: str | None = None
     identity_confidence: float = 0.0
+    track_quality: float = 0.0
+    association_risk: float = 0.0
+    quality_metadata: dict[str, Any] = field(default_factory=dict)
     feature: np.ndarray | None = None
     history: list[dict[str, Any]] = field(default_factory=list)
     transition_log: list[TrackTransition] = field(default_factory=list)
@@ -156,6 +159,8 @@ class GlobalTrack:
         self.timestamp = float(self.timestamp)
         self.created_at = float(self.created_at)
         self.last_update_time = float(self.last_update_time)
+        self.track_quality = float(np.clip(self.track_quality, 0.0, 1.0))
+        self.association_risk = float(np.clip(self.association_risk, 0.0, 1.0))
 
     @property
     def position(self) -> np.ndarray:
@@ -192,6 +197,9 @@ class GlobalTrack:
             "last_detection_id": self.last_detection_id,
             "truth_id": self.truth_id,
             "identity_confidence": self.identity_confidence,
+            "track_quality": self.track_quality,
+            "association_risk": self.association_risk,
+            "quality_metadata": _json_ready(self.quality_metadata),
             "feature": None if self.feature is None else self.feature.tolist(),
             "history": _json_ready(self.history),
             "transition_log": [transition.to_dict() for transition in self.transition_log],

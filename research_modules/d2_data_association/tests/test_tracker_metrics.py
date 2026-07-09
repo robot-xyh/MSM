@@ -65,6 +65,56 @@ def test_tracker_lifecycle_reaches_engageable_then_lost_and_dropped() -> None:
     assert track.lifecycle_state == TrackLifecycleState.DROPPED
 
 
+def test_tracker_exports_track_quality_and_association_risk_metadata() -> None:
+    tracker = Tracker(
+        associator=GNNHungarianAssociator(),
+        confirmation_hits=2,
+        engageable_hits=3,
+        engageable_covariance_trace=100.0,
+    )
+
+    result = tracker.step([detection(0, 0.0)], timestamp=0.0, truth_ids_present=["A"])
+    track = next(iter(tracker.active_tracks()))
+    track_id = track.global_track_id
+
+    assert 0.0 <= track.track_quality <= 1.0
+    assert 0.0 <= track.association_risk <= 1.0
+    assert result.metadata["track_quality_by_track"][track_id] == pytest.approx(
+        track.track_quality
+    )
+    assert result.metadata["association_risk_by_track"][track_id] == pytest.approx(
+        track.association_risk
+    )
+    assert result.metadata["track_quality_metadata_by_track"][track_id][
+        "created_this_frame"
+    ] is True
+
+    track_dict = track.to_dict()
+    assert track_dict["track_quality"] == pytest.approx(track.track_quality)
+    assert track_dict["association_risk"] == pytest.approx(track.association_risk)
+    assert "quality_metadata" in track_dict
+
+    log_dict = tracker.metrics.association_logs[-1].to_dict()
+    risk_metadata = log_dict["risk_summary"]["metadata"]
+    assert risk_metadata["track_quality_by_track"][track_id] == pytest.approx(
+        track.track_quality
+    )
+    assert risk_metadata["association_risk_by_track"][track_id] == pytest.approx(
+        track.association_risk
+    )
+
+    summary = tracker.metrics.summary()
+    assert summary["track_quality_by_track"][track_id] == pytest.approx(
+        track.track_quality
+    )
+    assert summary["association_risk_by_track"][track_id] == pytest.approx(
+        track.association_risk
+    )
+    assert summary["max_track_association_risk"] == pytest.approx(
+        track.association_risk
+    )
+
+
 def test_metrics_records_id_switch_continuity_duplicate_and_confusion() -> None:
     metrics = MetricsRecorder()
     first = AssociationResult(

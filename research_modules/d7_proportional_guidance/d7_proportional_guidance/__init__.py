@@ -28,9 +28,11 @@ from .models import (
     GuidanceState,
 )
 from .pn import (
+    ThreeDimensionalPnBenchmark,
     compute_pn_command,
     compute_proportional_navigation_command,
     compute_pure_pursuit_command,
+    compute_three_dimensional_pn_benchmark,
 )
 from .replay import (
     BBOX_LOS_REPLAY_BOUNDARY,
@@ -90,6 +92,7 @@ __all__ = [
     "PngGuidanceConfig",
     "SimpleFlightPngGuidanceFilter",
     "TerminalPngContractDecision",
+    "ThreeDimensionalPnBenchmark",
     "VisionGuidanceObservation",
     "VisionGuidanceQuality",
     "bbox_replay_detection_to_observation",
@@ -99,6 +102,7 @@ __all__ = [
     "compute_pn_command",
     "compute_proportional_navigation_command",
     "compute_pure_pursuit_command",
+    "compute_three_dimensional_pn_benchmark",
     "evaluate_terminal_png_contract",
     "evaluate_bbox_los_replay",
     "guidance_mode_from_terminal_contract",

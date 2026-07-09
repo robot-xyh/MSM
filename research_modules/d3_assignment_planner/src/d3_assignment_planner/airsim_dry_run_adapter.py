@@ -10,7 +10,12 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from .models import AssignmentPlan, ResourceState, TargetTrack
+from .models import (
+    AssignmentPlan,
+    ResourceState,
+    TargetTrack,
+    compose_threat_score_baseline,
+)
 from .planner import AssignmentPlanner
 
 
@@ -80,11 +85,48 @@ def _target_from_record(record: Record) -> TargetTrack:
     metadata = _metadata(record)
     metadata.setdefault("source_adapter", "airsim_dry_run")
     metadata.setdefault("track_state", track_state)
+    covariance = _covariance_quality(record)
+    explicit_threat = _read(record, "threat_score", "threat", default=None)
+    if explicit_threat is None:
+        baseline = compose_threat_score_baseline(
+            target_state=track_state,
+            distance_to_critical_zone_m=_optional_float(
+                _read(record, "distance_to_critical_zone_m", default=None)
+            ),
+            time_to_critical_zone_s=_optional_float(
+                _read(record, "time_to_critical_zone_s", "ttc_s", default=None)
+            ),
+            speed_mps=_optional_float(_read(record, "speed_mps", "speed", default=None)),
+            covariance=covariance,
+            position_ned=_read(record, "position_ned", "ned_position", default=None),
+            velocity_ned=_read(record, "velocity_ned", "ned_velocity", default=None),
+            critical_zone_center_ned=_read(
+                record,
+                "critical_zone_center_ned",
+                "protected_zone_center_ned",
+                default=None,
+            ),
+            critical_zone_radius_m=_float(
+                _read(record, "critical_zone_radius_m", default=0.0),
+                0.0,
+            ),
+        )
+        threat_score = baseline.threat_score
+        metadata["threat_score_source"] = "d3_explainable_baseline"
+        metadata["threat_score_baseline"] = {
+            "components": dict(baseline.components),
+            "weights": dict(baseline.weights),
+            "reasons": baseline.reasons,
+            **dict(baseline.metadata),
+        }
+    else:
+        threat_score = _clamp01(_float(explicit_threat, 0.5))
+        metadata.setdefault("threat_score_source", "input")
 
     return TargetTrack(
         track_id=track_id,
-        threat_score=_clamp01(_float(_read(record, "threat_score", "threat", default=0.5), 0.5)),
-        covariance=_covariance_quality(record),
+        threat_score=threat_score,
+        covariance=covariance,
         window_cost=_clamp01(_float(_read(record, "window_cost", "time_window_cost", default=0.5), 0.5)),
         assignable=assignable,
         fov_difficulty_by_resource=_pair_float_map(
@@ -114,6 +156,7 @@ def _resource_from_record(record: Record, timestamp: float | None) -> ResourceSt
 
     metadata = _metadata(record)
     metadata.setdefault("source_adapter", "airsim_dry_run")
+    availability = _availability_score(record, available)
 
     return ResourceState(
         resource_id=resource_id,
@@ -125,6 +168,43 @@ def _resource_from_record(record: Record, timestamp: float | None) -> ResourceSt
         fov_difficulty=_clamp01(_float(_read(record, "fov_difficulty", default=0.0), 0.0)),
         conflict_risk=_clamp01(_float(_read(record, "conflict_risk", default=0.0), 0.0)),
         capability_class=str(_read(record, "capability_class", default="generic")),
+        energy_fraction=_clamp01(
+            _float(
+                _read(
+                    record,
+                    "energy_fraction",
+                    "energy",
+                    "battery_fraction",
+                    "state_of_charge",
+                    default=1.0,
+                ),
+                1.0,
+            )
+        ),
+        availability_score=availability,
+        current_load=_clamp01(
+            _float(_read(record, "current_load", "load", "load_fraction", default=0.0), 0.0)
+        ),
+        history_failure_rate=_clamp01(
+            _float(
+                _read(
+                    record,
+                    "history_failure_rate",
+                    "historical_failure_rate",
+                    "failure_rate",
+                    default=0.0,
+                ),
+                0.0,
+            )
+        ),
+        intercept_feasibility_by_target=_target_bool_map(
+            record,
+            direct_key="intercept_feasibility_by_target",
+        ),
+        intercept_feasibility_score_by_target=_target_float_map(
+            record,
+            direct_key="intercept_feasibility_score_by_target",
+        ),
         metadata=metadata,
     )
 
@@ -161,8 +241,26 @@ def _float(value: Any, default: float) -> float:
         return default
 
 
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
+
+
+def _availability_score(record: Record, available: Any) -> float:
+    explicit = _read(record, "availability_score", "availability", default=None)
+    if explicit is not None:
+        return _clamp01(_float(explicit, 1.0))
+    if available is not None and not bool(available):
+        return 0.0
+    return 1.0
 
 
 def _covariance_quality(record: Record) -> float:
@@ -233,4 +331,52 @@ def _pair_bool_map(record: Record) -> dict[str, bool]:
         value = _read(terms, "feasible", "pair_feasible", default=None)
         if value is not None:
             result[str(resource_id)] = bool(value)
+    return result
+
+
+def _target_bool_map(record: Record, direct_key: str) -> dict[str, bool]:
+    direct = _read(record, direct_key, default=None)
+    if isinstance(direct, Mapping):
+        return {str(target_id): bool(value) for target_id, value in direct.items()}
+
+    result: dict[str, bool] = {}
+    target_terms = _read(record, "target_terms", "track_terms", "intercept_terms", default={})
+    if not isinstance(target_terms, Mapping):
+        return result
+    for target_id, terms in target_terms.items():
+        if not isinstance(terms, Mapping):
+            continue
+        value = _read(
+            terms,
+            "intercept_feasible",
+            "intercept_feasibility",
+            "feasible",
+            default=None,
+        )
+        if value is not None:
+            result[str(target_id)] = bool(value)
+    return result
+
+
+def _target_float_map(record: Record, direct_key: str) -> dict[str, float]:
+    direct = _read(record, direct_key, default=None)
+    if isinstance(direct, Mapping):
+        return {str(target_id): _clamp01(_float(value, 1.0)) for target_id, value in direct.items()}
+
+    result: dict[str, float] = {}
+    target_terms = _read(record, "target_terms", "track_terms", "intercept_terms", default={})
+    if not isinstance(target_terms, Mapping):
+        return result
+    for target_id, terms in target_terms.items():
+        if not isinstance(terms, Mapping):
+            continue
+        value = _read(
+            terms,
+            "intercept_feasibility_score",
+            "intercept_score",
+            "feasibility_score",
+            default=None,
+        )
+        if value is not None:
+            result[str(target_id)] = _clamp01(_float(value, 1.0))
     return result

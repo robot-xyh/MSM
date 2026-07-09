@@ -65,6 +65,22 @@ ACTIVE_DEGRADATION_REVIEW_LABELS = frozenset(
 )
 DEFAULT_REVIEW_PRE_WINDOW_S = 2.0
 DEFAULT_REVIEW_POST_WINDOW_S = 5.0
+ADAPTER_HARD_RISK_FACTORS = frozenset(
+    {
+        "d1_track_uncertainty_high",
+        "d1_covariance_trace_high",
+        "d1_measurement_stale",
+        "d2_id_switch_observed",
+        "d2_duplicate_track_observed",
+        "d2_track_continuity_low",
+        "d3_assignment_not_current",
+        "d3_assignment_stale",
+        "d5_duplicate_terminal_lock",
+        "d5_resource_assignment_mismatch",
+        "terminal_friend_conflict",
+        "terminal_persistent_disagreement",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -138,7 +154,16 @@ class D4DecisionRecord:
     secondary_diagnostic_gimbal_pointing_ok: bool | None = None
     secondary_diagnostic_coverage_ratio: float | None = None
     secondary_diagnostic_coverage_matches_requested_cell: bool | None = None
+    secondary_diagnostic_visible: bool | None = None
+    secondary_diagnostic_registered: bool | None = None
+    secondary_diagnostic_takeover_capable: bool | None = None
+    secondary_diagnostic_capability_score: float | None = None
+    secondary_diagnostic_capability_reasons: tuple[str, ...] = ()
     risk_factors: tuple[str, ...] = ()
+    hard_risk_factors: tuple[str, ...] = ()
+    soft_risk_factors: tuple[str, ...] = ()
+    active_degradation_false_trigger_candidate: bool = False
+    active_degradation_false_trigger_reason: str | None = None
     c2_health: C2Health = C2Health.NORMAL
     secondary_available: bool = False
     communication_fresh: bool | None = None
@@ -189,6 +214,27 @@ class D4DecisionRecord:
             "secondary_plan_source_node_id": self.secondary_takeover.secondary_plan_source_node_id,
             "secondary_plan_id": self.secondary_takeover.secondary_plan_id,
             "secondary_plan_version": self.secondary_takeover.secondary_plan_version,
+            "secondary_plan_lease_epoch": (
+                self.secondary_takeover.secondary_plan_lease_epoch
+            ),
+            "secondary_plan_lease_expires_at_s": (
+                self.secondary_takeover.secondary_plan_lease_expires_at_s
+            ),
+            "secondary_plan_lease_valid": (
+                self.secondary_takeover.secondary_plan_lease_valid
+            ),
+            "secondary_plan_epoch_monotonic": (
+                self.secondary_takeover.secondary_plan_epoch_monotonic
+            ),
+            "secondary_plan_executable": (
+                self.secondary_takeover.secondary_plan_executable
+            ),
+            "secondary_plan_reject_reason": (
+                self.secondary_takeover.secondary_plan_reject_reason
+            ),
+            "recovery_dual_track_audit": (
+                self.secondary_takeover.recovery_dual_track_audit
+            ),
             "secondary_supersedes_plan_id": self.secondary_takeover.secondary_supersedes_plan_id,
             "secondary_supersedes_plan_version": (
                 self.secondary_takeover.secondary_supersedes_plan_version
@@ -264,6 +310,27 @@ class D4DecisionRecord:
                 self.secondary_diagnostic_coverage_matches_requested_cell
             ),
             "risk_factors": list(self.risk_factors),
+            "hard_risk_factors": list(self.hard_risk_factors),
+            "soft_risk_factors": list(self.soft_risk_factors),
+            "active_degradation_hard_risk_factors": list(self.hard_risk_factors),
+            "active_degradation_soft_risk_factors": list(self.soft_risk_factors),
+            "active_degradation_false_trigger_candidate": (
+                self.active_degradation_false_trigger_candidate
+            ),
+            "active_degradation_false_trigger_reason": (
+                self.active_degradation_false_trigger_reason
+            ),
+            "secondary_diagnostic_visible": self.secondary_diagnostic_visible,
+            "secondary_diagnostic_registered": self.secondary_diagnostic_registered,
+            "secondary_diagnostic_takeover_capable": (
+                self.secondary_diagnostic_takeover_capable
+            ),
+            "secondary_diagnostic_capability_score": (
+                self.secondary_diagnostic_capability_score
+            ),
+            "secondary_diagnostic_capability_reasons": list(
+                self.secondary_diagnostic_capability_reasons
+            ),
             "c2_health": self.c2_health.value,
             "secondary_available": self.secondary_available,
             "communication_fresh": self.communication_fresh,
@@ -348,6 +415,8 @@ class D4ArbitrationAdapter:
         secondary_plan_version: int | None = None,
         secondary_plan_active: bool = False,
         secondary_plan_source_node_id: str | None = None,
+        secondary_plan_lease_epoch: int | None = None,
+        secondary_plan_lease_expires_at_s: float | None = None,
         trigger_timestamp: float | None = None,
         review_label: str = "unknown",
         review_pre_window_s: float | None = None,
@@ -419,6 +488,7 @@ class D4ArbitrationAdapter:
             resolved_coverage,
             communication_summaries=list(communications) if communications else None,
             current_time_s=timestamp,
+            terminal_association=terminal_summary,
         )
         health = _c2_health(c2_health)
         decision = self.arbiter.evaluate(
@@ -446,6 +516,13 @@ class D4ArbitrationAdapter:
             secondary_plan_version=secondary_plan_version,
             secondary_plan_active=secondary_plan_active,
             secondary_plan_source_node_id=secondary_plan_source_node_id,
+            secondary_plan_lease_epoch=(
+                secondary_plan_lease_epoch
+                if secondary_plan_lease_epoch is not None
+                else _selected_secondary_lease_epoch(lifecycle, decision.target_node_id)
+            ),
+            secondary_plan_lease_expires_at_s=secondary_plan_lease_expires_at_s,
+            decision_timestamp=timestamp,
         )
         resolved_trigger_timestamp = float(
             trigger_timestamp if trigger_timestamp is not None else timestamp
@@ -472,6 +549,11 @@ class D4ArbitrationAdapter:
             DegradationAction.REQUEST_SECONDARY_ASSIST,
             DegradationAction.DEGRADE_TO_SECONDARY,
         }
+        risk_classification = _risk_classification_metadata(
+            decision.risk_factors,
+            decision=decision,
+            review_label=review["label"],
+        )
         record = D4DecisionRecord(
             timestamp=float(timestamp),
             resource_id=resolved_resource_id,
@@ -595,6 +677,39 @@ class D4ArbitrationAdapter:
                 else None
             ),
             risk_factors=decision.risk_factors,
+            hard_risk_factors=risk_classification["hard"],
+            soft_risk_factors=risk_classification["soft"],
+            active_degradation_false_trigger_candidate=bool(
+                risk_classification["false_trigger_candidate"]
+            ),
+            active_degradation_false_trigger_reason=risk_classification[
+                "false_trigger_reason"
+            ],
+            secondary_diagnostic_visible=(
+                diagnostic_lifecycle.secondary_visible
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_registered=(
+                diagnostic_lifecycle.secondary_registered
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_takeover_capable=(
+                diagnostic_lifecycle.secondary_takeover_capable
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_capability_score=(
+                diagnostic_lifecycle.secondary_capability_score
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_capability_reasons=(
+                diagnostic_lifecycle.secondary_capability_reasons
+                if diagnostic_lifecycle is not None
+                else ()
+            ),
             c2_health=health,
             secondary_available=_secondary_available(lifecycle),
             communication_fresh=_communication_fresh(communications, timestamp),
@@ -629,6 +744,37 @@ def _review_label_metadata(
     if decision.action == DegradationAction.CONTINUE_CENTER and decision.mode == DegradationMode.NONE:
         return {"label": "unnecessary", "detail": detail, "source": "derived"}
     return {"label": "inconclusive", "detail": detail, "source": "derived"}
+
+
+def _risk_classification_metadata(
+    risk_factors: tuple[str, ...],
+    *,
+    decision: ActiveDegradationDecision,
+    review_label: str,
+) -> dict[str, Any]:
+    hard = tuple(factor for factor in risk_factors if factor in ADAPTER_HARD_RISK_FACTORS)
+    soft = tuple(factor for factor in risk_factors if factor not in ADAPTER_HARD_RISK_FACTORS)
+    false_trigger_candidate = (
+        decision.mode != DegradationMode.NONE and review_label == "unnecessary"
+    )
+    return {
+        "hard": hard,
+        "soft": soft,
+        "false_trigger_candidate": false_trigger_candidate,
+        "false_trigger_reason": decision.reason if false_trigger_candidate else None,
+    }
+
+
+def _selected_secondary_lease_epoch(
+    lifecycle: Sequence[SecondaryNodeLifecycleSummary],
+    target_node_id: str | None,
+) -> int | None:
+    if target_node_id is None:
+        return None
+    for item in lifecycle:
+        if item.node_id == target_node_id:
+            return item.lease_epoch
+    return None
 
 
 def _normalise_legacy_review_label(value: str) -> str:
@@ -763,6 +909,7 @@ def _secondary_takeover_success(
 ) -> bool:
     return (
         secondary_takeover.state.value == "secondary_plan_active"
+        and secondary_takeover.secondary_plan_executable
         and not terminal_summary.secondary_detect_available_but_not_registered
     )
 
@@ -1359,6 +1506,13 @@ def build_resource_summary(resource: Any) -> ResourceSummary | None:
         operator_hold=bool(_get(resource, "operator_hold", False)),
         takeover_priority=_first_int(_get(resource, "takeover_priority"), 100),
         lease_epoch=_first_int(_get(resource, "lease_epoch"), 0),
+        lease_expires_at_s=_optional_float(
+            _get(
+                resource,
+                "lease_expires_at_s",
+                _get(resource, "lease_expiration_s", _get(resource, "lease_expires_at")),
+            )
+        ),
         epoch=_first_int(_get(resource, "epoch"), 0),
         node_role=node_role,
         coordinator_only=bool(_get(resource, "coordinator_only", False)),

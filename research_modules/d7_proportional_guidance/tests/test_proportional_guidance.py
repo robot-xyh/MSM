@@ -24,6 +24,7 @@ from d7_proportional_guidance import (
     bbox_replay_detection_to_observation,
     compute_proportional_navigation_command,
     compute_pure_pursuit_command,
+    compute_three_dimensional_pn_benchmark,
     evaluate_terminal_png_contract,
     evaluate_bbox_los_replay,
     guidance_mode_from_terminal_contract,
@@ -243,6 +244,51 @@ def test_visual_png_gate_passes_after_stable_quality_observations() -> None:
     assert command.quality.maneuver_margin_gate_passed is True
     assert command.quality.terminal_switch_allowed is True
     assert command.guidance_law == "png_vm"
+
+
+def test_visual_png_filters_los_rate_spike_before_near_range_command() -> None:
+    config = replace(
+        _tuned_png_config(),
+        los_rate_filter_alpha=0.25,
+        max_los_rate_radps=0.4,
+        max_los_rate_step_radps=0.08,
+        max_los_rate_variance_radps2=0.5,
+        reject_los_rate_outliers=True,
+    )
+    tracker = SimpleFlightPngGuidanceFilter(config)
+    centers_px = (320.0, 322.0, 324.0, 450.0)
+    commands = []
+
+    for index, center_x in enumerate(centers_px):
+        commands.append(
+            tracker.evaluate(
+                VisionGuidanceObservation(
+                    timestamp_s=index * config.dt_s,
+                    bbox_xyxy=(center_x - 36.0, 204.0, center_x + 36.0, 276.0),
+                    detection_confidence=0.92,
+                    local_track_id="R1:BT:stable",
+                    assigned_global_track_id="G1",
+                ),
+                current_heading_rad=0.0,
+                current_speed_mps=8.0,
+                intercept_speed_mps=8.0,
+                relative_position_ned=(18.0, 0.4, 0.0),
+                relative_velocity_ned=(-6.0, 0.0, 0.0),
+            )
+        )
+
+    stable_command = commands[2]
+    spike_command = commands[3]
+
+    assert stable_command.quality.terminal_switch_allowed is True
+    assert abs(stable_command.turn_rate_radps) < 0.1
+    assert abs(spike_command.quality.raw_los_rate_radps) > 3.0
+    assert abs(spike_command.quality.filtered_los_rate_radps) <= config.max_los_rate_radps
+    assert spike_command.quality.los_rate_clamped is True
+    assert spike_command.quality.los_rate_outlier_rejected is True
+    assert spike_command.quality.reject_reason == "los_rate_spike_rejected"
+    assert spike_command.quality.terminal_switch_allowed is False
+    assert abs(spike_command.turn_rate_radps) <= config.max_turn_rate_radps
 
 
 def test_tuned_visual_png_allows_terminal_switch_after_stable_los_window() -> None:
@@ -1077,6 +1123,108 @@ def test_runtime_bus_resets_filter_when_same_pair_plan_signature_changes() -> No
     assert first_new_plan_sample.terminal_switch_reject_reason == "stable_frame_count_low"
 
 
+def test_runtime_bus_applies_reacquire_grace_after_d5_locked_jitter() -> None:
+    config = replace(_tuned_png_config(), terminal_reacquire_grace_frames=2)
+    bus = D7RuntimeBus(config)
+    binding = _binding_for_pair("R1", "G1", 90)
+    locked_terminal = {
+        "assigned_global_track_id": "G1",
+        "local_track_id": "R1:BT:1",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 90,
+    }
+    reacquire_terminal = {
+        **locked_terminal,
+        "decision_state": "reacquire",
+    }
+    outputs = []
+
+    for index, half_size in enumerate((28.0, 32.0, 36.0), start=1):
+        outputs.append(
+            bus.evaluate_pair(
+                D7RuntimePairInput(
+                    binding=binding,
+                    d4_permission=D4GuidancePermission(
+                        action="continue_center",
+                        target_node_id="center",
+                        new_plan_id="plan-runtime-n",
+                        new_plan_version=7,
+                    ),
+                    terminal_association=locked_terminal,
+                    observation=_runtime_observation(timestamp_s=index * config.dt_s, half_size=half_size),
+                    current_heading_rad=0.0,
+                    current_speed_mps=8.0,
+                    intercept_speed_mps=8.0,
+                    relative_position_ned=(30.0, 1.0, 0.0),
+                    relative_velocity_ned=(-5.0, 0.0, 0.0),
+                )
+            )
+        )
+    assert outputs[-1].visual_png_enabled is True
+
+    outputs.append(
+        bus.evaluate_pair(
+            D7RuntimePairInput(
+                binding=binding,
+                d4_permission=D4GuidancePermission(action="continue_center"),
+                terminal_association=reacquire_terminal,
+                observation=_runtime_observation(timestamp_s=0.4, half_size=38.0),
+                handover_pending=True,
+                terminal_locked=True,
+                current_heading_rad=0.0,
+                current_speed_mps=8.0,
+                intercept_speed_mps=8.0,
+                relative_position_ned=(28.0, 1.0, 0.0),
+                relative_velocity_ned=(-5.0, 0.0, 0.0),
+            )
+        )
+    )
+
+    for sample_index, half_size in enumerate((40.0, 42.0, 44.0, 46.0, 48.0), start=5):
+        outputs.append(
+            bus.evaluate_pair(
+                D7RuntimePairInput(
+                    binding=binding,
+                    d4_permission=D4GuidancePermission(action="continue_center"),
+                    terminal_association=locked_terminal,
+                    observation=_runtime_observation(
+                        timestamp_s=sample_index * config.dt_s,
+                        half_size=half_size,
+                    ),
+                    handover_pending=True,
+                    terminal_locked=False,
+                    current_heading_rad=0.0,
+                    current_speed_mps=8.0,
+                    intercept_speed_mps=8.0,
+                    relative_position_ned=(26.0, 1.0, 0.0),
+                    relative_velocity_ned=(-5.0, 0.0, 0.0),
+                )
+            )
+        )
+
+    summary = summarize_runtime_bus_outputs(outputs)
+    post_reacquire = outputs[4:]
+
+    assert outputs[3].terminal_contract_allowed is False
+    assert outputs[3].terminal_contract_reject_reason == "d5_not_locked"
+    assert outputs[3].visual_png_enabled is False
+    assert [output.terminal_switch_reject_reason for output in post_reacquire[:2]] == [
+        "stable_frame_count_low",
+        "los_rate_window_too_short",
+    ]
+    assert [output.terminal_switch_reject_reason for output in post_reacquire[2:4]] == [
+        "reacquire_grace_active",
+        "reacquire_grace_active",
+    ]
+    assert post_reacquire[2].terminal_reacquire_grace_active is True
+    assert post_reacquire[3].terminal_reacquire_grace_active is True
+    assert post_reacquire[-1].visual_png_enabled is True
+    assert summary["terminal_reacquire_grace_active_count"] == 2
+    assert summary["terminal_switch_reject_reasons"]["reacquire_grace_active"] == 2
+    assert summary["visual_png_switch_count"] == 2
+
+
 @pytest.mark.parametrize(
     "action",
     ["request_center_replan", "degrade_to_secondary", "degrade_to_distributed"],
@@ -1494,6 +1642,54 @@ def test_guidance_calibration_summary_groups_multiseed_runtime_records_and_advis
     assert benchmark["height_delta_m"]["observed_count"] == len(runtime_outputs)
     assert benchmark["range_3d_m"]["observed_count"] == len(runtime_outputs)
     assert benchmark["frpn_guidance_law_counts"] == {"frpn_benchmark": len(runtime_outputs)}
+
+
+def test_3d_pn_benchmark_logs_advisory_fields_without_replacing_default_png() -> None:
+    benchmark = compute_three_dimensional_pn_benchmark(
+        relative_position_ned=(30.0, 4.0, 20.0),
+        relative_velocity_ned=(-5.0, 1.0, -2.0),
+        navigation_constant=3.0,
+    )
+    assert benchmark.benchmark_only is True
+    assert benchmark.default_pn_png_api_replaced is False
+    assert benchmark.d3_d4_d5_gate_bypassed is False
+    assert benchmark.range_3d_m > benchmark.horizontal_range_m
+    assert benchmark.height_delta_m == pytest.approx(20.0)
+    assert benchmark.commanded_accel_norm_mps2 >= 0.0
+
+    bus = D7RuntimeBus(_tuned_png_config())
+    output = bus.evaluate_pair(
+        D7RuntimePairInput(
+            binding=_binding_for_pair("R1", "G1", 92),
+            d4_permission=D4GuidancePermission(action="continue_center"),
+            terminal_association={
+                "assigned_global_track_id": "G1",
+                "local_track_id": "R1:BT:3d",
+                "decision_state": "locked",
+                "friend_conflict_state": "none",
+                "assignment_version": 92,
+            },
+            observation=_runtime_observation(timestamp_s=0.1, half_size=36.0, local_track_id="R1:BT:3d"),
+            current_heading_rad=0.0,
+            current_speed_mps=8.0,
+            intercept_speed_mps=8.0,
+            relative_position_ned=(30.0, 4.0, 20.0),
+            relative_velocity_ned=(-5.0, 1.0, -2.0),
+        )
+    )
+    record = output.as_log_record()
+    summary = summarize_runtime_bus_outputs([output])
+
+    assert output.pn3d_benchmark_only is True
+    assert output.pn3d_default_api_replaced is False
+    assert record["range_3d_m"] == pytest.approx(benchmark.range_3d_m)
+    assert record["height_delta_m"] == pytest.approx(20.0)
+    assert record["pn3d_los_rate_norm_radps"] == pytest.approx(benchmark.los_rate_norm_radps)
+    assert record["guidance_law"] == "radar_pn"
+    assert summary["pn3d_benchmark_sample_count"] == 1
+    assert summary["pn3d_default_api_replaced"] is False
+    assert summary["range_3d_m_observed_count"] == 1
+    assert summary["pn3d_los_rate_norm_radps_observed_count"] == 1
 
 
 def _binding(authorization_state: str = "approved") -> AssignmentGuidanceBinding:

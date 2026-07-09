@@ -15,6 +15,8 @@ class TerminalConsistencyConfig:
     stable_confidence: float = 0.6
     stable_ambiguity: float = 0.5
     stable_lock_age_s: float = 1.0
+    stable_candidate_margin: float = 3.0
+    stable_locked_frames: int = 1
     ambiguous_frames_for_secondary: int = 5
     hold_frames_for_conflict_report: int = 2
     reacquire_frames_for_arbitration: int = 5
@@ -120,6 +122,7 @@ class TerminalConsistencyTracker:
             local_best_conflicts_with_assignment=local_best_conflicts_with_assignment,
             consecutive_assignment_conflict_frames=state.consecutive_assignment_conflict_frames,
             duplicate_terminal_lock_risk=duplicate_risk,
+            consecutive_locked_frames=state.consecutive_locked_frames,
             consecutive_ambiguous_frames=state.consecutive_ambiguous_frames,
             consecutive_hold_frames=state.consecutive_hold_frames,
             consecutive_reacquire_frames=state.consecutive_reacquire_frames,
@@ -150,6 +153,12 @@ class TerminalConsistencyTracker:
                 "cross_view_support_count": (
                     cross_view_association.support_count if cross_view_association is not None else 0
                 ),
+                "projection_valid": association.metadata.get("projection_valid"),
+                "reprojection_error": association.metadata.get("reprojection_error"),
+                "reprojection_error_px": association.metadata.get("reprojection_error_px"),
+                "camera_pose_source": association.metadata.get("camera_pose_source"),
+                "calibration_health": association.metadata.get("calibration_health"),
+                "drift_warning": association.metadata.get("drift_warning"),
             }
         )
 
@@ -221,6 +230,7 @@ class TerminalConsistencyTracker:
         local_best_conflicts_with_assignment: bool,
         consecutive_assignment_conflict_frames: int,
         duplicate_terminal_lock_risk: bool,
+        consecutive_locked_frames: int,
         consecutive_ambiguous_frames: int,
         consecutive_hold_frames: int,
         consecutive_reacquire_frames: int,
@@ -265,11 +275,12 @@ class TerminalConsistencyTracker:
             stable_age_or_margin = (
                 terminal_lock_age_s >= cfg.stable_lock_age_s
                 or candidate_cost_margin == inf
-                or candidate_cost_margin >= 0.0
+                or candidate_cost_margin >= cfg.stable_candidate_margin
             )
+            stable_window = consecutive_locked_frames >= cfg.stable_locked_frames
             if association.recon_cue_used and not stable_lock:
                 return "unknown", "request_secondary_cue", "locked_depends_on_recon_cue"
-            if stable_lock and stable_age_or_margin:
+            if stable_lock and stable_window and stable_age_or_margin:
                 return "consistent", "observe", association.reason
             return "unknown", "observe", association.reason
 

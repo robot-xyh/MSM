@@ -117,6 +117,12 @@ class EpisodeMetrics:
     target_count: int = 0
     camera_count: int = 0
     duration: float = 0.0
+    mission_outcome: str = "failed"
+    success_reason: str = ""
+    failure_reason: str = ""
+    eval_priority: str = "P0"
+    implementation_status: str = "implemented"
+    evidence_path: str = ""
     detection_probability: float = 0.0
     false_alarm_rate: float = 0.0
     missed_detection_rate: float = 0.0
@@ -183,6 +189,12 @@ class EpisodeMetrics:
     gate_reject_count: int = 0
     constraint_violation_count: int = 0
     human_override_count: int = 0
+    module_duration_ms: float = 0.0
+    loop_latency_ms: float = 0.0
+    record_latency_ms: float = 0.0
+    cpu_budget_utilization: float = 0.0
+    gpu_budget_utilization: float = 0.0
+    performance_budget_violation_count: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -254,6 +266,12 @@ class EpisodeMetrics:
             "gate_reject_count",
             "constraint_violation_count",
             "human_override_count",
+            "module_duration_ms",
+            "loop_latency_ms",
+            "record_latency_ms",
+            "cpu_budget_utilization",
+            "gpu_budget_utilization",
+            "performance_budget_violation_count",
         ]
 
     @classmethod
@@ -404,6 +422,32 @@ class MetricsCollector:
     FOV_ENTRY_STATES = {"fov_entry", "entered_fov", "terminal_fov_entry"}
     LOCK_STATES = {"locked", "lock", "terminal_lock"}
     ASSOCIATION_STATES = {"associated", "locked", "lock", "terminal_lock"}
+    ABORT_EVENTS = {
+        "mission_aborted",
+        "episode_aborted",
+        "run_aborted",
+        "operator_abort",
+        "runtime_abort",
+    }
+    RUNTIME_EXCEPTION_EVENTS = {
+        "runtime_exception",
+        "exception",
+        "unhandled_exception",
+        "module_exception",
+        "airsim_exception",
+    }
+    MISSION_SUCCESS_EVENTS = {
+        "mission_success",
+        "episode_success",
+        "mission_completed",
+        "episode_completed",
+    }
+    MISSION_FAILED_EVENTS = {
+        "mission_failed",
+        "episode_failed",
+        "mission_failure",
+        "episode_failure",
+    }
     EFFECTIVE_ASSIGNMENT_AUTH_STATES = {
         "recorded",
         "authorized",
@@ -505,6 +549,8 @@ class MetricsCollector:
         intercept = self._compute_intercept_metrics()
         intercept_metadata = intercept.pop("_metadata", {})
         safety = self._compute_safety_metrics()
+        performance = self._compute_performance_metrics(truth_summary)
+        performance_metadata = performance.pop("_metadata", {})
 
         for metric_group in (
             detection,
@@ -517,9 +563,20 @@ class MetricsCollector:
             guidance_gate,
             intercept,
             safety,
+            performance,
         ):
             for key, value in metric_group.items():
                 setattr(metrics, key, value)
+
+        mission_status = self._compute_mission_status(metrics, truth_summary)
+        mission_metadata = mission_status.pop("_metadata", {})
+        for key, value in mission_status.items():
+            setattr(metrics, key, value)
+
+        eval_tracking = self._compute_eval_tracking(truth_summary)
+        eval_metadata = eval_tracking.pop("_metadata", {})
+        for key, value in eval_tracking.items():
+            setattr(metrics, key, value)
 
         metrics.metadata = {
             "track_record_count": len(self.track_records),
@@ -531,11 +588,20 @@ class MetricsCollector:
             "scenario_group": resolved_scenario_group,
             "batch_seed": resolved_batch_seed,
             "metric_scope": resolved_metric_scope,
+            "mission_outcome": metrics.mission_outcome,
+            "success_reason": metrics.success_reason,
+            "failure_reason": metrics.failure_reason,
+            "eval_priority": metrics.eval_priority,
+            "implementation_status": metrics.implementation_status,
+            "evidence_path": metrics.evidence_path,
             **scale_counts,
             **degradation_metadata,
             **secondary_sensing_metadata,
             **guidance_metadata,
             **intercept_metadata,
+            **performance_metadata,
+            **mission_metadata,
+            **eval_metadata,
         }
         return metrics
 
@@ -2142,6 +2208,908 @@ class MetricsCollector:
             "human_override_count": human_override_count,
         }
 
+    def _compute_performance_metrics(
+        self,
+        truth_summary: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        module_duration_samples: list[tuple[str, float]] = []
+        loop_latency_samples: list[tuple[str, float]] = []
+        record_latency_samples: list[tuple[str, float]] = []
+        cpu_budget_samples: list[tuple[str, float]] = []
+        gpu_budget_samples: list[tuple[str, float]] = []
+        budget_violation_count = 0
+
+        for metadata, module_hint in _truth_summary_performance_mappings(truth_summary):
+            budget_violation_count += _collect_performance_mapping(
+                metadata,
+                module_hint=module_hint,
+                module_duration_samples=module_duration_samples,
+                loop_latency_samples=loop_latency_samples,
+                record_latency_samples=record_latency_samples,
+                cpu_budget_samples=cpu_budget_samples,
+                gpu_budget_samples=gpu_budget_samples,
+                allow_generic_duration=True,
+            )
+
+        for record in self.event_records:
+            performance_event = _is_performance_event(record)
+            for metadata in _performance_metadata_mappings(record.metadata):
+                module_hint = (
+                    _metadata_text(metadata, "module")
+                    or _metadata_text(metadata, "module_name")
+                    or _metadata_text(metadata, "module_id")
+                    or record.actor_id
+                    or _event_type(record)
+                )
+                budget_violation_count += _collect_performance_mapping(
+                    metadata,
+                    module_hint=module_hint,
+                    module_duration_samples=module_duration_samples,
+                    loop_latency_samples=loop_latency_samples,
+                    record_latency_samples=record_latency_samples,
+                    cpu_budget_samples=cpu_budget_samples,
+                    gpu_budget_samples=gpu_budget_samples,
+                    allow_generic_duration=performance_event,
+                )
+
+        for record in self.link_records:
+            module_hint = (
+                _metadata_text(record.metadata, "module")
+                or record.source_node_id
+                or record.payload_kind
+            )
+            for metadata in _performance_metadata_mappings(record.metadata):
+                budget_violation_count += _collect_performance_mapping(
+                    metadata,
+                    module_hint=module_hint,
+                    module_duration_samples=module_duration_samples,
+                    loop_latency_samples=loop_latency_samples,
+                    record_latency_samples=record_latency_samples,
+                    cpu_budget_samples=cpu_budget_samples,
+                    gpu_budget_samples=gpu_budget_samples,
+                    allow_generic_duration=False,
+                )
+
+        cpu_utilization = _mean([value for _, value in cpu_budget_samples])
+        gpu_utilization = _mean([value for _, value in gpu_budget_samples])
+        budget_violation_count += sum(1 for _, value in cpu_budget_samples if value > 1.0)
+        budget_violation_count += sum(1 for _, value in gpu_budget_samples if value > 1.0)
+
+        module_duration_values = [value for _, value in module_duration_samples]
+        loop_latency_values = [value for _, value in loop_latency_samples]
+        record_latency_values = [value for _, value in record_latency_samples]
+
+        return {
+            "module_duration_ms": _mean(module_duration_values),
+            "loop_latency_ms": _mean(loop_latency_values),
+            "record_latency_ms": _mean(record_latency_values),
+            "cpu_budget_utilization": cpu_utilization,
+            "gpu_budget_utilization": gpu_utilization,
+            "performance_budget_violation_count": budget_violation_count,
+            "_metadata": {
+                "performance": {
+                    "module_duration_ms": _performance_distribution(
+                        module_duration_samples
+                    ),
+                    "loop_latency_ms": _performance_distribution(
+                        loop_latency_samples
+                    ),
+                    "record_latency_ms": _performance_distribution(
+                        record_latency_samples
+                    ),
+                    "cpu_budget": _budget_distribution(cpu_budget_samples),
+                    "gpu_budget": _budget_distribution(gpu_budget_samples),
+                    "budget_violation_count": budget_violation_count,
+                }
+            },
+        }
+
+    def _compute_mission_status(
+        self,
+        metrics: EpisodeMetrics,
+        truth_summary: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        failure_summary = self._derive_failure_causes(metrics, truth_summary)
+        explicit_outcome = _explicit_mission_outcome(truth_summary, self.event_records)
+        explicit_success_reason = _explicit_status_text(
+            truth_summary,
+            self.event_records,
+            ("success_reason", "mission_success_reason", "outcome_reason"),
+        )
+        explicit_failure_reason = _explicit_status_text(
+            truth_summary,
+            self.event_records,
+            ("failure_reason", "mission_failure_reason", "abort_reason"),
+        )
+
+        required_success_count = _mission_required_success_count(
+            truth_summary,
+            metrics,
+        )
+        abort_signal = self._has_abort_signal()
+        runtime_exception_count = self._runtime_exception_count()
+        hard_failure = (
+            metrics.constraint_violation_count > 0
+            or metrics.human_override_count > 0
+            or runtime_exception_count > 0
+        )
+
+        if explicit_outcome is not None:
+            outcome = explicit_outcome
+        elif abort_signal or runtime_exception_count > 0:
+            outcome = "aborted"
+        elif required_success_count > 0 and metrics.intercept_success_count >= required_success_count and not hard_failure:
+            outcome = "success"
+        elif metrics.intercept_success_count > 0:
+            outcome = "partial"
+        elif _has_partial_progress(metrics):
+            outcome = "partial"
+        else:
+            outcome = "failed"
+
+        success_reason = explicit_success_reason or _default_success_reason(
+            outcome,
+            metrics,
+            required_success_count,
+        )
+        failure_reason = explicit_failure_reason
+        if not failure_reason and outcome in {"partial", "failed", "aborted"}:
+            failure_reason = _default_failure_reason(
+                outcome,
+                failure_summary["root_cause"],
+                failure_summary["top_failure_causes"],
+            )
+
+        return {
+            "mission_outcome": outcome,
+            "success_reason": success_reason,
+            "failure_reason": failure_reason,
+            "_metadata": failure_summary,
+        }
+
+    def _derive_failure_causes(
+        self,
+        metrics: EpisodeMetrics,
+        truth_summary: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        scores: dict[str, float] = defaultdict(float)
+        details: dict[str, list[str]] = defaultdict(list)
+
+        def add(cause: str, score: float, detail: str) -> None:
+            normalized = _normalize_failure_cause(cause)
+            if normalized is None or score <= 0:
+                return
+            scores[normalized] += float(score)
+            if detail not in details[normalized]:
+                details[normalized].append(detail)
+
+        if metrics.id_switch_count:
+            add("tracking", metrics.id_switch_count, f"id_switch_count={metrics.id_switch_count}")
+        if metrics.missed_detection_rate > 0.0:
+            add(
+                "tracking",
+                metrics.missed_detection_rate,
+                f"missed_detection_rate={metrics.missed_detection_rate:.6g}",
+            )
+        if metrics.track_continuity > 0.0 and metrics.track_continuity < 0.95:
+            add(
+                "tracking",
+                1.0 - metrics.track_continuity,
+                f"track_continuity={metrics.track_continuity:.6g}",
+            )
+        if metrics.false_alarm_rate > 0.0:
+            add("tracking", metrics.false_alarm_rate, f"false_alarm_rate={metrics.false_alarm_rate:.6g}")
+
+        if metrics.duplicate_assignment_count:
+            add(
+                "assignment",
+                metrics.duplicate_assignment_count,
+                f"duplicate_assignment_count={metrics.duplicate_assignment_count}",
+            )
+        if metrics.unassigned_high_threat_count:
+            add(
+                "assignment",
+                metrics.unassigned_high_threat_count,
+                f"unassigned_high_threat_count={metrics.unassigned_high_threat_count}",
+            )
+
+        terminal_gate_count = (
+            metrics.terminal_switch_reject_count
+            + metrics.terminal_contract_reject_count
+            + metrics.gate_reject_count
+        )
+        if terminal_gate_count:
+            add("terminal_gate", terminal_gate_count, f"terminal_gate_rejects={terminal_gate_count}")
+        if metrics.ambiguous_fov_event_count:
+            add(
+                "terminal_gate",
+                metrics.ambiguous_fov_event_count,
+                f"ambiguous_fov_event_count={metrics.ambiguous_fov_event_count}",
+            )
+        if metrics.friend_overlap_hold_count:
+            add(
+                "terminal_gate",
+                metrics.friend_overlap_hold_count,
+                f"friend_overlap_hold_count={metrics.friend_overlap_hold_count}",
+            )
+        if metrics.duplicate_terminal_lock_count:
+            add(
+                "terminal_gate",
+                metrics.duplicate_terminal_lock_count,
+                f"duplicate_terminal_lock_count={metrics.duplicate_terminal_lock_count}",
+            )
+
+        required_success_count = _mission_required_success_count(truth_summary, metrics)
+        if required_success_count > 0 and metrics.intercept_success_count < required_success_count:
+            add(
+                "guidance",
+                required_success_count - metrics.intercept_success_count,
+                "intercept_success_count="
+                f"{metrics.intercept_success_count}/{required_success_count}",
+            )
+        if metrics.visual_png_switch_count == 0 and metrics.terminal_takeover_rate == 0.0 and terminal_gate_count:
+            add("guidance", 1.0, "terminal_takeover_not_confirmed")
+
+        if metrics.secondary_network_mean_coverage_ratio > 0.0 and metrics.secondary_network_mean_coverage_ratio < 1.0:
+            add(
+                "coverage",
+                1.0 - metrics.secondary_network_mean_coverage_ratio,
+                "secondary_network_mean_coverage_ratio="
+                f"{metrics.secondary_network_mean_coverage_ratio:.6g}",
+            )
+        if metrics.secondary_detect_available_but_not_registered_count:
+            add(
+                "coverage",
+                metrics.secondary_detect_available_but_not_registered_count,
+                "secondary_detect_available_but_not_registered_count="
+                f"{metrics.secondary_detect_available_but_not_registered_count}",
+            )
+        if metrics.cross_view_conflict_count:
+            add("coverage", metrics.cross_view_conflict_count, f"cross_view_conflict_count={metrics.cross_view_conflict_count}")
+        if metrics.camera_quality_gate_pass_rate > 0.0 and metrics.camera_quality_gate_pass_rate < 1.0:
+            add(
+                "coverage",
+                1.0 - metrics.camera_quality_gate_pass_rate,
+                f"camera_quality_gate_pass_rate={metrics.camera_quality_gate_pass_rate:.6g}",
+            )
+
+        if metrics.message_drop_rate > 0.0:
+            add("communication", metrics.message_drop_rate, f"message_drop_rate={metrics.message_drop_rate:.6g}")
+        if metrics.stale_track_update_count:
+            add(
+                "communication",
+                metrics.stale_track_update_count,
+                f"stale_track_update_count={metrics.stale_track_update_count}",
+            )
+        if metrics.out_of_order_count:
+            add("communication", metrics.out_of_order_count, f"out_of_order_count={metrics.out_of_order_count}")
+
+        if metrics.constraint_violation_count:
+            add(
+                "safety",
+                metrics.constraint_violation_count,
+                f"constraint_violation_count={metrics.constraint_violation_count}",
+            )
+        if metrics.human_override_count:
+            add("safety", metrics.human_override_count, f"human_override_count={metrics.human_override_count}")
+
+        if metrics.performance_budget_violation_count:
+            add(
+                "performance",
+                metrics.performance_budget_violation_count,
+                "performance_budget_violation_count="
+                f"{metrics.performance_budget_violation_count}",
+            )
+
+        runtime_exception_count = self._runtime_exception_count()
+        if runtime_exception_count:
+            add("runtime_exception", runtime_exception_count, f"runtime_exception_count={runtime_exception_count}")
+
+        for record in self.event_records:
+            explicit_cause = (
+                _metadata_text(record.metadata, "root_cause")
+                or _metadata_text(record.metadata, "failure_cause")
+                or _metadata_text(record.metadata, "failure_category")
+            )
+            if explicit_cause is not None:
+                add(explicit_cause, 1.0, f"{_event_type(record)}:{explicit_cause}")
+            event_type = _event_type(record)
+            if event_type in self.MISSION_FAILED_EVENTS:
+                failure_cause = (
+                    explicit_cause
+                    or _metadata_text(record.metadata, "reason")
+                    or _metadata_text(record.metadata, "failure_reason")
+                    or "guidance"
+                )
+                add(failure_cause, 1.0, f"{event_type}:{failure_cause}")
+
+        top_failure_causes = [
+            {
+                "cause": cause,
+                "score": score,
+                "details": details.get(cause, [])[:5],
+            }
+            for cause, score in sorted(
+                scores.items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+            if score > 0.0
+        ]
+        root_cause = top_failure_causes[0]["cause"] if top_failure_causes else "none"
+
+        return {
+            "root_cause": root_cause,
+            "top_failure_causes": top_failure_causes,
+            "failure_cause_scores": dict(scores),
+            "failure_cause_details": dict(details),
+        }
+
+    def _has_abort_signal(self) -> bool:
+        for record in self.event_records:
+            event_type = _event_type(record)
+            if event_type in self.ABORT_EVENTS:
+                return True
+            if _bool_from_metadata(
+                record.metadata,
+                ("mission_aborted", "episode_aborted", "aborted"),
+                default=False,
+            ):
+                return True
+        return False
+
+    def _runtime_exception_count(self) -> int:
+        count = 0
+        for record in self.event_records:
+            event_type = _event_type(record)
+            severity = _state(record.severity)
+            if event_type in self.RUNTIME_EXCEPTION_EVENTS:
+                count += 1
+                continue
+            if severity in {"error", "fatal", "exception", "critical"} and (
+                "exception" in event_type or "runtime" in event_type
+            ):
+                count += 1
+                continue
+            if _bool_from_metadata(
+                record.metadata,
+                ("runtime_exception", "exception", "unhandled_exception"),
+                default=False,
+            ):
+                count += 1
+        return count
+
+    def _compute_eval_tracking(
+        self,
+        truth_summary: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        eval_priority = _eval_tracking_text(
+            truth_summary,
+            (
+                "eval_priority",
+                "evaluation_priority",
+                "gap_priority",
+                "priority",
+            ),
+            default="P0",
+        )
+        implementation_status = _eval_tracking_text(
+            truth_summary,
+            (
+                "implementation_status",
+                "eval_implementation_status",
+                "implementation_state",
+                "status",
+            ),
+            default="implemented",
+        )
+        evidence_path = _eval_tracking_text(
+            truth_summary,
+            (
+                "evidence_path",
+                "evidence_file",
+                "source_path",
+                "metrics_path",
+                "output_path",
+            ),
+            default="",
+        )
+
+        for record in self.event_records:
+            metadata = record.metadata
+            if eval_priority == "P0":
+                eval_priority = (
+                    _metadata_text(metadata, "eval_priority")
+                    or _metadata_text(metadata, "evaluation_priority")
+                    or eval_priority
+                )
+            if implementation_status == "implemented":
+                implementation_status = (
+                    _metadata_text(metadata, "implementation_status")
+                    or _metadata_text(metadata, "eval_implementation_status")
+                    or implementation_status
+                )
+            if not evidence_path:
+                evidence_path = (
+                    _metadata_text(metadata, "evidence_path")
+                    or _metadata_text(metadata, "source_path")
+                    or _metadata_text(metadata, "metrics_path")
+                    or ""
+                )
+
+        return {
+            "eval_priority": eval_priority,
+            "implementation_status": implementation_status,
+            "evidence_path": evidence_path,
+            "_metadata": {
+                "eval_tracking": {
+                    "eval_priority": eval_priority,
+                    "implementation_status": implementation_status,
+                    "evidence_path": evidence_path,
+                }
+            },
+        }
+
+
+
+def _truth_summary_performance_mappings(
+    truth_summary: Mapping[str, Any],
+) -> list[tuple[Mapping[str, Any], str]]:
+    mappings: list[tuple[Mapping[str, Any], str]] = []
+    for mapping in _truth_summary_count_mappings(truth_summary):
+        module_hint = (
+            _metadata_text(mapping, "module")
+            or _metadata_text(mapping, "module_name")
+            or _metadata_text(mapping, "module_id")
+            or "episode"
+        )
+        if _mapping_has_performance_keys(mapping):
+            mappings.append((mapping, module_hint))
+        for nested_key in (
+            "performance",
+            "timing",
+            "timings",
+            "latency",
+            "latencies",
+            "runtime_performance",
+        ):
+            nested = mapping.get(nested_key)
+            if isinstance(nested, Mapping):
+                nested_module = (
+                    _metadata_text(nested, "module")
+                    or _metadata_text(nested, "module_name")
+                    or module_hint
+                )
+                mappings.append((nested, nested_module))
+    return mappings
+
+
+def _performance_metadata_mappings(
+    metadata: Mapping[str, Any],
+) -> list[Mapping[str, Any]]:
+    mappings: list[Mapping[str, Any]] = []
+    if _mapping_has_performance_keys(metadata):
+        mappings.append(metadata)
+    for nested_key in (
+        "performance",
+        "timing",
+        "timings",
+        "latency",
+        "latencies",
+        "runtime_performance",
+    ):
+        nested = metadata.get(nested_key)
+        if isinstance(nested, Mapping):
+            mappings.append(nested)
+    return mappings or [metadata]
+
+
+def _mapping_has_performance_keys(metadata: Mapping[str, Any]) -> bool:
+    performance_keys = {
+        "module_duration_ms",
+        "module_duration_s",
+        "loop_latency_ms",
+        "loop_latency_s",
+        "record_latency_ms",
+        "record_latency_s",
+        "cpu_budget_utilization",
+        "gpu_budget_utilization",
+        "cpu_budget_ratio",
+        "gpu_budget_ratio",
+        "cpu_usage_percent",
+        "gpu_usage_percent",
+        "performance_budget_violation",
+        "budget_violation",
+        "budget_exceeded",
+    }
+    return any(key in metadata for key in performance_keys)
+
+
+def _is_performance_event(record: EventRecord) -> bool:
+    event_type = _event_type(record)
+    if any(
+        token in event_type
+        for token in ("performance", "timing", "latency", "loop", "budget")
+    ):
+        return True
+    return _mapping_has_performance_keys(record.metadata)
+
+
+def _collect_performance_mapping(
+    metadata: Mapping[str, Any],
+    *,
+    module_hint: str | None,
+    module_duration_samples: list[tuple[str, float]],
+    loop_latency_samples: list[tuple[str, float]],
+    record_latency_samples: list[tuple[str, float]],
+    cpu_budget_samples: list[tuple[str, float]],
+    gpu_budget_samples: list[tuple[str, float]],
+    allow_generic_duration: bool,
+) -> int:
+    module_name = str(module_hint or "unknown")
+    module_duration = _performance_ms_value(
+        metadata,
+        ms_keys=(
+            "module_duration_ms",
+            "module_runtime_ms",
+            "module_elapsed_ms",
+            "processing_duration_ms",
+            "processing_time_ms",
+        )
+        + (("duration_ms", "elapsed_ms") if allow_generic_duration else ()),
+        s_keys=(
+            "module_duration_s",
+            "module_runtime_s",
+            "module_elapsed_s",
+            "processing_duration_s",
+            "processing_time_s",
+        )
+        + (("duration_s", "elapsed_s") if allow_generic_duration else ()),
+    )
+    if module_duration is not None:
+        module_duration_samples.append((module_name, module_duration))
+
+    loop_latency = _performance_ms_value(
+        metadata,
+        ms_keys=("loop_latency_ms", "loop_period_ms", "control_loop_latency_ms"),
+        s_keys=("loop_latency_s", "loop_period_s", "control_loop_latency_s"),
+    )
+    if loop_latency is not None:
+        loop_latency_samples.append((module_name, loop_latency))
+
+    record_latency = _performance_ms_value(
+        metadata,
+        ms_keys=(
+            "record_latency_ms",
+            "record_write_latency_ms",
+            "log_record_latency_ms",
+            "metrics_record_latency_ms",
+        ),
+        s_keys=(
+            "record_latency_s",
+            "record_write_latency_s",
+            "log_record_latency_s",
+            "metrics_record_latency_s",
+        ),
+    )
+    if record_latency is not None:
+        record_latency_samples.append((module_name, record_latency))
+
+    cpu_utilization = _performance_ratio_value(
+        metadata,
+        (
+            "cpu_budget_utilization",
+            "cpu_budget_ratio",
+            "cpu_budget_used",
+            "cpu_utilization",
+            "cpu_usage",
+            "cpu_usage_percent",
+        ),
+    )
+    if cpu_utilization is not None:
+        cpu_budget_samples.append((module_name, cpu_utilization))
+
+    gpu_utilization = _performance_ratio_value(
+        metadata,
+        (
+            "gpu_budget_utilization",
+            "gpu_budget_ratio",
+            "gpu_budget_used",
+            "gpu_utilization",
+            "gpu_usage",
+            "gpu_usage_percent",
+        ),
+    )
+    if gpu_utilization is not None:
+        gpu_budget_samples.append((module_name, gpu_utilization))
+
+    budget_violation_count = 0
+    for key in (
+        "performance_budget_violation",
+        "performance_budget_exceeded",
+        "budget_violation",
+        "budget_exceeded",
+        "latency_budget_exceeded",
+    ):
+        if key in metadata and _as_bool(metadata[key], default=False):
+            budget_violation_count += 1
+    return budget_violation_count
+
+
+def _performance_ms_value(
+    metadata: Mapping[str, Any],
+    *,
+    ms_keys: Sequence[str],
+    s_keys: Sequence[str],
+) -> float | None:
+    for key in ms_keys:
+        value = _metadata_float_if_present(metadata, key)
+        if value is not None:
+            return max(0.0, value)
+    for key in s_keys:
+        value = _metadata_float_if_present(metadata, key)
+        if value is not None:
+            return max(0.0, value * 1000.0)
+    return None
+
+
+def _performance_ratio_value(
+    metadata: Mapping[str, Any],
+    keys: Sequence[str],
+) -> float | None:
+    for key in keys:
+        value = _metadata_float_if_present(metadata, key)
+        if value is None:
+            continue
+        if "percent" in key or value > 1.0 and value <= 100.0:
+            return max(0.0, value / 100.0)
+        return max(0.0, value)
+    return None
+
+
+def _performance_distribution(
+    samples: Sequence[tuple[str, float]],
+) -> dict[str, Any]:
+    values = [float(value) for _, value in samples]
+    by_module: dict[str, list[float]] = defaultdict(list)
+    for module_name, value in samples:
+        by_module[module_name].append(float(value))
+    return {
+        "count": len(values),
+        "mean": _mean(values),
+        "p95": _percentile(values, 95.0),
+        "max": max(values) if values else 0.0,
+        "by_module": {
+            module_name: {
+                "count": len(module_values),
+                "mean": _mean(module_values),
+                "p95": _percentile(module_values, 95.0),
+                "max": max(module_values) if module_values else 0.0,
+            }
+            for module_name, module_values in sorted(by_module.items())
+        },
+    }
+
+
+def _budget_distribution(samples: Sequence[tuple[str, float]]) -> dict[str, Any]:
+    values = [float(value) for _, value in samples]
+    distribution = _performance_distribution(samples)
+    distribution["utilization"] = _mean(values)
+    distribution["placeholder"] = not values
+    return distribution
+
+
+def _percentile(values: Sequence[float], percentile: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(float(value) for value in values)
+    if len(ordered) == 1:
+        return ordered[0]
+    rank = (len(ordered) - 1) * percentile / 100.0
+    low = int(math.floor(rank))
+    high = int(math.ceil(rank))
+    if low == high:
+        return ordered[low]
+    weight = rank - low
+    return ordered[low] * (1.0 - weight) + ordered[high] * weight
+
+
+def _explicit_mission_outcome(
+    truth_summary: Mapping[str, Any],
+    records: Sequence[EventRecord],
+) -> str | None:
+    for mapping in _truth_summary_count_mappings(truth_summary):
+        for key in ("mission_outcome", "outcome", "episode_outcome", "mission_status"):
+            value = _normalize_mission_outcome(mapping.get(key))
+            if value is not None:
+                return value
+    for record in records:
+        for key in ("mission_outcome", "outcome", "episode_outcome", "mission_status"):
+            value = _normalize_mission_outcome(record.metadata.get(key))
+            if value is not None:
+                return value
+        event_type = _event_type(record)
+        if event_type in MetricsCollector.MISSION_SUCCESS_EVENTS:
+            return "success"
+        if event_type in MetricsCollector.MISSION_FAILED_EVENTS:
+            return "failed"
+        if event_type in MetricsCollector.ABORT_EVENTS:
+            return "aborted"
+    return None
+
+
+def _normalize_mission_outcome(value: Any) -> str | None:
+    text = _normalized_label(value)
+    if not text:
+        return None
+    if text in {"success", "succeeded", "complete", "completed", "pass", "passed"}:
+        return "success"
+    if text in {"partial", "partial_success", "degraded_success", "incomplete"}:
+        return "partial"
+    if text in {"failed", "failure", "fail", "unsuccessful"}:
+        return "failed"
+    if text in {"aborted", "abort", "cancelled", "canceled", "timeout"}:
+        return "aborted"
+    return None
+
+
+def _explicit_status_text(
+    truth_summary: Mapping[str, Any],
+    records: Sequence[EventRecord],
+    keys: Sequence[str],
+) -> str:
+    for mapping in _truth_summary_count_mappings(truth_summary):
+        for key in keys:
+            value = _metadata_text(mapping, key)
+            if value is not None:
+                return value
+    for record in records:
+        for key in keys:
+            value = _metadata_text(record.metadata, key)
+            if value is not None:
+                return value
+    return ""
+
+
+def _mission_required_success_count(
+    truth_summary: Mapping[str, Any],
+    metrics: EpisodeMetrics,
+) -> int:
+    for mapping in _truth_summary_count_mappings(truth_summary):
+        for key in (
+            "required_success_count",
+            "mission_required_success_count",
+            "required_intercept_count",
+            "expected_intercept_count",
+            "success_target_count",
+        ):
+            value = _optional_int_value(mapping.get(key))
+            if value is not None and value > 0:
+                return value
+    high_threat_ids = _high_threat_ids(truth_summary)
+    if high_threat_ids:
+        return len(high_threat_ids)
+    high_threat_by_time = _high_threat_by_timestamp(truth_summary)
+    if high_threat_by_time:
+        return max(len(values) for values in high_threat_by_time.values())
+    if metrics.target_count > 0:
+        return metrics.target_count
+    if metrics.intercept_success_count > 0:
+        return metrics.intercept_success_count
+    return 0
+
+
+def _has_partial_progress(metrics: EpisodeMetrics) -> bool:
+    return any(
+        (
+            metrics.detection_probability > 0.0,
+            metrics.track_continuity > 0.0,
+            metrics.terminal_lock_count > 0,
+            metrics.visual_png_switch_count > 0,
+            metrics.degraded_completion_rate > 0.0,
+        )
+    )
+
+
+def _default_success_reason(
+    outcome: str,
+    metrics: EpisodeMetrics,
+    required_success_count: int,
+) -> str:
+    if outcome == "success":
+        if required_success_count > 0:
+            return (
+                "intercept_success_count="
+                f"{metrics.intercept_success_count}/{required_success_count}"
+            )
+        return "success_evidence_recorded"
+    if outcome == "partial":
+        if metrics.intercept_success_count > 0 and required_success_count > 0:
+            return (
+                "partial_intercept_success_count="
+                f"{metrics.intercept_success_count}/{required_success_count}"
+            )
+        if metrics.terminal_lock_count > 0:
+            return f"terminal_lock_count={metrics.terminal_lock_count}"
+        if metrics.detection_probability > 0.0:
+            return f"detection_probability={metrics.detection_probability:.6g}"
+    return ""
+
+
+def _default_failure_reason(
+    outcome: str,
+    root_cause: str,
+    top_failure_causes: Sequence[Mapping[str, Any]],
+) -> str:
+    if not top_failure_causes:
+        if outcome == "aborted":
+            return "mission_aborted_without_structured_root_cause"
+        return "no_success_evidence"
+    details = top_failure_causes[0].get("details", [])
+    detail_text = ""
+    if isinstance(details, Sequence) and details:
+        detail_text = f": {details[0]}"
+    return f"{root_cause}{detail_text}"
+
+
+def _normalize_failure_cause(value: Any) -> str | None:
+    text = _normalized_label(value)
+    if not text:
+        return None
+    aliases = {
+        "track": "tracking",
+        "tracking_failure": "tracking",
+        "association": "assignment",
+        "assignment_failure": "assignment",
+        "terminal": "terminal_gate",
+        "terminal_gate_failure": "terminal_gate",
+        "terminal_contract": "terminal_gate",
+        "gate": "terminal_gate",
+        "camera_gate": "terminal_gate",
+        "guidance_failure": "guidance",
+        "intercept": "guidance",
+        "intercept_failure": "guidance",
+        "secondary_coverage": "coverage",
+        "coverage_gap": "coverage",
+        "runtime": "runtime_exception",
+        "exception": "runtime_exception",
+        "runtime_error": "runtime_exception",
+        "latency": "performance",
+        "performance_budget": "performance",
+        "comms": "communication",
+        "comm": "communication",
+    }
+    normalized = aliases.get(text, text)
+    allowed = {
+        "tracking",
+        "assignment",
+        "terminal_gate",
+        "guidance",
+        "coverage",
+        "runtime_exception",
+        "communication",
+        "safety",
+        "performance",
+    }
+    if normalized in allowed:
+        return normalized
+    for token in allowed:
+        if token in normalized:
+            return token
+    return normalized
+
+
+def _eval_tracking_text(
+    truth_summary: Mapping[str, Any],
+    keys: Sequence[str],
+    *,
+    default: str,
+) -> str:
+    for mapping in _truth_summary_count_mappings(truth_summary):
+        for key in keys:
+            value = _metadata_text(mapping, key)
+            if value is not None:
+                return value
+    return default
 
 
 _SECONDARY_NODE_TYPE_KEYS = (

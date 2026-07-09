@@ -110,6 +110,14 @@ class AssociationRiskSummaryWindowGenerator:
             "duplicate_assignment_delta": int(duplicate_assignment_delta),
             "continuity_risk": max(0.0, 1.0 - float(track_continuity)),
             "d5_disagreement_count": int(metadata.get("d5_disagreement_count", 0)),
+            "mean_track_quality": float(metadata.get("mean_track_quality", 0.0)),
+            "min_track_quality": float(metadata.get("min_track_quality", 0.0)),
+            "max_track_association_risk": float(
+                metadata.get("max_track_association_risk", 0.0)
+            ),
+            "low_quality_track_count": int(
+                metadata.get("low_quality_track_count", 0)
+            ),
             "source_node_id": association_result.source_node_id
             or _optional_string(metadata.get("source_node_id")),
             "link_type": association_result.link_type
@@ -134,6 +142,14 @@ class AssociationRiskSummaryWindowGenerator:
         candidate_count_risk = min(
             1.0, max(0.0, (_mean_float(window, "mean_candidate_count") - 1.0) / 4.0)
         )
+        mean_track_quality = _mean_float(window, "mean_track_quality")
+        min_track_quality = min(float(item["min_track_quality"]) for item in window)
+        max_track_association_risk = max(
+            float(item["max_track_association_risk"]) for item in window
+        )
+        low_quality_track_count = max(
+            int(item["low_quality_track_count"]) for item in window
+        )
 
         duplicate_track_risk = max(
             float(metadata.get("duplicate_track_risk", 0.0)),
@@ -147,6 +163,7 @@ class AssociationRiskSummaryWindowGenerator:
             association_ambiguity,
             candidate_count_risk,
             cost_margin_risk,
+            max_track_association_risk,
         )
         covariance_overlap_rate = max(
             float(metadata.get("covariance_overlap_rate", 0.0)),
@@ -172,6 +189,19 @@ class AssociationRiskSummaryWindowGenerator:
                     metadata.get("d5_disagreement_count", 0)
                 ),
                 "track_continuity": float(track_continuity),
+                "mean_track_quality": mean_track_quality,
+                "min_track_quality": min_track_quality,
+                "max_track_association_risk": max_track_association_risk,
+                "low_quality_track_count": low_quality_track_count,
+                "track_quality_by_track": dict(
+                    metadata.get("track_quality_by_track", {})
+                ),
+                "association_risk_by_track": dict(
+                    metadata.get("association_risk_by_track", {})
+                ),
+                "track_quality_metadata_by_track": dict(
+                    metadata.get("track_quality_metadata_by_track", {})
+                ),
                 "mean_candidate_count": _mean_float(window, "mean_candidate_count"),
                 "candidate_overlap_rate": candidate_overlap_rate,
                 "cost_margin_risk": cost_margin_risk,
@@ -212,6 +242,12 @@ class MetricsRecorder:
     latest_covariance_overlap_rate: float = 0.0
     max_duplicate_track_risk: float = 0.0
     max_covariance_overlap_rate: float = 0.0
+    latest_track_quality_by_track: dict[str, float] = field(default_factory=dict)
+    latest_association_risk_by_track: dict[str, float] = field(default_factory=dict)
+    latest_mean_track_quality: float = 0.0
+    latest_min_track_quality: float = 0.0
+    latest_max_track_association_risk: float = 0.0
+    latest_low_quality_track_count: int = 0
     source_node_ids: set[str] = field(default_factory=set)
     link_types: set[str] = field(default_factory=set)
     risk_summary_generator: AssociationRiskSummaryWindowGenerator = field(
@@ -320,6 +356,21 @@ class MetricsRecorder:
         self.max_covariance_overlap_rate = max(
             self.max_covariance_overlap_rate, risk_summary.covariance_overlap_rate
         )
+        metadata = risk_summary.metadata
+        self.latest_track_quality_by_track = _float_dict(
+            metadata.get("track_quality_by_track", {})
+        )
+        self.latest_association_risk_by_track = _float_dict(
+            metadata.get("association_risk_by_track", {})
+        )
+        self.latest_mean_track_quality = float(metadata.get("mean_track_quality", 0.0))
+        self.latest_min_track_quality = float(metadata.get("min_track_quality", 0.0))
+        self.latest_max_track_association_risk = float(
+            metadata.get("max_track_association_risk", 0.0)
+        )
+        self.latest_low_quality_track_count = int(
+            metadata.get("low_quality_track_count", 0)
+        )
         if risk_summary.source_node_id:
             self.source_node_ids.add(risk_summary.source_node_id)
         if risk_summary.link_type:
@@ -391,6 +442,12 @@ class MetricsRecorder:
             "covariance_overlap_rate": self.latest_covariance_overlap_rate,
             "mean_covariance_overlap_rate": mean_covariance_overlap_rate,
             "max_covariance_overlap_rate": self.max_covariance_overlap_rate,
+            "track_quality_by_track": dict(self.latest_track_quality_by_track),
+            "association_risk_by_track": dict(self.latest_association_risk_by_track),
+            "mean_track_quality": self.latest_mean_track_quality,
+            "min_track_quality": self.latest_min_track_quality,
+            "max_track_association_risk": self.latest_max_track_association_risk,
+            "low_quality_track_count": self.latest_low_quality_track_count,
             "source_node_ids": sorted(self.source_node_ids),
             "link_types": sorted(self.link_types),
             "rmse": self.rmse,
@@ -569,6 +626,18 @@ def _cost_margin_risk(cost_matrix: object) -> float:
         margin = max(finite[1] - finite[0], 0.0)
         row_risks.append(1.0 / (1.0 + margin))
     return float(sum(row_risks) / len(row_risks)) if row_risks else 0.0
+
+
+def _float_dict(value: object) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, float] = {}
+    for key, item in value.items():
+        try:
+            result[str(key)] = float(item)
+        except (TypeError, ValueError):
+            continue
+    return result
 
 
 def _mean_float(items: list[dict[str, object]], key: str) -> float:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from d4_distributed_fallback.active_degradation import (
     ActiveDegradationArbiter,
     ActiveDegradationConfig,
@@ -322,6 +324,30 @@ def test_center_failed_uses_passive_failover_to_secondary() -> None:
     assert decision.target_node_id == "sec-1"
 
 
+def test_no_conflict_reacquire_requests_secondary_cue_without_takeover() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=_terminal(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id="track-1",
+            confidence=0.45,
+            ambiguity_score=0.8,
+            consecutive_non_locked_frames=4,
+            consecutive_mismatch_frames=0,
+        ),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+        current_time_s=10.1,
+    )
+
+    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.action == DegradationAction.REQUEST_SECONDARY_ASSIST
+    assert decision.reason == "terminal_persistent_reacquire_request_secondary_cue"
+    assert decision.action != DegradationAction.DEGRADE_TO_SECONDARY
+
+
 def test_secondary_outside_coverage_is_not_selected() -> None:
     decision = ActiveDegradationArbiter().evaluate(
         track_uncertainty=_track(),
@@ -514,6 +540,46 @@ def test_mobile_high_recon_bad_gimbal_or_stale_cue_is_not_secondary_candidate() 
         assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
         assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
         assert decision.target_node_id is None
+
+
+def test_visible_but_not_registered_secondary_is_not_takeover_capable() -> None:
+    terminal = _terminal(
+        decision_state=TerminalDecisionState.REACQUIRE,
+        observed_global_track_id="track-2",
+        consecutive_non_locked_frames=3,
+        consecutive_mismatch_frames=2,
+    )
+    terminal = replace(
+        terminal,
+        secondary_coverage_ratio=0.92,
+        cross_view_association_count=0,
+        secondary_detect_available_but_not_registered=True,
+    )
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=terminal,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+        current_time_s=10.1,
+    )
+    lifecycle = summarize_secondary_lifecycle(
+        [_secondary()],
+        "cell-north",
+        current_time_s=10.1,
+        terminal_association=terminal,
+    )
+
+    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
+    assert lifecycle[0].secondary_visible is True
+    assert lifecycle[0].secondary_registered is False
+    assert lifecycle[0].secondary_takeover_capable is False
+    assert "secondary_detect_available_but_not_registered" in (
+        lifecycle[0].secondary_capability_reasons
+    )
 
 
 def test_terminal_from_different_resource_is_not_consistent() -> None:

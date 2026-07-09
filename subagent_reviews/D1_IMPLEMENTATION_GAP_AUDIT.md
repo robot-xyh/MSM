@@ -4,18 +4,18 @@
 **范围**: 对照 `subagent_reviews/D1_SENSOR_FUSION_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md`、`research_modules/d1_sensor_fusion` 源码和测试，审计共识算法、开源方案和当前实现差距。  
 **边界**: 本审计只覆盖离线科研仿真、数据合同、传感器观测、航迹融合和评估接口；不涉及真实飞控、硬件驱动、火控、毁伤或自动处置。
 
-**更新时间**: 2026-07-08。
+**更新时间**: 2026-07-09。
 
 ## 1. 总体结论
 
-D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy EKF/FusionAdapter -> GlobalTrack`，支持雷达、声学、EO、可选合成 LiDAR，具备测量时刻/到达时刻分离、fixed-lag replay 延迟补偿、可参数化距离/置信度相关协方差、AirSim dry-run fake fixture、跨节点通信元数据、source lineage 去重基线、`TrackUncertaintySummary` 导出、replay schema v1/legacy JSONL 兼容、最小 CSV reader/replay、真实 Blocks/CV 字段保真、`LatencyAuditSummary`、轻量 `FusionQualityRegionSummary`、`FusionQualityRegionWindowSummary` 和 `ReconCueSummary` 粗指向摘要。D1 接收 main 提供的 N 个 target truth/观测源，并按输入数组长度处理 `SensorObservation[]` 与 `GlobalTrack[]`；真实 AirSim runtime bridge 仍由 shared/main 层负责，D1 不直连 AirSim。
+D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy EKF/FusionAdapter -> GlobalTrack`，支持雷达、声学、EO、可选合成 LiDAR，具备测量时刻/到达时刻分离、fixed-lag replay 延迟补偿、可参数化距离/置信度相关协方差、AirSim dry-run fake fixture、跨节点通信元数据、source lineage 去重基线、`TrackUncertaintySummary` 导出、replay schema v1/legacy JSONL 兼容、最小 CSV reader/replay、真实 Blocks/CV 字段保真、`LatencyAuditSummary`、`SensorHealthSummary`、协方差 floor/ceiling reason、timestamp uncertainty、轻量 `FusionQualityRegionSummary`、`FusionQualityRegionWindowSummary` 和 `ReconCueSummary` 粗指向摘要。D1 接收 main 提供的 N 个 target truth/观测源，并按输入数组长度处理 `SensorObservation[]` 与 `GlobalTrack[]`；真实 AirSim runtime bridge 仍由 shared/main 层负责，D1 不直连 AirSim。
 
 尚未实现的主要是外部成熟框架集成：Stone Soup、FilterPy、ROS 2 `tf2`、`message_filters`、UKF、IMM、D1 包内真实 AirSim ComputerVision/Blocks 运行时适配。这些目前有文档计划或占位类，但未作为 D1 运行依赖接入。原因主要是当前阶段强调依赖轻、可复现、离线测试稳定，且缺少 ROS 2 runtime、稳定真实 AirSim detection schema/外参标定链路、长期真实样本回归和多模型评估基准。
 
-优先级建议：
+优先级建议已同步 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` 中的 D1 P0/P1 口径：
 
-- **P0**: 无 P0 blocker；当前 NumPy EKF、传感器观测模型、延迟补偿、AirSim dry-run、measurement/arrival timestamp、协方差和 NED `GlobalTrack` 合同均作为持续回归基线维护。
-- **P1**: `TrackUncertaintySummary` 发布/导出、Blocks JSONL replay reader、可配置雷达协方差参数、source de-dup 基线、schema v1/legacy JSONL 兼容、covariance-required CSV reader/replay、latency/OOSM audit、轻量区域质量摘要、区域窗口/协方差增长 helper、`ReconCueSummary` 粗指向摘要、真实 CV bbox/camera/detection metadata 保真和嵌套 EO camera metadata replay 已完成；下一步集中补更多 main/shared AirSim multi-seed CV detection fixture、D6 长期批量 schema、持续阈值和真实样本回归。2026-07-08 复核确认，D1 可读取真实 Blocks JSONL/CSV replay 并保留 multi-seed calibration 需要的 timestamps、covariance、NED state、source support、latency/OOSM audit、区域质量摘要、区域窗口摘要和二级侦察相机 cue 字段。
+- **P0**: 无运行级 P0 blocker；当前 NumPy EKF、传感器观测模型、延迟补偿、AirSim dry-run、`measurement_timestamp`/`arrival_timestamp`、协方差和 NED `GlobalTrack` 合同均作为持续回归基线维护。EVAL 确认的 D1 工程化 P0-A 已完成：FDIR-light、协方差上下界限制和时间戳不确定性建模已进入代码与接口回归。
+- **P1**: `TrackUncertaintySummary` 发布/导出、Blocks JSONL replay reader、可配置雷达协方差参数、source de-dup 基线、schema v1/legacy JSONL 兼容、covariance-required CSV reader/replay、latency/OOSM audit、轻量区域质量摘要、区域窗口/协方差增长 helper、`ReconCueSummary` 粗指向摘要、真实 CV bbox/camera/detection metadata 保真和嵌套 EO camera metadata replay 已完成；EVAL 确认的剩余 D1 P1 是 IMM 多模型滤波和场景自适应协方差，另继续补更多 main/shared AirSim multi-seed CV detection fixture、D6 长期批量 schema、持续阈值和真实样本回归。2026-07-08 复核确认，D1 可读取真实 Blocks JSONL/CSV replay，并保留 multi-seed calibration 需要的 `measurement_timestamp`、`arrival_timestamp`、covariance、NED state、source support、latency/OOSM audit、区域质量摘要、区域窗口摘要和二级侦察相机 cue 字段。
 - **P2**: 接入 Stone Soup/FilterPy/OpenCV/UKF/IMM 作为离线对照，不替换 NumPy fallback；ROS 2 `tf2/message_filters` 和真实 AirSim bus 直连只有在运行环境、topic schema 和 main/shared runtime 合同稳定后再评估。
 
 2026-07-08 补充复核：main runtime 已新增 P1 D4/D5 calibration sweep，并在 sweep 结束后自动生成 D6 标准报告 bundle。该能力属于 main/D6 集成层，不改变 D1 职责边界。D1 当前 P1 重点是保持 replay schema、measurement/arrival timestamp、covariance、latency/OOSM audit、区域质量/窗口摘要和二级侦察 cue 字段稳定，并继续补真实 AirSim multi-seed fixture 与阈值校准样本。
@@ -25,19 +25,31 @@ D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy E
 本次复核背景是 main runtime bus 已将真实 AirSim D7 执行结果回灌到正式 episode metrics，D3 补充了中心重规划后的新 `AssignmentPlan` owner/version 元数据，D4 将主动降级硬风险与软质量风险拆分，D5 修正了终端一致性窗口的 key。D1 侧结论如下：
 
 - **2026-07-08 状态确认**: 无 P0 blocker。`ReconCueSummary` 与 `summarize_recon_cue_from_tracks()` 已进入已实现基线，可从 `GlobalTrack[]` 或 track-like dict 输出移动高空侦察节点的 radar/global-track cue，并保留 measurement/arrival timestamp、协方差和 NED 合同。
-- **无新增 P0**: D1 的 `SensorObservation -> FusionAdapter -> GlobalTrack -> TrackUncertaintySummary` 合同仍满足下游输入要求，测试仍应作为 P0 回归。
+- **无新增运行级 P0**: D1 的 `SensorObservation -> FusionAdapter -> GlobalTrack -> TrackUncertaintySummary` 合同仍满足下游输入要求，测试仍应作为 P0 回归；EVAL 工程化 P0-A 硬化项已按 1.2 和第 7 节闭合。
 - **D4 接口语义收紧**: D1 的协方差、freshness、latency、source support 和 handover readiness 只能作为态势质量证据。单帧 `coarse/stable` 波动、短时 latency 或低 handover readiness 不应被 D4 直接解释为中心节点失效或立即主动降级；D4 需要结合 D3 plan freshness、D5 terminal evidence、C2 health 和持续窗口仲裁。
 - **D3/D7 使用边界不变**: D3 可把 D1 质量摘要纳入分配代价和 replan 依据，D7 可按 `stable/handover`、协方差和 freshness 做导引门控；D1 不生成 plan version，也不修改 D7 PN/PNG 控制律。
 - **D5 使用边界不变**: D1 继续提供可投影的 NED state、6x6 covariance、EO bbox/camera metadata lineage 和时间戳。D5 的跨视角/终端一致性结果只能作为反馈证据，不能反向改写 D1 的 `global_track_id`。
 - **严格 subagent 流程**: D1 owned 代码、README、PLAN、GAP 和 review 的能力状态由 D1 子智能体自己检查、修改和测试；main 只汇总与集成验证。若 main 临时代改 D1 文件，后续必须由 D1 复核并同步文档状态。
 
 
+## 1.2 EVAL P0/P1 同步口径
+
+本节只同步 EVAL 确认的 D1 P0/P1，不新增、移动或改写下方既有 P2/P3 项。P0 口径为工程化硬化项，不是当前仓库测试运行级 blocker；P1 口径为三个月内能力增强和多 seed 标定项。所有后续实现必须继续保持 D1 合同：`SensorObservation[]` 和 `GlobalTrack[]` 按输入数组长度处理，2v2/5v5 只作为 baseline 名称；观测和航迹保留 `measurement_timestamp`、`arrival_timestamp`、covariance，并以 NED 为融合工作坐标系。
+
+| EVAL 优先级 | D1 条目 | 当前 D1 状态 | GAP 同步结论 | 最小验收口径 |
+|---|---|---|---|---|
+| P0-A | FDIR-light | 已实现传感器级 `SensorHealthSummary`，从延迟/OOSM、stale、低质量/遮挡、异常协方差和重复观测派生 health/status、fault reason、reject count、isolation hint 和 recovery state | 已闭合，保持现有门控和摘要基线 | 故障注入下输出 sensor health、fault reason、reject count、isolation hint 和 recovery state |
+| P0-A | 协方差上下界限制 | 已实现观测 covariance floor/ceiling、低质量/遮挡协方差放大、track 6x6 covariance floor/ceiling 和 reason metadata | 已闭合，保持现有 covariance 输出和质量分级 | 协方差不发散、不虚假收敛；D6/报告能解释 floor/ceiling reason |
+| P0-A | 时间戳不确定性建模 | 已实现 `SensorObservation.timestamp_uncertainty_s` 标准化，并在观测 metadata、`GlobalTrack.metadata`、`TrackUncertaintySummary` 和 `SensorHealthSummary` 中导出 timing uncertainty | 已闭合，不改变双时间戳合同 | 注入 10-50 ms 时钟漂移时输出 timing uncertainty，并能关联误差变化曲线 |
+| P1 | IMM 多模型滤波 | 当前 CV/EKF 主线可用；UKF/Stone Soup/FilterPy 后端仍未接入 | 作为 D1 P1 能力增强 backlog，优先做 CV/CA/CT 或等价模型对照，不替换 NumPy fallback | 机动目标 replay/AirSim 样本中输出模型对照，机动 RMSE 或 NIS/连续性指标优于 CV-only 基线 |
+| P1 | 场景自适应协方差 | 已有距离/质量相关协方差、bbox confidence/occlusion 输入和雷达参数化；尚缺遮挡、杂波、SNR、来源差异的动态 covariance scale rule | 作为 D1 P1 标定 backlog，保留现有 covariance-required replay/schema 已完成状态 | AirSim/replay 中输出 covariance scale reason，并用多 seed 标定阈值 |
+
 ## 2. 按实现状态归类
 
 ### 2.1 已实现
 
-- `SensorObservation` 统一合同已落地，支持 `radar/acoustic/eo/lidar`，强制保留 `measurement_timestamp`、`arrival_timestamp`、`frame_id`、`measurement`、`covariance`、置信度、质量标记和通信元数据。
-- `FusionAdapter` 已实现 NumPy EKF 融合主线，输出六维 NED `GlobalTrack`、6x6 协方差、`source_support`、质量等级、`valid_at/published_at`、最近量测时间和最近到达时间。
+- `SensorObservation` 统一合同已落地，支持 `radar/acoustic/eo/lidar`，强制保留 `measurement_timestamp`、`arrival_timestamp`、`frame_id`、`measurement`、`covariance`、置信度、质量标记、通信元数据和 `timestamp_uncertainty_s`。
+- `FusionAdapter` 已实现 NumPy EKF 融合主线，输出六维 NED `GlobalTrack`、6x6 协方差、`source_support`、质量等级、`valid_at/published_at`、最近量测时间、最近到达时间、timestamp uncertainty、covariance limit reason 和 sensor health snapshot。
 - fixed-lag/OOSM 延迟补偿已实现，观测按 `measurement_timestamp` 插入历史并重放到当前 `arrival_timestamp`；消融测试要求补偿 RMSE 明显优于未补偿基线。
 - 雷达距离相关协方差已通过 `RadarCovarianceConfig` 参数化；声学为弱方位约束；EO 为 pinhole 像素投影约束；合成 LiDAR 作为 dry-run NED 三维位置量测。
 - AirSim dry-run fixture 已实现，不导入 AirSim，可生成 radar/acoustic/eo/lidar `SensorObservation[]` 并喂给 `FusionAdapter`。
@@ -45,6 +57,8 @@ D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy E
 - 最小 CSV reader/replay 已实现，支持以 JSON array/object 单元格表达 measurement、covariance、metadata、communication 和 source support，便于 D6/人工审计复用观测记录。
 - `TrackUncertaintySummary` 已实现数据类与导出方法，包含协方差迹、`a95`、等级、measurement age、source support、coverage cell、measurement/arrival timestamp 和 handover readiness。
 - `LatencyAuditSummary` 已实现，导出 max/mean delay、replay count、OOSM/stale count、重复观测数和最大 replay 历史长度。
+- `SensorHealthSummary` 已实现，导出 per-sensor `status`、`fault_reason`、`reject_count`、`isolation_hint`、`recovery_state`，并保留 duplicate、OOSM/stale、低质量/遮挡、异常协方差和 timestamp uncertainty 计数。
+- 协方差上下界限制已实现，观测协方差进入 EKF 前会 floor/ceiling，低质量或遮挡观测会保守放大，track 6x6 covariance 在预测/replay/update 后会 floor/ceiling，并在 metadata/summary 中记录 reason。
 - `FusionQualityRegionSummary` 已实现轻量区域聚合，按 `coverage_cell` 汇总 track 数、a95、measurement age、handover readiness、source support、source gap、stale track 数和可选协方差增长率。
 - `FusionQualityRegionWindowSummary`、`annotate_covariance_growth_rates()` 和 `summarize_region_quality_windows()` 已实现轻量窗口趋势，区分区域协方差增长、freshness 下降、source gap 与 latency/OOSM。
 - `ReconCueSummary` 已实现轻量侦察相机粗指向摘要，按全部 tracks 或指定 `coverage_cell` 子群输出协方差加权 `cue_position_ned`、`cue_covariance`、`active_target_ids`、measurement/arrival timestamp、可选二级/移动侦察 metadata 和基础诊断。
@@ -164,7 +178,13 @@ D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy E
 - 当 D1 的 `measurement_age_s` 或 `latest_observation_latency_s` 过大时，D7 应扩大预测门限、请求 D3/D4 重新规划或保持保守状态。
 - D1 不提供真实飞控、硬件、毁伤或自动处置接口；`handover` 是仿真质量标签，不是授权状态。
 
-## 7. 下一步 P1/P2 优先级
+## 7. 下一步 P0/P1/P2 优先级
+
+### P0: EVAL 工程化硬化项（已闭合）
+
+1. **FDIR-light**: 已实现 `SensorHealthSummary` 和 `FusionAdapter.sensor_health_summaries()`，输出 sensor health、fault reason、reject count、isolation hint 和 recovery state。
+2. **协方差上下界限制**: 已实现观测与 track covariance floor/ceiling，长时间外推、低质量观测、遮挡和异常观测会记录 covariance limit reason。
+3. **时间戳不确定性建模**: 已保持 `measurement_timestamp` 与 `arrival_timestamp` 双时间戳合同，并在观测、track metadata、summary 和 sensor health 中显式记录 timing uncertainty；10-50 ms clock drift 注入已进入接口回归。
 
 ### P1: 稳定 D1 到 main/D2-D7 的数据合同
 
@@ -182,6 +202,8 @@ D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy E
 1. **AirSim CV/Blocks fixture 回归**: D1 已有 Blocks calibration CSV 和真实 CV 字段保真回归；main 已能通过 D4/D5 calibration sweep 与 D6 bundle 汇总结果，但 D1 仍需增加来自 main/shared runtime 的 `simGetDetections`/detector boxes multi-seed JSONL/CSV 样本，覆盖更多 actor label、camera metadata、timestamp、bbox covariance、secondary/mobile recon metadata 和 N actor 输出；D1 不直连真实 AirSim runtime bus。
 2. **D6 长期批量 schema**: 对齐 `TrackUncertaintySummary[]`、`LatencyAuditSummary`、`FusionQualityRegionSummary[]` 和 `FusionQualityRegionWindowSummary[]` 的长期 JSONL/CSV 字段，使 D6 标准 bundle 能稳定消费 D1 输出。
 3. **真实样本阈值/回归**: 将更多真实 Blocks/CV 样本纳入固定测试或审计 fixture，并用多 seed 统计校准区域窗口、freshness/source-gap、协方差增长率和 handover readiness 的持续阈值。
+4. **IMM 多模型滤波**: 按 EVAL P1 同步为三个月内能力增强项，先做 CV/CA/CT 或等价模型对照和机动目标 replay/AirSim 评估，不替换当前 NumPy CV/EKF fallback。
+5. **场景自适应协方差**: 在现有距离/质量协方差、bbox confidence/occlusion 输入和雷达参数化基础上，补遮挡、杂波、SNR、来源差异等 covariance scale rule，并在 replay/AirSim 输出 scale reason。
 
 ### P2: 开源库和算法对照
 

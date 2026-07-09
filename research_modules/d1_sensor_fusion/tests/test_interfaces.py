@@ -21,6 +21,7 @@ from d1_sensor_fusion.quality import (
 from d1_sensor_fusion.types import (
     FusionQualityRegionSummary,
     LatencyAuditSummary,
+    SensorHealthSummary,
     SensorObservation,
     TrackUncertaintySummary,
 )
@@ -417,6 +418,149 @@ def test_latency_audit_summary_counts_delay_oosm_and_replay() -> None:
     assert audit["mean_delay_s"] == pytest.approx(0.6)
     assert audit["max_replay_observation_count"] >= 3
     assert tracks[0].metadata["latency_audit"]["max_delay_s"] == pytest.approx(1.8)
+
+
+def test_sensor_health_summary_flags_duplicate_latency_quality_and_covariance_faults() -> None:
+    adapter = FusionAdapter(latency_compensation=True, association_gate=25.0)
+    sensor_position = np.zeros(3)
+    state = np.array([100.0, 15.0, -8.0, 3.0, 0.5, 0.0])
+    radar_z = radar_h(state, sensor_position)
+    lineage = {
+        "sensor_position_ned": sensor_position,
+        "sequence_id": 7,
+        "payload_hash": "health-duplicate",
+    }
+    first = SensorObservation(
+        observation_id="health_radar_direct",
+        sensor_id="radar-health",
+        modality="radar",
+        measurement_timestamp=0.0,
+        arrival_timestamp=0.1,
+        frame_id="ned",
+        measurement=radar_z,
+        covariance=radar_covariance_from_range(radar_z[0]),
+        metadata=lineage,
+    )
+    duplicate = SensorObservation(
+        observation_id="health_radar_duplicate",
+        sensor_id="radar-health",
+        modality="radar",
+        measurement_timestamp=0.1,
+        arrival_timestamp=0.2,
+        frame_id="ned",
+        measurement=radar_z,
+        covariance=radar_covariance_from_range(radar_z[0]),
+        metadata=lineage,
+        relay_node_id="relay-a",
+    )
+    adapter.process(first)
+    adapter.process(duplicate)
+
+    delayed_low_quality = SensorObservation(
+        observation_id="health_acoustic_fault",
+        sensor_id="acoustic-health",
+        modality="acoustic",
+        measurement_timestamp=0.0,
+        arrival_timestamp=1.0,
+        frame_id="ned",
+        measurement=np.array([np.arctan2(state[1], state[0])]),
+        covariance=np.array([[-1.0]]),
+        confidence=0.35,
+        quality_flags=("occluded",),
+        metadata={"sensor_position_ned": sensor_position},
+        stale_after_s=0.1,
+    )
+    adapter.process(delayed_low_quality)
+
+    summaries = {summary.sensor_id: summary for summary in adapter.sensor_health_summaries()}
+    radar = summaries["radar-health"]
+    acoustic = summaries["acoustic-health"]
+
+    assert isinstance(radar, SensorHealthSummary)
+    assert radar.status == "degraded"
+    assert radar.fault_reason == "duplicate_observation"
+    assert radar.reject_count == 1
+    assert radar.isolation_hint == "suppress_duplicate_payload"
+    assert radar.recovery_state == "monitoring_fault"
+    assert radar.to_dict()["sensor_id"] == "radar-health"
+
+    acoustic_payload = acoustic.to_dict()
+    assert acoustic_payload["status"] == "degraded"
+    assert acoustic_payload["sensor_id"] == "acoustic-health"
+    assert acoustic_payload["reject_count"] == 0
+    assert acoustic_payload["oosm_count"] == 1
+    assert acoustic_payload["stale_count"] == 1
+    assert acoustic_payload["low_quality_count"] == 1
+    assert acoustic_payload["anomalous_covariance_count"] == 1
+    assert "fault_reason" in acoustic_payload
+    assert "isolation_hint" in acoustic_payload
+    assert "recovery_state" in acoustic_payload
+
+
+def test_covariance_limits_and_timestamp_uncertainty_reach_track_summary() -> None:
+    adapter = FusionAdapter(
+        latency_compensation=True,
+        process_noise=1.0e9,
+        long_extrapolation_s=1.0,
+    )
+    sensor_position = np.zeros(3)
+    state = np.array([120.0, 10.0, -12.0, 4.0, 0.0, 0.0])
+    radar_z = radar_h(state, sensor_position)
+
+    adapter.process(
+        SensorObservation(
+            observation_id="drift_floor_birth",
+            sensor_id="radar-drift",
+            modality="radar",
+            measurement_timestamp=0.0,
+            arrival_timestamp=0.0,
+            frame_id="ned",
+            measurement=radar_z,
+            covariance=np.eye(4) * 1.0e-12,
+            metadata={
+                "sensor_position_ned": sensor_position,
+                "clock_drift_s": 0.01,
+                "sequence_id": 1,
+            },
+        )
+    )
+    tracks = adapter.process(
+        SensorObservation(
+            observation_id="drift_update_50ms",
+            sensor_id="radar-drift",
+            modality="radar",
+            measurement_timestamp=0.5,
+            arrival_timestamp=0.55,
+            frame_id="ned",
+            measurement=radar_h(state + np.array([2.0, 0.0, 0.0, 0.0, 0.0, 0.0]), sensor_position),
+            covariance=radar_covariance_from_range(radar_z[0]),
+            metadata={
+                "sensor_position_ned": sensor_position,
+                "timestamp_uncertainty_s": 0.05,
+                "sequence_id": 2,
+            },
+        )
+    )
+
+    assert tracks[0].metadata["latest_timestamp_uncertainty_s"] == pytest.approx(0.05)
+    assert "observation_covariance_floor" in tracks[0].metadata["covariance_limit_reasons"]
+    assert "track_covariance_floor" in tracks[0].metadata["covariance_limit_reasons"]
+
+    predicted = adapter.predict_track(tracks[0].global_track_id, 10.0)
+    diagonal = np.diag(predicted.covariance)
+    assert np.all(diagonal <= adapter.covariance_ceiling_diag)
+    assert "long_extrapolation" in predicted.metadata["covariance_limit_reasons"]
+    assert "track_covariance_ceiling" in predicted.metadata["covariance_limit_reasons"]
+
+    summary = adapter.track_uncertainty_summaries()[0]
+    payload = summary.to_dict()
+    assert payload["timestamp_uncertainty_s"] == pytest.approx(0.05)
+    assert payload["timing_uncertainty_s"] == pytest.approx(0.05)
+    assert "long_extrapolation" in payload["covariance_limit_reasons"]
+    assert "track_covariance_ceiling" in payload["covariance_limit_reasons"]
+
+    health = adapter.sensor_health_summaries()[0].to_dict()
+    assert health["timestamp_uncertainty_s"] == pytest.approx(0.05)
 
 
 def test_observation_rejects_unconverted_external_frame() -> None:

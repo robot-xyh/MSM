@@ -130,6 +130,10 @@ def test_assignment_records_from_plan_match_d6_assignment_record_shape() -> None
     assert record.candidate_total_cost == plan.candidate_total_cost
     assert record.previous_total_cost_current == plan.previous_total_cost_current
     assert record.cost_margin == 0.0
+    assert record.stale_plan_rejected is False
+    assert record.stale_reject_reason is None
+    assert record.latest_plan_id is None
+    assert record.latest_plan_version is None
 
 
 def test_assignment_records_can_preserve_plan_authorization_state() -> None:

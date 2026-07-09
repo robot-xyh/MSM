@@ -20,7 +20,7 @@ D4 只负责 C-UAS 工作流中的离线科研仿真、降级仲裁、二级节�
 
 ## 3. 当前总体状态
 
-D4 模块内已经完成一个可测试的离线 P1 骨架：`C2Health`、被动降级、固定系留/机动高空二级节点分类元数据、二级节点 lifecycle、主动降级仲裁、主动降级硬/软风险分层、secondary takeover plan lifecycle metadata、主动降级 `necessary/unnecessary/inconclusive` review label、pre/post review window、plan activation delay、二级接管必要性/成功统计 metadata、D1/D2/D3/D5 adapter、D5 distributed visual evidence 归一化、完全无中心 CBBA 风险加权、CBBA cost gap benchmark helper、CBBA D6 report metadata、`assignment_audit`、D6-compatible event metadata、中心恢复基础合并和 N 规模输入均已存在。
+D4 模块内已经完成一个可测试的离线 P1 骨架，并补齐 P0-B 降级层级硬化：`C2Health`、heartbeat smoothing、被动降级、固定系留/机动高空二级节点分类元数据、二级节点 lifecycle、二级能力评分、主动降级仲裁、主动降级硬/软风险分层、false-trigger metadata、secondary takeover plan lease/epoch strictness、主动降级 `necessary/unnecessary/inconclusive` review label、pre/post review window、plan activation delay、二级接管必要性/成功统计 metadata、D1/D2/D3/D5 adapter、D5 distributed visual evidence 归一化、完全无中心 CBBA 风险加权、CBBA cost gap benchmark helper、CBBA D6 report metadata、`assignment_audit`、D6-compatible event metadata、中心恢复基础合并和 N 规模输入均已存在。
 
 截至 2026-07-08，main/runtime 已完成 P1 基线接线：episode bus 已消费 D4 adapter 输出，`request_center_replan` 可触发 D3 新 plan version，secondary takeover owner/version 已回灌给 D3/D7，controlled 2v2 secondary visual PNG 回归已通过。main runtime 还新增了 P1 D4/D5 calibration sweep，可按二级高度、FOV、二级节点数量和 standoff 组合批量生成 stress episode，并在 sweep 结束后自动调用 D6 标准 AirSim calibration report bundle，输出 records/summary/report 口径。D4 模块边界保持不变：D4 不生成系统级 `AssignmentPlan`，只提供 `pending_secondary_plan`/`secondary_plan_active` metadata、仲裁记录和 CBBA 保底结果供 main/D3/D7 消费。
 
@@ -28,7 +28,7 @@ D4 模块内已经完成一个可测试的离线 P1 骨架：`C2Health`、被动
 
 后续 `research_modules/airsim_runtime/outputs/p1_d4d5_registration_calibration_runtime_v2_20260708*` 单 seed 校准已经把 D6 stable registration/not-registered 口径跑通：200 m、FOV 110、1920x1080、3 个机动高空二级侦察相机、7 frames 下，D6 上游几何统计为 `projection_valid_rate=1.0`、`geometry_gate_pass_rate≈0.474`，三类 case 的 stable cross-view registration 分别为 51/55/53，cross-view association 为 4/4/5，degradation case 的 not-registered 均为 35，平均二级网络全覆盖率为 0.048，平均覆盖率为 0.771，主要断点仍是 `not_all_targets_visible` / `network_union_incomplete`。该结果说明 registration 字段已经能由 D5/D6/main 写盘并被 D4 解释，但只有 1 个 seed，不能替代多 seed 标定；D4 不直接消费或计算 projection/geometry gate。
 
-P0 状态：无 P0 blocker。剩余 P1 主要是运行层校准和离线标注填充，而不是 D4 文档或接口缺口：mobile recon 批次中二级网络同帧全覆盖仍为 0.0，case mean 的联合覆盖约 0.65-0.69；registration v2 批次虽出现 stable registration 计数，但 full-view 仍低且 degradation case not-registered 仍高。后续需继续校准二级 coverage、mobile recon heartbeat/link/cue freshness、稳定跨视角注册、二级接管必要性、plan activation delay 分布、D5 peer evidence 合流、人工/离线 review label 和 D6 长期聚合。
+P0 状态：无 P0 blocker。P0-B 在 D4 模块内已闭合到单元测试层：heartbeat 短时丢包/延迟经滑动窗口和 dwell 后才进入 failed；过期或非单调二级 plan 被标记为 not executable；二级能力评分区分 visible、registered、takeover_capable；无冲突 reacquire 不直接降级。剩余 P1 主要是运行层校准和离线标注填充，而不是 D4 文档或接口缺口：mobile recon 批次中二级网络同帧全覆盖仍为 0.0，case mean 的联合覆盖约 0.65-0.69；registration v2 批次虽出现 stable registration 计数，但 full-view 仍低且 degradation case not-registered 仍高。后续需继续校准二级 coverage、mobile recon heartbeat/link/cue freshness、稳定跨视角注册、二级接管必要性、plan activation delay 分布、D5 peer evidence 合流、人工/离线 review label 和 D6 长期聚合。
 
 ## 4. 被动降级与主动降级
 
@@ -37,6 +37,7 @@ P0 状态：无 P0 blocker。剩余 P1 主要是运行层校准和离线标注�
 `passive_failover` 处理中心 C2 不可用：
 
 - heartbeat 超过 hard timeout；
+- heartbeat 滑动窗口内连续/累计 miss 达到 failed 阈值，且满足 `degraded/suspect` dwell；
 - peer quorum 判定中心失败；
 - assignment digest 或中心摘要长期不可用；
 - center epoch 过期或倒退；
@@ -107,7 +108,7 @@ failed
 当前代码证据：
 
 - `FailoverCoordinator.observe_center()` 在 heartbeat/digest 恢复后进入 `suspect`，不直接回 `normal`。
-- `update_health()` 覆盖 heartbeat warning/stale/failure 和 peer quorum。
+- `update_health()` 覆盖 heartbeat warning/stale/failure、peer quorum、heartbeat sliding window、miss threshold 和 `degraded/suspect` dwell；有 heartbeat 样本流时，单次延迟不会直接 `failed`。
 - `merge_recovery()` 只比较 assignment owner/epoch 的基础版双轨合并；冲突或 review 未清空时保持 `degraded`。
 
 ## 6. 摘要接口
@@ -115,7 +116,7 @@ failed
 ### 6.1 被动降级和 CBBA 摘要
 
 - `TrackSummary`：`track_id`、`coarse_cell`、`age_s`、`confidence_band`、`source_count`、`epoch`、`visual_evidence`。
-- `ResourceSummary`：`node_id`、`capability_class`、`availability_band`、`comm_band`、`operator_hold`、`takeover_priority`、`lease_epoch`、`node_role`、`coordinator_only`、`coverage_cell`、`heartbeat_timestamp_s`、`heartbeat_stale_after_s`、`cue_freshness_s`、`gimbal_pointing_ok`、`secondary_coverage_ratio`、`cross_view_support_count`、`epoch`。
+- `ResourceSummary`：`node_id`、`capability_class`、`availability_band`、`comm_band`、`operator_hold`、`takeover_priority`、`lease_epoch`、`lease_expires_at_s`、`node_role`、`coordinator_only`、`coverage_cell`、`heartbeat_timestamp_s`、`heartbeat_stale_after_s`、`cue_freshness_s`、`gimbal_pointing_ok`、`secondary_coverage_ratio`、`cross_view_support_count`、`epoch`。
 - `BidState`：`task_id`、`bidder`、`score`、`constraints_hash`、`epoch`、`round_id`。
 - `CBBAResult`：assignments、rounds、converged、conflict/completion/message/byte 指标、`final_views`、`assignment_audit`、可选 `cost_gap_benchmark`；`build_cbba_d6_metadata()` 可将这些字段归一化为 D6 多 seed 报告 metadata。
 
@@ -126,8 +127,8 @@ failed
 - `AssignmentValiditySummary`：D3 分配有效性，含 `global_track_id`、`assigned_resource_id`、`plan_version`、`is_current`、`plan_age_s`、`cost_margin`。
 - `TerminalAssociationSummary`：D5 末端关联，含 `decision_state`、confidence、ambiguity、observed/assigned `global_track_id`、连续非锁定/不一致帧数、friend conflict、duplicate lock、cross-view 风险，以及 D5 二级覆盖/转换漏斗字段 `cue_freshness_s`、`gimbal_pointing_ok`、`secondary_coverage_ratio`、`secondary_single_camera_full_view_frame_rate`、`secondary_network_joint_full_view_frame_rate`、`secondary_network_mean_coverage_ratio`、`cross_view_support_count`、`cross_view_association_count`、`cross_view_conversion_gap`、`secondary_detect_to_cross_view_reject_reasons`、`secondary_detect_available_but_not_registered`。
 - `CommunicationSummary`：链路摘要，含 source/target/relay、`link_type`、sent/received timestamp、`payload_kind`、`stale_after_s`、sequence id。
-- `SecondaryNodeLifecycleSummary`：二级节点 heartbeat age/stale、lease、coverage、requested coverage match、video/cue freshness、cue stale、gimbal pointing、coverage ratio、cross-view support、固定/机动二级分类、link stale/fresh、`secondary_available`。
-- `D4DecisionRecord`：adapter 输出，可转为 D6 `EventRecord` kwargs，包含三值 review label、pre/post review window、`active_plan_owner`、secondary takeover metadata、plan activation delay、二级 diagnostic 节点字段和 D5 detect-to-registration 诊断。
+- `SecondaryNodeLifecycleSummary`：二级节点 heartbeat age/stale、lease epoch/expiry、coverage、requested coverage match、video/cue freshness、cue stale、gimbal pointing、coverage ratio、cross-view support、固定/机动二级分类、link stale/fresh、`secondary_available`、`secondary_visible`、`secondary_registered`、`secondary_takeover_capable`、`secondary_capability_score`。
+- `D4DecisionRecord`：adapter 输出，可转为 D6 `EventRecord` kwargs，包含三值 review label、pre/post review window、`active_plan_owner`、secondary takeover metadata、plan activation delay、lease/executable/reject reason、hard/soft risk、false-trigger candidate、二级 diagnostic 节点字段和 D5 detect-to-registration 诊断。
 
 ### 6.3 二级接管 plan lifecycle metadata
 
@@ -137,7 +138,7 @@ D4 不生成完整系统级 `AssignmentPlan`，但在 `degrade_to_secondary` 触
 - `pending_secondary_plan`：D4 已选择二级节点并触发重分配，但新的二级 plan 尚未生效；`active_plan_owner` 仍为当前 plan owner，`pending_plan_owner=secondary_node`，并记录 `secondary_plan_source_node_id`、当前 plan id/version 和 supersedes 字段。
 - `secondary_plan_active`：main/D3 已回填新的二级 plan id/version 且标记 active；`active_plan_owner=secondary_node`，`secondary_reassignment_complete=True`。D7 只能在该状态和两阶段 handoff 允许时继续后续视觉 PNG gate。
 
-metadata 字段包括 `secondary_takeover_state`、`active_plan_owner`、`secondary_plan_source_node_id`、`secondary_plan_id/version`、`secondary_supersedes_plan_id/version` 和 `secondary_reassignment_complete`。
+metadata 字段包括 `secondary_takeover_state`、`active_plan_owner`、`secondary_plan_source_node_id`、`secondary_plan_id/version`、`secondary_plan_lease_epoch`、`secondary_plan_lease_expires_at_s`、`secondary_plan_lease_valid`、`secondary_plan_epoch_monotonic`、`secondary_plan_executable`、`secondary_plan_reject_reason`、`recovery_dual_track_audit`、`secondary_supersedes_plan_id/version` 和 `secondary_reassignment_complete`。过期或非单调替换二级 plan 保持 `pending_secondary_plan`/not executable，不能被解释为可执行接管计划；若当前 plan owner 已是 secondary 且 current/secondary plan id/version 相同，则该 equality 表示同一二级计划已经激活。
 
 D5 二级 detect 覆盖可见、`gimbal_pointing_ok=True` 或 `secondary_coverage_ratio > 0` 只说明二级节点具备侦察证据；只有 main/D3 回填新的二级 plan id/version 且显式 `secondary_plan_active=True` 时，D4 才把接管 metadata 置为 `secondary_plan_active`。若 cross-view association 为 0，或 D5 在 global binding/registration 漏斗处拒绝，D4 仅记录 `secondary_detect_available_but_not_registered` 诊断，保持 `request_secondary_assist`/pending 或按既有硬冲突规则降级。
 
@@ -242,7 +243,7 @@ takeover_priority
 -> node_id
 ```
 
-主动降级中，`ActiveDegradationArbiter._select_secondary_node()` 会按覆盖区/coverage ratio、heartbeat、cue freshness、gimbal pointing 和链路 freshness 过滤候选，再按 `takeover_priority -> capability class -> lease_epoch -> node_id` 排序。
+主动降级中，`ActiveDegradationArbiter._select_secondary_node()` 会按覆盖区/coverage ratio、heartbeat、lease expiry、cue freshness、gimbal pointing 和链路 freshness 过滤候选。辅助 cue 可使用 visible/fresh 二级节点；`degrade_to_secondary` 必须满足 `secondary_takeover_capable=True`。排序口径为 `takeover_priority -> secondary_capability_score -> capability class -> lease_epoch -> node_id`。
 
 ## 9. D6 事件与指标
 
@@ -250,7 +251,7 @@ takeover_priority
 
 - `event_type`：`d4_arbitration_decision`、`active_degradation_decision` 或 `passive_failover_start`；
 - `severity`：正常继续中心为 `info`，降级/hold 为 `warning`；
-- metadata：`d4_action`、`degradation_mode`、`d4_degradation_mode`、`selected_coordinator`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp`、`review_label`、`active_degradation_review_label`、`review_label_detail`、`review_label_source`、pre/post review window、resource/track/plan/version、`active_plan_owner`、`secondary_takeover_state`、`secondary_plan_source_node_id`、`secondary_plan_id/version`、`secondary_supersedes_plan_id/version`、`secondary_reassignment_complete`、`secondary_plan_activation_delay_s`、`secondary_plan_pending_duration_s`、`secondary_takeover_candidate`、`secondary_takeover_success`、`secondary_takeover_necessity_label`、`coverage_cell`、`terminal_consistent`、`risk_factors`、`secondary_available`、`communication_fresh`、`secondary_lifecycle`、二级 diagnostic 节点 heartbeat/link/cue/gimbal/coverage 字段、`cue_freshness_s`、`gimbal_pointing_ok`、`secondary_coverage_ratio`、`secondary_network_coverage_available`、`secondary_network_full_view_gap`、`cross_view_support_count`、`secondary_single_camera_full_view_frame_rate`、`secondary_network_joint_full_view_frame_rate`、`secondary_network_mean_coverage_ratio`、`cross_view_association_count`、`cross_view_conversion_gap`、`secondary_detect_to_registration_gap`、`secondary_detect_to_cross_view_reject_reasons`、`secondary_detect_available_but_not_registered`、`secondary_detect_to_cross_view_diagnostic`、`requires_human_review`。
+- metadata：`d4_action`、`degradation_mode`、`d4_degradation_mode`、`selected_coordinator`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp`、`review_label`、`active_degradation_review_label`、`review_label_detail`、`review_label_source`、pre/post review window、resource/track/plan/version、`active_plan_owner`、`secondary_takeover_state`、`secondary_plan_source_node_id`、`secondary_plan_id/version`、lease/executable/reject reason、`recovery_dual_track_audit`、`secondary_supersedes_plan_id/version`、`secondary_reassignment_complete`、`secondary_plan_activation_delay_s`、`secondary_plan_pending_duration_s`、`secondary_takeover_candidate`、`secondary_takeover_success`、`secondary_takeover_necessity_label`、`coverage_cell`、`terminal_consistent`、`risk_factors`、hard/soft risk、false-trigger candidate、`secondary_available`、`communication_fresh`、`secondary_lifecycle`、二级 diagnostic 节点 heartbeat/link/cue/gimbal/coverage/capability 字段、`cue_freshness_s`、`gimbal_pointing_ok`、`secondary_coverage_ratio`、`secondary_network_coverage_available`、`secondary_network_full_view_gap`、`cross_view_support_count`、`secondary_single_camera_full_view_frame_rate`、`secondary_network_joint_full_view_frame_rate`、`secondary_network_mean_coverage_ratio`、`cross_view_association_count`、`cross_view_conversion_gap`、`secondary_detect_to_registration_gap`、`secondary_detect_to_cross_view_reject_reasons`、`secondary_detect_available_but_not_registered`、`secondary_detect_to_cross_view_diagnostic`、`requires_human_review`。
 
 `ActiveDegradationDecision.to_metrics()` 可输出 `d4_action`、`degradation_mode`、`target_node_id`、`risk_factors`、`terminal_consistent`、`failover_time`、`secondary_selected_rate` 和 `distributed_conflict_count`。
 
@@ -269,18 +270,18 @@ D4 不写死 2v2 或 5v5。当前行为：
 
 | 能力 | 当前状态 | 代码/测试证据 |
 |---|---|---|
-| `C2Health` | `normal/degraded/suspect/failed`、heartbeat warning/stale/failure、peer quorum、digest conflict、center epoch stale、恢复待合并 | `coordinator.py`、`models.py`、`tests/test_health.py` |
+| `C2Health` | `normal/degraded/suspect/failed`、heartbeat warning/stale/failure、sliding window/miss threshold/dwell、peer quorum、digest conflict、center epoch stale、恢复待合并 | `coordinator.py`、`models.py`、`tests/test_health.py` |
 | 被动降级 | 中心 failed 后才执行 `plan_degraded()`；可选 ground backup/fixed tethered secondary/mobile high recon/representative；不收敛不发布有效 assignments | `coordinator.py`、`tests/test_coordinator.py` |
-| 二级节点 lifecycle | heartbeat age/stale、lease、coverage、requested coverage match、video/cue freshness、cue stale、gimbal pointing、coverage ratio、cross-view support、固定/机动二级分类、link stale/fresh、`secondary_available` | `active_degradation.py`、`models.py`、`tests/test_active_degradation.py` |
-| 主动降级仲裁 | 输出 `continue_center`、`request_center_replan`、`request_secondary_assist`、`degrade_to_secondary`、`degrade_to_distributed`、`hold_for_review`；2026-07-07 已区分硬风险和软证据，避免 cost margin 低、低终端置信度或无冲突 `ambiguous/reacquire` 导致每帧重规划/降级 | `active_degradation.py`、`tests/test_active_degradation.py` |
+| 二级节点 lifecycle | heartbeat age/stale、lease epoch/expiry、coverage、requested coverage match、video/cue freshness、cue stale、gimbal pointing、coverage ratio、cross-view support、固定/机动二级分类、link stale/fresh、`secondary_available`、visible/registered/takeover_capable/capability score | `active_degradation.py`、`models.py`、`tests/test_active_degradation.py` |
+| 主动降级仲裁 | 输出 `continue_center`、`request_center_replan`、`request_secondary_assist`、`degrade_to_secondary`、`degrade_to_distributed`、`hold_for_review`；2026-07-07 已区分硬风险和软证据，避免 cost margin 低、低终端置信度或无冲突 `ambiguous/reacquire` 导致每帧重规划/降级；当前无冲突 `reacquire` 只请求二级 cue/继续观察，不直接接管 | `active_degradation.py`、`tests/test_active_degradation.py` |
 | D1/D2/D3/D5 adapter | duck typing/dict 读取 covariance/age、ambiguity/IDSW/continuity、plan/version/freshness/cost、terminal/cross-view/friend conflict，并归一化 dict/object 形式二级节点的 `role/capability_class/cue_freshness/gimbal/coverage` | `adapter.py`、`tests/test_arbitration_adapter.py` |
 | D5 distributed visual evidence normalization | `build_distributed_visual_evidence_summary()`、`attach_distributed_visual_evidence()`、`merge_distributed_visual_evidence_into_tracks()` | `adapter.py`、`tests/test_arbitration_adapter.py` |
 | 完全无中心 CBBA 风险加权 | D5 visual support 调整出价；hold/friend/stale/missing/conflicting ID 阻止 bid；duplicate lock 风险审计 | `cbba.py`、`tests/test_cbba.py` |
 | `assignment_audit` | 输出 owner、visual support、hold/ambiguous/duplicate IDs、confidence/ambiguity、hypothesis、ID 风险和 reason | `cbba.py`、`tests/test_cbba.py` |
-| D6 event metadata | `D4DecisionRecord.to_event_record_kwargs()` 输出 D6-compatible kwargs 和 metadata，含三值 review label、pre/post window、secondary diagnostic、network coverage gap、plan activation delay 和 takeover necessity/success 字段 | `adapter.py`、`tests/test_arbitration_adapter.py` |
+| D6 event metadata | `D4DecisionRecord.to_event_record_kwargs()` 输出 D6-compatible kwargs 和 metadata，含三值 review label、pre/post window、secondary diagnostic、network coverage gap、capability score、lease/executable/reject reason、hard/soft risk、false-trigger candidate、plan activation delay 和 takeover necessity/success 字段 | `adapter.py`、`tests/test_arbitration_adapter.py` |
 | D6 CBBA report metadata | `build_cbba_d6_metadata()` 输出 coordination mode、leader、coverage、CBBA 收敛/通信/审计指标和 cost gap 扁平字段；`run_failover_simulation()` 顶层 metrics 透出 secondary/distributed 分组字段 | `cbba.py`、`simulation.py`、`tests/test_cbba.py`、`tests/test_simulation.py` |
-| D7 二级接管门控辅助 | `build_d7_secondary_handoff()` 阶段 1 不放行 visual PNG，阶段 2 必须带新 plan id/version | `active_degradation.py`、`tests/test_airsim_phase1_dry_run_contracts.py` |
-| secondary takeover plan metadata | `SecondaryTakeoverPlanMetadata` 输出 pending/active 状态、当前/二级 plan id/version、source node、supersedes plan 和 reassignment complete 字段；D4 不生成系统级 `AssignmentPlan` | `active_degradation.py`、`adapter.py`、`tests/test_arbitration_adapter.py` |
+| D7 二级接管门控辅助 | `build_d7_secondary_handoff()` 阶段 1 不放行 visual PNG，阶段 2 必须带新 plan id/version，且二级 plan lease 未过期、epoch 单调 | `active_degradation.py`、`tests/test_airsim_phase1_dry_run_contracts.py` |
+| secondary takeover plan metadata | `SecondaryTakeoverPlanMetadata` 输出 pending/active 状态、当前/二级 plan id/version、source node、lease epoch/expiry、epoch monotonic、executable/reject reason、恢复双轨审计、supersedes plan 和 reassignment complete 字段；过期二级 plan 不可执行；当前 secondary-owned 同 id/version plan 可保持 active，不被误判为非单调替换；D4 不生成系统级 `AssignmentPlan` | `active_degradation.py`、`adapter.py`、`tests/test_arbitration_adapter.py` |
 | CBBA vs 中心化 cost gap helper | `build_cbba_cost_gap_benchmark()` 对比 D4 CBBA result 与 D3/main 提供的中心 plan/cost matrix，输出 cost/completion/conflict/message gap 字段 | `models.py`、`cbba.py`、`tests/test_cbba.py` |
 | main/runtime P1 消费基线 | main 已接入 D4 adapter event、`request_center_replan -> D3 new version`、secondary takeover owner/version 和 D7 owner gate；controlled 2v2 secondary visual PNG 回归已通过；P1 D4/D5 calibration sweep 已能批量改变二级节点高度/FOV/数量/standoff，并自动生成 D6 AirSim calibration report bundle。此项为 main-owned 集成证据，D4 只消费/输出 metadata | `research_modules/airsim_runtime/tests/test_blocks_runtime.py::test_main_episode_bus_marks_secondary_takeover_plan_for_d7`、`::test_controlled_2v2_active_degradation_secondary_plan_visual_png` |
 | N 规模输入 | 仿真、CBBA 和测试按输入列表长度运行 | `simulation.py`、`scripts/run_failover_simulation.py`、`tests/test_simulation.py`、`tests/test_cbba.py` |

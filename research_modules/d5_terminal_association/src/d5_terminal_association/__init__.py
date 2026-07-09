@@ -4,7 +4,7 @@ The package only performs offline/simulation association decisions. It never
 rewrites center-owned global track identifiers.
 """
 
-from .associator import AssociationConfig, TerminalAssociator
+from .associator import AssociationConfig, TerminalAssociator, calibration_health_metadata
 from .airsim_cv_adapter import (
     AirSimCVScenarioSpec,
     CalibrationSeedReadiness,
@@ -173,6 +173,7 @@ __all__ = [
     "binding_from_assignment",
     "bbox_area_stability",
     "camera_model_from_airsim_camera_info",
+    "calibration_health_metadata",
     "compute_terminal_stress_metrics",
     "candidate_cost_margin",
     "evaluate_associations_offline",
