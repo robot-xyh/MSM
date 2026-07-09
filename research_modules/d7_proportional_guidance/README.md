@@ -1,6 +1,6 @@
-# D7 比例导引离线研究模块
+# D7 比例导引与末端视觉 PNG 模块
 
-本模块实现“经典比例导引架构”的离线二维质点版本，用于算法解释、日志评估、研究仿真和后续全流程闭环可视化接入。模块只处理抽象的 `GuidanceState`、`GuidanceCommand` 和 `GuidanceRecord`，不包含真实飞控接口、硬件驱动、实时通信、火控参数、毁伤模型、自动处置或授权绕过逻辑。
+本模块实现“经典比例导引架构”的二维研究核、D3/D4/D5 terminal contract、末端视觉 PNG gate 和 D7-owned runtime bus 日志适配。模块只处理抽象的 `GuidanceState`、`GuidanceCommand`、`GuidanceRecord`、`VisionGuidanceObservation` 和版本化分配/末端锁定状态；main/runtime 可以消费 D7 输出的 SimpleFlight 兼容速度命令和 gate 字段，但 D7 本身不直接连接 AirSim、SimpleFlight、PX4、硬件接口、火控参数、毁伤模型、自动处置或授权绕过流程。
 
 ## 目录
 
@@ -125,7 +125,7 @@ AirSim Blocks 2v2 主动降级链路采用保守解释：D4 `degrade_to_secondar
 从仓库根目录执行：
 
 ```bash
-python3 -m pytest research_modules/d7_proportional_guidance/tests
+python3 -m pytest -q research_modules/d7_proportional_guidance/tests
 ```
 
 ## 接口示例
@@ -218,4 +218,4 @@ PY
 
 ## 边界
 
-该模块只用于离线二维质点仿真和日志分析。它不读取或写入真实平台接口，不控制实体设备，不处理作战授权，不提供毁伤评估，也不输出可直接用于真实系统执行的控制命令。
+该模块用于离线二维质点仿真、runtime state injection、末端视觉 PNG gate 和报告/advisory 字段生成。它不读取或写入真实平台接口，不控制实体设备，不处理作战授权，不提供毁伤评估，也不创建、分配或改写 `global_track_id`；`PngGuidanceCommand.velocity_ned` 是供 main/runtime 仿真消费的 SimpleFlight 速度抽象，不是可直接用于真实系统执行的控制命令。

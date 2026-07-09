@@ -729,9 +729,9 @@ AssignmentPlan
 
 ---
 
-## 八、六子智能体研发编排与统一数据总线
+## 八、七子智能体研发编排与统一数据总线
 
-本节把系统拆成六个科研子智能体并行推进。边界仍然保持在传感器融合、目标关联、资源分配、降级协同、末端配准和评估统计层面；不定义真实火控参数、毁伤模型、自动处置控制律或绕过人工授权的流程。
+本节把系统拆成七个科研子智能体并行推进。边界仍然保持在传感器融合、目标关联、资源分配、降级协同、末端配准、评估统计和比例导引合同门控层面；不定义真实火控参数、毁伤模型、自动处置控制律或绕过人工授权的流程。
 
 ### 8.0 子智能体综述与子方案索引
 
@@ -745,6 +745,7 @@ AssignmentPlan
 | D4 | [D4_DISTRIBUTED_FALLBACK_REVIEW_AND_PLAN.md](subagent_reviews/D4_DISTRIBUTED_FALLBACK_REVIEW_AND_PLAN.md) | 中心失效、备份接管、CBBA/拍卖降级 |
 | D5 | [D5_TERMINAL_ASSOCIATION_REVIEW_AND_PLAN.md](subagent_reviews/D5_TERMINAL_ASSOCIATION_REVIEW_AND_PLAN.md) | 末端视觉配准、局部MOT、友方正向认证 |
 | D6 | [D6_EVALUATION_METRICS_REVIEW_AND_PLAN.md](subagent_reviews/D6_EVALUATION_METRICS_REVIEW_AND_PLAN.md) | 评估指标、日志模型、批量实验统计 |
+| D7 | [D7_PROPORTIONAL_GUIDANCE_REVIEW_AND_PLAN.md](subagent_reviews/D7_PROPORTIONAL_GUIDANCE_REVIEW_AND_PLAN.md) | 雷达中段 PN、末端视觉 PNG、导引合同门控 |
 
 ### 8.1 总体依赖与数据总线
 
@@ -761,11 +762,14 @@ D3 AssignmentPlanner
   GlobalTrack + ResourceState -> AssignmentPlan
 
 D4 DistributedFallback
-  C2Health + TrackSummary + ResourceSummary -> degraded AssignmentPlan
+  C2Health + TrackSummary + ResourceSummary -> degradation action / fallback metadata
 
 D5 TerminalAssociation
   GlobalTrack + AssignmentPlan + LocalVisualTrack + IdentityClaim
   -> TerminalAssociation
+
+D7 ProportionalGuidance
+  AssignmentPlan + D4 action + TerminalAssociation -> PN/PNG guidance records
 
 D6 Evaluation
   consumes all logs -> EpisodeMetrics / BatchExperimentReport
@@ -778,7 +782,9 @@ D6 Evaluation
 | D1 | D2/D3/D5 | `GlobalTrack` | 必须带时间戳、坐标系、协方差和置信度 |
 | D2 | D3/D5 | 稳定 `global_track_id` | ID切换必须记录，不允许静默覆盖 |
 | D3 | D5/D4 | `AssignmentPlan` | 带`plan_id/version`，禁止局部节点自行换绑 |
+| D4 | D3/D5/D7/D6 | 降级动作、二级接管 metadata、fallback 协商摘要 | D4 不直接生成中心系统级计划，二级 plan version 由 main/D3 回填 |
 | D5 | D2/D3 | `TerminalAssociation`、`IdentityClaim` | 只修正置信度和歧义状态，不直接改任务 |
+| D5/D3/D4 | D7 | 当前分配、降级允许状态、末端锁定证据 | D7 只在 D3/D4/D5 gate 全通过时进入视觉 PNG |
 | D6 | 全部 | 日志与指标 | 独立运行，不参与任务决策 |
 
 统一消息约定：
@@ -811,6 +817,7 @@ uncertainty:
 /local_visual_track
 /terminal_association
 /identity_claim
+/guidance_record
 /evaluation_event
 ```
 

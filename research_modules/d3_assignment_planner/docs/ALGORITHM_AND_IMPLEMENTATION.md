@@ -216,9 +216,9 @@ D3 侧建议持续计算以下信号，并写入计划日志或单独的 `Assign
 
 这些信号都是离线仿真和候选计划有效性指标，不表示真实处置命令。
 
-### 8.2 `AssignmentValiditySummary` 建议结构
+### 8.2 `AssignmentValiditySummary` 已实现结构
 
-当前 D3 已实现精简版 `AssignmentValiditySummary`，用于把 main/D4/D6 需要的 P1 运行时摘要从 `AssignmentPlan` 中稳定导出：
+当前 D3 已实现 `AssignmentValiditySummary`，用于把 main/D4/D6 需要的 P1 运行时摘要从 `AssignmentPlan` 中稳定导出，并同步覆盖 N/M replay 所需的规模和变更计数字段：
 
 ```python
 AssignmentValiditySummary(
@@ -230,6 +230,12 @@ AssignmentValiditySummary(
     stale_plan_version: bool,
     duplicate_assignment_count: int,
     unassigned_high_threat_count: int,
+    resource_count: int,
+    target_count: int,
+    assigned_count: int,
+    hysteresis_reject_count: int,
+    stale_reject_count: int,
+    reassign_count: int,
 )
 ```
 
@@ -255,6 +261,8 @@ summary = assignment_validity_summary_from_plan(
 - `stale_plan_version`：调用方提供的最新 `plan_id/version` 与该计划不一致时为真。
 - `duplicate_assignment_count`：同一目标被多个资源分配或同一资源被多个目标分配的异常计数。
 - `unassigned_high_threat_count`：未分配集合中高威胁目标数量，可由 `tracks` 和 `high_threat_threshold` 或显式 high-threat ID 集合计算。
+- `resource_count`、`target_count`、`assigned_count`：按当前输入和输出计划记录真实规模，不假设目标数等于资源数。
+- `hysteresis_reject_count`、`stale_reject_count`、`reassign_count`：供 D6 聚合迟滞保持、stale 拒绝和重分配趋势，也供 `summarize_assignment_mismatch_replay(...)` 聚合非等量 N/M replay。
 
 该 summary 只描述计划有效性、成本变化、版本时效和跨模块一致性，不包含真实硬件、火控或自动处置含义。更细的 D2 不确定性、D5 多帧一致性、D4 主动降级执行状态仍由 main/D4 在运行时闭环里聚合。
 
@@ -412,7 +420,7 @@ D2 提供稳定 `global_track_id` 和航迹质量。D3 不应自行合并、拆�
 
 D4 主动降级场景下，D3 应额外提供 `AssignmentValiditySummary` 或等价日志字段。D4 可以按 `recommended_action` 处理：`central_replan` 由 D3 继续发布新版本；`request_d4_secondary_node` 交给二级侦察/区域节点仲裁；`request_d4_distributed` 才进入完全分布式协同。D3 不应越权选择具体降级节点，只提供计划有效性、版本、成本和跨模块一致性证据。
 
-当前 main runtime 已接入中心重规划闭环：`request_center_replan` 完成后会登记新的 `active_plan_owner=center`、`plan_id/version`、`replan_reason`、superseded previous plan 和 stale/rejected plan 归因。D3 侧只负责继续发布版本化 plan/binding evidence，并保持 stale 版本拒绝。仍待 D4/main 完整定义的是二级 takeover 后的 secondary owner、epoch/lease、版本 supersede、中心恢复合并和 stale secondary plan 拒绝规则。
+当前 main runtime 已接入中心重规划闭环：`request_center_replan` 完成后会登记新的 `active_plan_owner=center`、`plan_id/version`、`replan_reason`、`supersedes_plan_id`、`supersedes_plan_version` 和 stale/rejected plan 归因。D3 侧只负责继续发布版本化 plan/binding evidence，并保持 stale 版本拒绝。二级 takeover 的 D3 DTO 也已能通过 `prepare_secondary_takeover_plan(...)` 标记 `secondary_plan_v2`、owner/source node、superseded center plan id/version、可选 epoch/lease 和 `allow_local_rebind=False`；main runtime 已记录 secondary owner/version/source。仍待 D4/main 真实多 seed 校准的是二级租约/heartbeat、中心恢复合并、active owner 仲裁和 stale secondary plan runtime 拒绝策略。
 
 若 D4/main 发布二级计划，应在 `AssignmentPlan.metadata["plan_schema"]` 中标记 `secondary_plan_v2`，并提供外部确定的 `source_node_id`/`target_node_id`/`link_type`。D3 的 `AssignmentGuidanceBinding` 会原样携带该 schema、`plan_id` 和 `plan_version`，并保持 `allow_local_rebind=False`；D3 不推断或选择具体二级节点。
 
@@ -436,13 +444,13 @@ D6 还应统计 `AssignmentValiditySummary` 的状态分布，区分中心滚动
 - Hungarian 只表达一对一主分配，不支持容量、备份资源或多窗口全局优化。
 - `conflict_risk` 是外部传入的边级摘要，未在 D3 内部计算真实轨迹冲突。
 - `human_authorization_state` 当前由 `PlannerConfig` 配置，默认 `required`；模块不实现授权工作流，也不把记录态仿真字段解释为处置授权。
-- 仿真覆盖 8v8 滚动场景，仍需扩展到不同目标密度、通信降级和 D5 末端模糊反馈闭环。
-- `AssignmentValiditySummary` 已实现为代码数据类，并可通过 `assignment_validity_summary_from_plan(...)` 从 `AssignmentPlan` 导出；D6-compatible assignment record 也可由 `assignment_records_from_plan(...)` 生成。后续局限在于真实运行时是否持续写入这些摘要，而不是 D3 模块缺少数据结构。
+- 离线脚本覆盖 8v8 滚动场景；真实 AirSim/P1 仍需在 2v2、5v5、8v8、非等量 M/N、crossing/dense 场景中做多 seed 校准。
+- `AssignmentValiditySummary`、D6-compatible `AssignmentRecord`、N/M replay summary 和 D5 feedback calibration summary 已实现。后续局限在于真实 episode records 是否持续、稳定地写入并能支撑参数标定，而不是 D3 模块缺少数据结构。
 
 后续建议：
 
-- 与 D2/D5 建立统一反馈字段，把 ID Switch 风险、终端模糊和友方重叠映射到 D3 代价项。
-- 为 D4 增加计划版本冲突和中心恢复合并的集成测试。
-- 在 main 运行时持续调用 D3 侧有效性评估器，输出 `AssignmentValiditySummary` 并由 D6 统计触发原因。
+- 基于真实 D6 records 和 P1 calibration sweep bundle 复核 D2 ID Switch 风险、D5 duplicate/friend/fov/geometry feedback、禁配边、`operator_hold` 和 D3 迟滞参数的长期权重阈值。
+- 配合 D4/main 校准计划版本冲突、二级 owner/lease、中心恢复合并和 stale secondary plan 拒绝策略；D3 不在本模块内实现 runtime 仲裁。
+- 在 main 运行时持续调用 D3 侧有效性评估器，输出 `AssignmentValiditySummary`、`AssignmentRecord` 和 D5 feedback calibration/replay summary，并由 D6 统计触发原因。
 - P2/非本轮在保持接口不变的前提下实现 OR-Tools 最小费用流可选后端。
 - 由 D6 批量运行多随机种子、多权重、多密度场景，输出统一中文实验报告和图表。

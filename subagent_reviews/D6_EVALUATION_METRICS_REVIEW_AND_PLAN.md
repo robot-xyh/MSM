@@ -26,7 +26,8 @@ D6 的目标是把 D1-D7 和 main runtime 的离线日志统一为可比较、�
 - AirSim calibration：`load_airsim_calibration_records()` 与 `AirSimCalibrationReportGenerator` 读取 D4/D5 stress metrics、AirSim summary 和 main bus metrics，按 `metric_scope/seed/scenario/secondary_height/FOV/secondary_count/detection_backend` 输出 CSV、JSON 和中文 Markdown；P1 二级侦察校准字段覆盖 `secondary_detect_count`、`secondary_visible_target_union_ratio`、`secondary_network_joint_full_view_frame_rate`、`projection_valid_rate`、`geometry_gate_pass_rate`、`registered_candidate_count`、`stable_cross_view_registration_count`、`not_registered_count`。
 - main runtime 接入：2026-07-08 起，`--p1-calibration-sweep` 在 batch 结束后自动调用 D6 `AirSimCalibrationReportGenerator.write_report_bundle()`，生成 `d6_airsim_calibration/airsim_calibration_records.csv`、`airsim_calibration_summary.csv`、`airsim_calibration_summary.json` 和 `airsim_calibration_report.md`。D6 不启动 AirSim、不调度 episode、不控制二级节点或终端关联。
 - main/orchestrator 2026-07-07 已把 D7 真实执行指标合并进正式 `main_episode_bus_metrics.json`，并把执行前合同检查保留为 `main_episode_bus_contract_metrics.json`；D6 只消费这些写盘结果，不参与控制。
-- 2026-07-08 main 最新 AirSim `p1_d4d5_mobile_recon_20260708_055948*` 批次为 3 seeds x 3 D4/D5 stress cases，200 m 高差 `mobile_recon_gimbal/mobile_high_recon`，二级相机 80 deg FOV、1920x1080；所有 episode `connected=True`、13 frames、`image_ok_count=13`。D6 已能自动汇总该类 mobile recon 与 fixed downlook secondary 指标。
+- 2026-07-08 `p1_d4d5_mobile_recon_20260708_055948*` 是历史 mobile recon stress 批次，可保留为 D6 已能消费 `mobile_recon_gimbal`、coverage、bbox、gimbal 和 funnel 字段的旧证据。
+- 当前最新 P1 registration calibration v2 为 `research_modules/airsim_runtime/outputs/p1_d4d5_registration_calibration_runtime_v2_20260708*`，D6 bundle 已生成 `airsim_calibration_records.csv`、`airsim_calibration_summary.csv`、`airsim_calibration_summary.json` 和 `airsim_calibration_report.md`。
 
 部分实现 / 剩余 P1：
 
@@ -34,8 +35,8 @@ D6 的目标是把 D1-D7 和 main runtime 的离线日志统一为可比较、�
 - D7 real execution 的正式/contract 双口径已完成主线；D6 已补 `metric_scope`、main bus metrics JSON loader、reject reason 分布输出和按 seed/scenario/实际规模分组的报告口径。剩余工作是多 seed、5v5/N-v-N 和非默认 episode 持续采用同一双口径。
 - D6 已具备 D4/D5/D7/Blocks 离线消费能力，但真实 integrated episode 仍需要 main runtime 在同一 episode 目录写盘、对齐时间轴并调用多个 loader 合并。
 - D4 主动降级已能统计次数、secondary takeover/reassignment、pending、窗口 delta、`active_degradation_precision` 和 `unnecessary_active_degradation_count`；必要性/精度只消费真实 episode 写出的 review label 或后验字段，缺 label 不进入 precision 分母。
-- D6 已补二级视角/侦察云台指标，能从 main/D4/D5 写盘 metadata 汇总 fixed downlook secondary 与 mobile recon gimbal 的 coverage、cross-view、D5 registration miss、projection/gate/stable registration 和 cue/gimbal pointing error；2026-07-08 mobile recon 批次显示 `secondary_gimbal_pointing_ok_rate=1.0`，`secondary_network_joint_full_view_frame_rate=0.0`，`secondary_network_mean_coverage_ratio` 聚合均值约 0.67，bbox mean 约 3.3k px^2，主要断点为 `not_all_targets_visible` / `network_union_incomplete`。相对固定俯视 200 m/110 deg，bbox 面积提升，但 full-view 未解决。
-- 剩余 P1 聚焦更多批次的 coverage/funnel/gimbal/projection/gate/stable registration 长期趋势、active degradation precision 的真实 `review_label`/后验字段、D7 guidance reject reason 分布和 actual scale 分组回归。
+- D6 已补二级视角/侦察云台指标，能从 main/D4/D5 写盘 metadata 汇总 fixed downlook secondary 与 mobile recon gimbal 的 coverage、cross-view、D5 registration miss、projection/gate/stable registration 和 cue/gimbal pointing error；当前 registration calibration v2 为 single seed、3 case，height 200 m、FOV 110 deg、secondary_count 3，指标为 `projection_valid_rate=1.0`、`geometry_gate_pass_rate≈0.474`、stable cross-view registration 51/55/53、cross-view association 4/4/5、degradation case `not_registered_count=35/35`、full-view mean≈0.048、best≈0.143、coverage mean≈0.771。
+- 剩余 P1 聚焦更多真实 AirSim 多 seed/N-v-N 数据和 review labels，形成 coverage/funnel/gimbal/projection/gate/stable registration/not-registered/D7 reject 长期趋势；D6 继续只消费日志，不参与控制，也不从 `2v2/5v5` 场景名推断规模。
 
 未实现：
 
@@ -283,7 +284,7 @@ D5 不得本地改写 `global_track_id`。D6 只统计末端绑定与中心/评�
 - 写出 terminal association、identity claim、terminal-center disagreement、cross-view conflict、duplicate lock、friend overlap hold、validation label。
 - 保留 bbox、相机内外参、timestamp、`resource_id/camera_id`、`local_track_id`、`assigned_global_track_id`。
 - 为移动侦察云台节点稳定记录几何、FOV、分辨率、cue source、目标覆盖集合/计数、cross-view association 结果、D5 registration 状态和指向误差。
-- 2026-07-08 mobile recon stress 已写出 `mobile_recon_gimbal`、`mobile_high_recon`、200 m 高差、80 deg FOV、1920x1080、coverage、bbox、funnel breakpoint 和 gimbal OK 指标；D6 已能把这些字段跨 seed/case 自动汇总，长期趋势需要更多批次持续输入。
+- 2026-07-08 mobile recon stress 已写出 `mobile_recon_gimbal`、`mobile_high_recon`、coverage、bbox、funnel breakpoint 和 gimbal OK 指标，是 D6 消费该类字段的历史证据；当前 P1 registration calibration v2 进一步写出 height 200 m、FOV 110 deg、secondary_count 3、projection/gate/stable registration/not-registered/D7 reject 指标，并由 D6 bundle 汇总。长期趋势需要更多真实 AirSim 多 seed/N-v-N 批次持续输入。
 
 ### 5.5 D7
 
@@ -473,7 +474,7 @@ D7 gate/intercept：
 
 ## 9. P1 下一步
 
-1. 多 seed 自动汇总与 coverage/funnel/gimbal 长期趋势：持续使用 main runtime P1 calibration sweep 自动生成的 D6 bundle，比较 `mobile_recon_gimbal` 与 `fixed_downlook_secondary` 的 coverage、full-view、funnel breakpoint、bbox area 和 cue/gimbal pointing 指标；当前 mobile recon bbox 面积提升，但 full-view 仍为 0.0。
+1. 多 seed 自动汇总与 coverage/funnel/gimbal 长期趋势：持续使用 main runtime P1 calibration sweep 自动生成的 D6 bundle，比较 `mobile_recon_gimbal` 与 `fixed_downlook_secondary` 的 coverage、full-view、funnel breakpoint、projection/gate、stable registration、not-registered、D7 reject、bbox area 和 cue/gimbal pointing 指标；当前 registration calibration v2 已验证报告链路，剩余是更多真实 AirSim 多 seed/N-v-N 数据和 review labels 形成长期趋势。
 2. active degradation precision 真实标签：main/D4 稳定写出 review label、trigger/decision timestamp、selected coordinator、coverage cell、pre/post window 和后验 outcome/risk 字段；D6 不从事件名推断必要性。
 3. 多 seed 双口径与 actual scale 报告：在 2v2、5v5、N-v-N 和非默认 episode 批量运行中持续保留 `metric_scope=execution/contract`、seed/scenario/实际规模字段、D7 guidance/control/intercept metadata、guidance reject reason metadata 和 D4/D5 calibration geometry 字段；D6 已能读取 main bus 双口径 metrics JSON 并输出相应报告分组。
 4. 真实 episode 日志完整性：D4/D5/D7/Blocks 产物持续落到同一 episode clock 和目录，D6 汇总阶段调用 loader 合并；D6 继续只消费日志，不参与控制、重规划或导引。

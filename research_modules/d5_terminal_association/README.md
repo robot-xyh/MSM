@@ -16,7 +16,7 @@ pytest -q research_modules/d5_terminal_association/tests
 python3 research_modules/d5_terminal_association/simulations/run_terminal_association_sim.py --frames 120 --seed 7
 ```
 
-当前实现仅依赖 Python 标准库、NumPy 和 OpenCV；测试使用 pytest。OpenCV 不可用时，投影函数会退回简化针孔模型。
+核心测试仅依赖 Python 标准库、NumPy、OpenCV 和 pytest；OpenCV 不可用时，投影函数会退回简化针孔模型。`YoloMotAdapter` 可选使用 `ultralytics` 与本地权重运行 YOLOv8/ByteTrack/BoT-SORT，缺依赖或原生 tracker 不可用时会返回 `unavailable` 或退回确定性 IoU tracker。
 
 ## 核心接口
 

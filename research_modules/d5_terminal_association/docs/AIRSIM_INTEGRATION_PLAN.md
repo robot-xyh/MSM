@@ -36,13 +36,15 @@ MOT 的 `local_track_id` 只作为本地观测 ID，不得替代或重写 `globa
 
 ### 当前实际实现状态
 
-当前 D5 已实现的是 AirSim ComputerVision bbox dry-run adapter 和相机几何离线验证辅助：
+当前 D5 已实现的是 AirSim ComputerVision bbox dry-run adapter、相机几何离线验证辅助、detect-to-global-track registration helper 和可选 YOLO/MOT frame adapter：
 
 - 已接入：`simGetDetections` 风格 `box2D/bbox_xyxy/xyxy` schema 转 `LocalVisualTrack`，`TerminalObservationBus` 汇总多相机观测，`TerminalCrossViewFusion` 输出 metadata-only peer evidence。
-- 部分接入：OpenCV 用于 `projectPoints` 投影和可选畸变参数消费；YOLO 仅兼容输出 schema；OpenDroneID/MAVLink/DDS/AprilTag 仅可通过仿真字典转为 `IdentityClaim`。
-- 未接入：真实 YOLO 推理、ByteTrack/BoT-SORT/Deep SORT tracker、OpenCV calibration/`solvePnP` 标定链、ROS 2 `tf2/message_filters`、真实 OpenDroneID/MAVLink/DDS/AprilTag 身份认证链路。
+- 已接入：`register_local_visual_tracks_to_global_tracks()` 按 `GlobalTrack[]`、D2/D3 binding/`Assignment`、每相机 `CameraModel(K/R/t)`、timestamp、像素协方差和 `LocalVisualTrack[]` 做像素马氏门控 + Hungarian/确定性唯一匹配，输出 registration candidate、`TerminalObservation`、即时 `CrossViewAssociation` 和稳定 `stable_cross_view_associations`。candidate/observation metadata 携带 `pixel_error_px`、`mahalanobis_d2`、`gate_pass`、`projection_valid`、`camera_pose_source`、`bbox_area_px`、`offline_truth_global_id` 和 3 帧 2 次通过的稳定窗口字段；truth/actor ID 只作为离线 metadata。
+- 已接入：`YoloMotAdapter.process_frame()` 可消费图像帧或 mock detector 输出；默认权重路径为 `/home/linux/Documents/MSM/research_modules/d5_terminal_association/best.pt`，可请求 ultralytics ByteTrack/BoT-SORT 原生 tracker，依赖、权重或原生 tracker 不可用时返回 `unavailable` 或退回确定性 IoU tracker，并在 metadata 中标明实际 detector/tracker backend。
+- 部分接入：OpenCV 用于 `projectPoints` 投影和可选畸变参数消费；OpenDroneID/MAVLink/DDS/AprilTag 仅可通过仿真字典转为 `IdentityClaim`。
+- 未接入：main/AirSim 连续 RGB/PNG 图像流到 `YoloMotAdapter` 的 episode 接线、GPU/CPU 部署参数与真实多 seed 阈值标定、Deep SORT/ReID、OpenCV calibration/`solvePnP` 标定链、ROS 2 `tf2/message_filters`、真实 OpenDroneID/MAVLink/DDS/AprilTag 身份认证链路。
 
-因此，若 main/runtime 提供真实 detector 或 tracker 输出，D5 只消费归一化后的 bbox、类别、置信度、时间戳和本地 track ID；D5 不负责运行 detector/tracker，也不把 tracker ID 提升为全局身份。
+因此，若 main/runtime 提供真实 frame、detector 或 tracker 输出，D5 只消费归一化后的 bbox、类别、置信度、时间戳和本地 track ID；D5 不管理 AirSim 图像采集、GPU 部署或 episode 调度，也不把 tracker ID 提升为全局身份。
 
 ### ComputerVision N-v-N 多镜头压力输入
 
@@ -134,8 +136,9 @@ ComputerVision N-v-N 专项回放中，额外执行：
 1. 对 runtime 当前提供的所有 camera/resource 分别调用检测转换 helper，统计每个镜头检测数量。
 2. 对每个资源发布本地观测和终端关联结果。
 3. 对二级系留侦察镜头发布已重投影的 `ReconImageCue`；过期或不可用 cue 必须显式标记。
-4. 调用 `TerminalObservationBus.cross_view_associations()` 汇总重叠视场支持。
-5. 调用 `compute_terminal_stress_metrics()` 和 `summarize_degradation_case()` 生成 D5 证据。
+4. 调用 `register_local_visual_tracks_to_global_tracks()` 把本地 detect 注册为既有 `global_track_id` 的候选/稳定跨视角支持；单帧 gate pass 只作为 candidate，默认 3 帧内 2 次通过才进入稳定支持。
+5. 调用 `TerminalObservationBus.cross_view_associations()` 或 registration result 中的 `cross_view_associations` / `stable_cross_view_associations` 汇总重叠视场支持。
+6. 调用 `compute_terminal_stress_metrics()`、`summarize_degradation_case()`、`summarize_multiseed_calibration_readiness()` 和 `summarize_secondary_visual_coverage_funnel()` 生成 D5 证据、字段覆盖审计和二级 detect 漏斗。
 
 三类证据输出语义：
 
@@ -158,6 +161,10 @@ ComputerVision N-v-N 专项回放中，额外执行：
 - `duplicate_terminal_lock_risk`。
 - `terminal_lock_accuracy`。
 - `ambiguous_fov_event_count`。
+- `registered_to_global_track` / `geometry_gate_rejected` / `stability_window_failed` / `network_union_incomplete` reason counts。
+- `camera_pose_source`、`bbox_area_px`、`pixel_error_px`、`mahalanobis_d2`、`gate_pass` 和 `projection_valid` 字段覆盖率。
+- `secondary_single_camera_full_view_frame_rate` 与 `secondary_network_joint_full_view_frame_rate`。
+- `detector_backend` / `tracker_backend` 分布，以及 YOLO/MOT 多 seed 阈值标定结果。
 
 ## 防护约束
 
@@ -170,8 +177,8 @@ ComputerVision N-v-N 专项回放中，额外执行：
 
 ## 里程碑
 
-1. 用 AirSim 真值投影生成 `LocalVisualTrack`，复现当前合成仿真指标。
-2. 加入图像噪声、遮挡和漏检，评估 `ambiguous/reacquire` 行为。
-3. 接入离线 MOT 输出，比较 ByteTrack、BoT-SORT、Deep SORT 与 D5 关联层。
-4. 加入模拟身份声明异常，包括 stale、unverified、spoof_suspected。
-5. 固化离线评估报告模板和结果 JSON 导出。
+1. 已完成 AirSim `simGetDetections` bbox dry-run、geometry log、truth ID 在线隔离、YOLO/MOT frame adapter、detect-to-global-track registration、multi-seed readiness helper 和 secondary coverage funnel。
+2. 已完成 P1 D4/D5 calibration sweep 与 D6 bundle 的 D5 evidence 输入口径；D5 不启动 AirSim、不写总报告，只维护 evidence DTO、registration helper、truth ID 隔离和 `global_track_id` 不变式。
+3. 剩余 P1：用真实多 seed sweep 校准二级节点几何/覆盖策略、registration 门限、AirSim camera pose metadata、YOLO/MOT 阈值和 D4/D7 消费口径。
+4. 剩余 P1/P2：建立 AirSim/replay 标定样本、`solvePnP`/PnP RANSAC、重投影误差阈值和外参 drift 告警。
+5. 剩余 P2：评估 BoT-SORT/Deep SORT/ReID 质量，接入真实身份来源为 `IdentityClaim` adapter，并在需要时接入 ROS 2 `tf2/message_filters`。

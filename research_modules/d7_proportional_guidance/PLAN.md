@@ -2,14 +2,14 @@
 
 ## 目标
 
-D7 提供一个可被主流程接入的离线二维比例导引研究模块。模块目标不是实现真实平台控制，而是给集成仿真提供清晰、可测试、可记录的“雷达中段 + 视觉末段”比例导引抽象：
+D7 提供一个可被主流程接入的二维比例导引研究核和被动 runtime 导引合同模块。模块目标不是实现真实平台控制，而是给集成仿真提供清晰、可测试、可记录的“雷达中段 + 视觉末段”比例导引、D3/D4/D5 gate 和 N-pair 日志抽象：
 
 - 中段使用 `radar_midcourse` 模式，输入来自全局航迹或雷达航迹估计。
 - 末段使用 `vision_terminal` 模式，输入来自像素/LOS 观测估计。
 - 视觉终端使用从 `png_guidance_delivery` 抽取的 SimpleFlight 兼容 PNG gate，先判断相机识别质量、LOS 质量、机动裕度和剩余窗口，再允许进入视觉 PNG/LOS 导引。
 - 输出统一的 `GuidanceRecord`，便于后续闭环日志、指标统计和 GIF 可视化。
 
-本模块只做离线二维质点运动、算法解释、日志评估和可视化准备；不提供真实飞控接口、硬件驱动、实时通信、火控参数、毁伤模型、自动处置或授权绕过逻辑。
+本模块只做离线二维质点运动、被动 runtime state injection、算法解释、日志评估和 calibration/advisory 字段生成；不提供真实飞控接口、硬件驱动、实时通信、火控参数、毁伤模型、自动处置或授权绕过逻辑。
 
 ## 当前代码与测试状态
 
@@ -36,7 +36,7 @@ D7 提供一个可被主流程接入的离线二维比例导引研究模块。�
 
 当前“部分实现”的能力如下：
 
-- AirSim SimpleFlight 真实控制已在 main/runtime 层接入 D7 API，并能输出 `control_commands.csv`、`intercept_summary.json`、D7 runtime summary 和 D6 可消费字段；正式 episode bus metrics 已可合并真实执行结果。main runtime 已新增 P1 D4/D5 calibration sweep，D6 标准报告 bundle 已自动生成。D7 本地已补齐多 seed calibration summary/advisory helper；剩余 P1 风险不在 D7 接口本体，而在真实 AirSim 多 seed PN/Pure Pursuit/PNG 对照数据采集、visual gate/range/closing speed 阈值建议验证、D4 降级窗口视觉 PNG 阻断回归、D5 locked + D3 owner/version + D4 allowed gate 回归和长期 D5 事件流稳定性。
+- AirSim SimpleFlight 真实控制已在 main/runtime 层接入 D7 API，并能输出 `control_commands.csv`、`intercept_summary.json`、D7 runtime summary 和 D6 可消费字段；正式 episode bus metrics 已可合并真实执行结果。main runtime 已新增 P1 D4/D5 calibration sweep，D6 标准报告 bundle 已自动生成。D7 本地已补齐多 seed calibration summary/advisory helper，D4 降级阻断、D5 locked、D3 owner/version 和 D4 allowed gate 已由 D7 单元测试覆盖；剩余 P1 风险不在 D7 接口本体，而在真实 AirSim 多 seed PN/Pure Pursuit/PNG 对照数据采集、visual gate/range/closing speed 阈值建议验证、这些 gate 在真实多 seed 执行中的回归呈现，以及长期 D5 事件流稳定性。
 - 相机 `X=0.5m` 前移、`640x480`/`120deg` FOV、`look_at_target` yaw 或 ComputerVision 相机朝向目标已在 AirSim runtime/settings/tests 中接入；D7 主线只消费 bbox 和固定 `focal_length_px` 近似，不直接管理真实相机外参、畸变或姿态估计。
 - `png_guidance_delivery` 的 truth/gimbal/strapdown、PX4、MAVLink body-rate、YOLO/ByteTrack 代码作为复现实验资料随 D7 保存；主线只抽取 bbox-to-bearing、LOS-rate、TTC/VM 增益和 SimpleFlight 速度命令这一轻量核。
 
@@ -110,7 +110,7 @@ D7 不分配目标、不授权、不创建或改写 `global_track_id`，也不�
 
 ### 视觉比例导引末段
 
-末段假设全局航迹切换为更高频的像素/LOS 观测。D7 中的 `vision_terminal` 模式使用离线几何生成 LOS 观测：
+末段假设全局航迹切换为更高频的像素/LOS 观测。离线仿真中，D7 的 `vision_terminal` 模式使用合成几何生成 LOS 观测；runtime/gate 路径则消费 D5/AirSim detect 或 replay 归一后的 `VisionGuidanceObservation`：
 
 - `los_angle_rad`：二维视线角。
 - `pixel_x`：由焦距和相对方位投影得到的抽象像素横坐标。
@@ -120,7 +120,7 @@ D7 不分配目标、不授权、不创建或改写 `global_track_id`，也不�
 工程重点：
 
 - 模式切换由距离阈值或时间阈值触发，进入末段后锁定 `vision_terminal`。
-- 视觉观测只用于离线估计，不绑定真实相机、云台或实时图像流。
+- D7 只消费 bbox、时间戳、local/global ID 和必要的相机元数据，不拥有真实相机、云台、图像流或 YOLO/ByteTrack 控制闭环。
 - 支持 LOS 噪声和距离噪声，便于评估末段记录质量。
 
 ## 数学模型

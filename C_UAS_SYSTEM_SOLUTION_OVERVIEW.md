@@ -2,11 +2,11 @@
 
 ## 0. 文档定位与边界
 
-本文是 `/home/linux/Documents/MSM` 仓库的主智能体总纲文件，用于把 D1-D6 六个子模块、现有代码、仿真结果、算法路线和后续集成计划整理成一套完整的反无人机多目标拦截科研仿真解决方案。
+本文是 `/home/linux/Documents/MSM` 仓库的主智能体总纲文件，用于把 D1-D7 七个子模块、现有代码、仿真结果、算法路线和后续集成计划整理成一套完整的反无人机多目标拦截科研仿真解决方案。
 
-本项目的研究对象是“多目标 vs 多目标”场景下的体系工程链路：复合探测、航迹融合、目标关联、资源分配、中心失效降级、末端视觉配准和系统级评估。当前实现服务于离线科研仿真、日志回放、算法对比和 AirSim 后续接入规划。
+本项目的研究对象是“多目标 vs 多目标”场景下的体系工程链路：复合探测、航迹融合、目标关联、资源分配、中心失效降级、末端视觉配准和系统级评估。当前实现服务于离线科研仿真、日志回放、算法对比和 AirSim Blocks 验证接入。
 
-当前场景想定包含中心 C2、高空系留侦察二级节点、拦截资源节点和入侵目标。中心节点负责全局态势与主分配；系留侦察无人机健康时提供高视角观测、视频/图像 cue 和局部区域态势摘要，中心节点失效时优先作为二级节点接管覆盖区域内的协调；二级节点不可用后才进入完全无中心的资源间协商。拦截无人机之间、拦截无人机与中心/二级节点之间、二级节点与中心之间均允许交换仿真数据，视频或图像 cue 主要由二级节点定向提供给小范围执行资源。
+当前场景想定包含中心 C2、高空侦察二级节点、拦截资源节点和入侵目标。二级节点可以是系留高空平台，也可以是随任务机动出动的高空侦察无人机；当前 AirSim P1 校准重点采用机动高空侦察相机节点。中心节点负责全局态势与主分配；二级侦察无人机健康时提供高视角观测、视频/图像 cue 和局部区域态势摘要，中心节点失效时优先作为二级节点接管覆盖区域内的协调；二级节点不可用后才进入完全无中心的资源间协商。拦截无人机之间、拦截无人机与中心/二级节点之间、二级节点与中心之间均允许交换仿真数据，视频或图像 cue 主要由二级节点定向提供给小范围执行资源。
 
 严格边界：
 
@@ -44,7 +44,7 @@
 
 ## 1.1 当前代码落地状态
 
-当前仓库已经形成 D1-D6 六个子模块和一个主集成仿真入口：
+当前仓库已经形成 D1-D7 七个子模块、离线集成仿真入口和真实 AirSim Blocks runtime：
 
 | 层级 | 目录 | 当前实现 |
 |---|---|---|
@@ -56,6 +56,7 @@
 | D6 | `research_modules/d6_evaluation_metrics/` | 全链路日志、EpisodeMetrics、CSV/Markdown/PNG 报告 |
 | D7 | `research_modules/d7_proportional_guidance/` | 经典二维比例导引，覆盖雷达航迹中段 PN 与视觉 LOS 末端 PN |
 | Main | `research_modules/integrated_simulation/` | 5v5 离线质点主程序，串联 D1-D7 并输出统一 JSONL、guidance CSV/JSON 和批量报告 |
+| AirSim Runtime | `research_modules/airsim_runtime/` | Blocks 启停、settings 生成、reset-separated episodes、SimpleFlight 控制、ComputerVision/actor target replay、D1-D7 main episode bus |
 
 主程序可运行：
 
@@ -70,6 +71,8 @@ python3 research_modules/run_smoke_simulations.py
 集成场景覆盖正常 5v5、中心节点被动失效、二级节点失效后完全分布式、末端视觉不一致触发主动降级、友方重叠触发保持审查。输出位于 `research_modules/integrated_simulation/outputs/`，其中包含每个 episode 的 `episode_log.jsonl`、`metrics.json`、`active_degradation_decisions.csv/json`、Markdown 报告和 D6 图表。
 
 D7 接入后，D3 初始分配和 D4 二次分配都会触发离线二维 PN 子过程：先使用全局航迹估计执行 `radar_midcourse`，进入终端距离门限后切换到 `vision_terminal`，并输出 `guidance_records.csv` 与 `guidance_summaries.json`。这些记录用于闭环解释和可视化，不代表真实飞控或硬件接口。
+
+AirSim runtime 已经从“规划接入”推进到可运行的 Blocks 验证路径。当前 main 负责一次启动 Blocks、按 episode reset 场景、采集相机/检测/actor pose/SimpleFlight 控制日志，并把 D1-D7 的 DTO、summary 和 record 接入统一 `main_episode_bus`。最新 P1 D4/D5 registration calibration v2 使用 5v5、3 个机动高空二级侦察节点、200 m 高差、110 deg FOV、1920x1080 和 AirSim `simGetDetections`：`projection_valid_rate=1.0`，`geometry_gate_pass_rate≈0.474`，稳定跨视角注册约 51/55/53，`secondary_network_mean_coverage_ratio≈0.771`，`secondary_network_joint_full_view_frame_rate` 均值约 0.048、最佳约 0.143，cross-view association 为 4/4/5。当前瓶颈已经从相机姿态/投影无效转为覆盖不完整和 `not_all_targets_visible` / `network_union_incomplete`；二级 detect 可以形成候选注册，但仍不能绕过 D3/D4/D5 的全局绑定、仲裁和视觉 PNG gate。
 
 ## 2. 总体架构
 
@@ -1095,7 +1098,7 @@ AirSim 输出：
 
 | 文件 | 作用 |
 |---|---|
-| `research_modules/README.md` | 六模块总入口 |
+| `research_modules/README.md` | 七模块总入口 |
 | `research_modules/INTEGRATION_CONTRACT.md` | 跨模块数据合同 |
 | `research_modules/DOCUMENTATION_STANDARD.md` | 文档结构规范 |
 | `research_modules/TEST_REPORT.md` | 集成测试和结果摘要 |
@@ -1103,7 +1106,7 @@ AirSim 输出：
 | `research_modules/run_smoke_simulations.py` | smoke simulation 入口 |
 | `C_UAS_RESEARCH_MODULES_DELIVERABLE_20260701.zip` | 当前交付包 |
 
-### 15.2 六个子模块
+### 15.2 七个子模块
 
 | 模块 | 算法文档 | 实验报告 |
 |---|---|---|
@@ -1113,34 +1116,33 @@ AirSim 输出：
 | D4 | `research_modules/d4_distributed_fallback/docs/ALGORITHM_AND_IMPLEMENTATION.md` | `research_modules/d4_distributed_fallback/reports/EXPERIMENT_REPORT.md` |
 | D5 | `research_modules/d5_terminal_association/docs/ALGORITHM_AND_IMPLEMENTATION.md` | `research_modules/d5_terminal_association/docs/EXPERIMENT_REPORT.md` |
 | D6 | `research_modules/d6_evaluation_metrics/docs/ALGORITHM_AND_IMPLEMENTATION.md` | `research_modules/d6_evaluation_metrics/EXPERIMENT_REPORT.md` |
+| D7 | `research_modules/d7_proportional_guidance/docs/ALGORITHM_AND_IMPLEMENTATION.md` | `research_modules/d7_proportional_guidance/reports/EXPERIMENT_REPORT.md` |
 
 ## 16. 当前不足与下一步
 
 ### 16.1 已知不足
 
-1. D4 默认 smoke simulation 尚未默认构造 `secondary_recon` 节点。
-2. D4 `coordination_mode/leader_role/coverage_cell` 和 `ActiveDegradationDecision` 尚未透传到 D6 顶层 metrics。
-3. D1/D2/D3/D5 的主动降级摘要接口多数仍是文档合同，尚未全部实现为跨模块代码。
-4. D5 仿真尚未形成完整 `ReconImageCue` 批量场景。
-5. D5 尚未强制 cue 新鲜度和目标相机帧字段。
-6. D5 尚未完整实现多无人机重叠视场的跨相机视觉融合；当前集成仿真主要是共享相机模型下的单机式终端关联。
-7. D2 的 JPDA/MHT 当前仍以研究对照和接口为主，尚未作为大规模默认运行模式。
-8. AirSim 集成仍处于离线规划阶段，当前主验证依赖质点模型和合成日志。
+1. AirSim 真实多 seed 校准尚未闭合；D3/D4/D5/D7 的状态迁移阈值、降级必要性标签、视觉 gate 和超时原因还需要批量统计。
+2. 二级机动高空侦察节点已能稳定出图、云台指向和投影，但网络同帧全覆盖仍偏低；当前 P1 瓶颈是 `not_all_targets_visible` / `network_union_incomplete`。
+3. D5 多相机/二级 detect 到既有 `global_track_id` 的跨视角注册已有候选和稳定注册统计，但仍需外参、时间戳、coverage cell、D2/D3 binding 和 MOT 稳定窗口的长期标定。
+4. YOLOv8 + ByteTrack/BoT-SORT/IoU fallback 已有可运行接线，但真实 AirSim 多 seed 下的目标尺度、置信度、FOV、CPU/GPU 预算和失败回退仍需校准。
+5. D1 仍需更多真实 Blocks/CV fixture、区域时间窗口、协方差增长率窗口和 D6 长期 schema 对齐。
+6. D2 的 JPDA/MHT 当前仍以研究对照和接口为主，尚未作为大规模默认运行模式。
+7. D7 当前主线是二维 PN/PNG 与 SimpleFlight gate；三维高度差、FRPN/MPC 对照和真实多 seed PN/Pure Pursuit/PNG 统计仍属后续 P1/P2。
 
 ### 16.2 短期迭代
 
-1. 为 D4 默认仿真加入二级侦察节点和多 coverage cell 场景。
-2. 将 D4 `ActiveDegradationDecision`、`degradation_mode`、`risk_factors` 加入 D6 指标分组。
-3. 为 D1/D2/D3/D5 实现离线摘要生成器：`TrackUncertaintySummary`、`AssociationRiskSummary`、`AssignmentValiditySummary`、`TerminalConsistencySummary`。
-4. 在 D5 仿真中加入有效 cue、过期 cue、跨资源 cue、跨相机 frame cue。
-5. 为 D5 增加 `TerminalObservationBus` 和 `TerminalCrossViewFusion`，覆盖“无人机1看见 G1/G2/G3、无人机2看见 G2/G3/G4”的重叠视场测试。
-6. 增强 D2 密集交叉场景，形成 GNN/JPDA/MHT 的定量对比表。
-7. 将 D6 报告扩展为“算法配置 vs 指标”的自动对比矩阵。
+1. 复跑 5v5 D4/D5 registration calibration，按二级数量、站位、FOV、coverage cell 和扫描策略输出覆盖漏斗。
+2. 将 D5 cross-view registration、D4 active/passive degradation、D7 terminal gate 和 D6 AirSim calibration report 继续合并到统一 episode/seed 报告。
+3. 针对 SimpleFlight 5v5 拦截增加更长 `intercept_max_duration` 和多 seed 统计，拆分 timeout 来自机动能力、初始几何还是视觉 gate。
+4. 校准 YOLOv8/MOT 路径的 bbox 稳定窗口、置信度、延迟、FOV 和回退到 AirSim detect 的条件。
+5. 增强 D2 密集交叉场景，形成 GNN/JPDA/MHT 的定量对比表。
+6. 将 D6 报告扩展为“算法配置 vs 指标”的自动对比矩阵。
 
 ### 16.3 中期迭代
 
-1. 建立 AirSim 离线数据采集脚本。
-2. 将 D1-D6 封装为 ROS 2 离线回放节点。
+1. 将 AirSim Blocks 多 seed replay 固化为稳定 fixture，并引入离线 truth label。
+2. 将 D1-D7 封装为 ROS 2 离线回放节点。
 3. 接入 tf2/message_filters 的时间与坐标对齐语义。
 4. 引入 Stone Soup、FilterPy、OR-Tools、BoT-SORT/ByteTrack 做开源基准对照。
 
@@ -1161,5 +1163,6 @@ AirSim 输出：
 - D4 解决中心失效后的二级节点接管和分布式保底问题。
 - D5 解决末端多目标视场配准和友方正向确认问题。
 - D6 解决全系统可复现评估问题。
+- D7 解决雷达中段 PN 与末端视觉 PNG 的导引合同门控问题。
 
-这套方案的核心价值是把探测、跟踪、分配、降级、末端配准和评估放入同一个数据合同和测试框架中，使后续 AirSim 集成、算法对比和论文实验都能建立在统一、可审计、可复现的工程基础上。
+这套方案的核心价值是把探测、跟踪、分配、降级、末端配准、比例导引和评估放入同一个数据合同和测试框架中，使后续 AirSim 校准、算法对比和论文实验都能建立在统一、可审计、可复现的工程基础上。

@@ -1,6 +1,6 @@
 # Integrated Simulation
 
-This package runs an offline 5v5 point-mass integration of D1-D6. It is an
+This package runs an offline 5v5 point-mass integration of D1-D7. It is an
 evaluation harness only: it writes synthetic logs, D4 arbitration records, D6
 metrics, and plots. It does not include hardware drivers, real vehicle control,
 automatic disposition, or authorization bypasses.
@@ -15,9 +15,9 @@ automatic disposition, or authorization bypasses.
   secondary-node availability, D1/D2/D3 uncertainty, and D5 terminal evidence.
 - D5 performs conservative terminal visual association without rewriting
   center-owned `global_track_id`. The current runner exercises single-camera
-  multi-candidate terminal association and scoped secondary `ReconImageCue`
-  behavior; it does not yet implement full cross-view fusion between multiple
-  interceptor cameras.
+  multi-candidate terminal association, scoped secondary `ReconImageCue`
+  behavior, and cross-view evidence contracts; full AirSim multi-camera
+  calibration is handled by `research_modules/airsim_runtime/`.
 - D6 consumes logs and produces metrics, CSV tables, Markdown reports, and
   charts.
 - D7 simulates offline proportional navigation after assignment: radar-track

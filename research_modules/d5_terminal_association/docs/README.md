@@ -9,3 +9,5 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 5. `AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放接入计划。
 
 本模块只输出 `TerminalAssociation`、`TerminalConsistencySummary`、跨视角证据和身份/配准判断，不输出控制量、处置动作、真实火控参数、降级动作或授权绕过流程；在线 D5 不得使用 AirSim truth ID，truth 只用于离线评分。2026-07-07 后，连续一致性窗口按 `resource_id + assigned_global_track_id` 维护，不因同一 assignment pair 的 D3 `assignment_version` 滚动更新而清零。
+
+2026-07-08 P1 状态：D5 侧已具备 detect-to-global registration、candidate log、AirSim camera pose metadata 字段、自适应像素协方差、默认 3 帧稳定窗口、跨视角配准证据、YOLO/MOT frame adapter 和 mobile recon gimbal evidence；main/D6 已有 P1 sweep 与报告 bundle 消费口径。剩余工作集中在真实 AirSim 多 seed 标定、二级覆盖策略、YOLO/MOT 阈值、`solvePnP`/外参增强和 BoT-SORT/Deep SORT/ReID 等 P2 评估。

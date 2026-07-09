@@ -827,20 +827,20 @@ research_modules/d5_terminal_association/
 - 跨无人机多相机三维几何融合尚未完整实现；`CrossViewTrackEvidence` 仍是接口建议。
 - 当前时间预测为简化常速度模型，不替代 D2 跟踪器。
 - 当前身份声明是仿真模型，不接入真实 OpenDroneID、MAVLink signing、DDS Security 或 AprilTag detector。
-- 小目标图像检测质量对 MOT 输入影响很大；当前不运行真实 YOLO、ByteTrack、BoT-SORT、Deep SORT 或 ReID，只消费它们可能输出的 schema。
+- 小目标图像检测质量对 MOT 输入影响很大；当前 D5 已有 `YoloMotAdapter` frame 入口，可加载默认/覆盖权重、请求 ultralytics ByteTrack/BoT-SORT 或退回确定性 IoU tracker，但 main/AirSim 连续图像流接线、GPU/CPU 部署、多 seed 阈值标定、Deep SORT/ReID 和真实遮挡恢复质量评估仍未闭环。
 
 后续优先级：
 
 P1：
 
-1. 把 `recon_cue_used_count`、stale cue 拒绝次数、cue 相关误配、candidate margin、mahalanobis、gate pass、`locked_mismatch`、`duplicate_terminal_lock_risk` 和 visual PNG advisory metadata 接入 main/D6。
-2. 增加本地最佳候选长期偏离中心分配的被动一致性测试；输出 `local_best_conflicts_with_assignment` 只给 D4 仲裁，不允许 D5 换绑。
-3. 增强 D4 消费路径，把 `DistributedTerminalAssociation.recommended_d4_action`、`hypothesis_only/hold/ambiguous` 原因和连续帧 `TerminalConsistencySummary` 纳入 CBBA 风险加权。
-4. 增加可选 YOLO/ByteTrack schema adapter 回放，证明 detector/tracker ID 只生成 `LocalVisualTrack.local_track_id`，不能替代 `global_track_id`。
+1. 二级节点几何/覆盖策略：基于 P1 D4/D5 calibration sweep 的真实多 seed 数据调整二级高度、FOV、二级节点数量、standoff、look-at 扫描/子簇策略和 full-view 判据，降低 `not_all_targets_visible` / `network_union_incomplete`。
+2. Multi-camera cross-view registration 多 seed 验收：持续调用 `register_local_visual_tracks_to_global_tracks()`，校准 `GlobalTrack`、D2/D3 binding、per-camera `K/R/t`、timestamp/covariance、adaptive pixel covariance、3 帧稳定窗口和 rejection reasons，使 `degrade_to_secondary` / `degrade_to_distributed` 不再停留在 offline visible-only。
+3. 真实 YOLO/MOT 多 seed 阈值：把 main/AirSim 连续 RGB/PNG 或外部 detector bbox stream 接到 `YoloMotAdapter.process_frame()`，标定 `gate_chi2`、candidate margin、bbox stability、handoff range、measurement age、LOS availability、ambiguity、quality 和 detector/tracker backend 阈值。
+4. AirSim/replay 标定与外参增强：建立离线标定样本、`solvePnP`/PnP RANSAC、重投影误差阈值、外参 drift 告警和多相机 frame/timestamp 对齐检查。
 
 P2：
 
-1. 实现 OpenCV calibration、`solvePnP`/PnP RANSAC、重投影误差阈值、外参漂移告警和多相机 frame/timestamp 对齐验证。
+1. 在真实图像链路后评估 BoT-SORT、Deep SORT 和 ReID 是否适合小型无人机图像，用 IDF1/IDSW、遮挡恢复和算力预算决定是否保留在默认链路。
 2. 在现有 metadata-only `TerminalCrossViewFusion` 之上设计三维跨相机几何融合，输出 D2 航迹预测残差、三角化一致性、pose covariance 和 conflict state。
-3. 接入至少一种真实身份来源作为 `IdentityClaim` adapter，例如 OpenDroneID 回放、MAVLink signing 回放或 AprilTag 图像检测。
+3. 接入至少一种真实身份来源作为 `IdentityClaim` adapter，例如 OpenDroneID 回放、MAVLink signing 回放、DDS Security fixture 或 AprilTag 图像检测。
 4. 建立失败样本库，重点保存友方重叠、目标交叉、遮挡恢复、多相机时间错位和跨相机 cue 错配案例。

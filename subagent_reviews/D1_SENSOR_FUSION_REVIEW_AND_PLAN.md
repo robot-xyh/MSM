@@ -85,8 +85,7 @@ GlobalTrack
 - timestamp / valid_at
 - measurement_timestamp
 - arrival_timestamp / published_at
-- track_quality: coarse_track | stable_track | handover_track
-- track_state: tentative | confirmed | engageable | lost | dropped
+- track_level: coarse | stable | handover
 - source_support
 - identity_likelihood
 ```
@@ -151,9 +150,9 @@ a95 = sqrt(chi2_2_0.95 * lambda_max(P_xy))
 
 | 档位 | 判据 | 允许用途 |
 |------|------|----------|
-| `coarse_track` | `a95 > T_s` 或仅短时单源支持 | 告警、继续观测、请求补充传感器 |
-| `stable_track` | 连续多帧NIS通过，`a95 <= T_s` | 进入中心关联和资源分配候选 |
-| `handover_track` | `a95 <= T_h` 且多源一致 | 可交给末端配准或显示，不等价于处置授权 |
+| `coarse` | `a95 > T_s` 或仅短时单源支持 | 告警、继续观测、请求补充传感器 |
+| `stable` | 连续多帧 NIS 通过，`a95 <= T_s` | 进入中心关联和资源分配候选 |
+| `handover` | `a95 <= T_h` 且多源一致 | 可交给末端配准或显示，不等价于处置授权 |
 
 ---
 
@@ -182,7 +181,7 @@ TrackUncertaintySummary
 - valid_at
 - published_at
 - track_bucket
-- track_quality
+- track_level
 - position_cov_trace
 - velocity_cov_trace
 - a95_xy_m
@@ -201,7 +200,7 @@ TrackUncertaintySummary
 - `latest_observation_latency_s` 或 `measurement_age_s` 超过 D3 分配周期，说明分配使用的是过期观测。
 - `observation_freshness_s = published_at - latest_measurement_timestamp` 持续变大，说明航迹主要靠外推维持。
 - `source_support` 从雷达+EO等多源退化为单源，或后续区域摘要显示关键区域出现 coverage gap。
-- `handover_track` 不能稳定维持，频繁回退到 `stable_track/coarse_track`。
+- `handover` 不能稳定维持，频繁回退到 `stable/coarse`。
 - 雷达与 EO 的 NIS 长时间偏高，说明多源观测不一致。
 
 当前区域摘要只能作为质量证据。若后续需要 D1 给出显式质量建议，也只能是建议字段，例如：
@@ -223,14 +222,14 @@ velocity: [vx, vy, vz] in NED
 covariance: 6x6 state covariance
 measurement_timestamp: latest contributing measurement time
 arrival_timestamp / published_at: fusion output arrival/publish time
-track_quality: coarse_track | stable_track | handover_track
+track_level: coarse | stable | handover
 source_support: radar/acoustic/eo/lidar support counts
 ```
 
 工程规则：
 
-- D7 只能把 `stable_track` 或 `handover_track` 作为中段仿真输入；`coarse_track` 应只用于继续观测或保持原计划。
-- D7 应根据 `covariance` 和 `track_quality` 决定是否扩大预测门限或保持保守状态。
+- D7 只能把 `stable` 或 `handover` 作为中段仿真输入；`coarse` 应只用于继续观测或保持原计划。
+- D7 应根据 `covariance` 和 `track_level` 决定是否扩大预测门限或保持保守状态。
 - 若 `latest_observation_latency_s` 或 `measurement_age_s` 过大，D7 应使用 D1 的速度和协方差做外推，并把新鲜度不足反馈给 D4/D3。
 - D1 不向 D7 提供真实飞控、硬件、毁伤或自动处置接口；这里只定义离线仿真的航迹状态输入。
 
@@ -304,7 +303,7 @@ P2/后置：
 2. 开源选型表：Stone Soup、FilterPy、ROS 2 tf2、message_filters。
 3. 数据结构：`SensorObservation`、`CanonicalDetection`、`GlobalTrack`。
 4. 接口伪代码：`FusionAdapter`、`DelayCompensator`、`TrackFilter`。
-5. 雷达误差分档：`coarse_track`、`stable_track`、`handover_track`。
+5. 雷达误差分档：`coarse`、`stable`、`handover`。
 6. 主动降级/侦察 cue 接口：`TrackUncertaintySummary`、`LatencyAuditSummary`、轻量 `FusionQualityRegionSummary`、`FusionQualityRegionWindowSummary` 和 `ReconCueSummary` 已落地；D4 降级建议字段和最终仲裁仍为后续工作。
 7. D5/D7接口合同：无截图 EO 输入、投影所需状态协方差、中段航迹质量门控。
 

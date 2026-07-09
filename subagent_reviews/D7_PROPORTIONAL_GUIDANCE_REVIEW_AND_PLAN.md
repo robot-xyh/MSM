@@ -1,7 +1,7 @@
 # D7 比例导引架构评审与补充方案
 
 **定位**: D7 负责中段雷达/全局航迹比例导引和末端视觉/LOS 导引的算法、状态切换、控制命令抽象与日志记录。  
-**边界**: 本文只面向当前离线研究模块和 AirSim Blocks 仿真闭环，不包含真实平台火控参数、毁伤模型、硬件驱动、自动处置或绕过人工授权的流程。
+**边界**: 本文只面向当前 D7 本地研究/合同模块、D7-owned runtime bus 和 AirSim Blocks 仿真闭环，不包含真实平台火控参数、毁伤模型、硬件驱动、自动处置或绕过人工授权的流程。
 
 ---
 
@@ -32,7 +32,7 @@
 
 部分实现：
 
-- AirSim SimpleFlight 真实控制已在 main/runtime 层接入 D7，正式 episode bus metrics 已能合并真实执行结果；main runtime 已新增 P1 D4/D5 calibration sweep，D6 标准报告 bundle 已自动生成；D7 本地已补齐多 seed calibration summary/advisory helper。剩余 P1 风险集中在真实 AirSim 多 seed PN/Pure Pursuit/PNG 数据采集、视觉 gate/range/closing speed 阈值建议验证、D4 降级期间视觉 PNG 阻断回归、D5 locked + D3 owner/version + D4 allowed gate 回归、3D/高度差、机动能力/FRPN benchmark 数据和长期 D5 事件流稳定性。
+- AirSim SimpleFlight 真实控制已在 main/runtime 层接入 D7，正式 episode bus metrics 已能合并真实执行结果；main runtime 已新增 P1 D4/D5 calibration sweep，D6 标准报告 bundle 已自动生成；D7 本地已补齐多 seed calibration summary/advisory helper，D4 降级阻断、D5 locked、D3 owner/version 和 D4 allowed gate 已有 D7 单元测试覆盖。剩余 P1 风险集中在真实 AirSim 多 seed PN/Pure Pursuit/PNG 数据采集、视觉 gate/range/closing speed 阈值建议验证、这些 gate 在真实多 seed 执行中的回归呈现、3D/高度差、机动能力/FRPN benchmark 数据和长期 D5 事件流稳定性。
 - 相机前移 `0.5m`、`120deg` FOV 和 `look_at_target`/CV look-at 已在 runtime/settings/tests 中接入；D7 主线只消费 bbox 和固定焦距近似，不管理真实相机外参。
 - `png_guidance_delivery` 的 truth/gimbal/strapdown、PX4/MAVLink/body-rate、YOLO/ByteTrack 是方案和复现实验包；主线只抽取轻量 gate 与 SimpleFlight 速度命令。
 
@@ -46,7 +46,7 @@
 
 ## 1. 目标与边界
 
-D7 的目标是在已有 D1-D6 主流程之后补齐“导引律”层，使系统从版本化分配结果进入可评估的中段/末端闭环。它只做比例导引及其改进型导引律，不负责上游态势生成或身份判断。
+D7 的目标是作为 D1-D7 主流程中的导引合同层，在 D3/D4/D5 合同通过后输出 PN/PNG guidance records，使系统从版本化分配结果进入可评估的中段/末端闭环。它只做比例导引及其改进型导引律，不负责上游态势生成或身份判断。
 
 D7 负责：
 
@@ -70,9 +70,9 @@ D7 不负责：
 
 ## 2. 当前实现评审
 
-当前 main 已实现两条 D7 相关链路。
+当前 D7 集成状态分为三层：D7 本地算法/合同模块、D7-owned runtime bus adapter，以及 main/runtime 消费 D7 API 的 AirSim controlled intercept。D7 只拥有前两层；AirSim 启停、episode 编排、SimpleFlight 调用和报告写盘仍由 main/runtime 负责。
 
-第一条是离线 D7 模块：
+D7 本地算法/合同模块：
 
 ```text
 research_modules/d7_proportional_guidance/
@@ -80,19 +80,33 @@ research_modules/d7_proportional_guidance/
   d7_proportional_guidance/pn.py
   d7_proportional_guidance/simulator.py
   d7_proportional_guidance/airsim_dry_run.py
+  d7_proportional_guidance/terminal_gate.py
+  d7_proportional_guidance/vision_png.py
 ```
 
-该模块已经提供 `GuidanceState`、`GuidanceConfig`、`GuidanceCommand`、`GuidanceRecord`、`compute_proportional_navigation_command()` 和 `simulate_guidance_episode()`。它是二维质点研究模型，记录 `range_m`、`los_angle_rad`、`los_rate_radps`、`closing_speed_mps`、`commanded_lateral_accel_mps2`、`limited_lateral_accel_mps2`、`limited_turn_rate_radps` 和 `mode_switch`。
+该模块已经提供 `GuidanceState`、`GuidanceConfig`、`GuidanceCommand`、`GuidanceRecord`、`compute_proportional_navigation_command()`、`simulate_guidance_episode()`、`evaluate_terminal_png_contract()` 和 `SimpleFlightPngGuidanceFilter`。它记录 `range_m`、`los_angle_rad`、`los_rate_radps`、`closing_speed_mps`、PN 限幅、D3/D4/D5 contract、bbox/LOS/TTC gate 和 mode/handoff 字段。
 
-第二条是 AirSim 2v2 actor 受控拦截 baseline：
+D7-owned runtime bus adapter：
+
+```text
+research_modules/d7_proportional_guidance/
+  d7_proportional_guidance/runtime_bus.py
+  d7_proportional_guidance/comparison.py
+  d7_proportional_guidance/replay.py
+  d7_proportional_guidance/calibration.py
+```
+
+该层让调用方注入任意长度 assignment pair 的 D3 binding、D4 permission、D5 terminal association 和 bbox observation；D7 为每个 `resource_id -> assigned_global_track_id` 独立维护视觉 filter，输出 main/D6 可消费的 gate、handoff、reject reason、guidance law、summary 和 calibration advisory 字段。它不创建 assignment、不授权、不控制车辆，也不假设 2v2 或 5v5。
+
+AirSim controlled intercept 的 runtime consumer：
 
 ```text
 research_modules/airsim_runtime/intercept.py
 ```
 
-该实现中，拦截无人机使用 SimpleFlight，多旋翼控制接口由 main 显式启用、解锁、起飞并发送 `moveByVelocityZAsync` 速度/高度命令。目标不是 AirSim 车辆，不使用 SimpleFlight，而是非车辆 Unreal actor，由 main 通过 `simSetObjectPose` 按水平速度移动。目标识别使用 AirSim `simGetDetections` 检测框。
+该实现中，拦截无人机使用 SimpleFlight，多旋翼控制接口由 main 显式启用、解锁、起飞并发送 `moveByVelocityZAsync` 速度/高度命令。目标不是 AirSim 车辆，不使用 SimpleFlight，而是非车辆 Unreal actor，由 main 通过 `simSetObjectPose` 按水平速度移动。目标识别使用 AirSim `simGetDetections` 检测框。2v2 和 5v5 只作为 baseline/回归场景；实际仿真规模由 main runtime 的 `--drone-count N` 决定。
 
-数量边界需要和 baseline 区分：main runtime 的无人机/目标数量由 `--drone-count N` 统一控制。D7 不应假设 2v2 或 5v5；main 应为 D3 输出的每个有效 assignment pair 创建独立 D7 控制上下文，分别持有 D3 binding、D4 permission、D5 locked evidence、初段位置 PNG/PN 记录状态和末端视觉 PNG filter。
+数量边界需要和 baseline 区分：D7 不应假设 2v2 或 5v5；main 应为 D3 输出的每个有效 assignment pair 创建独立 D7 控制上下文，分别持有 D3 binding、D4 permission、D5 locked evidence、初段位置 PNG/PN 记录状态和末端视觉 PNG filter。
 
 当前 Blocks 稳定闭环采用：
 
@@ -555,8 +569,7 @@ simGetDetections
 
 当前实现适合作为 Blocks 第一阶段稳定闭环：
 
-- 2v2 actor baseline 目标水平移动。
-- baseline 中两架 SimpleFlight 拦截无人机发速度/高度命令；main runtime N-pair 执行时应按每个有效 pair 独立发命令和记日志。
+- 2v2/5v5 只作为 baseline 场景；main runtime N-pair 执行时应按 `--drone-count N` 和每个有效 assignment pair 独立发命令、记日志和维护 D7 filter。
 - 中段 PN 使用二维 NED 平面。
 - 末端使用 D5 locked 和 D3/D4/D5 contract 允许后的 D7 视觉 PNG gate；gate 通过时使用 `png_vm`/`png_ttc` 速度命令，未通过时保持保守 PN/LOS。
 - 成功严格绑定 assigned target 的 range 或 collision object。

@@ -11,6 +11,7 @@ env/
 .DS_Store
 *.tmp
 *.log
+.claude/settings.local.json
 
 # Local simulator binaries and generated experiment outputs.
 Blocks/

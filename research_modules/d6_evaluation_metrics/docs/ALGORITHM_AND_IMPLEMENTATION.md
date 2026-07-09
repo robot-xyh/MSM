@@ -113,6 +113,8 @@ D4 主/被动降级扩展已进入 `EpisodeMetrics`：
 
 ```text
 active_degradation_count
+active_degradation_precision
+unnecessary_active_degradation_count
 passive_failover_count
 secondary_node_takeover_count
 secondary_reassignment_count
@@ -133,20 +135,23 @@ failover_active_window_delta_s
 ```text
 trigger_reason_distribution
 failover_active_window_deltas_s
+active_degradation_review_label_counts
+active_degradation_reviewed_count
+active_degradation_necessary_count
 ```
 
-尚未正式输出的主动降级质量指标：
+P1 最小主动降级必要性口径已经正式输出：`active_degradation_precision` 只统计带有 `review_label`、`active_degradation_necessary`、`post_window_outcome` 或 pre/post risk/window 后验字段的主动降级样本；缺标签样本只进入 `active_degradation_count`，不进入 precision 分母。`unnecessary_active_degradation_count` 只统计被 review/后验判为不必要的主动降级。D6 不从事件名自证主动降级是否必要。
+
+仍未正式输出的扩展主动降级质量指标：
 
 ```text
-active_degradation_precision
-unnecessary_active_degradation_count
 terminal_center_disagreement_count
 time_to_active_degradation_decision
 post_degradation_id_switch_delta
 post_degradation_assignment_conflict_delta
 ```
 
-原因是这些指标需要 main/D4 提供 `review_label`、`trigger_timestamp`、`decision_timestamp`、`selected_coordinator`、`coverage_cell` 和固定 pre/post 窗口。没有这些字段时，D6 不能离线判定主动降级是否必要，只能统计事件和已给出的窗口 delta。
+原因是这些扩展指标仍需要 main/D4 持续提供 `trigger_timestamp`、`decision_timestamp`、`selected_coordinator`、`coverage_cell`、固定 pre/post 窗口、ID switch delta 和 assignment conflict delta。D6 当前只消费已写盘 review/window 字段，不参与 D4 仲裁或重分配。
 
 ### 4.5 末端配准
 
@@ -261,9 +266,11 @@ human_override_count
 |---|---|---|
 | `load_episode_log_jsonl()` | D6 标准化 JSONL | `MetricsCollector` + `truth_summary` |
 | `load_blocks_replay_jsonl()` | `blocks_frames.jsonl`、可选 `blocks_sensor_observations.jsonl` | Blocks truth、视觉检测、terminal、通信和规模字段 |
+| `load_main_episode_bus_metrics()` / `load_main_episode_bus_metric_files()` | `main_episode_bus_metrics.json`、`main_episode_bus_contract_metrics.json` | 还原 execution/contract 双口径 `EpisodeMetrics` |
 | `load_d4_active_degradation_decisions()` | D4 active-degradation CSV | D4 主动降级事件 |
 | `load_d7_intercept_outputs()` | D7 control/intercept CSV/JSON | D7 gate、visual switch、takeover、intercept 指标 |
 | `load_d7_guidance_timeseries()` | D7 guidance/control/intercept CSV/JSON | D7 time-series 与 metadata |
+| `load_airsim_calibration_records()` / `AirSimCalibrationReportGenerator` | AirSim batch/seed/case 目录 | 多 seed D4/D5 calibration records、summary 和中文 Markdown |
 
 所有适配器都只读文件，不 import AirSim，不调用车辆控制 API。
 
@@ -272,11 +279,16 @@ human_override_count
 D6 侧已经具备消费能力：
 
 - Blocks：truth summary、实际规模字段、visual detection、terminal records、video metadata/bbox links、多视角 consensus/conflict。
-- D4：active/passive、secondary takeover/reassignment、D4 reassign pending、distributed fallback。
-- D5：terminal association、local ID switch、lock、ambiguity、friend hold、多视角一致/冲突/重复锁定。
+- D4：active/passive、secondary takeover/reassignment、D4 reassign pending、distributed fallback、review label 和后验必要性字段。
+- D5：terminal association、local ID switch、lock、ambiguity、friend hold、多视角一致/冲突/重复锁定、secondary detection available but not registered、cross-view registration 和 cue/gimbal pointing metadata。
 - D7：gate pass/reject、visual PNG switch、terminal takeover、mode switch、contract reject、intercept 结果。
+- AirSim calibration：自动扫描 `d4d5_stress_metrics.json`、`airsim_blocks_summary.json` 和 main bus metrics，输出 `airsim_calibration_records.csv`、`airsim_calibration_summary.csv`、`airsim_calibration_summary.json`、`airsim_calibration_report.md`。
 
 截至 2026-07-07，main/orchestrator 已完成 D7 真实执行指标的正式回灌：`control_commands.csv` 与 `intercept_summary.json` 会在执行后合并到正式 `main_episode_bus_metrics.json`；执行前合同检查口径保留为 `main_episode_bus_contract_metrics.json`。D6 文档和报告口径以正式 metrics 表示执行后系统结果，以 raw contract metrics 表示 D3/D4/D5/D7 gate 诊断结果。
+
+截至 2026-07-08，main runtime 的 `--p1-calibration-sweep` 已在 batch 结束后自动调用 D6 `AirSimCalibrationReportGenerator.write_report_bundle()`。D6 report bundle 覆盖 coverage/funnel/gimbal、`secondary_detect_count`、`secondary_visible_target_union_ratio`、`secondary_network_joint_full_view_frame_rate`、`projection_valid_rate`、`geometry_gate_pass_rate`、`registered_candidate_count`、`stable_cross_view_registration_count`、`not_registered_count`、active degradation precision 和 D7 guidance reject reason。报告按实际 count 字段和 `metric_scope/seed/scenario/secondary_height/FOV/secondary_count/detection_backend` 分组，不从 `2v2/5v5` 场景名推断规模。
+
+当前 P1 AirSim 结论仍是评估状态而非控制动作：mobile recon gimbal 批次显示 bbox 面积改善、`secondary_gimbal_pointing_ok_rate=1.0`，但网络联合 full-view 和稳定注册仍需更多多 seed/N-v-N 批次沉淀长期趋势。
 
 仍需 main runtime bus/episode 写盘接线：
 
@@ -333,10 +345,20 @@ D6 当前默认输出工程可解释指标，而不是完整外部 MOT benchmark
 - `plots/assignment_metrics.png`
 - `plots/degradation_metrics.png`
 - `plots/terminal_metrics.png`
+- `plots/secondary_sensing_metrics.png`
 - `plots/communication_metrics.png`
 - `plots/guidance_metrics.png`
 - `plots/safety_metrics.png`
 - `plots/selected_metric_distributions.png`
+
+当前 `AirSimCalibrationReportGenerator` 额外输出：
+
+- `airsim_calibration_records.csv`
+- `airsim_calibration_summary.csv`
+- `airsim_calibration_summary.json`
+- `airsim_calibration_report.md`
+
+该 bundle 的中文 Markdown 显式解释 coverage/funnel/gimbal、projection valid、geometry gate pass、stable registration、not registered、active degradation precision 和 D7 guidance reject reason。D6 只读取 main/D4/D5/D7 写盘结果，不控制 AirSim、camera/gimbal、D4 降级或 D5 注册。
 
 统计量：
 
@@ -367,11 +389,10 @@ p95
 
 ## 11. P1 下一步
 
-1. main integrated episode 汇总接线：D7 real execution metrics 已进入正式 `main_episode_bus_metrics.json`，raw `main_episode_bus_contract_metrics.json` 已保留；继续补 D4/D5 全量事件、多 seed、5v5/N-v-N 和报告分组。
-2. D4 主动降级必要性：补 `review_label`、trigger/decision timestamp、selected coordinator、coverage cell 和 pre/post 窗口。
-3. D5 末端 AirSim 回灌：补 terminal consistency、cross-view conflict、duplicate lock、friend hold、terminal-center disagreement 和 validation label。
-4. D7 多 seed 报告：稳定 guidance/control/intercept 文件产出并进入正式 metrics，保留 plan/version、D4/D5 state、guidance law、reject reason。
-5. 报告增强：按实际规模字段和 scenario group 输出 D4/D5/D7 分组解释。
+1. 多 seed 自动汇总与长期趋势：持续使用 main runtime P1 calibration sweep 生成的 D6 bundle，跟踪 `mobile_recon_gimbal` 与 `fixed_downlook_secondary` 的 coverage、full-view、projection valid、geometry gate pass、registered candidate、stable registration、bbox area、cue/gimbal pointing 指标。
+2. D4 主动降级必要性：main/D4 持续写出 `review_label`、trigger/decision timestamp、selected coordinator、coverage cell、pre/post window 和后验 outcome/risk 字段；D6 不从事件名推断必要性。
+3. 真实 episode 日志完整性：D4/D5/D7/Blocks 产物持续落到同一 episode clock 和目录，D6 汇总阶段调用 loader 合并；D6 继续只消费日志，不参与控制、重规划或导引。
+4. 多 seed 双口径与 actual scale 分组：在 2v2、5v5、N-v-N 和非默认 episode 批量运行中持续保留 `metric_scope=execution/contract`、实际规模字段、seed/scenario 分组、D7 guidance reject reason metadata 和 D4/D5 calibration geometry 字段。
 
 ## 12. P2 下一步
 

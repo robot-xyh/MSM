@@ -26,6 +26,8 @@ D7 当前已经实现可测试的二维位置 PN/PNG 几何核、中段雷达/�
 
 2026-07-08 D4/D5 机动高空侦察 stress 复核：main 侧 5v5 D4/D5 stress 覆盖 3 seeds、200m 高差、`mobile_recon_gimbal`、80deg FOV、1920x1080；D4 action 正确，D5 能识别 mobile recon，gimbal OK rate 为 1.0。但二级网络同帧全覆盖仍为 0.0，降级 case cross-view 为 0，`not_registered` 约 65。D7 结论不变：移动侦察节点“看得更清楚”不等于可放行视觉 PNG；D7 仍必须坚持 D3 当前 version/owner、D4 action 允许、D5 `locked` 且 `assigned_global_track_id` 一致、bbox/LOS/闭合速度/距离/机动能力 gate 全部通过。D4 `degrade_to_secondary`/`degrade_to_distributed` 阶段若 plan owner/version 未进入可执行状态，继续阻断视觉 PNG。当前无 P0 blocker。
 
+本次文档状态复核确认：README/PLAN/review 中早期“离线研究模块”和“2v2 actor baseline”口径已调整为“离线研究核 + D7-owned runtime bus + main/runtime AirSim consumer”的三层描述。D7 P0/P1 接口状态未新增缺口；剩余 P1 仍是实际 AirSim 多 seed 数据采集、calibration/advisory 验证、D6/main 报告聚合、YOLO/ByteTrack replay 数据源和长期 D5 事件流稳定性，不是 D7 gate/API 未实现。
+
 ## 已实现
 
 | 项 | 实现状态 | 关键证据 | 当前口径 |

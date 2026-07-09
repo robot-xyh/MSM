@@ -15,7 +15,7 @@ This directory contains seven Python research modules plus an end-to-end integra
 | D7 | `d7_proportional_guidance/` | Offline 2D proportional-navigation studies for radar midcourse and visual terminal phases |
 | Main | `integrated_simulation/` | End-to-end 5v5 offline runner that wires D1-D7 through adapters and a shared log stream |
 
-Each D1-D6 module contains its own `PLAN.md`, Python source, tests, simulation entry points, experiment report, and AirSim integration plan.
+Each D1-D7 module contains its own `PLAN.md`, Python source, tests, simulation entry points, experiment report, and AirSim integration plan.
 Detailed Chinese algorithm notes are standardized under each module's
 `docs/ALGORITHM_AND_IMPLEMENTATION.md`; see `DOCUMENTATION_STANDARD.md` for the
 shared documentation contract.

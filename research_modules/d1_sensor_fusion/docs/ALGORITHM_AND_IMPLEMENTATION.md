@@ -130,7 +130,7 @@ azimuth = atan2(ry, rx)
 sigma_deg = 2.5 + 8.0 * (1 - confidence)
 ```
 
-声学的主要作用是低频补充、类别/声纹提示和多源支持计数。工程上应把声学视为弱证据，不能单独把 `coarse_track` 升级为可交接航迹。
+声学的主要作用是低频补充、类别/声纹提示和多源支持计数。工程上应把声学视为弱证据，不能单独把 `coarse` 升级为可交接航迹。
 
 ### 5.3 光电 EO
 
@@ -232,9 +232,9 @@ a95 = sqrt(chi2_2_0.95 * max_eigenvalue(P_xy))
 
 当前工程判据：
 
-- `coarse_track`：初始化初期、`a95` 大于稳定门限、观测支持不足或 NIS 通过率较低。
-- `stable_track`：`a95 <= stable_threshold_m`，命中次数达到要求，NIS 通过率基本合格。
-- `handover_track`：`a95 <= handover_threshold_m`，至少两类传感器支持，命中次数更多，NIS 通过率更高。
+- `coarse`：初始化初期、`a95` 大于稳定门限、观测支持不足或 NIS 通过率较低。
+- `stable`：`a95 <= stable_threshold_m`，命中次数达到要求，NIS 通过率基本合格。
+- `handover`：`a95 <= handover_threshold_m`，至少两类传感器支持，命中次数更多，NIS 通过率更高。
 
 默认参数在 `FusionAdapter` 中：
 
@@ -303,11 +303,11 @@ TrackUncertaintySummary(
 - `velocity_cov_trace = trace(covariance[3:, 3:])`。
 - `a95_xy_m` 使用 D1 现有 `covariance_a95()` 逻辑。
 - `measurement_age_s` 使用 `published_at - latest_measurement_timestamp`。
-- `covariance_growth_rate` 当前可为空，后续可用最近两个摘要的 `position_cov_trace` 差分除以时间差。
-- `source_diversity_count` 统计当前摘要中非零支持的传感器类型数；后续 D6/区域窗口可扩展为最近窗口统计。
-- `handover_readiness` 建议归一化到 `[0, 1]`，由 `a95_xy_m`、`source_diversity_count`、`track_level`、NIS 通过率和延迟共同计算。
+- `covariance_growth_rate` 在单帧摘要中可为空；`annotate_covariance_growth_rates()` 可用相邻摘要的 `position_cov_trace` 差分除以时间差填充。
+- `source_diversity_count` 统计当前摘要中非零支持的传感器类型数；D6/区域窗口可在批量日志层继续扩展最近窗口统计。
+- `handover_readiness` 已归一化到 `[0, 1]`，由 `a95_xy_m`、`source_diversity_count`、`track_level`、NIS 和 measurement age 共同计算。
 
-D1 已落地 `FusionQualityRegionSummary`、`LatencyAuditSummary`、OOSM/stale/replay/duplicate 计数和最小 CSV replay。剩余 P1 摘要扩展集中在区域时间窗口、协方差增长率窗口、D6 长期批量 JSONL/CSV schema 和真实样本回归。
+D1 已落地 `FusionQualityRegionSummary`、`FusionQualityRegionWindowSummary`、`LatencyAuditSummary`、OOSM/stale/replay/duplicate 计数、协方差增长率 helper 和最小 CSV replay。剩余 P1 摘要工作集中在 D6 长期批量 JSONL/CSV schema、真实多 seed 阈值校准和真实样本回归。
 
 一个保守的 `handover_readiness` 原型可定义为：
 
@@ -371,7 +371,7 @@ D5 使用方式：
 
 ### 8.5 给 D4 的目标接口
 
-D1 到 D4 的目标消息可按周期发布，粒度为“单航迹摘要 + 区域聚合摘要”。当前已落地单航迹 `TrackUncertaintySummary[]`、延迟审计 `LatencyAuditSummary` 和轻量区域聚合 `FusionQualityRegionSummary[]`；剩余 P1 是窗口化区域趋势，不是区域摘要基线：
+D1 到 D4 的目标消息可按周期发布，粒度为“单航迹摘要 + 区域聚合摘要 + 可选区域窗口摘要”。当前已落地单航迹 `TrackUncertaintySummary[]`、延迟审计 `LatencyAuditSummary`、轻量区域聚合 `FusionQualityRegionSummary[]` 和 `FusionQualityRegionWindowSummary[]`：
 
 ```python
 TrackUncertaintySummary[]  # 每条航迹
@@ -393,9 +393,9 @@ FusionQualityRegionSummary(
 )
 ```
 
-D1 不输出 `active_degrade_recommendation`。若需要 active degrade decision、median/p90 趋势或 lead-time 指标，应由 D4/D6 在 D1 区域摘要的时间窗口之上计算。
+D1 不输出 `active_degrade_recommendation`。若需要 active degrade decision、median/p90 趋势或 lead-time 指标，应由 D4/D6 在 D1 区域摘要和区域窗口摘要之上计算。
 
-`active_degrade_recommendation` 只表达态势质量建议，不直接改变任务状态。D4 应结合自身 `C2Health`、D3 分配版本、D5 末端反馈和人工授权状态后再决定降级模式。
+若后续新增 D1 质量建议字段，也只能表达态势质量建议，不直接改变任务状态。D4 应结合自身 `C2Health`、D3 分配版本、D5 末端反馈和人工授权状态后再决定降级模式。
 
 严格 subagent 流程下，D1 only owns this evidence contract: D1 子智能体负责维护本模块代码、README、PLAN、GAP 和 review；main 负责把这些证据接入 AirSim runtime bus、收集 D6 指标并汇总跨模块结论。
 
@@ -484,7 +484,7 @@ python3 research_modules/d1_sensor_fusion/scripts/run_simulation.py \
 
 - D2：消费 D1 的 `GlobalTrack`，进一步执行多目标数据关联和稳定 `global_track_id` 管理。D1 的基础关联不替代 D2 的 GNN/JPDA/MHT。
 - D3：使用 `state`、`covariance`、`track_level` 和威胁/质量字段构造分配代价。高协方差航迹应提高分配惩罚。
-- D4：当前可消费 D1 的 `TrackUncertaintySummary`、`LatencyAuditSummary` 和轻量 `FusionQualityRegionSummary` 区分被动降级与主动降级候选；区域时间窗口和最终降级仲裁仍由 D4/D6 后续补齐。主动降级只表达态势质量不足，不代表节点失效。
+- D4：当前可消费 D1 的 `TrackUncertaintySummary`、`LatencyAuditSummary`、轻量 `FusionQualityRegionSummary` 和 `FusionQualityRegionWindowSummary` 区分被动降级与主动降级候选；最终阈值、迟滞和降级仲裁仍由 D4/D6 后续补齐。主动降级只表达态势质量不足，不代表节点失效。
 - D5：使用 `GlobalTrack` 的 NED 状态和协方差投影到局部相机平面。D5 不应直接使用 D1 内部单次传感器观测改写终端绑定。
 - D6：消费 D1 输出和日志，统计 RMSE、连续性、分级准确率、延迟补偿收益等指标。
 
@@ -493,7 +493,7 @@ python3 research_modules/d1_sensor_fusion/scripts/run_simulation.py \
 - 所有观测保留 `measurement_timestamp` 和 `arrival_timestamp`。
 - 所有航迹保留协方差。
 - D1 输出坐标系为 NED。
-- `handover_track` 仅代表研究质量等级，不代表授权或自动处置。
+- `handover` 仅代表研究质量等级，不代表授权或自动处置。
 - 主动降级信号只描述定位质量、延迟和一致性，不直接触发真实控制或处置动作。
 
 ## 13. 局限与后续工作
@@ -506,7 +506,7 @@ python3 research_modules/d1_sensor_fusion/scripts/run_simulation.py \
 - 坐标转换工具以接口约定为主，尚未集成 ROS 2 `tf2`。
 - 仿真为质点模型和合成传感器，不代表真实传感器标定误差全集。
 - `TrackUncertaintySummary` 已落地为 D1 代码数据类，`FusionAdapter.track_uncertainty_summaries()` 可导出每条航迹的 `track_id/global_track_id`、`position_covariance_trace`、`a95_m`、`track_level`、`measurement_age_s`、`source_support`、`coverage_cell`、`measurement_timestamp`、`arrival_timestamp`、`valid_at` 和 `published_at`。
-- D1 已提供 replay schema v1、legacy `blocks_sensor_observations.jsonl` 兼容、最小 CSV reader/replay、`LatencyAuditSummary` 和轻量 `FusionQualityRegionSummary`，可读回 main/AirSim runtime 或人工审计写出的 D1 观测并回放 `FusionAdapter`。
+- D1 已提供 replay schema v1、legacy `blocks_sensor_observations.jsonl` 兼容、最小 CSV reader/replay、`LatencyAuditSummary`、轻量 `FusionQualityRegionSummary`、`FusionQualityRegionWindowSummary` 和 `ReconCueSummary`，可读回 main/AirSim runtime 或人工审计写出的 D1 观测并回放 `FusionAdapter`。
 - D1 已提供 source lineage 去重基线，按同一 source/sequence/payload lineage 抑制 relay 或重复投递造成的二次更新；未知相关性的跨节点 Track-to-Track fusion 和协方差交叉仍未实现。
 
 后续建议：
@@ -519,13 +519,14 @@ P1 主线补强：
 2. 已增加最小 CSV reader/replay，便于 D6 长期批量统计和人工审计。
 3. 已在 `TrackUncertaintySummary` 基线之上补轻量 `FusionQualityRegionSummary`，聚合 coverage cell、source gap、freshness、a95 和 handover readiness。
 4. 已为 OOSM/fixed-lag replay 增加 `LatencyAuditSummary`，包括 max/mean latency、OOSM replay 次数、stale/OOSM count、replay history 和重复观测计数。
+5. 已提供 `annotate_covariance_growth_rates()`、`summarize_region_quality_windows()` 和 `ReconCueSummary`，覆盖协方差增长率、区域窗口趋势、latency/OOSM flags 和二级侦察粗指向 cue。
 
 剩余 P1：
 
 1. 增加来自 main/shared runtime 的 AirSim CV/Blocks fixture，覆盖 `simGetDetections`/detector boxes、actor label、camera metadata、timestamp、bbox covariance 和 N actor 输出，并形成真实样本回归。
 2. 将 D1 观测、摘要和 replay 审计日志与 D6 长期批量 JSONL/CSV schema 对齐。
-3. 补区域时间窗口、freshness/source-gap 趋势和更细 NIS 统计。
-4. 补 `covariance_growth_rate` 的窗口化计算、阈值和真实样本回归。
+3. 基于真实多 seed 样本校准区域窗口、freshness/source-gap、协方差增长率和 handover readiness 的持续阈值。
+4. 补更细 NIS 统计和真实样本回归。
 
 P2/P3 或后置对照：
 

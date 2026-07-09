@@ -16,7 +16,7 @@ D4 负责离线降级协同研究，包含两类模式：
 ### 2.1 输入
 
 - `TrackSummary[]`：来自 D1/D2 的全局航迹摘要，字段包括 `track_id`、`coarse_cell`、`age_s`、`confidence_band`、`source_count`、`epoch`。
-- `ResourceSummary[]`：来自资源状态管理或 D3 上一版计划的资源摘要，字段包括 `node_id`、`capability_class`、`availability_band`、`comm_band`、`operator_hold`、`takeover_priority`、`lease_epoch`、`node_role`、`coordinator_only`、`coverage_cell`、`heartbeat_timestamp_s`、`heartbeat_stale_after_s`、`epoch`。
+- `ResourceSummary[]`：来自资源状态管理或 D3 上一版计划的资源摘要，字段包括 `node_id`、`capability_class`、`availability_band`、`comm_band`、`operator_hold`、`takeover_priority`、`lease_epoch`、`node_role`、`coordinator_only`、`coverage_cell`、`heartbeat_timestamp_s`、`heartbeat_stale_after_s`、`cue_freshness_s`、`gimbal_pointing_ok`、`secondary_coverage_ratio`、`cross_view_support_count`、`epoch`。
 - `C2` 健康输入：heartbeat 状态、assignment digest 是否一致、center epoch、peer fail votes。
 - `SimulatedNetwork`：内存网络，提供延迟、丢包和消息计数。
 - `TrackUncertaintySummary`：来自 D1 的定位不确定度摘要，包含 `position_sigma_m`、`covariance_trace`、`measurement_age_s` 和 `coverage_cell`。
@@ -33,7 +33,7 @@ D4 负责离线降级协同研究，包含两类模式：
 - `final_views["coordination_mode"]`：写入 `state/leader_id/leader_role/coverage_cell`，并由 `build_cbba_d6_metadata()` 和 `run_failover_simulation()` 顶层 metrics 透传，便于 D6 区分二级节点接管与完全分布式 CBBA。
 - `ActiveDegradationDecision`：主动/被动仲裁结果，字段包括 `mode`、`action`、`reason`、`target_node_id`、`coverage_cell`、`terminal_consistent`、`risk_factors` 和 `requires_human_review`；`to_metrics()` 输出 main/D6 所需 D4 指标字段。
 - `SecondaryNodeLifecycleSummary`：二级节点生命周期摘要，字段包括 `heartbeat`、`lease_epoch`、`coverage_cell`、`video_cue_freshness_s`、`link_stale` 和 `secondary_available`。
-- `D4DecisionRecord.to_event_record_kwargs()`：输出 D6 `EventRecord` 兼容事件，metadata 包含 `degradation_mode`、`selected_coordinator`、`coverage_cell`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp`、`review_label`、secondary takeover plan lifecycle、`active_plan_owner`，并保留 `d4_degradation_mode` 等 D4 原始字段。
+- `D4DecisionRecord.to_event_record_kwargs()`：输出 D6 `EventRecord` 兼容事件，metadata 包含 `degradation_mode`、`selected_coordinator`、`coverage_cell`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp`、三值 `review_label`、secondary takeover plan lifecycle、`active_plan_owner`、二级 coverage/full-view、stable cross-view registration、not-registered 和 detect-to-registration 诊断，并保留 `d4_degradation_mode` 等 D4 原始字段。
 - `CBBACostGapBenchmark`：离线 benchmark 输出，使用 D3/main 提供的中心 plan 和 cost matrix，对比 D4 CBBA 的 cost/completion/conflict/message 差距；D4 不运行中心化 Hungarian。
 - `build_cbba_d6_metadata()`：将 `CBBAResult`、`coordination_mode`、`assignment_audit` 和可选 `CBBACostGapBenchmark` 转成 D6 多 seed 报告字段。
 
@@ -65,27 +65,31 @@ D4 负责离线降级协同研究，包含两类模式：
 
 因此 `merge_recovery()` 采用双轨合并：中心计划和 fallback 计划并行比较，完全一致进入 `accepted`，单边出现进入 `review`，重复所有者或版本冲突进入 `conflicts`。只有 `conflicts` 和 `review` 均为空且 `human_accept=True` 才恢复 `normal`。
 
-## 4. 三级降级链路
+## 4. 层级降级链路
 
-降级顺序固定为：
+降级顺序固定为分层仲裁，而不是直接从中心跳到完全无中心：
 
 ```text
 中心 C2 正常
-  -> 中心 C2 失效：地面备份或高空系留二级侦察节点接管区域协调
+  -> 风险低：continue_center
+  -> 中心可用但 D3 plan/version/freshness 硬风险：request_center_replan
+  -> 中心可用但 D1/D2/D5 需要补充视角：request_secondary_assist
+  -> 中心 C2 失效或 D5 多帧硬冲突：地面备份、固定系留或机动高空二级侦察节点接管区域协调
   -> 二级节点不可用：集群代表 / 完全无中心 CBBA 或拍卖式协商
   -> 协商不收敛：保持、继续观测或安全回退的离线占位状态
 ```
 
 ### 4.1 二级侦察节点的角色
 
-高空系留侦察无人机在 D4 中建模为区域二级节点：
+固定系留或机动高空侦察无人机在 D4 中建模为区域二级节点：
 
 - `node_role=NodeRole.SECONDARY_RECON`：表示该节点具备区域观测和协调能力。
-- `capability_class="tethered_recon"` 或 `"secondary_c2"`：用于 leader 排序和审计。
+- `node_role=NodeRole.FIXED_TETHERED_SECONDARY/MOBILE_HIGH_RECON/MOBILE_SECONDARY_RECON` 或等价 `capability_class="tethered_recon" / "fixed_tethered_secondary" / "mobile_high_recon" / "mobile_secondary_recon"`：用于 leader 排序和审计。
 - `coordinator_only=True`：表示该节点只做区域协调和观测摘要，不作为执行资源参与任务所有权分配。
 - `coverage_cell`：表示节点覆盖的粗粒度小区或区域，后续应作为多区域接管过滤条件。
 - `heartbeat_timestamp_s` / `heartbeat_stale_after_s`：表示最近心跳和过期门限；心跳过期时二级节点不作为辅助或接管候选。
 - `lease_epoch`：表示二级节点租约版本；同等优先级下新租约优先。
+- `cue_freshness_s`、`gimbal_pointing_ok`、`secondary_coverage_ratio` 和 `cross_view_support_count`：表示来自 D5/D6/main 的二级侦察新鲜度、指向、覆盖和跨视角支持摘要；这些字段只影响候选和审计，不让 D4 自己做视觉注册。
 
 当二级节点健康时，它可以作为区域协调者，向覆盖范围内的拦截资源提供：
 
@@ -189,6 +193,17 @@ decision = ActiveDegradationArbiter().evaluate(
 
 这些阈值是离线仿真默认值，不代表真实传感器或真实系统参数。后续应由 D6 批量实验做敏感性分析。
 
+### 4.5 二级侦察校准口径
+
+D4 不直接做相机投影、bbox 几何门控、跨视角注册或 global track 绑定；这些由 D5/main 写盘并由 D6 聚合。D4 只消费 coverage、heartbeat/link/cue freshness、gimbal pointing、stable cross-view registration、not-registered 诊断、review label 和 plan activation metadata。
+
+当前 AirSim/P1 证据分两层解释：
+
+- `p1_d4d5_mobile_recon_20260708_055948*`：3 seeds 下 mobile high recon 的 radar cue、gimbal pointing 和 D4 三类动作正常，但二级网络同帧全覆盖仍为 0.0，联合覆盖约 0.65-0.69，degradation case 多数仍是 `secondary_detect_available_but_not_registered`。
+- `p1_d4d5_registration_calibration_runtime_v2_20260708*`：单 seed、200 m、FOV 110、1920x1080、3 个机动高空二级节点下，D6 上游几何统计为 `projection_valid_rate=1.0`、`geometry_gate_pass_rate≈0.474`；stable cross-view registration 为 51/55/53，cross-view association 为 4/4/5，degradation case not-registered 为 35/35，平均 full-view 为 0.048，平均 coverage 为 0.771。它证明 stable registration/not-registered 字段可由 D5/D6/main 产生并被 D4 消费；projection/geometry gate 只作为上游标定背景，D4 不直接消费或计算，且仍需多 seed 标定阈值、误注册风险和 review label。
+
+因此 D4 把二级侦察结果分成三类：二级可见但未注册、二级网络未全覆盖、稳定 cross-view support 足够。只有第三类与新鲜二级链路、D3/main 回填的 plan owner/version 同时满足时，才能作为二级接管必要性和成功的正证据；仅有检测可见、gimbal OK 或 coverage ratio > 0 不会自动激活 `secondary_plan_active`。
+
 ## 5. CBBA、拍卖和合同网协议
 
 ### 5.1 CBBA 原理
@@ -267,7 +282,7 @@ benchmark = build_cbba_cost_gap_benchmark(
 
 1. D3 发布中心化 AssignmentPlan，D4 只记录 digest、epoch 和资源摘要。
 2. D4 定期接收 heartbeat 和 assignment digest。
-3. 高空系留二级侦察节点在健康时作为区域观察源，维护覆盖区摘要。
+3. 固定系留或机动高空二级侦察节点在健康时作为区域观察源，维护覆盖区、cue freshness、gimbal 和 cross-view support 摘要。
 
 ### 6.2 中心失效
 
@@ -444,13 +459,16 @@ D4 应向 D6 输出或支持计算：
 - `degradation_mode`：D6 事件 metadata 使用 `none/passive/active`；D4 原始枚举另存为 `d4_degradation_mode`。
 - `selected_coordinator`：`center/secondary_node/distributed_cbba/hold_review`。
 - `trigger_reason` / `trigger_timestamp` / `decision_timestamp`：D6 主动降级评估所需触发和决策时间。
-- `review_label`：离线复核标签，默认为 `unknown`。
+- `review_label`：离线复核标签，取值为 `necessary/unnecessary/inconclusive`；缺少真实标签时 D6 不应从事件名自证必要性。
 - `degradation_action`：继续、请求重分配、请求二级辅助、降到二级、降到分布式或 hold。
 - `active_degradation_reason`：主动仲裁触发原因。
 - `risk_factors`：D1/D2/D3/D5 风险因子列表。
 - `terminal_consistent`：D5 末端关联是否与分配目标一致。
 - `secondary_available/link_stale/video_cue_freshness_s`：二级节点生命周期和链路 freshness 审计字段。
 - `secondary_takeover_state/active_plan_owner/secondary_plan_source_node_id/secondary_plan_id/secondary_plan_version`：二级接管 pending/active 状态和 plan metadata。
+- `secondary_network_coverage_available/secondary_network_full_view_gap/secondary_network_mean_coverage_ratio`：二级网络覆盖与全覆盖缺口。
+- `cross_view_association_count/stable_cross_view_registration_count/not_registered_count`：D5/D6/main 输出的跨视角支持和未注册统计，供 D4 做接管必要性解释。
+- `secondary_detect_available_but_not_registered/secondary_detect_to_registration_gap`：二级可见但未完成 global binding/registration 的诊断。
 - `cbba_total_cost/center_total_cost/absolute_cost_gap/relative_cost_gap/completion_rate_gap`：CBBA 与 D3 中心化基线的离线 cost gap benchmark 字段。
 
 当前 `coordination_mode` 已存在于 `CBBAResult.final_views`，并由 `build_cbba_d6_metadata()` 与 `run_failover_simulation()` 透传到顶层 metrics，避免实验报告把二级节点接管和完全分布式 CBBA 混在一起统计。CBBA cost gap benchmark 仍需要 main/D3 保存同场景 cost matrix/current plan，D4 helper 只负责单场景计算与字段归一化。
@@ -463,7 +481,7 @@ D3 是中心存在时的主分配模块。D4 不应覆盖 D3 的正常计划，�
 
 ### D5 终端视觉配准
 
-二级侦察节点健康时，可把区域图像 cue 或观测摘要传给小范围拦截资源，帮助 D5 做末端候选匹配。D4 只负责描述 cue 的来源、作用域和版本，不负责像素几何配准。D5 必须继续执行授权、plan version、友方身份和 `global_track_id` 不改写规则。主动降级中，D5 的长期目标不一致、资源错配、重复锁定或友方冲突是触发仲裁的强证据；无冲突的多帧 `ambiguous/hold/reacquire` 是软证据，优先请求二级 cue 或继续观察，避免过度切换。
+二级侦察节点健康时，可把区域图像 cue 或观测摘要传给小范围拦截资源，帮助 D5 做末端候选匹配。D4 只负责描述 cue 的来源、作用域和版本，不负责像素几何配准。D5 必须继续执行授权、plan version、友方身份和 `global_track_id` 不改写规则。主动降级中，D5 的长期目标不一致、资源错配、重复锁定或友方冲突是触发仲裁的强证据；无冲突的多帧 `ambiguous/hold/reacquire` 是软证据，优先请求二级 cue 或继续观察，避免过度切换。D4 只消费 D5/D6/main 的 stable registration、not-registered 和 coverage/freshness 汇总，不把二级 detect 可见直接解释为可接管。
 
 ### D6 评估
 
@@ -478,7 +496,8 @@ D6 消费 D4 的 transition log、CBBAResult 和 merge result，计算 failover�
 - 默认仿真的默认资源集仍不构造 `secondary_recon`；显式 summary-list 场景已能在 metrics 顶层透传 `coordination_mode/leader_role/coverage_cell`。
 - CBBA 打分函数是合成基线，没有与 D3 的真实中心化代价函数完全对齐。
 - 网络模型是内存队列，只用于延迟/丢包统计，不代表真实链路。
-- 主动降级仲裁器目前是规则基线，已包含 dwell/release/window 防抖配置，但未用 5v5 批量 episode 标定阈值。
+- 主动降级仲裁器目前是规则基线，已包含 dwell/release/window 防抖配置，但未用 5v5/N-v-N 批量 episode 标定阈值。
+- 2026-07-08 mobile recon 与 registration calibration 已跑通 coverage、stable registration 和 not-registered 字段，但 full-view 仍低、degradation case not-registered 仍高，且 registration v2 只有单 seed。
 - D5 `TerminalAssociation` 当前在 D4 内归一化为 `TerminalAssociationSummary`，跨模块字段合同还需要主智能体统一。
 
 后续工作：
@@ -489,4 +508,4 @@ D6 消费 D4 的 transition log、CBBAResult 和 merge result，计算 failover�
 4. 保留轻量 CBBA 为当前默认基线；如后续需要，另行评估 MIT CBBA/CA-CBBA/auction/contract-net 的许可证、依赖和同场景 benchmark。
 5. 把 D3 的 plan version、authorization state 和 D5 的 cue 审计字段纳入降级日志。
 6. 增加中心恢复后的多轮稳定窗口，而不是只依赖一次合并调用。
-7. 将主动降级决策接入系统级日志，交给 D6 统计 `active_degradation_count`、`false_degradation_rate` 和 `terminal_disagreement_duration`。
+7. 将主动降级决策接入系统级日志，交给 D6 统计 `active_degradation_count`、`false_degradation_rate`、`active_degradation_precision`、stable registration、not-registered 和 `terminal_disagreement_duration`。
