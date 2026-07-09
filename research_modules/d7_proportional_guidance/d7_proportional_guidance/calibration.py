@@ -78,6 +78,7 @@ def summarize_guidance_calibration(
         "record_count": len(rows),
         "guidance_law_order": law_order,
         "guidance_law_summaries": guidance_law_summaries,
+        "threshold_advisory_version": thresholds.version,
         "threshold_advisory": _build_threshold_advisory(rows, thresholds),
         "benchmark_calibration": _summarize_benchmark_fields(rows),
         "advisory_only": True,
@@ -94,9 +95,18 @@ def _summarize_law_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
     contract_rejects: Counter[str] = Counter()
     switch_rejects: Counter[str] = Counter()
+    d4_action_block_reasons: Counter[str] = Counter()
     all_rejects: Counter[str] = Counter()
     guidance_modes: Counter[str] = Counter()
     handoff_states: Counter[str] = Counter()
+    d4_actions: Counter[str] = Counter()
+    d5_states: Counter[str] = Counter()
+    d5_lock_reasons: Counter[str] = Counter()
+    secondary_capability_classes: Counter[str] = Counter()
+    secondary_readiness_classes: Counter[str] = Counter()
+    detect_registration_outcomes: Counter[str] = Counter()
+    detect_registration_rejects: Counter[str] = Counter()
+    tracker_backends: Counter[str] = Counter()
 
     terminal_switch_allowed_samples = 0.0
     terminal_switch_sample_count = 0
@@ -109,11 +119,36 @@ def _summarize_law_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
             guidance_modes[mode] += 1
         if state := _string_value(row, ("terminal_handoff_state", "handoff_state")):
             handoff_states[state] += 1
+        if action := _string_value(row, ("d4_action", "d4_state")):
+            d4_actions[action] += 1
+        if state := _string_value(row, ("d5_decision_state", "d5_state")):
+            d5_states[state] += 1
+        if reason := _string_value(row, ("d5_lock_consistency_reason",)):
+            d5_lock_reasons[reason] += 1
+        if capability := _string_value(row, ("secondary_capability_class",)):
+            secondary_capability_classes[capability] += 1
+        if readiness := _string_value(row, ("secondary_readiness_class", "readiness_class")):
+            secondary_readiness_classes[readiness] += 1
+        if outcome := _string_value(row, ("detect_registration_outcome", "registration_outcome")):
+            detect_registration_outcomes[outcome] += 1
+        detect_registration_rejects.update(
+            _tuple_counter(
+                row,
+                (
+                    "detect_registration_reject_reasons",
+                    "registration_reject_reasons",
+                ),
+            )
+        )
+        if tracker := _string_value(row, ("tracker_backend", "yolo_tracker_backend")):
+            tracker_backends[tracker] += 1
 
         contract_rejects.update(_reason_counter(row, "terminal_contract_reject"))
         switch_rejects.update(_reason_counter(row, "terminal_switch_reject"))
+        d4_action_block_reasons.update(_reason_counter(row, "d4_action_block"))
         all_rejects.update(_reason_counter(row, "terminal_contract_reject"))
         all_rejects.update(_reason_counter(row, "terminal_switch_reject"))
+        all_rejects.update(_reason_counter(row, "d4_action_block"))
         all_rejects.update(_reason_counter(row, "reject"))
 
         sample_count = _sample_count(row)
@@ -173,6 +208,46 @@ def _summarize_law_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "maneuver_gate": {
             "pass_rate": _bool_rate(rows, ("maneuver_margin_gate_passed",)),
             "maneuver_margin": _numeric_summary(_numeric_values(rows, ("maneuver_margin",))),
+        },
+        "d4_action_block_reasons": dict(d4_action_block_reasons),
+        "d4_action_counts": dict(d4_actions),
+        "d5_lock_consistent_rate": _bool_rate(rows, ("d5_lock_consistent",)),
+        "d5_lock_consistency_reasons": dict(d5_lock_reasons),
+        "d3_owner_version_consistent_rate": _bool_rate(
+            rows,
+            ("d3_owner_version_consistent",),
+        ),
+        "d3_plan_version_consistent_rate": _bool_rate(
+            rows,
+            ("d3_plan_version_consistent",),
+        ),
+        "d3_owner_consistent_rate": _bool_rate(rows, ("d3_owner_consistent",)),
+        "d5_decision_state_counts": dict(d5_states),
+        "secondary_capability_class_counts": dict(secondary_capability_classes),
+        "secondary_readiness_class_counts": dict(secondary_readiness_classes),
+        "registration_projection_summary": {
+            "detect_registration_outcome_counts": dict(detect_registration_outcomes),
+            "detect_registration_reject_reasons": dict(detect_registration_rejects),
+            "measurement_age_s": _numeric_summary(
+                _numeric_values(rows, ("measurement_age_s", "visual_latency_s"))
+            ),
+            "projection_valid_rate": _bool_rate(rows, ("projection_valid",)),
+            "d5_gate_pass_rate": _bool_rate(rows, ("gate_pass",)),
+            "projection_depth_m": _numeric_summary(_numeric_values(rows, ("projection_depth_m",))),
+            "reprojection_error_px": _numeric_summary(
+                _numeric_values(rows, ("reprojection_error_px", "pixel_error_px", "reprojection_error"))
+            ),
+            "mahalanobis_d2": _numeric_summary(_numeric_values(rows, ("mahalanobis_d2",))),
+            "covariance_px_trace": _numeric_summary(_numeric_values(rows, ("covariance_px_trace",))),
+            "projection_covariance_px_trace": _numeric_summary(
+                _numeric_values(rows, ("projection_covariance_px_trace",))
+            ),
+            "bbox_area_px": _numeric_summary(_numeric_values(rows, ("bbox_area_px",))),
+            "association_probability": _numeric_summary(
+                _numeric_values(rows, ("association_probability",))
+            ),
+            "mot_history_length": _numeric_summary(_numeric_values(rows, ("mot_history_length",))),
+            "tracker_backend_counts": dict(tracker_backends),
         },
         "terminal_contract_reject_reasons": dict(contract_rejects),
         "terminal_switch_reject_reasons": dict(switch_rejects),
@@ -342,6 +417,33 @@ def _coerce_record(record: Any) -> dict[str, Any]:
             "terminal_contract_reject_reason",
             "visual_png_enabled",
             "visual_png_switch_count",
+            "d4_action",
+            "d4_action_block_reason",
+            "d5_decision_state",
+            "d5_lock_consistent",
+            "d5_lock_consistency_reason",
+            "d3_owner_version_consistent",
+            "d3_plan_version_consistent",
+            "d3_owner_consistent",
+            "secondary_capability_class",
+            "secondary_readiness_class",
+            "detect_registration_outcome",
+            "detect_registration_reject_reasons",
+            "measurement_age_s",
+            "projection_valid",
+            "projection_depth_m",
+            "reprojection_error_px",
+            "mahalanobis_d2",
+            "gate_pass",
+            "covariance_px_trace",
+            "projection_covariance_px_trace",
+            "camera_pose_source",
+            "calibration_health",
+            "drift_warning",
+            "tracker_backend",
+            "mot_history_length",
+            "bbox_area_px",
+            "association_probability",
             "camera_quality_gate_passed",
             "los_quality_gate_passed",
             "maneuver_margin_gate_passed",
@@ -413,6 +515,29 @@ def _reason_counter(row: Mapping[str, Any], prefix: str) -> Counter[str]:
         reason = _string_value(row, (name,))
         if reason:
             counter[reason] += 1
+    return counter
+
+
+def _tuple_counter(row: Mapping[str, Any], names: tuple[str, ...]) -> Counter[str]:
+    counter: Counter[str] = Counter()
+    for name in names:
+        value = _lookup(row, name)
+        if value is None or value == "":
+            continue
+        if isinstance(value, str):
+            counter[value] += 1
+            continue
+        if isinstance(value, Mapping):
+            for reason, count in value.items():
+                if reason:
+                    counter[str(reason)] += int(count)
+            continue
+        try:
+            for item in value:
+                if item:
+                    counter[str(item)] += 1
+        except TypeError:
+            counter[str(value)] += 1
     return counter
 
 

@@ -4,7 +4,7 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
-**P0/P1 状态入口**：`subagent_reviews/MAIN_P0_P1_GAP_STATUS.md` 集中维护当前 P0/P1 owner、缺口、缺少条件和验收口径。`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` v2.0 已确认：当前未发现新的运行级 P0 阻塞断链，但存在进入可信 AirSim 多 seed、复杂降级和后续封闭场地验证前必须优先补齐的工程化 P0 backlog。2026-07-09 已完成该 backlog 的最小工程闭合：main runtime bus 补齐统一 clock/config/module health/runtime exception outcome；D1-D7 已由各自 owner 完成 P0-A/P0-B/P0-C 修复和文档同步；main runtime 跟进 D4 二级能力合同，修正 D4/D5 stress 的二级注册 evidence 桥接和成功注册原因过滤。三份 patch 归并后新增的 P0-A 重点是 D6/main 的标准化评估映射最小版：`COURAGEOUS/MDPI/OCEF -> 当前 EpisodeMetrics`、standard metric family、scenario version 和 evidence path。P1 仍作为三个月内能力增强、标准化报告扩展和标定项管理；P2/P3 本轮不调整。
+**P0/P1 状态入口**：`subagent_reviews/MAIN_P0_P1_GAP_STATUS.md` 集中维护当前 P0/P1 owner、缺口、缺少条件和验收口径。`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` v2.1 已确认：当前未发现新的运行级 P0 阻塞断链，但存在进入可信 AirSim 多 seed、复杂降级和后续封闭场地验证前必须优先补齐的工程化 P0 backlog。2026-07-09 已完成该 backlog 的最小工程闭合：main runtime bus 补齐统一 clock/config/module health/runtime exception outcome；D1-D7 已由各自 owner 完成 P0-A/P0-B/P0-C 修复和文档同步；main runtime 跟进 D4 二级能力合同，修正 D4/D5 stress 的二级注册 evidence 桥接和成功注册原因过滤。三份 patch 归并后新增的 P0-A 重点是 D6/main 的标准化评估映射最小版：`COURAGEOUS/MDPI/OCEF -> 当前 EpisodeMetrics`、standard metric family、scenario version 和 evidence path。2026-07-09 P1 接口补齐已完成一轮：main runtime 增加 P1 calibration suite/threshold version、高度对比和 D6 标准报告 bundle，D1-D7 各自补齐本模块 P1 metadata/summary/gate 字段；P2/P3 本轮不调整。
 
 ## 2026-07-09 P0 实施结果
 
@@ -12,16 +12,31 @@
 
 | Owner | P0 实施结果 | 验证 |
 |---|---|---|
-| main/runtime | episode bus 输出 episode clock、scenario config、D1-D7 module health、runtime errors、mission outcome/root cause/performance metadata；D4/D5 stress bridge 正确把二级注册 evidence 输入 D4，并避免把 `registered_to_global_track` 当作拒绝原因 | `pytest -q research_modules/airsim_runtime/tests/test_blocks_runtime.py` -> 58 passed |
-| D1 | sensor health、covariance floor/ceiling reason、timestamp uncertainty 和 replay summary 已实现 | 30 passed |
+| main/runtime | episode bus 输出 episode clock、scenario config、D1-D7 module health、runtime errors、mission outcome/root cause/performance metadata；D4/D5 stress bridge 正确把二级注册 evidence 输入 D4，并避免把 `registered_to_global_track` 当作拒绝原因；P1 calibration suite/threshold metadata、高度对比和 secondary owner 保持已实现 | `pytest -q research_modules/airsim_runtime/tests/test_blocks_runtime.py` -> 59 passed |
+| D1 | sensor health、covariance floor/ceiling reason、timestamp uncertainty、replay summary、latency audit 和区域质量摘要已实现 | 32 passed |
 | D2 | motion consistency cost、quality-aware gate baseline、`track_quality/association_risk/quality_metadata` 已实现 | 31 passed |
-| D3 | 资源状态细化、high-threat release、结构化 stale rejection 和 explainable threat baseline 已实现 | 52 passed |
-| D4 | heartbeat smoothing、lease/epoch strictness、secondary capability score、active degradation debounce 已实现；active secondary plan 同 id/version 回归已修复 | 82 passed |
-| D5 | active reacquire、temporal consistency、candidate margin 和 calibration health metadata 已实现 | 78 passed |
-| D6 | mission outcome、failure reason、top failure causes、eval priority/status/evidence path 和 performance metrics 已实现 | 36 passed |
-| D7 | terminal latch、dwell/release/reacquire grace、filtered LOS rate/outlier reject evidence、3D PN benchmark/log 已实现 | 43 passed |
+| D3 | 资源状态细化、high-threat release、结构化 stale rejection、explainable threat baseline 和 assignment evidence export 已实现 | 56 passed |
+| D4 | heartbeat smoothing、lease/epoch strictness、secondary capability score、active degradation debounce 和 `secondary_capability_class` 已实现；active secondary plan 同 id/version 回归已修复 | 84 passed |
+| D5 | active reacquire、temporal consistency、candidate margin、calibration health metadata 和 detect registration outcome 已实现 | 79 passed |
+| D6 | mission outcome、failure reason、top failure causes、eval priority/status/evidence path、performance metrics 和 P1 calibration 标准报告 bundle 已实现 | 38 passed |
+| D7 | terminal latch、dwell/release/reacquire grace、filtered LOS rate/outlier reject evidence、3D PN benchmark/log 和 P1 switch/gate calibration fields 已实现 | 45 passed |
 
-`git diff --check` 通过。D2、D6、runtime 的 matplotlib Axes3D warning 为本机环境 warning，不构成 P0。
+`git diff --check` 通过。D2、D6、runtime 的 matplotlib Axes3D warning 为本机环境 warning，不构成 P0/P1。
+
+## 2026-07-09 P1 实施结果
+
+本轮 P1 实施仍按 “main 下发、D-agent 自改自测、main 汇总验证” 执行。D1-D7 各自更新 owned paths 和 GAP/PLAN/README/review；main 只修改 AirSim runtime、测试和 main-level GAP/status。
+
+| Owner | P1 实施结果 | 验证 |
+|---|---|---|
+| main/runtime | `--p1-calibration-sweep` 输出 suite/version/threshold、二级高度/FOV/数量/站距、expected state fields 和 50/200 m 高度对比；自动生成 D6 `d6_airsim_calibration` bundle；修复 secondary takeover plan 在连续 replan 后 `owner_node_id` 回退为 `d3_central` 的问题 | runtime 59 passed；`p1_gap_fix_smoke_20260709` 生成 6 行 smoke summary |
+| D1 | dry-run/replay 增加 schema/version/metadata 检查、latency/OOSM audit 和区域质量摘要 | 32 passed |
+| D2 | replay 输出 association risk threshold version、gate pass/reject、risk summary 和 threshold sensitivity | 31 passed |
+| D3 | 增加 assignment evidence export、cost breakdown/rejected edges/stale reason/secondary fields 和硬时间窗闭合边拒绝 | 56 passed |
+| D4 | 增加二级 readiness/capability class，D7 handoff 需 `takeover_ready` 才放行 active secondary visual PNG | 84 passed |
+| D5 | detect-to-global candidate 增加 outcome、reject reason、timestamp/age、projection/covariance 和 YOLO/MOT metadata；`projection_invalid` 独立成因 | 79 passed |
+| D6 | AirSim calibration report 保留 scenario/standard mapping/evidence/trend/height bucket/actual scale；Markdown 增加 50/200m、coverage funnel、stable registration、D7 reject 等口径 | 38 passed |
+| D7 | runtime/comparison/replay/calibration 输出 terminal range、closing speed、bbox/LOS/maneuver gate、D4 block reason、D5/D3 consistency、secondary capability、threshold advisory version 和 visual PNG switch count；未改 PNG 核心控制律 | 45 passed |
 
 ## 1. 总体结论
 
@@ -46,7 +61,7 @@ D1 NumPy EKF/FusionAdapter
 未实现的共同原因主要有四类：
 
 1. **当前阶段优先轻量可复现**：默认测试不依赖 ROS、Stone Soup、AirSim 实时服务、PX4 或 GPU。
-2. **main runtime bus 接口基线已接入**：AirSim runtime 已在同一 episode 中持续写入 D1-D7 summary/record 和 D6 JSONL；2026-07-08 已把执行拦截结果回灌到正式 main bus metrics，接入 D5 feedback、二级接管 owner/version 和 D7 runtime bus，并保留 raw contract metrics；P1 calibration sweep 已自动回灌 D6 标准 CSV/JSON/Markdown 报告 bundle；下一步仍需真实 Blocks 多 seed 校准。
+2. **main runtime bus 接口基线已接入**：AirSim runtime 已在同一 episode 中持续写入 D1-D7 summary/record 和 D6 JSONL；2026-07-08 已把执行拦截结果回灌到正式 main bus metrics，接入 D5 feedback、二级接管 owner/version 和 D7 runtime bus，并保留 raw contract metrics；2026-07-09 P1 calibration sweep 已自动回灌 D6 标准 CSV/JSON/Markdown 报告 bundle，且 summary 保留 suite/threshold version 与高度对比；secondary takeover 连续 replan 时 owner 不再回退为中心节点；下一步仍需真实 Blocks 多 seed 校准。
 3. **二级侦察看清不等于可接管**：2026-07-08 5v5 registration calibration v2 中，二级云台指向成功率为 1.0，`projection_valid_rate=1.0`，几何门通过率约 0.474，稳定跨视角注册约 51/55/53，cross-view association 为 4/4/5；但 `secondary_network_joint_full_view_frame_rate` 均值仍约 0.048，联合覆盖约 0.771，主要断点是 `not_all_targets_visible` / `network_union_incomplete`。它说明二级节点已能提供有效注册证据，但不能绕过 D3/D4/D5 的分配、仲裁和视觉 PNG gate。
 4. **真实图像/通信/身份源仍需标定**：D5 已能运行 YOLOv8 + MOT 并由 main runtime 显式接线；Remote ID、MAVLink signing、AprilTag 仍需要真实报文、密钥和时间同步，YOLO/MOT 仍需要 AirSim 多 seed 阈值标定。
 5. **高阶算法需要基准场景支撑**：IMM、JPDA/MHT 完整版、FRPN、MPC、OSPA/HOTA 等应在 5v5 crossing、遮挡、主动降级和 AirSim replay 稳定后再做对照。
@@ -129,7 +144,7 @@ D1 NumPy EKF/FusionAdapter
 ### 4.2 当前最关键的未闭合项
 
 1. **main runtime bus 已完成接口闭合，仍需真实多 seed 校准**
-   `research_modules/airsim_runtime/episode_bus.py` 已由 main 串接 D1 track、D2 risk、D3 plan/version、D4 action、D5 terminal decision、D7 pair state 和 D6 collector，并在每个 Blocks episode 输出 `main_episode_bus.jsonl`、ticks、metrics 和 summary。执行拦截时，main 还会把 `control_commands.csv` 和 `intercept_summary.json` 的成功数、碰撞拦截数、guidance law 和 terminal reject 回灌到正式 metrics，同时保留 contract-only metrics。2026-07-08 已补齐 D5 terminal feedback 到 D3、D4 二级接管 owner/version 到 D3/D7，以及 D7 N-pair runtime summary。P1 calibration sweep 已自动调用 D6 `AirSimCalibrationReportGenerator` 扫描 persisted sequence/episode artifacts，输出标准 CSV/JSON/Markdown 报告。未闭合的是在真实 Blocks 长时/多 seed 条件下校准阈值、状态迁移和降级必要性标签。
+   `research_modules/airsim_runtime/episode_bus.py` 已由 main 串接 D1 track、D2 risk、D3 plan/version、D4 action、D5 terminal decision、D7 pair state 和 D6 collector，并在每个 Blocks episode 输出 `main_episode_bus.jsonl`、ticks、metrics 和 summary。执行拦截时，main 还会把 `control_commands.csv` 和 `intercept_summary.json` 的成功数、碰撞拦截数、guidance law 和 terminal reject 回灌到正式 metrics，同时保留 contract-only metrics。2026-07-08 已补齐 D5 terminal feedback 到 D3、D4 二级接管 owner/version 到 D3/D7，以及 D7 N-pair runtime summary。2026-07-09 已补齐 P1 calibration sweep suite/threshold metadata、高度对比、D6 标准报告 bundle，并修复 secondary takeover 连续 replan 后 owner 回退问题。未闭合的是在真实 Blocks 长时/多 seed 条件下校准阈值、状态迁移和降级必要性标签。
 
 2. **N-pair 真实控制状态机已有 main 接线，仍需真实多 seed 校准**
    D7 已支持每个 assignment pair 独立 filter，main runtime bus 已按每个有效 pair 注入 `AssignmentGuidanceBinding`、D4 permission/action、D5 `TerminalAssociation`、资源状态、目标估计并写 D6 guidance log。下一步重点不是再补接口，而是在真实 Blocks 多 seed 下校准终端切换、重捕获和拒绝原因分布。

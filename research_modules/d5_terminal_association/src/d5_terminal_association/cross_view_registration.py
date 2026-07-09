@@ -35,12 +35,14 @@ from .observation_bus import TerminalObservationBus
 
 REGISTERED_TO_GLOBAL_TRACK_REASON = "registered_to_global_track"
 STABILITY_WINDOW_FAILED_REASON = "stability_window_failed"
+PROJECTION_INVALID_REASON = "projection_invalid"
 DETECT_REGISTRATION_REASONS = (
     "not_all_targets_visible",
     "network_union_incomplete",
     "no_global_binding",
     "reacquire_not_grouped",
     "stale_or_missing_recon_cue",
+    PROJECTION_INVALID_REASON,
     "geometry_gate_rejected",
     STABILITY_WINDOW_FAILED_REASON,
     "secondary_detect_offline_only",
@@ -176,6 +178,7 @@ class DetectToGlobalTrackCandidate:
     association_probability: float
     reject_reasons: tuple[str, ...]
     decision_state: str
+    outcome: str | None = None
     projected_px: tuple[float, float] | None = None
     bbox_center_px: tuple[float, float] | None = None
     pixel_error_px: float | None = None
@@ -206,6 +209,11 @@ class DetectToGlobalTrackCandidate:
         object.__setattr__(self, "association_probability", float(np.clip(self.association_probability, 0.0, 1.0)))
         object.__setattr__(self, "reject_reasons", _valid_reason_tuple(self.reject_reasons))
         object.__setattr__(self, "decision_state", str(self.decision_state))
+        object.__setattr__(
+            self,
+            "outcome",
+            str(self.outcome or _default_candidate_outcome(self.decision_state, self.reject_reasons)),
+        )
         object.__setattr__(self, "projected_px", _optional_pair(self.projected_px))
         object.__setattr__(self, "bbox_center_px", _optional_pair(self.bbox_center_px))
         object.__setattr__(self, "pixel_error_px", _finite_or_none(self.pixel_error_px))
@@ -253,6 +261,10 @@ class DetectToGlobalTrackCandidate:
                 "stability_pass_count": self.stability_pass_count,
                 "stability_window_size": self.stability_window_size,
                 "stability_required_passes": self.stability_required_passes,
+                "detect_to_global_candidate": True,
+                "detect_registration_outcome": self.outcome,
+                "detect_registration_reject_reasons": self.reject_reasons,
+                "decision_state": self.decision_state,
             }
         )
         object.__setattr__(self, "metadata", metadata)
@@ -512,7 +524,7 @@ def _register_batch(
         elif record.gate_passed:
             reasons = ()
         else:
-            reasons = ("geometry_gate_rejected",)
+            reasons = _pair_reject_reasons(record)
         candidates.append(
             _pair_candidate(
                 batch,
@@ -544,13 +556,14 @@ def _register_batch(
             )
             continue
 
-        _count_reasons(reason_counts, ("geometry_gate_rejected",))
+        rejected_reasons = _local_reject_reasons_for_col(pair_records, col)
+        _count_reasons(reason_counts, rejected_reasons)
         _publish_local_only(
             bus,
             batch,
             local_track,
             batch_time,
-            ("geometry_gate_rejected",),
+            rejected_reasons,
             metadata={"registration_state": "all_geometry_gates_rejected"},
         )
 
@@ -588,7 +601,13 @@ def _publish_registered(
     )
     metadata = {
         "detect_to_global_track_registration": True,
+        "detect_to_global_candidate": True,
+        "detect_registration_outcome": "candidate",
         "detect_registration_reject_reasons": (REGISTERED_TO_GLOBAL_TRACK_REASON,),
+        "measurement_timestamp": timestamp,
+        "arrival_timestamp": batch.arrival_timestamp,
+        "local_track_timestamp": local_track.timestamp,
+        "measurement_age_s": _measurement_age_s(local_track, timestamp),
         "mahalanobis_d2": _finite_or_none(record.mahalanobis_d2),
         "association_probability": probability_by_pair.get((record.row, record.col), 0.0),
         "gate_chi2": float(config.gate_chi2),
@@ -599,6 +618,10 @@ def _publish_registered(
         "reprojection_error": _finite_or_none(record.pixel_error_px),
         "reprojection_error_px": _finite_or_none(record.pixel_error_px),
         "projection_valid": record.projection_valid,
+        "projection_reason": record.projection.reason,
+        "projection_depth_m": float(record.projection.depth),
+        "covariance_px": _matrix_list(record.covariance_px),
+        "projection_covariance_px": _matrix_list(record.projection.covariance_px),
         "camera_pose_source": record.camera_pose_source,
         "camera_pose_source_trusted": calibration["camera_pose_source_trusted"],
         "calibration_health": calibration["calibration_health"],
@@ -643,7 +666,13 @@ def _publish_registered(
         arrival_timestamp=batch.arrival_timestamp,
         metadata={
             "detect_to_global_track_registration": True,
+            "detect_to_global_candidate": True,
+            "detect_registration_outcome": "candidate",
             "detect_registration_reject_reasons": (REGISTERED_TO_GLOBAL_TRACK_REASON,),
+            "measurement_timestamp": timestamp,
+            "arrival_timestamp": batch.arrival_timestamp,
+            "local_track_timestamp": local_track.timestamp,
+            "measurement_age_s": _measurement_age_s(local_track, timestamp),
             "binding_source": binding.binding_source,
             "pixel_error_px": _finite_or_none(record.pixel_error_px),
             "reprojection_error": _finite_or_none(record.pixel_error_px),
@@ -651,6 +680,10 @@ def _publish_registered(
             "mahalanobis_d2": _finite_or_none(record.mahalanobis_d2),
             "gate_pass": True,
             "projection_valid": record.projection_valid,
+            "projection_reason": record.projection.reason,
+            "projection_depth_m": float(record.projection.depth),
+            "covariance_px": _matrix_list(record.covariance_px),
+            "projection_covariance_px": _matrix_list(record.projection.covariance_px),
             "camera_pose_source": record.camera_pose_source,
             "camera_pose_source_trusted": calibration["camera_pose_source_trusted"],
             "calibration_health": calibration["calibration_health"],
@@ -675,7 +708,13 @@ def _publish_local_only(
 ) -> None:
     merged = {
         "detect_to_global_track_registration": True,
+        "detect_to_global_candidate": True,
+        "detect_registration_outcome": _outcome_from_reasons(reasons),
         "detect_registration_reject_reasons": tuple(reasons),
+        "measurement_timestamp": timestamp,
+        "arrival_timestamp": batch.arrival_timestamp,
+        "local_track_timestamp": local_track.timestamp,
+        "measurement_age_s": _measurement_age_s(local_track, timestamp),
         "truth_id_online_use": "ignored",
     }
     if metadata:
@@ -857,6 +896,11 @@ def _pair_candidate(
 ) -> DetectToGlobalTrackCandidate:
     projection = record.projection
     decision_state = "registered" if selected else "candidate" if record.gate_passed else "rejected"
+    outcome = _candidate_outcome(
+        selected=selected,
+        gate_passed=record.gate_passed,
+        reasons=reasons,
+    )
     calibration = calibration_health_metadata(
         projection_valid=projection.valid,
         reprojection_error=record.pixel_error_px,
@@ -875,6 +919,7 @@ def _pair_candidate(
         association_probability=probability,
         reject_reasons=reasons,
         decision_state=decision_state,
+        outcome=outcome,
         projected_px=_projection_pixel_tuple(projection),
         bbox_center_px=_vector_tuple(record.local_track.center_px),
         pixel_error_px=record.pixel_error_px,
@@ -892,6 +937,12 @@ def _pair_candidate(
             "projection_valid": projection.valid,
             "projection_reason": projection.reason,
             "projection_depth_m": float(projection.depth),
+            "measurement_timestamp": timestamp,
+            "arrival_timestamp": batch.arrival_timestamp,
+            "local_track_timestamp": record.local_track.timestamp,
+            "measurement_age_s": _measurement_age_s(record.local_track, timestamp),
+            "covariance_px": _matrix_list(record.covariance_px),
+            "projection_covariance_px": _matrix_list(projection.covariance_px),
             "gate_pass": record.gate_passed,
             "camera_pose_source": record.camera_pose_source,
             "camera_pose_source_trusted": calibration["camera_pose_source_trusted"],
@@ -904,6 +955,7 @@ def _pair_candidate(
             "offline_truth_global_id": record.offline_truth_global_id,
             "binding_source": record.binding.binding_source,
             "truth_id_online_use": "ignored",
+            "global_id_policy": "existing_global_track_id_support_only",
         },
     )
 
@@ -937,6 +989,7 @@ def _local_only_candidate(
         association_probability=0.0,
         reject_reasons=reasons,
         decision_state=decision_state,
+        outcome=_outcome_from_reasons(reasons),
         bbox_center_px=_vector_tuple(local_track.center_px),
         projection_valid=False,
         camera_pose_source=camera_pose_source,
@@ -948,6 +1001,10 @@ def _local_only_candidate(
             **metadata,
             "gate_pass": False,
             "projection_valid": False,
+            "measurement_timestamp": timestamp,
+            "arrival_timestamp": batch.arrival_timestamp,
+            "local_track_timestamp": local_track.timestamp,
+            "measurement_age_s": _measurement_age_s(local_track, timestamp),
             "camera_pose_source": camera_pose_source,
             "camera_pose_source_trusted": calibration["camera_pose_source_trusted"],
             "calibration_health": calibration["calibration_health"],
@@ -1092,11 +1149,13 @@ def _annotate_candidate_stability(
             reasons = tuple(reason for reason in reasons if reason != STABILITY_WINDOW_FAILED_REASON)
             reasons = reasons + (REGISTERED_TO_GLOBAL_TRACK_REASON,)
         decision_state = "registered" if stable else "candidate" if candidate.gate_passed else candidate.decision_state
+        outcome = REGISTERED_TO_GLOBAL_TRACK_REASON if stable else _outcome_from_reasons(reasons)
         annotated.append(
             replace(
                 candidate,
                 reject_reasons=reasons,
                 decision_state=decision_state,
+                outcome=outcome,
                 stable_cross_view_support=stable,
                 stability_pass_count=pass_count,
                 stability_window_size=stability.window_frames,
@@ -1132,6 +1191,11 @@ def _annotate_observation_stability(
         if candidate is None:
             continue
         state = "stable" if candidate.stable_cross_view_support else "candidate"
+        outcome = (
+            REGISTERED_TO_GLOBAL_TRACK_REASON
+            if candidate.stable_cross_view_support
+            else _outcome_from_reasons(candidate.reject_reasons)
+        )
         observation.metadata.update(
             {
                 "registration_stability_state": state,
@@ -1139,6 +1203,8 @@ def _annotate_observation_stability(
                 "stability_pass_count": candidate.stability_pass_count,
                 "stability_window_size": stability.window_frames,
                 "stability_required_passes": stability.required_gate_passes,
+                "detect_registration_outcome": outcome,
+                "detect_registration_reject_reasons": candidate.reject_reasons,
             }
         )
         association.metadata.update(
@@ -1148,6 +1214,8 @@ def _annotate_observation_stability(
                 "stability_pass_count": candidate.stability_pass_count,
                 "stability_window_size": stability.window_frames,
                 "stability_required_passes": stability.required_gate_passes,
+                "detect_registration_outcome": outcome,
+                "detect_registration_reject_reasons": candidate.reject_reasons,
             }
         )
 
@@ -1224,6 +1292,62 @@ def _assignment_margin(costs: np.ndarray, row: int, col: int) -> float:
     return min(alternatives) - selected
 
 
+def _pair_reject_reasons(record: _PairRecord) -> tuple[str, ...]:
+    if not record.projection_valid:
+        return (PROJECTION_INVALID_REASON,)
+    return ("geometry_gate_rejected",)
+
+
+def _local_reject_reasons_for_col(
+    pair_records: Mapping[tuple[int, int], _PairRecord],
+    col: int,
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+    for (_, candidate_col), record in sorted(pair_records.items()):
+        if candidate_col != col:
+            continue
+        for reason in _pair_reject_reasons(record):
+            if reason not in reasons:
+                reasons.append(reason)
+    return tuple(reasons or ("geometry_gate_rejected",))
+
+
+def _candidate_outcome(
+    *,
+    selected: bool,
+    gate_passed: bool,
+    reasons: Sequence[str],
+) -> str:
+    if selected:
+        return REGISTERED_TO_GLOBAL_TRACK_REASON
+    if gate_passed:
+        return "candidate_not_selected"
+    return _outcome_from_reasons(reasons)
+
+
+def _default_candidate_outcome(decision_state: str, reasons: Iterable[str]) -> str:
+    reason_outcome = _outcome_from_reasons(reasons)
+    if reason_outcome != "candidate_not_selected":
+        return reason_outcome
+    state = str(decision_state)
+    if state == "registered":
+        return REGISTERED_TO_GLOBAL_TRACK_REASON
+    if state == "rejected":
+        return "rejected"
+    return "candidate_not_selected"
+
+
+def _outcome_from_reasons(reasons: Iterable[str]) -> str:
+    normalized = _valid_reason_tuple(reasons)
+    if normalized:
+        return normalized[0]
+    return "candidate_not_selected"
+
+
+def _measurement_age_s(local_track: LocalVisualTrack, timestamp: float) -> float:
+    return max(0.0, float(timestamp) - float(local_track.timestamp))
+
+
 def _pixel_error_px(local_track: LocalVisualTrack, projection: ProjectionResult) -> float | None:
     if projection.pixel is None:
         return None
@@ -1249,6 +1373,15 @@ def _vector_tuple(values: np.ndarray) -> tuple[float, float]:
 
 def _vector_list(values: np.ndarray) -> list[float]:
     return [float(item) for item in np.asarray(values, dtype=float).reshape(-1).tolist()]
+
+
+def _matrix_list(values: np.ndarray | None) -> list[list[float]] | None:
+    if values is None:
+        return None
+    array = np.asarray(values, dtype=float)
+    if array.ndim != 2:
+        return None
+    return [[float(item) for item in row] for row in array.tolist()]
 
 
 def _has_offline_truth_label(batch: CameraLocalTrackBatch, local_track: LocalVisualTrack) -> bool:

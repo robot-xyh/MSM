@@ -29,6 +29,7 @@ class ReplayAssociationReport:
     association_logs: list[dict[str, Any]]
     risk_summary: dict[str, Any]
     threshold_sensitivity: list[dict[str, Any]] = field(default_factory=list)
+    threshold_sensitivity_summary: dict[str, Any] = field(default_factory=dict)
     replay_metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -36,12 +37,19 @@ class ReplayAssociationReport:
             "replay_name": self.replay_name,
             "frame_count": self.frame_count,
             "target_count": self.target_count,
+            "association_risk_threshold_version": self.risk_summary.get(
+                "association_risk_threshold_version",
+                self.risk_summary.get("risk_profile_version", "unversioned"),
+            ),
             "replay_metadata": _json_ready(self.replay_metadata),
             "global_track_ids": list(self.global_track_ids),
             "metrics": _json_ready(self.metrics),
             "association_logs": _json_ready(self.association_logs),
             "risk_summary": _json_ready(self.risk_summary),
             "threshold_sensitivity": _json_ready(self.threshold_sensitivity),
+            "threshold_sensitivity_summary": _json_ready(
+                self.threshold_sensitivity_summary
+            ),
         }
 
 
@@ -111,6 +119,7 @@ def run_airsim_replay_association(
         if gate_thresholds is not None
         else []
     )
+    sensitivity_summary = _summarize_threshold_sensitivity(sensitivity)
     return ReplayAssociationReport(
         replay_name=replay_name,
         frame_count=len(frame_list),
@@ -120,6 +129,7 @@ def run_airsim_replay_association(
         association_logs=association_logs,
         risk_summary=risk_summary,
         threshold_sensitivity=sensitivity,
+        threshold_sensitivity_summary=sensitivity_summary,
         replay_metadata=metadata,
     )
 
@@ -163,11 +173,15 @@ def run_threshold_sensitivity(
             )
             soft_frame_count = int(risk_summary["soft_risk_frame_count"])
             hard_frame_count = int(risk_summary["hard_risk_frame_count"])
+            diagnostics = _summarize_association_log_diagnostics(
+                result.association_logs
+            )
             rows.append(
                 {
                     "gate_threshold": float(gate_threshold),
                     "risk_profile": thresholds.profile_name,
                     "risk_profile_version": thresholds.profile_version,
+                    "association_risk_threshold_version": thresholds.profile_version,
                     "frame_count": len(frame_list),
                     "target_count": _target_count(frame_list),
                     "replay_metadata": _json_ready(metadata),
@@ -186,6 +200,17 @@ def run_threshold_sensitivity(
                     "hard_risk_frame_count": hard_frame_count,
                     "max_soft_risk_score": risk_summary["max_soft_risk_score"],
                     "max_hard_risk_score": risk_summary["max_hard_risk_score"],
+                    "scenario_tags": _scenario_tags_for_row(
+                        {
+                            "replay_metadata": metadata,
+                            "scenario_name": _metadata_value(
+                                metadata, "scenario_name", "scenario"
+                            ),
+                        }
+                    ),
+                    "gate_summary": diagnostics["gate_summary"],
+                    "motion_risk_summary": diagnostics["motion_risk_summary"],
+                    "quality_risk_summary": diagnostics["quality_risk_summary"],
                     "risk_summary": risk_summary,
                 }
             )
@@ -237,6 +262,7 @@ def summarize_multi_seed_risk_calibration(
     return {
         "row_count": len(rows),
         "group_count": len(group_summaries),
+        "threshold_sensitivity_summary": _summarize_threshold_sensitivity(rows),
         "selection_criteria": {
             "max_mean_id_switch_count": max_mean_id_switch_count,
             "min_mean_track_continuity": min_mean_track_continuity,
@@ -266,8 +292,9 @@ def summarize_replay_risk(
     """Summarize soft and hard D2 risk evidence for replay/calibration."""
 
     active_thresholds = thresholds if thresholds is not None else RiskThresholds()
+    log_list = [_log_mapping(log) for log in association_logs]
     breakdowns = []
-    for log in association_logs:
+    for log in log_list:
         risk_payload = log.get("risk_summary")
         if risk_payload is None:
             continue
@@ -284,7 +311,11 @@ def summarize_replay_risk(
     hard_reasons = sorted(
         {reason for item in breakdowns for reason in item.hard_risk_reasons}
     )
+    diagnostics = _summarize_association_log_diagnostics(log_list)
     return {
+        "risk_profile": active_thresholds.profile_name,
+        "risk_profile_version": active_thresholds.profile_version,
+        "association_risk_threshold_version": active_thresholds.profile_version,
         "thresholds": active_thresholds.to_dict(),
         "soft_risk_frame_count": sum(1 for item in breakdowns if item.has_soft_risk),
         "hard_risk_frame_count": sum(1 for item in breakdowns if item.has_hard_risk),
@@ -302,6 +333,13 @@ def summarize_replay_risk(
         "duplicate_assignment_count": int(
             metrics.get("duplicate_assignment_count", 0)
         ),
+        "gate_summary": diagnostics["gate_summary"],
+        "motion_risk_summary": diagnostics["motion_risk_summary"],
+        "quality_risk_summary": diagnostics["quality_risk_summary"],
+        "motion_quality_risk_summary": {
+            "motion": diagnostics["motion_risk_summary"],
+            "quality": diagnostics["quality_risk_summary"],
+        },
     }
 
 
@@ -325,6 +363,285 @@ def write_association_logs_jsonl(
         for log in association_logs
     ]
     Path(path).write_text("\n".join(lines) + ("\n" if lines else ""))
+
+
+def _summarize_association_log_diagnostics(
+    association_logs: Iterable[Mapping[str, Any]],
+) -> dict[str, Any]:
+    logs = [_log_mapping(log) for log in association_logs]
+    return {
+        "gate_summary": _summarize_gate_diagnostics(logs),
+        "motion_risk_summary": _summarize_motion_risk(logs),
+        "quality_risk_summary": _summarize_quality_risk(logs),
+    }
+
+
+def _summarize_gate_diagnostics(
+    association_logs: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    gate_pass_count = 0
+    mahalanobis_gate_reject_count = 0
+    assignment_above_gate_reject_count = 0
+    total_rejected_pair_count = 0
+    matched_pair_count = 0
+    unmatched_track_count = 0
+    unmatched_detection_count = 0
+    frame_pass_rates: list[float] = []
+    candidate_counts_by_track: list[float] = []
+    candidate_counts_by_detection: list[float] = []
+    gate_threshold_values: list[float] = []
+
+    for log in association_logs:
+        metadata = _merged_log_metadata(log)
+        frame_gate_pass_count = int(
+            sum(_numeric_values(metadata.get("candidate_counts_by_track", {})))
+        )
+        rejected_pairs = _sequence_value(log.get("rejected_pairs"))
+        frame_mahalanobis_reject_count = sum(
+            1 for pair in rejected_pairs if _pair_reason(pair) == "mahalanobis_gate"
+        )
+        frame_assignment_above_gate_count = sum(
+            1
+            for pair in rejected_pairs
+            if _pair_reason(pair) == "assignment_above_gate"
+        )
+        frame_total_pair_count = (
+            frame_gate_pass_count + frame_mahalanobis_reject_count
+        )
+        if frame_total_pair_count > 0:
+            frame_pass_rates.append(frame_gate_pass_count / frame_total_pair_count)
+
+        gate_pass_count += frame_gate_pass_count
+        mahalanobis_gate_reject_count += frame_mahalanobis_reject_count
+        assignment_above_gate_reject_count += frame_assignment_above_gate_count
+        total_rejected_pair_count += len(rejected_pairs)
+        matched_pair_count += len(_sequence_value(log.get("matched_pairs")))
+        unmatched_track_count += len(_sequence_value(log.get("unmatched_track_ids")))
+        unmatched_detection_count += len(
+            _sequence_value(log.get("unmatched_detection_ids"))
+        )
+        candidate_counts_by_track.extend(
+            _numeric_values(metadata.get("candidate_counts_by_track", {}))
+        )
+        candidate_counts_by_detection.extend(
+            _numeric_values(metadata.get("candidate_counts_by_detection", {}))
+        )
+        gate_threshold_values.extend(
+            _numeric_values(metadata.get("gate_thresholds_by_track", {}))
+        )
+
+    total_gate_pairs = gate_pass_count + mahalanobis_gate_reject_count
+    gate_pass_rate = (
+        gate_pass_count / total_gate_pairs if total_gate_pairs > 0 else 0.0
+    )
+    return {
+        "frame_count": len(association_logs),
+        "gate_pass_count": gate_pass_count,
+        "gate_reject_count": mahalanobis_gate_reject_count,
+        "mahalanobis_gate_reject_count": mahalanobis_gate_reject_count,
+        "assignment_above_gate_reject_count": assignment_above_gate_reject_count,
+        "total_rejected_pair_count": total_rejected_pair_count,
+        "total_track_detection_pair_count": total_gate_pairs,
+        "gate_pass_rate": float(gate_pass_rate),
+        "mean_frame_gate_pass_rate": _mean(frame_pass_rates),
+        "matched_pair_count": matched_pair_count,
+        "unmatched_track_count": unmatched_track_count,
+        "unmatched_detection_count": unmatched_detection_count,
+        "candidate_count_by_track": _distribution(candidate_counts_by_track),
+        "candidate_count_by_detection": _distribution(candidate_counts_by_detection),
+        "gate_threshold": _distribution(gate_threshold_values),
+    }
+
+
+def _summarize_motion_risk(
+    association_logs: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    motion_threshold = 1.0
+    track_motion_values: list[float] = []
+    pair_motion_values: list[float] = []
+    matrix_motion_values: list[float] = []
+
+    for log in association_logs:
+        metadata = _merged_log_metadata(log)
+        track_motion_values.extend(
+            _numeric_values(metadata.get("motion_consistency_by_track", {}))
+        )
+        pair_motion_values.extend(
+            _numeric_values(metadata.get("motion_consistency_by_pair", {}))
+        )
+        matrix_motion_values.extend(
+            _numeric_values(metadata.get("motion_consistency_cost_matrix", []))
+        )
+
+    primary_values = track_motion_values or pair_motion_values or matrix_motion_values
+    distribution = _distribution(primary_values)
+    return {
+        "motion_cost_threshold": motion_threshold,
+        "motion_consistency_by_track": _distribution(track_motion_values),
+        "motion_consistency_by_pair": _distribution(pair_motion_values),
+        "motion_consistency_cost_matrix": _distribution(matrix_motion_values),
+        "high_motion_track_frame_count": sum(
+            1 for value in track_motion_values if value >= motion_threshold
+        ),
+        "mean_motion_risk_score": float(min(1.0, distribution["mean"] / 3.0)),
+        "max_motion_risk_score": float(min(1.0, distribution["max"] / 3.0)),
+        "latest_motion_consistency_by_track": _latest_float_mapping(
+            association_logs,
+            "motion_consistency_by_track",
+        ),
+    }
+
+
+def _summarize_quality_risk(
+    association_logs: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    low_quality_threshold = 0.50
+    high_association_risk_threshold = 0.50
+    track_quality_values: list[float] = []
+    association_risk_values: list[float] = []
+
+    for log in association_logs:
+        metadata = _merged_log_metadata(log)
+        track_quality_values.extend(
+            _numeric_values(metadata.get("track_quality_by_track", {}))
+        )
+        association_risk_values.extend(
+            _numeric_values(metadata.get("association_risk_by_track", {}))
+        )
+
+    risk_distribution = _distribution(association_risk_values)
+    return {
+        "low_quality_threshold": low_quality_threshold,
+        "high_association_risk_threshold": high_association_risk_threshold,
+        "track_quality": _distribution(track_quality_values),
+        "association_risk": risk_distribution,
+        "low_quality_track_frame_count": sum(
+            1 for value in track_quality_values if value < low_quality_threshold
+        ),
+        "high_association_risk_track_frame_count": sum(
+            1
+            for value in association_risk_values
+            if value >= high_association_risk_threshold
+        ),
+        "mean_quality_risk_score": float(
+            min(1.0, max(0.0, 1.0 - _mean(track_quality_values)))
+        ),
+        "max_association_risk_score": float(risk_distribution["max"]),
+        "latest_track_quality_by_track": _latest_float_mapping(
+            association_logs,
+            "track_quality_by_track",
+        ),
+        "latest_association_risk_by_track": _latest_float_mapping(
+            association_logs,
+            "association_risk_by_track",
+        ),
+    }
+
+
+def _summarize_threshold_sensitivity(
+    threshold_rows: Iterable[Mapping[str, Any]],
+) -> dict[str, Any]:
+    rows = [dict(row) for row in threshold_rows]
+    dense_crossing_rows = [
+        row
+        for row in rows
+        if {"dense", "crossing"} & set(_scenario_tags_for_row(row))
+    ]
+    return {
+        "row_count": len(rows),
+        "gate_thresholds": _unique_floats(rows, "gate_threshold"),
+        "risk_profiles": _unique_strings(rows, "risk_profile"),
+        "risk_profile_versions": _unique_strings(rows, "risk_profile_version"),
+        "association_risk_threshold_versions": _unique_strings(
+            rows, "association_risk_threshold_version"
+        ),
+        "scenario_tags": sorted(
+            {tag for row in rows for tag in _scenario_tags_for_row(row)}
+        ),
+        "target_count": _distribution(_float_values(rows, "target_count")),
+        "id_switch_count": _distribution(_float_values(rows, "id_switch_count")),
+        "track_continuity": _distribution(_float_values(rows, "track_continuity")),
+        "duplicate_assignment_count": _distribution(
+            _float_values(rows, "duplicate_assignment_count")
+        ),
+        "soft_risk_frame_rate": _distribution(
+            _risk_frame_rates(rows, "soft_risk_frame_count")
+        ),
+        "hard_risk_frame_rate": _distribution(
+            _risk_frame_rates(rows, "hard_risk_frame_count")
+        ),
+        "dense_crossing_row_count": len(dense_crossing_rows),
+        "dense_crossing": _threshold_subset_summary(dense_crossing_rows),
+        "recommended": _recommended_threshold_row(rows),
+    }
+
+
+def _threshold_subset_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    return {
+        "row_count": len(rows),
+        "gate_thresholds": _unique_floats(rows, "gate_threshold"),
+        "risk_profiles": _unique_strings(rows, "risk_profile"),
+        "association_risk_threshold_versions": _unique_strings(
+            rows, "association_risk_threshold_version"
+        ),
+        "target_count": _distribution(_float_values(rows, "target_count")),
+        "id_switch_count": _distribution(_float_values(rows, "id_switch_count")),
+        "track_continuity": _distribution(_float_values(rows, "track_continuity")),
+        "duplicate_assignment_count": _distribution(
+            _float_values(rows, "duplicate_assignment_count")
+        ),
+        "soft_risk_frame_rate": _distribution(
+            _risk_frame_rates(rows, "soft_risk_frame_count")
+        ),
+        "hard_risk_frame_rate": _distribution(
+            _risk_frame_rates(rows, "hard_risk_frame_count")
+        ),
+    }
+
+
+def _recommended_threshold_row(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    if not rows:
+        return None
+    row = min(rows, key=_threshold_row_rank)
+    keys = (
+        "gate_threshold",
+        "risk_profile",
+        "risk_profile_version",
+        "association_risk_threshold_version",
+        "target_count",
+        "id_switch_count",
+        "track_continuity",
+        "duplicate_assignment_count",
+        "soft_risk_frame_count",
+        "hard_risk_frame_count",
+        "max_soft_risk_score",
+        "max_hard_risk_score",
+    )
+    return {key: _json_ready(row.get(key)) for key in keys if key in row}
+
+
+def _threshold_row_rank(row: Mapping[str, Any]) -> tuple[float, ...]:
+    frame_count = float(row.get("frame_count", 0.0) or 0.0)
+    hard_rate = (
+        float(row.get("hard_risk_frame_count", 0.0) or 0.0) / frame_count
+        if frame_count > 0
+        else 0.0
+    )
+    soft_rate = (
+        float(row.get("soft_risk_frame_count", 0.0) or 0.0) / frame_count
+        if frame_count > 0
+        else 0.0
+    )
+    return (
+        float(row.get("id_switch_count", 0.0) or 0.0),
+        float(row.get("duplicate_assignment_count", 0.0) or 0.0),
+        hard_rate,
+        -float(row.get("track_continuity", 0.0) or 0.0),
+        soft_rate,
+        float(row.get("gate_threshold", 0.0) or 0.0),
+    )
 
 
 def _summarize_calibration_group(
@@ -512,6 +829,127 @@ def _risk_reasons(rows: Sequence[Mapping[str, Any]], key: str) -> list[str]:
         if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
             reasons.update(str(item) for item in value)
     return sorted(reasons)
+
+
+def _log_mapping(log: Any) -> Mapping[str, Any]:
+    if isinstance(log, Mapping):
+        return log
+    to_dict = getattr(log, "to_dict", None)
+    if callable(to_dict):
+        value = to_dict()
+        if isinstance(value, Mapping):
+            return value
+    return {}
+
+
+def _merged_log_metadata(log: Mapping[str, Any]) -> dict[str, Any]:
+    metadata = dict(_metadata_mapping(log.get("metadata")))
+    risk_summary = log.get("risk_summary")
+    if isinstance(risk_summary, Mapping):
+        metadata.update(_metadata_mapping(risk_summary.get("metadata")))
+    return metadata
+
+
+def _sequence_value(value: Any) -> list[Any]:
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return list(value)
+    return []
+
+
+def _pair_reason(pair: Any) -> str | None:
+    if isinstance(pair, Mapping):
+        value = pair.get("reason")
+        return None if value is None else str(value)
+    value = getattr(pair, "reason", None)
+    return None if value is None else str(value)
+
+
+def _numeric_values(value: Any) -> list[float]:
+    if value is None:
+        return []
+    if isinstance(value, np.ndarray):
+        array = np.asarray(value, dtype=float).reshape(-1)
+        return [float(item) for item in array if np.isfinite(item)]
+    if isinstance(value, Mapping):
+        values: list[float] = []
+        for item in value.values():
+            values.extend(_numeric_values(item))
+        return values
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        values = []
+        for item in value:
+            values.extend(_numeric_values(item))
+        return values
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return []
+    return [numeric] if np.isfinite(numeric) else []
+
+
+def _latest_float_mapping(
+    association_logs: Sequence[Mapping[str, Any]],
+    key: str,
+) -> dict[str, float]:
+    for log in reversed(association_logs):
+        value = _merged_log_metadata(log).get(key)
+        if not isinstance(value, Mapping):
+            continue
+        result: dict[str, float] = {}
+        for item_key, item_value in value.items():
+            try:
+                numeric = float(item_value)
+            except (TypeError, ValueError):
+                continue
+            if np.isfinite(numeric):
+                result[str(item_key)] = numeric
+        if result:
+            return result
+    return {}
+
+
+def _mean(values: Sequence[float]) -> float:
+    return float(sum(values) / len(values)) if values else 0.0
+
+
+def _unique_floats(rows: Sequence[Mapping[str, Any]], key: str) -> list[float]:
+    return sorted({float(value) for value in _float_values(rows, key)})
+
+
+def _unique_strings(rows: Sequence[Mapping[str, Any]], key: str) -> list[str]:
+    return sorted(
+        {
+            str(row[key])
+            for row in rows
+            if key in row and row[key] is not None
+        }
+    )
+
+
+def _scenario_tags_for_row(row: Mapping[str, Any]) -> list[str]:
+    tags: set[str] = set()
+    explicit_tags = row.get("scenario_tags")
+    if isinstance(explicit_tags, Sequence) and not isinstance(
+        explicit_tags, (str, bytes, bytearray)
+    ):
+        tags.update(str(tag) for tag in explicit_tags if tag is not None)
+
+    text_values = [
+        row.get("replay_name"),
+        row.get("scenario_name"),
+        row.get("scenario"),
+        _metadata_value_for_row(row, "scenario_name", "scenario"),
+        _metadata_value_for_row(row, "replay_name"),
+    ]
+    for value in text_values:
+        if value is None:
+            continue
+        text = str(value).lower()
+        if "dense" in text:
+            tags.add("dense")
+        if "crossing" in text or "cross" in text:
+            tags.add("crossing")
+    return sorted(tags)
 
 
 def _metadata_value_for_row(row: Mapping[str, Any], *keys: str) -> Any:

@@ -4,8 +4,13 @@ import csv
 import json
 
 import numpy as np
+import pytest
 
-from d1_sensor_fusion import FusionAdapter
+from d1_sensor_fusion import (
+    AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION,
+    FusionAdapter,
+    summarize_sensor_observation_latency_audit,
+)
 from d1_sensor_fusion.airsim_dry_run import (
     make_minimal_airsim_dry_run_fixture,
     observations_from_airsim_dry_run_fixture,
@@ -25,6 +30,7 @@ def test_airsim_dry_run_fixture_converts_all_enabled_modalities() -> None:
     fixture = make_minimal_airsim_dry_run_fixture(include_lidar=True)
     observations = observations_from_airsim_dry_run_fixture(fixture)
 
+    assert fixture["schema_version"] == AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION
     modalities = {obs.modality for obs in observations}
     assert modalities == {"radar", "acoustic", "eo", "lidar"}
     assert observations == sorted(observations, key=lambda obs: (obs.arrival_timestamp, obs.observation_id))
@@ -33,6 +39,7 @@ def test_airsim_dry_run_fixture_converts_all_enabled_modalities() -> None:
         assert observation.covariance is not None
         assert observation.metadata["dry_run"] is True
         assert observation.metadata["fixture_id"] == "minimal_airsim_dry_run"
+        assert observation.metadata["d1_fixture_schema_version"] == AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION
         if observation.modality == "eo":
             assert observation.frame_id == "pixel"
             assert observation.covariance.shape == (2, 2)
@@ -54,6 +61,14 @@ def test_airsim_dry_run_lidar_is_optional() -> None:
 
     assert "lidar" not in {obs.modality for obs in observations}
     assert {"radar", "acoustic", "eo"} <= {obs.modality for obs in observations}
+
+
+def test_airsim_dry_run_fixture_rejects_unsupported_schema_version() -> None:
+    fixture = make_minimal_airsim_dry_run_fixture(include_lidar=False)
+    fixture["schema_version"] = "d1.airsim_dry_run_fixture.v99"
+
+    with pytest.raises(ValueError, match="unsupported D1 AirSim dry-run fixture schema_version"):
+        observations_from_airsim_dry_run_fixture(fixture)
 
 
 def test_airsim_dry_run_observations_feed_fusion_adapter() -> None:
@@ -203,6 +218,26 @@ def test_sensor_observations_csv_reader_replays_fusion_adapter(tmp_path) -> None
     assert tracks[0].metadata["coverage_cell"] == "cell-csv"
 
 
+def test_sensor_observations_jsonl_rejects_unsupported_schema_version(tmp_path) -> None:
+    jsonl_path = tmp_path / "sensor_observations.jsonl"
+    payload = {
+        "schema_version": "d1.sensor_observation.v99",
+        "observation_id": "bad_schema_radar",
+        "sensor_id": "radar_schema",
+        "modality": "radar",
+        "measurement_timestamp": 0.0,
+        "arrival_timestamp": 0.1,
+        "frame_id": "ned",
+        "measurement": [120.0, 0.0, 0.0, 4.0],
+        "covariance": np.diag([4.0, 0.01, 0.01, 1.0]).tolist(),
+    }
+    jsonl_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="failed to parse .* as D1 observation") as exc_info:
+        read_sensor_observations_jsonl(jsonl_path)
+    assert "unsupported D1 replay schema_version" in str(exc_info.value.__cause__)
+
+
 def test_real_blocks_cv_jsonl_preserves_eo_camera_bbox_and_recon_metadata(tmp_path) -> None:
     jsonl_path = tmp_path / "sensor_observations.jsonl"
     camera_metadata = {
@@ -233,6 +268,7 @@ def test_real_blocks_cv_jsonl_preserves_eo_camera_bbox_and_recon_metadata(tmp_pa
         "covariance": [[9.0, 0.0], [0.0, 9.0]],
         "confidence": 0.86,
         "quality_flags": ["cv_fixture", "secondary_recon"],
+        "metadata": {"truth_id": "actor_red_01"},
         "coverage_cell": "cell-north",
         "camera_metadata": camera_metadata,
         "bbox_xyxy": [620.0, 340.0, 660.0, 380.0],
@@ -246,6 +282,19 @@ def test_real_blocks_cv_jsonl_preserves_eo_camera_bbox_and_recon_metadata(tmp_pa
             "mode": "mobile_high_altitude",
             "cue_source": "d1_recon_cue",
         },
+        "mobile_recon": {
+            "node_id": "mobile_recon_02",
+            "platform": "uav",
+            "mode": "wide_area_search",
+        },
+        "recon_cue_summary": {
+            "cue_source": "d1_region_quality",
+            "active_target_ids": ["global_track_001"],
+            "coverage_cell": "cell-north",
+        },
+        "cue_position_ned": [112.0, -5.0, -80.0],
+        "cue_covariance": [[16.0, 0.0, 0.0], [0.0, 16.0, 0.0], [0.0, 0.0, 25.0]],
+        "covariance_scale_reason": "cv_bbox_distance_scale",
         "source_support": {"eo": 1},
         "communication": {
             "source_node_id": "secondary_recon_01",
@@ -274,6 +323,11 @@ def test_real_blocks_cv_jsonl_preserves_eo_camera_bbox_and_recon_metadata(tmp_pa
     assert metadata["camera_model"]["camera_id"] == "secondary_recon_01:front_center"
     assert metadata["detection_metadata"]["detector"] == "simGetDetections"
     assert metadata["secondary_recon"]["mode"] == "mobile_high_altitude"
+    assert metadata["mobile_recon"]["node_id"] == "mobile_recon_02"
+    assert metadata["recon_cue_summary"]["cue_source"] == "d1_region_quality"
+    assert metadata["cue_position_ned"] == [112.0, -5.0, -80.0]
+    assert metadata["cue_covariance"][2][2] == 25.0
+    assert metadata["covariance_scale_reason"] == "cv_bbox_distance_scale"
     assert observation.payload_kind == "bbox"
     assert np.isclose(observation.communication_latency, 0.05)
 
@@ -311,6 +365,11 @@ def test_blocks_calibration_csv_replay_preserves_audit_and_quality_fields(tmp_pa
         "metadata",
         "communication",
         "source_support",
+        "covariance_scale_reason",
+        "mobile_recon",
+        "recon_cue_summary",
+        "cue_position_ned",
+        "cue_covariance",
     ]
     rows = [
         {
@@ -408,6 +467,25 @@ def test_blocks_calibration_csv_replay_preserves_audit_and_quality_fields(tmp_pa
                 }
             ),
             "source_support": json.dumps({"acoustic": 1}),
+            "covariance_scale_reason": "late_calibration_covariance_scale",
+            "mobile_recon": json.dumps(
+                {
+                    "node_id": "mobile_recon_02",
+                    "platform": "uav",
+                    "mode": "wide_area_search",
+                }
+            ),
+            "recon_cue_summary": json.dumps(
+                {
+                    "cue_source": "d1_recon_cue",
+                    "active_target_ids": ["global_track_001"],
+                    "coverage_cell": "cell-north",
+                }
+            ),
+            "cue_position_ned": json.dumps([124.0, 0.0, 0.0]),
+            "cue_covariance": json.dumps(
+                [[25.0, 0.0, 0.0], [0.0, 25.0, 0.0], [0.0, 0.0, 36.0]]
+            ),
         },
     ]
     with csv_path.open("w", encoding="utf-8", newline="") as stream:
@@ -424,6 +502,22 @@ def test_blocks_calibration_csv_replay_preserves_audit_and_quality_fields(tmp_pa
     tracks = adapter.ingest_many(loaded)
 
     assert len(loaded) == 3
+    raw_audit = summarize_sensor_observation_latency_audit(loaded).to_dict()
+    assert raw_audit["observation_count"] == 3
+    assert raw_audit["oosm_observation_count"] == 1
+    assert raw_audit["stale_observation_count"] == 1
+    assert raw_audit["stale_or_oosm_observation_count"] == 1
+    assert raw_audit["max_delay_s"] == pytest.approx(0.9)
+    assert raw_audit["mean_delay_s"] == pytest.approx((0.2 + 0.2 + 0.9) / 3.0)
+    assert raw_audit["latency_compensation"] is False
+
+    delayed_observation = next(obs for obs in loaded if obs.observation_id.endswith("delayed"))
+    assert delayed_observation.metadata["covariance_scale_reason"] == "late_calibration_covariance_scale"
+    assert delayed_observation.metadata["mobile_recon"]["mode"] == "wide_area_search"
+    assert delayed_observation.metadata["recon_cue_summary"]["cue_source"] == "d1_recon_cue"
+    assert delayed_observation.metadata["cue_position_ned"] == [124.0, 0.0, 0.0]
+    assert delayed_observation.metadata["cue_covariance"][2][2] == 36.0
+
     for observation in loaded:
         assert observation.metadata["d1_replay_schema_version"] == REPLAY_SCHEMA_VERSION
         assert observation.arrival_timestamp >= observation.measurement_timestamp
@@ -444,6 +538,10 @@ def test_blocks_calibration_csv_replay_preserves_audit_and_quality_fields(tmp_pa
     assert track.source_support["acoustic"] == 1
     assert track.metadata["latest_measurement_timestamp"] == 0.5
     assert track.metadata["latest_arrival_timestamp"] == 1.4
+    assert track.metadata["covariance_scale_reason"] == "late_calibration_covariance_scale"
+    assert track.metadata["mobile_recon"]["node_id"] == "mobile_recon_02"
+    assert track.metadata["recon_cue_summary"]["active_target_ids"] == ["global_track_001"]
+    assert track.metadata["cue_position_ned"] == [124.0, 0.0, 0.0]
 
     audit = adapter.latency_audit_summary().to_dict()
     assert audit["observation_count"] == 3

@@ -8,6 +8,7 @@ from d3_assignment_planner import (
     ResourceState,
     SECONDARY_PLAN_SCHEMA_V2,
     TargetTrack,
+    assignment_evidence_from_plan,
     assignment_records_from_plan,
     assignment_validity_summary_from_plan,
     evaluate_terminal_feedback,
@@ -136,6 +137,81 @@ def test_assignment_records_from_plan_match_d6_assignment_record_shape() -> None
     assert record.latest_plan_version is None
 
 
+def test_assignment_evidence_exports_current_plan_cost_matrix_and_breakdowns() -> None:
+    planner = AssignmentPlanner(config=PlannerConfig(enable_hysteresis=False))
+    plan = planner.plan(
+        [
+            TargetTrack(
+                "T1",
+                threat_score=0.9,
+                covariance=0.1,
+                window_cost=0.1,
+            ),
+            TargetTrack(
+                "T2",
+                threat_score=0.8,
+                covariance=0.1,
+                window_cost=0.1,
+            ),
+        ],
+        [ResourceState("R1"), ResourceState("R2")],
+        timestamp=4.0,
+    )
+
+    evidence = assignment_evidence_from_plan(plan)
+
+    assert evidence.plan_id == plan.plan_id
+    assert evidence.current_plan_id == plan.plan_id
+    assert evidence.current_plan_version == plan.version
+    assert evidence.resource_count == 2
+    assert evidence.target_count == 2
+    assert evidence.assigned_count == 2
+    assert evidence.plan_owner == "center"
+    assert evidence.cost_matrix_target_ids == ("T1", "T2")
+    assert evidence.cost_matrix_resource_ids == ("R1", "R2")
+    assert len(evidence.cost_matrix) == 2
+    assert len(evidence.cost_breakdowns_by_edge) == 4
+    assert evidence.cost_breakdowns_by_edge[0]["target_id"] == "T1"
+    assert "total" in evidence.cost_breakdowns_by_edge[0]["cost_breakdown"]
+
+
+def test_assignment_records_export_stale_rejection_reason_metadata() -> None:
+    planner = AssignmentPlanner(config=PlannerConfig(enable_hysteresis=False))
+    first = planner.plan(
+        [TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
+        [ResourceState("R1")],
+        timestamp=4.0,
+    )
+    second = planner.plan(
+        [TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
+        [ResourceState("R1")],
+        timestamp=5.0,
+        previous_plan=first,
+    )
+    annotated = replace(
+        second,
+        metadata={
+            **dict(second.metadata),
+            "stale_plan_rejected": True,
+            "stale_reject_reason": "stale_previous_version",
+            "latest_plan_id": second.plan_id,
+            "latest_plan_version": second.version,
+            "previous_plan_id": first.plan_id,
+            "previous_plan_version": first.version,
+        },
+    )
+
+    (record,) = assignment_records_from_plan(annotated)
+    evidence = assignment_evidence_from_plan(annotated)
+
+    assert record.stale_plan_rejected is True
+    assert record.stale_reject_reason == "stale_previous_version"
+    assert record.latest_plan_id == second.plan_id
+    assert record.latest_plan_version == second.version
+    assert evidence.stale_plan_rejected is True
+    assert evidence.stale_reject_reason == "stale_previous_version"
+
+
 def test_assignment_records_can_preserve_plan_authorization_state() -> None:
     planner = AssignmentPlanner(config=PlannerConfig(enable_hysteresis=False))
     plan = planner.plan(
@@ -259,6 +335,10 @@ def test_secondary_takeover_assignment_records_export_owner_fields() -> None:
     assert record.previous_plan_version == center_plan.version
     assert record.supersedes_plan_id == center_plan.plan_id
     assert record.supersedes_plan_version == center_plan.version
+    assert record.selected_secondary_node_id == "secondary-node-2"
+    assert record.secondary_plan_version == secondary_plan.version
+    assert record.secondary_leader_epoch == 12
+    assert record.secondary_lease_expires_at_s == 9.0
     assert record.resource_count == 1
     assert record.target_count == 1
     assert record.assigned_count == 1

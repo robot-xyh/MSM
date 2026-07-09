@@ -23,6 +23,7 @@ D3 不负责：
 - 在每个目标后拼接 dummy unassignment 列，支持资源少于目标、目标暂不分配或不可行边过滤。
 - 当 SciPy 不可用或测试强制 `allow_scipy=False` 时，使用 `FallbackAssignmentSolver` 的位掩码 DP fallback。
 - 代价矩阵尺寸来自 `len(tracks) x len(resources)`，并在计划 metadata 中记录 `assignment_matrix_shape`。
+- 当前 plan metadata 同时记录 D4/D6 可回放的 current cost matrix、target/resource ids、per-edge cost breakdown、hard rejected edges 和 reject reasons；`assignment_evidence_from_plan(...)` 可导出结构化 evidence bundle。
 
 测试覆盖：
 
@@ -99,6 +100,8 @@ P0-C threat baseline 由 `compose_threat_score_baseline(...)` 提供：输入关
 
 `apply_terminal_feedback_to_planner_inputs()` 已把 D5 feedback metadata 映射为下一轮 D3 DTO：duplicate/prohibited/feasibility metadata 写入 `TargetTrack.feasibility_by_resource=False` 并形成禁配边；fov/friend metadata 写入 `TargetTrack.fov_difficulty_by_resource`；friend/hold metadata 写入 `ResourceState.operator_hold=True`。该 helper 始终 `allow_local_rebind=False`，只消费 main/D5 已聚合的 metadata，不自行做视觉身份判断。
 
+轻量 hard time-window baseline 已接入 Hungarian 主线，不引入 OR-Tools。`TargetTrack` 可用显式字段或 metadata 描述 `hard_time_window`、`time_window_open_at_s`、`time_window_close_at_s`、`time_window_state` 和按资源的 `time_window_by_resource`；窗口明确 closed/expired/not-yet-open 时，`CostModel` 把对应边标为 hard infeasible，输出 `hard_time_window_reject` 和 `reason_time_window_*` breakdown flag，planner 不会分配该边，并在 evidence metadata 中记录可解释 `reject_reason`。`window_cost` 仍作为 open edge 的软排序项。
+
 ### 2.5 D7 guidance binding
 
 D3 已实现 `guidance_bindings_from_assignment_plan()`：
@@ -120,7 +123,8 @@ D3 已实现以下 helper：
 - `compose_threat_score_baseline(...)`：从关键区接近、TTC、速度、协方差和目标状态组合可解释 threat baseline；不替代 P1 完整动态威胁评估。
 - `prepare_secondary_takeover_plan(...)`：在 D4/main 已选定二级节点后，校验新 plan version 大于被 supersede 的中心 plan，并写入 `secondary_plan_v2`、owner/source node、superseded plan id/version、可选 epoch/lease 和 `allow_local_rebind=False`。
 - `assignment_validity_summary_from_plan(...)`：导出 `AssignmentValiditySummary(plan_age_s, assignment_latency_s, cost_margin, stale_plan_version, duplicate_assignment_count, unassigned_high_threat_count, resource_count, target_count, assigned_count, hysteresis_reject_count, stale_reject_count, reassign_count)`。
-- `assignment_records_from_plan(...)`：导出 D6-compatible `AssignmentRecord(timestamp, plan_id, version, resource_id, global_track_id, cost_breakdown, authorization_state, active, truth_id)`，并携带多 seed current-plan 分组字段：`window_id`、`decision_state`、`changed`、`resource_count`、`target_count`、`assigned_count`、`unassigned_high_threat_count`、`hysteresis_reject_count`、`stale_reject_count`、`reassign_count`、`assignment_matrix_shape`、`plan_owner/active_plan_owner/owner_node_id`、source/target/link、`plan_schema`、`replan_reason/takeover_reason`、previous/superseded plan id/version、plan costs、`cost_margin`、`stale_after_s`、stale rejection metadata 和迟滞解释字段。
+- `assignment_records_from_plan(...)`：导出 D6-compatible `AssignmentRecord(timestamp, plan_id, version, resource_id, global_track_id, cost_breakdown, authorization_state, active, truth_id)`，并携带多 seed current-plan 分组字段：`window_id`、`decision_state`、`changed`、`resource_count`、`target_count`、`assigned_count`、`unassigned_high_threat_count`、`hysteresis_reject_count`、`stale_reject_count`、`reassign_count`、`assignment_matrix_shape`、`plan_owner/active_plan_owner/owner_node_id`、source/target/link、`plan_schema`、`replan_reason/takeover_reason`、previous/superseded plan id/version、secondary owner/version/epoch/lease、plan costs、`cost_margin`、`stale_after_s`、stale rejection metadata 和迟滞解释字段。
+- `assignment_evidence_from_plan(...)`：导出 `AssignmentEvidenceExport`，包含 current plan id/version/owner/source、规模字段、完整 current cost matrix、per-edge cost breakdown、hard rejected edges/reasons、stale rejection reason 和 secondary owner/source/version/supersede 字段。
 - `summarize_assignment_mismatch_replay(...)`：从 D6 assignment records 或 summary dict 聚合 N/M replay 字段：`resource_count`、`target_count`、`assigned_count`、`unassigned_high_threat_count`、`hysteresis_reject_count`、`stale_reject_count`、`reassign_count`。
 - `summarize_terminal_feedback_calibration(...)`：输入多 seed assignment records/feedback records，输出 duplicate/friend/fov/geometry reject 计数，以及 cost/hysteresis 调参建议；该 helper 只给建议，不自动替换默认 `CostWeights`、`PlannerConfig.delta/min_dwell/max_changes_per_window/reassignment_switch_penalty`。
 - `AirSimDryRunAssignmentAdapter`：接收 synthetic AirSim-style dict/object，不 import AirSim，不控制 Blocks runtime。
@@ -152,7 +156,7 @@ D3 已实现以下 helper：
 
 当前 D3 已能识别并转发 `secondary_plan_v2` schema，并在 D7 binding 中携带二级计划的 `plan_id/version/source_node_id/target_node_id/link_type`。`prepare_secondary_takeover_plan()` 补齐了 D3 侧 DTO 规则：二级 plan version 必须大于被 supersede 的中心 plan；`source_node_id/owner_node_id/selected_secondary_node_id` 必须来自 D4/main 传入的 secondary node；metadata 记录 `supersedes_plan_id`、`supersedes_plan_version`、`active_plan_owner="secondary"`、可选 leader epoch/lease，且 `allow_local_rebind=False`。
 
-main runtime 已接入 secondary owner/version/source 记录。D3 侧 remaining work 不再是 DTO 或版本补齐，而是随真实多 seed episode 校准这些记录是否在二级接管、中心恢复和 stale 拒绝场景中稳定出现。
+main runtime 已接入 secondary owner/version/source 记录。D3 侧 remaining work 不再是 DTO 或版本补齐，而是随真实多 seed episode 校准这些记录是否在二级接管、中心恢复和 stale 拒绝场景中稳定出现。这里保持修复后的 D3 侧口径：D3 只校验和盖章 D4/main 传入的 secondary owner，不在模块内选择真实 active owner。
 
 D3 边界保持不变：
 
@@ -173,11 +177,12 @@ D3 的 terminal feedback helper 可以返回 `main_action="replan"` 或 `main_ac
 
 ### 4.3 真实 AirSim runtime 接线与校准
 
-D3 有 synthetic dry-run adapter，不直接导入 AirSim。真实 AirSim Blocks 的 tick-to-plan-to-gate 闭环由 main/runtime 接线，当前已覆盖 D3 plan/binding/summary/record、D5 feedback writeback、中心重规划 owner/version 和 secondary owner/version 记录。main runtime 已新增 P1 D4/D5 calibration sweep，并在 sweep 结束后自动生成 D6 标准报告 bundle；D3 后续重点是消费这些 episode 级 assignment records、feedback records 和 D6 summary 做参数校准，而不是再补接口字段：
+D3 有 synthetic dry-run adapter，不直接导入 AirSim。真实 AirSim Blocks 的 tick-to-plan-to-gate 闭环由 main/runtime 接线，当前已覆盖 D3 plan/binding/summary/record/evidence、D5 feedback writeback、中心重规划 owner/version 和 secondary owner/version 记录。main runtime 已新增 P1 D4/D5 calibration sweep，并在 sweep 结束后自动生成 D6 标准报告 bundle；D3 后续重点是消费这些 episode 级 assignment records、feedback records、current-plan evidence 和 D6 summary 做参数校准，而不是再补接口字段：
 
 - 在 2v2、5v5、8v8、非等量 M/N 和 crossing/dense 场景中跑真实多 seed。
 - 检查 D5 feedback writeback 后的 `operator_hold`、`feasibility_by_resource`、`fov_difficulty_by_resource` 是否产生稳定、可解释的重规划结果。
-- 检查 center/secondary plan owner、version、source、supersede metadata、cost gap、迟滞决策状态和 D6 assignment records 是否在 episode log 中可稳定聚合。
+- 检查 center/secondary plan owner、version、source、supersede metadata、cost gap、迟滞决策状态、current-plan evidence 和 D6 assignment records 是否在 episode log 中可稳定聚合。
+- 检查 hard time-window open/close 输入、到达时间和 rejected-edge reason 是否在不同 N 规模和非等量 M/N replay 中稳定可聚合。
 - 用 D6 指标和 P1 sweep 的 `d6_airsim_calibration` bundle 回看 D3 参数，特别是 `delta/min_dwell/max_changes_per_window/reassignment_switch_penalty` 与 D5 feedback 权重阈值；D3 侧已经提供轻量 calibration summary helper，剩余工作是用真实多 seed 数据填充和复核建议。
 
 ## 5. 跨模块接口影响
@@ -236,18 +241,18 @@ P1 集成时，main 应保证：
 
 ### P0
 
-- 无 P0 blocker。Hungarian/DP fallback、版本化 `AssignmentPlan`、迟滞与 stale 拒绝、D5 feedback helper/writeback、secondary takeover owner/version DTO、D7 binding 和 D6 export 当前均已实现。
+- 无 P0 blocker。Hungarian/DP fallback、版本化 `AssignmentPlan`、迟滞与 stale 拒绝、D5 feedback helper/writeback、secondary takeover owner/version DTO、D7 binding、D6 export、`AssignmentEvidenceExport` 和轻量 hard time-window closed-edge rejection baseline 当前均已实现。
 - P0-B 已补齐：`ResourceState` 标准化 energy、availability、intercept feasibility、current load、history failure 字段，`CostModel` 消费这些字段并导出可解释资源状态/不可行原因。
 - P0-B 增强迟滞已补齐：保留 switch penalty、min dwell、change limit、旧边不可行 bypass 和 stale 拒绝；新增高威胁 release condition 与 D6 可解释 metadata/export。
 - P0-C 已补齐：`compose_threat_score_baseline(...)` 提供关键区接近、TTC、速度、协方差和目标状态的可解释 baseline helper；完整动态威胁评估不并入 P0。
 
 ### P1
 
-- 真实多 seed 校准：main runtime 已提供 P1 D4/D5 calibration sweep 和自动 D6 标准报告 bundle；下一步在 AirSim/point-mass 2v2、5v5、8v8、非等量 M/N、crossing/dense 场景中验证 D3 plan/binding/summary/record、D5 feedback writeback、center replan owner/version/source 和 secondary owner/version/source 记录稳定可聚合。
+- 真实多 seed 校准：main runtime 已提供 P1 D4/D5 calibration sweep 和自动 D6 标准报告 bundle；下一步在 AirSim/point-mass 2v2、5v5、8v8、非等量 M/N、crossing/dense 场景中验证 D3 plan/binding/summary/record/evidence、D5 feedback writeback、center replan owner/version/source 和 secondary owner/version/source 记录稳定可聚合。
 - D5 feedback 权重阈值长期标定：D3 已提供 advisory calibration helper；下一步基于真实 D6 records 扫描 `fov_difficulty_by_resource`、`feasibility_by_resource`、duplicate/friend/hold/reacquire 状态、`delta/min_dwell/max_changes_per_window/reassignment_switch_penalty`，人工复核并收敛 hold/replan/secondary_arbitration 触发阈值。
 - 完整动态威胁评估：在 P0-C baseline 稳定后，扩展到目标类别、资源状态耦合和 mission outcome 对照标定。
 - 增量分配：当前滚动全量重算保持可用；后续为新目标、资源失效和 D5 feedback 写回增加局部增量策略。
-- 时间窗口硬约束：当前 `window_cost` 是软代价；后续增加 hard open/close window schema 和不可行原因。
+- 时间窗口硬约束：轻量 hard open/close baseline 已完成；剩余 P1 是真实多 seed/N 规模校准、多窗口/到达时间输入 schema，以及与后续 optional min-cost-flow 复杂约束对照。
 - 合同保持回归：D7 只接受当前有效 binding/version；D5 不本地 rebind 或改写 `global_track_id`；`AssignmentPlan` 继续版本化并拒绝 stale previous plan；D6 assignment record export 字段保持兼容。
 
 ### P2

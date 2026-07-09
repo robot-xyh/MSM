@@ -513,11 +513,18 @@ def test_p1_calibration_sweep_helpers_write_summary(tmp_path: Path) -> None:
 
     payload = json.loads(paths["json"].read_text(encoding="utf-8"))
     report = paths["markdown"].read_text(encoding="utf-8")
+    assert payload["calibration_suite"] == "cv_5v5_d4d5_secondary_coverage"
+    assert payload["calibration_suite_version"] == "p1-d4d5-calibration-suite-v1"
+    assert payload["threshold_version"] == "p1-d4d5-thresholds-v1"
+    assert payload["height_comparison"][0]["height_m"] == 50.0
+    assert payload["height_comparison"][0]["secondary_network_mean_coverage_ratio_mean"] == 0.8
     assert payload["aggregate"]["cross_view_association_count_mean"] == 3.0
     assert payload["aggregate"]["best_cross_view"]["secondary_count"] == 2
     assert "d6_report_outputs" in payload
     assert paths["d6_markdown"].exists()
     assert paths["d6_summary_json"].exists()
+    assert "Calibration suite" in report
+    assert "高度对比" in report
     assert "detect 未注册均值" in report
     assert "D6 标准报告输出" in report
     assert "geometry_gate_rejected" in report

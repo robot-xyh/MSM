@@ -50,6 +50,13 @@ class TargetTrack:
     conflict_risk_by_resource: Mapping[str, float] = field(default_factory=dict)
     feasibility_by_resource: Mapping[str, bool] = field(default_factory=dict)
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    hard_time_window: bool = False
+    time_window_open_at_s: float | None = None
+    time_window_close_at_s: float | None = None
+    time_window_state: str | None = None
+    time_window_by_resource: Mapping[str, Mapping[str, Any] | bool | str] = field(
+        default_factory=dict
+    )
 
 
 @dataclass(frozen=True)
@@ -259,6 +266,10 @@ class AssignmentRecord:
     previous_plan_version: int | None = None
     supersedes_plan_id: str | None = None
     supersedes_plan_version: int | None = None
+    selected_secondary_node_id: str | None = None
+    secondary_plan_version: int | None = None
+    secondary_leader_epoch: int | None = None
+    secondary_lease_expires_at_s: float | None = None
     total_cost: float | None = None
     candidate_total_cost: float | None = None
     previous_total_cost_current: float | None = None
@@ -282,6 +293,39 @@ class AssignmentRecord:
     hysteresis_dwell_ok: bool | None = None
     hysteresis_change_limit_ok: bool | None = None
     hysteresis_high_threat_release: bool | None = None
+
+
+@dataclass(frozen=True)
+class AssignmentEvidenceExport:
+    """Current-plan evidence bundle for D4/D6 replay and audit consumers."""
+
+    plan_id: str
+    version: int
+    window_id: int
+    current_plan_id: str
+    current_plan_version: int
+    resource_count: int
+    target_count: int
+    assigned_count: int
+    plan_owner: str = "center"
+    active_plan_owner: str = "center"
+    owner_node_id: str | None = None
+    source_node_id: str | None = None
+    target_node_id: str | None = None
+    link_type: str | None = None
+    selected_secondary_node_id: str | None = None
+    secondary_plan_version: int | None = None
+    supersedes_plan_id: str | None = None
+    supersedes_plan_version: int | None = None
+    cost_matrix_target_ids: tuple[str, ...] = ()
+    cost_matrix_resource_ids: tuple[str, ...] = ()
+    cost_matrix: tuple[tuple[float, ...], ...] = ()
+    cost_breakdowns_by_edge: tuple[Mapping[str, Any], ...] = ()
+    rejected_edges: tuple[Mapping[str, Any], ...] = ()
+    stale_plan_rejected: bool = False
+    stale_reject_reason: str | None = None
+    latest_plan_id: str | None = None
+    latest_plan_version: int | None = None
 
 
 @dataclass(frozen=True)
@@ -481,6 +525,16 @@ def guidance_bindings_from_assignment_plan(
         if previous_plan is not None
         else {}
     )
+    plan_metadata = dict(plan.metadata)
+    plan_owner = _metadata_text(plan_metadata, "plan_owner") or "center"
+    active_plan_owner = (
+        _metadata_text(plan_metadata, "active_plan_owner") or plan_owner
+    )
+    owner_node_id = (
+        _metadata_text(plan_metadata, "owner_node_id")
+        or _metadata_text(plan_metadata, "source_node_id")
+        or plan.source_node_id
+    )
 
     bindings: list[AssignmentGuidanceBinding] = []
     for index, assignment in enumerate(plan.assignments, start=1):
@@ -544,6 +598,25 @@ def guidance_bindings_from_assignment_plan(
                 metadata={
                     "assignment_cost": assignment.cost,
                     "assignment_feasibility_state": assignment.feasibility_state,
+                    "current_plan_id": plan.plan_id,
+                    "current_plan_version": plan.version,
+                    "plan_owner": plan_owner,
+                    "active_plan_owner": active_plan_owner,
+                    "owner_node_id": owner_node_id,
+                    "selected_secondary_node_id": _metadata_text(
+                        plan_metadata,
+                        "selected_secondary_node_id",
+                    ),
+                    "secondary_plan_version": _metadata_int(
+                        plan_metadata.get("secondary_plan_version")
+                    ),
+                    "supersedes_plan_id": _metadata_text(
+                        plan_metadata,
+                        "supersedes_plan_id",
+                    ),
+                    "supersedes_plan_version": _metadata_int(
+                        plan_metadata.get("supersedes_plan_version")
+                    ),
                     "plan_schema": plan_schema,
                     "plan_decision_state": plan.decision_state,
                     "previous_plan_id": plan.previous_plan_id,
@@ -1119,6 +1192,13 @@ def assignment_records_from_plan(
     supersedes_plan_version = _metadata_int(
         plan_metadata.get("supersedes_plan_version")
     )
+    selected_secondary_node_id = _metadata_text(
+        plan_metadata,
+        "selected_secondary_node_id",
+    )
+    secondary_plan_version = _metadata_int(plan_metadata.get("secondary_plan_version"))
+    if secondary_plan_version is None and active_plan_owner == "secondary":
+        secondary_plan_version = plan.version
     return tuple(
         AssignmentRecord(
             timestamp=record_timestamp,
@@ -1160,6 +1240,14 @@ def assignment_records_from_plan(
             previous_plan_version=previous_plan_version,
             supersedes_plan_id=_metadata_text(plan_metadata, "supersedes_plan_id"),
             supersedes_plan_version=supersedes_plan_version,
+            selected_secondary_node_id=selected_secondary_node_id,
+            secondary_plan_version=secondary_plan_version,
+            secondary_leader_epoch=_metadata_int(
+                plan_metadata.get("secondary_leader_epoch")
+            ),
+            secondary_lease_expires_at_s=_metadata_float(
+                plan_metadata.get("secondary_lease_expires_at_s")
+            ),
             total_cost=plan.total_cost,
             candidate_total_cost=plan.candidate_total_cost,
             previous_total_cost_current=plan.previous_total_cost_current,
@@ -1220,6 +1308,75 @@ def assignment_records_from_plan(
             ),
         )
         for assignment in plan.assignments
+    )
+
+
+def assignment_evidence_from_plan(plan: AssignmentPlan) -> AssignmentEvidenceExport:
+    """Export current-plan cost evidence for D4 decisions and D6 replay."""
+
+    plan_metadata = dict(plan.metadata)
+    resource_count = _plan_resource_count(plan)
+    target_count = _plan_target_count(plan)
+    plan_owner = _metadata_text(plan_metadata, "plan_owner") or "center"
+    active_plan_owner = (
+        _metadata_text(plan_metadata, "active_plan_owner") or plan_owner
+    )
+    selected_secondary_node_id = _metadata_text(
+        plan_metadata,
+        "selected_secondary_node_id",
+    )
+    secondary_plan_version = _metadata_int(plan_metadata.get("secondary_plan_version"))
+    if secondary_plan_version is None and active_plan_owner == "secondary":
+        secondary_plan_version = plan.version
+
+    return AssignmentEvidenceExport(
+        plan_id=plan.plan_id,
+        version=plan.version,
+        window_id=plan.window_id,
+        current_plan_id=_metadata_text(plan_metadata, "current_plan_id")
+        or plan.plan_id,
+        current_plan_version=_metadata_int(
+            plan_metadata.get("current_plan_version")
+        )
+        or plan.version,
+        resource_count=resource_count,
+        target_count=target_count,
+        assigned_count=len(plan.assignments),
+        plan_owner=plan_owner,
+        active_plan_owner=active_plan_owner,
+        owner_node_id=(
+            _metadata_text(plan_metadata, "owner_node_id")
+            or _metadata_text(plan_metadata, "source_node_id")
+            or plan.source_node_id
+        ),
+        source_node_id=plan.source_node_id
+        or _metadata_text(plan_metadata, "source_node_id"),
+        target_node_id=plan.target_node_id
+        or _metadata_text(plan_metadata, "target_node_id"),
+        link_type=plan.link_type or _metadata_text(plan_metadata, "link_type"),
+        selected_secondary_node_id=selected_secondary_node_id,
+        secondary_plan_version=secondary_plan_version,
+        supersedes_plan_id=_metadata_text(plan_metadata, "supersedes_plan_id"),
+        supersedes_plan_version=_metadata_int(
+            plan_metadata.get("supersedes_plan_version")
+        ),
+        cost_matrix_target_ids=_metadata_text_tuple(
+            plan_metadata.get("cost_matrix_target_ids")
+        ),
+        cost_matrix_resource_ids=_metadata_text_tuple(
+            plan_metadata.get("cost_matrix_resource_ids")
+        ),
+        cost_matrix=_metadata_float_matrix(plan_metadata.get("cost_matrix")),
+        cost_breakdowns_by_edge=_metadata_mapping_tuple(
+            plan_metadata.get("cost_breakdowns_by_edge")
+        ),
+        rejected_edges=_metadata_mapping_tuple(plan_metadata.get("rejected_edges")),
+        stale_plan_rejected=_metadata_bool(
+            plan_metadata.get("stale_plan_rejected")
+        ),
+        stale_reject_reason=_metadata_text(plan_metadata, "stale_reject_reason"),
+        latest_plan_id=_metadata_text(plan_metadata, "latest_plan_id"),
+        latest_plan_version=_metadata_int(plan_metadata.get("latest_plan_version")),
     )
 
 
@@ -1412,8 +1569,13 @@ def prepare_secondary_takeover_plan(
         "plan_schema": SECONDARY_PLAN_SCHEMA_V2,
         "plan_owner": "secondary",
         "active_plan_owner": "secondary",
+        "current_plan_id": plan.plan_id,
+        "current_plan_version": plan.version,
+        "current_plan_owner": "secondary",
+        "current_plan_owner_node_id": owner_node_id,
         "owner_node_id": owner_node_id,
         "selected_secondary_node_id": owner_node_id,
+        "secondary_plan_version": plan.version,
         "source_node_id": owner_node_id,
         "target_node_id": plan_target_node_id,
         "link_type": link_type,
@@ -1445,8 +1607,13 @@ def prepare_secondary_takeover_plan(
                     "plan_schema": SECONDARY_PLAN_SCHEMA_V2,
                     "plan_owner": "secondary",
                     "active_plan_owner": "secondary",
+                    "current_plan_id": plan.plan_id,
+                    "current_plan_version": plan.version,
+                    "current_plan_owner": "secondary",
+                    "current_plan_owner_node_id": owner_node_id,
                     "owner_node_id": owner_node_id,
                     "selected_secondary_node_id": owner_node_id,
+                    "secondary_plan_version": plan.version,
                     "source_node_id": owner_node_id,
                     "target_node_id": assignment_target_node_id,
                     "link_type": link_type,
@@ -2024,6 +2191,40 @@ def _metadata_text_tuple(value: Any) -> tuple[str, ...]:
         text = str(value).strip()
         return (text,) if text else ()
     return tuple(str(item).strip() for item in items if str(item).strip())
+
+
+def _metadata_float_matrix(value: Any) -> tuple[tuple[float, ...], ...]:
+    if value is None or isinstance(value, (str, bytes)):
+        return ()
+    rows: list[tuple[float, ...]] = []
+    try:
+        raw_rows = tuple(value)
+    except TypeError:
+        return ()
+    for raw_row in raw_rows:
+        if isinstance(raw_row, (str, bytes)):
+            return ()
+        try:
+            rows.append(tuple(float(item) for item in raw_row))
+        except (TypeError, ValueError):
+            return ()
+    return tuple(rows)
+
+
+def _metadata_mapping_tuple(value: Any) -> tuple[Mapping[str, Any], ...]:
+    if value is None:
+        return ()
+    if isinstance(value, Mapping):
+        return (dict(value),)
+    try:
+        items = tuple(value)
+    except TypeError:
+        return ()
+    mappings: list[Mapping[str, Any]] = []
+    for item in items:
+        if isinstance(item, Mapping):
+            mappings.append(dict(item))
+    return tuple(mappings)
 
 
 def _assignment_matrix_shape(

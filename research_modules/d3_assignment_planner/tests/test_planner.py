@@ -5,6 +5,7 @@ from d3_assignment_planner import (
     PlannerConfig,
     StalePlanError,
     apply_terminal_feedback_to_planner_inputs,
+    assignment_evidence_from_plan,
     assignment_records_from_plan,
     assignment_validity_summary_from_plan,
     evaluate_terminal_feedback,
@@ -190,6 +191,37 @@ def test_previous_infeasible_plan_is_replaced_even_inside_dwell() -> None:
 
     assert second.decision_state == "accepted_previous_infeasible"
     assert second.assignment_map() == {"T2": "R2"}
+
+
+def test_planner_hard_rejects_closed_time_window_edge() -> None:
+    config = PlannerConfig(enable_hysteresis=False)
+    planner = _planner(config)
+    tracks = [
+        TargetTrack(
+            "T1",
+            0.9,
+            0.1,
+            0.0,
+            fov_difficulty_by_resource={"R1": 0.0, "R2": 0.7},
+            time_window_by_resource={"R1": {"state": "closed"}},
+        )
+    ]
+
+    plan = planner.plan(tracks, _resources(), timestamp=10.0)
+    evidence = assignment_evidence_from_plan(plan)
+
+    assert plan.assignment_map() == {"T1": "R2"}
+    assert plan.unassigned_target_ids == ()
+    assert plan.metadata["hard_reject_count"] == 1
+    assert plan.metadata["hard_reject_reasons"] == ("time_window_closed",)
+    assert plan.metadata["rejected_edges"][0]["target_id"] == "T1"
+    assert plan.metadata["rejected_edges"][0]["resource_id"] == "R1"
+    assert plan.metadata["rejected_edges"][0]["reject_reason"] == "time_window_closed"
+    assert evidence.current_plan_id == plan.plan_id
+    assert evidence.current_plan_version == plan.version
+    assert evidence.cost_matrix_target_ids == ("T1",)
+    assert evidence.cost_matrix_resource_ids == ("R1", "R2")
+    assert evidence.rejected_edges[0]["reject_reason"] == "time_window_closed"
 
 
 def test_d5_duplicate_feedback_writeback_forces_next_round_replan() -> None:

@@ -114,6 +114,7 @@ def _secondary(available: bool = True) -> ResourceSummary:
         coverage_cell="cell-north",
         heartbeat_timestamp_s=9.9,
         heartbeat_stale_after_s=2.0,
+        stable_cross_view_registration_count=2,
     )
 
 
@@ -211,6 +212,7 @@ def test_adapter_consumes_mobile_high_recon_metadata_without_auto_takeover() -> 
     assert metadata["cross_view_support_count"] == 2
     assert lifecycle["node_id"] == "MHR-1"
     assert lifecycle["secondary_capability_class"] == "mobile_high_recon"
+    assert lifecycle["secondary_readiness_class"] == "takeover_ready"
     assert lifecycle["is_mobile_high_recon"] is True
     assert lifecycle["is_fixed_tethered_secondary"] is False
     assert lifecycle["cue_freshness_s"] == 0.2
@@ -226,6 +228,9 @@ def test_adapter_consumes_mobile_high_recon_metadata_without_auto_takeover() -> 
     assert metadata["secondary_diagnostic_registered"] is True
     assert metadata["secondary_diagnostic_takeover_capable"] is True
     assert metadata["secondary_diagnostic_capability_score"] > 0.0
+    assert metadata["secondary_capability_class"] == "takeover_ready"
+    assert metadata["secondary_capability_inputs"]["coverage_ratio"] == 0.86
+    assert metadata["secondary_diagnostic_capability_class"] == "takeover_ready"
 
 
 def test_adapter_keeps_soft_margin_and_low_terminal_confidence_as_observe_more() -> None:
@@ -382,6 +387,8 @@ def test_adapter_reports_secondary_detect_visible_without_cross_view_registratio
         "secondary_network_joint_full_view_frame_rate": 0.92,
         "secondary_network_mean_coverage_ratio": 0.88,
         "cross_view_association_count": 0,
+        "stable_cross_view_registration_count": 0,
+        "not_registered_count": 35,
         "cross_view_conversion_gap": 1.0,
         "secondary_detect_to_cross_view_reject_reasons": ("global_binding_missing",),
     }
@@ -409,6 +416,8 @@ def test_adapter_reports_secondary_detect_visible_without_cross_view_registratio
     assert metadata["secondary_network_coverage_available"] is True
     assert abs(metadata["secondary_network_full_view_gap"] - 0.08) < 1e-9
     assert metadata["cross_view_association_count"] == 0
+    assert metadata["stable_cross_view_registration_count"] == 0
+    assert metadata["not_registered_count"] == 35
     assert metadata["cross_view_conversion_gap"] == 1.0
     assert metadata["secondary_detect_to_registration_gap"] == 1.0
     assert metadata["secondary_detect_to_cross_view_reject_reasons"] == [
@@ -422,6 +431,10 @@ def test_adapter_reports_secondary_detect_visible_without_cross_view_registratio
     assert lifecycle["secondary_visible"] is True
     assert lifecycle["secondary_registered"] is False
     assert lifecycle["secondary_takeover_capable"] is False
+    assert lifecycle["secondary_readiness_class"] == "visible_only"
+    assert metadata["secondary_capability_class"] == "visible_only"
+    assert metadata["secondary_diagnostic_capability_class"] == "visible_only"
+    assert metadata["secondary_capability_inputs"]["not_registered_count"] == 35
     assert metadata["secondary_diagnostic_visible"] is True
     assert metadata["secondary_diagnostic_registered"] is False
     assert metadata["secondary_diagnostic_takeover_capable"] is False
@@ -747,6 +760,7 @@ def test_adapter_outputs_d6_compatible_active_decision_event_fields() -> None:
     assert metadata["review_pre_window_end_timestamp"] == 8.5
     assert metadata["review_post_window_end_timestamp"] == 15.0
     assert metadata["secondary_takeover_candidate"] is True
+    assert metadata["active_degradation_necessity_label"] == "necessary"
     assert metadata["secondary_takeover_necessity_label"] == "necessary"
     assert metadata["secondary_plan_pending_duration_s"] == 1.5
     assert metadata["secondary_lifecycle"][0]["heartbeat"] == 9.9

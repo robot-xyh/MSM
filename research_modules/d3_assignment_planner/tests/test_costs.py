@@ -112,6 +112,28 @@ def test_cost_model_marks_resource_intercept_infeasible_by_target() -> None:
     assert breakdown["intercept_feasibility"] == 1.0
 
 
+def test_cost_model_hard_rejects_closed_time_window_edge() -> None:
+    config = PlannerConfig(infeasible_penalty=12345.0)
+    model = CostModel(config=config)
+    track = TargetTrack(
+        "T1",
+        threat_score=0.9,
+        covariance=0.1,
+        window_cost=0.0,
+        hard_time_window=True,
+        time_window_close_at_s=5.0,
+    )
+    resource = ResourceState("R1")
+
+    result = model.build_matrix([track], [resource], timestamp=6.0)
+    breakdown = result.breakdowns[0][0]
+
+    assert result.matrix[0, 0] == config.infeasible_penalty
+    assert result.reject_reasons == (("time_window_expired",),)
+    assert breakdown["hard_time_window_reject"] == 1.0
+    assert breakdown["reason_time_window_closed"] == 1.0
+
+
 def test_explainable_threat_score_baseline_uses_scene_terms() -> None:
     baseline = compose_threat_score_baseline(
         target_state="engageable",

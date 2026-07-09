@@ -148,12 +148,22 @@ def test_registration_logs_pose_source_bbox_area_and_offline_truth_without_using
     assert candidate.camera_pose_source == "airsim_camera_pose"
     assert candidate.bbox_area_px == 1600.0
     assert candidate.metadata["gate_pass"] is True
+    assert candidate.outcome == "registered_to_global_track"
+    assert candidate.metadata["detect_to_global_candidate"] is True
+    assert candidate.metadata["detect_registration_outcome"] == "registered_to_global_track"
     assert candidate.metadata["projection_valid"] is True
     assert candidate.metadata["reprojection_error"] == 0.0
+    assert candidate.metadata["measurement_timestamp"] == 10.0
+    assert candidate.metadata["measurement_age_s"] == 0.0
+    assert candidate.metadata["covariance_px"] is not None
     assert candidate.metadata["calibration_health"] == "healthy"
     assert candidate.metadata["drift_warning"] is False
     assert candidate.metadata["offline_truth_global_id"] == "G-truth-other"
     assert result.observations[0].terminal_association.assigned_global_track_id == "G-assigned"
+    assert (
+        result.observations[0].terminal_association.metadata["detect_registration_outcome"]
+        == "registered_to_global_track"
+    )
     assert result.observations[0].terminal_association.metadata["reprojection_error"] == 0.0
     assert result.observations[0].terminal_association.metadata["calibration_health"] == "healthy"
     assert result.metadata["calibration_health_counts"]["healthy"] == 1
@@ -305,6 +315,37 @@ def test_stale_binding_and_geometry_gate_rejections_are_separate_reasons() -> No
     funnel = summarize_secondary_visual_coverage_funnel(observations=gated.observations)
     assert funnel.rejection_reason_counts["geometry_gate_rejected"] == 1
     assert funnel.rejection_reason_counts["no_global_binding"] == 0
+
+
+def test_projection_invalid_is_reported_separately_from_geometry_gate_rejection() -> None:
+    result = register_local_visual_tracks_to_global_tracks(
+        global_tracks=[_track("G-outside", 200.0)],
+        bindings=[_binding("G-outside")],
+        camera_batches=[
+            CameraLocalTrackBatch(
+                resource_id="mobile-recon-1",
+                camera_id="eo_rgb",
+                camera=_camera(),
+                local_tracks=(_local("outside-local", (320.0, 240.0)),),
+                timestamp=10.0,
+            )
+        ],
+        current_time=10.0,
+        stability_config=RegistrationStabilityConfig(window_frames=1, required_gate_passes=1),
+    )
+
+    candidate = result.candidates[0]
+    assert candidate.selected is False
+    assert candidate.projection_valid is False
+    assert candidate.reject_reasons == ("projection_invalid",)
+    assert candidate.outcome == "projection_invalid"
+    assert candidate.metadata["projection_reason"] == "outside_image"
+    assert result.rejection_reason_counts["projection_invalid"] == 1
+    assert result.rejection_reason_counts["geometry_gate_rejected"] == 0
+
+    funnel = summarize_secondary_visual_coverage_funnel(observations=result.observations)
+    assert funnel.rejection_reason_counts["projection_invalid"] == 1
+    assert funnel.rejection_reason_counts["geometry_gate_rejected"] == 0
 
 
 def test_truth_metadata_and_tracker_like_ids_do_not_replace_global_binding() -> None:

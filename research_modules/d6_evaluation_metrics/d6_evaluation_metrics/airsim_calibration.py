@@ -11,13 +11,14 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .main_bus import load_main_episode_bus_metrics
 from .metrics import EpisodeMetrics
-from .standard_mapping import standard_mapping_summary
+from .standard_mapping import STANDARD_MAPPING_VERSION, standard_mapping_summary
 
 
 GROUP_FIELDS = [
     "metric_scope",
     "seed",
     "scenario",
+    "comparison_role",
     "secondary_height_above_targets_m",
     "secondary_fov_degrees",
     "secondary_count",
@@ -43,12 +44,19 @@ RECORD_FIELDNAMES = [
     "scenario_group",
     "case_name",
     "metric_scope",
+    "comparison_role",
+    "scenario_version",
+    "standard_mapping_version",
+    "standard_metric_family_summary",
+    "evidence_path",
+    "trend_key",
     "drone_count",
     "resource_count",
     "target_count",
     "camera_count",
     "secondary_count",
     "secondary_height_above_targets_m",
+    "secondary_height_bucket",
     "secondary_fov_degrees",
     "secondary_image_width_px",
     "secondary_image_height_px",
@@ -101,10 +109,16 @@ SUMMARY_FIELDNAMES = [
     "image_ok_count",
     "case_names",
     "scenario_groups",
+    "comparison_roles",
+    "scenario_versions",
+    "standard_mapping_versions",
+    "evidence_paths",
+    "trend_keys",
     "drone_count",
     "resource_count",
     "target_count",
     "camera_count",
+    "secondary_height_buckets",
     "secondary_network_joint_full_view_frame_rate_mean",
     "secondary_network_mean_coverage_ratio_mean",
     "secondary_visible_target_union_ratio_mean",
@@ -152,12 +166,19 @@ class AirSimCalibrationRecord:
     scenario_group: str = "not_recorded"
     case_name: str = "not_recorded"
     metric_scope: str = "not_recorded"
+    comparison_role: str = "not_recorded"
+    scenario_version: str = ""
+    standard_mapping_version: str = STANDARD_MAPPING_VERSION
+    standard_metric_family_summary: str = ""
+    evidence_path: str = ""
+    trend_key: str = ""
     drone_count: int = 0
     resource_count: int = 0
     target_count: int = 0
     camera_count: int = 0
     secondary_count: int = 0
     secondary_height_above_targets_m: float | None = None
+    secondary_height_bucket: str = "not_recorded"
     secondary_fov_degrees: float | None = None
     secondary_image_width_px: int | None = None
     secondary_image_height_px: int | None = None
@@ -332,10 +353,31 @@ def summarize_airsim_calibration_records(
                 "image_ok_count": _sum_int(grouped_records, "image_ok_count"),
                 "case_names": _unique_text_values(grouped_records, "case_name"),
                 "scenario_groups": _unique_text_values(grouped_records, "scenario_group"),
+                "comparison_roles": _unique_text_values(
+                    grouped_records,
+                    "comparison_role",
+                ),
+                "scenario_versions": _unique_text_values(
+                    grouped_records,
+                    "scenario_version",
+                ),
+                "standard_mapping_versions": _unique_text_values(
+                    grouped_records,
+                    "standard_mapping_version",
+                ),
+                "evidence_paths": _unique_text_values(
+                    grouped_records,
+                    "evidence_path",
+                ),
+                "trend_keys": _unique_text_values(grouped_records, "trend_key"),
                 "drone_count": _range_text(grouped_records, "drone_count"),
                 "resource_count": _range_text(grouped_records, "resource_count"),
                 "target_count": _range_text(grouped_records, "target_count"),
                 "camera_count": _range_text(grouped_records, "camera_count"),
+                "secondary_height_buckets": _unique_text_values(
+                    grouped_records,
+                    "secondary_height_bucket",
+                ),
                 "secondary_network_joint_full_view_frame_rate_mean": _mean_field(
                     grouped_records,
                     "secondary_network_joint_full_view_frame_rate",
@@ -518,6 +560,9 @@ def write_airsim_calibration_markdown(
     path.parent.mkdir(parents=True, exist_ok=True)
     record_dicts = [_record_dict(record) for record in records]
     summary_rows = [dict(row) for row in rows]
+    height_comparison_rows = _height_50_200_comparison_rows(summary_rows)
+    coverage_funnel_rows = _coverage_funnel_rows(summary_rows)
+    baseline_rows = _baseline_enhanced_rows(summary_rows)
 
     lines = [
         f"# {title}",
@@ -529,22 +574,26 @@ def write_airsim_calibration_markdown(
         f"- Seed 范围: {_range_text(record_dicts, 'seed')}",
         f"- 场景: {', '.join(_unique_text_values(record_dicts, 'scenario')) or 'not_recorded'}",
         f"- Detection backend: {', '.join(_unique_text_values(record_dicts, 'detection_backend')) or 'not_recorded'}",
+        f"- Scenario version: {', '.join(_unique_text_values(record_dicts, 'scenario_version')) or 'not_recorded'}",
+        f"- Standard mapping version: {', '.join(_unique_text_values(record_dicts, 'standard_mapping_version')) or STANDARD_MAPPING_VERSION}",
         "",
         "## 1. 分组摘要",
         "",
-        "| Scope | Seed | Scenario | Height m | FOV deg | Secondary count | Backend | Episodes | Coverage mean | Full-view rate | Detect | Stable registration | Not registered | Gimbal OK | Active precision | Unnecessary degradation | D7 reject |",
-        "|---|---:|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Scope | Seed | Scenario | Role | Height m | FOV deg | Secondary count | Backend | Scale | Episodes | Coverage mean | Full-view rate | Detect | Stable registration | Not registered | Gimbal OK | Active precision | Unnecessary degradation | D7 reject | Evidence paths |",
+        "|---|---:|---|---|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for row in summary_rows:
         lines.append(
-            "| {metric_scope} | {seed} | {scenario} | {height} | {fov} | {secondary_count} | {backend} | {episodes} | {coverage:.6g} | {full_view:.6g} | {detect} | {cross_view} | {not_registered} | {gimbal:.6g} | {active_precision:.6g} | {unnecessary} | {d7_reject} |".format(
+            "| {metric_scope} | {seed} | {scenario} | {role} | {height} | {fov} | {secondary_count} | {backend} | {scale} | {episodes} | {coverage:.6g} | {full_view:.6g} | {detect} | {cross_view} | {not_registered} | {gimbal:.6g} | {active_precision:.6g} | {unnecessary} | {d7_reject} | {evidence} |".format(
                 metric_scope=row.get("metric_scope", "not_recorded"),
                 seed=row.get("seed", "not_recorded"),
                 scenario=row.get("scenario", "not_recorded"),
+                role=_summary_text(row, "comparison_roles"),
                 height=_format_optional_number(row.get("secondary_height_above_targets_m")),
                 fov=_format_optional_number(row.get("secondary_fov_degrees")),
                 secondary_count=row.get("secondary_count", "not_recorded"),
                 backend=row.get("detection_backend", "not_recorded"),
+                scale=_scale_text(row),
                 episodes=int(row.get("episode_count", 0) or 0),
                 coverage=_float_or_zero(
                     row.get("secondary_network_mean_coverage_ratio_mean")
@@ -575,26 +624,69 @@ def write_airsim_calibration_markdown(
                 ),
                 unnecessary=int(row.get("unnecessary_degradation_count", 0) or 0),
                 d7_reject=int(row.get("d7_guidance_reject_count", 0) or 0),
+                evidence=_summary_text(row, "evidence_paths"),
             )
         )
 
     lines.extend(
         [
             "",
-            "## 2. Detect-to-registration Funnel",
+            "## 2. 50m vs 200m Secondary Coverage",
+            "",
+            "该表按相同 scope/seed/scenario/role/FOV/secondary count/backend/actual scale 对齐 50m 与 200m 二级高度，缺失高度保留 `not_recorded`，不从场景名推断规模。",
+            "",
+            "| Scope | Seed | Scenario | Role | FOV deg | Secondary count | Backend | Scale | Coverage 50m | Coverage 200m | Delta 200m-50m | Full-view 50m | Full-view 200m | Stable reg 50m | Stable reg 200m | Not reg 50m | Not reg 200m | D7 reject 50m | D7 reject 200m |",
+            "|---|---:|---|---|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    if height_comparison_rows:
+        for row in height_comparison_rows:
+            lines.append(
+                "| {metric_scope} | {seed} | {scenario} | {comparison_role} | {fov} | {secondary_count} | {backend} | {scale} | {coverage_50m} | {coverage_200m} | {coverage_delta} | {full_view_50m} | {full_view_200m} | {stable_50m} | {stable_200m} | {not_registered_50m} | {not_registered_200m} | {d7_reject_50m} | {d7_reject_200m} |".format(
+                    **row
+                )
+            )
+    else:
+        lines.append(
+            "| not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 3. Coverage Funnel",
+            "",
+            "该表把二级覆盖、可见并集、full-view、检测、投影、几何门控、稳定注册和未注册数量串成同一漏斗，便于长期趋势跟踪。",
+            "",
+            "| Scope | Seed | Scenario | Role | Height bucket | Coverage mean | Visible union | Joint full-view | Single-camera full-view | Multi-target FOV | Detect | Projection valid | Gate pass | Stable registration | Not registered | Trend key |",
+            "|---|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        ]
+    )
+    for row in coverage_funnel_rows:
+        lines.append(
+            "| {metric_scope} | {seed} | {scenario} | {comparison_role} | {height_bucket} | {coverage:.6g} | {visible_union:.6g} | {joint_full_view:.6g} | {single_full_view:.6g} | {multi_target_fov:.6g} | {detect} | {projection:.6g} | {gate:.6g} | {stable} | {not_registered} | {trend_key} |".format(
+                **row
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 4. Detect-to-registration Funnel",
             "",
             "该表把二级检测进入 D5 跨视角配准前后的断点展开。`detect_count` 是二级检测机会；`projection_valid_rate` 和 `geometry_gate_pass_rate` 是几何链路质量；`stable_cross_view_registration_count` 是稳定跨视角注册数量。",
             "",
-            "| Scope | Seed | Scenario | Breakpoint reasons | Reject/outcome counts | Detect | Projection valid | Gate pass | Candidate | Stable registration | Not registered |",
-            "|---|---:|---|---|---|---:|---:|---:|---:|---:|---:|",
+            "| Scope | Seed | Scenario | Role | Breakpoint reasons | Reject/outcome counts | Detect | Projection valid | Gate pass | Candidate | Stable registration | Not registered |",
+            "|---|---:|---|---|---|---|---:|---:|---:|---:|---:|---:|",
         ]
     )
     for row in summary_rows:
         lines.append(
-            "| {metric_scope} | {seed} | {scenario} | {breakpoints} | {rejects} | {detect} | {projection:.6g} | {gate:.6g} | {candidate} | {stable} | {not_registered} |".format(
+            "| {metric_scope} | {seed} | {scenario} | {role} | {breakpoints} | {rejects} | {detect} | {projection:.6g} | {gate:.6g} | {candidate} | {stable} | {not_registered} |".format(
                 metric_scope=row.get("metric_scope", "not_recorded"),
                 seed=row.get("seed", "not_recorded"),
                 scenario=row.get("scenario", "not_recorded"),
+                role=_summary_text(row, "comparison_roles"),
                 breakpoints=_compact_json(row.get("funnel_breakpoint_reasons")),
                 rejects=_compact_json(row.get("funnel_reject_reason_counts")),
                 detect=int(
@@ -613,18 +705,42 @@ def write_airsim_calibration_markdown(
     lines.extend(
         [
             "",
-            "## 3. D7 Guidance Reject Reason",
+            "## 5. Baseline vs Enhanced",
             "",
-            "| Scope | Seed | Scenario | Reject reason counts | Guidance law counts |",
-            "|---|---:|---|---|---|",
+            "该表只消费日志中显式写出的 baseline/enhanced role；缺少 role 时不会由 D6 把场景规模或 2v2/5v5 名称解释成对照组。",
+            "",
+            "| Scope | Seed | Scenario | Height bucket | FOV deg | Secondary count | Backend | Scale | Baseline coverage | Enhanced coverage | Delta enhanced-baseline | Baseline stable reg | Enhanced stable reg | Baseline not reg | Enhanced not reg | Baseline active precision | Enhanced active precision | Baseline unnecessary | Enhanced unnecessary | Baseline D7 reject | Enhanced D7 reject | Evidence paths |",
+            "|---|---:|---|---|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        ]
+    )
+    if baseline_rows:
+        for row in baseline_rows:
+            lines.append(
+                "| {metric_scope} | {seed} | {scenario} | {height_bucket} | {fov} | {secondary_count} | {backend} | {scale} | {baseline_coverage} | {enhanced_coverage} | {coverage_delta} | {baseline_stable} | {enhanced_stable} | {baseline_not_registered} | {enhanced_not_registered} | {baseline_active_precision} | {enhanced_active_precision} | {baseline_unnecessary} | {enhanced_unnecessary} | {baseline_d7_reject} | {enhanced_d7_reject} | {evidence_paths} |".format(
+                    **row
+                )
+            )
+    else:
+        lines.append(
+            "| not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded | not_recorded |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 6. D7 Guidance Reject Reason",
+            "",
+            "| Scope | Seed | Scenario | Role | Reject reason counts | Guidance law counts |",
+            "|---|---:|---|---|---|---|",
         ]
     )
     for row in summary_rows:
         lines.append(
-            "| {metric_scope} | {seed} | {scenario} | {rejects} | {laws} |".format(
+            "| {metric_scope} | {seed} | {scenario} | {role} | {rejects} | {laws} |".format(
                 metric_scope=row.get("metric_scope", "not_recorded"),
                 seed=row.get("seed", "not_recorded"),
                 scenario=row.get("scenario", "not_recorded"),
+                role=_summary_text(row, "comparison_roles"),
                 rejects=_compact_json(row.get("d7_guidance_reject_reason_counts")),
                 laws=_compact_json(row.get("guidance_law_counts")),
             )
@@ -637,7 +753,7 @@ def write_airsim_calibration_markdown(
     lines.extend(
         [
             "",
-            "## 4. Standard C-UAS Mapping",
+            "## 7. Standard C-UAS Mapping",
             "",
             f"- Mapping version: {mapping_summary['version']}",
             f"- 标准来源: {', '.join(sources) if sources else 'not_recorded'}",
@@ -653,14 +769,15 @@ def write_airsim_calibration_markdown(
     lines.extend(
         [
             "",
-            "## 5. 解读口径",
+            "## 8. 解读口径",
             "",
             "- coverage/full-view/gimbal 指标来自 main/D4/D5 已写盘的 D4D5 stress 或 main bus metadata，用于长期趋势比较。",
             "- active degradation precision 只使用 main/D4 写出的 review label 或后验字段；缺少标签时不会由事件名自证必要性。",
             "- D7 reject reason 同时汇总 terminal switch 与 terminal contract reject 分布，用于 execution/contract 对照。",
+            "- baseline vs enhanced 只使用显式 comparison role；D6 不接 TrackEval、Stone Soup、SCRIMMAGE 或在线控制接口。",
             "- 规模字段使用 runtime metrics 或日志中的实际 count 字段；报告不从 `2v2/5v5` 场景名推断目标数、资源数或相机数。",
             "",
-            "## 6. 文件索引",
+            "## 9. 文件索引",
             "",
         ]
     )
@@ -817,6 +934,42 @@ def _record_from_artifacts(
     metric_scope = _first_text(_metric_attr(metrics, "metric_scope"))
     if metric_scope is None or metric_scope == "not_recorded":
         metric_scope = "d4d5_stress" if d4d5 else "not_recorded"
+    scenario_version = _first_text(
+        _metric_attr(metrics, "scenario_version"),
+        metrics_metadata.get("scenario_version"),
+        d4d5.get("scenario_version"),
+        blocks_metadata.get("scenario_version"),
+    ) or ""
+    standard_mapping_version = _first_text(
+        _metric_attr(metrics, "standard_mapping_version"),
+        metrics_metadata.get("standard_mapping_version"),
+        d4d5.get("standard_mapping_version"),
+        blocks_metadata.get("standard_mapping_version"),
+        STANDARD_MAPPING_VERSION,
+    ) or STANDARD_MAPPING_VERSION
+    standard_metric_family_summary = _first_text(
+        _metric_attr(metrics, "standard_metric_family_summary"),
+        metrics_metadata.get("standard_metric_family_summary"),
+        d4d5.get("standard_metric_family_summary"),
+        blocks_metadata.get("standard_metric_family_summary"),
+    ) or ""
+    evidence_path = _first_text(
+        _metric_attr(metrics, "evidence_path"),
+        metrics_metadata.get("evidence_path"),
+        d4d5.get("evidence_path"),
+        blocks_metadata.get("evidence_path"),
+        str(metrics_path) if metrics_path is not None else None,
+        str(d4d5_path) if d4d5_path is not None else None,
+        str(blocks_path) if blocks_path is not None else None,
+    ) or ""
+    comparison_role = _comparison_role(
+        metrics_metadata=metrics_metadata,
+        d4d5=d4d5,
+        blocks_metadata=blocks_metadata,
+        scenario=scenario,
+        scenario_group=scenario_group,
+        case_name=case_name,
+    )
 
     target_count = _first_int(
         _metric_attr(metrics, "target_count"),
@@ -922,6 +1075,30 @@ def _record_from_artifacts(
         d4d5.get("secondary_network_mean_coverage_ratio"),
         _metric_attr(metrics, "secondary_network_mean_coverage_ratio"),
     )
+    secondary_height_above_targets_m = _first_float(
+        d4d5.get("secondary_height_above_targets_m"),
+        geometry.get("secondary_height_above_targets_m"),
+    )
+    secondary_fov_degrees = _first_float(
+        d4d5.get("secondary_fov_degrees"),
+        d4d5.get("secondary_fov_deg"),
+        d4d5.get("secondary_camera_fov_degrees"),
+        settings_summary.get("secondary_fov_degrees"),
+    )
+    trend_key = _trend_key(
+        metric_scope=metric_scope,
+        scenario=scenario,
+        comparison_role=comparison_role,
+        scenario_version=scenario_version,
+        drone_count=drone_count,
+        resource_count=resource_count,
+        target_count=target_count,
+        camera_count=camera_count,
+        secondary_count=secondary_count,
+        secondary_height_above_targets_m=secondary_height_above_targets_m,
+        secondary_fov_degrees=secondary_fov_degrees,
+        detection_backend=_detection_backend(d4d5, blocks_metadata, episode_dir),
+    )
 
     return AirSimCalibrationRecord(
         episode_id=_first_text(_metric_attr(metrics, "episode_id"), blocks.get("episode_id"), episode_dir.name) or episode_dir.name,
@@ -931,21 +1108,22 @@ def _record_from_artifacts(
         scenario_group=scenario_group or "not_recorded",
         case_name=case_name or "not_recorded",
         metric_scope=metric_scope,
+        comparison_role=comparison_role,
+        scenario_version=scenario_version,
+        standard_mapping_version=standard_mapping_version,
+        standard_metric_family_summary=standard_metric_family_summary,
+        evidence_path=evidence_path,
+        trend_key=trend_key,
         drone_count=int(drone_count or 0),
         resource_count=int(resource_count or 0),
         target_count=int(target_count or 0),
         camera_count=int(camera_count or 0),
         secondary_count=int(secondary_count or 0),
-        secondary_height_above_targets_m=_first_float(
-            d4d5.get("secondary_height_above_targets_m"),
-            geometry.get("secondary_height_above_targets_m"),
+        secondary_height_above_targets_m=secondary_height_above_targets_m,
+        secondary_height_bucket=_secondary_height_bucket(
+            secondary_height_above_targets_m
         ),
-        secondary_fov_degrees=_first_float(
-            d4d5.get("secondary_fov_degrees"),
-            d4d5.get("secondary_fov_deg"),
-            d4d5.get("secondary_camera_fov_degrees"),
-            settings_summary.get("secondary_fov_degrees"),
-        ),
+        secondary_fov_degrees=secondary_fov_degrees,
         secondary_image_width_px=_first_int(
             d4d5.get("secondary_image_width_px"),
             settings_summary.get("secondary_image_width_px"),
@@ -1156,6 +1334,120 @@ def _source_files(
         "settings": settings_path if settings_path is not None and settings_path.exists() else None,
     }
     return {key: str(path) for key, path in files.items() if path is not None}
+
+
+def _comparison_role(
+    *,
+    metrics_metadata: Mapping[str, Any],
+    d4d5: Mapping[str, Any],
+    blocks_metadata: Mapping[str, Any],
+    scenario: str,
+    scenario_group: str | None,
+    case_name: str | None,
+) -> str:
+    for mapping in (metrics_metadata, d4d5, blocks_metadata):
+        for key in (
+            "comparison_role",
+            "baseline_enhanced_role",
+            "baseline_or_enhanced",
+            "calibration_role",
+            "scenario_role",
+            "experiment_arm",
+            "variant_role",
+            "treatment",
+        ):
+            role = _normalize_comparison_role(mapping.get(key), allow_heuristic=True)
+            if role != "not_recorded":
+                return role
+
+    for value in (case_name, scenario, scenario_group):
+        role = _normalize_comparison_role(value, allow_heuristic=False)
+        if role != "not_recorded":
+            return role
+    return "not_recorded"
+
+
+def _normalize_comparison_role(value: Any, *, allow_heuristic: bool) -> str:
+    text = _text(value)
+    if text is None:
+        return "not_recorded"
+    normalized = text.strip().lower().replace("-", "_").replace(" ", "_")
+    explicit_baseline = {"baseline", "base", "control", "reference"}
+    explicit_enhanced = {
+        "enhanced",
+        "treatment",
+        "candidate",
+        "variant",
+        "improved",
+        "p1_enhanced",
+    }
+    if normalized in explicit_baseline:
+        return "baseline"
+    if normalized in explicit_enhanced:
+        return "enhanced"
+    if allow_heuristic:
+        if "baseline" in normalized or normalized.startswith("control_"):
+            return "baseline"
+        if "enhanced" in normalized or normalized.startswith("candidate_"):
+            return "enhanced"
+    return "not_recorded"
+
+
+def _secondary_height_bucket(value: Any) -> str:
+    height = _first_float(value)
+    if height is None:
+        return "not_recorded"
+    rounded = int(round(height))
+    if abs(height - 50.0) <= 5.0:
+        return "secondary_50m"
+    if abs(height - 200.0) <= 10.0:
+        return "secondary_200m"
+    return f"secondary_{rounded}m"
+
+
+def _trend_key(
+    *,
+    metric_scope: str,
+    scenario: str,
+    comparison_role: str,
+    scenario_version: str,
+    drone_count: int | None,
+    resource_count: int | None,
+    target_count: int | None,
+    camera_count: int | None,
+    secondary_count: int | None,
+    secondary_height_above_targets_m: float | None,
+    secondary_fov_degrees: float | None,
+    detection_backend: str,
+) -> str:
+    scale = (
+        f"d{int(drone_count or 0)}"
+        f"_r{int(resource_count or 0)}"
+        f"_t{int(target_count or 0)}"
+        f"_c{int(camera_count or 0)}"
+    )
+    geometry = (
+        f"h{_format_optional_number(secondary_height_above_targets_m)}"
+        f"_fov{_format_optional_number(secondary_fov_degrees)}"
+        f"_sec{int(secondary_count or 0)}"
+    )
+    parts = [
+        metric_scope or "not_recorded",
+        scenario or "not_recorded",
+        comparison_role or "not_recorded",
+        scenario_version or "unversioned",
+        geometry,
+        detection_backend or "not_recorded",
+        scale,
+    ]
+    return "|".join(_key_part(part) for part in parts)
+
+
+def _key_part(value: Any) -> str:
+    text = str(value or "not_recorded").strip().lower()
+    text = text.replace("-", "_")
+    text = re.sub(r"[^a-z0-9_.=-]+", "_", text)
+    return text.strip("_") or "not_recorded"
 
 
 def _guidance_reject_reason_counts(metadata: Mapping[str, Any]) -> dict[str, int]:
@@ -1508,6 +1800,322 @@ def _range_text(records: Sequence[Mapping[str, Any]], field_name: str) -> str:
     if len(values) == 1:
         return str(values[0])
     return f"{values[0]}..{values[-1]}"
+
+
+def _height_50_200_comparison_rows(
+    rows: Sequence[Mapping[str, Any]],
+) -> list[dict[str, str]]:
+    grouped: dict[tuple[Any, ...], dict[str, Mapping[str, Any]]] = {}
+    for row in rows:
+        bucket = _summary_height_bucket(row)
+        if bucket not in {"secondary_50m", "secondary_200m"}:
+            continue
+        key = (
+            row.get("metric_scope", "not_recorded"),
+            row.get("seed", "not_recorded"),
+            row.get("scenario", "not_recorded"),
+            _summary_text(row, "comparison_roles"),
+            row.get("secondary_fov_degrees", "not_recorded"),
+            row.get("secondary_count", "not_recorded"),
+            row.get("detection_backend", "not_recorded"),
+            _scale_text(row),
+        )
+        grouped.setdefault(key, {})[bucket] = row
+
+    comparison_rows: list[dict[str, str]] = []
+    for key, bucket_rows in sorted(grouped.items(), key=lambda item: tuple(str(v) for v in item[0])):
+        metric_scope, seed, scenario, comparison_role, fov, secondary_count, backend, scale = key
+        row_50 = bucket_rows.get("secondary_50m")
+        row_200 = bucket_rows.get("secondary_200m")
+        coverage_50 = _optional_summary_float(
+            row_50,
+            "secondary_network_mean_coverage_ratio_mean",
+        )
+        coverage_200 = _optional_summary_float(
+            row_200,
+            "secondary_network_mean_coverage_ratio_mean",
+        )
+        comparison_rows.append(
+            {
+                "metric_scope": _markdown_cell(metric_scope),
+                "seed": _markdown_cell(seed),
+                "scenario": _markdown_cell(scenario),
+                "comparison_role": _markdown_cell(comparison_role),
+                "fov": _markdown_cell(_format_optional_number(fov)),
+                "secondary_count": _markdown_cell(secondary_count),
+                "backend": _markdown_cell(backend),
+                "scale": _markdown_cell(scale),
+                "coverage_50m": _format_optional_cell(coverage_50),
+                "coverage_200m": _format_optional_cell(coverage_200),
+                "coverage_delta": _format_delta_cell(coverage_200, coverage_50),
+                "full_view_50m": _format_optional_cell(
+                    _optional_summary_float(
+                        row_50,
+                        "secondary_network_joint_full_view_frame_rate_mean",
+                    )
+                ),
+                "full_view_200m": _format_optional_cell(
+                    _optional_summary_float(
+                        row_200,
+                        "secondary_network_joint_full_view_frame_rate_mean",
+                    )
+                ),
+                "stable_50m": _format_optional_cell(
+                    _optional_summary_int(row_50, "stable_cross_view_registration_count")
+                ),
+                "stable_200m": _format_optional_cell(
+                    _optional_summary_int(row_200, "stable_cross_view_registration_count")
+                ),
+                "not_registered_50m": _format_optional_cell(
+                    _optional_summary_int(row_50, "not_registered_count")
+                ),
+                "not_registered_200m": _format_optional_cell(
+                    _optional_summary_int(row_200, "not_registered_count")
+                ),
+                "d7_reject_50m": _format_optional_cell(
+                    _optional_summary_int(row_50, "d7_guidance_reject_count")
+                ),
+                "d7_reject_200m": _format_optional_cell(
+                    _optional_summary_int(row_200, "d7_guidance_reject_count")
+                ),
+            }
+        )
+    return comparison_rows
+
+
+def _coverage_funnel_rows(
+    rows: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "metric_scope": _markdown_cell(row.get("metric_scope", "not_recorded")),
+            "seed": _markdown_cell(row.get("seed", "not_recorded")),
+            "scenario": _markdown_cell(row.get("scenario", "not_recorded")),
+            "comparison_role": _markdown_cell(_summary_text(row, "comparison_roles")),
+            "height_bucket": _markdown_cell(_summary_height_bucket(row)),
+            "coverage": _float_or_zero(
+                row.get("secondary_network_mean_coverage_ratio_mean")
+            ),
+            "visible_union": _float_or_zero(
+                row.get("secondary_visible_target_union_ratio_mean")
+            ),
+            "joint_full_view": _float_or_zero(
+                row.get("secondary_network_joint_full_view_frame_rate_mean")
+            ),
+            "single_full_view": _float_or_zero(
+                row.get("secondary_single_camera_full_view_frame_rate_mean")
+            ),
+            "multi_target_fov": _float_or_zero(row.get("multi_target_fov_rate_mean")),
+            "detect": int(
+                row.get("secondary_detect_count")
+                or row.get("funnel_detect_count", 0)
+                or 0
+            ),
+            "projection": _float_or_zero(row.get("projection_valid_rate_mean")),
+            "gate": _float_or_zero(row.get("geometry_gate_pass_rate_mean")),
+            "stable": int(row.get("stable_cross_view_registration_count", 0) or 0),
+            "not_registered": int(row.get("not_registered_count", 0) or 0),
+            "trend_key": _markdown_cell(_summary_text(row, "trend_keys")),
+        }
+        for row in rows
+    ]
+
+
+def _baseline_enhanced_rows(
+    rows: Sequence[Mapping[str, Any]],
+) -> list[dict[str, str]]:
+    grouped: dict[tuple[Any, ...], dict[str, Mapping[str, Any]]] = {}
+    for row in rows:
+        role = _summary_role(row)
+        if role not in {"baseline", "enhanced"}:
+            continue
+        key = (
+            row.get("metric_scope", "not_recorded"),
+            row.get("seed", "not_recorded"),
+            row.get("scenario", "not_recorded"),
+            _summary_height_bucket(row),
+            row.get("secondary_fov_degrees", "not_recorded"),
+            row.get("secondary_count", "not_recorded"),
+            row.get("detection_backend", "not_recorded"),
+            _scale_text(row),
+        )
+        grouped.setdefault(key, {})[role] = row
+
+    comparison_rows: list[dict[str, str]] = []
+    for key, role_rows in sorted(grouped.items(), key=lambda item: tuple(str(v) for v in item[0])):
+        metric_scope, seed, scenario, height_bucket, fov, secondary_count, backend, scale = key
+        baseline = role_rows.get("baseline")
+        enhanced = role_rows.get("enhanced")
+        baseline_coverage = _optional_summary_float(
+            baseline,
+            "secondary_network_mean_coverage_ratio_mean",
+        )
+        enhanced_coverage = _optional_summary_float(
+            enhanced,
+            "secondary_network_mean_coverage_ratio_mean",
+        )
+        evidence_paths = sorted(
+            {
+                value
+                for row in (baseline, enhanced)
+                if row is not None
+                for value in _summary_values(row, "evidence_paths")
+            }
+        )
+        comparison_rows.append(
+            {
+                "metric_scope": _markdown_cell(metric_scope),
+                "seed": _markdown_cell(seed),
+                "scenario": _markdown_cell(scenario),
+                "height_bucket": _markdown_cell(height_bucket),
+                "fov": _markdown_cell(_format_optional_number(fov)),
+                "secondary_count": _markdown_cell(secondary_count),
+                "backend": _markdown_cell(backend),
+                "scale": _markdown_cell(scale),
+                "baseline_coverage": _format_optional_cell(baseline_coverage),
+                "enhanced_coverage": _format_optional_cell(enhanced_coverage),
+                "coverage_delta": _format_delta_cell(
+                    enhanced_coverage,
+                    baseline_coverage,
+                ),
+                "baseline_stable": _format_optional_cell(
+                    _optional_summary_int(
+                        baseline,
+                        "stable_cross_view_registration_count",
+                    )
+                ),
+                "enhanced_stable": _format_optional_cell(
+                    _optional_summary_int(
+                        enhanced,
+                        "stable_cross_view_registration_count",
+                    )
+                ),
+                "baseline_not_registered": _format_optional_cell(
+                    _optional_summary_int(baseline, "not_registered_count")
+                ),
+                "enhanced_not_registered": _format_optional_cell(
+                    _optional_summary_int(enhanced, "not_registered_count")
+                ),
+                "baseline_active_precision": _format_optional_cell(
+                    _optional_summary_float(
+                        baseline,
+                        "active_degradation_precision_mean",
+                    )
+                ),
+                "enhanced_active_precision": _format_optional_cell(
+                    _optional_summary_float(
+                        enhanced,
+                        "active_degradation_precision_mean",
+                    )
+                ),
+                "baseline_unnecessary": _format_optional_cell(
+                    _optional_summary_int(baseline, "unnecessary_degradation_count")
+                ),
+                "enhanced_unnecessary": _format_optional_cell(
+                    _optional_summary_int(enhanced, "unnecessary_degradation_count")
+                ),
+                "baseline_d7_reject": _format_optional_cell(
+                    _optional_summary_int(baseline, "d7_guidance_reject_count")
+                ),
+                "enhanced_d7_reject": _format_optional_cell(
+                    _optional_summary_int(enhanced, "d7_guidance_reject_count")
+                ),
+                "evidence_paths": _markdown_cell(", ".join(evidence_paths)),
+            }
+        )
+    return comparison_rows
+
+
+def _summary_role(row: Mapping[str, Any]) -> str:
+    for value in _summary_values(row, "comparison_roles"):
+        role = _normalize_comparison_role(value, allow_heuristic=True)
+        if role != "not_recorded":
+            return role
+    return "not_recorded"
+
+
+def _summary_height_bucket(row: Mapping[str, Any]) -> str:
+    for value in _summary_values(row, "secondary_height_buckets"):
+        text = _text(value)
+        if text is not None:
+            return text
+    return _secondary_height_bucket(row.get("secondary_height_above_targets_m"))
+
+
+def _summary_text(row: Mapping[str, Any], field_name: str) -> str:
+    values = _summary_values(row, field_name)
+    if not values:
+        return "not_recorded"
+    return ", ".join(values)
+
+
+def _summary_values(row: Mapping[str, Any], field_name: str) -> list[str]:
+    value = row.get(field_name)
+    if isinstance(value, (list, tuple, set)):
+        return sorted(
+            {
+                text
+                for item in value
+                for text in [_text(item)]
+                if text is not None and text != "not_recorded"
+            }
+        )
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text == "not_recorded":
+            return []
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                return [text]
+            if isinstance(parsed, list):
+                return sorted(str(item) for item in parsed if str(item).strip())
+        return [text]
+    text = _text(value)
+    return [] if text is None or text == "not_recorded" else [text]
+
+
+def _scale_text(row: Mapping[str, Any]) -> str:
+    return (
+        f"d={row.get('drone_count', 'not_recorded')}/"
+        f"r={row.get('resource_count', 'not_recorded')}/"
+        f"t={row.get('target_count', 'not_recorded')}/"
+        f"c={row.get('camera_count', 'not_recorded')}"
+    )
+
+
+def _optional_summary_float(
+    row: Mapping[str, Any] | None,
+    field_name: str,
+) -> float | None:
+    if row is None:
+        return None
+    return _first_float(row.get(field_name))
+
+
+def _optional_summary_int(
+    row: Mapping[str, Any] | None,
+    field_name: str,
+) -> int | None:
+    if row is None:
+        return None
+    return _first_int(row.get(field_name))
+
+
+def _format_optional_cell(value: Any) -> str:
+    if value is None:
+        return "not_recorded"
+    number = _first_float(value)
+    if number is None:
+        return _markdown_cell(value)
+    return f"{number:.6g}"
+
+
+def _format_delta_cell(lhs: float | None, rhs: float | None) -> str:
+    if lhs is None or rhs is None:
+        return "not_recorded"
+    return f"{(lhs - rhs):.6g}"
 
 
 def _csv_row(row: Mapping[str, Any], fieldnames: Sequence[str]) -> dict[str, Any]:

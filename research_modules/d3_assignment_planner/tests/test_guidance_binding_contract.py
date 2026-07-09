@@ -240,6 +240,12 @@ def test_secondary_plan_v2_binding_after_center_plan_invalidates() -> None:
     assert binding.metadata["previous_plan_id"] == center_plan.plan_id
     assert binding.metadata["previous_target_for_resource"] == "T00"
     assert binding.metadata["resource_reassigned"] is True
+    assert binding.metadata["current_plan_id"] == secondary_plan.plan_id
+    assert binding.metadata["current_plan_version"] == secondary_plan.version
+    assert binding.metadata["active_plan_owner"] == "secondary"
+    assert binding.metadata["owner_node_id"] == "secondary-node-2"
+    assert binding.metadata["selected_secondary_node_id"] == "secondary-node-2"
+    assert binding.metadata["secondary_plan_version"] == secondary_plan.version
     assert binding.metadata["allow_local_rebind"] is False
     assert secondary_plan.metadata["plan_schema"] == SECONDARY_PLAN_SCHEMA_V2
     assert secondary_plan.metadata["active_plan_owner"] == "secondary"

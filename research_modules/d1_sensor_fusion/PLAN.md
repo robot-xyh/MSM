@@ -202,6 +202,7 @@ a95 = sqrt(chi2_2_0.95 * max_eigenvalue(P_xy))
 本轮 D1 侧复核聚焦 main/shared runtime 写出的真实 Blocks replay 与 D1 reader/test/GAP 状态，不修改 main runtime。结论如下：
 
 - main runtime 已新增 P1 D4/D5 calibration sweep，并在 sweep 结束后自动调用 D6 标准报告 bundle；D1 不生成 sweep、不写 AirSim runtime，只保证自身 replay/schema/latency/OOSM/region quality 字段可被这些报告消费。
+- D6 bundle 对 D1 字段的消费口径限定为报告证据：raw/fusion `LatencyAuditSummary`、`TrackUncertaintySummary`、`FusionQualityRegionSummary[]`、`FusionQualityRegionWindowSummary[]`、`SensorHealthSummary[]`、covariance limit reason、`covariance_scale_reason` 和 `timestamp_uncertainty_s`；这些字段不代表 D1 触发主动降级或生成控制决策。
 - JSONL replay 与真实 Blocks writer 的顶层字段保持一致：`measurement_timestamp`、`arrival_timestamp`、`frame_id`、`measurement`、`covariance`、`metadata` 和 `communication` 均会进入 `SensorObservation`，并回放成 NED `GlobalTrack`。
 - CSV replay 对缺省 `schema_version` 的行按 `d1.sensor_observation.v1` 处理，因此校准 CSV 必须携带 `covariance`；不再通过 legacy 路径静默接收缺协方差 CSV 行。
 - EO replay 可使用嵌套 `metadata.camera_model` 字典恢复相机内外参，避免真实 Blocks/CV JSONL 只保留 camera metadata 但投影模型仍使用默认相机。
@@ -209,6 +210,16 @@ a95 = sqrt(chi2_2_0.95 * max_eigenvalue(P_xy))
 - 新增 `ReconCueSummary`/`summarize_recon_cue_from_tracks()` 回归，覆盖全部目标 cue、按 `coverage_cell` cue、缺省协方差保守降权和 measurement/arrival timestamp 保留。
 - 当前 D1 状态为无 P0 blocker；时间戳、协方差、NED `GlobalTrack`、N-target 输入和侦察 cue 合同均已进入当前回归基线。
 - 轻量区域时间窗口和协方差增长率 helper 已落地；剩余 P1 转为继续收集 main/shared runtime 的真实 Blocks/CV multi-seed detection JSONL/CSV 样本、与 D6 对齐长期批量 schema，并基于真实样本确定持续窗口阈值。
+
+## 7.4 2026-07-09 P1 输入支撑补强
+
+本轮不改 D1 主滤波算法，也不接入 Stone Soup、FilterPy、UKF 或 IMM。补强范围限定为 replay/schema/metadata 回归：
+
+- dry-run fixture 增加 `d1.airsim_dry_run_fixture.v1` schema version，生成的 observation metadata 保留 `d1_fixture_schema_version`，并拒绝不支持的 fixture schema version。
+- replay 增加 `summarize_sensor_observation_latency_audit()`，可在不运行融合器时从 `SensorObservation[]` 统计 observation latency、OOSM、stale 和重复 lineage，供 main/D6 在长期批处理前做输入审计。
+- Blocks/CV JSONL 与 CSV 回归补充 `covariance_scale_reason`、`mobile_recon`、`recon_cue_summary`、`cue_position_ned` 和 `cue_covariance` 保真检查，并验证这些字段能随最新观测进入 `GlobalTrack.metadata`。
+- JSONL replay 已补显式 unsupported schema version 回归；CSV 缺省 schema 仍按 `d1.sensor_observation.v1` 处理并要求 covariance。
+- 本轮未重新打开 P0-A：`SensorHealthSummary`、观测/航迹 covariance floor/ceiling reason 和 `timestamp_uncertainty_s` 已作为 D1 质量字段保持回归，并纳入 main/D6 消费口径。
 
 ## 8. 交付物
 
@@ -274,11 +285,12 @@ a95 = sqrt(chi2_2_0.95 * max_eigenvalue(P_xy))
 4. `FusionQualityRegionSummary` 已在 `TrackUncertaintySummary` 基线之上按 `coverage_cell` 聚合 source gap、freshness、a95、handover readiness 和 stale track count。
 5. source lineage de-dup、Blocks JSONL replay、N actor 合同、嵌套 EO camera metadata replay、ReconCueSummary 和 Blocks calibration CSV 字段保真已进入测试基线。
 6. 真实 Blocks/CV 风格 JSONL 字段保真、`annotate_covariance_growth_rates()` 和 `summarize_region_quality_windows()` 已进入轻量测试基线，覆盖 bbox/camera/detection/secondary recon metadata、source gap、freshness、协方差增长和 OOSM/latency flags。
+7. dry-run fixture schema 检查、raw replay latency/OOSM audit helper、`covariance_scale_reason` 和 secondary/mobile recon cue metadata 保真已进入 P1 输入支撑回归。
 
 剩余 P1：
 
 1. 增加更多来自 main/shared runtime 的真实 Blocks/CV multi-seed detection fixture，覆盖 actor label、camera metadata、timestamp、bbox covariance、secondary/mobile recon cue metadata 和 N actor 输出，并形成真实样本回归。
-2. 与 D6 对齐长期批量 JSONL/CSV schema，明确 `TrackUncertaintySummary[]`、`LatencyAuditSummary`、`FusionQualityRegionSummary[]` 和 `FusionQualityRegionWindowSummary[]` 的批量字段命名。
+2. 与 D6 对齐长期批量 JSONL/CSV schema，明确 `TrackUncertaintySummary[]`、`LatencyAuditSummary`、`FusionQualityRegionSummary[]`、`FusionQualityRegionWindowSummary[]`、`SensorHealthSummary[]`、covariance limit reason 和 timestamp uncertainty 的批量字段命名。
 3. 基于真实多 seed 样本确定区域窗口、freshness/source-gap、协方差增长率和 handover readiness 的持续阈值。
 4. 保持 NumPy EKF、fixed-lag replay、NED、时间戳、协方差和 N actor 合同为 P0/P1 稳定基线，避免引入会破坏离线测试的强依赖。
 

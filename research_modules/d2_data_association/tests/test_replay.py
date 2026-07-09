@@ -64,7 +64,7 @@ def test_airsim_jsonl_replay_runs_5_target_association_and_writes_logs(tmp_path)
                     "event": "d2_frame",
                     "seed": 11,
                     "episode_id": "episode-011",
-                    "scenario_name": "airsim_dense_5v5",
+                    "scenario_name": "airsim_dense_crossing_5v5",
                     "drone_count": 5,
                     "frame": frame,
                 }
@@ -76,7 +76,7 @@ def test_airsim_jsonl_replay_runs_5_target_association_and_writes_logs(tmp_path)
     loaded_frames = load_airsim_replay_frames(replay_path)
     report = run_airsim_replay_association(
         loaded_frames,
-        replay_name="airsim_dense_5v5",
+        replay_name="airsim_dense_crossing_5v5",
         risk_thresholds=RiskThresholds(
             profile_name="p1_calibration",
             profile_version="2026-07-08",
@@ -89,7 +89,7 @@ def test_airsim_jsonl_replay_runs_5_target_association_and_writes_logs(tmp_path)
     assert report.metrics["frame_count"] == len(frames)
     assert report.replay_metadata["seed"] == 11
     assert report.replay_metadata["episode_id"] == "episode-011"
-    assert report.replay_metadata["scenario_name"] == "airsim_dense_5v5"
+    assert report.replay_metadata["scenario_name"] == "airsim_dense_crossing_5v5"
     assert report.replay_metadata["drone_count"] == 5
     assert "id_switch_count" in report.metrics
     assert "track_continuity" in report.metrics
@@ -98,22 +98,44 @@ def test_airsim_jsonl_replay_runs_5_target_association_and_writes_logs(tmp_path)
     assert len(report.global_track_ids) == 5
     assert report.risk_summary["id_switch_count"] == report.metrics["id_switch_count"]
     assert report.risk_summary["thresholds"]["profile_version"] == "2026-07-08"
+    assert report.risk_summary["association_risk_threshold_version"] == "2026-07-08"
+    assert report.risk_summary["gate_summary"]["gate_pass_count"] >= 0
+    assert report.risk_summary["gate_summary"]["gate_reject_count"] >= 0
+    assert "motion_consistency_by_track" in report.risk_summary["motion_risk_summary"]
+    assert "track_quality" in report.risk_summary["quality_risk_summary"]
+    assert "association_risk" in report.risk_summary["quality_risk_summary"]
+    assert "motion_quality_risk_summary" in report.risk_summary
     assert "soft_risk_frame_count" in report.risk_summary
     assert "hard_risk_frame_count" in report.risk_summary
     assert len(report.threshold_sensitivity) == 2
+    assert report.threshold_sensitivity_summary["row_count"] == 2
+    assert report.threshold_sensitivity_summary["dense_crossing_row_count"] == 2
+    assert report.threshold_sensitivity_summary["scenario_tags"] == [
+        "crossing",
+        "dense",
+    ]
+    assert (
+        report.threshold_sensitivity_summary["association_risk_threshold_versions"]
+        == ["2026-07-08"]
+    )
     for row in report.threshold_sensitivity:
         assert row["target_count"] == 5
         assert row["seed"] == 11
         assert row["episode_id"] == "episode-011"
-        assert row["scenario_name"] == "airsim_dense_5v5"
+        assert row["scenario_name"] == "airsim_dense_crossing_5v5"
         assert row["drone_count"] == 5
         assert row["risk_profile"] == "p1_calibration"
         assert row["risk_profile_version"] == "2026-07-08"
+        assert row["association_risk_threshold_version"] == "2026-07-08"
+        assert row["scenario_tags"] == ["crossing", "dense"]
         assert "id_switch_count" in row
         assert "track_continuity" in row
         assert "duplicate_assignment_count" in row
         assert "soft_risk_frame_count" in row
         assert "hard_risk_frame_count" in row
+        assert "gate_pass_count" in row["gate_summary"]
+        assert "motion_consistency_by_track" in row["motion_risk_summary"]
+        assert "association_risk" in row["quality_risk_summary"]
         assert "risk_summary" in row
 
     report_path = tmp_path / "d2_report.json"
@@ -123,7 +145,8 @@ def test_airsim_jsonl_replay_runs_5_target_association_and_writes_logs(tmp_path)
 
     report_json = json.loads(report_path.read_text())
     log_lines = [json.loads(line) for line in logs_path.read_text().splitlines()]
-    assert report_json["replay_name"] == "airsim_dense_5v5"
+    assert report_json["replay_name"] == "airsim_dense_crossing_5v5"
+    assert report_json["association_risk_threshold_version"] == "2026-07-08"
     assert report_json["replay_metadata"]["seed"] == 11
     assert len(log_lines) == len(frames)
     assert "risk_summary" in log_lines[-1]
@@ -234,6 +257,8 @@ def test_replay_target_count_falls_back_to_input_count_without_truth_labels() ->
 
 def test_threshold_sensitivity_outputs_required_metrics_for_variable_target_count() -> None:
     frames = dense_airsim_like_frames(target_count=4, steps=5)
+    for frame in frames:
+        frame["scenario_name"] = "crossing_dense_variable_count"
     rows = run_threshold_sensitivity(
         frames,
         gate_thresholds=[4.0, 9.21],
@@ -251,6 +276,15 @@ def test_threshold_sensitivity_outputs_required_metrics_for_variable_target_coun
         assert 0.0 <= row["track_continuity"] <= 1.0
         assert isinstance(row["duplicate_assignment_count"], int)
         assert row["risk_summary"]["thresholds"]["profile_name"] == row["risk_profile"]
+        assert (
+            row["association_risk_threshold_version"]
+            == row["risk_summary"]["association_risk_threshold_version"]
+        )
+        assert row["scenario_tags"] == ["crossing", "dense"]
+        assert "gate_pass_count" in row["gate_summary"]
+        assert "gate_reject_count" in row["gate_summary"]
+        assert "motion_consistency_by_track" in row["motion_risk_summary"]
+        assert "track_quality" in row["quality_risk_summary"]
         assert "soft_risk_frame_count" in row["risk_summary"]
         assert "hard_risk_frame_count" in row["risk_summary"]
 
@@ -284,6 +318,9 @@ def test_multi_seed_risk_calibration_summary_groups_and_recommends_profile() -> 
 
     assert summary["row_count"] == 8
     assert summary["group_count"] == 4
+    assert summary["threshold_sensitivity_summary"]["row_count"] == 8
+    assert summary["threshold_sensitivity_summary"]["dense_crossing_row_count"] == 8
+    assert summary["threshold_sensitivity_summary"]["scenario_tags"] == ["dense"]
     assert summary["recommended"]["gate_threshold"] in {5.99, 9.21}
     assert summary["recommended"]["risk_profile"] in {"default", "strict"}
     assert "thresholds" in summary["recommended"]

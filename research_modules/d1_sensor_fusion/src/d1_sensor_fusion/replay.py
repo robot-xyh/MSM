@@ -8,7 +8,7 @@ from typing import Any, Iterable
 import numpy as np
 
 from .fusion import FusionAdapter
-from .types import COMMUNICATION_METADATA_KEYS, GlobalTrack, SensorObservation
+from .types import COMMUNICATION_METADATA_KEYS, GlobalTrack, LatencyAuditSummary, SensorObservation
 
 REPLAY_SCHEMA_VERSION = "d1.sensor_observation.v1"
 LEGACY_BLOCKS_REPLAY_SCHEMA_VERSION = "legacy.blocks_sensor_observations"
@@ -289,6 +289,77 @@ def replay_sensor_observations_csv(
 
     fusion = adapter or FusionAdapter()
     return fusion.ingest_many(read_sensor_observations_csv(path))
+
+
+def summarize_sensor_observation_latency_audit(
+    observations: Iterable[SensorObservation],
+) -> LatencyAuditSummary:
+    """Summarize raw replay observation latency/OOSM evidence without running fusion."""
+
+    ordered = sorted(
+        list(observations),
+        key=lambda obs: (obs.arrival_timestamp, obs.measurement_timestamp, obs.observation_id),
+    )
+    observation_count = len(ordered)
+    if observation_count == 0:
+        return LatencyAuditSummary(
+            observation_count=0,
+            replay_count=0,
+            oosm_observation_count=0,
+            stale_observation_count=0,
+            stale_or_oosm_observation_count=0,
+            max_delay_s=0.0,
+            mean_delay_s=0.0,
+            duplicate_observation_count=0,
+            max_replay_observation_count=0,
+            latency_compensation=False,
+        )
+
+    current_time = 0.0
+    delay_sum_s = 0.0
+    max_delay_s = 0.0
+    oosm_count = 0
+    stale_count = 0
+    stale_or_oosm_count = 0
+    duplicate_count = 0
+    seen_lineage_keys: set[tuple[Any, ...]] = set()
+
+    for observation in ordered:
+        previous_time = current_time
+        current_time = max(current_time, float(observation.arrival_timestamp))
+        delay_s = max(0.0, float(observation.latency))
+        delay_sum_s += delay_s
+        max_delay_s = max(max_delay_s, delay_s)
+
+        is_oosm = observation.measurement_timestamp < float(previous_time) - 1e-9
+        is_stale = observation.is_stale_at(current_time)
+        if observation.stale_after_s is not None and delay_s > observation.stale_after_s:
+            is_stale = True
+        if is_oosm:
+            oosm_count += 1
+        if is_stale:
+            stale_count += 1
+        if is_oosm or is_stale:
+            stale_or_oosm_count += 1
+
+        lineage_key = observation.source_lineage_key
+        if lineage_key in seen_lineage_keys:
+            duplicate_count += 1
+        else:
+            seen_lineage_keys.add(lineage_key)
+
+    return LatencyAuditSummary(
+        observation_count=observation_count,
+        replay_count=0,
+        oosm_observation_count=oosm_count,
+        stale_observation_count=stale_count,
+        stale_or_oosm_observation_count=stale_or_oosm_count,
+        max_delay_s=max_delay_s,
+        mean_delay_s=delay_sum_s / observation_count,
+        duplicate_observation_count=duplicate_count,
+        max_replay_observation_count=0,
+        latency_compensation=False,
+    )
 
 
 def _validate_replay_schema_version(record: dict[str, Any]) -> str:

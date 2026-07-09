@@ -1,6 +1,6 @@
 # 框架评估 P0/P1/P2 缺口确认
 
-**文档版本**: v2.0
+**文档版本**: v2.1
 **更新日期**: 2026-07-09
 **生成角色**: main agent
 **定位**: EVAL 层跨模块优先级归并，不直接替代 D1-D7 owned GAP/PLAN。
@@ -12,6 +12,13 @@
 - `EVAL/FRAMEWORK_EVAL_PATCH_ENGINEERING_PRACTICES.md`
 - `EVAL/FRAMEWORK_EVAL_PATCH_2026_VERIFIED.md`
 - `EVAL/FRAMEWORK_EVAL_PATCH_WEBSEARCH_2026.md`
+
+并同步了 2026-07-09 P1 接口补齐结果：
+
+- `subagent_reviews/MAIN_P0_P1_GAP_STATUS.md`
+- `subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md`
+- D1-D7 各模块 `subagent_reviews/Dx_IMPLEMENTATION_GAP_AUDIT.md`
+- main runtime P1 smoke 输出：`research_modules/airsim_runtime/outputs/p1_gap_fix_smoke_20260709/`
 
 仍然参考的原始评估材料：
 
@@ -35,6 +42,7 @@
 3. **P0 应限定为最小可信闭环硬化项**：时间/配置/健康/异常、任务 outcome、根因诊断、FDIR-light、质量门控、分配迟滞、二级能力判断、终端重捕获、D7 切换迟滞/LOS 滤波、标准化评估映射。
 4. **P1 是三个月内能力增强和标定**：标准对齐报告、OR-Tools 对照、JPDA/MHT 选型、Raft 选举对照、YOLO/MOT 多 seed 校准、IBVS/间歇可见性重捕获、3D True PN/APN 对照。
 5. **P2 是较重架构升级或高阶算法**：ROS 2/DDS 生产化、PTP 多节点时间同步、Track-to-Track 融合、跨视角联合优化、多资源协同拦截、完整分区合并、标准 MOT/HOTA/OSPA 适配。
+6. **2026-07-09 P1 接口补齐已完成一轮**：main runtime 已补齐 P1 calibration suite/threshold metadata、高度对比和 D6 标准报告 bundle；D1-D7 各模块已补充本模块 P1 metadata、summary、evidence 或 gate 字段；剩余工作从“接口缺口”转为“真实 AirSim 多 seed 标定和长期趋势治理”。
 
 ## 3. 分级口径
 
@@ -207,25 +215,45 @@ P2 是较重外部依赖、生产化架构、高阶算法和长期对照。P2 �
 - D6：mission outcome、root cause、performance metrics、eval tracking。
 - D7：terminal latch、LOS rate filtering、3D PN benchmark/log。
 
+同时，2026-07-09 已完成一批 P1 接口补齐：
+
+- main runtime：`--p1-calibration-sweep` 输出 `calibration_suite=cv_5v5_d4d5_secondary_coverage`、suite version、threshold version、二级高度/FOV/数量/站距、expected state fields 和 50m/200m 高度对比；自动生成 D6 `d6_airsim_calibration` CSV/JSON/Markdown bundle。
+- main runtime：修复 secondary takeover plan 在连续 replan 后 `owner_node_id` 回退为 `d3_central` 的问题；若 D4 legacy metadata 指向中心，main 会按 D4 target node、历史 secondary owner 或当前 frame 中的二级节点名保持真实 secondary owner。
+- D1：dry-run/replay schema/version/metadata 检查、latency/OOSM audit 和区域质量摘要已补齐。
+- D2：association risk threshold version、gate pass/reject、risk summary 和 threshold sensitivity 已补齐。
+- D3：`AssignmentEvidenceExport`、current cost matrix、per-edge breakdown、hard rejected edges、stale reason、secondary fields 和 hard time-window closed-edge baseline 已补齐。
+- D4：`secondary_capability_class` / `secondary_readiness_class` 已补齐；二级节点必须达到 `takeover_ready` 才能作为接管依据，visible-only / registration-usable 只能作为辅助或标定证据。
+- D5：`detect_registration_outcome`、reject reasons、measurement age、projection/covariance、`projection_invalid` 独立原因和 YOLO/MOT metadata 已补齐；在线 D5 仍不得使用 AirSim truth ID 或改写 `global_track_id`。
+- D6：AirSim calibration records/summary/Markdown 保留 scenario/standard mapping/evidence/trend/height bucket/actual scale；Markdown 增加 50m vs 200m coverage、coverage funnel、baseline vs enhanced、stable registration、not registered、active degradation、D7 reject 等口径。
+- D7：runtime/comparison/replay/calibration 输出 terminal range、closing speed、bbox/LOS/maneuver gate、D4 block reason、D5/D3 consistency、secondary capability/readiness、threshold advisory version 和 visual PNG switch count；PNG 核心控制律未改。
+
+本轮 smoke 验证：
+
+- 输出目录：`research_modules/airsim_runtime/outputs/p1_gap_fix_smoke_20260709/`
+- 组合：50m/200m 二级高度、3 个机动高空二级侦察节点、110 deg FOV、seed=1、三类 case。
+- 结果：`row_count=6`，`projection_valid_rate=1.0`，D6 标准报告 bundle 已生成。
+- 解释：50m bbox 均值约 19055 px^2，200m bbox 均值约 1147 px^2；200m 网络同帧全覆盖仍为 0.0，说明剩余 P1 重点是二级站位/扫描/coverage 和多 seed 阈值标定，而不是绕过 D3/D4/D5 gate。
+
 因此本文件后续使用方式是：
 
 1. **已完成的 P0**：保持回归，不重复列为新 blocker。
-2. **新增 P0-A**：D6 标准化评估映射最小版需要进入下一轮 P0 文档/实现计划。
-3. **P1/P2**：作为后续子智能体任务来源，由 main 分发给对应 D-agent 后再同步模块 GAP/PLAN。
+2. **已完成的 P1 接口补齐**：保持回归，后续不要重复列为“缺字段/缺接口”。
+3. **剩余 P1 标定项**：真实 AirSim 多 seed、二级网络全目标覆盖、YOLO/MOT 阈值、D4/D5/D7 状态迁移、D6 长期趋势和 review label。
+4. **P2**：作为后续子智能体任务来源，由 main 分发给对应 D-agent 后再同步模块 GAP/PLAN。
 
 ## 10. 建议执行顺序
 
-### 第一批：补 EVAL 标准化映射
+### 第一批：保持 P0/P1 接口回归
 
-1. D6/main：建立 `COURAGEOUS/MDPI/OCEF -> 当前 EpisodeMetrics` 映射表。
-2. D6/main：在报告中区分 `engineering_metric`、`standard_metric_family`、`evidence_path`、`scenario_version`。
-3. main：把该映射同步到 `subagent_reviews/MAIN_P0_P1_GAP_STATUS.md`，再由 D6 子智能体决定是否更新 D6 GAP/PLAN。
+1. D6/main：保持 `COURAGEOUS/MDPI/OCEF -> 当前 EpisodeMetrics` 最小映射、`standard_metric_family`、`evidence_path` 和 `scenario_version` 不退化。
+2. main/runtime：保持 P1 calibration sweep suite/version/threshold、高度对比、D6 bundle、secondary owner 保持和不保存 PNG 默认规则。
+3. D1-D7：保持各自 P1 metadata/summary/evidence/gate 字段不退化，并由对应 subagent 同步 GAP/PLAN。
 
 ### 第二批：跑多 seed 校准
 
-1. AirSim 2v2 intercept 多 seed：统计 terminal latch、LOS filter、PN/PNG gate。
-2. D4/D5 5v5 stress 多 seed：统计 secondary visible/registered/takeover capable、network union coverage。
-3. CV 5v5：统计 D1/D2/D3/D5 的质量门控和 assignment stability。
+1. AirSim 2v2 intercept 多 seed：统计 terminal latch、LOS filter、PN/PNG gate、visual PNG switch、D7 reject reason。
+2. D4/D5 5v5 stress 多 seed：统计 secondary visible/registered/takeover capable、single-camera full view、network union coverage、not-registered 和 cross-view association。
+3. CV 5v5：统计 D1/D2/D3/D5 的质量门控、assignment stability、ID switch、terminal association 和 active degradation necessity。
 
 ### 第三批：做 P1 对照
 
@@ -239,13 +267,13 @@ P2 是较重外部依赖、生产化架构、高阶算法和长期对照。P2 �
 
 | 模块 | 当前运行级 P0 blocker | 仍需保持/补充的 P0 | P1 主线 | P2 主线 |
 |---|---:|---|---|---|
-| D1 | 无 | FDIR-light、协方差界、时间戳不确定性保持回归 | IMM、自适应协方差、T2T 原型 | UKF、主动传感器管理 |
-| D2 | 无 | 航迹质量、运动一致性、quality-aware gate 保持回归 | JPDA/MHT/BP 选型、SORT/ByteTrack fallback | 有界 MHT、标准 MOT adapter |
-| D3 | 无 | 资源状态、迟滞、threat baseline 保持回归 | OR-Tools 对照、增量分配、硬时间窗 | 多资源协同、备份资源、预测性滚动 |
-| D4 | 无 | heartbeat、lease、二级能力、防抖保持回归 | Raft/SwarmRaft、Event-CBBA、分区检测 | etcd 集成、版本向量、分区合并 |
-| D5 | 无 | 重捕获、时序一致性、校准健康保持回归 | YOLO/MOT 标定、IBVS、间歇可见性、多模态身份 replay | ReID、联合优化、视觉伺服闭环 |
-| D6 | 无 | mission outcome、根因、性能、标准映射最小版 | COURAGEOUS/OCEF 完整报告、A/B 显著性、场景库 | MLflow/W&B、对抗评估、标准 MOT/OSPA |
-| D7 | 无 | latch、LOS 滤波、3D benchmark 保持回归 | 3D True PN、APN、ADRC、预测点、动力学补偿 | 协同到达时间、默认 3D/FRPN 升级 |
-| Main/System | 无 | 时间、配置、健康、异常恢复保持回归 | ROS2 replay 原型、结构化日志、Docker Compose | ROS2/RTI 生产硬化、PTP、Dashboard/KubeEdge |
+| D1 | 无 | FDIR-light、协方差界、时间戳不确定性、latency/OOSM/region summary 保持回归 | IMM、自适应协方差、T2T 原型、更多真实 Blocks/CV fixture | UKF、主动传感器管理 |
+| D2 | 无 | 航迹质量、运动一致性、quality-aware gate、risk threshold summary 保持回归 | JPDA/MHT/BP 选型、SORT/ByteTrack fallback、真实 5v5 replay 阈值校准 | 有界 MHT、标准 MOT adapter |
+| D3 | 无 | 资源状态、迟滞、threat baseline、assignment evidence export、secondary DTO 保持回归 | OR-Tools 对照、增量分配、硬时间窗多场景校准、D5 feedback 权重标定 | 多资源协同、备份资源、预测性滚动 |
+| D4 | 无 | heartbeat、lease、二级能力、防抖、secondary readiness/capability class 保持回归 | Raft/SwarmRaft、Event-CBBA、分区检测、二级覆盖/接管必要性多 seed 标定 | etcd 集成、版本向量、分区合并 |
+| D5 | 无 | 重捕获、时序一致性、校准健康、detect registration outcome、truth ID 在线隔离保持回归 | YOLO/MOT 标定、IBVS、间歇可见性、多模态身份 replay、跨视角注册阈值 | ReID、联合优化、视觉伺服闭环 |
+| D6 | 无 | mission outcome、根因、性能、标准映射最小版、P1 calibration bundle 保持回归 | COURAGEOUS/OCEF 完整报告、A/B 显著性、场景库、多 seed 长期趋势 | MLflow/W&B、对抗评估、标准 MOT/OSPA |
+| D7 | 无 | latch、LOS 滤波、3D benchmark、P1 switch/gate calibration fields 保持回归 | 3D True PN、APN、ADRC、预测点、动力学补偿、真实 PN/Pure Pursuit/PNG 对照 | 协同到达时间、默认 3D/FRPN 升级 |
+| Main/System | 无 | 时间、配置、健康、异常恢复、P1 calibration sweep、secondary owner 保持回归 | ROS2 replay 原型、结构化日志、Docker Compose、真实 AirSim 多 seed 标定 | ROS2/RTI 生产硬化、PTP、Dashboard/KubeEdge |
 
-结论：三个 patch 强化了“标准化评估 + 成熟工程栈 + 明确规避前沿黑盒方法”的方向，但没有推翻当前轻量主线。下一步最合理的新增 P0 是 **D6/main 的标准化评估映射最小版**；其余成熟外部工具应作为 P1/P2 对照或工程化升级逐步引入。
+结论：三个 patch 强化了“标准化评估 + 成熟工程栈 + 明确规避前沿黑盒方法”的方向，但没有推翻当前轻量主线。2026-07-09 已完成 D6/main 标准化映射最小版与 P1 calibration/report 接口的基础闭合；下一步最急的是真实 AirSim 多 seed 标定和二级网络覆盖/跨视角注册稳定性，而不是引入重型外部框架替换主线。

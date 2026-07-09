@@ -18,11 +18,18 @@ def _frame() -> np.ndarray:
 
 def test_mock_yolo_output_becomes_local_visual_track_with_fallback_metadata() -> None:
     adapter = YoloMotAdapter(
-        YoloMotAdapterConfig(tracker_backend="bytetrack", confidence_threshold=0.2),
+        YoloMotAdapterConfig(
+            tracker_backend="bytetrack",
+            confidence_threshold=0.2,
+            compute_device="cpu",
+            cpu_budget_ms=12.5,
+            gpu_budget_ms=0.0,
+        ),
         detector=lambda frame: [
             {
                 "xyxy": (10.0, 12.0, 30.0, 32.0),
                 "confidence": 0.91,
+                "class_id": 2,
                 "class_name": "uav",
             }
         ],
@@ -41,6 +48,9 @@ def test_mock_yolo_output_becomes_local_visual_track_with_fallback_metadata() ->
     assert result.tracker_backend == "iou_fallback"
     assert result.metadata["requested_tracker_backend"] == "bytetrack"
     assert result.metadata["tracker_backend"] == "iou_fallback"
+    assert result.metadata["compute_device"] == "cpu"
+    assert result.metadata["cpu_budget_ms"] == 12.5
+    assert result.metadata["gpu_budget_ms"] == 0.0
     assert len(result.tracks) == 1
     track = result.tracks[0]
     assert track.local_track_id == "front_rgb/yolov8_iou_fallback:track:1"
@@ -49,6 +59,18 @@ def test_mock_yolo_output_becomes_local_visual_track_with_fallback_metadata() ->
     assert track.category == "uav"
     assert track.quality == 0.91
     assert track.timestamp == 1.25
+    assert result.metadata["confidence_by_local_track_id"][track.local_track_id] == 0.91
+    assert result.metadata["class_id_by_local_track_id"][track.local_track_id] == 2
+    assert result.metadata["bbox_area_px_by_local_track_id"][track.local_track_id] == 400.0
+    assert np.isclose(
+        result.metadata["bbox_scale_by_local_track_id"][track.local_track_id],
+        20.0 / np.hypot(64.0, 64.0),
+    )
+    assert (
+        result.metadata["tracker_backend_by_local_track_id"][track.local_track_id]
+        == "iou_fallback"
+    )
+    assert result.metadata["tracker_id_scope"] == "LocalVisualTrack.local_track_id_only"
 
 
 def test_iou_fallback_keeps_local_track_id_stable_across_frames() -> None:

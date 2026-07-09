@@ -77,6 +77,14 @@ _SOFT_CENTER_PLAN_RISK_FACTORS = frozenset(
     }
 )
 
+TAKEOVER_READY_SECONDARY_CAPABILITY_CLASS = "takeover_ready"
+REGISTRATION_USABLE_SECONDARY_CAPABILITY_CLASS = "registration_usable"
+VISIBLE_ONLY_SECONDARY_CAPABILITY_CLASS = "visible_only"
+NOT_READY_SECONDARY_CAPABILITY_CLASS = "not_ready"
+_MIN_TAKEOVER_CAPABILITY_SCORE = 0.70
+_MIN_TAKEOVER_COVERAGE_RATIO = 0.65
+_MIN_TAKEOVER_NETWORK_FULL_VIEW_RATE = 0.80
+
 
 @dataclass(frozen=True)
 class TrackUncertaintySummary:
@@ -129,6 +137,8 @@ class TerminalAssociationSummary:
     gimbal_pointing_ok: bool | None = None
     secondary_coverage_ratio: float | None = None
     cross_view_association_count: int | None = None
+    stable_cross_view_registration_count: int | None = None
+    not_registered_count: int | None = None
     cross_view_conversion_gap: float | str | None = None
     secondary_detect_to_cross_view_reject_reasons: tuple[str, ...] = ()
     secondary_detect_available_but_not_registered: bool = False
@@ -862,6 +872,20 @@ class ActiveDegradationArbiter:
             coverage_cell,
             terminal_association,
         )
+        network_full_view_rate = ActiveDegradationArbiter._secondary_network_full_view_rate(
+            resource,
+            terminal_association,
+        )
+        stable_registration_count = (
+            ActiveDegradationArbiter._secondary_stable_registration_count(
+                resource,
+                terminal_association,
+            )
+        )
+        not_registered_count = ActiveDegradationArbiter._secondary_not_registered_count(
+            resource,
+            terminal_association,
+        )
         heartbeat_ok = ActiveDegradationArbiter._secondary_heartbeat_is_usable(
             resource,
             current_time_s,
@@ -886,7 +910,7 @@ class ActiveDegradationArbiter:
         freshness_ok = heartbeat_ok and cue_ok and link_ok
         visible = available and coverage_ratio > 0.0 and gimbal_ok and freshness_ok
         registration_known = False
-        registered = True
+        registered = False
         reasons: list[str] = []
         if not available:
             reasons.append("secondary_unavailable")
@@ -908,6 +932,9 @@ class ActiveDegradationArbiter:
                 registration_known = True
                 registered = False
                 reasons.append("secondary_detect_available_but_not_registered")
+            elif stable_registration_count is not None:
+                registration_known = True
+                registered = stable_registration_count > 0
             elif terminal_association.cross_view_association_count is not None:
                 registration_known = True
                 registered = terminal_association.cross_view_association_count > 0
@@ -915,47 +942,173 @@ class ActiveDegradationArbiter:
                 registration_known = True
                 registered = True
 
+        if not registration_known and stable_registration_count is not None:
+            registration_known = True
+            registered = stable_registration_count > 0
+
         if not registration_known and resource.cross_view_support_count is not None:
             registration_known = True
             registered = resource.cross_view_support_count > 0
 
+        if (
+            not registration_known
+            and not_registered_count is not None
+            and not_registered_count > 0
+        ):
+            registration_known = True
+            registered = False
+
+        if stable_registration_count is not None:
+            reasons.append("stable_cross_view_registration_count_present")
+        if not_registered_count is not None and not_registered_count > 0:
+            reasons.append("not_registered_count_positive")
+
         if registration_known and not registered:
             reasons.append("stable_registration_missing")
-        elif registered:
+        elif registration_known and registered:
             reasons.append("stable_registration_available")
         else:
             reasons.append("registration_unknown")
 
         coverage_score = _clamp01(coverage_ratio)
-        freshness_score = 1.0 if freshness_ok else 0.0
+        network_score = (
+            _clamp01(network_full_view_rate)
+            if network_full_view_rate is not None
+            else coverage_score
+        )
+        heartbeat_score = 1.0 if heartbeat_ok else 0.0
+        link_score = 1.0 if link_ok else 0.0
+        cue_score = 1.0 if cue_ok else 0.0
+        freshness_score = (heartbeat_score + link_score + cue_score) / 3.0
         registration_score = 1.0 if registered else 0.0
         gimbal_score = 1.0 if gimbal_ok else 0.0
-        cue_score = 1.0 if cue_ok else 0.0
         score = _clamp01(
-            0.35 * coverage_score
-            + 0.25 * freshness_score
+            0.25 * coverage_score
+            + 0.15 * network_score
             + 0.25 * registration_score
+            + 0.15 * freshness_score
             + 0.10 * gimbal_score
             + 0.05 * cue_score
+            + 0.03 * link_score
+            + 0.02 * heartbeat_score
         )
-        takeover_capable = (
-            visible
-            and registered
-            and score >= 0.65
-            and not resource.operator_hold
-            and resource.availability_band != AvailabilityBand.NONE
+        readiness_class = ActiveDegradationArbiter._secondary_readiness_class(
+            visible=visible,
+            registered=registered,
+            coverage_ratio=coverage_ratio,
+            network_full_view_rate=network_full_view_rate,
+            score=score,
         )
+        takeover_capable = readiness_class == TAKEOVER_READY_SECONDARY_CAPABILITY_CLASS
         if visible:
             reasons.append("secondary_visible")
+        if (
+            network_full_view_rate is not None
+            and network_full_view_rate < _MIN_TAKEOVER_NETWORK_FULL_VIEW_RATE
+        ):
+            reasons.append("network_full_view_rate_low")
         if takeover_capable:
             reasons.append("takeover_capable")
+        inputs = {
+            "coverage_ratio": coverage_ratio,
+            "network_full_view_rate": network_full_view_rate,
+            "stable_cross_view_registration_count": stable_registration_count,
+            "not_registered_count": not_registered_count,
+            "gimbal_ok": gimbal_ok,
+            "cue_freshness_s": resource.cue_freshness_s,
+            "cue_fresh": cue_ok,
+            "link_fresh": link_ok,
+            "heartbeat_fresh": heartbeat_ok,
+            "heartbeat_timestamp_s": resource.heartbeat_timestamp_s,
+            "heartbeat_stale_after_s": resource.heartbeat_stale_after_s,
+            "registration_known": registration_known,
+            "registered": registered,
+        }
         return {
             "visible": visible,
             "registered": registered,
             "takeover_capable": takeover_capable,
             "score": score,
+            "readiness_class": readiness_class,
+            "inputs": inputs,
+            "network_full_view_rate": network_full_view_rate,
+            "stable_cross_view_registration_count": stable_registration_count,
+            "not_registered_count": not_registered_count,
             "reasons": tuple(dict.fromkeys(reason for reason in reasons if reason)),
         }
+
+    @staticmethod
+    def _secondary_readiness_class(
+        *,
+        visible: bool,
+        registered: bool,
+        coverage_ratio: float,
+        network_full_view_rate: float | None,
+        score: float,
+    ) -> str:
+        if not visible:
+            return NOT_READY_SECONDARY_CAPABILITY_CLASS
+        if not registered:
+            return VISIBLE_ONLY_SECONDARY_CAPABILITY_CLASS
+        network_ready = (
+            network_full_view_rate is None
+            or network_full_view_rate >= _MIN_TAKEOVER_NETWORK_FULL_VIEW_RATE
+        )
+        if (
+            coverage_ratio < _MIN_TAKEOVER_COVERAGE_RATIO
+            or not network_ready
+            or score < _MIN_TAKEOVER_CAPABILITY_SCORE
+        ):
+            return REGISTRATION_USABLE_SECONDARY_CAPABILITY_CLASS
+        return TAKEOVER_READY_SECONDARY_CAPABILITY_CLASS
+
+    @staticmethod
+    def _secondary_network_full_view_rate(
+        resource: ResourceSummary,
+        terminal_association: TerminalAssociationSummary | None,
+    ) -> float | None:
+        values = [
+            terminal_association.secondary_network_joint_full_view_frame_rate
+            if terminal_association is not None
+            else None,
+            resource.secondary_network_full_view_rate,
+        ]
+        for value in values:
+            if value is not None:
+                return _clamp01(float(value))
+        return None
+
+    @staticmethod
+    def _secondary_stable_registration_count(
+        resource: ResourceSummary,
+        terminal_association: TerminalAssociationSummary | None,
+    ) -> int | None:
+        values = [
+            terminal_association.stable_cross_view_registration_count
+            if terminal_association is not None
+            else None,
+            resource.stable_cross_view_registration_count,
+        ]
+        for value in values:
+            if value is not None:
+                return max(0, int(value))
+        return None
+
+    @staticmethod
+    def _secondary_not_registered_count(
+        resource: ResourceSummary,
+        terminal_association: TerminalAssociationSummary | None,
+    ) -> int | None:
+        values = [
+            terminal_association.not_registered_count
+            if terminal_association is not None
+            else None,
+            resource.not_registered_count,
+        ]
+        for value in values:
+            if value is not None:
+                return max(0, int(value))
+        return None
 
     @staticmethod
     def _secondary_effective_coverage_ratio(
@@ -974,6 +1127,7 @@ class ActiveDegradationArbiter:
             terminal_association.secondary_network_joint_full_view_frame_rate
             if terminal_association is not None
             else None,
+            resource.secondary_network_full_view_rate,
             terminal_association.secondary_single_camera_full_view_frame_rate
             if terminal_association is not None
             else None,
@@ -992,6 +1146,7 @@ def build_d7_secondary_handoff(
     new_plan_id: str | None = None,
     new_plan_version: int | None = None,
     secondary_plan_active: bool = False,
+    secondary_capability_class: str | None = None,
     secondary_plan_lease_expires_at_s: float | None = None,
     current_time_s: float | None = None,
     terminal_consistent_after_plan: bool = False,
@@ -1001,7 +1156,8 @@ def build_d7_secondary_handoff(
     Stage 1 is the frame where D4 emits ``degrade_to_secondary``. It means the
     secondary node has been selected but reassignment has not completed, so D7
     must not enter visual PNG on that frame. Stage 2 begins only after the
-    secondary plan is active and carries the new plan id/version to D7.
+    secondary plan is active, the secondary capability is takeover-ready, and
+    the handoff carries the new plan id/version to D7.
     """
 
     if decision.action != DegradationAction.DEGRADE_TO_SECONDARY:
@@ -1030,13 +1186,20 @@ def build_d7_secondary_handoff(
         secondary_plan_lease_expires_at_s=secondary_plan_lease_expires_at_s,
         current_time_s=current_time_s,
     )
-    plan_ready = (
+    capability_ready = (
+        str(secondary_capability_class) == TAKEOVER_READY_SECONDARY_CAPABILITY_CLASS
+    )
+    plan_core_ready = (
         secondary_plan_active
         and new_plan_id is not None
         and new_plan_version is not None
         and strictness["executable"]
     )
+    plan_ready = plan_core_ready and capability_ready
     if not plan_ready:
+        reject_reason = strictness["reject_reason"]
+        if reject_reason is None and plan_core_ready and not capability_ready:
+            reject_reason = "secondary_capability_not_takeover_ready"
         return D7SecondaryHandoff(
             phase=1,
             d4_action=decision.action,
@@ -1046,7 +1209,7 @@ def build_d7_secondary_handoff(
             visual_png_allowed=False,
             current_plan_id=current_plan_id,
             current_plan_version=current_plan_version,
-            reason=strictness["reject_reason"] or "secondary_reassignment_pending",
+            reason=reject_reason or "secondary_reassignment_pending",
         )
 
     return D7SecondaryHandoff(
@@ -1387,6 +1550,17 @@ def summarize_secondary_lifecycle(
                 secondary_takeover_capable=bool(capability["takeover_capable"]),
                 secondary_capability_score=float(capability["score"]),
                 secondary_capability_reasons=tuple(capability["reasons"]),
+                secondary_readiness_class=str(capability["readiness_class"]),
+                secondary_capability_inputs=dict(capability["inputs"]),
+                secondary_network_full_view_rate=(
+                    capability["network_full_view_rate"]
+                    if capability["network_full_view_rate"] is not None
+                    else resource.secondary_network_full_view_rate
+                ),
+                stable_cross_view_registration_count=(
+                    capability["stable_cross_view_registration_count"]
+                ),
+                not_registered_count=capability["not_registered_count"],
             )
         )
     return tuple(summaries)

@@ -91,12 +91,21 @@ Main runtime now owns the P1 D4/D5 calibration sweep and automatically invokes t
 report bundle after the sweep. D1 does not launch that sweep or write AirSim runtime reports; it
 keeps the replay/schema/latency/OOSM/region-quality fields stable so the main/D6 calibration reports
 can consume them.
+For that bundle, D1-owned evidence is limited to observation delay/quality fields such as raw and
+post-fusion `LatencyAuditSummary`, `TrackUncertaintySummary`, `FusionQualityRegionSummary[]`,
+`FusionQualityRegionWindowSummary[]`, `SensorHealthSummary[]`, covariance-limit reasons,
+`covariance_scale_reason`, and `timestamp_uncertainty_s`. Main/D6 may report or aggregate these
+fields; D1 does not turn them into active degradation actions.
 
-The current P1 fixture path also accepts real Blocks/CV-style JSONL fields such as top-level
+As of the 2026-07-09 P1 input-support pass, the dry-run fixture includes
+`schema_version="d1.airsim_dry_run_fixture.v1"` and rejects unsupported fixture schema versions.
+Generated dry-run observations annotate `d1_fixture_schema_version`, and replay records annotate
+`d1_replay_schema_version` so downstream audits can distinguish fixture/replay provenance.
+The current P1 fixture path also accepts real Blocks/CV-style JSONL/CSV fields such as top-level
 `bbox_xyxy`, `center_px`, `camera_metadata`, `detection_metadata`, `source_support`,
-`coverage_cell`, and secondary/mobile recon cue metadata. These are normalized into
-`SensorObservation.metadata` and carried into the latest `GlobalTrack.metadata` lineage without
-requiring PNG frames or an AirSim Python dependency.
+`coverage_cell`, `covariance_scale_reason`, and secondary/mobile recon cue metadata. These are
+normalized into `SensorObservation.metadata` and carried into the latest `GlobalTrack.metadata`
+lineage without requiring PNG frames or an AirSim Python dependency.
 
 ## Main Interfaces
 
@@ -122,6 +131,11 @@ CSV rows without an explicit `schema_version` are treated as `d1.sensor_observat
 `covariance` is required for calibration replay instead of being silently accepted as a legacy
 record.
 
+`summarize_sensor_observation_latency_audit()` can compute raw replay observation latency, OOSM,
+stale, and duplicate-lineage counters from `SensorObservation[]` before a full `FusionAdapter`
+run. The fusion-side `FusionAdapter.latency_audit_summary()` remains the authoritative post-fusion
+audit when replay compensation is executed.
+
 ## Quality And Latency Audit Exports
 
 `FusionAdapter.latency_audit_summary()` exports `observation_count`, `max_delay_s`, `mean_delay_s`, `replay_count`, `oosm_observation_count`, `stale_observation_count`, `stale_or_oosm_observation_count`, duplicate count, and maximum replay history size. OOSM means an arriving observation's `measurement_timestamp` is older than the fusion time already processed; stale means it is stale at processing time or its arrival delay exceeds `stale_after_s` when that budget is supplied.
@@ -139,4 +153,4 @@ Optional cue metadata can carry the secondary/mobile recon node, cue source, or 
 
 Video/image streams are represented only by derived observations such as bounding boxes, camera metadata, timestamps, and covariance. D1 does not require or store PNG frames.
 
-Current remaining P1 work is limited to more real main/shared AirSim multi-seed Blocks/CV fixture samples, D6 long-run batch schema alignment, thresholds for sustained-window alerting, real-sample regression, IMM/model-set comparison, and scene-adaptive covariance scale rules. Replay schema v1, legacy JSONL compatibility, covariance-required CSV replay, latency audit, sensor-health summaries, timestamp uncertainty, covariance floor/ceiling limiting, region quality summaries, region window helpers, covariance-growth helpers, recon cue summaries, source de-dup, nested EO camera metadata replay, real CV field normalization, and Blocks JSONL replay are already implemented baselines.
+Current remaining P1 work is limited to more real main/shared AirSim multi-seed Blocks/CV fixture samples, D6 long-run batch schema alignment, thresholds for sustained-window alerting, real-sample regression, IMM/model-set comparison, and scene-adaptive covariance scale rules. Replay schema v1, legacy JSONL compatibility, covariance-required CSV replay, raw and fusion latency audit, sensor-health summaries, timestamp uncertainty, covariance floor/ceiling limiting, covariance scale reason passthrough, region quality summaries, region window helpers, covariance-growth helpers, recon cue summaries, source de-dup, nested EO camera metadata replay, real CV field normalization, dry-run fixture schema checks, and Blocks JSONL replay are already implemented baselines.

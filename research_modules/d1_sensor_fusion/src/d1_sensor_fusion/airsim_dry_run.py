@@ -17,6 +17,15 @@ from .observations import (
 )
 from .types import SensorObservation
 
+AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION = "d1.airsim_dry_run_fixture.v1"
+LEGACY_AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION = "legacy.airsim_dry_run_fixture"
+_COMPATIBLE_FIXTURE_SCHEMA_ALIASES = {
+    AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION: AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION,
+    "airsim_dry_run_fixture.v1": AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION,
+    "1": AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION,
+    "1.0": AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION,
+}
+
 
 def make_minimal_airsim_dry_run_fixture(include_lidar: bool = True) -> dict[str, Any]:
     """Return a deterministic fake AirSim-like fixture for offline adapter tests.
@@ -69,6 +78,7 @@ def make_minimal_airsim_dry_run_fixture(include_lidar: bool = True) -> dict[str,
         },
     }
     return {
+        "schema_version": AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION,
         "fixture_id": "minimal_airsim_dry_run",
         "frame_id": "ned",
         "sensors": sensors,
@@ -100,6 +110,7 @@ def observations_from_airsim_dry_run_fixture(
 ) -> list[SensorObservation]:
     """Convert a fake AirSim dry-run fixture into D1 SensorObservation records."""
 
+    fixture_schema_version = _validate_fixture_schema_version(fixture)
     if str(fixture.get("frame_id", "ned")).lower() != "ned":
         raise ValueError("D1 AirSim dry-run fixture must use frame_id='ned'")
 
@@ -122,6 +133,7 @@ def observations_from_airsim_dry_run_fixture(
                     frame_index=frame_index,
                     measurement_timestamp=timestamp,
                     fixture_id=str(fixture.get("fixture_id", "airsim_dry_run")),
+                    fixture_schema_version=fixture_schema_version,
                 )
                 if observation is not None:
                     observations.append(observation)
@@ -160,6 +172,7 @@ def _observation_for_sensor(
     frame_index: int,
     measurement_timestamp: float,
     fixture_id: str,
+    fixture_schema_version: str,
 ) -> SensorObservation | None:
     sensor_id = str(config.get("sensor_id", f"dry_{modality}_01"))
     delay_s = float(config.get("delay_s", 0.0))
@@ -168,6 +181,7 @@ def _observation_for_sensor(
     base_metadata = {
         "truth_id": target_id,
         "fixture_id": fixture_id,
+        "d1_fixture_schema_version": fixture_schema_version,
         "dry_run": True,
     }
 
@@ -301,3 +315,31 @@ def _camera_from_config(config: Mapping[str, Any]) -> CameraModel:
         width=int(config.get("width", 1280)),
         height=int(config.get("height", 720)),
     )
+
+
+def _validate_fixture_schema_version(fixture: Mapping[str, Any]) -> str:
+    raw_version = _fixture_schema_version(fixture)
+    if raw_version is None:
+        return LEGACY_AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION
+    normalized = _COMPATIBLE_FIXTURE_SCHEMA_ALIASES.get(str(raw_version).strip())
+    if normalized is None:
+        supported = ", ".join(sorted(_COMPATIBLE_FIXTURE_SCHEMA_ALIASES))
+        raise ValueError(
+            f"unsupported D1 AirSim dry-run fixture schema_version {raw_version!r}; "
+            f"supported: {supported}"
+        )
+    return normalized
+
+
+def _fixture_schema_version(fixture: Mapping[str, Any]) -> Any:
+    for key in ("schema_version", "d1_schema_version", "fixture_schema_version"):
+        value = fixture.get(key)
+        if value is not None and not (isinstance(value, str) and value.strip() == ""):
+            return value
+    schema = fixture.get("schema")
+    if isinstance(schema, Mapping):
+        for key in ("version", "schema_version"):
+            value = schema.get(key)
+            if value is not None and not (isinstance(value, str) and value.strip() == ""):
+                return value
+    return None

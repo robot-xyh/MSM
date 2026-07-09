@@ -977,12 +977,17 @@ def test_runtime_bus_injects_n_pairs_with_independent_filters_and_summary() -> N
     }
     assert summary["d4_action_counts"] == {"continue_center": pair_count * 3}
     assert summary["d5_decision_state_counts"] == {"locked": pair_count * 3}
+    assert summary["d5_lock_consistent_rate"] == pytest.approx(1.0)
+    assert summary["d3_owner_version_consistent_rate"] == pytest.approx(1.0)
     assert summary["plan_version_counts"] == {"7": pair_count * 3}
     assert summary["guidance_law_counts"]["png_vm"] == pair_count
     assert summary["png_guidance_law_candidate_counts"] == {"png_vm": pair_count * 3}
     assert summary["camera_quality_gate_pass_rate"] == pytest.approx(2 / 3)
     assert summary["los_quality_gate_pass_rate"] == pytest.approx(1 / 3)
     assert summary["maneuver_margin_gate_pass_rate"] == pytest.approx(1.0)
+    assert summary["terminal_range_m_observed_count"] == pair_count * 3
+    assert summary["closing_speed_mps_observed_count"] == pair_count * 3
+    assert summary["measurement_age_s_observed_count"] == pair_count * 3
     assert summary["bbox_area_ratio_observed_count"] == pair_count * 3
     assert summary["ttc_s_observed_count"] >= pair_count
     assert summary["los_rate_abs_radps_observed_count"] == pair_count * 3
@@ -999,6 +1004,11 @@ def test_runtime_bus_injects_n_pairs_with_independent_filters_and_summary() -> N
     allowed_record = allowed[0].as_log_record()
     assert allowed_record["terminal_mode_entered"] is True
     assert allowed_record["terminal_handoff_state"] == "vision_terminal"
+    assert allowed_record["terminal_range_m"] is not None
+    assert allowed_record["closing_speed_mps"] is not None
+    assert allowed_record["d3_owner_version_consistent"] is True
+    assert allowed_record["d5_lock_consistent"] is True
+    assert allowed_record["measurement_age_s"] == pytest.approx(0.02)
     assert allowed_record["camera_quality_gate_passed"] is True
     assert allowed_record["los_quality_gate_passed"] is True
     assert allowed_record["maneuver_margin_gate_passed"] is True
@@ -1266,6 +1276,10 @@ def test_runtime_bus_blocks_visual_png_for_d4_reassign_actions_even_with_good_bb
     assert output.mode == GuidanceMode.ABORT_REVOKE
     assert output.terminal_handoff_state == "contract_rejected"
     assert output.terminal_contract_reject_reason == "d4_reassign_pending"
+    assert output.d4_action_block_reason == "d4_reassign_pending"
+    assert output.d3_owner_version_consistent is False
+    assert output.terminal_range_m == pytest.approx(math.hypot(25.0, 0.5))
+    assert output.closing_speed_mps is not None
     assert output.png_command is None
     assert output.png_guidance_law_candidate is None
     assert output.camera_quality_gate_passed is None
@@ -1273,9 +1287,183 @@ def test_runtime_bus_blocks_visual_png_for_d4_reassign_actions_even_with_good_bb
     assert summary["visual_png_switch_count"] == 0
     assert summary["visual_png_candidate_count"] == 0
     assert summary["terminal_contract_reject_reasons"] == {"d4_reassign_pending": 1}
+    assert summary["d4_action_block_reasons"] == {"d4_reassign_pending": 1}
+    assert summary["d3_owner_version_consistent_rate"] == pytest.approx(0.0)
     assert summary["terminal_handoff_state_counts"] == {"contract_rejected": 1}
     assert summary["guidance_mode_counts"] == {"abort_revoke": 1}
     assert summary["d4_action_counts"] == {action: 1}
+
+
+def test_runtime_bus_blocks_secondary_plan_until_takeover_ready_and_reports_reason() -> None:
+    bus = D7RuntimeBus(_tuned_png_config())
+    secondary_binding = AssignmentGuidanceBinding(
+        plan_id="plan-secondary-2",
+        plan_version=2,
+        owner_node_id="secondary-1",
+        assignment_id="assign-R1-G1-secondary",
+        resource_id="R1",
+        vehicle_name="Interceptor_R1",
+        assigned_global_track_id="G1",
+        track_version=91,
+        authorization_state="approved",
+        metadata={"active_plan_owner": "secondary"},
+    )
+    terminal = {
+        "assigned_global_track_id": "G1",
+        "local_track_id": "R1:BT:secondary",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 91,
+    }
+
+    blocked = bus.evaluate_pair(
+        D7RuntimePairInput(
+            binding=secondary_binding,
+            d4_permission=D4GuidancePermission(
+                action="request_secondary_assist",
+                target_node_id="secondary-1",
+                new_plan_id="plan-secondary-2",
+                new_plan_version=2,
+                secondary_capability_class="visible_only",
+            ),
+            terminal_association=terminal,
+            observation=_runtime_observation(
+                timestamp_s=1.0,
+                half_size=44.0,
+                local_track_id="R1:BT:secondary",
+            ),
+            handover_pending=True,
+            terminal_locked=True,
+            current_heading_rad=0.0,
+            current_speed_mps=8.0,
+            intercept_speed_mps=8.0,
+            relative_position_ned=(25.0, 0.5, 0.0),
+            relative_velocity_ned=(-5.0, 0.0, 0.0),
+        )
+    )
+    summary = summarize_runtime_bus_outputs([blocked])
+
+    assert blocked.visual_png_enabled is False
+    assert blocked.png_command is None
+    assert blocked.mode == GuidanceMode.ABORT_REVOKE
+    assert blocked.terminal_contract_reject_reason == "secondary_capability_not_takeover_ready"
+    assert blocked.d4_action_block_reason == "secondary_capability_not_takeover_ready"
+    assert blocked.secondary_capability_class == "visible_only"
+    assert blocked.d3_owner_version_consistent is True
+    assert summary["visual_png_switch_count"] == 0
+    assert summary["d4_action_block_reasons"] == {
+        "secondary_capability_not_takeover_ready": 1,
+    }
+    assert summary["secondary_capability_class_counts"] == {"visible_only": 1}
+
+    ready = bus.evaluate_pair(
+        D7RuntimePairInput(
+            binding=secondary_binding,
+            d4_permission=D4GuidancePermission(
+                action="request_secondary_assist",
+                target_node_id="secondary-1",
+                new_plan_id="plan-secondary-2",
+                new_plan_version=2,
+                secondary_capability_class="mobile_high_recon",
+                secondary_readiness_class="takeover_ready",
+            ),
+            terminal_association=terminal,
+            observation=_runtime_observation(
+                timestamp_s=1.1,
+                half_size=44.0,
+                local_track_id="R1:BT:secondary",
+            ),
+            handover_pending=True,
+            terminal_locked=True,
+            current_heading_rad=0.0,
+            current_speed_mps=8.0,
+            intercept_speed_mps=8.0,
+            relative_position_ned=(25.0, 0.5, 0.0),
+            relative_velocity_ned=(-5.0, 0.0, 0.0),
+        )
+    )
+
+    assert ready.terminal_contract_allowed is True
+    assert ready.secondary_readiness_class == "takeover_ready"
+    assert ready.terminal_switch_reject_reason == "stable_frame_count_low"
+
+
+def test_runtime_bus_reports_d5_registration_projection_and_yolo_mot_metadata() -> None:
+    bus = D7RuntimeBus(_tuned_png_config())
+    output = bus.evaluate_pair(
+        D7RuntimePairInput(
+            binding=_binding_for_pair("R1", "G1", 93),
+            d4_permission=D4GuidancePermission(
+                action="continue_center",
+                target_node_id="center",
+                new_plan_id="plan-runtime-n",
+                new_plan_version=7,
+            ),
+            terminal_association={
+                "assigned_global_track_id": "G1",
+                "local_track_id": "R1:BT:meta",
+                "decision_state": "locked",
+                "friend_conflict_state": "none",
+                "assignment_version": 93,
+                "metadata": {
+                    "detect_registration_outcome": "registered",
+                    "detect_registration_reject_reasons": ("registered_to_global_track",),
+                    "measurement_age_s": 0.07,
+                    "projection_valid": True,
+                    "projection_reason": "in_front",
+                    "projection_depth_m": 24.5,
+                    "reprojection_error_px": 1.25,
+                    "mahalanobis_d2": 0.5,
+                    "gate_pass": True,
+                    "covariance_px": ((1.0, 0.0), (0.0, 2.0)),
+                    "projection_covariance_px": ((3.0, 0.0), (0.0, 4.0)),
+                    "camera_pose_source": "runtime_guidance_pose",
+                    "calibration_health": "good",
+                    "drift_warning": False,
+                    "tracker_backend": "bytetrack",
+                    "requested_tracker_backend": "bytetrack",
+                    "tracker_id_scope": "LocalVisualTrack.local_track_id_only",
+                    "mot_history_length": 5,
+                    "class_id": 2,
+                    "class_name": "uas",
+                    "bbox_area_px": 3600.0,
+                    "association_probability": 0.92,
+                },
+            },
+            observation=_runtime_observation(
+                timestamp_s=0.1,
+                half_size=36.0,
+                local_track_id="R1:BT:meta",
+            ),
+            current_heading_rad=0.0,
+            current_speed_mps=8.0,
+            intercept_speed_mps=8.0,
+            relative_position_ned=(30.0, 1.0, 0.0),
+            relative_velocity_ned=(-5.0, 0.0, 0.0),
+        )
+    )
+    record = output.as_log_record()
+    summary = summarize_runtime_bus_outputs([output])
+
+    assert record["detect_registration_outcome"] == "registered"
+    assert record["detect_registration_reject_reasons"] == ("registered_to_global_track",)
+    assert record["measurement_age_s"] == pytest.approx(0.07)
+    assert record["projection_valid"] is True
+    assert record["projection_reason"] == "in_front"
+    assert record["projection_depth_m"] == pytest.approx(24.5)
+    assert record["reprojection_error_px"] == pytest.approx(1.25)
+    assert record["covariance_px_trace"] == pytest.approx(3.0)
+    assert record["projection_covariance_px_trace"] == pytest.approx(7.0)
+    assert record["tracker_backend"] == "bytetrack"
+    assert record["mot_history_length"] == 5
+    assert record["yolo_class_id"] == 2
+    assert record["yolo_class_name"] == "uas"
+    assert summary["detect_registration_outcome_counts"] == {"registered": 1}
+    assert summary["detect_registration_reject_reasons"] == {"registered_to_global_track": 1}
+    assert summary["projection_valid_rate"] == pytest.approx(1.0)
+    assert summary["covariance_px_trace_mean"] == pytest.approx(3.0)
+    assert summary["projection_covariance_px_trace_mean"] == pytest.approx(7.0)
+    assert summary["tracker_backend_counts"] == {"bytetrack": 1}
 
 
 @pytest.mark.parametrize(
@@ -1436,6 +1624,11 @@ def test_bbox_los_replay_normalizes_yolo_bytetrack_and_stays_offline() -> None:
             "score": 0.92,
             "bytetrack_id": "BT-7",
             "measurement_age_s": 0.03,
+            "detect_registration_outcome": "registered",
+            "projection_valid": True,
+            "gate_pass": True,
+            "tracker_backend": "bytetrack",
+            "mot_history_length": 5,
         }
         for index, half_size in enumerate((28.0, 31.0, 34.0, 37.0, 40.0, 43.0))
     ]
@@ -1453,6 +1646,7 @@ def test_bbox_los_replay_normalizes_yolo_bytetrack_and_stays_offline() -> None:
     assert observation.camera_id == "front_center"
     assert observation.metadata["boundary"] == BBOX_LOS_REPLAY_BOUNDARY
     assert observation.metadata["visual_latency_s"] == pytest.approx(0.03)
+    assert observation.metadata["detect_registration_outcome"] == "registered"
 
     outputs, summary = evaluate_bbox_los_replay(
         detections,
@@ -1487,6 +1681,9 @@ def test_bbox_los_replay_normalizes_yolo_bytetrack_and_stays_offline() -> None:
     assert summary["vehicle_control"] is False
     assert summary["simpleflight_control_called"] is False
     assert summary["visual_png_switch_count"] > 0
+    assert summary["detect_registration_outcome_counts"] == {"registered": len(detections)}
+    assert summary["projection_valid_rate"] == pytest.approx(1.0)
+    assert summary["tracker_backend_counts"] == {"bytetrack": len(detections)}
     assert {output.control_context_id for output in outputs} == {"R1->G1"}
     assert all(
         output.as_log_record()["replay_source"] == "yolo_bytetrack_replay"
@@ -1515,6 +1712,17 @@ def test_guidance_strategy_comparison_reports_all_p1_fields() -> None:
             "sample_count",
             "min_range_m",
             "time_to_intercept_s",
+            "terminal_range_m",
+            "closing_speed_mps",
+            "bbox_gate_pass_rate",
+            "los_gate_pass_rate",
+            "maneuver_gate_pass_rate",
+            "d4_action_block_reasons",
+            "d5_lock_consistent_rate",
+            "d3_owner_version_consistent_rate",
+            "secondary_capability_class_counts",
+            "secondary_readiness_class_counts",
+            "threshold_advisory_version",
             "terminal_contract_reject_reasons",
             "terminal_switch_reject_reasons",
             "visual_png_switch_count",
@@ -1524,11 +1732,29 @@ def test_guidance_strategy_comparison_reports_all_p1_fields() -> None:
             assert row.boundary == "offline_2d_point_mass_only"
             assert row.min_range_m is not None
             assert row.final_range_m is not None
+            assert row.terminal_range_m is not None
+            assert row.closing_speed_mps is not None
+            assert row.bbox_gate_pass_rate is None
             assert row.visual_png_switch_count == 0
         else:
             assert row.boundary == BBOX_LOS_REPLAY_BOUNDARY
             assert row.metadata["vehicle_control"] is False
+            assert row.terminal_range_m is not None
+            assert row.closing_speed_mps is not None
+            assert row.bbox_gate_pass_rate is not None
+            assert row.los_gate_pass_rate is not None
+            assert row.maneuver_gate_pass_rate is not None
+            assert row.d5_lock_consistent_rate == pytest.approx(1.0)
+            assert row.d3_owner_version_consistent_rate == pytest.approx(1.0)
+            assert row.detect_registration_outcome_counts == {"registered": 6}
             assert row.visual_png_switch_count > 0
+        assert row.threshold_advisory_version == DEFAULT_CALIBRATION_THRESHOLD_VERSION
+
+    assert summary["strategies"]["png_vm"]["mean_bbox_gate_pass_rate"] is not None
+    assert summary["strategies"]["png_ttc"]["mean_d5_lock_consistent_rate"] == pytest.approx(1.0)
+    assert summary["strategies"]["png_vm"]["threshold_advisory_versions"] == [
+        DEFAULT_CALIBRATION_THRESHOLD_VERSION
+    ]
 
 
 def test_guidance_calibration_summary_groups_multiseed_runtime_records_and_advisory() -> None:
@@ -1556,6 +1782,19 @@ def test_guidance_calibration_summary_groups_multiseed_runtime_records_and_advis
                                 "decision_state": "locked",
                                 "friend_conflict_state": "none",
                                 "assignment_version": 80 + seed,
+                                "metadata": {
+                                    "detect_registration_outcome": "registered",
+                                    "detect_registration_reject_reasons": ("registered_to_global_track",),
+                                    "projection_valid": True,
+                                    "projection_depth_m": 20.0 + seed,
+                                    "reprojection_error_px": 1.0 + sample_index * 0.1,
+                                    "mahalanobis_d2": 0.4 + sample_index * 0.1,
+                                    "gate_pass": True,
+                                    "covariance_px": ((1.0, 0.0), (0.0, 2.0)),
+                                    "projection_covariance_px": ((2.0, 0.0), (0.0, 3.0)),
+                                    "tracker_backend": "bytetrack",
+                                    "mot_history_length": 5,
+                                },
                             },
                             observation={
                                 "timestamp_s": seed + sample_index * config.dt_s,
@@ -1603,6 +1842,7 @@ def test_guidance_calibration_summary_groups_multiseed_runtime_records_and_advis
     assert summary["advisory_only"] is True
     assert summary["default_control_law_changed"] is False
     assert summary["d3_d4_d5_gate_bypassed"] is False
+    assert summary["threshold_advisory_version"] == DEFAULT_CALIBRATION_THRESHOLD_VERSION
     assert set(DEFAULT_COMPARISON_STRATEGIES) <= set(summary["guidance_law_summaries"])
 
     png_vm = summary["guidance_law_summaries"]["png_vm"]
@@ -1616,6 +1856,15 @@ def test_guidance_calibration_summary_groups_multiseed_runtime_records_and_advis
     assert png_vm["maneuver_gate"]["pass_rate"] > 0.0
     assert png_vm["terminal_range_m"]["observed_count"] >= 2
     assert png_vm["closing_speed_mps"]["observed_count"] >= 2
+    assert png_vm["d5_lock_consistent_rate"] == pytest.approx(1.0)
+    assert png_vm["d3_owner_version_consistent_rate"] == pytest.approx(1.0)
+    assert png_vm["registration_projection_summary"]["detect_registration_outcome_counts"][
+        "registered"
+    ] >= 2
+    assert png_vm["registration_projection_summary"]["measurement_age_s"]["observed_count"] >= 2
+    assert png_vm["registration_projection_summary"]["projection_valid_rate"] > 0.0
+    assert png_vm["registration_projection_summary"]["covariance_px_trace"]["observed_count"] >= 2
+    assert png_vm["registration_projection_summary"]["tracker_backend_counts"]["bytetrack"] >= 2
     assert "stable_frame_count_low" in png_vm["terminal_switch_reject_reasons"]
 
     pn = summary["guidance_law_summaries"]["pn"]

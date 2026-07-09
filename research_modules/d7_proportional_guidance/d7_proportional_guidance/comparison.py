@@ -5,8 +5,9 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import asdict, dataclass, field, replace
 from statistics import mean
-from typing import Any, Iterable, Literal
+from typing import Any, Iterable, Literal, Mapping
 
+from .calibration import DEFAULT_CALIBRATION_THRESHOLD_VERSION
 from .models import GuidanceConfig
 from .replay import BBOX_LOS_REPLAY_BOUNDARY, evaluate_bbox_los_replay
 from .simulator import simulate_guidance_episode
@@ -38,6 +39,18 @@ class GuidanceStrategyComparisonRow:
     terminal_mode_entered: bool
     visual_png_switch_count: int
     terminal_switch_allowed_rate: float
+    terminal_range_m: float | None = None
+    closing_speed_mps: float | None = None
+    bbox_gate_pass_rate: float | None = None
+    los_gate_pass_rate: float | None = None
+    maneuver_gate_pass_rate: float | None = None
+    d5_lock_consistent_rate: float | None = None
+    d3_owner_version_consistent_rate: float | None = None
+    threshold_advisory_version: str = DEFAULT_CALIBRATION_THRESHOLD_VERSION
+    d4_action_block_reasons: dict[str, int] = field(default_factory=dict)
+    secondary_capability_class_counts: dict[str, int] = field(default_factory=dict)
+    secondary_readiness_class_counts: dict[str, int] = field(default_factory=dict)
+    detect_registration_outcome_counts: dict[str, int] = field(default_factory=dict)
     terminal_contract_reject_reasons: dict[str, int] = field(default_factory=dict)
     terminal_switch_reject_reasons: dict[str, int] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -82,19 +95,57 @@ def summarize_guidance_strategy_comparison(
         final_ranges = [row.final_range_m for row in strategy_rows if row.final_range_m is not None]
         contract_reasons: Counter[str] = Counter()
         switch_reasons: Counter[str] = Counter()
+        d4_block_reasons: Counter[str] = Counter()
+        secondary_capability_classes: Counter[str] = Counter()
+        secondary_readiness_classes: Counter[str] = Counter()
+        detect_registration_outcomes: Counter[str] = Counter()
         for row in strategy_rows:
             contract_reasons.update(row.terminal_contract_reject_reasons)
             switch_reasons.update(row.terminal_switch_reject_reasons)
+            d4_block_reasons.update(row.d4_action_block_reasons)
+            secondary_capability_classes.update(row.secondary_capability_class_counts)
+            secondary_readiness_classes.update(row.secondary_readiness_class_counts)
+            detect_registration_outcomes.update(row.detect_registration_outcome_counts)
+        terminal_ranges = [
+            row.terminal_range_m for row in strategy_rows if row.terminal_range_m is not None
+        ]
+        closing_speeds = [
+            row.closing_speed_mps for row in strategy_rows if row.closing_speed_mps is not None
+        ]
         by_strategy[strategy] = {
             "seed_count": len(strategy_rows),
             "mean_min_range_m": mean(min_ranges) if min_ranges else None,
             "mean_final_range_m": mean(final_ranges) if final_ranges else None,
+            "mean_terminal_range_m": mean(terminal_ranges) if terminal_ranges else None,
+            "mean_closing_speed_mps": mean(closing_speeds) if closing_speeds else None,
             "visual_png_switch_count": sum(row.visual_png_switch_count for row in strategy_rows),
             "mean_terminal_switch_allowed_rate": mean(
                 row.terminal_switch_allowed_rate for row in strategy_rows
             )
             if strategy_rows
             else 0.0,
+            "mean_bbox_gate_pass_rate": _mean_optional(
+                row.bbox_gate_pass_rate for row in strategy_rows
+            ),
+            "mean_los_gate_pass_rate": _mean_optional(
+                row.los_gate_pass_rate for row in strategy_rows
+            ),
+            "mean_maneuver_gate_pass_rate": _mean_optional(
+                row.maneuver_gate_pass_rate for row in strategy_rows
+            ),
+            "mean_d5_lock_consistent_rate": _mean_optional(
+                row.d5_lock_consistent_rate for row in strategy_rows
+            ),
+            "mean_d3_owner_version_consistent_rate": _mean_optional(
+                row.d3_owner_version_consistent_rate for row in strategy_rows
+            ),
+            "threshold_advisory_versions": sorted(
+                {row.threshold_advisory_version for row in strategy_rows if row.threshold_advisory_version}
+            ),
+            "d4_action_block_reasons": dict(d4_block_reasons),
+            "secondary_capability_class_counts": dict(secondary_capability_classes),
+            "secondary_readiness_class_counts": dict(secondary_readiness_classes),
+            "detect_registration_outcome_counts": dict(detect_registration_outcomes),
             "terminal_contract_reject_reasons": dict(contract_reasons),
             "terminal_switch_reject_reasons": dict(switch_reasons),
         }
@@ -117,6 +168,7 @@ def _run_point_mass_strategy(
     )
     records, summary = simulate_guidance_episode(config=cfg)
     stopped = bool(summary.get("stopped_on_intercept_radius", False))
+    closest_record = min(records, key=lambda record: record.range_m) if records else None
     return GuidanceStrategyComparisonRow(
         seed=int(seed),
         strategy=strategy,
@@ -129,6 +181,15 @@ def _run_point_mass_strategy(
         terminal_mode_entered=bool(summary["terminal_mode_entered"]),
         visual_png_switch_count=0,
         terminal_switch_allowed_rate=0.0,
+        terminal_range_m=float(summary["min_range_m"]),
+        closing_speed_mps=(
+            float(closest_record.closing_speed_mps) if closest_record is not None else None
+        ),
+        bbox_gate_pass_rate=None,
+        los_gate_pass_rate=None,
+        maneuver_gate_pass_rate=None,
+        d5_lock_consistent_rate=None,
+        d3_owner_version_consistent_rate=None,
         metadata={
             "mode_sequence": tuple(summary["mode_sequence"]),
             "stopped_on_intercept_radius": stopped,
@@ -192,6 +253,17 @@ def _run_visual_png_strategy(
         terminal_mode_entered=any(output.visual_png_enabled for output in outputs),
         visual_png_switch_count=int(summary["visual_png_switch_count"]),
         terminal_switch_allowed_rate=float(summary["terminal_switch_allowed_rate"]),
+        terminal_range_m=_optional_summary_float(summary, "terminal_range_m_mean"),
+        closing_speed_mps=_optional_summary_float(summary, "closing_speed_mps_mean"),
+        bbox_gate_pass_rate=float(summary["camera_quality_gate_pass_rate"]),
+        los_gate_pass_rate=float(summary["los_quality_gate_pass_rate"]),
+        maneuver_gate_pass_rate=float(summary["maneuver_margin_gate_pass_rate"]),
+        d5_lock_consistent_rate=float(summary["d5_lock_consistent_rate"]),
+        d3_owner_version_consistent_rate=float(summary["d3_owner_version_consistent_rate"]),
+        d4_action_block_reasons=dict(summary["d4_action_block_reasons"]),
+        secondary_capability_class_counts=dict(summary["secondary_capability_class_counts"]),
+        secondary_readiness_class_counts=dict(summary["secondary_readiness_class_counts"]),
+        detect_registration_outcome_counts=dict(summary["detect_registration_outcome_counts"]),
         terminal_contract_reject_reasons=dict(summary["terminal_contract_reject_reasons"]),
         terminal_switch_reject_reasons=dict(summary["terminal_switch_reject_reasons"]),
         metadata={
@@ -233,6 +305,22 @@ def _comparison_bbox_sequence(seed: int, cfg: PngGuidanceConfig) -> list[dict[st
             ),
             "confidence": 0.9,
             "track_id": f"R1:replay:{seed}",
+            "measurement_age_s": 0.02,
+            "detect_registration_outcome": "registered",
+            "projection_valid": True,
+            "gate_pass": True,
         }
         for index, half_size in enumerate((28.0, 31.0, 34.0, 37.0, 40.0, 43.0))
     ]
+
+
+def _mean_optional(values: Iterable[float | None]) -> float | None:
+    items = [float(value) for value in values if value is not None]
+    return mean(items) if items else None
+
+
+def _optional_summary_float(summary: Mapping[str, Any], key: str) -> float | None:
+    value = summary.get(key)
+    if value is None:
+        return None
+    return float(value)

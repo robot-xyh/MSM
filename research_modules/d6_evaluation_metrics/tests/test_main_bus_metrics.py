@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from d6_evaluation_metrics import (
+    STANDARD_MAPPING_VERSION,
     load_main_episode_bus_metric_files,
     load_main_episode_bus_metrics,
 )
@@ -145,3 +146,35 @@ def test_load_main_episode_bus_metric_files_infers_contract_scope_from_filename(
     assert contract.camera_count == 5
     assert contract.mission_outcome == "failed"
     assert contract.failure_reason == "no_success_evidence"
+
+
+def test_load_main_episode_bus_metrics_backfills_eval_versions_from_metadata(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "main_episode_bus_metrics.json"
+    path.write_text(
+        json.dumps(
+            {
+                "metrics": {
+                    "episode_id": "metadata_versions",
+                    "metric_scope": "execution",
+                    "metadata": {
+                        "scenario_version": "scenario-metadata-v3",
+                        "standard_mapping_version": STANDARD_MAPPING_VERSION,
+                        "evidence_path": "outputs/evidence/main_episode_bus_metrics.json",
+                    },
+                }
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = load_main_episode_bus_metrics(path)
+
+    assert metrics.scenario_version == "scenario-metadata-v3"
+    assert metrics.standard_mapping_version == STANDARD_MAPPING_VERSION
+    assert metrics.evidence_path == "outputs/evidence/main_episode_bus_metrics.json"
+    assert metrics.metadata["scenario_version"] == "scenario-metadata-v3"
+    assert metrics.metadata["standard_mapping_version"] == STANDARD_MAPPING_VERSION
+    assert metrics.metadata["evidence_path"] == "outputs/evidence/main_episode_bus_metrics.json"

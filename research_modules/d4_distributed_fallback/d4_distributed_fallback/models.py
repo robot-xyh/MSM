@@ -140,6 +140,9 @@ class ResourceSummary:
     gimbal_pointing_ok: bool | None = None
     secondary_coverage_ratio: float | None = None
     cross_view_support_count: int | None = None
+    secondary_network_full_view_rate: float | None = None
+    stable_cross_view_registration_count: int | None = None
+    not_registered_count: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)
@@ -254,6 +257,11 @@ class SecondaryNodeLifecycleSummary:
     secondary_takeover_capable: bool = False
     secondary_capability_score: float = 0.0
     secondary_capability_reasons: tuple[str, ...] = ()
+    secondary_readiness_class: str = "not_ready"
+    secondary_capability_inputs: dict[str, Any] = field(default_factory=dict)
+    secondary_network_full_view_rate: float | None = None
+    stable_cross_view_registration_count: int | None = None
+    not_registered_count: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)

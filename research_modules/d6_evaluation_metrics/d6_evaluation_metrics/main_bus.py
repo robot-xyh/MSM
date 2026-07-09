@@ -41,6 +41,7 @@ def load_main_episode_bus_metrics(path: str | Path) -> EpisodeMetrics:
     implementation_status_missing = "implementation_status" not in values
     evidence_path_missing = "evidence_path" not in values
     scenario_version_missing = "scenario_version" not in values
+    standard_mapping_version_missing = "standard_mapping_version" not in values
     standard_family_summary_missing = "standard_metric_family_summary" not in values
 
     metric_scope = _normalize_metric_scope(values.get("metric_scope"))
@@ -73,7 +74,14 @@ def load_main_episode_bus_metrics(path: str | Path) -> EpisodeMetrics:
         metrics.evidence_path = str(metadata.get("evidence_path") or path)
     if scenario_version_missing:
         metrics.scenario_version = str(metadata.get("scenario_version") or "")
-    metrics.standard_mapping_version = STANDARD_MAPPING_VERSION
+    if standard_mapping_version_missing:
+        metrics.standard_mapping_version = str(
+            metadata.get("standard_mapping_version") or STANDARD_MAPPING_VERSION
+        )
+    else:
+        metrics.standard_mapping_version = str(
+            metrics.standard_mapping_version or STANDARD_MAPPING_VERSION
+        )
     if standard_family_summary_missing:
         metrics.standard_metric_family_summary = str(
             metadata.get("standard_metric_family_summary")

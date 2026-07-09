@@ -67,6 +67,10 @@ def bbox_replay_detection_to_observation(
     )
     if frame_index is not None:
         metadata["frame_index"] = frame_index
+    for name in _REPLAY_METADATA_FIELD_NAMES:
+        value = _value(detection, (name,), default=None)
+        if value is not None:
+            metadata.setdefault(name, value)
 
     record = {
         "timestamp_s": _required_float(detection, ("timestamp_s", "timestamp", "t")),
@@ -97,6 +101,34 @@ def bbox_replay_detection_to_observation(
     if latency_s is not None:
         record["metadata"]["visual_latency_s"] = latency_s
     return coerce_vision_guidance_observation(record)
+
+
+_REPLAY_METADATA_FIELD_NAMES = (
+    "detect_registration_outcome",
+    "detect_registration_reject_reasons",
+    "measurement_age_s",
+    "projection_valid",
+    "projection_reason",
+    "projection_depth_m",
+    "reprojection_error_px",
+    "pixel_error_px",
+    "reprojection_error",
+    "mahalanobis_d2",
+    "gate_pass",
+    "covariance_px",
+    "projection_covariance_px",
+    "camera_pose_source",
+    "calibration_health",
+    "drift_warning",
+    "tracker_backend",
+    "requested_tracker_backend",
+    "tracker_id_scope",
+    "mot_history_length",
+    "class_id",
+    "class_name",
+    "bbox_area_px",
+    "association_probability",
+)
 
 
 def evaluate_bbox_los_replay(

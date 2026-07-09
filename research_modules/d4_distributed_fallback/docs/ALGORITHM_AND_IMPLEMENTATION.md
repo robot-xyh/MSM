@@ -180,7 +180,7 @@ decision = ActiveDegradationArbiter().evaluate(
 主动降级到二级节点采用两阶段语义，防止 D7 在重分配尚未完成的同一帧直接进入视觉 PNG：
 
 1. 阶段 1：D4 输出 `degrade_to_secondary` 只表示已经选择二级节点并启动重分配；`build_d7_secondary_handoff()` 返回 `phase=1`、`reassignment_complete=false`、`visual_png_allowed=false`，且不输出 D7 动作。D7 不应在该帧进入视觉 PNG。
-2. 阶段 2：二级节点的新 plan 已生效后，`build_d7_secondary_handoff()` 返回 `phase=2`、`reassignment_complete=true`，并携带 `new_plan_id` 与 `new_plan_version`。若新 plan 下 D5 仍需二级 cue，则对 D7 输出 `request_secondary_assist`；若新 plan 下末端一致，则输出 `continue_center`。
+2. 阶段 2：二级节点的新 plan 已生效且 readiness 为 `takeover_ready` 后，`build_d7_secondary_handoff()` 返回 `phase=2`、`reassignment_complete=true`，并携带 `new_plan_id` 与 `new_plan_version`。若新 plan 下 D5 仍需二级 cue，则对 D7 输出 `request_secondary_assist`；若新 plan 下末端一致，则输出 `continue_center`。`visible_only`、`registration_usable` 或缺失 readiness 均不允许进入 visual PNG gate。
 
 当前实现使用轻量规则阈值表达风险：
 
@@ -202,7 +202,7 @@ D4 不直接做相机投影、bbox 几何门控、跨视角注册或 global trac
 - `p1_d4d5_mobile_recon_20260708_055948*`：3 seeds 下 mobile high recon 的 radar cue、gimbal pointing 和 D4 三类动作正常，但二级网络同帧全覆盖仍为 0.0，联合覆盖约 0.65-0.69，degradation case 多数仍是 `secondary_detect_available_but_not_registered`。
 - `p1_d4d5_registration_calibration_runtime_v2_20260708*`：单 seed、200 m、FOV 110、1920x1080、3 个机动高空二级节点下，D6 上游几何统计为 `projection_valid_rate=1.0`、`geometry_gate_pass_rate≈0.474`；stable cross-view registration 为 51/55/53，cross-view association 为 4/4/5，degradation case not-registered 为 35/35，平均 full-view 为 0.048，平均 coverage 为 0.771。它证明 stable registration/not-registered 字段可由 D5/D6/main 产生并被 D4 消费；projection/geometry gate 只作为上游标定背景，D4 不直接消费或计算，且仍需多 seed 标定阈值、误注册风险和 review label。
 
-因此 D4 把二级侦察结果分成三类：二级可见但未注册、二级网络未全覆盖、稳定 cross-view support 足够。只有第三类与新鲜二级链路、D3/main 回填的 plan owner/version 同时满足时，才能作为二级接管必要性和成功的正证据；仅有检测可见、gimbal OK 或 coverage ratio > 0 不会自动激活 `secondary_plan_active`。
+因此 D4 把二级侦察结果记录为四级 readiness：`not_ready`、`visible_only`、`registration_usable`、`takeover_ready`。`visible_only` 只说明二级看见目标但没有可用 cross-view/global binding；`registration_usable` 说明稳定注册存在但 coverage、network full-view 或综合 score 还不足以接管；只有 `takeover_ready` 与新鲜二级链路、D3/main 回填的 plan owner/version 同时满足时，才能作为二级接管必要性和成功的正证据。仅有检测可见、gimbal OK 或 coverage ratio > 0 不会自动激活 `secondary_plan_active`。
 
 ## 5. CBBA、拍卖和合同网协议
 
@@ -342,7 +342,7 @@ benchmark = build_cbba_cost_gap_benchmark(
 - `degrade_to_distributed`：无可用二级节点时进入完全无中心 CBBA/拍卖。
 - `hold_for_review`：友方冲突或身份冲突时只保持审计和人工复核。
 
-`D7SecondaryHandoff`/`build_d7_secondary_handoff()` 用于把 `degrade_to_secondary` 转换为 D7 可消费的两阶段门控结果。阶段 1 不携带 `new_plan_id/new_plan_version` 且 `visual_png_allowed=false`；阶段 2 必须携带 `new_plan_id/new_plan_version`，并把 D7 动作限制为 `request_secondary_assist` 或 `continue_center`。
+`D7SecondaryHandoff`/`build_d7_secondary_handoff()` 用于把 `degrade_to_secondary` 转换为 D7 可消费的两阶段门控结果。阶段 1 不携带 `new_plan_id/new_plan_version` 且 `visual_png_allowed=false`；阶段 2 必须携带 `new_plan_id/new_plan_version` 和 `secondary_capability_class=takeover_ready`，并把 D7 动作限制为 `request_secondary_assist` 或 `continue_center`。
 
 `SecondaryTakeoverPlanMetadata`/`build_secondary_takeover_plan_metadata()` 是 D4 record 的 plan lifecycle 合同。它区分：
 

@@ -40,6 +40,11 @@ def _resource_from_fake_airsim(row: dict[str, object]) -> ResourceSummary:
         node_role=NodeRole(str(row.get("node_role", NodeRole.INTERCEPTOR.value))),
         coordinator_only=bool(row.get("coordinator_only", False)),
         coverage_cell=None if row.get("coverage_cell") is None else str(row["coverage_cell"]),
+        stable_cross_view_registration_count=(
+            None
+            if row.get("stable_cross_view_registration_count") is None
+            else int(row["stable_cross_view_registration_count"])
+        ),
     )
 
 
@@ -55,6 +60,7 @@ def _fake_phase1_resources(secondary_available: bool = True) -> list[ResourceSum
             "node_role": "secondary_recon",
             "coordinator_only": True,
             "coverage_cell": "cell-north",
+            "stable_cross_view_registration_count": 2,
             "epoch": 1,
         },
         {
@@ -267,6 +273,7 @@ def test_blocks_2v2_secondary_plan_activation_hands_new_plan_to_d7() -> None:
         new_plan_id="secondary-2v2-plan-008",
         new_plan_version=8,
         secondary_plan_active=True,
+        secondary_capability_class="takeover_ready",
         terminal_consistent_after_plan=False,
     )
     continue_handoff = build_d7_secondary_handoff(
@@ -276,6 +283,7 @@ def test_blocks_2v2_secondary_plan_activation_hands_new_plan_to_d7() -> None:
         new_plan_id="secondary-2v2-plan-009",
         new_plan_version=9,
         secondary_plan_active=True,
+        secondary_capability_class="takeover_ready",
         terminal_consistent_after_plan=True,
     )
 
@@ -288,6 +296,60 @@ def test_blocks_2v2_secondary_plan_activation_hands_new_plan_to_d7() -> None:
     assert continue_handoff.d7_action == DegradationAction.CONTINUE_CENTER
     assert continue_handoff.new_plan_id == "secondary-2v2-plan-009"
     assert continue_handoff.new_plan_version == 9
+
+
+def test_d7_handoff_rejects_visible_only_secondary_capability() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track_uncertainty(position_sigma_m=55.0),
+        association_risk=_association_risk(ambiguity_score=0.75),
+        assignment_validity=_assignment_validity(),
+        terminal_association=_terminal_summary(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id="track-north-2",
+            non_locked_frames=3,
+            mismatch_frames=2,
+            cross_view_risk_score=0.8,
+        ),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=_fake_phase1_resources(secondary_available=True),
+        communication_summaries=[_fake_secondary_video_link()],
+        current_time_s=10.5,
+    )
+
+    blocked = build_d7_secondary_handoff(
+        decision,
+        current_plan_id="center-2v2-plan-007",
+        current_plan_version=7,
+        new_plan_id="secondary-2v2-plan-008",
+        new_plan_version=8,
+        secondary_plan_active=True,
+        secondary_capability_class="visible_only",
+    )
+    unknown = build_d7_secondary_handoff(
+        decision,
+        current_plan_id="center-2v2-plan-007",
+        current_plan_version=7,
+        new_plan_id="secondary-2v2-plan-008",
+        new_plan_version=8,
+        secondary_plan_active=True,
+    )
+    ready = build_d7_secondary_handoff(
+        decision,
+        current_plan_id="center-2v2-plan-007",
+        current_plan_version=7,
+        new_plan_id="secondary-2v2-plan-008",
+        new_plan_version=8,
+        secondary_plan_active=True,
+        secondary_capability_class="takeover_ready",
+    )
+
+    assert blocked.phase == 1
+    assert blocked.visual_png_allowed is False
+    assert blocked.reason == "secondary_capability_not_takeover_ready"
+    assert unknown.visual_png_allowed is False
+    assert unknown.reason == "secondary_capability_not_takeover_ready"
+    assert ready.phase == 2
+    assert ready.visual_png_allowed is True
 
 
 def test_case_003_degrade_to_distributed_when_center_or_secondary_unavailable() -> None:

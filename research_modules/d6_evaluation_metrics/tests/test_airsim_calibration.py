@@ -57,8 +57,14 @@ def test_airsim_calibration_summary_loads_d4d5_and_main_bus_outputs(
     assert execution_seed1.camera_count == 6
     assert execution_seed1.secondary_count == 2
     assert execution_seed1.secondary_height_above_targets_m == pytest.approx(200.0)
+    assert execution_seed1.secondary_height_bucket == "secondary_200m"
     assert execution_seed1.secondary_fov_degrees == pytest.approx(80.0)
     assert execution_seed1.detection_backend == "simGetDetections"
+    assert execution_seed1.comparison_role == "baseline"
+    assert execution_seed1.scenario_version == "p1-calibration-v1"
+    assert execution_seed1.standard_mapping_version == STANDARD_MAPPING_VERSION
+    assert execution_seed1.evidence_path.endswith("main_episode_bus_metrics.json")
+    assert "p1_calibration_v1" in execution_seed1.trend_key
     assert execution_seed1.secondary_network_mean_coverage_ratio == pytest.approx(0.70)
     assert execution_seed1.secondary_visible_target_union_ratio == pytest.approx(0.70)
     assert execution_seed1.secondary_detect_count == 72
@@ -84,6 +90,10 @@ def test_airsim_calibration_summary_loads_d4d5_and_main_bus_outputs(
     execution_seed1_row = _find_row(rows, metric_scope="execution", seed="1")
     assert execution_seed1_row["scenario"] == "no_degradation"
     assert execution_seed1_row["secondary_height_above_targets_m"] == pytest.approx(200.0)
+    assert execution_seed1_row["comparison_role"] == "baseline"
+    assert execution_seed1_row["scenario_versions"] == ["p1-calibration-v1"]
+    assert execution_seed1_row["standard_mapping_versions"] == [STANDARD_MAPPING_VERSION]
+    assert execution_seed1_row["secondary_height_buckets"] == ["secondary_200m"]
     assert execution_seed1_row["secondary_fov_degrees"] == pytest.approx(80.0)
     assert execution_seed1_row["secondary_count"] == "2"
     assert execution_seed1_row["detection_backend"] == "simGetDetections"
@@ -111,7 +121,37 @@ def test_airsim_calibration_summary_loads_d4d5_and_main_bus_outputs(
 def test_airsim_calibration_report_bundle_writes_csv_json_and_chinese_markdown(
     tmp_path: Path,
 ) -> None:
-    seed_case = tmp_path / "batch_seed003" / "case_002_degrade_to_secondary"
+    baseline_case = tmp_path / "batch_seed003" / "case_001_baseline_200m"
+    _write_episode_fixture(
+        baseline_case,
+        seed=3,
+        coverage_ratio=0.50,
+        detect_count=55,
+        cross_view_count=1,
+        not_registered_count=40,
+        unnecessary_count=1,
+        reject_reasons={"stable_frame_count_low": 4},
+        contract_reject_reasons={"d5_not_locked": 2},
+        write_contract=False,
+        height_m=200.0,
+        comparison_role="baseline",
+    )
+    height_case = tmp_path / "batch_seed003" / "case_002_enhanced_50m"
+    _write_episode_fixture(
+        height_case,
+        seed=3,
+        coverage_ratio=0.45,
+        detect_count=55,
+        cross_view_count=1,
+        not_registered_count=40,
+        unnecessary_count=1,
+        reject_reasons={"stable_frame_count_low": 4},
+        contract_reject_reasons={"d5_not_locked": 2},
+        write_contract=False,
+        height_m=50.0,
+        comparison_role="enhanced",
+    )
+    seed_case = tmp_path / "batch_seed003" / "case_003_enhanced_200m"
     _write_episode_fixture(
         seed_case,
         seed=3,
@@ -123,6 +163,8 @@ def test_airsim_calibration_report_bundle_writes_csv_json_and_chinese_markdown(
         reject_reasons={"network_union_incomplete": 13},
         contract_reject_reasons={"d5_not_locked": 5},
         write_contract=False,
+        height_m=200.0,
+        comparison_role="enhanced",
     )
 
     generator = AirSimCalibrationReportGenerator()
@@ -137,6 +179,12 @@ def test_airsim_calibration_report_bundle_writes_csv_json_and_chinese_markdown(
     summary_rows = list(csv.DictReader(outputs["summary_csv"].open(encoding="utf-8")))
     assert summary_rows
     assert summary_rows[0]["detection_backend"] == "simGetDetections"
+    assert "comparison_role" in summary_rows[0]
+    assert "scenario_versions" in summary_rows[0]
+    assert "standard_mapping_versions" in summary_rows[0]
+    assert "evidence_paths" in summary_rows[0]
+    assert "trend_keys" in summary_rows[0]
+    assert "secondary_height_buckets" in summary_rows[0]
     assert "funnel_reject_reason_counts" in summary_rows[0]
     assert "network_union_incomplete" in summary_rows[0]["funnel_reject_reason_counts"]
     assert "projection_valid_rate_mean" in summary_rows[0]
@@ -144,7 +192,16 @@ def test_airsim_calibration_report_bundle_writes_csv_json_and_chinese_markdown(
 
     summary_payload = json.loads(outputs["summary_json"].read_text(encoding="utf-8"))
     assert summary_payload["group_fields"][:3] == ["metric_scope", "seed", "scenario"]
+    assert "comparison_role" in summary_payload["group_fields"]
     assert summary_payload["rows"][0]["secondary_count"] == "2"
+    assert any(
+        row["secondary_height_buckets"] == ["secondary_50m"]
+        for row in summary_payload["rows"]
+    )
+    assert any(
+        row["secondary_height_buckets"] == ["secondary_200m"]
+        for row in summary_payload["rows"]
+    )
 
     mapping_rows = list(
         csv.DictReader(outputs["standard_mapping_csv"].open(encoding="utf-8"))
@@ -158,10 +215,20 @@ def test_airsim_calibration_report_bundle_writes_csv_json_and_chinese_markdown(
     assert STANDARD_MAPPING_VERSION in report_text
     assert "COURAGEOUS/CEN C-UAS testing" in report_text
     assert "Detect-to-registration Funnel" in report_text
+    assert "50m vs 200m Secondary Coverage" in report_text
+    assert "Coverage Funnel" in report_text
+    assert "Baseline vs Enhanced" in report_text
+    assert "secondary_50m" in report_text
+    assert "secondary_200m" in report_text
+    assert "Delta enhanced-baseline" in report_text
     assert "Projection valid" in report_text
     assert "Stable registration" in report_text
+    assert "Not registered" in report_text
+    assert "Active precision" in report_text
+    assert "Unnecessary degradation" in report_text
     assert "D7 Guidance Reject Reason" in report_text
     assert "D6 只消费日志" in report_text
+    assert "p1-calibration-v1" in report_text
     assert "network_union_incomplete" in report_text
     assert "geometry_gate_rejected" in report_text
     assert "projection_invalid" in report_text
@@ -194,6 +261,9 @@ def _write_episode_fixture(
     reject_reasons: dict[str, int],
     contract_reject_reasons: dict[str, int],
     write_contract: bool,
+    height_m: float = 200.0,
+    comparison_role: str = "baseline",
+    scenario_version: str = "p1-calibration-v1",
 ) -> None:
     episode_dir.mkdir(parents=True, exist_ok=True)
     settings_path = episode_dir.parent / "generated_settings" / "blocks_cv_n3_settings.json"
@@ -235,13 +305,16 @@ def _write_episode_fixture(
             "case_name": "no_degradation"
             if "no_degradation" in episode_dir.name
             else "degrade_to_secondary",
+            "calibration_role": comparison_role,
+            "scenario_version": scenario_version,
+            "standard_mapping_version": STANDARD_MAPPING_VERSION,
             "secondary_recon_mode": "mobile_recon_gimbal",
-            "secondary_height_above_targets_m": 200.0,
+            "secondary_height_above_targets_m": height_m,
             "geometry": {
                 "resource_camera_count": 3,
                 "secondary_camera_count": 2,
                 "target_count": 4,
-                "secondary_height_above_targets_m": 200.0,
+                "secondary_height_above_targets_m": height_m,
             },
             "multi_target_fov_rate": 0.8,
             "secondary_visible_target_union_ratio": coverage_ratio,
@@ -299,6 +372,8 @@ def _write_episode_fixture(
             unnecessary_count=unnecessary_count,
             reject_reasons=reject_reasons,
             contract_reject_reasons=contract_reject_reasons,
+            comparison_role=comparison_role,
+            scenario_version=scenario_version,
         ),
     )
     if write_contract:
@@ -310,6 +385,8 @@ def _write_episode_fixture(
                 unnecessary_count=unnecessary_count,
                 reject_reasons=reject_reasons,
                 contract_reject_reasons=contract_reject_reasons,
+                comparison_role=comparison_role,
+                scenario_version=scenario_version,
             ),
         )
 
@@ -321,6 +398,8 @@ def _main_bus_payload(
     unnecessary_count: int,
     reject_reasons: dict[str, int],
     contract_reject_reasons: dict[str, int],
+    comparison_role: str,
+    scenario_version: str,
 ) -> dict[str, object]:
     return {
         "metrics": {
@@ -328,6 +407,9 @@ def _main_bus_payload(
             "seed": seed,
             "batch_seed": seed,
             "scenario_group": "blocks_cv_5v5_d4d5_stress",
+            "scenario_version": scenario_version,
+            "standard_mapping_version": STANDARD_MAPPING_VERSION,
+            "evidence_path": f"evidence/{episode_id}/main_episode_bus_metrics.json",
             "drone_count": 3,
             "resource_count": 3,
             "target_count": 4,
@@ -340,6 +422,9 @@ def _main_bus_payload(
             "gate_reject_count": sum(reject_reasons.values())
             + sum(contract_reject_reasons.values()),
             "metadata": {
+                "comparison_role": comparison_role,
+                "scenario_version": scenario_version,
+                "standard_mapping_version": STANDARD_MAPPING_VERSION,
                 "guidance_law_counts": {"png_vm": 2, "radar_pn": 1},
                 "terminal_switch_reject_reasons": reject_reasons,
                 "terminal_contract_reject_reasons": contract_reject_reasons,

@@ -26,6 +26,7 @@ SECONDARY_DETECT_REJECTION_REASONS = (
     "no_global_binding",
     "reacquire_not_grouped",
     "stale_or_missing_recon_cue",
+    "projection_invalid",
     "geometry_gate_rejected",
     "stability_window_failed",
     "secondary_detect_offline_only",
@@ -1420,7 +1421,9 @@ def _secondary_detect_funnel_counts(
             rejection_reason_counts["reacquire_not_grouped"] += 1
         if not association.assigned_global_track_id:
             rejection_reason_counts["no_global_binding"] += 1
-        if _association_geometry_gate_rejected(association):
+        if _association_projection_invalid(association):
+            rejection_reason_counts["projection_invalid"] += 1
+        elif _association_geometry_gate_rejected(association):
             rejection_reason_counts["geometry_gate_rejected"] += 1
 
     cross_view_count = len(cross_view_associations)
@@ -1706,6 +1709,19 @@ def _association_geometry_gate_rejected(association: Any) -> bool:
         return True
     for log in _association_pair_logs(association):
         if log.get("gate_pass") is False:
+            return True
+    return False
+
+
+def _association_projection_invalid(association: Any) -> bool:
+    if "projection_invalid" in str(association.reason):
+        return True
+    if association.metadata.get("projection_valid") is False:
+        return True
+    for log in _association_pair_logs(association):
+        if log.get("projection_valid") is False:
+            return True
+        if "projection_invalid" in str(log.get("reason", "")):
             return True
     return False
 

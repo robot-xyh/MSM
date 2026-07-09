@@ -22,10 +22,14 @@ DEFAULT_YOLOV8_WEIGHTS_PATH = Path(
 )
 
 TRUTH_OR_GLOBAL_FIELD_NAMES = {
+    "actor_id",
     "actor_name",
     "assigned_global_track_id",
     "global_track_id",
+    "name",
     "object_id",
+    "object_name",
+    "offline_truth_global_id",
     "true_global_track_id",
     "truth_global_track_id",
     "truth_id",
@@ -57,6 +61,9 @@ class YoloMotAdapterConfig:
     default_category: str = "unknown"
     use_native_ultralytics_tracker: bool = True
     allow_iou_fallback: bool = True
+    compute_device: str = "auto"
+    cpu_budget_ms: float | None = None
+    gpu_budget_ms: float | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "weights_path", Path(self.weights_path))
@@ -73,6 +80,9 @@ class YoloMotAdapterConfig:
             raise ValueError("iou_match_threshold must be in [0, 1]")
         if self.max_track_age_frames < 0:
             raise ValueError("max_track_age_frames must be non-negative")
+        object.__setattr__(self, "compute_device", str(self.compute_device or "auto"))
+        object.__setattr__(self, "cpu_budget_ms", _optional_nonnegative_float(self.cpu_budget_ms))
+        object.__setattr__(self, "gpu_budget_ms", _optional_nonnegative_float(self.gpu_budget_ms))
 
 
 @dataclass(frozen=True)
@@ -111,6 +121,7 @@ class _TrackState:
     bbox: tuple[float, float, float, float]
     category: str
     confidence: float
+    class_id: int | None = None
     hits: int = 1
     missed_frames: int = 0
 
@@ -120,6 +131,7 @@ class _TrackedDetection:
     bbox: tuple[float, float, float, float]
     confidence: float
     category: str
+    class_id: int | None
     track_id: str | int
     mot_history_length: int
 
@@ -177,6 +189,7 @@ class IouFallbackTracker:
                     bbox=detection.bbox,
                     category=detection.category,
                     confidence=detection.confidence,
+                    class_id=detection.class_id,
                     hits=1,
                     missed_frames=0,
                 )
@@ -185,6 +198,7 @@ class IouFallbackTracker:
                 state.bbox = detection.bbox
                 state.category = detection.category
                 state.confidence = detection.confidence
+                state.class_id = detection.class_id
                 state.hits += 1
                 state.missed_frames = 0
 
@@ -194,6 +208,7 @@ class IouFallbackTracker:
                     bbox=detection.bbox,
                     confidence=detection.confidence,
                     category=detection.category,
+                    class_id=detection.class_id,
                     track_id=track_id,
                     mot_history_length=max(state.hits, detection.mot_history_length),
                 )
@@ -253,6 +268,13 @@ class YoloMotAdapter:
         metadata: dict[str, Any] = {
             "requested_tracker_backend": self.config.tracker_backend,
             "weights_path": str(self.config.weights_path),
+            "compute_device": self.config.compute_device,
+            "cpu_budget_ms": self.config.cpu_budget_ms,
+            "gpu_budget_ms": self.config.gpu_budget_ms,
+            "runtime_budget": {
+                "cpu_ms": self.config.cpu_budget_ms,
+                "gpu_ms": self.config.gpu_budget_ms,
+            },
         }
 
         try:
@@ -263,7 +285,7 @@ class YoloMotAdapter:
                         default_category=self.config.default_category,
                     )
                 )
-                tracked = self._fallback_tracker.update(detections)
+                tracked = tuple(self._fallback_tracker.update(detections))
                 tracks = _to_local_visual_tracks(
                     tracked,
                     camera_id=camera_id,
@@ -278,6 +300,15 @@ class YoloMotAdapter:
                         "tracker_backend": "iou_fallback",
                         "detector_backend": "injected_detector",
                     }
+                )
+                metadata.update(
+                    _tracked_frame_metadata(
+                        tracked,
+                        tracks,
+                        detector_backend="injected_detector",
+                        tracker_backend="iou_fallback",
+                        frame=frame,
+                    )
                 )
                 return self._result(
                     tracks,
@@ -295,18 +326,20 @@ class YoloMotAdapter:
             if self._should_use_native_tracker(model):
                 try:
                     detections = self._run_native_tracker(model, frame)
+                    tracked = tuple(
+                        _TrackedDetection(
+                            bbox=item.bbox,
+                            confidence=item.confidence,
+                            category=item.category,
+                            class_id=item.class_id,
+                            track_id=item.source_track_id,
+                            mot_history_length=item.mot_history_length,
+                        )
+                        for item in detections
+                        if item.source_track_id is not None
+                    )
                     tracks = _to_local_visual_tracks(
-                        (
-                            _TrackedDetection(
-                                bbox=item.bbox,
-                                confidence=item.confidence,
-                                category=item.category,
-                                track_id=item.source_track_id,
-                                mot_history_length=item.mot_history_length,
-                            )
-                            for item in detections
-                            if item.source_track_id is not None
-                        ),
+                        tracked,
                         camera_id=camera_id,
                         timestamp=timestamp,
                         source_name=self.config.source_name,
@@ -320,6 +353,15 @@ class YoloMotAdapter:
                                 "tracker_backend": self.config.tracker_backend,
                                 "detector_backend": "ultralytics_yolov8",
                             }
+                        )
+                        metadata.update(
+                            _tracked_frame_metadata(
+                                tracked,
+                                tracks,
+                                detector_backend="ultralytics_yolov8",
+                                tracker_backend=self.config.tracker_backend,
+                                frame=frame,
+                            )
                         )
                         return self._result(
                             tracks,
@@ -346,7 +388,7 @@ class YoloMotAdapter:
                     default_category=self.config.default_category,
                 )
             )
-            tracked = self._fallback_tracker.update(detections)
+            tracked = tuple(self._fallback_tracker.update(detections))
             tracks = _to_local_visual_tracks(
                 tracked,
                 camera_id=camera_id,
@@ -361,6 +403,15 @@ class YoloMotAdapter:
                     "tracker_backend": "iou_fallback",
                     "detector_backend": "ultralytics_yolov8",
                 }
+            )
+            metadata.update(
+                _tracked_frame_metadata(
+                    tracked,
+                    tracks,
+                    detector_backend="ultralytics_yolov8",
+                    tracker_backend="iou_fallback",
+                    frame=frame,
+                )
             )
             return self._result(
                 tracks,
@@ -520,6 +571,62 @@ def _to_local_visual_tracks(
     return tuple(tracks)
 
 
+def _tracked_frame_metadata(
+    tracked: Sequence[_TrackedDetection],
+    tracks: Sequence[LocalVisualTrack],
+    *,
+    detector_backend: str,
+    tracker_backend: str,
+    frame: Any,
+) -> dict[str, Any]:
+    frame_size = _frame_size(frame)
+    image_diag = None
+    if frame_size is not None:
+        width, height = frame_size
+        image_diag = float(np.hypot(width, height))
+
+    confidence_by_id: dict[str, float] = {}
+    class_id_by_id: dict[str, int | None] = {}
+    bbox_area_by_id: dict[str, float] = {}
+    bbox_scale_by_id: dict[str, float | None] = {}
+    tracker_backend_by_id: dict[str, str] = {}
+    detector_backend_by_id: dict[str, str] = {}
+
+    for item, track in zip(tracked, tracks):
+        area = _bbox_area(item.bbox)
+        confidence_by_id[track.local_track_id] = float(item.confidence)
+        class_id_by_id[track.local_track_id] = item.class_id
+        bbox_area_by_id[track.local_track_id] = area
+        bbox_scale_by_id[track.local_track_id] = (
+            float(np.sqrt(area) / image_diag) if image_diag and area > 0.0 else None
+        )
+        tracker_backend_by_id[track.local_track_id] = tracker_backend
+        detector_backend_by_id[track.local_track_id] = detector_backend
+
+    return {
+        "confidence_by_local_track_id": confidence_by_id,
+        "class_id_by_local_track_id": class_id_by_id,
+        "bbox_area_px_by_local_track_id": bbox_area_by_id,
+        "bbox_scale_by_local_track_id": bbox_scale_by_id,
+        "bbox_scale_definition": "sqrt_bbox_area_px_over_image_diagonal_px",
+        "tracker_backend_by_local_track_id": tracker_backend_by_id,
+        "detector_backend_by_local_track_id": detector_backend_by_id,
+        "tracker_id_scope": "LocalVisualTrack.local_track_id_only",
+        "local_track_id_scope": "resource/camera/frame/local_tracker_namespace",
+    }
+
+
+def _frame_size(frame: Any) -> tuple[int, int] | None:
+    shape = getattr(frame, "shape", None)
+    if shape is None or len(shape) < 2:
+        return None
+    height = int(shape[0])
+    width = int(shape[1])
+    if width <= 0 or height <= 0:
+        return None
+    return (width, height)
+
+
 def _normalize_detections(
     raw: Any,
     *,
@@ -641,6 +748,8 @@ def _detection_from_record(
             "id",
         )
     )
+    if _track_id_aliases_truth_or_global(detection, source_track_id):
+        source_track_id = None
     history_value = _get_any(detection, "mot_history_length", "track_age", "age")
     history = int(1 if history_value is None else history_value)
     return _DetectorDetection(
@@ -711,6 +820,11 @@ def _bbox_iou(
     return intersection / union
 
 
+def _bbox_area(bbox: tuple[float, float, float, float]) -> float:
+    x1, y1, x2, y2 = bbox
+    return max(0.0, x2 - x1) * max(0.0, y2 - y1)
+
+
 def _get_any(obj: Any, *names: str) -> Any:
     for name in names:
         if isinstance(obj, Mapping) and name in obj:
@@ -744,6 +858,17 @@ def _class_id_from_record(detection: Any) -> int | None:
     if value is None:
         return None
     return int(value)
+
+
+def _track_id_aliases_truth_or_global(record: Any, track_id: str | int | None) -> bool:
+    if track_id is None:
+        return False
+    track_text = str(track_id)
+    for field_name in TRUTH_OR_GLOBAL_FIELD_NAMES:
+        value = _get_any(record, field_name)
+        if value is not None and str(value) == track_text:
+            return True
+    return False
 
 
 def _category_from_class_id(
@@ -795,3 +920,12 @@ def _optional_column(value: Any, size: int, *, default: float) -> np.ndarray:
     if array.shape[0] != size:
         raise ValueError(f"expected {size} detector values, got {array.shape[0]}")
     return array
+
+
+def _optional_nonnegative_float(value: float | None) -> float | None:
+    if value is None:
+        return None
+    numeric = float(value)
+    if numeric < 0.0:
+        raise ValueError("budget values must be non-negative")
+    return numeric

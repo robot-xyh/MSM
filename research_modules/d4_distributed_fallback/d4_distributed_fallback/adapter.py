@@ -130,6 +130,8 @@ class D4DecisionRecord:
     secondary_coverage_ratio: float | None = None
     cross_view_support_count: int = 0
     cross_view_association_count: int | None = None
+    stable_cross_view_registration_count: int | None = None
+    not_registered_count: int | None = None
     cross_view_conversion_gap: float | str | None = None
     secondary_detect_to_registration_gap: float | str | None = None
     secondary_detect_to_cross_view_reject_reasons: tuple[str, ...] = ()
@@ -159,6 +161,13 @@ class D4DecisionRecord:
     secondary_diagnostic_takeover_capable: bool | None = None
     secondary_diagnostic_capability_score: float | None = None
     secondary_diagnostic_capability_reasons: tuple[str, ...] = ()
+    secondary_capability_class: str = "not_ready"
+    secondary_capability_inputs: dict[str, Any] = field(default_factory=dict)
+    secondary_diagnostic_capability_class: str | None = None
+    secondary_diagnostic_capability_inputs: dict[str, Any] = field(default_factory=dict)
+    secondary_diagnostic_network_full_view_rate: float | None = None
+    secondary_diagnostic_stable_cross_view_registration_count: int | None = None
+    secondary_diagnostic_not_registered_count: int | None = None
     risk_factors: tuple[str, ...] = ()
     hard_risk_factors: tuple[str, ...] = ()
     soft_risk_factors: tuple[str, ...] = ()
@@ -190,6 +199,13 @@ class D4DecisionRecord:
             "active_degradation_review_label": self.review_label,
             "review_label_detail": self.review_label_detail,
             "review_label_source": self.review_label_source,
+            "active_degradation_necessity_label": (
+                self.review_label
+                if self.mode == DegradationMode.ACTIVE_DEGRADATION
+                else "unnecessary"
+                if self.mode == DegradationMode.NONE
+                else "inconclusive"
+            ),
             "review_pre_window_s": self.review_pre_window_s,
             "review_post_window_s": self.review_post_window_s,
             "review_pre_window_start_timestamp": self.review_pre_window_start_timestamp,
@@ -260,6 +276,10 @@ class D4DecisionRecord:
             "secondary_coverage_ratio": self.secondary_coverage_ratio,
             "cross_view_support_count": self.cross_view_support_count,
             "cross_view_association_count": self.cross_view_association_count,
+            "stable_cross_view_registration_count": (
+                self.stable_cross_view_registration_count
+            ),
+            "not_registered_count": self.not_registered_count,
             "cross_view_conversion_gap": self.cross_view_conversion_gap,
             "secondary_detect_to_registration_gap": (
                 self.secondary_detect_to_registration_gap
@@ -277,6 +297,8 @@ class D4DecisionRecord:
                 self.secondary_network_coverage_available
             ),
             "secondary_network_full_view_gap": self.secondary_network_full_view_gap,
+            "secondary_capability_class": self.secondary_capability_class,
+            "secondary_capability_inputs": self.secondary_capability_inputs,
             "secondary_takeover_candidate": self.secondary_takeover_candidate,
             "secondary_takeover_success": self.secondary_takeover_success,
             "secondary_takeover_necessity_label": self.secondary_takeover_necessity_label,
@@ -317,6 +339,9 @@ class D4DecisionRecord:
             "active_degradation_false_trigger_candidate": (
                 self.active_degradation_false_trigger_candidate
             ),
+            "unnecessary_degradation_candidate": (
+                self.active_degradation_false_trigger_candidate
+            ),
             "active_degradation_false_trigger_reason": (
                 self.active_degradation_false_trigger_reason
             ),
@@ -330,6 +355,21 @@ class D4DecisionRecord:
             ),
             "secondary_diagnostic_capability_reasons": list(
                 self.secondary_diagnostic_capability_reasons
+            ),
+            "secondary_diagnostic_capability_class": (
+                self.secondary_diagnostic_capability_class
+            ),
+            "secondary_diagnostic_capability_inputs": (
+                self.secondary_diagnostic_capability_inputs
+            ),
+            "secondary_diagnostic_network_full_view_rate": (
+                self.secondary_diagnostic_network_full_view_rate
+            ),
+            "secondary_diagnostic_stable_cross_view_registration_count": (
+                self.secondary_diagnostic_stable_cross_view_registration_count
+            ),
+            "secondary_diagnostic_not_registered_count": (
+                self.secondary_diagnostic_not_registered_count
             ),
             "c2_health": self.c2_health.value,
             "secondary_available": self.secondary_available,
@@ -596,6 +636,10 @@ class D4ArbitrationAdapter:
             secondary_coverage_ratio=terminal_summary.secondary_coverage_ratio,
             cross_view_support_count=terminal_summary.cross_view_support_count,
             cross_view_association_count=terminal_summary.cross_view_association_count,
+            stable_cross_view_registration_count=(
+                terminal_summary.stable_cross_view_registration_count
+            ),
+            not_registered_count=terminal_summary.not_registered_count,
             cross_view_conversion_gap=terminal_summary.cross_view_conversion_gap,
             secondary_detect_to_registration_gap=terminal_summary.cross_view_conversion_gap,
             secondary_detect_to_cross_view_reject_reasons=(
@@ -709,6 +753,41 @@ class D4ArbitrationAdapter:
                 diagnostic_lifecycle.secondary_capability_reasons
                 if diagnostic_lifecycle is not None
                 else ()
+            ),
+            secondary_capability_class=(
+                diagnostic_lifecycle.secondary_readiness_class
+                if diagnostic_lifecycle is not None
+                else "not_ready"
+            ),
+            secondary_capability_inputs=(
+                diagnostic_lifecycle.secondary_capability_inputs
+                if diagnostic_lifecycle is not None
+                else {}
+            ),
+            secondary_diagnostic_capability_class=(
+                diagnostic_lifecycle.secondary_readiness_class
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_capability_inputs=(
+                diagnostic_lifecycle.secondary_capability_inputs
+                if diagnostic_lifecycle is not None
+                else {}
+            ),
+            secondary_diagnostic_network_full_view_rate=(
+                diagnostic_lifecycle.secondary_network_full_view_rate
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_stable_cross_view_registration_count=(
+                diagnostic_lifecycle.stable_cross_view_registration_count
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_not_registered_count=(
+                diagnostic_lifecycle.not_registered_count
+                if diagnostic_lifecycle is not None
+                else None
             ),
             c2_health=health,
             secondary_available=_secondary_available(lifecycle),
@@ -1164,6 +1243,22 @@ def _secondary_visual_conversion_fields(
             "coverage_ratio",
         )
     )
+    stable_registration_count = _optional_int(
+        _first_evidence_field_by_names(
+            sources,
+            "stable_cross_view_registration_count",
+            "secondary_stable_cross_view_registration_count",
+            "stable_registration_count",
+        )
+    )
+    not_registered_count = _optional_int(
+        _first_evidence_field_by_names(
+            sources,
+            "not_registered_count",
+            "secondary_not_registered_count",
+            "secondary_detect_available_but_not_registered_count",
+        )
+    )
     cross_view_count = _derived_cross_view_association_count(d5_evidence, cross_view_summary)
     conversion_gap_raw = _first_evidence_field(sources, "cross_view_conversion_gap")
     conversion_gap = _normalise_conversion_gap(conversion_gap_raw)
@@ -1185,7 +1280,17 @@ def _secondary_visual_conversion_fields(
         _gap_mentions_registration_breakpoint(conversion_gap_raw)
     )
     positive_gap = _positive_conversion_gap(conversion_gap_raw)
-    not_registered = detect_available and (cross_view_zero or registration_break)
+    stable_registration_available = (
+        stable_registration_count is not None and stable_registration_count > 0
+    )
+    not_registered_metric = (
+        not_registered_count is not None
+        and not_registered_count > 0
+        and not stable_registration_available
+    )
+    not_registered = detect_available and (
+        cross_view_zero or registration_break or not_registered_metric
+    )
     diagnostic = _secondary_detect_diagnostic(
         not_registered=not_registered,
         reject_reasons=reject_reasons,
@@ -1202,6 +1307,8 @@ def _secondary_visual_conversion_fields(
         "gimbal_pointing_ok": gimbal_pointing_ok,
         "secondary_coverage_ratio": secondary_coverage_ratio,
         "cross_view_association_count": cross_view_count,
+        "stable_cross_view_registration_count": stable_registration_count,
+        "not_registered_count": not_registered_count,
         "cross_view_conversion_gap": conversion_gap,
         "secondary_detect_to_cross_view_reject_reasons": reject_reasons,
         "secondary_detect_available_but_not_registered": not_registered,
@@ -1543,6 +1650,27 @@ def build_resource_summary(resource: Any) -> ResourceSummary | None:
             _get(resource, "secondary_coverage_ratio", _get(resource, "coverage_ratio"))
         ),
         cross_view_support_count=_optional_int(_get(resource, "cross_view_support_count")),
+        secondary_network_full_view_rate=_optional_float(
+            _get(
+                resource,
+                "secondary_network_full_view_rate",
+                _get(resource, "secondary_network_joint_full_view_frame_rate"),
+            )
+        ),
+        stable_cross_view_registration_count=_optional_int(
+            _get(
+                resource,
+                "stable_cross_view_registration_count",
+                _get(resource, "secondary_stable_cross_view_registration_count"),
+            )
+        ),
+        not_registered_count=_optional_int(
+            _get(
+                resource,
+                "not_registered_count",
+                _get(resource, "secondary_not_registered_count"),
+            )
+        ),
     )
 
 

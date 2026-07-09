@@ -27,6 +27,7 @@ for rel in (
         sys.path.insert(0, path)
 
 from airsim_runtime.models import (
+    BlocksEpisodeSpec,
     BlocksSmokeConfig,
     default_actor_target_specs,
     default_2v2_actor_target_specs,
@@ -62,6 +63,8 @@ ACTOR_2V2_TUNED_SETTINGS = (
 CV_5V5_D4D5_STRESS_200M_SETTINGS = (
     "research_modules/airsim_runtime/settings/blocks_cv_5v5_d4d5_stress_200m_settings.json"
 )
+P1_CALIBRATION_SUITE_VERSION = "p1-d4d5-calibration-suite-v1"
+P1_CALIBRATION_THRESHOLD_VERSION = "p1-d4d5-thresholds-v1"
 
 
 def parse_args() -> argparse.Namespace:
@@ -876,19 +879,36 @@ def _run_p1_calibration_sweep(args: argparse.Namespace) -> int:
                         f"_sec{secondary_count}_st{_token(standoff)}"
                     )
                     if len(seeds) == 1:
-                        combo_results = [
-                            _run_one_sequence(
+                        base_config, selected_sequence_id, episode_specs = _with_p1_calibration_metadata(
+                            _build_sequence_run(
                                 combo_args,
                                 seed=seeds[0],
                                 sequence_id=combo_args.sequence_id,
+                            ),
+                            height_m=float(height),
+                            fov_deg=float(fov),
+                            secondary_count=int(secondary_count),
+                            standoff_m=float(standoff),
+                        )
+                        combo_results = [
+                            run_blocks_sequence(
+                                base_config,
+                                sequence_id=selected_sequence_id,
+                                episode_specs=episode_specs,
                             )
                         ]
                     else:
                         runs = tuple(
-                            _build_sequence_run(
-                                combo_args,
-                                seed=seed,
-                                sequence_id=f"{combo_args.sequence_id}_seed{seed:03d}",
+                            _with_p1_calibration_metadata(
+                                _build_sequence_run(
+                                    combo_args,
+                                    seed=seed,
+                                    sequence_id=f"{combo_args.sequence_id}_seed{seed:03d}",
+                                ),
+                                height_m=float(height),
+                                fov_deg=float(fov),
+                                secondary_count=int(secondary_count),
+                                standoff_m=float(standoff),
                             )
                             for seed in seeds
                         )
@@ -921,6 +941,44 @@ def _run_p1_calibration_sweep(args: argparse.Namespace) -> int:
     if "d6_markdown" in report_paths:
         print(f"d6_calibration_report={report_paths['d6_markdown'].resolve()}")
     return 0
+
+
+def _with_p1_calibration_metadata(
+    run: tuple[BlocksSmokeConfig, str, tuple[BlocksEpisodeSpec, ...]],
+    *,
+    height_m: float,
+    fov_deg: float,
+    secondary_count: int,
+    standoff_m: float,
+):
+    base_config, sequence_id, episode_specs = run
+    metadata = {
+        **dict(base_config.metadata),
+        "calibration_suite": "cv_5v5_d4d5_secondary_coverage",
+        "calibration_suite_version": P1_CALIBRATION_SUITE_VERSION,
+        "threshold_version": P1_CALIBRATION_THRESHOLD_VERSION,
+        "p1_secondary_height_m": float(height_m),
+        "p1_secondary_fov_deg": float(fov_deg),
+        "p1_secondary_count": int(secondary_count),
+        "p1_secondary_standoff_m": float(standoff_m),
+        "p1_calibration_dimensions": [
+            "secondary_height_m",
+            "secondary_fov_deg",
+            "secondary_count",
+            "secondary_standoff_m",
+            "seed",
+            "d4d5_case",
+        ],
+        "p1_expected_state_fields": [
+            "d3_plan_version",
+            "d4_action",
+            "d5_decision_state",
+            "d7_guidance_mode",
+            "secondary_capability_class",
+            "active_degradation_review_label",
+        ],
+    }
+    return replace(base_config, metadata=metadata), sequence_id, episode_specs
 
 
 def _parse_float_list(raw: str, *, option_name: str) -> list[float]:
@@ -973,6 +1031,9 @@ def _d4d5_calibration_rows(
                 seed = _seed_from_sequence_id(str(result.sequence_id))
             rows.append(
                 {
+                    "calibration_suite": "cv_5v5_d4d5_secondary_coverage",
+                    "calibration_suite_version": P1_CALIBRATION_SUITE_VERSION,
+                    "threshold_version": P1_CALIBRATION_THRESHOLD_VERSION,
                     "sequence_id": result.sequence_id,
                     "seed": seed,
                     "case_name": metrics.get("case_name"),
@@ -1037,6 +1098,9 @@ def _write_p1_calibration_sweep_outputs(
     report_path = output_dir / "P1_AIRSIM_CALIBRATION_SWEEP_REPORT.md"
     payload = {
         "sequence_id": args.sequence_id,
+        "calibration_suite": "cv_5v5_d4d5_secondary_coverage",
+        "calibration_suite_version": P1_CALIBRATION_SUITE_VERSION,
+        "threshold_version": P1_CALIBRATION_THRESHOLD_VERSION,
         "seed_count": len(seeds),
         "seeds": seeds,
         "combination_count": combo_count,
@@ -1053,6 +1117,7 @@ def _write_p1_calibration_sweep_outputs(
         ],
         "rows": rows,
         "aggregate": _aggregate_calibration_rows(rows),
+        "height_comparison": _height_comparison(rows),
     }
     summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     report_path.write_text(_p1_calibration_markdown(payload), encoding="utf-8")
@@ -1123,9 +1188,40 @@ def _aggregate_calibration_rows(rows: list[dict[str, object]]) -> dict[str, obje
     return aggregate
 
 
+def _height_comparison(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    grouped: dict[float, list[dict[str, object]]] = {}
+    for row in rows:
+        grouped.setdefault(_as_float(row.get("height_m")), []).append(row)
+    comparison: list[dict[str, object]] = []
+    metric_keys = (
+        "secondary_network_joint_full_view_frame_rate",
+        "secondary_network_mean_coverage_ratio",
+        "secondary_single_camera_full_view_frame_rate",
+        "projection_valid_rate",
+        "geometry_gate_pass_rate",
+        "stable_cross_view_registration_count",
+        "cross_view_association_count",
+        "secondary_detect_available_but_not_registered",
+        "bbox_mean_px2",
+    )
+    for height_m, height_rows in sorted(grouped.items()):
+        item: dict[str, object] = {
+            "height_m": height_m,
+            "row_count": len(height_rows),
+            "case_count": len({str(row.get("case_name")) for row in height_rows}),
+            "seed_count": len({str(row.get("seed")) for row in height_rows}),
+        }
+        for key in metric_keys:
+            values = [_as_float(row.get(key)) for row in height_rows]
+            item[f"{key}_mean"] = sum(values) / len(values) if values else 0.0
+        comparison.append(item)
+    return comparison
+
+
 def _p1_calibration_markdown(payload: dict[str, object]) -> str:
     aggregate = payload.get("aggregate") or {}
     rows = payload.get("rows") or []
+    height_comparison = payload.get("height_comparison") or []
     lines = [
         "# P1 AirSim 批量校准报告",
         "",
@@ -1134,6 +1230,9 @@ def _p1_calibration_markdown(payload: dict[str, object]) -> str:
         "## 配置",
         "",
         f"- Sequence ID: `{payload.get('sequence_id')}`",
+        f"- Calibration suite: `{payload.get('calibration_suite')}`",
+        f"- Suite version: `{payload.get('calibration_suite_version')}`",
+        f"- Threshold version: `{payload.get('threshold_version')}`",
         f"- Seeds: `{', '.join(str(seed) for seed in payload.get('seeds', []))}`",
         f"- Geometry combinations: `{payload.get('combination_count')}`",
         f"- Result rows: `{payload.get('row_count')}`",
@@ -1150,11 +1249,35 @@ def _p1_calibration_markdown(payload: dict[str, object]) -> str:
         f"- detect 未注册均值: `{_fmt(aggregate.get('secondary_detect_available_but_not_registered_mean'))}`",
         f"- 云台指向 OK 均值: `{_fmt(aggregate.get('secondary_gimbal_pointing_ok_rate_mean'))}`",
         "",
+        "## 高度对比",
+        "",
+        "| Height | Rows | Seeds | NetworkFullMean | NetworkMeanCoverage | ProjValid | GatePass | StableReg | CrossView | NotRegistered | BBoxMean |",
+        "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for row in height_comparison if isinstance(height_comparison, list) else []:
+        lines.append(
+            "| "
+            f"{_fmt(row.get('height_m'))} | "
+            f"{row.get('row_count')} | "
+            f"{row.get('seed_count')} | "
+            f"{_fmt(row.get('secondary_network_joint_full_view_frame_rate_mean'))} | "
+            f"{_fmt(row.get('secondary_network_mean_coverage_ratio_mean'))} | "
+            f"{_fmt(row.get('projection_valid_rate_mean'))} | "
+            f"{_fmt(row.get('geometry_gate_pass_rate_mean'))} | "
+            f"{_fmt(row.get('stable_cross_view_registration_count_mean'))} | "
+            f"{_fmt(row.get('cross_view_association_count_mean'))} | "
+            f"{_fmt(row.get('secondary_detect_available_but_not_registered_mean'))} | "
+            f"{_fmt(row.get('bbox_mean_px2_mean'))} |"
+        )
+    lines.extend(
+        [
+            "",
         "## 分组合结果",
         "",
         "| Height | FOV | Sec | Standoff | Case | Action | NetworkFull | NetworkMean | ProjValid | GatePass | StableReg | CrossView | NotRegistered | BBoxMean | TopReject |",
         "| ---: | ---: | ---: | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
-    ]
+        ]
+    )
     for row in rows:
         lines.append(
             "| "

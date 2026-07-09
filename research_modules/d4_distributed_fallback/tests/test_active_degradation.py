@@ -91,6 +91,7 @@ def _secondary(available: bool = True, coverage_cell: str = "cell-north") -> Res
         coverage_cell=coverage_cell,
         heartbeat_timestamp_s=10.0,
         heartbeat_stale_after_s=2.0,
+        stable_cross_view_registration_count=2,
     )
 
 
@@ -118,6 +119,7 @@ def _mobile_high_recon(
         gimbal_pointing_ok=gimbal_pointing_ok,
         secondary_coverage_ratio=secondary_coverage_ratio,
         cross_view_support_count=2,
+        stable_cross_view_registration_count=2,
     )
 
 
@@ -381,6 +383,7 @@ def test_active_arbitration_selects_secondary_from_dynamic_resource_list() -> No
             coordinator_only=True,
             coverage_cell="cell-south",
             heartbeat_timestamp_s=10.0,
+            stable_cross_view_registration_count=2,
         ),
         ResourceSummary(
             "sec-north-primary",
@@ -394,6 +397,7 @@ def test_active_arbitration_selects_secondary_from_dynamic_resource_list() -> No
             coordinator_only=True,
             coverage_cell="cell-north",
             heartbeat_timestamp_s=10.0,
+            stable_cross_view_registration_count=2,
         ),
         ResourceSummary(
             "sec-north-backup",
@@ -407,6 +411,7 @@ def test_active_arbitration_selects_secondary_from_dynamic_resource_list() -> No
             coordinator_only=True,
             coverage_cell="cell-north",
             heartbeat_timestamp_s=10.0,
+            stable_cross_view_registration_count=2,
         ),
         ResourceSummary(
             "int-1",
@@ -464,6 +469,7 @@ def test_mobile_high_recon_evidence_does_not_auto_take_over_low_risk_frame() -> 
     assert decision.target_node_id is None
     assert lifecycle[0].secondary_available is True
     assert lifecycle[0].secondary_capability_class == "mobile_high_recon"
+    assert lifecycle[0].secondary_readiness_class == "takeover_ready"
     assert lifecycle[0].is_mobile_high_recon is True
     assert lifecycle[0].is_fixed_tethered_secondary is False
     assert lifecycle[0].coverage_matches_requested_cell is True
@@ -492,6 +498,7 @@ def test_mobile_secondary_role_and_coverage_ratio_can_be_selected_on_hard_mismat
         cue_freshness_s=0.1,
         gimbal_pointing_ok=True,
         secondary_coverage_ratio=0.72,
+        stable_cross_view_registration_count=2,
     )
 
     decision = ActiveDegradationArbiter().evaluate(
@@ -515,6 +522,7 @@ def test_mobile_secondary_role_and_coverage_ratio_can_be_selected_on_hard_mismat
     assert decision.target_node_id == "msec-1"
     assert lifecycle[0].secondary_available is True
     assert lifecycle[0].secondary_capability_class == "mobile_secondary_recon"
+    assert lifecycle[0].secondary_readiness_class == "takeover_ready"
 
 
 def test_mobile_high_recon_bad_gimbal_or_stale_cue_is_not_secondary_candidate() -> None:
@@ -556,6 +564,54 @@ def test_visible_but_not_registered_secondary_is_not_takeover_capable() -> None:
         secondary_detect_available_but_not_registered=True,
     )
 
+    secondary = replace(
+        _secondary(),
+        stable_cross_view_registration_count=None,
+        cross_view_support_count=None,
+    )
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=terminal,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[secondary],
+        current_time_s=10.1,
+    )
+    lifecycle = summarize_secondary_lifecycle(
+        [secondary],
+        "cell-north",
+        current_time_s=10.1,
+        terminal_association=terminal,
+    )
+
+    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
+    assert lifecycle[0].secondary_visible is True
+    assert lifecycle[0].secondary_registered is False
+    assert lifecycle[0].secondary_takeover_capable is False
+    assert lifecycle[0].secondary_readiness_class == "visible_only"
+    assert "secondary_detect_available_but_not_registered" in (
+        lifecycle[0].secondary_capability_reasons
+    )
+
+
+def test_registered_secondary_with_low_network_full_view_is_not_takeover_ready() -> None:
+    terminal = _terminal(
+        decision_state=TerminalDecisionState.REACQUIRE,
+        observed_global_track_id="track-2",
+        consecutive_non_locked_frames=3,
+        consecutive_mismatch_frames=2,
+    )
+    terminal = replace(
+        terminal,
+        secondary_coverage_ratio=0.92,
+        secondary_network_joint_full_view_frame_rate=0.20,
+        stable_cross_view_registration_count=3,
+        cross_view_association_count=2,
+    )
+
     decision = ActiveDegradationArbiter().evaluate(
         track_uncertainty=_track(),
         association_risk=_association(),
@@ -575,11 +631,11 @@ def test_visible_but_not_registered_secondary_is_not_takeover_capable() -> None:
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
     assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
     assert lifecycle[0].secondary_visible is True
-    assert lifecycle[0].secondary_registered is False
+    assert lifecycle[0].secondary_registered is True
     assert lifecycle[0].secondary_takeover_capable is False
-    assert "secondary_detect_available_but_not_registered" in (
-        lifecycle[0].secondary_capability_reasons
-    )
+    assert lifecycle[0].secondary_readiness_class == "registration_usable"
+    assert lifecycle[0].secondary_capability_inputs["network_full_view_rate"] == 0.2
+    assert "network_full_view_rate_low" in lifecycle[0].secondary_capability_reasons
 
 
 def test_terminal_from_different_resource_is_not_consistent() -> None:

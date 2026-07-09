@@ -543,11 +543,10 @@ class MainAirSimEpisodeBus:
             )
             self._pending_center_replan_reason = None
         if secondary_takeover is not None and previous is not None:
-            source_node_id = str(
-                secondary_takeover.get("secondary_plan_source_node_id")
-                or secondary_takeover.get("target_node_id")
-                or secondary_takeover.get("selected_coordinator")
-                or "SEC-NORTH"
+            source_node_id = _secondary_takeover_source_node_id(
+                frame,
+                secondary_takeover,
+                previous_plan=previous,
             )
             plan = prepare_secondary_takeover_plan(
                 plan,
@@ -1679,6 +1678,48 @@ def _secondary_available(frame: AirSimFrame) -> bool:
         return False
     secondary_names = frame.metadata.get("secondary_camera_vehicle_names", ())
     return bool(secondary_names) or bool(frame.secondary_nodes_alive)
+
+
+def _secondary_takeover_source_node_id(
+    frame: AirSimFrame,
+    secondary_takeover: Mapping[str, Any],
+    *,
+    previous_plan: AssignmentPlan | None,
+) -> str:
+    secondary_names = [
+        str(name)
+        for name in frame.metadata.get("secondary_camera_vehicle_names", ())
+        if str(name).strip()
+    ]
+    valid_names = set(secondary_names)
+    previous_owner = None
+    if previous_plan is not None and previous_plan.metadata.get("active_plan_owner") == "secondary":
+        previous_owner = (
+            previous_plan.metadata.get("owner_node_id")
+            or previous_plan.metadata.get("selected_secondary_node_id")
+            or previous_plan.metadata.get("source_node_id")
+        )
+    candidates = (
+        secondary_takeover.get("target_node_id"),
+        secondary_takeover.get("selected_secondary_node_id"),
+        secondary_takeover.get("secondary_plan_source_node_id"),
+        secondary_takeover.get("source_node_id"),
+        previous_owner,
+        secondary_takeover.get("selected_coordinator"),
+        secondary_names[0] if secondary_names else None,
+    )
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        node_id = str(candidate).strip()
+        if not node_id:
+            continue
+        if valid_names and node_id not in valid_names:
+            continue
+        if node_id.lower() in {"center", "d3_central", "central", "secondary_node"}:
+            continue
+        return node_id
+    return secondary_names[0] if secondary_names else "SEC-NORTH"
 
 
 def _d4_permission(d4_result: Any | None) -> D4GuidancePermission:

@@ -43,7 +43,7 @@ D6 已有离线 loader，但不直接连接 AirSim：
 - `load_d4_active_degradation_decisions()` 读取 D4 主动降级 CSV，并离线消费 `review_label`、trigger/decision timestamp、selected coordinator、coverage cell 和 pre/post window 字段。
 - `load_d7_intercept_outputs()` / `load_d7_guidance_timeseries()` 读取 D7 `control_commands.csv`、`intercept_summary.json`、`guidance_records.csv`、`guidance_summaries.json`。
 - `load_episode_log_jsonl()` 读取 D6 标准化 dry-run JSONL。
-- `load_airsim_calibration_records()` / `AirSimCalibrationReportGenerator` 自动扫描 main runtime 已写盘的 `d4d5_stress_metrics.json`、`airsim_blocks_summary.json` 和 `main_episode_bus/*.json`，按 `metric_scope/seed/scenario/secondary_height/FOV/secondary_count/detection_backend` 汇总多 seed AirSim 校准指标，并输出 CSV、JSON 和中文 Markdown。
+- `load_airsim_calibration_records()` / `AirSimCalibrationReportGenerator` 自动扫描 main runtime 已写盘的 `d4d5_stress_metrics.json`、`airsim_blocks_summary.json` 和 `main_episode_bus/*.json`，按 `metric_scope/seed/scenario/comparison_role/secondary_height/FOV/secondary_count/detection_backend` 汇总多 seed AirSim 校准指标，并输出 CSV、JSON 和中文 Markdown。calibration records/summary 保留 `scenario_version`、`standard_mapping_version`、`evidence_path`、`trend_key`、`secondary_height_bucket` 和实际规模字段。
 
 这些 loader 都是 file/offline-only。D6 已能消费 D4/D5/D7 写盘产物；D6 不拥有 live bus 订阅、AirSim 原生 recording 通用解析器或自动跨目录 episode 聚合调度。
 
@@ -55,6 +55,8 @@ D6 现在也能离线汇总 main/D4/D5 已写盘的二级视角 metadata，并�
 
 P1 二级侦察 detect-to-registration 校准报告已经补齐分层漏斗字段：`secondary_detect_count`、`secondary_visible_target_union_ratio`、`secondary_network_joint_full_view_frame_rate`、`projection_valid_rate`、`geometry_gate_pass_rate`、`registered_candidate_count`、`stable_cross_view_registration_count` 和 `not_registered_count`。reject/outcome reason 统一保留 `not_all_targets_visible`、`network_union_incomplete`、`projection_invalid`、`geometry_gate_rejected`、`stability_window_failed`、`no_global_binding`、`stale_or_missing_recon_cue`、`registered_to_global_track`，缺失时按 0 输出，便于跨 seed 比较。
 
+截至 2026-07-09，P1 AirSim calibration Markdown 进一步输出 50m vs 200m 二级覆盖对比、coverage funnel、Detect-to-registration funnel、baseline vs enhanced 对照、D7 guidance reject reason 和 Standard C-UAS Mapping。baseline/enhanced 只使用日志显式写出的 comparison role；D6 不从 `2v2/5v5` 场景名推断规模或对照组，不接 TrackEval、Stone Soup、SCRIMMAGE 等外部 evaluator。
+
 截至 2026-07-08，`research_modules/airsim_runtime/outputs/p1_d4d5_mobile_recon_20260708_055948*` 是历史 mobile recon stress 批次，可作为 D6 已能消费 `mobile_recon_gimbal`、coverage、bbox、gimbal 和 funnel 字段的旧证据。
 
 当前最新 P1 registration calibration v2 位于 `research_modules/airsim_runtime/outputs/p1_d4d5_registration_calibration_runtime_v2_20260708*`。D6 bundle 已生成 `d6_airsim_calibration/airsim_calibration_records.csv`、`airsim_calibration_summary.csv`、`airsim_calibration_summary.json` 和 `airsim_calibration_report.md`。该 v2 批次为 single seed、3 case，height 200 m、FOV 110 deg、secondary_count 3；当前指标为 `projection_valid_rate=1.0`、`geometry_gate_pass_rate≈0.474`、stable cross-view registration 51/55/53、cross-view association 4/4/5、degradation case `not_registered_count=35/35`、full-view mean≈0.048、best≈0.143、coverage mean≈0.771。当前结论是 D6 报告链路已能输出 projection/gate/stable registration/not-registered/funnel/D7 reject；剩余是更多真实 AirSim 多 seed/N-v-N 数据和 review labels，形成长期趋势。D6 仍只消费日志，不参与控制，也不从 `2v2/5v5` 场景名推断规模。
@@ -62,7 +64,7 @@ P1 二级侦察 detect-to-registration 校准报告已经补齐分层漏斗字�
 ## 当前 P0/P1 状态
 
 - P0：P0-A/P0-C 字段已补齐。D6 当前输出 mission outcome、success/failure reason、top failure causes/root cause、性能监测字段、EVAL tracking schema 和 `cuas-standard-map-v1` 标准化评估映射最小版；仍保持离线消费日志，不参与控制；指标继续按实际规模归一化，不从 `5v5` 名称推断分母。
-- P1：多 seed AirSim 校准 helper/report 已补齐，并已由 main runtime 的 P1 D4/D5 calibration sweep 自动调用；可输出 coverage/funnel/gimbal、detect-to-registration 分层漏斗、cross-view registration、D7 guidance reject reason、active degradation precision 和 actual scale 分组字段。剩余 P1 是 COURAGEOUS/MDPI/OCEF 完整标准化报告、baseline 对比和统计显著性、场景库管理、CI 回归摘要，以及让 main/D4/D5/D7 持续写真实多 seed 数据并沉淀长期趋势和阈值校准。
+- P1：多 seed AirSim 校准 helper/report 已补齐，并已由 main runtime 的 P1 D4/D5 calibration sweep 自动调用；可输出 coverage/funnel/gimbal、detect-to-registration 分层漏斗、cross-view registration、not-registered、D7 guidance reject reason、active degradation precision、unnecessary degradation、baseline vs enhanced 表格、50m vs 200m 覆盖对比和 actual scale/trend 字段。剩余 P1 是 COURAGEOUS/MDPI/OCEF 完整标准化报告、统计显著性/非参数 CI、场景库管理、CI 回归摘要，以及让 main/D4/D5/D7 持续写真实多 seed 数据并沉淀长期趋势和阈值校准。
 
 ## PNG 策略
 

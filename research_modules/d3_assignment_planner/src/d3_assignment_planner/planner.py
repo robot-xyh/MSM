@@ -141,17 +141,25 @@ class AssignmentPlanner:
         )
         assignments = self._annotate_assignment_context(assignments, version)
         if unassigned_target_ids is None:
-            unassigned_target_ids = tuple(
+            solver_unassigned = tuple(
                 matrix_result.target_ids[index]
                 for index in solver_result.unassigned_target_indices
+            )
+            assigned_target_ids = {assignment.target_id for assignment in assignments}
+            unassigned_target_ids = tuple(
+                target_id
+                for target_id in matrix_result.target_ids
+                if target_id in solver_unassigned
+                or target_id not in assigned_target_ids
             )
         computed_total_cost = solver_result.objective_value
         if total_cost is None:
             computed_total_cost += switch_penalty_total
         target_count = len(matrix_result.target_ids)
         resource_count = len(matrix_result.resource_ids)
+        plan_id = f"d3-plan-{uuid4().hex[:12]}"
         return AssignmentPlan(
-            plan_id=f"d3-plan-{uuid4().hex[:12]}",
+            plan_id=plan_id,
             version=version,
             window_id=plan_window_id,
             assignments=assignments,
@@ -170,6 +178,13 @@ class AssignmentPlanner:
             metadata={
                 "configured_human_authorization_state": self.config.human_authorization_state,
                 "effective_human_authorization_state": self.config.human_authorization_state,
+                "current_plan_id": plan_id,
+                "current_plan_version": version,
+                "current_plan_owner": "center",
+                "current_plan_owner_node_id": self.config.source_node_id,
+                "plan_owner": "center",
+                "active_plan_owner": "center",
+                "owner_node_id": self.config.source_node_id,
                 "source_node_id": self.config.source_node_id,
                 "target_node_id": self.config.target_node_id,
                 "link_type": self.config.link_type,
@@ -184,6 +199,7 @@ class AssignmentPlanner:
                 "hysteresis_max_changes_per_window": self.config.max_changes_per_window,
                 "reassignment_switch_penalty": self.config.reassignment_switch_penalty,
                 "high_threat_threshold": self.config.high_threat_threshold,
+                **self._matrix_evidence_metadata(matrix_result),
             },
             source_node_id=self.config.source_node_id,
             target_node_id=self.config.target_node_id,
@@ -616,6 +632,59 @@ class AssignmentPlanner:
             for target_id in unassigned_target_ids
             if threat_by_target.get(target_id, 0.0) >= self.config.high_threat_threshold
         )
+
+    @staticmethod
+    def _matrix_evidence_metadata(
+        matrix_result: CostMatrixResult,
+    ) -> dict[str, object]:
+        cost_matrix = tuple(
+            tuple(float(value) for value in row)
+            for row in matrix_result.matrix.tolist()
+        )
+        edges: list[dict[str, object]] = []
+        rejected_edges: list[dict[str, object]] = []
+        reject_reasons = matrix_result.reject_reasons
+        for target_index, target_id in enumerate(matrix_result.target_ids):
+            for resource_index, resource_id in enumerate(matrix_result.resource_ids):
+                reject_reason = None
+                if target_index < len(reject_reasons):
+                    row = reject_reasons[target_index]
+                    if resource_index < len(row):
+                        reject_reason = row[resource_index]
+                edge = {
+                    "target_id": target_id,
+                    "resource_id": resource_id,
+                    "cost": cost_matrix[target_index][resource_index],
+                    "cost_breakdown": dict(
+                        matrix_result.breakdowns[target_index][resource_index]
+                    ),
+                    "feasible": reject_reason is None,
+                    "reject_reason": reject_reason,
+                }
+                edges.append(edge)
+                if reject_reason is not None:
+                    rejected_edges.append(edge)
+        hard_reject_reasons = tuple(
+            sorted(
+                {
+                    str(edge["reject_reason"])
+                    for edge in rejected_edges
+                    if edge.get("reject_reason")
+                }
+            )
+        )
+        return {
+            "current_plan_evidence_schema": "d3_assignment_evidence_v1",
+            "cost_matrix_target_ids": matrix_result.target_ids,
+            "cost_matrix_resource_ids": matrix_result.resource_ids,
+            "cost_matrix": cost_matrix,
+            "current_cost_matrix": cost_matrix,
+            "cost_breakdowns_by_edge": tuple(edges),
+            "current_cost_breakdowns_by_edge": tuple(edges),
+            "rejected_edges": tuple(rejected_edges),
+            "hard_reject_count": len(rejected_edges),
+            "hard_reject_reasons": hard_reject_reasons,
+        }
 
     @staticmethod
     def _change_count(previous_map: dict[str, str], candidate_map: dict[str, str]) -> int:

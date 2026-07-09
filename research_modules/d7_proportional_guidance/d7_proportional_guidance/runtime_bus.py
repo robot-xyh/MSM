@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .pn import compute_three_dimensional_pn_benchmark
+from .calibration import DEFAULT_CALIBRATION_THRESHOLD_VERSION
 from .models import GuidanceMode
 from .terminal_gate import (
     AssignmentGuidanceBinding,
@@ -95,10 +96,45 @@ class D7RuntimePairOutput:
     track_version: int
     d4_action: str
     d5_decision_state: str
+    terminal_range_m: float | None = None
     assignment_id: str | None = None
     owner_node_id: str | None = None
     d4_target_node_id: str | None = None
     local_track_id: str | None = None
+    d4_action_block_reason: str = ""
+    d4_visual_png_allowed: bool | None = None
+    secondary_capability_class: str | None = None
+    secondary_readiness_class: str | None = None
+    d3_plan_version_consistent: bool | None = None
+    d3_owner_consistent: bool | None = None
+    d3_owner_version_consistent: bool | None = None
+    d5_lock_consistent: bool | None = None
+    d5_lock_consistency_reason: str = ""
+    d5_assigned_global_track_id: str | None = None
+    d5_assignment_version: int | None = None
+    detect_registration_outcome: str | None = None
+    detect_registration_reject_reasons: tuple[str, ...] = ()
+    measurement_age_s: float | None = None
+    projection_valid: bool | None = None
+    projection_reason: str | None = None
+    projection_depth_m: float | None = None
+    reprojection_error_px: float | None = None
+    mahalanobis_d2: float | None = None
+    gate_pass: bool | None = None
+    covariance_px_trace: float | None = None
+    projection_covariance_px_trace: float | None = None
+    camera_pose_source: str | None = None
+    calibration_health: str | None = None
+    drift_warning: bool | None = None
+    tracker_backend: str | None = None
+    requested_tracker_backend: str | None = None
+    tracker_id_scope: str | None = None
+    mot_history_length: int | None = None
+    yolo_class_id: int | None = None
+    yolo_class_name: str | None = None
+    bbox_area_px: float | None = None
+    association_probability: float | None = None
+    threshold_advisory_version: str = DEFAULT_CALIBRATION_THRESHOLD_VERSION
     terminal_handover_pending: bool = False
     terminal_locked: bool = False
     terminal_handoff_state: str = ""
@@ -169,11 +205,46 @@ class D7RuntimePairOutput:
             "owner_node_id": self.owner_node_id,
             "d4_target_node_id": self.d4_target_node_id,
             "track_version": self.track_version,
+            "terminal_range_m": self.terminal_range_m,
             "d4_action": self.d4_action,
             "d4_state": self.d4_action,
+            "d4_action_block_reason": self.d4_action_block_reason,
+            "d4_visual_png_allowed": self.d4_visual_png_allowed,
+            "secondary_capability_class": self.secondary_capability_class,
+            "secondary_readiness_class": self.secondary_readiness_class,
+            "d3_plan_version_consistent": self.d3_plan_version_consistent,
+            "d3_owner_consistent": self.d3_owner_consistent,
+            "d3_owner_version_consistent": self.d3_owner_version_consistent,
             "d5_decision_state": self.d5_decision_state,
             "d5_state": self.d5_decision_state,
+            "d5_lock_consistent": self.d5_lock_consistent,
+            "d5_lock_consistency_reason": self.d5_lock_consistency_reason,
+            "d5_assigned_global_track_id": self.d5_assigned_global_track_id,
+            "d5_assignment_version": self.d5_assignment_version,
             "local_track_id": self.local_track_id,
+            "detect_registration_outcome": self.detect_registration_outcome,
+            "detect_registration_reject_reasons": self.detect_registration_reject_reasons,
+            "measurement_age_s": self.measurement_age_s,
+            "projection_valid": self.projection_valid,
+            "projection_reason": self.projection_reason,
+            "projection_depth_m": self.projection_depth_m,
+            "reprojection_error_px": self.reprojection_error_px,
+            "mahalanobis_d2": self.mahalanobis_d2,
+            "gate_pass": self.gate_pass,
+            "covariance_px_trace": self.covariance_px_trace,
+            "projection_covariance_px_trace": self.projection_covariance_px_trace,
+            "camera_pose_source": self.camera_pose_source,
+            "calibration_health": self.calibration_health,
+            "drift_warning": self.drift_warning,
+            "tracker_backend": self.tracker_backend,
+            "requested_tracker_backend": self.requested_tracker_backend,
+            "tracker_id_scope": self.tracker_id_scope,
+            "mot_history_length": self.mot_history_length,
+            "yolo_class_id": self.yolo_class_id,
+            "yolo_class_name": self.yolo_class_name,
+            "bbox_area_px": self.bbox_area_px,
+            "association_probability": self.association_probability,
+            "threshold_advisory_version": self.threshold_advisory_version,
             "camera_quality_gate_passed": self.camera_quality_gate_passed,
             "los_quality_gate_passed": self.los_quality_gate_passed,
             "maneuver_margin_gate_passed": self.maneuver_margin_gate_passed,
@@ -281,6 +352,7 @@ class D7RuntimeBus:
             terminal_handover_pending=pair_input.handover_pending,
             terminal_locked=pair_input.terminal_locked,
             observation=observation,
+            terminal_association=pair_input.terminal_association,
             relative_position_ned=pair_input.relative_position_ned,
             relative_velocity_ned=pair_input.relative_velocity_ned,
             navigation_constant=self.config.navigation_constant,
@@ -310,6 +382,10 @@ class D7RuntimeBus:
                 terminal_switch_reject_reason="",
                 terminal_handoff_state="contract_rejected",
                 terminal_mode_entered=False,
+                closing_speed_mps=_relative_closing_speed_mps(
+                    pair_input.relative_position_ned,
+                    pair_input.relative_velocity_ned,
+                ),
                 terminal_latch_active=latch.terminal_active,
                 terminal_dwell_frames=self.config.terminal_dwell_frames,
                 terminal_release_frames=self.config.terminal_release_frames,
@@ -326,6 +402,10 @@ class D7RuntimeBus:
                 terminal_switch_reject_reason="vision_observation_missing",
                 terminal_handoff_state="awaiting_observation",
                 terminal_mode_entered=False,
+                closing_speed_mps=_relative_closing_speed_mps(
+                    pair_input.relative_position_ned,
+                    pair_input.relative_velocity_ned,
+                ),
                 terminal_latch_active=latch.terminal_active,
                 terminal_dwell_frames=self.config.terminal_dwell_frames,
                 terminal_release_frames=self.config.terminal_release_frames,
@@ -407,6 +487,10 @@ def coerce_vision_guidance_observation(
     frame_index = _value(value, ("frame_index",), default=None)
     if frame_index is not None:
         metadata.setdefault("frame_index", frame_index)
+    for name in _OBSERVATION_METADATA_FIELD_NAMES:
+        value_from_record = _value(value, (name,), default=None)
+        if value_from_record is not None:
+            metadata.setdefault(name, value_from_record)
     return VisionGuidanceObservation(
         timestamp_s=_required_float(value, ("timestamp_s", "timestamp", "t")),
         frame_timestamp_s=_optional_float_value(value, ("frame_timestamp_s", "frame_time_s")),
@@ -436,7 +520,14 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
     guidance_modes: Counter[str] = Counter()
     handoff_states: Counter[str] = Counter()
     d4_actions: Counter[str] = Counter()
+    d4_action_block_reasons: Counter[str] = Counter()
     d5_states: Counter[str] = Counter()
+    d5_lock_reasons: Counter[str] = Counter()
+    secondary_capability_classes: Counter[str] = Counter()
+    secondary_readiness_classes: Counter[str] = Counter()
+    detect_registration_outcomes: Counter[str] = Counter()
+    detect_registration_reject_reasons: Counter[str] = Counter()
+    tracker_backends: Counter[str] = Counter()
     plan_versions: Counter[str] = Counter()
     candidate_laws: Counter[str] = Counter()
     for row in rows:
@@ -445,8 +536,21 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         handoff_states[row.terminal_handoff_state or row.mode.value] += 1
         if row.d4_action:
             d4_actions[row.d4_action] += 1
+        if row.d4_action_block_reason:
+            d4_action_block_reasons[row.d4_action_block_reason] += 1
         if row.d5_decision_state:
             d5_states[row.d5_decision_state] += 1
+        if row.d5_lock_consistency_reason:
+            d5_lock_reasons[row.d5_lock_consistency_reason] += 1
+        if row.secondary_capability_class:
+            secondary_capability_classes[row.secondary_capability_class] += 1
+        if row.secondary_readiness_class:
+            secondary_readiness_classes[row.secondary_readiness_class] += 1
+        if row.detect_registration_outcome:
+            detect_registration_outcomes[row.detect_registration_outcome] += 1
+        detect_registration_reject_reasons.update(row.detect_registration_reject_reasons)
+        if row.tracker_backend:
+            tracker_backends[row.tracker_backend] += 1
         plan_versions[str(row.plan_version)] += 1
         if row.png_guidance_law_candidate:
             candidate_laws[row.png_guidance_law_candidate] += 1
@@ -458,8 +562,31 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
     visual_png_switch_count = sum(1 for row in rows if row.visual_png_enabled)
     gate_sample_rows = [row for row in rows if row.camera_quality_gate_passed is not None]
     ttc_values = [row.ttc_s for row in rows if row.ttc_s is not None]
+    terminal_range_values = [row.terminal_range_m for row in rows if row.terminal_range_m is not None]
+    closing_speed_values = [row.closing_speed_mps for row in rows if row.closing_speed_mps is not None]
     bbox_values = [row.bbox_area_ratio for row in rows if row.bbox_area_ratio is not None]
     edge_values = [row.edge_margin_ratio for row in rows if row.edge_margin_ratio is not None]
+    measurement_age_values = [row.measurement_age_s for row in rows if row.measurement_age_s is not None]
+    projection_depth_values = [row.projection_depth_m for row in rows if row.projection_depth_m is not None]
+    reprojection_error_values = [
+        row.reprojection_error_px for row in rows if row.reprojection_error_px is not None
+    ]
+    mahalanobis_values = [row.mahalanobis_d2 for row in rows if row.mahalanobis_d2 is not None]
+    covariance_trace_values = [
+        row.covariance_px_trace for row in rows if row.covariance_px_trace is not None
+    ]
+    projection_covariance_trace_values = [
+        row.projection_covariance_px_trace
+        for row in rows
+        if row.projection_covariance_px_trace is not None
+    ]
+    bbox_area_px_values = [row.bbox_area_px for row in rows if row.bbox_area_px is not None]
+    association_probability_values = [
+        row.association_probability for row in rows if row.association_probability is not None
+    ]
+    mot_history_values = [
+        float(row.mot_history_length) for row in rows if row.mot_history_length is not None
+    ]
     los_rate_abs_values = [
         abs(row.los_rate_radps)
         for row in gate_sample_rows
@@ -502,6 +629,33 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         "terminal_switch_reject_count": sum(switch_rejects.values()),
         "terminal_switch_reject_reasons": dict(switch_rejects),
         "terminal_switch_allowed_rate": visual_png_switch_count / len(rows) if rows else 0.0,
+        "d4_action_block_count": sum(d4_action_block_reasons.values()),
+        "d4_action_block_reasons": dict(d4_action_block_reasons),
+        "d5_lock_consistent_count": sum(1 for row in rows if row.d5_lock_consistent is True),
+        "d5_lock_consistent_rate": _bool_rate(row.d5_lock_consistent for row in rows),
+        "d5_lock_consistency_reasons": dict(d5_lock_reasons),
+        "d3_plan_version_consistent_count": sum(
+            1 for row in rows if row.d3_plan_version_consistent is True
+        ),
+        "d3_plan_version_consistent_rate": _bool_rate(
+            row.d3_plan_version_consistent for row in rows
+        ),
+        "d3_owner_consistent_count": sum(1 for row in rows if row.d3_owner_consistent is True),
+        "d3_owner_consistent_rate": _bool_rate(row.d3_owner_consistent for row in rows),
+        "d3_owner_version_consistent_count": sum(
+            1 for row in rows if row.d3_owner_version_consistent is True
+        ),
+        "d3_owner_version_consistent_rate": _bool_rate(
+            row.d3_owner_version_consistent for row in rows
+        ),
+        "secondary_capability_class_counts": dict(secondary_capability_classes),
+        "secondary_readiness_class_counts": dict(secondary_readiness_classes),
+        "detect_registration_outcome_counts": dict(detect_registration_outcomes),
+        "detect_registration_reject_reasons": dict(detect_registration_reject_reasons),
+        "projection_valid_rate": _bool_rate(row.projection_valid for row in rows),
+        "d5_gate_pass_rate": _bool_rate(row.gate_pass for row in rows),
+        "tracker_backend_counts": dict(tracker_backends),
+        "threshold_advisory_version": DEFAULT_CALIBRATION_THRESHOLD_VERSION,
         "terminal_dwell_active_count": sum(1 for row in rows if row.terminal_dwell_active),
         "terminal_release_grace_active_count": sum(1 for row in rows if row.terminal_release_grace_active),
         "terminal_reacquire_grace_active_count": sum(1 for row in rows if row.terminal_reacquire_grace_active),
@@ -529,8 +683,19 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         "png_guidance_law_candidate_counts": dict(candidate_laws),
     }
     summary.update(_numeric_summary("ttc_s", ttc_values))
+    summary.update(_numeric_summary("terminal_range_m", terminal_range_values))
+    summary.update(_numeric_summary("closing_speed_mps", closing_speed_values))
     summary.update(_numeric_summary("bbox_area_ratio", bbox_values))
     summary.update(_numeric_summary("edge_margin_ratio", edge_values))
+    summary.update(_numeric_summary("measurement_age_s", measurement_age_values))
+    summary.update(_numeric_summary("projection_depth_m", projection_depth_values))
+    summary.update(_numeric_summary("reprojection_error_px", reprojection_error_values))
+    summary.update(_numeric_summary("mahalanobis_d2", mahalanobis_values))
+    summary.update(_numeric_summary("covariance_px_trace", covariance_trace_values))
+    summary.update(_numeric_summary("projection_covariance_px_trace", projection_covariance_trace_values))
+    summary.update(_numeric_summary("bbox_area_px", bbox_area_px_values))
+    summary.update(_numeric_summary("association_probability", association_probability_values))
+    summary.update(_numeric_summary("mot_history_length", mot_history_values))
     summary.update(_numeric_summary("los_rate_abs_radps", los_rate_abs_values))
     summary.update(_numeric_summary("filtered_los_rate_abs_radps", filtered_los_rate_abs_values))
     summary.update(_numeric_summary("raw_los_rate_abs_radps", raw_los_rate_abs_values))
@@ -613,6 +778,7 @@ def _common_output_kwargs(
     terminal_handover_pending: bool,
     terminal_locked: bool,
     observation: VisionGuidanceObservation | None,
+    terminal_association: Mapping[str, Any] | Any | None,
     relative_position_ned: tuple[float, float, float] | None,
     relative_velocity_ned: tuple[float, float, float] | None,
     navigation_constant: float,
@@ -628,15 +794,28 @@ def _common_output_kwargs(
         "plan_id": binding.plan_id,
         "plan_version": binding.plan_version,
         "track_version": binding.track_version,
+        "terminal_range_m": _terminal_range_m(relative_position_ned),
         "assignment_id": binding.assignment_id,
         "owner_node_id": binding.owner_node_id,
         "d4_target_node_id": decision.d4_target_node_id,
         "d4_action": decision.d4_action,
+        "d4_action_block_reason": decision.d4_action_block_reason,
+        "d4_visual_png_allowed": decision.d4_visual_png_allowed,
+        "secondary_capability_class": decision.secondary_capability_class,
+        "secondary_readiness_class": decision.secondary_readiness_class,
+        "d3_plan_version_consistent": decision.d3_plan_version_consistent,
+        "d3_owner_consistent": decision.d3_owner_consistent,
+        "d3_owner_version_consistent": decision.d3_owner_version_consistent,
         "d5_decision_state": decision.d5_decision_state,
+        "d5_lock_consistent": decision.d5_lock_consistent,
+        "d5_lock_consistency_reason": decision.d5_lock_consistency_reason,
+        "d5_assigned_global_track_id": decision.d5_assigned_global_track_id,
+        "d5_assignment_version": decision.d5_assignment_version,
         "local_track_id": decision.local_track_id,
         "terminal_handover_pending": terminal_handover_pending,
         "terminal_locked": terminal_locked,
         **_observation_output_fields(observation),
+        **_d5_registration_output_fields(terminal_association, observation),
         **_pn3d_output_fields(
             relative_position_ned=relative_position_ned,
             relative_velocity_ned=relative_velocity_ned,
@@ -657,6 +836,57 @@ def _observation_output_fields(
         "camera_id": observation.camera_id,
         "frame_timestamp_s": observation.frame_timestamp_s,
         "visual_latency_s": _metadata_float(observation.metadata, "visual_latency_s"),
+    }
+
+
+def _d5_registration_output_fields(
+    terminal_association: Mapping[str, Any] | Any | None,
+    observation: VisionGuidanceObservation | None,
+) -> dict[str, Any]:
+    sources: tuple[Any, ...] = (
+        terminal_association,
+        _value(terminal_association, ("metadata",), default=None),
+        observation,
+        observation.metadata if observation is not None else None,
+    )
+    covariance_px = _first_value(sources, ("covariance_px",))
+    projection_covariance_px = _first_value(sources, ("projection_covariance_px",))
+    measurement_age_s = _first_float_value(
+        sources,
+        ("measurement_age_s", "visual_latency_s", "latency_s"),
+    )
+    return {
+        "detect_registration_outcome": _first_string_value(
+            sources,
+            ("detect_registration_outcome", "registration_outcome"),
+        ),
+        "detect_registration_reject_reasons": _first_string_tuple_value(
+            sources,
+            ("detect_registration_reject_reasons", "registration_reject_reasons"),
+        ),
+        "measurement_age_s": measurement_age_s,
+        "projection_valid": _first_bool_value(sources, ("projection_valid",)),
+        "projection_reason": _first_string_value(sources, ("projection_reason",)),
+        "projection_depth_m": _first_float_value(sources, ("projection_depth_m",)),
+        "reprojection_error_px": _first_float_value(
+            sources,
+            ("reprojection_error_px", "pixel_error_px", "reprojection_error"),
+        ),
+        "mahalanobis_d2": _first_float_value(sources, ("mahalanobis_d2",)),
+        "gate_pass": _first_bool_value(sources, ("gate_pass",)),
+        "covariance_px_trace": _matrix_trace(covariance_px),
+        "projection_covariance_px_trace": _matrix_trace(projection_covariance_px),
+        "camera_pose_source": _first_string_value(sources, ("camera_pose_source",)),
+        "calibration_health": _first_string_value(sources, ("calibration_health",)),
+        "drift_warning": _first_bool_value(sources, ("drift_warning",)),
+        "tracker_backend": _first_string_value(sources, ("tracker_backend", "yolo_tracker_backend")),
+        "requested_tracker_backend": _first_string_value(sources, ("requested_tracker_backend",)),
+        "tracker_id_scope": _first_string_value(sources, ("tracker_id_scope",)),
+        "mot_history_length": _first_int_value(sources, ("mot_history_length", "track_history_length")),
+        "yolo_class_id": _first_int_value(sources, ("yolo_class_id", "class_id")),
+        "yolo_class_name": _first_string_value(sources, ("yolo_class_name", "class_name")),
+        "bbox_area_px": _first_float_value(sources, ("bbox_area_px",)),
+        "association_probability": _first_float_value(sources, ("association_probability",)),
     }
 
 
@@ -682,6 +912,151 @@ def _pn3d_output_fields(
         "pn3d_benchmark_only": benchmark.benchmark_only,
         "pn3d_default_api_replaced": benchmark.default_pn_png_api_replaced,
     }
+
+
+_OBSERVATION_METADATA_FIELD_NAMES = (
+    "detect_registration_outcome",
+    "detect_registration_reject_reasons",
+    "measurement_age_s",
+    "latency_s",
+    "projection_valid",
+    "projection_reason",
+    "projection_depth_m",
+    "reprojection_error_px",
+    "pixel_error_px",
+    "reprojection_error",
+    "mahalanobis_d2",
+    "gate_pass",
+    "covariance_px",
+    "projection_covariance_px",
+    "camera_pose_source",
+    "calibration_health",
+    "drift_warning",
+    "tracker_backend",
+    "requested_tracker_backend",
+    "tracker_id_scope",
+    "mot_history_length",
+    "track_history_length",
+    "yolo_class_id",
+    "class_id",
+    "yolo_class_name",
+    "class_name",
+    "bbox_area_px",
+    "association_probability",
+)
+
+
+def _terminal_range_m(
+    relative_position_ned: tuple[float, float, float] | None,
+) -> float | None:
+    if relative_position_ned is None:
+        return None
+    north, east, _down = relative_position_ned
+    return (north * north + east * east) ** 0.5
+
+
+def _relative_closing_speed_mps(
+    relative_position_ned: tuple[float, float, float] | None,
+    relative_velocity_ned: tuple[float, float, float] | None,
+) -> float | None:
+    if relative_position_ned is None or relative_velocity_ned is None:
+        return None
+    range_3d = sum(component * component for component in relative_position_ned) ** 0.5
+    if range_3d <= 1e-12:
+        return None
+    dot = sum(p * v for p, v in zip(relative_position_ned, relative_velocity_ned))
+    return -dot / range_3d
+
+
+def _first_value(records: tuple[Any, ...], names: tuple[str, ...]) -> Any:
+    for record in records:
+        if record is None:
+            continue
+        value = _value(record, names, default=None)
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def _first_string_value(records: tuple[Any, ...], names: tuple[str, ...]) -> str | None:
+    value = _first_value(records, names)
+    if value is None:
+        return None
+    if hasattr(value, "value"):
+        value = value.value
+    text = str(value)
+    return text if text else None
+
+
+def _first_float_value(records: tuple[Any, ...], names: tuple[str, ...]) -> float | None:
+    value = _first_value(records, names)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _first_int_value(records: tuple[Any, ...], names: tuple[str, ...]) -> int | None:
+    value = _first_value(records, names)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _first_bool_value(records: tuple[Any, ...], names: tuple[str, ...]) -> bool | None:
+    value = _first_value(records, names)
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"true", "t", "yes", "y", "1", "pass", "passed", "ok", "allowed"}:
+        return True
+    if text in {"false", "f", "no", "n", "0", "fail", "failed", "reject", "rejected"}:
+        return False
+    return None
+
+
+def _first_string_tuple_value(records: tuple[Any, ...], names: tuple[str, ...]) -> tuple[str, ...]:
+    value = _first_value(records, names)
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,) if value else ()
+    try:
+        return tuple(str(item) for item in value if str(item))
+    except TypeError:
+        return (str(value),)
+
+
+def _matrix_trace(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        rows = tuple(value)
+    except TypeError:
+        return None
+    total = 0.0
+    observed = False
+    for index, row in enumerate(rows):
+        try:
+            items = tuple(row)
+        except TypeError:
+            continue
+        if index < len(items):
+            try:
+                total += float(items[index])
+                observed = True
+            except (TypeError, ValueError):
+                continue
+    return total if observed else None
 
 
 def _bool_rate(values: Iterable[bool | None]) -> float:

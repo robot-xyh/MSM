@@ -5,6 +5,7 @@ does not provide real vehicle control, fire-control, or automatic action APIs.
 """
 
 from .airsim_dry_run import (
+    AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION,
     make_minimal_airsim_dry_run_fixture,
     observations_from_airsim_dry_run_fixture,
 )
@@ -22,6 +23,7 @@ from .replay import (
     replay_sensor_observations_jsonl,
     sensor_observation_from_csv_row,
     sensor_observation_from_jsonl_record,
+    summarize_sensor_observation_latency_audit,
 )
 from .types import (
     FusionQualityRegionSummary,
@@ -36,6 +38,7 @@ from .types import (
 )
 
 __all__ = [
+    "AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION",
     "FusionAdapter",
     "FusionQualityRegionSummary",
     "FusionQualityRegionWindowSummary",
@@ -60,5 +63,6 @@ __all__ = [
     "sensor_observation_from_csv_row",
     "sensor_observation_from_jsonl_record",
     "summarize_region_quality_windows",
+    "summarize_sensor_observation_latency_audit",
     "summarize_recon_cue_from_tracks",
 ]

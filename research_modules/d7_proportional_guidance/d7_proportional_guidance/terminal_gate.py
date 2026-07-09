@@ -33,6 +33,7 @@ BLOCKING_D4_ACTION_REASONS = {
     "degrade_to_distributed": "d4_reassign_pending",
     "reassign": "d4_reassign_pending",
 }
+SECONDARY_TAKEOVER_READY_CLASS = "takeover_ready"
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,9 @@ class D4GuidancePermission:
     requires_human_review: bool = False
     new_plan_id: str | None = None
     new_plan_version: int | None = None
+    secondary_capability_class: str | None = None
+    secondary_readiness_class: str | None = None
+    visual_png_allowed: bool | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -95,6 +99,17 @@ class TerminalPngContractDecision:
     owner_node_id: str | None = None
     d4_target_node_id: str | None = None
     track_version: int | None = None
+    d4_action_block_reason: str = ""
+    secondary_capability_class: str | None = None
+    secondary_readiness_class: str | None = None
+    d4_visual_png_allowed: bool | None = None
+    d3_plan_version_consistent: bool | None = None
+    d3_owner_consistent: bool | None = None
+    d3_owner_version_consistent: bool | None = None
+    d5_lock_consistent: bool | None = None
+    d5_lock_consistency_reason: str = ""
+    d5_assigned_global_track_id: str | None = None
+    d5_assignment_version: int | None = None
 
 
 def evaluate_terminal_png_contract(
@@ -115,13 +130,25 @@ def evaluate_terminal_png_contract(
     except (TypeError, ValueError) as exc:
         return TerminalPngContractDecision(False, f"assignment_invalid:{exc}")
 
+    permission = coerce_d4_guidance_permission(d4_permission)
+    d3_plan_version_consistent = _d4_plan_version_consistent(permission, assignment)
+    d3_owner_consistent = _d4_owner_consistent(permission, assignment)
     base = {
         "assigned_global_track_id": assignment.assigned_global_track_id,
-        "d4_action": _string_value(d4_permission, "action", default=""),
+        "d4_action": permission.action,
         "plan_id": assignment.plan_id,
         "plan_version": assignment.plan_version,
         "owner_node_id": assignment.owner_node_id,
         "track_version": assignment.track_version,
+        "d4_target_node_id": permission.target_node_id,
+        "secondary_capability_class": permission.secondary_capability_class,
+        "secondary_readiness_class": permission.secondary_readiness_class,
+        "d4_visual_png_allowed": permission.visual_png_allowed,
+        "d3_plan_version_consistent": d3_plan_version_consistent,
+        "d3_owner_consistent": d3_owner_consistent,
+        "d3_owner_version_consistent": (
+            d3_plan_version_consistent is True and d3_owner_consistent is True
+        ),
     }
 
     if resource_id is not None and resource_id != assignment.resource_id:
@@ -136,14 +163,30 @@ def evaluate_terminal_png_contract(
         if timestamp_s > assignment.expires_at_s:
             return TerminalPngContractDecision(False, "assignment_expired", **base)
 
-    permission = coerce_d4_guidance_permission(d4_permission)
-    base["d4_action"] = permission.action
-    base["d4_target_node_id"] = permission.target_node_id
     action = permission.action.lower()
     if permission.requires_human_review:
-        return TerminalPngContractDecision(False, "d4_hold_for_review", **base)
+        return TerminalPngContractDecision(
+            False,
+            "d4_hold_for_review",
+            d4_action_block_reason="d4_hold_for_review",
+            **base,
+        )
     if action in BLOCKING_D4_ACTION_REASONS:
-        return TerminalPngContractDecision(False, BLOCKING_D4_ACTION_REASONS[action], **base)
+        reason = BLOCKING_D4_ACTION_REASONS[action]
+        return TerminalPngContractDecision(
+            False,
+            reason,
+            d4_action_block_reason=reason,
+            **base,
+        )
+    if permission.visual_png_allowed is False:
+        reason = permission.reason or "d4_visual_png_not_allowed"
+        return TerminalPngContractDecision(
+            False,
+            reason,
+            d4_action_block_reason=reason,
+            **base,
+        )
     if not permission.terminal_consistent:
         return TerminalPngContractDecision(False, "d4_terminal_inconsistent", **base)
     if permission.new_plan_id is not None and permission.new_plan_id != assignment.plan_id:
@@ -155,37 +198,93 @@ def evaluate_terminal_png_contract(
             return TerminalPngContractDecision(False, "d4_owner_missing", **base)
         if permission.target_node_id != assignment.owner_node_id:
             return TerminalPngContractDecision(False, "d4_owner_mismatch", **base)
+    if _secondary_takeover_readiness_required(permission, assignment):
+        readiness_ready = _secondary_takeover_ready(permission)
+        if readiness_ready is False:
+            return TerminalPngContractDecision(
+                False,
+                "secondary_capability_not_takeover_ready",
+                d4_action_block_reason="secondary_capability_not_takeover_ready",
+                **base,
+            )
     if action not in ALLOWED_D4_ACTIONS:
-        return TerminalPngContractDecision(False, "d4_action_not_allowed", **base)
+        return TerminalPngContractDecision(
+            False,
+            "d4_action_not_allowed",
+            d4_action_block_reason="d4_action_not_allowed",
+            **base,
+        )
 
     if terminal_association is None:
-        return TerminalPngContractDecision(False, "d5_not_locked", **base)
+        return TerminalPngContractDecision(
+            False,
+            "d5_not_locked",
+            d5_lock_consistent=False,
+            d5_lock_consistency_reason="d5_not_locked",
+            **base,
+        )
     d5_decision_state = _string_value(terminal_association, "decision_state", default="").lower()
     local_track_id = _optional_string_value(terminal_association, "local_track_id")
-    base["d5_decision_state"] = d5_decision_state
-    base["local_track_id"] = local_track_id
-    if d5_decision_state != "locked":
-        return TerminalPngContractDecision(False, "d5_not_locked", **base)
-    if _string_value(terminal_association, "friend_conflict_state", default="none").lower() != "none":
-        return TerminalPngContractDecision(False, "friend_conflict", **base)
-
     terminal_global_id = _string_value(
         terminal_association,
         "assigned_global_track_id",
         default="",
     )
-    if not _ids_match(terminal_global_id, assignment.assigned_global_track_id):
-        return TerminalPngContractDecision(False, "terminal_identity_mismatch", **base)
-
     association_version = _optional_int_value(terminal_association, "assignment_version")
+    base["d5_decision_state"] = d5_decision_state
+    base["local_track_id"] = local_track_id
+    base["d5_assigned_global_track_id"] = terminal_global_id or None
+    base["d5_assignment_version"] = association_version
+    if d5_decision_state != "locked":
+        return TerminalPngContractDecision(
+            False,
+            "d5_not_locked",
+            d5_lock_consistent=False,
+            d5_lock_consistency_reason="d5_not_locked",
+            **base,
+        )
+    if _string_value(terminal_association, "friend_conflict_state", default="none").lower() != "none":
+        return TerminalPngContractDecision(
+            False,
+            "friend_conflict",
+            d5_lock_consistent=False,
+            d5_lock_consistency_reason="friend_conflict",
+            **base,
+        )
+    if not _ids_match(terminal_global_id, assignment.assigned_global_track_id):
+        return TerminalPngContractDecision(
+            False,
+            "terminal_identity_mismatch",
+            d5_lock_consistent=False,
+            d5_lock_consistency_reason="terminal_identity_mismatch",
+            **base,
+        )
     if association_version is not None and association_version != assignment.track_version:
-        return TerminalPngContractDecision(False, "assignment_version_mismatch", **base)
+        return TerminalPngContractDecision(
+            False,
+            "assignment_version_mismatch",
+            d5_lock_consistent=False,
+            d5_lock_consistency_reason="assignment_version_mismatch",
+            **base,
+        )
 
     observation_global_id = _optional_string_value(observation, "assigned_global_track_id")
     if observation_global_id and not _ids_match(observation_global_id, assignment.assigned_global_track_id):
-        return TerminalPngContractDecision(False, "terminal_identity_mismatch", **base)
+        return TerminalPngContractDecision(
+            False,
+            "terminal_identity_mismatch",
+            d5_lock_consistent=False,
+            d5_lock_consistency_reason="terminal_identity_mismatch",
+            **base,
+        )
 
-    return TerminalPngContractDecision(True, "", **base)
+    return TerminalPngContractDecision(
+        True,
+        "",
+        d5_lock_consistent=True,
+        d5_lock_consistency_reason="consistent",
+        **base,
+    )
 
 
 def guidance_mode_from_terminal_contract(
@@ -216,7 +315,12 @@ def guidance_mode_from_terminal_contract(
         return GuidanceMode.REACQUIRE
     if reason in {"d4_hold_for_review", "friend_conflict", "assignment_not_authorized"}:
         return GuidanceMode.HOLD
-    if reason in {"assignment_revoked", "assignment_expired", "d4_reassign_pending"}:
+    if reason in {
+        "assignment_revoked",
+        "assignment_expired",
+        "d4_reassign_pending",
+        "secondary_capability_not_takeover_ready",
+    }:
         return GuidanceMode.ABORT_REVOKE
     return GuidanceMode.HANDOVER_PENDING
 
@@ -256,8 +360,15 @@ def coerce_d4_guidance_permission(
         return D4GuidancePermission()
     if isinstance(value, D4GuidancePermission):
         return value
+    d7_action = _optional_string_value(value, "d7_action")
+    action = (
+        d7_action
+        or _optional_string_value(value, "action")
+        or _optional_string_value(value, "d4_action")
+        or "continue_center"
+    )
     return D4GuidancePermission(
-        action=_string_value(value, "action", default="continue_center"),
+        action=action,
         mode=_string_value(value, "mode", default="none"),
         reason=_string_value(value, "reason", default=""),
         target_node_id=_optional_string_value(value, "target_node_id")
@@ -269,8 +380,69 @@ def coerce_d4_guidance_permission(
         requires_human_review=bool(_value(value, "requires_human_review", default=False)),
         new_plan_id=_optional_string_value(value, "new_plan_id"),
         new_plan_version=_optional_int_value(value, "new_plan_version"),
+        secondary_capability_class=_optional_string_value_with_metadata(
+            value,
+            "secondary_capability_class",
+        ),
+        secondary_readiness_class=(
+            _optional_string_value_with_metadata(value, "secondary_readiness_class")
+            or _optional_string_value_with_metadata(value, "readiness_class")
+            or _optional_string_value_with_metadata(value, "readiness")
+            or _optional_string_value_with_metadata(value, "secondary_capability_readiness")
+        ),
+        visual_png_allowed=_optional_bool_value_with_metadata(value, "visual_png_allowed"),
         metadata=dict(_value(value, "metadata", default={}) or {}),
     )
+
+
+def _d4_plan_version_consistent(
+    permission: D4GuidancePermission,
+    assignment: AssignmentGuidanceBinding,
+) -> bool:
+    if permission.new_plan_id is not None and permission.new_plan_id != assignment.plan_id:
+        return False
+    if permission.new_plan_version is not None and permission.new_plan_version != assignment.plan_version:
+        return False
+    return True
+
+
+def _d4_owner_consistent(
+    permission: D4GuidancePermission,
+    assignment: AssignmentGuidanceBinding,
+) -> bool:
+    if permission.target_node_id is None:
+        return True
+    if assignment.owner_node_id is None:
+        return False
+    return permission.target_node_id == assignment.owner_node_id
+
+
+def _secondary_takeover_readiness_required(
+    permission: D4GuidancePermission,
+    assignment: AssignmentGuidanceBinding,
+) -> bool:
+    if permission.action.lower() == "request_secondary_assist":
+        return True
+    metadata_owner = str(assignment.metadata.get("active_plan_owner", "")).lower()
+    if metadata_owner == "secondary":
+        return True
+    if assignment.owner_node_id and assignment.owner_node_id.lower() not in {"center", "central"}:
+        return True
+    return bool(permission.target_node_id and permission.target_node_id.lower() not in {"center", "central"})
+
+
+def _secondary_takeover_ready(permission: D4GuidancePermission) -> bool | None:
+    values = {
+        value.strip().lower()
+        for value in (
+            permission.secondary_readiness_class,
+            permission.secondary_capability_class,
+        )
+        if value and value.strip()
+    }
+    if not values:
+        return None
+    return SECONDARY_TAKEOVER_READY_CLASS in values
 
 
 def _required_string(record: Any, name: str) -> str:
@@ -314,6 +486,31 @@ def _optional_float_value(record: Any, name: str) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _optional_string_value_with_metadata(record: Any, name: str) -> str | None:
+    return _optional_string_value(record, name) or _optional_string_value(
+        _value(record, "metadata", default=None),
+        name,
+    )
+
+
+def _optional_bool_value_with_metadata(record: Any, name: str) -> bool | None:
+    value = _value(record, name, default=None)
+    if value is None:
+        value = _value(_value(record, "metadata", default=None), name, default=None)
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"true", "t", "yes", "y", "1", "allowed", "allow"}:
+        return True
+    if text in {"false", "f", "no", "n", "0", "blocked", "block", "rejected"}:
+        return False
+    return None
 
 
 def _string_tuple(value: Any) -> tuple[str, ...]:
