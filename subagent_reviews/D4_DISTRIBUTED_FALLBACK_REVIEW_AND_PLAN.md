@@ -7,13 +7,15 @@
 
 ## 0. 2026-07-08 P1 状态更新
 
-D4 模块内已补齐 P1 所需的本地输出口径：secondary takeover record metadata 可区分 `pending_secondary_plan` 与 `secondary_plan_active`，并携带当前/二级 plan id/version、source node、supersedes plan 和 reassignment complete 字段；主动降级 metadata 已能透传 D5 二级视觉覆盖/转换漏斗 evidence，并区分“二级 detect 可见”与“cross-view/global binding/registration 已完成”；`role/capability_class=mobile_high_recon/mobile_secondary_recon` 已作为机动高空二级侦察节点元数据进入候选、lifecycle 和 D6 事件，并与 `fixed_tethered_secondary/tethered_recon` 区分；完全无中心 CBBA 已用 D5 distributed visual evidence 做风险加权；`build_cbba_cost_gap_benchmark()` 可用 D3/main 提供的中心 plan 与 cost matrix 计算 CBBA vs 中心化 cost gap；`build_cbba_d6_metadata()` 和 `run_failover_simulation()` 顶层 metrics 可输出 secondary/distributed 分组、leader、coverage、CBBA 审计和 cost gap 扁平字段。
+D4 模块内已补齐 P1 所需的本地输出口径：secondary takeover record metadata 可区分 `pending_secondary_plan` 与 `secondary_plan_active`，并携带当前/二级 plan id/version、source node、supersedes plan、reassignment complete、plan activation delay 和 pending duration 字段；主动降级 metadata 已能输出 `necessary/unnecessary/inconclusive` 三值 review label、pre/post review window、secondary diagnostic、takeover necessity/success，并透传 D5 二级视觉覆盖/转换漏斗 evidence，区分“二级 detect 可见”与“cross-view/global binding/registration 已完成”；`role/capability_class=mobile_high_recon/mobile_secondary_recon` 已作为机动高空二级侦察节点元数据进入候选、lifecycle 和 D6 事件，并与 `fixed_tethered_secondary/tethered_recon` 区分；完全无中心 CBBA 已用 D5 distributed visual evidence 做风险加权；`build_cbba_cost_gap_benchmark()` 可用 D3/main 提供的中心 plan 与 cost matrix 计算 CBBA vs 中心化 cost gap；`build_cbba_d6_metadata()` 和 `run_failover_simulation()` 顶层 metrics 可输出 secondary/distributed 分组、leader、coverage、CBBA 审计和 cost gap 扁平字段。
 
-main/runtime P1 基线也已接入：episode bus 已消费 D4 adapter event，`request_center_replan` 可触发 D3 new plan version，secondary takeover owner/version 已回灌给 D3/D7，controlled 2v2 secondary visual PNG 回归已通过。
+main/runtime P1 基线也已接入：episode bus 已消费 D4 adapter event，`request_center_replan` 可触发 D3 new plan version，secondary takeover owner/version 已回灌给 D3/D7，controlled 2v2 secondary visual PNG 回归已通过；P1 D4/D5 calibration sweep 已新增，可批量改变二级节点高度、FOV、节点数量和 standoff，并在 sweep 结束后自动生成 D6 标准 AirSim calibration records/summary/report bundle。
 
 2026-07-08 AirSim 机动高空侦察节点 stress 结果已同步到当前状态：输出目录为 `research_modules/airsim_runtime/outputs/p1_d4d5_mobile_recon_20260708_055948*`，3 seeds 均 connected=True；每个 seed 含 `no_degradation`、`degrade_to_secondary`、`degrade_to_distributed` 三类 case，所有 episode 均为 13 frames 且 image_ok=13。场景使用 5 个目标、5 个拦截相机、2 个二级侦察相机、200 m 高差、80 度 FOV 和 1920x1080。D4 主动作符合预期：`no_degradation -> continue_center`，`degrade_to_secondary -> degrade_to_secondary`，`degrade_to_distributed -> degrade_to_distributed`；二级侦察侧 `gimbal_pointing_ok_rate=1.0`，cue source 为 `radar_global_track_cue`，capability class 为 `mobile_high_recon`。
 
-P0 状态：无 P0 blocker。边界保持不变：D4 只输出仲裁记录、metadata、CBBA 保底结果和离线 benchmark，不直接生成 D3 系统级 `AssignmentPlan`，不控制 D7，不引入 MIT/CA-CBBA 外部实现。机动高空侦察节点随拦截机出动、不拦截，正常时用 D1/D2 `GlobalTrack` 或 radar cue 指向目标簇并给局部拦截群提供图像/cross-view evidence；中心失效或主动降级硬条件满足时才可作为二级协调节点。剩余 P1 聚焦二级 coverage/heartbeat/link freshness、二级接管必要性、plan activation delay、D5 peer evidence 合流和 D6 长期聚合；本轮二级网络同帧全覆盖仍为 0.0，case mean 联合覆盖约 0.65-0.69，断点是 `not_all_targets_visible` / `network_union_incomplete`。MIT/CA-CBBA 与独立 auction baseline 仅作为 optional P2 对照。
+P0 状态：无 P0 blocker。边界保持不变：D4 只输出仲裁记录、metadata、CBBA 保底结果和离线 benchmark，不直接生成 D3 系统级 `AssignmentPlan`，不控制 D7，不引入 MIT/CA-CBBA 外部实现。机动高空侦察节点随拦截机出动、不拦截，正常时用 D1/D2 `GlobalTrack` 或 radar cue 指向目标簇并给局部拦截群提供图像/cross-view evidence；中心失效或主动降级硬条件满足时才可作为二级协调节点。剩余 P1 聚焦二级 coverage/heartbeat/link freshness、二级接管必要性标签填充、plan activation delay 分布、D5 peer evidence 合流、active degradation precision 和 D6 长期聚合；本轮二级网络同帧全覆盖仍不足，主要 coverage 断点是 `not_all_targets_visible` / `network_union_incomplete`，D5 detect 到 global track 注册不足的直接断点是 `geometry_gate_rejected`。MIT/CA-CBBA 与独立 auction baseline 仅作为 optional P2 对照。
+
+D4 对二级侦察结果的 P1 校准解释已经固定：D4 只消费 D5/D6/main 输出的 coverage、freshness、stable cross-view registration、not-registered 和 review label，不直接做相机几何注册。二级可见但未注册时，D4 记录 `secondary_detect_available_but_not_registered` 和 reject reasons，最多支持 `request_secondary_assist` 或接管必要性审计；二级网络未全覆盖时，D4 记录 `secondary_network_full_view_gap`，不把不完整视场当成接管成功；稳定 cross-view support 足够且二级链路新鲜时，才作为 `degrade_to_secondary` 必要性和成功的正证据。任何 `secondary_plan_active` 仍必须由 main/D3 回填新 plan id/version。
 
 ---
 
@@ -379,6 +381,20 @@ D4DecisionRecord.metadata
 - secondary_supersedes_plan_id
 - secondary_supersedes_plan_version
 - secondary_reassignment_complete
+- secondary_plan_activation_delay_s
+- secondary_plan_pending_duration_s
+- secondary_takeover_candidate
+- secondary_takeover_success
+- secondary_takeover_necessity_label
+- review_label: necessary | unnecessary | inconclusive
+- active_degradation_review_window
+- secondary_diagnostic_heartbeat_age_s
+- secondary_diagnostic_link_fresh
+- secondary_diagnostic_cue_freshness_s
+- secondary_diagnostic_gimbal_pointing_ok
+- secondary_diagnostic_coverage_ratio
+- secondary_network_full_view_gap
+- secondary_detect_to_registration_gap
 ```
 
 规则：`degrade_to_secondary` 的第一帧只表示二级接管待生效，`active_plan_owner` 仍是当前计划 owner；只有 main/D3 回填新的二级 plan id/version 且标记 active 后，D4 metadata 才进入 `secondary_plan_active`。D4 不直接发布完整 `AssignmentPlan`。
@@ -399,6 +415,13 @@ D6 应消费以下 D4 指标：
 - `coordination_mode / selected_coordinator / leader_role / coverage_cell`
 - `hold_for_review_count`
 - `terminal_inconsistency_trigger_count`
+- `active_degradation_precision` using `review_label in {necessary, unnecessary, inconclusive}`
+- `secondary_takeover_necessity_label`
+- `secondary_plan_activation_delay_s / secondary_plan_pending_duration_s`
+- `secondary_network_coverage_available / secondary_network_full_view_gap`
+- `secondary_single_camera_full_view_frame_rate / secondary_network_joint_full_view_frame_rate`
+- `secondary_network_mean_coverage_ratio / cross_view_association_count`
+- `secondary_detect_to_registration_gap`
 
 ---
 
@@ -483,7 +506,8 @@ CBBA 通过 winner/bid 向量扩散和一致性消解，在连通图、确定仲
 5. `coordination_mode`、`leader_role`、`coverage_cell` 必须进入 `AssignmentPlan.metadata` 和 D6 日志。
 6. 完全无中心结果必须携带 `converged/conflict_count/consensus_rounds`，未收敛时不得被 main 当成可执行计划。
 7. mobile recon 的 `gimbal_pointing_ok`、`radar_global_track_cue` 和 `mobile_high_recon` capability 只能证明候选节点可用；二级网络同帧全覆盖不足时，D4 应继续记录 coverage 断点并等待上游校准。
-8. `degrade_to_secondary` 后必须继续区分 `pending_secondary_plan` 与 `secondary_plan_active`，并用 plan activation delay 校准接管必要性和 D7 gate 迁移。
+8. `degrade_to_secondary` 后必须继续区分 `pending_secondary_plan` 与 `secondary_plan_active`；D4 已输出 plan activation delay/pending duration 和 takeover necessity/success metadata，main/D6 需用真实 episode 标注校准接管必要性和 D7 gate 迁移。
+9. 后续 D4/D5 AirSim 校准应优先使用 main runtime 的 P1 calibration sweep 和 D6 标准 bundle 输出；D4 只消费 sweep 产生的摘要与 report 字段，不直接启动 AirSim 或写 main runtime。
 
 ---
 

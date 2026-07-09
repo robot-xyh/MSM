@@ -231,6 +231,10 @@ class SecondaryNodeLifecycleSummary:
     video_cue_freshness_s: float | None
     link_stale: bool | None
     secondary_available: bool
+    coverage_matches_requested_cell: bool = False
+    heartbeat_stale: bool | None = None
+    cue_stale: bool | None = None
+    link_fresh: bool | None = None
     heartbeat: float | None = None
     video_cue_freshness: float | None = None
     capability_class: str | None = None

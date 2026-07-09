@@ -4,7 +4,7 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
-**P0/P1 状态入口**：`subagent_reviews/MAIN_P0_P1_GAP_STATUS.md` 集中维护当前 P0/P1 owner、缺口、缺少条件和验收口径。当前未发现新的 P0 阻塞断链；2026-07-08 已补齐 main runtime bus 执行指标回灌、D4 软风险防抖、无冲突 D5 重捕获不降级策略、`request_center_replan -> D3 new plan version -> D7 gate`、D5 feedback 写回 D3、二级接管 plan owner/version、D7 N-pair runtime bus，以及 controlled intercept 中心/二级重分配到视觉 PNG 的 gate 回归。最新 5v5 机动高空侦察 stress 证明 radar cue + gimbal 指向能提升二级检测框尺寸，但二级网络同帧全覆盖、detect 到 cross-view/global-track 注册、以及 D6 长期趋势报告仍是 P1 未闭合项。剩余 P1 主要集中在真实 AirSim 多 seed 校准、二级侦察覆盖/跨视角配准、真实图像/协议/标定适配和长期报告口径扩展。
+**P0/P1 状态入口**：`subagent_reviews/MAIN_P0_P1_GAP_STATUS.md` 集中维护当前 P0/P1 owner、缺口、缺少条件和验收口径。当前未发现新的 P0 阻塞断链；2026-07-08 已补齐 main runtime bus 执行指标回灌、D4 软风险防抖、无冲突 D5 重捕获不降级策略、`request_center_replan -> D3 new plan version -> D7 gate`、D5 feedback 写回 D3、二级接管 plan owner/version、D7 N-pair runtime bus，以及 controlled intercept 中心/二级重分配到视觉 PNG 的 gate 回归。main runtime 已新增 P1 D4/D5 calibration sweep，并自动调用 D6 生成标准 records/summary/Markdown 报告 bundle。最新 5v5 机动高空侦察 stress 证明 radar cue + gimbal 指向能提升二级检测框尺寸，但二级网络同帧全覆盖、detect 到 cross-view/global-track 注册仍是 P1 未闭合项；D6 自动报告接口已闭合，仍需真实多 seed 数据形成长期趋势。剩余 P1 主要集中在真实 AirSim 多 seed 校准、二级侦察覆盖/跨视角配准、真实图像/协议/标定适配和长期报告数据积累。
 
 ## 1. 总体结论
 
@@ -29,7 +29,7 @@ D1 NumPy EKF/FusionAdapter
 未实现的共同原因主要有四类：
 
 1. **当前阶段优先轻量可复现**：默认测试不依赖 ROS、Stone Soup、AirSim 实时服务、PX4 或 GPU。
-2. **main runtime bus 接口基线已接入**：AirSim runtime 已在同一 episode 中持续写入 D1-D7 summary/record 和 D6 JSONL；2026-07-08 已把执行拦截结果回灌到正式 main bus metrics，接入 D5 feedback、二级接管 owner/version 和 D7 runtime bus，并保留 raw contract metrics；下一步仍需真实 Blocks 多 seed 校准。
+2. **main runtime bus 接口基线已接入**：AirSim runtime 已在同一 episode 中持续写入 D1-D7 summary/record 和 D6 JSONL；2026-07-08 已把执行拦截结果回灌到正式 main bus metrics，接入 D5 feedback、二级接管 owner/version 和 D7 runtime bus，并保留 raw contract metrics；P1 calibration sweep 已自动回灌 D6 标准 CSV/JSON/Markdown 报告 bundle；下一步仍需真实 Blocks 多 seed 校准。
 3. **二级侦察看清不等于可接管**：2026-07-08 5v5 机动高空侦察节点测试中，二级云台指向成功率为 1.0，bbox mean 约 3326 px^2，优于固定俯视约 1145 px^2；但 `secondary_network_joint_full_view_frame_rate=0.0`，联合覆盖约 0.65-0.69，降级 case cross-view association 为 0。它说明二级节点可作为更强观测源，但不能绕过 D3/D4/D5 的分配、仲裁和配准合同。
 4. **真实图像/通信/身份源仍需标定**：D5 已能运行 YOLOv8 + MOT 并由 main runtime 显式接线；Remote ID、MAVLink signing、AprilTag 仍需要真实报文、密钥和时间同步，YOLO/MOT 仍需要 AirSim 多 seed 阈值标定。
 5. **高阶算法需要基准场景支撑**：IMM、JPDA/MHT 完整版、FRPN、MPC、OSPA/HOTA 等应在 5v5 crossing、遮挡、主动降级和 AirSim replay 稳定后再做对照。
@@ -112,7 +112,7 @@ D1 NumPy EKF/FusionAdapter
 ### 4.2 当前最关键的未闭合项
 
 1. **main runtime bus 已完成接口闭合，仍需真实多 seed 校准**
-   `research_modules/airsim_runtime/episode_bus.py` 已由 main 串接 D1 track、D2 risk、D3 plan/version、D4 action、D5 terminal decision、D7 pair state 和 D6 collector，并在每个 Blocks episode 输出 `main_episode_bus.jsonl`、ticks、metrics 和 summary。执行拦截时，main 还会把 `control_commands.csv` 和 `intercept_summary.json` 的成功数、碰撞拦截数、guidance law 和 terminal reject 回灌到正式 metrics，同时保留 contract-only metrics。2026-07-08 已补齐 D5 terminal feedback 到 D3、D4 二级接管 owner/version 到 D3/D7，以及 D7 N-pair runtime summary。未闭合的是在真实 Blocks 长时/多 seed 条件下校准阈值、状态迁移和降级必要性标签。
+   `research_modules/airsim_runtime/episode_bus.py` 已由 main 串接 D1 track、D2 risk、D3 plan/version、D4 action、D5 terminal decision、D7 pair state 和 D6 collector，并在每个 Blocks episode 输出 `main_episode_bus.jsonl`、ticks、metrics 和 summary。执行拦截时，main 还会把 `control_commands.csv` 和 `intercept_summary.json` 的成功数、碰撞拦截数、guidance law 和 terminal reject 回灌到正式 metrics，同时保留 contract-only metrics。2026-07-08 已补齐 D5 terminal feedback 到 D3、D4 二级接管 owner/version 到 D3/D7，以及 D7 N-pair runtime summary。P1 calibration sweep 已自动调用 D6 `AirSimCalibrationReportGenerator` 扫描 persisted sequence/episode artifacts，输出标准 CSV/JSON/Markdown 报告。未闭合的是在真实 Blocks 长时/多 seed 条件下校准阈值、状态迁移和降级必要性标签。
 
 2. **N-pair 真实控制状态机已有 main 接线，仍需真实多 seed 校准**
    D7 已支持每个 assignment pair 独立 filter，main runtime bus 已按每个有效 pair 注入 `AssignmentGuidanceBinding`、D4 permission/action、D5 `TerminalAssociation`、资源状态、目标估计并写 D6 guidance log。下一步重点不是再补接口，而是在真实 Blocks 多 seed 下校准终端切换、重捕获和拒绝原因分布。
@@ -136,7 +136,7 @@ D1 NumPy EKF/FusionAdapter
 3. main/AirSim runtime 继续固化 Blocks JSONL/replay schema，保留实际目标数、资源数、相机数、bbox、相机内外参、truth offline label、plan/version、D4/D5/D7 状态字段，并避免在线 D5 使用 truth ID。
 4. main/D4/D5/D6 继续跑机动高空侦察节点 5v5 stress，分别统计单相机全局视野率、二级网络联合覆盖率、detect-to-registration 转换率、`secondary_detect_available_but_not_registered` 和 cross-view association。
 5. D5 已实现 YOLOv8 + MOT runtime adapter，main 已接入显式 YOLO 检测后端。下一步用真实 AirSim 多 seed 校准 `best.pt`、置信度、tracker backend、目标尺度和 FOV 条件；adapter 只输出 `LocalVisualTrack`，不允许 tracker ID 替代 `global_track_id`。
-6. D6 已实现主动降级必要性最小指标口径。下一步要求 main/D4 在真实 multi-seed episode 中持续写出 review/window 字段，形成可比较的 active degradation precision 和 unnecessary active degradation count。
+6. D6 已实现主动降级必要性最小指标口径，main P1 sweep 已自动生成 D6 标准报告 bundle。下一步要求 main/D4 在真实 multi-seed episode 中持续写出 review/window 字段，形成可比较的 active degradation precision 和 unnecessary active degradation count。
 
 ## 5. 建议实施顺序
 

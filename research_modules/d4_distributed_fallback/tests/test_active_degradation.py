@@ -440,7 +440,10 @@ def test_mobile_high_recon_evidence_does_not_auto_take_over_low_risk_frame() -> 
     assert lifecycle[0].secondary_capability_class == "mobile_high_recon"
     assert lifecycle[0].is_mobile_high_recon is True
     assert lifecycle[0].is_fixed_tethered_secondary is False
+    assert lifecycle[0].coverage_matches_requested_cell is True
+    assert lifecycle[0].heartbeat_stale is False
     assert lifecycle[0].cue_freshness_s == 0.2
+    assert lifecycle[0].cue_stale is False
     assert lifecycle[0].gimbal_pointing_ok is True
     assert lifecycle[0].secondary_coverage_ratio == 0.86
     assert lifecycle[0].cross_view_support_count == 2
@@ -669,9 +672,12 @@ def test_stale_secondary_heartbeat_prevents_secondary_takeover() -> None:
 
     assert lifecycle[0].heartbeat_age_s == 3.0
     assert lifecycle[0].heartbeat == 7.0
+    assert lifecycle[0].heartbeat_stale is True
     assert lifecycle[0].video_cue_freshness_s == 0.0
     assert lifecycle[0].video_cue_freshness == 0.0
     assert lifecycle[0].link_stale is False
+    assert lifecycle[0].link_fresh is True
+    assert lifecycle[0].coverage_matches_requested_cell is True
     assert lifecycle[0].secondary_available is False
     assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
 

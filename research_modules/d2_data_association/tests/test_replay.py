@@ -11,6 +11,7 @@ from d2_data_association import (
     load_airsim_replay_frames,
     run_airsim_replay_association,
     run_threshold_sensitivity,
+    summarize_multi_seed_risk_calibration,
     write_association_logs_jsonl,
     write_replay_association_report,
 )
@@ -128,6 +129,72 @@ def test_airsim_jsonl_replay_runs_5_target_association_and_writes_logs(tmp_path)
     assert "risk_summary" in log_lines[-1]
 
 
+def test_main_d6_jsonl_metadata_and_offline_truth_labels_flow_to_logs(tmp_path) -> None:
+    frames = []
+    for step in range(3):
+        frames.append(
+            {
+                "timestamp": float(step),
+                "detections": [
+                    {
+                        "detection_id": f"cv-A-{step}",
+                        "offline_truth_label": "target-A",
+                        "position": {"x_val": float(step), "y_val": 0.0},
+                        "covariance": [[0.2, 0.0], [0.0, 0.2]],
+                        "offline_truth_position": [float(step), 0.0],
+                    },
+                    {
+                        "detection_id": f"cv-B-{step}",
+                        "position": {"x_val": float(step), "y_val": 10.0},
+                        "covariance": [[0.2, 0.0], [0.0, 0.2]],
+                        "offline_truth_position": [float(step), 10.0],
+                    },
+                ],
+                "offline_truth_labels": {
+                    f"cv-A-{step}": "target-A",
+                    f"cv-B-{step}": "target-B",
+                },
+            }
+        )
+    replay_path = tmp_path / "main_d6_episode.jsonl"
+    replay_path.write_text(
+        "\n".join(
+            json.dumps(
+                {
+                    "event": "d6_episode_row",
+                    "seed": 31,
+                    "episode_id": "episode-031",
+                    "scenario": "real_airsim_replay_fixture",
+                    "drone_count": 2,
+                    "frame_index": step,
+                    "payload": {"d2_frame": frame},
+                }
+            )
+            for step, frame in enumerate(frames)
+        )
+    )
+
+    loaded_frames = load_airsim_replay_frames(replay_path)
+    report = run_airsim_replay_association(loaded_frames)
+
+    assert report.replay_metadata["seed"] == 31
+    assert report.replay_metadata["episode_id"] == "episode-031"
+    assert report.replay_metadata["scenario"] == "real_airsim_replay_fixture"
+    assert report.metrics["id_switch_count"] == 0
+    assert report.metrics["confusion_matrix"]["target-A"] == {"T001": 3}
+    assert report.metrics["confusion_matrix"]["target-B"] == {"T002": 3}
+    assert set(report.global_track_ids) == {"T001", "T002"}
+    assert "target-A" not in report.global_track_ids
+    assert "target-B" not in report.global_track_ids
+    last_log_metadata = report.association_logs[-1]["metadata"]
+    assert last_log_metadata["seed"] == 31
+    assert last_log_metadata["episode_id"] == "episode-031"
+    assert last_log_metadata["scenario"] == "real_airsim_replay_fixture"
+    assert last_log_metadata["frame_index"] == 2
+    assert last_log_metadata["offline_truth_labels"] == ["target-A", "target-B"]
+    assert last_log_metadata["truth_label_usage"] == "offline_metrics_only"
+
+
 def test_replay_target_count_falls_back_to_input_count_without_truth_labels() -> None:
     frames = []
     for step in range(3):
@@ -186,6 +253,52 @@ def test_threshold_sensitivity_outputs_required_metrics_for_variable_target_coun
         assert row["risk_summary"]["thresholds"]["profile_name"] == row["risk_profile"]
         assert "soft_risk_frame_count" in row["risk_summary"]
         assert "hard_risk_frame_count" in row["risk_summary"]
+
+
+def test_multi_seed_risk_calibration_summary_groups_and_recommends_profile() -> None:
+    rows = []
+    for seed in (101, 102):
+        frames = dense_airsim_like_frames(target_count=4, steps=5)
+        for frame in frames:
+            frame["seed"] = seed
+            frame["scenario_name"] = "multi_seed_dense"
+        rows.extend(
+            run_threshold_sensitivity(
+                frames,
+                gate_thresholds=[5.99, 9.21],
+                risk_thresholds=[
+                    RiskThresholds(
+                        profile_name="default",
+                        profile_version="p1-v1",
+                    ),
+                    RiskThresholds(
+                        profile_name="strict",
+                        profile_version="p1-v1",
+                        soft_association_ambiguity=0.20,
+                    ),
+                ],
+            )
+        )
+
+    summary = summarize_multi_seed_risk_calibration(rows)
+
+    assert summary["row_count"] == 8
+    assert summary["group_count"] == 4
+    assert summary["recommended"]["gate_threshold"] in {5.99, 9.21}
+    assert summary["recommended"]["risk_profile"] in {"default", "strict"}
+    assert "thresholds" in summary["recommended"]
+    for group in summary["groups"]:
+        assert group["seed_count"] == 2
+        assert group["seeds"] == ["101", "102"]
+        assert group["scenarios"] == ["multi_seed_dense"]
+        assert group["id_switch_count"]["count"] == 2
+        assert group["track_continuity"]["count"] == 2
+        assert group["duplicate_assignment_count"]["count"] == 2
+        assert group["soft_risk_frame_count"]["count"] == 2
+        assert group["hard_risk_frame_count"]["count"] == 2
+        assert group["soft_risk_frame_rate"]["count"] == 2
+        assert group["hard_risk_frame_rate"]["count"] == 2
+        assert "mean_hard_risk_frame_rate" in group["recommendation_summary"]
 
 
 def test_risk_summary_classifies_soft_and_hard_evidence() -> None:

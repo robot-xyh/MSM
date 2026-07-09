@@ -195,6 +195,7 @@ def detections_from_airsim_frame(
         _first_present(frame, ("measurement_timestamp", "timestamp", "sim_time", "time"), 0.0)
     )
     raw_items = _frame_items(frame)
+    offline_truth_lookup = _offline_truth_lookup_from_frame(frame)
     detections: list[Detection] = []
     truth_ids: list[str] = []
 
@@ -206,12 +207,6 @@ def detections_from_airsim_frame(
                 timestamp,
             )
         )
-        truth_id = _optional_string(
-            _first_present(item, ("truth_id", "ground_truth_id", "object_id", "name"), None)
-        )
-        if truth_id is not None:
-            truth_ids.append(truth_id)
-
         detection_id = _optional_string(
             _first_present(
                 item,
@@ -221,6 +216,19 @@ def detections_from_airsim_frame(
         )
         if detection_id is None:
             detection_id = f"airsim-dry-run-{frame_index:04d}-{item_index:03d}"
+
+        truth_id, truth_label_source = _offline_truth_id_from_item(item)
+        if truth_id is None:
+            truth_id = _lookup_offline_truth_label(
+                offline_truth_lookup,
+                item=item,
+                detection_id=detection_id,
+                item_index=item_index,
+            )
+            if truth_id is not None:
+                truth_label_source = "frame_offline_truth_labels"
+        if truth_id is not None:
+            truth_ids.append(truth_id)
 
         position_xy = _position_xy(item)
         covariance_xy = _covariance_xy(item, default_position_variance)
@@ -236,6 +244,9 @@ def detections_from_airsim_frame(
         metadata.setdefault("arrival_timestamp", float(arrival_timestamp))
         if truth_id is not None:
             metadata.setdefault("truth_id", truth_id)
+            metadata.setdefault("offline_truth_label", truth_id)
+            metadata.setdefault("truth_label_source", truth_label_source)
+            metadata.setdefault("truth_label_usage", "offline_metrics_only")
         global_track_id = _optional_string(
             _first_present(item, ("global_track_id",), None)
         )
@@ -243,7 +254,16 @@ def detections_from_airsim_frame(
             metadata.setdefault("global_track_id", global_track_id)
             metadata.setdefault("frame_id", "ned")
         truth_position = _optional_position_xy(
-            _first_present(item, ("truth_position", "ground_truth_position"), None)
+            _first_present(
+                item,
+                (
+                    "truth_position",
+                    "ground_truth_position",
+                    "offline_truth_position",
+                    "truth_position_ned",
+                ),
+                None,
+            )
         )
         if truth_position is not None:
             metadata["truth_position"] = truth_position.tolist()
@@ -263,9 +283,19 @@ def detections_from_airsim_frame(
             )
         )
 
-    frame_truth_ids = _first_present(frame, ("truth_ids_present", "truth_ids"), None)
+    frame_truth_ids = _first_present(
+        frame,
+        (
+            "truth_ids_present",
+            "truth_ids",
+            "offline_truth_labels",
+            "truth_offline_labels",
+            "truth_labels",
+        ),
+        None,
+    )
     if frame_truth_ids is not None:
-        truth_ids = [str(value) for value in frame_truth_ids if value is not None]
+        truth_ids = _truth_ids_from_frame_value(frame_truth_ids)
     return timestamp, detections, sorted(set(truth_ids))
 
 
@@ -290,6 +320,12 @@ def run_airsim_dry_run_association(
             detections,
             timestamp=timestamp,
             truth_ids_present=truth_ids,
+            frame_metadata=_association_frame_metadata(
+                frame,
+                frame_index=frame_index,
+                timestamp=timestamp,
+                truth_ids=truth_ids,
+            ),
         )
         output_frames.append(
             DryRunAssociationFrame(
@@ -321,6 +357,151 @@ def _frame_items(frame: Any) -> list[Any]:
     if isinstance(frame, Sequence) and not isinstance(frame, (str, bytes, bytearray)):
         return list(frame)
     raise ValueError("frame must contain detections, tracks, or objects")
+
+
+def _association_frame_metadata(
+    frame: Any,
+    *,
+    frame_index: int,
+    timestamp: float,
+    truth_ids: list[str],
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "frame_index": frame_index,
+        "timestamp": float(timestamp),
+    }
+    sources = (
+        _mapping_or_empty(frame),
+        _nested_metadata(frame, "replay_metadata"),
+        _nested_metadata(frame, "metadata"),
+    )
+    for source in sources:
+        for key in (
+            "seed",
+            "episode_id",
+            "run_id",
+            "scenario_name",
+            "scenario",
+            "drone_count",
+            "target_count",
+            "intruder_count",
+            "frame_index",
+            "frame_id",
+            "frame_number",
+            "step",
+            "tick",
+            "measurement_timestamp",
+            "arrival_timestamp",
+            "threshold_profile_version",
+            "risk_profile",
+            "risk_profile_version",
+        ):
+            if key in source and source[key] is not None:
+                metadata.setdefault(key, source[key])
+    offline_truth_labels = _truth_ids_from_frame_value(
+        _first_present(
+            frame,
+            (
+                "truth_ids_present",
+                "truth_ids",
+                "offline_truth_labels",
+                "truth_offline_labels",
+                "truth_labels",
+            ),
+            None,
+        )
+    )
+    if not offline_truth_labels:
+        offline_truth_labels = list(truth_ids)
+    if offline_truth_labels:
+        metadata["offline_truth_labels"] = sorted(set(offline_truth_labels))
+        metadata["truth_label_usage"] = "offline_metrics_only"
+    return metadata
+
+
+def _offline_truth_id_from_item(item: Any) -> tuple[str | None, str | None]:
+    truth_keys = (
+        "offline_truth_label",
+        "offline_truth_id",
+        "truth_label",
+        "truth_id",
+        "ground_truth_id",
+        "truth_object_id",
+        "sim_truth_id",
+        "actor_name",
+        "object_id",
+        "name",
+    )
+    for key in truth_keys:
+        value = _first_present(item, (key,), None)
+        if value is not None:
+            return str(value), key
+    metadata = _mapping_or_empty(_first_present(item, ("metadata",), {}))
+    for key in truth_keys:
+        value = metadata.get(key)
+        if value is not None:
+            return str(value), f"metadata.{key}"
+    truth_payload = _first_present(item, ("truth", "offline_truth"), None)
+    if isinstance(truth_payload, Mapping):
+        for key in ("label", "id", "truth_id", "object_id", "name"):
+            value = truth_payload.get(key)
+            if value is not None:
+                return str(value), f"truth.{key}"
+    return None, None
+
+
+def _offline_truth_lookup_from_frame(frame: Any) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    sources = (
+        _mapping_or_empty(frame),
+        _nested_metadata(frame, "replay_metadata"),
+        _nested_metadata(frame, "metadata"),
+    )
+    for source in sources:
+        for key in ("offline_truth_labels", "truth_offline_labels", "truth_labels"):
+            value = source.get(key)
+            if isinstance(value, Mapping):
+                for item_key, label in value.items():
+                    if label is not None:
+                        lookup[str(item_key)] = str(label)
+            elif isinstance(value, Sequence) and not isinstance(
+                value, (str, bytes, bytearray)
+            ):
+                for index, label in enumerate(value):
+                    if label is not None:
+                        lookup.setdefault(str(index), str(label))
+    return lookup
+
+
+def _lookup_offline_truth_label(
+    lookup: Mapping[str, str],
+    *,
+    item: Any,
+    detection_id: str,
+    item_index: int,
+) -> str | None:
+    candidate_keys = [
+        detection_id,
+        str(item_index),
+    ]
+    for key in ("source_detection_id", "id", "track_id", "object_id", "name"):
+        value = _first_present(item, (key,), None)
+        if value is not None:
+            candidate_keys.append(str(value))
+    for key in candidate_keys:
+        if key in lookup:
+            return lookup[key]
+    return None
+
+
+def _truth_ids_from_frame_value(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, Mapping):
+        return [str(item) for item in value.values() if item is not None]
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [str(item) for item in value if item is not None]
+    return [str(value)]
 
 
 def _position_xy(item: Any) -> np.ndarray:
@@ -405,6 +586,10 @@ def _first_present(item: Any, names: tuple[str, ...], default: Any) -> Any:
 
 def _mapping_or_empty(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
+
+
+def _nested_metadata(item: Any, key: str) -> Mapping[str, Any]:
+    return _mapping_or_empty(_first_present(item, (key,), {}))
 
 
 def _optional_string(value: Any) -> str | None:

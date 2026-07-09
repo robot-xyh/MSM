@@ -16,6 +16,7 @@ from .models import (
     Assignment,
     AssignmentFeedbackDecision,
     AssignmentGuidanceBinding,
+    AssignmentMismatchReplaySummary,
     AssignmentPlan,
     AssignmentRecord,
     AssignmentValiditySummary,
@@ -32,6 +33,8 @@ from .models import (
     evaluate_terminal_feedback,
     guidance_bindings_from_assignment_plan,
     prepare_secondary_takeover_plan,
+    summarize_assignment_mismatch_replay,
+    summarize_terminal_feedback_calibration,
 )
 from .planner import AssignmentPlanner, StalePlanError
 from .solver import FallbackAssignmentSolver, HungarianAssignmentSolver
@@ -41,6 +44,7 @@ __all__ = [
     "ASSIGNMENT_PLAN_SCHEMA_V1",
     "AssignmentFeedbackDecision",
     "AssignmentGuidanceBinding",
+    "AssignmentMismatchReplaySummary",
     "AssignmentPlan",
     "AssignmentPlanner",
     "AssignmentRecord",
@@ -66,4 +70,6 @@ __all__ = [
     "evaluate_terminal_feedback",
     "guidance_bindings_from_assignment_plan",
     "prepare_secondary_takeover_plan",
+    "summarize_assignment_mismatch_replay",
+    "summarize_terminal_feedback_calibration",
 ]

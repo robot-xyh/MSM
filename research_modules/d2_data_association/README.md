@@ -19,7 +19,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - `RiskThresholds` / `classify_risk_summary()` 软/硬风险分层，按 D4 口径区分 ambiguity/cost margin/candidate overlap 与 IDSW/duplicate/continuity collapse。
 - D1 6D NED `GlobalTrack` 到 D2 2D `Detection` 的投影 adapter，保留 `measurement_timestamp`、`arrival_timestamp`、covariance 和 metadata。
 - AirSim-style dry-run/replay adapter，不 import 或调用 `airsim`，并在 bus message 中导出当前活动 `global_track_ids`。
-- `load_airsim_replay_frames()`、`run_airsim_replay_association()` 和 `run_threshold_sensitivity()` 支持离线 JSON/JSONL replay 读取、association log/report 输出、seed/episode/scenario 校准元数据透传、`RiskThresholds.profile_version` 记录和阈值敏感性汇总；无 truth label 的 N-v-N replay 会用输入观测数或显式 count 字段给出 `target_count` fallback。
+- `load_airsim_replay_frames()`、`run_airsim_replay_association()`、`run_threshold_sensitivity()` 和 `summarize_multi_seed_risk_calibration()` 支持离线 JSON/JSONL replay 读取、association log/report 输出、seed/episode/scenario/frame/offline truth label 校准元数据透传、`RiskThresholds.profile_version` 记录、阈值敏感性汇总和多 seed 推荐阈值摘要；无 truth label 的 N-v-N replay 会用输入观测数或显式 count 字段给出 `target_count` fallback。
 
 部分实现：
 
@@ -57,7 +57,9 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - D2/D6 必须显式保留 `id_switch_count`；它不能被 RMSE、覆盖率或命中率替代。
 - D2 输出的 `global_track_ids` 来自当前活动航迹集合，不截断或补齐到固定 2 或 5。
 - D4 当前把 D2 风险分为软/硬两类：`association_ambiguity`、低 cost margin、candidate overlap 属于观察/二级 cue 证据；`id_switch_count` 增量、`duplicate_assignment_count`/`duplicate_track_risk` 和 `track_continuity` 低于阈值属于硬风险证据。D2 只发布证据，不直接触发 `request_center_replan` 或降级。
-- 多 seed 风险校准的 replay/report 应保留 `seed`、`episode_id`、`scenario_name`/`scenario`、`drone_count`/`target_count`、gate threshold、`risk_profile`、`risk_profile_version`、association logs、`id_switch_count`、`track_continuity`、`duplicate_assignment_count` 和 soft/hard risk summary；真实 IDSW/continuity 评估仍要求离线 `truth_id`/truth position。
+- 多 seed 风险校准的 replay/report 应保留 `seed`、`episode_id`、`scenario_name`/`scenario`、`frame_index`、`drone_count`/`target_count`、gate threshold、`risk_profile`、`risk_profile_version`、association logs、`id_switch_count`、`track_continuity`、`duplicate_assignment_count` 和 soft/hard risk summary；D2 仅把 `truth_id`/offline truth label 用于离线 metrics，不用它重命名或绑定 `global_track_id`。
+- 真实 AirSim 5v5 replay 输入、ComputerVision metadata 采集、episode JSONL schema 发布和批量运行仍由 main/runtime/D6 生产；D2 不连接 AirSim SDK。
+- main runtime 已具备 P1 D4/D5 calibration sweep，D6 已具备标准 AirSim calibration report bundle 自动生成。D2 的对齐目标是让自身 replay/report/log 字段能进入该 bundle 做分组统计；D2 不重复实现 sweep 编排、AirSim reset 或 D6 报告生成。
 
 ## 运行测试
 

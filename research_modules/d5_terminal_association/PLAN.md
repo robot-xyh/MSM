@@ -117,6 +117,10 @@ ByteTrack、BoT-SORT、Deep SORT 只作为本地 MOT 输入来源。它们输出
 - D7 视觉 PNG 前置证据：`annotate_visual_png_handoff()` 已在 `TerminalAssociation.metadata` 上附加 bbox 面积稳定性、距离区间、TGO、延迟、measurement age、LOS rate、friend/duplicate 风险和机动裕度建议。该建议只给 D7/main 做 gate 输入，不决定导引律。
 - D4/D6 一致性摘要：`TerminalConsistencyTracker` 已按 `resource_id + assigned_global_track_id` 维护连续窗口；`assignment_version` 只随摘要审计输出，不作为窗口 key。因此同一资源持续执行同一全局目标时，D3 plan version 滚动更新不会清空连续 `locked/ambiguous/hold/reacquire` 状态。该摘要只作为 advisory evidence，不触发降级、不生成分配计划、不改写 `global_track_id`。
 - 二级视觉覆盖与 detect 漏斗诊断：`summarize_secondary_visual_coverage_funnel()` 接受普通 replay frame dict/dataclass、`TerminalObservation` 和 `CrossViewAssociation`，输出单二级相机 full-view 率、二级网络联合 full-view 率、每相机/网络每帧可见目标数、覆盖比例均值/最小值，以及 detect -> local/recon cue -> terminal association -> cross-view association -> multi-support 计数。offline target label 只用于“看见目标”覆盖统计，不进入在线绑定。
+- Detect-to-global-track registration：`register_local_visual_tracks_to_global_tracks()` 接受 `GlobalTrack[]`、D2/D3 binding/`Assignment`、每相机 `CameraModel(K/R/t)`、timestamp、协方差和 `LocalVisualTrack[]`，输出 registration candidates、registered observations、即时 cross-view support 和稳定 `stable_cross_view_associations`。truth/actor ID 和 tracker ID 不参与在线绑定。
+- P1 二级 detect 注册校准：candidate/observation metadata 已补齐 `pixel_error_px`、`mahalanobis_d2`、`gate_pass`、`projection_valid`、`camera_pose_source`、`bbox_area_px` 和仅离线评分用的 `offline_truth_global_id`。`camera_pose_source` 只从 batch metadata 标注 `airsim_camera_pose`、`runtime_guidance_pose` 或 `look_at_fallback`，D5 不调用 AirSim。
+- P1 自适应像素协方差：`adaptive_pixel_covariance_px()` 按 `sigma_px = clamp(max(25, 0.5*sqrt(bbox_area_px), 0.008*image_diag_px), 25, 90)` 生成二级相机 bbox 观测协方差；有 bbox 面积时用于几何门控，无面积时保留 `batch.covariance_px` fallback。
+- P1 多帧稳定注册：默认 `RegistrationStabilityConfig(window_frames=3, required_gate_passes=2)`。单帧 gate pass 只形成 candidate；近 3 帧内同一 `resource/camera/local_track/global_track` 至少 2 次通过才标记 `stable_cross_view_support=True`，否则 reason 记为 `stability_window_failed`。该逻辑只增加既有 `global_track_id` 的视觉支持，不创建、不改写、不换绑 ID。
 - 机动高空侦察云台覆盖证据：`ReconImageCue`、`TerminalObservationBus.cross_view_associations()` 和 `summarize_secondary_visual_coverage_funnel()` 已支持 `fixed_downlook_secondary` 与 `mobile_recon_gimbal` 分层。移动侦察节点可记录雷达/GlobalTrack cue 到云台 look-at 的 NED 位置、pointing error 和像素 track error；coverage funnel 会标出固定俯视未 full-view、移动云台补足网络联合覆盖的帧和新增目标集合。
 
 2026-07-08 AirSim 机动高空侦察节点复测状态：
@@ -125,7 +129,14 @@ ByteTrack、BoT-SORT、Deep SORT 只作为本地 MOT 输入来源。它们输出
 - D5 已能识别并汇总 `mobile_recon_gimbal`、`radar_global_track_cue`、`mobile_high_recon` 字段；云台指向成功率为 1.0。
 - 二级 bbox 面积均值约 3326-3334 px^2；固定俯视 200 m / 110 deg / 1920x1080 对照约 1144-1145 px^2，说明机动侦察云台“看得更清楚”。
 - 但二级网络同帧全覆盖仍为 0.0，平均联合覆盖约 0.65-0.69；主要断点仍是 `not_all_targets_visible` / `network_union_incomplete`，说明尚未“稳定看全”。
-- `no_degradation` 的 `cross_view_association_count` 为 4；`degrade_to_secondary` / `degrade_to_distributed` 的 cross-view 为 0，`secondary_detect_available_but_not_registered_count` 为 65。D5 evidence 链路已具备，但降级 case 仍缺二级节点几何/覆盖策略和 multi-camera cross-view registration。
+- `no_degradation` 的 `cross_view_association_count` 为 4；`degrade_to_secondary` / `degrade_to_distributed` 的 cross-view 为 0，`secondary_detect_available_but_not_registered_count` 为 65。该原始复测暴露了二级节点覆盖和 registration 接线缺口；D5 helper 已补齐，剩余为二级节点几何/覆盖策略和 main/AirSim 批量调用落盘。
+
+2026-07-08 P1 calibration sweep 集成状态：
+
+- main runtime 已新增 P1 D4/D5 calibration sweep，用于扫描二级高度、FOV、二级节点数量和 standoff 组合，并在每个组合内运行多 seed stress episode。
+- main runtime 的 D4/D5 stress 链路已可把二级 detect-to-global-track registration 输出写入同一个 `TerminalObservationBus`，用于统计 `registered_to_global_track`、`geometry_gate_rejected`、`secondary_detect_available_but_not_registered`、cross-view support 和 coverage funnel。
+- D6 标准报告 bundle 已由 main runtime 自动生成，输出 `d6_airsim_calibration/airsim_calibration_records.csv`、`airsim_calibration_summary.csv`、`airsim_calibration_summary.json` 和 `airsim_calibration_report.md`。
+- 因此 D5 当前 P1 重点不再是“是否有 registration/helper/report 接口”，而是通过真实 AirSim 多 seed sweep 校准二级网络覆盖、注册门限、YOLO/MOT 阈值、外参误差和 D4/D7 消费口径。
 
 部分实现或仅作为 adapter/抽象的能力：
 
@@ -438,6 +449,8 @@ P1 补齐状态：
 - 已完成 D5 侧 AirSim CV replay 可写盘字段：projected pixel、bbox center、pixel error、Mahalanobis、gate pass、candidate margin、measurement age、friend conflict、selected pair、`duplicate_terminal_lock_risk` advisory、`recon_cue_used_count` 和 visual PNG advisory metadata。main/D6 若需要实际 JSONL/CSV sink，应在 runtime/D6 owned path 接入这些 D5 输出字段。
 - 已完成 D5 侧 multi-seed calibration readiness helper：`summarize_multiseed_calibration_readiness()` 对 `TerminalObservation` 和 `CrossViewAssociation` 做被动字段覆盖审计，输出每个 seed 的 `missing_required_fields`、`missing_recommended_fields`、source/backend counts、truth-label count、handoff/bbox-stability count 和 duplicate/friend conflict count。truth label 只作为离线 metadata 计数，不参与在线关联。
 - 已完成 D5 侧二级覆盖/漏斗诊断 helper：`summarize_secondary_visual_coverage_funnel()` 输出 `not_all_targets_visible`、`network_union_incomplete`、`no_global_binding`、`reacquire_not_grouped`、`stale_or_missing_recon_cue`、`geometry_gate_rejected`、`secondary_detect_offline_only` 断点计数，帮助 main/D4/D6 区分“二级相机看见了目标”“二级网络并集覆盖了目标”和“D5 已形成全局 ID 支持”。
+- 已完成 D5 侧 AirSim settings 驱动 detect-to-global-track registration helper：`register_local_visual_tracks_to_global_tracks()` 消费 `GlobalTrack[]`、D2/D3 binding/`Assignment`、每相机 `CameraModel(K/R/t)`、timestamp、像素协方差和 `LocalVisualTrack[]`，用像素马氏距离 + Hungarian 匹配输出 `DetectToGlobalTrackCandidate`、`TerminalObservation` 和 `CrossViewAssociation`；SciPy 不可用时退回确定性唯一匹配，同时保留 gated candidates 供 JPDA-compatible 下游使用。输出 reasons 覆盖 `no_global_binding`、`stale_or_missing_recon_cue`、`geometry_gate_rejected`、`network_union_incomplete`、`secondary_detect_offline_only` 和 `registered_to_global_track`。二级 detect 只能增加既有 `global_track_id` 支持，不能创建、重绑或使用 AirSim truth/actor ID。
+- 已完成 main runtime P1 calibration sweep 和 D6 bundle 对 D5 evidence 的接线口径：D5 不启动 AirSim、不生成报告，但其 `TerminalObservation`、`CrossViewAssociation`、registration reason、secondary funnel 和 mobile gimbal metadata 已是 sweep/D6 统计的输入合同。
 - 已完成 D5 侧机动侦察云台 cue evidence：`ReconImageCue` 与 coverage/cross-view summary 可携带 NED cue/look-at、云台 metadata、pointing/track error、`cue_source=radar_global_track_cue`、`capability_class=mobile_high_recon` 和 `coverage_mode=mobile_recon_gimbal`；2026-07-08 AirSim 复测中 D5 已识别这些字段，云台指向成功率 1.0，二级 bbox 面积约 3326-3334 px^2，显著大于固定俯视 200 m / 110 deg / 1920x1080 对照约 1144-1145 px^2。
 - 已完成 `TerminalConsistencySummary` 连续窗口修正：`TerminalConsistencyTracker` 按 `resource_id + assigned_global_track_id` 维护窗口，`assignment_version` 只做摘要审计字段。同一资源持续执行同一全局目标时，滚动 plan version 不会清空连续 `locked/ambiguous/hold/reacquire` 状态。
 - 已完成 D4 evidence 输出：`CrossViewAssociation`、`DistributedTerminalAssociation.recommended_d4_action`、`duplicate_lock_resource_ids`、`hypothesis_only/hold/ambiguous` 原因和连续帧 `TerminalConsistencySummary` 均为 D4/D6 advisory evidence；D5 不触发降级、不生成 `AssignmentPlan`、不选择主备资源。
@@ -449,7 +462,7 @@ P0 状态：无 P0 blocker。安全合同仍需持续回归：D5 不分配、不
 剩余 P1：
 
 - 二级节点几何/覆盖策略：机动云台已把目标框放大，但二级网络同帧全覆盖仍为 0.0，联合覆盖约 0.65-0.69；需要调整高空侦察节点站位、视场/分辨率、look-at 扫描/子簇策略和 full-view 判据，使 `not_all_targets_visible` / `network_union_incomplete` 不再主导。
-- Multi-camera cross-view registration：降级到二级/分布式时 cross-view 仍为 0，`secondary_detect_available_but_not_registered_count` 约 65；需要把二级 detect/recon cue 稳定转成既有 `global_track_id` 的多相机支持，而不是只停留在“看见目标”统计。
+- Multi-camera cross-view registration 多 seed 验收：D5 侧 helper 与 main/AirSim sweep/D6 bundle 接线口径已具备；后续重点是用真实 sweep 数据校准 `GlobalTrack`、D2/D3 binding、per-camera `K/R/t`、timestamp/covariance 和二级 `LocalVisualTrack` 的门限，验证 `registered_to_global_track` 比例提升，并让 `degrade_to_secondary` / `degrade_to_distributed` 不再停留在 offline visible-only。
 - 真实 YOLO/MOT 多 seed 阈值：消费 AirSim 连续 RGB/PNG 或外部 detector bbox stream，调用 D5 `YoloMotAdapter.process_frame()`，跨 seed 标定 `gate_chi2`、候选 margin、bbox 稳定窗口、handoff range、measurement age、LOS availability、ambiguity 和 quality 阈值，并报告 `locked_mismatch`、false handoff、ambiguous/reacquire 抖动和 `terminal_id_switch_count`。
 - 标定/`solvePnP`/外参增强：为 AirSim/replay 建立离线标定验证、PnP RANSAC、重投影误差阈值、外参 drift 告警和多相机 frame/timestamp 对齐检查；真实硬件级标定链仍可继续归入 P2。
 

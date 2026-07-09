@@ -10,7 +10,10 @@ from d3_assignment_planner import (
     TargetTrack,
     assignment_records_from_plan,
     assignment_validity_summary_from_plan,
+    evaluate_terminal_feedback,
     prepare_secondary_takeover_plan,
+    summarize_assignment_mismatch_replay,
+    summarize_terminal_feedback_calibration,
 )
 
 
@@ -41,6 +44,10 @@ def test_assignment_validity_summary_exports_required_fields() -> None:
     assert summary.unassigned_high_threat_count == 1
     assert summary.resource_count == 1
     assert summary.target_count == 2
+    assert summary.assigned_count == 1
+    assert summary.hysteresis_reject_count == 0
+    assert summary.stale_reject_count == 1
+    assert summary.reassign_count == 0
 
 
 def test_assignment_validity_summary_counts_duplicate_targets_and_resources() -> None:
@@ -102,6 +109,11 @@ def test_assignment_records_from_plan_match_d6_assignment_record_shape() -> None
     assert record.changed is True
     assert record.resource_count == 1
     assert record.target_count == 1
+    assert record.assigned_count == 1
+    assert record.unassigned_high_threat_count == 0
+    assert record.hysteresis_reject_count == 0
+    assert record.stale_reject_count == 0
+    assert record.reassign_count == 0
     assert record.assignment_matrix_shape == (1, 1)
     assert record.plan_owner == "center"
     assert record.active_plan_owner == "center"
@@ -175,6 +187,8 @@ def test_center_replan_assignment_records_export_current_plan_fields() -> None:
     assert record.supersedes_plan_version == first.version
     assert record.resource_count == 1
     assert record.target_count == 1
+    assert record.assigned_count == 1
+    assert record.reassign_count == 0
     assert record.assignment_matrix_shape == (1, 1)
 
 
@@ -243,4 +257,130 @@ def test_secondary_takeover_assignment_records_export_owner_fields() -> None:
     assert record.supersedes_plan_version == center_plan.version
     assert record.resource_count == 1
     assert record.target_count == 1
+    assert record.assigned_count == 1
+    assert record.reassign_count == 1
     assert record.assignment_matrix_shape == (1, 1)
+
+
+def test_assignment_records_export_nm_mismatch_replay_fields() -> None:
+    planner = AssignmentPlanner(config=PlannerConfig(enable_hysteresis=False))
+    tracks = [
+        TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1),
+        TargetTrack("T2", threat_score=0.8, covariance=0.1, window_cost=0.1),
+        TargetTrack("T3", threat_score=0.95, covariance=0.1, window_cost=0.1),
+    ]
+    plan = planner.plan(
+        tracks,
+        [ResourceState("R1"), ResourceState("R2")],
+        timestamp=4.0,
+    )
+
+    records = assignment_records_from_plan(
+        plan,
+        tracks=tracks,
+        high_threat_threshold=0.7,
+    )
+    replay_summary = summarize_assignment_mismatch_replay(records)
+
+    assert len(records) == 2
+    assert records[0].resource_count == 2
+    assert records[0].target_count == 3
+    assert records[0].assigned_count == 2
+    assert records[0].unassigned_high_threat_count == 1
+    assert records[0].hysteresis_reject_count == 0
+    assert records[0].stale_reject_count == 0
+    assert records[0].reassign_count == 0
+    assert replay_summary.resource_count == 2
+    assert replay_summary.target_count == 3
+    assert replay_summary.assigned_count == 2
+    assert replay_summary.unassigned_high_threat_count == 1
+
+
+def test_terminal_feedback_calibration_summary_is_advisory_only() -> None:
+    assignment_records = (
+        {
+            "seed": 10,
+            "plan_id": "plan-a",
+            "version": 1,
+            "window_id": 4,
+            "resource_count": 2,
+            "target_count": 3,
+            "resource_id": "R1",
+            "global_track_id": "T1",
+            "active": True,
+            "decision_state": "held_by_hysteresis",
+            "unassigned_high_threat_count": 1,
+        },
+        {
+            "seed": 10,
+            "plan_id": "plan-a",
+            "version": 1,
+            "window_id": 4,
+            "resource_count": 2,
+            "target_count": 3,
+            "resource_id": "R2",
+            "global_track_id": "T2",
+            "active": True,
+            "decision_state": "held_by_hysteresis",
+            "unassigned_high_threat_count": 1,
+        },
+        {
+            "seed": 11,
+            "plan_id": "plan-b",
+            "version": 2,
+            "window_id": 5,
+            "resource_count": 2,
+            "target_count": 2,
+            "resource_id": "R1",
+            "global_track_id": "T3",
+            "active": True,
+            "changed": True,
+            "previous_plan_id": "plan-a",
+            "reassign_count": 1,
+        },
+    )
+    feedback_records = (
+        evaluate_terminal_feedback(
+            "consistent",
+            duplicate_terminal_lock_risk=True,
+            resource_id="R1",
+            target_id="T1",
+        ),
+        evaluate_terminal_feedback(
+            "friend_overlap_hold",
+            resource_id="R2",
+            target_id="T2",
+        ),
+        {
+            "seed": 11,
+            "terminal_feedback_state": "reacquire",
+            "fov_difficulty_suggestion": "increase_current_edge",
+        },
+        {
+            "seed": 11,
+            "terminal_feedback_state": "geometry_reject",
+            "feasibility_suggestion": "temporarily_mark_current_edge_infeasible",
+        },
+    )
+
+    summary = summarize_terminal_feedback_calibration(
+        assignment_records,
+        feedback_records,
+    )
+
+    assert summary.seed_count == 2
+    assert summary.assignment_record_count == 3
+    assert summary.feedback_record_count == 4
+    assert summary.duplicate_reject_count == 1
+    assert summary.friend_reject_count == 1
+    assert summary.fov_reject_count == 1
+    assert summary.geometry_reject_count == 1
+    assert summary.mismatch_replay_summary.resource_count == 2
+    assert summary.mismatch_replay_summary.target_count == 3
+    assert summary.mismatch_replay_summary.assigned_count == 3
+    assert summary.mismatch_replay_summary.unassigned_high_threat_count == 1
+    assert summary.mismatch_replay_summary.hysteresis_reject_count == 1
+    assert summary.mismatch_replay_summary.reassign_count == 1
+    assert summary.cost_suggestions["duplicate"].startswith("review_")
+    assert summary.hysteresis_suggestions["geometry"].startswith("bypass_")
+    assert summary.auto_apply_defaults is False

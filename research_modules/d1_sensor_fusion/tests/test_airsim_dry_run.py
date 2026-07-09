@@ -10,9 +10,11 @@ from d1_sensor_fusion.airsim_dry_run import (
     make_minimal_airsim_dry_run_fixture,
     observations_from_airsim_dry_run_fixture,
 )
+from d1_sensor_fusion.observations import CameraModel, eo_project, measurement_model_for
 from d1_sensor_fusion.replay import (
     REPLAY_SCHEMA_VERSION,
     read_blocks_sensor_observations_jsonl,
+    read_sensor_observations_jsonl,
     read_sensor_observations_csv,
     replay_blocks_sensor_observations_jsonl,
     replay_sensor_observations_csv,
@@ -199,6 +201,98 @@ def test_sensor_observations_csv_reader_replays_fusion_adapter(tmp_path) -> None
     assert loaded[0].source_node_id == "D1-CSV-FIXTURE"
     assert len(tracks) == 1
     assert tracks[0].metadata["coverage_cell"] == "cell-csv"
+
+
+def test_real_blocks_cv_jsonl_preserves_eo_camera_bbox_and_recon_metadata(tmp_path) -> None:
+    jsonl_path = tmp_path / "sensor_observations.jsonl"
+    camera_metadata = {
+        "camera_id": "secondary_recon_01:front_center",
+        "camera_name": "front_center",
+        "intrinsics": {
+            "K": [[700.0, 0.0, 640.0], [0.0, 710.0, 360.0], [0.0, 0.0, 1.0]],
+            "image_size": [1280, 720],
+        },
+        "extrinsics": {
+            "position_ned": [12.0, -5.0, -80.0],
+            "rotation_world_to_camera": [
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 0.0],
+            ],
+        },
+    }
+    payload = {
+        "schema_version": REPLAY_SCHEMA_VERSION,
+        "observation_id": "blocks_cv_seed007_secondary_eo_0001",
+        "sensor_id": "secondary_recon_01:front_center",
+        "modality": "eo",
+        "measurement_timestamp": 12.25,
+        "arrival_timestamp": 12.31,
+        "frame_id": "pixel",
+        "measurement": [640.0, 360.0],
+        "covariance": [[9.0, 0.0], [0.0, 9.0]],
+        "confidence": 0.86,
+        "quality_flags": ["cv_fixture", "secondary_recon"],
+        "coverage_cell": "cell-north",
+        "camera_metadata": camera_metadata,
+        "bbox_xyxy": [620.0, 340.0, 660.0, 380.0],
+        "detection_metadata": {
+            "detector": "simGetDetections",
+            "mesh_name": "BP_FlyingPawn",
+            "actor_name": "actor_red_01",
+        },
+        "secondary_recon": {
+            "node_id": "secondary_recon_01",
+            "mode": "mobile_high_altitude",
+            "cue_source": "d1_recon_cue",
+        },
+        "source_support": {"eo": 1},
+        "communication": {
+            "source_node_id": "secondary_recon_01",
+            "target_node_id": "D1-FUSION",
+            "link_type": "video_cue",
+            "sent_timestamp": 12.26,
+            "received_timestamp": 12.31,
+            "payload_kind": "bbox",
+            "stale_after_s": 0.4,
+        },
+    }
+    jsonl_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    observation = read_sensor_observations_jsonl(jsonl_path)[0]
+    metadata = observation.metadata
+
+    assert observation.measurement_timestamp == 12.25
+    assert observation.arrival_timestamp == 12.31
+    assert observation.covariance.shape == (2, 2)
+    assert observation.source_support == {"eo": 1}
+    assert metadata["coverage_cell"] == "cell-north"
+    assert metadata["bbox"] == [620.0, 340.0, 660.0, 380.0]
+    assert metadata["bbox_xyxy"] == [620.0, 340.0, 660.0, 380.0]
+    assert metadata["center_px"] == [640.0, 360.0]
+    assert metadata["bbox_center_px"] == [640.0, 360.0]
+    assert metadata["camera_model"]["camera_id"] == "secondary_recon_01:front_center"
+    assert metadata["detection_metadata"]["detector"] == "simGetDetections"
+    assert metadata["secondary_recon"]["mode"] == "mobile_high_altitude"
+    assert observation.payload_kind == "bbox"
+    assert np.isclose(observation.communication_latency, 0.05)
+
+    expected_camera = CameraModel(
+        position_ned=np.array([12.0, -5.0, -80.0]),
+        rotation_world_to_camera=np.array(
+            [[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]],
+            dtype=float,
+        ),
+        fx=700.0,
+        fy=710.0,
+        cx=640.0,
+        cy=360.0,
+        width=1280,
+        height=720,
+    )
+    state = np.array([112.0, -5.0, -80.0, 0.0, 0.0, 0.0])
+    model = measurement_model_for(observation)
+    assert np.allclose(model.h_fn(state), eo_project(state, expected_camera))
 
 
 def test_blocks_calibration_csv_replay_preserves_audit_and_quality_fields(tmp_path) -> None:

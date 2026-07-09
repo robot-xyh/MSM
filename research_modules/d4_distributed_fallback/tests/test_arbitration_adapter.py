@@ -148,7 +148,16 @@ def test_adapter_maps_low_risk_inputs_to_continue_center_event_metadata() -> Non
     assert metadata["trigger_reason"] == "terminal_consistent_and_risk_low"
     assert metadata["trigger_timestamp"] == 10.0
     assert metadata["decision_timestamp"] == 10.0
-    assert metadata["review_label"] == "continue_center"
+    assert metadata["review_label"] == "unnecessary"
+    assert metadata["active_degradation_review_label"] == "unnecessary"
+    assert metadata["review_label_detail"] == "continue_center"
+    assert metadata["review_label_source"] == "derived"
+    assert metadata["review_pre_window_start_timestamp"] == 8.0
+    assert metadata["review_pre_window_end_timestamp"] == 10.0
+    assert metadata["review_post_window_start_timestamp"] == 10.0
+    assert metadata["review_post_window_end_timestamp"] == 15.0
+    assert metadata["secondary_diagnostic_node_id"] == "SEC-1"
+    assert abs(metadata["secondary_diagnostic_heartbeat_age_s"] - 0.1) < 1e-9
     assert metadata["global_track_id"] == "G-TGT-001"
     assert metadata["plan_version"] == 3
 
@@ -205,8 +214,14 @@ def test_adapter_consumes_mobile_high_recon_metadata_without_auto_takeover() -> 
     assert lifecycle["is_mobile_high_recon"] is True
     assert lifecycle["is_fixed_tethered_secondary"] is False
     assert lifecycle["cue_freshness_s"] == 0.2
+    assert lifecycle["cue_stale"] is False
     assert lifecycle["gimbal_pointing_ok"] is True
     assert lifecycle["secondary_coverage_ratio"] == 0.86
+    assert lifecycle["coverage_matches_requested_cell"] is True
+    assert metadata["secondary_network_coverage_available"] is True
+    assert abs(metadata["secondary_network_full_view_gap"] - 0.14) < 1e-9
+    assert metadata["secondary_diagnostic_node_id"] == "MHR-1"
+    assert metadata["secondary_diagnostic_coverage_ratio"] == 0.86
 
 
 def test_adapter_keeps_soft_margin_and_low_terminal_confidence_as_observe_more() -> None:
@@ -225,7 +240,8 @@ def test_adapter_keeps_soft_margin_and_low_terminal_confidence_as_observe_more()
     assert result.decision.mode == DegradationMode.NONE
     assert result.decision.action == DegradationAction.CONTINUE_CENTER
     assert result.decision.reason == "terminal_transient_observe_more"
-    assert result.record.review_label == "observe_more_not_degradation"
+    assert result.record.review_label == "unnecessary"
+    assert result.record.review_label_detail == "observe_more_not_degradation"
     assert "d3_assignment_cost_margin_low" in result.record.risk_factors
     assert "d5_terminal_confidence_low" in result.record.risk_factors
 
@@ -375,11 +391,15 @@ def test_adapter_reports_secondary_detect_visible_without_cross_view_registratio
     assert result.decision.mode == DegradationMode.ACTIVE_DEGRADATION
     assert result.decision.action == DegradationAction.REQUEST_SECONDARY_ASSIST
     assert metadata["secondary_takeover_state"] == "not_applicable"
+    assert metadata["secondary_takeover_success"] is False
     assert metadata["secondary_detect_available_but_not_registered"] is True
     assert metadata["secondary_network_joint_full_view_frame_rate"] == 0.92
     assert metadata["secondary_network_mean_coverage_ratio"] == 0.88
+    assert metadata["secondary_network_coverage_available"] is True
+    assert abs(metadata["secondary_network_full_view_gap"] - 0.08) < 1e-9
     assert metadata["cross_view_association_count"] == 0
     assert metadata["cross_view_conversion_gap"] == 1.0
+    assert metadata["secondary_detect_to_registration_gap"] == 1.0
     assert metadata["secondary_detect_to_cross_view_reject_reasons"] == [
         "global_binding_missing"
     ]
@@ -464,11 +484,16 @@ def test_adapter_exposes_secondary_takeover_pending_and_active_plan_metadata() -
     assert pending_metadata["secondary_plan_source_node_id"] == "SEC-1"
     assert pending_metadata["secondary_plan_id"] is None
     assert pending_metadata["secondary_reassignment_complete"] is False
+    assert pending_metadata["secondary_takeover_candidate"] is True
+    assert pending_metadata["secondary_takeover_success"] is False
+    assert pending_metadata["secondary_plan_activation_delay_s"] is None
+    assert pending_metadata["secondary_plan_pending_duration_s"] == 0.0
     assert pending_metadata["secondary_supersedes_plan_id"] == "d3-plan-test"
     assert pending_metadata["secondary_supersedes_plan_version"] == 3
 
     active = D4ArbitrationAdapter().evaluate(
         **kwargs,
+        trigger_timestamp=8.0,
         secondary_plan_id="secondary-plan-004",
         secondary_plan_version=4,
         secondary_plan_active=True,
@@ -483,6 +508,9 @@ def test_adapter_exposes_secondary_takeover_pending_and_active_plan_metadata() -
     assert active_metadata["secondary_plan_id"] == "secondary-plan-004"
     assert active_metadata["secondary_plan_version"] == 4
     assert active_metadata["secondary_reassignment_complete"] is True
+    assert active_metadata["secondary_takeover_success"] is True
+    assert active_metadata["secondary_plan_activation_delay_s"] == 2.0
+    assert active_metadata["secondary_plan_pending_duration_s"] is None
 
 
 def test_adapter_normalizes_d5_distributed_visual_evidence_without_d5_import() -> None:
@@ -593,6 +621,17 @@ def test_adapter_outputs_d6_compatible_active_decision_event_fields() -> None:
     assert metadata["trigger_timestamp"] == 8.5
     assert metadata["decision_timestamp"] == 10.0
     assert metadata["review_label"] == "necessary"
+    assert metadata["active_degradation_review_label"] == "necessary"
+    assert metadata["review_label_source"] == "explicit"
+    assert metadata["review_label_detail"] == "secondary_takeover_candidate"
+    assert metadata["review_pre_window_start_timestamp"] == 6.5
+    assert metadata["review_pre_window_end_timestamp"] == 8.5
+    assert metadata["review_post_window_end_timestamp"] == 15.0
+    assert metadata["secondary_takeover_candidate"] is True
+    assert metadata["secondary_takeover_necessity_label"] == "necessary"
+    assert metadata["secondary_plan_pending_duration_s"] == 1.5
     assert metadata["secondary_lifecycle"][0]["heartbeat"] == 9.9
     assert abs(metadata["secondary_lifecycle"][0]["video_cue_freshness"] - 0.1) < 1e-9
     assert metadata["secondary_lifecycle"][0]["secondary_available"] is True
+    assert metadata["secondary_diagnostic_node_id"] == "SEC-1"
+    assert metadata["secondary_diagnostic_link_fresh"] is True

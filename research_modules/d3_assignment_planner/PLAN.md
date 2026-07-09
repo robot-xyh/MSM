@@ -108,8 +108,10 @@ D3 已实现以下 helper：
 - `evaluate_terminal_feedback(...)`：把 D5 反馈映射为 `hold`、`replan` 或 `secondary_arbitration`，始终 `allow_local_rebind=False`。
 - `apply_terminal_feedback_to_planner_inputs(...)`：把 D5 duplicate/friend/fov/feasibility metadata 写回下一轮 `TargetTrack[]/ResourceState[]`，让成本矩阵或禁配边实际生效。
 - `prepare_secondary_takeover_plan(...)`：在 D4/main 已选定二级节点后，校验新 plan version 大于被 supersede 的中心 plan，并写入 `secondary_plan_v2`、owner/source node、superseded plan id/version、可选 epoch/lease 和 `allow_local_rebind=False`。
-- `assignment_validity_summary_from_plan(...)`：导出 `AssignmentValiditySummary(plan_age_s, assignment_latency_s, cost_margin, stale_plan_version, duplicate_assignment_count, unassigned_high_threat_count, resource_count, target_count)`。
-- `assignment_records_from_plan(...)`：导出 D6-compatible `AssignmentRecord(timestamp, plan_id, version, resource_id, global_track_id, cost_breakdown, authorization_state, active, truth_id)`，并携带多 seed current-plan 分组字段：`window_id`、`decision_state`、`changed`、`resource_count`、`target_count`、`assignment_matrix_shape`、`plan_owner/active_plan_owner/owner_node_id`、source/target/link、`plan_schema`、`replan_reason/takeover_reason`、previous/superseded plan id/version、plan costs、`cost_margin` 和 `stale_after_s`。
+- `assignment_validity_summary_from_plan(...)`：导出 `AssignmentValiditySummary(plan_age_s, assignment_latency_s, cost_margin, stale_plan_version, duplicate_assignment_count, unassigned_high_threat_count, resource_count, target_count, assigned_count, hysteresis_reject_count, stale_reject_count, reassign_count)`。
+- `assignment_records_from_plan(...)`：导出 D6-compatible `AssignmentRecord(timestamp, plan_id, version, resource_id, global_track_id, cost_breakdown, authorization_state, active, truth_id)`，并携带多 seed current-plan 分组字段：`window_id`、`decision_state`、`changed`、`resource_count`、`target_count`、`assigned_count`、`unassigned_high_threat_count`、`hysteresis_reject_count`、`stale_reject_count`、`reassign_count`、`assignment_matrix_shape`、`plan_owner/active_plan_owner/owner_node_id`、source/target/link、`plan_schema`、`replan_reason/takeover_reason`、previous/superseded plan id/version、plan costs、`cost_margin` 和 `stale_after_s`。
+- `summarize_assignment_mismatch_replay(...)`：从 D6 assignment records 或 summary dict 聚合 N/M replay 字段：`resource_count`、`target_count`、`assigned_count`、`unassigned_high_threat_count`、`hysteresis_reject_count`、`stale_reject_count`、`reassign_count`。
+- `summarize_terminal_feedback_calibration(...)`：输入多 seed assignment records/feedback records，输出 duplicate/friend/fov/geometry reject 计数，以及 cost/hysteresis 调参建议；该 helper 只给建议，不自动替换默认 `CostWeights`、`PlannerConfig.delta/min_dwell/max_changes_per_window/reassignment_switch_penalty`。
 - `AirSimDryRunAssignmentAdapter`：接收 synthetic AirSim-style dict/object，不 import AirSim，不控制 Blocks runtime。
 
 ## 3. 部分实现：Min-Cost Flow / OR-Tools
@@ -160,12 +162,12 @@ D3 的 terminal feedback helper 可以返回 `main_action="replan"` 或 `main_ac
 
 ### 4.3 真实 AirSim runtime 接线与校准
 
-D3 有 synthetic dry-run adapter，不直接导入 AirSim。真实 AirSim Blocks 的 tick-to-plan-to-gate 闭环由 main/runtime 接线，当前已覆盖 D3 plan/binding/summary/record、D5 feedback writeback、中心重规划 owner/version 和 secondary owner/version 记录。D3 后续重点是校准，而不是再补接口字段：
+D3 有 synthetic dry-run adapter，不直接导入 AirSim。真实 AirSim Blocks 的 tick-to-plan-to-gate 闭环由 main/runtime 接线，当前已覆盖 D3 plan/binding/summary/record、D5 feedback writeback、中心重规划 owner/version 和 secondary owner/version 记录。main runtime 已新增 P1 D4/D5 calibration sweep，并在 sweep 结束后自动生成 D6 标准报告 bundle；D3 后续重点是消费这些 episode 级 assignment records、feedback records 和 D6 summary 做参数校准，而不是再补接口字段：
 
 - 在 2v2、5v5、8v8、非等量 M/N 和 crossing/dense 场景中跑真实多 seed。
 - 检查 D5 feedback writeback 后的 `operator_hold`、`feasibility_by_resource`、`fov_difficulty_by_resource` 是否产生稳定、可解释的重规划结果。
 - 检查 center/secondary plan owner、version、source、supersede metadata、cost gap、迟滞决策状态和 D6 assignment records 是否在 episode log 中可稳定聚合。
-- 用 D6 指标回看 D3 参数，特别是 `delta/min_dwell/max_changes_per_window/reassignment_switch_penalty` 与 D5 feedback 权重阈值。
+- 用 D6 指标和 P1 sweep 的 `d6_airsim_calibration` bundle 回看 D3 参数，特别是 `delta/min_dwell/max_changes_per_window/reassignment_switch_penalty` 与 D5 feedback 权重阈值；D3 侧已经提供轻量 calibration summary helper，剩余工作是用真实多 seed 数据填充和复核建议。
 
 ## 5. 跨模块接口影响
 
@@ -227,8 +229,8 @@ P1 集成时，main 应保证：
 
 ### P1
 
-- 真实多 seed 校准：在 AirSim/point-mass 2v2、5v5、8v8、非等量 M/N、crossing/dense 场景中验证 D3 plan/binding/summary/record、D5 feedback writeback、center replan owner/version/source 和 secondary owner/version/source 记录稳定可聚合。
-- D5 feedback 权重阈值长期标定：基于 D6 records 扫描 `fov_difficulty_by_resource`、`feasibility_by_resource`、duplicate/friend/hold/reacquire 状态、`delta/min_dwell/max_changes_per_window/reassignment_switch_penalty`，收敛 hold/replan/secondary_arbitration 触发阈值。
+- 真实多 seed 校准：main runtime 已提供 P1 D4/D5 calibration sweep 和自动 D6 标准报告 bundle；下一步在 AirSim/point-mass 2v2、5v5、8v8、非等量 M/N、crossing/dense 场景中验证 D3 plan/binding/summary/record、D5 feedback writeback、center replan owner/version/source 和 secondary owner/version/source 记录稳定可聚合。
+- D5 feedback 权重阈值长期标定：D3 已提供 advisory calibration helper；下一步基于真实 D6 records 扫描 `fov_difficulty_by_resource`、`feasibility_by_resource`、duplicate/friend/hold/reacquire 状态、`delta/min_dwell/max_changes_per_window/reassignment_switch_penalty`，人工复核并收敛 hold/replan/secondary_arbitration 触发阈值。
 - 合同保持回归：D7 只接受当前有效 binding/version；D5 不本地 rebind 或改写 `global_track_id`；`AssignmentPlan` 继续版本化并拒绝 stale previous plan；D6 assignment record export 字段保持兼容。
 
 ### P2

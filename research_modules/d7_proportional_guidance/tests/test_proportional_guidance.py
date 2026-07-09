@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import math
 
 import pytest
@@ -7,10 +8,12 @@ import pytest
 from d7_proportional_guidance import (
     AssignmentGuidanceBinding,
     BBOX_LOS_REPLAY_BOUNDARY,
+    D7_GUIDANCE_CALIBRATION_BOUNDARY,
     D7_RUNTIME_BUS_BOUNDARY,
     D7RuntimeBus,
     D7RuntimePairInput,
     D4GuidancePermission,
+    DEFAULT_CALIBRATION_THRESHOLD_VERSION,
     DEFAULT_COMPARISON_STRATEGIES,
     GuidanceConfig,
     GuidanceMode,
@@ -26,6 +29,7 @@ from d7_proportional_guidance import (
     guidance_mode_from_terminal_contract,
     run_guidance_strategy_comparison,
     simulate_guidance_episode,
+    summarize_guidance_calibration,
     summarize_guidance_strategy_comparison,
     summarize_runtime_bus_outputs,
     summarize_terminal_switch_quality,
@@ -1377,6 +1381,119 @@ def test_guidance_strategy_comparison_reports_all_p1_fields() -> None:
             assert row.boundary == BBOX_LOS_REPLAY_BOUNDARY
             assert row.metadata["vehicle_control"] is False
             assert row.visual_png_switch_count > 0
+
+
+def test_guidance_calibration_summary_groups_multiseed_runtime_records_and_advisory() -> None:
+    comparison_rows = run_guidance_strategy_comparison(seeds=[3, 4])
+    config = _tuned_png_config()
+    runtime_outputs = []
+
+    for law in ("png_vm", "png_ttc"):
+        for seed in (3, 4):
+            bus = D7RuntimeBus(replace(config, law=law))
+            for sample_index, half_size in enumerate((28.0, 32.0, 36.0), start=1):
+                runtime_outputs.append(
+                    bus.evaluate_pair(
+                        D7RuntimePairInput(
+                            binding=_binding_for_pair("R1", "G1", 80 + seed),
+                            d4_permission=D4GuidancePermission(
+                                action="continue_center",
+                                target_node_id="center",
+                                new_plan_id="plan-runtime-n",
+                                new_plan_version=7,
+                            ),
+                            terminal_association={
+                                "assigned_global_track_id": "G1",
+                                "local_track_id": f"R1:BT:{seed}",
+                                "decision_state": "locked",
+                                "friend_conflict_state": "none",
+                                "assignment_version": 80 + seed,
+                            },
+                            observation={
+                                "timestamp_s": seed + sample_index * config.dt_s,
+                                "bbox_xyxy": (
+                                    320.0 - half_size,
+                                    240.0 - half_size,
+                                    320.0 + half_size,
+                                    240.0 + half_size,
+                                ),
+                                "confidence": 0.9,
+                                "local_track_id": f"R1:BT:{seed}",
+                                "assigned_global_track_id": "G1",
+                                "measurement_age_s": 0.02 + seed * 0.001,
+                            },
+                            current_heading_rad=0.0,
+                            current_speed_mps=8.0,
+                            intercept_speed_mps=8.0,
+                            relative_position_ned=(28.0 + seed, 1.0, 10.0),
+                            relative_velocity_ned=(-5.0, 0.0, 0.0),
+                            metadata={
+                                "seed": seed,
+                                "terminal_range_m": 24.0 + seed,
+                                "height_delta_m": 10.0,
+                                "range_3d_m": 32.0 + seed,
+                                "frpn_benchmark_score": 0.70 + seed * 0.01,
+                                "frpn_guidance_law": "frpn_benchmark",
+                            },
+                        )
+                    )
+                )
+
+    summary = summarize_guidance_calibration(
+        [*comparison_rows, *runtime_outputs],
+        current_thresholds={
+            "version": DEFAULT_CALIBRATION_THRESHOLD_VERSION,
+            "terminal_range_m": 30.0,
+            "min_bbox_area_ratio": config.min_bbox_area_ratio,
+            "max_visual_latency_s": config.max_visual_latency_s,
+            "min_closing_speed_mps": config.min_closing_speed_mps,
+            "min_maneuver_margin": config.min_maneuver_margin,
+        },
+    )
+
+    assert summary["boundary"] == D7_GUIDANCE_CALIBRATION_BOUNDARY
+    assert summary["advisory_only"] is True
+    assert summary["default_control_law_changed"] is False
+    assert summary["d3_d4_d5_gate_bypassed"] is False
+    assert set(DEFAULT_COMPARISON_STRATEGIES) <= set(summary["guidance_law_summaries"])
+
+    png_vm = summary["guidance_law_summaries"]["png_vm"]
+    png_ttc = summary["guidance_law_summaries"]["png_ttc"]
+    assert png_vm["seed_count"] == 2
+    assert png_ttc["seed_count"] == 2
+    assert png_vm["visual_png_switch_count"] > 0
+    assert png_ttc["visual_png_switch_count"] > 0
+    assert png_vm["bbox_gate"]["pass_rate"] > 0.0
+    assert png_vm["los_gate"]["pass_rate"] > 0.0
+    assert png_vm["maneuver_gate"]["pass_rate"] > 0.0
+    assert png_vm["terminal_range_m"]["observed_count"] >= 2
+    assert png_vm["closing_speed_mps"]["observed_count"] >= 2
+    assert "stable_frame_count_low" in png_vm["terminal_switch_reject_reasons"]
+
+    pn = summary["guidance_law_summaries"]["pn"]
+    pure_pursuit = summary["guidance_law_summaries"]["pure_pursuit"]
+    assert pn["seed_count"] == 2
+    assert pure_pursuit["seed_count"] == 2
+    assert pn["terminal_range_m"]["observed_count"] == 2
+
+    advisory = summary["threshold_advisory"]
+    assert advisory["version"] == DEFAULT_CALIBRATION_THRESHOLD_VERSION
+    assert advisory["advisory_only"] is True
+    assert advisory["default_control_law_changed"] is False
+    assert advisory["thresholds"]["terminal_range_m"]["current"] == 30.0
+    assert advisory["thresholds"]["min_bbox_area_ratio"]["current"] == config.min_bbox_area_ratio
+    assert advisory["thresholds"]["max_visual_latency_s"]["suggested"] <= config.max_visual_latency_s
+    assert advisory["thresholds"]["min_closing_speed_mps"]["suggested"] >= config.min_closing_speed_mps
+    assert advisory["thresholds"]["min_maneuver_margin"]["suggested"] >= config.min_maneuver_margin
+
+    benchmark = summary["benchmark_calibration"]
+    assert benchmark["benchmark_only"] is True
+    assert benchmark["default_pn_png_api_replaced"] is False
+    assert benchmark["three_dimensional_guidance_replaces_default"] is False
+    assert benchmark["frpn_replaces_default"] is False
+    assert benchmark["height_delta_m"]["observed_count"] == len(runtime_outputs)
+    assert benchmark["range_3d_m"]["observed_count"] == len(runtime_outputs)
+    assert benchmark["frpn_guidance_law_counts"] == {"frpn_benchmark": len(runtime_outputs)}
 
 
 def _binding(authorization_state: str = "approved") -> AssignmentGuidanceBinding:

@@ -14,7 +14,16 @@ from d1_sensor_fusion.observations import (
     radar_covariance_from_range,
     radar_h,
 )
-from d1_sensor_fusion.types import SensorObservation
+from d1_sensor_fusion.quality import (
+    annotate_covariance_growth_rates,
+    summarize_region_quality_windows,
+)
+from d1_sensor_fusion.types import (
+    FusionQualityRegionSummary,
+    LatencyAuditSummary,
+    SensorObservation,
+    TrackUncertaintySummary,
+)
 
 
 def test_sensor_observation_latency_and_bucket() -> None:
@@ -428,3 +437,131 @@ def test_optional_backend_placeholders_do_not_require_imports() -> None:
     filterpy = FilterPyBackendPlaceholder()
     assert isinstance(stone_soup.available, bool)
     assert "fallback" in filterpy.describe().lower() or "optional" in filterpy.describe().lower()
+
+
+def test_region_quality_window_distinguishes_covariance_latency_and_source_gap() -> None:
+    previous_track = _track_quality_summary(
+        published_at=10.0,
+        position_covariance_trace=12.0,
+        a95_m=4.0,
+        measurement_age_s=0.2,
+        source_support={"radar": 1, "eo": 1},
+        handover_readiness=0.8,
+    )
+    current_track = _track_quality_summary(
+        published_at=12.0,
+        position_covariance_trace=30.0,
+        a95_m=9.0,
+        measurement_age_s=1.1,
+        source_support={"radar": 2},
+        handover_readiness=0.35,
+    )
+    annotated = annotate_covariance_growth_rates([current_track], [previous_track])
+
+    assert annotated[0].covariance_growth_rate == pytest.approx(9.0)
+
+    previous_region = FusionQualityRegionSummary(
+        coverage_cell="cell-north",
+        published_at=10.0,
+        track_count=1,
+        coarse_track_count=0,
+        stable_track_count=1,
+        handover_track_count=0,
+        stale_track_count=0,
+        mean_a95_m=4.0,
+        max_a95_m=4.0,
+        max_measurement_age_s=0.2,
+        mean_handover_readiness=0.8,
+        source_support={"radar": 1, "eo": 1},
+    )
+    current_region = FusionQualityRegionSummary(
+        coverage_cell="cell-north",
+        published_at=12.0,
+        track_count=1,
+        coarse_track_count=1,
+        stable_track_count=0,
+        handover_track_count=0,
+        stale_track_count=1,
+        mean_a95_m=9.0,
+        max_a95_m=9.0,
+        max_measurement_age_s=1.1,
+        mean_handover_readiness=0.35,
+        source_support={"radar": 2},
+        source_gap_modalities=("eo",),
+        mean_covariance_growth_rate=annotated[0].covariance_growth_rate,
+        max_covariance_growth_rate=annotated[0].covariance_growth_rate,
+    )
+    previous_audit = LatencyAuditSummary(
+        observation_count=10,
+        replay_count=2,
+        oosm_observation_count=0,
+        stale_observation_count=0,
+        stale_or_oosm_observation_count=0,
+        max_delay_s=0.2,
+        mean_delay_s=0.04,
+        duplicate_observation_count=0,
+        max_replay_observation_count=3,
+        latency_compensation=True,
+    )
+    current_audit = LatencyAuditSummary(
+        observation_count=13,
+        replay_count=4,
+        oosm_observation_count=1,
+        stale_observation_count=1,
+        stale_or_oosm_observation_count=1,
+        max_delay_s=0.9,
+        mean_delay_s=0.3,
+        duplicate_observation_count=0,
+        max_replay_observation_count=4,
+        latency_compensation=True,
+    )
+
+    window = summarize_region_quality_windows(
+        [[previous_region], [current_region]],
+        [previous_audit, current_audit],
+    )[0]
+    payload = window.to_dict()
+
+    assert payload["coverage_cell"] == "cell-north"
+    assert payload["sample_count"] == 2
+    assert payload["source_gap_modalities"] == ("eo",)
+    assert payload["source_gap_sample_count"] == 1
+    assert payload["stale_track_sample_count"] == 1
+    assert payload["latency_observation_count"] == 3
+    assert payload["oosm_observation_count"] == 1
+    assert payload["stale_observation_count"] == 1
+    assert payload["mean_covariance_growth_rate"] == pytest.approx(9.0)
+    assert payload["measurement_age_growth_rate"] == pytest.approx(0.45)
+    assert "source_gap" in payload["quality_flags"]
+    assert "regional_covariance_growing" in payload["quality_flags"]
+    assert "freshness_degrading" in payload["quality_flags"]
+    assert "latency_or_oosm" in payload["quality_flags"]
+
+
+def _track_quality_summary(
+    *,
+    published_at: float,
+    position_covariance_trace: float,
+    a95_m: float,
+    measurement_age_s: float,
+    source_support: dict[str, int],
+    handover_readiness: float,
+) -> TrackUncertaintySummary:
+    return TrackUncertaintySummary(
+        track_id="global_track_001",
+        global_track_id="global_track_001",
+        valid_at=published_at,
+        published_at=published_at,
+        track_bucket=int(published_at * 10),
+        track_level="stable",
+        position_covariance_trace=position_covariance_trace,
+        velocity_covariance_trace=3.0,
+        a95_m=a95_m,
+        measurement_age_s=measurement_age_s,
+        source_support=source_support,
+        coverage_cell="cell-north",
+        measurement_timestamp=published_at - measurement_age_s,
+        arrival_timestamp=published_at,
+        source_diversity_count=len(source_support),
+        handover_readiness=handover_readiness,
+    )

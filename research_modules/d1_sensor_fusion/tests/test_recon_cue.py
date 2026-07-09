@@ -144,3 +144,21 @@ def test_recon_cue_summary_preserves_track_like_timestamps() -> None:
     assert summary.arrival_timestamp == pytest.approx(50.4)
     assert summary.to_dict()["measurement_timestamp"] == pytest.approx(50.25)
     assert summary.to_dict()["arrival_timestamp"] == pytest.approx(50.4)
+
+
+def test_recon_cue_summary_preserves_secondary_recon_metadata() -> None:
+    tracks = [
+        _global_track("global_track_a", (0.0, 0.0, -80.0), 1.0, "cell-a", 10.0, 10.1)
+    ]
+
+    summary = summarize_recon_cue_from_tracks(
+        tracks,
+        cue_metadata={
+            "recon_node_id": "secondary_recon_01",
+            "recon_mode": "mobile_high_altitude",
+            "cue_source": "d1_region_quality",
+        },
+    )
+
+    assert summary.metadata["recon_node_id"] == "secondary_recon_01"
+    assert summary.to_dict()["metadata"]["recon_mode"] == "mobile_high_altitude"

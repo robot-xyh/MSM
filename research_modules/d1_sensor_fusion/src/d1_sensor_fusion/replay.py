@@ -28,6 +28,82 @@ _REQUIRED_REPLAY_FIELDS = (
     "frame_id",
     "measurement",
 )
+_REPLAY_METADATA_PASSTHROUGH_KEYS = (
+    "coverage_cell",
+    "camera_id",
+    "camera_name",
+    "camera_model",
+    "camera_metadata",
+    "camera",
+    "camera_position_ned",
+    "rotation_world_to_camera",
+    "intrinsics",
+    "extrinsics",
+    "K",
+    "R",
+    "fx",
+    "fy",
+    "cx",
+    "cy",
+    "width",
+    "height",
+    "image_size",
+    "bbox",
+    "bbox_xyxy",
+    "bbox_center_px",
+    "center_px",
+    "eo_metadata",
+    "detection_metadata",
+    "detection_id",
+    "local_track_id",
+    "object_id",
+    "object_id_offline_only",
+    "truth_object_id_offline_only",
+    "actor_name",
+    "mesh_name",
+    "airsim_frame_index",
+    "frame_index",
+    "sequence_id",
+    "source_support",
+    "recon_cue",
+    "recon_cue_summary",
+    "secondary_recon",
+    "mobile_recon",
+    "recon_node_id",
+    "secondary_recon_node_id",
+    "mobile_recon_node_id",
+    "cue_source",
+    "cue_position_ned",
+    "cue_covariance",
+    "coverage_cells",
+)
+_ARRAY_METADATA_KEYS = {
+    "bbox",
+    "bbox_xyxy",
+    "bbox_center_px",
+    "center_px",
+    "camera_position_ned",
+    "rotation_world_to_camera",
+    "K",
+    "R",
+    "image_size",
+    "cue_position_ned",
+    "cue_covariance",
+}
+_OBJECT_METADATA_KEYS = {
+    "camera_model",
+    "camera_metadata",
+    "camera",
+    "intrinsics",
+    "extrinsics",
+    "eo_metadata",
+    "detection_metadata",
+    "source_support",
+    "recon_cue",
+    "recon_cue_summary",
+    "secondary_recon",
+    "mobile_recon",
+}
 
 
 def sensor_observation_from_jsonl_record(record: dict[str, Any]) -> SensorObservation:
@@ -41,10 +117,7 @@ def sensor_observation_from_jsonl_record(record: dict[str, Any]) -> SensorObserv
     schema_version = _validate_replay_schema_version(record)
     _validate_replay_required_fields(record, schema_version)
 
-    metadata = dict(record.get("metadata") or {})
-    metadata.setdefault("d1_replay_schema_version", schema_version)
-    if schema_version == LEGACY_BLOCKS_REPLAY_SCHEMA_VERSION:
-        metadata.setdefault("d1_replay_schema_compatibility", "legacy_without_explicit_version")
+    metadata = _metadata_from_replay_record(record, schema_version)
 
     communication = dict(record.get("communication") or {})
     for key in COMMUNICATION_METADATA_KEYS:
@@ -113,6 +186,11 @@ def sensor_observation_from_csv_row(row: dict[str, Any]) -> SensorObservation:
         "metadata": metadata,
         "communication": communication,
     }
+    for key in _REPLAY_METADATA_PASSTHROUGH_KEYS:
+        value = _non_empty(clean.get(key))
+        if value is None:
+            continue
+        record[key] = _metadata_cell_value(value, key)
     return sensor_observation_from_jsonl_record(record)
 
 
@@ -230,6 +308,71 @@ def _validate_replay_required_fields(record: dict[str, Any], schema_version: str
         raise ValueError(f"D1 replay record missing required field(s): {', '.join(missing)}")
 
 
+def _metadata_from_replay_record(record: dict[str, Any], schema_version: str) -> dict[str, Any]:
+    metadata = dict(record.get("metadata") or {})
+    metadata.setdefault("d1_replay_schema_version", schema_version)
+    if schema_version == LEGACY_BLOCKS_REPLAY_SCHEMA_VERSION:
+        metadata.setdefault("d1_replay_schema_compatibility", "legacy_without_explicit_version")
+
+    for key in _REPLAY_METADATA_PASSTHROUGH_KEYS:
+        value = _non_empty(record.get(key))
+        if value is not None and key not in metadata:
+            metadata[key] = value
+
+    _normalize_replay_visual_metadata(metadata)
+    return metadata
+
+
+def _normalize_replay_visual_metadata(metadata: dict[str, Any]) -> None:
+    bbox = _first_metadata_value(metadata, ("bbox_xyxy", "bbox"))
+    bbox_values = _numeric_vector_or_none(bbox, 4)
+    if bbox_values is not None:
+        metadata.setdefault("bbox_xyxy", bbox_values)
+        metadata.setdefault("bbox", bbox_values)
+
+    center = _first_metadata_value(metadata, ("center_px", "bbox_center_px"))
+    center_values = _numeric_vector_or_none(center, 2)
+    if center_values is None and bbox_values is not None:
+        center_values = [
+            0.5 * (bbox_values[0] + bbox_values[2]),
+            0.5 * (bbox_values[1] + bbox_values[3]),
+        ]
+    if center_values is not None:
+        metadata.setdefault("center_px", center_values)
+        metadata.setdefault("bbox_center_px", center_values)
+
+    camera = _first_metadata_value(metadata, ("camera_model", "camera_metadata", "camera"))
+    if isinstance(camera, dict):
+        camera_metadata = dict(camera)
+        for key in ("camera_id", "camera_name"):
+            if key in metadata and key not in camera_metadata:
+                camera_metadata[key] = metadata[key]
+        metadata.setdefault("camera_metadata", camera_metadata)
+        metadata["camera_model"] = camera_metadata
+
+
+def _first_metadata_value(metadata: dict[str, Any], keys: tuple[str, ...]) -> Any | None:
+    for key in keys:
+        value = _non_empty(metadata.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _numeric_vector_or_none(value: Any, expected_size: int) -> list[float] | None:
+    if value is None:
+        return None
+    try:
+        array = np.asarray(value, dtype=float).reshape(-1)
+    except (TypeError, ValueError):
+        return None
+    if array.size != expected_size:
+        return None
+    if not np.isfinite(array).all():
+        return None
+    return [float(item) for item in array.tolist()]
+
+
 def _optional_array(value: Any) -> np.ndarray | None:
     if value is None:
         return None
@@ -285,6 +428,21 @@ def _json_object_cell(value: Any, field_name: str) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise ValueError(f"CSV field {field_name!r} must be a JSON object")
     return dict(parsed)
+
+
+def _metadata_cell_value(value: Any, field_name: str) -> Any:
+    if field_name in _OBJECT_METADATA_KEYS:
+        return _json_object_cell(value, field_name)
+    if field_name in _ARRAY_METADATA_KEYS:
+        return _array_cell(value, field_name)
+    if isinstance(value, str):
+        text = value.strip()
+        if text[:1] in ("[", "{"):
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                return value
+    return value
 
 
 def _quality_flags_from_value(value: Any) -> tuple[str, ...]:

@@ -31,6 +31,7 @@ def summarize_recon_cue_from_tracks(
     reference_timestamp: float | None = None,
     stale_after_s: float | None = 1.0,
     default_position_variance_m2: float = DEFAULT_RECON_CUE_POSITION_VARIANCE_M2,
+    cue_metadata: Mapping[str, Any] | None = None,
 ) -> ReconCueSummary:
     """Build a coarse NED pointing cue from fused tracks or track-like dicts.
 
@@ -41,6 +42,7 @@ def summarize_recon_cue_from_tracks(
 
     input_tracks = list(tracks)
     requested_cell = None if coverage_cell is None else str(coverage_cell)
+    metadata = {str(key): value for key, value in dict(cue_metadata or {}).items()}
     default_covariance = _default_position_covariance(default_position_variance_m2)
     cue_tracks: list[_CueTrack] = []
     aggregate_flags: set[str] = set()
@@ -91,6 +93,7 @@ def summarize_recon_cue_from_tracks(
             measurement_timestamp=None,
             arrival_timestamp=None,
             quality_flags=("empty_recon_cue", *tuple(sorted(aggregate_flags))),
+            metadata=metadata,
         )
 
     weights = np.asarray([_covariance_weight(track.position_covariance) for track in cue_tracks])
@@ -139,6 +142,7 @@ def summarize_recon_cue_from_tracks(
         measurement_timestamp=measurement_timestamp,
         arrival_timestamp=arrival_timestamp,
         quality_flags=tuple(sorted(aggregate_flags)),
+        metadata=metadata,
     )
 
 

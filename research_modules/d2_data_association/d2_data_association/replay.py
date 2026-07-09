@@ -192,6 +192,71 @@ def run_threshold_sensitivity(
     return rows
 
 
+def summarize_multi_seed_risk_calibration(
+    threshold_rows: Iterable[Mapping[str, Any]],
+    *,
+    max_mean_id_switch_count: float = 0.0,
+    min_mean_track_continuity: float = 0.75,
+    max_mean_duplicate_assignment_count: float = 0.0,
+    max_mean_hard_risk_frame_rate: float = 0.10,
+) -> dict[str, Any]:
+    """Aggregate threshold sensitivity rows across seeds/episodes.
+
+    The input is the concatenated output of `run_threshold_sensitivity()` for
+    multiple replay seeds. Rows are grouped by gate threshold, risk profile,
+    and profile version. The helper reports metric/risk distributions and a
+    deterministic recommended profile for D4/D6 threshold governance.
+    """
+
+    rows = [dict(row) for row in threshold_rows]
+    groups: dict[tuple[float, str, str], list[dict[str, Any]]] = {}
+    for row in rows:
+        key = (
+            float(row.get("gate_threshold", 0.0)),
+            str(row.get("risk_profile", "default")),
+            str(row.get("risk_profile_version", "unversioned")),
+        )
+        groups.setdefault(key, []).append(row)
+
+    group_summaries = [
+        _summarize_calibration_group(
+            key,
+            group_rows,
+            max_mean_id_switch_count=max_mean_id_switch_count,
+            min_mean_track_continuity=min_mean_track_continuity,
+            max_mean_duplicate_assignment_count=max_mean_duplicate_assignment_count,
+            max_mean_hard_risk_frame_rate=max_mean_hard_risk_frame_rate,
+        )
+        for key, group_rows in sorted(groups.items())
+    ]
+    recommended = (
+        min(group_summaries, key=_calibration_recommendation_rank)
+        if group_summaries
+        else None
+    )
+    return {
+        "row_count": len(rows),
+        "group_count": len(group_summaries),
+        "selection_criteria": {
+            "max_mean_id_switch_count": max_mean_id_switch_count,
+            "min_mean_track_continuity": min_mean_track_continuity,
+            "max_mean_duplicate_assignment_count": max_mean_duplicate_assignment_count,
+            "max_mean_hard_risk_frame_rate": max_mean_hard_risk_frame_rate,
+        },
+        "groups": group_summaries,
+        "recommended": None
+        if recommended is None
+        else {
+            "gate_threshold": recommended["gate_threshold"],
+            "risk_profile": recommended["risk_profile"],
+            "risk_profile_version": recommended["risk_profile_version"],
+            "thresholds": recommended["thresholds"],
+            "passes_governance": recommended["passes_governance"],
+            "summary": recommended["recommendation_summary"],
+        },
+    }
+
+
 def summarize_replay_risk(
     association_logs: Iterable[Mapping[str, Any]],
     metrics: Mapping[str, Any],
@@ -255,8 +320,208 @@ def write_association_logs_jsonl(
 ) -> None:
     """Write per-frame D2 association logs as JSONL."""
 
-    lines = [json.dumps(_json_ready(dict(log)), sort_keys=True) for log in association_logs]
+    lines = [
+        json.dumps(_json_ready(dict(log)), sort_keys=True)
+        for log in association_logs
+    ]
     Path(path).write_text("\n".join(lines) + ("\n" if lines else ""))
+
+
+def _summarize_calibration_group(
+    key: tuple[float, str, str],
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    max_mean_id_switch_count: float,
+    min_mean_track_continuity: float,
+    max_mean_duplicate_assignment_count: float,
+    max_mean_hard_risk_frame_rate: float,
+) -> dict[str, Any]:
+    gate_threshold, risk_profile, risk_profile_version = key
+    id_switch_distribution = _distribution(_float_values(rows, "id_switch_count"))
+    continuity_distribution = _distribution(_float_values(rows, "track_continuity"))
+    duplicate_distribution = _distribution(
+        _float_values(rows, "duplicate_assignment_count")
+    )
+    soft_count_distribution = _distribution(
+        _float_values(rows, "soft_risk_frame_count")
+    )
+    hard_count_distribution = _distribution(
+        _float_values(rows, "hard_risk_frame_count")
+    )
+    soft_rate_distribution = _distribution(
+        _risk_frame_rates(rows, "soft_risk_frame_count")
+    )
+    hard_rate_distribution = _distribution(
+        _risk_frame_rates(rows, "hard_risk_frame_count")
+    )
+    max_soft_score_distribution = _distribution(
+        _float_values(rows, "max_soft_risk_score")
+    )
+    max_hard_score_distribution = _distribution(
+        _float_values(rows, "max_hard_risk_score")
+    )
+    thresholds = _first_thresholds(rows)
+    passes_governance = (
+        id_switch_distribution["mean"] <= max_mean_id_switch_count
+        and continuity_distribution["mean"] >= min_mean_track_continuity
+        and duplicate_distribution["mean"] <= max_mean_duplicate_assignment_count
+        and hard_rate_distribution["mean"] <= max_mean_hard_risk_frame_rate
+    )
+    seed_values = sorted(
+        {
+            str(seed)
+            for row in rows
+            if (seed := _metadata_value_for_row(row, "seed")) is not None
+        }
+    )
+    scenario_values = sorted(
+        {
+            str(scenario)
+            for row in rows
+            if (
+                scenario := _metadata_value_for_row(
+                    row, "scenario_name", "scenario"
+                )
+            )
+            is not None
+        }
+    )
+    return {
+        "gate_threshold": gate_threshold,
+        "risk_profile": risk_profile,
+        "risk_profile_version": risk_profile_version,
+        "thresholds": thresholds,
+        "episode_count": len(rows),
+        "seed_count": len(seed_values),
+        "seeds": seed_values,
+        "scenarios": scenario_values,
+        "target_count_distribution": _distribution(_float_values(rows, "target_count")),
+        "id_switch_count": id_switch_distribution,
+        "track_continuity": continuity_distribution,
+        "duplicate_assignment_count": duplicate_distribution,
+        "soft_risk_frame_count": soft_count_distribution,
+        "hard_risk_frame_count": hard_count_distribution,
+        "soft_risk_frame_rate": soft_rate_distribution,
+        "hard_risk_frame_rate": hard_rate_distribution,
+        "max_soft_risk_score": max_soft_score_distribution,
+        "max_hard_risk_score": max_hard_score_distribution,
+        "soft_risk_reasons": _risk_reasons(rows, "soft_risk_reasons"),
+        "hard_risk_reasons": _risk_reasons(rows, "hard_risk_reasons"),
+        "passes_governance": passes_governance,
+        "recommendation_summary": {
+            "mean_id_switch_count": id_switch_distribution["mean"],
+            "mean_track_continuity": continuity_distribution["mean"],
+            "mean_duplicate_assignment_count": duplicate_distribution["mean"],
+            "mean_hard_risk_frame_rate": hard_rate_distribution["mean"],
+        },
+    }
+
+
+def _calibration_recommendation_rank(summary: Mapping[str, Any]) -> tuple[object, ...]:
+    return (
+        0 if summary["passes_governance"] else 1,
+        summary["id_switch_count"]["p90"],
+        summary["id_switch_count"]["mean"],
+        -summary["track_continuity"]["mean"],
+        summary["duplicate_assignment_count"]["mean"],
+        summary["hard_risk_frame_rate"]["mean"],
+        summary["soft_risk_frame_rate"]["mean"],
+        summary["gate_threshold"],
+        summary["risk_profile"],
+        summary["risk_profile_version"],
+    )
+
+
+def _float_values(rows: Sequence[Mapping[str, Any]], key: str) -> list[float]:
+    values: list[float] = []
+    for row in rows:
+        value = row.get(key)
+        if value is None:
+            continue
+        try:
+            values.append(float(value))
+        except (TypeError, ValueError):
+            continue
+    return values
+
+
+def _risk_frame_rates(rows: Sequence[Mapping[str, Any]], key: str) -> list[float]:
+    rates: list[float] = []
+    for row in rows:
+        frame_count = float(row.get("frame_count", 0.0) or 0.0)
+        if frame_count <= 0.0:
+            continue
+        rates.append(float(row.get(key, 0.0) or 0.0) / frame_count)
+    return rates
+
+
+def _distribution(values: Sequence[float]) -> dict[str, Any]:
+    sorted_values = sorted(float(value) for value in values)
+    if not sorted_values:
+        return {
+            "count": 0,
+            "min": 0.0,
+            "p50": 0.0,
+            "p90": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "values": [],
+        }
+    return {
+        "count": len(sorted_values),
+        "min": sorted_values[0],
+        "p50": _percentile(sorted_values, 0.50),
+        "p90": _percentile(sorted_values, 0.90),
+        "max": sorted_values[-1],
+        "mean": float(sum(sorted_values) / len(sorted_values)),
+        "values": sorted_values,
+    }
+
+
+def _percentile(sorted_values: Sequence[float], fraction: float) -> float:
+    if not sorted_values:
+        return 0.0
+    if len(sorted_values) == 1:
+        return float(sorted_values[0])
+    position = max(0.0, min(1.0, fraction)) * (len(sorted_values) - 1)
+    lower = int(np.floor(position))
+    upper = int(np.ceil(position))
+    if lower == upper:
+        return float(sorted_values[lower])
+    weight = position - lower
+    return float(sorted_values[lower] * (1.0 - weight) + sorted_values[upper] * weight)
+
+
+def _first_thresholds(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    for row in rows:
+        risk_summary = row.get("risk_summary")
+        if isinstance(risk_summary, Mapping):
+            thresholds = risk_summary.get("thresholds")
+            if isinstance(thresholds, Mapping):
+                return _json_ready(dict(thresholds))
+    return {}
+
+
+def _risk_reasons(rows: Sequence[Mapping[str, Any]], key: str) -> list[str]:
+    reasons: set[str] = set()
+    for row in rows:
+        risk_summary = row.get("risk_summary")
+        if not isinstance(risk_summary, Mapping):
+            continue
+        value = risk_summary.get(key)
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            reasons.update(str(item) for item in value)
+    return sorted(reasons)
+
+
+def _metadata_value_for_row(row: Mapping[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in row and row[key] is not None:
+            return row[key]
+    metadata = row.get("replay_metadata")
+    if isinstance(metadata, Mapping):
+        return _metadata_value(metadata, *keys)
+    return None
 
 
 def _frames_from_payload(payload: Any) -> list[Mapping[str, Any]]:
@@ -281,13 +546,25 @@ def _coerce_frame(record: Any) -> Mapping[str, Any] | None:
         return None
     if _is_frame(record):
         return record
-    for key in ("frame", "d2_frame", "airsim_frame", "association_frame"):
+    for key in (
+        "frame",
+        "d2_frame",
+        "d2_input",
+        "d2_replay_frame",
+        "airsim_frame",
+        "association_frame",
+        "association_input",
+        "replay_frame",
+        "input_frame",
+    ):
         value = record.get(key)
         if isinstance(value, Mapping) and _is_frame(value):
             return _merge_envelope_metadata(value, record)
     payload = record.get("payload")
-    if isinstance(payload, Mapping) and _is_frame(payload):
-        return _merge_envelope_metadata(payload, record)
+    if isinstance(payload, Mapping):
+        frame = _coerce_frame(payload)
+        if frame is not None:
+            return _merge_envelope_metadata(frame, record)
     return None
 
 
@@ -312,18 +589,48 @@ def _target_count(frames: Sequence[Any]) -> int:
 
 def _truth_ids_for_frame(frame: Any) -> set[str]:
     truth_ids: set[str] = set()
-    explicit = _first_present(frame, ("truth_ids_present", "truth_ids"), None)
-    if explicit is not None:
-        truth_ids.update(str(value) for value in explicit if value is not None)
+    explicit = _first_present(
+        frame,
+        (
+            "truth_ids_present",
+            "truth_ids",
+            "offline_truth_labels",
+            "truth_offline_labels",
+            "truth_labels",
+        ),
+        None,
+    )
+    truth_ids.update(_truth_label_values(explicit))
     for item in _frame_items(frame):
         truth_id = _first_present(
             item,
-            ("truth_id", "ground_truth_id", "object_id", "name"),
+            (
+                "offline_truth_label",
+                "offline_truth_id",
+                "truth_label",
+                "truth_id",
+                "ground_truth_id",
+                "truth_object_id",
+                "sim_truth_id",
+                "actor_name",
+                "object_id",
+                "name",
+            ),
             None,
         )
         if truth_id is not None:
             truth_ids.add(str(truth_id))
     return truth_ids
+
+
+def _truth_label_values(value: Any) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, Mapping):
+        return {str(item) for item in value.values() if item is not None}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return {str(item) for item in value if item is not None}
+    return {str(value)}
 
 
 def _frame_items(frame: Any) -> list[Any]:
@@ -405,7 +712,29 @@ def _merge_envelope_metadata(
         _metadata_mapping(frame.get("replay_metadata")),
         metadata,
     )
-    for key in ("seed", "episode_id", "scenario_name", "scenario", "drone_count"):
+    for key in (
+        "seed",
+        "episode_id",
+        "run_id",
+        "scenario_name",
+        "scenario",
+        "drone_count",
+        "target_count",
+        "intruder_count",
+        "frame_index",
+        "frame_id",
+        "frame_number",
+        "step",
+        "tick",
+        "measurement_timestamp",
+        "arrival_timestamp",
+        "threshold_profile_version",
+        "risk_profile",
+        "risk_profile_version",
+        "offline_truth_labels",
+        "truth_offline_labels",
+        "truth_labels",
+    ):
         if key in metadata and key not in merged:
             merged[key] = metadata[key]
     return merged
@@ -434,6 +763,18 @@ def _extract_replay_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
         "intruder_count",
         "replay_name",
         "threshold_profile_version",
+        "risk_profile",
+        "risk_profile_version",
+        "frame_index",
+        "frame_id",
+        "frame_number",
+        "step",
+        "tick",
+        "measurement_timestamp",
+        "arrival_timestamp",
+        "offline_truth_labels",
+        "truth_offline_labels",
+        "truth_labels",
     )
     metadata = {
         key: record[key]

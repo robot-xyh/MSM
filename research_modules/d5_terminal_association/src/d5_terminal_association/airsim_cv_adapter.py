@@ -27,7 +27,9 @@ SECONDARY_DETECT_REJECTION_REASONS = (
     "reacquire_not_grouped",
     "stale_or_missing_recon_cue",
     "geometry_gate_rejected",
+    "stability_window_failed",
     "secondary_detect_offline_only",
+    "registered_to_global_track",
 )
 AIRSIM_TRUTH_OR_GLOBAL_FIELD_NAMES = {
     "actor_id",
@@ -1397,6 +1399,11 @@ def _secondary_detect_funnel_counts(
     for observation in observations:
         association = observation.terminal_association
         has_local_or_cue = observation.local_track is not None or bool(observation.recon_image_cues)
+        registration_reasons = _observation_registration_reasons(observation)
+        if registration_reasons:
+            for reason in registration_reasons:
+                rejection_reason_counts[reason] += 1
+            continue
         if has_local_or_cue and association is None:
             rejection_reason_counts["no_global_binding"] += 1
             if _has_offline_truth_label(observation.metadata):
@@ -1439,6 +1446,15 @@ def _cross_view_from_terminal_observations(
     for observation in observations:
         bus.publish(observation)
     return tuple(bus.cross_view_associations())
+
+
+def _observation_registration_reasons(observation: TerminalObservation) -> tuple[str, ...]:
+    reasons = observation.metadata.get("detect_registration_reject_reasons")
+    if reasons is None and observation.terminal_association is not None:
+        reasons = observation.terminal_association.metadata.get("detect_registration_reject_reasons")
+    if reasons is None:
+        return ()
+    return _valid_rejection_reasons(reasons)
 
 
 def _extract_bbox(detection: Any) -> tuple[float, float, float, float]:
@@ -1695,6 +1711,8 @@ def _association_geometry_gate_rejected(association: Any) -> bool:
 
 
 def _valid_rejection_reasons(reasons: Iterable[str]) -> tuple[str, ...]:
+    if isinstance(reasons, str):
+        reasons = (reasons,)
     valid = set(SECONDARY_DETECT_REJECTION_REASONS)
     return tuple(dict.fromkeys(str(reason) for reason in reasons if str(reason) in valid))
 

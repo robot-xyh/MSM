@@ -2,13 +2,13 @@
 
 **定位**: 在由 main runtime `--drone-count` 决定的 N 对 N 或非等量资源/目标场景中，由中心节点生成滚动 `AssignmentPlan`，并通过迟滞逻辑避免频繁重分配；5v5 只作为示例和基准场景。
 **边界**: 本文只讨论抽象资源-目标匹配、离线评估和人工授权前的候选计划，不包含真实火控参数、毁伤模型或自动处置流程。
-**D3 复核状态 2026-07-08**: 无 P0 blocker；`PlannerConfig.human_authorization_state` 已生效；D5 duplicate/friend/fov/feasibility metadata 可通过 D3 helper 写回下一轮成本或禁配边，main runtime 已接入该 writeback；D4/main 触发 `request_center_replan` 后，main runtime 会再次调用 D3 生成新中心 plan version，并在 episode bus 记录 `replan_reason`、`supersedes_plan_id`、`supersedes_plan_version`、`active_plan_owner=center`；D4/main 选定二级节点后，D3 可生成 `secondary_plan_v2` owner/source/version DTO，main runtime 已接入 secondary owner/version/source 记录；D6 `AssignmentRecord` 已补齐 current-plan owner/source/schema、replan/takeover reason、previous/supersede、迟滞决策、矩阵规模和 cost gap 字段；D7 仍只接受当前有效 binding/version。剩余 P1 聚焦真实多 seed 校准和 D5 feedback 权重阈值长期标定，P2 保留 OR-Tools Min Cost Flow optional 后端。
+**D3 复核状态 2026-07-08**: 无 P0 blocker；`PlannerConfig.human_authorization_state` 已生效；D5 duplicate/friend/fov/feasibility metadata 可通过 D3 helper 写回下一轮成本或禁配边，main runtime 已接入该 writeback；D4/main 触发 `request_center_replan` 后，main runtime 会再次调用 D3 生成新中心 plan version，并在 episode bus 记录 `replan_reason`、`supersedes_plan_id`、`supersedes_plan_version`、`active_plan_owner=center`；D4/main 选定二级节点后，D3 可生成 `secondary_plan_v2` owner/source/version DTO，main runtime 已接入 secondary owner/version/source 记录；main runtime 已新增 P1 D4/D5 calibration sweep，并在 sweep 后自动生成 D6 标准报告 bundle；D6 `AssignmentRecord` 已补齐 current-plan owner/source/schema、replan/takeover reason、previous/supersede、迟滞决策、矩阵规模、cost gap、N/M mismatch replay 字段；D3 已新增 advisory calibration helper，用多 seed assignment/feedback records 汇总 duplicate/friend/fov/geometry reject 对 cost/hysteresis 的建议且不自动替换默认权重；D7 仍只接受当前有效 binding/version。剩余 P1 聚焦真实多 seed 数据回灌和 D5 feedback 权重阈值人工复核标定，P2 保留 OR-Tools Min Cost Flow optional 后端。
 
 当前 D3 P0/P1 缺口清单：
 
 - P0：无 P0 blocker。Hungarian/DP fallback、版本化 `AssignmentPlan`、迟滞、D5 feedback helper/writeback、secondary takeover owner/version DTO 和 D7 binding 均已落地。
-- P1：真实多 seed AirSim/point-mass 校准仍需继续，重点验证 owner/version/source、supersede、cost gap、迟滞状态和 D6 records 在不同 N 规模、非等量 M/N、crossing/dense 场景下稳定可聚合。
-- P1：D5 feedback 权重/迟滞阈值长期标定仍需继续，重点扫描 `fov_difficulty_by_resource`、禁配边、operator hold、hold/replan/secondary_arbitration、`delta/min_dwell/max_changes_per_window/reassignment_switch_penalty`。
+- P1：真实多 seed AirSim/point-mass 校准仍需继续；main runtime 已有 P1 D4/D5 calibration sweep 和 D6 标准报告 bundle，D3 需要用这些 records 验证 owner/version/source、supersede、cost gap、迟滞状态、N/M replay summary 和 D6 records 在不同 N 规模、非等量 M/N、crossing/dense 场景下稳定可聚合。
+- P1：D5 feedback 权重/迟滞阈值长期标定 helper 已落地；仍需用真实多 seed D6 records 人工复核 `fov_difficulty_by_resource`、禁配边、operator hold、hold/replan/secondary_arbitration、`delta/min_dwell/max_changes_per_window/reassignment_switch_penalty` 的建议是否收敛。
 - P2：OR-Tools Min Cost Flow、容量/备份资源/时间窗/分组配额等复杂约束仍是 optional 后端，不是当前 P1 blocker。
 
 ---
@@ -24,18 +24,19 @@
 - 迟滞重分配：`delta`、`min_dwell`、`max_changes_per_window`、`reassignment_switch_penalty`。
 - D5 terminal feedback helper，始终 `allow_local_rebind=False`。
 - D7 `AssignmentGuidanceBinding`，携带 `assigned_global_track_id`、`plan_version`、binding state、source/target/link 和 `allow_local_rebind=False`。
-- `AssignmentValiditySummary` 和 D6-compatible `AssignmentRecord` 导出；assignment records 携带 multi-seed 分组所需的 owner/source/schema、replan/takeover reason、previous/supersede、迟滞决策、矩阵规模和 cost gap 字段。
+- `AssignmentValiditySummary` 和 D6-compatible `AssignmentRecord` 导出；assignment records 携带 multi-seed 分组所需的 owner/source/schema、replan/takeover reason、previous/supersede、迟滞决策、矩阵规模、cost gap 和 N/M mismatch replay 字段。
 - synthetic AirSim dry-run adapter，不 import AirSim，不控制 Blocks runtime。
 - `PlannerConfig.human_authorization_state` 透传到 `AssignmentPlan.human_authorization_state`，并写入 `configured_human_authorization_state` / `effective_human_authorization_state` metadata。
 - `apply_terminal_feedback_to_planner_inputs()` 将 D5 duplicate/friend/fov/feasibility metadata 写回下一轮 `TargetTrack[]/ResourceState[]`。
 - `prepare_secondary_takeover_plan()` 在 D4/main 已选定二级节点后校验版本并写入 `secondary_plan_v2` owner/source/supersede metadata。
+- `summarize_terminal_feedback_calibration()` 和 `summarize_assignment_mismatch_replay()` 已支持多 seed feedback/assignment replay 汇总，只输出调参建议和 replay 计数，不修改默认权重或迟滞参数。
 
 当前只是部分实现或未实现：
 
 - `MinCostFlowAssignmentSolver` 只是 OR-Tools 预留接口，`solve()` 当前抛出 `NotImplementedError`。
 - `secondary_plan_v2` 的 D3 DTO/binding 兼容、owner/source、版本 supersede metadata 已实现，main runtime 已接入 secondary owner/version/source 记录；二级节点选择、租约执行、中心恢复合并和 active owner runtime 仲裁仍属 D4/main policy，不列为 D3 DTO 缺口。
 - D4 `request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed` 仍由 main/D4 消费 D3 证据后触发，D3 不自动调用；其中中心 `request_center_replan` 的 owner/version/supersede runtime 记录已由 main 接线，D3 只需保持版本化计划和 stale 拒绝合同。
-- 剩余 D3 P1 是真实多 seed/N 规模校准和 D5 feedback 权重阈值长期标定。
+- 剩余 D3 P1 是把 main runtime 的 P1 D4/D5 calibration sweep、D6 标准报告 bundle 和真实多 seed/N 规模日志回灌到 calibration/replay summary 中，并人工复核 D5 feedback 权重阈值长期标定结果。
 - D3 不负责末端视觉重绑，不改写 `global_track_id`。
 
 ---
@@ -311,7 +312,7 @@ AssignmentGuidanceBinding
 6. 若 D5 多视角关联与中心/二级计划连续不一致，D3 请求 D4 `secondary_arbitration`，而不是在本地资源之间直接重写 `global_track_id`。
 7. 若二级节点也无法提供一致计划，D4 才进入完全分布式协同；D3 只保留最新中心计划作为回滚和审计基线。二级 takeover 的 D3 DTO 规则已要求新 plan version 大于被 supersede 的中心 plan，并写入 owner/source/supersede/epoch/lease metadata；节点选择、租约执行、中心恢复合并和 stale secondary plan runtime 拒绝规则由 D4/main 定义。
 
-N 对 N 基准迟滞建议可从 5v5 参数开始扫描：`delta=0.2`，`min_dwell=2.0s`，`max_changes_per_window=2`，连续 3 次 `held_by_hysteresis` 且 D5 不一致时请求 D4 主动降级仲裁。后续 P1 校准应跨真实多 seed 统计 `resource_count`、`target_count`、`reassignment_count`、`duplicate_assignment_count`、`unassigned_high_threat_count`、`stale_plan_version_count`、`secondary_arbitration_count`、center/secondary owner/version/source 变更，并用 D6 assignment records 反向标定 D5 feedback 权重阈值。
+N 对 N 基准迟滞建议可从 5v5 参数开始扫描：`delta=0.2`，`min_dwell=2.0s`，`max_changes_per_window=2`，连续 3 次 `held_by_hysteresis` 且 D5 不一致时请求 D4 主动降级仲裁。后续 P1 校准应跨真实多 seed 统计 `resource_count`、`target_count`、`reassignment_count`、`duplicate_assignment_count`、`unassigned_high_threat_count`、`stale_plan_version_count`、`secondary_arbitration_count`、center/secondary owner/version/source 变更，并用 P1 calibration sweep 的 D6 assignment records 和标准报告 bundle 反向标定 D5 feedback 权重阈值。
 
 ---
 

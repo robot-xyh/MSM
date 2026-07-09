@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from time import perf_counter
-from typing import Iterable
+from typing import Any, Iterable, Mapping
 
 import numpy as np
 
@@ -52,20 +52,34 @@ class Tracker:
         detections: Iterable[Detection],
         timestamp: float,
         truth_ids_present: Iterable[str] | None = None,
+        frame_metadata: Mapping[str, Any] | None = None,
     ) -> AssociationResult:
         detection_list = list(detections)
         timestamp = float(timestamp)
         truth_ids = (
             list(truth_ids_present)
             if truth_ids_present is not None
-            else [detection.truth_id for detection in detection_list if detection.truth_id]
+            else [
+                detection.truth_id
+                for detection in detection_list
+                if detection.truth_id
+            ]
         )
 
         start_time = perf_counter()
         self.predict_all(timestamp)
-        result = self.associator.associate(self.active_tracks(), detection_list, timestamp)
+        result = self.associator.associate(
+            self.active_tracks(), detection_list, timestamp
+        )
+        if frame_metadata:
+            result.metadata = _merge_association_metadata(
+                result.metadata,
+                frame_metadata,
+            )
 
-        detections_by_id = {detection.detection_id: detection for detection in detection_list}
+        detections_by_id = {
+            detection.detection_id: detection for detection in detection_list
+        }
         assignments_for_metrics: list[tuple[str, str, float | None]] = []
 
         for pair in result.matched_pairs:
@@ -300,3 +314,26 @@ def _truth_squared_error(track: GlobalTrack, detection: Detection) -> float | No
     truth_position_array = np.asarray(truth_position, dtype=float).reshape(2)
     residual = track.position - truth_position_array
     return float(residual.T @ residual)
+
+
+def _merge_association_metadata(
+    association_metadata: Mapping[str, Any],
+    frame_metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Merge replay row metadata without overriding associator diagnostics."""
+
+    merged = dict(association_metadata)
+    current_replay_metadata = merged.get("replay_metadata", {})
+    replay_metadata = (
+        dict(current_replay_metadata)
+        if isinstance(current_replay_metadata, Mapping)
+        else {}
+    )
+    for key, value in frame_metadata.items():
+        if value is None:
+            continue
+        replay_metadata.setdefault(str(key), value)
+        merged.setdefault(str(key), value)
+    if replay_metadata:
+        merged["replay_metadata"] = replay_metadata
+    return merged

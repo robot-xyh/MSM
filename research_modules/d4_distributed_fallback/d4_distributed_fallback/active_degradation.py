@@ -964,10 +964,23 @@ def summarize_secondary_lifecycle(
                 communication_summaries,
                 current_time_s,
             )
+        coverage_matches_requested_cell = ActiveDegradationArbiter._secondary_covers_cell(
+            resource,
+            coverage_cell,
+        )
+        heartbeat_stale = None
+        if current_time_s is not None and resource.heartbeat_timestamp_s is not None:
+            heartbeat_stale = not ActiveDegradationArbiter._secondary_heartbeat_is_usable(
+                resource,
+                current_time_s,
+            )
+        cue_stale = None
+        if resource.cue_freshness_s is not None:
+            cue_stale = not ActiveDegradationArbiter._secondary_cue_is_usable(resource)
         secondary_available = (
             not resource.operator_hold
             and resource.availability_band != AvailabilityBand.NONE
-            and ActiveDegradationArbiter._secondary_covers_cell(resource, coverage_cell)
+            and coverage_matches_requested_cell
             and ActiveDegradationArbiter._secondary_heartbeat_is_usable(resource, current_time_s)
             and ActiveDegradationArbiter._secondary_cue_is_usable(resource)
             and ActiveDegradationArbiter._secondary_gimbal_is_usable(resource)
@@ -984,6 +997,10 @@ def summarize_secondary_lifecycle(
                 video_cue_freshness_s=video_freshness,
                 link_stale=link_stale,
                 secondary_available=secondary_available,
+                coverage_matches_requested_cell=coverage_matches_requested_cell,
+                heartbeat_stale=heartbeat_stale,
+                cue_stale=cue_stale,
+                link_fresh=None if link_stale is None else not link_stale,
                 heartbeat=resource.heartbeat_timestamp_s,
                 video_cue_freshness=video_freshness,
                 capability_class=resource.capability_class,

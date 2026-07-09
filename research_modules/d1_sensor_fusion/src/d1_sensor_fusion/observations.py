@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Any, Callable
 
 import numpy as np
 
@@ -39,41 +39,43 @@ class CameraModel:
 
     @classmethod
     def from_metadata(cls, metadata: dict) -> "CameraModel":
-        if "camera_model" in metadata and isinstance(metadata["camera_model"], CameraModel):
-            return metadata["camera_model"]
-        camera_model = metadata.get("camera_model")
+        camera_model = _camera_metadata_candidate(metadata)
+        if isinstance(camera_model, CameraModel):
+            return camera_model
         if isinstance(camera_model, dict):
+            intrinsics = _mapping_or_empty(camera_model.get("intrinsics"))
+            extrinsics = _mapping_or_empty(camera_model.get("extrinsics"))
             return cls(
                 position_ned=np.asarray(
-                    camera_model.get(
-                        "position_ned",
-                        camera_model.get(
-                            "camera_position_ned",
-                            metadata.get("camera_position_ned", [0.0, 0.0, -10.0]),
-                        ),
+                    _first_present(
+                        camera_model,
+                        extrinsics,
+                        metadata,
+                        keys=("position_ned", "camera_position_ned", "translation_ned", "t"),
+                        default=[0.0, 0.0, -10.0],
                     ),
                     dtype=float,
                 ),
                 rotation_world_to_camera=np.asarray(
-                    camera_model.get(
-                        "rotation_world_to_camera",
-                        metadata.get(
-                            "rotation_world_to_camera",
-                            [
-                                [0.0, 1.0, 0.0],
-                                [0.0, 0.0, 1.0],
-                                [1.0, 0.0, 0.0],
-                            ],
-                        ),
+                    _first_present(
+                        camera_model,
+                        extrinsics,
+                        metadata,
+                        keys=("rotation_world_to_camera", "R", "rotation_matrix"),
+                        default=[
+                            [0.0, 1.0, 0.0],
+                            [0.0, 0.0, 1.0],
+                            [1.0, 0.0, 0.0],
+                        ],
                     ),
                     dtype=float,
                 ),
-                fx=float(camera_model.get("fx", metadata.get("fx", 900.0))),
-                fy=float(camera_model.get("fy", metadata.get("fy", 900.0))),
-                cx=float(camera_model.get("cx", metadata.get("cx", 640.0))),
-                cy=float(camera_model.get("cy", metadata.get("cy", 360.0))),
-                width=int(camera_model.get("width", metadata.get("width", 1280))),
-                height=int(camera_model.get("height", metadata.get("height", 720))),
+                fx=float(_camera_intrinsic(camera_model, intrinsics, metadata, "fx", 900.0)),
+                fy=float(_camera_intrinsic(camera_model, intrinsics, metadata, "fy", 900.0)),
+                cx=float(_camera_intrinsic(camera_model, intrinsics, metadata, "cx", 640.0)),
+                cy=float(_camera_intrinsic(camera_model, intrinsics, metadata, "cy", 360.0)),
+                width=int(_camera_dimension(camera_model, intrinsics, metadata, "width", 1280)),
+                height=int(_camera_dimension(camera_model, intrinsics, metadata, "height", 720)),
             )
         return cls(
             position_ned=np.asarray(
@@ -297,6 +299,8 @@ def measurement_model_for(
     if modality == "eo":
         camera = CameraModel.from_metadata(observation.metadata)
         bbox = observation.metadata.get("bbox")
+        if bbox is None:
+            bbox = observation.metadata.get("bbox_xyxy")
         r = (
             observation.covariance
             if observation.covariance is not None
@@ -344,3 +348,81 @@ def _radar_covariance_config(config: RadarCovarianceConfig | dict | None) -> Rad
     if isinstance(config, RadarCovarianceConfig):
         return config
     return RadarCovarianceConfig(**dict(config))
+
+
+def _camera_metadata_candidate(metadata: dict[str, Any]) -> CameraModel | dict[str, Any] | None:
+    for key in ("camera_model", "camera_metadata", "camera"):
+        value = metadata.get(key)
+        if isinstance(value, CameraModel):
+            return value
+        if isinstance(value, dict):
+            return dict(value)
+    return None
+
+
+def _mapping_or_empty(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _first_present(
+    *mappings: dict[str, Any],
+    keys: tuple[str, ...],
+    default: Any,
+) -> Any:
+    for mapping in mappings:
+        for key in keys:
+            value = mapping.get(key)
+            if value is not None:
+                return value
+    return default
+
+
+def _camera_intrinsic(
+    camera_model: dict[str, Any],
+    intrinsics: dict[str, Any],
+    metadata: dict[str, Any],
+    key: str,
+    default: float,
+) -> float:
+    for mapping in (camera_model, intrinsics, metadata):
+        value = mapping.get(key)
+        if value is not None:
+            return float(value)
+    matrix = _intrinsic_matrix(camera_model, intrinsics, metadata)
+    if matrix is not None:
+        indices = {"fx": (0, 0), "fy": (1, 1), "cx": (0, 2), "cy": (1, 2)}
+        row, column = indices[key]
+        return float(matrix[row, column])
+    return float(default)
+
+
+def _camera_dimension(
+    camera_model: dict[str, Any],
+    intrinsics: dict[str, Any],
+    metadata: dict[str, Any],
+    key: str,
+    default: int,
+) -> int:
+    for mapping in (camera_model, intrinsics, metadata):
+        value = mapping.get(key)
+        if value is not None:
+            return int(value)
+        image_size = mapping.get("image_size")
+        if image_size is not None:
+            values = np.asarray(image_size, dtype=float).reshape(-1)
+            if values.size >= 2:
+                return int(values[0] if key == "width" else values[1])
+    return int(default)
+
+
+def _intrinsic_matrix(*mappings: dict[str, Any]) -> np.ndarray | None:
+    for mapping in mappings:
+        value = mapping.get("K")
+        if value is None:
+            value = mapping.get("intrinsic_matrix")
+        if value is None:
+            continue
+        matrix = np.asarray(value, dtype=float)
+        if matrix.shape == (3, 3):
+            return matrix
+    return None

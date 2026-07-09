@@ -11,6 +11,7 @@ research_modules/d7_proportional_guidance/
   d7_proportional_guidance/
     __init__.py
     airsim_dry_run.py
+    calibration.py
     comparison.py
     models.py
     pn.py
@@ -41,6 +42,8 @@ research_modules/d7_proportional_guidance/
 - `D7RuntimeBus`：D7-owned N-pair state injection adapter。调用方为每个 assignment pair 注入当前 D3 binding、D4 permission、D5 terminal association 和 bbox observation；D7 为每个 `resource_id -> assigned_global_track_id` 维护独立视觉 filter，输出 terminal handoff、D4/D5/plan/version、bbox/LOS/TTC 和 gate/log 字段，不调用 AirSim 或 SimpleFlight。
 - `run_guidance_strategy_comparison`：生成 PN、Pure Pursuit、`png_vm`、`png_ttc` 多 seed 对照行，字段包含 D6 可消费的 `min_range_m`、`time_to_intercept_s`、`terminal_contract_reject_reasons`、`terminal_switch_reject_reasons` 和 `visual_png_switch_count`。
 - `evaluate_bbox_los_replay`：把 AirSim detect metadata、YOLO/ByteTrack bbox replay 归一成 `VisionGuidanceObservation`，离线评估 bbox/LOS/TTC gate；该路径显式 `vehicle_control=False`，不直接控制 SimpleFlight。
+- `summarize_guidance_calibration`：消费多 seed D7 runtime outputs、`GuidanceRecord`、comparison rows 或 replay dict，按 PN、Pure Pursuit、`png_vm`、`png_ttc` 汇总 terminal range、closing speed、bbox/LOS/maneuver gate、reject reasons，并输出阈值版本化 advisory。
+- main runtime P1 D4/D5 calibration sweep：由 main 统一编排 secondary height/FOV/count/standoff 与多 seed 组合，D6 在 sweep 结束后自动生成标准报告 bundle；D7 只提供上述 runtime summary、comparison rows、replay summary 和 calibration advisory 字段，不直接启动 AirSim、不写报告 bundle。
 - 输出 LOS angle、LOS rate、closing speed、range、模式、横向加速度限幅、转向率限幅和离线质点轨迹记录。
 - `simulate_guidance_episode` 支持单个 resource-target pair 的离线闭环，返回 `records` 和 `summary`。
 - `guidance_records_from_assignment_dry_run` 接收 assignment/resource/target estimate 三类普通 Python 数据，输出一条 `radar_midcourse` 和一条 `vision_terminal` 干运行记录。
@@ -53,7 +56,10 @@ research_modules/d7_proportional_guidance/
 - 模块本地已实现末端视觉 PNG gate：`SimpleFlightPngGuidanceFilter` 从 bbox 中心计算 bearing/LOS-rate，支持 `law="png_vm"` 和 `law="png_ttc"`，并输出 SimpleFlight 可消费的水平 `velocity_ned`。
 - 模块本地已实现每个 assignment pair 独立状态：视觉 PNG filter 是实例状态，保存 `local_track_id`、稳定帧、LOS-rate 窗口和 bbox 面积窗口；`D7RuntimeBus` 也按 `resource_id -> assigned_global_track_id` 持有独立 filter，并在 plan/version/owner/assignment signature 变化时重置该 pair 状态。D7 不提供全局单例，也不假设 2v2/5v5。
 - 模块本地已补齐 runtime bus 可消费记录：`D7RuntimePairOutput.as_log_record()` 暴露 `terminal_handoff_state`、`terminal_handover_pending`、`terminal_mode_entered`、D4/D5 state aliases、D3 plan/version、bbox、camera/LOS/maneuver gate、TTC、LOS-rate、closing speed 和 maneuver margin；`summarize_runtime_bus_outputs()` 聚合 `guidance_mode_counts`、handoff 状态分布、D4/D5/plan 计数、gate pass rate、bbox/TTC/LOS 数值摘要和 D6 常用 reject reason 字段。
-- 模块本地已实现 PN/Pure Pursuit/`png_vm`/`png_ttc` 多 seed 对照接口和 YOLO/ByteTrack bbox replay 到 LOS gate 的离线接口；这些接口只生成报告行和 gate 摘要，不进入 SimpleFlight 控制主线。
+- 模块本地已实现 PN/Pure Pursuit/`png_vm`/`png_ttc` 多 seed 对照接口、YOLO/ByteTrack bbox replay 到 LOS gate 的离线接口，以及 P1 calibration summary helper；这些接口只生成报告行、gate 摘要和 advisory，不进入 SimpleFlight 控制主线。
+- `summarize_guidance_calibration()` 输出 `threshold_advisory.version="d7-p1-guidance-calibration-advisory-v1"`，字段覆盖 `terminal_range_m`、`min_bbox_area_ratio`、`max_visual_latency_s`、`min_closing_speed_mps` 和 `min_maneuver_margin`。所有建议均带 `advisory_only=True`、`default_control_law_changed=False`、`d3_d4_d5_gate_bypassed=False`，不修改默认 PN/PNG 控制律。
+- main runtime 已新增 P1 D4/D5 calibration sweep，D6 标准报告 bundle 已自动生成 records CSV、summary CSV、summary JSON 和 Markdown。D7 不把该 sweep 记为本模块未完成能力；D7 的职责是保证可被 sweep/D6 消费的 gate、handoff、reject reason、guidance law 和 threshold advisory 字段稳定。
+- 3D/高度差/FRPN 在 D7 summary 中只作为 `benchmark_calibration` 字段：`height_delta_m`、`range_3d_m`、`frpn_benchmark_score` 和 FRPN variant 计数可用于 P1 calibration/benchmark，但不会替换默认 `compute_proportional_navigation_command()` 或 `SimpleFlightPngGuidanceFilter` API。
 - runtime 已实际消费 D7 API：`research_modules/airsim_runtime/intercept.py` 为每个 `InterceptPair` 持有独立 `visual_filter`、`guidance_binding`、D4 permission 和 D5-shaped terminal association，并把 `PngGuidanceCommand.velocity_ned` 交给 SimpleFlight `moveByVelocityZAsync` 链路。D7 模块本身不直接连接 AirSim。
 - 2026-07-07 main/runtime 复核后，真实 D7 执行结果已由 main/orchestrator 合并进正式 `main_episode_bus_metrics.json`；执行前合同诊断仍保留在 raw `main_episode_bus_contract_metrics.json`。D7 只提供 gate/command/log 字段，D6 和 main 负责正式指标聚合。
 - D3 `request_center_replan` 闭环已接线到 main/runtime：中心重规划后必须生成新的有效 plan/binding/version。D7 只接受当前生效的 D3 binding/version；stale、revoked、plan mismatch、D4 owner mismatch/missing 或 D4 reassign/degrade 窗口内的旧 D5 lock 均不得进入视觉 PNG。

@@ -173,6 +173,44 @@ class AssignmentValiditySummary:
     unassigned_high_threat_count: int
     resource_count: int = 0
     target_count: int = 0
+    assigned_count: int = 0
+    hysteresis_reject_count: int = 0
+    stale_reject_count: int = 0
+    reassign_count: int = 0
+
+
+@dataclass(frozen=True)
+class AssignmentMismatchReplaySummary:
+    """N/M replay summary for assignment calibration and D6 aggregation."""
+
+    resource_count: int = 0
+    target_count: int = 0
+    assigned_count: int = 0
+    unassigned_high_threat_count: int = 0
+    hysteresis_reject_count: int = 0
+    stale_reject_count: int = 0
+    reassign_count: int = 0
+
+
+@dataclass(frozen=True)
+class TerminalFeedbackCalibrationSummary:
+    """Conservative D5 feedback calibration summary.
+
+    Suggestions are advisory only; this helper never mutates planner defaults.
+    """
+
+    seed_count: int
+    assignment_record_count: int
+    feedback_record_count: int
+    duplicate_reject_count: int
+    friend_reject_count: int
+    fov_reject_count: int
+    geometry_reject_count: int
+    mismatch_replay_summary: AssignmentMismatchReplaySummary
+    cost_suggestions: Mapping[str, str] = field(default_factory=dict)
+    hysteresis_suggestions: Mapping[str, str] = field(default_factory=dict)
+    notes: tuple[str, ...] = ()
+    auto_apply_defaults: bool = False
 
 
 @dataclass(frozen=True)
@@ -193,6 +231,11 @@ class AssignmentRecord:
     changed: bool | None = None
     resource_count: int = 0
     target_count: int = 0
+    assigned_count: int = 0
+    unassigned_high_threat_count: int = 0
+    hysteresis_reject_count: int = 0
+    stale_reject_count: int = 0
+    reassign_count: int = 0
     assignment_matrix_shape: tuple[int, int] | None = None
     plan_owner: str | None = None
     active_plan_owner: str | None = None
@@ -849,6 +892,11 @@ def assignment_validity_summary_from_plan(
 ) -> AssignmentValiditySummary:
     """Build a compact validity summary from one D3 assignment plan."""
 
+    stale_plan_version = _stale_plan_version(
+        plan=plan,
+        latest_version=latest_version,
+        latest_plan_id=latest_plan_id,
+    )
     return AssignmentValiditySummary(
         plan_id=plan.plan_id,
         version=plan.version,
@@ -859,11 +907,7 @@ def assignment_validity_summary_from_plan(
             input_timestamp_s=input_timestamp_s,
         ),
         cost_margin=_cost_margin(plan),
-        stale_plan_version=_stale_plan_version(
-            plan=plan,
-            latest_version=latest_version,
-            latest_plan_id=latest_plan_id,
-        ),
+        stale_plan_version=stale_plan_version,
         duplicate_assignment_count=_duplicate_assignment_count(plan.assignments),
         unassigned_high_threat_count=_unassigned_high_threat_count(
             plan=plan,
@@ -873,6 +917,13 @@ def assignment_validity_summary_from_plan(
         ),
         resource_count=_plan_resource_count(plan),
         target_count=_plan_target_count(plan),
+        assigned_count=len(plan.assignments),
+        hysteresis_reject_count=_hysteresis_reject_count(plan),
+        stale_reject_count=_stale_reject_count(
+            plan,
+            stale_plan_version=stale_plan_version,
+        ),
+        reassign_count=_reassign_count(plan),
     )
 
 
@@ -883,6 +934,10 @@ def assignment_records_from_plan(
     authorization_state: str | None = "recorded",
     truth_id_by_target: Mapping[str, str] | None = None,
     active: bool = True,
+    previous_plan: AssignmentPlan | None = None,
+    tracks: Iterable[TargetTrack] | None = None,
+    high_threat_target_ids: Iterable[str] | None = None,
+    high_threat_threshold: float = 0.7,
 ) -> tuple[AssignmentRecord, ...]:
     """Export D6-compatible assignment records from a D3 plan."""
 
@@ -901,6 +956,16 @@ def assignment_records_from_plan(
         target_count=target_count,
         resource_count=resource_count,
     )
+    assigned_count = len(plan.assignments)
+    unassigned_high_threat_count = _unassigned_high_threat_count(
+        plan=plan,
+        tracks=tracks,
+        high_threat_target_ids=high_threat_target_ids,
+        high_threat_threshold=high_threat_threshold,
+    )
+    hysteresis_reject_count = _hysteresis_reject_count(plan)
+    stale_reject_count = _stale_reject_count(plan)
+    reassign_count = _reassign_count(plan, previous_plan=previous_plan)
     plan_owner = _metadata_text(plan_metadata, "plan_owner") or "center"
     active_plan_owner = (
         _metadata_text(plan_metadata, "active_plan_owner") or plan_owner
@@ -932,6 +997,11 @@ def assignment_records_from_plan(
             changed=plan.changed,
             resource_count=resource_count,
             target_count=target_count,
+            assigned_count=assigned_count,
+            unassigned_high_threat_count=unassigned_high_threat_count,
+            hysteresis_reject_count=hysteresis_reject_count,
+            stale_reject_count=stale_reject_count,
+            reassign_count=reassign_count,
             assignment_matrix_shape=assignment_matrix_shape,
             plan_owner=plan_owner,
             active_plan_owner=active_plan_owner,
@@ -963,6 +1033,161 @@ def assignment_records_from_plan(
             ),
         )
         for assignment in plan.assignments
+    )
+
+
+def summarize_assignment_mismatch_replay(
+    assignment_records: (
+        AssignmentRecord
+        | AssignmentValiditySummary
+        | AssignmentMismatchReplaySummary
+        | Mapping[str, Any]
+        | Iterable[
+            AssignmentRecord
+            | AssignmentValiditySummary
+            | AssignmentMismatchReplaySummary
+            | Mapping[str, Any]
+        ]
+        | None
+    ),
+) -> AssignmentMismatchReplaySummary:
+    """Summarize N/M assignment replay records without assuming equal sizes."""
+
+    records = _record_items(assignment_records)
+    if not records:
+        return AssignmentMismatchReplaySummary()
+
+    resource_ids = {
+        value
+        for record in records
+        if (value := _record_text(record, "resource_id", "assigned_resource_id", "owner"))
+    }
+    target_ids = {
+        value
+        for record in records
+        if (value := _record_text(record, "global_track_id", "target_id", "assigned_global_track_id"))
+    }
+    groups = _record_groups(records)
+
+    return AssignmentMismatchReplaySummary(
+        resource_count=max(
+            _record_ints(records, "resource_count"),
+            default=len(resource_ids),
+        ),
+        target_count=max(
+            _record_ints(records, "target_count"),
+            default=len(target_ids),
+        ),
+        assigned_count=sum(_group_assigned_count(group) for group in groups.values()),
+        unassigned_high_threat_count=sum(
+            max(_record_ints(group, "unassigned_high_threat_count"), default=0)
+            for group in groups.values()
+        ),
+        hysteresis_reject_count=sum(
+            max(
+                _record_ints(group, "hysteresis_reject_count"),
+                default=(
+                    1
+                    if any(
+                        _record_text(record, "decision_state")
+                        in {"held_by_hysteresis", "held_by_change_limit"}
+                        for record in group
+                    )
+                    else 0
+                ),
+            )
+            for group in groups.values()
+        ),
+        stale_reject_count=sum(
+            max(
+                _record_ints(group, "stale_reject_count"),
+                default=(
+                    1
+                    if any(_record_bool(record, "stale_plan_version") for record in group)
+                    else 0
+                ),
+            )
+            for group in groups.values()
+        ),
+        reassign_count=sum(_group_reassign_count(group) for group in groups.values()),
+    )
+
+
+def summarize_terminal_feedback_calibration(
+    assignment_records: (
+        AssignmentRecord
+        | AssignmentValiditySummary
+        | AssignmentMismatchReplaySummary
+        | Mapping[str, Any]
+        | Iterable[
+            AssignmentRecord
+            | AssignmentValiditySummary
+            | AssignmentMismatchReplaySummary
+            | Mapping[str, Any]
+        ]
+        | None
+    ) = None,
+    feedback_records: (
+        AssignmentFeedbackDecision
+        | Mapping[str, Any]
+        | Iterable[AssignmentFeedbackDecision | Mapping[str, Any]]
+        | None
+    ) = None,
+) -> TerminalFeedbackCalibrationSummary:
+    """Build an advisory calibration summary from multi-seed D3/D5 records.
+
+    The helper reports reject patterns and tuning directions; it does not
+    modify `CostWeights`, `PlannerConfig`, or any default threshold.
+    """
+
+    assignment_items = _record_items(assignment_records)
+    feedback_items = tuple(dict(item) for item in _feedback_metadata_items(feedback_records))
+    all_items = assignment_items + feedback_items
+    mismatch_summary = summarize_assignment_mismatch_replay(assignment_items)
+
+    duplicate_reject_count = _feedback_category_count(all_items, "duplicate")
+    friend_reject_count = _feedback_category_count(all_items, "friend")
+    fov_reject_count = _feedback_category_count(all_items, "fov")
+    geometry_reject_count = _feedback_category_count(all_items, "geometry")
+    seed_count = len(
+        {
+            value
+            for item in all_items
+            if (value := _record_text(item, "seed", "seed_id", "random_seed"))
+        }
+    )
+
+    cost_suggestions = _terminal_feedback_cost_suggestions(
+        duplicate_reject_count=duplicate_reject_count,
+        friend_reject_count=friend_reject_count,
+        fov_reject_count=fov_reject_count,
+        geometry_reject_count=geometry_reject_count,
+    )
+    hysteresis_suggestions = _terminal_feedback_hysteresis_suggestions(
+        mismatch_summary=mismatch_summary,
+        duplicate_reject_count=duplicate_reject_count,
+        friend_reject_count=friend_reject_count,
+        fov_reject_count=fov_reject_count,
+        geometry_reject_count=geometry_reject_count,
+    )
+
+    return TerminalFeedbackCalibrationSummary(
+        seed_count=seed_count,
+        assignment_record_count=len(assignment_items),
+        feedback_record_count=len(feedback_items),
+        duplicate_reject_count=duplicate_reject_count,
+        friend_reject_count=friend_reject_count,
+        fov_reject_count=fov_reject_count,
+        geometry_reject_count=geometry_reject_count,
+        mismatch_replay_summary=mismatch_summary,
+        cost_suggestions=cost_suggestions,
+        hysteresis_suggestions=hysteresis_suggestions,
+        notes=(
+            "advisory_summary_only",
+            "planner_defaults_not_modified",
+            "allow_local_rebind_false",
+        ),
+        auto_apply_defaults=False,
     )
 
 
@@ -1081,6 +1306,295 @@ def _feedback_metadata_items(
         else:
             raise TypeError("feedback metadata entries must be mappings or decisions")
     return tuple(items)
+
+
+def _record_items(
+    records: (
+        AssignmentRecord
+        | AssignmentValiditySummary
+        | AssignmentMismatchReplaySummary
+        | Mapping[str, Any]
+        | Iterable[
+            AssignmentRecord
+            | AssignmentValiditySummary
+            | AssignmentMismatchReplaySummary
+            | Mapping[str, Any]
+        ]
+        | None
+    ),
+) -> tuple[Mapping[str, Any], ...]:
+    if records is None:
+        return ()
+    if isinstance(
+        records,
+        (
+            AssignmentRecord,
+            AssignmentValiditySummary,
+            AssignmentMismatchReplaySummary,
+            Mapping,
+        ),
+    ):
+        return (_record_mapping(records),)
+    return tuple(_record_mapping(record) for record in records)
+
+
+def _record_mapping(
+    record: (
+        AssignmentRecord
+        | AssignmentValiditySummary
+        | AssignmentMismatchReplaySummary
+        | Mapping[str, Any]
+    ),
+) -> Mapping[str, Any]:
+    if isinstance(record, Mapping):
+        return record
+    if hasattr(record, "__dict__"):
+        return vars(record)
+    raise TypeError("assignment replay records must be mappings or D3 dataclasses")
+
+
+def _record_groups(
+    records: Iterable[Mapping[str, Any]],
+) -> dict[tuple[str | None, str | None, int | None, int | None], tuple[Mapping[str, Any], ...]]:
+    grouped: dict[
+        tuple[str | None, str | None, int | None, int | None],
+        list[Mapping[str, Any]],
+    ] = {}
+    for index, record in enumerate(records):
+        key = (
+            _record_text(record, "seed", "seed_id", "random_seed"),
+            _record_text(record, "plan_id") or f"record-{index}",
+            _record_int(record.get("version")),
+            _record_int(record.get("window_id")),
+        )
+        grouped.setdefault(key, []).append(record)
+    return {key: tuple(value) for key, value in grouped.items()}
+
+
+def _record_text(metadata: Mapping[str, Any], *keys: str) -> str | None:
+    return _metadata_text(metadata, *keys)
+
+
+def _record_bool(metadata: Mapping[str, Any], *keys: str) -> bool:
+    for key in keys:
+        if key in metadata:
+            return _metadata_bool(metadata.get(key))
+    return False
+
+
+def _record_explicitly_inactive(metadata: Mapping[str, Any]) -> bool:
+    if "active" not in metadata:
+        return False
+    return not _metadata_bool(metadata.get("active"))
+
+
+def _record_int(value: Any) -> int | None:
+    return _metadata_int(value)
+
+
+def _record_ints(records: Iterable[Mapping[str, Any]], key: str) -> tuple[int, ...]:
+    values: list[int] = []
+    for record in records:
+        value = _record_int(record.get(key))
+        if value is not None:
+            values.append(value)
+    return tuple(values)
+
+
+def _group_assigned_count(group: Iterable[Mapping[str, Any]]) -> int:
+    group_tuple = tuple(group)
+    explicit = _record_ints(group_tuple, "assigned_count")
+    if explicit:
+        return max(explicit)
+    return sum(
+        1
+        for record in group_tuple
+        if _record_text(record, "global_track_id", "target_id", "assigned_global_track_id")
+        and not _record_explicitly_inactive(record)
+    )
+
+
+def _group_reassign_count(group: Iterable[Mapping[str, Any]]) -> int:
+    group_tuple = tuple(group)
+    explicit = _record_ints(group_tuple, "reassign_count")
+    if explicit:
+        return max(explicit)
+    candidate_change = _record_ints(group_tuple, "candidate_change_count")
+    if candidate_change and any(_record_bool(record, "changed") for record in group_tuple):
+        return max(candidate_change)
+    if any(_record_bool(record, "changed") for record in group_tuple) and any(
+        _record_text(record, "previous_plan_id") for record in group_tuple
+    ):
+        return 1
+    return 0
+
+
+def _feedback_category_count(
+    records: Iterable[Mapping[str, Any]],
+    category: str,
+) -> int:
+    total = 0
+    for record in records:
+        explicit = _record_int(record.get(f"{category}_reject_count"))
+        if explicit is not None:
+            total += explicit
+            continue
+        if _record_bool(record, f"{category}_reject", f"{category}_rejected"):
+            total += 1
+            continue
+        if _feedback_record_matches_category(record, category):
+            total += 1
+    return total
+
+
+def _feedback_record_matches_category(
+    record: Mapping[str, Any],
+    category: str,
+) -> bool:
+    return _feedback_primary_category(record) == category
+
+
+def _feedback_primary_category(record: Mapping[str, Any]) -> str | None:
+    tokens = _feedback_record_tokens(record)
+    if (
+        _record_bool(record, "duplicate_terminal_lock_risk")
+        or _record_int(record.get("duplicate_assignment_count")) not in {None, 0}
+        or "duplicate" in tokens
+    ):
+        return "duplicate"
+    if "friend" in tokens or "friend_overlap_hold" in tokens:
+        return "friend"
+    if (
+        "geometry" in tokens
+        or "pair_infeasible" in tokens
+        or "infeasible" in tokens
+        or _record_text(record, "feasibility_suggestion")
+        == "temporarily_mark_current_edge_infeasible"
+        or _has_false_feasibility(record.get("feasibility_by_resource"))
+        or bool(record.get("prohibited_edges"))
+    ):
+        return "geometry"
+    if (
+        "fov" in tokens
+        or _record_text(record, "fov_difficulty_suggestion")
+        == "increase_current_edge"
+        or bool(record.get("fov_difficulty_by_resource"))
+    ):
+        return "fov"
+    return None
+
+
+def _feedback_record_tokens(record: Mapping[str, Any]) -> set[str]:
+    tokens: set[str] = set()
+    for key in (
+        "terminal_feedback_state",
+        "main_action",
+        "planner_recommended_action",
+        "recommended_action",
+        "reject_reason",
+        "revoke_reason",
+        "reason",
+        "d4_request",
+        "feasibility_suggestion",
+        "fov_difficulty_suggestion",
+        "decision_state",
+    ):
+        value = record.get(key)
+        if value is not None:
+            tokens.update(str(value).strip().lower().split())
+            tokens.add(str(value).strip().lower())
+    raw_reasons = record.get("reasons") or ()
+    if isinstance(raw_reasons, str):
+        raw_reasons = (raw_reasons,)
+    for reason in raw_reasons:
+        text = str(reason).strip().lower()
+        if text:
+            tokens.update(text.split())
+            tokens.add(text)
+    return tokens
+
+
+def _has_false_feasibility(value: Any) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    return any(not _metadata_bool(raw_value) for raw_value in value.values())
+
+
+def _terminal_feedback_cost_suggestions(
+    *,
+    duplicate_reject_count: int,
+    friend_reject_count: int,
+    fov_reject_count: int,
+    geometry_reject_count: int,
+) -> Mapping[str, str]:
+    return {
+        "duplicate": (
+            "review_conflict_or_feasibility_penalty_for_duplicate_lock_edges"
+            if duplicate_reject_count
+            else "insufficient_duplicate_reject_evidence"
+        ),
+        "friend": (
+            "review_resource_hold_and_fov_penalty_for_friend_overlap"
+            if friend_reject_count
+            else "insufficient_friend_reject_evidence"
+        ),
+        "fov": (
+            "review_fov_weight_or_fov_difficulty_cap"
+            if fov_reject_count
+            else "insufficient_fov_reject_evidence"
+        ),
+        "geometry": (
+            "prefer_prohibited_edges_or_infeasible_penalty_for_geometry_rejects"
+            if geometry_reject_count
+            else "insufficient_geometry_reject_evidence"
+        ),
+    }
+
+
+def _terminal_feedback_hysteresis_suggestions(
+    *,
+    mismatch_summary: AssignmentMismatchReplaySummary,
+    duplicate_reject_count: int,
+    friend_reject_count: int,
+    fov_reject_count: int,
+    geometry_reject_count: int,
+) -> Mapping[str, str]:
+    feedback_reject_count = (
+        duplicate_reject_count
+        + friend_reject_count
+        + fov_reject_count
+        + geometry_reject_count
+    )
+    if feedback_reject_count == 0:
+        common = "insufficient_feedback_reject_evidence"
+    elif mismatch_summary.hysteresis_reject_count > mismatch_summary.reassign_count:
+        common = "review_lower_delta_min_dwell_or_change_limit_for_repeated_holds"
+    elif mismatch_summary.reassign_count > max(1, mismatch_summary.hysteresis_reject_count * 2):
+        common = "review_higher_delta_min_dwell_or_switch_penalty_for_churn"
+    else:
+        common = "keep_current_hysteresis_pending_more_seed_data"
+    return {
+        "duplicate": (
+            "allow_previous_infeasible_bypass_or_secondary_arbitration"
+            if duplicate_reject_count
+            else common
+        ),
+        "friend": (
+            "prefer_short_hold_before_replan_for_friend_overlap"
+            if friend_reject_count
+            else common
+        ),
+        "fov": (
+            "review_dwell_when_fov_rejects_persist_across_seeds"
+            if fov_reject_count
+            else common
+        ),
+        "geometry": (
+            "bypass_hysteresis_when_geometry_makes_previous_edge_infeasible"
+            if geometry_reject_count
+            else common
+        ),
+    }
 
 
 def _metadata_text(metadata: Mapping[str, Any], *keys: str) -> str | None:
@@ -1250,6 +1764,54 @@ def _cost_margin(plan: AssignmentPlan) -> float:
     if plan.candidate_total_cost is not None:
         return float(plan.total_cost - plan.candidate_total_cost)
     return 0.0
+
+
+def _hysteresis_reject_count(plan: AssignmentPlan) -> int:
+    explicit = _metadata_int(plan.metadata.get("hysteresis_reject_count"))
+    if explicit is not None:
+        return explicit
+    return 1 if plan.decision_state in {"held_by_hysteresis", "held_by_change_limit"} else 0
+
+
+def _stale_reject_count(
+    plan: AssignmentPlan,
+    *,
+    stale_plan_version: bool = False,
+) -> int:
+    explicit = _metadata_int(plan.metadata.get("stale_reject_count"))
+    if explicit is not None:
+        return explicit
+    if _metadata_bool(plan.metadata.get("stale_plan_rejected")):
+        return 1
+    return 1 if stale_plan_version else 0
+
+
+def _reassign_count(
+    plan: AssignmentPlan,
+    *,
+    previous_plan: AssignmentPlan | None = None,
+) -> int:
+    explicit = _metadata_int(plan.metadata.get("reassign_count"))
+    if explicit is not None:
+        return explicit
+    if previous_plan is not None:
+        return _assignment_change_count(previous_plan.assignment_map(), plan.assignment_map())
+    candidate_change_count = _metadata_int(plan.metadata.get("candidate_change_count"))
+    if candidate_change_count is not None and plan.changed:
+        return candidate_change_count
+    if plan.changed and plan.previous_plan_id:
+        return len(plan.assignments)
+    return 0
+
+
+def _assignment_change_count(
+    previous_map: Mapping[str, str],
+    current_map: Mapping[str, str],
+) -> int:
+    target_ids = set(previous_map) | set(current_map)
+    return sum(
+        1 for target_id in target_ids if previous_map.get(target_id) != current_map.get(target_id)
+    )
 
 
 def _stale_plan_version(

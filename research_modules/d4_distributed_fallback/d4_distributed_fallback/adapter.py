@@ -60,6 +60,11 @@ REGISTRATION_BREAKPOINT_TERMS = (
     "registered",
     "cross_view_registration",
 )
+ACTIVE_DEGRADATION_REVIEW_LABELS = frozenset(
+    {"necessary", "unnecessary", "inconclusive"}
+)
+DEFAULT_REVIEW_PRE_WINDOW_S = 2.0
+DEFAULT_REVIEW_POST_WINDOW_S = 5.0
 
 
 @dataclass(frozen=True)
@@ -76,7 +81,15 @@ class D4DecisionRecord:
     trigger_reason: str
     trigger_timestamp: float
     decision_timestamp: float
-    review_label: str = "unknown"
+    review_label: str = "inconclusive"
+    review_label_detail: str = "unclassified"
+    review_label_source: str = "derived"
+    review_pre_window_s: float = DEFAULT_REVIEW_PRE_WINDOW_S
+    review_post_window_s: float = DEFAULT_REVIEW_POST_WINDOW_S
+    review_pre_window_start_timestamp: float | None = None
+    review_pre_window_end_timestamp: float | None = None
+    review_post_window_start_timestamp: float | None = None
+    review_post_window_end_timestamp: float | None = None
     plan_id: str | None = None
     plan_version: int | None = None
     active_plan_owner: str = "center"
@@ -102,9 +115,29 @@ class D4DecisionRecord:
     cross_view_support_count: int = 0
     cross_view_association_count: int | None = None
     cross_view_conversion_gap: float | str | None = None
+    secondary_detect_to_registration_gap: float | str | None = None
     secondary_detect_to_cross_view_reject_reasons: tuple[str, ...] = ()
     secondary_detect_available_but_not_registered: bool = False
     secondary_detect_to_cross_view_diagnostic: str | None = None
+    secondary_network_coverage_available: bool = False
+    secondary_network_full_view_gap: float | None = None
+    secondary_takeover_candidate: bool = False
+    secondary_takeover_success: bool = False
+    secondary_takeover_necessity_label: str | None = None
+    secondary_plan_activation_delay_s: float | None = None
+    secondary_plan_pending_duration_s: float | None = None
+    secondary_diagnostic_node_id: str | None = None
+    secondary_diagnostic_available: bool | None = None
+    secondary_diagnostic_heartbeat_age_s: float | None = None
+    secondary_diagnostic_heartbeat_stale: bool | None = None
+    secondary_diagnostic_link_stale: bool | None = None
+    secondary_diagnostic_link_fresh: bool | None = None
+    secondary_diagnostic_video_cue_freshness_s: float | None = None
+    secondary_diagnostic_cue_freshness_s: float | None = None
+    secondary_diagnostic_cue_stale: bool | None = None
+    secondary_diagnostic_gimbal_pointing_ok: bool | None = None
+    secondary_diagnostic_coverage_ratio: float | None = None
+    secondary_diagnostic_coverage_matches_requested_cell: bool | None = None
     risk_factors: tuple[str, ...] = ()
     c2_health: C2Health = C2Health.NORMAL
     secondary_available: bool = False
@@ -129,6 +162,23 @@ class D4DecisionRecord:
             "trigger_timestamp": self.trigger_timestamp,
             "decision_timestamp": self.decision_timestamp,
             "review_label": self.review_label,
+            "active_degradation_review_label": self.review_label,
+            "review_label_detail": self.review_label_detail,
+            "review_label_source": self.review_label_source,
+            "review_pre_window_s": self.review_pre_window_s,
+            "review_post_window_s": self.review_post_window_s,
+            "review_pre_window_start_timestamp": self.review_pre_window_start_timestamp,
+            "review_pre_window_end_timestamp": self.review_pre_window_end_timestamp,
+            "review_post_window_start_timestamp": self.review_post_window_start_timestamp,
+            "review_post_window_end_timestamp": self.review_post_window_end_timestamp,
+            "active_degradation_review_window": {
+                "pre_window_s": self.review_pre_window_s,
+                "post_window_s": self.review_post_window_s,
+                "pre_window_start_timestamp": self.review_pre_window_start_timestamp,
+                "pre_window_end_timestamp": self.review_pre_window_end_timestamp,
+                "post_window_start_timestamp": self.review_post_window_start_timestamp,
+                "post_window_end_timestamp": self.review_post_window_end_timestamp,
+            },
             "resource_id": self.resource_id,
             "global_track_id": self.global_track_id,
             "plan_id": self.plan_id,
@@ -165,6 +215,9 @@ class D4DecisionRecord:
             "cross_view_support_count": self.cross_view_support_count,
             "cross_view_association_count": self.cross_view_association_count,
             "cross_view_conversion_gap": self.cross_view_conversion_gap,
+            "secondary_detect_to_registration_gap": (
+                self.secondary_detect_to_registration_gap
+            ),
             "secondary_detect_to_cross_view_reject_reasons": list(
                 self.secondary_detect_to_cross_view_reject_reasons
             ),
@@ -173,6 +226,42 @@ class D4DecisionRecord:
             ),
             "secondary_detect_to_cross_view_diagnostic": (
                 self.secondary_detect_to_cross_view_diagnostic
+            ),
+            "secondary_network_coverage_available": (
+                self.secondary_network_coverage_available
+            ),
+            "secondary_network_full_view_gap": self.secondary_network_full_view_gap,
+            "secondary_takeover_candidate": self.secondary_takeover_candidate,
+            "secondary_takeover_success": self.secondary_takeover_success,
+            "secondary_takeover_necessity_label": self.secondary_takeover_necessity_label,
+            "secondary_plan_activation_delay_s": self.secondary_plan_activation_delay_s,
+            "secondary_plan_pending_duration_s": self.secondary_plan_pending_duration_s,
+            "plan_activation_delay_s": self.secondary_plan_activation_delay_s,
+            "secondary_diagnostic_node_id": self.secondary_diagnostic_node_id,
+            "secondary_diagnostic_available": self.secondary_diagnostic_available,
+            "secondary_diagnostic_heartbeat_age_s": (
+                self.secondary_diagnostic_heartbeat_age_s
+            ),
+            "secondary_diagnostic_heartbeat_stale": (
+                self.secondary_diagnostic_heartbeat_stale
+            ),
+            "secondary_diagnostic_link_stale": self.secondary_diagnostic_link_stale,
+            "secondary_diagnostic_link_fresh": self.secondary_diagnostic_link_fresh,
+            "secondary_diagnostic_video_cue_freshness_s": (
+                self.secondary_diagnostic_video_cue_freshness_s
+            ),
+            "secondary_diagnostic_cue_freshness_s": (
+                self.secondary_diagnostic_cue_freshness_s
+            ),
+            "secondary_diagnostic_cue_stale": self.secondary_diagnostic_cue_stale,
+            "secondary_diagnostic_gimbal_pointing_ok": (
+                self.secondary_diagnostic_gimbal_pointing_ok
+            ),
+            "secondary_diagnostic_coverage_ratio": (
+                self.secondary_diagnostic_coverage_ratio
+            ),
+            "secondary_diagnostic_coverage_matches_requested_cell": (
+                self.secondary_diagnostic_coverage_matches_requested_cell
             ),
             "risk_factors": list(self.risk_factors),
             "c2_health": self.c2_health.value,
@@ -261,6 +350,8 @@ class D4ArbitrationAdapter:
         secondary_plan_source_node_id: str | None = None,
         trigger_timestamp: float | None = None,
         review_label: str = "unknown",
+        review_pre_window_s: float | None = None,
+        review_post_window_s: float | None = None,
     ) -> D4ArbitrationResult:
         """Build summaries, run the arbiter, and return a decision record."""
 
@@ -356,6 +447,31 @@ class D4ArbitrationAdapter:
             secondary_plan_active=secondary_plan_active,
             secondary_plan_source_node_id=secondary_plan_source_node_id,
         )
+        resolved_trigger_timestamp = float(
+            trigger_timestamp if trigger_timestamp is not None else timestamp
+        )
+        resolved_decision_timestamp = float(timestamp)
+        review = _review_label_metadata(decision, explicit=review_label)
+        review_window = _review_window_metadata(
+            trigger_timestamp=resolved_trigger_timestamp,
+            decision_timestamp=resolved_decision_timestamp,
+            pre_window_s=review_pre_window_s,
+            post_window_s=review_post_window_s,
+        )
+        secondary_timing = _secondary_plan_timing_metadata(
+            secondary_takeover,
+            trigger_timestamp=resolved_trigger_timestamp,
+            decision_timestamp=resolved_decision_timestamp,
+        )
+        diagnostic_lifecycle = _diagnostic_secondary_lifecycle(
+            lifecycle,
+            target_node_id=decision.target_node_id,
+        )
+        network_coverage = _secondary_network_coverage_metadata(terminal_summary)
+        secondary_takeover_candidate = decision.action in {
+            DegradationAction.REQUEST_SECONDARY_ASSIST,
+            DegradationAction.DEGRADE_TO_SECONDARY,
+        }
         record = D4DecisionRecord(
             timestamp=float(timestamp),
             resource_id=resolved_resource_id,
@@ -365,9 +481,17 @@ class D4ArbitrationAdapter:
             reason=decision.reason,
             selected_coordinator=_selected_coordinator(decision.action),
             trigger_reason=decision.reason,
-            trigger_timestamp=float(trigger_timestamp if trigger_timestamp is not None else timestamp),
-            decision_timestamp=float(timestamp),
-            review_label=_review_label_for_decision(decision, explicit=review_label),
+            trigger_timestamp=resolved_trigger_timestamp,
+            decision_timestamp=resolved_decision_timestamp,
+            review_label=review["label"],
+            review_label_detail=review["detail"],
+            review_label_source=review["source"],
+            review_pre_window_s=review_window["pre_window_s"],
+            review_post_window_s=review_window["post_window_s"],
+            review_pre_window_start_timestamp=review_window["pre_window_start_timestamp"],
+            review_pre_window_end_timestamp=review_window["pre_window_end_timestamp"],
+            review_post_window_start_timestamp=review_window["post_window_start_timestamp"],
+            review_post_window_end_timestamp=review_window["post_window_end_timestamp"],
             plan_id=resolved_plan_id,
             plan_version=resolved_plan_version,
             active_plan_owner=secondary_takeover.active_plan_owner,
@@ -391,6 +515,7 @@ class D4ArbitrationAdapter:
             cross_view_support_count=terminal_summary.cross_view_support_count,
             cross_view_association_count=terminal_summary.cross_view_association_count,
             cross_view_conversion_gap=terminal_summary.cross_view_conversion_gap,
+            secondary_detect_to_registration_gap=terminal_summary.cross_view_conversion_gap,
             secondary_detect_to_cross_view_reject_reasons=(
                 terminal_summary.secondary_detect_to_cross_view_reject_reasons
             ),
@@ -399,6 +524,75 @@ class D4ArbitrationAdapter:
             ),
             secondary_detect_to_cross_view_diagnostic=(
                 terminal_summary.secondary_detect_to_cross_view_diagnostic
+            ),
+            secondary_network_coverage_available=network_coverage["available"],
+            secondary_network_full_view_gap=network_coverage["full_view_gap"],
+            secondary_takeover_candidate=secondary_takeover_candidate,
+            secondary_takeover_success=_secondary_takeover_success(
+                secondary_takeover,
+                terminal_summary=terminal_summary,
+            ),
+            secondary_takeover_necessity_label=_secondary_takeover_necessity_label(
+                decision,
+                review["label"],
+            ),
+            secondary_plan_activation_delay_s=secondary_timing[
+                "secondary_plan_activation_delay_s"
+            ],
+            secondary_plan_pending_duration_s=secondary_timing[
+                "secondary_plan_pending_duration_s"
+            ],
+            secondary_diagnostic_node_id=(
+                diagnostic_lifecycle.node_id if diagnostic_lifecycle is not None else None
+            ),
+            secondary_diagnostic_available=(
+                diagnostic_lifecycle.secondary_available
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_heartbeat_age_s=(
+                diagnostic_lifecycle.heartbeat_age_s
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_heartbeat_stale=(
+                diagnostic_lifecycle.heartbeat_stale
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_link_stale=(
+                diagnostic_lifecycle.link_stale if diagnostic_lifecycle is not None else None
+            ),
+            secondary_diagnostic_link_fresh=(
+                diagnostic_lifecycle.link_fresh if diagnostic_lifecycle is not None else None
+            ),
+            secondary_diagnostic_video_cue_freshness_s=(
+                diagnostic_lifecycle.video_cue_freshness_s
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_cue_freshness_s=(
+                diagnostic_lifecycle.cue_freshness_s
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_cue_stale=(
+                diagnostic_lifecycle.cue_stale if diagnostic_lifecycle is not None else None
+            ),
+            secondary_diagnostic_gimbal_pointing_ok=(
+                diagnostic_lifecycle.gimbal_pointing_ok
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_coverage_ratio=(
+                diagnostic_lifecycle.secondary_coverage_ratio
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_coverage_matches_requested_cell=(
+                diagnostic_lifecycle.coverage_matches_requested_cell
+                if diagnostic_lifecycle is not None
+                else None
             ),
             risk_factors=decision.risk_factors,
             c2_health=health,
@@ -419,13 +613,40 @@ class D4ArbitrationAdapter:
         )
 
 
-def _review_label_for_decision(
+def _review_label_metadata(
     decision: ActiveDegradationDecision,
     *,
     explicit: str = "unknown",
-) -> str:
-    if explicit and explicit != "unknown":
-        return explicit
+) -> dict[str, str]:
+    detail = _legacy_review_label_for_decision(decision)
+    parsed = (explicit or "unknown").strip().lower()
+    if parsed in ACTIVE_DEGRADATION_REVIEW_LABELS:
+        return {"label": parsed, "detail": detail, "source": "explicit"}
+    if parsed and parsed != "unknown":
+        label = _normalise_legacy_review_label(parsed)
+        return {"label": label, "detail": parsed, "source": "explicit_normalized"}
+
+    if decision.action == DegradationAction.CONTINUE_CENTER and decision.mode == DegradationMode.NONE:
+        return {"label": "unnecessary", "detail": detail, "source": "derived"}
+    return {"label": "inconclusive", "detail": detail, "source": "derived"}
+
+
+def _normalise_legacy_review_label(value: str) -> str:
+    if value in {"true", "positive", "needed", "required"}:
+        return "necessary"
+    if value in {
+        "false",
+        "negative",
+        "not_needed",
+        "not_required",
+        "continue_center",
+        "observe_more_not_degradation",
+    }:
+        return "unnecessary"
+    return "inconclusive"
+
+
+def _legacy_review_label_for_decision(decision: ActiveDegradationDecision) -> str:
     if decision.mode == DegradationMode.PASSIVE_FAILOVER:
         return "passive_failover"
     if decision.reason == "terminal_transient_observe_more":
@@ -442,6 +663,122 @@ def _review_label_for_decision(
     if decision.action == DegradationAction.HOLD_FOR_REVIEW:
         return "human_review_required"
     return "continue_center"
+
+
+def _review_window_metadata(
+    *,
+    trigger_timestamp: float,
+    decision_timestamp: float,
+    pre_window_s: float | None,
+    post_window_s: float | None,
+) -> dict[str, float]:
+    resolved_pre = max(
+        0.0,
+        float(pre_window_s)
+        if pre_window_s is not None
+        else DEFAULT_REVIEW_PRE_WINDOW_S,
+    )
+    resolved_post = max(
+        0.0,
+        float(post_window_s)
+        if post_window_s is not None
+        else DEFAULT_REVIEW_POST_WINDOW_S,
+    )
+    return {
+        "pre_window_s": resolved_pre,
+        "post_window_s": resolved_post,
+        "pre_window_start_timestamp": trigger_timestamp - resolved_pre,
+        "pre_window_end_timestamp": trigger_timestamp,
+        "post_window_start_timestamp": decision_timestamp,
+        "post_window_end_timestamp": decision_timestamp + resolved_post,
+    }
+
+
+def _secondary_plan_timing_metadata(
+    secondary_takeover: SecondaryTakeoverPlanMetadata,
+    *,
+    trigger_timestamp: float,
+    decision_timestamp: float,
+) -> dict[str, float | None]:
+    elapsed = max(0.0, decision_timestamp - trigger_timestamp)
+    state = secondary_takeover.state.value
+    if state == "secondary_plan_active":
+        return {
+            "secondary_plan_activation_delay_s": elapsed,
+            "secondary_plan_pending_duration_s": None,
+        }
+    if state == "pending_secondary_plan":
+        return {
+            "secondary_plan_activation_delay_s": None,
+            "secondary_plan_pending_duration_s": elapsed,
+        }
+    return {
+        "secondary_plan_activation_delay_s": None,
+        "secondary_plan_pending_duration_s": None,
+    }
+
+
+def _diagnostic_secondary_lifecycle(
+    lifecycle: Sequence[SecondaryNodeLifecycleSummary],
+    *,
+    target_node_id: str | None,
+) -> SecondaryNodeLifecycleSummary | None:
+    if not lifecycle:
+        return None
+    if target_node_id is not None:
+        for item in lifecycle:
+            if item.node_id == target_node_id:
+                return item
+    for item in lifecycle:
+        if item.secondary_available:
+            return item
+    return lifecycle[0]
+
+
+def _secondary_network_coverage_metadata(
+    terminal_summary: TerminalAssociationSummary,
+) -> dict[str, float | bool | None]:
+    values = (
+        terminal_summary.secondary_single_camera_full_view_frame_rate,
+        terminal_summary.secondary_network_joint_full_view_frame_rate,
+        terminal_summary.secondary_network_mean_coverage_ratio,
+        terminal_summary.secondary_coverage_ratio,
+    )
+    available = any(value is not None and value > 0.0 for value in values)
+    reference = terminal_summary.secondary_network_joint_full_view_frame_rate
+    if reference is None:
+        reference = terminal_summary.secondary_network_mean_coverage_ratio
+    if reference is None:
+        reference = terminal_summary.secondary_coverage_ratio
+    full_view_gap = None
+    if reference is not None:
+        full_view_gap = max(0.0, 1.0 - min(max(float(reference), 0.0), 1.0))
+    return {"available": available, "full_view_gap": full_view_gap}
+
+
+def _secondary_takeover_success(
+    secondary_takeover: SecondaryTakeoverPlanMetadata,
+    *,
+    terminal_summary: TerminalAssociationSummary,
+) -> bool:
+    return (
+        secondary_takeover.state.value == "secondary_plan_active"
+        and not terminal_summary.secondary_detect_available_but_not_registered
+    )
+
+
+def _secondary_takeover_necessity_label(
+    decision: ActiveDegradationDecision,
+    review_label: str,
+) -> str:
+    if decision.action in {
+        DegradationAction.REQUEST_SECONDARY_ASSIST,
+        DegradationAction.DEGRADE_TO_SECONDARY,
+    }:
+        return review_label
+    if decision.action == DegradationAction.CONTINUE_CENTER and decision.mode == DegradationMode.NONE:
+        return "unnecessary"
+    return "inconclusive"
 
 
 def build_track_uncertainty_summary(

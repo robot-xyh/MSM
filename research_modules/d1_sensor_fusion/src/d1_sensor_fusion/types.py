@@ -377,6 +377,11 @@ class FusionQualityRegionSummary:
     source_support: dict[str, int]
     source_gap_modalities: tuple[str, ...] = ()
     quality_flags: tuple[str, ...] = ()
+    mean_covariance_growth_rate: float | None = None
+    max_covariance_growth_rate: float | None = None
+    window_start: float | None = None
+    window_end: float | None = None
+    sample_count: int = 1
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -393,6 +398,71 @@ class FusionQualityRegionSummary:
             "mean_handover_readiness": self.mean_handover_readiness,
             "source_support": dict(self.source_support),
             "source_gap_modalities": tuple(self.source_gap_modalities),
+            "quality_flags": tuple(self.quality_flags),
+            "mean_covariance_growth_rate": self.mean_covariance_growth_rate,
+            "max_covariance_growth_rate": self.max_covariance_growth_rate,
+            "window_start": self.window_start,
+            "window_end": self.window_end,
+            "sample_count": self.sample_count,
+        }
+
+
+@dataclass(frozen=True)
+class FusionQualityRegionWindowSummary:
+    """Windowed coverage-cell quality trend for D4/D6 audit."""
+
+    coverage_cell: str
+    window_start: float
+    window_end: float
+    sample_count: int
+    latest_published_at: float
+    latest_track_count: int
+    mean_a95_m: float
+    max_a95_m: float
+    mean_measurement_age_s: float
+    mean_handover_readiness: float
+    source_support: dict[str, int]
+    source_gap_modalities: tuple[str, ...] = ()
+    source_gap_sample_count: int = 0
+    stale_track_sample_count: int = 0
+    mean_covariance_growth_rate: float | None = None
+    max_covariance_growth_rate: float | None = None
+    mean_a95_growth_rate_mps: float | None = None
+    measurement_age_growth_rate: float | None = None
+    handover_readiness_delta: float | None = None
+    latency_observation_count: int = 0
+    oosm_observation_count: int = 0
+    stale_observation_count: int = 0
+    max_delay_s: float = 0.0
+    mean_delay_s: float = 0.0
+    quality_flags: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "coverage_cell": self.coverage_cell,
+            "window_start": self.window_start,
+            "window_end": self.window_end,
+            "sample_count": self.sample_count,
+            "latest_published_at": self.latest_published_at,
+            "latest_track_count": self.latest_track_count,
+            "mean_a95_m": self.mean_a95_m,
+            "max_a95_m": self.max_a95_m,
+            "mean_measurement_age_s": self.mean_measurement_age_s,
+            "mean_handover_readiness": self.mean_handover_readiness,
+            "source_support": dict(self.source_support),
+            "source_gap_modalities": tuple(self.source_gap_modalities),
+            "source_gap_sample_count": self.source_gap_sample_count,
+            "stale_track_sample_count": self.stale_track_sample_count,
+            "mean_covariance_growth_rate": self.mean_covariance_growth_rate,
+            "max_covariance_growth_rate": self.max_covariance_growth_rate,
+            "mean_a95_growth_rate_mps": self.mean_a95_growth_rate_mps,
+            "measurement_age_growth_rate": self.measurement_age_growth_rate,
+            "handover_readiness_delta": self.handover_readiness_delta,
+            "latency_observation_count": self.latency_observation_count,
+            "oosm_observation_count": self.oosm_observation_count,
+            "stale_observation_count": self.stale_observation_count,
+            "max_delay_s": self.max_delay_s,
+            "mean_delay_s": self.mean_delay_s,
             "quality_flags": tuple(self.quality_flags),
         }
 
@@ -415,6 +485,7 @@ class ReconCueSummary:
     measurement_timestamp: float | None = None
     arrival_timestamp: float | None = None
     quality_flags: tuple[str, ...] = ()
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -450,6 +521,7 @@ class ReconCueSummary:
             "excluded_count": self.excluded_count,
             "default_covariance_count": self.default_covariance_count,
             "quality_flags": tuple(self.quality_flags),
+            "metadata": dict(self.metadata),
         }
 
 

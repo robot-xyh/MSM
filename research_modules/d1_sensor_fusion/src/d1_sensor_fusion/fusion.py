@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections import Counter, deque
-from dataclasses import dataclass, field
-from typing import Iterable
+from dataclasses import asdict, dataclass, field, is_dataclass
+from typing import Any, Iterable
 
 import numpy as np
 
@@ -24,6 +24,35 @@ from .types import (
 )
 
 CHI2_2_95 = 5.991464547107979
+OBSERVATION_METADATA_LINEAGE_KEYS = (
+    "coverage_cell",
+    "quality_flags",
+    "camera_id",
+    "camera_name",
+    "camera_model",
+    "camera_metadata",
+    "bbox",
+    "bbox_xyxy",
+    "center_px",
+    "bbox_center_px",
+    "eo_metadata",
+    "detection_metadata",
+    "detection_id",
+    "local_track_id",
+    "object_id_offline_only",
+    "truth_object_id_offline_only",
+    "recon_cue",
+    "recon_cue_summary",
+    "secondary_recon",
+    "mobile_recon",
+    "recon_node_id",
+    "secondary_recon_node_id",
+    "mobile_recon_node_id",
+    "cue_source",
+    "cue_position_ned",
+    "cue_covariance",
+    "coverage_cells",
+)
 
 
 def covariance_a95(covariance: np.ndarray) -> float:
@@ -304,6 +333,11 @@ class FusionAdapter:
         a95_values = [summary.a95_m for summary in summaries]
         readiness_values = [summary.handover_readiness for summary in summaries]
         age_values = [summary.measurement_age_s for summary in summaries]
+        growth_rates = [
+            float(summary.covariance_growth_rate)
+            for summary in summaries
+            if summary.covariance_growth_rate is not None
+        ]
         level_counts = Counter(summary.track_level for summary in summaries)
         source_gap_modalities = tuple(
             modality for modality in required_modalities if source_support.get(modality, 0) <= 0
@@ -323,6 +357,8 @@ class FusionAdapter:
             source_support={str(key): int(value) for key, value in source_support.items()},
             source_gap_modalities=source_gap_modalities,
             quality_flags=tuple(sorted(quality_flags)),
+            mean_covariance_growth_rate=float(np.mean(growth_rates)) if growth_rates else None,
+            max_covariance_growth_rate=float(max(growth_rates)) if growth_rates else None,
         )
 
     def _create_track(
@@ -643,9 +679,11 @@ def _metadata_from_observation(observation: SensorObservation) -> dict:
             metadata[key] = dict(value) if key == "source_support" else value
     if observation.source_node_id:
         metadata["source_node_ids"] = (observation.source_node_id,)
-    for key in ("coverage_cell", "quality_flags"):
+    for key in OBSERVATION_METADATA_LINEAGE_KEYS:
         if key in observation.metadata:
-            metadata[key] = observation.metadata[key]
+            metadata[key] = _jsonable_metadata_value(observation.metadata[key])
+    if observation.quality_flags and "quality_flags" not in metadata:
+        metadata["quality_flags"] = tuple(str(flag) for flag in observation.quality_flags)
     return metadata
 
 
@@ -659,3 +697,20 @@ def _optional_str(value) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _jsonable_metadata_value(value: Any) -> Any:
+    if is_dataclass(value):
+        return _jsonable_metadata_value(asdict(value))
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except ValueError:
+            pass
+    if isinstance(value, dict):
+        return {str(key): _jsonable_metadata_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable_metadata_value(item) for item in value]
+    return value

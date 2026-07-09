@@ -27,6 +27,7 @@ from .replay import (
     run_airsim_replay_association,
     run_threshold_sensitivity,
     summarize_replay_risk,
+    summarize_multi_seed_risk_calibration,
     write_association_logs_jsonl,
     write_replay_association_report,
 )
@@ -65,6 +66,7 @@ __all__ = [
     "load_airsim_replay_frames",
     "run_airsim_replay_association",
     "run_threshold_sensitivity",
+    "summarize_multi_seed_risk_calibration",
     "summarize_replay_risk",
     "write_association_logs_jsonl",
     "write_replay_association_report",
