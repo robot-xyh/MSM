@@ -38,7 +38,13 @@ D6 的目标是把 D1-D7 和 main runtime 的离线日志统一为可比较、�
 - D4 主动降级已能统计次数、secondary takeover/reassignment、pending、窗口 delta、`active_degradation_precision` 和 `unnecessary_active_degradation_count`；必要性/精度只消费真实 episode 写出的 review label 或后验字段，缺 label 不进入 precision 分母。
 - D6 已补二级视角/侦察云台指标，能从 main/D4/D5 写盘 metadata 汇总 fixed downlook secondary 与 mobile recon gimbal 的 coverage、cross-view、D5 registration miss、projection/gate/stable registration 和 cue/gimbal pointing error；当前 registration calibration v2 为 single seed、3 case，height 200 m、FOV 110 deg、secondary_count 3，指标为 `projection_valid_rate=1.0`、`geometry_gate_pass_rate≈0.474`、stable cross-view registration 51/55/53、cross-view association 4/4/5、degradation case `not_registered_count=35/35`、full-view mean≈0.048、best≈0.143、coverage mean≈0.771。
 - 2026-07-09 P1 AirSim calibration Markdown 已新增 50m vs 200m 二级覆盖对比、coverage funnel、baseline vs enhanced 表格和 D7 guidance reject reason 表；baseline/enhanced 只消费显式 comparison role，不从 `2v2/5v5` 场景名推断规模或实验组。
-- 剩余 P1 聚焦更多真实 AirSim 多 seed/N-v-N 数据和 review labels，形成 coverage/funnel/gimbal/projection/gate/stable registration/not-registered/D7 reject 长期趋势，并补统计显著性/非参数 CI；D6 继续只消费日志，不参与控制。
+- 2026-07-10 已保留旧逐 seed 产物并新增 cross-seed aggregate、严格 baseline/enhanced seed 配对、missing seed、paired delta mean/std、Cohen's dz 和固定 RNG 的 2000 次 bootstrap 95% CI。真实 runtime 的 `scenario_version` 含 seed 参数，D6 统计键现仅移除该运行参数，原值继续留在 records；单 pair 标记 `descriptive_only`，不产生推断 CI/effect size。剩余 P1 聚焦至少两个真实配对 seed、N-v-N 数据和 review labels 验证；D6 继续只消费日志，不参与控制。
+
+- 2v2 回灌专项已复核：`p1_gap_closure_2v2_smoke_20260710/episode_006_full_flow` 的正式 execution main-bus 指标为实际规模 `2/2/2/2`、成功拦截 2、视觉 PNG 切换 3，contract 指标单独保留。Blocks summary 的 legacy integrated snapshot 仍是过时 `3/3/2/0`；D6 loader 不消费该快照，并通过 fixture 测试固定 execution/contract 优先级与 evidence path。上游 summary 对齐由 main 负责。
+
+- 2v2 10-seed 拦截报告专项已完成：AirSim calibration record/CSV/summary/cross-seed 新增 success、collision/range/abort、min range、time-to-intercept、visual PNG switch、terminal switch allowed/takeover 和 gate reject。availability gate 要求 intercept summary/control command/显式 pair-status/D7 execution event 证据，episode_001..005 read-only 默认零因此为 unavailable 且不进入 Outcome 表。对 `seed001..010` summaries 的离线验收仍得到 full-flow execution `18/20=0.9`、collision/range/abort=`18/0/2`；contract 保持独立并由 scope 明示。D6 仍不参与控制。
+
+- D6 owner 验收结果为 `48 passed`，`git diff --check` 通过。execution/contract/evidence availability、read-only unavailable、cross-seed/paired bootstrap 已闭合；后续只保持 schema 回归，不再重复建设拦截字段。
 
 未实现：
 
@@ -63,6 +69,7 @@ D6 的目标是把 D1-D7 和 main runtime 的离线日志统一为可比较、�
 | 降级 | `degraded_completion_rate` | 降级任务完成比例 |
 | 降级 | `active_degradation_count` | D4 主动降级决策次数 |
 | 降级 | `active_degradation_precision` | 有 review/后验标签的主动降级中必要标签比例 |
+| 降级 | `active_degradation_label_count` | precision 的可分类 review-label 分母；为 0 时 precision unavailable/null |
 | 降级 | `unnecessary_active_degradation_count` | 有 review/后验标签且判为不必要的主动降级次数 |
 | 降级 | `passive_failover_count` | 被动 failover 次数 |
 | 降级 | `secondary_node_takeover_count` | 二级节点接管/协助次数 |
@@ -353,7 +360,7 @@ airsim_calibration_summary.json
 airsim_calibration_report.md
 ```
 
-该 bundle 按 `metric_scope/seed/scenario/comparison_role/secondary_height/FOV/secondary_count/detection_backend` 分组，覆盖 D4/D5 二级 coverage/funnel/gimbal、50m vs 200m 对比、projection valid、geometry gate pass、registered candidate、stable cross-view registration、not registered、active degradation precision、unnecessary degradation count、baseline vs enhanced 表格和 D7 guidance reject reason。records/summary 同时保留 `scenario_version`、`standard_mapping_version`、`evidence_path`、`trend_key`、`secondary_height_bucket` 和 actual scale 字段。
+该 bundle 保留原逐 seed 分组与文件，并新增 `airsim_calibration_cross_seed_aggregate.csv`、`airsim_calibration_paired_comparison.csv`、`airsim_calibration_aggregate.json`、`airsim_calibration_aggregate_report.md`。配对键包含稳定 `scenario_group`、移除运行 seed 参数后的 `scenario_version`、实际 N/M/camera count、几何、backend 和 seed；case_name 只审计。单 pair 只描述，不输出推断 CI。active-degradation 显式标注优先读取 d4d5 stress metrics，再 fallback main metrics。
 
 统计量：
 
@@ -477,13 +484,13 @@ D7 gate/intercept：
 
 ## 9. P1 下一步
 
-1. COURAGEOUS/MDPI/OCEF 完整标准化报告：在 P0 最小映射基础上补测试阶段、复现纪律字段、evidence index、标准场景覆盖和外部审计需要的说明；D6 仍只消费 main/D1-D7 已写盘日志。
-2. 基线对比和统计显著性：AirSim calibration 已输出同一场景 baseline vs enhanced 表格；剩余是多 seed 均值/方差/置信区间、bootstrap/非参数 CI 或等价显著性口径。
-3. 场景库管理和 CI 回归摘要：由 main 提供 scenario tags、difficulty、expected failure modes、test matrix 和 evidence path，D6 在报告中消费并回归检查。
-4. 多 seed 自动汇总与 coverage/funnel/gimbal 长期趋势：持续使用 main runtime P1 calibration sweep 自动生成的 D6 bundle，比较 `mobile_recon_gimbal` 与 `fixed_downlook_secondary` 的 50m/200m coverage、full-view、funnel breakpoint、projection/gate、stable registration、not-registered、D7 reject、bbox area、cue/gimbal pointing、`trend_key` 和 `evidence_path`；当前 registration calibration v2 已验证报告链路，剩余是更多真实 AirSim 多 seed/N-v-N 数据和 review labels 形成长期趋势。
-5. active degradation precision 真实标签：main/D4 稳定写出 review label、trigger/decision timestamp、selected coordinator、coverage cell、pre/post window 和后验 outcome/risk 字段；D6 不从事件名推断必要性。
-6. 多 seed 双口径与 actual scale 报告：在 2v2、5v5、N-v-N 和非默认 episode 批量运行中持续保留 `metric_scope=execution/contract`、seed/scenario/实际规模字段、D7 guidance/control/intercept metadata、guidance reject reason metadata 和 D4/D5 calibration geometry 字段；D6 已能读取 main bus 双口径 metrics JSON 并输出相应报告分组。
-7. 真实 episode 日志完整性：D4/D5/D7/Blocks 产物持续落到同一 episode clock 和目录，D6 汇总阶段调用 loader 合并；D6 继续只消费日志，不参与控制、重规划或导引。
+1. 长期 scenario library 和 CI trends：消费 main 提供的 scenario id/version、tags、difficulty、expected failure modes、actual scale、test matrix 和 evidence path，输出跨提交趋势与回归摘要。
+2. CV 5v5 D1-D3 联合聚合：在同一 episode clock 下汇总 D1 感知/融合/协方差/延迟、D2 关联/连续性/ID switch 和 D3 分配/version/迟滞，生成从感知到分配的统一 funnel。
+3. YOLO/MOT 预算报告：消费 D5 写盘的 backend/model version、输入分辨率、目标像素尺度、inference latency/throughput、CPU/GPU/内存、drop/fallback 和质量字段；D6 不加载权重、不运行检测。
+4. COURAGEOUS/MDPI/OCEF 完整标准化报告：补测试阶段、复现纪律、evidence index、场景覆盖矩阵、限制条件和外部审计说明。
+5. 使用真实成对 5v5/N-v-N 批次持续验证已实现的 paired effect size/bootstrap CI，并保持 missing seed、单 pair、无标签和 unavailable 的保守口径。
+6. 继续沉淀 D4/D5 coverage/funnel/gimbal/registration 与 active-degradation review/window 长期趋势。
+7. execution/contract/evidence availability 已完成，后续只做 schema 回归，不新增重复或同义拦截字段。
 
 ## 10. P2 下一步
 

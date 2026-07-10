@@ -4,7 +4,29 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
-**P0/P1 状态入口**：`subagent_reviews/MAIN_P0_P1_GAP_STATUS.md` 集中维护当前 P0/P1 owner、缺口、缺少条件和验收口径。`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` v2.1 已确认：当前未发现新的运行级 P0 阻塞断链，但存在进入可信 AirSim 多 seed、复杂降级和后续封闭场地验证前必须优先补齐的工程化 P0 backlog。2026-07-09 已完成该 backlog 的最小工程闭合：main runtime bus 补齐统一 clock/config/module health/runtime exception outcome；D1-D7 已由各自 owner 完成 P0-A/P0-B/P0-C 修复和文档同步；main runtime 跟进 D4 二级能力合同，修正 D4/D5 stress 的二级注册 evidence 桥接和成功注册原因过滤。三份 patch 归并后新增的 P0-A 重点是 D6/main 的标准化评估映射最小版：`COURAGEOUS/MDPI/OCEF -> 当前 EpisodeMetrics`、standard metric family、scenario version 和 evidence path。2026-07-09 P1 接口补齐已完成一轮：main runtime 增加 P1 calibration suite/threshold version、高度对比和 D6 标准报告 bundle，D1-D7 各自补齐本模块 P1 metadata/summary/gate 字段；P2/P3 本轮不调整。
+**P0/P1 状态入口**：`subagent_reviews/MAIN_P0_P1_GAP_STATUS.md` 集中维护当前 P0/P1 owner、缺口、缺少条件和验收口径。`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` v2.1 已确认：当前未发现新的运行级 P0 阻塞断链。2026-07-10 已在 2026-07-09 最小工程闭合基础上完成 D2/D3/D5/D6 P0/P1 加固、AirSim 在线 truth ID 隔离，并跑通 5v5 D4/D5 60-case 与 2v2 SimpleFlight 10-seed 基线。P2/P3 本轮不调整；下一步只继续 P1 的二级 active-plan 闭合、真实 YOLO/MOT、D7 多导引律对照和长期评估治理。
+
+## 2026-07-10 P0/P1 实施与实测结果
+
+本轮继续严格执行 “main 下发、D-agent 自改自测、main 只改 runtime/集成/总文档并运行 AirSim”。
+
+| Owner | 实施结果 | 实测/验收 |
+|---|---|---|
+| main/runtime | stale D3 plan 被拒后保留当前 plan；YOLO/MOT adapter 跨 episode 重置 stream；AirSim builtin detect 改为匿名 camera-local bbox tracker，局部 ID 不含 actor 名 | `p0_truth_isolation_smoke_20260710` 三 case connected，匿名 ID 连续 5 帧，actor-name online 泄漏为 0 |
+| D1 | 复核真实 2v2 双时间戳、协方差 finite/symmetric/PSD 和 NED 合同，无源码回归 | 1528 条观测可回放；32 tests passed |
+| D2 | truth-unavailable continuity、rejected-pair replay、covariance validation/diagnostic | 39 tests passed |
+| D3 | active plan 后 previous-plan 必填；switch penalty 进入 Hungarian 矩阵；stale plan 保留 | 63 tests passed |
+| D4 | 保持 takeover-ready 安全门限，并对 60-case 结果完成状态机诊断 | 84 tests passed；15/1300 决策瞬时 takeover-ready，active plan 为 0 |
+| D5 | friend-aware reacquire、actor-name category 隔离、MOT per-stream state/reset | 96 tests passed；匿名 ID smoke 各 case cross-view association=4 |
+| D6 | cross-seed/scenario-group 聚合、paired baseline/enhanced、deterministic bootstrap、review labels；拦截 outcome/距离/时间/视觉切换/gate 指标进入 cross-seed | 48 tests passed；D6 报告只把有 intercept evidence 的 full-flow 列入 outcome，execution=18/20，read-only 不再误报 0/20 |
+| D7 | 不改 PNG 控制律，复核真实 10-seed guidance/gate 输出 | 45 tests passed；18/20 拦截成功 |
+
+AirSim 证据：
+
+- `outputs/p1_gap_closure_calibration_20260710`：10 seeds、50/200 m、3 个二级节点、110 deg、1920x1080、三 case，共 60 episode。
+- `outputs/p1_gap_closure_2v2_multiseed_20260710`：10 seeds、20 pairs，18 collision intercept、2 terminal detection timeout；pair 等权平均最小距离 2.113 m，D6 每 episode 最小值均值 1.812 m。
+- D4/D5 的主要未闭合项不是投影或注册，而是 sustained network full-view、逐决策 stable evidence 和 secondary plan activation。
+- D7 的主要未闭合项是视觉 gate 通过率和 PN/Pure Pursuit/PNG-TTC/PNG-VM 同 seed 对照，不是 PNG 核心公式重写。
 
 ## 2026-07-09 P0 实施结果
 

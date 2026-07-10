@@ -30,6 +30,14 @@ D2/D6 强制 `id_switch_count` 的规则已落实：`id_switch_count` 是 `Episo
 
 本节按 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` 以及三个 patch 同步 D6 相关 P0/P1 缺口。口径与 EVAL 保持一致：当前没有运行级 P0 blocker；P0 是进入更可信 AirSim/封闭场地验证前的工程化硬化项，P1 是三个月内的标准化报告、对照统计、场景库和回归化工作。D6 继续只消费日志和已写盘 metrics，不参与控制、重规划、降级仲裁、末端配准或导引。
 
+2026-07-10 P1 报告聚合已修复：旧逐 seed `GROUP_FIELDS` 和 records/summary 文件保持不变，新增 cross-seed aggregate 与严格 baseline/enhanced seed 配对。原始 `scenario_version` 在 records 中保留；统计键移除其中 seed 运行参数，避免真实 `seed1..seedN` 被拆成 N 个单样本组。配对仍要求稳定 `scenario_group`、规范化版本、实际规模、几何、backend 和 seed 一致；case-specific scenario/case_name 只审计。单一配对样本标记 `descriptive_only`，不输出伪 bootstrap CI/effect size。active-degradation 四字段优先消费 d4d5 stress 显式标注，再 fallback main metrics；label count 为 0 时 precision unavailable/null。
+
+同日复核 `p1_gap_closure_2v2_smoke_20260710/episode_006_full_flow`：D6 从正式 execution main-bus 文件读得实际规模 `2/2/2/2`、`intercept_success_count=2`、`visual_png_switch_count=3`，contract 文件独立读取；D6 不消费 Blocks summary 中仍为 `3/3/2/0` 的旧 `integrated_result.metrics`。新增回归测试固定该优先级并保证 execution/contract record 的 evidence path 分别指向各自文件。旧 Blocks 摘要不一致属于 main runtime P1，不是 D6 控制或回写职责。
+
+10-seed 拦截聚合缺口已在 D6 侧关闭。calibration record/CSV/summary/cross-seed 已加入 success、collision/range/abort、min range、time-to-intercept、visual PNG switch、terminal switch allowed/takeover 和 gate reject。availability gate 已补：只有 intercept summary/control command/显式 pair-status/D7 execution event 证据才消费这些字段；episode_001..005 read-only 默认零改为 unavailable，且不进入 Outcome 表。现有 `seed001..010` summaries 实测 full-flow execution 仍为 `18/20`、collision/range/abort=`18/0/2`；execution/contract 按 scope 分组，未混合。计数行输出 sum，拦截 outcome 额外输出 opportunity/rate。
+
+D6 owner 最终验收为 `48 passed`，`git diff --check` 通过。execution/contract 双口径、各自 evidence path、evidence availability、read-only unavailable、cross-seed aggregate 和 paired bootstrap 均归入“已实现并保持回归”，不再作为重复开发项。下一阶段缺口转向长期 scenario library/CI trends、CV 5v5 D1-D3 联合聚合、YOLO/MOT 处理预算和完整标准化报告。
+
 现有已完成状态保持不降级：`EpisodeMetrics`、`TrackRecord`、`AssignmentRecord`、`EventRecord`、`LinkRecord` 和 `TerminalRecord` 已作为 D6 离线指标主线保留；D7 guidance records 当前由 `guidance_records.csv`、`guidance_summaries.json` loader 转换为 `d7_guidance_record/d7_guidance_summary` 事件 metadata，而不是单独在线控制数据类。`id_switch_count`、实际规模字段、execution/contract 双口径、AirSim calibration bundle、detect-to-registration 漏斗、reject/outcome reason 分布和 D6 只消费日志不控制的边界均保持为已完成能力。
 
 | EVAL 等级 | 同步条目 | D6 当前实施状态 | 已有证据/保留状态 | 剩余验收口径 |
@@ -39,7 +47,7 @@ D2/D6 强制 `id_switch_count` 的规则已落实：`id_switch_count` 是 `Episo
 | P0-A | 性能和可复现字段 | 已实现最小 schema，持续真实批次回归 | 新增 `module_duration_ms`、`loop_latency_ms`、`record_latency_ms`、`cpu_budget_utilization`、`gpu_budget_utilization`、`performance_budget_violation_count`；`eval_priority`、`implementation_status`、`evidence_path` 已进入 `EpisodeMetrics`、episode CSV、metadata 和 Markdown EVAL Tracking 表。 | main/D1-D7 真实 episode 持续写 module timing、loop latency、record latency、CPU/GPU budget、真实 evidence path 和 scenario/version metadata；D6 只消费。 |
 | P0-A | 标准化评估映射最小版 | 已实现，持续真实批次回归 | 新增 `standard_mapping.py`，固定 `cuas-standard-map-v1`，输出 `engineering_metric`、`standard_metric_family`、`standard_sources`、`implementation_status`、`evidence_requirement`；`EpisodeMetrics` 增加 `scenario_version`、`standard_mapping_version`、`standard_metric_family_summary`；episode CSV、metadata、Markdown 和 `standard_metric_mapping.csv` 已输出映射。 | 真实 AirSim 多 seed、5v5/N-v-N 和非默认 episode 持续写真实 `scenario_version`、`evidence_path` 和同一 mapping version；不要求完整认证流程。 |
 | P1 | COURAGEOUS/MDPI/OCEF 完整标准化报告 | P1 待补 | WebSearch patch 确认 COURAGEOUS/CEN、MDPI 综述和 OCEF 可复现纪律是 D6 标准化方向；当前已有本地最小映射、CSV/JSON/Markdown 指标报告。 | 在 P0 最小映射基础上增加测试阶段、复现纪律字段、evidence index、标准场景覆盖和外部审计说明；完整封闭场地/外部审计报告仍依赖 main 提供场景和日志。 |
-| P1 | 基线对比和统计显著性 | baseline/enhanced 表格已实现；统计显著性待补 | 已有 episode CSV、summary CSV、Markdown、PNG 图、95% CI、按 `metric_scope/seed/scenario_group/actual scale` 分组和 calibration bundle；AirSim calibration Markdown 已新增 baseline vs enhanced 表格和 evidence/trend 字段。 | 多 seed 均值/方差/置信区间、bootstrap/非参数 CI 或等价统计显著性口径仍待真实批次验证。 |
+| P1 | 基线对比和统计显著性 | 配对统计实现完成，待真实批次验证 | 保留旧逐 seed summary；新增 cross-seed aggregate、规范化 seed-bearing scenario version、严格 role/seed/actual-scale/geometry/backend 配对、missing seed、delta mean/std、paired Cohen's dz 和确定性 bootstrap 95% CI；单 pair 仅描述。 | main 持续提供显式 comparison role 和至少两个真实多 seed/N-v-N 成对数据；缺失/单一配对不形成 A/B 推断结论。 |
 | P1 | 场景库管理 | P1 待补 | 已保留 seed、scenario/scenario_group、actual scale 和 AirSim calibration case metadata；`2v2/5v5` 只作为 baseline 名称。 | 标准场景库包含 tags、seed、difficulty、expected failure modes 和覆盖状态；D6 只消费场景 metadata。 |
 | P1 | CI 回归摘要 | P1 待补 | 当前有 D6 unit tests、报告生成测试、main bus loader 测试和手动 batch report 链路。 | 每次变更产出实验级测试矩阵、P0/P1 tracking 字段检查、性能回归摘要和 evidence path 检查。 |
 
@@ -58,7 +66,7 @@ P1 缺口保持为离线评估能力、真实 episode 写盘和长期趋势问�
 | 跟踪指标 | 已实现 `track_rmse`、`track_continuity`、`id_switch_count`。`id_switch_count` 对同一 `truth_id` 的 `global_track_id` 变化显式计数。 | `metrics.py`; `tests/test_metrics.py` |
 | 分配指标 | 已实现 `duplicate_assignment_count`、`unassigned_high_threat_count`，并按 active + 有效授权状态过滤。 | `metrics.py`; `tests/test_metrics.py` |
 | 基础降级指标 | 已实现 `failover_time`、`consensus_rounds`、`degraded_completion_rate`。 | `metrics.py`; `tests/test_metrics.py` |
-| D4 active/passive 降级基线 | 已实现 `active_degradation_count`、`active_degradation_precision`、`unnecessary_active_degradation_count`、`passive_failover_count`、`secondary_node_takeover_count`、`secondary_reassignment_count`、`d4_reassign_pending_count`、`distributed_fallback_count`、`failover_active_window_delta_s`，并保留触发原因、review label 和必要性后验分布。 | `metrics.py`; `d4_replay.py`; `tests/test_d4_replay.py`; `tests/test_metrics.py` |
+| D4 active/passive 降级基线 | 已实现 `active_degradation_count`、`active_degradation_precision`、`active_degradation_label_count`、`unnecessary_active_degradation_count` 等；label count 为 0 时 precision 为 unavailable/null。 | `metrics.py`; `main_bus.py`; `d4_replay.py`; `tests/test_d4_replay.py`; `tests/test_metrics.py`; `tests/test_main_bus_metrics.py` |
 | 末端指标 | 已实现 `terminal_association_accuracy`、`terminal_id_switch_count`、`ambiguous_fov_event_count`、`friend_overlap_hold_count`、`time_to_terminal_lock`、`terminal_lock_count`。 | `metrics.py`; `tests/test_metrics.py` |
 | 多视角/无 PNG 评估 | 已实现基础能力。Blocks replay 可用 bbox、相机内外参、timestamp、object label 和 truth label 生成 terminal、video/bbox link、多视角 consensus/conflict。PNG 不作为指标必需输入。 | `blocks_replay.py`; `tests/test_blocks_replay.py` |
 | 二级视角/侦察云台指标 | 已实现。统计 `secondary_network_joint_full_view_frame_rate`、`secondary_network_mean_coverage_ratio`、`secondary_single_camera_full_view_frame_rate`、`cross_view_association_count`、`secondary_detect_available_but_not_registered_count`、`cue_pointing_error_*`、`gimbal_pointing_error_*`，并在 metadata 中保留 node-type 对比。 | `metrics.py`; `reporting.py`; `tests/test_metrics.py`; `tests/test_reporting_and_simulation.py` |
@@ -72,20 +80,21 @@ P1 缺口保持为离线评估能力、真实 episode 写盘和长期趋势问�
 | JSONL 标准化接口 | 已实现 `truth_summary/track/assignment/event/link/terminal`，未知 record type 报错。 | `jsonl.py`; `tests/test_airsim_dry_run_jsonl.py` |
 | main bus metrics JSON | 已实现。读取 `main_episode_bus_metrics.json` 与 `main_episode_bus_contract_metrics.json`，还原 execution/contract `EpisodeMetrics`，保留 seed/scenario/实际规模和 metadata 分布。 | `main_bus.py`; `tests/test_main_bus_metrics.py` |
 | 二级节点对比与 reject reason 报告输出 | 已实现。episode CSV 保留 metadata JSON；Markdown 在有数据时输出 fixed downlook secondary vs mobile recon gimbal 对比表，以及 terminal switch/contract reject reason 分布。 | `reporting.py`; `tests/test_reporting_and_simulation.py` |
-| AirSim 多 seed calibration 汇总 | 已实现。自动扫描 batch/seed/case 目录中的 `d4d5_stress_metrics.json`、`airsim_blocks_summary.json`、main bus execution/contract metrics，按 `metric_scope/seed/scenario/comparison_role/secondary_height/FOV/secondary_count/detection_backend` 输出 CSV、JSON 和中文 Markdown；保留 P0-A mapping/evidence/trend/actual scale 字段；main runtime P1 D4/D5 calibration sweep 已自动调用该 bundle。 | `airsim_calibration.py`; `tests/test_airsim_calibration.py` |
+| AirSim 多 seed calibration 汇总 | 已实现。旧 records/逐 seed summary 不变；新增 `airsim_calibration_cross_seed_aggregate.csv`、`airsim_calibration_paired_comparison.csv`、`airsim_calibration_aggregate.json`、`airsim_calibration_aggregate_report.md`，包含严格配对、missing seed、effect size 和 bootstrap CI。 | `airsim_calibration.py`; `tests/test_airsim_calibration.py` |
+| 2v2/N-v-N 拦截多 seed 汇总 | 已实现。records/summary/cross-seed 覆盖 success、collision/range/abort、min range、intercept time、visual PNG、terminal switch/takeover 和 gate reject；outcome 有 sum/opportunity/rate。availability gate 排除 read-only 默认零；10-seed 实测只由 full-flow 输出 `18/20`。 | `airsim_calibration.py`; `tests/test_airsim_calibration.py`; 现有 10-seed summaries |
 | P1 detect-to-registration 与 coverage 校准漏斗 | 已实现。records/summary/Markdown 显式输出 `secondary_detect_count`、`secondary_visible_target_union_ratio`、`secondary_network_joint_full_view_frame_rate`、`projection_valid_rate`、`geometry_gate_pass_rate`、`registered_candidate_count`、`stable_cross_view_registration_count`、`not_registered_count`，固定保留八类 reject/outcome reason，并新增 50m vs 200m 覆盖对比、coverage funnel 与 baseline/enhanced 表格。 | `airsim_calibration.py`; `tests/test_airsim_calibration.py` |
 
 ## 部分实现
 
 | 能力 | 当前状态 | 为什么只是部分实现 | 缺少条件 | 优先级 |
 |---|---|---|---|---|
-| D7 real execution metrics 回灌到正式 main bus metrics | 已完成主线。main/orchestrator 把 `control_commands.csv` 与 `intercept_summary.json` 合并进正式 `main_episode_bus_metrics.json`，并保留 raw `main_episode_bus_contract_metrics.json`。 | D6 仍只消费文件，不负责运行 D7 或写正式 metrics；多 seed 验收属于批量报告口径。 | 在多 seed、5v5/N-v-N 和非默认 episode 中持续产出并采用同一双口径。 | P1 已完成，持续回归 |
+| D7 real execution metrics 回灌到正式 main bus metrics | D6 消费主线已完成。2v2 实测正式 execution 为 `2/2/2/2`、成功 2、visual PNG switch 3；contract 独立保留。 | 同 episode 的 Blocks legacy integrated snapshot 仍过时；D6 已忽略并用测试固定 main-bus 优先级，不负责回写运行时。 | main 修复 Blocks/sequence summary 的旧快照一致性；多 seed、5v5/N-v-N 持续采用同一双口径。 | D6 P1 已完成，main P1 待对齐 |
 | 真实 episode 日志完整性 | D6 已有 Blocks、D4 loader、D5/terminal/multi-view 指标和 D7 guidance/intercept loader；可以消费写盘文件。历史 mobile recon stress 已提供 D4/D5 stress metrics 旧证据；当前 P1 registration calibration v2 已提供 single seed x 3 case 的 AirSim calibration bundle。 | D6 loader 是离线入口，不负责 main runtime 写盘、目录扫描、episode clock 对齐或多 loader 合并调度。 | 每个 episode 目录稳定写出 Blocks/D4/D5/D7/D6 日志；汇总脚本合并到一个 `MetricsCollector`；同一 episode clock 和实际规模字段。 | P1 |
 | D4 review/window 真实写盘 | D6 已实现 `active_degradation_precision` 与 `unnecessary_active_degradation_count` 的最小可测口径，D4 CSV loader 可消费 review label、trigger/decision timestamp、selected coordinator、coverage cell 和 pre/post window 字段。 | 真实 AirSim episode 是否每次写出 review/window 字段仍取决于 main/D4；缺 label 的 active degradation 不进入 precision 分母。 | main/D4 持续写盘；固定 pre/post 窗口；后续扩展 decision latency、ID switch delta、assignment conflict delta。 | P1 |
 | 多 seed execution/contract 报告口径 | D6 已按 `metric_scope/seed/scenario_group/drone_count/resource_count/target_count/camera_count` 输出通用 summary，并新增 AirSim calibration 分组到 `metric_scope/seed/scenario/comparison_role/secondary_height/FOV/secondary_count/detection_backend`。 | 仍需要真实批量 episode 持续提供 execution metrics 与 contract metrics；D6 不从 `2v2/5v5` 场景名推断规模。 | 多 seed、5v5/N-v-N 和非默认 episode 的正式 metrics 与 raw contract metrics 成对落盘。 | P1 持续回归 |
 | 移动侦察云台 AirSim 报告字段 | D6 已有被动指标、Markdown 对比表和 AirSim calibration 自动汇总，可消费 `mobile_recon_gimbal` metadata；历史 stress 验证了 gimbal、coverage、funnel、bbox 字段可落盘，当前 registration calibration v2 进一步验证 projection/gate/stable registration/not-registered/D7 reject 可进入 bundle；2026-07-09 已新增 50m/200m、coverage funnel、baseline/enhanced 和 trend/evidence 字段。 | v2 仍只是 single seed、3 case；现有结果只能说明报告链路可用，长期趋势和阈值校准还缺更多真实 AirSim 多 seed/N-v-N 数据与 review labels。 | 用新增汇总报告持续比较 `mobile_recon_gimbal` / `fixed_downlook_secondary` 的 coverage、funnel、projection/gate、stable registration、not-registered、D7 reject、bbox、cue/gimbal pointing 指标。 | P1 持续回归 |
 | 多视角末端几何质量 | 已能统计 consensus/conflict/duplicate lock 和 bbox delivery。 | 尚未计算跨视角重投影误差、外参质量评分或时延补偿。 | 稳定相机标定、跨节点时钟、D5 输出几何误差字段和候选集。 | P2 |
-| 批量统计 CI | 已输出正态近似 95% CI 和分位数。 | 长尾/偏态指标还没有 bootstrap 或非参数 CI。 | 足够多真实 episode；bootstrap 配置；报告方法标注。 | P2 |
+| 批量统计 CI | 通用 summary 已输出正态近似 95% CI；AirSim baseline/enhanced 已新增 paired percentile bootstrap 95% CI。 | 非配对的其他长尾/偏态指标仍未统一使用 bootstrap。 | 足够多真实 episode；按指标选择方法并标注。 | P2 |
 | 外部 MOT/OSPA 对照 | D6 已实现本地 POD/FAR/RMSE/continuity/IDSW 等分量。 | 未导出标准 frame-level benchmark 格式，未调用外部 evaluator。 | 帧级 truth/detection/track 匹配表、IoU/距离门限、遮挡/重现规则。 | P2 |
 
 ## 未实现
@@ -115,14 +124,13 @@ P1 缺口保持为离线评估能力、真实 episode 写盘和长期趋势问�
 
 ## P1 下一步
 
-1. COURAGEOUS/MDPI/OCEF 完整标准化报告：在 P0 最小映射基础上补测试阶段、复现纪律字段、evidence index、标准场景覆盖和外部审计说明；D6 只消费 main/D1-D7 已写盘日志和 scenario metadata。
-2. 基线对比框架：AirSim calibration Markdown 已新增 baseline vs enhanced 同场景表格和 `evidence_path/trend_key`；剩余是多 seed 统计显著性、bootstrap/非参数 CI 或等价置信口径。当前表格不等同于正式 A/B 结论。
-3. 场景库管理：把 scenario metadata 扩展为标准场景库，至少包含 tags、seed、difficulty、expected failure modes 和 actual scale；保留 2v2/5v5 作为 baseline 名称，不用作规模推断。
-4. CI/回归摘要：形成实验级测试矩阵和性能回归摘要；`eval_priority` / `implementation_status` / `evidence_path` 字段检查已进入 D6 单元测试，后续需要 main CI 持续消费真实 evidence path。
-5. 多 seed 自动汇总与 coverage/funnel/gimbal 长期趋势：用 main runtime P1 calibration sweep 自动生成的 D6 AirSim calibration bundle 持续跟踪 mobile recon 与 fixed downlook 的 50m/200m coverage、full-view、projection valid、geometry gate pass、registered candidate、stable registration、not-registered、D7 reject、bbox area、cue/gimbal pointing 和 `trend_key/evidence_path`；当前 v2 已验证报告链路，剩余是更多真实 AirSim 多 seed/N-v-N 批次和 review labels 形成长期趋势。
-6. active degradation precision 真实标签：main/D4 持续写入 `review_label`、`active_degradation_necessary` 或后验 outcome/risk 字段；D6 不从事件名推断必要性。
-7. 真实 episode 日志完整性：D4/D5/D7/Blocks 产物持续落到同一 episode clock 和目录，D6 汇总阶段调用 loader 合并；D6 不参与控制、重规划或导引。
-8. 多 seed 双口径与 actual scale 报告：在 2v2、5v5、N-v-N 和非默认 episode 批量运行中持续保留 `metric_scope=execution/contract`、seed/scenario/实际规模字段、D7 guidance/control/intercept 元数据、guidance reject reason metadata 和 D4/D5 calibration geometry 字段；D6 已能读取 main bus 双口径 metrics JSON 并输出相应分组。
+1. 长期 scenario library 与 CI trends：标准化 scenario id/version、tags、difficulty、expected failure modes、actual scale、test matrix 和 evidence path，输出跨提交趋势和阈值回归摘要。
+2. CV 5v5 D1-D3 联合聚合：按同一 episode clock 合并 D1 detection/fusion/latency/covariance、D2 association/continuity/ID switch、D3 assignment/version/hysteresis，形成感知到分配的漏斗与失败归因。前置条件是 main/D1-D3 提供稳定 schema 和证据路径。
+3. YOLO/MOT 预算：消费 D5 的 backend/model version、输入分辨率、目标像素尺度、inference latency/throughput、CPU/GPU/内存、drop/fallback 和质量指标，形成 accuracy-latency-budget 报告；D6 不加载权重或执行检测。
+4. COURAGEOUS/MDPI/OCEF 完整标准化报告：补测试阶段、复现纪律、evidence index、场景覆盖矩阵、限制条件和外部审计说明。
+5. 真实成对多 seed/N-v-N 数据：继续验证已实现的 paired effect size/bootstrap CI；无配对、单 pair、read-only unavailable 或无 review label 时不得输出推断结论。
+6. D4/D5 长期趋势：持续消费 coverage/funnel/gimbal、projection/gate/registration 和真实 active-degradation review/window 标签。
+7. execution/contract/evidence availability 仅保持回归，不再新增重复或同义拦截字段。
 
 ## P2 下一步
 

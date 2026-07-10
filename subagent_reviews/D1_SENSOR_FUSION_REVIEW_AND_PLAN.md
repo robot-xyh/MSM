@@ -265,16 +265,27 @@ D5 的末端关联结果可作为 D1/D4 的反馈信号，但不得由 D5 本地
 14. **区域窗口与协方差增长 helper**：已提供 `annotate_covariance_growth_rates()` 和 `summarize_region_quality_windows()`，输出 `FusionQualityRegionWindowSummary`，可把区域质量下降、freshness 下降、source gap 与 latency/OOSM flags 分开给 D4/D6 消费。
 15. **2026-07-09 P1 输入支撑补强**：dry-run fixture 已增加 schema version 检查，JSONL replay 已回归 unsupported schema version 拒绝，`summarize_sensor_observation_latency_audit()` 可在不运行融合器时统计 observation latency/OOSM/stale/duplicate lineage，Blocks/CV JSONL/CSV 回归已覆盖 `covariance_scale_reason`、`mobile_recon`、`recon_cue_summary`、`cue_position_ned` 和 `cue_covariance` 保真。
 16. **D6 bundle 消费口径**：main/D6 可把 raw/fusion latency audit、`TrackUncertaintySummary`、区域质量/窗口摘要、`SensorHealthSummary`、covariance limit reason、`covariance_scale_reason` 和 `timestamp_uncertainty_s` 作为观测延迟与质量证据汇总；D1 不把这些字段解释为主动降级动作。
+17. **2026-07-10 真实 2v2 合同复核**：六个 reset-separated episode 共 1,528 条
+    radar/acoustic/EO/synthetic-lidar 观测均可由 D1 reader 解析，双时间戳完整，covariance
+    有限、对称、半正定；full-flow 36 个 main bus tick 的 D1 观测摘要和
+    `TrackUncertaintySummary` 也持续保留 timing/covariance 字段，未发现 D1 合同回归。
+18. **2026-07-10 十 seed/在线身份隔离边界复核**：2v2 十 seed 系统运行证明 D1 DTO 可被
+    多 episode 重复消费；5v5 truth-isolation smoke 证明 D5 在线 local detection/MOT ID 已
+    与 actor/object 名称隔离。该证据不等于 D1 truth-free replay 闭合，`truth_id` 仍仅可
+    作为离线评分标签，main truth-hint 配置仍需 provenance 和无真值对照。
 
 当前 P0 状态：无 P0 blocker。D1 已实现并回归 measurement/arrival timestamp、协方差、NED `GlobalTrack`、N-target 输入和 `ReconCueSummary` 侦察 cue 合同；剩余工作均为 P1/P2 增强或外部 fixture/schema 对齐。
 
-2026-07-08 main/D6 集成状态：main runtime 已新增 P1 D4/D5 calibration sweep，并在 sweep 后自动生成 D6 标准报告 bundle。D1 不负责启动 AirSim sweep、episode reset 或报告 bundle，只负责保证 `SensorObservation` replay、`GlobalTrack`、`TrackUncertaintySummary`、`LatencyAuditSummary`、`FusionQualityRegionSummary[]`、`FusionQualityRegionWindowSummary[]`、`SensorHealthSummary[]`、covariance reason 和 timestamp uncertainty 字段可被 main/D6 稳定消费。
+2026-07-10 main/D6 集成状态：main runtime 已新增 P1 D4/D5 calibration sweep，并在 sweep 后自动生成 D6 标准报告 bundle。D1 不负责启动 AirSim sweep、episode reset 或报告 bundle，只负责保证 `SensorObservation` replay、`GlobalTrack`、`TrackUncertaintySummary`、`LatencyAuditSummary`、`FusionQualityRegionSummary[]`、`FusionQualityRegionWindowSummary[]`、`SensorHealthSummary[]`、covariance reason 和 timestamp uncertainty 字段可被 main/D6 稳定消费。真实 2v2 产物确认 main tick 已发布 per-track uncertainty，但 main writer 尚未写显式 `schema_version`/`coverage_cell`，main tick 也未发布 region/window、latency audit 和 sensor health 摘要；main bus 依赖 simulation-only truth hint 保持 2 条航迹，而默认 truth-free replay 会产生 3 条航迹。因此这些仍是 P1 集成/校准项，truth metadata 只能作为离线评估标签。
 
 剩余 P1：
 
-1. **D6 长期批量 schema**：需要把 `TrackUncertaintySummary[]`、`LatencyAuditSummary`、`FusionQualityRegionSummary[]`、`FusionQualityRegionWindowSummary[]`、`SensorHealthSummary[]`、covariance reason 和 timestamp uncertainty 整理成 D6 可长期回归的稳定 JSONL/CSV schema，并确保 D6 calibration bundle 中的字段命名长期稳定。
-2. **真实 Blocks/CV fixture**：D1 已能读 `blocks_sensor_observations.jsonl`/`sensor_observations.jsonl` 和 covariance-required CSV，并已有 Blocks calibration CSV、真实 CV 字段保真、covariance scale reason、secondary/mobile recon cue metadata 和 dry-run fixture schema 回归；仍需要更多来自 main/shared runtime 的真实 AirSim multi-seed CV detection 字段样本，避免只覆盖 dry-run/手工结构。
-3. **真实样本阈值**：区域窗口、freshness/source-gap、协方差增长率和 handover readiness 的持续阈值仍需 main 真实多 seed fixture 与 D6 统计共同校准。
+1. **显式 replay schema 与区域字段**：当前真实 Blocks JSONL 未写 `schema_version` 和 `coverage_cell`，只能通过 legacy schema 兼容并归入 `unassigned`；main/shared writer 需采用 `d1.sensor_observation.v1` 并传递 coverage cell，D1 不跨边界修改 runtime。
+2. **D6 长期批量 schema**：main tick 已发布 `TrackUncertaintySummary[]`，仍需发布并对齐 `LatencyAuditSummary`、`FusionQualityRegionSummary[]`、`FusionQualityRegionWindowSummary[]`、`SensorHealthSummary[]`、covariance reason 和 timestamp uncertainty 的长期 JSONL/CSV 字段。
+3. **expected-latency/OOSM 健康阈值**：固定 0.2 s 延迟的正常多传感器流会产生大量合法 OOSM；需用延迟预算、同帧 batch/水位线或滑动比率避免 FDIR-light 把正常流误标为 `isolated`，标定前不得把该摘要直接作为 D4 降级证据。
+4. **truth-free replay 一致性**：把 fusion/association 配置写入 replay provenance，并修正无 truth-hint 时的重复初始化，使同一日志的离线 replay 与在线约束一致；truth metadata 不得成为真实在线身份证据。
+5. **真实 Blocks/CV fixture**：2v2 十 seed 系统运行已完成，但尚未固化为 D1 长期回归 fixture；仍需 N actor、CV detection JSONL/CSV 样本覆盖 camera metadata、bbox covariance、`coverage_cell` 和 secondary/mobile recon metadata，并保证 actor label 只作离线评估标签。
+6. **真实样本阈值**：区域窗口、freshness/source-gap、协方差增长率和 handover readiness 的持续阈值仍需带 `coverage_cell` 的多 seed fixture 与 D6 统计共同校准。
 
 P2/后置：
 

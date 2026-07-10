@@ -6,18 +6,18 @@
 
 **本轮 EVAL 同步来源**：`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md`、`EVAL/FRAMEWORK_EVAL_PATCH_ENGINEERING_PRACTICES.md`、`EVAL/FRAMEWORK_EVAL_PATCH_2026_VERIFIED.md`、`EVAL/FRAMEWORK_EVAL_PATCH_WEBSEARCH_2026.md`。
 
-**结论摘要**：D2 已实现可运行的 GNN/Hungarian 主线、二维常速度 Kalman 航迹管理、可插拔 `DataAssociator`、简化 JPDA、有界 MHT 接口、IDSW/连续性指标、弱证据风险摘要、AirSim dry-run 适配、离线 JSON/JSONL replay reader/report、threshold sensitivity helper 和多 seed calibration summary helper。EVAL 确认的 D2 P0 项当前没有运行级 blocker，已闭合并应保持回归：每条 `GlobalTrack` 输出 `track_quality`/`association_risk` 和 `quality_metadata`，GNN/Hungarian 主线在保留马氏门控与 SciPy `linear_sum_assignment` 的基础上加入速度方向、短时历史和加速度异常组成的 motion consistency cost，并实现基于 track quality、局部目标密度、协方差和上一帧 association risk 的 quality-aware gate baseline。本轮 P1 已补 `crossing_dense_5v5` 确定性场景、GNN/JPDA/MHT 同场对照、`AssociationRiskSummaryWindowGenerator` 滑窗风险生成器、D1 `GlobalTrack` 到 D2 `Detection` 的模块内 adapter 基线、5 目标 AirSim-like replay association log 输出、软/硬风险分层、seed/episode/scenario/frame/offline truth label replay metadata、`RiskThresholds.profile_version`/`association_risk_threshold_version`、gate pass/reject count、motion/quality risk summary、dense/crossing sensitivity summary、N-v-N `target_count` fallback、阈值敏感性汇总和推荐阈值摘要。D2 运行链路按每帧输入的 `active_tracks` 和 `detections` 长度构造关联，不假设固定 2v2/5v5；5v5 仅是可重复 baseline fixture。D2 输出的稳定 `global_track_id` 是 D3 分配、D4 主动降级证据、D5 末端配准和 D6 指标评估的共同键；D2/D6 必须显式保留 `id_switch_count`。同步后的 P1 后续项是 JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控策略、N/M 初始化优化、协方差一致性检查，以及真实 5v5 AirSim replay 输入生产、离线 truth labels 数据固化、episode 级阈值配置治理、ID switch 阈值治理和真实多 seed calibration 批量执行；这些外部算法和工具只作为对照或增强，不是当前 P0 主线。P2/P3 仍集中在完整 EKF/UKF/IMM、Stone Soup/FilterPy optional benchmark、完整 JPDA/MHT、原生 3D GlobalTrack 跟踪和真实 AirSim runtime 数据生产。
+**结论摘要**：D2 P0 无运行级 blocker，当前 39 项测试覆盖默认 GNN/Hungarian、动态 N/M 合同、无 truth continuity 可用性、`rejected_pairs` 回放和 covariance 有限性/对称性/PSD 治理。剩余 P1 聚焦真实 5v5 replay 与离线真值/阈值治理、N/M 初始化和 false-track 标定、NIS/NEES、完整 adaptive gate 与 JPDA 受控对照；不再把已闭合能力重复列为待办。
 
 ## 1. 总体判断
 
-D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再用 JPDA/MHT/BP、SORT/ByteTrack-style fallback 做研究对照或增强”的主流共识，也与 `MAIN_IMPLEMENTATION_GAP_AUDIT.md` 的 P0/P1 口径一致：P0 主线是轻量可运行的 Hungarian/ID 指标/dry-run，航迹质量评分、运动一致性约束和 quality-aware gate baseline 已补齐并保持回归，P1 已补 5v5 dense/crossing 对照、风险滑窗、D1 adapter、AirSim-like JSON/JSONL replay report、`association_risk_threshold_version`、gate pass/reject、motion/quality risk 和 threshold sensitivity 基线。`FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` 进一步确认 D2 当前没有运行级 P0 blocker，并把 D2 后续 backlog 收敛到 P1（JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控、N/M 初始化优化、协方差一致性检查）和 P2/P3（完整 EKF/UKF/IMM、外部框架对照、原生 3D）。工程策略仍是正确的：运行路径只依赖 NumPy/SciPy，Stone Soup、FilterPy、SORT/ByteTrack 和 BP 暂作为外部验证、fallback 对照或未来适配目标，不进入当前 P0 运行依赖。D2 不复制 main runtime 的 `--drone-count` 为内部常量，而是消费调用方传入的观测/航迹集合。主要差距集中在更高阶运动模型、完整第三方框架适配、三维航迹原生支持、真实 AirSim ComputerVision 数据采集和 main/D6 episode JSONL 固化。
+D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再用 JPDA/MHT/BP、SORT/ByteTrack-style fallback 做研究对照或增强”的主流共识。P0 主线与 5v5 dense/crossing、风险滑窗、D1 adapter、replay report、threshold sensitivity 基线保持回归；P1 输入治理已新增 truth/continuity availability、拒配原因闭环和 covariance consistency flag/诊断。后续 backlog 收敛到完整自适应门控、N/M 初始化与 NEES/NIS 统计一致性标定，以及更高阶运动模型、第三方对照、原生 3D 和真实 AirSim/main/D6 schema 固化。
 
 ### 1.1 本轮 P0/P1 复核结论
 
 - **P0 复核**：无运行级 P0 blocker。GNN/Hungarian、马氏门控、`DataAssociator`、`Track` 状态机、`id_switch_count`、`track_continuity`、`duplicate_assignment_count`、D1 adapter、AirSim dry-run adapter 和按输入集合长度运行的要求已在文档/GAP 中准确覆盖。EVAL 已确认的 D2 P0 项已闭合并作为回归保持：每条 track 的 `track_quality`/`association_risk` 航迹质量评分、参与 GNN/Hungarian 代价的运动一致性约束，以及 dense/crossing 下可随 track quality/density 轻量调整的 quality-aware gate baseline。当前 D2 无未完成 P0 backlog；验收口径是持续输出上述字段、保持 D3/D5/D6 可消费性、不替换默认关联器、不改写 D1/D3/D5 合同字段。
-- **P1 缺口复核**：D2-owned `replay.py`、离线 5 目标 AirSim-like replay association log、risk summary、soft/hard 风险分层、threshold sensitivity helper、多 seed calibration summary helper、seed/episode/scenario/frame/offline truth label metadata、`RiskThresholds.profile_version`/`association_risk_threshold_version`、gate pass/reject count、motion/quality risk summary、dense/crossing sensitivity summary、N-v-N `target_count` fallback、D1 adapter、5v5 dense/crossing fixture、P0 工程化硬化和显式 IDSW/continuity 指标已补齐；JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控策略、N/M 初始化优化、协方差一致性检查，以及真实 5v5 AirSim replay 输入生产、离线 truth labels 数据固化、episode 级阈值配置治理、ID switch 阈值治理、真实多 seed batch 运行与 D6/main episode JSONL schema 固化仍作为 P1 缺口保留。
-- **2026-07-08 main/D6 P1 状态**：main runtime 已新增 P1 D4/D5 calibration sweep，D6 标准 AirSim calibration report bundle 已能自动生成。对 D2 而言，这说明报告出口和跨模块分组统计链路已就绪；尚未闭合的是把真实 5v5 AirSim replay 中的 `d2_frame`/association logs、offline truth labels、gate/risk profile/version 稳定写入该链路。
-- **D4 P1 仲裁语义复核**：2026-07-07 main runtime bus / D4 P1 修复后，D4 已区分 D2 软风险和硬风险。`association_ambiguity`、cost margin risk、candidate overlap 和短时 D5 disagreement 是观察/二级 cue 证据；`id_switch_count` 增量、`duplicate_assignment_count`/`duplicate_track_risk` 和 `track_continuity` 低于阈值才是 D4 主动仲裁的硬风险证据。D2 代码已用 `RiskThresholds`/`classify_risk_summary()` 明确该分层，避免把单帧 ambiguity 当成 `request_center_replan` 触发器。
+- **P1 缺口复核**：真实 5v5 AirSim replay 与独立 offline truth label 尚未形成稳定 episode 数据集；gate/risk/IDSW 阈值版本尚未完成多 seed 治理；N/M 初始化延迟、false track rate、漏建轨率尚未标定；NIS/NEES 尚未进入 D6 统计；完整 adaptive gate 与 JPDA 尚未在同 seed/同预算下完成对照。
+- **2026-07-10 AirSim 证据边界**：5v5 60-case 已验证 D4/D5 二级覆盖和降级批量流程，2v2 10-seed 已验证 D7 拦截与 D6 聚合，但这些输出不是 D2 dense/crossing association replay，缺少逐帧 association log、独立 offline truth label 和 threshold profile/version，不能据此关闭 D2 P1。
+- **D4 P1 仲裁语义复核**：2026-07-07 main runtime bus / D4 P1 修复后，D4 已区分 D2 软风险和硬风险。`association_ambiguity`、cost margin risk、candidate overlap 和短时 D5 disagreement 是观察/二级 cue 证据；`id_switch_count` 增量、`duplicate_assignment_count`/`duplicate_track_risk` 和可用的 `track_continuity` 低于阈值才是 D4 主动仲裁的硬风险证据。2026-07-10 D2 P1 修复后，无 offline truth label 时 `truth_metrics_available=false`、`continuity_available=false`，兼容数值 `0.0` 不再触发 `duplicate_track_risk`、`continuity_collapse` 或 hard risk；旧 replay 未携带 availability 字段时同样保守按不可用处理。
 - **非本轮范围复核**：完整 EKF/UKF/IMM、Stone Soup/FilterPy 实际适配、生产级 JPDA/MHT、原生 3D tracking 仍保持为 P2/P3 或未来研究对照，不应被描述为当前 P0/P1 已落地能力。
 
 ## 2. 明确状态分区
@@ -30,7 +30,9 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - **P0-B track quality / association risk**：`GlobalTrack.to_dict()`、`AssociationResult.metadata`、association logs、risk summary metadata 和 `MetricsRecorder.summary()` 已输出 `track_quality_by_track`、`association_risk_by_track`、mean/min/max 质量风险摘要和每条 track 的 `quality_metadata`。
 - **P0-B 运动一致性约束**：`GNNHungarianAssociator` 在保留马氏门控和 `linear_sum_assignment` 的基础上，把速度方向、短时历史和加速度异常形成的 `motion_consistency_cost_matrix` 加入代价，并输出 per-pair/per-track diagnostics。
 - **P0-B quality-aware gate baseline**：`build_gated_cost_matrix()` 已按 track quality、局部目标密度、位置协方差和上一帧 association risk 生成 `gate_thresholds_by_track`，在低质量/高协方差时保守放宽、在高密度/高歧义时收紧；完整自适应门控仍保留为 P1。
-- **核心指标**：`MetricsRecorder.summary()` 已输出 `id_switch_count`、`track_continuity`/`identity_continuity`、`coverage_continuity`、`duplicate_assignment_count`、RMSE、confusion matrix 和 runtime。
+- **核心指标**：`MetricsRecorder.summary()` 已输出 `id_switch_count`、`track_continuity`/`identity_continuity`、`coverage_continuity`、`truth_metrics_available`、`continuity_available`、`duplicate_assignment_count`、RMSE、confusion matrix 和 runtime；无 truth 时 continuity 数值只保留报告兼容性。
+- **拒配日志闭环**：`AssociationLogEntry.rejected_pairs` 默认空列表，`to_dict()` 和 `MetricsRecorder` 日志构造完整保留 `mahalanobis_gate`/`assignment_above_gate`；replay gate summary 分原因计数，旧 JSON 缺字段按空处理。
+- **covariance 输入治理**：Detection/GlobalTrack 及门控边界拒绝非有限、明显非对称、明显非 PSD covariance，仅对数值容差内缺陷做对称化/特征值 floor；`covariance_consistency` 输出最新检查结果，`covariance_regularized`/`regularization_ever_applied` 与 `last_regularization` 保留历史修复证据；NEES/NIS 等统计一致性标定仍未实现。
 - **crossing/dense fixture**：`crossing_dense_5v5` 已作为确定性 baseline fixture 加入，可同场比较 GNN、JPDA、MHT；该 fixture 不改变关联器按输入集合长度运行的边界。
 - **D1 adapter 基线**：`detections_from_d1_global_tracks()` 可把 D1 六维 NED `GlobalTrack` 投影为 D2 二维 `Detection`，保留 `measurement_timestamp`、`arrival_timestamp`、`covariance`、`global_track_id` 和 metadata。
 - **AirSim dry-run/replay 输入基线**：`detections_from_airsim_frame()` 与 `run_airsim_dry_run_association()` 支持 synthetic AirSim-style `detections/tracks/objects`，接受 `x/y`、`x_val/y_val`、2x2/3x3 covariance，且明确不 import 或调用 `airsim`。
@@ -55,7 +57,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - **JPDA/MHT 自动升级触发**：当前由调用方或仿真 CLI 显式选择 associator，未在 `Tracker` 内按风险阈值自动切换。
 - **原生 3D NED D2 跟踪**：`Detection` 固定二维 position/covariance，`GlobalTrack` 固定四维状态和 4x4 covariance。
 - **真实 AirSim runtime 数据生产**：D2 已能消费离线 JSON/JSONL AirSim-like replay，但不接真实 AirSim runtime、不采集 `simGetDetections`/CV 图像 metadata；真实 episode JSONL 生成与 schema 发布仍由 main/runtime/D6 负责。
-- **EVAL 工程化 P1 项**：D2 已闭合 P0 的 `track_quality`/`association_risk`、motion consistency cost 和 quality-aware gate baseline；仍未完成 JPDA/MHT/BP 选型对照报告、SORT/ByteTrack-style fallback、完整自适应门控策略、N/M 初始化的 false track rate/init latency 多 seed 标定，以及 NEES/NIS 或等价 covariance consistency flag。
+- **EVAL 工程化 P1 项**：D2 已闭合 P0 的 `track_quality`/`association_risk`、motion consistency cost 和 quality-aware gate baseline，并补齐 covariance 输入一致性 flag/诊断；仍未完成 JPDA/MHT/BP 选型对照报告、SORT/ByteTrack-style fallback、完整自适应门控策略、N/M 初始化的 false track rate/init latency 多 seed 标定，以及 NEES/NIS 统计一致性标定。
 
 ### 2.4 未实现原因
 
@@ -67,7 +69,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 ### 2.5 缺少条件
 
 - **数据条件**：多 seed 真实 5v5 AirSim CV replay、真实或稳定 synthetic `simGetDetections` schema、带 `truth_id`/truth position 的离线评估标签、漏检/虚警/遮挡/dense crossing sweep，以及 false track rate、init latency、软风险误触发率和硬风险漏报率统计。
-- **模型条件**：JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控策略、N/M 初始化标定和协方差一致性判定；三维 NED 状态合同、三维 covariance 门控、雷达/相机非线性量测模型、CV/CA/CT 机动模型和 IMM 转移概率。
+- **模型条件**：JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控策略、N/M 初始化标定和 NEES/NIS 统计一致性判定；三维 NED 状态合同、三维 covariance 门控、雷达/相机非线性量测模型、CV/CA/CT 机动模型和 IMM 转移概率。
 - **依赖条件**：隔离 research env 的 Stone Soup/FilterPy optional extras、adapter 映射、测试标记和容差门限。
 - **系统条件**：main/D6 已有 P1 D4/D5 calibration sweep 和标准 AirSim calibration bundle；仍需固化真实 5v5 episode JSONL 中的 D2 association 字段，发布 gate/risk threshold profile/version 配置来源，D4 认可风险阈值和自动切换迟滞，D5/D1 真实反馈进入 replay 而不是仅靠 fixture。
 
@@ -75,7 +77,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 
 - **P0 维护**：保持 GNN/Hungarian、门控、指标、D1 adapter、dry-run adapter、5v5 fixture、航迹质量评分、运动一致性约束和 quality-aware gate baseline 测试稳定；严禁把 2v2/5v5 写成算法常量。
 - **P0 工程化硬化**：已新增每条 track 的 `track_quality`/`association_risk`，已把速度方向、加速度异常和短时历史一致性作为 GNN/Hungarian 代价项与 score 输出，并已实现 quality-aware gate baseline；继续维护这些字段的 D3/D5/D6 可消费性。当前无 D2 运行级 P0 blocker，完整自适应门控仍保留为 P1。
-- **P1**：D2-owned replay/report/threshold sensitivity/multi-seed summary/risk split/replay metadata/threshold profile version、`association_risk_threshold_version`、gate pass/reject count、motion/quality risk summary、dense/crossing sensitivity summary、D1 adapter/dense fixture/P0 回归/IDSW-continuity 基线已完成；保留 JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控策略、N/M 初始化优化、协方差一致性检查，并让 main/D6 用真实 5v5 AirSim CV replay 和离线 truth labels 生产 D2 输入并写入 episode association logs/risk summary，发布阈值配置版本、固化 ID switch 阈值治理口径并执行真实多 seed risk calibration。
+- **P1**：D2-owned replay/report/threshold sensitivity/multi-seed summary/risk split、truth/continuity availability、拒配原因日志/回放统计、covariance 输入治理/诊断、replay metadata/threshold profile version、`association_risk_threshold_version`、gate pass/reject count、motion/quality risk summary、dense/crossing sensitivity summary、D1 adapter/dense fixture/P0 回归/IDSW-continuity 基线已完成；保留 JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控策略、N/M 初始化优化、NEES/NIS 统计一致性标定，并让 main/D6 用真实 5v5 AirSim CV replay 和离线 truth labels 生产 D2 输入并写入 episode association logs/risk summary，发布阈值配置版本、固化 ID switch 阈值治理口径并执行真实多 seed risk calibration。
 - **P2**：决定 D2 是否升级原生 3D 状态；若升级，先实现 3D NED state/covariance/gating，再考虑 EKF/UKF/IMM。
 - **P2/P3**：建立 Stone Soup/FilterPy optional benchmark，先用于离线对照完整 JPDA/MHT/EKF/UKF/IMM，不进入默认运行路径。
 - **P3**：在多 seed replay 证明收益后，再做 JPDA/MHT 自动升级策略和切换迟滞。
@@ -104,11 +106,11 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 | Stone Soup | 未实际集成。仅有可用性检测和占位转换函数 | `research_modules/d2_data_association/d2_data_association/compat.py` | 避免把 Stone Soup 对象暴露到系统总线；当前环境保持轻依赖 | 需要独立 research env 安装 Stone Soup、定义 adapter 映射、固定 replay/truth labels 和对照报告 | P2 optional benchmark |
 | FilterPy | 未实际集成。仅可用性检测和 `to_filterpy_state()` 占位 | `compat.py` | 当前 Tracker 已有线性 Kalman fallback；FilterPy 作为未来 EKF/UKF/IMM 原型 | 需要确定是否引入依赖、状态/量测模型、测试场景 | P2/P3 |
 | `id_switch_count` | 已实现。`MetricsRecorder` 根据 truth-to-track 代表 ID 变化计数，且测试验证 D2 与 D6 episode 计数口径一致 | `metrics.py`；`tests/test_tracker_metrics.py`；`simulation.py` | 不适用 | 集成场景必须提供离线 `truth_id`，否则只能输出风险摘要，不能评估真实 IDSW | P0 已满足，D2/D6 强制保留 |
-| `track_continuity` / `identity_continuity` | 已实现。`track_continuity` 是 `identity_continuity` 别名，同时有 `coverage_continuity` | `metrics.py`；`tests/test_tracker_metrics.py` | 不适用 | 需要 D6 统一消费并区分覆盖连续性与身份连续性 | P0 已满足 |
+| `track_continuity` / `identity_continuity` | 已实现。`track_continuity` 是 `identity_continuity` 别名，同时有 `coverage_continuity`；`truth_metrics_available`/`continuity_available` 区分无 truth 的 unavailable 与真实数值 0 | `metrics.py`；`tests/test_tracker_metrics.py`；`tests/test_replay.py` | 不适用 | D6 消费时必须先检查 availability，不能把兼容 `0.0` 当作连续性崩塌 | P0 指标已满足；P1 unavailable 语义已闭合 |
 | `duplicate_assignment_count` | 已实现。统计同帧重复 detection/track 和同 truth 多 track | `metrics.py`；`tests/test_tracker_metrics.py` | 不适用 | 后续可扩展为滑窗 duplicate-track risk 自动评分 | P0 已满足 |
 | 跨视角弱证据风险字段 | 已实现最小数据合同。`AssociationRiskSummary` 支持 `source_node_id`、`link_type`、`d5_disagreement_count`、`duplicate_track_risk`、`association_ambiguity`、`covariance_overlap_rate` | `models.py`；`metrics.py`；`tests/test_tracker_metrics.py` | 不适用 | 尚缺真实 D5/二级节点消息流和跨节点回放样本 | P1 已完成基线 |
 | `AssociationRiskSummary` 自动派生 | 已实现 P1 基线。`AssociationRiskSummaryWindowGenerator` 可从 `AssociationResult.cost_matrix`、candidate count metadata、cost margin、ID switch delta、duplicate delta、track continuity 和 D5 disagreement 生成滑窗风险摘要，并进入 `MetricsRecorder.summary()` | `metrics.py`；`tests/test_tracker_metrics.py`；`docs/ALGORITHM_AND_IMPLEMENTATION.md` | 不适用；当前仍是轻量窗口规则，不是学习式风险模型 | 后续需用真实 5v5 AirSim replay 校准窗口长度、阈值和 D4 主动降级触发边界 | P1 已完成基线 |
-| D4 软/硬风险消费合同 | 已实现代码和文档。D2 ambiguity/cost margin/candidate overlap 作为软风险；IDSW、duplicate 和 continuity 低于阈值作为硬风险。`RiskThresholds`/`classify_risk_summary()` 输出可回放的分层原因，D2 不直接发起 `request_center_replan` | `metrics.py`；`tests/test_replay.py`；`README.md`；`PLAN.md`；`docs/ALGORITHM_AND_IMPLEMENTATION.md`；`subagent_reviews/D2_DATA_ASSOCIATION_REVIEW_AND_PLAN.md` | D4 的主动降级动作由 D4/main runtime bus 负责，D2 只能维护证据字段 | 需要真实 5v5 AirSim replay 校准软风险误触发率和硬风险漏报率 | P1 已完成 D2 基线，阈值校准保留 |
+| D4 软/硬风险消费合同 | 已实现代码和文档。D2 ambiguity/cost margin/candidate overlap 作为软风险；IDSW、duplicate 和可用 continuity 低于阈值作为硬风险。`continuity_available=false` 时 classifier 显式忽略 continuity，D2 不直接发起 `request_center_replan` | `metrics.py`；`tests/test_replay.py`；`README.md`；`PLAN.md`；`subagent_reviews/D2_DATA_ASSOCIATION_REVIEW_AND_PLAN.md` | D4 的主动降级动作由 D4/main runtime bus 负责，D2 只能维护证据字段 | 需要真实 5v5 AirSim replay 校准软风险误触发率和硬风险漏报率 | P1 unavailable 语义已闭合，阈值校准保留 |
 | AirSim dry-run 适配 | 已实现。接收 synthetic AirSim-style dict/object，不 import `airsim`，支持 `detections/tracks/objects`、`x/y`、`x_val/y_val`、2x2/3x3 协方差，并在 bus message 中按活动航迹集合导出全部 `global_track_id` | `dry_run_adapter.py`；`tests/test_dry_run_adapter.py` | 不适用 | 尚未接真实 AirSim runtime；当前按要求只做 dry-run/replay | P0 已满足 |
 | AirSim-like replay/report、threshold sensitivity 与 multi-seed summary | 已实现 D2 P1 基线。读取离线 JSON/JSONL replay，输出 `ReplayAssociationReport`、association logs JSONL、`id_switch_count`、`track_continuity`、`duplicate_assignment_count`、seed/episode/scenario/frame/offline truth label `replay_metadata`、`risk_profile_version`/`association_risk_threshold_version`、gate pass/reject count、motion/quality risk summary、dense/crossing sensitivity summary、N-v-N `target_count` fallback、soft/hard risk summary，支持 gate/risk threshold sweep，并能按 gate/risk profile/version 汇总多 seed IDSW、continuity、duplicate、soft/hard risk 分布和推荐阈值摘要；测试覆盖 5 目标 replay、main/D6-style row metadata、offline truth label、变量目标数、无 truth label replay 和多 seed summary | `replay.py`；`dry_run_adapter.py`；`tracker.py`；`tests/test_replay.py`；`docs/AIRSIM_INTEGRATION_PLAN.md` | 不适用；仍不连接 AirSim SDK | 真实 5v5 runtime capture、CV metadata、离线 truth labels 数据集、episode 级阈值配置治理、JSONL schema 和 batch 执行由 main/D6 固化 | P1 已完成 D2 基线；P1 剩余为真实 replay/标签/标定执行集成 |
 | D1 `GlobalTrack` 到 D2 `Detection` | 已实现 P1 基线。D2 dry-run adapter 支持 `tracks` 字段和 3D covariance 投影到 2D；模块内提供 D1 `GlobalTrack` -> D2 `Detection` 转换入口，集成层仍保留 `CanonicalTrack`/`d2_detection_kwargs()` 合同测试 | `dry_run_adapter.py`；`tests/test_dry_run_adapter.py`；`integration_contracts.py`；`integration_tests/test_cross_module_contracts.py`；`integrated_simulation/adapters.py` | 不适用；当前转换仍保持 duck typing，避免 D2 强依赖 D1 包 | 后续需冻结真实 replay schema、坐标轴投影规则、timestamp 透传字段和阈值版本记录 | P1 已完成基线 |
@@ -125,7 +127,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 | JPDA/MHT/BP 选型对照 | 部分实现 EVAL P1。`JPDAAssociator` 有小规模联合假设枚举，`MHTAssociator` 有有界分支对照，`crossing_dense_5v5` 可同场比较 GNN/JPDA/MHT；BP 当前仅作为 IEEE OJSP track coalescence 分析中的外部对照依据，未实现本地 associator | `associators.py`；`simulation.py`；`tests/test_gating_and_associators.py`；`tests/test_simulation.py`；`EVAL/FRAMEWORK_EVAL_PATCH_WEBSEARCH_2026.md` | 当前 JPDA/MHT 只做轻量离线对照，未做概率混合状态更新、参数标定、runtime budget、coalescence 指标和真实 replay 报告；BP 不进入当前运行依赖 | 需要 dense/crossing replay 下输出 IDSW、coalescence 或等价航迹合并风险、latency 对照，并保留 GNN/Hungarian 默认主线 | P1 对照/增强，不是 P0 |
 | SORT/ByteTrack-style fallback | 未实现 EVAL P1。当前 GNN/Hungarian 已具备 SORT-like 的运动预测 + Hungarian 核心，但没有独立 SORT fallback 模式，也没有 ByteTrack-style 低置信检测二阶段关联或视觉 MOT handoff adapter | `associators.py`；`tracker.py`；`EVAL/FRAMEWORK_EVAL_PATCH_ENGINEERING_PRACTICES.md`；`EVAL/FRAMEWORK_EVAL_PATCH_2026_VERIFIED.md` | 当前 P0 主线已足够运行；SORT/ByteTrack 应作为轻量 fallback 或视觉 MOT 场景对照，不能替代稳定 `global_track_id` 合同 | 需要定义 fallback 触发条件、输入置信度字段、IDSW/continuity 对照、异常回退路径和 D5 视觉 MOT replay 样本 | P1 对照/增强，不是 P0 |
 | N/M 初始化优化 | 未完成 EVAL P1。当前 `Tracker` 状态机可用，但虚假航迹率和初始化延迟缺少系统标定 | `tracker.py`；`metrics.py`；`replay.py`；`tests/test_tracker_metrics.py` | 现有测试覆盖生命周期和 ID 指标，尚未把 N/M 参数作为 calibration target 输出 | 需要输出 false track rate、init latency，并在多 seed replay 中按 scenario/profile 汇总 | P1 |
-| 协方差一致性检查 | 未实现 EVAL P1。D2 当前消费 D1 covariance 做门控和更新，但不主动输出 NEES/NIS 或等价 consistency flag | `gating.py`；`models.py`；`metrics.py` | 现有风险摘要有 covariance overlap，但不是统计一致性判定 | 需要带 truth 或可信 residual 的 replay、D1 covariance 合同样本和 D6 可消费的 consistency 字段 | P1 |
+| 协方差一致性检查 | 输入治理已实现：拒绝非有限、明显非对称和明显非 PSD covariance，容差内修复；最新一致性诊断与历史正则化证据分开记录；NEES/NIS 未实现 | `gating.py`；`models.py`；`associators.py`；`tests/test_gating_and_associators.py` | 输入一致性与统计一致性分层，避免无条件正则化污染门控或沿用过期诊断 | NEES/NIS 仍需要带 truth 或可信 residual 的 replay 和 D6 统计口径 | P1 输入治理已闭合；统计标定保留 |
 
 ## 4. 关键缺口说明
 
@@ -149,7 +151,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - D1 `GlobalTrack` 到 D2 `Detection` 的模块内 adapter 基线已经可用，仍保持松耦合字段读取；当前是 NED 6D 到 D2 2D 水平面的投影，不是 D2 原生 3D tracker。
 - D6/集成层仍需用真实 5v5 AirSim replay 生产并固化离线 truth labels、episode 级阈值配置来源、D2 内部 IDSW 与 episode IDSW 统计口径，并把 association logs/risk summary 纳入稳定 JSONL schema。
 - EVAL 同步后的航迹质量评分、运动一致性约束和 quality-aware gate baseline 已作为 P0 工程化硬化闭合并保持回归；这些项增强 GNN/Hungarian 主线，不替换默认关联器，也不得改写 D1/D3/D5 合同字段。
-- EVAL 同步后的 JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控策略、N/M 初始化优化和协方差一致性检查仍保留为 P1；外部工具和算法继续作为 GNN/Hungarian 的对照或增强边界，不成为当前 P0 默认运行路径。
+- EVAL 同步后的 JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控策略、N/M 初始化优化和 NEES/NIS 统计一致性标定仍保留为 P1；covariance 输入治理已闭合，外部工具和算法继续作为对照或增强边界。
 
 ### 4.3 多目标交叉、密集编队与 ID Switch 剩余风险
 
@@ -166,17 +168,13 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 
 ## 5. 下一步建议
 
-1. **P1 已完成：5v5 crossing/dense fixture 与风险滑窗生成器**
-   当前可用 `crossing_dense_5v5` 对比 GNN/JPDA/MHT，并用 `AssociationRiskSummaryWindowGenerator` 输出滑窗风险摘要。
+1. **真实 5v5 replay + offline truth + threshold 治理**：由 main/runtime 生成逐帧 D2 JSONL，真值只进入离线评估字段；每个 episode 固化 gate/risk/IDSW profile version。D6 按 seed 和场景汇总 IDSW、continuity、duplicate、软风险误触发率和硬风险漏报率。
 
-2. **P1 已完成基线：D1->D2 adapter contract**
-   D2 已能消费 D1-like `GlobalTrack`，下一步不是重写 adapter，而是冻结 replay schema、坐标系和 timestamp 字段。
+2. **N/M 初始化与 false-track 标定**：对建轨确认、漏检容忍和删除参数做多 seed 网格实验，输出 init latency、false track rate、漏建轨率和重复航迹率，并覆盖非 2/5 数量输入。
 
-3. **P0 已完成并保持回归：track quality、motion consistency 与 quality-aware gate**
-   D2 侧已能在每条 `GlobalTrack`、association metadata、logs、risk summary metadata 和 metrics summary 中输出 `track_quality`/`association_risk`；GNN/Hungarian 代价已纳入 motion consistency score，quality-aware gate baseline 已输出 per-track gate threshold diagnostics。当前无 D2 运行级 P0 blocker，完整自适应门控策略仍不进入 P0。
+3. **NIS/NEES 统计一致性**：NIS 按 innovation 计算，NEES 仅使用独立 offline truth state；输出置信区间覆盖率及按传感器、距离和场景的分组偏差。
 
-4. **P1 已完成 D2 基线：离线 replay/report 与风险阈值 helper**
-   D2 侧已能读取 AirSim-like JSON/JSONL replay，输出 association logs、risk summary、`id_switch_count`、`track_continuity`、`duplicate_assignment_count`、replay metadata、threshold profile version、`association_risk_threshold_version`、gate pass/reject count、motion/quality risk summary、dense/crossing sensitivity summary、soft/hard risk threshold sensitivity 和多 seed calibration summary。main runtime/D6 已具备 P1 D4/D5 calibration sweep 与标准报告 bundle。剩余 P1 是 JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控策略、N/M 初始化优化、协方差一致性检查，并让 main/D6 用真实或稳定导出的 5v5 AirSim CV replay 生产 D2 输入，固化离线 truth labels、episode JSONL schema 和 threshold 配置发布流程，批量执行多 seed replay 校准软风险误触发率与硬风险漏报率。
+4. **完整 adaptive gate / JPDA 对照**：固定 replay、seed、输入和预算，对比固定门限、quality-aware baseline、完整 adaptive gate 及 GNN/JPDA，报告 IDSW、continuity、false track、漏关联、延迟和 JPDA 截断率；默认主线仍保持 GNN/Hungarian。
 
 5. **P2：引入三维状态或三维到二维的统一策略**
    如果 D5 终端投影、D7 中段 PN 都需要三维状态，D2 需要升级为 3D `[px,py,pz,vx,vy,vz]` 或明确只输出二维关联 ID、三维状态由 D1 提供。
@@ -186,4 +184,4 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 
 ## 6. 审计结论
 
-D2 已经具备端到端集成的最小可用能力：输入检测、维护全局航迹 ID、执行 GNN/Hungarian、记录 IDSW/连续性、输出风险摘要和 dry-run bus message。它还具备 JPDA/MHT 的轻量可插拔对照、5v5 dense/crossing 压测、D1 NED 投影 adapter、滑窗风险摘要、AirSim-like JSON/JSONL replay report、`association_risk_threshold_version`、gate pass/reject count、motion/quality risk summary、dense/crossing sensitivity summary、threshold sensitivity helper、P0 track quality/association risk、P0 motion consistency cost 和 P0 quality-aware gate baseline。当前 D2 责任范围内没有固定 2v2/5v5 数量依赖；`global_track_id` 输出随活动航迹集合变化，可供 D3 分配、D4 风险仲裁、D5 终端配准和 D6 指标评估按集合消费。主要未完成项不是基础功能，而是 JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控、N/M 初始化优化、协方差一致性检查、高保真第三方对照、三维机动模型、原生 3D NED 跟踪、真实 AirSim runtime 数据生产和 main/D6 episode schema 固化。建议暂缓将 Stone Soup/FilterPy 或完整 MHT 引入默认运行路径。
+D2 已经具备端到端集成的最小可用能力：输入检测、维护全局航迹 ID、执行 GNN/Hungarian、显式记录 IDSW、在 truth 可用时评估 continuity、输出风险摘要和 dry-run bus message。本轮补齐了无 truth availability、拒配原因日志/回放统计和 covariance 输入治理；动态 N 与 `global_track_id` 合同不变。主要未完成项是高阶关联/运动对照、完整自适应门控、N/M 初始化、NEES/NIS 统计一致性标定、原生 3D、真实 AirSim runtime 数据生产和 main/D6 episode schema 固化。

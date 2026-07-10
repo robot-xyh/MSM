@@ -234,11 +234,37 @@ P2 是较重外部依赖、生产化架构、高阶算法和长期对照。P2 �
 - 结果：`row_count=6`，`projection_valid_rate=1.0`，D6 标准报告 bundle 已生成。
 - 解释：50m bbox 均值约 19055 px^2，200m bbox 均值约 1147 px^2；200m 网络同帧全覆盖仍为 0.0，说明剩余 P1 重点是二级站位/扫描/coverage 和多 seed 阈值标定，而不是绕过 D3/D4/D5 gate。
 
+### 2026-07-10 P0/P1 实施与真实 AirSim 复核
+
+本轮按 “main 下发、D-agent 自改自测、main 集成与 AirSim 编排” 完成以下闭合：
+
+- D2：无 truth 场景不再产生虚假 continuity 硬风险，`rejected_pairs` 可序列化/回放，协方差增加 finite/symmetric/PSD 校验和诊断。
+- D3：已有 active plan 后拒绝缺失 `previous_plan` 的请求；stale rejection 保留当前 plan；switch penalty 在 Hungarian 求解前进入代价矩阵。
+- D5：reacquire 继续执行友方身份保守门控；MOT 状态按 `(resource_id, camera_id)` 隔离；AirSim actor/object 名不再参与在线 category/local identity。
+- main/runtime：AirSim builtin detect 使用匿名 camera-local bbox tracker，`local_track_id/detection_id` 不含 actor 名；actor 名只保留为 `offline_truth_*` 评估字段。真实证据目录 `research_modules/airsim_runtime/outputs/p0_truth_isolation_smoke_20260710/` 中三类 case 均连接，匿名 ID 连续 5 帧，cross-view association 均为 4。
+- D6：多 seed 聚合和 baseline/enhanced 配对使用稳定 `scenario_group`；bootstrap CI 固定随机种子；execution/contract evidence path 分离；无有效 active-degradation label 时不再误报零精度。拦截 success/collision/abort/min-range/time/visual-switch/gate 指标已进入 cross-seed，且无 intercept evidence 的 read-only episode 为 unavailable，不再伪造 0/20。
+
+真实 AirSim D4/D5 5v5 校准已完成，不再属于“尚未执行多 seed”的缺口：
+
+- 输出目录：`research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710/`。
+- 组合：seed 1-10，50/200 m，3 个机动二级侦察节点，110 deg，1920x1080，三类降级 case，共 60 个 episode，全部 connected。
+- 50 m：网络平均覆盖约 0.687，joint full-view 约 0.044，稳定跨视角注册均值约 86.9。
+- 200 m：网络平均覆盖约 0.725，joint full-view 约 0.003，稳定跨视角注册均值约 97.6；bbox 均值约 1146 px^2。
+- 20 个 `degrade_to_secondary` case 最终均保守转为 `degrade_to_distributed`。1300 条 D4 决策中 1285 条为 `registration_usable`，只有 15 条瞬时 `takeover_ready`，全部停在 `pending_secondary_plan`；`secondary_plan_active=0`。主要断点是 network full-view、coverage ratio、逐决策 stable/not-registered evidence 和二级 plan activation，不是 heartbeat/link/cue/gimbal 失效。
+
+真实 AirSim 2v2 SimpleFlight 10-seed 基线也已完成：
+
+- 输出目录：`research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_multiseed_20260710/` 及对应 `_seed001..010` 目录。
+- 20 个拦截对中 18 个 `collision_intercept`，2 个因 `terminal_detection_timeout` 中止；成功率 90%。
+- 按 20 个 pair 等权统计，平均最小距离约 2.113 m，成功 pair 平均拦截时间约 3.589 s；D6 的 episode 口径取每 seed 的最小 pair 距离和 episode 时间，均值分别为 1.812 m、3.66 s。两种口径不混用。
+- 导引记录汇总：`radar_pn=530`、`png_vm=289`、`los=65`；平均 `terminal_switch_allowed_rate` 约 0.082。
+- 主要视觉/切换拒绝：`d5_not_locked=309`、`maneuver_margin_low=194`、`bbox_near_image_edge=182`、`d4_reassign_pending=165`。当前证明雷达 PN + 受门控视觉 PNG 可闭环，但尚不能宣称视觉 PNG 稳定接管，也没有完成 AirSim PN/Pure Pursuit/PNG-TTC/PNG-VM 四路线同场景对照。
+
 因此本文件后续使用方式是：
 
 1. **已完成的 P0**：保持回归，不重复列为新 blocker。
 2. **已完成的 P1 接口补齐**：保持回归，后续不要重复列为“缺字段/缺接口”。
-3. **剩余 P1 标定项**：真实 AirSim 多 seed、二级网络全目标覆盖、YOLO/MOT 阈值、D4/D5/D7 状态迁移、D6 长期趋势和 review label。
+3. **剩余 P1 标定项**：二级网络持续全目标覆盖与 secondary plan activation、YOLO/MOT 真实图像阈值、CV 5v5 D1/D2/D3 风险阈值、D7 四路线对照、D6 长期趋势和场景库治理。已完成的 5v5 D4/D5 与 2v2 拦截多 seed 不再重复列为“未执行”。
 4. **P2**：作为后续子智能体任务来源，由 main 分发给对应 D-agent 后再同步模块 GAP/PLAN。
 
 ## 10. 建议执行顺序
@@ -249,11 +275,11 @@ P2 是较重外部依赖、生产化架构、高阶算法和长期对照。P2 �
 2. main/runtime：保持 P1 calibration sweep suite/version/threshold、高度对比、D6 bundle、secondary owner 保持和不保存 PNG 默认规则。
 3. D1-D7：保持各自 P1 metadata/summary/evidence/gate 字段不退化，并由对应 subagent 同步 GAP/PLAN。
 
-### 第二批：跑多 seed 校准
+### 第二批：扩展已建立的多 seed 校准
 
-1. AirSim 2v2 intercept 多 seed：统计 terminal latch、LOS filter、PN/PNG gate、visual PNG switch、D7 reject reason。
-2. D4/D5 5v5 stress 多 seed：统计 secondary visible/registered/takeover capable、single-camera full view、network union coverage、not-registered 和 cross-view association。
-3. CV 5v5：统计 D1/D2/D3/D5 的质量门控、assignment stability、ID switch、terminal association 和 active degradation necessity。
+1. AirSim 2v2 intercept：现有 10-seed 作为 radar PN + PNG-VM 基线，下一轮增加 PN/Pure Pursuit/PNG-TTC/PNG-VM 同场景选择器和配对统计。
+2. D4/D5 5v5 stress：现有 60-case 作为覆盖/注册基线，下一轮构造持续 `takeover_ready -> pending_secondary_plan -> secondary_plan_active` 专项，不降低安全门限。
+3. CV 5v5：补充 D1/D2/D3/D5 质量门控、assignment stability、ID switch、terminal association 和 active degradation necessity 的长期聚合。
 
 ### 第三批：做 P1 对照
 
@@ -276,4 +302,4 @@ P2 是较重外部依赖、生产化架构、高阶算法和长期对照。P2 �
 | D7 | 无 | latch、LOS 滤波、3D benchmark、P1 switch/gate calibration fields 保持回归 | 3D True PN、APN、ADRC、预测点、动力学补偿、真实 PN/Pure Pursuit/PNG 对照 | 协同到达时间、默认 3D/FRPN 升级 |
 | Main/System | 无 | 时间、配置、健康、异常恢复、P1 calibration sweep、secondary owner 保持回归 | ROS2 replay 原型、结构化日志、Docker Compose、真实 AirSim 多 seed 标定 | ROS2/RTI 生产硬化、PTP、Dashboard/KubeEdge |
 
-结论：三个 patch 强化了“标准化评估 + 成熟工程栈 + 明确规避前沿黑盒方法”的方向，但没有推翻当前轻量主线。2026-07-09 已完成 D6/main 标准化映射最小版与 P1 calibration/report 接口的基础闭合；下一步最急的是真实 AirSim 多 seed 标定和二级网络覆盖/跨视角注册稳定性，而不是引入重型外部框架替换主线。
+结论：三个 patch 强化了“标准化评估 + 成熟工程栈 + 明确规避前沿黑盒方法”的方向，但没有推翻当前轻量主线。2026-07-10 已完成首轮真实 AirSim 5v5 D4/D5 与 2v2 拦截多 seed 基线；下一步最急的是把二级节点从 `registration_usable` 闭合到可执行 secondary plan、完成真实 YOLO/MOT 标定和 D7 四路线配对对照，而不是引入重型外部框架替换主线或降低安全门限。

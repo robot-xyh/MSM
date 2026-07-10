@@ -2,7 +2,28 @@
 
 **审计目标**：把 D1-D7 当前 P0/P1 缺口集中到一个 main 可调度清单，避免各模块 GAP 文件之间口径分散。
 **审计边界**：本文件只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控、自动处置或授权绕过。
-**当前结论**：未发现新的 P0 阻塞断链。2026-07-09 已按 EVAL 确认的 P0-A/P0-B/P0-C backlog 完成最小工程闭合：main runtime episode bus 已补齐统一 clock/config/module health/runtime exception outcome；D1-D7 owner 已分别完成本模块 P0 修复和 README/PLAN/GAP 同步；main runtime 已跟进 D4 新二级能力合同，修正 D4/D5 stress 中二级注册 evidence 桥接和成功注册原因过滤。当前 P0 重点转为保持跨模块合同、安全门控和测试回归不退化。三份 patch 更新到 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` v2.1 后，新增的最高优先级不是替换主线算法，而是把 **D6/main 标准化评估映射最小版** 列为 P0-A 跟踪项：建立 `COURAGEOUS/MDPI/OCEF -> 当前 EpisodeMetrics` 的最小 mapping，并在报告中保留 metric family、evidence path 和 scenario version。2026-07-09 P1 接口补齐已完成一轮：D1-D7 各 owner 已更新本模块 GAP/PLAN/README，main runtime 已补齐 P1 calibration suite/threshold metadata、高度对比汇总、D6 标准报告 bundle 和二级接管 owner 保持。剩余缺口主要为 P1 标定项：真实 AirSim 多 seed 长时标定、二级网络全目标覆盖、YOLO/MOT 阈值校准、通信/身份协议真实适配、标准化报告扩展和 D6 长期趋势报告。
+**当前结论**：未发现新的 P0 阻塞断链。2026-07-10 已在既有 P0-A/P0-B/P0-C 闭合基础上继续修复 active-plan stale 合同、truth-unavailable D2 风险、D5 友方重捕获和 AirSim 在线局部 ID 泄漏；真实 AirSim 已完成 D4/D5 5v5 60-case 校准与 2v2 SimpleFlight 10-seed 拦截基线。当前 P0 重点是保持跨模块合同、安全门控和测试回归不退化。剩余缺口已经收敛为 P1：二级节点从 `registration_usable` 到可执行 secondary plan 的状态闭环、真实 YOLO/MOT 标定、CV 5v5 D1/D2/D3 阈值治理、D7 多导引律配对对照、D6 长期趋势/场景库和通信/身份真实适配。
+
+## 2026-07-10 P0/P1 实施与 AirSim 多 Seed 复核
+
+- **P0 truth 隔离闭合**：main runtime 为 AirSim builtin detect 增加匿名 camera-local bbox tracker；`local_track_id/detection_id` 不含 actor 名，actor 名只作为 `offline_truth_*` 标签。`outputs/p0_truth_isolation_smoke_20260710` 三类 case 均连接，匿名 ID 连续 5 帧，跨视角关联均为 4。D5 owner 已复核并将该项转为保持回归。
+- **D2/D3/D5 可信合同补强**：D2 无 truth continuity、rejected pair replay 和协方差校验已补齐；D3 active plan 后强制 previous plan，stale rejection 保留当前 plan，switch penalty 在 Hungarian 前计入；D5 reacquire 友方门控与 MOT stream 隔离已补齐。
+- **D6 多 seed 统计基线**：cross-seed 聚合按稳定 `scenario_group`，baseline/enhanced 使用同 seed 配对，bootstrap CI 固定随机种子，execution/contract evidence 分离。
+- **5v5 D4/D5**：`outputs/p1_gap_closure_calibration_20260710` 共 60 个真实 AirSim episode。50 m 网络平均覆盖约 0.687、joint full-view 约 0.044；200 m 网络平均覆盖约 0.725、joint full-view 约 0.003。20 个 secondary case 均未激活 secondary plan；1300 条 D4 决策中只有 15 条瞬时 `takeover_ready`，且全部停在 pending。
+- **2v2 SimpleFlight**：`outputs/p1_gap_closure_2v2_multiseed_20260710` 共 10 seeds/20 pairs，18 个碰撞拦截、2 个末端检测超时，成功率 90%；主要门控为 D5 未锁定、机动裕度、bbox 边缘和 D4 重分配等待。
+- **剩余 P1**：D4 逐决策 stable/not-registered evidence 接线、持续 full-view 与 secondary plan activation；D5 YOLO/MOT 多 seed；D7 PN/Pure Pursuit/PNG-TTC/PNG-VM 对照；D6 长期趋势与场景库。D6 拦截指标 cross-seed 输出已闭合。
+
+## 下一阶段 P1 实施顺序
+
+当前没有新的运行级 P0 blocker。下一阶段不引入 P2/P3 重型依赖，按以下顺序补齐：
+
+1. **D4/D5/main 二级接管执行闭环**：把 D5/D6 的逐决策 `stable_cross_view_registration_count/not_registered_count/network_full_view` 接入 D4，构造持续 full-view fixture，闭合 `registration_usable -> takeover_ready -> pending_secondary_plan -> secondary_plan_active`，同时验证 lease/epoch/stale rejection。
+2. **D5/main 真实 YOLO/MOT 校准**：使用 `best.pt` 和无人机 mesh，在 50/200 m、遮挡、交叉和多视角场景跑 ByteTrack/BoT-SORT 多 seed；统计 detector recall、local ID continuity、cross-view registration、CPU/GPU 延迟和 AirSim detect 回退。
+3. **D7/main/D6 导引律配对对照**：增加 runtime law selector，在相同 seed/初始几何下对比 Pure Pursuit、radar PN、PNG-VM、PNG-TTC；保持 `png_guidance_delivery` 核心控制律不改，只校准切换、相机边缘、机动裕度和 detection timeout。
+4. **D1/D2/D3 真实 5v5 总线治理**：main writer 补 `schema_version/coverage_cell/config provenance`；D1 校准预期延迟和 OOSM health；D2 用 offline truth 评估 IDSW/NIS/NEES 和初始化；D3 校准 D5 feedback、N/M mismatch、迟滞与 threat 权重。
+5. **D6 场景库与 CI 趋势**：把上述批次固化为带 tags/difficulty/expected failure mode 的场景库，生成跨提交回归摘要、长期趋势和标准化 evidence 索引。
+
+下一阶段验收仍要求：online 不使用 truth ID、不改写 `global_track_id`、过时 plan 被拒绝、D4/D5 gate 不因提高成功率而放宽、所有指标区分 unavailable 与零值。
 
 ## 2026-07-09 P0 实施闭合复核
 
@@ -156,7 +177,7 @@
 
 | Owner | P1 缺口 | 当前状态 | 缺少条件 | 验收口径 |
 |---|---|---|---|---|
-| main | 统一 AirSim episode bus 多 seed 校准 | `MainAirSimEpisodeBus` 已接入 D1-D7 summary/record；2026-07-08 已将真实 D7 控制执行指标合并到正式 `main_episode_bus_metrics.json`，保留 raw contract metrics，并补齐 D5 feedback、二级接管、D7 runtime bus 字段；P1 calibration sweep 已自动回灌 D6 标准 CSV/JSON/Markdown 报告 bundle，并写入 suite/threshold version 与高度对比；`p1_gap_fix_smoke_20260709` smoke 已通过 | 稳定 episode 目录、seed/scenario 命名、真实 Blocks 多 seed 阈值和状态迁移校准 | 多 seed 报告能按 seed/scenario 汇总 D3/D4/D5/D7/D6 指标，并区分 contract 与 execution 指标 |
+| main | 统一 AirSim episode bus 多 seed 校准 | **首轮真实多 seed 已完成**：D4/D5 5v5 为 10 seeds x 2 heights x 3 cases；2v2 SimpleFlight 为 10 seeds x 2 pairs；episode clock、实际规模、execution/contract、evidence path 和 D6 bundle 均已写盘 | CV 5v5 D1/D2/D3 阈值、YOLO/MOT、D7 多导引律和长期 scenario/version 治理 | 多 seed 报告继续按稳定 scenario group 汇总，禁止把已完成批次重新列为“未运行” |
 | D1/main | D1 replay schema version、CSV reader、更多 Blocks fixture | **P1 基线已补齐**：replay schema v1、legacy JSONL 兼容、最小 CSV reader/replay 已实现 | 更多真实 Blocks/CV fixture、D6 长期批量字段、长期回归样本 | D1 能读取带 version 的 replay fixture，D6 可追踪 observation latency/OOSM |
 | D1/D4/D6 | 区域质量摘要和 OOSM 审计字段 | **P1 基线已补齐**：`LatencyAuditSummary` 和轻量 `FusionQualityRegionSummary` 已实现 | 区域时间窗口、协方差增长率窗口、D6 长期趋势字段 | D4 可消费区域级不确定度；D6 可输出 OOSM/latency 统计 |
 | D2/main/D6 | 真实 5v5 AirSim replay 的 association log 和 risk threshold 校准 | **P1 基线已补齐**：D2 replay helper、AirSim-like replay、threshold sensitivity 和 risk split 已实现 | 真实 replay、truth offline labels、阈值版本、D6 grouped report | 输出 IDSW、continuity、risk summary 和 threshold sensitivity |
@@ -164,16 +185,16 @@
 | D4/main/D3/D5 | 主动降级过敏抑制 | **P1 基线已补齐**：D4 已将 `d3_assignment_not_current/stale` 作为硬风险，将 `d3_assignment_cost_margin_low` 作为软风险；软 margin + 早期 D5 low confidence 只 `continue_center/observe_more`；持续 D5 `ambiguous/reacquire` 若无 observed mismatch/资源错配/重复锁定/友方冲突，则不触发分布式降级 | 真实 Blocks 多 seed 下的 threshold、dwell/release 和 review label 校准 | 名义 2v2/5v5 不应全帧 `request_center_replan` 或 `degrade_to_distributed`；硬 stale/not-current 和真实 terminal mismatch 仍触发仲裁 |
 | D3/D5/main | D5 feedback 写回下一轮 D3 代价 | **P1 基线已补齐**：D3 feedback helper 已接入 main runtime bus，输出 `d3_terminal_feedback_writeback`，无冲突 ambiguous/reacquire 不再误触发 operator hold | 真实多 seed 下 duplicate/friend/fov/feasibility metadata 阈值校准 | D5 feedback 能生成 `operator_hold/prohibited_edges/fov_difficulty` 输入 |
 | D4/main/D3/D7 | 二级接管 plan version 与 D7 two-stage handoff | **P1 基线已补齐**：D4 secondary takeover metadata、D3 secondary plan owner/version、main secondary owner 保持、D7 owner gate 和 controlled 2v2 visual PNG 回归已通过 | 真实 Blocks 多 seed 的 secondary heartbeat/link freshness 校准 | `degrade_to_secondary` 阶段 1 阻断 visual PNG，阶段 2 新 plan 生效后才放行；secondary plan `owner_node_id` 必须是可用二级节点 |
-| D4/D5/main/D6 | 机动高空侦察二级节点覆盖与接管必要性 | **P1 接线已补齐，校准未闭合**：2026-07-08 registration calibration v2 中 radar cue + gimbal 指向正常，`projection_valid_rate=1.0`，稳定跨视角注册约 53，cross-view association 均值约 4.33；2026-07-09 smoke 进一步输出 50/200 m 高度对比和 D6 bundle。瓶颈仍是 200 m/高动态下 `not_all_targets_visible/network_union_incomplete`，不是投影链路断开 | 二级节点站位/扫描策略、target grouping、coverage cell、heartbeat/link freshness、review label、plan activation delay 和 D6 长期趋势 | D6 报告能同时输出单相机全局视野率、二级网络联合覆盖率、coverage funnel breakpoint、接管必要性和误降级率 |
+| D4/D5/main/D6 | 机动高空侦察二级节点覆盖与接管必要性 | **真实多 seed 基线已完成，接管状态机未闭合**：60 case 中注册链路稳定，20 个 secondary case 均因持续 full-view/plan activation 不足转 distributed；15/1300 决策瞬时 takeover-ready，secondary plan active 为 0 | 持续 coverage cell、逐决策 stable/not-registered evidence、plan lease/activation delay、active-plan 专项和 D6 长期趋势 | 构造 `registration_usable -> takeover_ready -> pending_secondary_plan -> secondary_plan_active` 可复现 case，且不得降低门限 |
 | D4/D3/D6 | CBBA vs 中心 Hungarian cost gap | **P1 基线已补齐**：D4 已有 `CBBACostGapBenchmark` helper | 同 episode 保存 D3 center cost matrix/current plan；D6 cost gap 长期聚合 | 同场景输出 completion/conflict/cost gap/rounds/messages |
 | D4 | 独立 auction baseline 是否后置 | 未单独实现；当前 CBBA 覆盖 winner/bid 思想 | bid/award/rollback 协议和测试预算 | 若进入 P1/P2，需与 CBBA 同输入对照；默认本轮不实现 |
 | D5/main/D6 | AirSim geometry、TerminalConsistencySummary 全量写盘 | **P1 基线已补齐**：D5 geometry log fields、handoff advisory、consistency 连续窗口和 main event/snapshot 字段已接入 | 真实多 seed 下 projected pixel、Mahalanobis、duplicate risk 的长期统计 | D6 能按 episode/seed 统计 terminal lock、ambiguous、hold、duplicate risk 和重捕获连续性 |
-| D5/D4/main | 多相机/二级视角 detect 到 global track 的跨视角配准 | **P1 metadata-only 基线已补齐，真实转换未闭合**：D5 有 `TerminalObservationBus`、`CrossViewAssociation`、`TerminalCrossViewFusion` 和覆盖漏斗诊断；最新 stress 中二级 detect 可见但未转成有效 cross-view 支持 | 多相机外参/时间同步、二级 cue 重投影、D2/D3 binding、稳定 bbox/MOT、全局航迹投影门限和离线 truth label 校准 | 降级 case 不再停留在 visible-only，`secondary_detect_available_but_not_registered` 显著下降，cross-view association 可被 D4/D6 消费 |
+| D5/D4/main | 多相机/二级视角 detect 到 global track 的跨视角配准 | **AirSim builtin detect 几何注册基线已闭合**：60-case 中 projection valid=1.0、cross-view association 均值约 4.42、`secondary_detect_available_but_not_registered=0`；匿名 local ID 的真实 smoke 也已通过 | 真实 YOLO/MOT、外参漂移、时间同步、逐决策 stable/not-registered 到 D4、复杂遮挡/交叉 | 保持 online truth 隔离，YOLO/MOT 多 seed 下校准 ID continuity、投影门限和失败回退 |
 | D5/D7 | 视觉 PNG 前置证据合同固化 | **P1 基线已补齐**：D5 handoff advisory、D7 D3/D4/D5 gate、center/secondary controlled intercept owner/version 回归均通过 | 真实 bbox 稳定窗口、measurement age、duplicate risk、friend conflict 多 seed 校准 | D7 仅在 D5 locked、assigned ID 一致、D3/D4 gate 通过时视觉 PNG |
 | D5/main | YOLOv8 + MOT detector adapter | **P1 基线已补齐**：D5 可加载 `best.pt` 运行 YOLOv8，优先 ByteTrack/BoT-SORT，缺依赖时 deterministic IoU fallback；main runtime 可用 `--detection-backend yolo` 将内存图像送入 D5 adapter | 真实 AirSim 多 seed 目标尺寸、置信度、tracker backend 和 FOV 阈值标定 | adapter 只输出 `LocalVisualTrack`，tracker ID 不替代 `global_track_id` |
-| D6/main | D4/D5/D7 产物统一回灌 | **P1 基线已补齐**：执行拦截时，main 将 `control_commands.csv` 和 `intercept_summary.json` 中的成功数、碰撞拦截数、guidance law、terminal reject 等回灌到正式 main bus metrics；raw contract metrics 单独保留。P1 sweep 已自动调用 D6 `AirSimCalibrationReportGenerator` 扫描 sequence/episode artifacts 并输出标准 CSV/JSON/Markdown bundle | episode clock、records merge order、review label 和真实多 seed 报告数据 | `EpisodeMetrics` 能从一个 episode 目录汇总 Blocks/D4/D5/D7 指标，且执行前 contract 指标与执行后 intercept 指标不混淆；P1 sweep 目录包含 D6 标准报告 |
+| D6/main | D4/D5/D7 产物统一回灌 | **真实多 seed 与拦截字段聚合已闭合**：5v5 calibration 和 2v2 execution/contract 均可扫描；cross-seed 已输出 success/collision/range/abort/min-range/time/visual-switch/terminal rates/gate rejects；read-only episode 为 unavailable，不误报 0/20 | 长期场景库、CI 趋势、更多算法组配对 | 一个 D6 bundle 同时给出 coverage/registration/degradation 和 intercept/guidance 多 seed 指标，contract 不污染 execution |
 | D6 | 主动降级必要性/精度 | **P1 基线已补齐**：`metric_scope`、`active_degradation_precision`、`unnecessary_active_degradation_count` 和 review label/后验最小口径已实现 | 真实 episode 持续写出 review/window 字段 | 输出 active_degradation_precision 和 unnecessary_active_degradation_count |
-| D7/main/D6 | N-pair runtime bus 与多 seed PN/Pure Pursuit/PNG 对照 | **P1 基线已补齐**：D7 `runtime_bus.py`、`comparison.py`、`replay.py` 已实现，main 已注入每 pair D3/D4/D5 状态并写 D7 runtime summary | 真实多 seed grouped guidance report | 多 seed 报告输出 min range、mode switch、terminal reject、visual PNG switch |
+| D7/main/D6 | N-pair runtime bus 与多 seed PN/Pure Pursuit/PNG 对照 | **真实 radar-PN + PNG-VM 10-seed 基线已完成**：18/20 成功，平均 min range 2.113 m，主要 gate 原因已统计 | AirSim PN/Pure Pursuit/PNG-TTC/PNG-VM 同 seed 选择器与配对报告；视觉切换率仍低 | 多 seed 报告输出每种 law 的 min range、成功率、mode switch、terminal reject 和 visual PNG switch |
 | D7/D5/main | YOLO/MOT 到 D7 bbox/LOS gate | **P1 接线已补齐**：D5 运行 adapter 输出 `LocalVisualTrack`，main runtime 将 YOLO/MOT track 转为现有 detection contract，D7 bbox/LOS replay 可消费 YOLO/ByteTrack 或 AirSim bbox schema | 真实图像/检测框回放、失败回退策略、多 seed 样本 | replay 可生成 D7 gate 摘要；默认控制仍需 D3/D4/D5 gate 全部通过 |
 
 ## 本轮 Subagent 补充规则
