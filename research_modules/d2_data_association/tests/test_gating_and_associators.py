@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from d2_data_association import (
     Detection,
@@ -74,6 +75,115 @@ def test_mahalanobis_gate_accepts_near_and_rejects_far() -> None:
     gated = build_gated_cost_matrix([track], [near, far], gate_threshold=9.21)
     assert gated.candidate_counts_by_track["T1"] == 1
     assert gated.rejected_pairs[0].reason == "mahalanobis_gate"
+
+
+def test_covariance_governance_rejects_nonfinite_asymmetric_and_non_psd() -> None:
+    with pytest.raises(ValueError, match="finite"):
+        Detection(
+            detection_id="D-nan",
+            timestamp=0.0,
+            position=np.zeros(2),
+            covariance=np.array([[1.0, 0.0], [0.0, np.nan]]),
+        )
+
+    with pytest.raises(ValueError, match="symmetric"):
+        Detection(
+            detection_id="D-asymmetric",
+            timestamp=0.0,
+            position=np.zeros(2),
+            covariance=np.array([[1.0, 0.1], [0.0, 1.0]]),
+        )
+
+    with pytest.raises(ValueError, match="positive semidefinite"):
+        GlobalTrack(
+            global_track_id="T-non-psd",
+            state=np.zeros(4),
+            covariance=np.diag([1.0, 1.0, 1.0, -0.1]),
+            timestamp=0.0,
+        )
+
+
+def test_covariance_governance_regularizes_only_numerical_tolerance_defects() -> None:
+    asymmetric = Detection(
+        detection_id="D-tiny-asymmetry",
+        timestamp=0.0,
+        position=np.zeros(2),
+        covariance=np.array([[1.0, 1.0e-12], [0.0, 1.0]]),
+    )
+    near_psd = Detection(
+        detection_id="D-tiny-negative-eigenvalue",
+        timestamp=0.0,
+        position=np.zeros(2),
+        covariance=np.diag([1.0, -1.0e-12]),
+    )
+
+    assert asymmetric.covariance_regularized is True
+    assert asymmetric.covariance_consistency["symmetrized"] is True
+    assert np.allclose(asymmetric.covariance, asymmetric.covariance.T)
+    assert near_psd.covariance_regularized is True
+    assert near_psd.covariance_consistency["eigenvalue_floored"] is True
+    assert np.linalg.eigvalsh(near_psd.covariance)[0] > 0.0
+
+
+def test_covariance_diagnostics_track_latest_check_and_regularization_history() -> None:
+    detection = Detection(
+        detection_id="D-history",
+        timestamp=0.0,
+        position=np.zeros(2),
+        covariance=np.array([[1.0, 1.0e-12], [0.0, 2.0]]),
+    )
+    initial_diagnostics = dict(detection.covariance_consistency)
+
+    detection.ensure_covariance_consistency()
+
+    assert initial_diagnostics["status"] == "regularized"
+    assert detection.covariance_regularized is True
+    assert detection.covariance_consistency["status"] == "consistent"
+    assert detection.covariance_consistency["regularization_ever_applied"] is True
+    assert detection.covariance_consistency["last_regularization"]["symmetrized"] is True
+
+    track = make_track("T-latest", 0.0, 0.0)
+    track.covariance = np.diag([3.0, 4.0, 5.0, 6.0])
+    track.ensure_covariance_consistency()
+
+    assert track.covariance_consistency["status"] == "consistent"
+    assert track.covariance_consistency["min_eigenvalue_before"] == pytest.approx(3.0)
+    assert track.covariance_consistency["regularization_ever_applied"] is False
+
+
+def test_association_metadata_preserves_covariance_regularization_evidence() -> None:
+    track = make_track("T-regularized-input", 0.0, 0.0)
+    detection = Detection(
+        detection_id="D-regularized-input",
+        timestamp=0.0,
+        position=np.array([0.1, 0.0]),
+        covariance=np.diag([0.5, -1.0e-12]),
+    )
+
+    result = GNNHungarianAssociator().associate([track], [detection], timestamp=0.0)
+
+    assert result.metadata["covariance_regularized"] is True
+    diagnostics = result.metadata["covariance_consistency"]["detections"][
+        "D-regularized-input"
+    ]
+    assert diagnostics["status"] == "consistent"
+    assert diagnostics["regularization_ever_applied"] is True
+    assert diagnostics["last_regularization"]["eigenvalue_floored"] is True
+
+
+def test_normal_covariance_preserves_gnn_result_and_reports_consistency() -> None:
+    track = make_track("T-normal", 0.0, 0.0)
+    detection = make_detection("D-normal", 0.1, 0.0)
+
+    result = GNNHungarianAssociator().associate([track], [detection], timestamp=0.0)
+
+    assert [(pair.track_id, pair.detection_id) for pair in result.matched_pairs] == [
+        ("T-normal", "D-normal")
+    ]
+    assert result.metadata["covariance_regularized"] is False
+    consistency = result.metadata["covariance_consistency"]
+    assert consistency["tracks"]["T-normal"]["status"] == "consistent"
+    assert consistency["detections"]["D-normal"]["status"] == "consistent"
 
 
 def test_gnn_hungarian_matches_nearest_without_duplicates() -> None:

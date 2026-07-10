@@ -3,6 +3,10 @@
 from .airsim_calibration import (
     AirSimCalibrationRecord,
     AirSimCalibrationReportGenerator,
+    DEFAULT_BOOTSTRAP_RESAMPLES,
+    DEFAULT_BOOTSTRAP_RNG_SEED,
+    aggregate_cross_seed_airsim_calibration_records,
+    compare_paired_airsim_calibration_records,
     load_airsim_calibration_records,
     summarize_airsim_calibration_records,
 )
@@ -33,7 +37,11 @@ from .standard_mapping import (
 __all__ = [
     "AirSimCalibrationRecord",
     "AirSimCalibrationReportGenerator",
+    "aggregate_cross_seed_airsim_calibration_records",
     "AssignmentRecord",
+    "compare_paired_airsim_calibration_records",
+    "DEFAULT_BOOTSTRAP_RESAMPLES",
+    "DEFAULT_BOOTSTRAP_RNG_SEED",
     "dump_episode_log_jsonl",
     "EpisodeMetrics",
     "EventRecord",

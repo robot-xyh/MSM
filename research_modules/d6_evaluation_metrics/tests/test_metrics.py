@@ -242,6 +242,7 @@ def test_active_degradation_review_labels_and_posterior_rules() -> None:
 
     assert metrics.active_degradation_count == 4
     assert metrics.active_degradation_precision == pytest.approx(2.0 / 3.0)
+    assert metrics.active_degradation_label_count == 3
     assert metrics.unnecessary_active_degradation_count == 1
     assert metrics.metadata["active_degradation_reviewed_count"] == 3
     assert metrics.metadata["active_degradation_necessary_count"] == 2
@@ -250,6 +251,26 @@ def test_active_degradation_review_labels_and_posterior_rules() -> None:
         "necessary": 1,
         "risk_reduced": 1,
     }
+
+
+def test_active_degradation_precision_is_unavailable_without_review_labels() -> None:
+    collector = MetricsCollector()
+    collector.extend_events(
+        [
+            EventRecord(
+                timestamp=1.0,
+                event_type="d4_active_degradation_decision",
+                metadata={"trigger_reason": "unreviewed_trigger"},
+            )
+        ]
+    )
+
+    metrics = collector.compute_episode("unreviewed_active_degradation")
+
+    assert metrics.active_degradation_count == 1
+    assert metrics.active_degradation_precision is None
+    assert metrics.active_degradation_label_count == 0
+    assert metrics.unnecessary_active_degradation_count == 0
 
 
 def test_blocks_2v2_degradation_reassignment_png_metrics() -> None:
@@ -844,6 +865,7 @@ def test_episode_metrics_contains_all_required_names() -> None:
         "degraded_completion_rate",
         "active_degradation_count",
         "active_degradation_precision",
+        "active_degradation_label_count",
         "unnecessary_active_degradation_count",
         "passive_failover_count",
         "secondary_node_takeover_count",

@@ -713,7 +713,7 @@ def _annotate_active_center_replan_frame(
     bindings: list[dict[str, Any]] = []
     permissions: list[dict[str, Any]] = []
     terminal_associations: list[dict[str, Any]] = []
-    for resource in resources:
+    for resource_index, resource in enumerate(resources):
         target_id = assignments[resource.resource_id]
         target = targets_by_id[target_id]
         vehicle_name = str(resource.metadata.get("airsim_vehicle_name") or resource.resource_id)
@@ -774,7 +774,7 @@ def _annotate_active_center_replan_frame(
                 "resource_id": resource.resource_id,
                 "assigned_global_track_id": target_id,
                 "target_id": target_id,
-                "local_track_id": f"{vehicle_name}:0:{actor_name}",
+                "local_track_id": f"{vehicle_name}:0:det:{resource_index + 1:04d}",
                 "association_confidence": 0.93 if terminal_locked else 0.45,
                 "ambiguity_score": 0.04 if terminal_locked else 0.70,
                 "friend_conflict_state": "none",
@@ -881,7 +881,7 @@ def _annotate_active_secondary_visual_png_frame(
     bindings: list[dict[str, Any]] = []
     permissions: list[dict[str, Any]] = []
     terminal_associations: list[dict[str, Any]] = []
-    for resource in resources[:2]:
+    for resource_index, resource in enumerate(resources[:2]):
         target_id = assignments[resource.resource_id]
         target = targets_by_id[target_id]
         vehicle_name = str(resource.metadata.get("airsim_vehicle_name") or resource.resource_id)
@@ -947,7 +947,7 @@ def _annotate_active_secondary_visual_png_frame(
                 "resource_id": resource.resource_id,
                 "assigned_global_track_id": target_id,
                 "target_id": target_id,
-                "local_track_id": f"{vehicle_name}:0:{actor_name}",
+                "local_track_id": f"{vehicle_name}:0:det:{resource_index + 1:04d}",
                 "association_confidence": 0.92 if terminal_locked else 0.45,
                 "ambiguity_score": 0.05 if terminal_locked else 0.70,
                 "friend_conflict_state": "none",

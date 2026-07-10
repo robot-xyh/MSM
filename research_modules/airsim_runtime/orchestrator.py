@@ -136,6 +136,13 @@ class AirSimBlocksSmokeOrchestrator:
                     case_name=str(config.metadata.get("d4d5_stress_case", "no_degradation")),
                     resource_vehicle_names=config.resource_vehicle_names,
                     secondary_camera_vehicle_names=config.secondary_camera_vehicle_names,
+                    comparison_role=str(config.metadata.get("comparison_role", "not_recorded")),
+                    active_degradation_review_label=str(
+                        config.metadata.get(
+                            "active_degradation_review_label",
+                            "inconclusive",
+                        )
+                    ),
                 )
                 if config.metadata.get("d4d5_stress_enabled")
                 else None

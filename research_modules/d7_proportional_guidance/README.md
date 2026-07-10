@@ -67,6 +67,22 @@ research_modules/d7_proportional_guidance/
 - D4 主动降级已区分硬风险与软风险。`d3_assignment_cost_margin_low`、无冲突 D5 `ambiguous/reacquire`、短时低置信度等软证据若被 D4 判为 `continue_center`/观察状态，D7 不把它们当作重规划阻断；只要 D3 current、D4 action 允许、D5 对同一 `assigned_global_track_id` 输出 `locked`，且二级 plan 的 D4 readiness/capability 已为 `takeover_ready`，D7 才继续按既有视觉 PNG gate 判定是否切换。
 - runtime 默认 `intercept_guidance_law="png_vm"`；`png_ttc` 在 D7 API 和 delivery 复现实验中可用，但不是当前默认 AirSim controlled intercept 路径。
 
+### 2026-07-10 真实 AirSim 2v2 单 seed 证据
+
+只读复核 `outputs/p1_gap_closure_2v2_smoke_20260710/episode_006_full_flow/` 后，可以确认当前链路已在一次 seed=1 的 Blocks/SimpleFlight episode 中完成 2/2 assigned-target 碰撞拦截。两个 pair 的 `status` 均为 `collision_intercept`，碰撞对象分别匹配 `MSM_TargetActor_1` 和 `MSM_TargetActor_2`；拦截时间为 3.4s、3.5s，记录的最小距离为 2.003m、1.758m。该结果验证的是当前 actor mesh 碰撞判据下的单次闭环成功，不是统计意义上的命中率或视觉 PNG 稳定性结论。
+
+本次 `control_commands.csv` 共 71 行。`guidance_law` 记录为 `radar_pn=49`、`png_vm=21`、`los=1`；状态模式为 `radar_midcourse=30`、`reacquire=30`、`abort_revoke=7`、`vision_terminal=4`。只有 INT-01 出现 4 帧 `vision_terminal`，INT-02 全程没有进入该模式，因此 2/2 成功主要证明雷达 PN、保守回退、二级重分配和碰撞判据能够闭合，不能归因为两架资源都稳定完成了视觉 PNG 接管。
+
+视觉切换通过率仍低：原始 CSV 只有 2/71 行 `terminal_switch_allowed=True`，D6 execution metrics 给出的通过率为 0.0282；camera、LOS、maneuver gate 通过率分别为 0.2254、0.2394、0.0563。合同拒绝主要是 `d5_not_locked=30` 和 `d4_reassign_pending=18`，视觉 gate 拒绝主要是 `maneuver_margin_low=13`、`bbox_near_image_edge=7`、`los_rate_window_too_short=2`。`d7_execution_metrics.json` 的合并拒绝计数把合同拒绝也纳入 terminal switch reject，并记录 `bbox_near_image_edge=9`；同时其 `visual_png_switch_count=3` 与原始 CSV 的 2 个 allowed 样本不是同一统计口径。后续多 seed 报告必须同时保留 raw row gate pass、mode transition 和 aggregate switch count，不能把三者混为一个指标。
+
+### 2026-07-10 真实 AirSim 2v2 10-seed 结果
+
+main 随后完成 `p1_gap_closure_2v2_multiseed_20260710` 的 seeds 1-10。20 个 pair 中 18 个为 assigned-target `collision_intercept`，成功率为 90%；另外 2 个均为 INT-02 的 `terminal_detection_timeout`，分别发生在 seed 3 和 seed 10。D7 pair 级平均 `min_range_m=2.113m`，18 个成功 pair 的平均拦截时间为 3.589s；D6 execution episode 聚合的平均最小距离为 1.812m。两种最小距离来自不同聚合层级，必须分别标注，不能直接互换。该批次证明默认 SimpleFlight 混合闭环在多数 seed 可完成任务，同时把末端检测连续性暴露为真实失败模式。
+
+884 行控制记录的 `guidance_law` 聚合为 `radar_pn=530`、`png_vm=289`、`los=65`；`visual_png_switch_count=88`，各 seed `terminal_switch_allowed_rate` 的算术均值为 0.0822。该通过率跨 seed 波动显著：seed 3 为 0.3642，seed 4 和 seed 10 为 0。D7 execution metrics 合并口径下，主要拒绝原因为 `d5_not_locked=309`、`maneuver_margin_low=194`、`bbox_near_image_edge=182`、`d4_reassign_pending=165`；这些是逐帧/合并计数，不能直接解释为独立失败 episode 数。
+
+这一批次完成了当前唯一的真实 AirSim 导引基线，即 radar PN + `png_vm`、必要时 LOS fallback 的首轮多 seed 验证；Pure Pursuit 和 `png_ttc` 目前只有 D7 对照/replay 接口，尚无真实 AirSim 同 seed 执行证据。下一阶段需要先复现两次 `terminal_detection_timeout`，按 pair/seed 分离 D5 检测连续性、bbox 边缘裁切、机动裕度和 D4 重分配窗口的影响，再通过 law selector 对 PN、Pure Pursuit、`png_vm`、`png_ttc` 做受控同场景对照，并用版本化 advisory 校准 gate；不得通过放宽 D3/D4/D5 合同或修改 `png_guidance_delivery` 核心算法来提高表面切换率。
+
 当前切换策略不是单一距离阈值：
 
 - D7 离线仿真的 `GuidanceConfig.terminal_switch_range_m` 默认是 `250.0m`，只用于二维质点研究。

@@ -184,6 +184,13 @@ def resources_to_d4(
             node_role=NodeRole.SECONDARY_RECON,
             coordinator_only=True,
             coverage_cell="cell-north",
+            cue_freshness_s=0.0 if secondary_available else None,
+            gimbal_pointing_ok=secondary_available,
+            secondary_coverage_ratio=0.9 if secondary_available else 0.0,
+            cross_view_support_count=5 if secondary_available else 0,
+            secondary_network_full_view_rate=0.9 if secondary_available else 0.0,
+            stable_cross_view_registration_count=5 if secondary_available else 0,
+            not_registered_count=0 if secondary_available else None,
         ),
         ResourceSummary(
             node_id="SEC-SOUTH",
@@ -196,6 +203,13 @@ def resources_to_d4(
             node_role=NodeRole.SECONDARY_RECON,
             coordinator_only=True,
             coverage_cell="cell-south",
+            cue_freshness_s=0.0 if secondary_available else None,
+            gimbal_pointing_ok=secondary_available,
+            secondary_coverage_ratio=0.9 if secondary_available else 0.0,
+            cross_view_support_count=5 if secondary_available else 0,
+            secondary_network_full_view_rate=0.9 if secondary_available else 0.0,
+            stable_cross_view_registration_count=5 if secondary_available else 0,
+            not_registered_count=0 if secondary_available else None,
         ),
     ]
     for resource in resources:

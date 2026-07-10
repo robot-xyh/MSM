@@ -154,6 +154,7 @@ class Tracker:
         )
         track.state = transition @ track.state
         track.covariance = transition @ track.covariance @ transition.T + process
+        track.ensure_covariance_consistency()
         track.timestamp = float(timestamp)
         track.age += 1
         track.append_history("predict")
@@ -172,6 +173,7 @@ class Tracker:
             joseph @ track.covariance @ joseph.T
             + gain @ detection.covariance @ gain.T
         )
+        track.ensure_covariance_consistency()
         track.timestamp = float(detection.timestamp)
         track.last_update_time = float(detection.timestamp)
         track.last_detection_id = detection.detection_id

@@ -112,6 +112,7 @@ class _ReacquireCandidate:
     bbox_area_ratio: float | None
     bbox_consistent: bool
     stability_count: int
+    friend_conflict_state: str = "none"
     reason: str = "reacquire_search_candidate"
 
 
@@ -346,6 +347,7 @@ class TerminalAssociator:
                 assignment=assignment,
                 projection=projection,
                 local_tracks=local_list,
+                identity_claims=claims,
                 history=history,
                 timestamp=projection_time,
             )
@@ -355,16 +357,27 @@ class TerminalAssociator:
                 margin = _reacquire_margin(reacquire_result.candidates)
                 ambiguity = 0.0 if not isfinite(margin) else 1.0 / (1.0 + max(0.0, margin))
                 confidence = self._reacquire_confidence(selected)
-                metadata = decision_metadata | self._reacquire_metadata(reacquire_result)
+                friend_state = selected.friend_conflict_state
+                decision = reacquire_result.decision
+                reason = reacquire_result.reason
+                if friend_state != "none":
+                    decision = "hold"
+                    reason = f"active_reacquire_blocked_by_{friend_state}"
+                metadata = decision_metadata | self._reacquire_metadata(
+                    reacquire_result,
+                    decision=decision,
+                    reason=reason,
+                    friend_conflict_state=friend_state,
+                )
                 self._assert_global_ids_unchanged(input_global_ids, global_list)
                 association = self._association(
                     assignment,
                     local_track_id=selected_local.local_track_id,
-                    confidence=confidence if reacquire_result.decision == "locked" else min(confidence, 0.5),
-                    ambiguity=ambiguity if reacquire_result.decision == "locked" else max(ambiguity, 0.5),
-                    friend_state="none",
-                    decision=reacquire_result.decision,
-                    reason=reacquire_result.reason,
+                    confidence=confidence if decision == "locked" else min(confidence, 0.5),
+                    ambiguity=ambiguity if decision == "locked" else max(ambiguity, 0.5),
+                    friend_state=friend_state,
+                    decision=decision,
+                    reason=reason,
                     candidate_costs=[
                         (candidate.local_track.local_track_id, candidate.score)
                         for candidate in reacquire_result.candidates
@@ -376,7 +389,7 @@ class TerminalAssociator:
                     association,
                     local_by_id,
                     projection_time,
-                    lockable=True,
+                    lockable=decision != "hold",
                 )
 
             self._assert_global_ids_unchanged(input_global_ids, global_list)
@@ -444,6 +457,7 @@ class TerminalAssociator:
 
         nonverified_identity_overlap = best_breakdown.friend_conflict_state in {
             "spoof_suspected_overlap",
+            "stale_friend_overlap",
             "unverified_friend_overlap",
         }
         if nonverified_identity_overlap:
@@ -644,7 +658,11 @@ class TerminalAssociator:
     def _friend_cost(self, friend_state: str) -> float:
         if friend_state == "verified_friend_overlap":
             return self.config.friend_conflict_penalty
-        if friend_state in {"spoof_suspected_overlap", "unverified_friend_overlap"}:
+        if friend_state in {
+            "spoof_suspected_overlap",
+            "stale_friend_overlap",
+            "unverified_friend_overlap",
+        }:
             return self.config.unverified_identity_penalty
         return 0.0
 
@@ -1064,6 +1082,7 @@ class TerminalAssociator:
         assignment: Assignment,
         projection: ProjectionResult,
         local_tracks: list[LocalVisualTrack],
+        identity_claims: list[IdentityClaim],
         history: _AssociationHistory,
         timestamp: float | None,
     ) -> _ReacquireSearchResult:
@@ -1121,6 +1140,12 @@ class TerminalAssociator:
                     bbox_area_ratio=bbox_area_ratio,
                     bbox_consistent=bbox_consistent,
                     stability_count=stability_count,
+                    friend_conflict_state=self.identity_checker.friend_conflict_state(
+                        local_track,
+                        identity_claims,
+                        center_threshold_px=self.config.friend_center_threshold_px,
+                        iou_threshold=self.config.friend_iou_threshold,
+                    ),
                 )
             )
 
@@ -1216,7 +1241,14 @@ class TerminalAssociator:
         confidence = geometry_score * candidate.local_track.quality * history_score * bbox_score
         return float(np.clip(confidence, 0.0, 1.0))
 
-    def _reacquire_metadata(self, result: _ReacquireSearchResult) -> dict[str, Any]:
+    def _reacquire_metadata(
+        self,
+        result: _ReacquireSearchResult,
+        *,
+        decision: str | None = None,
+        reason: str | None = None,
+        friend_conflict_state: str = "none",
+    ) -> dict[str, Any]:
         return {
             "active_reacquire": True,
             "reacquire_search_window": {
@@ -1227,8 +1259,9 @@ class TerminalAssociator:
                 "selected_local_track_id": (
                     result.selected.local_track.local_track_id if result.selected is not None else None
                 ),
-                "decision": result.decision,
-                "reason": result.reason,
+                "decision": decision or result.decision,
+                "reason": reason or result.reason,
+                "friend_conflict_state": friend_conflict_state,
             },
             "reacquire_candidates": [
                 {
@@ -1242,6 +1275,7 @@ class TerminalAssociator:
                     "stability_count": candidate.stability_count,
                     "mot_history_length": candidate.local_track.mot_history_length,
                     "quality": candidate.local_track.quality,
+                    "friend_conflict_state": candidate.friend_conflict_state,
                 }
                 for candidate in result.candidates
             ],

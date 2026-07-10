@@ -46,6 +46,7 @@ class ReportGenerator:
             "degraded_completion_rate",
             "active_degradation_count",
             "active_degradation_precision",
+            "active_degradation_label_count",
             "unnecessary_active_degradation_count",
             "passive_failover_count",
             "secondary_node_takeover_count",
@@ -121,7 +122,7 @@ class ReportGenerator:
         rows: list[dict[str, Any]] = []
         for metric_name in EpisodeMetrics.metric_names():
             values = np.array(
-                [float(getattr(episode, metric_name)) for episode in episode_list],
+                _available_metric_values(episode_list, metric_name),
                 dtype=float,
             )
             if values.size == 0:
@@ -365,9 +366,16 @@ class ReportGenerator:
         )
         for row in summary_rows:
             lines.append(
-                "| {metric} | {mean:.6g} | {std:.6g} | {ci95_low:.6g} | "
-                "{ci95_high:.6g} | {median:.6g} | {p05:.6g} | {p95:.6g} |".format(
-                    **row
+                "| {metric} | {mean} | {std} | {ci95_low} | "
+                "{ci95_high} | {median} | {p05} | {p95} |".format(
+                    metric=row["metric"],
+                    mean=_format_optional_metric(row.get("mean")),
+                    std=_format_optional_metric(row.get("std")),
+                    ci95_low=_format_optional_metric(row.get("ci95_low")),
+                    ci95_high=_format_optional_metric(row.get("ci95_high")),
+                    median=_format_optional_metric(row.get("median")),
+                    p05=_format_optional_metric(row.get("p05")),
+                    p95=_format_optional_metric(row.get("p95")),
                 )
             )
 
@@ -377,13 +385,13 @@ class ReportGenerator:
                     "",
                     "## 2. 口径/种子/场景分组",
                     "",
-                    "| Metrics scope | Seed | 场景 | Drone count | Resource count | Target count | Camera count | Episode 数量 | Batch seed | active_degradation_count | active_degradation_precision | unnecessary_active_degradation_count | passive_failover_count | mode_switch_count | terminal_contract_reject_count |",
-                    "|---|---|---|---|---|---|---|---:|---|---:|---:|---:|---:|---:|---:|",
+                    "| Metrics scope | Seed | 场景 | Drone count | Resource count | Target count | Camera count | Episode 数量 | Batch seed | active_degradation_count | active_degradation_precision | active_degradation_label_count | unnecessary_active_degradation_count | passive_failover_count | mode_switch_count | terminal_contract_reject_count |",
+                    "|---|---|---|---|---|---|---|---:|---|---:|---|---:|---:|---:|---:|---:|",
                 ]
             )
             for metric_scope, seed, scenario_group, scoped_episodes in scenario_rows:
                 lines.append(
-                    "| {metric_scope} | {seed} | {scenario_group} | {drone_count} | {resource_count} | {target_count} | {camera_count} | {count} | {batch_seed} | {active:.6g} | {active_precision:.6g} | {unnecessary:.6g} | {passive:.6g} | {mode_switch:.6g} | {contract_reject:.6g} |".format(
+                    "| {metric_scope} | {seed} | {scenario_group} | {drone_count} | {resource_count} | {target_count} | {camera_count} | {count} | {batch_seed} | {active:.6g} | {active_precision} | {label_count:.6g} | {unnecessary:.6g} | {passive:.6g} | {mode_switch:.6g} | {contract_reject:.6g} |".format(
                         metric_scope=metric_scope,
                         seed=seed,
                         scenario_group=scenario_group,
@@ -394,10 +402,17 @@ class ReportGenerator:
                         count=len(scoped_episodes),
                         batch_seed=_batch_seed_range_text(scoped_episodes),
                         active=_mean_metric(scoped_episodes, "active_degradation_count"),
-                        active_precision=_mean_metric(
-                            scoped_episodes,
-                            "active_degradation_precision",
+                        active_precision=_format_optional_metric(
+                            _mean_metric(
+                                scoped_episodes,
+                                "active_degradation_precision",
+                            )
                         ),
+                        label_count=_mean_metric(
+                            scoped_episodes,
+                            "active_degradation_label_count",
+                        )
+                        or 0.0,
                         unnecessary=_mean_metric(
                             scoped_episodes,
                             "unnecessary_active_degradation_count",
@@ -534,9 +549,13 @@ class ReportGenerator:
         errors = []
         for metric_name in metric_names:
             values = np.array(
-                [float(getattr(episode, metric_name)) for episode in episodes],
+                _available_metric_values(episodes, metric_name),
                 dtype=float,
             )
+            if values.size == 0:
+                means.append(float("nan"))
+                errors.append(0.0)
+                continue
             means.append(float(np.mean(values)))
             if values.size > 1:
                 errors.append(float(1.96 * np.std(values, ddof=1) / np.sqrt(values.size)))
@@ -567,9 +586,14 @@ class ReportGenerator:
 
         for ax, metric_name in zip(axes, metric_names):
             values = np.array(
-                [float(getattr(episode, metric_name)) for episode in episodes],
+                _available_metric_values(episodes, metric_name),
                 dtype=float,
             )
+            if values.size == 0:
+                ax.text(0.5, 0.5, "unavailable", ha="center", va="center")
+                ax.set_title(metric_name)
+                ax.set_axis_off()
+                continue
             ax.hist(values, bins=min(16, max(4, int(np.sqrt(values.size)))), color="#59A14F", alpha=0.85)
             ax.set_title(metric_name)
             ax.grid(axis="y", alpha=0.25)
@@ -583,14 +607,14 @@ def _empty_summary_row(metric_name: str) -> dict[str, Any]:
     return {
         "metric": metric_name,
         "count": 0,
-        "mean": 0.0,
-        "std": 0.0,
-        "stderr": 0.0,
-        "ci95_low": 0.0,
-        "ci95_high": 0.0,
-        "median": 0.0,
-        "p05": 0.0,
-        "p95": 0.0,
+        "mean": None,
+        "std": None,
+        "stderr": None,
+        "ci95_low": None,
+        "ci95_high": None,
+        "median": None,
+        "p05": None,
+        "p95": None,
     }
 
 
@@ -892,10 +916,32 @@ def _batch_seed_range_text(episodes: list[EpisodeMetrics]) -> str:
     return f"{seeds[0]}..{seeds[-1]}"
 
 
-def _mean_metric(episodes: list[EpisodeMetrics], metric_name: str) -> float:
-    if not episodes:
-        return 0.0
-    return float(np.mean([float(getattr(episode, metric_name)) for episode in episodes]))
+def _available_metric_values(
+    episodes: list[EpisodeMetrics],
+    metric_name: str,
+) -> list[float]:
+    return [
+        float(value)
+        for episode in episodes
+        for value in [getattr(episode, metric_name)]
+        if value is not None
+    ]
+
+
+def _mean_metric(
+    episodes: list[EpisodeMetrics],
+    metric_name: str,
+) -> float | None:
+    values = _available_metric_values(episodes, metric_name)
+    if not values:
+        return None
+    return float(np.mean(values))
+
+
+def _format_optional_metric(value: Any) -> str:
+    if value is None:
+        return "unavailable"
+    return f"{float(value):.6g}"
 
 
 def _secondary_sensing_comparison_rows(

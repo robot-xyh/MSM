@@ -36,6 +36,8 @@ class AssociationRiskSummary:
     association_ambiguity: float = 0.0
     covariance_overlap_rate: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
+    truth_metrics_available: bool = True
+    continuity_available: bool = True
 
     def __post_init__(self) -> None:
         self.timestamp = float(self.timestamp)
@@ -43,6 +45,8 @@ class AssociationRiskSummary:
         self.duplicate_track_risk = float(self.duplicate_track_risk)
         self.association_ambiguity = float(self.association_ambiguity)
         self.covariance_overlap_rate = float(self.covariance_overlap_rate)
+        self.truth_metrics_available = bool(self.truth_metrics_available)
+        self.continuity_available = bool(self.continuity_available)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -53,6 +57,8 @@ class AssociationRiskSummary:
             "duplicate_track_risk": self.duplicate_track_risk,
             "association_ambiguity": self.association_ambiguity,
             "covariance_overlap_rate": self.covariance_overlap_rate,
+            "truth_metrics_available": self.truth_metrics_available,
+            "continuity_available": self.continuity_available,
             "metadata": _json_ready(self.metadata),
         }
 
@@ -71,6 +77,91 @@ def _as_matrix(value: Any, shape: tuple[int, int], name: str) -> np.ndarray:
     return array
 
 
+def govern_covariance(
+    value: Any,
+    shape: tuple[int, int],
+    name: str = "covariance",
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Validate a covariance and regularize only numerical-scale defects."""
+
+    array = _as_matrix(value, shape, name)
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f"{name} must contain only finite values")
+
+    matrix_scale = max(1.0, float(np.max(np.abs(array))))
+    symmetry_error = float(np.max(np.abs(array - array.T)))
+    symmetry_tolerance = 1.0e-10 * matrix_scale
+    if symmetry_error > symmetry_tolerance:
+        raise ValueError(
+            f"{name} must be symmetric within tolerance; "
+            f"error={symmetry_error:.3e}, tolerance={symmetry_tolerance:.3e}"
+        )
+
+    symmetrized = symmetry_error > 0.0
+    symmetric = 0.5 * (array + array.T) if symmetrized else array.copy()
+    eigenvalues, eigenvectors = np.linalg.eigh(symmetric)
+    eigenvalue_scale = max(1.0, float(np.max(np.abs(eigenvalues))))
+    psd_tolerance = 1.0e-10 * eigenvalue_scale
+    min_eigenvalue_before = float(eigenvalues[0])
+    if min_eigenvalue_before < -psd_tolerance:
+        raise ValueError(
+            f"{name} must be positive semidefinite within tolerance; "
+            f"min_eigenvalue={min_eigenvalue_before:.3e}, "
+            f"tolerance={psd_tolerance:.3e}"
+        )
+
+    eigenvalue_floor = (
+        np.finfo(float).eps * eigenvalue_scale * max(shape) * 10.0
+    )
+    eigenvalue_floored = bool(np.any(eigenvalues < eigenvalue_floor))
+    if eigenvalue_floored:
+        symmetric = (
+            eigenvectors
+            @ np.diag(np.maximum(eigenvalues, eigenvalue_floor))
+            @ eigenvectors.T
+        )
+        symmetric = 0.5 * (symmetric + symmetric.T)
+
+    regularized = symmetrized or eigenvalue_floored
+    diagnostics = {
+        "status": "regularized" if regularized else "consistent",
+        "covariance_regularized": regularized,
+        "symmetrized": symmetrized,
+        "eigenvalue_floored": eigenvalue_floored,
+        "symmetry_error": symmetry_error,
+        "symmetry_tolerance": symmetry_tolerance,
+        "min_eigenvalue_before": min_eigenvalue_before,
+        "min_eigenvalue_after": float(np.linalg.eigvalsh(symmetric)[0]),
+        "psd_tolerance": psd_tolerance,
+        "eigenvalue_floor": float(eigenvalue_floor),
+    }
+    return symmetric, diagnostics
+
+
+def _merge_covariance_diagnostics(
+    previous: dict[str, Any],
+    current: dict[str, Any],
+    *,
+    regularization_ever_applied: bool,
+) -> dict[str, Any]:
+    """Keep the latest check while retaining the last regularization evidence."""
+
+    merged = dict(current)
+    merged["regularization_ever_applied"] = bool(regularization_ever_applied)
+    last_regularization = previous.get("last_regularization")
+    if current["covariance_regularized"]:
+        last_regularization = dict(current)
+    elif last_regularization is None and previous.get("covariance_regularized"):
+        last_regularization = {
+            key: value
+            for key, value in previous.items()
+            if key not in {"last_regularization", "regularization_ever_applied"}
+        }
+    if isinstance(last_regularization, dict):
+        merged["last_regularization"] = dict(last_regularization)
+    return merged
+
+
 @dataclass(slots=True)
 class Detection:
     """Single 2D position detection used by the offline tracker."""
@@ -83,17 +174,35 @@ class Detection:
     confidence: float = 1.0
     metadata: dict[str, Any] = field(default_factory=dict)
     feature: np.ndarray | None = None
+    covariance_regularized: bool = False
+    covariance_consistency: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.position = _as_vector(self.position, 2, "position")
         if self.covariance is None:
             self.covariance = np.eye(2, dtype=float)
-        else:
-            self.covariance = _as_matrix(self.covariance, (2, 2), "covariance")
+        self.ensure_covariance_consistency()
         if self.feature is not None:
             self.feature = np.asarray(self.feature, dtype=float).reshape(-1)
         self.timestamp = float(self.timestamp)
         self.confidence = float(self.confidence)
+
+    def ensure_covariance_consistency(self) -> None:
+        covariance, diagnostics = govern_covariance(
+            self.covariance,
+            (2, 2),
+            "detection covariance",
+        )
+        self.covariance = covariance
+        regularization_ever_applied = bool(
+            self.covariance_regularized or diagnostics["covariance_regularized"]
+        )
+        self.covariance_consistency = _merge_covariance_diagnostics(
+            self.covariance_consistency,
+            diagnostics,
+            regularization_ever_applied=regularization_ever_applied,
+        )
+        self.covariance_regularized = regularization_ever_applied
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -101,6 +210,8 @@ class Detection:
             "timestamp": self.timestamp,
             "position": self.position.tolist(),
             "covariance": self.covariance.tolist(),
+            "covariance_regularized": self.covariance_regularized,
+            "covariance_consistency": _json_ready(self.covariance_consistency),
             "truth_id": self.truth_id,
             "confidence": self.confidence,
             "metadata": _json_ready(self.metadata),
@@ -150,10 +261,12 @@ class GlobalTrack:
     feature: np.ndarray | None = None
     history: list[dict[str, Any]] = field(default_factory=list)
     transition_log: list[TrackTransition] = field(default_factory=list)
+    covariance_regularized: bool = False
+    covariance_consistency: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.state = _as_vector(self.state, 4, "state")
-        self.covariance = _as_matrix(self.covariance, (4, 4), "covariance")
+        self.ensure_covariance_consistency()
         if self.feature is not None:
             self.feature = np.asarray(self.feature, dtype=float).reshape(-1)
         self.timestamp = float(self.timestamp)
@@ -161,6 +274,23 @@ class GlobalTrack:
         self.last_update_time = float(self.last_update_time)
         self.track_quality = float(np.clip(self.track_quality, 0.0, 1.0))
         self.association_risk = float(np.clip(self.association_risk, 0.0, 1.0))
+
+    def ensure_covariance_consistency(self) -> None:
+        covariance, diagnostics = govern_covariance(
+            self.covariance,
+            (4, 4),
+            "track covariance",
+        )
+        self.covariance = covariance
+        regularization_ever_applied = bool(
+            self.covariance_regularized or diagnostics["covariance_regularized"]
+        )
+        self.covariance_consistency = _merge_covariance_diagnostics(
+            self.covariance_consistency,
+            diagnostics,
+            regularization_ever_applied=regularization_ever_applied,
+        )
+        self.covariance_regularized = regularization_ever_applied
 
     @property
     def position(self) -> np.ndarray:
@@ -186,6 +316,8 @@ class GlobalTrack:
             "global_track_id": self.global_track_id,
             "state": self.state.tolist(),
             "covariance": self.covariance.tolist(),
+            "covariance_regularized": self.covariance_regularized,
+            "covariance_consistency": _json_ready(self.covariance_consistency),
             "timestamp": self.timestamp,
             "lifecycle_state": self.lifecycle_state.value,
             "hits": self.hits,
@@ -289,6 +421,7 @@ class AssociationLogEntry:
     source_node_id: str | None = None
     link_type: str | None = None
     risk_summary: AssociationRiskSummary | None = None
+    rejected_pairs: list[RejectedPair] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -299,6 +432,7 @@ class AssociationLogEntry:
             "unmatched_detection_ids": list(self.unmatched_detection_ids),
             "ambiguity_score": self.ambiguity_score,
             "runtime_seconds": self.runtime_seconds,
+            "rejected_pairs": [pair.to_dict() for pair in self.rejected_pairs],
             "metadata": _json_ready(self.metadata),
             "source_node_id": self.source_node_id,
             "link_type": self.link_type,

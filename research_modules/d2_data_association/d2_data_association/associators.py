@@ -11,7 +11,7 @@ from typing import Iterable
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from .gating import LARGE_COST, ambiguity_score_from_costs, build_gated_cost_matrix
+from .gating import GatedCost, LARGE_COST, ambiguity_score_from_costs, build_gated_cost_matrix
 from .models import AssociationResult, Detection, GlobalTrack, MatchedPair, RejectedPair
 
 
@@ -151,6 +151,7 @@ class GNNHungarianAssociator(DataAssociator):
                     matched_col_by_row,
                     self.large_cost,
                 ),
+                **_covariance_metadata(gated),
             },
         )
 
@@ -205,7 +206,11 @@ class JPDAAssociator(DataAssociator):
                 rejected_pairs=gated.rejected_pairs,
                 cost_matrix=gated.cost_matrix,
                 distance_matrix=gated.distance_matrix,
-                metadata={"joint_hypothesis_count": 1, "truncated": False},
+                metadata={
+                    "joint_hypothesis_count": 1,
+                    "truncated": False,
+                    **_covariance_metadata(gated),
+                },
             )
 
         candidates = _candidate_indices_by_track(
@@ -280,6 +285,7 @@ class JPDAAssociator(DataAssociator):
                 "marginal_probabilities": marginal,
                 "candidate_counts_by_track": gated.candidate_counts_by_track,
                 "candidate_counts_by_detection": gated.candidate_counts_by_detection,
+                **_covariance_metadata(gated),
             },
         )
 
@@ -496,8 +502,19 @@ class MHTAssociator(DataAssociator):
                 "best_branch_score": best.score,
                 "candidate_counts_by_track": gated.candidate_counts_by_track,
                 "candidate_counts_by_detection": gated.candidate_counts_by_detection,
+                **_covariance_metadata(gated),
             },
         )
+
+
+def _covariance_metadata(gated: GatedCost) -> dict[str, object]:
+    return {
+        "covariance_regularized": gated.covariance_regularized,
+        "covariance_consistency": {
+            "tracks": gated.covariance_consistency_by_track,
+            "detections": gated.covariance_consistency_by_detection,
+        },
+    }
 
 
 def _candidate_indices_by_track(

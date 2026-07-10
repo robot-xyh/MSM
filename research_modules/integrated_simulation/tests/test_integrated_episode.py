@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import integrated_simulation.runner as runner_module
 from integrated_simulation import make_standard_scenario, run_integrated_episode
 
 
@@ -67,3 +68,36 @@ def test_friend_overlap_forces_hold_for_review(tmp_path: Path) -> None:
     assert any(decision.action == "hold_for_review" for decision in result.decisions)
     assert result.metrics.friend_overlap_hold_count > 0
     assert result.metrics.human_override_count > 0
+
+
+def test_stale_assignment_retains_current_plan_without_version_reset(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    original_plan = runner_module.AssignmentPlanner.plan
+    previous_plan_arguments = []
+
+    def reject_second_plan(self, *args, **kwargs):
+        previous_plan = kwargs.get("previous_plan")
+        previous_plan_arguments.append(previous_plan)
+        if len(previous_plan_arguments) == 2:
+            raise runner_module.StalePlanError(
+                "injected stale plan",
+                reason="stale_previous_version",
+                previous_plan_id=previous_plan.plan_id,
+                previous_version=previous_plan.version,
+                latest_plan_id=previous_plan.plan_id,
+                latest_version=previous_plan.version,
+            )
+        return original_plan(self, *args, **kwargs)
+
+    monkeypatch.setattr(runner_module.AssignmentPlanner, "plan", reject_second_plan)
+    config = make_standard_scenario("nominal_5v5", seed=16, duration_s=3.0)
+
+    result = run_integrated_episode(config, output_dir=tmp_path)
+
+    assert len(previous_plan_arguments) >= 3
+    assert previous_plan_arguments[0] is None
+    assert all(plan is not None for plan in previous_plan_arguments[1:])
+    episode_log = result.output_paths["episode_log"].read_text(encoding="utf-8")
+    assert '"event_type": "d3_stale_plan_rejected"' in episode_log

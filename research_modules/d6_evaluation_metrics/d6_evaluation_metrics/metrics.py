@@ -145,7 +145,8 @@ class EpisodeMetrics:
     consensus_rounds: float = 0.0
     degraded_completion_rate: float = 0.0
     active_degradation_count: int = 0
-    active_degradation_precision: float = 0.0
+    active_degradation_precision: float | None = None
+    active_degradation_label_count: int = 0
     unnecessary_active_degradation_count: int = 0
     passive_failover_count: int = 0
     secondary_node_takeover_count: int = 0
@@ -223,6 +224,7 @@ class EpisodeMetrics:
             "degraded_completion_rate",
             "active_degradation_count",
             "active_degradation_precision",
+            "active_degradation_label_count",
             "unnecessary_active_degradation_count",
             "passive_failover_count",
             "secondary_node_takeover_count",
@@ -296,8 +298,11 @@ class EpisodeMetrics:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
-    def numeric_metric_dict(self) -> dict[str, float]:
-        return {name: float(getattr(self, name)) for name in self.metric_names()}
+    def numeric_metric_dict(self) -> dict[str, float | None]:
+        return {
+            name: None if getattr(self, name) is None else float(getattr(self, name))
+            for name in self.metric_names()
+        }
 
 
 class MetricsCollector:
@@ -998,7 +1003,7 @@ class MetricsCollector:
         active_degradation_precision = (
             active_degradation_necessary_count / active_degradation_reviewed_count
             if active_degradation_reviewed_count
-            else 0.0
+            else None
         )
 
         return {
@@ -1007,6 +1012,7 @@ class MetricsCollector:
             "degraded_completion_rate": degraded_completion_rate,
             "active_degradation_count": active_degradation_count,
             "active_degradation_precision": active_degradation_precision,
+            "active_degradation_label_count": active_degradation_reviewed_count,
             "unnecessary_active_degradation_count": unnecessary_active_degradation_count,
             "passive_failover_count": passive_failover_count,
             "secondary_node_takeover_count": secondary_node_takeover_count,

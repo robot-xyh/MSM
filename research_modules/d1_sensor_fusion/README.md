@@ -107,6 +107,39 @@ The current P1 fixture path also accepts real Blocks/CV-style JSONL/CSV fields s
 normalized into `SensorObservation.metadata` and carried into the latest `GlobalTrack.metadata`
 lineage without requiring PNG frames or an AirSim Python dependency.
 
+## 2026-07-10 AirSim 2v2 Contract Audit
+
+The reset-separated 2v2 smoke output under
+`research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_smoke_20260710/` was replayed through
+the D1 reader without changing main/runtime. Across six episodes, all 1,528 radar, acoustic, EO,
+and synthetic-lidar records retained measurement/arrival timestamps and finite symmetric positive
+semidefinite covariance; no record had `arrival_timestamp < measurement_timestamp`. The full-flow
+main episode bus also retained both timestamps and covariance trace in every D1 observation summary
+and retained timing/covariance fields in `TrackUncertaintySummary`. No D1 timestamp or covariance
+contract regression was found.
+
+The smoke also makes the remaining P1 boundary explicit. The current main Blocks writer omits
+`schema_version`, so new output is accepted through `legacy.blocks_sensor_observations` rather than
+the versioned v1 path. It also omits `coverage_cell`, so D1 can only emit the fallback `unassigned`
+region, and the main tick currently serializes per-track uncertainty summaries but not region/window,
+latency-audit, or sensor-health summaries. Finally, the fixed 0.2 s delayed multi-sensor stream makes
+raw OOSM counts high; advisory sensor-health isolation thresholds require expected-latency calibration
+before D4/D6 may consume them as fault evidence. The main bus also enables simulation-only truth-hint
+association and retains two tracks, while default truth-free replay of the same file can create a
+duplicate third track; replay configuration provenance and truth-free association parity therefore
+remain P1. These are writer/schema/calibration items, not a reason to weaken the D1 dual-timestamp or
+covariance contract or to treat truth labels as online identity evidence.
+
+The subsequent 10-seed 2v2 run under
+`research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_multiseed_20260710/` confirms that the
+D1 contract can be consumed repeatedly by reset-separated system episodes. The separate
+`p0_truth_isolation_smoke_20260710` run confirms that online D5 local detection/MOT identifiers no
+longer depend on AirSim actor/object names. This does not close D1 truth-free replay parity: synthetic
+D1 observations may still carry `truth_id` as an offline label, and the main fusion configuration may
+still enable simulation-only truth hints. The next D1 integration pass therefore keeps configuration
+provenance, truth-free multi-seed replay, explicit writer schema/coverage fields, expected-latency
+health calibration, and durable Blocks/CV fixtures open as P1.
+
 ## Main Interfaces
 
 - `SensorObservation`: canonical sensor input with `measurement_timestamp`, `arrival_timestamp`, optional cross-node communication metadata, covariance, and normalized `timestamp_uncertainty_s` / `timing_uncertainty_s` metadata.
@@ -153,4 +186,14 @@ Optional cue metadata can carry the secondary/mobile recon node, cue source, or 
 
 Video/image streams are represented only by derived observations such as bounding boxes, camera metadata, timestamps, and covariance. D1 does not require or store PNG frames.
 
-Current remaining P1 work is limited to more real main/shared AirSim multi-seed Blocks/CV fixture samples, D6 long-run batch schema alignment, thresholds for sustained-window alerting, real-sample regression, IMM/model-set comparison, and scene-adaptive covariance scale rules. Replay schema v1, legacy JSONL compatibility, covariance-required CSV replay, raw and fusion latency audit, sensor-health summaries, timestamp uncertainty, covariance floor/ceiling limiting, covariance scale reason passthrough, region quality summaries, region window helpers, covariance-growth helpers, recon cue summaries, source de-dup, nested EO camera metadata replay, real CV field normalization, dry-run fixture schema checks, and Blocks JSONL replay are already implemented baselines.
+Current remaining P1 work is limited to explicit schema/version emission by main/shared writers,
+coverage-cell and D1 quality-summary publication on the episode bus, expected-latency/OOSM health
+threshold calibration, truth-free replay parity/configuration provenance, more real AirSim multi-seed
+Blocks/CV fixture samples, D6 long-run batch schema alignment, sustained-window thresholds,
+IMM/model-set comparison, scene-adaptive covariance rules, and Track-to-Track fusion research.
+Replay schema v1, legacy JSONL compatibility,
+covariance-required CSV replay, raw and fusion latency audit, sensor-health summaries, timestamp
+uncertainty, covariance floor/ceiling limiting, covariance scale reason passthrough, region quality
+summaries, region window helpers, covariance-growth helpers, recon cue summaries, source de-dup,
+nested EO camera metadata replay, real CV field normalization, dry-run fixture schema checks, and
+Blocks JSONL replay are already implemented baselines.

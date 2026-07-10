@@ -12,6 +12,7 @@ from d2_data_association import (
     run_airsim_replay_association,
     run_threshold_sensitivity,
     summarize_multi_seed_risk_calibration,
+    summarize_replay_risk,
     write_association_logs_jsonl,
     write_replay_association_report,
 )
@@ -252,7 +253,120 @@ def test_replay_target_count_falls_back_to_input_count_without_truth_labels() ->
     assert report.replay_metadata["seed"] == 22
     assert report.metrics["id_switch_count"] == 0
     assert "track_continuity" in report.metrics
+    assert report.metrics["truth_metrics_available"] is False
+    assert report.metrics["continuity_available"] is False
+    assert report.risk_summary["truth_metrics_available"] is False
+    assert report.risk_summary["continuity_available"] is False
     assert len(report.association_logs) == len(frames)
+
+
+def test_no_truth_multiframe_replay_does_not_create_false_hard_risk() -> None:
+    frames = [
+        {
+            "timestamp": float(step),
+            "detections": [
+                {
+                    "detection_id": f"det-{step}",
+                    "position": [float(step), 0.0],
+                    "covariance": [[0.2, 0.0], [0.0, 0.2]],
+                }
+            ],
+        }
+        for step in range(5)
+    ]
+
+    report = run_airsim_replay_association(frames, replay_name="no_truth_continuity")
+
+    assert report.metrics["track_continuity"] == 0.0
+    assert report.metrics["truth_metrics_available"] is False
+    assert report.metrics["continuity_available"] is False
+    assert report.risk_summary["hard_risk_frame_count"] == 0
+    assert report.risk_summary["max_hard_risk_score"] == 0.0
+    assert report.risk_summary["hard_risk_reasons"] == []
+    assert report.metrics["duplicate_track_risk"] == 0.0
+    for log in report.association_logs:
+        assert log["risk_summary"]["truth_metrics_available"] is False
+        assert log["risk_summary"]["continuity_available"] is False
+        assert log["risk_summary"]["duplicate_track_risk"] == 0.0
+
+
+def test_gate_rejections_serialize_and_replay_summary_counts_reasons(tmp_path) -> None:
+    frames = [
+        {
+            "timestamp": 0.0,
+            "detections": [
+                {
+                    "detection_id": "near",
+                    "position": [0.0, 0.0],
+                    "covariance": [[0.2, 0.0], [0.0, 0.2]],
+                }
+            ],
+        },
+        {
+            "timestamp": 1.0,
+            "detections": [
+                {
+                    "detection_id": "outside-gate",
+                    "position": [100.0, 0.0],
+                    "covariance": [[0.2, 0.0], [0.0, 0.2]],
+                }
+            ],
+        },
+    ]
+
+    report = run_airsim_replay_association(frames, replay_name="gate_rejection")
+    reasons = [pair["reason"] for pair in report.association_logs[1]["rejected_pairs"]]
+    gate_summary = report.risk_summary["gate_summary"]
+
+    assert reasons.count("mahalanobis_gate") == 1
+    assert reasons.count("assignment_above_gate") == 1
+    assert gate_summary["mahalanobis_gate_reject_count"] == 1
+    assert gate_summary["assignment_above_gate_reject_count"] == 1
+
+    output_path = tmp_path / "association_logs.jsonl"
+    write_association_logs_jsonl(report.association_logs, output_path)
+    serialized = [json.loads(line) for line in output_path.read_text().splitlines()]
+    assert serialized[1]["rejected_pairs"] == report.association_logs[1]["rejected_pairs"]
+
+    old_log_summary = summarize_replay_risk(
+        [{"matched_pairs": [], "metadata": {}}],
+        {
+            "id_switch_count": 0,
+            "track_continuity": 0.0,
+            "duplicate_assignment_count": 0,
+            "truth_metrics_available": False,
+            "continuity_available": False,
+        },
+    )
+    assert old_log_summary["gate_summary"]["total_rejected_pair_count"] == 0
+
+
+def test_legacy_replay_without_availability_flags_does_not_infer_continuity() -> None:
+    legacy_summary = summarize_replay_risk(
+        [
+            {
+                "matched_pairs": [],
+                "metadata": {},
+                "risk_summary": {
+                    "timestamp": 1.0,
+                    "duplicate_track_risk": 0.0,
+                    "association_ambiguity": 0.0,
+                    "metadata": {"track_continuity": 0.0},
+                },
+            }
+        ],
+        {
+            "id_switch_count": 0,
+            "track_continuity": 0.0,
+            "duplicate_assignment_count": 0,
+        },
+    )
+
+    assert legacy_summary["truth_metrics_available"] is False
+    assert legacy_summary["continuity_available"] is False
+    assert legacy_summary["hard_risk_frame_count"] == 0
+    assert legacy_summary["hard_risk_reasons"] == []
+    assert legacy_summary["latest_breakdown"]["continuity_available"] is False
 
 
 def test_threshold_sensitivity_outputs_required_metrics_for_variable_target_count() -> None:

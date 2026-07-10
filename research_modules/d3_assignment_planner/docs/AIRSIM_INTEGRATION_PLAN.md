@@ -19,6 +19,8 @@ AssignmentPlanner.plan(
 
 The output remains an abstract `AssignmentPlan`. Its default authorization state is `human_authorization_state="required"`, while AirSim validation may set `PlannerConfig.human_authorization_state` to a record-only state such as `"recorded"` for contract testing. D3 does not interpret that field as autonomous disposition authority.
 
+One `AssignmentPlanner` instance is scoped to one AirSim episode. The first planning tick may omit `previous_plan`; every later tick must pass the exact active plan and should pass its version as `expected_previous_version`. A missing or stale predecessor is rejected with `StalePlanError`, and the runtime must retain the active plan rather than treating the rejected call as a new version-1 episode. Create a new planner instance after an episode reset.
+
 ## Proposed Data Flow
 
 ```text
@@ -68,6 +70,7 @@ Resource adapter:
 
 3. Batch parameter sweep:
    - Replay the same AirSim scenario with different `delta`, `min_dwell`, and `CostWeights`.
+   - Include `reassignment_switch_penalty` and verify that solver/evidence costs remain single-charged.
    - Compare reassignment count, total accepted-plan cost, unassigned high-priority ratio, and runtime.
 
 ## Message Schema Sketch
@@ -135,6 +138,14 @@ Output candidate plan record:
 - Logs must include `decision_state`, version, total cost, and per-assignment cost breakdown.
 - When main/D4 requests `request_center_replan`, the next D3 plan must increment version and main/runtime must log `replan_reason`, `supersedes_plan_id`, `supersedes_plan_version`, and `active_plan_owner="center"`.
 
+## 2026-07-10 Validation Status
+
+- The real 5v5 calibration completed 60 connected cases: seeds 1-10, secondary heights 50/200 m, and `no_degradation`, `degrade_to_secondary`, and `degrade_to_distributed` cases.
+- The current plan/evidence path is connected, but secondary activation is not closed. All 20 requested secondary cases fell back conservatively to distributed operation; 15 of 1300 D4 decisions reached momentary `takeover_ready`, all stopped at `pending_secondary_plan`, and `secondary_plan_active=0`.
+- The next integration fixture must sustain readiness long enough to produce one `secondary_plan_v2` with a version greater than the center plan, mark the old center plan stale, expose one active secondary owner, and let D7 consume only that current binding.
+- Equal-size 5v5 coverage does not close N/M behavior. Add 3v5, 5v3, target-arrival, and resource-failure replays before tuning incremental assignment or D5 feedback weights.
+- D3 unit regression currently reports `63 passed`.
+
 ## Future OR-Tools Path
 
-If AirSim scenarios require resource capacities, target demand, group quotas, or backup plans, implement `MinCostFlowAssignmentSolver` behind the existing solver interface. Keep OR-Tools optional and gate tests so environments without OR-Tools continue to pass.
+At P1, implement only an optional same-input comparator behind `MinCostFlowAssignmentSolver`: one-to-one Hungarian and min-cost-flow plans must expose comparable cost and solve-time records, while Hungarian remains the default and environments without OR-Tools continue to pass. Resource capacities, target demand, group quotas, backup resources, multi-window networks, and predictive rolling remain P2/P3 extensions.

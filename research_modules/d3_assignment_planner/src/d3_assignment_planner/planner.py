@@ -81,6 +81,10 @@ class AssignmentPlanner:
 
         self._validate_previous_plan(previous_plan, expected_previous_version)
         matrix_result = self.cost_model.build_matrix(tracks, resources, timestamp)
+        matrix_result = self._apply_switch_penalty_to_matrix(
+            matrix_result,
+            previous_plan,
+        )
         solver_result = self.solver.solve(
             matrix_result.matrix,
             matrix_result.unassigned_costs,
@@ -135,10 +139,6 @@ class AssignmentPlanner:
         plan_window_id = version if window_id is None else window_id
         if assignments is None:
             assignments = self._assignments_from_solver(matrix_result, solver_result)
-        assignments, switch_penalty_total = self._apply_switch_penalty(
-            assignments,
-            previous_plan,
-        )
         assignments = self._annotate_assignment_context(assignments, version)
         if unassigned_target_ids is None:
             solver_unassigned = tuple(
@@ -152,9 +152,6 @@ class AssignmentPlanner:
                 if target_id in solver_unassigned
                 or target_id not in assigned_target_ids
             )
-        computed_total_cost = solver_result.objective_value
-        if total_cost is None:
-            computed_total_cost += switch_penalty_total
         target_count = len(matrix_result.target_ids)
         resource_count = len(matrix_result.resource_ids)
         plan_id = f"d3-plan-{uuid4().hex[:12]}"
@@ -164,7 +161,7 @@ class AssignmentPlanner:
             window_id=plan_window_id,
             assignments=assignments,
             unassigned_target_ids=unassigned_target_ids,
-            total_cost=computed_total_cost if total_cost is None else total_cost,
+            total_cost=solver_result.objective_value if total_cost is None else total_cost,
             created_at=timestamp,
             last_changed_at=timestamp if last_changed_at is None else last_changed_at,
             resource_count=resource_count,
@@ -450,7 +447,15 @@ class AssignmentPlanner:
         expected_previous_version: int | None,
     ) -> None:
         if previous_plan is None:
-            return
+            if self._latest_plan_id is None:
+                return
+            raise StalePlanError(
+                "previous_plan is required after the planner has an active plan",
+                reason="previous_plan_required",
+                expected_previous_version=expected_previous_version,
+                latest_plan_id=self._latest_plan_id,
+                latest_version=self._latest_version,
+            )
         if expected_previous_version is not None and previous_plan.version != expected_previous_version:
             raise StalePlanError(
                 f"previous_plan version {previous_plan.version} does not match "
@@ -489,37 +494,59 @@ class AssignmentPlanner:
         self._latest_plan_id = plan.plan_id
         return plan
 
-    def _apply_switch_penalty(
+    def _apply_switch_penalty_to_matrix(
         self,
-        assignments: tuple[Assignment, ...],
+        matrix_result: CostMatrixResult,
         previous_plan: AssignmentPlan | None,
-    ) -> tuple[tuple[Assignment, ...], float]:
+    ) -> CostMatrixResult:
         penalty = float(max(0.0, self.config.reassignment_switch_penalty))
         if previous_plan is None or penalty <= 0.0:
-            return assignments, 0.0
+            return matrix_result
+
         previous_map = previous_plan.assignment_map()
-        adjusted: list[Assignment] = []
-        total_penalty = 0.0
-        for assignment in assignments:
-            switched = previous_map.get(assignment.target_id) not in {
-                None,
-                assignment.resource_id,
-            }
-            if not switched:
-                adjusted.append(assignment)
+        matrix = matrix_result.matrix.copy()
+        breakdown_rows = [
+            [dict(breakdown) for breakdown in row]
+            for row in matrix_result.breakdowns
+        ]
+        reject_reasons = matrix_result.reject_reasons
+
+        for target_index, target_id in enumerate(matrix_result.target_ids):
+            previous_resource_id = previous_map.get(target_id)
+            if previous_resource_id is None:
                 continue
-            breakdown = dict(assignment.cost_breakdown)
-            breakdown["reassignment_switch_penalty"] = penalty
-            breakdown["total"] = float(breakdown.get("total", assignment.cost)) + penalty
-            adjusted.append(
-                replace(
-                    assignment,
-                    cost=assignment.cost + penalty,
-                    cost_breakdown=breakdown,
+            for resource_index, resource_id in enumerate(matrix_result.resource_ids):
+                if resource_id == previous_resource_id:
+                    continue
+                reject_reason = None
+                if target_index < len(reject_reasons):
+                    row = reject_reasons[target_index]
+                    if resource_index < len(row):
+                        reject_reason = row[resource_index]
+                base_cost = float(matrix[target_index, resource_index])
+                if (
+                    reject_reason is not None
+                    or base_cost >= self.config.infeasible_penalty * 0.5
+                ):
+                    continue
+
+                adjusted_cost = base_cost + penalty
+                matrix[target_index, resource_index] = adjusted_cost
+                breakdown = breakdown_rows[target_index][resource_index]
+                breakdown["reassignment_switch_penalty"] = (
+                    float(breakdown.get("reassignment_switch_penalty", 0.0))
+                    + penalty
                 )
-            )
-            total_penalty += penalty
-        return tuple(adjusted), total_penalty
+                breakdown["total"] = adjusted_cost
+
+        return replace(
+            matrix_result,
+            matrix=matrix,
+            breakdowns=tuple(
+                tuple(breakdown for breakdown in row)
+                for row in breakdown_rows
+            ),
+        )
 
     def _annotate_assignment_context(
         self,

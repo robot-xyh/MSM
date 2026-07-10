@@ -42,6 +42,15 @@ class ReplayAssociationReport:
                 self.risk_summary.get("risk_profile_version", "unversioned"),
             ),
             "replay_metadata": _json_ready(self.replay_metadata),
+            "truth_metrics_available": bool(
+                self.metrics.get("truth_metrics_available", False)
+            ),
+            "continuity_available": bool(
+                self.metrics.get(
+                    "continuity_available",
+                    self.metrics.get("truth_metrics_available", False),
+                )
+            ),
             "global_track_ids": list(self.global_track_ids),
             "metrics": _json_ready(self.metrics),
             "association_logs": _json_ready(self.association_logs),
@@ -193,6 +202,10 @@ def run_threshold_sensitivity(
                     "drone_count": _metadata_value(metadata, "drone_count"),
                     "id_switch_count": result.metrics["id_switch_count"],
                     "track_continuity": result.metrics["track_continuity"],
+                    "truth_metrics_available": result.metrics[
+                        "truth_metrics_available"
+                    ],
+                    "continuity_available": result.metrics["continuity_available"],
                     "duplicate_assignment_count": result.metrics[
                         "duplicate_assignment_count"
                     ],
@@ -312,6 +325,10 @@ def summarize_replay_risk(
         {reason for item in breakdowns for reason in item.hard_risk_reasons}
     )
     diagnostics = _summarize_association_log_diagnostics(log_list)
+    truth_metrics_available = bool(metrics.get("truth_metrics_available", False))
+    continuity_available = bool(
+        metrics.get("continuity_available", truth_metrics_available)
+    )
     return {
         "risk_profile": active_thresholds.profile_name,
         "risk_profile_version": active_thresholds.profile_version,
@@ -330,6 +347,8 @@ def summarize_replay_risk(
         "latest_breakdown": breakdowns[-1].to_dict() if breakdowns else None,
         "id_switch_count": int(metrics.get("id_switch_count", 0)),
         "track_continuity": float(metrics.get("track_continuity", 0.0)),
+        "truth_metrics_available": truth_metrics_available,
+        "continuity_available": continuity_available,
         "duplicate_assignment_count": int(
             metrics.get("duplicate_assignment_count", 0)
         ),
@@ -1129,6 +1148,13 @@ def _risk_summary_from_payload(payload: Mapping[str, Any]) -> AssociationRiskSum
         association_ambiguity=float(payload.get("association_ambiguity", 0.0)),
         covariance_overlap_rate=float(payload.get("covariance_overlap_rate", 0.0)),
         metadata=dict(payload.get("metadata", {})),
+        truth_metrics_available=bool(payload.get("truth_metrics_available", False)),
+        continuity_available=bool(
+            payload.get(
+                "continuity_available",
+                payload.get("truth_metrics_available", False),
+            )
+        ),
     )
 
 

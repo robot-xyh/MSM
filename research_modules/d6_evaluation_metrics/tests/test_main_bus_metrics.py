@@ -30,6 +30,7 @@ def test_load_main_episode_bus_metrics_preserves_execution_scope_and_metadata(
                     "target_count": 4,
                     "camera_count": 6,
                     "active_degradation_precision": 0.5,
+                    "active_degradation_label_count": 4,
                     "unnecessary_active_degradation_count": 1,
                     "terminal_lock_count": 2,
                     "visual_png_switch_count": 1,
@@ -83,6 +84,7 @@ def test_load_main_episode_bus_metrics_preserves_execution_scope_and_metadata(
     assert metrics.implementation_status == "implemented"
     assert metrics.evidence_path == str(path)
     assert metrics.active_degradation_precision == pytest.approx(0.5)
+    assert metrics.active_degradation_label_count == 4
     assert metrics.unnecessary_active_degradation_count == 1
     assert metrics.terminal_lock_count == 2
     assert metrics.visual_png_switch_count == 1
@@ -104,6 +106,30 @@ def test_load_main_episode_bus_metrics_preserves_execution_scope_and_metadata(
     assert metrics.metadata["main_bus_file_metadata"]["record_counts"] == {
         "events": 11
     }
+
+
+def test_load_main_episode_bus_metrics_marks_unlabeled_precision_unavailable(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "main_episode_bus_metrics.json"
+    path.write_text(
+        json.dumps(
+            {
+                "metrics": {
+                    "episode_id": "unlabeled",
+                    "active_degradation_count": 3,
+                    "active_degradation_precision": 0.0,
+                    "metadata": {"active_degradation_reviewed_count": 0},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = load_main_episode_bus_metrics(path)
+
+    assert metrics.active_degradation_precision is None
+    assert metrics.active_degradation_label_count == 0
 
 
 def test_load_main_episode_bus_metric_files_infers_contract_scope_from_filename(

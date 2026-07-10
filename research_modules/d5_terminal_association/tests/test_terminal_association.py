@@ -11,6 +11,7 @@ from d5_terminal_association import (
     CameraModel,
     GlobalTrack,
     IdentityChecker,
+    IdentityClaim,
     LocalVisualTrack,
     ReconImageCue,
     TerminalAssociator,
@@ -339,6 +340,78 @@ def test_reacquire_with_new_mot_id_requires_stable_bbox_history() -> None:
     assert second_new_id.reason == "reacquired_assigned_track_in_search_window"
     assert second_new_id.assigned_global_track_id == "G-assigned"
     assert second_new_id.metadata["reacquire_candidates"][0]["stability_count"] == 2
+
+
+@pytest.mark.parametrize(
+    ("auth_state", "expected_friend_state"),
+    [
+        ("verified", "verified_friend_overlap"),
+        ("stale", "stale_friend_overlap"),
+        ("unverified", "unverified_friend_overlap"),
+        ("spoof_suspected", "spoof_suspected_overlap"),
+    ],
+)
+@pytest.mark.parametrize("new_mot_id", [False, True], ids=["same_mot_id", "new_mot_id"])
+def test_active_reacquire_friend_claims_force_auditable_hold(
+    auth_state: str,
+    expected_friend_state: str,
+    new_mot_id: bool,
+) -> None:
+    associator = TerminalAssociator()
+    camera = make_camera()
+    assigned = make_track("G-assigned")
+    assignment = Assignment("G-assigned", resource_id="R-1")
+    original_global_id = assigned.global_track_id
+
+    associator.decide(
+        assignment,
+        [assigned],
+        [make_local("mot-old", (320.0, 240.0))],
+        camera=camera,
+        current_time=0.0,
+    )
+    associator.decide(assignment, [assigned], [], camera=camera, current_time=0.1)
+
+    candidate_id = "mot-new" if new_mot_id else "mot-old"
+    if new_mot_id:
+        unstable = associator.decide(
+            assignment,
+            [assigned],
+            [make_local(candidate_id, (350.0, 240.0))],
+            camera=camera,
+            current_time=0.2,
+        )
+        assert unstable.decision_state == "ambiguous"
+
+    claim = IdentityClaim(
+        platform_id=f"friend-{auth_state}",
+        claim_type="remote_id",
+        auth_state=auth_state,
+        associated_local_track_id=candidate_id,
+        timestamp=0.3,
+        is_friend=True,
+    )
+    decision = associator.decide(
+        assignment,
+        [assigned],
+        [make_local(candidate_id, (351.0 if new_mot_id else 350.0, 240.0))],
+        [claim],
+        camera,
+        current_time=0.3,
+    )
+
+    assert decision.decision_state == "hold"
+    assert decision.local_track_id == candidate_id
+    assert decision.assigned_global_track_id == "G-assigned"
+    assert assigned.global_track_id == original_global_id
+    assert decision.friend_conflict_state == expected_friend_state
+    assert decision.reason == f"active_reacquire_blocked_by_{expected_friend_state}"
+    assert decision.metadata["reacquire_search_window"]["decision"] == "hold"
+    assert (
+        decision.metadata["reacquire_search_window"]["friend_conflict_state"]
+        == expected_friend_state
+    )
+    assert decision.metadata["reacquire_candidates"][0]["friend_conflict_state"] == expected_friend_state
 
 
 def test_rate_and_category_costs_are_reflected_in_matrix() -> None:

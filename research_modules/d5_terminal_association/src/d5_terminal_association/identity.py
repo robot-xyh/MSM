@@ -138,6 +138,8 @@ class IdentityChecker:
                 return "verified_friend_overlap"
             if claim.auth_state == "spoof_suspected":
                 best_nonverified = "spoof_suspected_overlap"
-            elif claim.is_friend and claim.auth_state in {"stale", "unverified"}:
+            elif claim.is_friend and claim.auth_state == "stale" and best_nonverified == "none":
+                best_nonverified = "stale_friend_overlap"
+            elif claim.is_friend and claim.auth_state == "unverified" and best_nonverified == "none":
                 best_nonverified = "unverified_friend_overlap"
         return best_nonverified

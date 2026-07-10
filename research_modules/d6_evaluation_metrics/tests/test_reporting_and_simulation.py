@@ -195,6 +195,8 @@ def test_report_generator_writes_scenario_grouped_summary(tmp_path: Path) -> Non
     assert "contract" in report_text
     assert "Drone count" in report_text
     assert "active_degradation_precision" in report_text
+    assert "active_degradation_label_count" in report_text
+    assert "unavailable" in report_text
     assert "terminal_contract_reject_count" in report_text
     assert "Mission Outcome / Root Cause" in report_text
     assert "Performance Monitoring" in report_text

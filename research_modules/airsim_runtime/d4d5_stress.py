@@ -63,6 +63,8 @@ def run_d4d5_stress_analysis(
     case_name: str,
     resource_vehicle_names: tuple[str, ...],
     secondary_camera_vehicle_names: tuple[str, ...],
+    comparison_role: str = "not_recorded",
+    active_degradation_review_label: str = "inconclusive",
 ) -> D4D5StressAnalysisResult:
     """Generate D5 terminal evidence and D4 degradation decisions from frames."""
 
@@ -96,19 +98,28 @@ def run_d4d5_stress_analysis(
             observations.append(bus.publish(observation))
         for observation in frame_registration_observations:
             observations.append(bus.publish(observation))
-        decisions.extend(
-            _d4_decisions_for_frame(
-                frame,
-                frame_observations,
-                arbiter,
-                case_name=normalized_case,
-                secondary_camera_vehicle_names=secondary_camera_vehicle_names,
-                d5_evidence_observations=[
-                    *frame_observations,
-                    *frame_registration_observations,
-                ],
-            )
+        frame_decisions = _d4_decisions_for_frame(
+            frame,
+            frame_observations,
+            arbiter,
+            case_name=normalized_case,
+            secondary_camera_vehicle_names=secondary_camera_vehicle_names,
+            d5_evidence_observations=[
+                *frame_observations,
+                *frame_registration_observations,
+            ],
         )
+        for item in frame_decisions:
+            item["comparison_role"] = comparison_role
+            item["active_degradation_review_label"] = active_degradation_review_label
+            event_metadata = item.get("d4_event_metadata")
+            if isinstance(event_metadata, dict):
+                event_metadata["active_degradation_review_label"] = (
+                    active_degradation_review_label
+                )
+                event_metadata["review_label"] = active_degradation_review_label
+                event_metadata["review_label_source"] = "scenario_ground_truth"
+        decisions.extend(frame_decisions)
 
     sequence_registration = _secondary_registration_for_frames(
         frames,
@@ -137,6 +148,8 @@ def run_d4d5_stress_analysis(
     d4_metrics = _d4_metrics(decisions)
     metrics: dict[str, Any] = {
         "case_name": normalized_case,
+        "comparison_role": comparison_role,
+        "active_degradation_review_label": active_degradation_review_label,
         "geometry": geometry,
         "secondary_height_above_targets_m": geometry.get("secondary_height_above_targets_m", 0.0),
         **detection_metrics,
@@ -344,7 +357,7 @@ def _terminal_observations_for_frame(
         )
         local_track = _local_track_by_id(local_tracks, association.local_track_id)
         if local_track is None:
-            local_track = _local_track_for_target(local_tracks, observed_target_id)
+            local_track = local_tracks[0] if local_tracks else None
         observations.append(
             TerminalObservation(
                 resource_id=resource_id,
@@ -532,24 +545,6 @@ def _local_track_by_id(
         if track.local_track_id == local_track_id:
             return track
     return None
-
-
-def _local_track_for_target(
-    local_tracks: list[LocalVisualTrack],
-    target_id: str,
-) -> LocalVisualTrack | None:
-    actor_suffix = _actor_suffix_for_target(target_id)
-    for track in local_tracks:
-        if target_id in track.local_track_id or (actor_suffix and actor_suffix in track.local_track_id):
-            return track
-    return local_tracks[0] if local_tracks else None
-
-
-def _actor_suffix_for_target(target_id: str) -> str | None:
-    try:
-        return f"MSM_TargetActor_{int(target_id.rsplit('-', 1)[1])}"
-    except (IndexError, ValueError):
-        return None
 
 
 def _d4_decisions_for_frame(
@@ -939,6 +934,20 @@ def _d4_metrics(decisions: list[dict[str, Any]]) -> dict[str, Any]:
         (item.get("target_node_id") for item in decisions if item.get("target_node_id")),
         None,
     )
+    active_decisions = [
+        item
+        for item in decisions
+        if str(item.get("degradation_mode", "")) == "active_degradation"
+    ]
+    review_labels = [
+        str(item.get("active_degradation_review_label", "")).strip().lower()
+        for item in active_decisions
+    ]
+    classified_labels = [
+        label for label in review_labels if label in {"necessary", "unnecessary"}
+    ]
+    necessary_count = sum(label == "necessary" for label in classified_labels)
+    unnecessary_count = sum(label == "unnecessary" for label in classified_labels)
     return {
         "d4_decision_count": len(decisions),
         "d4_action_counts": dict(action_counts),
@@ -950,6 +959,12 @@ def _d4_metrics(decisions: list[dict[str, Any]]) -> dict[str, Any]:
             1 for item in decisions if item.get("secondary_detect_available_but_not_registered")
         ),
         "secondary_detect_to_cross_view_diagnostic_counts": dict(diagnostic_counts),
+        "active_degradation_count": len(active_decisions),
+        "active_degradation_label_count": len(classified_labels),
+        "active_degradation_precision": (
+            necessary_count / len(classified_labels) if classified_labels else None
+        ),
+        "unnecessary_degradation_count": unnecessary_count,
     }
 
 

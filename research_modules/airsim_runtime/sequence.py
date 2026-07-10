@@ -31,21 +31,33 @@ D4D5_STRESS_EPISODES: tuple[BlocksEpisodeSpec, ...] = (
         "D5 consistent terminal evidence and D4 continue-center arbitration",
         scenario_name="blocks_cv_5v5_d4d5_stress",
         include_integrated_pipeline=True,
-        metadata={"d4d5_stress_case": "no_degradation"},
+        metadata={
+            "d4d5_stress_case": "no_degradation",
+            "comparison_role": "baseline",
+            "active_degradation_review_label": "unnecessary",
+        },
     ),
     BlocksEpisodeSpec(
         "case_002_degrade_to_secondary",
         "D5 terminal disagreement with secondary recon available",
         scenario_name="blocks_cv_5v5_d4d5_stress",
         include_integrated_pipeline=True,
-        metadata={"d4d5_stress_case": "degrade_to_secondary"},
+        metadata={
+            "d4d5_stress_case": "degrade_to_secondary",
+            "comparison_role": "enhanced",
+            "active_degradation_review_label": "necessary",
+        },
     ),
     BlocksEpisodeSpec(
         "case_003_degrade_to_distributed",
         "D5 terminal disagreement with secondary recon unavailable",
         scenario_name="blocks_cv_5v5_d4d5_stress",
         include_integrated_pipeline=True,
-        metadata={"d4d5_stress_case": "degrade_to_distributed"},
+        metadata={
+            "d4d5_stress_case": "degrade_to_distributed",
+            "comparison_role": "not_recorded",
+            "active_degradation_review_label": "necessary",
+        },
     ),
 )
 

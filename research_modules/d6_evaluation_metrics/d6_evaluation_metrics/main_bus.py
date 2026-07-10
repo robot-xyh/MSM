@@ -62,6 +62,7 @@ def load_main_episode_bus_metrics(path: str | Path) -> EpisodeMetrics:
     values["metadata"] = metadata
 
     metrics = EpisodeMetrics(**values)
+    _normalize_active_degradation_precision(metrics, metrics_payload, metadata)
     if mission_outcome_missing:
         _backfill_mission_status(metrics)
     if eval_priority_missing:
@@ -118,6 +119,39 @@ def load_main_episode_bus_metric_files(
 def _episode_metric_values(payload: Mapping[str, Any]) -> dict[str, Any]:
     allowed = {field.name for field in fields(EpisodeMetrics)}
     return {key: value for key, value in payload.items() if key in allowed}
+
+
+def _normalize_active_degradation_precision(
+    metrics: EpisodeMetrics,
+    payload: Mapping[str, Any],
+    metadata: Mapping[str, Any],
+) -> None:
+    label_count = _first_nonnegative_int(
+        payload.get("active_degradation_label_count"),
+        metadata.get("active_degradation_label_count"),
+        metadata.get("active_degradation_reviewed_count"),
+        metadata.get("review_label_count"),
+    )
+    metrics.active_degradation_label_count = label_count or 0
+    if metrics.active_degradation_label_count == 0:
+        metrics.active_degradation_precision = None
+    elif metrics.active_degradation_precision is not None:
+        metrics.active_degradation_precision = float(
+            metrics.active_degradation_precision
+        )
+
+
+def _first_nonnegative_int(*values: Any) -> int | None:
+    for value in values:
+        if value is None or isinstance(value, bool):
+            continue
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            continue
+        if parsed >= 0:
+            return parsed
+    return None
 
 
 def _episode_id_from_payload(payload: Mapping[str, Any], path: Path) -> str:

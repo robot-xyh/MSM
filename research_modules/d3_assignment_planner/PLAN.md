@@ -41,7 +41,7 @@ D3 不负责：
 - `decision_state`、`changed`、`last_changed_at`。
 - `source_node_id`、`target_node_id`、`link_type`、`stale_after_s`。
 
-`AssignmentPlanner` 内部记录最新 `plan_id/version`。调用方若传入旧 `previous_plan`，或 `expected_previous_version` 与计划版本不一致，会触发 `StalePlanError`。因此 stale plan 不允许覆盖当前计划。
+`AssignmentPlanner` 内部记录最新 `plan_id/version`。首次调用允许 `previous_plan=None` 并生成 version 1；一旦 planner 记住 active plan，后续调用必须显式传入该 active plan。缺失时抛出 `StalePlanError(reason="previous_plan_required")`，并携带 `latest_plan_id/latest_version`；旧 `previous_plan`、旧 plan id 或不匹配的 `expected_previous_version` 继续按原 reason 拒绝。因此 active version 不会因省略 `previous_plan` 回退到 1。planner 实例对应单个 episode，新 episode 必须由 main 创建新实例，不提供隐式 reset。
 
 `PlannerConfig.human_authorization_state` 当前会直接写入 `AssignmentPlan.human_authorization_state`，并同步记录到 `metadata["configured_human_authorization_state"]` 和 `metadata["effective_human_authorization_state"]`。这允许 main runtime 在仿真中使用 `"recorded"` 等记录态授权，而不是让 D3 固定输出 `"required"`。
 
@@ -49,10 +49,11 @@ D3 不负责：
 
 每个 planning tick 的处理顺序是：
 
-1. `CostModel.build_matrix()` 构建目标-资源代价矩阵和未分配代价。
-2. Hungarian/fallback 求解候选计划。
-3. 若存在 `previous_plan`，把旧 assignment 在当前矩阵上重评分。
-4. 若候选计划与旧计划不同，只有满足收益、驻留时间和变更数量限制才接受。
+1. `CostModel.build_matrix()` 构建目标-资源基础代价矩阵和未分配代价。
+2. 若存在 `previous_plan`，对已有 target 改配到不同 resource 的可行候选边加入 `reassignment_switch_penalty`；同 resource 边和 unassigned cost 不变。
+3. Hungarian/fallback 使用加过 switch penalty 的矩阵求解候选计划。
+4. 把旧 assignment 在同一矩阵上重评分；由于旧 resource 边不加 penalty，`J_old_current` 不含虚假切换费。
+5. 若候选计划与旧计划不同，只有满足收益、驻留时间和变更数量限制才接受。
 
 接受新换配的核心条件：
 
@@ -96,6 +97,8 @@ and change_count <= max_changes_per_window
 
 `TargetTrack` 支持 `fov_difficulty_by_resource`、`conflict_risk_by_resource`、`feasibility_by_resource`，可由 main 把 D5/D4/D2 的反馈映射进下一轮 D3 输入。`ResourceState` 支持 `status`、`health_score`、`busy_until`、`operator_hold`、`load_penalty`、`capability_class`，并补齐 P0-B 字段：`energy_fraction`、`availability_score`、`current_load`、`history_failure_rate`、`intercept_feasibility_by_target`、`intercept_feasibility_score_by_target`。`CostModel` 将能量、可用性、当前负载、历史失败率纳入 `resource_state`，并把能量耗尽、availability 为零、pair infeasible 和 intercept infeasible 标成硬不可行原因 flag。这些字段按输入数组长度运行，不依赖 2v2 或 5v5 常量。
 
+P1 switch-penalty 矩阵接入已完成：penalty 在 solve 前写入 `CostMatrixResult.matrix` 和对应 edge breakdown，`breakdown["total"]` 与 matrix cell 相等。solver objective、候选 `Assignment.cost`、`candidate_total_cost/total_cost` 和 `AssignmentEvidenceExport` 共用该矩阵，不再在 solve 后追加 penalty，因此不会双重计费。不可行边、同 resource 边、无历史 assignment 的 target 和 `unassigned_costs` 保持原语义。
+
 P0-C threat baseline 由 `compose_threat_score_baseline(...)` 提供：输入关键区接近、TTC、速度、协方差和目标状态，输出 normalized `ThreatScoreBaseline(threat_score, components, weights, reasons, metadata)`。`AirSimDryRunAssignmentAdapter` 在输入没有显式 `threat_score` 时会使用该 helper 生成 baseline，并把 components/reasons 写入 track metadata。完整动态威胁评估、资源状态耦合和 outcome-aware 标定仍是 P1。
 
 `apply_terminal_feedback_to_planner_inputs()` 已把 D5 feedback metadata 映射为下一轮 D3 DTO：duplicate/prohibited/feasibility metadata 写入 `TargetTrack.feasibility_by_resource=False` 并形成禁配边；fov/friend metadata 写入 `TargetTrack.fov_difficulty_by_resource`；friend/hold metadata 写入 `ResourceState.operator_hold=True`。该 helper 始终 `allow_local_rebind=False`，只消费 main/D5 已聚合的 metadata，不自行做视觉身份判断。
@@ -111,6 +114,7 @@ D3 已实现 `guidance_bindings_from_assignment_plan()`：
 - 提供 D7 兼容别名：`assignment_id`、`id`、`version`、`track_version`、`owner`、`assigned_resource_id`、`global_track_id`、`human_authorization_state`、`source`、`target`、`link`。
 - 支持 `active`、`stale`、`revoked`、`reassigned`、`hold` 状态。
 - 在 metadata 中固定 `allow_local_rebind=False`。
+- 新 plan 的 binding 即使发生资源-目标改配仍为 `active/current`；旧 plan 由当前 `plan_id/version` gate 判 stale/revoked，不把新 binding 标为 `superseded`。
 
 D7 PN/PNG gating 的含义是：D7 只能消费当前版本且未被 D4/D5 gate 阻断的 binding；D7 不分配目标、不授权、不改写 `global_track_id`。当 D4 输出 `request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed`，或 D5 未达到 terminal `locked`，D7 应保持/阻断视觉 PNG，而不是自行切换目标。
 
@@ -146,9 +150,9 @@ D3 已实现以下 helper：
 
 计划策略：
 
-- P2/非本轮以 optional dependency 接入 OR-Tools。
+- P1 按既定优先级实现最小可运行的 optional OR-Tools 对照：仅在同一组一对一输入上输出 Hungarian 与 min-cost-flow 计划、成本和求解耗时，不替换默认 Hungarian 主线。
 - 无 OR-Tools 环境仍保持 Hungarian/fallback 测试通过。
-- 只有当容量、备份资源、多窗口或区域配额进入真实仿真输入时，才把 Min-Cost Flow 升为可运行后端。
+- 容量、备份资源、多窗口、区域配额和预测性滚动仍属于 P2/P3 复杂约束，不在当前 P1 对照中展开。
 
 ## 4. 已接入闭环与待校准项
 
@@ -156,13 +160,24 @@ D3 已实现以下 helper：
 
 当前 D3 已能识别并转发 `secondary_plan_v2` schema，并在 D7 binding 中携带二级计划的 `plan_id/version/source_node_id/target_node_id/link_type`。`prepare_secondary_takeover_plan()` 补齐了 D3 侧 DTO 规则：二级 plan version 必须大于被 supersede 的中心 plan；`source_node_id/owner_node_id/selected_secondary_node_id` 必须来自 D4/main 传入的 secondary node；metadata 记录 `supersedes_plan_id`、`supersedes_plan_version`、`active_plan_owner="secondary"`、可选 leader epoch/lease，且 `allow_local_rebind=False`。
 
-main runtime 已接入 secondary owner/version/source 记录。D3 侧 remaining work 不再是 DTO 或版本补齐，而是随真实多 seed episode 校准这些记录是否在二级接管、中心恢复和 stale 拒绝场景中稳定出现。这里保持修复后的 D3 侧口径：D3 只校验和盖章 D4/main 传入的 secondary owner，不在模块内选择真实 active owner。
+main runtime 已接入 secondary owner/version/source 记录。2026-07-10 的 5v5、10-seed、50/200 m、三类降级场景共 60 个真实 AirSim episode 全部连接；但 20 个 `degrade_to_secondary` case 最终均保守转为 `degrade_to_distributed`。1300 条 D4 决策只有 15 条瞬时达到 `takeover_ready`，均停留在 `pending_secondary_plan`，`secondary_plan_active=0`。因此 D3 侧 remaining work 不再是 DTO 或版本字段补齐，而是与 main/D4 共同验收 active-plan activation 合同：持续 readiness 后必须生成并激活严格递增的 secondary plan，旧中心 plan 必须 stale，恢复中心不得覆盖更新的 owner/version。这里保持 D3 侧口径：D3 只校验和盖章 D4/main 传入的 secondary owner，不在模块内选择真实 active owner。
 
 D3 边界保持不变：
 
 - D3 不选择 `selected_secondary_node_id`。
 - D3 不维护二级 owner 的实际租约计时、leader 选举或中心恢复合并状态。
 - 二级计划发布后，哪些 runtime 版本有效、中心恢复后如何拒绝旧二级计划或合并状态，仍属 main/D4 的 runtime policy，不列为 D3 DTO 缺口。
+
+下一阶段的跨模块验收序列固定为：
+
+```text
+takeover_ready (持续满足)
+-> prepare_secondary_takeover_plan(version > center version)
+-> pending_secondary_plan
+-> secondary_plan_active(owner=secondary)
+-> old center plan rejected as stale
+-> D7 consumes only the current secondary binding
+```
 
 ### 4.2 D4 request_center_replan 中心重规划闭环
 
@@ -177,13 +192,13 @@ D3 的 terminal feedback helper 可以返回 `main_action="replan"` 或 `main_ac
 
 ### 4.3 真实 AirSim runtime 接线与校准
 
-D3 有 synthetic dry-run adapter，不直接导入 AirSim。真实 AirSim Blocks 的 tick-to-plan-to-gate 闭环由 main/runtime 接线，当前已覆盖 D3 plan/binding/summary/record/evidence、D5 feedback writeback、中心重规划 owner/version 和 secondary owner/version 记录。main runtime 已新增 P1 D4/D5 calibration sweep，并在 sweep 结束后自动生成 D6 标准报告 bundle；D3 后续重点是消费这些 episode 级 assignment records、feedback records、current-plan evidence 和 D6 summary 做参数校准，而不是再补接口字段：
+D3 有 synthetic dry-run adapter，不直接导入 AirSim。真实 AirSim Blocks 的 tick-to-plan-to-gate 闭环由 main/runtime 接线，当前已覆盖 D3 plan/binding/summary/record/evidence、D5 feedback writeback、中心重规划 owner/version 和 secondary owner/version 记录。2026-07-10 已完成等量 5v5 的 10-seed、50/200 m 校准和 2v2 SimpleFlight 10-seed 执行基线；这证明现有记录链可运行，但不能替代非等量 N/M、D5 feedback 权重和 secondary active-plan 合同校准。D3 后续重点是消费 episode 级 assignment records、feedback records、current-plan evidence 和 D6 summary 做参数校准，而不是重复补已存在的接口字段：
 
-- 在 2v2、5v5、8v8、非等量 M/N 和 crossing/dense 场景中跑真实多 seed。
-- 检查 D5 feedback writeback 后的 `operator_hold`、`feasibility_by_resource`、`fov_difficulty_by_resource` 是否产生稳定、可解释的重规划结果。
-- 检查 center/secondary plan owner、version、source、supersede metadata、cost gap、迟滞决策状态、current-plan evidence 和 D6 assignment records 是否在 episode log 中可稳定聚合。
-- 检查 hard time-window open/close 输入、到达时间和 rejected-edge reason 是否在不同 N 规模和非等量 M/N replay 中稳定可聚合。
-- 用 D6 指标和 P1 sweep 的 `d6_airsim_calibration` bundle 回看 D3 参数，特别是 `delta/min_dwell/max_changes_per_window/reassignment_switch_penalty` 与 D5 feedback 权重阈值；D3 侧已经提供轻量 calibration summary helper，剩余工作是用真实多 seed 数据填充和复核建议。
+- 在 3v5、5v3、目标新增、资源失效和 crossing/dense 场景中补真实或可回放的非等量 N/M 多 seed 数据，验证 `assigned_count`、高威胁未分配、迟滞、stale rejection 和更新延迟。
+- 对 D5 feedback writeback 做受控权重扫描，验证 `operator_hold`、`feasibility_by_resource`、`fov_difficulty_by_resource` 对重规划收益、抖动和高威胁漏分配的影响。
+- 构造持续 `takeover_ready` 专项，闭合 `pending_secondary_plan -> secondary_plan_active`，并验证 owner/version/source、supersede、旧中心 stale rejection 和 D7 current binding。
+- 校准完整动态威胁模型、增量更新和 hard time-window 到达时间/多窗口输入；所有 reject reason 必须可由 D6 聚合。
+- 最后按既定 P1 优先级增加 Hungarian 与 optional OR-Tools min-cost-flow 同输入对照；容量、备份资源和分组配额不进入本阶段。
 
 ## 5. 跨模块接口影响
 
@@ -241,19 +256,21 @@ P1 集成时，main 应保证：
 
 ### P0
 
-- 无 P0 blocker。Hungarian/DP fallback、版本化 `AssignmentPlan`、迟滞与 stale 拒绝、D5 feedback helper/writeback、secondary takeover owner/version DTO、D7 binding、D6 export、`AssignmentEvidenceExport` 和轻量 hard time-window closed-edge rejection baseline 当前均已实现。
+- 旧“无 P0 blocker”结论已撤销。P0 `previous_plan` 连续性缺口已于 2026-07-10 修复并标记 done：首次调用仍允许 `None`；active plan 存在后省略 `previous_plan` 会以 `previous_plan_required` 拒绝并返回 latest plan id/version，版本不会回退到 1；新 episode 使用新 planner 实例。
+- 其余 Hungarian/DP fallback、版本化 `AssignmentPlan`、迟滞与 stale 拒绝、D5 feedback helper/writeback、secondary takeover owner/version DTO、D7 binding、D6 export、`AssignmentEvidenceExport` 和轻量 hard time-window closed-edge rejection baseline 当前均已实现并保持回归。
 - P0-B 已补齐：`ResourceState` 标准化 energy、availability、intercept feasibility、current load、history failure 字段，`CostModel` 消费这些字段并导出可解释资源状态/不可行原因。
 - P0-B 增强迟滞已补齐：保留 switch penalty、min dwell、change limit、旧边不可行 bypass 和 stale 拒绝；新增高威胁 release condition 与 D6 可解释 metadata/export。
 - P0-C 已补齐：`compose_threat_score_baseline(...)` 提供关键区接近、TTC、速度、协方差和目标状态的可解释 baseline helper；完整动态威胁评估不并入 P0。
 
 ### P1
 
-- 真实多 seed 校准：main runtime 已提供 P1 D4/D5 calibration sweep 和自动 D6 标准报告 bundle；下一步在 AirSim/point-mass 2v2、5v5、8v8、非等量 M/N、crossing/dense 场景中验证 D3 plan/binding/summary/record/evidence、D5 feedback writeback、center replan owner/version/source 和 secondary owner/version/source 记录稳定可聚合。
-- D5 feedback 权重阈值长期标定：D3 已提供 advisory calibration helper；下一步基于真实 D6 records 扫描 `fov_difficulty_by_resource`、`feasibility_by_resource`、duplicate/friend/hold/reacquire 状态、`delta/min_dwell/max_changes_per_window/reassignment_switch_penalty`，人工复核并收敛 hold/replan/secondary_arbitration 触发阈值。
-- 完整动态威胁评估：在 P0-C baseline 稳定后，扩展到目标类别、资源状态耦合和 mission outcome 对照标定。
-- 增量分配：当前滚动全量重算保持可用；后续为新目标、资源失效和 D5 feedback 写回增加局部增量策略。
-- 时间窗口硬约束：轻量 hard open/close baseline 已完成；剩余 P1 是真实多 seed/N 规模校准、多窗口/到达时间输入 schema，以及与后续 optional min-cost-flow 复杂约束对照。
-- 合同保持回归：D7 只接受当前有效 binding/version；D5 不本地 rebind 或改写 `global_track_id`；`AssignmentPlan` 继续版本化并拒绝 stale previous plan；D6 assignment record export 字段保持兼容。
+- D5 feedback 权重标定：基于真实 D6 records 对 `fov_difficulty_by_resource`、禁配边、operator hold 和迟滞参数做配对扫描，验收重分配抖动下降且高威胁未分配不恶化。
+- 非等量 N/M 与增量分配：补 3v5、5v3、目标新增和资源失效场景，对比全量重算与局部更新的延迟，同时保持版本递增和 stale 拒绝。
+- 完整动态威胁评估：在现有可解释 baseline 上加入保护区、目标类别、资源状态和 mission outcome 标定，保留 baseline 对照。
+- 时间窗口硬约束校准：覆盖到达时间、多窗口、closed/not-yet-open edge 和 reject reason 聚合，不重复实现已有单窗口拒绝 baseline。
+- 二级 active plan activation 合同：构造持续 readiness 场景，闭合 `pending_secondary_plan -> secondary_plan_active`，验证唯一 active owner、严格递增 version、旧中心 stale 和 D7 current binding。
+- OR-Tools Min-Cost Flow 对照：按既定 P1 优先级实现 optional、同输入的一对一对照，默认仍为 Hungarian；复杂容量/备份/配额保持 P2/P3。
+- 合同保持回归：维持 active-plan `previous_plan` 必填、solve 前 switch penalty、D5/D7 禁止本地 rebind 和 D6 record/evidence schema。当前 D3 全量测试基线为 `63 passed`。
 
 ### P2
 

@@ -64,6 +64,8 @@ class DryRunAssociationResult:
             "metrics": dict(self.metrics),
             "id_switch_count": self.metrics["id_switch_count"],
             "track_continuity": self.metrics["track_continuity"],
+            "truth_metrics_available": self.metrics["truth_metrics_available"],
+            "continuity_available": self.metrics["continuity_available"],
         }
 
 
@@ -338,6 +340,14 @@ def run_airsim_dry_run_association(
     metrics = dict(active_tracker.metrics.summary())
     metrics.setdefault("id_switch_count", active_tracker.metrics.id_switch_count)
     metrics.setdefault("track_continuity", active_tracker.metrics.track_continuity)
+    metrics.setdefault(
+        "truth_metrics_available",
+        active_tracker.metrics.truth_metrics_available,
+    )
+    metrics.setdefault(
+        "continuity_available",
+        active_tracker.metrics.continuity_available,
+    )
     return DryRunAssociationResult(
         tracker=active_tracker,
         frames=output_frames,
@@ -553,8 +563,9 @@ def _covariance_xy(item: Any, default_position_variance: float) -> np.ndarray:
     if isinstance(value, Mapping):
         xx = float(_first_present(value, ("xx", "x", "north"), default_position_variance))
         yy = float(_first_present(value, ("yy", "y", "east"), default_position_variance))
-        xy = float(_first_present(value, ("xy", "yx"), 0.0))
-        return np.array([[xx, xy], [xy, yy]], dtype=float)
+        xy = float(_first_present(value, ("xy",), _first_present(value, ("yx",), 0.0)))
+        yx = float(_first_present(value, ("yx",), xy))
+        return np.array([[xx, xy], [yx, yy]], dtype=float)
 
     array = np.asarray(value, dtype=float)
     if array.ndim == 0:

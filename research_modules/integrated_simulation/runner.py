@@ -337,13 +337,25 @@ class IntegratedEpisodeRunner:
                 previous_plan=previous_plan,
                 expected_previous_version=None if previous_plan is None else previous_plan.version,
             )
-        except StalePlanError:
-            plan = self.assignment_planner.plan(
-                target_tracks,
-                resources_to_d3(self.resources),
-                timestamp=timestamp,
-                previous_plan=None,
+        except StalePlanError as error:
+            if previous_plan is None:
+                raise
+            self.collector.add_event(
+                EventRecord(
+                    timestamp=timestamp,
+                    event_type="d3_stale_plan_rejected",
+                    actor_id="D3",
+                    severity="warning",
+                    note=str(error),
+                    metadata={
+                        **error.to_metadata(),
+                        "retained_plan_id": previous_plan.plan_id,
+                        "retained_plan_version": previous_plan.version,
+                        "retry_policy": "retain_current_plan_and_retry_next_cycle",
+                    },
+                )
             )
+            return
         self.current_plan = plan
         d2_by_id = {track.global_track_id: track for track in d2_tracks}
         self.collector.extend_assignments(plan_to_assignment_records(plan, d2_by_id))

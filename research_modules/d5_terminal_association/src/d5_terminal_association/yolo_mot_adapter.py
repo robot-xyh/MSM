@@ -8,6 +8,7 @@ labels are ignored by the online conversion path.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -246,11 +247,11 @@ class YoloMotAdapter:
             raise ValueError("provide detector or model, not both")
         self._detector = detector
         self._model = model
+        self._model_was_injected = model is not None
         self._ultralytics_loader = ultralytics_loader or _load_ultralytics_model
-        self._fallback_tracker = fallback_tracker or IouFallbackTracker(
-            iou_threshold=self.config.iou_match_threshold,
-            max_age_frames=self.config.max_track_age_frames,
-        )
+        self._fallback_tracker_template = fallback_tracker
+        self._fallback_trackers: dict[tuple[str, str], IouFallbackTracker] = {}
+        self._native_models: dict[tuple[str, str], Any] = {}
 
     def process_frame(
         self,
@@ -264,9 +265,17 @@ class YoloMotAdapter:
     ) -> YoloMotFrameResult:
         """Run detector/tracker for one frame and return D5 local tracks."""
 
+        stream_key = _mot_stream_key(resource_id, camera_id)
         resolved_frame_id = frame_id or f"{resource_id}/{camera_id}"
         metadata: dict[str, Any] = {
             "requested_tracker_backend": self.config.tracker_backend,
+            "stream_key": {
+                "resource_id": stream_key[0],
+                "camera_id": stream_key[1],
+            },
+            "stream_key_text": _mot_stream_key_text(stream_key),
+            "tracker_state_scope": "per_resource_camera_stream",
+            "tracker_state_isolated": True,
             "weights_path": str(self.config.weights_path),
             "compute_device": self.config.compute_device,
             "cpu_budget_ms": self.config.cpu_budget_ms,
@@ -285,7 +294,7 @@ class YoloMotAdapter:
                         default_category=self.config.default_category,
                     )
                 )
-                tracked = tuple(self._fallback_tracker.update(detections))
+                tracked = tuple(self._fallback_tracker_for_stream(stream_key).update(detections))
                 tracks = _to_local_visual_tracks(
                     tracked,
                     camera_id=camera_id,
@@ -298,6 +307,10 @@ class YoloMotAdapter:
                         "raw_detection_count": len(detections),
                         "accepted_detection_count": len(tracks),
                         "tracker_backend": "iou_fallback",
+                        "tracker_state_backend": "iou_fallback",
+                        "tracker_instance_scope": "per_stream",
+                        "native_model_scope": "not_used",
+                        "detector_model_scope": "adapter_shared_injected_detector",
                         "detector_backend": "injected_detector",
                     }
                 )
@@ -322,10 +335,11 @@ class YoloMotAdapter:
                     metadata=metadata,
                 )
 
-            model = self._load_model()
-            if self._should_use_native_tracker(model):
+            native_model = None
+            if self._native_tracker_requested():
                 try:
-                    detections = self._run_native_tracker(model, frame)
+                    native_model = self._native_model_for_stream(stream_key)
+                    detections = self._run_native_tracker(native_model, frame)
                     tracked = tuple(
                         _TrackedDetection(
                             bbox=item.bbox,
@@ -351,6 +365,10 @@ class YoloMotAdapter:
                                 "raw_detection_count": len(detections),
                                 "accepted_detection_count": len(tracks),
                                 "tracker_backend": self.config.tracker_backend,
+                                "tracker_state_backend": self.config.tracker_backend,
+                                "tracker_instance_scope": "per_stream",
+                                "native_model_scope": "per_stream",
+                                "detector_model_scope": "per_stream_native_model",
                                 "detector_backend": "ultralytics_yolov8",
                             }
                         )
@@ -382,13 +400,14 @@ class YoloMotAdapter:
 
             if not self.config.allow_iou_fallback and self.config.tracker_backend != "iou_fallback":
                 raise YoloMotUnavailableError("native tracker unavailable and IoU fallback is disabled")
+            model = native_model if native_model is not None else self._load_model()
             detections = self._filter_detections(
                 _normalize_detections(
                     self._run_detector(model, frame),
                     default_category=self.config.default_category,
                 )
             )
-            tracked = tuple(self._fallback_tracker.update(detections))
+            tracked = tuple(self._fallback_tracker_for_stream(stream_key).update(detections))
             tracks = _to_local_visual_tracks(
                 tracked,
                 camera_id=camera_id,
@@ -401,6 +420,14 @@ class YoloMotAdapter:
                     "raw_detection_count": len(detections),
                     "accepted_detection_count": len(tracks),
                     "tracker_backend": "iou_fallback",
+                    "tracker_state_backend": "iou_fallback",
+                    "tracker_instance_scope": "per_stream",
+                    "native_model_scope": "per_stream" if native_model is not None else "not_used",
+                    "detector_model_scope": (
+                        "per_stream_native_model"
+                        if native_model is not None
+                        else "adapter_shared_detector_model"
+                    ),
                     "detector_backend": "ultralytics_yolov8",
                 }
             )
@@ -433,6 +460,8 @@ class YoloMotAdapter:
                     "tracker_backend": "iou_fallback"
                     if self.config.allow_iou_fallback
                     else self.config.tracker_backend,
+                    "tracker_state_backend": "unavailable",
+                    "tracker_instance_scope": "per_stream",
                     "detector_backend": "unavailable",
                 }
             )
@@ -453,13 +482,30 @@ class YoloMotAdapter:
 
         self._load_model()
 
+    def reset_stream(self, resource_id: str, camera_id: str) -> None:
+        """Release MOT state for one resource/camera stream."""
+
+        stream_key = _mot_stream_key(resource_id, camera_id)
+        self._fallback_trackers.pop(stream_key, None)
+        self._native_models.pop(stream_key, None)
+
+    def reset_all_streams(self) -> None:
+        """Release all per-stream MOT state at an episode boundary."""
+
+        self._fallback_trackers.clear()
+        self._native_models.clear()
+
     def _load_model(self) -> Any:
         if self._model is not None:
             return self._model
+        self._model = self._load_model_instance()
+        return self._model
+
+    def _load_model_instance(self) -> Any:
         if not self.config.weights_path.exists():
             raise YoloMotUnavailableError(f"YOLOv8 weights not found: {self.config.weights_path}")
         try:
-            self._model = self._ultralytics_loader(self.config.weights_path)
+            return self._ultralytics_loader(self.config.weights_path)
         except ModuleNotFoundError as exc:
             raise YoloMotUnavailableError(
                 "ultralytics is not available; install ultralytics or inject a detector"
@@ -470,13 +516,49 @@ class YoloMotAdapter:
             ) from exc
         except Exception as exc:
             raise YoloMotUnavailableError(f"failed to load YOLOv8 model: {exc}") from exc
-        return self._model
 
-    def _should_use_native_tracker(self, model: Any) -> bool:
+    def _fallback_tracker_for_stream(
+        self,
+        stream_key: tuple[str, str],
+    ) -> IouFallbackTracker:
+        tracker = self._fallback_trackers.get(stream_key)
+        if tracker is not None:
+            return tracker
+        if self._fallback_tracker_template is None:
+            tracker = IouFallbackTracker(
+                iou_threshold=self.config.iou_match_threshold,
+                max_age_frames=self.config.max_track_age_frames,
+            )
+        else:
+            try:
+                tracker = deepcopy(self._fallback_tracker_template)
+            except Exception as exc:
+                raise YoloMotUnavailableError(
+                    "fallback tracker must be cloneable for per-stream state isolation"
+                ) from exc
+        self._fallback_trackers[stream_key] = tracker
+        return tracker
+
+    def _native_model_for_stream(self, stream_key: tuple[str, str]) -> Any:
+        model = self._native_models.get(stream_key)
+        if model is not None:
+            return model
+        if self._model_was_injected:
+            try:
+                model = deepcopy(self._model)
+            except Exception as exc:
+                raise YoloMotUnavailableError(
+                    "injected native model must be cloneable for per-stream tracker isolation"
+                ) from exc
+        else:
+            model = self._load_model_instance()
+        self._native_models[stream_key] = model
+        return model
+
+    def _native_tracker_requested(self) -> bool:
         return (
             self.config.tracker_backend in {"bytetrack", "botsort"}
             and self.config.use_native_ultralytics_tracker
-            and hasattr(model, "track")
         )
 
     def _run_native_tracker(self, model: Any, frame: Any) -> list[_DetectorDetection]:
@@ -537,6 +619,18 @@ class YoloMotAdapter:
             timestamp=timestamp,
             metadata=dict(metadata),
         )
+
+
+def _mot_stream_key(resource_id: str, camera_id: str) -> tuple[str, str]:
+    resource = str(resource_id)
+    camera = str(camera_id)
+    if not resource or not camera:
+        raise ValueError("resource_id and camera_id must be non-empty MOT stream identifiers")
+    return (resource, camera)
+
+
+def _mot_stream_key_text(stream_key: tuple[str, str]) -> str:
+    return f"{stream_key[0]}/{stream_key[1]}"
 
 
 def _load_ultralytics_model(weights_path: Path) -> Any:
@@ -727,11 +821,16 @@ def _detection_from_record(
 ) -> _DetectorDetection:
     bbox = _extract_bbox(detection)
     class_id = _class_id_from_record(detection)
-    category_value = _get_any(detection, "category", "label", "class_name", "name")
+    category_value = _get_any(detection, "category", "label", "class_name")
+    record_names = _get_any(detection, "names", "class_names")
     category = str(
         category_value
         if category_value is not None
-        else _category_from_class_id(class_id, names, default_category=default_category)
+        else _category_from_class_id(
+            class_id,
+            record_names if record_names is not None else names,
+            default_category=default_category,
+        )
     )
     confidence_value = _get_any(detection, "confidence", "conf", "score", "quality")
     confidence = float(1.0 if confidence_value is None else confidence_value)
@@ -880,7 +979,10 @@ def _category_from_class_id(
     if class_id is None:
         return default_category
     if isinstance(names, Mapping):
-        return str(names.get(class_id, f"class_{class_id}"))
+        mapped = names.get(class_id)
+        if mapped is None:
+            mapped = names.get(str(class_id))
+        return str(mapped) if mapped is not None else f"class_{class_id}"
     if isinstance(names, Sequence) and not isinstance(names, (str, bytes, bytearray)):
         if 0 <= class_id < len(names):
             return str(names[class_id])

@@ -117,6 +117,7 @@ STANDARD_METRIC_MAPPINGS: tuple[StandardMetricMapping, ...] = (
             "degraded_completion_rate",
             "active_degradation_count",
             "active_degradation_precision",
+            "active_degradation_label_count",
             "unnecessary_active_degradation_count",
             "passive_failover_count",
             "secondary_node_takeover_count",

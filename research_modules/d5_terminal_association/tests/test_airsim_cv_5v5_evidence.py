@@ -238,6 +238,69 @@ def test_detection_parser_ignores_airsim_truth_identity_fields_online() -> None:
     np.testing.assert_allclose(tracks[0].center_px, np.array([32.0, 44.0]))
 
 
+def test_airsim_actor_names_do_not_affect_online_category_cost_or_binding() -> None:
+    named_tracks = local_visual_tracks_from_sim_detections(
+        [
+            {
+                "bbox_xyxy": (312.0, 232.0, 328.0, 248.0),
+                "name": "AIRSIM_ACTOR_SENTINEL",
+                "actor_name": "AIRSIM_ACTOR_SENTINEL",
+                "object_name": "AIRSIM_ACTOR_SENTINEL",
+                "confidence": 0.94,
+                "mot_history_length": 4,
+            }
+        ],
+        resource_id="INT-1",
+        camera_id="front_rgb",
+        timestamp=5.0,
+    )
+    plain_tracks = local_visual_tracks_from_sim_detections(
+        [
+            {
+                "bbox_xyxy": (312.0, 232.0, 328.0, 248.0),
+                "confidence": 0.94,
+                "mot_history_length": 4,
+            }
+        ],
+        resource_id="INT-1",
+        camera_id="front_rgb",
+        timestamp=5.0,
+    )
+    assigned = _global_track("G-assigned")
+    associator = TerminalAssociator()
+    projection = associator.project_tracks_to_image([assigned], _camera(), timestamp=5.0)
+
+    named_cost = associator.build_cost_matrix(projection, named_tracks).breakdowns[
+        ("G-assigned", "front_rgb_det_0")
+    ]
+    plain_cost = associator.build_cost_matrix(projection, plain_tracks).breakdowns[
+        ("G-assigned", "front_rgb_det_0")
+    ]
+    named_decision = TerminalAssociator().decide(
+        Assignment("G-assigned", resource_id="INT-1"),
+        [assigned],
+        named_tracks,
+        camera=_camera(),
+        current_time=5.0,
+    )
+    plain_decision = TerminalAssociator().decide(
+        Assignment("G-assigned", resource_id="INT-1"),
+        [assigned],
+        plain_tracks,
+        camera=_camera(),
+        current_time=5.0,
+    )
+
+    assert named_tracks[0].category == plain_tracks[0].category == "unknown"
+    assert named_cost.category_cost == plain_cost.category_cost == 0.0
+    assert named_cost.total_cost == plain_cost.total_cost
+    assert named_decision.decision_state == plain_decision.decision_state == "locked"
+    assert named_decision.assigned_global_track_id == plain_decision.assigned_global_track_id == "G-assigned"
+    assert "AIRSIM_ACTOR_SENTINEL" not in str(named_decision.metadata)
+    assert "actor_name" not in str(named_decision.metadata)
+    assert "object_name" not in str(named_decision.metadata)
+
+
 def test_secondary_node_sim_detections_do_not_use_actor_truth_as_local_identity() -> None:
     detections = [
         {
@@ -276,6 +339,39 @@ def test_secondary_node_sim_detections_do_not_use_actor_truth_as_local_identity(
     assert "TargetActor_7" not in str(bus.observations()[0].metadata)
     assert "G-other" not in str(bus.observations()[0].metadata)
     assert bus.cross_view_associations() == []
+
+
+def test_runtime_prefixed_actor_aliases_do_not_become_online_local_track_ids() -> None:
+    detections = [
+        {
+            "bbox_xyxy": (300.0, 220.0, 340.0, 260.0),
+            "local_track_id": "Interceptor1:0:MSM_TargetActor_1",
+            "detection_id": "Interceptor1:0:0001:0:MSM_TargetActor_1",
+            "name": "MSM_TargetActor_1",
+            "object_id": "TGT-001",
+            "confidence": 1.0,
+        },
+        {
+            "bbox_xyxy": (360.0, 220.0, 400.0, 260.0),
+            "detection_id": "Interceptor1:0:0001:1:MSM_TargetActor_2",
+            "actor_name": "MSM_TargetActor_2",
+            "object_id": "TGT-002",
+            "confidence": 1.0,
+        },
+    ]
+
+    tracks = local_visual_tracks_from_sim_detections(
+        detections,
+        resource_id="INT-01",
+        camera_id="Interceptor1:0",
+        timestamp=1.0,
+    )
+
+    assert [track.local_track_id for track in tracks] == [
+        "Interceptor1:0_det_0",
+        "Interceptor1:0_det_1",
+    ]
+    assert all("MSM_TargetActor" not in track.local_track_id for track in tracks)
 
 
 def test_secondary_coverage_distinguishes_single_camera_from_network_union() -> None:
@@ -570,6 +666,32 @@ def test_offline_yolo_bytetrack_adapter_outputs_only_local_visual_track_schema()
     assert tracks[0].mot_history_length == 6
     assert tracks[1].mot_history_length == 1
     np.testing.assert_allclose(tracks[0].center_px, np.array([30.0, 40.0]))
+
+
+def test_offline_yolo_generic_names_are_not_online_category_evidence() -> None:
+    tracks = local_visual_tracks_from_offline_yolo_bytetrack(
+        [
+            {
+                "xyxy": (10.0, 20.0, 50.0, 60.0),
+                "track_id": "local-1",
+                "name": "friend",
+                "actor_name": "friend",
+                "object_name": "friend",
+            },
+            {
+                "xyxy": (80.0, 20.0, 120.0, 60.0),
+                "track_id": "local-2",
+                "class_id": 3,
+                "names": {3: "uav"},
+                "name": "TargetActor_3",
+            },
+        ],
+        resource_id="INT-1",
+        camera_id="front_rgb",
+    )
+
+    assert tracks[0].category == "unknown"
+    assert tracks[1].category == "uav"
 
 
 def test_offline_tracker_id_cannot_replace_assigned_global_track_id() -> None:

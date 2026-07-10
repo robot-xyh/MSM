@@ -452,10 +452,11 @@ def local_visual_tracks_from_sim_detections(
     """Convert detection bbox records to `LocalVisualTrack` objects.
 
     AirSim truth fields such as `object_id` and `actor_name` are intentionally
-    ignored here. If a local-ID alias such as `track_id` repeats an AirSim
-    truth/object field, it is treated as truth metadata and replaced with a
-    camera-scoped detection ID. Truth labels may be carried by callers only as
-    offline evaluation labels outside the online association path.
+    ignored here. If a local-ID alias such as `track_id` repeats or embeds an
+    AirSim truth/object field as a delimited component, it is treated as truth
+    metadata and replaced with a camera-scoped detection ID. Truth labels may
+    be carried by callers only as offline evaluation labels outside the online
+    association path.
     """
 
     tracks: list[LocalVisualTrack] = []
@@ -463,7 +464,7 @@ def local_visual_tracks_from_sim_detections(
         bbox = _extract_bbox(detection)
         x1, y1, x2, y2 = bbox
         local_id = _online_local_track_id(detection, camera_id=camera_id, index=index)
-        category = str(_get_any(detection, "category", "label", "class_name") or default_category)
+        category = _online_category_from_detection(detection, default_category=default_category)
         quality = float(_get_any(detection, "confidence", "score", "quality") or default_quality)
         tracks.append(
             LocalVisualTrack(
@@ -518,10 +519,7 @@ def local_visual_tracks_from_offline_yolo_bytetrack(
         else:
             base_local_id = f"{camera_id}/{source_name}:track:{raw_track_id}"
         local_id = _unique_local_id(base_local_id, seen_local_ids)
-        category = str(
-            _get_any(detection, "category", "label", "class_name", "class", "name")
-            or default_category
-        )
+        category = _online_category_from_detection(detection, default_category=default_category)
         quality = float(
             _get_any(detection, "confidence", "conf", "score", "quality")
             or default_quality
@@ -1828,17 +1826,58 @@ def _online_local_track_id(detection: Any, *, camera_id: str, index: int) -> str
     return f"{camera_id}_det_{index}"
 
 
+def _online_category_from_detection(detection: Any, *, default_category: str) -> str:
+    explicit_category = _get_any(detection, "category", "label", "class_name")
+    if explicit_category is not None:
+        return str(explicit_category)
+
+    class_id = _get_any(detection, "class_id", "cls", "class_index")
+    class_names = _get_any(detection, "names", "class_names")
+    if class_id is None or class_names is None:
+        return str(default_category)
+
+    class_index = int(class_id)
+    if isinstance(class_names, Mapping):
+        mapped = class_names.get(class_index)
+        if mapped is None:
+            mapped = class_names.get(str(class_index))
+        return str(mapped) if mapped is not None else str(default_category)
+    if isinstance(class_names, (list, tuple)) and 0 <= class_index < len(class_names):
+        return str(class_names[class_index])
+    return str(default_category)
+
+
 def _matches_airsim_truth_identity(detection: Any, candidate: Any) -> bool:
-    candidate_text = str(candidate)
+    candidate_text = str(candidate).strip()
     if not candidate_text:
         return False
     for field_name in AIRSIM_TRUTH_OR_GLOBAL_FIELD_NAMES:
         value = _get_any(detection, field_name)
         if value is None:
             continue
-        if str(value) == candidate_text:
+        truth_text = str(value).strip()
+        if not truth_text:
+            continue
+        if candidate_text == truth_text or _contains_delimited_identifier(candidate_text, truth_text):
             return True
     return False
+
+
+def _contains_delimited_identifier(candidate: str, identifier: str) -> bool:
+    """Detect runtime IDs that embed an AirSim truth alias as one component."""
+
+    separators = ":/|#"
+    start = 0
+    while True:
+        index = candidate.find(identifier, start)
+        if index < 0:
+            return False
+        before_ok = index == 0 or candidate[index - 1] in separators
+        end = index + len(identifier)
+        after_ok = end == len(candidate) or candidate[end] in separators
+        if before_ok and after_ok:
+            return True
+        start = index + 1
 
 
 def _problem_observations(

@@ -5,8 +5,11 @@ from __future__ import annotations
 import csv
 from dataclasses import asdict, dataclass, field
 import json
+import math
 from pathlib import Path
+import random
 import re
+import statistics
 from typing import Any, Iterable, Mapping, Sequence
 
 from .main_bus import load_main_episode_bus_metrics
@@ -23,6 +26,131 @@ GROUP_FIELDS = [
     "secondary_fov_degrees",
     "secondary_count",
     "detection_backend",
+]
+
+CROSS_SEED_GROUP_FIELDS = [
+    *[field for field in GROUP_FIELDS if field != "seed"],
+    "scenario_version",
+    "drone_count",
+    "resource_count",
+    "target_count",
+    "camera_count",
+]
+
+PAIR_GROUP_FIELDS = [
+    "metric_scope",
+    "scenario_group",
+    "scenario_version",
+    "drone_count",
+    "resource_count",
+    "target_count",
+    "camera_count",
+    "secondary_height_above_targets_m",
+    "secondary_fov_degrees",
+    "secondary_count",
+    "secondary_image_width_px",
+    "secondary_image_height_px",
+    "secondary_recon_mode",
+    "detection_backend",
+]
+
+DEFAULT_BOOTSTRAP_RESAMPLES = 2000
+DEFAULT_BOOTSTRAP_RNG_SEED = 20260710
+MIN_PAIRED_SAMPLES_FOR_CI = 2
+
+CROSS_SEED_METRICS = [
+    "secondary_network_joint_full_view_frame_rate",
+    "secondary_network_mean_coverage_ratio",
+    "secondary_visible_target_union_ratio",
+    "secondary_single_camera_full_view_frame_rate",
+    "multi_target_fov_rate",
+    "projection_valid_rate",
+    "geometry_gate_pass_rate",
+    "registered_candidate_count",
+    "stable_cross_view_registration_count",
+    "not_registered_count",
+    "active_degradation_count",
+    "active_degradation_precision",
+    "active_degradation_label_count",
+    "unnecessary_degradation_count",
+    "d7_guidance_reject_count",
+    "intercept_success_count",
+    "collision_intercept_count",
+    "range_intercept_count",
+    "intercept_abort_count",
+    "min_range_m",
+    "time_to_intercept_s",
+    "visual_png_switch_count",
+    "terminal_switch_allowed_rate",
+    "terminal_takeover_rate",
+    "gate_reject_count",
+]
+
+PAIRED_COMPARISON_METRICS = list(CROSS_SEED_METRICS)
+
+COUNT_METRICS = {
+    "registered_candidate_count",
+    "stable_cross_view_registration_count",
+    "not_registered_count",
+    "active_degradation_count",
+    "active_degradation_label_count",
+    "unnecessary_degradation_count",
+    "d7_guidance_reject_count",
+    "intercept_success_count",
+    "collision_intercept_count",
+    "range_intercept_count",
+    "intercept_abort_count",
+    "visual_png_switch_count",
+    "gate_reject_count",
+}
+
+INTERCEPT_OUTCOME_COUNT_METRICS = {
+    "intercept_success_count",
+    "collision_intercept_count",
+    "range_intercept_count",
+    "intercept_abort_count",
+}
+
+CROSS_SEED_FIELDNAMES = [
+    *CROSS_SEED_GROUP_FIELDS,
+    "metric",
+    "seed_count",
+    "seeds",
+    "episode_count",
+    "value_count",
+    "status",
+    "sum",
+    "opportunity_count",
+    "rate",
+    "mean",
+    "std",
+    "min",
+    "max",
+]
+
+PAIRED_COMPARISON_FIELDNAMES = [
+    *PAIR_GROUP_FIELDS,
+    "metric",
+    "baseline_seed_count",
+    "enhanced_seed_count",
+    "role_pair_count",
+    "pair_count",
+    "paired_seeds",
+    "missing_baseline_seeds",
+    "missing_enhanced_seeds",
+    "unavailable_baseline_metric_seeds",
+    "unavailable_enhanced_metric_seeds",
+    "status",
+    "baseline_mean",
+    "enhanced_mean",
+    "paired_delta_mean",
+    "paired_delta_std",
+    "effect_size",
+    "effect_size_name",
+    "bootstrap_ci95_low",
+    "bootstrap_ci95_high",
+    "bootstrap_resamples",
+    "bootstrap_rng_seed",
 ]
 
 DETECT_TO_REGISTRATION_REASONS = [
@@ -93,10 +221,21 @@ RECORD_FIELDNAMES = [
     "secondary_detect_available_but_not_registered_count",
     "active_degradation_count",
     "active_degradation_precision",
+    "active_degradation_label_count",
     "unnecessary_degradation_count",
     "d7_guidance_reject_count",
     "d7_guidance_reject_reason_counts",
     "guidance_law_counts",
+    "intercept_success_count",
+    "collision_intercept_count",
+    "range_intercept_count",
+    "intercept_abort_count",
+    "min_range_m",
+    "time_to_intercept_s",
+    "visual_png_switch_count",
+    "terminal_switch_allowed_rate",
+    "terminal_takeover_rate",
+    "gate_reject_count",
     "source_dir",
     "source_files",
 ]
@@ -147,10 +286,21 @@ SUMMARY_FIELDNAMES = [
     "secondary_detect_available_but_not_registered_count",
     "active_degradation_count",
     "active_degradation_precision_mean",
+    "active_degradation_label_count",
     "unnecessary_degradation_count",
     "d7_guidance_reject_count",
     "d7_guidance_reject_reason_counts",
     "guidance_law_counts",
+    "intercept_success_count",
+    "collision_intercept_count",
+    "range_intercept_count",
+    "intercept_abort_count",
+    "min_range_m_mean",
+    "time_to_intercept_s_mean",
+    "visual_png_switch_count",
+    "terminal_switch_allowed_rate_mean",
+    "terminal_takeover_rate_mean",
+    "gate_reject_count",
     "source_dirs",
 ]
 
@@ -215,10 +365,21 @@ class AirSimCalibrationRecord:
     secondary_detect_available_but_not_registered_count: int = 0
     active_degradation_count: int = 0
     active_degradation_precision: float | None = None
+    active_degradation_label_count: int = 0
     unnecessary_degradation_count: int = 0
     d7_guidance_reject_count: int = 0
     d7_guidance_reject_reason_counts: dict[str, int] = field(default_factory=dict)
     guidance_law_counts: dict[str, int] = field(default_factory=dict)
+    intercept_success_count: int | None = None
+    collision_intercept_count: int | None = None
+    range_intercept_count: int | None = None
+    intercept_abort_count: int | None = None
+    min_range_m: float | None = None
+    time_to_intercept_s: float | None = None
+    visual_png_switch_count: int | None = None
+    terminal_switch_allowed_rate: float | None = None
+    terminal_takeover_rate: float | None = None
+    gate_reject_count: int | None = None
     source_dir: str = ""
     source_files: dict[str, str] = field(default_factory=dict)
 
@@ -262,6 +423,25 @@ class AirSimCalibrationReportGenerator:
     ) -> Path:
         return write_airsim_calibration_summary_json(rows, path)
 
+    def aggregate_cross_seed(
+        self,
+        records: Iterable[AirSimCalibrationRecord | Mapping[str, Any]],
+    ) -> list[dict[str, Any]]:
+        return aggregate_cross_seed_airsim_calibration_records(records)
+
+    def compare_paired(
+        self,
+        records: Iterable[AirSimCalibrationRecord | Mapping[str, Any]],
+        *,
+        bootstrap_resamples: int = DEFAULT_BOOTSTRAP_RESAMPLES,
+        bootstrap_rng_seed: int = DEFAULT_BOOTSTRAP_RNG_SEED,
+    ) -> list[dict[str, Any]]:
+        return compare_paired_airsim_calibration_records(
+            records,
+            bootstrap_resamples=bootstrap_resamples,
+            bootstrap_rng_seed=bootstrap_rng_seed,
+        )
+
     def write_standard_mapping_csv(
         self,
         path: str | Path,
@@ -286,11 +466,19 @@ class AirSimCalibrationReportGenerator:
         output_dir: str | Path,
         *,
         title: str = "D6 AirSim 多 Seed 校准报告",
+        bootstrap_resamples: int = DEFAULT_BOOTSTRAP_RESAMPLES,
+        bootstrap_rng_seed: int = DEFAULT_BOOTSTRAP_RNG_SEED,
     ) -> dict[str, Path]:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         records = self.load_records(input_paths)
         rows = self.summarize(records)
+        aggregate_rows = self.aggregate_cross_seed(records)
+        comparison_rows = self.compare_paired(
+            records,
+            bootstrap_resamples=bootstrap_resamples,
+            bootstrap_rng_seed=bootstrap_rng_seed,
+        )
         return {
             "record_csv": self.write_record_csv(
                 records,
@@ -303,6 +491,28 @@ class AirSimCalibrationReportGenerator:
             "summary_json": self.write_summary_json(
                 rows,
                 output_dir / "airsim_calibration_summary.json",
+            ),
+            "cross_seed_csv": write_airsim_calibration_cross_seed_csv(
+                aggregate_rows,
+                output_dir / "airsim_calibration_cross_seed_aggregate.csv",
+            ),
+            "paired_comparison_csv": write_airsim_calibration_paired_comparison_csv(
+                comparison_rows,
+                output_dir / "airsim_calibration_paired_comparison.csv",
+            ),
+            "aggregate_json": write_airsim_calibration_aggregate_json(
+                aggregate_rows,
+                comparison_rows,
+                output_dir / "airsim_calibration_aggregate.json",
+                bootstrap_resamples=bootstrap_resamples,
+                bootstrap_rng_seed=bootstrap_rng_seed,
+            ),
+            "aggregate_markdown": write_airsim_calibration_aggregate_markdown(
+                aggregate_rows,
+                comparison_rows,
+                output_dir / "airsim_calibration_aggregate_report.md",
+                bootstrap_resamples=bootstrap_resamples,
+                bootstrap_rng_seed=bootstrap_rng_seed,
             ),
             "standard_mapping_csv": self.write_standard_mapping_csv(
                 output_dir / "standard_metric_mapping.csv",
@@ -481,9 +691,15 @@ def summarize_airsim_calibration_records(
                     grouped_records,
                     "active_degradation_count",
                 ),
-                "active_degradation_precision_mean": _mean_field(
+                "active_degradation_precision_mean": _weighted_mean_field(
                     grouped_records,
                     "active_degradation_precision",
+                    "active_degradation_label_count",
+                    fallback_unweighted=False,
+                ),
+                "active_degradation_label_count": _sum_int(
+                    grouped_records,
+                    "active_degradation_label_count",
                 ),
                 "unnecessary_degradation_count": _sum_int(
                     grouped_records,
@@ -500,6 +716,46 @@ def summarize_airsim_calibration_records(
                 "guidance_law_counts": _sum_count_mappings(
                     grouped_records,
                     "guidance_law_counts",
+                ),
+                "intercept_success_count": _sum_int_or_none(
+                    grouped_records,
+                    "intercept_success_count",
+                ),
+                "collision_intercept_count": _sum_int_or_none(
+                    grouped_records,
+                    "collision_intercept_count",
+                ),
+                "range_intercept_count": _sum_int_or_none(
+                    grouped_records,
+                    "range_intercept_count",
+                ),
+                "intercept_abort_count": _sum_int_or_none(
+                    grouped_records,
+                    "intercept_abort_count",
+                ),
+                "min_range_m_mean": _mean_field_or_none(
+                    grouped_records,
+                    "min_range_m",
+                ),
+                "time_to_intercept_s_mean": _mean_field_or_none(
+                    grouped_records,
+                    "time_to_intercept_s",
+                ),
+                "visual_png_switch_count": _sum_int_or_none(
+                    grouped_records,
+                    "visual_png_switch_count",
+                ),
+                "terminal_switch_allowed_rate_mean": _mean_field_or_none(
+                    grouped_records,
+                    "terminal_switch_allowed_rate",
+                ),
+                "terminal_takeover_rate_mean": _mean_field_or_none(
+                    grouped_records,
+                    "terminal_takeover_rate",
+                ),
+                "gate_reject_count": _sum_int_or_none(
+                    grouped_records,
+                    "gate_reject_count",
                 ),
                 "source_dirs": _unique_text_values(grouped_records, "source_dir"),
             }
@@ -549,6 +805,370 @@ def write_airsim_calibration_summary_json(
     return path
 
 
+def aggregate_cross_seed_airsim_calibration_records(
+    records: Iterable[AirSimCalibrationRecord | Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Aggregate per-seed values without changing the legacy seed grouping."""
+
+    grouped: dict[tuple[Any, ...], dict[Any, list[dict[str, Any]]]] = {}
+    for record in (_record_dict(item) for item in records):
+        key = tuple(
+            _calibration_group_value(record, field)
+            for field in CROSS_SEED_GROUP_FIELDS
+        )
+        seed_value = _first_int(record.get("seed"))
+        seed = seed_value if seed_value is not None else "not_recorded"
+        grouped.setdefault(key, {}).setdefault(seed, []).append(record)
+
+    rows: list[dict[str, Any]] = []
+    for key, seed_records in sorted(grouped.items(), key=_cross_seed_sort_key):
+        group_values = dict(zip(CROSS_SEED_GROUP_FIELDS, key))
+        seeds = sorted(seed_records, key=lambda value: str(value))
+        episode_count = sum(len(items) for items in seed_records.values())
+        for metric in CROSS_SEED_METRICS:
+            values = [
+                value
+                for seed in seeds
+                for value in [_aggregate_metric_value(seed_records[seed], metric)]
+                if value is not None
+            ]
+            opportunity_count = _intercept_opportunity_count(
+                seed_records,
+                metric,
+            )
+            total = sum(values) if values and metric in COUNT_METRICS else None
+            rows.append(
+                {
+                    **group_values,
+                    "metric": metric,
+                    "seed_count": len(seeds),
+                    "seeds": seeds,
+                    "episode_count": episode_count,
+                    "value_count": len(values),
+                    "status": "available" if values else "unavailable",
+                    "sum": total,
+                    "opportunity_count": opportunity_count,
+                    "rate": (
+                        total / opportunity_count
+                        if total is not None and opportunity_count
+                        else None
+                    ),
+                    "mean": statistics.fmean(values) if values else None,
+                    "std": _sample_std(values),
+                    "min": min(values) if values else None,
+                    "max": max(values) if values else None,
+                }
+            )
+    return rows
+
+
+def compare_paired_airsim_calibration_records(
+    records: Iterable[AirSimCalibrationRecord | Mapping[str, Any]],
+    *,
+    bootstrap_resamples: int = DEFAULT_BOOTSTRAP_RESAMPLES,
+    bootstrap_rng_seed: int = DEFAULT_BOOTSTRAP_RNG_SEED,
+) -> list[dict[str, Any]]:
+    """Compare explicit baseline/enhanced roles using strict seed pairing."""
+
+    if bootstrap_resamples <= 0:
+        raise ValueError("bootstrap_resamples must be positive")
+
+    grouped: dict[
+        tuple[Any, ...],
+        dict[str, dict[int, list[dict[str, Any]]]],
+    ] = {}
+    for record in (_record_dict(item) for item in records):
+        role = _normalize_comparison_role(
+            record.get("comparison_role"),
+            allow_heuristic=False,
+        )
+        seed = _first_int(record.get("seed"))
+        if role not in {"baseline", "enhanced"} or seed is None:
+            continue
+        key = tuple(
+            _calibration_group_value(record, field) for field in PAIR_GROUP_FIELDS
+        )
+        grouped.setdefault(key, {}).setdefault(role, {}).setdefault(seed, []).append(
+            record
+        )
+
+    rows: list[dict[str, Any]] = []
+    for key, role_records in sorted(grouped.items(), key=_paired_group_sort_key):
+        group_values = dict(zip(PAIR_GROUP_FIELDS, key))
+        baseline_records = role_records.get("baseline", {})
+        enhanced_records = role_records.get("enhanced", {})
+        baseline_seeds = set(baseline_records)
+        enhanced_seeds = set(enhanced_records)
+        role_pair_seeds = sorted(baseline_seeds & enhanced_seeds)
+        missing_baseline = sorted(enhanced_seeds - baseline_seeds)
+        missing_enhanced = sorted(baseline_seeds - enhanced_seeds)
+
+        for metric in PAIRED_COMPARISON_METRICS:
+            baseline_values = {
+                seed: _aggregate_metric_value(items, metric)
+                for seed, items in baseline_records.items()
+            }
+            enhanced_values = {
+                seed: _aggregate_metric_value(items, metric)
+                for seed, items in enhanced_records.items()
+            }
+            paired_seeds = [
+                seed
+                for seed in role_pair_seeds
+                if baseline_values.get(seed) is not None
+                and enhanced_values.get(seed) is not None
+            ]
+            unavailable_baseline = [
+                seed for seed in role_pair_seeds if baseline_values.get(seed) is None
+            ]
+            unavailable_enhanced = [
+                seed for seed in role_pair_seeds if enhanced_values.get(seed) is None
+            ]
+            paired_baseline = [float(baseline_values[seed]) for seed in paired_seeds]
+            paired_enhanced = [float(enhanced_values[seed]) for seed in paired_seeds]
+            deltas = [
+                enhanced - baseline
+                for baseline, enhanced in zip(paired_baseline, paired_enhanced)
+            ]
+            delta_std = _sample_std(deltas)
+            delta_mean = statistics.fmean(deltas) if deltas else None
+            ci_low, ci_high = (None, None)
+            if len(deltas) >= MIN_PAIRED_SAMPLES_FOR_CI:
+                ci_low, ci_high = _bootstrap_mean_ci(
+                    deltas,
+                    resamples=bootstrap_resamples,
+                    rng_seed=bootstrap_rng_seed,
+                )
+            effect_size = (
+                delta_mean / delta_std
+                if delta_mean is not None
+                and delta_std is not None
+                and delta_std > 0.0
+                else None
+            )
+            rows.append(
+                {
+                    **group_values,
+                    "metric": metric,
+                    "baseline_seed_count": len(baseline_seeds),
+                    "enhanced_seed_count": len(enhanced_seeds),
+                    "role_pair_count": len(role_pair_seeds),
+                    "pair_count": len(paired_seeds),
+                    "paired_seeds": paired_seeds,
+                    "missing_baseline_seeds": missing_baseline,
+                    "missing_enhanced_seeds": missing_enhanced,
+                    "unavailable_baseline_metric_seeds": unavailable_baseline,
+                    "unavailable_enhanced_metric_seeds": unavailable_enhanced,
+                    "status": (
+                        "available"
+                        if len(deltas) >= MIN_PAIRED_SAMPLES_FOR_CI
+                        else "descriptive_only"
+                        if deltas
+                        else "unavailable"
+                    ),
+                    "baseline_mean": (
+                        statistics.fmean(paired_baseline)
+                        if paired_baseline
+                        else None
+                    ),
+                    "enhanced_mean": (
+                        statistics.fmean(paired_enhanced)
+                        if paired_enhanced
+                        else None
+                    ),
+                    "paired_delta_mean": delta_mean,
+                    "paired_delta_std": delta_std,
+                    "effect_size": effect_size,
+                    "effect_size_name": "cohens_dz",
+                    "bootstrap_ci95_low": ci_low,
+                    "bootstrap_ci95_high": ci_high,
+                    "bootstrap_resamples": bootstrap_resamples,
+                    "bootstrap_rng_seed": bootstrap_rng_seed,
+                }
+            )
+    return rows
+
+
+def write_airsim_calibration_cross_seed_csv(
+    rows: Iterable[Mapping[str, Any]],
+    path: str | Path,
+) -> Path:
+    return _write_rows_csv(rows, path, CROSS_SEED_FIELDNAMES)
+
+
+def write_airsim_calibration_paired_comparison_csv(
+    rows: Iterable[Mapping[str, Any]],
+    path: str | Path,
+) -> Path:
+    return _write_rows_csv(rows, path, PAIRED_COMPARISON_FIELDNAMES)
+
+
+def write_airsim_calibration_aggregate_json(
+    aggregate_rows: Iterable[Mapping[str, Any]],
+    comparison_rows: Iterable[Mapping[str, Any]],
+    path: str | Path,
+    *,
+    bootstrap_resamples: int = DEFAULT_BOOTSTRAP_RESAMPLES,
+    bootstrap_rng_seed: int = DEFAULT_BOOTSTRAP_RNG_SEED,
+) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "cross_seed_group_fields": CROSS_SEED_GROUP_FIELDS,
+        "pair_group_fields": PAIR_GROUP_FIELDS,
+        "bootstrap": {
+            "method": "paired_seed_mean_percentile",
+            "confidence_level": 0.95,
+            "minimum_pair_count": MIN_PAIRED_SAMPLES_FOR_CI,
+            "resamples": bootstrap_resamples,
+            "rng_seed": bootstrap_rng_seed,
+        },
+        "cross_seed_rows": [dict(row) for row in aggregate_rows],
+        "paired_comparison_rows": [dict(row) for row in comparison_rows],
+    }
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    return path
+
+
+def write_airsim_calibration_aggregate_markdown(
+    aggregate_rows: Iterable[Mapping[str, Any]],
+    comparison_rows: Iterable[Mapping[str, Any]],
+    path: str | Path,
+    *,
+    bootstrap_resamples: int = DEFAULT_BOOTSTRAP_RESAMPLES,
+    bootstrap_rng_seed: int = DEFAULT_BOOTSTRAP_RNG_SEED,
+) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    aggregate = [dict(row) for row in aggregate_rows]
+    comparisons = [dict(row) for row in comparison_rows]
+    lines = [
+        "# D6 AirSim 跨 Seed 聚合与配对比较",
+        "",
+        "本报告由 D6 离线消费已写盘日志；D6 不参与控制、重规划、云台指向或导引。",
+        "",
+        f"- Cross-seed 分组字段: {', '.join(CROSS_SEED_GROUP_FIELDS)}",
+        f"- Pair 分组字段: {', '.join(PAIR_GROUP_FIELDS)} + seed",
+        f"- Bootstrap: percentile 95% CI, resamples={bootstrap_resamples}, rng_seed={bootstrap_rng_seed}",
+        f"- Inferential minimum: pair_count >= {MIN_PAIRED_SAMPLES_FOR_CI}; one pair is descriptive_only and has no CI/effect size.",
+        "- Effect size: paired Cohen's dz；paired delta = enhanced - baseline。",
+        "",
+        "## Cross-seed Aggregate",
+        "",
+        "| Scope | Scenario | Role | Geometry/backend | Actual scale | Metric | Seeds | Values | Status | Total | Opportunity | Rate | Mean | Std |",
+        "|---|---|---|---|---|---|---:|---:|---|---:|---:|---:|---:|---:|",
+    ]
+    for row in aggregate:
+        lines.append(
+            "| {scope} | {scenario} | {role} | {geometry} | {scale} | {metric} | {seed_count} | {value_count} | {status} | {total} | {opportunity} | {rate} | {mean} | {std} |".format(
+                scope=_markdown_cell(row.get("metric_scope")),
+                scenario=_markdown_cell(row.get("scenario")),
+                role=_markdown_cell(row.get("comparison_role")),
+                geometry=_markdown_cell(_aggregate_geometry_text(row)),
+                scale=_markdown_cell(_scale_text(row)),
+                metric=_markdown_cell(row.get("metric")),
+                seed_count=int(row.get("seed_count", 0) or 0),
+                value_count=int(row.get("value_count", 0) or 0),
+                status=_markdown_cell(row.get("status")),
+                total=_format_available_number(row.get("sum")),
+                opportunity=_format_available_number(row.get("opportunity_count")),
+                rate=_format_available_number(row.get("rate")),
+                mean=_format_available_number(row.get("mean")),
+                std=_format_available_number(row.get("std")),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Interception Outcome",
+            "",
+            "该表只汇总有 intercept_summary/D7 execution evidence 的 `intercept_success_count`。分母来自同一 scope、同一实际规模组内各有效 seed 的 `target_count` 总和；execution 是执行结果，contract 是独立合同诊断，不混合计算。",
+            "",
+            "| Scope | Scenario | Seeds | Scale | Success / opportunity | Success rate |",
+            "|---|---|---:|---|---:|---:|",
+        ]
+    )
+    success_rows = [
+        row
+        for row in aggregate
+        if row.get("metric") == "intercept_success_count"
+        and row.get("status") == "available"
+        and _first_int(row.get("opportunity_count")) is not None
+    ]
+    for row in success_rows:
+        success_total = _first_float(row.get("sum"))
+        opportunity_count = _first_int(row.get("opportunity_count"))
+        outcome = (
+            f"{int(success_total)}/{opportunity_count}"
+            if success_total is not None and opportunity_count
+            else "unavailable"
+        )
+        lines.append(
+            "| {scope} | {scenario} | {seed_count} | {scale} | {outcome} | {rate} |".format(
+                scope=_markdown_cell(row.get("metric_scope")),
+                scenario=_markdown_cell(row.get("scenario")),
+                seed_count=int(row.get("seed_count", 0) or 0),
+                scale=_markdown_cell(_scale_text(row)),
+                outcome=outcome,
+                rate=_format_available_number(row.get("rate")),
+            )
+        )
+    if not success_rows:
+        lines.append("| unavailable | unavailable | 0 | unavailable | unavailable | unavailable |")
+
+    lines.extend(
+        [
+            "",
+            "## Paired Baseline vs Enhanced",
+            "",
+            "仅显式 `comparison_role=baseline|enhanced` 参与配对。相同 seed 还必须匹配稳定 scenario_group、scenario_version、实际 N/M/camera count、几何和 detection backend；case_name 只保留审计。",
+            "",
+            "| Scope | Scenario group | Geometry/backend | Actual scale | Metric | Pair count | Missing baseline seeds | Missing enhanced seeds | Delta mean | Delta std | Cohen's dz | Bootstrap 95% CI |",
+            "|---|---|---|---|---|---:|---|---|---:|---:|---:|---|",
+        ]
+    )
+    for row in comparisons:
+        lines.append(
+            "| {scope} | {scenario} | {geometry} | {scale} | {metric} | {pair_count} | {missing_baseline} | {missing_enhanced} | {delta_mean} | {delta_std} | {effect_size} | [{ci_low}, {ci_high}] |".format(
+                scope=_markdown_cell(row.get("metric_scope")),
+                scenario=_markdown_cell(row.get("scenario_group")),
+                geometry=_markdown_cell(_aggregate_geometry_text(row)),
+                scale=_markdown_cell(_scale_text(row)),
+                metric=_markdown_cell(row.get("metric")),
+                pair_count=int(row.get("pair_count", 0) or 0),
+                missing_baseline=_markdown_cell(
+                    _compact_json(row.get("missing_baseline_seeds")) or "[]"
+                ),
+                missing_enhanced=_markdown_cell(
+                    _compact_json(row.get("missing_enhanced_seeds")) or "[]"
+                ),
+                delta_mean=_format_available_number(row.get("paired_delta_mean")),
+                delta_std=_format_available_number(row.get("paired_delta_std")),
+                effect_size=_format_available_number(row.get("effect_size")),
+                ci_low=_format_available_number(row.get("bootstrap_ci95_low")),
+                ci_high=_format_available_number(row.get("bootstrap_ci95_high")),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Availability Contract",
+            "",
+            "- `active_degradation_precision` 只以可分类 review label 样本为分母。",
+            "- `active_degradation_label_count=0` 时 precision 为 `unavailable`，JSON 为 `null`，CSV 留空。",
+            "- `scenario_version` 原值保留在 records；跨 seed/配对分组仅移除其中的 seed 参数，防止同一版本被按 seed 拆组。",
+            "- D6 不从事件名、2v2/5v5 场景名或未标注 active degradation 推断必要性。",
+        ]
+    )
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
 def write_airsim_calibration_markdown(
     records: Iterable[AirSimCalibrationRecord | Mapping[str, Any]],
     rows: Iterable[Mapping[str, Any]],
@@ -579,12 +1199,12 @@ def write_airsim_calibration_markdown(
         "",
         "## 1. 分组摘要",
         "",
-        "| Scope | Seed | Scenario | Role | Height m | FOV deg | Secondary count | Backend | Scale | Episodes | Coverage mean | Full-view rate | Detect | Stable registration | Not registered | Gimbal OK | Active precision | Unnecessary degradation | D7 reject | Evidence paths |",
-        "|---|---:|---|---|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        "| Scope | Seed | Scenario | Role | Height m | FOV deg | Secondary count | Backend | Scale | Episodes | Coverage mean | Full-view rate | Detect | Stable registration | Not registered | Gimbal OK | Active precision | Label count | Unnecessary degradation | D7 reject | Evidence paths |",
+        "|---|---:|---|---|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---|",
     ]
     for row in summary_rows:
         lines.append(
-            "| {metric_scope} | {seed} | {scenario} | {role} | {height} | {fov} | {secondary_count} | {backend} | {scale} | {episodes} | {coverage:.6g} | {full_view:.6g} | {detect} | {cross_view} | {not_registered} | {gimbal:.6g} | {active_precision:.6g} | {unnecessary} | {d7_reject} | {evidence} |".format(
+            "| {metric_scope} | {seed} | {scenario} | {role} | {height} | {fov} | {secondary_count} | {backend} | {scale} | {episodes} | {coverage:.6g} | {full_view:.6g} | {detect} | {cross_view} | {not_registered} | {gimbal:.6g} | {active_precision} | {label_count} | {unnecessary} | {d7_reject} | {evidence} |".format(
                 metric_scope=row.get("metric_scope", "not_recorded"),
                 seed=row.get("seed", "not_recorded"),
                 scenario=row.get("scenario", "not_recorded"),
@@ -619,9 +1239,10 @@ def write_airsim_calibration_markdown(
                 gimbal=_float_or_zero(
                     row.get("secondary_gimbal_pointing_ok_rate_mean")
                 ),
-                active_precision=_float_or_zero(
+                active_precision=_format_available_number(
                     row.get("active_degradation_precision_mean")
                 ),
+                label_count=int(row.get("active_degradation_label_count", 0) or 0),
                 unnecessary=int(row.get("unnecessary_degradation_count", 0) or 0),
                 d7_reject=int(row.get("d7_guidance_reject_count", 0) or 0),
                 evidence=_summary_text(row, "evidence_paths"),
@@ -953,7 +1574,11 @@ def _record_from_artifacts(
         d4d5.get("standard_metric_family_summary"),
         blocks_metadata.get("standard_metric_family_summary"),
     ) or ""
+    # The persisted metrics file is the authoritative evidence for this row.
+    # In particular, a contract payload can inherit the execution evidence path
+    # upstream; preferring ``metrics_path`` keeps the two scopes auditable.
     evidence_path = _first_text(
+        str(metrics_path) if metrics_path is not None else None,
         _metric_attr(metrics, "evidence_path"),
         metrics_metadata.get("evidence_path"),
         d4d5.get("evidence_path"),
@@ -998,6 +1623,15 @@ def _record_from_artifacts(
 
     d7_reject_reasons = _guidance_reject_reason_counts(metrics_metadata)
     guidance_laws = _count_mapping(metrics_metadata.get("guidance_law_counts"))
+    intercept_execution_available = _has_intercept_execution_evidence(
+        episode_dir=episode_dir,
+        metadata=metrics_metadata,
+    )
+    intercept_abort_count = (
+        _intercept_abort_count(metrics_metadata)
+        if intercept_execution_available
+        else None
+    )
     source_files = _source_files(
         metrics_path=metrics_path,
         d4d5_path=d4d5_path,
@@ -1085,6 +1719,12 @@ def _record_from_artifacts(
         d4d5.get("secondary_camera_fov_degrees"),
         settings_summary.get("secondary_fov_degrees"),
     )
+    active_degradation_label_count = _first_int(
+        d4d5.get("active_degradation_label_count"),
+        d4d5.get("active_degradation_reviewed_count"),
+        _active_degradation_label_count(metrics),
+        0,
+    ) or 0
     trend_key = _trend_key(
         metric_scope=metric_scope,
         scenario=scenario,
@@ -1218,17 +1858,81 @@ def _record_from_artifacts(
             )
             or 0
         ),
-        active_degradation_count=int(_first_int(_metric_attr(metrics, "active_degradation_count"), 0) or 0),
-        active_degradation_precision=_first_float(
-            _metric_attr(metrics, "active_degradation_precision")
+        active_degradation_count=int(
+            _first_int(
+                d4d5.get("active_degradation_count"),
+                _metric_attr(metrics, "active_degradation_count"),
+                0,
+            )
+            or 0
         ),
+        active_degradation_precision=(
+            _first_float(
+                d4d5.get("active_degradation_precision"),
+                _metric_attr(metrics, "active_degradation_precision"),
+            )
+            if active_degradation_label_count > 0
+            else None
+        ),
+        active_degradation_label_count=active_degradation_label_count,
         unnecessary_degradation_count=int(
-            _first_int(_metric_attr(metrics, "unnecessary_active_degradation_count"), 0)
+            _first_int(
+                d4d5.get("unnecessary_active_degradation_count"),
+                d4d5.get("unnecessary_degradation_count"),
+                _metric_attr(metrics, "unnecessary_active_degradation_count"),
+                0,
+            )
             or 0
         ),
         d7_guidance_reject_count=sum(d7_reject_reasons.values()),
         d7_guidance_reject_reason_counts=d7_reject_reasons,
         guidance_law_counts=guidance_laws,
+        intercept_success_count=_available_metric_int(
+            metrics,
+            "intercept_success_count",
+            available=intercept_execution_available,
+        ),
+        collision_intercept_count=_available_metric_int(
+            metrics,
+            "collision_intercept_count",
+            available=intercept_execution_available,
+        ),
+        range_intercept_count=_available_metric_int(
+            metrics,
+            "range_intercept_count",
+            available=intercept_execution_available,
+        ),
+        intercept_abort_count=intercept_abort_count,
+        min_range_m=_available_metric_float(
+            metrics,
+            "min_range_m",
+            available=intercept_execution_available,
+        ),
+        time_to_intercept_s=_available_metric_float(
+            metrics,
+            "time_to_intercept_s",
+            available=intercept_execution_available,
+        ),
+        visual_png_switch_count=_available_metric_int(
+            metrics,
+            "visual_png_switch_count",
+            available=intercept_execution_available,
+        ),
+        terminal_switch_allowed_rate=_available_metric_float(
+            metrics,
+            "terminal_switch_allowed_rate",
+            available=intercept_execution_available,
+        ),
+        terminal_takeover_rate=_available_metric_float(
+            metrics,
+            "terminal_takeover_rate",
+            available=intercept_execution_available,
+        ),
+        gate_reject_count=_available_metric_int(
+            metrics,
+            "gate_reject_count",
+            available=intercept_execution_available,
+        ),
         source_dir=str(episode_dir),
         source_files=source_files,
     )
@@ -1462,6 +2166,57 @@ def _guidance_reject_reason_counts(metadata: Mapping[str, Any]) -> dict[str, int
     return counts
 
 
+def _has_intercept_execution_evidence(
+    *,
+    episode_dir: Path,
+    metadata: Mapping[str, Any],
+) -> bool:
+    if (episode_dir / "intercept_summary.json").is_file():
+        return True
+    if (episode_dir / "control_commands.csv").is_file():
+        return True
+    for key in ("intercept_summary_pair_count", "intercept_summary_success_count"):
+        if metadata.get(key) is not None and _first_int(metadata.get(key)) is not None:
+            return True
+    for key in ("intercept_pair_event_count", "d7_control_command_event_count"):
+        count = _first_int(metadata.get(key))
+        if count is not None and count > 0:
+            return True
+    return bool(_count_mapping(metadata.get("intercept_status_counts")))
+
+
+def _intercept_abort_count(metadata: Mapping[str, Any]) -> int:
+    status_counts = _count_mapping(metadata.get("intercept_status_counts"))
+    return sum(
+        count
+        for status, count in status_counts.items()
+        if "abort" in status.strip().lower().replace("-", "_")
+    )
+
+
+def _available_metric_int(
+    metrics: EpisodeMetrics | None,
+    name: str,
+    *,
+    available: bool,
+) -> int | None:
+    if not available or metrics is None:
+        return None
+    value = _first_int(_metric_attr(metrics, name))
+    return int(value) if value is not None else None
+
+
+def _available_metric_float(
+    metrics: EpisodeMetrics | None,
+    name: str,
+    *,
+    available: bool,
+) -> float | None:
+    if not available or metrics is None:
+        return None
+    return _first_float(_metric_attr(metrics, name))
+
+
 def _detection_backend(
     d4d5: Mapping[str, Any],
     blocks_metadata: Mapping[str, Any],
@@ -1489,6 +2244,22 @@ def _metric_attr(metrics: EpisodeMetrics | None, name: str) -> Any:
     if metrics is None:
         return None
     return getattr(metrics, name, None)
+
+
+def _active_degradation_label_count(metrics: EpisodeMetrics | None) -> int:
+    if metrics is None:
+        return 0
+    metadata = metrics.metadata if isinstance(metrics.metadata, Mapping) else {}
+    for value in (
+        getattr(metrics, "active_degradation_label_count", None),
+        metadata.get("active_degradation_label_count"),
+        metadata.get("active_degradation_reviewed_count"),
+        metadata.get("review_label_count"),
+    ):
+        count = _first_int(value)
+        if count is not None and count > 0:
+            return count
+    return 0
 
 
 def _mapping_value(mapping: Mapping[str, Any], key: str) -> dict[str, Any]:
@@ -1706,6 +2477,33 @@ def _record_dict(record: AirSimCalibrationRecord | Mapping[str, Any]) -> dict[st
     return dict(record)
 
 
+_SCENARIO_SEED_COMPONENT = re.compile(
+    r"^(?:batch[_-]?)?seed(?:[_=-]?\d+)$",
+    flags=re.IGNORECASE,
+)
+
+
+def _calibration_group_value(record: Mapping[str, Any], field_name: str) -> Any:
+    value = record.get(field_name)
+    if field_name == "scenario_version":
+        value = _stable_scenario_version(value)
+    return _group_value(value)
+
+
+def _stable_scenario_version(value: Any) -> str | None:
+    """Remove only run-specific seed components from a version string."""
+
+    text = _text(value)
+    if text is None:
+        return None
+    components = [
+        component
+        for component in text.split(":")
+        if component and _SCENARIO_SEED_COMPONENT.fullmatch(component) is None
+    ]
+    return ":".join(components) or "seed_parameterized"
+
+
 def _group_value(value: Any) -> Any:
     if value is None:
         return "not_recorded"
@@ -1728,6 +2526,19 @@ def _sum_int(records: Sequence[Mapping[str, Any]], field_name: str) -> int:
     return total
 
 
+def _sum_int_or_none(
+    records: Sequence[Mapping[str, Any]],
+    field_name: str,
+) -> int | None:
+    values = [
+        value
+        for record in records
+        for value in [_first_int(record.get(field_name))]
+        if value is not None
+    ]
+    return sum(values) if values else None
+
+
 def _mean_field(records: Sequence[Mapping[str, Any]], field_name: str) -> float:
     values = [
         value
@@ -1738,11 +2549,26 @@ def _mean_field(records: Sequence[Mapping[str, Any]], field_name: str) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
+def _mean_field_or_none(
+    records: Sequence[Mapping[str, Any]],
+    field_name: str,
+) -> float | None:
+    values = [
+        value
+        for record in records
+        for value in [_first_float(record.get(field_name))]
+        if value is not None
+    ]
+    return sum(values) / len(values) if values else None
+
+
 def _weighted_mean_field(
     records: Sequence[Mapping[str, Any]],
     value_field: str,
     weight_field: str,
-) -> float:
+    *,
+    fallback_unweighted: bool = True,
+) -> float | None:
     weighted_sum = 0.0
     total_weight = 0
     fallback_values: list[float] = []
@@ -1758,7 +2584,9 @@ def _weighted_mean_field(
             fallback_values.append(value)
     if total_weight:
         return weighted_sum / total_weight
-    return sum(fallback_values) / len(fallback_values) if fallback_values else 0.0
+    if fallback_unweighted and fallback_values:
+        return sum(fallback_values) / len(fallback_values)
+    return None
 
 
 def _sum_count_mappings(records: Sequence[Mapping[str, Any]], field_name: str) -> dict[str, int]:
@@ -1996,13 +2824,13 @@ def _baseline_enhanced_rows(
                 "enhanced_not_registered": _format_optional_cell(
                     _optional_summary_int(enhanced, "not_registered_count")
                 ),
-                "baseline_active_precision": _format_optional_cell(
+                "baseline_active_precision": _format_available_number(
                     _optional_summary_float(
                         baseline,
                         "active_degradation_precision_mean",
                     )
                 ),
-                "enhanced_active_precision": _format_optional_cell(
+                "enhanced_active_precision": _format_available_number(
                     _optional_summary_float(
                         enhanced,
                         "active_degradation_precision_mean",
@@ -2116,6 +2944,146 @@ def _format_delta_cell(lhs: float | None, rhs: float | None) -> str:
     if lhs is None or rhs is None:
         return "not_recorded"
     return f"{(lhs - rhs):.6g}"
+
+
+def _cross_seed_sort_key(
+    item: tuple[tuple[Any, ...], dict[Any, list[dict[str, Any]]]],
+) -> tuple[str, ...]:
+    return tuple(str(value) for value in item[0])
+
+
+def _paired_group_sort_key(
+    item: tuple[
+        tuple[Any, ...],
+        dict[str, dict[int, list[dict[str, Any]]]],
+    ],
+) -> tuple[str, ...]:
+    return tuple(str(value) for value in item[0])
+
+
+def _aggregate_metric_value(
+    records: Sequence[Mapping[str, Any]],
+    metric: str,
+) -> float | None:
+    if metric == "active_degradation_precision":
+        weighted_sum = 0.0
+        label_count = 0
+        for record in records:
+            precision = _finite_float(record.get(metric))
+            count = _first_int(record.get("active_degradation_label_count")) or 0
+            if precision is None or count <= 0:
+                continue
+            weighted_sum += precision * count
+            label_count += count
+        return weighted_sum / label_count if label_count else None
+
+    values = [
+        value
+        for record in records
+        for value in [_finite_float(record.get(metric))]
+        if value is not None
+    ]
+    if not values:
+        return None
+    if metric in COUNT_METRICS:
+        return float(sum(values))
+    return statistics.fmean(values)
+
+
+def _intercept_opportunity_count(
+    seed_records: Mapping[Any, Sequence[Mapping[str, Any]]],
+    metric: str,
+) -> int | None:
+    if metric not in INTERCEPT_OUTCOME_COUNT_METRICS:
+        return None
+    opportunity_count = 0
+    for records in seed_records.values():
+        for record in records:
+            if _finite_float(record.get(metric)) is None:
+                continue
+            target_count = _first_int(record.get("target_count"))
+            if target_count is not None and target_count > 0:
+                opportunity_count += target_count
+    return opportunity_count or None
+
+
+def _finite_float(value: Any) -> float | None:
+    number = _first_float(value)
+    if number is None or not math.isfinite(number):
+        return None
+    return number
+
+
+def _sample_std(values: Sequence[float]) -> float | None:
+    if not values:
+        return None
+    if len(values) == 1:
+        return 0.0
+    return statistics.stdev(values)
+
+
+def _bootstrap_mean_ci(
+    values: Sequence[float],
+    *,
+    resamples: int,
+    rng_seed: int,
+) -> tuple[float | None, float | None]:
+    if not values:
+        return None, None
+    rng = random.Random(rng_seed)
+    sample_count = len(values)
+    bootstrap_means = sorted(
+        statistics.fmean(values[rng.randrange(sample_count)] for _ in range(sample_count))
+        for _ in range(resamples)
+    )
+    return (
+        _percentile(bootstrap_means, 0.025),
+        _percentile(bootstrap_means, 0.975),
+    )
+
+
+def _percentile(sorted_values: Sequence[float], quantile: float) -> float:
+    if len(sorted_values) == 1:
+        return float(sorted_values[0])
+    position = (len(sorted_values) - 1) * quantile
+    lower = int(math.floor(position))
+    upper = int(math.ceil(position))
+    if lower == upper:
+        return float(sorted_values[lower])
+    fraction = position - lower
+    return float(
+        sorted_values[lower]
+        + (sorted_values[upper] - sorted_values[lower]) * fraction
+    )
+
+
+def _write_rows_csv(
+    rows: Iterable[Mapping[str, Any]],
+    path: str | Path,
+    fieldnames: Sequence[str],
+) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(_csv_row(row, fieldnames))
+    return path
+
+
+def _aggregate_geometry_text(row: Mapping[str, Any]) -> str:
+    return (
+        f"h={_format_optional_number(row.get('secondary_height_above_targets_m'))},"
+        f"fov={_format_optional_number(row.get('secondary_fov_degrees'))},"
+        f"sec={row.get('secondary_count', 'not_recorded')},"
+        f"backend={row.get('detection_backend', 'not_recorded')}"
+    )
+
+
+def _format_available_number(value: Any) -> str:
+    number = _finite_float(value)
+    return "unavailable" if number is None else f"{number:.6g}"
 
 
 def _csv_row(row: Mapping[str, Any], fieldnames: Sequence[str]) -> dict[str, Any]:

@@ -510,7 +510,6 @@ class MainAirSimEpisodeBus:
                     },
                 )
             )
-            self._pending_terminal_feedback = []
         else:
             self._last_terminal_feedback_writeback = {"feedback_count": 0}
         previous = self.current_plan
@@ -522,13 +521,28 @@ class MainAirSimEpisodeBus:
                 previous_plan=previous,
                 expected_previous_version=None if previous is None else previous.version,
             )
-        except StalePlanError:
-            plan = self.assignment_planner.plan(
-                target_tracks,
-                resource_states,
-                timestamp=timestamp,
-                previous_plan=None,
+        except StalePlanError as error:
+            if previous is None:
+                raise
+            self.collector.add_event(
+                EventRecord(
+                    timestamp=timestamp,
+                    event_type="d3_stale_plan_rejected",
+                    actor_id="D3",
+                    severity="warning",
+                    note=str(error),
+                    metadata={
+                        **_jsonable(error.to_metadata()),
+                        "retained_plan_id": previous.plan_id,
+                        "retained_plan_version": previous.version,
+                        "retry_policy": "retain_current_plan_and_retry_next_cycle",
+                    },
+                )
             )
+            self._next_assignment_time_s = timestamp + max(float(self.config.dt_s), 1e-6)
+            return False
+        if feedback_writeback is not None:
+            self._pending_terminal_feedback = []
         if forced_replan_reason is not None and previous is not None:
             plan = replace(
                 plan,

@@ -221,6 +221,53 @@ a95 = sqrt(chi2_2_0.95 * max_eigenvalue(P_xy))
 - JSONL replay 已补显式 unsupported schema version 回归；CSV 缺省 schema 仍按 `d1.sensor_observation.v1` 处理并要求 covariance。
 - 本轮未重新打开 P0-A：`SensorHealthSummary`、观测/航迹 covariance floor/ceiling reason 和 `timestamp_uncertainty_s` 已作为 D1 质量字段保持回归，并纳入 main/D6 消费口径。
 
+## 7.5 2026-07-10 main episode bus / AirSim 2v2 合同复核
+
+本轮只读取 main/shared runtime 代码和
+`research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_smoke_20260710/` 产物，不修改
+main/runtime。六个 reset-separated episode 共 1,528 条 radar/acoustic/EO/synthetic-lidar
+观测均可由 D1 reader 解析；所有观测保留 `measurement_timestamp`、
+`arrival_timestamp` 和有限、对称、半正定 covariance，未发现到达时刻早于量测时刻的
+记录。full-flow 的 36 个 main bus tick 均保留 D1 观测双时间戳和 covariance trace，
+`TrackUncertaintySummary` 继续保留 timing/covariance 字段，运行时按 truth-hint 仿真配置
+维持 2 条 D1 航迹。因此本轮未发现 D1 双时间戳、协方差或 NED 航迹合同回归。
+
+真实产物同时确认以下 P1 尚未闭合：
+
+- main Blocks writer 尚未写 `schema_version`，新产物当前仍通过
+  `legacy.blocks_sensor_observations` 兼容路径读取；D1 v1 reader 已就绪，但 writer 采用
+  显式 `d1.sensor_observation.v1` 仍属于 main/shared 集成工作。
+- 观测未携带 `coverage_cell`，D1 区域摘要只能输出 `unassigned`；main tick 目前只发布
+  `TrackUncertaintySummary[]`，尚未发布区域/窗口、latency audit 和 sensor health 摘要，
+  因而真实 smoke 尚未完成区域质量闭环验收。
+- 固定 0.2 s 延迟、多传感器同帧顺序处理会产生大量合法 OOSM 计数；当前 advisory
+  sensor-health 阈值若直接查询会把正常固定延迟流标为 `isolated`。后续需区分 expected
+  latency/OOSM 与异常 clock/stale evidence，并用多 seed 正常/故障样本标定；在此之前
+  D4/D6 不得把该状态直接当作降级动作依据。
+- main bus 当前以 `use_truth_hints_for_association=True` 的仿真配置维持 2 条航迹；同一
+  JSONL 用 D1 默认无 truth-hint replay 会产生 3 条航迹，其中 TGT-002 出现重复初始化。
+  后续需把关联配置写入 replay provenance，并用无真值门控/关联校准实现运行时与离线
+  replay 一致；truth metadata 只能用于离线评估，不能成为真实在线身份依据。
+- 单次 2v2 smoke 已从“只有 dry-run/手工 fixture”推进到真实产物审计，但仍不足以关闭
+  N actor、多 seed、CV detection、区域窗口和长期 D6 schema 的 P1 校准项。
+
+## 7.6 2026-07-10 十 seed 与 truth-isolation 证据同步
+
+main 随后完成了
+`research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_multiseed_20260710/` 的 10-seed
+2v2 系统运行，以及
+`research_modules/airsim_runtime/outputs/p0_truth_isolation_smoke_20260710/` 的在线身份隔离
+smoke。前者证明 D1 合同已被连续用于多 seed episode 编排；后者证明 D5 在线局部检测/
+MOT 标识不再依赖 actor/object 名称。两项均是 main/shared 集成证据，不替代 7.5 节对
+1,528 条 D1 观测的逐条时间戳/协方差审计，也不代表 D1 无真值关联已经闭合。
+
+truth-isolation smoke 的 D1 合成观测仍可携带 `truth_id` 作为离线评分标签，main bus 的
+融合配置仍可启用 simulation-only truth hint。D1 的验收边界保持不变：在线算法不得把
+该标签作为身份依据；下一阶段仍需把 fusion/association 配置写入 replay provenance，
+并用无 truth-hint 的多 seed replay 校准重复初始化与关联一致性。10-seed 运行产物尚未被
+固化为覆盖 schema version、coverage cell、CV bbox covariance 和二级侦察 metadata 的
+D1 长期 fixture，因此这些 P1 不能仅凭系统运行次数关闭。
+
 ## 8. 交付物
 
 - `PLAN.md`: 本实施计划。
@@ -289,10 +336,12 @@ a95 = sqrt(chi2_2_0.95 * max_eigenvalue(P_xy))
 
 剩余 P1：
 
-1. 增加更多来自 main/shared runtime 的真实 Blocks/CV multi-seed detection fixture，覆盖 actor label、camera metadata、timestamp、bbox covariance、secondary/mobile recon cue metadata 和 N actor 输出，并形成真实样本回归。
-2. 与 D6 对齐长期批量 JSONL/CSV schema，明确 `TrackUncertaintySummary[]`、`LatencyAuditSummary`、`FusionQualityRegionSummary[]`、`FusionQualityRegionWindowSummary[]`、`SensorHealthSummary[]`、covariance limit reason 和 timestamp uncertainty 的批量字段命名。
-3. 基于真实多 seed 样本确定区域窗口、freshness/source-gap、协方差增长率和 handover readiness 的持续阈值。
-4. 保持 NumPy EKF、fixed-lag replay、NED、时间戳、协方差和 N actor 合同为 P0/P1 稳定基线，避免引入会破坏离线测试的强依赖。
+1. main/shared Blocks writer 显式写入 `schema_version="d1.sensor_observation.v1"` 和 `coverage_cell`；D1 保持 legacy 读取兼容，不跨边界修改 runtime。
+2. main episode bus 与 D6 长期 JSONL/CSV schema 发布并对齐 `LatencyAuditSummary`、`FusionQualityRegionSummary[]`、`FusionQualityRegionWindowSummary[]`、`SensorHealthSummary[]`、covariance reason 和 timestamp uncertainty；已发布的 `TrackUncertaintySummary[]` 不再列为缺口。
+3. 使用正常延迟和故障注入多 seed 样本校准 expected-latency/OOSM 健康阈值，避免固定 0.2 s 合法延迟触发错误隔离建议。
+4. 将 fusion/association 配置写入 replay provenance，完成无 truth-hint 多 seed replay，校准重复初始化和在线/离线关联一致性；truth metadata 仅保留为离线评分标签。
+5. 将现有十 seed 运行扩展并固化为 D1 Blocks/CV fixture，覆盖 N actor、camera metadata、bbox covariance、`coverage_cell` 和 secondary/mobile recon cue metadata。
+6. 基于上述真实 fixture 校准区域窗口、freshness/source-gap、协方差增长率和 handover readiness 的持续阈值，并保持 NumPy EKF、fixed-lag replay、NED、双时间戳和协方差合同不退化。
 
 ### P2: 可选算法和开源对照
 

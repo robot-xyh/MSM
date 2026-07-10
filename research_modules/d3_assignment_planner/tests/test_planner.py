@@ -1,3 +1,5 @@
+import pytest
+
 from d3_assignment_planner import (
     AssignmentPlanner,
     CostModel,
@@ -48,6 +50,92 @@ def test_planner_assigns_lowest_cost_pairs() -> None:
     assert plan.assignment_map() == {"T1": "R1", "T2": "R2"}
     assert plan.version == 1
     assert plan.human_authorization_state == "required"
+
+
+def test_planner_allows_missing_previous_plan_on_first_call() -> None:
+    planner = _planner(PlannerConfig(enable_hysteresis=False))
+
+    plan = planner.plan(
+        [TargetTrack("T1", 0.9, 0.1, 0.1)],
+        [ResourceState("R1")],
+        timestamp=0.0,
+        previous_plan=None,
+    )
+
+    assert plan.version == 1
+    assert plan.previous_plan_id is None
+
+
+def test_planner_requires_previous_plan_after_active_plan() -> None:
+    planner = _planner(PlannerConfig(enable_hysteresis=False))
+    tracks = [TargetTrack("T1", 0.9, 0.1, 0.1)]
+    resources = [ResourceState("R1")]
+    first = planner.plan(tracks, resources, timestamp=0.0)
+
+    with pytest.raises(StalePlanError) as exc_info:
+        planner.plan(tracks, resources, timestamp=1.0, previous_plan=None)
+
+    error = exc_info.value
+    assert error.reason == "previous_plan_required"
+    assert error.latest_plan_id == first.plan_id
+    assert error.latest_version == first.version
+    assert error.to_metadata()["stale_reject_reason"] == "previous_plan_required"
+    assert error.to_metadata()["latest_plan_id"] == first.plan_id
+    assert error.to_metadata()["latest_plan_version"] == first.version
+
+
+def test_missing_previous_plan_rejection_does_not_reset_version() -> None:
+    planner = _planner(PlannerConfig(enable_hysteresis=False))
+    tracks = [TargetTrack("T1", 0.9, 0.1, 0.1)]
+    resources = [ResourceState("R1")]
+    first = planner.plan(tracks, resources, timestamp=0.0)
+
+    with pytest.raises(StalePlanError, match="previous_plan is required"):
+        planner.plan(tracks, resources, timestamp=1.0, previous_plan=None)
+
+    second = planner.plan(tracks, resources, timestamp=2.0, previous_plan=first)
+
+    assert second.version == 2
+    assert second.version == first.version + 1
+    assert second.previous_plan_id == first.plan_id
+
+
+def test_planner_preserves_expected_and_stale_version_rejections() -> None:
+    planner = _planner(PlannerConfig(enable_hysteresis=False))
+    tracks = [TargetTrack("T1", 0.9, 0.1, 0.1)]
+    resources = [ResourceState("R1")]
+    first = planner.plan(tracks, resources, timestamp=0.0)
+
+    with pytest.raises(StalePlanError) as expected_exc_info:
+        planner.plan(
+            tracks,
+            resources,
+            timestamp=1.0,
+            previous_plan=first,
+            expected_previous_version=first.version + 1,
+        )
+    assert expected_exc_info.value.reason == "expected_previous_version_mismatch"
+    assert expected_exc_info.value.latest_plan_id == first.plan_id
+    assert expected_exc_info.value.latest_version == first.version
+
+    second = planner.plan(
+        tracks,
+        resources,
+        timestamp=2.0,
+        previous_plan=first,
+        expected_previous_version=first.version,
+    )
+    with pytest.raises(StalePlanError) as stale_exc_info:
+        planner.plan(
+            tracks,
+            resources,
+            timestamp=3.0,
+            previous_plan=first,
+            expected_previous_version=first.version,
+        )
+    assert stale_exc_info.value.reason == "stale_previous_version"
+    assert stale_exc_info.value.latest_plan_id == second.plan_id
+    assert stale_exc_info.value.latest_version == second.version
 
 
 def test_planner_records_dynamic_non_5v5_problem_size() -> None:
@@ -323,6 +411,8 @@ def test_center_replan_produces_new_version_and_current_d7_binding() -> None:
     assert binding.plan_version == second.version
     assert binding.resource_id == "R2"
     assert binding.binding_state == "active"
+    assert binding.assignment_validity_state == "current"
+    assert binding.revoke_reason is None
     assert binding.metadata["previous_target_for_resource"] is None
 
 
@@ -346,10 +436,31 @@ def test_hysteresis_holds_when_change_limit_exceeded() -> None:
     assert second.metadata["candidate_change_count"] == 2
 
 
-def test_reassignment_switch_penalty_is_exposed_in_breakdown() -> None:
+def test_zero_switch_penalty_allows_lower_cost_reassignment() -> None:
     config = PlannerConfig(
         enable_hysteresis=False,
-        reassignment_switch_penalty=2.5,
+        reassignment_switch_penalty=0.0,
+    )
+    planner = _planner(config)
+    initial_tracks = [
+        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
+    ]
+    shifted_tracks = [
+        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
+    ]
+
+    first = planner.plan(initial_tracks, _resources(), timestamp=0.0)
+    second = planner.plan(shifted_tracks, _resources(), timestamp=1.0, previous_plan=first)
+
+    assert first.assignment_map() == {"T1": "R1"}
+    assert second.assignment_map() == {"T1": "R2"}
+    assert second.assignments[0].cost_breakdown["reassignment_switch_penalty"] == 0.0
+
+
+def test_switch_penalty_is_applied_before_solve_without_double_charging() -> None:
+    config = PlannerConfig(
+        enable_hysteresis=False,
+        reassignment_switch_penalty=0.5,
     )
     planner = _planner(config)
     initial_tracks = [
@@ -362,9 +473,103 @@ def test_reassignment_switch_penalty_is_exposed_in_breakdown() -> None:
     first = planner.plan(initial_tracks, _resources(), timestamp=0.0)
     second = planner.plan(shifted_tracks, _resources(), timestamp=1.0, previous_plan=first)
     assignment = second.assignments[0]
+    evidence = assignment_evidence_from_plan(second)
+    edge_by_resource = {
+        str(edge["resource_id"]): edge
+        for edge in evidence.cost_breakdowns_by_edge
+    }
 
     assert assignment.resource_id == "R2"
-    assert assignment.cost_breakdown["reassignment_switch_penalty"] == 2.5
+    assert assignment.cost == 0.5
+    assert assignment.cost_breakdown["reassignment_switch_penalty"] == 0.5
+    assert assignment.cost_breakdown["total"] == assignment.cost
+    assert evidence.cost_matrix == ((1.0, 0.5),)
+    assert edge_by_resource["R1"]["cost_breakdown"]["reassignment_switch_penalty"] == 0.0
+    assert edge_by_resource["R2"]["cost_breakdown"]["reassignment_switch_penalty"] == 0.5
+    assert edge_by_resource["R2"]["cost_breakdown"]["total"] == 0.5
+    assert second.candidate_total_cost == assignment.cost
+    assert second.total_cost == assignment.cost
+
+
+def test_large_switch_penalty_preserves_previous_resource_in_hungarian_solve() -> None:
+    config = PlannerConfig(
+        enable_hysteresis=False,
+        reassignment_switch_penalty=2.0,
+    )
+    planner = _planner(config)
+    initial_tracks = [
+        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0}),
+    ]
+    shifted_tracks = [
+        TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0}),
+    ]
+
+    first = planner.plan(initial_tracks, _resources(), timestamp=0.0)
+    second = planner.plan(shifted_tracks, _resources(), timestamp=1.0, previous_plan=first)
+    evidence = assignment_evidence_from_plan(second)
+
+    assert first.assignment_map() == {"T1": "R1"}
+    assert second.assignment_map() == {"T1": "R1"}
+    assert second.changed is False
+    assert second.assignments[0].cost_breakdown["reassignment_switch_penalty"] == 0.0
+    assert evidence.cost_matrix == ((1.0, 2.0),)
+    assert second.candidate_total_cost == 1.0
+    assert second.total_cost == 1.0
+
+
+def test_switch_penalty_skips_infeasible_new_target_and_unassigned_costs() -> None:
+    config = PlannerConfig(
+        enable_hysteresis=False,
+        reassignment_switch_penalty=3.0,
+    )
+    planner = _planner(config)
+    first = planner.plan(
+        [TargetTrack("T1", 0.9, 0.1, 0.1, fov_difficulty_by_resource={"R1": 0.0})],
+        [ResourceState("R1")],
+        timestamp=0.0,
+    )
+    tracks = [
+        TargetTrack(
+            "T1",
+            0.9,
+            0.1,
+            0.1,
+            feasibility_by_resource={"R1": False, "R2": False},
+        ),
+        TargetTrack(
+            "T2",
+            0.2,
+            0.1,
+            0.1,
+            fov_difficulty_by_resource={"R1": 0.25, "R2": 0.5},
+        ),
+    ]
+    second = planner.plan(
+        tracks,
+        _resources(),
+        timestamp=1.0,
+        previous_plan=first,
+    )
+    evidence = assignment_evidence_from_plan(second)
+    edge_by_pair = {
+        (str(edge["target_id"]), str(edge["resource_id"])): edge
+        for edge in evidence.cost_breakdowns_by_edge
+    }
+
+    assert second.assignment_map() == {"T2": "R1"}
+    assert second.unassigned_target_ids == ("T1",)
+    assert second.total_cost == config.unassigned_base_cost * (0.5 + 0.9) + 0.25
+    assert evidence.cost_matrix[0] == (
+        config.infeasible_penalty,
+        config.infeasible_penalty,
+    )
+    assert evidence.cost_matrix[1] == (0.25, 0.5)
+    assert edge_by_pair[("T1", "R2")]["cost_breakdown"][
+        "reassignment_switch_penalty"
+    ] == 0.0
+    assert edge_by_pair[("T2", "R1")]["cost_breakdown"][
+        "reassignment_switch_penalty"
+    ] == 0.0
 
 
 def test_plan_and_assignments_expose_cross_node_contract_fields() -> None:

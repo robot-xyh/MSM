@@ -33,6 +33,9 @@ class GatedCost:
     track_quality_by_track: dict[str, float]
     position_covariance_trace_by_track: dict[str, float]
     previous_association_risk_by_track: dict[str, float]
+    covariance_regularized: bool
+    covariance_consistency_by_track: dict[str, dict[str, object]]
+    covariance_consistency_by_detection: dict[str, dict[str, object]]
 
 
 def predicted_measurement(track: GlobalTrack) -> np.ndarray:
@@ -40,6 +43,8 @@ def predicted_measurement(track: GlobalTrack) -> np.ndarray:
 
 
 def innovation_covariance(track: GlobalTrack, detection: Detection) -> np.ndarray:
+    track.ensure_covariance_consistency()
+    detection.ensure_covariance_consistency()
     return POSITION_H @ track.covariance @ POSITION_H.T + detection.covariance
 
 
@@ -64,6 +69,11 @@ def build_gated_cost_matrix(
     min_gate_threshold: float = 4.0,
     max_gate_threshold: float = 16.0,
 ) -> GatedCost:
+    for track in tracks:
+        track.ensure_covariance_consistency()
+    for detection in detections:
+        detection.ensure_covariance_consistency()
+
     rows = len(tracks)
     cols = len(detections)
     cost_matrix = np.full((rows, cols), large_cost, dtype=float)
@@ -84,6 +94,16 @@ def build_gated_cost_matrix(
         track.global_track_id: _track_previous_association_risk(track)
         for track in tracks
     }
+    covariance_consistency_by_track = {
+        track.global_track_id: dict(track.covariance_consistency) for track in tracks
+    }
+    covariance_consistency_by_detection = {
+        detection.detection_id: dict(detection.covariance_consistency)
+        for detection in detections
+    }
+    covariance_regularized = any(
+        track.covariance_regularized for track in tracks
+    ) or any(detection.covariance_regularized for detection in detections)
     gate_thresholds_by_track = {
         track.global_track_id: _quality_aware_gate_threshold(
             track=track,
@@ -151,6 +171,9 @@ def build_gated_cost_matrix(
         track_quality_by_track=track_quality_by_track,
         position_covariance_trace_by_track=position_covariance_trace_by_track,
         previous_association_risk_by_track=previous_association_risk_by_track,
+        covariance_regularized=covariance_regularized,
+        covariance_consistency_by_track=covariance_consistency_by_track,
+        covariance_consistency_by_detection=covariance_consistency_by_detection,
     )
 
 

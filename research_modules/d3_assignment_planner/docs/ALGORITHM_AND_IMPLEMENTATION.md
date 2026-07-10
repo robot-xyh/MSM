@@ -40,7 +40,7 @@ D3 是集中式资源-目标分配模块，输入来自 D2 的稳定 `GlobalTrac
 - `source_node_id`、`target_node_id`、`link_type`、`plan_version`、`stale_after_s`：跨中心、二级节点和资源节点传递计划时的通信合同字段。
 - `terminal_feedback_state`、`duplicate_terminal_lock_risk`：D5 末端反馈和重复锁定风险摘要，仅用于 hold/replan/arbitration 决策，不允许本地改写全局 ID。
 
-过期版本不得覆盖新版本。`AssignmentPlanner.plan(..., expected_previous_version=...)` 会检查输入旧计划版本；内部还记录最新 `plan_id/version`，若调用方提交 stale plan，则抛出 `StalePlanError`。
+过期版本不得覆盖新版本。`AssignmentPlanner` 实例绑定单个 episode：首次调用允许 `previous_plan=None`；一旦内部记录 active `plan_id/version`，后续调用必须显式传入该 active plan。缺失前序计划会抛出 `StalePlanError(reason="previous_plan_required")`，提交旧 plan id/version 或不匹配的 `expected_previous_version` 也会被拒绝。新 episode 应创建新的 planner 实例，不使用隐式 reset。
 
 ## 3. 数学模型
 
@@ -60,10 +60,10 @@ sum_i x_ij <= 1      for each resource j
 滚动规划的候选目标函数为：
 
 ```text
-J = sum_i sum_j x_ij * C_ij + sum_i u_i * U_i
+J = sum_i sum_j x_ij * (C_ij + S_ij) + sum_i u_i * U_i
 ```
 
-`C_ij` 是资源 `j` 处理目标 `i` 的抽象代价，`u_i=1` 表示目标 `i` 被保留为未分配，`U_i` 是未分配惩罚。未分配惩罚随威胁权重上升：
+`C_ij` 是资源 `j` 处理目标 `i` 的抽象基础代价。若目标在 `previous_plan` 中已有资源且候选边切换到其他资源，`S_ij=reassignment_switch_penalty`；保持原资源、无历史 assignment、不可行边和未分配 dummy 边均不加该项。`S_ij` 在 Hungarian/fallback 求解前写入矩阵，使 solver objective、`Assignment.cost`、cost breakdown 和 evidence 保持单次计费一致。`u_i=1` 表示目标 `i` 被保留为未分配，`U_i` 是未分配惩罚。未分配惩罚随威胁权重上升：
 
 ```text
 U_i = unassigned_base_cost * (0.5 + threat_score_i)
@@ -324,12 +324,13 @@ D6 应将这些阈值、触发次数和最终 `recommended_action` 进入批量�
 
 当前代码路径如下：
 
-1. 调用 `AssignmentPlanner.plan(tracks, resources, timestamp, previous_plan, expected_previous_version)`。
-2. `CostModel.build_matrix()` 计算 `M x N` 代价矩阵、未分配成本和每条边的分项解释。
-3. `HungarianAssignmentSolver.solve()` 拼接 dummy 未分配列，并调用 SciPy Hungarian；若 SciPy 不可用，则小规模 fallback 使用动态规划搜索。
-4. `_assignments_from_solver()` 将 solver index 输出转为 `Assignment(target_id, resource_id, cost_breakdown)`。
-5. `_apply_hysteresis()` 比较候选计划与旧计划，决定接受、保持或因旧计划不可行而换配。
-6. `_remember_plan()` 记录最新 `plan_id/version`，供下一次 stale plan 检查。
+1. 调用 `AssignmentPlanner.plan(tracks, resources, timestamp, previous_plan, expected_previous_version)`，先校验 active plan 连续性。
+2. `CostModel.build_matrix()` 计算 `M x N` 基础代价矩阵、未分配成本和每条边的分项解释。
+3. `_apply_switch_penalty_to_matrix()` 在可行改配边上加入 switch penalty，不修改原资源边、不可行边、新目标边和 dummy 未分配成本。
+4. `HungarianAssignmentSolver.solve()` 拼接 dummy 未分配列，并调用 SciPy Hungarian；若 SciPy 不可用，则小规模 fallback 使用动态规划搜索。
+5. `_assignments_from_solver()` 将 solver index 输出转为 `Assignment(target_id, resource_id, cost_breakdown)`。
+6. `_apply_hysteresis()` 在同一计费矩阵上比较候选计划与旧计划，决定接受、保持或因旧计划不可行而换配。
+7. `_remember_plan()` 记录最新 `plan_id/version`，供下一次缺失/stale plan 检查。
 
 核心接口：
 

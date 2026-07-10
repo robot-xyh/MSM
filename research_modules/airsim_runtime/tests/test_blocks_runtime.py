@@ -798,19 +798,48 @@ def test_real_runtime_moves_actor_targets_and_captures_builtin_detections(tmp_pa
 
     runtime.setup_episode(config)
     frame = runtime.sample_frame(config, frame_index=0, timestamp=1.0, output_dir=tmp_path)
+    next_frame = runtime.sample_frame(config, frame_index=1, timestamp=1.5, output_dir=tmp_path)
     runtime.teardown_episode(config)
 
     assert fake_client.spawned_objects == ["MSM_TargetActor_1"]
     assert fake_client.destroyed_objects[-1] == "MSM_TargetActor_1"
     assert fake_client.detection_filters["Interceptor"] == ["MSM_TargetActor_*", "MSM_TargetActor_1"]
-    assert fake_client.object_poses["MSM_TargetActor_1"].position.x_val == 14.0
-    assert fake_client.object_poses["MSM_TargetActor_1"].position.y_val == -5.5
+    assert fake_client.object_poses["MSM_TargetActor_1"].position.x_val == 15.0
+    assert fake_client.object_poses["MSM_TargetActor_1"].position.y_val == -5.25
     assert frame.truth_objects[0].object_id == "TGT-001"
     assert frame.truth_objects[0].position_ned == (14.0, -5.5, -2.0)
     assert frame.visual_detections
     assert frame.visual_detections[0].object_id == "TGT-001"
     assert frame.visual_detections[0].bbox_xyxy == (10.0, 20.0, 30.0, 40.0)
+    assert frame.visual_detections[0].local_track_id == "Interceptor:0:det:0001"
+    assert "MSM_TargetActor" not in frame.visual_detections[0].local_track_id
+    assert "MSM_TargetActor" not in frame.visual_detections[0].detection_id
+    assert frame.visual_detections[0].metadata["mot_history_length"] == 1
+    assert frame.visual_detections[0].metadata["offline_truth_only"] is True
+    assert next_frame.visual_detections[0].local_track_id == frame.visual_detections[0].local_track_id
+    assert next_frame.visual_detections[0].metadata["mot_history_length"] == 2
     assert frame.metadata["detection_count"] == 1
+
+
+def test_builtin_detection_tracker_uses_bbox_geometry_not_detection_order(tmp_path: Path) -> None:
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: FakeAirSimClient(),
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+    )
+    left = (10.0, 20.0, 30.0, 40.0)
+    right = (110.0, 20.0, 130.0, 40.0)
+
+    first = runtime._assign_builtin_detection_tracks("Interceptor:0", [left, right], frame_index=0)
+    second = runtime._assign_builtin_detection_tracks(
+        "Interceptor:0",
+        [(112.0, 20.0, 132.0, 40.0), (12.0, 20.0, 32.0, 40.0)],
+        frame_index=1,
+    )
+
+    assert second[0] == (first[1][0], 2)
+    assert second[1] == (first[0][0], 2)
+    assert all("MSM_TargetActor" not in local_id for local_id, _history in second)
 
 
 def test_real_runtime_yolo_backend_uses_d5_adapter_without_simgetdetections(
@@ -881,6 +910,45 @@ def test_real_runtime_yolo_backend_uses_d5_adapter_without_simgetdetections(
     assert detection.metadata["source"] == "yolov8_mot"
     assert detection.metadata["mot_history_length"] == 3
     assert "TargetActor" not in detection.object_id
+
+
+def test_real_runtime_resets_yolo_mot_streams_at_episode_boundary(tmp_path: Path) -> None:
+    class ResettableYoloAdapter:
+        def __init__(self) -> None:
+            self.reset_count = 0
+
+        def reset_all_streams(self) -> None:
+            self.reset_count += 1
+
+    adapters = []
+
+    def make_adapter(_config):
+        adapter = ResettableYoloAdapter()
+        adapters.append(adapter)
+        return adapter
+
+    fake_client = FakeAirSimClient()
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+        yolo_adapter_factory=make_adapter,
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        camera_vehicle_names=("Interceptor",),
+        resource_vehicle_names=("Interceptor",),
+        detection_backend="yolo",
+    )
+
+    runtime.setup_episode(config)
+    first = runtime._yolo_mot_adapter(config, "Interceptor:0")
+    runtime.setup_episode(config)
+    second = runtime._yolo_mot_adapter(config, "Interceptor:0")
+
+    assert first is second
+    assert first.reset_count == 1
+    assert len(adapters) == 1
 
 
 def test_real_runtime_captures_computer_vision_5v5_cameras(tmp_path: Path) -> None:
@@ -1202,6 +1270,8 @@ def test_d4d5_stress_analysis_outputs_expected_case_actions(tmp_path: Path) -> N
         case_name="degrade_to_secondary",
         resource_vehicle_names=resources,
         secondary_camera_vehicle_names=secondaries,
+        comparison_role="enhanced",
+        active_degradation_review_label="necessary",
     )
     distributed = run_d4d5_stress_analysis(
         frames,
@@ -1214,6 +1284,9 @@ def test_d4d5_stress_analysis_outputs_expected_case_actions(tmp_path: Path) -> N
     assert no_degrade.metrics["dominant_d4_action"] == "continue_center"
     assert secondary.metrics["d4_action_counts"]["degrade_to_secondary"] >= 1
     assert secondary.metrics["selected_secondary_node_id"] == "SEC-01"
+    assert secondary.metrics["comparison_role"] == "enhanced"
+    assert secondary.metrics["active_degradation_label_count"] > 0
+    assert secondary.metrics["active_degradation_precision"] == 1.0
     assert distributed.metrics["d4_action_counts"]["degrade_to_distributed"] >= 1
     assert no_degrade.metrics["multi_target_fov_rate"] == 1.0
     assert no_degrade.metrics["secondary_global_view_rate"] == 1.0
@@ -1733,6 +1806,65 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
     assert summary_payload["standard_mapping_version"] == "cuas-standard-map-v1"
     assert summary_payload["scenario_version"].startswith(
         "blocks_actor_n5:resources5:targets5:cameras5:seed7:backendairsim:"
+    )
+
+
+def test_main_episode_bus_retains_current_plan_after_stale_rejection(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    original_plan = episode_bus_module.AssignmentPlanner.plan
+    previous_plan_arguments = []
+
+    def reject_second_plan(self, *args, **kwargs):
+        previous_plan = kwargs.get("previous_plan")
+        previous_plan_arguments.append(previous_plan)
+        if len(previous_plan_arguments) == 2:
+            raise episode_bus_module.StalePlanError(
+                "injected stale plan",
+                reason="stale_previous_version",
+                previous_plan_id=previous_plan.plan_id,
+                previous_version=previous_plan.version,
+                latest_plan_id=previous_plan.plan_id,
+                latest_version=previous_plan.version,
+            )
+        return original_plan(self, *args, **kwargs)
+
+    monkeypatch.setattr(episode_bus_module.AssignmentPlanner, "plan", reject_second_plan)
+    resources = tuple(f"Interceptor{index}" for index in range(1, 6))
+    frames = [
+        _sample_5v5_frame(timestamp=float(index) * 0.5, frame_index=index)
+        for index in range(2)
+    ]
+    config = BlocksSmokeConfig(
+        episode_id="pytest_main_bus_stale_plan",
+        scenario_name="blocks_actor_n5",
+        duration_s=0.5,
+        dt_s=0.5,
+        output_root=tmp_path,
+        launch_blocks=False,
+        resource_vehicle_names=resources,
+        camera_vehicle_names=resources,
+        target_vehicle_names=(),
+    )
+
+    result = run_main_episode_bus(config, frames, tmp_path / "main_bus_stale")
+    collector, _truth_summary = load_episode_log_jsonl(
+        result.output_paths["main_episode_bus_jsonl"]
+    )
+    rejection_events = [
+        event
+        for event in collector.event_records
+        if event.event_type == "d3_stale_plan_rejected"
+    ]
+
+    assert len(previous_plan_arguments) == 2
+    assert previous_plan_arguments[0] is None
+    assert previous_plan_arguments[1] is not None
+    assert len(rejection_events) == 1
+    assert rejection_events[0].metadata["retained_plan_version"] == 1
+    assert rejection_events[0].metadata["retry_policy"] == (
+        "retain_current_plan_and_retry_next_cycle"
     )
 
 
@@ -2369,6 +2501,12 @@ def test_blocks_sequence_runner_writes_d4d5_stress_sequence_report(tmp_path: Pat
     assert actions[0] == "continue_center"
     assert "degrade_to_secondary" in result.episode_results[1].metadata["d4d5_stress"]["d4_action_counts"]
     assert "degrade_to_distributed" in result.episode_results[2].metadata["d4d5_stress"]["d4_action_counts"]
+    assert result.episode_results[0].metadata["d4d5_stress"]["comparison_role"] == "baseline"
+    assert result.episode_results[1].metadata["d4d5_stress"]["comparison_role"] == "enhanced"
+    assert (
+        result.episode_results[1].metadata["d4d5_stress"]["active_degradation_review_label"]
+        == "necessary"
+    )
 
 
 class FakeAirSimModule:

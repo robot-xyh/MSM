@@ -67,10 +67,13 @@ class RealAirSimRuntimeClient:
         self.client = self._new_client()
         self._yolo_adapter_factory = yolo_adapter_factory
         self._yolo_mot_adapters: dict[str, YoloMotAdapter] = {}
+        self._yolo_adapter_config_signature: tuple[Any, ...] | None = None
         self._scene_image_frame_cache: dict[tuple[int, str, str], tuple[Any, dict[str, Any]]] = {}
         self._active_actor_targets: dict[str, dict[str, Any]] = {}
         self._episode_setup_metadata: dict[str, Any] = {}
         self._detection_history: dict[str, int] = {}
+        self._builtin_detection_track_states: dict[str, dict[str, dict[str, Any]]] = {}
+        self._builtin_detection_next_sequence: dict[str, int] = {}
 
     def _new_client(self) -> Any:
         return self.client_factory(ip=self.ip, port=self.port, timeout_value=self.timeout_value)
@@ -228,7 +231,26 @@ class RealAirSimRuntimeClient:
         self._active_actor_targets = {}
         self._episode_setup_metadata = {"actor_targets": [], "detection_filters": []}
         self._detection_history = {}
-        self._yolo_mot_adapters = {}
+        self._builtin_detection_track_states = {}
+        self._builtin_detection_next_sequence = {}
+        yolo_signature = (
+            str(config.yolo_weights_path),
+            str(config.yolo_tracker_backend),
+            float(config.yolo_confidence_threshold),
+            bool(config.yolo_use_native_tracker),
+            bool(config.yolo_allow_iou_fallback),
+        )
+        if yolo_signature == self._yolo_adapter_config_signature:
+            reset_adapters: dict[str, YoloMotAdapter] = {}
+            for camera_id, adapter in self._yolo_mot_adapters.items():
+                reset_all_streams = getattr(adapter, "reset_all_streams", None)
+                if callable(reset_all_streams):
+                    reset_all_streams()
+                    reset_adapters[camera_id] = adapter
+            self._yolo_mot_adapters = reset_adapters
+        else:
+            self._yolo_mot_adapters = {}
+            self._yolo_adapter_config_signature = yolo_signature
         self._scene_image_frame_cache = {}
         if config.target_actor_specs:
             self._destroy_stale_actor_targets(config)
@@ -637,17 +659,22 @@ class RealAirSimRuntimeClient:
                     "count": len(raw_detections),
                 }
             )
+            camera_id = f"{vehicle_name}:{config.camera_name}"
+            boxes = [_bbox2d_from_detection(raw) for raw in raw_detections]
+            local_assignments = self._assign_builtin_detection_tracks(
+                camera_id,
+                boxes,
+                frame_index=frame_index,
+            )
             for index, raw in enumerate(raw_detections):
                 name = str(getattr(raw, "name", f"detection_{index}"))
-                bbox = _bbox2d_from_detection(raw)
+                bbox = boxes[index]
                 center = ((bbox[0] + bbox[2]) * 0.5, (bbox[1] + bbox[3]) * 0.5)
                 object_id = self._object_id_for_actor_name(name) or name
-                camera_id = f"{vehicle_name}:{config.camera_name}"
-                local_track_id = f"{camera_id}:{name}"
-                self._detection_history[local_track_id] = self._detection_history.get(local_track_id, 0) + 1
+                local_track_id, history_length = local_assignments[index]
                 detections.append(
                     AirSimDetectionBox(
-                        detection_id=f"{camera_id}:{frame_index:04d}:{index}:{name}",
+                        detection_id=f"{camera_id}:{frame_index:04d}:{index}",
                         camera_id=camera_id,
                         object_id=object_id,
                         local_track_id=local_track_id,
@@ -658,14 +685,73 @@ class RealAirSimRuntimeClient:
                         classification_hint="uav",
                         metadata={
                             "source": "airsim_builtin_detection",
-                            "airsim_detection_name": name,
-                            "mot_history_length": self._detection_history[local_track_id],
+                            "mot_history_length": history_length,
+                            "offline_truth_actor_name": name,
+                            "offline_truth_only": True,
                             "relative_pose": _pose_to_dict(getattr(raw, "relative_pose", None)),
                             "box3d": _box3d_to_dict(getattr(raw, "box3D", None)),
                         },
                     )
                 )
         return tuple(detections), metadata
+
+    def _assign_builtin_detection_tracks(
+        self,
+        camera_id: str,
+        boxes: list[tuple[float, float, float, float]],
+        *,
+        frame_index: int,
+    ) -> list[tuple[str, int]]:
+        """Assign anonymous camera-local IDs without reading AirSim actor names."""
+
+        previous = self._builtin_detection_track_states.get(camera_id, {})
+        active = {
+            track_id: dict(state)
+            for track_id, state in previous.items()
+            if frame_index - int(state.get("last_frame", frame_index)) <= 2
+        }
+        candidates: list[tuple[float, int, str]] = []
+        for detection_index, bbox in enumerate(boxes):
+            for track_id, state in active.items():
+                previous_bbox = tuple(float(value) for value in state["bbox"])
+                iou = _bbox_iou(bbox, previous_bbox)
+                distance = _bbox_center_distance(bbox, previous_bbox)
+                distance_limit = max(
+                    40.0,
+                    2.5 * max(_bbox_max_extent(bbox), _bbox_max_extent(previous_bbox)),
+                )
+                if iou < 0.01 and distance > distance_limit:
+                    continue
+                cost = (1.0 - iou) + distance / distance_limit
+                candidates.append((cost, detection_index, track_id))
+
+        assignments: dict[int, str] = {}
+        used_tracks: set[str] = set()
+        for _cost, detection_index, track_id in sorted(candidates):
+            if detection_index in assignments or track_id in used_tracks:
+                continue
+            assignments[detection_index] = track_id
+            used_tracks.add(track_id)
+
+        results: list[tuple[str, int]] = []
+        for detection_index, bbox in enumerate(boxes):
+            track_id = assignments.get(detection_index)
+            if track_id is None:
+                sequence = self._builtin_detection_next_sequence.get(camera_id, 0) + 1
+                self._builtin_detection_next_sequence[camera_id] = sequence
+                track_id = f"{camera_id}:det:{sequence:04d}"
+                history_length = 1
+            else:
+                history_length = int(active[track_id].get("history_length", 0)) + 1
+            active[track_id] = {
+                "bbox": tuple(float(value) for value in bbox),
+                "last_frame": int(frame_index),
+                "history_length": int(history_length),
+            }
+            results.append((track_id, history_length))
+
+        self._builtin_detection_track_states[camera_id] = active
+        return results
 
     def _capture_yolo_mot_detections(
         self,
@@ -1071,6 +1157,37 @@ def _bbox2d_from_detection(detection: Any) -> tuple[float, float, float, float]:
     min_xy = _vector2_from_airsim(box.min)
     max_xy = _vector2_from_airsim(box.max)
     return (min_xy[0], min_xy[1], max_xy[0], max_xy[1])
+
+
+def _bbox_iou(
+    left: tuple[float, float, float, float],
+    right: tuple[float, float, float, float],
+) -> float:
+    intersection_x1 = max(left[0], right[0])
+    intersection_y1 = max(left[1], right[1])
+    intersection_x2 = min(left[2], right[2])
+    intersection_y2 = min(left[3], right[3])
+    intersection = max(intersection_x2 - intersection_x1, 0.0) * max(
+        intersection_y2 - intersection_y1,
+        0.0,
+    )
+    left_area = max(left[2] - left[0], 0.0) * max(left[3] - left[1], 0.0)
+    right_area = max(right[2] - right[0], 0.0) * max(right[3] - right[1], 0.0)
+    union = left_area + right_area - intersection
+    return intersection / union if union > 0.0 else 0.0
+
+
+def _bbox_center_distance(
+    left: tuple[float, float, float, float],
+    right: tuple[float, float, float, float],
+) -> float:
+    left_center = ((left[0] + left[2]) * 0.5, (left[1] + left[3]) * 0.5)
+    right_center = ((right[0] + right[2]) * 0.5, (right[1] + right[3]) * 0.5)
+    return math.hypot(left_center[0] - right_center[0], left_center[1] - right_center[1])
+
+
+def _bbox_max_extent(bbox: tuple[float, float, float, float]) -> float:
+    return max(abs(bbox[2] - bbox[0]), abs(bbox[3] - bbox[1]), 1.0)
 
 
 def _pose_to_dict(pose: Any | None) -> dict[str, Any]:

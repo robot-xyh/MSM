@@ -52,6 +52,8 @@ class RiskBreakdown:
     soft_risk_reasons: tuple[str, ...]
     hard_risk_reasons: tuple[str, ...]
     thresholds: RiskThresholds
+    truth_metrics_available: bool = True
+    continuity_available: bool = True
 
     @property
     def has_soft_risk(self) -> bool:
@@ -70,6 +72,8 @@ class RiskBreakdown:
             "hard_risk_score": self.hard_risk_score,
             "soft_risk_reasons": list(self.soft_risk_reasons),
             "hard_risk_reasons": list(self.hard_risk_reasons),
+            "truth_metrics_available": self.truth_metrics_available,
+            "continuity_available": self.continuity_available,
             "thresholds": self.thresholds.to_dict(),
         }
 
@@ -79,7 +83,7 @@ class AssociationRiskSummaryWindowGenerator:
     """Generate sliding-window association risk summaries from D2 evidence."""
 
     window_size: int = 5
-    _frames: deque[dict[str, float | int | str | None]] = field(
+    _frames: deque[dict[str, float | int | str | bool | None]] = field(
         default_factory=deque, init=False
     )
 
@@ -94,6 +98,8 @@ class AssociationRiskSummaryWindowGenerator:
         id_switch_delta: int = 0,
         duplicate_assignment_delta: int = 0,
         track_continuity: float = 0.0,
+        truth_metrics_available: bool = True,
+        continuity_available: bool = True,
     ) -> AssociationRiskSummary:
         """Return a risk summary using the latest frame plus window history."""
 
@@ -108,7 +114,13 @@ class AssociationRiskSummaryWindowGenerator:
             "cost_margin_risk": _cost_margin_risk(association_result.cost_matrix),
             "id_switch_delta": int(id_switch_delta),
             "duplicate_assignment_delta": int(duplicate_assignment_delta),
-            "continuity_risk": max(0.0, 1.0 - float(track_continuity)),
+            "continuity_risk": (
+                max(0.0, 1.0 - float(track_continuity))
+                if continuity_available
+                else 0.0
+            ),
+            "truth_metrics_available": bool(truth_metrics_available),
+            "continuity_available": bool(continuity_available),
             "d5_disagreement_count": int(metadata.get("d5_disagreement_count", 0)),
             "mean_track_quality": float(metadata.get("mean_track_quality", 0.0)),
             "min_track_quality": float(metadata.get("min_track_quality", 0.0)),
@@ -135,7 +147,20 @@ class AssociationRiskSummaryWindowGenerator:
         duplicate_assignment_delta_sum = sum(
             int(item["duplicate_assignment_delta"]) for item in window
         )
-        continuity_risk = _mean_float(window, "continuity_risk")
+        continuity_risks = [
+            float(item["continuity_risk"])
+            for item in window
+            if bool(item["continuity_available"])
+        ]
+        continuity_risk = (
+            float(sum(continuity_risks) / len(continuity_risks))
+            if continuity_risks
+            else 0.0
+        )
+        window_truth_metrics_available = any(
+            bool(item["truth_metrics_available"]) for item in window
+        )
+        window_continuity_available = bool(continuity_risks)
         d5_disagreement_count = sum(
             int(item["d5_disagreement_count"]) for item in window
         )
@@ -156,7 +181,7 @@ class AssociationRiskSummaryWindowGenerator:
             candidate_overlap_rate,
             min(1.0, id_switch_delta_sum / max(1, self.window_size)),
             min(1.0, duplicate_assignment_delta_sum / max(1, self.window_size)),
-            continuity_risk,
+            continuity_risk if window_continuity_available else 0.0,
         )
         association_ambiguity = max(
             float(metadata.get("association_ambiguity", association_ambiguity)),
@@ -178,6 +203,8 @@ class AssociationRiskSummaryWindowGenerator:
             duplicate_track_risk=duplicate_track_risk,
             association_ambiguity=association_ambiguity,
             covariance_overlap_rate=covariance_overlap_rate,
+            truth_metrics_available=window_truth_metrics_available,
+            continuity_available=window_continuity_available,
             metadata={
                 "window_size": len(window),
                 "configured_window_size": self.window_size,
@@ -189,6 +216,10 @@ class AssociationRiskSummaryWindowGenerator:
                     metadata.get("d5_disagreement_count", 0)
                 ),
                 "track_continuity": float(track_continuity),
+                "truth_metrics_available": window_truth_metrics_available,
+                "continuity_available": window_continuity_available,
+                "continuity_risk": continuity_risk,
+                "continuity_frame_count": len(continuity_risks),
                 "mean_track_quality": mean_track_quality,
                 "min_track_quality": min_track_quality,
                 "max_track_association_risk": max_track_association_risk,
@@ -317,6 +348,8 @@ class MetricsRecorder:
                 - duplicate_assignment_count_before
             ),
             track_continuity=self.track_continuity,
+            truth_metrics_available=self.truth_metrics_available,
+            continuity_available=self.continuity_available,
         )
         self._record_risk_summary(risk_summary)
 
@@ -328,6 +361,7 @@ class MetricsRecorder:
             unmatched_detection_ids=list(association_result.unmatched_detection_ids),
             ambiguity_score=association_result.ambiguity_score,
             runtime_seconds=runtime_seconds,
+            rejected_pairs=list(association_result.rejected_pairs),
             metadata=association_result.metadata,
             source_node_id=association_result.source_node_id,
             link_type=association_result.link_type,
@@ -379,6 +413,14 @@ class MetricsRecorder:
     @property
     def track_continuity(self) -> float:
         return self.identity_continuity
+
+    @property
+    def truth_metrics_available(self) -> bool:
+        return bool(self.truth_frame_count)
+
+    @property
+    def continuity_available(self) -> bool:
+        return self.truth_metrics_available
 
     @property
     def coverage_continuity(self) -> float:
@@ -433,6 +475,8 @@ class MetricsRecorder:
             "track_continuity": self.track_continuity,
             "coverage_continuity": self.coverage_continuity,
             "identity_continuity": self.identity_continuity,
+            "truth_metrics_available": self.truth_metrics_available,
+            "continuity_available": self.continuity_available,
             "duplicate_assignment_count": self.duplicate_assignment_count,
             "d5_disagreement_count": self.d5_disagreement_count,
             "duplicate_track_risk": self.latest_duplicate_track_risk,
@@ -475,6 +519,8 @@ def _risk_summary_from_result(
     id_switch_delta: int = 0,
     duplicate_assignment_delta: int = 0,
     track_continuity: float = 0.0,
+    truth_metrics_available: bool = True,
+    continuity_available: bool = True,
 ) -> AssociationRiskSummary:
     if association_result.risk_summary is not None:
         return association_result.risk_summary
@@ -484,6 +530,8 @@ def _risk_summary_from_result(
             id_switch_delta=id_switch_delta,
             duplicate_assignment_delta=duplicate_assignment_delta,
             track_continuity=track_continuity,
+            truth_metrics_available=truth_metrics_available,
+            continuity_available=continuity_available,
         )
 
     metadata = association_result.metadata
@@ -499,6 +547,8 @@ def _risk_summary_from_result(
         ),
         covariance_overlap_rate=float(metadata.get("covariance_overlap_rate", 0.0)),
         metadata=dict(metadata.get("risk_metadata", {})),
+        truth_metrics_available=truth_metrics_available,
+        continuity_available=continuity_available,
     )
 
 
@@ -520,6 +570,18 @@ def classify_risk_summary(
         metadata.get("duplicate_assignment_delta_sum", duplicate_assignment_delta)
     )
     track_continuity = float(metadata.get("track_continuity", 1.0))
+    truth_metrics_available = bool(
+        metadata.get(
+            "truth_metrics_available",
+            risk_summary.truth_metrics_available,
+        )
+    )
+    continuity_available = bool(
+        metadata.get(
+            "continuity_available",
+            risk_summary.continuity_available,
+        )
+    )
     d5_disagreement_delta = int(
         metadata.get(
             "d5_disagreement_delta",
@@ -547,10 +609,9 @@ def classify_risk_summary(
         soft_scores.append(1.0)
 
     hard_reasons: list[str] = []
-    hard_scores = [
-        risk_summary.duplicate_track_risk,
-        max(0.0, 1.0 - track_continuity),
-    ]
+    hard_scores = [risk_summary.duplicate_track_risk]
+    if continuity_available:
+        hard_scores.append(max(0.0, 1.0 - track_continuity))
     if id_switch_delta_sum >= active_thresholds.hard_id_switch_delta:
         hard_reasons.append("id_switch")
         hard_scores.append(1.0)
@@ -562,7 +623,10 @@ def classify_risk_summary(
         hard_scores.append(1.0)
     if risk_summary.duplicate_track_risk >= active_thresholds.hard_duplicate_track_risk:
         hard_reasons.append("duplicate_track")
-    if track_continuity < active_thresholds.hard_track_continuity:
+    if (
+        continuity_available
+        and track_continuity < active_thresholds.hard_track_continuity
+    ):
         hard_reasons.append("continuity_collapse")
 
     return RiskBreakdown(
@@ -572,6 +636,8 @@ def classify_risk_summary(
         soft_risk_reasons=tuple(soft_reasons),
         hard_risk_reasons=tuple(hard_reasons),
         thresholds=active_thresholds,
+        truth_metrics_available=truth_metrics_available,
+        continuity_available=continuity_available,
     )
 
 
