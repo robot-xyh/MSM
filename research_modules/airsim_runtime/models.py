@@ -78,6 +78,10 @@ class BlocksSmokeConfig:
     yolo_confidence_threshold: float = 0.25
     yolo_use_native_tracker: bool = True
     yolo_allow_iou_fallback: bool = True
+    yolo_compute_device: str = "auto"
+    yolo_cpu_budget_ms: float | None = None
+    yolo_gpu_budget_ms: float | None = None
+    yolo_offline_truth_evaluation: bool = False
     destroy_spawned_actor_targets: bool = True
     include_integrated_pipeline: bool = True
     execute_intercept: bool = False

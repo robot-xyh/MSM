@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import csv
 import json
 import sys
 from dataclasses import replace
@@ -48,7 +49,13 @@ from airsim_runtime.sequence import (
     run_blocks_batch_sequences,
     run_blocks_sequence,
 )
-from d6_evaluation_metrics import AirSimCalibrationReportGenerator
+from d6_evaluation_metrics import (
+    AirSimCalibrationReportGenerator,
+    GuidanceLawComparisonReportGenerator,
+    ScenarioDefinition,
+    ScenarioLibrary,
+    load_main_episode_bus_metrics,
+)
 
 DEFAULT_SETTINGS = "research_modules/airsim_runtime/settings/blocks_smoke_settings.json"
 ACTOR_2V2_SETTINGS = "research_modules/airsim_runtime/settings/blocks_2v2_actor_settings.json"
@@ -239,6 +246,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--intercept-max-duration", type=float, default=8.0)
     parser.add_argument("--intercept-terminal-range", type=float, default=8.0)
     parser.add_argument("--intercept-detection-timeout", type=float, default=1.0)
+    parser.add_argument(
+        "--guidance-law",
+        choices=("pure_pursuit", "radar_pn", "png_vm", "png_ttc"),
+        default="png_vm",
+        help=(
+            "Select the controlled-intercept guidance path. PNG modes use radar PN "
+            "until the D3/D4/D5 terminal contract permits visual handoff."
+        ),
+    )
+    parser.add_argument(
+        "--guidance-law-sweep",
+        action="store_true",
+        help=(
+            "Run pure_pursuit, radar_pn, png_vm, and png_ttc for the same seed/geometry "
+            "under one reset-separated Blocks process."
+        ),
+    )
     parser.add_argument("--active-degradation-time", type=float, default=1.5)
     parser.add_argument("--secondary-plan-time", type=float, default=2.0)
     parser.add_argument("--center-replan-time", type=float, default=2.0)
@@ -287,6 +311,17 @@ def parse_args() -> argparse.Namespace:
         help="D5 MOT backend requested for YOLO detections.",
     )
     parser.add_argument("--yolo-confidence", type=float, default=0.25)
+    parser.add_argument("--yolo-device", default="auto")
+    parser.add_argument("--yolo-cpu-budget-ms", type=float, default=None)
+    parser.add_argument("--yolo-gpu-budget-ms", type=float, default=None)
+    parser.add_argument(
+        "--yolo-offline-truth-eval",
+        action="store_true",
+        help=(
+            "Use AirSim detection boxes only as offline detector scoring labels. "
+            "They are never exposed to the online D5 tracker or global binding."
+        ),
+    )
     parser.add_argument("--no-yolo-native-tracker", action="store_true")
     parser.add_argument("--no-yolo-iou-fallback", action="store_true")
     parser.add_argument("--save-images", action="store_true", help="Persist sampled Scene PNG frames.")
@@ -304,6 +339,8 @@ def main() -> int:
     args = parse_args()
     if args.p1_calibration_sweep:
         return _run_p1_calibration_sweep(args)
+    if args.guidance_law_sweep:
+        return _run_guidance_law_sweep(args)
     if args.actor_2v2_active_secondary_visual_png:
         args.actor_2v2 = True
         args.execute_intercept = True
@@ -364,6 +401,77 @@ def _run_one_sequence(args: argparse.Namespace, *, seed: int, sequence_id: str):
         sequence_id=selected_sequence_id,
         episode_specs=episode_specs,
     )
+
+
+def _run_guidance_law_sweep(args: argparse.Namespace) -> int:
+    if args.cv_5v5 or args.cv_5v5_d4d5_stress or args.p1_calibration_sweep:
+        raise SystemExit("--guidance-law-sweep requires an actor SimpleFlight scenario")
+    if not args.actor_2v2 and not args.actor_5v5:
+        args.actor_2v2 = True
+    args.execute_intercept = True
+    if args.actor_2v2:
+        args.terminal_handoff_tuned = True
+    if args.intercept_terminal_range == 8.0:
+        args.intercept_terminal_range = 30.0
+    if args.intercept_yaw_mode is None:
+        args.intercept_yaw_mode = "look_at_target"
+
+    seeds = _parse_batch_seeds(args.batch_seeds, default=args.seed)
+    laws = ("pure_pursuit", "radar_pn", "png_vm", "png_ttc")
+    runs = []
+    run_index: list[tuple[str, int]] = []
+    for law in laws:
+        for seed in seeds:
+            law_args = copy.deepcopy(args)
+            law_args.guidance_law_sweep = False
+            law_args.guidance_law = law
+            sequence_id = f"{args.sequence_id}_{law}_seed{seed:03d}"
+            config, selected_sequence_id, episode_specs = _build_sequence_run(
+                law_args,
+                seed=seed,
+                sequence_id=sequence_id,
+            )
+            config = replace(
+                config,
+                metadata={
+                    **config.metadata,
+                    "guidance_comparison_group": args.sequence_id,
+                    "guidance_law": law,
+                    "experiment_guidance_law": law,
+                    "guidance_law_sweep": True,
+                    "scenario_tags": ["simpleflight", "paired_guidance", "same_seed"],
+                    "expected_failure_modes": [
+                        "terminal_detection_timeout",
+                        "maneuver_margin_low",
+                        "bbox_near_image_edge",
+                    ],
+                },
+            )
+            full_flow_specs = tuple(
+                spec for spec in episode_specs if spec.episode_id == "episode_006_full_flow"
+            )
+            runs.append((config, selected_sequence_id, full_flow_specs or episode_specs))
+            run_index.append((law, seed))
+
+    results = list(run_blocks_batch_sequences(tuple(runs), batch_id=args.sequence_id))
+    for result in results:
+        _print_sequence_result(result)
+    outputs = _write_guidance_law_sweep_outputs(
+        Path(args.output_root) / args.sequence_id,
+        sequence_id=args.sequence_id,
+        seeds=seeds,
+        laws=laws,
+        run_index=run_index,
+        results=results,
+    )
+    scenario_paths = _write_runtime_scenario_library(
+        Path(args.output_root) / args.sequence_id / "scenario_library",
+        seeds=seeds,
+    )
+    print(f"guidance_law_sweep_summary={outputs['json'].resolve()}")
+    print(f"guidance_law_sweep_report={outputs['markdown'].resolve()}")
+    print(f"scenario_library={scenario_paths['json'].resolve()}")
+    return 0
 
 
 def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str):
@@ -763,6 +871,15 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                 "target_asset_name": args.target_asset_name,
             },
         }
+    actor_config.setdefault("metadata", {})
+    actor_config["metadata"].update(
+        {
+            "guidance_law": args.guidance_law,
+            "experiment_guidance_law": args.guidance_law,
+            "guidance_comparison_group": args.sequence_id,
+            "scenario_tags": [scenario_name, "airsim_blocks"],
+        }
+    )
     base_config = BlocksSmokeConfig(
         scenario_name=scenario_name,
         duration_s=args.duration,
@@ -787,6 +904,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         intercept_max_duration_s=args.intercept_max_duration,
         intercept_terminal_switch_range_m=args.intercept_terminal_range,
         intercept_detection_timeout_s=args.intercept_detection_timeout,
+        intercept_guidance_law=args.guidance_law,
         intercept_yaw_mode=(
             args.intercept_yaw_mode
             or ("look_at_target" if args.terminal_handoff_tuned else "velocity")
@@ -799,6 +917,10 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         yolo_confidence_threshold=args.yolo_confidence,
         yolo_use_native_tracker=not args.no_yolo_native_tracker,
         yolo_allow_iou_fallback=not args.no_yolo_iou_fallback,
+        yolo_compute_device=args.yolo_device,
+        yolo_cpu_budget_ms=args.yolo_cpu_budget_ms,
+        yolo_gpu_budget_ms=args.yolo_gpu_budget_ms,
+        yolo_offline_truth_evaluation=args.yolo_offline_truth_eval,
         **actor_config,
     )
     selected_episode_specs = D4D5_STRESS_EPISODES if args.cv_5v5_d4d5_stress else DEFAULT_BLOCKS_EPISODES
@@ -1122,14 +1244,90 @@ def _write_p1_calibration_sweep_outputs(
     summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     report_path.write_text(_p1_calibration_markdown(payload), encoding="utf-8")
     d6_outputs = _write_d6_p1_calibration_report(output_dir, summary_path, results)
+    scenario_outputs = _write_runtime_scenario_library(
+        output_dir / "scenario_library",
+        seeds=seeds,
+    )
     payload["d6_report_outputs"] = {key: str(path) for key, path in d6_outputs.items()}
+    payload["scenario_library_outputs"] = {
+        key: str(path) for key, path in scenario_outputs.items()
+    }
     summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     report_path.write_text(_p1_calibration_markdown(payload), encoding="utf-8")
     return {
         "json": summary_path,
         "markdown": report_path,
         **{f"d6_{key}": path for key, path in d6_outputs.items()},
+        **{f"scenario_{key}": path for key, path in scenario_outputs.items()},
     }
+
+
+def _write_runtime_scenario_library(
+    output_dir: Path,
+    *,
+    seeds: list[int],
+) -> dict[str, Path]:
+    seed_tuple = tuple(dict.fromkeys(int(seed) for seed in seeds))
+    library = ScenarioLibrary(
+        (
+            ScenarioDefinition(
+                scenario_group="blocks_cv_5v5_secondary_takeover",
+                scenario_version="p1-secondary-takeover-v2",
+                tags=("5v5", "computer_vision", "secondary_takeover"),
+                difficulty="stress",
+                expected_failure_modes=(
+                    "network_union_incomplete",
+                    "secondary_readiness_not_sustained",
+                    "secondary_plan_lease_expired",
+                ),
+                seeds=seed_tuple,
+                parameters={"target_count": 5, "secondary_heights_m": [50, 200]},
+            ),
+            ScenarioDefinition(
+                scenario_group="blocks_cv_5v5_yolo_mot",
+                scenario_version="p1-yolo-mot-v1",
+                tags=("5v5", "yolov8", "multicamera", "mot"),
+                difficulty="challenging",
+                expected_failure_modes=(
+                    "detector_miss",
+                    "local_id_discontinuity",
+                    "cross_view_registration_rejected",
+                ),
+                seeds=seed_tuple,
+                parameters={"tracker_backends": ["bytetrack", "botsort"]},
+            ),
+            ScenarioDefinition(
+                scenario_group="blocks_actor_2v2_guidance_comparison",
+                scenario_version="p1-guidance-four-law-v1",
+                tags=("2v2", "simpleflight", "same_seed", "guidance"),
+                difficulty="challenging",
+                expected_failure_modes=(
+                    "terminal_detection_timeout",
+                    "maneuver_margin_low",
+                    "bbox_near_image_edge",
+                ),
+                seeds=seed_tuple,
+                parameters={
+                    "guidance_laws": ["pure_pursuit", "radar_pn", "png_vm", "png_ttc"]
+                },
+            ),
+            ScenarioDefinition(
+                scenario_group="blocks_cv_5v5_d1_d3_governance",
+                scenario_version="p1-d1-d3-governance-v1",
+                tags=("5v5", "fusion", "association", "assignment"),
+                difficulty="stress",
+                expected_failure_modes=(
+                    "oosm_latency",
+                    "id_switch",
+                    "false_track",
+                    "unassigned_target",
+                ),
+                seeds=seed_tuple,
+                parameters={"resource_target_scales": ["5v5", "3v5", "5v3"]},
+            ),
+        )
+    )
+    return library.write_bundle(output_dir)
 
 
 def _write_d6_p1_calibration_report(
@@ -1405,6 +1603,161 @@ def _write_batch_summary(args: argparse.Namespace, seeds: list[int], results: li
         )
     report.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
+
+
+def _write_guidance_law_sweep_outputs(
+    output_dir: Path,
+    *,
+    sequence_id: str,
+    seeds: list[int],
+    laws: tuple[str, ...],
+    run_index: list[tuple[str, int]],
+    results: list[object],
+) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    rows: list[dict[str, object]] = []
+    for (law, seed), result in zip(run_index, results, strict=False):
+        episode = _controlled_episode_from_result(result)
+        summary_path = None if episode is None else episode.output_paths.get("intercept_summary")
+        commands_path = None if episode is None else episode.output_paths.get("control_commands")
+        summary: dict[str, object] = {}
+        if summary_path is not None and Path(summary_path).exists():
+            summary = json.loads(Path(summary_path).read_text(encoding="utf-8"))
+        pairs = list(summary.get("pairs", []) or [])
+        min_ranges = [
+            float(pair["min_range_m"])
+            for pair in pairs
+            if isinstance(pair, dict) and pair.get("min_range_m") is not None
+        ]
+        status_counts: dict[str, int] = {}
+        for pair in pairs:
+            if not isinstance(pair, dict):
+                continue
+            status = str(pair.get("status") or "unknown")
+            status_counts[status] = status_counts.get(status, 0) + 1
+        command_law_counts: dict[str, int] = {}
+        terminal_allowed_count = 0
+        command_count = 0
+        if commands_path is not None and Path(commands_path).exists():
+            with Path(commands_path).open(encoding="utf-8", newline="") as stream:
+                for command in csv.DictReader(stream):
+                    command_count += 1
+                    command_law = str(command.get("guidance_law") or "unknown")
+                    command_law_counts[command_law] = command_law_counts.get(command_law, 0) + 1
+                    if str(command.get("terminal_switch_allowed") or "").lower() == "true":
+                        terminal_allowed_count += 1
+        rows.append(
+            {
+                "sequence_id": result.sequence_id,
+                "seed": seed,
+                "guidance_law": law,
+                "connected": bool(result.connected),
+                "pair_count": int(summary.get("pair_count", len(pairs)) or 0),
+                "success_count": int(summary.get("success_count", 0) or 0),
+                "mean_min_range_m": (
+                    sum(min_ranges) / len(min_ranges) if min_ranges else None
+                ),
+                "status_counts": status_counts,
+                "command_count": command_count,
+                "command_law_counts": command_law_counts,
+                "terminal_switch_allowed_count": terminal_allowed_count,
+                "terminal_switch_allowed_rate": (
+                    terminal_allowed_count / command_count if command_count else None
+                ),
+                "intercept_summary": str(summary_path) if summary_path is not None else None,
+                "control_commands": str(commands_path) if commands_path is not None else None,
+            }
+        )
+    aggregates = []
+    for law in laws:
+        selected = [row for row in rows if row["guidance_law"] == law]
+        pair_count = sum(int(row["pair_count"]) for row in selected)
+        success_count = sum(int(row["success_count"]) for row in selected)
+        min_ranges = [
+            float(row["mean_min_range_m"])
+            for row in selected
+            if row["mean_min_range_m"] is not None
+        ]
+        aggregates.append(
+            {
+                "guidance_law": law,
+                "seed_count": len(selected),
+                "pair_count": pair_count,
+                "success_count": success_count,
+                "success_rate": success_count / pair_count if pair_count else None,
+                "mean_min_range_m": sum(min_ranges) / len(min_ranges) if min_ranges else None,
+            }
+        )
+    payload = {
+        "sequence_id": sequence_id,
+        "batch_mode": "single_blocks_reset_loop",
+        "comparison_design": "same_seed_same_geometry",
+        "seeds": seeds,
+        "guidance_laws": list(laws),
+        "rows": rows,
+        "aggregates": aggregates,
+    }
+    json_path = output_dir / "guidance_law_sweep_summary.json"
+    json_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    report_path = output_dir / "GUIDANCE_LAW_SWEEP_REPORT.md"
+    lines = [
+        "# AirSim 四导引律同 Seed 对照报告",
+        "",
+        f"- Sequence: `{sequence_id}`",
+        "- 运行方式：单次启动 Blocks，按导引律和 seed 重置场景。",
+        f"- Seeds: `{', '.join(str(seed) for seed in seeds)}`",
+        "- PNG 核心算法未在 main runtime 中修改。",
+        "",
+        "| 导引律 | Seeds | Pair | 成功 | 成功率 | 平均最小距离 m |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for row in aggregates:
+        success_rate = row["success_rate"]
+        mean_range = row["mean_min_range_m"]
+        lines.append(
+            f"| `{row['guidance_law']}` | {row['seed_count']} | {row['pair_count']} | "
+            f"{row['success_count']} | "
+            f"{'unavailable' if success_rate is None else f'{float(success_rate):.3f}'} | "
+            f"{'unavailable' if mean_range is None else f'{float(mean_range):.3f}'} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## 口径",
+            "",
+            "- `pure_pursuit` 和 `radar_pn` 不启用视觉接管。",
+            "- `png_vm` 和 `png_ttc` 仅在 D3/D4/D5 合同及视觉质量门限全部通过后切换。",
+            "- 本文件是 main 侧执行索引；置信区间、拒绝原因和图表由 D6 bundle 给出。",
+        ]
+    )
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    episode_metrics = []
+    for (law, _seed), result in zip(run_index, results, strict=False):
+        episode = _controlled_episode_from_result(result)
+        metrics_path = (
+            None
+            if episode is None
+            else episode.output_paths.get("main_episode_bus_metrics_json")
+        )
+        if metrics_path is not None and Path(metrics_path).exists():
+            metrics = load_main_episode_bus_metrics(metrics_path)
+            metrics.metadata["experiment_guidance_law"] = law
+            metrics.metadata["selected_guidance_law"] = law
+            metrics.metadata["guidance_comparison_group"] = sequence_id
+            episode_metrics.append(metrics)
+    d6_paths = GuidanceLawComparisonReportGenerator().write_bundle(
+        episode_metrics,
+        output_dir / "d6_guidance_comparison",
+        reference_law="radar_pn",
+    )
+    return {
+        "json": json_path,
+        "markdown": report_path,
+        **{f"d6_{key}": value for key, value in d6_paths.items()},
+    }
 
 
 def _write_5v5_intercept_report(args: argparse.Namespace, results: list[object]) -> Path:

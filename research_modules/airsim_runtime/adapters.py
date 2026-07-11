@@ -9,6 +9,8 @@ import numpy as np
 from airsim_dryrun.adapters import observations_from_airsim_frame
 from airsim_dryrun.models import AirSimFrame
 from d1_sensor_fusion.types import SensorObservation
+from d3_assignment_planner import TargetTrack
+from d5_terminal_association import GlobalTrack as TerminalGlobalTrack
 from d5_terminal_association import LocalVisualTrack
 from integrated_simulation.models import ResourcePlatform, TruthState
 
@@ -86,6 +88,99 @@ def resources_from_blocks_frame(frame: AirSimFrame) -> list[ResourcePlatform]:
         )
         for resource in frame.resources
     ]
+
+
+def target_tracks_from_online_d2(
+    tracks: list[Any],
+    resources: list[ResourcePlatform],
+    *,
+    default_threat_score: float = 0.75,
+) -> list[TargetTrack]:
+    """Build D3 inputs without AirSim actor or truth identity.
+
+    D2's center-owned ``global_track_id`` is the only identity carried into
+    planning. Threat is a configurable runtime prior until a classified sensor
+    product is available; coverage is inferred from online geometry.
+    """
+
+    output: list[TargetTrack] = []
+    for track in tracks:
+        position = np.asarray(track.state[:2], dtype=float)
+        lifecycle = getattr(getattr(track, "lifecycle_state", None), "value", None)
+        assignable = lifecycle not in {"lost", "dropped"}
+        covariance_norm = min(float(np.trace(track.covariance[:2, :2])) / 120.0, 1.0)
+        coverage_cell = _nearest_resource_coverage_cell(position, resources)
+        fov_difficulty: dict[str, float] = {}
+        conflict_risk: dict[str, float] = {}
+        feasibility: dict[str, bool] = {}
+        for resource in resources:
+            distance = float(np.linalg.norm(resource.position[:2] - position))
+            coverage_penalty = (
+                0.25 if coverage_cell and resource.coverage_cell != coverage_cell else 0.0
+            )
+            fov_difficulty[resource.resource_id] = min(distance / 360.0 + coverage_penalty, 1.0)
+            conflict_risk[resource.resource_id] = 0.10 if coverage_penalty else 0.02
+            feasibility[resource.resource_id] = resource.status == "available"
+        output.append(
+            TargetTrack(
+                track_id=str(track.global_track_id),
+                threat_score=float(np.clip(default_threat_score, 0.0, 1.0)),
+                covariance=covariance_norm,
+                window_cost=min(float(np.linalg.norm(position)) / 1000.0, 1.0),
+                assignable=assignable,
+                fov_difficulty_by_resource=fov_difficulty,
+                conflict_risk_by_resource=conflict_risk,
+                feasibility_by_resource=feasibility,
+                metadata={
+                    "coverage_cell": coverage_cell,
+                    "position": position.tolist(),
+                    "identity_source": "d2_center_owned_global_track_id",
+                    "threat_source": "runtime_default_prior",
+                    "online_truth_id_used": False,
+                },
+            )
+        )
+    return output
+
+
+def terminal_tracks_from_online_d2(
+    tracks: list[Any],
+    *,
+    plan_version: int,
+    timestamp: float,
+    source_kinematics: dict[str, dict[str, Any]] | None = None,
+    default_z_ned_m: float = -5.0,
+    default_z_variance_m2: float = 25.0,
+) -> list[TerminalGlobalTrack]:
+    """Build D5 projection tracks from D2 and cached D1 kinematics only."""
+
+    kinematics_by_track = source_kinematics or {}
+    output: list[TerminalGlobalTrack] = []
+    for track in tracks:
+        source = kinematics_by_track.get(str(track.global_track_id), {})
+        source_position = np.asarray(source.get("position_3d", (0.0, 0.0, default_z_ned_m)), dtype=float)
+        source_velocity = np.asarray(source.get("velocity_3d", (0.0, 0.0, 0.0)), dtype=float)
+        z = float(source_position[2]) if source_position.size >= 3 else float(default_z_ned_m)
+        vz = float(source_velocity[2]) if source_velocity.size >= 3 else 0.0
+        covariance_3d = np.diag(
+            [
+                max(float(track.covariance[0, 0]), 0.5),
+                max(float(track.covariance[1, 1]), 0.5),
+                max(float(source.get("z_variance_m2", default_z_variance_m2)), 0.5),
+            ]
+        )
+        output.append(
+            TerminalGlobalTrack(
+                global_track_id=str(track.global_track_id),
+                position=np.array([track.state[0], track.state[1], z], dtype=float),
+                covariance=covariance_3d,
+                velocity=np.array([track.state[2], track.state[3], vz], dtype=float),
+                category="uav",
+                timestamp=float(timestamp),
+                track_version=int(plan_version),
+            )
+        )
+    return output
 
 
 def truth_summary_from_blocks_frames(frames: list[AirSimFrame]) -> dict[str, Any]:
@@ -237,17 +332,51 @@ def offline_truth_map_from_blocks_frame(
     This function uses AirSim truth IDs and must not feed online association.
     """
 
-    truth_to_global = {
-        str(track.truth_id): str(track.global_track_id)
-        for track in d2_tracks
-        if getattr(track, "truth_id", None) is not None
-    }
+    truth_to_global = offline_truth_to_global_track_map(frame, d2_tracks)
     truth_map: dict[str, str] = {}
     for detection in frame.visual_detections:
         global_track_id = truth_to_global.get(str(detection.object_id))
         if global_track_id is not None:
             truth_map[str(detection.local_track_id)] = global_track_id
     return truth_map
+
+
+def offline_truth_to_global_track_map(
+    frame: AirSimFrame,
+    d2_tracks: list[Any],
+) -> dict[str, str]:
+    """Associate AirSim truth objects to D2 tracks for offline scoring only."""
+
+    explicit = {
+        str(track.truth_id): str(track.global_track_id)
+        for track in d2_tracks
+        if getattr(track, "truth_id", None) is not None
+    }
+    if explicit:
+        return explicit
+    targets = [obj for obj in frame.truth_objects if obj.object_type == "target"]
+    if not targets or not d2_tracks:
+        return {}
+    candidates: list[tuple[float, int, int]] = []
+    for track_index, track in enumerate(d2_tracks):
+        track_position = np.asarray(track.state[:2], dtype=float)
+        for target_index, target in enumerate(targets):
+            truth_position = np.asarray(target.position_ned[:2], dtype=float)
+            candidates.append(
+                (float(np.linalg.norm(track_position - truth_position)), track_index, target_index)
+            )
+    mapping: dict[str, str] = {}
+    used_tracks: set[int] = set()
+    used_targets: set[int] = set()
+    for _, track_index, target_index in sorted(candidates):
+        if track_index in used_tracks or target_index in used_targets:
+            continue
+        used_tracks.add(track_index)
+        used_targets.add(target_index)
+        mapping[str(targets[target_index].object_id)] = str(
+            d2_tracks[track_index].global_track_id
+        )
+    return mapping
 
 
 def nearest_frame(frames: list[AirSimFrame], timestamp: float) -> AirSimFrame:
@@ -272,3 +401,16 @@ def _infer_dt(timestamps: list[float]) -> float:
     if len(timestamps) < 2:
         return 0.0
     return round(timestamps[1] - timestamps[0], 6)
+
+
+def _nearest_resource_coverage_cell(
+    position_xy: np.ndarray,
+    resources: list[ResourcePlatform],
+) -> str:
+    if not resources:
+        return "unassigned"
+    nearest = min(
+        resources,
+        key=lambda resource: float(np.linalg.norm(resource.position[:2] - position_xy)),
+    )
+    return str(nearest.coverage_cell or "unassigned")

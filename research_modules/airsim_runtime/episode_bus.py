@@ -18,7 +18,12 @@ import numpy as np
 
 from airsim_dryrun.models import AirSimFrame
 from d1_sensor_fusion import FusionAdapter, SensorObservation
-from d2_data_association import GNNHungarianAssociator, Tracker
+from d2_data_association import (
+    GNNHungarianAssociator,
+    RiskThresholds,
+    Tracker,
+    classify_risk_summary,
+)
 from d3_assignment_planner import (
     AssignmentPlan,
     AssignmentPlanner,
@@ -26,7 +31,9 @@ from d3_assignment_planner import (
     CostWeights,
     PlannerConfig,
     StalePlanError,
+    assignment_validity_summary_from_plan,
     apply_terminal_feedback_to_planner_inputs,
+    continue_active_secondary_plan,
     guidance_bindings_from_assignment_plan,
     prepare_secondary_takeover_plan,
 )
@@ -69,8 +76,6 @@ from d7_proportional_guidance import (
 )
 from integrated_simulation.adapters import (
     d1_tracks_to_d2_detections,
-    d2_tracks_to_target_tracks,
-    d2_tracks_to_terminal_tracks,
     plan_to_assignment_records,
     plan_to_terminal_assignments,
     resources_to_d3,
@@ -84,7 +89,10 @@ from .adapters import (
     geometric_local_visual_tracks_from_blocks_frame,
     observations_from_blocks_frame,
     offline_truth_map_from_blocks_frame,
+    offline_truth_to_global_track_map,
     resources_from_blocks_frame,
+    target_tracks_from_online_d2,
+    terminal_tracks_from_online_d2,
     truth_states_from_blocks_frame,
 )
 from .models import BlocksSmokeConfig
@@ -147,7 +155,7 @@ class MainAirSimEpisodeBus:
             stable_threshold_m=35.0,
             handover_threshold_m=14.0,
             association_gate=4.0,
-            use_truth_hints_for_association=True,
+            use_truth_hints_for_association=False,
         )
         self.tracker = Tracker(
             associator=GNNHungarianAssociator(gate_threshold=18.0, feature_weight=0.0),
@@ -210,18 +218,22 @@ class MainAirSimEpisodeBus:
         self._module_health: dict[str, dict[str, Any]] = {}
         self._runtime_errors: list[dict[str, Any]] = []
         self._frame_processing_durations_s: list[float] = []
+        self._d2_source_kinematics: dict[str, dict[str, Any]] = {}
+        self._last_secondary_readiness_state: str | None = None
+        self._last_secondary_plan_state: str | None = None
         self.ticks: list[MainEpisodeBusTick] = []
 
     def process_frame(self, frame: AirSimFrame) -> MainEpisodeBusTick:
         frame_started = time.perf_counter()
         timestamp = float(frame.timestamp)
+        self._record_yolo_mot_frame_events(frame)
         truth_states = truth_states_from_blocks_frame(frame)
         truth_by_id = {state.truth_id: state for state in truth_states}
         resources = resources_from_blocks_frame(frame)
         observations = self._process_d1(frame)
         self._mark_module_health("D1", timestamp, record_count=len(observations))
         d1_tracks = self.fusion.global_tracks()
-        association_result = self._process_d2(timestamp, d1_tracks, truth_states)
+        association_result = self._process_d2(timestamp, d1_tracks)
         self._mark_module_health("D2", timestamp, record_count=len(d1_tracks))
         d2_tracks = self.tracker.active_tracks()
         self.collector.extend_tracks(track_records_from_d2(d2_tracks, truth_by_id, timestamp))
@@ -291,7 +303,9 @@ class MainAirSimEpisodeBus:
                 "assignment_count": 0 if self.current_plan is None else len(self.current_plan.assignments),
                 "guidance_binding_count": len(self.current_bindings),
                 "resource_count": len(resources),
-                "target_count": len(truth_states),
+                "target_count": 0
+                if self.current_plan is None
+                else self.current_plan.target_count,
                 "active_plan_owner": None
                 if self.current_plan is None
                 else self.current_plan.metadata.get("active_plan_owner", "center"),
@@ -336,6 +350,9 @@ class MainAirSimEpisodeBus:
         output_dir.mkdir(parents=True, exist_ok=True)
         frames_list = list(frames)
         truth_summary = _truth_summary_for_bus(frames_list, self.config)
+        self._record_final_governance_events(
+            timestamp=frames_list[-1].timestamp if frames_list else 0.0,
+        )
         metrics = self.collector.compute_episode(
             episode_id=self.config.episode_id,
             seed=self.config.seed,
@@ -439,6 +456,112 @@ class MainAirSimEpisodeBus:
             output_paths=output_paths,
         )
 
+    def _record_final_governance_events(self, *, timestamp: float) -> None:
+        provenance = {
+            "schema_version": "main_episode_governance.v1",
+            "config_profile": self.config.scenario_name,
+            "config_version": str(self.config.metadata.get("config_version", "runtime-v1")),
+            "config_hash": _scenario_version(self.config, []),
+            "schema_valid": True,
+            "online_truth_id_used": False,
+        }
+        latency = self.fusion.latency_audit_summary().to_dict()
+        self.collector.add_event(
+            EventRecord(
+                timestamp=float(timestamp),
+                event_type="d1_latency_audit",
+                actor_id="D1",
+                metadata={**provenance, **_jsonable(latency)},
+            )
+        )
+        regions = self.fusion.region_quality_summaries()
+        for region in regions:
+            payload = region.to_dict()
+            self.collector.add_event(
+                EventRecord(
+                    timestamp=float(timestamp),
+                    event_type="d1_region_quality_window",
+                    actor_id="D1",
+                    metadata={
+                        **provenance,
+                        **_jsonable(payload),
+                        "expected_coverage_cell_count": len(regions),
+                        "region_quality_degraded": bool(payload.get("quality_flags")),
+                    },
+                )
+            )
+
+        thresholds = RiskThresholds(
+            profile_name="main_airsim_online",
+            profile_version="p1-v1",
+        )
+        breakdowns = [
+            classify_risk_summary(log.risk_summary, thresholds=thresholds)
+            for log in self.tracker.metrics.association_logs
+            if log.risk_summary is not None
+        ]
+        d2_summary = self.tracker.metrics.summary()
+        self.collector.add_event(
+            EventRecord(
+                timestamp=float(timestamp),
+                event_type="d2_governance_summary",
+                actor_id="D2",
+                metadata={
+                    **provenance,
+                    **_jsonable(d2_summary),
+                    "risk_profile": thresholds.profile_name,
+                    "risk_profile_version": thresholds.profile_version,
+                    "association_risk_threshold_version": thresholds.profile_version,
+                    "soft_risk_frame_count": sum(item.has_soft_risk for item in breakdowns),
+                    "hard_risk_frame_count": sum(item.has_hard_risk for item in breakdowns),
+                    "max_hard_risk_score": max(
+                        (item.hard_risk_score for item in breakdowns), default=0.0
+                    ),
+                    "initiated_track_count": len(self.tracker.tracks),
+                    "false_track_count": None,
+                    "truth_metrics_available": False,
+                    "continuity_available": False,
+                },
+            )
+        )
+
+        if self.current_plan is not None:
+            validity = assignment_validity_summary_from_plan(
+                self.current_plan,
+                evaluated_at=float(timestamp),
+                latest_version=self.current_plan.version,
+                latest_plan_id=self.current_plan.plan_id,
+            )
+            feedback_records = len(self.collector.terminal_records)
+            feedback_accepted = sum(
+                record.decision_state == "locked"
+                for record in self.collector.terminal_records
+            )
+            self.collector.add_event(
+                EventRecord(
+                    timestamp=float(timestamp),
+                    event_type="d3_governance_summary",
+                    actor_id="D3",
+                    metadata={
+                        **provenance,
+                        **_jsonable(asdict(validity)),
+                        "feedback_profile": self.current_plan.metadata.get(
+                            "feedback_profile_id", "d3_terminal_feedback_baseline"
+                        ),
+                        "feedback_profile_version": self.current_plan.metadata.get(
+                            "feedback_profile_version", "1.0.0"
+                        ),
+                        "unassigned_target_count": len(
+                            self.current_plan.unassigned_target_ids
+                        ),
+                        "decision_count": len(self.collector.assignment_records),
+                        "feedback_record_count": feedback_records,
+                        "feedback_accepted_count": feedback_accepted,
+                        "feedback_rejected_count": feedback_records - feedback_accepted,
+                    },
+                )
+            )
+
     def _process_d1(self, frame: AirSimFrame) -> list[SensorObservation]:
         observations = observations_from_blocks_frame(
             frame,
@@ -450,13 +573,35 @@ class MainAirSimEpisodeBus:
             self.fusion.process(observation)
         return observations
 
-    def _process_d2(self, timestamp: float, d1_tracks: list[Any], truth_states: list[TruthState]) -> Any:
+    def _process_d2(self, timestamp: float, d1_tracks: list[Any]) -> Any:
         detections = d1_tracks_to_d2_detections(d1_tracks, timestamp)
-        return self.tracker.step(
+        for detection in detections:
+            detection.truth_id = None
+            for key in ("truth_id", "truth_position", "actor_name", "object_id"):
+                detection.metadata.pop(key, None)
+        result = self.tracker.step(
             detections,
             timestamp=timestamp,
-            truth_ids_present=[state.truth_id for state in truth_states],
+            truth_ids_present=None,
+            frame_metadata={
+                "online_truth_hints_used": False,
+                "truth_metrics_available": False,
+                "continuity_available": False,
+            },
         )
+        detections_by_id = {detection.detection_id: detection for detection in detections}
+        for track in self.tracker.active_tracks():
+            detection = detections_by_id.get(track.last_detection_id or "")
+            if detection is None:
+                continue
+            self._d2_source_kinematics[str(track.global_track_id)] = {
+                "position_3d": list(detection.metadata.get("position_3d", (track.state[0], track.state[1], -5.0))),
+                "velocity_3d": list(detection.metadata.get("velocity_3d", (track.state[2], track.state[3], 0.0))),
+                "measurement_timestamp": float(detection.timestamp),
+                "source_global_track_id": detection.metadata.get("source_global_track_id"),
+                "online_truth_id_used": False,
+            }
+        return result
 
     def _maybe_plan(
         self,
@@ -482,7 +627,13 @@ class MainAirSimEpisodeBus:
         ):
             return False
 
-        target_tracks = d2_tracks_to_target_tracks(d2_tracks, truth_by_id, resources)
+        target_tracks = target_tracks_from_online_d2(
+            d2_tracks,
+            resources,
+            default_threat_score=float(
+                self.config.metadata.get("main_bus_default_target_threat_score", 0.75)
+            ),
+        )
         if not target_tracks:
             return False
         resource_states = resources_to_d3(resources)
@@ -556,21 +707,67 @@ class MainAirSimEpisodeBus:
                 },
             )
             self._pending_center_replan_reason = None
+        if (
+            secondary_takeover is None
+            and forced_replan_reason is None
+            and previous is not None
+            and previous.metadata.get("active_plan_owner") == "secondary"
+        ):
+            previous_lease_expiry = float(
+                previous.metadata.get("secondary_lease_expires_at_s") or timestamp
+            )
+            renewed_lease_expiry = max(
+                previous_lease_expiry,
+                timestamp + max(float(self.config.dt_s) * 4.0, 1.0),
+            )
+            plan = continue_active_secondary_plan(
+                plan,
+                previous_plan=previous,
+                readiness_class=str(
+                    previous.metadata.get("secondary_readiness_class")
+                    or "takeover_ready"
+                ),
+                readiness_sustained=bool(
+                    previous.metadata.get("secondary_readiness_sustained")
+                ),
+                published_at_s=timestamp,
+                lease_expires_at_s=renewed_lease_expiry,
+                leader_epoch=int(previous.metadata.get("secondary_leader_epoch") or 0),
+            )
         if secondary_takeover is not None and previous is not None:
             source_node_id = _secondary_takeover_source_node_id(
                 frame,
                 secondary_takeover,
                 previous_plan=previous,
             )
+            readiness_class = str(
+                secondary_takeover.get("secondary_capability_class")
+                or secondary_takeover.get("secondary_readiness_class")
+                or ""
+            )
+            readiness_sustained = bool(
+                secondary_takeover.get("secondary_takeover_ready_sustained")
+                or secondary_takeover.get("secondary_readiness_sustained")
+            )
+            leader_epoch = int(
+                secondary_takeover.get("required_secondary_plan_lease_epoch")
+                or secondary_takeover.get("secondary_plan_lease_epoch")
+                or 0
+            )
+            lease_expires_at_s = timestamp + max(float(self.config.dt_s) * 4.0, 1.0)
             plan = prepare_secondary_takeover_plan(
                 plan,
                 supersedes_plan=previous,
                 secondary_node_id=source_node_id,
+                readiness_class=readiness_class,
+                readiness_sustained=readiness_sustained,
+                activated_at_s=timestamp,
+                leader_epoch=leader_epoch,
                 takeover_reason=str(
                     secondary_takeover.get("reason") or "d4_degrade_to_secondary"
                 ),
                 target_node_id="D7-GUIDANCE",
-                lease_expires_at_s=timestamp + max(float(self.config.dt_s) * 4.0, 1.0),
+                lease_expires_at_s=lease_expires_at_s,
             )
             self._pending_secondary_takeover = None
         self.previous_plan = previous
@@ -582,10 +779,12 @@ class MainAirSimEpisodeBus:
         self.current_bindings = guidance_bindings_from_assignment_plan(
             plan,
             resource_vehicle_map=_resource_vehicle_map(frame),
-            target_alias_map=_target_alias_map(frame, d2_tracks),
+            target_alias_map=_offline_actuation_target_alias_map(frame, d2_tracks),
             guidance_phase="radar_midcourse",
             now_s=timestamp,
             previous_plan=previous,
+            current_plan_id=plan.plan_id,
+            current_plan_version=plan.version,
         )
         self.collector.add_event(
             EventRecord(
@@ -624,11 +823,12 @@ class MainAirSimEpisodeBus:
         if self.current_plan is None:
             return []
         timestamp = float(frame.timestamp)
-        terminal_tracks = d2_tracks_to_terminal_tracks(
+        terminal_tracks = terminal_tracks_from_online_d2(
             d2_tracks,
-            truth_by_id,
             plan_version=self.current_plan.version,
             timestamp=timestamp,
+            source_kinematics=self._d2_source_kinematics,
+            default_z_ned_m=float(self.config.metadata.get("main_bus_default_target_z_ned_m", -5.0)),
         )
         terminal_assignments = {
             assignment.assigned_global_track_id: assignment
@@ -821,16 +1021,81 @@ class MainAirSimEpisodeBus:
                 == "secondary",
                 secondary_plan_source_node_id=self.current_plan.metadata.get("owner_node_id")
                 or self.current_plan.metadata.get("selected_secondary_node_id"),
+                secondary_plan_lease_epoch=self.current_plan.metadata.get(
+                    "secondary_leader_epoch"
+                ),
+                secondary_plan_lease_expires_at_s=self.current_plan.metadata.get(
+                    "secondary_lease_expires_at_s"
+                ),
                 trigger_timestamp=timestamp,
             )
             self.collector.add_event(EventRecord(**result.record.to_event_record_kwargs()))
+            self._record_d4_lifecycle_events(result, timestamp=timestamp)
             self._last_d4_by_pair[(assignment.resource_id, assignment.target_id)] = result
             if result.record.action.value == "request_center_replan":
                 self._pending_center_replan_reason = result.record.reason
             if result.record.action.value == "degrade_to_secondary":
-                self._pending_secondary_takeover = result.record.to_event_metadata()
+                active_owner = str(
+                    self.current_plan.metadata.get("active_plan_owner", "center")
+                )
+                active_owner_node = str(
+                    self.current_plan.metadata.get("owner_node_id")
+                    or self.current_plan.metadata.get("selected_secondary_node_id")
+                    or ""
+                )
+                selected_node = str(result.record.target_node_id or "")
+                same_active_secondary = (
+                    active_owner == "secondary"
+                    and bool(active_owner_node)
+                    and active_owner_node == selected_node
+                )
+                if not same_active_secondary:
+                    self._pending_secondary_takeover = result.record.to_event_metadata()
             results.append(result)
         return results
+
+    def _record_d4_lifecycle_events(self, result: Any, *, timestamp: float) -> None:
+        record = result.record
+        readiness_state = str(record.secondary_capability_class or "not_ready")
+        if readiness_state != self._last_secondary_readiness_state:
+            self.collector.add_event(
+                EventRecord(
+                    timestamp=float(timestamp),
+                    event_type="d4_secondary_readiness",
+                    actor_id=str(record.target_node_id or "D4"),
+                    metadata={
+                        "readiness_state": readiness_state,
+                        "secondary_readiness_sustained": bool(
+                            record.secondary_takeover_ready_sustained
+                        ),
+                        "source_event": "d4_arbitration_decision",
+                    },
+                )
+            )
+            self._last_secondary_readiness_state = readiness_state
+        plan_state = str(record.secondary_takeover.state.value)
+        if plan_state != self._last_secondary_plan_state:
+            self.collector.add_event(
+                EventRecord(
+                    timestamp=float(timestamp),
+                    event_type="d4_secondary_plan_state",
+                    actor_id=str(record.target_node_id or "D4"),
+                    metadata={
+                        "plan_state": plan_state,
+                        "active_plan_owner": record.secondary_takeover.active_plan_owner,
+                        "secondary_plan_source_node_id": (
+                            record.secondary_takeover.secondary_plan_source_node_id
+                        ),
+                        "secondary_plan_lease_valid": (
+                            record.secondary_takeover.secondary_plan_lease_valid
+                        ),
+                        "secondary_plan_reject_reason": (
+                            record.secondary_takeover.secondary_plan_reject_reason
+                        ),
+                    },
+                )
+            )
+            self._last_secondary_plan_state = plan_state
 
     def _process_d7(
         self,
@@ -1081,6 +1346,88 @@ class MainAirSimEpisodeBus:
             "last_error": str(last_error),
         }
 
+    def _record_yolo_mot_frame_events(self, frame: AirSimFrame) -> None:
+        for item in frame.metadata.get("detections", ()):
+            if not isinstance(item, Mapping) or str(item.get("backend", "")).lower() != "yolo":
+                continue
+            processing_latency_ms = _optional_float_value(item.get("processing_latency_ms"))
+            cpu_budget_ms = _optional_float_value(item.get("cpu_budget_ms"))
+            gpu_budget_ms = _optional_float_value(item.get("gpu_budget_ms"))
+            tracker_selection = item.get("tracker_selection")
+            tracker_selection = (
+                dict(tracker_selection) if isinstance(tracker_selection, Mapping) else {}
+            )
+            offline_evaluation = item.get("offline_detector_evaluation")
+            offline_evaluation = (
+                dict(offline_evaluation)
+                if isinstance(offline_evaluation, Mapping)
+                else None
+            )
+            metadata = {
+                "frame_id": f"{frame.episode_id}:{frame.frame_index:04d}",
+                "camera_id": item.get("camera_id"),
+                "resource_id": item.get("resource_id"),
+                "detection_backend": item.get("detector_backend", "yolov8"),
+                "tracker_backend": item.get("tracker_backend"),
+                "requested_tracker_backend": item.get("requested_tracker_backend"),
+                "tracker_backend_status": tracker_selection.get("status"),
+                "camera_local_id_count": item.get("camera_local_id_count"),
+                "camera_local_id_continuity_count": item.get(
+                    "camera_local_id_continuity_count"
+                ),
+                "camera_local_id_continuity_rate": item.get(
+                    "camera_local_id_continuity_rate"
+                ),
+                "cross_view_candidate_count": None,
+                "cross_view_registered_count": None,
+                "detector_latency_ms": None,
+                "tracker_latency_ms": None,
+                "pipeline_latency_ms": processing_latency_ms,
+                "cpu_budget_ms": cpu_budget_ms,
+                "gpu_budget_ms": gpu_budget_ms,
+                "cpu_budget_utilization": (
+                    processing_latency_ms / cpu_budget_ms
+                    if processing_latency_ms is not None and cpu_budget_ms not in {None, 0.0}
+                    else None
+                ),
+                "gpu_budget_utilization": (
+                    processing_latency_ms / gpu_budget_ms
+                    if processing_latency_ms is not None and gpu_budget_ms not in {None, 0.0}
+                    else None
+                ),
+                "compute_device": item.get("compute_device"),
+                "truth_id_online_use": "ignored",
+                "offline_truth": (
+                    {
+                        "visible_truth_count": offline_evaluation.get("truth_box_count"),
+                        "matched_truth_count": offline_evaluation.get(
+                            "matched_truth_box_count"
+                        ),
+                        "false_negative_count": offline_evaluation.get(
+                            "false_negative_count"
+                        ),
+                        "false_positive_count": offline_evaluation.get(
+                            "false_positive_count"
+                        ),
+                        "detector_recall": offline_evaluation.get("detector_recall"),
+                        "detector_precision": offline_evaluation.get(
+                            "detector_precision"
+                        ),
+                        "used_by_online_tracker": False,
+                    }
+                    if offline_evaluation is not None
+                    else None
+                ),
+            }
+            self.collector.add_event(
+                EventRecord(
+                    timestamp=float(frame.timestamp),
+                    event_type="d5_yolo_mot_frame",
+                    actor_id=str(item.get("camera_id") or "D5"),
+                    metadata=metadata,
+                )
+            )
+
     def _module_health_snapshot(self, timestamp: float) -> dict[str, Any]:
         snapshot: dict[str, Any] = {}
         for module_id in ("D1", "D2", "D3", "D4", "D5", "D6", "D7"):
@@ -1228,6 +1575,16 @@ class MainAirSimEpisodeBus:
             "scenario_config": self._scenario_config_metadata(frames),
             "standard_mapping_version": STANDARD_MAPPING_VERSION,
             "scenario_version": _scenario_version(self.config, frames),
+            "experiment_guidance_law": str(
+                self.config.metadata.get(
+                    "experiment_guidance_law",
+                    self.config.intercept_guidance_law,
+                )
+            ),
+            "selected_guidance_law": str(self.config.intercept_guidance_law),
+            "guidance_comparison_group": self.config.metadata.get(
+                "guidance_comparison_group"
+            ),
         }
 
     def _record_latency_ms(self) -> float:
@@ -1525,6 +1882,15 @@ def _json_record(record_type: str, payload: Any) -> str:
     )
 
 
+def _optional_float_value(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _observation_summary(observation: SensorObservation) -> dict[str, Any]:
     return {
         "observation_id": observation.observation_id,
@@ -1575,12 +1941,13 @@ def _resource_vehicle_map(frame: AirSimFrame) -> dict[str, str]:
     return mapping
 
 
-def _target_alias_map(frame: AirSimFrame, d2_tracks: list[Any]) -> dict[str, Mapping[str, Any]]:
-    d2_by_truth = {
-        str(track.truth_id): track.global_track_id
-        for track in d2_tracks
-        if getattr(track, "truth_id", None) is not None
-    }
+def _offline_actuation_target_alias_map(
+    frame: AirSimFrame,
+    d2_tracks: list[Any],
+) -> dict[str, Mapping[str, Any]]:
+    """Map center tracks to AirSim actors only at the simulator actuation edge."""
+
+    d2_by_truth = offline_truth_to_global_track_map(frame, d2_tracks)
     aliases: dict[str, Mapping[str, Any]] = {}
     for obj in frame.truth_objects:
         global_track_id = d2_by_truth.get(str(obj.object_id))
@@ -1591,6 +1958,7 @@ def _target_alias_map(frame: AirSimFrame, d2_tracks: list[Any]) -> dict[str, Map
             "target_actor_name": obj.metadata.get("airsim_actor_name"),
             "actor_name": obj.metadata.get("airsim_actor_name"),
             "actor_asset_name": obj.metadata.get("actor_asset_name"),
+            "alias_source": "airsim_offline_actuation_only",
         }
     return aliases
 

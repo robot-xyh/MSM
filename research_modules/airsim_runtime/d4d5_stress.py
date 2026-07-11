@@ -38,6 +38,7 @@ from d5_terminal_association import (
     TerminalObservation,
     TerminalObservationBus,
     TerminalAssociator,
+    build_secondary_frame_association_evidence,
     camera_model_from_airsim_camera_info,
     register_local_visual_tracks_to_global_tracks,
     summarize_secondary_visual_coverage_funnel,
@@ -74,11 +75,13 @@ def run_d4d5_stress_analysis(
     observations: list[TerminalObservation] = []
     decisions: list[dict[str, Any]] = []
     arbiter = ActiveDegradationArbiter()
+    d4_adapter = D4ArbitrationAdapter(arbiter)
     terminal_associator = TerminalAssociator()
     first_frame = frames[0] if frames else None
     geometry = _geometry_summary(first_frame, resource_vehicle_names, secondary_camera_vehicle_names)
     active_target_ids = tuple(_global_id(obj.object_id) for obj in first_frame.truth_objects) if first_frame else ()
     secondary_camera_ids = tuple(f"{name}:0" for name in secondary_camera_vehicle_names)
+    registration_frame_history: list[AirSimFrame] = []
 
     for frame in frames:
         frame_observations = _terminal_observations_for_frame(
@@ -88,12 +91,18 @@ def run_d4d5_stress_analysis(
             secondary_camera_vehicle_names=secondary_camera_vehicle_names,
             terminal_associator=terminal_associator,
         )
-        secondary_registration = _secondary_registration_for_frame(
-            frame,
+        registration_frame_history.append(frame)
+        secondary_registration = _secondary_registration_for_frames(
+            registration_frame_history,
             secondary_camera_vehicle_names=secondary_camera_vehicle_names,
             terminal_associator=terminal_associator,
         )
-        frame_registration_observations = list(secondary_registration.observations)
+        current_frame_id = f"{frame.episode_id}:{frame.frame_index:04d}"
+        frame_registration_observations = [
+            observation
+            for observation in secondary_registration.observations
+            if observation.frame_id == current_frame_id
+        ]
         for observation in frame_observations:
             observations.append(bus.publish(observation))
         for observation in frame_registration_observations:
@@ -101,13 +110,14 @@ def run_d4d5_stress_analysis(
         frame_decisions = _d4_decisions_for_frame(
             frame,
             frame_observations,
-            arbiter,
+            d4_adapter,
             case_name=normalized_case,
             secondary_camera_vehicle_names=secondary_camera_vehicle_names,
             d5_evidence_observations=[
                 *frame_observations,
                 *frame_registration_observations,
             ],
+            secondary_registration=secondary_registration,
         )
         for item in frame_decisions:
             item["comparison_role"] = comparison_role
@@ -550,20 +560,21 @@ def _local_track_by_id(
 def _d4_decisions_for_frame(
     frame: AirSimFrame,
     observations: list[TerminalObservation],
-    arbiter: ActiveDegradationArbiter,
+    d4_adapter: D4ArbitrationAdapter,
     *,
     case_name: str,
     secondary_camera_vehicle_names: tuple[str, ...],
     d5_evidence_observations: list[TerminalObservation] | None = None,
+    secondary_registration: Any | None = None,
 ) -> list[dict[str, Any]]:
     summaries: list[dict[str, Any]] = []
-    d4_adapter = D4ArbitrationAdapter(arbiter)
     secondary_nodes = _secondary_nodes(case_name, secondary_camera_vehicle_names, frame=frame)
     communications = _communication_summaries(case_name, secondary_nodes, frame.timestamp)
     d5_evidence = _d5_evidence_for_frame(
         frame,
         d5_evidence_observations if d5_evidence_observations is not None else observations,
         secondary_camera_vehicle_names=secondary_camera_vehicle_names,
+        secondary_registration=secondary_registration,
     )
     for observation in observations:
         association = observation.terminal_association
@@ -837,7 +848,7 @@ def _secondary_camera_batches_for_frame(
                 camera_id=camera_id,
                 camera=camera,
                 local_tracks=local_tracks,
-                frame_id=f"{frame.episode_id}:{frame.frame_index:04d}:{camera_id}",
+                frame_id=f"{frame.episode_id}:{frame.frame_index:04d}",
                 timestamp=frame.timestamp,
                 arrival_timestamp=frame.timestamp + 0.05,
                 covariance_px=np.diag([9.0, 9.0]),
@@ -1172,6 +1183,7 @@ def _d5_evidence_for_frame(
     observations: list[TerminalObservation],
     *,
     secondary_camera_vehicle_names: tuple[str, ...],
+    secondary_registration: Any | None = None,
 ) -> dict[str, Any]:
     secondary_camera_ids = tuple(f"{name}:0" for name in secondary_camera_vehicle_names)
     frame_bus = TerminalObservationBus()
@@ -1190,7 +1202,29 @@ def _d5_evidence_for_frame(
         current_time=frame.timestamp,
     )
     metrics = _secondary_funnel_metrics(summary)
-    metrics["metadata"] = _jsonable(summary.metadata)
+    if secondary_registration is not None and summary.camera_frames and summary.network_frames:
+        evidence = build_secondary_frame_association_evidence(
+            frame_id=f"{frame.episode_id}:{frame.frame_index:04d}",
+            measurement_timestamp=frame.timestamp,
+            arrival_timestamp=frame.timestamp + 0.05,
+            camera_frames=summary.camera_frames,
+            network_frame=summary.network_frames[0],
+            registration_result=secondary_registration,
+            detector_backend=str(frame.metadata.get("detection_backend") or "airsim_detect"),
+            tracker_backend=str(frame.metadata.get("tracker_backend") or "camera_local_tracker"),
+            cue_timestamp=frame.timestamp,
+            calibration_metadata={
+                "calibration_health": frame.metadata.get("calibration_health", "available"),
+                "camera_pose_source": "airsim_camera_pose",
+            },
+        )
+        metrics.update(evidence.to_terminal_association_summary_fields())
+        metrics["frame_evidence"] = evidence.to_metadata()
+    metrics["metadata"] = {
+        **_jsonable(summary.metadata),
+        "evidence_scope": "single_synchronized_frame",
+        "episode_aggregate_allowed": False,
+    }
     return metrics
 
 

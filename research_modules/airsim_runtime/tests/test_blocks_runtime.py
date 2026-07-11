@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import signal
 import sys
@@ -26,7 +27,7 @@ from airsim_runtime.adapters import (
 )
 from airsim_runtime.blocks import BlocksProcessManager
 from airsim_runtime.d4d5_stress import run_d4d5_stress_analysis
-from airsim_runtime.episode_bus import run_main_episode_bus
+from airsim_runtime.episode_bus import MainAirSimEpisodeBus, run_main_episode_bus
 from airsim_runtime.models import (
     BlocksActorTargetSpec,
     BlocksEpisodeSpec,
@@ -49,6 +50,7 @@ from airsim_runtime.run_blocks_sequence import (
     _d4d5_calibration_rows,
     _parse_float_list,
     _parse_int_list,
+    _write_guidance_law_sweep_outputs,
     _write_p1_calibration_sweep_outputs,
     parse_args,
 )
@@ -314,6 +316,29 @@ def test_sequence_builder_uses_dynamic_n_scenario_names(tmp_path: Path, monkeypa
     assert len(cv_config.camera_vehicle_names) == 4
     assert len(cv_config.secondary_camera_vehicle_names) == 1
     assert len(cv_config.target_actor_specs) == 4
+
+
+def test_sequence_builder_exposes_guidance_law_selection(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--actor-2v2",
+            "--execute-intercept",
+            "--guidance-law",
+            "png_ttc",
+            "--output-root",
+            str(tmp_path),
+        ],
+    )
+
+    args = parse_args()
+    config, _, _ = _build_sequence_run(args, seed=3, sequence_id="pytest_png_ttc")
+
+    assert config.intercept_guidance_law == "png_ttc"
+    assert config.metadata["guidance_law"] == "png_ttc"
+    assert config.metadata["guidance_comparison_group"] == args.sequence_id
 
 
 def test_default_5v5_actor_specs_are_five_controlled_intercept_targets() -> None:
@@ -910,6 +935,107 @@ def test_real_runtime_yolo_backend_uses_d5_adapter_without_simgetdetections(
     assert detection.metadata["source"] == "yolov8_mot"
     assert detection.metadata["mot_history_length"] == 3
     assert "TargetActor" not in detection.object_id
+
+
+def test_yolo_offline_truth_evaluation_passes_bbox_only_to_d5(tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    class OfflineTruthClient(FakeAirSimClient):
+        def simGetDetections(self, camera_name, image_type, vehicle_name="", external=False):
+            return [_detection("MSM_TargetActor_1")]
+
+    class OfflineEvalAdapter:
+        def process_frame(self, frame, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                tracks=(),
+                status="ok",
+                detector_backend="fake_yolov8",
+                tracker_backend="bytetrack",
+                metadata={
+                    "offline_detector_evaluation": {
+                        "truth_box_count": len(kwargs.get("offline_truth_detections", ())),
+                        "matched_truth_box_count": 0,
+                        "false_negative_count": len(kwargs.get("offline_truth_detections", ())),
+                        "false_positive_count": 0,
+                        "detector_recall": 0.0,
+                        "detector_precision": None,
+                        "used_by_online_tracker": False,
+                    }
+                },
+            )
+
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: OfflineTruthClient(),
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+        yolo_adapter_factory=lambda _config: OfflineEvalAdapter(),
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        duration_s=0.0,
+        camera_vehicle_name="Interceptor",
+        camera_vehicle_names=("Interceptor",),
+        resource_vehicle_names=("Interceptor",),
+        detection_backend="yolo",
+        yolo_offline_truth_evaluation=True,
+    )
+
+    frame = runtime.sample_frame(config, frame_index=0, timestamp=1.0, output_dir=tmp_path)
+
+    assert captured["offline_truth_detections"]
+    assert all(
+        isinstance(bbox, tuple) and len(bbox) == 4
+        for bbox in captured["offline_truth_detections"]
+    )
+    assert frame.metadata["detections"][0]["offline_detector_evaluation"][
+        "used_by_online_tracker"
+    ] is False
+
+
+def test_main_bus_records_d5_yolo_mot_frame_budget_without_online_truth() -> None:
+    frame = _sample_5v5_frame(timestamp=1.0, frame_index=2)
+    frame = replace(
+        frame,
+        metadata={
+            **frame.metadata,
+            "detections": [
+                {
+                    "backend": "yolo",
+                    "camera_id": "Interceptor1:0",
+                    "resource_id": "INT-01",
+                    "detector_backend": "yolov8",
+                    "tracker_backend": "bytetrack",
+                    "requested_tracker_backend": "bytetrack",
+                    "processing_latency_ms": 24.0,
+                    "cpu_budget_ms": 100.0,
+                    "gpu_budget_ms": 50.0,
+                    "camera_local_id_count": 3,
+                    "camera_local_id_continuity_count": 2,
+                    "camera_local_id_continuity_rate": 2.0 / 3.0,
+                    "compute_device": "0",
+                    "tracker_selection": {"status": "ok"},
+                }
+            ],
+        },
+    )
+    bus = MainAirSimEpisodeBus(BlocksSmokeConfig())
+
+    bus._record_yolo_mot_frame_events(frame)
+
+    events = [
+        event for event in bus.collector.event_records if event.event_type == "d5_yolo_mot_frame"
+    ]
+    assert len(events) == 1
+    metadata = events[0].metadata
+    assert metadata["pipeline_latency_ms"] == 24.0
+    assert metadata["cpu_budget_utilization"] == 0.24
+    assert metadata["gpu_budget_utilization"] == 0.48
+    assert metadata["camera_local_id_continuity_rate"] == 2.0 / 3.0
+    assert metadata["truth_id_online_use"] == "ignored"
+    assert not {"truth_id", "actor_name", "object_name", "segmentation_id"}.intersection(
+        metadata
+    )
 
 
 def test_real_runtime_resets_yolo_mot_streams_at_episode_boundary(tmp_path: Path) -> None:
@@ -1723,6 +1849,17 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
     assert len(collector.assignment_records) >= 5
     assert len(collector.terminal_records) >= 5
     assert len(collector.link_records) >= 15
+    assert all(record.truth_id is None for record in collector.track_records)
+    assert all(record.truth_id is None for record in collector.assignment_records)
+    governance_types = {record.event_type for record in collector.event_records}
+    assert {
+        "d1_latency_audit",
+        "d1_region_quality_window",
+        "d2_governance_summary",
+        "d3_governance_summary",
+        "d4_secondary_readiness",
+        "d4_secondary_plan_state",
+    } <= governance_types
 
     ticks = [
         json.loads(line)
@@ -1742,6 +1879,12 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
     assert first_observation["covariance_trace"] is not None
     assert "id_switch_count" in ticks[-1]["d2"]
     assert "track_continuity" in ticks[-1]["d2"]
+    assert ticks[-1]["d2"]["association_result"]["metadata"][
+        "online_truth_hints_used"
+    ] is False
+    assert "offline_truth_label_count" not in ticks[-1]["d2"]["association_result"][
+        "metadata"
+    ]
     assert ticks[-1]["d3"]["resource_count"] == 5
     assert ticks[-1]["d3"]["target_count"] == 5
     assert ticks[-1]["d3"]["plan_version"] >= 1
@@ -1789,6 +1932,8 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
     assert metrics_metadata["clock"]["frame_count"] == 3
     assert metrics_metadata["module_health"]["D7"]["status"] == "ok"
     assert metrics_metadata["standard_mapping_version"] == "cuas-standard-map-v1"
+    assert metrics_metadata["experiment_guidance_law"] == config.intercept_guidance_law
+    assert metrics_metadata["selected_guidance_law"] == config.intercept_guidance_law
     assert metrics_metadata["scenario_version"].startswith(
         "blocks_actor_n5:resources5:targets5:cameras5:seed7:backendairsim:"
     )
@@ -1919,7 +2064,7 @@ def test_main_episode_bus_marks_secondary_takeover_plan_for_d7(tmp_path: Path) -
     resources = tuple(f"Interceptor{index}" for index in range(1, 6))
     secondary_names = ("SEC-NORTH", "SEC-SOUTH")
     frames = []
-    for index in range(4):
+    for index in range(6):
         frame = _sample_5v5_frame(timestamp=float(index) * 0.5, frame_index=index)
         frame = replace(
             frame,
@@ -1944,7 +2089,7 @@ def test_main_episode_bus_marks_secondary_takeover_plan_for_d7(tmp_path: Path) -
     config = BlocksSmokeConfig(
         episode_id="pytest_main_bus_secondary_takeover",
         scenario_name="blocks_actor_n5_secondary_takeover",
-        duration_s=1.5,
+        duration_s=2.5,
         dt_s=0.5,
         output_root=tmp_path,
         launch_blocks=False,
@@ -1963,10 +2108,15 @@ def test_main_episode_bus_marks_secondary_takeover_plan_for_d7(tmp_path: Path) -
         .splitlines()
     ]
     assert ticks[1]["d3"]["active_plan_owner"] == "center"
-    assert "degrade_to_secondary" in ticks[1]["d4"]["actions"]
-    assert "d4_reassign_pending" in ticks[1]["d7"]["terminal_contract_reject_reasons"]
-    assert ticks[2]["d3"]["active_plan_owner"] == "secondary"
-    assert ticks[2]["d3"]["plan_schema"] == "secondary_plan_v2"
+    assert "degrade_to_distributed" in ticks[1]["d4"]["actions"]
+    assert "degrade_to_secondary" in ticks[2]["d4"]["actions"]
+    assert set(ticks[2]["d7"]["terminal_contract_reject_reasons"]) <= {
+        "d4_reassign_pending",
+        "d4_terminal_inconsistent",
+    }
+    assert ticks[3]["d3"]["active_plan_owner"] == "secondary"
+    assert ticks[3]["d3"]["plan_schema"] == "secondary_plan_v2"
+    assert all(tick["d3"]["active_plan_owner"] == "secondary" for tick in ticks[3:])
     assert result.summary["current_plan"]["active_plan_owner"] == "secondary"
     assert result.summary["current_plan"]["plan_schema"] == "secondary_plan_v2"
     assert result.summary["current_plan"]["owner_node_id"] in secondary_names
@@ -2118,6 +2268,33 @@ def test_blocks_orchestrator_runs_mock_controlled_intercept(tmp_path: Path) -> N
     assert "terminal_contract_reject_reason" in commands
     assert "d4_action" in commands
     assert "d5_decision_state" in commands
+
+
+def test_controlled_intercept_honors_non_visual_guidance_laws(tmp_path: Path) -> None:
+    for law in ("pure_pursuit", "radar_pn"):
+        config = BlocksSmokeConfig(
+            episode_id=f"pytest_intercept_{law}",
+            duration_s=0.2,
+            dt_s=0.1,
+            output_root=tmp_path / law,
+            launch_blocks=False,
+            connection_timeout_s=0.1,
+            include_integrated_pipeline=False,
+            execute_intercept=True,
+            control_dt_s=0.1,
+            intercept_max_duration_s=0.2,
+            intercept_terminal_switch_range_m=100.0,
+            intercept_guidance_law=law,
+        )
+        result = AirSimBlocksSmokeOrchestrator(runtime=FakeBlocksRuntime()).run(config)
+        with result.output_paths["control_commands"].open(encoding="utf-8", newline="") as stream:
+            rows = list(csv.DictReader(stream))
+        summary = json.loads(result.output_paths["intercept_summary"].read_text(encoding="utf-8"))
+
+        assert rows
+        assert {row["guidance_law"] for row in rows} == {law}
+        assert not any(row["terminal_switch_allowed"] == "True" for row in rows)
+        assert summary["parameters"]["guidance_law"] == law
 
 
 def test_blocks_orchestrator_runs_mock_5v5_controlled_intercept(tmp_path: Path) -> None:
@@ -2475,7 +2652,15 @@ def test_blocks_sequence_runner_writes_d4d5_stress_sequence_report(tmp_path: Pat
         detection_filter_names=("MSM_TargetActor_*",),
         metadata={"d4d5_stress_enabled": True},
     )
-    specs = tuple(replace(spec, duration_s=0.0, include_integrated_pipeline=False) for spec in D4D5_STRESS_EPISODES)
+    specs = tuple(
+        replace(
+            spec,
+            duration_s=0.4,
+            dt_s=0.1,
+            include_integrated_pipeline=False,
+        )
+        for spec in D4D5_STRESS_EPISODES
+    )
     orchestrator = AirSimBlocksSequenceOrchestrator(
         runtime=runtime,
         process_manager=process_manager,
@@ -3041,6 +3226,8 @@ def _cv5v5_stress_frames(tmp_path: Path) -> list[AirSimFrame]:
         return [
             runtime.sample_frame(config, frame_index=0, timestamp=0.0, output_dir=tmp_path),
             runtime.sample_frame(config, frame_index=1, timestamp=0.5, output_dir=tmp_path),
+            runtime.sample_frame(config, frame_index=2, timestamp=1.0, output_dir=tmp_path),
+            runtime.sample_frame(config, frame_index=3, timestamp=1.5, output_dir=tmp_path),
         ]
     finally:
         runtime.teardown_episode(config)

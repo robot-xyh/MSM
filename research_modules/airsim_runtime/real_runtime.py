@@ -784,13 +784,17 @@ class RealAirSimRuntimeClient:
                 )
                 continue
             adapter = self._yolo_mot_adapter(config, camera_id)
-            result = adapter.process_frame(
-                image_frame,
-                resource_id=resource_id,
-                camera_id=camera_id,
-                frame_id=f"{camera_id}:{frame_index:04d}",
-                timestamp=timestamp,
-            )
+            adapter_kwargs = {
+                "resource_id": resource_id,
+                "camera_id": camera_id,
+                "frame_id": f"{camera_id}:{frame_index:04d}",
+                "timestamp": timestamp,
+            }
+            if config.yolo_offline_truth_evaluation:
+                adapter_kwargs["offline_truth_detections"] = (
+                    self._offline_truth_bboxes_for_camera(config, vehicle_name)
+                )
+            result = adapter.process_frame(image_frame, **adapter_kwargs)
             result_meta = {
                 "ok": result.status == "ok",
                 "backend": "yolo",
@@ -818,6 +822,21 @@ class RealAirSimRuntimeClient:
                     )
                 )
         return tuple(detections), metadata
+
+    def _offline_truth_bboxes_for_camera(
+        self,
+        config: BlocksSmokeConfig,
+        vehicle_name: str,
+    ) -> tuple[tuple[float, float, float, float], ...]:
+        try:
+            detections = self.client.simGetDetections(
+                config.camera_name,
+                self.airsim.ImageType.Scene,
+                vehicle_name=vehicle_name,
+            )
+        except Exception:
+            return ()
+        return tuple(_bbox2d_from_detection(item) for item in detections)
 
     def _capture_scene_image_frame(
         self,
@@ -873,6 +892,9 @@ class RealAirSimRuntimeClient:
             confidence_threshold=config.yolo_confidence_threshold,
             use_native_ultralytics_tracker=config.yolo_use_native_tracker,
             allow_iou_fallback=config.yolo_allow_iou_fallback,
+            compute_device=config.yolo_compute_device,
+            cpu_budget_ms=config.yolo_cpu_budget_ms,
+            gpu_budget_ms=config.yolo_gpu_budget_ms,
         )
         adapter = (
             self._yolo_adapter_factory(adapter_config)

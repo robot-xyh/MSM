@@ -4,7 +4,19 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
-**P0/P1 状态入口**：`subagent_reviews/MAIN_P0_P1_GAP_STATUS.md` 集中维护当前 P0/P1 owner、缺口、缺少条件和验收口径。`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` v2.1 已确认：当前未发现新的运行级 P0 阻塞断链。2026-07-10 已在 2026-07-09 最小工程闭合基础上完成 D2/D3/D5/D6 P0/P1 加固、AirSim 在线 truth ID 隔离，并跑通 5v5 D4/D5 60-case 与 2v2 SimpleFlight 10-seed 基线。P2/P3 本轮不调整；下一步只继续 P1 的二级 active-plan 闭合、真实 YOLO/MOT、D7 多导引律对照和长期评估治理。
+**P0/P1 状态入口**：`subagent_reviews/MAIN_P0_P1_GAP_STATUS.md` 集中维护当前 P0/P1 owner、缺口、缺少条件和验收口径。`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` v2.1 已确认：当前未发现新的运行级 P0 阻塞断链。2026-07-11 已完成在线 truth ID 全链路隔离、D1-D4 governance/lifecycle 回灌、D4 unavailable 指标语义修复、D5 bbox-only 离线评分修复和四导引律同 seed 冒烟。P2/P3 本轮不调整；下一步继续 P1 的二级 active-plan 正例、YOLO 有效检测/native MOT、较长时长多 seed 导引律对照和长期评估治理。
+
+## 2026-07-11 P1 实施与真实 AirSim 结果
+
+详细报告见 `subagent_reviews/MAIN_P1_AIRSIM_RUNTIME_VALIDATION_REPORT_20260711.md`。
+
+| Owner | 实施结果 | 当前证据与结论 |
+|---|---|---|
+| main/runtime | D2→D3/D5 无 truth 转换、仿真 actor alias 边界隔离、D1-D4 governance/lifecycle、guidance experiment law 回灌 | 5v5/2v2 真机进程运行完成；在线 `truth_id=None` 不再造成 D3 空计划 |
+| D4 | truth/continuity unavailable 不触发虚假硬风险，在线风险门限保持 | 中心保持和 distributed 负例通过；secondary 正例仍因 full-view readiness 不足而未闭合 |
+| D5 | bbox-only offline truth parser 支持真实 AirSim 输入，truth 不进入在线 tracker | 84 个相机样本接口通过；当前模型 accepted detection=0，效果仍为 P1 |
+| D6/main | 四导引律 experiment law 可配对，生成 JSON/CSV/中文报告/曲线 | 21 条指标配对行，只有 seed 7；四律 2 秒均 timeout，不作为命中率结论 |
+| D7 | Pure Pursuit、Radar PN、PNG-VM、PNG-TTC 真实 SimpleFlight selector/gate 接入 | PNG VM/TTC switch allowed 约 0.762/0.810；需长时多 seed |
 
 ## 2026-07-10 P0/P1 实施与实测结果
 

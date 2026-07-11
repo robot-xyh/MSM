@@ -2,7 +2,17 @@
 
 **审计目标**：把 D1-D7 当前 P0/P1 缺口集中到一个 main 可调度清单，避免各模块 GAP 文件之间口径分散。
 **审计边界**：本文件只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控、自动处置或授权绕过。
-**当前结论**：未发现新的 P0 阻塞断链。2026-07-10 已在既有 P0-A/P0-B/P0-C 闭合基础上继续修复 active-plan stale 合同、truth-unavailable D2 风险、D5 友方重捕获和 AirSim 在线局部 ID 泄漏；真实 AirSim 已完成 D4/D5 5v5 60-case 校准与 2v2 SimpleFlight 10-seed 拦截基线。当前 P0 重点是保持跨模块合同、安全门控和测试回归不退化。剩余缺口已经收敛为 P1：二级节点从 `registration_usable` 到可执行 secondary plan 的状态闭环、真实 YOLO/MOT 标定、CV 5v5 D1/D2/D3 阈值治理、D7 多导引律配对对照、D6 长期趋势/场景库和通信/身份真实适配。
+**当前结论**：未发现新的 P0 阻塞断链。2026-07-11 已验证在线 `truth_id=None` 时 D1→D2→D3→D5→D4→D7 仍可运行，并补齐 D1-D3 governance、D4 lifecycle 和 D6 导引律配对回灌。当前 P0 重点是保持跨模块合同、安全门控和测试回归不退化。剩余缺口仍为 P1：二级节点从 `registration_usable` 到可执行 secondary plan 的正例闭环、真实 YOLO 有效检测/native MOT、较长时长多 seed 四导引律对照、D1 OOSM 期望口径和长期趋势治理。
+
+## 2026-07-11 Truth-isolated Runtime 复核
+
+- **在线身份断链已修复**：main 不再把 D1/D2 truth label 送入在线关联；D2→D3 直接使用 D2 状态、协方差和中心拥有的 `global_track_id`，D2→D5 使用 D1 三维运动学缓存。AirSim actor alias 只存在于仿真执行器边界。
+- **治理事件进入 D6**：`d1_latency_audit`、`d1_region_quality_window`、`d2_governance_summary`、`d3_governance_summary`、`d4_secondary_readiness` 和 `d4_secondary_plan_state` 已进入正式 episode 日志。
+- **D4 unavailable 语义修复**：truth-based continuity/IDSW 不可用时不再把数值占位零当成硬风险；在线 association ambiguity、duplicate risk 和 track quality 风险仍有效，门限未放宽。
+- **5v5 D4/D5 实测**：200 m/2 secondary、50 m/2 secondary、200 m/5 secondary 三组均完成。中心保持正例为 `continue_center`，二级不可用负例为 `degrade_to_distributed`；预期二级接管正例仍因同帧全覆盖不足转 distributed。5 secondary 把平均覆盖提高到约 0.80，但没有形成持续 `takeover_ready`。
+- **YOLO/MOT 实测**：bbox-only 离线评分接口已修复，6 个 episode 全部完成；84 个相机处理样本均 status=ok，但当前 `best.pt` 对该渲染几何 accepted detection=0，24 个离线 truth bbox 全部漏检，native ByteTrack 因无 track ID 回退 IoU。接口闭合，效果未闭合。
+- **四导引律实测**：同 seed 2v2 中 Pure Pursuit、Radar PN、PNG-VM、PNG-TTC 均完成 2 秒执行；PNG VM/TTC 视觉切换允许率约 0.762/0.810。四组均 timeout，不能形成命中率优劣结论。D6 已生成 21 条指标配对行，不等于 21 个 seed。
+- **验收**：D1 38、D2 44、D3 84、D4 95、D5 105、D6 57、D7 61、AirSim runtime 66 passed。详细证据见 `MAIN_P1_AIRSIM_RUNTIME_VALIDATION_REPORT_20260711.md`。
 
 ## 2026-07-10 P0/P1 实施与 AirSim 多 Seed 复核
 
@@ -17,9 +27,9 @@
 
 当前没有新的运行级 P0 blocker。下一阶段不引入 P2/P3 重型依赖，按以下顺序补齐：
 
-1. **D4/D5/main 二级接管执行闭环**：把 D5/D6 的逐决策 `stable_cross_view_registration_count/not_registered_count/network_full_view` 接入 D4，构造持续 full-view fixture，闭合 `registration_usable -> takeover_ready -> pending_secondary_plan -> secondary_plan_active`，同时验证 lease/epoch/stale rejection。
-2. **D5/main 真实 YOLO/MOT 校准**：使用 `best.pt` 和无人机 mesh，在 50/200 m、遮挡、交叉和多视角场景跑 ByteTrack/BoT-SORT 多 seed；统计 detector recall、local ID continuity、cross-view registration、CPU/GPU 延迟和 AirSim detect 回退。
-3. **D7/main/D6 导引律配对对照**：增加 runtime law selector，在相同 seed/初始几何下对比 Pure Pursuit、radar PN、PNG-VM、PNG-TTC；保持 `png_guidance_delivery` 核心控制律不改，只校准切换、相机边缘、机动裕度和 detection timeout。
+1. **D4/D5/main 二级接管执行闭环**：逐帧检查 secondary camera visibility、同步 frame ID、cue 重投影和 network union，构造持续 full-view 正例，闭合 `registration_usable -> takeover_ready -> pending_secondary_plan -> secondary_plan_active`，同时验证 lease/epoch/stale rejection，不降低 readiness 门限。
+2. **D5/main 真实 YOLO/MOT 校准**：先用已存在的 AirSim detect bbox 筛选“目标确实在画面内”的帧，再检查 `best.pt` 类别、输入尺寸、置信度和渲染域；形成有效检测后再比较 ByteTrack/BoT-SORT/IoU fallback，多 seed 统计 recall、local ID continuity 和延时。
+3. **D7/main/D6 导引律配对对照**：runtime law selector 和单 seed 配对已完成；下一步增加拦截时长并运行至少 10 seeds，拆分 timeout 的机动、初始几何、D5 gate 和检测超时原因。保持 `png_guidance_delivery` 核心控制律不改。
 4. **D1/D2/D3 真实 5v5 总线治理**：main writer 补 `schema_version/coverage_cell/config provenance`；D1 校准预期延迟和 OOSM health；D2 用 offline truth 评估 IDSW/NIS/NEES 和初始化；D3 校准 D5 feedback、N/M mismatch、迟滞与 threat 权重。
 5. **D6 场景库与 CI 趋势**：把上述批次固化为带 tags/difficulty/expected failure mode 的场景库，生成跨提交回归摘要、长期趋势和标准化 evidence 索引。
 

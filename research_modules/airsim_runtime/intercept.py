@@ -25,8 +25,10 @@ from d7_proportional_guidance import (
     SimpleFlightPngGuidanceFilter,
     VisionGuidanceObservation,
     compute_pn_command,
+    compute_pure_pursuit_command,
     evaluate_terminal_png_contract,
     guidance_mode_from_terminal_contract,
+    select_runtime_guidance_law,
 )
 
 from .models import BlocksSmokeConfig
@@ -113,6 +115,8 @@ def run_controlled_intercept_episode(
     output_dir: Path,
 ) -> InterceptRunResult:
     """Run the first real AirSim control gate with actor targets."""
+
+    select_runtime_guidance_law(config.intercept_guidance_law)
 
     frames: list[AirSimFrame] = []
     command_records: list[InterceptCommandRecord] = []
@@ -275,29 +279,52 @@ def _pn_velocity_command(
             ],
             dtype=float,
         )
-    mode = GuidanceMode.VISION_TERMINAL if pair.terminal_locked else GuidanceMode.RADAR_MIDCOURSE
-    command = compute_pn_command(
-        pursuer=GuidanceState(
-            entity_id=pair.resource_id,
-            timestamp_s=timestamp,
-            position_m=(float(resource_position[0]), float(resource_position[1])),
-            velocity_mps=(float(resource_velocity[0]), float(resource_velocity[1])),
-        ),
-        target=GuidanceState(
-            entity_id=pair.target_id,
-            timestamp_s=timestamp,
-            position_m=(float(target_position[0]), float(target_position[1])),
-            velocity_mps=(float(target_velocity[0]), float(target_velocity[1])),
-            source="airsim_actor_track",
-        ),
-        dt_s=config.control_dt_s,
-        navigation_constant=config.intercept_navigation_constant,
-        mode=mode,
-        max_lateral_accel_mps2=20.0,
-        max_turn_rate_radps=0.9,
+    law_selection = select_runtime_guidance_law(config.intercept_guidance_law)
+    configured_law = law_selection.requested_law.value
+    visual_guidance_enabled = law_selection.requires_terminal_gate
+    mode = (
+        GuidanceMode.VISION_TERMINAL
+        if visual_guidance_enabled and pair.terminal_locked
+        else GuidanceMode.RADAR_MIDCOURSE
     )
+    pursuer_state = GuidanceState(
+        entity_id=pair.resource_id,
+        timestamp_s=timestamp,
+        position_m=(float(resource_position[0]), float(resource_position[1])),
+        velocity_mps=(float(resource_velocity[0]), float(resource_velocity[1])),
+    )
+    target_state = GuidanceState(
+        entity_id=pair.target_id,
+        timestamp_s=timestamp,
+        position_m=(float(target_position[0]), float(target_position[1])),
+        velocity_mps=(float(target_velocity[0]), float(target_velocity[1])),
+        source="airsim_actor_track",
+    )
+    if law_selection.midcourse_law.value == "pure_pursuit":
+        command = compute_pure_pursuit_command(
+            pursuer=pursuer_state,
+            target=target_state,
+            dt_s=config.control_dt_s,
+            mode=GuidanceMode.RADAR_MIDCOURSE,
+            max_turn_rate_radps=0.9,
+        )
+        command.metadata["guidance_law"] = "pure_pursuit"
+    else:
+        command = compute_pn_command(
+            pursuer=pursuer_state,
+            target=target_state,
+            dt_s=config.control_dt_s,
+            navigation_constant=config.intercept_navigation_constant,
+            mode=mode,
+            max_lateral_accel_mps2=20.0,
+            max_turn_rate_radps=0.9,
+        )
+        command.metadata["guidance_law"] = (
+            "radar_pn" if not pair.terminal_locked else command.metadata.get("guidance_law", "radar_pn")
+        )
+    command.metadata["configured_guidance_law"] = configured_law
     predicted_resource_velocity = np.asarray(_midcourse_velocity(config, command), dtype=float)
-    if pair.terminal_handover_pending and visible_detection is not None:
+    if visual_guidance_enabled and pair.terminal_handover_pending and visible_detection is not None:
         if str(config.intercept_yaw_mode).lower() == "look_at_target":
             current_heading = math.atan2(
                 float(target_position[1] - resource_position[1]),
@@ -1294,6 +1321,7 @@ def _write_intercept_outputs(
         "success_count": sum(1 for pair in pairs if pair.status in {"collision_intercept", "range_intercept"}),
         "pair_count": len(pairs),
         "parameters": {
+            "guidance_law": config.intercept_guidance_law,
             "control_dt_s": config.control_dt_s,
             "intercept_speed_mps": config.intercept_speed_mps,
             "intercept_altitude_ned_z": config.intercept_altitude_ned_z,
