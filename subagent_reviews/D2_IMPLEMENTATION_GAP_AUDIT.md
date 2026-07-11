@@ -20,6 +20,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - **2026-07-11 truth-isolated runtime 证据**：main 在线已强制 `truth_id=None`；D2 -> D3 使用 D2 state/covariance/quality 和中心维护的 `global_track_id`，不再以 truth/actor mapping 筛除或构造目标。`d2_governance_summary` 已进入 D6，真实 5v5 短 episode 的 main-bus 指标为 `d2_hard_risk_frame_rate=0.0`。该数值只说明该短运行没有在线 hard-risk frame，不能解释为 IDSW=0 或 continuity 正常。
 - **在线/离线指标边界**：没有 offline truth label 时，truth-based `id_switch_count`、`track_continuity`/`identity_continuity` 和 NEES 必须标记 unavailable；在线可继续计算 NIS、ambiguity、candidate overlap、cost margin、duplicate 和 track-quality risk。IDSW/continuity 结论必须由隔离的 offline evaluator 评分。
 - **P1 未闭合项**：尚未形成覆盖 dense crossing、遮挡、漏检和虚警的真实 5v5 多 seed replay + offline truth label 数据集，也未完成 gate/risk/M-of-N/NIS/NEES、IDSW/continuity 及 hard-risk 误报漏报标定。因此本次短 episode 证据不能关闭 D2 P1。
+- **M 对 N P1 状态**：D2 已实现跨节点 local-track namespace、公共时刻传播、track-to-track Mahalanobis/Hungarian、公共信息谱系防重、canonical multi-source binding/history 和 exact/unknown/duplicate 决策基础。多个节点观测同一目标不会增加目标基数，也不会被误记为合法协同资源的 duplicate assignment。数值 CI/相关融合仍由 D1 owner 实现；高歧义多帧关联、owner failover 和融合一致性标定尚未闭合。专项证据见 `D2_M_TO_N_TRACK_FUSION_REVIEW.md`。
 - **D4 P1 仲裁语义复核**：2026-07-07 main runtime bus / D4 P1 修复后，D4 已区分 D2 软风险和硬风险。`association_ambiguity`、cost margin risk、candidate overlap 和短时 D5 disagreement 是观察/二级 cue 证据；`id_switch_count` 增量、`duplicate_assignment_count`/`duplicate_track_risk` 和可用的 `track_continuity` 低于阈值才是 D4 主动仲裁的硬风险证据。2026-07-10 D2 P1 修复后，无 offline truth label 时 `truth_metrics_available=false`、`continuity_available=false`，兼容数值 `0.0` 不再触发 `duplicate_track_risk`、`continuity_collapse` 或 hard risk；旧 replay 未携带 availability 字段时同样保守按不可用处理。
 - **非本轮范围复核**：完整 EKF/UKF/IMM、Stone Soup/FilterPy 实际适配、生产级 JPDA/MHT、原生 3D tracking 仍保持为 P2/P3 或未来研究对照，不应被描述为当前 P0/P1 已落地能力。
 
@@ -42,6 +43,8 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - **AirSim-style replay/report helper**：`load_airsim_replay_frames()`、`run_airsim_replay_association()`、`write_replay_association_report()` 和 `write_association_logs_jsonl()` 已能读取离线 JSON/JSONL replay，保留 main/D6-style row 中的 seed/scenario/frame/offline truth label，并输出 association logs、summary、当前 `global_track_ids`、`replay_metadata`、`association_risk_threshold_version`、gate pass/reject count、motion/quality risk summary 和风险摘要。
 - **阈值敏感性与多 seed helper**：`run_threshold_sensitivity()` 可按 gate threshold 与 risk threshold profile 输出 `id_switch_count`、`track_continuity`、`duplicate_assignment_count`、`risk_profile_version`/`association_risk_threshold_version`、seed/episode/scenario/frame metadata、gate/motion/quality diagnostics 和 soft/hard risk summary；`summarize_multi_seed_risk_calibration()` 可按 gate/risk profile/version 汇总 IDSW、continuity、duplicate、soft/hard risk 分布、dense/crossing sensitivity summary 并给出推荐阈值摘要。
 - **弱证据风险摘要**：`AssociationRiskSummary`、`AssociationRiskSummaryWindowGenerator`、`RiskThresholds` 和 `classify_risk_summary()` 已把 cost margin、candidate overlap、ID switch delta、duplicate delta、continuity、D5 disagreement、source node/link type 汇总为 D4/D6 可消费的风险证据。
+- **M 对 N canonical registry 基础**：`SourceTrackSummary` 固化 source/local/epoch namespace、measurement/arrival timestamp、6D NED state/covariance、quality、lineage/correlation status 和 canonical hints；`CrossNodeTrackAssociator`/`CrossNodeTrackRegistry` 完成公共时刻传播、covariance-aware gate、按 source Hungarian、one canonical-to-many source binding/history 与 duplicate/stale governance。source hints 不具备 canonical 身份权威。
+- **M 对 N 指标与 truth 隔离**：在线 `CrossNodeRegistryMetrics` 输出 operational cross-node rebind、duplicate payload rejection 和 transport/queue/fusion latency，且不接受 truth；独立 `OfflineCrossNodeMetricsEvaluator` 通过 source-key truth mapping 计算 cross-node IDSW、`canonical_duplicate_count` 和 association precision/recall。
 
 ### 2.2 部分实现
 
@@ -131,6 +134,8 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 | SORT/ByteTrack-style fallback | 未实现 EVAL P1。当前 GNN/Hungarian 已具备 SORT-like 的运动预测 + Hungarian 核心，但没有独立 SORT fallback 模式，也没有 ByteTrack-style 低置信检测二阶段关联或视觉 MOT handoff adapter | `associators.py`；`tracker.py`；`EVAL/FRAMEWORK_EVAL_PATCH_ENGINEERING_PRACTICES.md`；`EVAL/FRAMEWORK_EVAL_PATCH_2026_VERIFIED.md` | 当前 P0 主线已足够运行；SORT/ByteTrack 应作为轻量 fallback 或视觉 MOT 场景对照，不能替代稳定 `global_track_id` 合同 | 需要定义 fallback 触发条件、输入置信度字段、IDSW/continuity 对照、异常回退路径和 D5 视觉 MOT replay 样本 | P1 对照/增强，不是 P0 |
 | N/M 初始化优化 | D2-owned 接口已实现。`InitializationGovernanceProfile` 默认 2-of-3，并可由 replay/sensitivity 入口注入其他版本；输出 init/confirmation latency、success rate、false-track count/rate、miss/false-alarm 和逐帧 measurement/truth count | `replay_governance.py`；`replay.py`；`tests/test_replay_governance.py` | 在线 Tracker 状态机保持不变，truth 只用于离线标定 | 需要 main/D6 在真实多 seed replay 中标定 M/N 和生命周期参数 | P1 接口闭合；真实标定保留 |
 | 协方差一致性检查 | 输入治理和统计接口已实现：NIS 用在线 innovation，NEES 仅用独立 offline truth state，输出二维/四维 95% 卡方区间及覆盖率 | `gating.py`；`replay_governance.py`；`tests/test_replay_governance.py` | online path 不接触 truth，缺 truth 时 NEES 为 unavailable | 需要真实 replay 和 D6 做分传感器/距离/场景多 seed 标定 | P1 接口闭合；真实标定保留 |
+| M 对 N 跨平台 track-to-track association 与保守融合决策 | D2 注册基础已实现。`SourceTrackSummary`、公共时刻 CV 传播、完整 6D covariance-aware Mahalanobis gate、按 source Hungarian、lineage/payload/stale 防重和 exact/unknown/duplicate 决策均有测试；unknown 只输出 CI request，不在 D2 复制数值 CI | `cross_node_models.py`；`cross_node_registry.py`；`tests/test_cross_node_registry.py` | 数值 CI/已知相关融合属于 D1；D2 当前只完成关联、身份和融合策略请求 | 需要 D1 消费 fusion directives 并返回融合 posterior；需要高歧义多帧 replay 和 NEES/ANEES | P1 D2 基础闭合；跨模块数值融合/标定保留 |
+| canonical global identity 多源注册 | 已实现中心 registry 基础。维护 `global_track_id -> [(source_node_id, local_track_id, epoch)]`、binding history、连续 ID 分配和 authoritative rebind；source candidate/current ID 只作非权威 hint | `cross_node_models.py`；`cross_node_registry.py`；`cross_node_metrics.py`；`tests/test_cross_node_registry.py` | 中心单 owner 已闭合；二级 owner 切换和完全分布式临时 ID 合并不在本轮基础范围 | 需要 D4 owner/epoch failover 合同和跨 owner replay | P1 中心注册闭合；failover 保留 |
 
 ## 4. 关键缺口说明
 
@@ -155,6 +160,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - D6/集成层仍需用真实 5v5 AirSim replay 生产并固化离线 truth labels、episode 级阈值配置来源、D2 内部 IDSW 与 episode IDSW 统计口径，并把 association logs/risk summary 纳入稳定 JSONL schema。
 - EVAL 同步后的航迹质量评分、运动一致性约束和 quality-aware gate baseline 已作为 P0 工程化硬化闭合并保持回归；这些项增强 GNN/Hungarian 主线，不替换默认关联器，也不得改写 D1/D3/D5 合同字段。
 - EVAL 同步后的 JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控策略、N/M 初始化优化和 NEES/NIS 统计一致性标定仍保留为 P1；covariance 输入治理已闭合，外部工具和算法继续作为对照或增强边界。
+- M 对 N D2-owned 注册基础已闭合：1/2/3/N source、异步公共时刻、交叉、duplicate payload/lineage、source local ID 冲突、canonical continuity、exact/unknown/duplicate 决策和 online truth isolation 均有专项回归。剩余是 D1 数值融合、D6 NEES/ANEES、多 seed 高歧义 replay 和 owner failover。
 
 ### 4.3 多目标交叉、密集编队与 ID Switch 剩余风险
 
@@ -178,6 +184,10 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 3. **NIS/NEES 真实标定**：复用现有 NIS/NEES 和卡方覆盖接口，补按传感器、距离和场景的多 seed 分组偏差及 D6 趋势。
 
 4. **完整 adaptive gate / JPDA 对照**：固定 replay、seed、输入和预算，对比固定门限、quality-aware baseline、完整 adaptive gate 及 GNN/JPDA，报告 IDSW、continuity、false track、漏关联、延迟和 JPDA 截断率；默认主线仍保持 GNN/Hungarian。
+
+**M 对 N P1 后续：数值融合与高歧义治理**：D2 已闭合“公共时刻预测 -> track-to-track association -> 相关性/公共信息判定 -> canonical binding -> fusion request”基础。后续由 D1 接续 exact/CI 数值融合，并用多 seed crossing/dense replay 验证跨节点 JPDA/MHT、owner failover 和融合一致性。
+
+**M 对 N P1 评估状态**：已实现 `canonical_duplicate_count`、cross-node IDSW、track-to-track association precision/recall、重复消息拒绝数和 fusion latency；online registry 不读取 simulator truth。fusion NEES/ANEES 和通信字节仍需 D1/D6 离线评分与 replay schema。
 
 5. **P2：引入三维状态或三维到二维的统一策略**
    如果 D5 终端投影、D7 中段 PN 都需要三维状态，D2 需要升级为 3D `[px,py,pz,vx,vy,vz]` 或明确只输出二维关联 ID、三维状态由 D1 提供。

@@ -4,7 +4,41 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
-**P0/P1 状态入口**：`subagent_reviews/MAIN_P0_P1_GAP_STATUS.md` 集中维护当前 P0/P1 owner、缺口、缺少条件和验收口径。`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` v2.1 已确认：当前未发现新的运行级 P0 阻塞断链。2026-07-11 已完成在线 truth ID 全链路隔离、D1-D4 governance/lifecycle 回灌、D4 unavailable 指标语义修复、D5 bbox-only 离线评分修复和四导引律同 seed 冒烟。P2/P3 本轮不调整；下一步继续 P1 的二级 active-plan 正例、YOLO 有效检测/native MOT、较长时长多 seed 导引律对照和长期评估治理。
+**P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` v2.1 已确认：当前未发现新的运行级 P0 阻塞断链。2026-07-11 已完成在线 truth ID 全链路隔离、D1-D4 governance/lifecycle 回灌、D4 unavailable 指标语义修复、D5 bbox-only 离线评分修复和四导引律同 seed 冒烟。P2/P3 本轮不调整；下一步继续 P1 的二级 active-plan 正例、YOLO 有效检测/native MOT、较长时长多 seed 导引律对照和长期评估治理。
+
+## 2026-07-11 M 对 N 协同拦截调研增量
+
+D1-D7 已分别完成高威胁目标 \(k_j=3\) 的文献、开源实现和模块边界审计，main 汇总见 `subagent_reviews/MAIN_M_TO_N_COOPERATIVE_INTERCEPTION_SYNTHESIS.md`。
+
+以下表格保留 2026-07-11 实施前的调研基线，用于解释任务来源；其状态已被后文“中心化 M 对 N 实施闭环”取代：
+
+| Owner | 实施前 P1 新缺口 | 实施前边界（历史） |
+| --- | --- | --- |
+| D1/D2 | 多平台共同估计时刻、几何质量、跨节点 track registration、公共信息谱系和 CI | 当前有双时间戳、协方差、GNN/Hungarian 和中心 ID 基础，无协同 Track-to-Track 全链路 |
+| D3 | target demand、b-matching/flow、联盟原子激活、角色、同步/波次和版本 | 实施前 Hungarian 仍是一对一 |
+| D4 | coalition commit/ACK/lease、缩编/补位/重组、分区和恢复 digest | 当前 CBBA 是单 winner，不支持原子 \(k_j>1\) |
+| D5 | planned cooperative lock、over support、多视角几何质量和联盟时序 | 当前多资源同目标可能仍被旧 duplicate 语义误判 |
+| D6 | 需求满足、联盟形成、到达离散、波次、协同定位一致性和安全统计 | 需在现有 EpisodeMetrics 上新增 M 对 N 口径 |
+| D7 | cooperative 与 independent pair 边界、到达窗口、终端扇区、最小间距和成员退出 | 当前仅有任意 N 个独立 PN/PNG pair |
+
+建议默认研究比较 hybrid 2+1、simultaneous 3、sequential 1+1+1 和 independent PN。只有完成上述合同后才能启用 \(k_j>1\)；否则 D3/D4/D5/D7 断链会成为该新增场景的 P0 blocker。
+
+### 2026-07-11 中心化 M 对 N 实施闭环
+
+上述新增场景的中心化 P0 合同已经闭合，原调研表中的“当前仍是一对一/尚未实现”不再代表当前代码状态：
+
+| Owner | 已完成 | 仍保留的 P1 |
+| --- | --- | --- |
+| D1 | 2..N bearing-ray 定位、共同估计时刻传播、协方差膨胀、CI 和 lineage 去重 | 真实 AirSim 多视角观测接线与几何阈值标定 |
+| D2 | `SourceTrackSummary`、公共时刻马氏/Hungarian 注册、canonical registry、跨节点 ID 指标 | 真实 5v5 replay 与 D1 CI 请求闭环标定 |
+| D3 | schema v2、`TargetDemand`、demand-slot Hungarian、all-or-none admission、hybrid 2+1、联盟/计划版本与迟滞 | CP-SAT/MILP 复杂约束参考；OR-Tools 仅为可选 benchmark |
+| D4 | 中心有效时验证联盟；中心失效且 `k_j>1` 时 fail-closed，禁止单赢家 CBBA 冒充联盟 | 二级/完全分布式 coalition commit、ACK、lease、补位和重构 |
+| D5 | 联盟只读合同、合法三成员锁、超额/版本冲突、reserve standby 门控 | 真实多视角三角定位与跨视角 AirSim 多 seed 标定 |
+| D6 | demand/coalition/arrival 记录、需求满足、波次、合法锁、通信和安全指标 | 真实 episode 的 arrival/成员损失/替换证据积累 |
+| D7 | 成员级 role/wave/window/version gate；reserve 未激活阻断；PNG 核心公式未改 | 同步到达可达性、终端扇区、最小距离和多 seed 飞行校准 |
+| main | `--resource-count M --target-count N`、协同需求 CLI、D3→D5/D4/D7/D6 总线、5v2 3+1 闭环 | 真实 Blocks 5v2 多 seed 与 SimpleFlight 3v1/5v2 长时飞行 |
+
+回归证据：D1 54、D2 57、D3 99（OR-Tools 1 skip）、D4 101、D5 112、D6 63、D7 79、AirSim runtime 70、质点集成 7、跨模块合同 3，全部通过。质点 `cooperative_3v1`/`cooperative_5v2` 的需求满足率为 1.0、shortfall 为 0；main episode bus 的 5-resource/2-target 测试形成 3+1 assignment pair，D5/D7 均保留 4 个独立上下文。中心和二级失效时三机联盟输出 `coalition_fallback_unsupported` 并 hold，不发布伪分布式联盟。
 
 ## 2026-07-11 P1 实施与真实 AirSim 结果
 
@@ -228,3 +262,64 @@ D1 NumPy EKF/FusionAdapter
 - `subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md`
 - `subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md`
 - `subagent_reviews/D7_IMPLEMENTATION_GAP_AUDIT.md`
+
+## 7. P0/P1 集中状态与验收
+
+本节合并原独立 P0/P1 状态文档的权威信息。前文保留实现历史和开源落地审计，本节只维护当前优先级、保持项和验收入口。
+
+### 7.1 当前判断
+
+- 未发现新的运行级 P0 blocker。
+- 当前 P0 任务是保持跨模块合同、安全门控、truth 隔离、版本拒绝和测试回归不退化。
+- 现有 \(k_j=1\) 主线继续可用；M 对 N 的联盟合同、协同定位、合法多机锁定和协同到达属于新增 P1。
+- 当前最紧急 P1 仍是二级接管 active-plan 正例、真实 YOLO/native MOT、长时多 seed 导引律对照、D1/D2/D3 真实 replay 治理和 D6 长期趋势。
+
+### 7.2 P0 保持矩阵
+
+| Owner | P0 状态 | 必须保持的合同 | 验收 |
+| --- | --- | --- | --- |
+| D1 | 无新增 blocker | 双时间戳、NED、协方差、OOSM、source de-dup 和 GlobalTrack | D1 模块测试 |
+| D2 | 无新增 blocker | GNN/Hungarian、稳定 global_track_id、id_switch_count、continuity | D2 模块测试 |
+| D3 | 无新增 blocker | 版本化 AssignmentPlan、迟滞、stale rejection、D7 binding | D3 模块测试 |
+| D4 | 无新增 blocker | C2Health、主动/被动降级、二级 lifecycle、lease/epoch | D4 模块测试 |
+| D5 | 无新增 blocker | 不改写 global_track_id、truth 隔离、friend/duplicate 保守门控 | D5 模块测试 |
+| D6 | 无新增 blocker | 只消费日志；实际规模、id_switch_count 和 unavailable/zero 分离 | D6 模块测试 |
+| D7 | 无新增 blocker | 不分配目标；D3/D4/D5 gate 失败时阻断视觉 PNG | D7 模块测试 |
+| main/runtime | 无新增 blocker | episode bus 可回放、online 不用 truth ID、默认不保存 PNG | AirSim runtime 测试 |
+
+### 7.3 当前 P1 清单
+
+| Owner | 当前缺口 | 已有基础 | 缺少条件/下一验收 |
+| --- | --- | --- | --- |
+| main/D4/D5 | 二级接管执行闭环 | registration、readiness、pending plan 事件已接线 | 构造持续 full-view 正例，闭合 secondary_plan_active，保持 lease/epoch 门限 |
+| D5/main | YOLOv8/native MOT 校准 | best.pt、ByteTrack/BoT-SORT/IoU fallback 接口已接线 | 真实 AirSim 有效检测、类别/尺度/置信度和 tracker 连续性多 seed |
+| D7/main/D6 | 四导引律长时配对 | law selector、单 seed 和 radar-PN + PNG-VM 10-seed 基线已具备 | 同 seed 比较 PN/Pure Pursuit/PNG-TTC/PNG-VM，拆分 timeout 原因 |
+| D1/D2/D3/main | 真实 5v5 replay 治理 | schema、风险摘要、分配证据和 episode bus 已具备 | offline truth 评分、阈值版本、N/M mismatch、OOSM 和迟滞校准 |
+| D6/main | 场景库与长期趋势 | cross-seed、paired effect、bootstrap 和证据路径已具备 | 固化 scenario version、CI 趋势、expected failure mode 和回归报告 |
+| D1/D2 | M 对 N 协同定位/注册 | 双时间戳、协方差、中心 ID 和轻量关联已有 | 共同估计时刻、几何质量、canonical registry、lineage 和 CI |
+| D3/D4 | M 对 N 联盟分配/接管 | Hungarian、版本、CBBA 单 winner、lease/epoch 已有 | target demand、coalition commit/ACK、角色、波次和成员重构 |
+| D5/D6 | 合法协同锁定口径 | terminal/cross-view/duplicate 指标已有 | planned cooperative lock、over-support 和联盟时序语义 |
+| D7 | 协同到达与成员安全 | 任意 N 个独立 PN/PNG pair 已有 | arrival window/wave、terminal sector、minimum separation 和 member loss |
+
+### 7.4 M 对 N 场景升级条件
+
+若正式启用 required resource count \(k_j>1\)，以下 P1 必须在该场景执行前完成，否则升级为场景 P0 blocker：
+
+1. D3/D4 能发布并原子维护 coalition id、成员、角色、版本、epoch 和 lease。
+2. D5/D6 能区分 planned cooperative lock、over-support 与错误 duplicate。
+3. D7 能消费 simultaneous/sequential/hybrid 时间合同，并保持成员级 D3/D4/D5 门控。
+4. D1/D2 能把多平台观测注册到同一个中心 global_track_id，且不重复计算公共信息。
+
+### 7.5 统一验收命令
+
+```bash
+PYTHONPATH=research_modules/d1_sensor_fusion/src pytest -q research_modules/d1_sensor_fusion/tests
+PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_data_association/tests
+python3 -m pytest -q research_modules/d3_assignment_planner/tests
+PYTHONPATH=research_modules/d4_distributed_fallback python3 -m pytest -q research_modules/d4_distributed_fallback/tests
+pytest -q research_modules/d5_terminal_association/tests
+pytest -q research_modules/d6_evaluation_metrics/tests
+python3 -m pytest -q research_modules/d7_proportional_guidance/tests
+pytest -q research_modules/airsim_runtime/tests/test_blocks_runtime.py
+git diff --check
+```

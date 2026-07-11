@@ -47,6 +47,8 @@ D5 现已补充 AirSim settings 驱动的 detect-to-global-track registration he
 
 2026-07-09 P1 二级 detect 校准补充：registration candidate 和 observation metadata 已携带 `detect_registration_outcome`、`detect_registration_reject_reasons`、measurement/arrival/local-track timestamp、`measurement_age_s`、`covariance_px`、`projection_covariance_px`、`pixel_error_px`、`mahalanobis_d2`、`gate_pass`、`projection_valid`、`projection_reason`、`camera_pose_source`、`bbox_area_px` 和仅离线评分用的 `offline_truth_global_id`。`camera_pose_source` 支持 `airsim_camera_pose`、`runtime_guidance_pose`、`look_at_fallback`，D5 只消费 main/runtime 提供的 `CameraModel` 和 metadata，不直接调用 AirSim。`adaptive_pixel_covariance_px()` 按 bbox 面积和图像对角线生成二级相机自适应像素协方差；无 bbox 面积时保留安全 fallback。默认稳定窗口为 3 帧内同一 `resource/camera/local_track/global_track` 至少 2 次 gate pass，单帧通过只记为 candidate，稳定后才标记 `stable_cross_view_support=True`。
 
+2026-07-11 AirSim 集成复核发现 cross-view bus 的全历史汇总会把旧帧/旧 plan lock 当成当前 duplicate。D5 已为 `cross_view_associations()` 增加 `as_of_timestamp`、`max_age_s`、`plan_id`、`plan_version` 快照参数：作用域模式先做 freshness 与 plan identity 过滤，再按 resource 保留最新 timestamp 的同帧观测；duplicate 与 coalition 判定只在该快照上执行。无参数调用保持旧离线兼容，scope metadata 可审计筛选数量。main 在线应传当前 frame timestamp、约 `1.5 * dt` freshness 和当前 plan identity；D5 不修改 D3 prohibited edge 或 runtime 调度。
+
 ### 0.3 registration calibration 演进结论
 
 `research_modules/airsim_runtime/outputs/p1_d4d5_mobile_recon_20260708_055948*` 现在只作为历史 stress 证据：该旧批次说明 D5 已能识别 `mobile_recon_gimbal`、`radar_global_track_cue`、`mobile_high_recon` 和云台指向 metadata，目标看清能力相对固定俯视对照改善，但二级网络覆盖与降级注册未闭合。
@@ -95,6 +97,22 @@ D5 新增 `SecondaryFrameAssociationEvidence` 和 `build_secondary_frame_associa
 ---
 
 ## 1. 研究问题
+
+### 0.4 真实 AirSim M=5、N=2 检测/几何复核
+
+`blocks_cv_m5_n2_cooperative_live_20260711` 已证明 7 路相机出图和 D3 schema v2 联盟字段可进入 full flow，但没有证明 D5 可锁定：full-flow 为 32 次 `reacquire`、4 次 `ambiguous`、0 次 `locked`。主要断点发生在 D5 前的 `simGetDetections`，绝大多数 camera-frame 返回空列表。
+
+唯一 `Secondary_Recon_1` bbox 的同相机离线复算结果为：`T002` projected pixel 与 bbox center 相差约 0.09 px，D5 几何选择正确；由于只有单帧、MOT history=1，保守输出 `ambiguous`。现有 18-78 px 汇总混入了 main runtime 的跨相机 fallback，不应解释为 D5 外参公式失效或据此放宽 `gate_chi2`。main 应先修正 per-resource camera scope，再用 `Quadrotor1*`/actor exact filter 和 pose-update warm-up 重跑。
+
+边界保持不变：D5 不读取 online truth ID，不根据该唯一 bbox 改绑 `global_track_id`，也不把二级相机 detection 当作任意主资源的本地 MOT。真实 AirSim 联盟锁仍待每成员连续有效 bbox 后验收。
+
+### 1.0 M 对 N 高威胁目标的计划内多机锁定
+
+2026-07-11 专项调研已形成 `D5_M_TO_N_TERMINAL_MULTIVIEW_REVIEW.md`，并已完成 D3 schema v2 联盟锁合同。`Assignment`、`GlobalTrackBinding`、`TerminalAssociation` 和 `CrossViewAssociation` 保留联盟/计划版本、成员角色、波次、需求数、协同模式、arrival window 与 activation state。`k_j>1` 时，同一已授权激活联盟内且不超过 demand 的多个 lock 输出 `planned_cooperative_lock`，不设置 `duplicate_terminal_lock_risk`；第四个超额 lock、联盟/版本不一致、scope 不符和 local/global 多重绑定仍冲突。
+
+错误 duplicate 仍包括计划外资源加入、单资源多本地轨迹锁定、单一本地轨迹支持多个全局目标、stale plan、友方冲突和跨视角几何不一致。同步观测可用于带权三角化；序贯观测必须按量测时间运动补偿并膨胀协方差。像素位置和 bbox 尺度历史只作关联辅助，不能独立提供三维尺度或创建新全局身份。
+
+未激活 `reserve/retry` 即使已形成视觉可锁候选，也只输出 `hold`、`execution_gate_reason` 和 D7 visual PNG blocker；active primary wave-0 与 k=1 回归保持正常。每个 resource-camera 仍独立执行 GlobalTrack 投影与 local MOT，D5 不形成联盟、不重新分配、不裁减超额资源。带权三角化、PDOP/可观测度和融合协方差仍是后续协同定位研究范围；论文与代码成熟度分级以专项报告为准。
 
 末端视场中“最近目标”不一定是分配目标。局部相机可能同时看到：
 

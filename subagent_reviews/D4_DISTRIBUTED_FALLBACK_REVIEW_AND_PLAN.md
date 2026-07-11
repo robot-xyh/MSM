@@ -7,9 +7,19 @@
 
 ## 0. 2026-07-11 P1 状态更新
 
+M 对 N 联盟专项调研已完成，详见 [D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md](D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md)。审计覆盖 11 篇主要论文和 5 个公开仓库/归档，确认基础 CBBA 只提供 single-winner 基线，不能通过复制目标任务实现 `k_j=3` 的原子联盟。中心正常时应由 D3 生成联盟，D4 维护健康、lease、epoch 和重构；中心失效优先二级节点接管完整联盟摘要；完全无中心的 CCBBA/consensus grouping/coalition formation 仍属于 P1 合同研究和后续可插拔算法路线。成员退出必须按“满足最低需求则缩编、reserve 可达则补位、否则整盟重组”处理；同时/序贯/混合只由联盟合同表达，实际可达性由 D7 验证。
+
+M-to-N 第一阶段安全实现已补齐：D4 通过 `CoalitionSafetyEvidence` 消费 D3 schema v2 coalition/member/version/demand，不依赖 D3 运行时类型。中心可用且联盟完整、成员合法、plan/coalition version 当前时允许中心路径继续；若 arbiter 候选 `degrade_to_secondary|degrade_to_distributed` 而原子 coalition fallback 未形成，则中心可用时改为 `request_center_replan`，中心不可用时输出 `coalition_fallback_unsupported`/`hold_or_revoke`。event 同时保留 candidate/gated action，coordinator 也不对 `k_j>1` 运行 single-winner CBBA。合法联盟多个授权资源锁同一 `global_track_id` 不再视为 duplicate；第四个成员、超额锁、旧 plan 或旧 coalition version 均拒绝。二级/完全分布式原子联盟形成、ACK、补位和重构仍 deferred。
+
+真实 AirSim `blocks_cv_m5_n2_cooperative_live_20260711` 暴露并验证了本轮修正点：中心 alive/owner=center，T001 coalition demand 3/3、complete、version current，但 D5 长期 reacquire 后原 arbiter 输出 `degrade_to_distributed`。由于现有 distributed 仍是 single-winner，该动作不具备原子联盟语义；修正后同类候选必须回到中心重规划，不能仅凭静态 `coalition_center_plan_valid` 放行。
+
+中心重规划请求 lifecycle 的模块接口已补齐：`CenterReplanStatus` 是从包顶层导出的冻结 DTO，`risk_signature` 为排序去重 tuple，四态为 `pending|applied|acknowledged_no_change|expired`。adapter 对同 target/coalition scope 比较当前风险；默认 2.0 秒 cooldown 内，pending/applied/no-change 即使新增非硬风险也继续中心，严格边界到期才重新请求。`terminal_persistent_disagreement` 可触发首次 request，但 ACK 后不逐帧重发；既定 hard safety、expired 和 center failed 直接绕过。该动作不改写 D5 summary，因此 D5 仍可独立阻断 D7。测试覆盖 soft ambiguity `+0.5s` suppress、`+2.0s` reopen、friend/version `+0.5s` bypass、四态、center failed、非法重复锁、ID switch、coalition conflict、`k=1` 和 `k>1` fail-closed。
+
+assignment freshness 已修正为活性语义：`build_assignment_validity_summary()` 优先读取 `plan.metadata.last_evaluated_at_s`，兼容 `last_evaluated_at/evaluated_at_s/evaluated_at`，缺失时才按 `created_at` 保持旧行为。`plan_age_s` 只表示最近评估活性年龄，稳定 plan ID 的 `identity_age_s` 连同参考字段和时间戳进入 assignment evidence metadata。超过 stale threshold 后仍生成原 `d3_assignment_not_current/d3_assignment_stale` 硬风险并绕过 replan cooldown；当前 D4 测试 121 项通过。
+
 D4 模块内已补齐 P1 所需的本地输出口径：secondary takeover record metadata 可区分 `pending_secondary_plan` 与 `secondary_plan_active`，并携带当前/二级 plan id/version、source node、supersedes plan、reassignment complete、plan activation delay 和 pending duration 字段；主动降级 metadata 已能输出 `necessary/unnecessary/inconclusive` 三值 review label、`active_degradation_necessity_label`、pre/post review window、secondary diagnostic、takeover necessity/success，并透传 D5 二级视觉覆盖/转换漏斗 evidence，区分 `not_ready`、`visible_only`、`registration_usable` 和 `takeover_ready`，避免把二级 detect 可见直接等同为可接管；`role/capability_class=mobile_high_recon/mobile_secondary_recon` 已作为机动高空二级侦察节点元数据进入候选、lifecycle 和 D6 事件，并与 `fixed_tethered_secondary/tethered_recon` 区分；完全无中心 CBBA 已用 D5 distributed visual evidence 做风险加权；`build_cbba_cost_gap_benchmark()` 可用 D3/main 提供的中心 plan 与 cost matrix 计算 CBBA vs 中心化 cost gap；`build_cbba_d6_metadata()` 和 `run_failover_simulation()` 顶层 metrics 可输出 secondary/distributed 分组、leader、coverage、CBBA 审计和 cost gap 扁平字段。
 
-本轮 D4 P1 进一步闭合了“瞬时可见”到“可执行接管”之间的时序合同。现有 score >= 0.70、coverage >= 0.65、network full-view >= 0.80 门限保持不变；adapter 默认要求 `takeover_ready` 在 3 个不同时间戳决策中连续成立、持续至少 0.2 s 且 evidence gap 不超过 1.0 s，同一帧的重复评估不累计。2026-07-11 修复了 `not_ready -> takeover_ready` 边沿未设置 `ready_since_s` 的问题；首次 ready 和回落后的再次 ready 都从 count=1/新 timestamp 重启窗口。lifecycle/event 逐决策输出 stable/not-registered value、presence、evidence source、streak、duration、sustained 和 fallback reason。pending/active 还校验 source node、required lease epoch、lease expiry 和 plan version，并记录 transition、pending since、activated at、activation delay 与回落原因。D2 online truth 隔离语义也已闭合：`truth_metrics_available=False`/`continuity_available=False` 时，IDSW/continuity 占位不进入硬风险；在线 ambiguity、duplicate/quality risk 仍有效。95 项 D4 测试覆盖上述可用性正反例以及 readiness、heartbeat/link/cue/gimbal/lease/source/能力回落和 distributed fallback。
+本轮 D4 P1 进一步闭合了“瞬时可见”到“可执行接管”之间的时序合同。现有 score >= 0.70、coverage >= 0.65、network full-view >= 0.80 门限保持不变；adapter 默认要求 `takeover_ready` 在 3 个不同时间戳决策中连续成立、持续至少 0.2 s 且 evidence gap 不超过 1.0 s，同一帧的重复评估不累计。2026-07-11 修复了 `not_ready -> takeover_ready` 边沿未设置 `ready_since_s` 的问题；首次 ready 和回落后的再次 ready 都从 count=1/新 timestamp 重启窗口。lifecycle/event 逐决策输出 stable/not-registered value、presence、evidence source、streak、duration、sustained 和 fallback reason。pending/active 还校验 source node、required lease epoch、lease expiry 和 plan version，并记录 transition、pending since、activated at、activation delay 与回落原因。D2 online truth 隔离语义也已闭合：`truth_metrics_available=False`/`continuity_available=False` 时，IDSW/continuity 占位不进入硬风险；在线 ambiguity、duplicate/quality risk 仍有效。
 
 main/runtime P1 基线也已接入：episode bus 已消费 D4 adapter event，`request_center_replan` 可触发 D3 new plan version，secondary takeover owner/version 已回灌给 D3/D7，controlled 2v2 secondary visual PNG 回归已通过；P1 D4/D5 calibration sweep 已新增，可批量改变二级节点高度、FOV、节点数量和 standoff，并在 sweep 结束后自动生成 D6 标准 AirSim calibration records/summary/report bundle。该 owner/version 闭环是 main-owned 消费口径，D4 保持只输出仲裁/metadata，不生成系统级 `AssignmentPlan`。
 
@@ -516,6 +526,8 @@ CBBA 通过 winner/bid 向量扩散和一致性消解，在连通图、确定仲
 
 工程共识是：中心正常时不主动全分布式；二级节点可用时不直接全分布式；完全无中心只作为中心和二级节点均不可用后的保底能力。
 
+对于 `k_j>1`，上述基础结论需要增加限制：普通 CBBA 的一个 task 只有一个 winner，不等于 coalition formation。CCBBA 可表达 assignment/temporal coupling，consensus-based grouping 和 distributed coalition formation 可表达多个异构成员共同完成任务，但目前未发现同时具备明确许可证、维护、联盟时序、成员退出重构和可直接接入 MSM summary bus 的成熟 Python 库。因此当前 D4 轻量 CBBA 只能继续作为 single-winner/候选成员研究基线，不能宣称已经支持三机协同拦截。
+
 ---
 
 ## 10. 故障注入测试建议
@@ -558,3 +570,4 @@ CBBA 通过 winner/bid 向量扩散和一致性消解，在连通图、确定仲
 - CBBA-Python: <https://github.com/zehuilu/CBBA-Python>
 - CA-CBBA: <https://github.com/mit-acl/CACBBA>
 - Dynamic UAV task allocation survey: <https://www.mdpi.com/2504-446X/9/1/75>
+- D4 M 对 N 联盟形成专项审计：<D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md>

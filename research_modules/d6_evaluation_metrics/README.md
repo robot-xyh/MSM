@@ -2,6 +2,18 @@
 
 D6 是 MSM 的离线评估与报告模块。它只消费已经写盘的日志、CSV、JSON/JSONL 和仿真真值，输出 `EpisodeMetrics`、CSV、Markdown 报告和 PNG 图表；不参与 D1-D7 的实时控制链路，不生成任务、分配、导引、授权、火控、毁伤或自动处置动作。
 
+## 2026-07-11 M 对 N 离线指标合同
+
+D6 已实现中心化 M 对 N 的兼容日志与离线聚合。新增 `TargetDemandRecord`、`CoalitionRecord`、`ArrivalRecord`，并在 `AssignmentRecord`、`TerminalRecord` 保留 `coordination_mode`、`coalition_id/version/state`、`member_role`、`wave_id`、`required_resource_count`、`demand_assigned/shortfall/complete`、arrival window 和 `minimum_member_separation`。标准 JSONL 支持 `target_demand/coalition/arrival`，collector writer 可 round-trip；旧日志缺少这些字段时只对 duplicate 判定使用明确的 legacy `k=1`，其余新增指标保持 `null/unavailable`。
+
+`EpisodeMetrics` 已接入 demand micro/macro、unmet slots、over-support、formation/reconfiguration、simultaneous arrival/common-window、sequential wave、hybrid primary/reserve、planned/authorized/erroneous lock、same-resource lock continuity、member lifecycle/digest/stale、messages/bytes/rounds/latency、minimum separation/collision exposure、geometry rejection、canonical duplicate/cross-node IDSW/common-information rejection。`duplicate_terminal_lock_count` 保留通用“同一 timestamp+target 出现多个 resource”计数，不再由 `erroneous_duplicate_lock_count` 覆盖；后者仅计 legacy `k=1`、当前 coalition/assignment 版本冲突或超过 `required_resource_count`。同一 resource 跨帧持续锁定只进入 `same_resource_lock_continuity_count`，授权 coalition 内同帧多资源锁进入 `authorized_cooperative_lock_count`。
+
+探测三项要求同时存在 `truth_timestamps` 机会集合与检测/航迹到 truth 的离线配对裁决。配对证据可以是落入 truth pair 集合的 `TrackRecord.truth_id`，也可以是显式 `offline_detection_match/offline_track_truth_match/offline_detection_miss/offline_missed_detection` 事件。仅有 truth opportunity 列表、所有 track 均为 `truth_id=None` 且无显式 match/miss 时，`detection_probability/missed_detection_rate/false_alarm_rate=None` 且 `metric_availability.status=unavailable`。可用时按 pair 集合求命中和漏检；`truth_id=None` 的 center track 不自动计虚警。
+
+`center_replan_request_created/deduplicated/ack_no_change/applied/expired` 已接入请求、去重、no-change、applied、expired、pending dwell 总时长和 no-change/applied 收敛均值。D6 优先消费 `request_id/requested_at/resolved_at/pending_dwell_s`，并在 metadata 审计保留 target、coalition/version、risk signature 和 resolved plan/version。无这些事件时所有 replan 指标为 `None/unavailable`。
+
+每个新增指标在通用 `metric_availability` 中记录 `status/reason/numerator/denominator`，M 对 N 子集继续保留兼容的 `m_to_n_metric_availability`。数值 `0` 仅表示证据完整且事件确为零；缺证据为 JSON/CSV 空值和 `unavailable`；路线无此概念为 `not_applicable`。batch summary 分别输出可用、unavailable 和 not-applicable 样本数，并继续按实际 `drone_count/resource_count/target_count/camera_count` 分组。
+
 ## 2026-07-10 P1 扩展
 
 本轮已补齐以下离线评估接口，不运行 AirSim：
@@ -117,7 +129,7 @@ main 已修复 experiment-level guidance law 的执行后回灌，并从
 或统计显著性结论。延长运行窗口并开展真实多 seed、同几何、同规模对照仍为 P1。
 
 - P0：P0-A/P0-C 字段已补齐。D6 当前输出 mission outcome、success/failure reason、top failure causes/root cause、性能监测字段、EVAL tracking schema 和 `cuas-standard-map-v1` 标准化评估映射最小版；仍保持离线消费日志，不参与控制；指标继续按实际规模归一化，不从 `5v5` 名称推断分母。
-- P1：多 seed AirSim 校准、严格 seed 配对、paired effect size、确定性 bootstrap 95% CI、execution/contract/evidence availability、二级生命周期、YOLO/MOT 核心预算、四导引律配对、D1-D3 governance 和 scenario library 接口均已补齐；2026-07-11 D6 全量测试为 `57 passed`，现有 2v2 10-seed execution 为 `18/20`。四律 smoke 目前只有单 seed、2 秒短窗口，不能作为命中率结论。下一阶段不重复增加同义指标，而是接入真实多 seed、较长窗口数据与 CI 趋势、CV 5v5 的 D1-D3 联合聚合、补充模型版本/分辨率/内存/fallback 预算字段，并完善 COURAGEOUS/MDPI/OCEF 标准报告。
+- P1：多 seed AirSim 校准、严格 seed 配对、paired effect size、确定性 bootstrap 95% CI、execution/contract/evidence availability、二级生命周期、YOLO/MOT 核心预算、四导引律配对、D1-D3 governance、scenario library、M 对 N 锁定口径和 replan lifecycle 聚合均已补齐；2026-07-11 D6 全量测试为 `67 passed`，现有 2v2 10-seed execution 为 `18/20`。四律 smoke 目前只有单 seed、2 秒短窗口，不能作为命中率结论。下一阶段不重复增加同义指标，而是接入真实多 seed、较长窗口和 M 对 N/replan 上游 evidence，形成 CI 趋势与 12 组合实验结果。
 
 ## PNG 策略
 

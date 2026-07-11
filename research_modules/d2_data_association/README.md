@@ -28,6 +28,10 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - NIS 由关联前 innovation covariance 和马氏距离计算，不依赖 truth，因此无 truth replay 仍可输出；NEES 只在独立 offline truth state 可用时计算。两者输出样本数、均值、中位数、二维/四维 95% 卡方区间及区间覆盖率，不把缺失样本解释为零。
 - `build_5v5_replay_fixture()` 构造动态 5 目标 crossing/dense/漏检/虚警组合 fixture；它只用于回归和标定，不把 5 写入关联器或 Tracker。
 - `AssociationLogEntry.rejected_pairs` 默认空列表并完整序列化 `mahalanobis_gate`/`assignment_above_gate` 原因；replay gate summary 按原因统计，旧 JSON 缺该字段时按空列表兼容。
+- 跨节点注册基础：`SourceTrackSummary` 使用 `(source_node_id, local_track_id, local_epoch)` 命名空间、独立 measurement/arrival timestamp、6D NED state/covariance、quality、lineage/correlation status 及 candidate/current canonical hint，在线合同不含 truth。
+- `CrossNodeTrackAssociator` 将 source tracks 传播到公共时刻，按完整 6D 状态和差分协方差做 Mahalanobis gate，并按 source 节点分组使用 Hungarian；`CrossNodeTrackRegistry` 因而支持一个 canonical `global_track_id` 绑定多个观察节点的 source tracklets，同时保持同一 source 内一对一。
+- registry 对 `exact_known_correlation` 输出 D1 数值相关融合请求，对 `unknown_correlation` 只输出 CI/保守融合请求，对显式 duplicate、重复 payload、重复 lineage 和 stale/replay source track 在关联前拒绝；D2 不复制数值 CI。
+- cross-node 在线指标输出 source binding rebind ID switch、duplicate payload rejection 和 transport/queue/fusion latency；`OfflineCrossNodeMetricsEvaluator` 在独立 truth mapping 下计算 canonical duplicate 与 track-to-track association precision/recall，不向在线 registry 暴露 truth。
 
 ### 2026-07-11 main runtime 证据
 
@@ -41,6 +45,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - `JPDAAssociator` 可执行小规模联合假设枚举和 marginal probability 对照，但不是完整 JPDA filter。
 - `MHTAssociator` 可执行有界 branch 和短历史对照，但不是完整 MHT。
 - D2 可投影 D1 3D/NED 输入，但原生 tracker 仍是二维状态。
+- cross-node registry 已完成低歧义 GNN/Hungarian 注册基础，但尚无多帧 JPDA/MHT 歧义保持、owner/epoch failover 或数值融合回写。
 
 未实现：
 
@@ -49,6 +54,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - 原生 3D NED tracker。
 - JPDA/MHT 自动升级触发。
 - 真实 AirSim runtime 录制链路、ComputerVision 图像/metadata 采集和 main/D6 episode JSONL 固化；D2 当前只消费已导出的离线 replay。
+- D1-owned 数值 CI、已知交叉协方差融合、fusion NEES/ANEES 和通信字节统计；D2 当前只发布相关性决策与融合请求。
 
 ## 目录
 
@@ -57,6 +63,9 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - `d2_data_association/associators.py`：`DataAssociator`、`GNNHungarianAssociator`、`JPDAAssociator`、`MHTAssociator`。
 - `d2_data_association/tracker.py`：常速度 Kalman fallback、状态机、建轨、漏检和删除。
 - `d2_data_association/metrics.py`：IDSW、continuity、duplicate、RMSE、confusion matrix、风险摘要和软/硬风险分层。
+- `d2_data_association/cross_node_models.py`：source-track、canonical binding/history、相关性和融合请求合同。
+- `d2_data_association/cross_node_registry.py`：公共时刻传播、track-to-track Hungarian 和中心 canonical registry。
+- `d2_data_association/cross_node_metrics.py`：truth-free registry 指标和隔离的 offline cross-node evaluator。
 - `d2_data_association/dry_run_adapter.py`：D1/AirSim-style dry-run 输入适配和 bus message 输出。
 - `d2_data_association/replay.py`：离线 JSON/JSONL replay 读取、association report/log 输出和阈值敏感性 helper。
 - `d2_data_association/replay_governance.py`：在线 truth 隔离、offline label evaluator、M-of-N 初始化、false-track、NIS/NEES 和 5v5 压力 fixture。
@@ -69,6 +78,8 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 ## 跨模块合同
 
 - D2 输出的 `global_track_id` 是 D3 分配、D4 主动降级证据、D5 末端配准和 D6 指标评估的共同键。
+- source 的 local ID、candidate/current canonical hint 不具备身份权威；只有 `CrossNodeTrackRegistry` 能创建或更新 canonical binding。多个合法观察者绑定同一 canonical ID 不增加目标基数，也不计为 D3 duplicate assignment。
+- `REQUEST_COVARIANCE_INTERSECTION` 和 `REQUEST_EXACT_CORRELATED_FUSION` 是 D2 关联/相关性决策，不是已融合状态；数值融合及一致性统计由 D1/D6 owner 接续。
 - D2 track-level `track_quality` 和 `association_risk` 是下游可消费的质量/风险证据；下游可以提高代价、延迟分配或标记复核，但不得用这些字段改写 `global_track_id`。
 - D5 和 D7 不得改写、重绑或本地覆盖 D2 的 `global_track_id`。
 - D2/D6 必须显式保留 `id_switch_count`；它不能被 RMSE、覆盖率或命中率替代。

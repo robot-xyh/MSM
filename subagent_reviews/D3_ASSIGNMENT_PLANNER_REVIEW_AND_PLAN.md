@@ -2,7 +2,7 @@
 
 **定位**: 在由 main runtime `--drone-count` 决定的 N 对 N 或非等量资源/目标场景中，由中心节点生成滚动 `AssignmentPlan`，并通过迟滞逻辑避免频繁重分配；5v5 只作为示例和基准场景。
 **边界**: 本文只讨论抽象资源-目标匹配、离线评估和人工授权前的候选计划，不包含真实火控参数、毁伤模型或自动处置流程。
-**D3 复核状态 2026-07-11**: active-plan `previous_plan` 连续性 P0、solve 前 switch penalty P1、D3 侧 secondary activation/current-binding 以及 same-owner rolling continuation P1 合同已关闭，D3 全量测试为 `84 passed`。新增三个真实 AirSim 5v5 短 episode 的 no-truth 证据：D2 全部 `truth_id=None` 时，D3 assignment coverage=`1.0`，版本化计划与 D5/D7 binding 正常，说明在线分配链不依赖 actor/truth identity；但这是单 seed、短时、等量 5v5 证据。既有真实 AirSim 10-seed 历史结果不变：50/200 m、三类降级模式共 60 个 episode 全部连接，但 20 个请求 secondary 的 case 全部保守转入 distributed，15/1300 条瞬时 `takeover_ready` 均停在 `pending_secondary_plan`。其余 P1 仍聚焦 D5 feedback 权重、真实非等量 N/M 与增量分配、多 seed 长时稳定性、完整动态威胁、hard-window 多场景和 optional OR-Tools 同输入对照。
+**D3 复核状态 2026-07-11**: active-plan 连续性、execution-signature identity、candidate/published 分离、forced replan ack/applied、solve 前 switch penalty、secondary activation/current-binding、same-owner continuation 与 M-to-N schema v2/demand-slot baseline 已关闭，D3 全量测试为 `104 passed, 1 skipped`；skip 是当前环境未安装 optional OR-Tools。新增三个真实 AirSim 5v5 短 episode 的 no-truth 证据仍是单 seed、短时、等量 5v5 范围；其余 P1 聚焦 D5 feedback 权重、真实 M-to-N 多 seed/长时稳定性、CP-SAT 参考、完整动态威胁和 hard-window 多场景。
 
 **P1 switch-penalty 状态 2026-07-10**: done。`reassignment_switch_penalty` 已从 solve 后追加改为 solve 前进入可行改配边；同 resource、不可行边、无历史 assignment 的 target 和 unassigned cost 不变。solver matrix、breakdown total、objective、Assignment 和 evidence 使用同一成本且无双重计费。新 current plan binding 即使发生改配仍为 `active/current`，旧 plan 由 current plan id/version gate 失效。
 
@@ -40,7 +40,7 @@
 
 当前只是部分实现或未实现：
 
-- `MinCostFlowAssignmentSolver` 只是 OR-Tools 预留接口，`solve()` 当前抛出 `NotImplementedError`。
+- `MinCostFlowAssignmentSolver` 是 optional OR-Tools 一对一 benchmark；未安装时抛出明确 unavailable，不进入默认依赖或 planner。
 - `secondary_plan_v2` 的 D3 activation/current-binding 合同已实现；main runtime 仍需传入 sustained readiness、activation time、leader epoch、live lease 和 current plan identity。二级节点选择、lease 续期、中心恢复合并和 active owner runtime 仲裁仍属 D4/main policy。
 - D4 `request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed` 仍由 main/D4 消费 D3 证据后触发，D3 不自动调用；其中中心 `request_center_replan` 的 owner/version/supersede runtime 记录已由 main 接线，D3 只需保持版本化计划和 stale 拒绝合同。
 - 剩余 D3 P1 是非等量 N/M/增量更新、D5 feedback 权重、hard-window 多场景、完整动态威胁和 optional OR-Tools 同输入对照；secondary 只剩跨模块 runtime 验证，不再是 D3 DTO 缺口。
@@ -154,7 +154,7 @@ FallbackAssignmentSolver
   + solve(cost_matrix, unassigned_costs)
 
 MinCostFlowAssignmentSolver
-  + solve(...)  # 当前为 OR-Tools 预留接口，抛出 NotImplementedError
+  + solve(...)  # optional OR-Tools same-input benchmark
 ```
 
 ---
@@ -206,7 +206,7 @@ class HysteresisManager:
         return accept(candidate, "accepted_gain_and_dwell")
 ```
 
-当前实现会在 active plan 后拒绝缺失的 `previous_plan`，reason 固定为 `previous_plan_required` 并携带 latest plan id/version；也会继续拒绝 stale/expected-version 不匹配的前序计划。switch penalty 已在 solve 前进入 `CostMatrixResult`，且 evidence 导出 solver 实际使用的同一矩阵和 breakdown。每轮 `resource_count`、`target_count` 和 `assignment_matrix_shape` 都写入计划。planner 实例绑定单个 episode，新 episode 由 main 创建新实例，不做隐式 reset。
+当前实现只以已发布计划执行 stale 校验；`publish=False` 候选不推进 latest，`publish_plan()` 才提交 identity。同执行签名刷新保留 `plan_id/version/created_at`、`identity_created_at_s` 和 assignment `plan_version`，但 plan/assignment metadata 的 `last_evaluated_at_s` 始终更新为本轮 `plan()` timestamp；forced no-change 同样只刷新该活性时间，真实身份变化时两者更新。record/evidence/binding 发布快照均可读取两个时间。forced replan 分别输出 `replan_ack_no_change` 或 `replan_applied`。switch penalty 仍在 solve 前进入 `CostMatrixResult`，每轮 N/M 规模和 evidence 字段保持输出。
 
 ---
 
@@ -328,7 +328,7 @@ N 对 N 基准迟滞建议可从 5v5 参数开始扫描：`delta=0.2`，`min_dwe
 
 ## 10. 离线验证
 
-当前已实现的离线验证主要覆盖 Hungarian/fallback、solve 前 switch penalty、matrix/breakdown/objective/evidence 一致性、迟滞、stale 拒绝、current binding active gate、D5 feedback helper/writeback、严格 secondary takeover activation/current/lease gate、same-owner rolling continuation、D6 export 和 synthetic AirSim dry-run adapter；D3 全量测试为 `84 passed`。真实 AirSim 已完成等量 5v5 的 10-seed/60-case 历史基线，并新增三个 D2 `truth_id=None`、coverage=`1.0` 的单 seed 短时 smoke episode。下一阶段仍需补非等量 N/M、no-truth 多 seed 长时稳定性、事件驱动增量更新、D5 feedback 权重和 secondary runtime 专项：
+当前已实现的离线验证覆盖 Hungarian/fallback、demand-slot M-to-N、execution identity/publish semantics、forced replan、solve 前 switch penalty、matrix/breakdown/objective/evidence 一致性、迟滞/stale、coalition binding/duplicate、D5 feedback、secondary takeover/continuation、D6 export 和 synthetic AirSim dry-run adapter；D3 全量测试为 `104 passed, 1 skipped`。真实 AirSim 历史基线不变；下一阶段仍需补真实 M-to-N、no-truth 多 seed 长时稳定性、事件驱动增量更新、D5 feedback 权重和 secondary runtime 专项：
 
 ```text
 Hungarian without hysteresis
@@ -372,3 +372,42 @@ secondary_plan_activation_count
 - OR-Tools assignment as min-cost flow: <https://developers.google.com/optimization/flow/assignment_min_cost_flow>
 - Dynamic WTA rolling horizon example: <https://www.mdpi.com/2079-9292/9/9/1511>
 - TAPF dynamic assignment discussion: <https://arxiv.org/html/2307.00663v1>
+
+---
+
+## 13. M 对 N 联盟分配与时序调度复核（2026-07-11）
+
+详细中文调研见 `subagent_reviews/D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md`，共核验 12 篇主要论文、1 篇补充综述、4 个成熟优化工具和 6 个 MRTA/联盟研究仓库。Google Scholar 仅用于发现；引用回到 DOI/论文原始页。当前无 WOS 订阅或导出数据，因此没有把 WOS 覆盖作为完成条件。
+
+复核后的关键修正是：原 D3 “非等量 N/M”只是矩阵规模非方阵，仍是一对一分配；高威胁目标需要三架资源属于 `k_j>1` coalition allocation。该合同和 demand-slot baseline 已于 2026-07-11 实现，复杂 CP-SAT/MILP 全局参考仍未实现。
+
+### 13.1 算法选型结论
+
+- `k_j=1`: 继续使用 SciPy Hungarian 默认主线。
+- 只有基数/容量/禁配边且成本可加：b-matching 或 Min-Cost Flow 是成熟升级基线。
+- 要求“完整三机联盟才激活”、异构能力、同步窗口、波次、主备和冲突约束：使用 CP-SAT/MILP 参考模型。
+- coalition formation 启发式和时序逻辑联合规划保留为研究方案；没有成熟开源库能直接覆盖 MSM 的版本、迟滞、D4/D5/D7 合同。
+- 初始仿真默认建议 `hybrid 2+1`，但 primary 数由 `TargetDemand.primary_resource_count` 显式配置并接收 main `--cooperative-primary-count`；并与 `simultaneous 3`、`sequential 1+1+1` 同条件比较。该建议不是固定工程共识。
+
+### 13.2 当前缺口与模块边界
+
+已实现 `required_resource_count`、`primary_resource_count`、coalition identity/version/state、成员 role/wave/window、demand satisfaction、能力槽、simultaneous/sequential/hybrid baseline、coalition-aware duplicate 语义和 D7 多成员 current binding。显式 `TargetDemand()` 才启用默认 `k=3 hybrid 2+1`；缺省仍为 `k=1 independent primary=1`。hybrid 使用显式 primary 数，且该值进入 demand template、coalition signature/version 和 binding metadata。不完整 coalition 不发布 executable assignment，合法 `<=k_j` multiplicity 不计 duplicate。
+
+迟滞、change count、switch penalty 与 reassign export 已转为 stable signature/set 语义；成员/角色/window/demand 模板变化递增 coalition version，旧 binding 由 current identity gate stale。OR-Tools flow 是 optional benchmark，不进入默认依赖或默认 planner。
+
+剩余缺口是 CP-SAT/MILP 小规模全局参考、committed prefix 与 reserve feedback policy、真实 ETA/同步动力学、D6 coalition 指标跨模块接线和 AirSim 多 seed 验证。D3 不执行协同定位；D1/D2/D5 负责多源/多视角定位与身份连续性，D3 仅调度角色并消费协方差和几何收益。
+
+### 13.3 新增主要证据
+
+- One-to-many coalition matching: <https://doi.org/10.1109/ICRA.2019.8793855>
+- Coalition deadlines/interference: <https://doi.org/10.1371/journal.pone.0170659>
+- Communication-aware distributed coalition: <https://doi.org/10.1109/ACCESS.2021.3061149>
+- Team/coalition MRTA survey: <https://doi.org/10.1007/s43154-022-00087-4>
+- Coalition formation survey: <https://doi.org/10.3390/robotics14070093>
+- Simultaneous allocation/planning: <https://doi.org/10.1177/0278364918774135>
+- Temporal/ordering taxonomy: <https://doi.org/10.1016/j.robot.2016.10.008>
+- Temporospatial team scheduling: <https://doi.org/10.1109/TRO.2018.2795034>
+- Group-based distributed auctions: <https://doi.org/10.1109/TASE.2022.3175040>
+- Distributed multi-task assignment: <https://doi.org/10.1109/TCYB.2015.2418052>
+- CBBA foundation: <https://doi.org/10.1109/TRO.2009.2022423>
+- Synchronization modeling: <https://doi.org/10.1287/trsc.1110.0400>

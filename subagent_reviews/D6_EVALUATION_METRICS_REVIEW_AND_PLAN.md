@@ -39,13 +39,21 @@ main 写盘合同见 D6 README。尤其需要显式写 `readiness_state`、`plan
 
 D6 的目标是把 D1-D7 和 main runtime 的离线日志统一为可比较、可复现、可画图的系统级指标。D6 的评估结果服务报告和回归分析，不回写控制。
 
+### 1.1 M 对 N 评估补充（2026-07-11）
+
+完整公式、输入事件、聚合层级、12 组合实验矩阵、指标来源和开源候选见 `D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md`。框架区分合法 coalition multiplicity 与异常 duplicate，并覆盖 target demand/unmet slots、formation/reconfiguration、simultaneous/wave/hybrid、RMSE/NIS/NEES/geometry、canonical duplicate/cross-node IDSW/common-information rejection、planned/authorized/erroneous lock、same-resource continuity、center replan lifecycle、member loss/digest/stale、messages/bytes/rounds/latency 及 minimum separation/collision risk。
+
+聚合固定为 `frame/member/wave/coalition-version/target-episode/episode/batch`，且 `unavailable/null`、真实 `0`、`not_applicable` 三者不可混用。实验采用 independent、simultaneous、sequential、hybrid primary/reserve 四路线，覆盖中心正常、二级接管、完全无中心和几何/同步/通信/成员失效扰动。现有场景无新增 P0；新增合同与聚合列 P1，现有 P2/P3 保持。
+
+实现状态：D6 已新增 `TargetDemandRecord/CoalitionRecord/ArrivalRecord`，扩展 assignment/terminal 合同并接入 JSONL、`EpisodeMetrics`、CSV、batch summary 和 Markdown。通用同帧多资源锁、授权协同锁、错误重复锁与跨帧同资源连续锁已拆分；探测三项由离线 truth pair gate；五类规范 `center_replan_*` 事件已接入请求/去重/解析/pending/convergence 指标。availability 逐指标记录 status/reason/numerator/denominator。剩余 P1 是上游真实日志与 12 组合多 seed 实验，不是 D6 聚合代码缺口。
+
 ## 2. 当前实现状态摘要
 
 已实现：
 
-- 数据模型：`EpisodeMetrics`、`TrackRecord`、`AssignmentRecord`、`EventRecord`、`LinkRecord`、`TerminalRecord`。
+- 数据模型：`EpisodeMetrics`、`TrackRecord`、`TargetDemandRecord`、`CoalitionRecord`、`ArrivalRecord`、`AssignmentRecord`、`EventRecord`、`LinkRecord`、`TerminalRecord`。
 - 指标收集：`MetricsCollector`。
-- JSONL：标准化 `truth_summary/track/assignment/event/link/terminal` loader。
+- JSONL：标准化 `truth_summary/track/assignment/target_demand/coalition/arrival/event/link/terminal` loader/writer。
 - AirSim Blocks：`load_blocks_replay_jsonl()` 读取 `blocks_frames.jsonl` 与可选 `blocks_sensor_observations.jsonl`。
 - main bus：`load_main_episode_bus_metrics()` / `load_main_episode_bus_metric_files()` 读取 `main_episode_bus_metrics.json` 与 `main_episode_bus_contract_metrics.json`。
 - D4：`load_d4_active_degradation_decisions()` 读取 active-degradation CSV。
@@ -72,7 +80,7 @@ D6 的目标是把 D1-D7 和 main runtime 的离线日志统一为可比较、�
 
 - 2v2 10-seed 拦截报告专项已完成：AirSim calibration record/CSV/summary/cross-seed 新增 success、collision/range/abort、min range、time-to-intercept、visual PNG switch、terminal switch allowed/takeover 和 gate reject。availability gate 要求 intercept summary/control command/显式 pair-status/D7 execution event 证据，episode_001..005 read-only 默认零因此为 unavailable 且不进入 Outcome 表。对 `seed001..010` summaries 的离线验收仍得到 full-flow execution `18/20=0.9`、collision/range/abort=`18/0/2`；contract 保持独立并由 scope 明示。D6 仍不参与控制。
 
-- D6 owner 2026-07-11 验收结果为 `57 passed`，`git diff --check` 通过。execution/contract/evidence availability、read-only unavailable、cross-seed/paired bootstrap、二级生命周期、D5 YOLO/MOT 核心预算、四导引律配对、D1-D3 governance 和场景库接口已闭合；后续保持 schema 回归并等待真实多 seed 数据。
+- D6 owner 2026-07-11 验收结果为 `67 passed`，`git diff --check` 通过。execution/contract/evidence availability、truth-gated detection、read-only unavailable、cross-seed/paired bootstrap、二级生命周期、D5 YOLO/MOT 核心预算、四导引律配对、D1-D3 governance、场景库接口、M 对 N 锁定口径和 replan 生命周期聚合已闭合；后续保持 schema 回归并等待真实多 seed 与上游 M 对 N/replan 数据。
 
 未实现：
 
@@ -512,13 +520,14 @@ D7 gate/intercept：
 
 ## 9. P1 下一步
 
-1. 场景库已实现；下一步由 main/CI 消费其 scenario id/version、tags、difficulty、expected failure modes、actual scale、seed matrix 和 evidence path，输出跨提交趋势与回归摘要。
-2. CV 5v5 D1-D3 联合聚合：在同一 episode clock 下汇总 D1 感知/融合/协方差/延迟、D2 关联/连续性/ID switch 和 D3 分配/version/迟滞，生成从感知到分配的统一 funnel。
-3. YOLO/MOT 核心 recall/continuity/cross-view/latency/CPU/GPU budget 已实现；下一步补充 D5 写盘的 model version、输入分辨率、目标像素尺度、throughput、内存、drop/fallback 字段。D6 不加载权重、不运行检测。
-4. COURAGEOUS/MDPI/OCEF 完整标准化报告：补测试阶段、复现纪律、evidence index、场景覆盖矩阵、限制条件和外部审计说明。
-5. 使用真实成对 5v5/N-v-N 批次持续验证已实现的 paired effect size/bootstrap CI，并保持 missing seed、单 pair、无标签和 unavailable 的保守口径。
-6. 继续沉淀 D4/D5 coverage/funnel/gimbal/registration 与 active-degradation review/window 长期趋势。
-7. execution/contract/evidence availability 已完成，后续只做 schema 回归，不新增重复或同义拦截字段。
+1. M 对 N 真实 evidence：D6 合同、聚合与报告已实现；下一步由上游按冻结 schema 产生日志，完成四路线 x 三中心层级的真实多 seed 实验和阈值回归。
+2. 场景库已实现；下一步由 main/CI 消费其 scenario id/version、tags、difficulty、expected failure modes、actual scale、seed matrix 和 evidence path，输出跨提交趋势与回归摘要。
+3. CV 5v5 D1-D3 联合聚合：在同一 episode clock 下汇总 D1 感知/融合/协方差/延迟、D2 关联/连续性/ID switch 和 D3 分配/version/迟滞，生成从感知到分配的统一 funnel。
+4. YOLO/MOT 核心 recall/continuity/cross-view/latency/CPU/GPU budget 已实现；下一步补充 D5 写盘的 model version、输入分辨率、目标像素尺度、throughput、内存、drop/fallback 字段。D6 不加载权重、不运行检测。
+5. COURAGEOUS/MDPI/OCEF 完整标准化报告：补测试阶段、复现纪律、evidence index、场景覆盖矩阵、限制条件和外部审计说明。
+6. 使用真实成对 5v5/N-v-N 批次持续验证已实现的 paired effect size/bootstrap CI，并保持 missing seed、单 pair、无标签和 unavailable 的保守口径。
+7. 继续沉淀 D4/D5 coverage/funnel/gimbal/registration 与 active-degradation review/window 长期趋势。
+8. execution/contract/evidence availability 已完成，后续只做 schema 回归，不新增重复或同义拦截字段。
 
 ## 10. P2 下一步
 

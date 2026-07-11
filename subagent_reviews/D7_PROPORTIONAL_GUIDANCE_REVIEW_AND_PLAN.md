@@ -16,6 +16,8 @@
 - 每个 assignment pair 独立状态：runtime 的 `InterceptPair.visual_filter` 和 D7 filter 实例分别保存稳定帧、LOS-rate 窗口、TTC 面积窗口和 local track 状态；D7 测试覆盖 1/3/5/7 pair。
 - D3/D4/D5 gate：D7 校验 assignment 授权/current、plan/version、D4 action、D5 `locked`、friend conflict、D5 `assigned_global_track_id`、D5 `assignment_version` 和观测 global ID。
 - D4 保守阻断：`request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed` 均必须拒绝视觉 PNG，记录 `d4_reassign_pending`。
+- M-to-N 收敛后门控：D4 no-change ack 最终映射 `continue_center` 后仍需本资源 D5 `locked`、D5 plan/track/coalition version 与 D3 binding 一致、coalition visual completion 及相机/LOS/机动门全部通过；缺失/未完成/冲突分别记录 `coalition_visual_completion_missing`、`coalition_visual_incomplete`、`coalition_visual_conflict`。
+- T001/T002 与 reserve：T001 两个 active primary 使用独立 filter/latch，各自满足 gate 后可切换 `png_vm`；T002 k=1 保持兼容。standby reserve 即使已有视觉匹配也不切换，只有新版本显式 activation 且 activation/D4/D5 版本一致后才可进入视觉 gate。
 - SimpleFlight 命令：D7 输出 `velocity_ned`，main/runtime 负责 `moveByVelocityZAsync`；D7 本模块不直接连接 AirSim。
 - episode bus 指标回灌：2026-07-07 main/runtime 已把真实 D7 执行产物合并进正式 `main_episode_bus_metrics.json`，raw `main_episode_bus_contract_metrics.json` 只保留执行前合同诊断；2026-07-08 复核确认 D7 runtime summary 已接入 episode bus。
 - D3 replan 闭环：`request_center_replan` 后 main/runtime 生成新的 D3 plan/binding/version，D7 只接受当前有效 binding/version，旧 plan 或 mismatch 继续阻断视觉 PNG；controlled 5v5 center replan 回归已通过。
@@ -741,3 +743,15 @@ D7 当前已经具备可测试的经典 PN 研究模块、D3/D4/D5 terminal cont
 4. main runtime 由 `--drone-count N` 控制规模，并为每个有效 assignment pair 创建独立 D7 控制上下文；2v2 只能作为 baseline，不是数量假设。
 
 默认 `png_vm` 混合闭环的真实 2v2 10-seed 数据采集已经完成。剩余 P1 聚焦 seed 3/10 `terminal_detection_timeout` 根因、PN/Pure Pursuit/`png_vm`/`png_ttc` 受控对照、视觉 gate 阈值建议、闭合速度/距离估计、3D/高度差与机动能力/FRPN benchmark 数据，以及 YOLO/ByteTrack 或 AirSim detect 数据的离线 replay/optional 路径。P2 optional benchmark 包括 PX4/MAVLink/body-rate、MPC/NMPC、ViSP/ROS2 等非默认主线；这些都不能进入默认 SimpleFlight 控制主线，除非先具备高机动 fixture、平台动力学/安全边界、D6 对照指标和失败回退。
+
+## 10. M 对 N 协同导引评审补充（2026-07-11）
+
+专项综述 `D7_M_TO_N_COOPERATIVE_GUIDANCE_REVIEW.md` 已核验 12 篇主要同行评审论文和 5 个开源候选。结论是：impact-time consensus、finite/fixed/prescribed-time cooperative guidance 和两阶段 consensus-to-PN 在论文中已有稳定研究路线，但没有成熟、许可证明确、带测试、适配多旋翼与现有 D3/D4/D5 合同的开源默认实现。
+
+对本项目的直接影响：
+
+1. 当前每个 assignment pair 仍独立运行 PN/PNG；新增 coalition/version/role/wave/window/activation 只做中心化执行门控，不是 cooperative PN 或 impact-time consensus。
+2. `k_j=3` 时，同步、序贯或混合模式必须由 D3/D4 的版本化任务语义决定；D7 不自行选择成员或波次。
+3. 同步到达必须绑定不同 terminal approach sectors/impact angles 和成员最小距离；否则三机同点同时到达会放大互撞、遮挡和饱和风险。
+4. 每个成员仍独立满足 D5 locked、D3 owner/version、D4 action 和视觉/机动 gate；任何成员 locked 都不能自动放行全联盟。
+5. P1 coalition 合同门控已完成：hybrid 2+1、reserve 激活、版本一致性、D4 安全阻断和 k=1 均有回归；point-mass 协同控制律、通信和碰撞安全评估仍为 P1。原有 P2/P3 计划不调整。

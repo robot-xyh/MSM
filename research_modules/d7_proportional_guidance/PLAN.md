@@ -289,3 +289,19 @@ P1 剩余：
 P2 下一步：
 
 - PX4/MAVLink/body-rate、MPC/NMPC、真实相机外参/畸变和默认控制主线升级保持 P2 optional；必须先有平台动力学/安全边界、D6 对照指标和失败回退，不能进入默认 SimpleFlight 控制主线。
+
+## M 对 N 协同导引调研补充（2026-07-11）
+
+文献与开源审计见 `subagent_reviews/D7_M_TO_N_COOPERATIVE_GUIDANCE_REVIEW.md`。后续实现已补齐中心化 coalition 执行门控，但未修改 SimpleFlight 路径或 `png_guidance_delivery` 的位置比例导引/TTC 捷联比例导引核心公式。
+
+`AssignmentGuidanceBinding` 和 runtime bus 现可消费 `coalition_id/version`、`member_role`、`wave_id`、`coordination_mode`、arrival window、activation state 及 activation plan/track/coalition version。primary wave-0、reserve/retry 新版本激活、D4/D5/版本一致性、D5 coalition visual completion 和 simultaneous/sequential/hybrid 时间窗均在视觉 PNG 前保守门控；多个 resource-target pair 可以共享同一个 center-owned `global_track_id`，但 filter/latch 仍按 pair 独立。
+
+合同门控 P1 已完成：D4 replan/degrade/pending、`coalition_fallback_unsupported`、hold/revoke、中心失效且未形成新原子联盟均阻断视觉 PNG；D4 no-change ack 最终映射 `continue_center` 后仍执行 D5 gate。显式 coalition 缺少完整视觉完成证据、support 未满足需求或 plan/track/coalition version 冲突时 fail closed；standby reserve 即使有视觉匹配也不切换，只有新版本显式 activation 后才可重新进入 gate。T001 两个 primary 分别持有独立 filter/latch 并可各自切换，T002 k=1 无 coalition binding 保持回归。row/summary 保留 `terminal_contract_allowed`、`visual_png_switch`、`visual_png_switch_count` 和拒绝原因。
+
+剩余 P1 调研路线：
+
+- 用 point-mass 对照独立 PN、同步 impact-time consensus、序贯 arrival windows 和混合主备。
+- 同步方案必须同时研究 terminal sector/impact angle、成员最小间距、命令饱和和 FOV 丢失，不能只比较到达时间误差。
+- 序贯/混合的波次和继续条件归 D3/D4；D7 已能跟踪版本化到达窗口并执行成员级 gate，但尚无 impact-time consensus 或协同控制律。
+- leader/中心、二级节点和完全分布式模式分别评估时延、间歇通信、成员失联和 consensus 可行性。
+- 暂不引入候选仓库：许可证明确的候选只实现单机 ITCG，真正展示齐射/协同的候选缺许可证或工程验证。

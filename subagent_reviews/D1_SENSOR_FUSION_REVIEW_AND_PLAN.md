@@ -371,3 +371,47 @@ unexpected OOSM、stale、预算超限和持续窗口联合判定。
 4. 将真实 Blocks/CV camera/bbox/遮挡与二级侦察 metadata 固化为长期 fixture。
 
 因此当前仍为“无 D1 P0 blocker，truth-isolated 单 seed 接线通过，multi-seed P1 未关闭”。
+
+## 12. M 对 N 协同定位调研同步（2026-07-11）
+
+专项调研见 `subagent_reviews/D1_M_TO_N_COOPERATIVE_LOCALIZATION_REVIEW.md`，覆盖 12 篇主要论文和 Stone Soup、FilterPy、GTSAM、OpenCV 四个官方开源候选。
+
+对于一个高威胁目标由 3 架无人机共同观测的情况，D1 的默认思路是“共同估计时刻上的异步观测融合”，而不是强制三架严格同帧：
+
+```text
+各平台 measurement-time pose + bearing/range/bbox covariance
+-> NED/time normalization and OOSM propagation
+-> D2 confirms same canonical global_track_id
+-> D1 joint observation update or conservative CI track fusion
+-> GlobalTrack + covariance + geometric quality
+```
+
+两条标定良好且不平行的视线在理想条件下即可三角定位，第三架主要增加冗余、改善几何和抗遮挡能力。三条近似平行视线、过短基线或共享偏置仍会退化，因此必须使用 LOS 交会角、联合信息矩阵秩/条件数、重投影残差和平台位姿 covariance 判断质量。
+
+模块边界明确为：D1 负责观测时空标准化、位姿/观测不确定性传播及已关联状态的数值融合；D2 负责跨平台观测/局部航迹关联、canonical `global_track_id` 和 ID continuity。若 D2 不能唯一确认同一目标，D1 必须保持不融合，不能自行重绑定身份。同步到达或分波次拦截属于 D3/D7，D1 只发布预测状态、协方差和几何质量。
+
+调研阶段未新增 P0；其 P1 建议中的协同几何合同和最小 CI 数值原型已按下一节落地，真实三机 replay、D1/D2 双阶段 runtime 合同和离线开源 benchmark 仍保留，不改变既有 P2/P3 外部依赖安排。
+
+## 13. 中心化协同定位 P1 数值基础实现（2026-07-11）
+
+调研后的 D1-owned 最小基础已在独立 `cooperative.py` 路径实现，未改动
+`FusionAdapter.process()` 默认行为：
+
+- `ObserverLineage`、`CooperativeBearingObservation`、`CooperativeObservationGroup` 和
+  `CooperativeLocalizationSummary` 保留 center-owned canonical `global_track_id`、observer
+  lineage、平台位姿/传感器外参 covariance、measurement/arrival timestamp 和共同估计时刻。
+- `localize_bearing_observation_group()` 支持任意 observer 数量且至少两条有效 LOS，使用
+  NumPy bearing-ray weighted least squares，输出 pairwise 交会角、information rank/condition、
+  perpendicular/angular/weighted residual 和 geometry accept/reject reason。
+- 几何 helper 对重复 lineage、短基线、近共线、过大 measurement skew、缺失/非法
+  covariance、rank/condition 退化和残差超限保守拒绝；显式配置时可对缺失 covariance 使用
+  保守默认并标记 inflation。异步 bearing 按目标速度传播到共同估计时刻，并加入
+  process/timestamp covariance。
+- `covariance_intersection()` 支持 1/2/3/N 个 6-state NED estimate，先做共同时间 CV 传播，
+  再以最小 log-det CI 处理未知交叉相关；相同 message UUID 或完整 source lineage 不重复计数，
+  输出始终保留输入 canonical ID，不创建或重绑定 ID。
+
+构造性测试已覆盖良好三视角不劣于最佳双视角、退化拒绝、0.4 s 异步传播、1/2/3/N
+observer/source、duplicate 不重复收敛、CI 不比错误独立融合更自信及 mixed canonical ID
+拒绝。该结论仅是中心化 P1 数值基础，不表示 D2 跨平台关联、main/AirSim runtime、真实
+多 seed、部分共享 lineage、成员退出或分布式协同定位全链路已经完成。

@@ -460,8 +460,56 @@ D5 至少记录：
 - 本地 MOT 质量对小目标场景影响大；当前 D5 已提供 YOLOv8 frame adapter、ByteTrack/BoT-SORT 原生 tracker 请求、IoU fallback 和 per-stream MOT 状态隔离，且 AirSim 最小图像链已冒烟通过，但有效目标检测、native tracker ID、GPU/CPU 多帧预算和多 seed 标定仍未闭合。native 模式为避免 `persist=True` tracker 串流而按 stream 创建独立 model/tracker，资源占用随活跃 stream 数增长。
 - D5 输出只用于 D4/D6/D7 的证据、评估和上游复盘，不应被解释为自动处置命令。
 
+### 14.1 M 对 N 计划内多机锁定（合同已实现）
+
+专项调研见 `subagent_reviews/D5_M_TO_N_TERMINAL_MULTIVIEW_REVIEW.md`。当前主线继续使用中心航迹投影、像素马氏门控、本地 MOT 和跨视角稳定支持，不引入单一重型多视图框架替代现有合同。
+
+2026-07-11 已按 D3 `assignment_plan_v2` 名称实现只读消费：`coalition_id/version`、`member_role`、`wave_id`、`required_resource_count`、`coordination_mode`、arrival window、`plan_id/version` 和 activation state 均由 `Assignment -> TerminalAssociation` 保留，detect-to-GlobalTrack registration binding 也携带同一合同。多个已授权且已激活成员锁定同一中心拥有 `global_track_id`，在联盟/计划版本一致且资源数不超过 demand 时记为 `planned_cooperative_lock`，不再仅因 locked resource 数量大于 1 设置 duplicate。第四个超额资源、联盟外或版本不一致、resource scope 不符、未激活成员、单资源多本地锁定及 local-to-global 多重绑定仍形成 conflict/duplicate evidence。
+
+未激活 `reserve/retry` 的视觉候选不会被丢弃：D5 完成本资源/本相机投影与 MOT 配准后输出 `hold`，并记录原始视觉匹配状态、activation blocker 和 D7 visual PNG execution gate；默认 active primary wave-0 与 k=1 保持兼容。D5 不决定联盟、不裁减超额资源、不修改分配或全局 ID。
+
+2026-07-11 已补 `CoalitionVisualSummary`、纯函数 `summarize_coalition_visual_completion()` 和 `TerminalObservationBus.coalition_visual_summary()`。接口只读消费单联盟 D3 guidance bindings 与当前/历史 terminal associations，输出 `primary_required_count`、`primary_locked_resource_ids`、`primary_lock_complete`、`reserve_ready_resource_ids`、`coalition_visual_consensus`，并保留 `planned_cooperative_lock`、duplicate/over-demand、版本冲突和 excess resource 字段。D3 guidance binding 未直接暴露总需求数时，接口以该单联盟 binding 数量作为 `required_resource_count`，`primary_resource_count` 仍由 D3 合同提供。
+
+hybrid 默认稳定口径为：所有已授权 active primary 都必须在当前帧锁定，且每个 primary 至少连续 2 帧保持 execution lock，才设置 `primary_lock_complete=True` 和 `coalition_visual_consensus=True`。standby reserve 的本机几何/MOT 匹配可由 `hold + visual_match_decision_state=locked` 形成 `reserve_ready_resource_ids`，但不进入 consensus 或视觉 PNG 授权。resource/camera provenance 不一致、借用 bbox、无本机 local detection、计划/联盟版本冲突或联盟外执行 lock 均保守阻断。
+
+2026-07-11 真实 AirSim 集成暴露 `TerminalObservationBus` 历史污染：旧实现的 `cross_view_associations()` 遍历全部 `_observations`，导致旧 timestamp/旧 plan 的 lock 被解释为当前并发 duplicate，进而向 D3 提供持续错误风险。现已增加可选 `as_of_timestamp`、`max_age_s`、`plan_id`、`plan_version` 快照作用域；作用域模式先做时间与计划过滤，再按 resource 保留最新 timestamp 的同帧全部观测，最后才运行 local/global duplicate 和 coalition 合法性判断。无参数调用仍保留离线兼容行为，`CrossViewAssociation.metadata` 可审计 scope 与筛选数量。main 应在每个 decision frame 使用当前 frame timestamp、约 `1.5 * dt` freshness 和当前 plan identity。
+
+跨视角边界保持两层：已实现层只汇总各 resource-camera 独立完成的投影/MOT/锁定证据并解释联盟合法性；尚未实现层是带相机位姿/像素协方差的多视角 bearing 三角化、可观测度/PDOP 和融合协方差。同步帧可作为后续瞬时三角化输入；序贯帧必须按 measurement timestamp 运动补偿并膨胀协方差，历史支持不得冒充当前同步支持。OpenCV 是几何默认候选，ByteTrack 是本地 MOT 默认候选，BoT-SORT、ReST 和多视图 GLMB 只作为可插拔或研究对照。
+
+### 14.2 真实 AirSim M=5、N=2 检测/几何状态（2026-07-11）
+
+证据目录 `research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_cooperative_live_20260711` 使用 5 个主 ComputerVision 相机、2 个二级相机和 2 个 `Quadrotor1` actor。7 个相机均持续返回 640x480 Scene 图像，但 `simGetDetections` 在每个 9 帧 episode 的前 8 帧均为 0；仅部分 episode 的末帧由 `Secondary_Recon_1` 返回 1 个约 7x7 px 的 bbox。full-flow D5 输出为 32 `reacquire`、4 `ambiguous`、0 `locked`。
+
+D5 复核没有发现 bbox 解析或几何公式 bug。把唯一 bbox 与其真实来源相机 `Secondary_Recon_1:0` 的同帧外参配对后，`T002` 投影与 bbox center 误差约 0.09 px，几何关联正确选择 `T002`；该检测 `mot_history_length=1`，低于默认 2，因此 `ambiguous:mot_history_too_short` 是预期行为。日志中的 18-78 px 不是同相机标定残差：main runtime 在资源自有相机无检测时把全部 local tracks 作为 fallback，导致二级相机 bbox 被 4 个主资源用各自主相机模型重复评估。D5 只接受调用方提供的单 camera local-track batch，不能在缺少 resource-to-camera 映射时猜测或重绑来源。
+
+main/runtime 修复建议：主资源无本相机检测时返回空 local batch，不得 fallback 到其他相机；二级检测必须使用二级相机模型形成 recon/cross-view evidence。AirSim 侧在 spawn 后同时尝试 actor exact name 与 asset mesh filter `Quadrotor1*`，并在 filter、actor pose 或 camera pose 更新后增加渲染 warm-up，再采集计数。专项验证时可临时 `--save-images`，验证后恢复默认不保存 PNG。
+
+建议 main 修复 scope/warm-up 后运行：
+
+```bash
+python3 research_modules/airsim_runtime/run_blocks_sequence.py \
+  --sequence-id blocks_cv_m5_n2_filter_probe \
+  --cv-5v5 --resource-count 5 --target-count 2 --secondary-count 2 \
+  --enable-cooperative-demand --high-threat-resource-count 3 \
+  --cooperative-high-threat-target-count 1 \
+  --duration 8 --dt 0.5 \
+  --target-asset-name Quadrotor1 \
+  --target-detection-filter 'Quadrotor1*' \
+  --secondary-height-above-targets 50 \
+  --save-images
+
+jq -r '[.frame_index,.timestamp,.metadata.detection_count,
+  ([.metadata.detections[] | .camera_vehicle_name + ":" + (.count|tostring)] | join(","))]
+  | @tsv' \
+  research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_filter_probe/episode_006_full_flow/blocks_frames.jsonl
+```
+
+验收要求不是单个末帧偶发 detection，而是预期可见相机至少连续 2 帧 count>0；每条 terminal geometry record 必须同时记录且满足 `measurement_camera_id == projection_camera_id`。完成图像诊断后去掉 `--save-images`。
+
 P1 补齐状态：
 
+- 已完成 M-to-N 联盟视觉完成纯函数和 bus 薄封装，专项测试覆盖 hybrid 2+1、缺一个 primary、reserve-only、两帧稳定、版本冲突、跨相机 bbox 拒绝和 over-demand。
+- 已完成 cross-view 当前快照过滤，专项测试覆盖同资源跨帧不 duplicate、旧 plan 多资源 lock 不污染新 plan、同帧当前 plan 非授权多 lock 仍 duplicate、授权 coalition 同帧合法，以及无参数历史兼容；D5 全量 `127 passed`。
 - 已完成 D5 侧 AirSim CV replay 可写盘字段：projected pixel、bbox center、pixel error、Mahalanobis、gate pass、candidate margin、measurement age、friend conflict、selected pair、`duplicate_terminal_lock_risk` advisory、`recon_cue_used_count` 和 visual PNG advisory metadata。main/D6 若需要实际 JSONL/CSV sink，应在 runtime/D6 owned path 接入这些 D5 输出字段。
 - 已完成 D5 侧 multi-seed calibration readiness helper：`summarize_multiseed_calibration_readiness()` 对 `TerminalObservation` 和 `CrossViewAssociation` 做被动字段覆盖审计，输出每个 seed 的 `missing_required_fields`、`missing_recommended_fields`、source/backend counts、truth-label count、handoff/bbox-stability count 和 duplicate/friend conflict count。truth label 只作为离线 metadata 计数，不参与在线关联。
 - 已完成 D5 侧二级覆盖/漏斗诊断 helper：`summarize_secondary_visual_coverage_funnel()` 输出 `not_all_targets_visible`、`network_union_incomplete`、`no_global_binding`、`reacquire_not_grouped`、`stale_or_missing_recon_cue`、`projection_invalid`、`geometry_gate_rejected`、`stability_window_failed`、`secondary_detect_offline_only` 和 `registered_to_global_track` 断点计数，帮助 main/D4/D6 区分“二级相机看见了目标”“二级网络并集覆盖了目标”和“D5 已形成全局 ID 支持”。

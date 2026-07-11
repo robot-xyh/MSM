@@ -4,7 +4,7 @@
 **范围**: 对照 `subagent_reviews/D1_SENSOR_FUSION_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md`、`research_modules/d1_sensor_fusion` 源码和测试，审计共识算法、开源方案和当前实现差距。  
 **边界**: 本审计只覆盖离线科研仿真、数据合同、传感器观测、航迹融合和评估接口；不涉及真实飞控、硬件驱动、火控、毁伤或自动处置。
 
-**更新时间**: 2026-07-10。
+**更新时间**: 2026-07-11。
 
 ## 1. 总体结论
 
@@ -15,7 +15,7 @@ D1 当前已经实现了可运行的轻量主线：`SensorObservation -> NumPy E
 优先级建议已同步 `EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` 中的 D1 P0/P1 口径：
 
 - **P0**: 无运行级 P0 blocker；当前 NumPy EKF、传感器观测模型、延迟补偿、AirSim dry-run、`measurement_timestamp`/`arrival_timestamp`、协方差和 NED `GlobalTrack` 合同均作为持续回归基线维护。EVAL 确认的 D1 工程化 P0-A 已实现：FDIR-light、协方差上下界限制和时间戳不确定性建模已进入代码与接口回归；后续若真实多 seed/闭环样本发现未覆盖验收场景，按第 1.2 节的最小验收口径进入 P0 backlog。
-- **P1**: `TrackUncertaintySummary` 发布/导出、Blocks JSONL replay reader、可配置雷达协方差参数、source de-dup 基线、schema v1/legacy JSONL 兼容、covariance-required CSV reader/replay、latency/OOSM audit、raw replay latency/OOSM helper、轻量区域质量摘要、区域窗口/协方差增长 helper、`ReconCueSummary` 粗指向摘要、真实 CV bbox/camera/detection metadata 保真、covariance scale reason passthrough、secondary/mobile recon cue metadata 保真和嵌套 EO camera metadata replay 已完成；EVAL 确认的剩余 D1 P1 是 IMM/CV-CA-CT 多模型滤波、场景自适应协方差和 Track-to-Track 融合原型，另继续补更多 main/shared AirSim multi-seed CV detection fixture、D6 长期批量 schema、持续阈值和真实样本回归。2026-07-09 复核确认，D1 可读取真实 Blocks JSONL/CSV replay，并保留 multi-seed calibration 需要的 `measurement_timestamp`、`arrival_timestamp`、covariance、NED state、source support、latency/OOSM audit、区域质量摘要、区域窗口摘要、covariance scale reason 和二级/移动侦察相机 cue 字段；Stone Soup、FilterPy、MATLAB 等只作为对照或工程参考，不是当前 P0 依赖。
+- **P1**: `TrackUncertaintySummary`、replay/schema/governance、source de-dup、区域/窗口质量、`ReconCueSummary` 和真实 CV 字段保真均已完成。2026-07-11 又完成中心化协同定位数值基础：typed cooperative DTO/summary、2..N bearing-ray WLS、几何/时间/covariance 门控、共同估计时刻传播及最小 CI。剩余 D1 P1 是 IMM/CV-CA-CT、场景自适应协方差、D1/D2 association-to-fusion 接线、真实 AirSim multi-seed 协同 replay、D6 长期 schema/阈值和分布式全链路；Stone Soup、FilterPy、MATLAB 仍只作对照。
 - **P2**: 接入 Stone Soup/FilterPy/OpenCV/UKF/IMM 作为离线对照，不替换 NumPy fallback；ROS 2 `tf2/message_filters` 和真实 AirSim bus 直连只有在运行环境、topic schema 和 main/shared runtime 合同稳定后再评估。
 
 2026-07-08 补充复核：main runtime 已新增 P1 D4/D5 calibration sweep，并在 sweep 结束后自动生成 D6 标准报告 bundle。该能力属于 main/D6 集成层，不改变 D1 职责边界。D1 当前 P1 重点是保持 replay schema、measurement/arrival timestamp、covariance、latency/OOSM audit、区域质量/窗口摘要和二级侦察 cue 字段稳定，并继续补真实 AirSim multi-seed fixture 与阈值校准样本。
@@ -67,7 +67,7 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 | P0-A | 时间戳不确定性建模 | 已实现 `SensorObservation.timestamp_uncertainty_s` 标准化，并在观测 metadata、`GlobalTrack.metadata`、`TrackUncertaintySummary` 和 `SensorHealthSummary` 中导出 timing uncertainty | 已实现，保持双时间戳合同和 timing uncertainty 回归；若 D6 延迟报告无法消费，则作为 P0 backlog 补齐 | 注入 10-50 ms 时钟漂移时输出 timing uncertainty，并能关联误差变化曲线 |
 | P1 | IMM/CV-CA-CT 多模型滤波 | 当前 CV/EKF 主线可用；CV/CA/CT 模型集、IMM 权重、UKF/Stone Soup/FilterPy 后端仍未接入 | 作为 D1 P1 能力增强 backlog，先做 CV/CA/CT 或等价模型对照，不替换 NumPy fallback；Stone Soup/FilterPy/MATLAB 只作参考或 benchmark | 机动目标 replay/AirSim 样本中输出模型对照，机动 RMSE 或 NIS/连续性指标优于 CV-only 基线 |
 | P1 | 场景自适应协方差 | 已有距离/质量相关协方差、bbox confidence/occlusion 输入、低质量/遮挡 scale reason、replay passthrough 和雷达参数化；尚缺杂波、SNR、来源差异和延迟的完整动态 covariance scale rule | 作为 D1 P1 标定 backlog，保留现有 covariance-required replay/schema 已完成状态；MATLAB fusion 调参逻辑只作工程参考 | AirSim/replay 中稳定输出 covariance scale reason，并用多 seed 标定阈值 |
-| P1 | Track-to-Track 融合原型 | 已有 source lineage de-dup 基线；多二级节点 TrackSummary、未知相关性处理、重复计数抑制和协方差一致性原型尚未实现 | 作为 D1 P1 原型 backlog，先做离线/回放输入的 T2T 原型，不改变当前观测到航迹主线，也不把 Stone Soup Track Fusion 写成 P0 依赖 | 多二级节点输入不重复计数，保留 source lineage，融合后 covariance 保守一致，能输出对照日志 |
+| P1 | Track-to-Track 融合原型 | NumPy CI helper 已实现同 canonical ID、1..N 状态、共同时间传播、message UUID/完整 lineage 去重和保守 covariance；未接 D2/runtime 多节点输入 | D1-owned 最小数值原型已关闭；保留 D1/D2 双阶段合同、真实 replay、部分共享 lineage 和分布式共识为 P1 | 构造测试已满足不重复计数和 CI 不比错误独立融合更自信；真实多节点日志仍需验收 |
 
 ## 2. 按实现状态归类
 
@@ -88,6 +88,7 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 - `FusionQualityRegionWindowSummary`、`annotate_covariance_growth_rates()` 和 `summarize_region_quality_windows()` 已实现轻量窗口趋势，区分区域协方差增长、freshness 下降、source gap 与 latency/OOSM。
 - `ReconCueSummary` 已实现轻量侦察相机粗指向摘要，按全部 tracks 或指定 `coverage_cell` 子群输出协方差加权 `cue_position_ned`、`cue_covariance`、`active_target_ids`、measurement/arrival timestamp、可选二级/移动侦察 metadata 和基础诊断。
 - source lineage 去重基线已实现，可抑制同一 source/sequence/payload 经 relay 重复投递导致的重复更新。
+- 中心化协同定位 typed DTO、2..N bearing-ray WLS、几何质量摘要、共同时间传播和 NumPy CI 已作为独立 helper 实现；不改变 `FusionAdapter` 默认路径，也不执行 D2 关联。
 - `generate_truth(target_count=N)` 和 CLI `--drone-count N` 已按输入 N 运行，不把算法限制为 2v2 或 5v5；历史 2v2/5v5/3-target 仅作为 baseline 名称或样例。
 
 ### 2.2 部分实现
@@ -97,7 +98,7 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 - EO 无截图合同已实现，D1 只消费 bbox、相机元数据、时间戳和协方差；但未实现 OpenCV calibration、畸变模型、`solvePnP` 或 `projectPoints` 对照。
 - 合成 LiDAR 仅是 dry-run/replay 观测模型，不是 AirSim LiDAR plugin 或真实硬件桥。
 - `TrackUncertaintySummary` 是单航迹摘要；轻量 `FusionQualityRegionSummary`、`FusionQualityRegionWindowSummary` 和 `ReconCueSummary` 已按当前 track summary/track input 聚合。D6 批量日志 schema、真实多 seed 样本阈值、真实样本回归和更细 NIS 统计仍需后续补齐。
-- source lineage 去重只解决重复 payload；未知相关性的跨节点 Track-to-Track fusion、协方差交叉和相关性降权尚未实现。
+- source lineage 去重覆盖观测主线；独立 CI helper 已覆盖 message UUID/完整 lineage 重复和未知交叉相关保守融合。部分共享 lineage 建模、D2/runtime 接线和分布式共识仍未实现。
 - JSONL replay schema v1/legacy 兼容、真实 CV 字段保真和最小 CSV reader 已完成；更多 main/shared 真实 Blocks/CV multi-seed fixture 回归仍未完成。
 - 2026-07-08 已补强 CSV 缺省 schema 行的 v1/covariance 验证、嵌套 EO camera metadata 解析、真实 CV bbox/camera/detection metadata 字段保真、区域窗口/协方差增长 helper 和 Blocks calibration CSV 回归；更多 main/shared 真实 Blocks/CV multi-seed fixture 回归仍未完成。
 
@@ -109,7 +110,7 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 - D1 包内真实 AirSim ComputerVision/Blocks runtime 直连、`simGetDetections` 直接 adapter 未实现；这属于 P2 后置直连能力，当前 P1 只跟踪 D1 可消费的 Blocks/CV fixture 回归和字段合同。
 - OpenCV calibration、畸变校正、`solvePnP`、`projectPoints` 对照未实现。
 - 声学 TDOA/阵列主定位未实现，当前按计划只作为粗方位和类别辅助。
-- 多节点 Track-to-Track fusion、协方差交叉和 Stone Soup Track Fusion 对照未实现。
+- 多节点 D1/D2/runtime Track-to-Track 全链路和 Stone Soup Track Fusion 对照未实现；NumPy CI 数值基础已实现。
 
 ## 3. 逐项差距表
 
@@ -140,8 +141,8 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 | 协方差输出与航迹分级 | 已实现。输出 6x6 协方差、`a95_m`、`coarse/stable/handover`、NIS 通过率参与分级，并可导出 `TrackUncertaintySummary` 与轻量 `FusionQualityRegionSummary` | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/fusion.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/metrics.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/types.py` | 不适用 | 后续可继续对齐 D4/D6 长期窗口和批量日志字段 | P1 已完成基线 |
 | `TrackUncertaintySummary` / `FusionQualityRegionSummary` / `FusionQualityRegionWindowSummary` | 已实现 D1 单航迹摘要、`FusionAdapter.track_uncertainty_summaries()`、`FusionAdapter.region_quality_summaries()`、`annotate_covariance_growth_rates()` 和 `summarize_region_quality_windows()` 导出。字段包含 track IDs、协方差迹/a95、协方差增长率、等级、measurement age、source support、coverage cell、时间戳、source gap、stale track 数、窗口趋势和 latency/OOSM flags | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/types.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/fusion.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/quality.py`; `research_modules/d1_sensor_fusion/tests/test_interfaces.py` | 不适用 | 后续可继续对齐 D6 批量日志 schema、真实多 seed 阈值和更细 NIS 统计 | P1 已完成轻量基线 |
 | `ReconCueSummary` 侦察粗指向摘要 | 已实现。`summarize_recon_cue_from_tracks()` 可从 `GlobalTrack[]` 或 track-like dict 生成全部目标或指定 `coverage_cell` 的协方差加权 `cue_position_ned`/centroid、`cue_covariance`、`active_target_ids`、时间戳、可选二级/移动侦察 metadata 和 `track_count/stale_count/default_covariance_count` 诊断 | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/recon_cue.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/types.py`; `research_modules/d1_sensor_fusion/tests/test_recon_cue.py` | 不适用 | main/AirSim runtime 仍负责消费该摘要并控制二级侦察相机指向；D1 不修改 runtime | P1 已完成基线 |
-| 多传感器来源去重/相关性降权 | 已实现 source lineage 去重基线。相同 source/sequence/payload lineage 或 relay 重复投递不会重复更新同一观测 | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/types.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/fusion.py`; `research_modules/d1_sensor_fusion/tests/test_interfaces.py` | 不适用 | 未实现未知相关性跨节点 Track-to-Track fusion、协方差交叉或相关性降权模型 | P1 已完成基线 |
-| 航迹到航迹融合 / 协方差交叉 | 未实现。Stone Soup Track Fusion 仅在主流方案中列为候选 | `C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/compat.py` | 当前 D1 融合的是观测到航迹，不是多节点 Track-to-Track | 需要节点级 TrackSummary、相关性未知处理、融合权威规则 | P2 |
+| 多传感器来源去重/相关性降权 | 观测主线 source lineage 去重已实现；CI helper 额外按 message UUID 或完整 source lineage 去重，并用 CI 处理未知交叉相关 | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/types.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/fusion.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/cooperative.py`; `research_modules/d1_sensor_fusion/tests/test_cooperative_localization.py` | 不适用 | 部分 lineage overlap 的相关性建模和真实 relay/runtime 对照待补 | P1 中心化基础已完成 |
+| 航迹到航迹融合 / 协方差交叉 | 最小 NumPy CI 已实现 1..N 个 6-state NED estimate、共同时间 CV 传播、process/timing covariance 和 canonical ID 保持 | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/cooperative.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/types.py`; `research_modules/d1_sensor_fusion/tests/test_cooperative_localization.py` | 不适用 | D2 关联确认、runtime TrackSummary adapter、真实多 seed 和分布式共识未接 | P1 数值基础完成，集成待补 |
 | AirSim dry-run fake fixture | 已实现。可从 fake fixture 生成 radar/acoustic/eo/lidar `SensorObservation[]`，不连接真实 AirSim；fixture 已带 `d1.airsim_dry_run_fixture.v1` schema version 并拒绝 unsupported fixture schema | `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/airsim_dry_run.py`; `research_modules/d1_sensor_fusion/tests/test_airsim_dry_run.py`; `research_modules/d1_sensor_fusion/docs/AIRSIM_INTEGRATION_PLAN.md` | 不适用 | 需要继续与 shared/main 的 Blocks JSONL 输出保持回归一致 | P0 |
 | 共享 AirSim dry-run orchestrator 对接 | 已由共享模块复用 D1 dry-run 适配器；D1 侧合同可用 | `research_modules/airsim_dryrun/adapters.py`; `research_modules/airsim_dryrun/tests/test_dryrun_contracts.py` | 不适用 | 该模块不属于 D1；后续由 main 维护统一 runtime | P0 |
 | shared/main AirSim Blocks D1 replay 写出 | shared runtime 可从 Blocks frame 生成 `SensorObservation` 并写 `blocks_sensor_observations.jsonl`；D1 包内已能读取该 JSONL 并回放 `FusionAdapter` | `research_modules/airsim_runtime/adapters.py`; `research_modules/airsim_runtime/orchestrator.py`; `research_modules/d1_sensor_fusion/src/d1_sensor_fusion/replay.py`; `research_modules/d1_sensor_fusion/tests/test_airsim_dry_run.py` | 不适用 | 后续需继续跟随 schema 演进补更多真实输出回归样本 | P1 已完成基线 |
@@ -155,7 +156,7 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 
 1. **依赖与环境未固定**: Stone Soup、FilterPy、ROS 2、tf2、message_filters 和真实 AirSim runtime 都会引入外部环境约束。当前 D1 选择 NumPy fallback，保证仓库在无外部服务时可测试。
 2. **消息合同仍需继续演进**: D1 已有 replay schema v1、legacy Blocks JSONL 兼容和最小 CSV reader，但更多真实 detection 字段映射、D6 长期批量字段和长期回归样本仍需补齐。
-3. **算法升级需要对照场景**: UKF、IMM、Track-to-Track fusion、协方差交叉需要明确强非线性、高机动、多节点相关观测等触发场景，否则容易增加复杂度但不提升当前基线。
+3. **算法升级需要对照场景**: UKF、IMM、完整 Track-to-Track runtime 和外部 CI 后端仍需要强非线性、高机动、多节点相关观测基准；当前仅关闭依赖轻的中心化 WLS/CI 数值基础。
 4. **ROS/真实运行时不是 D1 当前职责边界**: D1 负责 `SensorObservation` 到 `GlobalTrack`，真实 AirSim/ROS topic、bag、tf tree 和 runtime orchestration 应由 main/shared 层提供。
 5. **安全边界**: D1 保持为传感器融合与态势估计模块，不输出控制、处置或授权动作，因此未接任何真实飞控/硬件/火控接口。
 
@@ -166,7 +167,7 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 - **传感器/坐标条件**: 真实或稳定仿真的相机内外参、畸变模型、AirSim detection 字段映射、actor ID 映射、统一时间戳来源和 WGS84/ENU 到 NED 的外部转换合同。
 - **数据合同条件**: `sensor_observations.jsonl` schema v1、legacy Blocks JSONL 兼容、最小 CSV reader、真实 CV 字段保真、轻量区域质量摘要、区域窗口摘要和 `ReconCueSummary` 粗指向摘要已落地；仍需 D6 可消费的长期批量摘要字段、真实多 seed 阈值和 coverage cell 规则细化。
 - **算法评估条件**: UKF/IMM/Stone Soup/FilterPy 对照场景、强非线性/高机动/多节点相关观测基准、误差门限和与 NumPy EKF fallback 的容差定义。
-- **多节点融合条件**: 节点级 TrackSummary、相关性未知处理策略、协方差交叉/Track-to-Track fusion 权威规则和 source lineage 之外的相关性降权模型。
+- **多节点融合条件**: typed state/CI 数值合同已具备；仍需 D2-confirmed 节点级 TrackSummary adapter、融合权威规则、部分共享 lineage 模型、runtime 日志和分布式共识。
 
 ## 6. 对后续模块的影响
 
@@ -235,7 +236,7 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 6. **真实样本区域/质量阈值**: 用带 `coverage_cell` 的多 seed 样本校准区域窗口、freshness/source-gap、协方差增长率和 handover readiness 的持续阈值。
 7. **IMM/CV-CA-CT 多模型滤波**: 按 EVAL P1 同步为三个月内能力增强项，先做 CV/CA/CT 或等价模型对照和机动目标 replay/AirSim 评估，不替换当前 NumPy CV/EKF fallback；Stone Soup、FilterPy、MATLAB 只作为 benchmark 或调参参考。
 8. **场景自适应协方差**: 在现有距离/质量协方差、bbox confidence/occlusion 输入和雷达参数化基础上，补遮挡、杂波、SNR、来源差异、延迟等 covariance scale rule，并在 replay/AirSim 输出 scale reason。
-9. **Track-to-Track 融合原型**: 按 EVAL P1 同步为多二级/分布式输入的离线原型，重点验证 source lineage、重复计数抑制和协方差一致性；完整外部库融合后端仍按后续对照收益再评估。
+9. **Track-to-Track 融合原型**: 最小 NumPy CI、source/message 去重、共同时间传播和协方差保守性测试已完成；下一步是 D2-confirmed adapter、真实多节点 replay、成员退出和部分共享 lineage，完整外部库后端仍按收益评估。
 
 ### P2: 开源库和算法对照
 
@@ -257,7 +258,7 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 | expected latency/OOSM health | 字段和判定基线已关闭 | 总/非预期 OOSM、期望延迟、容差、均值/最大值和超限率已导出 | 按真实 radar/acoustic/EO 延迟分布校准预算 |
 | Blocks/CV JSONL/CSV fixture | 基础 P1 已关闭 | 静态 fixture 保留双时间戳、协方差、NED、coverage 和 provenance | 扩充真实 camera/bbox/遮挡、多 seed fixture |
 
-当前无 D1 P0 blocker。剩余 P1 不再是字段缺失，而是 main runtime 接线、真实多 seed 阈值治理、视觉 fixture 扩充、D6 长期趋势，以及原 GAP 中保留的 IMM/场景自适应协方差/Track-to-Track 研究项。Stone Soup、FilterPy 仍未引入。
+当前无 D1 P0 blocker。剩余 P1 不再包含最小协同 DTO/WLS/CI 字段和数值 helper，而是 main/D2 runtime 接线、真实多 seed 阈值治理、视觉/协同 fixture、D6 长期趋势、IMM/场景自适应协方差和分布式 Track-to-Track 全链路。Stone Soup、FilterPy 仍未引入。
 
 ## 9. 2026-07-11 Truth-Isolated 5v5 证据状态
 
@@ -275,3 +276,16 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 因此本轮只更新证据状态，不关闭 D1 的真实多 seed、长时间窗口、sensor-specific latency、
 故障注入负例、D6 长期 schema 和真实 Blocks/CV fixture P1。尤其不得把 raw OOSM rate
 直接解释为 FDIR 隔离建议或 D4 主动降级条件。
+
+## 10. M 对 N 协同定位 P0/P1 状态（2026-07-11）
+
+文献与开源证据详见 `D1_M_TO_N_COOPERATIVE_LOCALIZATION_REVIEW.md`。本节只增加 P0/P1 现状，不改既有 P2/P3 外部库接入条目。
+
+- **P0**：无新增 blocker。双时间戳、NED、观测/航迹 covariance、source lineage 去重和 canonical `global_track_id` 禁止本地改写仍为硬回归。
+- **P1-协同几何质量 D1-owned 基础完成**：typed DTO/summary 已输出共同估计时刻、平台位姿/外参 covariance、measurement skew、LOS 交会角、联合信息矩阵秩/条件数、bearing residual、observer lineage 和 accept/reject reason；三架平台数量仍不得直接解释为 `handover` 就绪。
+- **P1-异步三机构造基准完成，真实 replay 未完成**：单元测试覆盖 1/2/3/N observer、良好三视角、退化几何和 0.4 s 异步传播；near-synchronous/range、机动、遮挡、节点退出、AirSim 多 seed 及 RMSE/NIS/NEES consistency 仍缺。
+- **P1-D1/D2 合同**：D2 应先确认 local TrackSummary 与 canonical `global_track_id` 的关联，D1 再进行数值 Track-to-Track 融合；当前尚无该双阶段合同和拒绝误融合事件。D1 不得因三角化结果自行创建替代身份。
+- **P1-保守 Track-to-Track 数值原型完成**：NumPy CI 支持 1/2/3/N source、共同时间 CV 传播、process/timing covariance、message UUID/完整 lineage 去重并保持 canonical ID；已验证不比错误独立融合更自信。部分共享 lineage、D2/runtime adapter、成员退出 replay 和 Stone Soup 对照仍待补。
+- **P1-到达时序边界**：D1 不要求三机严格同时观测或同时到达拦截点；必须按 measurement time 传播到共同估计时刻并报告 covariance growth。同步/分波次拦截决策属于 D3/D7。
+
+P1 最小验收：良好几何下三机融合不劣于最佳双机；退化几何必须增大 covariance 或拒绝融合；relay 重发不改变 posterior；未知相关性融合保持保守；节点从 3 降到 2/1 时航迹连续且质量显式下降；在线链路不使用 truth/actor ID。

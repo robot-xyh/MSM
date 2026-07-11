@@ -2,14 +2,14 @@
 
 **定位**：维护稳定的 `global_track_id`，在目标交叉、密集编队、漏检、遮挡和虚警条件下抑制 ID Switch。
 **边界**：本文只讨论科研仿真、离线回放、多目标跟踪、数据关联、状态机和指标记录，不包含真实飞控、火控、毁伤、自动处置或绕过人工授权的流程。
-**当前代码口径**：已落地 GNN/Hungarian、二维常速度 Kalman fallback、Track 状态机、风险与质量字段、D1/AirSim replay adapter，以及 P1 replay governance：在线 truth/actor identity isolation、匿名 detection ID、逐帧 association log v2、risk profile/version、独立 offline label evaluator、M-of-N 初始化、false-track、NIS/NEES、gate sensitivity 和 crossing/dense/漏检/虚警 5v5 fixture。JPDA/MHT 是可执行研究对照；BP、SORT/ByteTrack-style fallback、IMM/EKF/UKF、Stone Soup、FilterPy 仍是未来对照或 adapter 计划。
+**当前代码口径**：已落地 GNN/Hungarian、二维常速度 Kalman fallback、Track 状态机、风险与质量字段、D1/AirSim replay adapter，以及 P1 replay governance：在线 truth/actor identity isolation、匿名 detection ID、逐帧 association log v2、risk profile/version、独立 offline label evaluator、M-of-N 初始化、false-track、NIS/NEES、gate sensitivity 和 crossing/dense/漏检/虚警 5v5 fixture。M 对 N 已新增独立 6D NED source-track 合同、公共时刻 track-to-track Hungarian、canonical multi-source registry、lineage 防重、融合请求和 offline cross-node metrics；数值 CI/相关融合仍归 D1。JPDA/MHT 是可执行研究对照；BP、SORT/ByteTrack-style fallback、IMM/EKF/UKF、Stone Soup、FilterPy 仍是未来对照或 adapter 计划。
 
 ---
 
 ## 0. P0/P1 缺口快照
 
 - **P0**：无 P0 blocker。GNN/Hungarian、显式 `id_switch_count`、`track_continuity`、risk summary、replay helper、按输入集合长度运行、航迹质量评分、运动一致性约束和 quality-aware gate baseline 已是当前主线并保持回归。
-- **P1 已闭合的模块接口**：online/offline truth 分离、逐帧 association log、profile version、M-of-N/false-track、NIS/NEES 和组合 5v5 fixture。
+- **P1 已闭合的模块接口**：online/offline truth 分离、逐帧 association log、profile version、M-of-N/false-track、NIS/NEES、组合 5v5 fixture，以及中心化 cross-node canonical registry 基础。
 - **P1 剩余项**：真实 5v5 AirSim 多 seed 数据生产与 D6 标定、完整 adaptive gate 和 JPDA 同 seed/同预算对照。
 - **main/D6 最新状态**：5v5 60-case 和 2v2 10-seed 已证明 AirSim 批量编排及 D6 聚合可运行，但前者是 D4/D5 覆盖/降级专项，后者是 D7 拦截专项；两者都不是 D2 dense/crossing 真值回放，不能替代逐帧 association log、离线标签和阈值版本数据集。
 - **2026-07-11 真实短 episode 证据**：main 在线已强制 `truth_id=None`，D2 -> D3 改为消费 D2 state/covariance/quality 和中心 `global_track_id`，D2 governance 事件已进入 D6。真实 5v5 短 episode 的 main-bus `d2_hard_risk_frame_rate=0.0`，仅表示该短运行没有在线 hard-risk frame；truth-based IDSW/continuity 在线 unavailable，必须用隔离的 offline truth labels 评分，多 seed 仍未闭合。
@@ -352,3 +352,20 @@ PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_da
 - SORT paper: <https://arxiv.org/abs/1602.00763>
 - Deep SORT paper: <https://arxiv.org/abs/1703.07402>
 - py-motmetrics: <https://github.com/cheind/py-motmetrics>
+
+## 13. M 对 N 协同拦截中的 D2 扩展边界
+
+专项文献和开源审计见 `D2_M_TO_N_TRACK_FUSION_REVIEW.md`。该调研确认：当三个拦截节点共同观测同一个高威胁目标时，D2 面对的是“一个全局目标、多个来源航迹”，不是三个目标。D3 的 `k_j=3` 是资源需求，不能反向复制 D2 `global_track_id`。
+
+当前 P1 基础按两个阶段处理：
+
+```text
+跨节点 local-track 对应
+  -> 公共信息/未知互相关治理
+  -> CI 或已知交叉协方差融合
+  -> canonical global_track_id 多源 binding
+```
+
+成熟默认路线是公共时刻预测、track-to-track 马氏门控、低歧义 GNN/Hungarian、未知互相关 CI 请求和中心规范身份注册。JPDA/MHT 用于跨节点对应歧义，GCI/AA/labeled-RFS 用于离线研究对照；它们不能替代来源谱系和重复消息治理。
+
+当前模块已实现 `SourceTrackSummary`、公共时刻传播、6D covariance-aware cost/gate、按 source Hungarian、lineage/payload/stale 防重、多源 canonical binding/history、exact/unknown/duplicate 决策，以及 online/offline 隔离指标。unknown correlation 只生成 CI request，D2 不计算数值 CI；尚缺 D1 融合 posterior 回写、高歧义多帧 JPDA/MHT、owner failover、fusion NEES/ANEES 和通信成本标定。现有 detection-to-track GNN/Hungarian P0 主线未改动。Stone Soup 仍只作为隔离 benchmark。

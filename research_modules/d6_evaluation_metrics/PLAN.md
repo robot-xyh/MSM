@@ -162,8 +162,8 @@ missed_detection_rate = FN / (TP + FN)
 
 当前实现来源：
 
-- `TrackRecord.truth_id is not None` 作为 truth-matched detection。
-- `TrackRecord.truth_id is None` 和 `EventRecord(event_type="false_alarm")` 计入 false alarm。
+- 落入 `truth_timestamps` 的 `TrackRecord.truth_id + timestamp` 或显式 offline match/miss 事件构成离线配对裁决；仅有 truth opportunity 列表不足以使指标可用。
+- `TrackRecord.truth_id is None` 的在线隔离航迹不自动计 false alarm；只有离线裁决为 truth-pair 集合外的带标签检测才计虚警。
 - `truth_summary.truth_timestamps` 或 `total_truth_opportunities` 定义真值机会数。
 
 ### 3.3 跟踪指标
@@ -416,7 +416,7 @@ P0/P1 状态：
 - main runtime P1 D4/D5 calibration sweep 已自动调用 D6 `AirSimCalibrationReportGenerator` 生成标准 records/summary/Markdown bundle；D6 当前重点是保持多 seed 自动汇总口径稳定，沉淀 coverage/funnel/gimbal、projection/gate/stable registration、not-registered、D7 guidance reject 和 `trend_key/evidence_path` 长期趋势，统计 active degradation precision，并按真实 `drone_count/resource_count/target_count/camera_count` 做 actual scale 分组。
 - 多 seed、5v5/N-v-N 和非默认 episode 需要继续保持 `metric_scope=execution/contract` 双口径，正式指标采用执行后 metrics，contract metrics 仅用于诊断；D6 已能直接读取两类 main bus metrics JSON，报告分组已按 `metric_scope + seed + scenario_group + scale` 实现，不从场景名推断规模，并在 metadata/Markdown 中保留 reject reason 分布。
 
-2026-07-11 D6 owner 本轮验收结论：D6 全量测试为 `57 passed`。execution/contract 分离、各自 evidence path、拦截证据 availability gate、read-only episode 的 `unavailable` 处理、cross-seed aggregate、严格 paired comparison、二级生命周期、D5 YOLO/MOT 核心预算、四导引律同 seed 报告、D1-D3 governance 和场景库接口均已完成。现有 2v2 10-seed execution 结果为 `18/20`；该结果用于证明报告链路和统计口径，不把 D6 变成控制模块。后续只做真实多 seed 写盘、CI 接线、schema 回归和新场景数据验收。
+2026-07-11 D6 owner 本轮验收结论：D6 全量测试为 `67 passed`。execution/contract 分离、各自 evidence path、拦截证据 availability gate、truth-gated detection、read-only episode 的 `unavailable` 处理、cross-seed aggregate、严格 paired comparison、二级生命周期、D5 YOLO/MOT 核心预算、四导引律同 seed 报告、D1-D3 governance、场景库接口、M 对 N 锁定口径和 replan lifecycle 聚合均已完成。现有 2v2 10-seed execution 结果为 `18/20`；该结果用于证明报告链路和统计口径，不把 D6 变成控制模块。后续只做真实多 seed 写盘、CI 接线、schema 回归和新场景数据验收。
 
 ## 6. 未实现的开源/外部项
 
@@ -459,6 +459,14 @@ p05 / p95
 偏态或长尾指标，例如 `id_switch_count`、`constraint_violation_count`、`terminal_switch_reject_count`，在正式结论中仍需要 bootstrap 或非参数方法复核。当前实现先满足回归和工程比较。
 
 ## 8. P1 下一步
+
+### 2026-07-11 M 对 N 评估框架
+
+专项框架见 `subagent_reviews/D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md`。D6 将四条研究路线 `independent/simultaneous/sequential/hybrid_primary_reserve` 按中心正常、二级接管、完全无中心三个层级评估，并覆盖几何退化、时间同步、通信异常和成员失效。所有新增指标按 `frame/member/wave/coalition-version/target-episode/episode/batch` 分层聚合，继续区分 `unavailable/null`、证据完整的真实 `0` 和 `not_applicable`。
+
+2026-07-11 已冻结并实现 `TargetDemandRecord/CoalitionRecord/ArrivalRecord`，扩展 assignment/terminal coalition/member 字段，接入 JSONL loader/writer、`EpisodeMetrics`、episode CSV、batch summary 和 Markdown。已实现 demand/unmet slots、formation/reconfiguration、arrival/wave/hybrid、geometry rejection、canonical duplication/cross-node IDSW/common-information rejection、planned/authorized/erroneous lock、same-resource continuity、成员生命周期、通信预算和安全聚合；既有 RMSE/NIS/NEES 指标继续复用 track/governance 路径。探测 POD/miss/FAR 现同时要求 truth opportunity 与离线 match/miss 配对裁决；仅有 truth 列表或 truthless center tracks 时统一 `None/unavailable`。
+
+`duplicate_terminal_lock_count` 保持通用同帧多资源观测计数，不再被错误锁覆盖；`erroneous_duplicate_lock_count` 仅计 `k=1`、版本冲突和超需求。规范 `center_replan_request_created/deduplicated/ack_no_change/applied/expired` 事件已接入请求数、去重数、no-change、applied、expired、pending dwell 与收敛时间；缺事件为 unavailable。当前剩余 P1 是由 D3/main/runtime 按合同写出真实多 seed M 对 N/replan evidence，并完成四路线 x 三中心层级实验矩阵。第 9 节既有 P2 与其中 SCRIMMAGE P3 条目保持不变。
 
 ### 2026-07-11 四导引律证据边界
 

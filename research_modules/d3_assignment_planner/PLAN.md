@@ -41,7 +41,9 @@ D3 不负责：
 - `decision_state`、`changed`、`last_changed_at`。
 - `source_node_id`、`target_node_id`、`link_type`、`stale_after_s`。
 
-`AssignmentPlanner` 内部记录最新 `plan_id/version`。首次调用允许 `previous_plan=None` 并生成 version 1；一旦 planner 记住 active plan，后续调用必须显式传入该 active plan。缺失时抛出 `StalePlanError(reason="previous_plan_required")`，并携带 `latest_plan_id/latest_version`；旧 `previous_plan`、旧 plan id 或不匹配的 `expected_previous_version` 继续按原 reason 拒绝。因此 active version 不会因省略 `previous_plan` 回退到 1。planner 实例对应单个 episode，新 episode 必须由 main 创建新实例，不提供隐式 reset。
+`AssignmentPlanner` 内部只记录已发布的最新 `plan_id/version`。首次调用允许 `previous_plan=None` 并生成 version 1；`plan(..., publish=False)` 生成的候选不推进 latest，审核或 owner/activation 盖章后由 `publish_plan(...)` 显式发布。已发布 active plan 后，后续调用必须显式传入该 active identity；缺失、旧版本、旧 id 或 `expected_previous_version` 不匹配均按既有 reason 拒绝。
+
+计划 identity 由 `AssignmentPlan.execution_signature()` 驱动。签名覆盖资源-目标绑定、coalition identity/state/member、role、wave、到达窗口、owner 和 secondary activation/lease/epoch 等可执行语义。同签名刷新保留旧 `plan_id/version/created_at`、`identity_created_at_s` 和 assignment `plan_version`，并返回 `changed=False`；每次 `plan()` 都在 plan/assignment metadata 写本轮 `last_evaluated_at_s`。签名变化才推进一次，并把 identity creation 与 last evaluation 同时更新为本轮 timestamp。`forced_replan=True` 在同签名时返回 `replan_ack_no_change` 且只刷新活性时间，真正变化时返回 `replan_applied`，供 main 集成 decision state/metadata；record/evidence/binding 发布快照均透传两个时间，binding stale/expiry 以最后评估时间为基准，旧手工计划回退到 `created_at`。
 
 `PlannerConfig.human_authorization_state` 当前会直接写入 `AssignmentPlan.human_authorization_state`，并同步记录到 `metadata["configured_human_authorization_state"]` 和 `metadata["effective_human_authorization_state"]`。这允许 main runtime 在仿真中使用 `"recorded"` 等记录态授权，而不是让 D3 固定输出 `"required"`。
 
@@ -73,6 +75,8 @@ and change_count <= max_changes_per_window
 - `accepted_gain_and_dwell`：收益、驻留时间和变更限制均满足。
 - `accepted_previous_infeasible`：旧计划在当前矩阵中不可行，允许绕过迟滞接受候选。
 - `accepted_high_threat_release`：候选计划减少高威胁未分配目标时，允许带原因记录地释放迟滞。
+- `replan_ack_no_change`：forced replan 已处理，但执行签名未变化，计划 identity 不推进。
+- `replan_applied`：forced replan 改变执行签名，计划 identity 推进一次。
 
 迟滞结果会写入 plan metadata 和 D6 `AssignmentRecord`：`hysteresis_state`、`hysteresis_reason`、`hysteresis_reasons`、`hysteresis_release_reason`、`hysteresis_dwell_time_s`、`hysteresis_min_dwell_s`、`hysteresis_delta`、收益/驻留/变更限制布尔值、candidate change count，以及高威胁 release 前后的未分配计数。这样 D6 可以解释一次 hold 或 release 是由收益不足、min dwell、change limit、旧边不可行还是高威胁保护触发。
 
@@ -134,24 +138,24 @@ D3 已实现以下 helper：
 - `summarize_terminal_feedback_calibration(...)`：输入多 seed assignment records/feedback records，输出 duplicate/friend/fov/geometry reject 计数，以及 cost/hysteresis 调参建议；该 helper 只给建议，不自动替换默认 `CostWeights`、`PlannerConfig.delta/min_dwell/max_changes_per_window/reassignment_switch_penalty`。
 - `AirSimDryRunAssignmentAdapter`：接收 synthetic AirSim-style dict/object，不 import AirSim，不控制 Blocks runtime。
 
-## 3. 部分实现：Min-Cost Flow / OR-Tools
+## 3. Optional Benchmark：Min-Cost Flow / OR-Tools
 
-当前 `MinCostFlowAssignmentSolver` 是预留接口，不是可运行求解器：
+当前 `MinCostFlowAssignmentSolver` 是可选同输入 benchmark，不是默认 planner 后端：
 
 - 文件存在于 `src/d3_assignment_planner/min_cost_flow.py`。
-- `solve()` 会显式抛出 `NotImplementedError`。
-- `tests/test_min_cost_flow.py` 验证错误信息，避免调用方误以为 OR-Tools 后端已经接入。
+- 安装 `ortools` 时，`solve()` 使用 `SimpleMinCostFlow` 求一对一 optional assignment 对照。
+- 未安装时抛 `OrToolsUnavailableError`；测试同时覆盖明确 unavailable 和 installed-only skip 路径。
+- `ortools` 不进入默认 requirements，`AssignmentPlanner` 不自动选择该 benchmark。
 
-尚未接入 OR-Tools 的原因：
+仍不把 OR-Tools 作为默认路径的原因：
 
-- 当前主线是一对一 optional assignment，Hungarian 已能表达中心化 baseline 和非等量 M/N 场景。
-- OR-Tools 依赖未纳入 D3 默认测试环境，贸然加入会影响轻量回归。
-- 复杂约束 schema 尚未固定，包括资源容量、目标需求、备份资源、分组配额、禁配边、时间展开网络和整数代价缩放。
-- 当前主线剩余风险集中在真实多 seed/N 规模校准和 D5 feedback 权重阈值标定；D3 已把 current-plan owner/version/source、cost gap 和矩阵规模字段导出到 D6 assignment records，过早实现最小费用流会先增加建模复杂度，未必提升当前闭环能力。
+- `k_j=1` 和 demand-slot 高频 baseline 已由 SciPy Hungarian/fallback 覆盖。
+- flow benchmark 当前只验证同输入一对一成本，不表达 coalition 原子启用、角色、波次或复杂同步逻辑。
+- 更强约束应由 CP-SAT/MILP 小规模参考模型验证，不应把 flow benchmark 误称为完整 coalition solver。
 
 计划策略：
 
-- P1 按既定优先级实现最小可运行的 optional OR-Tools 对照：仅在同一组一对一输入上输出 Hungarian 与 min-cost-flow 计划、成本和求解耗时，不替换默认 Hungarian 主线。
+- P1 done：最小可运行 optional OR-Tools 同输入对照已实现，不替换默认 Hungarian 主线。
 - 无 OR-Tools 环境仍保持 Hungarian/fallback 测试通过。
 - 容量、备份资源、多窗口、区域配额和预测性滚动仍属于 P2/P3 复杂约束，不在当前 P1 对照中展开。
 
@@ -273,8 +277,8 @@ P1 集成时，main 应保证：
 - 完整动态威胁评估：在现有可解释 baseline 上加入保护区、目标类别、资源状态和 mission outcome 标定，保留 baseline 对照。
 - 时间窗口硬约束校准：覆盖到达时间、多窗口、closed/not-yet-open edge 和 reject reason 聚合，不重复实现已有单窗口拒绝 baseline。
 - 二级 active plan runtime 验证：D3 takeover、same-owner continuation 和 current-binding 合同已完成；main/D4 需在 episode bus 调用两个 helper并验证 lease 续期、中心恢复与多 seed。
-- OR-Tools Min-Cost Flow 对照：按既定 P1 优先级实现 optional、同输入的一对一对照，默认仍为 Hungarian；复杂容量/备份/配额保持 P2/P3。
-- 合同保持回归：维持 active-plan `previous_plan` 必填、solve 前 switch penalty、D5/D7 禁止本地 rebind、secondary current/lease/owner gate 和 D6 profile schema。当前 D3 全量测试基线为 `84 passed`。
+- OR-Tools Min-Cost Flow 对照 done：optional、同输入的一对一 benchmark 已实现，默认仍为 Hungarian；复杂容量/备份/配额保持 P2/P3。
+- 合同保持回归：维持 active-plan `previous_plan` 必填、solve 前 switch penalty、D5/D7 禁止本地 rebind、secondary current/lease/owner gate 和 D6 profile schema；schema v2/M-to-N 回归由 `test_m_to_n_demand_slots.py` 覆盖。
 
 ### P2
 
@@ -287,3 +291,40 @@ P1 集成时，main 应保证：
 python3 -m pytest -q research_modules/d3_assignment_planner/tests
 git diff --check -- research_modules/d3_assignment_planner subagent_reviews/D3_*
 ```
+
+## 9. M 对 N 联盟分配研究计划补充（2026-07-11）
+
+文献与开源审计见 `subagent_reviews/D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md`。schema v2 与 demand-slot baseline 已于 2026-07-11 实现；本节同步实现状态，不改变既有 P2/P3 范围。
+
+### 9.1 问题定义修正
+
+既有“非等量 N/M”仍是一对一 optional assignment，只说明目标数和资源数可以不相等。新增 M 对 N 能力指目标 `j` 有资源需求 `k_j`；高威胁基准为 `k_j=3`。后续方案必须区分：
+
+- `k_j=1`: 继续使用当前 Hungarian 默认主线。
+- `k_j>1`: 形成版本化 coalition，并显式记录 required/assigned/shortfall，禁止把部分联盟记为任务完成。
+- 合法 coalition multiplicity 不得计入 `duplicate_assignment_count`；异常超额、同一资源跨联盟冲突仍需记录。
+
+### 9.2 P1 实现状态与后续顺序
+
+1. done：`TargetDemand`、`CoalitionPlan`、成员 role/wave/window、demand summary 和 `AssignmentPlan schema v2` 合同已冻结并实现；`primary_resource_count` 接收 main `--cooperative-primary-count`，校验范围为 `1..k_j`。
+2. done：`hungarian_demand_slots` 展开 target slots，按 threat penalty 优先 admission；不足或能力不匹配时整目标剔除并重解，不发布部分 executable assignment。
+3. done：迟滞、change count、switch penalty 和 reassign export 使用稳定 set/signature；成员、角色、窗口或 demand 模板变化递增 coalition version。
+4. done：D7 multi-binding 与 coalition-aware duplicate 语义已实现；只有 committed/current coalition 可 active，合法 `<=k_j` multiplicity 不计异常。
+5. done：OR-Tools Min-Cost Flow 已成为 optional import 的同输入 benchmark，不进入默认 requirements 或默认 planner。
+6. pending：用 OR-Tools CP-SAT/Pyomo/PuLP 建小规模全局参考模型，对比 demand-slot admission 的最优差距；复杂同步动力学、committed prefix 和 reserve 反馈激活仍属后续研究。
+7. pending：在 main/D6 集成中比较 `simultaneous 3`、`sequential 1+1+1` 和可配置 primary/reserve 的 hybrid（默认 `2+1`）到达离散度、wave interval、shortfall 和 coalition churn。
+
+### 9.3 跨模块输入与输出边界
+
+- D1/D2 提供航迹状态、协方差和可达时间相关的不确定度，不由 D3 实施协同定位。
+- D5 提供多视角一致性和观测几何证据，不允许改写 `global_track_id`。
+- D7 提供成员 ETA/可达性并执行具体同步或波次导引；D3 只发布角色和目标时间窗。
+- D4 在中心失效时负责 coalition 协商和成员退出后的重构；D3 提供最新中心 coalition plan 作为基线。
+- D6 区分合法多资源 coalition 和 duplicate assignment，并评估 demand satisfaction、arrival dispersion、wave interval 和 coalition churn。
+
+### 9.4 P0/P1 状态
+
+- **P0**: 当前无新增 blocker。现有 `k_j=1` Hungarian、plan version、stale rejection、迟滞和 `global_track_id` 约束保持回归。
+- **P1 done**: `target_demand=k_j`、可配置 `primary_resource_count`、全有或全无 admission、成员角色、simultaneous/sequential/hybrid 波次、coalition version、coalition-aware duplicate、D7 multi-binding 和 demand summary 已实现并单测。
+- **P1 部分完成**: OR-Tools flow 同输入 benchmark 已实现为 optional import；当前环境未安装时测试明确 skip/unavailable。
+- **P1/P2 remaining**: CP-SAT/MILP 全局参考、复杂同步动力学、committed prefix/reserve feedback policy、跨模块 D6 指标接线和 AirSim 多 seed 验证。

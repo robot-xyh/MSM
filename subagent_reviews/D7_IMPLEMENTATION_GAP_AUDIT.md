@@ -143,3 +143,16 @@ D7 当前已经实现可测试的二维位置 PN/PNG 几何核、中段雷达/�
 - `research_modules/d7_proportional_guidance/PLAN.md`
 - `research_modules/d7_proportional_guidance/png_guidance_delivery/README.md`
 - `research_modules/airsim_runtime/intercept.py`
+
+## M 对 N 协同导引 P0/P1 复核（2026-07-11）
+
+依据 `D7_M_TO_N_COOPERATIVE_GUIDANCE_REVIEW.md` 的 12 篇主要论文和 5 个开源候选审计，D7 已实现中心化 coalition 合同的成员级执行门控，但仍未实现 impact-time consensus、终端扇区协调或成员间避碰控制律。不得把版本/时间窗 gate 或多个独立 PN pair 称为完整协同导引。
+
+- **P0：无新增 blocker。** N-pair PN/PNG、D3/D4/D5 gate、SimpleFlight 消费链和 k=1 合同保持回归；D7 继续不分配、不授权、不改写 `global_track_id`，也未修改 `png_guidance_delivery` 核心公式。
+- **P1 done：中心化 coalition 合同门控。** binding/runtime 已携带 coalition/version、role、wave、coordination mode、arrival window 和 activation/version；所有 coalition 成员要求本资源 D5 locked、D5 plan/track/coalition version 一致及 coalition visual completion。测试覆盖 T001 两个 primary 独立切换、T002 k=1、D4 replan/pending 与 no-change ack、standby reserve 视觉匹配阻断/新版本激活、visual completion 缺失/未完成和版本冲突。row/summary 明确保留 `terminal_contract_allowed`、`visual_png_switch(_count)` 与拒绝原因。
+- **P1：协同控制律与基准缺口。** 仍需研究独立 PN、同步 ITCG、序贯和混合主备四种策略；D7 不拥有联盟形成、成员选择、波次授权或原子联盟重构。
+- **P1：终端安全缺口。** 同步到达必须增加 terminal sector/impact angle、成员最小间距、碰撞风险、命令饱和和 FOV 丢失评价；time-to-go consensus 本身不能证明安全。
+- **P1：通信与失效缺口。** 需要比较 leader/中心、二级节点和分布式邻居通信，在时延、间歇通信、成员退出和版本失配下的到达误差与保守退出行为。
+- **P1：开源实现缺口。** 未发现同时具备协同到达、多旋翼模型、避碰、清晰许可证和自动测试的成熟库。许可证明确的 MATLAB 候选仅支持单拦截器 ITCG，其余协同候选不可直接复制。
+
+原有 P2/P3 项保持不变。

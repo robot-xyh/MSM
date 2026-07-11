@@ -297,7 +297,7 @@ schema/version 字段，仍需更长 episode 和 D6 批量 schema 审计。
 
 - `PLAN.md`: 本实施计划。
 - Python 源码：数据结构、运动模型、观测模型、NumPy EKF、融合适配器、dry-run adapter、JSONL replay、仿真和指标。
-- 单元测试：RMSE、track continuity、分级准确性、延迟补偿前后对比、接口行为、通信元数据、source lineage 去重、TrackUncertaintySummary、LatencyAuditSummary、FusionQualityRegionSummary、ReconCueSummary、AirSim dry-run、Blocks JSONL/CSV replay 和 N actor 合同。
+- 单元测试：RMSE、track continuity、分级准确性、延迟补偿前后对比、接口行为、通信元数据、source lineage 去重、TrackUncertaintySummary、LatencyAuditSummary、FusionQualityRegionSummary、ReconCueSummary、协同 bearing 1/2/3/N 几何、CI 保守性、AirSim dry-run、Blocks JSONL/CSV replay 和 N actor 合同。
 - 仿真脚本：按 `--drone-count N` 生成 N 个目标、60 s、10 Hz 的雷达/声学/EO 观测；历史 3 目标输出仅作为 baseline。
 - 图表和 Markdown 实验报告：输出到 `reports/`。
 - AirSim 集成计划：统一时间轴、坐标、传感器桥接和离线评估流程；不宣称真实雷达/声学/LiDAR 硬件仿真已接入。
@@ -324,7 +324,7 @@ schema/version 字段，仍需更长 episode 和 D6 批量 schema 审计。
 - **EO/视觉几何**: D1 有简单 pinhole 投影和 camera metadata 约定；未接入 OpenCV 标定、畸变校正、`solvePnP`、`projectPoints` 或 D5 级跨视角几何一致性。
 - **合成 LiDAR**: synthetic lidar 只是 dry-run/replay 里的 NED 三维位置测量模型，用于测试融合合同；不是 AirSim LiDAR plugin，也不是硬件驱动。
 - **质量摘要**: `TrackUncertaintySummary` 已是单航迹摘要；`FusionQualityRegionSummary` 已提供按 `coverage_cell` 聚合的轻量区域质量摘要；`FusionQualityRegionWindowSummary`/`summarize_region_quality_windows()` 已提供区域时间窗口趋势；`annotate_covariance_growth_rates()` 已提供协方差增长率差分；`ReconCueSummary` 已提供面向二级侦察相机的目标群/coverage cell 粗指向摘要；latency/OOSM replay 计数已可导出。D6 长期批量日志 schema、真实样本阈值和更多 NIS 统计仍需后续对齐。
-- **source lineage 去重**: 已能抑制同一 source/sequence/payload 经 relay 重复投递造成的重复更新；未知相关性的多节点 Track-to-Track fusion、协方差交叉和相关性降权还未实现。
+- **source lineage 去重与 CI**: 观测主线已能抑制同一 source/sequence/payload 经 relay 重复投递；独立 `cooperative.py` 也已实现 message UUID/完整 source-lineage 去重和未知交叉相关下的最小 CI。多节点 runtime 接线、部分共享 lineage 建模和分布式共识仍未实现。
 - **replay 合同**: versioned `sensor_observations.jsonl` reader、legacy `blocks_sensor_observations.jsonl` 兼容、真实 CV bbox/camera/detection/recon metadata 字段保真和最小 CSV reader 已实现；长期 main/shared 真实 Blocks/CV multi-seed fixture 回归仍未完成。
 
 ### 9.3 未实现能力
@@ -333,7 +333,7 @@ schema/version 字段，仍需更长 episode 和 D6 批量 schema 审计。
 - **FilterPy**: 未调用 FilterPy EKF/UKF/IMM；当前只有可用性探测占位。原因是 D1 已有 NumPy EKF fallback，新增后端需要测试容差、版本约束和 UKF/IMM 对照场景。
 - **ROS 2 `tf2`**: 未实现坐标树、外参版本化 tf buffer 或时间化 transform。原因是仓库当前没有 ROS 2 runtime/topic/bag 条件，D1 只规定 NED 输入和 camera metadata 边界。
 - **ROS 2 `message_filters`**: 未实现 ROS topic ApproximateTime/ExactTime 同步。原因是当前 D1 运行在离线 `SensorObservation[]`/JSONL replay 层，已用 `measurement_timestamp`、`arrival_timestamp` 和 fixed-lag replay 处理乱序；ROS 同步要等 topic schema 稳定。
-- **UKF/IMM/Track-to-Track fusion**: 未实现强非线性 UKF、多模型 IMM、协方差交叉、多节点 track fusion。原因是缺少明确高机动/多节点相关观测基准和与现有 EKF 的收益门限。
+- **UKF/IMM 与完整 Track-to-Track runtime**: 强非线性 UKF、多模型 IMM、跨 D2/runtime 的多节点 track-fusion 流程尚未实现；NumPy CI 数值 helper 已完成，不等于 Stone Soup 后端或分布式全链路。
 - **真实传感器硬件仿真**: 未实现真实雷达、声学阵列、LiDAR 硬件仿真或 AirSim sensor plugin 级接入；当前雷达/声学/lidar 为科研合成观测，EO 依赖上游检测框/metadata。
 
 ## 10. 对后续模块的影响
@@ -358,6 +358,7 @@ schema/version 字段，仍需更长 episode 和 D6 批量 schema 审计。
 5. source lineage de-dup、Blocks JSONL replay、N actor 合同、嵌套 EO camera metadata replay、ReconCueSummary 和 Blocks calibration CSV 字段保真已进入测试基线。
 6. 真实 Blocks/CV 风格 JSONL 字段保真、`annotate_covariance_growth_rates()` 和 `summarize_region_quality_windows()` 已进入轻量测试基线，覆盖 bbox/camera/detection/secondary recon metadata、source gap、freshness、协方差增长和 OOSM/latency flags。
 7. dry-run fixture schema 检查、raw replay latency/OOSM audit helper、`covariance_scale_reason` 和 secondary/mobile recon cue metadata 保真已进入 P1 输入支撑回归。
+8. 中心化协同定位 P1 数值基础已完成：typed DTO、2..N bearing-ray WLS、几何/时间/covariance 保守门控、共同估计时刻传播和 source-aware CI 均保持为独立 helper，不改变 `FusionAdapter` 默认路径。
 
 剩余 P1：
 
@@ -387,3 +388,17 @@ schema/version 字段，仍需更长 episode 和 D6 批量 schema 审计。
 5. 固化真实 Blocks/CV 字段形态的 JSONL/CSV fixture；无 truth-hint 两目标 replay 输出两条带 6x6 协方差的 NED 航迹。
 
 本轮已关闭的 D1-owned P1：writer schema/provenance、expected-latency/OOSM 字段、区域固定窗口、协方差增长窗口、基础 truth-free replay fixture。仍需 main/shared 接入 governed writer 并发布区域/窗口/health 摘要；真实多 seed 延迟门限、视觉 bbox/camera fixture 和关联门限继续由后续 AirSim 校准闭合。
+
+## 13. M 对 N 协同定位调研后的 P1 计划补充
+
+专项证据见 `subagent_reviews/D1_M_TO_N_COOPERATIVE_LOCALIZATION_REVIEW.md`。当高威胁目标由 3 架无人机共同观测时，D1 不要求严格同帧或同时到达，而要求所有观测按 `measurement_timestamp`、平台测量时刻位姿和运动模型传播到共同估计时刻。三机数量本身不保证可观测性，必须检查视线交会角、联合信息矩阵秩/条件数、重投影残差和传播后 covariance。
+
+本项不新增 P0 blocker。2026-07-11 实施后的状态拆解为：
+
+1. **D1-owned 基础已完成**：`CooperativeBearingObservation`、`CooperativeObservationGroup` 和 `CooperativeLocalizationSummary` 覆盖共同估计时刻、observer/source lineage、平台位姿/外参 covariance、measurement skew、LOS 交会角、信息矩阵 rank/condition、残差和拒绝原因。
+2. **构造性基准已完成，真实 replay 待补**：单元测试覆盖 1/2/3/N observer、良好三视角不劣于最佳双视角、近共线拒绝、0.4 s 异步传播和 covariance 膨胀；near-synchronous/range、机动、遮挡、节点退出、AirSim 多 seed 及 RMSE/NIS/NEES 仍需 replay。
+3. 与 D2 固化边界：D1 负责时间/坐标/协方差和已关联状态的数值融合；D2 负责 local-track-to-`global_track_id` 关联、身份连续性与 IDSW。D2 未确认同一目标时 D1 不做跨平台 Track-to-Track 融合。
+4. **最小 CI helper 已完成**：支持 1/2/3/N 个同 canonical ID 的 6-state NED estimate、共同时间 CV 传播、process/timing noise、message UUID/完整 lineage 去重；已验证 CI covariance 不比错误独立融合更自信。部分 lineage 相关性模型、D2/runtime 接线和成员退出 replay 仍待补。
+5. Stone Soup CI、GTSAM/OpenCV triangulation 仅作离线 benchmark；外部库正式接入、ROS 2 和主运行时替换仍保持既有后置优先级，不改当前 NumPy EKF 主线。
+
+物理拦截的同时到达、分波次到达和三机任务联盟属于 D3/D7；D1 只提供共同估计时刻的目标状态、协方差和协同几何质量。

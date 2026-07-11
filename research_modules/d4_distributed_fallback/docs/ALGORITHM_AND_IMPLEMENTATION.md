@@ -21,7 +21,7 @@ D4 负责离线降级协同研究，包含两类模式：
 - `SimulatedNetwork`：内存网络，提供延迟、丢包和消息计数。
 - `TrackUncertaintySummary`：来自 D1 的定位不确定度摘要，包含 `position_sigma_m`、`covariance_trace`、`measurement_age_s` 和 `coverage_cell`。
 - `AssociationRiskSummary`：来自 D2 的关联风险摘要，包含 `ambiguity_score`、`id_switch_count`、`duplicate_track_count`、`track_continuity`、`truth_metrics_available` 和 `continuity_available`。在线 truth 隔离时，后两个可用性标志阻止 IDSW/continuity 占位值进入硬风险；association ambiguity、duplicate track risk 和 track-quality-derived risk 仍可在线使用。
-- `AssignmentValiditySummary`：来自 D3 的分配有效性摘要，包含 `global_track_id`、`assigned_resource_id`、`plan_version`、`is_current`、`plan_age_s` 和 `cost_margin`。
+- `AssignmentValiditySummary`：来自 D3 的分配有效性摘要，包含 `global_track_id`、`assigned_resource_id`、`plan_version`、`is_current`、`plan_age_s`、`cost_margin` 和证据 metadata。`plan_age_s` 表示最近评估活性年龄，优先使用 `plan.metadata.last_evaluated_at_s`（兼容 `last_evaluated_at/evaluated_at_s/evaluated_at`），缺失时回退 `created_at`；稳定计划身份年龄另存为 `metadata.identity_age_s`。
 - `TerminalAssociationSummary`：由 D5 的 `TerminalAssociation` 归一化得到，包含末端 `resource_id`、`decision_state`、`association_confidence`、`ambiguity_score`、连续非锁定帧数、连续不一致帧数、友方冲突、重复末端锁定标记、cross-view 风险和当前 `coverage_cell`。
 - `CommunicationSummary[]`：来自 main 通信层的离线链路摘要，字段包括 `source_node_id`、`target_node_id`、`relay_node_id`、`link_type`、`sent_timestamp`、`received_timestamp`、`payload_kind` 和 `stale_after_s`。
 
@@ -186,7 +186,7 @@ decision = ActiveDegradationArbiter().evaluate(
 
 - D1：`position_sigma_m >= 20m` 记为中风险，`>= 50m` 记为高风险；`covariance_trace` 和量测年龄也会增加风险因子。
 - D2：`ambiguity_score`、在线 duplicate/quality risk 始终按既有门限判断；只有 `truth_metrics_available=True` 时才使用 ID switch，只有 `continuity_available=True` 时才使用 track continuity。
-- D3：`is_current=False` 和 `plan_age_s` 超限是硬分配风险；`cost_margin` 过低是软计划风险，单独出现时表示需要观察/迟滞，不直接请求中心重规划。
+- D3：`is_current=False` 和活性 `plan_age_s` 超限是硬分配风险，且继续绕过中心重规划 cooldown；`cost_margin` 过低是软计划风险，单独出现时表示需要观察/迟滞，不直接请求中心重规划。
 - D5：重复末端锁定、资源错配、observed `global_track_id` mismatch、cross-view 高风险和 friend conflict 是硬证据；`association_confidence` 低、`ambiguity_score` 高、无冲突连续非锁定帧属于软证据，默认继续中心或请求二级 cue。`friend_conflict` 优先级最高，直接 `hold_for_review`。
 - 通信：传入通信摘要时，二级节点链路超过 `stale_after_s` 会被视为不可用；只有二级节点不可用时，主动持续不一致才降到 `distributed_cbba/auction`。
 - 迟滞/防抖：`ActiveDegradationConfig` 提供 `min_dwell_s`、`release_consecutive_consistent_frames`、`risk_window_size` 和 `risk_window_threshold`。默认值保持轻量单步行为；复用同一个 arbiter 时，可要求多窗口风险满足阈值才从辅助升级到二级/分布式降级，并要求满足最短 dwell 和连续低风险 release 条件后才回到 `continue_center`。

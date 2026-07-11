@@ -7,7 +7,7 @@
 
 ## 1. 总体结论
 
-D3 当前已经完成中心化一对一资源-目标分配主线：SciPy Hungarian / `linear_sum_assignment`、无 SciPy 时的小规模 DP fallback、滚动重分配、迟滞、防 stale plan、版本化 `AssignmentPlan`、`resource_count/target_count` 和 `assignment_matrix_shape` 规模字段、可解释代价分解、D5 terminal feedback helper、D5 feedback metadata 写回下一轮输入、D4/main 选定 secondary node 后的严格 `secondary_plan_v2` activation/current-binding 与 same-owner rolling continuation 合同、D7 `AssignmentGuidanceBinding`、`AssignmentValiditySummary`、D6-compatible `AssignmentRecord` 导出，以及 synthetic AirSim dry-run adapter。2026-07-10 复核撤销了旧“无 P0 blocker”结论：planner 已有 active plan 时，`previous_plan=None` 曾可错误生成 version 1。该 P0 现已修复并标记 done，缺失前序计划会以 `previous_plan_required` 拒绝并携带 latest plan id/version。P1 switch penalty、secondary activation 和 rolling continuation 合同均已关闭，当前 D3 全量回归为 `84 passed`。
+D3 当前已经完成中心化一对一与显式 M-to-N demand-slot 主线：SciPy Hungarian、DP fallback、schema v2、coalition all-or-none admission、滚动重分配、set/signature 迟滞、防 stale plan、版本化 `AssignmentPlan/CoalitionPlan`、可解释代价、D5 feedback writeback、secondary activation/continuation、D7 coalition binding、D6 export 和 synthetic AirSim dry-run adapter。2026-07-11 新增 execution-signature identity、forced replan ack/applied 和 candidate/published 分离：同签名刷新不再制造新版本，stale 只认已发布 latest；`identity_created_at_s` 与每轮 `last_evaluated_at_s` 已分离并进入 plan/assignment metadata 和 record/evidence/binding 发布快照。当前 D3 全量回归为 `104 passed, 1 skipped`；skip 是环境未安装 optional OR-Tools。
 
 2026-07-10 P1 switch-penalty 修复已完成：`reassignment_switch_penalty` 现在在 Hungarian/fallback solve 前加入已有 target 改配到不同 resource 的可行边；同 resource、不可行边、无历史 assignment 的 target 和 unassigned cost 不变。后置 Assignment 加价路径已移除，solver matrix、edge breakdown、objective、plan cost 和 evidence 单次计费一致。当前新 plan binding 保持 `active/current`，旧 plan 继续由 latest `plan_id/version` gate 失效。
 
@@ -55,7 +55,7 @@ D3 当前已经完成中心化一对一资源-目标分配主线：SciPy Hungari
 | EVAL P1 完整动态威胁评估 | 未作为完整模型实现。当前仅消费/记录 threat baseline 所需字段。 | 完整威胁模型需要场景定义、保护区、TTC、速度、目标类别、协方差、资源状态和 D6 mission outcome 支撑，不能用单一 `threat_score` 字段伪装完成。 | 先保持 P0-B baseline 可解释，再用 D6 多 seed outcome 标定完整模型，并保留 Hungarian baseline 对照。 |
 | EVAL P1 增量分配 | 未实现局部增量策略。当前 `AssignmentPlanner.plan()` 是滚动全量重算，已可处理目标/资源数量变化。 | 新目标突增、资源失效或局部反馈时还没有只重算受影响子图的 plan update 路径和 latency 对照。 | 定义新目标、资源失效、D5 feedback 写回后的增量更新 API；验收重点是 plan update latency 下降且版本/stale 拒绝不退化。 |
 | EVAL P1 时间窗口硬约束 | 轻量 baseline 已实现。`TargetTrack.window_cost` 仍是软排序项；新增 hard close/open schema、不可行窗口拒绝、`reject_reason`、cost breakdown flags 和测试。 | 目前是轻量 baseline，不是完整多窗口/到达时间网络；未做真实多 seed 标定，也未接 OR-Tools 复杂约束。 | 用 AirSim/point-mass 多 seed/N 规模回放校准 hard window 输入、到达时间和 reject reason 分布；多窗口/容量/配额后续可进入 optional min-cost-flow 对照。 |
-| EVAL P1 OR-Tools Min Cost Flow 对照接口 | 部分实现为边界保留。`MinCostFlowAssignmentSolver` 类和测试存在，`solve()` 显式抛出 `NotImplementedError`，说明 OR-Tools 未安装且当前应使用 Hungarian。 | 三个 patch 均确认 OR-Tools 工程成熟，但 P0/P1/P2 确认文档将其收敛为 P1 对照、复杂约束升级；当前只有 API 边界和失败语义，没有 OR-Tools optional dependency、整数代价缩放、基础网络建图或求解结果解码。 | P1 只要求能在同输入下输出 Hungarian vs min-cost-flow 对照计划；容量、备份资源、多窗口和分组配额属于后续复杂约束，不替代当前 Hungarian 默认主线。 |
+| EVAL P1 OR-Tools Min Cost Flow 对照接口 | 已实现 optional benchmark。安装时完成整数缩放、网络建图和结果解码；未安装时明确 unavailable。 | 不进入默认 requirements 或 planner，当前环境 installed-only 测试 skip。 | 容量、备份资源、多窗口和分组配额仍属于后续复杂约束，不替代 Hungarian 默认主线。 |
 
 ## 4. 未实现
 
@@ -95,7 +95,7 @@ D3 当前已经完成中心化一对一资源-目标分配主线：SciPy Hungari
 7. **P1 时间窗口硬约束校准**: 已有单窗口 closed-edge baseline 不重复实现；补到达时间、多窗口、not-yet-open/expired 分布和 reject reason 聚合。
 8. **P1 D3 secondary activation 合同 done / runtime 待验证**: 模块内已验收 concrete owner、持续 readiness、严格 version/epoch、live lease、旧中心 stale、非 current/过期 binding 阻断和审计导出；剩余由 main/D4 完成调用适配、持续 readiness 正例与中心恢复多 seed 验证。
 9. **P1 OR-Tools Min Cost Flow 对照接口**: 按既定优先级接入 optional、同输入的一对一对照，保持 Hungarian 默认；复杂容量/备份/配额不进入本 P1。
-10. **P1 合同保持回归**: active-plan `previous_plan` 必填、switch penalty solve 前单次计费、D5/D7 禁止本地换绑、secondary current/lease/rolling gate 和 D6 schema 必须继续通过。当前 D3 回归基线为 `84 passed`。
+10. **P1 合同保持回归**: published active-plan `previous_plan` 必填、同签名 identity 稳定且独立刷新 `last_evaluated_at_s`、forced ack/applied、未发布 candidate 不推进 latest、switch penalty solve 前单次计费、D5/D7 禁止本地换绑、secondary current/lease/rolling gate、schema v2/M-to-N 和 D6 schema 必须继续通过。当前 D3 回归基线为 `104 passed, 1 skipped`。
 11. **P2 大规模参数扫描**: 扩展到 10x10、20x20 和更高密度混叠场景，形成 D5 feedback 权重、迟滞参数、资源状态阈值、threat baseline 权重和 assignment quality 的长期对照表。
 
 ## 8. 跨模块接口影响
@@ -122,11 +122,42 @@ D3 的 `target_count/resource_count` 来自输入数组长度。main 的 `--dron
 - `research_modules/d3_assignment_planner/src/d3_assignment_planner/planner.py`: 滚动 plan、迟滞、版本推进、stale previous plan 拒绝、规模 metadata。
 - `research_modules/d3_assignment_planner/src/d3_assignment_planner/costs.py`: 代价矩阵和 cost breakdown。
 - `research_modules/d3_assignment_planner/src/d3_assignment_planner/models.py`: `AssignmentPlan`、D5 feedback decision/writeback、secondary takeover DTO、D7 binding、`AssignmentValiditySummary`、D6 `AssignmentRecord`。
-- `research_modules/d3_assignment_planner/src/d3_assignment_planner/min_cost_flow.py`: OR-Tools Min Cost Flow 保留接口。
+- `research_modules/d3_assignment_planner/src/d3_assignment_planner/min_cost_flow.py`: optional OR-Tools Min Cost Flow benchmark 与 unavailable gate。
 - `research_modules/d3_assignment_planner/src/d3_assignment_planner/airsim_dry_run_adapter.py`: synthetic AirSim dry-run adapter。
 - `research_modules/d3_assignment_planner/tests/test_planner.py`: 非 5v5 规模、迟滞、stale plan、cross-node fields。
 - `research_modules/d3_assignment_planner/tests/test_solver.py`: Hungarian/fallback 行为。
 - `research_modules/d3_assignment_planner/tests/test_terminal_feedback_contract.py`: D5 feedback 映射、写回下一轮输入和不允许 local rebind。
 - `research_modules/d3_assignment_planner/tests/test_guidance_binding_contract.py`: D7 binding stale/revoked/hold/reassigned/secondary takeover schema/owner/source/version。
 - `research_modules/d3_assignment_planner/tests/test_assignment_exports.py`: validity summary 和 D6 assignment record export。
-- `research_modules/d3_assignment_planner/tests/test_min_cost_flow.py`: OR-Tools 未实现接口的显式异常。
+- `research_modules/d3_assignment_planner/tests/test_m_to_n_demand_slots.py`: schema v2、3v1/2v1/5v2、能力、角色/波次、版本/迟滞、multiplicity、binding。
+- `research_modules/d3_assignment_planner/tests/test_min_cost_flow.py`: OR-Tools optional installed/skip/unavailable 合同。
+
+## 10. M 对 N 联盟分配 P0/P1 补充（2026-07-11）
+
+证据综述：`subagent_reviews/D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md`。本节只新增 P0/P1 状态，不改写既有 P2/P3 项。
+
+### 10.1 现状判定
+
+- `AssignmentPlan schema v2`、`TargetDemand`、`CoalitionPlan/member/summary` 已实现。无显式 demand 时仍为 `k=1 independent primary=1`；显式 `TargetDemand()` 启用默认 `k=3 hybrid primary=2`。`primary_resource_count` 可接收 main `--cooperative-primary-count`，不再硬编码 `min(2,k)`。
+- `hungarian_demand_slots` 已实现 role/wave/capability slot 展开、威胁优先和全有或全无 admission。不完整 coalition 记录 tentative members/shortfall，但不发布 executable assignment。
+- assignment signature/set 驱动迟滞；execution signature 驱动 plan identity。成员/角色/window/demand、owner/activation 变化推进 identity，同签名刷新保留 identity。旧 plan 只在新 identity 发布后由 current gate 进入 stale。
+- D7 binding 已携带 coalition/role/wave/mode/window/min separation；只有 committed/current coalition 可 active。
+- duplicate 统计允许同 coalition 且 `<=k_j` 的合法 multiplicity，只计资源跨目标冲突、超额、stale/revoked/unauthorized。
+- OR-Tools Min-Cost Flow 已成为 optional 一对一 benchmark；未安装时明确 unavailable，未加入默认依赖。它不是 coalition CP-SAT 参考模型。
+
+### 10.2 P0/P1 状态表
+
+| 缺口 | 当前状态 | 优先级 | 缺少条件/验收口径 |
+|---|---|---|---|
+| 既有一对一安全合同 | 已实现并保持回归 | P0 done | `k_j=1` 时 Hungarian、版本、stale、迟滞、禁止本地 rebind 不退化 |
+| `target_demand=k_j` 与 demand satisfaction | 已实现 | P1 done | required/assigned/shortfall/complete 已进入 plan；部分联盟不发布 executable assignment |
+| Coalition 原子 admission、能力和成员角色 | 已实现 baseline | P1 done | id/version/state、primary/reserve/retry、能力槽与 all-or-none admission 已覆盖 |
+| 同时、分批、混合时序策略 | 已实现合同/baseline | P1 done | hybrid primary 数为显式 `primary_resource_count`，进入 role/wave/signature/version/binding；真实 ETA 同步与 reserve feedback 激活仍由后续跨模块验证 |
+| Coalition-aware 重分配与迟滞 | 已实现 signature/version | P1 done | 成员/角色/window 变化与 stale binding 已测；committed prefix 和长时 churn 指标仍待扩展 |
+| 合法多资源与 duplicate 区分 | 已实现 | P1 done | 合法 `<=k_j`、超额、资源冲突和 stale/unauthorized 均有测试 |
+| OR-Tools flow baseline | 已实现 optional benchmark | P1 done | 默认 requirements/path 不变；未安装 skip/明确 unavailable |
+| CP-SAT/MILP 小规模参考 | 未实现 | P1 研究对照 | 表达 `sum_i x_ij=k_j z_j`、能力、同步和波次，并设置求解超时/不可行报告 |
+
+### 10.3 开源证据结论
+
+OR-Tools、NetworkX、Pyomo 和 PuLP 是成熟优化工具，但都不会自动提供 MSM coalition 业务合同。`dynamic_task_allocation`、HeteroMRTA、Hierarchical-LTL-STAP、CapAM-MRTA 等仓库可作算法/场景对照；其中多个明确是 SR-ST/ST-MR 或缺少清晰许可证，不能声称已经存在可直接集成的成熟 `k_j=3` C-UAS 方案。2019 ICRA OTMaM 有直接论文证据，但本轮未找到作者官方、许可证明确的实现。

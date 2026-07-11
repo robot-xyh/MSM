@@ -29,6 +29,7 @@ research_modules/d7_proportional_guidance/
   tests/
     conftest.py
     test_airsim_phase1_dry_run.py
+    test_coalition_guidance_gate.py
     test_proportional_guidance.py
 ```
 
@@ -112,6 +113,19 @@ D7 不拥有 AirSim 控制状态机，也不创建 `InterceptPair`。仿真规�
 - 每个 time-series 样本建议保留 `resource_id`、`target_id`、`mode`、`guidance_law`、`terminal_handoff_state`、`terminal_handover_pending`、`terminal_mode_entered`、`terminal_switch_allowed`、`terminal_switch_reject_reason`、`terminal_contract_reject_reason`、`d4_action_block_reason`、`secondary_capability_class`、`secondary_readiness_class`、`d5_lock_consistent`、`d3_owner_version_consistent`、`terminal_range_m`、`closing_speed_mps`、`terminal_dwell_active`、`terminal_reacquire_grace_active`、`camera_quality_gate_passed`、`los_quality_gate_passed`、`maneuver_margin_gate_passed`、`bbox_area_ratio`、`ttc_s`、`raw_los_rate_radps`、`filtered_los_rate_radps`、`los_rate_clamped`、`los_rate_outlier_rejected`、`range_3d_m`、`height_delta_m`、D4/D5 状态、D5 registration/projection metadata 和 plan/version 字段。
 
 `tests/test_proportional_guidance.py::test_runtime_sized_pairs_keep_independent_terminal_gate_and_png_time_series` 覆盖 1/3/5/7 个 pair 的并行 D7 合同、初段 radar PN、`png_vm`、TTC 和 time-series 字段形状；`test_runtime_bus_injects_n_pairs_with_independent_filters_and_summary` 覆盖 `D7RuntimeBus` 任意 N-pair 注入、D6-friendly summary 和 gate pass rate；`test_runtime_bus_blocks_visual_png_for_d4_reassign_actions_even_with_good_bbox` 覆盖 D4 `request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed` 阶段即使 bbox 良好也不调用视觉 PNG；`test_runtime_bus_applies_reacquire_grace_after_d5_locked_jitter` 覆盖 locked/reacquire 抖动后的 reacquire grace；`test_visual_png_filters_los_rate_spike_before_near_range_command` 覆盖近距视觉 PNG LOS-rate 尖峰限幅/拒绝；`test_3d_pn_benchmark_logs_advisory_fields_without_replacing_default_png` 覆盖 3D geometry PN benchmark/log 字段。2v2 actor 拦截仍可作为 baseline 和 active-secondary 合同回归，但不能作为 main runtime 的数量假设。
+
+## 中心化 M-to-N coalition 导引门控
+
+`AssignmentGuidanceBinding` 可选携带 `coalition_id/coalition_version`、`member_role`、`wave_id`、`coordination_mode`、`arrival_window_start_s/arrival_window_end_s`、`activation_state` 和 activation 的 plan/track/coalition version。未提供这些字段的 k=1 binding 保持原合同兼容；显式 coalition binding 才启用联盟门控。
+
+- `primary` 只能处于 wave 0；在 `simultaneous/sequential/hybrid` 模式下，进入 arrival window 前继续 radar PN，窗口关闭后阻断视觉 PNG。
+- 所有显式 coalition 成员都要求本资源 D5 `locked`，D5 plan/track/coalition version 与 D3 binding 一致，并提供完整 coalition visual completion 证据。D7 接受显式 `coalition_visual_complete=true`，或由 `planned_cooperative_lock=true`、`support_count >= required_resource_count` 且无 coalition conflict 推导完成；缺证据、未完成或冲突分别拒绝为 `coalition_visual_completion_missing`、`coalition_visual_incomplete`、`coalition_visual_conflict`。
+- `reserve/retry` 必须位于非零 wave；即使已有视觉匹配，standby 仍以 `coalition_not_activated` 阻断。只有新版本显式 `active/activated`，且 activation plan/track/coalition version、D4 新 plan/coalition version 和 D5 双版本均与当前 binding 一致时，才进入已有视觉 PNG gate。
+- D4 `request_center_replan/degrade_to_secondary/degrade_to_distributed` 和 pending 阶段保持 `d4_reassign_pending` 阻断；最终 no-change ack 映射为 `continue_center` 后仍必须重新通过 D5/coalition/视觉质量门。D4 `hold/revoke/coalition_fallback_unsupported` 直接阻断；中心不可用且 `atomic_coalition_formed` 不为真时，以 `atomic_coalition_missing` 阻断。
+- 每个 `resource_id -> assigned_global_track_id` 仍持有独立 filter/latch；多个 pair 可以共享同一个 center-owned `global_track_id`，D7 不改写该 ID，也不自行形成联盟、激活 reserve 或选择波次。
+- runtime row 明确输出 `terminal_contract_allowed`、`visual_png_switch` 及合同/切换拒绝原因，summary 聚合 `terminal_contract_allowed_count`、`visual_png_switch_count` 和 reject reason 分布。`tests/test_coalition_guidance_gate.py` 覆盖 T001 两个 primary 独立切换、T002 k=1、未激活 reserve、新版本激活、coalition visual completion 缺失/未完成、版本不一致、D4 pending/no-change ack 和时间窗阻断。
+
+该能力是中心下发合同的执行门控，不是 impact-time consensus、协同 PN 或碰撞规避控制律；`png_guidance_delivery` 的位置比例导引和 TTC 捷联比例导引核心公式未修改。
 
 ## 2v2 active-secondary 视觉 PNG 合同
 

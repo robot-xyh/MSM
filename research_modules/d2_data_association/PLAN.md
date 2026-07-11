@@ -32,12 +32,14 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 - 测试包含 3 目标 dry-run episode，证明输出数量来自输入集合长度；同时包含 2v2 replan baseline，证明中心/二级切换时可保持稳定 `global_track_id`。
 - D2/D6 必须显式保留 `id_switch_count` 的系统规则已有合同测试：D2 `MetricsRecorder.id_switch_count` 与 D6 episode 统计口径一致。
 - P1 replay governance 已实现：`run_airsim_replay_association()` 默认启用在线 truth isolation；在线 detection ID 按帧匿名化，actor/truth 元数据递归清除；`OfflineTruthEvaluation` 独立计算 identity/continuity、M-of-N 初始化、false-track 和 NEES，NIS 则由不依赖真值的在线 innovation 计算。每帧 association log 固化 `d2-association-log/v2`、risk profile/version、measurement/active-track count 和 NIS availability，不携带 truth label、truth target count 或 NEES。
-- 当前 D2 回归基线为 44 项测试，覆盖无 truth continuity 可用性、无 truth NIS、actor identity 隔离、`rejected_pairs` 序列化/回放、covariance 有限性/对称性/PSD 治理，以及 5v5 crossing/dense/漏检/虚警治理 fixture。
+- M 对 N cross-node 注册基础已实现：6D NED `SourceTrackSummary`、source-local namespace、公共时刻 CV 传播、协方差感知 track-to-track gate、按 source 分组 Hungarian、canonical multi-source binding/history、payload/lineage/stale 防重，以及 exact/unknown/duplicate 三类相关性决策。
+- `CrossNodeRegistryMetrics` 保持 truth-free，只统计 operational rebind、duplicate rejection 和 latency；`OfflineCrossNodeMetricsEvaluator` 通过独立 source-key truth mapping 计算 cross-node IDSW、canonical duplicate 和 association precision/recall。
+- 当前 D2 回归基线为 57 项测试，覆盖无 truth continuity 可用性、无 truth NIS、actor identity 隔离、`rejected_pairs` 序列化/回放、covariance 有限性/对称性/PSD 治理、5v5 crossing/dense/漏检/虚警治理 fixture，以及 cross-node 1/2/3/N source、异步、交叉、重复、local ID 冲突、canonical continuity 和 truth isolation。
 
 ### 2.1 P0/P1 缺口快照
 
 - **P0**：无 P0 blocker。GNN/Hungarian、马氏门控、可插拔 `DataAssociator`、`id_switch_count`、`track_continuity`、risk summary、D1 adapter、AirSim dry-run adapter、按输入集合长度运行、P0-B `track_quality`/`association_risk`、motion consistency cost 和 P0-C quality-aware gate baseline 均是当前主线并已有测试覆盖。
-- **P1 已闭合的 D2-owned 接口**：逐帧 association log schema、risk profile/version、在线 truth isolation、独立 offline evaluator、可配置且版本化的 M-of-N 初始化治理（默认 2-of-3）、false-track 统计、NIS/NEES 和 5v5 crossing/dense/漏检/虚警 fixture。
+- **P1 已闭合的 D2-owned 接口**：逐帧 association log schema、risk profile/version、在线 truth isolation、独立 offline evaluator、可配置且版本化的 M-of-N 初始化治理（默认 2-of-3）、false-track 统计、NIS/NEES、5v5 crossing/dense/漏检/虚警 fixture，以及 cross-node local-track 到 canonical ID 的注册与评估基础。
 - **P1 剩余集成/标定**：main/runtime 生产真实 5v5 AirSim replay，D6 按多 seed 校准 gate/risk/IDSW、M-of-N 参数和 NIS/NEES 覆盖率；D2 后续仍需完整 adaptive gate 与 JPDA 受控对照。D2 不直接连接 AirSim SDK。
 - **2026-07-10 AirSim 证据边界**：已有 5v5 60-case 是 D4/D5 二级覆盖与降级校准，2v2 10-seed 是 D7 拦截闭环校准；它们证明 runtime 和 D6 批量出口可用，但没有形成带逐帧 D2 association log、独立 offline truth label 和 threshold profile/version 的真实 5v5 replay，因此不能用于关闭上述 D2 P1。
 - **2026-07-11 truth-isolated runtime 证据**：main 已把在线 `truth_id` 强制设为 `None`，并完成不依赖 truth 的 D2 -> D3 转换；`d2_governance_summary` 已进入 D6。真实 5v5 短 episode 的 main-bus `d2_hard_risk_frame_rate=0.0`，仅表示该运行未观察到在线 hard-risk frame，不代表 truth-based IDSW 为零或 continuity 正常。在线 `id_switch_count`、`track_continuity`/`identity_continuity` 必须保持 unavailable，离线评分和多 seed 标定仍是 P1。
@@ -291,3 +293,18 @@ P1 验收必须区分两层证据：在线层只使用 innovation、候选重叠
 git diff --check -- research_modules/d2_data_association subagent_reviews/D2_*
 PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_data_association/tests
 ```
+
+## 11. M 对 N 协同拦截下的跨平台航迹融合研究计划
+
+专项调研见 `subagent_reviews/D2_M_TO_N_TRACK_FUSION_REVIEW.md`。结论是：多个拦截节点观测同一高威胁目标时，多个 local tracks 只能登记为同一 canonical `global_track_id` 的多源证据，不能解释为多个目标，也不能让 `k_j=3` 的资源需求复制三条全局航迹。
+
+该能力不改变当前 detection-to-track GNN/Hungarian P0 主线。当前 P1 基础状态如下：
+
+1. **已实现**：带 source/local/epoch namespace、两个 timestamp、6D NED state/covariance、quality、lineage、correlation status 和 canonical hints 的 `SourceTrackSummary`；source hint 不具备身份权威。
+2. **已实现**：公共融合时刻传播、covariance-aware track-to-track Mahalanobis gate、按 source 节点分组的 Hungarian，以及 `global_track_id -> source tracklets` binding/history；测试覆盖 1/2/3/N source、异步、交叉、重复、local ID 冲突和 canonical continuity。
+3. **已实现决策边界**：known cross-covariance 输出 exact correlated fusion request，unknown correlation 只输出 CI request，duplicate payload/lineage 直接拒绝。数值 CI/相关融合继续由 D1 owner 实现。
+4. **已实现指标基础**：online cross-node rebind IDSW、duplicate payload rejection、fusion latency，以及隔离 offline truth 下的 canonical duplicate 和 association precision/recall。
+5. **剩余 P1/P2**：高歧义跨节点 JPDA/MHT、多 seed 同时/序贯/混合 replay、owner/epoch failover、通信字节和 D1/D6 数值融合一致性 NEES/ANEES。
+6. **保持隔离**：Stone Soup 只作为 track-to-track association/CI benchmark，不把第三方对象写入跨模块总线。
+
+当前已落地 `canonical_duplicate_count`、`cross_node_id_switch_count`、track-to-track association precision/recall、重复消息拒绝数和融合延迟。fusion NEES/ANEES 与通信字节仍待 D1/D6/replay 集成；所有 cross-node 指标都不能与合法的多资源协同或 D3 `duplicate_assignment_count` 混为一谈。

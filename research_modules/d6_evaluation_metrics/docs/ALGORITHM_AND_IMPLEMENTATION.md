@@ -66,8 +66,8 @@ missed_detection_rate = FN / (TP + FN)
 
 实现来源：
 
-- `TrackRecord.truth_id is not None` 与 `truth_summary.truth_timestamps` 匹配为 TP。
-- `TrackRecord.truth_id is None` 和 `EventRecord(event_type="false_alarm")` 计入 FP。
+- `TrackRecord.truth_id + timestamp` 落入 `truth_summary.truth_timestamps`，或显式 offline match/miss 事件完成裁决后，探测三项才可用；仅有 truth opportunity 列表不足以评分。
+- `TrackRecord.truth_id is None` 不自动计 FP；离线带标签检测落在 truth pair 集合外时才计 FP。
 - `truth_summary.total_truth_opportunities` 或 `truth_timestamps` 定义总机会数。
 
 ### 4.2 跟踪
