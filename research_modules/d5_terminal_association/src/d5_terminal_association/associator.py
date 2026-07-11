@@ -33,6 +33,14 @@ AUTHORIZED_ASSIGNMENT_STATES = {
     "recorded",
 }
 
+ACTIVE_COALITION_MEMBER_STATES = {
+    "active",
+    "activated",
+    "authorized",
+    "committed",
+    "executing",
+}
+
 
 @dataclass(frozen=True)
 class AssociationConfig:
@@ -792,6 +800,23 @@ class TerminalAssociator:
         recon_cue_used: bool = False,
         metadata: dict | None = None,
     ) -> TerminalAssociation:
+        association_metadata = dict(metadata or {})
+        execution_time = _finite_float_or_none(association_metadata.get("projection_timestamp"))
+        execution_gate_reason = _execution_gate_reason(assignment, execution_time)
+        original_decision = decision
+        if decision == "locked" and execution_gate_reason is not None:
+            decision = "hold"
+            reason = execution_gate_reason
+            confidence = min(confidence, 0.5)
+            ambiguity = max(ambiguity, 0.5)
+        association_metadata.update(
+            {
+                "execution_gate_pass": execution_gate_reason is None,
+                "execution_gate_reason": execution_gate_reason,
+                "visual_match_decision_state": original_decision,
+                "visual_png_execution_authorized": execution_gate_reason is None,
+            }
+        )
         return TerminalAssociation(
             assigned_global_track_id=assignment.assigned_global_track_id,
             local_track_id=local_track_id,
@@ -803,7 +828,20 @@ class TerminalAssociator:
             reason=reason,
             candidate_costs=candidate_costs or [],
             recon_cue_used=recon_cue_used,
-            metadata=metadata or {},
+            metadata=association_metadata,
+            plan_id=assignment.plan_id,
+            plan_version=assignment.plan_version,
+            authorization_state=assignment.authorization_state,
+            resource_id=assignment.resource_id,
+            coalition_id=assignment.coalition_id,
+            coalition_version=assignment.coalition_version,
+            member_role=assignment.member_role,
+            wave_id=assignment.wave_id,
+            required_resource_count=assignment.required_resource_count,
+            coordination_mode=assignment.coordination_mode,
+            arrival_window_start_s=assignment.arrival_window_start_s,
+            arrival_window_end_s=assignment.arrival_window_end_s,
+            activation_state=assignment.activation_state,
         )
 
     def _candidate_costs(
@@ -869,6 +907,18 @@ class TerminalAssociator:
             "assigned_global_track_id": assignment.assigned_global_track_id,
             "assignment_version": assignment.assignment_version,
             "resource_id": assignment.resource_id,
+            "plan_id": assignment.plan_id,
+            "plan_version": assignment.plan_version,
+            "authorization_state": assignment.authorization_state,
+            "coalition_id": assignment.coalition_id,
+            "coalition_version": assignment.coalition_version,
+            "member_role": assignment.member_role,
+            "wave_id": assignment.wave_id,
+            "required_resource_count": assignment.required_resource_count,
+            "coordination_mode": assignment.coordination_mode,
+            "arrival_window_start_s": assignment.arrival_window_start_s,
+            "arrival_window_end_s": assignment.arrival_window_end_s,
+            "activation_state": assignment.activation_state,
             "global_id_policy": "existing_assigned_global_track_id_only",
             "truth_id_online_use": "ignored",
         }
@@ -1373,6 +1423,33 @@ def _finite_float_or_none(value: Any) -> float | None:
     if not np.isfinite(number):
         return None
     return number
+
+
+def _execution_gate_reason(assignment: Assignment, timestamp: float | None) -> str | None:
+    """Return the read-only D3/D4 execution blocker for a visual lock."""
+
+    role = assignment.member_role
+    state = assignment.activation_state
+    if assignment.authorization_state.lower() not in AUTHORIZED_ASSIGNMENT_STATES:
+        return "assignment_not_authorized"
+    if role == "observer":
+        return "coalition_member_not_executable"
+    if state not in ACTIVE_COALITION_MEMBER_STATES:
+        if role in {"reserve", "retry"}:
+            return "coalition_member_not_activated"
+        return "assignment_activation_not_active"
+    if timestamp is not None:
+        if (
+            assignment.arrival_window_start_s is not None
+            and timestamp < assignment.arrival_window_start_s
+        ):
+            return "arrival_window_not_open"
+        if (
+            assignment.arrival_window_end_s is not None
+            and timestamp > assignment.arrival_window_end_s
+        ):
+            return "arrival_window_expired"
+    return None
 
 
 def _representative_reprojection_error(

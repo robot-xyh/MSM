@@ -1,4 +1,4 @@
-"""Assignment solvers for one-to-one abstract resource-target matching."""
+"""Hungarian solvers for one-to-one and demand-slot assignment."""
 
 from __future__ import annotations
 
@@ -64,6 +64,29 @@ class HungarianAssignmentSolver:
                 pass
 
         return self.fallback.solve(cost_matrix, unassigned_costs)
+
+
+class HungarianDemandSlotSolver:
+    """Hungarian backend for planner-expanded role/wave demand slots."""
+
+    solver_name = "hungarian_demand_slots"
+
+    def __init__(self, base_solver: HungarianAssignmentSolver | None = None) -> None:
+        self.base_solver = base_solver or HungarianAssignmentSolver()
+
+    def solve(
+        self,
+        cost_matrix: np.ndarray,
+        unassigned_costs: np.ndarray,
+    ) -> SolverResult:
+        result = self.base_solver.solve(cost_matrix, unassigned_costs)
+        return SolverResult(
+            assignments=result.assignments,
+            unassigned_target_indices=result.unassigned_target_indices,
+            objective_value=result.objective_value,
+            solver_name=self.solver_name,
+            status=result.status,
+        )
 
 
 class FallbackAssignmentSolver:

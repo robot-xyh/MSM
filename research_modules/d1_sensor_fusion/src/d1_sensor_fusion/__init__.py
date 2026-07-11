@@ -9,6 +9,11 @@ from .airsim_dry_run import (
     make_minimal_airsim_dry_run_fixture,
     observations_from_airsim_dry_run_fixture,
 )
+from .cooperative import (
+    BearingLocalizationConfig,
+    covariance_intersection,
+    localize_bearing_observation_group,
+)
 from .fusion import FusionAdapter
 from .observations import RadarCovarianceConfig
 from .quality import annotate_covariance_growth_rates, summarize_region_quality_windows
@@ -31,10 +36,18 @@ from .replay import (
     write_sensor_observations_jsonl,
 )
 from .types import (
+    CISourceWeight,
+    CooperativeBearingObservation,
+    CooperativeLocalizationSummary,
+    CooperativeObservationGroup,
+    CooperativeTrackEstimate,
+    CovarianceIntersectionSummary,
     FusionQualityRegionSummary,
     FusionQualityRegionWindowSummary,
     GlobalTrack,
     LatencyAuditSummary,
+    LosIntersectionAngle,
+    ObserverLineage,
     ReconCueSummary,
     SensorHealthSummary,
     SensorObservation,
@@ -45,11 +58,20 @@ from .types import (
 
 __all__ = [
     "AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION",
+    "BearingLocalizationConfig",
+    "CISourceWeight",
+    "CooperativeBearingObservation",
+    "CooperativeLocalizationSummary",
+    "CooperativeObservationGroup",
+    "CooperativeTrackEstimate",
+    "CovarianceIntersectionSummary",
     "FusionAdapter",
     "FusionQualityRegionSummary",
     "FusionQualityRegionWindowSummary",
     "GlobalTrack",
     "LatencyAuditSummary",
+    "LosIntersectionAngle",
+    "ObserverLineage",
     "REPLAY_SCHEMA_VERSION",
     "REPLAY_PROVENANCE_SCHEMA_VERSION",
     "RadarCovarianceConfig",
@@ -61,7 +83,9 @@ __all__ = [
     "TrackLevel",
     "TrackUncertaintySummary",
     "annotate_covariance_growth_rates",
+    "covariance_intersection",
     "make_minimal_airsim_dry_run_fixture",
+    "localize_bearing_observation_group",
     "observations_from_airsim_dry_run_fixture",
     "read_blocks_sensor_observations_jsonl",
     "read_sensor_observations_csv",

@@ -20,12 +20,15 @@ from .guidance_comparison import (
 )
 from .main_bus import load_main_episode_bus_metric_files, load_main_episode_bus_metrics
 from .metrics import (
+    ArrivalRecord,
     AssignmentRecord,
+    CoalitionRecord,
     EpisodeMetrics,
     EventRecord,
     LinkRecord,
     MetricsCollector,
     TerminalRecord,
+    TargetDemandRecord,
     TrackRecord,
 )
 from .jsonl import dump_episode_log_jsonl, load_episode_log_jsonl
@@ -48,7 +51,9 @@ __all__ = [
     "AirSimCalibrationRecord",
     "AirSimCalibrationReportGenerator",
     "aggregate_cross_seed_airsim_calibration_records",
+    "ArrivalRecord",
     "AssignmentRecord",
+    "CoalitionRecord",
     "compare_paired_airsim_calibration_records",
     "DEFAULT_BOOTSTRAP_RESAMPLES",
     "DEFAULT_BOOTSTRAP_RNG_SEED",
@@ -79,6 +84,7 @@ __all__ = [
     "standard_metric_family_summary",
     "summarize_airsim_calibration_records",
     "TerminalRecord",
+    "TargetDemandRecord",
     "TrackRecord",
     "truth_summary_from_blocks_frames",
     "compare_guidance_laws_same_seed",

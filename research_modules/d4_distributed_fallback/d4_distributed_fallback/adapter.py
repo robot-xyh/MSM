@@ -28,9 +28,15 @@ from .active_degradation import (
     build_secondary_takeover_plan_metadata,
     summarize_secondary_lifecycle,
 )
+from .coalition_safety import (
+    CoalitionSafetyAction,
+    CoalitionSafetyEvidence,
+    build_coalition_safety_evidence,
+)
 from .models import (
     AvailabilityBand,
     C2Health,
+    CenterReplanStatus,
     CommBand,
     CommunicationSummary,
     DistributedVisualEvidenceSummary,
@@ -40,6 +46,7 @@ from .models import (
     ResourceSummary,
     SecondaryNodeLifecycleSummary,
     TrackSummary,
+    build_center_replan_risk_signature,
     to_jsonable,
 )
 
@@ -79,6 +86,48 @@ ADAPTER_HARD_RISK_FACTORS = frozenset(
         "d5_resource_assignment_mismatch",
         "terminal_friend_conflict",
         "terminal_persistent_disagreement",
+        "coalition_safety_hold",
+        "coalition_fallback_unsupported",
+        "coalition_fallback_unsupported_request_center_replan",
+        "coalition_atomic_fallback_unavailable",
+        "coalition_plan_version_stale",
+        "coalition_version_stale",
+        "coalition_membership_conflict",
+        "stale_plan_version",
+        "stale_coalition_version",
+        "coalition_incomplete",
+        "coalition_plan_missing",
+        "coalition_member_count_mismatch",
+        "coalition_id_mismatch",
+        "coalition_assignment_outside_membership",
+        "unauthorized_coalition_lock",
+        "coalition_lock_count_exceeded",
+        "coalition_lock_membership_unresolved",
+    }
+)
+
+CENTER_REPLAN_COOLDOWN_BYPASS_FACTORS = frozenset(
+    {
+        "terminal_friend_conflict",
+        "d5_duplicate_terminal_lock",
+        "d5_resource_assignment_mismatch",
+        "d2_id_switch_observed",
+        "d3_assignment_not_current",
+        "d3_assignment_stale",
+        "coalition_safety_hold",
+        "coalition_plan_version_stale",
+        "coalition_version_stale",
+        "coalition_membership_conflict",
+        "stale_plan_version",
+        "stale_coalition_version",
+        "coalition_incomplete",
+        "coalition_plan_missing",
+        "coalition_member_count_mismatch",
+        "coalition_id_mismatch",
+        "coalition_assignment_outside_membership",
+        "unauthorized_coalition_lock",
+        "coalition_lock_count_exceeded",
+        "coalition_lock_membership_unresolved",
     }
 )
 
@@ -133,6 +182,18 @@ class D4DecisionRecord:
     plan_id: str | None = None
     plan_version: int | None = None
     active_plan_owner: str = "center"
+    center_replan_status: CenterReplanStatus | None = None
+    center_replan_current_risk_signature: tuple[str, ...] = ()
+    center_replan_status_matches: bool = False
+    center_replan_risk_worsened: bool = False
+    center_replan_suppressed_duplicate: bool = False
+    center_replan_bypass_reason: str | None = None
+    center_replan_cooldown_s: float = 2.0
+    center_replan_cooldown_until: float | None = None
+    center_replan_cooldown_active: bool = False
+    coalition_safety: CoalitionSafetyEvidence = field(
+        default_factory=CoalitionSafetyEvidence
+    )
     secondary_takeover: SecondaryTakeoverPlanMetadata = field(
         default_factory=lambda: build_secondary_takeover_plan_metadata(
             ActiveDegradationDecision(
@@ -264,6 +325,55 @@ class D4DecisionRecord:
             "plan_id": self.plan_id,
             "plan_version": self.plan_version,
             "active_plan_owner": self.active_plan_owner,
+            "center_replan_status": (
+                self.center_replan_status.to_dict()
+                if self.center_replan_status is not None
+                else None
+            ),
+            "center_replan_state": (
+                self.center_replan_status.state
+                if self.center_replan_status is not None
+                else None
+            ),
+            "center_replan_request_id": (
+                self.center_replan_status.request_id
+                if self.center_replan_status is not None
+                else None
+            ),
+            "center_replan_current_risk_signature": list(
+                self.center_replan_current_risk_signature
+            ),
+            "center_replan_status_matches": self.center_replan_status_matches,
+            "center_replan_risk_worsened": self.center_replan_risk_worsened,
+            "center_replan_suppressed_duplicate": (
+                self.center_replan_suppressed_duplicate
+            ),
+            "center_replan_bypass_reason": self.center_replan_bypass_reason,
+            "center_replan_cooldown_s": self.center_replan_cooldown_s,
+            "center_replan_cooldown_until": self.center_replan_cooldown_until,
+            "center_replan_cooldown_active": self.center_replan_cooldown_active,
+            "coalition_safety": self.coalition_safety.to_dict(),
+            "coalition_safety_action": self.coalition_safety.safety_action.value,
+            "coalition_safety_reason": self.coalition_safety.safety_reason,
+            "coalition_required": self.coalition_safety.coalition_required,
+            "coalition_safe_to_execute": self.coalition_safety.safe_to_execute,
+            "coalition_fallback_supported": self.coalition_safety.fallback_supported,
+            "coalition_candidate_action": self.coalition_safety.candidate_action,
+            "coalition_gated_action": self.coalition_safety.gated_action,
+            "coalition_id": self.coalition_safety.coalition_id,
+            "coalition_version": self.coalition_safety.coalition_version,
+            "required_resource_count": (
+                self.coalition_safety.required_resource_count
+            ),
+            "coalition_authorized_resource_ids": list(
+                self.coalition_safety.authorized_resource_ids
+            ),
+            "coalition_locked_resource_ids": list(
+                self.coalition_safety.locked_resource_ids
+            ),
+            "coalition_conflict_reasons": list(
+                self.coalition_safety.conflict_reasons
+            ),
             "secondary_takeover_state": self.secondary_takeover.state.value,
             "secondary_takeover": self.secondary_takeover.to_dict(),
             "secondary_plan_source_node_id": self.secondary_takeover.secondary_plan_source_node_id,
@@ -479,6 +589,8 @@ class D4ArbitrationResult:
     terminal_association: TerminalAssociationSummary
     communication_summaries: tuple[CommunicationSummary, ...]
     secondary_lifecycle: tuple[SecondaryNodeLifecycleSummary, ...]
+    coalition_safety: CoalitionSafetyEvidence
+    center_replan_status: CenterReplanStatus | None
     decision: ActiveDegradationDecision
     record: D4DecisionRecord
 
@@ -491,6 +603,12 @@ class D4ArbitrationResult:
                 "assignment_validity": to_jsonable(self.assignment_validity),
                 "terminal_association": to_jsonable(self.terminal_association),
                 "secondary_lifecycle": to_jsonable(self.secondary_lifecycle),
+                "coalition_safety": self.coalition_safety.to_dict(),
+                "center_replan_status": (
+                    self.center_replan_status.to_dict()
+                    if self.center_replan_status is not None
+                    else None
+                ),
             }
         )
         return metadata
@@ -536,6 +654,7 @@ class D4ArbitrationAdapter:
         consecutive_mismatch_frames: int = 0,
         current_plan_version: int | None = None,
         expected_plan_version: int | None = None,
+        expected_coalition_version: int | None = None,
         track_version: int | None = None,
         plan_id: str | None = None,
         active_plan_owner: str = "center",
@@ -549,6 +668,7 @@ class D4ArbitrationAdapter:
         review_label: str = "unknown",
         review_pre_window_s: float | None = None,
         review_post_window_s: float | None = None,
+        center_replan_status: CenterReplanStatus | None = None,
     ) -> D4ArbitrationResult:
         """Build summaries, run the arbiter, and return a decision record."""
 
@@ -567,6 +687,7 @@ class D4ArbitrationAdapter:
             or "unknown_resource"
         )
         resolved_coverage = coverage_cell or _coverage_cell(track, assignment, terminal_association)
+        health = _c2_health(c2_health)
         resolved_secondary_nodes = tuple(
             item
             for item in (build_resource_summary(node) for node in secondary_nodes)
@@ -592,6 +713,18 @@ class D4ArbitrationAdapter:
             current_plan_version=current_plan_version,
             expected_plan_version=expected_plan_version,
         )
+        coalition_safety = build_coalition_safety_evidence(
+            plan=plan,
+            assignment=assignment,
+            terminal_association=terminal_association,
+            cross_view_summary=cross_view_summary,
+            global_track_id=resolved_track_id,
+            resource_id=resolved_resource_id,
+            center_available=health != C2Health.FAILED,
+            current_plan_version=current_plan_version,
+            expected_plan_version=expected_plan_version,
+            expected_coalition_version=expected_coalition_version,
+        )
         terminal_summary = build_terminal_association_summary(
             terminal_association=terminal_association,
             resource_id=resolved_resource_id,
@@ -603,6 +736,12 @@ class D4ArbitrationAdapter:
             cross_view_summary=cross_view_summary,
             d5_evidence=d5_evidence,
         )
+        if coalition_safety.legal_multi_resource_lock:
+            terminal_summary = replace(
+                terminal_summary,
+                duplicate_terminal_lock=False,
+                cross_view_risk_score=terminal_summary.ambiguity_score,
+            )
         communications = tuple(
             item
             for item in (
@@ -624,7 +763,6 @@ class D4ArbitrationAdapter:
             global_track_id=resolved_track_id,
             coverage_cell=resolved_coverage,
         )
-        health = _c2_health(c2_health)
         decision = self.arbiter.evaluate(
             track_uncertainty=track_summary,
             association_risk=association_summary,
@@ -636,12 +774,27 @@ class D4ArbitrationAdapter:
             current_time_s=timestamp,
         )
         decision = self._enforce_sustained_secondary_readiness(decision, lifecycle)
+        decision, coalition_safety = _enforce_coalition_safety(
+            decision,
+            coalition_safety,
+        )
         resolved_plan_id = plan_id or _string_or_none(_get(plan, "plan_id"))
         resolved_plan_version = _optional_int(
             _get(plan, "version", _get(plan, "plan_version"))
         )
         if resolved_plan_version is None:
             resolved_plan_version = assignment_summary.plan_version
+        decision, center_replan_lifecycle = _apply_center_replan_lifecycle(
+            decision,
+            center_replan_status=center_replan_status,
+            global_track_id=resolved_track_id,
+            coalition_safety=coalition_safety,
+            c2_health=health,
+            current_plan_id=resolved_plan_id,
+            current_plan_version=resolved_plan_version,
+            current_time_s=float(timestamp),
+            cooldown_s=max(0.0, float(self.arbiter.config.center_replan_cooldown_s)),
+        )
         selected_lifecycle = _diagnostic_secondary_lifecycle(
             lifecycle,
             target_node_id=decision.target_node_id,
@@ -730,6 +883,20 @@ class D4ArbitrationAdapter:
             plan_id=resolved_plan_id,
             plan_version=resolved_plan_version,
             active_plan_owner=secondary_takeover.active_plan_owner,
+            center_replan_status=center_replan_status,
+            center_replan_current_risk_signature=center_replan_lifecycle[
+                "current_risk_signature"
+            ],
+            center_replan_status_matches=center_replan_lifecycle["status_matches"],
+            center_replan_risk_worsened=center_replan_lifecycle["risk_worsened"],
+            center_replan_suppressed_duplicate=center_replan_lifecycle[
+                "suppressed_duplicate"
+            ],
+            center_replan_bypass_reason=center_replan_lifecycle["bypass_reason"],
+            center_replan_cooldown_s=center_replan_lifecycle["cooldown_s"],
+            center_replan_cooldown_until=center_replan_lifecycle["cooldown_until"],
+            center_replan_cooldown_active=center_replan_lifecycle["cooldown_active"],
+            coalition_safety=coalition_safety,
             secondary_takeover=secondary_takeover,
             track_version=track_version or _optional_int(_metadata(track).get("track_version")),
             target_node_id=decision.target_node_id,
@@ -980,6 +1147,8 @@ class D4ArbitrationAdapter:
             terminal_association=terminal_summary,
             communication_summaries=communications,
             secondary_lifecycle=lifecycle,
+            coalition_safety=coalition_safety,
+            center_replan_status=center_replan_status,
             decision=decision,
             record=record,
         )
@@ -1378,6 +1547,233 @@ def _secondary_takeover_necessity_label(
     return "inconclusive"
 
 
+def _apply_center_replan_lifecycle(
+    decision: ActiveDegradationDecision,
+    *,
+    center_replan_status: CenterReplanStatus | None,
+    global_track_id: str,
+    coalition_safety: CoalitionSafetyEvidence,
+    c2_health: C2Health,
+    current_plan_id: str | None,
+    current_plan_version: int | None,
+    current_time_s: float,
+    cooldown_s: float,
+) -> tuple[ActiveDegradationDecision, dict[str, Any]]:
+    """Suppress only duplicate, non-safety center requests within one lifecycle."""
+
+    current_signature = build_center_replan_risk_signature(decision.risk_factors)
+    assessment: dict[str, Any] = {
+        "current_risk_signature": current_signature,
+        "status_matches": False,
+        "risk_worsened": False,
+        "suppressed_duplicate": False,
+        "bypass_reason": None,
+        "cooldown_s": cooldown_s,
+        "cooldown_until": None,
+        "cooldown_active": False,
+    }
+    if center_replan_status is None:
+        return decision, assessment
+
+    if c2_health == C2Health.FAILED:
+        assessment["bypass_reason"] = "center_failed"
+        return decision, assessment
+
+    status_coalition_scope = (
+        center_replan_status.coalition_id,
+        center_replan_status.coalition_version,
+    )
+    evidence_coalition_scope = (
+        coalition_safety.coalition_id,
+        coalition_safety.coalition_version,
+    )
+    coalition_scope_matches = status_coalition_scope == evidence_coalition_scope
+    if not coalition_safety.coalition_required:
+        coalition_scope_matches = coalition_scope_matches or status_coalition_scope == (
+            None,
+            None,
+        )
+    status_matches = bool(
+        center_replan_status.target_id == global_track_id
+        and coalition_scope_matches
+    )
+    assessment["status_matches"] = status_matches
+    if not status_matches:
+        assessment["bypass_reason"] = "request_scope_mismatch"
+        return decision, assessment
+
+    if center_replan_status.state == "applied" and (
+        (
+            center_replan_status.resolved_plan_id is not None
+            and center_replan_status.resolved_plan_id != current_plan_id
+        )
+        or (
+            center_replan_status.resolved_plan_version is not None
+            and center_replan_status.resolved_plan_version != current_plan_version
+        )
+    ):
+        assessment["bypass_reason"] = "resolved_plan_not_current"
+        return decision, assessment
+
+    previous_risks = set(center_replan_status.risk_signature)
+    current_risks = set(current_signature)
+    risk_worsened = bool(current_risks - previous_risks)
+    assessment["risk_worsened"] = risk_worsened
+
+    hard_factors = current_risks & CENTER_REPLAN_COOLDOWN_BYPASS_FACTORS
+    if hard_factors:
+        assessment["bypass_reason"] = "hard_safety_risk"
+        return decision, assessment
+    if center_replan_status.state == "expired":
+        assessment["bypass_reason"] = "request_expired"
+        return decision, assessment
+
+    cooldown_reference = (
+        center_replan_status.resolved_at
+        if center_replan_status.resolved_at is not None
+        else center_replan_status.requested_at
+    )
+    cooldown_until = float(cooldown_reference) + max(0.0, float(cooldown_s))
+    cooldown_active = bool(float(current_time_s) < cooldown_until)
+    assessment["cooldown_until"] = cooldown_until
+    assessment["cooldown_active"] = cooldown_active
+    if risk_worsened and not cooldown_active:
+        assessment["bypass_reason"] = "risk_worsened"
+        return decision, assessment
+
+    suppress = False
+    if risk_worsened and cooldown_active:
+        suppress = True
+    elif center_replan_status.state == "acknowledged_no_change":
+        suppress = current_risks.issubset(previous_risks)
+    elif decision.action != DegradationAction.REQUEST_CENTER_REPLAN:
+        assessment["bypass_reason"] = "action_not_center_replan"
+        return decision, assessment
+    elif center_replan_status.state == "pending":
+        suppress = current_signature == center_replan_status.risk_signature
+    elif center_replan_status.state == "applied":
+        suppress = current_risks.issubset(previous_risks)
+    if not suppress:
+        assessment["bypass_reason"] = "risk_signature_changed"
+        return decision, assessment
+
+    assessment["suppressed_duplicate"] = True
+    return ActiveDegradationDecision(
+        mode=DegradationMode.NONE,
+        action=DegradationAction.CONTINUE_CENTER,
+        reason=f"center_replan_{center_replan_status.state}",
+        coverage_cell=decision.coverage_cell,
+        terminal_consistent=decision.terminal_consistent,
+        risk_factors=decision.risk_factors,
+        requires_human_review=decision.requires_human_review,
+    ), assessment
+
+
+def _enforce_coalition_safety(
+    decision: ActiveDegradationDecision,
+    evidence: CoalitionSafetyEvidence,
+) -> tuple[ActiveDegradationDecision, CoalitionSafetyEvidence]:
+    candidate_action = decision.action.value
+    if not evidence.coalition_required:
+        return decision, replace(
+            evidence,
+            candidate_action=candidate_action,
+            gated_action=candidate_action,
+        )
+
+    unsupported_fallback = decision.action in {
+        DegradationAction.DEGRADE_TO_SECONDARY,
+        DegradationAction.DEGRADE_TO_DISTRIBUTED,
+    } and not evidence.fallback_supported
+
+    if (
+        unsupported_fallback
+        and evidence.center_available
+        and evidence.safety_action != CoalitionSafetyAction.HOLD_OR_REVOKE
+    ):
+        reason = "coalition_fallback_unsupported_request_center_replan"
+        risk_factors = tuple(
+            dict.fromkeys(
+                (
+                    *decision.risk_factors,
+                    "coalition_atomic_fallback_unavailable",
+                    reason,
+                )
+            )
+        )
+        gated = ActiveDegradationDecision(
+            mode=DegradationMode.ACTIVE_DEGRADATION,
+            action=DegradationAction.REQUEST_CENTER_REPLAN,
+            reason=reason,
+            coverage_cell=decision.coverage_cell,
+            terminal_consistent=decision.terminal_consistent,
+            risk_factors=risk_factors,
+        )
+        return gated, replace(
+            evidence,
+            safety_action=CoalitionSafetyAction.REQUEST_CENTER_REPLAN,
+            safety_reason=reason,
+            safe_to_execute=False,
+            candidate_action=candidate_action,
+            gated_action=gated.action.value,
+            conflict_reasons=tuple(
+                dict.fromkeys(
+                    (
+                        *evidence.conflict_reasons,
+                        "coalition_atomic_fallback_unavailable",
+                    )
+                )
+            ),
+            metadata={
+                **evidence.metadata,
+                "atomic_coalition_fallback_available": False,
+                "candidate_action": candidate_action,
+                "gated_action": gated.action.value,
+            },
+        )
+
+    if evidence.safety_action != CoalitionSafetyAction.HOLD_OR_REVOKE:
+        return decision, replace(
+            evidence,
+            candidate_action=candidate_action,
+            gated_action=candidate_action,
+        )
+    risk_factors = tuple(
+        dict.fromkeys(
+            (
+                *decision.risk_factors,
+                "coalition_safety_hold",
+                evidence.safety_reason,
+                *evidence.conflict_reasons,
+            )
+        )
+    )
+    gated = ActiveDegradationDecision(
+        mode=(
+            DegradationMode.PASSIVE_FAILOVER
+            if not evidence.center_available
+            else DegradationMode.ACTIVE_DEGRADATION
+        ),
+        action=DegradationAction.HOLD_FOR_REVIEW,
+        reason=evidence.safety_reason,
+        coverage_cell=decision.coverage_cell,
+        terminal_consistent=False,
+        risk_factors=risk_factors,
+        requires_human_review=True,
+    )
+    return gated, replace(
+        evidence,
+        candidate_action=candidate_action,
+        gated_action=gated.action.value,
+        metadata={
+            **evidence.metadata,
+            "atomic_coalition_fallback_available": False,
+            "candidate_action": candidate_action,
+            "gated_action": gated.action.value,
+        },
+    )
+
+
 def build_track_uncertainty_summary(
     track: Any,
     *,
@@ -1512,6 +1908,20 @@ def build_assignment_validity_summary(
         0,
     )
     created_at = _first_float(_get(plan, "created_at"), _get(assignment, "timestamp"), timestamp)
+    plan_metadata = _metadata(plan)
+    activity_timestamp = created_at
+    age_reference = "plan.created_at"
+    for field_name in (
+        "last_evaluated_at_s",
+        "last_evaluated_at",
+        "evaluated_at_s",
+        "evaluated_at",
+    ):
+        evaluated_at = _optional_float(plan_metadata.get(field_name))
+        if evaluated_at is not None:
+            activity_timestamp = evaluated_at
+            age_reference = f"plan.metadata.{field_name}"
+            break
     stale_after_s = _optional_float(_get(plan, "stale_after_s", _get(assignment, "stale_after_s")))
     decision_state = (_string_or_none(_get(plan, "decision_state")) or "accepted").lower()
     is_current = decision_state not in {"stale", "obsolete", "rejected", "expired"}
@@ -1519,7 +1929,8 @@ def build_assignment_validity_summary(
         is_current = is_current and plan_version == int(expected_plan_version)
     if current_plan_version is not None:
         is_current = is_current and plan_version == int(current_plan_version)
-    plan_age = max(0.0, float(timestamp) - created_at)
+    plan_age = max(0.0, float(timestamp) - activity_timestamp)
+    identity_age = max(0.0, float(timestamp) - created_at)
     if stale_after_s is not None and plan_age > stale_after_s:
         is_current = False
 
@@ -1530,6 +1941,11 @@ def build_assignment_validity_summary(
         is_current=is_current,
         plan_age_s=plan_age,
         cost_margin=_cost_margin(plan, assignment),
+        metadata={
+            "plan_age_reference": age_reference,
+            "plan_age_reference_timestamp_s": activity_timestamp,
+            "identity_age_s": identity_age,
+        },
     )
 
 

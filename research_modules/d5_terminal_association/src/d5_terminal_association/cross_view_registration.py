@@ -87,6 +87,15 @@ class GlobalTrackBinding:
     plan_id: str | None = None
     plan_version: int | None = None
     authorization_state: str = "authorized"
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    member_role: str = "primary"
+    wave_id: int = 0
+    required_resource_count: int = 1
+    coordination_mode: str = "independent"
+    arrival_window_start_s: float | None = None
+    arrival_window_end_s: float | None = None
+    activation_state: str = "active"
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -105,6 +114,30 @@ class GlobalTrackBinding:
             object.__setattr__(self, "plan_version", int(self.plan_version))
         object.__setattr__(self, "plan_id", _optional_string(self.plan_id))
         object.__setattr__(self, "authorization_state", str(self.authorization_state or "authorized"))
+        object.__setattr__(self, "coalition_id", _optional_string(self.coalition_id))
+        if self.coalition_version is not None:
+            object.__setattr__(self, "coalition_version", int(self.coalition_version))
+        object.__setattr__(self, "member_role", str(self.member_role).strip().lower())
+        object.__setattr__(self, "wave_id", int(self.wave_id))
+        object.__setattr__(self, "required_resource_count", int(self.required_resource_count))
+        if self.required_resource_count < 1:
+            raise ValueError("required_resource_count must be at least 1")
+        if self.wave_id < 0:
+            raise ValueError("wave_id must be non-negative")
+        if (self.coalition_id is None) != (self.coalition_version is None):
+            raise ValueError("coalition_id and coalition_version must be provided together")
+        if (
+            self.arrival_window_start_s is not None
+            and self.arrival_window_end_s is not None
+            and float(self.arrival_window_start_s) > float(self.arrival_window_end_s)
+        ):
+            raise ValueError("arrival window start must not exceed end")
+        object.__setattr__(self, "coordination_mode", str(self.coordination_mode).strip().lower())
+        object.__setattr__(self, "activation_state", str(self.activation_state).strip().lower())
+        if self.arrival_window_start_s is not None:
+            object.__setattr__(self, "arrival_window_start_s", float(self.arrival_window_start_s))
+        if self.arrival_window_end_s is not None:
+            object.__setattr__(self, "arrival_window_end_s", float(self.arrival_window_end_s))
         object.__setattr__(self, "metadata", dict(self.metadata))
 
 
@@ -333,6 +366,15 @@ def binding_from_assignment(
         plan_id=assignment.plan_id,
         plan_version=assignment.plan_version,
         authorization_state=assignment.authorization_state,
+        coalition_id=assignment.coalition_id,
+        coalition_version=assignment.coalition_version,
+        member_role=assignment.member_role,
+        wave_id=assignment.wave_id,
+        required_resource_count=assignment.required_resource_count,
+        coordination_mode=assignment.coordination_mode,
+        arrival_window_start_s=assignment.arrival_window_start_s,
+        arrival_window_end_s=assignment.arrival_window_end_s,
+        activation_state=assignment.activation_state,
     )
 
 
@@ -631,6 +673,15 @@ def _publish_registered(
         "binding_source": binding.binding_source,
         "plan_id": binding.plan_id,
         "plan_version": binding.plan_version,
+        "coalition_id": binding.coalition_id,
+        "coalition_version": binding.coalition_version,
+        "member_role": binding.member_role,
+        "wave_id": binding.wave_id,
+        "required_resource_count": binding.required_resource_count,
+        "coordination_mode": binding.coordination_mode,
+        "arrival_window_start_s": binding.arrival_window_start_s,
+        "arrival_window_end_s": binding.arrival_window_end_s,
+        "activation_state": binding.activation_state,
         "global_id_policy": "existing_global_track_id_support_only",
         "truth_id_online_use": "ignored",
         "registration_stability_state": "candidate",
@@ -653,6 +704,19 @@ def _publish_registered(
         candidate_costs=sorted(candidate_costs, key=lambda item: item[1]),
         recon_cue_used=False,
         metadata=metadata,
+        plan_id=binding.plan_id,
+        plan_version=binding.plan_version,
+        authorization_state=binding.authorization_state,
+        resource_id=batch.resource_id,
+        coalition_id=binding.coalition_id,
+        coalition_version=binding.coalition_version,
+        member_role=binding.member_role,
+        wave_id=binding.wave_id,
+        required_resource_count=binding.required_resource_count,
+        coordination_mode=binding.coordination_mode,
+        arrival_window_start_s=binding.arrival_window_start_s,
+        arrival_window_end_s=binding.arrival_window_end_s,
+        activation_state=binding.activation_state,
     )
     bus.publish_terminal_association(
         resource_id=batch.resource_id,
@@ -740,9 +804,15 @@ def _normalize_binding(binding: GlobalTrackBinding | Assignment | Mapping[str, A
     if isinstance(binding, str):
         return GlobalTrackBinding(global_track_id=binding, binding_source="global_track_id")
     if isinstance(binding, Mapping):
-        global_track_id = binding.get("global_track_id") or binding.get("assigned_global_track_id")
+        global_track_id = (
+            binding.get("global_track_id")
+            or binding.get("assigned_global_track_id")
+            or binding.get("target_id")
+        )
         if global_track_id is None:
-            raise ValueError("binding mapping must include global_track_id or assigned_global_track_id")
+            raise ValueError(
+                "binding mapping must include global_track_id, assigned_global_track_id, or target_id"
+            )
         return GlobalTrackBinding(
             global_track_id=str(global_track_id),
             binding_source=str(binding.get("binding_source", binding.get("source", "d2_d3_binding"))),
@@ -755,6 +825,15 @@ def _normalize_binding(binding: GlobalTrackBinding | Assignment | Mapping[str, A
             plan_id=_optional_string(binding.get("plan_id")),
             plan_version=_optional_int(binding.get("plan_version")),
             authorization_state=str(binding.get("authorization_state", "authorized")),
+            coalition_id=_optional_string(binding.get("coalition_id")),
+            coalition_version=_optional_int(binding.get("coalition_version")),
+            member_role=str(binding.get("member_role", "primary")),
+            wave_id=int(binding.get("wave_id", 0)),
+            required_resource_count=int(binding.get("required_resource_count", 1)),
+            coordination_mode=str(binding.get("coordination_mode", "independent")),
+            arrival_window_start_s=_optional_float(binding.get("arrival_window_start_s")),
+            arrival_window_end_s=_optional_float(binding.get("arrival_window_end_s")),
+            activation_state=str(binding.get("activation_state", binding.get("binding_state", "active"))),
             metadata=_online_metadata(binding.get("metadata", {})),
         )
     raise TypeError(f"unsupported binding type: {type(binding)!r}")

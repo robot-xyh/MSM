@@ -6,6 +6,27 @@ from .associators import (
     JPDAAssociator,
     MHTAssociator,
 )
+from .cross_node_metrics import (
+    CrossNodeRegistryMetrics,
+    OfflineCrossNodeMetricsEvaluator,
+)
+from .cross_node_models import (
+    BindingHistoryEvent,
+    CanonicalTrackSnapshot,
+    CorrelationStatus,
+    CrossNodeAssociationResult,
+    FusionAction,
+    FusionDirective,
+    RejectedSourceTrack,
+    SourceTrackKey,
+    SourceTrackSummary,
+    TrackToTrackMatch,
+)
+from .cross_node_registry import (
+    CrossNodeAssignmentBatch,
+    CrossNodeTrackAssociator,
+    CrossNodeTrackRegistry,
+)
 from .dry_run_adapter import (
     DryRunAssociationFrame,
     DryRunAssociationResult,
@@ -52,6 +73,14 @@ from .tracker import Tracker
 
 __all__ = [
     "AssociationLogEntry",
+    "BindingHistoryEvent",
+    "CanonicalTrackSnapshot",
+    "CorrelationStatus",
+    "CrossNodeAssociationResult",
+    "CrossNodeAssignmentBatch",
+    "CrossNodeRegistryMetrics",
+    "CrossNodeTrackAssociator",
+    "CrossNodeTrackRegistry",
     "AssociationRiskSummaryWindowGenerator",
     "AssociationRiskSummary",
     "InitializationGovernanceProfile",
@@ -63,10 +92,13 @@ __all__ = [
     "DryRunAssociationResult",
     "GNNHungarianAssociator",
     "GlobalTrack",
+    "FusionAction",
+    "FusionDirective",
     "JPDAAssociator",
     "MHTAssociator",
     "MatchedPair",
     "MetricsRecorder",
+    "OfflineCrossNodeMetricsEvaluator",
     "RiskBreakdown",
     "RiskThresholds",
     "ReplayAssociationReport",
@@ -79,8 +111,12 @@ __all__ = [
     "write_association_logs_jsonl",
     "write_replay_association_report",
     "RejectedPair",
+    "RejectedSourceTrack",
+    "SourceTrackKey",
+    "SourceTrackSummary",
     "TrackLifecycleState",
     "TrackTransition",
+    "TrackToTrackMatch",
     "Tracker",
     "build_default_dry_run_tracker",
     "build_5v5_replay_fixture",

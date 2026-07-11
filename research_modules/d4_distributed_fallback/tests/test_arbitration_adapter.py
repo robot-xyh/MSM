@@ -19,6 +19,7 @@ from d4_distributed_fallback import (
     SecondaryReadinessWindowConfig,
     SecondaryTakeoverPlanState,
     TrackSummary,
+    build_assignment_validity_summary,
     build_communication_summary,
     build_distributed_visual_evidence_summary,
     merge_distributed_visual_evidence_into_tracks,
@@ -210,6 +211,90 @@ def test_adapter_maps_low_risk_inputs_to_continue_center_event_metadata() -> Non
     assert abs(metadata["secondary_diagnostic_heartbeat_age_s"] - 0.1) < 1e-9
     assert metadata["global_track_id"] == "G-TGT-001"
     assert metadata["plan_version"] == 3
+    assignment_evidence = result.to_event_metadata()["assignment_validity"]
+    assert assignment_evidence["metadata"] == {
+        "plan_age_reference": "plan.created_at",
+        "plan_age_reference_timestamp_s": 9.5,
+        "identity_age_s": 0.5,
+    }
+
+
+def test_assignment_age_prefers_last_evaluated_activity_timestamp() -> None:
+    summary = build_assignment_validity_summary(
+        plan=SimpleNamespace(
+            version=3,
+            created_at=0.0,
+            stale_after_s=4.0,
+            decision_state="accepted",
+            metadata={"last_evaluated_at_s": 9.0},
+        ),
+        assignment=_assignment(),
+        timestamp=10.0,
+        global_track_id="G-TGT-001",
+        resource_id="INT-01",
+    )
+
+    assert summary.plan_age_s == 1.0
+    assert summary.is_current is True
+    assert summary.metadata == {
+        "plan_age_reference": "plan.metadata.last_evaluated_at_s",
+        "plan_age_reference_timestamp_s": 9.0,
+        "identity_age_s": 10.0,
+    }
+
+
+def test_assignment_age_without_evaluation_metadata_keeps_created_at_behavior() -> None:
+    summary = build_assignment_validity_summary(
+        plan=SimpleNamespace(
+            version=3,
+            created_at=0.0,
+            stale_after_s=4.0,
+            decision_state="accepted",
+        ),
+        assignment=_assignment(),
+        timestamp=10.0,
+        global_track_id="G-TGT-001",
+        resource_id="INT-01",
+    )
+
+    assert summary.plan_age_s == 10.0
+    assert summary.is_current is False
+    assert summary.metadata["plan_age_reference"] == "plan.created_at"
+    assert summary.metadata["identity_age_s"] == 10.0
+
+
+def test_assignment_becomes_stale_only_after_activity_age_exceeds_threshold() -> None:
+    common = {
+        "version": 3,
+        "created_at": 0.0,
+        "stale_after_s": 4.0,
+        "decision_state": "accepted",
+    }
+    at_threshold = build_assignment_validity_summary(
+        plan=SimpleNamespace(
+            **common,
+            metadata={"last_evaluated_at_s": 6.0},
+        ),
+        assignment=_assignment(),
+        timestamp=10.0,
+        global_track_id="G-TGT-001",
+        resource_id="INT-01",
+    )
+    over_threshold = build_assignment_validity_summary(
+        plan=SimpleNamespace(
+            **common,
+            metadata={"last_evaluated_at_s": 5.9},
+        ),
+        assignment=_assignment(),
+        timestamp=10.0,
+        global_track_id="G-TGT-001",
+        resource_id="INT-01",
+    )
+
+    assert at_threshold.plan_age_s == 4.0
+    assert at_threshold.is_current is True
+    assert over_threshold.plan_age_s == pytest.approx(4.1)
+    assert over_threshold.is_current is False
 
 
 def test_adapter_ignores_unavailable_truth_identity_metrics_online() -> None:

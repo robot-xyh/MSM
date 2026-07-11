@@ -77,6 +77,12 @@ def _optional_string(value: Any | None) -> str | None:
     return text if text else None
 
 
+def _optional_int(value: Any | None) -> int | None:
+    if value is None:
+        return None
+    return int(value)
+
+
 def _finite_float_or_none(value: float | None) -> float | None:
     if value is None:
         return None
@@ -362,7 +368,12 @@ class PeerCameraState:
 
 @dataclass(frozen=True)
 class Assignment:
-    """Center assignment that the terminal module must respect."""
+    """Center assignment that the terminal module must respect.
+
+    Coalition fields mirror the D3 schema-v2 guidance binding. D5 consumes
+    them as read-only execution and duplicate-lock context; it never admits,
+    removes, or reassigns coalition members.
+    """
 
     assigned_global_track_id: str
     assignment_version: int = 0
@@ -372,6 +383,44 @@ class Assignment:
     plan_version: int | None = None
     authorization_state: str = "authorized"
     resource_id: str | None = None
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    member_role: str = "primary"
+    wave_id: int = 0
+    required_resource_count: int = 1
+    coordination_mode: str = "independent"
+    arrival_window_start_s: float | None = None
+    arrival_window_end_s: float | None = None
+    activation_state: str = "active"
+
+    def __post_init__(self) -> None:
+        if not self.assigned_global_track_id:
+            raise ValueError("assigned_global_track_id must be non-empty")
+        if int(self.required_resource_count) < 1:
+            raise ValueError("required_resource_count must be at least 1")
+        if int(self.wave_id) < 0:
+            raise ValueError("wave_id must be non-negative")
+        if (
+            self.arrival_window_start_s is not None
+            and self.arrival_window_end_s is not None
+            and float(self.arrival_window_start_s) > float(self.arrival_window_end_s)
+        ):
+            raise ValueError("arrival window start must not exceed end")
+        if (self.coalition_id is None) != (self.coalition_version is None):
+            raise ValueError("coalition_id and coalition_version must be provided together")
+        object.__setattr__(self, "assignment_version", int(self.assignment_version))
+        object.__setattr__(self, "plan_version", _optional_int(self.plan_version))
+        object.__setattr__(self, "coalition_id", _optional_string(self.coalition_id))
+        object.__setattr__(self, "coalition_version", _optional_int(self.coalition_version))
+        object.__setattr__(self, "member_role", str(self.member_role).strip().lower())
+        object.__setattr__(self, "wave_id", int(self.wave_id))
+        object.__setattr__(self, "required_resource_count", int(self.required_resource_count))
+        object.__setattr__(self, "coordination_mode", str(self.coordination_mode).strip().lower())
+        object.__setattr__(self, "activation_state", str(self.activation_state).strip().lower())
+        if self.arrival_window_start_s is not None:
+            object.__setattr__(self, "arrival_window_start_s", float(self.arrival_window_start_s))
+        if self.arrival_window_end_s is not None:
+            object.__setattr__(self, "arrival_window_end_s", float(self.arrival_window_end_s))
 
 
 @dataclass(frozen=True)
@@ -551,6 +600,49 @@ class TerminalAssociation:
     candidate_costs: list[tuple[str, float]] = field(default_factory=list)
     recon_cue_used: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
+    plan_id: str | None = None
+    plan_version: int | None = None
+    authorization_state: str = "authorized"
+    resource_id: str | None = None
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    member_role: str = "primary"
+    wave_id: int = 0
+    required_resource_count: int = 1
+    coordination_mode: str = "independent"
+    arrival_window_start_s: float | None = None
+    arrival_window_end_s: float | None = None
+    activation_state: str = "active"
+
+    def __post_init__(self) -> None:
+        if not self.assigned_global_track_id:
+            raise ValueError("assigned_global_track_id must be non-empty")
+        if int(self.required_resource_count) < 1:
+            raise ValueError("required_resource_count must be at least 1")
+        if int(self.wave_id) < 0:
+            raise ValueError("wave_id must be non-negative")
+        if (
+            self.arrival_window_start_s is not None
+            and self.arrival_window_end_s is not None
+            and float(self.arrival_window_start_s) > float(self.arrival_window_end_s)
+        ):
+            raise ValueError("arrival window start must not exceed end")
+        if (self.coalition_id is None) != (self.coalition_version is None):
+            raise ValueError("coalition_id and coalition_version must be provided together")
+        object.__setattr__(self, "assignment_version", int(self.assignment_version))
+        object.__setattr__(self, "plan_version", _optional_int(self.plan_version))
+        object.__setattr__(self, "coalition_id", _optional_string(self.coalition_id))
+        object.__setattr__(self, "coalition_version", _optional_int(self.coalition_version))
+        object.__setattr__(self, "member_role", str(self.member_role).strip().lower())
+        object.__setattr__(self, "wave_id", int(self.wave_id))
+        object.__setattr__(self, "required_resource_count", int(self.required_resource_count))
+        object.__setattr__(self, "coordination_mode", str(self.coordination_mode).strip().lower())
+        object.__setattr__(self, "activation_state", str(self.activation_state).strip().lower())
+        if self.arrival_window_start_s is not None:
+            object.__setattr__(self, "arrival_window_start_s", float(self.arrival_window_start_s))
+        if self.arrival_window_end_s is not None:
+            object.__setattr__(self, "arrival_window_end_s", float(self.arrival_window_end_s))
+        object.__setattr__(self, "metadata", dict(self.metadata))
 
 
 @dataclass(frozen=True)
@@ -623,6 +715,13 @@ class CrossViewAssociation:
     duplicate_local_track_ids: tuple[str, ...] = ()
     reason: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    planned_cooperative_lock: bool = False
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    required_resource_count: int = 1
+    coordination_mode: str = "independent"
+    excess_lock_resource_ids: tuple[str, ...] = ()
+    coalition_conflict_state: str = "none"
 
     def __post_init__(self) -> None:
         if not self.global_track_id:
@@ -641,6 +740,7 @@ class CrossViewAssociation:
             self, "duplicate_lock_resource_ids", _as_string_tuple(self.duplicate_lock_resource_ids)
         )
         object.__setattr__(self, "duplicate_local_track_ids", _as_string_tuple(self.duplicate_local_track_ids))
+        object.__setattr__(self, "excess_lock_resource_ids", _as_string_tuple(self.excess_lock_resource_ids))
         object.__setattr__(
             self,
             "association_confidences",
@@ -649,6 +749,12 @@ class CrossViewAssociation:
         object.__setattr__(self, "ambiguity_score", float(np.clip(self.ambiguity_score, 0.0, 1.0)))
         object.__setattr__(self, "recon_cue_used_count", int(self.recon_cue_used_count))
         object.__setattr__(self, "support_count", int(self.support_count))
+        object.__setattr__(self, "coalition_id", _optional_string(self.coalition_id))
+        object.__setattr__(self, "coalition_version", _optional_int(self.coalition_version))
+        object.__setattr__(self, "required_resource_count", int(self.required_resource_count))
+        if self.required_resource_count < 1:
+            raise ValueError("required_resource_count must be at least 1")
+        object.__setattr__(self, "coordination_mode", str(self.coordination_mode).strip().lower())
         object.__setattr__(self, "metadata", dict(self.metadata))
 
 

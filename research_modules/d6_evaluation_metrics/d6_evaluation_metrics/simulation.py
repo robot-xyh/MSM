@@ -146,6 +146,12 @@ def write_episode_log_jsonl(
             stream.write(_json_record("track", asdict(record)) + "\n")
         for record in collector.assignment_records:
             stream.write(_json_record("assignment", asdict(record)) + "\n")
+        for record in collector.target_demand_records:
+            stream.write(_json_record("target_demand", asdict(record)) + "\n")
+        for record in collector.coalition_records:
+            stream.write(_json_record("coalition", asdict(record)) + "\n")
+        for record in collector.arrival_records:
+            stream.write(_json_record("arrival", asdict(record)) + "\n")
         for record in collector.event_records:
             stream.write(_json_record("event", asdict(record)) + "\n")
         for record in collector.link_records:

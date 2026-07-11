@@ -23,6 +23,7 @@ from .airsim_dry_run_adapter import (
 from .models import (
     ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1,
     ASSIGNMENT_PLAN_SCHEMA_V1,
+    ASSIGNMENT_PLAN_SCHEMA_V2,
     Assignment,
     AssignmentFeedbackDecision,
     AssignmentEvidenceExport,
@@ -31,6 +32,12 @@ from .models import (
     AssignmentPlan,
     AssignmentRecord,
     AssignmentValiditySummary,
+    CoalitionMember,
+    CoalitionMemberRole,
+    CoalitionPlan,
+    CoalitionState,
+    CoalitionSummary,
+    CoordinationMode,
     CostWeights,
     DEFAULT_COST_PROFILE_ID,
     DEFAULT_COST_PROFILE_VERSION,
@@ -42,6 +49,8 @@ from .models import (
     SECONDARY_PLAN_SCHEMA_V2,
     SECONDARY_TAKEOVER_READY,
     SolverResult,
+    DemandSatisfactionSummary,
+    TargetDemand,
     TargetTrack,
     TerminalFeedbackWriteback,
     TERMINAL_FEEDBACK_PROFILE_SCHEMA_V1,
@@ -59,12 +68,18 @@ from .models import (
     summarize_terminal_feedback_calibration,
 )
 from .planner import AssignmentPlanner, StalePlanError
-from .solver import FallbackAssignmentSolver, HungarianAssignmentSolver
+from .min_cost_flow import MinCostFlowAssignmentSolver, OrToolsUnavailableError
+from .solver import (
+    FallbackAssignmentSolver,
+    HungarianAssignmentSolver,
+    HungarianDemandSlotSolver,
+)
 
 __all__ = [
     "ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1",
     "Assignment",
     "ASSIGNMENT_PLAN_SCHEMA_V1",
+    "ASSIGNMENT_PLAN_SCHEMA_V2",
     "AssignmentFeedbackDecision",
     "AssignmentFixtureStep",
     "AssignmentEvidenceExport",
@@ -75,6 +90,12 @@ __all__ = [
     "AssignmentRecord",
     "AssignmentScenarioFixture",
     "AssignmentValiditySummary",
+    "CoalitionMember",
+    "CoalitionMemberRole",
+    "CoalitionPlan",
+    "CoalitionState",
+    "CoalitionSummary",
+    "CoordinationMode",
     "AirSimDryRunAssignmentAdapter",
     "CostMatrixResult",
     "CostModel",
@@ -83,8 +104,12 @@ __all__ = [
     "DEFAULT_COST_PROFILE_VERSION",
     "DEFAULT_FEEDBACK_PROFILE_ID",
     "DEFAULT_FEEDBACK_PROFILE_VERSION",
+    "DemandSatisfactionSummary",
     "FallbackAssignmentSolver",
     "HungarianAssignmentSolver",
+    "HungarianDemandSlotSolver",
+    "MinCostFlowAssignmentSolver",
+    "OrToolsUnavailableError",
     "PlannerConfig",
     "P1_ASSIGNMENT_FIXTURE_PROFILE_ID",
     "P1_ASSIGNMENT_FIXTURE_PROFILE_VERSION",
@@ -96,6 +121,7 @@ __all__ = [
     "SolverResult",
     "StalePlanError",
     "TargetTrack",
+    "TargetDemand",
     "TerminalFeedbackWriteback",
     "TERMINAL_FEEDBACK_PROFILE_SCHEMA_V1",
     "ThreatScoreBaseline",

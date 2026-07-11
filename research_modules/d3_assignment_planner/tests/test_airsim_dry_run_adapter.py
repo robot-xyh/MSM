@@ -116,7 +116,9 @@ def test_dry_run_adapter_preserves_hysteresis_fields() -> None:
         expected_previous_version=first.version,
     )
 
-    assert second.version == 2
+    assert second.version == first.version
+    assert second.plan_id == first.plan_id
+    assert second.created_at == first.created_at
     assert second.assignment_map() == first.assignment_map()
     assert second.decision_state == "held_by_hysteresis"
     assert second.changed is False
@@ -128,7 +130,12 @@ def test_dry_run_adapter_keeps_stale_version_checks_intact() -> None:
     adapter = _adapter(PlannerConfig(enable_hysteresis=False))
 
     first = adapter.plan(_initial_tracks(), _resources(), timestamp=0.0)
-    second = adapter.plan(_initial_tracks(), _resources(), timestamp=1.0, previous_plan=first)
+    second = adapter.plan(
+        _shifted_tracks(),
+        _resources(),
+        timestamp=1.0,
+        previous_plan=first,
+    )
 
     assert second.version == 2
     with pytest.raises(StalePlanError):

@@ -45,6 +45,7 @@ from .consistency import (
     candidate_cost_margin,
     summarize_terminal_consistency,
 )
+from .coalition_visual import CoalitionVisualSummary, summarize_coalition_visual_completion
 from .cross_view_registration import (
     CAMERA_POSE_SOURCES,
     DETECT_REGISTRATION_REASONS,
@@ -120,6 +121,7 @@ __all__ = [
     "CalibrationSeedReadiness",
     "CostBreakdown",
     "CostMatrixResult",
+    "CoalitionVisualSummary",
     "CrossPeerAssociationHypothesis",
     "CrossViewAssociation",
     "DETECT_REGISTRATION_REASONS",
@@ -195,6 +197,7 @@ __all__ = [
     "register_local_visual_tracks_to_global_tracks",
     "rotation_world_to_opencv_camera_from_quaternion",
     "summarize_degradation_case",
+    "summarize_coalition_visual_completion",
     "summarize_multiseed_calibration_readiness",
     "summarize_secondary_visual_coverage_funnel",
     "summarize_terminal_consistency",

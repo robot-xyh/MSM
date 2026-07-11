@@ -61,11 +61,97 @@ def test_detection_and_tracking_metrics() -> None:
     )
 
     assert metrics.detection_probability == pytest.approx(0.75)
-    assert metrics.false_alarm_rate == pytest.approx(0.1)
+    assert metrics.false_alarm_rate == pytest.approx(0.0)
     assert metrics.missed_detection_rate == pytest.approx(0.25)
     assert metrics.track_rmse == pytest.approx(math.sqrt(25.0 / 3.0))
     assert metrics.track_continuity == pytest.approx(0.75)
     assert metrics.id_switch_count == 1
+
+
+def test_detection_metrics_require_offline_truth_mapping_and_ignore_truthless_tracks() -> None:
+    collector = MetricsCollector()
+    collector.extend_tracks(
+        [
+            TrackRecord(0.0, "G1", None),
+            TrackRecord(1.0, "G2", None),
+        ]
+    )
+
+    unavailable = collector.compute_episode("truthless", duration=2.0)
+
+    assert unavailable.detection_probability is None
+    assert unavailable.missed_detection_rate is None
+    assert unavailable.false_alarm_rate is None
+    for name in (
+        "detection_probability",
+        "missed_detection_rate",
+        "false_alarm_rate",
+    ):
+        assert unavailable.metric_availability[name]["status"] == "unavailable"
+
+    collector.add_track(TrackRecord(1.0, "G-UNKNOWN", "UNKNOWN"))
+    collector.extend_events(
+        [
+            EventRecord(
+                0.0,
+                "offline_detection_miss",
+                metadata={"truth_id": "T1", "truth_timestamp": 0.0},
+            ),
+            EventRecord(
+                1.0,
+                "offline_detection_miss",
+                metadata={"truth_id": "T1", "truth_timestamp": 1.0},
+            ),
+        ]
+    )
+    scored = collector.compute_episode(
+        "truth",
+        duration=2.0,
+        truth_summary={"truth_timestamps": {"T1": [0.0, 1.0]}},
+    )
+
+    assert scored.detection_probability == 0.0
+    assert scored.missed_detection_rate == 1.0
+    assert scored.false_alarm_rate == pytest.approx(0.5)
+    assert scored.metric_availability["false_alarm_rate"]["numerator"] == 1
+    assert scored.metadata["offline_detection_pair_evidence"] == {
+        "track_match_count": 0,
+        "explicit_match_count": 0,
+        "explicit_miss_count": 2,
+    }
+
+
+def test_detection_metrics_unavailable_with_truth_opportunities_but_truthless_tracks() -> None:
+    collector = MetricsCollector()
+    collector.extend_tracks(
+        [
+            TrackRecord(0.0, "G1", None),
+            TrackRecord(1.0, "G1", None),
+        ]
+    )
+
+    metrics = collector.compute_episode(
+        "airsim-truth-isolated",
+        duration=2.0,
+        truth_summary={"truth_timestamps": {"T1": [0.0, 1.0]}},
+    )
+
+    assert metrics.detection_probability is None
+    assert metrics.missed_detection_rate is None
+    assert metrics.false_alarm_rate is None
+    for name in (
+        "detection_probability",
+        "missed_detection_rate",
+        "false_alarm_rate",
+    ):
+        availability = metrics.metric_availability[name]
+        assert availability["status"] == "unavailable"
+        assert "offline detection/track-to-truth" in availability["reason"]
+    assert metrics.metadata["offline_detection_pair_evidence"] == {
+        "track_match_count": 0,
+        "explicit_match_count": 0,
+        "explicit_miss_count": 0,
+    }
 
 
 def test_assignment_metrics_count_duplicates_and_unassigned_high_threat() -> None:
@@ -970,5 +1056,57 @@ def test_episode_metrics_contains_all_required_names() -> None:
         "gpu_budget_utilization",
         "performance_budget_violation_count",
     }
+
+    required.update(
+        {
+            "target_demand_satisfaction_rate_micro",
+            "target_demand_satisfaction_rate_macro",
+            "unmet_slot_count",
+            "over_support_count",
+            "coalition_formation_time_s",
+            "coalition_reconfiguration_time_s",
+            "simultaneous_arrival_dispersion_s",
+            "common_window_success_rate",
+            "wave_interval_s",
+            "wave_order_violation_count",
+            "primary_success_rate",
+            "reserve_activation_count",
+            "reserve_activation_rate",
+            "reserve_activation_latency_s",
+            "planned_cooperative_lock_count",
+            "planned_cooperative_lock_success_rate",
+            "authorized_cooperative_lock_count",
+            "erroneous_duplicate_lock_count",
+            "same_resource_lock_continuity_count",
+            "replan_request_count",
+            "replan_request_deduplicated_count",
+            "replan_no_change_ack_count",
+            "replan_applied_count",
+            "replan_expired_count",
+            "replan_pending_dwell_s",
+            "replan_convergence_time_s",
+            "coalition_member_loss_count",
+            "coalition_member_replacement_count",
+            "coalition_member_replacement_time_s",
+            "coalition_digest_conflict_count",
+            "coalition_stale_rejection_count",
+            "coalition_stale_rejection_rate",
+            "messages_sent_count",
+            "messages_delivered_count",
+            "messages_dropped_count",
+            "payload_bytes_sent",
+            "payload_bytes_delivered",
+            "coalition_consensus_rounds",
+            "end_to_end_latency_ms",
+            "minimum_member_separation_m",
+            "collision_risk_exposure_s",
+            "geometry_rejection_count",
+            "geometry_rejection_rate",
+            "canonical_duplicate_count",
+            "cross_node_id_switch_count",
+            "common_information_duplicate_rejection_count",
+            "common_information_duplicate_rejection_rate",
+        }
+    )
 
     assert set(MetricsCollector().compute_episode("episode").metric_names()) == required

@@ -341,6 +341,419 @@ class GlobalTrack:
 
 
 @dataclass(frozen=True)
+class ObserverLineage:
+    """Immutable provenance for one cooperative observer payload."""
+
+    observer_id: str
+    sensor_id: str
+    observation_id: str
+    message_uuid: str
+    source_lineage: tuple[str, ...]
+    relay_node_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        for name in ("observer_id", "sensor_id", "observation_id", "message_uuid"):
+            value = str(getattr(self, name)).strip()
+            if not value:
+                raise ValueError(f"{name} must be non-empty")
+            object.__setattr__(self, name, value)
+        lineage = tuple(str(item).strip() for item in self.source_lineage if str(item).strip())
+        if not lineage:
+            raise ValueError("source_lineage must contain an immutable source payload identifier")
+        object.__setattr__(self, "source_lineage", lineage)
+        object.__setattr__(
+            self,
+            "relay_node_ids",
+            tuple(str(item).strip() for item in self.relay_node_ids if str(item).strip()),
+        )
+
+    @property
+    def deduplication_key(self) -> tuple[str, ...]:
+        return ("message_uuid", self.message_uuid)
+
+    @property
+    def lineage_key(self) -> tuple[str, ...]:
+        return ("source_lineage", *self.source_lineage)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "observer_id": self.observer_id,
+            "sensor_id": self.sensor_id,
+            "observation_id": self.observation_id,
+            "message_uuid": self.message_uuid,
+            "source_lineage": tuple(self.source_lineage),
+            "relay_node_ids": tuple(self.relay_node_ids),
+        }
+
+
+@dataclass(frozen=True)
+class CooperativeBearingObservation:
+    """Calibrated bearing ray and observer uncertainty at measurement time.
+
+    Rotations map sensor -> body -> NED. Pose and extrinsics covariance use
+    ``[translation_ned, small_angle_ned]`` perturbation ordering.
+    """
+
+    global_track_id: str
+    lineage: ObserverLineage
+    measurement_timestamp: float
+    arrival_timestamp: float
+    platform_position_ned: np.ndarray
+    platform_rotation_body_to_ned: np.ndarray
+    sensor_translation_body: np.ndarray
+    sensor_rotation_sensor_to_body: np.ndarray
+    bearing_unit_sensor: np.ndarray
+    bearing_covariance: np.ndarray | None
+    platform_pose_covariance: np.ndarray | None
+    sensor_extrinsics_covariance: np.ndarray | None
+    timestamp_uncertainty_s: float = 0.0
+    frame_id: str = "ned"
+
+    def __post_init__(self) -> None:
+        global_track_id = str(self.global_track_id).strip()
+        if not global_track_id:
+            raise ValueError("global_track_id must be supplied by the canonical track owner")
+        object.__setattr__(self, "global_track_id", global_track_id)
+        if str(self.frame_id).lower() != "ned":
+            raise ValueError("cooperative bearing observations must use the NED working frame")
+        object.__setattr__(self, "frame_id", "ned")
+        object.__setattr__(self, "measurement_timestamp", float(self.measurement_timestamp))
+        object.__setattr__(self, "arrival_timestamp", float(self.arrival_timestamp))
+        object.__setattr__(
+            self, "platform_position_ned", np.asarray(self.platform_position_ned, dtype=float).reshape(3)
+        )
+        object.__setattr__(
+            self,
+            "platform_rotation_body_to_ned",
+            np.asarray(self.platform_rotation_body_to_ned, dtype=float).reshape(3, 3),
+        )
+        object.__setattr__(
+            self, "sensor_translation_body", np.asarray(self.sensor_translation_body, dtype=float).reshape(3)
+        )
+        object.__setattr__(
+            self,
+            "sensor_rotation_sensor_to_body",
+            np.asarray(self.sensor_rotation_sensor_to_body, dtype=float).reshape(3, 3),
+        )
+        if not np.isfinite(self.measurement_timestamp) or not np.isfinite(self.arrival_timestamp):
+            raise ValueError("measurement_timestamp and arrival_timestamp must be finite")
+        for name in (
+            "platform_position_ned",
+            "platform_rotation_body_to_ned",
+            "sensor_translation_body",
+            "sensor_rotation_sensor_to_body",
+        ):
+            if not np.all(np.isfinite(getattr(self, name))):
+                raise ValueError(f"{name} must be finite")
+        bearing = np.asarray(self.bearing_unit_sensor, dtype=float).reshape(3)
+        norm = float(np.linalg.norm(bearing))
+        if not np.isfinite(norm) or norm <= 1e-12:
+            raise ValueError("bearing_unit_sensor must be finite and non-zero")
+        object.__setattr__(self, "bearing_unit_sensor", bearing / norm)
+        for name, shape in (
+            ("bearing_covariance", (2, 2)),
+            ("platform_pose_covariance", (6, 6)),
+            ("sensor_extrinsics_covariance", (6, 6)),
+        ):
+            covariance = getattr(self, name)
+            if covariance is not None:
+                object.__setattr__(self, name, np.asarray(covariance, dtype=float).reshape(shape))
+        timestamp_uncertainty_s = abs(float(self.timestamp_uncertainty_s))
+        if not np.isfinite(timestamp_uncertainty_s):
+            raise ValueError("timestamp_uncertainty_s must be finite")
+        object.__setattr__(self, "timestamp_uncertainty_s", timestamp_uncertainty_s)
+
+    @property
+    def ray_origin_ned(self) -> np.ndarray:
+        return self.platform_position_ned + (
+            self.platform_rotation_body_to_ned @ self.sensor_translation_body
+        )
+
+    @property
+    def ray_direction_ned(self) -> np.ndarray:
+        direction = (
+            self.platform_rotation_body_to_ned
+            @ self.sensor_rotation_sensor_to_body
+            @ self.bearing_unit_sensor
+        )
+        return direction / np.linalg.norm(direction)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "global_track_id": self.global_track_id,
+            "lineage": self.lineage.to_dict(),
+            "measurement_timestamp": self.measurement_timestamp,
+            "arrival_timestamp": self.arrival_timestamp,
+            "estimate_frame_id": self.frame_id,
+            "platform_position_ned": self.platform_position_ned.tolist(),
+            "platform_rotation_body_to_ned": self.platform_rotation_body_to_ned.tolist(),
+            "sensor_translation_body": self.sensor_translation_body.tolist(),
+            "sensor_rotation_sensor_to_body": self.sensor_rotation_sensor_to_body.tolist(),
+            "bearing_unit_sensor": self.bearing_unit_sensor.tolist(),
+            "ray_origin_ned": self.ray_origin_ned.tolist(),
+            "ray_direction_ned": self.ray_direction_ned.tolist(),
+            "bearing_covariance": (
+                None if self.bearing_covariance is None else self.bearing_covariance.tolist()
+            ),
+            "platform_pose_covariance": (
+                None
+                if self.platform_pose_covariance is None
+                else self.platform_pose_covariance.tolist()
+            ),
+            "sensor_extrinsics_covariance": (
+                None
+                if self.sensor_extrinsics_covariance is None
+                else self.sensor_extrinsics_covariance.tolist()
+            ),
+            "timestamp_uncertainty_s": self.timestamp_uncertainty_s,
+        }
+
+
+@dataclass(frozen=True)
+class CooperativeObservationGroup:
+    """D2-confirmed observations for one canonical track at a common time."""
+
+    global_track_id: str
+    estimate_timestamp: float
+    observations: tuple[CooperativeBearingObservation, ...]
+    target_velocity_ned: np.ndarray | None = None
+
+    def __post_init__(self) -> None:
+        global_track_id = str(self.global_track_id).strip()
+        if not global_track_id:
+            raise ValueError("global_track_id must be non-empty")
+        object.__setattr__(self, "global_track_id", global_track_id)
+        object.__setattr__(self, "estimate_timestamp", float(self.estimate_timestamp))
+        if not np.isfinite(self.estimate_timestamp):
+            raise ValueError("estimate_timestamp must be finite")
+        observations = tuple(self.observations)
+        if any(item.global_track_id != global_track_id for item in observations):
+            raise ValueError("all cooperative observations must already share one canonical global_track_id")
+        object.__setattr__(self, "observations", observations)
+        if self.target_velocity_ned is not None:
+            object.__setattr__(
+                self, "target_velocity_ned", np.asarray(self.target_velocity_ned, dtype=float).reshape(3)
+            )
+            if not np.all(np.isfinite(self.target_velocity_ned)):
+                raise ValueError("target_velocity_ned must be finite")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "global_track_id": self.global_track_id,
+            "estimate_timestamp": self.estimate_timestamp,
+            "frame_id": "ned",
+            "target_velocity_ned": (
+                None if self.target_velocity_ned is None else self.target_velocity_ned.tolist()
+            ),
+            "observations": tuple(item.to_dict() for item in self.observations),
+        }
+
+
+@dataclass(frozen=True)
+class LosIntersectionAngle:
+    first_observer_id: str
+    second_observer_id: str
+    angle_deg: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "first_observer_id": self.first_observer_id,
+            "second_observer_id": self.second_observer_id,
+            "angle_deg": self.angle_deg,
+        }
+
+
+@dataclass(frozen=True)
+class CooperativeLocalizationSummary:
+    """Geometry diagnostics and optional WLS position for one canonical track."""
+
+    global_track_id: str
+    estimate_timestamp: float
+    accepted: bool
+    geometry_reason: str
+    quality_flags: tuple[str, ...]
+    input_observer_count: int
+    unique_observer_count: int
+    duplicate_observer_count: int
+    observer_lineages: tuple[ObserverLineage, ...]
+    measurement_timestamps: tuple[float, ...]
+    arrival_timestamps: tuple[float, ...]
+    measurement_skew_s: float
+    max_propagation_horizon_s: float
+    los_intersection_angles: tuple[LosIntersectionAngle, ...]
+    information_matrix: np.ndarray
+    information_rank: int
+    information_condition: float
+    residuals_m: tuple[float, ...]
+    angular_residuals_deg: tuple[float, ...]
+    weighted_residual_rms: float | None
+    position_ned: np.ndarray | None
+    position_covariance_ned: np.ndarray | None
+    covariance_inflation_trace: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "information_matrix", np.asarray(self.information_matrix, dtype=float).reshape(3, 3)
+        )
+        if self.position_ned is not None:
+            object.__setattr__(self, "position_ned", np.asarray(self.position_ned, dtype=float).reshape(3))
+        if self.position_covariance_ned is not None:
+            object.__setattr__(
+                self,
+                "position_covariance_ned",
+                np.asarray(self.position_covariance_ned, dtype=float).reshape(3, 3),
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "global_track_id": self.global_track_id,
+            "estimate_timestamp": self.estimate_timestamp,
+            "frame_id": "ned",
+            "accepted": self.accepted,
+            "geometry_reason": self.geometry_reason,
+            "quality_flags": tuple(self.quality_flags),
+            "input_observer_count": self.input_observer_count,
+            "unique_observer_count": self.unique_observer_count,
+            "duplicate_observer_count": self.duplicate_observer_count,
+            "observer_lineages": tuple(item.to_dict() for item in self.observer_lineages),
+            "measurement_timestamps": tuple(self.measurement_timestamps),
+            "arrival_timestamps": tuple(self.arrival_timestamps),
+            "measurement_skew_s": self.measurement_skew_s,
+            "max_propagation_horizon_s": self.max_propagation_horizon_s,
+            "los_intersection_angles": tuple(
+                item.to_dict() for item in self.los_intersection_angles
+            ),
+            "information_matrix": self.information_matrix.tolist(),
+            "information_rank": self.information_rank,
+            "information_condition": self.information_condition,
+            "residuals_m": tuple(self.residuals_m),
+            "angular_residuals_deg": tuple(self.angular_residuals_deg),
+            "weighted_residual_rms": self.weighted_residual_rms,
+            "position_ned": None if self.position_ned is None else self.position_ned.tolist(),
+            "position_covariance_ned": (
+                None
+                if self.position_covariance_ned is None
+                else self.position_covariance_ned.tolist()
+            ),
+            "covariance_inflation_trace": self.covariance_inflation_trace,
+        }
+
+
+@dataclass(frozen=True)
+class CooperativeTrackEstimate:
+    """Canonical NED state estimate exchanged for conservative track fusion."""
+
+    global_track_id: str
+    state: np.ndarray
+    covariance: np.ndarray
+    estimate_timestamp: float
+    measurement_timestamp: float
+    arrival_timestamp: float
+    message_uuid: str
+    source_lineage: tuple[str, ...]
+    timestamp_uncertainty_s: float = 0.0
+    frame_id: str = "ned"
+
+    def __post_init__(self) -> None:
+        global_track_id = str(self.global_track_id).strip()
+        if not global_track_id:
+            raise ValueError("global_track_id must be supplied by the canonical track owner")
+        object.__setattr__(self, "global_track_id", global_track_id)
+        if str(self.frame_id).lower() != "ned":
+            raise ValueError("cooperative track estimates must use the NED working frame")
+        object.__setattr__(self, "frame_id", "ned")
+        object.__setattr__(self, "state", np.asarray(self.state, dtype=float).reshape(6))
+        object.__setattr__(self, "covariance", np.asarray(self.covariance, dtype=float).reshape(6, 6))
+        if not np.all(np.isfinite(self.state)):
+            raise ValueError("state must be finite")
+        for name in ("estimate_timestamp", "measurement_timestamp", "arrival_timestamp"):
+            object.__setattr__(self, name, float(getattr(self, name)))
+            if not np.isfinite(getattr(self, name)):
+                raise ValueError(f"{name} must be finite")
+        message_uuid = str(self.message_uuid).strip()
+        if not message_uuid:
+            raise ValueError("message_uuid must be non-empty")
+        object.__setattr__(self, "message_uuid", message_uuid)
+        source_lineage = tuple(str(item).strip() for item in self.source_lineage if str(item).strip())
+        if not source_lineage:
+            raise ValueError("source_lineage must be non-empty")
+        object.__setattr__(self, "source_lineage", source_lineage)
+        timestamp_uncertainty_s = abs(float(self.timestamp_uncertainty_s))
+        if not np.isfinite(timestamp_uncertainty_s):
+            raise ValueError("timestamp_uncertainty_s must be finite")
+        object.__setattr__(self, "timestamp_uncertainty_s", timestamp_uncertainty_s)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "global_track_id": self.global_track_id,
+            "state": self.state.tolist(),
+            "covariance": self.covariance.tolist(),
+            "estimate_timestamp": self.estimate_timestamp,
+            "measurement_timestamp": self.measurement_timestamp,
+            "arrival_timestamp": self.arrival_timestamp,
+            "message_uuid": self.message_uuid,
+            "source_lineage": tuple(self.source_lineage),
+            "timestamp_uncertainty_s": self.timestamp_uncertainty_s,
+            "frame_id": self.frame_id,
+        }
+
+
+@dataclass(frozen=True)
+class CISourceWeight:
+    message_uuid: str
+    source_lineage: tuple[str, ...]
+    weight: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "message_uuid": self.message_uuid,
+            "source_lineage": tuple(self.source_lineage),
+            "weight": self.weight,
+        }
+
+
+@dataclass(frozen=True)
+class CovarianceIntersectionSummary:
+    """Result and audit evidence for unknown-correlation state fusion."""
+
+    global_track_id: str | None
+    estimate_timestamp: float | None
+    accepted: bool
+    reason: str
+    input_count: int
+    unique_source_count: int
+    duplicate_source_count: int
+    duplicate_message_uuids: tuple[str, ...]
+    source_weights: tuple[CISourceWeight, ...]
+    source_measurement_timestamps: tuple[float, ...]
+    source_arrival_timestamps: tuple[float, ...]
+    fused_estimate: CooperativeTrackEstimate | None
+
+    def to_dict(self) -> dict[str, Any]:
+        estimate = self.fused_estimate
+        return {
+            "global_track_id": self.global_track_id,
+            "estimate_timestamp": self.estimate_timestamp,
+            "frame_id": "ned",
+            "accepted": self.accepted,
+            "reason": self.reason,
+            "input_count": self.input_count,
+            "unique_source_count": self.unique_source_count,
+            "duplicate_source_count": self.duplicate_source_count,
+            "duplicate_message_uuids": tuple(self.duplicate_message_uuids),
+            "source_weights": tuple(item.to_dict() for item in self.source_weights),
+            "source_measurement_timestamps": tuple(self.source_measurement_timestamps),
+            "source_arrival_timestamps": tuple(self.source_arrival_timestamps),
+            "state": None if estimate is None else estimate.state.tolist(),
+            "covariance": None if estimate is None else estimate.covariance.tolist(),
+            "measurement_timestamp": None if estimate is None else estimate.measurement_timestamp,
+            "arrival_timestamp": None if estimate is None else estimate.arrival_timestamp,
+            "message_uuid": None if estimate is None else estimate.message_uuid,
+            "source_lineage": () if estimate is None else tuple(estimate.source_lineage),
+        }
+
+
+@dataclass(frozen=True)
 class TrackUncertaintySummary:
     """Compact D1 track quality export for downstream offline modules."""
 

@@ -8,11 +8,14 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from .metrics import (
+    ArrivalRecord,
     AssignmentRecord,
+    CoalitionRecord,
     EventRecord,
     LinkRecord,
     MetricsCollector,
     TerminalRecord,
+    TargetDemandRecord,
     TrackRecord,
 )
 
@@ -23,8 +26,9 @@ def load_episode_log_jsonl(path: str | Path) -> tuple[MetricsCollector, dict[str
     The supported schema is intentionally small and simulator-agnostic:
     each line is a JSON object with ``record_type`` and ``payload`` keys.
     ``record_type`` may be ``truth_summary``, ``track``, ``assignment``,
-    ``event``, ``link``, or ``terminal``. Unknown record types are rejected so interface
-    tests catch schema drift early.
+    ``target_demand``, ``coalition``, ``arrival``, ``event``, ``link``, or
+    ``terminal``. Unknown record types are rejected so interface tests catch
+    schema drift early.
     """
 
     collector = MetricsCollector()
@@ -49,6 +53,18 @@ def load_episode_log_jsonl(path: str | Path) -> tuple[MetricsCollector, dict[str
             elif record_type == "assignment":
                 collector.add_assignment(
                     AssignmentRecord(**_filter_payload(AssignmentRecord, payload))
+                )
+            elif record_type == "target_demand":
+                collector.add_target_demand(
+                    TargetDemandRecord(**_filter_payload(TargetDemandRecord, payload))
+                )
+            elif record_type == "coalition":
+                collector.add_coalition(
+                    CoalitionRecord(**_filter_payload(CoalitionRecord, payload))
+                )
+            elif record_type == "arrival":
+                collector.add_arrival(
+                    ArrivalRecord(**_filter_payload(ArrivalRecord, payload))
                 )
             elif record_type == "event":
                 collector.add_event(EventRecord(**_filter_payload(EventRecord, payload)))

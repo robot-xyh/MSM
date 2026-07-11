@@ -27,13 +27,22 @@ EFFECTIVE_AUTHORIZATION_STATES = frozenset(
 CURRENT_ASSIGNMENT_STATES = frozenset({"active", "current", "valid"})
 ALLOWED_D4_ACTIONS = frozenset({"continue", "continue_center", "request_secondary_assist"})
 BLOCKING_D4_ACTION_REASONS = {
+    "hold": "d4_hold",
     "hold_for_review": "d4_hold_for_review",
+    "revoke": "d4_revoke",
+    "revoked": "d4_revoke",
     "request_center_replan": "d4_reassign_pending",
     "degrade_to_secondary": "d4_reassign_pending",
     "degrade_to_distributed": "d4_reassign_pending",
     "reassign": "d4_reassign_pending",
+    "coalition_fallback_unsupported": "coalition_fallback_unsupported",
 }
 SECONDARY_TAKEOVER_READY_CLASS = "takeover_ready"
+COORDINATION_MODES = frozenset({"independent", "simultaneous", "sequential", "hybrid"})
+COALITION_MEMBER_ROLES = frozenset({"primary", "reserve", "retry"})
+ACTIVE_COALITION_STATES = frozenset({"active", "activated"})
+HOLD_COALITION_STATES = frozenset({"inactive", "pending", "standby", "hold", "held"})
+REVOKED_COALITION_STATES = frozenset({"revoked", "superseded", "cancelled", "canceled"})
 
 
 @dataclass(frozen=True)
@@ -55,6 +64,17 @@ class AssignmentGuidanceBinding:
     target_actor_name: str | None = None
     target_object_id: str | None = None
     target_mesh_aliases: tuple[str, ...] = ()
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    member_role: str = "primary"
+    wave_id: int = 0
+    coordination_mode: str = "independent"
+    arrival_window_start_s: float | None = None
+    arrival_window_end_s: float | None = None
+    activation_state: str = "active"
+    activation_plan_version: int | None = None
+    activation_track_version: int | None = None
+    activation_coalition_version: int | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -81,6 +101,10 @@ class D4GuidancePermission:
     secondary_capability_class: str | None = None
     secondary_readiness_class: str | None = None
     visual_png_allowed: bool | None = None
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    center_available: bool | None = None
+    atomic_coalition_formed: bool | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -110,6 +134,29 @@ class TerminalPngContractDecision:
     d5_lock_consistency_reason: str = ""
     d5_assigned_global_track_id: str | None = None
     d5_assignment_version: int | None = None
+    d5_plan_version: int | None = None
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    member_role: str = "primary"
+    wave_id: int = 0
+    coordination_mode: str = "independent"
+    arrival_window_start_s: float | None = None
+    arrival_window_end_s: float | None = None
+    activation_state: str = "active"
+    activation_plan_version: int | None = None
+    activation_track_version: int | None = None
+    activation_coalition_version: int | None = None
+    coalition_gate_applicable: bool = False
+    coalition_gate_allowed: bool | None = None
+    coalition_gate_reject_reason: str = ""
+    d4_coalition_id: str | None = None
+    d4_coalition_version: int | None = None
+    d5_coalition_id: str | None = None
+    d5_coalition_version: int | None = None
+    d5_coalition_visual_complete: bool | None = None
+    d5_coalition_support_count: int | None = None
+    d5_required_resource_count: int | None = None
+    d5_coalition_conflict_state: str = ""
 
 
 def evaluate_terminal_png_contract(
@@ -149,6 +196,20 @@ def evaluate_terminal_png_contract(
         "d3_owner_version_consistent": (
             d3_plan_version_consistent is True and d3_owner_consistent is True
         ),
+        "coalition_id": assignment.coalition_id,
+        "coalition_version": assignment.coalition_version,
+        "member_role": assignment.member_role,
+        "wave_id": assignment.wave_id,
+        "coordination_mode": assignment.coordination_mode,
+        "arrival_window_start_s": assignment.arrival_window_start_s,
+        "arrival_window_end_s": assignment.arrival_window_end_s,
+        "activation_state": assignment.activation_state,
+        "activation_plan_version": assignment.activation_plan_version,
+        "activation_track_version": assignment.activation_track_version,
+        "activation_coalition_version": assignment.activation_coalition_version,
+        "coalition_gate_applicable": _coalition_gate_applicable(assignment),
+        "d4_coalition_id": permission.coalition_id,
+        "d4_coalition_version": permission.coalition_version,
     }
 
     if resource_id is not None and resource_id != assignment.resource_id:
@@ -164,11 +225,23 @@ def evaluate_terminal_png_contract(
             return TerminalPngContractDecision(False, "assignment_expired", **base)
 
     action = permission.action.lower()
+    d4_states = {
+        permission.action.lower(),
+        permission.mode.lower(),
+        permission.reason.lower(),
+    }
     if permission.requires_human_review:
         return TerminalPngContractDecision(
             False,
             "d4_hold_for_review",
             d4_action_block_reason="d4_hold_for_review",
+            **base,
+        )
+    if "coalition_fallback_unsupported" in d4_states:
+        return TerminalPngContractDecision(
+            False,
+            "coalition_fallback_unsupported",
+            d4_action_block_reason="coalition_fallback_unsupported",
             **base,
         )
     if action in BLOCKING_D4_ACTION_REASONS:
@@ -177,6 +250,16 @@ def evaluate_terminal_png_contract(
             False,
             reason,
             d4_action_block_reason=reason,
+            **base,
+        )
+    center_failed = permission.center_available is False or bool(
+        d4_states & {"center_failed", "center_failure", "center_unavailable"}
+    )
+    if center_failed and permission.atomic_coalition_formed is not True:
+        return TerminalPngContractDecision(
+            False,
+            "atomic_coalition_missing",
+            d4_action_block_reason="atomic_coalition_missing",
             **base,
         )
     if permission.visual_png_allowed is False:
@@ -215,6 +298,20 @@ def evaluate_terminal_png_contract(
             **base,
         )
 
+    coalition_reject_reason = _coalition_binding_reject_reason(
+        assignment,
+        permission,
+        timestamp_s=timestamp_s,
+    )
+    if coalition_reject_reason:
+        return TerminalPngContractDecision(
+            False,
+            coalition_reject_reason,
+            coalition_gate_allowed=False,
+            coalition_gate_reject_reason=coalition_reject_reason,
+            **base,
+        )
+
     if terminal_association is None:
         return TerminalPngContractDecision(
             False,
@@ -231,10 +328,36 @@ def evaluate_terminal_png_contract(
         default="",
     )
     association_version = _optional_int_value(terminal_association, "assignment_version")
+    association_plan_version = _optional_int_value(terminal_association, "plan_version")
+    association_coalition_id = _optional_string_value(terminal_association, "coalition_id")
+    association_coalition_version = _optional_int_value(terminal_association, "coalition_version")
+    coalition_visual_complete = _coalition_visual_complete(terminal_association)
+    coalition_support_count = _optional_int_value_with_metadata(
+        terminal_association,
+        "support_count",
+    )
+    coalition_required_count = _optional_int_value_with_metadata(
+        terminal_association,
+        "required_resource_count",
+    )
+    coalition_conflict_state = (
+        _optional_string_value_with_metadata(
+            terminal_association,
+            "coalition_conflict_state",
+        )
+        or ""
+    ).lower()
     base["d5_decision_state"] = d5_decision_state
     base["local_track_id"] = local_track_id
     base["d5_assigned_global_track_id"] = terminal_global_id or None
     base["d5_assignment_version"] = association_version
+    base["d5_plan_version"] = association_plan_version
+    base["d5_coalition_id"] = association_coalition_id
+    base["d5_coalition_version"] = association_coalition_version
+    base["d5_coalition_visual_complete"] = coalition_visual_complete
+    base["d5_coalition_support_count"] = coalition_support_count
+    base["d5_required_resource_count"] = coalition_required_count
+    base["d5_coalition_conflict_state"] = coalition_conflict_state
     if d5_decision_state != "locked":
         return TerminalPngContractDecision(
             False,
@@ -260,13 +383,91 @@ def evaluate_terminal_png_contract(
             **base,
         )
     if association_version is not None and association_version != assignment.track_version:
+        reason = (
+            "coalition_track_version_mismatch"
+            if base["coalition_gate_applicable"]
+            else "assignment_version_mismatch"
+        )
         return TerminalPngContractDecision(
             False,
-            "assignment_version_mismatch",
+            reason,
             d5_lock_consistent=False,
-            d5_lock_consistency_reason="assignment_version_mismatch",
+            d5_lock_consistency_reason=reason,
+            coalition_gate_allowed=False if base["coalition_gate_applicable"] else None,
+            coalition_gate_reject_reason=reason if base["coalition_gate_applicable"] else "",
             **base,
         )
+    if base["coalition_gate_applicable"]:
+        if association_version is None:
+            return TerminalPngContractDecision(
+                False,
+                "coalition_track_version_mismatch",
+                d5_lock_consistent=False,
+                d5_lock_consistency_reason="coalition_track_version_mismatch",
+                coalition_gate_allowed=False,
+                coalition_gate_reject_reason="coalition_track_version_mismatch",
+                **base,
+            )
+        if association_plan_version != assignment.plan_version:
+            return TerminalPngContractDecision(
+                False,
+                "coalition_plan_version_mismatch",
+                d5_lock_consistent=False,
+                d5_lock_consistency_reason="coalition_plan_version_mismatch",
+                coalition_gate_allowed=False,
+                coalition_gate_reject_reason="coalition_plan_version_mismatch",
+                **base,
+            )
+        if association_coalition_id != assignment.coalition_id:
+            return TerminalPngContractDecision(
+                False,
+                "coalition_id_mismatch",
+                d5_lock_consistent=False,
+                d5_lock_consistency_reason="coalition_id_mismatch",
+                coalition_gate_allowed=False,
+                coalition_gate_reject_reason="coalition_id_mismatch",
+                **base,
+            )
+        if association_coalition_version != assignment.coalition_version:
+            return TerminalPngContractDecision(
+                False,
+                "coalition_version_mismatch",
+                d5_lock_consistent=False,
+                d5_lock_consistency_reason="coalition_version_mismatch",
+                coalition_gate_allowed=False,
+                coalition_gate_reject_reason="coalition_version_mismatch",
+                **base,
+            )
+        if coalition_conflict_state not in {"", "none"}:
+            return TerminalPngContractDecision(
+                False,
+                "coalition_visual_conflict",
+                d5_lock_consistent=False,
+                d5_lock_consistency_reason="coalition_visual_conflict",
+                coalition_gate_allowed=False,
+                coalition_gate_reject_reason="coalition_visual_conflict",
+                **base,
+            )
+        if coalition_visual_complete is None:
+            return TerminalPngContractDecision(
+                False,
+                "coalition_visual_completion_missing",
+                d5_lock_consistent=False,
+                d5_lock_consistency_reason="coalition_visual_completion_missing",
+                coalition_gate_allowed=False,
+                coalition_gate_reject_reason="coalition_visual_completion_missing",
+                **base,
+            )
+        if not coalition_visual_complete:
+            return TerminalPngContractDecision(
+                False,
+                "coalition_visual_incomplete",
+                d5_lock_consistent=False,
+                d5_lock_consistency_reason="coalition_visual_incomplete",
+                coalition_gate_allowed=False,
+                coalition_gate_reject_reason="coalition_visual_incomplete",
+                **base,
+            )
 
     observation_global_id = _optional_string_value(observation, "assigned_global_track_id")
     if observation_global_id and not _ids_match(observation_global_id, assignment.assigned_global_track_id):
@@ -283,6 +484,7 @@ def evaluate_terminal_png_contract(
         "",
         d5_lock_consistent=True,
         d5_lock_consistency_reason="consistent",
+        coalition_gate_allowed=True if base["coalition_gate_applicable"] else None,
         **base,
     )
 
@@ -311,15 +513,36 @@ def guidance_mode_from_terminal_contract(
         "d4_plan_mismatch",
         "d4_owner_missing",
         "d4_owner_mismatch",
+        "coalition_plan_version_mismatch",
+        "coalition_track_version_mismatch",
+        "coalition_version_mismatch",
+        "coalition_id_mismatch",
+        "coalition_visual_conflict",
+        "coalition_visual_completion_missing",
+        "coalition_visual_incomplete",
     }:
         return GuidanceMode.REACQUIRE
-    if reason in {"d4_hold_for_review", "friend_conflict", "assignment_not_authorized"}:
+    if reason == "coalition_window_not_open":
+        return GuidanceMode.RADAR_MIDCOURSE
+    if reason in {
+        "d4_hold",
+        "d4_hold_for_review",
+        "friend_conflict",
+        "assignment_not_authorized",
+        "coalition_not_activated",
+        "coalition_activation_version_missing",
+    }:
         return GuidanceMode.HOLD
     if reason in {
         "assignment_revoked",
         "assignment_expired",
         "d4_reassign_pending",
         "secondary_capability_not_takeover_ready",
+        "d4_revoke",
+        "coalition_revoked",
+        "coalition_window_closed",
+        "coalition_fallback_unsupported",
+        "atomic_coalition_missing",
     }:
         return GuidanceMode.ABORT_REVOKE
     return GuidanceMode.HANDOVER_PENDING
@@ -331,6 +554,7 @@ def coerce_assignment_guidance_binding(
     if isinstance(value, AssignmentGuidanceBinding):
         return value
     aliases = _string_tuple(_value(value, "target_mesh_aliases", default=()))
+    arrival_window_start_s, arrival_window_end_s = _arrival_window_bounds(value)
     return AssignmentGuidanceBinding(
         plan_id=_required_string(value, "plan_id"),
         plan_version=_required_int(value, "plan_version"),
@@ -349,6 +573,17 @@ def coerce_assignment_guidance_binding(
         target_actor_name=_optional_string_value(value, "target_actor_name"),
         target_object_id=_optional_string_value(value, "target_object_id"),
         target_mesh_aliases=aliases,
+        coalition_id=_optional_string_value(value, "coalition_id"),
+        coalition_version=_optional_int_value(value, "coalition_version"),
+        member_role=_string_value(value, "member_role", default="primary"),
+        wave_id=int(_value(value, "wave_id", default=0)),
+        coordination_mode=_string_value(value, "coordination_mode", default="independent"),
+        arrival_window_start_s=arrival_window_start_s,
+        arrival_window_end_s=arrival_window_end_s,
+        activation_state=_string_value(value, "activation_state", default="active"),
+        activation_plan_version=_optional_int_value(value, "activation_plan_version"),
+        activation_track_version=_optional_int_value(value, "activation_track_version"),
+        activation_coalition_version=_optional_int_value(value, "activation_coalition_version"),
         metadata=dict(_value(value, "metadata", default={}) or {}),
     )
 
@@ -391,8 +626,159 @@ def coerce_d4_guidance_permission(
             or _optional_string_value_with_metadata(value, "secondary_capability_readiness")
         ),
         visual_png_allowed=_optional_bool_value_with_metadata(value, "visual_png_allowed"),
+        coalition_id=_optional_string_value_with_metadata(value, "coalition_id"),
+        coalition_version=_optional_int_value_with_metadata(value, "coalition_version"),
+        center_available=_optional_bool_value_with_metadata(value, "center_available"),
+        atomic_coalition_formed=_optional_bool_value_with_metadata(
+            value,
+            "atomic_coalition_formed",
+        ),
         metadata=dict(_value(value, "metadata", default={}) or {}),
     )
+
+
+def _coalition_gate_applicable(assignment: AssignmentGuidanceBinding) -> bool:
+    return bool(
+        assignment.coalition_id
+        or assignment.coalition_version is not None
+        or assignment.coordination_mode.lower() != "independent"
+        or assignment.member_role.lower() in {"reserve", "retry"}
+        or assignment.wave_id != 0
+    )
+
+
+def _coalition_visual_complete(terminal_association: Any) -> bool | None:
+    explicit = _optional_bool_value_with_metadata(
+        terminal_association,
+        "coalition_visual_complete",
+    )
+    if explicit is not None:
+        return explicit
+
+    planned_lock = _optional_bool_value_with_metadata(
+        terminal_association,
+        "planned_cooperative_lock",
+    )
+    support_count = _optional_int_value_with_metadata(
+        terminal_association,
+        "support_count",
+    )
+    required_count = _optional_int_value_with_metadata(
+        terminal_association,
+        "required_resource_count",
+    )
+    conflict_state = (
+        _optional_string_value_with_metadata(
+            terminal_association,
+            "coalition_conflict_state",
+        )
+        or ""
+    ).lower()
+    if planned_lock is None or support_count is None or required_count is None:
+        return None
+    return bool(
+        planned_lock
+        and required_count > 0
+        and support_count >= required_count
+        and conflict_state in {"", "none"}
+    )
+
+
+def _reserve_or_retry(assignment: AssignmentGuidanceBinding) -> bool:
+    return assignment.member_role.lower() in {"reserve", "retry"}
+
+
+def _arrival_window_bounds(value: Any) -> tuple[float | None, float | None]:
+    start_s = _optional_float_value(value, "arrival_window_start_s")
+    end_s = _optional_float_value(value, "arrival_window_end_s")
+    window = _value(value, "arrival_window_s", default=None)
+    if window is None:
+        window = _value(value, "arrival_window", default=None)
+    if window is not None:
+        try:
+            items = tuple(window)
+        except TypeError as exc:
+            raise ValueError("arrival_window must contain start/end values") from exc
+        if len(items) != 2:
+            raise ValueError("arrival_window must contain exactly two values")
+        if start_s is None:
+            start_s = float(items[0])
+        if end_s is None:
+            end_s = float(items[1])
+    return start_s, end_s
+
+
+def _coalition_binding_reject_reason(
+    assignment: AssignmentGuidanceBinding,
+    permission: D4GuidancePermission,
+    *,
+    timestamp_s: float | None,
+) -> str:
+    if not _coalition_gate_applicable(assignment):
+        return ""
+
+    mode = assignment.coordination_mode.lower()
+    role = assignment.member_role.lower()
+    activation_state = assignment.activation_state.lower()
+    if mode not in COORDINATION_MODES:
+        return "coalition_coordination_mode_invalid"
+    if role not in COALITION_MEMBER_ROLES:
+        return "coalition_member_role_invalid"
+    if not assignment.coalition_id or assignment.coalition_version is None:
+        return "coalition_binding_incomplete"
+    if assignment.wave_id < 0:
+        return "coalition_wave_invalid"
+    if role == "primary" and assignment.wave_id != 0:
+        return "coalition_wave_role_mismatch"
+    if role in {"reserve", "retry"} and assignment.wave_id == 0:
+        return "coalition_wave_role_mismatch"
+    if activation_state in REVOKED_COALITION_STATES:
+        return "coalition_revoked"
+    if activation_state in HOLD_COALITION_STATES or activation_state not in ACTIVE_COALITION_STATES:
+        return "coalition_not_activated"
+
+    if mode in {"simultaneous", "sequential", "hybrid"}:
+        start_s = assignment.arrival_window_start_s
+        end_s = assignment.arrival_window_end_s
+        if start_s is None or end_s is None or end_s < start_s:
+            return "coalition_arrival_window_invalid"
+        if timestamp_s is None or timestamp_s < start_s:
+            return "coalition_window_not_open"
+        if timestamp_s > end_s:
+            return "coalition_window_closed"
+
+    if permission.coalition_id is not None and permission.coalition_id != assignment.coalition_id:
+        return "coalition_id_mismatch"
+    if (
+        permission.coalition_version is not None
+        and permission.coalition_version != assignment.coalition_version
+    ):
+        return "coalition_version_mismatch"
+
+    if not _reserve_or_retry(assignment):
+        return ""
+    activation_versions = (
+        assignment.activation_plan_version,
+        assignment.activation_track_version,
+        assignment.activation_coalition_version,
+    )
+    if any(version is None for version in activation_versions):
+        return "coalition_activation_version_missing"
+    if assignment.activation_plan_version != assignment.plan_version:
+        return "coalition_plan_version_mismatch"
+    if assignment.activation_track_version != assignment.track_version:
+        return "coalition_track_version_mismatch"
+    if assignment.activation_coalition_version != assignment.coalition_version:
+        return "coalition_version_mismatch"
+    if permission.new_plan_id != assignment.plan_id:
+        return "coalition_plan_version_mismatch"
+    if permission.new_plan_version != assignment.plan_version:
+        return "coalition_plan_version_mismatch"
+    if permission.coalition_id != assignment.coalition_id:
+        return "coalition_id_mismatch"
+    if permission.coalition_version != assignment.coalition_version:
+        return "coalition_version_mismatch"
+    return ""
 
 
 def _d4_plan_version_consistent(
@@ -493,6 +879,13 @@ def _optional_string_value_with_metadata(record: Any, name: str) -> str | None:
         _value(record, "metadata", default=None),
         name,
     )
+
+
+def _optional_int_value_with_metadata(record: Any, name: str) -> int | None:
+    value = _optional_int_value(record, name)
+    if value is not None:
+        return value
+    return _optional_int_value(_value(record, "metadata", default=None), name)
 
 
 def _optional_bool_value_with_metadata(record: Any, name: str) -> bool | None:

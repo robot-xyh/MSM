@@ -36,6 +36,8 @@ class AirSimDryRunAssignmentAdapter:
         previous_plan: AssignmentPlan | None = None,
         window_id: int | None = None,
         expected_previous_version: int | None = None,
+        forced_replan: bool = False,
+        publish: bool = True,
     ) -> AssignmentPlan:
         """Return an `AssignmentPlan` from synthetic dry-run records."""
 
@@ -48,6 +50,8 @@ class AirSimDryRunAssignmentAdapter:
             previous_plan=previous_plan,
             window_id=window_id,
             expected_previous_version=expected_previous_version,
+            forced_replan=forced_replan,
+            publish=publish,
         )
 
 

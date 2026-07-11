@@ -322,6 +322,9 @@ def _handoff_blockers(
     config: VisualPngHandoffConfig,
 ) -> tuple[str, ...]:
     blockers: list[str] = []
+    if not bool(association.metadata.get("execution_gate_pass", True)):
+        gate_reason = association.metadata.get("execution_gate_reason") or "not_authorized"
+        blockers.append(f"execution_gate:{gate_reason}")
     if association.decision_state != "locked":
         blockers.append(f"decision_not_locked:{association.decision_state}")
     if association.friend_conflict_state != "none":

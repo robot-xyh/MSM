@@ -4,7 +4,58 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, is_dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, Iterable
+
+
+CENTER_REPLAN_STATES = frozenset(
+    {"pending", "applied", "acknowledged_no_change", "expired"}
+)
+
+
+def build_center_replan_risk_signature(
+    risk_factors: Iterable[str],
+) -> tuple[str, ...]:
+    """Return the stable, immutable risk signature used by replan lifecycle state."""
+
+    return tuple(sorted({str(item).strip() for item in risk_factors if str(item).strip()}))
+
+
+@dataclass(frozen=True)
+class CenterReplanStatus:
+    """Read-only center replan request state consumed by D4.
+
+    D4 observes this DTO but does not mutate the center request or resolved plan.
+    """
+
+    request_id: str
+    target_id: str
+    risk_signature: tuple[str, ...]
+    state: str
+    requested_at: float
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    resolved_at: float | None = None
+    resolved_plan_id: str | None = None
+    resolved_plan_version: int | None = None
+
+    def __post_init__(self) -> None:
+        normalized_state = str(self.state).strip().lower()
+        if normalized_state not in CENTER_REPLAN_STATES:
+            allowed = ", ".join(sorted(CENTER_REPLAN_STATES))
+            raise ValueError(f"center replan state must be one of: {allowed}")
+        if not str(self.request_id).strip():
+            raise ValueError("request_id must not be empty")
+        if not str(self.target_id).strip():
+            raise ValueError("target_id must not be empty")
+        object.__setattr__(self, "state", normalized_state)
+        object.__setattr__(
+            self,
+            "risk_signature",
+            build_center_replan_risk_signature(self.risk_signature),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_jsonable(self)
 
 
 class C2Health(str, Enum):
@@ -115,6 +166,10 @@ class TrackSummary:
     visual_evidence: DistributedVisualEvidenceSummary = field(
         default_factory=DistributedVisualEvidenceSummary
     )
+    required_resource_count: int = 1
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    coalition_complete: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)

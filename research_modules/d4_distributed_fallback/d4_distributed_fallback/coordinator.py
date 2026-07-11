@@ -259,6 +259,21 @@ class FailoverCoordinator:
             self.update_health(now_s)
         if self.health != C2Health.FAILED:
             return self._safe_hold_result(now_s, "center_not_failed")
+        coalition_tasks = [
+            task for task in tasks if int(task.required_resource_count) > 1
+        ]
+        if coalition_tasks:
+            result = self._safe_hold_result(now_s, "coalition_fallback_unsupported")
+            result.final_views["coalition_safety"] = {
+                "state": "coalition_fallback_unsupported",
+                "safety_action": "hold_or_revoke",
+                "fallback_supported": "false",
+                "global_track_ids": ",".join(task.track_id for task in coalition_tasks),
+                "required_resource_counts": ",".join(
+                    str(task.required_resource_count) for task in coalition_tasks
+                ),
+            }
+            return result
         leader_resource = self.elect_leader_resource(resources, tasks=tasks)
         if leader_resource is None:
             self._transition(C2Health.SUSPECT, now_s, "no_eligible_fallback_leader")

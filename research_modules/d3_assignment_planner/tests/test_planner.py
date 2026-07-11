@@ -95,9 +95,11 @@ def test_missing_previous_plan_rejection_does_not_reset_version() -> None:
 
     second = planner.plan(tracks, resources, timestamp=2.0, previous_plan=first)
 
-    assert second.version == 2
-    assert second.version == first.version + 1
-    assert second.previous_plan_id == first.plan_id
+    assert second.version == first.version
+    assert second.plan_id == first.plan_id
+    assert second.created_at == first.created_at
+    assert second.previous_plan_id == first.previous_plan_id
+    assert second.changed is False
 
 
 def test_planner_preserves_expected_and_stale_version_rejections() -> None:
@@ -118,8 +120,17 @@ def test_planner_preserves_expected_and_stale_version_rejections() -> None:
     assert expected_exc_info.value.latest_plan_id == first.plan_id
     assert expected_exc_info.value.latest_version == first.version
 
+    shifted_tracks = [
+        TargetTrack(
+            "T1",
+            0.9,
+            0.1,
+            0.1,
+            feasibility_by_resource={"R1": False},
+        )
+    ]
     second = planner.plan(
-        tracks,
+        shifted_tracks,
         resources,
         timestamp=2.0,
         previous_plan=first,
@@ -355,7 +366,16 @@ def test_planner_rejects_stale_previous_plan() -> None:
     ]
 
     first = planner.plan(tracks, _resources(), timestamp=0.0)
-    second = planner.plan(tracks, _resources(), timestamp=1.0, previous_plan=first)
+    shifted_tracks = [
+        TargetTrack("T1", 0.9, 0.1, 0.1, feasibility_by_resource={"R1": False}),
+        tracks[1],
+    ]
+    second = planner.plan(
+        shifted_tracks,
+        _resources(),
+        timestamp=1.0,
+        previous_plan=first,
+    )
 
     assert second.version == 2
     try:

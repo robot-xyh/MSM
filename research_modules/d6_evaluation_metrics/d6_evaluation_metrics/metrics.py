@@ -12,6 +12,10 @@ from dataclasses import asdict, dataclass, field
 import math
 from typing import Any, Iterable, Mapping, Sequence
 
+from .m_to_n import (
+    M_TO_N_METRIC_NAMES,
+    compute_m_to_n_metrics,
+)
 from .standard_mapping import (
     STANDARD_MAPPING_VERSION,
     standard_mapping_summary,
@@ -85,6 +89,102 @@ class AssignmentRecord:
     authorization_state: str = "recorded"
     active: bool = True
     truth_id: str | None = None
+    coordination_mode: str | None = None
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    coalition_state: str | None = None
+    member_role: str | None = None
+    wave_id: str | int | None = None
+    required_resource_count: int | None = None
+    demand_assigned: int | None = None
+    demand_shortfall: int | None = None
+    demand_complete: bool | None = None
+    arrival_window: Sequence[float] | None = None
+    arrival_window_start: float | None = None
+    arrival_window_end: float | None = None
+    minimum_member_separation: float | None = None
+
+
+@dataclass(frozen=True)
+class TargetDemandRecord:
+    """Target-side M-to-N demand snapshot aligned with the D3 contract."""
+
+    timestamp: float
+    global_track_id: str
+    required_resource_count: int
+    coordination_mode: str
+    demand_assigned: int | None = None
+    demand_shortfall: int | None = None
+    demand_complete: bool | None = None
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    coalition_state: str | None = None
+    wave_id: str | int | None = None
+    arrival_window: Sequence[float] | None = None
+    arrival_window_start: float | None = None
+    arrival_window_end: float | None = None
+    minimum_member_separation: float | None = None
+    evidence_available: bool = True
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class CoalitionRecord:
+    """Versioned coalition lifecycle snapshot for passive evaluation."""
+
+    timestamp: float
+    global_track_id: str
+    coalition_id: str
+    coalition_version: int
+    coalition_state: str
+    coordination_mode: str
+    member_ids: Sequence[str] = field(default_factory=tuple)
+    member_roles: Mapping[str, str] = field(default_factory=dict)
+    member_role: str | None = None
+    wave_id: str | int | None = None
+    required_resource_count: int | None = None
+    demand_assigned: int | None = None
+    demand_shortfall: int | None = None
+    demand_complete: bool | None = None
+    arrival_window: Sequence[float] | None = None
+    arrival_window_start: float | None = None
+    arrival_window_end: float | None = None
+    minimum_member_separation: float | None = None
+    trigger_timestamp: float | None = None
+    messages_sent: int | None = None
+    messages_delivered: int | None = None
+    payload_bytes_sent: int | None = None
+    payload_bytes_delivered: int | None = None
+    consensus_rounds: int | None = None
+    latency_ms: float | None = None
+    evidence_available: bool = True
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ArrivalRecord:
+    """Member arrival or wave timing evidence for one coalition version."""
+
+    timestamp: float
+    global_track_id: str
+    resource_id: str
+    coalition_id: str
+    coalition_version: int
+    coalition_state: str
+    member_role: str
+    coordination_mode: str
+    wave_id: str | int | None = None
+    required_resource_count: int | None = None
+    arrival_timestamp: float | None = None
+    arrival_window: Sequence[float] | None = None
+    arrival_window_start: float | None = None
+    arrival_window_end: float | None = None
+    wave_start_timestamp: float | None = None
+    wave_complete_timestamp: float | None = None
+    minimum_member_separation: float | None = None
+    arrived: bool = True
+    evidence_available: bool = True
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -139,6 +239,21 @@ class TerminalRecord:
     assignment_version: int | None = None
     expected_global_track_id: str | None = None
     association_correct: bool | None = None
+    authorization_state: str = "recorded"
+    coordination_mode: str | None = None
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    coalition_state: str | None = None
+    member_role: str | None = None
+    wave_id: str | int | None = None
+    required_resource_count: int | None = None
+    demand_assigned: int | None = None
+    demand_shortfall: int | None = None
+    demand_complete: bool | None = None
+    arrival_window: Sequence[float] | None = None
+    arrival_window_start: float | None = None
+    arrival_window_end: float | None = None
+    minimum_member_separation: float | None = None
 
 
 @dataclass
@@ -164,14 +279,61 @@ class EpisodeMetrics:
     scenario_version: str = ""
     standard_mapping_version: str = STANDARD_MAPPING_VERSION
     standard_metric_family_summary: str = ""
-    detection_probability: float = 0.0
-    false_alarm_rate: float = 0.0
-    missed_detection_rate: float = 0.0
+    detection_probability: float | None = None
+    false_alarm_rate: float | None = None
+    missed_detection_rate: float | None = None
     track_rmse: float = 0.0
     track_continuity: float = 0.0
     id_switch_count: int = 0
     duplicate_assignment_count: int = 0
     unassigned_high_threat_count: int = 0
+    target_demand_satisfaction_rate_micro: float | None = None
+    target_demand_satisfaction_rate_macro: float | None = None
+    unmet_slot_count: int | None = None
+    over_support_count: int | None = None
+    coalition_formation_time_s: float | None = None
+    coalition_reconfiguration_time_s: float | None = None
+    simultaneous_arrival_dispersion_s: float | None = None
+    common_window_success_rate: float | None = None
+    wave_interval_s: float | None = None
+    wave_order_violation_count: int | None = None
+    primary_success_rate: float | None = None
+    reserve_activation_count: int | None = None
+    reserve_activation_rate: float | None = None
+    reserve_activation_latency_s: float | None = None
+    planned_cooperative_lock_count: int | None = None
+    planned_cooperative_lock_success_rate: float | None = None
+    authorized_cooperative_lock_count: int | None = None
+    erroneous_duplicate_lock_count: int | None = None
+    same_resource_lock_continuity_count: int | None = None
+    replan_request_count: int | None = None
+    replan_request_deduplicated_count: int | None = None
+    replan_no_change_ack_count: int | None = None
+    replan_applied_count: int | None = None
+    replan_expired_count: int | None = None
+    replan_pending_dwell_s: float | None = None
+    replan_convergence_time_s: float | None = None
+    coalition_member_loss_count: int | None = None
+    coalition_member_replacement_count: int | None = None
+    coalition_member_replacement_time_s: float | None = None
+    coalition_digest_conflict_count: int | None = None
+    coalition_stale_rejection_count: int | None = None
+    coalition_stale_rejection_rate: float | None = None
+    messages_sent_count: int | None = None
+    messages_delivered_count: int | None = None
+    messages_dropped_count: int | None = None
+    payload_bytes_sent: float | None = None
+    payload_bytes_delivered: float | None = None
+    coalition_consensus_rounds: float | None = None
+    end_to_end_latency_ms: float | None = None
+    minimum_member_separation_m: float | None = None
+    collision_risk_exposure_s: float | None = None
+    geometry_rejection_count: int | None = None
+    geometry_rejection_rate: float | None = None
+    canonical_duplicate_count: int | None = None
+    cross_node_id_switch_count: int | None = None
+    common_information_duplicate_rejection_count: int | None = None
+    common_information_duplicate_rejection_rate: float | None = None
     governance_schema_provenance_rate: float | None = None
     governance_config_provenance_rate: float | None = None
     governance_schema_mismatch_count: int | None = None
@@ -281,6 +443,8 @@ class EpisodeMetrics:
     cpu_budget_utilization: float = 0.0
     gpu_budget_utilization: float = 0.0
     performance_budget_violation_count: int = 0
+    metric_availability: dict[str, dict[str, Any]] = field(default_factory=dict)
+    m_to_n_metric_availability: dict[str, dict[str, Any]] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -294,6 +458,7 @@ class EpisodeMetrics:
             "id_switch_count",
             "duplicate_assignment_count",
             "unassigned_high_threat_count",
+            *M_TO_N_METRIC_NAMES,
             "governance_schema_provenance_rate",
             "governance_config_provenance_rate",
             "governance_schema_mismatch_count",
@@ -477,6 +642,14 @@ class MetricsCollector:
         "d3_assignment_mismatch_summary",
         "d3_feedback_profile_summary",
     }
+    OFFLINE_DETECTION_MATCH_EVENTS = {
+        "offline_detection_match",
+        "offline_track_truth_match",
+    }
+    OFFLINE_DETECTION_MISS_EVENTS = {
+        "offline_detection_miss",
+        "offline_missed_detection",
+    }
     SECONDARY_LIFECYCLE_EVENTS = {
         "d4_secondary_readiness",
         "secondary_readiness",
@@ -630,6 +803,9 @@ class MetricsCollector:
         self.ambiguous_fov_threshold = ambiguous_fov_threshold
         self.track_records: list[TrackRecord] = []
         self.assignment_records: list[AssignmentRecord] = []
+        self.target_demand_records: list[TargetDemandRecord] = []
+        self.coalition_records: list[CoalitionRecord] = []
+        self.arrival_records: list[ArrivalRecord] = []
         self.event_records: list[EventRecord] = []
         self.link_records: list[LinkRecord] = []
         self.terminal_records: list[TerminalRecord] = []
@@ -639,6 +815,15 @@ class MetricsCollector:
 
     def add_assignment(self, record: AssignmentRecord) -> None:
         self.assignment_records.append(record)
+
+    def add_target_demand(self, record: TargetDemandRecord) -> None:
+        self.target_demand_records.append(record)
+
+    def add_coalition(self, record: CoalitionRecord) -> None:
+        self.coalition_records.append(record)
+
+    def add_arrival(self, record: ArrivalRecord) -> None:
+        self.arrival_records.append(record)
 
     def add_event(self, record: EventRecord) -> None:
         self.event_records.append(record)
@@ -654,6 +839,15 @@ class MetricsCollector:
 
     def extend_assignments(self, records: Iterable[AssignmentRecord]) -> None:
         self.assignment_records.extend(records)
+
+    def extend_target_demands(self, records: Iterable[TargetDemandRecord]) -> None:
+        self.target_demand_records.extend(records)
+
+    def extend_coalitions(self, records: Iterable[CoalitionRecord]) -> None:
+        self.coalition_records.extend(records)
+
+    def extend_arrivals(self, records: Iterable[ArrivalRecord]) -> None:
+        self.arrival_records.extend(records)
 
     def extend_events(self, records: Iterable[EventRecord]) -> None:
         self.event_records.extend(records)
@@ -717,8 +911,18 @@ class MetricsCollector:
             duration=episode_duration,
             truth_summary=truth_summary,
         )
+        detection_metadata = detection.pop("_metadata", {})
         tracking = self._compute_tracking_metrics(truth_summary)
         assignment = self._compute_assignment_metrics(truth_summary)
+        m_to_n, m_to_n_metadata = compute_m_to_n_metrics(
+            demand_records=self.target_demand_records,
+            coalition_records=self.coalition_records,
+            arrival_records=self.arrival_records,
+            assignment_records=self.assignment_records,
+            terminal_records=self.terminal_records,
+            event_records=self.event_records,
+            link_records=self.link_records,
+        )
         governance = self._compute_d1_d3_governance_metrics()
         governance_metadata = governance.pop("_metadata", {})
         degradation = self._compute_degradation_metrics()
@@ -745,6 +949,7 @@ class MetricsCollector:
             detection,
             tracking,
             assignment,
+            m_to_n,
             governance,
             degradation,
             secondary_lifecycle,
@@ -760,6 +965,17 @@ class MetricsCollector:
             for key, value in metric_group.items():
                 setattr(metrics, key, value)
 
+        metrics.m_to_n_metric_availability = dict(
+            m_to_n_metadata["m_to_n_metric_availability"]
+        )
+        metrics.metric_availability = {
+            **dict(detection_metadata.get("metric_availability", {})),
+            **metrics.m_to_n_metric_availability,
+        }
+        metrics.duplicate_assignment_count = int(
+            m_to_n_metadata["m_to_n_duplicate_assignment_count"]
+        )
+
         mission_status = self._compute_mission_status(metrics, truth_summary)
         mission_metadata = mission_status.pop("_metadata", {})
         for key, value in mission_status.items():
@@ -773,6 +989,9 @@ class MetricsCollector:
         metrics.metadata = {
             "track_record_count": len(self.track_records),
             "assignment_record_count": len(self.assignment_records),
+            "target_demand_record_count": len(self.target_demand_records),
+            "coalition_record_count": len(self.coalition_records),
+            "arrival_record_count": len(self.arrival_records),
             "event_record_count": len(self.event_records),
             "link_record_count": len(self.link_records),
             "terminal_record_count": len(self.terminal_records),
@@ -792,6 +1011,8 @@ class MetricsCollector:
             "standard_metric_family_summary": metrics.standard_metric_family_summary,
             "standard_mapping": standard_mapping_summary(),
             **scale_counts,
+            **detection_metadata,
+            **m_to_n_metadata,
             **governance_metadata,
             **degradation_metadata,
             **secondary_lifecycle_metadata,
@@ -809,6 +1030,9 @@ class MetricsCollector:
         return {
             "tracks": [asdict(record) for record in self.track_records],
             "assignments": [asdict(record) for record in self.assignment_records],
+            "target_demands": [asdict(record) for record in self.target_demand_records],
+            "coalitions": [asdict(record) for record in self.coalition_records],
+            "arrivals": [asdict(record) for record in self.arrival_records],
             "events": [asdict(record) for record in self.event_records],
             "links": [asdict(record) for record in self.link_records],
             "terminals": [asdict(record) for record in self.terminal_records],
@@ -818,6 +1042,9 @@ class MetricsCollector:
         timestamps: list[float] = []
         timestamps.extend(record.timestamp for record in self.track_records)
         timestamps.extend(record.timestamp for record in self.assignment_records)
+        timestamps.extend(record.timestamp for record in self.target_demand_records)
+        timestamps.extend(record.timestamp for record in self.coalition_records)
+        timestamps.extend(record.timestamp for record in self.arrival_records)
         timestamps.extend(record.timestamp for record in self.event_records)
         timestamps.extend(record.timestamp for record in self.link_records)
         timestamps.extend(record.timestamp for record in self.terminal_records)
@@ -860,6 +1087,9 @@ class MetricsCollector:
             target_key = _assignment_target_key(record)
             if target_key is not None:
                 target_ids.add(target_key)
+        target_ids.update(str(record.global_track_id) for record in self.target_demand_records)
+        target_ids.update(str(record.global_track_id) for record in self.coalition_records)
+        target_ids.update(str(record.global_track_id) for record in self.arrival_records)
         for record in self.terminal_records:
             if record.assigned_global_track_id is not None:
                 target_ids.add(str(record.assigned_global_track_id))
@@ -879,6 +1109,10 @@ class MetricsCollector:
     def _infer_resource_count_from_records(self) -> int:
         resource_ids: set[str] = set()
         for record in self.assignment_records:
+            resource_ids.add(str(record.resource_id))
+        for record in self.coalition_records:
+            resource_ids.update(str(resource_id) for resource_id in record.member_ids)
+        for record in self.arrival_records:
             resource_ids.add(str(record.resource_id))
         for record in self.terminal_records:
             resource_ids.add(str(record.resource_id))
@@ -904,53 +1138,143 @@ class MetricsCollector:
         self,
         duration: float,
         truth_summary: Mapping[str, Any],
-    ) -> dict[str, float]:
+    ) -> dict[str, Any]:
         truth_timestamps = _truth_timestamps_by_id(truth_summary)
-        total_truth_opportunities = _truth_opportunity_count(truth_summary)
-        if total_truth_opportunities is None:
-            total_truth_opportunities = sum(len(values) for values in truth_timestamps.values())
+        metric_names = (
+            "detection_probability",
+            "false_alarm_rate",
+            "missed_detection_rate",
+        )
+        if not truth_timestamps:
+            availability = {
+                name: {
+                    "status": "unavailable",
+                    "reason": "offline truth (truth_id, timestamp) mapping is absent",
+                    "numerator": None,
+                    "denominator": None,
+                }
+                for name in metric_names
+            }
+            return {
+                **{name: None for name in metric_names},
+                "_metadata": {"metric_availability": availability},
+            }
 
+        truth_pairs = {
+            (truth_id, timestamp)
+            for truth_id, timestamps in truth_timestamps.items()
+            for timestamp in timestamps
+        }
         detected_pairs = {
-            (record.truth_id, record.timestamp)
+            (str(record.truth_id), float(record.timestamp))
             for record in self.track_records
             if record.truth_id is not None
         }
-        if truth_timestamps:
-            truth_pairs = {
-                (truth_id, timestamp)
-                for truth_id, timestamps in truth_timestamps.items()
-                for timestamp in timestamps
+        explicit_matched_pairs, explicit_missed_pairs = (
+            self._offline_detection_adjudication_pairs(truth_pairs)
+        )
+        track_matched_pairs = detected_pairs & truth_pairs
+        if not track_matched_pairs and not explicit_matched_pairs and not explicit_missed_pairs:
+            availability = {
+                name: {
+                    "status": "unavailable",
+                    "reason": "truth opportunities exist, but offline detection/track-to-truth match or miss evidence is absent",
+                    "numerator": None,
+                    "denominator": None,
+                }
+                for name in metric_names
             }
-            true_positive_count = len(detected_pairs & truth_pairs)
-        else:
-            true_positive_count = len(detected_pairs)
+            return {
+                **{name: None for name in metric_names},
+                "_metadata": {
+                    "metric_availability": availability,
+                    "offline_detection_pair_evidence": {
+                        "track_match_count": 0,
+                        "explicit_match_count": 0,
+                        "explicit_miss_count": 0,
+                    },
+                },
+            }
 
-        if total_truth_opportunities == 0:
-            total_truth_opportunities = true_positive_count
+        detected_pairs |= explicit_matched_pairs
+        true_positive_count = len(detected_pairs & truth_pairs)
+        false_positive_count = len(detected_pairs - truth_pairs)
+        missed_count = len(truth_pairs - detected_pairs)
+        denominator = len(truth_pairs)
 
-        false_positive_count = sum(
-            1 for record in self.track_records if record.truth_id is None
-        )
-        false_positive_count += sum(
-            1
-            for record in self.event_records
-            if _event_type(record) == "false_alarm"
-        )
+        detection_probability = true_positive_count / denominator
+        missed_detection_rate = missed_count / denominator
+        false_alarm_rate = false_positive_count / duration if duration > 0 else None
 
-        missed_count = max(total_truth_opportunities - true_positive_count, 0)
-        denominator = true_positive_count + missed_count
-
-        detection_probability = (
-            true_positive_count / denominator if denominator else 0.0
-        )
-        missed_detection_rate = missed_count / denominator if denominator else 0.0
-        false_alarm_rate = false_positive_count / duration if duration > 0 else 0.0
+        availability = {
+            "detection_probability": {
+                "status": "available",
+                "reason": "offline match/miss adjudication was recorded by (truth_id, timestamp)",
+                "numerator": true_positive_count,
+                "denominator": denominator,
+            },
+            "missed_detection_rate": {
+                "status": "available",
+                "reason": "offline match/miss adjudication was recorded by (truth_id, timestamp)",
+                "numerator": missed_count,
+                "denominator": denominator,
+            },
+            "false_alarm_rate": {
+                "status": "available" if duration > 0 else "unavailable",
+                "reason": (
+                    "truth-labeled detections outside the offline truth-pair set were counted; truthless center tracks were excluded"
+                    if duration > 0
+                    else "episode duration is zero, so a false-alarm rate cannot be formed"
+                ),
+                "numerator": false_positive_count,
+                "denominator": duration if duration > 0 else None,
+            },
+        }
 
         return {
             "detection_probability": detection_probability,
             "false_alarm_rate": false_alarm_rate,
             "missed_detection_rate": missed_detection_rate,
+            "_metadata": {
+                "metric_availability": availability,
+                "offline_detection_pair_evidence": {
+                    "track_match_count": len(track_matched_pairs),
+                    "explicit_match_count": len(explicit_matched_pairs),
+                    "explicit_miss_count": len(explicit_missed_pairs),
+                },
+            },
         }
+
+    def _offline_detection_adjudication_pairs(
+        self,
+        truth_pairs: set[tuple[str, float]],
+    ) -> tuple[set[tuple[str, float]], set[tuple[str, float]]]:
+        matched: set[tuple[str, float]] = set()
+        missed: set[tuple[str, float]] = set()
+        for record in self.event_records:
+            event_type = _event_type(record)
+            if (
+                event_type not in self.OFFLINE_DETECTION_MATCH_EVENTS
+                and event_type not in self.OFFLINE_DETECTION_MISS_EVENTS
+            ):
+                continue
+            offline_truth = record.metadata.get("offline_truth")
+            metadata = offline_truth if isinstance(offline_truth, Mapping) else record.metadata
+            truth_id = _metadata_text(metadata, "truth_id")
+            timestamp = _first_metadata_float(
+                metadata,
+                ("truth_timestamp", "measurement_timestamp", "timestamp"),
+            )
+            if timestamp is None:
+                timestamp = float(record.timestamp)
+            pair = None if truth_id is None else (truth_id, timestamp)
+            if pair is None or pair not in truth_pairs:
+                continue
+            if event_type in self.OFFLINE_DETECTION_MATCH_EVENTS:
+                matched.add(pair)
+            else:
+                missed.add(pair)
+        return matched, missed
 
     def _compute_tracking_metrics(
         self,
@@ -2153,12 +2477,6 @@ class MetricsCollector:
         )
 
     def _compute_duplicate_terminal_lock_count(self) -> int:
-        duplicate_events = sum(
-            1
-            for record in self.event_records
-            if _event_type(record) in self.DUPLICATE_TERMINAL_LOCK_EVENTS
-            or _bool_from_metadata(record.metadata, ("duplicate_terminal_lock",), default=False)
-        )
         locks_by_snapshot: dict[tuple[float, str], set[str]] = defaultdict(set)
         for record in self.terminal_records:
             if _state(record.decision_state) not in self.LOCK_STATES:
@@ -2168,10 +2486,32 @@ class MetricsCollector:
             locks_by_snapshot[
                 (float(record.timestamp), str(record.assigned_global_track_id))
             ].add(record.resource_id)
-        duplicate_record_count = sum(
-            1 for resources in locks_by_snapshot.values() if len(resources) > 1
-        )
-        return duplicate_events + duplicate_record_count
+        duplicate_keys = {
+            key for key, resources in locks_by_snapshot.items() if len(resources) > 1
+        }
+        for record in self.event_records:
+            if (
+                _event_type(record) not in self.DUPLICATE_TERMINAL_LOCK_EVENTS
+                and not _bool_from_metadata(
+                    record.metadata,
+                    ("duplicate_terminal_lock",),
+                    default=False,
+                )
+            ):
+                continue
+            target = (
+                _metadata_text(record.metadata, "global_track_id")
+                or _metadata_text(record.metadata, "assigned_global_track_id")
+                or _metadata_text(record.metadata, "target_id")
+            )
+            raw_resources = record.metadata.get("resource_ids")
+            if target is None or isinstance(raw_resources, (str, bytes)):
+                continue
+            if isinstance(raw_resources, Sequence):
+                resources = {str(value) for value in raw_resources}
+                if len(resources) > 1:
+                    duplicate_keys.add((float(record.timestamp), target))
+        return len(duplicate_keys)
 
     def _compute_secondary_sensing_metrics(
         self,
@@ -3237,7 +3577,7 @@ class MetricsCollector:
 
         if metrics.id_switch_count:
             add("tracking", metrics.id_switch_count, f"id_switch_count={metrics.id_switch_count}")
-        if metrics.missed_detection_rate > 0.0:
+        if metrics.missed_detection_rate is not None and metrics.missed_detection_rate > 0.0:
             add(
                 "tracking",
                 metrics.missed_detection_rate,
@@ -3249,7 +3589,7 @@ class MetricsCollector:
                 1.0 - metrics.track_continuity,
                 f"track_continuity={metrics.track_continuity:.6g}",
             )
-        if metrics.false_alarm_rate > 0.0:
+        if metrics.false_alarm_rate is not None and metrics.false_alarm_rate > 0.0:
             add("tracking", metrics.false_alarm_rate, f"false_alarm_rate={metrics.false_alarm_rate:.6g}")
 
         if metrics.duplicate_assignment_count:
@@ -3853,7 +4193,8 @@ def _mission_required_success_count(
 def _has_partial_progress(metrics: EpisodeMetrics) -> bool:
     return any(
         (
-            metrics.detection_probability > 0.0,
+            metrics.detection_probability is not None
+            and metrics.detection_probability > 0.0,
             metrics.track_continuity > 0.0,
             metrics.terminal_lock_count > 0,
             metrics.visual_png_switch_count > 0,
@@ -3882,7 +4223,7 @@ def _default_success_reason(
             )
         if metrics.terminal_lock_count > 0:
             return f"terminal_lock_count={metrics.terminal_lock_count}"
-        if metrics.detection_probability > 0.0:
+        if metrics.detection_probability is not None and metrics.detection_probability > 0.0:
             return f"detection_probability={metrics.detection_probability:.6g}"
     return ""
 

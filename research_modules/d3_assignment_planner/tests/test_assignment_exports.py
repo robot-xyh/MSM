@@ -122,7 +122,7 @@ def test_assignment_records_from_plan_match_d6_assignment_record_shape() -> None
     assert record.source_node_id == "d3_central"
     assert record.target_node_id == "R1"
     assert record.link_type == "c2_direct"
-    assert record.plan_schema == "assignment_plan_v1"
+    assert record.plan_schema == "assignment_plan_v2"
     assert record.replan_reason is None
     assert record.takeover_reason is None
     assert record.previous_plan_id is None
@@ -235,11 +235,20 @@ def test_center_replan_assignment_records_export_current_plan_fields() -> None:
         window_id=10,
     )
     second = planner.plan(
-        [TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
-        [ResourceState("R1")],
+        [
+            TargetTrack(
+                "T1",
+                threat_score=0.9,
+                covariance=0.1,
+                window_cost=0.1,
+                fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0},
+            )
+        ],
+        [ResourceState("R1"), ResourceState("R2")],
         timestamp=5.0,
         previous_plan=first,
         window_id=11,
+        forced_replan=True,
     )
     second = replace(
         second,
@@ -256,8 +265,8 @@ def test_center_replan_assignment_records_export_current_plan_fields() -> None:
 
     assert record.version == first.version + 1
     assert record.window_id == 11
-    assert record.decision_state == "accepted_no_hysteresis"
-    assert record.changed is False
+    assert record.decision_state == "replan_applied"
+    assert record.changed is True
     assert record.plan_owner == "center"
     assert record.active_plan_owner == "center"
     assert record.replan_reason == "request_center_replan"
@@ -265,11 +274,11 @@ def test_center_replan_assignment_records_export_current_plan_fields() -> None:
     assert record.previous_plan_version == first.version
     assert record.supersedes_plan_id == first.plan_id
     assert record.supersedes_plan_version == first.version
-    assert record.resource_count == 1
+    assert record.resource_count == 2
     assert record.target_count == 1
     assert record.assigned_count == 1
-    assert record.reassign_count == 0
-    assert record.assignment_matrix_shape == (1, 1)
+    assert record.reassign_count == 1
+    assert record.assignment_matrix_shape == (1, 2)
 
 
 def test_secondary_takeover_assignment_records_export_owner_fields() -> None:

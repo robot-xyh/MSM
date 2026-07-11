@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any, Mapping
 
 from .models import (
     AvailabilityBand,
@@ -115,6 +116,7 @@ class AssignmentValiditySummary:
     is_current: bool = True
     plan_age_s: float = 0.0
     cost_margin: float = 1.0
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -166,6 +168,7 @@ class ActiveDegradationConfig:
     release_consecutive_consistent_frames: int = 1
     risk_window_size: int = 1
     risk_window_threshold: int = 1
+    center_replan_cooldown_s: float = 2.0
 
 
 @dataclass(frozen=True)

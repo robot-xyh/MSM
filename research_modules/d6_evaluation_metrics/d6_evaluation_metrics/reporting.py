@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from .metrics import EpisodeMetrics
+from .m_to_n import M_TO_N_METRIC_NAMES
 from .standard_mapping import (
     STANDARD_MAPPING_CSV_FIELDNAMES,
     STANDARD_MAPPING_VERSION,
@@ -39,6 +40,29 @@ class ReportGenerator:
         "assignment": [
             "duplicate_assignment_count",
             "unassigned_high_threat_count",
+        ],
+        "m_to_n": [
+            "target_demand_satisfaction_rate_micro",
+            "target_demand_satisfaction_rate_macro",
+            "unmet_slot_count",
+            "coalition_formation_time_s",
+            "simultaneous_arrival_dispersion_s",
+            "common_window_success_rate",
+            "wave_order_violation_count",
+            "planned_cooperative_lock_count",
+            "authorized_cooperative_lock_count",
+            "erroneous_duplicate_lock_count",
+            "same_resource_lock_continuity_count",
+            "replan_request_count",
+            "replan_request_deduplicated_count",
+            "replan_no_change_ack_count",
+            "replan_applied_count",
+            "replan_expired_count",
+            "replan_pending_dwell_s",
+            "replan_convergence_time_s",
+            "minimum_member_separation_m",
+            "collision_risk_exposure_s",
+            "canonical_duplicate_count",
         ],
         "governance": [
             "governance_schema_provenance_rate",
@@ -153,12 +177,13 @@ class ReportGenerator:
         episode_list = list(episodes)
         rows: list[dict[str, Any]] = []
         for metric_name in EpisodeMetrics.metric_names():
+            status_counts = _metric_status_counts(episode_list, metric_name)
             values = np.array(
                 _available_metric_values(episode_list, metric_name),
                 dtype=float,
             )
             if values.size == 0:
-                rows.append(_empty_summary_row(metric_name))
+                rows.append(_empty_summary_row(metric_name, status_counts))
                 continue
 
             mean = float(np.mean(values))
@@ -169,6 +194,7 @@ class ReportGenerator:
                 {
                     "metric": metric_name,
                     "count": int(values.size),
+                    **status_counts,
                     "mean": mean,
                     "std": std,
                     "stderr": stderr,
@@ -196,6 +222,16 @@ class ReportGenerator:
                 ensure_ascii=False,
                 sort_keys=True,
             )
+            row["m_to_n_metric_availability"] = json.dumps(
+                row.get("m_to_n_metric_availability", {}),
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            row["metric_availability"] = json.dumps(
+                row.get("metric_availability", {}),
+                ensure_ascii=False,
+                sort_keys=True,
+            )
             rows.append(row)
         fieldnames = [
             "episode_id",
@@ -214,7 +250,11 @@ class ReportGenerator:
             "scenario_version",
             "standard_mapping_version",
             "standard_metric_family_summary",
-        ] + EpisodeMetrics.metric_names() + ["metadata"]
+        ] + EpisodeMetrics.metric_names() + [
+            "metric_availability",
+            "m_to_n_metric_availability",
+            "metadata",
+        ]
         with path.open("w", newline="", encoding="utf-8") as stream:
             writer = csv.DictWriter(stream, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
@@ -273,6 +313,8 @@ class ReportGenerator:
             *EpisodeMetrics.scale_names(),
             "metric",
             "count",
+            "unavailable_count",
+            "not_applicable_count",
             "mean",
             "std",
             "stderr",
@@ -393,15 +435,18 @@ class ReportGenerator:
                 "",
                 "## 1. 汇总表",
                 "",
-                "| 指标 | 均值 | 标准差 | 95% CI 下界 | 95% CI 上界 | 中位数 | P05 | P95 |",
-                "|---|---:|---:|---:|---:|---:|---:|---:|",
+                "| 指标 | 可用样本 | unavailable | not_applicable | 均值 | 标准差 | 95% CI 下界 | 95% CI 上界 | 中位数 | P05 | P95 |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
             ]
         )
         for row in summary_rows:
             lines.append(
-                "| {metric} | {mean} | {std} | {ci95_low} | "
+                "| {metric} | {count} | {unavailable_count} | {not_applicable_count} | {mean} | {std} | {ci95_low} | "
                 "{ci95_high} | {median} | {p05} | {p95} |".format(
                     metric=row["metric"],
+                    count=row["count"],
+                    unavailable_count=row["unavailable_count"],
+                    not_applicable_count=row["not_applicable_count"],
                     mean=_format_optional_metric(row.get("mean")),
                     std=_format_optional_metric(row.get("std")),
                     ci95_low=_format_optional_metric(row.get("ci95_low")),
@@ -529,6 +574,8 @@ class ReportGenerator:
                 "![跟踪指标图](plots/tracking_metrics.png)",
                 "",
                 "![分配指标图](plots/assignment_metrics.png)",
+                "",
+                "![M 对 N 协同指标图](plots/m_to_n_metrics.png)",
                 "",
                 "![D1-D3 Governance 指标图](plots/governance_metrics.png)",
                 "",
@@ -659,10 +706,14 @@ class ReportGenerator:
         plt.close(fig)
 
 
-def _empty_summary_row(metric_name: str) -> dict[str, Any]:
+def _empty_summary_row(
+    metric_name: str,
+    status_counts: Mapping[str, int] | None = None,
+) -> dict[str, Any]:
     return {
         "metric": metric_name,
         "count": 0,
+        **(status_counts or {"unavailable_count": 0, "not_applicable_count": 0}),
         "mean": None,
         "std": None,
         "stderr": None,
@@ -1034,6 +1085,32 @@ def _available_metric_values(
         for value in [getattr(episode, metric_name)]
         if value is not None
     ]
+
+
+def _metric_status_counts(
+    episodes: list[EpisodeMetrics],
+    metric_name: str,
+) -> dict[str, int]:
+    unavailable = 0
+    not_applicable = 0
+    for episode in episodes:
+        if getattr(episode, metric_name) is not None:
+            continue
+        status = "unavailable"
+        availability = episode.metric_availability or {}
+        if metric_name not in availability and metric_name in M_TO_N_METRIC_NAMES:
+            availability = episode.m_to_n_metric_availability or {}
+        status = str(
+            availability.get(metric_name, {}).get("status", "unavailable")
+        )
+        if status == "not_applicable":
+            not_applicable += 1
+        else:
+            unavailable += 1
+    return {
+        "unavailable_count": unavailable,
+        "not_applicable_count": not_applicable,
+    }
 
 
 def _mean_metric(

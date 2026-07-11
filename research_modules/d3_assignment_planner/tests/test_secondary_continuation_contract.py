@@ -33,6 +33,7 @@ def _active_secondary_and_next_candidate(
         resources,
         timestamp=1.0,
         previous_plan=center,
+        publish=False,
     )
     active_secondary = prepare_secondary_takeover_plan(
         takeover_candidate,
@@ -44,11 +45,13 @@ def _active_secondary_and_next_candidate(
         lease_expires_at_s=previous_lease_expires_at_s,
         leader_epoch=3,
     )
+    active_secondary = planner.publish_plan(active_secondary)
     next_candidate = planner.plan(
         tracks,
         resources,
         timestamp=2.0,
         previous_plan=active_secondary,
+        publish=False,
     )
     return active_secondary, next_candidate
 

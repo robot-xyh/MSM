@@ -48,6 +48,13 @@ REACQUIRE_CONTRACT_REJECT_REASONS = frozenset(
         "d4_plan_mismatch",
         "d4_owner_missing",
         "d4_owner_mismatch",
+        "coalition_plan_version_mismatch",
+        "coalition_track_version_mismatch",
+        "coalition_version_mismatch",
+        "coalition_id_mismatch",
+        "coalition_visual_conflict",
+        "coalition_visual_completion_missing",
+        "coalition_visual_incomplete",
     }
 )
 
@@ -108,6 +115,14 @@ class D7RuntimePairOutput:
     track_version: int
     d4_action: str
     d5_decision_state: str
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    member_role: str = "primary"
+    wave_id: int = 0
+    coordination_mode: str = "independent"
+    arrival_window_start_s: float | None = None
+    arrival_window_end_s: float | None = None
+    activation_state: str = "active"
     requested_guidance_law: str = RuntimeGuidanceLaw.PNG_VM.value
     previous_guidance_law: str | None = None
     guidance_law_transition: bool = False
@@ -144,6 +159,21 @@ class D7RuntimePairOutput:
     d5_lock_consistency_reason: str = ""
     d5_assigned_global_track_id: str | None = None
     d5_assignment_version: int | None = None
+    d5_plan_version: int | None = None
+    activation_plan_version: int | None = None
+    activation_track_version: int | None = None
+    activation_coalition_version: int | None = None
+    coalition_gate_applicable: bool = False
+    coalition_gate_allowed: bool | None = None
+    coalition_gate_reject_reason: str = ""
+    d4_coalition_id: str | None = None
+    d4_coalition_version: int | None = None
+    d5_coalition_id: str | None = None
+    d5_coalition_version: int | None = None
+    d5_coalition_visual_complete: bool | None = None
+    d5_coalition_support_count: int | None = None
+    d5_required_resource_count: int | None = None
+    d5_coalition_conflict_state: str = ""
     detect_registration_outcome: str | None = None
     detect_registration_reject_reasons: tuple[str, ...] = ()
     measurement_age_s: float | None = None
@@ -233,6 +263,7 @@ class D7RuntimePairOutput:
             "mode_transition_reason": self.mode_transition_reason,
             "mode_transition_count": self.mode_transition_count,
             "visual_png_enabled": self.visual_png_enabled,
+            "visual_png_switch": self.visual_png_enabled,
             "terminal_contract_allowed": self.terminal_contract_allowed,
             "terminal_contract_reject_reason": self.terminal_contract_reject_reason,
             "terminal_contract_applicable": self.terminal_contract_applicable,
@@ -257,6 +288,28 @@ class D7RuntimePairOutput:
             "owner_node_id": self.owner_node_id,
             "d4_target_node_id": self.d4_target_node_id,
             "track_version": self.track_version,
+            "coalition_id": self.coalition_id,
+            "coalition_version": self.coalition_version,
+            "member_role": self.member_role,
+            "wave_id": self.wave_id,
+            "coordination_mode": self.coordination_mode,
+            "arrival_window_start_s": self.arrival_window_start_s,
+            "arrival_window_end_s": self.arrival_window_end_s,
+            "activation_state": self.activation_state,
+            "activation_plan_version": self.activation_plan_version,
+            "activation_track_version": self.activation_track_version,
+            "activation_coalition_version": self.activation_coalition_version,
+            "coalition_gate_applicable": self.coalition_gate_applicable,
+            "coalition_gate_allowed": self.coalition_gate_allowed,
+            "coalition_gate_reject_reason": self.coalition_gate_reject_reason,
+            "d4_coalition_id": self.d4_coalition_id,
+            "d4_coalition_version": self.d4_coalition_version,
+            "d5_coalition_id": self.d5_coalition_id,
+            "d5_coalition_version": self.d5_coalition_version,
+            "d5_coalition_visual_complete": self.d5_coalition_visual_complete,
+            "d5_coalition_support_count": self.d5_coalition_support_count,
+            "d5_required_resource_count": self.d5_required_resource_count,
+            "d5_coalition_conflict_state": self.d5_coalition_conflict_state,
             "terminal_range_m": self.terminal_range_m,
             "d4_action": self.d4_action,
             "d4_state": self.d4_action,
@@ -273,6 +326,7 @@ class D7RuntimePairOutput:
             "d5_lock_consistency_reason": self.d5_lock_consistency_reason,
             "d5_assigned_global_track_id": self.d5_assigned_global_track_id,
             "d5_assignment_version": self.d5_assignment_version,
+            "d5_plan_version": self.d5_plan_version,
             "local_track_id": self.local_track_id,
             "detect_registration_outcome": self.detect_registration_outcome,
             "detect_registration_reject_reasons": self.detect_registration_reject_reasons,
@@ -344,7 +398,7 @@ class D7RuntimeBus:
     def __init__(self, config: PngGuidanceConfig | None = None) -> None:
         self.config = config or PngGuidanceConfig()
         self._filters: dict[str, SimpleFlightPngGuidanceFilter] = {}
-        self._binding_signatures: dict[str, tuple[str, int, str | None, int, str | None]] = {}
+        self._binding_signatures: dict[str, tuple[Any, ...]] = {}
         self._requested_laws: dict[str, RuntimeGuidanceLaw] = {}
         self._terminal_latches: dict[str, _TerminalLatchState] = {}
 
@@ -782,6 +836,11 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
     tracker_backends: Counter[str] = Counter()
     plan_versions: Counter[str] = Counter()
     candidate_laws: Counter[str] = Counter()
+    coalition_gate_rejects: Counter[str] = Counter()
+    member_roles: Counter[str] = Counter()
+    wave_ids: Counter[str] = Counter()
+    coordination_modes: Counter[str] = Counter()
+    activation_states: Counter[str] = Counter()
     for row in rows:
         guidance_laws[row.guidance_law] += 1
         requested_guidance_laws[row.requested_guidance_law] += 1
@@ -807,6 +866,12 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         plan_versions[str(row.plan_version)] += 1
         if row.png_guidance_law_candidate:
             candidate_laws[row.png_guidance_law_candidate] += 1
+        if row.coalition_gate_reject_reason:
+            coalition_gate_rejects[row.coalition_gate_reject_reason] += 1
+        member_roles[row.member_role] += 1
+        wave_ids[str(row.wave_id)] += 1
+        coordination_modes[row.coordination_mode] += 1
+        activation_states[row.activation_state] += 1
         if row.terminal_contract_reject_reason:
             contract_rejects[row.terminal_contract_reject_reason] += 1
         if row.terminal_switch_reject_reason:
@@ -887,6 +952,21 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         "assignment_ids": sorted({row.assignment_id for row in rows if row.assignment_id is not None}),
         "plan_ids": sorted({row.plan_id for row in rows}),
         "plan_version_counts": dict(plan_versions),
+        "coalition_ids": sorted({row.coalition_id for row in rows if row.coalition_id}),
+        "coalition_version_counts": dict(
+            Counter(
+                str(row.coalition_version)
+                for row in rows
+                if row.coalition_version is not None
+            )
+        ),
+        "coalition_gate_applicable_count": sum(1 for row in rows if row.coalition_gate_applicable),
+        "coalition_gate_allowed_count": sum(1 for row in rows if row.coalition_gate_allowed is True),
+        "coalition_gate_reject_reasons": dict(coalition_gate_rejects),
+        "member_role_counts": dict(member_roles),
+        "wave_id_counts": dict(wave_ids),
+        "coordination_mode_counts": dict(coordination_modes),
+        "activation_state_counts": dict(activation_states),
         "visual_png_switch_count": visual_png_switch_count,
         "visual_png_candidate_count": sum(1 for row in rows if row.png_guidance_law_candidate is not None),
         "terminal_handover_pending_count": sum(1 for row in rows if row.terminal_handover_pending),
@@ -1098,6 +1178,28 @@ def _common_output_kwargs(
         "plan_id": binding.plan_id,
         "plan_version": binding.plan_version,
         "track_version": binding.track_version,
+        "coalition_id": binding.coalition_id,
+        "coalition_version": binding.coalition_version,
+        "member_role": binding.member_role,
+        "wave_id": binding.wave_id,
+        "coordination_mode": binding.coordination_mode,
+        "arrival_window_start_s": binding.arrival_window_start_s,
+        "arrival_window_end_s": binding.arrival_window_end_s,
+        "activation_state": binding.activation_state,
+        "activation_plan_version": binding.activation_plan_version,
+        "activation_track_version": binding.activation_track_version,
+        "activation_coalition_version": binding.activation_coalition_version,
+        "coalition_gate_applicable": decision.coalition_gate_applicable,
+        "coalition_gate_allowed": decision.coalition_gate_allowed,
+        "coalition_gate_reject_reason": decision.coalition_gate_reject_reason,
+        "d4_coalition_id": decision.d4_coalition_id,
+        "d4_coalition_version": decision.d4_coalition_version,
+        "d5_coalition_id": decision.d5_coalition_id,
+        "d5_coalition_version": decision.d5_coalition_version,
+        "d5_coalition_visual_complete": decision.d5_coalition_visual_complete,
+        "d5_coalition_support_count": decision.d5_coalition_support_count,
+        "d5_required_resource_count": decision.d5_required_resource_count,
+        "d5_coalition_conflict_state": decision.d5_coalition_conflict_state,
         "terminal_range_m": _terminal_range_m(relative_position_ned),
         "assignment_id": binding.assignment_id,
         "owner_node_id": binding.owner_node_id,
@@ -1115,6 +1217,7 @@ def _common_output_kwargs(
         "d5_lock_consistency_reason": decision.d5_lock_consistency_reason,
         "d5_assigned_global_track_id": decision.d5_assigned_global_track_id,
         "d5_assignment_version": decision.d5_assignment_version,
+        "d5_plan_version": decision.d5_plan_version,
         "local_track_id": decision.local_track_id,
         "terminal_handover_pending": terminal_handover_pending,
         "terminal_locked": terminal_locked,
@@ -1433,13 +1536,24 @@ def _control_context_id(binding: AssignmentGuidanceBinding) -> str:
 
 def _binding_signature(
     binding: AssignmentGuidanceBinding,
-) -> tuple[str, int, str | None, int, str | None]:
+) -> tuple[Any, ...]:
     return (
         binding.plan_id,
         binding.plan_version,
         binding.owner_node_id,
         binding.track_version,
         binding.assignment_id,
+        binding.coalition_id,
+        binding.coalition_version,
+        binding.member_role,
+        binding.wave_id,
+        binding.coordination_mode,
+        binding.arrival_window_start_s,
+        binding.arrival_window_end_s,
+        binding.activation_state,
+        binding.activation_plan_version,
+        binding.activation_track_version,
+        binding.activation_coalition_version,
     )
 
 

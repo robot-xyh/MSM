@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from enum import Enum
 from math import sqrt
 from typing import Any, Iterable, Mapping
+from uuid import uuid4
 
 
 CostBreakdown = dict[str, float]
@@ -25,6 +27,7 @@ GUIDANCE_BINDING_REVOKED = "revoked"
 GUIDANCE_BINDING_REASSIGNED = "reassigned"
 GUIDANCE_BINDING_HOLD = "hold"
 ASSIGNMENT_PLAN_SCHEMA_V1 = "assignment_plan_v1"
+ASSIGNMENT_PLAN_SCHEMA_V2 = "assignment_plan_v2"
 ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1 = "d3_assignment_calibration_profile_v1"
 TERMINAL_FEEDBACK_PROFILE_SCHEMA_V1 = "d3_terminal_feedback_profile_v1"
 DEFAULT_COST_PROFILE_ID = "d3_hungarian_baseline"
@@ -43,6 +46,89 @@ GUIDANCE_BINDING_STATES = frozenset(
         GUIDANCE_BINDING_HOLD,
     }
 )
+
+
+class CoordinationMode(str, Enum):
+    INDEPENDENT = "independent"
+    SIMULTANEOUS = "simultaneous"
+    SEQUENTIAL = "sequential"
+    HYBRID = "hybrid"
+
+
+class CoalitionState(str, Enum):
+    FORMING = "forming"
+    COMMITTED = "committed"
+    INCOMPLETE = "incomplete"
+    REVOKED = "revoked"
+    COMPLETED = "completed"
+
+
+class CoalitionMemberRole(str, Enum):
+    PRIMARY = "primary"
+    RESERVE = "reserve"
+    OBSERVER = "observer"
+    RETRY = "retry"
+
+
+@dataclass(frozen=True)
+class TargetDemand:
+    """Explicit multi-resource demand; absence means k=1 independent."""
+
+    required_resource_count: int = 3
+    primary_resource_count: int = 2
+    coordination_mode: str = CoordinationMode.HYBRID.value
+    required_capability_counts: Mapping[str, int] = field(default_factory=dict)
+    arrival_window_start_s: float | None = None
+    arrival_window_end_s: float | None = None
+    wave_interval_s: float = 0.0
+    minimum_separation_s: float | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        count = int(self.required_resource_count)
+        primary_count = int(self.primary_resource_count)
+        mode = _enum_value(self.coordination_mode)
+        if count < 1:
+            raise ValueError("required_resource_count must be at least 1")
+        if not 1 <= primary_count <= count:
+            raise ValueError(
+                "primary_resource_count must be between 1 and required_resource_count"
+            )
+        if mode not in {item.value for item in CoordinationMode}:
+            raise ValueError(f"unsupported coordination_mode: {mode}")
+        capability_counts = {
+            str(capability): int(required)
+            for capability, required in self.required_capability_counts.items()
+            if int(required) > 0
+        }
+        if sum(capability_counts.values()) > count:
+            raise ValueError("required capability counts cannot exceed resource demand")
+        if (
+            self.arrival_window_start_s is not None
+            and self.arrival_window_end_s is not None
+            and self.arrival_window_start_s > self.arrival_window_end_s
+        ):
+            raise ValueError("arrival window start must not exceed end")
+        if self.wave_interval_s < 0.0:
+            raise ValueError("wave_interval_s must be non-negative")
+        if self.minimum_separation_s is not None and self.minimum_separation_s < 0.0:
+            raise ValueError("minimum_separation_s must be non-negative")
+        object.__setattr__(self, "required_resource_count", count)
+        object.__setattr__(self, "primary_resource_count", primary_count)
+        object.__setattr__(self, "coordination_mode", mode)
+        object.__setattr__(self, "required_capability_counts", capability_counts)
+
+    @classmethod
+    def independent(cls) -> "TargetDemand":
+        return cls(
+            required_resource_count=1,
+            primary_resource_count=1,
+            coordination_mode="independent",
+        )
+
+
+def _enum_value(value: str | Enum) -> str:
+    return str(value.value if isinstance(value, Enum) else value).strip().lower()
 
 
 @dataclass(frozen=True)
@@ -65,6 +151,13 @@ class TargetTrack:
     time_window_by_resource: Mapping[str, Mapping[str, Any] | bool | str] = field(
         default_factory=dict
     )
+    demand: TargetDemand | None = None
+
+    @property
+    def effective_demand(self) -> TargetDemand:
+        """Return the explicit demand or the backward-compatible k=1 default."""
+
+        return self.demand if self.demand is not None else TargetDemand.independent()
 
 
 @dataclass(frozen=True)
@@ -143,7 +236,76 @@ class Assignment:
     stale_after_s: float | None = None
     terminal_feedback_state: str | None = None
     duplicate_terminal_lock_risk: bool = False
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    member_role: str = CoalitionMemberRole.PRIMARY.value
+    wave_id: int = 0
+    arrival_window_start_s: float | None = None
+    arrival_window_end_s: float | None = None
+    required_resource_count: int = 1
     metadata: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class CoalitionMember:
+    """One admitted or tentative member in a target coalition."""
+
+    resource_id: str
+    member_role: str
+    wave_id: int
+    arrival_window_start_s: float | None = None
+    arrival_window_end_s: float | None = None
+    required_capability_class: str | None = None
+    executable: bool = True
+
+
+@dataclass(frozen=True)
+class DemandSatisfactionSummary:
+    target_id: str
+    demand_required: int
+    demand_assigned: int
+    demand_shortfall: int
+    coalition_complete: bool
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    primary_resource_count: int = 1
+
+
+@dataclass(frozen=True)
+class CoalitionSummary(DemandSatisfactionSummary):
+    """Public coalition summary alias with demand satisfaction fields."""
+
+
+@dataclass(frozen=True)
+class CoalitionPlan:
+    """Versioned all-or-none coalition admission result for one target."""
+
+    coalition_id: str
+    version: int
+    target_id: str
+    state: str
+    coordination_mode: str
+    required_resource_count: int
+    assigned_resource_count: int
+    shortfall: int
+    complete: bool
+    primary_resource_count: int = 1
+    members: tuple[CoalitionMember, ...] = ()
+    minimum_separation_s: float | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def summary(self) -> CoalitionSummary:
+        return CoalitionSummary(
+            target_id=self.target_id,
+            demand_required=self.required_resource_count,
+            demand_assigned=self.assigned_resource_count,
+            demand_shortfall=self.shortfall,
+            coalition_complete=self.complete,
+            coalition_id=self.coalition_id,
+            coalition_version=self.version,
+            primary_resource_count=self.primary_resource_count,
+        )
 
 
 @dataclass(frozen=True)
@@ -174,17 +336,194 @@ class AssignmentPlan:
     duplicate_terminal_lock_risk: bool = False
     resource_count: int = 0
     target_count: int = 0
+    plan_schema: str = ASSIGNMENT_PLAN_SCHEMA_V2
+    coalitions: tuple[CoalitionPlan, ...] = ()
+    incomplete_target_ids: tuple[str, ...] = ()
+    demand_summaries: tuple[DemandSatisfactionSummary, ...] = ()
 
     def assignment_map(self) -> dict[str, str]:
-        """Return target_id -> resource_id for assigned targets."""
+        """Return the legacy one-to-one map, rejecting multi-resource targets."""
 
-        return {item.target_id: item.resource_id for item in self.assignments}
+        grouped = self.assignments_by_target()
+        multi_resource = sorted(
+            target_id for target_id, items in grouped.items() if len(items) != 1
+        )
+        if multi_resource:
+            raise ValueError(
+                "assignment_map is only valid for one-to-one plans; "
+                f"multi-resource targets: {', '.join(multi_resource)}"
+            )
+        return {
+            target_id: items[0].resource_id
+            for target_id, items in grouped.items()
+        }
+
+    def assignments_by_target(self) -> dict[str, tuple[Assignment, ...]]:
+        grouped: dict[str, list[Assignment]] = {}
+        for assignment in self.assignments:
+            grouped.setdefault(assignment.target_id, []).append(assignment)
+        return {
+            target_id: tuple(sorted(items, key=_assignment_sort_key))
+            for target_id, items in sorted(grouped.items())
+        }
+
+    def assignment_by_resource(self) -> dict[str, Assignment]:
+        result: dict[str, Assignment] = {}
+        for assignment in self.assignments:
+            if assignment.resource_id in result:
+                raise ValueError(
+                    "one resource cannot have multiple executable assignments: "
+                    f"{assignment.resource_id}"
+                )
+            result[assignment.resource_id] = assignment
+        return dict(sorted(result.items()))
+
+    def assignment_signature(self) -> tuple[tuple[Any, ...], ...]:
+        """Stable, ordering-independent executable assignment signature."""
+
+        return tuple(sorted(_assignment_signature(item) for item in self.assignments))
+
+    def execution_signature(self) -> tuple[Any, ...]:
+        """Return the identity-driving executable semantics of this plan."""
+
+        return (
+            self.assignment_signature(),
+            tuple(sorted(_coalition_execution_signature(item) for item in self.coalitions)),
+            tuple(sorted(self.unassigned_target_ids)),
+            tuple(sorted(self.incomplete_target_ids)),
+            self.human_authorization_state,
+            tuple(
+                (key, _signature_value(self.metadata.get(key)))
+                for key in _PLAN_EXECUTION_METADATA_KEYS
+            ),
+        )
+
+    @property
+    def stable_signature(self) -> tuple[tuple[Any, ...], ...]:
+        return self.assignment_signature()
 
     @property
     def plan_version(self) -> int:
         """Alias used by cross-node messages."""
 
         return self.version
+
+
+def _assignment_sort_key(assignment: Assignment) -> tuple[Any, ...]:
+    return (
+        assignment.wave_id,
+        assignment.member_role,
+        assignment.resource_id,
+    )
+
+
+def _assignment_signature(assignment: Assignment) -> tuple[Any, ...]:
+    return (
+        assignment.target_id,
+        assignment.resource_id,
+        assignment.coalition_id or "",
+        -1 if assignment.coalition_version is None else assignment.coalition_version,
+        assignment.member_role,
+        assignment.wave_id,
+        _optional_float_signature(assignment.arrival_window_start_s),
+        _optional_float_signature(assignment.arrival_window_end_s),
+        assignment.required_resource_count,
+        assignment.feasibility_state,
+        assignment.source_node_id or "",
+        assignment.target_node_id or "",
+        assignment.link_type or "",
+        tuple(
+            (key, _signature_value(assignment.metadata.get(key)))
+            for key in _ASSIGNMENT_EXECUTION_METADATA_KEYS
+        ),
+    )
+
+
+def _optional_float_signature(value: float | None) -> tuple[bool, float]:
+    return value is None, 0.0 if value is None else float(value)
+
+
+_PLAN_EXECUTION_METADATA_KEYS = (
+    "plan_schema",
+    "plan_owner",
+    "active_plan_owner",
+    "owner_node_id",
+    "current_plan_owner",
+    "current_plan_owner_node_id",
+    "secondary_takeover_state",
+    "secondary_plan_executable",
+    "secondary_activated_at_s",
+    "secondary_lease_expires_at_s",
+    "secondary_leader_epoch",
+    "activation_state",
+    "activation_at_s",
+    "executable",
+)
+
+_ASSIGNMENT_EXECUTION_METADATA_KEYS = (
+    "coordination_mode",
+    "primary_resource_count",
+    "minimum_separation_s",
+    "required_capability_class",
+    "plan_owner",
+    "active_plan_owner",
+    "owner_node_id",
+    "secondary_takeover_state",
+    "secondary_plan_executable",
+    "secondary_activated_at_s",
+    "secondary_lease_expires_at_s",
+    "secondary_leader_epoch",
+    "activation_state",
+    "activation_at_s",
+    "executable",
+)
+
+
+def _coalition_execution_signature(coalition: CoalitionPlan) -> tuple[Any, ...]:
+    return (
+        coalition.target_id,
+        coalition.coalition_id,
+        coalition.version,
+        coalition.state,
+        coalition.coordination_mode,
+        coalition.required_resource_count,
+        coalition.assigned_resource_count,
+        coalition.shortfall,
+        coalition.complete,
+        coalition.primary_resource_count,
+        _optional_float_signature(coalition.minimum_separation_s),
+        tuple(
+            sorted(
+                (
+                    member.resource_id,
+                    member.member_role,
+                    member.wave_id,
+                    _optional_float_signature(member.arrival_window_start_s),
+                    _optional_float_signature(member.arrival_window_end_s),
+                    member.required_capability_class or "",
+                    member.executable,
+                )
+                for member in coalition.members
+            )
+        ),
+        _signature_value(coalition.metadata.get("demand_template")),
+    )
+
+
+def _signature_value(value: Any) -> Any:
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, Mapping):
+        return tuple(
+            sorted((str(key), _signature_value(item)) for key, item in value.items())
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_signature_value(item) for item in value)
+    if isinstance(value, (set, frozenset)):
+        return tuple(sorted(_signature_value(item) for item in value))
+    if isinstance(value, float):
+        return float(value)
+    return value
 
 
 @dataclass(frozen=True)
@@ -260,6 +599,8 @@ class AssignmentRecord:
     resource_count: int = 0
     target_count: int = 0
     assigned_count: int = 0
+    identity_created_at_s: float | None = None
+    last_evaluated_at_s: float | None = None
     unassigned_high_threat_count: int = 0
     hysteresis_reject_count: int = 0
     stale_reject_count: int = 0
@@ -330,6 +671,8 @@ class AssignmentEvidenceExport:
     resource_count: int
     target_count: int
     assigned_count: int
+    identity_created_at_s: float | None = None
+    last_evaluated_at_s: float | None = None
     plan_owner: str = "center"
     active_plan_owner: str = "center"
     owner_node_id: str | None = None
@@ -405,6 +748,16 @@ class AssignmentGuidanceBinding:
     target_object_id: str | None = None
     target_mesh_aliases: tuple[str, ...] = ()
     actor_aliases: Mapping[str, Any] = field(default_factory=dict)
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    member_role: str = CoalitionMemberRole.PRIMARY.value
+    wave_id: int = 0
+    coordination_mode: str = CoordinationMode.INDEPENDENT.value
+    primary_resource_count: int = 1
+    arrival_window_start_s: float | None = None
+    arrival_window_end_s: float | None = None
+    minimum_separation_s: float | None = None
+    last_evaluated_at_s: float | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     @property
@@ -449,7 +802,12 @@ class AssignmentGuidanceBinding:
     def expires_at_s(self) -> float | None:
         if self.stale_after_s is None:
             return None
-        return self.created_at + self.stale_after_s
+        freshness_base_s = (
+            self.created_at
+            if self.last_evaluated_at_s is None
+            else self.last_evaluated_at_s
+        )
+        return freshness_base_s + self.stale_after_s
 
     @property
     def owner(self) -> str:
@@ -521,6 +879,12 @@ class AssignmentGuidanceBinding:
             "binding_state": self.binding_state,
             "assignment_validity_state": self.assignment_validity_state,
             "created_at_s": self.created_at_s,
+            "identity_created_at_s": self.created_at_s,
+            "last_evaluated_at_s": (
+                self.created_at_s
+                if self.last_evaluated_at_s is None
+                else self.last_evaluated_at_s
+            ),
             "expires_at_s": self.expires_at_s,
             "vehicle_name": self.vehicle_name,
             "resource_actor_name": self.resource_actor_name,
@@ -528,6 +892,15 @@ class AssignmentGuidanceBinding:
             "target_object_id": self.target_object_id,
             "target_mesh_aliases": list(self.target_mesh_aliases),
             "actor_aliases": dict(self.actor_aliases),
+            "coalition_id": self.coalition_id,
+            "coalition_version": self.coalition_version,
+            "member_role": self.member_role,
+            "wave_id": self.wave_id,
+            "coordination_mode": self.coordination_mode,
+            "primary_resource_count": self.primary_resource_count,
+            "arrival_window_start_s": self.arrival_window_start_s,
+            "arrival_window_end_s": self.arrival_window_end_s,
+            "minimum_separation_s": self.minimum_separation_s,
             "source_node_id": self.source_node_id,
             "target_node_id": self.target_node_id,
             "link_type": self.link_type,
@@ -572,6 +945,16 @@ def guidance_bindings_from_assignment_plan(
         else {}
     )
     plan_metadata = dict(plan.metadata)
+    identity_created_at_s = _metadata_float(
+        plan_metadata.get("identity_created_at_s")
+    )
+    if identity_created_at_s is None:
+        identity_created_at_s = plan.created_at
+    last_evaluated_at_s = _metadata_float(
+        plan_metadata.get("last_evaluated_at_s")
+    )
+    if last_evaluated_at_s is None:
+        last_evaluated_at_s = plan.created_at
     plan_owner = _metadata_text(plan_metadata, "plan_owner") or "center"
     active_plan_owner = (
         _metadata_text(plan_metadata, "active_plan_owner") or plan_owner
@@ -605,13 +988,19 @@ def guidance_bindings_from_assignment_plan(
         and secondary_lease_expires_at_s is not None
         and now > secondary_lease_expires_at_s
     )
+    coalition_by_id = {
+        coalition.coalition_id: coalition for coalition in plan.coalitions
+    }
 
     bindings: list[AssignmentGuidanceBinding] = []
     for index, assignment in enumerate(plan.assignments, start=1):
         target_id = assignment.target_id
         aliases = target_alias_map.get(target_id, {})
         stale_after_s = assignment.stale_after_s or plan.stale_after_s
-        stale = stale_after_s is not None and now > plan.created_at + stale_after_s
+        stale = (
+            stale_after_s is not None
+            and now > last_evaluated_at_s + stale_after_s
+        )
         previous_target_id = previous_by_resource.get(assignment.resource_id)
         reassigned = previous_target_id not in {None, target_id}
         binding_state = _guidance_binding_state(
@@ -638,6 +1027,19 @@ def guidance_bindings_from_assignment_plan(
         elif secondary_lease_expired:
             binding_state = GUIDANCE_BINDING_STALE
             revoke_reason = "secondary_plan_lease_expired"
+        coalition = (
+            coalition_by_id.get(assignment.coalition_id)
+            if assignment.coalition_id is not None
+            else None
+        )
+        if assignment.coalition_id is not None and (
+            coalition is None
+            or coalition.version != assignment.coalition_version
+            or coalition.state != CoalitionState.COMMITTED.value
+            or not coalition.complete
+        ):
+            binding_state = GUIDANCE_BINDING_HOLD
+            revoke_reason = "coalition_not_committed"
         resource_actor_name = _resource_actor_name(
             resource_id=assignment.resource_id,
             vehicle_name=resource_vehicle_map.get(assignment.resource_id),
@@ -674,11 +1076,31 @@ def guidance_bindings_from_assignment_plan(
                 target_object_id=_optional_alias(aliases, "target_object_id", "object_id"),
                 target_mesh_aliases=_mesh_aliases(aliases),
                 actor_aliases=actor_aliases,
+                coalition_id=assignment.coalition_id,
+                coalition_version=assignment.coalition_version,
+                member_role=assignment.member_role,
+                wave_id=assignment.wave_id,
+                coordination_mode=(
+                    coalition.coordination_mode
+                    if coalition is not None
+                    else CoordinationMode.INDEPENDENT.value
+                ),
+                primary_resource_count=(
+                    coalition.primary_resource_count if coalition is not None else 1
+                ),
+                arrival_window_start_s=assignment.arrival_window_start_s,
+                arrival_window_end_s=assignment.arrival_window_end_s,
+                minimum_separation_s=(
+                    coalition.minimum_separation_s if coalition is not None else None
+                ),
+                last_evaluated_at_s=last_evaluated_at_s,
                 metadata={
                     "assignment_cost": assignment.cost,
                     "assignment_feasibility_state": assignment.feasibility_state,
                     "current_plan_id": plan.plan_id,
                     "current_plan_version": plan.version,
+                    "identity_created_at_s": identity_created_at_s,
+                    "last_evaluated_at_s": last_evaluated_at_s,
                     "plan_owner": plan_owner,
                     "active_plan_owner": active_plan_owner,
                     "owner_node_id": owner_node_id,
@@ -722,6 +1144,23 @@ def guidance_bindings_from_assignment_plan(
                     "previous_plan_id": plan.previous_plan_id,
                     "previous_target_for_resource": previous_target_id,
                     "resource_reassigned": reassigned,
+                    "coalition_id": assignment.coalition_id,
+                    "coalition_version": assignment.coalition_version,
+                    "member_role": assignment.member_role,
+                    "wave_id": assignment.wave_id,
+                    "coordination_mode": (
+                        coalition.coordination_mode
+                        if coalition is not None
+                        else CoordinationMode.INDEPENDENT.value
+                    ),
+                    "primary_resource_count": (
+                        coalition.primary_resource_count if coalition is not None else 1
+                    ),
+                    "arrival_window_start_s": assignment.arrival_window_start_s,
+                    "arrival_window_end_s": assignment.arrival_window_end_s,
+                    "minimum_separation_s": (
+                        coalition.minimum_separation_s if coalition is not None else None
+                    ),
                     "allow_local_rebind": False,
                 },
             )
@@ -1253,7 +1692,7 @@ def assignment_validity_summary_from_plan(
         ),
         cost_margin=_cost_margin(plan),
         stale_plan_version=stale_plan_version,
-        duplicate_assignment_count=_duplicate_assignment_count(plan.assignments),
+        duplicate_assignment_count=_duplicate_assignment_count(plan),
         unassigned_high_threat_count=_unassigned_high_threat_count(
             plan=plan,
             tracks=tracks,
@@ -1286,14 +1725,26 @@ def assignment_records_from_plan(
 ) -> tuple[AssignmentRecord, ...]:
     """Export D6-compatible assignment records from a D3 plan."""
 
-    record_timestamp = plan.created_at if timestamp is None else float(timestamp)
+    plan_metadata = dict(plan.metadata)
+    identity_created_at_s = _metadata_float(
+        plan_metadata.get("identity_created_at_s")
+    )
+    if identity_created_at_s is None:
+        identity_created_at_s = plan.created_at
+    last_evaluated_at_s = _metadata_float(
+        plan_metadata.get("last_evaluated_at_s")
+    )
+    if last_evaluated_at_s is None:
+        last_evaluated_at_s = plan.created_at
+    record_timestamp = (
+        last_evaluated_at_s if timestamp is None else float(timestamp)
+    )
     record_auth = (
         plan.human_authorization_state
         if authorization_state is None
         else authorization_state
     )
     truth_id_by_target = truth_id_by_target or {}
-    plan_metadata = dict(plan.metadata)
     resource_count = _plan_resource_count(plan)
     target_count = _plan_target_count(plan)
     assignment_matrix_shape = _assignment_matrix_shape(
@@ -1350,6 +1801,8 @@ def assignment_records_from_plan(
             resource_count=resource_count,
             target_count=target_count,
             assigned_count=assigned_count,
+            identity_created_at_s=identity_created_at_s,
+            last_evaluated_at_s=last_evaluated_at_s,
             unassigned_high_threat_count=unassigned_high_threat_count,
             hysteresis_reject_count=hysteresis_reject_count,
             stale_reject_count=stale_reject_count,
@@ -1487,6 +1940,16 @@ def assignment_evidence_from_plan(plan: AssignmentPlan) -> AssignmentEvidenceExp
     """Export current-plan cost evidence for D4 decisions and D6 replay."""
 
     plan_metadata = dict(plan.metadata)
+    identity_created_at_s = _metadata_float(
+        plan_metadata.get("identity_created_at_s")
+    )
+    if identity_created_at_s is None:
+        identity_created_at_s = plan.created_at
+    last_evaluated_at_s = _metadata_float(
+        plan_metadata.get("last_evaluated_at_s")
+    )
+    if last_evaluated_at_s is None:
+        last_evaluated_at_s = plan.created_at
     resource_count = _plan_resource_count(plan)
     target_count = _plan_target_count(plan)
     plan_owner = _metadata_text(plan_metadata, "plan_owner") or "center"
@@ -1514,6 +1977,8 @@ def assignment_evidence_from_plan(plan: AssignmentPlan) -> AssignmentEvidenceExp
         resource_count=resource_count,
         target_count=target_count,
         assigned_count=len(plan.assignments),
+        identity_created_at_s=identity_created_at_s,
+        last_evaluated_at_s=last_evaluated_at_s,
         plan_owner=plan_owner,
         active_plan_owner=active_plan_owner,
         owner_node_id=(
@@ -1794,9 +2259,41 @@ def prepare_secondary_takeover_plan(
     activation_epoch = int(leader_epoch)
     if activation_epoch <= 0:
         raise ValueError("secondary leader epoch must be positive")
-    if plan.version <= supersedes_plan.version:
+    if plan.version == supersedes_plan.version:
+        if plan.plan_id != supersedes_plan.plan_id:
+            raise ValueError(
+                "secondary takeover plan identity must be newer or retain the current plan id"
+            )
+        if plan.execution_signature() != supersedes_plan.execution_signature():
+            raise ValueError(
+                "takeover candidate changed execution semantics without advancing identity"
+            )
+        next_version = supersedes_plan.version + 1
+        next_plan_id = f"d3-plan-{uuid4().hex[:12]}"
+        plan = replace(
+            plan,
+            plan_id=next_plan_id,
+            version=next_version,
+            created_at=activation_time,
+            last_changed_at=activation_time,
+            previous_plan_id=supersedes_plan.plan_id,
+            assignments=tuple(
+                replace(
+                    assignment,
+                    plan_version=next_version,
+                    metadata={
+                        **dict(assignment.metadata),
+                        "current_plan_id": next_plan_id,
+                        "current_plan_version": next_version,
+                        "plan_version": next_version,
+                    },
+                )
+                for assignment in plan.assignments
+            ),
+        )
+    elif plan.version != supersedes_plan.version + 1:
         raise ValueError(
-            "secondary takeover plan version must be newer than the superseded plan"
+            "secondary takeover plan version must extend the superseded plan exactly once"
         )
     if plan.plan_id == supersedes_plan.plan_id:
         raise ValueError("secondary takeover plan id must differ from the superseded plan")
@@ -2874,7 +3371,7 @@ def _reassign_count(
     if explicit is not None:
         return explicit
     if previous_plan is not None:
-        return _assignment_change_count(previous_plan.assignment_map(), plan.assignment_map())
+        return _assignment_change_count(previous_plan.assignments, plan.assignments)
     candidate_change_count = _metadata_int(plan.metadata.get("candidate_change_count"))
     if candidate_change_count is not None and plan.changed:
         return candidate_change_count
@@ -2884,9 +3381,20 @@ def _reassign_count(
 
 
 def _assignment_change_count(
-    previous_map: Mapping[str, str],
-    current_map: Mapping[str, str],
+    previous_assignments: Iterable[Assignment],
+    current_assignments: Iterable[Assignment],
 ) -> int:
+    def grouped(
+        assignments: Iterable[Assignment],
+    ) -> dict[str, frozenset[tuple[Any, ...]]]:
+        result: dict[str, set[tuple[Any, ...]]] = {}
+        for assignment in assignments:
+            signature = _assignment_signature(assignment)
+            result.setdefault(assignment.target_id, set()).add(signature[1:])
+        return {key: frozenset(value) for key, value in result.items()}
+
+    previous_map = grouped(previous_assignments)
+    current_map = grouped(current_assignments)
     target_ids = set(previous_map) | set(current_map)
     return sum(
         1 for target_id in target_ids if previous_map.get(target_id) != current_map.get(target_id)
@@ -2906,19 +3414,70 @@ def _stale_plan_version(
     return False
 
 
-def _duplicate_assignment_count(assignments: Iterable[Assignment]) -> int:
+def _duplicate_assignment_count(plan: AssignmentPlan) -> int:
     target_to_resources: dict[str, set[str]] = {}
     resource_to_targets: dict[str, set[str]] = {}
-    for assignment in assignments:
+    target_to_assignments: dict[str, list[Assignment]] = {}
+    invalid_count = 0
+    coalition_by_id = {
+        coalition.coalition_id: coalition for coalition in plan.coalitions
+    }
+    for assignment in plan.assignments:
         target_to_resources.setdefault(assignment.target_id, set()).add(assignment.resource_id)
         resource_to_targets.setdefault(assignment.resource_id, set()).add(assignment.target_id)
-    duplicate_targets = sum(
-        1 for resources in target_to_resources.values() if len(resources) > 1
-    )
+        target_to_assignments.setdefault(assignment.target_id, []).append(assignment)
+        coalition = (
+            coalition_by_id.get(assignment.coalition_id)
+            if assignment.coalition_id is not None
+            else None
+        )
+        coalition_invalid = assignment.coalition_id is not None and (
+            coalition is None
+            or coalition.version != assignment.coalition_version
+            or coalition.state != CoalitionState.COMMITTED.value
+            or not coalition.complete
+        )
+        metadata_invalid = any(
+            _metadata_bool(assignment.metadata.get(key))
+            for key in ("stale", "unauthorized", "revoked")
+        ) or assignment.metadata.get("authorized") is False
+        if (
+            assignment.feasibility_state in {"stale", "unauthorized", "revoked"}
+            or coalition_invalid
+            or metadata_invalid
+        ):
+            invalid_count += 1
+
+    coalition_by_target = {coalition.target_id: coalition for coalition in plan.coalitions}
+    duplicate_targets = 0
+    for target_id, assignments in target_to_assignments.items():
+        required = max(item.required_resource_count for item in assignments)
+        coalition = coalition_by_target.get(target_id)
+        if coalition is not None:
+            required = coalition.required_resource_count
+        coalition_keys = {
+            (item.coalition_id, item.coalition_version)
+            for item in assignments
+            if item.coalition_id is not None
+        }
+        unauthorized_multiplicity = len(assignments) > 1 and (
+            len(coalition_keys) > 1
+            or coalition is None
+            or (
+                coalition is not None
+                and any(
+                    item.coalition_id != coalition.coalition_id
+                    or item.coalition_version != coalition.version
+                    for item in assignments
+                )
+            )
+        )
+        if len(target_to_resources[target_id]) > required or unauthorized_multiplicity:
+            duplicate_targets += 1
     duplicate_resources = sum(
         1 for targets in resource_to_targets.values() if len(targets) > 1
     )
-    return duplicate_targets + duplicate_resources
+    return duplicate_targets + duplicate_resources + invalid_count
 
 
 def _unassigned_high_threat_count(
@@ -3014,7 +3573,7 @@ def _plan_schema(plan: AssignmentPlan) -> str:
         value = plan.metadata.get(key)
         if value:
             return str(value)
-    return ASSIGNMENT_PLAN_SCHEMA_V1
+    return plan.plan_schema
 
 
 def _resource_actor_name(
