@@ -15,7 +15,6 @@
 
 并同步了 2026-07-09 P1 接口补齐结果：
 
-- `subagent_reviews/MAIN_P0_P1_GAP_STATUS.md`
 - `subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md`
 - D1-D7 各模块 `subagent_reviews/Dx_IMPLEMENTATION_GAP_AUDIT.md`
 - main runtime P1 smoke 输出：`research_modules/airsim_runtime/outputs/p1_gap_fix_smoke_20260709/`

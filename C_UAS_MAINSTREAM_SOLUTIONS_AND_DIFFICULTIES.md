@@ -604,6 +604,39 @@ ResourceSummary
 
 边界：高不确定性目标和不可逆处置必须保留人工授权或预设约束。
 
+### 3.9 高威胁目标的 M 对 N 协同拦截
+
+现有 5 对 5 只描述资源数和目标数相等，不代表每个目标只能由一架资源处置。对高威胁目标，应显式定义目标资源需求 \(k_j\)，例如 \(k_j=3\)。
+
+这类问题不能通过复制三次 Hungarian 任务或让三架无人机各自运行 PN 来宣称已经解决。完整链路必须同时包含：
+
+- D1/D2：把多个平台对同一目标的观测注册到同一个中心 GlobalTrack，并保守处理公共先验和未知相关性。
+- D3：形成带 required count、成员角色、到达策略和版本的联盟计划。
+- D4：维护联盟 lease/epoch，处理中心、二级节点、完全无中心下的成员补位和重组。
+- D5：区分计划内 planned cooperative lock 与错误 duplicate lock。
+- D7：执行成员级 PN/PNG，并在上层协调到达窗口、波次、终端扇区和最小安全间距。
+- D6：按目标需求满足率、到达离散、定位一致性、联盟重构和安全风险评估。
+
+三种策略的推荐边界：
+
+| 策略 | 推荐条件 | 限制 |
+| --- | --- | --- |
+| simultaneous 3 | 逃逸窗口短、共同到达时间可达、通信和时钟可靠、已分配不同终端扇区 | 同点进入的碰撞、遮挡、命令饱和和 FOV 丢失风险高 |
+| sequential 1+1+1 | 身份/航迹不确定、首批结果可反馈、成员性能差异大或通信退化 | 总完成时间长，目标可能在波次间机动 |
+| hybrid 2+1 | 高威胁需要冗余，但三机同时进入不安全 | 需要明确 primary/reserve、继续条件和版本化反馈 |
+
+下一阶段默认研究假设采用 hybrid 2+1，而不是把三机严格同时到达写成固定工程规则。严格同时只在任务效果、几何、通信、机动和安全条件均被证明后启用。
+
+开源结论：
+
+- 基数需求可优先评估 OR-Tools/NetworkX 最小费用流或 b-matching。
+- 能力、联盟原子性、同步和波次可用 OR-Tools CP-SAT、Pyomo/PuLP 构造参考模型。
+- Stone Soup、OpenCV、GTSAM、ByteTrack/BoT-SORT 可分别提供融合、几何和本地 MOT 构件。
+- 基础 CBBA 是单 winner 研究基线，不原生支持原子 \(k_j>1\) 联盟。
+- 未发现可直接覆盖 MSM 全合同的成熟开源协同分配与协同导引库。
+
+详细证据和任务拆解见 `subagent_reviews/MAIN_M_TO_N_COOPERATIVE_INTERCEPTION_SYNTHESIS.md` 及 D1-D7 的 M_TO_N 专项报告。当前相关能力登记为 P1；现有 \(k_j=1\) 主线无新增 P0。
+
 ---
 
 ## 四、按距离的推荐闭环
@@ -1398,3 +1431,222 @@ class BatchExperimentAnalyzer:
 - py-motmetrics: <https://github.com/cheind/py-motmetrics>
 - AirSim recording APIs: <https://microsoft.github.io/AirSim/apis/>
 - SCRIMMAGE: <https://github.com/gtri/scrimmage>
+
+---
+
+## 九、系统通信假设与工程难点复核
+
+本节合并原独立通信复核文档。第三章给出算法难点，本节固定跨节点通信、消息责任链、主动/被动降级和 D7 中末段切换的系统约束。
+
+### 9.1 允许的通信拓扑
+
+当前系统允许多层数据与视频通信：
+
+```text
+中心节点 C2
+  <-> 高空侦察/二级节点：数据 + 视频
+  <-> 拦截无人机：数据
+
+高空侦察/二级节点
+  <-> 拦截无人机：数据 + 视频 cue + 检测摘要
+
+拦截无人机
+  <-> 拦截无人机：状态、观测摘要、锁定摘要和协商消息
+```
+
+通信能力增强不改变权限边界：
+
+- 中心或当前合法 owner 维护 global_track_id 和版本化 AssignmentPlan。
+- 二级节点可做区域感知增强和降级接管，但不能绕过 D3/D4 发布本地任务。
+- 拦截机可以共享证据、资源状态和 bid，不能根据本地画面自行换绑目标。
+- 视频 cue 是辅助观测，不等于身份确认、全局配准或处置授权。
+- 未知、无签名或过期身份不能反推为敌方；友方冲突必须 hold。
+
+### 9.2 通信与视频元数据合同
+
+所有跨节点消息至少保留：
+
+```text
+source_node_id
+target_node_id
+relay_node_id
+link_type: c2_direct | secondary_relay | interceptor_peer | video_cue
+message_type
+sequence_id
+sent_timestamp
+received_timestamp
+measurement_timestamp
+arrival_timestamp
+clock_sync_error
+payload_kind
+plan_id / plan_version
+track_version
+stale_after_s
+```
+
+视频本体默认不落盘，帧级元数据必须可追溯：
+
+```text
+camera_id / stream_id
+frame_timestamp
+bbox_xyxy
+camera_intrinsics
+camera_extrinsics
+producer_node_id
+consumer_node_id
+candidate_global_track_ids
+confidence
+```
+
+双时间戳用于 OOSM 和延迟补偿；source/relay/sequence 用于重复消息去重；plan/track version 和 stale deadline 用于阻断旧任务继续执行。
+
+### 9.3 ComputerVision 5v5 阶段边界
+
+AirSim ComputerVision 5v5 用于验证 D1-D5 的感知、关联、分配、末端视觉配准和降级仲裁，不验证 SimpleFlight 动力学或 D7 真实控制效果。
+
+main 负责：
+
+- 单次启动 Blocks、reset 分隔 episode。
+- 移动 actor target，并按 assignment 调整拦截相机位置、yaw 和 pitch。
+- 让高空侦察相机根据 GlobalTrack cue 指向覆盖区目标。
+- 收集 camera pose、bbox、时间戳、source node、local track 和 detection metadata。
+- actor 名称只进入离线 truth，不进入 D5 在线关联。
+
+此阶段默认不保存 PNG。`blocks_frames.jsonl` 和 `blocks_sensor_observations.jsonl` 分别承载视觉元数据和带双时间戳/协方差的传感器观测。
+
+### 9.4 五类工程难点与当前选型
+
+| 难点 | 主流构件 | 当前主线 | 仍需验证 |
+| --- | --- | --- | --- |
+| 多源融合与不确定度 | Stone Soup、FilterPy、tf2/message_filters | 轻量 FusionAdapter、NED、双时间戳、协方差、OOSM | 多节点相关性、真实外参和区域质量 |
+| 多目标 ID 与跨视角 | GNN/Hungarian、JPDA/MHT、MOT | D2 全局身份 + D5 camera-local MOT/投影门控 | 跨节点 registry、真实 YOLO/MOT、IDSW 阈值 |
+| 动态分配与末端反馈 | SciPy Hungarian、OR-Tools | 版本化计划、迟滞、D5 feedback writeback | M 对 N、复杂约束和多 seed 权重 |
+| 主动/被动降级 | 二级接管、CBBA/auction | 中心 -> 二级 -> cluster/distributed | secondary active plan 正例、分区和联盟原子性 |
+| 末端配准与导引切换 | OpenCV、ByteTrack/BoT-SORT、PN/PNG | GlobalTrack 投影、保守锁定、D3/D4/D5 gate | 视觉质量、LOS、机动裕度和长时闭环 |
+
+成熟开源方案主要是组件级，不存在一套可直接覆盖 C-UAS 全闭环的成熟库。Stone Soup、FilterPy、OpenCV、SciPy、OR-Tools、ByteTrack/BoT-SORT、TrackEval 等应先作为隔离 benchmark 或 adapter，而不是直接替换轻量主线。
+
+基础 CBBA 只解决 single-winner 任务。MIT ACL 的 MATLAB 包可作研究基线；`zehuilu/CBBA-Python` 是个人实现；`mit-acl/CACBBA` 当前没有可运行源码，不能称为已接入实现。
+
+### 9.5 主动与被动降级仲裁
+
+被动降级链：
+
+```text
+C2 heartbeat/lease 失效
+-> 可用地面备份或高空侦察二级节点接管
+-> 二级节点失效时选择 cluster representative
+-> 最后进入 CBBA/auction 保底
+```
+
+主动降级适用于中心仍在线但态势或计划不再可信：
+
+```text
+1. friend conflict -> hold_for_review
+2. D5 与当前分配一致 -> continue
+3. plan stale/not-current -> request_center_replan
+4. D1/D2 不确定度或关联风险升高 -> request_secondary_assist
+5. D5 持续 mismatch 且二级证据可用 -> degrade_to_secondary
+6. 二级不可用但 peer 网络可用 -> distributed/cluster representative
+7. 身份或版本冲突无法消解 -> hold
+```
+
+低 cost margin、早期视觉低置信度或无冲突的短时 reacquire 只进入 observe/replan，不应直接触发全分布式降级。
+
+### 9.6 D7 中段到末端的五类门槛
+
+D5 locked 且 assigned global track 与 D3 一致只是必要条件。进入 vision terminal 还必须同时通过以下五类门槛。
+
+#### 9.6.1 身份和任务一致性
+
+- TerminalAssociation 为 locked。
+- assigned global_track_id、plan id/version、owner 和 D7 binding 一致。
+- GlobalTrack/plan 未过期。
+- 无 friend conflict、错误 duplicate lock、local-to-global mismatch。
+- M 对 N 场景中的多机锁定必须由有效 coalition 授权。
+
+#### 9.6.2 相机识别能力
+
+- bbox 宽、高、面积和 detector confidence 达到标定门限。
+- 连续稳定帧数足够，local track 没有频繁切换。
+- bbox 不严重遮挡、截断或贴近图像边缘。
+- 相机内外参、位姿来源和 calibration health 有效。
+
+#### 9.6.3 LOS 测量质量
+
+- 像素中心时间戳连续。
+- LOS angle/LOS rate 可稳定估计，方差和异常值率低于门限。
+- 帧率、曝光、处理和通信延迟满足终端窗口。
+- bbox/LOS 证据来自当前相机流和当前 plan epoch。
+
+#### 9.6.4 平台机动能力
+
+- 所需横向加速度、转弯率和速度方向变化不超过平台裕度。
+- 高度、速度和加速度控制未持续饱和。
+- closing speed 合理，预计 FOV 不会因命令立即丢失。
+- 多机协同时满足 terminal sector 和 minimum separation。
+
+#### 9.6.5 剩余拦截窗口
+
+- range 位于标定后的切换窗口，不把固定 30 m 当成所有场景常数。
+- estimated time-to-go 足以完成视觉稳定、模式切换和剩余机动。
+- D1/D2 协方差未发散，measurement age 可接受。
+- terminal detection timeout 和 D4 replan pending 风险在门限内。
+
+推荐状态机：
+
+```text
+radar_midcourse
+  -> handover_pending
+       进入终端候选窗口，计划有效，D1/D2 航迹稳定
+
+handover_pending
+  -> vision_terminal
+       D5 locked + 版本一致 + 相机/LOS/机动/时间门槛全部通过
+  -> radar_midcourse
+       视觉不足但雷达航迹仍稳定
+  -> hold/reacquire
+       ambiguous、friend conflict、版本冲突或需要二级复核
+
+vision_terminal
+  -> intercept
+       仿真成功判据满足
+  -> hold/abort
+       目标出框、错误绑定、版本失效、控制饱和或安全冲突
+```
+
+### 9.7 模块通信责任
+
+| 模块 | 主要通信输入 | 主要输出 | 禁止事项 |
+| --- | --- | --- | --- |
+| D1 | 雷达/声学/视觉/LiDAR、节点位姿和链路元数据 | GlobalTrack、协方差、延迟和覆盖质量 | 不授权、不以 PNG 为必要依赖 |
+| D2 | D1 航迹、D5/二级证据 | canonical global_track_id、关联风险和 IDSW | 不让本地节点改写 ID |
+| D3 | GlobalTrack、资源状态、D4/D5 风险 | 版本化 AssignmentPlan/coalition plan | 不按最近视觉目标直接换绑 |
+| D4 | C2/二级健康、D1-D5 summary、peer 状态 | DegradationDecision、owner/epoch/lease | 不处理原始视频，不跳过 D3/D5 |
+| D5 | 多拦截机视觉、二级 cue、身份声明 | TerminalAssociation、IdentityClaim、冲突证据 | 不生成计划，不改 global_track_id |
+| D6 | 结构化 episode/link/terminal/guidance 日志 | 指标、图表和报告 | 不参与在线控制 |
+| D7 | D1/D2 航迹、D3 plan、D4 permission、D5 lock | mode/command/gate summary | 不自行选目标或绕过版本/安全门槛 |
+
+### 9.8 通信与切换评估指标
+
+除第八章的系统指标外，通信和中末段切换至少记录：
+
+```text
+cross_node_latency_ms
+message_drop_rate
+out_of_order_count
+stale_track_update_count
+video_metadata_delivery_rate
+bbox_delivery_rate
+multi_view_consensus_rate
+cross_view_conflict_count
+planned_cooperative_lock_count
+erroneous_duplicate_lock_count
+camera_quality_gate_pass_rate
+los_quality_gate_pass_rate
+maneuver_margin_gate_pass_rate
+terminal_switch_reject_count
+terminal_switch_reject_reason
+```
+
+最终原则是：通信用于共享证据、减少不确定性和提高仲裁质量；通信本身不授予局部节点改写 global_track_id、AssignmentPlan 或导引目标的权力。

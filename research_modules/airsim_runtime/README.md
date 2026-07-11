@@ -73,6 +73,31 @@ Main now owns the run-size parameter. For AirSim actor/CV scenarios, pass
 matching AirSim settings file under the run output directory. D1-D7 consume the
 resulting arrays and must not assume a fixed 2v2 or 5v5 size.
 
+For unequal scale, use `--resource-count M --target-count N`. This enables the
+centralized cooperative-demand fixture when `M != N`; `--drone-count` remains
+the equal-count shorthand and cannot be combined with the two independent
+count options. The default high-threat policy is `k=3`, `hybrid 2+1`:
+
+```bash
+python3 research_modules/airsim_runtime/run_blocks_sequence.py \
+  --cv-5v5 \
+  --resource-count 5 \
+  --target-count 2 \
+  --high-threat-resource-count 3 \
+  --cooperative-coordination-mode hybrid \
+  --cooperative-primary-count 2 \
+  --cooperative-wave-gap 2.0 \
+  --sequence-id blocks_cv_m5_n2_cooperative_001 \
+  --duration 6.0 \
+  --dt 0.5
+```
+
+The online fixture assigns the high-threat prior by stable center-owned track
+order and never consults AirSim truth IDs. D3 admits complete demand slots only;
+D5/D7 keep one state per resource-target pair. If the center is unavailable,
+`k>1` currently fails closed with `coalition_fallback_unsupported`; atomic
+secondary/distributed coalition formation remains a separate P1 capability.
+
 Examples:
 
 ```bash

@@ -1023,6 +1023,34 @@ Hungarian 给出主分配，迟滞逻辑避免每帧频繁换绑。
 - D5 使用已重投影 cue 辅助候选排序，但不跳过保守规则。
 - 若二级节点也失效，进入完全无中心 CBBA 协商。
 
+### 12.6 高威胁目标的 M 对 N 联盟流程
+
+当目标 \(j\) 的威胁和任务模型要求多资源协同时，系统使用 required resource count \(k_j\)，不再假设一目标只有一个 owner。高威胁研究基线可设 \(k_j=3\)。
+
+推荐的完整流程为：
+
+```text
+D1/D2 建立唯一 canonical GlobalTrack
+-> D3 根据 k_j、能力、威胁、可达性和冲突风险形成联盟
+-> D4 发布并维护 coalition version/epoch/lease
+-> D5 验证每个成员的 local track 是否支持同一 global_track_id
+-> D7 按 simultaneous/sequential/hybrid 合同执行成员级 PN/PNG
+-> D6 评估需求满足、到达时序、成员重构、身份和安全
+```
+
+中心正常时，基数需求可用 b-matching/最小费用流研究；复杂能力、主备、同步和波次使用 CP-SAT/MILP 参考模型。二级节点接管时必须发布新的联盟版本。完全无中心时，现有单 winner CBBA 只能作为候选成员选择基线，不能把目标复制三份来冒充原子联盟。
+
+当前推荐比较四条路线：
+
+- independent PN：多个独立 pair，只作基线，不称为协同导引。
+- simultaneous 3：三名成员满足共同窗口，并使用不同终端扇区和最小安全间距。
+- sequential 1+1+1：按波次执行，后续成员根据新版本反馈继续。
+- hybrid 2+1：两名 primary 首批协同，一名 reserve/observer 保持间隔，作为默认研究假设。
+
+多平台协同定位要求双时间戳、共同 NED、量测时刻位姿、相机/传感器外参和协方差，以及非退化视线交会几何。第三个视角只增加冗余，不能自动保证精度。多个合法联盟成员锁定同一 global_track_id 时，D5/D6 应记录 planned cooperative lock；只有计划外加入、过期版本、local-to-global 冲突等才属于错误 duplicate。
+
+当前代码已实现中心化 \(k_j>1\) 基础闭环：D3 schema v2 和 demand-slot Hungarian 按 all-or-none 形成联盟，默认高威胁策略为 hybrid 2+1；D5 区分合法联盟多锁与越权/超额锁；D7 按成员角色、波次、时间窗和版本门控 PN/视觉 PNG；D6 记录需求、联盟和到达指标。main episode bus 已验证 5-resource/2-target 的 3+1 pair 不折叠，质点 `cooperative_3v1`/`cooperative_5v2` 需求满足率为 1.0。尚未实现的是二级节点和完全分布式条件下的原子 coalition commit/ACK/补位；中心失效时 \(k_j>1\) 当前 fail-closed 并输出 `coalition_fallback_unsupported`。详细状态见 `subagent_reviews/MAIN_M_TO_N_COOPERATIVE_INTERCEPTION_SYNTHESIS.md` 和 `subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md`。
+
 ## 13. AirSim 离线集成规划
 
 当前阶段已经具备 Python 质点仿真和离线日志评估。后续 AirSim 集成建议采用离线回放优先：
@@ -1070,14 +1098,17 @@ AirSim 输出：
 
 | 模块 | 测试结果 |
 |---|---|
-| D1 Sensor Fusion | 7 passed |
-| D2 Data Association | 9 passed |
-| D3 Assignment Planner | 14 passed |
-| D4 Distributed Fallback | 22 passed |
-| D5 Terminal Association | 15 passed |
-| D6 Evaluation Metrics | 10 passed |
+| D1 Sensor Fusion | 54 passed |
+| D2 Data Association | 57 passed |
+| D3 Assignment Planner | 99 passed, 1 optional OR-Tools skipped |
+| D4 Distributed Fallback | 101 passed |
+| D5 Terminal Association | 112 passed |
+| D6 Evaluation Metrics | 63 passed |
+| D7 Proportional Guidance | 79 passed |
+| AirSim Runtime | 70 passed |
+| Point-mass Integration | 7 passed |
 | Cross-module Contract | 3 passed |
-| 总计 | 80 passed |
+| 总计 | 645 passed, 1 optional skipped |
 
 集成验证覆盖：
 
