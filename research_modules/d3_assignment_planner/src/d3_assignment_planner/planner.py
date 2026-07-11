@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from .costs import CostMatrixResult, CostModel
 from .models import (
+    ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1,
     Assignment,
     AssignmentPlan,
     PlannerConfig,
@@ -196,6 +197,13 @@ class AssignmentPlanner:
                 "hysteresis_max_changes_per_window": self.config.max_changes_per_window,
                 "reassignment_switch_penalty": self.config.reassignment_switch_penalty,
                 "high_threat_threshold": self.config.high_threat_threshold,
+                "assignment_profile_schema": ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1,
+                "cost_profile_id": self.config.cost_profile_id,
+                "cost_profile_version": self.config.cost_profile_version,
+                "feedback_profile_id": self.config.feedback_profile_id,
+                "feedback_profile_version": self.config.feedback_profile_version,
+                "cost_weights": self._cost_weights_metadata(),
+                "planner_thresholds": self._planner_thresholds_metadata(),
                 **self._matrix_evidence_metadata(matrix_result),
             },
             source_node_id=self.config.source_node_id,
@@ -711,6 +719,31 @@ class AssignmentPlanner:
             "rejected_edges": tuple(rejected_edges),
             "hard_reject_count": len(rejected_edges),
             "hard_reject_reasons": hard_reject_reasons,
+        }
+
+    def _cost_weights_metadata(self) -> dict[str, float]:
+        weights = self.cost_model.weights
+        return {
+            "window": float(weights.window),
+            "covariance": float(weights.covariance),
+            "threat": float(weights.threat),
+            "resource_state": float(weights.resource_state),
+            "fov": float(weights.fov),
+            "conflict": float(weights.conflict),
+        }
+
+    def _planner_thresholds_metadata(self) -> dict[str, object]:
+        return {
+            "enable_hysteresis": bool(self.config.enable_hysteresis),
+            "delta": float(self.config.delta),
+            "min_dwell_s": float(self.config.min_dwell),
+            "max_changes_per_window": self.config.max_changes_per_window,
+            "reassignment_switch_penalty": float(
+                self.config.reassignment_switch_penalty
+            ),
+            "high_threat_threshold": float(self.config.high_threat_threshold),
+            "infeasible_penalty": float(self.config.infeasible_penalty),
+            "unassigned_base_cost": float(self.config.unassigned_base_cost),
         }
 
     @staticmethod

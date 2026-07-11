@@ -118,6 +118,10 @@ class GNNHungarianAssociator(DataAssociator):
             distance_matrix=gated.distance_matrix,
             metadata={
                 "gate_threshold": self.gate_threshold,
+                "track_order": [track.global_track_id for track in track_list],
+                "detection_order": [
+                    detection.detection_id for detection in detection_list
+                ],
                 "feature_weight": self.feature_weight,
                 "motion_weight": self.motion_weight,
                 "quality_aware_gate": self.quality_aware_gate,

@@ -3,7 +3,8 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
-from typing import Any, Iterable
+from dataclasses import asdict, dataclass, field, is_dataclass
+from typing import Any, Iterable, Mapping
 
 import numpy as np
 
@@ -11,6 +12,7 @@ from .fusion import FusionAdapter
 from .types import COMMUNICATION_METADATA_KEYS, GlobalTrack, LatencyAuditSummary, SensorObservation
 
 REPLAY_SCHEMA_VERSION = "d1.sensor_observation.v1"
+REPLAY_PROVENANCE_SCHEMA_VERSION = "d1.replay_provenance.v1"
 LEGACY_BLOCKS_REPLAY_SCHEMA_VERSION = "legacy.blocks_sensor_observations"
 _COMPATIBLE_SCHEMA_ALIASES = {
     REPLAY_SCHEMA_VERSION: REPLAY_SCHEMA_VERSION,
@@ -93,6 +95,13 @@ _REPLAY_METADATA_PASSTHROUGH_KEYS = (
     "covariance_limit_applied",
     "covariance_scale_reason",
     "observation_covariance_anomaly",
+    "expected_latency_s",
+    "latency_tolerance_s",
+    "oosm_expected",
+    "provenance",
+    "config_provenance",
+    "scenario_provenance",
+    "offline_truth",
 )
 _ARRAY_METADATA_KEYS = {
     "bbox",
@@ -120,7 +129,53 @@ _OBJECT_METADATA_KEYS = {
     "recon_cue_summary",
     "secondary_recon",
     "mobile_recon",
+    "provenance",
+    "config_provenance",
+    "scenario_provenance",
+    "offline_truth",
 }
+
+_ONLINE_TRUTH_METADATA_KEYS = {
+    "truth_id",
+    "truth_object_id",
+    "actor_name",
+    "object_id",
+}
+
+
+@dataclass(frozen=True)
+class ReplayProvenance:
+    """Configuration and scenario identity written with each replay record."""
+
+    scenario_id: str
+    scenario_version: str
+    config_id: str
+    config_digest: str
+    run_id: str | None = None
+    seed: int | None = None
+    source_format: str = "blocks_cv"
+    producer: str = "main"
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        required = {
+            "scenario_id": self.scenario_id,
+            "scenario_version": self.scenario_version,
+            "config_id": self.config_id,
+            "config_digest": self.config_digest,
+        }
+        missing = [key for key, value in required.items() if not str(value).strip()]
+        if missing:
+            raise ValueError(f"D1 replay provenance missing required field(s): {', '.join(missing)}")
+        return {
+            "schema_version": REPLAY_PROVENANCE_SCHEMA_VERSION,
+            **required,
+            "run_id": self.run_id,
+            "seed": self.seed,
+            "source_format": self.source_format,
+            "producer": self.producer,
+            "metadata": _json_safe(self.metadata),
+        }
 
 
 def sensor_observation_from_jsonl_record(record: dict[str, Any]) -> SensorObservation:
@@ -203,12 +258,136 @@ def sensor_observation_from_csv_row(row: dict[str, Any]) -> SensorObservation:
         "metadata": metadata,
         "communication": communication,
     }
+    provenance = _json_object_cell(clean.get("provenance"), "provenance")
+    if provenance:
+        record["provenance"] = provenance
     for key in _REPLAY_METADATA_PASSTHROUGH_KEYS:
         value = _non_empty(clean.get(key))
         if value is None:
             continue
         record[key] = _metadata_cell_value(value, key)
     return sensor_observation_from_jsonl_record(record)
+
+
+def sensor_observation_to_replay_record(
+    observation: SensorObservation,
+    provenance: ReplayProvenance | Mapping[str, Any],
+    *,
+    include_offline_truth: bool = False,
+) -> dict[str, Any]:
+    """Serialize one canonical observation without exposing online truth hints."""
+
+    if observation.covariance is None:
+        raise ValueError("D1 replay writer requires covariance on every observation")
+    provenance_payload = _provenance_payload(provenance)
+    metadata = _sanitize_online_metadata(observation.metadata)
+    record = {
+        "schema_version": REPLAY_SCHEMA_VERSION,
+        "observation_id": observation.observation_id,
+        "sensor_id": observation.sensor_id,
+        "modality": observation.modality,
+        "measurement_timestamp": observation.measurement_timestamp,
+        "arrival_timestamp": observation.arrival_timestamp,
+        "frame_id": observation.frame_id,
+        "measurement": observation.measurement.tolist(),
+        "covariance": observation.covariance.tolist(),
+        "classification_hint": observation.classification_hint,
+        "confidence": observation.confidence,
+        "quality_flags": list(observation.quality_flags),
+        "metadata": _json_safe(metadata),
+        "communication": _json_safe(observation.communication_metadata),
+        "provenance": provenance_payload,
+    }
+    if include_offline_truth:
+        offline_truth = {
+            key: _json_safe(observation.metadata[key])
+            for key in _ONLINE_TRUTH_METADATA_KEYS
+            if key in observation.metadata
+        }
+        if offline_truth:
+            record["offline_truth"] = offline_truth
+    return record
+
+
+def write_sensor_observations_jsonl(
+    path: str | Path,
+    observations: Iterable[SensorObservation],
+    provenance: ReplayProvenance | Mapping[str, Any],
+    *,
+    include_offline_truth: bool = False,
+) -> Path:
+    """Write versioned JSONL records with required scenario/config provenance."""
+
+    output_path = Path(path)
+    with output_path.open("w", encoding="utf-8") as stream:
+        for observation in observations:
+            record = sensor_observation_to_replay_record(
+                observation,
+                provenance,
+                include_offline_truth=include_offline_truth,
+            )
+            stream.write(json.dumps(record, sort_keys=True) + "\n")
+    return output_path
+
+
+def write_sensor_observations_csv(
+    path: str | Path,
+    observations: Iterable[SensorObservation],
+    provenance: ReplayProvenance | Mapping[str, Any],
+    *,
+    include_offline_truth: bool = False,
+) -> Path:
+    """Write the same governed replay contract in a stable CSV representation."""
+
+    fieldnames = (
+        "schema_version",
+        "observation_id",
+        "sensor_id",
+        "modality",
+        "measurement_timestamp",
+        "arrival_timestamp",
+        "frame_id",
+        "measurement",
+        "covariance",
+        "classification_hint",
+        "confidence",
+        "quality_flags",
+        "metadata",
+        "communication",
+        "provenance",
+        "offline_truth",
+    )
+    output_path = Path(path)
+    with output_path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer.writeheader()
+        for observation in observations:
+            record = sensor_observation_to_replay_record(
+                observation,
+                provenance,
+                include_offline_truth=include_offline_truth,
+            )
+            writer.writerow(
+                {
+                    key: (
+                        json.dumps(record[key], sort_keys=True)
+                        if key
+                        in {
+                            "measurement",
+                            "covariance",
+                            "quality_flags",
+                            "metadata",
+                            "communication",
+                            "provenance",
+                            "offline_truth",
+                        }
+                        and key in record
+                        else record.get(key)
+                    )
+                    for key in fieldnames
+                }
+            )
+    return output_path
 
 
 def read_sensor_observations_jsonl(path: str | Path) -> list[SensorObservation]:
@@ -313,6 +492,7 @@ def summarize_sensor_observation_latency_audit(
             duplicate_observation_count=0,
             max_replay_observation_count=0,
             latency_compensation=False,
+            published_at=None,
         )
 
     current_time = 0.0
@@ -359,6 +539,7 @@ def summarize_sensor_observation_latency_audit(
         duplicate_observation_count=duplicate_count,
         max_replay_observation_count=0,
         latency_compensation=False,
+        published_at=max(float(obs.arrival_timestamp) for obs in ordered),
     )
 
 
@@ -408,7 +589,73 @@ def _metadata_from_replay_record(record: dict[str, Any], schema_version: str) ->
             metadata[key] = value
 
     _normalize_replay_visual_metadata(metadata)
+    provenance = record.get("provenance")
+    if isinstance(provenance, dict):
+        metadata["d1_replay_provenance"] = dict(provenance)
     return metadata
+
+
+def _provenance_payload(
+    provenance: ReplayProvenance | Mapping[str, Any],
+) -> dict[str, Any]:
+    if isinstance(provenance, ReplayProvenance):
+        return provenance.to_dict()
+    payload = dict(provenance)
+    schema_version = str(
+        payload.get("schema_version", REPLAY_PROVENANCE_SCHEMA_VERSION)
+    ).strip()
+    if schema_version != REPLAY_PROVENANCE_SCHEMA_VERSION:
+        raise ValueError(
+            f"unsupported D1 replay provenance schema_version {schema_version!r}; "
+            f"expected {REPLAY_PROVENANCE_SCHEMA_VERSION!r}"
+        )
+    return ReplayProvenance(
+        scenario_id=str(payload.get("scenario_id", "")),
+        scenario_version=str(payload.get("scenario_version", "")),
+        config_id=str(payload.get("config_id", "")),
+        config_digest=str(payload.get("config_digest", "")),
+        run_id=_optional_str(payload.get("run_id")),
+        seed=None if payload.get("seed") is None else int(payload["seed"]),
+        source_format=str(payload.get("source_format", "blocks_cv")),
+        producer=str(payload.get("producer", "main")),
+        metadata=dict(payload.get("metadata") or {}),
+    ).to_dict()
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if is_dataclass(value):
+        return _json_safe(asdict(value))
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
+def _sanitize_online_metadata(value: Mapping[str, Any]) -> dict[str, Any]:
+    sanitized: dict[str, Any] = {}
+    for key, item in value.items():
+        normalized_key = str(key)
+        if (
+            normalized_key in _ONLINE_TRUTH_METADATA_KEYS
+            or normalized_key.startswith("d1_replay_")
+            or normalized_key.endswith("_offline_only")
+        ):
+            continue
+        sanitized[normalized_key] = _sanitize_online_value(item)
+    return sanitized
+
+
+def _sanitize_online_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return _sanitize_online_metadata(value)
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_online_value(item) for item in value]
+    return value
 
 
 def _normalize_replay_visual_metadata(metadata: dict[str, Any]) -> None:

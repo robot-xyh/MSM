@@ -51,24 +51,55 @@ def summarize_region_quality_windows(
     covariance_growth_threshold: float = 0.0,
     freshness_growth_threshold: float = 0.0,
     readiness_drop_threshold: float = 0.0,
+    window_size_s: float | None = None,
 ) -> list[FusionQualityRegionWindowSummary]:
-    """Aggregate region-quality snapshots into lightweight trend windows."""
+    """Aggregate region-quality snapshots into lightweight trend windows.
 
-    grouped: dict[str, list[FusionQualityRegionSummary]] = defaultdict(list)
+    ``window_size_s`` partitions each coverage cell on publish time. Leaving it
+    unset preserves the historical one-window-per-cell behavior.
+    """
+
+    if window_size_s is not None and float(window_size_s) <= 0.0:
+        raise ValueError("window_size_s must be positive")
+    grouped: dict[tuple[str, int | None], list[FusionQualityRegionSummary]] = defaultdict(list)
     for snapshot in region_snapshots:
         for summary in snapshot:
-            grouped[str(summary.coverage_cell)].append(summary)
+            bucket = (
+                None
+                if window_size_s is None
+                else int(np.floor(float(summary.published_at) / float(window_size_s)))
+            )
+            grouped[(str(summary.coverage_cell), bucket)].append(summary)
 
-    latency_window = _latency_window(latency_audits or ())
+    audits = list(latency_audits or ())
     outputs: list[FusionQualityRegionWindowSummary] = []
-    for coverage_cell in sorted(grouped):
-        summaries = sorted(grouped[coverage_cell], key=lambda item: item.published_at)
+    for coverage_cell, bucket in sorted(
+        grouped,
+        key=lambda key: (key[0], -1 if key[1] is None else key[1]),
+    ):
+        summaries = sorted(grouped[(coverage_cell, bucket)], key=lambda item: item.published_at)
         if not summaries:
             continue
         first = summaries[0]
         latest = summaries[-1]
-        window_start = float(first.window_start if first.window_start is not None else first.published_at)
-        window_end = float(latest.window_end if latest.window_end is not None else latest.published_at)
+        if window_size_s is None:
+            window_start = float(
+                first.window_start if first.window_start is not None else first.published_at
+            )
+            window_end = float(
+                latest.window_end if latest.window_end is not None else latest.published_at
+            )
+            window_audits = audits
+        else:
+            window_start = float(bucket) * float(window_size_s)
+            window_end = window_start + float(window_size_s)
+            window_audits = [
+                audit
+                for audit in audits
+                if audit.published_at is not None
+                and window_start <= float(audit.published_at) < window_end
+            ]
+        latency_window = _latency_window(window_audits)
         dt = max(0.0, window_end - window_start)
         source_gap_modalities = tuple(
             sorted({modality for summary in summaries for modality in summary.source_gap_modalities})

@@ -1,5 +1,7 @@
 from dataclasses import replace
 
+import pytest
+
 from d3_assignment_planner import (
     Assignment,
     AssignmentPlan,
@@ -206,14 +208,21 @@ def test_secondary_plan_v2_binding_after_center_plan_invalidates() -> None:
         created_at=2.0,
         stale_after_s=2.0,
     )
+    secondary_plan = replace(
+        secondary_plan,
+        previous_plan_id=center_plan.plan_id,
+    )
     secondary_plan = prepare_secondary_takeover_plan(
         secondary_plan,
         supersedes_plan=center_plan,
         secondary_node_id="secondary-node-2",
-        target_node_id="interceptor-group",
-        takeover_reason="d4_degrade_to_secondary",
+        readiness_class="takeover_ready",
+        readiness_sustained=True,
+        activated_at_s=2.1,
         lease_expires_at_s=4.0,
         leader_epoch=12,
+        target_node_id="interceptor-group",
+        takeover_reason="d4_degrade_to_secondary",
     )
 
     center_summary = assignment_validity_summary_from_plan(
@@ -226,10 +235,20 @@ def test_secondary_plan_v2_binding_after_center_plan_invalidates() -> None:
         secondary_plan,
         previous_plan=center_plan,
         now_s=2.1,
+        current_plan_id=secondary_plan.plan_id,
+        current_plan_version=secondary_plan.version,
+    )
+    (old_center_binding,) = guidance_bindings_from_assignment_plan(
+        center_plan,
+        now_s=2.1,
+        current_plan_id=secondary_plan.plan_id,
+        current_plan_version=secondary_plan.version,
     )
 
     assert center_summary.stale_plan_version is True
     assert center_summary.plan_age_s == 2.1
+    assert old_center_binding.binding_state == "stale"
+    assert old_center_binding.revoke_reason == "not_current_assignment_plan"
     assert binding.plan_id == "SECONDARY-PLAN-002"
     assert binding.plan_version == 2
     assert binding.plan_schema == SECONDARY_PLAN_SCHEMA_V2
@@ -255,6 +274,10 @@ def test_secondary_plan_v2_binding_after_center_plan_invalidates() -> None:
     assert secondary_plan.metadata["supersedes_plan_version"] == center_plan.version
     assert secondary_plan.metadata["secondary_lease_expires_at_s"] == 4.0
     assert secondary_plan.metadata["secondary_leader_epoch"] == 12
+    assert secondary_plan.metadata["secondary_takeover_state"] == "secondary_plan_active"
+    assert secondary_plan.metadata["secondary_readiness_class"] == "takeover_ready"
+    assert secondary_plan.metadata["secondary_readiness_sustained"] is True
+    assert secondary_plan.metadata["secondary_activated_at_s"] == 2.1
 
 
 def test_secondary_takeover_rejects_stale_or_tied_version() -> None:
@@ -268,7 +291,6 @@ def test_secondary_takeover_rejects_stale_or_tied_version() -> None:
         center_plan,
         plan_id="SECONDARY-PLAN-003",
         previous_plan_id=center_plan.plan_id,
-        source_node_id="secondary-node-2",
     )
 
     try:
@@ -276,8 +298,147 @@ def test_secondary_takeover_rejects_stale_or_tied_version() -> None:
             stale_candidate,
             supersedes_plan=center_plan,
             secondary_node_id="secondary-node-2",
+            readiness_class="takeover_ready",
+            readiness_sustained=True,
+            activated_at_s=1.0,
+            lease_expires_at_s=2.0,
+            leader_epoch=1,
         )
     except ValueError as exc:
         assert "newer" in str(exc)
     else:
         raise AssertionError("expected stale secondary takeover plan rejection")
+
+
+def test_secondary_binding_requires_current_identity_and_live_lease() -> None:
+    center_plan = _plan(
+        _assignment(target_id="T00", resource_id="R01"),
+        plan_id="CENTER-PLAN-004",
+        version=4,
+        created_at=0.0,
+    )
+    candidate = replace(
+        _plan(
+            _assignment(target_id="T01", resource_id="R01"),
+            plan_id="SECONDARY-PLAN-005",
+            version=5,
+            created_at=5.0,
+            stale_after_s=10.0,
+        ),
+        previous_plan_id=center_plan.plan_id,
+    )
+    active_plan = prepare_secondary_takeover_plan(
+        candidate,
+        supersedes_plan=center_plan,
+        secondary_node_id="high-recon-2",
+        readiness_class="takeover_ready",
+        readiness_sustained=True,
+        activated_at_s=5.1,
+        lease_expires_at_s=7.0,
+        leader_epoch=2,
+    )
+
+    (unconfirmed,) = guidance_bindings_from_assignment_plan(active_plan, now_s=5.2)
+    (current,) = guidance_bindings_from_assignment_plan(
+        active_plan,
+        now_s=5.2,
+        current_plan_id=active_plan.plan_id,
+        current_plan_version=active_plan.version,
+    )
+    (expired,) = guidance_bindings_from_assignment_plan(
+        active_plan,
+        now_s=7.1,
+        current_plan_id=active_plan.plan_id,
+        current_plan_version=active_plan.version,
+    )
+
+    assert unconfirmed.binding_state == "stale"
+    assert unconfirmed.revoke_reason == "not_current_assignment_plan"
+    assert current.binding_state == "active"
+    assert current.assignment_validity_state == "current"
+    assert expired.binding_state == "stale"
+    assert expired.revoke_reason == "secondary_plan_lease_expired"
+
+
+@pytest.mark.parametrize(
+    (
+        "readiness_class",
+        "readiness_sustained",
+        "activated_at_s",
+        "lease_expires_at_s",
+        "error",
+    ),
+    (
+        ("registration_usable", True, 2.1, 4.0, "takeover_ready"),
+        ("takeover_ready", False, 2.1, 4.0, "sustained"),
+        ("takeover_ready", True, 2.1, 2.1, "expired"),
+    ),
+)
+def test_secondary_takeover_rejects_incomplete_readiness_or_lease(
+    readiness_class: str,
+    readiness_sustained: bool,
+    activated_at_s: float,
+    lease_expires_at_s: float,
+    error: str,
+) -> None:
+    center_plan = _plan(
+        _assignment(),
+        plan_id="CENTER-PLAN-001",
+        version=1,
+        created_at=0.0,
+    )
+    candidate = replace(
+        _plan(
+            _assignment(),
+            plan_id="SECONDARY-PLAN-002",
+            version=2,
+            created_at=2.0,
+        ),
+        previous_plan_id=center_plan.plan_id,
+    )
+
+    with pytest.raises(ValueError, match=error):
+        prepare_secondary_takeover_plan(
+            candidate,
+            supersedes_plan=center_plan,
+            secondary_node_id="high-recon-2",
+            readiness_class=readiness_class,
+            readiness_sustained=readiness_sustained,
+            activated_at_s=activated_at_s,
+            lease_expires_at_s=lease_expires_at_s,
+            leader_epoch=1,
+        )
+
+
+def test_secondary_takeover_rejects_non_monotonic_leader_epoch() -> None:
+    active_secondary = replace(
+        _plan(
+            _assignment(),
+            plan_id="SECONDARY-PLAN-005",
+            version=5,
+            created_at=5.0,
+        ),
+        source_node_id="high-recon-1",
+        metadata={"secondary_leader_epoch": 8, "owner_node_id": "high-recon-1"},
+    )
+    candidate = replace(
+        _plan(
+            _assignment(),
+            plan_id="SECONDARY-PLAN-006",
+            version=6,
+            created_at=6.0,
+        ),
+        previous_plan_id=active_secondary.plan_id,
+    )
+
+    with pytest.raises(ValueError, match="newer than the superseded epoch"):
+        prepare_secondary_takeover_plan(
+            candidate,
+            supersedes_plan=active_secondary,
+            secondary_node_id="high-recon-2",
+            readiness_class="takeover_ready",
+            readiness_sustained=True,
+            activated_at_s=6.1,
+            lease_expires_at_s=8.0,
+            leader_epoch=8,
+        )

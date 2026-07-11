@@ -244,3 +244,34 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 3. **UKF/IMM 基准**: 构造高机动、强非线性和多模型场景，定义相对当前 CV/EKF 的 RMSE、NIS、连续性和计算成本收益门限。
 4. **OpenCV/D5 几何对齐**: 将 calibration、畸变、`projectPoints`、`solvePnP` 作为 D5/D1 边界对照项，D1 保持 bbox/camera metadata/协方差合同。
 5. **ROS 2 `tf2/message_filters` 评估**: 等 topic schema、tf tree、bag/replay 和 main/shared runtime 稳定后再接入；接入前仍由上游转成 NED 或提供完整外参元数据。
+
+## 8. 2026-07-11 P1 缺口复核
+
+| 项目 | 当前状态 | 证据 | 后续责任 |
+| --- | --- | --- | --- |
+| writer `schema_version` | D1-owned 已关闭 | governed JSONL/CSV writer 强制输出 `d1.sensor_observation.v1` | main/shared 改用该 writer，D1 保留 legacy reader |
+| config/scenario provenance | D1-owned 已关闭 | `ReplayProvenance` 强制 scenario/config ID、version/digest | main 传入真实 settings/config digest 和 episode seed |
+| 在线 truth hint 隔离 | D1 fixture 已关闭，main 单 seed smoke 已接线 | writer 默认剥离 truth/actor/object ID；`p1_runtime_truth_isolated_d4d5_smoke_20260711` 三个 5v5 episode 在在线 truth 隔离后仍保持 D1 -> D2 -> D3 和 1.0 assignment coverage | 继续做 truth-isolated 多 seed、长时 replay 和离线 truth-only 评分审计 |
+| `coverage_cell` 时间窗口 | D1-owned 已关闭 | 固定 `window_size_s` 分桶，窗口输出带开始/结束/持续时间 | main/D6 发布并聚合真实窗口 |
+| 协方差增长率窗口 | D1-owned 已关闭 | track growth annotation 与 region window 聚合已回归 | 多 seed 标定报警持续阈值 |
+| expected latency/OOSM health | 字段和判定基线已关闭 | 总/非预期 OOSM、期望延迟、容差、均值/最大值和超限率已导出 | 按真实 radar/acoustic/EO 延迟分布校准预算 |
+| Blocks/CV JSONL/CSV fixture | 基础 P1 已关闭 | 静态 fixture 保留双时间戳、协方差、NED、coverage 和 provenance | 扩充真实 camera/bbox/遮挡、多 seed fixture |
+
+当前无 D1 P0 blocker。剩余 P1 不再是字段缺失，而是 main runtime 接线、真实多 seed 阈值治理、视觉 fixture 扩充、D6 长期趋势，以及原 GAP 中保留的 IMM/场景自适应协方差/Track-to-Track 研究项。Stone Soup、FilterPy 仍未引入。
+
+## 9. 2026-07-11 Truth-Isolated 5v5 证据状态
+
+证据目录：
+`research_modules/airsim_runtime/outputs/p1_runtime_truth_isolated_d4d5_smoke_20260711/`。
+
+| 核查项 | 当前证据 | 缺口判定 |
+| --- | --- | --- |
+| D1 -> D2 -> D3 在线断链 | 三个 5v5 case 均运行 5 帧；D1/D2/D3 health 为 `ok`，D1 每组 15 条记录，D3 assignment coverage 为 1.0 | 单 seed 短时 smoke 已通过，无 P0 断链 |
+| 在线 truth 隔离 | main 在线关联不再依赖 truth hint，仍输出中心航迹和分配 | 单 seed 接线已通过；multi-seed/长时一致性仍为 P1 |
+| D1 governance 进入 main bus | 每组均有 `d1_latency_audit`、`d1_region_quality_window`；metrics 含 delay、OOSM、region quality/readiness | 基础接线已完成；长期 schema 和完整 health/reason 字段仍为 P1 |
+| OOSM 口径 | 三组 `d1_oosm_observation_rate=0.9866666667`，mean/max delay 约 0.2 s，stale rate 为 0 | 这是固定延迟异步回放累计口径，不是传感器故障率；预算、水位线和故障对照标定仍为 P1 |
+| multi-seed 阈值治理 | 当前只有 seed 7、5 帧、0.4 s | 未关闭；必须保留 P1 |
+
+因此本轮只更新证据状态，不关闭 D1 的真实多 seed、长时间窗口、sensor-specific latency、
+故障注入负例、D6 长期 schema 和真实 Blocks/CV fixture P1。尤其不得把 raw OOSM rate
+直接解释为 FDIR 隔离建议或 D4 主动降级条件。

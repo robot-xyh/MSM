@@ -25,6 +25,7 @@ from .types import (
     LatencyAuditSummary,
     SensorHealthSummary,
     SensorObservation,
+    SensorTimingExpectation,
     TrackLevel,
     TrackUncertaintySummary,
 )
@@ -151,6 +152,13 @@ class SensorHealthState:
     latest_observation_timestamp: float | None = None
     fault_reasons: Counter = field(default_factory=Counter)
     nominal_after_fault_count: int = 0
+    expected_latency_s: float | None = None
+    latency_tolerance_s: float | None = None
+    oosm_expected: bool = False
+    latency_sum_s: float = 0.0
+    max_latency_s: float = 0.0
+    latency_budget_exceedance_count: int = 0
+    unexpected_oosm_count: int = 0
 
 
 class FusionAdapter:
@@ -179,6 +187,9 @@ class FusionAdapter:
         low_quality_confidence_threshold: float = 0.5,
         timestamp_uncertainty_fault_s: float = 0.05,
         sensor_isolation_reject_threshold: int = 3,
+        sensor_timing_expectations: dict[
+            str, SensorTimingExpectation | dict[str, Any]
+        ] | None = None,
     ) -> None:
         self.process_noise = float(process_noise)
         self.bucket_size = float(bucket_size)
@@ -210,6 +221,14 @@ class FusionAdapter:
         self.low_quality_confidence_threshold = float(low_quality_confidence_threshold)
         self.timestamp_uncertainty_fault_s = float(timestamp_uncertainty_fault_s)
         self.sensor_isolation_reject_threshold = int(sensor_isolation_reject_threshold)
+        self.sensor_timing_expectations = {
+            str(key): (
+                value
+                if isinstance(value, SensorTimingExpectation)
+                else SensorTimingExpectation(**dict(value))
+            )
+            for key, value in dict(sensor_timing_expectations or {}).items()
+        }
         self.tracks: dict[str, TrackRecord] = {}
         self.sensor_health: dict[str, SensorHealthState] = {}
         self.current_time = 0.0
@@ -449,6 +468,7 @@ class FusionAdapter:
             duplicate_observation_count=self.duplicate_observation_count,
             max_replay_observation_count=self.max_replay_observation_count,
             latency_compensation=self.latency_compensation,
+            published_at=self.current_time,
         )
 
     def region_quality_summaries(
@@ -542,7 +562,11 @@ class FusionAdapter:
             created_timestamp=observation.measurement_timestamp,
             hits=1,
             metadata={
-                "truth_id": observation.metadata.get("truth_id"),
+                **(
+                    {"truth_id": observation.metadata["truth_id"]}
+                    if observation.metadata.get("truth_id") is not None
+                    else {}
+                ),
                 **_metadata_from_observation(observation),
             },
         )
@@ -964,21 +988,30 @@ class FusionAdapter:
         is_oosm: bool,
         is_stale: bool,
     ) -> None:
-        state = self.sensor_health.setdefault(
-            observation.sensor_id,
-            SensorHealthState(sensor_id=observation.sensor_id),
-        )
+        state = self._sensor_health_state_for(observation)
         state.observation_count += 1
         state.latest_observation_timestamp = float(observation.arrival_timestamp)
         state.max_timestamp_uncertainty_s = max(
             state.max_timestamp_uncertainty_s,
             float(observation.timestamp_uncertainty_s or 0.0),
         )
+        latency_s = max(0.0, float(observation.latency))
+        state.latency_sum_s += latency_s
+        state.max_latency_s = max(state.max_latency_s, latency_s)
 
         faults: list[str] = []
         if is_oosm:
             state.oosm_count += 1
-            faults.append("oosm_observation")
+            if not state.oosm_expected:
+                state.unexpected_oosm_count += 1
+                faults.append("unexpected_oosm_observation")
+        if (
+            state.expected_latency_s is not None
+            and latency_s
+            > state.expected_latency_s + float(state.latency_tolerance_s or 0.0) + 1e-9
+        ):
+            state.latency_budget_exceedance_count += 1
+            faults.append("latency_budget_exceeded")
         if is_stale:
             state.stale_count += 1
             faults.append("stale_observation")
@@ -1017,6 +1050,42 @@ class FusionAdapter:
         state.fault_reasons[str(reason)] += 1
         state.nominal_after_fault_count = 0
 
+    def _sensor_health_state_for(self, observation: SensorObservation) -> SensorHealthState:
+        state = self.sensor_health.get(observation.sensor_id)
+        if state is not None:
+            return state
+        expectation = self._timing_expectation_for(observation)
+        state = SensorHealthState(
+            sensor_id=observation.sensor_id,
+            expected_latency_s=(
+                None if expectation is None else float(expectation.expected_latency_s)
+            ),
+            latency_tolerance_s=(
+                None if expectation is None else float(expectation.latency_tolerance_s)
+            ),
+            oosm_expected=False if expectation is None else bool(expectation.oosm_expected),
+        )
+        self.sensor_health[observation.sensor_id] = state
+        return state
+
+    def _timing_expectation_for(
+        self,
+        observation: SensorObservation,
+    ) -> SensorTimingExpectation | None:
+        configured = self.sensor_timing_expectations.get(observation.sensor_id)
+        if configured is None:
+            configured = self.sensor_timing_expectations.get(observation.modality)
+        if configured is not None:
+            return configured
+        expected_latency = observation.metadata.get("expected_latency_s")
+        if expected_latency is None:
+            return None
+        return SensorTimingExpectation(
+            expected_latency_s=float(expected_latency),
+            latency_tolerance_s=float(observation.metadata.get("latency_tolerance_s", 0.05)),
+            oosm_expected=observation.metadata.get("oosm_expected", False),
+        )
+
     def _sensor_health_summary(self, state: SensorHealthState) -> SensorHealthSummary:
         fault_reasons = tuple(sorted(state.fault_reasons))
         fault_reason = _most_common_reason(state.fault_reasons)
@@ -1037,13 +1106,35 @@ class FusionAdapter:
             timestamp_uncertainty_s=state.max_timestamp_uncertainty_s,
             latest_observation_timestamp=state.latest_observation_timestamp,
             fault_reasons=fault_reasons,
+            expected_latency_s=state.expected_latency_s,
+            latency_tolerance_s=state.latency_tolerance_s,
+            mean_latency_s=(
+                state.latency_sum_s / state.observation_count
+                if state.observation_count > 0
+                else 0.0
+            ),
+            max_latency_s=state.max_latency_s,
+            latency_budget_exceedance_count=state.latency_budget_exceedance_count,
+            latency_budget_exceedance_rate=(
+                state.latency_budget_exceedance_count / state.observation_count
+                if state.observation_count > 0
+                else 0.0
+            ),
+            oosm_expected=state.oosm_expected,
+            unexpected_oosm_count=state.unexpected_oosm_count,
+            oosm_rate=(
+                state.oosm_count / state.observation_count
+                if state.observation_count > 0
+                else 0.0
+            ),
         )
 
     def _sensor_status(self, state: SensorHealthState) -> str:
         if (
             state.reject_count >= self.sensor_isolation_reject_threshold
             or state.anomalous_covariance_count >= self.sensor_isolation_reject_threshold
-            or state.stale_count + state.oosm_count >= self.sensor_isolation_reject_threshold
+            or state.stale_count + state.unexpected_oosm_count
+            >= self.sensor_isolation_reject_threshold
         ):
             return "isolated"
         if state.fault_reasons:

@@ -130,6 +130,28 @@ tentative -> confirmed -> engageable -> lost -> dropped
 
 所有状态转移记录在 `TrackTransition`，用于 D6 复盘身份断裂、遮挡恢复和虚警形成过程。
 
+### 5.4 M-of-N 初始化治理与虚假航迹
+
+在线 Tracker 当前仍按连续命中执行确定性状态转移；replay governance 另设版本化 `InitializationGovernanceProfile`，默认要求首个窗口内 `M=2` 次命中、窗口长度 `N=3` 帧，并允许 replay/sensitivity 调用方注入其他版本。离线评估输出每个 truth 的初始化和确认延迟、M-of-N 是否通过，以及由显式虚警观测形成且从未获得真实目标证据的 false-track 数量和比例。该评估用于标定 `confirmation_hits`，不使用 truth 改变在线状态机。
+
+### 5.5 NIS 与 NEES
+
+NIS 使用关联前创新 `r=z-Hx` 和创新协方差 `S=HPH^T+R`：
+
+```text
+NIS = r^T S^-1 r
+```
+
+NIS 对所有在线匹配计算，不需要 truth；当前二维量测按自由度 2 的 95% 卡方区间评估。NEES 使用更新后四维状态误差和状态协方差：
+
+```text
+NEES = (x-x_truth)^T P^-1 (x-x_truth)
+```
+
+NEES 只在独立 `offline_truth_state=[x,y,vx,vy]` 存在时计算，按自由度 4 的 95% 卡方区间评估。在线关联器看不到 truth state，因此 NEES 只能用于离线协方差一致性标定。
+
+真实 replay 启用 truth isolation 后，源 detection/actor ID 会被替换为按帧匿名 ID，嵌套 actor/truth metadata 也会被递归删除。在线 association log 仅保留匿名 detection order、measurement/active-track count、门控诊断、risk profile/version 和 NIS；truth target count、身份标签与 NEES 只进入独立离线评估。
+
 ## 6. JPDA 可插拔升级项
 
 JPDA 将关联从硬判决改为概率边缘化。对于一帧内所有合法联合假设 `H_k`，简化似然为：

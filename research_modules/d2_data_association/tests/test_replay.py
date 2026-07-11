@@ -215,8 +215,13 @@ def test_main_d6_jsonl_metadata_and_offline_truth_labels_flow_to_logs(tmp_path) 
     assert last_log_metadata["episode_id"] == "episode-031"
     assert last_log_metadata["scenario"] == "real_airsim_replay_fixture"
     assert last_log_metadata["frame_index"] == 2
-    assert last_log_metadata["offline_truth_labels"] == ["target-A", "target-B"]
-    assert last_log_metadata["truth_label_usage"] == "offline_metrics_only"
+    assert "offline_truth_labels" not in last_log_metadata
+    assert "truth_label_usage" not in last_log_metadata
+    assert last_log_metadata["online_truth_isolated"] is True
+    assert report.online_metrics["truth_metrics_available"] is False
+    assert report.offline_truth_evaluation["truth_label_usage"] == (
+        "offline_evaluator_only"
+    )
 
 
 def test_replay_target_count_falls_back_to_input_count_without_truth_labels() -> None:

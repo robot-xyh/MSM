@@ -7,7 +7,7 @@ does not import AirSim and does not call any simulator API.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -24,12 +24,21 @@ class DryRunAssociationFrame:
     timestamp: float
     detections: list[Detection]
     association_result: AssociationResult
+    active_tracks: list[dict[str, Any]] = field(default_factory=list)
+    online_truth_isolated: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp,
-            "detections": [detection.to_dict() for detection in self.detections],
+            "detections": [
+                _online_safe_payload(detection.to_dict())
+                if self.online_truth_isolated
+                else detection.to_dict()
+                for detection in self.detections
+            ],
             "association_result": self.association_result.to_dict(),
+            "active_tracks": list(self.active_tracks),
+            "online_truth_isolated": self.online_truth_isolated,
         }
 
 
@@ -40,10 +49,14 @@ class DryRunAssociationResult:
     tracker: Tracker
     frames: list[DryRunAssociationFrame]
     metrics: dict[str, Any]
+    online_truth_isolated: bool = False
 
     @property
     def active_tracks(self) -> list[dict[str, Any]]:
-        return [track.to_dict() for track in self.tracker.active_tracks()]
+        snapshots = [track.to_dict() for track in self.tracker.active_tracks()]
+        if self.online_truth_isolated:
+            return [_online_safe_payload(snapshot) for snapshot in snapshots]
+        return snapshots
 
     @property
     def global_track_ids(self) -> list[str]:
@@ -306,6 +319,7 @@ def run_airsim_dry_run_association(
     *,
     tracker: Tracker | None = None,
     default_position_variance: float = 1.0,
+    isolate_offline_truth: bool = False,
 ) -> DryRunAssociationResult:
     """Run the existing D2 Tracker/GNN path on synthetic dry-run frames."""
 
@@ -318,22 +332,41 @@ def run_airsim_dry_run_association(
             frame_index=frame_index,
             default_position_variance=default_position_variance,
         )
+        online_detections = detections
+        if isolate_offline_truth:
+            online_detections = [
+                _without_offline_truth(
+                    detection,
+                    online_detection_id=(
+                        f"online-detection-{frame_index:06d}-{detection_index:04d}"
+                    ),
+                )
+                for detection_index, detection in enumerate(detections)
+            ]
         association_result = active_tracker.step(
-            detections,
+            online_detections,
             timestamp=timestamp,
-            truth_ids_present=truth_ids,
+            truth_ids_present=[] if isolate_offline_truth else truth_ids,
             frame_metadata=_association_frame_metadata(
                 frame,
                 frame_index=frame_index,
                 timestamp=timestamp,
-                truth_ids=truth_ids,
+                truth_ids=[] if isolate_offline_truth else truth_ids,
+                include_offline_truth=not isolate_offline_truth,
             ),
         )
         output_frames.append(
             DryRunAssociationFrame(
                 timestamp=timestamp,
-                detections=detections,
+                detections=online_detections,
                 association_result=association_result,
+                active_tracks=[
+                    _online_safe_payload(track.to_dict())
+                    if isolate_offline_truth
+                    else track.to_dict()
+                    for track in active_tracker.active_tracks()
+                ],
+                online_truth_isolated=isolate_offline_truth,
             )
         )
 
@@ -352,6 +385,7 @@ def run_airsim_dry_run_association(
         tracker=active_tracker,
         frames=output_frames,
         metrics=metrics,
+        online_truth_isolated=isolate_offline_truth,
     )
 
 
@@ -375,6 +409,7 @@ def _association_frame_metadata(
     frame_index: int,
     timestamp: float,
     truth_ids: list[str],
+    include_offline_truth: bool = True,
 ) -> dict[str, Any]:
     metadata: dict[str, Any] = {
         "frame_index": frame_index,
@@ -386,15 +421,13 @@ def _association_frame_metadata(
         _nested_metadata(frame, "metadata"),
     )
     for source in sources:
-        for key in (
+        safe_keys = [
             "seed",
             "episode_id",
             "run_id",
             "scenario_name",
             "scenario",
             "drone_count",
-            "target_count",
-            "intruder_count",
             "frame_index",
             "frame_id",
             "frame_number",
@@ -405,7 +438,10 @@ def _association_frame_metadata(
             "threshold_profile_version",
             "risk_profile",
             "risk_profile_version",
-        ):
+        ]
+        if include_offline_truth:
+            safe_keys.extend(("target_count", "intruder_count"))
+        for key in safe_keys:
             if key in source and source[key] is not None:
                 metadata.setdefault(key, source[key])
     offline_truth_labels = _truth_ids_from_frame_value(
@@ -423,10 +459,70 @@ def _association_frame_metadata(
     )
     if not offline_truth_labels:
         offline_truth_labels = list(truth_ids)
-    if offline_truth_labels:
+    if include_offline_truth and offline_truth_labels:
         metadata["offline_truth_labels"] = sorted(set(offline_truth_labels))
         metadata["truth_label_usage"] = "offline_metrics_only"
     return metadata
+
+
+def _without_offline_truth(
+    detection: Detection,
+    *,
+    online_detection_id: str,
+) -> Detection:
+    """Clone one detection for the online path without simulator truth fields."""
+
+    metadata = _online_safe_payload(detection.metadata)
+    metadata.pop("source_detection_id", None)
+    metadata["online_truth_isolated"] = True
+    metadata["online_detection_id"] = online_detection_id
+    return Detection(
+        detection_id=online_detection_id,
+        timestamp=detection.timestamp,
+        position=detection.position.copy(),
+        covariance=detection.covariance.copy(),
+        truth_id=None,
+        confidence=detection.confidence,
+        metadata=metadata,
+        feature=None if detection.feature is None else detection.feature.copy(),
+    )
+
+
+_ONLINE_FORBIDDEN_METADATA_KEYS = {
+    "actor_name",
+    "ground_truth",
+    "ground_truth_id",
+    "ground_truth_position",
+    "ground_truth_state",
+    "offline_truth",
+    "offline_truth_id",
+    "offline_truth_label",
+    "offline_truth_position",
+    "offline_truth_state",
+    "sim_truth_id",
+    "truth_id",
+    "truth_label",
+    "truth_label_source",
+    "truth_label_usage",
+    "truth_position",
+    "truth_state",
+}
+
+
+def _online_safe_payload(value: Any) -> Any:
+    """Remove simulator identity evidence from online serialized payloads."""
+
+    if isinstance(value, Mapping):
+        return {
+            str(key): _online_safe_payload(item)
+            for key, item in value.items()
+            if str(key).lower() not in _ONLINE_FORBIDDEN_METADATA_KEYS
+        }
+    if isinstance(value, list):
+        return [_online_safe_payload(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_online_safe_payload(item) for item in value)
+    return value
 
 
 def _offline_truth_id_from_item(item: Any) -> tuple[str | None, str | None]:

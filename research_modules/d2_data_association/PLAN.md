@@ -31,13 +31,16 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 - Detection/GlobalTrack covariance 输入治理已落地：非有限、明显非对称、明显非 PSD 输入显式拒绝；仅数值容差内对称化或特征值 floor。对象与 association metadata 同时记录最新 `covariance_consistency` 和 `last_regularization` 历史证据，避免预测/更新后沿用初始化诊断。
 - 测试包含 3 目标 dry-run episode，证明输出数量来自输入集合长度；同时包含 2v2 replan baseline，证明中心/二级切换时可保持稳定 `global_track_id`。
 - D2/D6 必须显式保留 `id_switch_count` 的系统规则已有合同测试：D2 `MetricsRecorder.id_switch_count` 与 D6 episode 统计口径一致。
-- 当前 D2 回归基线为 39 项测试，覆盖无 truth continuity 可用性、`rejected_pairs` 序列化/回放和 covariance 有限性/对称性/PSD 治理。
+- P1 replay governance 已实现：`run_airsim_replay_association()` 默认启用在线 truth isolation；在线 detection ID 按帧匿名化，actor/truth 元数据递归清除；`OfflineTruthEvaluation` 独立计算 identity/continuity、M-of-N 初始化、false-track 和 NEES，NIS 则由不依赖真值的在线 innovation 计算。每帧 association log 固化 `d2-association-log/v2`、risk profile/version、measurement/active-track count 和 NIS availability，不携带 truth label、truth target count 或 NEES。
+- 当前 D2 回归基线为 44 项测试，覆盖无 truth continuity 可用性、无 truth NIS、actor identity 隔离、`rejected_pairs` 序列化/回放、covariance 有限性/对称性/PSD 治理，以及 5v5 crossing/dense/漏检/虚警治理 fixture。
 
 ### 2.1 P0/P1 缺口快照
 
 - **P0**：无 P0 blocker。GNN/Hungarian、马氏门控、可插拔 `DataAssociator`、`id_switch_count`、`track_continuity`、risk summary、D1 adapter、AirSim dry-run adapter、按输入集合长度运行、P0-B `track_quality`/`association_risk`、motion consistency cost 和 P0-C quality-aware gate baseline 均是当前主线并已有测试覆盖。
-- **P1**：剩余工作收敛为真实 5v5 AirSim replay 与离线真值标签、gate/risk/IDSW 阈值治理、N/M 初始化与虚假航迹标定、NIS/NEES 统计一致性、完整 adaptive gate 和 JPDA 受控对照。D2 不直接连接 AirSim SDK，数据生产和 D6 聚合由 main/runtime/D6 负责。
+- **P1 已闭合的 D2-owned 接口**：逐帧 association log schema、risk profile/version、在线 truth isolation、独立 offline evaluator、可配置且版本化的 M-of-N 初始化治理（默认 2-of-3）、false-track 统计、NIS/NEES 和 5v5 crossing/dense/漏检/虚警 fixture。
+- **P1 剩余集成/标定**：main/runtime 生产真实 5v5 AirSim replay，D6 按多 seed 校准 gate/risk/IDSW、M-of-N 参数和 NIS/NEES 覆盖率；D2 后续仍需完整 adaptive gate 与 JPDA 受控对照。D2 不直接连接 AirSim SDK。
 - **2026-07-10 AirSim 证据边界**：已有 5v5 60-case 是 D4/D5 二级覆盖与降级校准，2v2 10-seed 是 D7 拦截闭环校准；它们证明 runtime 和 D6 批量出口可用，但没有形成带逐帧 D2 association log、独立 offline truth label 和 threshold profile/version 的真实 5v5 replay，因此不能用于关闭上述 D2 P1。
+- **2026-07-11 truth-isolated runtime 证据**：main 已把在线 `truth_id` 强制设为 `None`，并完成不依赖 truth 的 D2 -> D3 转换；`d2_governance_summary` 已进入 D6。真实 5v5 短 episode 的 main-bus `d2_hard_risk_frame_rate=0.0`，仅表示该运行未观察到在线 hard-risk frame，不代表 truth-based IDSW 为零或 continuity 正常。在线 `id_switch_count`、`track_continuity`/`identity_continuity` 必须保持 unavailable，离线评分和多 seed 标定仍是 P1。
 
 ## 3. 输入输出合同
 
@@ -69,7 +72,7 @@ D2 输出包括 `GlobalTrack`、`AssociationResult`、`AssociationLogEntry` 和 
 - `AssociationResult.ambiguity_score`、`rejected_pairs`、`metadata`：解释门控拒绝、候选数量、covariance consistency、motion consistency、quality-aware gate、track quality/risk、求解器、JPDA/MHT 截断等信息；`AssociationLogEntry` 必须保留同一 `rejected_pairs`。
 - `MetricsRecorder.summary()`：D2/D6 必须保留的 `id_switch_count`，以及 continuity 数值与可用性标志、duplicate、risk、runtime、confusion matrix。
 
-`global_track_ids` 导出列表必须来自当前活动航迹集合，不按 2 或 5 个目标预分配、截断或补齐。
+`global_track_ids` 导出列表必须来自当前活动航迹集合，不按 2 或 5 个目标预分配、截断或补齐。真实 replay 默认使用在线/离线双层合同：在线层将源 detection ID 匿名化且不含 truth，离线层按同帧输入顺序对齐匿名 detection、标签和 truth state，并在关联结束后计算评估指标。
 
 ## 4. 已实现能力
 
@@ -265,6 +268,8 @@ GNN 是硬关联，交叉帧的最优/次优代价 margin 可能很小。一旦�
 3. **标定 N/M 初始化**：对 confirmation hits、miss tolerance 和 birth/deletion 参数做网格实验，输出初始化延迟、false track rate、漏建轨率和重复航迹率，并按目标密度与漏检率分层。
 4. **补齐 NIS/NEES 统计一致性**：NIS 使用量测创新与创新协方差，NEES 仅在离线 truth state 可用时计算；输出置信区间内比例和按传感器/距离/场景分组的偏离原因，不把 covariance 输入合法性等同于统计一致性。
 5. **开展 adaptive gate / JPDA 受控对照**：在同一 replay、seed 和计算预算下比较固定/quality-aware/完整 adaptive gate，以及 GNN/Hungarian/当前 JPDA 对照；验收同时报告 IDSW、continuity、false track、漏关联、延迟和假设截断，GNN 仍为默认主线。
+
+P1 验收必须区分两层证据：在线层只使用 innovation、候选重叠、cost margin、duplicate 和质量风险等可观测量；离线层使用隔离 truth labels 计算 IDSW、identity/coverage continuity、NEES 和 hard-risk 漏报率。任何单次在线 `d2_hard_risk_frame_rate=0.0` 都不能替代离线多 seed 身份连续性评分。
 
 ### P2
 

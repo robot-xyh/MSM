@@ -140,6 +140,30 @@ still enable simulation-only truth hints. The next D1 integration pass therefore
 provenance, truth-free multi-seed replay, explicit writer schema/coverage fields, expected-latency
 health calibration, and durable Blocks/CV fixtures open as P1.
 
+## 2026-07-11 Truth-Isolated 5v5 Runtime Evidence
+
+The three reset-separated 5v5 episodes under
+`research_modules/airsim_runtime/outputs/p1_runtime_truth_isolated_d4d5_smoke_20260711/`
+provide the first main-bus evidence after online truth-hint isolation. The no-degradation,
+secondary-degradation, and distributed-degradation cases each completed five frames with D1, D2,
+and D3 health reported as `ok`; D1 published 15 module records per episode and D3 retained full
+assignment coverage. This demonstrates that the online D1 -> D2 -> D3 path remains connected when
+truth labels are unavailable to association.
+
+D1 governance is now represented in `main_episode_bus_metrics.json`: all three episodes report
+latency audit and region-quality metrics, including `d1_max_delay_s` about 0.2 s,
+`d1_region_quality_coverage_rate=1.0`, and one `d1_latency_audit` plus one
+`d1_region_quality_window` event per episode. The observed
+`d1_oosm_observation_rate=0.9866666667` is the current asynchronous replay accounting result for
+fixed-delay, sequentially ingested sensor batches. It is not evidence of a sensor fault and must not
+directly trigger D4 degradation. Expected-latency budgets, batch/watermark semantics, and fault
+injection controls still require calibration.
+
+This is a seed-7, five-frame, 0.4 s smoke run. It closes neither the multi-seed P1 calibration item nor
+long-duration latency/region threshold governance. Truth-isolated multi-seed replay, longer windows,
+sensor-specific delay distributions, and negative fault cases remain required before D1 runtime
+thresholds can be considered calibrated.
+
 ## Main Interfaces
 
 - `SensorObservation`: canonical sensor input with `measurement_timestamp`, `arrival_timestamp`, optional cross-node communication metadata, covariance, and normalized `timestamp_uncertainty_s` / `timing_uncertainty_s` metadata.
@@ -164,6 +188,13 @@ CSV rows without an explicit `schema_version` are treated as `d1.sensor_observat
 `covariance` is required for calibration replay instead of being silently accepted as a legacy
 record.
 
+New governed writers are available through `write_sensor_observations_jsonl()` and
+`write_sensor_observations_csv()`. They always emit `schema_version="d1.sensor_observation.v1"`
+and require `ReplayProvenance` with `scenario_id`, `scenario_version`, `config_id`, and
+`config_digest`. The writer removes `truth_id`, actor name, and equivalent truth keys from online
+metadata by default. An explicit `include_offline_truth=True` places those labels only under
+`offline_truth`; they are never used by `FusionAdapter` association in the governed replay tests.
+
 `summarize_sensor_observation_latency_audit()` can compute raw replay observation latency, OOSM,
 stale, and duplicate-lineage counters from `SensorObservation[]` before a full `FusionAdapter`
 run. The fusion-side `FusionAdapter.latency_audit_summary()` remains the authoritative post-fusion
@@ -173,23 +204,24 @@ audit when replay compensation is executed.
 
 `FusionAdapter.latency_audit_summary()` exports `observation_count`, `max_delay_s`, `mean_delay_s`, `replay_count`, `oosm_observation_count`, `stale_observation_count`, `stale_or_oosm_observation_count`, duplicate count, and maximum replay history size. OOSM means an arriving observation's `measurement_timestamp` is older than the fusion time already processed; stale means it is stale at processing time or its arrival delay exceeds `stale_after_s` when that budget is supplied.
 
-`FusionAdapter.sensor_health_summaries()` exports per-sensor FDIR-light status derived from duplicate payload suppression, OOSM/stale latency evidence, low-confidence or occluded observations, anomalous covariance, and timestamp uncertainty. The summary is intentionally advisory: it gives D4/D6 explainable health evidence and isolation hints, but it does not isolate sensors outside D1 or issue control decisions.
+`FusionAdapter.sensor_health_summaries()` exports per-sensor FDIR-light status derived from duplicate payload suppression, OOSM/stale latency evidence, low-confidence or occluded observations, anomalous covariance, and timestamp uncertainty. `SensorTimingExpectation` can configure an expected latency, tolerance, and whether fixed-delay OOSM is normal for a sensor. The health export then separates total OOSM from unexpected OOSM and reports mean/max latency plus budget exceedance count/rate. The summary is intentionally advisory: it gives D4/D6 explainable health evidence and isolation hints, but it does not isolate sensors outside D1 or issue control decisions.
 
 Observation covariance is bounded before EKF use, and 6x6 track covariance is bounded after prediction/replay/update. Floor/ceiling reasons such as `observation_covariance_floor`, `track_covariance_floor`, `track_covariance_ceiling`, `long_extrapolation`, `low_quality_observation`, and `occluded_observation` are preserved in `GlobalTrack.metadata` and `TrackUncertaintySummary.to_dict()` without removing the covariance matrices themselves.
 
 `FusionAdapter.region_quality_summaries()` derives lightweight `FusionQualityRegionSummary[]` records from `TrackUncertaintySummary[]`, grouped by `coverage_cell`. The region summary aggregates track count, a95, measurement age, handover readiness, source support, source gaps, and stale-track count for D4/D6 quality consumption while preserving the existing per-track `TrackUncertaintySummary` contract.
 
-`annotate_covariance_growth_rates()` fills `TrackUncertaintySummary.covariance_growth_rate` from adjacent summary snapshots, and `summarize_region_quality_windows()` emits `FusionQualityRegionWindowSummary[]` over region snapshots plus optional `LatencyAuditSummary` snapshots. This gives D4/D6 separate fields/flags for regional covariance growth, freshness degradation, source gaps, and latency/OOSM instead of forcing those causes into one quality number.
+`annotate_covariance_growth_rates()` fills `TrackUncertaintySummary.covariance_growth_rate` from adjacent summary snapshots, and `summarize_region_quality_windows()` emits `FusionQualityRegionWindowSummary[]` over region snapshots plus optional `LatencyAuditSummary` snapshots. Supplying `window_size_s` creates deterministic `coverage_cell` time buckets and aligns timestamped latency audits to each bucket. This gives D4/D6 separate fields/flags for regional covariance growth, freshness degradation, source gaps, and latency/OOSM instead of forcing those causes into one quality number.
 
 `summarize_recon_cue_from_tracks()` derives a lightweight `ReconCueSummary` from `GlobalTrack[]` or track-like dicts. It can summarize all tracks or a single `coverage_cell`, computes `cue_position_ned` as an inverse-covariance-trace weighted centroid, emits `cue_covariance`/`covariance_trace`, `active_target_ids`, timing fields, and diagnostics including `track_count`, `stale_count`, and `default_covariance_count`. Missing covariance uses a conservative default and is reported instead of changing the `GlobalTrack` contract.
 Optional cue metadata can carry the secondary/mobile recon node, cue source, or mode through `ReconCueSummary.metadata`.
 
 Video/image streams are represented only by derived observations such as bounding boxes, camera metadata, timestamps, and covariance. D1 does not require or store PNG frames.
 
-Current remaining P1 work is limited to explicit schema/version emission by main/shared writers,
-coverage-cell and D1 quality-summary publication on the episode bus, expected-latency/OOSM health
-threshold calibration, truth-free replay parity/configuration provenance, more real AirSim multi-seed
-Blocks/CV fixture samples, D6 long-run batch schema alignment, sustained-window thresholds,
+As of 2026-07-11, the D1-owned writer/provenance contract, expected-latency/OOSM health fields,
+fixed coverage-cell windows, covariance-growth windows, truth-free two-target replay, and durable
+Blocks/CV-shaped JSONL/CSV fixtures are implemented. Remaining P1 work is main/shared adoption of
+the governed writer, completion of the episode-bus D1 governance schema beyond the current short
+smoke, multi-seed threshold calibration, broader camera/bbox fixtures, D6 long-run batch schema alignment,
 IMM/model-set comparison, scene-adaptive covariance rules, and Track-to-Track fusion research.
 Replay schema v1, legacy JSONL compatibility,
 covariance-required CSV replay, raw and fusion latency audit, sensor-health summaries, timestamp

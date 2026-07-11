@@ -421,9 +421,9 @@ D2 提供稳定 `global_track_id` 和航迹质量。D3 不应自行合并、拆�
 
 D4 主动降级场景下，D3 应额外提供 `AssignmentValiditySummary` 或等价日志字段。D4 可以按 `recommended_action` 处理：`central_replan` 由 D3 继续发布新版本；`request_d4_secondary_node` 交给二级侦察/区域节点仲裁；`request_d4_distributed` 才进入完全分布式协同。D3 不应越权选择具体降级节点，只提供计划有效性、版本、成本和跨模块一致性证据。
 
-当前 main runtime 已接入中心重规划闭环：`request_center_replan` 完成后会登记新的 `active_plan_owner=center`、`plan_id/version`、`replan_reason`、`supersedes_plan_id`、`supersedes_plan_version` 和 stale/rejected plan 归因。D3 侧只负责继续发布版本化 plan/binding evidence，并保持 stale 版本拒绝。二级 takeover 的 D3 DTO 也已能通过 `prepare_secondary_takeover_plan(...)` 标记 `secondary_plan_v2`、owner/source node、superseded center plan id/version、可选 epoch/lease 和 `allow_local_rebind=False`；main runtime 已记录 secondary owner/version/source。仍待 D4/main 真实多 seed 校准的是二级租约/heartbeat、中心恢复合并、active owner 仲裁和 stale secondary plan runtime 拒绝策略。
+当前 main runtime 已接入中心重规划闭环：`request_center_replan` 完成后会登记新的 `active_plan_owner=center`、`plan_id/version`、`replan_reason`、`supersedes_plan_id`、`supersedes_plan_version` 和 stale/rejected plan 归因。D3 侧还提供严格二级激活合同：`prepare_secondary_takeover_plan(...)` 要求 concrete secondary owner、持续 `takeover_ready`、精确 supersede、严格 version/leader epoch、激活时有效 lease，并把 readiness/activation/owner/supersede/epoch/lease 写入 plan、assignment、record 和 evidence。`guidance_bindings_from_assignment_plan(...)` 对 secondary plan 要求 main 显式传入 current plan id/version；历史、未激活或 lease 过期计划不能输出 `active/current` binding。仍待 D4/main 的是运行时参数接线、heartbeat/lease 续期、中心恢复合并和真实多 seed 正负例。
 
-若 D4/main 发布二级计划，应在 `AssignmentPlan.metadata["plan_schema"]` 中标记 `secondary_plan_v2`，并提供外部确定的 `source_node_id`/`target_node_id`/`link_type`。D3 的 `AssignmentGuidanceBinding` 会原样携带该 schema、`plan_id` 和 `plan_version`，并保持 `allow_local_rebind=False`；D3 不推断或选择具体二级节点。
+若 D4/main 发布二级计划，应先保留 `pending_secondary_plan`，等持续 readiness 成立后再调用 D3 激活 helper。D3 不推断或选择具体二级节点；成功激活后 secondary binding 只有在 current identity 和 lease 同时有效时才可供 D7 消费，并始终保持 `allow_local_rebind=False`。
 
 ### 13.3 与 D5 末端视觉配准
 

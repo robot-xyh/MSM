@@ -48,6 +48,30 @@ class TrackLevel(str, Enum):
     LOST = "lost"
 
 
+@dataclass(frozen=True)
+class SensorTimingExpectation:
+    """Configured timing budget used to interpret latency and OOSM health."""
+
+    expected_latency_s: float
+    latency_tolerance_s: float = 0.05
+    oosm_expected: bool = False
+
+    def __post_init__(self) -> None:
+        raw_oosm_expected = self.oosm_expected
+        if isinstance(raw_oosm_expected, str):
+            normalized = raw_oosm_expected.strip().lower()
+            if normalized not in {"true", "false", "1", "0", "yes", "no"}:
+                raise ValueError("oosm_expected must be a boolean value")
+            raw_oosm_expected = normalized in {"true", "1", "yes"}
+        object.__setattr__(self, "expected_latency_s", float(self.expected_latency_s))
+        object.__setattr__(self, "latency_tolerance_s", float(self.latency_tolerance_s))
+        object.__setattr__(self, "oosm_expected", bool(raw_oosm_expected))
+        if not np.isfinite(self.expected_latency_s) or self.expected_latency_s < 0.0:
+            raise ValueError("expected_latency_s must be non-negative")
+        if not np.isfinite(self.latency_tolerance_s) or self.latency_tolerance_s < 0.0:
+            raise ValueError("latency_tolerance_s must be non-negative")
+
+
 @dataclass
 class SensorObservation:
     """Canonical heterogeneous observation.
@@ -391,6 +415,15 @@ class SensorHealthSummary:
     timestamp_uncertainty_s: float = 0.0
     latest_observation_timestamp: float | None = None
     fault_reasons: tuple[str, ...] = ()
+    expected_latency_s: float | None = None
+    latency_tolerance_s: float | None = None
+    mean_latency_s: float = 0.0
+    max_latency_s: float = 0.0
+    latency_budget_exceedance_count: int = 0
+    latency_budget_exceedance_rate: float = 0.0
+    oosm_expected: bool = False
+    unexpected_oosm_count: int = 0
+    oosm_rate: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -410,6 +443,15 @@ class SensorHealthSummary:
             "timing_uncertainty_s": self.timestamp_uncertainty_s,
             "latest_observation_timestamp": self.latest_observation_timestamp,
             "fault_reasons": tuple(self.fault_reasons),
+            "expected_latency_s": self.expected_latency_s,
+            "latency_tolerance_s": self.latency_tolerance_s,
+            "mean_latency_s": self.mean_latency_s,
+            "max_latency_s": self.max_latency_s,
+            "latency_budget_exceedance_count": self.latency_budget_exceedance_count,
+            "latency_budget_exceedance_rate": self.latency_budget_exceedance_rate,
+            "oosm_expected": self.oosm_expected,
+            "unexpected_oosm_count": self.unexpected_oosm_count,
+            "oosm_rate": self.oosm_rate,
         }
 
 
@@ -427,6 +469,7 @@ class LatencyAuditSummary:
     duplicate_observation_count: int
     max_replay_observation_count: int
     latency_compensation: bool
+    published_at: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -440,6 +483,7 @@ class LatencyAuditSummary:
             "duplicate_observation_count": self.duplicate_observation_count,
             "max_replay_observation_count": self.max_replay_observation_count,
             "latency_compensation": self.latency_compensation,
+            "published_at": self.published_at,
         }
 
 
@@ -526,6 +570,7 @@ class FusionQualityRegionWindowSummary:
             "coverage_cell": self.coverage_cell,
             "window_start": self.window_start,
             "window_end": self.window_end,
+            "window_duration_s": max(0.0, self.window_end - self.window_start),
             "sample_count": self.sample_count,
             "latest_published_at": self.latest_published_at,
             "latest_track_count": self.latest_track_count,

@@ -2,7 +2,7 @@
 
 **定位**: 在由 main runtime `--drone-count` 决定的 N 对 N 或非等量资源/目标场景中，由中心节点生成滚动 `AssignmentPlan`，并通过迟滞逻辑避免频繁重分配；5v5 只作为示例和基准场景。
 **边界**: 本文只讨论抽象资源-目标匹配、离线评估和人工授权前的候选计划，不包含真实火控参数、毁伤模型或自动处置流程。
-**D3 复核状态 2026-07-10**: active-plan `previous_plan` 连续性 P0 和 solve 前 switch penalty P1 已关闭，D3 全量测试为 `63 passed`。等量 5v5 的真实 AirSim 10-seed 校准已完成：50/200 m、三类降级模式共 60 个 episode 全部连接；但 20 个请求 secondary 的 case 全部保守转入 distributed，15/1300 条瞬时 `takeover_ready` 均停在 `pending_secondary_plan`，`secondary_plan_active=0`。这说明 DTO/record 已接线，但 secondary active-plan 合同仍未闭合。剩余 P1 聚焦 D5 feedback 权重、非等量 N/M 与增量分配、完整动态威胁、hard-window 多场景、secondary activation，以及按既定优先级进行 optional OR-Tools 同输入对照；容量/备份资源/配额和预测性滚动仍保留既有 P2/P3 范围。
+**D3 复核状态 2026-07-11**: active-plan `previous_plan` 连续性 P0、solve 前 switch penalty P1、D3 侧 secondary activation/current-binding 以及 same-owner rolling continuation P1 合同已关闭，D3 全量测试为 `84 passed`。新增三个真实 AirSim 5v5 短 episode 的 no-truth 证据：D2 全部 `truth_id=None` 时，D3 assignment coverage=`1.0`，版本化计划与 D5/D7 binding 正常，说明在线分配链不依赖 actor/truth identity；但这是单 seed、短时、等量 5v5 证据。既有真实 AirSim 10-seed 历史结果不变：50/200 m、三类降级模式共 60 个 episode 全部连接，但 20 个请求 secondary 的 case 全部保守转入 distributed，15/1300 条瞬时 `takeover_ready` 均停在 `pending_secondary_plan`。其余 P1 仍聚焦 D5 feedback 权重、真实非等量 N/M 与增量分配、多 seed 长时稳定性、完整动态威胁、hard-window 多场景和 optional OR-Tools 同输入对照。
 
 **P1 switch-penalty 状态 2026-07-10**: done。`reassignment_switch_penalty` 已从 solve 后追加改为 solve 前进入可行改配边；同 resource、不可行边、无历史 assignment 的 target 和 unassigned cost 不变。solver matrix、breakdown total、objective、Assignment 和 evidence 使用同一成本且无双重计费。新 current plan binding 即使发生改配仍为 `active/current`，旧 plan 由 current plan id/version gate 失效。
 
@@ -10,9 +10,10 @@
 
 - P0 done：旧“无 P0 blocker”结论已撤销；active plan 后缺失 `previous_plan` 的版本回退入口已关闭，拒绝 reason 固定为 `previous_plan_required` 并返回 latest plan id/version。首次调用仍允许 `None`，新 episode 使用新 planner 实例。
 - P1 done：switch penalty 已在 Hungarian/fallback solve 前加入可行改配边，matrix/breakdown/objective/evidence 单次计费一致；unassigned/release 和 current binding 语义不变。
+- P1 smoke done：三个真实 AirSim 5v5 短 episode 在 D2 `truth_id=None` 下均达到 assignment coverage `1.0`，计划版本与 D5/D7 binding 正常；仍需多 seed、长时和非等量 N/M 证据。
 - P1：D5 feedback 权重与迟滞阈值仍需用真实 D6 records 配对标定。
 - P1：等量 5v5 多 seed 已完成；仍缺非等量 3v5/5v3、目标新增、资源失效和 crossing/dense 的 N/M/增量更新校准。
-- P1：完整动态威胁、到达时间/多窗口 hard-window 校准和 secondary active-plan activation 合同尚未闭合。
+- P1：D3 secondary activation/current-binding 合同已闭合；main/D4 仍需完成 runtime 调用适配、持续 readiness 正例、lease/epoch/current identity 负例和中心恢复验证。
 - P1：OR-Tools 只做 optional 同输入对照；容量/备份资源/分组配额仍按既定 P2/P3 范围，不在本阶段扩展。
 
 ---
@@ -28,21 +29,21 @@
 - 迟滞重分配：`delta`、`min_dwell`、`max_changes_per_window`；`reassignment_switch_penalty` 在 solver 前进入候选 matrix，不再 solve 后补账。
 - D5 terminal feedback helper，始终 `allow_local_rebind=False`。
 - D7 `AssignmentGuidanceBinding`，携带 `assigned_global_track_id`、`plan_version`、binding state、source/target/link 和 `allow_local_rebind=False`。
-- `AssignmentValiditySummary` 和 D6-compatible `AssignmentRecord` 导出；assignment records 携带 multi-seed 分组所需的 owner/source/schema、replan/takeover reason、previous/supersede、secondary owner/version/epoch/lease、迟滞决策、矩阵规模、cost gap 和 N/M mismatch replay 字段。
-- `AssignmentEvidenceExport` 导出 current plan id/version/owner/source、完整 current cost matrix、per-edge cost breakdown、hard rejected edges/reasons、stale rejection reason 和 secondary owner/source/version/supersede 字段。
+- `AssignmentValiditySummary` 和 D6-compatible `AssignmentRecord` 导出；assignment records 携带 multi-seed 分组所需的 owner/source/schema、replan/takeover reason、previous/supersede、secondary owner/version/epoch/lease/readiness/activation、迟滞决策、矩阵规模、cost gap 和 N/M mismatch replay 字段。
+- `AssignmentEvidenceExport` 导出 current plan id/version/owner/source、完整 current cost matrix、per-edge cost breakdown、hard rejected edges/reasons、stale rejection reason，以及 secondary readiness/activation/owner/version/epoch/lease/supersede 字段。
 - 轻量 hard time-window baseline：显式 closed/expired/not-yet-open 的边会被 hard rejected，不进入最终 assignment，`window_cost` 继续作为 open edge 软排序项。
 - synthetic AirSim dry-run adapter，不 import AirSim，不控制 Blocks runtime。
 - `PlannerConfig.human_authorization_state` 透传到 `AssignmentPlan.human_authorization_state`，并写入 `configured_human_authorization_state` / `effective_human_authorization_state` metadata。
 - `apply_terminal_feedback_to_planner_inputs()` 将 D5 duplicate/friend/fov/feasibility metadata 写回下一轮 `TargetTrack[]/ResourceState[]`。
-- `prepare_secondary_takeover_plan()` 在 D4/main 已选定二级节点后校验版本并写入 `secondary_plan_v2` owner/source/supersede metadata。
+- `prepare_secondary_takeover_plan()` 在 D4/main 已选定具体二级节点且持续 `takeover_ready` 后，校验精确 supersede、严格 version/epoch 和 live lease，再生成 active `secondary_plan_v2`；D7 secondary binding 还必须显式匹配 current plan，过期或历史计划不可执行。
 - `summarize_terminal_feedback_calibration()` 和 `summarize_assignment_mismatch_replay()` 已支持多 seed feedback/assignment replay 汇总，只输出调参建议和 replay 计数，不修改默认权重或迟滞参数。
 
 当前只是部分实现或未实现：
 
 - `MinCostFlowAssignmentSolver` 只是 OR-Tools 预留接口，`solve()` 当前抛出 `NotImplementedError`。
-- `secondary_plan_v2` 的 D3 DTO/binding 兼容、owner/source、版本 supersede metadata 已实现，main runtime 已接入 secondary owner/version/source 记录；D3 侧保持修复后的口径，只校验和盖章 D4/main 传入的 secondary owner，二级节点选择、租约执行、中心恢复合并和 active owner runtime 仲裁仍属 D4/main policy，不列为 D3 DTO 缺口。
+- `secondary_plan_v2` 的 D3 activation/current-binding 合同已实现；main runtime 仍需传入 sustained readiness、activation time、leader epoch、live lease 和 current plan identity。二级节点选择、lease 续期、中心恢复合并和 active owner runtime 仲裁仍属 D4/main policy。
 - D4 `request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed` 仍由 main/D4 消费 D3 证据后触发，D3 不自动调用；其中中心 `request_center_replan` 的 owner/version/supersede runtime 记录已由 main 接线，D3 只需保持版本化计划和 stale 拒绝合同。
-- 剩余 D3 P1 是非等量 N/M/增量更新、D5 feedback 权重、hard-window 多场景、完整动态威胁、secondary active-plan 合同和 optional OR-Tools 同输入对照；不再把等量 5v5 多 seed 完全未执行列为缺口。
+- 剩余 D3 P1 是非等量 N/M/增量更新、D5 feedback 权重、hard-window 多场景、完整动态威胁和 optional OR-Tools 同输入对照；secondary 只剩跨模块 runtime 验证，不再是 D3 DTO 缺口。
 - D3 不负责末端视觉重绑，不改写 `global_track_id`。
 
 ---
@@ -319,7 +320,7 @@ AssignmentGuidanceBinding
 4. 若旧计划仍可行，只有满足 `J_new < (1-delta) * J_old`、`dwell_time > min_dwell`、`change_count <= max_changes_per_window` 才接受换配。
 5. 若旧计划不可行，例如资源失效、目标 dropped、禁配边出现，则允许绕过收益门限，标记 `accepted_previous_infeasible`。
 6. 若 D5 多视角关联与中心/二级计划连续不一致，D3 请求 D4 `secondary_arbitration`，而不是在本地资源之间直接重写 `global_track_id`。
-7. 若二级节点也无法提供一致计划，D4 才进入完全分布式协同；D3 只保留最新中心计划作为回滚和审计基线。二级 takeover 的 D3 DTO 规则已要求新 plan version 大于被 supersede 的中心 plan，并写入 owner/source/supersede/epoch/lease metadata；节点选择、租约执行、中心恢复合并和 stale secondary plan runtime 拒绝规则由 D4/main 定义。
+7. 若二级节点也无法提供一致计划，D4 才进入完全分布式协同；D3 只保留最新中心计划作为回滚和审计基线。二级 takeover 的 D3 规则要求 concrete owner、持续 readiness、精确 supersede、严格 version/epoch 和 live lease；secondary binding 只有显式匹配 current plan 且 lease 有效时才是 `active/current`。节点选择、租约续期和中心恢复仍由 D4/main 定义。
 
 N 对 N 基准迟滞建议可从 5v5 参数开始扫描：`delta=0.2`，`min_dwell=2.0s`，`max_changes_per_window=2`，连续 3 次 `held_by_hysteresis` 且 D5 不一致时请求 D4 主动降级仲裁。后续 P1 校准应跨真实多 seed 统计 `resource_count`、`target_count`、`reassignment_count`、`duplicate_assignment_count`、`unassigned_high_threat_count`、`stale_plan_version_count`、`secondary_arbitration_count`、center/secondary owner/version/source 变更，并用 P1 calibration sweep 的 D6 assignment records 和标准报告 bundle 反向标定 D5 feedback 权重阈值。
 
@@ -327,7 +328,7 @@ N 对 N 基准迟滞建议可从 5v5 参数开始扫描：`delta=0.2`，`min_dwe
 
 ## 10. 离线验证
 
-当前已实现的离线验证主要覆盖 Hungarian/fallback、solve 前 switch penalty、matrix/breakdown/objective/evidence 一致性、迟滞、stale 拒绝、current binding active gate、D5 feedback helper/writeback、secondary takeover DTO、D6 export 和 synthetic AirSim dry-run adapter；D3 全量测试为 `63 passed`。真实 AirSim 已完成等量 5v5 的 10-seed/60-case 基线，下一阶段只补非等量 N/M、事件驱动增量更新、D5 feedback 权重和 secondary active-plan 专项：
+当前已实现的离线验证主要覆盖 Hungarian/fallback、solve 前 switch penalty、matrix/breakdown/objective/evidence 一致性、迟滞、stale 拒绝、current binding active gate、D5 feedback helper/writeback、严格 secondary takeover activation/current/lease gate、same-owner rolling continuation、D6 export 和 synthetic AirSim dry-run adapter；D3 全量测试为 `84 passed`。真实 AirSim 已完成等量 5v5 的 10-seed/60-case 历史基线，并新增三个 D2 `truth_id=None`、coverage=`1.0` 的单 seed 短时 smoke episode。下一阶段仍需补非等量 N/M、no-truth 多 seed 长时稳定性、事件驱动增量更新、D5 feedback 权重和 secondary runtime 专项：
 
 ```text
 Hungarian without hysteresis

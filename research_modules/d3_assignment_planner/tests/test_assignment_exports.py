@@ -317,11 +317,15 @@ def test_secondary_takeover_assignment_records_export_owner_fields() -> None:
         secondary_candidate,
         supersedes_plan=center_plan,
         secondary_node_id="secondary-node-2",
+        readiness_class="takeover_ready",
+        readiness_sustained=True,
+        activated_at_s=5.1,
         lease_expires_at_s=9.0,
         leader_epoch=12,
     )
 
     (record,) = assignment_records_from_plan(secondary_plan)
+    evidence = assignment_evidence_from_plan(secondary_plan)
 
     assert record.plan_schema == SECONDARY_PLAN_SCHEMA_V2
     assert record.plan_owner == "secondary"
@@ -339,11 +343,21 @@ def test_secondary_takeover_assignment_records_export_owner_fields() -> None:
     assert record.secondary_plan_version == secondary_plan.version
     assert record.secondary_leader_epoch == 12
     assert record.secondary_lease_expires_at_s == 9.0
+    assert record.secondary_takeover_state == "secondary_plan_active"
+    assert record.secondary_readiness_class == "takeover_ready"
+    assert record.secondary_readiness_sustained is True
+    assert record.secondary_activated_at_s == 5.1
     assert record.resource_count == 1
     assert record.target_count == 1
     assert record.assigned_count == 1
     assert record.reassign_count == 1
     assert record.assignment_matrix_shape == (1, 1)
+    assert evidence.secondary_leader_epoch == 12
+    assert evidence.secondary_lease_expires_at_s == 9.0
+    assert evidence.secondary_takeover_state == "secondary_plan_active"
+    assert evidence.secondary_readiness_class == "takeover_ready"
+    assert evidence.secondary_readiness_sustained is True
+    assert evidence.secondary_activated_at_s == 5.1
 
 
 def test_assignment_records_export_nm_mismatch_replay_fields() -> None:

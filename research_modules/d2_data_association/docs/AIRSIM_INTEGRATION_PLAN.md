@@ -52,13 +52,15 @@ This remains an offline reader. AirSim launch, ComputerVision metadata capture, 
 
 ```text
 for frame in offline_log:
-    detections = convert_frame_to_detections(frame)
-    truth_ids_present = frame.truth_ids_for_metrics
-    tracker.step(detections, frame.timestamp, truth_ids_present)
-summary = tracker.metrics.summary()
+    online_detections = strip_simulator_truth(convert_frame_to_detections(frame))
+    association = tracker.step(online_detections, frame.timestamp)
+    offline_evaluator.observe(frame.offline_truth, association, tracker.snapshot)
+summary = merge(online_metrics, offline_evaluator.summary)
 ```
 
 The helper `run_airsim_replay_association()` wraps this loop and returns `id_switch_count`, `track_continuity`, `duplicate_assignment_count`, per-frame association logs, active `global_track_ids`, and a D4-aligned soft/hard risk summary.
+
+Online logs use schema `d2-association-log/v2`. They contain risk profile/version, track/anonymized-detection order, measurement/active-track counts, gate diagnostics and NIS, but no actor name, truth label, truth target count or NEES. `offline_truth_evaluation` separately contains truth target count, confusion matrix, initialization latency, false-track statistics and NEES. This separation is mandatory for ComputerVision replay because AirSim object names are evaluation truth, not deployable identity evidence.
 
 ## Target Count and Replan Identity Contract
 
@@ -108,6 +110,9 @@ This is covered by
 - Threshold sensitivity rows from `run_threshold_sensitivity()`.
 - RMSE when truth positions are available.
 - Truth-to-track confusion matrix.
+- Versioned M-of-N initialization success and latency.
+- False-alarm detections, missed detections, false-track count/rate and N/M mismatch frames.
+- NIS and offline-only NEES with 95% chi-square coverage.
 
 ## Future Compatibility
 

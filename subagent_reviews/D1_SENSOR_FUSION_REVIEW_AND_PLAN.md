@@ -331,3 +331,43 @@ P2/后置：
 - ROS 2 message_filters: <https://docs.ros.org/en/humble/p/message_filters/doc/Tutorials/Approximate-Synchronizer-Cpp.html>
 - REP-103 coordinate conventions: <https://www.ros.org/reps/rep-0103.html>
 - REP-105 coordinate frames: <https://www.ros.org/reps/rep-0105.html>
+
+---
+
+## 10. 2026-07-11 Replay/Schema 专项评审
+
+本轮将此前“reader 能读真实日志”推进为“D1 能定义并验证新 writer 合同”。
+
+- `ReplayProvenance` 把 scenario/config/run/seed 与每条观测绑定，避免同一 JSONL 无法复现融合参数来源。
+- governed writer 强制 schema 与 covariance，默认不写在线 truth/actor/object ID；离线评分标签只能放在 `offline_truth`。
+- `SensorTimingExpectation` 明确“固定链路延迟导致的 OOSM 可以是正常现象”。D1 仍统计所有 OOSM，但只有未预期 OOSM、stale 或延迟预算超限才进入对应故障证据。
+- 区域质量从任意长度聚合扩展为固定时长 `coverage_cell` 窗口，协方差增长、freshness、source gap 和窗口化 latency/OOSM 分开输出。
+- 固化的 Blocks/CV 形态 JSONL/CSV fixture 不依赖 AirSim SDK；无在线 truth hint 的两目标 replay 可保持两条 NED 航迹及其 6x6 协方差。
+
+测试结果为 D1 全量 `38 passed`。该结果关闭 D1-owned 的 schema/provenance、健康字段和窗口 helper 缺口，但不等于真实 AirSim 多 seed 标定完成。main 仍需接入新 writer、提供真实配置摘要、关闭 simulation-only truth hint，并把 D1 region/window/health 输出送入 episode bus 和 D6。
+
+## 11. 2026-07-11 5v5 Truth-Isolated Runtime 复核
+
+main 在
+`research_modules/airsim_runtime/outputs/p1_runtime_truth_isolated_d4d5_smoke_20260711/`
+完成三个 5v5 case：不降级、二级节点接管、完全分布式。在线 truth hint 隔离后，每个 case
+均运行 5 帧，D1/D2/D3 health 为 `ok`，D1 每组产生 15 条记录，D3 assignment coverage
+保持 1.0。这是 D1 状态/协方差经过 D2 中心航迹进入 D3 的首个 truth-isolated 真实
+main-bus 正向证据，旧的“main 仍依赖 simulation-only truth hint”状态应视为历史审计结论。
+
+D1 governance 也已进入 `main_episode_bus_metrics.json`：三组均记录一次
+`d1_latency_audit` 和一次 `d1_region_quality_window`，region quality coverage 为 1.0，
+mean/max delay 约 0.2 s。`d1_oosm_observation_rate` 三组均约为 0.9867，但 stale rate 为
+0。这个高 raw OOSM rate 符合当前固定延迟、多传感器逐条异步 replay 的统计定义，不代表
+传感器故障，也不得直接触发 D4 降级；后续应使用 sensor-specific expected latency、
+unexpected OOSM、stale、预算超限和持续窗口联合判定。
+
+本轮只有 seed 7、5 帧、0.4 s，故不能关闭 multi-seed P1。仍需完成：
+
+1. truth-isolated 多 seed 与长时 episode，覆盖正常、时钟异常、延迟突增和 stale 故障对照；
+2. batch/watermark 与逐条 replay 两种 OOSM 口径对照，校准 expected-latency budget；
+3. D6 长期 schema 对 `SensorHealthSummary`、covariance reason、timestamp uncertainty 和
+   region window 的完整性审计；
+4. 将真实 Blocks/CV camera/bbox/遮挡与二级侦察 metadata 固化为长期 fixture。
+
+因此当前仍为“无 D1 P0 blocker，truth-isolated 单 seed 接线通过，multi-seed P1 未关闭”。

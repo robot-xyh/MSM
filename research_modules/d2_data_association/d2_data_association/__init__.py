@@ -31,6 +31,12 @@ from .replay import (
     write_association_logs_jsonl,
     write_replay_association_report,
 )
+from .replay_governance import (
+    InitializationGovernanceProfile,
+    OfflineTruthEvaluation,
+    build_5v5_replay_fixture,
+    evaluate_offline_truth,
+)
 from .models import (
     AssociationLogEntry,
     AssociationResult,
@@ -48,6 +54,8 @@ __all__ = [
     "AssociationLogEntry",
     "AssociationRiskSummaryWindowGenerator",
     "AssociationRiskSummary",
+    "InitializationGovernanceProfile",
+    "OfflineTruthEvaluation",
     "AssociationResult",
     "DataAssociator",
     "Detection",
@@ -75,7 +83,9 @@ __all__ = [
     "TrackTransition",
     "Tracker",
     "build_default_dry_run_tracker",
+    "build_5v5_replay_fixture",
     "detections_from_d1_global_tracks",
+    "evaluate_offline_truth",
     "detections_from_airsim_frame",
     "run_airsim_dry_run_association",
 ]

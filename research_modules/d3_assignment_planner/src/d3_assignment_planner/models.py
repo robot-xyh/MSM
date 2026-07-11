@@ -25,7 +25,15 @@ GUIDANCE_BINDING_REVOKED = "revoked"
 GUIDANCE_BINDING_REASSIGNED = "reassigned"
 GUIDANCE_BINDING_HOLD = "hold"
 ASSIGNMENT_PLAN_SCHEMA_V1 = "assignment_plan_v1"
+ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1 = "d3_assignment_calibration_profile_v1"
+TERMINAL_FEEDBACK_PROFILE_SCHEMA_V1 = "d3_terminal_feedback_profile_v1"
+DEFAULT_COST_PROFILE_ID = "d3_hungarian_baseline"
+DEFAULT_COST_PROFILE_VERSION = "1.0.0"
+DEFAULT_FEEDBACK_PROFILE_ID = "d3_terminal_feedback_baseline"
+DEFAULT_FEEDBACK_PROFILE_VERSION = "1.0.0"
 SECONDARY_PLAN_SCHEMA_V2 = "secondary_plan_v2"
+SECONDARY_PLAN_ACTIVE_STATE = "secondary_plan_active"
+SECONDARY_TAKEOVER_READY = "takeover_ready"
 GUIDANCE_BINDING_STATES = frozenset(
     {
         GUIDANCE_BINDING_ACTIVE,
@@ -113,6 +121,10 @@ class PlannerConfig:
     target_node_id: str | None = None
     link_type: str = "c2_direct"
     stale_after_s: float | None = None
+    cost_profile_id: str = DEFAULT_COST_PROFILE_ID
+    cost_profile_version: str = DEFAULT_COST_PROFILE_VERSION
+    feedback_profile_id: str = DEFAULT_FEEDBACK_PROFILE_ID
+    feedback_profile_version: str = DEFAULT_FEEDBACK_PROFILE_VERSION
 
 
 @dataclass(frozen=True)
@@ -270,6 +282,10 @@ class AssignmentRecord:
     secondary_plan_version: int | None = None
     secondary_leader_epoch: int | None = None
     secondary_lease_expires_at_s: float | None = None
+    secondary_takeover_state: str | None = None
+    secondary_readiness_class: str | None = None
+    secondary_readiness_sustained: bool | None = None
+    secondary_activated_at_s: float | None = None
     total_cost: float | None = None
     candidate_total_cost: float | None = None
     previous_total_cost_current: float | None = None
@@ -293,6 +309,13 @@ class AssignmentRecord:
     hysteresis_dwell_ok: bool | None = None
     hysteresis_change_limit_ok: bool | None = None
     hysteresis_high_threat_release: bool | None = None
+    assignment_profile_schema: str = ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1
+    cost_profile_id: str = DEFAULT_COST_PROFILE_ID
+    cost_profile_version: str = DEFAULT_COST_PROFILE_VERSION
+    feedback_profile_id: str = DEFAULT_FEEDBACK_PROFILE_ID
+    feedback_profile_version: str = DEFAULT_FEEDBACK_PROFILE_VERSION
+    cost_weights: Mapping[str, float] = field(default_factory=dict)
+    planner_thresholds: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -317,6 +340,12 @@ class AssignmentEvidenceExport:
     secondary_plan_version: int | None = None
     supersedes_plan_id: str | None = None
     supersedes_plan_version: int | None = None
+    secondary_leader_epoch: int | None = None
+    secondary_lease_expires_at_s: float | None = None
+    secondary_takeover_state: str | None = None
+    secondary_readiness_class: str | None = None
+    secondary_readiness_sustained: bool | None = None
+    secondary_activated_at_s: float | None = None
     cost_matrix_target_ids: tuple[str, ...] = ()
     cost_matrix_resource_ids: tuple[str, ...] = ()
     cost_matrix: tuple[tuple[float, ...], ...] = ()
@@ -326,6 +355,13 @@ class AssignmentEvidenceExport:
     stale_reject_reason: str | None = None
     latest_plan_id: str | None = None
     latest_plan_version: int | None = None
+    assignment_profile_schema: str = ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1
+    cost_profile_id: str = DEFAULT_COST_PROFILE_ID
+    cost_profile_version: str = DEFAULT_COST_PROFILE_VERSION
+    feedback_profile_id: str = DEFAULT_FEEDBACK_PROFILE_ID
+    feedback_profile_version: str = DEFAULT_FEEDBACK_PROFILE_VERSION
+    cost_weights: Mapping[str, float] = field(default_factory=dict)
+    planner_thresholds: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -513,8 +549,18 @@ def guidance_bindings_from_assignment_plan(
     revoked_plan_versions: set[int] | frozenset[int] = frozenset(),
     previous_plan: AssignmentPlan | None = None,
     hold_resource_ids: set[str] | frozenset[str] = frozenset(),
+    current_plan_id: str | None = None,
+    current_plan_version: int | None = None,
 ) -> tuple[AssignmentGuidanceBinding, ...]:
-    """Build passive D7 guidance bindings from one versioned D3 plan."""
+    """Build passive D7 guidance bindings from one versioned D3 plan.
+
+    Secondary plans require an explicit current plan identity. Historical plans
+    remain exportable for audit, but their bindings are stale and therefore
+    cannot drive D7.
+    """
+
+    if (current_plan_id is None) != (current_plan_version is None):
+        raise ValueError("current plan id and version must be supplied together")
 
     resource_vehicle_map = resource_vehicle_map or {}
     target_alias_map = target_alias_map or {}
@@ -534,6 +580,30 @@ def guidance_bindings_from_assignment_plan(
         _metadata_text(plan_metadata, "owner_node_id")
         or _metadata_text(plan_metadata, "source_node_id")
         or plan.source_node_id
+    )
+    current_identity_confirmed = (
+        current_plan_id == plan.plan_id and current_plan_version == plan.version
+        if current_plan_id is not None
+        else plan_schema != SECONDARY_PLAN_SCHEMA_V2
+    )
+    secondary_takeover_active = (
+        plan_schema != SECONDARY_PLAN_SCHEMA_V2
+        or (
+            _metadata_text(plan_metadata, "secondary_takeover_state")
+            == SECONDARY_PLAN_ACTIVE_STATE
+            and _metadata_text(plan_metadata, "secondary_readiness_class")
+            == SECONDARY_TAKEOVER_READY
+            and _metadata_bool(plan_metadata.get("secondary_readiness_sustained"))
+            and _metadata_bool(plan_metadata.get("secondary_plan_executable"))
+        )
+    )
+    secondary_lease_expires_at_s = _metadata_float(
+        plan_metadata.get("secondary_lease_expires_at_s")
+    )
+    secondary_lease_expired = (
+        plan_schema == SECONDARY_PLAN_SCHEMA_V2
+        and secondary_lease_expires_at_s is not None
+        and now > secondary_lease_expires_at_s
     )
 
     bindings: list[AssignmentGuidanceBinding] = []
@@ -559,6 +629,15 @@ def guidance_bindings_from_assignment_plan(
             revoked_plan_versions=revoked_plan_versions,
             hold_resource_ids=hold_resource_ids,
         )
+        if not current_identity_confirmed:
+            binding_state = GUIDANCE_BINDING_STALE
+            revoke_reason = "not_current_assignment_plan"
+        elif not secondary_takeover_active:
+            binding_state = GUIDANCE_BINDING_HOLD
+            revoke_reason = "secondary_takeover_not_active"
+        elif secondary_lease_expired:
+            binding_state = GUIDANCE_BINDING_STALE
+            revoke_reason = "secondary_plan_lease_expired"
         resource_actor_name = _resource_actor_name(
             resource_id=assignment.resource_id,
             vehicle_name=resource_vehicle_map.get(assignment.resource_id),
@@ -610,6 +689,27 @@ def guidance_bindings_from_assignment_plan(
                     "secondary_plan_version": _metadata_int(
                         plan_metadata.get("secondary_plan_version")
                     ),
+                    "secondary_takeover_state": _metadata_text(
+                        plan_metadata,
+                        "secondary_takeover_state",
+                    ),
+                    "secondary_readiness_class": _metadata_text(
+                        plan_metadata,
+                        "secondary_readiness_class",
+                    ),
+                    "secondary_readiness_sustained": _metadata_bool_optional(
+                        plan_metadata.get("secondary_readiness_sustained")
+                    ),
+                    "secondary_leader_epoch": _metadata_int(
+                        plan_metadata.get("secondary_leader_epoch")
+                    ),
+                    "secondary_lease_expires_at_s": secondary_lease_expires_at_s,
+                    "secondary_activated_at_s": _metadata_float(
+                        plan_metadata.get("secondary_activated_at_s")
+                    ),
+                    "expected_current_plan_id": current_plan_id,
+                    "expected_current_plan_version": current_plan_version,
+                    "current_identity_confirmed": current_identity_confirmed,
                     "supersedes_plan_id": _metadata_text(
                         plan_metadata,
                         "supersedes_plan_id",
@@ -786,6 +886,8 @@ def evaluate_terminal_feedback(
     *,
     resource_id: str | None = None,
     target_id: str | None = None,
+    feedback_profile_id: str = DEFAULT_FEEDBACK_PROFILE_ID,
+    feedback_profile_version: str = DEFAULT_FEEDBACK_PROFILE_VERSION,
 ) -> AssignmentFeedbackDecision:
     """Return a conservative D3 recommendation for terminal feedback.
 
@@ -806,6 +908,8 @@ def evaluate_terminal_feedback(
             plan_version=plan_version,
             resource_id=resource_id,
             target_id=target_id,
+            feedback_profile_id=feedback_profile_id,
+            feedback_profile_version=feedback_profile_version,
         )
 
     if state in TERMINAL_FEEDBACK_ARBITRATION_STATES:
@@ -817,6 +921,8 @@ def evaluate_terminal_feedback(
             plan_version=plan_version,
             resource_id=resource_id,
             target_id=target_id,
+            feedback_profile_id=feedback_profile_id,
+            feedback_profile_version=feedback_profile_version,
         )
     if state in TERMINAL_FEEDBACK_REPLAN_STATES:
         reasons.append(f"terminal_feedback_{state}")
@@ -827,6 +933,8 @@ def evaluate_terminal_feedback(
             plan_version=plan_version,
             resource_id=resource_id,
             target_id=target_id,
+            feedback_profile_id=feedback_profile_id,
+            feedback_profile_version=feedback_profile_version,
         )
     if state in TERMINAL_FEEDBACK_HOLD_STATES:
         reasons.append(f"terminal_feedback_{state}")
@@ -837,6 +945,8 @@ def evaluate_terminal_feedback(
             plan_version=plan_version,
             resource_id=resource_id,
             target_id=target_id,
+            feedback_profile_id=feedback_profile_id,
+            feedback_profile_version=feedback_profile_version,
         )
 
     return _feedback_decision(
@@ -846,6 +956,8 @@ def evaluate_terminal_feedback(
         plan_version=plan_version,
         resource_id=resource_id,
         target_id=target_id,
+        feedback_profile_id=feedback_profile_id,
+        feedback_profile_version=feedback_profile_version,
     )
 
 
@@ -860,6 +972,8 @@ def apply_terminal_feedback_to_planner_inputs(
     ),
     *,
     fov_cap: float = 1.0,
+    feedback_profile_id: str | None = None,
+    feedback_profile_version: str | None = None,
 ) -> TerminalFeedbackWriteback:
     """Apply D5 feedback metadata to the next D3 planning inputs.
 
@@ -871,6 +985,18 @@ def apply_terminal_feedback_to_planner_inputs(
     track_tuple = tuple(tracks)
     resource_tuple = tuple(resources)
     metadata_items = _feedback_metadata_items(feedback_metadata)
+    resolved_feedback_profile_id = _resolve_profile_value(
+        explicit_value=feedback_profile_id,
+        metadata_items=metadata_items,
+        key="feedback_profile_id",
+        default=DEFAULT_FEEDBACK_PROFILE_ID,
+    )
+    resolved_feedback_profile_version = _resolve_profile_value(
+        explicit_value=feedback_profile_version,
+        metadata_items=metadata_items,
+        key="feedback_profile_version",
+        default=DEFAULT_FEEDBACK_PROFILE_VERSION,
+    )
     if not metadata_items:
         return TerminalFeedbackWriteback(
             tracks=track_tuple,
@@ -878,6 +1004,10 @@ def apply_terminal_feedback_to_planner_inputs(
             metadata={
                 "feedback_count": 0,
                 "allow_local_rebind": False,
+                "feedback_profile_schema": TERMINAL_FEEDBACK_PROFILE_SCHEMA_V1,
+                "feedback_profile_id": resolved_feedback_profile_id,
+                "feedback_profile_version": resolved_feedback_profile_version,
+                "fov_cap": float(fov_cap),
             },
         )
 
@@ -1074,6 +1204,10 @@ def apply_terminal_feedback_to_planner_inputs(
         "d7_gate_action": d7_gate_action,
         "d4_requests": tuple(d4_requests),
         "allow_local_rebind": False,
+        "feedback_profile_schema": TERMINAL_FEEDBACK_PROFILE_SCHEMA_V1,
+        "feedback_profile_id": resolved_feedback_profile_id,
+        "feedback_profile_version": resolved_feedback_profile_version,
+        "fov_cap": float(fov_cap),
     }
     return TerminalFeedbackWriteback(
         tracks=tuple(updated_tracks),
@@ -1248,6 +1382,20 @@ def assignment_records_from_plan(
             secondary_lease_expires_at_s=_metadata_float(
                 plan_metadata.get("secondary_lease_expires_at_s")
             ),
+            secondary_takeover_state=_metadata_text(
+                plan_metadata,
+                "secondary_takeover_state",
+            ),
+            secondary_readiness_class=_metadata_text(
+                plan_metadata,
+                "secondary_readiness_class",
+            ),
+            secondary_readiness_sustained=_metadata_bool_optional(
+                plan_metadata.get("secondary_readiness_sustained")
+            ),
+            secondary_activated_at_s=_metadata_float(
+                plan_metadata.get("secondary_activated_at_s")
+            ),
             total_cost=plan.total_cost,
             candidate_total_cost=plan.candidate_total_cost,
             previous_total_cost_current=plan.previous_total_cost_current,
@@ -1306,6 +1454,30 @@ def assignment_records_from_plan(
             hysteresis_high_threat_release=_metadata_bool_optional(
                 plan_metadata.get("hysteresis_high_threat_release")
             ),
+            assignment_profile_schema=(
+                _metadata_text(plan_metadata, "assignment_profile_schema")
+                or ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1
+            ),
+            cost_profile_id=(
+                _metadata_text(plan_metadata, "cost_profile_id")
+                or DEFAULT_COST_PROFILE_ID
+            ),
+            cost_profile_version=(
+                _metadata_text(plan_metadata, "cost_profile_version")
+                or DEFAULT_COST_PROFILE_VERSION
+            ),
+            feedback_profile_id=(
+                _metadata_text(plan_metadata, "feedback_profile_id")
+                or DEFAULT_FEEDBACK_PROFILE_ID
+            ),
+            feedback_profile_version=(
+                _metadata_text(plan_metadata, "feedback_profile_version")
+                or DEFAULT_FEEDBACK_PROFILE_VERSION
+            ),
+            cost_weights=_metadata_float_mapping(plan_metadata.get("cost_weights")),
+            planner_thresholds=_metadata_mapping(
+                plan_metadata.get("planner_thresholds")
+            ),
         )
         for assignment in plan.assignments
     )
@@ -1360,6 +1532,26 @@ def assignment_evidence_from_plan(plan: AssignmentPlan) -> AssignmentEvidenceExp
         supersedes_plan_version=_metadata_int(
             plan_metadata.get("supersedes_plan_version")
         ),
+        secondary_leader_epoch=_metadata_int(
+            plan_metadata.get("secondary_leader_epoch")
+        ),
+        secondary_lease_expires_at_s=_metadata_float(
+            plan_metadata.get("secondary_lease_expires_at_s")
+        ),
+        secondary_takeover_state=_metadata_text(
+            plan_metadata,
+            "secondary_takeover_state",
+        ),
+        secondary_readiness_class=_metadata_text(
+            plan_metadata,
+            "secondary_readiness_class",
+        ),
+        secondary_readiness_sustained=_metadata_bool_optional(
+            plan_metadata.get("secondary_readiness_sustained")
+        ),
+        secondary_activated_at_s=_metadata_float(
+            plan_metadata.get("secondary_activated_at_s")
+        ),
         cost_matrix_target_ids=_metadata_text_tuple(
             plan_metadata.get("cost_matrix_target_ids")
         ),
@@ -1377,6 +1569,28 @@ def assignment_evidence_from_plan(plan: AssignmentPlan) -> AssignmentEvidenceExp
         stale_reject_reason=_metadata_text(plan_metadata, "stale_reject_reason"),
         latest_plan_id=_metadata_text(plan_metadata, "latest_plan_id"),
         latest_plan_version=_metadata_int(plan_metadata.get("latest_plan_version")),
+        assignment_profile_schema=(
+            _metadata_text(plan_metadata, "assignment_profile_schema")
+            or ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1
+        ),
+        cost_profile_id=(
+            _metadata_text(plan_metadata, "cost_profile_id")
+            or DEFAULT_COST_PROFILE_ID
+        ),
+        cost_profile_version=(
+            _metadata_text(plan_metadata, "cost_profile_version")
+            or DEFAULT_COST_PROFILE_VERSION
+        ),
+        feedback_profile_id=(
+            _metadata_text(plan_metadata, "feedback_profile_id")
+            or DEFAULT_FEEDBACK_PROFILE_ID
+        ),
+        feedback_profile_version=(
+            _metadata_text(plan_metadata, "feedback_profile_version")
+            or DEFAULT_FEEDBACK_PROFILE_VERSION
+        ),
+        cost_weights=_metadata_float_mapping(plan_metadata.get("cost_weights")),
+        planner_thresholds=_metadata_mapping(plan_metadata.get("planner_thresholds")),
     )
 
 
@@ -1540,28 +1754,61 @@ def prepare_secondary_takeover_plan(
     *,
     supersedes_plan: AssignmentPlan,
     secondary_node_id: str,
+    readiness_class: str,
+    readiness_sustained: bool,
+    activated_at_s: float,
+    lease_expires_at_s: float,
+    leader_epoch: int,
     takeover_reason: str = "d4_degrade_to_secondary",
     target_node_id: str | None = None,
     link_type: str = "d4_secondary_relay",
-    lease_expires_at_s: float | None = None,
-    leader_epoch: int | None = None,
 ) -> AssignmentPlan:
-    """Annotate a D4/main-selected secondary takeover plan for D7 gating.
+    """Activate a D4/main-selected secondary takeover plan for D7 gating.
 
-    D3 does not select the secondary node. This helper validates that the
-    candidate plan supersedes the previous active plan and then stamps the
-    owner/source/version metadata needed by D7 and D6 consumers.
+    D3 does not select the secondary node or decide readiness. Main calls this
+    helper only after D4 reports sustained ``takeover_ready``. The helper
+    rejects incomplete, expired, or non-monotonic activation contracts and
+    stamps the owner/source/version/lease/epoch evidence used by D7 and D6.
     """
 
     owner_node_id = secondary_node_id.strip()
     if not owner_node_id:
         raise ValueError("secondary_node_id is required for secondary takeover")
+    if owner_node_id.lower() in {"secondary", "secondary_node", "center", "c2"}:
+        raise ValueError("secondary_node_id must identify a concrete secondary node")
+    superseded_owner_node_id = (
+        _metadata_text(supersedes_plan.metadata, "owner_node_id")
+        or supersedes_plan.source_node_id
+    )
+    if superseded_owner_node_id == owner_node_id:
+        raise ValueError("secondary owner must differ from the superseded plan owner")
+    normalized_readiness = readiness_class.strip()
+    if normalized_readiness != SECONDARY_TAKEOVER_READY:
+        raise ValueError("secondary takeover requires takeover_ready readiness")
+    if not readiness_sustained:
+        raise ValueError("secondary takeover readiness must be sustained")
+    activation_time = float(activated_at_s)
+    lease_expiry = float(lease_expires_at_s)
+    if lease_expiry <= activation_time:
+        raise ValueError("secondary takeover lease is expired at activation")
+    activation_epoch = int(leader_epoch)
+    if activation_epoch <= 0:
+        raise ValueError("secondary leader epoch must be positive")
     if plan.version <= supersedes_plan.version:
         raise ValueError(
             "secondary takeover plan version must be newer than the superseded plan"
         )
-    if plan.previous_plan_id not in {None, supersedes_plan.plan_id}:
+    if plan.plan_id == supersedes_plan.plan_id:
+        raise ValueError("secondary takeover plan id must differ from the superseded plan")
+    if plan.previous_plan_id != supersedes_plan.plan_id:
         raise ValueError("secondary takeover plan does not supersede the given plan")
+    if activation_time < plan.created_at:
+        raise ValueError("secondary takeover activation precedes plan creation")
+    superseded_epoch = _metadata_int(
+        supersedes_plan.metadata.get("secondary_leader_epoch")
+    )
+    if superseded_epoch is not None and activation_epoch <= superseded_epoch:
+        raise ValueError("secondary leader epoch must be newer than the superseded epoch")
 
     plan_target_node_id = target_node_id or plan.target_node_id or supersedes_plan.target_node_id
     metadata: dict[str, Any] = {
@@ -1576,6 +1823,13 @@ def prepare_secondary_takeover_plan(
         "owner_node_id": owner_node_id,
         "selected_secondary_node_id": owner_node_id,
         "secondary_plan_version": plan.version,
+        "secondary_takeover_state": SECONDARY_PLAN_ACTIVE_STATE,
+        "secondary_readiness_class": normalized_readiness,
+        "secondary_readiness_sustained": True,
+        "secondary_activated_at_s": activation_time,
+        "secondary_plan_executable": True,
+        "secondary_lease_valid_at_activation": True,
+        "secondary_epoch_monotonic": True,
         "source_node_id": owner_node_id,
         "target_node_id": plan_target_node_id,
         "link_type": link_type,
@@ -1586,11 +1840,9 @@ def prepare_secondary_takeover_plan(
         "previous_plan_version": supersedes_plan.version,
         "plan_version": plan.version,
         "allow_local_rebind": False,
+        "secondary_lease_expires_at_s": lease_expiry,
+        "secondary_leader_epoch": activation_epoch,
     }
-    if lease_expires_at_s is not None:
-        metadata["secondary_lease_expires_at_s"] = float(lease_expires_at_s)
-    if leader_epoch is not None:
-        metadata["secondary_leader_epoch"] = int(leader_epoch)
 
     assignments: list[Assignment] = []
     for assignment in plan.assignments:
@@ -1614,6 +1866,15 @@ def prepare_secondary_takeover_plan(
                     "owner_node_id": owner_node_id,
                     "selected_secondary_node_id": owner_node_id,
                     "secondary_plan_version": plan.version,
+                    "secondary_takeover_state": SECONDARY_PLAN_ACTIVE_STATE,
+                    "secondary_readiness_class": normalized_readiness,
+                    "secondary_readiness_sustained": True,
+                    "secondary_activated_at_s": activation_time,
+                    "secondary_plan_executable": True,
+                    "secondary_lease_valid_at_activation": True,
+                    "secondary_epoch_monotonic": True,
+                    "secondary_lease_expires_at_s": lease_expiry,
+                    "secondary_leader_epoch": activation_epoch,
                     "source_node_id": owner_node_id,
                     "target_node_id": assignment_target_node_id,
                     "link_type": link_type,
@@ -1632,6 +1893,174 @@ def prepare_secondary_takeover_plan(
         previous_plan_id=supersedes_plan.plan_id,
         source_node_id=owner_node_id,
         target_node_id=plan_target_node_id,
+        link_type=link_type,
+        metadata=metadata,
+    )
+
+
+def continue_active_secondary_plan(
+    plan: AssignmentPlan,
+    *,
+    previous_plan: AssignmentPlan,
+    readiness_class: str,
+    readiness_sustained: bool,
+    published_at_s: float,
+    lease_expires_at_s: float,
+    leader_epoch: int,
+) -> AssignmentPlan:
+    """Keep a rolling plan under the same active secondary owner.
+
+    ``AssignmentPlanner.plan`` remains owner-neutral and emits center defaults.
+    Main must pass its next candidate through this helper while a secondary
+    owner is active. This is a continuation, not a new takeover.
+    """
+
+    previous_metadata = dict(previous_plan.metadata)
+    if _plan_schema(previous_plan) != SECONDARY_PLAN_SCHEMA_V2:
+        raise ValueError("previous plan is not an active secondary plan")
+    if (
+        _metadata_text(previous_metadata, "secondary_takeover_state")
+        != SECONDARY_PLAN_ACTIVE_STATE
+        or not _metadata_bool(previous_metadata.get("secondary_plan_executable"))
+    ):
+        raise ValueError("previous secondary plan is not active and executable")
+
+    owner_node_id = (
+        _metadata_text(previous_metadata, "owner_node_id")
+        or _metadata_text(previous_metadata, "current_plan_owner_node_id")
+        or previous_plan.source_node_id
+    )
+    if not owner_node_id or owner_node_id.lower() in {
+        "secondary",
+        "secondary_node",
+        "center",
+        "c2",
+    }:
+        raise ValueError("active secondary owner is missing or not concrete")
+    if previous_plan.source_node_id not in {None, owner_node_id}:
+        raise ValueError("previous secondary owner and source node disagree")
+
+    normalized_readiness = readiness_class.strip()
+    if normalized_readiness != SECONDARY_TAKEOVER_READY:
+        raise ValueError("secondary continuation requires takeover_ready readiness")
+    if not readiness_sustained:
+        raise ValueError("secondary continuation readiness must be sustained")
+    if plan.version <= previous_plan.version:
+        raise ValueError("secondary continuation version must be newer")
+    if plan.plan_id == previous_plan.plan_id:
+        raise ValueError("secondary continuation plan id must be new")
+    if plan.previous_plan_id != previous_plan.plan_id:
+        raise ValueError("secondary continuation must extend the active plan")
+
+    published_at = float(published_at_s)
+    if published_at < plan.created_at:
+        raise ValueError("secondary continuation publish time precedes plan creation")
+    previous_lease_expiry = _metadata_float(
+        previous_metadata.get("secondary_lease_expires_at_s")
+    )
+    if previous_lease_expiry is None or published_at > previous_lease_expiry:
+        raise ValueError("previous secondary lease is expired")
+    lease_expiry = float(lease_expires_at_s)
+    if lease_expiry <= published_at:
+        raise ValueError("secondary continuation lease is expired at publication")
+    if lease_expiry < previous_lease_expiry:
+        raise ValueError("secondary continuation lease must not regress")
+
+    previous_epoch = _metadata_int(previous_metadata.get("secondary_leader_epoch"))
+    continuation_epoch = int(leader_epoch)
+    if previous_epoch is None or continuation_epoch < previous_epoch:
+        raise ValueError("secondary leader epoch must not regress")
+
+    link_type = previous_plan.link_type or "d4_secondary_relay"
+    target_node_id = previous_plan.target_node_id or plan.target_node_id
+    secondary_activated_at_s = _metadata_float(
+        previous_metadata.get("secondary_activated_at_s")
+    )
+    metadata: dict[str, Any] = {
+        **dict(plan.metadata),
+        "plan_schema": SECONDARY_PLAN_SCHEMA_V2,
+        "plan_owner": "secondary",
+        "active_plan_owner": "secondary",
+        "current_plan_id": plan.plan_id,
+        "current_plan_version": plan.version,
+        "current_plan_owner": "secondary",
+        "current_plan_owner_node_id": owner_node_id,
+        "owner_node_id": owner_node_id,
+        "selected_secondary_node_id": owner_node_id,
+        "secondary_plan_version": plan.version,
+        "secondary_takeover_state": SECONDARY_PLAN_ACTIVE_STATE,
+        "secondary_readiness_class": normalized_readiness,
+        "secondary_readiness_sustained": True,
+        "secondary_activated_at_s": secondary_activated_at_s,
+        "secondary_rolled_at_s": published_at,
+        "secondary_plan_executable": True,
+        "secondary_lease_valid_at_activation": True,
+        "secondary_epoch_monotonic": True,
+        "secondary_lease_expires_at_s": lease_expiry,
+        "secondary_leader_epoch": continuation_epoch,
+        "source_node_id": owner_node_id,
+        "target_node_id": target_node_id,
+        "link_type": link_type,
+        "takeover_reason": _metadata_text(previous_metadata, "takeover_reason"),
+        "continuation_reason": "secondary_rolling_update",
+        "supersedes_plan_id": previous_plan.plan_id,
+        "supersedes_plan_version": previous_plan.version,
+        "previous_plan_id": previous_plan.plan_id,
+        "previous_plan_version": previous_plan.version,
+        "plan_version": plan.version,
+        "allow_local_rebind": False,
+    }
+
+    assignments = tuple(
+        replace(
+            assignment,
+            source_node_id=owner_node_id,
+            target_node_id=assignment.target_node_id or assignment.resource_id,
+            link_type=link_type,
+            plan_version=plan.version,
+            metadata={
+                **dict(assignment.metadata),
+                "plan_schema": SECONDARY_PLAN_SCHEMA_V2,
+                "plan_owner": "secondary",
+                "active_plan_owner": "secondary",
+                "current_plan_id": plan.plan_id,
+                "current_plan_version": plan.version,
+                "current_plan_owner": "secondary",
+                "current_plan_owner_node_id": owner_node_id,
+                "owner_node_id": owner_node_id,
+                "selected_secondary_node_id": owner_node_id,
+                "secondary_plan_version": plan.version,
+                "secondary_takeover_state": SECONDARY_PLAN_ACTIVE_STATE,
+                "secondary_readiness_class": normalized_readiness,
+                "secondary_readiness_sustained": True,
+                "secondary_activated_at_s": secondary_activated_at_s,
+                "secondary_rolled_at_s": published_at,
+                "secondary_plan_executable": True,
+                "secondary_lease_valid_at_activation": True,
+                "secondary_epoch_monotonic": True,
+                "secondary_lease_expires_at_s": lease_expiry,
+                "secondary_leader_epoch": continuation_epoch,
+                "source_node_id": owner_node_id,
+                "target_node_id": assignment.target_node_id
+                or assignment.resource_id,
+                "link_type": link_type,
+                "continuation_reason": "secondary_rolling_update",
+                "supersedes_plan_id": previous_plan.plan_id,
+                "supersedes_plan_version": previous_plan.version,
+                "previous_plan_id": previous_plan.plan_id,
+                "previous_plan_version": previous_plan.version,
+                "plan_version": plan.version,
+                "allow_local_rebind": False,
+            },
+        )
+        for assignment in plan.assignments
+    )
+    return replace(
+        plan,
+        assignments=assignments,
+        previous_plan_id=previous_plan.plan_id,
+        source_node_id=owner_node_id,
+        target_node_id=target_node_id,
         link_type=link_type,
         metadata=metadata,
     )
@@ -1845,6 +2274,27 @@ def _feedback_metadata_items(
         else:
             raise TypeError("feedback metadata entries must be mappings or decisions")
     return tuple(items)
+
+
+def _resolve_profile_value(
+    *,
+    explicit_value: str | None,
+    metadata_items: tuple[Mapping[str, Any], ...],
+    key: str,
+    default: str,
+) -> str:
+    if explicit_value is not None and str(explicit_value).strip():
+        return str(explicit_value).strip()
+    values = {
+        value
+        for metadata in metadata_items
+        if (value := _metadata_text(metadata, key)) is not None
+    }
+    if len(values) == 1:
+        return next(iter(values))
+    if len(values) > 1:
+        return "mixed"
+    return default
 
 
 def _record_items(
@@ -2227,6 +2677,24 @@ def _metadata_mapping_tuple(value: Any) -> tuple[Mapping[str, Any], ...]:
     return tuple(mappings)
 
 
+def _metadata_mapping(value: Any) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    return dict(value)
+
+
+def _metadata_float_mapping(value: Any) -> Mapping[str, float]:
+    if not isinstance(value, Mapping):
+        return {}
+    result: dict[str, float] = {}
+    for key, item in value.items():
+        try:
+            result[str(key)] = float(item)
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
 def _assignment_matrix_shape(
     value: Any,
     *,
@@ -2261,6 +2729,8 @@ def _feedback_decision(
     resource_id: str | None,
     target_id: str | None,
     duplicate_terminal_lock_risk: bool = False,
+    feedback_profile_id: str = DEFAULT_FEEDBACK_PROFILE_ID,
+    feedback_profile_version: str = DEFAULT_FEEDBACK_PROFILE_VERSION,
 ) -> AssignmentFeedbackDecision:
     return AssignmentFeedbackDecision(
         recommended_action=action,
@@ -2278,6 +2748,8 @@ def _feedback_decision(
             resource_id=resource_id,
             target_id=target_id,
             duplicate_terminal_lock_risk=duplicate_terminal_lock_risk,
+            feedback_profile_id=feedback_profile_id,
+            feedback_profile_version=feedback_profile_version,
         ),
     )
 
@@ -2291,6 +2763,8 @@ def _feedback_planner_metadata(
     resource_id: str | None,
     target_id: str | None,
     duplicate_terminal_lock_risk: bool,
+    feedback_profile_id: str,
+    feedback_profile_version: str,
 ) -> dict[str, Any]:
     operator_hold = action == "hold"
     prohibit_assignment = action == "secondary_arbitration"
@@ -2319,6 +2793,9 @@ def _feedback_planner_metadata(
         ),
         "reasons": tuple(reasons),
         "plan_version": plan_version,
+        "feedback_profile_schema": TERMINAL_FEEDBACK_PROFILE_SCHEMA_V1,
+        "feedback_profile_id": str(feedback_profile_id),
+        "feedback_profile_version": str(feedback_profile_version),
     }
     if resource_id is not None:
         metadata["resource_id"] = resource_id

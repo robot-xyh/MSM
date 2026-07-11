@@ -23,7 +23,18 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - D1 6D NED `GlobalTrack` 到 D2 2D `Detection` 的投影 adapter，保留 `measurement_timestamp`、`arrival_timestamp`、covariance 和 metadata。
 - AirSim-style dry-run/replay adapter，不 import 或调用 `airsim`，并在 bus message 中导出当前活动 `global_track_ids`。
 - `load_airsim_replay_frames()`、`run_airsim_replay_association()`、`run_threshold_sensitivity()` 和 `summarize_multi_seed_risk_calibration()` 支持离线 JSON/JSONL replay 读取、association log/report 输出、seed/episode/scenario/frame/offline truth label 校准元数据透传、`RiskThresholds.profile_version` 与 `association_risk_threshold_version` 记录、gate pass/reject count、motion/quality risk summary、dense/crossing threshold sensitivity summary 和多 seed 推荐阈值摘要；无 truth label 的 N-v-N replay 会用输入观测数或显式 count 字段给出 `target_count` fallback。
+- P1 replay 治理默认将 simulator truth 从在线 `Detection`、track 和 association log 中移除，并将源 detection/actor ID 改为按帧匿名 ID；嵌套 actor/truth metadata 同样递归清除。GNN/Hungarian 仅看到量测、协方差、时间戳、置信度和可用特征。`OfflineTruthEvaluation` 在关联完成后按同帧输入顺序独立对齐标签，计算 IDSW、continuity、confusion matrix 和 RMSE；报告同时保留 `online_metrics` 与 `offline_truth_evaluation`，避免把在线 unavailable 误写成零。
+- `InitializationGovernanceProfile` 提供版本化 M-of-N 初始化口径，默认 `2-of-3`，也可由 replay 和 gate sensitivity 入口显式传入其他 profile；离线治理输出初始化/确认延迟、成功率、虚假航迹数与比例、漏检数、虚警数、逐帧 measurement count / truth-target count 以及 mismatch frame count。
+- NIS 由关联前 innovation covariance 和马氏距离计算，不依赖 truth，因此无 truth replay 仍可输出；NEES 只在独立 offline truth state 可用时计算。两者输出样本数、均值、中位数、二维/四维 95% 卡方区间及区间覆盖率，不把缺失样本解释为零。
+- `build_5v5_replay_fixture()` 构造动态 5 目标 crossing/dense/漏检/虚警组合 fixture；它只用于回归和标定，不把 5 写入关联器或 Tracker。
 - `AssociationLogEntry.rejected_pairs` 默认空列表并完整序列化 `mahalanobis_gate`/`assignment_above_gate` 原因；replay gate summary 按原因统计，旧 JSON 缺该字段时按空列表兼容。
+
+### 2026-07-11 main runtime 证据
+
+- main 在线链路已强制令 D2 输入和航迹的 `truth_id=None`；D1 -> D2 -> D3 仍按 D2 状态、协方差、质量和中心维护的 `global_track_id` 运行，不再依赖 simulator truth/actor identity 构造 D3 目标。
+- `d2_governance_summary` 已进入 main episode bus 并由 D6 消费。真实 5v5 短 episode 的 main-bus 结果记录 `d2_hard_risk_frame_rate=0.0`，说明该短运行内没有由在线可观测证据触发 D2 hard-risk frame。
+- 上述 `0.0` 不是在线 IDSW 或 continuity 的真值结论。在线没有 truth label 时，truth-based `id_switch_count`、`track_continuity`/`identity_continuity` 必须标记 unavailable；它们只能在 episode 结束后由隔离的 offline truth labels 评分。
+- 该证据只证明 truth-isolated runtime 合同与治理事件通路已接通。真实 5v5 dense/crossing、遮挡、漏检和虚警条件下的多 seed IDSW/continuity、gate/risk、M-of-N 与 NIS/NEES 标定仍未闭合。
 
 部分实现：
 
@@ -48,6 +59,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - `d2_data_association/metrics.py`：IDSW、continuity、duplicate、RMSE、confusion matrix、风险摘要和软/硬风险分层。
 - `d2_data_association/dry_run_adapter.py`：D1/AirSim-style dry-run 输入适配和 bus message 输出。
 - `d2_data_association/replay.py`：离线 JSON/JSONL replay 读取、association report/log 输出和阈值敏感性 helper。
+- `d2_data_association/replay_governance.py`：在线 truth 隔离、offline label evaluator、M-of-N 初始化、false-track、NIS/NEES 和 5v5 压力 fixture。
 - `d2_data_association/simulation.py`：crossing、dense 5v5、formation、occlusion、missed、false alarm 场景。
 - `scripts/run_simulation.py`：CLI benchmark runner。
 - `docs/ALGORITHM_AND_IMPLEMENTATION.md`：中文算法和实现说明。
@@ -62,9 +74,10 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - D2/D6 必须显式保留 `id_switch_count`；它不能被 RMSE、覆盖率或命中率替代。
 - D2 输出的 `global_track_ids` 来自当前活动航迹集合，不截断或补齐到固定 2 或 5。
 - D4 当前把 D2 风险分为软/硬两类：`association_ambiguity`、低 cost margin、candidate overlap 属于观察/二级 cue 证据；`id_switch_count` 增量、`duplicate_assignment_count`/`duplicate_track_risk` 和可用的 `track_continuity` 低于阈值属于硬风险证据。`continuity_available=false` 时不得把兼容数值 `0.0` 当作 continuity collapse。D2 只发布证据，不直接触发 `request_center_replan` 或降级。
-- 多 seed 风险校准的 replay/report 应保留 `seed`、`episode_id`、`scenario_name`/`scenario`、`frame_index`、`drone_count`/`target_count`、gate threshold、`risk_profile`、`risk_profile_version`、`association_risk_threshold_version`、association logs、gate pass/reject count、motion/quality risk summary、dense/crossing sensitivity summary、`id_switch_count`、`track_continuity`、`duplicate_assignment_count` 和 soft/hard risk summary；D2 仅把 `truth_id`/offline truth label 用于离线 metrics，不用它重命名或绑定 `global_track_id`。
+- 多 seed 风险校准的 replay/report 应保留 `seed`、`episode_id`、`scenario_name`/`scenario`、`frame_index`、`drone_count`/`target_count`、gate threshold、`risk_profile`、`risk_profile_version`、`association_risk_threshold_version`、association logs、gate pass/reject count、motion/quality risk summary、dense/crossing sensitivity summary、M-of-N profile、false-track、NIS/NEES、`id_switch_count`、`track_continuity`、`duplicate_assignment_count` 和 soft/hard risk summary。在线 association log 只记录 schema/profile、measurement/active-track count 和 innovation 诊断，不携带 truth label、truth target count 或 NEES；标签、真值目标数和 NEES 只存在于 `offline_truth_evaluation`。
 - 真实 AirSim 5v5 replay 输入、ComputerVision metadata 采集、离线 truth labels 固化、episode JSONL schema 发布、ID switch 阈值治理和批量运行仍由 main/runtime/D6 生产/标定；D2 不连接 AirSim SDK。
 - main runtime 已具备 P1 D4/D5 calibration sweep，D6 已具备标准 AirSim calibration report bundle 自动生成。D2 的对齐目标是让自身 replay/report/log 字段能进入该 bundle 做分组统计；D2 不重复实现 sweep 编排、AirSim reset 或 D6 报告生成。
+- 在线 D6 治理摘要可以记录 soft/hard risk frame rate，但不得在缺少 offline truth labels 时把它解释成 IDSW=0 或 continuity 正常；truth-based 指标必须保留 unavailable 状态，待离线评分后再进入多 seed 结论。
 
 ## 运行测试
 

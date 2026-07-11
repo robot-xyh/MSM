@@ -14,6 +14,11 @@ from .associators import GNNHungarianAssociator
 from .dry_run_adapter import run_airsim_dry_run_association
 from .metrics import RiskThresholds, classify_risk_summary
 from .models import AssociationRiskSummary
+from .replay_governance import (
+    InitializationGovernanceProfile,
+    OfflineTruthEvaluation,
+    evaluate_offline_truth,
+)
 from .tracker import Tracker
 
 
@@ -31,6 +36,8 @@ class ReplayAssociationReport:
     threshold_sensitivity: list[dict[str, Any]] = field(default_factory=list)
     threshold_sensitivity_summary: dict[str, Any] = field(default_factory=dict)
     replay_metadata: dict[str, Any] = field(default_factory=dict)
+    online_metrics: dict[str, Any] = field(default_factory=dict)
+    offline_truth_evaluation: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -53,6 +60,10 @@ class ReplayAssociationReport:
             ),
             "global_track_ids": list(self.global_track_ids),
             "metrics": _json_ready(self.metrics),
+            "online_metrics": _json_ready(self.online_metrics),
+            "offline_truth_evaluation": _json_ready(
+                self.offline_truth_evaluation
+            ),
             "association_logs": _json_ready(self.association_logs),
             "risk_summary": _json_ready(self.risk_summary),
             "threshold_sensitivity": _json_ready(self.threshold_sensitivity),
@@ -97,6 +108,7 @@ def run_airsim_replay_association(
     replay_metadata: Mapping[str, Any] | None = None,
     default_position_variance: float = 1.0,
     gate_thresholds: Sequence[float] | None = None,
+    initialization_profile: InitializationGovernanceProfile | None = None,
 ) -> ReplayAssociationReport:
     """Run D2 association on offline replay frames and return a stable report."""
 
@@ -109,12 +121,26 @@ def run_airsim_replay_association(
         frame_list,
         tracker=tracker,
         default_position_variance=default_position_variance,
+        isolate_offline_truth=True,
     )
     thresholds = risk_thresholds if risk_thresholds is not None else RiskThresholds()
-    association_logs = result.association_logs
+    offline_evaluation = evaluate_offline_truth(
+        frame_list,
+        result,
+        profile_name=f"{thresholds.profile_name}_offline_truth",
+        profile_version=thresholds.profile_version,
+        initialization_profile=initialization_profile,
+    )
+    metrics = _merge_online_offline_metrics(result.metrics, offline_evaluation)
+    association_logs = _annotate_association_logs(
+        result.association_logs,
+        result=result,
+        offline_evaluation=offline_evaluation,
+        thresholds=thresholds,
+    )
     risk_summary = summarize_replay_risk(
         association_logs,
-        result.metrics,
+        metrics,
         thresholds=thresholds,
     )
     sensitivity = (
@@ -124,6 +150,7 @@ def run_airsim_replay_association(
             risk_thresholds=[thresholds],
             replay_metadata=metadata,
             default_position_variance=default_position_variance,
+            initialization_profile=initialization_profile,
         )
         if gate_thresholds is not None
         else []
@@ -134,12 +161,14 @@ def run_airsim_replay_association(
         frame_count=len(frame_list),
         target_count=_target_count(frame_list),
         global_track_ids=result.global_track_ids,
-        metrics=dict(result.metrics),
+        metrics=metrics,
         association_logs=association_logs,
         risk_summary=risk_summary,
         threshold_sensitivity=sensitivity,
         threshold_sensitivity_summary=sensitivity_summary,
         replay_metadata=metadata,
+        online_metrics=dict(result.metrics),
+        offline_truth_evaluation=offline_evaluation.to_dict(),
     )
 
 
@@ -151,6 +180,7 @@ def run_threshold_sensitivity(
     replay_metadata: Mapping[str, Any] | None = None,
     feature_weight: float = 6.0,
     default_position_variance: float = 1.0,
+    initialization_profile: InitializationGovernanceProfile | None = None,
 ) -> list[dict[str, Any]]:
     """Evaluate replay metrics and risk breakdown across threshold profiles."""
 
@@ -174,16 +204,34 @@ def run_threshold_sensitivity(
                 frame_list,
                 tracker=tracker,
                 default_position_variance=default_position_variance,
+                isolate_offline_truth=True,
+            )
+            offline_evaluation = evaluate_offline_truth(
+                frame_list,
+                result,
+                profile_name=f"{thresholds.profile_name}_offline_truth",
+                profile_version=thresholds.profile_version,
+                initialization_profile=initialization_profile,
+            )
+            metrics = _merge_online_offline_metrics(
+                result.metrics,
+                offline_evaluation,
+            )
+            association_logs = _annotate_association_logs(
+                result.association_logs,
+                result=result,
+                offline_evaluation=offline_evaluation,
+                thresholds=thresholds,
             )
             risk_summary = summarize_replay_risk(
-                result.association_logs,
-                result.metrics,
+                association_logs,
+                metrics,
                 thresholds=thresholds,
             )
             soft_frame_count = int(risk_summary["soft_risk_frame_count"])
             hard_frame_count = int(risk_summary["hard_risk_frame_count"])
             diagnostics = _summarize_association_log_diagnostics(
-                result.association_logs
+                association_logs
             )
             rows.append(
                 {
@@ -200,15 +248,27 @@ def run_threshold_sensitivity(
                         metadata, "scenario_name", "scenario"
                     ),
                     "drone_count": _metadata_value(metadata, "drone_count"),
-                    "id_switch_count": result.metrics["id_switch_count"],
-                    "track_continuity": result.metrics["track_continuity"],
-                    "truth_metrics_available": result.metrics[
+                    "id_switch_count": metrics["id_switch_count"],
+                    "track_continuity": metrics["track_continuity"],
+                    "truth_metrics_available": metrics[
                         "truth_metrics_available"
                     ],
-                    "continuity_available": result.metrics["continuity_available"],
-                    "duplicate_assignment_count": result.metrics[
+                    "continuity_available": metrics["continuity_available"],
+                    "duplicate_assignment_count": metrics[
                         "duplicate_assignment_count"
                     ],
+                    "initialization_success_rate": metrics[
+                        "initialization_success_rate"
+                    ],
+                    "mean_initialization_latency_s": metrics[
+                        "mean_initialization_latency_s"
+                    ],
+                    "initialization_profile": metrics["initialization_profile"],
+                    "false_track_count": metrics["false_track_count"],
+                    "false_track_rate": metrics["false_track_rate"],
+                    "nis": metrics["nis"],
+                    "nees": metrics["nees"],
+                    "offline_truth_evaluation": offline_evaluation.to_dict(),
                     "soft_risk_frame_count": soft_frame_count,
                     "hard_risk_frame_count": hard_frame_count,
                     "max_soft_risk_score": risk_summary["max_soft_risk_score"],
@@ -382,6 +442,68 @@ def write_association_logs_jsonl(
         for log in association_logs
     ]
     Path(path).write_text("\n".join(lines) + ("\n" if lines else ""))
+
+
+def _merge_online_offline_metrics(
+    online_metrics: Mapping[str, Any],
+    offline_evaluation: OfflineTruthEvaluation,
+) -> dict[str, Any]:
+    """Keep online operational metrics and overlay truth-only evaluation fields."""
+
+    merged = dict(online_metrics)
+    merged.update(offline_evaluation.summary)
+    merged["online_truth_isolated"] = True
+    merged["offline_truth_profile"] = offline_evaluation.profile_name
+    merged["offline_truth_profile_version"] = offline_evaluation.profile_version
+    return merged
+
+
+def _annotate_association_logs(
+    association_logs: Sequence[Mapping[str, Any]],
+    *,
+    result: Any,
+    offline_evaluation: OfflineTruthEvaluation,
+    thresholds: RiskThresholds,
+) -> list[dict[str, Any]]:
+    """Attach versioned online governance fields without exposing truth labels."""
+
+    annotated: list[dict[str, Any]] = []
+    for frame_index, log in enumerate(association_logs):
+        payload = dict(log)
+        metadata = dict(payload.get("metadata", {}))
+        frame_evaluation = (
+            offline_evaluation.frame_metrics[frame_index]
+            if frame_index < len(offline_evaluation.frame_metrics)
+            else {}
+        )
+        active_track_count = (
+            len(result.frames[frame_index].active_tracks)
+            if frame_index < len(result.frames)
+            else 0
+        )
+        detection_count = (
+            len(result.frames[frame_index].detections)
+            if frame_index < len(result.frames)
+            else 0
+        )
+        metadata.update(
+            {
+                "risk_profile": thresholds.profile_name,
+                "risk_profile_version": thresholds.profile_version,
+                "association_risk_threshold_version": thresholds.profile_version,
+                "association_log_schema_version": "d2-association-log/v2",
+                "online_truth_isolated": True,
+                "measurement_count_n": detection_count,
+                "active_track_count": active_track_count,
+                "nis_available": bool(
+                    frame_evaluation.get("nis", {}).get("available", False)
+                ),
+                "nis": frame_evaluation.get("nis"),
+            }
+        )
+        payload["metadata"] = metadata
+        annotated.append(payload)
+    return annotated
 
 
 def _summarize_association_log_diagnostics(

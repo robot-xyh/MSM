@@ -268,6 +268,31 @@ truth-isolation smoke 的 D1 合成观测仍可携带 `truth_id` 作为离线评
 固化为覆盖 schema version、coverage cell、CV bbox covariance 和二级侦察 metadata 的
 D1 长期 fixture，因此这些 P1 不能仅凭系统运行次数关闭。
 
+## 7.7 2026-07-11 5v5 在线 truth 隔离与 governance 证据
+
+main 完成
+`research_modules/airsim_runtime/outputs/p1_runtime_truth_isolated_d4d5_smoke_20260711/`
+三个 reset-separated 5v5 episode，分别覆盖不降级、降级到二级节点和降级到完全分布式。
+每个 episode 为 seed 7、5 帧、0.4 s 短时 smoke。三组运行中 D1/D2/D3 模块健康均为
+`ok`，D1 每组发布 15 条模块记录，D3 assignment coverage 为 1.0，证明 main 在线隔离
+truth hint 后，D1 -> D2 -> D3 仍能以中心 `global_track_id` 和状态/协方差继续工作。
+
+`main_episode_bus_metrics.json` 已消费 D1 governance：每组均生成
+`d1_latency_audit` 和 `d1_region_quality_window` 事件，并报告
+`d1_max_delay_s` 约 0.2 s、`d1_region_quality_coverage_rate=1.0`。因此此前“main bus 尚未
+发布任何 D1 region/window/latency governance”的状态已被这次短时接线证据部分关闭。
+是否长期保留完整 `SensorHealthSummary`、covariance reason、timestamp uncertainty 及
+schema/version 字段，仍需更长 episode 和 D6 批量 schema 审计。
+
+三组运行的 `d1_oosm_observation_rate` 均约为 0.9867。该值来自固定延迟、多模态观测按
+到达顺序逐条进入 fixed-lag replay 的当前累计口径，表示绝大多数后续到达的量测时刻早于
+已推进融合时刻，不表示约 98.7% 的传感器发生故障。D4 只能消费 unexpected OOSM、stale、
+延迟预算超限和持续窗口等已校准证据，不能直接按 raw OOSM rate 降级。
+
+本证据只关闭 truth-isolated 运行时接线的单 seed smoke 风险，不关闭 P1 multi-seed 校准。
+下一步仍需多 seed、长时窗口、不同传感器延迟分布、正常/故障对照和批处理/水位线口径对照，
+再确定 OOSM、区域质量和 handover readiness 的告警阈值。
+
 ## 8. 交付物
 
 - `PLAN.md`: 本实施计划。
@@ -350,3 +375,15 @@ D1 长期 fixture，因此这些 P1 不能仅凭系统运行次数关闭。
 3. 增加 UKF/IMM 高机动目标基准，明确何时值得从六维 CV/EKF 升级到多模型或非线性滤波。
 4. 与 D5 对齐 OpenCV calibration/projectPoints/solvePnP 的责任边界：D1 保持融合合同，D5 负责精细视觉几何时，双方通过相机元数据和投影残差测试对齐。
 5. 等 ROS 2 runtime、topic schema、tf tree 和 bag/replay 工具稳定后，再评估 `tf2` 与 `message_filters` 接入；接入前 D1 继续要求上游提供 NED 或完整外参元数据。
+
+## 12. 2026-07-11 P1 Replay/Schema 治理执行结果
+
+本轮在 D1 边界内完成以下工作，不连接 AirSim SDK，也不引入 Stone Soup/FilterPy：
+
+1. 新增 JSONL/CSV governed writer，强制写 `d1.sensor_observation.v1` 和场景/配置 provenance；旧无版本 Blocks reader 继续兼容。
+2. writer 默认剥离在线 `truth_id`、actor/object ID；离线标签只有显式启用后才进入 `offline_truth`。
+3. `SensorTimingExpectation` 和 `SensorHealthSummary` 已区分预期延迟、延迟预算超限、总 OOSM 与 unexpected OOSM，避免固定延迟流仅因合法 OOSM 被误判隔离。
+4. `summarize_region_quality_windows(window_size_s=...)` 已按 `coverage_cell` 和固定时间桶输出窗口，并按 `LatencyAuditSummary.published_at` 对齐延迟/OOSM 证据。
+5. 固化真实 Blocks/CV 字段形态的 JSONL/CSV fixture；无 truth-hint 两目标 replay 输出两条带 6x6 协方差的 NED 航迹。
+
+本轮已关闭的 D1-owned P1：writer schema/provenance、expected-latency/OOSM 字段、区域固定窗口、协方差增长窗口、基础 truth-free replay fixture。仍需 main/shared 接入 governed writer 并发布区域/窗口/health 摘要；真实多 seed 延迟门限、视觉 bbox/camera fixture 和关联门限继续由后续 AirSim 校准闭合。

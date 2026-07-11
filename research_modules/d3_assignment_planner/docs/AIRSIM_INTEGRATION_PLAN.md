@@ -141,10 +141,10 @@ Output candidate plan record:
 ## 2026-07-10 Validation Status
 
 - The real 5v5 calibration completed 60 connected cases: seeds 1-10, secondary heights 50/200 m, and `no_degradation`, `degrade_to_secondary`, and `degrade_to_distributed` cases.
-- The current plan/evidence path is connected, but secondary activation is not closed. All 20 requested secondary cases fell back conservatively to distributed operation; 15 of 1300 D4 decisions reached momentary `takeover_ready`, all stopped at `pending_secondary_plan`, and `secondary_plan_active=0`.
-- The next integration fixture must sustain readiness long enough to produce one `secondary_plan_v2` with a version greater than the center plan, mark the old center plan stale, expose one active secondary owner, and let D7 consume only that current binding.
+- The historical runtime path has not activated a secondary plan. All 20 requested secondary cases fell back conservatively to distributed operation; 15 of 1300 D4 decisions reached momentary `takeover_ready`, all stopped at `pending_secondary_plan`, and `secondary_plan_active=0`.
+- D3 now provides the strict activation contract. Main/D4 must pass sustained `takeover_ready`, a concrete node id, activation time, a live lease, a monotonic leader epoch, and the exact superseded plan; D7 binding export must also pass the current plan id/version. The next fixture must exercise this positive path plus stale center, expired lease, non-monotonic epoch, and recovery negatives.
 - Equal-size 5v5 coverage does not close N/M behavior. Add 3v5, 5v3, target-arrival, and resource-failure replays before tuning incremental assignment or D5 feedback weights.
-- D3 unit regression currently reports `63 passed`.
+- D3 unit regression currently reports `68 passed`.
 
 ## Future OR-Tools Path
 
