@@ -28,7 +28,13 @@ from d4_distributed_fallback.models import (
 )
 from d5_terminal_association import Assignment as TerminalAssignment
 from d5_terminal_association import GlobalTrack as TerminalGlobalTrack
-from d6_evaluation_metrics import AssignmentRecord, TerminalRecord, TrackRecord
+from d6_evaluation_metrics import (
+    AssignmentRecord,
+    CoalitionRecord,
+    TargetDemandRecord,
+    TerminalRecord,
+    TrackRecord,
+)
 
 from .models import ResourcePlatform, TruthState
 
@@ -298,19 +304,40 @@ def d2_tracks_to_terminal_tracks(
 
 
 def plan_to_terminal_assignments(plan: AssignmentPlan) -> list[TerminalAssignment]:
-    return [
-        TerminalAssignment(
+    output: list[TerminalAssignment] = []
+    coalition_by_id = {item.coalition_id: item for item in plan.coalitions}
+    for assignment in plan.assignments:
+        coalition = coalition_by_id.get(assignment.coalition_id)
+        activation_state = str(
+            assignment.metadata.get(
+                "activation_state",
+                "active"
+                if assignment.member_role == "primary" and assignment.wave_id == 0
+                else "standby",
+            )
+        )
+        output.append(TerminalAssignment(
             assigned_global_track_id=assignment.target_id,
             assignment_version=plan.version,
             timestamp=plan.created_at,
             require_version_match=True,
             plan_id=plan.plan_id,
             plan_version=plan.version,
-            authorization_state="recorded",
+            authorization_state=plan.human_authorization_state,
             resource_id=assignment.resource_id,
-        )
-        for assignment in plan.assignments
-    ]
+            coalition_id=assignment.coalition_id,
+            coalition_version=assignment.coalition_version,
+            member_role=assignment.member_role,
+            wave_id=assignment.wave_id,
+            required_resource_count=assignment.required_resource_count,
+            coordination_mode="independent"
+            if coalition is None
+            else coalition.coordination_mode,
+            arrival_window_start_s=assignment.arrival_window_start_s,
+            arrival_window_end_s=assignment.arrival_window_end_s,
+            activation_state=activation_state,
+        ))
+    return output
 
 
 def plan_to_assignment_records(
@@ -318,8 +345,10 @@ def plan_to_assignment_records(
     d2_by_id: dict[str, D2GlobalTrack],
 ) -> list[AssignmentRecord]:
     records: list[AssignmentRecord] = []
+    coalition_by_target = {item.target_id: item for item in plan.coalitions}
     for assignment in plan.assignments:
         track = d2_by_id.get(assignment.target_id)
+        coalition = coalition_by_target.get(assignment.target_id)
         records.append(
             AssignmentRecord(
                 timestamp=plan.created_at,
@@ -328,12 +357,84 @@ def plan_to_assignment_records(
                 resource_id=assignment.resource_id,
                 global_track_id=assignment.target_id,
                 cost_breakdown=assignment.cost_breakdown,
-                authorization_state="recorded",
+                authorization_state=plan.human_authorization_state,
                 active=True,
                 truth_id=None if track is None else track.truth_id,
+                coordination_mode=None if coalition is None else coalition.coordination_mode,
+                coalition_id=assignment.coalition_id,
+                coalition_version=assignment.coalition_version,
+                coalition_state=None if coalition is None else coalition.state,
+                member_role=assignment.member_role,
+                wave_id=assignment.wave_id,
+                required_resource_count=assignment.required_resource_count,
+                demand_assigned=None if coalition is None else coalition.assigned_resource_count,
+                demand_shortfall=None if coalition is None else coalition.shortfall,
+                demand_complete=None if coalition is None else coalition.complete,
+                arrival_window_start=assignment.arrival_window_start_s,
+                arrival_window_end=assignment.arrival_window_end_s,
+                minimum_member_separation=None
+                if coalition is None
+                else coalition.minimum_separation_s,
             )
         )
     return records
+
+
+def plan_to_m_to_n_records(
+    plan: AssignmentPlan,
+) -> tuple[list[TargetDemandRecord], list[CoalitionRecord]]:
+    """Convert a D3 plan snapshot into passive D6 demand/coalition evidence."""
+
+    demand_records: list[TargetDemandRecord] = []
+    coalition_records: list[CoalitionRecord] = []
+    for coalition in plan.coalitions:
+        demand_records.append(
+            TargetDemandRecord(
+                timestamp=plan.created_at,
+                global_track_id=coalition.target_id,
+                required_resource_count=coalition.required_resource_count,
+                coordination_mode=coalition.coordination_mode,
+                demand_assigned=coalition.assigned_resource_count,
+                demand_shortfall=coalition.shortfall,
+                demand_complete=coalition.complete,
+                coalition_id=coalition.coalition_id,
+                coalition_version=coalition.version,
+                coalition_state=coalition.state,
+                minimum_member_separation=coalition.minimum_separation_s,
+                metadata={
+                    "plan_id": plan.plan_id,
+                    "plan_version": plan.version,
+                    "plan_schema": plan.plan_schema,
+                },
+            )
+        )
+        coalition_records.append(
+            CoalitionRecord(
+                timestamp=plan.created_at,
+                global_track_id=coalition.target_id,
+                coalition_id=coalition.coalition_id,
+                coalition_version=coalition.version,
+                coalition_state=coalition.state,
+                coordination_mode=coalition.coordination_mode,
+                member_ids=tuple(member.resource_id for member in coalition.members),
+                member_roles={
+                    member.resource_id: member.member_role for member in coalition.members
+                },
+                required_resource_count=coalition.required_resource_count,
+                demand_assigned=coalition.assigned_resource_count,
+                demand_shortfall=coalition.shortfall,
+                demand_complete=coalition.complete,
+                minimum_member_separation=coalition.minimum_separation_s,
+                trigger_timestamp=plan.created_at,
+                metadata={
+                    "plan_id": plan.plan_id,
+                    "plan_version": plan.version,
+                    "plan_schema": plan.plan_schema,
+                    "complete": coalition.complete,
+                },
+            )
+        )
+    return demand_records, coalition_records
 
 
 def track_records_from_d2(
@@ -457,6 +558,20 @@ def terminal_to_record(
     friend_conflict_state: str,
     assignment_version: int,
     observed_global_track_id: str | None,
+    authorization_state: str = "recorded",
+    coordination_mode: str | None = None,
+    coalition_id: str | None = None,
+    coalition_version: int | None = None,
+    coalition_state: str | None = None,
+    member_role: str | None = None,
+    wave_id: str | int | None = None,
+    required_resource_count: int | None = None,
+    demand_assigned: int | None = None,
+    demand_shortfall: int | None = None,
+    demand_complete: bool | None = None,
+    arrival_window_start: float | None = None,
+    arrival_window_end: float | None = None,
+    minimum_member_separation: float | None = None,
 ) -> TerminalRecord:
     correct = None
     if observed_global_track_id is not None:
@@ -472,6 +587,20 @@ def terminal_to_record(
         assignment_version=assignment_version,
         expected_global_track_id=assigned_global_track_id,
         association_correct=correct,
+        authorization_state=authorization_state,
+        coordination_mode=coordination_mode,
+        coalition_id=coalition_id,
+        coalition_version=coalition_version,
+        coalition_state=coalition_state,
+        member_role=member_role,
+        wave_id=wave_id,
+        required_resource_count=required_resource_count,
+        demand_assigned=demand_assigned,
+        demand_shortfall=demand_shortfall,
+        demand_complete=demand_complete,
+        arrival_window_start=arrival_window_start,
+        arrival_window_end=arrival_window_end,
+        minimum_member_separation=minimum_member_separation,
     )
 
 

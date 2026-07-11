@@ -42,7 +42,7 @@ def test_d1_canonical_track_can_feed_d2_detection_contract() -> None:
 
 
 def test_d3_required_plan_cannot_be_handed_to_d5_for_locking() -> None:
-    config = PlannerConfig(enable_hysteresis=False, human_authorization_state="approved")
+    config = PlannerConfig(enable_hysteresis=False, human_authorization_state="required")
     planner = AssignmentPlanner(
         cost_model=CostModel(
             weights=CostWeights(window=0.0, covariance=0.0, threat=0.0),

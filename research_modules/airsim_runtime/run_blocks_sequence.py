@@ -96,9 +96,68 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help=(
-            "Set N for the current AirSim scenario. Main generates N resources, "
-            "N actor targets, and a matching temporary settings file."
+            "Backward-compatible equal-scale shorthand. Main generates N resources "
+            "and N actor targets. Do not combine with --resource-count/--target-count."
         ),
+    )
+    parser.add_argument(
+        "--resource-count",
+        type=int,
+        default=None,
+        help="Number of interceptor/ComputerVision resource vehicles for an M-to-N scenario.",
+    )
+    parser.add_argument(
+        "--target-count",
+        type=int,
+        default=None,
+        help="Number of moved actor targets for an M-to-N scenario.",
+    )
+    parser.add_argument(
+        "--high-threat-resource-count",
+        type=int,
+        default=3,
+        help="Required coalition size for targets above the cooperative threat threshold.",
+    )
+    parser.add_argument(
+        "--enable-cooperative-demand",
+        action="store_true",
+        help="Enable high-threat cooperative demand even when resource and target counts match.",
+    )
+    parser.add_argument(
+        "--cooperative-high-threat-target-count",
+        type=int,
+        default=1,
+        help="Number of online center tracks assigned the simulated high-threat prior.",
+    )
+    parser.add_argument(
+        "--cooperative-threat-threshold",
+        type=float,
+        default=0.9,
+        help="Threat score at which a target receives the cooperative resource demand.",
+    )
+    parser.add_argument(
+        "--cooperative-coordination-mode",
+        choices=("independent", "simultaneous", "sequential", "hybrid"),
+        default="hybrid",
+        help="Coordination policy for high-threat coalitions.",
+    )
+    parser.add_argument(
+        "--cooperative-primary-count",
+        type=int,
+        default=2,
+        help="Wave-0 primary member count for hybrid cooperative interception.",
+    )
+    parser.add_argument(
+        "--cooperative-wave-gap",
+        type=float,
+        default=2.0,
+        help="Nominal delay in seconds between cooperative interception waves.",
+    )
+    parser.add_argument(
+        "--cooperative-minimum-separation",
+        type=float,
+        default=0.5,
+        help="Minimum temporal separation in seconds between coalition members.",
     )
     parser.add_argument(
         "--secondary-count",
@@ -294,6 +353,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--target-detection-filter", default="MSM_TargetActor_*")
     parser.add_argument(
+        "--detection-warmup-frames",
+        type=int,
+        default=1,
+        help="Discard this many rendered detection frames after each reset/setup.",
+    )
+    parser.add_argument(
         "--detection-backend",
         choices=("airsim", "yolo"),
         default="airsim",
@@ -475,7 +540,8 @@ def _run_guidance_law_sweep(args: argparse.Namespace) -> int:
 
 
 def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str):
-    drone_count = _resolve_drone_count(args)
+    resource_count, target_count, explicit_counts = _resolve_scenario_counts(args)
+    _validate_cooperative_options(args)
     settings_path = Path(args.settings)
     if args.actor_2v2 and args.settings == DEFAULT_SETTINGS:
         settings_path = Path(ACTOR_2V2_TUNED_SETTINGS if args.terminal_handoff_tuned else ACTOR_2V2_SETTINGS)
@@ -504,17 +570,23 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         if args.cv_5v5_d4d5_stress
         else "blocks_readonly_smoke"
     )
-    if drone_count is not None:
+    if explicit_counts:
+        legacy_equal_scale = args.drone_count is not None
+        scale_name = (
+            f"n{resource_count}"
+            if legacy_equal_scale
+            else f"m{resource_count}_n{target_count}"
+        )
         if args.actor_2v2_active_secondary_visual_png:
-            scenario_name = f"blocks_actor_n{drone_count}_active_secondary_visual_png"
+            scenario_name = f"blocks_actor_{scale_name}_active_secondary_visual_png"
         elif args.actor_5v5_active_center_replan:
-            scenario_name = f"blocks_actor_n{drone_count}_active_center_replan"
+            scenario_name = f"blocks_actor_{scale_name}_active_center_replan"
         elif args.actor_2v2 or args.actor_5v5:
-            scenario_name = f"blocks_actor_n{drone_count}"
+            scenario_name = f"blocks_actor_{scale_name}"
         elif args.cv_5v5_d4d5_stress:
-            scenario_name = f"blocks_cv_n{drone_count}_d4d5_stress"
+            scenario_name = f"blocks_cv_{scale_name}_d4d5_stress"
         elif args.cv_5v5:
-            scenario_name = f"blocks_cv_n{drone_count}"
+            scenario_name = f"blocks_cv_{scale_name}"
     target_scale_m = (
         args.target_scale_m
         if args.target_scale_m is not None
@@ -532,11 +604,13 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
     )
     actor_config = {}
     if args.actor_2v2:
-        actor_count = drone_count or 2
-        actor_resources = default_interceptor_vehicle_names(actor_count)
-        if args.drone_count is not None:
+        actor_resource_count = resource_count or 2
+        actor_target_count = target_count or 2
+        actor_resources = default_interceptor_vehicle_names(actor_resource_count)
+        if explicit_counts:
             settings_path = write_dynamic_multirotor_settings(
-                generated_settings_dir / f"blocks_actor_n{actor_count}_settings.json",
+                generated_settings_dir
+                / f"blocks_actor_m{actor_resource_count}_n{actor_target_count}_settings.json",
                 vehicle_names=actor_resources,
                 y_spacing_m=args.actor_target_spacing
                 if args.actor_target_spacing is not None
@@ -554,7 +628,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             "resource_vehicle_names": actor_resources,
             "target_actor_specs": (
                 default_actor_target_specs(
-                    count=actor_count,
+                    count=actor_target_count,
                     target_z=args.intercept_altitude_z if args.execute_intercept else -2.0,
                     target_distance_m=args.actor_target_distance
                     if args.actor_target_distance is not None
@@ -570,7 +644,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                     x_speed_step_mps=0.0,
                     y_speed_span_mps=0.6,
                 )
-                if args.drone_count is not None
+                if explicit_counts
                 else default_2v2_actor_target_specs(
                     target_z=args.intercept_altitude_z if args.execute_intercept else -2.0,
                     asset_name=args.target_asset_name,
@@ -581,12 +655,19 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             "metadata": {
                 "runtime_mode": (
                     "actor_nvN_active_secondary_visual_png"
-                    if args.drone_count is not None and args.actor_2v2_active_secondary_visual_png
+                    if args.drone_count is not None
+                    and args.actor_2v2_active_secondary_visual_png
+                    else "actor_m_to_n_active_secondary_visual_png"
+                    if explicit_counts and args.actor_2v2_active_secondary_visual_png
                     else "actor_nvN"
                     if args.drone_count is not None
+                    else "actor_m_to_n"
+                    if explicit_counts
                     else "actor_2v2"
                 ),
-                "drone_count": actor_count,
+                "drone_count": actor_resource_count,
+                "resource_count": actor_resource_count,
+                "target_count": actor_target_count,
                 "terminal_handoff_tuned": bool(args.terminal_handoff_tuned),
                 "target_asset_name": args.target_asset_name,
                 "active_secondary_visual_png": bool(args.actor_2v2_active_secondary_visual_png),
@@ -596,11 +677,13 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             },
         }
     if args.actor_5v5:
-        actor_count = drone_count or 5
-        actor_5v5_resources = default_interceptor_vehicle_names(actor_count)
-        if args.drone_count is not None:
+        actor_resource_count = resource_count or 5
+        actor_target_count = target_count or 5
+        actor_5v5_resources = default_interceptor_vehicle_names(actor_resource_count)
+        if explicit_counts:
             settings_path = write_dynamic_multirotor_settings(
-                generated_settings_dir / f"blocks_actor_n{actor_count}_settings.json",
+                generated_settings_dir
+                / f"blocks_actor_m{actor_resource_count}_n{actor_target_count}_settings.json",
                 vehicle_names=actor_5v5_resources,
                 y_spacing_m=args.actor_target_spacing
                 if args.actor_target_spacing is not None
@@ -618,7 +701,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             "resource_vehicle_names": actor_5v5_resources,
             "target_actor_specs": (
                 default_actor_target_specs(
-                    count=actor_count,
+                    count=actor_target_count,
                     target_z=args.intercept_altitude_z if args.execute_intercept else -5.0,
                     target_distance_m=args.actor_target_distance
                     if args.actor_target_distance is not None
@@ -634,7 +717,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                     x_speed_step_mps=0.1,
                     y_speed_span_mps=0.8,
                 )
-                if args.drone_count is not None
+                if explicit_counts
                 else default_5v5_actor_target_specs(
                     target_z=args.intercept_altitude_z if args.execute_intercept else -5.0,
                     target_distance_m=args.actor_target_distance
@@ -650,8 +733,16 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             ),
             "detection_filter_names": detection_filters,
             "metadata": {
-                "runtime_mode": "actor_nvN" if args.drone_count is not None else "actor_5v5",
-                "drone_count": actor_count,
+                "runtime_mode": (
+                    "actor_nvN"
+                    if args.drone_count is not None
+                    else "actor_m_to_n"
+                    if explicit_counts
+                    else "actor_5v5"
+                ),
+                "drone_count": actor_resource_count,
+                "resource_count": actor_resource_count,
+                "target_count": actor_target_count,
                 "target_asset_name": args.target_asset_name,
                 "active_center_replan_visual_png": bool(args.actor_5v5_active_center_replan),
                 "active_degradation_time_s": float(args.active_degradation_time),
@@ -667,15 +758,16 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             },
         }
     if args.cv_5v5 or args.cv_5v5_d4d5_stress:
-        cv_count = drone_count or 5
+        cv_resource_count = resource_count or 5
+        cv_target_count = target_count or 5
         cv_resources = (
-            default_cv_camera_vehicle_names(cv_count)
-            if args.drone_count is not None
+            default_cv_camera_vehicle_names(cv_resource_count)
+            if explicit_counts
             else default_cv_5v5_camera_vehicle_names()
         )
         cv_secondaries = (
             default_cv_secondary_vehicle_names(args.secondary_count)
-            if args.drone_count is not None or args.secondary_count != 2
+            if explicit_counts or args.secondary_count != 2
             else default_cv_5v5_secondary_vehicle_names()
         )
         secondary_height_above_targets_m = (
@@ -710,7 +802,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             else 480
         )
         if (
-            args.drone_count is not None
+            explicit_counts
             or args.secondary_count != 2
             or args.mobile_secondary_recon
             or args.secondary_fov is not None
@@ -718,7 +810,8 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             or args.secondary_height is not None
         ):
             settings_path = write_dynamic_computer_vision_settings(
-                generated_settings_dir / f"blocks_cv_n{cv_count}_settings.json",
+                generated_settings_dir
+                / f"blocks_cv_m{cv_resource_count}_n{cv_target_count}_settings.json",
                 camera_vehicle_names=cv_resources,
                 secondary_vehicle_names=cv_secondaries,
                 camera_spacing_m=args.actor_target_spacing
@@ -740,7 +833,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         target_specs = (
             (
                 default_actor_target_specs(
-                    count=cv_count,
+                    count=cv_target_count,
                     target_z=-10.0,
                     target_distance_m=args.actor_target_distance
                     if args.actor_target_distance is not None
@@ -756,7 +849,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                     x_speed_step_mps=0.1,
                     y_speed_span_mps=0.7,
                 )
-                if args.drone_count is not None
+                if explicit_counts
                 else default_cv_5v5_d4d5_stress_actor_target_specs(
                     target_z=-10.0,
                     target_distance_m=args.actor_target_distance
@@ -772,7 +865,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             if args.cv_5v5_d4d5_stress
             else (
                 default_actor_target_specs(
-                    count=cv_count,
+                    count=cv_target_count,
                     target_z=-10.0,
                     target_distance_m=args.actor_target_distance
                     if args.actor_target_distance is not None
@@ -788,7 +881,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                     x_speed_step_mps=0.1,
                     y_speed_span_mps=1.2,
                 )
-                if args.drone_count is not None
+                if explicit_counts
                 else default_cv_5v5_actor_target_specs(
                     target_z=-10.0,
                     asset_name=args.target_asset_name,
@@ -824,13 +917,19 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                 "runtime_mode": (
                     "computer_vision_nvN_d4d5_stress"
                     if args.drone_count is not None and args.cv_5v5_d4d5_stress
+                    else "computer_vision_m_to_n_d4d5_stress"
+                    if explicit_counts and args.cv_5v5_d4d5_stress
                     else "computer_vision_nvN"
                     if args.drone_count is not None
+                    else "computer_vision_m_to_n"
+                    if explicit_counts
                     else "computer_vision_5v5_d4d5_stress"
                     if args.cv_5v5_d4d5_stress
                     else "computer_vision_5v5"
                 ),
-                "drone_count": cv_count,
+                "drone_count": cv_resource_count,
+                "resource_count": cv_resource_count,
+                "target_count": cv_target_count,
                 "secondary_camera_vehicle_names": cv_secondaries,
                 "d4d5_stress_enabled": bool(args.cv_5v5_d4d5_stress),
                 "secondary_recon_mode": (
@@ -909,8 +1008,23 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             args.intercept_yaw_mode
             or ("look_at_target" if args.terminal_handoff_tuned else "velocity")
         ),
+        cooperative_demand_enabled=bool(args.enable_cooperative_demand)
+        or bool(
+            explicit_counts
+            and resource_count is not None
+            and target_count is not None
+            and resource_count != target_count
+        ),
+        cooperative_high_threat_target_count=int(args.cooperative_high_threat_target_count),
+        cooperative_threat_threshold=float(args.cooperative_threat_threshold),
+        high_threat_required_resource_count=int(args.high_threat_resource_count),
+        cooperative_coordination_mode=str(args.cooperative_coordination_mode),
+        cooperative_primary_count=int(args.cooperative_primary_count),
+        cooperative_wave_gap_s=float(args.cooperative_wave_gap),
+        cooperative_minimum_separation_s=float(args.cooperative_minimum_separation),
         target_asset_name=args.target_asset_name,
         target_detection_filter=args.target_detection_filter,
+        detection_warmup_frames=int(args.detection_warmup_frames),
         detection_backend=args.detection_backend,
         yolo_weights_path=Path(args.yolo_weights),
         yolo_tracker_backend=args.yolo_tracker_backend,
@@ -931,12 +1045,74 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
     return base_config, sequence_id, episode_specs
 
 
-def _resolve_drone_count(args: argparse.Namespace) -> int | None:
-    if args.drone_count is None:
-        return None
-    if args.drone_count <= 0:
-        raise SystemExit("--drone-count must be positive")
-    return int(args.drone_count)
+def _resolve_scenario_counts(
+    args: argparse.Namespace,
+) -> tuple[int | None, int | None, bool]:
+    if args.drone_count is not None and (
+        args.resource_count is not None or args.target_count is not None
+    ):
+        raise SystemExit(
+            "--drone-count cannot be combined with --resource-count or --target-count"
+        )
+    if args.drone_count is not None:
+        if args.drone_count <= 0:
+            raise SystemExit("--drone-count must be positive")
+        count = int(args.drone_count)
+        return count, count, True
+
+    explicit = args.resource_count is not None or args.target_count is not None
+    if not explicit:
+        return None, None, False
+    for name in ("resource_count", "target_count"):
+        value = getattr(args, name)
+        if value is not None and value <= 0:
+            raise SystemExit(f"--{name.replace('_', '-')} must be positive")
+
+    default_count = (
+        2
+        if args.actor_2v2
+        else 5
+        if args.actor_5v5 or args.cv_5v5 or args.cv_5v5_d4d5_stress
+        else None
+    )
+    if default_count is None:
+        raise SystemExit(
+            "--resource-count/--target-count require an actor or ComputerVision scenario"
+        )
+    resource_count = (
+        int(args.resource_count)
+        if args.resource_count is not None
+        else default_count
+    )
+    target_count = (
+        int(args.target_count)
+        if args.target_count is not None
+        else default_count
+    )
+    return resource_count, target_count, True
+
+
+def _validate_cooperative_options(args: argparse.Namespace) -> None:
+    required = int(args.high_threat_resource_count)
+    primary = int(args.cooperative_primary_count)
+    if required < 1:
+        raise SystemExit("--high-threat-resource-count must be positive")
+    if primary < 1 or primary > required:
+        raise SystemExit(
+            "--cooperative-primary-count must be between 1 and "
+            "--high-threat-resource-count"
+        )
+    if int(args.cooperative_high_threat_target_count) < 0:
+        raise SystemExit("--cooperative-high-threat-target-count must be non-negative")
+    threshold = float(args.cooperative_threat_threshold)
+    if not 0.0 <= threshold <= 1.0:
+        raise SystemExit("--cooperative-threat-threshold must be in [0, 1]")
+    if float(args.cooperative_wave_gap) < 0.0:
+        raise SystemExit("--cooperative-wave-gap must be non-negative")
+    if float(args.cooperative_minimum_separation) < 0.0:
+        raise SystemExit("--cooperative-minimum-separation must be non-negative")
+    if int(args.detection_warmup_frames) < 0:
+        raise SystemExit("--detection-warmup-frames must be non-negative")
 
 
 def _print_sequence_result(result) -> None:

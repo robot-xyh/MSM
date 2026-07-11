@@ -23,6 +23,22 @@ def test_nominal_5v5_episode_runs_and_writes_outputs(tmp_path: Path) -> None:
     assert any(decision.action == "continue_center" for decision in result.decisions)
 
 
+def test_centralized_cooperative_3v1_and_5v2_satisfy_atomic_demands(
+    tmp_path: Path,
+) -> None:
+    for scenario_name in ("cooperative_3v1", "cooperative_5v2"):
+        output_dir = tmp_path / scenario_name
+        config = make_standard_scenario(scenario_name, seed=21, duration_s=5.0)
+
+        result = run_integrated_episode(config, output_dir=output_dir)
+
+        assert result.metrics.target_demand_satisfaction_rate_micro == 1.0
+        assert result.metrics.unmet_slot_count == 0
+        assert result.metrics.duplicate_assignment_count == 0
+        assert result.metrics.erroneous_duplicate_lock_count == 0
+        assert result.output_paths["episode_log"].exists()
+
+
 def test_center_destroyed_passively_degrades_to_secondary(tmp_path: Path) -> None:
     config = make_standard_scenario("center_destroyed", seed=12, duration_s=6.0)
 

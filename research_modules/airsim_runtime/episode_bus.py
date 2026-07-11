@@ -31,6 +31,7 @@ from d3_assignment_planner import (
     CostWeights,
     PlannerConfig,
     StalePlanError,
+    TargetDemand,
     assignment_validity_summary_from_plan,
     apply_terminal_feedback_to_planner_inputs,
     continue_active_secondary_plan,
@@ -41,7 +42,9 @@ from d4_distributed_fallback import (
     ActiveDegradationArbiter,
     ActiveDegradationConfig,
     C2Health,
+    CenterReplanStatus,
     D4ArbitrationAdapter,
+    build_center_replan_risk_signature,
 )
 from d5_terminal_association import (
     Assignment as TerminalAssignment,
@@ -77,6 +80,7 @@ from d7_proportional_guidance import (
 from integrated_simulation.adapters import (
     d1_tracks_to_d2_detections,
     plan_to_assignment_records,
+    plan_to_m_to_n_records,
     plan_to_terminal_assignments,
     resources_to_d3,
     resources_to_d4,
@@ -206,8 +210,20 @@ class MainAirSimEpisodeBus:
         self._next_assignment_time_s = 0.0
         self._last_d4_by_pair: dict[tuple[str, str], Any] = {}
         self._last_d5_by_pair: dict[tuple[str, str], TerminalAssociation] = {}
+        self._last_coalition_visual_summaries: dict[str, dict[str, Any]] = {}
         self._last_d7_mode_by_pair: dict[tuple[str, str], str] = {}
-        self._pending_center_replan_reason: str | None = None
+        self._center_replan_status_by_scope: dict[
+            tuple[str, str | None, int | None], CenterReplanStatus
+        ] = {}
+        self._center_replan_request_counter = 0
+        self._center_replan_ttl_s = max(
+            float(config.metadata.get("center_replan_ttl_s", 2.0)),
+            float(config.dt_s),
+        )
+        self._center_replan_cooldown_s = max(
+            float(config.metadata.get("center_replan_cooldown_s", 2.0)),
+            float(config.dt_s),
+        )
         self._pending_secondary_takeover: dict[str, Any] | None = None
         self._pending_terminal_feedback: list[dict[str, Any]] = []
         self._last_terminal_feedback_writeback: dict[str, Any] = {}
@@ -221,11 +237,13 @@ class MainAirSimEpisodeBus:
         self._d2_source_kinematics: dict[str, dict[str, Any]] = {}
         self._last_secondary_readiness_state: str | None = None
         self._last_secondary_plan_state: str | None = None
+        self._cooperative_window_anchor_by_track: dict[str, float] = {}
         self.ticks: list[MainEpisodeBusTick] = []
 
     def process_frame(self, frame: AirSimFrame) -> MainEpisodeBusTick:
         frame_started = time.perf_counter()
         timestamp = float(frame.timestamp)
+        self._expire_center_replan_requests(timestamp)
         self._record_yolo_mot_frame_events(frame)
         truth_states = truth_states_from_blocks_frame(frame)
         truth_by_id = {state.truth_id: state for state in truth_states}
@@ -313,6 +331,15 @@ class MainAirSimEpisodeBus:
                 if self.current_plan is None
                 else self.current_plan.metadata.get("plan_schema"),
                 "terminal_feedback_writeback": self._last_terminal_feedback_writeback,
+                "coalition_count": 0
+                if self.current_plan is None
+                else len(self.current_plan.coalitions),
+                "incomplete_target_ids": []
+                if self.current_plan is None
+                else list(self.current_plan.incomplete_target_ids),
+                "demand_summaries": []
+                if self.current_plan is None
+                else _jsonable(self.current_plan.demand_summaries),
             },
             d4={
                 "decision_count": len(d4_results),
@@ -329,7 +356,10 @@ class MainAirSimEpisodeBus:
                     for context in terminal_contexts
                     if context.terminal_association.decision_state == "locked"
                 ),
-                "cross_view_association_count": len(self.terminal_bus.cross_view_associations()),
+                "cross_view_association_count": len(
+                    self._current_cross_view_associations(timestamp)
+                ),
+                "coalition_visual_summaries": self._last_coalition_visual_summaries,
             },
             d7={
                 "event_count": len(d7_events),
@@ -613,7 +643,16 @@ class MainAirSimEpisodeBus:
     ) -> bool:
         if not d2_tracks or not resources:
             return False
-        forced_replan_reason = self._pending_center_replan_reason
+        pending_center_replans = tuple(
+            status
+            for status in self._center_replan_status_by_scope.values()
+            if status.state == "pending"
+        )
+        forced_replan_reason = None
+        if pending_center_replans:
+            forced_replan_reason = ";".join(
+                sorted(status.request_id for status in pending_center_replans)
+            )
         secondary_takeover = self._pending_secondary_takeover
         if forced_replan_reason is None and secondary_takeover is not None:
             forced_replan_reason = str(
@@ -634,6 +673,19 @@ class MainAirSimEpisodeBus:
                 self.config.metadata.get("main_bus_default_target_threat_score", 0.75)
             ),
         )
+        if self.config.cooperative_demand_enabled:
+            target_tracks = _attach_cooperative_target_demands(
+                target_tracks,
+                timestamp=timestamp,
+                high_threat_target_count=self.config.cooperative_high_threat_target_count,
+                threat_threshold=self.config.cooperative_threat_threshold,
+                required_resource_count=self.config.high_threat_required_resource_count,
+                coordination_mode=self.config.cooperative_coordination_mode,
+                primary_resource_count=self.config.cooperative_primary_count,
+                wave_gap_s=self.config.cooperative_wave_gap_s,
+                minimum_separation_s=self.config.cooperative_minimum_separation_s,
+                window_anchor_by_track=self._cooperative_window_anchor_by_track,
+            )
         if not target_tracks:
             return False
         resource_states = resources_to_d3(resources)
@@ -671,6 +723,7 @@ class MainAirSimEpisodeBus:
                 timestamp=timestamp,
                 previous_plan=previous,
                 expected_previous_version=None if previous is None else previous.version,
+                forced_replan=forced_replan_reason is not None,
             )
         except StalePlanError as error:
             if previous is None:
@@ -694,19 +747,23 @@ class MainAirSimEpisodeBus:
             return False
         if feedback_writeback is not None:
             self._pending_terminal_feedback = []
-        if forced_replan_reason is not None and previous is not None:
+        if pending_center_replans and previous is not None:
             plan = replace(
                 plan,
-                decision_state="center_replan_accepted",
                 metadata={
                     **dict(plan.metadata),
                     "replan_reason": forced_replan_reason,
-                    "supersedes_plan_id": previous.plan_id,
-                    "supersedes_plan_version": previous.version,
-                    "active_plan_owner": "center",
+                    "center_replan_request_ids": tuple(
+                        status.request_id for status in pending_center_replans
+                    ),
                 },
             )
-            self._pending_center_replan_reason = None
+            self._resolve_center_replan_requests(
+                pending_center_replans,
+                previous_plan=previous,
+                resolved_plan=plan,
+                timestamp=timestamp,
+            )
         if (
             secondary_takeover is None
             and forced_replan_reason is None
@@ -776,6 +833,9 @@ class MainAirSimEpisodeBus:
         d2_by_id = {track.global_track_id: track for track in d2_tracks}
         assignment_records = plan_to_assignment_records(plan, d2_by_id)
         self.collector.extend_assignments(assignment_records)
+        demand_records, coalition_records = plan_to_m_to_n_records(plan)
+        self.collector.extend_target_demands(demand_records)
+        self.collector.extend_coalitions(coalition_records)
         self.current_bindings = guidance_bindings_from_assignment_plan(
             plan,
             resource_vehicle_map=_resource_vehicle_map(frame),
@@ -809,10 +869,170 @@ class MainAirSimEpisodeBus:
                     "terminal_feedback_writeback_applied": bool(
                         feedback_writeback is not None
                     ),
+                    "coalition_count": len(plan.coalitions),
+                    "incomplete_target_ids": list(plan.incomplete_target_ids),
+                    "demand_summaries": _jsonable(plan.demand_summaries),
                 },
             )
         )
         return previous is None or plan.changed
+
+    def _center_replan_status_for(self, assignment: Any) -> CenterReplanStatus | None:
+        return self._center_replan_status_by_scope.get(
+            (
+                str(assignment.target_id),
+                assignment.coalition_id,
+                assignment.coalition_version,
+            )
+        )
+
+    def _register_center_replan_request(self, result: Any, timestamp: float) -> None:
+        record = result.record
+        coalition = record.coalition_safety
+        scope = (
+            str(record.global_track_id),
+            coalition.coalition_id,
+            coalition.coalition_version,
+        )
+        current_signature = build_center_replan_risk_signature(record.risk_factors)
+        existing = self._center_replan_status_by_scope.get(scope)
+        if existing is not None and existing.state == "pending":
+            merged_signature = build_center_replan_risk_signature(
+                (*existing.risk_signature, *current_signature)
+            )
+            self._center_replan_status_by_scope[scope] = replace(
+                existing,
+                risk_signature=merged_signature,
+            )
+            self._record_center_replan_event(
+                "center_replan_request_deduplicated",
+                self._center_replan_status_by_scope[scope],
+                timestamp=timestamp,
+                extra={"duplicate_risk_signature": list(current_signature)},
+            )
+            return
+
+        self._center_replan_request_counter += 1
+        request_signature = current_signature
+        if existing is not None:
+            request_signature = build_center_replan_risk_signature(
+                (*existing.risk_signature, *current_signature)
+            )
+        status = CenterReplanStatus(
+            request_id=f"main-center-replan-{self._center_replan_request_counter:06d}",
+            target_id=str(record.global_track_id),
+            coalition_id=coalition.coalition_id,
+            coalition_version=coalition.coalition_version,
+            risk_signature=request_signature,
+            state="pending",
+            requested_at=float(timestamp),
+        )
+        self._center_replan_status_by_scope[scope] = status
+        self._record_center_replan_event(
+            "center_replan_request_created",
+            status,
+            timestamp=timestamp,
+        )
+
+    def _resolve_center_replan_requests(
+        self,
+        statuses: tuple[CenterReplanStatus, ...],
+        *,
+        previous_plan: AssignmentPlan,
+        resolved_plan: AssignmentPlan,
+        timestamp: float,
+    ) -> None:
+        for status in statuses:
+            scope = (
+                status.target_id,
+                status.coalition_id,
+                status.coalition_version,
+            )
+            current = self._center_replan_status_by_scope.get(scope)
+            if current is None or current.request_id != status.request_id:
+                continue
+            changed = _target_execution_signature(
+                previous_plan,
+                status.target_id,
+            ) != _target_execution_signature(resolved_plan, status.target_id)
+            state = "applied" if changed else "acknowledged_no_change"
+            resolved = replace(
+                current,
+                state=state,
+                resolved_at=float(timestamp),
+                resolved_plan_id=resolved_plan.plan_id,
+                resolved_plan_version=resolved_plan.version,
+            )
+            self._center_replan_status_by_scope[scope] = resolved
+            self._record_center_replan_event(
+                "center_replan_applied"
+                if changed
+                else "center_replan_ack_no_change",
+                resolved,
+                timestamp=timestamp,
+                extra={
+                    "pending_dwell_s": max(
+                        0.0, float(timestamp) - float(current.requested_at)
+                    )
+                },
+            )
+
+    def _expire_center_replan_requests(self, timestamp: float) -> None:
+        for scope, status in tuple(self._center_replan_status_by_scope.items()):
+            if status.state == "pending":
+                if float(timestamp) - float(status.requested_at) < self._center_replan_ttl_s:
+                    continue
+                expired = replace(
+                    status,
+                    state="expired",
+                    resolved_at=float(timestamp),
+                )
+                self._center_replan_status_by_scope[scope] = expired
+                self._record_center_replan_event(
+                    "center_replan_expired",
+                    expired,
+                    timestamp=timestamp,
+                    extra={
+                        "pending_dwell_s": max(
+                            0.0, float(timestamp) - float(status.requested_at)
+                        )
+                    },
+                )
+                continue
+            if (
+                status.state == "expired"
+                and status.resolved_at is not None
+                and float(timestamp) - float(status.resolved_at)
+                >= max(float(self.config.dt_s), 1e-6)
+            ):
+                del self._center_replan_status_by_scope[scope]
+
+    def _record_center_replan_event(
+        self,
+        event_type: str,
+        status: CenterReplanStatus,
+        *,
+        timestamp: float,
+        extra: Mapping[str, Any] | None = None,
+    ) -> None:
+        metadata = {
+            **status.to_dict(),
+            "requested_at": status.requested_at,
+            "resolved_at": status.resolved_at,
+            "pending_dwell_s": None
+            if status.resolved_at is None
+            else max(0.0, status.resolved_at - status.requested_at),
+            **dict(extra or {}),
+        }
+        self.collector.add_event(
+            EventRecord(
+                timestamp=float(timestamp),
+                event_type=event_type,
+                actor_id="main/D3-D4",
+                severity="warning" if event_type.endswith("expired") else "info",
+                metadata=metadata,
+            )
+        )
 
     def _process_d5(
         self,
@@ -831,7 +1051,7 @@ class MainAirSimEpisodeBus:
             default_z_ned_m=float(self.config.metadata.get("main_bus_default_target_z_ned_m", -5.0)),
         )
         terminal_assignments = {
-            assignment.assigned_global_track_id: assignment
+            (assignment.resource_id, assignment.assigned_global_track_id): assignment
             for assignment in plan_to_terminal_assignments(self.current_plan)
         }
         if not terminal_tracks or not terminal_assignments:
@@ -840,11 +1060,17 @@ class MainAirSimEpisodeBus:
         local_tracks = geometric_local_visual_tracks_from_blocks_frame(frame)
         local_truth_map = offline_truth_map_from_blocks_frame(frame, d2_tracks)
         cross_view_before = {
-            item.global_track_id: item for item in self.terminal_bus.cross_view_associations()
+            item.global_track_id: item
+            for item in self._current_cross_view_associations(timestamp)
         }
         contexts: list[_TerminalDecisionContext] = []
+        coalition_by_target = {
+            item.target_id: item for item in self.current_plan.coalitions
+        }
         for assignment in self.current_plan.assignments:
-            terminal_assignment = terminal_assignments.get(assignment.target_id)
+            terminal_assignment = terminal_assignments.get(
+                (assignment.resource_id, assignment.target_id)
+            )
             if terminal_assignment is None:
                 continue
             camera = _camera_for_resource(frame, assignment.resource_id, assignment.target_id, terminal_tracks)
@@ -897,6 +1123,7 @@ class MainAirSimEpisodeBus:
                 if decision.local_track_id is not None
                 else None
             )
+            coalition = coalition_by_target.get(assignment.target_id)
             terminal_record = terminal_to_record(
                 timestamp=timestamp,
                 resource_id=assignment.resource_id,
@@ -907,6 +1134,24 @@ class MainAirSimEpisodeBus:
                 friend_conflict_state=decision.friend_conflict_state,
                 assignment_version=decision.assignment_version,
                 observed_global_track_id=observed_global_track_id,
+                authorization_state=decision.authorization_state,
+                coordination_mode=decision.coordination_mode,
+                coalition_id=decision.coalition_id,
+                coalition_version=decision.coalition_version,
+                coalition_state=None if coalition is None else coalition.state,
+                member_role=decision.member_role,
+                wave_id=decision.wave_id,
+                required_resource_count=decision.required_resource_count,
+                demand_assigned=None
+                if coalition is None
+                else coalition.assigned_resource_count,
+                demand_shortfall=None if coalition is None else coalition.shortfall,
+                demand_complete=None if coalition is None else coalition.complete,
+                arrival_window_start=decision.arrival_window_start_s,
+                arrival_window_end=decision.arrival_window_end_s,
+                minimum_member_separation=None
+                if coalition is None
+                else coalition.minimum_separation_s,
             )
             self.collector.add_terminal(terminal_record)
             local_track = _local_track_by_id(scoped_local_tracks, decision.local_track_id)
@@ -953,7 +1198,105 @@ class MainAirSimEpisodeBus:
             )
             self._last_d5_by_pair[(assignment.resource_id, assignment.target_id)] = decision
             contexts.append(context)
-        return contexts
+        return self._annotate_coalition_visual_summaries(
+            contexts,
+            timestamp=timestamp,
+        )
+
+    def _annotate_coalition_visual_summaries(
+        self,
+        contexts: list[_TerminalDecisionContext],
+        *,
+        timestamp: float,
+    ) -> list[_TerminalDecisionContext]:
+        bindings_by_target: dict[str, list[Any]] = {}
+        for binding in self.current_bindings:
+            bindings_by_target.setdefault(
+                str(binding.assigned_global_track_id), []
+            ).append(binding)
+        summaries: dict[str, dict[str, Any]] = {}
+        updated: list[_TerminalDecisionContext] = []
+        summary_by_target: dict[str, Any] = {}
+        for target_id, bindings in bindings_by_target.items():
+            try:
+                summary = self.terminal_bus.coalition_visual_summary(
+                    bindings,
+                    required_stable_frames=2,
+                )
+            except ValueError as error:
+                self.collector.add_event(
+                    EventRecord(
+                        timestamp=float(timestamp),
+                        event_type="d5_coalition_visual_summary_error",
+                        actor_id="D5",
+                        severity="warning",
+                        note=str(error),
+                        metadata={"global_track_id": target_id},
+                    )
+                )
+                continue
+            payload = _jsonable(asdict(summary))
+            summaries[target_id] = payload
+            summary_by_target[target_id] = summary
+            self.collector.add_event(
+                EventRecord(
+                    timestamp=float(timestamp),
+                    event_type="d5_coalition_visual_summary",
+                    actor_id="D5",
+                    metadata=payload,
+                )
+            )
+
+        for context in contexts:
+            target_id = str(context.assignment.target_id)
+            summary = summary_by_target.get(target_id)
+            if summary is None:
+                updated.append(context)
+                continue
+            association = context.terminal_association
+            association = replace(
+                association,
+                metadata={
+                    **dict(association.metadata),
+                    "coalition_visual_complete": summary.coalition_visual_consensus,
+                    "primary_required_count": summary.primary_required_count,
+                    "primary_locked_resource_ids": list(
+                        summary.primary_locked_resource_ids
+                    ),
+                    "primary_lock_complete": summary.primary_lock_complete,
+                    "reserve_ready_resource_ids": list(
+                        summary.reserve_ready_resource_ids
+                    ),
+                    "coalition_visual_consensus": summary.coalition_visual_consensus,
+                    "planned_cooperative_lock": summary.planned_cooperative_lock,
+                    "support_count": len(summary.primary_locked_resource_ids),
+                    "coalition_conflict_state": summary.coalition_conflict_state,
+                    "coalition_visual_reason": summary.reason,
+                    "stable_lock_frame_count_by_resource": dict(
+                        summary.stable_lock_frame_count_by_resource
+                    ),
+                    "visual_png_authorized_resource_ids": list(
+                        summary.visual_png_authorized_resource_ids
+                    ),
+                },
+            )
+            updated_context = replace(context, terminal_association=association)
+            self._last_d5_by_pair[
+                (context.assignment.resource_id, context.assignment.target_id)
+            ] = association
+            updated.append(updated_context)
+        self._last_coalition_visual_summaries = summaries
+        return updated
+
+    def _current_cross_view_associations(self, timestamp: float) -> list[Any]:
+        if self.current_plan is None:
+            return []
+        return self.terminal_bus.cross_view_associations(
+            as_of_timestamp=float(timestamp),
+            max_age_s=max(float(self.config.dt_s) * 1.5, float(self.config.dt_s)),
+            plan_id=self.current_plan.plan_id,
+            plan_version=self.current_plan.version,
+        )
 
     def _process_d4(
         self,
@@ -971,7 +1314,8 @@ class MainAirSimEpisodeBus:
         d2_by_id = {track.global_track_id: track for track in d2_tracks}
         resources_by_id = {resource.resource_id: resource for resource in resources}
         cross_view = {
-            item.global_track_id: item for item in self.terminal_bus.cross_view_associations()
+            item.global_track_id: item
+            for item in self._current_cross_view_associations(timestamp)
         }
         secondary_nodes = [
             item
@@ -995,6 +1339,7 @@ class MainAirSimEpisodeBus:
                 assignment=assignment,
                 terminal_association=context.terminal_association,
                 cross_view_summary=cross_view.get(context.terminal_association.assigned_global_track_id),
+                d5_evidence=context.terminal_association.metadata,
                 c2_health=health,
                 secondary_nodes=secondary_nodes,
                 communication_records=communication_records,
@@ -1006,6 +1351,7 @@ class MainAirSimEpisodeBus:
                 consecutive_mismatch_frames=0,
                 current_plan_version=self.current_plan.version,
                 expected_plan_version=self.current_plan.version,
+                expected_coalition_version=assignment.coalition_version,
                 track_version=self.current_plan.version,
                 plan_id=self.current_plan.plan_id,
                 active_plan_owner=str(
@@ -1028,12 +1374,13 @@ class MainAirSimEpisodeBus:
                     "secondary_lease_expires_at_s"
                 ),
                 trigger_timestamp=timestamp,
+                center_replan_status=self._center_replan_status_for(assignment),
             )
             self.collector.add_event(EventRecord(**result.record.to_event_record_kwargs()))
             self._record_d4_lifecycle_events(result, timestamp=timestamp)
             self._last_d4_by_pair[(assignment.resource_id, assignment.target_id)] = result
             if result.record.action.value == "request_center_replan":
-                self._pending_center_replan_reason = result.record.reason
+                self._register_center_replan_request(result, timestamp)
             if result.record.action.value == "degrade_to_secondary":
                 active_owner = str(
                     self.current_plan.metadata.get("active_plan_owner", "center")
@@ -1246,7 +1593,7 @@ class MainAirSimEpisodeBus:
         self.collector.extend_links(_video_link_records(frame))
 
     def _record_cross_view_events(self, timestamp: float) -> None:
-        for item in self.terminal_bus.cross_view_associations():
+        for item in self._current_cross_view_associations(timestamp):
             if item.support_count > 1:
                 self.collector.add_event(
                     EventRecord(
@@ -1601,6 +1948,63 @@ class MainAirSimEpisodeBus:
     def _performance_budget_violation_count(self) -> int:
         budget_s = float(self.config.metadata.get("loop_budget_s", self.config.dt_s))
         return sum(1 for value in self._frame_processing_durations_s if value > budget_s)
+
+
+def _target_execution_signature(
+    plan: AssignmentPlan,
+    target_id: str,
+) -> tuple[Any, ...]:
+    assignments = tuple(
+        sorted(
+            (
+                assignment.resource_id,
+                assignment.target_id,
+                assignment.coalition_id,
+                assignment.coalition_version,
+                assignment.member_role,
+                assignment.wave_id,
+                assignment.arrival_window_start_s,
+                assignment.arrival_window_end_s,
+                assignment.required_resource_count,
+                assignment.metadata.get("activation_state", "active"),
+            )
+            for assignment in plan.assignments
+            if assignment.target_id == target_id
+        )
+    )
+    coalitions = tuple(
+        sorted(
+            (
+                coalition.coalition_id,
+                coalition.version,
+                coalition.state,
+                coalition.coordination_mode,
+                coalition.required_resource_count,
+                coalition.primary_resource_count,
+                tuple(
+                    sorted(
+                        (
+                            member.resource_id,
+                            member.member_role,
+                            member.wave_id,
+                            member.arrival_window_start_s,
+                            member.arrival_window_end_s,
+                            member.executable,
+                        )
+                        for member in coalition.members
+                    )
+                ),
+            )
+            for coalition in plan.coalitions
+            if coalition.target_id == target_id
+        )
+    )
+    return (
+        plan.metadata.get("active_plan_owner", "center"),
+        plan.metadata.get("owner_node_id"),
+        assignments,
+        coalitions,
+    )
 
 
 def run_main_episode_bus(
@@ -1970,14 +2374,12 @@ def _local_tracks_for_resource(
 ) -> list[LocalVisualTrack]:
     vehicle_name = _resource_vehicle_map(frame).get(resource_id)
     if vehicle_name:
-        scoped = [
+        return [
             track
             for track in local_tracks
             if track.local_track_id.startswith(f"{vehicle_name}:")
         ]
-        if scoped:
-            return scoped
-    return local_tracks
+    return []
 
 
 def _camera_id_for_resource(frame: AirSimFrame, resource_id: str) -> str | None:
@@ -2126,6 +2528,14 @@ def _d4_permission(d4_result: Any | None) -> D4GuidancePermission:
         requires_human_review=record.requires_human_review,
         new_plan_id=metadata.get("secondary_plan_id"),
         new_plan_version=metadata.get("secondary_plan_version"),
+        coalition_id=metadata.get("coalition_id"),
+        coalition_version=metadata.get("coalition_version"),
+        center_available=(metadata.get("coalition_safety") or {}).get(
+            "center_available"
+        ),
+        atomic_coalition_formed=(metadata.get("coalition_safety") or {}).get(
+            "coalition_complete"
+        ),
         metadata=metadata,
     )
 
@@ -2140,6 +2550,18 @@ def _binding_for_d7(binding: Any) -> dict[str, Any]:
     payload.setdefault("vehicle_name", payload.get("resource_actor_name") or payload.get("resource_id"))
     payload.setdefault("authorization_state", payload.get("human_authorization_state", "recorded"))
     payload.setdefault("assignment_validity_state", payload.get("assignment_validity_state", "current"))
+    member_role = str(payload.get("member_role", "primary")).lower()
+    wave_id = int(payload.get("wave_id", 0))
+    activation_state = str(
+        payload.get("activation_state")
+        or metadata.get("activation_state")
+        or ("active" if member_role == "primary" and wave_id == 0 else "standby")
+    )
+    payload["activation_state"] = activation_state
+    if activation_state in {"active", "activated"}:
+        payload.setdefault("activation_plan_version", payload.get("plan_version"))
+        payload.setdefault("activation_track_version", payload.get("track_version"))
+        payload.setdefault("activation_coalition_version", payload.get("coalition_version"))
     return payload
 
 
@@ -2308,6 +2730,15 @@ def _terminal_feedback_metadata(
         "global_track_id": assignment.target_id,
         "assigned_global_track_id": decision.assigned_global_track_id,
         "resource_id": assignment.resource_id,
+        "plan_id": decision.plan_id,
+        "plan_version": decision.plan_version,
+        "coalition_id": decision.coalition_id,
+        "coalition_version": decision.coalition_version,
+        "member_role": decision.member_role,
+        "wave_id": decision.wave_id,
+        "required_resource_count": decision.required_resource_count,
+        "coordination_mode": decision.coordination_mode,
+        "activation_state": decision.activation_state,
         "terminal_feedback_state": terminal_state,
         "recommended_action": recommended_action,
         "main_action": recommended_action,
@@ -2345,6 +2776,68 @@ def _terminal_feedback_metadata(
     ):
         metadata["fov_difficulty_suggestion"] = "increase_current_edge"
     return metadata
+
+
+def _attach_cooperative_target_demands(
+    tracks: list[Any],
+    *,
+    timestamp: float,
+    high_threat_target_count: int,
+    threat_threshold: float,
+    required_resource_count: int,
+    coordination_mode: str,
+    primary_resource_count: int,
+    wave_gap_s: float,
+    minimum_separation_s: float,
+    window_anchor_by_track: dict[str, float],
+) -> list[Any]:
+    """Attach simulated classifier demand without consulting AirSim truth IDs."""
+
+    selected_ids = {
+        track.track_id
+        for track in sorted(tracks, key=lambda item: str(item.track_id))[
+            : max(0, int(high_threat_target_count))
+        ]
+    }
+    output: list[Any] = []
+    for track in tracks:
+        if track.track_id not in selected_ids:
+            output.append(track)
+            continue
+        window_anchor = window_anchor_by_track.setdefault(
+            str(track.track_id),
+            float(timestamp),
+        )
+        window_end = window_anchor + wave_gap_s if wave_gap_s > 0.0 else None
+        demand = TargetDemand(
+            required_resource_count=required_resource_count,
+            coordination_mode=coordination_mode,
+            primary_resource_count=primary_resource_count,
+            arrival_window_start_s=window_anchor,
+            arrival_window_end_s=window_end,
+            wave_interval_s=wave_gap_s,
+            minimum_separation_s=minimum_separation_s,
+            metadata={
+                "primary_resource_count": primary_resource_count,
+                "source": "main_online_ranked_threat_prior",
+            },
+        )
+        output.append(
+            replace(
+                track,
+                threat_score=max(float(track.threat_score), float(threat_threshold)),
+                demand=demand,
+                metadata={
+                    **dict(track.metadata),
+                    "threat_source": "main_online_ranked_threat_prior",
+                    "cooperative_demand_enabled": True,
+                    "required_resource_count": required_resource_count,
+                    "coordination_mode": coordination_mode,
+                    "online_truth_id_used": False,
+                },
+            )
+        )
+    return output
 
 
 def _terminal_feedback_state(

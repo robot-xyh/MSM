@@ -73,6 +73,7 @@ class BlocksSmokeConfig:
     detection_backend: str = "airsim"
     detection_filter_names: tuple[str, ...] = ("MSM_TargetActor_*",)
     detection_radius_cm: int = 80 * 100
+    detection_warmup_frames: int = 0
     yolo_weights_path: Path = Path("research_modules/d5_terminal_association/best.pt")
     yolo_tracker_backend: str = "bytetrack"
     yolo_confidence_threshold: float = 0.25
@@ -99,6 +100,14 @@ class BlocksSmokeConfig:
     intercept_min_detection_confidence: float = 0.55
     intercept_min_stable_detection_frames: int = 2
     intercept_max_visual_latency_s: float = 0.35
+    cooperative_demand_enabled: bool = False
+    cooperative_high_threat_target_count: int = 1
+    cooperative_threat_threshold: float = 0.9
+    high_threat_required_resource_count: int = 3
+    cooperative_coordination_mode: str = "hybrid"
+    cooperative_primary_count: int = 2
+    cooperative_wave_gap_s: float = 2.0
+    cooperative_minimum_separation_s: float = 0.5
     target_asset_name: str = "Quadrotor1"
     target_detection_filter: str = "MSM_TargetActor_*"
     intercept_takeoff_timeout_s: float = 10.0

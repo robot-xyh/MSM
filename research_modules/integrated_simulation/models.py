@@ -31,6 +31,13 @@ class ScenarioConfig:
     active_mismatch_start_s: float | None = None
     friend_overlap_start_s: float | None = None
     crossing: bool = False
+    cooperative_demand_enabled: bool = False
+    cooperative_high_threat_target_count: int = 1
+    high_threat_required_resource_count: int = 3
+    cooperative_coordination_mode: str = "hybrid"
+    cooperative_primary_count: int = 2
+    cooperative_wave_gap_s: float = 2.0
+    cooperative_minimum_separation_s: float = 0.5
     output_root: Path | None = None
 
     def timestamps(self) -> list[float]:

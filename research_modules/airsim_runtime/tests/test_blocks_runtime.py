@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 import airsim_runtime.episode_bus as episode_bus_module
 from airsim_dryrun.models import (
@@ -222,6 +223,14 @@ def test_actor_target_defaults_use_drone_mesh_for_yolo_terminal_tests() -> None:
     assert {spec.asset_name for spec in default_5v5_actor_target_specs()} == {"Quadrotor1"}
 
 
+def test_cli_defaults_to_one_discarded_detection_warmup_frame(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["run_blocks_sequence.py"])
+
+    args = parse_args()
+
+    assert args.detection_warmup_frames == 1
+
+
 def test_dynamic_n_settings_files_match_requested_vehicle_count(tmp_path: Path) -> None:
     multirotor_path = write_dynamic_multirotor_settings(
         tmp_path / "n3_multirotor.json",
@@ -316,6 +325,114 @@ def test_sequence_builder_uses_dynamic_n_scenario_names(tmp_path: Path, monkeypa
     assert len(cv_config.camera_vehicle_names) == 4
     assert len(cv_config.secondary_camera_vehicle_names) == 1
     assert len(cv_config.target_actor_specs) == 4
+
+
+def test_sequence_builder_supports_independent_resource_and_target_counts(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--cv-5v5",
+            "--resource-count",
+            "5",
+            "--target-count",
+            "2",
+            "--output-root",
+            str(tmp_path),
+            "--sequence-id",
+            "pytest_cv_m5_n2",
+        ],
+    )
+    args = parse_args()
+    config, _, _ = _build_sequence_run(args, seed=7, sequence_id=args.sequence_id)
+
+    assert config.scenario_name == "blocks_cv_m5_n2"
+    assert config.metadata["runtime_mode"] == "computer_vision_m_to_n"
+    assert config.metadata["resource_count"] == 5
+    assert config.metadata["target_count"] == 2
+    assert config.metadata["drone_count"] == 5
+    assert len(config.resource_vehicle_names) == 5
+    assert len(config.camera_vehicle_names) == 5
+    assert len(config.target_actor_specs) == 2
+    assert config.high_threat_required_resource_count == 3
+    assert config.cooperative_coordination_mode == "hybrid"
+    assert config.cooperative_primary_count == 2
+
+
+def test_sequence_builder_validates_cooperative_options(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--cv-5v5",
+            "--resource-count",
+            "3",
+            "--target-count",
+            "1",
+            "--high-threat-resource-count",
+            "2",
+            "--cooperative-primary-count",
+            "3",
+            "--output-root",
+            str(tmp_path),
+        ],
+    )
+    args = parse_args()
+    with pytest.raises(SystemExit, match="cooperative-primary-count"):
+        _build_sequence_run(args, seed=7, sequence_id=args.sequence_id)
+
+
+def test_sequence_builder_rejects_negative_detection_warmup(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--cv-5v5",
+            "--detection-warmup-frames",
+            "-1",
+            "--output-root",
+            str(tmp_path),
+        ],
+    )
+    args = parse_args()
+
+    with pytest.raises(SystemExit, match="detection-warmup-frames"):
+        _build_sequence_run(args, seed=7, sequence_id=args.sequence_id)
+
+
+def test_sequence_builder_rejects_ambiguous_equal_and_independent_counts(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--actor-5v5",
+            "--drone-count",
+            "5",
+            "--resource-count",
+            "4",
+            "--output-root",
+            str(tmp_path),
+        ],
+    )
+    args = parse_args()
+    with pytest.raises(SystemExit, match="cannot be combined"):
+        _build_sequence_run(args, seed=7, sequence_id=args.sequence_id)
 
 
 def test_sequence_builder_exposes_guidance_law_selection(tmp_path: Path, monkeypatch) -> None:
@@ -828,7 +945,18 @@ def test_real_runtime_moves_actor_targets_and_captures_builtin_detections(tmp_pa
 
     assert fake_client.spawned_objects == ["MSM_TargetActor_1"]
     assert fake_client.destroyed_objects[-1] == "MSM_TargetActor_1"
-    assert fake_client.detection_filters["Interceptor"] == ["MSM_TargetActor_*", "MSM_TargetActor_1"]
+    assert fake_client.detection_filters["Interceptor"] == [
+        "MSM_TargetActor_*",
+        "MSM_TargetActor_1",
+        "Quadrotor1",
+        "Quadrotor1*",
+    ]
+    assert frame.metadata["detection_filters"][0]["filters"] == [
+        "MSM_TargetActor_*",
+        "MSM_TargetActor_1",
+        "Quadrotor1",
+        "Quadrotor1*",
+    ]
     assert fake_client.object_poses["MSM_TargetActor_1"].position.x_val == 15.0
     assert fake_client.object_poses["MSM_TargetActor_1"].position.y_val == -5.25
     assert frame.truth_objects[0].object_id == "TGT-001"
@@ -1954,6 +2082,92 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
     )
 
 
+def test_main_episode_bus_runs_centralized_m5_n2_coalition_without_pair_collapse() -> None:
+    resources = tuple(f"Interceptor{index}" for index in range(1, 6))
+    frames = [
+        _sample_m5_n2_frame(timestamp=float(index) * 0.5, frame_index=index)
+        for index in range(3)
+    ]
+    config = BlocksSmokeConfig(
+        episode_id="pytest_main_bus_m5_n2",
+        scenario_name="blocks_cv_m5_n2",
+        duration_s=1.0,
+        dt_s=0.5,
+        launch_blocks=False,
+        resource_vehicle_names=resources,
+        camera_vehicle_names=resources,
+        target_vehicle_names=(),
+        cooperative_demand_enabled=True,
+        cooperative_high_threat_target_count=1,
+        high_threat_required_resource_count=3,
+        cooperative_coordination_mode="hybrid",
+        cooperative_primary_count=2,
+        cooperative_wave_gap_s=2.0,
+    )
+    bus = MainAirSimEpisodeBus(config)
+
+    ticks = [bus.process_frame(frame) for frame in frames]
+
+    assert bus.current_plan is not None
+    assert len({tick.d3["plan_id"] for tick in ticks}) == 1
+    assert {tick.d3["plan_version"] for tick in ticks} == {1}
+    assert [tick.d3["plan_changed"] for tick in ticks] == [True, False, False]
+    counts = sorted(
+        len(assignments)
+        for assignments in bus.current_plan.assignments_by_target().values()
+    )
+    assert counts == [1, 3]
+    high_demand = next(
+        item for item in bus.current_plan.demand_summaries if item.demand_required == 3
+    )
+    assert high_demand.coalition_complete is True
+    assert high_demand.demand_shortfall == 0
+    assert ticks[-1].d3["coalition_count"] == 2
+    assert ticks[-1].d5["terminal_association_count"] == 4
+    assert set(ticks[-1].d5["coalition_visual_summaries"]) == {"T001", "T002"}
+    high_visual = ticks[-1].d5["coalition_visual_summaries"]["T001"]
+    assert high_visual["primary_required_count"] == 2
+    assert high_visual["coalition_visual_consensus"] is False
+    assert ticks[-1].d7["runtime_bus"]["sample_count"] == 4
+    assert ticks[-1].d7["runtime_bus"]["control_context_count"] == 4
+    assert len(bus.collector.target_demand_records) >= 2
+    assert len(bus.collector.coalition_records) >= 2
+    replan_events = [
+        event
+        for event in bus.collector.event_records
+        if event.event_type.startswith("center_replan_")
+    ]
+    assert sum(
+        event.event_type == "center_replan_request_created"
+        for event in replan_events
+    ) == 2
+    assert sum(
+        event.event_type == "center_replan_ack_no_change"
+        for event in replan_events
+    ) == 2
+    assert {
+        event.metadata["resolved_plan_version"]
+        for event in replan_events
+        if event.event_type == "center_replan_ack_no_change"
+    } == {1}
+
+    failed_frame = replace(
+        _sample_m5_n2_frame(timestamp=1.5, frame_index=3),
+        center_node_alive=False,
+        secondary_nodes_alive=False,
+    )
+    bus.process_frame(failed_frame)
+    coalition_holds = [
+        event
+        for event in bus.collector.event_records
+        if event.metadata.get("coalition_required")
+        and event.metadata.get("coalition_safety_reason")
+        == "coalition_fallback_unsupported"
+    ]
+    assert coalition_holds
+    assert all(event.metadata["d4_action"] == "hold_for_review" for event in coalition_holds)
+
+
 def test_main_episode_bus_retains_current_plan_after_stale_rejection(
     tmp_path: Path,
     monkeypatch,
@@ -2010,6 +2224,47 @@ def test_main_episode_bus_retains_current_plan_after_stale_rejection(
     assert rejection_events[0].metadata["retained_plan_version"] == 1
     assert rejection_events[0].metadata["retry_policy"] == (
         "retain_current_plan_and_retry_next_cycle"
+    )
+
+
+def test_main_episode_bus_exports_replan_and_truth_availability_metrics(
+    tmp_path: Path,
+) -> None:
+    resources = tuple(f"Interceptor{index}" for index in range(1, 6))
+    frames = [
+        _sample_m5_n2_frame(timestamp=float(index) * 0.5, frame_index=index)
+        for index in range(5)
+    ]
+    config = BlocksSmokeConfig(
+        episode_id="pytest_main_bus_m5_n2_metrics",
+        scenario_name="blocks_cv_m5_n2",
+        duration_s=2.0,
+        dt_s=0.5,
+        launch_blocks=False,
+        resource_vehicle_names=resources,
+        camera_vehicle_names=resources,
+        target_vehicle_names=(),
+        cooperative_demand_enabled=True,
+        cooperative_high_threat_target_count=1,
+        high_threat_required_resource_count=3,
+        cooperative_coordination_mode="hybrid",
+        cooperative_primary_count=2,
+        cooperative_wave_gap_s=2.0,
+    )
+
+    result = run_main_episode_bus(config, frames, tmp_path / "main_bus_m5_n2")
+
+    metrics = result.metrics
+    assert metrics["detection_probability"] is None
+    assert metrics["missed_detection_rate"] is None
+    assert metrics["false_alarm_rate"] is None
+    assert metrics["replan_request_count"] == 2
+    assert metrics["replan_no_change_ack_count"] == 2
+    assert metrics["replan_applied_count"] == 0
+    assert metrics["replan_pending_dwell_s"] == pytest.approx(1.0)
+    assert metrics["replan_convergence_time_s"] == pytest.approx(0.5)
+    assert metrics["metric_availability"]["detection_probability"]["status"] == (
+        "unavailable"
     )
 
 
@@ -2163,6 +2418,43 @@ def test_blocks_orchestrator_runs_mock_capture_and_integrated_replay(tmp_path: P
     assert result.metadata["main_episode_bus"]["record_counts"]["ticks"] == 3
     assert result.output_paths["main_episode_bus_jsonl"].exists()
     assert result.output_paths["airsim_blocks_summary"].exists()
+
+
+def test_capture_discards_detection_warmup_frames(tmp_path: Path) -> None:
+    class RecordingRuntime(FakeBlocksRuntime):
+        def __init__(self) -> None:
+            self.sampled_indices: list[int] = []
+
+        def sample_frame(self, config, frame_index, timestamp, output_dir):
+            self.sampled_indices.append(frame_index)
+            return super().sample_frame(config, frame_index, timestamp, output_dir)
+
+    config = BlocksSmokeConfig(
+        duration_s=1.0,
+        dt_s=0.5,
+        output_root=tmp_path,
+        detection_warmup_frames=2,
+    )
+    runtime = RecordingRuntime()
+
+    frames = AirSimBlocksSmokeOrchestrator(runtime=runtime)._capture_frames(runtime, config)
+
+    assert runtime.sampled_indices == [-1, -2, 0, 1, 2]
+    assert [frame.frame_index for frame in frames] == [0, 1, 2]
+
+
+def test_local_tracks_are_never_borrowed_from_another_camera() -> None:
+    frame = _sample_5v5_frame(timestamp=1.0, frame_index=2)
+    local_tracks = [
+        LocalVisualTrack(
+            local_track_id="Secondary_Recon_1:0:det:0001",
+            center_px=np.array([320.0, 240.0]),
+        )
+    ]
+
+    scoped = episode_bus_module._local_tracks_for_resource(frame, "INT-01", local_tracks)
+
+    assert scoped == []
 
 
 def test_blocks_orchestrator_runs_mock_cv_5v5_integrated_replay(tmp_path: Path) -> None:
@@ -3115,6 +3407,44 @@ def _sample_5v5_frame(timestamp: float = 0.0, frame_index: int = 0) -> AirSimFra
             "lidar": {"ok": True, "point_count": 2},
             "vehicle_names": [f"Interceptor{index}" for index in range(1, 6)],
             "scene_object_count": 5,
+        },
+    )
+
+
+def _sample_m5_n2_frame(timestamp: float = 0.0, frame_index: int = 0) -> AirSimFrame:
+    base = _sample_5v5_frame(timestamp=timestamp, frame_index=frame_index)
+    truth_objects = base.truth_objects[:2]
+    detections = []
+    for resource_index in range(1, 6):
+        vehicle_name = f"Interceptor{resource_index}"
+        for target_index, truth in enumerate(truth_objects, start=1):
+            offset = -35.0 if target_index == 1 else 35.0
+            actor_name = f"MSM_TargetActor_{target_index}"
+            detections.append(
+                AirSimDetectionBox(
+                    detection_id=(
+                        f"det-{frame_index}-{vehicle_name}-{truth.object_id}"
+                    ),
+                    camera_id=f"{vehicle_name}:0",
+                    object_id=truth.object_id,
+                    local_track_id=f"{vehicle_name}:0:{actor_name}",
+                    timestamp=timestamp,
+                    center_px=(320.0 + offset, 240.0),
+                    bbox_xyxy=(290.0 + offset, 210.0, 350.0 + offset, 270.0),
+                    confidence=0.95,
+                )
+            )
+    return replace(
+        base,
+        episode_id="pytest_blocks_m5_n2",
+        scenario_name="blocks_cv_m5_n2",
+        truth_objects=truth_objects,
+        visual_detections=tuple(detections),
+        metadata={
+            **base.metadata,
+            "scene_object_count": 2,
+            "resource_count": 5,
+            "target_count": 2,
         },
     )
 

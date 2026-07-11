@@ -72,6 +72,15 @@ class AssignmentHandoff:
     track_version: int
     authorization_state: str
     created_at: float
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    member_role: str = "primary"
+    wave_id: int = 0
+    required_resource_count: int = 1
+    coordination_mode: str = "independent"
+    arrival_window_start_s: float | None = None
+    arrival_window_end_s: float | None = None
+    activation_state: str = "active"
 
     @property
     def is_authorized(self) -> bool:
@@ -127,6 +136,22 @@ def d2_detection_kwargs(
 def assignment_handoff_from_d3(plan: Any, assignment: Any, track_version: int) -> AssignmentHandoff:
     """Validate a D3 AssignmentPlan/Assignment pair before terminal use."""
 
+    coalition = next(
+        (
+            item
+            for item in getattr(plan, "coalitions", ())
+            if getattr(item, "target_id", None) == getattr(assignment, "target_id", None)
+        ),
+        None,
+    )
+    member_role = str(getattr(assignment, "member_role", "primary"))
+    wave_id = int(getattr(assignment, "wave_id", 0))
+    activation_state = str(
+        getattr(assignment, "metadata", {}).get(
+            "activation_state",
+            "active" if member_role == "primary" and wave_id == 0 else "standby",
+        )
+    )
     handoff = AssignmentHandoff(
         plan_id=str(getattr(plan, "plan_id")),
         plan_version=int(getattr(plan, "version")),
@@ -135,6 +160,15 @@ def assignment_handoff_from_d3(plan: Any, assignment: Any, track_version: int) -
         track_version=int(track_version),
         authorization_state=str(getattr(plan, "human_authorization_state")),
         created_at=float(getattr(plan, "created_at")),
+        coalition_id=getattr(assignment, "coalition_id", None),
+        coalition_version=getattr(assignment, "coalition_version", None),
+        member_role=member_role,
+        wave_id=wave_id,
+        required_resource_count=int(getattr(assignment, "required_resource_count", 1)),
+        coordination_mode=str(getattr(coalition, "coordination_mode", "independent")),
+        arrival_window_start_s=getattr(assignment, "arrival_window_start_s", None),
+        arrival_window_end_s=getattr(assignment, "arrival_window_end_s", None),
+        activation_state=activation_state,
     )
     if not handoff.is_authorized:
         raise ValueError("assignment handoff is not authorized for terminal locking")
@@ -152,6 +186,16 @@ def d5_assignment_kwargs(handoff: AssignmentHandoff) -> dict[str, Any]:
         "plan_id": handoff.plan_id,
         "plan_version": handoff.plan_version,
         "authorization_state": handoff.authorization_state,
+        "resource_id": handoff.resource_id,
+        "coalition_id": handoff.coalition_id,
+        "coalition_version": handoff.coalition_version,
+        "member_role": handoff.member_role,
+        "wave_id": handoff.wave_id,
+        "required_resource_count": handoff.required_resource_count,
+        "coordination_mode": handoff.coordination_mode,
+        "arrival_window_start_s": handoff.arrival_window_start_s,
+        "arrival_window_end_s": handoff.arrival_window_end_s,
+        "activation_state": handoff.activation_state,
     }
 
 

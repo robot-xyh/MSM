@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
 
@@ -27,6 +28,7 @@ from d3_assignment_planner import (
     CostWeights,
     PlannerConfig,
     StalePlanError,
+    TargetDemand,
 )
 from d3_assignment_planner.solver import HungarianAssignmentSolver
 from d4_distributed_fallback.active_degradation import (
@@ -63,6 +65,7 @@ from .adapters import (
     d2_tracks_to_target_tracks,
     jsonable_dataclass,
     plan_to_assignment_records,
+    plan_to_m_to_n_records,
     plan_to_terminal_assignments,
     resources_to_d3,
     resources_to_d4,
@@ -115,7 +118,11 @@ class IntegratedEpisodeRunner:
             engageable_hits=3,
             engageable_covariance_trace=120.0,
         )
-        planner_config = PlannerConfig(delta=0.2, min_dwell=2.0)
+        planner_config = PlannerConfig(
+            delta=0.2,
+            min_dwell=2.0,
+            human_authorization_state="recorded",
+        )
         weights = CostWeights(
             window=0.2,
             covariance=0.3,
@@ -326,6 +333,32 @@ class IntegratedEpisodeRunner:
         truth_by_id: dict[str, TruthState],
     ) -> None:
         target_tracks = d2_tracks_to_target_tracks(d2_tracks, truth_by_id, self.resources)
+        if self.config.cooperative_demand_enabled:
+            selected_ids = {
+                item.track_id
+                for item in sorted(target_tracks, key=lambda value: value.track_id)[
+                    : self.config.cooperative_high_threat_target_count
+                ]
+            }
+            target_tracks = [
+                replace(
+                    item,
+                    demand=TargetDemand(
+                        required_resource_count=self.config.high_threat_required_resource_count,
+                        coordination_mode=self.config.cooperative_coordination_mode,
+                        primary_resource_count=self.config.cooperative_primary_count,
+                        arrival_window_start_s=timestamp,
+                        arrival_window_end_s=timestamp
+                        + self.config.cooperative_wave_gap_s,
+                        wave_interval_s=self.config.cooperative_wave_gap_s,
+                        minimum_separation_s=self.config.cooperative_minimum_separation_s,
+                        metadata={"source": "offline_truth_threat_fixture"},
+                    ),
+                )
+                if item.track_id in selected_ids
+                else item
+                for item in target_tracks
+            ]
         if not target_tracks:
             return
         previous_plan = self.current_plan
@@ -359,6 +392,9 @@ class IntegratedEpisodeRunner:
         self.current_plan = plan
         d2_by_id = {track.global_track_id: track for track in d2_tracks}
         self.collector.extend_assignments(plan_to_assignment_records(plan, d2_by_id))
+        demand_records, coalition_records = plan_to_m_to_n_records(plan)
+        self.collector.extend_target_demands(demand_records)
+        self.collector.extend_coalitions(coalition_records)
         if previous_plan is None or plan.changed:
             self._simulate_guidance_for_plan(
                 timestamp=timestamp,
@@ -490,6 +526,31 @@ class IntegratedEpisodeRunner:
                 friend_conflict_state=decision.friend_conflict_state,
                 assignment_version=decision.assignment_version,
                 observed_global_track_id=observed_global_track_id,
+                authorization_state=decision.authorization_state,
+                coordination_mode=decision.coordination_mode,
+                coalition_id=decision.coalition_id,
+                coalition_version=decision.coalition_version,
+                coalition_state=next(
+                    (
+                        item.state
+                        for item in self.current_plan.coalitions
+                        if item.target_id == decision.assigned_global_track_id
+                    ),
+                    None,
+                ),
+                member_role=decision.member_role,
+                wave_id=decision.wave_id,
+                required_resource_count=decision.required_resource_count,
+                arrival_window_start=decision.arrival_window_start_s,
+                arrival_window_end=decision.arrival_window_end_s,
+                minimum_member_separation=next(
+                    (
+                        item.minimum_separation_s
+                        for item in self.current_plan.coalitions
+                        if item.target_id == decision.assigned_global_track_id
+                    ),
+                    None,
+                ),
             )
             self.collector.add_terminal(terminal_record)
             self._evaluate_degradation(

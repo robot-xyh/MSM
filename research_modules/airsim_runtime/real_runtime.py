@@ -392,6 +392,7 @@ class RealAirSimRuntimeClient:
                 "secondary_camera_vehicle_names": list(config.secondary_camera_vehicle_names),
                 "cv_camera_guidance": cv_camera_guidance,
                 "actor_targets": self._episode_setup_metadata.get("actor_targets", []),
+                "detection_filters": self._episode_setup_metadata.get("detection_filters", []),
                 "scene_object_count": len(scene_objects),
                 "scene_objects_sample": scene_objects[:20],
             },
@@ -938,6 +939,11 @@ class RealAirSimRuntimeClient:
     def _configure_detection_filters(self, config: BlocksSmokeConfig) -> None:
         filters = list(config.detection_filter_names)
         filters.extend(str(item["actor_name"]) for item in self._active_actor_targets.values())
+        for item in self._active_actor_targets.values():
+            spec = item.get("spec")
+            asset_name = str(getattr(spec, "asset_name", "") or "").strip()
+            if asset_name:
+                filters.extend((asset_name, f"{asset_name}*"))
         unique_filters = tuple(dict.fromkeys(filters))
         for vehicle_name in config.effective_camera_vehicle_names():
             configured: list[str] = []

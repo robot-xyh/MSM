@@ -245,6 +245,14 @@ class AirSimBlocksSmokeOrchestrator:
         config: BlocksSmokeConfig,
     ) -> list[AirSimFrame]:
         frames: list[AirSimFrame] = []
+        for warmup_index in range(max(0, int(config.detection_warmup_frames))):
+            runtime.sample_frame(
+                config,
+                -1 - warmup_index,
+                0.0,
+                config.output_dir / "images",
+            )
+            time.sleep(min(max(config.dt_s, 0.05), 1.0))
         for index, timestamp in enumerate(config.timestamps()):
             frames.append(runtime.sample_frame(config, index, timestamp, config.output_dir / "images"))
             if index < len(config.timestamps()) - 1:

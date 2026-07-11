@@ -16,6 +16,8 @@ STANDARD_SCENARIOS = {
     "active_terminal_mismatch",
     "friend_overlap_hold",
     "crossing_5v5",
+    "cooperative_3v1",
+    "cooperative_5v2",
 }
 
 
@@ -49,6 +51,20 @@ def make_standard_scenario(
     elif name == "crossing_5v5":
         kwargs["crossing"] = True
         kwargs["duration_s"] = max(duration_s, 10.0)
+    elif name == "cooperative_3v1":
+        kwargs.update(
+            target_count=1,
+            resource_count=3,
+            cooperative_demand_enabled=True,
+            cooperative_high_threat_target_count=1,
+        )
+    elif name == "cooperative_5v2":
+        kwargs.update(
+            target_count=2,
+            resource_count=5,
+            cooperative_demand_enabled=True,
+            cooperative_high_threat_target_count=1,
+        )
     return ScenarioConfig(**kwargs)
 
 
@@ -153,4 +169,3 @@ def truth_summary_for(config: ScenarioConfig) -> dict[str, object]:
             "offline_only": True,
         },
     }
-
