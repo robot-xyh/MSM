@@ -46,6 +46,13 @@ class GuidanceStrategyComparisonRow:
     maneuver_gate_pass_rate: float | None = None
     d5_lock_consistent_rate: float | None = None
     d3_owner_version_consistent_rate: float | None = None
+    runtime_guidance_law: str = ""
+    mode_transition_count: int = 0
+    guidance_law_transition_count: int = 0
+    raw_terminal_switch_allowed_rate: float | None = None
+    terminal_timeout_count: int = 0
+    command_saturation_count: int = 0
+    command_saturation_rate: float | None = None
     threshold_advisory_version: str = DEFAULT_CALIBRATION_THRESHOLD_VERSION
     d4_action_block_reasons: dict[str, int] = field(default_factory=dict)
     secondary_capability_class_counts: dict[str, int] = field(default_factory=dict)
@@ -139,6 +146,23 @@ def summarize_guidance_strategy_comparison(
             "mean_d3_owner_version_consistent_rate": _mean_optional(
                 row.d3_owner_version_consistent_rate for row in strategy_rows
             ),
+            "runtime_guidance_laws": sorted(
+                {row.runtime_guidance_law for row in strategy_rows if row.runtime_guidance_law}
+            ),
+            "mode_transition_count": sum(row.mode_transition_count for row in strategy_rows),
+            "guidance_law_transition_count": sum(
+                row.guidance_law_transition_count for row in strategy_rows
+            ),
+            "mean_raw_terminal_switch_allowed_rate": _mean_optional(
+                row.raw_terminal_switch_allowed_rate for row in strategy_rows
+            ),
+            "terminal_timeout_count": sum(row.terminal_timeout_count for row in strategy_rows),
+            "command_saturation_count": sum(
+                row.command_saturation_count for row in strategy_rows
+            ),
+            "mean_command_saturation_rate": _mean_optional(
+                row.command_saturation_rate for row in strategy_rows
+            ),
             "threshold_advisory_versions": sorted(
                 {row.threshold_advisory_version for row in strategy_rows if row.threshold_advisory_version}
             ),
@@ -169,6 +193,11 @@ def _run_point_mass_strategy(
     records, summary = simulate_guidance_episode(config=cfg)
     stopped = bool(summary.get("stopped_on_intercept_radius", False))
     closest_record = min(records, key=lambda record: record.range_m) if records else None
+    saturation_count = sum(
+        1
+        for record in records
+        if abs(record.commanded_lateral_accel_mps2 - record.limited_lateral_accel_mps2) > 1e-9
+    )
     return GuidanceStrategyComparisonRow(
         seed=int(seed),
         strategy=strategy,
@@ -190,6 +219,13 @@ def _run_point_mass_strategy(
         maneuver_gate_pass_rate=None,
         d5_lock_consistent_rate=None,
         d3_owner_version_consistent_rate=None,
+        runtime_guidance_law=("radar_pn" if strategy == "pn" else strategy),
+        mode_transition_count=sum(1 for record in records if record.mode_switch),
+        guidance_law_transition_count=1 if records else 0,
+        raw_terminal_switch_allowed_rate=None,
+        terminal_timeout_count=0,
+        command_saturation_count=saturation_count,
+        command_saturation_rate=saturation_count / len(records) if records else None,
         metadata={
             "mode_sequence": tuple(summary["mode_sequence"]),
             "stopped_on_intercept_radius": stopped,
@@ -260,6 +296,13 @@ def _run_visual_png_strategy(
         maneuver_gate_pass_rate=float(summary["maneuver_margin_gate_pass_rate"]),
         d5_lock_consistent_rate=float(summary["d5_lock_consistent_rate"]),
         d3_owner_version_consistent_rate=float(summary["d3_owner_version_consistent_rate"]),
+        runtime_guidance_law=strategy,
+        mode_transition_count=int(summary["mode_transition_count"]),
+        guidance_law_transition_count=int(summary["guidance_law_transition_count"]),
+        raw_terminal_switch_allowed_rate=float(summary["raw_terminal_switch_allowed_rate"]),
+        terminal_timeout_count=int(summary["terminal_timeout_count"]),
+        command_saturation_count=int(summary["command_saturation_count"]),
+        command_saturation_rate=float(summary["command_saturation_rate"]),
         d4_action_block_reasons=dict(summary["d4_action_block_reasons"]),
         secondary_capability_class_counts=dict(summary["secondary_capability_class_counts"]),
         secondary_readiness_class_counts=dict(summary["secondary_readiness_class_counts"]),

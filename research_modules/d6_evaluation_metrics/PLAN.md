@@ -13,6 +13,18 @@ D6 不参与控制：
 
 D2/D6 的硬约束必须保留：`id_switch_count` 是一级显式指标，不能只被 MOTA、成功率或总体得分间接吸收。
 
+## 1.1 下一阶段 P1 执行状态（2026-07-10）
+
+本轮计划内的 D6 代码工作已经完成，D6 仍保持 offline-only：
+
+1. `MetricsCollector` 已实现二级 readiness/plan 状态驻留、activation latency、fallback/lease/stale reject；上游没有显式 lifecycle event 时保持 unavailable。
+2. D5 perception event 已实现 YOLOv8 recall、ByteTrack/BoT-SORT local-ID continuity、cross-view rate、latency 和 CPU/GPU budget 统计；离线 truth 只能位于 `metadata.offline_truth`。
+3. 四导引律同 seed 配对已独立实现，要求 main 写 `experiment_guidance_law`；command-level `guidance_law_counts` 不作为实验选型，避免把中末段混合模式误判为实验组。
+4. `ScenarioLibrary` 已实现 tags、difficulty、expected failure modes、parameters、seed matrix 与 online truth policy，输出 JSON/CSV/中文 Markdown。
+5. 通用报告和 AirSim calibration 已接入新指标，提供 CSV/JSON/Markdown 和 PNG 曲线接口。
+
+下一次真实 AirSim 验收由 main 调度；D6 只读取落盘目录。验收必须同时包含 lifecycle 正例、未激活/lease/stale 负例、YOLO+ByteTrack/BoT-SORT 后端和四导引律相同 seed 矩阵。未写出的指标继续显示 unavailable，禁止用默认 0 补齐。
+
 ## 2. 当前实现概览
 
 当前 D6 已实现轻量、可测试的本地指标主线：
@@ -404,7 +416,7 @@ P0/P1 状态：
 - main runtime P1 D4/D5 calibration sweep 已自动调用 D6 `AirSimCalibrationReportGenerator` 生成标准 records/summary/Markdown bundle；D6 当前重点是保持多 seed 自动汇总口径稳定，沉淀 coverage/funnel/gimbal、projection/gate/stable registration、not-registered、D7 guidance reject 和 `trend_key/evidence_path` 长期趋势，统计 active degradation precision，并按真实 `drone_count/resource_count/target_count/camera_count` 做 actual scale 分组。
 - 多 seed、5v5/N-v-N 和非默认 episode 需要继续保持 `metric_scope=execution/contract` 双口径，正式指标采用执行后 metrics，contract metrics 仅用于诊断；D6 已能直接读取两类 main bus metrics JSON，报告分组已按 `metric_scope + seed + scenario_group + scale` 实现，不从场景名推断规模，并在 metadata/Markdown 中保留 reject reason 分布。
 
-2026-07-10 D6 owner 验收结论：D6 全量测试为 `48 passed`。execution/contract 分离、各自 evidence path、拦截证据 availability gate、read-only episode 的 `unavailable` 处理、cross-seed aggregate、严格 paired comparison 和确定性 bootstrap CI 均已完成。现有 2v2 10-seed execution 结果为 `18/20`；该结果用于证明报告链路和统计口径，不把 D6 变成控制模块。后续不再把“补充同一批拦截字段”列为开发任务，只做 schema 回归和新场景数据验收。
+2026-07-11 D6 owner 本轮验收结论：D6 全量测试为 `57 passed`。execution/contract 分离、各自 evidence path、拦截证据 availability gate、read-only episode 的 `unavailable` 处理、cross-seed aggregate、严格 paired comparison、二级生命周期、D5 YOLO/MOT 核心预算、四导引律同 seed 报告、D1-D3 governance 和场景库接口均已完成。现有 2v2 10-seed execution 结果为 `18/20`；该结果用于证明报告链路和统计口径，不把 D6 变成控制模块。后续只做真实多 seed 写盘、CI 接线、schema 回归和新场景数据验收。
 
 ## 6. 未实现的开源/外部项
 
@@ -448,9 +460,22 @@ p05 / p95
 
 ## 8. P1 下一步
 
-1. 长期场景库和 CI 趋势：由 main 提供稳定的 `scenario_id/version`、tags、difficulty、expected failure modes、actual scale、test matrix 和 evidence path；D6 生成跨提交趋势、阈值回归和证据完整性摘要，不能只保留一次性 AirSim 报告。
+### 2026-07-11 四导引律证据边界
+
+`p1_guidance_four_law_smoke_20260711` 已验证 main 的 guidance law 回灌和 D6 同 seed
+配对链路。当前 CSV 有 21 条指标配对行，但每行 `pair_count=1`，只覆盖 seed 7；四种
+导引律在 2 秒窗口内均 timeout。PNG VM/TTC 的末端切换允许率约为 0.762/0.810，最小
+距离约为 2.812/2.798 m。该批次只作为接口、写盘和指标口径验收，不作为最终命中率或
+算法排序证据。
+
+四律对照的 P1 验收仍要求：使用相同场景版本、实际 N/M/camera count、初始几何和
+seed 集合；延长 `intercept_max_duration`；至少形成多个独立 paired seeds；同时报告
+timeout、成功/abort、最小距离、切换允许率、接管率和 gate reject 原因。只有样本量满足
+要求后才输出 effect size/bootstrap CI 和算法优劣结论。
+
+1. 场景库接口已完成；下一步由 main/CI 使用稳定的 `scenario_group/version`、tags、difficulty、expected failure modes、actual scale、seed matrix 和 evidence path 调度真实批次，D6 再生成跨提交趋势、阈值回归和证据完整性摘要。
 2. CV 5v5 的 D1-D3 联合聚合：在同一 episode clock 下汇总 D1 detection/fusion/latency/covariance、D2 association/continuity/ID switch 和 D3 assignment/version/hysteresis 指标，形成从感知到分配的 funnel。D6 只消费 main 写盘的稳定 schema，不从 truth name、场景名或后验结果重建在线决策。
-3. YOLO/MOT 资源预算报告：消费 D5 写盘的 detection backend、模型/权重版本、输入分辨率、目标像素尺度、inference latency、throughput、CPU/GPU/内存利用率、drop/fallback 和 detection/MOT 质量字段，形成 accuracy-latency-budget 对照。D6 不加载 `best.pt`、不运行 YOLO，也不把缺失性能样本记为 0。
+3. YOLO/MOT 的 recall、local-ID continuity、cross-view rate、pipeline latency 和 CPU/GPU budget 已实现；下一步消费 D5 写盘的模型/权重版本、输入分辨率、目标像素尺度、throughput、内存、drop/fallback 字段，形成更完整的 accuracy-latency-budget 对照。D6 不加载 `best.pt`、不运行 YOLO，也不把缺失性能样本记为 0。
 4. COURAGEOUS/MDPI/OCEF 完整标准化报告：在 `cuas-standard-map-v1` 基础上补测试阶段、复现纪律、evidence index、场景覆盖矩阵、限制条件和外部审计说明，并把 D1-D7 指标映射到统一中文报告模板。
 5. 长期多 seed 对照：现有 cross-seed aggregate、严格 paired comparison、effect size 和 bootstrap CI 只需用真实成对 5v5/N-v-N 批次持续验收；missing seed、单 pair、无 review label 和 read-only unavailable 继续保持不可推断状态。
 6. D4/D5 长期趋势与真实标签：持续跟踪 coverage/funnel/gimbal、projection/gate/registration、D7 reject 和 active-degradation review/window；`active_degradation_precision` 只使用 main/D4 写盘的真实 review label 或后验 outcome/risk。

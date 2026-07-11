@@ -10,12 +10,17 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .pn import compute_three_dimensional_pn_benchmark
 from .calibration import DEFAULT_CALIBRATION_THRESHOLD_VERSION
 from .models import GuidanceMode
+from .selector import (
+    GuidanceLawSelection,
+    RuntimeGuidanceLaw,
+    select_runtime_guidance_law,
+)
 from .terminal_gate import (
     AssignmentGuidanceBinding,
     D4GuidancePermission,
@@ -53,6 +58,10 @@ class _TerminalLatchState:
     candidate_allowed_streak: int = 0
     candidate_rejected_streak: int = 0
     reacquire_grace_remaining: int = 0
+    last_mode: GuidanceMode | None = None
+    last_guidance_law: str | None = None
+    mode_transition_count: int = 0
+    guidance_law_transition_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -73,6 +82,9 @@ class D7RuntimePairInput:
     relative_position_ned: tuple[float, float, float] | None = None
     relative_velocity_ned: tuple[float, float, float] | None = None
     command_z_ned_m: float = 0.0
+    requested_guidance_law: RuntimeGuidanceLaw | str | None = None
+    terminal_handover_started_at_s: float | None = None
+    terminal_timeout_s: float | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -96,6 +108,26 @@ class D7RuntimePairOutput:
     track_version: int
     d4_action: str
     d5_decision_state: str
+    requested_guidance_law: str = RuntimeGuidanceLaw.PNG_VM.value
+    previous_guidance_law: str | None = None
+    guidance_law_transition: bool = False
+    guidance_law_transition_reason: str = ""
+    guidance_law_transition_count: int = 0
+    previous_mode: str | None = None
+    mode_transition: bool = False
+    mode_transition_reason: str = ""
+    mode_transition_count: int = 0
+    terminal_contract_applicable: bool = True
+    raw_terminal_contract_allowed: bool | None = None
+    raw_terminal_switch_allowed: bool | None = None
+    raw_terminal_switch_reject_reason: str = ""
+    terminal_wait_duration_s: float | None = None
+    terminal_timeout_s: float | None = None
+    terminal_timeout: bool = False
+    terminal_timeout_reason: str = ""
+    command_saturated: bool | None = None
+    command_saturation_scope: str = "not_computed"
+    command_saturation_reason: str = ""
     terminal_range_m: float | None = None
     assignment_id: str | None = None
     owner_node_id: str | None = None
@@ -191,11 +223,31 @@ class D7RuntimePairOutput:
             "assignment_id": self.assignment_id,
             "mode": self.mode.value,
             "guidance_law": self.guidance_law,
+            "requested_guidance_law": self.requested_guidance_law,
+            "previous_guidance_law": self.previous_guidance_law,
+            "guidance_law_transition": self.guidance_law_transition,
+            "guidance_law_transition_reason": self.guidance_law_transition_reason,
+            "guidance_law_transition_count": self.guidance_law_transition_count,
+            "previous_mode": self.previous_mode,
+            "mode_transition": self.mode_transition,
+            "mode_transition_reason": self.mode_transition_reason,
+            "mode_transition_count": self.mode_transition_count,
             "visual_png_enabled": self.visual_png_enabled,
             "terminal_contract_allowed": self.terminal_contract_allowed,
             "terminal_contract_reject_reason": self.terminal_contract_reject_reason,
+            "terminal_contract_applicable": self.terminal_contract_applicable,
+            "raw_terminal_contract_allowed": self.raw_terminal_contract_allowed,
+            "raw_terminal_switch_allowed": self.raw_terminal_switch_allowed,
+            "raw_terminal_switch_reject_reason": self.raw_terminal_switch_reject_reason,
             "terminal_switch_allowed": self.terminal_switch_allowed,
             "terminal_switch_reject_reason": self.terminal_switch_reject_reason,
+            "terminal_wait_duration_s": self.terminal_wait_duration_s,
+            "terminal_timeout_s": self.terminal_timeout_s,
+            "terminal_timeout": self.terminal_timeout,
+            "terminal_timeout_reason": self.terminal_timeout_reason,
+            "command_saturated": self.command_saturated,
+            "command_saturation_scope": self.command_saturation_scope,
+            "command_saturation_reason": self.command_saturation_reason,
             "terminal_handover_pending": self.terminal_handover_pending,
             "terminal_locked": self.terminal_locked,
             "terminal_handoff_state": self.terminal_handoff_state,
@@ -293,6 +345,7 @@ class D7RuntimeBus:
         self.config = config or PngGuidanceConfig()
         self._filters: dict[str, SimpleFlightPngGuidanceFilter] = {}
         self._binding_signatures: dict[str, tuple[str, int, str | None, int, str | None]] = {}
+        self._requested_laws: dict[str, RuntimeGuidanceLaw] = {}
         self._terminal_latches: dict[str, _TerminalLatchState] = {}
 
     @property
@@ -302,11 +355,13 @@ class D7RuntimeBus:
     def reset(self) -> None:
         self._filters.clear()
         self._binding_signatures.clear()
+        self._requested_laws.clear()
         self._terminal_latches.clear()
 
     def reset_pair(self, control_context_id: str) -> None:
         self._filters.pop(control_context_id, None)
         self._binding_signatures.pop(control_context_id, None)
+        self._requested_laws.pop(control_context_id, None)
         self._terminal_latches.pop(control_context_id, None)
 
     def inject_state(
@@ -321,12 +376,22 @@ class D7RuntimeBus:
         """Evaluate D3/D4/D5 contract and optional visual PNG gate for one pair."""
 
         binding = coerce_assignment_guidance_binding(pair_input.binding)
+        selection = select_runtime_guidance_law(
+            pair_input.requested_guidance_law,
+            default_visual_law=self.config.law,
+        )
         control_context_id = _control_context_id(binding)
         signature = _binding_signature(binding)
         if self._binding_signatures.get(control_context_id) != signature:
-            self._filters[control_context_id] = SimpleFlightPngGuidanceFilter(self.config)
+            self._filters[control_context_id] = self._new_visual_filter(selection)
             self._binding_signatures[control_context_id] = signature
+            self._requested_laws[control_context_id] = selection.requested_law
             self._terminal_latches[control_context_id] = _TerminalLatchState()
+        elif self._requested_laws.get(control_context_id) != selection.requested_law:
+            self._filters[control_context_id] = self._new_visual_filter(selection)
+            self._requested_laws[control_context_id] = selection.requested_law
+            latch = self._terminal_latches.setdefault(control_context_id, _TerminalLatchState())
+            _reset_terminal_candidate_state(latch)
         latch = self._terminal_latches.setdefault(control_context_id, _TerminalLatchState())
 
         observation = (
@@ -335,6 +400,12 @@ class D7RuntimeBus:
             else None
         )
         timestamp_s = _resolve_timestamp_s(pair_input, observation, binding)
+        timing = _terminal_handover_timing(
+            pair_input,
+            timestamp_s=timestamp_s,
+            enabled=selection.requires_terminal_gate,
+            terminal_active=latch.terminal_active,
+        )
         decision = evaluate_terminal_png_contract(
             binding=binding,
             d4_permission=pair_input.d4_permission,
@@ -356,20 +427,86 @@ class D7RuntimeBus:
             relative_position_ned=pair_input.relative_position_ned,
             relative_velocity_ned=pair_input.relative_velocity_ned,
             navigation_constant=self.config.navigation_constant,
+            requested_guidance_law=selection.requested_law.value,
+            terminal_wait_duration_s=timing["wait_duration_s"],
+            terminal_timeout_s=timing["timeout_s"],
+            terminal_timeout=timing["timed_out"],
             metadata={
                 "boundary": D7_RUNTIME_BUS_BOUNDARY,
                 **pair_input.metadata,
             },
         )
 
+        if not selection.requires_terminal_gate:
+            self._filters[control_context_id].reset()
+            _reset_terminal_candidate_state(latch)
+            baseline_common = {
+                **common,
+                "terminal_contract_allowed": False,
+                "terminal_contract_reject_reason": "",
+                "terminal_contract_applicable": False,
+                "raw_terminal_contract_allowed": None,
+            }
+            output = D7RuntimePairOutput(
+                **baseline_common,
+                mode=GuidanceMode.RADAR_MIDCOURSE,
+                guidance_law=selection.midcourse_law.value,
+                visual_png_enabled=False,
+                terminal_switch_allowed=False,
+                terminal_switch_reject_reason="",
+                terminal_handoff_state=f"full_course_{selection.requested_law.value}",
+                terminal_mode_entered=False,
+                closing_speed_mps=_relative_closing_speed_mps(
+                    pair_input.relative_position_ned,
+                    pair_input.relative_velocity_ned,
+                ),
+                terminal_latch_active=False,
+                terminal_dwell_frames=self.config.terminal_dwell_frames,
+                terminal_release_frames=self.config.terminal_release_frames,
+                terminal_reacquire_grace_frames=self.config.terminal_reacquire_grace_frames,
+            )
+            return self._finalize_output(
+                output,
+                latch,
+                transition_reason="full_course_guidance_selected",
+            )
+
+        if timing["timed_out"]:
+            self._filters[control_context_id].reset()
+            _reset_terminal_candidate_state(latch)
+            output = D7RuntimePairOutput(
+                **common,
+                mode=GuidanceMode.ABORT_REVOKE,
+                guidance_law=RuntimeGuidanceLaw.RADAR_PN.value,
+                visual_png_enabled=False,
+                terminal_switch_allowed=False,
+                terminal_switch_reject_reason="terminal_handover_timeout",
+                raw_terminal_switch_allowed=False,
+                raw_terminal_switch_reject_reason="terminal_handover_timeout",
+                terminal_timeout_reason="terminal_handover_timeout",
+                terminal_handoff_state="terminal_timeout",
+                terminal_mode_entered=False,
+                closing_speed_mps=_relative_closing_speed_mps(
+                    pair_input.relative_position_ned,
+                    pair_input.relative_velocity_ned,
+                ),
+                terminal_latch_active=False,
+                terminal_dwell_frames=self.config.terminal_dwell_frames,
+                terminal_release_frames=self.config.terminal_release_frames,
+                terminal_reacquire_grace_frames=self.config.terminal_reacquire_grace_frames,
+            )
+            return self._finalize_output(
+                output,
+                latch,
+                transition_reason="terminal_handover_timeout",
+            )
+
         if not decision.allowed:
             self._filters[control_context_id].reset()
-            latch.terminal_active = False
-            latch.candidate_allowed_streak = 0
-            latch.candidate_rejected_streak = 0
+            _reset_terminal_candidate_state(latch)
             if decision.reject_reason in REACQUIRE_CONTRACT_REJECT_REASONS:
                 latch.reacquire_grace_remaining = self.config.terminal_reacquire_grace_frames
-            return D7RuntimePairOutput(
+            output = D7RuntimePairOutput(
                 **common,
                 mode=guidance_mode_from_terminal_contract(
                     decision,
@@ -391,9 +528,14 @@ class D7RuntimeBus:
                 terminal_release_frames=self.config.terminal_release_frames,
                 terminal_reacquire_grace_frames=self.config.terminal_reacquire_grace_frames,
             )
+            return self._finalize_output(
+                output,
+                latch,
+                transition_reason=f"terminal_contract_rejected:{decision.reject_reason}",
+            )
 
         if observation is None:
-            return D7RuntimePairOutput(
+            output = D7RuntimePairOutput(
                 **common,
                 mode=GuidanceMode.HANDOVER_PENDING,
                 guidance_law="radar_pn",
@@ -410,6 +552,11 @@ class D7RuntimeBus:
                 terminal_dwell_frames=self.config.terminal_dwell_frames,
                 terminal_release_frames=self.config.terminal_release_frames,
                 terminal_reacquire_grace_frames=self.config.terminal_reacquire_grace_frames,
+            )
+            return self._finalize_output(
+                output,
+                latch,
+                transition_reason="terminal_observation_missing",
             )
 
         command = self._filters[control_context_id].evaluate(
@@ -429,13 +576,15 @@ class D7RuntimeBus:
             config=self.config,
         )
         visual_png_enabled = bool(latch_decision["visual_png_enabled"])
-        return D7RuntimePairOutput(
+        output = D7RuntimePairOutput(
             **common,
             mode=GuidanceMode.VISION_TERMINAL if visual_png_enabled else GuidanceMode.HANDOVER_PENDING,
             guidance_law=command.guidance_law if visual_png_enabled else "radar_pn",
             visual_png_enabled=visual_png_enabled,
             terminal_switch_allowed=visual_png_enabled,
             terminal_switch_reject_reason=str(latch_decision["terminal_switch_reject_reason"]),
+            raw_terminal_switch_allowed=bool(quality.terminal_switch_allowed),
+            raw_terminal_switch_reject_reason=quality.reject_reason,
             terminal_handoff_state=str(latch_decision["terminal_handoff_state"]),
             terminal_mode_entered=visual_png_enabled,
             camera_quality_gate_passed=quality.camera_quality_gate_passed,
@@ -464,7 +613,105 @@ class D7RuntimeBus:
             png_guidance_law_candidate=command.guidance_law,
             selected_velocity_ned=command.velocity_ned if visual_png_enabled else None,
             png_command=command,
+            command_saturated=command.control_saturated,
+            command_saturation_scope=(
+                "active_visual_command" if visual_png_enabled else "visual_candidate_command"
+            ),
+            command_saturation_reason=_command_saturation_reason(command),
         )
+        return self._finalize_output(
+            output,
+            latch,
+            transition_reason=(
+                "terminal_visual_gate_enabled"
+                if visual_png_enabled
+                else f"terminal_visual_gate_rejected:{quality.reject_reason}"
+            ),
+        )
+
+    def _new_visual_filter(
+        self,
+        selection: GuidanceLawSelection,
+    ) -> SimpleFlightPngGuidanceFilter:
+        terminal_law = selection.terminal_law or RuntimeGuidanceLaw.PNG_VM
+        return SimpleFlightPngGuidanceFilter(
+            replace(self.config, law=terminal_law.value)
+        )
+
+    @staticmethod
+    def _finalize_output(
+        output: D7RuntimePairOutput,
+        latch: _TerminalLatchState,
+        *,
+        transition_reason: str,
+    ) -> D7RuntimePairOutput:
+        previous_mode = latch.last_mode
+        previous_law = latch.last_guidance_law
+        mode_transition = previous_mode != output.mode
+        law_transition = previous_law != output.guidance_law
+        if mode_transition:
+            latch.mode_transition_count += 1
+        if law_transition:
+            latch.guidance_law_transition_count += 1
+        latch.last_mode = output.mode
+        latch.last_guidance_law = output.guidance_law
+        return replace(
+            output,
+            previous_mode=previous_mode.value if previous_mode is not None else None,
+            mode_transition=mode_transition,
+            mode_transition_reason=transition_reason if mode_transition else "",
+            mode_transition_count=latch.mode_transition_count,
+            previous_guidance_law=previous_law,
+            guidance_law_transition=law_transition,
+            guidance_law_transition_reason=transition_reason if law_transition else "",
+            guidance_law_transition_count=latch.guidance_law_transition_count,
+        )
+
+
+def _reset_terminal_candidate_state(latch: _TerminalLatchState) -> None:
+    latch.terminal_active = False
+    latch.candidate_allowed_streak = 0
+    latch.candidate_rejected_streak = 0
+    latch.reacquire_grace_remaining = 0
+
+
+def _terminal_handover_timing(
+    pair_input: D7RuntimePairInput,
+    *,
+    timestamp_s: float,
+    enabled: bool,
+    terminal_active: bool,
+) -> dict[str, float | bool | None]:
+    timeout_s = pair_input.terminal_timeout_s
+    if timeout_s is not None and timeout_s < 0.0:
+        raise ValueError("terminal_timeout_s must be nonnegative")
+    started_at_s = pair_input.terminal_handover_started_at_s
+    if not enabled or started_at_s is None:
+        return {
+            "wait_duration_s": None,
+            "timeout_s": timeout_s if enabled else None,
+            "timed_out": False,
+        }
+    wait_duration_s = max(0.0, float(timestamp_s) - float(started_at_s))
+    timed_out = bool(
+        pair_input.handover_pending
+        and not terminal_active
+        and timeout_s is not None
+        and wait_duration_s >= timeout_s
+    )
+    return {
+        "wait_duration_s": wait_duration_s,
+        "timeout_s": timeout_s,
+        "timed_out": timed_out,
+    }
+
+
+def _command_saturation_reason(command: PngGuidanceCommand) -> str:
+    if not command.control_saturated:
+        return ""
+    if not command.quality.terminal_switch_allowed:
+        return "visual_gate_hold_command"
+    return "visual_turn_rate_limit"
 
 
 def coerce_vision_guidance_observation(
@@ -516,8 +763,13 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
     rows = list(outputs)
     contract_rejects: Counter[str] = Counter()
     switch_rejects: Counter[str] = Counter()
+    raw_switch_rejects: Counter[str] = Counter()
     guidance_laws: Counter[str] = Counter()
+    requested_guidance_laws: Counter[str] = Counter()
     guidance_modes: Counter[str] = Counter()
+    mode_transition_reasons: Counter[str] = Counter()
+    guidance_law_transition_reasons: Counter[str] = Counter()
+    command_saturation_reasons: Counter[str] = Counter()
     handoff_states: Counter[str] = Counter()
     d4_actions: Counter[str] = Counter()
     d4_action_block_reasons: Counter[str] = Counter()
@@ -532,6 +784,7 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
     candidate_laws: Counter[str] = Counter()
     for row in rows:
         guidance_laws[row.guidance_law] += 1
+        requested_guidance_laws[row.requested_guidance_law] += 1
         guidance_modes[row.mode.value] += 1
         handoff_states[row.terminal_handoff_state or row.mode.value] += 1
         if row.d4_action:
@@ -558,6 +811,14 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
             contract_rejects[row.terminal_contract_reject_reason] += 1
         if row.terminal_switch_reject_reason:
             switch_rejects[row.terminal_switch_reject_reason] += 1
+        if row.raw_terminal_switch_reject_reason:
+            raw_switch_rejects[row.raw_terminal_switch_reject_reason] += 1
+        if row.mode_transition and row.mode_transition_reason:
+            mode_transition_reasons[row.mode_transition_reason] += 1
+        if row.guidance_law_transition and row.guidance_law_transition_reason:
+            guidance_law_transition_reasons[row.guidance_law_transition_reason] += 1
+        if row.command_saturated and row.command_saturation_reason:
+            command_saturation_reasons[row.command_saturation_reason] += 1
 
     visual_png_switch_count = sum(1 for row in rows if row.visual_png_enabled)
     gate_sample_rows = [row for row in rows if row.camera_quality_gate_passed is not None]
@@ -608,6 +869,14 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         for row in rows
         if row.pn3d_los_rate_norm_radps is not None
     ]
+    terminal_wait_values = [
+        row.terminal_wait_duration_s
+        for row in rows
+        if row.terminal_wait_duration_s is not None
+    ]
+    raw_switch_rows = [row for row in rows if row.raw_terminal_switch_allowed is not None]
+    saturation_rows = [row for row in rows if row.command_saturated is not None]
+    contract_rows = [row for row in rows if row.terminal_contract_applicable]
     summary = {
         "boundary": D7_RUNTIME_BUS_BOUNDARY,
         "sample_count": len(rows),
@@ -622,13 +891,35 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         "visual_png_candidate_count": sum(1 for row in rows if row.png_guidance_law_candidate is not None),
         "terminal_handover_pending_count": sum(1 for row in rows if row.terminal_handover_pending),
         "terminal_locked_input_count": sum(1 for row in rows if row.terminal_locked),
-        "terminal_contract_allowed_count": sum(1 for row in rows if row.terminal_contract_allowed),
+        "terminal_contract_applicable_count": len(contract_rows),
+        "terminal_contract_allowed_count": sum(
+            1 for row in contract_rows if row.terminal_contract_allowed
+        ),
         "terminal_contract_reject_count": sum(contract_rejects.values()),
         "terminal_contract_reject_reasons": dict(contract_rejects),
         "terminal_switch_allowed_count": sum(1 for row in rows if row.terminal_switch_allowed),
         "terminal_switch_reject_count": sum(switch_rejects.values()),
         "terminal_switch_reject_reasons": dict(switch_rejects),
+        "raw_terminal_switch_observed_count": len(raw_switch_rows),
+        "raw_terminal_switch_allowed_count": sum(
+            1 for row in raw_switch_rows if row.raw_terminal_switch_allowed
+        ),
+        "raw_terminal_switch_allowed_rate": _bool_rate(
+            row.raw_terminal_switch_allowed for row in raw_switch_rows
+        ),
+        "raw_terminal_switch_reject_reasons": dict(raw_switch_rejects),
         "terminal_switch_allowed_rate": visual_png_switch_count / len(rows) if rows else 0.0,
+        "terminal_timeout_count": sum(1 for row in rows if row.terminal_timeout),
+        "mode_transition_count": sum(1 for row in rows if row.mode_transition),
+        "mode_transition_reasons": dict(mode_transition_reasons),
+        "guidance_law_transition_count": sum(
+            1 for row in rows if row.guidance_law_transition
+        ),
+        "guidance_law_transition_reasons": dict(guidance_law_transition_reasons),
+        "command_saturation_observed_count": len(saturation_rows),
+        "command_saturation_count": sum(1 for row in saturation_rows if row.command_saturated),
+        "command_saturation_rate": _bool_rate(row.command_saturated for row in saturation_rows),
+        "command_saturation_reasons": dict(command_saturation_reasons),
         "d4_action_block_count": sum(d4_action_block_reasons.values()),
         "d4_action_block_reasons": dict(d4_action_block_reasons),
         "d5_lock_consistent_count": sum(1 for row in rows if row.d5_lock_consistent is True),
@@ -664,7 +955,9 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         "pn3d_benchmark_sample_count": sum(1 for row in rows if row.pn3d_benchmark_only),
         "pn3d_default_api_replaced": any(row.pn3d_default_api_replaced for row in rows),
         "terminal_contract_allowed_rate": (
-            sum(1 for row in rows if row.terminal_contract_allowed) / len(rows) if rows else 0.0
+            sum(1 for row in contract_rows if row.terminal_contract_allowed) / len(contract_rows)
+            if contract_rows
+            else 0.0
         ),
         "camera_quality_gate_pass_rate": _bool_rate(
             row.camera_quality_gate_passed for row in gate_sample_rows
@@ -676,6 +969,7 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
             row.maneuver_margin_gate_passed for row in gate_sample_rows
         ),
         "guidance_law_counts": dict(guidance_laws),
+        "requested_guidance_law_counts": dict(requested_guidance_laws),
         "guidance_mode_counts": dict(guidance_modes),
         "terminal_handoff_state_counts": dict(handoff_states),
         "d4_action_counts": dict(d4_actions),
@@ -702,6 +996,7 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
     summary.update(_numeric_summary("height_delta_m", height_delta_values))
     summary.update(_numeric_summary("range_3d_m", range_3d_values))
     summary.update(_numeric_summary("pn3d_los_rate_norm_radps", pn3d_los_rate_values))
+    summary.update(_numeric_summary("terminal_wait_duration_s", terminal_wait_values))
     return summary
 
 
@@ -782,6 +1077,10 @@ def _common_output_kwargs(
     relative_position_ned: tuple[float, float, float] | None,
     relative_velocity_ned: tuple[float, float, float] | None,
     navigation_constant: float,
+    requested_guidance_law: str,
+    terminal_wait_duration_s: float | None,
+    terminal_timeout_s: float | None,
+    terminal_timeout: bool,
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
     return {
@@ -791,6 +1090,11 @@ def _common_output_kwargs(
         "control_context_id": control_context_id,
         "terminal_contract_allowed": decision.allowed,
         "terminal_contract_reject_reason": decision.reject_reason,
+        "raw_terminal_contract_allowed": decision.allowed,
+        "requested_guidance_law": requested_guidance_law,
+        "terminal_wait_duration_s": terminal_wait_duration_s,
+        "terminal_timeout_s": terminal_timeout_s,
+        "terminal_timeout": terminal_timeout,
         "plan_id": binding.plan_id,
         "plan_version": binding.plan_version,
         "track_version": binding.track_version,
@@ -1106,6 +1410,19 @@ def _coerce_pair_input(value: D7RuntimePairInput | Mapping[str, Any] | Any) -> D
         relative_position_ned=_optional_tuple3(value, ("relative_position_ned",)),
         relative_velocity_ned=_optional_tuple3(value, ("relative_velocity_ned",)),
         command_z_ned_m=_float_value(value, ("command_z_ned_m",), default=0.0),
+        requested_guidance_law=_value(
+            value,
+            ("requested_guidance_law", "guidance_law", "guidance_strategy"),
+            default=None,
+        ),
+        terminal_handover_started_at_s=_optional_float_value(
+            value,
+            ("terminal_handover_started_at_s", "handover_started_at_s"),
+        ),
+        terminal_timeout_s=_optional_float_value(
+            value,
+            ("terminal_timeout_s", "handover_timeout_s"),
+        ),
         metadata=dict(_value(value, ("metadata",), default={}) or {}),
     )
 

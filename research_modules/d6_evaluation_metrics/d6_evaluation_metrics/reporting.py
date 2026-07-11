@@ -40,6 +40,20 @@ class ReportGenerator:
             "duplicate_assignment_count",
             "unassigned_high_threat_count",
         ],
+        "governance": [
+            "governance_schema_provenance_rate",
+            "governance_config_provenance_rate",
+            "governance_schema_mismatch_count",
+            "d1_oosm_observation_rate",
+            "d1_region_quality_coverage_rate",
+            "d2_hard_risk_frame_rate",
+            "d2_nis_in_confidence_rate",
+            "d2_nees_in_confidence_rate",
+            "d2_false_track_rate",
+            "d3_resource_target_ratio",
+            "d3_assignment_coverage_rate",
+            "d3_feedback_accept_rate",
+        ],
         "degradation": [
             "failover_time",
             "consensus_rounds",
@@ -54,6 +68,14 @@ class ReportGenerator:
             "d4_reassign_pending_count",
             "distributed_fallback_count",
             "failover_active_window_delta_s",
+            "secondary_registration_usable_dwell_s",
+            "secondary_takeover_ready_dwell_s",
+            "secondary_plan_pending_dwell_s",
+            "secondary_plan_active_dwell_s",
+            "secondary_activation_latency_s",
+            "secondary_takeover_fallback_count",
+            "secondary_lease_expiry_count",
+            "stale_plan_reject_count",
         ],
         "terminal": [
             "terminal_association_accuracy",
@@ -76,6 +98,16 @@ class ReportGenerator:
             "cue_pointing_error_rmse_deg",
             "gimbal_pointing_error_mean_deg",
             "gimbal_pointing_error_rmse_deg",
+        ],
+        "visual_perception": [
+            "visual_detection_recall",
+            "local_id_continuity",
+            "cross_view_registration_rate",
+            "visual_pipeline_latency_ms",
+            "visual_cpu_budget_utilization",
+            "visual_gpu_budget_utilization",
+            "visual_budget_violation_count",
+            "online_truth_field_violation_count",
         ],
         "communication": [
             "cross_node_latency_ms",
@@ -272,6 +304,7 @@ class ReportGenerator:
         mission_rows = _mission_outcome_rows(episode_list)
         performance_rows = _performance_monitoring_rows(episode_list)
         eval_rows = _eval_tracking_rows(episode_list)
+        governance_rows = _d1_d3_governance_rows(episode_list)
 
         lines = [
             f"# {title}",
@@ -379,6 +412,25 @@ class ReportGenerator:
                 )
             )
 
+        if governance_rows:
+            lines.extend(
+                [
+                    "",
+                    "## 1A. D1-D3 真实 5v5 Governance",
+                    "",
+                    "本表只消费显式写盘的 schema/config provenance、D1 latency/region、D2 consistency/risk 和 D3 assignment/feedback 摘要。缺失样本显示 `unavailable`，D6 不调整在线阈值或配置。",
+                    "",
+                    "| Episode | Schema provenance | Config provenance | Schema mismatch | D1 OOSM | D1 region coverage | D2 hard risk | D2 NIS CI | D2 NEES CI | D2 false track | D3 N/M | D3 assignment coverage | D3 feedback accept | Risk profile | Feedback profile |",
+                    "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
+                ]
+            )
+            for row in governance_rows:
+                lines.append(
+                    "| {episode_id} | {schema} | {config} | {mismatch} | {oosm} | {region} | {risk} | {nis} | {nees} | {false_track} | {nm} | {coverage} | {feedback} | {risk_profile} | {feedback_profile} |".format(
+                        **row
+                    )
+                )
+
         if scenario_rows:
             lines.extend(
                 [
@@ -478,11 +530,15 @@ class ReportGenerator:
                 "",
                 "![分配指标图](plots/assignment_metrics.png)",
                 "",
+                "![D1-D3 Governance 指标图](plots/governance_metrics.png)",
+                "",
                 "![降级指标图](plots/degradation_metrics.png)",
                 "",
                 "![末端指标图](plots/terminal_metrics.png)",
                 "",
                 "![二级视角指标图](plots/secondary_sensing_metrics.png)",
+                "",
+                "![视觉检测与 MOT 指标图](plots/visual_perception_metrics.png)",
                 "",
                 "![通信指标图](plots/communication_metrics.png)",
                 "",
@@ -820,6 +876,58 @@ def _eval_tracking_rows(episodes: list[EpisodeMetrics]) -> list[dict[str, str]]:
                     episode.implementation_status or "not recorded"
                 ),
                 "evidence_path": _markdown_cell(episode.evidence_path or "not recorded"),
+            }
+        )
+    return rows
+
+
+def _d1_d3_governance_rows(
+    episodes: list[EpisodeMetrics],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for episode in episodes:
+        metadata = episode.metadata or {}
+        if metadata.get("d1_d3_governance_status") != "available":
+            continue
+        risk_profile = metadata.get("d2_risk_profiles")
+        feedback_profile = metadata.get("d3_feedback_profiles")
+        rows.append(
+            {
+                "episode_id": _markdown_cell(episode.episode_id),
+                "schema": _format_optional_metric(
+                    episode.governance_schema_provenance_rate
+                ),
+                "config": _format_optional_metric(
+                    episode.governance_config_provenance_rate
+                ),
+                "mismatch": _format_optional_metric(
+                    episode.governance_schema_mismatch_count
+                ),
+                "oosm": _format_optional_metric(episode.d1_oosm_observation_rate),
+                "region": _format_optional_metric(
+                    episode.d1_region_quality_coverage_rate
+                ),
+                "risk": _format_optional_metric(episode.d2_hard_risk_frame_rate),
+                "nis": _format_optional_metric(episode.d2_nis_in_confidence_rate),
+                "nees": _format_optional_metric(episode.d2_nees_in_confidence_rate),
+                "false_track": _format_optional_metric(episode.d2_false_track_rate),
+                "nm": _format_optional_metric(episode.d3_resource_target_ratio),
+                "coverage": _format_optional_metric(
+                    episode.d3_assignment_coverage_rate
+                ),
+                "feedback": _format_optional_metric(
+                    episode.d3_feedback_accept_rate
+                ),
+                "risk_profile": _markdown_cell(
+                    json.dumps(risk_profile, ensure_ascii=False, sort_keys=True)
+                    if isinstance(risk_profile, Mapping)
+                    else "unavailable"
+                ),
+                "feedback_profile": _markdown_cell(
+                    json.dumps(feedback_profile, ensure_ascii=False, sort_keys=True)
+                    if isinstance(feedback_profile, Mapping)
+                    else "unavailable"
+                ),
             }
         )
     return rows

@@ -2,6 +2,37 @@
 
 D6 是 MSM 的离线评估与报告模块。它只消费已经写盘的日志、CSV、JSON/JSONL 和仿真真值，输出 `EpisodeMetrics`、CSV、Markdown 报告和 PNG 图表；不参与 D1-D7 的实时控制链路，不生成任务、分配、导引、授权、火控、毁伤或自动处置动作。
 
+## 2026-07-10 P1 扩展
+
+本轮已补齐以下离线评估接口，不运行 AirSim：
+
+- 二级接管生命周期：统计 `registration_usable`、`takeover_ready`、`pending_secondary_plan`、`secondary_plan_active` 驻留时间、ready-to-active latency、fallback、lease expiry 和 stale-plan reject。没有显式 lifecycle event 时字段为 `None/unavailable`，不写成 0。
+- D5 YOLO/MOT：统计 detection recall、local-ID continuity、cross-view registration rate、pipeline latency、CPU/GPU budget utilization 和 budget violation。recall/continuity 只读取事件中嵌套的 `offline_truth`；在线顶层出现 `truth_id/actor_name/object_name/segmentation_id` 会计入 `online_truth_field_violation_count`。
+- 四导引律同 seed 对照：`GuidanceLawComparisonReportGenerator` 对 `pure_pursuit/radar_pn/png_vm/png_ttc` 按相同 `scenario_group/version/seed/actual scale` 配对，输出 CSV、JSON、中文 Markdown 和差值曲线。D6 不选择导引律。
+- 场景库：`ScenarioLibrary` 输出带 tags、difficulty、expected failure modes、parameters 和 seed matrix 的 JSON/CSV/Markdown；`scenario_group` 保持跨 seed 稳定，在线 truth policy 固定为 `forbidden`。
+- `ReportGenerator.write_plots()` 新增 `visual_perception_metrics.png`；AirSim calibration record/cross-seed 表同步携带 lifecycle、视觉预算、tracker backend 和 experiment guidance law。
+
+main 需要按事件写盘以下字段：
+
+```text
+d4_secondary_readiness:
+  timestamp, readiness_state
+d4_secondary_plan_state:
+  timestamp, plan_state, plan_id, plan_version, owner, lease_id, lease_expiry_timestamp
+secondary_takeover_fallback / secondary_lease_expired / stale_plan_reject:
+  timestamp, reason, plan_id, plan_version, owner
+d5_yolo_mot_frame:
+  timestamp, camera_id, detection_backend, tracker_backend,
+  cross_view_candidate_count, cross_view_registered_count,
+  detector_latency_ms, tracker_latency_ms, pipeline_latency_ms,
+  cpu_budget_utilization, gpu_budget_utilization,
+  latency_budget_ms, cpu_budget_utilization_limit, gpu_budget_utilization_limit,
+  offline_truth.{visible_truth_count,matched_truth_count,truth_to_local_track_id}
+episode metadata:
+  experiment_guidance_law, scenario_group, scenario_version, seed,
+  drone_count, resource_count, target_count, camera_count
+```
+
 ## 当前能力
 
 已实现的核心数据模型：
@@ -71,8 +102,22 @@ P1 二级侦察 detect-to-registration 校准报告已经补齐分层漏斗字�
 
 ## 当前 P0/P1 状态
 
+### 2026-07-11 四导引律短窗口实测证据
+
+main 已修复 experiment-level guidance law 的执行后回灌，并从
+`research_modules/airsim_runtime/outputs/p1_guidance_four_law_smoke_20260711/`
+生成 D6 同 seed 对照产物。`guidance_same_seed_pairs.csv` 包含 21 条“候选导引律 x
+指标”配对记录，但每条记录的 `pair_count=1`，实际只有 seed 7 一个独立 seed；不能把
+21 条指标行解释为 21 次独立实验。
+
+该 smoke 使用 2 秒短窗口，Pure Pursuit、Radar PN、PNG VM 和 PNG TTC 均 timeout，
+拦截成功率均为 0。PNG VM/TTC 的 `terminal_switch_allowed_rate` 分别约为 0.762 和
+0.810，最小距离分别约为 2.812 m 和 2.798 m。这些结果证明四律标签回灌、同 seed
+配对、末端切换事件和距离指标能够被 D6 正确消费；它们不构成最终命中率、导引律优劣
+或统计显著性结论。延长运行窗口并开展真实多 seed、同几何、同规模对照仍为 P1。
+
 - P0：P0-A/P0-C 字段已补齐。D6 当前输出 mission outcome、success/failure reason、top failure causes/root cause、性能监测字段、EVAL tracking schema 和 `cuas-standard-map-v1` 标准化评估映射最小版；仍保持离线消费日志，不参与控制；指标继续按实际规模归一化，不从 `5v5` 名称推断分母。
-- P1：多 seed AirSim 校准、严格 seed 配对、paired effect size、确定性 bootstrap 95% CI、execution/contract/evidence availability 和 read-only unavailable 处理均已补齐；D6 全量测试为 `48 passed`，现有 2v2 10-seed execution 为 `18/20`。下一阶段不重复增加同义拦截字段，而是建设长期 scenario library/CI 趋势、CV 5v5 的 D1-D3 联合聚合、YOLO/MOT accuracy-latency-budget 报告和 COURAGEOUS/MDPI/OCEF 完整标准化报告。
+- P1：多 seed AirSim 校准、严格 seed 配对、paired effect size、确定性 bootstrap 95% CI、execution/contract/evidence availability、二级生命周期、YOLO/MOT 核心预算、四导引律配对、D1-D3 governance 和 scenario library 接口均已补齐；2026-07-11 D6 全量测试为 `57 passed`，现有 2v2 10-seed execution 为 `18/20`。四律 smoke 目前只有单 seed、2 秒短窗口，不能作为命中率结论。下一阶段不重复增加同义指标，而是接入真实多 seed、较长窗口数据与 CI 趋势、CV 5v5 的 D1-D3 联合聚合、补充模型版本/分辨率/内存/fallback 预算字段，并完善 COURAGEOUS/MDPI/OCEF 标准报告。
 
 ## PNG 策略
 

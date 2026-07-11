@@ -5,6 +5,34 @@
 **规模规则**：指标按实际 `drone_count/resource_count/target_count/camera_count` 归一化，并按 `metric_scope/seed/scenario_group/scale` 分组，不从 `2v2/5v5` 场景名推断规模。
 **ID 规则**：D2/D6 必须保留显式 `id_switch_count`。
 
+## 2026-07-10 P1 评估补充
+
+本轮在不参与控制的前提下增加了四条可执行评估链路：
+
+| 链路 | D6 输入 | D6 输出 | 当前状态 |
+|---|---|---|---|
+| 二级接管生命周期 | readiness/plan state、owner/version/lease、fallback/stale 事件 | 状态驻留、activation latency、fallback/lease/stale count | 代码与单元测试完成，待真实 AirSim 多 seed 写盘 |
+| YOLO/MOT | D5 frame event、backend、local track、latency/resource、嵌套 offline truth | recall、local-ID continuity、cross-view rate、latency/budget、truth-field violation | 代码与单元测试完成，D6 不加载 `best.pt` |
+| 四导引律 | experiment-level law、稳定场景、相同 seed/规模、D7 execution metrics | same-seed CSV/JSON/中文 Markdown/差值曲线 | 代码与单元测试完成，PNG 核心算法不变 |
+| 场景库 | stable scenario group/version、tags、difficulty、expected failure、seeds | scenario library JSON、seed matrix CSV、中文 Markdown | 代码与单元测试完成，CI 接线待 main |
+
+availability 规则：状态、latency、recall、continuity 和资源指标缺真实证据时为 `null/unavailable`；显式记录且实际为零时才输出 0。`offline_truth` 永远只用于 D6 评估，不能回流 D4/D5/D7 在线状态。
+
+### 2026-07-11 四导引律真实短 episode 结果
+
+main 修复 experiment-level guidance law 回灌后，D6 已从
+`p1_guidance_four_law_smoke_20260711` 生成同 seed CSV、JSON、中文 Markdown 和差值
+曲线。结果表有 21 条指标配对行，但每行只配对 seed 7，不能把指标行数当成独立样本
+数。四种导引律在 2 秒窗口内全部 timeout，成功率均为 0；PNG VM/TTC 的末端切换允许
+率约 0.762/0.810，最小距离约 2.812/2.798 m。
+
+因此当前结论仅是 D6 的回灌、配对、切换率、拒绝数和最小距离报告链路可用。单 seed、
+短窗口无法支持最终命中率、置信区间或导引律优劣结论。P1 下一步由 main/D7 运行较长
+窗口的真实多 seed 同条件批次，D6 继续离线报告成功/timeout/abort、距离、切换和门控
+原因，不修改任何控制或导引逻辑。
+
+main 写盘合同见 D6 README。尤其需要显式写 `readiness_state`、`plan_state`、plan owner/version/lease、`detection_backend`、`tracker_backend`、cross-view candidate/registered count、pipeline latency、CPU/GPU budget、嵌套 `offline_truth`、`experiment_guidance_law` 和稳定 `scenario_group/scenario_version/seed/actual scale`。
+
 ## 1. 研究问题
 
 多目标 C-UAS workflow 不能只报告“成功率”。一个 episode 可能最终接近目标，但仍存在虚警高、漏检、航迹断裂、ID Switch、重复分配、高威胁未分配、中心失效后接管慢、D4 reassign pending、D5 末端误配准、D7 terminal switch reject、通信 stale update 或安全约束触发等问题。
@@ -44,7 +72,7 @@ D6 的目标是把 D1-D7 和 main runtime 的离线日志统一为可比较、�
 
 - 2v2 10-seed 拦截报告专项已完成：AirSim calibration record/CSV/summary/cross-seed 新增 success、collision/range/abort、min range、time-to-intercept、visual PNG switch、terminal switch allowed/takeover 和 gate reject。availability gate 要求 intercept summary/control command/显式 pair-status/D7 execution event 证据，episode_001..005 read-only 默认零因此为 unavailable 且不进入 Outcome 表。对 `seed001..010` summaries 的离线验收仍得到 full-flow execution `18/20=0.9`、collision/range/abort=`18/0/2`；contract 保持独立并由 scope 明示。D6 仍不参与控制。
 
-- D6 owner 验收结果为 `48 passed`，`git diff --check` 通过。execution/contract/evidence availability、read-only unavailable、cross-seed/paired bootstrap 已闭合；后续只保持 schema 回归，不再重复建设拦截字段。
+- D6 owner 2026-07-11 验收结果为 `57 passed`，`git diff --check` 通过。execution/contract/evidence availability、read-only unavailable、cross-seed/paired bootstrap、二级生命周期、D5 YOLO/MOT 核心预算、四导引律配对、D1-D3 governance 和场景库接口已闭合；后续保持 schema 回归并等待真实多 seed 数据。
 
 未实现：
 
@@ -484,9 +512,9 @@ D7 gate/intercept：
 
 ## 9. P1 下一步
 
-1. 长期 scenario library 和 CI trends：消费 main 提供的 scenario id/version、tags、difficulty、expected failure modes、actual scale、test matrix 和 evidence path，输出跨提交趋势与回归摘要。
+1. 场景库已实现；下一步由 main/CI 消费其 scenario id/version、tags、difficulty、expected failure modes、actual scale、seed matrix 和 evidence path，输出跨提交趋势与回归摘要。
 2. CV 5v5 D1-D3 联合聚合：在同一 episode clock 下汇总 D1 感知/融合/协方差/延迟、D2 关联/连续性/ID switch 和 D3 分配/version/迟滞，生成从感知到分配的统一 funnel。
-3. YOLO/MOT 预算报告：消费 D5 写盘的 backend/model version、输入分辨率、目标像素尺度、inference latency/throughput、CPU/GPU/内存、drop/fallback 和质量字段；D6 不加载权重、不运行检测。
+3. YOLO/MOT 核心 recall/continuity/cross-view/latency/CPU/GPU budget 已实现；下一步补充 D5 写盘的 model version、输入分辨率、目标像素尺度、throughput、内存、drop/fallback 字段。D6 不加载权重、不运行检测。
 4. COURAGEOUS/MDPI/OCEF 完整标准化报告：补测试阶段、复现纪律、evidence index、场景覆盖矩阵、限制条件和外部审计说明。
 5. 使用真实成对 5v5/N-v-N 批次持续验证已实现的 paired effect size/bootstrap CI，并保持 missing seed、单 pair、无标签和 unavailable 的保守口径。
 6. 继续沉淀 D4/D5 coverage/funnel/gimbal/registration 与 active-degradation review/window 长期趋势。

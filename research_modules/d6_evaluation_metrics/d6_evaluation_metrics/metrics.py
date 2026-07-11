@@ -22,6 +22,37 @@ from .standard_mapping import (
 
 Position = Sequence[float]
 
+_D1_D3_GOVERNANCE_METRIC_NAMES = (
+    "governance_schema_provenance_rate",
+    "governance_config_provenance_rate",
+    "governance_schema_mismatch_count",
+    "d1_oosm_observation_rate",
+    "d1_stale_observation_rate",
+    "d1_replay_observation_rate",
+    "d1_mean_delay_s",
+    "d1_max_delay_s",
+    "d1_region_quality_coverage_rate",
+    "d1_region_mean_a95_m",
+    "d1_region_handover_readiness_mean",
+    "d1_degraded_region_count",
+    "d2_soft_risk_frame_rate",
+    "d2_hard_risk_frame_rate",
+    "d2_max_association_risk",
+    "d2_nis_mean",
+    "d2_nis_in_confidence_rate",
+    "d2_nees_mean",
+    "d2_nees_in_confidence_rate",
+    "d2_false_track_count",
+    "d2_false_track_rate",
+    "d3_resource_target_ratio",
+    "d3_assignment_coverage_rate",
+    "d3_unassigned_target_rate",
+    "d3_hysteresis_reject_rate",
+    "d3_stale_reject_rate",
+    "d3_feedback_accept_rate",
+    "d3_feedback_sample_count",
+)
+
 
 @dataclass(frozen=True)
 class TrackRecord:
@@ -141,6 +172,34 @@ class EpisodeMetrics:
     id_switch_count: int = 0
     duplicate_assignment_count: int = 0
     unassigned_high_threat_count: int = 0
+    governance_schema_provenance_rate: float | None = None
+    governance_config_provenance_rate: float | None = None
+    governance_schema_mismatch_count: int | None = None
+    d1_oosm_observation_rate: float | None = None
+    d1_stale_observation_rate: float | None = None
+    d1_replay_observation_rate: float | None = None
+    d1_mean_delay_s: float | None = None
+    d1_max_delay_s: float | None = None
+    d1_region_quality_coverage_rate: float | None = None
+    d1_region_mean_a95_m: float | None = None
+    d1_region_handover_readiness_mean: float | None = None
+    d1_degraded_region_count: int | None = None
+    d2_soft_risk_frame_rate: float | None = None
+    d2_hard_risk_frame_rate: float | None = None
+    d2_max_association_risk: float | None = None
+    d2_nis_mean: float | None = None
+    d2_nis_in_confidence_rate: float | None = None
+    d2_nees_mean: float | None = None
+    d2_nees_in_confidence_rate: float | None = None
+    d2_false_track_count: int | None = None
+    d2_false_track_rate: float | None = None
+    d3_resource_target_ratio: float | None = None
+    d3_assignment_coverage_rate: float | None = None
+    d3_unassigned_target_rate: float | None = None
+    d3_hysteresis_reject_rate: float | None = None
+    d3_stale_reject_rate: float | None = None
+    d3_feedback_accept_rate: float | None = None
+    d3_feedback_sample_count: int | None = None
     failover_time: float = 0.0
     consensus_rounds: float = 0.0
     degraded_completion_rate: float = 0.0
@@ -154,6 +213,14 @@ class EpisodeMetrics:
     d4_reassign_pending_count: int = 0
     distributed_fallback_count: int = 0
     failover_active_window_delta_s: float = 0.0
+    secondary_registration_usable_dwell_s: float | None = None
+    secondary_takeover_ready_dwell_s: float | None = None
+    secondary_plan_pending_dwell_s: float | None = None
+    secondary_plan_active_dwell_s: float | None = None
+    secondary_activation_latency_s: float | None = None
+    secondary_takeover_fallback_count: int | None = None
+    secondary_lease_expiry_count: int | None = None
+    stale_plan_reject_count: int | None = None
     terminal_association_accuracy: float = 0.0
     terminal_id_switch_count: int = 0
     ambiguous_fov_event_count: int = 0
@@ -163,6 +230,14 @@ class EpisodeMetrics:
     multi_view_consensus_rate: float = 0.0
     cross_view_conflict_count: int = 0
     duplicate_terminal_lock_count: int = 0
+    visual_detection_recall: float | None = None
+    local_id_continuity: float | None = None
+    cross_view_registration_rate: float | None = None
+    visual_pipeline_latency_ms: float | None = None
+    visual_cpu_budget_utilization: float | None = None
+    visual_gpu_budget_utilization: float | None = None
+    visual_budget_violation_count: int | None = None
+    online_truth_field_violation_count: int | None = None
     secondary_network_joint_full_view_frame_rate: float = 0.0
     secondary_network_mean_coverage_ratio: float = 0.0
     secondary_single_camera_full_view_frame_rate: float = 0.0
@@ -219,6 +294,34 @@ class EpisodeMetrics:
             "id_switch_count",
             "duplicate_assignment_count",
             "unassigned_high_threat_count",
+            "governance_schema_provenance_rate",
+            "governance_config_provenance_rate",
+            "governance_schema_mismatch_count",
+            "d1_oosm_observation_rate",
+            "d1_stale_observation_rate",
+            "d1_replay_observation_rate",
+            "d1_mean_delay_s",
+            "d1_max_delay_s",
+            "d1_region_quality_coverage_rate",
+            "d1_region_mean_a95_m",
+            "d1_region_handover_readiness_mean",
+            "d1_degraded_region_count",
+            "d2_soft_risk_frame_rate",
+            "d2_hard_risk_frame_rate",
+            "d2_max_association_risk",
+            "d2_nis_mean",
+            "d2_nis_in_confidence_rate",
+            "d2_nees_mean",
+            "d2_nees_in_confidence_rate",
+            "d2_false_track_count",
+            "d2_false_track_rate",
+            "d3_resource_target_ratio",
+            "d3_assignment_coverage_rate",
+            "d3_unassigned_target_rate",
+            "d3_hysteresis_reject_rate",
+            "d3_stale_reject_rate",
+            "d3_feedback_accept_rate",
+            "d3_feedback_sample_count",
             "failover_time",
             "consensus_rounds",
             "degraded_completion_rate",
@@ -232,6 +335,14 @@ class EpisodeMetrics:
             "d4_reassign_pending_count",
             "distributed_fallback_count",
             "failover_active_window_delta_s",
+            "secondary_registration_usable_dwell_s",
+            "secondary_takeover_ready_dwell_s",
+            "secondary_plan_pending_dwell_s",
+            "secondary_plan_active_dwell_s",
+            "secondary_activation_latency_s",
+            "secondary_takeover_fallback_count",
+            "secondary_lease_expiry_count",
+            "stale_plan_reject_count",
             "terminal_association_accuracy",
             "terminal_id_switch_count",
             "ambiguous_fov_event_count",
@@ -241,6 +352,14 @@ class EpisodeMetrics:
             "multi_view_consensus_rate",
             "cross_view_conflict_count",
             "duplicate_terminal_lock_count",
+            "visual_detection_recall",
+            "local_id_continuity",
+            "cross_view_registration_rate",
+            "visual_pipeline_latency_ms",
+            "visual_cpu_budget_utilization",
+            "visual_gpu_budget_utilization",
+            "visual_budget_violation_count",
+            "online_truth_field_violation_count",
             "secondary_network_joint_full_view_frame_rate",
             "secondary_network_mean_coverage_ratio",
             "secondary_single_camera_full_view_frame_rate",
@@ -341,6 +460,36 @@ class MetricsCollector:
         "assignment_reassign_pending",
         "terminal_reassign_pending",
     }
+    D1_GOVERNANCE_EVENTS = {
+        "d1_governance_summary",
+        "d1_latency_audit",
+        "d1_region_quality_summary",
+        "d1_region_quality_window",
+    }
+    D2_GOVERNANCE_EVENTS = {
+        "d2_governance_summary",
+        "d2_association_risk_summary",
+        "d2_consistency_summary",
+        "d2_false_track_summary",
+    }
+    D3_GOVERNANCE_EVENTS = {
+        "d3_governance_summary",
+        "d3_assignment_mismatch_summary",
+        "d3_feedback_profile_summary",
+    }
+    SECONDARY_LIFECYCLE_EVENTS = {
+        "d4_secondary_readiness",
+        "secondary_readiness",
+        "secondary_takeover_readiness",
+        "d4_secondary_plan_state",
+        "secondary_plan_state",
+        "secondary_takeover_state",
+        "secondary_takeover_fallback",
+        "secondary_lease_expired",
+        "secondary_plan_lease_expired",
+        "stale_plan_reject",
+        "secondary_stale_plan_reject",
+    }
     DISTRIBUTED_FALLBACK_EVENTS = {
         "distributed_fallback",
         "distributed_fallback_active",
@@ -433,6 +582,12 @@ class MetricsCollector:
     D7_GUIDANCE_PAIR_SUMMARY_EVENTS = {
         "d7_guidance_pair_summary",
         "guidance_pair_summary",
+    }
+    D5_PERCEPTION_EVENTS = {
+        "d5_perception_frame",
+        "d5_visual_tracking_frame",
+        "d5_yolo_mot_frame",
+        "terminal_perception_frame",
     }
     FOV_ENTRY_STATES = {"fov_entry", "entered_fov", "terminal_fov_entry"}
     LOCK_STATES = {"locked", "lock", "terminal_lock"}
@@ -564,9 +719,17 @@ class MetricsCollector:
         )
         tracking = self._compute_tracking_metrics(truth_summary)
         assignment = self._compute_assignment_metrics(truth_summary)
+        governance = self._compute_d1_d3_governance_metrics()
+        governance_metadata = governance.pop("_metadata", {})
         degradation = self._compute_degradation_metrics()
         degradation_metadata = degradation.pop("_metadata", {})
+        secondary_lifecycle = self._compute_secondary_lifecycle_metrics(
+            episode_duration
+        )
+        secondary_lifecycle_metadata = secondary_lifecycle.pop("_metadata", {})
         terminal = self._compute_terminal_metrics()
+        visual_perception = self._compute_visual_perception_metrics()
+        visual_perception_metadata = visual_perception.pop("_metadata", {})
         secondary_sensing = self._compute_secondary_sensing_metrics(scale_counts)
         secondary_sensing_metadata = secondary_sensing.pop("_metadata", {})
         link = self._compute_link_metrics()
@@ -582,8 +745,11 @@ class MetricsCollector:
             detection,
             tracking,
             assignment,
+            governance,
             degradation,
+            secondary_lifecycle,
             terminal,
+            visual_perception,
             secondary_sensing,
             link,
             guidance_gate,
@@ -626,8 +792,11 @@ class MetricsCollector:
             "standard_metric_family_summary": metrics.standard_metric_family_summary,
             "standard_mapping": standard_mapping_summary(),
             **scale_counts,
+            **governance_metadata,
             **degradation_metadata,
+            **secondary_lifecycle_metadata,
             **secondary_sensing_metadata,
+            **visual_perception_metadata,
             **guidance_metadata,
             **intercept_metadata,
             **performance_metadata,
@@ -901,6 +1070,338 @@ class MetricsCollector:
             "unassigned_high_threat_count": unassigned_high_threat_count,
         }
 
+    def _compute_d1_d3_governance_metrics(self) -> dict[str, Any]:
+        module_events = {
+            "d1": [
+                record
+                for record in self.event_records
+                if _event_type(record) in self.D1_GOVERNANCE_EVENTS
+            ],
+            "d2": [
+                record
+                for record in self.event_records
+                if _event_type(record) in self.D2_GOVERNANCE_EVENTS
+            ],
+            "d3": [
+                record
+                for record in self.event_records
+                if _event_type(record) in self.D3_GOVERNANCE_EVENTS
+            ],
+        }
+        all_events = [record for records in module_events.values() for record in records]
+        if not all_events:
+            return {
+                **{name: None for name in _D1_D3_GOVERNANCE_METRIC_NAMES},
+                "_metadata": {
+                    "d1_d3_governance_status": "unavailable",
+                    "d1_d3_governance_event_count": 0,
+                },
+            }
+
+        payloads_by_module = {
+            module: [_governance_payload(record.metadata) for record in records]
+            for module, records in module_events.items()
+        }
+        schema_count = 0
+        config_count = 0
+        schema_mismatch_count = 0
+        provenance_by_module: dict[str, dict[str, Any]] = {}
+        for module, payloads in payloads_by_module.items():
+            schema_versions: set[str] = set()
+            config_profiles: set[str] = set()
+            config_versions: set[str] = set()
+            config_hashes: set[str] = set()
+            source_commits: set[str] = set()
+            for payload in payloads:
+                schema_version = _metadata_text(payload, "schema_version")
+                if schema_version is not None:
+                    schema_count += 1
+                    schema_versions.add(schema_version)
+                config_profile = _metadata_text(payload, "config_profile") or _metadata_text(
+                    payload, "profile_name"
+                )
+                config_version = _metadata_text(payload, "config_version") or _metadata_text(
+                    payload, "profile_version"
+                )
+                config_hash = _metadata_text(payload, "config_hash")
+                if any(value is not None for value in (config_profile, config_version, config_hash)):
+                    config_count += 1
+                if config_profile is not None:
+                    config_profiles.add(config_profile)
+                if config_version is not None:
+                    config_versions.add(config_version)
+                if config_hash is not None:
+                    config_hashes.add(config_hash)
+                source_commit = _metadata_text(payload, "source_commit")
+                if source_commit is not None:
+                    source_commits.add(source_commit)
+                schema_mismatch = _bool_from_metadata(
+                    payload,
+                    ("schema_mismatch", "schema_rejected"),
+                    default=False,
+                )
+                if "schema_valid" in payload:
+                    schema_mismatch = schema_mismatch or not _as_bool(
+                        payload["schema_valid"], default=False
+                    )
+                schema_mismatch_count += int(schema_mismatch)
+            provenance_by_module[module] = {
+                "event_count": len(payloads),
+                "schema_versions": sorted(schema_versions),
+                "config_profiles": sorted(config_profiles),
+                "config_versions": sorted(config_versions),
+                "config_hashes": sorted(config_hashes),
+                "source_commits": sorted(source_commits),
+            }
+
+        d1_payloads = payloads_by_module["d1"]
+        d1_region_payloads = [
+            payload
+            for record, payload in zip(module_events["d1"], d1_payloads)
+            if _event_type(record)
+            in {"d1_region_quality_summary", "d1_region_quality_window"}
+            or "coverage_cell" in payload
+        ]
+        d1_observation_count = _governance_sum(
+            d1_payloads,
+            ("observation_count", "latency_observation_count"),
+        )
+        d1_oosm_count = _governance_sum(
+            d1_payloads,
+            ("oosm_observation_count", "oosm_count"),
+        )
+        d1_stale_count = _governance_sum(
+            d1_payloads,
+            ("stale_observation_count", "stale_count"),
+        )
+        d1_replay_count = _governance_sum(
+            d1_payloads,
+            ("replay_count",),
+        )
+        coverage_cells = {
+            value
+            for payload in d1_region_payloads
+            for value in [_metadata_text(payload, "coverage_cell")]
+            if value is not None
+        }
+        expected_region_count = _governance_max(
+            d1_region_payloads,
+            ("expected_coverage_cell_count", "expected_region_count"),
+        )
+        degraded_region_count = (
+            sum(
+                int(
+                    _bool_from_metadata(
+                        payload,
+                        ("region_quality_degraded", "quality_degraded"),
+                        default=False,
+                    )
+                    or bool(payload.get("quality_flags"))
+                )
+                for payload in d1_region_payloads
+            )
+            if d1_region_payloads
+            else None
+        )
+
+        d2_payloads = payloads_by_module["d2"]
+        d2_false_track_count = _governance_sum(
+            d2_payloads,
+            ("false_track_count",),
+        )
+        d2_track_birth_count = _governance_sum(
+            d2_payloads,
+            ("initiated_track_count", "track_birth_count"),
+        )
+
+        d3_payloads = payloads_by_module["d3"]
+        d3_resource_target_ratios = [
+            float(resource_count) / float(target_count)
+            for payload in d3_payloads
+            for resource_count, target_count in [
+                (
+                    _governance_value(payload, ("resource_count",)),
+                    _governance_value(payload, ("target_count",)),
+                )
+            ]
+            if resource_count is not None and target_count is not None and target_count > 0
+        ]
+        d3_target_count = _governance_sum(d3_payloads, ("target_count",))
+        d3_assigned_count = _governance_sum(d3_payloads, ("assigned_count",))
+        d3_unassigned_count = _governance_sum(
+            d3_payloads,
+            ("unassigned_target_count", "unassigned_count"),
+        )
+        if d3_unassigned_count is None and d3_target_count is not None and d3_assigned_count is not None:
+            d3_unassigned_count = max(0.0, d3_target_count - d3_assigned_count)
+        d3_decision_count = _governance_sum(
+            d3_payloads,
+            ("decision_count", "assignment_decision_count"),
+        )
+        d3_feedback_count = _governance_sum(
+            d3_payloads,
+            ("feedback_record_count", "feedback_sample_count"),
+        )
+        d3_feedback_accepted = _governance_sum(
+            d3_payloads,
+            ("feedback_accepted_count", "accepted_feedback_count"),
+        )
+        d3_feedback_rejected = _governance_sum(
+            d3_payloads,
+            ("feedback_rejected_count",),
+        )
+        if d3_feedback_rejected is None:
+            d3_feedback_rejected = _governance_sum(
+                d3_payloads,
+                (
+                "duplicate_reject_count",
+                "friend_reject_count",
+                "fov_reject_count",
+                "geometry_reject_count",
+                ),
+                sum_all_present_keys=True,
+            )
+        if (
+            d3_feedback_accepted is None
+            and d3_feedback_count is not None
+            and d3_feedback_rejected is not None
+        ):
+            d3_feedback_accepted = max(0.0, d3_feedback_count - d3_feedback_rejected)
+
+        result = {
+            "governance_schema_provenance_rate": schema_count / len(all_events),
+            "governance_config_provenance_rate": config_count / len(all_events),
+            "governance_schema_mismatch_count": schema_mismatch_count,
+            "d1_oosm_observation_rate": _ratio_or_none(
+                d1_oosm_count, d1_observation_count
+            ),
+            "d1_stale_observation_rate": _ratio_or_none(
+                d1_stale_count, d1_observation_count
+            ),
+            "d1_replay_observation_rate": _ratio_or_none(
+                d1_replay_count, d1_observation_count
+            ),
+            "d1_mean_delay_s": _governance_weighted_mean(
+                d1_payloads,
+                ("mean_delay_s",),
+                ("observation_count", "latency_observation_count"),
+            ),
+            "d1_max_delay_s": _governance_max(d1_payloads, ("max_delay_s",)),
+            "d1_region_quality_coverage_rate": _ratio_or_none(
+                float(len(coverage_cells)), expected_region_count
+            ),
+            "d1_region_mean_a95_m": _governance_weighted_mean(
+                d1_region_payloads,
+                ("mean_a95_m",),
+                ("track_count", "latest_track_count", "sample_count"),
+            ),
+            "d1_region_handover_readiness_mean": _governance_weighted_mean(
+                d1_region_payloads,
+                ("mean_handover_readiness",),
+                ("track_count", "latest_track_count", "sample_count"),
+            ),
+            "d1_degraded_region_count": degraded_region_count,
+            "d2_soft_risk_frame_rate": _governance_rate(
+                d2_payloads,
+                ("soft_risk_frame_count",),
+                ("frame_count",),
+                ("soft_risk_frame_rate",),
+            ),
+            "d2_hard_risk_frame_rate": _governance_rate(
+                d2_payloads,
+                ("hard_risk_frame_count",),
+                ("frame_count",),
+                ("hard_risk_frame_rate",),
+            ),
+            "d2_max_association_risk": _governance_max(
+                d2_payloads,
+                (
+                    "max_hard_risk_score",
+                    "max_soft_risk_score",
+                    "max_track_association_risk",
+                ),
+            ),
+            "d2_nis_mean": _governance_weighted_mean(
+                d2_payloads,
+                ("nis_mean", "mean_nis"),
+                ("nis_sample_count",),
+            ),
+            "d2_nis_in_confidence_rate": _governance_rate(
+                d2_payloads,
+                ("nis_in_confidence_count",),
+                ("nis_sample_count",),
+                ("nis_in_confidence_rate",),
+            ),
+            "d2_nees_mean": _governance_weighted_mean(
+                d2_payloads,
+                ("nees_mean", "mean_nees"),
+                ("nees_sample_count",),
+            ),
+            "d2_nees_in_confidence_rate": _governance_rate(
+                d2_payloads,
+                ("nees_in_confidence_count",),
+                ("nees_sample_count",),
+                ("nees_in_confidence_rate",),
+            ),
+            "d2_false_track_count": (
+                int(d2_false_track_count) if d2_false_track_count is not None else None
+            ),
+            "d2_false_track_rate": _ratio_or_none(
+                d2_false_track_count, d2_track_birth_count
+            ),
+            "d3_resource_target_ratio": (
+                _mean(d3_resource_target_ratios)
+                if d3_resource_target_ratios
+                else None
+            ),
+            "d3_assignment_coverage_rate": _ratio_or_none(
+                d3_assigned_count, d3_target_count
+            ),
+            "d3_unassigned_target_rate": _ratio_or_none(
+                d3_unassigned_count, d3_target_count
+            ),
+            "d3_hysteresis_reject_rate": _ratio_or_none(
+                _governance_sum(d3_payloads, ("hysteresis_reject_count",)),
+                d3_decision_count,
+            ),
+            "d3_stale_reject_rate": _ratio_or_none(
+                _governance_sum(d3_payloads, ("stale_reject_count",)),
+                d3_decision_count,
+            ),
+            "d3_feedback_accept_rate": _ratio_or_none(
+                d3_feedback_accepted, d3_feedback_count
+            ),
+            "d3_feedback_sample_count": (
+                int(d3_feedback_count) if d3_feedback_count is not None else None
+            ),
+            "_metadata": {
+                "d1_d3_governance_status": "available",
+                "d1_d3_governance_event_count": len(all_events),
+                "d1_d3_governance_event_counts": {
+                    module: len(records) for module, records in module_events.items()
+                },
+                "governance_provenance_by_module": provenance_by_module,
+                "d1_coverage_cells": sorted(coverage_cells),
+                "d2_risk_profiles": _governance_profile_summary(
+                    d2_payloads,
+                    profile_keys=("risk_profile", "profile_name"),
+                    version_keys=(
+                        "risk_profile_version",
+                        "association_risk_threshold_version",
+                        "profile_version",
+                    ),
+                ),
+                "d3_feedback_profiles": _governance_profile_summary(
+                    d3_payloads,
+                    profile_keys=("feedback_profile", "profile_name"),
+                    version_keys=("feedback_profile_version", "profile_version"),
+                ),
+                "d3_nm_case_counts": _d3_nm_case_counts(d3_payloads),
+                "offline_only": True,
+            },
+        }
+        return result
+
     def _compute_degradation_metrics(self) -> dict[str, Any]:
         sorted_events = sorted(self.event_records, key=lambda record: record.timestamp)
         pending_failures: deque[EventRecord] = deque()
@@ -1112,6 +1613,325 @@ class MetricsCollector:
             or _bool_from_metadata(metadata, ("distributed_fallback",), default=False)
         )
         return active, passive, secondary, distributed, secondary_reassignment, d4_reassign_pending
+
+    def _compute_secondary_lifecycle_metrics(
+        self,
+        episode_duration: float,
+    ) -> dict[str, Any]:
+        lifecycle_events = [
+            record
+            for record in sorted(self.event_records, key=lambda item: item.timestamp)
+            if _event_type(record) in self.SECONDARY_LIFECYCLE_EVENTS
+            or _secondary_readiness_state(record.metadata) is not None
+            or _secondary_plan_state(record.metadata) is not None
+        ]
+        if not lifecycle_events:
+            return {
+                "secondary_registration_usable_dwell_s": None,
+                "secondary_takeover_ready_dwell_s": None,
+                "secondary_plan_pending_dwell_s": None,
+                "secondary_plan_active_dwell_s": None,
+                "secondary_activation_latency_s": None,
+                "secondary_takeover_fallback_count": None,
+                "secondary_lease_expiry_count": None,
+                "stale_plan_reject_count": None,
+                "_metadata": {
+                    "secondary_lifecycle_status": "unavailable",
+                    "secondary_lifecycle_event_count": 0,
+                },
+            }
+
+        readiness_samples: list[tuple[float, str]] = []
+        plan_samples: list[tuple[float, str]] = []
+        fallback_count = 0
+        lease_expiry_count = 0
+        stale_reject_count = 0
+        previous_readiness: str | None = None
+        previous_plan: str | None = None
+
+        for record in lifecycle_events:
+            event_type = _event_type(record)
+            readiness_state = _secondary_readiness_state(record.metadata)
+            plan_state = _secondary_plan_state(record.metadata)
+            if readiness_state is not None:
+                readiness_samples.append((record.timestamp, readiness_state))
+                if previous_readiness == "takeover_ready" and readiness_state in {
+                    "registration_usable",
+                    "visible_only",
+                    "not_ready",
+                }:
+                    fallback_count += 1
+                previous_readiness = readiness_state
+            if plan_state is not None:
+                plan_samples.append((record.timestamp, plan_state))
+                if previous_plan in {
+                    "pending_secondary_plan",
+                    "secondary_plan_active",
+                } and plan_state in {"fallback", "expired", "revoked", "inactive"}:
+                    fallback_count += 1
+                previous_plan = plan_state
+
+            reject_reason = _state(
+                str(
+                    record.metadata.get("reject_reason")
+                    or record.metadata.get("reason")
+                    or record.metadata.get("terminal_contract_reject_reason")
+                    or ""
+                )
+            )
+            if event_type in {
+                "secondary_takeover_fallback",
+            }:
+                fallback_count += 1
+            if event_type in {
+                "secondary_lease_expired",
+                "secondary_plan_lease_expired",
+            } or reject_reason in {"lease_expired", "secondary_lease_expired"}:
+                lease_expiry_count += 1
+            if event_type in {
+                "stale_plan_reject",
+                "secondary_stale_plan_reject",
+            } or reject_reason in {
+                "stale_plan",
+                "stale_plan_reject",
+                "stale_version",
+            }:
+                stale_reject_count += 1
+
+        episode_end = max(
+            episode_duration,
+            max((record.timestamp for record in lifecycle_events), default=0.0),
+        )
+        readiness_dwell = _state_dwell_seconds(readiness_samples, episode_end)
+        plan_dwell = _state_dwell_seconds(plan_samples, episode_end)
+        ready_timestamp = next(
+            (
+                timestamp
+                for timestamp, state in readiness_samples
+                if state == "takeover_ready"
+            ),
+            None,
+        )
+        active_timestamp = next(
+            (
+                timestamp
+                for timestamp, state in plan_samples
+                if state == "secondary_plan_active"
+                and (ready_timestamp is None or timestamp >= ready_timestamp)
+            ),
+            None,
+        )
+        activation_latency = (
+            max(0.0, active_timestamp - ready_timestamp)
+            if ready_timestamp is not None and active_timestamp is not None
+            else None
+        )
+
+        return {
+            "secondary_registration_usable_dwell_s": readiness_dwell.get(
+                "registration_usable", 0.0
+            ),
+            "secondary_takeover_ready_dwell_s": readiness_dwell.get(
+                "takeover_ready", 0.0
+            ),
+            "secondary_plan_pending_dwell_s": plan_dwell.get(
+                "pending_secondary_plan", 0.0
+            ),
+            "secondary_plan_active_dwell_s": plan_dwell.get(
+                "secondary_plan_active", 0.0
+            ),
+            "secondary_activation_latency_s": activation_latency,
+            "secondary_takeover_fallback_count": fallback_count,
+            "secondary_lease_expiry_count": lease_expiry_count,
+            "stale_plan_reject_count": stale_reject_count,
+            "_metadata": {
+                "secondary_lifecycle_status": "available",
+                "secondary_lifecycle_event_count": len(lifecycle_events),
+                "secondary_readiness_state_dwell_s": readiness_dwell,
+                "secondary_plan_state_dwell_s": plan_dwell,
+                "secondary_readiness_state_sequence": [
+                    {"timestamp_s": timestamp, "state": state}
+                    for timestamp, state in readiness_samples
+                ],
+                "secondary_plan_state_sequence": [
+                    {"timestamp_s": timestamp, "state": state}
+                    for timestamp, state in plan_samples
+                ],
+            },
+        }
+
+    def _compute_visual_perception_metrics(self) -> dict[str, Any]:
+        perception_events = [
+            record
+            for record in sorted(self.event_records, key=lambda item: item.timestamp)
+            if _event_type(record) in self.D5_PERCEPTION_EVENTS
+        ]
+        if not perception_events:
+            return {
+                "visual_detection_recall": None,
+                "local_id_continuity": None,
+                "cross_view_registration_rate": None,
+                "visual_pipeline_latency_ms": None,
+                "visual_cpu_budget_utilization": None,
+                "visual_gpu_budget_utilization": None,
+                "visual_budget_violation_count": None,
+                "online_truth_field_violation_count": None,
+                "_metadata": {
+                    "d5_perception_status": "unavailable",
+                    "d5_perception_event_count": 0,
+                },
+            }
+
+        visible_truth_count = 0
+        matched_truth_count = 0
+        cross_view_candidates = 0
+        cross_view_registered = 0
+        pipeline_latencies: list[float] = []
+        cpu_utilization: list[float] = []
+        gpu_utilization: list[float] = []
+        backend_counts: dict[str, int] = defaultdict(int)
+        tracker_counts: dict[str, int] = defaultdict(int)
+        truth_track_history: dict[str, list[tuple[float, str]]] = defaultdict(list)
+        budget_violation_count = 0
+        truth_field_violation_count = 0
+
+        for record in perception_events:
+            metadata = record.metadata
+            for key in ("truth_id", "actor_name", "object_name", "segmentation_id"):
+                if key in metadata and metadata.get(key) not in (None, ""):
+                    truth_field_violation_count += 1
+
+            backend = _metadata_text(metadata, "detection_backend") or _metadata_text(
+                metadata, "detector_backend"
+            )
+            tracker = _metadata_text(metadata, "tracker_backend") or _metadata_text(
+                metadata, "mot_backend"
+            )
+            if backend is not None:
+                backend_counts[backend] += 1
+            if tracker is not None:
+                tracker_counts[tracker] += 1
+
+            offline_truth = metadata.get("offline_truth")
+            if isinstance(offline_truth, Mapping):
+                visible_truth_count += int(
+                    _mapping_nonnegative_int(offline_truth, "visible_truth_count") or 0
+                )
+                matched_truth_count += int(
+                    _mapping_nonnegative_int(offline_truth, "matched_truth_count") or 0
+                )
+                truth_to_local = offline_truth.get("truth_to_local_track_id")
+                if isinstance(truth_to_local, Mapping):
+                    for truth_id, local_track_id in truth_to_local.items():
+                        if local_track_id is None:
+                            continue
+                        truth_track_history[str(truth_id)].append(
+                            (record.timestamp, str(local_track_id))
+                        )
+
+            cross_view_candidates += int(
+                _mapping_nonnegative_int(metadata, "cross_view_candidate_count") or 0
+            )
+            cross_view_registered += int(
+                _mapping_nonnegative_int(metadata, "cross_view_registered_count") or 0
+            )
+            latency = _first_metadata_float(
+                metadata,
+                ("pipeline_latency_ms", "perception_latency_ms"),
+            )
+            if latency is None:
+                detector_latency = _metadata_float(metadata, "detector_latency_ms")
+                tracker_latency = _metadata_float(metadata, "tracker_latency_ms")
+                if detector_latency is not None or tracker_latency is not None:
+                    latency = (detector_latency or 0.0) + (tracker_latency or 0.0)
+            if latency is not None:
+                pipeline_latencies.append(latency)
+
+            cpu_value = _first_metadata_float(
+                metadata,
+                ("cpu_budget_utilization", "cpu_utilization"),
+            )
+            gpu_value = _first_metadata_float(
+                metadata,
+                ("gpu_budget_utilization", "gpu_utilization"),
+            )
+            if cpu_value is not None:
+                cpu_utilization.append(cpu_value)
+            if gpu_value is not None:
+                gpu_utilization.append(gpu_value)
+
+            explicit_violation = _bool_from_metadata(
+                metadata,
+                ("performance_budget_violation", "visual_budget_violation"),
+                default=False,
+            )
+            latency_budget = _metadata_float(metadata, "latency_budget_ms")
+            cpu_budget = _metadata_float(metadata, "cpu_budget_utilization_limit")
+            gpu_budget = _metadata_float(metadata, "gpu_budget_utilization_limit")
+            budget_violation = explicit_violation
+            budget_violation = budget_violation or (
+                latency is not None
+                and latency_budget is not None
+                and latency > latency_budget
+            )
+            budget_violation = budget_violation or (
+                cpu_value is not None and cpu_budget is not None and cpu_value > cpu_budget
+            )
+            budget_violation = budget_violation or (
+                gpu_value is not None and gpu_budget is not None and gpu_value > gpu_budget
+            )
+            budget_violation_count += int(budget_violation)
+
+        continuity_total = 0
+        continuity_kept = 0
+        for observations in truth_track_history.values():
+            ordered_ids = [
+                local_id for _, local_id in sorted(observations, key=lambda item: item[0])
+            ]
+            for previous, current in zip(ordered_ids, ordered_ids[1:]):
+                continuity_total += 1
+                continuity_kept += int(previous == current)
+
+        return {
+            "visual_detection_recall": (
+                matched_truth_count / visible_truth_count
+                if visible_truth_count > 0
+                else None
+            ),
+            "local_id_continuity": (
+                continuity_kept / continuity_total if continuity_total > 0 else None
+            ),
+            "cross_view_registration_rate": (
+                cross_view_registered / cross_view_candidates
+                if cross_view_candidates > 0
+                else None
+            ),
+            "visual_pipeline_latency_ms": (
+                _mean(pipeline_latencies) if pipeline_latencies else None
+            ),
+            "visual_cpu_budget_utilization": (
+                _mean(cpu_utilization) if cpu_utilization else None
+            ),
+            "visual_gpu_budget_utilization": (
+                _mean(gpu_utilization) if gpu_utilization else None
+            ),
+            "visual_budget_violation_count": budget_violation_count,
+            "online_truth_field_violation_count": truth_field_violation_count,
+            "_metadata": {
+                "d5_perception_status": "available",
+                "d5_perception_event_count": len(perception_events),
+                "detection_backend_counts": dict(backend_counts),
+                "tracker_backend_counts": dict(tracker_counts),
+                "offline_truth_visible_count": visible_truth_count,
+                "offline_truth_matched_count": matched_truth_count,
+                "local_id_transition_count": continuity_total,
+                "local_id_continuous_transition_count": continuity_kept,
+                "cross_view_candidate_count": cross_view_candidates,
+                "cross_view_registered_count": cross_view_registered,
+                "visual_pipeline_latency_ms_samples": pipeline_latencies,
+                "online_truth_fields_are_evaluation_only": True,
+            },
+        }
 
     def _failover_active_window_delta_from_metadata(
         self,
@@ -3829,6 +4649,163 @@ def _first_metadata_float(
     return None
 
 
+def _governance_payload(metadata: Mapping[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    for key in (
+        "provenance",
+        "latency_audit",
+        "latency_audit_summary",
+        "region_quality",
+        "region_quality_summary",
+        "risk_summary",
+        "consistency_summary",
+        "false_track_summary",
+        "assignment_summary",
+        "mismatch_replay_summary",
+        "feedback_summary",
+        "feedback_profile_summary",
+    ):
+        nested = metadata.get(key)
+        if isinstance(nested, Mapping):
+            payload.update(nested)
+    payload.update(metadata)
+    return payload
+
+
+def _governance_value(
+    payload: Mapping[str, Any],
+    keys: Sequence[str],
+) -> float | None:
+    return _first_metadata_float(payload, keys)
+
+
+def _governance_sum(
+    payloads: Sequence[Mapping[str, Any]],
+    keys: Sequence[str],
+    *,
+    sum_all_present_keys: bool = False,
+) -> float | None:
+    values: list[float] = []
+    for payload in payloads:
+        if sum_all_present_keys:
+            values.extend(
+                value
+                for key in keys
+                for value in [_metadata_float(payload, key)]
+                if value is not None
+            )
+            continue
+        value = _governance_value(payload, keys)
+        if value is not None:
+            values.append(value)
+    return sum(values) if values else None
+
+
+def _governance_max(
+    payloads: Sequence[Mapping[str, Any]],
+    keys: Sequence[str],
+) -> float | None:
+    values = [
+        value
+        for payload in payloads
+        for value in [_governance_value(payload, keys)]
+        if value is not None
+    ]
+    return max(values) if values else None
+
+
+def _governance_weighted_mean(
+    payloads: Sequence[Mapping[str, Any]],
+    value_keys: Sequence[str],
+    weight_keys: Sequence[str],
+) -> float | None:
+    weighted_sum = 0.0
+    weight_sum = 0.0
+    unweighted_values: list[float] = []
+    for payload in payloads:
+        value = _governance_value(payload, value_keys)
+        if value is None:
+            continue
+        unweighted_values.append(value)
+        weight = _governance_value(payload, weight_keys)
+        if weight is not None and weight > 0:
+            weighted_sum += value * weight
+            weight_sum += weight
+    if weight_sum > 0:
+        return weighted_sum / weight_sum
+    return _mean(unweighted_values) if unweighted_values else None
+
+
+def _governance_rate(
+    payloads: Sequence[Mapping[str, Any]],
+    numerator_keys: Sequence[str],
+    denominator_keys: Sequence[str],
+    explicit_rate_keys: Sequence[str],
+) -> float | None:
+    numerator = _governance_sum(payloads, numerator_keys)
+    denominator = _governance_sum(payloads, denominator_keys)
+    count_rate = _ratio_or_none(numerator, denominator)
+    if count_rate is not None:
+        return count_rate
+    rates = [
+        value
+        for payload in payloads
+        for value in [_governance_value(payload, explicit_rate_keys)]
+        if value is not None
+    ]
+    return _mean(rates) if rates else None
+
+
+def _ratio_or_none(
+    numerator: float | None,
+    denominator: float | None,
+) -> float | None:
+    if numerator is None or denominator is None or denominator <= 0:
+        return None
+    return float(numerator) / float(denominator)
+
+
+def _governance_profile_summary(
+    payloads: Sequence[Mapping[str, Any]],
+    *,
+    profile_keys: Sequence[str],
+    version_keys: Sequence[str],
+) -> dict[str, list[str]]:
+    profiles = {
+        value
+        for payload in payloads
+        for key in profile_keys
+        for value in [_metadata_text(payload, key)]
+        if value is not None
+    }
+    versions = {
+        value
+        for payload in payloads
+        for key in version_keys
+        for value in [_metadata_text(payload, key)]
+        if value is not None
+    }
+    return {"profiles": sorted(profiles), "versions": sorted(versions)}
+
+
+def _d3_nm_case_counts(
+    payloads: Sequence[Mapping[str, Any]],
+) -> dict[str, int]:
+    counts: dict[str, int] = defaultdict(int)
+    for payload in payloads:
+        resources = _governance_value(payload, ("resource_count",))
+        targets = _governance_value(payload, ("target_count",))
+        if resources is None or targets is None:
+            continue
+        if resources < targets:
+            counts["resource_limited"] += 1
+        elif resources > targets:
+            counts["resource_surplus"] += 1
+        else:
+            counts["balanced"] += 1
+    return dict(counts)
+
+
 def _metadata_float_if_present(metadata: Mapping[str, Any], key: str) -> float | None:
     if key not in metadata or metadata[key] is None:
         return None
@@ -4157,6 +5134,103 @@ def _as_bool(value: Any, *, default: bool) -> bool:
     if text in {"false", "f", "no", "n", "0", "fail", "failed", "reject", "rejected"}:
         return False
     return default
+
+
+def _first_metadata_float(
+    metadata: Mapping[str, Any],
+    keys: Sequence[str],
+) -> float | None:
+    for key in keys:
+        value = _metadata_float(metadata, key)
+        if value is not None:
+            return value
+    return None
+
+
+def _mapping_nonnegative_int(
+    metadata: Mapping[str, Any],
+    key: str,
+) -> int | None:
+    value = metadata.get(key)
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _secondary_readiness_state(metadata: Mapping[str, Any]) -> str | None:
+    for key in (
+        "readiness_state",
+        "secondary_readiness_state",
+        "takeover_readiness_state",
+    ):
+        value = _metadata_text(metadata, key)
+        if value is not None:
+            state = _state(value)
+            if state in {
+                "not_ready",
+                "visible_only",
+                "registration_usable",
+                "takeover_ready",
+            }:
+                return state
+    return None
+
+
+def _secondary_plan_state(metadata: Mapping[str, Any]) -> str | None:
+    for key in (
+        "plan_state",
+        "secondary_plan_state",
+        "takeover_state",
+        "assignment_phase",
+    ):
+        value = _metadata_text(metadata, key)
+        if value is None:
+            continue
+        state = _state(value)
+        aliases = {
+            "pending": "pending_secondary_plan",
+            "secondary_pending": "pending_secondary_plan",
+            "active": "secondary_plan_active",
+            "secondary_active": "secondary_plan_active",
+        }
+        state = aliases.get(state, state)
+        if state in {
+            "pending_secondary_plan",
+            "secondary_plan_active",
+            "fallback",
+            "expired",
+            "revoked",
+            "inactive",
+        }:
+            return state
+    return None
+
+
+def _state_dwell_seconds(
+    samples: Sequence[tuple[float, str]],
+    episode_end_s: float,
+) -> dict[str, float]:
+    if not samples:
+        return {}
+    ordered = sorted(samples, key=lambda item: item[0])
+    collapsed: list[tuple[float, str]] = []
+    for timestamp, state in ordered:
+        if collapsed and collapsed[-1][1] == state:
+            continue
+        collapsed.append((max(0.0, float(timestamp)), state))
+    dwell: dict[str, float] = defaultdict(float)
+    for index, (timestamp, state) in enumerate(collapsed):
+        next_timestamp = (
+            collapsed[index + 1][0]
+            if index + 1 < len(collapsed)
+            else max(float(episode_end_s), timestamp)
+        )
+        dwell[state] += max(0.0, next_timestamp - timestamp)
+    return dict(dwell)
 
 
 def _append_gate_value(

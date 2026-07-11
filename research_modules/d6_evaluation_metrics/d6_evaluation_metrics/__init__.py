@@ -13,6 +13,11 @@ from .airsim_calibration import (
 from .blocks_replay import load_blocks_replay_jsonl, truth_summary_from_blocks_frames
 from .d4_replay import load_d4_active_degradation_decisions
 from .intercept_replay import load_d7_guidance_timeseries, load_d7_intercept_outputs
+from .guidance_comparison import (
+    GUIDANCE_LAWS,
+    GuidanceLawComparisonReportGenerator,
+    compare_guidance_laws_same_seed,
+)
 from .main_bus import load_main_episode_bus_metric_files, load_main_episode_bus_metrics
 from .metrics import (
     AssignmentRecord,
@@ -25,6 +30,11 @@ from .metrics import (
 )
 from .jsonl import dump_episode_log_jsonl, load_episode_log_jsonl
 from .reporting import ReportGenerator
+from .scenario_library import (
+    ScenarioDefinition,
+    ScenarioLibrary,
+    default_p1_governance_scenario_library,
+)
 from .standard_mapping import (
     STANDARD_MAPPING_VERSION,
     StandardMetricMapping,
@@ -45,6 +55,8 @@ __all__ = [
     "dump_episode_log_jsonl",
     "EpisodeMetrics",
     "EventRecord",
+    "GUIDANCE_LAWS",
+    "GuidanceLawComparisonReportGenerator",
     "LinkRecord",
     "load_blocks_replay_jsonl",
     "load_d4_active_degradation_decisions",
@@ -56,6 +68,9 @@ __all__ = [
     "load_main_episode_bus_metrics",
     "MetricsCollector",
     "ReportGenerator",
+    "ScenarioDefinition",
+    "ScenarioLibrary",
+    "default_p1_governance_scenario_library",
     "STANDARD_MAPPING_VERSION",
     "StandardMetricMapping",
     "standard_mapping_csv_rows",
@@ -66,4 +81,5 @@ __all__ = [
     "TerminalRecord",
     "TrackRecord",
     "truth_summary_from_blocks_frames",
+    "compare_guidance_laws_same_seed",
 ]

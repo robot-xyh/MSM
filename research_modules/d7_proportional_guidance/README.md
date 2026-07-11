@@ -17,6 +17,7 @@ research_modules/d7_proportional_guidance/
     pn.py
     replay.py
     runtime_bus.py
+    selector.py
     simulator.py
     terminal_gate.py
     vision_png.py
@@ -40,8 +41,10 @@ research_modules/d7_proportional_guidance/
 - `guidance_mode_from_terminal_contract(...)`：把 D3/D4/D5 末端合同结果映射为显式 D7 日志状态，包括 `handover_pending`、`hold`、`reacquire` 和 `abort_revoke`。
 - `terminal_switch_allowed_rate` / `summarize_terminal_switch_quality`：对 D7 已输出的 gate 结果做离线通过率统计，不重新执行 runtime gate 逻辑。
 - `D7RuntimeBus`：D7-owned N-pair state injection adapter。调用方为每个 assignment pair 注入当前 D3 binding、D4 permission、D5 terminal association 和 bbox observation；D7 为每个 `resource_id -> assigned_global_track_id` 维护独立视觉 filter 和 terminal latch，输出 dwell/release/reacquire grace、terminal range/closing speed、D4 action block reason、secondary capability/readiness、D5 lock consistency、D3 owner/version consistency、D5 registration/projection/covariance/Yolo-MOT 摘要、bbox/LOS/TTC、3D PN benchmark 和 gate/log 字段，不调用 AirSim 或 SimpleFlight。
+- `RuntimeGuidanceLaw` / `select_runtime_guidance_law(...)`：供 main 使用的四导引律选择合同。`pure_pursuit` 和 `radar_pn` 全程保持所选律；`png_vm` 和 `png_ttc` 先使用 `radar_pn`，仅在 D3/D4/D5 合同、视觉质量 gate 和迟滞全部通过后切换末端视觉律。旧离线名称 `pn` 只作为输入别名归一为 `radar_pn`。
 - `compute_three_dimensional_pn_benchmark`：从注入的相对 NED 三维位置/速度计算 3D geometry PN 对照字段，只用于 benchmark/advisory，不替换默认二维 PN/PNG API。
 - `run_guidance_strategy_comparison`：生成 PN、Pure Pursuit、`png_vm`、`png_ttc` 多 seed 对照行，字段包含 D6 可消费的 `min_range_m`、`terminal_range_m`、`closing_speed_mps`、bbox/LOS/maneuver gate pass rate、D4/D5/D3 consistency、threshold advisory version、`terminal_contract_reject_reasons`、`terminal_switch_reject_reasons` 和 `visual_png_switch_count`。
+- 四律 runtime/comparison 日志显式区分 `requested_guidance_law` 与当前 `guidance_law`，并输出 law/mode transition、raw contract/gate、terminal wait/timeout 和 command saturation 字段。全程模式不伪造 D7 runtime bus 未计算的车辆命令，饱和状态为 `not_computed`。
 - `evaluate_bbox_los_replay`：把 AirSim detect metadata、YOLO/ByteTrack bbox replay 归一成 `VisionGuidanceObservation`，离线评估 bbox/LOS/TTC gate；该路径显式 `vehicle_control=False`，不直接控制 SimpleFlight。
 - `summarize_guidance_calibration`：消费多 seed D7 runtime outputs、`GuidanceRecord`、comparison rows 或 replay dict，按 PN、Pure Pursuit、`png_vm`、`png_ttc` 汇总 terminal range、closing speed、bbox/LOS/maneuver gate、D4 action block、D5 lock consistency、D3 owner/version consistency、secondary capability/readiness、D5 registration/projection/covariance/Yolo-MOT 摘要和 reject reasons，并输出阈值版本化 advisory。
 - main runtime P1 D4/D5 calibration sweep：由 main 统一编排 secondary height/FOV/count/standoff 与多 seed 组合，D6 在 sweep 结束后自动生成标准报告 bundle；D7 只提供上述 runtime summary、comparison rows、replay summary 和 calibration advisory 字段，不直接启动 AirSim、不写报告 bundle。
@@ -56,6 +59,7 @@ research_modules/d7_proportional_guidance/
 - 模块本地已实现经典二维 PN/PNG 几何核：`compute_proportional_navigation_command()` 使用位置/速度估计计算 `N * V_c * lambda_dot`，可用于中段雷达/全局航迹 PN，也可作为位置比例导引的离线上限模型。
 - 模块本地已实现末端视觉 PNG gate：`SimpleFlightPngGuidanceFilter` 从 bbox 中心计算 bearing/LOS-rate，输出 raw/filtered LOS-rate、LOS-rate clamp/outlier evidence，支持 `law="png_vm"` 和 `law="png_ttc"`，并输出 SimpleFlight 可消费的水平 `velocity_ned`。
 - 模块本地已实现每个 assignment pair 独立状态：视觉 PNG filter 是实例状态，保存 `local_track_id`、稳定帧、filtered LOS-rate 窗口和 bbox 面积窗口；`D7RuntimeBus` 也按 `resource_id -> assigned_global_track_id` 持有独立 filter 和 terminal latch，并在 plan/version/owner/assignment signature 变化时重置该 pair 状态。D7 不提供全局单例，也不假设 2v2/5v5。
+- 模块本地已实现四律 runtime 选择：`D7RuntimePairInput.requested_guidance_law` 接受 `pure_pursuit|radar_pn|png_vm|png_ttc`；混合模式按 pair 选择 VM/TTC filter，模式切换会重置视觉候选状态但不会修改 `png_guidance_delivery` 的位置 PN/TTC/VM 公式。secondary pending、assignment/lease 过期、D4 owner/version 不一致、D5 非 `locked` 或目标 ID/version 不一致时，视觉 PNG 必须保持阻断。
 - 模块本地已补齐 runtime bus 可消费记录：`D7RuntimePairOutput.as_log_record()` 暴露 `terminal_handoff_state`、dwell/release/reacquire grace flags、D4/D5 state aliases、D3 plan/version、terminal range、bbox、camera/LOS/maneuver gate、TTC、raw/filtered LOS-rate、closing speed、maneuver margin、D4 action block reason、secondary capability/readiness、D5 lock consistency、D3 owner/version consistency、D5 registration/projection/covariance/Yolo-MOT 摘要和 3D PN benchmark 字段；`summarize_runtime_bus_outputs()` 聚合 `guidance_mode_counts`、handoff 状态分布、D4/D5/plan 计数、gate pass rate、bbox/TTC/LOS 数值摘要、LOS-rate clamp/outlier 计数、3D benchmark 计数、visual PNG switch count 和 D6 常用 reject reason 字段。
 - 模块本地已实现 PN/Pure Pursuit/`png_vm`/`png_ttc` 多 seed 对照接口、YOLO/ByteTrack bbox replay 到 LOS gate 的离线接口，以及 P1 calibration summary helper；这些接口只生成报告行、gate 摘要和 advisory，不进入 SimpleFlight 控制主线。
 - `summarize_guidance_calibration()` 输出 `threshold_advisory.version="d7-p1-guidance-calibration-advisory-v1"` 和顶层 `threshold_advisory_version`，字段覆盖 `terminal_range_m`、`min_bbox_area_ratio`、`max_visual_latency_s`、`min_closing_speed_mps`、`min_maneuver_margin`、D4 action block、D5 lock/D3 owner-version consistency、secondary capability/readiness 和 D5 registration/projection/covariance/Yolo-MOT 摘要。所有建议均带 `advisory_only=True`、`default_control_law_changed=False`、`d3_d4_d5_gate_bypassed=False`，不修改默认 PN/PNG 控制律。
@@ -81,7 +85,13 @@ main 随后完成 `p1_gap_closure_2v2_multiseed_20260710` 的 seeds 1-10。20 �
 
 884 行控制记录的 `guidance_law` 聚合为 `radar_pn=530`、`png_vm=289`、`los=65`；`visual_png_switch_count=88`，各 seed `terminal_switch_allowed_rate` 的算术均值为 0.0822。该通过率跨 seed 波动显著：seed 3 为 0.3642，seed 4 和 seed 10 为 0。D7 execution metrics 合并口径下，主要拒绝原因为 `d5_not_locked=309`、`maneuver_margin_low=194`、`bbox_near_image_edge=182`、`d4_reassign_pending=165`；这些是逐帧/合并计数，不能直接解释为独立失败 episode 数。
 
-这一批次完成了当前唯一的真实 AirSim 导引基线，即 radar PN + `png_vm`、必要时 LOS fallback 的首轮多 seed 验证；Pure Pursuit 和 `png_ttc` 目前只有 D7 对照/replay 接口，尚无真实 AirSim 同 seed 执行证据。下一阶段需要先复现两次 `terminal_detection_timeout`，按 pair/seed 分离 D5 检测连续性、bbox 边缘裁切、机动裕度和 D4 重分配窗口的影响，再通过 law selector 对 PN、Pure Pursuit、`png_vm`、`png_ttc` 做受控同场景对照，并用版本化 advisory 校准 gate；不得通过放宽 D3/D4/D5 合同或修改 `png_guidance_delivery` 核心算法来提高表面切换率。
+这一批次完成了默认 radar PN + `png_vm`、必要时 LOS fallback 的首轮多 seed 验证。其中两次 `terminal_detection_timeout` 仍需按 pair/seed 分离 D5 检测连续性、bbox 边缘裁切、机动裕度和 D4 重分配窗口的影响。
+
+### 2026-07-11 真实 AirSim 四导引律同条件 smoke 证据
+
+`p1_guidance_four_law_smoke_20260711` 已将 D7 四律 selector 接入真实 Blocks/SimpleFlight 执行。试验固定 2v2、seed 7 和初始几何，四律之间用 AirSim reset 隔离，每律只运行 2 s。Pure Pursuit、Radar PN、PNG-VM 和 PNG-TTC 的 pair 平均最小距离分别为 `2.922 m`、`3.905 m`、`2.913 m`和 `2.884 m`；四律均为 `timeout`。PNG-VM/PNG-TTC 的 `terminal_switch_allowed` 率约为 `0.762/0.810`，非视觉律为 `0`，符合 Pure Pursuit/Radar PN 不进入视觉交接的设计。该证据确认 D3 版本化 binding、D4 许可、D5 locked/ID 一致性和 D7 视觉 gate 已进入真实 SimpleFlight 四律执行链。
+
+D6 生成的 21 条是指标配对行，不是 21 个独立 seed。由于本轮只有单 seed、2 s 短窗口且四律全部 timeout，最小距离只能用于确认接口和口径，不能据此比较命中率、优劣或定型阈值。较长时长、多 seed 同条件四律对照，以及 3D/高度差和 FRPN/augmented PN benchmark 仍为 P1；后续只允许校准切换策略和 advisory，不修改 `png_guidance_delivery` 核心公式，不放宽 D3/D4/D5 合同。
 
 当前切换策略不是单一距离阈值：
 

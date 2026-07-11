@@ -26,6 +26,8 @@ GROUP_FIELDS = [
     "secondary_fov_degrees",
     "secondary_count",
     "detection_backend",
+    "tracker_backend",
+    "guidance_law",
 ]
 
 CROSS_SEED_GROUP_FIELDS = [
@@ -52,6 +54,8 @@ PAIR_GROUP_FIELDS = [
     "secondary_image_height_px",
     "secondary_recon_mode",
     "detection_backend",
+    "tracker_backend",
+    "guidance_law",
 ]
 
 DEFAULT_BOOTSTRAP_RESAMPLES = 2000
@@ -69,10 +73,54 @@ CROSS_SEED_METRICS = [
     "registered_candidate_count",
     "stable_cross_view_registration_count",
     "not_registered_count",
+    "governance_schema_provenance_rate",
+    "governance_config_provenance_rate",
+    "governance_schema_mismatch_count",
+    "d1_oosm_observation_rate",
+    "d1_stale_observation_rate",
+    "d1_replay_observation_rate",
+    "d1_mean_delay_s",
+    "d1_max_delay_s",
+    "d1_region_quality_coverage_rate",
+    "d1_region_mean_a95_m",
+    "d1_region_handover_readiness_mean",
+    "d1_degraded_region_count",
+    "d2_soft_risk_frame_rate",
+    "d2_hard_risk_frame_rate",
+    "d2_max_association_risk",
+    "d2_nis_mean",
+    "d2_nis_in_confidence_rate",
+    "d2_nees_mean",
+    "d2_nees_in_confidence_rate",
+    "d2_false_track_count",
+    "d2_false_track_rate",
+    "d3_resource_target_ratio",
+    "d3_assignment_coverage_rate",
+    "d3_unassigned_target_rate",
+    "d3_hysteresis_reject_rate",
+    "d3_stale_reject_rate",
+    "d3_feedback_accept_rate",
+    "d3_feedback_sample_count",
     "active_degradation_count",
     "active_degradation_precision",
     "active_degradation_label_count",
     "unnecessary_degradation_count",
+    "secondary_registration_usable_dwell_s",
+    "secondary_takeover_ready_dwell_s",
+    "secondary_plan_pending_dwell_s",
+    "secondary_plan_active_dwell_s",
+    "secondary_activation_latency_s",
+    "secondary_takeover_fallback_count",
+    "secondary_lease_expiry_count",
+    "stale_plan_reject_count",
+    "visual_detection_recall",
+    "local_id_continuity",
+    "cross_view_registration_rate",
+    "visual_pipeline_latency_ms",
+    "visual_cpu_budget_utilization",
+    "visual_gpu_budget_utilization",
+    "visual_budget_violation_count",
+    "online_truth_field_violation_count",
     "d7_guidance_reject_count",
     "intercept_success_count",
     "collision_intercept_count",
@@ -92,9 +140,18 @@ COUNT_METRICS = {
     "registered_candidate_count",
     "stable_cross_view_registration_count",
     "not_registered_count",
+    "governance_schema_mismatch_count",
+    "d1_degraded_region_count",
+    "d2_false_track_count",
+    "d3_feedback_sample_count",
     "active_degradation_count",
     "active_degradation_label_count",
     "unnecessary_degradation_count",
+    "secondary_takeover_fallback_count",
+    "secondary_lease_expiry_count",
+    "stale_plan_reject_count",
+    "visual_budget_violation_count",
+    "online_truth_field_violation_count",
     "d7_guidance_reject_count",
     "intercept_success_count",
     "collision_intercept_count",
@@ -190,6 +247,8 @@ RECORD_FIELDNAMES = [
     "secondary_image_height_px",
     "secondary_recon_mode",
     "detection_backend",
+    "tracker_backend",
+    "guidance_law",
     "connected",
     "frame_count",
     "image_ok_count",
@@ -209,6 +268,34 @@ RECORD_FIELDNAMES = [
     "registered_candidate_count",
     "stable_cross_view_registration_count",
     "not_registered_count",
+    "governance_schema_provenance_rate",
+    "governance_config_provenance_rate",
+    "governance_schema_mismatch_count",
+    "d1_oosm_observation_rate",
+    "d1_stale_observation_rate",
+    "d1_replay_observation_rate",
+    "d1_mean_delay_s",
+    "d1_max_delay_s",
+    "d1_region_quality_coverage_rate",
+    "d1_region_mean_a95_m",
+    "d1_region_handover_readiness_mean",
+    "d1_degraded_region_count",
+    "d2_soft_risk_frame_rate",
+    "d2_hard_risk_frame_rate",
+    "d2_max_association_risk",
+    "d2_nis_mean",
+    "d2_nis_in_confidence_rate",
+    "d2_nees_mean",
+    "d2_nees_in_confidence_rate",
+    "d2_false_track_count",
+    "d2_false_track_rate",
+    "d3_resource_target_ratio",
+    "d3_assignment_coverage_rate",
+    "d3_unassigned_target_rate",
+    "d3_hysteresis_reject_rate",
+    "d3_stale_reject_rate",
+    "d3_feedback_accept_rate",
+    "d3_feedback_sample_count",
     "funnel_breakpoint_reasons",
     "funnel_reject_reason_counts",
     "secondary_gimbal_pointing_ok_rate",
@@ -223,6 +310,22 @@ RECORD_FIELDNAMES = [
     "active_degradation_precision",
     "active_degradation_label_count",
     "unnecessary_degradation_count",
+    "secondary_registration_usable_dwell_s",
+    "secondary_takeover_ready_dwell_s",
+    "secondary_plan_pending_dwell_s",
+    "secondary_plan_active_dwell_s",
+    "secondary_activation_latency_s",
+    "secondary_takeover_fallback_count",
+    "secondary_lease_expiry_count",
+    "stale_plan_reject_count",
+    "visual_detection_recall",
+    "local_id_continuity",
+    "cross_view_registration_rate",
+    "visual_pipeline_latency_ms",
+    "visual_cpu_budget_utilization",
+    "visual_gpu_budget_utilization",
+    "visual_budget_violation_count",
+    "online_truth_field_violation_count",
     "d7_guidance_reject_count",
     "d7_guidance_reject_reason_counts",
     "guidance_law_counts",
@@ -258,6 +361,8 @@ SUMMARY_FIELDNAMES = [
     "target_count",
     "camera_count",
     "secondary_height_buckets",
+    "tracker_backends",
+    "guidance_laws",
     "secondary_network_joint_full_view_frame_rate_mean",
     "secondary_network_mean_coverage_ratio_mean",
     "secondary_visible_target_union_ratio_mean",
@@ -274,6 +379,34 @@ SUMMARY_FIELDNAMES = [
     "registered_candidate_count",
     "stable_cross_view_registration_count",
     "not_registered_count",
+    "governance_schema_provenance_rate_mean",
+    "governance_config_provenance_rate_mean",
+    "governance_schema_mismatch_count",
+    "d1_oosm_observation_rate_mean",
+    "d1_stale_observation_rate_mean",
+    "d1_replay_observation_rate_mean",
+    "d1_mean_delay_s_mean",
+    "d1_max_delay_s_mean",
+    "d1_region_quality_coverage_rate_mean",
+    "d1_region_mean_a95_m_mean",
+    "d1_region_handover_readiness_mean",
+    "d1_degraded_region_count",
+    "d2_soft_risk_frame_rate_mean",
+    "d2_hard_risk_frame_rate_mean",
+    "d2_max_association_risk_mean",
+    "d2_nis_mean",
+    "d2_nis_in_confidence_rate_mean",
+    "d2_nees_mean",
+    "d2_nees_in_confidence_rate_mean",
+    "d2_false_track_count",
+    "d2_false_track_rate_mean",
+    "d3_resource_target_ratio_mean",
+    "d3_assignment_coverage_rate_mean",
+    "d3_unassigned_target_rate_mean",
+    "d3_hysteresis_reject_rate_mean",
+    "d3_stale_reject_rate_mean",
+    "d3_feedback_accept_rate_mean",
+    "d3_feedback_sample_count",
     "funnel_reject_reason_counts",
     "funnel_breakpoint_reasons",
     "secondary_gimbal_pointing_ok_rate_mean",
@@ -288,6 +421,22 @@ SUMMARY_FIELDNAMES = [
     "active_degradation_precision_mean",
     "active_degradation_label_count",
     "unnecessary_degradation_count",
+    "secondary_registration_usable_dwell_s_mean",
+    "secondary_takeover_ready_dwell_s_mean",
+    "secondary_plan_pending_dwell_s_mean",
+    "secondary_plan_active_dwell_s_mean",
+    "secondary_activation_latency_s_mean",
+    "secondary_takeover_fallback_count",
+    "secondary_lease_expiry_count",
+    "stale_plan_reject_count",
+    "visual_detection_recall_mean",
+    "local_id_continuity_mean",
+    "cross_view_registration_rate_mean",
+    "visual_pipeline_latency_ms_mean",
+    "visual_cpu_budget_utilization_mean",
+    "visual_gpu_budget_utilization_mean",
+    "visual_budget_violation_count",
+    "online_truth_field_violation_count",
     "d7_guidance_reject_count",
     "d7_guidance_reject_reason_counts",
     "guidance_law_counts",
@@ -334,6 +483,8 @@ class AirSimCalibrationRecord:
     secondary_image_height_px: int | None = None
     secondary_recon_mode: str = "not_recorded"
     detection_backend: str = "not_recorded"
+    tracker_backend: str = "not_recorded"
+    guidance_law: str = "not_recorded"
     connected: bool | None = None
     frame_count: int = 0
     image_ok_count: int = 0
@@ -353,6 +504,34 @@ class AirSimCalibrationRecord:
     registered_candidate_count: int = 0
     stable_cross_view_registration_count: int = 0
     not_registered_count: int = 0
+    governance_schema_provenance_rate: float | None = None
+    governance_config_provenance_rate: float | None = None
+    governance_schema_mismatch_count: int | None = None
+    d1_oosm_observation_rate: float | None = None
+    d1_stale_observation_rate: float | None = None
+    d1_replay_observation_rate: float | None = None
+    d1_mean_delay_s: float | None = None
+    d1_max_delay_s: float | None = None
+    d1_region_quality_coverage_rate: float | None = None
+    d1_region_mean_a95_m: float | None = None
+    d1_region_handover_readiness_mean: float | None = None
+    d1_degraded_region_count: int | None = None
+    d2_soft_risk_frame_rate: float | None = None
+    d2_hard_risk_frame_rate: float | None = None
+    d2_max_association_risk: float | None = None
+    d2_nis_mean: float | None = None
+    d2_nis_in_confidence_rate: float | None = None
+    d2_nees_mean: float | None = None
+    d2_nees_in_confidence_rate: float | None = None
+    d2_false_track_count: int | None = None
+    d2_false_track_rate: float | None = None
+    d3_resource_target_ratio: float | None = None
+    d3_assignment_coverage_rate: float | None = None
+    d3_unassigned_target_rate: float | None = None
+    d3_hysteresis_reject_rate: float | None = None
+    d3_stale_reject_rate: float | None = None
+    d3_feedback_accept_rate: float | None = None
+    d3_feedback_sample_count: int | None = None
     funnel_breakpoint_reasons: list[str] = field(default_factory=list)
     funnel_reject_reason_counts: dict[str, int] = field(default_factory=dict)
     secondary_gimbal_pointing_ok_rate: float | None = None
@@ -367,6 +546,22 @@ class AirSimCalibrationRecord:
     active_degradation_precision: float | None = None
     active_degradation_label_count: int = 0
     unnecessary_degradation_count: int = 0
+    secondary_registration_usable_dwell_s: float | None = None
+    secondary_takeover_ready_dwell_s: float | None = None
+    secondary_plan_pending_dwell_s: float | None = None
+    secondary_plan_active_dwell_s: float | None = None
+    secondary_activation_latency_s: float | None = None
+    secondary_takeover_fallback_count: int | None = None
+    secondary_lease_expiry_count: int | None = None
+    stale_plan_reject_count: int | None = None
+    visual_detection_recall: float | None = None
+    local_id_continuity: float | None = None
+    cross_view_registration_rate: float | None = None
+    visual_pipeline_latency_ms: float | None = None
+    visual_cpu_budget_utilization: float | None = None
+    visual_gpu_budget_utilization: float | None = None
+    visual_budget_violation_count: int | None = None
+    online_truth_field_violation_count: int | None = None
     d7_guidance_reject_count: int = 0
     d7_guidance_reject_reason_counts: dict[str, int] = field(default_factory=dict)
     guidance_law_counts: dict[str, int] = field(default_factory=dict)
@@ -588,6 +783,14 @@ def summarize_airsim_calibration_records(
                     grouped_records,
                     "secondary_height_bucket",
                 ),
+                "tracker_backends": _unique_text_values(
+                    grouped_records,
+                    "tracker_backend",
+                ),
+                "guidance_laws": _unique_text_values(
+                    grouped_records,
+                    "guidance_law",
+                ),
                 "secondary_network_joint_full_view_frame_rate_mean": _mean_field(
                     grouped_records,
                     "secondary_network_joint_full_view_frame_rate",
@@ -646,6 +849,86 @@ def summarize_airsim_calibration_records(
                     "stable_cross_view_registration_count",
                 ),
                 "not_registered_count": _sum_int(grouped_records, "not_registered_count"),
+                "governance_schema_provenance_rate_mean": _mean_field_or_none(
+                    grouped_records, "governance_schema_provenance_rate"
+                ),
+                "governance_config_provenance_rate_mean": _mean_field_or_none(
+                    grouped_records, "governance_config_provenance_rate"
+                ),
+                "governance_schema_mismatch_count": _sum_int_or_none(
+                    grouped_records, "governance_schema_mismatch_count"
+                ),
+                "d1_oosm_observation_rate_mean": _mean_field_or_none(
+                    grouped_records, "d1_oosm_observation_rate"
+                ),
+                "d1_stale_observation_rate_mean": _mean_field_or_none(
+                    grouped_records, "d1_stale_observation_rate"
+                ),
+                "d1_replay_observation_rate_mean": _mean_field_or_none(
+                    grouped_records, "d1_replay_observation_rate"
+                ),
+                "d1_mean_delay_s_mean": _mean_field_or_none(
+                    grouped_records, "d1_mean_delay_s"
+                ),
+                "d1_max_delay_s_mean": _mean_field_or_none(
+                    grouped_records, "d1_max_delay_s"
+                ),
+                "d1_region_quality_coverage_rate_mean": _mean_field_or_none(
+                    grouped_records, "d1_region_quality_coverage_rate"
+                ),
+                "d1_region_mean_a95_m_mean": _mean_field_or_none(
+                    grouped_records, "d1_region_mean_a95_m"
+                ),
+                "d1_region_handover_readiness_mean": _mean_field_or_none(
+                    grouped_records, "d1_region_handover_readiness_mean"
+                ),
+                "d1_degraded_region_count": _sum_int_or_none(
+                    grouped_records, "d1_degraded_region_count"
+                ),
+                "d2_soft_risk_frame_rate_mean": _mean_field_or_none(
+                    grouped_records, "d2_soft_risk_frame_rate"
+                ),
+                "d2_hard_risk_frame_rate_mean": _mean_field_or_none(
+                    grouped_records, "d2_hard_risk_frame_rate"
+                ),
+                "d2_max_association_risk_mean": _mean_field_or_none(
+                    grouped_records, "d2_max_association_risk"
+                ),
+                "d2_nis_mean": _mean_field_or_none(grouped_records, "d2_nis_mean"),
+                "d2_nis_in_confidence_rate_mean": _mean_field_or_none(
+                    grouped_records, "d2_nis_in_confidence_rate"
+                ),
+                "d2_nees_mean": _mean_field_or_none(grouped_records, "d2_nees_mean"),
+                "d2_nees_in_confidence_rate_mean": _mean_field_or_none(
+                    grouped_records, "d2_nees_in_confidence_rate"
+                ),
+                "d2_false_track_count": _sum_int_or_none(
+                    grouped_records, "d2_false_track_count"
+                ),
+                "d2_false_track_rate_mean": _mean_field_or_none(
+                    grouped_records, "d2_false_track_rate"
+                ),
+                "d3_resource_target_ratio_mean": _mean_field_or_none(
+                    grouped_records, "d3_resource_target_ratio"
+                ),
+                "d3_assignment_coverage_rate_mean": _mean_field_or_none(
+                    grouped_records, "d3_assignment_coverage_rate"
+                ),
+                "d3_unassigned_target_rate_mean": _mean_field_or_none(
+                    grouped_records, "d3_unassigned_target_rate"
+                ),
+                "d3_hysteresis_reject_rate_mean": _mean_field_or_none(
+                    grouped_records, "d3_hysteresis_reject_rate"
+                ),
+                "d3_stale_reject_rate_mean": _mean_field_or_none(
+                    grouped_records, "d3_stale_reject_rate"
+                ),
+                "d3_feedback_accept_rate_mean": _mean_field_or_none(
+                    grouped_records, "d3_feedback_accept_rate"
+                ),
+                "d3_feedback_sample_count": _sum_int_or_none(
+                    grouped_records, "d3_feedback_sample_count"
+                ),
                 "funnel_reject_reason_counts": _sum_count_mappings(
                     grouped_records,
                     "funnel_reject_reason_counts",
@@ -704,6 +987,70 @@ def summarize_airsim_calibration_records(
                 "unnecessary_degradation_count": _sum_int(
                     grouped_records,
                     "unnecessary_degradation_count",
+                ),
+                "secondary_registration_usable_dwell_s_mean": _mean_field_or_none(
+                    grouped_records,
+                    "secondary_registration_usable_dwell_s",
+                ),
+                "secondary_takeover_ready_dwell_s_mean": _mean_field_or_none(
+                    grouped_records,
+                    "secondary_takeover_ready_dwell_s",
+                ),
+                "secondary_plan_pending_dwell_s_mean": _mean_field_or_none(
+                    grouped_records,
+                    "secondary_plan_pending_dwell_s",
+                ),
+                "secondary_plan_active_dwell_s_mean": _mean_field_or_none(
+                    grouped_records,
+                    "secondary_plan_active_dwell_s",
+                ),
+                "secondary_activation_latency_s_mean": _mean_field_or_none(
+                    grouped_records,
+                    "secondary_activation_latency_s",
+                ),
+                "secondary_takeover_fallback_count": _sum_int_or_none(
+                    grouped_records,
+                    "secondary_takeover_fallback_count",
+                ),
+                "secondary_lease_expiry_count": _sum_int_or_none(
+                    grouped_records,
+                    "secondary_lease_expiry_count",
+                ),
+                "stale_plan_reject_count": _sum_int_or_none(
+                    grouped_records,
+                    "stale_plan_reject_count",
+                ),
+                "visual_detection_recall_mean": _mean_field_or_none(
+                    grouped_records,
+                    "visual_detection_recall",
+                ),
+                "local_id_continuity_mean": _mean_field_or_none(
+                    grouped_records,
+                    "local_id_continuity",
+                ),
+                "cross_view_registration_rate_mean": _mean_field_or_none(
+                    grouped_records,
+                    "cross_view_registration_rate",
+                ),
+                "visual_pipeline_latency_ms_mean": _mean_field_or_none(
+                    grouped_records,
+                    "visual_pipeline_latency_ms",
+                ),
+                "visual_cpu_budget_utilization_mean": _mean_field_or_none(
+                    grouped_records,
+                    "visual_cpu_budget_utilization",
+                ),
+                "visual_gpu_budget_utilization_mean": _mean_field_or_none(
+                    grouped_records,
+                    "visual_gpu_budget_utilization",
+                ),
+                "visual_budget_violation_count": _sum_int_or_none(
+                    grouped_records,
+                    "visual_budget_violation_count",
+                ),
+                "online_truth_field_violation_count": _sum_int_or_none(
+                    grouped_records,
+                    "online_truth_field_violation_count",
                 ),
                 "d7_guidance_reject_count": _sum_int(
                     grouped_records,
@@ -1252,6 +1599,126 @@ def write_airsim_calibration_markdown(
     lines.extend(
         [
             "",
+            "## 1A. D1-D3 真实 5v5 Governance",
+            "",
+            "本表要求 main 在同一 AirSim episode 写入 D1-D3 governance summary。未写盘字段保持 `unavailable`；D6 不修改 schema、risk profile、gate、feedback profile 或分配参数。",
+            "",
+            "| Scope | Seed | Schema provenance | Config provenance | Schema mismatch | D1 OOSM | D1 region coverage | D2 hard risk | D2 NIS CI | D2 NEES CI | D2 false track | D3 N/M | D3 assignment coverage | D3 feedback accept |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for row in summary_rows:
+        lines.append(
+            "| {scope} | {seed} | {schema} | {config} | {mismatch} | {oosm} | {region} | {hard_risk} | {nis} | {nees} | {false_track} | {nm} | {assignment} | {feedback} |".format(
+                scope=_markdown_cell(row.get("metric_scope")),
+                seed=_markdown_cell(row.get("seed")),
+                schema=_format_available_number(
+                    row.get("governance_schema_provenance_rate_mean")
+                ),
+                config=_format_available_number(
+                    row.get("governance_config_provenance_rate_mean")
+                ),
+                mismatch=_format_available_number(
+                    row.get("governance_schema_mismatch_count")
+                ),
+                oosm=_format_available_number(
+                    row.get("d1_oosm_observation_rate_mean")
+                ),
+                region=_format_available_number(
+                    row.get("d1_region_quality_coverage_rate_mean")
+                ),
+                hard_risk=_format_available_number(
+                    row.get("d2_hard_risk_frame_rate_mean")
+                ),
+                nis=_format_available_number(
+                    row.get("d2_nis_in_confidence_rate_mean")
+                ),
+                nees=_format_available_number(
+                    row.get("d2_nees_in_confidence_rate_mean")
+                ),
+                false_track=_format_available_number(
+                    row.get("d2_false_track_rate_mean")
+                ),
+                nm=_format_available_number(row.get("d3_resource_target_ratio_mean")),
+                assignment=_format_available_number(
+                    row.get("d3_assignment_coverage_rate_mean")
+                ),
+                feedback=_format_available_number(
+                    row.get("d3_feedback_accept_rate_mean")
+                ),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 1B. 二级接管状态与 D5 视觉资源指标",
+            "",
+            "驻留时间和 activation latency 仅在 main/D4 写出显式 lifecycle event 时可用；视觉 recall/local-ID continuity 只读取 `offline_truth` 评估标签。缺证据显示 `unavailable`，不填 0。",
+            "",
+            "| Scope | Seed | Tracker | Guidance law | Registration dwell s | Ready dwell s | Pending dwell s | Active dwell s | Activation latency s | Fallback | Lease expiry | Stale reject | Recall | Local-ID continuity | Cross-view rate | Pipeline ms | CPU util | GPU util | Budget violation | Online truth violation |",
+            "|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for row in summary_rows:
+        lines.append(
+            "| {scope} | {seed} | {tracker} | {law} | {registration} | {ready} | {pending} | {active} | {latency} | {fallback} | {lease} | {stale} | {recall} | {continuity} | {cross_view} | {pipeline} | {cpu} | {gpu} | {budget} | {truth_violation} |".format(
+                scope=_markdown_cell(row.get("metric_scope")),
+                seed=_markdown_cell(row.get("seed")),
+                tracker=_markdown_cell(_summary_text(row, "tracker_backends")),
+                law=_markdown_cell(_summary_text(row, "guidance_laws")),
+                registration=_format_available_number(
+                    row.get("secondary_registration_usable_dwell_s_mean")
+                ),
+                ready=_format_available_number(
+                    row.get("secondary_takeover_ready_dwell_s_mean")
+                ),
+                pending=_format_available_number(
+                    row.get("secondary_plan_pending_dwell_s_mean")
+                ),
+                active=_format_available_number(
+                    row.get("secondary_plan_active_dwell_s_mean")
+                ),
+                latency=_format_available_number(
+                    row.get("secondary_activation_latency_s_mean")
+                ),
+                fallback=_format_available_number(
+                    row.get("secondary_takeover_fallback_count")
+                ),
+                lease=_format_available_number(
+                    row.get("secondary_lease_expiry_count")
+                ),
+                stale=_format_available_number(row.get("stale_plan_reject_count")),
+                recall=_format_available_number(
+                    row.get("visual_detection_recall_mean")
+                ),
+                continuity=_format_available_number(
+                    row.get("local_id_continuity_mean")
+                ),
+                cross_view=_format_available_number(
+                    row.get("cross_view_registration_rate_mean")
+                ),
+                pipeline=_format_available_number(
+                    row.get("visual_pipeline_latency_ms_mean")
+                ),
+                cpu=_format_available_number(
+                    row.get("visual_cpu_budget_utilization_mean")
+                ),
+                gpu=_format_available_number(
+                    row.get("visual_gpu_budget_utilization_mean")
+                ),
+                budget=_format_available_number(
+                    row.get("visual_budget_violation_count")
+                ),
+                truth_violation=_format_available_number(
+                    row.get("online_truth_field_violation_count")
+                ),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
             "## 2. 50m vs 200m Secondary Coverage",
             "",
             "该表按相同 scope/seed/scenario/role/FOV/secondary count/backend/actual scale 对齐 50m 与 200m 二级高度，缺失高度保留 `not_recorded`，不从场景名推断规模。",
@@ -1725,6 +2192,19 @@ def _record_from_artifacts(
         _active_degradation_label_count(metrics),
         0,
     ) or 0
+    detection_backend = _detection_backend(d4d5, blocks_metadata, episode_dir)
+    tracker_backend = _first_text(
+        d4d5.get("tracker_backend"),
+        d4d5.get("mot_backend"),
+        _single_count_mapping_key(metrics_metadata.get("tracker_backend_counts")),
+        "not_recorded",
+    ) or "not_recorded"
+    guidance_law = _first_text(
+        metrics_metadata.get("experiment_guidance_law"),
+        metrics_metadata.get("selected_guidance_law"),
+        _single_count_mapping_key(guidance_laws),
+        "not_recorded",
+    ) or "not_recorded"
     trend_key = _trend_key(
         metric_scope=metric_scope,
         scenario=scenario,
@@ -1737,7 +2217,7 @@ def _record_from_artifacts(
         secondary_count=secondary_count,
         secondary_height_above_targets_m=secondary_height_above_targets_m,
         secondary_fov_degrees=secondary_fov_degrees,
-        detection_backend=_detection_backend(d4d5, blocks_metadata, episode_dir),
+        detection_backend=detection_backend,
     )
 
     return AirSimCalibrationRecord(
@@ -1779,7 +2259,9 @@ def _record_from_artifacts(
             "not_recorded",
         )
         or "not_recorded",
-        detection_backend=_detection_backend(d4d5, blocks_metadata, episode_dir),
+        detection_backend=detection_backend,
+        tracker_backend=tracker_backend,
+        guidance_law=guidance_law,
         connected=_optional_bool(blocks.get("connected")),
         frame_count=int(_first_int(blocks.get("frame_count"), 0) or 0),
         image_ok_count=int(_first_int(blocks.get("image_ok_count"), 0) or 0),
@@ -1820,6 +2302,80 @@ def _record_from_artifacts(
         registered_candidate_count=registered_candidate_count,
         stable_cross_view_registration_count=stable_cross_view_registration_count,
         not_registered_count=not_registered_count,
+        governance_schema_provenance_rate=_first_float(
+            _metric_attr(metrics, "governance_schema_provenance_rate")
+        ),
+        governance_config_provenance_rate=_first_float(
+            _metric_attr(metrics, "governance_config_provenance_rate")
+        ),
+        governance_schema_mismatch_count=_optional_metric_int(
+            metrics, "governance_schema_mismatch_count"
+        ),
+        d1_oosm_observation_rate=_first_float(
+            _metric_attr(metrics, "d1_oosm_observation_rate")
+        ),
+        d1_stale_observation_rate=_first_float(
+            _metric_attr(metrics, "d1_stale_observation_rate")
+        ),
+        d1_replay_observation_rate=_first_float(
+            _metric_attr(metrics, "d1_replay_observation_rate")
+        ),
+        d1_mean_delay_s=_first_float(_metric_attr(metrics, "d1_mean_delay_s")),
+        d1_max_delay_s=_first_float(_metric_attr(metrics, "d1_max_delay_s")),
+        d1_region_quality_coverage_rate=_first_float(
+            _metric_attr(metrics, "d1_region_quality_coverage_rate")
+        ),
+        d1_region_mean_a95_m=_first_float(
+            _metric_attr(metrics, "d1_region_mean_a95_m")
+        ),
+        d1_region_handover_readiness_mean=_first_float(
+            _metric_attr(metrics, "d1_region_handover_readiness_mean")
+        ),
+        d1_degraded_region_count=_optional_metric_int(
+            metrics, "d1_degraded_region_count"
+        ),
+        d2_soft_risk_frame_rate=_first_float(
+            _metric_attr(metrics, "d2_soft_risk_frame_rate")
+        ),
+        d2_hard_risk_frame_rate=_first_float(
+            _metric_attr(metrics, "d2_hard_risk_frame_rate")
+        ),
+        d2_max_association_risk=_first_float(
+            _metric_attr(metrics, "d2_max_association_risk")
+        ),
+        d2_nis_mean=_first_float(_metric_attr(metrics, "d2_nis_mean")),
+        d2_nis_in_confidence_rate=_first_float(
+            _metric_attr(metrics, "d2_nis_in_confidence_rate")
+        ),
+        d2_nees_mean=_first_float(_metric_attr(metrics, "d2_nees_mean")),
+        d2_nees_in_confidence_rate=_first_float(
+            _metric_attr(metrics, "d2_nees_in_confidence_rate")
+        ),
+        d2_false_track_count=_optional_metric_int(metrics, "d2_false_track_count"),
+        d2_false_track_rate=_first_float(
+            _metric_attr(metrics, "d2_false_track_rate")
+        ),
+        d3_resource_target_ratio=_first_float(
+            _metric_attr(metrics, "d3_resource_target_ratio")
+        ),
+        d3_assignment_coverage_rate=_first_float(
+            _metric_attr(metrics, "d3_assignment_coverage_rate")
+        ),
+        d3_unassigned_target_rate=_first_float(
+            _metric_attr(metrics, "d3_unassigned_target_rate")
+        ),
+        d3_hysteresis_reject_rate=_first_float(
+            _metric_attr(metrics, "d3_hysteresis_reject_rate")
+        ),
+        d3_stale_reject_rate=_first_float(
+            _metric_attr(metrics, "d3_stale_reject_rate")
+        ),
+        d3_feedback_accept_rate=_first_float(
+            _metric_attr(metrics, "d3_feedback_accept_rate")
+        ),
+        d3_feedback_sample_count=_optional_metric_int(
+            metrics, "d3_feedback_sample_count"
+        ),
         funnel_breakpoint_reasons=_text_list(
             d4d5.get("secondary_detect_funnel_breakpoint_reasons")
             or funnel.get("breakpoint_reasons")
@@ -1883,6 +2439,54 @@ def _record_from_artifacts(
                 0,
             )
             or 0
+        ),
+        secondary_registration_usable_dwell_s=_first_float(
+            _metric_attr(metrics, "secondary_registration_usable_dwell_s")
+        ),
+        secondary_takeover_ready_dwell_s=_first_float(
+            _metric_attr(metrics, "secondary_takeover_ready_dwell_s")
+        ),
+        secondary_plan_pending_dwell_s=_first_float(
+            _metric_attr(metrics, "secondary_plan_pending_dwell_s")
+        ),
+        secondary_plan_active_dwell_s=_first_float(
+            _metric_attr(metrics, "secondary_plan_active_dwell_s")
+        ),
+        secondary_activation_latency_s=_first_float(
+            _metric_attr(metrics, "secondary_activation_latency_s")
+        ),
+        secondary_takeover_fallback_count=_optional_metric_int(
+            metrics, "secondary_takeover_fallback_count"
+        ),
+        secondary_lease_expiry_count=_optional_metric_int(
+            metrics, "secondary_lease_expiry_count"
+        ),
+        stale_plan_reject_count=_optional_metric_int(
+            metrics, "stale_plan_reject_count"
+        ),
+        visual_detection_recall=_first_float(
+            _metric_attr(metrics, "visual_detection_recall")
+        ),
+        local_id_continuity=_first_float(
+            _metric_attr(metrics, "local_id_continuity")
+        ),
+        cross_view_registration_rate=_first_float(
+            _metric_attr(metrics, "cross_view_registration_rate")
+        ),
+        visual_pipeline_latency_ms=_first_float(
+            _metric_attr(metrics, "visual_pipeline_latency_ms")
+        ),
+        visual_cpu_budget_utilization=_first_float(
+            _metric_attr(metrics, "visual_cpu_budget_utilization")
+        ),
+        visual_gpu_budget_utilization=_first_float(
+            _metric_attr(metrics, "visual_gpu_budget_utilization")
+        ),
+        visual_budget_violation_count=_optional_metric_int(
+            metrics, "visual_budget_violation_count"
+        ),
+        online_truth_field_violation_count=_optional_metric_int(
+            metrics, "online_truth_field_violation_count"
         ),
         d7_guidance_reject_count=sum(d7_reject_reasons.values()),
         d7_guidance_reject_reason_counts=d7_reject_reasons,
@@ -2206,6 +2810,14 @@ def _available_metric_int(
     return int(value) if value is not None else None
 
 
+def _optional_metric_int(
+    metrics: EpisodeMetrics | None,
+    name: str,
+) -> int | None:
+    value = _metric_attr(metrics, name)
+    return int(value) if value is not None else None
+
+
 def _available_metric_float(
     metrics: EpisodeMetrics | None,
     name: str,
@@ -2377,6 +2989,12 @@ def _count_mapping(value: Any) -> dict[str, int]:
             continue
         counts[reason] = counts.get(reason, 0) + count
     return counts
+
+
+def _single_count_mapping_key(value: Any) -> str | None:
+    counts = _count_mapping(value)
+    nonzero_keys = [key for key, count in counts.items() if count > 0]
+    return nonzero_keys[0] if len(nonzero_keys) == 1 else None
 
 
 def _normalized_detect_registration_reason_counts(

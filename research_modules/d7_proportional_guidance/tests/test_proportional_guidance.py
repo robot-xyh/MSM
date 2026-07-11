@@ -16,9 +16,11 @@ from d7_proportional_guidance import (
     DEFAULT_CALIBRATION_THRESHOLD_VERSION,
     DEFAULT_COMPARISON_STRATEGIES,
     GuidanceConfig,
+    GuidanceLawSelection,
     GuidanceMode,
     GuidanceState,
     PngGuidanceConfig,
+    RuntimeGuidanceLaw,
     SimpleFlightPngGuidanceFilter,
     VisionGuidanceObservation,
     bbox_replay_detection_to_observation,
@@ -29,6 +31,7 @@ from d7_proportional_guidance import (
     evaluate_bbox_los_replay,
     guidance_mode_from_terminal_contract,
     run_guidance_strategy_comparison,
+    select_runtime_guidance_law,
     simulate_guidance_episode,
     summarize_guidance_calibration,
     summarize_guidance_strategy_comparison,
@@ -1018,6 +1021,244 @@ def test_runtime_bus_injects_n_pairs_with_independent_filters_and_summary() -> N
     assert allowed_record["d5_state"] == "locked"
 
 
+@pytest.mark.parametrize(
+    ("requested", "midcourse", "terminal", "requires_gate"),
+    [
+        ("pure_pursuit", "pure_pursuit", None, False),
+        ("radar_pn", "radar_pn", None, False),
+        ("png_vm", "radar_pn", "png_vm", True),
+        ("png_ttc", "radar_pn", "png_ttc", True),
+        ("pn", "radar_pn", None, False),
+    ],
+)
+def test_runtime_guidance_law_selector_exposes_four_mode_contract(
+    requested: str,
+    midcourse: str,
+    terminal: str | None,
+    requires_gate: bool,
+) -> None:
+    selection = select_runtime_guidance_law(requested)
+
+    assert isinstance(selection, GuidanceLawSelection)
+    assert selection.midcourse_law.value == midcourse
+    assert (
+        selection.terminal_law.value if selection.terminal_law is not None else None
+    ) == terminal
+    assert selection.requires_terminal_gate is requires_gate
+    if requested == "pn":
+        assert selection.requested_law == RuntimeGuidanceLaw.RADAR_PN
+    else:
+        assert selection.requested_law.value == requested
+
+
+def test_runtime_guidance_law_selector_rejects_unknown_mode() -> None:
+    with pytest.raises(ValueError, match="guidance law must be one of"):
+        select_runtime_guidance_law("nearest_target")
+
+
+def test_runtime_bus_full_course_laws_do_not_require_visual_contract() -> None:
+    bus = D7RuntimeBus(_tuned_png_config())
+    binding = _binding_for_pair("R1", "G1", 94)
+
+    pure_pursuit = bus.evaluate_pair(
+        D7RuntimePairInput(
+            binding=binding,
+            requested_guidance_law="pure_pursuit",
+            timestamp_s=0.0,
+            terminal_handover_started_at_s=0.0,
+            terminal_timeout_s=0.0,
+        )
+    )
+    radar_pn = bus.evaluate_pair(
+        D7RuntimePairInput(
+            binding=binding,
+            requested_guidance_law="radar_pn",
+            timestamp_s=0.1,
+            terminal_handover_started_at_s=0.0,
+            terminal_timeout_s=0.0,
+        )
+    )
+    summary = summarize_runtime_bus_outputs([pure_pursuit, radar_pn])
+
+    assert pure_pursuit.guidance_law == "pure_pursuit"
+    assert radar_pn.guidance_law == "radar_pn"
+    assert pure_pursuit.mode == GuidanceMode.RADAR_MIDCOURSE
+    assert radar_pn.mode == GuidanceMode.RADAR_MIDCOURSE
+    assert pure_pursuit.visual_png_enabled is False
+    assert radar_pn.visual_png_enabled is False
+    assert pure_pursuit.terminal_contract_applicable is False
+    assert pure_pursuit.terminal_contract_reject_reason == ""
+    assert pure_pursuit.terminal_timeout is False
+    assert radar_pn.terminal_timeout is False
+    assert pure_pursuit.command_saturated is None
+    assert radar_pn.command_saturation_scope == "not_computed"
+    assert radar_pn.previous_guidance_law == "pure_pursuit"
+    assert radar_pn.guidance_law_transition is True
+    assert summary["requested_guidance_law_counts"] == {
+        "pure_pursuit": 1,
+        "radar_pn": 1,
+    }
+    assert summary["terminal_contract_applicable_count"] == 0
+    assert summary["terminal_contract_reject_count"] == 0
+
+
+@pytest.mark.parametrize("law", ["png_vm", "png_ttc"])
+def test_runtime_bus_hybrid_laws_log_raw_gate_transition_and_saturation(law: str) -> None:
+    config = _tuned_png_config()
+    bus = D7RuntimeBus(config)
+    binding = _binding_for_pair("R1", "G1", 95)
+    terminal = {
+        "assigned_global_track_id": "G1",
+        "local_track_id": "R1:BT:law",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 95,
+    }
+    outputs = [
+        bus.evaluate_pair(
+            D7RuntimePairInput(
+                binding=binding,
+                d4_permission=D4GuidancePermission(
+                    action="continue_center",
+                    target_node_id="center",
+                    new_plan_id="plan-runtime-n",
+                    new_plan_version=7,
+                ),
+                terminal_association=terminal,
+                observation=_runtime_observation(
+                    timestamp_s=index * config.dt_s,
+                    half_size=half_size,
+                    local_track_id="R1:BT:law",
+                ),
+                requested_guidance_law=law,
+                terminal_handover_started_at_s=0.0,
+                terminal_timeout_s=2.0,
+                current_heading_rad=0.0,
+                current_speed_mps=8.0,
+                intercept_speed_mps=8.0,
+                relative_position_ned=(30.0, 1.0, 0.0),
+                relative_velocity_ned=(-5.0, 0.0, 0.0),
+            )
+        )
+        for index, half_size in enumerate((28.0, 32.0, 36.0), start=1)
+    ]
+    summary = summarize_runtime_bus_outputs(outputs)
+
+    assert outputs[0].guidance_law == "radar_pn"
+    assert outputs[0].raw_terminal_switch_allowed is False
+    assert outputs[0].command_saturation_scope == "visual_candidate_command"
+    assert outputs[0].command_saturated is True
+    assert outputs[-1].requested_guidance_law == law
+    assert outputs[-1].guidance_law == law
+    assert outputs[-1].raw_terminal_switch_allowed is True
+    assert outputs[-1].terminal_switch_allowed is True
+    assert outputs[-1].mode_transition is True
+    assert outputs[-1].previous_mode == GuidanceMode.HANDOVER_PENDING.value
+    assert outputs[-1].guidance_law_transition is True
+    assert outputs[-1].previous_guidance_law == "radar_pn"
+    assert outputs[-1].png_command is not None
+    assert outputs[-1].png_command.guidance_law == law
+    assert summary["requested_guidance_law_counts"] == {law: 3}
+    assert summary["raw_terminal_switch_allowed_count"] == 1
+    assert summary["mode_transition_count"] == 2
+    assert summary["guidance_law_transition_count"] == 2
+    assert summary["command_saturation_observed_count"] == 3
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_reason"),
+    [
+        ("secondary_pending", "assignment_not_current"),
+        ("lease_expired", "assignment_expired"),
+        ("old_owner", "d4_owner_mismatch"),
+        ("old_version", "d4_plan_mismatch"),
+        ("d5_not_locked", "d5_not_locked"),
+        ("d5_id_mismatch", "terminal_identity_mismatch"),
+    ],
+)
+def test_runtime_bus_hybrid_laws_block_stale_or_inconsistent_contracts(
+    case: str,
+    expected_reason: str,
+) -> None:
+    binding = _binding_for_pair("R1", "G1", 96)
+    permission = D4GuidancePermission(
+        action="continue_center",
+        target_node_id="center",
+        new_plan_id="plan-runtime-n",
+        new_plan_version=7,
+    )
+    terminal = {
+        "assigned_global_track_id": "G1",
+        "local_track_id": "R1:BT:safety",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 96,
+    }
+    if case == "secondary_pending":
+        binding = replace(binding, assignment_validity_state="pending")
+    elif case == "lease_expired":
+        binding = replace(binding, expires_at_s=0.5)
+    elif case == "old_owner":
+        permission = replace(permission, target_node_id="secondary-1")
+    elif case == "old_version":
+        permission = replace(permission, new_plan_version=8)
+    elif case == "d5_not_locked":
+        terminal["decision_state"] = "ambiguous"
+    elif case == "d5_id_mismatch":
+        terminal["assigned_global_track_id"] = "G9"
+
+    output = D7RuntimeBus(_tuned_png_config()).evaluate_pair(
+        D7RuntimePairInput(
+            binding=binding,
+            d4_permission=permission,
+            terminal_association=terminal,
+            observation=_runtime_observation(
+                timestamp_s=1.0,
+                half_size=44.0,
+                local_track_id="R1:BT:safety",
+            ),
+            timestamp_s=1.0,
+            requested_guidance_law="png_ttc",
+            terminal_locked=True,
+            current_heading_rad=0.0,
+            current_speed_mps=8.0,
+            intercept_speed_mps=8.0,
+            relative_position_ned=(25.0, 0.5, 0.0),
+            relative_velocity_ned=(-5.0, 0.0, 0.0),
+        )
+    )
+
+    assert output.requested_guidance_law == "png_ttc"
+    assert output.guidance_law == "radar_pn"
+    assert output.visual_png_enabled is False
+    assert output.raw_terminal_contract_allowed is False
+    assert output.terminal_contract_reject_reason == expected_reason
+    assert output.png_command is None
+
+
+def test_runtime_bus_terminal_timeout_blocks_late_visual_handover() -> None:
+    output = D7RuntimeBus(_tuned_png_config()).evaluate_pair(
+        D7RuntimePairInput(
+            binding=_binding_for_pair("R1", "G1", 97),
+            requested_guidance_law="png_vm",
+            timestamp_s=1.5,
+            terminal_handover_started_at_s=0.0,
+            terminal_timeout_s=1.0,
+        )
+    )
+    record = output.as_log_record()
+
+    assert output.terminal_timeout is True
+    assert output.terminal_wait_duration_s == pytest.approx(1.5)
+    assert output.terminal_timeout_reason == "terminal_handover_timeout"
+    assert output.mode == GuidanceMode.ABORT_REVOKE
+    assert output.guidance_law == "radar_pn"
+    assert output.visual_png_enabled is False
+    assert output.raw_terminal_switch_allowed is False
+    assert record["terminal_timeout"] is True
+    assert record["mode_transition_reason"] == "terminal_handover_timeout"
+
+
 def test_runtime_bus_resets_filter_when_same_pair_plan_signature_changes() -> None:
     config = _tuned_png_config()
     bus = D7RuntimeBus(config)
@@ -1720,6 +1961,13 @@ def test_guidance_strategy_comparison_reports_all_p1_fields() -> None:
             "d4_action_block_reasons",
             "d5_lock_consistent_rate",
             "d3_owner_version_consistent_rate",
+            "runtime_guidance_law",
+            "mode_transition_count",
+            "guidance_law_transition_count",
+            "raw_terminal_switch_allowed_rate",
+            "terminal_timeout_count",
+            "command_saturation_count",
+            "command_saturation_rate",
             "secondary_capability_class_counts",
             "secondary_readiness_class_counts",
             "threshold_advisory_version",
@@ -1736,6 +1984,9 @@ def test_guidance_strategy_comparison_reports_all_p1_fields() -> None:
             assert row.closing_speed_mps is not None
             assert row.bbox_gate_pass_rate is None
             assert row.visual_png_switch_count == 0
+            assert row.runtime_guidance_law in {"radar_pn", "pure_pursuit"}
+            assert row.terminal_timeout_count == 0
+            assert row.command_saturation_rate is not None
         else:
             assert row.boundary == BBOX_LOS_REPLAY_BOUNDARY
             assert row.metadata["vehicle_control"] is False
@@ -1748,6 +1999,9 @@ def test_guidance_strategy_comparison_reports_all_p1_fields() -> None:
             assert row.d3_owner_version_consistent_rate == pytest.approx(1.0)
             assert row.detect_registration_outcome_counts == {"registered": 6}
             assert row.visual_png_switch_count > 0
+            assert row.runtime_guidance_law == row.strategy
+            assert row.raw_terminal_switch_allowed_rate is not None
+            assert row.command_saturation_rate is not None
         assert row.threshold_advisory_version == DEFAULT_CALIBRATION_THRESHOLD_VERSION
 
     assert summary["strategies"]["png_vm"]["mean_bbox_gate_pass_rate"] is not None
