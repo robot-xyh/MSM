@@ -87,6 +87,10 @@ from .terminal_cross_view_fusion import (
     TerminalCrossViewFusion,
     TerminalCrossViewFusionConfig,
 )
+from .secondary_frame_evidence import (
+    SecondaryFrameAssociationEvidence,
+    build_secondary_frame_association_evidence,
+)
 from .observation_bus import TerminalObservationBus
 from .visual_handoff import (
     BBoxStability,
@@ -146,6 +150,7 @@ __all__ = [
     "RegistrationStabilityConfig",
     "STABILITY_WINDOW_FAILED_REASON",
     "SecondaryCameraFrameCoverage",
+    "SecondaryFrameAssociationEvidence",
     "SecondaryDetectFunnelCounts",
     "SecondaryNetworkFrameCoverage",
     "SecondaryVisualCoverageFunnelSummary",
@@ -173,6 +178,7 @@ __all__ = [
     "adaptive_pixel_covariance_px",
     "associate_tracks_to_detections_geometrically",
     "binding_from_assignment",
+    "build_secondary_frame_association_evidence",
     "bbox_area_stability",
     "camera_model_from_airsim_camera_info",
     "calibration_health_metadata",

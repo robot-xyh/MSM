@@ -57,6 +57,8 @@ D5 现已补充 AirSim settings 驱动的 detect-to-global-track registration he
 
 D5 当前无 P0 blocker。2026-07-10 已闭合 active reacquire 友方声明、通用 detection name category 污染、sim-detection actor alias 和端到端 AirSim actor-name local ID 隔离。真实验收证据为 `research_modules/airsim_runtime/outputs/p0_truth_isolation_smoke_20260710`：三类 case 均 connected、各 5 帧，local/detection ID 不含 actor 名，匿名 ID history 达 5，actor 名仅在 `offline_truth_only=True` metadata，每类 cross-view association 均为 4。当前 D5 剩余 P1 聚焦二级网络覆盖、降级 case registration、真实多 seed 阈值/外参/MOT、视觉接管边缘裕量和 `solvePnP` 增强。D5 仍不分配、不授权、不创建/改写/换绑 `global_track_id`，在线逻辑不得使用 AirSim truth ID。
 
+2026-07-11 YOLO/MOT 冒烟修复：offline detector evaluation 的 bbox-only 输入不再经过会拆散裸四元组的通用递归路径，现支持单框、多框和 dict/object detection，畸形输入明确报错。此修复只恢复离线 detector 指标采集，不改变在线 tracker、局部 ID 或全局绑定逻辑，也不把 truth identity 带入 metadata。
+
 ### 0.4 P1 D4/D5 calibration sweep 与 D6 bundle 状态
 
 main runtime 已新增 P1 D4/D5 calibration sweep，可按二级高度、FOV、二级节点数量和 standoff 组合运行多 seed stress episode。D4/D5 stress 链路已把 D5 的 detect-to-global-track registration output、`detect_registration_outcome`、`detect_registration_reject_reasons`、timestamp/measurement-age/covariance/projection-covariance evidence、`TerminalObservation`、`CrossViewAssociation`、secondary coverage funnel、mobile gimbal metadata 和 registration rejection reason 放入统一 observation/report 流。
@@ -70,6 +72,25 @@ D6 标准报告 bundle 已由 main 自动生成，包含 `d6_airsim_calibration/
 证据目录为 `research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_smoke_20260710`。本轮 2 个资源对均完成 `collision_intercept`，pair summary 的 D5 结果均为 `locked`；D7/main 独立 terminal gate 同时记录 `bbox_near_image_edge` 9 次、覆盖 2 个资源对，控制日志中仅 2 条记录满足 `terminal_switch_allowed=True`。因此本轮证明了 D5 lock 与 D7 camera/LOS/maneuver gate 是串联而非互相替代：边缘框不会因为 D5 已锁定而自动放行视觉 PNG。
 
 该结果保留 P1 动作：跨 seed 记录 bbox 到四条边界的归一化最小裕量、连续边缘帧、相机指向误差和 handoff 重复请求，必要时由 D5 handoff metadata 提前暴露 edge advisory，但不得取消 D7 独立门控。P0 集成 hotfix 已通过上述真实 AirSim 三 case 验收并转为保持回归；D5 不对任意既有 `LocalVisualTrack.local_track_id` 做猜测式重写。
+
+### 0.6 2026-07-10 逐帧 D4 evidence 与 YOLO/MOT adapter 补齐
+
+D5 新增 `SecondaryFrameAssociationEvidence` 和 `build_secondary_frame_association_evidence()`。输入必须是同一同步 `frame_id` 的二级 camera coverage、network coverage 和 registration result；输出直接提供 D4 现有 `TerminalAssociationSummary` 可消费的当前帧字段：单相机/网络 full-view、网络 coverage、stable cross-view registration、not-registered、cross-view conversion gap、cue freshness、gimbal pointing 和 reject diagnostic。metadata 保留 measurement/arrival timestamp、detector/tracker backend、registration backend 与 calibration health。registration result 即使包含历史候选，也只选择当前 frame/timestamp；混合 camera frame 或超出同步容差直接拒绝，所以 episode 末汇总不能冒充在线接管证据。D5 仍不决定降级动作。
+
+`YoloMotAdapter` 的主线明确为：优先调用 Ultralytics `bytetrack.yaml` 或 `botsort.yaml`；依赖/权重缺失返回 `unavailable`；原生 tracker 失败但 detector 仍可用时启用 per-stream deterministic IoU fallback。每帧记录 requested/selected backend、native/fallback 状态、detector+tracker wall latency、CPU/GPU 声明预算比较、observed device、per-local-track history 和 camera-local continuity。可选 offline truth bbox 只在在线输出形成之后计算 recall/precision/FN/FP/IoU，不输出 identity，不影响检测筛选、tracker ID 或全局绑定。
+
+新增测试覆盖 5v5 多相机命名空间、目标交叉、单帧遮挡后恢复、native BoT-SORT 优先、离线召回隔离和跨 frame 防回填；D5 全量结果为 `101 passed`。本机 `best.pt`、Ultralytics 8.4.71 和 Torch CUDA 环境可用；CPU 黑帧烟测中首个模型加载约 3.87 s、第二个独立 adapter 热路径约 118 ms，黑帧无检测导致原生 tracker 无 ID 并按设计回退。该结果只验证真实权重和库入口，不代表无人机目标召回率或多 seed MOT 质量。
+
+### 0.7 2026-07-11 AirSim 检测/MOT 实测边界
+
+真实证据需要分为几何注册基线和 YOLO/MOT 质量两部分：
+
+- 三组既有 D4/D5 回归均得到 `cross_view_association_count=4`，稳定注册约 19-61，证明已有 bbox/几何路径可形成跨视角支持；二级同帧全目标覆盖仍不足，不能据此声明二级节点态势完整。
+- `research_modules/airsim_runtime/outputs/p1_yolov8_bytetrack_smoke_fixed_20260711` 完成 6 个 reset-separated episode、每个 2 帧。AirSim RGB 解码、YOLOv8/ByteTrack 调用、per-stream 状态、在线 truth 隔离、offline bbox-only 评分和 D5 runtime event 均正常执行，接口层已闭合。
+- 当前相机/actor 几何下 `accepted_detection_count=0`，AirSim offline truth boxes 多数为 0；因此 detector recall/precision 大多不可计算或为 0。原生 ByteTrack 没有 detector track ID，按设计回退 `iou_fallback`，没有形成可评价的 native MOT identity continuity。
+- 本轮处理延时多数约 38-49 ms，首轮约 197 ms。该数字只用于当前短序列部署预算基线，2 帧不足以评价稳态 p95、GPU 并发、遮挡恢复或 IDSW/IDF1。
+
+结论：YOLO/MOT 的输入输出、truth 隔离和失败回退合同已闭合；目标检测有效性、offline truth bbox 可用性、native ByteTrack/BoT-SORT 连续性和真实多 seed 预算尚未闭合。下一轮必须先取得非零 accepted detection 和有效 offline truth bbox，再进行阈值、class map、目标尺度、FOV/相机指向、MOT continuity 和多 seed 标定。任何检测/MOT 改善都不能让 tracker ID 生成、改写或换绑 `global_track_id`。
 
 ---
 
@@ -626,11 +647,11 @@ optional actor/object_name
 
 ### 11.1 当前 P1 补齐状态与剩余聚焦
 
-D5 侧 P1 已补齐项包括：geometry log fields（projected pixel、bbox center、pixel error、Mahalanobis、gate pass、measurement age、friend conflict、selected pair、duplicate-risk advisory）、detect-to-global outcome/reject reason、`projection_invalid` 独立断点、registration covariance/timestamp 记录、`TerminalConsistencySummary` 按 `resource_id + assigned_global_track_id` 维护连续窗口、D4 advisory evidence、D7 visual PNG handoff/prelock blockers、AirSim truth ID 在线隔离、YOLO/ByteTrack 离线 schema adapter、YOLOv8 + ByteTrack/BoT-SORT frame adapter、per-stream native/fallback MOT 状态与 reset API、YOLO/MOT confidence/class/bbox-scale/backend/budget metadata、multi-seed readiness helper、二级覆盖/漏斗诊断 helper、AirSim settings 驱动 detect-to-global-track registration helper，以及 mobile high-recon gimbal cue evidence。native 每 stream 独立 model/tracker 会增加内存/显存与首帧加载开销，但避免静默共享 `persist=True` tracker。上述输出都是 evidence 或 adapter，不赋予 D5 分配、授权、降级、云台控制或导引控制权。
+D5 侧 P1 已补齐项包括：geometry log fields、detect-to-global outcome/reject reason、registration covariance/timestamp、`TerminalConsistencySummary` 连续窗口、D4 frame-scoped evidence DTO、D7 visual PNG handoff/prelock blockers、AirSim truth ID 在线隔离、YOLO/ByteTrack 离线 schema adapter、YOLOv8 + ByteTrack/BoT-SORT frame adapter、per-stream native/fallback MOT、实际 selection/latency/device/continuity、offline detector recall、multi-seed readiness、二级覆盖/漏斗、detect-to-global registration 和 mobile high-recon gimbal cue。native 每 stream 独立 model/tracker 会增加内存/显存与首帧加载开销，但避免静默共享 `persist=True` tracker。上述输出都是 evidence 或 adapter，不赋予 D5 分配、授权、降级、云台控制或导引控制权。
 
 P0 状态：无 blocker。active reacquire 友方声明复检、detection category/truth 隔离、sim-detection actor alias 过滤和端到端 AirSim actor-name local ID 隔离均已闭合；证据路径为 `research_modules/airsim_runtime/outputs/p0_truth_isolation_smoke_20260710`。D5 不分配、不授权、不改写 `global_track_id`，在线逻辑不得使用 AirSim truth ID。
 
-60-case 已关闭基础 registration 和 detect-available-but-not-registered 缺口；剩余 P1 聚焦二级网络完整覆盖、真实 YOLOv8 + ByteTrack/BoT-SORT 多 seed、外参漂移/时间同步、D4 逐决策 evidence、遮挡/交叉与 local MOT ID 变化、友方身份真实 replay，以及 2v2 视觉接管边缘裕量。剩余 P2 保留 Deep SORT/ReID 深化、ROS 2 `tf2/message_filters` 和硬件级三维联合标定。任何增强均不得放宽唯一性、友方冲突、版本、时效或 D7 独立 camera/LOS/maneuver gate；在线 D5 仍不得使用 truth ID 或 tracker ID 生成、改写、换绑 `global_track_id`。
+60-case 已关闭基础 registration 和 detect-available-but-not-registered 缺口，D5 逐帧 evidence 接口也已关闭；剩余 P1 聚焦 main/D4 同 tick 消费、二级网络完整覆盖、真实 YOLOv8 + ByteTrack/BoT-SORT 多 seed、外参漂移/时间同步、真实遮挡/交叉、友方身份 replay 和 2v2 视觉接管边缘裕量。剩余 P2 保留 Deep SORT/ReID、ROS 2 `tf2/message_filters` 和硬件级三维联合标定。任何增强均不得放宽唯一性、友方冲突、版本、时效或 D7 独立 camera/LOS/maneuver gate；在线 D5 仍不得使用 truth ID 或 tracker ID 生成、改写、换绑 `global_track_id`。
 
 ---
 

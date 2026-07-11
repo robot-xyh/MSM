@@ -262,6 +262,16 @@ class SecondaryNodeLifecycleSummary:
     secondary_network_full_view_rate: float | None = None
     stable_cross_view_registration_count: int | None = None
     not_registered_count: int | None = None
+    registration_evidence_source: str = "unknown"
+    stable_registration_evidence_present: bool = False
+    not_registered_evidence_present: bool = False
+    takeover_ready_consecutive_decisions: int = 0
+    takeover_ready_since_s: float | None = None
+    takeover_ready_duration_s: float = 0.0
+    takeover_ready_required_decisions: int = 1
+    takeover_ready_required_duration_s: float = 0.0
+    takeover_ready_sustained: bool = False
+    takeover_readiness_fallback_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)

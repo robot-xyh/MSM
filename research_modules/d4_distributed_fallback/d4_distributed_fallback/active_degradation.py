@@ -103,6 +103,8 @@ class AssociationRiskSummary:
     id_switch_count: int = 0
     duplicate_track_count: int = 0
     track_continuity: float = 1.0
+    truth_metrics_available: bool = True
+    continuity_available: bool = True
 
 
 @dataclass(frozen=True)
@@ -239,8 +241,11 @@ class SecondaryTakeoverPlanMetadata:
     secondary_supersedes_plan_version: int | None = None
     secondary_reassignment_complete: bool = True
     secondary_plan_lease_epoch: int | None = None
+    required_secondary_plan_lease_epoch: int | None = None
     secondary_plan_lease_expires_at_s: float | None = None
     secondary_plan_lease_valid: bool = True
+    secondary_plan_source_matches_target: bool | None = None
+    secondary_readiness_sustained: bool | None = None
     secondary_plan_epoch_monotonic: bool | None = None
     secondary_plan_executable: bool = False
     secondary_plan_reject_reason: str | None = None
@@ -607,11 +612,14 @@ class ActiveDegradationArbiter:
             factors.append("d2_association_ambiguity_high")
         elif association.ambiguity_score >= cfg.association_ambiguity_medium:
             factors.append("d2_association_ambiguity_medium")
-        if association.id_switch_count > 0:
+        if association.truth_metrics_available and association.id_switch_count > 0:
             factors.append("d2_id_switch_observed")
         if association.duplicate_track_count > 0:
             factors.append("d2_duplicate_track_observed")
-        if association.track_continuity < cfg.track_continuity_low:
+        if (
+            association.continuity_available
+            and association.track_continuity < cfg.track_continuity_low
+        ):
             factors.append("d2_track_continuity_low")
         if not assignment.is_current:
             factors.append("d3_assignment_not_current")
@@ -886,6 +894,12 @@ class ActiveDegradationArbiter:
             resource,
             terminal_association,
         )
+        registration_evidence_source = (
+            ActiveDegradationArbiter._secondary_registration_evidence_source(
+                resource,
+                terminal_association,
+            )
+        )
         heartbeat_ok = ActiveDegradationArbiter._secondary_heartbeat_is_usable(
             resource,
             current_time_s,
@@ -1014,6 +1028,9 @@ class ActiveDegradationArbiter:
             "network_full_view_rate": network_full_view_rate,
             "stable_cross_view_registration_count": stable_registration_count,
             "not_registered_count": not_registered_count,
+            "registration_evidence_source": registration_evidence_source,
+            "stable_registration_evidence_present": stable_registration_count is not None,
+            "not_registered_evidence_present": not_registered_count is not None,
             "gimbal_ok": gimbal_ok,
             "cue_freshness_s": resource.cue_freshness_s,
             "cue_fresh": cue_ok,
@@ -1034,6 +1051,9 @@ class ActiveDegradationArbiter:
             "network_full_view_rate": network_full_view_rate,
             "stable_cross_view_registration_count": stable_registration_count,
             "not_registered_count": not_registered_count,
+            "registration_evidence_source": registration_evidence_source,
+            "stable_registration_evidence_present": stable_registration_count is not None,
+            "not_registered_evidence_present": not_registered_count is not None,
             "reasons": tuple(dict.fromkeys(reason for reason in reasons if reason)),
         }
 
@@ -1111,6 +1131,30 @@ class ActiveDegradationArbiter:
         return None
 
     @staticmethod
+    def _secondary_registration_evidence_source(
+        resource: ResourceSummary,
+        terminal_association: TerminalAssociationSummary | None,
+    ) -> str:
+        if terminal_association is not None:
+            if terminal_association.secondary_detect_available_but_not_registered:
+                return "d5_detect_not_registered"
+            if terminal_association.stable_cross_view_registration_count is not None:
+                return "d5_stable_cross_view_registration_count"
+            if terminal_association.not_registered_count is not None:
+                return "d5_not_registered_count"
+            if terminal_association.cross_view_association_count is not None:
+                return "d5_cross_view_association_count_compatibility"
+            if terminal_association.cross_view_support_count > 0:
+                return "d5_cross_view_support_count_compatibility"
+        if resource.stable_cross_view_registration_count is not None:
+            return "resource_stable_cross_view_registration_count"
+        if resource.not_registered_count is not None:
+            return "resource_not_registered_count"
+        if resource.cross_view_support_count is not None:
+            return "resource_cross_view_support_count_compatibility"
+        return "unknown"
+
+    @staticmethod
     def _secondary_effective_coverage_ratio(
         resource: ResourceSummary,
         coverage_cell: str,
@@ -1147,6 +1191,7 @@ def build_d7_secondary_handoff(
     new_plan_version: int | None = None,
     secondary_plan_active: bool = False,
     secondary_capability_class: str | None = None,
+    secondary_readiness_sustained: bool | None = None,
     secondary_plan_lease_expires_at_s: float | None = None,
     current_time_s: float | None = None,
     terminal_consistent_after_plan: bool = False,
@@ -1183,11 +1228,17 @@ def build_d7_secondary_handoff(
         secondary_plan_id=new_plan_id,
         secondary_plan_version=new_plan_version,
         secondary_plan_active=secondary_plan_active,
+        expected_secondary_source_node_id=None,
+        secondary_plan_source_node_id=None,
+        secondary_plan_lease_epoch=None,
+        required_secondary_plan_lease_epoch=None,
         secondary_plan_lease_expires_at_s=secondary_plan_lease_expires_at_s,
+        secondary_readiness_sustained=secondary_readiness_sustained,
         current_time_s=current_time_s,
     )
     capability_ready = (
         str(secondary_capability_class) == TAKEOVER_READY_SECONDARY_CAPABILITY_CLASS
+        and secondary_readiness_sustained is not False
     )
     plan_core_ready = (
         secondary_plan_active
@@ -1199,7 +1250,11 @@ def build_d7_secondary_handoff(
     if not plan_ready:
         reject_reason = strictness["reject_reason"]
         if reject_reason is None and plan_core_ready and not capability_ready:
-            reject_reason = "secondary_capability_not_takeover_ready"
+            reject_reason = (
+                "secondary_readiness_not_sustained"
+                if secondary_readiness_sustained is False
+                else "secondary_capability_not_takeover_ready"
+            )
         return D7SecondaryHandoff(
             phase=1,
             d4_action=decision.action,
@@ -1240,12 +1295,19 @@ def build_secondary_takeover_plan_metadata(
     secondary_plan_active: bool = False,
     secondary_plan_source_node_id: str | None = None,
     secondary_plan_lease_epoch: int | None = None,
+    required_secondary_plan_lease_epoch: int | None = None,
     secondary_plan_lease_expires_at_s: float | None = None,
+    secondary_readiness_sustained: bool | None = None,
     decision_timestamp: float | None = None,
 ) -> SecondaryTakeoverPlanMetadata:
     """Build the D4 metadata contract for secondary takeover plan state."""
 
     source_node_id = secondary_plan_source_node_id or decision.target_node_id
+    readiness_gate = (
+        secondary_readiness_sustained
+        if decision.action == DegradationAction.DEGRADE_TO_SECONDARY or secondary_plan_active
+        else None
+    )
     strictness = _secondary_plan_strictness(
         current_plan_id=current_plan_id,
         current_plan_version=current_plan_version,
@@ -1253,7 +1315,12 @@ def build_secondary_takeover_plan_metadata(
         secondary_plan_id=secondary_plan_id,
         secondary_plan_version=secondary_plan_version,
         secondary_plan_active=secondary_plan_active,
+        expected_secondary_source_node_id=decision.target_node_id,
+        secondary_plan_source_node_id=source_node_id,
+        secondary_plan_lease_epoch=secondary_plan_lease_epoch,
+        required_secondary_plan_lease_epoch=required_secondary_plan_lease_epoch,
         secondary_plan_lease_expires_at_s=secondary_plan_lease_expires_at_s,
+        secondary_readiness_sustained=readiness_gate,
         current_time_s=decision_timestamp,
     )
     recovery_audit = _recovery_dual_track_audit(
@@ -1264,7 +1331,10 @@ def build_secondary_takeover_plan_metadata(
         secondary_plan_version=secondary_plan_version,
         secondary_plan_source_node_id=source_node_id,
         secondary_plan_lease_epoch=secondary_plan_lease_epoch,
+        required_secondary_plan_lease_epoch=required_secondary_plan_lease_epoch,
         secondary_plan_lease_expires_at_s=secondary_plan_lease_expires_at_s,
+        secondary_plan_source_matches_target=strictness["source_matches_target"],
+        secondary_readiness_sustained=secondary_readiness_sustained,
         secondary_plan_executable=bool(strictness["executable"]),
     )
     if decision.action != DegradationAction.DEGRADE_TO_SECONDARY:
@@ -1277,8 +1347,11 @@ def build_secondary_takeover_plan_metadata(
             secondary_plan_id=secondary_plan_id,
             secondary_plan_version=secondary_plan_version,
             secondary_plan_lease_epoch=secondary_plan_lease_epoch,
+            required_secondary_plan_lease_epoch=required_secondary_plan_lease_epoch,
             secondary_plan_lease_expires_at_s=secondary_plan_lease_expires_at_s,
             secondary_plan_lease_valid=bool(strictness["lease_valid"]),
+            secondary_plan_source_matches_target=strictness["source_matches_target"],
+            secondary_readiness_sustained=secondary_readiness_sustained,
             secondary_plan_epoch_monotonic=strictness["epoch_monotonic"],
             secondary_plan_executable=False,
             secondary_plan_reject_reason=strictness["reject_reason"],
@@ -1307,8 +1380,11 @@ def build_secondary_takeover_plan_metadata(
             secondary_supersedes_plan_version=current_plan_version,
             secondary_reassignment_complete=False,
             secondary_plan_lease_epoch=secondary_plan_lease_epoch,
+            required_secondary_plan_lease_epoch=required_secondary_plan_lease_epoch,
             secondary_plan_lease_expires_at_s=secondary_plan_lease_expires_at_s,
             secondary_plan_lease_valid=bool(strictness["lease_valid"]),
+            secondary_plan_source_matches_target=strictness["source_matches_target"],
+            secondary_readiness_sustained=secondary_readiness_sustained,
             secondary_plan_epoch_monotonic=strictness["epoch_monotonic"],
             secondary_plan_executable=False,
             secondary_plan_reject_reason=reject_reason,
@@ -1328,8 +1404,11 @@ def build_secondary_takeover_plan_metadata(
         secondary_supersedes_plan_version=current_plan_version,
         secondary_reassignment_complete=True,
         secondary_plan_lease_epoch=secondary_plan_lease_epoch,
+        required_secondary_plan_lease_epoch=required_secondary_plan_lease_epoch,
         secondary_plan_lease_expires_at_s=secondary_plan_lease_expires_at_s,
         secondary_plan_lease_valid=True,
+        secondary_plan_source_matches_target=True,
+        secondary_readiness_sustained=secondary_readiness_sustained,
         secondary_plan_epoch_monotonic=True,
         secondary_plan_executable=True,
         recovery_dual_track_audit=recovery_audit,
@@ -1356,7 +1435,12 @@ def _secondary_plan_strictness(
     secondary_plan_id: str | None,
     secondary_plan_version: int | None,
     secondary_plan_active: bool,
+    expected_secondary_source_node_id: str | None,
+    secondary_plan_source_node_id: str | None,
+    secondary_plan_lease_epoch: int | None,
+    required_secondary_plan_lease_epoch: int | None,
     secondary_plan_lease_expires_at_s: float | None,
+    secondary_readiness_sustained: bool | None,
     current_time_s: float | None,
 ) -> dict[str, object]:
     lease_valid = True
@@ -1366,6 +1450,19 @@ def _secondary_plan_strictness(
         and float(current_time_s) > float(secondary_plan_lease_expires_at_s)
     ):
         lease_valid = False
+
+    source_matches_target: bool | None = None
+    if expected_secondary_source_node_id is not None:
+        source_matches_target = (
+            secondary_plan_source_node_id is not None
+            and str(secondary_plan_source_node_id) == str(expected_secondary_source_node_id)
+        )
+    lease_epoch_valid: bool | None = None
+    if required_secondary_plan_lease_epoch is not None:
+        lease_epoch_valid = (
+            secondary_plan_lease_epoch is not None
+            and int(secondary_plan_lease_epoch) >= int(required_secondary_plan_lease_epoch)
+        )
 
     already_active_secondary_plan = _is_same_active_secondary_plan(
         current_plan_id=current_plan_id,
@@ -1384,7 +1481,13 @@ def _secondary_plan_strictness(
         epoch_monotonic = True
 
     reject_reason = None
-    if not lease_valid:
+    if secondary_readiness_sustained is False:
+        reject_reason = "secondary_readiness_not_sustained"
+    elif source_matches_target is False:
+        reject_reason = "secondary_plan_source_mismatch"
+    elif lease_epoch_valid is False:
+        reject_reason = "secondary_plan_lease_epoch_stale"
+    elif not lease_valid:
         reject_reason = "secondary_plan_lease_expired"
     elif secondary_plan_active and not bool(epoch_monotonic):
         reject_reason = "secondary_plan_epoch_not_monotonic"
@@ -1393,10 +1496,15 @@ def _secondary_plan_strictness(
         secondary_plan_active
         and secondary_plan_version is not None
         and lease_valid
+        and source_matches_target is not False
+        and lease_epoch_valid is not False
+        and secondary_readiness_sustained is not False
         and epoch_monotonic is not False
     )
     return {
         "lease_valid": lease_valid,
+        "lease_epoch_valid": lease_epoch_valid,
+        "source_matches_target": source_matches_target,
         "epoch_monotonic": epoch_monotonic,
         "executable": executable,
         "reject_reason": reject_reason,
@@ -1434,7 +1542,10 @@ def _recovery_dual_track_audit(
     secondary_plan_version: int | None,
     secondary_plan_source_node_id: str | None,
     secondary_plan_lease_epoch: int | None,
+    required_secondary_plan_lease_epoch: int | None,
     secondary_plan_lease_expires_at_s: float | None,
+    secondary_plan_source_matches_target: bool | None,
+    secondary_readiness_sustained: bool | None,
     secondary_plan_executable: bool,
 ) -> dict[str, object]:
     return {
@@ -1445,7 +1556,10 @@ def _recovery_dual_track_audit(
         "secondary_track_plan_version": secondary_plan_version,
         "secondary_plan_source_node_id": secondary_plan_source_node_id,
         "secondary_plan_lease_epoch": secondary_plan_lease_epoch,
+        "required_secondary_plan_lease_epoch": required_secondary_plan_lease_epoch,
         "secondary_plan_lease_expires_at_s": secondary_plan_lease_expires_at_s,
+        "secondary_plan_source_matches_target": secondary_plan_source_matches_target,
+        "secondary_readiness_sustained": secondary_readiness_sustained,
         "secondary_plan_executable": secondary_plan_executable,
     }
 
@@ -1561,6 +1675,15 @@ def summarize_secondary_lifecycle(
                     capability["stable_cross_view_registration_count"]
                 ),
                 not_registered_count=capability["not_registered_count"],
+                registration_evidence_source=str(
+                    capability["registration_evidence_source"]
+                ),
+                stable_registration_evidence_present=bool(
+                    capability["stable_registration_evidence_present"]
+                ),
+                not_registered_evidence_present=bool(
+                    capability["not_registered_evidence_present"]
+                ),
             )
         )
     return tuple(summaries)

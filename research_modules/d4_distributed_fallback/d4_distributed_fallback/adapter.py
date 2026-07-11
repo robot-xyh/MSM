@@ -84,6 +84,30 @@ ADAPTER_HARD_RISK_FACTORS = frozenset(
 
 
 @dataclass(frozen=True)
+class SecondaryReadinessWindowConfig:
+    """Temporal guard applied after the instantaneous readiness thresholds."""
+
+    required_consecutive_decisions: int = 3
+    required_duration_s: float = 0.2
+    max_evidence_gap_s: float = 1.0
+
+
+@dataclass
+class _SecondaryReadinessMemory:
+    consecutive_decisions: int = 0
+    ready_since_s: float | None = None
+    last_decision_timestamp_s: float | None = None
+
+
+@dataclass
+class _SecondaryTakeoverMemory:
+    state: str = "not_applicable"
+    source_node_id: str | None = None
+    pending_since_s: float | None = None
+    active_since_s: float | None = None
+
+
+@dataclass(frozen=True)
 class D4DecisionRecord:
     """Module-neutral D4 decision record for main and D6 logs."""
 
@@ -144,6 +168,11 @@ class D4DecisionRecord:
     secondary_takeover_necessity_label: str | None = None
     secondary_plan_activation_delay_s: float | None = None
     secondary_plan_pending_duration_s: float | None = None
+    secondary_plan_pending_since_s: float | None = None
+    secondary_plan_activated_at_s: float | None = None
+    secondary_takeover_previous_state: str = "not_applicable"
+    secondary_takeover_transition: str = "not_applicable->not_applicable"
+    secondary_takeover_fallback_reason: str | None = None
     secondary_diagnostic_node_id: str | None = None
     secondary_diagnostic_available: bool | None = None
     secondary_diagnostic_heartbeat_age_s: float | None = None
@@ -168,6 +197,16 @@ class D4DecisionRecord:
     secondary_diagnostic_network_full_view_rate: float | None = None
     secondary_diagnostic_stable_cross_view_registration_count: int | None = None
     secondary_diagnostic_not_registered_count: int | None = None
+    secondary_diagnostic_registration_evidence_source: str | None = None
+    secondary_diagnostic_stable_registration_evidence_present: bool | None = None
+    secondary_diagnostic_not_registered_evidence_present: bool | None = None
+    secondary_takeover_ready_consecutive_decisions: int = 0
+    secondary_takeover_ready_since_s: float | None = None
+    secondary_takeover_ready_duration_s: float = 0.0
+    secondary_takeover_ready_required_decisions: int = 1
+    secondary_takeover_ready_required_duration_s: float = 0.0
+    secondary_takeover_ready_sustained: bool = False
+    secondary_takeover_readiness_fallback_reason: str | None = None
     risk_factors: tuple[str, ...] = ()
     hard_risk_factors: tuple[str, ...] = ()
     soft_risk_factors: tuple[str, ...] = ()
@@ -233,11 +272,20 @@ class D4DecisionRecord:
             "secondary_plan_lease_epoch": (
                 self.secondary_takeover.secondary_plan_lease_epoch
             ),
+            "required_secondary_plan_lease_epoch": (
+                self.secondary_takeover.required_secondary_plan_lease_epoch
+            ),
             "secondary_plan_lease_expires_at_s": (
                 self.secondary_takeover.secondary_plan_lease_expires_at_s
             ),
             "secondary_plan_lease_valid": (
                 self.secondary_takeover.secondary_plan_lease_valid
+            ),
+            "secondary_plan_source_matches_target": (
+                self.secondary_takeover.secondary_plan_source_matches_target
+            ),
+            "secondary_readiness_sustained": (
+                self.secondary_takeover.secondary_readiness_sustained
             ),
             "secondary_plan_epoch_monotonic": (
                 self.secondary_takeover.secondary_plan_epoch_monotonic
@@ -304,6 +352,11 @@ class D4DecisionRecord:
             "secondary_takeover_necessity_label": self.secondary_takeover_necessity_label,
             "secondary_plan_activation_delay_s": self.secondary_plan_activation_delay_s,
             "secondary_plan_pending_duration_s": self.secondary_plan_pending_duration_s,
+            "secondary_plan_pending_since_s": self.secondary_plan_pending_since_s,
+            "secondary_plan_activated_at_s": self.secondary_plan_activated_at_s,
+            "secondary_takeover_previous_state": self.secondary_takeover_previous_state,
+            "secondary_takeover_transition": self.secondary_takeover_transition,
+            "secondary_takeover_fallback_reason": self.secondary_takeover_fallback_reason,
             "plan_activation_delay_s": self.secondary_plan_activation_delay_s,
             "secondary_diagnostic_node_id": self.secondary_diagnostic_node_id,
             "secondary_diagnostic_available": self.secondary_diagnostic_available,
@@ -371,6 +424,30 @@ class D4DecisionRecord:
             "secondary_diagnostic_not_registered_count": (
                 self.secondary_diagnostic_not_registered_count
             ),
+            "secondary_diagnostic_registration_evidence_source": (
+                self.secondary_diagnostic_registration_evidence_source
+            ),
+            "secondary_diagnostic_stable_registration_evidence_present": (
+                self.secondary_diagnostic_stable_registration_evidence_present
+            ),
+            "secondary_diagnostic_not_registered_evidence_present": (
+                self.secondary_diagnostic_not_registered_evidence_present
+            ),
+            "secondary_takeover_ready_consecutive_decisions": (
+                self.secondary_takeover_ready_consecutive_decisions
+            ),
+            "secondary_takeover_ready_since_s": self.secondary_takeover_ready_since_s,
+            "secondary_takeover_ready_duration_s": self.secondary_takeover_ready_duration_s,
+            "secondary_takeover_ready_required_decisions": (
+                self.secondary_takeover_ready_required_decisions
+            ),
+            "secondary_takeover_ready_required_duration_s": (
+                self.secondary_takeover_ready_required_duration_s
+            ),
+            "secondary_takeover_ready_sustained": self.secondary_takeover_ready_sustained,
+            "secondary_takeover_readiness_fallback_reason": (
+                self.secondary_takeover_readiness_fallback_reason
+            ),
             "c2_health": self.c2_health.value,
             "secondary_available": self.secondary_available,
             "communication_fresh": self.communication_fresh,
@@ -422,8 +499,19 @@ class D4ArbitrationResult:
 class D4ArbitrationAdapter:
     """Build D4 arbitration inputs from main/integration module objects."""
 
-    def __init__(self, arbiter: ActiveDegradationArbiter | None = None) -> None:
+    def __init__(
+        self,
+        arbiter: ActiveDegradationArbiter | None = None,
+        readiness_config: SecondaryReadinessWindowConfig | None = None,
+    ) -> None:
         self.arbiter = arbiter or ActiveDegradationArbiter()
+        self.readiness_config = readiness_config or SecondaryReadinessWindowConfig()
+        self._secondary_readiness_memory: dict[
+            tuple[str, str, str], _SecondaryReadinessMemory
+        ] = {}
+        self._secondary_takeover_memory: dict[
+            tuple[str, str], _SecondaryTakeoverMemory
+        ] = {}
 
     def evaluate(
         self,
@@ -530,6 +618,12 @@ class D4ArbitrationAdapter:
             current_time_s=timestamp,
             terminal_association=terminal_summary,
         )
+        lifecycle = self._update_secondary_readiness_window(
+            lifecycle,
+            timestamp=float(timestamp),
+            global_track_id=resolved_track_id,
+            coverage_cell=resolved_coverage,
+        )
         health = _c2_health(c2_health)
         decision = self.arbiter.evaluate(
             track_uncertainty=track_summary,
@@ -541,12 +635,32 @@ class D4ArbitrationAdapter:
             communication_summaries=list(communications) if communications else None,
             current_time_s=timestamp,
         )
+        decision = self._enforce_sustained_secondary_readiness(decision, lifecycle)
         resolved_plan_id = plan_id or _string_or_none(_get(plan, "plan_id"))
         resolved_plan_version = _optional_int(
             _get(plan, "version", _get(plan, "plan_version"))
         )
         if resolved_plan_version is None:
             resolved_plan_version = assignment_summary.plan_version
+        selected_lifecycle = _diagnostic_secondary_lifecycle(
+            lifecycle,
+            target_node_id=decision.target_node_id,
+        )
+        required_lease_epoch = (
+            selected_lifecycle.lease_epoch
+            if selected_lifecycle is not None and decision.target_node_id is not None
+            else None
+        )
+        resolved_secondary_lease_epoch = (
+            secondary_plan_lease_epoch
+            if secondary_plan_lease_epoch is not None
+            else required_lease_epoch
+        )
+        readiness_sustained = (
+            selected_lifecycle.takeover_ready_sustained
+            if selected_lifecycle is not None
+            else False
+        )
         secondary_takeover = build_secondary_takeover_plan_metadata(
             decision,
             current_plan_id=resolved_plan_id,
@@ -556,12 +670,10 @@ class D4ArbitrationAdapter:
             secondary_plan_version=secondary_plan_version,
             secondary_plan_active=secondary_plan_active,
             secondary_plan_source_node_id=secondary_plan_source_node_id,
-            secondary_plan_lease_epoch=(
-                secondary_plan_lease_epoch
-                if secondary_plan_lease_epoch is not None
-                else _selected_secondary_lease_epoch(lifecycle, decision.target_node_id)
-            ),
+            secondary_plan_lease_epoch=resolved_secondary_lease_epoch,
+            required_secondary_plan_lease_epoch=required_lease_epoch,
             secondary_plan_lease_expires_at_s=secondary_plan_lease_expires_at_s,
+            secondary_readiness_sustained=readiness_sustained,
             decision_timestamp=timestamp,
         )
         resolved_trigger_timestamp = float(
@@ -575,15 +687,16 @@ class D4ArbitrationAdapter:
             pre_window_s=review_pre_window_s,
             post_window_s=review_post_window_s,
         )
-        secondary_timing = _secondary_plan_timing_metadata(
-            secondary_takeover,
+        secondary_timing = self._update_secondary_takeover_transition(
+            resource_id=resolved_resource_id,
+            global_track_id=resolved_track_id,
+            secondary_takeover=secondary_takeover,
             trigger_timestamp=resolved_trigger_timestamp,
             decision_timestamp=resolved_decision_timestamp,
+            decision=decision,
+            lifecycle=selected_lifecycle,
         )
-        diagnostic_lifecycle = _diagnostic_secondary_lifecycle(
-            lifecycle,
-            target_node_id=decision.target_node_id,
-        )
+        diagnostic_lifecycle = selected_lifecycle
         network_coverage = _secondary_network_coverage_metadata(terminal_summary)
         secondary_takeover_candidate = decision.action in {
             DegradationAction.REQUEST_SECONDARY_ASSIST,
@@ -667,6 +780,21 @@ class D4ArbitrationAdapter:
             ],
             secondary_plan_pending_duration_s=secondary_timing[
                 "secondary_plan_pending_duration_s"
+            ],
+            secondary_plan_pending_since_s=secondary_timing[
+                "secondary_plan_pending_since_s"
+            ],
+            secondary_plan_activated_at_s=secondary_timing[
+                "secondary_plan_activated_at_s"
+            ],
+            secondary_takeover_previous_state=str(
+                secondary_timing["secondary_takeover_previous_state"]
+            ),
+            secondary_takeover_transition=str(
+                secondary_timing["secondary_takeover_transition"]
+            ),
+            secondary_takeover_fallback_reason=secondary_timing[
+                "secondary_takeover_fallback_reason"
             ],
             secondary_diagnostic_node_id=(
                 diagnostic_lifecycle.node_id if diagnostic_lifecycle is not None else None
@@ -789,6 +917,56 @@ class D4ArbitrationAdapter:
                 if diagnostic_lifecycle is not None
                 else None
             ),
+            secondary_diagnostic_registration_evidence_source=(
+                diagnostic_lifecycle.registration_evidence_source
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_stable_registration_evidence_present=(
+                diagnostic_lifecycle.stable_registration_evidence_present
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_diagnostic_not_registered_evidence_present=(
+                diagnostic_lifecycle.not_registered_evidence_present
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_takeover_ready_consecutive_decisions=(
+                diagnostic_lifecycle.takeover_ready_consecutive_decisions
+                if diagnostic_lifecycle is not None
+                else 0
+            ),
+            secondary_takeover_ready_since_s=(
+                diagnostic_lifecycle.takeover_ready_since_s
+                if diagnostic_lifecycle is not None
+                else None
+            ),
+            secondary_takeover_ready_duration_s=(
+                diagnostic_lifecycle.takeover_ready_duration_s
+                if diagnostic_lifecycle is not None
+                else 0.0
+            ),
+            secondary_takeover_ready_required_decisions=(
+                diagnostic_lifecycle.takeover_ready_required_decisions
+                if diagnostic_lifecycle is not None
+                else self.readiness_config.required_consecutive_decisions
+            ),
+            secondary_takeover_ready_required_duration_s=(
+                diagnostic_lifecycle.takeover_ready_required_duration_s
+                if diagnostic_lifecycle is not None
+                else self.readiness_config.required_duration_s
+            ),
+            secondary_takeover_ready_sustained=(
+                diagnostic_lifecycle.takeover_ready_sustained
+                if diagnostic_lifecycle is not None
+                else False
+            ),
+            secondary_takeover_readiness_fallback_reason=(
+                diagnostic_lifecycle.takeover_readiness_fallback_reason
+                if diagnostic_lifecycle is not None
+                else None
+            ),
             c2_health=health,
             secondary_available=_secondary_available(lifecycle),
             communication_fresh=_communication_fresh(communications, timestamp),
@@ -805,6 +983,235 @@ class D4ArbitrationAdapter:
             decision=decision,
             record=record,
         )
+
+    def _update_secondary_readiness_window(
+        self,
+        lifecycle: tuple[SecondaryNodeLifecycleSummary, ...],
+        *,
+        timestamp: float,
+        global_track_id: str,
+        coverage_cell: str,
+    ) -> tuple[SecondaryNodeLifecycleSummary, ...]:
+        cfg = self.readiness_config
+        required_decisions = max(1, int(cfg.required_consecutive_decisions))
+        required_duration = max(0.0, float(cfg.required_duration_s))
+        max_gap = max(0.0, float(cfg.max_evidence_gap_s))
+        updated: list[SecondaryNodeLifecycleSummary] = []
+        for item in lifecycle:
+            key = (item.node_id, global_track_id, coverage_cell)
+            memory = self._secondary_readiness_memory.get(
+                key,
+                _SecondaryReadinessMemory(),
+            )
+            instantaneous_ready = bool(item.secondary_takeover_capable)
+            if instantaneous_ready:
+                last_timestamp = memory.last_decision_timestamp_s
+                if last_timestamp is None or memory.ready_since_s is None:
+                    memory.consecutive_decisions = 1
+                    memory.ready_since_s = timestamp
+                elif timestamp < last_timestamp or timestamp - last_timestamp > max_gap:
+                    memory.consecutive_decisions = 1
+                    memory.ready_since_s = timestamp
+                elif timestamp > last_timestamp:
+                    memory.consecutive_decisions += 1
+                memory.last_decision_timestamp_s = timestamp
+            else:
+                memory = _SecondaryReadinessMemory(last_decision_timestamp_s=timestamp)
+            self._secondary_readiness_memory[key] = memory
+
+            duration = (
+                max(0.0, timestamp - memory.ready_since_s)
+                if memory.ready_since_s is not None
+                else 0.0
+            )
+            sustained = (
+                instantaneous_ready
+                and memory.consecutive_decisions >= required_decisions
+                and duration >= required_duration
+            )
+            updated.append(
+                replace(
+                    item,
+                    takeover_ready_consecutive_decisions=memory.consecutive_decisions,
+                    takeover_ready_since_s=memory.ready_since_s,
+                    takeover_ready_duration_s=duration,
+                    takeover_ready_required_decisions=required_decisions,
+                    takeover_ready_required_duration_s=required_duration,
+                    takeover_ready_sustained=sustained,
+                    takeover_readiness_fallback_reason=_readiness_fallback_reason(
+                        item,
+                        instantaneous_ready=instantaneous_ready,
+                        sustained=sustained,
+                    ),
+                )
+            )
+        return tuple(updated)
+
+    @staticmethod
+    def _enforce_sustained_secondary_readiness(
+        decision: ActiveDegradationDecision,
+        lifecycle: Sequence[SecondaryNodeLifecycleSummary],
+    ) -> ActiveDegradationDecision:
+        if decision.action != DegradationAction.DEGRADE_TO_SECONDARY:
+            return decision
+        selected = next(
+            (item for item in lifecycle if item.node_id == decision.target_node_id),
+            None,
+        )
+        if selected is not None and selected.takeover_ready_sustained:
+            return decision
+        return ActiveDegradationDecision(
+            mode=decision.mode,
+            action=DegradationAction.DEGRADE_TO_DISTRIBUTED,
+            reason="secondary_takeover_readiness_not_sustained",
+            coverage_cell=decision.coverage_cell,
+            terminal_consistent=decision.terminal_consistent,
+            risk_factors=tuple(
+                dict.fromkeys(
+                    (*decision.risk_factors, "secondary_takeover_readiness_not_sustained")
+                )
+            ),
+            requires_human_review=decision.requires_human_review,
+        )
+
+    def _update_secondary_takeover_transition(
+        self,
+        *,
+        resource_id: str,
+        global_track_id: str,
+        secondary_takeover: SecondaryTakeoverPlanMetadata,
+        trigger_timestamp: float,
+        decision_timestamp: float,
+        decision: ActiveDegradationDecision,
+        lifecycle: SecondaryNodeLifecycleSummary | None,
+    ) -> dict[str, Any]:
+        key = (resource_id, global_track_id)
+        previous = self._secondary_takeover_memory.get(
+            key,
+            _SecondaryTakeoverMemory(),
+        )
+        previous_state = previous.state
+        current_state = secondary_takeover.state.value
+        source_node_id = secondary_takeover.secondary_plan_source_node_id
+        same_source = previous.source_node_id in {None, source_node_id}
+
+        pending_since_s: float | None = None
+        activated_at_s: float | None = None
+        activation_delay_s: float | None = None
+        pending_duration_s: float | None = None
+        fallback_reason = _secondary_takeover_fallback_reason(
+            previous_state=previous_state,
+            current_state=current_state,
+            decision=decision,
+            secondary_takeover=secondary_takeover,
+            lifecycle=lifecycle,
+        )
+
+        if current_state == "pending_secondary_plan":
+            pending_since_s = (
+                previous.pending_since_s
+                if same_source and previous.pending_since_s is not None
+                else trigger_timestamp
+            )
+            pending_duration_s = max(0.0, decision_timestamp - pending_since_s)
+            memory = _SecondaryTakeoverMemory(
+                state=current_state,
+                source_node_id=source_node_id,
+                pending_since_s=pending_since_s,
+            )
+        elif current_state == "secondary_plan_active":
+            pending_since_s = (
+                previous.pending_since_s
+                if same_source and previous.pending_since_s is not None
+                else trigger_timestamp
+            )
+            activated_at_s = (
+                previous.active_since_s
+                if same_source and previous.active_since_s is not None
+                else decision_timestamp
+            )
+            activation_delay_s = max(0.0, activated_at_s - pending_since_s)
+            memory = _SecondaryTakeoverMemory(
+                state=current_state,
+                source_node_id=source_node_id,
+                pending_since_s=pending_since_s,
+                active_since_s=activated_at_s,
+            )
+        else:
+            memory = _SecondaryTakeoverMemory(state=current_state)
+        self._secondary_takeover_memory[key] = memory
+
+        return {
+            "secondary_plan_activation_delay_s": activation_delay_s,
+            "secondary_plan_pending_duration_s": pending_duration_s,
+            "secondary_plan_pending_since_s": pending_since_s,
+            "secondary_plan_activated_at_s": activated_at_s,
+            "secondary_takeover_previous_state": previous_state,
+            "secondary_takeover_transition": f"{previous_state}->{current_state}",
+            "secondary_takeover_fallback_reason": fallback_reason,
+        }
+
+
+def _readiness_fallback_reason(
+    lifecycle: SecondaryNodeLifecycleSummary,
+    *,
+    instantaneous_ready: bool,
+    sustained: bool,
+) -> str | None:
+    if instantaneous_ready and not sustained:
+        return "takeover_readiness_not_sustained"
+    if sustained:
+        return None
+    reason_priority = (
+        "heartbeat_stale",
+        "link_stale",
+        "cue_stale",
+        "lease_expired",
+        "gimbal_not_pointing",
+        "secondary_unavailable",
+        "coverage_unavailable",
+        "secondary_detect_available_but_not_registered",
+        "stable_registration_missing",
+        "network_full_view_rate_low",
+    )
+    for reason in reason_priority:
+        if reason in lifecycle.secondary_capability_reasons:
+            return reason
+    if lifecycle.secondary_readiness_class == "registration_usable":
+        return "secondary_capability_below_takeover_threshold"
+    if lifecycle.secondary_readiness_class == "visible_only":
+        return "secondary_registration_not_usable"
+    return "secondary_not_takeover_ready"
+
+
+def _secondary_takeover_fallback_reason(
+    *,
+    previous_state: str,
+    current_state: str,
+    decision: ActiveDegradationDecision,
+    secondary_takeover: SecondaryTakeoverPlanMetadata,
+    lifecycle: SecondaryNodeLifecycleSummary | None,
+) -> str | None:
+    reject_reason = secondary_takeover.secondary_plan_reject_reason
+    if reject_reason not in {
+        None,
+        "secondary_reassignment_pending",
+        "secondary_readiness_not_sustained",
+    }:
+        return reject_reason
+    if current_state == "secondary_plan_active":
+        return None
+    if current_state == "pending_secondary_plan" and previous_state != "secondary_plan_active":
+        return None
+    if lifecycle is not None and lifecycle.takeover_readiness_fallback_reason is not None:
+        return lifecycle.takeover_readiness_fallback_reason
+    if reject_reason == "secondary_readiness_not_sustained":
+        return reject_reason
+    if decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED:
+        return decision.reason
+    if previous_state in {"pending_secondary_plan", "secondary_plan_active"}:
+        return "secondary_takeover_cancelled"
+    return None
 
 
 def _review_label_metadata(
@@ -842,18 +1249,6 @@ def _risk_classification_metadata(
         "false_trigger_candidate": false_trigger_candidate,
         "false_trigger_reason": decision.reason if false_trigger_candidate else None,
     }
-
-
-def _selected_secondary_lease_epoch(
-    lifecycle: Sequence[SecondaryNodeLifecycleSummary],
-    target_node_id: str | None,
-) -> int | None:
-    if target_node_id is None:
-        return None
-    for item in lifecycle:
-        if item.node_id == target_node_id:
-            return item.lease_epoch
-    return None
 
 
 def _normalise_legacy_review_label(value: str) -> str:
@@ -916,30 +1311,6 @@ def _review_window_metadata(
         "pre_window_end_timestamp": trigger_timestamp,
         "post_window_start_timestamp": decision_timestamp,
         "post_window_end_timestamp": decision_timestamp + resolved_post,
-    }
-
-
-def _secondary_plan_timing_metadata(
-    secondary_takeover: SecondaryTakeoverPlanMetadata,
-    *,
-    trigger_timestamp: float,
-    decision_timestamp: float,
-) -> dict[str, float | None]:
-    elapsed = max(0.0, decision_timestamp - trigger_timestamp)
-    state = secondary_takeover.state.value
-    if state == "secondary_plan_active":
-        return {
-            "secondary_plan_activation_delay_s": elapsed,
-            "secondary_plan_pending_duration_s": None,
-        }
-    if state == "pending_secondary_plan":
-        return {
-            "secondary_plan_activation_delay_s": None,
-            "secondary_plan_pending_duration_s": elapsed,
-        }
-    return {
-        "secondary_plan_activation_delay_s": None,
-        "secondary_plan_pending_duration_s": None,
     }
 
 
@@ -1061,6 +1432,20 @@ def build_association_risk_summary(
 
     result_metadata = _metadata(association_result)
     metric_summary = _call_if_present(association_metrics, "summary") or {}
+    truth_metrics_available = _first_bool(
+        _get(association_metrics, "truth_metrics_available"),
+        _get(association_result, "truth_metrics_available"),
+        result_metadata.get("truth_metrics_available"),
+        metric_summary.get("truth_metrics_available"),
+        True,
+    )
+    continuity_available = _first_bool(
+        _get(association_metrics, "continuity_available"),
+        _get(association_result, "continuity_available"),
+        result_metadata.get("continuity_available"),
+        metric_summary.get("continuity_available"),
+        truth_metrics_available,
+    )
     ambiguity = _first_float(
         _get(association_result, "ambiguity_score"),
         result_metadata.get("association_ambiguity"),
@@ -1069,13 +1454,21 @@ def build_association_risk_summary(
         metric_summary.get("association_ambiguity"),
         0.0,
     )
-    duplicate_count = _first_int(
-        _get(association_metrics, "duplicate_track_count"),
-        _get(association_metrics, "duplicate_assignment_count"),
-        result_metadata.get("duplicate_track_count"),
-        int(float(result_metadata.get("duplicate_track_risk", 0.0)) >= 0.5),
-        metric_summary.get("duplicate_assignment_count"),
-        0,
+    duplicate_risk = _first_float(
+        _get(association_metrics, "latest_duplicate_track_risk"),
+        _get(association_metrics, "duplicate_track_risk"),
+        _get(association_result, "duplicate_track_risk"),
+        result_metadata.get("duplicate_track_risk"),
+        metric_summary.get("duplicate_track_risk"),
+        0.0,
+    )
+    duplicate_count = max(
+        _first_int(_get(association_metrics, "duplicate_track_count"), 0),
+        _first_int(_get(association_metrics, "duplicate_assignment_count"), 0),
+        _first_int(result_metadata.get("duplicate_track_count"), 0),
+        _first_int(metric_summary.get("duplicate_track_count"), 0),
+        _first_int(metric_summary.get("duplicate_assignment_count"), 0),
+        int(duplicate_risk >= 0.5),
     )
     return AssociationRiskSummary(
         track_id=track_id,
@@ -1094,6 +1487,8 @@ def build_association_risk_summary(
             metric_summary.get("track_continuity"),
             1.0,
         ),
+        truth_metrics_available=truth_metrics_available,
+        continuity_available=continuity_available,
     )
 
 
@@ -2004,6 +2399,14 @@ def _first_int(*values: Any) -> int:
         if parsed is not None:
             return parsed
     return 0
+
+
+def _first_bool(*values: Any) -> bool:
+    for value in values:
+        parsed = _optional_bool(value)
+        if parsed is not None:
+            return parsed
+    return False
 
 
 def _covariance_matrix(value: Any) -> np.ndarray:

@@ -28,7 +28,13 @@ D4 模块内已经完成一个可测试的离线 P1 骨架，并补齐 P0-B 降�
 
 2026-07-10 的 `p1_gap_closure_calibration_20260710` 已完成 10 seeds、50/200 m、3 个机动高空二级节点、FOV 110 度、1920x1080 的 60 个 5v5 case。20 个 `degrade_to_secondary` case 的最终帧和 dominant action 均为 `degrade_to_distributed`。50 m 下 network joint full-view 均值 0.023、最大 0.154，coverage 均值 0.685；200 m 下 network joint full-view 恒为 0.000，coverage 均值 0.708。两种高度均有有效投影和稳定注册，cross-view association 均值为 4.6/4.0，stable registration 均值为 86.3/96.7，说明当前 P1 断点是 network full-view 的持续性，而不是注册完全缺失。
 
-P0 状态：无 P0 blocker。P0-B 在 D4 模块内已闭合到单元测试层：heartbeat 短时丢包/延迟经滑动窗口和 dwell 后才进入 failed；过期或非单调二级 plan 被标记为 not executable；二级能力评分区分 `visible_only`、`registration_usable` 和 `takeover_ready`，并记录 score input 明细；无冲突 reacquire 不直接降级。10-seed 决策明细中 1300 条记录均通过 heartbeat/link/cue/gimbal、visible 和 registered 检查，score 无低于 0.70；1285 条因 network full-view < 0.80 保持 `registration_usable`，其中 600 条还低于 coverage 0.65。其余 15 条瞬时 `takeover_ready` 只出现在 50 m 的 seed 2/5，均为 `pending_secondary_plan`，没有 active/executable plan，最终仍回落 distributed。D4 本批 registered 判据来自 `cross_view_association_count=2..5`，逐决策 stable/not-registered input 均为 `null`，需要 main/D5 后续补齐审计证据。剩余 P1 是标定 network full-view 时间稳定窗口和 coverage-cell 聚合、打通持续 `takeover_ready` 到 active plan/lease 的运行层证据，并补 plan activation delay、网络分区、误降级、D5 peer evidence 和恢复双轨统计；不放宽接管门控。
+P0 状态：无 P0 blocker。P0-B 在 D4 模块内已闭合到单元测试层：heartbeat 短时丢包/延迟经滑动窗口和 dwell 后才进入 failed；过期或非单调二级 plan 被标记为 not executable；二级能力评分区分 `visible_only`、`registration_usable` 和 `takeover_ready`，并记录 score input 明细；无冲突 reacquire 不直接降级。10-seed 决策明细中 1300 条记录均通过 heartbeat/link/cue/gimbal、visible 和 registered 检查，score 无低于 0.70；1285 条因 network full-view < 0.80 保持 `registration_usable`，其中 600 条还低于 coverage 0.65。其余 15 条瞬时 `takeover_ready` 只出现在 50 m 的 seed 2/5，均为 `pending_secondary_plan`，没有 active/executable plan，最终仍回落 distributed。
+
+2026-07-11 D4 readiness/接管 P1 已在模块内补齐并修复边沿初始化：硬门限保持 score >= 0.70、coverage >= 0.65、network full-view >= 0.80；`D4ArbitrationAdapter` 默认要求 3 个不同时间戳决策、至少 0.2 s 持续且相邻 evidence gap <= 1.0 s，才把瞬时 `takeover_ready` 解释为 sustained readiness。同一 frame 的多次调用不会增加 streak；`not_ready -> takeover_ready` 和能力回落后的再次 ready 都会设置新的 `ready_since_s`、从 count=1 重新计时。lifecycle/event 逐决策记录 stable/not-registered value、presence、evidence source、streak、duration、sustained 和 fallback reason。pending/active 合同新增 source match、required lease epoch、lease expiry、transition、pending since、activated at、activation delay 与回落原因；heartbeat/link/cue/gimbal/lease/能力回落均有 distributed 或 pending/not-executable 负例。D2 online truth 隔离后，D4 还显式读取 `truth_metrics_available`/`continuity_available`：不可用的 IDSW/continuity 占位不触发降级，在线 ambiguity、duplicate track risk 和 track-quality-derived association risk 仍按原门限生效。D4 模块测试共 95 项通过。历史 AirSim 记录仍缺真实逐决策 stable/not-registered 输入，且 main/D3/D7 尚需完成实际 active-plan 接线和多 seed 证据；D4 不生成 `AssignmentPlan`。
+
+2026-07-11 新增三组 truth-isolated 真实 AirSim smoke 证据，分别为 200 m/2 二级节点、50 m/2 二级节点和 200 m/5 二级节点。三组中心保持正例均输出 `continue_center`，三组分布式负例均输出 `degrade_to_distributed`，说明当前动作方向和 truth 隔离后的保守仲裁没有退化。三组预期二级接管正例仍输出 `degrade_to_distributed`：二级网络同帧联合全覆盖率均为 0.0，readiness 未达到持续 `takeover_ready`；增加到 5 个二级节点后网络平均覆盖约为 0.80，但累计/平均覆盖不能替代同帧全目标覆盖。该结果不关闭 P1，也不构成放宽 score、coverage、network full-view 或持续窗口门限的依据。
+
+下一轮 P1 验收按以下顺序执行：先由 D5/main 构造并记录连续多帧同一 coverage cell 的全目标联合覆盖，再验证 D4 在 3 个不同时间戳、至少 0.2 s 的窗口内形成 sustained `takeover_ready`；随后由 main/D3 回填 source、lease epoch/expiry 和单调 plan id/version，使状态从 pending 进入 `secondary_plan_active`/executable；最后用同 seed 的中心保持、二级接管和二级不可用负例核对误降级率与回落原因。任一步不满足都应保持 distributed/observe，不修改 D4 门限。
 
 ## 4. 被动降级与主动降级
 
@@ -123,20 +129,20 @@ failed
 ### 6.2 主动降级摘要
 
 - `TrackUncertaintySummary`：D1 定位质量，含 `position_sigma_m`、`covariance_trace`、`velocity_sigma_mps`、`measurement_age_s` 和 `coverage_cell`。
-- `AssociationRiskSummary`：D2 关联风险，含 `ambiguity_score`、`id_switch_count`、`duplicate_track_count`、`track_continuity`。
+- `AssociationRiskSummary`：D2 关联风险，含 `ambiguity_score`、`id_switch_count`、`duplicate_track_count`、`track_continuity`、`truth_metrics_available` 和 `continuity_available`。后两个字段决定 truth-based IDSW/continuity 是否可用于在线仲裁；不影响在线 ambiguity、duplicate 和质量风险。
 - `AssignmentValiditySummary`：D3 分配有效性，含 `global_track_id`、`assigned_resource_id`、`plan_version`、`is_current`、`plan_age_s`、`cost_margin`。
 - `TerminalAssociationSummary`：D5 末端关联，含 `decision_state`、confidence、ambiguity、observed/assigned `global_track_id`、连续非锁定/不一致帧数、friend conflict、duplicate lock、cross-view 风险，以及 D5 二级覆盖/转换漏斗字段 `cue_freshness_s`、`gimbal_pointing_ok`、`secondary_coverage_ratio`、`secondary_single_camera_full_view_frame_rate`、`secondary_network_joint_full_view_frame_rate`、`secondary_network_mean_coverage_ratio`、`cross_view_support_count`、`cross_view_association_count`、`stable_cross_view_registration_count`、`not_registered_count`、`cross_view_conversion_gap`、`secondary_detect_to_cross_view_reject_reasons`、`secondary_detect_available_but_not_registered`。
 - `CommunicationSummary`：链路摘要，含 source/target/relay、`link_type`、sent/received timestamp、`payload_kind`、`stale_after_s`、sequence id。
-- `SecondaryNodeLifecycleSummary`：二级节点 heartbeat age/stale、lease epoch/expiry、coverage、requested coverage match、video/cue freshness、cue stale、gimbal pointing、coverage ratio、network full-view rate、stable registration count、not-registered count、cross-view support、固定/机动二级分类、link stale/fresh、`secondary_available`、`secondary_visible`、`secondary_registered`、`secondary_takeover_capable`、`secondary_capability_score`、`secondary_readiness_class` 和 `secondary_capability_inputs`。
-- `D4DecisionRecord`：adapter 输出，可转为 D6 `EventRecord` kwargs，包含三值 review label、`active_degradation_necessity_label`、pre/post review window、`active_plan_owner`、secondary takeover metadata、plan activation delay、lease/executable/reject reason、hard/soft risk、false-trigger candidate、二级 diagnostic 节点字段、readiness `secondary_capability_class`、capability score inputs 和 D5 detect-to-registration 诊断。
+- `SecondaryNodeLifecycleSummary`：除 heartbeat、lease、coverage、cue/gimbal/link、registration 与四级 readiness 外，新增 `registration_evidence_source`、stable/not-registered presence、takeover-ready consecutive decisions/since/duration/required values、`takeover_ready_sustained` 和 fallback reason。
+- `D4DecisionRecord`：adapter 输出，可转为 D6 `EventRecord` kwargs；除既有 review、risk、coverage 和 plan 字段外，新增逐决策 readiness/evidence 审计、`secondary_takeover_previous_state/transition/fallback_reason`、pending since、activated at、activation delay、required lease epoch 和 source-match 结果。
 
 ### 6.3 二级接管 plan lifecycle metadata
 
 D4 不生成完整系统级 `AssignmentPlan`，但在 `degrade_to_secondary` 触发时通过 `SecondaryTakeoverPlanMetadata` 给 main/D3/D7 提供可消费状态：
 
 - `not_applicable`：非二级接管动作；当前 active plan owner 仍是 center、distributed_cbba 或 hold_review。
-- `pending_secondary_plan`：D4 已选择二级节点并触发重分配，但新的二级 plan 尚未生效；`active_plan_owner` 仍为当前 plan owner，`pending_plan_owner=secondary_node`，并记录 `secondary_plan_source_node_id`、当前 plan id/version 和 supersedes 字段。
-- `secondary_plan_active`：main/D3 已回填新的二级 plan id/version 且标记 active；`active_plan_owner=secondary_node`，`secondary_reassignment_complete=True`。D7 只能在该状态、event 顶层 `secondary_capability_class=takeover_ready` 且两阶段 handoff 允许时继续后续视觉 PNG gate。
+- `pending_secondary_plan`：只有 sustained `takeover_ready` 才能进入。D4 已选择二级节点并触发重分配，但新 plan 尚未生效；当前 owner 保持不变，并记录 source、supersedes、pending since/duration 和 reject reason。
+- `secondary_plan_active`：main/D3 已回填新的 plan id/version、正确 source、满足节点要求的 lease epoch 和未过期 lease，且 sustained readiness 未回落；`active_plan_owner=secondary_node`、`secondary_reassignment_complete=True`。D7 还必须检查 current binding；瞬时 readiness 不允许放行。
 
 metadata 字段包括 `secondary_takeover_state`、`active_plan_owner`、`secondary_plan_source_node_id`、`secondary_plan_id/version`、`secondary_plan_lease_epoch`、`secondary_plan_lease_expires_at_s`、`secondary_plan_lease_valid`、`secondary_plan_epoch_monotonic`、`secondary_plan_executable`、`secondary_plan_reject_reason`、`recovery_dual_track_audit`、`secondary_supersedes_plan_id/version` 和 `secondary_reassignment_complete`。过期或非单调替换二级 plan 保持 `pending_secondary_plan`/not executable，不能被解释为可执行接管计划；若当前 plan owner 已是 secondary 且 current/secondary plan id/version 相同，则该 equality 表示同一二级计划已经激活。
 
@@ -293,7 +299,7 @@ D4 不写死 2v2 或 5v5。当前行为：
 |---|---|---|---|
 | main runtime bus 真实 episode 接线 | D4 adapter、D6 event 和 calibration sweep 已接线；2026-07-10 已完成 10 seeds x 2 heights x 3 cases，60 个 5v5 case 均形成 D6 聚合，D4 record 包含 review label、readiness 和 score inputs | 现有批次未覆盖真实 heartbeat/link/cue 故障分布，也未形成持续 active secondary plan；人工/离线标签和 D5 peer evidence 仍需扩展 | main 继续使用同一 schema，增加通信退化和接管持续性 case，而不是重复仅正常 freshness 的 sweep |
 | D3 `request_center_replan` 自动调用 | D4 能输出 `request_center_replan` 并说明风险因素；main 已监听该 action 并触发 D3 新 plan version | 真实多 seed 下仍需确认硬 stale/not-current 和真实 terminal mismatch 的触发频率，避免软风险回归成每帧 replan | main/D3 保持 owner/version/supersedes 字段和 stale rejection，并用多 seed 报告校准 |
-| secondary takeover plan owner/version 闭环 | 两阶段 gate、pending/active metadata、lease/epoch strictness 和 controlled 2v2 owner/version 基线已有；10-seed 中注册与 freshness 证据可进入 readiness | 20 个 secondary case 最终均 distributed；15/1300 条瞬时 `takeover_ready` 全部停在 pending，0 条 active/executable。主要门限失败是 network full-view < 0.80，部分记录还 coverage < 0.65 | main/D3/D7 保持 plan id/version 回填，新增连续 readiness/dwell 与 active-plan 激活回归，D4 不放宽安全门限 |
+| secondary takeover plan owner/version 闭环 | D4 已实现默认 3 decisions/0.2 s sustained gate、逐决策 evidence、pending/active transition、source/lease epoch/expiry strictness 和回落原因；单帧不接管，模块正负测试已通过 | 历史 20 个 secondary AirSim case 均 distributed，尚无 main/D3 回填真实 active plan 的多 seed 正例；旧数据也缺逐帧 stable/not-registered | main 复用同一 adapter，D5 提供逐帧证据，D3 回填严格更新且 lease 有效的 plan，D7 校验 sustained/current binding；不放宽门限 |
 | 完整 C2 双轨审计 | 已记录 health transition 和 assignment-only merge | 尚未比较完整 track digest、plan digest、terminal lock、communication link、D5/D7 gate 状态 | main/runtime 需要持久化中心和 fallback 双轨 episode log，D6 消费 merge outcome |
 | D4/D5 stress 统一口径 | 10-seed、50/200 m、60 case 的常规 freshness 基线和 D6 聚合已完成；D4 事件可区分 readiness，registration/not-registered/funnel/review label 可审计 | 仍缺持续全覆盖、通信 freshness 退化、coverage-cell 切换、active secondary plan 和 D5 peer evidence 定向样本 | main/runtime 使用同一 schema 增加针对性 case，统计 readiness 驻留和回落，不再只扩充同类随机 seed |
 | D5 distributed visual evidence 运行时合流 | D4 模块内可把 D5 多 peer evidence merge 到 `TrackSummary.visual_evidence` | 真实多 seed no-center case 中 D5 多 peer 输出到 D4 `TrackSummary.visual_evidence` 的合流频率和风险权重仍需标定 | main 在 no-center case 持续调用 `merge_distributed_visual_evidence_into_tracks()` 或等价接线 |
@@ -314,8 +320,8 @@ D4 不写死 2v2 或 5v5。当前行为：
 
 P1：
 
-1. 基于 2026-07-10 的 10-seed 基线，补齐逐决策 stable/not-registered 摘要，并新增 network full-view 连续帧/dwell、coverage-cell 切换和接管回落场景，统计 `registration_usable -> takeover_ready -> pending -> active` 各阶段驻留时间；不以单帧 1.0 覆盖替代持续能力证据。
-2. 构造持续满足 coverage/full-view/readiness 的正向接管场景，由 main/D3 回填新 plan id/version、source node、lease epoch/expiry 和 executable 状态，闭合 `pending_secondary_plan -> secondary_plan_active`；记录 activation delay、pending duration、lease rejection 和回落原因，不通过降低 readiness 门限制造 active 样本。
+1. D4 模块内的逐决策 stable/not-registered source/presence、连续 readiness 窗口、pending/active transition、source/lease strictness 和 heartbeat/link/cue/gimbal/能力回落负例已完成；后续保持这些合同回归，不再作为代码缺口。
+2. main/D5 用真实 AirSim frame evidence 驱动同一个 adapter 实例，构造持续满足 coverage/full-view/readiness 的正向场景；D3 回填新 plan id/version、正确 source、lease epoch/expiry，D7 只消费 current secondary binding。验收 `pending -> active`、旧中心计划 stale、activation delay 和回落原因，不降低门限。
 3. 增加 heartbeat、lease、video/cue freshness、link stale 和 gimbal 异常 seed，验证这些门限在 network coverage 改善后仍能独立阻断接管；同时记录 plan activation delay 和恢复双轨窗口。D4 只消费这些摘要，不负责修正 D5 几何注册。
 4. 增加网络分区专项：分别注入 center-secondary 断链、secondary-interceptor 断链、peer 图分裂和恢复重连，记录 `partition_state`、peer/digest 冲突、局部重复 owner、CBBA 收敛/冲突、恢复 merge audit 和恢复时间；分区侧不得绕过 plan version、lease 或 D5 友方/身份门控。
 5. 使用同 seed 的正常/故障成对场景标定误降级：正常场景应保持 `continue_center`，硬失效/持续硬不一致场景才应进入预期降级动作；由 D6 统计 false-degradation rate、missed-degradation rate、active-degradation precision、动作混淆矩阵和 dwell/release 抖动。阈值调整必须基于成对证据，不因当前 0 个 active plan 放宽接管门限。

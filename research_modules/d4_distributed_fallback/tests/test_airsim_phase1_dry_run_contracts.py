@@ -342,6 +342,16 @@ def test_d7_handoff_rejects_visible_only_secondary_capability() -> None:
         secondary_plan_active=True,
         secondary_capability_class="takeover_ready",
     )
+    instantaneous_only = build_d7_secondary_handoff(
+        decision,
+        current_plan_id="center-2v2-plan-007",
+        current_plan_version=7,
+        new_plan_id="secondary-2v2-plan-008",
+        new_plan_version=8,
+        secondary_plan_active=True,
+        secondary_capability_class="takeover_ready",
+        secondary_readiness_sustained=False,
+    )
 
     assert blocked.phase == 1
     assert blocked.visual_png_allowed is False
@@ -350,6 +360,9 @@ def test_d7_handoff_rejects_visible_only_secondary_capability() -> None:
     assert unknown.reason == "secondary_capability_not_takeover_ready"
     assert ready.phase == 2
     assert ready.visual_png_allowed is True
+    assert instantaneous_only.phase == 1
+    assert instantaneous_only.visual_png_allowed is False
+    assert instantaneous_only.reason == "secondary_readiness_not_sustained"
 
 
 def test_case_003_degrade_to_distributed_when_center_or_secondary_unavailable() -> None:

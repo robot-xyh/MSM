@@ -5,9 +5,11 @@
 
 ---
 
-## 0. 2026-07-10 P1 状态更新
+## 0. 2026-07-11 P1 状态更新
 
 D4 模块内已补齐 P1 所需的本地输出口径：secondary takeover record metadata 可区分 `pending_secondary_plan` 与 `secondary_plan_active`，并携带当前/二级 plan id/version、source node、supersedes plan、reassignment complete、plan activation delay 和 pending duration 字段；主动降级 metadata 已能输出 `necessary/unnecessary/inconclusive` 三值 review label、`active_degradation_necessity_label`、pre/post review window、secondary diagnostic、takeover necessity/success，并透传 D5 二级视觉覆盖/转换漏斗 evidence，区分 `not_ready`、`visible_only`、`registration_usable` 和 `takeover_ready`，避免把二级 detect 可见直接等同为可接管；`role/capability_class=mobile_high_recon/mobile_secondary_recon` 已作为机动高空二级侦察节点元数据进入候选、lifecycle 和 D6 事件，并与 `fixed_tethered_secondary/tethered_recon` 区分；完全无中心 CBBA 已用 D5 distributed visual evidence 做风险加权；`build_cbba_cost_gap_benchmark()` 可用 D3/main 提供的中心 plan 与 cost matrix 计算 CBBA vs 中心化 cost gap；`build_cbba_d6_metadata()` 和 `run_failover_simulation()` 顶层 metrics 可输出 secondary/distributed 分组、leader、coverage、CBBA 审计和 cost gap 扁平字段。
+
+本轮 D4 P1 进一步闭合了“瞬时可见”到“可执行接管”之间的时序合同。现有 score >= 0.70、coverage >= 0.65、network full-view >= 0.80 门限保持不变；adapter 默认要求 `takeover_ready` 在 3 个不同时间戳决策中连续成立、持续至少 0.2 s 且 evidence gap 不超过 1.0 s，同一帧的重复评估不累计。2026-07-11 修复了 `not_ready -> takeover_ready` 边沿未设置 `ready_since_s` 的问题；首次 ready 和回落后的再次 ready 都从 count=1/新 timestamp 重启窗口。lifecycle/event 逐决策输出 stable/not-registered value、presence、evidence source、streak、duration、sustained 和 fallback reason。pending/active 还校验 source node、required lease epoch、lease expiry 和 plan version，并记录 transition、pending since、activated at、activation delay 与回落原因。D2 online truth 隔离语义也已闭合：`truth_metrics_available=False`/`continuity_available=False` 时，IDSW/continuity 占位不进入硬风险；在线 ambiguity、duplicate/quality risk 仍有效。95 项 D4 测试覆盖上述可用性正反例以及 readiness、heartbeat/link/cue/gimbal/lease/source/能力回落和 distributed fallback。
 
 main/runtime P1 基线也已接入：episode bus 已消费 D4 adapter event，`request_center_replan` 可触发 D3 new plan version，secondary takeover owner/version 已回灌给 D3/D7，controlled 2v2 secondary visual PNG 回归已通过；P1 D4/D5 calibration sweep 已新增，可批量改变二级节点高度、FOV、节点数量和 standoff，并在 sweep 结束后自动生成 D6 标准 AirSim calibration records/summary/report bundle。该 owner/version 闭环是 main-owned 消费口径，D4 保持只输出仲裁/metadata，不生成系统级 `AssignmentPlan`。
 
@@ -15,9 +17,19 @@ main/runtime P1 基线也已接入：episode bus 已消费 D4 adapter event，`r
 
 `p1_gap_closure_calibration_20260710` 已完成 10 seeds、50/200 m、3 个机动高空二级节点、FOV 110 度、1920x1080 的 60 个 5v5 case。20 个 `degrade_to_secondary` case 的最终帧和 dominant action 均为 `degrade_to_distributed`。50 m 的 network joint full-view 均值/范围为 0.023/0.000-0.154，coverage 均值 0.685；200 m 的 network joint full-view 恒为 0.000，coverage 均值 0.708。两种高度的 projection valid 都为 1.0，cross-view association 均值 4.6/4.0，stable registration 均值 86.3/96.7，not-registered 为 0，说明“检测到但未注册”已不是本轮主断点，网络同帧全覆盖的持续性才是主断点。
 
-P0 状态：无 P0 blocker。1300 条 secondary-case D4 决策中，heartbeat/link/cue/gimbal、visible、registered 均通过，score 无低于 0.70；1285 条因 network full-view < 0.80 保持 `registration_usable`，其中 600 条同时 coverage < 0.65。仅 50 m seed 2/5 的三个 frame 产生 15 条瞬时 `takeover_ready`，但全部停在 `pending_secondary_plan`，没有 active/executable secondary plan，随后回落 distributed。该结果支持保留现有门控：D4 不应因单帧全覆盖而放行接管。需要注意，逐决策 stable/not-registered input 均为 `null`，registered 是通过 cross-view association 兼容路径成立；main/D5 仍需补齐该审计证据。剩余 P1 聚焦 network full-view 时间稳定窗口、coverage-cell 聚合、pending 到 active plan/lease 的 lifecycle、通信退化、网络分区与误降级成对标定、D5 peer evidence 和恢复双轨统计。
+2026-07-11 又完成三组 online truth 隔离的真实 AirSim smoke。结果如下；表中的“网络平均覆盖”是跨帧/节点覆盖比例，不能替代同帧全目标联合覆盖。
 
-D4 对二级侦察结果的解释保持四级 readiness。当前硬门限为 coverage ratio >= 0.65、network full-view rate >= 0.80、score >= 0.70，同时要求 visible、registered 以及 heartbeat/link/cue/gimbal 可用。`registration_usable` 只能作为辅助和诊断证据；`takeover_ready` 也只是进入二级计划 pending 的能力前提，不等于接管完成。真正接管还要求 main/D3 回填新的 plan id/version、lease/epoch 有效并形成 `secondary_plan_active`/executable。D4 不直接做相机几何注册，也不放宽这些安全门控。
+| 证据目录 | 高差/二级节点 | 中心保持正例 | 预期二级接管正例 | 分布式负例 | 二级正例网络平均覆盖 | 二级正例同帧联合全覆盖 |
+|---|---|---|---|---|---:|---:|
+| `p1_runtime_truth_isolated_d4d5_smoke_20260711` | 200 m / 2 | `continue_center` | `degrade_to_distributed` | `degrade_to_distributed` | 0.72 | 0.00 |
+| `p1_runtime_truth_isolated_d4d5_50m_20260711` | 50 m / 2 | `continue_center` | `degrade_to_distributed` | `degrade_to_distributed` | 0.64 | 0.00 |
+| `p1_runtime_truth_isolated_d4d5_secondary5_20260711` | 200 m / 5 | `continue_center` | `degrade_to_distributed` | `degrade_to_distributed` | 0.80 | 0.00 |
+
+这三组证据说明中心保持和分布式负例动作正确，在线 truth 隔离没有造成 D4 误触发；同时也证明“增加二级节点数量”只改善了平均 coverage，并未自动形成持续 `takeover_ready`。二级正例没有进入 pending/active 的结果符合当前安全合同，但它不是二级接管能力完成证明。
+
+P0 状态：无 P0 blocker。历史 1300 条 secondary-case D4 决策中，1285 条因 network full-view < 0.80 保持 `registration_usable`；仅 15 条瞬时 `takeover_ready`，且没有 active/executable plan。新连续门控会把这些单帧/短时样本保持为 distributed，不降低既有门限。D4 已能审计显式 stable/not-registered 是否存在及其来源，但历史 AirSim input 仍为 `null`，因此 main/D5 还需完成真实逐帧接线。2026-07-11 三组 smoke 进一步确认安全回落正确，但二级接管正例仍未形成持续同帧全覆盖和 active plan，因此 P1 保持未关闭。剩余 P1 聚焦正向 sustained AirSim 样本、D3 active plan 回填、coverage-cell 聚合、网络分区与误降级成对标定、D5 peer evidence 和恢复双轨统计。
+
+D4 对二级侦察结果的解释保持四级瞬时 readiness。`registration_usable` 只能作为辅助和诊断证据；`takeover_ready` 还必须通过连续窗口才能进入 pending，不等于接管完成。真正接管要求 main/D3 回填新的 plan id/version、正确 source、有效 lease epoch/expiry 并形成 `secondary_plan_active`/executable；D7 还要验证 current binding。D4 不做相机几何注册、不生成完整 `AssignmentPlan`，也不放宽安全门控。
 
 ---
 
@@ -153,13 +165,15 @@ D2 应向 D4 提供 `AssociationRiskSummary`：
 - `id_switch_count`
 - `duplicate_track_count`
 - `track_continuity`
+- `truth_metrics_available`
+- `continuity_available`
 
 主动降级风险：
 
-- 多目标交叉后 `id_switch_count` 增加。
+- 离线 truth 指标可用时，多目标交叉后 `id_switch_count` 增加。
 - `ambiguity_score` 高，GNN/Hungarian 硬关联不稳定。
 - 重复航迹出现，可能导致 D3 重复分配。
-- `track_continuity` 下降，中心计划绑定的目标身份可信度不足。
+- continuity 指标可用时，`track_continuity` 下降说明中心计划绑定的目标身份可信度不足；在线不可用的数值占位不得触发降级。
 
 ### 4.3 D3 分配有效性
 
@@ -385,6 +399,13 @@ D4DecisionRecord.metadata
 - secondary_reassignment_complete
 - secondary_plan_activation_delay_s
 - secondary_plan_pending_duration_s
+- secondary_plan_pending_since_s
+- secondary_plan_activated_at_s
+- secondary_takeover_previous_state
+- secondary_takeover_transition
+- secondary_takeover_fallback_reason
+- required_secondary_plan_lease_epoch
+- secondary_plan_source_matches_target
 - secondary_takeover_candidate
 - secondary_takeover_success
 - secondary_takeover_necessity_label
@@ -401,11 +422,19 @@ D4DecisionRecord.metadata
 - secondary_diagnostic_capability_class
 - stable_cross_view_registration_count
 - not_registered_count
+- secondary_diagnostic_registration_evidence_source
+- secondary_diagnostic_stable_registration_evidence_present
+- secondary_diagnostic_not_registered_evidence_present
+- secondary_takeover_ready_consecutive_decisions
+- secondary_takeover_ready_since_s
+- secondary_takeover_ready_duration_s
+- secondary_takeover_ready_sustained
+- secondary_takeover_readiness_fallback_reason
 - secondary_network_full_view_gap
 - secondary_detect_to_registration_gap
 ```
 
-规则：`degrade_to_secondary` 的第一帧只表示二级接管待生效，`active_plan_owner` 仍是当前计划 owner；只有 main/D3 回填新的二级 plan id/version 且标记 active 后，D4 metadata 才进入 `secondary_plan_active`。D4 不直接发布完整 `AssignmentPlan`。
+规则：单帧 `takeover_ready` 不产生 pending；只有连续窗口成立才输出 `degrade_to_secondary/pending_secondary_plan`，此时 owner 仍保持当前计划。main/D3 回填正确 source、更新 version、有效 lease epoch/expiry 并标记 active 后，D4 才进入 `secondary_plan_active`。任何 readiness、heartbeat/link/cue/gimbal 或 lease 回落都必须记录 transition/fallback reason，并阻断 executable。D4 不发布完整 `AssignmentPlan`。
 
 ### 7.4 指标
 
@@ -517,7 +546,7 @@ CBBA 通过 winner/bid 向量扩散和一致性消解，在连通图、确定仲
 5. `coordination_mode`、`leader_role`、`coverage_cell` 必须进入 `AssignmentPlan.metadata` 和 D6 日志。
 6. 完全无中心结果必须携带 `converged/conflict_count/consensus_rounds`，未收敛时不得被 main 当成可执行计划。
 7. mobile recon 的 `gimbal_pointing_ok`、`radar_global_track_cue` 和 `mobile_high_recon` capability 只能证明候选节点可用；二级网络同帧全覆盖不足或 not-registered 仍高时，D4 应继续记录 coverage/registration 断点并等待上游校准。
-8. `degrade_to_secondary` 后必须继续区分 `pending_secondary_plan` 与 `secondary_plan_active`；D4 已输出 plan activation delay/pending duration 和 takeover necessity/success metadata，main/D6 需用真实 episode 标注校准接管必要性和 D7 gate 迁移。
+8. `degrade_to_secondary` 前必须通过 D4 sustained readiness；进入 pending 后继续校验 source/version/lease，并区分 active 与回落。main 必须复用 adapter 实例，D3 只生成计划，D7/D6 分别消费 current binding 和 transition/timing/fallback metadata。
 9. 后续 D4/D5 AirSim 校准应优先使用 main runtime 的 P1 calibration sweep 和 D6 标准 bundle 输出；D4 只消费 sweep 产生的摘要与 report 字段，不直接启动 AirSim 或写 main runtime。
 10. 下一阶段网络分区测试需分别覆盖 center-secondary、secondary-interceptor、peer split 和 recovery；误降级测试必须有同 seed 正常/故障对照，并输出 false/missed degradation、动作混淆、重复 owner、恢复时间和 merge outcome。门限保持不变，先补足可持续 full-view 和 active-plan 正向样本。
 

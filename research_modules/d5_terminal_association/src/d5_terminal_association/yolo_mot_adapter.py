@@ -11,6 +11,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import numpy as np
@@ -65,6 +66,7 @@ class YoloMotAdapterConfig:
     compute_device: str = "auto"
     cpu_budget_ms: float | None = None
     gpu_budget_ms: float | None = None
+    offline_evaluation_iou_threshold: float = 0.5
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "weights_path", Path(self.weights_path))
@@ -84,6 +86,13 @@ class YoloMotAdapterConfig:
         object.__setattr__(self, "compute_device", str(self.compute_device or "auto"))
         object.__setattr__(self, "cpu_budget_ms", _optional_nonnegative_float(self.cpu_budget_ms))
         object.__setattr__(self, "gpu_budget_ms", _optional_nonnegative_float(self.gpu_budget_ms))
+        object.__setattr__(
+            self,
+            "offline_evaluation_iou_threshold",
+            float(self.offline_evaluation_iou_threshold),
+        )
+        if not 0.0 <= self.offline_evaluation_iou_threshold <= 1.0:
+            raise ValueError("offline_evaluation_iou_threshold must be in [0, 1]")
 
 
 @dataclass(frozen=True)
@@ -261,9 +270,16 @@ class YoloMotAdapter:
         camera_id: str,
         timestamp: float,
         frame_id: str | None = None,
+        offline_truth_detections: Any | None = None,
         raise_on_unavailable: bool = False,
     ) -> YoloMotFrameResult:
-        """Run detector/tracker for one frame and return D5 local tracks."""
+        """Run detector/tracker for one frame and return D5 local tracks.
+
+        ``offline_truth_detections`` is evaluated only after the online tracks
+        have been produced.  It contributes aggregate recall/precision counts
+        to metadata and never affects detector filtering, tracker IDs, or a
+        center-owned global track binding.
+        """
 
         stream_key = _mot_stream_key(resource_id, camera_id)
         resolved_frame_id = frame_id or f"{resource_id}/{camera_id}"
@@ -284,6 +300,10 @@ class YoloMotAdapter:
                 "cpu_ms": self.config.cpu_budget_ms,
                 "gpu_ms": self.config.gpu_budget_ms,
             },
+            "native_tracker_preferred": self._native_tracker_requested(),
+            "iou_fallback_allowed": self.config.allow_iou_fallback,
+            "_processing_started_perf_counter_s": perf_counter(),
+            "_offline_truth_bboxes": _offline_truth_bboxes(offline_truth_detections),
         }
 
         try:
@@ -295,6 +315,7 @@ class YoloMotAdapter:
                     )
                 )
                 tracked = tuple(self._fallback_tracker_for_stream(stream_key).update(detections))
+                metadata["_detected_bboxes"] = tuple(item.bbox for item in detections)
                 tracks = _to_local_visual_tracks(
                     tracked,
                     camera_id=camera_id,
@@ -312,6 +333,7 @@ class YoloMotAdapter:
                         "native_model_scope": "not_used",
                         "detector_model_scope": "adapter_shared_injected_detector",
                         "detector_backend": "injected_detector",
+                        "observed_compute_device": "injected_detector_unspecified",
                     }
                 )
                 metadata.update(
@@ -340,6 +362,7 @@ class YoloMotAdapter:
                 try:
                     native_model = self._native_model_for_stream(stream_key)
                     detections = self._run_native_tracker(native_model, frame)
+                    metadata["_detected_bboxes"] = tuple(item.bbox for item in detections)
                     tracked = tuple(
                         _TrackedDetection(
                             bbox=item.bbox,
@@ -370,6 +393,10 @@ class YoloMotAdapter:
                                 "native_model_scope": "per_stream",
                                 "detector_model_scope": "per_stream_native_model",
                                 "detector_backend": "ultralytics_yolov8",
+                                "observed_compute_device": _model_compute_device(
+                                    native_model,
+                                    self.config.compute_device,
+                                ),
                             }
                         )
                         metadata.update(
@@ -407,6 +434,7 @@ class YoloMotAdapter:
                     default_category=self.config.default_category,
                 )
             )
+            metadata["_detected_bboxes"] = tuple(item.bbox for item in detections)
             tracked = tuple(self._fallback_tracker_for_stream(stream_key).update(detections))
             tracks = _to_local_visual_tracks(
                 tracked,
@@ -429,6 +457,10 @@ class YoloMotAdapter:
                         else "adapter_shared_detector_model"
                     ),
                     "detector_backend": "ultralytics_yolov8",
+                    "observed_compute_device": _model_compute_device(
+                        model,
+                        self.config.compute_device,
+                    ),
                 }
             )
             metadata.update(
@@ -463,6 +495,7 @@ class YoloMotAdapter:
                     "tracker_state_backend": "unavailable",
                     "tracker_instance_scope": "per_stream",
                     "detector_backend": "unavailable",
+                    "observed_compute_device": "unavailable",
                 }
             )
             return self._result(
@@ -569,6 +602,7 @@ class YoloMotAdapter:
             tracker=tracker_file,
             conf=self.config.confidence_threshold,
             verbose=False,
+            **_ultralytics_device_kwargs(self.config.compute_device),
         )
         detections = self._filter_detections(
             _normalize_detections(
@@ -583,7 +617,12 @@ class YoloMotAdapter:
 
     def _run_detector(self, model: Any, frame: Any) -> Any:
         if hasattr(model, "predict"):
-            return model.predict(frame, conf=self.config.confidence_threshold, verbose=False)
+            return model.predict(
+                frame,
+                conf=self.config.confidence_threshold,
+                verbose=False,
+                **_ultralytics_device_kwargs(self.config.compute_device),
+            )
         if callable(model):
             return model(frame)
         raise YoloMotUnavailableError("YOLOv8 model is not callable and has no predict() method")
@@ -608,6 +647,37 @@ class YoloMotAdapter:
         timestamp: float,
         metadata: Mapping[str, Any],
     ) -> YoloMotFrameResult:
+        completed_metadata = dict(metadata)
+        started = completed_metadata.pop("_processing_started_perf_counter_s", None)
+        processing_latency_ms = (
+            max(0.0, (perf_counter() - float(started)) * 1000.0)
+            if started is not None
+            else None
+        )
+        offline_truth_bboxes = completed_metadata.pop("_offline_truth_bboxes", None)
+        detected_bboxes = tuple(completed_metadata.pop("_detected_bboxes", ()))
+        completed_metadata.update(
+            _runtime_performance_metadata(
+                processing_latency_ms,
+                cpu_budget_ms=self.config.cpu_budget_ms,
+                gpu_budget_ms=self.config.gpu_budget_ms,
+            )
+        )
+        completed_metadata["tracker_selection"] = {
+            "requested": self.config.tracker_backend,
+            "selected": tracker_backend if status == "ok" else None,
+            "native_preferred": self._native_tracker_requested(),
+            "native_active": status == "ok" and tracker_backend in {"bytetrack", "botsort"},
+            "fallback_allowed": self.config.allow_iou_fallback,
+            "fallback_active": status == "ok" and tracker_backend == "iou_fallback",
+            "status": status,
+        }
+        if offline_truth_bboxes is not None:
+            completed_metadata["offline_detector_evaluation"] = _offline_detector_evaluation(
+                detected_bboxes,
+                offline_truth_bboxes,
+                iou_threshold=self.config.offline_evaluation_iou_threshold,
+            )
         return YoloMotFrameResult(
             tracks=tuple(tracks),
             status=status,
@@ -617,7 +687,7 @@ class YoloMotAdapter:
             camera_id=camera_id,
             frame_id=frame_id,
             timestamp=timestamp,
-            metadata=dict(metadata),
+            metadata=completed_metadata,
         )
 
 
@@ -631,6 +701,21 @@ def _mot_stream_key(resource_id: str, camera_id: str) -> tuple[str, str]:
 
 def _mot_stream_key_text(stream_key: tuple[str, str]) -> str:
     return f"{stream_key[0]}/{stream_key[1]}"
+
+
+def _ultralytics_device_kwargs(compute_device: str) -> dict[str, str]:
+    device = str(compute_device or "auto").strip()
+    if device.lower() in {"", "auto"}:
+        return {}
+    return {"device": device}
+
+
+def _model_compute_device(model: Any, requested: str) -> str:
+    device = getattr(model, "device", None)
+    if device is None:
+        nested_model = getattr(model, "model", None)
+        device = getattr(nested_model, "device", None)
+    return str(device if device is not None else requested or "unknown")
 
 
 def _load_ultralytics_model(weights_path: Path) -> Any:
@@ -685,6 +770,7 @@ def _tracked_frame_metadata(
     bbox_scale_by_id: dict[str, float | None] = {}
     tracker_backend_by_id: dict[str, str] = {}
     detector_backend_by_id: dict[str, str] = {}
+    mot_history_by_id: dict[str, int] = {}
 
     for item, track in zip(tracked, tracks):
         area = _bbox_area(item.bbox)
@@ -696,6 +782,14 @@ def _tracked_frame_metadata(
         )
         tracker_backend_by_id[track.local_track_id] = tracker_backend
         detector_backend_by_id[track.local_track_id] = detector_backend
+        mot_history_by_id[track.local_track_id] = int(track.mot_history_length)
+
+    continuity_count = sum(1 for history in mot_history_by_id.values() if history > 1)
+    continuity_rate = (
+        continuity_count / len(mot_history_by_id)
+        if mot_history_by_id
+        else None
+    )
 
     return {
         "confidence_by_local_track_id": confidence_by_id,
@@ -705,6 +799,11 @@ def _tracked_frame_metadata(
         "bbox_scale_definition": "sqrt_bbox_area_px_over_image_diagonal_px",
         "tracker_backend_by_local_track_id": tracker_backend_by_id,
         "detector_backend_by_local_track_id": detector_backend_by_id,
+        "mot_history_length_by_local_track_id": mot_history_by_id,
+        "camera_local_id_count": len(mot_history_by_id),
+        "camera_local_id_continuity_count": continuity_count,
+        "camera_local_id_continuity_rate": continuity_rate,
+        "camera_local_id_continuity_definition": "mot_history_length_greater_than_one_in_current_stream",
         "tracker_id_scope": "LocalVisualTrack.local_track_id_only",
         "local_track_id_scope": "resource/camera/frame/local_tracker_namespace",
     }
@@ -922,6 +1021,131 @@ def _bbox_iou(
 def _bbox_area(bbox: tuple[float, float, float, float]) -> float:
     x1, y1, x2, y2 = bbox
     return max(0.0, x2 - x1) * max(0.0, y2 - y1)
+
+
+def _offline_truth_bboxes(raw: Any | None) -> tuple[tuple[float, float, float, float], ...] | None:
+    if raw is None:
+        return None
+    try:
+        return tuple(_collect_offline_truth_bboxes(raw))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "offline_truth_detections must be an xyxy bbox, a sequence of xyxy "
+            "bboxes, or detection records containing bbox/xyxy/box2D"
+        ) from exc
+
+
+def _collect_offline_truth_bboxes(raw: Any) -> list[tuple[float, float, float, float]]:
+    """Extract evaluation-only boxes without interpreting identity fields."""
+
+    if isinstance(raw, np.ndarray):
+        return [
+            item.bbox
+            for item in _detections_from_array(
+                raw,
+                names=None,
+                default_category="unknown",
+            )
+        ]
+    if isinstance(raw, Mapping):
+        bbox_keys = ("bbox", "bbox_xyxy", "xyxy", "box", "box2d", "box2D")
+        if "boxes" in raw and not any(key in raw for key in bbox_keys):
+            return _collect_offline_truth_bboxes(raw["boxes"])
+        return [_extract_bbox(raw)]
+    if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray)):
+        if _is_xyxy_bbox_sequence(raw):
+            return [_bbox_from_values(raw)]
+        boxes: list[tuple[float, float, float, float]] = []
+        for item in raw:
+            boxes.extend(_collect_offline_truth_bboxes(item))
+        return boxes
+    if hasattr(raw, "boxes"):
+        return [
+            item.bbox
+            for item in _detections_from_result_object(
+                raw,
+                names=None,
+                default_category="unknown",
+            )
+        ]
+    return [_extract_bbox(raw)]
+
+
+def _is_xyxy_bbox_sequence(raw: Sequence[Any]) -> bool:
+    if len(raw) != 4:
+        return False
+    try:
+        return np.asarray(raw, dtype=float).shape == (4,)
+    except (TypeError, ValueError):
+        return False
+
+
+def _offline_detector_evaluation(
+    detected_bboxes: Sequence[tuple[float, float, float, float]],
+    truth_bboxes: Sequence[tuple[float, float, float, float]],
+    *,
+    iou_threshold: float,
+) -> dict[str, Any]:
+    pairs = sorted(
+        (
+            (_bbox_iou(detected, truth), detected_index, truth_index)
+            for detected_index, detected in enumerate(detected_bboxes)
+            for truth_index, truth in enumerate(truth_bboxes)
+        ),
+        key=lambda item: (-item[0], item[1], item[2]),
+    )
+    matched_detections: set[int] = set()
+    matched_truth: set[int] = set()
+    matched_ious: list[float] = []
+    for iou, detected_index, truth_index in pairs:
+        if iou < iou_threshold:
+            break
+        if detected_index in matched_detections or truth_index in matched_truth:
+            continue
+        matched_detections.add(detected_index)
+        matched_truth.add(truth_index)
+        matched_ious.append(float(iou))
+
+    truth_count = len(truth_bboxes)
+    detected_count = len(detected_bboxes)
+    matched_count = len(matched_truth)
+    return {
+        "offline_truth_only": True,
+        "used_by_online_tracker": False,
+        "iou_threshold": float(iou_threshold),
+        "truth_box_count": truth_count,
+        "detected_box_count": detected_count,
+        "matched_truth_box_count": matched_count,
+        "false_negative_count": max(0, truth_count - matched_count),
+        "false_positive_count": max(0, detected_count - matched_count),
+        "detector_recall": matched_count / truth_count if truth_count else None,
+        "detector_precision": matched_count / detected_count if detected_count else None,
+        "matched_iou_mean": float(np.mean(matched_ious)) if matched_ious else None,
+        "identity_fields_emitted": False,
+    }
+
+
+def _runtime_performance_metadata(
+    processing_latency_ms: float | None,
+    *,
+    cpu_budget_ms: float | None,
+    gpu_budget_ms: float | None,
+) -> dict[str, Any]:
+    return {
+        "processing_latency_ms": processing_latency_ms,
+        "processing_latency_scope": "detector_plus_tracker_adapter_wall_time",
+        "cpu_budget_exceeded": (
+            processing_latency_ms > cpu_budget_ms
+            if processing_latency_ms is not None and cpu_budget_ms is not None
+            else None
+        ),
+        "gpu_budget_exceeded": (
+            processing_latency_ms > gpu_budget_ms
+            if processing_latency_ms is not None and gpu_budget_ms is not None
+            else None
+        ),
+        "budget_comparison_scope": "wall_time_vs_declared_budget_not_profiler_attribution",
+    }
 
 
 def _get_any(obj: Any, *names: str) -> Any:

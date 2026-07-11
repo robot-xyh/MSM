@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from d5_terminal_association import (
     DEFAULT_YOLOV8_WEIGHTS_PATH,
@@ -405,3 +406,242 @@ def test_default_weights_path_points_to_d5_best_pt() -> None:
     assert DEFAULT_YOLOV8_WEIGHTS_PATH == Path(
         "/home/linux/Documents/MSM/research_modules/d5_terminal_association/best.pt"
     )
+
+
+def test_botsort_native_path_is_selected_before_iou_fallback() -> None:
+    loaded_models: list[_FakeNativeModel] = []
+
+    def loader(weights_path: Path) -> _FakeNativeModel:
+        model = _FakeNativeModel()
+        loaded_models.append(model)
+        return model
+
+    adapter = YoloMotAdapter(
+        YoloMotAdapterConfig(
+            weights_path=Path(__file__),
+            tracker_backend="botsort",
+            confidence_threshold=0.2,
+            compute_device="cpu",
+        ),
+        ultralytics_loader=loader,
+    )
+
+    result = adapter.process_frame(
+        _frame(), resource_id="UAV1", camera_id="front_rgb", timestamp=4.0
+    )
+
+    assert len(loaded_models) == 1
+    assert loaded_models[0].track_calls == 1
+    assert loaded_models[0].predict_calls == 0
+    assert result.status == "ok"
+    assert result.tracker_backend == "botsort"
+    assert result.metadata["tracker_selection"] == {
+        "requested": "botsort",
+        "selected": "botsort",
+        "native_preferred": True,
+        "native_active": True,
+        "fallback_allowed": True,
+        "fallback_active": False,
+        "status": "ok",
+    }
+    assert result.metadata["processing_latency_ms"] >= 0.0
+    assert result.metadata["observed_compute_device"] == "cpu"
+
+
+def test_offline_detector_recall_fields_do_not_change_online_local_ids() -> None:
+    adapter = YoloMotAdapter(
+        YoloMotAdapterConfig(
+            tracker_backend="bytetrack",
+            confidence_threshold=0.2,
+            offline_evaluation_iou_threshold=0.5,
+        ),
+        detector=lambda frame: [
+            {"xyxy": (5.0, 5.0, 20.0, 20.0), "confidence": 0.9, "class_name": "uav"},
+            {"xyxy": (30.0, 30.0, 45.0, 45.0), "confidence": 0.8, "class_name": "uav"},
+        ],
+    )
+    offline_truth = [
+        {"xyxy": (5.0, 5.0, 20.0, 20.0), "actor_name": "TargetActor-1"},
+        {"xyxy": (30.0, 30.0, 45.0, 45.0), "truth_id": "G2"},
+        {"xyxy": (48.0, 48.0, 60.0, 60.0), "object_id": "TargetActor-3"},
+    ]
+
+    result = adapter.process_frame(
+        _frame(),
+        resource_id="UAV1",
+        camera_id="front_rgb",
+        timestamp=5.0,
+        offline_truth_detections=offline_truth,
+    )
+
+    evaluation = result.metadata["offline_detector_evaluation"]
+    assert evaluation["offline_truth_only"] is True
+    assert evaluation["used_by_online_tracker"] is False
+    assert evaluation["truth_box_count"] == 3
+    assert evaluation["detected_box_count"] == 2
+    assert evaluation["matched_truth_box_count"] == 2
+    assert evaluation["false_negative_count"] == 1
+    assert evaluation["false_positive_count"] == 0
+    assert np.isclose(evaluation["detector_recall"], 2.0 / 3.0)
+    assert evaluation["identity_fields_emitted"] is False
+    assert all("TargetActor" not in track.local_track_id for track in result.tracks)
+    assert "TargetActor" not in str(result.metadata)
+    assert "G2" not in str(result.metadata)
+
+
+def test_offline_detector_evaluation_accepts_single_bbox_only_tuple() -> None:
+    adapter = YoloMotAdapter(
+        YoloMotAdapterConfig(confidence_threshold=0.2),
+        detector=lambda frame: [
+            {"xyxy": (5.0, 5.0, 20.0, 20.0), "confidence": 0.9, "class_name": "uav"}
+        ],
+    )
+
+    result = adapter.process_frame(
+        _frame(),
+        resource_id="UAV1",
+        camera_id="front_rgb",
+        timestamp=5.1,
+        offline_truth_detections=(5.0, 5.0, 20.0, 20.0),
+    )
+
+    evaluation = result.metadata["offline_detector_evaluation"]
+    assert evaluation["truth_box_count"] == 1
+    assert evaluation["matched_truth_box_count"] == 1
+    assert evaluation["offline_truth_only"] is True
+    assert evaluation["identity_fields_emitted"] is False
+
+
+def test_offline_detector_evaluation_accepts_multiple_bbox_only_tuples() -> None:
+    truth_bboxes = (
+        (5.0, 5.0, 20.0, 20.0),
+        (30.0, 30.0, 45.0, 45.0),
+    )
+    adapter = YoloMotAdapter(
+        YoloMotAdapterConfig(confidence_threshold=0.2),
+        detector=lambda frame: [
+            {"xyxy": bbox, "confidence": 0.9, "class_name": "uav"}
+            for bbox in truth_bboxes
+        ],
+    )
+
+    result = adapter.process_frame(
+        _frame(),
+        resource_id="UAV1",
+        camera_id="front_rgb",
+        timestamp=5.2,
+        offline_truth_detections=truth_bboxes,
+    )
+
+    evaluation = result.metadata["offline_detector_evaluation"]
+    assert evaluation["truth_box_count"] == 2
+    assert evaluation["matched_truth_box_count"] == 2
+    assert evaluation["detector_recall"] == 1.0
+    assert evaluation["used_by_online_tracker"] is False
+
+
+def test_offline_detector_evaluation_keeps_dict_detection_compatibility() -> None:
+    adapter = YoloMotAdapter(
+        YoloMotAdapterConfig(confidence_threshold=0.2),
+        detector=lambda frame: [
+            {"xyxy": (8.0, 9.0, 28.0, 29.0), "confidence": 0.9, "class_name": "uav"}
+        ],
+    )
+
+    result = adapter.process_frame(
+        _frame(),
+        resource_id="UAV1",
+        camera_id="front_rgb",
+        timestamp=5.3,
+        offline_truth_detections={"bbox": (8.0, 9.0, 28.0, 29.0)},
+    )
+
+    evaluation = result.metadata["offline_detector_evaluation"]
+    assert evaluation["truth_box_count"] == 1
+    assert evaluation["matched_truth_box_count"] == 1
+    assert evaluation["identity_fields_emitted"] is False
+
+
+def test_offline_detector_evaluation_rejects_malformed_bbox_with_clear_error() -> None:
+    adapter = YoloMotAdapter(
+        YoloMotAdapterConfig(confidence_threshold=0.2),
+        detector=lambda frame: [],
+    )
+
+    with pytest.raises(ValueError, match="offline_truth_detections"):
+        adapter.process_frame(
+            _frame(),
+            resource_id="UAV1",
+            camera_id="front_rgb",
+            timestamp=5.4,
+            offline_truth_detections=((5.0, 5.0, 20.0),),
+        )
+
+
+def test_five_camera_crossing_and_occlusion_fixture_keeps_camera_local_namespaces() -> None:
+    detections_by_call: list[list[dict]] = []
+    base = [
+        {
+            "xyxy": (5.0 + index * 10.0, 10.0, 13.0 + index * 10.0, 18.0),
+            "confidence": 0.9,
+            "class_name": "uav",
+        }
+        for index in range(5)
+    ]
+    shifted = [
+        {
+            **item,
+            "xyxy": tuple(value + (1.0 if coordinate % 2 == 0 else 0.0) for coordinate, value in enumerate(item["xyxy"])),
+        }
+        for item in base
+    ]
+    for _ in range(5):
+        detections_by_call.extend((base, shifted))
+    # One stream then loses all detections for one frame and recovers before
+    # max_track_age_frames expires.
+    detections_by_call.extend((base, [], shifted))
+
+    def detector(frame: np.ndarray) -> list[dict]:
+        return detections_by_call.pop(0)
+
+    adapter = YoloMotAdapter(
+        YoloMotAdapterConfig(
+            tracker_backend="bytetrack",
+            confidence_threshold=0.2,
+            max_track_age_frames=2,
+        ),
+        detector=detector,
+    )
+
+    all_tracks = []
+    for index in range(5):
+        resource = f"UAV{index + 1}"
+        first = adapter.process_frame(
+            _frame(), resource_id=resource, camera_id="front_rgb", timestamp=1.0
+        )
+        second = adapter.process_frame(
+            _frame(), resource_id=resource, camera_id="front_rgb", timestamp=1.1
+        )
+        assert len(first.tracks) == len(second.tracks) == 5
+        assert second.metadata["camera_local_id_continuity_rate"] == 1.0
+        assert all(track.mot_history_length == 2 for track in second.tracks)
+        all_tracks.extend((resource, track.local_track_id) for track in second.tracks)
+
+    before_occlusion = adapter.process_frame(
+        _frame(), resource_id="UAV6", camera_id="front_rgb", timestamp=2.0
+    )
+    occluded = adapter.process_frame(
+        _frame(), resource_id="UAV6", camera_id="front_rgb", timestamp=2.1
+    )
+    recovered = adapter.process_frame(
+        _frame(), resource_id="UAV6", camera_id="front_rgb", timestamp=2.2
+    )
+
+    assert len(before_occlusion.tracks) == 5
+    assert occluded.tracks == ()
+    assert [track.local_track_id for track in recovered.tracks] == [
+        track.local_track_id for track in before_occlusion.tracks
+    ]
+    assert recovered.metadata["camera_local_id_continuity_rate"] == 1.0
+    assert len(set(all_tracks)) == 25
+    assert all(not hasattr(track, "global_track_id") for track in recovered.tracks)

@@ -145,6 +145,13 @@ ByteTrack、BoT-SORT、Deep SORT 只作为本地 MOT 输入来源。它们输出
 - 60 个 case 均已形成有效 registration 记录；D6 的 `not_registered_count=0`，sweep 的 `secondary_detect_available_but_not_registered` 均值/最大值均为 0。平均 `projection_valid_rate=1.0`、`stable_cross_view_registration_count=92.233`、`cross_view_association_count=4.417`。
 - 该结果关闭“detect 无法注册到既有 `global_track_id`”这一接口缺口，但不等于二级节点已具备完整接管态势：网络同帧全目标覆盖率均值仅 `0.0231`，平均覆盖率 `0.7059`，稳定窗口失败仍是主要 reject reason。D5 不因注册成功而放宽唯一性、友方冲突、版本、时效或 D7 独立安全门控。
 
+2026-07-11 AirSim YOLO/MOT 冒烟状态：
+
+- `p1_yolov8_bytetrack_smoke_fixed_20260711` 已完成 6 个 reset-separated episode、每个 2 帧；RGB 解码、YOLOv8/ByteTrack 调用、per-stream tracker state、在线 truth 隔离、offline bbox-only 评分和 runtime event 均能执行。
+- 当前相机/actor 几何下 `accepted_detection_count=0`，AirSim offline truth box 多数也为 0，无法据此计算有效 detector recall 或 MOT continuity。原生 ByteTrack 因没有 track ID 退回 `iou_fallback`；观测延时多数约 38-49 ms，首轮约 197 ms。
+- 三组既有 D4/D5 回归均有 `cross_view_association_count=4`，稳定注册约 19-61，但二级同帧全目标覆盖仍不足。后续不得用局部 cross-view count 替代完整网络覆盖指标。
+- 因此计划状态为“接口闭合、检测/MOT 质量未闭合”。下一轮先让 AirSim offline truth bbox 对有效视场提供非零标签，再校准 YOLO 类别映射、阈值、目标像素尺度和相机指向；只有 accepted detection 非零且原生 tracker 产生稳定 ID 后，才进入多 seed IDSW/IDF1、遮挡恢复和预算验收。
+
 部分实现或仅作为 adapter/抽象的能力：
 
 - 真实工程几何配准：当前消费已有 `CameraModel.K/R/t/dist_coeffs`，并能离线验证投影误差；没有完整标定采集、`calibrateCamera`、`solvePnP`/PnP RANSAC、bundle adjustment 或在线外参漂移估计链路。
@@ -156,7 +163,7 @@ ByteTrack、BoT-SORT、Deep SORT 只作为本地 MOT 输入来源。它们输出
 
 未实现的真实工程能力及原因：
 
-- 真实 AirSim/main 图像接线：D5 adapter 已能处理传入 frame 或 mock detector 输出，但 main runtime 仍需把连续 RGB/PNG frame、camera/resource/frame_id/timestamp 和参数覆盖接入 `YoloMotAdapter`，保持 stream key 稳定，并在 episode 边界调用 `reset_all_streams()`。
+- 真实 AirSim/main 图像接线：最小 2 帧 RGB/YOLO/MOT 冒烟链已接通；仍需推进到连续多帧、多 seed 和非零 accepted detection。main 必须保持 stream key 稳定，并在 episode 边界调用 `reset_all_streams()`。
 - 真实 MOT 标定：ByteTrack/BoT-SORT 原生质量依赖 `ultralytics` 和连续图像；IoU fallback 只保证 deterministic local ID 连续性，不声明遮挡恢复、ReID、IDSW/IDF1 工程质量。
 - 真实标定链：缺少标定图像、标定板/AprilTag 角点、相机-机体系-世界系同步姿态、重投影误差验收阈值和 drift 告警流程。
 - 真实身份认证链路：缺少 OpenDroneID/MAVLink/DDS 实际报文、密钥和白名单管理、时钟一致性、消息来源到平台身份的可信映射。
@@ -450,7 +457,7 @@ D5 至少记录：
 - 已实现 `TerminalObservationBus`、`CrossViewAssociation`、`TerminalCrossViewFusion` 和 N-v-N ComputerVision dry-run evidence helper。
 - 尚未完整实现跨无人机多相机三维几何融合；`CrossViewTrackEvidence` 仍是后续接口建议。
 - 当前身份声明为离线仿真抽象，不连接真实 OpenDroneID、MAVLink signing、DDS Security 或 AprilTag detector。
-- 本地 MOT 质量对小目标场景影响大；当前 D5 已提供 YOLOv8 frame adapter、ByteTrack/BoT-SORT 原生 tracker 请求、IoU fallback 和 per-stream MOT 状态隔离，但真实 AirSim 图像流接线、GPU/CPU部署和多 seed 标定仍未闭合。native 模式为避免 `persist=True` tracker 串流而按 stream 创建独立 model/tracker，资源占用随活跃 stream 数增长。
+- 本地 MOT 质量对小目标场景影响大；当前 D5 已提供 YOLOv8 frame adapter、ByteTrack/BoT-SORT 原生 tracker 请求、IoU fallback 和 per-stream MOT 状态隔离，且 AirSim 最小图像链已冒烟通过，但有效目标检测、native tracker ID、GPU/CPU 多帧预算和多 seed 标定仍未闭合。native 模式为避免 `persist=True` tracker 串流而按 stream 创建独立 model/tracker，资源占用随活跃 stream 数增长。
 - D5 输出只用于 D4/D6/D7 的证据、评估和上游复盘，不应被解释为自动处置命令。
 
 P1 补齐状态：
@@ -467,6 +474,9 @@ P1 补齐状态：
 - 已完成 AirSim truth ID 在线隔离、YOLO/ByteTrack 离线 schema adapter 和 YOLOv8 frame adapter：AirSim `object_id`、`actor_name`、`truth_id`、`true_global_track_id` 或 `global_track_id` 输入字段不会进入在线关联；在线 category 只接受 `category/label/class_name` 或 detector `class_id + names` 映射，通用 `name/actor_name/object_name` 不影响 category、cost、binding 或 online metadata。本轮二级节点也先按 `simGetDetections` bbox/metadata 转 `LocalVisualTrack`，不启用 YOLO，且不会把 actor/truth alias 当作本地在线身份。truth 只允许进入离线 evaluator/metadata 统计。YOLO/ByteTrack row 或 frame adapter 输出只转为命名空间化 `LocalVisualTrack`，metadata 记录 confidence、class id、bbox scale、tracker backend 与 CPU/GPU budget，tracker ID 不替代 `global_track_id`。
 - 2026-07-10 已闭合 active reacquire 友方声明复检 P0：候选在任何 `locked` 输出前复用 `IdentityChecker`，verified/stale/unverified/spoof-suspected 友方声明重叠均输出 `hold`，顶层与 search-window/candidate metadata 保留冲突状态和 reason；同一/新 MOT ID 回归均保持 `global_track_id` 不变。
 - 2026-07-10 已闭合多相机 MOT 状态隔离 P1：fallback tracker 与 Ultralytics native model/tracker 按 `(resource_id, camera_id)` 持久化，提供单 stream 和全 episode reset API；交错相机、reset、native 成功及 native-to-fallback 回归均不串 ID/history。
+- 2026-07-10 已闭合 D5 侧逐帧 D4 evidence P1：新增 `SecondaryFrameAssociationEvidence` 和 `build_secondary_frame_association_evidence()`，只消费同一 `frame_id`/timestamp 的 camera/network coverage 与当前帧 registration candidate，输出 D4 `TerminalAssociationSummary` 可直接消费的 coverage/full-view、stable/not-registered、cue freshness、gimbal 和 reject reason 字段。历史 candidate 只记 ignored count，混合 frame/timestamp 拒绝，禁止 episode 聚合冒充实时证据。
+- 2026-07-10 已补齐 D5 YOLO/MOT adapter P1 元数据：默认优先 Ultralytics ByteTrack/BoT-SORT，依赖缺失明确 `unavailable`，detector 可用时提供 deterministic IoU fallback；输出实际 selection、processing latency、CPU/GPU budget comparison、observed device、camera-local continuity 和离线 detector recall/precision/FN/FP。离线 bbox 只在在线结果形成后评分，不携带 identity，也不影响 `LocalVisualTrack` 或 `global_track_id`。新增 5v5 多相机、交叉、短时遮挡恢复 fixture；本机 `best.pt` + Ultralytics 8.4.71 CPU 黑帧烟测可加载运行，因无检测按预期回退，不能替代真实目标多 seed 质量验收。
+- 2026-07-11 已修复真实 AirSim YOLO/MOT 冒烟中的 bbox-only 离线标签解析：单个 `xyxy`、多个 `xyxy` 和 dict/object detection 均可进入 offline detector evaluation；畸形输入明确失败。该路径只计算聚合检测指标，不向在线 tracker 或全局绑定暴露身份。
 - 2026-07-10 2v2 smoke 复核：2/2 资源对完成拦截，pair summary 的 D5 状态均为 `locked`，但 D7/main 因 `bbox_near_image_edge` 拒绝视觉接管 9 次、覆盖 2 个资源对，仅 2 个控制记录允许切换。该现象不要求放宽 D5/D7 门控；P1 需补充边缘裕量、连续边缘帧、相机指向误差和 handoff 抖动的多 seed 标定。
 - 同一 smoke 的终端记录曾包含 `Interceptor*:0:MSM_TargetActor_*` 本地 ID。D5 sim-detection adapter 已过滤 actor/truth alias；main hotfix 已把 builtin detect 改为仅基于 bbox 的匿名 camera-local tracker，清理 intercept 注入和 D4/D5 fallback 的 actor-name local ID，并把 actor 名限制为 offline truth metadata。真实 AirSim 证据 `research_modules/airsim_runtime/outputs/p0_truth_isolation_smoke_20260710` 中三类 case 均 connected、各 5 帧，local/detection ID 无 actor 名，匿名 ID history 达 5，offline truth 标记正确且 cross-view association 均为 4。端到端 truth 隔离 P0 已闭合；D5 不越权修改 runtime，也不对任意既有本地 tracker ID 做字符串重写。
 
@@ -475,9 +485,9 @@ P0 状态：无 P0 blocker。active reacquire 友方声明复检、detection cat
 剩余 P1：
 
 - 二级节点几何/覆盖策略：60-case 当前网络同帧全目标覆盖率均值为 `0.0231`、平均覆盖率为 `0.7059`，`not_all_targets_visible` / `network_union_incomplete` 仍主导；继续调整高空侦察节点站位、look-at 扫描/子簇策略和 full-view 判据，目标是提升完整态势覆盖，而不是再证明投影或基础 registration 有效。
-- 真实 YOLOv8 + ByteTrack/BoT-SORT 多 seed：消费连续 RGB frame，分别标定目标尺度、FOV、confidence、bbox scale、tracker backend、CPU/GPU 时延和失败回退；用 IDSW/IDF1、遮挡恢复时间、`locked_mismatch`、false handoff 与 `terminal_id_switch_count` 判断 ByteTrack/BoT-SORT 的适用边界。
+- 真实 YOLOv8 + ByteTrack/BoT-SORT 多 seed：D5 adapter、真实库选择、fallback、离线 recall 和资源元数据已完成；剩余由 main 提供连续 AirSim RGB frame，按目标尺度、FOV、confidence、backend 和 CPU/GPU 环境跑多 seed，并由 D6 用 IDSW/IDF1、遮挡恢复、`locked_mismatch`、false handoff 与 `terminal_id_switch_count` 验收。
 - 外参漂移与时间同步：对 per-camera `K/R/t/dist_coeffs` 注入可控姿态/位置漂移，对 measurement/arrival timestamp 注入时延和抖动，统计重投影误差、马氏门控拒绝率、错误锁定率和恢复时间；必要时再引入离线 `solvePnP`/PnP RANSAC，不在 D5 内伪造同步后的真值位姿。
-- D4 逐决策 evidence：在 D5 合同中明确每次 D4 决策所需的 stable/not-registered count、evidence timestamp/age、camera/resource scope、threshold version 和冲突原因；main/D4 负责把这些字段接入同一决策 tick，不得用 episode 聚合值替代实时证据，也不得让 D5 直接触发降级。
+- D4 逐决策 evidence：D5 frame-scoped DTO 和 D4 字段映射已完成；剩余 main/D4 在同一 decision tick 消费该 DTO，并记录 threshold version、stale rejection 和接管状态迁移。不得使用 episode 聚合值回填，也不得让 D5 直接触发降级。
 - 遮挡/交叉专项：构造同相机交叉、跨相机部分重叠、短时全遮挡和 local MOT ID 变化场景，验证恢复只能绑定当前 D3/D4 分配的既有 `global_track_id`；候选不唯一、友方重叠或稳定窗口不足时保持 `ambiguous/hold/reacquire`。
 - 友方身份真实 replay：至少接入一个 Remote ID/OpenDroneID、MAVLink signing、DDS Security 或 AprilTag replay adapter，统一为 `IdentityClaim`，验证 verified/stale/unverified/spoof-suspected 的保守决策和时间有效性；未知不等于敌方，任何身份线索不得绕过几何和 assignment gate。
 - 视觉接管边缘裕量校准：基于真实控制日志统计 bbox 到四条图像边界的归一化最小距离、连续 `bbox_near_image_edge` 帧、相机指向误差和 D5 handoff 到 D7 terminal gate 的拒绝原因；目标是减少重复 handoff 请求而不降低 D7 独立 camera/LOS/maneuver 安全门控。

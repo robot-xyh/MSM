@@ -6,15 +6,20 @@ from d5_terminal_association import (
     AirSimCVScenarioSpec,
     Assignment,
     CameraModel,
+    DetectToGlobalTrackCandidate,
+    DetectToGlobalTrackRegistrationResult,
     FIXED_DOWNLOOK_SECONDARY_COVERAGE_MODE,
     GlobalTrack,
     LocalVisualTrack,
     MOBILE_HIGH_RECON_CAPABILITY_CLASS,
     MOBILE_RECON_GIMBAL_COVERAGE_MODE,
     ReconImageCue,
+    SecondaryCameraFrameCoverage,
+    SecondaryNetworkFrameCoverage,
     TerminalAssociation,
     TerminalAssociator,
     TerminalObservationBus,
+    build_secondary_frame_association_evidence,
     compute_terminal_stress_metrics,
     local_visual_tracks_from_offline_yolo_bytetrack,
     local_visual_tracks_from_sim_detections,
@@ -130,6 +135,173 @@ def test_airsim_cv_scenario_defaults_are_stress_baseline_not_runtime_limit() -> 
     assert runtime_spec.target_count == 7
 
 
+def test_frame_scoped_secondary_evidence_maps_to_d4_without_episode_backfill() -> None:
+    current_stable = DetectToGlobalTrackCandidate(
+        resource_id="RECON-1",
+        camera_id="eo-1",
+        frame_id="sync-10",
+        local_track_id="eo-1/track:1",
+        global_track_id="G1",
+        timestamp=10.0,
+        mahalanobis_d2=1.0,
+        gate_passed=True,
+        selected=True,
+        association_probability=0.9,
+        reject_reasons=("registered_to_global_track",),
+        decision_state="registered",
+        projection_valid=True,
+        camera_pose_source="airsim_camera_pose",
+        stable_cross_view_support=True,
+        stability_pass_count=2,
+    )
+    current_unstable = DetectToGlobalTrackCandidate(
+        resource_id="RECON-2",
+        camera_id="eo-2",
+        frame_id="sync-10",
+        local_track_id="eo-2/track:2",
+        global_track_id="G2",
+        timestamp=10.0,
+        mahalanobis_d2=2.0,
+        gate_passed=True,
+        selected=True,
+        association_probability=0.8,
+        reject_reasons=("stability_window_failed",),
+        decision_state="candidate",
+        projection_valid=True,
+        camera_pose_source="runtime_guidance_pose",
+        stable_cross_view_support=False,
+        stability_pass_count=1,
+    )
+    historical = DetectToGlobalTrackCandidate(
+        resource_id="RECON-1",
+        camera_id="eo-1",
+        frame_id="sync-09",
+        local_track_id="eo-1/track:old",
+        global_track_id="G3",
+        timestamp=9.0,
+        mahalanobis_d2=1.0,
+        gate_passed=True,
+        selected=True,
+        association_probability=0.9,
+        reject_reasons=("registered_to_global_track",),
+        decision_state="registered",
+        projection_valid=True,
+        stable_cross_view_support=True,
+    )
+    registration = DetectToGlobalTrackRegistrationResult(
+        candidates=(current_stable, current_unstable, historical),
+        observations=(),
+        cross_view_associations=(),
+        metadata={"assignment_backends": ("scipy_hungarian",)},
+    )
+    camera_frames = (
+        SecondaryCameraFrameCoverage(
+            frame_id="sync-10",
+            camera_id="eo-1",
+            resource_id="RECON-1",
+            timestamp=10.0,
+            active_target_ids=("G1", "G2", "G3", "G4", "G5"),
+            active_target_count=5,
+            visible_target_ids=("G1", "G2", "G3"),
+            visible_target_count=3,
+            coverage_ratio=0.6,
+            full_view=False,
+            metadata={"detection_count": 1, "gimbal_pointing_ok": True},
+        ),
+        SecondaryCameraFrameCoverage(
+            frame_id="sync-10",
+            camera_id="eo-2",
+            resource_id="RECON-2",
+            timestamp=10.0,
+            active_target_ids=("G1", "G2", "G3", "G4", "G5"),
+            active_target_count=5,
+            visible_target_ids=("G3", "G4", "G5"),
+            visible_target_count=3,
+            coverage_ratio=0.6,
+            full_view=False,
+            metadata={"detection_count": 1, "gimbal_pointing_ok": True},
+        ),
+    )
+    network = SecondaryNetworkFrameCoverage(
+        frame_id="sync-10",
+        camera_ids=("eo-1", "eo-2"),
+        active_target_ids=("G1", "G2", "G3", "G4", "G5"),
+        active_target_count=5,
+        visible_target_ids=("G1", "G2", "G3", "G4", "G5"),
+        visible_target_count=5,
+        coverage_ratio=1.0,
+        joint_full_view=True,
+    )
+
+    evidence = build_secondary_frame_association_evidence(
+        frame_id="sync-10",
+        measurement_timestamp=10.0,
+        arrival_timestamp=10.08,
+        camera_frames=camera_frames,
+        network_frame=network,
+        registration_result=registration,
+        detector_backend="ultralytics_yolov8",
+        tracker_backend="botsort",
+        cue_timestamp=9.9,
+        calibration_metadata={
+            "reprojection_error_px_mean": 2.0,
+            "actor_name": "must-not-propagate",
+        },
+    )
+
+    fields = evidence.to_terminal_association_summary_fields()
+    assert fields["secondary_network_joint_full_view_frame_rate"] == 1.0
+    assert fields["secondary_network_mean_coverage_ratio"] == 1.0
+    assert fields["stable_cross_view_registration_count"] == 1
+    assert fields["not_registered_count"] == 1
+    assert fields["cross_view_association_count"] == 2
+    assert fields["cross_view_conversion_gap"] == 1.0
+    assert np.isclose(fields["cue_freshness_s"], 0.1)
+    assert fields["gimbal_pointing_ok"] is True
+    assert evidence.metadata["ignored_other_frame_candidate_count"] == 1
+    assert evidence.metadata["coverage_semantics"] == "current_frame_not_episode_aggregate"
+    assert evidence.to_metadata()["episode_aggregate_allowed"] is False
+    assert "must-not-propagate" not in str(evidence.to_metadata())
+
+
+def test_frame_scoped_secondary_evidence_rejects_mixed_frame_fixture() -> None:
+    registration = DetectToGlobalTrackRegistrationResult(
+        candidates=(), observations=(), cross_view_associations=()
+    )
+    camera_frame = SecondaryCameraFrameCoverage(
+        frame_id="sync-older",
+        camera_id="eo-1",
+        resource_id="RECON-1",
+        timestamp=10.0,
+        active_target_ids=(),
+        active_target_count=0,
+        visible_target_ids=(),
+        visible_target_count=0,
+        coverage_ratio=0.0,
+        full_view=False,
+    )
+    network = SecondaryNetworkFrameCoverage(
+        frame_id="sync-10",
+        camera_ids=("eo-1",),
+        active_target_ids=(),
+        active_target_count=0,
+        visible_target_ids=(),
+        visible_target_count=0,
+        coverage_ratio=0.0,
+        joint_full_view=False,
+    )
+
+    with np.testing.assert_raises_regex(ValueError, "requested frame_id"):
+        build_secondary_frame_association_evidence(
+            frame_id="sync-10",
+            measurement_timestamp=10.0,
+            arrival_timestamp=10.1,
+            camera_frames=(camera_frame,),
+            network_frame=network,
+            registration_result=registration,
+            detector_backend="sim_get_detections",
+            tracker_backend="camera_local_iou",
+        )
 def test_airsim_cv_detection_fixtures_follow_runtime_camera_count() -> None:
     spec = AirSimCVScenarioSpec(interceptor_count=7, target_count=7)
     bus = TerminalObservationBus()
