@@ -70,6 +70,11 @@ from .models import (
     summarize_terminal_feedback_calibration,
 )
 from .planner import AssignmentPlanner, StalePlanError
+from .calibration import (
+    P1AssignmentCalibrationRow,
+    P1AssignmentCalibrationSummary,
+    run_p1_assignment_calibration_matrix,
+)
 from .min_cost_flow import MinCostFlowAssignmentSolver, OrToolsUnavailableError
 from .p2_benchmark import (
     P2_CAPACITY_BENCHMARK_SCHEMA,
@@ -131,6 +136,8 @@ __all__ = [
     "P1_ASSIGNMENT_FIXTURE_PROFILE_ID",
     "P1_ASSIGNMENT_FIXTURE_PROFILE_VERSION",
     "P1_ASSIGNMENT_FIXTURE_SCHEMA",
+    "P1AssignmentCalibrationRow",
+    "P1AssignmentCalibrationSummary",
     "ResourceState",
     "SECONDARY_PLAN_ACTIVE_STATE",
     "SECONDARY_PLAN_SCHEMA_V2",
@@ -156,6 +163,7 @@ __all__ = [
     "guidance_bindings_from_assignment_plan",
     "prepare_secondary_takeover_plan",
     "p1_assignment_fixture_by_id",
+    "run_p1_assignment_calibration_matrix",
     "summarize_assignment_mismatch_replay",
     "summarize_incremental_planning_comparison",
     "summarize_terminal_feedback_calibration",

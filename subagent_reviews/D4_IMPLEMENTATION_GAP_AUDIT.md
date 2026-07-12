@@ -13,7 +13,8 @@ D4 所属 P1 合同层已闭合。最新验证中 ComputerVision 总体验收为
 | 层级 | 状态 | 审计边界 |
 |---|---|---|
 | P1 合同层 | **已完成** | 已关闭 secondary/peer 3/3 ACK `executing` 正例和 missing ACK 2/3 `aborted` fail-closed；不等于自主成员形成或物理执行完成 |
-| P1 物理/长期标定 | **仍开放** | SimpleFlight 15 s 的 30 个 active pair 物理命中为 0；旧 epoch、过期 lease、成员不可执行、网络分区、digest conflict、成员退出/重构/恢复和误降级成对标定仍缺完整 AirSim 扰动矩阵与多 seed 统计 |
+| P1 扰动合同矩阵 | **模块 replay 已完成** | `d4_p1_failover_disturbance_replay_v1` 九场景 9/9 通过，覆盖正常中心、secondary takeover、missing ACK、member replacement、partition recovery、stale epoch、expired lease、digest conflict 和 center recovery dual-track audit；不生成 `AssignmentPlan`，不降低外部 gate |
+| P1 物理/长期标定 | **仍开放** | 确定性 replay 不能替代真实链路；SimpleFlight 15 s 的 30 个 active pair 物理命中为 0，AirSim 多 seed 的 secondary-interceptor/peer split、链路时序、误降级、恢复时间和物理任务连续性仍未闭合 |
 | D4 P2 optional benchmark | **本轮未完成实际外部 benchmark** | `P1_P2_VALIDATION_SUMMARY_CN.md` 的 P2 结果仅列 D2/D5/D6/D7，没有 D4；D4 现有 cost-gap helper 仅为离线单场景接口/单元测试，不是 MIT/CA-CBBA adapter 验收 |
 
 P2 后续只允许隔离式 benchmark，不替换本地轻量 CBBA、commit lifecycle 或 ACK/lease/epoch 门控。D4 的 ComputerVision 故障注入、summary adapter、内存网络和本地轻量 CBBA属于合同验证/adapter/研究近似；默认在线路径没有被外部算法替换。
@@ -36,7 +37,21 @@ D4 当前已具备 `C2Health`、被动降级、主动降级仲裁、固定系留
 
 仍需明确的是：D4 本体只输出仲裁结果，不直接控制 D3/D7。2026-07-08 main runtime bus 已经接入 `D4ArbitrationAdapter.evaluate()`，能在收到 `request_center_replan` 后触发下一轮 D3 plan version，把 D4 event 写入 D6 collector，并已把 secondary takeover owner/version 回灌到 D3/D7；controlled 2v2 secondary visual PNG 回归已通过。main runtime 已新增 P1 D4/D5 calibration sweep，可批量改变二级节点高度、FOV、数量和 standoff，且 sweep 结束后自动生成 D6 标准 AirSim calibration report bundle。D4 仍没有真实通信/视频链路，也没有引入 MIT CBBA、CA-CBBA、独立 auction 或 contract-net。`degrade_to_secondary` 是二级接管/重分配触发语义，系统级 plan 发布、owner/version 消费和 D7 gate 由 main/D3/D7 负责；修复后口径保持为 D4 只输出 pending/active metadata 与仲裁记录，不生成系统级 `AssignmentPlan`。完全无中心模式现在使用 D5 视觉证据调节轻量 CBBA 出价，不构造虚拟中心 Hungarian，不改写 `global_track_id`。
 
-本轮 P0/P1 复核：无 P0 blocker。P0-B 已在 D4 模块内闭合到单元测试层；heartbeat smoothing、secondary readiness/lease/source、主动降级防抖、中心重规划 lifecycle、assignment freshness 和原子联盟 ACK/commit 合同均有回归。D4 现在区分“末端暂时看不清/重捕获”和“末端观测与分配冲突”，并要求 `k>1` fallback 具有有效 atomic commit。D4 record/D6 metadata 已增加 commit state、epoch、coordinator、required/acked/missing member、lease 和 `atomic_coalition_formed`；恢复双轨 digest 不一致只进入审计。新增 current-coalition recovery 后，旧 soft pending 只有在中心 alive、双版本 current、全部 primary consensus locked 且无硬冲突时才收敛为 no-change/continue。D2 continuous duplicate risk 与 observed duplicate count 已严格分离，避免候选/协方差重叠误报 hard duplicate。当前 D4 测试 148 项通过；D4 仍只输出仲裁和审计，main/D3 负责系统级计划和请求状态事实源，D5/D7 保持独立执行门控。
+本轮 P0/P1 复核：无 P0 blocker。P0-B 已在 D4 模块内闭合到单元测试层；heartbeat smoothing、secondary readiness/lease/source、主动降级防抖、中心重规划 lifecycle、assignment freshness 和原子联盟 ACK/commit 合同均有回归。D4 现在区分“末端暂时看不清/重捕获”和“末端观测与分配冲突”，并要求 `k>1` fallback 具有有效 atomic commit。D4 record/D6 metadata 已增加 commit state、epoch、coordinator、required/acked/missing member、lease 和 `atomic_coalition_formed`；恢复双轨 digest 不一致只进入审计。新增 current-coalition recovery 后，旧 soft pending 只有在中心 alive、双版本 current、全部 primary consensus locked 且无硬冲突时才收敛为 no-change/continue。D2 continuous duplicate risk 与 observed duplicate count 已严格分离，避免候选/协方差重叠误报 hard duplicate。新增 P1 确定性扰动 replay 后当前 D4 测试 155 项通过，九场景 9/9 满足预期，并包含四成员规模无关回归；D4 仍只输出仲裁和审计，main/D3 负责系统级计划和请求状态事实源，D5/D7 保持独立执行门控。
+
+### 2026-07-12 P0/P1 状态增量
+
+本节依据 commit `33e6fa0` 后当前 D4 代码/测试、`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md` 和 `research_modules/airsim_runtime/outputs/PNG_DELIVERY_ENHANCEMENT_AIRSIM_VALIDATION_REPORT_20260712.md`；只更新 P0/P1 判定，不改 P2/P3 规划。
+
+| 核对项 | 当前判定 | 2026-07-12 证据与边界 |
+|---|---|---|
+| P0 terminal plan-binding 一致性 | **已实现，保持回归** | commit `33e6fa0` 将 `terminal_consistent` 限定为 D4 对 current center plan binding 的信任；无硬冲突的 `ambiguous/reacquire` 在 `count <= non_locked_frame_limit` 时保持 true，默认 frame 1..3，frame 4 才 false。D5/D7 lock/handoff 仍独立，不能由该字段单独授权 PNG |
+| P0 hard mismatch/stale gate | **已实现，保持回归** | resource/global-track mismatch、历史 mismatch counter、friend、duplicate、not-current/stale plan 不使用 grace；新增 hard `d5_terminal_id_mismatch`，assignment stale/not-current 仍优先 `request_center_replan` |
+| 其他 P0 合同 | **无行为变化、保持原状态** | heartbeat smoothing、secondary readiness/source/lease/epoch、center-replan cooldown/lifecycle、D2 truth 隔离和 `global_track_id` ownership 本轮未改；没有新增 P0 blocker 或新增完成项 |
+| P1 原子联盟 commit/ACK | **无行为变化、合同层仍已完成** | secondary ACK 3/3 `executing`、peer ACK 3/3 `executing`、missing ACK 2/3 `aborted` 仍是权威正负例；本轮 PNG delivery 工作未改变 commit、epoch、lease、digest 或 recovery 行为 |
+| P1 真实运行与长期标定 | **部分实现，仍开放** | PNG delivery 报告中 D4 为 148 passed，2v2 candidate 为 20/20、锁定后两帧 dropout 为 2/2，证明主线非退化；M5N2 短窗口仍为 0/9。上述系统结果不能关闭 D4 完整扰动、成员重构/恢复、误降级成对标定或物理协同缺口 |
+
+下一验收条件：用同 plan/同 ID 的 1-5 帧 dropout 成对矩阵验证 frame 1..3 仅保留 binding、frame 4+ fail closed，并对任意帧 mismatch/friend/duplicate/stale-plan 保持立即阻断；随后在同一高净空几何和相同运行窗口完成 M5N2 baseline/candidate paired 多 seed，报告 D4 action/reject、错误绑定、active-primary 和 coalition completion。旧 epoch、过期 lease、成员不可执行、分区恢复、digest conflict 和成员补位已由版本化模块 replay 固化；main/D6 下一步应把同样扰动映射到真实 AirSim 同 seed 成对试验，补充 secondary-interceptor/peer split、误降级与恢复时间。任一系统条件未满足时，P1 物理/长期标定保持开放。
 
 历史基线（2026-07-10，非当前状态）：`research_modules/airsim_runtime/outputs/p1_gap_closure_calibration_20260710/` 及其 50/200 m case 目录包含 10 seeds、3 个二级节点、FOV 110 度、1920x1080，共 60 个 5v5 case。20 个 `degrade_to_secondary` case 的最终帧和 dominant action 均为 `degrade_to_distributed`。50 m/200 m 的 network joint full-view 均值为 0.023/0.000，coverage 均值为 0.685/0.708；projection valid 均为 1.0，cross-view association 均值为 4.6/4.0，stable registration 均值为 86.3/96.7，not-registered 均为 0。该批次表明当时注册链已显著改善但同帧全覆盖不稳定；它不否定后续 secondary 3/3 ACK `executing` 合同正例，也不能作为当前接管率。
 
@@ -44,7 +59,7 @@ D4 当前已具备 `C2Health`、被动降级、主动降级仲裁、固定系留
 
 逐决策证据的 D4 输出缺口已闭合：lifecycle/event 现在同时记录 stable/not-registered value、presence、`registration_evidence_source`、streak、since/duration、sustained 和 fallback reason，明确标识 D5/resource 显式计数与 cross-view compatibility 回退。历史 1300 条 D4 input 的两个显式计数仍为 `null`，所以剩余的是 main/D5 真实接线缺口，不是 D4 字段缺口。
 
-D4 模块内 pending/active 合同也已补齐：只有 sustained readiness 才能进入 pending；active 还要求 source 与选中二级节点一致、plan version 单调或保持同一已激活 secondary plan、plan lease epoch 不低于节点要求且 lease 未过期。原子联盟、center-replan recovery 和 D2 duplicate score/count 分离测试覆盖正常中心、secondary/distributed commit、缺 ACK、旧 epoch、过期 lease、重复/非成员 ACK、能力撤销、分区、digest 冲突、soft pending recovery、continuous risk=0.8/count=0、explicit count=1、stale visual coalition version 和 center failure；当前 D4 测试为 144 项通过。真实 AirSim 的 secondary/peer commit DTO 与 action 正负例已经接线；剩余 P1 是物理执行、coverage-cell 长期聚合、成员退出/补位/缩编/整盟重构、完整网络分区/恢复矩阵和误降级成对标定。
+D4 模块内 pending/active 合同也已补齐：只有 sustained readiness 才能进入 pending；active 还要求 source 与选中二级节点一致、plan version 单调或保持同一已激活 secondary plan、plan lease epoch 不低于节点要求且 lease 未过期。原子联盟、center-replan recovery 和 D2 duplicate score/count 分离测试覆盖正常中心、secondary/distributed commit、缺 ACK、旧 epoch、过期 lease、重复/非成员 ACK、能力撤销、分区、digest 冲突、soft pending recovery、continuous risk=0.8/count=0、explicit count=1、stale visual coalition version 和 center failure；2026-07-11 当时为 144 项通过，2026-07-12 增加 terminal consistency 回归后当前为 148 项通过。真实 AirSim 的 secondary/peer commit DTO 与 action 正负例已经接线；剩余 P1 是物理执行、coverage-cell 长期聚合、成员退出/补位/缩编/整盟重构、完整网络分区/恢复矩阵和误降级成对标定。
 
 历史 smoke（2026-07-11、最终故障注入验证前）：`p1_runtime_truth_isolated_d4d5_smoke_20260711`（200 m、2 secondary）、`p1_runtime_truth_isolated_d4d5_50m_20260711`（50 m、2 secondary）和 `p1_runtime_truth_isolated_d4d5_secondary5_20260711`（200 m、5 secondary）中，中心保持正例均为 `continue_center`，二级不可用负例均为 `degrade_to_distributed`。三组预期二级接管正例当时同样为 `degrade_to_distributed`，其共同证据是 `secondary_network_joint_full_view_frame_rate=0.0`、readiness 非持续 `takeover_ready`。5-secondary 配置虽把 `secondary_network_mean_coverage_ratio` 提升到约 0.80，仍未形成同帧全目标联合覆盖。该历史结果说明安全回落正确并冻结 readiness 门限；二级 3/3 ACK `executing` 正例现已由后续验证关闭，但平均覆盖、累计检测或单帧可见性仍不能解释为 active secondary plan，也不得用于降低门限。
 
@@ -68,7 +83,7 @@ D4 的 P0-B 硬化继续按四级层级解释，不把单个传感器或终端�
 | Heartbeat 平滑 | 已完成，保持回归。`FailoverCoordinator` 新增 heartbeat sliding window、miss threshold、`degraded/suspect/failed` dwell；有 heartbeat 样本流时，短时丢包/延迟先进入 degraded/suspect，不直接 failed | `tests/test_health.py::test_heartbeat_window_suppresses_single_delayed_sample_before_failed`；真实 AirSim false failover rate 仍属于 P1 多 seed 校准 |
 | Lease/epoch 严格合同 | 已完成 D4 合同层，保持回归。除 expiry/version 外，现校验 plan source、required lease epoch、sustained readiness，并记录 transition/timing/fallback；过期/stale lease、错误 source、能力回落均不可执行 | `tests/test_arbitration_adapter.py::test_active_secondary_plan_rejects_stale_lease_epoch_and_wrong_source`；`::test_active_plan_rolls_back_on_expired_lease_and_capability_regression`；系统级计划仍由 main/D3/D7 负责 |
 | 二级能力评估 | 已完成 D4 合同层，保持回归。瞬时四级 readiness 后增加默认 3 decisions/0.2 s 连续窗口；相同 timestamp 不累计；not-ready 边沿和回落后重新初始化 since/count。lifecycle/event 输出逐决策 registration source/presence、streak/duration/sustained/fallback；D7 helper 可显式拒绝未 sustained 的 `takeover_ready` | `tests/test_arbitration_adapter.py::test_default_readiness_window_blocks_single_frame_takeover_and_audits_evidence`；`::test_readiness_window_restarts_after_not_ready_edge_and_after_regression`；`::test_sustained_readiness_enters_pending_then_active_with_transition_timing` |
-| 主动降级防抖 | 已完成 D4 合同层，保持回归。保留 `risk_window_size`、`risk_window_threshold`、`min_dwell_s`、release 条件和硬/软风险分层；无冲突 reacquire 不直接降级；adapter 输出 hard/soft risk 和 `active_degradation_false_trigger_candidate` | `tests/test_active_degradation.py::test_no_conflict_reacquire_requests_secondary_cue_without_takeover`；`tests/test_arbitration_adapter.py::test_adapter_marks_unnecessary_active_degradation_as_false_trigger_candidate`；真实 false trigger rate 仍需 P1 多 seed 标定 |
+| 主动降级防抖 | 已完成 D4 合同层，保持回归。保留 `risk_window_size`、`risk_window_threshold`、`min_dwell_s`、release 条件和硬/软风险分层；默认无硬冲突 reacquire frame 1..3 保留 center binding，frame 4 才进入持续路径；adapter 输出 hard/soft risk 和 `active_degradation_false_trigger_candidate` | `tests/test_active_degradation.py::test_detect_loss_frames_through_limit_preserve_center_plan_consistency`；`::test_reacquire_grace_ends_after_non_locked_frame_limit`；`::test_transient_reacquire_with_prior_id_mismatch_fails_closed`；真实 false trigger rate 和 1-5 帧 dropout 仍需 P1 多 seed 标定 |
 
 ### P1 边界
 
@@ -130,8 +145,8 @@ D4 不构造“虚拟中心”，不在 no-center 路径临时调用 Hungarian/M
 | 中心恢复合并 | assignment-only merge 已实现 | 未比较 track version、plan digest、terminal lock、communication link、D5/D7 gate 状态 | 需要完整双轨 episode log 和恢复前后版本序列 |
 | CBBA vs 中心化最优差距 | D4 已有单场景 helper、benchmark 字段和 `build_cbba_d6_metadata()`，可比较 D4 CBBA 与 D3/main 提供的中心 plan/cost matrix 并输出多 seed 报告字段 | 真实 episode 还未持续保存 D3 cost matrix/current plan，D6 还未做多 seed 聚合 | main/D3 需要保存中心化 cost matrix/current plan，D6 需要聚合 cost gap |
 | D5 distributed visual evidence 运行时接线 | D4 模块内可消费 D5 distributed association/hypothesis 的对象或 dict，并在 CBBA scoring 中使用 | 真实多 seed no-center case 中 D5 多 peer 输出到 D4 `TrackSummary.visual_evidence` 的合流频率和风险权重还未标定 | main 需要在 episode 状态机中持续调用 `merge_distributed_visual_evidence_into_tracks()` 或等价接线并形成 D6 统计 |
-| AirSim D4/D5 stress | 历史 sweep 与最新 commit 正负例均可审计；二级和 peer 3/3 `executing`、缺 ACK 2/3 `aborted` 已通过 | 完整扰动矩阵、成员退出/重构、误降级和恢复的多 seed 统计仍开放 | main 使用统一 D4 schema 增加同 seed 成对扰动 |
-| M 对 N 联盟降级 | 已读取 D3 schema v2 demand/coalition/member/双版本，并实现 member ACK、commit lifecycle、lease/epoch、digest、分区、恢复双轨审计和 `atomic_coalition_formed`；真实 secondary/peer commit 正例及缺 ACK fail-closed 已通过 | 自主成员形成、reserve 激活、缩编/补位/整盟重组、D7 时序可达性和完整扰动矩阵尚未闭合 | P1 保持 commit 回归并完成扰动/重构矩阵；P2 只隔离比较 CCBBA/grouping，不绕过合同 |
+| AirSim D4/D5 stress | 历史 sweep 与最新 commit 正负例均可审计；二级和 peer 3/3 `executing`、缺 ACK 2/3 `aborted` 已通过；模块 replay 九类扰动 9/9 通过 | 同类扰动在真实 AirSim 中的成员退出/重构、误降级和恢复多 seed 统计仍开放 | main 使用统一 D4 schema 增加同 seed 成对扰动 |
+| M 对 N 联盟降级 | 已读取 D3 schema v2 demand/coalition/member/双版本，并实现 member ACK、commit lifecycle、lease/epoch、digest、分区、恢复双轨审计和 `atomic_coalition_formed`；真实 secondary/peer commit 正例、缺 ACK fail-closed 和模块级 member replacement/partition recovery 已通过 | 自主成员形成、reserve 激活、缩编/整盟重组、D7 时序可达性和真实 AirSim 扰动矩阵尚未闭合 | P1 保持版本化 replay 回归并完成 AirSim 多 seed；P2 只隔离比较 CCBBA/grouping，不绕过合同 |
 
 ## 未实现
 
@@ -169,10 +184,15 @@ D4 不构造“虚拟中心”，不在 no-center 路径临时调用 Hungarian/M
 ## P1/P2 下一步
 
 0. **P1 M 对 N 联盟合同回归**：二级 ACK 3/3 `executing`、peer ACK 3/3 `executing` 和缺 ACK 2/3 `aborted` 已通过；后续保持这些场景并增加成员退出 `reconfiguring`、恢复和误降级统计。不得把 single-winner CBBA 宣称为自主 `k_j=3` 成员形成算法。
-1. **P1 AirSim D4/D5 定向校准**：D4 逐决策审计和连续 readiness 已完成；main/D5 需输入真实 stable/not-registered，构造持续 network full-view 与 coverage-cell 切换 case，统计各状态驻留、source 分布、false degradation 和接管必要性。
-2. **P1 secondary plan 回归与扰动**：合同正例已通过；继续注入 heartbeat/link/cue/gimbal/lease/source/成员故障，统计 executing 后的回落、恢复和 activation delay，不降低门限。
-3. **P1 完整扰动矩阵与误降级成对标定**：注入旧 epoch、过期 lease、成员不可执行、center-secondary、secondary-interceptor、peer split/recovery 和 digest conflict，记录 partition/digest/duplicate-owner/merge 指标；同 seed 配置正常对照和故障真值，由 D6 统计 false/missed degradation、动作混淆和恢复时间。
-4. **P1 CBBA gap benchmark 聚合**：D4 已有单场景 helper；main/D3 仍需保存中心化 cost matrix/current plan，D6 仍需聚合 lightweight CBBA 与中心化 Hungarian/Min Cost Flow 的 cost/completion/conflict gap。
+1. **P1 terminal consistency 成对验收**：对同 plan/同 ID 的 1-5 帧 dropout 逐帧记录 `d4_action`、`terminal_consistent`、hard/soft risk、D5 decision/lock 和 D7 gate；frame 1..3 只能保留 binding，frame 4+ 必须 fail closed，任意 mismatch/friend/duplicate/stale-plan 必须立即阻断且错误绑定为 0。
+2. **P1 AirSim D4/D5 定向校准**：D4 逐决策审计和连续 readiness 已完成；main/D5 需输入真实 stable/not-registered，构造持续 network full-view 与 coverage-cell 切换 case，统计各状态驻留、source 分布、false degradation 和接管必要性。
+3. **P1 secondary plan AirSim 回归与扰动**：模块 replay 已固化 lease、epoch、digest、成员故障和恢复；main 继续注入 heartbeat/link/cue/gimbal/source、secondary-interceptor 与 peer split，统计 executing 后回落、恢复和 activation delay，不降低门限。
+4. **P1 误降级成对标定**：以 `d4-p1-fallback-matrix-v1` 为合同基线，在同 seed 正常/故障 AirSim 对照中记录 partition/digest/duplicate-owner/merge 指标，由 D6 统计 false/missed degradation、动作混淆和恢复时间。
+5. **P1 同几何 M5N2 paired 验收**：使用相同高净空几何、运行窗口和 seeds 比较 baseline/candidate，分别报告 D4 action/reject、target、active-primary 和 coalition completion；2v2 20/20 不替代该验收。
+6. **P1 CBBA gap benchmark 聚合**：D4 已有单场景 helper；main/D3 仍需保存中心化 cost matrix/current plan，D6 仍需聚合 lightweight CBBA 与中心化 Hungarian/Min Cost Flow 的 cost/completion/conflict gap。
+
+P2（保持原规划）：
+
 5. **P2 隔离 optional auction baseline（未开始）**：只能在隔离环境用同一 summary/task/resource 输入与 CBBA 对照，不进入默认路径。
 6. **P2 隔离 MIT/CA-CBBA adapter（capability 已完成，execution unavailable）**：原生 6 场景 replay 与外部逐场景 unavailable 行已落地；默认未配置参考路径。即使检测到 MIT MATLAB 源码也不执行，CA-CBBA 公共参考无可执行源码。未来 execution 仍不可替换默认轻量 CBBA，也不可绕过联盟 ACK/lease/epoch 合同。
 7. **P2 恢复合并增强**：把 `merge_recovery()` 从 assignment-only 扩展到 track digest、terminal lock、communication link、coalition digest 和 plan version 的组合校验。
@@ -188,6 +208,7 @@ D4 不构造“虚拟中心”，不在 no-center 路径临时调用 Hungarian/M
 - `research_modules/d4_distributed_fallback/d4_distributed_fallback/cbba.py`
 - `research_modules/d4_distributed_fallback/d4_distributed_fallback/network.py`
 - `research_modules/d4_distributed_fallback/d4_distributed_fallback/simulation.py`
+- `research_modules/d4_distributed_fallback/d4_distributed_fallback/p1_failover_replay.py`
 - `research_modules/d4_distributed_fallback/d4_distributed_fallback/p2_coalition_replay.py`
 - `research_modules/d4_distributed_fallback/README.md`
 - `research_modules/d4_distributed_fallback/PLAN.md`

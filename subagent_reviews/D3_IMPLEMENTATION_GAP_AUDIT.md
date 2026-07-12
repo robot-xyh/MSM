@@ -1,8 +1,8 @@
 # D3 实现差距审计
 
 **模块**: D3 集中式资源-目标分配
-**审计日期**: 2026-07-11
-**审计依据**: `subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md`、`subagent_reviews/D3_ASSIGNMENT_PLANNER_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md`、`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md`、`EVAL/FRAMEWORK_EVAL_PATCH_ENGINEERING_PRACTICES.md`、`EVAL/FRAMEWORK_EVAL_PATCH_2026_VERIFIED.md`、`EVAL/FRAMEWORK_EVAL_PATCH_WEBSEARCH_2026.md`、`research_modules/d3_assignment_planner/` 代码、README、PLAN、docs 和 tests。
+**审计日期**: 2026-07-12
+**审计依据**: commit `33e6fa0` 后当前 `research_modules/d3_assignment_planner/` 代码、README、PLAN、docs 和 tests，`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md`、`research_modules/airsim_runtime/outputs/PNG_DELIVERY_ENHANCEMENT_AIRSIM_VALIDATION_REPORT_20260712.md`、`subagent_reviews/D3_ASSIGNMENT_PLANNER_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md`、`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md`、`EVAL/FRAMEWORK_EVAL_PATCH_ENGINEERING_PRACTICES.md`、`EVAL/FRAMEWORK_EVAL_PATCH_2026_VERIFIED.md` 和 `EVAL/FRAMEWORK_EVAL_PATCH_WEBSEARCH_2026.md`。
 **边界**: 本审计只覆盖离线科研仿真中的抽象资源-目标分配、版本化计划、终端反馈合同、D7 guidance binding、D6 记录导出和 AirSim dry-run 适配；不涉及真实飞控、硬件、火控、毁伤逻辑或绕过人工授权的自动处置。
 
 ## 1. 总体结论
@@ -11,9 +11,13 @@ D3 当前已经完成中心化一对一与显式 M-to-N demand-slot 主线：Sci
 
 2026-07-10 P1 switch-penalty 修复已完成：`reassignment_switch_penalty` 现在在 Hungarian/fallback solve 前加入已有 target 改配到不同 resource 的可行边；同 resource、不可行边、无历史 assignment 的 target 和 unassigned cost 不变。后置 Assignment 加价路径已移除，solver matrix、edge breakdown、objective、plan cost 和 evidence 单次计费一致。当前新 plan binding 保持 `active/current`，旧 plan 继续由 latest `plan_id/version` gate 失效。
 
-当前 D3 P0/P1 状态已从“接口缺口”转为“合同闭合、物理与参数校准待续”。2026-07-11 的 5-resource/2-target ComputerVision 10-seed 中，T001 双 primary 视觉共识与当前计划授权达到 8/10；seeds 7/27 保留回归。二级接管和完全分布式 commit 正例已通过，缺 ACK 时 coalition aborted 且 D7 许可为 0，证明 D3 current plan/binding 可被下游 fail-closed gate 正确消费。历史 `secondary_plan_active=0` 仅保留为 2026-07-10 实施前运行基线，不再代表当前合同状态。15 s SimpleFlight 诊断中 30 个 active pair 均未物理命中，因此物理拦截闭环仍开放。
+当前 D3 P0/P1 状态已从“接口缺口”转为“合同闭合、协同物理与参数校准待续”。2026-07-11 的 5-resource/2-target ComputerVision 10-seed 中，T001 双 primary 视觉共识与当前计划授权达到 8/10；seeds 7/27 保留回归。二级接管和完全分布式 commit 正例已通过，缺 ACK 时 coalition aborted 且 D7 许可为 0，证明 D3 current plan/binding 可被下游 fail-closed gate 正确消费。历史 `secondary_plan_active=0` 仅保留为 2026-07-10 实施前运行基线，不再代表当前合同状态。
+
+2026-07-12 的 PNG delivery 增强提交没有修改 D3-owned 源码或测试，D3 **无行为变化/保持原状态**。新证据中，2v2 candidate 10 seeds 达到 20/20 pair 的 5 m 物理成功，只证明 current plan owner/version gate 下的一对一主链非退化；M5N2 hybrid `2 primary + 1 reserve` 的 8 s 短窗口 3 seeds 为 0/9 active pair、最近距离 22-32 m，且与既有 z=-30 m、35 s 高净空基线不等价。该结果不新增 D3 完成项，也不能归因于 D3 planner 或 PNG 滤波；M5N2 第二 primary 中段闭合和联盟视觉一致性仍开放。
 
 当前 D3 没有未关闭的 P0 或 P1 **合同层**缺口。`previous_plan` 连续性、solve 前 switch penalty、D5/D7 禁止本地改绑、secondary activation/current-binding、增量接口、transient feedback dwell、role-aware primary 保持和 plan/evidence schema 均作为回归合同保留。**P1 物理闭环与长期参数标定仍开放**，包括真实非等量 N/M 与动态事件多 seed、D5 feedback、动态威胁和 hard-window。P2 容量 benchmark 合同已完成：共享 4-resource/3-target、5-slot hybrid 输入，SciPy objective 为 `5.6`；当前环境 flow 结果明确 unavailable。installed OR-Tools 实证、CP-SAT/MILP、coalition 原子 admission、复杂 flow 和大规模扫描尚未完成，且都不得替换默认 Hungarian/demand-slot 在线路径。
+
+本轮 D3 指定测试命令实测通过；唯一 skip 是当前环境未安装 optional OR-Tools。新增 versioned P1 场景矩阵和 paired runner 覆盖 8 类转换；本地 full/incremental assignment/cost 8/8 等价，并统一输出 latency、churn、unassigned high-threat、coalition shortfall、hard-window reject、fallback 和 role-aware primary。CLI 已支持可选 `--output`，写入与 stdout 完全一致的 `summary.as_dict()` JSON。P0/P1 下一验收不是新增合同字段，而是同一 z=-30 m 高净空几何、同一运行窗口的 M5N2 baseline/candidate paired 运行，并把该矩阵接入真实多 seed。
 
 ## 2. 已实现
 
@@ -50,12 +54,12 @@ D3 当前已经完成中心化一对一与显式 M-to-N demand-slot 主线：Sci
 | duplicate terminal lock 风险 | 字段、helper 和 binding gate 已支持。`duplicate_terminal_lock_risk=True` 会请求 `secondary_arbitration`，D7 binding 进入 `hold`。 | D3 不自行从多资源视觉状态中统计 duplicate terminal lock，只消费上游传入风险。 | D5 或 main 需要聚合同一 `global_track_id` 被多个资源 terminal lock 的事件，并把结果交给 D3/D7/D6。 |
 | D4 主动降级联动 | D3 已提供 validity/feedback 证据和严格 secondary activation/current-binding 合同；二级/分布式 commit 正例与缺 ACK fail-closed 已通过下游验证。 | D3 不选择二级节点、不续租、不执行 CBBA/拍卖或恢复仲裁。 | 后续中心恢复和长时 lease 校准属于 main/D4 policy，不是 D3 P1 合同缺口。 |
 | D6 指标闭环 | D3 已有 `AssignmentRecord`、`AssignmentEvidenceExport`、validity summary、N/M replay summary 和 feedback calibration summary helper，字段包括 plan id/version、owner/source/schema、replan/takeover reason、previous/supersede、secondary owner/version、resource/target/assigned 规模、hysteresis/stale/reassign 计数、matrix shape、current cost matrix、per-edge cost breakdown、reject reason、stale reason、迟滞决策状态与 held/released 原因、cost gap、authorization state 和 active/truth labels。main runtime 已在 P1 D4/D5 calibration sweep 后自动生成 D6 标准报告 bundle，D3 通过 plan/record/evidence helper 消费这些 episode 级数据。 | D3 不写 D6 存储，也不拥有 episode log 总线；calibration helper 输出建议但不自动改默认参数。 | D3 侧无 record/evidence export P1 缺口；剩余是用真实 D6 聚合结果、P1 sweep bundle 和 episode records 人工复核 D3 权重阈值、hard-window 输入和多 seed 稳定性。 |
-| AirSim runtime 闭环 | D3 有 dry-run adapter、严格 secondary 合同和 AirSim integration plan；main runtime 已接入 D5 feedback writeback、center replan 与 secondary owner/version/source，P1 commit/fail-closed 合同已验证。 | D3 不直接导入 AirSim；15 s SimpleFlight 仅定位到末端检测/控制断点，尚无物理命中。 | main 补长时物理控制及 3v5、5v3、目标新增、资源失效和 crossing/dense 参数校准。 |
+| AirSim runtime 闭环 | D3 有 dry-run adapter、严格 secondary 合同和 AirSim integration plan；main runtime 已接入 D5 feedback writeback、center replan 与 secondary owner/version/source，P1 commit/fail-closed 合同已验证。2026-07-12 的 2v2 candidate 为 20/20 pair。 | D3 不直接导入 AirSim；2v2 仅证明一对一主链非退化，M5N2 8 s 短窗口 0/9 与高净空长窗口基线不可比，协同物理闭环仍未验收。 | main 使用同几何/同时间窗完成 M5N2 paired baseline/candidate，并补 3v5、5v3、目标新增、资源失效和 crossing/dense 多 seed 参数校准。 |
 | EVAL P0-B 资源状态细化（保持回归） | 已完成 baseline，当前不列为运行级 P0 blocker。`ResourceState` 现有字段外已补 `energy_fraction/availability_score/current_load/history_failure_rate/intercept_feasibility_by_target/intercept_feasibility_score_by_target`；`CostModel` 消费 energy、availability、load、history failure 和 intercept feasibility，并导出不可行原因 flag。 | 还缺真实 episode 中各字段的阈值标定和跨模块日志分布，不缺 D3 DTO/schema。若字段缺失、cost metadata 丢失或不可行原因不可解释，再列 P0 backlog。 | 用多 seed/N 规模回放校准 energy/availability/current_load/history_failure_rate 的默认阈值和 D6 聚合展示，同时保持现有 cost metadata 单元测试回归。 |
 | EVAL P0-B 增强迟滞和 stale rejection（保持回归） | 已完成 baseline，当前不列为运行级 P0 blocker。已有 `delta`、`min_dwell`、`max_changes_per_window`、旧边不可行绕过、stale plan 拒绝、high-threat release condition 和 D6 held/released 原因导出；P1 已进一步把 `reassignment_switch_penalty` 前移到 solver matrix 并消除双重计费。 | 多 seed 标定尚未完成，尤其是 release condition 与 churn/漏分配之间的参数平衡。若 min dwell、switch penalty、release condition 或 stale reason 无法解释，再列 P0 backlog。 | 用多 seed/N 规模回放校准 `delta/min_dwell/max_changes_per_window/reassignment_switch_penalty`，D6 报告同时展示重分配下降、高威胁未分配不升高、matrix/objective 一致和 stale rejection reason 可聚合。 |
 | EVAL P0-B 可解释 threat baseline（保持回归） | 已完成 baseline，当前不列为运行级 P0 blocker。`compose_threat_score_baseline()` 将接近关键区、TTC、速度、协方差、目标状态合成为可解释 threat score；`TargetTrack.threat_score`、`unassigned_high_threat_count` 和 cost breakdown 继续消费该字段。 | 完整动态威胁评估尚未实现，不应把 baseline 伪装成 outcome-aware 模型。若 TTC、关键区接近、速度、协方差或目标状态无法进入 baseline 解释，再列 P0 backlog。 | 用 D6 多 seed outcome 标定完整模型，并保留 Hungarian/baseline 对照；P0 回归只要求 baseline 组件和 reasons 可解释、可导出。 |
 | EVAL P1 完整动态威胁评估 | 未作为完整模型实现。当前仅消费/记录 threat baseline 所需字段。 | 完整威胁模型需要场景定义、保护区、TTC、速度、目标类别、协方差、资源状态和 D6 mission outcome 支撑，不能用单一 `threat_score` 字段伪装完成。 | 先保持 P0-B baseline 可解释，再用 D6 多 seed outcome 标定完整模型，并保留 Hungarian baseline 对照。 |
-| EVAL P1 增量分配 | 接口已实现。`plan_incremental()` 校验输入快照与 declared changed IDs，只求解受影响的独立可行连通分量，随后在完整计划上应用迟滞；其余情况带原因回退全量。 | deterministic 3v5/5v3、目标新增、资源失效、需求变化、过期/stale、all-or-none、switch penalty 和成本/延迟/稳定性 summary 已覆盖；真实 AirSim 多 seed 尚未标定。 | main/D6 用真实动态事件统计 incremental applied/fallback reason、延迟、cost equivalence、churn 和高威胁未分配；版本不一致继续 hard reject，不静默回退。 |
+| EVAL P1 增量分配 | 接口和可复用校准矩阵已实现。`plan_incremental()` 校验输入快照与 declared changed IDs，只求解受影响的独立可行连通分量，随后在完整计划上应用迟滞；其余情况带原因回退全量。paired runner 覆盖 8 类转换并汇总 latency、churn、unassigned high-threat、coalition shortfall 和 reject/fallback。 | deterministic 3v5/5v3、目标新增、资源失效、需求变化、D5 reserve feedback、hard-window、all-or-none、switch penalty 和 full/incremental equivalence 已覆盖；真实 AirSim 多 seed 尚未标定。 | main/D6 用相同 schema/profile/version 的真实动态事件统计 incremental applied/fallback reason、延迟、cost equivalence、churn、高威胁未分配和 coalition shortfall；版本不一致继续 hard reject，不静默回退。 |
 | EVAL P1 时间窗口硬约束 | 轻量 baseline 已实现。`TargetTrack.window_cost` 仍是软排序项；新增 hard close/open schema、不可行窗口拒绝、`reject_reason`、cost breakdown flags 和测试。 | 目前是轻量 baseline，不是完整多窗口/到达时间网络；未做真实多 seed 标定，也未接 OR-Tools 复杂约束。 | 用 AirSim/point-mass 多 seed/N 规模回放校准 hard window 输入、到达时间和 reject reason 分布；多窗口/容量/配额后续可进入 optional min-cost-flow 对照。 |
 | P2 optional OR-Tools Min Cost Flow 对照 | 容量 benchmark contract done。共享 problem 同时进入 SciPy 容量列展开与 flow 原生容量 arc；覆盖非等量 N/M、hybrid primary+reserve、容量限制、objective/assignment 解码和结构化 unavailable。SciPy 当前 objective `5.6`。 | 当前环境未安装 OR-Tools，installed-only 求解 test skip，故尚无 flow objective 实证；slot-level flow 不表达 coalition 原子 admission。 | 在隔离环境运行 installed solver 并保存 objective delta/assignment；CP-SAT/MILP、备份配额、多窗口和分组配额继续作为 P2 optional，默认在线 planner 不变。 |
 
@@ -80,7 +84,7 @@ D3 当前已经完成中心化一对一与显式 M-to-N demand-slot 主线：Sci
 
 | 缺少条件 | 影响 |
 |---|---|
-| 非等量 N/M 与事件驱动校准矩阵 | 历史等量 5v5 的 2026-07-10 10-seed/60-case 仅作为历史基线；仍缺 3v5、5v3、目标新增、资源失效、D5 模糊、D2 不确定和 crossing/dense 场景。 |
+| 真实非等量 N/M 与事件驱动多 seed | D3 deterministic 矩阵与汇总合同已完成；历史等量 5v5 和 2026-07-12 M5N2 8 s 短窗口均不是可比物理验收。仍缺同几何/同时间窗 M5N2 paired 运行，以及真实 3v5、5v3、目标新增、资源失效、D5 模糊、D2 不确定和 crossing/dense 数据。 |
 | D5 feedback 权重阈值长期标定数据 | D3 已能生成 advisory calibration summary；仍需要真实 D6 records 反复校准 `fov_difficulty_by_resource`、禁配边、operator hold、hold/replan/secondary_arbitration 阈值，避免过度重规划或过度 hold。 |
 | D5/main duplicate lock 和多帧不一致聚合分布 | D3 不自行判断多资源终端锁定冲突；需要上游持续提供聚合事件，供 D3 权重阈值校准。 |
 | P0-B 多 seed 标定证据 | baseline schema/helper 已完成；仍需要覆盖非等量 M/N、资源不足、高威胁目标、D5 模糊和 crossing/dense 场景，用于校准增强迟滞参数、资源状态阈值和 threat score baseline 权重。 |
@@ -89,16 +93,16 @@ D3 当前已经完成中心化一对一与显式 M-to-N demand-slot 主线：Sci
 
 ## 7. 当前 D3 P0/P1 缺口与下一步优先级
 
-1. **P0 done**: 已撤销旧“无运行级 P0 blocker”结论。active plan 后 `previous_plan=None` 导致 version 回退到 1 的缺口已修复；现在固定以 `previous_plan_required` 拒绝并携带 latest plan id/version，首次调用和新 planner 实例仍从 version 1 开始。Hungarian、fallback DP、迟滞、其他 stale/expected-version 检查、D7 binding、D6 export、current evidence export、P0-B 资源状态细化、P0-B 增强迟滞/stale rejection、P0-B threat baseline 和轻量 hard time-window baseline 继续保持回归。
+1. **P0 done / 当前无开放 blocker**: 历史上曾发现 active plan 后 `previous_plan=None` 导致 version 回退到 1 的 P0 blocker；该缺口现已修复，因此当前恢复并确认无开放 P0 blocker。现在固定以 `previous_plan_required` 拒绝并携带 latest plan id/version，首次调用和新 planner 实例仍从 version 1 开始。Hungarian、fallback DP、迟滞、其他 stale/expected-version 检查、D7 binding、D6 export、current evidence export、P0-B 资源状态细化、P0-B 增强迟滞/stale rejection、P0-B threat baseline 和轻量 hard time-window baseline 继续保持回归。
 2. **P1 switch-penalty matrix integration done**: penalty 已在 solve 前加入可行改配边，零 penalty/中等 penalty/较大 penalty 构造测试覆盖换配、单次计费和保持原资源；边界测试同时确认不可行边、无历史 assignment 的新目标和 unassigned cost 不受 penalty 污染，release 与 current binding 语义保持不变。
-3. **P1 合同层 done**: 5-resource/2-target ComputerVision 10 seeds 中，T001 双 primary 视觉共识与当前计划授权达到 8/10；增量规划与 role-aware primary 保持已验证。二级/分布式 commit 正例和缺 ACK fail-closed 通过。15 s SimpleFlight 为 0 物理命中的诊断，物理闭环仍开放。
+3. **P1 合同层 done / 协同物理闭环 open**: 5-resource/2-target ComputerVision 10 seeds 中，T001 双 primary 视觉共识与当前计划授权达到 8/10；增量规划与 role-aware primary 保持已验证。二级/分布式 commit 正例和缺 ACK fail-closed 通过。2026-07-12 的 2v2 candidate 20/20 仅证明一对一主链非退化；M5N2 8 s 短窗口 0/9 不具可比性，下一验收为同几何/同时间窗 paired M5N2。
 4. **P1 D5 feedback 权重标定**: 用真实 D6 records 对 `fov_difficulty_by_resource`、禁配边、operator hold、`delta/min_dwell/max_changes_per_window/reassignment_switch_penalty` 做配对扫描；验收抖动下降且高威胁未分配不恶化。
-5. **P1 非等量 N/M 与增量分配接口 done / 真实校准待办**: deterministic 3v5、5v3、目标新增、资源失效和高威胁需求变化已覆盖；`plan_incremental` 与全量成本/延迟/稳定性 summary 已实现。下一步补真实多 seed，要求版本/stale 不退化、成本等价，并报告延迟和 fallback 分布，不预设局部路径必然更快。
+5. **P1 非等量 N/M 与增量校准支撑 done / 真实校准待办**: versioned 8-scenario matrix 覆盖 3v5、5v3、目标新增、资源失效、高威胁需求变化、D5 reserve feedback 和 hard-window；paired runner 的 8/8 转换 assignment/cost 等价，并报告 latency、churn、unassigned high-threat、coalition shortfall、hard reject、fallback 和 primary 保持。下一步补真实多 seed，不预设局部路径必然更快。
 6. **P1 完整动态威胁评估**: 在 baseline 上加入保护区、目标类别、资源状态和 mission outcome 标定，并保留 baseline 对照。
 7. **P1 时间窗口硬约束校准**: 已有单窗口 closed-edge baseline 不重复实现；补到达时间、多窗口、not-yet-open/expired 分布和 reject reason 聚合。
 8. **P1 D3 secondary activation 合同 done**: 模块内 concrete owner、持续 readiness、严格 version/epoch、live lease、旧中心 stale、非 current/过期 binding 阻断和审计导出已验收；下游 commit 正例和缺 ACK fail-closed 已验证，中心恢复长期校准仍属 main/D4。
 9. **P2 capacity benchmark contract done / installed evidence pending**: 同一 4-resource/3-target、5-slot hybrid 和容量输入已接 SciPy/optional flow；SciPy objective `5.6`，缺 OR-Tools 时结构化报告原因。当前环境仍未运行 installed flow；Hungarian/demand-slot 默认在线路径不变。
-10. **P1 合同保持回归**: published active-plan `previous_plan` 必填、同签名 identity 稳定且独立刷新 `last_evaluated_at_s`、forced ack/applied、未发布 candidate 不推进 latest、switch penalty solve 前单次计费、D5/D7 禁止本地换绑、transient dwell 不降低 required stable window、reserve soft failure 不旋转 healthy primary、硬风险不等待 role protection、secondary current/lease/rolling gate、schema v2/M-to-N、增量 snapshot/fallback 和 D6 schema 必须继续通过。当前 D3 回归基线为 `123 passed, 1 skipped`。
+10. **P1 合同保持回归**: published active-plan `previous_plan` 必填、同签名 identity 稳定且独立刷新 `last_evaluated_at_s`、forced ack/applied、未发布 candidate 不推进 latest、switch penalty solve 前单次计费、D5/D7 禁止本地换绑、transient dwell 不降低 required stable window、reserve soft failure 不旋转 healthy primary、硬风险不等待 role protection、secondary current/lease/rolling gate、schema v2/M-to-N、增量 snapshot/fallback 和 D6 schema 必须继续通过。2026-07-12 实测基线为 `127 passed, 1 skipped`；唯一 skip 为 optional OR-Tools 未安装。
 11. **P2 optional benchmark remaining**: 补 installed Min-Cost Flow objective/assignment 结果，并实现 CP-SAT/MILP coalition 参考、复杂 flow 和 10x10/20x20 参数扫描；只使用离线同输入数据形成最优差距、延迟和参数长期对照表，不进入默认 planner。
 
 ## 8. 跨模块接口影响

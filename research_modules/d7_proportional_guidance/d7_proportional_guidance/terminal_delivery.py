@@ -600,6 +600,23 @@ class TerminalGuidanceDelivery:
                     metadata={"boundary": TERMINAL_GUIDANCE_DELIVERY_BOUNDARY},
                 )
 
+        if (
+            measurement_age_s is None
+            or measurement_age_s > self.config.image_kf_max_predict_s + 1.0e-9
+        ):
+            return TerminalDeliveryResult(
+                state=TerminalDeliveryState.EXPIRED,
+                reason="terminal_visual_prediction_window_expired",
+                assigned_global_track_id=assigned_global_track_id,
+                using_extrapolation=False,
+                loss_frame_count=self._loss_frame_count,
+                measurement_age_s=measurement_age_s,
+                command_sample_count=len(self._command_samples),
+                filter_audit_state=TerminalFilterAuditState.EXPIRED,
+                filter_audit_reason="image_kf_predict_timeout",
+                metadata={"boundary": TERMINAL_GUIDANCE_DELIVERY_BOUNDARY},
+            )
+
         if self._blind_started_at_s is None:
             self._blind_started_at_s = timestamp_s
             self._blind_base_command = self._average_recent_command(timestamp_s)

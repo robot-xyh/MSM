@@ -19,6 +19,10 @@ from d7_proportional_guidance import (
     TerminalGuidanceDelivery,
     TerminalLifecycleContext,
     VisionGuidanceObservation,
+    evaluate_trend_coast_promotion,
+    summarize_locked_dropout_matrix,
+    summarize_png_ttc_calibration,
+    summarize_runtime_bus_outputs,
 )
 
 
@@ -188,17 +192,92 @@ def test_one_to_five_dropout_frames_remain_bounded() -> None:
         TerminalDeliveryState.IMAGE_KF_PREDICT,
         TerminalDeliveryState.IMAGE_KF_PREDICT,
     ]
-    assert all(result.state == TerminalDeliveryState.BLIND_PUSH for result in results[2:])
-    expired = delivery.evaluate(
-        assigned_global_track_id="G1",
-        timestamp_s=0.8,
-        observation=None,
-        lifecycle_context=_lifecycle(),
-        **_kinematics(),
+    assert all(result.state == TerminalDeliveryState.EXPIRED for result in results[2:])
+    assert all(result.command is None for result in results[2:])
+    assert all(
+        result.filter_audit_state == TerminalFilterAuditState.EXPIRED
+        for result in results[2:]
     )
-    assert expired.state == TerminalDeliveryState.EXPIRED
-    assert expired.command is None
-    assert expired.filter_audit_state == TerminalFilterAuditState.EXPIRED
+
+    records = [
+        {
+            "seed": 7,
+            "terminal_loss_frame_count": index,
+            "terminal_delivery_state": result.state.value,
+            "terminal_prediction_age_s": result.measurement_age_s,
+            "terminal_using_extrapolation": result.using_extrapolation,
+            "command_available": result.command_available,
+            "identity_plan_consistent": True,
+            "global_track_id_rebound": False,
+        }
+        for index, result in enumerate(results, start=1)
+    ]
+    summary = summarize_locked_dropout_matrix(records)
+    assert summary["matrix_complete"] is True
+    assert summary["all_rows_compliant"] is True
+    assert summary["global_track_id_rebound_evidence_available"] is True
+    assert summary["global_track_id_rebound_count"] == 0
+    assert summary["matrix"]["1"]["state_counts"] == {"image_kf_predict": 1}
+    assert summary["matrix"]["3"]["state_counts"] == {"expired": 1}
+
+
+def test_blind_push_remains_bounded_inside_prediction_window_at_higher_rate() -> None:
+    delivery = TerminalGuidanceDelivery(
+        _png_config(),
+        TerminalDeliveryConfig(control_dt_s=0.05, consecutive_loss_frames=3),
+    )
+    for index in range(3):
+        delivery.evaluate(
+            assigned_global_track_id="G1",
+            timestamp_s=index * 0.05,
+            observation=_observation(index * 0.05, center_x=320.0 + index),
+            lifecycle_context=_lifecycle(),
+            **_kinematics(),
+        )
+
+    results = [
+        delivery.evaluate(
+            assigned_global_track_id="G1",
+            timestamp_s=0.15 + index * 0.05,
+            observation=None,
+            lifecycle_context=_lifecycle(),
+            **_kinematics(),
+        )
+        for index in range(4)
+    ]
+
+    assert [result.state for result in results[:2]] == [
+        TerminalDeliveryState.IMAGE_KF_PREDICT,
+        TerminalDeliveryState.IMAGE_KF_PREDICT,
+    ]
+    assert results[2].state == TerminalDeliveryState.BLIND_PUSH
+    assert results[2].measurement_age_s == pytest.approx(0.15)
+    assert results[3].measurement_age_s == pytest.approx(0.20)
+    assert all(
+        result.measurement_age_s <= 0.25 for result in results if result.command is not None
+    )
+
+
+def test_runtime_summary_separates_hard_prediction_expiry() -> None:
+    bus = D7RuntimeBus(_png_config())
+    outputs = [bus.evaluate_pair(_pair_input(index * 0.1)) for index in range(3)]
+    reacquire = _terminal_association("BT-1")
+    reacquire["decision_state"] = "reacquire"
+    outputs.extend(
+        bus.evaluate_pair(
+            _pair_input(
+                0.3 + index * 0.1,
+                observation=False,
+                terminal_association=reacquire,
+            )
+        )
+        for index in range(3)
+    )
+
+    summary = summarize_runtime_bus_outputs(outputs)
+
+    assert summary["terminal_prediction_window_expired_count"] == 1
+    assert summary["terminal_visual_coast_expired_count"] == 0
 
 
 @pytest.mark.parametrize(
@@ -254,6 +333,74 @@ def test_delivery_trend_coast_is_optional_horizontal_and_capped() -> None:
     assert trend[2] == pytest.approx(0.0)
     assert np.linalg.norm(trend[:2]) <= 0.75 + 1.0e-9
     assert np.linalg.norm(np.asarray(enabled_coast.command.velocity_ned)[:2]) <= 8.0 + 1.0e-9
+
+
+def test_png_ttc_multiseed_summary_covers_required_rejections() -> None:
+    records = []
+    for seed in (1, 2, 3):
+        for reason in (
+            "bbox_area_jump",
+            "bbox_left_clipped",
+            "area_not_expanding",
+            "ttc_out_of_range",
+        ):
+            records.append(
+                {
+                    "seed": seed,
+                    "guidance_law": "png_ttc",
+                    "ttc_valid": False,
+                    "ttc_reject_reason": reason,
+                }
+            )
+        records.append(
+            {
+                "seed": seed,
+                "guidance_law": "png_ttc",
+                "ttc_valid": True,
+                "ttc_s": 1.5 + 0.1 * seed,
+            }
+        )
+
+    summary = summarize_png_ttc_calibration(records)
+
+    assert summary["seed_count"] == 3
+    assert summary["ttc_valid_count"] == 3
+    assert summary["required_reject_coverage_complete"] is True
+    assert summary["ttc_reject_class_counts"]["bbox_clipping"] == 3
+    assert summary["default_png_vm_changed"] is False
+
+
+def test_trend_coast_promotion_requires_all_non_regression_criteria() -> None:
+    baseline = [
+        {
+            "seed": seed,
+            "command_discontinuity": seed == 3,
+            "physical_success": seed != 3,
+        }
+        for seed in (1, 2, 3)
+    ]
+    candidate = [
+        {
+            "seed": seed,
+            "terminal_trend_coast_applied": True,
+            "wrong_binding_count": 0,
+            "command_discontinuity": False,
+            "physical_success": True,
+        }
+        for seed in (1, 2, 3)
+    ]
+
+    promoted = evaluate_trend_coast_promotion(baseline, candidate)
+    assert promoted["trend_coast_default_enabled"] is False
+    assert promoted["promotion_recommended"] is True
+    assert all(promoted["criteria"].values())
+
+    rejected = evaluate_trend_coast_promotion(
+        baseline,
+        [dict(row, wrong_binding_count=1) for row in candidate],
+    )
+    assert rejected["criteria"]["wrong_binding_zero"] is False
+    assert rejected["promotion_recommended"] is False
 
 
 def test_optional_6d_los_replay_prefers_direct_camera_to_ned_rotation() -> None:

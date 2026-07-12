@@ -70,7 +70,7 @@ def test_p1_static_nm_fixtures_run_without_equal_size_assumption(
     assert plan.target_count == target_count
     assert len(plan.assignments) == assigned_count
     assert plan.metadata["assignment_matrix_shape"] == [target_count, resource_count]
-    assert fixture.calibration_metadata()["fixture_profile_version"] == "1.0.0"
+    assert fixture.calibration_metadata()["fixture_profile_version"] == "1.1.0"
     assert fixture.calibration_metadata()["resource_target_order"] == (
         "resources_x_targets"
     )
@@ -344,5 +344,10 @@ def test_fixture_registry_contains_only_versioned_p1_scenarios() -> None:
         "5v3",
         "new_target",
         "resource_failure",
+        "threat_demand_change",
+        "d5_feedback",
+        "hard_window",
     }
-    assert {fixture.profile_version for fixture in fixtures} == {"1.0.0"}
+    assert {fixture.profile_version for fixture in fixtures} == {"1.1.0"}
+    assert all(len(fixture.steps) == 2 for fixture in fixtures)
+    assert all(fixture.steps[1].event_type != "baseline" for fixture in fixtures)

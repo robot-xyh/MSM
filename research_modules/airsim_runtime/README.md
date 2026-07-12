@@ -95,8 +95,8 @@ python3 research_modules/airsim_runtime/run_blocks_sequence.py \
 The online fixture assigns the high-threat prior by stable center-owned track
 order and never consults AirSim truth IDs. D3 admits complete demand slots only;
 D5/D7 keep one state per resource-target pair. If the center is unavailable,
-`k>1` currently fails closed with `coalition_fallback_unsupported`; atomic
-secondary/distributed coalition formation remains a separate P1 capability.
+`k>1` execution requires the current D4 atomic coalition commit, ACK, epoch,
+lease, and digest contract. Missing or conflicting evidence remains fail-closed.
 
 Examples:
 
@@ -263,6 +263,33 @@ to scan the persisted sequence/episode artifacts and write
 `d6_airsim_calibration/airsim_calibration_summary.json`, and
 `d6_airsim_calibration/airsim_calibration_report.md` for the standard
 multi-seed reporting path.
+
+Run the frozen P1 terminal-closure suite for comparable M5N2, real
+`png_ttc`, and locked 1-5 frame detection dropout evidence:
+
+```bash
+python3 research_modules/airsim_runtime/run_blocks_sequence.py \
+  --p1-terminal-closure-sweep \
+  --sequence-id p1_terminal_closure_001 \
+  --batch-seeds 1,2,3,4,5,6,7,8,9,10 \
+  --p1-dropout-frames 1,2,3,4,5 \
+  --control-dt 0.1 \
+  --no-lidar \
+  --blocks-arg=-windowed \
+  --blocks-arg=-ResX=640 \
+  --blocks-arg=-ResY=480 \
+  --blocks-arg=-NoVSync \
+  --blocks-arg=-NoHMD \
+  --blocks-arg=-NoSound
+```
+
+The M5N2 baseline/candidate cases use the same `z=-30 m`, 35-second
+high-clearance geometry. Real `png_ttc` and the dropout matrix use tuned 2v2
+camera settings so visual handoff is observable; dropout starts at 0.8 seconds,
+after the stable-lock warm-up and before the usual 5 m intercept. The two
+settings families use separate Blocks launches and reset-separated cases. The suite writes
+`p1_terminal_closure_summary.json`, `p1_terminal_closure_rows.csv`, and a
+Chinese Markdown execution report without saving PNG screenshots.
 
 Run the first controlled 2v2 intercept. Main still launches Blocks once and
 resets between episodes; the first five episodes stay read-only/replay, and the

@@ -509,3 +509,71 @@ Soup 在当前环境均不可导入，因此只记录 unavailable 状态和原�
 P2 当前关闭的是“无审计输出的可用性探测”缺口；仍开放的是安装于隔离环境后的真实可执行
 adapter 对照，以及 UKF/IMM/OOSM/JPDA/MHT 等收益评估。默认 requirements、在线 D1 和
 NumPy EKF/fixed-lag 路径均未改变。全量回归为 `62 passed`。
+
+## 18. 2026-07-12 P0/P1 文档状态同步
+
+本节依据当前 `HEAD=33e6fa0` 的 D1 源码与测试、
+`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md` 和
+`research_modules/airsim_runtime/outputs/PNG_DELIVERY_ENHANCEMENT_AIRSIM_VALIDATION_REPORT_20260712.md`
+同步当前状态。`33e6fa0` 未修改 D1 源码、测试或既有能力；本轮 PNG delivery 实现与实测属于
+D5/D6/D7 和 main/runtime。D1 在该轮没有行为变化，P0/P1 保持原状态，不因 2v2 `20/20`、
+锁定后两帧 dropout 或 M5N2 `0/9` 新增或关闭融合能力。2026-07-12 重新执行 D1 指定测试，
+结果为 `62 passed in 11.60s`。
+
+### 18.1 P0 当前状态
+
+| P0 项 | 当前状态 | 2026-07-12 证据与下一验收 |
+| --- | --- | --- |
+| 双时间戳、NED 与 covariance 合同 | 已实现，保持回归 | `SensorObservation`、`GlobalTrack`、governed replay 和现有接口测试继续覆盖；下一验收仍要求观测/航迹双时间戳、NED 六状态和有限、对称、半正定 covariance 不退化 |
+| fixed-lag/OOSM、source lineage 去重与 N-target 输入 | 已实现，保持回归 | 当前 62 项回归通过；下一验收要求乱序补偿、relay 重发去重和按输入数组长度处理继续通过，且 online path 不使用 truth/actor/object ID |
+| FDIR-light、covariance 上下界和 timestamp uncertainty | 已实现，保持回归 | `SensorHealthSummary`、limit reason 和 timing uncertainty 字段无变化；下一验收要求正常预期延迟不被误判为故障，故障注入仍输出可解释 reason/recovery evidence |
+
+当前没有 D1 运行级 P0 blocker。PNG delivery 报告没有修改或重新验收 D1 滤波精度，因此其
+物理成功/失败数字只作为下游系统证据，不作为 D1 P0 状态变化依据。
+
+### 18.2 P1 当前状态与下一验收
+
+| P1 项 | 当前状态 | 开放缺口 | 下一验收条件 |
+| --- | --- | --- | --- |
+| governed replay/schema/provenance 与 online truth 隔离 | 已实现并已被 main episode bus 采用；本轮无行为变化 | 需要更长真实 replay 持续验证，而不是重复实现 serializer | 冻结 scenario/config version、digest、seed、coverage/lineage；多 seed online records 保持 truth-free，offline label 只用于评分 |
+| 区域/窗口质量、expected-latency/OOSM、sensor health 与 recon cue | 接口和构造回归已实现；真实阈值部分实现 | 缺 sensor-specific 正常/故障对照、长窗口和 D6 长期趋势校准 | 在多 seed radar/acoustic/EO 延迟及 fault injection replay 中量化误报/漏报，稳定发布 health/region/window/covariance reason/timing uncertainty |
+| 协同 bearing WLS 与保守 CI | D1-owned typed DTO 和数值 helper 已实现；runtime 全链路部分实现 | 缺 D2-confirmed canonical-ID adapter、真实多节点 replay、部分共享 lineage 和节点退出验证 | 关联不唯一时拒绝融合；良好三视角不劣于最佳双视角；退化几何增大 covariance 或拒绝；3 -> 2 -> 1 节点退出时航迹连续且质量显式下降；relay 重发不改变 posterior |
+| 真实 AirSim/ComputerVision 长 replay 与统计一致性 | 未闭合 | 缺 crossing、机动、遮挡、漏检、camera/bbox、节点退出、sensor delay/fault 的长期多 seed fixture | 用版本化 governed replay 输出并审计 RMSE/NIS/NEES、continuity、expected latency/OOSM 和 handover/region window；不得用短时 SimpleFlight 命中率替代 D1 精度验收 |
+| CV/CA/CT 模型集与场景自适应 covariance | 未实现/待标定 | 当前仍为 NumPy CV/EKF 主线；缺机动模型对照及杂波、SNR、来源差异、遮挡和延迟 scale rule | 同一真实/冻结 replay 下给出 CV-only 对照、RMSE/NIS/连续性和运行成本，并稳定输出可解释 `covariance_scale_reason`；未达到收益门槛时不替换默认路径 |
+| D6 长期批量 schema 与趋势 | 部分实现 | 当前字段可被消费，但缺长时跨 seed 统计一致性和冻结阈值 | D6 对同一 governed replay 可稳定聚合 latency、health、region/window、RMSE/NIS/NEES 与 evidence path，字段缺失必须显式 unavailable |
+
+P2/P3 内容保持原有规划；本轮不删除、不移动，也不新增完成声明。
+
+## 19. 2026-07-12 P1 长 Replay 构造与汇总实施结果
+
+本轮由 D1 owner 在既有 governed replay、Blocks/CV reader、`FusionAdapter`、latency/OOSM、
+sensor health 和 region window 接口上增量实现，没有引入 Stone Soup/FilterPy，也没有修改
+main/runtime 或其他模块：
+
+- 新增 `LongReplayConfig`、`LongReplayScenario`、`LongReplaySummary`、
+  `build_long_replay_scenario()` 和 `summarize_long_replay()` 公共入口。默认场景为 60 s、3
+  目标 crossing，输入目标数来自配置，不写死 2v2/5v5。
+- 场景同时覆盖距离相关雷达 covariance、crossing clutter、声学粗方位、EO 像素投影、完全/
+  部分遮挡、传感器延迟、显式 OOSM 和 relay 重发；所有观测保留 measurement/arrival 双时间
+  戳、covariance、NED 工作空间、coverage cell 和 source lineage。
+- 冻结 `d1.long_replay_scenario.v1`、`d1.long_replay_config.v1`、
+  `d1.long_replay_summary.v1`、`d1.long_replay_thresholds.v1` 和既有
+  `d1.sensor_observation.v1`。provenance 继续携带 scenario/config digest、seed 和 run ID。
+- online observation ID 与 lineage 只使用传感器本地不透明 payload 序号，不携带持久目标
+  slot；六状态真值和 observation-to-truth 标签只进入独立
+  `d1.long_replay_offline_truth.v1` sidecar，不能进入在线 `GlobalTrack`。
+- 汇总复用 raw/fusion latency audit、sensor health 和固定区域窗口，导出 modality/event、track
+  level、source support、truth leak 和 metric availability。没有 D2 canonical-ID 离线映射时，
+  RMSE/NEES 明确输出 unavailable reason，不填 0、不使用 truth 辅助在线关联。
+- 新增官方 `scripts/run_long_replay.py` 薄 CLI，支持 `--seed`、`--duration`、
+  `--target-count` 和 `--output`；输出严格为 `LongReplaySummary.to_dict()` JSON，CLI 不复制
+  场景、融合或汇总算法。
+
+默认 smoke 为 843 条观测、21 次显式雷达 OOSM、6 次 relay 重复、29 个区域窗口、0 个在线
+truth leak，验证主机耗时约 8.8 s。CLI 子进程测试覆盖参数透传、输出目录创建、JSON schema
+和 truth 隔离；本轮 D1 全量为 `66 passed`。
+
+因此本轮关闭 D1-owned 的“可由 main 调用的合成长 crossing/遮挡/延迟/OOSM replay 与汇总”
+缺口。仍开放的 P1 是：main 采集真实 Blocks/CV 多 seed 长 replay；D2-confirmed canonical-ID
+映射后计算 RMSE/NEES；真实 sensor-specific latency/health/window、camera/bbox、节点退出和
+covariance 阈值标定；CV/CA/CT/IMM 及场景自适应 covariance 对照。P2 外部库安排不变。

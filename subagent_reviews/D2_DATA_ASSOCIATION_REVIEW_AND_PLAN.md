@@ -320,6 +320,7 @@ D2 不写死 2v2/5v5，但复杂度仍随 N 增长。GNN/Hungarian 约为 `O(max
 | offline truth JSONL | 已覆盖 round-trip、schema/字段和在线递归隔离 | episode/frame/timestamp/truth ID/position、在线 Detection/Track/log 无 truth |
 | N-target dense/crossing | 已覆盖 7-target 动态规模、漏检和虚警 | 数量来自输入 N，feature 维度和 truth 基数同步 |
 | 至少 10-seed calibration | 已覆盖 10 seeds 连续运行两次 | 确定性签名、每 seed/聚合 IDSW、continuity、NIS/NEES availability、profile/version、runtime |
+| long governed replay | 已覆盖 3-target/4-target、40-frame 最小长回放和至少 10 seeds | dense crossing、遮挡、漏检/虚警、arrival inversion、false-track、RMSE、NIS/NEES availability、truth leakage=0、动态 N/M |
 | unavailable 聚合 | 已覆盖缺 truth/NEES seed | `available=false`、均值为 `None`，不转换为零 |
 | P2 dependency unavailable | 已覆盖默认环境缺 FilterPy/Stone Soup | `dependency_available=false`、明确 reason、`executed=false` |
 | P2 adapter available smoke | 已覆盖模拟 available，并在隔离 venv 实测 | conversion/update latency；IDSW/continuity 仍 unavailable；JPDA/MHT claims=false |
@@ -383,3 +384,32 @@ PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_da
 成熟默认路线是公共时刻预测、track-to-track 马氏门控、低歧义 GNN/Hungarian、未知互相关 CI 请求和中心规范身份注册。JPDA/MHT 用于跨节点对应歧义，GCI/AA/labeled-RFS 用于离线研究对照；它们不能替代来源谱系和重复消息治理。
 
 当前模块已实现 `SourceTrackSummary`、公共时刻传播、6D covariance-aware cost/gate、按 source Hungarian、lineage/payload/stale 防重、多源 canonical binding/history、exact/unknown/duplicate 决策，以及 online/offline 隔离指标。unknown correlation 只生成 CI request，D2 不计算数值 CI；尚缺 D1 融合 posterior 回写、高歧义多帧 JPDA/MHT、owner failover、fusion NEES/ANEES 和通信成本标定。现有 detection-to-track GNN/Hungarian P0 主线未改动。Stone Soup 仍只作为隔离 benchmark。
+
+## 14. P1 长 Governed Replay 校准评审
+
+新增长 replay 路径把原有 12-frame fixture 扩展为版本化、多 seed、动态 N/M 的
+持续压力入口。轨迹采用周期机动以重复形成交叉窗口，遮挡和漏检造成 measurement
+count 低于目标数，近场虚警造成 measurement count 高于目标数；因此可以同时检查
+ID continuity、false-track birth/deletion 和门限风险，而不是只验证固定方阵。
+
+时间治理采用两层语义：`measurement_timestamp` 决定 D2 Tracker 的处理顺序，
+`arrival_timestamp` 用于统计传输延迟和 arrival-order inversion。选定帧增加延迟后
+会晚于下一量测到达，但进入 D2 前仍由 governed replay 按量测时间排序。报告中的
+`handling_policy=measurement_time_ordered_after_governance` 明确说明这一点；D2 不将
+常速度 Tracker 的非负 `dt` 处理冒充 OOSM rewind/replay。
+
+在线路径继续递归剥离 actor/truth 字段并匿名化 detection ID，规范 ID 只由中心
+Tracker 生成。离线 evaluator 在运行结束后计算 IDSW、identity/coverage continuity、
+false-track、RMSE 和 NEES；NIS 来自在线 innovation。缺 truth 时必须保持 unavailable，
+不能写成零。默认 GNN/Hungarian 未变，完整 JPDA/MHT 仍只属于 P2 optional 对照。
+
+该入口可直接用于后续 main/D6 导入真实 governed replay 时的字段对齐。当前验收只
+关闭 D2-owned runner/schema/test 缺口；真实 AirSim 数据冻结、阈值选择、跨节点
+owner failover 和 D1 数值融合仍是开放项。
+
+默认 5 目标、120 帧、10 seeds 的 CLI smoke 结果为：平均 IDSW `139.6`、identity
+continuity `0.691`、coverage continuity `0.924`、false-track `5.3`、RMSE
+`0.306 m`，NIS/NEES 均为 10/10 seeds available，arrival inversion 共 70 次，
+online truth leakage 为 0；每 seed 平均运行约 `0.586 s`。当前 profile 的 governance
+判定为不通过，说明长机动/重复交叉条件下 CV+GNN 身份连续性仍需真实数据标定，
+不能因为 runner 已实现而宣称关联问题已解决。

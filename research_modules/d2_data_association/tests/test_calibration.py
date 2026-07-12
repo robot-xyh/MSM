@@ -4,11 +4,14 @@ import json
 
 from d2_data_association import (
     OFFLINE_TRUTH_SCHEMA_VERSION,
+    LongReplayCalibrationProfile,
+    build_long_dense_crossing_replay_fixture,
     build_dense_crossing_replay_fixture,
     extract_offline_truth_labels,
     load_offline_truth_labels_jsonl,
     run_airsim_replay_association,
     run_dense_crossing_calibration,
+    run_long_replay_calibration,
     strip_offline_truth_from_frames,
     summarize_dense_crossing_calibration,
     write_offline_truth_labels_jsonl,
@@ -161,3 +164,55 @@ def test_calibration_summary_does_not_convert_unavailable_to_zero() -> None:
     assert summary["track_continuity"]["mean"] is None
     assert summary["nis_availability"]["available_seed_count"] == 1
     assert summary["nees_availability"]["available_seed_count"] == 0
+
+
+def test_long_governed_fixture_audits_oosm_without_reordering_measurements() -> None:
+    frames = build_long_dense_crossing_replay_fixture(
+        target_count=4,
+        seed=17,
+        steps=40,
+    )
+
+    measurement_times = [frame["measurement_timestamp"] for frame in frames]
+    arrival_times = [frame["arrival_timestamp"] for frame in frames]
+    assert measurement_times == sorted(measurement_times)
+    assert any(
+        current > following
+        for current, following in zip(arrival_times, arrival_times[1:])
+    )
+    assert all(frame["replay_metadata"]["target_count"] == 4 for frame in frames)
+    assert any(len(frame["detections"]) < 4 for frame in frames)
+    assert any(len(frame["detections"]) > 4 for frame in frames)
+
+
+def test_long_replay_calibration_reports_dynamic_n_m_and_identity_governance() -> None:
+    report = run_long_replay_calibration(
+        seeds=tuple(range(10)),
+        target_count=3,
+        profile=LongReplayCalibrationProfile(steps=40),
+    )
+
+    assert report.configuration["scenario_version"] == "d2-governed-long-replay/v1"
+    assert report.schema_version == "d2-long-replay-calibration/v1"
+    assert report.configuration["global_track_id_owner"] == "d2_center"
+    assert report.configuration["online_associator"] == "GNNHungarianAssociator"
+    assert report.configuration["optional_associators_in_mainline"] == []
+    assert report.aggregate["seed_count"] == 10
+    assert report.aggregate["online_truth_leakage_count"] == 0
+    assert report.aggregate["oosm_exposure"]["arrival_order_inversion_count"] > 0
+    assert report.aggregate["oosm_exposure"]["all_measurement_order_monotonic"] is True
+    for row in report.per_seed:
+        assert row["target_count"] == 3
+        assert row["measurement_count_min"] < row["target_count"]
+        assert row["measurement_count_max"] > row["target_count"]
+        assert row["global_track_id_owner"] == "d2_center"
+        assert row["online_truth_leakage_count"] == 0
+        assert row["truth_metrics_available"] is True
+        assert row["continuity_available"] is True
+        assert isinstance(row["id_switch_count"], int)
+        assert isinstance(row["track_continuity"], float)
+        assert isinstance(row["false_track_count"], int)
+        assert isinstance(row["rmse"], float)
+        assert row["nis"]["available"] is True
+        assert row["nees"]["available"] is True
+        assert row["oosm_diagnostics"]["measurement_order_monotonic"] is True

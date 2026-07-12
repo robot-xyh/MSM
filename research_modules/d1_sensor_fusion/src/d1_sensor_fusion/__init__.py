@@ -15,6 +15,19 @@ from .cooperative import (
     localize_bearing_observation_group,
 )
 from .fusion import FusionAdapter
+from .long_replay import (
+    LONG_REPLAY_CONFIG_VERSION,
+    LONG_REPLAY_OFFLINE_TRUTH_SCHEMA_VERSION,
+    LONG_REPLAY_SCENARIO_ID,
+    LONG_REPLAY_SCENARIO_VERSION,
+    LONG_REPLAY_SUMMARY_SCHEMA_VERSION,
+    LONG_REPLAY_THRESHOLD_PROFILE_VERSION,
+    LongReplayConfig,
+    LongReplayScenario,
+    LongReplaySummary,
+    build_long_replay_scenario,
+    summarize_long_replay,
+)
 from .observations import RadarCovarianceConfig
 from .p2_benchmark import (
     OFFLINE_TRUTH_SCHEMA_VERSION,
@@ -79,8 +92,17 @@ __all__ = [
     "FusionQualityRegionSummary",
     "FusionQualityRegionWindowSummary",
     "GlobalTrack",
+    "LONG_REPLAY_CONFIG_VERSION",
+    "LONG_REPLAY_OFFLINE_TRUTH_SCHEMA_VERSION",
+    "LONG_REPLAY_SCENARIO_ID",
+    "LONG_REPLAY_SCENARIO_VERSION",
+    "LONG_REPLAY_SUMMARY_SCHEMA_VERSION",
+    "LONG_REPLAY_THRESHOLD_PROFILE_VERSION",
     "LatencyAuditSummary",
     "LosIntersectionAngle",
+    "LongReplayConfig",
+    "LongReplayScenario",
+    "LongReplaySummary",
     "ObserverLineage",
     "OFFLINE_TRUTH_SCHEMA_VERSION",
     "P2_BENCHMARK_SCHEMA_VERSION",
@@ -97,6 +119,7 @@ __all__ = [
     "TrackUncertaintySummary",
     "annotate_covariance_growth_rates",
     "build_governed_replay_manifest",
+    "build_long_replay_scenario",
     "covariance_intersection",
     "make_minimal_airsim_dry_run_fixture",
     "localize_bearing_observation_group",
@@ -115,6 +138,7 @@ __all__ = [
     "serialize_governed_replay",
     "serialize_offline_governed_replay",
     "summarize_region_quality_windows",
+    "summarize_long_replay",
     "summarize_sensor_observation_latency_audit",
     "write_sensor_observations_csv",
     "write_sensor_observations_jsonl",

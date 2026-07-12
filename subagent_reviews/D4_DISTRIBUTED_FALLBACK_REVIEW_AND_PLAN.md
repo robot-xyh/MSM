@@ -9,7 +9,9 @@
 
 当前结论以 `p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md` 为准：D4 所属 P1 合同层已闭合，ComputerVision 总体验收为 8/10。二级协调者 `Secondary_Recon_1` 以 ACK 3/3 进入 `executing` 并输出 `degrade_to_secondary`；完全分布式 `INT-02` peer 以 ACK 3/3 进入 `executing` 并输出 `degrade_to_distributed`；缺 ACK 场景以 2/3 ACK 进入 `aborted`，T001 三成员均 `hold_for_review`。这组正负例证明 commit 与 fail-closed，不证明物理拦截。
 
-SimpleFlight 15 s 只用于诊断，30 个 active pair 物理命中为 0，系统物理拦截仍未闭合。D4 后续 P1 工作是旧 epoch、过期 lease、成员不可执行、网络分区、digest conflict、成员退出/重构和误降级成对标定的完整扰动矩阵与多 seed 统计。P2 只允许隔离式 benchmark，不替换轻量 CBBA 与 ACK/lease/epoch 合同。
+2026-07-12 P1 增量：新增 `d4_p1_failover_disturbance_replay_v1` 版本化扰动矩阵和 CLI。九个确定性场景 9/9 满足预期：中心正常保持 `continue_center`；二级节点只有 required-member ACK 完整后才能 `executing`；missing ACK、旧 epoch、过期 lease 和 digest conflict 均 fail-closed；成员丢失和网络分区先进入 `reconfiguring`，随后必须使用更高 epoch/plan/coalition version 并全员重新 ACK；中心恢复只进入 dual-track review，不立即夺权。当前 D4 全量测试 155 项通过，并包含四成员规模无关回归。该结论只关闭模块合同 replay，不关闭真实 AirSim 多 seed 的分区时序、误降级、恢复时间和物理任务连续性。
+
+SimpleFlight 15 s 只用于诊断，30 个 active pair 物理命中为 0，系统物理拦截仍未闭合。D4 后续 P1 工作是把已冻结的扰动合同映射到真实 AirSim，补齐 heartbeat/link/cue/gimbal/source、secondary-interceptor/peer split、误降级、恢复时间与物理连续性的成对多 seed 统计。P2 只允许隔离式 benchmark，不替换轻量 CBBA 与 ACK/lease/epoch 合同。
 
 2026-07-11 P2 隔离 replay 已补齐：原生 6/6 场景满足预期安全结果，中心 -> 二级 -> 完全分布式与成员丢失/补位均 7 轮完成、最优绝对差距 0；其余故障在 1-3 轮 fail closed。MIT/CA-CBBA 仅做可选 path/source capability probe，默认输出 unavailable，不 import/执行外部工程，不新增依赖，也不进入在线 D4。该 deterministic replay 不关闭 AirSim 多 seed 扰动矩阵。
 

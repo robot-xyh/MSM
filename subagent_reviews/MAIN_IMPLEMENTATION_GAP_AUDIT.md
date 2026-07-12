@@ -4,7 +4,25 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
-**P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` v2.1 已确认：当前未发现新的运行级 P0 阻塞断链。2026-07-11 本轮已经关闭 P1 合同与实现缺口，包括在线 truth 隔离、受治理 replay、D3 增量规划、D4 二级/完全分布式原子联盟、D5 匿名 detect 几何关联、D7 有界视觉外推和 D6 分层指标。SimpleFlight 已采用 NED 三维距离 `<=5 m` 的成功判据；2026-07-12 的 2v2 candidate 已完成 10-seed、20/20 pair 验收，但同几何/同时间窗的 M5N2 paired candidate 尚未完成，因此不得把 2v2 结果扩展解释为协同联盟已达标。P2 只在独立环境中评估外部库和高阶算法，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
+**P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。当前未发现新的运行级 P0 阻塞断链。2026-07-12 已完成同一 `z=-30 m`、35 s、10-seed 的 M5N2 baseline/candidate paired、锁定后 1-5 帧 dropout、真实 `png_ttc` 10-seed、D1-D5 版本化模块证据和 D6 统一报告。该轮关闭的是“缺少可比实验和写盘接口”，没有关闭协同拦截性能缺口：M5N2 candidate 相对 baseline 退化且 coalition completion 仍为 0；D2 dense crossing 治理阈值未通过。soft prediction/trend coast 因而继续默认关闭，P2 仍只在隔离环境评估，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
+
+## 2026-07-12 P1 Terminal Closure 10-Seed 结果
+
+main 使用 `p1-terminal-closure-v1` 运行 80 个 reset-separated episode，全部 connected，默认不保存 PNG。执行索引为 `research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712/p1_terminal_closure_summary.json`，D6 中文报告和曲线位于同目录 `d6_unified_acceptance_full/`。
+
+| 范围 | 实测结果 | 当前 GAP 判定 |
+| --- | --- | --- |
+| M5N2 baseline | active-primary `7/30`，target `7/20`，coalition `0/10` | 物理协同未闭合 |
+| M5N2 candidate | active-primary `4/30`，target `4/20`，coalition `0/10` | 相对 baseline 退化，soft/trend 不得晋级默认 |
+| 1-5 帧 dropout | 物理 100/100；1 帧预测 9/10，2 帧 10/10；3-5 帧各 10/10 命中 0.25 s 硬过期 | 矩阵完整但为 49/50；seed 2 单帧注入/锁定时序仍需复核 |
+| 2v2 `png_ttc` | 10 seeds、pair/target `20/20`，115 个 control-allowed sample；not-expanding 13、TTC out-of-range 22 | 真实多 seed 主链闭合；area-jump/clipping 受控拒绝覆盖仍开放 |
+| Truth/ID 安全 | 80 episode online truth use=0；D5 deterministic 10/10，global ID rewrite=0 | P0/P1 安全合同保持 |
+| D2 long replay | 10 seeds，IDSW 均值 138.1，continuity 0.694，false track 均值 5.4，RMSE 0.307 m | 校准链路闭合，但默认 GNN 风险阈值未通过 |
+| D3 matrix | 8/8 full/incremental 等价；仅 1/8 使用局部增量，7/8 安全回退 | 正确性闭合，增量收益仍需真实事件校准 |
+| D4 matrix | 9/9 通过，误降级 0，五个负例 fail-closed | 确定性扰动矩阵闭合；真实通信时序仍开放 |
+| D6 | D1-D5/main 证据 available；四层和 pair/target/coalition 分离 | 统一离线验收入口闭合 |
+
+当前最急 P1 已从“缺少 paired 数据”转为：M5N2 第二 primary/联盟物理闭合、D2 dense crossing ID 连续性治理、真实二级通信时序、真实相机同步/YOLO-MOT 标定，以及 `png_ttc` 剩余两类受控拒绝覆盖。
 
 ## 2026-07-12 PNG delivery 增强与实测状态
 
@@ -24,9 +42,9 @@
 
 统一回归：D4 148、D5 161、D6 84、D7 137、AirSim runtime 98、质点集成 7、dry-run 4、跨模块合同 3，全部通过。当前没有新增 P0；仍需用同一高净空 M5N2 几何和相同运行窗口做 paired baseline/candidate，才能决定 soft prediction 或 trend coast 是否进入默认 AirSim profile。
 
-## 2026-07-11 P1 收敛实施后权威状态
+## 2026-07-11 P1 收敛实施后历史检查点
 
-完整中文报告和结构化证据位于 `research_modules/airsim_runtime/outputs/p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md`。本节是当前状态；后文“实施前基线”只保留历史对照。
+完整中文报告和结构化证据位于 `research_modules/airsim_runtime/outputs/p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md`。本节保留 2026-07-11 当日状态；当前权威状态以前文 2026-07-12 小节和第 7 节为准。
 
 | 范围 | 实施与验证结果 | 当前判定 |
 | --- | --- | --- |
@@ -35,7 +53,7 @@
 | D4 联盟接管 | 二级节点和完全分布式三成员联盟均达到 `executing`、ACK 3/3；缺 ACK 为 2/3、状态 `aborted` | P1 原子 commit/ACK/epoch/lease 正负例闭合 |
 | D5/D7 协同末端合同 | CV 10 seeds 中 8/10 达到 T001 双 primary 视觉共识并授权；10/10 IDSW=0、错误重复锁=0、global ID 改写=0 | 达到本轮 8/10 合同验收；两个失败 seed 保留为鲁棒性回归 |
 | D6 结果语义 | 已分离 `contract_allowed`、`control_allowed`、`mode_switched`、`physical_intercept`，ComputerVision 的物理命中为 unavailable 而非 0 | P1 指标口径闭合 |
-| SimpleFlight 物理拦截 | runtime 默认成功半径已由 0.75 m 改为 NED 三维 5.0 m；pair/target/coalition 分层统计已接入；首次无锁使用 acquisition grace，已锁定后按 `image_kf_predict -> blind_push -> expired/reacquired` 处理 | P1 代码与接口闭合；真实 2v2/M5N2 多 seed 成功率待重跑 |
+| SimpleFlight 物理拦截 | runtime 默认成功半径已由 0.75 m 改为 NED 三维 5.0 m；pair/target/coalition 分层统计已接入；首次无锁使用 acquisition grace，已锁定后按 `image_kf_predict -> blind_push -> expired/reacquired` 处理 | 2026-07-11 时 P1 代码与接口闭合、实测待重跑；已被 2026-07-12 的 2v2 20/20 与 M5N2 paired 开放项更新 |
 | D5 在线视觉链 | 默认继续使用 `simGetDetections` bbox；controlled intercept 已取消 `object_id == target_id` 选框和模拟锁定，改为消费 episode bus 的匿名 local track 与几何 `TerminalAssociation` | P1 truth 隔离和接线闭合；YOLO 数据集标定后置 |
 | P2 可选对照 | D1 FilterPy/Stone Soup、D2 GNN/JPDA/MHT、D3 OR-Tools capacity、D4 coalition replay、D5 OpenCV PnP、D6 py-motmetrics、D7 3D/APN/FRPN 均按 available/unavailable 口径隔离运行 | 仅 benchmark；不进入默认 requirements 和在线控制路径 |
 
@@ -186,7 +204,7 @@ D1 NumPy EKF/FusionAdapter
 
 **2026-07-08 子智能体复核状态**：D1-D7 已分别重审并更新各自 PLAN/GAP 文件，所有子 GAP 均明确拆分为“已实现、部分实现、未实现、未实现原因、缺少条件、下一步优先级”。本轮确认：D1 的 replay schema v1、legacy JSONL、最小 CSV reader/replay、latency/OOSM audit 和区域质量摘要已实现；D2 的 replay helper、5v5 dense/crossing fixture、风险阈值敏感性和显式 ID 指标已实现；D3 的 D5 feedback writeback、secondary takeover DTO/helper、D7 binding、owner/version/source metadata 和 D6 export 已实现；D4 的主动降级硬/软风险分层、二级节点 lifecycle、secondary takeover metadata、D5 evidence 到 CBBA 和 cost gap helper 已实现；D5 的几何日志、handoff advisory、一致性窗口、truth ID 在线隔离、YOLO/ByteTrack 离线 schema adapter、可运行 YOLOv8 + ByteTrack/BoT-SORT/IoU fallback adapter 已实现；D6 的 execution/contract 双口径、实际规模分组、主动降级精度和 D7 replay 指标已实现；D7 的 runtime bus、comparison/replay helper、N-pair 状态、D4 gate blocking、owner/version gate 和 terminal contract gate 已实现。
 
-尚未落地的主要是**完整外部工程栈或高阶研究对照**：Stone Soup、FilterPy、ROS 2 `tf2/message_filters`、OpenDroneID Core、MAVLink signing 验证、DDS Security、AprilTag、BoT-SORT、Deep SORT、SCRIMMAGE、TrackEval/py-motmetrics、正式 OR-Tools Min Cost Flow、完整 MIT/CA-CBBA 适配、PX4/MAVLink 主线控制。
+尚未落地的主要是**完整外部工程栈、生产级适配或高阶主线替换**：Stone Soup、FilterPy、ROS 2 `tf2/message_filters`、OpenDroneID Core、MAVLink signing 验证、DDS Security、AprilTag、Deep SORT/ReID、SCRIMMAGE、TrackEval/HOTA、正式 OR-Tools Min Cost Flow、完整 MIT/CA-CBBA 适配、PX4/MAVLink 主线控制。BoT-SORT 和 py-motmetrics 已有 optional adapter/可用性路径，但真实多 seed、依赖和指标口径未完成时不算生产落地。
 
 未实现的共同原因主要有四类：
 
@@ -214,13 +232,13 @@ D1 NumPy EKF/FusionAdapter
 | MHT | 多扫描假设跟踪 | **有界 placeholder** | D2 | 完整 MHT 延迟/内存高，不适合资源节点 | N-scan pruning、分簇、中心算力假设 | P2 |
 | PN 比例导引 | 单目标/中段默认导引 | **已实现** | D7 | 当前是二维经典 PN 和 SimpleFlight gate | 三维状态、D5/D3 门控、真实飞控约束 | P0 |
 | Pure Pursuit | 对照 baseline | **已实现轻量 baseline**。D7 提供 `compute_pure_pursuit_command()` 和 `GuidanceConfig.guidance_law=\"pure_pursuit\"` | D7 | 未直接引入 PythonRobotics，有意保持轻依赖 | 多 seed PN/Pure Pursuit 对照报告、AirSim controlled 选择开关 | P1 已完成基线 |
-| 改进 PN / FRPN | 高机动增强导引 | 未实现 | D7 | 当前先稳定经典 PN 与接口 | 目标加速度估计、公式选型、机动场景 | P1 |
+| 改进 PN / FRPN | 高机动增强导引 | **已有隔离式研究近似 benchmark，未进入主线** | D7 | 当前先稳定经典 PN/PNG；现有 FRPN 不是生产级完整实现 | 目标加速度估计、严格公式、机动场景和同输入对照 | P2 benchmark |
 | 视觉 PN / PNG | 末端视觉导引 | **部分实现** | D7 | 已有 bbox gate、LOS-rate、TTC/VM，仍非严格纯视觉闭环 | D5 locked、距离/闭合速度估计、相机标定 | P0/P1 |
 | AirSim `simGetDetections` | CV 检测框输入 | **已使用** | D5, D7, main runtime | D5 不直接调 AirSim，只消费 fixture/replay；D7/main 调用 runtime | 稳定 detection schema、camera/object ID 映射 | P0 |
 | OpenCV `projectPoints` | 图像投影和门控 | **已实现单相机主线**。D5 优先调用 `cv2.projectPoints`，无 OpenCV 时有针孔 fallback，并传播像素协方差 | D5 | 未实现 calibration/solvePnP/跨相机联合优化 | 准确 K/R/t/dist、标定样本、PnP 2D-3D 对应 | P0 已可用，P2 标定增强 |
 | OpenCV calibration / `solvePnP` | 相机标定、外参估计 | 未实现 | D5 | 当前假设 AirSim/runtime 提供相机参数 | 2D-3D 匹配点、标定图、PnP RANSAC | P2 |
 | YOLOv8 + ByteTrack/BoT-SORT | 局部检测/MOT 默认候选 | **P1 已接入显式运行路径**。D5 `YoloMotAdapter` 可加载 `best.pt`，优先 ByteTrack/BoT-SORT，失败时 deterministic IoU fallback；main runtime 可用 `--detection-backend yolo` 将内存图像送入 D5，并转换为现有 detection contract | D5, main runtime, D7 | 默认仍不保存 PNG；MOT ID 只作为 `LocalVisualTrack.local_track_id`，不得替代 `global_track_id` | AirSim 多 seed 阈值、class id、GPU/CPU 预算、MOT IDSW 标签 | P1 接线已完成，P1/P2 标定 |
-| BoT-SORT | 运动相机 MOT | 未实现 | D5 | 需要相机运动补偿、ReID 和检测器链 | 图像序列、依赖、ReID 模型 | P2 |
+| BoT-SORT | 运动相机 MOT | **已接入 D5 可选 tracker backend**，失败时可回退 IoU；未完成真实 ReID/相机运动补偿验收 | D5 | 当前缺真实图像多 seed 和稳定 ReID/运动补偿证据 | 图像序列、依赖、ReID 模型、IDSW truth | P1/P2 标定 |
 | Deep SORT | 外观辅助 MOT | 未实现 | D5 | 当前小目标外观未建模 | embedding 模型、图像帧、IDSW 真值 | P2 |
 | OpenDroneID / Remote ID | 友方身份正向声明 | **模拟实现** | D5 | 只解析 `protocol=OpenDroneID` 风格 dict，未接 Core C | 报文解码器、白名单、签名/位置一致性 | P1 |
 | MAVLink signing | 消息来源认证 | 未在 D5 实现；D7 delivery 有 MAVLink 控制路径 | D5, D7 | 当前没有真实 MAVLink telemetry/signing key 管理 | MAVLink source、签名库、密钥策略 | P2 |
@@ -230,7 +248,7 @@ D1 NumPy EKF/FusionAdapter
 | 拍卖算法 | 分布式保底 baseline | 未单独实现 | D4 | 当前 CBBA 机制覆盖拍卖式思想，但无独立 baseline | bid/award/rollback 协议和测试 | P1 |
 | 合同网协议 | 分布式任务协商对照 | 未实现 | D4 | 非 5v5 最小闭环必需 | announce-bid-award 状态机 | P2 |
 | SCRIMMAGE | 大规模多智能体仿真 | 未实现 | D6/main | 当前优先 AirSim CV 5v5 和质点仿真 | SCRIMMAGE 输出样例、ID 映射、时钟对齐 | P3 |
-| TrackEval / py-motmetrics | HOTA/IDF1/MOTA/MOTP | 未实现 | D6 | 当前先做本地可解释指标 | MOT 格式导出、帧级匹配、依赖版本 | P2 |
+| TrackEval / py-motmetrics | HOTA/IDF1/MOTA/MOTP | **py-motmetrics optional adapter 已实现**；依赖缺失时 unavailable。TrackEval/HOTA 未接入 | D6 | 当前先保持本地可解释指标，外部结果不得回流控制 | 稳定 MOT 导出、帧级 truth 匹配、TrackEval 依赖版本 | P2 |
 | Stone Soup metrics / OSPA/GOSPA/SIAP | 标准跟踪指标对照 | 未实现 | D6 | 需要 D1/D2 Stone Soup Track adapter | cutoff/order、匹配门限、坐标合同 | P2 |
 | PX4 SITL / MAVLink body-rate | 更真实飞控闭环 | delivery 包有实验路径，main 未接入 | D7 | 当前主线选 SimpleFlight，避免飞控复杂度 | PX4 SITL、Offboard 状态机、推力/坐标标定 | P2 |
 
@@ -243,8 +261,8 @@ D1 NumPy EKF/FusionAdapter
 | D3 目标分配 | SciPy Hungarian、fallback DP、滚动重分配、迟滞、版本化计划、D5 feedback helper、D7 `AssignmentGuidanceBinding`、`AssignmentValiditySummary`、D6 assignment record export、AirSim dry-run、main episode bus plan/version 输出 | OR-Tools Min Cost Flow、D5 feedback 自动写回真实代价 | D5/D6 重复锁定聚合校准、复杂约束定义 | `subagent_reviews/D3_IMPLEMENTATION_GAP_AUDIT.md` |
 | D4 降级接管 | C2Health、被动降级、主动降级、二级侦察节点模型、`SecondaryNodeLifecycleSummary`、CommunicationSummary、主动降级防抖、轻量 CBBA、中心恢复合并、D4 arbitration adapter、D6-compatible event metadata、main episode bus D4 event 写入 | MIT/CA-CBBA 适配、独立拍卖/合同网、真实视频 cue adapter | 二级 heartbeat/coverage/link freshness 的真实 Blocks 多 seed 校准 | `subagent_reviews/D4_IMPLEMENTATION_GAP_AUDIT.md` |
 | D5 末端视觉配准 | `GlobalTrack -> CameraModel -> projected image point -> LocalVisualTrack -> TerminalAssociation`；OpenCV `projectPoints`/fallback；马氏门控；保守 `locked/ambiguous/hold/reacquire`；AirSim bbox adapter；YOLOv8 + MOT runtime adapter；truth ID 在线隔离；二级 cue；跨视角摘要；`TerminalConsistencySummary`；视觉 PNG handoff advisory；main episode bus terminal record；禁止改写 ID | Deep SORT/ReID、OpenDroneID Core、MAVLink signing、DDS Security、AprilTag、solvePnP/calibration、ROS2 tf2、跨相机几何联合优化 | 协议报文/密钥、相机标定样本、二级节点真实 pose/detection、真实 AirSim 多 seed YOLO/MOT 阈值标定 | `subagent_reviews/D5_IMPLEMENTATION_GAP_AUDIT.md` |
-| D6 评估指标 | 本地 EpisodeMetrics、JSONL、Blocks replay、POD/FAR/RMSE/IDSW/assignment/failover/terminal/communication、D4 active/passive degradation、D7 intercept/guidance time-series adapter、批量图表和分组报告 | Stone Soup metrics、TrackEval、SCRIMMAGE、OSPA/GOSPA/HOTA/IDF1、主动降级必要性标签 | 标准帧级匹配表、真实 D4 metadata、D7 多 seed guidance records/summaries | `subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md` |
-| D7 比例导引 | 经典二维 PN、雷达中段 PN、Pure Pursuit baseline、离线 radar->vision 质点闭环、AirSim phase-1 dry-run、SimpleFlight 视觉 PNG gate、TTC/VM 捷联导引核心、D3/D4/D5 terminal contract gate、显式 handoff/hold/reacquire/revoke、N-pair 独立 filter 单测、D6 guidance time-series 字段、main episode bus D7 guidance event 写入 | FRPN/augmented PN、严格 3D PN、严格视觉闭环、PX4/MAVLink 主线、YOLO+ByteTrack 主线检测、MPC/NMPC、ViSP/ROS2 | D5 状态迁移真实标定、相机/距离/闭合速度估计、平台动力学/飞控约束、多 seed 对照 | `subagent_reviews/D7_IMPLEMENTATION_GAP_AUDIT.md` |
+| D6 评估指标 | 本地 EpisodeMetrics、JSONL、Blocks replay、POD/FAR/RMSE/IDSW/assignment/failover/terminal/communication、D4 active/passive degradation、D7 intercept/guidance time-series、PNG delivery 对照和 py-motmetrics optional adapter | Stone Soup metrics、TrackEval、SCRIMMAGE、OSPA/GOSPA/HOTA、长期主动降级 review label | 标准帧级匹配表、真实 D4 metadata、D7 同条件多 seed records/summaries | `subagent_reviews/D6_IMPLEMENTATION_GAP_AUDIT.md` |
+| D7 比例导引 | 经典二维 PN、雷达中段 PN、Pure Pursuit baseline、视觉 PNG、TTC/VM、D3/D4/D5 gate、生命周期 KF、`png_ttc` 面积治理、N-pair filter、6D LOS/3D/APN/FRPN optional benchmark | 严格生产级 3D/FRPN、完整视觉闭环、PX4/MAVLink 主线、MPC/NMPC、ViSP/ROS2 | 同条件 M5N2、1-5 帧 dropout、真实 `png_ttc`、trend coast 晋级和平台动力学约束 | `subagent_reviews/D7_IMPLEMENTATION_GAP_AUDIT.md` |
 
 ## 4. 当前最重要的缺口
 
@@ -334,7 +352,7 @@ D1 NumPy EKF/FusionAdapter
 - 未发现新的运行级 P0 blocker。
 - 当前 P0 任务是保持跨模块合同、安全门控、truth 隔离、版本拒绝和测试回归不退化。
 - 现有 \(k_j=1\) 主线继续可用；M 对 N 的 demand-slot、合法多机锁定、二级/完全分布式原子联盟和成员级 D7 门控合同已实现。
-- 历史 ComputerVision 合同验收为 8/10，历史 SimpleFlight 15 s 诊断为 0/30；当前已完成 5 m 成功判据、detect-first truth 隔离、D7 有界外推和 D6 分层指标，下一步是重跑真实 AirSim 多 seed，不再扩展成功语义。
+- 历史 ComputerVision 合同验收为 8/10；当前已完成 5 m 成功判据、detect-first truth 隔离、1-5 帧硬窗口、D6 分层指标、2v2 `png_ttc` 20/20 和同条件 M5N2 paired。M5N2 candidate 退化且联盟 0/10，下一步是物理协同和阈值根因修复，不再扩展成功语义。
 - P2 隔离 benchmark 已覆盖 D1-D7 的当前可运行范围；不可用外部依赖均显式记录 `unavailable_reason`，不得宣称为主线算法替换。
 
 ### 7.2 P0 保持矩阵
@@ -354,12 +372,13 @@ D1 NumPy EKF/FusionAdapter
 
 | Owner | 当前缺口 | 已有基础 | 缺少条件/下一验收 |
 | --- | --- | --- | --- |
-| D5/D7/main | SimpleFlight 末端检测持续性 | detect-first 几何锁、1 s acquisition grace、0.25 s image KF、3 帧丢失、0.25 s blind push 和 fail-closed expiry 已接线 | 用真实 detect 多 seed 校准重捕率和 `terminal_visual_lost_after_coast` 分布 |
-| D7/main/D6 | 5 m 物理接近与导引律长时配对 | NED 三维 `<=5 m`、pair/target/coalition 分层、最小距离和 D6 执行指标已具备 | 完成 2v2 30 s 和 M5N2 90 s、0.1 s 控制周期的 10-seed 实测 |
+| D3/D5/D7/main | M5N2 协同物理闭环 | 同条件 10-seed paired 和四层日志已完成；baseline 7/30 pair，candidate 4/30，联盟均 0/10 | 分离第二 primary 中段重捕、D5 共识、D7 gate 和成员安全根因；candidate 保持关闭 |
+| D5/D7/main | 单帧 dropout 尾部 | 2-5 帧逐 seed 全通过，物理结果 100/100，truth/ID/version 无违规 | 复核 seed 2 在 0.8 s 注入时没有进入 image-KF 的锁定时序；不得用聚合计数掩盖 |
+| D7/main/D6 | `png_ttc` 受控覆盖 | tuned 2v2 10 seeds 为 20/20，not-expanding/TTC-out-of-range 已实测 | 补 area-jump 与 bbox-clipping 受控注入，不把未自然出现解释为算法缺失 |
 | D5/main | YOLOv8/native MOT 校准 | adapter 和离线 benchmark 已有，但当前在线明确继续使用 AirSim detect | 等数据集补充后再校准类别、尺度、置信度、GPU/CPU 延时和 tracker 连续性；不阻塞当前 P1 |
-| D1/D2/D3/main | 真实 replay 长期治理 | governed schema、offline truth、D2 calibration、增量规划和 N/M mismatch 已具备 | 更长 crossing/遮挡/OOSM replay，冻结 risk/threshold/scenario version 并量化迟滞收益 |
-| D4/D5 | 联盟重构和恢复 | 二级/peer 原子 commit、ACK、epoch、lease 与缺 ACK fail-closed 已验证 | member loss/replacement、partition recovery、中心恢复 digest 双轨合并的多 seed 扰动矩阵 |
-| D5/D6 | M 对 N 视觉鲁棒性 | 8/10 双 primary 合同验收、planned cooperative lock 和错误 duplicate 分离已实现 | 关闭 seed 7/27 鲁棒性缺口，并验证遮挡、外参漂移和时间偏差下的共识保持 |
+| D1/D2/D3/main | 长 replay 治理阈值 | 版本化 replay/CLI 已具备；D2 10 seeds 的 IDSW=138.1、continuity=0.694 | 默认 GNN 未通过阈值；继续调 gate/lifecycle/model，不用 truth 或本地重绑掩盖问题 |
+| D4/main | 联盟重构和恢复 | 9/9 确定性矩阵通过，含 member replacement、partition recovery 和双轨合并 | 映射到真实 AirSim 通信延迟/丢包多 seed，并量化 failover time |
+| D5/D6 | M 对 N 视觉鲁棒性 | 确定性 10/10，外参漂移/时间偏差保守拒绝，ID rewrite=0 | 在真实多视角 AirSim/相机同步和持续 detect 下复验，不以确定性 fixture 代替实测 |
 | D6/main | 场景库与长期趋势 | cross-seed、paired effect、bootstrap、联盟 lifecycle 和证据路径已具备 | 固化 scenario version，生成长期 CI、失败漏斗和 active-degradation review 趋势 |
 | D7 | 协同到达与成员安全 | role/wave/window、active/standby、commit-aware gate 和 N/M topology 已有 | 真实 simultaneous/sequential arrival dispersion、terminal sector、minimum separation 和 member loss |
 

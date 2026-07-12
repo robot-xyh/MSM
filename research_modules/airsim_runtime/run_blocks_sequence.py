@@ -43,6 +43,11 @@ from airsim_runtime.models import (
     write_dynamic_computer_vision_settings,
     write_dynamic_multirotor_settings,
 )
+from airsim_runtime.p1_terminal_closure import (
+    TerminalClosureCase,
+    build_terminal_closure_cases,
+    write_terminal_closure_bundle,
+)
 from airsim_runtime.sequence import (
     D4D5_STRESS_EPISODES,
     DEFAULT_BLOCKS_EPISODES,
@@ -219,6 +224,26 @@ def parse_args() -> argparse.Namespace:
             "combination launches Blocks once; seeds inside the same combination "
             "use reset-separated episodes."
         ),
+    )
+    parser.add_argument(
+        "--p1-terminal-closure-sweep",
+        action="store_true",
+        help=(
+            "Run the paired M5N2, png_ttc, and 1-5 frame locked-dropout "
+            "P1 closure suite. M5N2 and 2v2 groups use separate Blocks launches "
+            "because their vehicle settings differ."
+        ),
+    )
+    parser.add_argument(
+        "--p1-dropout-frames",
+        default="1,2,3,4,5",
+        help="Comma-separated locked-detection dropout frame counts for the terminal closure suite.",
+    )
+    parser.add_argument(
+        "--p1-dropout-start",
+        type=float,
+        default=0.8,
+        help="Locked-dropout injection start time for the terminal closure suite.",
     )
     parser.add_argument(
         "--p1-secondary-heights",
@@ -498,6 +523,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.p1_terminal_closure_sweep:
+        return _run_p1_terminal_closure_sweep(args)
     if args.p1_calibration_sweep:
         return _run_p1_calibration_sweep(args)
     if args.guidance_law_sweep:
@@ -1290,6 +1317,207 @@ def _parse_batch_seeds(raw: str | None, *, default: int) -> list[int]:
     if not seeds:
         raise SystemExit("--batch-seeds did not contain any integer seeds")
     return seeds
+
+
+def _run_p1_terminal_closure_sweep(args: argparse.Namespace) -> int:
+    """Run the frozen terminal P1 matrix and write a main-owned execution index."""
+
+    seeds = _parse_batch_seeds(args.batch_seeds, default=args.seed)
+    dropout_frames = _parse_int_list(
+        args.p1_dropout_frames,
+        option_name="--p1-dropout-frames",
+    )
+    cases = build_terminal_closure_cases(
+        seeds,
+        dropout_frames=dropout_frames,
+        control_dt_s=float(args.control_dt),
+        dropout_start_s=float(args.p1_dropout_start),
+    )
+    output_dir = Path(args.output_root) / args.sequence_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    rows: list[dict[str, object]] = []
+
+    # M5N2 and tuned 2v2 use different AirSim vehicle/camera settings. Each
+    # family launches Blocks once; every case and seed inside it uses reset.
+    for settings_family in ("m5n2", "tuned_2v2"):
+        selected = tuple(
+            case
+            for case in cases
+            if (case.family != "m5n2_paired") == (settings_family == "tuned_2v2")
+        )
+        if not selected:
+            continue
+        runs = tuple(_build_terminal_closure_run(args, case) for case in selected)
+        results = run_blocks_batch_sequences(
+            runs,
+            batch_id=f"{args.sequence_id}_{settings_family}",
+        )
+        for case, result in zip(selected, results, strict=True):
+            _print_sequence_result(result)
+            rows.append(_terminal_closure_result_row(case, result))
+
+    paths = write_terminal_closure_bundle(output_dir, cases, rows)
+    print(f"p1_terminal_closure_summary={paths['json'].resolve()}")
+    print(f"p1_terminal_closure_report={paths['markdown'].resolve()}")
+    return 0
+
+
+def _build_terminal_closure_run(
+    args: argparse.Namespace,
+    case: TerminalClosureCase,
+):
+    case_args = copy.deepcopy(args)
+    case_args.p1_terminal_closure_sweep = False
+    case_args.p1_calibration_sweep = False
+    case_args.guidance_law_sweep = False
+    case_args.actor_2v2 = case.family != "m5n2_paired"
+    case_args.actor_5v5 = case.family == "m5n2_paired"
+    case_args.actor_2v2_active_secondary_visual_png = False
+    case_args.actor_5v5_active_center_replan = False
+    case_args.cv_5v5 = False
+    case_args.cv_5v5_d4d5_stress = False
+    case_args.cv_5v5_d4d5_stress_200m = False
+    case_args.drone_count = None
+    case_args.resource_count = int(case.resource_count)
+    case_args.target_count = int(case.target_count)
+    case_args.execute_intercept = True
+    case_args.full_flow_only = True
+    case_args.no_lidar = True
+    case_args.duration = float(case.duration_s)
+    case_args.intercept_max_duration = float(case.duration_s)
+    case_args.intercept_altitude_z = float(case.intercept_altitude_z)
+    case_args.intercept_terminal_range = 30.0
+    case_args.intercept_yaw_mode = "look_at_target"
+    case_args.guidance_law = str(case.guidance_law)
+    case_args.terminal_soft_prediction = bool(case.soft_prediction_enabled)
+    case_args.terminal_trend_coast = bool(case.trend_coast_enabled)
+    case_args.intercept_detection_dropout_start = case.dropout_start_s
+    case_args.intercept_detection_dropout_end = case.dropout_end_s
+    case_args.terminal_handoff_tuned = case.family != "m5n2_paired"
+    case_args.settings = DEFAULT_SETTINGS
+    sequence_id = f"{args.sequence_id}_{case.case_id}"
+    base_config, selected_sequence_id, episode_specs = _build_sequence_run(
+        case_args,
+        seed=case.seed,
+        sequence_id=sequence_id,
+    )
+    base_config = replace(
+        base_config,
+        metadata={**base_config.metadata, **case.metadata()},
+    )
+    return base_config, selected_sequence_id, episode_specs
+
+
+def _terminal_closure_result_row(
+    case: TerminalClosureCase,
+    result: object,
+) -> dict[str, object]:
+    episode = _controlled_episode_from_result(result)
+    summary_path = None if episode is None else episode.output_paths.get("intercept_summary")
+    commands_path = None if episode is None else episode.output_paths.get("control_commands")
+    summary: dict[str, object] = {}
+    if summary_path is not None and Path(summary_path).exists():
+        summary = json.loads(Path(summary_path).read_text(encoding="utf-8"))
+    pairs = [pair for pair in summary.get("pairs", []) or [] if isinstance(pair, dict)]
+    command_counts = _terminal_closure_command_counts(commands_path)
+    command_counts["online_truth_use_count"] = max(
+        int(command_counts["online_truth_use_count"]),
+        sum(bool(pair.get("online_truth_id_used")) for pair in pairs),
+    )
+    return {
+        "case_id": case.case_id,
+        "family": case.family,
+        "profile": case.profile,
+        "seed": case.seed,
+        "resource_count": case.resource_count,
+        "target_count": case.target_count,
+        "duration_s": case.duration_s,
+        "guidance_law": case.guidance_law,
+        "dropout_frames": case.dropout_frames,
+        "connected": bool(getattr(result, "connected", False)),
+        "pair_opportunity_count": summary.get("pair_physical_opportunity_count"),
+        "pair_success_count": summary.get("pair_physical_success_count"),
+        "target_opportunity_count": summary.get("target_intercept_opportunity_count"),
+        "target_success_count": summary.get("target_intercept_success_count"),
+        "coalition_opportunity_count": summary.get("coalition_opportunity_count"),
+        "coalition_completion_count": summary.get("coalition_completion_count"),
+        "physical_intercept_count": summary.get("pair_physical_success_count"),
+        "reserve_unauthorized_success_count": sum(
+            bool(pair.get("physical_success"))
+            and str(pair.get("member_role")) == "reserve"
+            and str(pair.get("activation_state")) != "active"
+            for pair in pairs
+        ),
+        **command_counts,
+        "intercept_summary": str(summary_path) if summary_path is not None else None,
+        "control_commands": str(commands_path) if commands_path is not None else None,
+    }
+
+
+def _terminal_closure_command_counts(path: object) -> dict[str, int]:
+    counts = {
+        "command_count": 0,
+        "contract_allowed_count": 0,
+        "control_allowed_count": 0,
+        "mode_switched_count": 0,
+        "terminal_switch_allowed_count": 0,
+        "terminal_prediction_count": 0,
+        "terminal_delivery_expired_count": 0,
+        "terminal_prediction_window_expired_count": 0,
+        "terminal_trend_coast_count": 0,
+        "online_truth_use_count": 0,
+        "ttc_area_jump_reject_count": 0,
+        "ttc_bbox_clipping_reject_count": 0,
+        "ttc_not_expanding_reject_count": 0,
+        "ttc_out_of_range_reject_count": 0,
+    }
+    if path is None or not Path(path).exists():
+        return counts
+    previous_mode_by_resource: dict[str, str] = {}
+    with Path(path).open(encoding="utf-8", newline="") as stream:
+        for row in csv.DictReader(stream):
+            counts["command_count"] += 1
+            contract_allowed = _csv_bool(row.get("terminal_contract_allowed"))
+            switch_allowed = _csv_bool(row.get("terminal_switch_allowed"))
+            if contract_allowed:
+                counts["contract_allowed_count"] += 1
+            if contract_allowed and switch_allowed:
+                counts["terminal_switch_allowed_count"] += 1
+                counts["control_allowed_count"] += 1
+            resource_id = str(row.get("resource_id") or "")
+            mode = str(row.get("mode") or "")
+            previous_mode = previous_mode_by_resource.get(resource_id)
+            if mode == "vision_terminal" and previous_mode not in {None, "vision_terminal"}:
+                counts["mode_switched_count"] += 1
+            if resource_id and mode:
+                previous_mode_by_resource[resource_id] = mode
+            state = str(row.get("terminal_delivery_state") or "")
+            if state in {"image_kf_predict", "predicted"}:
+                counts["terminal_prediction_count"] += 1
+            if state == "expired":
+                counts["terminal_delivery_expired_count"] += 1
+            if str(row.get("terminal_delivery_reason") or "") == (
+                "terminal_visual_prediction_window_expired"
+            ):
+                counts["terminal_prediction_window_expired_count"] += 1
+            if _csv_bool(row.get("terminal_trend_coast_applied")):
+                counts["terminal_trend_coast_count"] += 1
+            if _csv_bool(row.get("truth_identity_online_use")):
+                counts["online_truth_use_count"] += 1
+            reason = str(row.get("ttc_reject_reason") or "").lower()
+            if "area_jump" in reason:
+                counts["ttc_area_jump_reject_count"] += 1
+            if "clip" in reason or "image_edge" in reason:
+                counts["ttc_bbox_clipping_reject_count"] += 1
+            if "not_expanding" in reason:
+                counts["ttc_not_expanding_reject_count"] += 1
+            if "out_of_range" in reason or "max_ttc" in reason:
+                counts["ttc_out_of_range_reject_count"] += 1
+    return counts
+
+
+def _csv_bool(value: object) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes"}
 
 
 def _run_p1_calibration_sweep(args: argparse.Namespace) -> int:

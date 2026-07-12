@@ -4,7 +4,7 @@
 **范围**: 对照 `subagent_reviews/D1_SENSOR_FUSION_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md`、`research_modules/d1_sensor_fusion` 源码和测试，审计共识算法、开源方案和当前实现差距。  
 **边界**: 本审计只覆盖离线科研仿真、数据合同、传感器观测、航迹融合和评估接口；不涉及真实飞控、硬件驱动、火控、毁伤或自动处置。
 
-**更新时间**: 2026-07-11。
+**更新时间**: 2026-07-12。
 
 ## 1. 总体结论
 
@@ -366,3 +366,79 @@ sensor-specific expected latency、health/region window、模型集和场景自�
 
 本轮 D1 全量回归为 `62 passed`。因此 P2 可用性、不可用原因和当前路径指标证据已收敛；
 第三方后端的算法收益仍未证明，不能因本轮 harness 完成而关闭相应实现 GAP。
+
+## 15. 2026-07-12 P0/P1 状态同步
+
+### 15.1 证据边界
+
+- 当前仓库 `HEAD=33e6fa0`。该 commit 没有修改
+  `research_modules/d1_sensor_fusion/**` 或 `subagent_reviews/D1_*`，因此 D1 无源码、测试和
+  运行行为变化。
+- `subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md` 的当前集中状态仍判定 D1 无新增 P0
+  blocker，并把 D1/D2/D3/main 的真实长期 replay 治理列为开放 P1。
+- `PNG_DELIVERY_ENHANCEMENT_AIRSIM_VALIDATION_REPORT_20260712.md` 验证的是 D5/D6/D7 与
+  main/runtime 的 PNG delivery、2v2、dropout 和 M5N2 行为；报告没有 D1 实现变更或 D1
+  精度验收。2v2 `20/20` 和 M5N2 `0/9` 均不改变 D1 GAP 判定。
+- 2026-07-12 执行
+  `PYTHONPATH=research_modules/d1_sensor_fusion/src pytest -q research_modules/d1_sensor_fusion/tests`
+  得到 `62 passed in 11.60s`，与既有 D1 回归基线一致。
+
+### 15.2 P0 状态
+
+| P0 合同 | 实际状态 | GAP 判定 | 下一验收 |
+| --- | --- | --- | --- |
+| `measurement_timestamp`/`arrival_timestamp`、NED、观测/航迹 covariance | 已实现，当前回归通过 | 无开放 P0；本轮无行为变化/保持原状态 | 后续 replay 继续拒绝时间倒置、非法 frame 和非法 covariance，并保持六状态 NED `GlobalTrack` |
+| fixed-lag/OOSM、source de-dup、N-target | 已实现，当前回归通过 | 无开放 P0；本轮无行为变化/保持原状态 | 乱序补偿、重复 lineage 抑制和任意输入长度回归不得退化，online path 不得消费 truth identity |
+| FDIR-light、covariance floor/ceiling、timestamp uncertainty | 已实现，当前回归通过 | 无开放 P0；本轮无行为变化/保持原状态 | 正常 expected latency 不触发虚假隔离；故障注入输出 reason、reject/isolation hint 和 recovery evidence |
+
+当前仍无 D1 运行级 P0 blocker。下游 PNG 物理拦截结果不是 D1 滤波 RMSE/NIS/NEES 或真实
+传感器标定证据，不能据此重开或关闭 P0。
+
+### 15.3 P1 状态与开放 GAP
+
+| P1 项 | 实际状态 | 仍开放内容 | 下一验收条件 |
+| --- | --- | --- | --- |
+| governed replay/schema/provenance、coverage/lineage 与 truth policy | 已实现，main 已采用；本轮保持原状态 | 长时真实 multi-seed 治理验证 | 冻结 scenario/config version、digest、seed 和 evidence path；online truth 泄漏为 0，offline label 只用于评分 |
+| region/window、expected-latency/OOSM、sensor health、recon cue | helper/字段已实现，真实阈值部分实现；本轮保持原状态 | sensor-specific 延迟预算、正常/故障对照、长窗口与 D6 趋势 | 多 seed fault-injection replay 量化误报/漏报；raw OOSM 不得直接解释为故障或 D4 降级动作 |
+| 协同定位与 Track-to-Track | WLS/CI 数值基础已实现，runtime 全链路部分实现；本轮保持原状态 | D2-confirmed canonical-ID adapter、部分共享 lineage、节点退出和真实多视角 replay | 关联不唯一时 fail-closed；良好三视角不劣于最佳双视角；退化几何保守；3 -> 2 -> 1 时 continuity 保持且质量下降；重复 relay 不改变 posterior |
+| 真实长期 replay 与统计一致性 | 未闭合；本轮保持原状态 | crossing、机动、遮挡、漏检、camera/bbox、节点退出、sensor delay/fault 的版本化多 seed fixture | 同一 governed replay 下审计 RMSE/NIS/NEES、continuity、health/region window；短时 SimpleFlight 命中率不得替代 D1 验收 |
+| IMM/CV-CA-CT 与场景自适应 covariance | 未实现/待标定；本轮保持原状态 | 模型集对照及杂波、SNR、来源、遮挡、延迟 scale rule | 对冻结 replay 给出 CV-only 对照、RMSE/NIS/连续性/成本和稳定 `covariance_scale_reason`，收益不足时不替换默认 NumPy CV/EKF |
+| D6 长期 schema/趋势 | 部分实现；本轮保持原状态 | 跨 seed 长期字段一致性、阈值和 unavailable 语义 | D6 稳定消费 latency、health、region/window、RMSE/NIS/NEES 和 evidence path；缺失字段显式 unavailable |
+
+因此截至 2026-07-12，D1 仍开放的 P1 是：D1/D2-confirmed cooperative runtime 验证、真实
+长期多 seed replay、sensor-specific health/window 与 RMSE/NIS/NEES 标定、CV/CA/CT/IMM
+模型对照、场景自适应 covariance 和 D6 长期统计一致性。governed serializer、online truth
+隔离、WLS/CI 数值 helper 与现有质量摘要不再重复列为未实现。P2/P3 保持原有规划，不删除、
+不移动，也不因本轮 PNG delivery 验证新增完成项。
+
+## 16. 2026-07-12 P1 合成长 Replay 收敛
+
+### 16.1 已实现
+
+| 项目 | 当前证据 | GAP 判定 |
+| --- | --- | --- |
+| 长时 challenge fixture | `long_replay.py` 提供可配置 N-target、60 s 默认 crossing、EO 遮挡、雷达 clutter/延迟/OOSM 和 relay duplicate | D1-owned 合成场景构造缺口关闭；不替代真实 AirSim 数据 |
+| 版本与 provenance | scenario/config/summary/threshold profile 均冻结版本，并继续使用 `d1.sensor_observation.v1`、scenario/config digest、seed 和 run ID | 合成长 replay 治理关闭 |
+| 在线 truth 隔离 | observation ID/lineage 不含稳定目标 slot；在线 metadata/records/`GlobalTrack` 无 truth/actor/object identity；真值只在显式 offline sidecar | 本轮测试 truth leak 为 0 |
+| 延迟和质量汇总 | `summarize_long_replay()` 复用 raw/fusion latency audit、sensor health、region window、track level/source support 和 unavailable reason | D1-owned 汇总入口关闭 |
+| 回归与默认成本 | long replay 新增 3 项接口测试和 1 项 CLI 子进程测试；默认 smoke 843 observations、21 injected OOSM、6 relay duplicates、29 region windows，约 8.8 s；D1 全量 `66 passed` | 可供 main 单 seed/批量调用；高频率仍由 main 显式配置 |
+| 官方 CLI | `scripts/run_long_replay.py` 支持 seed/duration/target-count/output，写 `LongReplaySummary.to_dict()` JSON | main 可直接从仓库根目录调用；CLI 不形成第二套算法路径 |
+
+### 16.2 仍开放 P1
+
+1. **真实数据而非合成 fixture**：main 仍需采集真实 Blocks/CV crossing、遮挡、漏检、bbox、
+   sensor delay/fault 和节点退出的长期多 seed replay；本轮生成器只用于可重复接口与故障口径
+   回归。
+2. **D1/D2 canonical-ID 对齐**：没有 D2 离线 canonical 对应时，summary 中 RMSE/NEES
+   必须 unavailable。后续由 D2 提供确认映射后才能用 offline sidecar 评分，D1 不得把 sidecar
+   注入在线关联。
+3. **真实阈值治理**：sensor-specific expected latency、OOSM、health、region/window、NIS/
+   NEES 和 covariance scale 阈值仍需多 seed 正常/故障对照标定。raw OOSM 比例不能直接解释为
+   故障率或主动降级动作。
+4. **模型与协同链路**：CV/CA/CT/IMM、场景自适应 covariance、D2-confirmed cooperative
+   runtime、部分共享 lineage 和 3 -> 2 -> 1 节点退出仍未闭合。
+5. **D6 长期趋势**：D6 仍需消费真实 evidence path、跨 seed schema 和 unavailable 语义；
+   D1 本轮只保证 summary 为 JSON-safe 并显式标注 metric availability。
+
+本轮没有新增或关闭 P2/P3 外部依赖项。Stone Soup/FilterPy 仍为隔离 benchmark，不进入默认
+运行路径。

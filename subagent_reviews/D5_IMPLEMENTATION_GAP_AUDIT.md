@@ -1,6 +1,6 @@
 # D5 实现差距审计
 
-**审计范围**：`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md`、`subagent_reviews/D5_TERMINAL_ASSOCIATION_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md`、`research_modules/d5_terminal_association/README.md`、`PLAN.md`、`docs/ALGORITHM_AND_IMPLEMENTATION.md`、`src/d5_terminal_association/` 和 `tests/`。
+**审计范围**：commit `33e6fa0` 后当前代码与测试、`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md`、`research_modules/airsim_runtime/outputs/PNG_DELIVERY_ENHANCEMENT_AIRSIM_VALIDATION_REPORT_20260712.md`、`subagent_reviews/D5_TERMINAL_ASSOCIATION_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md`、`research_modules/d5_terminal_association/README.md`、`PLAN.md`、`docs/ALGORITHM_AND_IMPLEMENTATION.md`、`src/d5_terminal_association/` 和 `tests/`。
 
 **边界**：本文只审计 D5 末端视觉配准、协同身份声明、二级节点 cue、跨视角摘要和 AirSim ComputerVision 检测框适配现状。D5 不重新分配目标，不创建、不改写、不换绑 `global_track_id`；在线几何配准不得使用 AirSim `object_id`、`actor_name` 或 truth ID，truth 只能作为离线评估标签。
 
@@ -32,7 +32,7 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 
 2026-07-11 实施前三 seed 基线来自 `research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_liveness_batch_20260711/M_TO_N_AIRSIM_CONVERGENCE_REPORT_CN.md`。seeds 7/17/27 均为 6 次 replan request、6 次 `no-change` ACK、0 applied、0 expired，需求满足率 1.0，错误重复锁定 0；T002 共识为 4/5/4，D7 每个 seed 产生 2 次终端合同许可。该结果证明 D5 快照作用域、合法协同锁解释和普通目标状态链已接入 main runtime；当时 T001 双 active-primary 共识三组均为 0。该历史基线不再代表当前 T001 验收状态。
 
-当前状态以 `research_modules/airsim_runtime/outputs/p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md` 为准：
+以下是 2026-07-11 历史状态，当前状态以本文后续“2026-07-12 commit 33e6fa0 后状态同步”为准：
 
 - **P0 已闭合，保持回归**：在线 truth/actor ID 隔离、相机作用域本地 ID、友方冲突、版本/时效、主动重捕获和 `global_track_id` 不变式。
 - **P1 合同层已闭合**：ComputerVision 10 seeds 中 T001 双 active-primary 当前计划授权与视觉共识为 `8/10`；错误 duplicate 为 `0/10`，合法 `planned_cooperative_lock` 与错误重复锁分离。二级和完全分布式完整 ACK commit 正例均通过，缺 ACK 保守阻断 consensus/visual PNG authority 并 fail closed。
@@ -49,6 +49,22 @@ GlobalTrack -> CameraModel -> OpenCV/projected image point
 2026-07-12 D7 视觉证据接口专项：D5 已新增 `CameraGeometryEvidence`，并把稳定 camera-local ID、MOT history、轨迹迁移/reset、measurement/arrival 双时间戳、detect source、bbox edge clipping、K、camera-to-NED 外参和姿态时效通过 detect/YOLO adapter、`TerminalAssociation` 与 runtime record 一致输出。完整几何才设置 `geometry_valid=true`；缺失项明确列入 unavailable reasons。在线 actor/object truth ID 仍被隔离，predicted/MOT coast 仍不能授权，`global_track_id` 不可改写。专项测试后全量为 `161 passed`。
 
 该项关闭“D5 缺少供 D7 使用的稳定 truth-free 视觉证据 schema”，但不关闭真实 AirSim 几何接线：main 尚需提供曝光/measurement timestamp、arrival timestamp、实际 camera pose、相机相对机体安装外参、同步姿态 timestamp/age，并把 `camera_geometry` 路由至 D5 adapter/D7 pair。上述字段未齐时 6D LOS 必须保持 unavailable；真实 YOLO/ByteTrack 多 seed 标定、在线外参漂移估计仍是 P1/P2 后续项。
+
+### 2026-07-12 commit 33e6fa0 后状态同步
+
+本节只同步文档状态，**无行为变化/保持原状态**，不制造新完成项。指定 D5 模块回归基线为 `161 passed`；main 的统一回归同样记录 D5 161、D4 148、D6 84、D7 137、AirSim runtime 98，且 `git diff --check` 通过。
+
+| P0/P1 核查项 | 当前判定 | 实际证据 | 开放缺口/下一验收 |
+|---|---|---|---|
+| P0 truth 隔离、ID 不变式、friend/duplicate/predicted 门控 | 已闭合，保持回归；无新增 P0。 | D5 161 项测试；2v2 candidate、post-lock dropout 和 M5N2 短窗口均记录在线 truth 使用为 0。 | 任一 truth/local ID 参与 global binding、predicted/lost 获得 lock/authority、friend/duplicate 被绕过或 `global_track_id` 改写即重开 P0。 |
+| P1 D5 truth-free 视觉证据 schema | D5 侧已闭合，保持原状态。 | `CameraGeometryEvidence` 及 adapter/association/runtime record 已携带 exposure/measurement/arrival timestamp、local transition/reset、MOT history、bbox clip、K、camera-to-NED 外参和姿态时效；缺失几何显式 unavailable。 | main/runtime 的真实 per-camera 曝光、安装外参、姿态同步、时延/漂移多 seed 标定仍开放；D5 不实现 D7 KF/TTC/LOS 滤波。 |
+| P1 2v2 主线非退化 | 系统级通过，不等于新增 D5 算法完成。 | candidate 10 seeds 为 20/20 pair 在 5 m 内成功，旧基线 19/20，平均最小距离 4.844 m；自然 soft prediction/trend coast 均未触发。 | 继续分层审计 D5 lock/hold/reacquire、D7 gate、控制与物理结果，保持 wrong binding、ID rewrite 和在线 truth 使用为 0；不得归因于 D5 或新增外推。 |
+| P1 锁定后短时丢检 | 两帧真实链路已验证，长窗口开放。 | 1.5-1.7 s 两帧 dropout 由 D7 在原 global/local track 与计划上下文内执行有界预测并达到 2/2；D5 仅提供身份、时序和 unavailable evidence。 | 运行 1-5 帧固定时刻矩阵；超过 0.25 s fail closed，重捕后重新满足 D5 measured geometry/stability，错误绑定为 0。 |
+| P1 M5N2 视觉/联盟鲁棒性 | 开放。 | 8 s、3 seeds 共 9 个 active pair 为 0/9，最近距离 22-32 m，terminal switch allowed=0；该批次与 z=-30 m、35 s 高净空基线不可比。 | 同几何同窗口 paired baseline/candidate，分别统计 target、active-primary、coalition completion，并审计 D5 hold/reacquire、视觉共识、wrong binding 与 duplicate。 |
+| P1 YOLO/native MOT | 开放，保持原状态。 | 本轮未改变 6 episode x 2 帧 smoke 的 `accepted_detection_count=0`、native tracker 未形成稳定 ID 的边界。 | 非零持续 detection、native tracker ID、IDSW/IDF1、遮挡恢复与 CPU/GPU 多 seed 分布。 |
+| P1 二级覆盖、D4 逐决策 evidence、真实友方 replay | 开放，保持原状态。 | 60-case 基础 registration 已闭合但完整同帧覆盖不足；D5 frame-scoped DTO 已实现；真实身份源仍未接入。 | 二级完整覆盖提升、main/D4 同 tick freshness/threshold version/状态迁移日志，以及至少一个真实身份 replay adapter。 |
+
+因此当前开放项不是 D5 schema 缺失，而是长时/复杂场景的运行级质量：M5N2 paired 物理与视觉共识、真实几何/时间同步、持续 detector/native MOT、二级完整覆盖、D4 逐 tick 消费、遮挡/交叉恢复和真实友方身份 replay。2v2 20/20 只关闭该场景的主线非退化门槛，不能提前关闭这些 P1。
 
 2026-07-11 D5 coalition commit gate 已完成模块内 P1：纯函数和 bus 薄封装均接受 duck-typed `coalition_commit` 及显式评估时刻/center-failed/fallback 标记。`CoalitionVisualSummary` 新增 `coalition_commit_required/valid/state/epoch/lease`、required/acked member 和 conflict reason 字段。中心正常且不提供 commit 时旧中心合同不变；`k>1` fallback 只有 `committed|executing`、有效 lease、epoch/双版本一致、required member 完整且全部 ACK 才能形成 consensus/visual PNG authorization。单 primary、reserve-only、旧 epoch、过期 lease、缺 ACK、版本冲突、未提交和 center-failed 缺 commit 均 fail closed；reserve readiness 与视觉 cue 仍保留。truth/actor metadata 不参与 commit 或目标绑定。当前 runtime 验证已覆盖二级/完全分布式完整 ACK 正例和缺 ACK fail-closed；这仍只证明合同执行语义，不证明物理拦截。
 
@@ -251,7 +267,7 @@ main 验收前置条件：
 
 | 优先级 | 任务 | 验收建议 |
 |---|---|---|
-| P1 | 物理/长期多 seed 验收。 | 保持 `8/10` 合同结果与 `control_allowed_count=0` 分层；先区分无 detection、D5 未锁、D7 gate 拒绝和闭合速度不足，再以约 90 s、提高控制频率的真实多 seed SimpleFlight 运行验收控制许可与物理结果。 |
+| P1 | 物理/长期多 seed 验收。 | 2026-07-11 的 `8/10` 合同结果与 SimpleFlight 15 s 0/30 保留为历史；2026-07-12 的 2v2 candidate 已完成 20/20 非退化验收。当前需用同一 z=-30 m、35 s 高净空几何做 paired M5N2，分层验收 detection、D5 lock/hold/reacquire、联盟视觉共识、D7 gate、控制许可和 target/active-primary/coalition 物理结果。 |
 | P1 | YOLOv8 + ByteTrack/BoT-SORT 多 seed 标定。 | 用 AirSim 连续 RGB/PNG 或外部 detector bbox stream 调用 `YoloMotAdapter.process_frame()`，跨 seed 标定目标尺度、FOV、confidence、class id 分布、bbox scale、tracker backend、CPU/GPU budget 实测、`gate_chi2`、candidate margin、bbox stability、handoff range、measurement age、LOS availability、ambiguity 和 quality 阈值，并报告 `locked_mismatch`、false handoff、ambiguous/reacquire 抖动和 `terminal_id_switch_count`。 |
 | P1 | IBVS/间歇可见性重捕获对照。 | 基于 replay/对照实验评估 IBVS 或间歇可见性切换策略能否降低 lost/reacquire 时间；验收必须保持误锁为 0，且 D5 只产出 `TerminalAssociation`/`IdentityClaim` 证据，不重新分配、不授权、不本地换绑 `global_track_id`。 |
 | P1 | 多模态友方识别 replay adapter。 | 将至少一个 Remote ID/MAVLink/DDS/AprilTag replay 来源归一化为 `IdentityClaim`，输出 verified/stale/unverified/spoof 状态；未知或 stale 不升级目标，verified friend 仍只触发保守阻断。 |
@@ -259,7 +275,7 @@ main 验收前置条件：
 | P1 | 二级节点几何/覆盖策略。 | 60-case 已关闭基础 not-registered 缺口，但网络同帧全目标覆盖率均值仍为 `0.0231`。继续调整站位、look-at 扫描/子簇策略和 full-view 判据，降低 `not_all_targets_visible` / `network_union_incomplete`；不得把局部 registration 误报为完整接管态势。 |
 | P1 | Multi-camera cross-view registration 多 seed 标定。 | 60-case 的 `not_registered_count=0`、平均 cross-view association `4.417` 已作为当前基线；下一步转向外参漂移、时间同步、遮挡/交叉、稳定窗口和错误绑定压力测试，不再重复证明基础 registration 可运行。 |
 | P1 | D4 逐决策 evidence 接线验收。 | D5 单帧 DTO/字段映射已完成；main/D4 需在同一 decision tick 传递并消费该对象，补 threshold version、stale rejection 和状态迁移日志。验收不得使用 stale/episode 聚合值，D5 不直接决定降级动作。 |
-| P1 | 视觉接管图像边缘裕量与相机指向标定。 | 以 2v2 smoke 的 `bbox_near_image_edge=9`、2 个受影响资源对为基线，跨 seed 统计归一化 edge margin、连续边缘帧、camera pointing error、handoff request/reject 次数及 terminal switch 率；不得通过放宽 D7 独立安全 gate 提高切换率。 |
+| P1 | 视觉接管图像边缘裕量与相机指向标定。 | 2v2 candidate 20/20 证明主线未退化，但报告未给出足以关闭该项的归一化 edge-margin/连续边缘帧分布。继续以旧 smoke 的 `bbox_near_image_edge=9`、2 个受影响资源对为历史基线，跨 seed 统计 edge margin、camera pointing error、handoff request/reject 和 terminal switch；不得放宽 D7 独立安全 gate。 |
 | P2 | 评估 BoT-SORT/Deep SORT/ReID 是否适合小型无人机 AirSim/真实图像。 | 有连续图像、算力预算、IDF1/IDSW 评估；若小目标纹理不足，保持几何门控 + ByteTrack/schema adapter 为默认基线。 |
 | P2 | 接入真实身份来源为 `IdentityClaim` adapter：OpenDroneID Core、MAVLink signing、DDS Security 或 AprilTag。 | 真实或回放报文/图像 fixture，验证 stale/spoof/unverified/verified 状态不会把未知目标升级，也不会绕过几何门控和 assignment 一致性。 |
 | P2 | ROS 2 `tf2/message_filters` 坐标/时间同步链路。 | 仅在项目进入 ROS 2 runtime 或 bag replay 后实施；验收 frame tree、带戳 transform、相机/航迹同步和 D5 `CameraModel` 转换一致性。 |
@@ -288,3 +304,24 @@ main 验收前置条件：
 - `research_modules/d5_terminal_association/tests/test_terminal_consistency.py`
 - `research_modules/d5_terminal_association/tests/test_visual_handoff.py`
 - `research_modules/d5_terminal_association/tests/test_yolo_mot_adapter.py`
+
+## 2026-07-12 P1 M5N2 鲁棒性补齐审计
+
+本轮由 D5 owner 在模块边界内补齐 replay 与保守证据，模块测试从 `161 passed` 增至 `168 passed`：
+
+| P1 项目 | 当前状态 | 本轮证据 | 仍开放条件 |
+|---|---|---|---|
+| 锁定后 1-5 帧缺失/恢复 | 模块 replay 已闭合；真实 AirSim 待验收。 | 1-2 个 10 Hz 缺失帧持续 `reacquire`；第 3-5 帧超过 0.25 s 后显式 `terminal_visual_evidence_expired`，恢复后两次 measured 支持才重新 lock。D5 不实现 coast/KF/控制。 | main 用固定注入时刻和相同 seeds 运行真实 detect dropout；wrong binding、truth use 和 ID rewrite 必须为 0。 |
+| 相机历史与 local MOT ID 隔离 | 已闭合。 | 历史键增加 camera scope；不同相机相同 local ID 不共享 loss/stability；同相机 MOT ID 变化必须重新确认。 | runtime 调用应显式传 `camera_id`；adapter metadata 仅作兼容来源。 |
+| 旧 plan 拒绝 | TerminalAssociator 模块侧已闭合。 | 同一 resource/plan lineage 的下降 `plan_version` 输出 `hold/stale_plan_version_rejected`，未授权或 track-version 不匹配输入不更新 watermark。 | D4/D3 仍需在真实 episode 维持 owner/epoch/lease 的全局版本合同。 |
+| 同相机交叉与跨相机部分重叠 | 合成 replay 已闭合；真实场景开放。 | GlobalTrack 投影+马氏门+Hungarian 在同相机交叉后保持既有全局绑定；R1 看 G1/G2/G3、R2 看 G2/G3/G4 时，仅 G2/G3 形成双视角支持。 | 真实 M5N2 crossing/occlusion 多 seed、检测漏帧和外观相似场景仍需校准。 |
+| 外参漂移与时间偏差 | fail-closed replay 已闭合；标定开放。 | 注入 4 m 外参平移或 0.5 s 高动态时间偏差时 geometry gate 拒绝，不借助 truth ID 恢复绑定。 | 真实每相机 K/R/t、曝光/arrival/attitude timestamp、漂移量级与门限需 main/runtime 提供。 |
+| YOLO/native MOT | 保持 deferred。 | 本轮不改变 detect-first 默认路径，不把现有 `best.pt` 或 fallback tracker 解释为已完成标定。 | 非零持续无人机 detection、native tracker ID、CPU/GPU latency、IDSW/IDF1 和失败回退多 seed 验收。 |
+
+因此 D5 当前无新增 P0。模块内 dropout、相机作用域、stale plan 和扰动 replay 支撑已补齐；系统级 P1 仍集中在同条件 M5N2 paired AirSim、真实持续 detect、外参/时间同步、二级网络完整覆盖和真实身份 replay。
+
+### 版本化 summary 缺口状态
+
+“D5 确定性 visual robustness 没有独立可写盘 summary、D6 只能读取通用 readiness”这一模块 P1 缺口已关闭。新增 `d5.p1_visual_robustness_summary.v1` API/CLI，覆盖 10 个确定性 case，并在顶层和 D6 可保留的 `metadata` 中记录 case/pass/reject、在线 truth 使用和全局 ID 改写计数。JSON 重复生成字节一致，当前 D6 `--d5-summary` 已实际加载成功，source manifest 标记 available 且 schema/version/evidence path 正确。
+
+当前基线：`case_count=10`、`pass_count=10`、`failed_case_count=0`、`reject_count=24`、`online_truth_use_count=0`、`global_track_id_rewrite_count=0`，D5 全量 `171 passed`。该项只关闭离线 summary 生产和消费合同；真实 M5N2 paired、多 seed dropout、持续 detect/native MOT、外参/时间同步和物理结果仍为系统级 P1。

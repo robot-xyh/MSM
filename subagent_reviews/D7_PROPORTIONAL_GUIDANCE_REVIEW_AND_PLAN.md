@@ -1,5 +1,11 @@
 # D7 比例导引架构评审与补充方案
 
+## 2026-07-12 P1 delivery calibration 增量
+
+D7 已补齐报告型 `delivery_calibration.py`，用于汇总 locked 后 1-5 帧 dropout、`png_ttc` 四类拒绝和 trend coast paired 晋级条件。`TerminalGuidanceDelivery` 的 image KF 与 blind push 现在共同受最后量测后 `0.25s` 硬上限约束；默认 10Hz 下前两帧可使用同 identity/plan 的 image KF，第 3-5 帧 expired/fail-closed。较高频率下 blind push 仍可在该上限内短暂运行。
+
+当前模块回归为 `141 passed`。该结果是 D7-owned 合成矩阵和接口验收，不替代真实 AirSim 多 seed；trend coast 继续默认关闭，只有 paired seeds、candidate 实际触发、wrong binding 为 0、命令不连续不恶化且物理成功不下降全部满足时，helper 才给出晋级建议。位置 PN、Pure Pursuit、`png_vm`、`png_ttc` 核心公式未修改，reserve standby 与 D3/D4/D5 gate 保持不变。
+
 ## 2026-07-11 状态校准
 
 P1 合同层已经闭合：M=5/N=2 ComputerVision 10-seed 达到 8/10 双 primary 合同验收，D4 commit-aware gate 已实现并接入，正确 topology 已接线为 T001 两个 active primary、一个 standby reserve，T002 一个 active primary，第五个资源未分配。ComputerVision 不执行 SimpleFlight 控制，8/10 不能解释为物理命中率。

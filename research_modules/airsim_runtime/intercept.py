@@ -477,6 +477,8 @@ def _pn_velocity_command(
                     "track_version": contract.track_version,
                     "mode_override": guidance_mode.value,
                     "guidance_law": "radar_pn",
+                    "terminal_switch_allowed": False,
+                    "terminal_switch_reject_reason": contract.reject_reason,
                 }
             )
             return _midcourse_velocity(config, command), command
@@ -535,6 +537,22 @@ def _pn_velocity_command(
         )
         if visual_command is None:
             pair.terminal_switch_reject_reason = delivery_result.reason
+            command.metadata.update(
+                {
+                    "terminal_contract_allowed": bool(contract.allowed),
+                    "terminal_contract_reject_reason": contract.reject_reason,
+                    "terminal_contract_coast_exception": transient_visual_loss,
+                    "d4_action": contract.d4_action,
+                    "d5_decision_state": contract.d5_decision_state,
+                    "plan_id": contract.plan_id,
+                    "plan_version": contract.plan_version,
+                    "track_version": contract.track_version,
+                    "mode_override": GuidanceMode.RADAR_MIDCOURSE.value,
+                    "guidance_law": "radar_pn",
+                    "terminal_switch_allowed": False,
+                    "terminal_switch_reject_reason": delivery_result.reason,
+                }
+            )
             return _midcourse_velocity(config, command), command
         pair.terminal_switch_reject_reason = visual_command.quality.reject_reason
         if visual_command.quality.terminal_switch_allowed:

@@ -5,12 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any, Mapping
 
-from .models import ResourceState, TargetTrack
+from .models import ResourceState, TargetDemand, TargetTrack
 
 
-P1_ASSIGNMENT_FIXTURE_SCHEMA = "d3_assignment_fixture_v1"
+P1_ASSIGNMENT_FIXTURE_SCHEMA = "d3_assignment_fixture_v2"
 P1_ASSIGNMENT_FIXTURE_PROFILE_ID = "d3_p1_nm_feedback_governance"
-P1_ASSIGNMENT_FIXTURE_PROFILE_VERSION = "1.0.0"
+P1_ASSIGNMENT_FIXTURE_PROFILE_VERSION = "1.1.0"
 
 
 @dataclass(frozen=True)
@@ -22,6 +22,8 @@ class AssignmentFixtureStep:
     tracks: tuple[TargetTrack, ...]
     resources: tuple[ResourceState, ...]
     event_type: str = "baseline"
+    changed_track_ids: tuple[str, ...] = ()
+    changed_resource_ids: tuple[str, ...] = ()
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     @property
@@ -58,6 +60,8 @@ class AssignmentScenarioFixture:
                     "target_count": step.target_count,
                     "resource_count": step.resource_count,
                     "event_type": step.event_type,
+                    "changed_track_ids": step.changed_track_ids,
+                    "changed_resource_ids": step.changed_resource_ids,
                 }
                 for step in self.steps
             ),
@@ -66,7 +70,7 @@ class AssignmentScenarioFixture:
 
 
 def build_p1_assignment_fixtures() -> tuple[AssignmentScenarioFixture, ...]:
-    """Return 5v5, 3v5, 5v3, target-arrival, and resource-failure fixtures.
+    """Return the reusable P1 non-equal, feedback, and hard-window matrix.
 
     Scenario names use ``resources x targets`` ordering. Counts are repeated in
     metadata so consumers never need to infer that convention from the label.
@@ -75,6 +79,7 @@ def build_p1_assignment_fixtures() -> tuple[AssignmentScenarioFixture, ...]:
     five_resources = _resources(5)
     five_targets = _tracks(5, 5)
     three_resources = _resources(3)
+    five_targets_for_three_resources = _tracks(5, 3)
     three_targets = _tracks(3, 5)
 
     target_arrival_initial = _tracks(4, 4, threat_start=0.55)
@@ -98,20 +103,68 @@ def build_p1_assignment_fixtures() -> tuple[AssignmentScenarioFixture, ...]:
         for resource in five_resources
     )
 
+    demand_resources = _resources(3)
+    demand_initial = (
+        _track(target_index=1, resource_count=3, threat_score=0.98),
+        _track(target_index=2, resource_count=3, threat_score=0.55),
+    )
+    demand_changed = (
+        replace(
+            demand_initial[0],
+            demand=TargetDemand(
+                required_resource_count=3,
+                primary_resource_count=2,
+                coordination_mode="hybrid",
+                wave_interval_s=2.0,
+            ),
+            metadata={"event": "high_threat_demand_increase"},
+        ),
+        demand_initial[1],
+    )
+
+    feedback_resources = (
+        ResourceState("R01", capability_class="reserve"),
+        ResourceState("R02", capability_class="alpha"),
+        ResourceState("R03", capability_class="beta"),
+        ResourceState("R04", capability_class="beta"),
+        ResourceState("R05", capability_class="interceptor"),
+    )
+    feedback_initial = _feedback_tracks(reserve_replan=False)
+    feedback_changed = _feedback_tracks(reserve_replan=True)
+
+    hard_window_resources = _resources(2)
+    hard_window_initial = (
+        replace(
+            _track(target_index=1, resource_count=2, threat_score=0.90),
+            fov_difficulty_by_resource={"R01": 0.0, "R02": 0.6},
+        ),
+    )
+    hard_window_changed = (
+        replace(
+            hard_window_initial[0],
+            hard_time_window=True,
+            time_window_by_resource={
+                "R01": {"state": "closed", "time_window_close_at_s": 2.0},
+                "R02": {"state": "open", "time_window_close_at_s": 10.0},
+            },
+            metadata={"event": "hard_window_closed_for_previous_resource"},
+        ),
+    )
+
     return (
-        _single_step_fixture(
+        _two_step_track_change_fixture(
             scenario_id="5v5",
             scenario_kind="equal_nm",
             tracks=five_targets,
             resources=five_resources,
         ),
-        _single_step_fixture(
+        _two_step_track_change_fixture(
             scenario_id="3v5",
             scenario_kind="resource_shortage",
-            tracks=five_targets,
+            tracks=five_targets_for_three_resources,
             resources=three_resources,
         ),
-        _single_step_fixture(
+        _two_step_track_change_fixture(
             scenario_id="5v3",
             scenario_kind="resource_surplus",
             tracks=three_targets,
@@ -133,6 +186,7 @@ def build_p1_assignment_fixtures() -> tuple[AssignmentScenarioFixture, ...]:
                     tracks=target_arrival_initial + (arriving_target,),
                     resources=target_arrival_resources,
                     event_type="new_target",
+                    changed_track_ids=(arriving_target.track_id,),
                     metadata={"new_target_id": arriving_target.track_id},
                 ),
             ),
@@ -154,7 +208,84 @@ def build_p1_assignment_fixtures() -> tuple[AssignmentScenarioFixture, ...]:
                     tracks=five_targets,
                     resources=failed_resources,
                     event_type="resource_failure",
+                    changed_resource_ids=("R03",),
                     metadata={"failed_resource_id": "R03"},
+                ),
+            ),
+            metadata={"resource_target_order": "resources_x_targets"},
+        ),
+        AssignmentScenarioFixture(
+            scenario_id="threat_demand_change",
+            scenario_kind="high_threat_demand_change",
+            steps=(
+                AssignmentFixtureStep(
+                    step_id="before_threat_demand_change",
+                    timestamp_s=0.0,
+                    tracks=demand_initial,
+                    resources=demand_resources,
+                ),
+                AssignmentFixtureStep(
+                    step_id="after_threat_demand_change",
+                    timestamp_s=3.0,
+                    tracks=demand_changed,
+                    resources=demand_resources,
+                    event_type="threat_demand_change",
+                    changed_track_ids=("T01",),
+                    metadata={
+                        "target_id": "T01",
+                        "required_resource_count": 3,
+                        "primary_resource_count": 2,
+                    },
+                ),
+            ),
+            metadata={"resource_target_order": "resources_x_targets"},
+        ),
+        AssignmentScenarioFixture(
+            scenario_id="d5_feedback",
+            scenario_kind="terminal_feedback",
+            steps=(
+                AssignmentFixtureStep(
+                    step_id="before_d5_feedback",
+                    timestamp_s=0.0,
+                    tracks=feedback_initial,
+                    resources=feedback_resources,
+                ),
+                AssignmentFixtureStep(
+                    step_id="after_d5_reserve_hold",
+                    timestamp_s=3.0,
+                    tracks=feedback_changed,
+                    resources=feedback_resources,
+                    event_type="d5_feedback",
+                    changed_track_ids=("T001",),
+                    changed_resource_ids=("R01",),
+                    metadata={
+                        "feedback_case": "reserve_soft_hold",
+                        "target_id": "T001",
+                        "primary_resource_ids": ("R02", "R03"),
+                        "reserve_resource_id": "R01",
+                    },
+                ),
+            ),
+            metadata={"resource_target_order": "resources_x_targets"},
+        ),
+        AssignmentScenarioFixture(
+            scenario_id="hard_window",
+            scenario_kind="hard_time_window",
+            steps=(
+                AssignmentFixtureStep(
+                    step_id="before_hard_window_close",
+                    timestamp_s=0.0,
+                    tracks=hard_window_initial,
+                    resources=hard_window_resources,
+                ),
+                AssignmentFixtureStep(
+                    step_id="after_hard_window_close",
+                    timestamp_s=3.0,
+                    tracks=hard_window_changed,
+                    resources=hard_window_resources,
+                    event_type="hard_window_change",
+                    changed_track_ids=("T01",),
+                    metadata={"closed_resource_id": "R01"},
                 ),
             ),
             metadata={"resource_target_order": "resources_x_targets"},
@@ -172,13 +303,18 @@ def p1_assignment_fixture_by_id(scenario_id: str) -> AssignmentScenarioFixture:
         raise KeyError(f"unknown D3 assignment fixture: {scenario_id}") from exc
 
 
-def _single_step_fixture(
+def _two_step_track_change_fixture(
     *,
     scenario_id: str,
     scenario_kind: str,
     tracks: tuple[TargetTrack, ...],
     resources: tuple[ResourceState, ...],
 ) -> AssignmentScenarioFixture:
+    changed_track = replace(
+        tracks[0],
+        covariance=min(1.0, tracks[0].covariance + 0.15),
+        metadata={**dict(tracks[0].metadata), "event": "track_state_update"},
+    )
     return AssignmentScenarioFixture(
         scenario_id=scenario_id,
         scenario_kind=scenario_kind,
@@ -189,8 +325,52 @@ def _single_step_fixture(
                 tracks=tracks,
                 resources=resources,
             ),
+            AssignmentFixtureStep(
+                step_id="after_track_update",
+                timestamp_s=3.0,
+                tracks=(changed_track,) + tracks[1:],
+                resources=resources,
+                event_type="track_update",
+                changed_track_ids=(changed_track.track_id,),
+            ),
         ),
         metadata={"resource_target_order": "resources_x_targets"},
+    )
+
+
+def _feedback_tracks(*, reserve_replan: bool) -> tuple[TargetTrack, ...]:
+    resource_ids = tuple(f"R{index:02d}" for index in range(1, 6))
+    fov_values = (
+        (0.0, 0.1, 0.5, 0.0, 1.0)
+        if reserve_replan
+        else (0.0, 0.1, 0.2, 0.8, 1.0)
+    )
+    return (
+        TargetTrack(
+            "T001",
+            threat_score=0.95,
+            covariance=0.1,
+            window_cost=0.1,
+            demand=TargetDemand(
+                required_resource_count=3,
+                primary_resource_count=2,
+                coordination_mode="hybrid",
+                required_capability_counts={"alpha": 1, "beta": 1},
+            ),
+            feasibility_by_resource={
+                resource_id: resource_id != "R05" for resource_id in resource_ids
+            },
+            fov_difficulty_by_resource=dict(zip(resource_ids, fov_values)),
+        ),
+        TargetTrack(
+            "T002",
+            threat_score=0.50,
+            covariance=0.1,
+            window_cost=0.1,
+            feasibility_by_resource={
+                resource_id: resource_id == "R05" for resource_id in resource_ids
+            },
+        ),
     )
 
 

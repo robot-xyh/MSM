@@ -733,3 +733,19 @@ P1 合同层已经闭合；剩余 P1 聚焦 `control_allowed_count=0` 和 Simple
 - MAVLink message signing: <https://mavlink.io/en/guide/message_signing.html>
 - ROS 2 DDS Security: <https://design.ros2.org/articles/ros2_dds_security.html>
 - AprilTag: <https://github.com/AprilRobotics/apriltag>
+
+## 14. 2026-07-12 鲁棒性实现复核
+
+本轮没有更换 D5 算法主线。在线仍按“中心 GlobalTrack 预测到相机量测时刻 -> K/R/t 投影及协方差传播 -> 像素马氏门 -> Hungarian 唯一匹配 -> 友方/版本/稳定窗口保守决策”执行，AirSim detect 为默认输入，truth 只允许离线评分。
+
+实现补强集中在时间与作用域：每个相机独立维护 local association history；锁定后缺失帧只产生 lost/reacquire evidence，0.25 s 后显式过期；恢复时即使 MOT ID 未变也需要 measured 稳定窗口，ID 改变时同样不能继承授权；同一 plan lineage 的旧版本直接 hold。D5 不输出 coast 状态、滤波状态或控制量。
+
+新增回归复现了 M5N2 需要的基本困难：单相机目标交叉、不同相机部分重叠、外参漂移、时间偏差和 local ID 重置。部分重叠场景中，单视角目标只保留单视角支持，共同可见目标才生成 multi-view support；不存在“把两台相机的同名 local ID 当作同一目标”的路径。全量 `168 passed`。
+
+该结果属于模块 replay 验收，不能替代真实 AirSim。下一轮仍需 main 固定 M5N2 几何/时长/seeds，分别统计 target、active-primary、coalition completion，并把 detect availability、D5 gate/lock、D7 control gate 和物理距离分层报告。YOLO/MOT 继续 deferred calibration。
+
+### 14.1 离线 summary 消费合同
+
+D5 已把 1-5 帧缺失/恢复、MOT ID change、crossing、partial overlap、extrinsic drift 和 timestamp bias 组织为无随机数的版本化矩阵。summary 不构造第二套关联器，而是调用现有 `TerminalAssociator`、GlobalTrack 投影/马氏门/Hungarian 和 cross-view registration API；因此 case 结果直接验证主线合同。
+
+`d5.p1_visual_robustness_summary.v1` 的每个 case 都记录 pass/check/reject、decision/reason、online truth use 和 global ID rewrite。顶层提供 D6 readiness 兼容字段，`metadata.case_results` 保留 D6 当前聚合器需要的逐 case 紧凑记录。当前 D6 CLI 已成功消费该文件。确定性基线为 10/10 case、24 次预期保守拒绝、truth use 0、ID rewrite 0；D5 全量 `171 passed`。

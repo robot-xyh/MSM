@@ -441,6 +441,172 @@ def build_dense_crossing_replay_fixture(
     return frames
 
 
+def build_long_dense_crossing_replay_fixture(
+    *,
+    target_count: int = 5,
+    seed: int = 1,
+    steps: int = 120,
+    sample_period_s: float = 0.2,
+    scenario_version: str = "d2-governed-long-replay/v1",
+) -> list[dict[str, Any]]:
+    """Build a governed long replay with repeated crossings and delayed arrivals.
+
+    Frames remain ordered by measurement time because D2 consumes the governed
+    output of D1/main. Selected arrival timestamps intentionally overtake later
+    measurements so calibration can audit OOSM exposure without pretending that
+    D2 implements a raw-measurement rewind filter.
+    """
+
+    if target_count < 2:
+        raise ValueError("target_count must be at least 2")
+    if steps < 40:
+        raise ValueError("long replay requires at least 40 steps")
+    if not np.isfinite(sample_period_s) or sample_period_s <= 0.0:
+        raise ValueError("sample_period_s must be positive and finite")
+    if not scenario_version:
+        raise ValueError("scenario_version must not be empty")
+
+    rng = np.random.default_rng(seed)
+    lane_offsets = np.arange(target_count, dtype=float) - (target_count - 1) / 2.0
+    directions = np.where(np.arange(target_count) % 2 == 0, 1.0, -1.0)
+    truth_ids = [f"target-{index + 1}" for index in range(target_count)]
+    cycle_frames = max(24, min(48, steps // 3))
+    angular_rate = 2.0 * np.pi / (cycle_frames * sample_period_s)
+    crossing_frames = {
+        frame
+        for frame in range(steps)
+        if min(frame % cycle_frames, cycle_frames - frame % cycle_frames)
+        in {cycle_frames // 4 - 1, cycle_frames // 4, cycle_frames // 4 + 1}
+        or min(frame % cycle_frames, cycle_frames - frame % cycle_frames)
+        in {3 * cycle_frames // 4 - 1, 3 * cycle_frames // 4, 3 * cycle_frames // 4 + 1}
+    }
+    # Deterministic late arrivals create arrival-order inversions while the
+    # governed frame stream remains measurement-time ordered.
+    delayed_frames = {
+        frame for frame in range(8, steps, 17) if frame + 1 < steps
+    }
+    frames: list[dict[str, Any]] = []
+    scenario_name = (
+        f"{target_count}target_long_dense_crossing_occlusion_"
+        "missed_detection_false_alarm_oosm"
+    )
+    scenario_tags = [
+        f"{target_count}-target",
+        "long_replay",
+        "crossing",
+        "dense",
+        "occlusion",
+        "missed_detection",
+        "false_alarm",
+        "oosm",
+    ]
+
+    for frame_index in range(steps):
+        timestamp = frame_index * sample_period_s
+        phase = angular_rate * timestamp
+        nominal_delay = 0.08
+        arrival_delay = nominal_delay + (0.65 if frame_index in delayed_frames else 0.0)
+        detections: list[dict[str, Any]] = []
+        truth_states: dict[str, list[float]] = {}
+        for target_index, truth_id in enumerate(truth_ids):
+            direction = directions[target_index]
+            target_phase = phase + 0.04 * lane_offsets[target_index]
+            position = np.array(
+                [
+                    direction * 18.0 * np.cos(target_phase),
+                    1.25 * lane_offsets[target_index]
+                    + 0.55 * np.sin(target_phase + 0.3 * target_index),
+                ],
+                dtype=float,
+            )
+            velocity = np.array(
+                [
+                    -direction * 18.0 * angular_rate * np.sin(target_phase),
+                    0.55 * angular_rate * np.cos(target_phase + 0.3 * target_index),
+                ],
+                dtype=float,
+            )
+            state = [
+                float(position[0]),
+                float(position[1]),
+                float(velocity[0]),
+                float(velocity[1]),
+            ]
+            truth_states[truth_id] = state
+
+            occluded = (
+                frame_index in crossing_frames
+                and target_index in {target_count // 2, max(0, target_count // 2 - 1)}
+            )
+            periodic_miss = (frame_index + 3 * target_index + seed) % 53 == 0
+            if occluded or periodic_miss:
+                continue
+
+            noise_sigma = 0.28 if frame_index in crossing_frames else 0.20
+            noisy_position = position + rng.normal(0.0, noise_sigma, size=2)
+            detections.append(
+                {
+                    "detection_id": f"det-{frame_index:04d}-{target_index + 1}",
+                    "measurement_timestamp": timestamp,
+                    "arrival_timestamp": timestamp + arrival_delay,
+                    "position": noisy_position.tolist(),
+                    "covariance": [
+                        [noise_sigma**2, 0.0],
+                        [0.0, noise_sigma**2],
+                    ],
+                    "offline_truth_label": truth_id,
+                    "offline_truth_state": state,
+                    "offline_truth_position": state[:2],
+                }
+            )
+
+        false_alarm_count = 1 + int(frame_index % 22 == 0)
+        if frame_index % 7 in {2, 3}:
+            for false_index in range(false_alarm_count):
+                clutter_position = np.array(
+                    [
+                        5.0 * np.sin(0.31 * frame_index + false_index),
+                        -4.0 + 1.5 * false_index,
+                    ]
+                ) + rng.normal(0.0, 0.35, size=2)
+                detections.append(
+                    {
+                        "detection_id": (
+                            f"false-alarm-{frame_index:04d}-{false_index:02d}"
+                        ),
+                        "measurement_timestamp": timestamp,
+                        "arrival_timestamp": timestamp + arrival_delay,
+                        "position": clutter_position.tolist(),
+                        "covariance": [[0.25, 0.0], [0.0, 0.25]],
+                        "is_false_alarm": True,
+                        "confidence": 0.45,
+                    }
+                )
+
+        frames.append(
+            {
+                "frame_index": frame_index,
+                "timestamp": timestamp,
+                "measurement_timestamp": timestamp,
+                "arrival_timestamp": timestamp + arrival_delay,
+                "detections": detections,
+                "truth_ids_present": truth_ids,
+                "offline_truth_states": truth_states,
+                "replay_metadata": {
+                    "seed": seed,
+                    "episode_id": f"d2-long-{target_count}target-{seed:04d}",
+                    "scenario_name": scenario_name,
+                    "scenario_version": scenario_version,
+                    "scenario_tags": scenario_tags,
+                    "target_count": target_count,
+                    "measurement_count": len(detections),
+                    "oosm_injected": frame_index in delayed_frames,
+                },
+            }
+        )
+    return frames
+
+
 def _offline_frame_evidence(
     frame: Any,
     *,

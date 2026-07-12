@@ -172,3 +172,15 @@ T001 复验新增了计划/联盟双版本连续性边界：reserve-only replan 
 2026-07-11 的 `blocks_cv_m5_n2_cooperative_live_20260711` 未形成 cooperative lock。虽然 5 主相机与 2 二级相机均出图，AirSim built-in detection 在绝大多数帧为空；full-flow 只有最后一帧 `Secondary_Recon_1` 对 `TGT-002` 的单 bbox，D5 总计 32 `reacquire`、4 `ambiguous`、0 `locked`。
 
 使用记录的 `Secondary_Recon_1:0` 外参、目标位置和 bbox 重放，D5 得到约 0.09 px 的同相机误差并选择 `T002`。单帧 MOT history=1 导致 `mot_history_too_short`，属于预期安全门控。runtime 把该二级 local track fallback 给多个主资源后产生的 18-78 px 不能作为同相机重投影误差。下一轮必须先修正 camera scope、mesh filter 与 pose/render warm-up，真实连续锁定后才能评价 `planned_cooperative_lock`；本轮只证明联盟合同未因空检测而改绑或误锁。
+
+## 12. 2026-07-12 部分重叠与重捕获 replay
+
+D5 已增加不依赖 AirSim truth ID 的 M-to-N 视觉回归。两相机部分重叠用例明确模拟“R1 看到 G1/G2/G3、R2 看到 G2/G3/G4”：每个 camera batch 先独立使用 GlobalTrack 投影、像素协方差、马氏门和 Hungarian 注册，汇总层只让 G2/G3 形成双资源支持，G1/G4 保持单视角；相同 local ID 始终按 resource/camera 命名空间隔离。
+
+锁定后 1-5 帧缺失用例不引入 D5 coast/KF。前两帧只输出未过期的 lost/reacquire evidence，第 3-5 帧在 10 Hz 下超过 0.25 s 后 fail closed；观测恢复和 MOT ID 变化均需两次 measured 支持。外参漂移、0.5 s 高动态时间偏差和旧 plan replay 均被保守门控。模块全量为 `168 passed`。
+
+这关闭 M-to-N 的模块级 replay 支撑，不关闭真实 AirSim 的双 primary 共同可见、遮挡恢复、二级完整覆盖或联盟物理完成。后续 paired M5N2 必须使用相同几何、35 s 和相同 seeds，并保持 online truth use、wrong binding、reserve 越权和 `global_track_id` rewrite 为 0。
+
+### 12.1 M-to-N summary 证据
+
+上述 partial-overlap 与重捕获场景现由 `d5.p1_visual_robustness_summary.v1` 固化。逐 case JSON 明确区分单视角/多视角支持、预期 geometry reject、恢复前 ambiguous/reacquire 和恢复后 lock，并单列在线 truth 使用与全局 ID 改写计数。D6 可通过 `--d5-summary` 读取版本、证据路径、10/10 通过、24 次保守拒绝和逐 case 紧凑结果；完整明细仍留在 D5 JSON 顶层 `cases`。该证据只证明确定性合同，不替代 M5N2 AirSim 联盟完成率。

@@ -13,6 +13,17 @@ D6 不参与控制：
 
 D2/D6 的硬约束必须保留：`id_switch_count` 是一级显式指标，不能只被 MOTA、成功率或总体得分间接吸收。
 
+## 0.1 2026-07-12 P1 第二批统一验收实现
+
+- `P1AcceptanceInputs/P1AcceptanceReportGenerator` 已形成 file/offline-only 聚合边界，可消费 main P1 terminal closure 与 D1-D5/D7 的版本化 replay/calibration summary；不 import 或调用在线模块。
+- 统一 bundle 输出 `p1_acceptance_per_seed.csv`、`p1_acceptance_aggregate.json`、中文 `P1_UNIFIED_ACCEPTANCE_REPORT.md` 和 `p1_acceptance_overview.png`。
+- contract/control/mode/physical 四层和 pair/target/coalition 三层分别聚合；上游旧字段缺失保持 unavailable，不做跨层推断。
+- D7 dropout、TTC 四类拒绝和 trend 晋级判据，D4 failover matrix，以及 D2 IDSW/continuity 均有独立报告区；D1、D3、D5 保留 source schema 和关键摘要。
+- 本轮关闭的是 D6 离线消费和统一报告代码缺口。真实同条件 M5N2 AirSim paired、真实 dropout/`png_ttc`、D5 持续视觉和 D4 物理接管 evidence 仍由 main 与上游模块生成。
+- 当独立 D7 summary 缺失时，统一报告从 main suite 的版本化 `acceptance.dropout_matrix` 和显式 family rows 派生 dropout/`png_ttc`/trend 专项摘要；来源写为 `main_terminal_closure`。独立 D7 summary 仍具有优先级。
+- `physical_levels` 只统计 `family=m5n2_paired`，不混入 2v2 dropout 或 `png_ttc` 成功。contract/control/mode/physical 继续只读同名字段。
+- `p1_terminal_closure_smoke_v2_20260712` 已验证 fallback：dropout complete/compliant，TTC 1 seed 且 not-expanding=1，trend trigger=0/promotion=false；四层字段等待 main 新版本写盘。
+
 ## 1.0 2026-07-12 D7 PNG Delivery 评估交付
 
 - 已在 `EpisodeMetrics` 和 D7 CSV/JSON replay 中接入 terminal filter、TTC 面积有效性、soft prediction/coast、锁定连续性、视觉模式驻留和命令跳变指标。
@@ -21,9 +32,21 @@ D2/D6 的硬约束必须保留：`id_switch_count` 是一级显式指标，不�
 - 继续保持 contract/control/switch/physical 四层与 pair/target/coalition 三层分离；D6 不修改阈值、不授权 coast、不参与控制。
 - main/D7 后续需要稳定写出 profile、terminal filter state/reason、TTC reject reason、elapsed time、terminal lock、visual mode 和三轴速度命令；字段缺失时报告保持 NA。
 
-## 1.1 P1/P2 当前状态（2026-07-11）
+本节是 2026-07-12 的当前 P0/P1 状态入口；后续 2026-07-11 小节只保留历史批次口径：
 
-D6 当前仍保持 offline-only。当前状态按证据成熟度分为四层：
+- **P0 保持闭合**：没有新增运行级 P0 blocker。实际规模归一化、显式 `id_switch_count`、online truth 隔离、execution/contract 分离、evidence availability 和 `cuas-standard-map-v1` 保持原状态。
+- **P1 D6 实现闭合**：terminal filter measured/predicted/innovation-rejected/reset/expired、TTC 四类拒绝、soft prediction/coast duration/expiry、terminal lock continuity、visual mode duration、command discontinuity 已进入指标、availability、标准映射和离线 replay；terminal delivery 对照 bundle 已实现。
+- **2026-07-12 实际证据**：D6 对照包消费 26 个 episode，按 scope/scenario/profile/实际 N/M 形成 4 组。2v2 baseline 10 seeds 为 pair/target `19/20`，candidate 10 seeds 为 `20/20`；candidate 自然运行未触发 soft prediction 或 trend coast，因此只闭合非退化验收，不证明增强算法贡献。四层 logging smoke 为 `contract_allowed=4/36`、`control_allowed=2/36`、`mode_switched=5`、`physical_intercept=2/2`；早期 10-seed 文件缺新列时保持 NA。
+- **M5N2 证据边界**：35 s 高净空 baseline 为 target `6/6`、active-primary pair `6/9`、coalition `0/3`；8 s candidate 为 active pair `0/9`、最近距离 22-32 m。两批几何和窗口不等价，不能形成 baseline/candidate 结论，也不能把 target success 回填为 coalition completion。
+- **当前开放 P1**：同一 z=-30 m、35 s 几何和同 seed 的 M5N2 paired baseline/candidate；独立 `png_ttc` 多 seed；1-5 帧锁后 dropout 矩阵与 0.25 s fail-closed；trend coast 在错误绑定、命令跳变和物理成功三项均不退化后再决定是否进入默认 profile；以及既有完整标准化报告、场景库/CI 接线、长期真实 replay/review/window/阈值趋势。
+- **下一验收条件**：M5N2 必须分别报告 target、active-primary pair、coalition completion；`png_ttc` 必须报告 area jump、bbox clipping、not expanding、TTC out-of-range；旧日志缺字段继续为 unavailable，不得补 0。D6 只消费 main/D5/D7 写盘证据。
+- **验证与变更边界**：该 D7 专项阶段指定测试为 `84 passed`；加入本轮 P1 统一验收和 main-summary fallback tests 后，D6 当前为 `88 passed`，伴随 1 条本机 matplotlib `Axes3D` warning。
+
+## 1.1 P1/P2 历史状态（2026-07-11）
+
+以下内容保留 2026-07-11 当日证据；当前 P0/P1 判定以 1.0 节为准。
+
+D6 当日仍保持 offline-only。当日状态按证据成熟度分为四层：
 
 - **P0 已闭合并保持回归**：实际规模归一化、显式 `id_switch_count`、truth isolation、execution/contract 分离、evidence availability 和 `cuas-standard-map-v1` 均已进入本地主线；当前没有运行级 P0 blocker。
 - **P1 合同/指标接口已完成**：M 对 N DTO/loader/writer/聚合、合法协同锁与错误重复锁拆分、center replan 生命周期、联盟 ACK/commit/epoch/lease、二级 lifecycle、D5 YOLO/MOT 预算、四导引律配对和多 seed 报告接口均已实现。
@@ -45,7 +68,7 @@ D6 当前仍保持 offline-only。当前状态按证据成熟度分为四层：
 
 后续顺序固定为：先延长/细化 SimpleFlight 物理实验并解决 detection timeout，再持续补 D1-D3、YOLO/MOT 和四律长窗口 evidence；D6 继续按 contract/control/switch/physical 四层指标汇总。未写出的指标保持 unavailable，禁止用默认 0 补齐。
 
-## 1.2 本轮 P1/P2 实现状态（2026-07-11）
+## 1.2 P1/P2 历史实现状态（2026-07-11）
 
 1. P1 已接入 `d4_coalition_commit_state`，同时兼容扩展 `CoalitionRecord`；按 target/coalition/plan/epoch generation 去重，输出成员 ACK 完成率、ACK latency、lease、timeout、aborted/reconfiguring 和 secondary/distributed commit。
 2. P1 已新增终端四层指标：`contract_allowed`、`control_allowed`、`mode_switched`、`physical_intercept`。四层分别按各自 evidence 计数，不从前一层推断后一层；当前 ComputerVision 的 `control_allowed_count=0`，且缺拦截 summary/pair/control status，因此 physical 保持 unavailable。
@@ -53,9 +76,9 @@ D6 当前仍保持 offline-only。当前状态按证据成熟度分为四层：
 4. summary 判据审计读取 5 m、NED、3D Euclidean 和 criteria version；ComputerVision 即使存在状态记录也保持 physical unavailable。control record 可报告 detect/coast 六项诊断与 `truth_identity_online_use_count`，D6 不把诊断用于控制。
 5. P1 字段已进入 `EpisodeMetrics`、通用报告、标准映射和 main-bus JSON loader；旧 CoalitionRecord、旧 JSONL 和旧 metrics JSON 继续兼容。
 6. P2 已实现冻结 `msm-offline-mot-v1` schema 与可选 py-motmetrics adapter；当前只在 2 帧离线 smoke fixture 上验证 IDF1/MOTA/MOTP 可计算，HOTA 明确 unavailable，可选依赖缺失时输出 `unavailable_reason`。依赖仅位于 `/home/linux/.cache/msm-p2-venv`，版本 `motmetrics 1.4.0`，默认 requirements、在线路径和 D6 本地指标主线均不变。
-7. 当前 D6 全量回归为 `82 passed`；指定 P2 环境的 2 帧 fixture 输出 IDF1=1.0、MOTA=1.0、MOTP=0.15。该数值只证明 adapter/backend 接线可运行，不是跟踪质量、算法收益或生产 benchmark 结论。
+7. 当日 D6 全量回归为 `82 passed`；指定 P2 环境的 2 帧 fixture 输出 IDF1=1.0、MOTA=1.0、MOTP=0.15。该数值只证明 adapter/backend 接线可运行，不是跟踪质量、算法收益或生产 benchmark 结论。
 
-## 1.3 P1 最终实测验收矩阵（2026-07-11）
+## 1.3 P1 历史实测验收矩阵（2026-07-11）
 
 | 场景 | D6 核对结果 | 状态 |
 |---|---|---|
@@ -446,10 +469,11 @@ human_override_count
 - D7：可读取 control/guidance/intercept CSV/JSON，计算 gate、visual PNG switch、terminal takeover、模式切换、拦截结果和 reject metadata。
 - Blocks CV：可从 `blocks_frames.jsonl` 与 `blocks_sensor_observations.jsonl` 构建 truth summary、规模字段、视觉检测、terminal records、video/bbox link records 和通信链路样本。
 
-P0/P1 状态：
+P0/P1 状态（2026-07-12）：
 
 - 无 P0 blocker。D6 离线主线、`id_switch_count` 显式输出、实际规模归一化、main bus metrics loader、D4/D5/D7 写盘消费和二级侦察指标消费均已具备。
-- 剩余 P1 不是 D6 在线控制职责，而是真实 episode 写盘、自动汇总和长期趋势报告的持续性要求：
+- D6 terminal delivery 指标、availability-aware replay 和 baseline/candidate 对照 bundle 已闭合；2v2 candidate `20/20` 达到非退化验收。M5N2 同几何/同窗口 paired 对照、`png_ttc` 多 seed、dropout 矩阵、trend coast 默认 profile 决策及长期趋势仍开放。
+- 剩余 P1 不是 D6 在线控制职责，而是真实 episode 写盘、自动汇总、paired 验收和长期趋势报告的持续性要求：
 
 - 真实 episode 需要持续写出 D4 `review_label`、`trigger_timestamp`、`decision_timestamp`、`selected_coordinator`、`coverage_cell` 和固定 pre/post window 字段；D6 已能消费这些字段并计算主动降级必要性/精度。
 - 同一 episode 目录仍需稳定聚合 Blocks、D4、D5、D7 和 D6 标准化 JSONL/CSV/JSON，并保持同一 episode clock；D6 loader 本身不会扫描 runtime bus、启动 AirSim 或补写上游日志。
@@ -458,7 +482,7 @@ P0/P1 状态：
 - main runtime P1 D4/D5 calibration sweep 已自动调用 D6 `AirSimCalibrationReportGenerator` 生成标准 records/summary/Markdown bundle；D6 当前重点是保持多 seed 自动汇总口径稳定，沉淀 coverage/funnel/gimbal、projection/gate/stable registration、not-registered、D7 guidance reject 和 `trend_key/evidence_path` 长期趋势，统计 active degradation precision，并按真实 `drone_count/resource_count/target_count/camera_count` 做 actual scale 分组。
 - 多 seed、5v5/N-v-N 和非默认 episode 需要继续保持 `metric_scope=execution/contract` 双口径，正式指标采用执行后 metrics，contract metrics 仅用于诊断；D6 已能直接读取两类 main bus metrics JSON，报告分组已按 `metric_scope + seed + scenario_group + scale` 实现，不从场景名推断规模，并在 metadata/Markdown 中保留 reject reason 分布。
 
-2026-07-11 D6 owner 当前回归基线为 `82 passed`。除既有能力外，coalition commit、终端 contract/control/switch/physical 四层验收、pair/target/coalition 分层 physical success、detect/coast 诊断和隔离式 py-motmetrics adapter 已完成。最新 M 对 N CV 10-seed 合同结果与 SimpleFlight 10-seed 物理诊断必须分开解释；`physical_intercept_count` 没有物理 evidence 时保持 unavailable，有物理 evidence 且未命中时为 0。
+2026-07-12 D6 owner 当前回归为 `88 passed`，另有 1 条本机 matplotlib `Axes3D` warning。coalition commit、终端 contract/control/switch/physical 四层验收、pair/target/coalition 分层 physical success、detect/coast、PNG delivery 诊断、main-summary fallback 及 P1 多来源统一报告均已实现并保持回归。2v2 candidate 的 `20/20` 只闭合本轮非退化门槛；M5N2 candidate 与历史 baseline 不可直接配对，仍须按相同几何、窗口和 seed 验收。`physical_intercept_count` 没有物理 evidence 时保持 unavailable，有物理 evidence 且未命中时为 0。
 
 ## 6. 开源/外部项状态
 
@@ -502,13 +526,21 @@ p05 / p95
 
 ## 8. P1 下一步
 
+### 2026-07-12 PNG Delivery 下一验收
+
+1. 用同一 z=-30 m、35 s 高净空几何、相同运行窗口和相同 seed 运行 M5N2 baseline/candidate；分别统计 target、active-primary pair 和 coalition completion，不跨层回填。
+2. 独立运行 `png_ttc` 多 seed，持续写出并汇总 area jump、bbox clipping、not expanding 和 TTC out-of-range 拒绝。
+3. 固定锁定后 dropout 时刻覆盖 1-5 帧；1-2 帧核对有界预测，3-5 帧必须按 0.25 s 上限 fail-closed，且 online truth use 和错误身份绑定保持 0。
+4. trend coast 只有在错误绑定为 0、命令跳变不恶化、物理成功不下降时才可进入默认 AirSim profile；否则保持 candidate-only。
+5. 所有新批次稳定写出 profile、filter state/reason、TTC reject、soft/coast elapsed、lock、visual mode、三轴速度命令和四层结果；缺字段保持 unavailable。
+
 ### 2026-07-11 M 对 N 评估框架
 
 专项框架见 `subagent_reviews/D6_M_TO_N_EVALUATION_FRAMEWORK_REVIEW.md`。D6 将四条研究路线 `independent/simultaneous/sequential/hybrid_primary_reserve` 按中心正常、二级接管、完全无中心三个层级评估，并覆盖几何退化、时间同步、通信异常和成员失效。所有新增指标按 `frame/member/wave/coalition-version/target-episode/episode/batch` 分层聚合，继续区分 `unavailable/null`、证据完整的真实 `0` 和 `not_applicable`。
 
 2026-07-11 已冻结并实现 `TargetDemandRecord/CoalitionRecord/ArrivalRecord`，扩展 assignment/terminal coalition/member 字段，接入 JSONL loader/writer、`EpisodeMetrics`、episode CSV、batch summary 和 Markdown。已实现 demand/unmet slots、formation/reconfiguration、arrival/wave/hybrid、geometry rejection、canonical duplication/cross-node IDSW/common-information rejection、planned/authorized/erroneous lock、same-resource continuity、成员生命周期、通信预算和安全聚合；既有 RMSE/NIS/NEES 指标继续复用 track/governance 路径。探测 POD/miss/FAR 现同时要求 truth opportunity 与离线 match/miss 配对裁决；仅有 truth 列表或 truthless center tracks 时统一 `None/unavailable`。
 
-`duplicate_terminal_lock_count` 保持通用同帧多资源观测计数，不再被错误锁覆盖；`erroneous_duplicate_lock_count` 仅计 `k=1`、版本冲突和超需求。规范 `center_replan_request_created/deduplicated/ack_no_change/applied/expired` 事件已接入请求数、去重数、no-change、applied、expired、pending dwell 与收敛时间；缺事件为 unavailable。当前 P1 合同层已有 CV 8/10、二级/分布式 commit 和 missing-ACK fail-closed 实测证据；未闭合的是 SimpleFlight 物理拦截和长窗口实验矩阵，不是 D6 聚合合同。第 9 节 P2 项只作为隔离 benchmark，其中 SCRIMMAGE 保持 P3。
+`duplicate_terminal_lock_count` 保持通用同帧多资源观测计数，不再被错误锁覆盖；`erroneous_duplicate_lock_count` 仅计 `k=1`、版本冲突和超需求。规范 `center_replan_request_created/deduplicated/ack_no_change/applied/expired` 事件已接入请求数、去重数、no-change、applied、expired、pending dwell 与收敛时间；缺事件为 unavailable。当前 P1 合同层已有 CV 8/10、二级/分布式 commit 和 missing-ACK fail-closed 实测证据；2026-07-12 的 2v2 candidate 已达到 `20/20` 非退化验收，未闭合的是同几何 M5N2 paired 物理/联盟验收和长窗口实验矩阵，不是 D6 聚合合同。第 9 节 P2 项只作为隔离 benchmark，其中 SCRIMMAGE 保持 P3。
 
 ### 2026-07-11 四导引律证据边界
 

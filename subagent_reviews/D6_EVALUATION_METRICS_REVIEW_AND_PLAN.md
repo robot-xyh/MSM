@@ -1,5 +1,15 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-12 P1 第二批统一报告补充
+
+D6 已新增独立的 P1 summary 聚合入口，直接消费 main terminal closure 和 D1-D5/D7 的版本化离线产物，不要求 D6 导入生产者模块。统一报告固定输出逐 seed/source CSV、聚合 JSON、中文 Markdown 和 PNG 概览图，并显式审计 source schema 与 evidence availability。
+
+报告保持两组不可替代的层级：`contract_allowed/control_allowed/mode_switched/physical_intercept` 四层，以及 pair/target/coalition 三层。锁定、允许控制、模式切换和物理命中之间不做推断；M5N2 的任一 pair 命中也不会被回填成 coalition complete。D7 dropout、`png_ttc` 四类拒绝和 trend coast 晋级判据，D4 failover matrix，以及 D2 IDSW/continuity 已进入统一版式。
+
+该实现关闭 D6 的离线消费与报告缺口，但不改变真实试验结论：没有对应 AirSim 文件时字段仍为 unavailable；合成 D1-D4 replay 只能证明 schema、回归和 fail-closed 逻辑可测，不能替代真实多 seed 物理验收。
+
+复核 `p1_terminal_closure_smoke_v2_20260712` 后，D6 增加 main-summary 专项回退。独立 D7 summary 缺失时，版本化 `acceptance.dropout_matrix` 可直接形成完整性/合规性结论，`png_ttc` 和 candidate trend 只聚合逐行显式计数。该 smoke 的 dropout complete/compliant 均为 true，TTC 仅 not-expanding=1，trend 未触发且不建议晋级。执行四层仍等待 main 写出同名字段，不从 pair、switch 或专项结果推断。
+
 **定位**：D6 建立覆盖探测、跟踪、分配、降级、末端配准、通信、D7 gate/intercept 和安全约束的离线评估体系，支持批量实验统计和报告图表。
 **边界**：D6 只消费日志，不参与实时控制，不生成任务、分配、导引、火控、毁伤、自动处置或授权绕过流程。
 **规模规则**：指标按实际 `drone_count/resource_count/target_count/camera_count` 归一化，并按 `metric_scope/seed/scenario_group/scale` 分组，不从 `2v2/5v5` 场景名推断规模。

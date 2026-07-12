@@ -4,9 +4,9 @@
 
 **审计边界**：仅评估 D2 离线科研仿真与数据关联模块，不涉及真实飞控、硬件、火控、毁伤或自动处置逻辑。
 
-**本轮 EVAL 同步来源**：`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md`、`EVAL/FRAMEWORK_EVAL_PATCH_ENGINEERING_PRACTICES.md`、`EVAL/FRAMEWORK_EVAL_PATCH_2026_VERIFIED.md`、`EVAL/FRAMEWORK_EVAL_PATCH_WEBSEARCH_2026.md`。
+**本轮状态同步来源**：commit `33e6fa0` 后当前 D2 代码与测试、`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md`、`research_modules/airsim_runtime/outputs/PNG_DELIVERY_ENHANCEMENT_AIRSIM_VALIDATION_REPORT_20260712.md`，并保留既有 EVAL 审计结论。
 
-**结论摘要**：D2 P0 无运行级 blocker，P1 合同层已闭合；系统级物理拦截与更长真实 replay 的长期参数标定仍开放。当前 `67 passed` 覆盖默认 GNN/Hungarian、D1 governed replay、frozen offline truth、N-target/10-seed synthetic dense calibration 与 P2 optional 分支。P2 v2 已在同一 truth-free replay 下对照 GNN 与模块内 JPDA/MHT，并在运行后输出离线 IDSW/continuity；Stone Soup 1.9.1/FilterPy 1.4.5 仍只做对象 adapter smoke。完整外部 JPDA/MHT、EKF/UKF/IMM 和外部框架端到端身份指标仍未实现，默认在线 GNN/Hungarian 路径没有替换。
+**结论摘要**：截至 2026-07-12，D2 P0 无运行级 blocker，P1 合同层和 synthetic 长 replay 校准入口已闭合；更长真实 AirSim dense/crossing/OOSM replay 与长期参数标定仍开放。当前回归为 `69 passed, 1 warning`，覆盖默认 GNN/Hungarian、D1 governed replay、frozen offline truth、动态 N/M、至少 10-seed short/long calibration 和 P2 optional 分支；warning 是本机 Matplotlib `Axes3D` 多版本导入问题。长 replay 报告新增 false-track、RMSE、NIS/NEES availability、OOSM exposure、版本化 gate/risk/scenario 和 truth leakage。P2 v2 仍是在同一 truth-free replay 下对照 GNN 与模块内 JPDA/MHT，Stone Soup 1.9.1/FilterPy 1.4.5 仍只做对象 adapter smoke；完整外部 JPDA/MHT、EKF/UKF/IMM 和外部框架端到端身份指标仍未实现，默认在线 GNN/Hungarian 路径没有替换。
 
 ## 1. 总体判断
 
@@ -16,10 +16,15 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 
 - **P0 复核**：无运行级 P0 blocker。GNN/Hungarian、马氏门控、`DataAssociator`、`Track` 状态机、`id_switch_count`、`track_continuity`、`duplicate_assignment_count`、D1 adapter、AirSim dry-run adapter 和按输入集合长度运行的要求已在文档/GAP 中准确覆盖。EVAL 已确认的 D2 P0 项已闭合并作为回归保持：每条 track 的 `track_quality`/`association_risk` 航迹质量评分、参与 GNN/Hungarian 代价的运动一致性约束，以及 dense/crossing 下可随 track quality/density 轻量调整的 quality-aware gate baseline。当前 D2 无未完成 P0 backlog；验收口径是持续输出上述字段、保持 D3/D5/D6 可消费性、不替换默认关联器、不改写 D1/D3/D5 合同字段。
 - **P1 合同复核**：D1 governed adapter、offline truth evaluator、逐帧 schema/profile、匿名在线 detection ID、`d2-offline-truth-label/v1`、N-target dense/crossing fixture、至少 10-seed runner、M-of-N/false-track 和 NIS/NEES availability 已闭合。在线 Detection/Track/log 不含 actor 身份或 truth；无 truth replay 仍可计算 NIS。
+- **2026-07-12 变更复核**：`33e6fa0` 没有 D2-owned 变更；后续 D2-owned P1 任务新增 long governed replay runner/schema、OOSM exposure 和动态 N/M 测试，默认在线 GNN/Hungarian 路径未替换。
+- **2026-07-12 模块回归**：`PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_data_association/tests` 得到 `69 passed, 1 warning`。warning 来自 Matplotlib `Axes3D` 多版本导入，不影响 D2 关联、身份或指标测试。
+- **2026-07-12 AirSim 证据**：PNG delivery candidate 的 2v2 10 seeds 为 20/20 pair、在线 truth 使用为 0；锁定后两帧 dropout 沿原 global/local track 和原计划上下文预测，没有 truth ID 或本地 ID 重写。M5N2 8 s 短窗口为 0/9，报告明确其几何与时间窗不足且不可与长时高净空基线直接比较。这些是 D2 下游合同的非退化证据，不是 D2 新算法或长期标定完成证据。
+- **P0/P1 开放项**：P0 无开放 blocker。P1 synthetic long replay、独立 offline truth、至少 10-seed 的 IDSW/continuity/false-track/RMSE/NIS/NEES availability 与版本治理已闭合；仍开放专用长时真实 AirSim replay 下的 gate/risk/M-of-N 生命周期参数冻结，以及跨节点 D1 exact/CI posterior 回写、高歧义 replay 和 owner/epoch failover 验证。
+- **下一验收条件**：冻结 replay、truth、risk/profile/scenario version 和计算预算；按相同输入运行默认 GNN/Hungarian 与受控 gate/JPDA 对照；逐 seed 及聚合报告 IDSW、identity/coverage continuity、duplicate、false-track、初始化延迟、NIS/NEES availability/coverage、runtime 和在线 truth 泄漏数。跨节点验收还必须证明 canonical ID 连续、duplicate payload 拒绝、owner/epoch 切换可恢复，并由 D1/D6 给出融合 posterior 与 NEES/ANEES。
 - **历史基线**：2026-07-10 的 5v5/2v2 批次和 2026-07-11 早期的 seeds 7/17/27 当时不足以关闭 D2 P1，且 T001 双 primary 为 0。本条仅保留实施前/过渡证据边界，不代表当前状态。
-- **当前 10-seed 证据**：M=5、N=2 ComputerVision 的 T001 双 primary 共识/计划授权为 8/10；D2 `id_switch_count=0`、错误 duplicate=0、`global_track_id` 改写/重绑=0 均为 10/10。
+- **2026-07-11 合同验收证据**：M=5、N=2 ComputerVision 的 T001 双 primary 共识/计划授权为 8/10；D2 `id_switch_count=0`、错误 duplicate=0、`global_track_id` 改写/重绑=0 均为 10/10。
 - **commit/fail-closed 边界**：二级和完全分布式 commit 正例通过，缺 ACK 时 `aborted`/`hold_for_review` 且导引许可为 0。这只证明下游能沿用 D2 中心 `global_track_id` 完成 commit/fail-closed，不表示 D2 owner failover 或分布式临时 ID 合并已实现。
-- **物理边界**：SimpleFlight 15 s 仅诊断，30 个 active pair 无命中；物理拦截和长期真实 replay 标定未闭合，不影响 D2 身份/truth-isolation 合同及 synthetic dense calibration runner 的 P1 闭合结论。
+- **物理边界**：物理命中率属于 main/D7/D6 系统验收，不替代 D2 的身份连续性与隔离 offline truth 评分。2026-07-12 的 2v2 20/20 和 M5N2 短窗 0/9 都不改变 D2 synthetic dense calibration runner 已闭合、真实长 replay 标定仍开放的结论。
 - **在线/离线指标边界**：没有 offline truth label 时，truth-based `id_switch_count`、`track_continuity`/`identity_continuity` 和 NEES 必须标记 unavailable；在线可继续计算 NIS、ambiguity、candidate overlap、cost margin、duplicate 和 track-quality risk。IDSW/continuity 结论必须由隔离的 offline evaluator 评分。
 - **P1 闭合与后续研究边界**：D2 已形成覆盖 dense crossing、连续漏检/遮挡和虚警的动态 N、10-seed replay，并冻结独立 truth JSONL；同 seed 复现、truth 隔离和 availability 已有测试。专用真实 AirSim dense/crossing 与更深 gate/risk/NIS/NEES 标定是后续性能研究，不是 P1 合同缺口。
 - **M 对 N P1 状态**：D2 已实现跨节点 local-track namespace、公共时刻传播、track-to-track Mahalanobis/Hungarian、公共信息谱系防重、canonical multi-source binding/history 和 exact/unknown/duplicate 决策基础。多个节点观测同一目标不会增加目标基数，也不会被误记为合法协同资源的 duplicate assignment。数值 CI/相关融合仍由 D1 owner 实现；高歧义多帧关联、owner failover 和融合一致性标定尚未闭合。专项证据见 `D2_M_TO_N_TRACK_FUSION_REVIEW.md`。
@@ -55,7 +60,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - **MHT**：`MHTAssociator` 已有 bounded branch、短历史和 pruning 参数，能作为 MHT-compatible research placeholder；但不是完整 MHT，没有 N-scan pruning、分簇、长期假设树管理和中心算力策略。
 - **EKF 表述**：D2 当前只有二维线性 Kalman fallback。主审计中“EKF/滤波主线 P0 可用”在 D2 侧应理解为轻量 Kalman 航迹预测可用，不代表 D2 已实现非线性 EKF。
 - **3D NED 支持**：D2 可消费 D1 6D NED 输入并投影到水平 N-E 平面，但 D2 原生状态仍固定为 `[x,y,vx,vy]`，不是 `[px,py,pz,vx,vy,vz]` 三维跟踪器。
-- **D6/集成输出**：D2 summary 与 association logs 已具备 IDSW、continuity、duplicate、risk/profile version、gate pass/reject、motion/quality 和 dense/crossing sensitivity 字段，且有 D2/D6 `id_switch_count` 口径测试。当前 P1 CV 批次已由 main/runtime/D6 生产和评分。
+- **D6/集成输出**：D2 summary 与 association logs 已具备 IDSW、continuity、duplicate、risk/profile version、gate pass/reject、motion/quality 和 dense/crossing sensitivity 字段，且有 D2/D6 `id_switch_count` 口径测试。2026-07-11 P1 CV 批次已由 main/runtime/D6 生产和评分；2026-07-12 PNG delivery 报告没有新增 D2 offline IDSW/continuity。
 - **D6 bundle 对齐**：D6 标准 AirSim calibration bundle 已由 main runtime 自动调用；D2 只保证 report/log/profile 字段可被分组读取，不在模块内重复生成 D6 report。
 
 ### 2.3 未实现
@@ -80,7 +85,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - **数据条件**：若继续后续性能研究，需要专用多 seed 真实 AirSim dense/crossing replay、隔离 truth position、漏检/虚警/遮挡 sweep，以及 false track、init latency 和软/硬风险误报漏报统计。
 - **模型条件**：JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控策略、N/M 初始化标定和 NEES/NIS 统计一致性判定；三维 NED 状态合同、三维 covariance 门控、雷达/相机非线性量测模型、CV/CA/CT 机动模型和 IMM 转移概率。
 - **依赖条件**：隔离 venv 已具备 Stone Soup 1.9.1/FilterPy 1.4.5 并完成 adapter smoke；完整算法仍需 framework tracker 配置、版本化参数、测试标记和同预算验收门限。
-- **系统条件**：main/runtime/D6 已完成当前 P1 CV 批次及离线评分。后续自动算法切换仍需阈值配置来源、迟滞和专用 replay 证据。
+- **系统条件**：main/runtime/D6 已完成 2026-07-11 P1 CV 批次及离线评分。后续自动算法切换仍需阈值配置来源、迟滞和专用 replay 证据。
 
 ### 2.6 下一步优先级
 
@@ -165,7 +170,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - `RiskThresholds`/`classify_risk_summary()` 已把 D2 风险证据分为软风险和硬风险。
 - `run_airsim_replay_association()`、`run_threshold_sensitivity()` 与 `summarize_multi_seed_risk_calibration()` 已能输出 5 目标 AirSim-like replay 的 association logs、metrics、risk summary、replay metadata、risk profile version、`association_risk_threshold_version`、gate pass/reject count、motion/quality risk summary、dense/crossing 阈值敏感性行和多 seed 推荐阈值摘要。
 - D1 `GlobalTrack` 到 D2 `Detection` 的模块内 adapter 基线已经可用，仍保持松耦合字段读取；当前是 NED 6D 到 D2 2D 水平面的投影，不是 D2 原生 3D tracker。
-- 当前 P1 CV 批次已沿隔离 truth 边界完成评分；如扩展专用真实 dense/crossing 数据集，main/runtime/D6 应继续沿用 `d2-offline-truth-label/v1` 与已冻结 profile。
+- 2026-07-11 P1 CV 批次已沿隔离 truth 边界完成评分；2026-07-12 PNG delivery 报告没有新增 D2 offline IDSW/continuity。如扩展专用真实 dense/crossing 数据集，main/runtime/D6 应继续沿用 `d2-offline-truth-label/v1` 与已冻结 profile。
 - EVAL 同步后的航迹质量评分、运动一致性约束和 quality-aware gate baseline 已作为 P0 工程化硬化闭合并保持回归；这些项增强 GNN/Hungarian 主线，不替换默认关联器，也不得改写 D1/D3/D5 合同字段。
 - JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控、N/M 参数优化和 NEES/NIS 深度标定保留为后续研究增强，不再写成 P1 合同未闭合。
 - M 对 N D2-owned 注册基础已闭合：1/2/3/N source、异步公共时刻、交叉、duplicate payload/lineage、source local ID 冲突、canonical continuity、exact/unknown/duplicate 决策和 online truth isolation 均有专项回归。剩余是 D1 数值融合、D6 NEES/ANEES、多 seed 高歧义 replay 和 owner failover。
@@ -205,4 +210,36 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 
 ## 6. 审计结论
 
-D2 已具备 P1 合同闭合所需的模块能力：D1 governed input 进入 truth-isolated GNN/Hungarian，源 identity 被匿名化，中心 `global_track_id` 稳定；在线 innovation 提供 NIS，隔离 evaluator 计算 IDSW、M-of-N、false-track 和 NEES；CV 10-seed 中 D2 IDSW、错误 duplicate 和 ID 改写均为 0。完整自适应门控、高阶关联/运动对照、原生 3D、D2 owner failover 和专用真实 dense/crossing 标定是后续研究；P2 保持隔离 adapter benchmark。
+D2 已具备 P1 合同闭合所需的模块能力：D1 governed input 进入 truth-isolated GNN/Hungarian，源 identity 被匿名化，中心 `global_track_id` 稳定；在线 innovation 提供 NIS，隔离 evaluator 计算 IDSW、M-of-N、false-track、RMSE 和 NEES。2026-07-12 新增版本化 synthetic 长 replay 暴露 dense crossing、遮挡、漏检/虚警和 arrival-order inversion，且保持在线 truth leakage 为 0。完整自适应门控、高阶关联/运动对照、原生 3D、D2 owner failover 和专用真实 AirSim dense/crossing 参数标定仍是后续研究；P2 保持隔离 adapter benchmark。
+
+## 7. 2026-07-12 P1 长 Replay 增量复核
+
+### 已闭合的 D2-owned 缺口
+
+- 新增 `d2-governed-long-replay/v1` synthetic governed replay 和至少 10-seed
+  runner，覆盖重复 dense crossing、交叉窗口遮挡、周期漏检、近场虚警和延迟到达。
+- gate profile、risk profile、association threshold 和 scenario 均带版本；报告固定
+  默认在线关联器为 `GNNHungarianAssociator`，JPDA/MHT 不进入主线。
+- 每 seed 和聚合层新增 false-track、RMSE、identity/coverage continuity、
+  NIS/NEES availability、OOSM exposure、online truth leakage 和中心
+  `global_track_id` owner 证据。
+- 新增动态 N/M 回归：3 个目标场景中每帧 measurement count 同时覆盖小于和大于
+  target count，算法和报告不依赖 2v2/5v5 常量。
+- OOSM 边界已明确：D2 消费按 measurement time 治理后的序列，arrival inversion
+  仅用于暴露延迟；原始量测回溯/重放仍属于 D1/main，不在 D2 中伪实现。
+- 默认 5 目标、120 帧、10-seed smoke 得到平均 IDSW `139.6`、identity continuity
+  `0.691`、false-track `5.3`、RMSE `0.306 m`，NIS/NEES 10/10 seeds available，
+  arrival inversion 70 次且 online truth leakage 为 0；当前 profile 未通过治理阈值。
+
+### 仍开放的 P1
+
+- 真实 AirSim/Blocks 长时间 dense crossing、遮挡和 OOSM governed replay 尚未由
+  main 冻结；当前新增的是确定性 synthetic 校准入口和 schema。
+- gate/risk、M-of-N 生命周期、false-track 和 NIS/NEES 的工程阈值仍需真实多 seed
+  数据标定。长 replay 中暴露出的 IDSW/continuity 退化属于待校准结果，不应改写为
+  “默认 GNN 已解决”。
+- cross-node owner/epoch failover、高歧义多帧 canonical registration、D1 exact/CI
+  posterior 回写和 D6 fusion NEES/ANEES 仍按原 P1 backlog 保留。
+
+P0 仍无 blocker；P2 的完整 JPDA/MHT、Stone Soup/FilterPy 端到端 tracker 和原生
+3D/IMM 不因本轮入口增加而升级状态。

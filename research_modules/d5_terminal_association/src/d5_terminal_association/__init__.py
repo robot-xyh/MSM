@@ -96,6 +96,15 @@ from .secondary_frame_evidence import (
     build_secondary_frame_association_evidence,
 )
 from .observation_bus import TerminalObservationBus
+from .p1_visual_robustness import (
+    P1_VISUAL_ROBUSTNESS_PROFILE_ID,
+    P1_VISUAL_ROBUSTNESS_PROFILE_VERSION,
+    P1_VISUAL_ROBUSTNESS_SCHEMA_VERSION,
+    P1VisualRobustnessCaseResult,
+    P1VisualRobustnessSummary,
+    run_p1_visual_robustness_matrix,
+    write_p1_visual_robustness_summary,
+)
 from .visual_handoff import (
     BBoxStability,
     VisualPngHandoffConfig,
@@ -148,6 +157,11 @@ __all__ = [
     "MOBILE_RECON_GIMBAL_COVERAGE_MODE",
     "MultiSeedCalibrationReadiness",
     "OfflineAssociationMetrics",
+    "P1_VISUAL_ROBUSTNESS_PROFILE_ID",
+    "P1_VISUAL_ROBUSTNESS_PROFILE_VERSION",
+    "P1_VISUAL_ROBUSTNESS_SCHEMA_VERSION",
+    "P1VisualRobustnessCaseResult",
+    "P1VisualRobustnessSummary",
     "PeerCameraState",
     "ProjectionResult",
     "PROJECTION_INVALID_REASON",
@@ -201,10 +215,12 @@ __all__ = [
     "publish_sim_detections_as_local_observations",
     "range_band_for_handoff",
     "register_local_visual_tracks_to_global_tracks",
+    "run_p1_visual_robustness_matrix",
     "rotation_world_to_opencv_camera_from_quaternion",
     "summarize_degradation_case",
     "summarize_coalition_visual_completion",
     "summarize_multiseed_calibration_readiness",
     "summarize_secondary_visual_coverage_funnel",
     "summarize_terminal_consistency",
+    "write_p1_visual_robustness_summary",
 ]

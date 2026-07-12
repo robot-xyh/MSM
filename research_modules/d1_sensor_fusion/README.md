@@ -256,10 +256,18 @@ consensus path, a D2 association implementation, or a runtime integration claim.
 replay, D1/D2 two-stage association/fusion, maneuver and occlusion benchmarks, and distributed
 end-to-end validation remain open.
 
-## Current P0/P1/P2 Status (2026-07-11 Final Validation)
+## Current P0/P1/P2 Status (2026-07-12 Documentation Sync)
 
-The authoritative status is
+The current main-level status is recorded in
+`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md`. The D1 capability baseline remains
 `research_modules/airsim_runtime/outputs/p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md`.
+Commit `33e6fa0` and the 2026-07-12 PNG delivery validation changed D5/D6/D7 and main/runtime, not
+D1 source or tests. D1 therefore has no behavior change in that delivery pass: its full regression
+remains `62 passed`, its P0 contracts stay closed as regression baselines, and its open P1 replay,
+cooperative-runtime, statistical-calibration, model-set, and adaptive-covariance work remains open.
+The 2v2 `20/20`, post-lock dropout, and M5N2 `0/9` results are downstream control evidence, not D1
+fusion-accuracy acceptance. P2/P3 planning is unchanged.
+
 The P1 contract layer is closed: the main episode bus writes the D1 governed replay manifest and
 truth-stripped online records while keeping truth in a separate offline-label path. In the 10-seed
 ComputerVision batch, the downstream T001 two-primary contract met its 8/10 acceptance threshold;
@@ -330,3 +338,47 @@ conservative covariance on this small synthetic fixture; they are evidence that 
 not a real-sensor consistency acceptance. Neither optional dependency is installed. FilterPy and
 Stone Soup therefore report `status=unavailable`, null metrics, and a non-empty `unavailable_reason`.
 No optional package was added to default requirements and no online D1 code path was changed.
+
+## Governed Long-Replay Challenge (2026-07-12)
+
+D1 now exposes a deterministic, main-callable synthetic long-replay fixture without changing the
+default NumPy EKF path:
+
+```python
+from d1_sensor_fusion import build_long_replay_scenario, summarize_long_replay
+
+scenario = build_long_replay_scenario()
+summary = summarize_long_replay(scenario).to_dict()
+```
+
+The official CLI writes the same `LongReplaySummary.to_dict()` payload as JSON:
+
+```bash
+python3 research_modules/d1_sensor_fusion/scripts/run_long_replay.py \
+  --seed 17 --duration 60 --target-count 5 \
+  --output research_modules/d1_sensor_fusion/reports/long_replay_summary.json
+```
+
+`--output` is a JSON file path; its parent directory is created when needed. The CLI defaults to
+seed 7, 60 seconds, three targets, and `reports/long_replay_summary.json`.
+
+The default fixture runs for 60 seconds with three crossing targets and generates range-dependent
+radar observations, coarse acoustic bearings, EO pixel observations, a dense-crossing clutter
+window, full/partial EO occlusion, delayed radar OOSM, and relay duplicates. Main can override the
+target count, seed, duration, rates, and event intervals through `LongReplayConfig`; no 2v2/5v5
+constant is used.
+
+The fixture freezes scenario, config, replay-schema, summary-schema, and threshold-profile versions.
+Every online observation keeps measurement/arrival timestamps, covariance, NED working-frame
+metadata, coverage cell, and opaque source lineage. Observation IDs and lineage contain no stable
+target slot. Truth labels and six-state trajectories are returned only through the explicit
+`d1.long_replay_offline_truth.v1` sidecar and never enter online observations or `GlobalTrack`.
+
+`summarize_long_replay()` reuses `FusionAdapter`, raw/fusion latency audits, sensor health, and fixed
+region windows. It reports modality/event counts, final track/source summaries, truth-leak count,
+and metric availability. RMSE/NEES remain explicitly unavailable until offline D2 canonical-ID
+mapping exists. A default smoke run produced 843 observations, 21 injected radar OOSM events, six
+deduplicated relay copies, 29 region windows, and zero online truth leaks in about 8.8 seconds on the
+validation host. This closes the D1-owned synthetic long-replay construction/summary gap, not the
+real Blocks/CV multi-seed calibration gap. The CLI has a subprocess regression that verifies
+argument propagation, output-directory creation, summary schema, and zero online truth leakage.

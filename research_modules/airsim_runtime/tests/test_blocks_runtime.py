@@ -3260,7 +3260,7 @@ def test_controlled_5v5_active_center_replan_visual_png(tmp_path: Path) -> None:
     assert "center_plan_v2" in metrics["metadata"]["plan_ids"]
 
 
-def test_controlled_intercept_uses_bounded_d7_coast_after_detect_loss(
+def test_controlled_intercept_uses_bounded_d7_prediction_then_hard_expiry(
     tmp_path: Path,
 ) -> None:
     resources = tuple(f"Interceptor{index}" for index in range(1, 6))
@@ -3307,9 +3307,19 @@ def test_controlled_intercept_uses_bounded_d7_coast_after_detect_loss(
     states = {row["terminal_delivery_state"] for row in rows}
     reasons = {row["terminal_delivery_reason"] for row in rows}
     assert "image_kf_predict" in states
-    assert "blind_push" in states
+    assert "blind_push" not in states
     assert "expired" in states
-    assert "terminal_visual_lost_after_coast" in reasons
+    assert "terminal_visual_prediction_window_expired" in reasons
+    assert not any(
+        row["terminal_switch_allowed"].lower() == "true"
+        for row in rows
+        if row["terminal_delivery_state"] == "expired"
+    )
+    assert not any(
+        row["terminal_switch_allowed"].lower() == "true"
+        for row in rows
+        if row["terminal_contract_allowed"].lower() != "true"
+    )
     assert "terminal_detection_timeout" not in {
         row["abort_reason"] for row in rows
     }

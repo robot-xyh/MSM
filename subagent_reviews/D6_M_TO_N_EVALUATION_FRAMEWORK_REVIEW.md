@@ -1,5 +1,11 @@
 # D6 M 对 N 协同拦截评估框架审查
 
+## 0.1 2026-07-12 统一验收回填
+
+`P1AcceptanceReportGenerator` 已将 M5N2 main summary 纳入统一离线报告，按同一 profile/seed 分别保留 active pair、unique target 和 coalition completion 的机会数、成功数和成功率。四层执行证据与三层物理结果继续分离；缺 required-primary 或 arrival-window evidence 时 coalition 不由 pair/target 反推。当前代码入口已闭合，真实同条件 M5N2 baseline/candidate 多 seed 数据仍是开放 P1。
+
+2026-07-12 复核时进一步限定 `physical_levels` 只读取 `family=m5n2_paired`；2v2 dropout 和 `png_ttc` 行不进入 M5N2 pair/target/coalition 分母。main 后续新增的四层指标继续按同名字段读取。
+
 **日期**：2026-07-11
 
 **范围**：基于 D1-D5、D7 六份 `M_TO_N` 专项报告，定义 D6 离线评估口径；不修改控制、分配、关联、导引或 AirSim 运行逻辑。

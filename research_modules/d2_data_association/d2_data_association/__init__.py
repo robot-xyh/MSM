@@ -36,7 +36,9 @@ from .d1_governed_adapter import (
 from .calibration import (
     DenseCrossingCalibrationReport,
     GateCalibrationProfile,
+    LongReplayCalibrationProfile,
     run_dense_crossing_calibration,
+    run_long_replay_calibration,
     summarize_dense_crossing_calibration,
     write_dense_crossing_calibration_report,
 )
@@ -94,6 +96,7 @@ from .replay_governance import (
     OfflineTruthEvaluation,
     build_5v5_replay_fixture,
     build_dense_crossing_replay_fixture,
+    build_long_dense_crossing_replay_fixture,
     evaluate_offline_truth,
 )
 from .models import (
@@ -133,6 +136,7 @@ __all__ = [
     "DryRunAssociationResult",
     "GNNHungarianAssociator",
     "GateCalibrationProfile",
+    "LongReplayCalibrationProfile",
     "GlobalTrack",
     "FusionAction",
     "FusionDirective",
@@ -169,6 +173,7 @@ __all__ = [
     "build_default_dry_run_tracker",
     "build_5v5_replay_fixture",
     "build_dense_crossing_replay_fixture",
+    "build_long_dense_crossing_replay_fixture",
     "detections_from_d1_global_tracks",
     "d2_frames_from_d1_governed_replay",
     "evaluate_offline_truth",
@@ -182,6 +187,7 @@ __all__ = [
     "detections_from_airsim_frame",
     "run_airsim_dry_run_association",
     "run_dense_crossing_calibration",
+    "run_long_replay_calibration",
     "run_optional_framework_benchmark",
     "strip_offline_truth_from_frames",
     "summarize_dense_crossing_calibration",

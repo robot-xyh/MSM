@@ -2,6 +2,28 @@
 
 D6 是 MSM 的离线评估与报告模块。它只消费已经写盘的日志、CSV、JSON/JSONL 和仿真真值，输出 `EpisodeMetrics`、CSV、Markdown 报告和 PNG 图表；不参与 D1-D7 的实时控制链路，不生成任务、分配、导引、授权、火控、毁伤或自动处置动作。
 
+## 2026-07-12 P1 第二批统一验收
+
+新增 `P1AcceptanceReportGenerator` 和命令行入口 `scripts/run_p1_acceptance_report.py`。该入口可离线消费 main 的 `p1_terminal_closure_summary.json`，以及 D1 长 replay、D2 多 seed 关联、D3 分配矩阵、D4 failover matrix、D5 visual readiness 和 D7 dropout/`png_ttc`/trend coast summary。输入既可为 JSON 路径，也可由 Python API 直接传入 mapping 或各模块 dataclass/report 对象。
+
+输出固定为逐 seed/source CSV、聚合 JSON、中文 Markdown 和 PNG 概览图。四层 `contract_allowed/control_allowed/mode_switched/physical_intercept` 只接受同名证据；pair/target/coalition 使用独立分母。旧输出缺字段时 CSV 留空、JSON 为 `null/unavailable`，不会从 terminal switch、pair success 或其他近似字段回填。
+
+```bash
+python3 research_modules/d6_evaluation_metrics/scripts/run_p1_acceptance_report.py \
+  --output-dir /tmp/msm_p1_acceptance \
+  --main-summary <p1_terminal_closure_summary.json> \
+  --d1-summary <d1_long_replay_summary.json> \
+  --d2-summary <d2_long_replay_calibration.json> \
+  --d3-summary <d3_assignment_calibration.json> \
+  --d4-summary <d4_failover_matrix.json>
+```
+
+D5 和 D7 三类 summary 可通过对应可选参数继续加入。未提供来源会保留在 `source_manifest` 并标为 unavailable。D6 不运行这些 producer，也不控制 AirSim。
+
+独立 D7 summary 未提供时，D6 会从版本化 main terminal-closure summary 做保守回退：`acceptance.dropout_matrix` 转为 1-5 帧矩阵，`rows[family=png_ttc]` 汇总四类显式拒绝计数，M5N2 candidate 行的 `terminal_trend_coast_count` 汇总实际触发。独立 D7 summary 始终优先；回退结果带 `derived_from=main_terminal_closure`。四层执行指标仍只读取每行同名字段，不从这些专项字段推断。
+
+真实 smoke `p1_terminal_closure_smoke_v2_20260712` 已重跑：dropout 1-5 帧 matrix complete/all compliant 均为 true；`png_ttc` 有 1 个 seed，not-expanding 拒绝 1 次，其余三类为 0；trend coast 实际触发 0，保持不建议晋级。当前 main 文件尚未包含四层同名字段，因此四层正确显示 unavailable。
+
 ## 2026-07-12 D7 PNG Delivery 被动评估
 
 D6 已增加 availability-aware 的 D7 终端 delivery 评估。离线 loader 可消费 `terminal_filter_state/reason`、innovation reject/reset、TTC area jump/bbox clipping/not-expanding/out-of-range、soft prediction/coast 状态与 elapsed time、terminal lock、visual mode、速度命令和显式 `terminal_delivery_profile/comparison_role`。旧日志缺少字段时对应指标为 `None/unavailable`，不会记为零。
@@ -9,6 +31,8 @@ D6 已增加 availability-aware 的 D7 终端 delivery 评估。离线 loader �
 新增指标覆盖滤波 measured/predicted/innovation-rejected/reset/expired，TTC 四类拒绝，soft prediction/coast 次数、持续时间和到期，terminal lock continuity、visual mode duration 以及 command discontinuity mean/max。既有 `contract_allowed/control_allowed/mode_switched/physical_intercept` 四层和 pair/target/coalition 三层物理结果保持独立。
 
 `ReportGenerator.write_terminal_delivery_comparison_bundle()` 输出逐 episode CSV、聚合 JSON 和中文 Markdown，按显式 profile、scope、scenario 和实际 `resource_count/target_count/camera_count` 分组；2v2 与 M5N2 不合并，M5N2 的 target success、active-primary pair success 和 coalition completion 不互相回填。D6 仍只读日志，不参与 D7 控制。
+
+2026-07-12 实际对照包包含 26 个 episode、4 个独立分组：2v2 baseline/candidate 各 10 seeds，pair/target success 分别为 `19/20`、`20/20`；M5N2 35 s baseline 为 target `6/6`、active-primary pair `6/9`、coalition `0/3`，8 s candidate 为 active pair `0/9`。M5N2 两批几何和窗口不等价，仍需同条件 paired 验收。四层 logging smoke 为 `contract_allowed=4/36`、`control_allowed=2/36`、`mode_switched=5`、`physical_intercept=2/2`；旧日志缺列时保持 NA。该 D7 专项当时回归为 `84 passed`；加入本轮 P1 统一验收和 main-summary fallback 后，D6 当前回归为 `88 passed`，仍有 1 条本机 matplotlib `Axes3D` warning。
 
 ## 2026-07-11 P1 统一验收与 P2 adapter
 
@@ -22,7 +46,7 @@ D6 已消费 main episode bus 的 `d4_coalition_commit_state`，并从事件或�
 
 ## 2026-07-11 M 对 N 离线指标合同
 
-最新实测基线来自 `p1_p2_validation_20260711`：CV 10 seeds 中 8/10 形成 T001 双 primary 同帧共识与授权证据，全部 seed 的 IDSW 和错误重复锁为 0；secondary 与 distributed 正例均为 executing 3/3，missing-ACK 负例为 aborted 2/3。CV 的 `control_allowed_count=0`、`physical_intercept_count=None` 正确表示未执行物理控制。SimpleFlight 10 seeds 均保持 4 bindings、3 active + 1 standby，但 30 个 active pair 中 0 命中，包含 24 detection timeout 和 6 timeout；15 s、`control_dt=0.5 s` 仅为诊断配置。
+当日实测基线来自 `p1_p2_validation_20260711`：CV 10 seeds 中 8/10 形成 T001 双 primary 同帧共识与授权证据，全部 seed 的 IDSW 和错误重复锁为 0；secondary 与 distributed 正例均为 executing 3/3，missing-ACK 负例为 aborted 2/3。CV 的 `control_allowed_count=0`、`physical_intercept_count=None` 正确表示未执行物理控制。SimpleFlight 10 seeds 均保持 4 bindings、3 active + 1 standby，但 30 个 active pair 中 0 命中，包含 24 detection timeout 和 6 timeout；15 s、`control_dt=0.5 s` 仅为诊断配置。
 
 D6 已实现中心化 M 对 N 的兼容日志与离线聚合。新增 `TargetDemandRecord`、`CoalitionRecord`、`ArrivalRecord`，并在 `AssignmentRecord`、`TerminalRecord` 保留 `coordination_mode`、`coalition_id/version/state`、`member_role`、`wave_id`、`required_resource_count`、`demand_assigned/shortfall/complete`、arrival window 和 `minimum_member_separation`。标准 JSONL 支持 `target_demand/coalition/arrival`，collector writer 可 round-trip；旧日志缺少这些字段时只对 duplicate 判定使用明确的 legacy `k=1`，其余新增指标保持 `null/unavailable`。
 
@@ -132,7 +156,7 @@ P1 二级侦察 detect-to-registration 校准报告已经补齐分层漏斗字�
 
 2026-07-08 registration calibration v2 历史基线位于 `research_modules/airsim_runtime/outputs/p1_d4d5_registration_calibration_runtime_v2_20260708*`。D6 bundle 已生成 `d6_airsim_calibration/airsim_calibration_records.csv`、`airsim_calibration_summary.csv`、`airsim_calibration_summary.json` 和 `airsim_calibration_report.md`。该 v2 批次为 single seed、3 case，height 200 m、FOV 110 deg、secondary_count 3；当时指标为 `projection_valid_rate=1.0`、`geometry_gate_pass_rate≈0.474`、stable cross-view registration 51/55/53、cross-view association 4/4/5、degradation case `not_registered_count=35/35`、full-view mean≈0.048、best≈0.143、coverage mean≈0.771。该历史批次证明 D6 报告链路能够输出 projection/gate/stable registration/not-registered/funnel/D7 reject，但不作为 2026-07-11 P1 当前结论。D6 仍只消费日志，不参与控制，也不从 `2v2/5v5` 场景名推断规模。
 
-## 当前 P0/P1 状态
+## 当前 P0/P1 状态（2026-07-12）
 
 ### 2026-07-11 四导引律短窗口实测证据
 
@@ -148,8 +172,9 @@ main 已修复 experiment-level guidance law 的执行后回灌，并从
 配对、末端切换事件和距离指标能够被 D6 正确消费；它们不构成最终命中率、导引律优劣
 或统计显著性结论。延长运行窗口并开展真实多 seed、同几何、同规模对照仍为 P1。
 
-- P0：P0-A/P0-C 字段已补齐。D6 当前输出 mission outcome、success/failure reason、top failure causes/root cause、性能监测字段、EVAL tracking schema 和 `cuas-standard-map-v1` 标准化评估映射最小版；仍保持离线消费日志，不参与控制；指标继续按实际规模归一化，不从 `5v5` 名称推断分母。
-- P1：D6 侧 coalition commit、`contract/control/switch/physical` 四层验收、pair/target/coalition 分层 physical success 与 detect/coast 诊断接口已补齐；CV T001 8/10 达到合同验收阈值，二级/分布式 commit 和 missing-ACK fail-closed 正负例已形成真实 evidence，P1 合同层闭合。两个 CV 尾部 seed 只保留为鲁棒性回归，不是合同闭合 blocker。SimpleFlight 15 s 批次只有物理 evidence 可用的 0/30 命中诊断，物理拦截仍未闭合。当前回归基线为 `82 passed`。
+- P0：P0-A/P0-C 字段已补齐，当前没有新增运行级 P0 blocker。D6 输出 mission outcome、success/failure reason、top failure causes/root cause、性能监测字段、EVAL tracking schema 和 `cuas-standard-map-v1` 标准化评估映射最小版；仍保持离线消费日志，不参与控制；指标继续按实际规模归一化，不从 `5v5` 名称推断分母。
+- P1 已闭合：coalition commit、`contract/control/switch/physical` 四层验收、pair/target/coalition 分层 physical success、detect/coast 和 PNG delivery availability-aware 指标及对照 bundle。CV T001 8/10、二级/分布式 commit、missing-ACK fail-closed 和 2v2 candidate `20/20` 非退化均有 evidence；自然 2v2 未触发 soft/trend，不宣称增强算法贡献。
+- P1 仍开放：同一 z=-30 m、35 s 几何与同 seed 的 M5N2 paired baseline/candidate，独立 `png_ttc` 多 seed，1-5 帧 dropout 与 0.25 s fail-closed，trend coast 默认 profile 判定，以及既有完整标准化报告、场景库/CI 接线和长期真实 replay/review/window/阈值趋势。缺失字段继续为 unavailable，不得补 0。
 - P2：py-motmetrics IDF1/MOTA/MOTP adapter 已作为冻结 replay 上的 optional benchmark 实现；TrackEval、Stone Soup、OSPA/GOSPA、HOTA 和非参数统计仍待实现。所有 P2 能力均不进入在线链路、默认依赖或控制决策。
 
 ## PNG 策略

@@ -36,7 +36,13 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - registry 对 `exact_known_correlation` 输出 D1 数值相关融合请求，对 `unknown_correlation` 只输出 CI/保守融合请求，对显式 duplicate、重复 payload、重复 lineage 和 stale/replay source track 在关联前拒绝；D2 不复制数值 CI。
 - cross-node 在线指标输出 source binding rebind ID switch、duplicate payload rejection 和 transport/queue/fusion latency；`OfflineCrossNodeMetricsEvaluator` 在独立 truth mapping 下计算 canonical duplicate 与 track-to-track association precision/recall，不向在线 registry 暴露 truth。
 
-### 2026-07-11 main runtime 最终验证证据
+### 2026-07-12 状态同步
+
+- commit `33e6fa0` 本身没有修改 D2；其后的 D2-owned P1 任务新增长 governed replay 校准入口、OOSM exposure 审计和动态 N/M 回归。当前指定 D2 回归为 `69 passed, 1 warning`，warning 是本机 Matplotlib `Axes3D` 多版本导入问题。
+- main GAP 与 PNG delivery AirSim 报告给出的 D2 相关新证据仅是合同保持：2v2 candidate 10 seeds 为 20/20 pair、在线 truth 使用为 0；锁定后两帧 dropout 仍沿原 global/local track 与计划上下文预测，没有 truth ID 或本地 ID 重写。
+- M5N2 8 s 短窗口为 0/9，且不是同几何、同时间窗的长期对照；该 AirSim 报告没有 D2 专项 offline IDSW/continuity 或真实 dense/crossing 长回放。当前已闭合 D2 synthetic 长 replay runner/schema，但真实 replay、gate/risk、M-of-N/false-track、NIS/NEES 和跨节点 failover 标定仍开放。
+
+### 2026-07-11 main runtime 合同验收证据（历史）
 
 - main 在线链路已强制令 D2 输入和航迹的 `truth_id=None`；D1 -> D2 -> D3 仍按 D2 状态、协方差、质量和中心维护的 `global_track_id` 运行，不再依赖 simulator truth/actor identity 构造 D3 目标。
 - `d2_governance_summary` 已进入 main episode bus 并由 D6 消费。D1 governed replay adapter 保留 timestamp/covariance 并匿名化来源身份；D2 在线关联不读取 simulator truth，truth 只通过 `d2-offline-truth-label/v1` 在 episode 后评分。
@@ -100,7 +106,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - D2 输出的 `global_track_ids` 来自当前活动航迹集合，不截断或补齐到固定 2 或 5。
 - D4 当前把 D2 风险分为软/硬两类：`association_ambiguity`、低 cost margin、candidate overlap 属于观察/二级 cue 证据；`id_switch_count` 增量、`duplicate_assignment_count`/`duplicate_track_risk` 和可用的 `track_continuity` 低于阈值属于硬风险证据。`continuity_available=false` 时不得把兼容数值 `0.0` 当作 continuity collapse。D2 只发布证据，不直接触发 `request_center_replan` 或降级。
 - 多 seed 风险校准的 replay/report 应保留 `seed`、`episode_id`、`scenario_name`/`scenario`、`frame_index`、`drone_count`/`target_count`、gate threshold、`risk_profile`、`risk_profile_version`、`association_risk_threshold_version`、association logs、gate pass/reject count、motion/quality risk summary、dense/crossing sensitivity summary、M-of-N profile、false-track、NIS/NEES、`id_switch_count`、`track_continuity`、`duplicate_assignment_count` 和 soft/hard risk summary。在线 association log 只记录 schema/profile、measurement/active-track count 和 innovation 诊断，不携带 truth label、truth target count 或 NEES；标签、真值目标数和 NEES 只存在于 `offline_truth_evaluation`。
-- 当前 P1 CV 批次、episode 证据和隔离 truth 由 main/runtime/D6 生产/评分；D2 不连接 AirSim SDK。若继续做专用真实 dense/crossing 标定，应沿用已冻结 schema/profile，但它是后续性能研究而非 P1 合同缺口。
+- 2026-07-11 P1 CV 批次、episode 证据和隔离 truth 由 main/runtime/D6 生产/评分；2026-07-12 PNG delivery 报告没有新增 D2 offline IDSW/continuity。D2 不连接 AirSim SDK。若继续做专用真实 dense/crossing 标定，应沿用已冻结 schema/profile，但它是后续性能研究而非 P1 合同缺口。
 - main runtime 已具备 P1 D4/D5 calibration sweep，D6 已具备标准 AirSim calibration report bundle 自动生成。D2 的对齐目标是让自身 replay/report/log 字段能进入该 bundle 做分组统计；D2 不重复实现 sweep 编排、AirSim reset 或 D6 报告生成。
 - 在线 D6 治理摘要可以记录 soft/hard risk frame rate，但不得在缺少 offline truth labels 时把它解释成 IDSW=0 或 continuity 正常；truth-based 指标必须保留 unavailable 状态，待离线评分后再进入多 seed 结论。
 
@@ -145,6 +151,26 @@ python3 research_modules/d2_data_association/scripts/run_dense_crossing_calibrat
 ```
 
 输出目录包含 `calibration_summary.json` 和按 episode 分开的 `offline_truth/*.jsonl`；这些 truth 文件只供离线评分使用。
+
+P1 长 governed replay 校准：
+
+```bash
+PYTHONPATH=research_modules/d2_data_association \
+python3 research_modules/d2_data_association/scripts/run_long_replay_calibration.py \
+  --target-count 5 \
+  --steps 120 \
+  --sample-period-s 0.2 \
+  --output /tmp/msm-d2-long-replay
+```
+
+该入口固定使用默认 `GNNHungarianAssociator`，场景版本为
+`d2-governed-long-replay/v1`，覆盖重复 dense crossing、交叉窗口遮挡、
+周期漏检、近场虚警和延迟到达。输入帧由 D1/main 治理后按
+`measurement_timestamp` 排序；D2 保留 `arrival_timestamp` 并报告 arrival
+inversion/late measurement 暴露，但不宣称实现原始量测 OOSM 回溯。每 seed
+输出 IDSW、identity/coverage continuity、false-track、RMSE、NIS/NEES
+availability、版本化 gate/risk profile、中心 ID owner 和 online truth leakage。
+量测数可以小于或大于目标数，目标数和代价矩阵均来自当前输入，不依赖场景名。
 
 ## 可选集成
 

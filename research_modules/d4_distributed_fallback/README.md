@@ -9,6 +9,7 @@
 - `docs/README.md`：D4 文档索引。
 - `d4_distributed_fallback/`：Python 包源码。
 - `scripts/run_failover_simulation.py`：默认离线降级仿真入口。
+- `scripts/run_p1_failover_replay.py`：版本化 P1 二级/分布式接管扰动矩阵。
 - `scripts/run_p2_coalition_replay.py`：隔离式 P2 联盟故障 replay；不接入在线 D4。
 - `tests/`：状态机、CBBA、接管和仿真测试。
 - `reports/EXPERIMENT_REPORT.md`：实验报告与曲线。
@@ -29,6 +30,13 @@ python3 research_modules/d4_distributed_fallback/scripts/run_p2_coalition_replay
 ```
 
 只有显式提供本地参考树时才探测外部能力：`--mit-cbba-path PATH`、`--ca-cbba-path PATH`。探测不会 import 或执行外部代码，也不新增默认依赖。
+
+运行 P1 接管扰动矩阵：
+
+```bash
+PYTHONPATH=research_modules/d4_distributed_fallback \
+python3 research_modules/d4_distributed_fallback/scripts/run_p1_failover_replay.py
+```
 
 运行 D4 测试：
 
@@ -86,17 +94,19 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 - 已完成：secondary takeover plan 严格校验 lease expiry、plan epoch monotonic 和 executable 状态；过期或非单调替换二级 plan 被拒绝为 pending/not executable，当前 secondary-owned 同 id/version 计划可保持 `secondary_plan_active`，D7 handoff helper 必须看到 `secondary_capability_class=takeover_ready` 才放行。
 - 已完成：二级能力评分区分 `not_ready`、`visible_only`、`registration_usable` 和 `takeover_ready`，并消费 coverage ratio、network full-view rate、heartbeat/link/cue freshness、gimbal、stable registration count、not-registered count 和 reject reason；只有 `takeover_ready` 会成为接管依据。
 - 已完成：adapter 在瞬时门限之后增加连续 readiness 窗口；单帧或同时间戳重复的 `takeover_ready` 不会进入 pending，heartbeat/link/cue/gimbal/lease 或能力回落会清零 streak 并阻断接管。`not_ready -> takeover_ready` 边沿会重新初始化 `ready_since_s` 和 count=1，能力回落后再次 ready 也从新窗口计时。
-- 已完成：主动降级继续保留 hard/soft risk、防抖和 release 条件；无冲突 `reacquire` 只请求二级 cue/继续观察，不直接接管或分布式降级；D6 metadata 可统计 false-trigger candidate。
+- 已完成：主动降级继续保留 hard/soft risk、防抖和 release 条件；`terminal_consistent` 只表示 current center plan binding 是否仍可信。默认无硬冲突 `reacquire` frame 1..3 保留 binding、frame 4 才进入持续路径；friend/duplicate/resource/global-track/mismatch/stale-plan 不使用 grace。该字段不替代 D5/D7 lock/handoff；D6 metadata 可统计 false-trigger candidate。
 - 已完成：D2 online truth 隔离语义已接入 D4；`truth_metrics_available=False`/`continuity_available=False` 时不再把 `id_switch_count` 或 `track_continuity=0` 占位解释为硬风险，在线 ambiguity/duplicate/quality 风险路径保持有效。
 
 ## P1 状态
 
-- 当前结论以 `p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md` 为准：D4 所属的 P1 合同层已闭合。ComputerVision 10-seed 总体验收为 8/10；这证明合同链路，不证明控制放行或物理拦截。
+- P1 联盟合同结论仍以 `p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md` 为准：D4 所属合同层已闭合。2026-07-12 PNG delivery 验证中 D4 148 项通过，2v2 candidate 为 20/20 且锁定后两帧 dropout 为 2/2，证明本轮 terminal consistency 修正未使主线退化；M5N2 短窗口仍为 0/9。上述结果不关闭 D4 物理协同、完整扰动、成员重构/恢复或误降级标定缺口。
+- `d4_p1_failover_disturbance_replay_v1` 已形成版本化九场景矩阵：正常中心无误降级、二级完整 ACK 接管、缺 ACK、成员丢失/补位、分区/恢复、旧 epoch、过期 lease、digest conflict 和中心恢复双轨审计均通过。补位与恢复必须提升 epoch/plan/coalition version 并由新联盟全员重新 ACK；中心恢复不立即夺权。D4 不生成 `AssignmentPlan`，不降低 D3/D5/D7 gate。
+- 当前 D4 全量测试为 155 项通过，并包含四成员规模无关回归。模块 replay 只关闭确定性合同与状态轨迹缺口；真实 AirSim 多 seed 的链路时序、secondary-interceptor/peer split、误降级率、恢复时间和物理任务连续性仍开放。
 - 二级接管正例：协调者 `Secondary_Recon_1`，required-member ACK 3/3，最终 `executing`，D4 动作为 `degrade_to_secondary`。
 - 完全分布式正例：协调者为 `INT-02` peer，required-member ACK 3/3，最终 `executing`，D4 动作为 `degrade_to_distributed`。
 - 缺 ACK 负例：ACK 2/3，最终 `aborted`；T001 三个成员保持 `hold_for_review`，D7 许可为 0。该结果确认 fail-closed；有有效 commit 的二级/分布式路径已获正例验证。
 - SimpleFlight 15 s 结果仅用于断点诊断：30 个 active pair 物理命中为 0，不能据此宣称 D4 fallback 或系统物理拦截闭环完成。
-- 仍开放：旧 epoch、过期 lease、成员不可执行、网络分区、digest conflict、成员退出/重构和误降级成对标定的完整扰动矩阵及多 seed 统计。现有注入入口和模块测试不等于矩阵验收完成。
+- 仍开放：将已冻结的 P1 扰动合同映射到真实 AirSim 同 seed 成对试验，完成 heartbeat/link/cue/gimbal/source、secondary-interceptor/peer split、误降级、恢复时间及物理连续性多 seed 统计。模块 replay 不等于系统矩阵验收完成。
 - P2 只允许隔离式 benchmark；MIT/第三方 CBBA、auction/contract-net 或其他 adapter 不替换当前轻量 CBBA 和 ACK/lease/epoch 合同。
 - P2 原生确定性 replay 已收敛：6/6 场景符合预期安全结果；中心 -> 二级 -> 分布式和成员丢失/补位均以 7 轮、完成率 1.0、冲突 2/1、最优绝对差距 0.0 收敛。missing ACK、stale epoch、expired lease、partition 分别以 2/1/2/3 轮 fail closed，完成率均为 0，并输出对应 optimality-gap unavailable reason。原生 6 场景平均完成率为 1/3、总冲突计数为 5。
 - 默认环境未配置 MIT CBBA 或 CA-CBBA 参考路径，因此各 6 个外部对照行分别输出 `mit_cbba_reference_path_not_configured`、`ca_cbba_reference_path_not_configured`。MIT MATLAB 源码树即使被检测到也报告 runtime adapter 未集成；已审计的 CA-CBBA 公共仓库没有可执行源码。上述 unavailable 是 capability 结论，不是外部算法性能结论。

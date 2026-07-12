@@ -44,6 +44,14 @@ from .coalition_safety import (
     build_coalition_safety_evidence,
 )
 from .coordinator import FailoverCoordinator
+from .p1_failover_replay import (
+    P1_FAILOVER_MATRIX_VERSION,
+    P1_FAILOVER_SCENARIOS,
+    P1FailoverCaseResult,
+    P1FailoverDisturbanceReplay,
+    P1FailoverReplayReport,
+    run_p1_failover_disturbance_replay,
+)
 from .p2_coalition_replay import (
     EXTERNAL_REFERENCE_BACKENDS,
     REPLAY_SCENARIOS,
@@ -115,6 +123,11 @@ __all__ = [
     "NodeRole",
     "NativeCoalitionFaultReplay",
     "PayloadKind",
+    "P1_FAILOVER_MATRIX_VERSION",
+    "P1_FAILOVER_SCENARIOS",
+    "P1FailoverCaseResult",
+    "P1FailoverDisturbanceReplay",
+    "P1FailoverReplayReport",
     "ResourceSummary",
     "REPLAY_SCENARIOS",
     "SecondaryNodeLifecycleSummary",
@@ -144,6 +157,7 @@ __all__ = [
     "is_mobile_high_recon_resource",
     "is_secondary_node_resource",
     "merge_distributed_visual_evidence_into_tracks",
+    "run_p1_failover_disturbance_replay",
     "run_p2_coalition_fault_replay",
     "SECONDARY_NODE_ROLES",
     "secondary_capability_class",

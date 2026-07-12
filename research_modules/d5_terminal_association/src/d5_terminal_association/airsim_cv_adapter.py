@@ -506,6 +506,7 @@ def local_visual_tracks_from_sim_detections(
                 bbox_edge_clipped=bool(clip_sides),
                 bbox_edge_clip_sides=clip_sides,
                 camera_geometry=camera_geometry,
+                metadata={"resource_id": resource_id, "camera_id": camera_id},
             )
         )
     return tracks
@@ -594,6 +595,7 @@ def local_visual_tracks_from_offline_yolo_bytetrack(
                 bbox_edge_clipped=bool(clip_sides),
                 bbox_edge_clip_sides=clip_sides,
                 camera_geometry=camera_geometry,
+                metadata={"resource_id": resource_id, "camera_id": camera_id},
             )
         )
     return tracks

@@ -8,7 +8,8 @@ Boundary: this module only supports offline simulation, evaluation, and human-re
 
 - `PLAN.md`: engineering/scientific plan and mathematical formulation.
 - `src/d3_assignment_planner/`: Python implementation.
-- `src/d3_assignment_planner/fixtures.py`: versioned 5v5/3v5/5v3/new-target/resource-failure calibration fixtures.
+- `src/d3_assignment_planner/fixtures.py`: versioned non-equal, dynamic-event, D5-feedback, and hard-window fixtures.
+- `src/d3_assignment_planner/calibration.py`: reusable full/incremental P1 matrix runner and D6-friendly summaries.
 - `tests/`: unit tests.
 - `simulations/run_rolling_assignment.py`: 100 s, 2 Hz rolling simulation.
 - `docs/ALGORITHM_AND_IMPLEMENTATION.md`: Chinese algorithm principles and implementation guide.
@@ -124,6 +125,26 @@ plans by cost, assignment equivalence, latency, target-level change count, and
 preserved assignment count. Latency is calibration evidence only; the planner
 does not automatically choose a path from one timing sample.
 
+`run_p1_assignment_calibration_matrix(...)` runs the same planner profile over
+5v5, 3v5, 5v3, target arrival, resource failure, high-threat demand change,
+D5 reserve feedback, and hard-window transitions. Each row reports full versus
+incremental latency, churn, unassigned high-threat count, coalition shortfall,
+hard-window rejects, equivalence, fallback reason, and role-aware primary
+preservation. It is an offline calibration harness and never changes the
+default Hungarian/demand-slot path from timing results.
+
+Run the deterministic matrix as JSON with:
+
+```bash
+python3 research_modules/d3_assignment_planner/simulations/run_p1_assignment_calibration.py
+python3 research_modules/d3_assignment_planner/simulations/run_p1_assignment_calibration.py \
+  --output research_modules/d3_assignment_planner/results/p1_assignment_summary.json
+```
+
+The `--output` path is optional. When supplied, parent directories are created
+and the same formatted `summary.as_dict()` JSON is written to the file and
+printed to stdout.
+
 ## Cross-Node Contract
 
 `AssignmentPlan` and each `Assignment` expose cross-node metadata for integration dry runs: `source_node_id`, `target_node_id`, `link_type`, `plan_version`, `stale_after_s`, `terminal_feedback_state`, and `duplicate_terminal_lock_risk`. D3 also provides `evaluate_terminal_feedback(...)` to map D5 states into conservative recommendations:
@@ -179,7 +200,8 @@ D3 also exports:
 - `guidance_bindings_from_assignment_plan(...)` -> versioned `AssignmentGuidanceBinding` rows whose metadata includes identity creation and last evaluation timestamps. Binding freshness and `expires_at_s` use `last_evaluated_at_s`, with `created_at` as the fallback for legacy/manual plans. Main supplies the current `plan_id/version` when exporting a secondary binding; a historical plan, an unconfirmed secondary current identity, an inactive takeover, or an expired lease cannot produce an `active/current` D7 binding.
 - `prepare_secondary_takeover_plan(...)` -> activates a D4/main-selected takeover candidate only after main supplies sustained `takeover_ready`, activation time, a live lease, and a positive monotonic leader epoch. A same-signature candidate may retain the current center identity; the helper advances identity exactly once for the owner/activation transition. Successful plans audit readiness, activation, supersede, owner, lease, epoch, and `allow_local_rebind=False` in plan, assignment, record, evidence, and binding metadata.
 - `continue_active_secondary_plan(...)` -> converts the next ordinary rolling candidate into a same-owner secondary plan without a second takeover. It derives the concrete owner/source from the previous active plan, requires strict version/supersede continuity, sustained readiness, non-regressing epoch, and a live non-regressing lease; main must not hand-build these metadata fields.
-- `build_p1_assignment_fixtures()` -> versioned deterministic 5v5, 3v5, 5v3, new-target, and resource-failure inputs. Labels use `resources x targets`; explicit counts are also present in fixture metadata.
+- `build_p1_assignment_fixtures()` -> versioned deterministic 5v5, 3v5, 5v3, new-target, resource-failure, high-threat demand-change, D5-feedback, and hard-window inputs. Labels use `resources x targets`; explicit counts and changed IDs are present in fixture metadata.
+- `run_p1_assignment_calibration_matrix()` -> paired full/incremental transition rows and aggregate latency/churn/high-threat/coalition-shortfall totals for main/D6.
 
 `PlannerConfig.human_authorization_state` is the source of the plan authorization field. The planner records both `configured_human_authorization_state` and `effective_human_authorization_state` in plan metadata so main can run record-only simulation gates without hard-coding D3 to `"required"`.
 
@@ -193,11 +215,15 @@ plan authorization in 8/10 seeds; seeds 7 and 27 remain regressions. Together
 with the incremental planner and role-aware primary-preservation tests, this
 closes the D3 P1 contract layer rather than only the earlier demand-slot DTO.
 Downstream secondary and distributed commit positive cases passed, and a
-missing ACK aborted fail-closed with no D7 permission. The 15 s SimpleFlight
-run was diagnostic only: 30 active pairs produced zero physical intercepts, so
-the physical loop remains open. P2 remains an isolated optional benchmark and
-does not replace the default Hungarian/demand-slot planner.
+missing ACK aborted fail-closed with no D7 permission. The 2026-07-12 PNG
+delivery change made no D3 code or behavior change. Its 2v2 candidate reached
+20/20 physical pairs and therefore demonstrated a non-regressed one-to-one
+chain under the current plan gate. The M5N2 8 s run reached 0/9 active pairs,
+but is not comparable to the existing z=-30 m, 35 s high-clearance baseline;
+the cooperative physical loop remains open pending a same-geometry,
+same-window paired run. P2 remains an isolated optional benchmark and does not
+replace the default Hungarian/demand-slot planner.
 
 Local resources must not rewrite `global_track_id`; D3 publishes versioned candidate plans for review. For `secondary_plan_v2`, D3 does not choose a concrete secondary node, renew leases, elect leaders, or perform recovery arbitration. D4/main supplies those decisions; D3 validates the activation snapshot and prevents expired, non-monotonic, or non-current plans from yielding an executable D7 binding. Normal operation uses Hungarian/demand-slot assignment. The optional same-input capacity comparator is implemented and is not an open online P1 dependency. CP-SAT/MILP coalition admission, backup-resource quotas, multi-window flow, and large-scale sweeps remain isolated P2 benchmarks. D4 secondary-node arbitration is preferred before CBBA-style fallback.
 
-Current D3 regression baseline: `123 passed, 1 skipped` with `python3 -m pytest research_modules/d3_assignment_planner/tests -q -o addopts='' -ra`. The skip is the installed-only OR-Tools benchmark in an environment without the optional dependency.
+Current D3 regression baseline (2026-07-12): `127 passed, 1 skipped` with `python3 -m pytest research_modules/d3_assignment_planner/tests -q -o addopts='' -ra`. The skip is the installed-only OR-Tools benchmark in an environment without the optional dependency.

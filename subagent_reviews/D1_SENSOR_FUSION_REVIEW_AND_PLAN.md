@@ -492,3 +492,44 @@ RMSE/NIS/NEES consistency、sensor-specific expected latency、health/region win
 后续 P2 只在隔离依赖环境中实现并评估真实 adapter；收益未证明前不得替换默认 NumPy
 路径。真实多 seed 的机动、遮挡、节点退出和延迟/故障 consistency 仍是 P1 标定项。本轮
 D1 全量回归为 `62 passed`。
+
+## 18. P1 长 Replay 场景与汇总接口（2026-07-12）
+
+D1 已在现有 governed replay 合同上增加独立 `long_replay.py`，供 main 构造长时、确定性的
+crossing/遮挡/延迟/OOSM 科研场景。实现没有直连 AirSim，也没有引入新的滤波后端：
+
+```text
+LongReplayConfig
+  -> build_long_replay_scenario()
+  -> truth-free SensorObservation[] + ReplayProvenance
+  -> existing governed writer / FusionAdapter
+  -> summarize_long_replay()
+  -> latency + health + region windows + metric availability
+
+offline truth trajectory/labels
+  -> separate d1.long_replay_offline_truth.v1 sidecar
+  -> D2/D6 offline scoring only
+```
+
+默认场景 60 s、3 个目标在 NED 中交叉，雷达 covariance 随距离增长并在 crossing clutter 窗口
+放大；声学只给粗方位和通用 `small_uas` hint；EO 输出像素/camera metadata，并在交叉区间生成
+完全和部分遮挡。延迟分布、显式 radar OOSM 与 relay 重发均可按配置调整。
+
+在线 observation ID/source lineage 使用不透明 payload 序号，不编码稳定目标 slot。真值只在
+独立 sidecar，`FusionAdapter` 固定 `use_truth_hints_for_association=False`。没有 D2
+canonical-ID 离线映射时，RMSE/NEES 以 unavailable reason 输出，避免把无法计算的指标写成
+0 或让 truth 反向进入在线航迹。
+
+默认 smoke 输出 843 条观测、21 次显式 OOSM、6 次被去重 relay copy、29 个区域窗口，在线
+truth leak 为 0，耗时约 8.8 s。新增测试覆盖版本冻结、covariance/双时间戳/NED/lineage、
+在线 truth 隔离、事件触发、汇总 JSON-safe 与同 seed 确定性；加入 CLI 子进程测试后 D1
+全量更新为 `66 passed`。
+
+官方 `scripts/run_long_replay.py` 仅封装上述公共 API，支持 seed、duration、target count 和
+JSON output path。CLI 输出与 `LongReplaySummary.to_dict()` 完全一致，不读取 offline truth、
+不新增关联旁路，并通过真实子进程测试验证参数和输出 schema。
+
+该能力关闭 D1-owned 合成长 replay 与汇总入口，不关闭真实 Blocks/CV multi-seed、
+D2-confirmed mapping、真实 RMSE/NIS/NEES、sensor health/window 阈值、camera/bbox/节点退出、
+模型集或场景自适应 covariance 缺口。后续 main 应将真实数据按同一 governed schema 写入，
+而不是把合成结论当成真实传感器验收。

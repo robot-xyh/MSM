@@ -16,6 +16,7 @@
 - P1 reserve role protection done：若所有旧 primary 都是同版本 `consistent/continue`，且旧 reserve 仅为普通 `hold/hold` 或 `reacquire/replan`，D3 从 previous assignment role 推导 primary pins，只替换 reserve；不要求 main 提供 reason/required/member_role。
 - P1：D5 feedback 权重与 dwell/迟滞阈值仍需用真实 D6 records 配对标定。
 - P1 增量接口 done：输入快照、changed-set 完整性、独立连通分量局部求解、全量 fallback reason、全局迟滞、M-to-N all-or-none 和增量/全量 comparison summary 已测试；仍缺真实非等量 3v5/5v3、目标新增、资源失效和 crossing/dense 多 seed 校准。
+- P1 deterministic calibration support done：versioned 8-scenario matrix 新增高威胁需求变化、D5 reserve feedback 和 hard-window；paired runner 统一比较 full/incremental latency、churn、unassigned high-threat、coalition shortfall 和 fallback/reject，8/8 转换 assignment/cost 等价。
 - P1：D3 secondary activation/current-binding 合同已闭合，并已由二级/分布式 commit 正例与缺 ACK fail-closed 覆盖下游消费；D4 协商与恢复策略仍属 D4/main 边界。
 - Optional benchmark done：OR-Tools 同输入 Min-Cost Flow 接口已实现，不是待关闭 P1；CP-SAT/MILP、复杂 flow 和大规模扫描保留为 P2 optional。
 
@@ -331,7 +332,7 @@ N 对 N 基准迟滞建议可从 5v5 参数开始扫描：`delta=0.2`，`min_dwe
 
 ## 10. 离线验证
 
-当前已实现的离线验证覆盖 Hungarian/fallback、demand-slot M-to-N、execution identity/publish semantics、forced replan、solve 前 switch penalty、matrix/breakdown/objective/evidence 一致性、迟滞/stale、coalition binding/duplicate、保守增量规划与全量回退、版本化 transient feedback dwell、reserve-soft-feedback primary role protection、D5 feedback、secondary takeover/continuation、D6 export、synthetic AirSim dry-run adapter，以及同输入容量约束 SciPy/optional flow benchmark。当前全量基线为 `123 passed, 1 skipped`，唯一 skip 是未安装 optional OR-Tools 的 installed-only 测试。真实 10-seed CV 已将 role-aware 结果推进到 8/10，并完成二级/分布式 commit 正例和缺 ACK fail-closed，P1 合同层闭合。下一阶段聚焦 15 s 诊断所暴露的物理断点、3v5/5v3 与动态事件参数标定；P2 只运行隔离 benchmark：
+当前已实现的离线验证覆盖 Hungarian/fallback、demand-slot M-to-N、execution identity/publish semantics、forced replan、solve 前 switch penalty、matrix/breakdown/objective/evidence 一致性、迟滞/stale、coalition binding/duplicate、保守增量规划与全量回退、版本化 transient feedback dwell、reserve-soft-feedback primary role protection、D5 feedback、secondary takeover/continuation、D6 export、synthetic AirSim dry-run adapter，以及同输入容量约束 SciPy/optional flow benchmark。新增的 8-scenario P1 runner 对 full/incremental 路径给出 8/8 assignment/cost 等价，并输出 latency、churn、高威胁漏分配、coalition shortfall、hard-window reject 和 primary 保持。CLI 可选 `--output` 已由 stdout/file 等价测试覆盖。当前全量基线为 `127 passed, 1 skipped`，唯一 skip 是未安装 optional OR-Tools 的 installed-only 测试。真实 10-seed CV 已将 role-aware 结果推进到 8/10，并完成二级/分布式 commit 正例和缺 ACK fail-closed，P1 合同层闭合。下一阶段聚焦同条件 M5N2 物理验收和真实多 seed 参数标定；P2 只运行隔离 benchmark：
 
 ```text
 Hungarian without hysteresis

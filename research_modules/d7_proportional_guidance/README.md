@@ -1,11 +1,15 @@
 # D7 比例导引与末端视觉 PNG 模块
 
-## 最新状态（2026-07-11）
+## 最新状态（2026-07-12）
 
-- P0 无未闭合 blocker，当前 D7 回归基线为 `109 passed`；P1 合同层已经闭合。
+- P0 无未闭合 blocker，当前 D7 回归基线为 `141 passed`；P1 合同层和 delivery 实现已闭合。
+- 图像 KF 生命周期重置和 `png_ttc` 面积治理已实现；soft innovation prediction 与水平 LOS trend coast 默认关闭，6D LOS KF 仅用于 replay。
+- 真实 2v2 candidate 为 `20/20`，只证明相对旧基线 `19/20` 非退化；锁定后两帧 detection dropout 均进入有界 prediction。自然运行未触发 soft/trend，不能据此宣称增强收益。
+- 默认 10Hz 的本地 1-5 帧 dropout 矩阵已闭合：前两帧只允许同 identity/plan 的 image KF，第三帧起因量测年龄超过 `0.25s` 而 expired/fail-closed；较高频率 blind push 也不得越过该硬上限。
+- M5N2 当前 8s 短窗与既有 z=-30m、35s 高净空基线不可比较。下一真实验收是同几何 paired M5N2、AirSim dropout 注入、真实 `png_ttc` 多 seed 和 trend coast 受控晋级。
 - M=5、N=2 的 ComputerVision 10-seed 验证达到约定的 8/10 双 primary 合同验收；这证明版本化计划、联盟、视觉共识和 D7 许可链可闭合，不等于控制许可或物理命中。
 - D4 commit-aware gate 已实现并接入 main/runtime；正确 topology 已接线为 T001 两个 active primary、一个 standby reserve，T002 一个 active primary，第五个资源未分配。
-- 同 topology 的 SimpleFlight 15 s 诊断中，30 个 active pair 为 0 命中，其中 24 个 `terminal_detection_timeout`；物理拦截闭环仍开放，当前 P1 聚焦末端检测持续性、控制频率/时长与真实命中。
+- 历史同 topology 的 SimpleFlight 15s 诊断中，30 个 active pair 为 0 命中，其中 24 个 `terminal_detection_timeout`；该记录保留为早期断点证据，不替代当前同几何 paired 验收口径。
 - 3D PN、True PN、APN、FRPN 只存在于隔离式 P2 benchmark；FRPN 是研究近似，不是规范实现，也不进入默认 runtime。
 - 位置 PN 与 `png_guidance_delivery` 的 VM/TTC 核心公式保持不变，D7 不分配、不授权、不改写 `global_track_id`。
 
@@ -100,7 +104,7 @@ research_modules/d7_proportional_guidance/
 - `vision_terminal`：使用抽象像素/LOS 观测估计，计算末段二维 PN 指令。
 - `pure_pursuit`：轻量纯追踪 baseline，通过 `GuidanceConfig.guidance_law="pure_pursuit"` 启用，用于和默认 PN 做离线对照；没有引入 PythonRobotics 依赖。
 - `SimpleFlightPngGuidanceFilter`：从 `png_guidance_delivery` 抽取的轻量视觉 PNG gate，支持 bbox 质量、LOS-rate 低通/限幅/尖峰拒绝、TTC/VM 增益和机动裕度判断。
-- `TerminalGuidanceDelivery`：每 assignment pair 一个实例的末端短时外推 API，状态为 `acquiring/measured/image_kf_predict/blind_push/reacquired/expired`。默认 `control_dt=0.1s`、图像角度/角速度 KF predict `0.25s`、连续丢失 `3` 帧、命令平均 `0.10s`、blind push `0.25s`、衰减 `tau=0.18s`；按 resource/global/local track 与 plan owner/version 变化清空历史，并输出 `measured/predicted/innovation_rejected/reset/expired` 滤波审计状态。soft innovation prediction 和水平 LOS trend coast 默认关闭，后者启用时上限为 `0.75m/s`。
+- `TerminalGuidanceDelivery`：每 assignment pair 一个实例的末端短时外推 API，状态为 `acquiring/measured/image_kf_predict/blind_push/reacquired/expired`。默认 `control_dt=0.1s`、图像角度/角速度 KF predict `0.25s`、连续丢失 `3` 帧、命令平均 `0.10s`、blind push `0.25s`、衰减 `tau=0.18s`；所有外推命令受最后量测后 `0.25s` 统一硬上限约束。按 resource/global/local track 与 plan owner/version 变化清空历史，并输出 `measured/predicted/innovation_rejected/reset/expired` 滤波审计状态。soft innovation prediction 和水平 LOS trend coast 默认关闭，后者启用时上限为 `0.75m/s`。
 - `guidance_mode_from_terminal_contract(...)`：把 D3/D4/D5 末端合同结果映射为显式 D7 日志状态，包括 `handover_pending`、`hold`、`reacquire` 和 `abort_revoke`。
 - `terminal_switch_allowed_rate` / `summarize_terminal_switch_quality`：对 D7 已输出的 gate 结果做离线通过率统计，不重新执行 runtime gate 逻辑。
 - `D7RuntimeBus`：D7-owned N-pair state injection adapter。调用方为每个 assignment pair 注入当前 D3 binding、D4 permission、D5 terminal association 和可选 bbox observation；D7 为每个 `resource_id -> assigned_global_track_id` 维护独立 terminal delivery 和 latch，输出 lifecycle reset、KF innovation、prediction/coast、TTC 面积预处理及既有 D3/D4/D5 gate/log 字段，不调用 AirSim 或 SimpleFlight。
@@ -111,6 +115,9 @@ research_modules/d7_proportional_guidance/
 - 四律 runtime/comparison 日志显式区分 `requested_guidance_law` 与当前 `guidance_law`，并输出 law/mode transition、raw contract/gate、terminal wait/timeout 和 command saturation 字段。全程模式不伪造 D7 runtime bus 未计算的车辆命令，饱和状态为 `not_computed`。
 - `evaluate_bbox_los_replay`：把 AirSim detect metadata、YOLO/ByteTrack bbox replay 归一成 `VisionGuidanceObservation`，离线评估 bbox/LOS/TTC gate；该路径显式 `vehicle_control=False`，不直接控制 SimpleFlight。
 - `summarize_guidance_calibration`：消费多 seed D7 runtime outputs、`GuidanceRecord`、comparison rows 或 replay dict，按 PN、Pure Pursuit、`png_vm`、`png_ttc` 汇总 terminal range、closing speed、bbox/LOS/maneuver gate、D4 action block、D5 lock consistency、D3 owner/version consistency、secondary capability/readiness、D5 registration/projection/covariance/Yolo-MOT 摘要和 reject reasons，并输出阈值版本化 advisory。
+- `summarize_locked_dropout_matrix`：汇总 1-5 帧 locked dropout 的状态、量测年龄、identity/plan 一致性、命令可用性与 fail-closed 合规率。
+- `summarize_png_ttc_calibration`：按 seed 汇总有效 TTC，以及 area jump、bbox clipping、area not expanding、TTC out-of-range 四类拒绝覆盖。
+- `evaluate_trend_coast_promotion`：只在 paired seeds、candidate 实际触发、wrong binding 为 0、命令不连续不恶化和物理成功不下降全部满足时给出 `promotion_recommended=True`；不会自动开启 trend coast。
 - main runtime P1 D4/D5 calibration sweep：由 main 统一编排 secondary height/FOV/count/standoff 与多 seed 组合，D6 在 sweep 结束后自动生成标准报告 bundle；D7 只提供上述 runtime summary、comparison rows、replay summary 和 calibration advisory 字段，不直接启动 AirSim、不写报告 bundle。
 - 输出 LOS angle、LOS rate、closing speed、range、模式、横向加速度限幅、转向率限幅和离线质点轨迹记录。
 - `simulate_guidance_episode` 支持单个 resource-target pair 的离线闭环，返回 `records` 和 `summary`。

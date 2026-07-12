@@ -136,7 +136,8 @@ D3 已实现以下 helper：
 - `compose_threat_score_baseline(...)`：从关键区接近、TTC、速度、协方差和目标状态组合可解释 threat baseline；不替代 P1 完整动态威胁评估。
 - `prepare_secondary_takeover_plan(...)`：在 D4/main 已选定真实二级节点且持续满足 `takeover_ready` 后，要求 candidate 的 `previous_plan_id` 精确指向当前计划、version 严格递增、leader epoch 单调且 lease 在激活时有效；成功后写入 active `secondary_plan_v2`、owner/source、readiness、activation、supersede、epoch/lease 和 `allow_local_rebind=False`。
 - `continue_active_secondary_plan(...)`：active owner 已是 secondary 时，把下一普通 rolling candidate 继续盖章为同一 owner；要求 version/supersede 连续、concrete owner/source、readiness sustained、epoch 不倒退以及 previous/new lease 均有效且不回退。这不是新 takeover，不要求 owner 改变。
-- `build_p1_assignment_fixtures()`：输出带 schema/profile/version 的 5v5、3v5、5v3、新目标和资源失效 fixture；标签明确采用 `resources x targets`。
+- `build_p1_assignment_fixtures()`：输出带 schema/profile/version 和 changed-id 合同的 5v5、3v5、5v3、新目标、资源失效、高威胁需求变化、D5 reserve feedback 和 hard-window fixture；标签明确采用 `resources x targets`。
+- `run_p1_assignment_calibration_matrix()`：用独立 full/incremental planner 执行同一事件转换，汇总 latency、churn、unassigned high-threat、coalition shortfall、hard-window reject、fallback reason、assignment/cost equivalence 和 role-aware primary 保持；CLI 支持可选 `--output` 持久化同一份 `summary.as_dict()` JSON，并始终保留 stdout；只生成校准证据，不根据单次计时改默认路径。
 - `assignment_validity_summary_from_plan(...)`：导出 `AssignmentValiditySummary(plan_age_s, assignment_latency_s, cost_margin, stale_plan_version, duplicate_assignment_count, unassigned_high_threat_count, resource_count, target_count, assigned_count, hysteresis_reject_count, stale_reject_count, reassign_count)`。
 - `assignment_records_from_plan(...)` / `assignment_evidence_from_plan(...)`：除 current plan、N/M、成本、reject、迟滞和 secondary 字段外，输出 `assignment_profile_schema`、cost/feedback profile id/version、实际 `cost_weights` 和 `planner_thresholds`，供 main/D6 做同 profile 配对标定。
 - `summarize_assignment_mismatch_replay(...)`：从 D6 assignment records 或 summary dict 聚合 N/M replay 字段：`resource_count`、`target_count`、`assigned_count`、`unassigned_high_threat_count`、`hysteresis_reject_count`、`stale_reject_count`、`reassign_count`。
@@ -206,9 +207,12 @@ D3 的 terminal feedback helper 可以返回 `main_action="replan"` 或 `main_ac
 
 ### 4.3 真实 AirSim runtime 接线与校准
 
-D3 有 synthetic dry-run adapter，不直接导入 AirSim。真实 AirSim Blocks 的 tick-to-plan-to-gate 闭环由 main/runtime 接线，当前已覆盖 D3 plan/binding/summary/record/evidence、D5 feedback writeback、中心重规划和 secondary owner/version 记录。2026-07-11 的 5-resource/2-target ComputerVision 10-seed 验证中，T001 双 primary 视觉共识与当前计划授权达到 8/10，seeds 7/27 保留回归；结合保守增量规划和 role-aware primary 保持实现，D3 的 P1 合同层已闭合。二级/分布式 commit 正例和缺 ACK fail-closed 也已通过下游验证。ComputerVision 不执行动力学；15 s SimpleFlight 诊断的 30 个 active pair 均未物理命中。因此 **P1 合同层 done，但 P1 物理闭环与长期参数标定仍 open**。后续重点是参数与长时物理校准，而不是重复补 P1 合同字段：
+D3 有 synthetic dry-run adapter，不直接导入 AirSim。真实 AirSim Blocks 的 tick-to-plan-to-gate 闭环由 main/runtime 接线，当前已覆盖 D3 plan/binding/summary/record/evidence、D5 feedback writeback、中心重规划和 secondary owner/version 记录。2026-07-11 的 5-resource/2-target ComputerVision 10-seed 验证中，T001 双 primary 视觉共识与当前计划授权达到 8/10，seeds 7/27 保留回归；结合保守增量规划和 role-aware primary 保持实现，D3 的 P1 合同层已闭合。二级/分布式 commit 正例和缺 ACK fail-closed 也已通过下游验证。
 
-- D3 已提供 5v5、3v5、5v3、目标新增和资源失效 deterministic fixture；main/D6 下一步把同 schema/profile/version 接入真实 AirSim 多 seed，验证更新延迟和 outcome。
+2026-07-12 的 PNG delivery 增强提交没有修改 D3-owned 源码或测试，D3 **无行为变化/保持原状态**。该轮 2v2 candidate 10 seeds 达到 20/20 pair 的 5 m 物理成功，证明 current D3 plan owner/version gate 下的一对一主链没有退化，但自然运行未触发 soft prediction/trend coast，不能据此新增 D3 完成项。M5N2 hybrid `2 primary + 1 reserve` 的 8 s 短窗口 3 seeds 为 0/9 active pair，最近距离 22-32 m；它与既有 z=-30 m、35 s 高净空基线不等价，只能继续说明第二 primary 中段闭合和联盟视觉一致性尚未验收，不能归因于 D3 planner 或 PNG 滤波。因此 **P1 合同层 done；P1 协同物理闭环与长期参数标定仍 open**。后续重点是参数与同条件长时物理校准，而不是重复补 P1 合同字段：
+
+- D3 已提供 8 类 deterministic fixture 和统一 paired runner：覆盖 5v5、3v5、5v3、目标新增、资源失效、高威胁 `2 primary + 1 reserve` 需求变化、D5 reserve hold 与 hard-window；本地 8/8 转换的 full/incremental assignment/cost 等价。main/D6 下一步把同 schema/profile/version 接入真实 AirSim 多 seed，验证更新延迟和 outcome。
+- 使用相同 z=-30 m 高净空几何和相同运行窗口做 M5N2 baseline/candidate paired 验收，分别报告 target、active-primary、coalition completion、plan/version reject 和 coalition churn；8 s 短窗口结果不作为完成判据。
 - D3 已验证 duplicate/friend/fov/feasibility 对矩阵、reject、assignment 和迟滞的直接影响；下一步按导出的 cost/feedback profile 和权重快照做真实 D6 配对扫描。
 - 二级/分布式 commit 正例和缺 ACK fail-closed 已覆盖下游 current binding 消费；后续仅继续校准长时 lease、epoch 负例和中心恢复，不重开 D3 P1 合同。
 - 校准完整动态威胁模型、增量/全量选择结果和 hard time-window 到达时间/多窗口输入；所有 fallback/reject reason 必须可由 D6 聚合。
@@ -282,8 +286,8 @@ P1 集成时，main 应保证：
 - P1 合同层 done：真实 AirSim ComputerVision 的 5-resource/2-target 10 seeds 中，T001 双 primary 视觉共识与当前计划授权达到 8/10；seeds 7/27 保留回归。demand-slot、计划 identity/no-change ACK、增量规划和 role-aware primary 保持已闭合。
 - 下游合同证据 done：二级接管和完全分布式 commit 正例通过，缺 ACK 时 aborted 且 D7 许可为 0。该证据不把 D4 联盟协议归入 D3，也不等于物理拦截。
 - 增量接口 done：`plan_incremental(...)` 用输入指纹验证 changed IDs，在可行二部图的独立连通分量上局部求解，保留未受影响且仍可行的 assignment/coalition member；漏报变更、目标/资源集合变化、需求变化、计划过期、时间相关约束或全局分量均带原因回退标准全量 `plan()`。expected/current version 不一致继续抛带 metadata 的 `StalePlanError`。
-- N/M deterministic evidence done：已有 5v5、3v5、5v3、新目标、资源失效和高威胁需求变化测试；增量/全量成本、延迟、稳定性 summary 与 switch penalty 单次计费已覆盖。真实 3v5/5v3 和动态事件仍需多 seed 校准。
-- P1 物理/长期标定 open：15 s SimpleFlight 只作断点诊断，不能替代 90 s 量级多 seed 物理验收；真实非等量/动态事件、D5 feedback/dwell、动态威胁和 hard-window 参数仍需长期校准。
+- N/M deterministic evidence done：8 类矩阵已覆盖 5v5、3v5、5v3、新目标、资源失效、高威胁需求变化、D5 feedback 和 hard-window；统一 summary 输出增量/全量 latency、churn、unassigned high-threat、coalition shortfall、reject/fallback 和 role-aware primary，8/8 转换 assignment/cost 等价。真实 AirSim 3v5/5v3 和动态事件仍需多 seed 校准。
+- P1 物理/长期标定 open：2026-07-12 的 2v2 candidate 20/20 只关闭一对一主链非退化验收，不关闭 M5N2 协同验收；M5N2 8 s 短窗口 0/9 与高净空长窗口基线不可比。仍需同几何/同时间窗 paired M5N2，以及真实非等量/动态事件、D5 feedback/dwell、动态威胁和 hard-window 长期校准。
 - 完整动态威胁评估：在现有可解释 baseline 上加入保护区、目标类别、资源状态和 mission outcome 标定，保留 baseline 对照。
 - 时间窗口硬约束校准：覆盖到达时间、多窗口、closed/not-yet-open edge 和 reject reason 聚合，不重复实现已有单窗口拒绝 baseline。
 - 二级 active plan runtime 验证：D3 takeover、same-owner continuation 和 current-binding 合同已完成；main/D4 需在 episode bus 调用两个 helper并验证 lease 续期、中心恢复与多 seed。
@@ -330,7 +334,7 @@ git diff --check -- research_modules/d3_assignment_planner subagent_reviews/D3_*
 3. done：迟滞、change count、switch penalty 和 reassign export 使用稳定 set/signature；成员、角色、窗口或 demand 模板变化递增 coalition version。
 4. done：D7 multi-binding 与 coalition-aware duplicate 语义已实现；只有 committed/current coalition 可 active，合法 `<=k_j` multiplicity 不计异常。
 5. P2 benchmark contract done / installed evidence pending：4-resource/3-target、5-slot hybrid primary+reserve 容量输入已在 SciPy 得到 objective `5.6`；OR-Tools 缺失时输出结构化 `unavailable_reason`，不进入默认 requirements 或默认 planner。当前环境未执行 installed flow 求解。
-6. evidence done：真实 AirSim ComputerVision 5-resource/2-target 10 seeds 中，T001 双 primary 视觉共识与当前计划授权达到 8/10；二级/分布式 commit 正例和缺 ACK fail-closed 通过。D3 P1 合同层闭合，但 15 s SimpleFlight 诊断为 0 物理命中，物理闭环仍开放。
+6. evidence done：真实 AirSim ComputerVision 5-resource/2-target 10 seeds 中，T001 双 primary 视觉共识与当前计划授权达到 8/10；二级/分布式 commit 正例和缺 ACK fail-closed 通过。2026-07-12 的 2v2 candidate 达到 20/20 pair，只证明一对一主链非退化；M5N2 8 s 短窗口为 0/9 active pair 且与高净空长窗口基线不可比，协同物理闭环仍开放。D3 本轮无行为变化。
 7. calibration pending：在 main/D6 集成中比较 `simultaneous 3`、`sequential 1+1+1` 和可配置 primary/reserve 的 hybrid（默认 `2+1`）到达离散度、wave interval、shortfall 和 coalition churn，并完成真实非等量/动态事件多 seed 参数校准。
 8. P2 optional：用 OR-Tools CP-SAT/Pyomo/PuLP 建小规模全局参考模型，对比 demand-slot admission 的最优差距；复杂同步动力学、committed prefix 和 reserve feedback policy 不进入默认在线主线。
 
@@ -349,6 +353,6 @@ git diff --check -- research_modules/d3_assignment_planner subagent_reviews/D3_*
 - **P1 evidence done**: 5-resource/2-target ComputerVision 10-seed 运行中 T001 双 primary 视觉共识与当前计划授权达到 8/10；二级/分布式 commit 正例及缺 ACK fail-closed 通过。D3 P1 合同层闭合。
 - **P1 interface done**: `plan_incremental`、changed-set 完整性检查、独立连通分量求解、全量回退原因、M-to-N all-or-none、全局迟滞、版本化 transient feedback dwell、reserve-soft-feedback primary role protection 和增量/全量 comparison summary 已实现。
 - **P2 capacity benchmark contract done**: 共享 4-resource/3-target、5-slot hybrid 输入已由 SciPy 求解；optional flow 缺依赖时输出 `unavailable_reason`，installed 实证待补。
-- **Regression**: `123 passed, 1 skipped`；唯一 skip 为当前环境缺少 optional OR-Tools 的 installed-only 求解测试。
-- **Physical loop open**: 15 s SimpleFlight 仅用于定位断点，30 个 active pair 均未物理命中；长时控制、真实 3v5/5v3 与动态事件多 seed、D5 feedback/dwell、动态威胁和 hard-window 仍需校准。
+- **Regression**: `127 passed, 1 skipped`；唯一 skip 为当前环境缺少 optional OR-Tools 的 installed-only 求解测试。
+- **Physical loop partially evidenced / coalition open**: 2026-07-12 的 2v2 candidate 为 20/20 pair；M5N2 8 s 短窗口为 0/9 active pair，不能与 z=-30 m、35 s 高净空基线比较。下一验收是同几何/同时间窗 paired M5N2，并继续真实 3v5/5v3、动态事件、D5 feedback/dwell、动态威胁和 hard-window 多 seed 校准。
 - **P2 isolated benchmark only**: CP-SAT/MILP 全局参考、复杂 flow、复杂同步动力学和大规模参数扫描不得进入默认 requirements，也不替换 Hungarian/demand-slot 主线。

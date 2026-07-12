@@ -68,6 +68,7 @@ class AssociationConfig:
     image_margin_px: float = 0.0
     cost_inf: float = 1e12
     max_measurement_age_s: float | None = None
+    max_missing_evidence_age_s: float | None = 0.25
     stable_window_frames: int = 3
     stable_required_observations: int = 2
     stable_window_max_age_s: float | None = 1.0
@@ -144,12 +145,14 @@ class TerminalAssociator:
     ) -> None:
         self.config = config or AssociationConfig()
         self.identity_checker = identity_checker or IdentityChecker()
-        self._histories: dict[tuple[str, str], _AssociationHistory] = {}
+        self._histories: dict[tuple[str, str, str], _AssociationHistory] = {}
+        self._latest_plan_versions: dict[tuple[str, str], int] = {}
 
     def clear_history(self) -> None:
         """Drop retained temporal association state."""
 
         self._histories.clear()
+        self._latest_plan_versions.clear()
 
     def project_tracks_to_image(
         self,
@@ -231,6 +234,7 @@ class TerminalAssociator:
         frame_id: str | None = None,
         camera_pose_source: str | None = None,
         arrival_timestamp: float | None = None,
+        camera_id: str | None = None,
     ) -> TerminalAssociation:
         """Return a conservative terminal association decision.
 
@@ -248,9 +252,41 @@ class TerminalAssociator:
         claims = list(identity_claims)
         cues = list(recon_image_cues)
         pose_source = _camera_pose_source_value(camera_pose_source)
-        history = self._history_for(assignment)
+        camera_scope = _camera_history_scope(
+            camera_id=camera_id,
+            frame_id=frame_id,
+            resource_id=assignment.resource_id,
+            local_tracks=local_list,
+        )
+        history = self._history_for(assignment, camera_scope)
         assigned = self._find_assigned_track(assignment, global_list)
         projection_time = self._projection_time(assignment, assigned, local_list, current_time)
+
+        stale_plan_reason = self._stale_plan_reason(assignment)
+        if stale_plan_reason is not None:
+            association = self._association(
+                assignment,
+                local_track_id=None,
+                confidence=0.0,
+                ambiguity=1.0,
+                friend_state="none",
+                decision="hold",
+                reason=stale_plan_reason,
+                metadata=self._base_metadata(assignment, pose_source)
+                | {
+                    "camera_history_scope": camera_scope,
+                    "gate_pass_count": 0,
+                    "candidate_pair_logs": [],
+                },
+            )
+            return self._finalize_association(
+                history,
+                association,
+                local_by_id,
+                projection_time,
+                arrival_timestamp=arrival_timestamp,
+                lockable=False,
+            )
 
         if assignment.authorization_state.lower() not in AUTHORIZED_ASSIGNMENT_STATES:
             association = self._association(
@@ -326,6 +362,8 @@ class TerminalAssociator:
                 arrival_timestamp=arrival_timestamp,
                 lockable=False,
             )
+
+        self._record_plan_version(assignment)
 
         projections = self.project_tracks_to_image([assigned], camera, timestamp=projection_time)
         projection = projections[assignment.assigned_global_track_id]
@@ -919,9 +957,34 @@ class TerminalAssociator:
         if observed_ids != expected_ids:
             raise RuntimeError("terminal association attempted to alter global_track_id values")
 
-    def _history_for(self, assignment: Assignment) -> _AssociationHistory:
-        key = (str(assignment.resource_id or ""), assignment.assigned_global_track_id)
+    def _history_for(
+        self,
+        assignment: Assignment,
+        camera_scope: str,
+    ) -> _AssociationHistory:
+        key = (
+            str(assignment.resource_id or ""),
+            str(camera_scope),
+            assignment.assigned_global_track_id,
+        )
         return self._histories.setdefault(key, _AssociationHistory())
+
+    def _stale_plan_reason(self, assignment: Assignment) -> str | None:
+        if assignment.plan_version is None:
+            return None
+        key = _plan_version_scope(assignment)
+        latest = self._latest_plan_versions.get(key)
+        if latest is not None and assignment.plan_version < latest:
+            return "stale_plan_version_rejected"
+        return None
+
+    def _record_plan_version(self, assignment: Assignment) -> None:
+        if assignment.plan_version is None:
+            return
+        key = _plan_version_scope(assignment)
+        latest = self._latest_plan_versions.get(key)
+        if latest is None or assignment.plan_version > latest:
+            self._latest_plan_versions[key] = assignment.plan_version
 
     def _finalize_association(
         self,
@@ -1012,6 +1075,34 @@ class TerminalAssociator:
             prediction_age_s = measurement_age_s
             transition_state = "lost"
             track_reset_reason = "local_track_unavailable"
+
+        evidence_age_s = (
+            prediction_age_s
+            if local_track_state in {"predicted", "lost"}
+            else measurement_age_s
+        )
+        evidence_fresh = True
+        if (
+            local_track_state in {"predicted", "lost"}
+            and self.config.max_missing_evidence_age_s is not None
+            and evidence_age_s is not None
+            and evidence_age_s > self.config.max_missing_evidence_age_s
+        ):
+            evidence_fresh = False
+            if association.decision_state == "reacquire":
+                previous_reason = association.reason
+                association = replace(
+                    association,
+                    decision_state="reacquire",
+                    association_confidence=0.0,
+                    ambiguity_score=1.0,
+                    reason="terminal_visual_evidence_expired",
+                    metadata=dict(association.metadata)
+                    | {
+                        "pre_expiry_reason": previous_reason,
+                        "visual_evidence_fail_closed": True,
+                    },
+                )
         association = replace(
             association,
             association_source="geometric_detect",
@@ -1039,6 +1130,9 @@ class TerminalAssociator:
                     history.last_locked_local_track_id if local_track_state != "measured" else None
                 ),
                 "previous_locked_local_track_id": previous_locked_local_track_id,
+                "visual_evidence_fresh": evidence_fresh,
+                "visual_evidence_age_s": evidence_age_s,
+                "max_missing_evidence_age_s": self.config.max_missing_evidence_age_s,
                 "local_visual_evidence": (
                     local_track.to_evidence_metadata() if local_track is not None else None
                 ),
@@ -1498,6 +1592,44 @@ def _measurement_age_s(local_track: LocalVisualTrack, current_time: float | None
     if current_time is None:
         return None
     return float(current_time) - float(local_track.timestamp)
+
+
+def _camera_history_scope(
+    *,
+    camera_id: str | None,
+    frame_id: str | None,
+    resource_id: str | None,
+    local_tracks: Iterable[LocalVisualTrack],
+) -> str:
+    """Resolve a stable camera scope without treating per-frame IDs as identity."""
+
+    if camera_id is not None and str(camera_id).strip():
+        return str(camera_id).strip()
+
+    metadata_camera_ids = {
+        str(track.metadata.get("camera_id")).strip()
+        for track in local_tracks
+        if track.metadata.get("camera_id") is not None
+        and str(track.metadata.get("camera_id")).strip()
+    }
+    if len(metadata_camera_ids) == 1:
+        return next(iter(metadata_camera_ids))
+
+    frame = str(frame_id or "").strip()
+    resource = str(resource_id or "").strip()
+    if frame and resource and frame.startswith(f"{resource}/"):
+        remainder = frame[len(resource) + 1 :]
+        camera = remainder.split("/", 1)[0].strip()
+        if camera:
+            return camera
+    return "default_camera"
+
+
+def _plan_version_scope(assignment: Assignment) -> tuple[str, str]:
+    return (
+        str(assignment.resource_id or ""),
+        str(assignment.plan_id or "default_plan"),
+    )
 
 
 def calibration_health_metadata(

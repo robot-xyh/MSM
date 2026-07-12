@@ -146,7 +146,7 @@ CBBA-PR 的“部分释放 bundle 后缀”可作为动态补位的研究参考�
 
 D4 所属 P1 合同层已闭合。ComputerVision 总体验收为 8/10；二级协调者 `Secondary_Recon_1` 以 ACK 3/3 进入 `executing`，完全分布式 `INT-02` peer 以 ACK 3/3 进入 `executing`，缺 ACK 场景以 2/3 ACK 进入 `aborted` 并令 T001 三成员 `hold_for_review`。这些结果关闭了 secondary/distributed commit 正例与缺 ACK fail-closed，不关闭自主成员形成、联盟重构或物理拦截。
 
-SimpleFlight 15 s 仅用于诊断，30 个 active pair 物理命中为 0。完整扰动矩阵仍开放，至少包括旧 epoch、过期 lease、成员不可执行、网络分区、digest conflict、成员退出/重构和误降级成对标定。P2 只允许隔离 benchmark，不替换当前 commit 合同或轻量 CBBA 默认路径。
+SimpleFlight 15 s 仅用于诊断，30 个 active pair 物理命中为 0。2026-07-12 新增 P1 版本化确定性 replay，模块层已覆盖旧 epoch、过期 lease、成员不可执行/补位、网络分区/恢复、digest conflict 和中心恢复双轨审计，九场景 9/9 通过；真实 AirSim 的 secondary-interceptor/peer split、误降级、恢复时间和物理连续性矩阵仍开放。P2 只允许隔离 benchmark，不替换当前 commit 合同或轻量 CBBA 默认路径。
 
 P2 隔离合同 replay 已实现并保持上述边界：本地 commit + CBBA 风格候选选择覆盖中心/二级/peer 转换及 missing ACK、stale epoch、expired lease、partition、member loss/replacement，逐场景输出 round/completion/conflict/gap-or-unavailable。MIT CBBA/CA-CBBA 仅返回 capability/unavailable；没有外部性能结果，不能据此比较算法优劣。
 
@@ -171,7 +171,7 @@ P2 隔离合同 replay 已实现并保持上述边界：本地 commit + CBBA 风
 
 ### P1 缺口
 
-- 已读取 coalition id、target demand、member role 和双版本，并实现 required-member ACK bitmap、commit lifecycle、lease/epoch、digest、分区和恢复审计；真实 episode 的二级/peer commit 正例与缺 ACK 负例已通过，D7 timing feasibility 和完整扰动矩阵仍开放。
+- 已读取 coalition id、target demand、member role 和双版本，并实现 required-member ACK bitmap、commit lifecycle、lease/epoch、digest、分区和恢复审计；真实 episode 的二级/peer commit 正例与缺 ACK 负例已通过，模块级成员补位/分区恢复矩阵也已版本化。D7 timing feasibility 和真实 AirSim 多 seed 扰动仍开放。
 - 完全无中心路径可对上游已经给定的 `k_j=3` 成员集合做本地原子 commit，但尚不能自主完成成员形成，也没有 reserve 激活、缩编/补位/整盟重组状态机。
 - 二级接管已证明协调者与 required-member 3/3 ACK 可进入 `executing`；该合同证据不等于成员运动学可达或物理拦截完成。
 - 中心正常路径的 D5 visual consensus recovery 已校验 current coalition scope 和 primary 集合；中心失效后的恢复仍只比较 assignment owner，尚未比较完整 coalition digest、成员执行前缀、波次和 reserve 状态。

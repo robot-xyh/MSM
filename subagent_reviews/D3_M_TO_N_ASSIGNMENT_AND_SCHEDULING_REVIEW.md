@@ -34,6 +34,8 @@
 
 OR-Tools Min-Cost Flow 已接入 optional 容量 benchmark：同一 4-resource/3-target、5-slot hybrid primary+reserve 输入由 SciPy 容量列展开和 flow 原生容量共享，缺 OR-Tools 时结构化输出 unavailable reason；它不进入默认依赖或 planner 主线。当前增量规划、role-aware primary 保持和跨模块 P1 合同验证已完成：ComputerVision 10 seeds 中 T001 双 primary 视觉共识与当前计划授权为 8/10，二级/分布式 commit 正例及缺 ACK fail-closed 通过。15 s SimpleFlight 仍无物理命中，物理闭环开放；installed flow 实证、CP-SAT/MILP 和复杂 flow 仅保留为 P2 隔离 benchmark。
 
+2026-07-12 进一步补齐 D3 可复用校准支撑：versioned 8-scenario matrix 覆盖 3v5、5v3、目标新增、资源失效、高威胁需求切换为 `2 primary + 1 reserve`、D5 reserve hold 和 hard-window。paired full/incremental runner 的 8/8 转换 assignment/cost 等价；D5 场景保持两个健康 primary，仅替换 reserve，并统一导出 latency、churn、unassigned high-threat 和 coalition shortfall。该结果关闭 deterministic 支撑缺口，不替代真实 AirSim 多 seed 或协同物理验收。
+
 ## 2. 问题模型与算法边界
 
 ### 2.1 基数、能力和任务启用
@@ -207,7 +209,7 @@ D3 后续只需要在代价中消费 `cooperative_localization_gain`、预期几
 - D7 binding：同一 `global_track_id` 可有多个合法 resource binding，但每个都必须携带同一 current coalition/plan identity 和独立 role/wave。
 - D6/D3 export：D3 已区分合法 coalition multiplicity 与异常重复分配并记录 demand satisfaction；到达离散度、波次完成和联盟重组次数继续作为 D6 长期参数校准指标，不是未实现的 D3 P1 合同。
 
-该能力现为 **P1 contract done**。现有 Hungarian 不退化，仍是无显式 demand 的 `k_j=1` 默认基线；`hungarian_demand_slots` 是显式 demand 主线。`plan_incremental` 已能对独立连通分量保持 coalition all-or-none，并在需求/容量/版本或全局约束变化时保守回退。历史第一次真实复验暴露 soft reserve hold 会顺带旋转 healthy primary；D3 现从 previous plan 推导 member role，在同版本 healthy primaries + soft reserve failure 时固定旧 primary slots，只重解 reserve。当前 ComputerVision 10 seeds 中 T001 双 primary 视觉共识与当前计划授权为 8/10，且二级/分布式 commit 正例和缺 ACK fail-closed 通过。15 s SimpleFlight 仍为 0 物理命中的诊断，物理闭环开放；非等量/动态事件参数标定继续，CP-SAT/MILP 和复杂 flow 只作为 P2 隔离 benchmark。
+该能力现为 **P1 contract done**。现有 Hungarian 不退化，仍是无显式 demand 的 `k_j=1` 默认基线；`hungarian_demand_slots` 是显式 demand 主线。`plan_incremental` 已能对独立连通分量保持 coalition all-or-none，并在需求/容量/版本或全局约束变化时保守回退。历史第一次真实复验暴露 soft reserve hold 会顺带旋转 healthy primary；D3 现从 previous plan 推导 member role，在同版本 healthy primaries + soft reserve failure 时固定旧 primary slots，只重解 reserve。deterministic 8-scenario paired runner 已关闭非等量/动态事件的本地复用与汇总缺口。当前 ComputerVision 10 seeds 中 T001 双 primary 视觉共识与当前计划授权为 8/10，且二级/分布式 commit 正例和缺 ACK fail-closed 通过；真实多 seed 参数与协同物理闭环仍开放，CP-SAT/MILP 和复杂 flow 只作为 P2 隔离 benchmark。
 
 ## 8. 参考链接
 

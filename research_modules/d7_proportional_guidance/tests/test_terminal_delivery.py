@@ -68,7 +68,7 @@ def test_transient_loss_predicts_and_same_global_track_reacquires() -> None:
     assert reacquired.visual_lock_measured is True
 
 
-def test_terminal_delivery_blind_push_decays_then_expires() -> None:
+def test_terminal_delivery_expires_at_hard_prediction_age_limit() -> None:
     delivery = TerminalGuidanceDelivery(_png_config())
     for index in range(3):
         delivery.evaluate(
@@ -94,15 +94,11 @@ def test_terminal_delivery_blind_push_decays_then_expires() -> None:
         TerminalDeliveryState.IMAGE_KF_PREDICT,
         TerminalDeliveryState.IMAGE_KF_PREDICT,
     ]
-    assert states[2:5] == [
-        TerminalDeliveryState.BLIND_PUSH,
-        TerminalDeliveryState.BLIND_PUSH,
-        TerminalDeliveryState.BLIND_PUSH,
-    ]
-    assert results[3].blind_decay < results[2].blind_decay
-    assert results[-1].state == TerminalDeliveryState.EXPIRED
-    assert results[-1].reason == "terminal_visual_lost_after_coast"
-    assert results[-1].command is None
+    assert all(state == TerminalDeliveryState.EXPIRED for state in states[2:])
+    assert results[2].measurement_age_s == pytest.approx(0.3)
+    assert results[2].reason == "terminal_visual_prediction_window_expired"
+    assert results[2].filter_audit_reason == "image_kf_predict_timeout"
+    assert all(result.command is None for result in results[2:])
 
 
 def test_first_terminal_sample_without_lock_is_acquiring_and_has_no_command() -> None:

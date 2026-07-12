@@ -1222,6 +1222,12 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
             for row in rows
             if row.terminal_delivery_reason == "terminal_visual_lost_after_coast"
         ),
+        "terminal_prediction_window_expired_count": sum(
+            1
+            for row in rows
+            if row.terminal_delivery_reason
+            == "terminal_visual_prediction_window_expired"
+        ),
         "member_role_counts": dict(member_roles),
         "wave_id_counts": dict(wave_ids),
         "coordination_mode_counts": dict(coordination_modes),

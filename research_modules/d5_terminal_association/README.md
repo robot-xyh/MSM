@@ -87,11 +87,11 @@ main 尚需在真实 AirSim episode 中把曝光/measurement timestamp、arrival
 
 ## 最新验收基线
 
-最新集成证据为 `research_modules/airsim_runtime/outputs/p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md`。P1 合同层已经闭合：ComputerVision 10 seeds 中，T001 两个 active primary 在当前计划授权下形成视觉共识的验收结果为 `8/10`；10/10 seeds 的错误重复锁为 0，合法的计划内协同多锁保持 `planned_cooperative_lock`，不会被计为 `duplicate_terminal_lock_risk`。seed 7/27 保留为回归，不改变合同层结论。
+最新集成证据为 `research_modules/airsim_runtime/outputs/PNG_DELIVERY_ENHANCEMENT_AIRSIM_VALIDATION_REPORT_20260712.md`。candidate 2v2 10 seeds 达到 20/20 pair 在 5 m 内成功，旧基线为 19/20，在线 truth 使用为 0，满足该场景主线非退化门槛；自然运行没有触发 soft prediction 或 trend coast，因此不能把结果提升归因于 D5 或新增外推算法。锁定后两帧 dropout 由 D7 在原 global/local track 与计划上下文中有界预测并达到 2/2；D5 只提供身份、时序、几何和 unavailable evidence，不实现 coast、KF、TTC 或控制。
 
-commit-aware gate 已进入真实集成验证。二级接管和完全分布式场景的完整 ACK commit 正例均允许联盟执行；缺 ACK 场景以 `coalition_commit_member_ack_incomplete` 类冲突阻断视觉共识/PNG authority，并与 D4/D7 一起 fail closed。`CoalitionVisualSummary` 继续校验 commit state、epoch、lease、plan/coalition 双版本及 required/acked members；reserve 只保留 readiness/cue，不能补 primary。
+M5N2 的 8 s、3-seed 短窗口为 0/9 active pair、最近距离 22-32 m、terminal switch allowed=0；该场景与既有 z=-30 m、35 s 高净空基线不可比，不能归因于 D5 或 PNG 滤波。下一验收必须在同一高净空几何和相同窗口下做 paired baseline/candidate，分别统计 target、active-primary、coalition completion，并审计 D5 hold/reacquire、视觉共识、错误绑定和 duplicate。
 
-该结论只关闭 P1 合同层，不代表控制或物理拦截闭环。ComputerVision 10 seeds 的 `control_allowed_count=0`；正确 M=5、N=2 topology 的 SimpleFlight 15 s 诊断中 30 个 active pair 均未命中，其中 24 个为 `terminal_detection_timeout`。因此相机持续检测、D5 锁定到 D7 control gate 的断点和长时物理拦截仍开放。P2 OpenCV calibration/`solvePnP` 仅是隔离式离线合成 benchmark，不进入在线 D5 主线。
+2026-07-11 的 ComputerVision `8/10` 双 primary 合同验收、错误 duplicate 0/10、完整 ACK commit 正例和缺 ACK fail-closed 仍有效；当时的 `control_allowed_count=0` 与 SimpleFlight 15 s 0/30 仅保留为历史诊断。当前 P0 无 blocker，D5 回归为 `161 passed`。仍开放的是 M5N2 paired 长时验收、1-5 帧 dropout/fail-closed 矩阵、真实相机曝光/外参/姿态同步标定、持续非零 YOLO/native MOT、二级完整覆盖、D4 逐 tick evidence 和真实身份 replay。P2 OpenCV calibration/`solvePnP` 仍仅是隔离式离线合成 benchmark，不进入在线 D5 主线。
 
 ## P1 受控跨版本稳定延续
 
@@ -153,7 +153,7 @@ truth identity 只在所有投影与门控完成后附加为 `offline_truth_labe
 - AirSim/main runtime 的最小 RGB 图像链和 2 帧冒烟入口已接通，但持续多帧、多 seed 的真实 detector/tracker 质量验收尚未完成。当前 actor/相机几何下 YOLO 无有效 accepted detection，原生 ByteTrack 无 track ID 并回退 IoU；仍需标定目标尺度、视角、置信度/class map、连续帧长度、CPU/GPU 预算、真实标定链、真实身份认证链路和跨相机三维联合优化。episode 边界仍必须调用 `reset_all_streams()`。
 - 在线 D5 不得使用 AirSim `object_id`、`actor_name` 或 actor truth ID。truth ID 只能作为离线评分标签进入 metadata/evaluator，用于 `terminal_lock_accuracy`、`locked_mismatch` 等指标。
 
-剩余 P1/P2 聚焦真实工程链路，而不是 D5 侧 evidence 字段：P1 合同层已闭合，二级/分布式完整 ACK commit 正例和缺 ACK fail-closed 已验证；仍开放的是 `control_allowed_count=0`、SimpleFlight 末端 detection timeout、持续检测/native MOT 质量、二级网络覆盖、外参/时间扰动和 `bbox_near_image_edge` 标定。P2 为 Deep SORT/ReID、真实身份 adapter、真实标定采集/在线外参更新以及 ROS 2 `tf2/message_filters`。D5 的 OpenCV calibration/`solvePnP` 仅为隔离式合成 benchmark，不等同于在线 AirSim 或硬件 PnP。
+剩余 P1/P2 聚焦真实工程链路，而不是 D5 侧 evidence 字段：P1 合同层和 2v2 主线非退化门槛已闭合，二级/分布式完整 ACK commit 正例和缺 ACK fail-closed 已验证；仍开放的是同几何长时 M5N2 paired 验收、持续检测/native MOT 质量、二级网络覆盖、外参/时间扰动、长 dropout/重捕和 `bbox_near_image_edge` 标定。P2 为 Deep SORT/ReID、真实身份 adapter、真实标定采集/在线外参更新以及 ROS 2 `tf2/message_filters`。D5 的 OpenCV calibration/`solvePnP` 仅为隔离式合成 benchmark，不等同于在线 AirSim 或硬件 PnP。
 
 ## 决策状态
 
@@ -249,3 +249,35 @@ D5 提供不依赖 AirSim Python 包的 dry-run 适配器，用于消费 `simGet
 ## 边界
 
 本模块只用于科研仿真和离线评估；不包含真实火控参数、毁伤逻辑、实机飞控、硬件驱动、自动处置或绕过人工授权的流程。
+
+## 2026-07-12 P1 M5N2 视觉鲁棒性支撑
+
+D5 新增模块内 replay 回归，覆盖锁定后连续 1-5 帧观测缺失与恢复、同相机目标交叉、两相机部分重叠视场、外参漂移、量测时间偏差、相机间 local ID 重名和 MOT ID 变化。默认在线探测仍为 AirSim `simGetDetections`，局部 ID 保持 camera-local 匿名标识；注册仍使用 GlobalTrack 预测投影、像素马氏门控和 Hungarian 唯一匹配，在线路径不读取 actor/object/truth ID。
+
+`TerminalAssociator` 的时间历史现在按 `resource_id + camera_id + assigned_global_track_id` 隔离。调用方应显式传入 `camera_id`；AirSim detect/离线 YOLO adapter 同时把 camera/resource scope 写入 `LocalVisualTrack.metadata` 作为兼容来源。不同相机即使出现相同 local ID，也不会共享丢锁或稳定窗口。
+
+锁定后无 measured detection 时，D5 只输出身份、几何和时序证据：
+
+- 1-2 个 10 Hz 缺失帧仍为 `reacquire`，不产生 lock、coast、KF 或控制量。
+- 距最后 measured lock 超过 `max_missing_evidence_age_s=0.25 s` 后，输出 `terminal_visual_evidence_expired`、`visual_evidence_fail_closed=True`。
+- 观测恢复后必须重新通过几何门、唯一候选、友方检查和 measured 稳定窗口；local MOT ID 变化不能直接继承 lock。
+- 同一 `plan_id` 的下降 `plan_version` 输出 `hold/stale_plan_version_rejected`，不会污染当前版本历史；`clear_history()` 同时清除相机历史和 plan watermark。
+
+模块回归为 `168 passed`。这关闭的是 D5 模块内 replay/helper 与保守证据语义，不代表真实 AirSim M5N2 长时视觉共识、持续 detect、YOLO/native MOT、真实外参同步或物理拦截已经闭合；这些仍是 main/runtime 多 seed P1 验收项。YOLOv8/ByteTrack/BoT-SORT 继续列为 deferred calibration，不替换 detect-first 默认链路。
+
+### 版本化离线 summary
+
+`run_p1_visual_robustness_matrix()` 将上述确定性 replay 固化为 `d5.p1_visual_robustness_summary.v1`，包含 10 个 case：1-5 帧 dropout/recovery、MOT ID change、same-camera crossing、cross-camera partial overlap、4 m extrinsic drift 和 0.5 s high-dynamic timestamp bias。每个 case 记录 `passed`、检查计数、保守拒绝计数、决策/拒绝原因分布、在线 truth 使用计数和 `global_track_id` 改写计数。
+
+CLI 写出可直接交给 D6 `--d5-summary` 的 JSON：
+
+```bash
+python3 research_modules/d5_terminal_association/scripts/run_p1_visual_robustness_summary.py \
+  --output /tmp/d5_p1_visual_robustness_summary.json
+
+python3 research_modules/d6_evaluation_metrics/scripts/run_p1_acceptance_report.py \
+  --output-dir /tmp/d6_p1_acceptance \
+  --d5-summary /tmp/d5_p1_visual_robustness_summary.json
+```
+
+当前确定性结果为 `case_count=10`、`pass_count=10`、`reject_count=24`、`online_truth_use_count=0`、`global_track_id_rewrite_count=0`。D6 兼容字段和逐 case 紧凑结果同时保存在 `metadata`；完整 case/check 明细保留在顶层 `cases`。测试 truth 只用于在线关联返回后的离线期望检查，不进入 cost、gate、Hungarian 或 binding。模块回归更新为 `171 passed`。
