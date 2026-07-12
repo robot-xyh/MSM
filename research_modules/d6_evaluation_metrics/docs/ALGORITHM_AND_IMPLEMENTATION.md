@@ -324,7 +324,7 @@ D6 当前默认输出工程可解释指标，而不是完整外部 MOT benchmark
 
 - 已有本地 POD/FAR/MAR、RMSE、continuity、`id_switch_count`。
 - OSPA/GOSPA 只在文档中保留公式和扩展方向，未进入 `EpisodeMetrics.metric_names()`。
-- CLEAR MOT/MOTA/MOTP/HOTA/IDF1 未接 TrackEval 或 py-motmetrics。
+- py-motmetrics 隔离 adapter 已基于 `msm-offline-mot-v1` 输出 IDF1/MOTA/MOTP；TrackEval 未接入，HOTA unavailable。
 - Stone Soup 未 import，也没有 Track/Detection/GroundTruthPath adapter。
 
 原因：
@@ -375,14 +375,14 @@ p95
 
 偏态或长尾指标，例如 `id_switch_count`、`constraint_violation_count`、`terminal_switch_reject_count`，正式论文/报告应补 bootstrap 或非参数 CI。当前实现主要服务工程回归和批量对比。
 
-## 10. 未实现项与原因
+## 10. 外部项状态与原因
 
 | 项目 | 当前状态 | 原因 | 缺少条件 |
 |---|---|---|---|
 | Stone Soup metrics | 未实现直接依赖和 adapter | 保持轻依赖；D1/D2 输出未冻结到 Stone Soup 对象 | 版本锁定、对象映射、测试 fixture、门限合同 |
 | OSPA/GOSPA | 未输出字段 | 需要帧级集合序列 | cutoff/order、truth/estimate set、birth/death/遮挡规则 |
-| TrackEval/py-motmetrics | 未实现 | 需要 MOTChallenge/accumulator 输入 | 帧级匹配表、IoU/距离门限、依赖安装策略 |
-| HOTA/IDF1 | 未实现 | 需要完整帧级身份评估 | D2/D5 稳定输出、重现/遮挡规则 |
+| py-motmetrics | 隔离 P2 adapter 已实现 IDF1/MOTA/MOTP | 默认依赖保持轻量 | 冻结 `msm-offline-mot-v1` schema；真实 replay 门限仍需校准 |
+| TrackEval/HOTA | 未实现；HOTA unavailable | py-motmetrics 1.4.0 不提供 HOTA | 完整帧级身份评估、重现/遮挡规则、标准格式导出 |
 | AirSim 原生 recording parser | 未实现 | 当前 Blocks JSONL 已满足主线；原生 recording schema 差异大 | 样例数据、字段版本、NED/相机/时间轴映射 |
 | Live AirSim replay | 未实现且非 D6 目标 | D6 只能离线读日志 | 由 main runtime replay 并导出日志 |
 | SCRIMMAGE metrics bridge | 未实现 | 当前无 SCRIMMAGE 输出样例和 schema | ID 映射、通信事件字段、episode clock、批量目录 |

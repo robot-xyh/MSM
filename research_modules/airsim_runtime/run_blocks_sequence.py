@@ -301,7 +301,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--control-dt", type=float, default=0.1)
     parser.add_argument("--intercept-speed", type=float, default=6.0)
     parser.add_argument("--intercept-altitude-z", type=float, default=-2.0)
-    parser.add_argument("--intercept-radius", type=float, default=0.75)
+    parser.add_argument(
+        "--intercept-radius",
+        type=float,
+        default=5.0,
+        help="3D NED separation at or below which a pair is a range intercept.",
+    )
     parser.add_argument("--intercept-max-duration", type=float, default=8.0)
     parser.add_argument("--intercept-terminal-range", type=float, default=8.0)
     parser.add_argument("--intercept-detection-timeout", type=float, default=1.0)
@@ -325,6 +330,41 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--active-degradation-time", type=float, default=1.5)
     parser.add_argument("--secondary-plan-time", type=float, default=2.0)
     parser.add_argument("--center-replan-time", type=float, default=2.0)
+    parser.add_argument(
+        "--c2-health-mode",
+        choices=("normal", "secondary_takeover", "fully_distributed"),
+        default="normal",
+        help=(
+            "Inject C2 health state into captured episode frames without changing "
+            "AirSim sensor or geometry data."
+        ),
+    )
+    parser.add_argument(
+        "--center-failure-time",
+        type=float,
+        default=None,
+        help="Episode time at which the center becomes unavailable.",
+    )
+    parser.add_argument(
+        "--secondary-failure-time",
+        type=float,
+        default=None,
+        help="Episode time at which secondary nodes become unavailable in fully_distributed mode.",
+    )
+    parser.add_argument(
+        "--coalition-commit-fault",
+        choices=(
+            "none",
+            "missing_ack",
+            "stale_epoch",
+            "expired_lease",
+            "partition",
+            "digest_conflict",
+            "member_cannot_execute",
+        ),
+        default="none",
+        help="Inject a D4 distributed coalition commit fault for fail-closed validation.",
+    )
     parser.add_argument(
         "--intercept-yaw-mode",
         choices=("velocity", "look_at_target"),
@@ -506,7 +546,8 @@ def _run_guidance_law_sweep(args: argparse.Namespace) -> int:
                     "guidance_law_sweep": True,
                     "scenario_tags": ["simpleflight", "paired_guidance", "same_seed"],
                     "expected_failure_modes": [
-                        "terminal_detection_timeout",
+                        "terminal_detection_acquisition_timeout",
+                        "terminal_visual_lost_after_coast",
                         "maneuver_margin_low",
                         "bbox_near_image_edge",
                     ],
@@ -977,8 +1018,18 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             "experiment_guidance_law": args.guidance_law,
             "guidance_comparison_group": args.sequence_id,
             "scenario_tags": [scenario_name, "airsim_blocks"],
+            "c2_health_mode": args.c2_health_mode,
+            "coalition_commit_fault": args.coalition_commit_fault,
         }
     )
+    if args.center_failure_time is not None:
+        actor_config["metadata"]["center_failure_time_s"] = float(
+            args.center_failure_time
+        )
+    if args.secondary_failure_time is not None:
+        actor_config["metadata"]["secondary_failure_time_s"] = float(
+            args.secondary_failure_time
+        )
     base_config = BlocksSmokeConfig(
         scenario_name=scenario_name,
         duration_s=args.duration,
@@ -1113,6 +1164,19 @@ def _validate_cooperative_options(args: argparse.Namespace) -> None:
         raise SystemExit("--cooperative-minimum-separation must be non-negative")
     if int(args.detection_warmup_frames) < 0:
         raise SystemExit("--detection-warmup-frames must be non-negative")
+    if args.center_failure_time is not None and float(args.center_failure_time) < 0.0:
+        raise SystemExit("--center-failure-time must be non-negative")
+    if args.secondary_failure_time is not None and float(args.secondary_failure_time) < 0.0:
+        raise SystemExit("--secondary-failure-time must be non-negative")
+    if (
+        args.c2_health_mode == "fully_distributed"
+        and args.center_failure_time is not None
+        and args.secondary_failure_time is not None
+        and float(args.secondary_failure_time) < float(args.center_failure_time)
+    ):
+        raise SystemExit(
+            "--secondary-failure-time must not precede --center-failure-time"
+        )
 
 
 def _print_sequence_result(result) -> None:
@@ -1478,7 +1542,8 @@ def _write_runtime_scenario_library(
                 tags=("2v2", "simpleflight", "same_seed", "guidance"),
                 difficulty="challenging",
                 expected_failure_modes=(
-                    "terminal_detection_timeout",
+                    "terminal_detection_acquisition_timeout",
+                    "terminal_visual_lost_after_coast",
                     "maneuver_margin_low",
                     "bbox_near_image_edge",
                 ),

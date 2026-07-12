@@ -28,6 +28,7 @@ SECONDARY_DETECT_REJECTION_REASONS = (
     "stale_or_missing_recon_cue",
     "projection_invalid",
     "geometry_gate_rejected",
+    "predicted_local_track_requires_measured_reacquire",
     "stability_window_failed",
     "secondary_detect_offline_only",
     "registered_to_global_track",
@@ -568,6 +569,9 @@ def publish_sim_detections_as_local_observations(
         timestamp=timestamp,
     )
     for track in tracks:
+        effective_arrival_timestamp = (
+            float(arrival_timestamp) if arrival_timestamp is not None else float(timestamp)
+        )
         bus.publish_local_track(
             resource_id=resource_id,
             source_node_id=source_node_id or resource_id,
@@ -577,7 +581,17 @@ def publish_sim_detections_as_local_observations(
             camera_id=camera_id,
             frame_id=frame_id,
             arrival_timestamp=arrival_timestamp,
-            metadata={"source": "simGetDetections"},
+            metadata={
+                "source": "simGetDetections",
+                "association_source": "geometric_detect",
+                "measurement_timestamp": track.timestamp,
+                "arrival_timestamp": effective_arrival_timestamp,
+                "measurement_age_s": max(0.0, effective_arrival_timestamp - track.timestamp),
+                "prediction_age_s": None,
+                "local_track_state": "measured",
+                "truth_identity_used": False,
+                "association_rejection_reason": "no_global_binding",
+            },
         )
     return tracks
 

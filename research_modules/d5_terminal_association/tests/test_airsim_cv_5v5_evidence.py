@@ -507,7 +507,13 @@ def test_secondary_node_sim_detections_do_not_use_actor_truth_as_local_identity(
     assert tracks[0].local_track_id == "wide_rgb_det_0"
     assert "TargetActor" not in tracks[0].local_track_id
     assert not hasattr(tracks[0], "global_track_id")
-    assert bus.observations()[0].metadata == {"source": "simGetDetections"}
+    observation_metadata = bus.observations()[0].metadata
+    assert observation_metadata["source"] == "simGetDetections"
+    assert observation_metadata["association_source"] == "geometric_detect"
+    assert observation_metadata["truth_identity_used"] is False
+    assert observation_metadata["local_track_state"] == "measured"
+    assert observation_metadata["measurement_timestamp"] == 5.0
+    assert observation_metadata["arrival_timestamp"] == 5.02
     assert "TargetActor_7" not in str(bus.observations()[0].metadata)
     assert "G-other" not in str(bus.observations()[0].metadata)
     assert bus.cross_view_associations() == []

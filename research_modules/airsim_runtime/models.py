@@ -89,7 +89,7 @@ class BlocksSmokeConfig:
     control_dt_s: float = 0.1
     intercept_speed_mps: float = 6.0
     intercept_altitude_ned_z: float = -2.0
-    intercept_radius_m: float = 0.75
+    intercept_radius_m: float = 5.0
     intercept_max_duration_s: float = 8.0
     intercept_navigation_constant: float = 3.0
     intercept_terminal_switch_range_m: float = 8.0

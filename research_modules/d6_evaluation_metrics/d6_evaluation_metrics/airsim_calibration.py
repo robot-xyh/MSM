@@ -113,6 +113,17 @@ CROSS_SEED_METRICS = [
     "secondary_takeover_fallback_count",
     "secondary_lease_expiry_count",
     "stale_plan_reject_count",
+    "coalition_commit_count",
+    "coalition_required_member_count",
+    "coalition_acked_member_count",
+    "coalition_member_ack_rate",
+    "coalition_ack_latency_s",
+    "coalition_commit_timeout_count",
+    "coalition_commit_aborted_count",
+    "coalition_commit_reconfiguring_count",
+    "coalition_commit_lease_expired_count",
+    "secondary_coalition_commit_count",
+    "distributed_coalition_commit_count",
     "visual_detection_recall",
     "local_id_continuity",
     "cross_view_registration_rate",
@@ -122,6 +133,14 @@ CROSS_SEED_METRICS = [
     "visual_budget_violation_count",
     "online_truth_field_violation_count",
     "d7_guidance_reject_count",
+    "contract_evaluated_count",
+    "contract_allowed_count",
+    "contract_allowed_rate",
+    "control_evaluated_count",
+    "control_allowed_count",
+    "control_allowed_rate",
+    "mode_switched_count",
+    "physical_intercept_count",
     "intercept_success_count",
     "collision_intercept_count",
     "range_intercept_count",
@@ -150,9 +169,24 @@ COUNT_METRICS = {
     "secondary_takeover_fallback_count",
     "secondary_lease_expiry_count",
     "stale_plan_reject_count",
+    "coalition_commit_count",
+    "coalition_required_member_count",
+    "coalition_acked_member_count",
+    "coalition_commit_timeout_count",
+    "coalition_commit_aborted_count",
+    "coalition_commit_reconfiguring_count",
+    "coalition_commit_lease_expired_count",
+    "secondary_coalition_commit_count",
+    "distributed_coalition_commit_count",
     "visual_budget_violation_count",
     "online_truth_field_violation_count",
     "d7_guidance_reject_count",
+    "contract_evaluated_count",
+    "contract_allowed_count",
+    "control_evaluated_count",
+    "control_allowed_count",
+    "mode_switched_count",
+    "physical_intercept_count",
     "intercept_success_count",
     "collision_intercept_count",
     "range_intercept_count",
@@ -326,9 +360,28 @@ RECORD_FIELDNAMES = [
     "visual_gpu_budget_utilization",
     "visual_budget_violation_count",
     "online_truth_field_violation_count",
+    "coalition_commit_count",
+    "coalition_required_member_count",
+    "coalition_acked_member_count",
+    "coalition_member_ack_rate",
+    "coalition_ack_latency_s",
+    "coalition_commit_timeout_count",
+    "coalition_commit_aborted_count",
+    "coalition_commit_reconfiguring_count",
+    "coalition_commit_lease_expired_count",
+    "secondary_coalition_commit_count",
+    "distributed_coalition_commit_count",
     "d7_guidance_reject_count",
     "d7_guidance_reject_reason_counts",
     "guidance_law_counts",
+    "contract_evaluated_count",
+    "contract_allowed_count",
+    "contract_allowed_rate",
+    "control_evaluated_count",
+    "control_allowed_count",
+    "control_allowed_rate",
+    "mode_switched_count",
+    "physical_intercept_count",
     "intercept_success_count",
     "collision_intercept_count",
     "range_intercept_count",
@@ -429,6 +482,17 @@ SUMMARY_FIELDNAMES = [
     "secondary_takeover_fallback_count",
     "secondary_lease_expiry_count",
     "stale_plan_reject_count",
+    "coalition_commit_count",
+    "coalition_required_member_count",
+    "coalition_acked_member_count",
+    "coalition_member_ack_rate_mean",
+    "coalition_ack_latency_s_mean",
+    "coalition_commit_timeout_count",
+    "coalition_commit_aborted_count",
+    "coalition_commit_reconfiguring_count",
+    "coalition_commit_lease_expired_count",
+    "secondary_coalition_commit_count",
+    "distributed_coalition_commit_count",
     "visual_detection_recall_mean",
     "local_id_continuity_mean",
     "cross_view_registration_rate_mean",
@@ -440,6 +504,14 @@ SUMMARY_FIELDNAMES = [
     "d7_guidance_reject_count",
     "d7_guidance_reject_reason_counts",
     "guidance_law_counts",
+    "contract_evaluated_count",
+    "contract_allowed_count",
+    "contract_allowed_rate_mean",
+    "control_evaluated_count",
+    "control_allowed_count",
+    "control_allowed_rate_mean",
+    "mode_switched_count",
+    "physical_intercept_count",
     "intercept_success_count",
     "collision_intercept_count",
     "range_intercept_count",
@@ -554,6 +626,17 @@ class AirSimCalibrationRecord:
     secondary_takeover_fallback_count: int | None = None
     secondary_lease_expiry_count: int | None = None
     stale_plan_reject_count: int | None = None
+    coalition_commit_count: int | None = None
+    coalition_required_member_count: int | None = None
+    coalition_acked_member_count: int | None = None
+    coalition_member_ack_rate: float | None = None
+    coalition_ack_latency_s: float | None = None
+    coalition_commit_timeout_count: int | None = None
+    coalition_commit_aborted_count: int | None = None
+    coalition_commit_reconfiguring_count: int | None = None
+    coalition_commit_lease_expired_count: int | None = None
+    secondary_coalition_commit_count: int | None = None
+    distributed_coalition_commit_count: int | None = None
     visual_detection_recall: float | None = None
     local_id_continuity: float | None = None
     cross_view_registration_rate: float | None = None
@@ -565,6 +648,14 @@ class AirSimCalibrationRecord:
     d7_guidance_reject_count: int = 0
     d7_guidance_reject_reason_counts: dict[str, int] = field(default_factory=dict)
     guidance_law_counts: dict[str, int] = field(default_factory=dict)
+    contract_evaluated_count: int | None = None
+    contract_allowed_count: int | None = None
+    contract_allowed_rate: float | None = None
+    control_evaluated_count: int | None = None
+    control_allowed_count: int | None = None
+    control_allowed_rate: float | None = None
+    mode_switched_count: int | None = None
+    physical_intercept_count: int | None = None
     intercept_success_count: int | None = None
     collision_intercept_count: int | None = None
     range_intercept_count: int | None = None
@@ -1020,6 +1111,39 @@ def summarize_airsim_calibration_records(
                     grouped_records,
                     "stale_plan_reject_count",
                 ),
+                "coalition_commit_count": _sum_int_or_none(
+                    grouped_records, "coalition_commit_count"
+                ),
+                "coalition_required_member_count": _sum_int_or_none(
+                    grouped_records, "coalition_required_member_count"
+                ),
+                "coalition_acked_member_count": _sum_int_or_none(
+                    grouped_records, "coalition_acked_member_count"
+                ),
+                "coalition_member_ack_rate_mean": _mean_field_or_none(
+                    grouped_records, "coalition_member_ack_rate"
+                ),
+                "coalition_ack_latency_s_mean": _mean_field_or_none(
+                    grouped_records, "coalition_ack_latency_s"
+                ),
+                "coalition_commit_timeout_count": _sum_int_or_none(
+                    grouped_records, "coalition_commit_timeout_count"
+                ),
+                "coalition_commit_aborted_count": _sum_int_or_none(
+                    grouped_records, "coalition_commit_aborted_count"
+                ),
+                "coalition_commit_reconfiguring_count": _sum_int_or_none(
+                    grouped_records, "coalition_commit_reconfiguring_count"
+                ),
+                "coalition_commit_lease_expired_count": _sum_int_or_none(
+                    grouped_records, "coalition_commit_lease_expired_count"
+                ),
+                "secondary_coalition_commit_count": _sum_int_or_none(
+                    grouped_records, "secondary_coalition_commit_count"
+                ),
+                "distributed_coalition_commit_count": _sum_int_or_none(
+                    grouped_records, "distributed_coalition_commit_count"
+                ),
                 "visual_detection_recall_mean": _mean_field_or_none(
                     grouped_records,
                     "visual_detection_recall",
@@ -1063,6 +1187,30 @@ def summarize_airsim_calibration_records(
                 "guidance_law_counts": _sum_count_mappings(
                     grouped_records,
                     "guidance_law_counts",
+                ),
+                "contract_evaluated_count": _sum_int_or_none(
+                    grouped_records, "contract_evaluated_count"
+                ),
+                "contract_allowed_count": _sum_int_or_none(
+                    grouped_records, "contract_allowed_count"
+                ),
+                "contract_allowed_rate_mean": _mean_field_or_none(
+                    grouped_records, "contract_allowed_rate"
+                ),
+                "control_evaluated_count": _sum_int_or_none(
+                    grouped_records, "control_evaluated_count"
+                ),
+                "control_allowed_count": _sum_int_or_none(
+                    grouped_records, "control_allowed_count"
+                ),
+                "control_allowed_rate_mean": _mean_field_or_none(
+                    grouped_records, "control_allowed_rate"
+                ),
+                "mode_switched_count": _sum_int_or_none(
+                    grouped_records, "mode_switched_count"
+                ),
+                "physical_intercept_count": _sum_int_or_none(
+                    grouped_records, "physical_intercept_count"
                 ),
                 "intercept_success_count": _sum_int_or_none(
                     grouped_records,
@@ -2464,6 +2612,39 @@ def _record_from_artifacts(
         stale_plan_reject_count=_optional_metric_int(
             metrics, "stale_plan_reject_count"
         ),
+        coalition_commit_count=_optional_metric_int(
+            metrics, "coalition_commit_count"
+        ),
+        coalition_required_member_count=_optional_metric_int(
+            metrics, "coalition_required_member_count"
+        ),
+        coalition_acked_member_count=_optional_metric_int(
+            metrics, "coalition_acked_member_count"
+        ),
+        coalition_member_ack_rate=_first_float(
+            _metric_attr(metrics, "coalition_member_ack_rate")
+        ),
+        coalition_ack_latency_s=_first_float(
+            _metric_attr(metrics, "coalition_ack_latency_s")
+        ),
+        coalition_commit_timeout_count=_optional_metric_int(
+            metrics, "coalition_commit_timeout_count"
+        ),
+        coalition_commit_aborted_count=_optional_metric_int(
+            metrics, "coalition_commit_aborted_count"
+        ),
+        coalition_commit_reconfiguring_count=_optional_metric_int(
+            metrics, "coalition_commit_reconfiguring_count"
+        ),
+        coalition_commit_lease_expired_count=_optional_metric_int(
+            metrics, "coalition_commit_lease_expired_count"
+        ),
+        secondary_coalition_commit_count=_optional_metric_int(
+            metrics, "secondary_coalition_commit_count"
+        ),
+        distributed_coalition_commit_count=_optional_metric_int(
+            metrics, "distributed_coalition_commit_count"
+        ),
         visual_detection_recall=_first_float(
             _metric_attr(metrics, "visual_detection_recall")
         ),
@@ -2491,6 +2672,30 @@ def _record_from_artifacts(
         d7_guidance_reject_count=sum(d7_reject_reasons.values()),
         d7_guidance_reject_reason_counts=d7_reject_reasons,
         guidance_law_counts=guidance_laws,
+        contract_evaluated_count=_optional_metric_int(
+            metrics, "contract_evaluated_count"
+        ),
+        contract_allowed_count=_optional_metric_int(
+            metrics, "contract_allowed_count"
+        ),
+        contract_allowed_rate=_first_float(
+            _metric_attr(metrics, "contract_allowed_rate")
+        ),
+        control_evaluated_count=_optional_metric_int(
+            metrics, "control_evaluated_count"
+        ),
+        control_allowed_count=_optional_metric_int(
+            metrics, "control_allowed_count"
+        ),
+        control_allowed_rate=_first_float(
+            _metric_attr(metrics, "control_allowed_rate")
+        ),
+        mode_switched_count=_optional_metric_int(
+            metrics, "mode_switched_count"
+        ),
+        physical_intercept_count=_optional_metric_int(
+            metrics, "physical_intercept_count"
+        ),
         intercept_success_count=_available_metric_int(
             metrics,
             "intercept_success_count",

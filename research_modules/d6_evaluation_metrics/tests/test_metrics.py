@@ -1041,6 +1041,26 @@ def test_episode_metrics_contains_all_required_names() -> None:
         "terminal_switch_reject_count",
         "mode_switch_count",
         "terminal_contract_reject_count",
+        "contract_evaluated_count",
+        "contract_allowed_count",
+        "contract_allowed_rate",
+        "control_evaluated_count",
+        "control_allowed_count",
+        "control_allowed_rate",
+        "mode_switched_count",
+        "physical_intercept_count",
+        "pair_physical_success_count",
+        "pair_physical_success_rate",
+        "target_intercept_success_count",
+        "target_intercept_success_rate",
+        "coalition_completion_count",
+        "coalition_completion_rate",
+        "detection_acquisition_timeout_count",
+        "image_kf_predict_count",
+        "blind_push_count",
+        "visual_reacquisition_count",
+        "terminal_visual_lost_after_coast_count",
+        "truth_identity_online_use_count",
         "intercept_success_count",
         "collision_intercept_count",
         "range_intercept_count",
@@ -1085,6 +1105,17 @@ def test_episode_metrics_contains_all_required_names() -> None:
             "replan_expired_count",
             "replan_pending_dwell_s",
             "replan_convergence_time_s",
+            "coalition_commit_count",
+            "coalition_required_member_count",
+            "coalition_acked_member_count",
+            "coalition_member_ack_rate",
+            "coalition_ack_latency_s",
+            "coalition_commit_timeout_count",
+            "coalition_commit_aborted_count",
+            "coalition_commit_reconfiguring_count",
+            "coalition_commit_lease_expired_count",
+            "secondary_coalition_commit_count",
+            "distributed_coalition_commit_count",
             "coalition_member_loss_count",
             "coalition_member_replacement_count",
             "coalition_member_replacement_time_s",
@@ -1110,3 +1141,74 @@ def test_episode_metrics_contains_all_required_names() -> None:
     )
 
     assert set(MetricsCollector().compute_episode("episode").metric_names()) == required
+
+
+def test_terminal_execution_funnel_separates_cv_contract_from_physical_intercept() -> None:
+    cv_collector = MetricsCollector()
+    cv_collector.extend_events(
+        [
+            EventRecord(
+                1.0,
+                "d7_guidance_record",
+                actor_id="R1",
+                metadata={
+                    "resource_id": "R1",
+                    "target_id": "G1",
+                    "terminal_switch_allowed": True,
+                    "d7_runtime_terminal_switch_allowed": False,
+                    "mode_switch": False,
+                },
+            ),
+            EventRecord(
+                2.0,
+                "d7_guidance_record",
+                actor_id="R1",
+                metadata={
+                    "resource_id": "R1",
+                    "target_id": "G1",
+                    "terminal_switch_allowed": True,
+                    "d7_runtime_terminal_switch_allowed": True,
+                    "mode_switch": True,
+                },
+            ),
+        ]
+    )
+
+    cv_metrics = cv_collector.compute_episode("cv-contract-only")
+
+    assert cv_metrics.contract_evaluated_count == 2
+    assert cv_metrics.contract_allowed_count == 2
+    assert cv_metrics.contract_allowed_rate == 1.0
+    assert cv_metrics.control_evaluated_count == 2
+    assert cv_metrics.control_allowed_count == 1
+    assert cv_metrics.control_allowed_rate == 0.5
+    assert cv_metrics.mode_switched_count == 1
+    assert cv_metrics.physical_intercept_count is None
+    assert cv_metrics.intercept_success_count == 0
+    assert cv_metrics.metadata["physical_intercept_evidence_available"] is False
+
+    physical_collector = MetricsCollector()
+    physical_collector.add_event(
+        EventRecord(
+            3.0,
+            "d7_control_command",
+            actor_id="R2",
+            metadata={
+                "resource_id": "R2",
+                "target_id": "G2",
+                "terminal_contract_allowed": True,
+                "terminal_switch_allowed": True,
+                "mode_switch": True,
+                "status": "collision_intercept",
+            },
+        )
+    )
+
+    physical_metrics = physical_collector.compute_episode("physical")
+
+    assert physical_metrics.contract_allowed_count == 1
+    assert physical_metrics.control_allowed_count == 1
+    assert physical_metrics.mode_switched_count == 1
+    assert physical_metrics.physical_intercept_count == 1
+    assert physical_metrics.intercept_success_count == 1
+    assert physical_metrics.metadata["physical_intercept_evidence_available"] is True

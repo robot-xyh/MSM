@@ -71,6 +71,135 @@ def test_d7_intercept_summary_derives_intercept_metrics(tmp_path: Path) -> None:
     }
 
 
+def test_five_meter_ned_3d_range_intercept_is_pair_and_target_physical_success(
+    tmp_path: Path,
+) -> None:
+    summary_path = tmp_path / "intercept_summary.json"
+    summary_path.write_text(
+        json.dumps(
+            {
+                "control_api_used": True,
+                "success_count": 1,
+                "pair_count": 1,
+                "parameters": {
+                    "intercept_radius_m": 5.0,
+                    "intercept_distance_frame": "NED",
+                    "intercept_distance_dimension": "3d_euclidean",
+                    "intercept_success_criteria_version": "airsim-range-intercept-v2",
+                },
+                "pairs": [
+                    {
+                        "resource_id": "INT-01",
+                        "target_id": "TGT-001",
+                        "assigned": True,
+                        "activation_state": "active",
+                        "status": "range_intercept",
+                        "min_range_m": 4.9,
+                        "time_to_intercept_s": 3.0,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = load_d7_intercept_outputs(
+        intercept_summary_path=summary_path
+    ).compute_episode("five_meter_success")
+
+    assert metrics.pair_physical_success_count == 1
+    assert metrics.pair_physical_success_rate == pytest.approx(1.0)
+    assert metrics.target_intercept_success_count == 1
+    assert metrics.target_intercept_success_rate == pytest.approx(1.0)
+    assert metrics.physical_intercept_count == 1
+    assert metrics.metadata["physical_success_criteria"] == {
+        "intercept_radius_m": 5.0,
+        "distance_frame": "NED",
+        "distance_dimension": "3d_euclidean",
+        "criteria_version": "airsim-range-intercept-v2",
+    }
+    assert metrics.metadata["physical_success_criteria_matches_5m_ned_3d"] is True
+
+
+def test_one_primary_success_does_not_complete_required_coalition(
+    tmp_path: Path,
+) -> None:
+    summary_path = tmp_path / "intercept_summary.json"
+    _write_coalition_summary(
+        summary_path,
+        pair_statuses=("range_intercept", "timeout"),
+        arrival_timestamps=(4.0, None),
+    )
+
+    metrics = load_d7_intercept_outputs(
+        intercept_summary_path=summary_path
+    ).compute_episode("partial_coalition")
+
+    assert metrics.pair_physical_success_count == 1
+    assert metrics.pair_physical_success_rate == pytest.approx(0.5)
+    assert metrics.target_intercept_success_count == 1
+    assert metrics.target_intercept_success_rate == pytest.approx(1.0)
+    assert metrics.coalition_completion_count == 0
+    assert metrics.coalition_completion_rate == pytest.approx(0.0)
+
+
+def test_all_required_primaries_inside_arrival_window_complete_coalition(
+    tmp_path: Path,
+) -> None:
+    summary_path = tmp_path / "intercept_summary.json"
+    _write_coalition_summary(
+        summary_path,
+        pair_statuses=("collision_intercept", "range_intercept"),
+        arrival_timestamps=(3.5, 4.5),
+    )
+
+    metrics = load_d7_intercept_outputs(
+        intercept_summary_path=summary_path
+    ).compute_episode("complete_coalition")
+
+    assert metrics.pair_physical_success_count == 2
+    assert metrics.target_intercept_success_count == 1
+    assert metrics.coalition_completion_count == 1
+    assert metrics.coalition_completion_rate == pytest.approx(1.0)
+    assert metrics.metadata["completed_coalition_target_ids"] == ["TGT-001"]
+
+
+def test_computer_vision_physical_success_remains_unavailable(tmp_path: Path) -> None:
+    summary_path = tmp_path / "intercept_summary.json"
+    summary_path.write_text(
+        json.dumps(
+            {
+                "runtime_mode": "computer_vision_m_to_n",
+                "physical_intercept_available": False,
+                "physical_intercept_unavailable_reason": "read_only_camera_actors",
+                "success_count": 0,
+                "pair_count": 1,
+                "pairs": [
+                    {
+                        "resource_id": "CAM-01",
+                        "target_id": "TGT-001",
+                        "status": "range_intercept",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = load_d7_intercept_outputs(
+        intercept_summary_path=summary_path
+    ).compute_episode("cv_unavailable")
+
+    assert metrics.physical_intercept_count is None
+    assert metrics.pair_physical_success_count is None
+    assert metrics.target_intercept_success_count is None
+    assert metrics.coalition_completion_count is None
+    assert metrics.metadata["physical_intercept_evidence_available"] is False
+    assert metrics.metadata["physical_intercept_unavailable_reason"] == (
+        "ComputerVision episodes do not provide physical intercept evidence"
+    )
+
+
 def test_d7_intercept_outputs_aggregate_five_actor_pairs(tmp_path: Path) -> None:
     summary_path = tmp_path / "intercept_summary.json"
     commands_path = tmp_path / "control_commands.csv"
@@ -575,6 +704,87 @@ def test_d7_guidance_timeseries_unifies_guidance_and_intercept_outputs(
     ]
 
 
+def test_control_records_report_detect_coast_and_truth_identity_diagnostics(
+    tmp_path: Path,
+) -> None:
+    commands_path = tmp_path / "control_commands.csv"
+    _write_csv(
+        commands_path,
+        [
+            {
+                "timestamp_s": "0.0",
+                "resource_id": "INT-01",
+                "target_id": "TGT-001",
+                "detection_seen": "True",
+                "image_kf_mode": "update",
+                "using_blind_push": "False",
+                "truth_identity_online_use": "False",
+                "contract_allowed": "True",
+                "control_allowed": "False",
+                "mode_switched": "False",
+                "physical_intercept": "False",
+                "status": "active",
+            },
+            {
+                "timestamp_s": "1.0",
+                "resource_id": "INT-01",
+                "target_id": "TGT-001",
+                "detection_seen": "False",
+                "image_kf_mode": "predict",
+                "using_blind_push": "False",
+                "truth_identity_online_use": "True",
+                "contract_allowed": "True",
+                "control_allowed": "True",
+                "mode_switched": "True",
+                "physical_intercept": "False",
+                "status": "active",
+            },
+            {
+                "timestamp_s": "2.0",
+                "resource_id": "INT-01",
+                "target_id": "TGT-001",
+                "detection_seen": "True",
+                "image_kf_mode": "update",
+                "using_blind_push": "False",
+                "truth_identity_online_use": "False",
+                "contract_allowed": "True",
+                "control_allowed": "True",
+                "mode_switched": "False",
+                "physical_intercept": "False",
+                "status": "active",
+            },
+            {
+                "timestamp_s": "3.0",
+                "resource_id": "INT-01",
+                "target_id": "TGT-001",
+                "detection_seen": "False",
+                "image_kf_mode": "invalid",
+                "using_blind_push": "True",
+                "truth_identity_online_use": "False",
+                "contract_allowed": "True",
+                "control_allowed": "True",
+                "mode_switched": "False",
+                "physical_intercept": "False",
+                "status": "timeout",
+            },
+        ],
+    )
+
+    metrics = load_d7_intercept_outputs(
+        control_commands_path=commands_path
+    ).compute_episode("detect_coast")
+
+    assert metrics.image_kf_predict_count == 1
+    assert metrics.blind_push_count == 1
+    assert metrics.visual_reacquisition_count == 1
+    assert metrics.terminal_visual_lost_after_coast_count == 1
+    assert metrics.truth_identity_online_use_count == 1
+    assert metrics.contract_allowed_count == 4
+    assert metrics.control_allowed_count == 3
+    assert metrics.mode_switched_count == 1
+    assert metrics.pair_physical_success_count == 0
+
+
 def _write_csv(path: Path, rows: list[dict[str, str]]) -> None:
     fieldnames: list[str] = []
     for row in rows:
@@ -608,6 +818,49 @@ def _write_five_pair_summary(path: Path, *, locked_pair_ids: set[int]) -> None:
                 ],
             },
             sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_coalition_summary(
+    path: Path,
+    *,
+    pair_statuses: tuple[str, str],
+    arrival_timestamps: tuple[float | None, float | None],
+) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "control_api_used": True,
+                "success_count": sum(
+                    status in {"collision_intercept", "range_intercept"}
+                    for status in pair_statuses
+                ),
+                "pair_count": 2,
+                "parameters": {
+                    "intercept_radius_m": 5.0,
+                    "intercept_distance_frame": "NED",
+                    "intercept_distance_dimension": "3d_euclidean",
+                    "intercept_success_criteria_version": "airsim-range-intercept-v2",
+                },
+                "pairs": [
+                    {
+                        "resource_id": f"INT-{index + 1:02d}",
+                        "target_id": "TGT-001",
+                        "assigned": True,
+                        "activation_state": "active",
+                        "member_role": "primary",
+                        "required_primary": True,
+                        "required_primary_count": 2,
+                        "arrival_window": [3.0, 5.0],
+                        "arrival_timestamp_s": arrival_timestamps[index],
+                        "time_to_intercept_s": arrival_timestamps[index],
+                        "status": pair_statuses[index],
+                    }
+                    for index in range(2)
+                ],
+            }
         ),
         encoding="utf-8",
     )

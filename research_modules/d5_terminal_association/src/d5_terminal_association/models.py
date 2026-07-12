@@ -179,6 +179,8 @@ class LocalVisualTrack:
     quality: float = 1.0
     mot_history_length: int = 1
     timestamp: float = 0.0
+    local_track_state: str = "measured"
+    prediction_age_s: float | None = None
 
     def __post_init__(self) -> None:
         if not self.local_track_id:
@@ -189,6 +191,14 @@ class LocalVisualTrack:
         object.__setattr__(self, "quality", float(np.clip(self.quality, 0.0, 1.0)))
         if self.mot_history_length < 0:
             raise ValueError("mot_history_length must be non-negative")
+        state = str(self.local_track_state).strip().lower()
+        if state not in {"measured", "predicted", "lost"}:
+            raise ValueError("local_track_state must be measured, predicted, or lost")
+        prediction_age_s = _finite_float_or_none(self.prediction_age_s)
+        if prediction_age_s is not None and prediction_age_s < 0.0:
+            raise ValueError("prediction_age_s must be non-negative")
+        object.__setattr__(self, "local_track_state", state)
+        object.__setattr__(self, "prediction_age_s", prediction_age_s)
 
 
 @dataclass(frozen=True)
@@ -613,6 +623,13 @@ class TerminalAssociation:
     arrival_window_start_s: float | None = None
     arrival_window_end_s: float | None = None
     activation_state: str = "active"
+    association_source: str = "geometric_detect"
+    measurement_timestamp: float | None = None
+    arrival_timestamp: float | None = None
+    measurement_age_s: float | None = None
+    prediction_age_s: float | None = None
+    local_track_state: str | None = None
+    truth_identity_used: bool = False
 
     def __post_init__(self) -> None:
         if not self.assigned_global_track_id:
@@ -638,11 +655,80 @@ class TerminalAssociation:
         object.__setattr__(self, "required_resource_count", int(self.required_resource_count))
         object.__setattr__(self, "coordination_mode", str(self.coordination_mode).strip().lower())
         object.__setattr__(self, "activation_state", str(self.activation_state).strip().lower())
+        association_source = str(self.association_source).strip()
+        if not association_source:
+            raise ValueError("association_source must be non-empty")
+        local_track_state = (
+            str(self.local_track_state).strip().lower()
+            if self.local_track_state is not None
+            else ("measured" if self.local_track_id is not None else "lost")
+        )
+        if local_track_state not in {"measured", "predicted", "lost"}:
+            raise ValueError("local_track_state must be measured, predicted, or lost")
+        if local_track_state in {"predicted", "lost"} and self.decision_state in {
+            "locked",
+            "registered",
+        }:
+            raise ValueError("predicted or lost local tracks cannot produce a locked association")
+        if bool(self.truth_identity_used):
+            raise ValueError("TerminalAssociation online decisions cannot use truth identity")
+        measurement_timestamp = _finite_float_or_none(self.measurement_timestamp)
+        arrival_timestamp = _finite_float_or_none(self.arrival_timestamp)
+        measurement_age_s = _finite_float_or_none(self.measurement_age_s)
+        prediction_age_s = _finite_float_or_none(self.prediction_age_s)
+        if prediction_age_s is not None and prediction_age_s < 0.0:
+            raise ValueError("prediction_age_s must be non-negative")
+        object.__setattr__(self, "association_source", association_source)
+        object.__setattr__(self, "measurement_timestamp", measurement_timestamp)
+        object.__setattr__(self, "arrival_timestamp", arrival_timestamp)
+        object.__setattr__(self, "measurement_age_s", measurement_age_s)
+        object.__setattr__(self, "prediction_age_s", prediction_age_s)
+        object.__setattr__(self, "local_track_state", local_track_state)
+        object.__setattr__(self, "truth_identity_used", False)
         if self.arrival_window_start_s is not None:
             object.__setattr__(self, "arrival_window_start_s", float(self.arrival_window_start_s))
         if self.arrival_window_end_s is not None:
             object.__setattr__(self, "arrival_window_end_s", float(self.arrival_window_end_s))
-        object.__setattr__(self, "metadata", dict(self.metadata))
+        metadata = dict(self.metadata)
+        metadata.update(
+            {
+                "association_source": association_source,
+                "measurement_timestamp": measurement_timestamp,
+                "arrival_timestamp": arrival_timestamp,
+                "measurement_age_s": measurement_age_s,
+                "prediction_age_s": prediction_age_s,
+                "local_track_state": local_track_state,
+                "truth_identity_used": False,
+                "association_confidence": float(self.association_confidence),
+                "association_rejection_reason": self.reason,
+            }
+        )
+        object.__setattr__(self, "metadata", metadata)
+
+    def to_runtime_record(self) -> dict[str, Any]:
+        """Return the stable online association contract for main/D6 sinks."""
+
+        return {
+            "association_source": self.association_source,
+            "assigned_global_track_id": self.assigned_global_track_id,
+            "local_track_id": self.local_track_id,
+            "local_track_state": self.local_track_state,
+            "measurement_timestamp": self.measurement_timestamp,
+            "arrival_timestamp": self.arrival_timestamp,
+            "measurement_age_s": self.measurement_age_s,
+            "prediction_age_s": self.prediction_age_s,
+            "truth_identity_used": False,
+            "association_confidence": float(self.association_confidence),
+            "ambiguity_score": float(self.ambiguity_score),
+            "decision_state": self.decision_state,
+            "rejection_reason": self.reason,
+            "friend_conflict_state": self.friend_conflict_state,
+            "assignment_version": self.assignment_version,
+            "plan_id": self.plan_id,
+            "plan_version": self.plan_version,
+            "resource_id": self.resource_id,
+            "metadata": dict(self.metadata),
+        }
 
 
 @dataclass(frozen=True)
@@ -665,6 +751,7 @@ class TerminalObservation:
     camera_id: str | None = None
     frame_id: str | None = None
     arrival_timestamp: float | None = None
+    measurement_timestamp: float | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -682,11 +769,71 @@ class TerminalObservation:
         ):
             raise ValueError("TerminalObservation must carry at least one payload")
         object.__setattr__(self, "timestamp", float(self.timestamp))
-        if self.arrival_timestamp is not None:
-            object.__setattr__(self, "arrival_timestamp", float(self.arrival_timestamp))
+        measurement_timestamp = self.measurement_timestamp
+        if measurement_timestamp is None and self.local_track is not None:
+            measurement_timestamp = self.local_track.timestamp
+        if measurement_timestamp is None and self.terminal_association is not None:
+            measurement_timestamp = self.terminal_association.measurement_timestamp
+        if measurement_timestamp is None:
+            measurement_timestamp = self.timestamp
+        arrival_timestamp = self.arrival_timestamp
+        if arrival_timestamp is None and self.terminal_association is not None:
+            arrival_timestamp = self.terminal_association.arrival_timestamp
+        if arrival_timestamp is None:
+            arrival_timestamp = self.timestamp
+        object.__setattr__(self, "measurement_timestamp", float(measurement_timestamp))
+        object.__setattr__(self, "arrival_timestamp", float(arrival_timestamp))
         object.__setattr__(self, "identity_claims", tuple(self.identity_claims))
         object.__setattr__(self, "recon_image_cues", tuple(self.recon_image_cues))
-        object.__setattr__(self, "metadata", dict(self.metadata))
+        metadata = dict(self.metadata)
+        metadata.update(
+            {
+                "measurement_timestamp": float(measurement_timestamp),
+                "arrival_timestamp": float(arrival_timestamp),
+                "truth_identity_used": False,
+            }
+        )
+        object.__setattr__(self, "metadata", metadata)
+
+    def to_runtime_record(self) -> dict[str, Any]:
+        """Flatten this passive bus payload for runtime/D6 consumption."""
+
+        if self.terminal_association is not None:
+            record = self.terminal_association.to_runtime_record()
+            runtime_metadata = dict(self.terminal_association.metadata)
+            runtime_metadata.update(self.metadata)
+        else:
+            state = self.local_track.local_track_state if self.local_track is not None else "lost"
+            prediction_age_s = self.local_track.prediction_age_s if self.local_track is not None else None
+            record = {
+                "association_source": self.metadata.get("association_source", self.link_type),
+                "assigned_global_track_id": None,
+                "local_track_id": self.local_track.local_track_id if self.local_track is not None else None,
+                "local_track_state": state,
+                "measurement_age_s": max(0.0, self.arrival_timestamp - self.measurement_timestamp),
+                "prediction_age_s": prediction_age_s,
+                "truth_identity_used": False,
+                "association_confidence": 0.0,
+                "ambiguity_score": 1.0,
+                "decision_state": "reacquire" if state != "measured" else "unassociated",
+                "rejection_reason": self.metadata.get("association_rejection_reason", "no_global_binding"),
+                "friend_conflict_state": "none",
+            }
+            runtime_metadata = dict(self.metadata)
+        record.update(
+            {
+                "resource_id": self.resource_id,
+                "source_node_id": self.source_node_id,
+                "link_type": self.link_type,
+                "camera_id": self.camera_id,
+                "frame_id": self.frame_id,
+                "measurement_timestamp": self.measurement_timestamp,
+                "arrival_timestamp": self.arrival_timestamp,
+                "truth_identity_used": False,
+                "metadata": runtime_metadata,
+            }
+        )
+        return record
 
 
 @dataclass(frozen=True)

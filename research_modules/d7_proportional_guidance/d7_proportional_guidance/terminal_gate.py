@@ -43,6 +43,12 @@ COALITION_MEMBER_ROLES = frozenset({"primary", "reserve", "retry"})
 ACTIVE_COALITION_STATES = frozenset({"active", "activated"})
 HOLD_COALITION_STATES = frozenset({"inactive", "pending", "standby", "hold", "held"})
 REVOKED_COALITION_STATES = frozenset({"revoked", "superseded", "cancelled", "canceled"})
+EXECUTABLE_COALITION_COMMIT_STATES = frozenset({"committed", "executing"})
+NON_EXECUTABLE_COALITION_COMMIT_STATES = {
+    "reconfiguring": "coalition_commit_reconfiguring",
+    "aborted": "coalition_commit_aborted",
+    "abort": "coalition_commit_aborted",
+}
 
 
 @dataclass(frozen=True)
@@ -66,6 +72,7 @@ class AssignmentGuidanceBinding:
     target_mesh_aliases: tuple[str, ...] = ()
     coalition_id: str | None = None
     coalition_version: int | None = None
+    coalition_epoch: int | None = None
     member_role: str = "primary"
     wave_id: int = 0
     coordination_mode: str = "independent"
@@ -105,6 +112,15 @@ class D4GuidancePermission:
     coalition_version: int | None = None
     center_available: bool | None = None
     atomic_coalition_formed: bool | None = None
+    coalition_commit_state: str | None = None
+    coalition_epoch: int | None = None
+    coalition_lease_expires_at_s: float | None = None
+    coalition_required_member_ids: tuple[str, ...] = ()
+    coalition_acked_member_ids: tuple[str, ...] = ()
+    commit_plan_id: str | None = None
+    commit_plan_version: int | None = None
+    commit_coalition_id: str | None = None
+    commit_coalition_version: int | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -157,6 +173,21 @@ class TerminalPngContractDecision:
     d5_coalition_support_count: int | None = None
     d5_required_resource_count: int | None = None
     d5_coalition_conflict_state: str = ""
+    coalition_commit_gate_applicable: bool = False
+    coalition_commit_gate_allowed: bool | None = None
+    coalition_commit_gate_reject_reason: str = ""
+    coalition_commit_state: str | None = None
+    coalition_epoch: int | None = None
+    coalition_lease_expires_at_s: float | None = None
+    coalition_lease_valid: bool | None = None
+    coalition_required_member_ids: tuple[str, ...] = ()
+    coalition_acked_member_ids: tuple[str, ...] = ()
+    coalition_resource_required: bool | None = None
+    coalition_resource_acked: bool | None = None
+    commit_plan_id: str | None = None
+    commit_plan_version: int | None = None
+    commit_coalition_id: str | None = None
+    commit_coalition_version: int | None = None
 
 
 def evaluate_terminal_png_contract(
@@ -178,6 +209,7 @@ def evaluate_terminal_png_contract(
         return TerminalPngContractDecision(False, f"assignment_invalid:{exc}")
 
     permission = coerce_d4_guidance_permission(d4_permission)
+    commit_gate_applicable = _coalition_commit_gate_required(assignment, permission)
     d3_plan_version_consistent = _d4_plan_version_consistent(permission, assignment)
     d3_owner_consistent = _d4_owner_consistent(permission, assignment)
     base = {
@@ -210,6 +242,27 @@ def evaluate_terminal_png_contract(
         "coalition_gate_applicable": _coalition_gate_applicable(assignment),
         "d4_coalition_id": permission.coalition_id,
         "d4_coalition_version": permission.coalition_version,
+        "coalition_commit_gate_applicable": commit_gate_applicable,
+        "coalition_commit_state": permission.coalition_commit_state,
+        "coalition_epoch": permission.coalition_epoch,
+        "coalition_lease_expires_at_s": permission.coalition_lease_expires_at_s,
+        "coalition_lease_valid": _coalition_lease_valid(permission, timestamp_s),
+        "coalition_required_member_ids": permission.coalition_required_member_ids,
+        "coalition_acked_member_ids": permission.coalition_acked_member_ids,
+        "coalition_resource_required": (
+            assignment.resource_id in permission.coalition_required_member_ids
+            if permission.coalition_required_member_ids
+            else None
+        ),
+        "coalition_resource_acked": (
+            assignment.resource_id in permission.coalition_acked_member_ids
+            if permission.coalition_acked_member_ids
+            else None
+        ),
+        "commit_plan_id": permission.commit_plan_id,
+        "commit_plan_version": permission.commit_plan_version,
+        "commit_coalition_id": permission.commit_coalition_id,
+        "commit_coalition_version": permission.commit_coalition_version,
     }
 
     if resource_id is not None and resource_id != assignment.resource_id:
@@ -255,7 +308,7 @@ def evaluate_terminal_png_contract(
     center_failed = permission.center_available is False or bool(
         d4_states & {"center_failed", "center_failure", "center_unavailable"}
     )
-    if center_failed and permission.atomic_coalition_formed is not True:
+    if center_failed and permission.atomic_coalition_formed is False:
         return TerminalPngContractDecision(
             False,
             "atomic_coalition_missing",
@@ -311,6 +364,23 @@ def evaluate_terminal_png_contract(
             coalition_gate_reject_reason=coalition_reject_reason,
             **base,
         )
+
+    commit_reject_reason = _coalition_commit_reject_reason(
+        assignment,
+        permission,
+        timestamp_s=timestamp_s,
+    )
+    if commit_reject_reason:
+        return TerminalPngContractDecision(
+            False,
+            commit_reject_reason,
+            d4_action_block_reason=commit_reject_reason,
+            coalition_commit_gate_allowed=False,
+            coalition_commit_gate_reject_reason=commit_reject_reason,
+            **base,
+        )
+    if commit_gate_applicable:
+        base["coalition_commit_gate_allowed"] = True
 
     if terminal_association is None:
         return TerminalPngContractDecision(
@@ -372,6 +442,15 @@ def evaluate_terminal_png_contract(
             "friend_conflict",
             d5_lock_consistent=False,
             d5_lock_consistency_reason="friend_conflict",
+            **base,
+        )
+    execution_gate_pass = _terminal_execution_gate_pass(terminal_association)
+    if execution_gate_pass is False:
+        return TerminalPngContractDecision(
+            False,
+            "d5_safety_gate_blocked",
+            d5_lock_consistent=False,
+            d5_lock_consistency_reason="d5_safety_gate_blocked",
             **base,
         )
     if not _ids_match(terminal_global_id, assignment.assigned_global_track_id):
@@ -543,6 +622,23 @@ def guidance_mode_from_terminal_contract(
         "coalition_window_closed",
         "coalition_fallback_unsupported",
         "atomic_coalition_missing",
+        "coalition_commit_state_missing",
+        "coalition_commit_not_committed",
+        "coalition_commit_reconfiguring",
+        "coalition_commit_aborted",
+        "coalition_commit_lease_missing",
+        "coalition_commit_timestamp_missing",
+        "coalition_commit_lease_expired",
+        "coalition_commit_epoch_missing",
+        "coalition_epoch_mismatch",
+        "coalition_commit_plan_version_missing",
+        "coalition_commit_plan_mismatch",
+        "coalition_commit_coalition_version_missing",
+        "coalition_commit_coalition_mismatch",
+        "coalition_required_members_missing",
+        "coalition_resource_not_required",
+        "coalition_member_ack_missing",
+        "coalition_required_ack_incomplete",
     }:
         return GuidanceMode.ABORT_REVOKE
     return GuidanceMode.HANDOVER_PENDING
@@ -575,6 +671,8 @@ def coerce_assignment_guidance_binding(
         target_mesh_aliases=aliases,
         coalition_id=_optional_string_value(value, "coalition_id"),
         coalition_version=_optional_int_value(value, "coalition_version"),
+        coalition_epoch=_optional_int_value_with_metadata(value, "coalition_epoch")
+        or _optional_int_value_with_metadata(value, "epoch"),
         member_role=_string_value(value, "member_role", default="primary"),
         wave_id=int(_value(value, "wave_id", default=0)),
         coordination_mode=_string_value(value, "coordination_mode", default="independent"),
@@ -602,6 +700,7 @@ def coerce_d4_guidance_permission(
         or _optional_string_value(value, "d4_action")
         or "continue_center"
     )
+    commit = _coalition_commit_payload(value)
     return D4GuidancePermission(
         action=action,
         mode=_string_value(value, "mode", default="none"),
@@ -632,6 +731,53 @@ def coerce_d4_guidance_permission(
         atomic_coalition_formed=_optional_bool_value_with_metadata(
             value,
             "atomic_coalition_formed",
+        ),
+        coalition_commit_state=(
+            _commit_string_value(value, commit, "coalition_commit_state", "commit_state", "state")
+        ),
+        coalition_epoch=_commit_int_value(value, commit, "coalition_epoch", "epoch"),
+        coalition_lease_expires_at_s=_commit_float_value(
+            value,
+            commit,
+            "coalition_lease_expires_at_s",
+            "lease_expires_at_s",
+            "lease_expiry_s",
+            "lease_expiration_s",
+        ),
+        coalition_required_member_ids=_commit_member_ids(
+            value,
+            commit,
+            "coalition_required_member_ids",
+            "required_member_ids",
+            "required_members",
+            "required_resource_ids",
+        ),
+        coalition_acked_member_ids=_commit_member_ids(
+            value,
+            commit,
+            "coalition_acked_member_ids",
+            "acked_member_ids",
+            "acked_members",
+            "acknowledged_member_ids",
+        ),
+        commit_plan_id=_commit_string_value(value, commit, "commit_plan_id", "plan_id"),
+        commit_plan_version=_commit_int_value(
+            value,
+            commit,
+            "commit_plan_version",
+            "plan_version",
+        ),
+        commit_coalition_id=_commit_string_value(
+            value,
+            commit,
+            "commit_coalition_id",
+            "coalition_id",
+        ),
+        commit_coalition_version=_commit_int_value(
+            value,
+            commit,
+            "commit_coalition_version",
+            "coalition_version",
         ),
         metadata=dict(_value(value, "metadata", default={}) or {}),
     )
@@ -706,6 +852,112 @@ def _arrival_window_bounds(value: Any) -> tuple[float | None, float | None]:
         if end_s is None:
             end_s = float(items[1])
     return start_s, end_s
+
+
+def _coalition_commit_gate_required(
+    assignment: AssignmentGuidanceBinding,
+    permission: D4GuidancePermission,
+) -> bool:
+    if not _coalition_gate_applicable(assignment):
+        return False
+    d4_states = {
+        permission.action.strip().lower(),
+        permission.mode.strip().lower(),
+        permission.reason.strip().lower(),
+    }
+    fallback_active = permission.center_available is False or any(
+        state in {"center_failed", "center_failure", "center_unavailable", "no_center"}
+        or "fallback" in state
+        for state in d4_states
+        if state
+    )
+    if not fallback_active:
+        return False
+    required_count = _optional_int_value_with_metadata(
+        assignment,
+        "required_resource_count",
+    )
+    if required_count is None:
+        required_count = _optional_int_value_with_metadata(
+            permission,
+            "required_resource_count",
+        )
+    if required_count is not None:
+        return required_count > 1
+    if permission.coalition_required_member_ids:
+        return len(permission.coalition_required_member_ids) > 1
+    # Explicit coalition bindings are treated as multi-resource under fallback
+    # unless an upstream count explicitly proves k=1.
+    return True
+
+
+def _coalition_commit_reject_reason(
+    assignment: AssignmentGuidanceBinding,
+    permission: D4GuidancePermission,
+    *,
+    timestamp_s: float | None,
+) -> str:
+    if not _coalition_commit_gate_required(assignment, permission):
+        return ""
+
+    state = (permission.coalition_commit_state or "").strip().lower()
+    if not state:
+        return "coalition_commit_state_missing"
+    if state in NON_EXECUTABLE_COALITION_COMMIT_STATES:
+        return NON_EXECUTABLE_COALITION_COMMIT_STATES[state]
+    if state not in EXECUTABLE_COALITION_COMMIT_STATES:
+        return "coalition_commit_not_committed"
+
+    if permission.coalition_lease_expires_at_s is None:
+        return "coalition_commit_lease_missing"
+    if timestamp_s is None:
+        return "coalition_commit_timestamp_missing"
+    if timestamp_s > permission.coalition_lease_expires_at_s:
+        return "coalition_commit_lease_expired"
+
+    if assignment.coalition_epoch is None or permission.coalition_epoch is None:
+        return "coalition_commit_epoch_missing"
+    if permission.coalition_epoch != assignment.coalition_epoch:
+        return "coalition_epoch_mismatch"
+
+    if permission.commit_plan_id is None or permission.commit_plan_version is None:
+        return "coalition_commit_plan_version_missing"
+    if (
+        permission.commit_plan_id != assignment.plan_id
+        or permission.commit_plan_version != assignment.plan_version
+    ):
+        return "coalition_commit_plan_mismatch"
+    if (
+        permission.commit_coalition_id is None
+        or permission.commit_coalition_version is None
+    ):
+        return "coalition_commit_coalition_version_missing"
+    if (
+        permission.commit_coalition_id != assignment.coalition_id
+        or permission.commit_coalition_version != assignment.coalition_version
+    ):
+        return "coalition_commit_coalition_mismatch"
+
+    required = set(permission.coalition_required_member_ids)
+    acked = set(permission.coalition_acked_member_ids)
+    if not required:
+        return "coalition_required_members_missing"
+    if assignment.resource_id not in required:
+        return "coalition_resource_not_required"
+    if assignment.resource_id not in acked:
+        return "coalition_member_ack_missing"
+    if not required.issubset(acked):
+        return "coalition_required_ack_incomplete"
+    return ""
+
+
+def _coalition_lease_valid(
+    permission: D4GuidancePermission,
+    timestamp_s: float | None,
+) -> bool | None:
+    if permission.coalition_lease_expires_at_s is None or timestamp_s is None:
+        return None
+    return timestamp_s <= permission.coalition_lease_expires_at_s
 
 
 def _coalition_binding_reject_reason(
@@ -831,6 +1083,18 @@ def _secondary_takeover_ready(permission: D4GuidancePermission) -> bool | None:
     return SECONDARY_TAKEOVER_READY_CLASS in values
 
 
+def _terminal_execution_gate_pass(record: Any) -> bool | None:
+    for name in (
+        "execution_gate_pass",
+        "safety_gate_pass",
+        "safety_gate_passed",
+    ):
+        value = _optional_bool_value_with_metadata(record, name)
+        if value is not None:
+            return value
+    return None
+
+
 def _required_string(record: Any, name: str) -> str:
     value = _optional_string_value(record, name)
     if not value:
@@ -872,6 +1136,97 @@ def _optional_float_value(record: Any, name: str) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _coalition_commit_payload(record: Any) -> Any | None:
+    metadata = _value(record, "metadata", default=None)
+    for source in (record, metadata):
+        for name in ("coalition_commit", "coalition_commit_state", "commit_state"):
+            candidate = _value(source, name, default=None)
+            if candidate is None or isinstance(candidate, (str, int, float, bool)):
+                continue
+            if isinstance(candidate, Mapping) or any(
+                hasattr(candidate, field_name)
+                for field_name in (
+                    "state",
+                    "epoch",
+                    "lease_expires_at_s",
+                    "required_member_ids",
+                    "acked_member_ids",
+                )
+            ):
+                return candidate
+    return None
+
+
+def _commit_string_value(record: Any, commit: Any, *names: str) -> str | None:
+    for source in (record, _value(record, "metadata", default=None), commit):
+        for name in names:
+            value = _value(source, name, default=None)
+            if value is None or isinstance(value, Mapping):
+                continue
+            if not isinstance(value, (str, int, float, bool)) and not hasattr(value, "value"):
+                continue
+            if hasattr(value, "value"):
+                value = value.value
+            text = str(value).strip()
+            if text:
+                return text
+    return None
+
+
+def _commit_int_value(record: Any, commit: Any, *names: str) -> int | None:
+    for source in (record, _value(record, "metadata", default=None), commit):
+        for name in names:
+            value = _value(source, name, default=None)
+            if value is not None and not isinstance(value, Mapping):
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    continue
+    return None
+
+
+def _commit_float_value(record: Any, commit: Any, *names: str) -> float | None:
+    for source in (record, _value(record, "metadata", default=None), commit):
+        for name in names:
+            value = _value(source, name, default=None)
+            if value is not None and not isinstance(value, Mapping):
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    continue
+    return None
+
+
+def _commit_member_ids(record: Any, commit: Any, *names: str) -> tuple[str, ...]:
+    for source in (record, _value(record, "metadata", default=None), commit):
+        for name in names:
+            value = _value(source, name, default=None)
+            if value is not None:
+                return _member_ids(value)
+    return ()
+
+
+def _member_ids(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,) if value else ()
+    try:
+        items = tuple(value)
+    except TypeError:
+        items = (value,)
+    member_ids: list[str] = []
+    for item in items:
+        member_id = (
+            _optional_string_value(item, "resource_id")
+            or _optional_string_value(item, "member_id")
+            or _optional_string_value(item, "node_id")
+        )
+        if member_id is None and isinstance(item, (str, int)):
+            member_id = str(item)
+        if member_id and member_id not in member_ids:
+            member_ids.append(member_id)
+    return tuple(member_ids)
 
 
 def _optional_string_value_with_metadata(record: Any, name: str) -> str | None:

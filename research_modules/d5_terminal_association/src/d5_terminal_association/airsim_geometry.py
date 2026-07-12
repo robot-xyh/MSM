@@ -52,12 +52,16 @@ class GeometricAssociationPair:
     friend_conflict_state: str = "none"
     measurement_age_s: float | None = None
     duplicate_terminal_lock_risk: bool = False
+    local_track_state: str = "measured"
+    prediction_age_s: float | None = None
+    measurement_timestamp: float | None = None
 
     def to_log_record(
         self,
         *,
         frame_id: str | None = None,
         timestamp: float | None = None,
+        arrival_timestamp: float | None = None,
         resource_id: str | None = None,
         camera_id: str | None = None,
         duplicate_terminal_lock_risk: bool | None = None,
@@ -70,13 +74,29 @@ class GeometricAssociationPair:
             if duplicate_terminal_lock_risk is None
             else bool(duplicate_terminal_lock_risk)
         )
+        measurement_timestamp = (
+            self.measurement_timestamp if self.measurement_timestamp is not None else timestamp
+        )
+        effective_arrival_timestamp = arrival_timestamp if arrival_timestamp is not None else timestamp
+        measurement_age_s = self.measurement_age_s
+        if measurement_timestamp is not None and effective_arrival_timestamp is not None:
+            measurement_age_s = max(
+                0.0,
+                float(effective_arrival_timestamp) - float(measurement_timestamp),
+            )
         record = {
             "resource_id": resource_id,
             "camera_id": camera_id,
             "frame_id": frame_id,
             "timestamp": timestamp,
+            "measurement_timestamp": measurement_timestamp,
+            "arrival_timestamp": effective_arrival_timestamp,
+            "association_source": "geometric_detect",
+            "truth_identity_used": False,
             "global_track_id": self.track_id,
             "local_track_id": self.local_track_id,
+            "local_track_state": self.local_track_state,
+            "prediction_age_s": _finite_or_none(self.prediction_age_s),
             "projected_px": list(self.projected_px) if self.projected_px is not None else None,
             "bbox_center_px": list(self.bbox_center_px),
             "pixel_error_px": _finite_or_none(self.pixel_error),
@@ -85,7 +105,7 @@ class GeometricAssociationPair:
             "assignment_selected": bool(self.assignment_selected),
             "total_cost": _finite_or_none(self.total_cost),
             "friend_conflict_state": self.friend_conflict_state,
-            "measurement_age_s": _finite_or_none(self.measurement_age_s),
+            "measurement_age_s": _finite_or_none(measurement_age_s),
             "duplicate_terminal_lock_risk": duplicate_risk,
         }
         if metadata:
@@ -101,6 +121,7 @@ class GeometricAssociationResult:
     assignments: dict[str, str]
     ambiguous_count: int
     cost_matrix: CostMatrixResult
+    arrival_timestamp: float | None = None
 
     def to_log_records(
         self,
@@ -117,6 +138,7 @@ class GeometricAssociationResult:
             pair.to_log_record(
                 frame_id=self.frame_id,
                 timestamp=self.timestamp,
+                arrival_timestamp=self.arrival_timestamp,
                 resource_id=resource_id,
                 camera_id=camera_id,
                 duplicate_terminal_lock_risk=duplicate_risk_by_track.get(pair.track_id),
@@ -237,6 +259,7 @@ def associate_tracks_to_detections_geometrically(
     *,
     config: AssociationConfig | None = None,
     timestamp: float | None = None,
+    arrival_timestamp: float | None = None,
     frame_id: str | None = None,
 ) -> GeometricAssociationResult:
     """Associate tracks to bbox centers without using truth/detection IDs."""
@@ -279,6 +302,9 @@ def associate_tracks_to_detections_geometrically(
                     total_cost=breakdown.total_cost,
                     friend_conflict_state=breakdown.friend_conflict_state,
                     measurement_age_s=breakdown.measurement_age_s,
+                    local_track_state=local.local_track_state,
+                    prediction_age_s=local.prediction_age_s,
+                    measurement_timestamp=local.timestamp,
                 )
             )
 
@@ -290,6 +316,7 @@ def associate_tracks_to_detections_geometrically(
         assignments=assignments,
         ambiguous_count=ambiguous_count,
         cost_matrix=cost_result,
+        arrival_timestamp=arrival_timestamp if arrival_timestamp is not None else timestamp,
     )
 
 

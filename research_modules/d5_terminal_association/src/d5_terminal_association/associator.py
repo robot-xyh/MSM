@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from math import exp, hypot, isfinite, sqrt
 from typing import Any, Iterable, Mapping
 
@@ -230,6 +230,7 @@ class TerminalAssociator:
         recon_image_cues: Iterable[ReconImageCue] = (),
         frame_id: str | None = None,
         camera_pose_source: str | None = None,
+        arrival_timestamp: float | None = None,
     ) -> TerminalAssociation:
         """Return a conservative terminal association decision.
 
@@ -267,7 +268,14 @@ class TerminalAssociator:
                     "candidate_pair_logs": [],
                 },
             )
-            return self._finalize_association(history, association, local_by_id, projection_time, lockable=False)
+            return self._finalize_association(
+                history,
+                association,
+                local_by_id,
+                projection_time,
+                arrival_timestamp=arrival_timestamp,
+                lockable=False,
+            )
 
         if assigned is None:
             association = self._association(
@@ -285,7 +293,14 @@ class TerminalAssociator:
                     "candidate_pair_logs": [],
                 },
             )
-            return self._finalize_association(history, association, local_by_id, projection_time, lockable=False)
+            return self._finalize_association(
+                history,
+                association,
+                local_by_id,
+                projection_time,
+                arrival_timestamp=arrival_timestamp,
+                lockable=False,
+            )
 
         if assignment.require_version_match and assigned.track_version != assignment.assignment_version:
             association = self._association(
@@ -303,7 +318,14 @@ class TerminalAssociator:
                     "candidate_pair_logs": [],
                 },
             )
-            return self._finalize_association(history, association, local_by_id, projection_time, lockable=False)
+            return self._finalize_association(
+                history,
+                association,
+                local_by_id,
+                projection_time,
+                arrival_timestamp=arrival_timestamp,
+                lockable=False,
+            )
 
         projections = self.project_tracks_to_image([assigned], camera, timestamp=projection_time)
         projection = projections[assignment.assigned_global_track_id]
@@ -324,7 +346,14 @@ class TerminalAssociator:
                 )
                 | {"gate_pass_count": 0, "candidate_pair_logs": []},
             )
-            return self._finalize_association(history, association, local_by_id, projection_time, lockable=False)
+            return self._finalize_association(
+                history,
+                association,
+                local_by_id,
+                projection_time,
+                arrival_timestamp=arrival_timestamp,
+                lockable=False,
+            )
 
         cost_result = self.build_cost_matrix(
             projections,
@@ -397,7 +426,8 @@ class TerminalAssociator:
                     association,
                     local_by_id,
                     projection_time,
-                    lockable=decision != "hold",
+                    arrival_timestamp=arrival_timestamp,
+                    lockable=decision in {"locked", "ambiguous"},
                 )
 
             self._assert_global_ids_unchanged(input_global_ids, global_list)
@@ -411,7 +441,14 @@ class TerminalAssociator:
                 reason="no_local_track_inside_projection_gate",
                 metadata=decision_metadata | self._reacquire_metadata(reacquire_result),
             )
-            return self._finalize_association(history, association, local_by_id, projection_time, lockable=False)
+            return self._finalize_association(
+                history,
+                association,
+                local_by_id,
+                projection_time,
+                arrival_timestamp=arrival_timestamp,
+                lockable=False,
+            )
 
         # A verified friend overlapping any gated candidate forces hold.
         friend_conflicts = []
@@ -443,7 +480,14 @@ class TerminalAssociator:
                     camera_pose_source=pose_source,
                 ),
             )
-            return self._finalize_association(history, association, local_by_id, projection_time, lockable=False)
+            return self._finalize_association(
+                history,
+                association,
+                local_by_id,
+                projection_time,
+                arrival_timestamp=arrival_timestamp,
+                lockable=False,
+            )
 
         ordered = sorted(feasible_indices, key=lambda index: row[index])
         best_index = ordered[0]
@@ -528,6 +572,7 @@ class TerminalAssociator:
             association,
             local_by_id,
             projection_time,
+            arrival_timestamp=arrival_timestamp,
             lockable=decision in {"locked", "ambiguous"},
         )
 
@@ -545,6 +590,16 @@ class TerminalAssociator:
         bbox_center_px = (float(local_track.center_px[0]), float(local_track.center_px[1]))
         pixel_error_px = _pixel_error_px(projection, local_track)
         measurement_age_s = _measurement_age_s(local_track, current_time)
+        if local_track.local_track_state != "measured":
+            return self._blocked_breakdown(
+                projection.global_track_id,
+                local_track.local_track_id,
+                "none",
+                projected_px=projected_px,
+                bbox_center_px=bbox_center_px,
+                pixel_error_px=pixel_error_px,
+                measurement_age_s=measurement_age_s,
+            )
         if not projection.valid:
             return self._blocked_breakdown(
                 projection.global_track_id,
@@ -875,6 +930,7 @@ class TerminalAssociator:
         local_tracks_by_id: Mapping[str, LocalVisualTrack],
         timestamp: float | None,
         *,
+        arrival_timestamp: float | None,
         lockable: bool,
     ) -> TerminalAssociation:
         local_track = (
@@ -882,7 +938,7 @@ class TerminalAssociator:
             if association.local_track_id is not None
             else None
         )
-        if local_track is not None:
+        if local_track is not None and local_track.local_track_state == "measured":
             history.candidate_history.append(
                 _CandidateHistoryEntry(
                     local_track_id=local_track.local_track_id,
@@ -891,7 +947,20 @@ class TerminalAssociator:
                     lockable=lockable or association.decision_state == "locked",
                 )
             )
-        if association.decision_state == "locked" and local_track is not None:
+        elif history.last_locked_local_track_id is not None:
+            history.candidate_history.append(
+                _CandidateHistoryEntry(
+                    local_track_id=history.last_locked_local_track_id,
+                    timestamp=timestamp,
+                    bbox=history.last_locked_bbox,
+                    lockable=False,
+                )
+            )
+        if (
+            association.decision_state == "locked"
+            and local_track is not None
+            and local_track.local_track_state == "measured"
+        ):
             history.last_locked_local_track_id = local_track.local_track_id
             history.last_locked_bbox = local_track.bbox
             history.last_locked_center_px = (
@@ -899,6 +968,47 @@ class TerminalAssociator:
                 float(local_track.center_px[1]),
             )
             history.last_locked_timestamp = timestamp
+        effective_arrival_timestamp = (
+            float(arrival_timestamp)
+            if arrival_timestamp is not None
+            else (_finite_float_or_none(timestamp))
+        )
+        if local_track is not None:
+            measurement_timestamp = float(local_track.timestamp)
+            local_track_state = local_track.local_track_state
+            measurement_age_s = (
+                effective_arrival_timestamp - measurement_timestamp
+                if effective_arrival_timestamp is not None
+                else None
+            )
+            prediction_age_s = local_track.prediction_age_s
+            if local_track_state == "predicted" and prediction_age_s is None:
+                prediction_age_s = measurement_age_s
+        else:
+            measurement_timestamp = history.last_locked_timestamp
+            local_track_state = "lost"
+            measurement_age_s = (
+                effective_arrival_timestamp - measurement_timestamp
+                if effective_arrival_timestamp is not None and measurement_timestamp is not None
+                else None
+            )
+            prediction_age_s = measurement_age_s
+        association = replace(
+            association,
+            association_source="geometric_detect",
+            measurement_timestamp=measurement_timestamp,
+            arrival_timestamp=effective_arrival_timestamp,
+            measurement_age_s=measurement_age_s,
+            prediction_age_s=prediction_age_s,
+            local_track_state=local_track_state,
+            truth_identity_used=False,
+            metadata=dict(association.metadata)
+            | {
+                "anonymous_local_track_id": (
+                    history.last_locked_local_track_id if local_track_state != "measured" else None
+                ),
+            },
+        )
         history.last_decision_state = association.decision_state
         return association
 
@@ -1051,10 +1161,7 @@ class TerminalAssociator:
     ) -> str | None:
         if history.last_decision_state != "reacquire":
             return None
-        same_local_track = local_track.local_track_id == history.last_locked_local_track_id
         stability_count = self._candidate_stability_count(history, local_track.local_track_id, timestamp)
-        if same_local_track:
-            return None
         if history.last_locked_bbox is not None and not _bbox_area_ratio_ok(
             history.last_locked_bbox,
             local_track.bbox,
@@ -1147,6 +1254,8 @@ class TerminalAssociator:
         radius = self._reacquire_search_radius(projection, history, timestamp)
         candidates: list[_ReacquireCandidate] = []
         for index, local_track in enumerate(local_tracks):
+            if local_track.local_track_state == "lost":
+                continue
             distance_px = float(np.linalg.norm(local_track.center_px - projection.pixel))
             if distance_px > radius:
                 continue
@@ -1209,6 +1318,15 @@ class TerminalAssociator:
 
         best = candidates[0]
         margin = _reacquire_margin(tuple(candidates))
+        if best.local_track.local_track_state == "predicted":
+            return _ReacquireSearchResult(
+                candidates=tuple(candidates),
+                search_center_px=_projection_pixel_tuple(projection),
+                search_radius_px=radius,
+                selected=best,
+                decision="reacquire",
+                reason="predicted_local_track_requires_measured_reacquire",
+            )
         if isfinite(margin) and margin < self.config.reacquire_min_margin:
             return _ReacquireSearchResult(
                 candidates=tuple(candidates),
@@ -1218,10 +1336,7 @@ class TerminalAssociator:
                 decision="ambiguous",
                 reason="reacquire_search_ambiguous",
             )
-        if (
-            not best.same_local_track_id
-            and best.stability_count < self.config.stable_required_observations
-        ):
+        if best.stability_count < self.config.stable_required_observations:
             return _ReacquireSearchResult(
                 candidates=tuple(candidates),
                 search_center_px=_projection_pixel_tuple(projection),

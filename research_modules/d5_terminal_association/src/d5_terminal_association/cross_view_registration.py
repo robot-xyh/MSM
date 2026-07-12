@@ -36,6 +36,7 @@ from .observation_bus import TerminalObservationBus
 REGISTERED_TO_GLOBAL_TRACK_REASON = "registered_to_global_track"
 STABILITY_WINDOW_FAILED_REASON = "stability_window_failed"
 PROJECTION_INVALID_REASON = "projection_invalid"
+PREDICTED_TRACK_REQUIRES_MEASUREMENT_REASON = "predicted_local_track_requires_measured_reacquire"
 DETECT_REGISTRATION_REASONS = (
     "not_all_targets_visible",
     "network_union_incomplete",
@@ -44,6 +45,7 @@ DETECT_REGISTRATION_REASONS = (
     "stale_or_missing_recon_cue",
     PROJECTION_INVALID_REASON,
     "geometry_gate_rejected",
+    PREDICTED_TRACK_REQUIRES_MEASUREMENT_REASON,
     STABILITY_WINDOW_FAILED_REASON,
     "secondary_detect_offline_only",
     REGISTERED_TO_GLOBAL_TRACK_REASON,
@@ -468,6 +470,8 @@ def register_local_visual_tracks_to_global_tracks(
             "reject_reason_enum": DETECT_REGISTRATION_REASONS,
             "global_id_policy": "existing_global_track_id_support_only",
             "truth_id_online_use": "ignored",
+            "truth_identity_used": False,
+            "association_source": "geometric_detect",
             "camera_pose_source_policy": CAMERA_POSE_SOURCES,
             "stability_window_frames": stability.window_frames,
             "stability_required_gate_passes": stability.required_gate_passes,
@@ -533,7 +537,12 @@ def _register_batch(
                 projection,
                 additional_covariance_px,
             )
-            gate_passed = projection.valid and isfinite(d2) and d2 <= config.gate_chi2
+            gate_passed = (
+                local_track.local_track_state == "measured"
+                and projection.valid
+                and isfinite(d2)
+                and d2 <= config.gate_chi2
+            )
             if gate_passed:
                 costs[row, col] = d2
             pair_records[(row, col)] = _PairRecord(
@@ -646,10 +655,15 @@ def _publish_registered(
         "detect_to_global_candidate": True,
         "detect_registration_outcome": "candidate",
         "detect_registration_reject_reasons": (REGISTERED_TO_GLOBAL_TRACK_REASON,),
-        "measurement_timestamp": timestamp,
-        "arrival_timestamp": batch.arrival_timestamp,
+        "measurement_timestamp": local_track.timestamp,
+        "arrival_timestamp": (
+            batch.arrival_timestamp if batch.arrival_timestamp is not None else timestamp
+        ),
         "local_track_timestamp": local_track.timestamp,
-        "measurement_age_s": _measurement_age_s(local_track, timestamp),
+        "measurement_age_s": _measurement_age_s(
+            local_track,
+            batch.arrival_timestamp if batch.arrival_timestamp is not None else timestamp,
+        ),
         "mahalanobis_d2": _finite_or_none(record.mahalanobis_d2),
         "association_probability": probability_by_pair.get((record.row, record.col), 0.0),
         "gate_chi2": float(config.gate_chi2),
@@ -684,6 +698,10 @@ def _publish_registered(
         "activation_state": binding.activation_state,
         "global_id_policy": "existing_global_track_id_support_only",
         "truth_id_online_use": "ignored",
+        "truth_identity_used": False,
+        "association_source": "geometric_detect",
+        "local_track_state": local_track.local_track_state,
+        "prediction_age_s": local_track.prediction_age_s,
         "registration_stability_state": "candidate",
         "stable_cross_view_support": False,
         "stability_pass_count": 0,
@@ -717,6 +735,18 @@ def _publish_registered(
         arrival_window_start_s=binding.arrival_window_start_s,
         arrival_window_end_s=binding.arrival_window_end_s,
         activation_state=binding.activation_state,
+        association_source="geometric_detect",
+        measurement_timestamp=local_track.timestamp,
+        arrival_timestamp=(
+            batch.arrival_timestamp if batch.arrival_timestamp is not None else timestamp
+        ),
+        measurement_age_s=_measurement_age_s(
+            local_track,
+            batch.arrival_timestamp if batch.arrival_timestamp is not None else timestamp,
+        ),
+        prediction_age_s=local_track.prediction_age_s,
+        local_track_state=local_track.local_track_state,
+        truth_identity_used=False,
     )
     bus.publish_terminal_association(
         resource_id=batch.resource_id,
@@ -733,10 +763,15 @@ def _publish_registered(
             "detect_to_global_candidate": True,
             "detect_registration_outcome": "candidate",
             "detect_registration_reject_reasons": (REGISTERED_TO_GLOBAL_TRACK_REASON,),
-            "measurement_timestamp": timestamp,
-            "arrival_timestamp": batch.arrival_timestamp,
+            "measurement_timestamp": local_track.timestamp,
+            "arrival_timestamp": (
+                batch.arrival_timestamp if batch.arrival_timestamp is not None else timestamp
+            ),
             "local_track_timestamp": local_track.timestamp,
-            "measurement_age_s": _measurement_age_s(local_track, timestamp),
+            "measurement_age_s": _measurement_age_s(
+                local_track,
+                batch.arrival_timestamp if batch.arrival_timestamp is not None else timestamp,
+            ),
             "binding_source": binding.binding_source,
             "pixel_error_px": _finite_or_none(record.pixel_error_px),
             "reprojection_error": _finite_or_none(record.pixel_error_px),
@@ -758,6 +793,10 @@ def _publish_registered(
             "stable_cross_view_support": False,
             "stability_pass_count": 0,
             "truth_id_online_use": "ignored",
+            "truth_identity_used": False,
+            "association_source": "geometric_detect",
+            "local_track_state": local_track.local_track_state,
+            "prediction_age_s": local_track.prediction_age_s,
         },
     )
 
@@ -775,10 +814,15 @@ def _publish_local_only(
         "detect_to_global_candidate": True,
         "detect_registration_outcome": _outcome_from_reasons(reasons),
         "detect_registration_reject_reasons": tuple(reasons),
-        "measurement_timestamp": timestamp,
-        "arrival_timestamp": batch.arrival_timestamp,
+        "measurement_timestamp": local_track.timestamp,
+        "arrival_timestamp": (
+            batch.arrival_timestamp if batch.arrival_timestamp is not None else timestamp
+        ),
         "local_track_timestamp": local_track.timestamp,
-        "measurement_age_s": _measurement_age_s(local_track, timestamp),
+        "measurement_age_s": _measurement_age_s(
+            local_track,
+            batch.arrival_timestamp if batch.arrival_timestamp is not None else timestamp,
+        ),
         "truth_id_online_use": "ignored",
     }
     if metadata:
@@ -1016,10 +1060,19 @@ def _pair_candidate(
             "projection_valid": projection.valid,
             "projection_reason": projection.reason,
             "projection_depth_m": float(projection.depth),
-            "measurement_timestamp": timestamp,
-            "arrival_timestamp": batch.arrival_timestamp,
+            "measurement_timestamp": record.local_track.timestamp,
+            "arrival_timestamp": (
+                batch.arrival_timestamp if batch.arrival_timestamp is not None else timestamp
+            ),
             "local_track_timestamp": record.local_track.timestamp,
-            "measurement_age_s": _measurement_age_s(record.local_track, timestamp),
+            "measurement_age_s": _measurement_age_s(
+                record.local_track,
+                batch.arrival_timestamp if batch.arrival_timestamp is not None else timestamp,
+            ),
+            "prediction_age_s": record.local_track.prediction_age_s,
+            "local_track_state": record.local_track.local_track_state,
+            "association_source": "geometric_detect",
+            "truth_identity_used": False,
             "covariance_px": _matrix_list(record.covariance_px),
             "projection_covariance_px": _matrix_list(projection.covariance_px),
             "gate_pass": record.gate_passed,
@@ -1080,10 +1133,19 @@ def _local_only_candidate(
             **metadata,
             "gate_pass": False,
             "projection_valid": False,
-            "measurement_timestamp": timestamp,
-            "arrival_timestamp": batch.arrival_timestamp,
+            "measurement_timestamp": local_track.timestamp,
+            "arrival_timestamp": (
+                batch.arrival_timestamp if batch.arrival_timestamp is not None else timestamp
+            ),
             "local_track_timestamp": local_track.timestamp,
-            "measurement_age_s": _measurement_age_s(local_track, timestamp),
+            "measurement_age_s": _measurement_age_s(
+                local_track,
+                batch.arrival_timestamp if batch.arrival_timestamp is not None else timestamp,
+            ),
+            "prediction_age_s": local_track.prediction_age_s,
+            "local_track_state": local_track.local_track_state,
+            "association_source": "geometric_detect",
+            "truth_identity_used": False,
             "camera_pose_source": camera_pose_source,
             "camera_pose_source_trusted": calibration["camera_pose_source_trusted"],
             "calibration_health": calibration["calibration_health"],
@@ -1372,6 +1434,8 @@ def _assignment_margin(costs: np.ndarray, row: int, col: int) -> float:
 
 
 def _pair_reject_reasons(record: _PairRecord) -> tuple[str, ...]:
+    if record.local_track.local_track_state != "measured":
+        return (PREDICTED_TRACK_REQUIRES_MEASUREMENT_REASON,)
     if not record.projection_valid:
         return (PROJECTION_INVALID_REASON,)
     return ("geometry_gate_rejected",)

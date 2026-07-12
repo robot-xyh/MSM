@@ -13,9 +13,19 @@ D6 不参与控制：
 
 D2/D6 的硬约束必须保留：`id_switch_count` 是一级显式指标，不能只被 MOTA、成功率或总体得分间接吸收。
 
-## 1.1 下一阶段 P1 执行状态（2026-07-10）
+## 1.1 P1/P2 当前状态（2026-07-11）
 
-本轮计划内的 D6 代码工作已经完成，D6 仍保持 offline-only：
+D6 当前仍保持 offline-only。当前状态按证据成熟度分为四层：
+
+- **P0 已闭合并保持回归**：实际规模归一化、显式 `id_switch_count`、truth isolation、execution/contract 分离、evidence availability 和 `cuas-standard-map-v1` 均已进入本地主线；当前没有运行级 P0 blocker。
+- **P1 合同/指标接口已完成**：M 对 N DTO/loader/writer/聚合、合法协同锁与错误重复锁拆分、center replan 生命周期、联盟 ACK/commit/epoch/lease、二级 lifecycle、D5 YOLO/MOT 预算、四导引律配对和多 seed 报告接口均已实现。
+- **P1 合同层实测已闭合**：CV 10-seed 达到 8/10 T001 双 primary 同帧共识与授权证据；secondary 和 distributed 均形成 executing 3/3 commit；missing-ACK 以 aborted 2/3 fail closed。10 个 CV seed 的 IDSW 与错误重复锁均为 0。
+- **P1 物理与长期 evidence 仍开放**：SimpleFlight 虽已验证每 seed 4 bindings、3 active + 1 standby，但 30 个 active pair 物理命中为 0；24 个 detection timeout、6 个 timeout。当前 15 s、`control_dt=0.5 s` 仅是诊断窗口，不能用于导引律有效性结论。`ScenarioLibrary` 只是已完成的版本化接口，不等于长期场景语料和 CI 趋势已经建立；D1-D3 长期 replay、YOLO/MOT 长时预算、四导引律长窗口多 seed、跨提交场景覆盖和阈值趋势仍是 P1。
+- **P2 optional benchmark**：最小 frame-level schema 与 py-motmetrics adapter 代码已实现，但当前真实 backend 验证仅覆盖 2 帧离线 smoke fixture；IDF1/MOTA/MOTP 在该冻结 schema 上可计算，尚未完成真实 D2/D5 replay 的门限、遮挡和重现标定，HOTA 不可用。TrackEval、Stone Soup metrics、OSPA/GOSPA 和其他非参数统计仍待实现。所有 P2 能力只作隔离离线对照，不替换默认在线关联/导引路径或 D6 本地指标主线，也不进入默认依赖。
+
+同批 P2 evidence 的标签不得升级：D2 FilterPy/Stone Soup 仍只是对象 adapter smoke，D5 OpenCV 结果是离线合成标定/PnP 对照，D6 py-motmetrics 是 2 帧 smoke，D7 3D PN/APN/FRPN 是离线质点对照且 FRPN 仍为研究近似。D6 只在报告中保留这些边界，不把它们表述成默认算法替换或在线能力。
+
+已完成的 D6 代码能力包括：
 
 1. `MetricsCollector` 已实现二级 readiness/plan 状态驻留、activation latency、fallback/lease/stale reject；上游没有显式 lifecycle event 时保持 unavailable。
 2. D5 perception event 已实现 YOLOv8 recall、ByteTrack/BoT-SORT local-ID continuity、cross-view rate、latency 和 CPU/GPU budget 统计；离线 truth 只能位于 `metadata.offline_truth`。
@@ -23,7 +33,31 @@ D2/D6 的硬约束必须保留：`id_switch_count` 是一级显式指标，不�
 4. `ScenarioLibrary` 已实现 tags、difficulty、expected failure modes、parameters、seed matrix 与 online truth policy，输出 JSON/CSV/中文 Markdown。
 5. 通用报告和 AirSim calibration 已接入新指标，提供 CSV/JSON/Markdown 和 PNG 曲线接口。
 
-下一次真实 AirSim 验收由 main 调度；D6 只读取落盘目录。验收必须同时包含 lifecycle 正例、未激活/lease/stale 负例、YOLO+ByteTrack/BoT-SORT 后端和四导引律相同 seed 矩阵。未写出的指标继续显示 unavailable，禁止用默认 0 补齐。
+最新 evidence 根目录为 `research_modules/airsim_runtime/outputs/p1_p2_validation_20260711/`。CV 结果的 `physical_intercept_count=None`、`control_allowed_count=0` 是正确口径：ComputerVision 状态合同没有执行 SimpleFlight 控制。SimpleFlight `physical_intercept_count=0` 且 evidence available，表示确实运行了物理控制但未命中；两者不得合并。
+
+后续顺序固定为：先延长/细化 SimpleFlight 物理实验并解决 detection timeout，再持续补 D1-D3、YOLO/MOT 和四律长窗口 evidence；D6 继续按 contract/control/switch/physical 四层指标汇总。未写出的指标保持 unavailable，禁止用默认 0 补齐。
+
+## 1.2 本轮 P1/P2 实现状态（2026-07-11）
+
+1. P1 已接入 `d4_coalition_commit_state`，同时兼容扩展 `CoalitionRecord`；按 target/coalition/plan/epoch generation 去重，输出成员 ACK 完成率、ACK latency、lease、timeout、aborted/reconfiguring 和 secondary/distributed commit。
+2. P1 已新增终端四层指标：`contract_allowed`、`control_allowed`、`mode_switched`、`physical_intercept`。四层分别按各自 evidence 计数，不从前一层推断后一层；当前 ComputerVision 的 `control_allowed_count=0`，且缺拦截 summary/pair/control status，因此 physical 保持 unavailable。
+3. physical 层新增三个独立验收分母：active assigned pair、唯一 target、需要协同的 target。`collision_intercept/range_intercept` 均为 pair physical success；target 只需任一 participating pair 成功；coalition 要求全部 required primary 在各自 arrival window 内成功。缺 arrival window 时 coalition 为 unavailable，不能用 pair 或 target 成功代替。
+4. summary 判据审计读取 5 m、NED、3D Euclidean 和 criteria version；ComputerVision 即使存在状态记录也保持 physical unavailable。control record 可报告 detect/coast 六项诊断与 `truth_identity_online_use_count`，D6 不把诊断用于控制。
+5. P1 字段已进入 `EpisodeMetrics`、通用报告、标准映射和 main-bus JSON loader；旧 CoalitionRecord、旧 JSONL 和旧 metrics JSON 继续兼容。
+6. P2 已实现冻结 `msm-offline-mot-v1` schema 与可选 py-motmetrics adapter；当前只在 2 帧离线 smoke fixture 上验证 IDF1/MOTA/MOTP 可计算，HOTA 明确 unavailable，可选依赖缺失时输出 `unavailable_reason`。依赖仅位于 `/home/linux/.cache/msm-p2-venv`，版本 `motmetrics 1.4.0`，默认 requirements、在线路径和 D6 本地指标主线均不变。
+7. 当前 D6 全量回归为 `82 passed`；指定 P2 环境的 2 帧 fixture 输出 IDF1=1.0、MOTA=1.0、MOTP=0.15。该数值只证明 adapter/backend 接线可运行，不是跟踪质量、算法收益或生产 benchmark 结论。
+
+## 1.3 P1 最终实测验收矩阵（2026-07-11）
+
+| 场景 | D6 核对结果 | 状态 |
+|---|---|---|
+| CV 10 seed 中心正常 | 8/10 T001 双 primary 共识与授权；10/10 IDSW=0、错误重复锁=0；control=0、physical unavailable | 合同层验收闭合；2 个尾部 seed 保留回归 |
+| 二级接管 | `secondary_plan_v2` active，secondary executing commit，ACK 3/3 | P1 状态合同闭合 |
+| 完全分布式 | interceptor peer executing commit，ACK 3/3 | P1 状态合同闭合 |
+| missing ACK | aborted，ACK 2/3，D7 commit/contract/control 均不允许 | P1 fail-closed 负例闭合 |
+| SimpleFlight 10 seed | 每 seed 4 bindings、3 active + 1 standby；0/30 active pair 命中，24 detection timeout、6 timeout | 绑定合同闭合；物理拦截开放 |
+
+本矩阵只引用现有小型 JSON/JSONL evidence，不复制 AirSim 大型日志。15 s 和 `control_dt=0.5 s` 是本批次限制，不应外推为系统上限。
 
 ## 2. 当前实现概览
 
@@ -38,7 +72,7 @@ D2/D6 的硬约束必须保留：`id_switch_count` 是一级显式指标，不�
 - 批量统计：count、mean、sample std、stderr、normal-approximation 95% CI、median、p05、p95。
 - 分组统计：通用报告按 `metric_scope`、`seed`、`scenario_group` 和实际 `drone_count/resource_count/target_count/camera_count` 分组；AirSim calibration bundle 按 `metric_scope`、`seed`、`scenario`、`comparison_role`、secondary height/FOV/count、detection backend 和 actual scale/trend 字段分组。
 
-当前依赖保持轻量：Python 标准库、NumPy、matplotlib、pytest。默认测试不依赖 AirSim 服务、Stone Soup、TrackEval、py-motmetrics、SCRIMMAGE、GPU 或网络。
+当前依赖保持轻量：Python 标准库、NumPy、matplotlib、pytest。默认测试不依赖 AirSim 服务、Stone Soup、TrackEval、py-motmetrics、SCRIMMAGE、GPU 或网络；可选 benchmark 没有替换任何默认在线路径或 D6 本地离线评估路径。
 
 ## 3. 已实现指标
 
@@ -291,7 +325,7 @@ D6 只消费 main/D4/D5 写盘日志，不下发 cue、不控制云台、不触�
 
 2026-07-08 `p1_d4d5_mobile_recon_20260708_055948*` 是历史 mobile recon stress 批次，可作为 D6 已能消费 `mobile_recon_gimbal`、coverage、bbox、gimbal 和 funnel 字段的旧证据。
 
-当前最新 P1 registration calibration v2 已验证 D6 侧消费口径：
+2026-07-08 registration calibration v2 历史基线已验证 D6 侧消费口径：
 
 - 输出目录：`research_modules/airsim_runtime/outputs/p1_d4d5_registration_calibration_runtime_v2_20260708*`。
 - D6 bundle：`d6_airsim_calibration/airsim_calibration_records.csv`、`airsim_calibration_summary.csv`、`airsim_calibration_summary.json`、`airsim_calibration_report.md`。
@@ -416,16 +450,16 @@ P0/P1 状态：
 - main runtime P1 D4/D5 calibration sweep 已自动调用 D6 `AirSimCalibrationReportGenerator` 生成标准 records/summary/Markdown bundle；D6 当前重点是保持多 seed 自动汇总口径稳定，沉淀 coverage/funnel/gimbal、projection/gate/stable registration、not-registered、D7 guidance reject 和 `trend_key/evidence_path` 长期趋势，统计 active degradation precision，并按真实 `drone_count/resource_count/target_count/camera_count` 做 actual scale 分组。
 - 多 seed、5v5/N-v-N 和非默认 episode 需要继续保持 `metric_scope=execution/contract` 双口径，正式指标采用执行后 metrics，contract metrics 仅用于诊断；D6 已能直接读取两类 main bus metrics JSON，报告分组已按 `metric_scope + seed + scenario_group + scale` 实现，不从场景名推断规模，并在 metadata/Markdown 中保留 reject reason 分布。
 
-2026-07-11 D6 owner 本轮验收结论：D6 全量测试为 `67 passed`。execution/contract 分离、各自 evidence path、拦截证据 availability gate、truth-gated detection、read-only episode 的 `unavailable` 处理、cross-seed aggregate、严格 paired comparison、二级生命周期、D5 YOLO/MOT 核心预算、四导引律同 seed 报告、D1-D3 governance、场景库接口、M 对 N 锁定口径和 replan lifecycle 聚合均已完成。现有 2v2 10-seed execution 结果为 `18/20`；该结果用于证明报告链路和统计口径，不把 D6 变成控制模块。后续只做真实多 seed 写盘、CI 接线、schema 回归和新场景数据验收。
+2026-07-11 D6 owner 当前回归基线为 `82 passed`。除既有能力外，coalition commit、终端 contract/control/switch/physical 四层验收、pair/target/coalition 分层 physical success、detect/coast 诊断和隔离式 py-motmetrics adapter 已完成。最新 M 对 N CV 10-seed 合同结果与 SimpleFlight 10-seed 物理诊断必须分开解释；`physical_intercept_count` 没有物理 evidence 时保持 unavailable，有物理 evidence 且未命中时为 0。
 
-## 6. 未实现的开源/外部项
+## 6. 开源/外部项状态
 
 | 项目 | 当前状态 | 未实现原因 | 缺少条件 | 优先级 |
 |---|---|---|---|---|
 | Stone Soup metrics | 没有 Stone Soup import、对象转换器或 metric generator 调用 | 保持默认依赖轻量；D1/D2 track/truth 尚未冻结到 Stone Soup 类型 | 版本锁定；D1/D2 adapter；GroundTruthPath/Track/Detection 映射；坐标和门限合同；CI 样例 | P2 |
 | OSPA/GOSPA | 文档有公式，`EpisodeMetrics` 未输出字段 | 需要帧级 truth/estimate set 序列和 cutoff/order | 稳定集合序列；匹配门限；目标 birth/death/遮挡规则 | P2 |
-| CLEAR MOT/MOTA/MOTP 标准库对照 | D6 已实现本地 RMSE/continuity/IDSW 等分量，未接标准库 | 系统评估跨越分配、降级、通信、末端和导引；默认输出优先本地可解释指标 | MOTChallenge/accumulator 导出；TrackEval/py-motmetrics 版本；距离/IoU 门限 | P2 |
-| HOTA/IDF1 | 未实现 | 需要帧级检测、关联和身份评估表 | D2/D5 稳定 frame-level 输出；occlusion/reappearance 规则；外部 evaluator | P2 |
+| CLEAR MOT/MOTA/MOTP 标准库对照 | py-motmetrics 1.4.0 隔离 adapter 已实现 IDF1/MOTA/MOTP；真实 backend 仅有 2 帧 smoke，默认环境可无依赖 | 只消费冻结 offline truth/association schema，不覆盖系统级指标，尚未形成真实 replay benchmark | main/D2/D5 持续产出 `msm-offline-mot-v1` fixture；距离/IoU 门限由 fixture metadata 固定 | P2 adapter 已实现，benchmark 未完成 |
+| HOTA | unavailable；py-motmetrics 1.4.0 不提供该指标 | 需要支持 HOTA 的外部 evaluator 与完整帧级检测、关联和身份评估表 | 稳定 frame-level 输出；occlusion/reappearance 规则；TrackEval 等 evaluator | P2 |
 | AirSim 原生 recording replay | 未实现通用 parser | main 已提供更直接的 Blocks JSONL；原生 recording 字段、坐标、相机版本差异大 | 原生 recording 样例；schema 版本；NED/相机/时间轴映射；测试容差 | P2 |
 | Live AirSim replay/API | 未实现，且不作为 D6 默认能力 | D6 边界是 offline-only | 如未来需要，也应由 main runtime 导出日志，D6 仍只读文件 | 禁止在线控制 |
 | SCRIMMAGE metrics bridge | 未实现 | 当前仿真主线是 AirSim Blocks 和合成日志；仓库没有 SCRIMMAGE 输出样例或 message schema | SCRIMMAGE episode 输出；agent/resource/target ID 映射；通信事件字段；episode clock 对齐 | P3 |
@@ -441,9 +475,9 @@ D6 报告生成器当前输出：
 - PNG 图表：`detection`、`tracking`、`assignment`、`degradation`、`terminal`、`secondary_sensing`、`communication`、`guidance`、`safety` 和 selected metric distributions。
 - AirSim calibration bundle：旧 records/逐 seed summary 文件保持不变；新增 cross-seed aggregate CSV、paired comparison CSV、aggregate JSON/Markdown。main 必须显式写 `comparison_role=baseline|enhanced`；配对键包含稳定 `scenario_group`、去除运行 seed 参数后的 `scenario_version`、实际 N/M/camera count、几何、backend 和 seed，case_name 只审计。active-degradation count/precision/label_count/unnecessary 优先消费 d4d5 stress 显式字段，再 fallback main metrics。
 
-2026-07-10 的 2v2 execution 回灌复核固定以下读取优先级：正式 `main_episode_bus_metrics.json` 为执行口径，`main_episode_bus_contract_metrics.json` 为合同诊断口径，`airsim_blocks_summary.integrated_result.metrics` 仅是可能过时的历史快照，不进入 D6 calibration record。当前实测正式 execution 为实际规模 `2/2/2/2`、成功拦截 `2/2`、视觉 PNG 切换 3 次；旧 Blocks 快照仍为 `3/3/2/0`，该上游摘要一致性由 main runtime 负责。
+2026-07-10 的 2v2 execution 回灌复核是历史基线，用于固定以下读取优先级：正式 `main_episode_bus_metrics.json` 为执行口径，`main_episode_bus_contract_metrics.json` 为合同诊断口径，`airsim_blocks_summary.integrated_result.metrics` 仅是可能过时的历史快照，不进入 D6 calibration record。该历史基线的正式 execution 为实际规模 `2/2/2/2`、成功拦截 `2/2`、视觉 PNG 切换 3 次；旧 Blocks 快照仍为 `3/3/2/0`，该上游摘要一致性由 main runtime 负责。
 
-10-seed 真实验收使用 `p1_gap_closure_2v2_multiseed_20260710_seed001..010`：full-flow execution cross-seed 行完整包含十项拦截指标，并直接输出 `intercept_success_count sum=18`、`opportunity_count=20`、`rate=0.9`，collision/range/abort 为 `18/0/2`。验收报告由 D6 离线读取 summaries 生成，不启动 AirSim、不发控制。
+历史 10-seed 基线 `p1_gap_closure_2v2_multiseed_20260710_seed001..010` 验证了 full-flow execution cross-seed 行可完整包含十项拦截指标，并输出 `intercept_success_count sum=18`、`opportunity_count=20`、`rate=0.9`，collision/range/abort 为 `18/0/2`。这些数值只保留为当时场景的历史基线，不代表 2026-07-11 M=5、N=2 SimpleFlight 诊断结果；报告由 D6 离线读取 summaries 生成，不启动 AirSim、不发控制。
 
 统计口径：
 
@@ -466,7 +500,7 @@ p05 / p95
 
 2026-07-11 已冻结并实现 `TargetDemandRecord/CoalitionRecord/ArrivalRecord`，扩展 assignment/terminal coalition/member 字段，接入 JSONL loader/writer、`EpisodeMetrics`、episode CSV、batch summary 和 Markdown。已实现 demand/unmet slots、formation/reconfiguration、arrival/wave/hybrid、geometry rejection、canonical duplication/cross-node IDSW/common-information rejection、planned/authorized/erroneous lock、same-resource continuity、成员生命周期、通信预算和安全聚合；既有 RMSE/NIS/NEES 指标继续复用 track/governance 路径。探测 POD/miss/FAR 现同时要求 truth opportunity 与离线 match/miss 配对裁决；仅有 truth 列表或 truthless center tracks 时统一 `None/unavailable`。
 
-`duplicate_terminal_lock_count` 保持通用同帧多资源观测计数，不再被错误锁覆盖；`erroneous_duplicate_lock_count` 仅计 `k=1`、版本冲突和超需求。规范 `center_replan_request_created/deduplicated/ack_no_change/applied/expired` 事件已接入请求数、去重数、no-change、applied、expired、pending dwell 与收敛时间；缺事件为 unavailable。当前剩余 P1 是由 D3/main/runtime 按合同写出真实多 seed M 对 N/replan evidence，并完成四路线 x 三中心层级实验矩阵。第 9 节既有 P2 与其中 SCRIMMAGE P3 条目保持不变。
+`duplicate_terminal_lock_count` 保持通用同帧多资源观测计数，不再被错误锁覆盖；`erroneous_duplicate_lock_count` 仅计 `k=1`、版本冲突和超需求。规范 `center_replan_request_created/deduplicated/ack_no_change/applied/expired` 事件已接入请求数、去重数、no-change、applied、expired、pending dwell 与收敛时间；缺事件为 unavailable。当前 P1 合同层已有 CV 8/10、二级/分布式 commit 和 missing-ACK fail-closed 实测证据；未闭合的是 SimpleFlight 物理拦截和长窗口实验矩阵，不是 D6 聚合合同。第 9 节 P2 项只作为隔离 benchmark，其中 SCRIMMAGE 保持 P3。
 
 ### 2026-07-11 四导引律证据边界
 
@@ -492,7 +526,7 @@ timeout、成功/abort、最小距离、切换允许率、接管率和 gate reje
 ## 9. P2 下一步
 
 1. 帧级匹配表：定义 D1/D2/D5 的 frame-level truth/detection/track export，包含 timestamp、truth_id、global/local track ID、position/IoU/distance、occlusion/reappearance 状态。
-2. 外部 MOT 对照：优先做 TrackEval 或 py-motmetrics adapter，作为可选 benchmark，不替换 D6 本地指标。
+2. 外部 MOT 对照：py-motmetrics adapter 代码与 2 帧离线 smoke 已完成；IDF1/MOTA/MOTP 在冻结 schema 上可用，但真实 benchmark 尚未完成。下一步用真实冻结 replay 校准距离/IoU 门限、遮挡和重现规则。TrackEval/HOTA 保持未实现 optional，不能用 py-motmetrics 结果伪造 HOTA，也不能替换默认在线关联路径。
 3. Stone Soup/OSPA 对照：在 D1/D2 对象映射和版本锁定后接入 Stone Soup metrics 与 OSPA/GOSPA。
 4. Bootstrap/非参数 CI：在真实多 seed 数据规模足够后，为偏态指标提供可选统计方法。
 5. SCRIMMAGE bridge：仅当 AirSim 多机规模或通信建模不足以回答实验问题，并且已有真实 SCRIMMAGE 样例和 schema 时作为 P3 可选项推进。
@@ -513,4 +547,6 @@ git diff --check -- research_modules/d6_evaluation_metrics subagent_reviews/D6_*
 - 明确 `id_switch_count` 是 D2/D6 强制显式指标。
 - 明确指标按实际 `drone_count/resource_count/target_count/camera_count` 归一化。
 - 明确 D4/D5/D7 AirSim 产物的 D6 侧 loader 已实现；D7 real execution metrics 已由 main/orchestrator 合并进正式 `main_episode_bus_metrics.json`，raw contract metrics 保留为诊断文件。
+- 明确 P1 合同层和联盟 lifecycle 指标已完成，但物理命中、长期场景库与 CI 趋势仍为 P1。
+- 明确 py-motmetrics 当前只完成 2 帧离线 smoke；IDF1/MOTA/MOTP 可用、HOTA 不可用，且默认在线路径与 D6 本地主线未替换。
 - 明确 Stone Soup、AirSim replay、SCRIMMAGE 等开源/外部项的实际未实现状态、原因和缺少条件。

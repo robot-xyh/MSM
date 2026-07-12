@@ -145,6 +145,16 @@ M 对 N 联盟锁合同已实现：D5 只读携带 D3 schema v2 的 `coalition_i
 - **跨视角边界不变。** 各 resource-camera 独立做中心 GlobalTrack 投影和 local MOT；cross-view summary 只汇总支持并解释联盟合法性，不创建或重绑全局身份。
 - 三角定位、PDOP、同步/序贯支持分层、异步多视图滤波仍属于 P1/P2 研究验证；深度 ReID和图网络保留为研究对照。
 
+`blocks_cv_m5_n2_liveness_batch_20260711` 的三 seed、T001 共识为 0 是实施前历史基线。当前运行证据为 `p1_p2_validation_20260711`：ComputerVision 10 seeds 中，T001 双 primary 在当前计划授权下形成视觉共识 `8/10`；错误 duplicate 为 `0/10`。这验证了计划内合法协同多锁与错误重复锁分离，P1 合同层已经闭合。
+
+控制与物理层仍未闭合：ComputerVision 的 `control_allowed_count=0`；SimpleFlight 15 s 诊断中 30 个 active pair 均未命中，其中 24 个为 `terminal_detection_timeout`。后续应定位持续 detection、D5 lock 与 D7 control gate，而不是回退或放宽合法协同锁、版本、友方冲突和本机检测来源门控。
+
+2026-07-11 D5 已实现 fallback commit 消费接口。对于 `k>1`，只要存在 `coalition_commit` 或 center-failed/fallback 标记，视觉联盟完成必须同时通过 D4 commit 的 `state=committed|executing`、epoch、lease expiry、coalition/plan id+version、required members 和 acked members 校验。commit 无效时 `CoalitionVisualSummary` 保留 primary/reserve 视觉证据，但输出明确 conflict/reason，`coalition_visual_consensus=False` 且 visual PNG authorized resources 为空。当前二级接管和完全分布式完整 ACK commit 正例均已通过，缺 ACK 场景按合同 fail closed；这证明合同语义，不表示物理命中。
+
+OpenCV calibration/`solvePnP` 已增加隔离式 P2 合成 benchmark：它复用 `CameraModel`/`GlobalTrack`，评估外参和双时间戳偏差对单/多视角投影门控的敏感性，但不接入 coalition summary、跨视角在线绑定或 main runtime。truth label 仅用于门控后的离线评分。该结果可为后续三角定位/PDOP 提供外参误差量级参考，不能替代真实多相机标定，也不能证明控制许可或物理拦截。
+
+T001 复验新增了计划/联盟双版本连续性边界：reserve-only replan 可改变 plan ID 和 reserve member，并让 plan/coalition version 同时严格升高；只要两个 primary 的 owner/node、`coalition_id`、target/global ID、resource-target binding、role、epoch 和需求保持不变，D5 可把上一安全帧计入新版本的两帧稳定窗口。`coalition_version` 是代际而非 identity；当前 association 必须已经精确匹配新 plan/coalition version，旧版本绝不重新获得授权。相同/下降 coalition version、coalition ID 改变、primary 换员、换绑、owner/epoch conflict、stale replay、friend/duplicate/wrong-binding、过期或 commit-conflicted evidence 均中断链路。该接口已通过模块测试和 10-seed ComputerVision `8/10` 双 primary 合同验收。
+
 ## 10. 建议验证场景
 
 1. `k_j=3`、三名合法成员同时锁定：不得产生 duplicate risk。
@@ -155,7 +165,9 @@ M 对 N 联盟锁合同已实现：D5 只读携带 D3 schema v2 的 `coalition_i
 6. 单资源多本地锁定或单本地多全局支持：保持 duplicate/conflict。
 7. 完全分布式且中心 ID stale：只输出 hypothesis/hold，不创建全局身份。
 
-## 11. 真实 AirSim M=5、N=2 证据补充
+## 11. 真实 AirSim M=5、N=2 历史证据补充
+
+以下 `blocks_cv_m5_n2_cooperative_live_20260711` 是实施前诊断，已被第 9 节的 10-seed 当前验证取代，不代表当前 T001 合同状态。
 
 2026-07-11 的 `blocks_cv_m5_n2_cooperative_live_20260711` 未形成 cooperative lock。虽然 5 主相机与 2 二级相机均出图，AirSim built-in detection 在绝大多数帧为空；full-flow 只有最后一帧 `Secondary_Recon_1` 对 `TGT-002` 的单 bbox，D5 总计 32 `reacquire`、4 `ambiguous`、0 `locked`。
 

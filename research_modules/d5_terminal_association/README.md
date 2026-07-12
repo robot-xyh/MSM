@@ -7,6 +7,7 @@
 - `src/d5_terminal_association/`: Python 实现。
 - `tests/`: pytest 单元测试。
 - `simulations/`: 多目标、友方、未知目标和遮挡的确定性仿真。
+- `scripts/`: 显式运行的隔离式 P2 benchmark CLI。
 - `docs/`: 算法说明、实验报告和 AirSim 离线集成计划。
 
 ## 运行
@@ -14,6 +15,7 @@
 ```bash
 pytest -q research_modules/d5_terminal_association/tests
 python3 research_modules/d5_terminal_association/simulations/run_terminal_association_sim.py --frames 120 --seed 7
+python3 research_modules/d5_terminal_association/scripts/run_p2_opencv_geometry_benchmark.py --seed 7
 ```
 
 核心测试仅依赖 Python 标准库、NumPy、OpenCV 和 pytest；OpenCV 不可用时，投影函数会退回简化针孔模型。`YoloMotAdapter` 可选使用 `ultralytics` 与本地权重运行 YOLOv8/ByteTrack/BoT-SORT，缺依赖或原生 tracker 不可用时会返回 `unavailable` 或退回确定性 IoU tracker。
@@ -22,12 +24,13 @@ python3 research_modules/d5_terminal_association/simulations/run_terminal_associ
 
 - `TerminalAssociator.project_tracks_to_image(global_tracks, camera)`
 - `TerminalAssociator.build_cost_matrix(projections, local_tracks, identity_claims, recon_image_cues=(), resource_id=None)`
-- `TerminalAssociator.decide(assignment, global_tracks, local_tracks, identity_claims, camera, current_time=None, recon_image_cues=(), camera_pose_source=None)`
+- `TerminalAssociator.decide(assignment, global_tracks, local_tracks, identity_claims, camera, current_time=None, recon_image_cues=(), camera_pose_source=None, arrival_timestamp=None)`
 - `IdentityChecker.parse_claims(raw_messages, current_time)`
 - `TerminalObservationBus.publish_terminal_association(...)`
+- `TerminalObservationBus.runtime_records()`
 - `TerminalObservationBus.cross_view_associations(as_of_timestamp=None, max_age_s=None, plan_id=None, plan_version=None)`
-- `TerminalObservationBus.coalition_visual_summary(coalition_bindings, historical_associations=(), required_stable_frames=2)`
-- `summarize_coalition_visual_completion(coalition_bindings, current_associations, historical_associations=(), required_stable_frames=2)`
+- `TerminalObservationBus.coalition_visual_summary(coalition_bindings, historical_associations=(), required_stable_frames=2, coalition_commit=None, current_time_s=None, center_failed=False, fallback_active=False)`
+- `summarize_coalition_visual_completion(coalition_bindings, current_associations, historical_associations=(), required_stable_frames=2, historical_bindings=(), coalition_commit=None, current_time_s=None, center_failed=False, fallback_active=False)`
 - `TerminalCrossViewFusion.summarize_observations(...)`
 - `TerminalCrossViewFusion.build_hypotheses(...)`
 - `TerminalCrossViewFusion.associate(...)`
@@ -60,12 +63,45 @@ decision = associator.decide(
     identity_claims=identity_claims,
     camera=camera,
     current_time=current_time,
+    arrival_timestamp=arrival_timestamp,
     recon_image_cues=reprojected_recon_cues,
     camera_pose_source="runtime_guidance_pose",
 )
 ```
 
+## P1 Detect-first 在线合同
+
+默认在线输入保持 AirSim `simGetDetections` bbox。`actor_id/object_id/actor_name/object_name/truth_id/global_track_id` 等仿真真值字段不会参与 local ID、类别、几何代价或 `global_track_id` binding；actor/object ID 置换不改变在线几何关联结果。`association_source` 固定为 `geometric_detect`，`truth_identity_used` 固定为 `false`。
+
+`LocalVisualTrack` 现在显式区分 `measured/predicted/lost`。predicted 轨迹只携带匿名 camera-local continuity 和 `prediction_age_s`，不能进入几何 assignment，也不能输出 `locked/registered`；丢失后的重捕无论 local ID 是否相同，都必须重新通过几何门限和 measured 稳定帧。D5 仍只回显上游 `assigned_global_track_id`，不创建、不改写、不换绑全局 ID。
+
+`TerminalAssociation.to_runtime_record()`、`TerminalObservation.to_runtime_record()` 和 bus `runtime_records()` 向 main/D6 提供扁平字段：`association_source`、`measurement_timestamp`、`arrival_timestamp`、`measurement_age_s`、`prediction_age_s`、`local_track_state`、`truth_identity_used=false`、置信度、决策状态与拒绝原因。当前 D5 全量回归为 `155 passed`。
+
+本轮不启动 YOLO/ByteTrack 数据集标定，该 P2 工作保持 deferred。已有 OpenCV calibration/`solvePnP` geometry benchmark 仅复核为隔离式离线对照，未导入默认在线路径、未写回 `CameraModel`。
+
 详细算法原理、数学模型和实施流程见 `docs/ALGORITHM_AND_IMPLEMENTATION.md`。
+
+## 最新验收基线
+
+最新集成证据为 `research_modules/airsim_runtime/outputs/p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md`。P1 合同层已经闭合：ComputerVision 10 seeds 中，T001 两个 active primary 在当前计划授权下形成视觉共识的验收结果为 `8/10`；10/10 seeds 的错误重复锁为 0，合法的计划内协同多锁保持 `planned_cooperative_lock`，不会被计为 `duplicate_terminal_lock_risk`。seed 7/27 保留为回归，不改变合同层结论。
+
+commit-aware gate 已进入真实集成验证。二级接管和完全分布式场景的完整 ACK commit 正例均允许联盟执行；缺 ACK 场景以 `coalition_commit_member_ack_incomplete` 类冲突阻断视觉共识/PNG authority，并与 D4/D7 一起 fail closed。`CoalitionVisualSummary` 继续校验 commit state、epoch、lease、plan/coalition 双版本及 required/acked members；reserve 只保留 readiness/cue，不能补 primary。
+
+该结论只关闭 P1 合同层，不代表控制或物理拦截闭环。ComputerVision 10 seeds 的 `control_allowed_count=0`；正确 M=5、N=2 topology 的 SimpleFlight 15 s 诊断中 30 个 active pair 均未命中，其中 24 个为 `terminal_detection_timeout`。因此相机持续检测、D5 锁定到 D7 control gate 的断点和长时物理拦截仍开放。P2 OpenCV calibration/`solvePnP` 仅是隔离式离线合成 benchmark，不进入在线 D5 主线。
+
+## P1 受控跨版本稳定延续
+
+`TerminalObservationBus` 现在保存只读 coalition binding 快照。当前 association 必须首先严格匹配当前 plan/coalition 新版本；历史帧只可增加稳定计数，不能恢复旧版本授权。reserve-only soft-feedback replan 导致 plan ID 变化且 plan/coalition version 同时严格升高时，只要 plan owner/node、`coalition_id`、target、`global_track_id`、primary resource-target binding 集合、role、epoch、需求和授权均不变，两个 primary 的连续视觉计数可从旧版本延续到新版本，并立即以新版本输出 consensus。`coalition_version` 是可单调演进的代际字段，不再被误当作不可变 identity。
+
+primary 换员或 target 换绑时整个 primary 构型重新计数。相同/下降的 coalition version、新 plan 旧版本回放、`coalition_id` 改变、owner/epoch 冲突、friend/duplicate/wrong-binding、过期证据或历史 commit conflict 会清零或 fail closed。输出 metadata 包含 continued resource、reset reason、source plan versions 和 stale replay resource；reserve 始终不能补 primary，也不能获得 visual PNG authority。该机制已由上述 10-seed ComputerVision 验证支持 `8/10` 双 primary 合同验收，但不得外推为控制许可或物理命中。
+
+## P2 OpenCV 几何扰动 Benchmark
+
+`p2_geometry_benchmark.py` 是隔离式离线研究入口，不由 `TerminalAssociator`、registration 或 main/runtime 默认路径导入。它使用既有 `CameraModel`/`GlobalTrack` 合同生成可复现的标定板、3D 参考点和运动目标，运行 `cv2.calibrateCamera` 与带漂移初值的 `cv2.solvePnP`，并注入相机平移/旋转漂移、measurement timestamp bias、arrival latency/bias。输出标定/PnP 重投影误差、扰动前后投影 RMSE、arrival-time 投影 RMSE、真目标门控接受率和离线假候选错误接受率。
+
+默认 seed 7 的当前基线为：48 个样本，投影 RMSE 从约 24.0 px 降至 1.63 px，真目标接受率从 0.0 恢复到 1.0，构造的离线假候选错误接受率从 1.0 降至 0.0。该数字只验证合成几何敏感性，不代表 AirSim 或真实相机标定质量。OpenCV calib3d 不可用时结果明确为 `status=unavailable/reason=opencv_calib3d_unavailable`。
+
+truth identity 只在所有投影与门控完成后附加为 `offline_truth_label`，修改标签不会改变任何几何或门控指标。benchmark 不创建绑定、不调用在线关联、不修改 `global_track_id`。真实棋盘/AprilTag 图像采集、PnP RANSAC、在线外参更新和硬件标定仍未实现。
 
 ## 当前状态总览
 
@@ -101,7 +137,7 @@ decision = associator.decide(
 
 部分实现或仅为抽象/adapter：
 
-- OpenCV 已用于投影和可选畸变参数消费；真实 `calibrateCamera`、`solvePnP`/PnP RANSAC、标定板/AprilTag 标定链未接入。
+- OpenCV 已用于在线主线投影和可选畸变参数消费；隔离式 P2 benchmark 已调用合成 `calibrateCamera`/`solvePnP` 并量化外参/时间扰动。真实标定图像、PnP RANSAC、标定板/AprilTag 采集和在线外参更新仍未接入。
 - YOLOv8/ByteTrack/BoT-SORT adapter 已能消费图像帧或 mock detector 输出并返回 `LocalVisualTrack`；默认优先调用 Ultralytics 原生 `bytetrack.yaml` / `botsort.yaml`，无依赖或权重缺失时返回明确 `unavailable`，原生 tracker 失败但 detector 可用时才启用确定性 IoU fallback。metadata 记录请求/实际 tracker、fallback 是否激活、wall-clock detector+tracker latency、声明预算是否超限、observed device、per-local-track MOT history 和 camera-local continuity。可选 `offline_truth_detections` 只在在线跟踪结束后计算 detector recall/precision、FN/FP 和 IoU 汇总，不输出 truth identity，也不影响 tracker/local/global ID。多相机状态隔离已闭合：IoU tracker 按 stream 懒创建；Ultralytics native tracker 因 `persist=True` 状态没有稳定交换接口，按 stream 使用独立 model/tracker 实例。代价是 native 模式显存/内存和首帧加载时延随活跃 stream 数增长；纯 detector/injected detector 仍可共享。
 - `offline_truth_detections` 现支持 AirSim runtime 使用的单个裸 `xyxy` 四元组、多个 bbox-only 四元组及 dict/object detection。该解析器只提取离线评估框，畸形输入会给出明确合同错误；标签不会进入在线 tracker、local ID 或 `global_track_id` binding。
 - ByteTrack、BoT-SORT 的真实质量依赖上游 `ultralytics` 和连续图像输入；Deep SORT/ReID 仍未接入。IoU fallback 只提供确定性本地 ID 连续性，不声明遮挡恢复或 IDSW/IDF1 工程质量。
@@ -113,7 +149,7 @@ decision = associator.decide(
 - AirSim/main runtime 的最小 RGB 图像链和 2 帧冒烟入口已接通，但持续多帧、多 seed 的真实 detector/tracker 质量验收尚未完成。当前 actor/相机几何下 YOLO 无有效 accepted detection，原生 ByteTrack 无 track ID 并回退 IoU；仍需标定目标尺度、视角、置信度/class map、连续帧长度、CPU/GPU 预算、真实标定链、真实身份认证链路和跨相机三维联合优化。episode 边界仍必须调用 `reset_all_streams()`。
 - 在线 D5 不得使用 AirSim `object_id`、`actor_name` 或 actor truth ID。truth ID 只能作为离线评分标签进入 metadata/evaluator，用于 `terminal_lock_accuracy`、`locked_mismatch` 等指标。
 
-剩余 P1/P2 聚焦真实工程链路，而不是 D5 侧 evidence 字段：P1 为 main/D4 把 frame-scoped evidence 接入同一 decision tick、把已接通的 `YoloMotAdapter` 冒烟链推进到有有效检测和 native MOT 连续性的真实 5v5 多 seed 标定、改善二级网络覆盖、外参/时间扰动和 `bbox_near_image_edge` 标定；P2 为 Deep SORT/ReID、真实身份 adapter、OpenCV calibration/`solvePnP` 以及 ROS 2 `tf2/message_filters`。D5 侧逐帧 D4 evidence DTO、YOLOv8 native/fallback 选择、离线 detector recall、延迟/设备/continuity metadata、5v5 多相机遮挡/交叉 fixture 均已补齐，但不等同于真实 AirSim 质量验收。
+剩余 P1/P2 聚焦真实工程链路，而不是 D5 侧 evidence 字段：P1 合同层已闭合，二级/分布式完整 ACK commit 正例和缺 ACK fail-closed 已验证；仍开放的是 `control_allowed_count=0`、SimpleFlight 末端 detection timeout、持续检测/native MOT 质量、二级网络覆盖、外参/时间扰动和 `bbox_near_image_edge` 标定。P2 为 Deep SORT/ReID、真实身份 adapter、真实标定采集/在线外参更新以及 ROS 2 `tf2/message_filters`。D5 的 OpenCV calibration/`solvePnP` 仅为隔离式合成 benchmark，不等同于在线 AirSim 或硬件 PnP。
 
 ## 决策状态
 

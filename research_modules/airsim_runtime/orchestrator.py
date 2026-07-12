@@ -31,6 +31,57 @@ from .models import BlocksSmokeConfig, BlocksSmokeResult
 from .real_runtime import RealAirSimRuntimeClient
 
 
+def _apply_episode_health_injection(
+    frames: list[AirSimFrame],
+    config: BlocksSmokeConfig,
+) -> list[AirSimFrame]:
+    """Overlay simulated C2 health on captured frames without changing sensor data."""
+
+    mode = str(config.metadata.get("c2_health_mode", "normal"))
+    if mode == "normal":
+        return frames
+    if mode not in {"secondary_takeover", "fully_distributed"}:
+        raise ValueError(f"unsupported c2_health_mode: {mode}")
+
+    center_failure_time = float(
+        config.metadata.get("center_failure_time_s", max(float(config.dt_s), 0.0))
+    )
+    secondary_failure_time = float(
+        config.metadata.get(
+            "secondary_failure_time_s",
+            center_failure_time + max(2.0 * float(config.dt_s), 0.5),
+        )
+    )
+    fault = str(config.metadata.get("coalition_commit_fault", "none"))
+    injected: list[AirSimFrame] = []
+    for frame in frames:
+        timestamp = float(frame.timestamp)
+        center_alive = timestamp < center_failure_time
+        secondary_alive = True
+        if mode == "fully_distributed":
+            secondary_alive = timestamp < secondary_failure_time
+        metadata = {
+            **frame.metadata,
+            "c2_health_injected": True,
+            "c2_health_mode": mode,
+            "center_failure_time_s": center_failure_time,
+            "secondary_failure_time_s": secondary_failure_time
+            if mode == "fully_distributed"
+            else None,
+        }
+        if fault != "none":
+            metadata["coalition_commit_fault"] = fault
+        injected.append(
+            replace(
+                frame,
+                center_node_alive=center_alive,
+                secondary_nodes_alive=secondary_alive,
+                metadata=metadata,
+            )
+        )
+    return injected
+
+
 class AirSimBlocksSmokeOrchestrator:
     """Start Blocks, sample read-only frames, and replay them through D1-D7."""
 
@@ -101,6 +152,7 @@ class AirSimBlocksSmokeOrchestrator:
                 }
             else:
                 frames = self._capture_frames(runtime, config)
+            frames = _apply_episode_health_injection(frames, config)
             raw_log = _write_frames_jsonl(frames, output_dir / "blocks_frames.jsonl")
             sensor_log = _write_sensor_observations_jsonl(
                 frames,
@@ -173,6 +225,10 @@ class AirSimBlocksSmokeOrchestrator:
                     "camera_vehicle_names": list(config.effective_camera_vehicle_names()),
                     "secondary_camera_vehicle_names": list(config.secondary_camera_vehicle_names),
                     "capture_lidar": bool(config.capture_lidar),
+                    "c2_health_mode": str(config.metadata.get("c2_health_mode", "normal")),
+                    "coalition_commit_fault": str(
+                        config.metadata.get("coalition_commit_fault", "none")
+                    ),
                     "detection_count": sum(len(frame.visual_detections) for frame in frames),
                     "main_episode_bus": {
                         "frame_count": main_episode_bus.frame_count,
@@ -400,8 +456,21 @@ MAIN_BUS_EXECUTION_METRIC_KEYS = frozenset(
         "terminal_contract_reject_count",
         "gate_reject_count",
         "intercept_success_count",
+        "physical_intercept_count",
+        "pair_physical_success_count",
+        "pair_physical_success_rate",
+        "target_intercept_success_count",
+        "target_intercept_success_rate",
+        "coalition_completion_count",
+        "coalition_completion_rate",
         "collision_intercept_count",
         "range_intercept_count",
+        "detection_acquisition_timeout_count",
+        "image_kf_predict_count",
+        "blind_push_count",
+        "visual_reacquisition_count",
+        "terminal_visual_lost_after_coast_count",
+        "truth_identity_online_use_count",
         "time_to_intercept_s",
         "min_range_m",
         "terminal_takeover_rate",
@@ -423,6 +492,14 @@ MAIN_BUS_EXECUTION_METADATA_KEYS = frozenset(
         "terminal_contract_reject_reasons",
         "terminal_takeover_pair_count",
         "terminal_takeover_pair_denominator",
+        "pair_physical_opportunity_count",
+        "target_intercept_opportunity_count",
+        "coalition_opportunity_count",
+        "physical_success_criteria",
+        "physical_success_criteria_complete",
+        "physical_success_criteria_matches_5m_ned_3d",
+        "physical_intercept_evidence_available",
+        "physical_intercept_unavailable_reason",
     }
 )
 

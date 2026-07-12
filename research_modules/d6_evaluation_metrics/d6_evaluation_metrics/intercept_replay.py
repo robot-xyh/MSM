@@ -127,6 +127,13 @@ def _add_intercept_summary_events(collector: MetricsCollector, path: Path) -> No
     if not isinstance(summary, Mapping):
         raise ValueError(f"{path}: intercept summary must be a JSON object")
 
+    parameters = summary.get("parameters", {})
+    if not isinstance(parameters, Mapping):
+        parameters = {}
+    success_semantics = summary.get("success_semantics", {})
+    if not isinstance(success_semantics, Mapping):
+        success_semantics = {}
+
     collector.add_event(
         EventRecord(
             timestamp=0.0,
@@ -137,7 +144,37 @@ def _add_intercept_summary_events(collector: MetricsCollector, path: Path) -> No
                 "success_count": _optional_int(summary.get("success_count")),
                 "pair_count": _optional_int(summary.get("pair_count")),
                 "record_count": _optional_int(summary.get("record_count")),
-                "parameters": summary.get("parameters", {}),
+                "runtime_mode": _optional_text(
+                    summary.get("runtime_mode")
+                    or summary.get("sim_mode")
+                    or parameters.get("runtime_mode")
+                ),
+                "physical_intercept_available": _optional_bool(
+                    summary.get("physical_intercept_available")
+                ),
+                "physical_intercept_unavailable_reason": _optional_text(
+                    summary.get("physical_intercept_unavailable_reason")
+                    or summary.get("unavailable_reason")
+                ),
+                "intercept_radius_m": _optional_float(
+                    parameters.get("intercept_radius_m")
+                    or success_semantics.get("range_threshold_m")
+                ),
+                "intercept_distance_frame": _optional_text(
+                    parameters.get("intercept_distance_frame")
+                    or success_semantics.get("distance_frame")
+                ),
+                "intercept_distance_dimension": _optional_text(
+                    parameters.get("intercept_distance_dimension")
+                    or success_semantics.get("distance_dimension")
+                ),
+                "intercept_success_criteria_version": _optional_text(
+                    parameters.get("intercept_success_criteria_version")
+                    or success_semantics.get("criteria_version")
+                ),
+                "success_semantics": dict(success_semantics),
+                "parameters": dict(parameters),
+                **_summary_count_metadata(summary, success_semantics),
                 "source_path": str(path),
             },
         )
@@ -161,11 +198,42 @@ def _add_intercept_summary_events(collector: MetricsCollector, path: Path) -> No
                     "vehicle_name": _optional_text(pair.get("vehicle_name")),
                     "target_id": _optional_text(pair.get("target_id")),
                     "active": _optional_bool(pair.get("active")),
+                    "assigned": _first_mapping_bool(
+                        pair,
+                        "assigned",
+                        "assignment_active",
+                    ),
+                    "activation_state": _optional_text(pair.get("activation_state")),
                     "status": _optional_text(pair.get("status")),
                     "abort_reason": _optional_text(pair.get("abort_reason")),
                     "min_range_m": _optional_float(pair.get("min_range_m")),
                     "time_to_intercept_s": _optional_float(pair.get("time_to_intercept_s")),
                     "last_detection_s": _optional_float(pair.get("last_detection_s")),
+                    "physical_success": _optional_bool(pair.get("physical_success")),
+                    "member_role": _optional_text(pair.get("member_role")),
+                    "required_primary": _optional_bool(pair.get("required_primary")),
+                    "required_primary_count": _first_mapping_int(
+                        pair,
+                        "required_primary_count",
+                        "required_resource_count",
+                    ),
+                    "arrival_window": pair.get("arrival_window"),
+                    "arrival_window_start_s": _first_mapping_float(
+                        pair,
+                        "arrival_window_start_s",
+                        "arrival_window_start",
+                    ),
+                    "arrival_window_end_s": _first_mapping_float(
+                        pair,
+                        "arrival_window_end_s",
+                        "arrival_window_end",
+                    ),
+                    "arrival_timestamp_s": _first_mapping_float(
+                        pair,
+                        "arrival_timestamp_s",
+                        "arrival_timestamp",
+                        "time_to_intercept_s",
+                    ),
                     "terminal_locked": _optional_bool(pair.get("terminal_locked")),
                     "terminal_mode_entered": _optional_bool(
                         pair.get("terminal_mode_entered")
@@ -267,7 +335,7 @@ def _guidance_record_metadata(
         "target_id": _optional_text(row.get("target_id") or row.get("global_track_id")),
         "global_track_id": _optional_text(row.get("global_track_id")),
         "mode": _optional_text(row.get("mode") or row.get("guidance_mode")),
-        "mode_switch": _optional_bool(row.get("mode_switch")),
+        "mode_switch": _first_bool(row, "mode_switch", "mode_switched"),
         "terminal_contract_reject_reason": _optional_text(
             row.get("terminal_contract_reject_reason")
         ),
@@ -310,7 +378,7 @@ def _control_command_metadata(row: Mapping[str, Any], *, source_path: Path) -> d
         "vehicle_name": _optional_text(row.get("vehicle_name")),
         "target_id": _optional_text(row.get("target_id")),
         "mode": _optional_text(row.get("mode")),
-        "mode_switch": _optional_bool(row.get("mode_switch")),
+        "mode_switch": _first_bool(row, "mode_switch", "mode_switched"),
         "range_m": _optional_float(row.get("range_m")),
         "command_vx_mps": _optional_float(row.get("command_vx_mps")),
         "command_vy_mps": _optional_float(row.get("command_vy_mps")),
@@ -321,6 +389,32 @@ def _control_command_metadata(row: Mapping[str, Any], *, source_path: Path) -> d
         "terminal_mode_entered": _optional_bool(row.get("terminal_mode_entered")),
         "terminal_handover_pending": _optional_bool(row.get("terminal_handover_pending")),
         "detection_seen": _optional_bool(row.get("detection_seen")),
+        "image_kf_mode": _optional_text(row.get("image_kf_mode")),
+        "image_kf_predict": _optional_bool(row.get("image_kf_predict")),
+        "los_source": _optional_text(row.get("los_source")),
+        "using_blind_push": _first_bool(row, "using_blind_push", "blind_push"),
+        "blind_push": _optional_bool(row.get("blind_push")),
+        "visual_reacquisition": _optional_bool(row.get("visual_reacquisition")),
+        "terminal_visual_lost_after_coast": _optional_bool(
+            row.get("terminal_visual_lost_after_coast")
+        ),
+        "truth_identity_online_use": _first_bool(
+            row,
+            "truth_identity_online_use",
+            "online_truth_identity_used",
+            "truth_id_used_online",
+        ),
+        "contract_allowed": _first_bool(
+            row,
+            "contract_allowed",
+            "terminal_contract_allowed",
+        ),
+        "control_allowed": _first_bool(
+            row,
+            "control_allowed",
+            "terminal_control_allowed",
+            "d7_runtime_terminal_switch_allowed",
+        ),
         "guidance_law": _optional_text(row.get("guidance_law")),
         "terminal_switch_allowed": _optional_bool(row.get("terminal_switch_allowed")),
         "terminal_switch_reject_reason": _optional_text(
@@ -350,6 +444,7 @@ def _control_command_metadata(row: Mapping[str, Any], *, source_path: Path) -> d
         "maneuver_margin": _optional_float(row.get("maneuver_margin")),
         "control_saturated": _optional_bool(row.get("control_saturated")),
         "collision_seen": _optional_bool(row.get("collision_seen")),
+        "physical_intercept": _optional_bool(row.get("physical_intercept")),
         "collision_object_name": _optional_text(row.get("collision_object_name")),
         "status": _optional_text(row.get("status")),
         "abort_reason": _optional_text(row.get("abort_reason")),
@@ -367,6 +462,41 @@ def _control_command_metadata(row: Mapping[str, Any], *, source_path: Path) -> d
     return {key: value for key, value in metadata.items() if value is not None}
 
 
+def _summary_count_metadata(
+    summary: Mapping[str, Any],
+    success_semantics: Mapping[str, Any],
+) -> dict[str, Any]:
+    keys = (
+        "pair_physical_success_count",
+        "pair_physical_opportunity_count",
+        "target_intercept_success_count",
+        "target_intercept_opportunity_count",
+        "coalition_completion_count",
+        "coalition_opportunity_count",
+        "detection_acquisition_timeout_count",
+        "image_kf_predict_count",
+        "blind_push_count",
+        "visual_reacquisition_count",
+        "terminal_visual_lost_after_coast_count",
+        "truth_identity_online_use_count",
+    )
+    metadata: dict[str, Any] = {}
+    for key in keys:
+        value = summary.get(key, success_semantics.get(key))
+        parsed = _optional_int(value)
+        if parsed is not None:
+            metadata[key] = parsed
+    arrival_window_enforced = _optional_bool(
+        summary.get(
+            "coalition_arrival_window_enforced",
+            success_semantics.get("coalition_arrival_window_enforced"),
+        )
+    )
+    if arrival_window_enforced is not None:
+        metadata["coalition_arrival_window_enforced"] = arrival_window_enforced
+    return metadata
+
+
 def _first_float(row: Mapping[str, Any], *keys: str) -> float | None:
     for key in keys:
         value = _optional_float(row.get(key))
@@ -380,6 +510,29 @@ def _first_bool(row: Mapping[str, Any], *keys: str) -> bool | None:
         value = _optional_bool(row.get(key))
         if value is not None:
             return value
+    return None
+
+
+def _first_mapping_float(row: Mapping[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        if key in row:
+            value = _optional_float(row.get(key))
+            if value is not None:
+                return value
+    return None
+
+
+def _first_mapping_int(row: Mapping[str, Any], *keys: str) -> int | None:
+    value = _first_mapping_float(row, *keys)
+    return None if value is None else int(value)
+
+
+def _first_mapping_bool(row: Mapping[str, Any], *keys: str) -> bool | None:
+    for key in keys:
+        if key in row:
+            value = _optional_bool(row.get(key))
+            if value is not None:
+                return value
     return None
 
 

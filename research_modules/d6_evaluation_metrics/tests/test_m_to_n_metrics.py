@@ -462,3 +462,180 @@ def test_collector_jsonl_writer_round_trips_m_to_n_records(tmp_path: Path) -> No
     assert len(loaded.coalition_records) == 1
     assert len(loaded.arrival_records) == 1
     assert loaded.compute_episode("round_trip", truth_summary=truth).unmet_slot_count == 0
+
+
+def test_main_bus_coalition_commit_events_are_aggregated_by_generation() -> None:
+    collector = MetricsCollector()
+    collector.extend_events(
+        [
+            EventRecord(
+                1.5,
+                "d4_coalition_commit_state",
+                actor_id="R1",
+                metadata={
+                    "global_track_id": "G1",
+                    "coalition_id": "C1",
+                    "coalition_version": 2,
+                    "plan_id": "P1",
+                    "plan_version": 4,
+                    "epoch": 7,
+                    "state": "executing",
+                    "reason": "all_members_acknowledged",
+                    "required_member_ids": ["R1", "R2", "R3"],
+                    "acked_member_ids": ["R1", "R2", "R3"],
+                    "lease_expires_at": 10.0,
+                    "proposed_at": 1.0,
+                    "committed_at": 1.4,
+                    "fallback_mode": "distributed",
+                    "coalition_commit_state": "executing",
+                    "coalition_commit_epoch": 7,
+                    "coalition_required_member_ids": ["R1", "R2", "R3"],
+                    "coalition_acked_member_ids": ["R1", "R2", "R3"],
+                    "coalition_lease_valid": True,
+                    "atomic_coalition_formed": True,
+                },
+            ),
+            # The same state represented as a CoalitionRecord must not create
+            # a second committed generation.
+        ]
+    )
+    collector.add_coalition(
+        CoalitionRecord(
+            timestamp=1.5,
+            global_track_id="G1",
+            coalition_id="C1",
+            coalition_version=2,
+            coalition_state="executing",
+            coordination_mode="hybrid_primary_reserve",
+            plan_id="P1",
+            plan_version=4,
+            epoch=7,
+            coordinator_id="R1",
+            coordinator_role="interceptor_peer",
+            required_member_ids=("R1", "R2", "R3"),
+            acked_member_ids=("R1", "R2", "R3"),
+            commit_state="executing",
+            commit_reason="all_members_acknowledged",
+            lease_expires_at=10.0,
+            proposed_at=1.0,
+            committed_at=1.4,
+            metadata={"fallback_mode": "distributed"},
+        )
+    )
+
+    metrics = collector.compute_episode("commit-success")
+
+    assert metrics.coalition_commit_count == 1
+    assert metrics.coalition_required_member_count == 3
+    assert metrics.coalition_acked_member_count == 3
+    assert metrics.coalition_member_ack_rate == 1.0
+    assert metrics.coalition_ack_latency_s == pytest.approx(0.4)
+    assert metrics.distributed_coalition_commit_count == 1
+    assert metrics.secondary_coalition_commit_count == 0
+    audit = metrics.metadata["coalition_commit_audit"]
+    assert len(audit) == 1
+    assert audit[0]["epoch"] == 7
+    assert audit[0]["lease_expires_at"] == 10.0
+
+
+def test_coalition_commit_failures_keep_timeout_abort_and_reconfigure_distinct() -> None:
+    collector = MetricsCollector()
+    collector.extend_events(
+        [
+            EventRecord(
+                2.0,
+                "d4_coalition_commit_state",
+                metadata={
+                    "global_track_id": "G1",
+                    "coalition_id": "C1",
+                    "coalition_version": 1,
+                    "plan_id": "P1",
+                    "plan_version": 1,
+                    "epoch": 1,
+                    "state": "aborted",
+                    "reason": "member_ack_timeout",
+                    "required_member_ids": ["R1", "R2"],
+                    "acked_member_ids": ["R1"],
+                    "lease_expires_at": 5.0,
+                    "fallback_mode": "secondary",
+                },
+            ),
+            EventRecord(
+                6.0,
+                "d4_coalition_commit_state",
+                metadata={
+                    "global_track_id": "G2",
+                    "coalition_id": "C2",
+                    "coalition_version": 1,
+                    "plan_id": "P2",
+                    "plan_version": 1,
+                    "epoch": 2,
+                    "state": "reconfiguring",
+                    "reason": "lease_expired",
+                    "required_member_ids": ["R3", "R4"],
+                    "acked_member_ids": ["R3"],
+                    "lease_expires_at": 5.5,
+                    "coalition_lease_valid": False,
+                    "fallback_mode": "distributed",
+                },
+            ),
+        ]
+    )
+
+    metrics = collector.compute_episode("commit-failure")
+
+    assert metrics.coalition_commit_count == 0
+    assert metrics.coalition_member_ack_rate == pytest.approx(0.5)
+    assert metrics.coalition_commit_timeout_count == 1
+    assert metrics.coalition_commit_aborted_count == 1
+    assert metrics.coalition_commit_reconfiguring_count == 1
+    assert metrics.coalition_commit_lease_expired_count == 1
+    assert metrics.metadata["coalition_commit_state_counts"] == {
+        "aborted": 1,
+        "reconfiguring": 1,
+    }
+    assert metrics.metadata["coalition_commit_reason_counts"] == {
+        "member_ack_timeout": 1,
+        "lease_expired": 1,
+    }
+
+
+def test_extended_coalition_record_round_trips_without_breaking_legacy_jsonl(
+    tmp_path: Path,
+) -> None:
+    path = dump_episode_log_jsonl(
+        [
+            {
+                "record_type": "coalition",
+                "payload": {
+                    "timestamp": 3.0,
+                    "global_track_id": "G1",
+                    "coalition_id": "C1",
+                    "coalition_version": 3,
+                    "coalition_state": "committed",
+                    "coordination_mode": "hybrid_primary_reserve",
+                    "plan_id": "P3",
+                    "plan_version": 8,
+                    "epoch": 11,
+                    "required_member_ids": ["R1", "R2"],
+                    "acked_member_ids": ["R1", "R2"],
+                    "commit_state": "committed",
+                    "commit_reason": "all_members_acknowledged",
+                    "lease_expires_at": 9.0,
+                    "proposed_at": 2.5,
+                    "committed_at": 3.0,
+                    "metadata": {"fallback_mode": "secondary"},
+                },
+            }
+        ],
+        tmp_path / "coalition.jsonl",
+    )
+
+    collector, _ = load_episode_log_jsonl(path)
+    record = collector.coalition_records[0]
+    metrics = collector.compute_episode("round-trip-commit")
+
+    assert record.epoch == 11
+    assert tuple(record.required_member_ids) == ("R1", "R2")
+    assert metrics.coalition_commit_count == 1
+    assert metrics.secondary_coalition_commit_count == 1

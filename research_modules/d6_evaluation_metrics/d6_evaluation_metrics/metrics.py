@@ -140,6 +140,22 @@ class CoalitionRecord:
     coordination_mode: str
     member_ids: Sequence[str] = field(default_factory=tuple)
     member_roles: Mapping[str, str] = field(default_factory=dict)
+    plan_id: str | None = None
+    plan_version: int | None = None
+    epoch: int | None = None
+    coordinator_id: str | None = None
+    coordinator_role: str | None = None
+    required_member_ids: Sequence[str] = field(default_factory=tuple)
+    acked_member_ids: Sequence[str] = field(default_factory=tuple)
+    commit_state: str | None = None
+    commit_reason: str | None = None
+    lease_expires_at: float | None = None
+    proposed_at: float | None = None
+    updated_at: float | None = None
+    committed_at: float | None = None
+    executing_at: float | None = None
+    resolved_at: float | None = None
+    ack_latency_s: float | None = None
     member_role: str | None = None
     wave_id: str | int | None = None
     required_resource_count: int | None = None
@@ -313,6 +329,17 @@ class EpisodeMetrics:
     replan_expired_count: int | None = None
     replan_pending_dwell_s: float | None = None
     replan_convergence_time_s: float | None = None
+    coalition_commit_count: int | None = None
+    coalition_required_member_count: int | None = None
+    coalition_acked_member_count: int | None = None
+    coalition_member_ack_rate: float | None = None
+    coalition_ack_latency_s: float | None = None
+    coalition_commit_timeout_count: int | None = None
+    coalition_commit_aborted_count: int | None = None
+    coalition_commit_reconfiguring_count: int | None = None
+    coalition_commit_lease_expired_count: int | None = None
+    secondary_coalition_commit_count: int | None = None
+    distributed_coalition_commit_count: int | None = None
     coalition_member_loss_count: int | None = None
     coalition_member_replacement_count: int | None = None
     coalition_member_replacement_time_s: float | None = None
@@ -429,6 +456,26 @@ class EpisodeMetrics:
     terminal_switch_reject_count: int = 0
     mode_switch_count: int = 0
     terminal_contract_reject_count: int = 0
+    contract_evaluated_count: int | None = None
+    contract_allowed_count: int | None = None
+    contract_allowed_rate: float | None = None
+    control_evaluated_count: int | None = None
+    control_allowed_count: int | None = None
+    control_allowed_rate: float | None = None
+    mode_switched_count: int | None = None
+    physical_intercept_count: int | None = None
+    pair_physical_success_count: int | None = None
+    pair_physical_success_rate: float | None = None
+    target_intercept_success_count: int | None = None
+    target_intercept_success_rate: float | None = None
+    coalition_completion_count: int | None = None
+    coalition_completion_rate: float | None = None
+    detection_acquisition_timeout_count: int | None = None
+    image_kf_predict_count: int | None = None
+    blind_push_count: int | None = None
+    visual_reacquisition_count: int | None = None
+    terminal_visual_lost_after_coast_count: int | None = None
+    truth_identity_online_use_count: int | None = None
     intercept_success_count: int = 0
     collision_intercept_count: int = 0
     range_intercept_count: int = 0
@@ -554,6 +601,26 @@ class EpisodeMetrics:
             "terminal_switch_reject_count",
             "mode_switch_count",
             "terminal_contract_reject_count",
+            "contract_evaluated_count",
+            "contract_allowed_count",
+            "contract_allowed_rate",
+            "control_evaluated_count",
+            "control_allowed_count",
+            "control_allowed_rate",
+            "mode_switched_count",
+            "physical_intercept_count",
+            "pair_physical_success_count",
+            "pair_physical_success_rate",
+            "target_intercept_success_count",
+            "target_intercept_success_rate",
+            "coalition_completion_count",
+            "coalition_completion_rate",
+            "detection_acquisition_timeout_count",
+            "image_kf_predict_count",
+            "blind_push_count",
+            "visual_reacquisition_count",
+            "terminal_visual_lost_after_coast_count",
+            "truth_identity_online_use_count",
             "intercept_success_count",
             "collision_intercept_count",
             "range_intercept_count",
@@ -3021,6 +3088,8 @@ class MetricsCollector:
         los_values: list[bool] = []
         maneuver_values: list[bool] = []
         terminal_switch_allowed_values: list[bool] = []
+        contract_allowed_values: list[bool] = []
+        control_allowed_values: list[bool] = []
         terminal_switch_reject_count = 0
         gate_reject_count = 0
         mode_switch_count = 0
@@ -3087,6 +3156,44 @@ class MetricsCollector:
                 terminal_switch_allowed_values.append(
                     _as_bool(metadata["terminal_switch_allowed"], default=False)
                 )
+
+            contract_allowed = _first_metadata_bool(
+                metadata,
+                ("contract_allowed", "terminal_contract_allowed"),
+            )
+            if (
+                contract_allowed is None
+                and event_type in self.D7_GUIDANCE_RECORD_EVENTS
+                and "terminal_switch_allowed" in metadata
+            ):
+                # Main episode bus records its contract decision under this
+                # historical key; the D7 runtime control decision is separate.
+                contract_allowed = _as_bool(
+                    metadata["terminal_switch_allowed"],
+                    default=False,
+                )
+            if contract_allowed is not None:
+                contract_allowed_values.append(contract_allowed)
+
+            control_allowed = _first_metadata_bool(
+                metadata,
+                (
+                    "control_allowed",
+                    "terminal_control_allowed",
+                    "d7_runtime_terminal_switch_allowed",
+                ),
+            )
+            if (
+                control_allowed is None
+                and "terminal_contract_allowed" in metadata
+                and "terminal_switch_allowed" in metadata
+            ):
+                control_allowed = _as_bool(
+                    metadata["terminal_switch_allowed"],
+                    default=False,
+                )
+            if control_allowed is not None:
+                control_allowed_values.append(control_allowed)
 
             _append_gate_value(
                 camera_values,
@@ -3159,6 +3266,33 @@ class MetricsCollector:
             "terminal_switch_reject_count": terminal_switch_reject_count,
             "mode_switch_count": mode_switch_count,
             "terminal_contract_reject_count": terminal_contract_reject_count,
+            "contract_evaluated_count": (
+                len(contract_allowed_values) if contract_allowed_values else None
+            ),
+            "contract_allowed_count": (
+                sum(contract_allowed_values) if contract_allowed_values else None
+            ),
+            "contract_allowed_rate": (
+                _bool_rate(contract_allowed_values)
+                if contract_allowed_values
+                else None
+            ),
+            "control_evaluated_count": (
+                len(control_allowed_values) if control_allowed_values else None
+            ),
+            "control_allowed_count": (
+                sum(control_allowed_values) if control_allowed_values else None
+            ),
+            "control_allowed_rate": (
+                _bool_rate(control_allowed_values)
+                if control_allowed_values
+                else None
+            ),
+            "mode_switched_count": (
+                mode_switch_count
+                if contract_allowed_values or control_allowed_values
+                else None
+            ),
             "gate_reject_count": gate_reject_count,
             "_metadata": {
                 "guidance_law_counts": dict(guidance_law_counts),
@@ -3175,18 +3309,27 @@ class MetricsCollector:
                 "d5_state_counts": dict(d5_state_counts),
                 "plan_version_counts": dict(plan_version_counts),
                 "plan_ids": sorted(plan_ids),
+                "terminal_execution_funnel": {
+                    "contract_evaluated": len(contract_allowed_values),
+                    "contract_allowed": sum(contract_allowed_values),
+                    "control_evaluated": len(control_allowed_values),
+                    "control_allowed": sum(control_allowed_values),
+                    "mode_switched": mode_switch_count,
+                },
             },
         }
 
     def _compute_intercept_metrics(self) -> dict[str, Any]:
         summary_success_count: int | None = None
         summary_pair_count: int | None = None
+        summary_events: list[EventRecord] = []
         pair_events: list[EventRecord] = []
         command_events: list[EventRecord] = []
 
         for record in self.event_records:
             event_type = _event_type(record)
             if event_type in self.INTERCEPT_SUMMARY_EVENTS:
+                summary_events.append(record)
                 value = _metadata_int(record.metadata, "success_count")
                 if value is not None:
                     summary_success_count = value
@@ -3198,6 +3341,8 @@ class MetricsCollector:
             elif event_type in self.D7_CONTROL_COMMAND_EVENTS:
                 command_events.append(record)
 
+        summary_metadata = summary_events[-1].metadata if summary_events else {}
+
         if pair_events:
             result = self._intercept_metrics_from_pair_events(
                 pair_events,
@@ -3207,6 +3352,40 @@ class MetricsCollector:
             result = self._intercept_metrics_from_command_events(command_events)
             if summary_success_count is not None:
                 result["intercept_success_count"] = summary_success_count
+
+        command_physical_evidence = any(
+            any(
+                key in record.metadata
+                for key in (
+                    "status",
+                    "collision_seen",
+                    "target_collision_seen",
+                    "physical_intercept",
+                )
+            )
+            for record in command_events
+        )
+        physical_available, unavailable_reason = _physical_intercept_availability(
+            summary_metadata,
+            default_available=bool(
+                pair_events or command_physical_evidence or summary_success_count is not None
+            ),
+        )
+        layered = _layered_physical_success_metrics(
+            pair_events=pair_events,
+            command_events=command_events,
+            summary_metadata=summary_metadata,
+            physical_available=physical_available,
+        )
+        result.update({key: value for key, value in layered.items() if key != "_metadata"})
+        result["physical_intercept_count"] = result["pair_physical_success_count"]
+
+        diagnostics = _detect_coast_diagnostics(
+            summary_events=summary_events,
+            pair_events=pair_events,
+            command_events=command_events,
+        )
+        result.update({key: value for key, value in diagnostics.items() if key != "_metadata"})
 
         terminal_takeover = self._terminal_takeover_metrics(
             pair_events,
@@ -3223,10 +3402,21 @@ class MetricsCollector:
         result["_metadata"] = {
             **result.get("_metadata", {}),
             **terminal_takeover.get("_metadata", {}),
+            **layered.get("_metadata", {}),
+            **diagnostics.get("_metadata", {}),
             "intercept_summary_success_count": summary_success_count,
             "intercept_summary_pair_count": summary_pair_count,
             "intercept_pair_event_count": len(pair_events),
             "d7_control_command_event_count": len(command_events),
+            "physical_intercept_evidence_available": physical_available,
+            "physical_intercept_unavailable_reason": unavailable_reason,
+            "physical_intercept_source": (
+                "pair_or_control_status"
+                if physical_available and (pair_events or command_physical_evidence)
+                else "intercept_summary"
+                if physical_available and summary_events
+                else "unavailable"
+            ),
         }
         return result
 
@@ -5175,6 +5365,524 @@ def _intercept_pair_key(record: EventRecord) -> tuple[str, str] | None:
     return (str(resource_id or ""), str(target_id or ""))
 
 
+def _physical_intercept_availability(
+    summary_metadata: Mapping[str, Any],
+    *,
+    default_available: bool,
+) -> tuple[bool, str | None]:
+    runtime_mode = _state(_metadata_text(summary_metadata, "runtime_mode"))
+    if "computer_vision" in runtime_mode or runtime_mode == "computervision":
+        return False, "ComputerVision episodes do not provide physical intercept evidence"
+    explicit = _first_metadata_bool(
+        summary_metadata,
+        ("physical_intercept_available",),
+    )
+    if explicit is False:
+        return False, (
+            _metadata_text(summary_metadata, "physical_intercept_unavailable_reason")
+            or "physical intercept evidence was marked unavailable"
+        )
+    if explicit is True:
+        return True, None
+    if default_available:
+        return True, None
+    return False, "no collision/range physical intercept evidence"
+
+
+def _layered_physical_success_metrics(
+    *,
+    pair_events: Sequence[EventRecord],
+    command_events: Sequence[EventRecord],
+    summary_metadata: Mapping[str, Any],
+    physical_available: bool,
+) -> dict[str, Any]:
+    criteria = {
+        "intercept_radius_m": _metadata_float(summary_metadata, "intercept_radius_m"),
+        "distance_frame": _metadata_text(summary_metadata, "intercept_distance_frame"),
+        "distance_dimension": _metadata_text(
+            summary_metadata,
+            "intercept_distance_dimension",
+        ),
+        "criteria_version": _metadata_text(
+            summary_metadata,
+            "intercept_success_criteria_version",
+        ),
+    }
+    criteria_complete = all(value is not None for value in criteria.values())
+    criteria_matches_5m_ned_3d = bool(
+        criteria_complete
+        and math.isclose(float(criteria["intercept_radius_m"]), 5.0)
+        and _state(str(criteria["distance_frame"])) == "ned"
+        and _state(str(criteria["distance_dimension"]))
+        in {"3d", "3d_euclidean", "ned_3d_euclidean"}
+    )
+    metadata: dict[str, Any] = {
+        "physical_success_criteria": criteria,
+        "physical_success_criteria_complete": criteria_complete,
+        "physical_success_criteria_matches_5m_ned_3d": criteria_matches_5m_ned_3d,
+    }
+    metric_names = (
+        "pair_physical_success_count",
+        "pair_physical_success_rate",
+        "target_intercept_success_count",
+        "target_intercept_success_rate",
+        "coalition_completion_count",
+        "coalition_completion_rate",
+    )
+    if not physical_available:
+        return {**{name: None for name in metric_names}, "_metadata": metadata}
+
+    pair_rows = _physical_pair_rows(pair_events, command_events)
+    participating = [row for row in pair_rows if _active_assigned_pair(row)]
+    successful = [row for row in participating if _physical_success(row)]
+    pair_opportunities = len(participating)
+    pair_success_count = len(successful)
+
+    target_ids = {
+        target_id
+        for row in participating
+        for target_id in [_metadata_text(row, "target_id")]
+        if target_id is not None
+    }
+    successful_target_ids = {
+        target_id
+        for row in successful
+        for target_id in [_metadata_text(row, "target_id")]
+        if target_id is not None
+    }
+
+    if not pair_rows:
+        pair_success_count = _metadata_int(
+            summary_metadata,
+            "pair_physical_success_count",
+        )
+        pair_opportunities = _metadata_int(
+            summary_metadata,
+            "pair_physical_opportunity_count",
+        )
+        target_success_count = _metadata_int(
+            summary_metadata,
+            "target_intercept_success_count",
+        )
+        target_opportunities = _metadata_int(
+            summary_metadata,
+            "target_intercept_opportunity_count",
+        )
+    else:
+        target_success_count = len(successful_target_ids)
+        target_opportunities = len(target_ids)
+
+    coalition = _coalition_completion_metrics(
+        participating,
+        summary_metadata=summary_metadata,
+    )
+    metadata.update(
+        {
+            "pair_physical_opportunity_count": pair_opportunities,
+            "target_intercept_opportunity_count": target_opportunities,
+            "successful_target_ids": sorted(successful_target_ids),
+            **coalition.pop("_metadata"),
+        }
+    )
+    return {
+        "pair_physical_success_count": pair_success_count,
+        "pair_physical_success_rate": _optional_rate(
+            pair_success_count,
+            pair_opportunities,
+        ),
+        "target_intercept_success_count": target_success_count,
+        "target_intercept_success_rate": _optional_rate(
+            target_success_count,
+            target_opportunities,
+        ),
+        **coalition,
+        "_metadata": metadata,
+    }
+
+
+def _physical_pair_rows(
+    pair_events: Sequence[EventRecord],
+    command_events: Sequence[EventRecord],
+) -> list[Mapping[str, Any]]:
+    if pair_events:
+        return [record.metadata for record in pair_events]
+    grouped: dict[tuple[str, str], list[EventRecord]] = defaultdict(list)
+    for record in command_events:
+        key = _intercept_pair_key(record)
+        if key is not None:
+            grouped[key].append(record)
+    rows: list[Mapping[str, Any]] = []
+    for records in grouped.values():
+        ordered = sorted(records, key=lambda item: item.timestamp)
+        row = dict(ordered[-1].metadata)
+        row.setdefault("resource_id", ordered[-1].actor_id)
+        collision_seen = any(
+            _bool_from_metadata(
+                record.metadata,
+                ("collision_seen", "target_collision_seen"),
+                default=False,
+            )
+            for record in ordered
+        )
+        if collision_seen:
+            row["status"] = "collision_intercept"
+        rows.append(row)
+    return rows
+
+
+def _active_assigned_pair(metadata: Mapping[str, Any]) -> bool:
+    assigned = _first_metadata_bool(metadata, ("assigned", "assignment_active"))
+    if assigned is False:
+        return False
+    activation_state = _state(_metadata_text(metadata, "activation_state"))
+    if activation_state in {
+        "standby",
+        "standby_reserve",
+        "reserve",
+        "inactive",
+        "not_activated",
+        "cancelled",
+    }:
+        return False
+    return True
+
+
+def _physical_success(metadata: Mapping[str, Any]) -> bool:
+    explicit = _first_metadata_bool(metadata, ("physical_success", "physical_intercept"))
+    if explicit is not None:
+        return explicit
+    return _state(_metadata_text(metadata, "status")) in {
+        "collision_intercept",
+        "range_intercept",
+    }
+
+
+def _coalition_completion_metrics(
+    participating: Sequence[Mapping[str, Any]],
+    *,
+    summary_metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    by_target: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for row in participating:
+        target_id = _metadata_text(row, "target_id")
+        if target_id is not None:
+            by_target[target_id].append(row)
+
+    coalition_targets: dict[str, tuple[int, list[Mapping[str, Any]]]] = {}
+    for target_id, rows in by_target.items():
+        explicit_required = [
+            value
+            for row in rows
+            for value in [_metadata_int(row, "required_primary_count")]
+            if value is not None
+        ]
+        explicitly_required_rows = [
+            row
+            for row in rows
+            if _first_metadata_bool(row, ("required_primary",)) is True
+        ]
+        primary_rows = explicitly_required_rows or [
+            row for row in rows if _state(_metadata_text(row, "member_role")) == "primary"
+        ]
+        required_count = max(explicit_required) if explicit_required else len(primary_rows)
+        if required_count > 1:
+            coalition_targets[target_id] = (required_count, primary_rows)
+
+    if not coalition_targets:
+        explicit_opportunities = _metadata_int(
+            summary_metadata,
+            "coalition_opportunity_count",
+        )
+        explicit_count = _metadata_int(
+            summary_metadata,
+            "coalition_completion_count",
+        )
+        window_enforced = _first_metadata_bool(
+            summary_metadata,
+            ("coalition_arrival_window_enforced",),
+        )
+        if explicit_opportunities is not None and window_enforced is True:
+            return {
+                "coalition_completion_count": explicit_count or 0,
+                "coalition_completion_rate": _optional_rate(
+                    explicit_count or 0,
+                    explicit_opportunities,
+                ),
+                "_metadata": {
+                    "coalition_opportunity_count": explicit_opportunities,
+                    "coalition_completion_availability": "available",
+                    "coalition_completion_source": "summary",
+                },
+            }
+        return {
+            "coalition_completion_count": 0,
+            "coalition_completion_rate": None,
+            "_metadata": {
+                "coalition_opportunity_count": 0,
+                "coalition_completion_availability": "no_coalition_opportunity",
+            },
+        }
+
+    completed_targets: list[str] = []
+    missing_window_targets: list[str] = []
+    for target_id, (required_count, primary_rows) in coalition_targets.items():
+        if len(primary_rows) < required_count:
+            continue
+        required_rows = primary_rows[:required_count]
+        if any(_arrival_window(row) is None for row in required_rows):
+            missing_window_targets.append(target_id)
+            continue
+        if all(
+            _physical_success(row) and _inside_arrival_window(row)
+            for row in required_rows
+        ):
+            completed_targets.append(target_id)
+
+    metadata = {
+        "coalition_opportunity_count": len(coalition_targets),
+        "completed_coalition_target_ids": sorted(completed_targets),
+        "coalition_missing_arrival_window_target_ids": sorted(missing_window_targets),
+        "coalition_completion_source": "pair_summary",
+    }
+    if missing_window_targets:
+        metadata["coalition_completion_availability"] = "unavailable"
+        metadata["coalition_completion_unavailable_reason"] = (
+            "required primary arrival window evidence is incomplete"
+        )
+        return {
+            "coalition_completion_count": None,
+            "coalition_completion_rate": None,
+            "_metadata": metadata,
+        }
+    metadata["coalition_completion_availability"] = "available"
+    return {
+        "coalition_completion_count": len(completed_targets),
+        "coalition_completion_rate": len(completed_targets) / len(coalition_targets),
+        "_metadata": metadata,
+    }
+
+
+def _arrival_window(metadata: Mapping[str, Any]) -> tuple[float, float] | None:
+    start = _metadata_float(metadata, "arrival_window_start_s")
+    end = _metadata_float(metadata, "arrival_window_end_s")
+    raw_window = metadata.get("arrival_window")
+    if (start is None or end is None) and isinstance(raw_window, Mapping):
+        start = _optional_float_value(
+            raw_window.get("start_s", raw_window.get("start"))
+        )
+        end = _optional_float_value(raw_window.get("end_s", raw_window.get("end")))
+    elif (
+        (start is None or end is None)
+        and isinstance(raw_window, Sequence)
+        and not isinstance(raw_window, (str, bytes))
+        and len(raw_window) >= 2
+    ):
+        start = _optional_float_value(raw_window[0])
+        end = _optional_float_value(raw_window[1])
+    if start is None or end is None or end < start:
+        return None
+    return (start, end)
+
+
+def _inside_arrival_window(metadata: Mapping[str, Any]) -> bool:
+    window = _arrival_window(metadata)
+    arrival = _first_metadata_float(
+        metadata,
+        ("arrival_timestamp_s", "time_to_intercept_s"),
+    )
+    return bool(window is not None and arrival is not None and window[0] <= arrival <= window[1])
+
+
+def _optional_rate(
+    numerator: int | None,
+    denominator: int | None,
+) -> float | None:
+    if numerator is None or denominator is None or denominator <= 0:
+        return None
+    return numerator / denominator
+
+
+def _detect_coast_diagnostics(
+    *,
+    summary_events: Sequence[EventRecord],
+    pair_events: Sequence[EventRecord],
+    command_events: Sequence[EventRecord],
+) -> dict[str, Any]:
+    summary_metadata = summary_events[-1].metadata if summary_events else {}
+    names = (
+        "detection_acquisition_timeout_count",
+        "image_kf_predict_count",
+        "blind_push_count",
+        "visual_reacquisition_count",
+        "terminal_visual_lost_after_coast_count",
+        "truth_identity_online_use_count",
+    )
+    result = {name: _metadata_int(summary_metadata, name) for name in names}
+
+    if result["detection_acquisition_timeout_count"] is None and pair_events:
+        timeout_pairs = {
+            _intercept_pair_key(record)
+            for record in pair_events
+            if _state(_metadata_text(record.metadata, "abort_reason"))
+            in {
+                "terminal_detection_timeout",
+                "detection_acquisition_timeout",
+                "acquisition_timeout",
+                "detection_timeout",
+            }
+        }
+        result["detection_acquisition_timeout_count"] = len(timeout_pairs)
+
+    if result["image_kf_predict_count"] is None:
+        evidence = any(
+            "image_kf_mode" in record.metadata or "image_kf_predict" in record.metadata
+            for record in command_events
+        )
+        if evidence:
+            result["image_kf_predict_count"] = sum(
+                1
+                for record in command_events
+                if _first_metadata_bool(record.metadata, ("image_kf_predict",)) is True
+                or _state(_metadata_text(record.metadata, "image_kf_mode")) == "predict"
+                or _state(_metadata_text(record.metadata, "los_source")) == "image_kf_predict"
+            )
+
+    if result["blind_push_count"] is None:
+        evidence = any(
+            "using_blind_push" in record.metadata or "blind_push" in record.metadata
+            for record in command_events
+        )
+        if evidence:
+            result["blind_push_count"] = sum(
+                1
+                for record in command_events
+                if _first_metadata_bool(
+                    record.metadata,
+                    ("using_blind_push", "blind_push"),
+                )
+                is True
+            )
+
+    if result["truth_identity_online_use_count"] is None:
+        truth_records = [
+            record
+            for record in (*pair_events, *command_events)
+            if "truth_identity_online_use" in record.metadata
+        ]
+        if truth_records:
+            result["truth_identity_online_use_count"] = sum(
+                1
+                for record in truth_records
+                if _first_metadata_bool(
+                    record.metadata,
+                    ("truth_identity_online_use",),
+                )
+                is True
+            )
+
+    explicit_reacquisition = [
+        record
+        for record in command_events
+        if "visual_reacquisition" in record.metadata
+    ]
+    explicit_lost = [
+        record
+        for record in command_events
+        if "terminal_visual_lost_after_coast" in record.metadata
+    ]
+    inferred_reacquisition, inferred_lost = _infer_detect_coast_transitions(command_events)
+    if result["visual_reacquisition_count"] is None:
+        result["visual_reacquisition_count"] = (
+            sum(
+                1
+                for record in explicit_reacquisition
+                if _first_metadata_bool(record.metadata, ("visual_reacquisition",)) is True
+            )
+            if explicit_reacquisition
+            else inferred_reacquisition
+        )
+    if result["terminal_visual_lost_after_coast_count"] is None:
+        result["terminal_visual_lost_after_coast_count"] = (
+            sum(
+                1
+                for record in explicit_lost
+                if _first_metadata_bool(
+                    record.metadata,
+                    ("terminal_visual_lost_after_coast",),
+                )
+                is True
+            )
+            if explicit_lost
+            else inferred_lost
+        )
+
+    return {
+        **result,
+        "_metadata": {
+            "detect_coast_diagnostic_availability": {
+                name: "available" if result[name] is not None else "unavailable"
+                for name in names
+            }
+        },
+    }
+
+
+def _infer_detect_coast_transitions(
+    command_events: Sequence[EventRecord],
+) -> tuple[int | None, int | None]:
+    by_pair: dict[tuple[str, str], list[EventRecord]] = defaultdict(list)
+    for record in command_events:
+        key = _intercept_pair_key(record)
+        if key is not None:
+            by_pair[key].append(record)
+    detection_evidence = any(
+        "detection_seen" in record.metadata for record in command_events
+    )
+    coast_evidence = any(_coast_active(record.metadata) for record in command_events)
+    if not detection_evidence or not coast_evidence:
+        return None, None
+
+    reacquisition_count = 0
+    lost_count = 0
+    for records in by_pair.values():
+        had_visual = False
+        coasting_after_visual = False
+        for record in sorted(records, key=lambda item: item.timestamp):
+            detected = _first_metadata_bool(record.metadata, ("detection_seen",))
+            if detected is True:
+                if had_visual and coasting_after_visual:
+                    reacquisition_count += 1
+                had_visual = True
+                coasting_after_visual = False
+            elif detected is False and had_visual and _coast_active(record.metadata):
+                coasting_after_visual = True
+        if coasting_after_visual:
+            lost_count += 1
+    return reacquisition_count, lost_count
+
+
+def _coast_active(metadata: Mapping[str, Any]) -> bool:
+    if _first_metadata_bool(metadata, ("using_blind_push", "blind_push")) is True:
+        return True
+    states = (
+        _metadata_text(metadata, "image_kf_mode"),
+        _metadata_text(metadata, "los_source"),
+        _metadata_text(metadata, "mode"),
+        _metadata_text(metadata, "d5_state"),
+    )
+    return any(
+        _state(state) in {
+            "predict",
+            "image_kf_predict",
+            "coast",
+            "coasting",
+            "blind_push",
+            "loss_hold",
+        }
+        for state in states
+    )
+
+
 def _terminal_takeover_from_metadata(metadata: Mapping[str, Any]) -> bool:
     if _bool_from_metadata(
         metadata,
@@ -5455,6 +6163,16 @@ def _bool_from_metadata(
         if key in metadata:
             return _as_bool(metadata[key], default=default)
     return default
+
+
+def _first_metadata_bool(
+    metadata: Mapping[str, Any],
+    keys: Sequence[str],
+) -> bool | None:
+    for key in keys:
+        if key in metadata and metadata[key] is not None:
+            return _as_bool(metadata[key], default=False)
+    return None
 
 
 def _as_bool(value: Any, *, default: bool) -> bool:

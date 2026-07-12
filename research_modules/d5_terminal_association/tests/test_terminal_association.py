@@ -277,7 +277,7 @@ def test_active_reacquire_recovers_assigned_track_from_search_window() -> None:
         current_time=0.1,
         camera_pose_source="runtime_guidance_pose",
     )
-    reacquired = associator.decide(
+    first_reacquire = associator.decide(
         assignment,
         [assigned],
         [make_local("mot-7", (350.0, 240.0))],
@@ -286,9 +286,20 @@ def test_active_reacquire_recovers_assigned_track_from_search_window() -> None:
         current_time=0.2,
         camera_pose_source="runtime_guidance_pose",
     )
+    reacquired = associator.decide(
+        assignment,
+        [assigned],
+        [make_local("mot-7", (351.0, 240.0))],
+        [],
+        camera,
+        current_time=0.3,
+        camera_pose_source="runtime_guidance_pose",
+    )
 
     assert locked.decision_state == "locked"
     assert lost.decision_state == "reacquire"
+    assert first_reacquire.decision_state == "ambiguous"
+    assert first_reacquire.reason == "reacquire_candidate_not_temporally_stable"
     assert reacquired.decision_state == "locked"
     assert reacquired.reason == "reacquired_assigned_track_in_search_window"
     assert reacquired.assigned_global_track_id == "G-assigned"

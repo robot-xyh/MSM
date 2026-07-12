@@ -22,8 +22,11 @@ from d7_proportional_guidance import (
     GuidanceMode,
     GuidanceState,
     PngGuidanceConfig,
-    SimpleFlightPngGuidanceFilter,
+    TerminalDeliveryConfig,
+    TerminalDeliveryState,
+    TerminalGuidanceDelivery,
     VisionGuidanceObservation,
+    build_cooperative_guidance_topology,
     compute_pn_command,
     compute_pure_pursuit_command,
     evaluate_terminal_png_contract,
@@ -47,12 +50,20 @@ class InterceptPair:
     last_detection_s: float | None = None
     terminal_locked: bool = False
     terminal_handover_pending: bool = False
-    visual_filter: SimpleFlightPngGuidanceFilter | None = None
     terminal_switch_reject_reason: str = ""
     terminal_contract_reject_reason: str = ""
     guidance_binding: AssignmentGuidanceBinding | None = None
     d4_permission: D4GuidancePermission | None = None
     terminal_association: Any | None = None
+    member_role: str = "primary"
+    wave_id: int = 0
+    activation_state: str = "active"
+    assigned_global_track_id: str | None = None
+    terminal_acquisition_started_s: float | None = None
+    online_truth_id_used: bool = False
+    terminal_delivery: TerminalGuidanceDelivery | None = None
+    terminal_delivery_state: str = ""
+    terminal_delivery_reason: str = ""
 
 
 @dataclass
@@ -86,6 +97,15 @@ class InterceptCommandRecord:
     maneuver_margin_gate_passed: bool
     terminal_switch_allowed: bool
     terminal_switch_reject_reason: str
+    terminal_delivery_state: str
+    terminal_delivery_reason: str
+    terminal_using_extrapolation: bool
+    terminal_prediction_age_s: float | None
+    terminal_blind_elapsed_s: float
+    terminal_blind_decay: float
+    visual_reacquisition: bool
+    terminal_visual_lost_after_coast: bool
+    truth_identity_online_use: bool
     bbox_area_ratio: float
     los_rate_variance_radps2: float
     ttc_s: float | None
@@ -121,17 +141,29 @@ def run_controlled_intercept_episode(
     frames: list[AirSimFrame] = []
     command_records: list[InterceptCommandRecord] = []
     pairs: list[InterceptPair] = []
+    control_bus = None
+    if config.include_integrated_pipeline and not (
+        _active_center_replan_enabled(config) or _active_secondary_visual_png_enabled(config)
+    ):
+        from .episode_bus import MainAirSimEpisodeBus
+
+        control_bus = MainAirSimEpisodeBus(config)
     runtime.prepare_interceptor_control(config)
     try:
         for frame_index, timestamp in enumerate(_control_timestamps(config)):
             frame = runtime.sample_frame(config, frame_index, timestamp, output_dir / "images")
             frame = _annotate_active_replan_frame(config, frame)
+            control_evidence: dict[str, dict[str, Any]] = {}
+            if control_bus is not None:
+                control_bus.process_frame(frame)
+                control_evidence = control_bus.control_evidence()
             frames.append(frame)
             if not pairs:
-                pairs = _initial_pairs(frame)
+                pairs = _initial_pairs(frame, config)
             if not pairs:
                 continue
             _refresh_pair_assignments(frame, pairs)
+            _apply_online_control_evidence(pairs, control_evidence)
             _step_pairs(runtime, config, frame, pairs, command_records)
             if all(not pair.active for pair in pairs):
                 break
@@ -205,19 +237,27 @@ def _step_pairs(
             _record_command(config, frame.timestamp, pair, range_m, (0.0, 0.0, 0.0), None, True, collision, command_records)
             continue
 
+        pair.d4_permission = _d4_permission_for_pair(frame, pair)
+        pair.terminal_association = _terminal_association_for_pair(frame, pair, None)
         visible_detection = _assigned_detection(frame, pair)
         detection_seen = visible_detection is not None
         if detection_seen:
             pair.last_detection_s = frame.timestamp
-        pair.d4_permission = _d4_permission_for_pair(frame, pair)
-        pair.terminal_association = _terminal_association_for_pair(frame, pair, visible_detection)
         in_terminal_range = range_m <= config.intercept_terminal_switch_range_m
         if in_terminal_range:
             pair.terminal_handover_pending = True
-        if in_terminal_range and not detection_seen:
+        if in_terminal_range and not detection_seen and not pair.terminal_locked:
             last_seen = pair.last_detection_s
-            if last_seen is None or frame.timestamp - last_seen > config.intercept_detection_timeout_s:
-                _abort_pair(runtime, pair, "terminal_detection_timeout")
+            if last_seen is None and pair.terminal_acquisition_started_s is None:
+                pair.terminal_acquisition_started_s = frame.timestamp
+            acquisition_elapsed = (
+                0.0
+                if pair.terminal_acquisition_started_s is None
+                else frame.timestamp - pair.terminal_acquisition_started_s
+            )
+            timed_out = acquisition_elapsed > config.intercept_detection_timeout_s
+            if timed_out:
+                _abort_pair(runtime, pair, "terminal_detection_acquisition_timeout")
                 _record_command(config, frame.timestamp, pair, range_m, (0.0, 0.0, 0.0), None, False, collision, command_records)
                 continue
 
@@ -231,6 +271,20 @@ def _step_pairs(
             target_velocity,
             visible_detection,
         )
+        if pair.terminal_delivery_state == TerminalDeliveryState.EXPIRED.value:
+            _abort_pair(runtime, pair, pair.terminal_delivery_reason or "terminal_visual_lost_after_coast")
+            _record_command(
+                config,
+                frame.timestamp,
+                pair,
+                range_m,
+                (0.0, 0.0, 0.0),
+                pn_command,
+                detection_seen,
+                collision,
+                command_records,
+            )
+            continue
         if resource_position[2] > 0.25:
             _abort_pair(runtime, pair, "below_ground_or_invalid_altitude")
             _record_command(config, frame.timestamp, pair, range_m, (0.0, 0.0, 0.0), pn_command, detection_seen, collision, command_records)
@@ -324,7 +378,7 @@ def _pn_velocity_command(
         )
     command.metadata["configured_guidance_law"] = configured_law
     predicted_resource_velocity = np.asarray(_midcourse_velocity(config, command), dtype=float)
-    if visual_guidance_enabled and pair.terminal_handover_pending and visible_detection is not None:
+    if visual_guidance_enabled and pair.terminal_handover_pending:
         if str(config.intercept_yaw_mode).lower() == "look_at_target":
             current_heading = math.atan2(
                 float(target_position[1] - resource_position[1]),
@@ -332,7 +386,15 @@ def _pn_velocity_command(
             )
         else:
             current_heading = math.atan2(float(resource_velocity[1]), float(resource_velocity[0]))
-        observation = _vision_observation_from_detection(frame_timestamp=timestamp, pair=pair, detection=visible_detection)
+        observation = (
+            None
+            if visible_detection is None
+            else _vision_observation_from_detection(
+                frame_timestamp=timestamp,
+                pair=pair,
+                detection=visible_detection,
+            )
+        )
         contract = evaluate_terminal_png_contract(
             binding=pair.guidance_binding,
             d4_permission=pair.d4_permission,
@@ -342,7 +404,23 @@ def _pn_velocity_command(
             resource_id=pair.resource_id,
         )
         pair.terminal_contract_reject_reason = contract.reject_reason
-        if not contract.allowed:
+        transient_visual_loss = bool(
+            pair.terminal_locked
+            and observation is None
+            and contract.reject_reason
+            in {"d5_not_locked", "terminal_association_missing", "visual_observation_missing"}
+        )
+        if not contract.allowed and not transient_visual_loss:
+            if pair.terminal_delivery is not None:
+                blocked = pair.terminal_delivery.block(
+                    assigned_global_track_id=(
+                        pair.assigned_global_track_id
+                        or pair.guidance_binding.assigned_global_track_id
+                    ),
+                    reason=contract.reject_reason,
+                )
+                pair.terminal_delivery_state = blocked.state.value
+                pair.terminal_delivery_reason = blocked.reason
             guidance_mode = guidance_mode_from_terminal_contract(
                 contract,
                 handover_pending=pair.terminal_handover_pending,
@@ -363,9 +441,14 @@ def _pn_velocity_command(
             )
             return _midcourse_velocity(config, command), command
 
-        visual_filter = _visual_filter_for_pair(config, pair)
-        visual_command = visual_filter.evaluate(
-            observation,
+        delivery = _terminal_delivery_for_pair(config, pair)
+        delivery_result = delivery.evaluate(
+            assigned_global_track_id=(
+                pair.assigned_global_track_id
+                or pair.guidance_binding.assigned_global_track_id
+            ),
+            timestamp_s=timestamp,
+            observation=observation,
             current_heading_rad=current_heading,
             current_speed_mps=max(float(np.linalg.norm(predicted_resource_velocity[:2])), config.intercept_speed_mps),
             intercept_speed_mps=config.intercept_speed_mps,
@@ -373,14 +456,33 @@ def _pn_velocity_command(
             relative_velocity_ned=tuple(float(value) for value in (target_velocity - predicted_resource_velocity)),
             command_z_ned_m=0.0,
         )
+        pair.terminal_delivery_state = delivery_result.state.value
+        pair.terminal_delivery_reason = delivery_result.reason
+        visual_command = delivery_result.command
+        command.metadata.update(
+            {
+                "terminal_delivery_state": delivery_result.state.value,
+                "terminal_delivery_reason": delivery_result.reason,
+                "terminal_using_extrapolation": delivery_result.using_extrapolation,
+                "terminal_prediction_age_s": delivery_result.measurement_age_s,
+                "terminal_blind_elapsed_s": delivery_result.blind_elapsed_s,
+                "terminal_blind_decay": delivery_result.blind_decay,
+                "terminal_loss_frame_count": delivery_result.loss_frame_count,
+                "online_truth_id_used": pair.online_truth_id_used,
+            }
+        )
+        if visual_command is None:
+            pair.terminal_switch_reject_reason = delivery_result.reason
+            return _midcourse_velocity(config, command), command
         pair.terminal_switch_reject_reason = visual_command.quality.reject_reason
         if visual_command.quality.terminal_switch_allowed:
             pair.terminal_locked = True
         if pair.terminal_locked:
             command.metadata.update(
                 {
-                    "terminal_contract_allowed": True,
-                    "terminal_contract_reject_reason": "",
+                    "terminal_contract_allowed": bool(contract.allowed),
+                    "terminal_contract_reject_reason": contract.reject_reason,
+                    "terminal_contract_coast_exception": transient_visual_loss,
                     "d4_action": contract.d4_action,
                     "d5_decision_state": contract.d5_decision_state,
                     "plan_id": contract.plan_id,
@@ -403,8 +505,9 @@ def _pn_velocity_command(
             return visual_command.velocity_ned, command
         command.metadata.update(
             {
-                "terminal_contract_allowed": True,
-                "terminal_contract_reject_reason": "",
+                "terminal_contract_allowed": bool(contract.allowed),
+                "terminal_contract_reject_reason": contract.reject_reason,
+                "terminal_contract_coast_exception": transient_visual_loss,
                 "d4_action": contract.d4_action,
                 "d5_decision_state": contract.d5_decision_state,
                 "plan_id": contract.plan_id,
@@ -452,26 +555,28 @@ def _velocity_from_heading(
     )
 
 
-def _visual_filter_for_pair(
+def _terminal_delivery_for_pair(
     config: BlocksSmokeConfig,
     pair: InterceptPair,
-) -> SimpleFlightPngGuidanceFilter:
-    if pair.visual_filter is None:
-        pair.visual_filter = SimpleFlightPngGuidanceFilter(
-            PngGuidanceConfig(
-                dt_s=config.control_dt_s,
-                image_width_px=640,
-                image_height_px=480,
-                focal_length_px=320.0,
-                min_bbox_area_ratio=config.intercept_min_bbox_area_ratio,
-                min_detection_confidence=config.intercept_min_detection_confidence,
-                min_stable_frames=config.intercept_min_stable_detection_frames,
-                max_visual_latency_s=config.intercept_max_visual_latency_s,
-                navigation_constant=config.intercept_navigation_constant,
-                law=config.intercept_guidance_law,  # type: ignore[arg-type]
-            )
+) -> TerminalGuidanceDelivery:
+    if pair.terminal_delivery is None:
+        png_config = PngGuidanceConfig(
+            dt_s=config.control_dt_s,
+            image_width_px=640,
+            image_height_px=480,
+            focal_length_px=320.0,
+            min_bbox_area_ratio=config.intercept_min_bbox_area_ratio,
+            min_detection_confidence=config.intercept_min_detection_confidence,
+            min_stable_frames=config.intercept_min_stable_detection_frames,
+            max_visual_latency_s=config.intercept_max_visual_latency_s,
+            navigation_constant=config.intercept_navigation_constant,
+            law=config.intercept_guidance_law,  # type: ignore[arg-type]
         )
-    return pair.visual_filter
+        pair.terminal_delivery = TerminalGuidanceDelivery(
+            png_config=png_config,
+            config=TerminalDeliveryConfig(control_dt_s=config.control_dt_s),
+        )
+    return pair.terminal_delivery
 
 
 def _vision_observation_from_detection(
@@ -516,13 +621,70 @@ def _visual_metadata(visual_command: Any) -> dict[str, Any]:
     }
 
 
-def _initial_pairs(frame: AirSimFrame) -> list[InterceptPair]:
+def _initial_pairs(frame: AirSimFrame, config: BlocksSmokeConfig) -> list[InterceptPair]:
     resources = sorted(frame.resources, key=lambda item: item.resource_id)
     sorted_targets = sorted(
         (target for target in frame.truth_objects if target.object_type == "target"),
         key=lambda item: item.object_id,
     )
     targets = {target.object_id: target for target in sorted_targets}
+    if config.cooperative_demand_enabled and resources and sorted_targets:
+        high_threat_count = min(
+            max(0, int(config.cooperative_high_threat_target_count)),
+            len(sorted_targets),
+        )
+        required_counts = {
+            target.object_id: (
+                int(config.high_threat_required_resource_count)
+                if index < high_threat_count
+                else 1
+            )
+            for index, target in enumerate(sorted_targets)
+        }
+        vehicle_names = {
+            resource.resource_id: str(
+                resource.metadata.get("airsim_vehicle_name") or resource.resource_id
+            )
+            for resource in resources
+        }
+        topology = build_cooperative_guidance_topology(
+            resource_ids=[resource.resource_id for resource in resources],
+            target_ids=[target.object_id for target in sorted_targets],
+            required_counts=required_counts,
+            coordination_mode={
+                target.object_id: (
+                    config.cooperative_coordination_mode
+                    if required_counts[target.object_id] > 1
+                    else "independent"
+                )
+                for target in sorted_targets
+            },
+            primary_count=int(config.cooperative_primary_count),
+            plan_id="airsim_control_cooperative_plan",
+            plan_version=1,
+            vehicle_names=vehicle_names,
+            arrival_windows={
+                target.object_id: (0.0, float(config.intercept_max_duration_s))
+                for target in sorted_targets
+                if required_counts[target.object_id] > 1
+            },
+        )
+        return [
+            InterceptPair(
+                resource_id=binding.resource_id,
+                vehicle_name=binding.vehicle_name,
+                target_id=binding.assigned_global_track_id,
+                active=binding.activation_state == "active",
+                status=("active" if binding.activation_state == "active" else "standby"),
+                guidance_binding=binding,
+                d4_permission=_d4_permission_for_pair(frame, None),
+                member_role=binding.member_role,
+                wave_id=binding.wave_id,
+                activation_state=binding.activation_state,
+                assigned_global_track_id=binding.assigned_global_track_id,
+            )
+            for binding in topology.bindings
+        ]
     pairs: list[InterceptPair] = []
     for resource, fallback_target in zip(resources, sorted_targets, strict=False):
         target = _assignment_target_for_resource(frame, resource.resource_id, targets, fallback_target)
@@ -534,6 +696,7 @@ def _initial_pairs(frame: AirSimFrame) -> list[InterceptPair]:
                 target_id=target.object_id,
                 guidance_binding=_binding_for_pair(frame, resource, target, vehicle_name),
                 d4_permission=_d4_permission_for_pair(frame, None),
+                assigned_global_track_id=target.object_id,
             )
         )
     return pairs
@@ -552,7 +715,15 @@ def _refresh_pair_assignments(frame: AirSimFrame, pairs: list[InterceptPair]) ->
             continue
         target = _assignment_target_for_resource(frame, pair.resource_id, targets, fallback_target)
         pair.target_id = target.object_id
+        if (
+            pair.guidance_binding is not None
+            and pair.guidance_binding.metadata.get("boundary")
+            == "d7_binding_topology_only_no_assignment_optimization_no_vehicle_control"
+            and pair.guidance_binding.assigned_global_track_id == pair.target_id
+        ):
+            continue
         pair.guidance_binding = _binding_for_pair(frame, resource, target, pair.vehicle_name)
+        pair.assigned_global_track_id = pair.guidance_binding.assigned_global_track_id
 
 
 def _assignment_target_for_resource(
@@ -595,22 +766,52 @@ def _detections_by_resource(frame: AirSimFrame) -> dict[str, set[str]]:
 
 
 def _assigned_detection(frame: AirSimFrame, pair: InterceptPair) -> Any | None:
-    vehicle_to_resource = {
-        str(resource.metadata.get("airsim_vehicle_name")): resource.resource_id
-        for resource in frame.resources
-        if resource.metadata.get("airsim_vehicle_name")
-    }
-    candidates = []
-    for detection in frame.visual_detections:
-        owner = str(detection.camera_id).split(":", 1)[0]
-        if vehicle_to_resource.get(owner) != pair.resource_id:
-            continue
-        if str(detection.object_id) != pair.target_id:
-            continue
-        candidates.append(detection)
-    if not candidates:
+    if pair.terminal_association is None:
         return None
-    return max(candidates, key=lambda item: float(getattr(item, "confidence", 0.0)))
+    local_track_id = _optional_record_string(pair.terminal_association, "local_track_id")
+    if not local_track_id:
+        return None
+    for detection in frame.visual_detections:
+        if str(getattr(detection, "local_track_id", "")) == local_track_id:
+            return detection
+    association_metadata = dict(
+        _record_value(pair.terminal_association, "metadata", {}) or {}
+    )
+    if str(association_metadata.get("source", "")).startswith("main_simulated_d5_"):
+        vehicle_to_resource = {
+            str(resource.metadata.get("airsim_vehicle_name")): resource.resource_id
+            for resource in frame.resources
+            if resource.metadata.get("airsim_vehicle_name")
+        }
+        candidates = [
+            detection
+            for detection in frame.visual_detections
+            if vehicle_to_resource.get(str(detection.camera_id).split(":", 1)[0])
+            == pair.resource_id
+        ]
+        if candidates:
+            return max(
+                candidates,
+                key=lambda item: float(getattr(item, "confidence", 0.0)),
+            )
+    return None
+
+
+def _apply_online_control_evidence(
+    pairs: list[InterceptPair],
+    evidence_by_resource: dict[str, dict[str, Any]],
+) -> None:
+    for pair in pairs:
+        evidence = evidence_by_resource.get(pair.resource_id)
+        if evidence is None:
+            continue
+        binding = evidence.get("binding")
+        if binding is not None:
+            pair.guidance_binding = AssignmentGuidanceBinding(**dict(binding))
+            pair.assigned_global_track_id = pair.guidance_binding.assigned_global_track_id
+        pair.d4_permission = evidence.get("d4_permission")
+        pair.terminal_association = evidence.get("terminal_association")
+        pair.online_truth_id_used = bool(evidence.get("online_truth_id_used", False))
 
 
 def _binding_for_pair(
@@ -1022,7 +1223,7 @@ def _active_center_replan_enabled(config: BlocksSmokeConfig) -> bool:
 
 
 def _d4_permission_for_pair(frame: AirSimFrame, pair: InterceptPair | None) -> D4GuidancePermission:
-    target_id = "" if pair is None else pair.target_id
+    target_id = "" if pair is None else (pair.assigned_global_track_id or pair.target_id)
     resource_id = "" if pair is None else pair.resource_id
     explicit = _matching_metadata_record(
         frame.metadata.get("d4_guidance_permissions"),
@@ -1032,6 +1233,8 @@ def _d4_permission_for_pair(frame: AirSimFrame, pair: InterceptPair | None) -> D
     if explicit is None:
         explicit = frame.metadata.get("d4_guidance_permission")
     if explicit is None:
+        if pair is not None and pair.d4_permission is not None:
+            return pair.d4_permission
         return D4GuidancePermission()
     return D4GuidancePermission(
         action=str(_record_value(explicit, "action", "continue_center")),
@@ -1054,24 +1257,11 @@ def _terminal_association_for_pair(
     explicit = _matching_metadata_record(
         frame.metadata.get("terminal_associations"),
         resource_id=pair.resource_id,
-        target_id=pair.target_id,
+        target_id=pair.assigned_global_track_id or pair.target_id,
     )
     if explicit is not None:
         return explicit
-    if visible_detection is None or pair.guidance_binding is None:
-        return None
-    # Simulation-only adapter: current 2v2 controlled intercept has no D5 bus,
-    # so make the D5-shaped evidence explicit before D7 contract validation.
-    return {
-        "assigned_global_track_id": pair.guidance_binding.assigned_global_track_id,
-        "local_track_id": getattr(visible_detection, "local_track_id", None),
-        "association_confidence": float(getattr(visible_detection, "confidence", 0.0)),
-        "ambiguity_score": 0.0,
-        "friend_conflict_state": "none",
-        "decision_state": "locked",
-        "assignment_version": pair.guidance_binding.track_version,
-        "reason": "airsim_assigned_detection_simulated_d5_lock",
-    }
+    return pair.terminal_association
 
 
 def _matching_metadata_record(
@@ -1223,6 +1413,47 @@ def _record_command(
             maneuver_margin_gate_passed=bool(_command_metadata(pn_command, "maneuver_margin_gate_passed", False)),
             terminal_switch_allowed=bool(_command_metadata(pn_command, "terminal_switch_allowed", pair.terminal_locked)),
             terminal_switch_reject_reason=str(_command_metadata(pn_command, "terminal_switch_reject_reason", pair.terminal_switch_reject_reason)),
+            terminal_delivery_state=str(
+                _command_metadata(
+                    pn_command,
+                    "terminal_delivery_state",
+                    pair.terminal_delivery_state,
+                )
+            ),
+            terminal_delivery_reason=str(
+                _command_metadata(
+                    pn_command,
+                    "terminal_delivery_reason",
+                    pair.terminal_delivery_reason,
+                )
+            ),
+            terminal_using_extrapolation=bool(
+                _command_metadata(pn_command, "terminal_using_extrapolation", False)
+            ),
+            terminal_prediction_age_s=_optional_float(
+                _command_metadata(pn_command, "terminal_prediction_age_s", None)
+            ),
+            terminal_blind_elapsed_s=float(
+                _command_metadata(pn_command, "terminal_blind_elapsed_s", 0.0) or 0.0
+            ),
+            terminal_blind_decay=float(
+                _command_metadata(pn_command, "terminal_blind_decay", 0.0) or 0.0
+            ),
+            visual_reacquisition=str(
+                _command_metadata(pn_command, "terminal_delivery_state", "")
+            )
+            == TerminalDeliveryState.REACQUIRED.value,
+            terminal_visual_lost_after_coast=str(
+                _command_metadata(pn_command, "terminal_delivery_reason", "")
+            )
+            == "terminal_visual_lost_after_coast",
+            truth_identity_online_use=bool(
+                _command_metadata(
+                    pn_command,
+                    "online_truth_id_used",
+                    pair.online_truth_id_used,
+                )
+            ),
             bbox_area_ratio=float(_command_metadata(pn_command, "bbox_area_ratio", 0.0) or 0.0),
             los_rate_variance_radps2=float(_command_metadata(pn_command, "los_rate_variance_radps2", 0.0) or 0.0),
             ttc_s=_optional_float(_command_metadata(pn_command, "ttc_s", None)),
@@ -1316,23 +1547,45 @@ def _write_intercept_outputs(
             writer.writerow(asdict(record))
     paths["control_commands"] = commands_path
 
+    success_semantics = _intercept_success_semantics(config, pairs)
     summary = {
         "control_api_used": True,
+        "runtime_mode": "SimpleFlight",
+        "physical_intercept_available": True,
+        "physical_intercept_unavailable_reason": "",
         "success_count": sum(1 for pair in pairs if pair.status in {"collision_intercept", "range_intercept"}),
         "pair_count": len(pairs),
+        "success_semantics": success_semantics,
+        **{
+            key: value
+            for key, value in success_semantics.items()
+            if key.endswith("_count")
+        },
         "parameters": {
             "guidance_law": config.intercept_guidance_law,
             "control_dt_s": config.control_dt_s,
             "intercept_speed_mps": config.intercept_speed_mps,
             "intercept_altitude_ned_z": config.intercept_altitude_ned_z,
             "intercept_radius_m": config.intercept_radius_m,
+            "intercept_distance_frame": "NED",
+            "intercept_distance_dimension": "3d_euclidean",
+            "intercept_success_criteria_version": "airsim-range-intercept-v2",
             "intercept_max_duration_s": config.intercept_max_duration_s,
             "terminal_switch_range_m": config.intercept_terminal_switch_range_m,
+            "cooperative_demand_enabled": config.cooperative_demand_enabled,
+            "cooperative_coordination_mode": config.cooperative_coordination_mode,
+            "cooperative_primary_count": config.cooperative_primary_count,
         },
         "pairs": [_pair_summary(pair) for pair in pairs],
         "record_count": len(command_records),
     }
+    required_primary_counts: dict[str, int] = {}
     for pair in summary["pairs"]:
+        if pair["required_primary"]:
+            target_id = str(pair["target_id"])
+            required_primary_counts[target_id] = required_primary_counts.get(target_id, 0) + 1
+    for pair in summary["pairs"]:
+        pair["required_primary_count"] = required_primary_counts.get(str(pair["target_id"]))
         if pair["min_range_m"] == float("inf"):
             pair["min_range_m"] = None
     summary_path = output_dir / "intercept_summary.json"
@@ -1368,6 +1621,56 @@ def _write_intercept_outputs(
     _write_trajectory_plot(frames, plot_path)
     paths["intercept_trajectory_plot"] = plot_path
     return paths
+
+
+def _intercept_success_semantics(
+    config: BlocksSmokeConfig,
+    pairs: list[InterceptPair],
+) -> dict[str, Any]:
+    success_statuses = {"collision_intercept", "range_intercept"}
+    participating = [pair for pair in pairs if pair.activation_state == "active"]
+    successful = [pair for pair in participating if pair.status in success_statuses]
+    target_ids = sorted({pair.target_id for pair in participating})
+    successful_target_ids = sorted({pair.target_id for pair in successful})
+    coalition_target_ids = sorted(
+        {
+            pair.target_id
+            for pair in participating
+            if sum(
+                1
+                for candidate in participating
+                if candidate.target_id == pair.target_id
+                and candidate.member_role == "primary"
+            )
+            > 1
+        }
+    )
+    completed_coalition_target_ids = []
+    for target_id in coalition_target_ids:
+        required_primaries = [
+            pair
+            for pair in participating
+            if pair.target_id == target_id and pair.member_role == "primary"
+        ]
+        if required_primaries and all(
+            pair.status in success_statuses for pair in required_primaries
+        ):
+            completed_coalition_target_ids.append(target_id)
+    return {
+        "criteria_version": "airsim-range-intercept-v2",
+        "distance_frame": "NED",
+        "distance_dimension": "3d_euclidean",
+        "range_threshold_m": float(config.intercept_radius_m),
+        "pair_physical_success_count": len(successful),
+        "pair_physical_opportunity_count": len(participating),
+        "target_intercept_success_count": len(successful_target_ids),
+        "target_intercept_opportunity_count": len(target_ids),
+        "successful_target_ids": successful_target_ids,
+        "coalition_completion_count": len(completed_coalition_target_ids),
+        "coalition_opportunity_count": len(coalition_target_ids),
+        "completed_coalition_target_ids": completed_coalition_target_ids,
+        "standby_reserve_excluded_from_pair_denominator": True,
+    }
 
 
 def _secondary_reassignment_events(
@@ -1453,10 +1756,14 @@ def _center_replan_events(
 
 
 def _pair_summary(pair: InterceptPair) -> dict[str, Any]:
+    binding = pair.guidance_binding
+    physical_success = pair.status in {"collision_intercept", "range_intercept"}
     return {
         "resource_id": pair.resource_id,
         "vehicle_name": pair.vehicle_name,
         "target_id": pair.target_id,
+        "assigned_global_track_id": pair.assigned_global_track_id,
+        "assigned": binding is not None,
         "active": pair.active,
         "status": pair.status,
         "abort_reason": pair.abort_reason,
@@ -1475,6 +1782,19 @@ def _pair_summary(pair: InterceptPair) -> dict[str, Any]:
         "d4_target_node_id": _pair_d4_target_node_id(pair),
         "assignment_phase": _pair_assignment_phase(pair),
         "d5_decision_state": _pair_d5_state(pair),
+        "member_role": pair.member_role,
+        "wave_id": pair.wave_id,
+        "activation_state": pair.activation_state,
+        "required_primary": pair.member_role == "primary" and pair.activation_state == "active",
+        "required_primary_count": None,
+        "arrival_window": None
+        if binding is None
+        else [binding.arrival_window_start_s, binding.arrival_window_end_s],
+        "arrival_timestamp_s": pair.time_to_intercept_s,
+        "physical_success": physical_success,
+        "online_truth_id_used": pair.online_truth_id_used,
+        "terminal_delivery_state": pair.terminal_delivery_state,
+        "terminal_delivery_reason": pair.terminal_delivery_reason,
     }
 
 

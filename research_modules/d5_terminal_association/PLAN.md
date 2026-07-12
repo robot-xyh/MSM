@@ -6,6 +6,33 @@ D5 只面向科研仿真、离线回放和保守的终端视觉配准评估。�
 
 局部终端节点必须遵守一个硬约束：不得改写、重建或重新分配 `global_track_id`。D5 只能基于中心分配的 `assigned_global_track_id`，报告本地视觉轨迹是否与该全局航迹匹配。
 
+### 1.1 2026-07-11 实施前状态基线
+
+以下内容只保留 `research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_liveness_batch_20260711/M_TO_N_AIRSIM_CONVERGENCE_REPORT_CN.md` 的实施前历史基线。ComputerVision 模式只验证状态机与导引合同，不执行 SimpleFlight 动力学控制，因此下列结果不能解释为当前状态、物理拦截或命中：
+
+- seeds 7/17/27 均为 6 次重规划请求、6 次 `no-change` 确认、0 次应用、0 次过期；需求满足率为 1.0，错误重复锁定为 0。
+- 普通目标 T002 的视觉共识帧为 4/5/4，D7 每个 seed 获得 2 次终端合同许可，说明 D3-D4-D5-D7 的单 primary 状态链可重复闭合。
+- 高威胁目标 T001 的双 active-primary 视觉共识在三个 seed 中均为 0。D5 的 M-to-N DTO、快照作用域、合法协同锁和两帧稳定汇总接口已完成，但共同可见和连续锁定的真实 AirSim P1 验收尚未完成。
+- D5 当时回归基线为 `152 passed`。P0 无 blocker，truth ID 在线隔离、保守决策和 `global_track_id` 不变式继续作为强制回归项。
+
+### 1.2 2026-07-11 当前验收状态
+
+当前证据更新为 `research_modules/airsim_runtime/outputs/p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md`。P1 合同层已经闭合：ComputerVision 10 seeds 的 T001 双 active-primary 当前计划授权与视觉共识为 `8/10`；10/10 的错误 duplicate 为 0，计划内合法协同多锁与错误重复锁已分离。commit-aware gate 的二级接管、完全分布式完整 ACK 正例均通过，缺 ACK 场景保守阻断 consensus/visual PNG authority 并 fail closed。
+
+P1 物理/长期标定仍开放，而不是 D5 合同 DTO 未完成。ComputerVision 的 `control_allowed_count=0`；SimpleFlight 15 s 仅为诊断，30 个 active pair 均未命中，其中 24 个触发 `terminal_detection_timeout`。后续 P1 应定位持续 detection、D5 lock、D7 control gate 和闭合速度各层断点，并用长时真实多 seed 物理验收，不得把 `8/10` 合同验收写成控制切换或拦截成功。
+
+能力层级仍需分开：`YoloMotAdapter` 是图像/MOT adapter，6 episode x 2 帧只算 smoke 且 accepted detection 为 0；IoU fallback 只提供确定性本地连续性；`TerminalCrossViewFusion` 仍是 metadata-only 研究近似，不是三维重投影、三角化或 bundle adjustment。它们均未替换默认在线关联路径。
+
+P2 optional benchmark 已完成到隔离式离线合成对照：`p2_geometry_benchmark.py`/CLI 执行 OpenCV calibration/`solvePnP`，默认样本将后投影 RMSE 从约 24.0 px 降至 1.63 px，PnP 重投影 RMSE 约 0.43 px。它不进入在线 D5 默认路径，不写回 `CameraModel`，也不替代真实相机标定、PnP RANSAC、AirSim 外参漂移或硬件验收；默认在线路径仍是中心航迹投影、像素马氏门控、本地视觉轨迹和保守关联，未被 P2 替换。
+
+### 1.3 本轮 detect-first / truth-isolated P1
+
+- 在线探测保持 `simGetDetections` bbox，association source 为 `geometric_detect`；AirSim actor/object/truth/global 字段不参与 local ID、category、cost 或 binding，`truth_identity_used` 固定为 `false`。
+- `LocalVisualTrack.local_track_state` 显式支持 `measured/predicted/lost`。predicted 只作为匿名 camera-local `reacquire` 证据，不计入几何 assignment 或稳定帧，不得输出 `locked/registered`。
+- detection 暂失后，即使 MOT local ID 未变化，也必须重新通过几何门限并积累 measured stable frames；predicted 帧会打断稳定窗口。任何重捕只继续核对上游现有 `assigned_global_track_id`。
+- `TerminalAssociation`/`TerminalObservation` 强类型保留 measurement/arrival 双时间戳、measurement/prediction age、local state、association confidence/reason，并通过 `to_runtime_record()`/`runtime_records()` 供 main/D6 直接消费。
+- 本轮模块回归为 `155 passed`。P2 YOLO/ByteTrack 数据集标定保持 deferred；已有 OpenCV geometry benchmark 仅复核隔离状态，不接入默认在线路径。
+
 ## 2. 核心工程问题与科学问题
 
 工程问题：末端相机视场内可能同时出现分配目标、非分配目标、友方资源和未知飞行物。相机最近目标不一定是中心分配目标，本地 MOT 的 `local_track_id` 也不能替代全局身份。D5 需要在这些干扰下输出可解释、可审计的 `locked/ambiguous/hold/reacquire` 决策。
@@ -18,7 +45,7 @@ D5 只面向科研仿真、离线回放和保守的终端视觉配准评估。�
 
 - `Assignment`：来自 D3/D4，包含 `assigned_global_track_id`、版本、授权状态和资源 ID。
 - `GlobalTrack[]`：来自 D2，包含位置、速度、协方差、类别、时间戳和 `global_track_id`。
-- `LocalVisualTrack[]`：来自本地检测/MOT，包含像素中心、bbox、角速率、质量和本地轨迹历史。
+- `LocalVisualTrack[]`：来自本地检测/MOT，包含像素中心、bbox、角速率、质量、本地轨迹历史、`local_track_state` 和可选 `prediction_age_s`。
 - `IdentityClaim[]`：来自仿真的 Remote ID、MAVLink 签名、DDS Security 或 AprilTag 等合作身份声明。
 - `CameraModel`：相机内参、外参、图像尺寸和测量协方差。
 - `ReconImageCue[]`：来自 D4 二级高空系留侦察节点的局部图像 cue；机动侦察云台 cue 可额外携带 `cue_position_ned`、`look_at_ned`、`gimbal_pointing_metadata`、`cue_pointing_error_m/rad`、`gimbal_track_error_px`、`cue_source`、`capability_class` 和 `coverage_mode`。
@@ -34,7 +61,7 @@ D5 只面向科研仿真、离线回放和保守的终端视觉配准评估。�
 
 输出：
 
-- `TerminalAssociation`：包含中心分配 ID、本地候选 ID、置信度、歧义度、友方冲突状态、决策状态、候选代价和 cue 使用标记。
+- `TerminalAssociation`：包含中心分配 ID、本地候选 ID、置信度、歧义度、友方冲突状态、决策状态、候选代价、cue 使用标记，以及 detect-first source、双时间戳、age、local state 和 `truth_identity_used=false`。
 - `CrossPeerAssociationHypothesis`：完全分布式模式下的跨 peer metadata-only 视觉假设，不创建全局 ID。
 - `DistributedTerminalAssociation`：供 D4 完全分布式决策消费的保守摘要；missing/stale global ID、重复锁定、友方冲突或局部 ID 冲突时不得输出 `locked`。
 
@@ -111,7 +138,7 @@ ByteTrack、BoT-SORT、Deep SORT 只作为本地 MOT 输入来源。它们输出
 - `GlobalTrack -> CameraModel -> image projection`：`GlobalTrack` 是 frozen dataclass，`geometry.py` 和 `airsim_geometry.py` 支持投影、协方差传播、马氏门控和 AirSim camera info 到 D5 `CameraModel` 的离线转换。OpenCV 可用时使用 `cv2.projectPoints`；不可用时退回针孔模型。`TerminalAssociator.decide()` 和 `GeometricAssociationResult.to_log_records()` 已提供 projected pixel、bbox center、pixel error/reprojection error、Mahalanobis、gate pass、friend conflict、measurement age、selected pair、camera pose source、calibration health、drift warning 和 duplicate-risk advisory 字段，供 main/D6 后续写盘。
 - `LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim`、`ReconImageCue`：核心 DTO 已落地。`TerminalAssociator.decide()` 只核对 `Assignment.assigned_global_track_id`，输出 `locked/ambiguous/hold/reacquire`，不会选择另一个全局 ID 作为新分配。
 - 保守 `decision_state`：未授权、版本不一致、已验证友方重叠时 `hold`；候选接近、质量不足或身份声明不可靠时 `ambiguous`；无有效投影或无门内候选时 `reacquire`；只有唯一、稳定、版本一致且无友方冲突时才 `locked`。
-- P0-B 主动重捕获与时序一致性：`TerminalAssociator` 已保留 per `resource_id + assigned_global_track_id` 历史，正常 gate 失败时用 GlobalTrack 预测投影、上次 bbox/MOT 历史和 search window 主动寻找同一 assigned track；同一 MOT ID 可快速恢复，MOT ID 变化必须先通过 bbox 历史和 stable window，candidate margin、stale/OOSM、friend conflict、assignment/version mismatch 仍保持保守 `ambiguous/hold`。
+- P0-B 主动重捕获与时序一致性：`TerminalAssociator` 已保留 per `resource_id + assigned_global_track_id` 历史，正常 gate 失败时用 GlobalTrack 预测投影、上次 bbox/MOT 历史和 search window 主动寻找同一 assigned track；predicted 只输出 `reacquire` 且打断稳定窗口，恢复时无论 MOT ID 是否变化都必须重新通过 measured geometry gate 和 stable window，candidate margin、stale/OOSM、friend conflict、assignment/version mismatch 仍保持保守 `ambiguous/hold`。
 - AirSim truth ID 隔离：`local_visual_tracks_from_sim_detections()`、`local_visual_tracks_from_offline_yolo_bytetrack()` 和 `YoloMotAdapter.process_frame()` 明确忽略 `object_id`、`actor_name`、`truth_id`、`true_global_track_id`、`global_track_id` 等真值/全局字段；若 AirSim `track_id`/`detection_id` 与 actor/truth 字段相同，sim detection adapter 会将其视为 truth alias 并回退到相机作用域本地检测 ID。truth label 只可在 `TerminalObservation.metadata` 或离线 evaluator 中用于 `terminal_lock_accuracy`、`locked_mismatch` 等评分。
 - 跨视角 distributed visual association DTO 与 fusion：`DistributedVisualObservation`、`VisualTrackletSummary`、`PeerCameraState`、`CrossPeerAssociationHypothesis`、`DistributedTerminalAssociation` 和 `TerminalCrossViewFusion` 已实现 P0 metadata-only 融合。融合基于 measurement/arrival timestamp、bearing 或像素中心、bearing rate、bbox area/scale rate、类别/置信度、像素协方差和姿态协方差做 gating/cost；SciPy 可用时用 Hungarian，缺失时退回纯 Python 唯一匹配。
 - 完全无中心下多相机 peer evidence 输出：缺失或 stale `assigned_global_track_id` 时输出 `hypothesis_only/hold`，重复锁定、友方冲突或 local/global ID 冲突时输出 `hold/ambiguous` 风险证据；不会创建新 `global_track_id`。
@@ -128,7 +155,7 @@ ByteTrack、BoT-SORT、Deep SORT 只作为本地 MOT 输入来源。它们输出
 2026-07-08 AirSim D4/D5 视觉校准历史状态：
 
 - `research_modules/airsim_runtime/outputs/p1_d4d5_mobile_recon_20260708_055948*` 现在只作为历史 stress 证据：旧批次覆盖 3 个 seed、5v5 D4/D5 stress、200 m 高差、80 deg FOV、1920x1080，证明 D5 已能识别 `mobile_recon_gimbal`、`radar_global_track_cue`、`mobile_high_recon` 和云台指向 metadata。该批次的 bbox 3326-3334 px^2 对固定俯视约 1144-1145 px^2 只能说明目标看清能力改善，不能作为当前闭环结论；其覆盖与降级注册仍未闭合。
-- 最新 registration calibration v2 输出为 `research_modules/airsim_runtime/outputs/p1_d4d5_registration_calibration_runtime_v2_20260708*`，单 seed、3 个机动高空二级节点、200 m、110 deg、1920x1080。
+- 当时最新的 registration calibration v2 输出为 `research_modules/airsim_runtime/outputs/p1_d4d5_registration_calibration_runtime_v2_20260708*`，单 seed、3 个机动高空二级节点、200 m、110 deg、1920x1080。
 - v2 结果：`projection_valid_rate=1.0`，`geometry_gate_pass_rate≈0.474`，三个 case 的 stable cross-view registration 为 51/55/53，cross-view association 为 4/4/5，`degrade_to_secondary` / `degrade_to_distributed` 的 not-registered case 仍为 35/35，full-view mean≈0.048，coverage mean≈0.771。
 - 该单 seed 结果只保留为历史基线；其中降级 case not-registered 35/35 已被 2026-07-10 的 60-case sweep 改写，不能继续作为当前状态。
 
@@ -154,7 +181,7 @@ ByteTrack、BoT-SORT、Deep SORT 只作为本地 MOT 输入来源。它们输出
 
 部分实现或仅作为 adapter/抽象的能力：
 
-- 真实工程几何配准：当前消费已有 `CameraModel.K/R/t/dist_coeffs`，并能离线验证投影误差；没有完整标定采集、`calibrateCamera`、`solvePnP`/PnP RANSAC、bundle adjustment 或在线外参漂移估计链路。
+- 真实工程几何配准：当前消费已有 `CameraModel.K/R/t/dist_coeffs`，并能离线验证投影误差；P2 已有合成 `calibrateCamera`/`solvePnP` 扰动 benchmark，但没有真实标定采集、PnP RANSAC、bundle adjustment 或在线外参漂移估计链路。
 - YOLOv8/ByteTrack/BoT-SORT：已提供 `YoloMotAdapter` 图像帧入口，默认权重为 `/home/linux/Documents/MSM/research_modules/d5_terminal_association/best.pt` 且允许参数覆盖。`ultralytics` 可用时可请求 ByteTrack 或 BoT-SORT 原生 tracker；依赖、权重或原生 tracker 不可用时返回 `unavailable` 或退回确定性 IoU tracker，并在 `YoloMotFrameResult.metadata` 标明 stream key、实际 backend 和 per-stream 状态作用域。fallback tracker 与 native model/tracker 均按 `(resource_id, camera_id)` 隔离；输出仍只是带 camera namespace 的 `LocalVisualTrack`，tracker ID 不替代 `global_track_id`。
 - Deep SORT/ReID：仍仅作为未来对照来源；当前没有 ReID embedding、长遮挡恢复或 IDSW/IDF1 统计实现。
 - OpenCV：已用于投影与可选畸变参数消费；未实现标定工作流和真实图像角点/AprilTag 检测。
@@ -472,17 +499,21 @@ D5 至少记录：
 
 hybrid 默认稳定口径为：所有已授权 active primary 都必须在当前帧锁定，且每个 primary 至少连续 2 帧保持 execution lock，才设置 `primary_lock_complete=True` 和 `coalition_visual_consensus=True`。standby reserve 的本机几何/MOT 匹配可由 `hold + visual_match_decision_state=locked` 形成 `reserve_ready_resource_ids`，但不进入 consensus 或视觉 PNG 授权。resource/camera provenance 不一致、借用 bbox、无本机 local detection、计划/联盟版本冲突或联盟外执行 lock 均保守阻断。
 
+连续两帧不再要求 plan/coalition version 完全相同。bus 会保存先前 binding 快照并逐帧验证两者严格单调上升；当前输出永远使用当前 binding 的 plan ID/version 与 coalition version，历史 association 仅贡献稳定计数。`coalition_id` 仍是不可变 identity，reserve 集合可变化但 primary 集合必须相同。metadata 输出 `stability_continued_across_plan_version_resource_ids`、`stability_reset_reason_by_resource`、`stability_source_plan_versions_by_resource` 和 `stale_plan_replay_resource_ids`。`clear()` 同时清理 observation、binding snapshot 和 invalid-version state，episode 之间不得串联。
+
 2026-07-11 真实 AirSim 集成暴露 `TerminalObservationBus` 历史污染：旧实现的 `cross_view_associations()` 遍历全部 `_observations`，导致旧 timestamp/旧 plan 的 lock 被解释为当前并发 duplicate，进而向 D3 提供持续错误风险。现已增加可选 `as_of_timestamp`、`max_age_s`、`plan_id`、`plan_version` 快照作用域；作用域模式先做时间与计划过滤，再按 resource 保留最新 timestamp 的同帧全部观测，最后才运行 local/global duplicate 和 coalition 合法性判断。无参数调用仍保留离线兼容行为，`CrossViewAssociation.metadata` 可审计 scope 与筛选数量。main 应在每个 decision frame 使用当前 frame timestamp、约 `1.5 * dt` freshness 和当前 plan identity。
 
 跨视角边界保持两层：已实现层只汇总各 resource-camera 独立完成的投影/MOT/锁定证据并解释联盟合法性；尚未实现层是带相机位姿/像素协方差的多视角 bearing 三角化、可观测度/PDOP 和融合协方差。同步帧可作为后续瞬时三角化输入；序贯帧必须按 measurement timestamp 运动补偿并膨胀协方差，历史支持不得冒充当前同步支持。OpenCV 是几何默认候选，ByteTrack 是本地 MOT 默认候选，BoT-SORT、ReST 和多视图 GLMB 只作为可插拔或研究对照。
 
-### 14.2 真实 AirSim M=5、N=2 检测/几何状态（2026-07-11）
+### 14.2 真实 AirSim M=5、N=2 检测/几何历史基线（2026-07-11）
+
+以下 `blocks_cv_m5_n2_cooperative_live_20260711` 记录是 commit-aware gate 和受控跨版本延续实施前的诊断基线，已被 1.2 节的 10-seed 当前验收取代，不得再解释为当前 T001 状态。
 
 证据目录 `research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_cooperative_live_20260711` 使用 5 个主 ComputerVision 相机、2 个二级相机和 2 个 `Quadrotor1` actor。7 个相机均持续返回 640x480 Scene 图像，但 `simGetDetections` 在每个 9 帧 episode 的前 8 帧均为 0；仅部分 episode 的末帧由 `Secondary_Recon_1` 返回 1 个约 7x7 px 的 bbox。full-flow D5 输出为 32 `reacquire`、4 `ambiguous`、0 `locked`。
 
 D5 复核没有发现 bbox 解析或几何公式 bug。把唯一 bbox 与其真实来源相机 `Secondary_Recon_1:0` 的同帧外参配对后，`T002` 投影与 bbox center 误差约 0.09 px，几何关联正确选择 `T002`；该检测 `mot_history_length=1`，低于默认 2，因此 `ambiguous:mot_history_too_short` 是预期行为。日志中的 18-78 px 不是同相机标定残差：main runtime 在资源自有相机无检测时把全部 local tracks 作为 fallback，导致二级相机 bbox 被 4 个主资源用各自主相机模型重复评估。D5 只接受调用方提供的单 camera local-track batch，不能在缺少 resource-to-camera 映射时猜测或重绑来源。
 
-main/runtime 修复建议：主资源无本相机检测时返回空 local batch，不得 fallback 到其他相机；二级检测必须使用二级相机模型形成 recon/cross-view evidence。AirSim 侧在 spawn 后同时尝试 actor exact name 与 asset mesh filter `Quadrotor1*`，并在 filter、actor pose 或 camera pose 更新后增加渲染 warm-up，再采集计数。专项验证时可临时 `--save-images`，验证后恢复默认不保存 PNG。
+当时的 main/runtime 修复建议（历史）：主资源无本相机检测时返回空 local batch，不得 fallback 到其他相机；二级检测必须使用二级相机模型形成 recon/cross-view evidence。AirSim 侧在 spawn 后同时尝试 actor exact name 与 asset mesh filter `Quadrotor1*`，并在 filter、actor pose 或 camera pose 更新后增加渲染 warm-up，再采集计数。专项验证时可临时 `--save-images`，验证后恢复默认不保存 PNG。
 
 建议 main 修复 scope/warm-up 后运行：
 
@@ -509,7 +540,7 @@ jq -r '[.frame_index,.timestamp,.metadata.detection_count,
 P1 补齐状态：
 
 - 已完成 M-to-N 联盟视觉完成纯函数和 bus 薄封装，专项测试覆盖 hybrid 2+1、缺一个 primary、reserve-only、两帧稳定、版本冲突、跨相机 bbox 拒绝和 over-demand。
-- 已完成 cross-view 当前快照过滤，专项测试覆盖同资源跨帧不 duplicate、旧 plan 多资源 lock 不污染新 plan、同帧当前 plan 非授权多 lock 仍 duplicate、授权 coalition 同帧合法，以及无参数历史兼容；D5 全量 `127 passed`。
+- 已完成 cross-view 当前快照过滤，专项测试覆盖同资源跨帧不 duplicate、旧 plan 多资源 lock 不污染新 plan、同帧当前 plan 非授权多 lock 仍 duplicate、授权 coalition 同帧合法，以及无参数历史兼容；实现当时的 D5 回归基线为 `127 passed`。
 - 已完成 D5 侧 AirSim CV replay 可写盘字段：projected pixel、bbox center、pixel error、Mahalanobis、gate pass、candidate margin、measurement age、friend conflict、selected pair、`duplicate_terminal_lock_risk` advisory、`recon_cue_used_count` 和 visual PNG advisory metadata。main/D6 若需要实际 JSONL/CSV sink，应在 runtime/D6 owned path 接入这些 D5 输出字段。
 - 已完成 D5 侧 multi-seed calibration readiness helper：`summarize_multiseed_calibration_readiness()` 对 `TerminalObservation` 和 `CrossViewAssociation` 做被动字段覆盖审计，输出每个 seed 的 `missing_required_fields`、`missing_recommended_fields`、source/backend counts、truth-label count、handoff/bbox-stability count 和 duplicate/friend conflict count。truth label 只作为离线 metadata 计数，不参与在线关联。
 - 已完成 D5 侧二级覆盖/漏斗诊断 helper：`summarize_secondary_visual_coverage_funnel()` 输出 `not_all_targets_visible`、`network_union_incomplete`、`no_global_binding`、`reacquire_not_grouped`、`stale_or_missing_recon_cue`、`projection_invalid`、`geometry_gate_rejected`、`stability_window_failed`、`secondary_detect_offline_only` 和 `registered_to_global_track` 断点计数，帮助 main/D4/D6 区分“二级相机看见了目标”“二级网络并集覆盖了目标”和“D5 已形成全局 ID 支持”。
@@ -532,16 +563,17 @@ P0 状态：无 P0 blocker。active reacquire 友方声明复检、detection cat
 
 剩余 P1：
 
+- 物理/长期标定：ComputerVision 10 seeds 已达到 `8/10` 合同验收，但 `control_allowed_count=0`；SimpleFlight 15 s 的 30 个 active pair 为 0 命中且 24 个 `terminal_detection_timeout`。先按“无 detection / D5 未锁定 / D7 gate 拒绝 / 闭合速度不足”分层定位，再做 90 s 量级、提高控制频率的真实多 seed 验收。
 - 二级节点几何/覆盖策略：60-case 当前网络同帧全目标覆盖率均值为 `0.0231`、平均覆盖率为 `0.7059`，`not_all_targets_visible` / `network_union_incomplete` 仍主导；继续调整高空侦察节点站位、look-at 扫描/子簇策略和 full-view 判据，目标是提升完整态势覆盖，而不是再证明投影或基础 registration 有效。
-- 真实 YOLOv8 + ByteTrack/BoT-SORT 多 seed：D5 adapter、真实库选择、fallback、离线 recall 和资源元数据已完成；剩余由 main 提供连续 AirSim RGB frame，按目标尺度、FOV、confidence、backend 和 CPU/GPU 环境跑多 seed，并由 D6 用 IDSW/IDF1、遮挡恢复、`locked_mismatch`、false handoff 与 `terminal_id_switch_count` 验收。
-- 外参漂移与时间同步：对 per-camera `K/R/t/dist_coeffs` 注入可控姿态/位置漂移，对 measurement/arrival timestamp 注入时延和抖动，统计重投影误差、马氏门控拒绝率、错误锁定率和恢复时间；必要时再引入离线 `solvePnP`/PnP RANSAC，不在 D5 内伪造同步后的真值位姿。
+- 真实 YOLOv8 + ByteTrack/BoT-SORT 多 seed：D5 adapter、真实库选择、fallback、离线 recall 和资源元数据已完成，AirSim RGB -> YOLOv8 -> tracker 的 6 episode x 2 帧最小链路也已 smoke；剩余是持续多帧、非零 accepted detection、native tracker ID 和真实多 seed 质量验收，并由 D6 用 IDSW/IDF1、遮挡恢复、`locked_mismatch`、false handoff 与 `terminal_id_switch_count` 评估。
+- 外参漂移与时间同步：P2 已完成合成扰动敏感性对照；P1 仍需针对真实 AirSim/replay 的 per-camera `K/R/t/dist_coeffs`、measurement/arrival timestamp 做多 seed 漂移与时延标定，统计重投影误差、马氏门控拒绝率、错误锁定率和恢复时间，不在 D5 内伪造同步后的真值位姿。
 - D4 逐决策 evidence：D5 frame-scoped DTO 和 D4 字段映射已完成；剩余 main/D4 在同一 decision tick 消费该 DTO，并记录 threshold version、stale rejection 和接管状态迁移。不得使用 episode 聚合值回填，也不得让 D5 直接触发降级。
 - 遮挡/交叉专项：构造同相机交叉、跨相机部分重叠、短时全遮挡和 local MOT ID 变化场景，验证恢复只能绑定当前 D3/D4 分配的既有 `global_track_id`；候选不唯一、友方重叠或稳定窗口不足时保持 `ambiguous/hold/reacquire`。
 - 友方身份真实 replay：至少接入一个 Remote ID/OpenDroneID、MAVLink signing、DDS Security 或 AprilTag replay adapter，统一为 `IdentityClaim`，验证 verified/stale/unverified/spoof-suspected 的保守决策和时间有效性；未知不等于敌方，任何身份线索不得绕过几何和 assignment gate。
 - 视觉接管边缘裕量校准：基于真实控制日志统计 bbox 到四条图像边界的归一化最小距离、连续 `bbox_near_image_edge` 帧、相机指向误差和 D5 handoff 到 D7 terminal gate 的拒绝原因；目标是减少重复 handoff 请求而不降低 D7 独立 camera/LOS/maneuver 安全门控。
-- 标定/`solvePnP`/外参增强：为 AirSim/replay 建立离线标定验证、PnP RANSAC、重投影误差阈值、外参 drift 告警和多相机 frame/timestamp 对齐检查；真实硬件级标定链仍可继续归入 P2。
+- 标定/`solvePnP`/外参增强：合成 OpenCV benchmark 已完成；下一步为真实 AirSim/replay 建立 PnP RANSAC、重投影误差阈值、外参 drift 告警和多相机 frame/timestamp 对齐检查，真实硬件级标定链仍可继续归入 P2。
 
-剩余 P2：
+剩余 P2（OpenCV 合成 calibration/`solvePnP` benchmark 已完成）：
 
 - 在真实图像链路后评估 BoT-SORT、Deep SORT 和 ReID 是否适合小型无人机图像；用 IDF1/IDSW、遮挡恢复和算力预算决定是否只保留 ByteTrack + 几何门控基线。
 - 在 P1 replay adapter 之后接入真实在线身份源、密钥/证书和白名单运维；未知、过期、伪造或校验失败只能降低可信度，不能升级为敌方或锁定目标。

@@ -4,7 +4,7 @@
 
 **范围**：基于 D1-D5、D7 六份 `M_TO_N` 专项报告，定义 D6 离线评估口径；不修改控制、分配、关联、导引或 AirSim 运行逻辑。
 
-**状态**：D6 日志合同、离线聚合、兼容 duplicate 判定和报告接线已实现；真实上游 M 对 N 写盘与 12 组合实验仍为 P1。当前一对一/N-pair 场景无新增 P0。D6 只消费落盘事件，truth 只用于离线评分。
+**状态**：D6 日志合同、离线聚合、兼容 duplicate 判定和报告接线已实现；当前无运行级 P0 blocker。CV 10-seed 已达到 8/10 T001 双 primary 合同验收，secondary/distributed executing 3/3 与 missing-ACK aborted 2/3 正负例均闭合；SimpleFlight 物理命中仍开放。py-motmetrics IDF1/MOTA/MOTP 已作为 P2 optional adapter 实现，HOTA unavailable。D6 只消费落盘事件，truth 只用于离线评分。
 
 ## 0. 2026-07-11 实现回填
 
@@ -14,7 +14,9 @@
 - 探测 POD/miss/FAR 同时要求 truth opportunity 与离线 match/miss 配对裁决；仅有 truth 列表且全部 track truthless 时为 `None/unavailable`，truthless center track 不自动计 false alarm。
 - 五类 `center_replan_*` 事件已接入 request/deduplicated/no-change/applied/expired、pending dwell 和 convergence time，并保留 request/target/coalition/risk/resolved-plan 审计字段。
 - 测试覆盖 3 个合法 cooperative lock、第四个非法、版本冲突、same-resource continuity、replan complete/expired/unavailable、shortfall、hybrid reserve 等待、simultaneous/sequential、缺证据三态、legacy 和 JSONL/report round-trip。
-- 尚未完成的是 D3/main/runtime 真实日志生产、M 对 N AirSim episode 和四路线 x 三中心层级多 seed 实验；这些不属于 D6 owned paths。
+- 中心正常 CV 10 seeds 中 8/10 形成 T001 双 primary 同帧锁与授权；全部 seed 为 IDSW=0、错误重复锁=0、control=0、physical unavailable。2 个未双锁 seed 保留为鲁棒性尾部样本。
+- 二级正例为 `secondary_plan_v2` active、secondary executing ACK 3/3；完全分布式正例为 peer executing ACK 3/3；missing-ACK 为 aborted ACK 2/3、D7 allowed=0。
+- SimpleFlight 10 seeds 每组均为 4 bindings、3 active + 1 standby，但 30 个 active pair 为 0 命中、24 detection timeout、6 timeout。15 s、`control_dt=0.5 s` 只构成诊断证据，不能宣称物理协同拦截已完成。
 
 ## 1. 结论
 
@@ -290,7 +292,7 @@ collision_or_constraint_violation_count
 | [TrackEval](https://github.com/JonathonLuiten/TrackEval) | MIT；公开 evaluator | CLEAR、HOTA、Identity 等标准 MOT 对照 | 需要 frame-level export、IoU/距离门限和遮挡规则；适合 D2/D5 P2 benchmark，不覆盖联盟/通信/安全 |
 | [py-motmetrics](https://github.com/cheind/py-motmetrics) | MIT；公开 Python MOT accumulator | CLEAR MOT、ID 指标和逐帧匹配核对 | 需稳定 accumulator 输入；可作为轻量备选，但不提供 HOTA、联盟或 covariance consistency 全链路 |
 
-至少优先选择 TrackEval 或 py-motmetrics 之一，再与 Stone Soup/OSPA 做互补对照。三者都不得进入在线总线或成为 D6 默认测试硬依赖。
+当前已选择 py-motmetrics 作为隔离式 P2 对照，输出 IDF1/MOTA/MOTP，HOTA unavailable。TrackEval 与 Stone Soup/OSPA 仍是后续可选互补 benchmark；这些外部工具都不得进入在线总线或成为 D6 默认测试硬依赖。
 
 ## 8. D6 可复用能力、P1 与 P2/P3
 
@@ -308,13 +310,13 @@ collision_or_constraint_violation_count
 2. 已实现 target/coalition/wave/member 聚合器和 unavailable/not-applicable/zero 三态。
 3. 已实现合法 coalition multiplicity 判定，以及 canonical duplicate、cross-node IDSW、common-information duplicate rejection、planned/authorized/erroneous lock、same-resource continuity 和 center replan lifecycle。
 4. 已接入 episode CSV、batch summary、Markdown 和 actual-scale 分组。
-5. 待完成项是上游真实日志、四路线 x 三中心层级 x 四类扰动的多 seed 实验，以及基于真实 evidence 的 paired 报告。
+5. 已完成 CV 10-seed T001 合同验收、二级/无中心 commit 正例和 missing-ACK 负例；SimpleFlight 当前只有 0/30 命中诊断，物理执行与完整四路线 x 三中心层级 x 四类扰动矩阵仍待完成。
 
 当前场景无新增 P0。D6 本地合同与聚合已完成；缺日志时只标 unavailable，不阻断现有 `k_j=1` 回归。
 
 ### 8.3 保留 P2/P3
 
-- P2 保持：frame-level export、TrackEval/py-motmetrics、Stone Soup、OSPA/GOSPA、HOTA/IDF1、bootstrap/非参数 CI 和必要时的 AirSim recording parser。
+- P2 状态：`msm-offline-mot-v1` 与 py-motmetrics IDF1/MOTA/MOTP adapter 已实现；TrackEval、Stone Soup、OSPA/GOSPA、HOTA、bootstrap/非参数 CI 和必要时的 AirSim recording parser 仍待实现。
 - P3 保持：仅在已有真实 schema/样例且 AirSim 无法回答实验问题时评估 SCRIMMAGE bridge。
 - 禁止项保持：D6 不接 live AirSim 控制，不把评估 truth 或后验标签回写在线链路。
 

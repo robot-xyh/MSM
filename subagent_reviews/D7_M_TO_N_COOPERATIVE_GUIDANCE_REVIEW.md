@@ -277,8 +277,11 @@ D4 正在 `request_center_replan/degrade_to_secondary/degrade_to_distributed` �
 - 每 pair 独立视觉 filter、terminal latch 和 D3/D4/D5 gate。
 - PN/Pure Pursuit/PNG VM/PNG TTC 单 pair 对照和 SimpleFlight 消费接口。
 - 中心化 coalition binding/runtime 字段，以及 primary/reserve/retry、wave、arrival window、activation 和 plan/track/coalition version gate。
-- D4 `coalition_fallback_unsupported`、hold/revoke、中心失效且无新原子联盟的保守阻断；replan/degrade/pending 继续阻断，no-change ack 转为 `continue_center` 后仍执行 D5 gate。
+- D4/main 已接入 fallback 原子 commit；D7 对 `committed|executing`、lease、epoch、版本和 required ACK 做 commit-aware gate。缺 ACK、`reconfiguring|aborted`、过期 lease、旧 epoch/version、replan/degrade/pending 均 fail closed，no-change ACK 转为 `continue_center` 后仍执行 D5 gate。
 - D5 coalition visual completion 与 D3/D5 plan/track/coalition version 的 fail-closed 门控；T001 两个 primary 独立切换、T002 k=1、standby reserve 和新版本 activation 回归。
+- main 已将 D5 coalition visual summary 接入 D7：当前 M=5/N=2 ComputerVision 10-seed 达到 8/10 双 primary 合同验收。历史基线 seeds 7/17/27 的 T002 4/5/4 帧、T001 双 primary 0 共识记录只作早期接线证据，不能替代当前结果，也不证明物理协同拦截。
+- D7 已实现 fallback 原子提交的被动消费 gate，D4/main 已完成 commit-aware 消息接线；二级接管、完全分布式和缺 ACK 故障注入分别验证 committed/executing 与 fail-closed。D7 仍不形成联盟、不选成员。
+- N/M binding topology helper 已接入 main AirSim 流程；当前 M=5/N=2 形成 T001 两个 active primary、一个 standby reserve，T002 一个 active primary，第五个资源未分配。
 
 未实现：
 
@@ -286,8 +289,8 @@ D4 正在 `request_center_replan/degrade_to_secondary/degrade_to_distributed` �
 - arrival window 已作为 gate 消费，但共同 time-to-go consensus 和 impact-time control 未实现。
 - leader/neighbor cooperative guidance message。
 - 成员间预测距离、终端扇区、impact-angle 和碰撞规避 gate。
-- coalition visual completion 从 D5 cross-view 到 main/D7 的真实 runtime 接线与多 seed 证据；D7 本地消费合同已实现。
-- 成员掉队、失联或 D5 未锁定后的联盟重构。
+- 物理协同拦截证据：同 topology 的 SimpleFlight 15 s 诊断中 30 个 active pair 为 0 命中，其中 24 个 `terminal_detection_timeout`；CV 8/10 不能关闭该缺口。
+- 成员掉队、失联或 D5 未锁定后的联盟重构由 D4/main 产生新 commit/version；D7 已能阻断 `reconfiguring/aborted`，但不自行重构联盟。
 
 ## 9. P0/P1 建议
 
@@ -300,11 +303,17 @@ D4 正在 `request_center_replan/degrade_to_secondary/degrade_to_distributed` �
 新增并保持以下研究缺口：
 
 1. 定义 cooperative guidance 与 independent multi-pair 的可测试边界。
-2. 保持已实现的 coalition/arrival-window/wave/role 合同；D7 只消费，不决定联盟，并由 main/D3/D4 完成实际跨模块接线。
+2. 保持已实现并接线的 coalition/arrival-window/wave/role/commit 合同；D7 只消费，不决定联盟。
 3. 建立同一目标 3 个成员的 point-mass 对照：独立 PN、同步 ITCG、序贯、混合。
 4. 增加终端扇区、最小成员距离、命令饱和和 FOV 丢失评价。
 5. 对通信时延、间歇通信、成员丢失和 leader/中心失效进行敏感性分析。
 6. 先使用独立实现和数值回归，不引入无许可证仓库。
+
+P1 当前聚焦物理闭环：先定位 15 s 诊断中 24 次末端检测超时和 0/30 命中的分层原因，再以更高控制频率和更长时限完成 PN/Pure Pursuit/PNG-VM/PNG-TTC 多 seed 对照。未激活 reserve 必须继续 standby，不能用 CV 合同验收替代物理命中证据。
+
+### P2 optional benchmark
+
+3D PN、True PN、APN、FRPN 的隔离式离线质点对照已实现，replay 只作为可选输入接口；不修改位置 PN 与 `png_guidance_delivery` VM/TTC 核心公式，也不进入默认 SimpleFlight runtime。当前 FRPN 是明确标记的鲁棒增益调度研究近似，不代表成熟 cooperative FRPN；该单拦截器 P2 benchmark 也不实现 coalition impact-time consensus。
 
 ## 10. 检索与访问说明
 

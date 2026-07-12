@@ -19,6 +19,13 @@ from .guidance_comparison import (
     compare_guidance_laws_same_seed,
 )
 from .main_bus import load_main_episode_bus_metric_files, load_main_episode_bus_metrics
+from .motmetrics_adapter import (
+    MOTMetricsResult,
+    OFFLINE_MOT_SCHEMA_VERSION,
+    OfflineMOTFrame,
+    evaluate_with_py_motmetrics,
+    load_offline_mot_frames,
+)
 from .metrics import (
     ArrivalRecord,
     AssignmentRecord,
@@ -72,6 +79,9 @@ __all__ = [
     "load_main_episode_bus_metric_files",
     "load_main_episode_bus_metrics",
     "MetricsCollector",
+    "MOTMetricsResult",
+    "OFFLINE_MOT_SCHEMA_VERSION",
+    "OfflineMOTFrame",
     "ReportGenerator",
     "ScenarioDefinition",
     "ScenarioLibrary",
@@ -88,4 +98,6 @@ __all__ = [
     "TrackRecord",
     "truth_summary_from_blocks_frames",
     "compare_guidance_laws_same_seed",
+    "evaluate_with_py_motmetrics",
+    "load_offline_mot_frames",
 ]

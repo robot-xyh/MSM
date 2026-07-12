@@ -195,7 +195,7 @@ def annotate_visual_png_handoff(
         "assignment_consistent": assignment_consistent,
         "duplicate_terminal_lock_risk": duplicate_terminal_lock_risk,
     }
-    return replace(association, metadata=metadata)
+    return replace(association, measurement_age_s=measurement_age_s, metadata=metadata)
 
 
 def bbox_area_stability(

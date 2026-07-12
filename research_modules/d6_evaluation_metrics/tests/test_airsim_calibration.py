@@ -19,6 +19,44 @@ from d6_evaluation_metrics import (
 )
 
 
+def test_airsim_calibration_preserves_coalition_and_terminal_funnel_metrics() -> None:
+    records = [
+        AirSimCalibrationRecord(
+            episode_id="seed-1",
+            seed=1,
+            scenario="m-to-n",
+            coalition_commit_count=1,
+            coalition_required_member_count=3,
+            coalition_acked_member_count=3,
+            coalition_member_ack_rate=1.0,
+            coalition_ack_latency_s=0.4,
+            distributed_coalition_commit_count=1,
+            contract_evaluated_count=4,
+            contract_allowed_count=3,
+            contract_allowed_rate=0.75,
+            control_evaluated_count=4,
+            control_allowed_count=2,
+            control_allowed_rate=0.5,
+            mode_switched_count=2,
+            physical_intercept_count=None,
+        )
+    ]
+
+    summary = summarize_airsim_calibration_records(records)[0]
+    aggregate = aggregate_cross_seed_airsim_calibration_records(records)
+
+    assert summary["coalition_commit_count"] == 1
+    assert summary["coalition_member_ack_rate_mean"] == 1.0
+    assert summary["contract_allowed_count"] == 3
+    assert summary["control_allowed_rate_mean"] == 0.5
+    assert summary["mode_switched_count"] == 2
+    assert summary["physical_intercept_count"] is None
+    by_metric = {row["metric"]: row for row in aggregate}
+    assert by_metric["distributed_coalition_commit_count"]["sum"] == 1.0
+    assert by_metric["contract_allowed_rate"]["mean"] == pytest.approx(0.75)
+    assert by_metric["physical_intercept_count"]["status"] == "unavailable"
+
+
 def test_airsim_calibration_summary_loads_d4d5_and_main_bus_outputs(
     tmp_path: Path,
 ) -> None:

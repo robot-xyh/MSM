@@ -278,7 +278,7 @@ python3 research_modules/airsim_runtime/run_blocks_sequence.py \
   --control-dt 0.1 \
   --intercept-speed 6.0 \
   --intercept-altitude-z -5.0 \
-  --intercept-radius 0.75 \
+  --intercept-radius 5.0 \
   --intercept-detection-timeout 5.0 \
   --blocks-arg=-windowed \
   --blocks-arg=-ResX=640 \
@@ -307,7 +307,7 @@ python3 research_modules/airsim_runtime/run_blocks_sequence.py \
   --control-dt 0.1 \
   --intercept-speed 6.0 \
   --intercept-altitude-z -5.0 \
-  --intercept-radius 0.75 \
+  --intercept-radius 5.0 \
   --intercept-terminal-range 8.0 \
   --intercept-detection-timeout 5.0 \
   --intercept-yaw-mode look_at_target \
@@ -326,11 +326,14 @@ The 5v5 run writes `P1_5V5_INTERCEPT_AIRSIM_REPORT_20260703.md` in the
 sequence output directory. Each pair owns an independent D7 visual filter; do
 not share terminal PNG state across interceptors.
 
-The default detection timeout is conservative (`1.0s`). For the first Blocks
-impact-style validation, `5.0s` keeps the controller committed after terminal
-lock even if AirSim's built-in detector briefly loses the close target. The
-example uses `-5m` NED altitude to keep the intercept path above Blocks scene
-obstacles; read-only actor runs still default to `-2m`.
+`--intercept-radius` is a NED three-dimensional Euclidean threshold and is
+inclusive; the default `5.0m` produces `range_intercept`, while an assigned
+collision remains `collision_intercept`. The detection timeout now applies to
+initial terminal acquisition only. After a valid visual handoff, D7 handles a
+brief loss with image-KF prediction and bounded command coast; expiry is logged
+as `terminal_visual_lost_after_coast`. The example uses `-5m` NED altitude to
+keep the intercept path above Blocks scene obstacles; read-only actor runs
+still default to `-2m`.
 
 Default sequence order:
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -407,6 +408,252 @@ def test_t001_primary_blocks_d5_coalition_version_conflict() -> None:
     assert decision.coalition_gate_allowed is False
 
 
+@pytest.mark.parametrize("commit_state", ["committed", "executing"])
+def test_fallback_commit_allows_both_acked_primaries(
+    commit_state: str,
+) -> None:
+    bindings = [
+        _coalition_binding(resource_id=resource_id, role="primary", wave_id=0)
+        for resource_id in ("R1", "R2")
+    ]
+    permission = _fallback_permission(bindings[0], state=commit_state)
+    outputs = [
+        D7RuntimeBus(_config()).evaluate_pair(
+            _pair_input(
+                binding,
+                timestamp_s=1.1,
+                half_size=40.0,
+                d4_permission=permission,
+            )
+        )
+        for binding in bindings
+    ]
+    summary = summarize_runtime_bus_outputs(outputs)
+
+    assert all(row.terminal_contract_allowed for row in outputs)
+    assert all(row.coalition_commit_gate_allowed is True for row in outputs)
+    assert all(row.coalition_resource_required is True for row in outputs)
+    assert all(row.coalition_resource_acked is True for row in outputs)
+    assert summary["coalition_commit_gate_applicable_count"] == 2
+    assert summary["coalition_commit_gate_allowed_count"] == 2
+    assert summary["coalition_commit_gate_reject_reasons"] == {}
+    assert summary["coalition_commit_state_counts"] == {commit_state: 2}
+
+
+def test_fallback_standby_reserve_remains_blocked_even_when_acked() -> None:
+    reserve = _coalition_binding(
+        resource_id="R3",
+        role="reserve",
+        wave_id=1,
+        activation_state="standby",
+        arrival_window=(1.0, 2.0),
+    )
+    output = D7RuntimeBus(_config()).evaluate_pair(
+        _pair_input(
+            reserve,
+            timestamp_s=1.1,
+            half_size=40.0,
+            d4_permission=_fallback_permission(
+                reserve,
+                required=("R1", "R2", "R3"),
+                acked=("R1", "R2", "R3"),
+            ),
+        )
+    )
+
+    assert output.terminal_contract_allowed is False
+    assert output.visual_png_enabled is False
+    assert output.terminal_contract_reject_reason == "coalition_not_activated"
+
+
+def test_fallback_missing_ack_blocks_all_required_members() -> None:
+    r1 = _coalition_binding(resource_id="R1", role="primary", wave_id=0)
+    r2 = _coalition_binding(resource_id="R2", role="primary", wave_id=0)
+    permission = _fallback_permission(r1, acked=("R1",))
+
+    r1_decision = evaluate_terminal_png_contract(
+        binding=r1,
+        d4_permission=permission,
+        terminal_association=_terminal_association(r1),
+        timestamp_s=1.1,
+        resource_id="R1",
+    )
+    r2_decision = evaluate_terminal_png_contract(
+        binding=r2,
+        d4_permission=permission,
+        terminal_association=_terminal_association(r2),
+        timestamp_s=1.1,
+        resource_id="R2",
+    )
+
+    assert r1_decision.reject_reason == "coalition_required_ack_incomplete"
+    assert r2_decision.reject_reason == "coalition_member_ack_missing"
+
+
+def test_fallback_rejects_old_epoch_and_expired_lease() -> None:
+    binding = _coalition_binding(resource_id="R1", role="primary", wave_id=0)
+    old_epoch = _fallback_permission(binding, epoch=binding.coalition_epoch - 1)
+    expired = _fallback_permission(binding, lease_expires_at_s=1.0)
+
+    old_epoch_decision = evaluate_terminal_png_contract(
+        binding=binding,
+        d4_permission=old_epoch,
+        terminal_association=_terminal_association(binding),
+        timestamp_s=1.1,
+        resource_id="R1",
+    )
+    expired_decision = evaluate_terminal_png_contract(
+        binding=binding,
+        d4_permission=expired,
+        terminal_association=_terminal_association(binding),
+        timestamp_s=1.1,
+        resource_id="R1",
+    )
+
+    assert old_epoch_decision.reject_reason == "coalition_epoch_mismatch"
+    assert expired_decision.reject_reason == "coalition_commit_lease_expired"
+
+
+def test_fallback_without_commit_state_fails_closed() -> None:
+    binding = _coalition_binding(resource_id="R1", role="primary", wave_id=0)
+    permission = SimpleNamespace(
+        action="continue_center",
+        mode="center_failed",
+        center_available=False,
+        target_node_id=binding.owner_node_id,
+    )
+    decision = evaluate_terminal_png_contract(
+        binding=binding,
+        d4_permission=permission,
+        terminal_association=_terminal_association(binding),
+        timestamp_s=1.1,
+        resource_id="R1",
+    )
+
+    assert decision.reject_reason == "coalition_commit_state_missing"
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "reason"),
+    [
+        ("plan_version", 6, "coalition_commit_plan_mismatch"),
+        ("coalition_version", 0, "coalition_commit_coalition_mismatch"),
+    ],
+)
+def test_fallback_rejects_commit_plan_or_coalition_version_mismatch(
+    field: str,
+    value: int,
+    reason: str,
+) -> None:
+    binding = _coalition_binding(resource_id="R1", role="primary", wave_id=0)
+    permission = _fallback_permission(binding)
+    setattr(permission.commit_state, field, value)
+    decision = evaluate_terminal_png_contract(
+        binding=binding,
+        d4_permission=permission,
+        terminal_association=_terminal_association(binding),
+        timestamp_s=1.1,
+        resource_id="R1",
+    )
+
+    assert decision.reject_reason == reason
+
+
+@pytest.mark.parametrize(
+    ("state", "reason"),
+    [
+        ("reconfiguring", "coalition_commit_reconfiguring"),
+        ("aborted", "coalition_commit_aborted"),
+    ],
+)
+def test_fallback_rejects_non_executable_commit_states(
+    state: str,
+    reason: str,
+) -> None:
+    binding = _coalition_binding(resource_id="R1", role="primary", wave_id=0)
+    decision = evaluate_terminal_png_contract(
+        binding=binding,
+        d4_permission=_fallback_permission(binding, state=state),
+        terminal_association=_terminal_association(binding),
+        timestamp_s=1.1,
+        resource_id="R1",
+    )
+
+    assert decision.allowed is False
+    assert decision.reject_reason == reason
+    assert decision.coalition_commit_gate_allowed is False
+
+
+def test_fallback_d4_pending_precedes_committed_coalition() -> None:
+    binding = _coalition_binding(resource_id="R1", role="primary", wave_id=0)
+    permission = _fallback_permission(binding)
+    permission.action = "degrade_to_distributed"
+    permission.mode = "pending"
+    decision = evaluate_terminal_png_contract(
+        binding=binding,
+        d4_permission=permission,
+        terminal_association=_terminal_association(binding),
+        timestamp_s=1.1,
+        resource_id="R1",
+    )
+
+    assert decision.reject_reason == "d4_reassign_pending"
+
+
+def test_fallback_committed_coalition_still_requires_d5_visual_completion() -> None:
+    binding = _coalition_binding(resource_id="R1", role="primary", wave_id=0)
+    terminal = {
+        **_terminal_association(binding),
+        "coalition_visual_complete": False,
+        "support_count": 1,
+    }
+    decision = evaluate_terminal_png_contract(
+        binding=binding,
+        d4_permission=_fallback_permission(binding),
+        terminal_association=terminal,
+        timestamp_s=1.1,
+        resource_id="R1",
+    )
+
+    assert decision.reject_reason == "coalition_visual_incomplete"
+    assert decision.coalition_commit_gate_allowed is True
+
+
+def test_center_failed_k1_without_coalition_does_not_require_commit_state() -> None:
+    binding = AssignmentGuidanceBinding(
+        plan_id="plan-k1-fallback",
+        plan_version=2,
+        owner_node_id="peer-R1",
+        resource_id="R1",
+        vehicle_name="Interceptor_R1",
+        assigned_global_track_id="G1",
+        track_version=5,
+        authorization_state="approved",
+    )
+    terminal = {
+        "assigned_global_track_id": "G1",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 5,
+    }
+    permission = SimpleNamespace(
+        action="continue_center",
+        mode="center_failed",
+        center_available=False,
+        target_node_id="peer-R1",
+    )
+    decision = evaluate_terminal_png_contract(
+        binding=binding,
+        d4_permission=permission,
+        terminal_association=terminal,
+        timestamp_s=1.1,
+        resource_id="R1",
+    )
+
+    assert decision.allowed is True
+    assert decision.coalition_commit_gate_applicable is False
+
+
 def _coalition_binding(
     *,
     resource_id: str,
@@ -427,6 +674,7 @@ def _coalition_binding(
         authorization_state="approved",
         coalition_id="coalition-G1",
         coalition_version=1,
+        coalition_epoch=4,
         member_role=role,
         wave_id=wave_id,
         coordination_mode="hybrid",
@@ -474,6 +722,39 @@ def _permission(binding: AssignmentGuidanceBinding) -> D4GuidancePermission:
     )
 
 
+def _fallback_permission(
+    binding: AssignmentGuidanceBinding,
+    *,
+    state: str = "committed",
+    epoch: int | None = None,
+    lease_expires_at_s: float = 2.0,
+    required: tuple[str, ...] = ("R1", "R2"),
+    acked: tuple[str, ...] = ("R1", "R2"),
+) -> SimpleNamespace:
+    commit_state = SimpleNamespace(
+        state=state,
+        epoch=binding.coalition_epoch if epoch is None else epoch,
+        lease_expires_at_s=lease_expires_at_s,
+        required_members=tuple(SimpleNamespace(resource_id=item) for item in required),
+        acked_members=tuple(SimpleNamespace(resource_id=item) for item in acked),
+        plan_id=binding.plan_id,
+        plan_version=binding.plan_version,
+        coalition_id=binding.coalition_id,
+        coalition_version=binding.coalition_version,
+    )
+    return SimpleNamespace(
+        action="continue_center",
+        mode="center_failed",
+        reason="distributed_fallback_committed",
+        target_node_id=binding.owner_node_id,
+        new_plan_id=binding.plan_id,
+        new_plan_version=binding.plan_version,
+        center_available=False,
+        atomic_coalition_formed=True,
+        commit_state=commit_state,
+    )
+
+
 def _terminal_association(binding: AssignmentGuidanceBinding) -> dict[str, object]:
     return {
         "resource_id": binding.resource_id,
@@ -497,7 +778,7 @@ def _pair_input(
     *,
     timestamp_s: float,
     half_size: float,
-    d4_permission: D4GuidancePermission | None = None,
+    d4_permission: object | None = None,
     terminal_association: dict[str, object] | None = None,
 ) -> D7RuntimePairInput:
     return D7RuntimePairInput(

@@ -29,6 +29,12 @@ from airsim_runtime.adapters import (
 from airsim_runtime.blocks import BlocksProcessManager
 from airsim_runtime.d4d5_stress import run_d4d5_stress_analysis
 from airsim_runtime.episode_bus import MainAirSimEpisodeBus, run_main_episode_bus
+from airsim_runtime.intercept import (
+    InterceptPair,
+    _assigned_detection,
+    _initial_pairs,
+    _intercept_success_semantics,
+)
 from airsim_runtime.models import (
     BlocksActorTargetSpec,
     BlocksEpisodeSpec,
@@ -44,7 +50,10 @@ from airsim_runtime.models import (
     write_dynamic_computer_vision_settings,
     write_dynamic_multirotor_settings,
 )
-from airsim_runtime.orchestrator import AirSimBlocksSmokeOrchestrator
+from airsim_runtime.orchestrator import (
+    AirSimBlocksSmokeOrchestrator,
+    _apply_episode_health_injection,
+)
 from airsim_runtime.real_runtime import RealAirSimRuntimeClient
 from airsim_runtime.run_blocks_sequence import (
     _build_sequence_run,
@@ -229,6 +238,79 @@ def test_cli_defaults_to_one_discarded_detection_warmup_frame(monkeypatch) -> No
     args = parse_args()
 
     assert args.detection_warmup_frames == 1
+
+
+def test_cli_builds_distributed_health_and_coalition_fault_metadata(monkeypatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--cv-5v5",
+            "--c2-health-mode",
+            "fully_distributed",
+            "--center-failure-time",
+            "0.5",
+            "--secondary-failure-time",
+            "1.5",
+            "--coalition-commit-fault",
+            "missing_ack",
+        ],
+    )
+
+    args = parse_args()
+    config, _, _ = _build_sequence_run(args, seed=7, sequence_id=args.sequence_id)
+
+    assert config.metadata["c2_health_mode"] == "fully_distributed"
+    assert config.metadata["center_failure_time_s"] == pytest.approx(0.5)
+    assert config.metadata["secondary_failure_time_s"] == pytest.approx(1.5)
+    assert config.metadata["coalition_commit_fault"] == "missing_ack"
+
+
+def test_episode_health_injection_preserves_measurements_and_applies_timeline() -> None:
+    frames = [
+        _sample_5v5_frame(timestamp=float(index) * 0.5, frame_index=index)
+        for index in range(5)
+    ]
+    config = BlocksSmokeConfig(
+        duration_s=2.0,
+        dt_s=0.5,
+        metadata={
+            "c2_health_mode": "fully_distributed",
+            "center_failure_time_s": 0.5,
+            "secondary_failure_time_s": 1.5,
+            "coalition_commit_fault": "partition",
+        },
+    )
+
+    injected = _apply_episode_health_injection(frames, config)
+
+    assert [frame.center_node_alive for frame in injected] == [True, False, False, False, False]
+    assert [frame.secondary_nodes_alive for frame in injected] == [True, True, True, False, False]
+    assert injected[-1].metadata["coalition_commit_fault"] == "partition"
+    assert injected[-1].truth_objects == frames[-1].truth_objects
+    assert injected[-1].visual_detections == frames[-1].visual_detections
+
+
+def test_cli_rejects_secondary_failure_before_center_failure(monkeypatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--cv-5v5",
+            "--c2-health-mode",
+            "fully_distributed",
+            "--center-failure-time",
+            "2.0",
+            "--secondary-failure-time",
+            "1.0",
+        ],
+    )
+
+    args = parse_args()
+    with pytest.raises(SystemExit, match="must not precede"):
+        _build_sequence_run(args, seed=7, sequence_id=args.sequence_id)
 
 
 def test_dynamic_n_settings_files_match_requested_vehicle_count(tmp_path: Path) -> None:
@@ -1963,6 +2045,23 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
     assert result.frame_count == 3
     for path in result.output_paths.values():
         assert path.exists()
+    governed_replay = json.loads(
+        result.output_paths["d1_governed_replay_json"].read_text(encoding="utf-8")
+    )
+    assert governed_replay["manifest"]["schema_version"] == (
+        "d1.governed_replay_manifest.v1"
+    )
+    assert governed_replay["manifest"]["truth_policy"]["online"] == "stripped"
+    assert governed_replay["manifest"]["observation_count"] > 0
+    assert all("truth_id" not in record for record in governed_replay["records"])
+    offline_truth_rows = [
+        json.loads(line)
+        for line in result.output_paths["d2_offline_truth_labels_jsonl"]
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert len(offline_truth_rows) == 15
+    assert all(row["schema_version"] == "d2-offline-truth-label/v1" for row in offline_truth_rows)
     collector, truth_summary = load_episode_log_jsonl(
         result.output_paths["main_episode_bus_jsonl"]
     )
@@ -2137,35 +2236,238 @@ def test_main_episode_bus_runs_centralized_m5_n2_coalition_without_pair_collapse
         for event in bus.collector.event_records
         if event.event_type.startswith("center_replan_")
     ]
-    assert sum(
-        event.event_type == "center_replan_request_created"
-        for event in replan_events
-    ) == 2
-    assert sum(
-        event.event_type == "center_replan_ack_no_change"
-        for event in replan_events
-    ) == 2
-    assert {
-        event.metadata["resolved_plan_version"]
-        for event in replan_events
-        if event.event_type == "center_replan_ack_no_change"
-    } == {1}
+    assert replan_events == []
 
     failed_frame = replace(
         _sample_m5_n2_frame(timestamp=1.5, frame_index=3),
         center_node_alive=False,
         secondary_nodes_alive=False,
     )
-    bus.process_frame(failed_frame)
-    coalition_holds = [
+    failed_tick = bus.process_frame(failed_frame)
+    commit = failed_tick.d4["coalition_commits"]["T001"]
+    assert commit["state"] == "executing"
+    assert set(commit["acked_member_ids"]) == set(commit["required_member_ids"])
+    coalition_commit_events = [
         event
         for event in bus.collector.event_records
-        if event.metadata.get("coalition_required")
-        and event.metadata.get("coalition_safety_reason")
-        == "coalition_fallback_unsupported"
+        if event.event_type == "d4_coalition_commit_state"
+        and event.metadata.get("global_track_id") == "T001"
     ]
-    assert coalition_holds
-    assert all(event.metadata["d4_action"] == "hold_for_review" for event in coalition_holds)
+    assert coalition_commit_events
+    assert coalition_commit_events[-1].metadata["atomic_coalition_formed"] is True
+
+
+def test_main_episode_bus_fails_closed_when_distributed_coalition_ack_missing() -> None:
+    resources = tuple(f"Interceptor{index}" for index in range(1, 6))
+    config = BlocksSmokeConfig(
+        episode_id="pytest_main_bus_m5_n2_missing_ack",
+        scenario_name="blocks_cv_m5_n2",
+        duration_s=2.0,
+        dt_s=0.5,
+        launch_blocks=False,
+        resource_vehicle_names=resources,
+        camera_vehicle_names=resources,
+        target_vehicle_names=(),
+        cooperative_demand_enabled=True,
+        cooperative_high_threat_target_count=1,
+        high_threat_required_resource_count=3,
+        cooperative_coordination_mode="hybrid",
+        cooperative_primary_count=2,
+    )
+    bus = MainAirSimEpisodeBus(config)
+    for index in range(3):
+        bus.process_frame(
+            _sample_m5_n2_frame(timestamp=float(index) * 0.5, frame_index=index)
+        )
+    failed = _sample_m5_n2_frame(timestamp=1.5, frame_index=3)
+    failed = replace(
+        failed,
+        center_node_alive=False,
+        secondary_nodes_alive=False,
+        metadata={**failed.metadata, "coalition_commit_fault": "missing_ack"},
+    )
+
+    tick = bus.process_frame(failed)
+
+    commit = tick.d4["coalition_commits"]["T001"]
+    assert commit["state"] == "aborted"
+    assert commit["reason"] == "missing_required_acks"
+    assert len(commit["acked_member_ids"]) < len(commit["required_member_ids"])
+    assert any(
+        event.metadata.get("coalition_safety_reason")
+        == "coalition_fallback_unsupported"
+        for event in bus.collector.event_records
+    )
+
+
+def test_simpleflight_cooperative_initial_pairs_use_d7_m_to_n_topology() -> None:
+    frame = _sample_m5_n2_frame(timestamp=0.0, frame_index=0)
+    config = BlocksSmokeConfig(
+        cooperative_demand_enabled=True,
+        cooperative_high_threat_target_count=1,
+        high_threat_required_resource_count=3,
+        cooperative_coordination_mode="hybrid",
+        cooperative_primary_count=2,
+        intercept_max_duration_s=90.0,
+    )
+
+    pairs = _initial_pairs(frame, config)
+
+    assert len(pairs) == 4
+    high_threat = [pair for pair in pairs if pair.target_id == "TGT-001"]
+    assert [(pair.member_role, pair.activation_state) for pair in high_threat] == [
+        ("primary", "active"),
+        ("primary", "active"),
+        ("reserve", "standby"),
+    ]
+    assert sum(pair.active for pair in high_threat) == 2
+    assert pairs[-1].target_id == "TGT-002"
+    assert pairs[-1].member_role == "primary"
+
+
+def test_range_intercept_semantics_are_pair_target_and_coalition_separated() -> None:
+    pairs = [
+        InterceptPair(
+            resource_id="INT-01",
+            vehicle_name="Interceptor1",
+            target_id="TGT-001",
+            status="range_intercept",
+            active=False,
+            member_role="primary",
+            activation_state="active",
+        ),
+        InterceptPair(
+            resource_id="INT-02",
+            vehicle_name="Interceptor2",
+            target_id="TGT-001",
+            status="timeout",
+            active=False,
+            member_role="primary",
+            activation_state="active",
+        ),
+        InterceptPair(
+            resource_id="INT-03",
+            vehicle_name="Interceptor3",
+            target_id="TGT-001",
+            status="standby",
+            active=False,
+            member_role="reserve",
+            activation_state="standby",
+        ),
+    ]
+
+    semantics = _intercept_success_semantics(BlocksSmokeConfig(), pairs)
+
+    assert semantics["range_threshold_m"] == pytest.approx(5.0)
+    assert semantics["pair_physical_success_count"] == 1
+    assert semantics["pair_physical_opportunity_count"] == 2
+    assert semantics["target_intercept_success_count"] == 1
+    assert semantics["target_intercept_opportunity_count"] == 1
+    assert semantics["coalition_completion_count"] == 0
+    assert semantics["coalition_opportunity_count"] == 1
+
+
+@pytest.mark.parametrize(
+    ("vertical_separation_m", "expected_status"),
+    ((5.0, "range_intercept"), (5.001, "timeout")),
+)
+def test_simpleflight_range_success_uses_inclusive_3d_ned_distance(
+    tmp_path: Path,
+    vertical_separation_m: float,
+    expected_status: str,
+) -> None:
+    class VerticalRangeRuntime(FakeBlocksRuntime):
+        def sample_frame(self, config, frame_index, timestamp, output_dir):
+            frame = _sample_frame(timestamp=timestamp, frame_index=frame_index)
+            target = replace(
+                frame.truth_objects[0],
+                position_ned=(0.0, 0.0, -2.0 - vertical_separation_m),
+            )
+            return replace(frame, truth_objects=(target,), visual_detections=())
+
+    config = BlocksSmokeConfig(
+        episode_id=f"pytest_range_{vertical_separation_m}",
+        output_root=tmp_path,
+        launch_blocks=False,
+        include_integrated_pipeline=False,
+        execute_intercept=True,
+        intercept_max_duration_s=0.0,
+        intercept_radius_m=5.0,
+    )
+
+    result = AirSimBlocksSmokeOrchestrator(runtime=VerticalRangeRuntime()).run(config)
+
+    assert result.metadata["intercept"]["pairs"][0]["status"] == expected_status
+
+
+def test_controlled_detection_selection_uses_anonymous_local_track_not_truth_id() -> None:
+    frame = _sample_frame()
+    detection = frame.visual_detections[0]
+    permuted = replace(detection, object_id="WRONG-OFFLINE-TRUTH-ID")
+    frame = replace(frame, visual_detections=(permuted,))
+    pair = InterceptPair(
+        resource_id="INT-01",
+        vehicle_name="Interceptor",
+        target_id="TGT-001",
+        terminal_association={
+            "assigned_global_track_id": "G-TRACK-01",
+            "local_track_id": detection.local_track_id,
+            "decision_state": "locked",
+        },
+    )
+
+    selected = _assigned_detection(frame, pair)
+
+    assert selected is permuted
+    assert selected.object_id != pair.target_id
+
+
+@pytest.mark.parametrize(
+    "fault",
+    (
+        "stale_epoch",
+        "expired_lease",
+        "partition",
+        "digest_conflict",
+        "member_cannot_execute",
+    ),
+)
+def test_main_episode_bus_distributed_coalition_faults_fail_closed(fault: str) -> None:
+    resources = tuple(f"Interceptor{index}" for index in range(1, 6))
+    config = BlocksSmokeConfig(
+        episode_id=f"pytest_main_bus_m5_n2_{fault}",
+        scenario_name="blocks_cv_m5_n2",
+        duration_s=2.0,
+        dt_s=0.5,
+        launch_blocks=False,
+        resource_vehicle_names=resources,
+        camera_vehicle_names=resources,
+        target_vehicle_names=(),
+        cooperative_demand_enabled=True,
+        cooperative_high_threat_target_count=1,
+        high_threat_required_resource_count=3,
+        cooperative_coordination_mode="hybrid",
+        cooperative_primary_count=2,
+    )
+    bus = MainAirSimEpisodeBus(config)
+    for index in range(3):
+        bus.process_frame(
+            _sample_m5_n2_frame(timestamp=float(index) * 0.5, frame_index=index)
+        )
+    failed = _sample_m5_n2_frame(timestamp=1.5, frame_index=3)
+    failed = replace(
+        failed,
+        center_node_alive=False,
+        secondary_nodes_alive=False,
+        metadata={**failed.metadata, "coalition_commit_fault": fault},
+    )
+
+    tick = bus.process_frame(failed)
+
+    commit = tick.d4["coalition_commits"]["T001"]
+    assert commit["state"] != "executing"
+    assert commit["state"] != "committed"
+    assert tick.d7["runtime_bus"]["coalition_commit_gate_allowed_count"] == 0
 
 
 def test_main_episode_bus_retains_current_plan_after_stale_rejection(
@@ -2258,11 +2560,14 @@ def test_main_episode_bus_exports_replan_and_truth_availability_metrics(
     assert metrics["detection_probability"] is None
     assert metrics["missed_detection_rate"] is None
     assert metrics["false_alarm_rate"] is None
-    assert metrics["replan_request_count"] == 2
-    assert metrics["replan_no_change_ack_count"] == 2
-    assert metrics["replan_applied_count"] == 0
-    assert metrics["replan_pending_dwell_s"] == pytest.approx(1.0)
-    assert metrics["replan_convergence_time_s"] == pytest.approx(0.5)
+    assert metrics["replan_request_count"] is None
+    assert metrics["replan_no_change_ack_count"] is None
+    assert metrics["replan_applied_count"] is None
+    assert metrics["replan_pending_dwell_s"] is None
+    assert metrics["replan_convergence_time_s"] is None
+    assert metrics["metric_availability"]["replan_request_count"]["status"] == (
+        "unavailable"
+    )
     assert metrics["metric_availability"]["detection_probability"]["status"] == (
         "unavailable"
     )
@@ -2317,7 +2622,7 @@ def test_main_episode_bus_records_failed_outcome_on_module_exception(
 
 def test_main_episode_bus_marks_secondary_takeover_plan_for_d7(tmp_path: Path) -> None:
     resources = tuple(f"Interceptor{index}" for index in range(1, 6))
-    secondary_names = ("SEC-NORTH", "SEC-SOUTH")
+    secondary_names = ("Secondary_Recon_1", "Secondary_Recon_2")
     frames = []
     for index in range(6):
         frame = _sample_5v5_frame(timestamp=float(index) * 0.5, frame_index=index)
@@ -2546,12 +2851,24 @@ def test_blocks_orchestrator_runs_mock_controlled_intercept(tmp_path: Path) -> N
     summary = json.loads(result.output_paths["intercept_summary"].read_text(encoding="utf-8"))
     assert summary["control_api_used"] is True
     assert summary["pair_count"] == 1
+    assert summary["parameters"]["intercept_radius_m"] == pytest.approx(5.0)
+    assert summary["parameters"]["intercept_distance_dimension"] == "3d_euclidean"
+    assert summary["success_semantics"]["criteria_version"] == "airsim-range-intercept-v2"
     assert result.metadata["main_episode_bus"]["execution_metrics_merged"] is True
     assert result.output_paths["main_episode_bus_contract_metrics_json"].exists()
     bus_metrics = json.loads(
         result.output_paths["main_episode_bus_metrics_json"].read_text(encoding="utf-8")
     )
     assert bus_metrics["metrics"]["intercept_success_count"] == summary["success_count"]
+    assert (
+        bus_metrics["metrics"]["pair_physical_success_count"]
+        == summary["success_semantics"]["pair_physical_success_count"]
+    )
+    assert (
+        bus_metrics["metrics"]["target_intercept_success_count"]
+        == summary["success_semantics"]["target_intercept_success_count"]
+    )
+    assert bus_metrics["metrics"]["truth_identity_online_use_count"] == 0
     assert bus_metrics["metrics"]["metadata"]["main_episode_bus_execution_metrics_merged"] is True
     commands = result.output_paths["control_commands"].read_text(encoding="utf-8")
     assert "guidance_law" in commands
@@ -2693,6 +3010,61 @@ def test_controlled_5v5_active_center_replan_visual_png(tmp_path: Path) -> None:
     assert metrics["terminal_lock_count"] >= 1
     assert metrics["visual_png_switch_count"] >= 1
     assert "center_plan_v2" in metrics["metadata"]["plan_ids"]
+
+
+def test_controlled_intercept_uses_bounded_d7_coast_after_detect_loss(
+    tmp_path: Path,
+) -> None:
+    resources = tuple(f"Interceptor{index}" for index in range(1, 6))
+
+    class DetectThenLoseRuntime(FiveVFiveFakeBlocksRuntime):
+        def sample_frame(self, config, frame_index, timestamp, output_dir):
+            frame = super().sample_frame(config, frame_index, timestamp, output_dir)
+            if frame_index >= 3:
+                frame = replace(frame, visual_detections=())
+            return frame
+
+    config = BlocksSmokeConfig(
+        episode_id="pytest_bounded_terminal_coast",
+        scenario_name="blocks_actor_5v5_terminal_coast",
+        output_root=tmp_path,
+        launch_blocks=False,
+        include_integrated_pipeline=True,
+        execute_intercept=True,
+        control_dt_s=0.1,
+        intercept_max_duration_s=0.9,
+        intercept_terminal_switch_range_m=100.0,
+        intercept_min_bbox_area_ratio=0.001,
+        intercept_min_stable_detection_frames=1,
+        intercept_yaw_mode="look_at_target",
+        camera_vehicle_name=resources[0],
+        camera_vehicle_names=resources,
+        lidar_vehicle_name=resources[0],
+        lidar_vehicle_names=resources,
+        target_vehicle_names=(),
+        resource_vehicle_names=resources,
+        target_actor_specs=default_5v5_actor_target_specs(target_z=-5.0),
+        metadata={
+            "active_center_replan_visual_png": True,
+            "active_degradation_time_s": 0.0,
+            "center_replan_time_s": 0.0,
+            "center_node_id": "C2",
+        },
+    )
+
+    result = AirSimBlocksSmokeOrchestrator(runtime=DetectThenLoseRuntime()).run(config)
+    with result.output_paths["control_commands"].open(encoding="utf-8", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+
+    states = {row["terminal_delivery_state"] for row in rows}
+    reasons = {row["terminal_delivery_reason"] for row in rows}
+    assert "image_kf_predict" in states
+    assert "blind_push" in states
+    assert "expired" in states
+    assert "terminal_visual_lost_after_coast" in reasons
+    assert "terminal_detection_timeout" not in {
+        row["abort_reason"] for row in rows
+    }
 
 
 def test_controlled_2v2_active_degradation_secondary_plan_visual_png(

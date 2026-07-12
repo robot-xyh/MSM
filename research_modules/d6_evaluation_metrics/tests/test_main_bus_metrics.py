@@ -34,6 +34,17 @@ def test_load_main_episode_bus_metrics_preserves_execution_scope_and_metadata(
                     "unnecessary_active_degradation_count": 1,
                     "terminal_lock_count": 2,
                     "visual_png_switch_count": 1,
+                    "coalition_commit_count": 1,
+                    "coalition_member_ack_rate": 1.0,
+                    "distributed_coalition_commit_count": 1,
+                    "contract_evaluated_count": 3,
+                    "contract_allowed_count": 2,
+                    "contract_allowed_rate": 2 / 3,
+                    "control_evaluated_count": 3,
+                    "control_allowed_count": 1,
+                    "control_allowed_rate": 1 / 3,
+                    "mode_switched_count": 1,
+                    "physical_intercept_count": 1,
                     "intercept_success_count": 1,
                     "collision_intercept_count": 1,
                     "range_intercept_count": 0,
@@ -88,6 +99,15 @@ def test_load_main_episode_bus_metrics_preserves_execution_scope_and_metadata(
     assert metrics.unnecessary_active_degradation_count == 1
     assert metrics.terminal_lock_count == 2
     assert metrics.visual_png_switch_count == 1
+    assert metrics.coalition_commit_count == 1
+    assert metrics.coalition_member_ack_rate == 1.0
+    assert metrics.distributed_coalition_commit_count == 1
+    assert metrics.contract_allowed_count == 2
+    assert metrics.contract_allowed_rate == pytest.approx(2 / 3)
+    assert metrics.control_allowed_count == 1
+    assert metrics.control_allowed_rate == pytest.approx(1 / 3)
+    assert metrics.mode_switched_count == 1
+    assert metrics.physical_intercept_count == 1
     assert metrics.intercept_success_count == 1
     assert metrics.secondary_network_joint_full_view_frame_rate == pytest.approx(0.75)
     assert metrics.secondary_network_mean_coverage_ratio == pytest.approx(0.8)

@@ -17,12 +17,19 @@ from typing import Any, Iterable, Mapping
 import numpy as np
 
 from airsim_dryrun.models import AirSimFrame
-from d1_sensor_fusion import FusionAdapter, SensorObservation
+from d1_sensor_fusion import (
+    FusionAdapter,
+    ReplayProvenance,
+    SensorObservation,
+    serialize_governed_replay,
+)
 from d2_data_association import (
     GNNHungarianAssociator,
+    OfflineTruthLabel,
     RiskThresholds,
     Tracker,
     classify_risk_summary,
+    write_offline_truth_labels_jsonl,
 )
 from d3_assignment_planner import (
     AssignmentPlan,
@@ -43,8 +50,12 @@ from d4_distributed_fallback import (
     ActiveDegradationConfig,
     C2Health,
     CenterReplanStatus,
+    CoalitionCommitCoordinator,
+    CoalitionCommitState,
+    CoalitionMemberAck,
     D4ArbitrationAdapter,
     build_center_replan_risk_signature,
+    build_coalition_commit_d6_metadata,
 )
 from d5_terminal_association import (
     Assignment as TerminalAssignment,
@@ -212,6 +223,8 @@ class MainAirSimEpisodeBus:
         self._last_d5_by_pair: dict[tuple[str, str], TerminalAssociation] = {}
         self._last_coalition_visual_summaries: dict[str, dict[str, Any]] = {}
         self._last_d7_mode_by_pair: dict[tuple[str, str], str] = {}
+        self._last_terminal_contexts: list[_TerminalDecisionContext] = []
+        self._last_d4_results: list[Any] = []
         self._center_replan_status_by_scope: dict[
             tuple[str, str | None, int | None], CenterReplanStatus
         ] = {}
@@ -238,6 +251,11 @@ class MainAirSimEpisodeBus:
         self._last_secondary_readiness_state: str | None = None
         self._last_secondary_plan_state: str | None = None
         self._cooperative_window_anchor_by_track: dict[str, float] = {}
+        self._coalition_commit_coordinator = CoalitionCommitCoordinator()
+        self._coalition_commit_by_target: dict[str, CoalitionCommitState] = {}
+        self._last_coalition_commit_event_signature: dict[str, tuple[Any, ...]] = {}
+        self._governed_observations: list[SensorObservation] = []
+        self._offline_truth_labels: list[OfflineTruthLabel] = []
         self.ticks: list[MainEpisodeBusTick] = []
 
     def process_frame(self, frame: AirSimFrame) -> MainEpisodeBusTick:
@@ -246,6 +264,7 @@ class MainAirSimEpisodeBus:
         self._expire_center_replan_requests(timestamp)
         self._record_yolo_mot_frame_events(frame)
         truth_states = truth_states_from_blocks_frame(frame)
+        self._record_offline_truth_labels(frame, truth_states)
         truth_by_id = {state.truth_id: state for state in truth_states}
         resources = resources_from_blocks_frame(frame)
         observations = self._process_d1(frame)
@@ -262,6 +281,7 @@ class MainAirSimEpisodeBus:
             timestamp,
             record_count=0 if self.current_plan is None else len(self.current_plan.assignments),
         )
+        self._update_coalition_commit_states(frame)
         terminal_contexts: list[_TerminalDecisionContext] = []
         d4_results: list[Any] = []
         d7_events: list[EventRecord] = []
@@ -284,6 +304,9 @@ class MainAirSimEpisodeBus:
             self._mark_module_health("D5", timestamp, status="idle", record_count=0)
             self._mark_module_health("D4", timestamp, status="idle", record_count=0)
             self._mark_module_health("D7", timestamp, status="idle", record_count=0)
+
+        self._last_terminal_contexts = list(terminal_contexts)
+        self._last_d4_results = list(d4_results)
 
         self._record_frame_links(frame, observations)
         self._record_cross_view_events(frame.timestamp)
@@ -345,6 +368,10 @@ class MainAirSimEpisodeBus:
                 "decision_count": len(d4_results),
                 "actions": [result.record.action.value for result in d4_results],
                 "modes": [result.record.mode.value for result in d4_results],
+                "coalition_commits": {
+                    target_id: state.to_dict()
+                    for target_id, state in self._coalition_commit_by_target.items()
+                },
             },
             d5={
                 "terminal_association_count": len(terminal_contexts),
@@ -360,6 +387,10 @@ class MainAirSimEpisodeBus:
                     self._current_cross_view_associations(timestamp)
                 ),
                 "coalition_visual_summaries": self._last_coalition_visual_summaries,
+                "runtime_records": [
+                    context.terminal_association.to_runtime_record()
+                    for context in terminal_contexts
+                ],
             },
             d7={
                 "event_count": len(d7_events),
@@ -375,6 +406,30 @@ class MainAirSimEpisodeBus:
         )
         self.ticks.append(tick)
         return tick
+
+    def control_evidence(self) -> dict[str, dict[str, Any]]:
+        """Return truth-isolated D3-D5 evidence for the SimpleFlight consumer."""
+
+        d5_by_pair = {
+            (context.assignment.resource_id, context.assignment.target_id): context.terminal_association
+            for context in self._last_terminal_contexts
+        }
+        d4_by_pair = {
+            (result.record.resource_id, result.record.global_track_id): result
+            for result in self._last_d4_results
+        }
+        evidence: dict[str, dict[str, Any]] = {}
+        for binding in self.current_bindings:
+            pair_key = (binding.resource_id, binding.assigned_global_track_id)
+            evidence[str(binding.resource_id)] = {
+                "binding": _binding_for_d7(binding),
+                "d4_permission": _d4_permission(
+                    d4_by_pair.get(pair_key) or self._last_d4_by_pair.get(pair_key)
+                ),
+                "terminal_association": d5_by_pair.get(pair_key),
+                "online_truth_id_used": False,
+            }
+        return evidence
 
     def finalize(self, frames: Iterable[AirSimFrame], output_dir: Path) -> MainEpisodeBusResult:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -419,6 +474,17 @@ class MainAirSimEpisodeBus:
             **runtime_metadata,
         }
         output_paths = {
+            "d1_governed_replay_json": _write_json(
+                output_dir / "d1_governed_replay.json",
+                serialize_governed_replay(
+                    self._governed_observations,
+                    self._governed_replay_provenance(frames_list),
+                ),
+            ),
+            "d2_offline_truth_labels_jsonl": _write_offline_truth_labels(
+                output_dir / "offline_truth_labels.jsonl",
+                self._offline_truth_labels,
+            ),
             "main_episode_bus_jsonl": _write_d6_episode_jsonl(
                 truth_summary,
                 self.collector,
@@ -459,6 +525,10 @@ class MainAirSimEpisodeBus:
             "guidance_binding_count": len(self.current_bindings),
             "last_terminal_feedback_writeback": self._last_terminal_feedback_writeback,
             "last_d7_runtime_summary": self._last_d7_runtime_summary,
+            "coalition_commit_states": {
+                target_id: state.to_dict()
+                for target_id, state in self._coalition_commit_by_target.items()
+            },
             "last_d4_actions": {
                 f"{resource_id}:{track_id}": result.record.action.value
                 for (resource_id, track_id), result in self._last_d4_by_pair.items()
@@ -600,8 +670,58 @@ class MainAirSimEpisodeBus:
         )
         observations.sort(key=lambda obs: (obs.arrival_timestamp, obs.modality, obs.observation_id))
         for observation in observations:
+            observation.metadata.setdefault("coverage_cell", "cell-unknown")
+            observation.metadata.setdefault("airsim_frame_index", int(frame.frame_index))
             self.fusion.process(observation)
+        self._governed_observations.extend(observations)
         return observations
+
+    def _record_offline_truth_labels(
+        self,
+        frame: AirSimFrame,
+        truth_states: Iterable[TruthState],
+    ) -> None:
+        """Keep truth in an evaluator-only stream, never in online D1/D2 DTOs."""
+
+        for state in truth_states:
+            position = np.asarray(state.position, dtype=float).reshape(-1)
+            self._offline_truth_labels.append(
+                OfflineTruthLabel(
+                    episode_id=str(frame.episode_id),
+                    frame_index=int(frame.frame_index),
+                    timestamp=float(frame.timestamp),
+                    truth_id=str(state.truth_id),
+                    position=(float(position[0]), float(position[1])),
+                    match_annotation={"offline_only": True},
+                )
+            )
+
+    def _governed_replay_provenance(
+        self,
+        frames: list[AirSimFrame],
+    ) -> ReplayProvenance:
+        scenario_version = _scenario_version(self.config, frames)
+        config_version = str(self.config.metadata.get("config_version", "runtime-v1"))
+        return ReplayProvenance(
+            scenario_id=str(self.config.scenario_name),
+            scenario_version=scenario_version,
+            scenario_digest=scenario_version,
+            config_id=str(
+                self.config.metadata.get("config_id", "main-airsim-episode-bus")
+            ),
+            config_version=config_version,
+            config_digest=scenario_version,
+            run_id=str(self.config.episode_id),
+            seed=int(self.config.seed),
+            source_format="airsim_blocks",
+            producer="main",
+            metadata={
+                "resource_count": len(self.config.resource_vehicle_names),
+                "target_count": self.config.target_count(),
+                "camera_count": len(self.config.effective_camera_vehicle_names()),
+                "online_truth_id_used": False,
+            },
+        )
 
     def _process_d2(self, timestamp: float, d1_tracks: list[Any]) -> Any:
         detections = d1_tracks_to_d2_detections(d1_tracks, timestamp)
@@ -1034,6 +1154,184 @@ class MainAirSimEpisodeBus:
             )
         )
 
+    def _update_coalition_commit_states(self, frame: AirSimFrame) -> None:
+        """Drive D4 atomic commit DTOs from main-owned simulation fault state."""
+
+        if self.current_plan is None or frame.center_node_alive:
+            return
+        timestamp = float(frame.timestamp)
+        fault = str(
+            frame.metadata.get(
+                "coalition_commit_fault",
+                self.config.metadata.get("coalition_commit_fault", "none"),
+            )
+        ).strip().lower()
+        partitioned = fault == "partition"
+        digest_conflict = fault == "digest_conflict"
+        active_owner = str(
+            self.current_plan.metadata.get("active_plan_owner", "center")
+        ).lower()
+
+        for coalition in self.current_plan.coalitions:
+            if not coalition.complete or int(coalition.required_resource_count) <= 1:
+                continue
+            required_members = tuple(
+                member.resource_id
+                for member in coalition.members
+                if member.executable and member.member_role != "observer"
+            )
+            if not required_members:
+                continue
+
+            if frame.secondary_nodes_alive:
+                if active_owner != "secondary":
+                    continue
+                coordinator_id = str(
+                    self.current_plan.metadata.get("owner_node_id")
+                    or self.current_plan.metadata.get("selected_secondary_node_id")
+                    or "secondary-recon"
+                )
+                coordinator_role = str(
+                    self.current_plan.metadata.get(
+                        "secondary_capability_class", "secondary_recon"
+                    )
+                )
+                proposal_metadata = {
+                    "takeover_ready": bool(
+                        self.current_plan.metadata.get(
+                            "secondary_readiness_sustained", True
+                        )
+                    ),
+                    "secondary_readiness_class": self.current_plan.metadata.get(
+                        "secondary_readiness_class", "takeover_ready"
+                    ),
+                    "fallback_mode": "secondary",
+                }
+            else:
+                coordinator_id = required_members[0]
+                coordinator_role = "interceptor_peer"
+                proposal_metadata = {"fallback_mode": "distributed"}
+
+            epoch = int(
+                self.current_plan.metadata.get("secondary_leader_epoch")
+                or self.current_plan.version
+            )
+            existing = self._coalition_commit_by_target.get(coalition.target_id)
+            same_generation = bool(
+                existing is not None
+                and existing.plan_id == self.current_plan.plan_id
+                and existing.plan_version == self.current_plan.version
+                and existing.coalition_id == coalition.coalition_id
+                and existing.coalition_version == coalition.version
+                and existing.epoch == epoch
+            )
+            if same_generation:
+                state = self._coalition_commit_coordinator.evaluate(
+                    existing,
+                    timestamp=timestamp,
+                    partitioned=partitioned,
+                    digest_conflict=digest_conflict,
+                )
+                self._coalition_commit_by_target[coalition.target_id] = state
+                self._record_coalition_commit_event(state, timestamp=timestamp)
+                continue
+
+            lease_expires_at = timestamp + max(
+                float(self.config.duration_s) + float(self.config.dt_s),
+                float(self.config.metadata.get("coalition_commit_lease_s", 2.0)),
+            )
+            if fault == "expired_lease":
+                lease_expires_at = timestamp
+            state = self._coalition_commit_coordinator.propose(
+                global_track_id=coalition.target_id,
+                coalition_id=coalition.coalition_id,
+                coalition_version=coalition.version,
+                plan_id=self.current_plan.plan_id,
+                plan_version=self.current_plan.version,
+                epoch=epoch,
+                coordinator_id=coordinator_id,
+                coordinator_role=coordinator_role,
+                required_member_ids=required_members,
+                lease_expires_at=lease_expires_at,
+                timestamp=timestamp,
+                metadata=proposal_metadata,
+            )
+            for index, resource_id in enumerate(required_members):
+                if state.state == "aborted":
+                    break
+                if fault == "missing_ack" and index == len(required_members) - 1:
+                    continue
+                ack_epoch = epoch - 1 if fault == "stale_epoch" and index == 0 else epoch
+                ack = CoalitionMemberAck(
+                    resource_id=resource_id,
+                    global_track_id=coalition.target_id,
+                    coalition_id=coalition.coalition_id,
+                    coalition_version=coalition.version,
+                    plan_id=self.current_plan.plan_id,
+                    plan_version=self.current_plan.version,
+                    epoch=ack_epoch,
+                    can_execute=not (
+                        fault == "member_cannot_execute" and index == 0
+                    ),
+                    evidence_timestamp=timestamp,
+                    valid_until=lease_expires_at,
+                    metadata={"source": "main_airsim_fault_injection"},
+                )
+                state = self._coalition_commit_coordinator.record_ack(
+                    state,
+                    ack,
+                    timestamp=timestamp,
+                )
+            state = self._coalition_commit_coordinator.evaluate(
+                state,
+                timestamp=timestamp,
+                partitioned=partitioned,
+                digest_conflict=digest_conflict,
+                finalize=fault == "missing_ack",
+            )
+            if state.state == "committed":
+                state = self._coalition_commit_coordinator.mark_executing(
+                    state,
+                    timestamp=timestamp,
+                )
+            self._coalition_commit_by_target[coalition.target_id] = state
+            self._record_coalition_commit_event(state, timestamp=timestamp)
+
+    def _record_coalition_commit_event(
+        self,
+        state: CoalitionCommitState,
+        *,
+        timestamp: float,
+    ) -> None:
+        signature = (
+            state.state,
+            state.epoch,
+            state.acked_member_ids,
+            state.reason,
+            state.lease_expires_at,
+        )
+        if self._last_coalition_commit_event_signature.get(state.global_track_id) == signature:
+            return
+        self._last_coalition_commit_event_signature[state.global_track_id] = signature
+        self.collector.add_event(
+            EventRecord(
+                timestamp=float(timestamp),
+                event_type="d4_coalition_commit_state",
+                actor_id=state.coordinator_id,
+                severity=(
+                    "warning" if state.state in {"aborted", "reconfiguring"} else "info"
+                ),
+                note=state.reason,
+                metadata={
+                    **state.to_dict(),
+                    **build_coalition_commit_d6_metadata(
+                        state,
+                        current_time_s=timestamp,
+                    ),
+                },
+            )
+        )
+
     def _process_d5(
         self,
         frame: AirSimFrame,
@@ -1092,6 +1390,9 @@ class MainAirSimEpisodeBus:
                 current_time=timestamp,
                 recon_image_cues=recon_cues,
                 frame_id=f"{frame.episode_id}:{frame.frame_index:04d}:{assignment.resource_id}",
+                arrival_timestamp=float(
+                    frame.metadata.get("arrival_timestamp", timestamp)
+                ),
             )
             local_track = _local_track_by_id(scoped_local_tracks, decision.local_track_id)
             duplicate_risk_hint = bool(
@@ -1201,6 +1502,7 @@ class MainAirSimEpisodeBus:
         return self._annotate_coalition_visual_summaries(
             contexts,
             timestamp=timestamp,
+            center_failed=not frame.center_node_alive,
         )
 
     def _annotate_coalition_visual_summaries(
@@ -1208,6 +1510,7 @@ class MainAirSimEpisodeBus:
         contexts: list[_TerminalDecisionContext],
         *,
         timestamp: float,
+        center_failed: bool,
     ) -> list[_TerminalDecisionContext]:
         bindings_by_target: dict[str, list[Any]] = {}
         for binding in self.current_bindings:
@@ -1222,6 +1525,13 @@ class MainAirSimEpisodeBus:
                 summary = self.terminal_bus.coalition_visual_summary(
                     bindings,
                     required_stable_frames=2,
+                    coalition_commit=self._coalition_commit_by_target.get(target_id),
+                    current_time_s=float(timestamp),
+                    center_failed=bool(center_failed),
+                    fallback_active=bool(
+                        center_failed
+                        and self._coalition_commit_by_target.get(target_id) is not None
+                    ),
                 )
             except ValueError as error:
                 self.collector.add_event(
@@ -1272,6 +1582,20 @@ class MainAirSimEpisodeBus:
                     "support_count": len(summary.primary_locked_resource_ids),
                     "coalition_conflict_state": summary.coalition_conflict_state,
                     "coalition_visual_reason": summary.reason,
+                    "coalition_commit_required": summary.coalition_commit_required,
+                    "coalition_commit_valid": summary.coalition_commit_valid,
+                    "coalition_commit_state": summary.coalition_commit_state,
+                    "coalition_commit_epoch": summary.coalition_commit_epoch,
+                    "coalition_commit_lease_expires_at_s": (
+                        summary.coalition_commit_lease_expires_at_s
+                    ),
+                    "coalition_commit_required_member_ids": list(
+                        summary.coalition_commit_required_member_ids
+                    ),
+                    "coalition_commit_acked_member_ids": list(
+                        summary.coalition_commit_acked_member_ids
+                    ),
+                    "coalition_execution_state": summary.coalition_execution_state,
                     "stable_lock_frame_count_by_resource": dict(
                         summary.stable_lock_frame_count_by_resource
                     ),
@@ -1319,7 +1643,12 @@ class MainAirSimEpisodeBus:
         }
         secondary_nodes = [
             item
-            for item in resources_to_d4(resources, _secondary_available(frame), epoch=1)
+            for item in resources_to_d4(
+                resources,
+                _secondary_available(frame),
+                epoch=1,
+                secondary_node_ids=self.config.secondary_camera_vehicle_names,
+            )
             if item.coordinator_only
         ]
         health = C2Health.NORMAL if frame.center_node_alive else C2Health.FAILED
@@ -1375,6 +1704,9 @@ class MainAirSimEpisodeBus:
                 ),
                 trigger_timestamp=timestamp,
                 center_replan_status=self._center_replan_status_for(assignment),
+                coalition_commit_state=self._coalition_commit_by_target.get(
+                    assignment.target_id
+                ),
             )
             self.collector.add_event(EventRecord(**result.record.to_event_record_kwargs()))
             self._record_d4_lifecycle_events(result, timestamp=timestamp)
@@ -2278,6 +2610,14 @@ def _write_json(path: Path, payload: Any) -> Path:
     return path
 
 
+def _write_offline_truth_labels(
+    path: Path,
+    labels: Iterable[OfflineTruthLabel],
+) -> Path:
+    write_offline_truth_labels_jsonl(path, labels)
+    return path
+
+
 def _json_record(record_type: str, payload: Any) -> str:
     return json.dumps(
         {"record_type": record_type, "payload": _jsonable(payload)},
@@ -2511,6 +2851,9 @@ def _d4_permission(d4_result: Any | None) -> D4GuidancePermission:
         return D4GuidancePermission()
     record = d4_result.record
     metadata = record.to_event_metadata()
+    coalition_safety = metadata.get("coalition_safety") or {}
+    coalition_safety_metadata = coalition_safety.get("metadata") or {}
+    commit = coalition_safety_metadata.get("coalition_commit") or {}
     action = record.action.value
     if (
         action == "degrade_to_secondary"
@@ -2530,12 +2873,17 @@ def _d4_permission(d4_result: Any | None) -> D4GuidancePermission:
         new_plan_version=metadata.get("secondary_plan_version"),
         coalition_id=metadata.get("coalition_id"),
         coalition_version=metadata.get("coalition_version"),
-        center_available=(metadata.get("coalition_safety") or {}).get(
-            "center_available"
-        ),
-        atomic_coalition_formed=(metadata.get("coalition_safety") or {}).get(
-            "coalition_complete"
-        ),
+        center_available=coalition_safety.get("center_available"),
+        atomic_coalition_formed=coalition_safety.get("atomic_coalition_formed"),
+        coalition_commit_state=commit.get("state"),
+        coalition_epoch=commit.get("epoch"),
+        coalition_lease_expires_at_s=commit.get("lease_expires_at"),
+        coalition_required_member_ids=tuple(commit.get("required_member_ids") or ()),
+        coalition_acked_member_ids=tuple(commit.get("acked_member_ids") or ()),
+        commit_plan_id=commit.get("plan_id"),
+        commit_plan_version=commit.get("plan_version"),
+        commit_coalition_id=commit.get("coalition_id"),
+        commit_coalition_version=commit.get("coalition_version"),
         metadata=metadata,
     )
 

@@ -8,7 +8,7 @@ cross-view consistency and duplicate-lock risk for D3/D4/D6 consumers.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Iterable
 
 import numpy as np
@@ -21,7 +21,11 @@ from .models import (
     TerminalAssociation,
     TerminalObservation,
 )
-from .coalition_visual import CoalitionVisualSummary, summarize_coalition_visual_completion
+from .coalition_visual import (
+    CoalitionVisualSummary,
+    snapshot_coalition_bindings,
+    summarize_coalition_visual_completion,
+)
 
 
 _AUTHORIZED_STATES = {
@@ -57,6 +61,8 @@ class TerminalObservationBus:
 
     def __init__(self) -> None:
         self._observations: list[TerminalObservation] = []
+        self._coalition_binding_history: list[Any] = []
+        self._coalition_invalid_plan_versions: set[tuple[str, int]] = set()
 
     def publish(self, observation: TerminalObservation) -> TerminalObservation:
         """Append an already built observation and return it unchanged."""
@@ -82,6 +88,36 @@ class TerminalObservationBus:
     ) -> TerminalObservation:
         """Publish a terminal association summary from one resource."""
 
+        measurement_timestamp = terminal_association.measurement_timestamp
+        if measurement_timestamp is None and local_track is not None:
+            measurement_timestamp = local_track.timestamp
+        if measurement_timestamp is None:
+            measurement_timestamp = timestamp
+        effective_arrival_timestamp = (
+            terminal_association.arrival_timestamp
+            if terminal_association.arrival_timestamp is not None
+            else (arrival_timestamp if arrival_timestamp is not None else timestamp)
+        )
+        measurement_age_s = terminal_association.measurement_age_s
+        if measurement_age_s is None:
+            measurement_age_s = float(effective_arrival_timestamp) - float(measurement_timestamp)
+        normalized_association = replace(
+            terminal_association,
+            measurement_timestamp=float(measurement_timestamp),
+            arrival_timestamp=float(effective_arrival_timestamp),
+            measurement_age_s=measurement_age_s,
+            local_track_state=(
+                local_track.local_track_state
+                if local_track is not None
+                else terminal_association.local_track_state
+            ),
+            prediction_age_s=(
+                local_track.prediction_age_s
+                if local_track is not None and local_track.prediction_age_s is not None
+                else terminal_association.prediction_age_s
+            ),
+            truth_identity_used=False,
+        )
         return self.publish(
             TerminalObservation(
                 resource_id=resource_id,
@@ -89,12 +125,13 @@ class TerminalObservationBus:
                 link_type=link_type,
                 timestamp=timestamp,
                 local_track=local_track,
-                terminal_association=terminal_association,
+                terminal_association=normalized_association,
                 identity_claims=tuple(identity_claims),
                 recon_image_cues=tuple(recon_image_cues),
                 camera_id=camera_id,
                 frame_id=frame_id,
-                arrival_timestamp=arrival_timestamp,
+                arrival_timestamp=float(effective_arrival_timestamp),
+                measurement_timestamp=float(measurement_timestamp),
                 metadata=metadata or {},
             )
         )
@@ -128,6 +165,7 @@ class TerminalObservationBus:
                 camera_id=camera_id,
                 frame_id=frame_id,
                 arrival_timestamp=arrival_timestamp,
+                measurement_timestamp=local_track.timestamp,
                 metadata=metadata or {},
             )
         )
@@ -137,10 +175,17 @@ class TerminalObservationBus:
 
         return tuple(self._observations)
 
+    def runtime_records(self) -> tuple[dict[str, Any], ...]:
+        """Return JSON-friendly detect-first records for main and D6."""
+
+        return tuple(observation.to_runtime_record() for observation in self._observations)
+
     def clear(self) -> None:
         """Remove all stored observations."""
 
         self._observations.clear()
+        self._coalition_binding_history.clear()
+        self._coalition_invalid_plan_versions.clear()
 
     def coalition_visual_summary(
         self,
@@ -148,11 +193,20 @@ class TerminalObservationBus:
         *,
         historical_associations: Iterable[TerminalAssociation | TerminalObservation] = (),
         required_stable_frames: int = 2,
+        coalition_commit: Any | None = None,
+        current_time_s: float | None = None,
+        center_failed: bool = False,
+        fallback_active: bool = False,
     ) -> CoalitionVisualSummary:
         """Summarize the bus snapshot against one read-only D3 coalition contract."""
 
-        return summarize_coalition_visual_completion(
-            coalition_bindings,
+        current_bindings = tuple(coalition_bindings)
+        current_binding_snapshots = snapshot_coalition_bindings(current_bindings)
+        if not current_binding_snapshots:
+            raise ValueError("coalition_bindings must not be empty")
+        current_global_track_id = current_binding_snapshots[0].global_track_id
+        summary = summarize_coalition_visual_completion(
+            current_bindings,
             (
                 observation
                 for observation in self._observations
@@ -160,7 +214,32 @@ class TerminalObservationBus:
             ),
             historical_associations,
             required_stable_frames=required_stable_frames,
+            historical_bindings=tuple(self._coalition_binding_history),
+            invalid_historical_plan_versions=(
+                version
+                for global_track_id, version in self._coalition_invalid_plan_versions
+                if global_track_id == current_global_track_id
+            ),
+            coalition_commit=coalition_commit,
+            current_time_s=current_time_s,
+            center_failed=center_failed,
+            fallback_active=fallback_active,
         )
+        for snapshot in current_binding_snapshots:
+            if snapshot not in self._coalition_binding_history:
+                self._coalition_binding_history.append(snapshot)
+        if (
+            summary.plan_version is not None
+            and (
+                not summary.coalition_commit_valid
+                or summary.duplicate_terminal_lock_risk
+                or summary.coalition_conflict_state != "none"
+            )
+        ):
+            self._coalition_invalid_plan_versions.add(
+                (summary.global_track_id, summary.plan_version)
+            )
+        return summary
 
     def cross_view_associations(
         self,

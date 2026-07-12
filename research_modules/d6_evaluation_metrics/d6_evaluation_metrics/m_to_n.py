@@ -37,6 +37,17 @@ M_TO_N_METRIC_NAMES = (
     "replan_expired_count",
     "replan_pending_dwell_s",
     "replan_convergence_time_s",
+    "coalition_commit_count",
+    "coalition_required_member_count",
+    "coalition_acked_member_count",
+    "coalition_member_ack_rate",
+    "coalition_ack_latency_s",
+    "coalition_commit_timeout_count",
+    "coalition_commit_aborted_count",
+    "coalition_commit_reconfiguring_count",
+    "coalition_commit_lease_expired_count",
+    "secondary_coalition_commit_count",
+    "distributed_coalition_commit_count",
     "coalition_member_loss_count",
     "coalition_member_replacement_count",
     "coalition_member_replacement_time_s",
@@ -234,6 +245,11 @@ def compute_m_to_n_metrics(
     )
 
     replan_audit = _compute_replan_metrics(record, event_records)
+    coalition_commit_audit = _compute_coalition_commit_metrics(
+        record,
+        coalition_records,
+        event_records,
+    )
     _compute_member_metrics(record, coalition_records, event_records)
     _compute_communication_metrics(record, coalition_records, link_records)
     _compute_safety_geometry_identity_metrics(record, arrival_records, event_records)
@@ -251,6 +267,7 @@ def compute_m_to_n_metrics(
         },
         "coordination_modes": sorted(modes),
         "replan_event_audit": replan_audit,
+        **coalition_commit_audit,
     }
 
 
@@ -816,6 +833,304 @@ def _compute_replan_metrics(record: Any, events: Sequence[Any]) -> list[dict[str
     return audit
 
 
+def _compute_coalition_commit_metrics(
+    record: Any,
+    coalitions: Sequence[Any],
+    events: Sequence[Any],
+) -> dict[str, Any]:
+    """Aggregate D4 atomic-commit evidence without double-counting transitions."""
+
+    snapshots = [
+        snapshot
+        for item in list(coalitions) + list(events)
+        for snapshot in [_coalition_commit_snapshot(item)]
+        if snapshot is not None
+    ]
+    metric_names = (
+        "coalition_commit_count",
+        "coalition_required_member_count",
+        "coalition_acked_member_count",
+        "coalition_member_ack_rate",
+        "coalition_ack_latency_s",
+        "coalition_commit_timeout_count",
+        "coalition_commit_aborted_count",
+        "coalition_commit_reconfiguring_count",
+        "coalition_commit_lease_expired_count",
+        "secondary_coalition_commit_count",
+        "distributed_coalition_commit_count",
+    )
+    if not snapshots:
+        for name in metric_names:
+            record(
+                name,
+                None,
+                status="unavailable",
+                reason="D4 coalition commit lifecycle evidence is absent",
+            )
+        return {
+            "coalition_commit_state_counts": {},
+            "coalition_commit_reason_counts": {},
+            "coalition_commit_audit": [],
+        }
+
+    unique_snapshots: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for snapshot in snapshots:
+        key = (
+            snapshot["generation"],
+            snapshot["timestamp"],
+            snapshot["state"],
+            tuple(snapshot["acked_member_ids"]),
+            snapshot["reason"],
+        )
+        unique_snapshots.setdefault(key, snapshot)
+    snapshots = sorted(
+        unique_snapshots.values(),
+        key=lambda item: (item["timestamp"], item["generation"]),
+    )
+
+    by_generation: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
+    for snapshot in snapshots:
+        by_generation[snapshot["generation"]].append(snapshot)
+
+    required_total = 0
+    acked_total = 0
+    committed_generations = 0
+    secondary_commits = 0
+    distributed_commits = 0
+    aborted = 0
+    reconfiguring = 0
+    timeouts = 0
+    lease_expired = 0
+    ack_latencies: list[float] = []
+    state_counts: dict[str, int] = defaultdict(int)
+    reason_counts: dict[str, int] = defaultdict(int)
+
+    for generation_snapshots in by_generation.values():
+        latest = max(generation_snapshots, key=lambda item: item["timestamp"])
+        required_total += len(latest["required_member_ids"])
+        acked_total += len(latest["acked_member_ids"])
+        states = {item["state"] for item in generation_snapshots}
+        reasons = {item["reason"] for item in generation_snapshots if item["reason"]}
+        committed = bool(states & {"committed", "executing"})
+        committed_generations += int(committed)
+        fallback_mode = next(
+            (
+                item["fallback_mode"]
+                for item in reversed(generation_snapshots)
+                if item["fallback_mode"]
+            ),
+            "",
+        )
+        secondary_commits += int(committed and fallback_mode == "secondary")
+        distributed_commits += int(committed and fallback_mode == "distributed")
+        aborted += int("aborted" in states)
+        reconfiguring += int("reconfiguring" in states)
+        timeouts += int(
+            any("timeout" in reason or "timed_out" in reason for reason in reasons)
+            or any(item["timed_out"] for item in generation_snapshots)
+        )
+        lease_expired += int(
+            any(
+                ("lease" in reason and "expir" in reason)
+                for reason in reasons
+            )
+            or any(item["lease_expired"] for item in generation_snapshots)
+        )
+        if committed:
+            latency = next(
+                (
+                    item["ack_latency_s"]
+                    for item in generation_snapshots
+                    if item["ack_latency_s"] is not None
+                ),
+                None,
+            )
+            if latency is None:
+                commit_times = [
+                    item["committed_at"]
+                    for item in generation_snapshots
+                    if item["committed_at"] is not None
+                ]
+                proposal_times = [
+                    item["proposed_at"]
+                    for item in generation_snapshots
+                    if item["proposed_at"] is not None
+                ]
+                if commit_times and proposal_times:
+                    latency = min(commit_times) - min(proposal_times)
+            if latency is not None and latency >= 0.0:
+                ack_latencies.append(latency)
+
+    for snapshot in snapshots:
+        state_counts[snapshot["state"]] += 1
+        if snapshot["reason"]:
+            reason_counts[snapshot["reason"]] += 1
+
+    count_values = {
+        "coalition_commit_count": committed_generations,
+        "coalition_required_member_count": required_total,
+        "coalition_acked_member_count": acked_total,
+        "coalition_commit_timeout_count": timeouts,
+        "coalition_commit_aborted_count": aborted,
+        "coalition_commit_reconfiguring_count": reconfiguring,
+        "coalition_commit_lease_expired_count": lease_expired,
+        "secondary_coalition_commit_count": secondary_commits,
+        "distributed_coalition_commit_count": distributed_commits,
+    }
+    for name, value in count_values.items():
+        record(
+            name,
+            value,
+            status="available",
+            reason="D4 coalition commit generations were evaluated",
+            numerator=value,
+        )
+    record(
+        "coalition_member_ack_rate",
+        acked_total / required_total if required_total else None,
+        status="available" if required_total else "unavailable",
+        reason=(
+            "required and acknowledged coalition members were recorded"
+            if required_total
+            else "required coalition member denominator is absent"
+        ),
+        numerator=acked_total,
+        denominator=required_total or None,
+    )
+    record(
+        "coalition_ack_latency_s",
+        _mean_or_none(ack_latencies),
+        status="available" if ack_latencies else "unavailable",
+        reason=(
+            "proposal-to-complete-ACK timestamps were recorded"
+            if ack_latencies
+            else "complete proposal/ACK timestamp pairs are absent"
+        ),
+        numerator=sum(ack_latencies) if ack_latencies else None,
+        denominator=len(ack_latencies) if ack_latencies else None,
+    )
+    return {
+        "coalition_commit_state_counts": dict(state_counts),
+        "coalition_commit_reason_counts": dict(reason_counts),
+        "coalition_commit_audit": snapshots,
+    }
+
+
+def _coalition_commit_snapshot(item: Any) -> dict[str, Any] | None:
+    metadata = getattr(item, "metadata", {})
+    metadata = metadata if isinstance(metadata, Mapping) else {}
+    is_event = hasattr(item, "event_type")
+    if is_event and _event_type(item) != "d4_coalition_commit_state":
+        return None
+    commit_state = (
+        getattr(item, "commit_state", None)
+        or metadata.get("coalition_commit_state")
+        or metadata.get("commit_state")
+        or (metadata.get("state") if is_event else None)
+    )
+    epoch = getattr(item, "epoch", None)
+    if epoch is None:
+        epoch = metadata.get("coalition_commit_epoch", metadata.get("epoch"))
+    required = _string_tuple(
+        getattr(item, "required_member_ids", ())
+        or metadata.get("coalition_required_member_ids")
+        or metadata.get("required_member_ids")
+    )
+    acked = _string_tuple(
+        getattr(item, "acked_member_ids", ())
+        or metadata.get("coalition_acked_member_ids")
+        or metadata.get("acked_member_ids")
+    )
+    if not is_event and commit_state is None and epoch is None and not required and not acked:
+        return None
+    state = _state(commit_state or getattr(item, "coalition_state", ""))
+    if not state:
+        return None
+    timestamp = float(getattr(item, "timestamp"))
+    track_id = str(
+        getattr(item, "global_track_id", "")
+        or metadata.get("global_track_id")
+        or metadata.get("target_id")
+        or ""
+    )
+    coalition_id = str(
+        getattr(item, "coalition_id", "") or metadata.get("coalition_id") or ""
+    )
+    coalition_version = _optional_int(
+        getattr(item, "coalition_version", None)
+        if getattr(item, "coalition_version", None) is not None
+        else metadata.get("coalition_version")
+    )
+    plan_id = str(
+        getattr(item, "plan_id", "") or metadata.get("plan_id") or ""
+    )
+    plan_version = _optional_int(
+        getattr(item, "plan_version", None)
+        if getattr(item, "plan_version", None) is not None
+        else metadata.get("plan_version")
+    )
+    epoch_value = _optional_int(epoch)
+    reason = str(
+        getattr(item, "commit_reason", "")
+        or metadata.get("coalition_commit_reason")
+        or metadata.get("reason")
+        or getattr(item, "note", "")
+        or ""
+    ).strip()
+    lease_expires_at = _first_optional_float(
+        getattr(item, "lease_expires_at", None),
+        metadata.get("coalition_lease_expires_at"),
+        metadata.get("lease_expires_at"),
+    )
+    lease_valid = metadata.get("coalition_lease_valid", metadata.get("lease_valid"))
+    fallback_mode = _state(
+        metadata.get("fallback_mode")
+        or metadata.get("coalition_commit_mode")
+        or getattr(item, "coordinator_role", "")
+        or metadata.get("coordinator_role")
+        or metadata.get("coalition_commit_coordinator_role")
+    )
+    if "secondary" in fallback_mode:
+        fallback_mode = "secondary"
+    elif fallback_mode in {"distributed", "interceptor_peer", "peer"}:
+        fallback_mode = "distributed"
+    return {
+        "timestamp": timestamp,
+        "generation": (
+            track_id,
+            coalition_id,
+            coalition_version,
+            plan_id,
+            plan_version,
+            epoch_value,
+        ),
+        "global_track_id": track_id,
+        "coalition_id": coalition_id,
+        "coalition_version": coalition_version,
+        "plan_id": plan_id,
+        "plan_version": plan_version,
+        "epoch": epoch_value,
+        "state": state,
+        "reason": reason,
+        "required_member_ids": required,
+        "acked_member_ids": acked,
+        "lease_expires_at": lease_expires_at,
+        "fallback_mode": fallback_mode,
+        "proposed_at": _first_optional_float(
+            getattr(item, "proposed_at", None), metadata.get("proposed_at")
+        ),
+        "committed_at": _first_optional_float(
+            getattr(item, "committed_at", None), metadata.get("committed_at")
+        ),
+        "ack_latency_s": _first_optional_float(
+            getattr(item, "ack_latency_s", None), metadata.get("ack_latency_s")
+        ),
+        "timed_out": bool(metadata.get("timed_out", metadata.get("timeout", False))),
+        "lease_expired": bool(lease_valid is False)
+        or bool(lease_expires_at is not None and timestamp >= lease_expires_at),
+    }
+
+
 def _compute_member_metrics(record: Any, coalitions: Sequence[Any], events: Sequence[Any]) -> None:
     evidence = bool(coalitions) or any(_event_type(item).startswith(("coalition_", "member_", "stale_")) for item in events)
     if not evidence:
@@ -1135,6 +1450,30 @@ def _optional_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _first_optional_float(*values: Any) -> float | None:
+    for value in values:
+        parsed = _optional_float(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    if value is None or isinstance(value, (str, bytes)):
+        values = () if value is None else (value,)
+    else:
+        try:
+            values = tuple(value)
+        except TypeError:
+            values = (value,)
+    result: list[str] = []
+    for item in values:
+        text = str(item).strip()
+        if text and text not in result:
+            result.append(text)
+    return tuple(result)
 
 
 def _metadata_float(metadata: Mapping[str, Any], key: str) -> float | None:
