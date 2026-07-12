@@ -201,6 +201,63 @@ def evaluate_terminal_png_contract(
 ) -> TerminalPngContractDecision:
     """Return whether D7 may evaluate terminal visual PNG guidance."""
 
+    return _evaluate_terminal_contract(
+        binding=binding,
+        d4_permission=d4_permission,
+        terminal_association=terminal_association,
+        observation=observation,
+        timestamp_s=timestamp_s,
+        resource_id=resource_id,
+        accepted_d5_states=frozenset({"locked"}),
+        d5_consistency_reason="consistent",
+    )
+
+
+def evaluate_terminal_coast_contract(
+    *,
+    binding: AssignmentGuidanceBinding | Mapping[str, Any] | Any | None,
+    d4_permission: D4GuidancePermission | Mapping[str, Any] | Any | None,
+    terminal_association: Mapping[str, Any] | Any | None,
+    observation: Mapping[str, Any] | Any | None = None,
+    timestamp_s: float | None = None,
+    resource_id: str | None = None,
+) -> TerminalPngContractDecision:
+    """Authorize bounded coast for a prior lock in D5 reacquire state only.
+
+    This never authorizes a fresh visual-PNG switch. The caller must also hold
+    prior measured state for this assignment pair. D3/D4, identity, version,
+    friend-conflict, and D5 safety checks remain mandatory.
+    """
+
+    if observation is not None:
+        return TerminalPngContractDecision(False, "terminal_coast_observation_present")
+    d5_state = _string_value(terminal_association, "decision_state", default="").lower()
+    if d5_state != "reacquire":
+        return TerminalPngContractDecision(False, "terminal_coast_d5_state_not_reacquire")
+    return _evaluate_terminal_contract(
+        binding=binding,
+        d4_permission=d4_permission,
+        terminal_association=terminal_association,
+        observation=None,
+        timestamp_s=timestamp_s,
+        resource_id=resource_id,
+        accepted_d5_states=frozenset({"reacquire"}),
+        d5_consistency_reason="bounded_coast_reacquire",
+    )
+
+
+def _evaluate_terminal_contract(
+    *,
+    binding: AssignmentGuidanceBinding | Mapping[str, Any] | Any | None,
+    d4_permission: D4GuidancePermission | Mapping[str, Any] | Any | None,
+    terminal_association: Mapping[str, Any] | Any | None,
+    observation: Mapping[str, Any] | Any | None,
+    timestamp_s: float | None,
+    resource_id: str | None,
+    accepted_d5_states: frozenset[str],
+    d5_consistency_reason: str,
+) -> TerminalPngContractDecision:
+
     if binding is None:
         return TerminalPngContractDecision(False, "assignment_missing")
     try:
@@ -428,7 +485,7 @@ def evaluate_terminal_png_contract(
     base["d5_coalition_support_count"] = coalition_support_count
     base["d5_required_resource_count"] = coalition_required_count
     base["d5_coalition_conflict_state"] = coalition_conflict_state
-    if d5_decision_state != "locked":
+    if d5_decision_state not in accepted_d5_states:
         return TerminalPngContractDecision(
             False,
             "d5_not_locked",
@@ -442,6 +499,30 @@ def evaluate_terminal_png_contract(
             "friend_conflict",
             d5_lock_consistent=False,
             d5_lock_consistency_reason="friend_conflict",
+            **base,
+        )
+    duplicate_lock_risk = _optional_bool_value_with_metadata(
+        terminal_association,
+        "duplicate_terminal_lock_risk",
+    )
+    duplicate_conflict_state = (
+        _optional_string_value_with_metadata(
+            terminal_association,
+            "duplicate_lock_conflict_state",
+        )
+        or "none"
+    ).lower()
+    if duplicate_lock_risk is True or duplicate_conflict_state not in {
+        "",
+        "none",
+        "clear",
+        "no_conflict",
+    }:
+        return TerminalPngContractDecision(
+            False,
+            "duplicate_lock_conflict",
+            d5_lock_consistent=False,
+            d5_lock_consistency_reason="duplicate_lock_conflict",
             **base,
         )
     execution_gate_pass = _terminal_execution_gate_pass(terminal_association)
@@ -562,7 +643,7 @@ def evaluate_terminal_png_contract(
         True,
         "",
         d5_lock_consistent=True,
-        d5_lock_consistency_reason="consistent",
+        d5_lock_consistency_reason=d5_consistency_reason,
         coalition_gate_allowed=True if base["coalition_gate_applicable"] else None,
         **base,
     )

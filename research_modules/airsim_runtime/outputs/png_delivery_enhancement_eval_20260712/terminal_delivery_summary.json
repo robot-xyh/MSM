@@ -1,0 +1,1048 @@
+{
+  "episode_count": 26,
+  "groups": [
+    {
+      "camera_count": 2,
+      "drone_count": 2,
+      "episode_count": 10,
+      "metric_scope": "real_airsim_simpleflight",
+      "metrics": {
+        "coalition_completion_count": {
+          "available_count": 10,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "coalition_completion_rate": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "command_discontinuity_max_mps": {
+          "available_count": 10,
+          "mean": 9.573649908899434,
+          "not_applicable_count": 0,
+          "std": 2.473920835591235,
+          "sum": 95.73649908899434,
+          "unavailable_count": 0
+        },
+        "command_discontinuity_mean_mps": {
+          "available_count": 10,
+          "mean": 0.47272201654190826,
+          "not_applicable_count": 0,
+          "std": 0.12089228235424931,
+          "sum": 4.727220165419083,
+          "unavailable_count": 0
+        },
+        "contract_allowed_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "control_allowed_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "mode_switched_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "pair_physical_success_count": {
+          "available_count": 10,
+          "mean": 1.9,
+          "not_applicable_count": 0,
+          "std": 0.31622776601683794,
+          "sum": 19.0,
+          "unavailable_count": 0
+        },
+        "pair_physical_success_rate": {
+          "available_count": 10,
+          "mean": 0.95,
+          "not_applicable_count": 0,
+          "std": 0.15811388300841897,
+          "sum": 9.5,
+          "unavailable_count": 0
+        },
+        "physical_intercept_count": {
+          "available_count": 10,
+          "mean": 1.9,
+          "not_applicable_count": 0,
+          "std": 0.31622776601683794,
+          "sum": 19.0,
+          "unavailable_count": 0
+        },
+        "soft_prediction_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "soft_prediction_duration_s": {
+          "available_count": 10,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "soft_prediction_expired_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "target_intercept_success_count": {
+          "available_count": 10,
+          "mean": 1.9,
+          "not_applicable_count": 0,
+          "std": 0.31622776601683794,
+          "sum": 19.0,
+          "unavailable_count": 0
+        },
+        "target_intercept_success_rate": {
+          "available_count": 10,
+          "mean": 0.95,
+          "not_applicable_count": 0,
+          "std": 0.15811388300841897,
+          "sum": 9.5,
+          "unavailable_count": 0
+        },
+        "terminal_coast_count": {
+          "available_count": 10,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "terminal_coast_duration_s": {
+          "available_count": 10,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "terminal_coast_expired_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "terminal_filter_expired_count": {
+          "available_count": 10,
+          "mean": 50.0,
+          "not_applicable_count": 0,
+          "std": 91.68666448532439,
+          "sum": 500.0,
+          "unavailable_count": 0
+        },
+        "terminal_filter_innovation_rejected_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "terminal_filter_measured_count": {
+          "available_count": 10,
+          "mean": 18.5,
+          "not_applicable_count": 0,
+          "std": 3.1710495984067415,
+          "sum": 185.0,
+          "unavailable_count": 0
+        },
+        "terminal_filter_predicted_count": {
+          "available_count": 10,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "terminal_filter_reset_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "terminal_lock_continuity": {
+          "available_count": 9,
+          "mean": 1.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 9.0,
+          "unavailable_count": 1
+        },
+        "ttc_area_jump_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "ttc_bbox_clipping_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "ttc_not_expanding_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "ttc_out_of_range_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "visual_mode_duration_s": {
+          "available_count": 10,
+          "mean": 1.05,
+          "not_applicable_count": 0,
+          "std": 0.3836954811073779,
+          "sum": 10.5,
+          "unavailable_count": 0
+        }
+      },
+      "profile": "baseline",
+      "resource_count": 2,
+      "scenario_group": "airsim_2v2",
+      "seeds": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "target_count": 2
+    },
+    {
+      "camera_count": 2,
+      "drone_count": 2,
+      "episode_count": 10,
+      "metric_scope": "real_airsim_simpleflight",
+      "metrics": {
+        "coalition_completion_count": {
+          "available_count": 10,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "coalition_completion_rate": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "command_discontinuity_max_mps": {
+          "available_count": 10,
+          "mean": 6.0,
+          "not_applicable_count": 0,
+          "std": 7.832997394602942e-16,
+          "sum": 60.00000000000001,
+          "unavailable_count": 0
+        },
+        "command_discontinuity_mean_mps": {
+          "available_count": 10,
+          "mean": 0.39693105095975545,
+          "not_applicable_count": 0,
+          "std": 0.008523294640861614,
+          "sum": 3.969310509597555,
+          "unavailable_count": 0
+        },
+        "contract_allowed_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "control_allowed_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "mode_switched_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "pair_physical_success_count": {
+          "available_count": 10,
+          "mean": 2.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 20.0,
+          "unavailable_count": 0
+        },
+        "pair_physical_success_rate": {
+          "available_count": 10,
+          "mean": 1.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 10.0,
+          "unavailable_count": 0
+        },
+        "physical_intercept_count": {
+          "available_count": 10,
+          "mean": 2.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 20.0,
+          "unavailable_count": 0
+        },
+        "soft_prediction_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "soft_prediction_duration_s": {
+          "available_count": 10,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "soft_prediction_expired_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "target_intercept_success_count": {
+          "available_count": 10,
+          "mean": 2.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 20.0,
+          "unavailable_count": 0
+        },
+        "target_intercept_success_rate": {
+          "available_count": 10,
+          "mean": 1.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 10.0,
+          "unavailable_count": 0
+        },
+        "terminal_coast_count": {
+          "available_count": 10,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "terminal_coast_duration_s": {
+          "available_count": 10,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "terminal_coast_expired_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "terminal_filter_expired_count": {
+          "available_count": 10,
+          "mean": 1.1,
+          "not_applicable_count": 0,
+          "std": 0.31622776601683794,
+          "sum": 11.0,
+          "unavailable_count": 0
+        },
+        "terminal_filter_innovation_rejected_count": {
+          "available_count": 10,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "terminal_filter_measured_count": {
+          "available_count": 10,
+          "mean": 3.9,
+          "not_applicable_count": 0,
+          "std": 0.31622776601683794,
+          "sum": 39.0,
+          "unavailable_count": 0
+        },
+        "terminal_filter_predicted_count": {
+          "available_count": 10,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "terminal_filter_reset_count": {
+          "available_count": 10,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "terminal_lock_continuity": {
+          "available_count": 10,
+          "mean": 1.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 10.0,
+          "unavailable_count": 0
+        },
+        "ttc_area_jump_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "ttc_bbox_clipping_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "ttc_not_expanding_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "ttc_out_of_range_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 10
+        },
+        "visual_mode_duration_s": {
+          "available_count": 10,
+          "mean": 0.18999999999999997,
+          "not_applicable_count": 0,
+          "std": 0.03162277660168375,
+          "sum": 1.8999999999999997,
+          "unavailable_count": 0
+        }
+      },
+      "profile": "candidate_soft_prediction_trend_coast",
+      "resource_count": 2,
+      "scenario_group": "airsim_2v2",
+      "seeds": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "target_count": 2
+    },
+    {
+      "camera_count": 5,
+      "drone_count": 5,
+      "episode_count": 3,
+      "metric_scope": "real_airsim_simpleflight",
+      "metrics": {
+        "coalition_completion_count": {
+          "available_count": 1,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 2
+        },
+        "coalition_completion_rate": {
+          "available_count": 1,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 2
+        },
+        "command_discontinuity_max_mps": {
+          "available_count": 3,
+          "mean": 10.41847225141027,
+          "not_applicable_count": 0,
+          "std": 0.8848452830104411,
+          "sum": 31.255416754230808,
+          "unavailable_count": 0
+        },
+        "command_discontinuity_mean_mps": {
+          "available_count": 3,
+          "mean": 0.3291915541337362,
+          "not_applicable_count": 0,
+          "std": 0.008188036179970144,
+          "sum": 0.9875746624012085,
+          "unavailable_count": 0
+        },
+        "contract_allowed_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "control_allowed_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "mode_switched_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "pair_physical_success_count": {
+          "available_count": 3,
+          "mean": 2.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 6.0,
+          "unavailable_count": 0
+        },
+        "pair_physical_success_rate": {
+          "available_count": 3,
+          "mean": 0.6666666666666666,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 2.0,
+          "unavailable_count": 0
+        },
+        "physical_intercept_count": {
+          "available_count": 3,
+          "mean": 2.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 6.0,
+          "unavailable_count": 0
+        },
+        "soft_prediction_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "soft_prediction_duration_s": {
+          "available_count": 1,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 2
+        },
+        "soft_prediction_expired_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "target_intercept_success_count": {
+          "available_count": 3,
+          "mean": 2.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 6.0,
+          "unavailable_count": 0
+        },
+        "target_intercept_success_rate": {
+          "available_count": 3,
+          "mean": 1.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 3.0,
+          "unavailable_count": 0
+        },
+        "terminal_coast_count": {
+          "available_count": 1,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 2
+        },
+        "terminal_coast_duration_s": {
+          "available_count": 3,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "terminal_coast_expired_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "terminal_filter_expired_count": {
+          "available_count": 1,
+          "mean": 56.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 56.0,
+          "unavailable_count": 2
+        },
+        "terminal_filter_innovation_rejected_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "terminal_filter_measured_count": {
+          "available_count": 1,
+          "mean": 5.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 5.0,
+          "unavailable_count": 2
+        },
+        "terminal_filter_predicted_count": {
+          "available_count": 1,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 2
+        },
+        "terminal_filter_reset_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "terminal_lock_continuity": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "ttc_area_jump_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "ttc_bbox_clipping_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "ttc_not_expanding_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "ttc_out_of_range_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "visual_mode_duration_s": {
+          "available_count": 3,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        }
+      },
+      "profile": "baseline",
+      "resource_count": 5,
+      "scenario_group": "airsim_m5n2_high_clearance_35s",
+      "seeds": [
+        1,
+        2,
+        3
+      ],
+      "target_count": 2
+    },
+    {
+      "camera_count": 5,
+      "drone_count": 5,
+      "episode_count": 3,
+      "metric_scope": "real_airsim_simpleflight",
+      "metrics": {
+        "coalition_completion_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "coalition_completion_rate": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "command_discontinuity_max_mps": {
+          "available_count": 3,
+          "mean": 9.047263447031973,
+          "not_applicable_count": 0,
+          "std": 0.3978319670058971,
+          "sum": 27.14179034109592,
+          "unavailable_count": 0
+        },
+        "command_discontinuity_mean_mps": {
+          "available_count": 3,
+          "mean": 0.30307295903889353,
+          "not_applicable_count": 0,
+          "std": 0.026865363472701454,
+          "sum": 0.9092188771166805,
+          "unavailable_count": 0
+        },
+        "contract_allowed_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "control_allowed_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "mode_switched_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "pair_physical_success_count": {
+          "available_count": 3,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "pair_physical_success_rate": {
+          "available_count": 3,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "physical_intercept_count": {
+          "available_count": 3,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "soft_prediction_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "soft_prediction_duration_s": {
+          "available_count": 3,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "soft_prediction_expired_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "target_intercept_success_count": {
+          "available_count": 3,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "target_intercept_success_rate": {
+          "available_count": 3,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "terminal_coast_count": {
+          "available_count": 3,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "terminal_coast_duration_s": {
+          "available_count": 3,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "terminal_coast_expired_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "terminal_filter_expired_count": {
+          "available_count": 3,
+          "mean": 32.333333333333336,
+          "not_applicable_count": 0,
+          "std": 13.203534880225572,
+          "sum": 97.0,
+          "unavailable_count": 0
+        },
+        "terminal_filter_innovation_rejected_count": {
+          "available_count": 3,
+          "mean": 0.6666666666666666,
+          "not_applicable_count": 0,
+          "std": 0.5773502691896258,
+          "sum": 2.0,
+          "unavailable_count": 0
+        },
+        "terminal_filter_measured_count": {
+          "available_count": 3,
+          "mean": 15.0,
+          "not_applicable_count": 0,
+          "std": 8.717797887081348,
+          "sum": 45.0,
+          "unavailable_count": 0
+        },
+        "terminal_filter_predicted_count": {
+          "available_count": 3,
+          "mean": 1.3333333333333333,
+          "not_applicable_count": 0,
+          "std": 1.1547005383792517,
+          "sum": 4.0,
+          "unavailable_count": 0
+        },
+        "terminal_filter_reset_count": {
+          "available_count": 3,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        },
+        "terminal_lock_continuity": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "ttc_area_jump_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "ttc_bbox_clipping_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "ttc_not_expanding_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "ttc_out_of_range_reject_count": {
+          "available_count": 0,
+          "mean": null,
+          "not_applicable_count": 0,
+          "std": null,
+          "sum": null,
+          "unavailable_count": 3
+        },
+        "visual_mode_duration_s": {
+          "available_count": 3,
+          "mean": 0.0,
+          "not_applicable_count": 0,
+          "std": 0.0,
+          "sum": 0.0,
+          "unavailable_count": 0
+        }
+      },
+      "profile": "candidate_soft_prediction_trend_coast",
+      "resource_count": 5,
+      "scenario_group": "airsim_m5n2_short_window_8s",
+      "seeds": [
+        1,
+        2,
+        3
+      ],
+      "target_count": 2
+    }
+  ],
+  "metrics": [
+    "terminal_filter_measured_count",
+    "terminal_filter_predicted_count",
+    "terminal_filter_innovation_rejected_count",
+    "terminal_filter_reset_count",
+    "terminal_filter_expired_count",
+    "ttc_area_jump_reject_count",
+    "ttc_bbox_clipping_reject_count",
+    "ttc_not_expanding_reject_count",
+    "ttc_out_of_range_reject_count",
+    "soft_prediction_count",
+    "soft_prediction_duration_s",
+    "soft_prediction_expired_count",
+    "terminal_coast_count",
+    "terminal_coast_duration_s",
+    "terminal_coast_expired_count",
+    "terminal_lock_continuity",
+    "visual_mode_duration_s",
+    "command_discontinuity_mean_mps",
+    "command_discontinuity_max_mps",
+    "contract_allowed_count",
+    "control_allowed_count",
+    "mode_switched_count",
+    "physical_intercept_count",
+    "pair_physical_success_count",
+    "pair_physical_success_rate",
+    "target_intercept_success_count",
+    "target_intercept_success_rate",
+    "coalition_completion_count",
+    "coalition_completion_rate"
+  ],
+  "offline_only": true,
+  "schema_version": "d6-terminal-delivery-eval-v1"
+}

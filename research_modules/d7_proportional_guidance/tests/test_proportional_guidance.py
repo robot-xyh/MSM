@@ -410,6 +410,44 @@ def test_visual_png_gate_rejects_when_not_closing() -> None:
     assert command.quality.reject_reason == "not_closing"
 
 
+def test_maneuver_margin_uses_unclipped_required_turn_rate() -> None:
+    tracker = SimpleFlightPngGuidanceFilter(
+        PngGuidanceConfig(
+            dt_s=0.1,
+            min_bbox_area_ratio=0.0001,
+            min_stable_frames=1,
+            edge_margin_ratio=0.01,
+            los_rate_window=2,
+            navigation_constant=5.0,
+            max_turn_rate_radps=0.9,
+            max_lateral_accel_mps2=20.0,
+            min_maneuver_margin=0.15,
+        )
+    )
+    command = None
+    for timestamp_s, center_x in ((0.0, 320.0), (0.1, 400.0), (0.2, 400.0)):
+        command = tracker.evaluate(
+            VisionGuidanceObservation(
+                timestamp_s=timestamp_s,
+                bbox_xyxy=(center_x - 20.0, 220.0, center_x + 20.0, 260.0),
+                detection_confidence=0.95,
+                local_track_id="L1",
+                assigned_global_track_id="G1",
+            ),
+            current_heading_rad=0.0,
+            current_speed_mps=6.0,
+            intercept_speed_mps=6.0,
+            relative_position_ned=(20.0, 0.0, 0.0),
+            relative_velocity_ned=(-4.0, 0.0, 0.0),
+        )
+
+    assert command is not None
+    assert command.quality.required_turn_rate_radps > command.quality.turn_rate_capacity_radps
+    assert command.quality.turn_rate_capacity_radps == pytest.approx(0.9)
+    assert command.quality.maneuver_margin < 0.0
+    assert command.quality.reject_reason == "maneuver_margin_low"
+
+
 def test_terminal_png_contract_allows_only_consistent_locked_handoff() -> None:
     binding = _binding()
     terminal = {

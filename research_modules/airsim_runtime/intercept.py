@@ -21,13 +21,17 @@ from d7_proportional_guidance import (
     D4GuidancePermission,
     GuidanceMode,
     GuidanceState,
+    MidcourseReacquisitionConfig,
+    MidcourseReacquisitionSelector,
     PngGuidanceConfig,
     TerminalDeliveryConfig,
     TerminalDeliveryState,
     TerminalGuidanceDelivery,
+    TerminalLifecycleContext,
     VisionGuidanceObservation,
     build_cooperative_guidance_topology,
-    compute_pn_command,
+    coerce_assignment_guidance_binding,
+    compute_midcourse_reacquisition_command,
     compute_pure_pursuit_command,
     evaluate_terminal_png_contract,
     guidance_mode_from_terminal_contract,
@@ -64,6 +68,10 @@ class InterceptPair:
     terminal_delivery: TerminalGuidanceDelivery | None = None
     terminal_delivery_state: str = ""
     terminal_delivery_reason: str = ""
+    terminal_local_track_id: str | None = None
+    midcourse_selector: MidcourseReacquisitionSelector | None = None
+    midcourse_binding_key: tuple[str, str, str, int] | None = None
+    last_recorded_mode: str | None = None
 
 
 @dataclass
@@ -90,6 +98,10 @@ class InterceptCommandRecord:
     assignment_phase: str
     d5_decision_state: str
     terminal_contract_reject_reason: str
+    terminal_contract_allowed: bool
+    terminal_control_allowed: bool
+    mode_switched: bool
+    physical_intercept: bool
     detection_seen: bool
     guidance_law: str
     camera_quality_gate_passed: bool
@@ -103,6 +115,19 @@ class InterceptCommandRecord:
     terminal_prediction_age_s: float | None
     terminal_blind_elapsed_s: float
     terminal_blind_decay: float
+    local_track_id: str
+    terminal_filter_state: str
+    terminal_filter_reason: str
+    terminal_filter_innovation_rejected: bool
+    terminal_filter_reset: bool
+    terminal_filter_reset_reason: str
+    terminal_image_innovation_norm_rad: float | None
+    terminal_trend_coast_applied: bool
+    ttc_raw_area_px2: float | None
+    ttc_filtered_area_px2: float | None
+    ttc_area_dot_px2_s: float | None
+    ttc_reject_reason: str
+    terminal_delivery_profile: str
     visual_reacquisition: bool
     terminal_visual_lost_after_coast: bool
     truth_identity_online_use: bool
@@ -110,6 +135,11 @@ class InterceptCommandRecord:
     los_rate_variance_radps2: float
     ttc_s: float | None
     maneuver_margin: float
+    midcourse_guidance_selection: str
+    midcourse_selection_reason: str
+    midcourse_reacquisition_active: bool
+    midcourse_overshoot_detected: bool
+    midcourse_minimum_range_m: float | None
     control_saturated: bool
     collision_seen: bool
     collision_object_name: str
@@ -153,6 +183,7 @@ def run_controlled_intercept_episode(
         for frame_index, timestamp in enumerate(_control_timestamps(config)):
             frame = runtime.sample_frame(config, frame_index, timestamp, output_dir / "images")
             frame = _annotate_active_replan_frame(config, frame)
+            frame = _apply_intercept_detection_dropout(config, frame)
             control_evidence: dict[str, dict[str, Any]] = {}
             if control_bus is not None:
                 control_bus.process_frame(frame)
@@ -164,6 +195,8 @@ def run_controlled_intercept_episode(
                 continue
             _refresh_pair_assignments(frame, pairs)
             _apply_online_control_evidence(pairs, control_evidence)
+            for pair in pairs:
+                _reset_midcourse_selector_for_binding_change(pair)
             _step_pairs(runtime, config, frame, pairs, command_records)
             if all(not pair.active for pair in pairs):
                 break
@@ -243,23 +276,20 @@ def _step_pairs(
         detection_seen = visible_detection is not None
         if detection_seen:
             pair.last_detection_s = frame.timestamp
+            pair.terminal_acquisition_started_s = None
         in_terminal_range = range_m <= config.intercept_terminal_switch_range_m
         if in_terminal_range:
             pair.terminal_handover_pending = True
-        if in_terminal_range and not detection_seen and not pair.terminal_locked:
-            last_seen = pair.last_detection_s
-            if last_seen is None and pair.terminal_acquisition_started_s is None:
-                pair.terminal_acquisition_started_s = frame.timestamp
-            acquisition_elapsed = (
-                0.0
-                if pair.terminal_acquisition_started_s is None
-                else frame.timestamp - pair.terminal_acquisition_started_s
-            )
-            timed_out = acquisition_elapsed > config.intercept_detection_timeout_s
-            if timed_out:
-                _abort_pair(runtime, pair, "terminal_detection_acquisition_timeout")
-                _record_command(config, frame.timestamp, pair, range_m, (0.0, 0.0, 0.0), None, False, collision, command_records)
-                continue
+        if _terminal_detection_acquisition_timed_out(
+            pair,
+            timestamp_s=frame.timestamp,
+            in_terminal_range=in_terminal_range,
+            detection_seen=detection_seen,
+            timeout_s=config.intercept_detection_timeout_s,
+        ):
+            _abort_pair(runtime, pair, "terminal_detection_acquisition_timeout")
+            _record_command(config, frame.timestamp, pair, range_m, (0.0, 0.0, 0.0), None, False, collision, command_records)
+            continue
 
         velocity_command, pn_command = _pn_velocity_command(
             config,
@@ -270,9 +300,10 @@ def _step_pairs(
             target_position,
             target_velocity,
             visible_detection,
+            _camera_info_for_pair(frame, pair),
         )
-        if pair.terminal_delivery_state == TerminalDeliveryState.EXPIRED.value:
-            _abort_pair(runtime, pair, pair.terminal_delivery_reason or "terminal_visual_lost_after_coast")
+        if _terminal_delivery_requires_abort(pair):
+            _abort_pair(runtime, pair, "terminal_visual_lost_after_coast")
             _record_command(
                 config,
                 frame.timestamp,
@@ -318,6 +349,7 @@ def _pn_velocity_command(
     target_position: np.ndarray,
     target_velocity: np.ndarray,
     visible_detection: Any | None,
+    camera_info: Any | None = None,
 ) -> tuple[tuple[float, float, float], Any]:
     pursuer_speed = float(np.linalg.norm(resource_velocity[:2]))
     if pursuer_speed < 0.5:
@@ -360,22 +392,29 @@ def _pn_velocity_command(
             target=target_state,
             dt_s=config.control_dt_s,
             mode=GuidanceMode.RADAR_MIDCOURSE,
-            max_turn_rate_radps=0.9,
+            max_turn_rate_radps=config.intercept_max_turn_rate_radps,
         )
         command.metadata["guidance_law"] = "pure_pursuit"
     else:
-        command = compute_pn_command(
+        if pair.midcourse_selector is None:
+            pair.midcourse_selector = MidcourseReacquisitionSelector(
+                MidcourseReacquisitionConfig(
+                    exit_closing_speed_mps=2.0,
+                    exit_consecutive_frames=max(10, int(round(1.0 / config.control_dt_s))),
+                    max_reacquisition_turn_rate_radps=config.intercept_max_turn_rate_radps,
+                )
+            )
+        command = compute_midcourse_reacquisition_command(
+            pair.midcourse_selector,
             pursuer=pursuer_state,
             target=target_state,
             dt_s=config.control_dt_s,
             navigation_constant=config.intercept_navigation_constant,
             mode=mode,
-            max_lateral_accel_mps2=20.0,
-            max_turn_rate_radps=0.9,
+            max_lateral_accel_mps2=config.intercept_max_lateral_accel_mps2,
+            max_turn_rate_radps=config.intercept_max_turn_rate_radps,
         )
-        command.metadata["guidance_law"] = (
-            "radar_pn" if not pair.terminal_locked else command.metadata.get("guidance_law", "radar_pn")
-        )
+        command.metadata["guidance_law"] = command.metadata.get("guidance_law", "radar_pn")
     command.metadata["configured_guidance_law"] = configured_law
     predicted_resource_velocity = np.asarray(_midcourse_velocity(config, command), dtype=float)
     if visual_guidance_enabled and pair.terminal_handover_pending:
@@ -393,6 +432,7 @@ def _pn_velocity_command(
                 frame_timestamp=timestamp,
                 pair=pair,
                 detection=visible_detection,
+                camera_info=camera_info,
             )
         )
         contract = evaluate_terminal_png_contract(
@@ -441,7 +481,7 @@ def _pn_velocity_command(
             )
             return _midcourse_velocity(config, command), command
 
-        delivery = _terminal_delivery_for_pair(config, pair)
+        delivery = _terminal_delivery_for_pair(config, pair, camera_info=camera_info)
         delivery_result = delivery.evaluate(
             assigned_global_track_id=(
                 pair.assigned_global_track_id
@@ -455,6 +495,11 @@ def _pn_velocity_command(
             relative_position_ned=tuple(float(value) for value in (target_position - resource_position)),
             relative_velocity_ned=tuple(float(value) for value in (target_velocity - predicted_resource_velocity)),
             command_z_ned_m=0.0,
+            lifecycle_context=_terminal_lifecycle_context(pair, observation),
+            soft_prediction_eligible=_terminal_soft_prediction_eligible(
+                pair,
+                contract_allowed=bool(contract.allowed),
+            ),
         )
         pair.terminal_delivery_state = delivery_result.state.value
         pair.terminal_delivery_reason = delivery_result.reason
@@ -468,7 +513,24 @@ def _pn_velocity_command(
                 "terminal_blind_elapsed_s": delivery_result.blind_elapsed_s,
                 "terminal_blind_decay": delivery_result.blind_decay,
                 "terminal_loss_frame_count": delivery_result.loss_frame_count,
+                "local_track_id": (
+                    observation.local_track_id
+                    if observation is not None
+                    else _optional_record_string(pair.terminal_association, "local_track_id")
+                ),
+                "terminal_filter_state": delivery_result.filter_audit_state.value,
+                "terminal_filter_reason": delivery_result.filter_audit_reason,
+                "terminal_filter_innovation_rejected": (
+                    delivery_result.filter_audit_state.value == "innovation_rejected"
+                ),
+                "terminal_filter_reset": delivery_result.lifecycle_reset,
+                "terminal_filter_reset_reason": delivery_result.lifecycle_reset_reason,
+                "terminal_image_innovation_norm_rad": delivery_result.image_innovation_norm_rad,
+                "terminal_trend_coast_applied": delivery_result.trend_coast_applied,
+                "terminal_trend_coast_velocity_ned": delivery_result.trend_coast_velocity_ned,
+                "terminal_delivery_profile": _terminal_delivery_profile(config),
                 "online_truth_id_used": pair.online_truth_id_used,
+                **_terminal_camera_metadata(camera_info, delivery.png_config),
             }
         )
         if visual_command is None:
@@ -558,25 +620,69 @@ def _velocity_from_heading(
 def _terminal_delivery_for_pair(
     config: BlocksSmokeConfig,
     pair: InterceptPair,
+    *,
+    camera_info: Any | None = None,
 ) -> TerminalGuidanceDelivery:
     if pair.terminal_delivery is None:
+        width_px, height_px, focal_length_px = _terminal_camera_intrinsics(camera_info)
         png_config = PngGuidanceConfig(
             dt_s=config.control_dt_s,
-            image_width_px=640,
-            image_height_px=480,
-            focal_length_px=320.0,
+            image_width_px=width_px,
+            image_height_px=height_px,
+            focal_length_px=focal_length_px,
             min_bbox_area_ratio=config.intercept_min_bbox_area_ratio,
             min_detection_confidence=config.intercept_min_detection_confidence,
             min_stable_frames=config.intercept_min_stable_detection_frames,
             max_visual_latency_s=config.intercept_max_visual_latency_s,
             navigation_constant=config.intercept_navigation_constant,
+            max_turn_rate_radps=config.intercept_max_turn_rate_radps,
+            max_lateral_accel_mps2=config.intercept_max_lateral_accel_mps2,
+            min_maneuver_margin=config.intercept_min_maneuver_margin,
             law=config.intercept_guidance_law,  # type: ignore[arg-type]
         )
         pair.terminal_delivery = TerminalGuidanceDelivery(
             png_config=png_config,
-            config=TerminalDeliveryConfig(control_dt_s=config.control_dt_s),
+            config=TerminalDeliveryConfig(
+                control_dt_s=config.control_dt_s,
+                soft_innovation_reject_prediction=(
+                    config.intercept_terminal_soft_prediction_enabled
+                ),
+                delivery_trend_coast=config.intercept_terminal_trend_coast_enabled,
+            ),
         )
     return pair.terminal_delivery
+
+
+def _camera_info_for_pair(frame: AirSimFrame, pair: InterceptPair) -> Any | None:
+    for camera in frame.cameras:
+        owner_id = str(getattr(camera, "owner_id", ""))
+        camera_id = str(getattr(camera, "camera_id", ""))
+        if owner_id == pair.vehicle_name or camera_id.split(":", 1)[0] == pair.vehicle_name:
+            return camera
+    return None
+
+
+def _terminal_camera_intrinsics(camera_info: Any | None) -> tuple[int, int, float]:
+    width_px = max(1, int(getattr(camera_info, "width", 640) or 640))
+    height_px = max(1, int(getattr(camera_info, "height", 480) or 480))
+    focal_length_px = float(getattr(camera_info, "fx", 0.0) or 0.0)
+    if not math.isfinite(focal_length_px) or focal_length_px <= 0.0:
+        focal_length_px = width_px * 0.5
+    return width_px, height_px, focal_length_px
+
+
+def _terminal_camera_metadata(
+    camera_info: Any | None,
+    png_config: PngGuidanceConfig,
+) -> dict[str, Any]:
+    return {
+        "camera_image_width_px": int(png_config.image_width_px),
+        "camera_image_height_px": int(png_config.image_height_px),
+        "camera_focal_length_px": float(png_config.focal_length_px),
+        "camera_intrinsics_source": (
+            "airsim_camera_info" if camera_info is not None else "runtime_fallback"
+        ),
+    }
 
 
 def _vision_observation_from_detection(
@@ -584,10 +690,13 @@ def _vision_observation_from_detection(
     frame_timestamp: float,
     pair: InterceptPair,
     detection: Any,
+    camera_info: Any | None = None,
 ) -> VisionGuidanceObservation:
+    measurement_timestamp = float(getattr(detection, "timestamp", frame_timestamp))
+    detection_metadata = dict(getattr(detection, "metadata", {}) or {})
     return VisionGuidanceObservation(
         timestamp_s=float(frame_timestamp),
-        frame_timestamp_s=float(getattr(detection, "timestamp", frame_timestamp)),
+        frame_timestamp_s=measurement_timestamp,
         bbox_xyxy=tuple(float(value) for value in detection.bbox_xyxy),
         detection_confidence=float(getattr(detection, "confidence", 0.0)),
         local_track_id=str(getattr(detection, "local_track_id", "")) or None,
@@ -598,11 +707,126 @@ def _vision_observation_from_detection(
         ),
         camera_id=str(getattr(detection, "camera_id", "")) or None,
         metadata={
-            "visual_latency_s": max(0.0, float(frame_timestamp) - float(getattr(detection, "timestamp", frame_timestamp))),
+            "measurement_timestamp": measurement_timestamp,
+            "arrival_timestamp": float(frame_timestamp),
+            "exposure_timestamp": float(
+                detection_metadata.get("exposure_timestamp", measurement_timestamp)
+            ),
+            "visual_latency_s": max(0.0, float(frame_timestamp) - measurement_timestamp),
             "source_node_id": pair.resource_id,
             "payload_kind": "bbox",
+            "detection_source": detection_metadata.get("detection_source", "airsim_runtime"),
+            "bbox_edge_clipped": _bbox_edge_clipped(detection.bbox_xyxy, camera_info),
+            **_camera_geometry_metadata(camera_info, frame_timestamp),
         },
     )
+
+
+def _terminal_lifecycle_context(
+    pair: InterceptPair,
+    observation: VisionGuidanceObservation | None,
+) -> TerminalLifecycleContext:
+    binding = pair.guidance_binding
+    assigned_global_track_id = (
+        pair.assigned_global_track_id
+        or (binding.assigned_global_track_id if binding is not None else pair.target_id)
+    )
+    observed_local_track_id = (
+        observation.local_track_id
+        if observation is not None and observation.local_track_id
+        else None
+    )
+    if observed_local_track_id is not None:
+        pair.terminal_local_track_id = observed_local_track_id
+    local_track_id = pair.terminal_local_track_id
+    return TerminalLifecycleContext(
+        resource_id=pair.resource_id,
+        assigned_global_track_id=str(assigned_global_track_id),
+        local_track_id=local_track_id,
+        plan_owner_id=(binding.owner_node_id if binding is not None else None),
+        plan_version=(int(binding.plan_version) if binding is not None else 0),
+    )
+
+
+def _terminal_soft_prediction_eligible(
+    pair: InterceptPair,
+    *,
+    contract_allowed: bool,
+) -> bool:
+    association = pair.terminal_association
+    metadata = dict(_record_value(association, "metadata", {}) or {})
+    friend_conflict = str(
+        _record_value(association, "friend_conflict_state", "none") or "none"
+    ).lower()
+    duplicate_lock = bool(
+        _record_value(association, "duplicate_terminal_lock_risk", False)
+        or metadata.get("duplicate_terminal_lock_risk", False)
+    )
+    return bool(contract_allowed and friend_conflict == "none" and not duplicate_lock)
+
+
+def _terminal_delivery_profile(config: BlocksSmokeConfig) -> str:
+    enabled = []
+    if config.intercept_terminal_soft_prediction_enabled:
+        enabled.append("soft_prediction")
+    if config.intercept_terminal_trend_coast_enabled:
+        enabled.append("trend_coast")
+    return "candidate_" + "_".join(enabled) if enabled else "baseline"
+
+
+def _camera_geometry_metadata(
+    camera_info: Any | None,
+    arrival_timestamp: float,
+) -> dict[str, Any]:
+    if camera_info is None:
+        return {
+            "camera_geometry_valid": False,
+            "camera_geometry_unavailable_reasons": ["camera_info_unavailable"],
+        }
+    try:
+        world_to_camera = np.asarray(
+            getattr(camera_info, "rotation_world_to_camera"), dtype=float
+        ).reshape(3, 3)
+        camera_to_ned = world_to_camera.T
+        camera_position_ned = tuple(float(value) for value in camera_info.position_ned)
+        camera_timestamp = float(getattr(camera_info, "timestamp", arrival_timestamp))
+        width = max(1, int(getattr(camera_info, "width", 640) or 640))
+        height = max(1, int(getattr(camera_info, "height", 480) or 480))
+        intrinsics = (
+            (float(getattr(camera_info, "fx", width * 0.5)), 0.0, float(getattr(camera_info, "cx", width * 0.5))),
+            (0.0, float(getattr(camera_info, "fy", width * 0.5)), float(getattr(camera_info, "cy", height * 0.5))),
+            (0.0, 0.0, 1.0),
+        )
+    except (AttributeError, TypeError, ValueError):
+        return {
+            "camera_geometry_valid": False,
+            "camera_geometry_unavailable_reasons": ["camera_info_invalid"],
+        }
+    attitude_age_s = max(0.0, float(arrival_timestamp) - camera_timestamp)
+    return {
+        "camera_intrinsics": intrinsics,
+        "camera_to_ned_rotation": tuple(tuple(float(value) for value in row) for row in camera_to_ned),
+        "camera_position_ned": camera_position_ned,
+        "attitude_timestamp_s": camera_timestamp,
+        "attitude_age_s": attitude_age_s,
+        "camera_geometry_valid": attitude_age_s <= 0.05,
+        "camera_geometry_source": "airsim_camera_info",
+        "camera_geometry_unavailable_reasons": (
+            [] if attitude_age_s <= 0.05 else ["camera_attitude_unavailable_or_stale"]
+        ),
+    }
+
+
+def _bbox_edge_clipped(bbox_xyxy: Any, camera_info: Any | None) -> bool:
+    if camera_info is None:
+        return False
+    try:
+        x1, y1, x2, y2 = (float(value) for value in bbox_xyxy)
+        width = float(getattr(camera_info, "width"))
+        height = float(getattr(camera_info, "height"))
+    except (AttributeError, TypeError, ValueError):
+        return False
+    return bool(x1 <= 0.0 or y1 <= 0.0 or x2 >= width or y2 >= height)
 
 
 def _visual_metadata(visual_command: Any) -> dict[str, Any]:
@@ -616,7 +840,13 @@ def _visual_metadata(visual_command: Any) -> dict[str, Any]:
         "bbox_area_ratio": visual_command.quality.bbox_area_ratio,
         "los_rate_variance_radps2": visual_command.quality.los_rate_variance_radps2,
         "ttc_s": visual_command.quality.ttc_s,
+        "ttc_raw_area_px2": visual_command.quality.ttc_raw_area_px2,
+        "ttc_filtered_area_px2": visual_command.quality.ttc_filtered_area_px2,
+        "ttc_area_dot_px2_s": visual_command.quality.ttc_area_dot_px2_s,
+        "ttc_reject_reason": visual_command.quality.ttc_reject_reason,
         "maneuver_margin": visual_command.quality.maneuver_margin,
+        "required_turn_rate_radps": visual_command.quality.required_turn_rate_radps,
+        "turn_rate_capacity_radps": visual_command.quality.turn_rate_capacity_radps,
         "control_saturated": visual_command.control_saturated,
     }
 
@@ -726,6 +956,19 @@ def _refresh_pair_assignments(frame: AirSimFrame, pairs: list[InterceptPair]) ->
         pair.assigned_global_track_id = pair.guidance_binding.assigned_global_track_id
 
 
+def _reset_midcourse_selector_for_binding_change(pair: InterceptPair) -> None:
+    binding_key = (
+        pair.target_id,
+        str(pair.assigned_global_track_id or pair.target_id),
+        _pair_plan_id(pair),
+        _pair_plan_version(pair),
+    )
+    previous = pair.midcourse_binding_key
+    pair.midcourse_binding_key = binding_key
+    if previous is not None and previous != binding_key and pair.midcourse_selector is not None:
+        pair.midcourse_selector.reset()
+
+
 def _assignment_target_for_resource(
     frame: AirSimFrame,
     resource_id: str,
@@ -807,7 +1050,7 @@ def _apply_online_control_evidence(
             continue
         binding = evidence.get("binding")
         if binding is not None:
-            pair.guidance_binding = AssignmentGuidanceBinding(**dict(binding))
+            pair.guidance_binding = coerce_assignment_guidance_binding(binding)
             pair.assigned_global_track_id = pair.guidance_binding.assigned_global_track_id
         pair.d4_permission = evidence.get("d4_permission")
         pair.terminal_association = evidence.get("terminal_association")
@@ -1364,6 +1607,59 @@ def _abort_pair(runtime: Any, pair: InterceptPair, reason: str) -> None:
     runtime.hover_interceptor(pair.vehicle_name)
 
 
+def _terminal_delivery_requires_abort(pair: InterceptPair) -> bool:
+    return bool(
+        pair.terminal_delivery_state == TerminalDeliveryState.EXPIRED.value
+        and pair.terminal_delivery_reason == "terminal_visual_lost_after_coast"
+    )
+
+
+def _terminal_detection_acquisition_timed_out(
+    pair: InterceptPair,
+    *,
+    timestamp_s: float,
+    in_terminal_range: bool,
+    detection_seen: bool,
+    timeout_s: float,
+) -> bool:
+    if detection_seen or not in_terminal_range or pair.terminal_locked:
+        pair.terminal_acquisition_started_s = None
+        return False
+    if pair.terminal_acquisition_started_s is None:
+        pair.terminal_acquisition_started_s = float(timestamp_s)
+        return False
+    return float(timestamp_s) - pair.terminal_acquisition_started_s > float(timeout_s)
+
+
+def _apply_intercept_detection_dropout(
+    config: BlocksSmokeConfig,
+    frame: AirSimFrame,
+) -> AirSimFrame:
+    start = config.intercept_detection_dropout_start_s
+    end = config.intercept_detection_dropout_end_s
+    active = bool(
+        start is not None
+        and end is not None
+        and float(start) <= float(frame.timestamp) < float(end)
+    )
+    if not active:
+        return frame
+    return replace(
+        frame,
+        visual_detections=(),
+        metadata={
+            **frame.metadata,
+            "intercept_detection_dropout": {
+                "active": True,
+                "start_s": float(start),
+                "end_s": float(end),
+                "suppressed_detection_count": len(frame.visual_detections),
+                "scope": "online_visual_detections_before_d5_d7",
+            },
+        },
+    )
+
+
 def _record_command(
     config: BlocksSmokeConfig,
     timestamp: float,
@@ -1376,13 +1672,18 @@ def _record_command(
     command_records: list[InterceptCommandRecord],
 ) -> None:
     collision_seen = _recorded_collision_seen(collision)
+    command_mode = _command_mode(pn_command, pair)
+    mode_switched = bool(
+        pair.last_recorded_mode is not None and pair.last_recorded_mode != command_mode
+    )
+    pair.last_recorded_mode = command_mode
     command_records.append(
         InterceptCommandRecord(
             timestamp_s=float(timestamp),
             resource_id=pair.resource_id,
             vehicle_name=pair.vehicle_name,
             target_id=pair.target_id,
-            mode=_command_mode(pn_command, pair),
+            mode=command_mode,
             range_m=float(range_m),
             command_vx_mps=float(velocity_command[0]),
             command_vy_mps=float(velocity_command[1]),
@@ -1406,6 +1707,14 @@ def _record_command(
                     pair.terminal_contract_reject_reason,
                 )
             ),
+            terminal_contract_allowed=bool(
+                _command_metadata(pn_command, "terminal_contract_allowed", False)
+            ),
+            terminal_control_allowed=bool(
+                _command_metadata(pn_command, "terminal_switch_allowed", False)
+            ),
+            mode_switched=mode_switched,
+            physical_intercept=pair.status in {"collision_intercept", "range_intercept"},
             detection_seen=bool(detection_seen),
             guidance_law=str(_command_metadata(pn_command, "guidance_law", "radar_pn" if not pair.terminal_locked else "los")),
             camera_quality_gate_passed=bool(_command_metadata(pn_command, "camera_quality_gate_passed", False)),
@@ -1439,6 +1748,62 @@ def _record_command(
             terminal_blind_decay=float(
                 _command_metadata(pn_command, "terminal_blind_decay", 0.0) or 0.0
             ),
+            local_track_id=str(
+                _command_metadata(
+                    pn_command,
+                    "local_track_id",
+                    _optional_record_string(pair.terminal_association, "local_track_id") or "",
+                )
+                or ""
+            ),
+            terminal_filter_state=str(
+                _command_metadata(pn_command, "terminal_filter_state", "") or ""
+            ),
+            terminal_filter_reason=str(
+                _command_metadata(pn_command, "terminal_filter_reason", "") or ""
+            ),
+            terminal_filter_innovation_rejected=bool(
+                _command_metadata(
+                    pn_command,
+                    "terminal_filter_innovation_rejected",
+                    False,
+                )
+            ),
+            terminal_filter_reset=bool(
+                _command_metadata(pn_command, "terminal_filter_reset", False)
+            ),
+            terminal_filter_reset_reason=str(
+                _command_metadata(pn_command, "terminal_filter_reset_reason", "") or ""
+            ),
+            terminal_image_innovation_norm_rad=_optional_float(
+                _command_metadata(
+                    pn_command,
+                    "terminal_image_innovation_norm_rad",
+                    None,
+                )
+            ),
+            terminal_trend_coast_applied=bool(
+                _command_metadata(pn_command, "terminal_trend_coast_applied", False)
+            ),
+            ttc_raw_area_px2=_optional_float(
+                _command_metadata(pn_command, "ttc_raw_area_px2", None)
+            ),
+            ttc_filtered_area_px2=_optional_float(
+                _command_metadata(pn_command, "ttc_filtered_area_px2", None)
+            ),
+            ttc_area_dot_px2_s=_optional_float(
+                _command_metadata(pn_command, "ttc_area_dot_px2_s", None)
+            ),
+            ttc_reject_reason=str(
+                _command_metadata(pn_command, "ttc_reject_reason", "") or ""
+            ),
+            terminal_delivery_profile=str(
+                _command_metadata(
+                    pn_command,
+                    "terminal_delivery_profile",
+                    _terminal_delivery_profile(config),
+                )
+            ),
             visual_reacquisition=str(
                 _command_metadata(pn_command, "terminal_delivery_state", "")
             )
@@ -1458,6 +1823,21 @@ def _record_command(
             los_rate_variance_radps2=float(_command_metadata(pn_command, "los_rate_variance_radps2", 0.0) or 0.0),
             ttc_s=_optional_float(_command_metadata(pn_command, "ttc_s", None)),
             maneuver_margin=float(_command_metadata(pn_command, "maneuver_margin", 0.0) or 0.0),
+            midcourse_guidance_selection=str(
+                _command_metadata(pn_command, "midcourse_guidance_selection", "")
+            ),
+            midcourse_selection_reason=str(
+                _command_metadata(pn_command, "midcourse_selection_reason", "")
+            ),
+            midcourse_reacquisition_active=bool(
+                _command_metadata(pn_command, "midcourse_reacquisition_active", False)
+            ),
+            midcourse_overshoot_detected=bool(
+                _command_metadata(pn_command, "midcourse_overshoot_detected", False)
+            ),
+            midcourse_minimum_range_m=_optional_float(
+                _command_metadata(pn_command, "midcourse_minimum_range_m", None)
+            ),
             control_saturated=bool(_command_metadata(pn_command, "control_saturated", getattr(pn_command, "is_saturated", False) if pn_command is not None else False)),
             collision_seen=bool(collision_seen),
             collision_object_name=str(collision.get("object_name") or ""),
@@ -1572,6 +1952,18 @@ def _write_intercept_outputs(
             "intercept_success_criteria_version": "airsim-range-intercept-v2",
             "intercept_max_duration_s": config.intercept_max_duration_s,
             "terminal_switch_range_m": config.intercept_terminal_switch_range_m,
+            "detection_timeout_s": config.intercept_detection_timeout_s,
+            "detection_dropout_start_s": config.intercept_detection_dropout_start_s,
+            "detection_dropout_end_s": config.intercept_detection_dropout_end_s,
+            "terminal_delivery_profile": _terminal_delivery_profile(config),
+            "terminal_soft_prediction_enabled": (
+                config.intercept_terminal_soft_prediction_enabled
+            ),
+            "terminal_trend_coast_enabled": (
+                config.intercept_terminal_trend_coast_enabled
+            ),
+            "max_turn_rate_radps": config.intercept_max_turn_rate_radps,
+            "min_maneuver_margin": config.intercept_min_maneuver_margin,
             "cooperative_demand_enabled": config.cooperative_demand_enabled,
             "cooperative_coordination_mode": config.cooperative_coordination_mode,
             "cooperative_primary_count": config.cooperative_primary_count,

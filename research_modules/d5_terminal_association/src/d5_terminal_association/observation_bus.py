@@ -116,6 +116,41 @@ class TerminalObservationBus:
                 if local_track is not None and local_track.prediction_age_s is not None
                 else terminal_association.prediction_age_s
             ),
+            mot_history_length=(
+                local_track.mot_history_length
+                if local_track is not None
+                else terminal_association.mot_history_length
+            ),
+            track_transition_state=(
+                local_track.track_transition_state
+                if local_track is not None
+                else terminal_association.track_transition_state
+            ),
+            track_reset_reason=(
+                local_track.track_reset_reason
+                if local_track is not None
+                else terminal_association.track_reset_reason
+            ),
+            detection_source=(
+                local_track.detection_source
+                if local_track is not None
+                else terminal_association.detection_source
+            ),
+            bbox_edge_clipped=(
+                local_track.bbox_edge_clipped
+                if local_track is not None
+                else terminal_association.bbox_edge_clipped
+            ),
+            bbox_edge_clip_sides=(
+                local_track.bbox_edge_clip_sides
+                if local_track is not None
+                else terminal_association.bbox_edge_clip_sides
+            ),
+            camera_geometry=(
+                local_track.camera_geometry
+                if local_track is not None and local_track.camera_geometry is not None
+                else terminal_association.camera_geometry
+            ),
             truth_identity_used=False,
         )
         return self.publish(

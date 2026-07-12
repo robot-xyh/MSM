@@ -23,6 +23,39 @@ from .standard_mapping import (
 )
 
 
+_TERMINAL_DELIVERY_REPORT_METRICS = (
+    "terminal_filter_measured_count",
+    "terminal_filter_predicted_count",
+    "terminal_filter_innovation_rejected_count",
+    "terminal_filter_reset_count",
+    "terminal_filter_expired_count",
+    "ttc_area_jump_reject_count",
+    "ttc_bbox_clipping_reject_count",
+    "ttc_not_expanding_reject_count",
+    "ttc_out_of_range_reject_count",
+    "soft_prediction_count",
+    "soft_prediction_duration_s",
+    "soft_prediction_expired_count",
+    "terminal_coast_count",
+    "terminal_coast_duration_s",
+    "terminal_coast_expired_count",
+    "terminal_lock_continuity",
+    "visual_mode_duration_s",
+    "command_discontinuity_mean_mps",
+    "command_discontinuity_max_mps",
+    "contract_allowed_count",
+    "control_allowed_count",
+    "mode_switched_count",
+    "physical_intercept_count",
+    "pair_physical_success_count",
+    "pair_physical_success_rate",
+    "target_intercept_success_count",
+    "target_intercept_success_rate",
+    "coalition_completion_count",
+    "coalition_completion_rate",
+)
+
+
 class ReportGenerator:
     """Generate CSV tables, Markdown summaries, and charts."""
 
@@ -183,6 +216,25 @@ class ReportGenerator:
             "visual_reacquisition_count",
             "terminal_visual_lost_after_coast_count",
             "truth_identity_online_use_count",
+            "terminal_filter_measured_count",
+            "terminal_filter_predicted_count",
+            "terminal_filter_innovation_rejected_count",
+            "terminal_filter_reset_count",
+            "terminal_filter_expired_count",
+            "ttc_area_jump_reject_count",
+            "ttc_bbox_clipping_reject_count",
+            "ttc_not_expanding_reject_count",
+            "ttc_out_of_range_reject_count",
+            "soft_prediction_count",
+            "soft_prediction_duration_s",
+            "soft_prediction_expired_count",
+            "terminal_coast_count",
+            "terminal_coast_duration_s",
+            "terminal_coast_expired_count",
+            "terminal_lock_continuity",
+            "visual_mode_duration_s",
+            "command_discontinuity_mean_mps",
+            "command_discontinuity_max_mps",
             "intercept_success_count",
             "collision_intercept_count",
             "range_intercept_count",
@@ -360,6 +412,69 @@ class ReportGenerator:
             writer.writeheader()
             writer.writerows(rows)
         return path
+
+    def write_terminal_delivery_comparison_bundle(
+        self,
+        episodes: Iterable[EpisodeMetrics],
+        output_dir: str | Path,
+        title: str = "D7 PNG Delivery 多 Seed 离线评估报告",
+    ) -> dict[str, Path]:
+        """Write availability-aware baseline/candidate CSV, JSON and Chinese Markdown."""
+
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        episode_list = list(episodes)
+        episode_rows = _terminal_delivery_episode_rows(episode_list)
+        aggregate_rows = _terminal_delivery_aggregate_rows(episode_list)
+
+        csv_path = output_dir / "terminal_delivery_episode_metrics.csv"
+        csv_fields = [
+            "episode_id",
+            "metric_scope",
+            "scenario_group",
+            "profile",
+            "seed",
+            "batch_seed",
+            *EpisodeMetrics.scale_names(),
+        ]
+        for metric_name in _TERMINAL_DELIVERY_REPORT_METRICS:
+            csv_fields.extend((metric_name, f"{metric_name}_availability"))
+        with csv_path.open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(stream, fieldnames=csv_fields)
+            writer.writeheader()
+            writer.writerows(episode_rows)
+
+        json_path = output_dir / "terminal_delivery_summary.json"
+        json_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "d6-terminal-delivery-eval-v1",
+                    "offline_only": True,
+                    "episode_count": len(episode_list),
+                    "metrics": list(_TERMINAL_DELIVERY_REPORT_METRICS),
+                    "groups": aggregate_rows,
+                },
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+
+        markdown_path = output_dir / "terminal_delivery_comparison_report.md"
+        markdown_path.write_text(
+            _terminal_delivery_markdown(
+                aggregate_rows,
+                title=title,
+                episode_count=len(episode_list),
+            ),
+            encoding="utf-8",
+        )
+        return {
+            "episode_csv": csv_path,
+            "summary_json": json_path,
+            "markdown": markdown_path,
+        }
 
     def write_markdown_report(
         self,
@@ -735,6 +850,205 @@ class ReportGenerator:
         fig.tight_layout()
         fig.savefig(path, dpi=140)
         plt.close(fig)
+
+
+def _terminal_delivery_profile(episode: EpisodeMetrics) -> str:
+    profile = episode.metadata.get("terminal_delivery_profile")
+    if profile:
+        return str(profile)
+    counts = episode.metadata.get("terminal_delivery_profile_counts")
+    if isinstance(counts, Mapping) and len(counts) == 1:
+        return str(next(iter(counts)))
+    return "unlabeled"
+
+
+def _terminal_delivery_metric_status(
+    episode: EpisodeMetrics,
+    metric_name: str,
+) -> str:
+    if getattr(episode, metric_name) is not None:
+        return "available"
+    availability = episode.metric_availability or {}
+    return str(availability.get(metric_name, {}).get("status", "unavailable"))
+
+
+def _terminal_delivery_episode_rows(
+    episodes: list[EpisodeMetrics],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for episode in episodes:
+        row: dict[str, Any] = {
+            "episode_id": episode.episode_id,
+            "metric_scope": episode.metric_scope,
+            "scenario_group": episode.scenario_group,
+            "profile": _terminal_delivery_profile(episode),
+            "seed": episode.seed,
+            "batch_seed": episode.batch_seed,
+            **{name: getattr(episode, name) for name in EpisodeMetrics.scale_names()},
+        }
+        for metric_name in _TERMINAL_DELIVERY_REPORT_METRICS:
+            row[metric_name] = getattr(episode, metric_name)
+            row[f"{metric_name}_availability"] = _terminal_delivery_metric_status(
+                episode,
+                metric_name,
+            )
+        rows.append(row)
+    return rows
+
+
+def _terminal_delivery_aggregate_rows(
+    episodes: list[EpisodeMetrics],
+) -> list[dict[str, Any]]:
+    groups: dict[tuple[Any, ...], list[EpisodeMetrics]] = {}
+    for episode in episodes:
+        key = (
+            episode.metric_scope,
+            episode.scenario_group,
+            _terminal_delivery_profile(episode),
+            episode.drone_count,
+            episode.resource_count,
+            episode.target_count,
+            episode.camera_count,
+        )
+        groups.setdefault(key, []).append(episode)
+
+    rows: list[dict[str, Any]] = []
+    for key, scoped in sorted(groups.items(), key=lambda item: tuple(map(str, item[0]))):
+        metric_scope, scenario_group, profile, drone_count, resource_count, target_count, camera_count = key
+        metrics: dict[str, Any] = {}
+        for metric_name in _TERMINAL_DELIVERY_REPORT_METRICS:
+            values = [
+                float(value)
+                for episode in scoped
+                for value in [getattr(episode, metric_name)]
+                if value is not None
+            ]
+            statuses = [
+                _terminal_delivery_metric_status(episode, metric_name)
+                for episode in scoped
+            ]
+            metrics[metric_name] = {
+                "available_count": len(values),
+                "unavailable_count": sum(status == "unavailable" for status in statuses),
+                "not_applicable_count": sum(
+                    status == "not_applicable" for status in statuses
+                ),
+                "sum": sum(values) if values else None,
+                "mean": float(np.mean(values)) if values else None,
+                "std": (
+                    float(np.std(values, ddof=1)) if len(values) > 1 else 0.0
+                )
+                if values
+                else None,
+            }
+        rows.append(
+            {
+                "metric_scope": metric_scope,
+                "scenario_group": scenario_group,
+                "profile": profile,
+                "drone_count": drone_count,
+                "resource_count": resource_count,
+                "target_count": target_count,
+                "camera_count": camera_count,
+                "episode_count": len(scoped),
+                "seeds": sorted(
+                    episode.seed for episode in scoped if episode.seed is not None
+                ),
+                "metrics": metrics,
+            }
+        )
+    return rows
+
+
+def _terminal_delivery_markdown(
+    aggregate_rows: list[dict[str, Any]],
+    *,
+    title: str,
+    episode_count: int,
+) -> str:
+    lines = [
+        f"# {title}",
+        "",
+        "本报告只消费已经写盘的 D5/D7/main 日志，不参与导引、授权或控制。缺失字段按 `unavailable/NA` 展示，不按零值处理。",
+        "",
+        f"- Episode 数量：{episode_count}",
+        "- 分组口径：显式 profile、metric scope、scenario group 与实际 N/M 规模。",
+        "- 2v2 与 M5N2 分开统计；M5N2 的 target、active-primary pair 和 coalition completion 不互相替代。",
+        "",
+        "## 分组结果",
+        "",
+        "| Scope | 场景 | Profile | 资源/目标 | Seeds | Contract | Control | Mode switch | Pair physical | Target success | Coalition completion |",
+        "|---|---|---|---|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for row in aggregate_rows:
+        metrics = row["metrics"]
+        lines.append(
+            "| {scope} | {scenario} | {profile} | {resources}/{targets} | {seeds} | {contract} | {control} | {mode} | {pair} | {target} | {coalition} |".format(
+                scope=row["metric_scope"],
+                scenario=row["scenario_group"],
+                profile=row["profile"],
+                resources=row["resource_count"],
+                targets=row["target_count"],
+                seeds=",".join(map(str, row["seeds"])) or "NA",
+                contract=_format_terminal_aggregate(metrics["contract_allowed_count"]),
+                control=_format_terminal_aggregate(metrics["control_allowed_count"]),
+                mode=_format_terminal_aggregate(metrics["mode_switched_count"]),
+                pair=_format_terminal_aggregate(metrics["pair_physical_success_count"]),
+                target=_format_terminal_aggregate(metrics["target_intercept_success_count"]),
+                coalition=_format_terminal_aggregate(metrics["coalition_completion_count"]),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## PNG Delivery 诊断",
+            "",
+            "| Scope/场景/Profile/N/M | 指标 | 可用 | unavailable | Sum | Mean | Std |",
+            "|---|---|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for row in aggregate_rows:
+        group = "{}/{}/{}/{}/{}".format(
+            row["metric_scope"],
+            row["scenario_group"],
+            row["profile"],
+            row["resource_count"],
+            row["target_count"],
+        )
+        for metric_name in _TERMINAL_DELIVERY_REPORT_METRICS:
+            metric = row["metrics"][metric_name]
+            lines.append(
+                "| {group} | {name} | {available} | {unavailable} | {sum_value} | {mean} | {std} |".format(
+                    group=group,
+                    name=metric_name,
+                    available=metric["available_count"],
+                    unavailable=metric["unavailable_count"],
+                    sum_value=_format_optional_metric(metric["sum"]),
+                    mean=_format_optional_metric(metric["mean"]),
+                    std=_format_optional_metric(metric["std"]),
+                )
+            )
+
+    lines.extend(
+        [
+            "",
+            "## 解释约束",
+            "",
+            "- `measured/predicted/rejected/reset/expired` 是滤波样本或事件计数，不等同于目标命中数。",
+            "- soft prediction 与 coast 只评估持续时间、到期和控制平滑性；不得作为身份或授权证据。",
+            "- `physical_intercept_5m` 只来自显式物理拦截证据；ComputerVision 只读 episode 应为 unavailable。",
+            "- M5N2 中任一目标成功不能回填全部 active-primary pair 成功，也不能回填 coalition completion。",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _format_terminal_aggregate(metric: Mapping[str, Any]) -> str:
+    if metric.get("available_count", 0) <= 0:
+        return "NA"
+    return _format_optional_metric(metric.get("sum"))
 
 
 def _empty_summary_row(

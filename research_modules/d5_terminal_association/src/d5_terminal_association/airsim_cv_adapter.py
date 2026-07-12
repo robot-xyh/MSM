@@ -12,7 +12,13 @@ from typing import Any, Iterable, Mapping
 
 import numpy as np
 
-from .models import CrossViewAssociation, LocalVisualTrack, ReconImageCue, TerminalObservation
+from .models import (
+    CameraGeometryEvidence,
+    CrossViewAssociation,
+    LocalVisualTrack,
+    ReconImageCue,
+    TerminalObservation,
+)
 from .observation_bus import TerminalObservationBus
 
 
@@ -447,6 +453,11 @@ def local_visual_tracks_from_sim_detections(
     resource_id: str,
     camera_id: str,
     timestamp: float,
+    arrival_timestamp: float | None = None,
+    exposure_timestamp: float | None = None,
+    image_size: tuple[int, int] | None = None,
+    camera_geometry: CameraGeometryEvidence | None = None,
+    detection_source: str = "simGetDetections",
     default_category: str = "unknown",
     default_quality: float = 0.8,
 ) -> list[LocalVisualTrack]:
@@ -467,6 +478,12 @@ def local_visual_tracks_from_sim_detections(
         local_id = _online_local_track_id(detection, camera_id=camera_id, index=index)
         category = _online_category_from_detection(detection, default_category=default_category)
         quality = float(_get_any(detection, "confidence", "score", "quality") or default_quality)
+        history_length = int(_get_any(detection, "mot_history_length") or 1)
+        clip_sides = _bbox_edge_clip_sides(bbox, image_size)
+        transition = str(
+            _get_any(detection, "track_transition_state", "track_transition")
+            or ("continued" if history_length > 1 else "initialized")
+        ).lower()
         tracks.append(
             LocalVisualTrack(
                 local_track_id=local_id,
@@ -475,8 +492,20 @@ def local_visual_tracks_from_sim_detections(
                 bearing_rate=np.zeros(2, dtype=float),
                 category=category,
                 quality=quality,
-                mot_history_length=int(_get_any(detection, "mot_history_length") or 1),
+                mot_history_length=history_length,
                 timestamp=float(timestamp),
+                arrival_timestamp=(
+                    float(arrival_timestamp) if arrival_timestamp is not None else float(timestamp)
+                ),
+                exposure_timestamp=(
+                    float(exposure_timestamp) if exposure_timestamp is not None else float(timestamp)
+                ),
+                detection_source=detection_source,
+                track_transition_state=transition,
+                track_reset_reason=_get_any(detection, "track_reset_reason"),
+                bbox_edge_clipped=bool(clip_sides),
+                bbox_edge_clip_sides=clip_sides,
+                camera_geometry=camera_geometry,
             )
         )
     return tracks
@@ -492,6 +521,10 @@ def local_visual_tracks_from_offline_yolo_bytetrack(
     default_quality: float = 0.8,
     default_mot_history_length: int = 1,
     source_name: str = "offline_yolo_bytetrack",
+    arrival_timestamp: float | None = None,
+    exposure_timestamp: float | None = None,
+    image_size: tuple[int, int] | None = None,
+    camera_geometry: CameraGeometryEvidence | None = None,
 ) -> list[LocalVisualTrack]:
     """Convert offline detector/tracker rows to `LocalVisualTrack`.
 
@@ -531,6 +564,7 @@ def local_visual_tracks_from_offline_yolo_bytetrack(
             _get_any(detection, "mot_history_length", "track_age", "age")
             or default_mot_history_length
         )
+        clip_sides = _bbox_edge_clip_sides(bbox, image_size)
         tracks.append(
             LocalVisualTrack(
                 local_track_id=local_id,
@@ -544,6 +578,22 @@ def local_visual_tracks_from_offline_yolo_bytetrack(
                 quality=quality,
                 mot_history_length=history_length,
                 timestamp=track_timestamp,
+                arrival_timestamp=(
+                    float(arrival_timestamp)
+                    if arrival_timestamp is not None
+                    else track_timestamp
+                ),
+                exposure_timestamp=(
+                    float(exposure_timestamp)
+                    if exposure_timestamp is not None
+                    else track_timestamp
+                ),
+                detection_source=source_name,
+                track_transition_state=("continued" if history_length > 1 else "initialized"),
+                track_reset_reason=_get_any(detection, "track_reset_reason"),
+                bbox_edge_clipped=bool(clip_sides),
+                bbox_edge_clip_sides=clip_sides,
+                camera_geometry=camera_geometry,
             )
         )
     return tracks
@@ -559,6 +609,9 @@ def publish_sim_detections_as_local_observations(
     timestamp: float,
     arrival_timestamp: float | None = None,
     source_node_id: str | None = None,
+    image_size: tuple[int, int] | None = None,
+    camera_geometry: CameraGeometryEvidence | None = None,
+    exposure_timestamp: float | None = None,
 ) -> list[LocalVisualTrack]:
     """Publish all detections from one AirSim CV camera as local observations."""
 
@@ -567,6 +620,10 @@ def publish_sim_detections_as_local_observations(
         resource_id=resource_id,
         camera_id=camera_id,
         timestamp=timestamp,
+        arrival_timestamp=arrival_timestamp,
+        exposure_timestamp=exposure_timestamp,
+        image_size=image_size,
+        camera_geometry=camera_geometry,
     )
     for track in tracks:
         effective_arrival_timestamp = (
@@ -586,14 +643,52 @@ def publish_sim_detections_as_local_observations(
                 "association_source": "geometric_detect",
                 "measurement_timestamp": track.timestamp,
                 "arrival_timestamp": effective_arrival_timestamp,
+                "exposure_timestamp": track.exposure_timestamp,
                 "measurement_age_s": max(0.0, effective_arrival_timestamp - track.timestamp),
                 "prediction_age_s": None,
                 "local_track_state": "measured",
+                "mot_history_length": track.mot_history_length,
+                "track_transition_state": track.track_transition_state,
+                "track_reset_reason": track.track_reset_reason,
+                "detection_source": track.detection_source,
+                "bbox_edge_clipped": track.bbox_edge_clipped,
+                "bbox_edge_clip_sides": list(track.bbox_edge_clip_sides),
+                "camera_geometry": (
+                    track.camera_geometry.to_metadata()
+                    if track.camera_geometry is not None
+                    else {
+                        "geometry_valid": False,
+                        "geometry_source": "unavailable",
+                        "geometry_unavailable_reasons": ["camera_geometry_not_provided"],
+                    }
+                ),
                 "truth_identity_used": False,
                 "association_rejection_reason": "no_global_binding",
             },
         )
     return tracks
+
+
+def _bbox_edge_clip_sides(
+    bbox: tuple[float, float, float, float],
+    image_size: tuple[int, int] | None,
+) -> tuple[str, ...]:
+    if image_size is None:
+        return ()
+    width, height = image_size
+    if width <= 0 or height <= 0:
+        return ()
+    x1, y1, x2, y2 = bbox
+    sides: list[str] = []
+    if x1 <= 0.0:
+        sides.append("left")
+    if y1 <= 0.0:
+        sides.append("top")
+    if x2 >= float(width - 1):
+        sides.append("right")
+    if y2 >= float(height - 1):
+        sides.append("bottom")
+    return tuple(sides)
 
 
 def compute_terminal_stress_metrics(

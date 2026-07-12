@@ -13,6 +13,14 @@ D6 不参与控制：
 
 D2/D6 的硬约束必须保留：`id_switch_count` 是一级显式指标，不能只被 MOTA、成功率或总体得分间接吸收。
 
+## 1.0 2026-07-12 D7 PNG Delivery 评估交付
+
+- 已在 `EpisodeMetrics` 和 D7 CSV/JSON replay 中接入 terminal filter、TTC 面积有效性、soft prediction/coast、锁定连续性、视觉模式驻留和命令跳变指标。
+- 所有新增指标使用 `Optional` 与 `metric_availability`；只有上游写出对应证据时才可用。
+- 已提供 baseline/candidate 多 seed CSV、JSON、中文 Markdown bundle，并按显式 profile 和实际 N/M 规模分组。
+- 继续保持 contract/control/switch/physical 四层与 pair/target/coalition 三层分离；D6 不修改阈值、不授权 coast、不参与控制。
+- main/D7 后续需要稳定写出 profile、terminal filter state/reason、TTC reject reason、elapsed time、terminal lock、visual mode 和三轴速度命令；字段缺失时报告保持 NA。
+
 ## 1.1 P1/P2 当前状态（2026-07-11）
 
 D6 当前仍保持 offline-only。当前状态按证据成熟度分为四层：

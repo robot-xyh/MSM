@@ -16,7 +16,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import numpy as np
 
-from .models import LocalVisualTrack
+from .models import CameraGeometryEvidence, LocalVisualTrack
 
 
 DEFAULT_YOLOV8_WEIGHTS_PATH = Path(
@@ -270,6 +270,9 @@ class YoloMotAdapter:
         camera_id: str,
         timestamp: float,
         frame_id: str | None = None,
+        arrival_timestamp: float | None = None,
+        exposure_timestamp: float | None = None,
+        camera_geometry: CameraGeometryEvidence | None = None,
         offline_truth_detections: Any | None = None,
         raise_on_unavailable: bool = False,
     ) -> YoloMotFrameResult:
@@ -283,6 +286,9 @@ class YoloMotAdapter:
 
         stream_key = _mot_stream_key(resource_id, camera_id)
         resolved_frame_id = frame_id or f"{resource_id}/{camera_id}"
+        effective_arrival_timestamp = (
+            float(arrival_timestamp) if arrival_timestamp is not None else float(timestamp)
+        )
         metadata: dict[str, Any] = {
             "requested_tracker_backend": self.config.tracker_backend,
             "stream_key": {
@@ -304,6 +310,20 @@ class YoloMotAdapter:
             "iou_fallback_allowed": self.config.allow_iou_fallback,
             "_processing_started_perf_counter_s": perf_counter(),
             "_offline_truth_bboxes": _offline_truth_bboxes(offline_truth_detections),
+            "measurement_timestamp": float(timestamp),
+            "arrival_timestamp": effective_arrival_timestamp,
+            "exposure_timestamp": (
+                float(exposure_timestamp) if exposure_timestamp is not None else float(timestamp)
+            ),
+            "camera_geometry": (
+                camera_geometry.to_metadata()
+                if camera_geometry is not None
+                else {
+                    "geometry_valid": False,
+                    "geometry_source": "unavailable",
+                    "geometry_unavailable_reasons": ["camera_geometry_not_provided"],
+                }
+            ),
         }
 
         try:
@@ -322,6 +342,12 @@ class YoloMotAdapter:
                     timestamp=timestamp,
                     source_name=self.config.source_name,
                     tracker_backend="iou_fallback",
+                    arrival_timestamp=effective_arrival_timestamp,
+                    exposure_timestamp=(
+                        float(exposure_timestamp) if exposure_timestamp is not None else float(timestamp)
+                    ),
+                    image_size=_frame_size(frame),
+                    camera_geometry=camera_geometry,
                 )
                 metadata.update(
                     {
@@ -381,6 +407,12 @@ class YoloMotAdapter:
                         timestamp=timestamp,
                         source_name=self.config.source_name,
                         tracker_backend=self.config.tracker_backend,
+                        arrival_timestamp=effective_arrival_timestamp,
+                        exposure_timestamp=(
+                            float(exposure_timestamp) if exposure_timestamp is not None else float(timestamp)
+                        ),
+                        image_size=_frame_size(frame),
+                        camera_geometry=camera_geometry,
                     )
                     if tracks:
                         metadata.update(
@@ -442,6 +474,12 @@ class YoloMotAdapter:
                 timestamp=timestamp,
                 source_name=self.config.source_name,
                 tracker_backend="iou_fallback",
+                arrival_timestamp=effective_arrival_timestamp,
+                exposure_timestamp=(
+                    float(exposure_timestamp) if exposure_timestamp is not None else float(timestamp)
+                ),
+                image_size=_frame_size(frame),
+                camera_geometry=camera_geometry,
             )
             metadata.update(
                 {
@@ -731,10 +769,15 @@ def _to_local_visual_tracks(
     timestamp: float,
     source_name: str,
     tracker_backend: str,
+    arrival_timestamp: float,
+    exposure_timestamp: float,
+    image_size: tuple[int, int] | None,
+    camera_geometry: CameraGeometryEvidence | None,
 ) -> tuple[LocalVisualTrack, ...]:
     tracks: list[LocalVisualTrack] = []
     for item in tracked:
         x1, y1, x2, y2 = item.bbox
+        clip_sides = _bbox_edge_clip_sides(item.bbox, image_size)
         tracks.append(
             LocalVisualTrack(
                 local_track_id=f"{camera_id}/{source_name}_{tracker_backend}:track:{item.track_id}",
@@ -745,6 +788,15 @@ def _to_local_visual_tracks(
                 quality=item.confidence,
                 mot_history_length=item.mot_history_length,
                 timestamp=timestamp,
+                arrival_timestamp=arrival_timestamp,
+                exposure_timestamp=exposure_timestamp,
+                detection_source=f"{source_name}:{tracker_backend}",
+                track_transition_state=(
+                    "continued" if item.mot_history_length > 1 else "initialized"
+                ),
+                bbox_edge_clipped=bool(clip_sides),
+                bbox_edge_clip_sides=clip_sides,
+                camera_geometry=camera_geometry,
             )
         )
     return tuple(tracks)
@@ -771,6 +823,9 @@ def _tracked_frame_metadata(
     tracker_backend_by_id: dict[str, str] = {}
     detector_backend_by_id: dict[str, str] = {}
     mot_history_by_id: dict[str, int] = {}
+    transition_by_id: dict[str, str] = {}
+    bbox_clipped_by_id: dict[str, bool] = {}
+    bbox_clip_sides_by_id: dict[str, list[str]] = {}
 
     for item, track in zip(tracked, tracks):
         area = _bbox_area(item.bbox)
@@ -783,6 +838,9 @@ def _tracked_frame_metadata(
         tracker_backend_by_id[track.local_track_id] = tracker_backend
         detector_backend_by_id[track.local_track_id] = detector_backend
         mot_history_by_id[track.local_track_id] = int(track.mot_history_length)
+        transition_by_id[track.local_track_id] = track.track_transition_state
+        bbox_clipped_by_id[track.local_track_id] = track.bbox_edge_clipped
+        bbox_clip_sides_by_id[track.local_track_id] = list(track.bbox_edge_clip_sides)
 
     continuity_count = sum(1 for history in mot_history_by_id.values() if history > 1)
     continuity_rate = (
@@ -800,6 +858,9 @@ def _tracked_frame_metadata(
         "tracker_backend_by_local_track_id": tracker_backend_by_id,
         "detector_backend_by_local_track_id": detector_backend_by_id,
         "mot_history_length_by_local_track_id": mot_history_by_id,
+        "track_transition_state_by_local_track_id": transition_by_id,
+        "bbox_edge_clipped_by_local_track_id": bbox_clipped_by_id,
+        "bbox_edge_clip_sides_by_local_track_id": bbox_clip_sides_by_id,
         "camera_local_id_count": len(mot_history_by_id),
         "camera_local_id_continuity_count": continuity_count,
         "camera_local_id_continuity_rate": continuity_rate,
@@ -818,6 +879,26 @@ def _frame_size(frame: Any) -> tuple[int, int] | None:
     if width <= 0 or height <= 0:
         return None
     return (width, height)
+
+
+def _bbox_edge_clip_sides(
+    bbox: tuple[float, float, float, float],
+    image_size: tuple[int, int] | None,
+) -> tuple[str, ...]:
+    if image_size is None:
+        return ()
+    width, height = image_size
+    x1, y1, x2, y2 = bbox
+    sides: list[str] = []
+    if x1 <= 0.0:
+        sides.append("left")
+    if y1 <= 0.0:
+        sides.append("top")
+    if x2 >= float(width - 1):
+        sides.append("right")
+    if y2 >= float(height - 1):
+        sides.append("bottom")
+    return tuple(sides)
 
 
 def _normalize_detections(

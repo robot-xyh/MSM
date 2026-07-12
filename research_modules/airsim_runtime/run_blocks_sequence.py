@@ -311,6 +311,52 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--intercept-terminal-range", type=float, default=8.0)
     parser.add_argument("--intercept-detection-timeout", type=float, default=1.0)
     parser.add_argument(
+        "--intercept-max-turn-rate",
+        type=float,
+        default=0.9,
+        help="D7 terminal PNG turn-rate capacity in rad/s; PNG formulas are unchanged.",
+    )
+    parser.add_argument(
+        "--intercept-max-lateral-accel",
+        type=float,
+        default=20.0,
+        help="D7 terminal PNG lateral-acceleration capacity in m/s^2.",
+    )
+    parser.add_argument(
+        "--intercept-min-maneuver-margin",
+        type=float,
+        default=0.15,
+        help="Minimum normalized D7 maneuver margin required for visual handoff.",
+    )
+    parser.add_argument(
+        "--intercept-detection-dropout-start",
+        type=float,
+        default=None,
+        help="Fault injection: first timestamp at which online visual detections are removed.",
+    )
+    parser.add_argument(
+        "--intercept-detection-dropout-end",
+        type=float,
+        default=None,
+        help="Fault injection: timestamp at which online visual detections resume.",
+    )
+    parser.add_argument(
+        "--terminal-soft-prediction",
+        action="store_true",
+        help=(
+            "Enable the candidate D7 innovation-reject prediction profile. "
+            "Identity, plan-version, D4/D5, friend, and duplicate-lock gates remain mandatory."
+        ),
+    )
+    parser.add_argument(
+        "--terminal-trend-coast",
+        action="store_true",
+        help=(
+            "Enable the candidate delivery-style horizontal LOS trend coast. "
+            "The baseline profile remains the default."
+        ),
+    )
+    parser.add_argument(
         "--guidance-law",
         choices=("pure_pursuit", "radar_pn", "png_vm", "png_ttc"),
         default="png_vm",
@@ -430,6 +476,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-yolo-native-tracker", action="store_true")
     parser.add_argument("--no-yolo-iou-fallback", action="store_true")
     parser.add_argument("--save-images", action="store_true", help="Persist sampled Scene PNG frames.")
+    parser.add_argument(
+        "--no-lidar",
+        action="store_true",
+        help="Skip LiDAR RPC capture for control-focused AirSim calibration runs.",
+    )
+    parser.add_argument(
+        "--full-flow-only",
+        action="store_true",
+        help="Run only episode_006_full_flow; useful for reset-separated physical calibration batches.",
+    )
     parser.add_argument(
         "--blocks-arg",
         action="append",
@@ -1020,6 +1076,9 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             "scenario_tags": [scenario_name, "airsim_blocks"],
             "c2_health_mode": args.c2_health_mode,
             "coalition_commit_fault": args.coalition_commit_fault,
+            "intercept_max_turn_rate_radps": float(args.intercept_max_turn_rate),
+            "intercept_max_lateral_accel_mps2": float(args.intercept_max_lateral_accel),
+            "intercept_min_maneuver_margin": float(args.intercept_min_maneuver_margin),
         }
     )
     if args.center_failure_time is not None:
@@ -1030,6 +1089,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         actor_config["metadata"]["secondary_failure_time_s"] = float(
             args.secondary_failure_time
         )
+    actor_config["capture_lidar"] = bool(actor_config.get("capture_lidar", True)) and not args.no_lidar
     base_config = BlocksSmokeConfig(
         scenario_name=scenario_name,
         duration_s=args.duration,
@@ -1054,6 +1114,13 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         intercept_max_duration_s=args.intercept_max_duration,
         intercept_terminal_switch_range_m=args.intercept_terminal_range,
         intercept_detection_timeout_s=args.intercept_detection_timeout,
+        intercept_max_turn_rate_radps=args.intercept_max_turn_rate,
+        intercept_max_lateral_accel_mps2=args.intercept_max_lateral_accel,
+        intercept_min_maneuver_margin=args.intercept_min_maneuver_margin,
+        intercept_detection_dropout_start_s=args.intercept_detection_dropout_start,
+        intercept_detection_dropout_end_s=args.intercept_detection_dropout_end,
+        intercept_terminal_soft_prediction_enabled=bool(args.terminal_soft_prediction),
+        intercept_terminal_trend_coast_enabled=bool(args.terminal_trend_coast),
         intercept_guidance_law=args.guidance_law,
         intercept_yaw_mode=(
             args.intercept_yaw_mode
@@ -1089,6 +1156,12 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         **actor_config,
     )
     selected_episode_specs = D4D5_STRESS_EPISODES if args.cv_5v5_d4d5_stress else DEFAULT_BLOCKS_EPISODES
+    if args.full_flow_only:
+        selected_episode_specs = tuple(
+            spec
+            for spec in selected_episode_specs
+            if spec.episode_id == "episode_006_full_flow"
+        )
     episode_specs = tuple(
         replace(spec, scenario_name=scenario_name, duration_s=args.duration, dt_s=args.dt)
         for spec in selected_episode_specs
@@ -1164,6 +1237,23 @@ def _validate_cooperative_options(args: argparse.Namespace) -> None:
         raise SystemExit("--cooperative-minimum-separation must be non-negative")
     if int(args.detection_warmup_frames) < 0:
         raise SystemExit("--detection-warmup-frames must be non-negative")
+    if float(args.intercept_max_turn_rate) <= 0.0:
+        raise SystemExit("--intercept-max-turn-rate must be positive")
+    if float(args.intercept_max_lateral_accel) <= 0.0:
+        raise SystemExit("--intercept-max-lateral-accel must be positive")
+    if not 0.0 <= float(args.intercept_min_maneuver_margin) < 1.0:
+        raise SystemExit("--intercept-min-maneuver-margin must be in [0, 1)")
+    if (args.intercept_detection_dropout_start is None) != (
+        args.intercept_detection_dropout_end is None
+    ):
+        raise SystemExit("both intercept detection dropout bounds must be provided")
+    if args.intercept_detection_dropout_start is not None:
+        if float(args.intercept_detection_dropout_start) < 0.0:
+            raise SystemExit("--intercept-detection-dropout-start must be non-negative")
+        if float(args.intercept_detection_dropout_end) <= float(
+            args.intercept_detection_dropout_start
+        ):
+            raise SystemExit("--intercept-detection-dropout-end must be after start")
     if args.center_failure_time is not None and float(args.center_failure_time) < 0.0:
         raise SystemExit("--center-failure-time must be non-negative")
     if args.secondary_failure_time is not None and float(args.secondary_failure_time) < 0.0:

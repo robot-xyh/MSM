@@ -35,6 +35,17 @@ from .models import (
     GuidanceRecord,
     GuidanceState,
 )
+from .midcourse_reacquisition import (
+    MidcourseReacquisitionConfig,
+    MidcourseReacquisitionSelector,
+    compute_midcourse_reacquisition_command,
+)
+from .los_replay import (
+    LOS_6D_REPLAY_BOUNDARY,
+    Los6DReplayConfig,
+    Los6DReplayEstimate,
+    OptionalLos6DKalmanReplay,
+)
 from .optional_p2_benchmark import (
     DEFAULT_OPTIONAL_P2_LAWS,
     P2_OPTIONAL_BENCHMARK_BOUNDARY,
@@ -82,6 +93,7 @@ from .terminal_gate import (
     TerminalPngContractDecision,
     coerce_assignment_guidance_binding,
     coerce_d4_guidance_permission,
+    evaluate_terminal_coast_contract,
     evaluate_terminal_png_contract,
     guidance_mode_from_terminal_contract,
 )
@@ -90,7 +102,9 @@ from .terminal_delivery import (
     TerminalDeliveryConfig,
     TerminalDeliveryResult,
     TerminalDeliveryState,
+    TerminalFilterAuditState,
     TerminalGuidanceDelivery,
+    TerminalLifecycleContext,
 )
 from .vision_png import (
     PngGuidanceCommand,
@@ -127,11 +141,17 @@ __all__ = [
     "GuidanceMode",
     "GuidanceRecord",
     "GuidanceState",
+    "LOS_6D_REPLAY_BOUNDARY",
+    "Los6DReplayConfig",
+    "Los6DReplayEstimate",
+    "MidcourseReacquisitionConfig",
+    "MidcourseReacquisitionSelector",
     "GuidanceStrategyComparisonRow",
     "OptionalP2BenchmarkConfig",
     "OptionalP2BenchmarkResult",
     "OptionalP2GuidanceLaw",
     "OptionalP2ReplaySample",
+    "OptionalLos6DKalmanReplay",
     "P2_OPTIONAL_BENCHMARK_BOUNDARY",
     "PngGuidanceCommand",
     "PngGuidanceConfig",
@@ -142,7 +162,9 @@ __all__ = [
     "TerminalDeliveryConfig",
     "TerminalDeliveryResult",
     "TerminalDeliveryState",
+    "TerminalFilterAuditState",
     "TerminalGuidanceDelivery",
+    "TerminalLifecycleContext",
     "ThreeDimensionalPnBenchmark",
     "VisionGuidanceObservation",
     "VisionGuidanceQuality",
@@ -153,9 +175,11 @@ __all__ = [
     "coerce_d4_guidance_permission",
     "coerce_vision_guidance_observation",
     "compute_pn_command",
+    "compute_midcourse_reacquisition_command",
     "compute_proportional_navigation_command",
     "compute_pure_pursuit_command",
     "compute_three_dimensional_pn_benchmark",
+    "evaluate_terminal_coast_contract",
     "evaluate_terminal_png_contract",
     "evaluate_bbox_los_replay",
     "guidance_mode_from_terminal_contract",

@@ -114,6 +114,15 @@ def _bbox_area(bbox: tuple[float, float, float, float] | None) -> float:
     return max(0.0, x2 - x1) * max(0.0, y2 - y1)
 
 
+def _normalized_clip_sides(values: Any | None) -> tuple[str, ...]:
+    allowed = {"left", "top", "right", "bottom"}
+    normalized = tuple(dict.fromkeys(str(value).strip().lower() for value in (values or ())))
+    invalid = tuple(value for value in normalized if value not in allowed)
+    if invalid:
+        raise ValueError(f"bbox_edge_clip_sides contains invalid values: {invalid}")
+    return normalized
+
+
 @dataclass(frozen=True)
 class CameraModel:
     """Pinhole camera with a world-to-camera transform.
@@ -168,6 +177,109 @@ class GlobalTrack:
 
 
 @dataclass(frozen=True)
+class CameraGeometryEvidence:
+    """Truth-free camera geometry and timing evidence for D7/replay consumers.
+
+    A missing field is represented explicitly. `geometry_valid` is true only
+    when intrinsics, camera-to-NED extrinsics, and synchronized attitude are
+    all available and validated.
+    """
+
+    measurement_timestamp: float
+    arrival_timestamp: float
+    exposure_timestamp: float | None = None
+    camera_intrinsics: np.ndarray | None = None
+    camera_to_ned_rotation: np.ndarray | None = None
+    camera_position_ned: np.ndarray | None = None
+    attitude_timestamp: float | None = None
+    attitude_age_s: float | None = None
+    intrinsics_valid: bool | None = None
+    extrinsics_valid: bool | None = None
+    attitude_valid: bool | None = None
+    source: str = "unavailable"
+    unavailable_reasons: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        measurement_timestamp = float(self.measurement_timestamp)
+        arrival_timestamp = float(self.arrival_timestamp)
+        exposure_timestamp = _finite_float_or_none(self.exposure_timestamp)
+        if exposure_timestamp is None:
+            exposure_timestamp = measurement_timestamp
+        intrinsics = _optional_matrix(self.camera_intrinsics, (3, 3), "camera_intrinsics")
+        rotation = _optional_matrix(
+            self.camera_to_ned_rotation,
+            (3, 3),
+            "camera_to_ned_rotation",
+        )
+        position = _optional_vector(self.camera_position_ned, 3, "camera_position_ned")
+        attitude_timestamp = _finite_float_or_none(self.attitude_timestamp)
+        attitude_age_s = _finite_float_or_none(self.attitude_age_s)
+        if attitude_age_s is not None and attitude_age_s < 0.0:
+            raise ValueError("attitude_age_s must be non-negative")
+
+        intrinsics_valid = bool(intrinsics is not None) if self.intrinsics_valid is None else bool(self.intrinsics_valid)
+        extrinsics_present = rotation is not None and position is not None
+        extrinsics_valid = extrinsics_present if self.extrinsics_valid is None else bool(self.extrinsics_valid)
+        attitude_valid = bool(attitude_timestamp is not None) if self.attitude_valid is None else bool(self.attitude_valid)
+        reasons = list(dict.fromkeys(str(value) for value in self.unavailable_reasons if str(value)))
+        if not intrinsics_valid:
+            reasons.append("camera_intrinsics_unavailable")
+        if not extrinsics_valid:
+            reasons.append("camera_extrinsics_unavailable")
+        if not attitude_valid:
+            reasons.append("camera_attitude_unavailable_or_stale")
+
+        object.__setattr__(self, "measurement_timestamp", measurement_timestamp)
+        object.__setattr__(self, "arrival_timestamp", arrival_timestamp)
+        object.__setattr__(self, "exposure_timestamp", exposure_timestamp)
+        object.__setattr__(self, "camera_intrinsics", intrinsics)
+        object.__setattr__(self, "camera_to_ned_rotation", rotation)
+        object.__setattr__(self, "camera_position_ned", position)
+        object.__setattr__(self, "attitude_timestamp", attitude_timestamp)
+        object.__setattr__(self, "attitude_age_s", attitude_age_s)
+        object.__setattr__(self, "intrinsics_valid", intrinsics_valid)
+        object.__setattr__(self, "extrinsics_valid", extrinsics_valid)
+        object.__setattr__(self, "attitude_valid", attitude_valid)
+        object.__setattr__(self, "source", str(self.source or "unavailable"))
+        object.__setattr__(self, "unavailable_reasons", tuple(dict.fromkeys(reasons)))
+
+    @property
+    def geometry_valid(self) -> bool:
+        return bool(
+            self.intrinsics_valid
+            and self.extrinsics_valid
+            and self.attitude_valid
+            and not self.unavailable_reasons
+        )
+
+    def to_metadata(self) -> dict[str, Any]:
+        return {
+            "measurement_timestamp": self.measurement_timestamp,
+            "arrival_timestamp": self.arrival_timestamp,
+            "exposure_timestamp": self.exposure_timestamp,
+            "camera_intrinsics": (
+                self.camera_intrinsics.tolist() if self.camera_intrinsics is not None else None
+            ),
+            "camera_to_ned_rotation": (
+                self.camera_to_ned_rotation.tolist()
+                if self.camera_to_ned_rotation is not None
+                else None
+            ),
+            "camera_position_ned": (
+                self.camera_position_ned.tolist() if self.camera_position_ned is not None else None
+            ),
+            "attitude_timestamp": self.attitude_timestamp,
+            "attitude_age_s": self.attitude_age_s,
+            "intrinsics_valid": self.intrinsics_valid,
+            "extrinsics_valid": self.extrinsics_valid,
+            "attitude_valid": self.attitude_valid,
+            "geometry_valid": self.geometry_valid,
+            "geometry_source": self.source,
+            "geometry_unavailable_reasons": list(self.unavailable_reasons),
+        }
+
+
+@dataclass(frozen=True)
 class LocalVisualTrack:
     """Local detector or MOT output in image coordinates."""
 
@@ -181,6 +293,15 @@ class LocalVisualTrack:
     timestamp: float = 0.0
     local_track_state: str = "measured"
     prediction_age_s: float | None = None
+    arrival_timestamp: float | None = None
+    exposure_timestamp: float | None = None
+    detection_source: str = "unknown"
+    track_transition_state: str = "unknown"
+    track_reset_reason: str | None = None
+    bbox_edge_clipped: bool = False
+    bbox_edge_clip_sides: tuple[str, ...] = ()
+    camera_geometry: CameraGeometryEvidence | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.local_track_id:
@@ -199,6 +320,55 @@ class LocalVisualTrack:
             raise ValueError("prediction_age_s must be non-negative")
         object.__setattr__(self, "local_track_state", state)
         object.__setattr__(self, "prediction_age_s", prediction_age_s)
+        arrival_timestamp = _finite_float_or_none(self.arrival_timestamp)
+        if arrival_timestamp is None:
+            arrival_timestamp = float(self.timestamp)
+        exposure_timestamp = _finite_float_or_none(self.exposure_timestamp)
+        if exposure_timestamp is None:
+            exposure_timestamp = float(self.timestamp)
+        transition = str(self.track_transition_state).strip().lower()
+        if transition not in {"initialized", "continued", "switched", "reacquired", "reset", "unknown"}:
+            raise ValueError("invalid track_transition_state")
+        clip_sides = _normalized_clip_sides(self.bbox_edge_clip_sides)
+        object.__setattr__(self, "timestamp", float(self.timestamp))
+        object.__setattr__(self, "arrival_timestamp", arrival_timestamp)
+        object.__setattr__(self, "exposure_timestamp", exposure_timestamp)
+        object.__setattr__(self, "detection_source", str(self.detection_source or "unknown"))
+        object.__setattr__(self, "track_transition_state", transition)
+        object.__setattr__(self, "track_reset_reason", _optional_string(self.track_reset_reason))
+        object.__setattr__(self, "bbox_edge_clipped", bool(self.bbox_edge_clipped or clip_sides))
+        object.__setattr__(self, "bbox_edge_clip_sides", clip_sides)
+        object.__setattr__(self, "metadata", dict(self.metadata))
+
+    def to_evidence_metadata(self) -> dict[str, Any]:
+        """Return the truth-free local evidence fields consumed by main/D7."""
+
+        geometry = (
+            self.camera_geometry.to_metadata()
+            if self.camera_geometry is not None
+            else {
+                "geometry_valid": False,
+                "geometry_source": "unavailable",
+                "geometry_unavailable_reasons": ["camera_geometry_not_provided"],
+            }
+        )
+        return {
+            "local_track_id": self.local_track_id,
+            "mot_history_length": int(self.mot_history_length),
+            "local_track_state": self.local_track_state,
+            "track_transition_state": self.track_transition_state,
+            "track_reset_reason": self.track_reset_reason,
+            "measurement_timestamp": float(self.timestamp),
+            "arrival_timestamp": float(self.arrival_timestamp),
+            "exposure_timestamp": float(self.exposure_timestamp),
+            "prediction_age_s": self.prediction_age_s,
+            "detection_source": self.detection_source,
+            "association_input_confidence": float(self.quality),
+            "bbox_edge_clipped": self.bbox_edge_clipped,
+            "bbox_edge_clip_sides": list(self.bbox_edge_clip_sides),
+            "camera_geometry": geometry,
+            "truth_identity_used": False,
+        }
 
 
 @dataclass(frozen=True)
@@ -626,10 +796,19 @@ class TerminalAssociation:
     association_source: str = "geometric_detect"
     measurement_timestamp: float | None = None
     arrival_timestamp: float | None = None
+    exposure_timestamp: float | None = None
     measurement_age_s: float | None = None
     prediction_age_s: float | None = None
     local_track_state: str | None = None
     truth_identity_used: bool = False
+    mot_history_length: int | None = None
+    track_transition_state: str = "unknown"
+    track_reset_reason: str | None = None
+    detection_source: str = "unknown"
+    bbox_edge_clipped: bool = False
+    bbox_edge_clip_sides: tuple[str, ...] = ()
+    camera_geometry: CameraGeometryEvidence | None = None
+    duplicate_terminal_lock_risk: bool = False
 
     def __post_init__(self) -> None:
         if not self.assigned_global_track_id:
@@ -672,8 +851,18 @@ class TerminalAssociation:
             raise ValueError("predicted or lost local tracks cannot produce a locked association")
         if bool(self.truth_identity_used):
             raise ValueError("TerminalAssociation online decisions cannot use truth identity")
+        mot_history_length = _optional_int(self.mot_history_length)
+        if mot_history_length is not None and mot_history_length < 0:
+            raise ValueError("mot_history_length must be non-negative")
+        transition = str(self.track_transition_state).strip().lower()
+        if transition not in {"initialized", "continued", "switched", "reacquired", "reset", "lost", "unknown"}:
+            raise ValueError("invalid track_transition_state")
+        clip_sides = _normalized_clip_sides(self.bbox_edge_clip_sides)
         measurement_timestamp = _finite_float_or_none(self.measurement_timestamp)
         arrival_timestamp = _finite_float_or_none(self.arrival_timestamp)
+        exposure_timestamp = _finite_float_or_none(self.exposure_timestamp)
+        if exposure_timestamp is None:
+            exposure_timestamp = measurement_timestamp
         measurement_age_s = _finite_float_or_none(self.measurement_age_s)
         prediction_age_s = _finite_float_or_none(self.prediction_age_s)
         if prediction_age_s is not None and prediction_age_s < 0.0:
@@ -681,10 +870,22 @@ class TerminalAssociation:
         object.__setattr__(self, "association_source", association_source)
         object.__setattr__(self, "measurement_timestamp", measurement_timestamp)
         object.__setattr__(self, "arrival_timestamp", arrival_timestamp)
+        object.__setattr__(self, "exposure_timestamp", exposure_timestamp)
         object.__setattr__(self, "measurement_age_s", measurement_age_s)
         object.__setattr__(self, "prediction_age_s", prediction_age_s)
         object.__setattr__(self, "local_track_state", local_track_state)
         object.__setattr__(self, "truth_identity_used", False)
+        object.__setattr__(self, "mot_history_length", mot_history_length)
+        object.__setattr__(self, "track_transition_state", transition)
+        object.__setattr__(self, "track_reset_reason", _optional_string(self.track_reset_reason))
+        object.__setattr__(self, "detection_source", str(self.detection_source or "unknown"))
+        object.__setattr__(self, "bbox_edge_clipped", bool(self.bbox_edge_clipped or clip_sides))
+        object.__setattr__(self, "bbox_edge_clip_sides", clip_sides)
+        duplicate_terminal_lock_risk = bool(
+            self.duplicate_terminal_lock_risk
+            or self.metadata.get("duplicate_terminal_lock_risk", False)
+        )
+        object.__setattr__(self, "duplicate_terminal_lock_risk", duplicate_terminal_lock_risk)
         if self.arrival_window_start_s is not None:
             object.__setattr__(self, "arrival_window_start_s", float(self.arrival_window_start_s))
         if self.arrival_window_end_s is not None:
@@ -695,12 +896,29 @@ class TerminalAssociation:
                 "association_source": association_source,
                 "measurement_timestamp": measurement_timestamp,
                 "arrival_timestamp": arrival_timestamp,
+                "exposure_timestamp": exposure_timestamp,
                 "measurement_age_s": measurement_age_s,
                 "prediction_age_s": prediction_age_s,
                 "local_track_state": local_track_state,
                 "truth_identity_used": False,
                 "association_confidence": float(self.association_confidence),
                 "association_rejection_reason": self.reason,
+                "mot_history_length": mot_history_length,
+                "track_transition_state": transition,
+                "track_reset_reason": self.track_reset_reason,
+                "detection_source": self.detection_source,
+                "bbox_edge_clipped": bool(self.bbox_edge_clipped or clip_sides),
+                "bbox_edge_clip_sides": list(clip_sides),
+                "camera_geometry": (
+                    self.camera_geometry.to_metadata()
+                    if self.camera_geometry is not None
+                    else {
+                        "geometry_valid": False,
+                        "geometry_source": "unavailable",
+                        "geometry_unavailable_reasons": ["camera_geometry_not_provided"],
+                    }
+                ),
+                "duplicate_terminal_lock_risk": duplicate_terminal_lock_risk,
             }
         )
         object.__setattr__(self, "metadata", metadata)
@@ -715,6 +933,7 @@ class TerminalAssociation:
             "local_track_state": self.local_track_state,
             "measurement_timestamp": self.measurement_timestamp,
             "arrival_timestamp": self.arrival_timestamp,
+            "exposure_timestamp": self.exposure_timestamp,
             "measurement_age_s": self.measurement_age_s,
             "prediction_age_s": self.prediction_age_s,
             "truth_identity_used": False,
@@ -723,6 +942,18 @@ class TerminalAssociation:
             "decision_state": self.decision_state,
             "rejection_reason": self.reason,
             "friend_conflict_state": self.friend_conflict_state,
+            "duplicate_terminal_lock_risk": self.duplicate_terminal_lock_risk,
+            "mot_history_length": self.mot_history_length,
+            "track_transition_state": self.track_transition_state,
+            "track_reset_reason": self.track_reset_reason,
+            "detection_source": self.detection_source,
+            "bbox_edge_clipped": self.bbox_edge_clipped,
+            "bbox_edge_clip_sides": list(self.bbox_edge_clip_sides),
+            "camera_geometry": (
+                self.camera_geometry.to_metadata()
+                if self.camera_geometry is not None
+                else self.metadata.get("camera_geometry")
+            ),
             "assignment_version": self.assignment_version,
             "plan_id": self.plan_id,
             "plan_version": self.plan_version,
@@ -805,6 +1036,9 @@ class TerminalObservation:
         else:
             state = self.local_track.local_track_state if self.local_track is not None else "lost"
             prediction_age_s = self.local_track.prediction_age_s if self.local_track is not None else None
+            local_evidence = (
+                self.local_track.to_evidence_metadata() if self.local_track is not None else {}
+            )
             record = {
                 "association_source": self.metadata.get("association_source", self.link_type),
                 "assigned_global_track_id": None,
@@ -818,8 +1052,17 @@ class TerminalObservation:
                 "decision_state": "reacquire" if state != "measured" else "unassociated",
                 "rejection_reason": self.metadata.get("association_rejection_reason", "no_global_binding"),
                 "friend_conflict_state": "none",
+                "duplicate_terminal_lock_risk": False,
+                "mot_history_length": local_evidence.get("mot_history_length"),
+                "track_transition_state": local_evidence.get("track_transition_state", "lost"),
+                "track_reset_reason": local_evidence.get("track_reset_reason"),
+                "detection_source": local_evidence.get("detection_source", "unavailable"),
+                "bbox_edge_clipped": local_evidence.get("bbox_edge_clipped", False),
+                "bbox_edge_clip_sides": local_evidence.get("bbox_edge_clip_sides", []),
+                "camera_geometry": local_evidence.get("camera_geometry"),
             }
             runtime_metadata = dict(self.metadata)
+            runtime_metadata["local_visual_evidence"] = local_evidence
         record.update(
             {
                 "resource_id": self.resource_id,

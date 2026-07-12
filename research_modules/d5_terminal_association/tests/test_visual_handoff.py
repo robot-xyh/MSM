@@ -211,6 +211,75 @@ def test_stale_measurement_age_and_missing_los_block_handoff() -> None:
     assert "los_rate_unavailable" in no_los.metadata["visual_png_handoff_blockers"]
 
 
+def test_lost_reacquire_does_not_borrow_unrelated_local_track_evidence() -> None:
+    lost = TerminalAssociation(
+        assigned_global_track_id="G-assigned",
+        local_track_id=None,
+        association_confidence=0.0,
+        ambiguity_score=1.0,
+        friend_conflict_state="none",
+        decision_state="reacquire",
+        assignment_version=1,
+        reason="projection_invalid:outside_image",
+        measurement_timestamp=10.0,
+        arrival_timestamp=10.6,
+        measurement_age_s=0.6,
+        prediction_age_s=0.6,
+        local_track_state="lost",
+    )
+    unrelated_tracks = _history(local_id="L-other")
+
+    decision = annotate_visual_png_handoff(
+        lost,
+        local_track_history=unrelated_tracks,
+        image_size=(640, 480),
+        range_to_assigned_track_m=8.0,
+        closing_speed_mps=6.0,
+        current_time=10.6,
+    )
+
+    assert decision.measurement_age_s == 0.6
+    assert decision.prediction_age_s == 0.6
+    assert decision.metadata["measurement_age_s"] == 0.6
+    assert decision.metadata["measurement_age_ok"] is False
+    assert decision.metadata["los_rate_available"] is False
+    assert decision.metadata["visible_frame_count"] == 0
+    assert decision.metadata["bbox_stable"] is False
+    assert "no_local_track" in decision.metadata["visual_png_handoff_blockers"]
+    assert "measurement_age_stale" in decision.metadata["visual_png_handoff_blockers"]
+    assert "los_rate_unavailable" in decision.metadata["visual_png_handoff_blockers"]
+
+
+def test_lost_reacquire_uses_prediction_age_when_measurement_age_is_missing() -> None:
+    lost = TerminalAssociation(
+        assigned_global_track_id="G-assigned",
+        local_track_id=None,
+        association_confidence=0.0,
+        ambiguity_score=1.0,
+        friend_conflict_state="none",
+        decision_state="reacquire",
+        assignment_version=1,
+        reason="projection_invalid:outside_image",
+        measurement_timestamp=4.1,
+        arrival_timestamp=4.3,
+        prediction_age_s=0.2,
+        local_track_state="lost",
+    )
+
+    decision = annotate_visual_png_handoff(
+        lost,
+        local_track_history=[],
+        image_size=(640, 480),
+        current_time=4.3,
+    )
+
+    assert decision.measurement_age_s == 0.2
+    assert decision.prediction_age_s == 0.2
+    assert decision.metadata["measurement_age_s"] == 0.2
+    assert decision.metadata["measurement_age_ok"] is True
+    assert "measurement_age_unknown" not in decision.metadata["visual_png_handoff_blockers"]
+
+
 def test_near_range_unstable_bbox_keeps_radar_pn_and_formula_estimates_area_ratio() -> None:
     decision = annotate_visual_png_handoff(
         _locked(),

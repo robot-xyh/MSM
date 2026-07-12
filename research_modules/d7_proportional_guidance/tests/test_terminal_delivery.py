@@ -155,6 +155,53 @@ def test_runtime_keeps_terminal_delivery_state_independent_per_assignment_pair()
     assert record["terminal_prediction_age_s"] == pytest.approx(0.1)
 
 
+def test_runtime_allows_bounded_coast_for_consistent_d5_reacquire_only() -> None:
+    bus = D7RuntimeBus(_png_config())
+    for index in range(3):
+        measured = bus.evaluate_pair(
+            _pair_input(
+                timestamp_s=index * 0.1,
+                observation=_observation(index * 0.1, center_x=320.0 + index),
+            )
+        )
+    assert measured.visual_png_enabled is True
+
+    reacquire = _terminal_association()
+    reacquire["decision_state"] = "reacquire"
+    predicted = bus.evaluate_pair(
+        _pair_input(
+            timestamp_s=0.3,
+            observation=None,
+            terminal_association=reacquire,
+        )
+    )
+
+    assert predicted.terminal_contract_allowed is False
+    assert predicted.terminal_contract_reject_reason == "d5_not_locked"
+    assert predicted.terminal_coast_contract_allowed is True
+    assert predicted.terminal_coast_contract_reason == "bounded_coast_reacquire"
+    assert predicted.terminal_delivery_state == "image_kf_predict"
+    assert predicted.terminal_using_extrapolation is True
+    assert predicted.selected_velocity_ned is not None
+
+    blocked = bus.evaluate_pair(
+        _pair_input(
+            timestamp_s=0.4,
+            observation=None,
+            terminal_association=reacquire,
+            d4_permission=D4GuidancePermission(
+                action="continue_center",
+                terminal_consistent=False,
+            ),
+        )
+    )
+    assert blocked.terminal_coast_contract_allowed is False
+    assert blocked.terminal_delivery_state == "expired"
+    assert blocked.terminal_delivery_reason == "d4_terminal_inconsistent"
+    assert blocked.terminal_using_extrapolation is False
+    assert blocked.selected_velocity_ned is None
+
+
 @pytest.mark.parametrize(
     ("terminal_override", "permission", "reject_reason"),
     [

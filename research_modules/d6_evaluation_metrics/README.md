@@ -2,6 +2,14 @@
 
 D6 是 MSM 的离线评估与报告模块。它只消费已经写盘的日志、CSV、JSON/JSONL 和仿真真值，输出 `EpisodeMetrics`、CSV、Markdown 报告和 PNG 图表；不参与 D1-D7 的实时控制链路，不生成任务、分配、导引、授权、火控、毁伤或自动处置动作。
 
+## 2026-07-12 D7 PNG Delivery 被动评估
+
+D6 已增加 availability-aware 的 D7 终端 delivery 评估。离线 loader 可消费 `terminal_filter_state/reason`、innovation reject/reset、TTC area jump/bbox clipping/not-expanding/out-of-range、soft prediction/coast 状态与 elapsed time、terminal lock、visual mode、速度命令和显式 `terminal_delivery_profile/comparison_role`。旧日志缺少字段时对应指标为 `None/unavailable`，不会记为零。
+
+新增指标覆盖滤波 measured/predicted/innovation-rejected/reset/expired，TTC 四类拒绝，soft prediction/coast 次数、持续时间和到期，terminal lock continuity、visual mode duration 以及 command discontinuity mean/max。既有 `contract_allowed/control_allowed/mode_switched/physical_intercept` 四层和 pair/target/coalition 三层物理结果保持独立。
+
+`ReportGenerator.write_terminal_delivery_comparison_bundle()` 输出逐 episode CSV、聚合 JSON 和中文 Markdown，按显式 profile、scope、scenario 和实际 `resource_count/target_count/camera_count` 分组；2v2 与 M5N2 不合并，M5N2 的 target success、active-primary pair success 和 coalition completion 不互相回填。D6 仍只读日志，不参与 D7 控制。
+
 ## 2026-07-11 P1 统一验收与 P2 adapter
 
 D6 已消费 main episode bus 的 `d4_coalition_commit_state`，并从事件或扩展 `CoalitionRecord` 聚合 epoch、plan/coalition version、lease、required/acked members、commit state/reason、ACK latency、timeout、aborted/reconfiguring 以及 secondary/distributed commit。相同 generation 的 `committed -> executing` 转换只计一次有效 commit，状态与原因保留在 metadata audit。

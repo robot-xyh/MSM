@@ -334,7 +334,7 @@ def test_replan_ack_cools_down_new_soft_risk_until_boundary_but_not_hard_risk() 
         "plan": plan,
         "assignment": plan.assignments[0],
         "terminal_association": persistent_terminal,
-        "consecutive_non_locked_frames": 3,
+        "consecutive_non_locked_frames": 4,
         "c2_health": C2Health.NORMAL,
         "expected_plan_version": 4,
     }

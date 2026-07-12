@@ -14,7 +14,13 @@ from typing import Any, Iterable, Mapping
 import numpy as np
 
 from .associator import AssociationConfig, TerminalAssociator
-from .models import CameraModel, CostMatrixResult, GlobalTrack, LocalVisualTrack
+from .models import (
+    CameraGeometryEvidence,
+    CameraModel,
+    CostMatrixResult,
+    GlobalTrack,
+    LocalVisualTrack,
+)
 
 
 AIRSIM_BODY_TO_OPENCV_CAMERA = np.array(
@@ -213,6 +219,51 @@ def camera_model_from_airsim_camera_info(
         t=t,
         image_size=(int(camera_info.width), int(camera_info.height)),
         measurement_cov=np.eye(2, dtype=float) * float(measurement_sigma_px) ** 2,
+    )
+
+
+def camera_geometry_evidence_from_camera_model(
+    camera: CameraModel,
+    *,
+    measurement_timestamp: float,
+    arrival_timestamp: float | None = None,
+    exposure_timestamp: float | None = None,
+    attitude_timestamp: float | None = None,
+    max_attitude_age_s: float = 0.1,
+    source: str = "airsim_camera_pose",
+) -> CameraGeometryEvidence:
+    """Build a synchronized, truth-free D5 camera geometry evidence payload."""
+
+    measurement_timestamp = float(measurement_timestamp)
+    effective_arrival = (
+        float(arrival_timestamp) if arrival_timestamp is not None else measurement_timestamp
+    )
+    attitude_age_s = (
+        abs(measurement_timestamp - float(attitude_timestamp))
+        if attitude_timestamp is not None
+        else None
+    )
+    attitude_valid = bool(
+        attitude_age_s is not None and attitude_age_s <= float(max_attitude_age_s)
+    )
+    return CameraGeometryEvidence(
+        measurement_timestamp=measurement_timestamp,
+        arrival_timestamp=effective_arrival,
+        exposure_timestamp=(
+            float(exposure_timestamp) if exposure_timestamp is not None else measurement_timestamp
+        ),
+        camera_intrinsics=camera.K,
+        camera_to_ned_rotation=camera.R.T,
+        camera_position_ned=-camera.R.T @ camera.t,
+        attitude_timestamp=attitude_timestamp,
+        attitude_age_s=attitude_age_s,
+        intrinsics_valid=True,
+        extrinsics_valid=True,
+        attitude_valid=attitude_valid,
+        source=source,
+        unavailable_reasons=(
+            () if attitude_valid else ("camera_attitude_unavailable_or_stale",)
+        ),
     )
 
 

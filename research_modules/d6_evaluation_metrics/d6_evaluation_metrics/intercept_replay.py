@@ -175,6 +175,7 @@ def _add_intercept_summary_events(collector: MetricsCollector, path: Path) -> No
                 "success_semantics": dict(success_semantics),
                 "parameters": dict(parameters),
                 **_summary_count_metadata(summary, success_semantics),
+                **_summary_terminal_delivery_metadata(summary, success_semantics),
                 "source_path": str(path),
             },
         )
@@ -358,6 +359,7 @@ def _guidance_record_metadata(
         ),
         "limited_turn_rate_radps": _optional_float(row.get("limited_turn_rate_radps")),
         "guidance_law": _optional_text(row.get("guidance_law")),
+        **_terminal_delivery_metadata(row),
         "source_path": str(source_path),
     }
     return {key: value for key, value in metadata.items() if value is not None}
@@ -382,6 +384,7 @@ def _control_command_metadata(row: Mapping[str, Any], *, source_path: Path) -> d
         "range_m": _optional_float(row.get("range_m")),
         "command_vx_mps": _optional_float(row.get("command_vx_mps")),
         "command_vy_mps": _optional_float(row.get("command_vy_mps")),
+        "command_vz_mps": _optional_float(row.get("command_vz_mps")),
         "command_z_ned_m": _optional_float(row.get("command_z_ned_m")),
         "los_rate_radps": _optional_float(row.get("los_rate_radps")),
         "closing_speed_mps": _optional_float(row.get("closing_speed_mps")),
@@ -448,6 +451,7 @@ def _control_command_metadata(row: Mapping[str, Any], *, source_path: Path) -> d
         "collision_object_name": _optional_text(row.get("collision_object_name")),
         "status": _optional_text(row.get("status")),
         "abort_reason": _optional_text(row.get("abort_reason")),
+        **_terminal_delivery_metadata(row),
         "source_path": str(source_path),
     }
     if camera_gate is not None:
@@ -479,6 +483,19 @@ def _summary_count_metadata(
         "visual_reacquisition_count",
         "terminal_visual_lost_after_coast_count",
         "truth_identity_online_use_count",
+        "terminal_filter_measured_count",
+        "terminal_filter_predicted_count",
+        "terminal_filter_innovation_rejected_count",
+        "terminal_filter_reset_count",
+        "terminal_filter_expired_count",
+        "ttc_area_jump_reject_count",
+        "ttc_bbox_clipping_reject_count",
+        "ttc_not_expanding_reject_count",
+        "ttc_out_of_range_reject_count",
+        "soft_prediction_count",
+        "soft_prediction_expired_count",
+        "terminal_coast_count",
+        "terminal_coast_expired_count",
     )
     metadata: dict[str, Any] = {}
     for key in keys:
@@ -494,6 +511,142 @@ def _summary_count_metadata(
     )
     if arrival_window_enforced is not None:
         metadata["coalition_arrival_window_enforced"] = arrival_window_enforced
+    return metadata
+
+
+def _terminal_delivery_metadata(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Parse optional D7 delivery diagnostics without requiring a new schema."""
+
+    metadata: dict[str, Any] = {
+        "local_track_id": _optional_text(row.get("local_track_id")),
+        "terminal_filter_state": _optional_text(row.get("terminal_filter_state")),
+        "terminal_filter_reason": _optional_text(row.get("terminal_filter_reason")),
+        "terminal_filter_innovation_rejected": _first_bool(
+            row,
+            "terminal_filter_innovation_rejected",
+            "innovation_rejected",
+        ),
+        "terminal_filter_reset": _first_bool(
+            row,
+            "terminal_filter_reset",
+            "image_kf_reset",
+            "filter_reset",
+        ),
+        "terminal_filter_reset_reason": _optional_text(
+            row.get("terminal_filter_reset_reason")
+            or row.get("image_kf_reset_reason")
+        ),
+        "terminal_delivery_state": _optional_text(row.get("terminal_delivery_state")),
+        "terminal_delivery_reason": _optional_text(row.get("terminal_delivery_reason")),
+        "terminal_prediction_age_s": _first_float(
+            row,
+            "terminal_prediction_age_s",
+            "prediction_age_s",
+        ),
+        "terminal_blind_elapsed_s": _first_float(
+            row,
+            "terminal_blind_elapsed_s",
+            "blind_elapsed_s",
+        ),
+        "terminal_using_extrapolation": _optional_bool(
+            row.get("terminal_using_extrapolation")
+        ),
+        "ttc_reject_reason": _optional_text(row.get("ttc_reject_reason")),
+        "ttc_area_reject_reason": _optional_text(row.get("ttc_area_reject_reason")),
+        "ttc_area_jump_rejected": _first_bool(
+            row,
+            "ttc_area_jump_rejected",
+            "area_jump_rejected",
+        ),
+        "ttc_bbox_clipping_rejected": _first_bool(
+            row,
+            "ttc_bbox_clipping_rejected",
+            "bbox_clipping_rejected",
+        ),
+        "ttc_not_expanding_rejected": _first_bool(
+            row,
+            "ttc_not_expanding_rejected",
+            "not_expanding_rejected",
+        ),
+        "ttc_out_of_range_rejected": _first_bool(
+            row,
+            "ttc_out_of_range_rejected",
+            "ttc_range_rejected",
+        ),
+        "soft_prediction_active": _first_bool(
+            row,
+            "soft_prediction_active",
+            "terminal_soft_prediction",
+            "innovation_soft_prediction",
+        ),
+        "soft_prediction_elapsed_s": _first_float(
+            row,
+            "soft_prediction_elapsed_s",
+            "terminal_soft_prediction_elapsed_s",
+        ),
+        "soft_prediction_expired": _first_bool(
+            row,
+            "soft_prediction_expired",
+            "terminal_soft_prediction_expired",
+        ),
+        "terminal_coast_active": _first_bool(
+            row,
+            "terminal_coast_active",
+            "using_blind_push",
+            "blind_push",
+        ),
+        "terminal_coast_elapsed_s": _first_float(
+            row,
+            "terminal_coast_elapsed_s",
+            "coast_elapsed_s",
+        ),
+        "terminal_coast_expired": _first_bool(
+            row,
+            "terminal_coast_expired",
+            "coast_expired",
+        ),
+        "visual_mode_active": _optional_bool(row.get("visual_mode_active")),
+        "visual_mode_elapsed_s": _first_float(
+            row,
+            "visual_mode_elapsed_s",
+            "terminal_mode_elapsed_s",
+        ),
+        "command_discontinuity_mps": _first_float(
+            row,
+            "command_discontinuity_mps",
+            "velocity_command_step_mps",
+        ),
+        "terminal_delivery_profile": _optional_text(
+            row.get("terminal_delivery_profile")
+        ),
+        "comparison_role": _optional_text(row.get("comparison_role")),
+        "algorithm_variant": _optional_text(row.get("algorithm_variant")),
+    }
+    return {key: value for key, value in metadata.items() if value is not None}
+
+
+def _summary_terminal_delivery_metadata(
+    summary: Mapping[str, Any],
+    success_semantics: Mapping[str, Any],
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    for key in (
+        "soft_prediction_duration_s",
+        "terminal_coast_duration_s",
+        "terminal_lock_continuity",
+        "visual_mode_duration_s",
+        "command_discontinuity_mean_mps",
+        "command_discontinuity_max_mps",
+    ):
+        value = summary.get(key, success_semantics.get(key))
+        parsed = _optional_float(value)
+        if parsed is not None:
+            metadata[key] = parsed
+    for key in ("terminal_delivery_profile", "comparison_role", "algorithm_variant"):
+        value = summary.get(key, success_semantics.get(key))
+        parsed = _optional_text(value)
+        if parsed is not None:
+            metadata[key] = parsed
     return metadata
 
 

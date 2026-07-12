@@ -515,7 +515,7 @@ def test_fake_airsim_terminal_reacquire_without_secondary_continues_center() -> 
         terminal_association=_terminal_summary(
             decision_state=TerminalDecisionState.AMBIGUOUS,
             observed_global_track_id=None,
-            non_locked_frames=3,
+            non_locked_frames=4,
             mismatch_frames=0,
         ),
         c2_health=C2Health.NORMAL,

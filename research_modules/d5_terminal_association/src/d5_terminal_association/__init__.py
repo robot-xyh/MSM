@@ -33,6 +33,7 @@ from .airsim_geometry import (
     GeometricAssociationResult,
     OfflineAssociationMetrics,
     associate_tracks_to_detections_geometrically,
+    camera_geometry_evidence_from_camera_model,
     camera_model_from_airsim_camera_info,
     evaluate_associations_offline,
     intrinsics_from_capture_settings,
@@ -67,6 +68,7 @@ from .cross_view_registration import (
 from .identity import IdentityChecker
 from .models import (
     Assignment,
+    CameraGeometryEvidence,
     CameraModel,
     CostBreakdown,
     CostMatrixResult,
@@ -116,6 +118,7 @@ __all__ = [
     "AirSimCVScenarioSpec",
     "AirSimIntrinsics",
     "Assignment",
+    "CameraGeometryEvidence",
     "CameraModel",
     "CameraLocalTrackBatch",
     "CAMERA_POSE_SOURCES",
@@ -185,6 +188,7 @@ __all__ = [
     "build_secondary_frame_association_evidence",
     "bbox_area_stability",
     "camera_model_from_airsim_camera_info",
+    "camera_geometry_evidence_from_camera_model",
     "calibration_health_metadata",
     "compute_terminal_stress_metrics",
     "candidate_cost_margin",

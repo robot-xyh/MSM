@@ -465,6 +465,21 @@ class ActiveDegradationArbiter:
                 risk_factors=risk_factors,
             )
 
+        if self._assignment_is_primary_risk(risk_factors):
+            return self._apply_hysteresis(
+                ActiveDegradationDecision(
+                    mode=DegradationMode.ACTIVE_DEGRADATION,
+                    action=DegradationAction.REQUEST_CENTER_REPLAN,
+                    reason="assignment_invalid_terminal_not_consistent",
+                    coverage_cell=coverage_cell,
+                    terminal_consistent=False,
+                    risk_factors=risk_factors,
+                ),
+                current_time_s,
+                terminal_consistent=False,
+                risk_factors=risk_factors,
+            )
+
         if not self._risk_requires_active_arbitration(risk_factors):
             return self._apply_hysteresis(
                 ActiveDegradationDecision(
@@ -636,6 +651,15 @@ class ActiveDegradationArbiter:
             factors.append("d3_assignment_cost_margin_low")
         if terminal.resource_id != assignment.assigned_resource_id:
             factors.append("d5_resource_assignment_mismatch")
+        if (
+            terminal.assigned_global_track_id != assignment.global_track_id
+            or (
+                terminal.observed_global_track_id is not None
+                and terminal.observed_global_track_id != assignment.global_track_id
+            )
+            or terminal.consecutive_mismatch_frames > 0
+        ):
+            factors.append("d5_terminal_id_mismatch")
         if terminal.duplicate_terminal_lock:
             factors.append("d5_duplicate_terminal_lock")
         if terminal.cross_view_risk_score >= cfg.cross_view_risk_high:
@@ -651,13 +675,15 @@ class ActiveDegradationArbiter:
         assignment: AssignmentValiditySummary,
         terminal: TerminalAssociationSummary,
     ) -> bool:
+        # This flag represents whether D4 still trusts the center-plan binding,
+        # not whether D5 is currently ready to hand off terminal guidance.
         if terminal.friend_conflict:
             return False
         if terminal.duplicate_terminal_lock:
             return False
-        if terminal.cross_view_risk_score >= self.config.cross_view_risk_high:
+        if not assignment.is_current:
             return False
-        if terminal.decision_state != TerminalDecisionState.LOCKED:
+        if assignment.plan_age_s > self.config.max_plan_age_s:
             return False
         if terminal.resource_id != assignment.assigned_resource_id:
             return False
@@ -667,6 +693,22 @@ class ActiveDegradationArbiter:
             terminal.observed_global_track_id is not None
             and terminal.observed_global_track_id != assignment.global_track_id
         ):
+            return False
+        if terminal.consecutive_mismatch_frames > 0:
+            return False
+
+        if terminal.decision_state in {
+            TerminalDecisionState.AMBIGUOUS,
+            TerminalDecisionState.REACQUIRE,
+        }:
+            return terminal.consecutive_non_locked_frames <= max(
+                0,
+                int(self.config.non_locked_frame_limit),
+            )
+
+        if terminal.decision_state != TerminalDecisionState.LOCKED:
+            return False
+        if terminal.cross_view_risk_score >= self.config.cross_view_risk_high:
             return False
         if terminal.association_confidence < self.config.terminal_confidence_min:
             return False
@@ -687,7 +729,8 @@ class ActiveDegradationArbiter:
                 TerminalDecisionState.HOLD,
                 TerminalDecisionState.REACQUIRE,
             }
-            and terminal.consecutive_non_locked_frames >= self.config.non_locked_frame_limit
+            and terminal.consecutive_non_locked_frames
+            > max(0, int(self.config.non_locked_frame_limit))
         ):
             return True
         return False

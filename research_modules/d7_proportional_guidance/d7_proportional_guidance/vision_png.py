@@ -48,6 +48,12 @@ class PngGuidanceConfig:
     ttc_slow_s: float = 6.0
     ttc_min_gain: float = 0.5
     ttc_max_gain: float = 5.0
+    ttc_area_filter_alpha: float = 0.25
+    ttc_area_window_size: int = 5
+    ttc_min_area_px2: float = 16.0
+    ttc_max_area_jump_ratio: float = 2.5
+    ttc_min_area_dot_px2_s: float = 1.0e-6
+    ttc_max_s: float = 20.0
     terminal_dwell_frames: int = 1
     terminal_release_frames: int = 1
     terminal_reacquire_grace_frames: int = 0
@@ -78,6 +84,16 @@ class PngGuidanceConfig:
             raise ValueError("terminal_release_frames must be at least one")
         if self.terminal_reacquire_grace_frames < 0:
             raise ValueError("terminal_reacquire_grace_frames must be nonnegative")
+        if not 0.0 < self.ttc_area_filter_alpha <= 1.0:
+            raise ValueError("ttc_area_filter_alpha must be in (0, 1]")
+        if self.ttc_area_window_size < 2:
+            raise ValueError("ttc_area_window_size must be at least two")
+        if self.ttc_min_area_px2 <= 0.0:
+            raise ValueError("ttc_min_area_px2 must be positive")
+        if self.ttc_max_area_jump_ratio <= 1.0:
+            raise ValueError("ttc_max_area_jump_ratio must be greater than one")
+        if self.ttc_min_area_dot_px2_s <= 0.0 or self.ttc_max_s <= 0.0:
+            raise ValueError("TTC area-rate and maximum-TTC limits must be positive")
         if self.law not in {"los", "png_ttc", "png_vm"}:
             raise ValueError("law must be one of 'los', 'png_ttc', or 'png_vm'")
 
@@ -136,7 +152,13 @@ class VisionGuidanceQuality:
     los_rate_outlier_rejected: bool = False
     closing_speed_mps: float = 0.0
     ttc_s: float | None = None
+    ttc_raw_area_px2: float | None = None
+    ttc_filtered_area_px2: float | None = None
+    ttc_area_dot_px2_s: float | None = None
+    ttc_valid: bool | None = None
+    ttc_reject_reason: str = ""
     required_turn_rate_radps: float = 0.0
+    turn_rate_capacity_radps: float = 0.0
     maneuver_margin: float = 0.0
 
 
@@ -153,6 +175,16 @@ class PngGuidanceCommand:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class _ScaleExpansionTtcResult:
+    ttc_s: float | None
+    raw_area_px2: float
+    filtered_area_px2: float | None
+    area_dot_px2_s: float | None
+    valid: bool
+    reject_reason: str = ""
+
+
 class SimpleFlightPngGuidanceFilter:
     """Stateful LOS/TTC estimator for SimpleFlight velocity commands."""
 
@@ -164,6 +196,11 @@ class SimpleFlightPngGuidanceFilter:
         self._last_timestamp: float | None = None
         self._filtered_los_rate: float | None = None
         self._area_window: deque[tuple[float, float]] = deque(maxlen=self.config.los_rate_window)
+        self._ttc_area_window: deque[tuple[float, float]] = deque(
+            maxlen=self.config.ttc_area_window_size
+        )
+        self._ttc_filtered_area: float | None = None
+        self._ttc_previous_raw_area: float | None = None
         self._los_rate_window: deque[float] = deque(maxlen=self.config.los_rate_window)
 
     def reset(self) -> None:
@@ -173,6 +210,9 @@ class SimpleFlightPngGuidanceFilter:
         self._last_timestamp = None
         self._filtered_los_rate = None
         self._area_window.clear()
+        self._ttc_area_window.clear()
+        self._ttc_filtered_area = None
+        self._ttc_previous_raw_area = None
         self._los_rate_window.clear()
 
     def evaluate(
@@ -211,7 +251,22 @@ class SimpleFlightPngGuidanceFilter:
             los_rate_clamped,
             los_rate_outlier_rejected,
         ) = self._update_los(timestamp, los_angle)
-        ttc_s = self._estimate_ttc(timestamp, observation.area_px2)
+        if cfg.law == "png_ttc":
+            ttc_result = self._estimate_scale_expansion_ttc(timestamp, observation)
+            ttc_s = ttc_result.ttc_s
+            ttc_ok = ttc_result.valid
+            ttc_reason = ttc_result.reject_reason
+        else:
+            ttc_s = self._estimate_ttc(timestamp, observation.area_px2)
+            ttc_result = _ScaleExpansionTtcResult(
+                ttc_s=ttc_s,
+                raw_area_px2=float(observation.area_px2),
+                filtered_area_px2=None,
+                area_dot_px2_s=None,
+                valid=True,
+            )
+            ttc_ok = True
+            ttc_reason = ""
         closing_speed = _closing_speed(relative_position_ned, relative_velocity_ned)
         turn_rate_cmd = self._turn_rate_command(
             los_rate=filtered_los_rate,
@@ -220,7 +275,7 @@ class SimpleFlightPngGuidanceFilter:
         )
         limited_turn_rate = float(np.clip(turn_rate_cmd, -cfg.max_turn_rate_radps, cfg.max_turn_rate_radps))
         control_saturated = abs(limited_turn_rate - turn_rate_cmd) > 1e-9
-        required_turn_rate = abs(limited_turn_rate)
+        required_turn_rate = abs(turn_rate_cmd)
         accel_limit_turn = cfg.max_lateral_accel_mps2 / max(abs(current_speed_mps), 1e-6)
         turn_capacity = min(cfg.max_turn_rate_radps, accel_limit_turn)
         maneuver_margin = 1.0 - required_turn_rate / max(turn_capacity, 1e-6)
@@ -233,8 +288,8 @@ class SimpleFlightPngGuidanceFilter:
         else:
             maneuver_reason = ""
 
-        reject_reason = _first_reason(camera_reason, los_reason, maneuver_reason)
-        switch_allowed = camera_ok and los_ok and maneuver_ok
+        reject_reason = _first_reason(camera_reason, los_reason, ttc_reason, maneuver_reason)
+        switch_allowed = camera_ok and los_ok and ttc_ok and maneuver_ok
         if not switch_allowed:
             # Hold a conservative LOS-centering command while handover waits.
             limited_turn_rate = float(
@@ -263,7 +318,13 @@ class SimpleFlightPngGuidanceFilter:
             los_rate_outlier_rejected=bool(los_rate_outlier_rejected),
             closing_speed_mps=float(closing_speed),
             ttc_s=ttc_s,
+            ttc_raw_area_px2=ttc_result.raw_area_px2,
+            ttc_filtered_area_px2=ttc_result.filtered_area_px2,
+            ttc_area_dot_px2_s=ttc_result.area_dot_px2_s,
+            ttc_valid=ttc_result.valid if cfg.law == "png_ttc" else None,
+            ttc_reject_reason=ttc_result.reject_reason,
             required_turn_rate_radps=float(required_turn_rate),
+            turn_rate_capacity_radps=float(turn_capacity),
             maneuver_margin=float(maneuver_margin),
         )
         return PngGuidanceCommand(
@@ -281,6 +342,11 @@ class SimpleFlightPngGuidanceFilter:
                 "filtered_los_rate_radps": float(filtered_los_rate),
                 "los_rate_clamped": bool(los_rate_clamped),
                 "los_rate_outlier_rejected": bool(los_rate_outlier_rejected),
+                "ttc_raw_area_px2": ttc_result.raw_area_px2,
+                "ttc_filtered_area_px2": ttc_result.filtered_area_px2,
+                "ttc_area_dot_px2_s": ttc_result.area_dot_px2_s,
+                "ttc_valid": ttc_result.valid if cfg.law == "png_ttc" else None,
+                "ttc_reject_reason": ttc_result.reject_reason,
             },
         )
 
@@ -394,6 +460,78 @@ class SimpleFlightPngGuidanceFilter:
             return None
         return float(ttc)
 
+    def _estimate_scale_expansion_ttc(
+        self,
+        timestamp: float,
+        observation: VisionGuidanceObservation,
+    ) -> _ScaleExpansionTtcResult:
+        """Apply the delivery ScaleExpansionTTC preprocessing for ``png_ttc``."""
+
+        cfg = self.config
+        raw_area = float(observation.area_px2)
+        if raw_area < cfg.ttc_min_area_px2:
+            return self._ttc_result(raw_area, reject_reason="bbox_area_too_small")
+        clip_reason = _bbox_clip_reason(observation.bbox_xyxy, cfg)
+        if clip_reason:
+            return self._ttc_result(raw_area, reject_reason=clip_reason)
+        if self._ttc_previous_raw_area is not None:
+            ratio = max(raw_area, self._ttc_previous_raw_area) / max(
+                1.0e-9,
+                min(raw_area, self._ttc_previous_raw_area),
+            )
+            if ratio > cfg.ttc_max_area_jump_ratio:
+                self._ttc_previous_raw_area = raw_area
+                return self._ttc_result(raw_area, reject_reason="bbox_area_jump")
+        self._ttc_previous_raw_area = raw_area
+
+        if self._ttc_filtered_area is None:
+            self._ttc_filtered_area = raw_area
+        else:
+            alpha = cfg.ttc_area_filter_alpha
+            self._ttc_filtered_area = (
+                alpha * raw_area + (1.0 - alpha) * self._ttc_filtered_area
+            )
+        self._ttc_area_window.append((float(timestamp), self._ttc_filtered_area))
+        area_dot = _window_slope(self._ttc_area_window)
+        if area_dot is None or area_dot <= cfg.ttc_min_area_dot_px2_s:
+            return self._ttc_result(
+                raw_area,
+                area_dot_px2_s=0.0 if area_dot is None else area_dot,
+                reject_reason="area_not_expanding",
+            )
+        ttc_s = 2.0 * self._ttc_filtered_area / area_dot
+        if not np.isfinite(ttc_s) or ttc_s <= 0.0 or ttc_s > cfg.ttc_max_s:
+            return self._ttc_result(
+                raw_area,
+                ttc_s=float(ttc_s) if np.isfinite(ttc_s) else None,
+                area_dot_px2_s=area_dot,
+                reject_reason="ttc_out_of_range",
+            )
+        return self._ttc_result(
+            raw_area,
+            ttc_s=float(ttc_s),
+            area_dot_px2_s=area_dot,
+            valid=True,
+        )
+
+    def _ttc_result(
+        self,
+        raw_area_px2: float,
+        *,
+        ttc_s: float | None = None,
+        area_dot_px2_s: float | None = None,
+        valid: bool = False,
+        reject_reason: str = "",
+    ) -> _ScaleExpansionTtcResult:
+        return _ScaleExpansionTtcResult(
+            ttc_s=ttc_s,
+            raw_area_px2=float(raw_area_px2),
+            filtered_area_px2=self._ttc_filtered_area,
+            area_dot_px2_s=area_dot_px2_s,
+            valid=valid,
+            reject_reason=reject_reason,
+        )
+
     def _turn_rate_command(
         self,
         *,
@@ -499,6 +637,35 @@ def _edge_margin_ratio(
     x1, y1, x2, y2 = bbox_xyxy
     margin_px = min(x1, y1, cfg.image_width_px - x2, cfg.image_height_px - y2)
     return float(margin_px / max(1.0, min(cfg.image_width_px, cfg.image_height_px)))
+
+
+def _bbox_clip_reason(
+    bbox_xyxy: tuple[float, float, float, float],
+    cfg: PngGuidanceConfig,
+) -> str:
+    x1, y1, x2, y2 = bbox_xyxy
+    if y1 <= 0.0:
+        return "bbox_top_clipped"
+    if y2 >= float(cfg.image_height_px):
+        return "bbox_bottom_clipped"
+    if x1 <= 0.0:
+        return "bbox_left_clipped"
+    if x2 >= float(cfg.image_width_px):
+        return "bbox_right_clipped"
+    return ""
+
+
+def _window_slope(window: Iterable[tuple[float, float]]) -> float | None:
+    samples = list(window)
+    if len(samples) < 2:
+        return None
+    timestamps = np.asarray([item[0] for item in samples], dtype=float)
+    values = np.asarray([item[1] for item in samples], dtype=float)
+    timestamps = timestamps - timestamps.mean()
+    denominator = float(np.dot(timestamps, timestamps))
+    if denominator <= 1.0e-12:
+        return None
+    return float(np.dot(timestamps, values - values.mean()) / denominator)
 
 
 def _closing_speed(

@@ -94,14 +94,27 @@ def annotate_visual_png_handoff(
             assignment_consistent
             and current_assigned_global_track_id == association.assigned_global_track_id
         )
+    scoped_history = history if association.local_track_id is not None else ()
+    association_measurement_age_s = _association_measurement_age_s(
+        association,
+        current_time=current_time,
+    )
     measurement_age_s = _resolved_measurement_age_s(
-        history,
+        scoped_history,
         association.local_track_id,
         current_time=current_time,
-        measurement_age_s=measurement_age_s,
+        measurement_age_s=(
+            measurement_age_s
+            if measurement_age_s is not None
+            else association_measurement_age_s
+        ),
         detection_latency_s=detection_latency_s,
     )
-    los_rate_tuple = _resolved_los_rate_px_s(history, association.local_track_id, los_rate_px_s)
+    los_rate_tuple = _resolved_los_rate_px_s(
+        scoped_history,
+        association.local_track_id,
+        los_rate_px_s,
+    )
     los_rate_norm = _los_rate_norm(los_rate_tuple)
     handoff_blockers = _handoff_blockers(
         association=association,
@@ -112,7 +125,7 @@ def annotate_visual_png_handoff(
         config=cfg,
     )
     stability = bbox_area_stability(
-        history,
+        scoped_history,
         image_size=image_size,
         local_track_id=association.local_track_id,
         config=cfg,
@@ -370,6 +383,22 @@ def _resolved_measurement_age_s(
             return float(current_time) - max(matching_timestamps)
     if detection_latency_s is not None:
         return float(detection_latency_s)
+    return None
+
+
+def _association_measurement_age_s(
+    association: TerminalAssociation,
+    *,
+    current_time: float | None,
+) -> float | None:
+    if association.local_track_id is not None:
+        return None
+    if association.measurement_age_s is not None:
+        return float(association.measurement_age_s)
+    if association.prediction_age_s is not None:
+        return float(association.prediction_age_s)
+    if current_time is not None and association.measurement_timestamp is not None:
+        return float(current_time) - float(association.measurement_timestamp)
     return None
 
 

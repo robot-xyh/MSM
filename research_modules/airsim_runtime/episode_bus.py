@@ -2934,21 +2934,88 @@ def _vision_observation_for_d7(
         return None
     local_track = context.local_track
     metadata = dict(terminal_association.metadata)
+    camera_geometry = _terminal_camera_geometry_metadata(terminal_association)
+    measurement_timestamp = float(
+        getattr(terminal_association, "measurement_timestamp", None)
+        or getattr(local_track, "timestamp", timestamp)
+    )
+    arrival_timestamp = float(
+        getattr(terminal_association, "arrival_timestamp", None) or timestamp
+    )
     return {
-        "timestamp_s": float(local_track.timestamp),
-        "frame_timestamp_s": float(timestamp),
+        "timestamp_s": float(timestamp),
+        "frame_timestamp_s": measurement_timestamp,
         "bbox_xyxy": tuple(local_track.bbox),
         "detection_confidence": float(local_track.quality),
         "local_track_id": local_track.local_track_id,
         "assigned_global_track_id": terminal_association.assigned_global_track_id,
         "camera_id": metadata.get("camera_id"),
-        "measurement_age_s": max(0.0, float(timestamp) - float(local_track.timestamp)),
+        "measurement_age_s": max(0.0, arrival_timestamp - measurement_timestamp),
         "metadata": {
             "source": "main_d5_local_visual_track",
-            "measurement_age_s": max(0.0, float(timestamp) - float(local_track.timestamp)),
+            "measurement_timestamp": measurement_timestamp,
+            "arrival_timestamp": arrival_timestamp,
+            "exposure_timestamp": float(
+                getattr(terminal_association, "exposure_timestamp", None)
+                or measurement_timestamp
+            ),
+            "measurement_age_s": max(0.0, arrival_timestamp - measurement_timestamp),
+            "mot_history_length": getattr(terminal_association, "mot_history_length", None),
+            "track_transition_state": getattr(
+                terminal_association, "track_transition_state", "unknown"
+            ),
+            "track_reset_reason": getattr(
+                terminal_association, "track_reset_reason", None
+            ),
+            "detection_source": getattr(
+                terminal_association, "detection_source", "unknown"
+            ),
+            "bbox_edge_clipped": bool(
+                getattr(terminal_association, "bbox_edge_clipped", False)
+            ),
+            "bbox_edge_clip_sides": list(
+                getattr(terminal_association, "bbox_edge_clip_sides", ())
+            ),
+            "association_confidence": float(
+                getattr(terminal_association, "association_confidence", 0.0)
+            ),
+            "friend_conflict_state": getattr(
+                terminal_association, "friend_conflict_state", "none"
+            ),
+            "duplicate_terminal_lock_risk": bool(
+                getattr(terminal_association, "duplicate_terminal_lock_risk", False)
+            ),
             "visual_png_handoff_recommended": metadata.get("visual_png_handoff_recommended"),
             "visual_png_handoff_blockers": metadata.get("visual_png_handoff_blockers"),
+            **camera_geometry,
         },
+    }
+
+
+def _terminal_camera_geometry_metadata(
+    terminal_association: TerminalAssociation,
+) -> dict[str, Any]:
+    geometry = getattr(terminal_association, "camera_geometry", None)
+    if geometry is not None and hasattr(geometry, "to_metadata"):
+        payload = dict(geometry.to_metadata())
+    else:
+        payload = dict(terminal_association.metadata.get("camera_geometry") or {})
+    if not payload:
+        return {
+            "camera_geometry_valid": False,
+            "camera_geometry_unavailable_reasons": ["camera_geometry_not_provided"],
+        }
+    return {
+        "camera_intrinsics": payload.get("camera_intrinsics"),
+        "camera_to_ned_rotation": payload.get("camera_to_ned_rotation"),
+        "camera_position_ned": payload.get("camera_position_ned"),
+        "attitude_timestamp_s": payload.get("attitude_timestamp"),
+        "attitude_age_s": payload.get("attitude_age_s"),
+        "camera_geometry_valid": bool(payload.get("geometry_valid", False)),
+        "camera_geometry_source": payload.get("geometry_source", "unavailable"),
+        "camera_geometry_unavailable_reasons": list(
+            payload.get("geometry_unavailable_reasons") or ()
+        ),
     }
 
 

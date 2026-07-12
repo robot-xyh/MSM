@@ -57,6 +57,28 @@ _D1_D3_GOVERNANCE_METRIC_NAMES = (
     "d3_feedback_sample_count",
 )
 
+_TERMINAL_DELIVERY_METRIC_NAMES = (
+    "terminal_filter_measured_count",
+    "terminal_filter_predicted_count",
+    "terminal_filter_innovation_rejected_count",
+    "terminal_filter_reset_count",
+    "terminal_filter_expired_count",
+    "ttc_area_jump_reject_count",
+    "ttc_bbox_clipping_reject_count",
+    "ttc_not_expanding_reject_count",
+    "ttc_out_of_range_reject_count",
+    "soft_prediction_count",
+    "soft_prediction_duration_s",
+    "soft_prediction_expired_count",
+    "terminal_coast_count",
+    "terminal_coast_duration_s",
+    "terminal_coast_expired_count",
+    "terminal_lock_continuity",
+    "visual_mode_duration_s",
+    "command_discontinuity_mean_mps",
+    "command_discontinuity_max_mps",
+)
+
 
 @dataclass(frozen=True)
 class TrackRecord:
@@ -476,6 +498,25 @@ class EpisodeMetrics:
     visual_reacquisition_count: int | None = None
     terminal_visual_lost_after_coast_count: int | None = None
     truth_identity_online_use_count: int | None = None
+    terminal_filter_measured_count: int | None = None
+    terminal_filter_predicted_count: int | None = None
+    terminal_filter_innovation_rejected_count: int | None = None
+    terminal_filter_reset_count: int | None = None
+    terminal_filter_expired_count: int | None = None
+    ttc_area_jump_reject_count: int | None = None
+    ttc_bbox_clipping_reject_count: int | None = None
+    ttc_not_expanding_reject_count: int | None = None
+    ttc_out_of_range_reject_count: int | None = None
+    soft_prediction_count: int | None = None
+    soft_prediction_duration_s: float | None = None
+    soft_prediction_expired_count: int | None = None
+    terminal_coast_count: int | None = None
+    terminal_coast_duration_s: float | None = None
+    terminal_coast_expired_count: int | None = None
+    terminal_lock_continuity: float | None = None
+    visual_mode_duration_s: float | None = None
+    command_discontinuity_mean_mps: float | None = None
+    command_discontinuity_max_mps: float | None = None
     intercept_success_count: int = 0
     collision_intercept_count: int = 0
     range_intercept_count: int = 0
@@ -621,6 +662,7 @@ class EpisodeMetrics:
             "visual_reacquisition_count",
             "terminal_visual_lost_after_coast_count",
             "truth_identity_online_use_count",
+            *_TERMINAL_DELIVERY_METRIC_NAMES,
             "intercept_success_count",
             "collision_intercept_count",
             "range_intercept_count",
@@ -1006,6 +1048,8 @@ class MetricsCollector:
         link = self._compute_link_metrics()
         guidance_gate = self._compute_guidance_gate_metrics()
         guidance_metadata = guidance_gate.pop("_metadata", {})
+        terminal_delivery = self._compute_terminal_delivery_metrics()
+        terminal_delivery_metadata = terminal_delivery.pop("_metadata", {})
         intercept = self._compute_intercept_metrics()
         intercept_metadata = intercept.pop("_metadata", {})
         safety = self._compute_safety_metrics()
@@ -1025,6 +1069,7 @@ class MetricsCollector:
             secondary_sensing,
             link,
             guidance_gate,
+            terminal_delivery,
             intercept,
             safety,
             performance,
@@ -1038,6 +1083,7 @@ class MetricsCollector:
         metrics.metric_availability = {
             **dict(detection_metadata.get("metric_availability", {})),
             **metrics.m_to_n_metric_availability,
+            **dict(terminal_delivery_metadata.get("metric_availability", {})),
         }
         metrics.duplicate_assignment_count = int(
             m_to_n_metadata["m_to_n_duplicate_assignment_count"]
@@ -1086,6 +1132,7 @@ class MetricsCollector:
             **secondary_sensing_metadata,
             **visual_perception_metadata,
             **guidance_metadata,
+            **terminal_delivery_metadata,
             **intercept_metadata,
             **performance_metadata,
             **mission_metadata,
@@ -3316,6 +3363,266 @@ class MetricsCollector:
                     "control_allowed": sum(control_allowed_values),
                     "mode_switched": mode_switch_count,
                 },
+            },
+        }
+
+    def _compute_terminal_delivery_metrics(self) -> dict[str, Any]:
+        """Aggregate passive D7 terminal-filter and coast diagnostics.
+
+        Every value remains unavailable until a persisted D7 record carries
+        the corresponding field family.  This prevents legacy episodes from
+        being interpreted as zero-rejection or zero-coast runs.
+        """
+
+        records = [
+            record
+            for record in self.event_records
+            if _event_type(record)
+            in self.D7_CONTROL_COMMAND_EVENTS | self.D7_GUIDANCE_RECORD_EVENTS
+        ]
+        summary_records = [
+            record
+            for record in self.event_records
+            if _event_type(record) in self.INTERCEPT_SUMMARY_EVENTS
+        ]
+        summary_metadata = summary_records[-1].metadata if summary_records else {}
+        evidence: dict[str, bool] = {
+            name: False for name in _TERMINAL_DELIVERY_METRIC_NAMES
+        }
+        counts = {
+            name: 0
+            for name in _TERMINAL_DELIVERY_METRIC_NAMES
+            if name.endswith("_count")
+        }
+        filter_states: dict[str, int] = defaultdict(int)
+        ttc_reject_reasons: dict[str, int] = defaultdict(int)
+        profiles: dict[str, int] = defaultdict(int)
+
+        for record in records:
+            metadata = record.metadata
+            state = _terminal_filter_state(metadata)
+            reason = _terminal_filter_reason(metadata)
+            if state is not None:
+                filter_states[state] += 1
+                for name in (
+                    "terminal_filter_measured_count",
+                    "terminal_filter_predicted_count",
+                    "terminal_filter_expired_count",
+                ):
+                    evidence[name] = True
+                if state in {"measured", "update", "updated", "reacquired"}:
+                    counts["terminal_filter_measured_count"] += 1
+                if state in {
+                    "predict",
+                    "predicted",
+                    "image_kf_predict",
+                    "soft_predict",
+                    "soft_prediction",
+                }:
+                    counts["terminal_filter_predicted_count"] += 1
+                if state in {"expired", "invalid", "lost_after_coast"}:
+                    counts["terminal_filter_expired_count"] += 1
+
+            innovation_rejected = _terminal_diagnostic_flag(
+                metadata,
+                ("terminal_filter_innovation_rejected", "innovation_rejected"),
+                reason_tokens=("innovation_rejected", "innovation_reject"),
+            )
+            if innovation_rejected is not None:
+                evidence["terminal_filter_innovation_rejected_count"] = True
+                counts["terminal_filter_innovation_rejected_count"] += int(
+                    innovation_rejected
+                )
+
+            reset = _terminal_diagnostic_flag(
+                metadata,
+                ("terminal_filter_reset", "image_kf_reset", "filter_reset"),
+                reason_tokens=("filter_reset", "image_kf_reset", "track_reset"),
+            )
+            if reset is not None or any(
+                key in metadata
+                for key in ("terminal_filter_reset_reason", "image_kf_reset_reason")
+            ):
+                evidence["terminal_filter_reset_count"] = True
+                counts["terminal_filter_reset_count"] += int(reset is not False)
+
+            ttc_reason = _normalized_reason(
+                _first_metadata_text(
+                    metadata,
+                    (
+                        "ttc_reject_reason",
+                        "ttc_area_reject_reason",
+                        "ttc_validity_reason",
+                    ),
+                )
+            )
+            if ttc_reason:
+                ttc_reject_reasons[ttc_reason] += 1
+            _accumulate_reason_metric(
+                metadata,
+                ttc_reason,
+                metric_name="ttc_area_jump_reject_count",
+                flag_keys=("ttc_area_jump_rejected", "area_jump_rejected"),
+                reason_tokens=("area_jump", "area_ratio_jump"),
+                evidence=evidence,
+                counts=counts,
+            )
+            _accumulate_reason_metric(
+                metadata,
+                ttc_reason,
+                metric_name="ttc_bbox_clipping_reject_count",
+                flag_keys=("ttc_bbox_clipping_rejected", "bbox_clipping_rejected"),
+                reason_tokens=("bbox_clipping", "bbox_clipped", "edge_clipped"),
+                evidence=evidence,
+                counts=counts,
+            )
+            _accumulate_reason_metric(
+                metadata,
+                ttc_reason,
+                metric_name="ttc_not_expanding_reject_count",
+                flag_keys=("ttc_not_expanding_rejected", "not_expanding_rejected"),
+                reason_tokens=("not_expanding", "area_not_expanding"),
+                evidence=evidence,
+                counts=counts,
+            )
+            _accumulate_reason_metric(
+                metadata,
+                ttc_reason,
+                metric_name="ttc_out_of_range_reject_count",
+                flag_keys=("ttc_out_of_range_rejected", "ttc_range_rejected"),
+                reason_tokens=("ttc_out_of_range", "out_of_range", "max_ttc"),
+                evidence=evidence,
+                counts=counts,
+            )
+
+            soft_prediction = _soft_prediction_active(metadata, state)
+            if soft_prediction is not None:
+                evidence["soft_prediction_count"] = True
+                counts["soft_prediction_count"] += int(soft_prediction)
+            soft_expired = _terminal_diagnostic_flag(
+                metadata,
+                ("soft_prediction_expired", "terminal_soft_prediction_expired"),
+                reason_tokens=("soft_prediction_expired", "soft_predict_expired"),
+            )
+            if soft_expired is not None:
+                evidence["soft_prediction_expired_count"] = True
+                counts["soft_prediction_expired_count"] += int(soft_expired)
+
+            coast = _terminal_coast_active(metadata, state)
+            if coast is not None:
+                evidence["terminal_coast_count"] = True
+                counts["terminal_coast_count"] += int(coast)
+            coast_expired = _terminal_diagnostic_flag(
+                metadata,
+                ("terminal_coast_expired", "coast_expired"),
+                reason_tokens=("lost_after_coast", "coast_expired"),
+            )
+            if coast_expired is not None:
+                evidence["terminal_coast_expired_count"] = True
+                counts["terminal_coast_expired_count"] += int(coast_expired)
+
+            profile = _first_metadata_text(
+                metadata,
+                (
+                    "terminal_delivery_profile",
+                    "comparison_role",
+                    "algorithm_variant",
+                ),
+            )
+            if profile:
+                profiles[profile] += 1
+
+        soft_duration = _observed_state_duration(
+            records,
+            state_predicate=lambda metadata: _soft_prediction_active(
+                metadata,
+                _terminal_filter_state(metadata),
+            ),
+            elapsed_keys=(
+                "soft_prediction_elapsed_s",
+                "terminal_soft_prediction_elapsed_s",
+                "terminal_prediction_age_s",
+                "prediction_age_s",
+            ),
+        )
+        coast_duration = _observed_state_duration(
+            records,
+            state_predicate=lambda metadata: _terminal_coast_active(
+                metadata,
+                _terminal_filter_state(metadata),
+            ),
+            elapsed_keys=(
+                "terminal_coast_elapsed_s",
+                "coast_elapsed_s",
+                "terminal_blind_elapsed_s",
+                "blind_elapsed_s",
+            ),
+        )
+        lock_continuity = _terminal_lock_continuity(records)
+        visual_duration = _observed_state_duration(
+            records,
+            state_predicate=_visual_mode_active,
+            elapsed_keys=("visual_mode_elapsed_s", "terminal_mode_elapsed_s"),
+        )
+        command_deltas = _command_discontinuities(records)
+
+        optional_values: dict[str, float | None] = {
+            "soft_prediction_duration_s": soft_duration,
+            "terminal_coast_duration_s": coast_duration,
+            "terminal_lock_continuity": lock_continuity,
+            "visual_mode_duration_s": visual_duration,
+            "command_discontinuity_mean_mps": (
+                _mean(command_deltas) if command_deltas is not None else None
+            ),
+            "command_discontinuity_max_mps": (
+                max(command_deltas) if command_deltas else None
+            ),
+        }
+        for name in counts:
+            explicit_count = _metadata_int(summary_metadata, name)
+            if explicit_count is not None:
+                counts[name] = explicit_count
+                evidence[name] = True
+        for name in optional_values:
+            explicit_value = _metadata_float(summary_metadata, name)
+            if explicit_value is not None:
+                optional_values[name] = explicit_value
+        for name, value in optional_values.items():
+            evidence[name] = value is not None
+
+        summary_profile = _first_metadata_text(
+            summary_metadata,
+            ("terminal_delivery_profile", "comparison_role", "algorithm_variant"),
+        )
+        if summary_profile:
+            profiles[summary_profile] += 1
+
+        result: dict[str, Any] = {
+            name: counts[name] if evidence[name] else None for name in counts
+        }
+        result.update(optional_values)
+        availability = {
+            name: {
+                "status": "available" if evidence[name] else "unavailable",
+                "reason": (
+                    "persisted D7 terminal delivery evidence"
+                    if evidence[name]
+                    else "required D7 terminal delivery fields are absent"
+                ),
+            }
+            for name in _TERMINAL_DELIVERY_METRIC_NAMES
+        }
+        return {
+            **result,
+            "_metadata": {
+                "metric_availability": availability,
+                "terminal_filter_state_counts": dict(filter_states),
+                "terminal_ttc_reject_reason_counts": dict(ttc_reject_reasons),
+                "terminal_delivery_profile_counts": dict(profiles),
+                "terminal_delivery_profile": (
+                    next(iter(profiles)) if len(profiles) == 1 else None
+                ),
+                "terminal_delivery_offline_only": True,
             },
         }
 
@@ -5700,6 +6007,297 @@ def _optional_rate(
     if numerator is None or denominator is None or denominator <= 0:
         return None
     return numerator / denominator
+
+
+def _terminal_filter_state(metadata: Mapping[str, Any]) -> str | None:
+    value = _first_metadata_text(
+        metadata,
+        (
+            "terminal_filter_state",
+            "image_kf_mode",
+            "terminal_delivery_state",
+        ),
+    )
+    return _state(value) if value is not None else None
+
+
+def _terminal_filter_reason(metadata: Mapping[str, Any]) -> str | None:
+    return _normalized_reason(
+        _first_metadata_text(
+            metadata,
+            (
+                "terminal_filter_reason",
+                "terminal_delivery_reason",
+                "image_kf_reason",
+            ),
+        )
+    )
+
+
+def _first_metadata_text(
+    metadata: Mapping[str, Any],
+    keys: Sequence[str],
+) -> str | None:
+    for key in keys:
+        value = _metadata_text(metadata, key)
+        if value is not None:
+            return value
+    return None
+
+
+def _normalized_reason(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return _state(value).replace("-", "_").replace(" ", "_")
+
+
+def _terminal_diagnostic_flag(
+    metadata: Mapping[str, Any],
+    flag_keys: Sequence[str],
+    *,
+    reason_tokens: Sequence[str],
+) -> bool | None:
+    value = _first_metadata_bool(metadata, flag_keys)
+    if value is not None:
+        return value
+    reasons = " ".join(
+        value
+        for value in (
+            _normalized_reason(_metadata_text(metadata, key))
+            for key in (
+                "terminal_filter_reason",
+                "terminal_delivery_reason",
+                "image_kf_reason",
+                "ttc_reject_reason",
+                "ttc_area_reject_reason",
+            )
+        )
+        if value is not None
+    )
+    if reasons and any(token in reasons for token in reason_tokens):
+        return True
+    return None
+
+
+def _accumulate_reason_metric(
+    metadata: Mapping[str, Any],
+    reason: str | None,
+    *,
+    metric_name: str,
+    flag_keys: Sequence[str],
+    reason_tokens: Sequence[str],
+    evidence: dict[str, bool],
+    counts: dict[str, int],
+) -> None:
+    explicit = _first_metadata_bool(metadata, flag_keys)
+    if explicit is not None:
+        evidence[metric_name] = True
+        counts[metric_name] += int(explicit)
+        return
+    if reason is not None:
+        evidence[metric_name] = True
+        counts[metric_name] += int(any(token in reason for token in reason_tokens))
+
+
+def _soft_prediction_active(
+    metadata: Mapping[str, Any],
+    state: str | None,
+) -> bool | None:
+    explicit = _first_metadata_bool(
+        metadata,
+        (
+            "soft_prediction_active",
+            "terminal_soft_prediction",
+            "innovation_soft_prediction",
+        ),
+    )
+    if explicit is not None:
+        return explicit
+    if state in {"soft_predict", "soft_prediction"}:
+        return True
+    if state is not None and any(
+        key in metadata
+        for key in (
+            "soft_prediction_elapsed_s",
+            "terminal_soft_prediction_elapsed_s",
+        )
+    ):
+        return False
+    return None
+
+
+def _terminal_coast_active(
+    metadata: Mapping[str, Any],
+    state: str | None,
+) -> bool | None:
+    explicit = _first_metadata_bool(
+        metadata,
+        (
+            "terminal_coast_active",
+            "using_blind_push",
+            "blind_push",
+        ),
+    )
+    if explicit is not None:
+        return explicit
+    if state in {"blind_push", "coast", "coasting", "trend_coast"}:
+        return True
+    if state is not None and any(
+        key in metadata
+        for key in (
+            "terminal_coast_elapsed_s",
+            "coast_elapsed_s",
+            "terminal_blind_elapsed_s",
+            "blind_elapsed_s",
+        )
+    ):
+        return False
+    return None
+
+
+def _visual_mode_active(metadata: Mapping[str, Any]) -> bool | None:
+    explicit = _first_metadata_bool(
+        metadata,
+        ("visual_mode_active", "terminal_mode_entered"),
+    )
+    if explicit is not None:
+        return explicit
+    mode = _state(
+        _first_metadata_text(metadata, ("mode", "guidance_mode")) or ""
+    )
+    if not mode:
+        return None
+    return mode in {
+        "terminal",
+        "vision_terminal",
+        "terminal_guidance",
+        "vision_terminal_guidance",
+        "png_vm",
+        "png_ttc",
+        "visual_png",
+    }
+
+
+def _terminal_record_pair_key(record: EventRecord) -> tuple[str, str]:
+    metadata = record.metadata
+    resource = (
+        _first_metadata_text(metadata, ("resource_id", "vehicle_name"))
+        or record.actor_id
+        or "__unknown_resource__"
+    )
+    target = _first_metadata_text(
+        metadata,
+        ("target_id", "global_track_id", "assigned_global_track_id"),
+    ) or "__unknown_target__"
+    return str(resource), str(target)
+
+
+def _observed_state_duration(
+    records: Sequence[EventRecord],
+    *,
+    state_predicate: Any,
+    elapsed_keys: Sequence[str],
+) -> float | None:
+    by_pair: dict[tuple[str, str], list[EventRecord]] = defaultdict(list)
+    evidence = False
+    for record in records:
+        state = state_predicate(record.metadata)
+        if state is not None:
+            evidence = True
+        if state is not None or any(key in record.metadata for key in elapsed_keys):
+            by_pair[_terminal_record_pair_key(record)].append(record)
+    if not evidence and not by_pair:
+        return None
+
+    total = 0.0
+    for pair_records in by_pair.values():
+        active_start: float | None = None
+        elapsed_max = 0.0
+        for record in sorted(pair_records, key=lambda item: item.timestamp):
+            active = state_predicate(record.metadata)
+            elapsed = _first_metadata_float(record.metadata, elapsed_keys)
+            if active is True:
+                if active_start is None:
+                    active_start = record.timestamp
+                    elapsed_max = 0.0
+                if elapsed is not None:
+                    elapsed_max = max(elapsed_max, max(0.0, elapsed))
+            elif active is False and active_start is not None:
+                total += max(elapsed_max, max(0.0, record.timestamp - active_start))
+                active_start = None
+                elapsed_max = 0.0
+        if active_start is not None:
+            last_timestamp = max(record.timestamp for record in pair_records)
+            total += max(elapsed_max, max(0.0, last_timestamp - active_start))
+    return total
+
+
+def _terminal_lock_continuity(records: Sequence[EventRecord]) -> float | None:
+    by_pair: dict[tuple[str, str], list[EventRecord]] = defaultdict(list)
+    for record in records:
+        if "terminal_locked" in record.metadata:
+            by_pair[_terminal_record_pair_key(record)].append(record)
+
+    retained = 0
+    opportunities = 0
+    for pair_records in by_pair.values():
+        previous: bool | None = None
+        for record in sorted(pair_records, key=lambda item: item.timestamp):
+            current = _first_metadata_bool(record.metadata, ("terminal_locked",))
+            if previous is True and current is not None:
+                opportunities += 1
+                retained += int(current)
+            previous = current
+    if opportunities == 0:
+        return None
+    return retained / opportunities
+
+
+def _command_discontinuities(
+    records: Sequence[EventRecord],
+) -> list[float] | None:
+    explicit = [
+        value
+        for record in records
+        for value in [
+            _first_metadata_float(
+                record.metadata,
+                ("command_discontinuity_mps", "velocity_command_step_mps"),
+            )
+        ]
+        if value is not None
+    ]
+    if explicit:
+        return explicit
+
+    by_pair: dict[tuple[str, str], list[EventRecord]] = defaultdict(list)
+    command_evidence = False
+    for record in records:
+        if any(
+            key in record.metadata
+            for key in ("command_vx_mps", "command_vy_mps", "command_vz_mps")
+        ):
+            command_evidence = True
+            by_pair[_terminal_record_pair_key(record)].append(record)
+    if not command_evidence:
+        return None
+
+    deltas: list[float] = []
+    for pair_records in by_pair.values():
+        previous: tuple[float, float, float] | None = None
+        for record in sorted(pair_records, key=lambda item: item.timestamp):
+            vx = _metadata_float(record.metadata, "command_vx_mps")
+            vy = _metadata_float(record.metadata, "command_vy_mps")
+            if vx is None or vy is None:
+                continue
+            vz = _metadata_float(record.metadata, "command_vz_mps") or 0.0
+            current = (vx, vy, vz)
+            if previous is not None:
+                deltas.append(
+                    math.sqrt(sum((value - old) ** 2 for value, old in zip(current, previous)))
+                )
+            previous = current
+    return deltas if deltas else None
 
 
 def _detect_coast_diagnostics(

@@ -100,6 +100,13 @@ class BlocksSmokeConfig:
     intercept_min_detection_confidence: float = 0.55
     intercept_min_stable_detection_frames: int = 2
     intercept_max_visual_latency_s: float = 0.35
+    intercept_max_turn_rate_radps: float = 0.9
+    intercept_max_lateral_accel_mps2: float = 20.0
+    intercept_min_maneuver_margin: float = 0.15
+    intercept_detection_dropout_start_s: float | None = None
+    intercept_detection_dropout_end_s: float | None = None
+    intercept_terminal_soft_prediction_enabled: bool = False
+    intercept_terminal_trend_coast_enabled: bool = False
     cooperative_demand_enabled: bool = False
     cooperative_high_threat_target_count: int = 1
     cooperative_threat_threshold: float = 0.9

@@ -75,7 +75,11 @@ decision = associator.decide(
 
 `LocalVisualTrack` 现在显式区分 `measured/predicted/lost`。predicted 轨迹只携带匿名 camera-local continuity 和 `prediction_age_s`，不能进入几何 assignment，也不能输出 `locked/registered`；丢失后的重捕无论 local ID 是否相同，都必须重新通过几何门限和 measured 稳定帧。D5 仍只回显上游 `assigned_global_track_id`，不创建、不改写、不换绑全局 ID。
 
-`TerminalAssociation.to_runtime_record()`、`TerminalObservation.to_runtime_record()` 和 bus `runtime_records()` 向 main/D6 提供扁平字段：`association_source`、`measurement_timestamp`、`arrival_timestamp`、`measurement_age_s`、`prediction_age_s`、`local_track_state`、`truth_identity_used=false`、置信度、决策状态与拒绝原因。当前 D5 全量回归为 `155 passed`。
+`TerminalAssociation.to_runtime_record()`、`TerminalObservation.to_runtime_record()` 和 bus `runtime_records()` 向 main/D6 提供扁平字段：`association_source`、`measurement_timestamp`、`arrival_timestamp`、`measurement_age_s`、`prediction_age_s`、`local_track_state`、`truth_identity_used=false`、置信度、决策状态与拒绝原因。lost/reacquire handoff 注释只沿用该 association 的最后测量/预测年龄；没有当前 local ID 时不会借用同相机其他检测的 timestamp、LOS 或 bbox。
+
+面向 D7 身份感知 KF/TTC/可选 6D LOS replay，D5 新增 `CameraGeometryEvidence` 和兼容扩展后的 `LocalVisualTrack`。detect、离线 schema 与 YOLO/MOT adapter 可输出稳定的 camera-local ID、`mot_history_length`、`initialized/continued/switched/reacquired/reset` 迁移证据、measurement/arrival 双时间戳、检测来源、bbox 四边裁剪状态，以及 K、camera-to-NED rotation、camera position、姿态时间戳/年龄/有效性。`geometry_valid` 只有在内参、外参和同步姿态均有效时为真；缺字段显式给出 `geometry_unavailable_reasons`。这些字段经 `TerminalAssociation` 和 runtime record 透传，但 MOT coast、predicted track、二级 cue 仍不能授权视觉 PNG，也不能改写 `global_track_id`。当前 D5 全量回归为 `161 passed`。
+
+main 尚需在真实 AirSim episode 中把曝光/measurement timestamp、arrival timestamp、实际 camera pose、机体姿态时间戳和 `CameraModel` 接到 adapter 的 `camera_geometry` 参数；未接线前 6D LOS 必须保持 unavailable，不能用 AirSim actor/object truth pose 补齐。
 
 本轮不启动 YOLO/ByteTrack 数据集标定，该 P2 工作保持 deferred。已有 OpenCV calibration/`solvePnP` geometry benchmark 仅复核为隔离式离线对照，未导入默认在线路径、未写回 `CameraModel`。
 

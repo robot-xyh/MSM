@@ -933,6 +933,7 @@ class TerminalAssociator:
         arrival_timestamp: float | None,
         lockable: bool,
     ) -> TerminalAssociation:
+        previous_locked_local_track_id = history.last_locked_local_track_id
         local_track = (
             local_tracks_by_id.get(association.local_track_id)
             if association.local_track_id is not None
@@ -975,6 +976,11 @@ class TerminalAssociator:
         )
         if local_track is not None:
             measurement_timestamp = float(local_track.timestamp)
+            effective_arrival_timestamp = (
+                float(arrival_timestamp)
+                if arrival_timestamp is not None
+                else float(local_track.arrival_timestamp)
+            )
             local_track_state = local_track.local_track_state
             measurement_age_s = (
                 effective_arrival_timestamp - measurement_timestamp
@@ -984,6 +990,17 @@ class TerminalAssociator:
             prediction_age_s = local_track.prediction_age_s
             if local_track_state == "predicted" and prediction_age_s is None:
                 prediction_age_s = measurement_age_s
+            transition_state = local_track.track_transition_state
+            if transition_state == "unknown":
+                if previous_locked_local_track_id is None:
+                    transition_state = "initialized"
+                elif previous_locked_local_track_id == local_track.local_track_id:
+                    transition_state = "continued"
+                else:
+                    transition_state = "switched"
+            track_reset_reason = local_track.track_reset_reason
+            if transition_state == "switched" and track_reset_reason is None:
+                track_reset_reason = "local_track_id_changed"
         else:
             measurement_timestamp = history.last_locked_timestamp
             local_track_state = "lost"
@@ -993,6 +1010,8 @@ class TerminalAssociator:
                 else None
             )
             prediction_age_s = measurement_age_s
+            transition_state = "lost"
+            track_reset_reason = "local_track_unavailable"
         association = replace(
             association,
             association_source="geometric_detect",
@@ -1002,10 +1021,26 @@ class TerminalAssociator:
             prediction_age_s=prediction_age_s,
             local_track_state=local_track_state,
             truth_identity_used=False,
+            mot_history_length=(local_track.mot_history_length if local_track is not None else None),
+            track_transition_state=transition_state,
+            track_reset_reason=track_reset_reason,
+            detection_source=(local_track.detection_source if local_track is not None else "unavailable"),
+            bbox_edge_clipped=(local_track.bbox_edge_clipped if local_track is not None else False),
+            bbox_edge_clip_sides=(
+                local_track.bbox_edge_clip_sides if local_track is not None else ()
+            ),
+            camera_geometry=(local_track.camera_geometry if local_track is not None else None),
+            duplicate_terminal_lock_risk=bool(
+                association.metadata.get("duplicate_terminal_lock_risk", False)
+            ),
             metadata=dict(association.metadata)
             | {
                 "anonymous_local_track_id": (
                     history.last_locked_local_track_id if local_track_state != "measured" else None
+                ),
+                "previous_locked_local_track_id": previous_locked_local_track_id,
+                "local_visual_evidence": (
+                    local_track.to_evidence_metadata() if local_track is not None else None
                 ),
             },
         )

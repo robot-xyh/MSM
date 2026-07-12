@@ -4,7 +4,25 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
-**P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` v2.1 已确认：当前未发现新的运行级 P0 阻塞断链。2026-07-11 本轮已经关闭 P1 合同与实现缺口，包括在线 truth 隔离、受治理 replay、D3 增量规划、D4 二级/完全分布式原子联盟、D5 匿名 detect 几何关联、D7 有界视觉外推和 D6 分层指标。SimpleFlight 已采用 NED 三维距离 `<=5 m` 的成功判据，但尚未完成新的真实 AirSim 多 seed 验收，因此不得把“实现闭合”表述为“批量物理命中已达标”。P2 只在独立环境中评估外部库和高阶算法，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
+**P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。`EVAL/FRAMEWORK_EVAL_P0_P1_P2_GAP_CONFIRMATION.md` v2.1 已确认：当前未发现新的运行级 P0 阻塞断链。2026-07-11 本轮已经关闭 P1 合同与实现缺口，包括在线 truth 隔离、受治理 replay、D3 增量规划、D4 二级/完全分布式原子联盟、D5 匿名 detect 几何关联、D7 有界视觉外推和 D6 分层指标。SimpleFlight 已采用 NED 三维距离 `<=5 m` 的成功判据；2026-07-12 的 2v2 candidate 已完成 10-seed、20/20 pair 验收，但同几何/同时间窗的 M5N2 paired candidate 尚未完成，因此不得把 2v2 结果扩展解释为协同联盟已达标。P2 只在独立环境中评估外部库和高阶算法，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
+
+## 2026-07-12 PNG delivery 增强与实测状态
+
+本轮由 main 下发、D5/D6/D7 分别实现并自测，main 只负责 AirSim runtime 接线、真实运行和汇总。详细报告为 `research_modules/airsim_runtime/outputs/PNG_DELIVERY_ENHANCEMENT_AIRSIM_VALIDATION_REPORT_20260712.md`，D6 结构化对照包位于 `research_modules/airsim_runtime/outputs/png_delivery_enhancement_eval_20260712/`。
+
+| 范围 | 当前状态 | GAP 判定 |
+| --- | --- | --- |
+| D7 图像 KF 生命周期 | 已按 resource/global/local track 与 plan owner/version 隔离；切换即重置，漏检不伪造身份切换 | P1 实现闭合，保持跨 ID/version/friend/duplicate 回归 |
+| D7 `png_ttc` | 已加入 delivery 等价面积 EMA、窗口斜率、跳变/裁剪/TTC 范围拒绝；`png_vm` 不变 | P1 实现闭合，真实 `png_ttc` 多 seed 标定仍开放 |
+| soft prediction / trend coast | 默认关闭；candidate profile 显式开启，预测上限 0.25 s，trend 仅水平且不超过 0.75 m/s | P1 optional 能力闭合，不晋级默认 profile |
+| D5 证据合同 | 已输出双时间戳、local-track transition、MOT history、bbox clip、相机内外参和姿态有效性；truth ID 在线使用禁止 | P1 合同闭合，真实标定误差/姿态同步长期校准开放 |
+| D7 6D LOS KF | 仅离线 replay，兼容 direct `camera_to_ned_rotation` 或分解旋转；字段缺失明确 unavailable | P2 optional，不替换在线 EMA/滑窗 |
+| D6 指标 | 已增加滤波状态、TTC 拒绝、soft/coast、命令跳变及 contract/control/mode/physical 分层报告 | P1 指标闭合 |
+| 真实 2v2 | candidate 10 seeds 为 20/20 pair 在 5 m 内成功，在线 truth=0；旧基线为 19/20 | 达到本轮非退化验收，但自然场景未触发 soft/trend，不能据此宣称增强算法贡献 |
+| 锁定后 dropout | 2 帧均为 `image_kf_predict`，2/2 物理成功，未发生跨身份 coast | 有界预测真实链路闭合 |
+| M5N2 | 8 s 短窗口 3 seeds 为 0 成功，最近距离 22-32 m；出现 soft prediction 4、innovation reject 2、truth=0 | 与既有 z=-30 m/35 s 高净空基线不等价；P1 仍是第二 primary 中段闭合和联盟视觉一致性，不归因于 PNG 滤波 |
+
+统一回归：D4 148、D5 161、D6 84、D7 137、AirSim runtime 98、质点集成 7、dry-run 4、跨模块合同 3，全部通过。当前没有新增 P0；仍需用同一高净空 M5N2 几何和相同运行窗口做 paired baseline/candidate，才能决定 soft prediction 或 trend coast 是否进入默认 AirSim profile。
 
 ## 2026-07-11 P1 收敛实施后权威状态
 

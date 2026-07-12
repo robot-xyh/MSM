@@ -13,6 +13,7 @@ import pytest
 
 import airsim_runtime.episode_bus as episode_bus_module
 from airsim_dryrun.models import (
+    AirSimCameraInfo,
     AirSimDetectionBox,
     AirSimFrame,
     AirSimResourceState,
@@ -31,9 +32,17 @@ from airsim_runtime.d4d5_stress import run_d4d5_stress_analysis
 from airsim_runtime.episode_bus import MainAirSimEpisodeBus, run_main_episode_bus
 from airsim_runtime.intercept import (
     InterceptPair,
+    _apply_intercept_detection_dropout,
+    _apply_online_control_evidence,
     _assigned_detection,
     _initial_pairs,
     _intercept_success_semantics,
+    _reset_midcourse_selector_for_binding_change,
+    _terminal_detection_acquisition_timed_out,
+    _terminal_delivery_for_pair,
+    _terminal_delivery_profile,
+    _terminal_delivery_requires_abort,
+    _vision_observation_from_detection,
 )
 from airsim_runtime.models import (
     BlocksActorTargetSpec,
@@ -80,6 +89,66 @@ from d5_terminal_association import (
     evaluate_associations_offline,
 )
 from d6_evaluation_metrics import load_episode_log_jsonl
+
+
+def test_terminal_delivery_candidate_profile_is_explicit_and_opt_in() -> None:
+    baseline = BlocksSmokeConfig()
+    candidate = replace(
+        baseline,
+        intercept_terminal_soft_prediction_enabled=True,
+        intercept_terminal_trend_coast_enabled=True,
+    )
+
+    assert _terminal_delivery_profile(baseline) == "baseline"
+    assert _terminal_delivery_profile(candidate) == "candidate_soft_prediction_trend_coast"
+    delivery = _terminal_delivery_for_pair(candidate, InterceptPair("R1", "V1", "G1"))
+    assert delivery.config.soft_innovation_reject_prediction is True
+    assert delivery.config.delivery_trend_coast is True
+
+
+def test_runtime_visual_observation_carries_truth_free_camera_geometry() -> None:
+    camera = AirSimCameraInfo(
+        camera_id="V1:0",
+        owner_id="V1",
+        timestamp=1.0,
+        position_ned=(1.0, 2.0, -3.0),
+        rotation_world_to_camera=((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
+        fx=500.0,
+        fy=510.0,
+        cx=320.0,
+        cy=240.0,
+        width=640,
+        height=480,
+    )
+    detection = AirSimDetectionBox(
+        detection_id="det-1",
+        camera_id="V1:0",
+        object_id="offline-truth-only",
+        local_track_id="V1:0:track:1",
+        timestamp=1.0,
+        center_px=(320.0, 240.0),
+        bbox_xyxy=(300.0, 220.0, 340.0, 260.0),
+        metadata={"detection_source": "airsim_detect"},
+    )
+
+    observation = _vision_observation_from_detection(
+        frame_timestamp=1.02,
+        pair=InterceptPair("R1", "V1", "G-ASSIGNED"),
+        detection=detection,
+        camera_info=camera,
+    )
+
+    assert observation.assigned_global_track_id == "G-ASSIGNED"
+    assert observation.local_track_id == "V1:0:track:1"
+    assert observation.metadata["measurement_timestamp"] == 1.0
+    assert observation.metadata["arrival_timestamp"] == 1.02
+    assert observation.metadata["camera_geometry_valid"] is True
+    assert observation.metadata["camera_to_ned_rotation"] == (
+        (1.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+        (0.0, 0.0, 1.0),
+    )
+    assert "offline-truth-only" not in str(observation.metadata)
 
 
 def test_repo_blocks_settings_are_valid_and_enable_lidar() -> None:
@@ -527,15 +596,28 @@ def test_sequence_builder_exposes_guidance_law_selection(tmp_path: Path, monkeyp
             "--execute-intercept",
             "--guidance-law",
             "png_ttc",
+            "--intercept-max-turn-rate",
+            "1.2",
+            "--intercept-max-lateral-accel",
+            "18.0",
+            "--intercept-min-maneuver-margin",
+            "0.05",
+            "--no-lidar",
+            "--full-flow-only",
             "--output-root",
             str(tmp_path),
         ],
     )
 
     args = parse_args()
-    config, _, _ = _build_sequence_run(args, seed=3, sequence_id="pytest_png_ttc")
+    config, _, episode_specs = _build_sequence_run(args, seed=3, sequence_id="pytest_png_ttc")
 
     assert config.intercept_guidance_law == "png_ttc"
+    assert config.intercept_max_turn_rate_radps == pytest.approx(1.2)
+    assert config.intercept_max_lateral_accel_mps2 == pytest.approx(18.0)
+    assert config.intercept_min_maneuver_margin == pytest.approx(0.05)
+    assert config.capture_lidar is False
+    assert [spec.episode_id for spec in episode_specs] == ["episode_006_full_flow"]
     assert config.metadata["guidance_law"] == "png_ttc"
     assert config.metadata["guidance_comparison_group"] == args.sequence_id
 
@@ -2420,6 +2502,172 @@ def test_controlled_detection_selection_uses_anonymous_local_track_not_truth_id(
 
     assert selected is permuted
     assert selected.object_id != pair.target_id
+
+
+def test_online_control_evidence_coerces_d3_compatibility_fields() -> None:
+    pair = InterceptPair(
+        resource_id="INT-01",
+        vehicle_name="Interceptor",
+        target_id="TGT-001",
+    )
+    evidence = {
+        "INT-01": {
+            "binding": {
+                "id": "compat-only-field",
+                "plan_id": "plan-1",
+                "plan_version": 1,
+                "resource_id": "INT-01",
+                "vehicle_name": "Interceptor",
+                "assigned_global_track_id": "G-001",
+                "track_version": 1,
+                "authorization_state": "recorded",
+            },
+            "online_truth_id_used": False,
+        }
+    }
+
+    _apply_online_control_evidence([pair], evidence)
+
+    assert pair.guidance_binding is not None
+    assert pair.guidance_binding.assigned_global_track_id == "G-001"
+    assert pair.online_truth_id_used is False
+
+
+def test_non_loss_contract_block_does_not_become_physical_abort() -> None:
+    pair = InterceptPair(
+        resource_id="INT-01",
+        vehicle_name="Interceptor",
+        target_id="TGT-001",
+        terminal_delivery_state="expired",
+        terminal_delivery_reason="d4_terminal_inconsistent",
+    )
+
+    assert _terminal_delivery_requires_abort(pair) is False
+    pair.terminal_delivery_reason = "terminal_visual_lost_after_coast"
+    assert _terminal_delivery_requires_abort(pair) is True
+
+
+def test_terminal_delivery_uses_real_airsim_camera_intrinsics() -> None:
+    pair = InterceptPair(
+        resource_id="INT-01",
+        vehicle_name="Interceptor",
+        target_id="TGT-001",
+    )
+    camera = AirSimCameraInfo(
+        camera_id="Interceptor:0",
+        owner_id="Interceptor",
+        timestamp=0.0,
+        position_ned=(0.5, 0.0, -5.0),
+        rotation_world_to_camera=((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
+        fx=184.752,
+        fy=184.752,
+        cx=320.0,
+        cy=240.0,
+        width=640,
+        height=480,
+    )
+
+    delivery = _terminal_delivery_for_pair(
+        BlocksSmokeConfig(),
+        pair,
+        camera_info=camera,
+    )
+
+    assert delivery.png_config.image_width_px == 640
+    assert delivery.png_config.image_height_px == 480
+    assert delivery.png_config.focal_length_px == pytest.approx(184.752)
+
+
+def test_midcourse_selector_resets_only_after_final_binding_changes() -> None:
+    reset_calls: list[bool] = []
+    pair = InterceptPair(
+        resource_id="INT-01",
+        vehicle_name="Interceptor",
+        target_id="TGT-001",
+        assigned_global_track_id="G-001",
+        midcourse_selector=SimpleNamespace(reset=lambda: reset_calls.append(True)),
+    )
+
+    _reset_midcourse_selector_for_binding_change(pair)
+    _reset_midcourse_selector_for_binding_change(pair)
+    assert reset_calls == []
+
+    pair.assigned_global_track_id = "G-002"
+    _reset_midcourse_selector_for_binding_change(pair)
+    assert reset_calls == [True]
+
+
+def test_terminal_detection_timeout_counts_only_continuous_misses() -> None:
+    pair = InterceptPair(
+        resource_id="INT-01",
+        vehicle_name="Interceptor",
+        target_id="TGT-001",
+    )
+
+    assert not _terminal_detection_acquisition_timed_out(
+        pair,
+        timestamp_s=0.0,
+        in_terminal_range=True,
+        detection_seen=False,
+        timeout_s=1.0,
+    )
+    assert not _terminal_detection_acquisition_timed_out(
+        pair,
+        timestamp_s=0.8,
+        in_terminal_range=True,
+        detection_seen=True,
+        timeout_s=1.0,
+    )
+    assert pair.terminal_acquisition_started_s is None
+    assert not _terminal_detection_acquisition_timed_out(
+        pair,
+        timestamp_s=1.0,
+        in_terminal_range=True,
+        detection_seen=False,
+        timeout_s=1.0,
+    )
+    assert _terminal_detection_acquisition_timed_out(
+        pair,
+        timestamp_s=2.1,
+        in_terminal_range=True,
+        detection_seen=False,
+        timeout_s=1.0,
+    )
+
+
+def test_intercept_detection_dropout_removes_online_boxes_only_in_window() -> None:
+    detection = AirSimDetectionBox(
+        detection_id="D-1",
+        camera_id="Interceptor:0",
+        object_id="offline-truth-only",
+        local_track_id="L-1",
+        timestamp=2.0,
+        center_px=(320.0, 240.0),
+        bbox_xyxy=(300.0, 220.0, 340.0, 260.0),
+    )
+    frame = AirSimFrame(
+        episode_id="dropout",
+        scenario_name="dropout",
+        frame_index=20,
+        timestamp=2.0,
+        truth_objects=(),
+        resources=(),
+        visual_detections=(detection,),
+    )
+    config = replace(
+        BlocksSmokeConfig(),
+        intercept_detection_dropout_start_s=1.9,
+        intercept_detection_dropout_end_s=2.3,
+    )
+
+    dropped = _apply_intercept_detection_dropout(config, frame)
+
+    assert dropped.visual_detections == ()
+    assert dropped.metadata["intercept_detection_dropout"]["suppressed_detection_count"] == 1
+    assert _apply_intercept_detection_dropout(
+        config,
+        replace(frame, timestamp=2.3),
+    ).visual_detections == (detection,)
 
 
 @pytest.mark.parametrize(

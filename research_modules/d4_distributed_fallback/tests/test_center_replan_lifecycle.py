@@ -210,7 +210,7 @@ def test_acknowledged_no_change_keeps_d5_gate_independent_from_d4_action() -> No
     result = _evaluate(center_replan_status=status, terminal_state="reacquire")
 
     assert result.decision.action == DegradationAction.CONTINUE_CENTER
-    assert result.decision.terminal_consistent is False
+    assert result.decision.terminal_consistent is True
     assert result.terminal_association.decision_state.value == "reacquire"
     assert result.decision.risk_factors
 

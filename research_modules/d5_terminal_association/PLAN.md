@@ -31,7 +31,19 @@ P2 optional benchmark 已完成到隔离式离线合成对照：`p2_geometry_ben
 - `LocalVisualTrack.local_track_state` 显式支持 `measured/predicted/lost`。predicted 只作为匿名 camera-local `reacquire` 证据，不计入几何 assignment 或稳定帧，不得输出 `locked/registered`。
 - detection 暂失后，即使 MOT local ID 未变化，也必须重新通过几何门限并积累 measured stable frames；predicted 帧会打断稳定窗口。任何重捕只继续核对上游现有 `assigned_global_track_id`。
 - `TerminalAssociation`/`TerminalObservation` 强类型保留 measurement/arrival 双时间戳、measurement/prediction age、local state、association confidence/reason，并通过 `to_runtime_record()`/`runtime_records()` 供 main/D6 直接消费。
-- 本轮模块回归为 `155 passed`。P2 YOLO/ByteTrack 数据集标定保持 deferred；已有 OpenCV geometry benchmark 仅复核隔离状态，不接入默认在线路径。
+- 本轮模块回归为 `157 passed`。P2 YOLO/ByteTrack 数据集标定保持 deferred；已有 OpenCV geometry benchmark 仅复核隔离状态，不接入默认在线路径。
+
+### 1.4 2026-07-12 真实 AirSim 2v2 pilot 复核
+
+证据 `research_modules/airsim_runtime/outputs/p1_5m_2v2_pilot_fix2_20260712/episode_006_full_flow` 共 96 条 D5 association：36 `locked`、48 `ambiguous`、12 `reacquire`。离线 truth 仅用于事后审计，36 个 lock 全部命中各自真实目标；ambiguous 中 37 个最佳候选为真实目标、10 个为本机拦截机、1 个为另一目标，均未被错误升级为 lock。ambiguous 原因为 37 次 `insufficient_best_second_margin`、9 次 `best_cost_exceeds_lock_threshold` 和 2 次首帧 `mot_history_too_short`；无 friend/duplicate 硬冲突。当前 `min_lock_margin=3.0`、`max_lock_cost=14.0` 和 3 帧窗口至少 2 次 measured 支持不应因单轮 pilot 放宽。
+
+12 个 reacquire 均为分配航迹预测投影 `outside_image/behind_camera`，输出 `association_source=geometric_detect`、`truth_identity_used=false`、匿名上一 local ID、最后 measurement timestamp 和 `prediction_age_s=0.1-0.7 s`，属于可供 D4/D7 grace 的丢检/出视场证据，不是本地换绑或硬冲突。复核发现 handoff 注释在 `local_track_id=None` 时曾借用同相机其他检测的 timestamp/LOS/bbox，使 2.2 s 帧的真实 prediction age 0.6 s 被覆盖为 measurement age 0.0。现已修复为只沿用当前 association 的 measurement/prediction age，并在无 local ID 时禁止借用其他轨迹的 LOS/bbox。建议 D4/D7 短时 grace 先与 D5 `max_measurement_age_s=0.35 s` 对齐，即 10 Hz 下约 3 帧；超过该值继续 radar PN/fail closed，不把 0.6-0.7 s lost 证据当作新鲜视觉测量。
+
+### 1.5 2026-07-12 D7 视觉证据合同补齐
+
+D5 已完成 truth-free 视觉证据 DTO 与 adapter 接线：`CameraGeometryEvidence` 强类型携带 K、camera-to-NED rotation/position、measurement/arrival timestamp、attitude timestamp/age/validity；`LocalVisualTrack` 携带稳定 local ID、MOT history、迁移/reset、detect source 和 bbox edge clipping。关联输出/runtime record 原样透传这些证据，并保留 friend/duplicate/locked-hold-reacquire 门控。缺失几何明确为 unavailable，MOT coast 不产生授权。模块回归为 `161 passed`。
+
+后续由 main/runtime 接入真实 AirSim 曝光时间、camera pose 与同步机体姿态；D7 在这些字段完整前只能使用现有 2D 图像证据，6D LOS 保持 replay-only/unavailable。D5 不实现导引 KF、TTC 或 LOS 滤波。
 
 ## 2. 核心工程问题与科学问题
 

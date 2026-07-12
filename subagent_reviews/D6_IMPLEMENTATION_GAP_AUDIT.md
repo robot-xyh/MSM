@@ -2,6 +2,13 @@
 
 审计范围：`research_modules/d6_evaluation_metrics/**` 的当前代码、测试和文档，以及 `subagent_reviews/D6_*`。本文只评估 D6 离线指标模块状态；D6 消费日志，不参与控制，不生成任务、授权、导引、火控、毁伤或自动处置动作。
 
+## 2026-07-12 D7 PNG Delivery GAP 状态
+
+- **D6 侧接口已闭合**：terminal filter measured/predicted/innovation-rejected/reset/expired、TTC 四类拒绝、soft prediction/coast duration/expiry、terminal lock continuity、visual mode duration、command discontinuity 已进入 `EpisodeMetrics`、availability 和标准映射。
+- **报告已闭合**：baseline/candidate 多 seed 可输出逐 episode CSV、聚合 JSON 和中文 Markdown，按显式 profile、scope、scenario 与实际 N/M 分组；2v2/M5N2 以及 pair/target/coalition 口径保持分离。
+- **P1 上游 evidence 仍开放**：main/D7 需要在真实 AirSim 批次持续写出 profile、滤波状态/原因、TTC 拒绝原因、soft/coast elapsed、锁定状态、视觉模式和速度命令。缺失字段由 D6 标为 unavailable，不构成 D6 代码 blocker。
+- **模块边界不变**：D6 不根据这些指标调整 D7 参数，不把 coast 当授权证据，也不参与导引控制。
+
 ## 2026-07-11 最终实测状态同步
 
 - **P0 已闭合**：当前没有运行级 P0 blocker。实际规模、显式 `id_switch_count`、truth isolation、execution/contract/evidence availability 和标准映射继续作为强制回归。
