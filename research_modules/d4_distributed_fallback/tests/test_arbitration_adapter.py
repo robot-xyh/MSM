@@ -55,11 +55,12 @@ def _metrics(
     truth_metrics_available: bool = True,
     continuity_available: bool = True,
     duplicate_track_risk: float = 0.0,
+    duplicate_assignment_count: int = 0,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         latest_association_ambiguity=ambiguity,
         id_switch_count=id_switches,
-        duplicate_assignment_count=0,
+        duplicate_assignment_count=duplicate_assignment_count,
         latest_duplicate_track_risk=duplicate_track_risk,
         track_continuity=continuity,
         truth_metrics_available=truth_metrics_available,
@@ -325,7 +326,7 @@ def test_adapter_ignores_unavailable_truth_identity_metrics_online() -> None:
     assert "d2_track_continuity_low" not in result.decision.risk_factors
 
 
-def test_adapter_keeps_online_duplicate_track_hard_risk_when_truth_unavailable() -> None:
+def test_adapter_keeps_continuous_duplicate_track_risk_soft_when_count_is_zero() -> None:
     result = D4ArbitrationAdapter().evaluate(
         timestamp=10.0,
         track=_track(),
@@ -335,7 +336,7 @@ def test_adapter_keeps_online_duplicate_track_hard_risk_when_truth_unavailable()
             continuity=0.0,
             truth_metrics_available=False,
             continuity_available=False,
-            duplicate_track_risk=0.75,
+            duplicate_track_risk=0.8,
         ),
         plan=_plan(),
         assignment=_assignment(),
@@ -346,11 +347,43 @@ def test_adapter_keeps_online_duplicate_track_hard_risk_when_truth_unavailable()
 
     assert result.association_risk.truth_metrics_available is False
     assert result.association_risk.continuity_available is False
+    assert result.association_risk.duplicate_track_count == 0
+    assert result.association_risk.duplicate_track_risk == 0.8
+    assert result.decision.mode == DegradationMode.NONE
+    assert result.decision.action == DegradationAction.CONTINUE_CENTER
+    assert "d2_duplicate_track_risk_high" in result.decision.risk_factors
+    assert "d2_duplicate_track_risk_high" in result.record.soft_risk_factors
+    assert "d2_duplicate_track_observed" not in result.decision.risk_factors
+    assert "d2_track_continuity_low" not in result.decision.risk_factors
+
+
+def test_adapter_keeps_explicit_duplicate_count_as_immediate_hard_risk() -> None:
+    result = D4ArbitrationAdapter().evaluate(
+        timestamp=10.0,
+        track=_track(),
+        association_result=_association_result(),
+        association_metrics=_metrics(
+            id_switches=0,
+            continuity=0.0,
+            truth_metrics_available=False,
+            continuity_available=False,
+            duplicate_track_risk=0.8,
+            duplicate_assignment_count=1,
+        ),
+        plan=_plan(),
+        assignment=_assignment(),
+        terminal_association=_terminal(),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[],
+    )
+
     assert result.association_risk.duplicate_track_count == 1
+    assert result.association_risk.duplicate_track_risk == 0.8
     assert result.decision.mode == DegradationMode.ACTIVE_DEGRADATION
     assert result.decision.action == DegradationAction.REQUEST_CENTER_REPLAN
     assert "d2_duplicate_track_observed" in result.decision.risk_factors
-    assert "d2_track_continuity_low" not in result.decision.risk_factors
+    assert "d2_duplicate_track_risk_high" not in result.decision.risk_factors
+    assert "d2_duplicate_track_observed" in result.record.hard_risk_factors
 
 
 def test_adapter_consumes_mobile_high_recon_metadata_without_auto_takeover() -> None:

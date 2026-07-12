@@ -151,7 +151,10 @@ class SensorObservation:
         explicit = self.metadata.get("source_lineage_key") or self.metadata.get("lineage_id")
         if explicit is not None:
             if isinstance(explicit, (list, tuple)):
-                return ("explicit", *tuple(explicit))
+                normalized = tuple(explicit)
+                if normalized and normalized[0] in {"explicit", "source_payload"}:
+                    return normalized
+                return ("explicit", *normalized)
             return ("explicit", str(explicit))
 
         sequence = (

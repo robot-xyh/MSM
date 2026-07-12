@@ -123,6 +123,30 @@ def _cross_view(locked_ids: tuple[str, ...]) -> SimpleNamespace:
     )
 
 
+def _recovered_cross_view(**overrides: object) -> SimpleNamespace:
+    values: dict[str, object] = {
+        "global_track_id": TRACK_ID,
+        "plan_id": "d3-plan-v2",
+        "plan_version": 4,
+        "coalition_id": "coalition-1",
+        "coalition_version": 2,
+        "primary_required_count": 3,
+        "primary_locked_resource_ids": MEMBER_IDS,
+        "primary_lock_complete": True,
+        "coalition_visual_consensus": True,
+        "planned_cooperative_lock": True,
+        "duplicate_terminal_lock_risk": False,
+        "coalition_conflict_state": "none",
+        "coalition_commit_required": False,
+        "coalition_commit_valid": True,
+        "coalition_commit_conflict_reasons": (),
+        "ambiguity_score": 0.02,
+        "support_count": 3,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
 def _evaluate(
     *,
     plan: SimpleNamespace,
@@ -465,6 +489,246 @@ def test_k3_rejects_stale_plan_and_coalition_versions() -> None:
     assert stale_coalition.decision.action == DegradationAction.HOLD_FOR_REVIEW
     assert stale_coalition.decision.reason == "coalition_version_stale"
     assert stale_coalition.coalition_safety.stale_coalition_version is True
+
+
+def test_pending_soft_replan_converges_when_current_coalition_consensus_recovers() -> None:
+    plan = _plan()
+    coalition = SimpleNamespace(
+        **{
+            **vars(plan.coalitions[0]),
+            "members": tuple(
+                SimpleNamespace(
+                    resource_id=resource_id,
+                    member_role="primary" if index < 2 else "reserve",
+                    wave_id=0,
+                    executable=True,
+                )
+                for index, resource_id in enumerate(MEMBER_IDS)
+            ),
+        }
+    )
+    plan = SimpleNamespace(**{**vars(plan), "coalitions": (coalition,)})
+    adapter = D4ArbitrationAdapter()
+    initial = adapter.evaluate(
+        timestamp=9.5,
+        track=SimpleNamespace(
+            **{
+                **vars(_track()),
+                "covariance": np.diag([3600.0, 2500.0, 9.0, 1.0, 1.0, 1.0]),
+            }
+        ),
+        association_metrics=SimpleNamespace(
+            latest_association_ambiguity=0.02,
+            id_switch_count=0,
+            duplicate_assignment_count=0,
+            track_continuity=1.0,
+        ),
+        plan=plan,
+        assignment=plan.assignments[0],
+        terminal_association=_terminal(),
+        c2_health=C2Health.NORMAL,
+        expected_plan_version=4,
+    )
+    assert initial.decision.action == DegradationAction.REQUEST_CENTER_REPLAN
+
+    pending = CenterReplanStatus(
+        request_id="soft-coalition-replan-1",
+        target_id=TRACK_ID,
+        coalition_id="coalition-1",
+        coalition_version=2,
+        risk_signature=("d5_terminal_confidence_low",),
+        state="pending",
+        requested_at=9.5,
+    )
+    results = []
+    for assignment in plan.assignments[:2]:
+        terminal = SimpleNamespace(
+            **{
+                **vars(_terminal()),
+                "resource_id": assignment.resource_id,
+            }
+        )
+        results.append(
+            adapter.evaluate(
+                timestamp=10.0,
+                track=_track(),
+                association_metrics=SimpleNamespace(
+                    latest_association_ambiguity=0.02,
+                    id_switch_count=0,
+                    duplicate_assignment_count=0,
+                    track_continuity=1.0,
+                ),
+                plan=plan,
+                assignment=assignment,
+                terminal_association=terminal,
+                cross_view_summary=_recovered_cross_view(
+                    primary_required_count=2,
+                    primary_locked_resource_ids=MEMBER_IDS[:2],
+                    support_count=2,
+                ),
+                c2_health=C2Health.NORMAL,
+                expected_plan_version=4,
+                expected_coalition_version=2,
+                center_replan_status=pending,
+            )
+        )
+
+    assert {result.decision.action for result in results} == {
+        DegradationAction.CONTINUE_CENTER
+    }
+    assert all(
+        result.decision.reason == "center_replan_pending_coalition_recovered"
+        for result in results
+    )
+    assert all(result.coalition_safety.center_consensus_recovered for result in results)
+    assert all(result.record.center_replan_coalition_recovered for result in results)
+    assert all(
+        result.record.center_replan_resolution_hint == "acknowledged_no_change"
+        for result in results
+    )
+    assert all(
+        result.coalition_safety.locked_resource_ids == MEMBER_IDS[:2]
+        for result in results
+    )
+
+
+def test_recovered_coalition_consensus_does_not_bypass_duplicate_hard_risk() -> None:
+    plan = _plan()
+    pending = CenterReplanStatus(
+        request_id="soft-coalition-replan-2",
+        target_id=TRACK_ID,
+        coalition_id="coalition-1",
+        coalition_version=2,
+        risk_signature=("d5_terminal_confidence_low",),
+        state="pending",
+        requested_at=9.5,
+    )
+
+    result = D4ArbitrationAdapter().evaluate(
+        timestamp=10.0,
+        track=_track(),
+        association_metrics=SimpleNamespace(
+            latest_association_ambiguity=0.02,
+            id_switch_count=0,
+            duplicate_assignment_count=1,
+            track_continuity=1.0,
+        ),
+        plan=plan,
+        assignment=plan.assignments[0],
+        terminal_association=_terminal(),
+        cross_view_summary=_recovered_cross_view(),
+        c2_health=C2Health.NORMAL,
+        expected_plan_version=4,
+        expected_coalition_version=2,
+        center_replan_status=pending,
+    )
+
+    assert result.coalition_safety.center_consensus_recovered is True
+    assert result.decision.action == DegradationAction.REQUEST_CENTER_REPLAN
+    assert "d2_duplicate_track_observed" in result.decision.risk_factors
+    assert result.record.center_replan_coalition_recovered is False
+    assert result.record.center_replan_bypass_reason == "hard_safety_risk"
+
+
+def test_incomplete_commit_cannot_claim_current_coalition_recovery() -> None:
+    plan = _plan()
+    pending = CenterReplanStatus(
+        request_id="soft-coalition-replan-3",
+        target_id=TRACK_ID,
+        coalition_id="coalition-1",
+        coalition_version=2,
+        risk_signature=("d5_terminal_confidence_low",),
+        state="pending",
+        requested_at=9.5,
+    )
+
+    result = D4ArbitrationAdapter().evaluate(
+        timestamp=10.0,
+        track=_track(),
+        plan=plan,
+        assignment=plan.assignments[0],
+        terminal_association=_terminal(),
+        cross_view_summary=_recovered_cross_view(
+            coalition_commit_required=True,
+            coalition_commit_valid=False,
+            coalition_commit_state="collecting_acks",
+            coalition_commit_required_member_ids=MEMBER_IDS,
+            coalition_commit_acked_member_ids=MEMBER_IDS[:2],
+            coalition_commit_conflict_reasons=("coalition_commit_missing_ack",),
+        ),
+        c2_health=C2Health.NORMAL,
+        expected_plan_version=4,
+        expected_coalition_version=2,
+        center_replan_status=pending,
+    )
+
+    assert result.coalition_safety.center_consensus_recovered is False
+    assert "coalition_commit_incomplete" in result.coalition_safety.conflict_reasons
+    assert result.decision.action == DegradationAction.HOLD_FOR_REVIEW
+    assert result.record.center_replan_bypass_reason == "hard_safety_risk"
+
+
+def test_stale_visual_coalition_version_cannot_resolve_pending_replan() -> None:
+    plan = _plan()
+    pending = CenterReplanStatus(
+        request_id="soft-coalition-replan-4",
+        target_id=TRACK_ID,
+        coalition_id="coalition-1",
+        coalition_version=2,
+        risk_signature=("d5_terminal_confidence_low",),
+        state="pending",
+        requested_at=9.5,
+    )
+
+    result = D4ArbitrationAdapter().evaluate(
+        timestamp=10.0,
+        track=_track(),
+        plan=plan,
+        assignment=plan.assignments[0],
+        terminal_association=_terminal(),
+        cross_view_summary=_recovered_cross_view(coalition_version=1),
+        c2_health=C2Health.NORMAL,
+        expected_plan_version=4,
+        expected_coalition_version=2,
+        center_replan_status=pending,
+    )
+
+    assert result.coalition_safety.center_consensus_recovered is False
+    assert "coalition_visual_coalition_version_stale" in (
+        result.coalition_safety.conflict_reasons
+    )
+    assert result.decision.action == DegradationAction.HOLD_FOR_REVIEW
+    assert result.record.center_replan_bypass_reason == "hard_safety_risk"
+
+
+def test_center_failure_cannot_use_visual_consensus_to_resolve_pending_replan() -> None:
+    plan = _plan()
+    pending = CenterReplanStatus(
+        request_id="soft-coalition-replan-5",
+        target_id=TRACK_ID,
+        coalition_id="coalition-1",
+        coalition_version=2,
+        risk_signature=("d5_terminal_confidence_low",),
+        state="pending",
+        requested_at=9.5,
+    )
+
+    result = D4ArbitrationAdapter().evaluate(
+        timestamp=10.0,
+        track=_track(),
+        plan=plan,
+        assignment=plan.assignments[0],
+        terminal_association=_terminal(),
+        cross_view_summary=_recovered_cross_view(),
+        c2_health=C2Health.FAILED,
+        expected_plan_version=4,
+        expected_coalition_version=2,
+        center_replan_status=pending,
+    )
+
+    assert result.coalition_safety.center_consensus_recovered is False
+    assert result.decision.action == DegradationAction.HOLD_FOR_REVIEW
+    assert result.record.center_replan_bypass_reason == "center_failed"
 
 
 def test_k3_coordinator_never_runs_single_winner_cbba() -> None:

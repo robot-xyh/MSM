@@ -218,6 +218,7 @@ class PlannerConfig:
     cost_profile_version: str = DEFAULT_COST_PROFILE_VERSION
     feedback_profile_id: str = DEFAULT_FEEDBACK_PROFILE_ID
     feedback_profile_version: str = DEFAULT_FEEDBACK_PROFILE_VERSION
+    transient_feedback_dwell_frames: int = 2
 
 
 @dataclass(frozen=True)
@@ -557,6 +558,24 @@ class AssignmentMismatchReplaySummary:
     hysteresis_reject_count: int = 0
     stale_reject_count: int = 0
     reassign_count: int = 0
+
+
+@dataclass(frozen=True)
+class IncrementalPlanningComparisonSummary:
+    """Cost, latency, and stability comparison for incremental calibration."""
+
+    incremental_applied: bool
+    fallback_reason: str | None
+    cost_delta: float
+    cost_equivalent: bool
+    assignment_equivalent: bool
+    incremental_latency_ms: float
+    full_latency_ms: float
+    latency_ratio: float | None
+    incremental_change_count: int
+    full_change_count: int
+    preserved_target_count: int
+    preserved_assignment_count: int
 
 
 @dataclass(frozen=True)
@@ -1452,6 +1471,7 @@ def apply_terminal_feedback_to_planner_inputs(
 
     target_feasibility: dict[str, dict[str, bool]] = {}
     target_fov: dict[str, dict[str, float]] = {}
+    target_feedback_events: dict[str, list[Mapping[str, Any]]] = {}
     hold_resource_ids: list[str] = []
     hold_resource_set: set[str] = set()
     prohibited_edges: list[tuple[str, str]] = []
@@ -1509,6 +1529,15 @@ def apply_terminal_feedback_to_planner_inputs(
         feasibility_suggestion = _metadata_text(metadata, "feasibility_suggestion")
         d4_request = _metadata_text(metadata, "d4_request")
         gate_action = _metadata_text(metadata, "d7_gate_action")
+
+        feedback_event = _terminal_feedback_event(
+            metadata,
+            target_id=target_id,
+            resource_id=resource_id,
+            terminal_state=terminal_state,
+        )
+        if target_id and feedback_event is not None:
+            target_feedback_events.setdefault(target_id, []).append(feedback_event)
 
         if d4_request:
             _append_unique(d4_requests, d4_request)
@@ -1596,6 +1625,9 @@ def apply_terminal_feedback_to_planner_inputs(
             for resource_id, value in target_fov[track.track_id].items():
                 fov[resource_id] = max(float(fov.get(resource_id, 0.0)), value)
             changed = True
+        feedback_events = tuple(target_feedback_events.get(track.track_id, ()))
+        if feedback_events:
+            changed = True
         if changed:
             updated_target_ids.append(track.track_id)
             updated_tracks.append(
@@ -1606,6 +1638,7 @@ def apply_terminal_feedback_to_planner_inputs(
                     metadata={
                         **dict(track.metadata),
                         "terminal_feedback_writeback_applied": True,
+                        "terminal_feedback_events": feedback_events,
                     },
                 )
             )
@@ -1647,6 +1680,11 @@ def apply_terminal_feedback_to_planner_inputs(
         "feedback_profile_id": resolved_feedback_profile_id,
         "feedback_profile_version": resolved_feedback_profile_version,
         "fov_cap": float(fov_cap),
+        "terminal_feedback_events": tuple(
+            event
+            for target_id in sorted(target_feedback_events)
+            for event in target_feedback_events[target_id]
+        ),
     }
     return TerminalFeedbackWriteback(
         tracks=tuple(updated_tracks),
@@ -2056,6 +2094,78 @@ def assignment_evidence_from_plan(plan: AssignmentPlan) -> AssignmentEvidenceExp
         ),
         cost_weights=_metadata_float_mapping(plan_metadata.get("cost_weights")),
         planner_thresholds=_metadata_mapping(plan_metadata.get("planner_thresholds")),
+    )
+
+
+def summarize_incremental_planning_comparison(
+    incremental_plan: AssignmentPlan,
+    full_plan: AssignmentPlan,
+    *,
+    previous_plan: AssignmentPlan | None = None,
+    full_latency_ms: float = 0.0,
+    cost_tolerance: float = 1e-9,
+) -> IncrementalPlanningComparisonSummary:
+    """Compare incremental and full plans without changing planner defaults."""
+
+    incremental_latency_ms = max(
+        0.0,
+        float(incremental_plan.metadata.get("incremental_solver_elapsed_ms", 0.0)),
+    )
+    normalized_full_latency_ms = max(0.0, float(full_latency_ms))
+    cost_delta = float(incremental_plan.total_cost - full_plan.total_cost)
+    assignment_equivalent = (
+        incremental_plan.stable_signature == full_plan.stable_signature
+        and tuple(sorted(incremental_plan.unassigned_target_ids))
+        == tuple(sorted(full_plan.unassigned_target_ids))
+        and tuple(
+            sorted(
+                (summary.target_id, summary.demand_shortfall)
+                for summary in incremental_plan.demand_summaries
+            )
+        )
+        == tuple(
+            sorted(
+                (summary.target_id, summary.demand_shortfall)
+                for summary in full_plan.demand_summaries
+            )
+        )
+    )
+    preserved_target_ids = tuple(
+        str(value)
+        for value in incremental_plan.metadata.get(
+            "incremental_preserved_target_ids", ()
+        )
+    )
+    preserved_target_set = set(preserved_target_ids)
+    return IncrementalPlanningComparisonSummary(
+        incremental_applied=bool(
+            incremental_plan.metadata.get("incremental_applied", False)
+        ),
+        fallback_reason=_metadata_text(
+            incremental_plan.metadata,
+            "incremental_fallback_reason",
+        ),
+        cost_delta=cost_delta,
+        cost_equivalent=abs(cost_delta) <= max(0.0, float(cost_tolerance)),
+        assignment_equivalent=assignment_equivalent,
+        incremental_latency_ms=incremental_latency_ms,
+        full_latency_ms=normalized_full_latency_ms,
+        latency_ratio=(
+            None
+            if normalized_full_latency_ms <= 0.0
+            else incremental_latency_ms / normalized_full_latency_ms
+        ),
+        incremental_change_count=_plan_target_change_count(
+            previous_plan,
+            incremental_plan,
+        ),
+        full_change_count=_plan_target_change_count(previous_plan, full_plan),
+        preserved_target_count=len(preserved_target_set),
+        preserved_assignment_count=sum(
+            1
+            for assignment in incremental_plan.assignments
+            if assignment.target_id in preserved_target_set
+        ),
     )
 
 
@@ -2794,6 +2904,28 @@ def _resolve_profile_value(
     return default
 
 
+def _plan_target_change_count(
+    previous_plan: AssignmentPlan | None,
+    candidate_plan: AssignmentPlan,
+) -> int:
+    if previous_plan is None:
+        return len(candidate_plan.assignments_by_target())
+
+    def signatures(plan: AssignmentPlan) -> dict[str, tuple[tuple[Any, ...], ...]]:
+        return {
+            target_id: tuple(_assignment_signature(item) for item in assignments)
+            for target_id, assignments in plan.assignments_by_target().items()
+        }
+
+    previous = signatures(previous_plan)
+    candidate = signatures(candidate_plan)
+    return sum(
+        1
+        for target_id in set(previous) | set(candidate)
+        if previous.get(target_id) != candidate.get(target_id)
+    )
+
+
 def _record_items(
     records: (
         AssignmentRecord
@@ -3211,6 +3343,97 @@ def _assignment_matrix_shape(
 def _append_unique(values: list[str], value: str) -> None:
     if value not in values:
         values.append(value)
+
+
+def _terminal_feedback_event(
+    metadata: Mapping[str, Any],
+    *,
+    target_id: str | None,
+    resource_id: str | None,
+    terminal_state: str | None,
+) -> Mapping[str, Any] | None:
+    """Keep only D3-relevant, versioned terminal feedback evidence."""
+
+    nested = metadata.get("coalition_visual_summary")
+    summary = nested if isinstance(nested, Mapping) else metadata
+    reason = _metadata_text(
+        summary,
+        "coalition_visual_reason",
+        "reason",
+    ) or _metadata_text(metadata, "coalition_visual_reason")
+    conflict_state = _metadata_text(
+        summary,
+        "coalition_conflict_state",
+    ) or _metadata_text(metadata, "coalition_conflict_state")
+    stable_counts = summary.get("stable_lock_frame_count_by_resource")
+    if not isinstance(stable_counts, Mapping):
+        stable_counts = metadata.get("stable_lock_frame_count_by_resource")
+    normalized_stable_counts: dict[str, int] = {}
+    if isinstance(stable_counts, Mapping):
+        for raw_resource_id, raw_count in stable_counts.items():
+            try:
+                normalized_stable_counts[str(raw_resource_id)] = max(
+                    0,
+                    int(raw_count),
+                )
+            except (TypeError, ValueError):
+                continue
+    required_stable_frames = summary.get(
+        "required_stable_frames",
+        metadata.get("required_stable_frames"),
+    )
+    if required_stable_frames is None:
+        summary_metadata = summary.get("metadata")
+        if isinstance(summary_metadata, Mapping):
+            required_stable_frames = summary_metadata.get("required_stable_frames")
+    try:
+        normalized_required = (
+            None
+            if required_stable_frames is None
+            else max(1, int(required_stable_frames))
+        )
+    except (TypeError, ValueError):
+        normalized_required = None
+
+    plan_version = metadata.get("plan_version", summary.get("plan_version"))
+    try:
+        normalized_plan_version = None if plan_version is None else int(plan_version)
+    except (TypeError, ValueError):
+        normalized_plan_version = None
+
+    has_feedback_evidence = any(
+        (
+            terminal_state,
+            reason,
+            conflict_state,
+            normalized_stable_counts,
+            metadata.get("duplicate_terminal_lock_risk"),
+            metadata.get("friend_conflict_state"),
+        )
+    )
+    if not target_id or not has_feedback_evidence:
+        return None
+    return {
+        "target_id": target_id,
+        "resource_id": resource_id,
+        "plan_version": normalized_plan_version,
+        "terminal_feedback_state": terminal_state,
+        "reason": reason,
+        "coalition_conflict_state": conflict_state,
+        "duplicate_terminal_lock_risk": _metadata_bool(
+            metadata.get("duplicate_terminal_lock_risk")
+            or summary.get("duplicate_terminal_lock_risk")
+        ),
+        "friend_conflict_state": _metadata_text(metadata, "friend_conflict_state"),
+        "main_action": _metadata_text(
+            metadata,
+            "main_action",
+            "planner_recommended_action",
+            "recommended_action",
+        ),
+        "stable_lock_frame_count_by_resource": normalized_stable_counts,
+        "required_stable_frames": normalized_required,
+    }
 
 
 def _clamp01_model(value: float) -> float:

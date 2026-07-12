@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from pathlib import Path
 from dataclasses import asdict, dataclass, field, is_dataclass
@@ -13,6 +14,8 @@ from .types import COMMUNICATION_METADATA_KEYS, GlobalTrack, LatencyAuditSummary
 
 REPLAY_SCHEMA_VERSION = "d1.sensor_observation.v1"
 REPLAY_PROVENANCE_SCHEMA_VERSION = "d1.replay_provenance.v1"
+REPLAY_MANIFEST_SCHEMA_VERSION = "d1.governed_replay_manifest.v1"
+REPLAY_WORKING_FRAME = "ned"
 LEGACY_BLOCKS_REPLAY_SCHEMA_VERSION = "legacy.blocks_sensor_observations"
 _COMPATIBLE_SCHEMA_ALIASES = {
     REPLAY_SCHEMA_VERSION: REPLAY_SCHEMA_VERSION,
@@ -32,6 +35,8 @@ _REQUIRED_REPLAY_FIELDS = (
 )
 _REPLAY_METADATA_PASSTHROUGH_KEYS = (
     "coverage_cell",
+    "working_frame",
+    "source_lineage",
     "camera_id",
     "camera_name",
     "camera_model",
@@ -138,8 +143,12 @@ _OBJECT_METADATA_KEYS = {
 _ONLINE_TRUTH_METADATA_KEYS = {
     "truth_id",
     "truth_object_id",
+    "actor_id",
     "actor_name",
+    "object_name",
     "object_id",
+    "airsim_actor_name",
+    "airsim_object_name",
 }
 
 
@@ -151,6 +160,8 @@ class ReplayProvenance:
     scenario_version: str
     config_id: str
     config_digest: str
+    config_version: str | None = None
+    scenario_digest: str | None = None
     run_id: str | None = None
     seed: int | None = None
     source_format: str = "blocks_cv"
@@ -170,6 +181,8 @@ class ReplayProvenance:
         return {
             "schema_version": REPLAY_PROVENANCE_SCHEMA_VERSION,
             **required,
+            "config_version": self.config_version,
+            "scenario_digest": self.scenario_digest,
             "run_id": self.run_id,
             "seed": self.seed,
             "source_format": self.source_format,
@@ -281,6 +294,8 @@ def sensor_observation_to_replay_record(
         raise ValueError("D1 replay writer requires covariance on every observation")
     provenance_payload = _provenance_payload(provenance)
     metadata = _sanitize_online_metadata(observation.metadata)
+    coverage_cell = _optional_str(metadata.get("coverage_cell"))
+    source_lineage = _governed_source_lineage(observation)
     record = {
         "schema_version": REPLAY_SCHEMA_VERSION,
         "observation_id": observation.observation_id,
@@ -289,9 +304,12 @@ def sensor_observation_to_replay_record(
         "measurement_timestamp": observation.measurement_timestamp,
         "arrival_timestamp": observation.arrival_timestamp,
         "frame_id": observation.frame_id,
+        "working_frame": REPLAY_WORKING_FRAME,
+        "coverage_cell": coverage_cell,
+        "source_lineage": source_lineage,
         "measurement": observation.measurement.tolist(),
         "covariance": observation.covariance.tolist(),
-        "classification_hint": observation.classification_hint,
+        "classification_hint": _online_classification_hint(observation),
         "confidence": observation.confidence,
         "quality_flags": list(observation.quality_flags),
         "metadata": _json_safe(metadata),
@@ -299,14 +317,93 @@ def sensor_observation_to_replay_record(
         "provenance": provenance_payload,
     }
     if include_offline_truth:
-        offline_truth = {
-            key: _json_safe(observation.metadata[key])
-            for key in _ONLINE_TRUTH_METADATA_KEYS
-            if key in observation.metadata
-        }
+        offline_truth = _extract_offline_truth(observation.metadata)
+        if (
+            observation.classification_hint is not None
+            and _online_classification_hint(observation) is None
+        ):
+            offline_truth["classification_hint"] = observation.classification_hint
         if offline_truth:
             record["offline_truth"] = offline_truth
     return record
+
+
+def serialize_governed_replay(
+    observations: Iterable[SensorObservation],
+    provenance: ReplayProvenance | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Serialize a strict online replay bundle for main/runtime integration.
+
+    Unlike the legacy-compatible readers and low-level record writer, this
+    entry point requires the frozen governed contract on every observation.
+    Truth, actor, and object identifiers are always removed.
+    """
+
+    return _serialize_governed_replay_bundle(
+        observations,
+        provenance,
+        include_offline_truth=False,
+    )
+
+
+def serialize_offline_governed_replay(
+    observations: Iterable[SensorObservation],
+    provenance: ReplayProvenance | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Serialize a governed bundle with labels in explicit offline-only fields."""
+
+    return _serialize_governed_replay_bundle(
+        observations,
+        provenance,
+        include_offline_truth=True,
+    )
+
+
+def build_governed_replay_manifest(
+    observations: Iterable[SensorObservation],
+    provenance: ReplayProvenance | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build and validate the frozen manifest consumed by main."""
+
+    items = list(observations)
+    provenance_payload = _governed_provenance_payload(provenance)
+    observation_summaries = [
+        _validate_governed_observation(observation) for observation in items
+    ]
+    measurement_timestamps = [
+        float(observation.measurement_timestamp) for observation in items
+    ]
+    arrival_timestamps = [float(observation.arrival_timestamp) for observation in items]
+    return {
+        "schema_version": REPLAY_MANIFEST_SCHEMA_VERSION,
+        "observation_schema_version": REPLAY_SCHEMA_VERSION,
+        "provenance": provenance_payload,
+        "working_frame": REPLAY_WORKING_FRAME,
+        "observation_count": len(items),
+        "measurement_timestamp_range": _timestamp_range(measurement_timestamps),
+        "arrival_timestamp_range": _timestamp_range(arrival_timestamps),
+        "observation_frames": sorted({observation.frame_id for observation in items}),
+        "coverage_cells": sorted(
+            {summary["coverage_cell"] for summary in observation_summaries}
+        ),
+        "source_lineage": [
+            {
+                "observation_id": observation.observation_id,
+                "lineage": summary["source_lineage"],
+            }
+            for observation, summary in zip(items, observation_summaries)
+        ],
+        "required_record_fields": [
+            *_REQUIRED_REPLAY_FIELDS,
+            "covariance",
+            "coverage_cell",
+            "source_lineage",
+        ],
+        "truth_policy": {
+            "online": "stripped",
+            "offline": "explicit_offline_only_export",
+        },
+    }
 
 
 def write_sensor_observations_jsonl(
@@ -587,6 +684,8 @@ def _metadata_from_replay_record(record: dict[str, Any], schema_version: str) ->
         value = _non_empty(record.get(key))
         if value is not None and key not in metadata:
             metadata[key] = value
+    if "source_lineage" in metadata and "source_lineage_key" not in metadata:
+        metadata["source_lineage_key"] = metadata["source_lineage"]
 
     _normalize_replay_visual_metadata(metadata)
     provenance = record.get("provenance")
@@ -614,12 +713,141 @@ def _provenance_payload(
         scenario_version=str(payload.get("scenario_version", "")),
         config_id=str(payload.get("config_id", "")),
         config_digest=str(payload.get("config_digest", "")),
+        config_version=_optional_str(payload.get("config_version")),
+        scenario_digest=_optional_str(payload.get("scenario_digest")),
         run_id=_optional_str(payload.get("run_id")),
         seed=None if payload.get("seed") is None else int(payload["seed"]),
         source_format=str(payload.get("source_format", "blocks_cv")),
         producer=str(payload.get("producer", "main")),
         metadata=dict(payload.get("metadata") or {}),
     ).to_dict()
+
+
+def _serialize_governed_replay_bundle(
+    observations: Iterable[SensorObservation],
+    provenance: ReplayProvenance | Mapping[str, Any],
+    *,
+    include_offline_truth: bool,
+) -> dict[str, Any]:
+    items = list(observations)
+    manifest = build_governed_replay_manifest(items, provenance)
+    records = [
+        sensor_observation_to_replay_record(
+            observation,
+            manifest["provenance"],
+            include_offline_truth=include_offline_truth,
+        )
+        for observation in items
+    ]
+    bundle = {"manifest": manifest, "records": records}
+    # Fail before returning if a caller supplied a non-JSON-compatible value.
+    json.dumps(bundle, sort_keys=True, allow_nan=False)
+    return bundle
+
+
+def _governed_provenance_payload(
+    provenance: ReplayProvenance | Mapping[str, Any],
+) -> dict[str, Any]:
+    payload = _provenance_payload(provenance)
+    missing = [
+        key
+        for key in ("scenario_digest", "config_version", "seed")
+        if _non_empty(payload.get(key)) is None
+    ]
+    if missing:
+        raise ValueError(
+            "D1 governed replay provenance missing required field(s): "
+            + ", ".join(missing)
+        )
+    payload["metadata"] = _sanitize_online_metadata(payload.get("metadata") or {})
+    return payload
+
+
+def _validate_governed_observation(observation: SensorObservation) -> dict[str, Any]:
+    if not str(observation.observation_id).strip():
+        raise ValueError("D1 governed replay observation_id must be non-empty")
+    if not str(observation.sensor_id).strip():
+        raise ValueError("D1 governed replay sensor_id must be non-empty")
+
+    measurement_timestamp = float(observation.measurement_timestamp)
+    arrival_timestamp = float(observation.arrival_timestamp)
+    if not np.isfinite([measurement_timestamp, arrival_timestamp]).all():
+        raise ValueError("D1 governed replay timestamps must be finite")
+    if arrival_timestamp < measurement_timestamp:
+        raise ValueError(
+            "D1 governed replay arrival_timestamp must not precede measurement_timestamp"
+        )
+
+    covariance = observation.covariance
+    if covariance is None:
+        raise ValueError("D1 governed replay requires covariance on every observation")
+    covariance_array = np.asarray(covariance, dtype=float)
+    measurement_size = int(np.asarray(observation.measurement).size)
+    if covariance_array.shape != (measurement_size, measurement_size):
+        raise ValueError(
+            "D1 governed replay covariance shape must match flattened measurement size"
+        )
+    if not np.isfinite(covariance_array).all():
+        raise ValueError("D1 governed replay covariance must be finite")
+    if not np.allclose(covariance_array, covariance_array.T, atol=1e-9):
+        raise ValueError("D1 governed replay covariance must be symmetric")
+    if float(np.linalg.eigvalsh(covariance_array).min()) < -1e-9:
+        raise ValueError("D1 governed replay covariance must be positive semidefinite")
+
+    coverage_cell = _optional_str(observation.metadata.get("coverage_cell"))
+    if coverage_cell is None:
+        raise ValueError("D1 governed replay observation missing coverage_cell")
+    source_lineage = _governed_source_lineage(observation)
+    if not source_lineage:
+        raise ValueError("D1 governed replay observation missing source lineage")
+    json.dumps(source_lineage, sort_keys=True, allow_nan=False)
+    return {
+        "coverage_cell": coverage_cell,
+        "source_lineage": source_lineage,
+    }
+
+
+def _timestamp_range(values: list[float]) -> dict[str, float | None]:
+    if not values:
+        return {"minimum": None, "maximum": None}
+    return {"minimum": min(values), "maximum": max(values)}
+
+
+def _governed_source_lineage(observation: SensorObservation) -> list[Any]:
+    metadata = observation.metadata
+    sequence = (
+        metadata.get("sequence_id")
+        or metadata.get("sequence")
+        or metadata.get("source_sequence")
+        or metadata.get("payload_sequence")
+        or metadata.get("airsim_frame_index")
+        or observation.measurement_timestamp
+    )
+    fingerprint_input = {
+        "measurement_timestamp": observation.measurement_timestamp,
+        "measurement": observation.measurement,
+        "covariance": observation.covariance,
+        "sequence": sequence,
+    }
+    fingerprint_text = json.dumps(
+        _json_safe(fingerprint_input),
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    payload_digest = "sha256:" + hashlib.sha256(
+        fingerprint_text.encode("utf-8")
+    ).hexdigest()
+    source = observation.source_node_id or metadata.get("source_node_id") or observation.sensor_id
+    return [
+        "source_payload",
+        str(source),
+        observation.sensor_id,
+        observation.modality,
+        observation.payload_kind or metadata.get("payload_kind") or "",
+        _json_safe(sequence),
+        payload_digest,
+    ]
 
 
 def _json_safe(value: Any) -> Any:
@@ -641,13 +869,58 @@ def _sanitize_online_metadata(value: Mapping[str, Any]) -> dict[str, Any]:
     for key, item in value.items():
         normalized_key = str(key)
         if (
-            normalized_key in _ONLINE_TRUTH_METADATA_KEYS
+            _is_online_truth_key(normalized_key)
             or normalized_key.startswith("d1_replay_")
             or normalized_key.endswith("_offline_only")
         ):
             continue
         sanitized[normalized_key] = _sanitize_online_value(item)
     return sanitized
+
+
+def _extract_offline_truth(value: Mapping[str, Any]) -> dict[str, Any]:
+    offline: dict[str, Any] = {}
+    for key, item in value.items():
+        normalized_key = str(key)
+        if _is_online_truth_key(normalized_key) or normalized_key.endswith("_offline_only"):
+            offline[normalized_key] = _json_safe(item)
+            continue
+        if isinstance(item, Mapping):
+            nested = _extract_offline_truth(item)
+            if nested:
+                offline[normalized_key] = nested
+    return offline
+
+
+def _online_classification_hint(observation: SensorObservation) -> str | None:
+    hint = observation.classification_hint
+    if hint is None:
+        return None
+    text = str(hint)
+    offline_truth = _extract_offline_truth(observation.metadata)
+    for value in _iter_scalar_values(offline_truth):
+        candidate = str(value).strip()
+        if candidate and candidate in text:
+            return None
+    return text
+
+
+def _iter_scalar_values(value: Any) -> Iterable[Any]:
+    if isinstance(value, Mapping):
+        for item in value.values():
+            yield from _iter_scalar_values(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _iter_scalar_values(item)
+    elif value is not None:
+        yield value
+
+
+def _is_online_truth_key(key: str) -> bool:
+    normalized = key.strip().lower()
+    return normalized in _ONLINE_TRUTH_METADATA_KEYS or normalized.endswith(
+        ("_truth_id", "_actor_id", "_actor_name", "_object_id", "_object_name")
+    )
 
 
 def _sanitize_online_value(value: Any) -> Any:

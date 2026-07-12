@@ -11,11 +11,15 @@ from d1_sensor_fusion import (
     FusionQualityRegionSummary,
     LatencyAuditSummary,
     ReplayProvenance,
+    REPLAY_MANIFEST_SCHEMA_VERSION,
     SensorObservation,
     SensorTimingExpectation,
     read_sensor_observations_csv,
     read_sensor_observations_jsonl,
+    sensor_observation_from_jsonl_record,
     sensor_observation_to_replay_record,
+    serialize_governed_replay,
+    serialize_offline_governed_replay,
     summarize_region_quality_windows,
     write_sensor_observations_csv,
     write_sensor_observations_jsonl,
@@ -109,6 +113,8 @@ def test_governed_jsonl_and_csv_writers_emit_schema_and_strip_online_truth(tmp_p
         scenario_version="1.0",
         config_id="settings_simpleflight_v3",
         config_digest="sha256:writer-config-001",
+        config_version="3.0",
+        scenario_digest="sha256:writer-scenario-001",
         run_id="seed_021",
         seed=21,
     )
@@ -116,6 +122,7 @@ def test_governed_jsonl_and_csv_writers_emit_schema_and_strip_online_truth(tmp_p
     record = sensor_observation_to_replay_record(observation, provenance)
     assert record["schema_version"] == "d1.sensor_observation.v1"
     assert record["provenance"]["schema_version"] == "d1.replay_provenance.v1"
+    assert record["provenance"]["config_version"] == "3.0"
     assert "truth_id" not in record["metadata"]
     assert "actor_name" not in record["metadata"]
     assert "actor_name" not in record["metadata"]["detection_metadata"]
@@ -152,6 +159,201 @@ def test_governed_jsonl_and_csv_writers_emit_schema_and_strip_online_truth(tmp_p
         assert loaded.arrival_timestamp == 2.2
         assert loaded.covariance is not None
         assert "truth_id" not in loaded.metadata
+
+
+def test_governed_manifest_serializes_multi_target_contract_and_lineage() -> None:
+    observations = [
+        _radar_observation(
+            observation_id=f"target_{target_index}_radar_{frame_index}",
+            measurement_timestamp=float(frame_index),
+            arrival_timestamp=float(frame_index) + 0.2,
+            sensor_id=f"radar-{target_index}",
+        )
+        for target_index in (1, 2)
+        for frame_index in (0, 1)
+    ]
+    for index, observation in enumerate(observations):
+        observation.metadata.update(
+            {
+                "coverage_cell": f"cell-{1 + index % 2}",
+                "sequence_id": f"payload-{index}",
+                "truth_id": f"offline-target-{1 + index // 2}",
+            }
+        )
+        observation.source_node_id = f"sensor-node-{1 + index // 2}"
+
+    bundle = serialize_governed_replay(observations, _governed_provenance())
+    manifest = bundle["manifest"]
+
+    assert manifest["schema_version"] == REPLAY_MANIFEST_SCHEMA_VERSION
+    assert manifest["observation_schema_version"] == "d1.sensor_observation.v1"
+    assert manifest["working_frame"] == "ned"
+    assert manifest["observation_count"] == 4
+    assert manifest["measurement_timestamp_range"] == {"minimum": 0.0, "maximum": 1.0}
+    assert manifest["arrival_timestamp_range"] == {"minimum": 0.2, "maximum": 1.2}
+    assert manifest["coverage_cells"] == ["cell-1", "cell-2"]
+    assert manifest["provenance"]["scenario_id"] == "governed-multi-target"
+    assert manifest["provenance"]["config_version"] == "1.2"
+    assert manifest["provenance"]["seed"] == 31
+    assert len(manifest["source_lineage"]) == 4
+    assert json.loads(json.dumps(bundle, allow_nan=False)) == bundle
+
+    for source, record in zip(observations, bundle["records"]):
+        assert record["working_frame"] == "ned"
+        assert record["coverage_cell"] == source.metadata["coverage_cell"]
+        assert record["source_lineage"]
+        assert record["measurement_timestamp"] == source.measurement_timestamp
+        assert record["arrival_timestamp"] == source.arrival_timestamp
+        np.testing.assert_allclose(record["covariance"], source.covariance)
+        assert "truth_id" not in record["metadata"]
+        assert "offline_truth" not in record
+
+        loaded = sensor_observation_from_jsonl_record(record)
+        assert loaded.frame_id == "ned"
+        assert loaded.source_lineage_key == tuple(record["source_lineage"])
+        np.testing.assert_allclose(loaded.covariance, source.covariance)
+
+
+def test_governed_manifest_rejects_missing_fields_but_legacy_reader_remains_compatible() -> None:
+    observation = _radar_observation(
+        observation_id="strict-required-fields",
+        measurement_timestamp=0.0,
+        arrival_timestamp=0.2,
+    )
+
+    with pytest.raises(ValueError, match="config_version"):
+        serialize_governed_replay(
+            [observation],
+            ReplayProvenance(
+                scenario_id="scenario",
+                scenario_version="1",
+                config_id="config",
+                config_digest="sha256:config",
+                scenario_digest="sha256:scenario",
+                seed=1,
+            ),
+        )
+    with pytest.raises(ValueError, match="seed"):
+        serialize_governed_replay(
+            [observation],
+            ReplayProvenance(
+                scenario_id="scenario",
+                scenario_version="1",
+                config_id="config",
+                config_digest="sha256:config",
+                config_version="1",
+                scenario_digest="sha256:scenario",
+            ),
+        )
+
+    with pytest.raises(ValueError, match="scenario_digest"):
+        serialize_governed_replay(
+            [observation],
+            ReplayProvenance(
+                scenario_id="scenario",
+                scenario_version="1",
+                config_id="config",
+                config_digest="sha256:config",
+                config_version="1",
+                seed=1,
+            ),
+        )
+
+    observation.metadata.pop("coverage_cell")
+    with pytest.raises(ValueError, match="coverage_cell"):
+        serialize_governed_replay([observation], _governed_provenance())
+
+    observation.metadata["coverage_cell"] = "cell-a"
+    observation.covariance = None
+    with pytest.raises(ValueError, match="covariance"):
+        serialize_governed_replay([observation], _governed_provenance())
+
+    legacy = sensor_observation_from_jsonl_record(
+        {
+            "observation_id": "legacy-radar",
+            "sensor_id": "legacy-sensor",
+            "modality": "radar",
+            "measurement_timestamp": 0.0,
+            "arrival_timestamp": 0.2,
+            "frame_id": "ned",
+            "measurement": [100.0, 0.0, 0.0, 3.0],
+        }
+    )
+    assert legacy.covariance is None
+    assert legacy.metadata["d1_replay_schema_version"] == "legacy.blocks_sensor_observations"
+
+
+def test_online_truth_is_deeply_stripped_and_offline_export_is_explicit() -> None:
+    observation = _radar_observation(
+        observation_id="truth-policy",
+        measurement_timestamp=3.0,
+        arrival_timestamp=3.25,
+    )
+    observation.metadata.update(
+        {
+            "truth_id": "truth-001",
+            "actor_id": "actor-001",
+            "object_name": "TargetActor",
+            "detection_metadata": {
+                "actor_name": "NestedActor",
+                "object_id": "nested-object-001",
+                "detector": "simGetDetections",
+            },
+            "identity_hint": {"airsim_object_name": "HiddenObject"},
+        }
+    )
+    observation.classification_hint = "voiceprint-truth-001"
+
+    provenance = _governed_provenance()
+    provenance.metadata.update(
+        {
+            "runtime": "Blocks",
+            "actor_name": "ProvenanceActor",
+            "nested": {"object_id": "provenance-object", "mode": "cv"},
+        }
+    )
+
+    online = serialize_governed_replay([observation], provenance)
+    online_text = json.dumps(online, sort_keys=True)
+    for forbidden in (
+        "truth-001",
+        "actor-001",
+        "TargetActor",
+        "NestedActor",
+        "nested-object-001",
+        "HiddenObject",
+        "ProvenanceActor",
+        "provenance-object",
+        "voiceprint-truth-001",
+    ):
+        assert forbidden not in online_text
+    assert online["records"][0]["metadata"]["detection_metadata"]["detector"] == "simGetDetections"
+    assert online["manifest"]["provenance"]["metadata"]["runtime"] == "Blocks"
+    assert online["manifest"]["provenance"]["metadata"]["nested"]["mode"] == "cv"
+
+    offline = serialize_offline_governed_replay([observation], provenance)
+    offline_truth = offline["records"][0]["offline_truth"]
+    assert offline_truth["truth_id"] == "truth-001"
+    assert offline_truth["actor_id"] == "actor-001"
+    assert offline_truth["detection_metadata"]["actor_name"] == "NestedActor"
+    assert offline_truth["identity_hint"]["airsim_object_name"] == "HiddenObject"
+    assert offline_truth["classification_hint"] == "voiceprint-truth-001"
+
+
+def test_governed_replay_preserves_dual_timestamps_and_covariance_exactly() -> None:
+    observation = _radar_observation(
+        observation_id="numeric-roundtrip",
+        measurement_timestamp=10.125,
+        arrival_timestamp=10.375,
+    )
+    bundle = serialize_governed_replay([observation], _governed_provenance())
+    loaded = sensor_observation_from_jsonl_record(bundle["records"][0])
+
+    assert loaded.measurement_timestamp == 10.125
+    assert loaded.arrival_timestamp == 10.375
+    assert loaded.frame_id == "ned"
+    np.testing.assert_array_equal(loaded.measurement, observation.measurement)
+    np.testing.assert_array_equal(loaded.covariance, observation.covariance)
 
 
 def test_replay_writer_rejects_missing_or_unsupported_provenance() -> None:
@@ -292,6 +494,19 @@ def _radar_observation(
         measurement=measurement,
         covariance=radar_covariance_from_range(float(measurement[0])),
         metadata={"sensor_position_ned": sensor_position, "coverage_cell": "cell-a"},
+    )
+
+
+def _governed_provenance() -> ReplayProvenance:
+    return ReplayProvenance(
+        scenario_id="governed-multi-target",
+        scenario_version="1.0",
+        config_id="d1-main-contract",
+        config_digest="sha256:governed-contract",
+        config_version="1.2",
+        scenario_digest="sha256:governed-scenario",
+        run_id="seed-031",
+        seed=31,
     )
 
 

@@ -11,9 +11,14 @@ from typing import Any
 import numpy as np
 
 from .associators import GNNHungarianAssociator
+from .d1_governed_adapter import (
+    d2_frames_from_d1_governed_replay,
+    is_d1_governed_replay_payload,
+)
 from .dry_run_adapter import run_airsim_dry_run_association
 from .metrics import RiskThresholds, classify_risk_summary
 from .models import AssociationRiskSummary
+from .offline_truth import OfflineTruthLabel, evaluation_frames_with_offline_truth
 from .replay_governance import (
     InitializationGovernanceProfile,
     OfflineTruthEvaluation,
@@ -77,9 +82,10 @@ def load_airsim_replay_frames(path: str | Path) -> list[dict[str, Any]]:
     """Load offline AirSim-style replay frames from JSON or JSONL.
 
     Supported payloads are a list of frame dicts, a JSON object with a
-    ``frames`` key, or JSONL records containing either a frame directly or a
-    nested ``frame``/``d2_frame``/``airsim_frame`` payload. Non-frame JSONL
-    records are ignored so mixed episode logs can be filtered by D2.
+    ``frames`` key, a D1 ``serialize_governed_replay`` manifest/records bundle,
+    or JSONL records containing either a frame directly or a nested
+    ``frame``/``d2_frame``/``airsim_frame`` payload. Non-frame JSONL records
+    are ignored so mixed episode logs can be filtered by D2.
     """
 
     replay_path = Path(path)
@@ -109,6 +115,7 @@ def run_airsim_replay_association(
     default_position_variance: float = 1.0,
     gate_thresholds: Sequence[float] | None = None,
     initialization_profile: InitializationGovernanceProfile | None = None,
+    offline_truth_labels: Sequence[OfflineTruthLabel | Mapping[str, Any]] | None = None,
 ) -> ReplayAssociationReport:
     """Run D2 association on offline replay frames and return a stable report."""
 
@@ -124,8 +131,13 @@ def run_airsim_replay_association(
         isolate_offline_truth=True,
     )
     thresholds = risk_thresholds if risk_thresholds is not None else RiskThresholds()
+    evaluation_frames = (
+        evaluation_frames_with_offline_truth(frame_list, offline_truth_labels)
+        if offline_truth_labels is not None
+        else frame_list
+    )
     offline_evaluation = evaluate_offline_truth(
-        frame_list,
+        evaluation_frames,
         result,
         profile_name=f"{thresholds.profile_name}_offline_truth",
         profile_version=thresholds.profile_version,
@@ -1105,6 +1117,8 @@ def _metadata_value_for_row(row: Mapping[str, Any], *keys: str) -> Any:
 
 def _frames_from_payload(payload: Any) -> list[Mapping[str, Any]]:
     if isinstance(payload, Mapping):
+        if is_d1_governed_replay_payload(payload):
+            return d2_frames_from_d1_governed_replay(payload)
         for key in ("frames", "replay_frames", "records"):
             value = payload.get(key)
             if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):

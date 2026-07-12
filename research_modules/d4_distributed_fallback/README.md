@@ -9,6 +9,7 @@
 - `docs/README.md`：D4 文档索引。
 - `d4_distributed_fallback/`：Python 包源码。
 - `scripts/run_failover_simulation.py`：默认离线降级仿真入口。
+- `scripts/run_p2_coalition_replay.py`：隔离式 P2 联盟故障 replay；不接入在线 D4。
 - `tests/`：状态机、CBBA、接管和仿真测试。
 - `reports/EXPERIMENT_REPORT.md`：实验报告与曲线。
 - `reports/AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放集成计划。
@@ -19,6 +20,15 @@
 PYTHONPATH=research_modules/d4_distributed_fallback \
 python3 research_modules/d4_distributed_fallback/scripts/run_failover_simulation.py --drone-count 5
 ```
+
+运行隔离式 P2 联盟 replay：
+
+```bash
+PYTHONPATH=research_modules/d4_distributed_fallback \
+python3 research_modules/d4_distributed_fallback/scripts/run_p2_coalition_replay.py
+```
+
+只有显式提供本地参考树时才探测外部能力：`--mit-cbba-path PATH`、`--ca-cbba-path PATH`。探测不会 import 或执行外部代码，也不新增默认依赖。
 
 运行 D4 测试：
 
@@ -32,14 +42,15 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 - `C2Health` 状态机：`normal -> degraded -> suspect -> failed`，heartbeat 使用滑动窗口和 `degraded/suspect` 防抖确认，中心恢复需双轨合并，不能只靠单次 heartbeat。
 - 被动降级链路：中心 C2 失效 -> 固定系留或机动高空二级侦察节点/地面备份 -> 完全无中心 CBBA。
 - 主动降级仲裁：中心未失效但 D1/D2/D3/D5 风险升高时，输出继续、请求中心重分配、请求二级辅助、降到二级节点或分布式的离线决策。
-- 中心重规划请求生命周期：包顶层导出冻结 DTO `CenterReplanStatus` 和 `build_center_replan_risk_signature()`；`D4ArbitrationAdapter.evaluate(center_replan_status=...)` 只读消费 `pending|applied|acknowledged_no_change|expired`。`ActiveDegradationConfig.center_replan_cooldown_s` 默认 2.0 秒，以 `resolved_at`、pending 无 resolved 时以 `requested_at` 为起点；窗口内新增非硬风险继续 `continue_center`，在严格 `timestamp >= reference+cooldown` 边界才重新开放请求。持续 `terminal_persistent_disagreement` 可触发首次请求，但不是 cooldown bypass。expired、中心 failed、friend conflict、非法重复锁、assignment/version mismatch、ID switch 和 coalition conflict 均即时绕过。该 `continue_center` 保留 D5 不一致/risk evidence，不替代 D5 对 D7 的独立阻断。
+- 中心重规划请求生命周期：包顶层导出冻结 DTO `CenterReplanStatus` 和 `build_center_replan_risk_signature()`；`D4ArbitrationAdapter.evaluate(center_replan_status=...)` 只读消费 `pending|applied|acknowledged_no_change|expired`。`ActiveDegradationConfig.center_replan_cooldown_s` 默认 2.0 秒，以 `resolved_at`、pending 无 resolved 时以 `requested_at` 为起点；窗口内新增非硬风险继续 `continue_center`，在严格 `timestamp >= reference+cooldown` 边界才重新开放请求。若 pending 属于 current coalition，且中心 alive、D3 plan/coalition 双版本 current、D5 全部 current primary 已稳定 locked 并形成无冲突 consensus，D4 将旧请求收敛为 `continue_center`，输出 `center_replan_resolution_hint=acknowledged_no_change`。friend/duplicate/wrong-binding、plan/coalition version、center health、coalition conflict 或 commit 缺 ACK 均优先 fail closed，不会被 recovery 覆盖。该 `continue_center` 保留风险 evidence，不替代 D5/D7 独立门控。
 - 二级节点建模：支持 `NodeRole.SECONDARY_RECON`、`MOBILE_HIGH_RECON`、`MOBILE_SECONDARY_RECON`、`FIXED_TETHERED_SECONDARY` 或 `capability_class=mobile_high_recon/mobile_secondary_recon/fixed_tethered_secondary/tethered_recon`；二级节点默认 `coordinator_only`，只做协调和侦察证据，不作为拦截执行资源。
 - 二级节点生命周期摘要：`SecondaryNodeLifecycleSummary` 输出 `heartbeat`、lease、coverage、cue/gimbal/link、network full-view、stable/not-registered 计数及其 `registration_evidence_source`/presence 标志，并区分节点类型与 `not_ready|visible_only|registration_usable|takeover_ready` 四级瞬时 readiness。adapter 进一步记录 `takeover_ready_consecutive_decisions`、ready since/duration、required decisions/duration、`takeover_ready_sustained` 和回落原因，供 D4 仲裁与 D6 逐决策审计。
 - 增强通信摘要：`CommunicationSummary` 记录 `source_node_id`、`target_node_id`、`relay_node_id`、`link_type`、`sent_timestamp`、`received_timestamp`、`payload_kind`、`stale_after_s`，用于判断二级节点辅助链路是否新鲜。
 - 主动降级迟滞/防抖：`ActiveDegradationConfig` 提供 `min_dwell_s`、`release_consecutive_consistent_frames`、`mismatch_frame_limit`、`risk_window_size`、`risk_window_threshold` 和 `center_replan_cooldown_s`；默认保持轻量单步规则，复用 arbiter 时可启用 dwell/release 行为。adapter 同时输出 hard/soft risk 拆分、center replan cooldown 状态和 `active_degradation_false_trigger_candidate`，供 D6 统计误触发。
-- D2 在线指标可用性：`AssociationRiskSummary` 显式携带 `truth_metrics_available` 和 `continuity_available`。在线 truth 隔离时，IDSW/continuity 的数值占位不参与主动降级；可在线观测的 association ambiguity、duplicate track risk 和由 track quality 汇入的 association risk 仍按既有门限参与，`duplicate_track_risk >= 0.5` 的 D4 转换门限未放宽。
+- D2 在线指标可用性：`AssociationRiskSummary` 显式携带 `truth_metrics_available`、`continuity_available` 和连续 `duplicate_track_risk`。在线 truth 隔离时，IDSW/continuity 的数值占位不参与主动降级；`duplicate_track_risk >= 0.5` 只产生 soft `d2_duplicate_track_risk_high` 观察证据，不再合成 observed count。只有显式 `duplicate_track_count/duplicate_assignment_count`、对应 delta/delta sum 或明确 observed flag 才产生 hard `d2_duplicate_track_observed` 并立即阻断。
 - D5 cross-view 风险：`TerminalAssociationSummary.cross_view_risk_score` 和 `duplicate_terminal_lock` 会阻止“误判为一致锁定”。
-- M-to-N 第一阶段安全语义：`CoalitionSafetyEvidence` 以 duck typing/dict 消费 D3 `assignment_plan_v2` 的 `coalitions`、member、plan/coalition version 和 `required_resource_count`。中心可用且联盟完整、版本当前、成员合法时允许中心路径继续；若 arbiter 随后候选 `degrade_to_secondary|degrade_to_distributed`，但对应原子 coalition fallback 尚未形成，则中心可用时改为 `request_center_replan`，中心不可用时输出 `coalition_fallback_unsupported`/`hold_or_revoke`。event 同时记录 `candidate_action` 和 `gated_action`；coordinator 也不会启动 single-winner CBBA。合法联盟内多个已授权资源锁定同一 `global_track_id` 不算 duplicate；联盟外、超额、旧 plan 或旧 coalition version 均 fail closed。D4 不改写 `global_track_id`。
+- M-to-N 原子联盟安全语义：`CoalitionSafetyEvidence` 以 duck typing/dict 消费 D3 `assignment_plan_v2` 的 `coalitions`、member、plan/coalition version、`required_resource_count` 和可选 commit。有效 secondary/distributed commit 必须满足完整 required-member ACK、双版本、epoch、成员、lease 和 digest 门控，随后才设置 `atomic_coalition_formed=true`；无有效 commit 时仍按中心可用性输出 `request_center_replan` 或 `coalition_fallback_unsupported`/`hold_or_revoke`。event 记录 `candidate_action`、`gated_action` 和 commit 审计；single-winner CBBA 不冒充 `k>1` 成员形成。合法联盟内多个已授权资源锁定同一 `global_track_id` 不算 duplicate；联盟外、超额、旧 plan 或旧 coalition version 均 fail closed。D4 不改写 `global_track_id`。
+- D5 current-coalition recovery 最小接口：`cross_view_summary` 需提供 `global_track_id`、`plan_id/plan_version`、`coalition_id/coalition_version`、`primary_required_count`、`primary_locked_resource_ids`、`primary_lock_complete`、`coalition_visual_consensus` 和 `coalition_conflict_state`；若 `coalition_commit_required=true`，还需 commit state、required/acked member IDs、valid 和 conflict reasons。字段缺失、scope 不 current 或 commit 不完整只会使 recovery 不成立。main 当前已传递该 D5 summary，D4 无需也不会修改 main adapter。
 - D5 二级覆盖/转换漏斗诊断：adapter 可消费 `cue_freshness_s/cue_freshness`、`gimbal_pointing_ok`、`secondary_coverage_ratio`、`secondary_single_camera_full_view_frame_rate`、`secondary_network_joint_full_view_frame_rate`、`secondary_network_mean_coverage_ratio`、`cross_view_support_count`、`cross_view_association_count`、`stable_cross_view_registration_count`、`not_registered_count`、`cross_view_conversion_gap` 和 `secondary_detect_to_cross_view_reject_reasons`；当二级检测可见但 cross-view/global binding/registration 未完成时，event metadata 写入 `secondary_detect_available_but_not_registered`、计数和诊断原因，但不会把该证据直接升级为 `secondary_plan_active`。
 - 二级侦察校准解释口径：D4 只消费 D5/D6/main 输出的 coverage、freshness、stable cross-view registration、not-registered 和 review label，不做像素投影或视觉注册。硬门限保持 score >= 0.70、coverage >= 0.65、network full-view >= 0.80；瞬时 `takeover_ready` 还必须通过默认 3 个不同时间戳决策、至少 0.2 s 驻留且相邻证据间隔不超过 1.0 s 的 `SecondaryReadinessWindowConfig`，才允许进入 pending。相同时间戳的多资源/多目标决策不会重复累计。
 - 完全无中心视觉证据接入：`DistributedVisualEvidenceSummary`、`build_distributed_visual_evidence_summary()` 和 `merge_distributed_visual_evidence_into_tracks()` 可用 duck typing/dict 消费 D5 的 distributed terminal association / cross-peer hypothesis，不导入 D5 类型，也不创建或改写 `global_track_id`。
@@ -48,6 +59,7 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 - 二级接管 plan metadata：`SecondaryTakeoverPlanMetadata` 明确 `not_applicable`、`pending_secondary_plan`、`secondary_plan_active` 三种状态。active 必须同时满足持续 readiness、source 与选中二级节点一致、plan version 严格更新或保持同一已激活 secondary plan、plan lease epoch 不低于节点要求且 lease 未过期；不满足时保留 pending/not executable 和明确 reject reason。D4 只输出合同和审计，不生成完整系统级 `AssignmentPlan`。
 - CBBA 风格协商：用于二级节点不可用后的连续性分配基线；D5 视觉支持会提高对应资源出价，`hold`、友方冲突、过期/缺失/冲突 `global_track_id` 会阻止可执行出价，重复锁定风险进入 `assignment_audit` 且不允许多个 owner。
 - CBBA gap benchmark：`build_cbba_cost_gap_benchmark()` 使用 D3/main 提供的中心 plan 与 cost matrix，计算 D4 CBBA 相对中心 Hungarian/Min Cost Flow 基线的 cost/completion/conflict/message 差距；D4 不在 no-center 路径运行虚拟中心 Hungarian。
+- P2 隔离联盟 replay：`run_p2_coalition_fault_replay()` 复用原生 `CoalitionCommitCoordinator`，并将 `CBBANegotiator` 限定为协调者/补位候选选择，不把 single-winner 结果冒充 `k>1` 原子联盟。固定覆盖中心 -> 二级 -> 完全分布式、missing ACK、stale epoch、expired lease、partition、member loss/replacement，逐场景输出收敛轮数、完成率、冲突和最优差距或 `unavailable_reason`。MIT CBBA/CA-CBBA 只通过 `ExternalCoalitionReplayAdapter` 返回 path/source/capability/unavailable 审计，不替换在线 D4。
 - D6 CBBA report metadata：`build_cbba_d6_metadata()` 将 `CBBAResult`、`coordination_mode`、`assignment_audit` 和可选 `CBBACostGapBenchmark` 归一化为多 seed 可聚合字段；`run_failover_simulation()` 顶层 metrics 透出 `d4_action`、`coordination_mode`、`selected_coordinator`、leader 和 coverage。
 - 与 D3/D5/D6 的接口：接收上一版分配摘要，向 D5 提供区域观测/cue 语义，向 D6 输出接管、共识和冲突指标。
 
@@ -79,14 +91,14 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 
 ## P1 状态
 
-- 已完成：固定系留/机动高空二级节点分类元数据、二级节点 lifecycle summary、secondary takeover pending/active metadata、D5 二级覆盖/转换漏斗未配准诊断、heartbeat smoothing、lease strictness、secondary capability score/readiness class、主动降级 dwell/release/window 防抖配置、主动降级硬/软风险分层、false-trigger metadata、`necessary/unnecessary/inconclusive` review label 口径、pre/post review window、plan activation delay、secondary takeover necessity/success 统计 metadata、D6-compatible decision event metadata、D6-compatible CBBA report metadata、D5 distributed visual evidence -> 完全无中心 CBBA 风险加权、CBBA vs D3 中心化 cost gap benchmark helper、对应单元测试。
-- 已完成的 main/runtime P1 基线：episode bus 已接入 D4 adapter event，`request_center_replan` 可触发 D3 new plan version，secondary takeover owner/version 已回灌给 D3/D7，controlled 2v2 secondary visual PNG 回归已通过；main runtime 已新增 P1 D4/D5 calibration sweep，用于按高度、FOV、二级节点数量和 standoff 组合批量生成 stress episode；sweep 结束后会自动调用 D6 标准 AirSim calibration report bundle，输出 records/summary/report 口径。该项为 main-owned 集成，修复后口径保持为 main/D3/D7 消费 owner/version，D4 仍只输出仲裁/metadata，不生成系统级 `AssignmentPlan`。
-- 最新 AirSim/P1 多 seed 证据：`p1_gap_closure_calibration_20260710` 已完成 10 seeds、50/200 m、3 个机动高空二级节点、FOV 110 度、1920x1080 的 60 个 5v5 case。20 个 `degrade_to_secondary` case 的最终帧和 dominant action 均为 `degrade_to_distributed`。50 m 的 network joint full-view 均值为 0.023、范围 0.000-0.154，coverage 均值 0.685；200 m 的 network joint full-view 恒为 0.000，coverage 均值 0.708。两种高度的投影有效率均为 1.0，cross-view association 分别均值 4.6/4.0，stable registration 分别均值 86.3/96.7，说明主要断点已经从“未注册”转为“注册存在但同帧网络全覆盖不稳定”。D4 不直接消费或计算 projection/geometry gate，只解释 D5/main 写入的 readiness evidence。
-- 接管门限复核：`takeover_ready` 要求 visible、registered、coverage ratio >= 0.65、network full-view rate >= 0.80、capability score >= 0.70，并保持 heartbeat/link/cue/gimbal 新鲜。1300 条 `degrade_to_secondary` 决策中，新鲜度、visible 和 registered 均通过，score 无低于 0.70；1285 条因 network full-view 低于 0.80 保持 `registration_usable`，其中 600 条同时低于 coverage 0.65。仅 50 m 的 seed 2/5 出现 15 条瞬时 `takeover_ready`，均停留在 `pending_secondary_plan`，没有 active/executable secondary plan，后续又回落为 distributed。因此不能把瞬时全覆盖解释为二级接管成功，也不应放宽安全门控。
-- 证据传递审计：D4 已逐决策输出 stable/not-registered 值、presence 和 `registration_evidence_source`，明确区分 D5 稳定计数、resource 计数和 cross-view compatibility 回退。历史 1300 条 AirSim 记录的两个显式计数仍为 `null`，因此 main/D5 仍需把真实逐帧摘要接入，D4 不把 compatibility 来源伪装成稳定注册计数。
-- 2026-07-11 truth-isolated AirSim 三组 smoke 证据：`p1_runtime_truth_isolated_d4d5_smoke_20260711`（200 m、2 个二级节点）、`p1_runtime_truth_isolated_d4d5_50m_20260711`（50 m、2 个二级节点）和 `p1_runtime_truth_isolated_d4d5_secondary5_20260711`（200 m、5 个二级节点）均保持在线 truth ID 隔离。三组 `no_degradation` 正例均为 `continue_center`，三组二级不可用/分布式负例均为 `degrade_to_distributed`；预期二级接管正例也均保守输出 `degrade_to_distributed`，因为 `secondary_network_joint_full_view_frame_rate=0.0`，readiness 未达到持续 `takeover_ready`。5 个二级节点将网络平均覆盖提高到约 0.80，但没有形成同帧全目标联合覆盖，因此不能据此激活 secondary plan。
-- 保持不变：轻量 CBBA 仍是完全无中心保底基线；未接入 MIT CBBA、CA-CBBA、独立 auction 或 contract-net。
-- 已完成的 M-to-N 第一阶段：中心 D3 schema v2 联盟安全验证、合法多成员锁语义、旧 plan/coalition version 与越权/超额成员拒绝、中心可用时不支持 fallback 候选转中心重规划、中心失效 `hold_or_revoke`，以及 coordinator 禁止把 single-winner CBBA 作为原子联盟。二级/完全分布式原子联盟形成、ACK、补位和重构仍 deferred。
-- D4 模块内已闭合的 P1：连续 readiness、逐决策注册证据审计、pending/active transition timing、source/lease epoch/lease expiry strictness、D2 online truth 指标可用性门控、中心重规划请求 lifecycle 去重/硬风险绕过、plan activity/identity age 分离，以及 heartbeat/link/cue/gimbal/能力回落到 distributed 的负例；当前模块测试为 121 项通过。
-- 剩余跨模块 P1（未关闭）：main 必须复用同一个 adapter 实例并逐帧传入 D5 stable/not-registered、D3 新 plan source/version/lease；D3 生成有效新计划后回填 active，D7 同时检查 sustained readiness 与 current binding。2026-07-11 三组 smoke 只证明保守门控和负例动作正确，尚未提供持续同帧全覆盖、持续 `takeover_ready`、pending -> active 和 executable secondary plan 正例。仍需真实 AirSim 正向 sustained full-view、多 seed coverage-cell 聚合、网络分区/恢复、误降级成对标定、D5 peer evidence 和恢复双轨统计；不得降低现有门限制造接管成功样本。
-- 后置 optional 对照：独立 single-round auction baseline、MIT/CA-CBBA/CBBA-Python adapter 和 Contract Net 均不是当前保底主线；完全无中心默认仍使用轻量 CBBA。
+- 当前结论以 `p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md` 为准：D4 所属的 P1 合同层已闭合。ComputerVision 10-seed 总体验收为 8/10；这证明合同链路，不证明控制放行或物理拦截。
+- 二级接管正例：协调者 `Secondary_Recon_1`，required-member ACK 3/3，最终 `executing`，D4 动作为 `degrade_to_secondary`。
+- 完全分布式正例：协调者为 `INT-02` peer，required-member ACK 3/3，最终 `executing`，D4 动作为 `degrade_to_distributed`。
+- 缺 ACK 负例：ACK 2/3，最终 `aborted`；T001 三个成员保持 `hold_for_review`，D7 许可为 0。该结果确认 fail-closed；有有效 commit 的二级/分布式路径已获正例验证。
+- SimpleFlight 15 s 结果仅用于断点诊断：30 个 active pair 物理命中为 0，不能据此宣称 D4 fallback 或系统物理拦截闭环完成。
+- 仍开放：旧 epoch、过期 lease、成员不可执行、网络分区、digest conflict、成员退出/重构和误降级成对标定的完整扰动矩阵及多 seed 统计。现有注入入口和模块测试不等于矩阵验收完成。
+- P2 只允许隔离式 benchmark；MIT/第三方 CBBA、auction/contract-net 或其他 adapter 不替换当前轻量 CBBA 和 ACK/lease/epoch 合同。
+- P2 原生确定性 replay 已收敛：6/6 场景符合预期安全结果；中心 -> 二级 -> 分布式和成员丢失/补位均以 7 轮、完成率 1.0、冲突 2/1、最优绝对差距 0.0 收敛。missing ACK、stale epoch、expired lease、partition 分别以 2/1/2/3 轮 fail closed，完成率均为 0，并输出对应 optimality-gap unavailable reason。原生 6 场景平均完成率为 1/3、总冲突计数为 5。
+- 默认环境未配置 MIT CBBA 或 CA-CBBA 参考路径，因此各 6 个外部对照行分别输出 `mit_cbba_reference_path_not_configured`、`ca_cbba_reference_path_not_configured`。MIT MATLAB 源码树即使被检测到也报告 runtime adapter 未集成；已审计的 CA-CBBA 公共仓库没有可执行源码。上述 unavailable 是 capability 结论，不是外部算法性能结论。
+
+历史基线：2026-07-10 calibration sweep 和 2026-07-11 早期 truth-isolated smoke 曾因 network full-view/readiness 不持续而未形成二级 active plan。该结论只描述实施前场景，不再作为当前能力状态；门限与 fail-closed 规则仍保留。

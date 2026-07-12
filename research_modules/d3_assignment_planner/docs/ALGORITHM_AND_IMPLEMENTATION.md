@@ -421,7 +421,7 @@ D2 提供稳定 `global_track_id` 和航迹质量。D3 不应自行合并、拆�
 
 D4 主动降级场景下，D3 应额外提供 `AssignmentValiditySummary` 或等价日志字段。D4 可以按 `recommended_action` 处理：`central_replan` 由 D3 继续发布新版本；`request_d4_secondary_node` 交给二级侦察/区域节点仲裁；`request_d4_distributed` 才进入完全分布式协同。D3 不应越权选择具体降级节点，只提供计划有效性、版本、成本和跨模块一致性证据。
 
-当前 main runtime 已接入中心重规划闭环：`request_center_replan` 完成后会登记新的 `active_plan_owner=center`、`plan_id/version`、`replan_reason`、`supersedes_plan_id`、`supersedes_plan_version` 和 stale/rejected plan 归因。D3 侧还提供严格二级激活合同：`prepare_secondary_takeover_plan(...)` 要求 concrete secondary owner、持续 `takeover_ready`、精确 supersede、严格 version/leader epoch、激活时有效 lease，并把 readiness/activation/owner/supersede/epoch/lease 写入 plan、assignment、record 和 evidence。`guidance_bindings_from_assignment_plan(...)` 对 secondary plan 要求 main 显式传入 current plan id/version；历史、未激活或 lease 过期计划不能输出 `active/current` binding。仍待 D4/main 的是运行时参数接线、heartbeat/lease 续期、中心恢复合并和真实多 seed 正负例。
+当前 main runtime 已接入中心重规划闭环：`request_center_replan` 完成后会登记新的 `active_plan_owner=center`、`plan_id/version`、`replan_reason`、`supersedes_plan_id`、`supersedes_plan_version` 和 stale/rejected plan 归因。D3 侧还提供严格二级激活合同：`prepare_secondary_takeover_plan(...)` 要求 concrete secondary owner、持续 `takeover_ready`、精确 supersede、严格 version/leader epoch、激活时有效 lease，并把 readiness/activation/owner/supersede/epoch/lease 写入 plan、assignment、record 和 evidence。`guidance_bindings_from_assignment_plan(...)` 对 secondary plan 要求 main 显式传入 current plan id/version；历史、未激活或 lease 过期计划不能输出 `active/current` binding。二级/分布式 commit 正例和缺 ACK fail-closed 已通过；heartbeat/lease 长时校准与中心恢复合并仍属 D4/main policy。
 
 若 D4/main 发布二级计划，应先保留 `pending_secondary_plan`，等持续 readiness 成立后再调用 D3 激活 helper。D3 不推断或选择具体二级节点；成功激活后 secondary binding 只有在 current identity 和 lease 同时有效时才可供 D7 消费，并始终保持 `allow_local_rebind=False`。
 
@@ -442,10 +442,10 @@ D6 还应统计 `AssignmentValiditySummary` 的状态分布，区分中心滚动
 当前实现的主要局限：
 
 - 代价特征是归一化抽象量，尚未直接接入 D1/D2 的完整协方差矩阵和时间同步信息。
-- Hungarian 只表达一对一主分配，不支持容量、备份资源或多窗口全局优化。
+- 无显式 demand 时 Hungarian 保持一对一主分配；显式 M-to-N 使用 demand-slot all-or-none，但复杂容量、备份资源和多窗口全局优化仍不在默认主线。
 - `conflict_risk` 是外部传入的边级摘要，未在 D3 内部计算真实轨迹冲突。
 - `human_authorization_state` 当前由 `PlannerConfig` 配置，默认 `required`；模块不实现授权工作流，也不把记录态仿真字段解释为处置授权。
-- 离线脚本覆盖 8v8 滚动场景；真实 AirSim/P1 仍需在 2v2、5v5、8v8、非等量 M/N、crossing/dense 场景中做多 seed 校准。
+- 离线脚本覆盖 8v8 滚动场景；P1 合同层已由 CV 10-seed 的 8/10 双 primary、增量/role-aware 回归及 commit/fail-closed 场景闭合，真实非等量 M/N、crossing/dense 和长时物理控制仍需参数校准。
 - `AssignmentValiditySummary`、D6-compatible `AssignmentRecord`、N/M replay summary 和 D5 feedback calibration summary 已实现。后续局限在于真实 episode records 是否持续、稳定地写入并能支撑参数标定，而不是 D3 模块缺少数据结构。
 
 后续建议：
@@ -453,5 +453,5 @@ D6 还应统计 `AssignmentValiditySummary` 的状态分布，区分中心滚动
 - 基于真实 D6 records 和 P1 calibration sweep bundle 复核 D2 ID Switch 风险、D5 duplicate/friend/fov/geometry feedback、禁配边、`operator_hold` 和 D3 迟滞参数的长期权重阈值。
 - 配合 D4/main 校准计划版本冲突、二级 owner/lease、中心恢复合并和 stale secondary plan 拒绝策略；D3 不在本模块内实现 runtime 仲裁。
 - 在 main 运行时持续调用 D3 侧有效性评估器，输出 `AssignmentValiditySummary`、`AssignmentRecord` 和 D5 feedback calibration/replay summary，并由 D6 统计触发原因。
-- P2/非本轮在保持接口不变的前提下实现 OR-Tools 最小费用流可选后端。
+- OR-Tools 最小费用流同输入 comparator 已实现；CP-SAT/MILP、复杂 flow 和大规模扫描仅作为 P2 隔离 benchmark。
 - 由 D6 批量运行多随机种子、多权重、多密度场景，输出统一中文实验报告和图表。

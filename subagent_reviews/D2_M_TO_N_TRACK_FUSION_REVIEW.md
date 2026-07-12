@@ -265,7 +265,14 @@ MSM DTO
 - exact-known correlation 请求相关融合，unknown correlation 只请求 CI，duplicate information 拒绝；
 - truth-free cross-node rebind/duplicate/latency 指标与隔离 offline canonical duplicate、association precision/recall、truth-based cross-node IDSW。
 
-**仍未实现 P1/P2**：
+**当前 P1 合同证据（2026-07-11 最终验证）**：
+
+- D1 governed input、D2 online truth isolation/offline evaluator、中心 `global_track_id` 和 N-target/10-seed runner 的 D2-owned 合同已闭合；
+- M=5、N=2 ComputerVision 10-seed 中，T001 双 primary 共识/当前计划授权为 8/10，D2 `id_switch_count=0`、错误 duplicate=0、`global_track_id` 改写/重绑=0 均为 10/10；
+- 二级和完全分布式 coalition commit 正例通过，缺 ACK 时 fail-closed。这证明 D4-D7 能沿用 D2 中心 ID 执行合同，不等于 D2 已实现二级 owner/epoch failover 或分布式临时 ID 合并；
+- SimpleFlight 15 s 只是诊断，30 个 active pair 无命中，物理拦截未闭合。
+
+**后续研究仍未实现**：
 
 - D1-owned 数值 CI 或已知交叉协方差融合 posterior 回写；
 - 高歧义跨节点 JPDA/MHT 和延迟决策；
@@ -273,7 +280,7 @@ MSM DTO
 - fusion NEES/ANEES、通信字节和 D1/D6 多 seed 一致性标定；
 - 同时/序贯/混合 replay 的多 seed 对照。
 
-这些缺口不影响现有单中心 D1->D2 detection-to-track P0 主线，因此归为新 M 对 N 能力的 P1，而不是把现有系统重新标成 P0 blocker。
+这些缺口不影响现有单中心 D1->D2 detection-to-track 主线或当前 P1 合同闭合结论。
 
 ## 9. 推荐给后续系统拆解的 D2 子任务
 

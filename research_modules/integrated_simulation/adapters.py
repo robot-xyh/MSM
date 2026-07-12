@@ -175,50 +175,40 @@ def resources_to_d4(
     resources: Iterable[ResourcePlatform],
     secondary_available: bool,
     epoch: int = 1,
+    secondary_node_ids: Iterable[str] | None = None,
 ) -> list[ResourceSummary]:
     """Build D4 secondary-node and executor summaries."""
 
-    summaries = [
-        ResourceSummary(
-            node_id="SEC-NORTH",
-            capability_class="tethered_recon",
-            availability_band=AvailabilityBand.HIGH if secondary_available else AvailabilityBand.NONE,
-            comm_band=CommBand.GOOD,
-            takeover_priority=10,
-            lease_epoch=5,
-            epoch=epoch,
-            node_role=NodeRole.SECONDARY_RECON,
-            coordinator_only=True,
-            coverage_cell="cell-north",
-            cue_freshness_s=0.0 if secondary_available else None,
-            gimbal_pointing_ok=secondary_available,
-            secondary_coverage_ratio=0.9 if secondary_available else 0.0,
-            cross_view_support_count=5 if secondary_available else 0,
-            secondary_network_full_view_rate=0.9 if secondary_available else 0.0,
-            stable_cross_view_registration_count=5 if secondary_available else 0,
-            not_registered_count=0 if secondary_available else None,
-        ),
-        ResourceSummary(
-            node_id="SEC-SOUTH",
-            capability_class="tethered_recon",
-            availability_band=AvailabilityBand.HIGH if secondary_available else AvailabilityBand.NONE,
-            comm_band=CommBand.GOOD,
-            takeover_priority=11,
-            lease_epoch=5,
-            epoch=epoch,
-            node_role=NodeRole.SECONDARY_RECON,
-            coordinator_only=True,
-            coverage_cell="cell-south",
-            cue_freshness_s=0.0 if secondary_available else None,
-            gimbal_pointing_ok=secondary_available,
-            secondary_coverage_ratio=0.9 if secondary_available else 0.0,
-            cross_view_support_count=5 if secondary_available else 0,
-            secondary_network_full_view_rate=0.9 if secondary_available else 0.0,
-            stable_cross_view_registration_count=5 if secondary_available else 0,
-            not_registered_count=0 if secondary_available else None,
-        ),
-    ]
-    for resource in resources:
+    resource_items = tuple(resources)
+    node_ids = tuple(str(item) for item in (secondary_node_ids or ("SEC-NORTH", "SEC-SOUTH")))
+    summaries = []
+    for index, node_id in enumerate(node_ids):
+        summaries.append(
+            ResourceSummary(
+                node_id=node_id,
+                capability_class="high_recon",
+                availability_band=(
+                    AvailabilityBand.HIGH if secondary_available else AvailabilityBand.NONE
+                ),
+                comm_band=CommBand.GOOD,
+                takeover_priority=10 + index,
+                lease_epoch=5,
+                epoch=epoch,
+                node_role=NodeRole.SECONDARY_RECON,
+                coordinator_only=True,
+                coverage_cell="cell-north" if index % 2 == 0 else "cell-south",
+                cue_freshness_s=0.0 if secondary_available else None,
+                gimbal_pointing_ok=secondary_available,
+                secondary_coverage_ratio=0.9 if secondary_available else 0.0,
+                cross_view_support_count=len(resource_items) if secondary_available else 0,
+                secondary_network_full_view_rate=0.9 if secondary_available else 0.0,
+                stable_cross_view_registration_count=(
+                    len(resource_items) if secondary_available else 0
+                ),
+                not_registered_count=0 if secondary_available else None,
+            )
+        )
+    for resource in resource_items:
         summaries.append(
             ResourceSummary(
                 node_id=resource.resource_id,

@@ -142,6 +142,20 @@ CBBA-PR 的“部分释放 bundle 后缀”可作为动态补位的研究参考�
 
 ## 8. 对当前 D4 的差距判断
 
+### 2026-07-11 当前验收状态
+
+D4 所属 P1 合同层已闭合。ComputerVision 总体验收为 8/10；二级协调者 `Secondary_Recon_1` 以 ACK 3/3 进入 `executing`，完全分布式 `INT-02` peer 以 ACK 3/3 进入 `executing`，缺 ACK 场景以 2/3 ACK 进入 `aborted` 并令 T001 三成员 `hold_for_review`。这些结果关闭了 secondary/distributed commit 正例与缺 ACK fail-closed，不关闭自主成员形成、联盟重构或物理拦截。
+
+SimpleFlight 15 s 仅用于诊断，30 个 active pair 物理命中为 0。完整扰动矩阵仍开放，至少包括旧 epoch、过期 lease、成员不可执行、网络分区、digest conflict、成员退出/重构和误降级成对标定。P2 只允许隔离 benchmark，不替换当前 commit 合同或轻量 CBBA 默认路径。
+
+P2 隔离合同 replay 已实现并保持上述边界：本地 commit + CBBA 风格候选选择覆盖中心/二级/peer 转换及 missing ACK、stale epoch、expired lease、partition、member loss/replacement，逐场景输出 round/completion/conflict/gap-or-unavailable。MIT CBBA/CA-CBBA 仅返回 capability/unavailable；没有外部性能结果，不能据此比较算法优劣。
+
+### 历史基线（2026-07-11 最终 P1 验证前）
+
+`blocks_cv_m5_n2_liveness_batch_20260711` ComputerVision 证据中，seeds 7/17/27 均为 6 次中心重规划请求、6 次 no-change ACK、0 applied、0 expired，需求满足率均为 1.0，错误重复锁均为 0；T002 共识帧为 4/5/4，D7 每 seed 获得 2 次终端合同许可；T001 双 primary 共识均为 0。该批次当时确认 P0 无新增 blocker。随后 D4 完成 `CoalitionMemberAck`、`CoalitionCommitState`、轻量 commit coordinator 和 `CoalitionSafetyEvidence` 原子 fallback 扩展；当时 T001 协同视觉、二级 active plan 和完全无中心 `k>1` 的真实 episode 接线仍列为 P1。该段是最终 3/3、3/3、2/3 验收前的历史基线，不得覆盖上一节当前状态；ComputerVision 证据也不是物理拦截证明。
+
+该历史阶段的后续顺序曾是 P0/本地 ACK-commit 回归、二级 active-plan/commit 正负例、完全无中心三成员真实 episode commit 与网络分区负例、成员退出重构、D6 多 seed 聚合。当前 secondary/peer commit 正例和 missing ACK 负例已由上一节关闭；仍开放的是完整分区/成员重构/恢复矩阵与多 seed 聚合。MIT/CA-CBBA 已有 P2 capability/unavailable 输出，但外部 execution benchmark 尚不可用；auction/contract-net 也未执行，且均不得替换本地轻量 CBBA 默认路径。
+
 ### 已实现且应保留
 
 - 中心/二级/完全无中心降级顺序。
@@ -149,20 +163,23 @@ CBBA-PR 的“部分释放 bundle 后缀”可作为动态补位的研究参考�
 - 单 owner `TrackSummary` 的轻量 CBBA、通信轮次/字节/冲突统计。
 - 成员级 D5 视觉风险对 bid 的保守加权。
 - `CoalitionSafetyEvidence` 对 D3 schema v2 的中心联盟做 demand/member/plan version/coalition version 校验，并序列化给 main/D6/D7。
-- 中心有效且联盟合法时允许中心路径继续；若 arbiter 候选 secondary/distributed 且原子 coalition fallback 未形成，则中心可用时 `request_center_replan`、中心不可用时 `coalition_fallback_unsupported`/`hold_or_revoke`；event 保留 candidate/gated action，`k_j>1` 不进入 single-winner CBBA。
+- 中心有效且联盟合法时允许中心路径继续；secondary/distributed 有效 commit 可形成 atomic fallback，无有效 commit 时中心可用则 `request_center_replan`、中心不可用则 `coalition_fallback_unsupported`/`hold_or_revoke`；event 保留 candidate/gated action，`k_j>1` 成员形成不交给 single-winner CBBA。
 - 合法联盟内授权多资源锁同一 `global_track_id` 不算 duplicate；联盟外/超额成员和旧 plan/coalition version fail closed。
+- center replan lifecycle 已消费 D5 current-coalition summary：只有 track/plan/coalition scope current、全部 primary 稳定 locked、visual consensus 无冲突且 required commit 完整时，旧 soft pending 才输出 no-change/continue；同一 summary 对所有 current primary 产生一致 D4 action。
+- main 当前已传递所需 summary。D4 的最小字段是双版本 scope、primary required/locked/complete、consensus/conflict，以及 commit-required 时 state、required/acked IDs、valid/conflict reasons；缺字段不推断 recovery。
+- D2 continuous `duplicate_track_risk` 只作为 soft 候选/协方差重叠证据；只有显式 duplicate count/delta/observed flag 才是 hard observed duplicate。该区分防止合法 current coalition consensus 被非事件型 score 错误阻断，同时保留真实重复事件 fail closed。
 
 ### P1 缺口
 
-- 第一阶段已读取 coalition id、target demand、member role 和双版本，但尚未实现 timing feasibility、ACK bitmap 和完整 coalition lifecycle。
-- 完全无中心路径不能对 `k_j=3` 形成原子联盟，也没有缩编/补位/重组状态机。
-- 二级接管 metadata 只证明 coordinator/plan 接管，尚未证明联盟成员计划完整接管。
-- 中心恢复只比较 assignment owner，未比较 coalition digest、成员执行前缀、波次和 reserve 状态。
+- 已读取 coalition id、target demand、member role 和双版本，并实现 required-member ACK bitmap、commit lifecycle、lease/epoch、digest、分区和恢复审计；真实 episode 的二级/peer commit 正例与缺 ACK 负例已通过，D7 timing feasibility 和完整扰动矩阵仍开放。
+- 完全无中心路径可对上游已经给定的 `k_j=3` 成员集合做本地原子 commit，但尚不能自主完成成员形成，也没有 reserve 激活、缩编/补位/整盟重组状态机。
+- 二级接管已证明协调者与 required-member 3/3 ACK 可进入 `executing`；该合同证据不等于成员运动学可达或物理拦截完成。
+- 中心正常路径的 D5 visual consensus recovery 已校验 current coalition scope 和 primary 集合；中心失效后的恢复仍只比较 assignment owner，尚未比较完整 coalition digest、成员执行前缀、波次和 reserve 状态。
 - D6 现有 completion/conflict 指标没有区分“目标被一个资源覆盖”和“目标需求被完整联盟满足”。
 
 ### P2/P3 保持项
 
-- 外部 CCBBA/CBGA/auction/CNP adapter 和同预算 benchmark。
+- 外部 CCBBA/CBGA execution adapter 和同预算 benchmark；当前仅完成 MIT/CA-CBBA capability/unavailable adapter。
 - CA-CBBA 学习式通信调度、真实 DDS/mesh 和硬件链路。
 - 与真实末端处置、飞控和导引的联合在线优化。
 

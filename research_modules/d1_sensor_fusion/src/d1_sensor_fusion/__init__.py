@@ -16,12 +16,20 @@ from .cooperative import (
 )
 from .fusion import FusionAdapter
 from .observations import RadarCovarianceConfig
+from .p2_benchmark import (
+    OFFLINE_TRUTH_SCHEMA_VERSION,
+    P2_BENCHMARK_SCHEMA_VERSION,
+    load_frozen_governed_replay,
+    run_p2_isolated_benchmark,
+)
 from .quality import annotate_covariance_growth_rates, summarize_region_quality_windows
 from .recon_cue import summarize_recon_cue_from_tracks
 from .replay import (
+    REPLAY_MANIFEST_SCHEMA_VERSION,
     REPLAY_PROVENANCE_SCHEMA_VERSION,
     REPLAY_SCHEMA_VERSION,
     ReplayProvenance,
+    build_governed_replay_manifest,
     read_blocks_sensor_observations_jsonl,
     read_sensor_observations_csv,
     read_sensor_observations_jsonl,
@@ -31,6 +39,8 @@ from .replay import (
     sensor_observation_from_csv_row,
     sensor_observation_from_jsonl_record,
     sensor_observation_to_replay_record,
+    serialize_governed_replay,
+    serialize_offline_governed_replay,
     summarize_sensor_observation_latency_audit,
     write_sensor_observations_csv,
     write_sensor_observations_jsonl,
@@ -72,6 +82,9 @@ __all__ = [
     "LatencyAuditSummary",
     "LosIntersectionAngle",
     "ObserverLineage",
+    "OFFLINE_TRUTH_SCHEMA_VERSION",
+    "P2_BENCHMARK_SCHEMA_VERSION",
+    "REPLAY_MANIFEST_SCHEMA_VERSION",
     "REPLAY_SCHEMA_VERSION",
     "REPLAY_PROVENANCE_SCHEMA_VERSION",
     "RadarCovarianceConfig",
@@ -83,9 +96,11 @@ __all__ = [
     "TrackLevel",
     "TrackUncertaintySummary",
     "annotate_covariance_growth_rates",
+    "build_governed_replay_manifest",
     "covariance_intersection",
     "make_minimal_airsim_dry_run_fixture",
     "localize_bearing_observation_group",
+    "load_frozen_governed_replay",
     "observations_from_airsim_dry_run_fixture",
     "read_blocks_sensor_observations_jsonl",
     "read_sensor_observations_csv",
@@ -93,9 +108,12 @@ __all__ = [
     "replay_blocks_sensor_observations_jsonl",
     "replay_sensor_observations_csv",
     "replay_sensor_observations_jsonl",
+    "run_p2_isolated_benchmark",
     "sensor_observation_from_csv_row",
     "sensor_observation_from_jsonl_record",
     "sensor_observation_to_replay_record",
+    "serialize_governed_replay",
+    "serialize_offline_governed_replay",
     "summarize_region_quality_windows",
     "summarize_sensor_observation_latency_audit",
     "write_sensor_observations_csv",

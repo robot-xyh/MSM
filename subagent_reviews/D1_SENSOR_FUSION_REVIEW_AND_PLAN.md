@@ -245,7 +245,7 @@ AirSim Blocks 运行时默认不再保留截图，只保留相机元数据、检
 
 D5 的末端关联结果可作为 D1/D4 的反馈信号，但不得由 D5 本地直接改写 D1 的 `global_track_id`。
 
-### 6.4 当前已完成和仍需补充的工程改进
+### 6.4 工程改进记录（含 2026-07-10 历史基线）
 
 已完成：
 
@@ -334,7 +334,7 @@ P2/后置：
 
 ---
 
-## 10. 2026-07-11 Replay/Schema 专项评审
+## 10. 历史基线：2026-07-11 Replay/Schema 专项评审
 
 本轮将此前“reader 能读真实日志”推进为“D1 能定义并验证新 writer 合同”。
 
@@ -346,7 +346,7 @@ P2/后置：
 
 测试结果为 D1 全量 `38 passed`。该结果关闭 D1-owned 的 schema/provenance、健康字段和窗口 helper 缺口，但不等于真实 AirSim 多 seed 标定完成。main 仍需接入新 writer、提供真实配置摘要、关闭 simulation-only truth hint，并把 D1 region/window/health 输出送入 episode bus 和 D6。
 
-## 11. 2026-07-11 5v5 Truth-Isolated Runtime 复核
+## 11. 历史基线：2026-07-11 5v5 Truth-Isolated Runtime 复核
 
 main 在
 `research_modules/airsim_runtime/outputs/p1_runtime_truth_isolated_d4d5_smoke_20260711/`
@@ -415,3 +415,80 @@ unexpected OOSM、stale、预算超限和持续窗口联合判定。
 observer/source、duplicate 不重复收敛、CI 不比错误独立融合更自信及 mixed canonical ID
 拒绝。该结论仅是中心化 P1 数值基础，不表示 D2 跨平台关联、main/AirSim runtime、真实
 多 seed、部分共享 lineage、成员退出或分布式协同定位全链路已经完成。
+
+## 14. 历史证据、缺口分层与执行次序（2026-07-11 三 seed）
+
+最新 M-to-N AirSim 报告覆盖 seeds 7/17/27：每组均有 6 次重规划请求和 6 次 no-change
+ACK，无 applied/expired，需求满足率为 1.0，错误重复锁定为 0；T002 形成 4/5/4 帧共识并
+使 D7 每 seed 获得 2 次终端合同许可，T001 双 primary 共识仍为 0。该 ComputerVision
+结果只验证 D1 合同能够进入收敛的 M-to-N 状态链，不是物理拦截或真实传感器精度证据。
+
+- P0 无 blocker，当前 D1 回归为 `62 passed`；双时间戳、NED、协方差、质量治理和身份
+  lineage 继续作为硬合同。
+- P1 已完成的是接口和中心化数值基础；未完成的是 main/D2 runtime 接线、真实 AirSim
+  多 seed 协同 replay、故障/遮挡/节点退出、RMSE/NIS/NEES 与持续阈值、模型集和场景
+  自适应 covariance 标定、D6 长期 schema。
+- T001 双 primary 视觉共识是 D5/D7 的系统 P1；D1 不能通过放宽 covariance 或身份门控
+  代替下游闭合。
+- FilterPy、Stone Soup、OpenCV/GTSAM 和 ROS 2 均属于 P2 optional benchmark 或后置
+  集成，不进入默认路径。
+
+后续先让 main/shared 采用 governed writer 并分离离线 truth，再由 D1/D2 接通 canonical
+ID 已确认的 cooperative adapter；随后采集真实多 seed 数据完成统计标定；最后运行第三方
+离线对照。实现阶段验收命令保持为
+`PYTHONPATH=research_modules/d1_sensor_fusion/src pytest -q research_modules/d1_sensor_fusion/tests`。
+
+## 15. Governed Replay 合同实施复核
+
+D1 已在现有 `ReplayProvenance` 和 record writer 上增加严格批量入口，而没有再造平行观测
+类型。`serialize_governed_replay()` 输出 manifest/records，要求 scenario/config ID、version、
+digest、seed、coverage cell、双时间戳、NED fusion working frame、covariance 和 source
+lineage 完整且可 JSON 序列化。covariance 同时检查维度、有限性、对称性和半正定性。
+
+在线 metadata 的 truth/actor/object 标识会被递归剥离，lineage 改用不暴露真值的观测摘要。
+离线评分只能显式调用 `serialize_offline_governed_replay()`，标签固定放在 `offline_truth`。
+旧无版本 Blocks JSONL reader 保持兼容，以免破坏历史回放；它不具备 governed manifest 的
+完整性保证。
+
+多目标、字段缺失、legacy、truth stripping、双时间戳、covariance 和 lineage 测试均已
+通过。该项关闭 D1-owned P1 实现；最新 main episode bus 已采用
+serializer，并把在线记录与离线 truth 标签分离。真实 AirSim 传感器精度和长时统计标定仍
+需后续验证，但不影响 P1 合同层闭合。
+
+## 16. 当前结论与真实 Replay 后续项（2026-07-11 最终验证）
+
+最终依据为
+`research_modules/airsim_runtime/outputs/p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md`。
+
+1. **P1 合同层闭合**：D1 governed replay、双时间戳、covariance、coverage/lineage 和
+   scenario/config provenance 已由 main episode bus 写出；在线记录递归剥离 truth/actor/object
+   identity，truth 只写入独立离线标签供评分。
+2. **CV 合同验收通过**：10 seeds 中 8/10 达到 T001 双 primary 合同阈值。二级和完全分布式
+   3/3 ACK commit 正例通过，缺 ACK 的 2/3 case abort 并 fail-closed。D1 只把这些结果作为
+   状态、协方差、时间和 lineage 成功进入下游链路的证据，不承担联盟仲裁或控制职责。
+3. **物理拦截未闭合**：SimpleFlight 15 s 仅为诊断，30 个 active pair 均未命中；该结果既
+   不是 D1 融合精度验收，也不能替代真实传感器或长时 replay 标定。
+4. **P2 仅隔离 benchmark**：可选第三方 adapter/模型不进入默认依赖，不升级或替换 NumPy
+   EKF/fixed-lag 主线。
+
+真实 replay 后续项应准确表述为：D1/D2-confirmed cooperative runtime adapter，以及机动、
+遮挡、节点退出、camera/bbox、sensor-delay/fault 的更长多 seed 数据；在这些数据上完成
+RMSE/NIS/NEES consistency、sensor-specific expected latency、health/region window、模型集
+和场景自适应 covariance 标定。governed writer 接入、在线 truth 隔离和 CV 双 primary 合同
+验收已完成，不再作为当前缺口。
+
+## 17. P2 隔离滤波对照复核
+
+本轮没有把 FilterPy 或 Stone Soup 接入在线 D1，也没有增加默认依赖。新增的隔离 runner
+只读取冻结 governed replay：online records 保持 truth-stripped，双时间戳、covariance、NED
+和 lineage 先通过校验，独立 offline truth sidecar 仅用于滤波后的 RMSE/NEES 评分。
+
+当前 NumPy EKF/fixed-lag 路径在六条固定 radar 观测上输出 RMSE `0.2335 m`、mean NIS
+`0.0426`、mean NEES `0.0651` 和两次 `6.9-10.1 ms` 主机耗时。该合成样本显示 covariance 偏保守，
+只证明 RMSE/NIS/NEES/time 证据链可运行，不构成真实传感器 consistency 验收。当前环境中
+`filterpy` 与 `stonesoup` 均不可用；两项结果固定为 `unavailable`，第三方指标为空且包含
+`unavailable_reason`，不存在静默回退或伪对照。
+
+后续 P2 只在隔离依赖环境中实现并评估真实 adapter；收益未证明前不得替换默认 NumPy
+路径。真实多 seed 的机动、遮挡、节点退出和延迟/故障 consistency 仍是 P1 标定项。本轮
+D1 全量回归为 `62 passed`。

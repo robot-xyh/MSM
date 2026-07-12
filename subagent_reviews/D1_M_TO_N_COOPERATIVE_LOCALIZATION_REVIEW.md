@@ -148,7 +148,7 @@ D1 标准化 local TrackSummary
 - fixed-lag/OOSM replay、timestamp uncertainty 和 sensor health；
 - radar/acoustic/EO 观测模型、source lineage de-dup；
 - `TrackUncertaintySummary`、区域窗口和 recon cue；
-- truth-isolated D1→D2→D3 单 seed 5v5 smoke。
+- governed replay 与 truth-isolated D1→D2→D3 main episode-bus 合同已进入 10-seed P1 验证。
 - cooperative typed DTO/summary，包含 canonical ID、observer lineage、平台位姿/外参 covariance、双时间戳和共同估计时刻；
 - 2..N bearing-ray weighted least squares，输出 LOS 交会角、信息 rank/condition、残差和 geometry reason，并对短基线、近共线、超时差及 covariance 缺失保守拒绝/膨胀；
 - 1..N state 的 NumPy Covariance Intersection，共同时间 CV 传播、process/timing covariance 和 message UUID/完整 lineage 去重。
@@ -178,3 +178,16 @@ D1 标准化 local TrackSummary
 - 官方开源候选：4 个；许可证和维护状态来自官方 GitHub 仓库/发布页。
 - Google Scholar：仅用于发现，不作为最终证据。
 - Web of Science：当前无订阅/API 权限，未声称完成 WOS 引文或收录核验。
+
+## 10. 最新系统证据与定位（2026-07-11 最终验证）
+
+最终验证的 ComputerVision 10-seed batch 中，T001 双 primary 合同达到 8/10 验收阈值；
+二级和完全分布式 3/3 ACK commit 正例通过，缺 ACK 的 2/3 case abort 并 fail-closed。
+main episode bus 同时写出 D1 governed replay，在线记录不含 truth/actor/object identity，
+truth 只进入独立离线评分标签。因此 D1 的 P1 合同层和 truth 隔离不再是未完成项。
+
+这些结果仍不是本调研中的三机协同定位精度验证。SimpleFlight 15 s 诊断的 30 个 active
+pair 均未物理命中，不能用于关闭协同定位或物理拦截。D1 typed DTO、bearing WLS 和 CI
+数值基础已完成，但 D2-confirmed runtime adapter、真实多 seed 三机机动/遮挡/成员退出
+replay 和 RMSE/NIS/NEES consistency 仍需验证。P2 只做隔离 benchmark，不替换 NumPy
+默认路径。

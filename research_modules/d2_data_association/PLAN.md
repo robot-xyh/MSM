@@ -10,7 +10,7 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 
 ## 2. 当前代码状态概览
 
-当前 D2 可运行路径依赖 NumPy、SciPy 和 pytest。默认工程主线是 `GNNHungarianAssociator` + 马氏门控 + 二维常速度 Kalman fallback + `Tracker` 生命周期状态机。JPDA 和 MHT 已有接口兼容、可执行的研究对照实现，但不是完整生产级 JPDA filter 或 MHT hypothesis manager。Stone Soup、FilterPy 当前只保留 optional availability 检测和显式 placeholder，不进入默认运行路径。
+当前 D2 可运行路径依赖 NumPy、SciPy 和 pytest。默认在线工程主线仍是 `GNNHungarianAssociator` + 马氏门控 + 二维常速度 Kalman fallback + `Tracker` 生命周期状态机，本轮 P2 benchmark 没有替换该路径。JPDA 和 MHT 已有接口兼容、可执行的研究近似，但不是完整生产级 JPDA filter 或 MHT hypothesis manager。Stone Soup、FilterPy 已有 optional 版本/原因探测、对象 adapter 和 frozen replay smoke benchmark，但不进入默认运行路径或 requirements。
 
 代码和测试已覆盖：
 
@@ -32,17 +32,23 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 - 测试包含 3 目标 dry-run episode，证明输出数量来自输入集合长度；同时包含 2v2 replan baseline，证明中心/二级切换时可保持稳定 `global_track_id`。
 - D2/D6 必须显式保留 `id_switch_count` 的系统规则已有合同测试：D2 `MetricsRecorder.id_switch_count` 与 D6 episode 统计口径一致。
 - P1 replay governance 已实现：`run_airsim_replay_association()` 默认启用在线 truth isolation；在线 detection ID 按帧匿名化，actor/truth 元数据递归清除；`OfflineTruthEvaluation` 独立计算 identity/continuity、M-of-N 初始化、false-track 和 NEES，NIS 则由不依赖真值的在线 innovation 计算。每帧 association log 固化 `d2-association-log/v2`、risk profile/version、measurement/active-track count 和 NIS availability，不携带 truth label、truth target count 或 NEES。
+- P1 offline truth 合同已冻结为 `d2-offline-truth-label/v1`：每条 JSONL 记录携带 episode、frame、timestamp、truth ID、二维 position 和可选匹配注释。在线帧递归移除 truth，离线标签仅在 association 完成后恢复为 evaluator-only 视图；缺标签时 IDSW/continuity/NEES 显式 unavailable。
+- P1 deterministic calibration runner 已实现：通用 N-target dense crossing fixture 覆盖连续漏检/遮挡和虚警，默认 5-target 仅为基准；runner 强制至少 10 个唯一 seed，输出每 seed 与聚合 IDSW、continuity、NIS/NEES availability、gate/risk profile/version、runtime 和确定性签名。
+- P2 optional benchmark v2 已收敛：同一 frozen replay digest 下固定运行默认 GNN/Hungarian，并可显式运行模块内 JPDA/MHT research adapter 和 Stone Soup/FilterPy object adapter。GNN/JPDA/MHT 共用 `Tracker` 生命周期，truth 只在运行结束后进入 offline evaluator；每行统一输出 IDSW、continuity、latency 和 `unavailable_reason`。外部 object adapter 的身份指标保持 unavailable，完整 JPDA/MHT 和端到端 FilterPy tracker 仍声明未实现。
+- P1 governed input adapter 已支持 D1 `serialize_governed_replay`：识别 manifest v1/observation v1，按 `airsim_frame_index + measurement_timestamp` 聚合，用 radar `[range, azimuth, elevation]` 和传感器 NED 外参生成水平 N/E detection/covariance；声学 bearing 和 EO pixel 记录不做错误混合，跳过统计进入报告 metadata。旧 AirSim replay loader 兼容保留。它是 P1 truth-isolated 合同边界，不是 P2 第三方库 benchmark。
 - M 对 N cross-node 注册基础已实现：6D NED `SourceTrackSummary`、source-local namespace、公共时刻 CV 传播、协方差感知 track-to-track gate、按 source 分组 Hungarian、canonical multi-source binding/history、payload/lineage/stale 防重，以及 exact/unknown/duplicate 三类相关性决策。
 - `CrossNodeRegistryMetrics` 保持 truth-free，只统计 operational rebind、duplicate rejection 和 latency；`OfflineCrossNodeMetricsEvaluator` 通过独立 source-key truth mapping 计算 cross-node IDSW、canonical duplicate 和 association precision/recall。
-- 当前 D2 回归基线为 57 项测试，覆盖无 truth continuity 可用性、无 truth NIS、actor identity 隔离、`rejected_pairs` 序列化/回放、covariance 有限性/对称性/PSD 治理、5v5 crossing/dense/漏检/虚警治理 fixture，以及 cross-node 1/2/3/N source、异步、交叉、重复、local ID 冲突、canonical continuity 和 truth isolation。
+- D2 回归覆盖 D1 governed manifest/records、匿名化、radar projection、模态跳过、offline position matching、旧 replay 兼容，以及 P2 五行输出、truth-free tracker 输入、缺依赖和未知 adapter 拒绝。
 
 ### 2.1 P0/P1 缺口快照
 
 - **P0**：无 P0 blocker。GNN/Hungarian、马氏门控、可插拔 `DataAssociator`、`id_switch_count`、`track_continuity`、risk summary、D1 adapter、AirSim dry-run adapter、按输入集合长度运行、P0-B `track_quality`/`association_risk`、motion consistency cost 和 P0-C quality-aware gate baseline 均是当前主线并已有测试覆盖。
-- **P1 已闭合的 D2-owned 接口**：逐帧 association log schema、risk profile/version、在线 truth isolation、独立 offline evaluator、可配置且版本化的 M-of-N 初始化治理（默认 2-of-3）、false-track 统计、NIS/NEES、5v5 crossing/dense/漏检/虚警 fixture，以及 cross-node local-track 到 canonical ID 的注册与评估基础。
-- **P1 剩余集成/标定**：main/runtime 生产真实 5v5 AirSim replay，D6 按多 seed 校准 gate/risk/IDSW、M-of-N 参数和 NIS/NEES 覆盖率；D2 后续仍需完整 adaptive gate 与 JPDA 受控对照。D2 不直接连接 AirSim SDK。
-- **2026-07-10 AirSim 证据边界**：已有 5v5 60-case 是 D4/D5 二级覆盖与降级校准，2v2 10-seed 是 D7 拦截闭环校准；它们证明 runtime 和 D6 批量出口可用，但没有形成带逐帧 D2 association log、独立 offline truth label 和 threshold profile/version 的真实 5v5 replay，因此不能用于关闭上述 D2 P1。
-- **2026-07-11 truth-isolated runtime 证据**：main 已把在线 `truth_id` 强制设为 `None`，并完成不依赖 truth 的 D2 -> D3 转换；`d2_governance_summary` 已进入 D6。真实 5v5 短 episode 的 main-bus `d2_hard_risk_frame_rate=0.0`，仅表示该运行未观察到在线 hard-risk frame，不代表 truth-based IDSW 为零或 continuity 正常。在线 `id_switch_count`、`track_continuity`/`identity_continuity` 必须保持 unavailable，离线评分和多 seed 标定仍是 P1。
+- **P1 合同层已闭合**：D1 governed adapter、association log schema/profile、在线 truth isolation、独立 offline evaluator、`d2-offline-truth-label/v1`、N-target dense/crossing fixture、至少 10-seed calibration runner、availability-aware summary、M-of-N/false-track/NIS/NEES 接口及 cross-node canonical registry 基础均已实现并回归。
+- **P1 物理/长期标定仍开放**：系统级 SimpleFlight 物理拦截尚未闭合；专用更长真实 AirSim dense/crossing replay、gate/risk/NIS/NEES 长期参数标定也仍需继续。这些开放项不回退 D2 P1 合同层和 synthetic dense calibration runner 的完成状态。D2 不直连 AirSim SDK。
+- **历史基线，2026-07-10**：当时的 5v5 60-case 和 2v2 10-seed 不是 D2 dense/crossing 真值回放，因而在当时不足以关闭 D2 P1。本段不代表当前状态。
+- **历史过渡证据，2026-07-11 早期**：truth-isolated 短 episode 及 seeds 7/17/27 当时只证明 D2 -> D3/D6 通路与单 primary 合同收敛，T001 双 primary 尚未通过。本段不是当前结论。
+- **当前 10-seed 验证**：M=5、N=2 ComputerVision 的 T001 双 primary 共识/计划授权为 8/10；`id_switch_count=0`、错误 duplicate=0、`global_track_id` 改写/重绑=0 均为 10/10。二级与完全分布式 commit 正例通过，缺 ACK 时 fail-closed；这验证下游使用 D2 中心 ID 的合同，不表示 D2 本地重绑 ID。
+- **物理与 P2 边界**：SimpleFlight 15 s 只是诊断，30 个 active pair 均未命中；P1 合同闭合不得写成物理拦截或长期标定闭合。P2 仅是隔离 benchmark；模块内 JPDA/MHT 是显式研究近似，Stone Soup 1.9.1/FilterPy 1.4.5 仅对象 adapter smoke，默认在线 GNN 路径未替换。
 
 ## 3. 输入输出合同
 
@@ -140,7 +146,10 @@ D2 侧 P1 已补离线 replay 读写和阈值敏感性 helper：
 - `write_replay_association_report()` 与 `write_association_logs_jsonl()` 固化 D2-owned report/log 输出格式，便于 main/D6 后续消费。
 - `run_threshold_sensitivity()` 对 gate threshold 与 risk threshold profile 做离线 sweep，逐项输出 `id_switch_count`、`track_continuity`、`duplicate_assignment_count`、`risk_profile_version`、`association_risk_threshold_version`、seed/episode/scenario/frame 元数据、gate/motion/quality diagnostics、soft/hard risk frame count、max risk score 和 risk summary。
 - `summarize_multi_seed_risk_calibration()` 汇总多个 seed/episode 的 threshold sensitivity rows，按 gate/risk profile/version 输出 IDSW、continuity、duplicate、soft/hard risk count/rate/score 分布、dense/crossing sensitivity summary、风险原因集合和推荐阈值摘要。
-- `tests/test_replay.py` 覆盖 5 目标 AirSim-like JSONL replay、main/D6-style row metadata 与 offline truth label 透传、阈值 profile version、无 truth label N-v-N `target_count` fallback、变量目标数 sensitivity、多 seed calibration summary、软/硬风险分类和无 AirSim SDK import。
+- `OfflineTruthLabel`、`write/load_offline_truth_labels_jsonl()` 与 `evaluation_frames_with_offline_truth()` 固化独立 truth 文件，并让 `run_airsim_replay_association(..., offline_truth_labels=...)` 在在线关联完成后复用原 evaluator。
+- `run_dense_crossing_calibration()` 复用上述 replay/evaluator/risk summary，强制至少 10 个唯一 seed，并通过 `summarize_dense_crossing_calibration()` 显式统计 available/unavailable seed。
+- `load_airsim_replay_frames()` 在旧 frame schema 前识别 D1 governed bundle；转换后的 online frame 不携带 observation ID、lineage 或 truth，离线 `offline_only` labels 仅在 evaluator 副本中用位置 Hungarian 建立评分映射。
+- `tests/test_replay.py` 与 `tests/test_calibration.py` 覆盖 5 目标 AirSim-like replay、动态 N、truth JSONL round-trip/隔离、阈值版本、无 truth availability、同 seed 复现和 10-seed 聚合。
 
 该 helper 不连接 AirSim runtime，也不从场景名推断目标数量；真实 ComputerVision 图像/metadata 采集、episode JSONL 生产和跨模块 schema 发布仍由 main/runtime/D6 负责。
 
@@ -167,32 +176,32 @@ D2 侧 P1 已补离线 replay 读写和阈值敏感性 helper：
 
 ### 5.3 IMM/EKF/UKF
 
-IMM、EKF、UKF 目前是研究计划项，不是已落地代码。D2 的 `Tracker` 只有二维线性常速度 Kalman fallback。`compat.py` 中 FilterPy 的用途说明为 future IMM/EKF/UKF prototype adapters，但 `to_filterpy_state()` 是显式 placeholder。
+IMM、EKF、UKF 目前是研究计划项，不是已落地代码。D2 的 `Tracker` 只有二维线性常速度 Kalman fallback。`to_filterpy_state()` 和 `filterpy_filter_from_detection()` 只映射二维 CV `KalmanFilter` 并用于对象更新 smoke，不实现 IMM、EKF、UKF 或端到端关联。
 
 如果后续证明机动预测误差是 ID Switch 主因，应先定义三维 NED 或二维机动模型、量测模型、协方差合同和评估场景，再决定是否接入 FilterPy 或自研 IMM/EKF/UKF。
 
-## 6. 未实现与未使用库
+## 6. 隔离式外部库状态
 
-### 6.1 Stone Soup 未实际使用
+### 6.1 Stone Soup Detection adapter
 
-当前未创建 Stone Soup `Detection`、`State`、`Track`、JPDA 或 MHT 对象，也没有 Stone Soup benchmark。`compat.py` 只检查 `stonesoup` 是否可 import；如果调用 `to_stonesoup_detection()`，要么提示未安装，要么抛出 `NotImplementedError`。
+`to_stonesoup_detection()` 已把在线安全的 D2 `Detection` 映射为 Stone Soup `Detection/StateVector`。`run_optional_framework_benchmark()` 可在 frozen replay 上测量转换 latency；隔离环境 Stone Soup 1.9.1 已实测执行成功。当前没有 Stone Soup `Track`、predictor/updater、JPDA 或 MHT tracker，因此 adapter 行不得输出 IDSW/continuity 数值。
 
 暂未接入原因：
 
 - 默认回归需要保持 NumPy/SciPy/pytest 轻依赖。
 - 不希望把 Stone Soup 对象暴露到跨模块总线。
 - D2 先固化 `DataAssociator`、`AssociationResult`、metrics 和 D1/D6 合同，再做外部框架对照。
-- 尚缺多 seed AirSim CV replay、密集交叉和遮挡 sweep 来证明完整 JPDA/MHT 的收益。
+- 尚缺真实多 seed AirSim CV replay、密集交叉和遮挡 sweep 来证明完整 JPDA/MHT 的收益。
 
 缺少条件：
 
-- 独立 research env 或 optional extras。
-- Stone Soup adapter 映射和测试标记。
-- 固定 replay 数据集、truth labels、容差和对照报告。
+- Stone Soup predictor/updater、Track 生命周期和完整关联器映射。
+- 完整 JPDA/MHT 的状态混合、假设管理、剪枝和同预算验收。
+- 真实 replay 数据集、truth labels、容差和对照报告。
 
-### 6.2 FilterPy 未实际使用
+### 6.2 FilterPy CV object adapter
 
-当前未创建 FilterPy KalmanFilter、ExtendedKalmanFilter、UnscentedKalmanFilter 或 IMMEstimator。`optional_dependency_status()` 只报告 `filterpy` 可用性，`to_filterpy_state()` 是 placeholder。
+当前已创建 FilterPy `KalmanFilter` CV 对象 adapter，可从 D2 `GlobalTrack` 或 `Detection` 初始化，并在 benchmark 中执行 predict/update；隔离环境 FilterPy 1.4.5 已实测成功。它没有替换 D2 Tracker，也不维护跨帧关联身份，所以 IDSW/continuity 保持 unavailable。`ExtendedKalmanFilter`、`UnscentedKalmanFilter` 和 `IMMEstimator` 仍未实现。
 
 暂未接入原因：
 
@@ -263,22 +272,25 @@ GNN 是硬关联，交叉帧的最优/次优代价 margin 可能很小。一旦�
 
 ## 9. 下一步
 
-### P1
+当前顺序为：维护已闭合的 P1 replay/truth/D1-governed 合同和 synthetic 10-seed runner；如有需要，再由 main/runtime/D6 沿冻结合同扩展真实 dense/crossing 性能标定。P2 保持隔离 benchmark，不得反向改写默认 GNN/Hungarian 路径、默认依赖或跨模块总线合同。
 
-1. **冻结真实 5v5 replay 和离线真值合同**：main/runtime 按帧输出 detection、timestamp、covariance、association result、`rejected_pairs` 和 track lifecycle；truth ID/position 放在独立 offline-evaluation 字段，在线关联不得读取。验收要求覆盖 dense crossing、短遮挡、漏检、虚警和至少一个非 2/5 的 N/M case。
-2. **治理阈值并执行多 seed 标定**：每个 episode 固化 gate threshold、`risk_profile_version`、`association_risk_threshold_version` 和 IDSW 判定版本；D6 汇总 IDSW、continuity、duplicate、软风险误触发率与硬风险漏报率。5v5 60-case 和 2v2 10-seed 只作为 runtime 参考，不替代该 D2 专项数据集。
+### P1 闭合维护与后续标定
+
+1. **维护冻结合同**：main/runtime 输出不含 truth 的 governed detection/timestamp/covariance，并单独输出 `d2-offline-truth-label/v1`；D2 持续回归匿名化、availability 和 evaluator-only 评分。
+2. **可选真实 dense/crossing 标定**：若扩展专项数据集，每个 episode 应固化 gate threshold、`risk_profile_version`、`association_risk_threshold_version` 和 IDSW 判定版本；D6 汇总 IDSW、continuity、duplicate 及软/硬风险误报漏报。这是 P1 闭合后性能研究。
 3. **标定 N/M 初始化**：对 confirmation hits、miss tolerance 和 birth/deletion 参数做网格实验，输出初始化延迟、false track rate、漏建轨率和重复航迹率，并按目标密度与漏检率分层。
 4. **补齐 NIS/NEES 统计一致性**：NIS 使用量测创新与创新协方差，NEES 仅在离线 truth state 可用时计算；输出置信区间内比例和按传感器/距离/场景分组的偏离原因，不把 covariance 输入合法性等同于统计一致性。
 5. **开展 adaptive gate / JPDA 受控对照**：在同一 replay、seed 和计算预算下比较固定/quality-aware/完整 adaptive gate，以及 GNN/Hungarian/当前 JPDA 对照；验收同时报告 IDSW、continuity、false track、漏关联、延迟和假设截断，GNN 仍为默认主线。
 
-P1 验收必须区分两层证据：在线层只使用 innovation、候选重叠、cost margin、duplicate 和质量风险等可观测量；离线层使用隔离 truth labels 计算 IDSW、identity/coverage continuity、NEES 和 hard-risk 漏报率。任何单次在线 `d2_hard_risk_frame_rate=0.0` 都不能替代离线多 seed 身份连续性评分。
+P1 闭合证据区分两层：在线层只使用 innovation、候选重叠、cost margin、duplicate 和质量风险等可观测量；离线层使用隔离 truth labels 计算 IDSW、identity/coverage continuity、NEES 和 hard-risk 漏报率。当前 CV 10-seed 的 IDSW=0 是离线评分结论，不应与无 truth 的在线 `d2_hard_risk_frame_rate=0.0` 混淆。
 
 ### P2
 
 - 决定 D2 是否升级原生 3D NED tracker；若升级，先定义 `[px, py, pz, vx, vy, vz]`、6x6 covariance、三维门控和 D1/D5 投影合同。
-- 建立 Stone Soup optional benchmark，只用于离线对照完整 JPDA/MHT，不进入默认运行路径；当前轻量 JPDA/MHT 已是可执行对照，不应再被列为 P1 未完成项。
-- 建立 FilterPy optional benchmark，只用于 EKF/UKF/IMM 原型和强机动场景对照。
+- **已完成 benchmark 合同**：v2 固定 frozen replay digest，默认 GNN baseline 与可选 JPDA/MHT research adapter 走同一 Tracker/offline evaluator；Stone Soup/FilterPy object adapter 按依赖可用性执行。五类结果统一输出 IDSW、continuity、latency 和 `unavailable_reason`，并回归在线输入无 truth。
+- **未完成的 P2 增强**：Stone Soup 完整 JPDA/MHT、FilterPy EKF/UKF/IMM、optional 端到端 tracker 及其 IDSW/continuity 对照；模块内轻量 JPDA/MHT 仍只是研究近似，不能当作这些完整算法已实现。
 - 设计 JPDA/MHT 自动升级策略，但必须包含切换迟滞、D4/D6 阈值认可和回放证据，避免算法抖动。
+- P2 只在隔离 research environment 和冻结 replay 上执行；当前 Stone Soup/FilterPy 只是 adapter smoke，模块内 JPDA/MHT 只是研究近似。optional import/API/metric 失败时必须填写 `unavailable_reason`，不能静默回退或写成完整 tracker benchmark。
 
 ### P3
 
@@ -298,13 +310,13 @@ PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_da
 
 专项调研见 `subagent_reviews/D2_M_TO_N_TRACK_FUSION_REVIEW.md`。结论是：多个拦截节点观测同一高威胁目标时，多个 local tracks 只能登记为同一 canonical `global_track_id` 的多源证据，不能解释为多个目标，也不能让 `k_j=3` 的资源需求复制三条全局航迹。
 
-该能力不改变当前 detection-to-track GNN/Hungarian P0 主线。当前 P1 基础状态如下：
+该能力不改变当前 detection-to-track GNN/Hungarian P0 主线。已闭合的中心注册基础如下：
 
 1. **已实现**：带 source/local/epoch namespace、两个 timestamp、6D NED state/covariance、quality、lineage、correlation status 和 canonical hints 的 `SourceTrackSummary`；source hint 不具备身份权威。
 2. **已实现**：公共融合时刻传播、covariance-aware track-to-track Mahalanobis gate、按 source 节点分组的 Hungarian，以及 `global_track_id -> source tracklets` binding/history；测试覆盖 1/2/3/N source、异步、交叉、重复、local ID 冲突和 canonical continuity。
 3. **已实现决策边界**：known cross-covariance 输出 exact correlated fusion request，unknown correlation 只输出 CI request，duplicate payload/lineage 直接拒绝。数值 CI/相关融合继续由 D1 owner 实现。
 4. **已实现指标基础**：online cross-node rebind IDSW、duplicate payload rejection、fusion latency，以及隔离 offline truth 下的 canonical duplicate 和 association precision/recall。
-5. **剩余 P1/P2**：高歧义跨节点 JPDA/MHT、多 seed 同时/序贯/混合 replay、owner/epoch failover、通信字节和 D1/D6 数值融合一致性 NEES/ANEES。
+5. **后续研究**：高歧义跨节点 JPDA/MHT、多 seed 同时/序贯/混合 replay、D2 owner/epoch failover、通信字节和 D1/D6 数值融合一致性 NEES/ANEES。D4 二级/分布式 commit 正例通过不等于 D2 owner failover 已实现。
 6. **保持隔离**：Stone Soup 只作为 track-to-track association/CI benchmark，不把第三方对象写入跨模块总线。
 
 当前已落地 `canonical_duplicate_count`、`cross_node_id_switch_count`、track-to-track association precision/recall、重复消息拒绝数和融合延迟。fusion NEES/ANEES 与通信字节仍待 D1/D6/replay 集成；所有 cross-node 指标都不能与合法的多资源协同或 D3 `duplicate_assignment_count` 混为一谈。

@@ -221,7 +221,7 @@ a95 = sqrt(chi2_2_0.95 * max_eigenvalue(P_xy))
 - JSONL replay 已补显式 unsupported schema version 回归；CSV 缺省 schema 仍按 `d1.sensor_observation.v1` 处理并要求 covariance。
 - 本轮未重新打开 P0-A：`SensorHealthSummary`、观测/航迹 covariance floor/ceiling reason 和 `timestamp_uncertainty_s` 已作为 D1 质量字段保持回归，并纳入 main/D6 消费口径。
 
-## 7.5 2026-07-10 main episode bus / AirSim 2v2 合同复核
+## 7.5 历史基线：2026-07-10 main episode bus / AirSim 2v2 合同复核
 
 本轮只读取 main/shared runtime 代码和
 `research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_smoke_20260710/` 产物，不修改
@@ -251,7 +251,7 @@ main/runtime。六个 reset-separated episode 共 1,528 条 radar/acoustic/EO/sy
 - 单次 2v2 smoke 已从“只有 dry-run/手工 fixture”推进到真实产物审计，但仍不足以关闭
   N actor、多 seed、CV detection、区域窗口和长期 D6 schema 的 P1 校准项。
 
-## 7.6 2026-07-10 十 seed 与 truth-isolation 证据同步
+## 7.6 历史基线：2026-07-10 十 seed 与 truth-isolation 证据同步
 
 main 随后完成了
 `research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_multiseed_20260710/` 的 10-seed
@@ -268,7 +268,7 @@ truth-isolation smoke 的 D1 合成观测仍可携带 `truth_id` 作为离线评
 固化为覆盖 schema version、coverage cell、CV bbox covariance 和二级侦察 metadata 的
 D1 长期 fixture，因此这些 P1 不能仅凭系统运行次数关闭。
 
-## 7.7 2026-07-11 5v5 在线 truth 隔离与 governance 证据
+## 7.7 历史基线：2026-07-11 5v5 在线 truth 隔离与 governance 证据
 
 main 完成
 `research_modules/airsim_runtime/outputs/p1_runtime_truth_isolated_d4d5_smoke_20260711/`
@@ -345,7 +345,7 @@ schema/version 字段，仍需更长 episode 和 D6 批量 schema 审计。
 - **对 D6 评估指标**: D6 可消费 RMSE、连续性、分级准确性、延迟补偿消融、`TrackUncertaintySummary`、`FusionQualityRegionSummary`、`FusionQualityRegionWindowSummary`、`LatencyAuditSummary` 和 source diversity；后续需要 D1/D6 共同稳定长期批量日志 schema 和真实多 seed 持续阈值。
 - **对 D7 导引**: D7 应只把 `stable` 或 `handover` 级 `GlobalTrack` 作为离线中段导引输入，并按协方差/新鲜度扩大门限或请求重规划。D1 不提供飞控、毁伤或自动处置接口。
 
-## 11. 下一步优先级
+## 11. 历史计划基线：2026-07-10 下一步优先级
 
 ### P1: 当前主线补强
 
@@ -387,7 +387,7 @@ schema/version 字段，仍需更长 episode 和 D6 批量 schema 审计。
 4. `summarize_region_quality_windows(window_size_s=...)` 已按 `coverage_cell` 和固定时间桶输出窗口，并按 `LatencyAuditSummary.published_at` 对齐延迟/OOSM 证据。
 5. 固化真实 Blocks/CV 字段形态的 JSONL/CSV fixture；无 truth-hint 两目标 replay 输出两条带 6x6 协方差的 NED 航迹。
 
-本轮已关闭的 D1-owned P1：writer schema/provenance、expected-latency/OOSM 字段、区域固定窗口、协方差增长窗口、基础 truth-free replay fixture。仍需 main/shared 接入 governed writer 并发布区域/窗口/health 摘要；真实多 seed 延迟门限、视觉 bbox/camera fixture 和关联门限继续由后续 AirSim 校准闭合。
+本轮已关闭的 D1-owned P1：writer schema/provenance、expected-latency/OOSM 字段、区域固定窗口、协方差增长窗口、基础 truth-free replay fixture。最新验证中 main episode bus 已接入 governed writer，并把在线 truth 与离线评分标签分离；真实多 seed 延迟门限、视觉 bbox/camera fixture 和关联门限继续由后续 AirSim 校准闭合。
 
 ## 13. M 对 N 协同定位调研后的 P1 计划补充
 
@@ -402,3 +402,110 @@ schema/version 字段，仍需更长 episode 和 D6 批量 schema 审计。
 5. Stone Soup CI、GTSAM/OpenCV triangulation 仅作离线 benchmark；外部库正式接入、ROS 2 和主运行时替换仍保持既有后置优先级，不改当前 NumPy EKF 主线。
 
 物理拦截的同时到达、分波次到达和三机任务联盟属于 D3/D7；D1 只提供共同估计时刻的目标状态、协方差和协同几何质量。
+
+## 14. 历史基线：2026-07-11 M-to-N 三 seed 证据与后续实施顺序
+
+最新系统证据为
+`research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_liveness_batch_20260711/M_TO_N_AIRSIM_CONVERGENCE_REPORT_CN.md`。
+seeds 7/17/27 均记录 6 次中心重规划请求、6 次 no-change ACK、0 次 applied、0 次 expired；
+需求满足率均为 1.0，错误重复锁定均为 0。T002 视觉共识帧为 4/5/4，D7 每个 seed
+获得 2 次终端合同许可；T001 双 primary 共识三组均为 0，仍是系统 P1。该试验运行于
+ComputerVision 模式，只证明 D1 数据合同被 M-to-N 状态链消费，不证明 D1 已完成真实
+传感器标定，也不表示完成物理拦截。
+
+当前状态分层如下：
+
+- **P0 已闭合并保持回归**：双时间戳、NED、观测/航迹 covariance、FDIR-light、
+  covariance floor/ceiling、timestamp uncertainty、source lineage 去重和 N-target 输入无
+  运行级 blocker。当前 D1 回归基线为 `62 passed`。
+- **P1 接口已完成**：governed replay/schema/provenance、truth-label 默认剥离、区域/窗口
+  质量摘要、expected-latency/OOSM 字段、侦察 cue、协同定位 typed DTO、2..N bearing WLS
+  和保守 CI 数值 helper 已落地。
+- **P1 待实现或真实标定**：main/shared 采用 governed writer；D1/D2-confirmed
+  association-to-fusion runtime 接线；真实多 seed 的机动、遮挡、节点退出、相机 bbox、
+  传感器延迟和故障注入 replay；RMSE/NIS/NEES consistency、区域/健康持续阈值、
+  IMM/CV-CA-CT 和场景自适应 covariance 标定；D6 长期 schema 对齐。T001 双 primary
+  共识由 D5/D7 主责，D1 仅提供其所需的时间化状态、协方差和几何质量。
+- **P2 optional benchmark**：FilterPy、Stone Soup、OpenCV/GTSAM 和 ROS 2 只在隔离环境
+  做对照或后置评估，不替换当前 NumPy EKF/fixed-lag 默认路径。
+
+后续实施顺序固定为：
+
+1. main/shared 接入 D1 governed replay writer，并把场景配置、seed、coverage cell 和离线
+   truth 分离规则写入 replay manifest。
+2. D1 与 D2 固化 local-track-to-canonical-ID 确认合同，再把 cooperative WLS/CI 接入可选
+   runtime adapter；关联不唯一时保持不融合。
+3. main 采集 ComputerVision/AirSim 多 seed replay，覆盖 crossing、机动、遮挡、漏检、
+   传感器延迟和节点退出；D1 校准 covariance、OOSM/health、区域窗口及 RMSE/NIS/NEES。
+4. 在 P1 数据和验收口径稳定后，启动 FilterPy/Stone Soup 等离线 P2 benchmark；第三方
+   后端不可用时必须报告 `unavailable`，不得静默替代为当前实现。
+5. 每轮实现后运行
+   `PYTHONPATH=research_modules/d1_sensor_fusion/src pytest -q research_modules/d1_sensor_fusion/tests`，
+   并由 D1 owner 更新 README、PLAN、GAP 和 review。
+
+## 15. Governed Replay Manifest/Serializer P1 实施结果
+
+D1-owned 严格回放合同已经实现，不直连 AirSim，也未修改 main/runtime：
+
+- `ReplayProvenance` 在原有 scenario/config ID、scenario version 和 config digest 基础上增加
+  `scenario_digest` 与 `config_version`；严格 governed 路径同时要求非空 seed。
+- `serialize_governed_replay()` 一次性生成 JSON-safe manifest 与在线 records。manifest 固定为
+  `d1.governed_replay_manifest.v1`，包含 observation schema、NED fusion working frame、双时间
+  范围、coverage cells 和逐观测 opaque source lineage。
+- 严格校验拒绝缺失 coverage cell/covariance、非有限或倒序时间戳、维度不匹配/非对称/非
+  半正定 covariance，以及缺失 scenario/config identity/version/digest/seed 的 provenance。
+- 默认在线序列化递归剥离 truth/actor/object ID；source lineage 使用观测内容摘要，不能通过
+  fallback fingerprint 泄漏 truth。`serialize_offline_governed_replay()` 是显式 offline-only
+  标签出口，标签只进入 `offline_truth`。
+- 旧无版本 Blocks JSONL 继续由 legacy reader 兼容；兼容读取不等于满足严格 governed 合同。
+
+单元测试覆盖多目标批次、manifest JSON 序列化、字段缺失拒绝、legacy 兼容、深层 truth
+剥离、显式离线标签、双时间戳、NED working frame、covariance 和 source lineage 往返保真。
+当前全量结果为 `62 passed`。最新 main episode bus 已采用该 API，并在 governed manifest
+中提供 scenario/config provenance、seed 和 coverage cell；下一步不再重复实现 serializer，
+而是用更长的真实 multi-seed replay 校准 D1 统计与阈值。
+
+## 16. 当前状态与后续项（2026-07-11 最终验证）
+
+最终依据为
+`research_modules/airsim_runtime/outputs/p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md`。
+
+- **P1 合同层已闭合**：main episode bus 已携带 D1 governed replay、双时间戳、covariance
+  和 lineage；在线记录剥离 truth/actor/object identity，truth 只进入独立离线评分标签。
+- **ComputerVision 合同验收已通过**：10 seeds 中 8/10 达到 T001 双 primary 合同阈值。
+  二级和完全分布式 3/3 ACK commit 正例通过，缺 ACK 的 2/3 case abort 并 fail-closed。
+  这些是 D1 数据合同进入下游链路的系统证据，不扩大 D1 的分配、联盟或控制职责。
+- **P1 物理/长期标定仍开放**：SimpleFlight 15 s 仅作断点诊断，30 个 active pair 均未命中；
+  该结果不能解释为 D1 融合精度验收，也不能用于关闭真实传感器、多 seed 长 replay、
+  sensor-specific latency/health/window 或 RMSE/NIS/NEES 标定。物理拦截闭环由 main/D7 等
+  系统链路负责，D1 只对状态、协方差、时间和质量证据负责。
+- **P2 隔离 benchmark 已收敛到可审计状态**：D1 冻结 governed replay 已对当前 NumPy
+  EKF/fixed-lag 路径输出 RMSE/NIS/NEES/耗时。当前环境未安装 FilterPy 或 Stone Soup，两个
+  adapter 均输出 `status=unavailable`、空指标和 `unavailable_reason`；未伪装为当前实现，也未
+  加入默认 requirements。UKF/IMM 和第三方可执行 tracker/fuser 仍未实现。
+- **adapter/smoke/研究近似边界**：D1 AirSim dry-run adapter、静态 JSONL/CSV fixture 与
+  ComputerVision 合同验收只证明接口和 truth policy 可运行；当前合成 radar/acoustic/EO
+  观测、CV/EKF 机动吸收及 WLS/CI 数值 helper 属科研仿真基线，不能替代真实传感器标定、
+  长时 AirSim replay 或完整分布式 Track-to-Track 后端。
+
+当前 D1 后续项不再包含 governed writer 接入、在线 truth 隔离或 CV 双 primary 合同闭合。
+保留的工作是 D1/D2-confirmed cooperative runtime 验证，以及真实多 seed 的机动、遮挡、
+节点退出、camera/bbox 和 sensor-delay replay；据此完成 RMSE/NIS/NEES、sensor-specific
+expected latency、health/region window、模型集和场景自适应 covariance 标定。15 s
+SimpleFlight 诊断不能替代这些更长时、带故障对照的 replay。
+
+## 17. P2 隔离滤波基准收敛结果
+
+本轮复用现有 governed replay 和 `FusionAdapter`，没有重复实现在线观测类型、serializer 或
+滤波主线。静态 fixture 固定 scenario/config digest、seed、双时间戳、NED frame、观测
+covariance 和 source lineage；在线 records 不含 truth，六状态 truth 只位于独立
+`offline_truth` sidecar 并在滤波完成后用于 RMSE/NEES 评分。
+
+当前路径在六条 radar 观测上的一次验证结果为 RMSE `0.2335 m`、mean NIS `0.0426`、mean
+NEES `0.0651`、两次 wall time 为 `6.9-10.1 ms`。耗时是主机相关观测值；低 NIS/NEES 表明该小型合成
+fixture 下 covariance 偏保守，不能用于关闭真实多 seed consistency 标定。FilterPy 与 Stone
+Soup 在当前环境均不可导入，因此只记录 unavailable 状态和原因，不生成第三方指标。
+
+P2 当前关闭的是“无审计输出的可用性探测”缺口；仍开放的是安装于隔离环境后的真实可执行
+adapter 对照，以及 UKF/IMM/OOSM/JPDA/MHT 等收益评估。默认 requirements、在线 D1 和
+NumPy EKF/fixed-lag 路径均未改变。全量回归为 `62 passed`。

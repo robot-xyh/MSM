@@ -204,7 +204,7 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 - 当 D1 的 `measurement_age_s` 或 `latest_observation_latency_s` 过大时，D7 应扩大预测门限、请求 D3/D4 重新规划或保持保守状态。
 - D1 不提供真实飞控、硬件、毁伤或自动处置接口；`handover` 是仿真质量标签，不是授权状态。
 
-## 7. 下一步 P0/P1/P2 优先级
+## 7. 历史优先级基线（截至 2026-07-10）
 
 ### P0: EVAL 工程化硬化项（已实现，保持回归）
 
@@ -246,7 +246,7 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 4. **OpenCV/D5 几何对齐**: 将 calibration、畸变、`projectPoints`、`solvePnP` 作为 D5/D1 边界对照项，D1 保持 bbox/camera metadata/协方差合同。
 5. **ROS 2 `tf2/message_filters` 评估**: 等 topic schema、tf tree、bag/replay 和 main/shared runtime 稳定后再接入；接入前仍由上游转成 NED 或提供完整外参元数据。
 
-## 8. 2026-07-11 P1 缺口复核
+## 8. 历史基线：2026-07-11 P1 缺口复核
 
 | 项目 | 当前状态 | 证据 | 后续责任 |
 | --- | --- | --- | --- |
@@ -260,7 +260,7 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 
 当前无 D1 P0 blocker。剩余 P1 不再包含最小协同 DTO/WLS/CI 字段和数值 helper，而是 main/D2 runtime 接线、真实多 seed 阈值治理、视觉/协同 fixture、D6 长期趋势、IMM/场景自适应协方差和分布式 Track-to-Track 全链路。Stone Soup、FilterPy 仍未引入。
 
-## 9. 2026-07-11 Truth-Isolated 5v5 证据状态
+## 9. 历史基线：2026-07-11 Truth-Isolated 5v5 证据状态
 
 证据目录：
 `research_modules/airsim_runtime/outputs/p1_runtime_truth_isolated_d4d5_smoke_20260711/`。
@@ -289,3 +289,80 @@ simulation-only truth-hint 配置仍需写入 provenance 并通过无 truth-hint
 - **P1-到达时序边界**：D1 不要求三机严格同时观测或同时到达拦截点；必须按 measurement time 传播到共同估计时刻并报告 covariance growth。同步/分波次拦截决策属于 D3/D7。
 
 P1 最小验收：良好几何下三机融合不劣于最佳双机；退化几何必须增大 covariance 或拒绝融合；relay 重发不改变 posterior；未知相关性融合保持保守；节点从 3 降到 2/1 时航迹连续且质量显式下降；在线链路不使用 truth/actor ID。
+
+## 11. 历史基线与双轨实施顺序（2026-07-11 三 seed）
+
+最新依据为
+`research_modules/airsim_runtime/outputs/blocks_cv_m5_n2_liveness_batch_20260711/M_TO_N_AIRSIM_CONVERGENCE_REPORT_CN.md`：
+seeds 7/17/27 均为 6 次 replan request、6 次 no-change ACK、0 applied、0 expired，需求满足率
+1.0，错误重复锁定 0；T002 共识为 4/5/4 且 D7 每 seed 许可 2 次；T001 双 primary 共识为
+0。该证据证明 ComputerVision 状态合同收敛，不是物理拦截证据，也没有关闭 D1 的真实
+传感器、多机协同定位或长期阈值标定。
+
+| 层级 | 当前结论 | 后续动作 |
+| --- | --- | --- |
+| P0 | 无运行级 blocker；双时间戳、NED、covariance、FDIR-light、上下界、时间戳不确定性、lineage 去重和 N-target 输入已闭合 | 维持 `62 passed` 回归，不降低合同 |
+| P1 已完成接口 | governed writer/schema/provenance、truth 默认剥离、区域/窗口摘要、expected-latency/OOSM、recon cue、协同 DTO/WLS/CI | 接入 main/D2/D6，不重复实现 helper |
+| P1 待实现/标定 | main writer 采用、D2-confirmed runtime adapter、真实多 seed 机动/遮挡/节点退出/camera fixture、RMSE/NIS/NEES、health/window 阈值、IMM/场景自适应 covariance、长期 D6 schema | 按真实 replay 逐项关闭；T001 共识由 D5/D7 主责，D1 只提供状态/协方差/几何质量 |
+| P2 optional | FilterPy、Stone Soup、OpenCV/GTSAM、ROS 2 | 仅隔离 benchmark；不得替换默认 NumPy 主线 |
+
+实施顺序为：main/shared 采用 governed writer 和离线 truth 分离；D1/D2 接通 canonical-ID
+确认后的可选 WLS/CI adapter；main 采集 crossing、机动、遮挡、漏检、延迟和节点退出的
+真实多 seed replay；D1/D6 校准统计与阈值；最后才运行 P2 第三方对照。每次 D1 能力变更后
+使用
+`PYTHONPATH=research_modules/d1_sensor_fusion/src pytest -q research_modules/d1_sensor_fusion/tests`
+验收，并同步本审计、PLAN、README 和 review。
+
+## 12. Governed Replay Manifest/Serializer P1 状态
+
+本轮已关闭 D1-owned 的严格 manifest/serializer 实现缺口：
+
+| 项目 | 当前状态 | 边界 |
+| --- | --- | --- |
+| manifest schema | 已实现 `d1.governed_replay_manifest.v1`，汇总 observation schema、NED working frame、时间范围、coverage cells、lineage 和 truth policy | main 负责持久化位置和 episode 组织 |
+| scenario/config identity | strict provenance 要求 scenario/config ID、version、digest 和 seed | main 必须传入真实 settings/config digest；D1 不猜测 |
+| record validation | 已校验双时间戳、covariance 形状/有限性/对称/半正定、coverage cell 和 source lineage | legacy reader 继续宽松兼容旧日志，不视为 governed 输入 |
+| online truth isolation | 默认批量 serializer 递归剥离 truth/actor/object ID，opaque lineage 不含 truth fingerprint | 离线标签仅由 `serialize_offline_governed_replay()` 写入 `offline_truth` |
+| 多目标与数值保真 | 已测试任意长度批次、双时间戳、NED frame、covariance、coverage 和 lineage 往返 | 未代表真实 AirSim 传感器标定完成 |
+
+当前 D1 全量测试为 `62 passed`。因此“构造可供 main 调用的 governed manifest/serializer”
+不再列为 P1 缺口；最新 main episode bus 也已采用该 API 并分离在线记录与离线 truth 标签。
+仍开放的是更长的真实 multi-seed 数据生成与阈值标定、D1/D2-confirmed runtime fusion
+adapter、D6 长期统计一致性和算法增强。P2 外部库安排不变。
+
+## 13. 当前缺口判定（2026-07-11 最终验证）
+
+最终依据为
+`research_modules/airsim_runtime/outputs/p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md`。
+
+| 层级 | 当前结论 | D1 边界 |
+| --- | --- | --- |
+| P1 合同层 | 已闭合 | main episode bus 已写 D1 governed replay；双时间戳、covariance、coverage/lineage 和 provenance 进入同一 episode 合同链，在线 truth/actor/object ID 被剥离，truth 仅进入独立离线标签 |
+| CV 验收 | 8/10 通过 | 证明 D1 合同可被下游双 primary 链路消费；不表示 D1 负责视觉共识或控制许可 |
+| 二级/分布式故障语义 | 3/3 ACK commit 正例和 2/3 ACK abort fail-closed 均通过 | D1 只提供状态、协方差、时间和质量证据，不参与 coalition commit/ACK 仲裁 |
+| P1 物理/长期标定 | 未闭合 | SimpleFlight 15 s 为诊断，30 个 active pair 为 0 命中；不作为 D1 真实传感器或融合精度验收。D1 仍需真实 multi-seed 长 replay、sensor-specific latency/health/window 与 RMSE/NIS/NEES 标定；系统物理拦截闭环不由 D1 单独负责 |
+| P2 optional benchmark | 隔离 harness 已完成；第三方后端 unavailable | 冻结 governed replay 已对当前 NumPy EKF/fixed-lag 输出 RMSE/NIS/NEES/耗时；FilterPy/Stone Soup 当前均未安装，结果包含 `unavailable_reason` 且指标为空。未新增默认依赖、未替换在线路径；真实第三方 adapter、UKF/IMM 仍开放 |
+
+当前 D1 的 AirSim dry-run adapter、静态 JSONL/CSV fixture 和 ComputerVision 合同验证属于
+adapter/smoke 证据；合成 radar/acoustic/EO 观测、CV/EKF 机动吸收及 WLS/CI 数值 helper
+属于科研仿真基线。它们证明接口、数值合同和 truth policy 可回归，不等于真实传感器模型、
+长时物理 replay、完整分布式 Track-to-Track 或第三方 tracker/fuser 已完成。
+
+当前 D1 P1 后续项只保留真实 replay 与标定：D1/D2-confirmed cooperative adapter、机动、
+遮挡、节点退出、camera/bbox、sensor-delay/fault 多 seed 数据，以及 RMSE/NIS/NEES、
+sensor-specific expected latency、health/region window、模型集和场景自适应 covariance。
+不得再把 governed writer 接入、在线 truth 隔离或 CV 双 primary 合同验收列为当前未完成项。
+
+## 14. P2 隔离 Benchmark GAP 收敛（2026-07-11）
+
+| 核查项 | 当前证据 | GAP 判定 |
+| --- | --- | --- |
+| 冻结输入治理 | `p2_governed_filter_benchmark_v1.json` 固定 manifest、scenario/config digest、seed、NED、双时间戳、covariance 和 lineage | 最小离线 benchmark 输入已闭合；不替代真实 multi-seed replay |
+| truth 隔离 | online records 禁止 truth/actor/object metadata，truth 六状态只在独立 offline sidecar，测试覆盖泄漏拒绝 | benchmark 未向 `FusionAdapter` 注入 truth |
+| 当前路径指标 | runner 输出 position RMSE、NIS、NEES、normalized consistency 和 wall time；结果为 `0.2335 m`、`0.0426`、`0.0651`，两次耗时 `6.9-10.1 ms` | 指标 plumbing 已闭合；小型合成样本的低 NIS/NEES 不关闭真实标定 |
+| FilterPy | 当前环境依赖不可用，adapter 为 placeholder，输出 null metrics 和 `unavailable_reason` | 不得写成已接入；隔离安装后的可执行 EKF/UKF 对照仍为 P2 |
+| Stone Soup | 当前环境依赖不可用，adapter 为 placeholder，输出 null metrics 和 `unavailable_reason` | 不得写成已接入；OOSM/JPDA/MHT/Track Fusion 对照仍为 P2 |
+| 默认路径 | requirements 和在线 `FusionAdapter` 未修改 | NumPy EKF/fixed-lag 继续是唯一默认路径 |
+
+本轮 D1 全量回归为 `62 passed`。因此 P2 可用性、不可用原因和当前路径指标证据已收敛；
+第三方后端的算法收益仍未证明，不能因本轮 harness 完成而关闭相应实现 GAP。

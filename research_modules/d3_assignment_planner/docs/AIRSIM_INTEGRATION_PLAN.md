@@ -138,14 +138,17 @@ Output candidate plan record:
 - Logs must include `decision_state`, version, total cost, and per-assignment cost breakdown.
 - When main/D4 requests `request_center_replan`, the next D3 plan must increment version and main/runtime must log `replan_reason`, `supersedes_plan_id`, `supersedes_plan_version`, and `active_plan_owner="center"`.
 
-## 2026-07-10 Validation Status
+## Validation Status Through 2026-07-11
 
 - The real 5v5 calibration completed 60 connected cases: seeds 1-10, secondary heights 50/200 m, and `no_degradation`, `degrade_to_secondary`, and `degrade_to_distributed` cases.
 - The historical runtime path has not activated a secondary plan. All 20 requested secondary cases fell back conservatively to distributed operation; 15 of 1300 D4 decisions reached momentary `takeover_ready`, all stopped at `pending_secondary_plan`, and `secondary_plan_active=0`.
-- D3 now provides the strict activation contract. Main/D4 must pass sustained `takeover_ready`, a concrete node id, activation time, a live lease, a monotonic leader epoch, and the exact superseded plan; D7 binding export must also pass the current plan id/version. The next fixture must exercise this positive path plus stale center, expired lease, non-monotonic epoch, and recovery negatives.
-- Equal-size 5v5 coverage does not close N/M behavior. Add 3v5, 5v3, target-arrival, and resource-failure replays before tuning incremental assignment or D5 feedback weights.
-- D3 unit regression currently reports `68 passed`.
+- D3 provides the strict activation contract. The current secondary and distributed commit positive cases passed, and missing ACK aborted fail-closed. Stale-center, lease/epoch, and recovery cases remain long-term main/D4 regression and calibration concerns, not open D3 P1 contract work.
+- The deterministic 3v5, 5v3, target-arrival, resource-failure, demand-change, and incremental/full suite closes the D3 N/M interface contract. Real non-equal multi-seed replay remains parameter-tuning evidence rather than missing implementation.
+- The current 2026-07-11 ComputerVision M-to-N validation used 5 resources, 2 targets, and 10 seeds. T001 achieved two-primary visual consensus with current-plan authorization in 8/10 seeds; seeds 7 and 27 remain regressions. Combined with incremental planning and role-aware primary preservation, the D3 P1 contract layer is closed.
+- Downstream secondary and distributed commit positive cases passed, while missing ACK aborted fail-closed with zero D7 permissions. The 15 s SimpleFlight run remained diagnostic: all 30 active pairs missed, so the physical interception loop is still open.
+- P2 results remain isolated optional benchmarks and do not select or replace the default Hungarian/demand-slot path.
+- D3 unit regression currently reports `118 passed, 1 skipped`; the skip is the installed-only optional OR-Tools test.
 
 ## Future OR-Tools Path
 
-At P1, implement only an optional same-input comparator behind `MinCostFlowAssignmentSolver`: one-to-one Hungarian and min-cost-flow plans must expose comparable cost and solve-time records, while Hungarian remains the default and environments without OR-Tools continue to pass. Resource capacities, target demand, group quotas, backup resources, multi-window networks, and predictive rolling remain P2/P3 extensions.
+The optional same-input comparator behind `MinCostFlowAssignmentSolver` is implemented and remains outside the default planner and requirements. Environments without OR-Tools report explicit unavailability and keep the core suite green. CP-SAT/MILP coalition references, resource capacities, group quotas, backup resources, multi-window networks, and predictive rolling remain isolated P2/P3 work; they must not replace the Hungarian/demand-slot default path without separate evidence.

@@ -31,6 +31,7 @@ class MinCostFlowAssignmentSolver:
         self,
         cost_matrix: np.ndarray,
         unassigned_costs: np.ndarray,
+        resource_capacities: np.ndarray | None = None,
     ) -> SolverResult:
         if not self.is_available():
             raise OrToolsUnavailableError(
@@ -42,6 +43,19 @@ class MinCostFlowAssignmentSolver:
         target_count, resource_count = cost_matrix.shape
         if len(unassigned_costs) != target_count:
             raise ValueError("unassigned_costs length must match target count")
+        if resource_capacities is None:
+            capacities = np.ones(resource_count, dtype=int)
+        else:
+            raw_capacities = np.asarray(resource_capacities)
+            if raw_capacities.shape != (resource_count,):
+                raise ValueError(
+                    "resource_capacities length must match resource count"
+                )
+            if not np.all(np.equal(raw_capacities, np.floor(raw_capacities))):
+                raise ValueError("resource_capacities must contain integers")
+            capacities = raw_capacities.astype(int)
+            if np.any(capacities < 0):
+                raise ValueError("resource_capacities must be non-negative")
         if target_count == 0:
             return SolverResult((), (), 0.0, self.solver_name, "optimal")
 
@@ -74,7 +88,10 @@ class MinCostFlowAssignmentSolver:
 
         for resource_index in range(resource_count):
             solver.add_arc_with_capacity_and_unit_cost(
-                resource_offset + resource_index, sink, 1, 0
+                resource_offset + resource_index,
+                sink,
+                int(capacities[resource_index]),
+                0,
             )
         for target_index in range(target_count):
             solver.add_arc_with_capacity_and_unit_cost(

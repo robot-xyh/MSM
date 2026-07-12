@@ -243,8 +243,12 @@ def test_fov_feedback_changes_cost_but_hysteresis_holds_short_dwell() -> None:
     assert writeback.prohibited_edges == ()
     assert second.metadata["cost_matrix"][0] == (1.0, 0.3)
     assert second.assignment_map() == first.assignment_map()
-    assert second.decision_state == "held_by_hysteresis"
-    assert second.metadata["hysteresis_dwell_ok"] is False
+    assert second.decision_state == "held_by_transient_feedback_dwell"
+    assert second.version == first.version
+    assert second.metadata["transient_feedback_dwell_state"] == "held"
+    assert second.metadata["transient_feedback_dwell_records"][0][
+        "observed_frames"
+    ] == 1
 
 
 def test_explicit_feasibility_feedback_creates_hard_reject() -> None:

@@ -28,6 +28,7 @@ from .models import (
     AssignmentFeedbackDecision,
     AssignmentEvidenceExport,
     AssignmentGuidanceBinding,
+    IncrementalPlanningComparisonSummary,
     AssignmentMismatchReplaySummary,
     AssignmentPlan,
     AssignmentRecord,
@@ -65,10 +66,20 @@ from .models import (
     guidance_bindings_from_assignment_plan,
     prepare_secondary_takeover_plan,
     summarize_assignment_mismatch_replay,
+    summarize_incremental_planning_comparison,
     summarize_terminal_feedback_calibration,
 )
 from .planner import AssignmentPlanner, StalePlanError
 from .min_cost_flow import MinCostFlowAssignmentSolver, OrToolsUnavailableError
+from .p2_benchmark import (
+    P2_CAPACITY_BENCHMARK_SCHEMA,
+    CapacityBenchmarkAssignment,
+    CapacityBenchmarkComparison,
+    CapacityBenchmarkOutcome,
+    CapacityBenchmarkProblem,
+    build_p2_capacity_benchmark_problem,
+    run_p2_capacity_benchmark,
+)
 from .solver import (
     FallbackAssignmentSolver,
     HungarianAssignmentSolver,
@@ -84,6 +95,7 @@ __all__ = [
     "AssignmentFixtureStep",
     "AssignmentEvidenceExport",
     "AssignmentGuidanceBinding",
+    "IncrementalPlanningComparisonSummary",
     "AssignmentMismatchReplaySummary",
     "AssignmentPlan",
     "AssignmentPlanner",
@@ -96,6 +108,10 @@ __all__ = [
     "CoalitionState",
     "CoalitionSummary",
     "CoordinationMode",
+    "CapacityBenchmarkAssignment",
+    "CapacityBenchmarkComparison",
+    "CapacityBenchmarkOutcome",
+    "CapacityBenchmarkProblem",
     "AirSimDryRunAssignmentAdapter",
     "CostMatrixResult",
     "CostModel",
@@ -110,6 +126,7 @@ __all__ = [
     "HungarianDemandSlotSolver",
     "MinCostFlowAssignmentSolver",
     "OrToolsUnavailableError",
+    "P2_CAPACITY_BENCHMARK_SCHEMA",
     "PlannerConfig",
     "P1_ASSIGNMENT_FIXTURE_PROFILE_ID",
     "P1_ASSIGNMENT_FIXTURE_PROFILE_VERSION",
@@ -132,6 +149,7 @@ __all__ = [
     "assignment_records_from_plan",
     "assignment_validity_summary_from_plan",
     "build_p1_assignment_fixtures",
+    "build_p2_capacity_benchmark_problem",
     "compose_threat_score_baseline",
     "continue_active_secondary_plan",
     "evaluate_terminal_feedback",
@@ -139,5 +157,7 @@ __all__ = [
     "prepare_secondary_takeover_plan",
     "p1_assignment_fixture_by_id",
     "summarize_assignment_mismatch_replay",
+    "summarize_incremental_planning_comparison",
     "summarize_terminal_feedback_calibration",
+    "run_p2_capacity_benchmark",
 ]

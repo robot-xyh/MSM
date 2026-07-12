@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from time import perf_counter
+from typing import Any
 from uuid import uuid4
 
 import numpy as np
@@ -39,6 +42,34 @@ class _DemandSlot:
     arrival_window_start_s: float | None
     arrival_window_end_s: float | None
     demand: TargetDemand
+
+
+_TRANSIENT_FEEDBACK_REASONS = frozenset(
+    {"primary_lock_stability_incomplete", "short_reacquire", "reacquire"}
+)
+_TRANSIENT_FEEDBACK_STATES = frozenset({"reacquire"})
+_SOFT_MEMBER_FEEDBACK_STATES = frozenset({"hold", "reacquire"})
+_HARD_FEEDBACK_STATES = frozenset(
+    {
+        "cross_view_conflict",
+        "friend_overlap_hold",
+        "lost",
+        "mismatch",
+        "multi_frame_inconsistent",
+        "resource_unavailable",
+        "wrong_binding",
+    }
+)
+_HARD_FEEDBACK_CONFLICTS = frozenset(
+    {
+        "coalition_or_plan_version_mismatch",
+        "member_count_exceeds_demand",
+        "primary_binding_count_mismatch",
+        "primary_binding_not_execution_authorized",
+        "resource_multiple_local_locks",
+        "wrong_binding",
+    }
+)
 
 
 class StalePlanError(ValueError):
@@ -108,6 +139,224 @@ class AssignmentPlanner:
         """Return a candidate plan and optionally publish its identity."""
 
         self._validate_previous_plan(previous_plan, expected_previous_version)
+        result = self._plan_candidate(
+            tracks=tracks,
+            resources=resources,
+            timestamp=timestamp,
+            previous_plan=previous_plan,
+            window_id=window_id,
+        )
+        result = self._annotate_input_snapshot(result, tracks, resources)
+        return self._finalize_and_publish(
+            result,
+            previous_plan=previous_plan,
+            timestamp=timestamp,
+            forced_replan=forced_replan,
+            publish=publish,
+        )
+
+    def plan_incremental(
+        self,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        resources: list[ResourceState] | tuple[ResourceState, ...],
+        timestamp: float,
+        *,
+        previous_plan: AssignmentPlan,
+        changed_track_ids: list[str] | tuple[str, ...] | set[str] = (),
+        changed_resource_ids: list[str] | tuple[str, ...] | set[str] = (),
+        window_id: int | None = None,
+        expected_previous_version: int | None = None,
+        forced_replan: bool = False,
+        publish: bool = True,
+    ) -> AssignmentPlan:
+        """Replan one independent target-resource component when it is safe.
+
+        The changed-id sets are declarations, not hints. Input fingerprints on
+        ``previous_plan`` detect omitted changes. Any global or ambiguous change
+        falls back to the ordinary full planner with an explicit metadata reason.
+        Stale identities remain hard errors and are never silently substituted.
+        """
+
+        self._validate_previous_plan(previous_plan, expected_previous_version)
+        track_items = tuple(tracks)
+        resource_items = tuple(resources)
+        changed_tracks = frozenset(str(value) for value in changed_track_ids)
+        changed_resources = frozenset(str(value) for value in changed_resource_ids)
+        started_at = perf_counter()
+
+        matrix_result = self.cost_model.build_matrix(
+            track_items,
+            resource_items,
+            timestamp,
+        )
+        fallback_reason = self._incremental_fallback_reason(
+            tracks=track_items,
+            resources=resource_items,
+            previous_plan=previous_plan,
+            changed_track_ids=changed_tracks,
+            changed_resource_ids=changed_resources,
+            timestamp=timestamp,
+        )
+        if fallback_reason is not None:
+            return self._full_plan_from_incremental_request(
+                tracks=track_items,
+                resources=resource_items,
+                timestamp=timestamp,
+                previous_plan=previous_plan,
+                changed_track_ids=changed_tracks,
+                changed_resource_ids=changed_resources,
+                fallback_reason=fallback_reason,
+                window_id=window_id,
+                forced_replan=forced_replan,
+                publish=publish,
+                started_at=started_at,
+            )
+
+        affected_targets, affected_resources = self._affected_component(
+            matrix_result=matrix_result,
+            previous_plan=previous_plan,
+            changed_track_ids=changed_tracks,
+            changed_resource_ids=changed_resources,
+        )
+        all_target_ids = frozenset(matrix_result.target_ids)
+        all_resource_ids = frozenset(matrix_result.resource_ids)
+        if not affected_targets or not affected_resources:
+            return self._full_plan_from_incremental_request(
+                tracks=track_items,
+                resources=resource_items,
+                timestamp=timestamp,
+                previous_plan=previous_plan,
+                changed_track_ids=changed_tracks,
+                changed_resource_ids=changed_resources,
+                fallback_reason="empty_affected_component",
+                window_id=window_id,
+                forced_replan=forced_replan,
+                publish=publish,
+                started_at=started_at,
+            )
+        if affected_targets == all_target_ids or affected_resources == all_resource_ids:
+            return self._full_plan_from_incremental_request(
+                tracks=track_items,
+                resources=resource_items,
+                timestamp=timestamp,
+                previous_plan=previous_plan,
+                changed_track_ids=changed_tracks,
+                changed_resource_ids=changed_resources,
+                fallback_reason="affected_component_is_global",
+                window_id=window_id,
+                forced_replan=forced_replan,
+                publish=publish,
+                started_at=started_at,
+            )
+
+        affected_track_items = tuple(
+            track for track in track_items if track.track_id in affected_targets
+        )
+        affected_resource_items = tuple(
+            resource
+            for resource in resource_items
+            if resource.resource_id in affected_resources
+        )
+        sub_previous = self._subplan(
+            previous_plan,
+            affected_target_ids=affected_targets,
+            affected_resource_ids=affected_resources,
+        )
+        sub_candidate, _ = self._solve_candidate(
+            tracks=affected_track_items,
+            resources=affected_resource_items,
+            timestamp=timestamp,
+            previous_plan=sub_previous,
+            window_id=window_id,
+        )
+        candidate = self._merge_incremental_result(
+            sub_result=sub_candidate,
+            previous_plan=previous_plan,
+            tracks=track_items,
+            resources=resource_items,
+            matrix_result=matrix_result,
+            affected_target_ids=affected_targets,
+            affected_resource_ids=affected_resources,
+            changed_track_ids=changed_tracks,
+            changed_resource_ids=changed_resources,
+            elapsed_ms=(perf_counter() - started_at) * 1000.0,
+        )
+        switched_matrix_result = self._apply_switch_penalty_to_matrix(
+            matrix_result,
+            previous_plan,
+        )
+        result = self._filter_candidate(
+            candidate=candidate,
+            previous_plan=previous_plan,
+            matrix_result=switched_matrix_result,
+            timestamp=timestamp,
+            window_id=window_id,
+            tracks=track_items,
+        )
+        result = replace(
+            result,
+            metadata={
+                **dict(result.metadata),
+                **self._incremental_metadata(
+                    applied=True,
+                    fallback_reason=None,
+                    changed_track_ids=changed_tracks,
+                    changed_resource_ids=changed_resources,
+                    affected_target_ids=affected_targets,
+                    affected_resource_ids=affected_resources,
+                    all_target_ids=all_target_ids,
+                    all_resource_ids=all_resource_ids,
+                    elapsed_ms=(perf_counter() - started_at) * 1000.0,
+                ),
+            },
+        )
+        result = self._annotate_input_snapshot(result, track_items, resource_items)
+        return self._finalize_and_publish(
+            result,
+            previous_plan=previous_plan,
+            timestamp=timestamp,
+            forced_replan=forced_replan,
+            publish=publish,
+        )
+
+    def _plan_candidate(
+        self,
+        *,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        resources: list[ResourceState] | tuple[ResourceState, ...],
+        timestamp: float,
+        previous_plan: AssignmentPlan | None,
+        window_id: int | None,
+    ) -> AssignmentPlan:
+        """Build and hysteresis-filter a plan without identity publication."""
+
+        candidate, matrix_result = self._solve_candidate(
+            tracks=tracks,
+            resources=resources,
+            timestamp=timestamp,
+            previous_plan=previous_plan,
+            window_id=window_id,
+        )
+        return self._filter_candidate(
+            candidate=candidate,
+            previous_plan=previous_plan,
+            matrix_result=matrix_result,
+            timestamp=timestamp,
+            window_id=window_id,
+            tracks=tracks,
+        )
+
+    def _solve_candidate(
+        self,
+        *,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        resources: list[ResourceState] | tuple[ResourceState, ...],
+        timestamp: float,
+        previous_plan: AssignmentPlan | None,
+        window_id: int | None,
+    ) -> tuple[AssignmentPlan, CostMatrixResult]:
+        """Solve one input set without hysteresis or identity finalization."""
+
         matrix_result = self.cost_model.build_matrix(tracks, resources, timestamp)
         matrix_result = self._apply_switch_penalty_to_matrix(
             matrix_result,
@@ -136,9 +385,34 @@ class AssignmentPlanner:
                 decision_state="accepted",
                 changed=True,
             )
+        return candidate, matrix_result
+
+    def _filter_candidate(
+        self,
+        *,
+        candidate: AssignmentPlan,
+        previous_plan: AssignmentPlan | None,
+        matrix_result: CostMatrixResult,
+        timestamp: float,
+        window_id: int | None,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+    ) -> AssignmentPlan:
+        """Apply the standard hysteresis contract to a solved candidate."""
+
         if previous_plan is None:
             result = candidate
-        elif not self.config.enable_hysteresis:
+        else:
+            candidate, transient_held = self._apply_transient_feedback_dwell(
+                candidate=candidate,
+                previous_plan=previous_plan,
+                matrix_result=matrix_result,
+                timestamp=timestamp,
+                window_id=window_id,
+                tracks=tracks,
+            )
+            if transient_held:
+                return candidate
+        if previous_plan is not None and not self.config.enable_hysteresis:
             changed = candidate.stable_signature != previous_plan.stable_signature
             result = replace(
                 candidate,
@@ -148,10 +422,10 @@ class AssignmentPlanner:
                 metadata={
                     **dict(candidate.metadata),
                     "hysteresis_state": "disabled",
-                        "hysteresis_reason": "hysteresis_disabled",
-                    },
+                    "hysteresis_reason": "hysteresis_disabled",
+                },
             )
-        else:
+        elif previous_plan is not None:
             result = self._apply_hysteresis(
                 candidate=candidate,
                 previous_plan=previous_plan,
@@ -159,8 +433,19 @@ class AssignmentPlanner:
                 timestamp=timestamp,
                 window_id=window_id,
             )
+        return result
+
+    def _finalize_and_publish(
+        self,
+        plan: AssignmentPlan,
+        *,
+        previous_plan: AssignmentPlan | None,
+        timestamp: float,
+        forced_replan: bool,
+        publish: bool,
+    ) -> AssignmentPlan:
         result = self._finalize_identity(
-            result,
+            plan,
             previous_plan=previous_plan,
             evaluated_at_s=timestamp,
             forced_replan=forced_replan,
@@ -169,6 +454,592 @@ class AssignmentPlanner:
         if publish:
             self.publish_plan(result)
         return result
+
+    def _full_plan_from_incremental_request(
+        self,
+        *,
+        tracks: tuple[TargetTrack, ...],
+        resources: tuple[ResourceState, ...],
+        timestamp: float,
+        previous_plan: AssignmentPlan,
+        changed_track_ids: frozenset[str],
+        changed_resource_ids: frozenset[str],
+        fallback_reason: str,
+        window_id: int | None,
+        forced_replan: bool,
+        publish: bool,
+        started_at: float,
+    ) -> AssignmentPlan:
+        result = self._plan_candidate(
+            tracks=tracks,
+            resources=resources,
+            timestamp=timestamp,
+            previous_plan=previous_plan,
+            window_id=window_id,
+        )
+        result = replace(
+            result,
+            metadata={
+                **dict(result.metadata),
+                **self._incremental_metadata(
+                    applied=False,
+                    fallback_reason=fallback_reason,
+                    changed_track_ids=changed_track_ids,
+                    changed_resource_ids=changed_resource_ids,
+                    affected_target_ids=(),
+                    affected_resource_ids=(),
+                    all_target_ids=(track.track_id for track in tracks),
+                    all_resource_ids=(resource.resource_id for resource in resources),
+                    elapsed_ms=(perf_counter() - started_at) * 1000.0,
+                ),
+            },
+        )
+        result = self._annotate_input_snapshot(result, tracks, resources)
+        return self._finalize_and_publish(
+            result,
+            previous_plan=previous_plan,
+            timestamp=timestamp,
+            forced_replan=forced_replan,
+            publish=publish,
+        )
+
+    def _incremental_fallback_reason(
+        self,
+        *,
+        tracks: tuple[TargetTrack, ...],
+        resources: tuple[ResourceState, ...],
+        previous_plan: AssignmentPlan,
+        changed_track_ids: frozenset[str],
+        changed_resource_ids: frozenset[str],
+        timestamp: float,
+    ) -> str | None:
+        track_ids = tuple(track.track_id for track in tracks)
+        resource_ids = tuple(resource.resource_id for resource in resources)
+        if len(set(track_ids)) != len(track_ids):
+            return "duplicate_track_ids"
+        if len(set(resource_ids)) != len(resource_ids):
+            return "duplicate_resource_ids"
+
+        previous_track_fingerprints = self._snapshot_mapping(
+            previous_plan.metadata.get("incremental_track_fingerprints")
+        )
+        previous_resource_fingerprints = self._snapshot_mapping(
+            previous_plan.metadata.get("incremental_resource_fingerprints")
+        )
+        previous_demand_signatures = self._snapshot_mapping(
+            previous_plan.metadata.get("incremental_demand_signatures")
+        )
+        if (
+            previous_track_fingerprints is None
+            or previous_resource_fingerprints is None
+            or previous_demand_signatures is None
+        ):
+            return "missing_incremental_snapshot"
+
+        current_track_fingerprints = {
+            track.track_id: self._track_fingerprint(track) for track in tracks
+        }
+        current_resource_fingerprints = {
+            resource.resource_id: self._resource_fingerprint(resource)
+            for resource in resources
+        }
+        current_demand_signatures = {
+            track.track_id: self._demand_signature(track.effective_demand)
+            for track in tracks
+        }
+        if set(previous_track_fingerprints) != set(current_track_fingerprints):
+            return "target_set_changed"
+        if set(previous_resource_fingerprints) != set(current_resource_fingerprints):
+            return "global_resource_capacity_changed"
+        if changed_track_ids - set(current_track_fingerprints):
+            return "unknown_changed_track_id"
+        if changed_resource_ids - set(current_resource_fingerprints):
+            return "unknown_changed_resource_id"
+        if previous_demand_signatures != current_demand_signatures:
+            return "target_demand_changed"
+
+        detected_track_changes = {
+            target_id
+            for target_id, fingerprint in current_track_fingerprints.items()
+            if previous_track_fingerprints[target_id] != fingerprint
+        }
+        detected_resource_changes = {
+            resource_id
+            for resource_id, fingerprint in current_resource_fingerprints.items()
+            if previous_resource_fingerprints[resource_id] != fingerprint
+        }
+        if detected_track_changes - changed_track_ids:
+            return "incomplete_changed_track_ids"
+        if detected_resource_changes - changed_resource_ids:
+            return "incomplete_changed_resource_ids"
+        if not changed_track_ids and not changed_resource_ids:
+            return "no_declared_changes"
+
+        last_evaluated_at = float(
+            previous_plan.metadata.get("last_evaluated_at_s", previous_plan.created_at)
+        )
+        stale_after_s = previous_plan.stale_after_s
+        if stale_after_s is None:
+            raw_stale_after = previous_plan.metadata.get("stale_after_s")
+            stale_after_s = (
+                None if raw_stale_after is None else float(raw_stale_after)
+            )
+        if (
+            stale_after_s is not None
+            and timestamp - last_evaluated_at > stale_after_s
+        ):
+            return "previous_plan_expired"
+        if self._has_time_dependent_constraints(
+            tracks,
+            resources,
+            last_evaluated_at=last_evaluated_at,
+            timestamp=timestamp,
+        ):
+            return "time_dependent_global_constraint"
+        return None
+
+    def _affected_component(
+        self,
+        *,
+        matrix_result: CostMatrixResult,
+        previous_plan: AssignmentPlan,
+        changed_track_ids: frozenset[str],
+        changed_resource_ids: frozenset[str],
+    ) -> tuple[frozenset[str], frozenset[str]]:
+        target_neighbors: dict[str, set[str]] = {
+            target_id: set() for target_id in matrix_result.target_ids
+        }
+        resource_neighbors: dict[str, set[str]] = {
+            resource_id: set() for resource_id in matrix_result.resource_ids
+        }
+        for target_index, target_id in enumerate(matrix_result.target_ids):
+            for resource_index, resource_id in enumerate(matrix_result.resource_ids):
+                reject_reason = matrix_result.reject_reasons[target_index][resource_index]
+                if (
+                    reject_reason is not None
+                    or float(matrix_result.matrix[target_index, resource_index])
+                    >= self.config.infeasible_penalty * 0.5
+                ):
+                    continue
+                target_neighbors[target_id].add(resource_id)
+                resource_neighbors[resource_id].add(target_id)
+
+        previous_by_resource = {
+            assignment.resource_id: assignment.target_id
+            for assignment in previous_plan.assignments
+        }
+        previous_resources_by_target = {
+            target_id: {assignment.resource_id for assignment in assignments}
+            for target_id, assignments in previous_plan.assignments_by_target().items()
+        }
+        affected_targets = set(changed_track_ids)
+        affected_resources = set(changed_resource_ids)
+        affected_targets.update(
+            previous_by_resource[resource_id]
+            for resource_id in changed_resource_ids
+            if resource_id in previous_by_resource
+        )
+
+        changed = True
+        while changed:
+            changed = False
+            for target_id in tuple(affected_targets):
+                additions = (
+                    target_neighbors.get(target_id, set())
+                    | previous_resources_by_target.get(target_id, set())
+                ) - affected_resources
+                if additions:
+                    affected_resources.update(additions)
+                    changed = True
+            for resource_id in tuple(affected_resources):
+                additions = set(resource_neighbors.get(resource_id, set()))
+                previous_target = previous_by_resource.get(resource_id)
+                if previous_target is not None:
+                    additions.add(previous_target)
+                additions.difference_update(affected_targets)
+                if additions:
+                    affected_targets.update(additions)
+                    changed = True
+        return frozenset(affected_targets), frozenset(affected_resources)
+
+    def _subplan(
+        self,
+        previous_plan: AssignmentPlan,
+        *,
+        affected_target_ids: frozenset[str],
+        affected_resource_ids: frozenset[str],
+    ) -> AssignmentPlan:
+        assignments = tuple(
+            assignment
+            for assignment in previous_plan.assignments
+            if assignment.target_id in affected_target_ids
+            and assignment.resource_id in affected_resource_ids
+        )
+        coalitions = tuple(
+            coalition
+            for coalition in previous_plan.coalitions
+            if coalition.target_id in affected_target_ids
+        )
+        return replace(
+            previous_plan,
+            assignments=assignments,
+            coalitions=coalitions,
+            unassigned_target_ids=tuple(
+                target_id
+                for target_id in previous_plan.unassigned_target_ids
+                if target_id in affected_target_ids
+            ),
+            incomplete_target_ids=tuple(
+                target_id
+                for target_id in previous_plan.incomplete_target_ids
+                if target_id in affected_target_ids
+            ),
+            demand_summaries=tuple(coalition.summary for coalition in coalitions),
+            resource_count=len(affected_resource_ids),
+            target_count=len(affected_target_ids),
+        )
+
+    def _merge_incremental_result(
+        self,
+        *,
+        sub_result: AssignmentPlan,
+        previous_plan: AssignmentPlan,
+        tracks: tuple[TargetTrack, ...],
+        resources: tuple[ResourceState, ...],
+        matrix_result: CostMatrixResult,
+        affected_target_ids: frozenset[str],
+        affected_resource_ids: frozenset[str],
+        changed_track_ids: frozenset[str],
+        changed_resource_ids: frozenset[str],
+        elapsed_ms: float,
+    ) -> AssignmentPlan:
+        switched_matrix = self._apply_switch_penalty_to_matrix(
+            matrix_result,
+            previous_plan,
+        )
+        target_index = {
+            target_id: index
+            for index, target_id in enumerate(switched_matrix.target_ids)
+        }
+        resource_index = {
+            resource_id: index
+            for index, resource_id in enumerate(switched_matrix.resource_ids)
+        }
+        preserved_target_ids = frozenset(target_index) - affected_target_ids
+        preserved_assignments: list[Assignment] = []
+        for assignment in previous_plan.assignments:
+            if assignment.target_id not in preserved_target_ids:
+                continue
+            i = target_index[assignment.target_id]
+            j = resource_index[assignment.resource_id]
+            cost = float(switched_matrix.matrix[i, j])
+            if cost >= self.config.infeasible_penalty * 0.5:
+                raise ValueError(
+                    "incremental component left an infeasible assignment frozen"
+                )
+            preserved_assignments.append(
+                replace(
+                    assignment,
+                    cost=cost,
+                    cost_breakdown=dict(switched_matrix.breakdowns[i][j]),
+                    feasibility_state="feasible",
+                )
+            )
+
+        preserved_coalitions = tuple(
+            coalition
+            for coalition in previous_plan.coalitions
+            if coalition.target_id in preserved_target_ids
+        )
+        coalition_by_target = {
+            coalition.target_id: coalition
+            for coalition in preserved_coalitions + sub_result.coalitions
+        }
+        ordered_coalitions = tuple(
+            coalition_by_target[track.track_id]
+            for track in tracks
+            if track.track_id in coalition_by_target
+        )
+        assignments = tuple(
+            sorted(
+                tuple(preserved_assignments) + sub_result.assignments,
+                key=lambda item: (item.target_id, item.wave_id, item.resource_id),
+            )
+        )
+        assignments = self._annotate_assignment_context(
+            assignments,
+            sub_result.version,
+        )
+        incomplete_target_ids = tuple(
+            coalition.target_id
+            for coalition in ordered_coalitions
+            if not coalition.complete
+        )
+        demand_summaries = tuple(
+            coalition.summary for coalition in ordered_coalitions
+        )
+
+        preserved_cost = sum(item.cost for item in preserved_assignments)
+        track_by_id = {track.track_id: track for track in tracks}
+        unassigned_cost_by_target = {
+            target_id: float(switched_matrix.unassigned_costs[index])
+            for index, target_id in enumerate(switched_matrix.target_ids)
+        }
+        for target_id in previous_plan.unassigned_target_ids:
+            if target_id in preserved_target_ids:
+                preserved_cost += (
+                    unassigned_cost_by_target[target_id]
+                    * track_by_id[target_id].effective_demand.required_resource_count
+                )
+
+        evidence_matrix = switched_matrix
+        if self._uses_demand_slots(tracks):
+            evidence_matrix = self._expand_demand_slot_matrix(
+                self._demand_slots(tracks),
+                resources,
+                switched_matrix,
+            )
+        all_target_ids = frozenset(track_by_id)
+        all_resource_ids = frozenset(resource_index)
+        metadata = {
+            **dict(sub_result.metadata),
+            "resource_count": len(resources),
+            "target_count": len(tracks),
+            "assignment_matrix_shape": [
+                len(evidence_matrix.target_ids),
+                len(resources),
+            ],
+            "demand_slot_count": len(evidence_matrix.target_ids),
+            "incomplete_target_ids": incomplete_target_ids,
+            "demand_summaries": tuple(
+                {
+                    "target_id": summary.target_id,
+                    "demand_required": summary.demand_required,
+                    "demand_assigned": summary.demand_assigned,
+                    "demand_shortfall": summary.demand_shortfall,
+                    "coalition_complete": summary.coalition_complete,
+                    "coalition_id": summary.coalition_id,
+                    "coalition_version": summary.coalition_version,
+                    "primary_resource_count": summary.primary_resource_count,
+                }
+                for summary in demand_summaries
+            ),
+            **self._matrix_evidence_metadata(evidence_matrix),
+            **self._incremental_metadata(
+                applied=True,
+                fallback_reason=None,
+                changed_track_ids=changed_track_ids,
+                changed_resource_ids=changed_resource_ids,
+                affected_target_ids=affected_target_ids,
+                affected_resource_ids=affected_resource_ids,
+                all_target_ids=all_target_ids,
+                all_resource_ids=all_resource_ids,
+                elapsed_ms=elapsed_ms,
+            ),
+        }
+        return replace(
+            sub_result,
+            assignments=assignments,
+            coalitions=ordered_coalitions,
+            unassigned_target_ids=incomplete_target_ids,
+            incomplete_target_ids=incomplete_target_ids,
+            demand_summaries=demand_summaries,
+            resource_count=len(resources),
+            target_count=len(tracks),
+            total_cost=preserved_cost + sub_result.total_cost,
+            candidate_total_cost=preserved_cost
+            + (
+                sub_result.total_cost
+                if sub_result.candidate_total_cost is None
+                else sub_result.candidate_total_cost
+            ),
+            previous_total_cost_current=(
+                None
+                if sub_result.previous_total_cost_current is None
+                else preserved_cost + sub_result.previous_total_cost_current
+            ),
+            metadata=metadata,
+        )
+
+    def _annotate_input_snapshot(
+        self,
+        plan: AssignmentPlan,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        resources: list[ResourceState] | tuple[ResourceState, ...],
+    ) -> AssignmentPlan:
+        return replace(
+            plan,
+            metadata={
+                **dict(plan.metadata),
+                "incremental_snapshot_schema": "d3_incremental_input_snapshot_v1",
+                "incremental_track_fingerprints": tuple(
+                    (track.track_id, self._track_fingerprint(track))
+                    for track in tracks
+                ),
+                "incremental_resource_fingerprints": tuple(
+                    (resource.resource_id, self._resource_fingerprint(resource))
+                    for resource in resources
+                ),
+                "incremental_demand_signatures": tuple(
+                    (track.track_id, self._demand_signature(track.effective_demand))
+                    for track in tracks
+                ),
+            },
+        )
+
+    @staticmethod
+    def _incremental_metadata(
+        *,
+        applied: bool,
+        fallback_reason: str | None,
+        changed_track_ids: Any,
+        changed_resource_ids: Any,
+        affected_target_ids: Any,
+        affected_resource_ids: Any,
+        all_target_ids: Any,
+        all_resource_ids: Any,
+        elapsed_ms: float,
+    ) -> dict[str, object]:
+        affected_targets = tuple(sorted(str(value) for value in affected_target_ids))
+        affected_resources = tuple(
+            sorted(str(value) for value in affected_resource_ids)
+        )
+        target_ids = tuple(sorted(str(value) for value in all_target_ids))
+        resource_ids = tuple(sorted(str(value) for value in all_resource_ids))
+        return {
+            "planning_mode": "incremental" if applied else "full",
+            "incremental_requested": True,
+            "incremental_applied": applied,
+            "incremental_fallback_reason": fallback_reason,
+            "incremental_changed_track_ids": tuple(
+                sorted(str(value) for value in changed_track_ids)
+            ),
+            "incremental_changed_resource_ids": tuple(
+                sorted(str(value) for value in changed_resource_ids)
+            ),
+            "incremental_affected_target_ids": affected_targets,
+            "incremental_affected_resource_ids": affected_resources,
+            "incremental_preserved_target_ids": tuple(
+                sorted(set(target_ids) - set(affected_targets))
+            ),
+            "incremental_preserved_resource_ids": tuple(
+                sorted(set(resource_ids) - set(affected_resources))
+            ),
+            "incremental_subproblem_shape": [
+                len(affected_targets),
+                len(affected_resources),
+            ],
+            "incremental_solver_elapsed_ms": max(0.0, float(elapsed_ms)),
+            "incremental_safety_policy": "exact_disconnected_component_or_full_fallback",
+        }
+
+    @staticmethod
+    def _snapshot_mapping(value: Any) -> dict[str, Any] | None:
+        if not isinstance(value, (tuple, list)):
+            return None
+        result: dict[str, Any] = {}
+        for item in value:
+            if not isinstance(item, (tuple, list)) or len(item) != 2:
+                return None
+            result[str(item[0])] = item[1]
+        return result
+
+    @classmethod
+    def _track_fingerprint(cls, track: TargetTrack) -> tuple[Any, ...]:
+        return (
+            float(track.threat_score),
+            float(track.covariance),
+            float(track.window_cost),
+            bool(track.assignable),
+            cls._stable_input_value(track.fov_difficulty_by_resource),
+            cls._stable_input_value(track.conflict_risk_by_resource),
+            cls._stable_input_value(track.feasibility_by_resource),
+            cls._stable_input_value(track.metadata),
+            bool(track.hard_time_window),
+            track.time_window_open_at_s,
+            track.time_window_close_at_s,
+            track.time_window_state,
+            cls._stable_input_value(track.time_window_by_resource),
+            cls._demand_signature(track.effective_demand),
+        )
+
+    @classmethod
+    def _resource_fingerprint(cls, resource: ResourceState) -> tuple[Any, ...]:
+        return (
+            resource.status,
+            float(resource.health_score),
+            float(resource.busy_until),
+            bool(resource.operator_hold),
+            float(resource.load_penalty),
+            float(resource.fov_difficulty),
+            float(resource.conflict_risk),
+            resource.capability_class,
+            float(resource.energy_fraction),
+            float(resource.availability_score),
+            float(resource.current_load),
+            float(resource.history_failure_rate),
+            cls._stable_input_value(resource.intercept_feasibility_by_target),
+            cls._stable_input_value(
+                resource.intercept_feasibility_score_by_target
+            ),
+            cls._stable_input_value(resource.metadata),
+        )
+
+    @classmethod
+    def _demand_signature(cls, demand: TargetDemand) -> tuple[Any, ...]:
+        return (
+            demand.required_resource_count,
+            demand.primary_resource_count,
+            demand.coordination_mode,
+            cls._stable_input_value(demand.required_capability_counts),
+            demand.arrival_window_start_s,
+            demand.arrival_window_end_s,
+            demand.wave_interval_s,
+            demand.minimum_separation_s,
+            cls._stable_input_value(demand.metadata),
+        )
+
+    @classmethod
+    def _stable_input_value(cls, value: Any) -> Any:
+        if isinstance(value, Mapping):
+            return tuple(
+                sorted(
+                    (str(key), cls._stable_input_value(item))
+                    for key, item in value.items()
+                )
+            )
+        if isinstance(value, (tuple, list, set, frozenset)):
+            items = tuple(cls._stable_input_value(item) for item in value)
+            return tuple(sorted(items, key=repr)) if isinstance(value, (set, frozenset)) else items
+        if isinstance(value, (str, int, float, bool, type(None))):
+            return value
+        return repr(value)
+
+    @staticmethod
+    def _has_time_dependent_constraints(
+        tracks: tuple[TargetTrack, ...],
+        resources: tuple[ResourceState, ...],
+        *,
+        last_evaluated_at: float,
+        timestamp: float,
+    ) -> bool:
+        if timestamp == last_evaluated_at:
+            return False
+        if any(
+            track.hard_time_window
+            or track.time_window_open_at_s is not None
+            or track.time_window_close_at_s is not None
+            or track.time_window_state is not None
+            or bool(track.time_window_by_resource)
+            for track in tracks
+        ):
+            return True
+        return any(
+            min(last_evaluated_at, timestamp)
+            < resource.busy_until
+            <= max(last_evaluated_at, timestamp)
+            for resource in resources
+        )
 
     def publish_plan(self, plan: AssignmentPlan) -> AssignmentPlan:
         """Register a plan as published for subsequent stale checks."""
@@ -429,6 +1300,10 @@ class AssignmentPlanner:
                 "hysteresis_min_dwell_s": self.config.min_dwell,
                 "hysteresis_max_changes_per_window": self.config.max_changes_per_window,
                 "reassignment_switch_penalty": self.config.reassignment_switch_penalty,
+                "transient_feedback_dwell_frames": max(
+                    1,
+                    int(self.config.transient_feedback_dwell_frames),
+                ),
                 "high_threat_threshold": self.config.high_threat_threshold,
                 "assignment_profile_schema": ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1,
                 "cost_profile_id": self.config.cost_profile_id,
@@ -486,6 +1361,158 @@ class AssignmentPlanner:
             for track in tracks
         )
 
+    def _soft_reserve_feedback_primary_pins(
+        self,
+        *,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        resources: list[ResourceState] | tuple[ResourceState, ...],
+        previous_plan: AssignmentPlan | None,
+        matrix_result: CostMatrixResult,
+    ) -> dict[str, frozenset[str]]:
+        """Pin healthy primaries when only a reserve reports a soft failure."""
+
+        if previous_plan is None:
+            return {}
+        feedback_events = self._terminal_feedback_events(tracks)
+        if not feedback_events:
+            return {}
+
+        events_by_target: dict[str, list[Mapping[str, Any]]] = {}
+        for event in feedback_events:
+            if event.get("plan_version") != previous_plan.version:
+                continue
+            target_id = event.get("target_id")
+            resource_id = event.get("resource_id")
+            if target_id is None or resource_id is None:
+                continue
+            events_by_target.setdefault(str(target_id), []).append(event)
+
+        target_index = {
+            target_id: index
+            for index, target_id in enumerate(matrix_result.target_ids)
+        }
+        resource_index = {
+            resource_id: index
+            for index, resource_id in enumerate(matrix_result.resource_ids)
+        }
+        resource_by_id = {
+            resource.resource_id: resource for resource in resources
+        }
+        track_by_id = {track.track_id: track for track in tracks}
+        previous_coalition_by_target = {
+            coalition.target_id: coalition for coalition in previous_plan.coalitions
+        }
+        pins: dict[str, frozenset[str]] = {}
+
+        for target_id, target_events in events_by_target.items():
+            track = track_by_id.get(target_id)
+            previous_coalition = previous_coalition_by_target.get(target_id)
+            previous_assignments = previous_plan.assignments_by_target().get(
+                target_id,
+                (),
+            )
+            if track is None or previous_coalition is None or not previous_assignments:
+                continue
+            demand = track.effective_demand
+            if (
+                demand.required_resource_count
+                != previous_coalition.required_resource_count
+                or demand.primary_resource_count
+                != previous_coalition.primary_resource_count
+                or demand.coordination_mode != previous_coalition.coordination_mode
+            ):
+                continue
+            if any(self._hard_feedback_reasons(event) for event in target_events):
+                continue
+
+            events_by_resource: dict[str, list[Mapping[str, Any]]] = {}
+            for event in target_events:
+                events_by_resource.setdefault(str(event["resource_id"]), []).append(
+                    event
+                )
+            primary_assignments = tuple(
+                assignment
+                for assignment in previous_assignments
+                if assignment.member_role == CoalitionMemberRole.PRIMARY.value
+            )
+            reserve_assignments = tuple(
+                assignment
+                for assignment in previous_assignments
+                if assignment.member_role == CoalitionMemberRole.RESERVE.value
+            )
+            if (
+                len(primary_assignments) != demand.primary_resource_count
+                or not reserve_assignments
+                or not all(
+                    all(
+                        self._is_consistent_member_feedback(event)
+                        for event in events_by_resource.get(
+                            assignment.resource_id,
+                            (),
+                        )
+                    )
+                    for assignment in primary_assignments
+                )
+                or any(
+                    not events_by_resource.get(assignment.resource_id)
+                    for assignment in primary_assignments
+                )
+                or not any(
+                    self._is_soft_member_feedback(event)
+                    for assignment in reserve_assignments
+                    for event in events_by_resource.get(assignment.resource_id, [])
+                )
+            ):
+                continue
+
+            i = target_index.get(target_id)
+            if i is None:
+                continue
+            primary_ids: set[str] = set()
+            primary_feasible = True
+            for assignment in primary_assignments:
+                resource_id = assignment.resource_id
+                j = resource_index.get(resource_id)
+                resource = resource_by_id.get(resource_id)
+                required_capability = assignment.metadata.get(
+                    "required_capability_class"
+                )
+                if (
+                    j is None
+                    or resource is None
+                    or matrix_result.reject_reasons[i][j] is not None
+                    or float(matrix_result.matrix[i, j])
+                    >= self.config.infeasible_penalty * 0.5
+                    or (
+                        required_capability is not None
+                        and not self._resource_has_capability(
+                            resource,
+                            str(required_capability),
+                        )
+                    )
+                ):
+                    primary_feasible = False
+                    break
+                primary_ids.add(resource_id)
+            if primary_feasible and len(primary_ids) == demand.primary_resource_count:
+                pins[target_id] = frozenset(primary_ids)
+        return pins
+
+    @staticmethod
+    def _is_consistent_member_feedback(event: Mapping[str, Any]) -> bool:
+        state = str(event.get("terminal_feedback_state") or "").strip().lower()
+        action = str(event.get("main_action") or "continue").strip().lower()
+        return state == "consistent" and action == "continue"
+
+    @staticmethod
+    def _is_soft_member_feedback(event: Mapping[str, Any]) -> bool:
+        state = str(event.get("terminal_feedback_state") or "").strip().lower()
+        action = str(event.get("main_action") or "").strip().lower()
+        return state in _SOFT_MEMBER_FEEDBACK_STATES and action in {
+            "hold",
+            "replan",
+        }
+
     def _build_demand_plan(
         self,
         *,
@@ -497,10 +1524,17 @@ class AssignmentPlanner:
         window_id: int | None,
     ) -> AssignmentPlan:
         slots = self._demand_slots(tracks)
+        primary_pins_by_target = self._soft_reserve_feedback_primary_pins(
+            tracks=tracks,
+            resources=resources,
+            previous_plan=previous_plan,
+            matrix_result=matrix_result,
+        )
         slot_matrix_result = self._expand_demand_slot_matrix(
             slots,
             resources,
             matrix_result,
+            primary_pins_by_target=primary_pins_by_target,
         )
         slots_by_target: dict[str, tuple[int, ...]] = {}
         for slot_index, slot in enumerate(slots):
@@ -627,7 +1661,7 @@ class AssignmentPlanner:
             solver_name=self.demand_solver.solver_name,
             status="optimal",
         )
-        return self._build_plan(
+        plan = self._build_plan(
             matrix_result=slot_matrix_result,
             solver_result=solver_result,
             timestamp=timestamp,
@@ -641,6 +1675,30 @@ class AssignmentPlanner:
             incomplete_target_ids=incomplete_target_ids,
             demand_summaries=tuple(coalition.summary for coalition in coalitions),
             reported_target_count=len(tracks),
+        )
+        if not primary_pins_by_target:
+            return plan
+        assert previous_plan is not None
+        return replace(
+            plan,
+            metadata={
+                **dict(plan.metadata),
+                "feedback_primary_role_protection_applied": True,
+                "feedback_primary_role_protection_reason": (
+                    "reserve_soft_feedback_primary_consistent"
+                ),
+                "feedback_primary_role_protection_by_target": tuple(
+                    {
+                        "target_id": target_id,
+                        "primary_resource_ids": tuple(sorted(resource_ids)),
+                        "source_plan_id": previous_plan.plan_id,
+                        "source_plan_version": previous_plan.version,
+                    }
+                    for target_id, resource_ids in sorted(
+                        primary_pins_by_target.items()
+                    )
+                ),
+            },
         )
 
     def _demand_slots(
@@ -704,7 +1762,15 @@ class AssignmentPlanner:
         slots: tuple[_DemandSlot, ...],
         resources: list[ResourceState] | tuple[ResourceState, ...],
         matrix_result: CostMatrixResult,
+        *,
+        primary_pins_by_target: Mapping[str, frozenset[str]] | None = None,
     ) -> CostMatrixResult:
+        primary_pins_by_target = primary_pins_by_target or {}
+        pinned_owner_by_resource = {
+            resource_id: target_id
+            for target_id, resource_ids in primary_pins_by_target.items()
+            for resource_id in resource_ids
+        }
         matrix = np.zeros((len(slots), len(resources)), dtype=float)
         breakdowns: list[tuple[dict[str, float], ...]] = []
         reject_reasons: list[tuple[str | None, ...]] = []
@@ -726,6 +1792,30 @@ class AssignmentPlanner:
                     )
                 ):
                     reject_reason = "required_capability_unavailable"
+                    cost = self.config.infeasible_penalty
+                    breakdown["infeasible"] = self.config.infeasible_penalty
+                    breakdown["total"] = cost
+                protected_primary_ids = primary_pins_by_target.get(slot.target_id)
+                if (
+                    reject_reason is None
+                    and protected_primary_ids
+                    and slot.member_role == CoalitionMemberRole.PRIMARY.value
+                    and resource.resource_id not in protected_primary_ids
+                ):
+                    reject_reason = "feedback_primary_role_protected"
+                    cost = self.config.infeasible_penalty
+                    breakdown["infeasible"] = self.config.infeasible_penalty
+                    breakdown["total"] = cost
+                pinned_owner = pinned_owner_by_resource.get(resource.resource_id)
+                if (
+                    reject_reason is None
+                    and pinned_owner is not None
+                    and (
+                        slot.target_id != pinned_owner
+                        or slot.member_role != CoalitionMemberRole.PRIMARY.value
+                    )
+                ):
+                    reject_reason = "feedback_primary_resource_reserved"
                     cost = self.config.infeasible_penalty
                     breakdown["infeasible"] = self.config.infeasible_penalty
                     breakdown["total"] = cost
@@ -935,6 +2025,315 @@ class AssignmentPlanner:
                     )
                 )
         return tuple(annotated), tuple(coalitions)
+
+    def _apply_transient_feedback_dwell(
+        self,
+        *,
+        candidate: AssignmentPlan,
+        previous_plan: AssignmentPlan,
+        matrix_result: CostMatrixResult,
+        timestamp: float,
+        window_id: int | None,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+    ) -> tuple[AssignmentPlan, bool]:
+        """Hold a feasible primary set across short, version-matched feedback."""
+
+        previous_primary = self._primary_resources_by_target(previous_plan)
+        candidate_primary = self._primary_resources_by_target(candidate)
+        changed_primary_targets = tuple(
+            sorted(
+                target_id
+                for target_id in set(previous_primary) | set(candidate_primary)
+                if previous_primary.get(target_id, frozenset())
+                != candidate_primary.get(target_id, frozenset())
+            )
+        )
+        if not changed_primary_targets:
+            return candidate, False
+
+        feedback_events = self._terminal_feedback_events(tracks)
+        if not feedback_events:
+            return candidate, False
+        prior_records = {
+            str(record.get("target_id")): record
+            for record in previous_plan.metadata.get(
+                "transient_feedback_dwell_records", ()
+            )
+            if isinstance(record, Mapping) and record.get("target_id") is not None
+        }
+        previous_cost, previous_feasible, previous_assignments, previous_unassigned = (
+            self._score_previous_plan(previous_plan, matrix_result, candidate)
+        )
+        default_required = max(
+            1,
+            int(self.config.transient_feedback_dwell_frames),
+        )
+        records: list[dict[str, object]] = []
+        protected_targets: list[str] = []
+        released_targets: list[str] = []
+        stale_feedback_count = 0
+        hard_release_reasons: list[str] = []
+
+        for target_id in changed_primary_targets:
+            target_events = tuple(
+                event
+                for event in feedback_events
+                if event.get("target_id") == target_id
+            )
+            current_events: list[Mapping[str, Any]] = []
+            for event in target_events:
+                if event.get("plan_version") != previous_plan.version:
+                    stale_feedback_count += 1
+                    continue
+                current_events.append(event)
+            if not current_events:
+                continue
+
+            hard_reasons = tuple(
+                reason
+                for event in current_events
+                for reason in self._hard_feedback_reasons(event)
+            )
+            transient_events = tuple(
+                event
+                for event in current_events
+                if self._is_transient_feedback(event)
+            )
+            if hard_reasons or not previous_feasible:
+                released_targets.append(target_id)
+                hard_release_reasons.extend(
+                    hard_reasons or ("previous_assignment_infeasible",)
+                )
+                continue
+            if not transient_events:
+                continue
+
+            prior = prior_records.get(target_id)
+            prior_count = 0
+            if (
+                prior is not None
+                and prior.get("source_plan_version") == previous_plan.version
+            ):
+                prior_count = max(0, int(prior.get("observed_frames", 0)))
+            required_frames = max(
+                (
+                    max(
+                        default_required,
+                        self._feedback_required_frames(event, default_required),
+                    )
+                    for event in transient_events
+                ),
+                default=default_required,
+            )
+            observed_frames = prior_count + 1
+            stable_counts = {
+                str(resource_id): int(count)
+                for event in transient_events
+                for resource_id, count in self._feedback_stable_counts(event).items()
+            }
+            record = {
+                "target_id": target_id,
+                "source_plan_id": previous_plan.plan_id,
+                "source_plan_version": previous_plan.version,
+                "observed_frames": observed_frames,
+                "required_frames": required_frames,
+                "stable_lock_frame_count_by_resource": stable_counts,
+                "reasons": tuple(
+                    sorted(
+                        {
+                            str(event.get("reason") or event.get("terminal_feedback_state"))
+                            for event in transient_events
+                        }
+                    )
+                ),
+            }
+            records.append(record)
+            if observed_frames < required_frames:
+                protected_targets.append(target_id)
+            else:
+                released_targets.append(target_id)
+
+        metadata = {
+            **dict(candidate.metadata),
+            "transient_feedback_dwell_enabled": True,
+            "transient_feedback_dwell_frames": default_required,
+            "transient_feedback_dwell_records": tuple(records),
+            "transient_feedback_protected_target_ids": tuple(protected_targets),
+            "transient_feedback_released_target_ids": tuple(released_targets),
+            "transient_feedback_stale_event_count": stale_feedback_count,
+            "transient_feedback_hard_release_reasons": tuple(
+                sorted(set(hard_release_reasons))
+            ),
+        }
+        if hard_release_reasons:
+            return (
+                replace(
+                    candidate,
+                    decision_state=(
+                        "accepted_hard_feedback_release"
+                        if previous_feasible
+                        else "accepted_previous_infeasible"
+                    ),
+                    last_changed_at=timestamp,
+                    metadata={
+                        **metadata,
+                        "transient_feedback_dwell_state": "released",
+                        "transient_feedback_dwell_reason": "hard_risk",
+                        "transient_feedback_protected_target_ids": (),
+                    },
+                ),
+                True,
+            )
+
+        if protected_targets:
+            held_plan = self._build_plan(
+                matrix_result=matrix_result,
+                solver_result=SolverResult(
+                    assignments=(),
+                    unassigned_target_indices=(),
+                    objective_value=previous_cost,
+                    solver_name=candidate.solver_name,
+                    status="held",
+                ),
+                timestamp=timestamp,
+                previous_plan=previous_plan,
+                window_id=window_id,
+                decision_state="held_by_transient_feedback_dwell",
+                changed=False,
+                last_changed_at=previous_plan.last_changed_at,
+                total_cost=previous_cost,
+                assignments=previous_assignments,
+                unassigned_target_ids=previous_unassigned,
+                coalitions=previous_plan.coalitions,
+                incomplete_target_ids=previous_plan.incomplete_target_ids,
+                demand_summaries=tuple(
+                    coalition.summary for coalition in previous_plan.coalitions
+                ),
+            )
+            return (
+                replace(
+                    held_plan,
+                    candidate_total_cost=candidate.total_cost,
+                    previous_total_cost_current=previous_cost,
+                    metadata={
+                        **dict(held_plan.metadata),
+                        **metadata,
+                        "transient_feedback_dwell_state": "held",
+                        "transient_feedback_dwell_reason": (
+                            "primary_lock_stability_incomplete"
+                        ),
+                        "transient_feedback_previous_feasible": previous_feasible,
+                    },
+                ),
+                True,
+            )
+
+        if released_targets:
+            return (
+                replace(
+                    candidate,
+                    decision_state="accepted_transient_feedback_dwell_complete",
+                    last_changed_at=timestamp,
+                    metadata={
+                        **metadata,
+                        "transient_feedback_dwell_state": "released",
+                        "transient_feedback_dwell_reason": (
+                            "required_window_complete"
+                        ),
+                    },
+                ),
+                True,
+            )
+
+        return (
+            replace(
+                candidate,
+                metadata={
+                    **metadata,
+                    "transient_feedback_dwell_state": "not_applicable",
+                    "transient_feedback_dwell_reason": "no_current_transient_feedback",
+                },
+            ),
+            False,
+        )
+
+    @staticmethod
+    def _primary_resources_by_target(
+        plan: AssignmentPlan,
+    ) -> dict[str, frozenset[str]]:
+        primary: dict[str, set[str]] = {}
+        for assignment in plan.assignments:
+            if assignment.member_role != CoalitionMemberRole.PRIMARY.value:
+                continue
+            primary.setdefault(assignment.target_id, set()).add(
+                assignment.resource_id
+            )
+        return {
+            target_id: frozenset(resource_ids)
+            for target_id, resource_ids in primary.items()
+        }
+
+    @staticmethod
+    def _terminal_feedback_events(
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+    ) -> tuple[Mapping[str, Any], ...]:
+        events: list[Mapping[str, Any]] = []
+        for track in tracks:
+            raw_events = track.metadata.get("terminal_feedback_events", ())
+            if isinstance(raw_events, Mapping):
+                raw_events = (raw_events,)
+            if not isinstance(raw_events, (tuple, list)):
+                continue
+            events.extend(
+                event for event in raw_events if isinstance(event, Mapping)
+            )
+        return tuple(events)
+
+    @staticmethod
+    def _is_transient_feedback(event: Mapping[str, Any]) -> bool:
+        reason = str(event.get("reason") or "").strip().lower()
+        state = str(event.get("terminal_feedback_state") or "").strip().lower()
+        return (
+            reason in _TRANSIENT_FEEDBACK_REASONS
+            or state in _TRANSIENT_FEEDBACK_STATES
+        )
+
+    @staticmethod
+    def _hard_feedback_reasons(event: Mapping[str, Any]) -> tuple[str, ...]:
+        reasons: list[str] = []
+        state = str(event.get("terminal_feedback_state") or "").strip().lower()
+        conflict = str(event.get("coalition_conflict_state") or "").strip().lower()
+        friend_conflict = str(event.get("friend_conflict_state") or "").strip().lower()
+        action = str(event.get("main_action") or "").strip().lower()
+        if bool(event.get("duplicate_terminal_lock_risk")):
+            reasons.append("duplicate_terminal_lock_risk")
+        if state in _HARD_FEEDBACK_STATES:
+            reasons.append(f"terminal_feedback_{state}")
+        if conflict and conflict != "none":
+            reasons.append(f"coalition_conflict_{conflict}")
+        if friend_conflict and friend_conflict != "none":
+            reasons.append(f"friend_conflict_{friend_conflict}")
+        if action == "secondary_arbitration":
+            reasons.append("secondary_arbitration_requested")
+        if conflict in _HARD_FEEDBACK_CONFLICTS:
+            reasons.append(f"hard_conflict_{conflict}")
+        return tuple(dict.fromkeys(reasons))
+
+    @staticmethod
+    def _feedback_required_frames(
+        event: Mapping[str, Any],
+        default: int,
+    ) -> int:
+        raw_value = event.get("required_stable_frames")
+        try:
+            return default if raw_value is None else max(1, int(raw_value))
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _feedback_stable_counts(event: Mapping[str, Any]) -> Mapping[str, int]:
+        counts = event.get("stable_lock_frame_count_by_resource")
+        return counts if isinstance(counts, Mapping) else {}
 
     def _apply_hysteresis(
         self,
@@ -1491,6 +2890,10 @@ class AssignmentPlanner:
                 self.config.reassignment_switch_penalty
             ),
             "high_threat_threshold": float(self.config.high_threat_threshold),
+            "transient_feedback_dwell_frames": max(
+                1,
+                int(self.config.transient_feedback_dwell_frames),
+            ),
             "infeasible_penalty": float(self.config.infeasible_penalty),
             "unassigned_base_cost": float(self.config.unassigned_base_cost),
         }

@@ -103,6 +103,7 @@ class AssociationRiskSummary:
     ambiguity_score: float = 0.0
     id_switch_count: int = 0
     duplicate_track_count: int = 0
+    duplicate_track_risk: float = 0.0
     track_continuity: float = 1.0
     truth_metrics_available: bool = True
     continuity_available: bool = True
@@ -156,6 +157,7 @@ class ActiveDegradationConfig:
     covariance_trace_high: float = 2500.0
     association_ambiguity_medium: float = 0.35
     association_ambiguity_high: float = 0.70
+    duplicate_track_risk_observe: float = 0.50
     track_continuity_low: float = 0.60
     max_plan_age_s: float = 4.0
     min_cost_margin: float = 0.10
@@ -619,6 +621,8 @@ class ActiveDegradationArbiter:
             factors.append("d2_id_switch_observed")
         if association.duplicate_track_count > 0:
             factors.append("d2_duplicate_track_observed")
+        elif association.duplicate_track_risk >= cfg.duplicate_track_risk_observe:
+            factors.append("d2_duplicate_track_risk_high")
         if (
             association.continuity_available
             and association.track_continuity < cfg.track_continuity_low

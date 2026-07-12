@@ -325,27 +325,61 @@ def build_5v5_replay_fixture(
     missed_detection_frames: Sequence[int] = (5, 6),
     false_alarm_frames: Sequence[int] = (3, 4, 5),
 ) -> list[dict[str, Any]]:
-    """Build a deterministic dense/crossing 5v5 replay with misses and clutter."""
+    """Backward-compatible five-target calibration fixture."""
 
+    return build_dense_crossing_replay_fixture(
+        target_count=5,
+        seed=seed,
+        steps=steps,
+        missed_detection_frames=missed_detection_frames,
+        false_alarm_frames=false_alarm_frames,
+    )
+
+
+def build_dense_crossing_replay_fixture(
+    *,
+    target_count: int = 5,
+    seed: int = 1,
+    steps: int = 12,
+    missed_detection_frames: Sequence[int] = (5, 6),
+    false_alarm_frames: Sequence[int] = (3, 4, 5),
+) -> list[dict[str, Any]]:
+    """Build an N-target dense crossing replay with misses and clutter."""
+
+    if target_count < 2:
+        raise ValueError("target_count must be at least 2")
     if steps < 4:
         raise ValueError("steps must be at least 4")
     rng = np.random.default_rng(seed)
-    starts = np.array(
-        [[-18.0, -4.0], [-16.0, -2.0], [-14.0, 0.0], [16.0, 2.0], [18.0, 4.0]],
-        dtype=float,
+    lane_offsets = np.arange(target_count, dtype=float) - (target_count - 1) / 2.0
+    directions = np.where(
+        np.arange(target_count) < (target_count + 1) // 2,
+        1.0,
+        -1.0,
     )
-    velocities = np.array(
-        [[3.2, 0.35], [3.0, 0.18], [2.8, 0.0], [-3.0, -0.18], [-3.2, -0.35]],
-        dtype=float,
-    )
+    ranges = 15.0 + 0.8 * np.abs(lane_offsets)
+    starts = np.column_stack((-directions * ranges, 1.6 * lane_offsets))
+    speeds = 2.8 + 0.12 * np.abs(lane_offsets)
+    velocities = np.column_stack((directions * speeds, -0.06 * lane_offsets))
     frames: list[dict[str, Any]] = []
     missed_frames = set(int(value) for value in missed_detection_frames)
     clutter_frames = set(int(value) for value in false_alarm_frames)
+    missed_target_index = target_count // 2
+    truth_ids = [f"target-{index + 1}" for index in range(target_count)]
+    scenario_tags = [
+        f"{target_count}-target",
+        "crossing",
+        "dense",
+        "occlusion",
+        "missed_detection",
+        "false_alarm",
+    ]
+    if target_count == 5:
+        scenario_tags.insert(0, "5v5")
     for frame_index in range(steps):
         timestamp = frame_index * 0.5
         detections: list[dict[str, Any]] = []
         truth_states: dict[str, list[float]] = {}
-        truth_ids = [f"target-{index + 1}" for index in range(5)]
         for target_index, truth_id in enumerate(truth_ids):
             position = starts[target_index] + velocities[target_index] * timestamp
             state = [
@@ -355,7 +389,7 @@ def build_5v5_replay_fixture(
                 float(velocities[target_index, 1]),
             ]
             truth_states[truth_id] = state
-            if target_index == 2 and frame_index in missed_frames:
+            if target_index == missed_target_index and frame_index in missed_frames:
                 continue
             noisy_position = position + rng.normal(0.0, 0.22, size=2)
             detections.append(
@@ -367,7 +401,8 @@ def build_5v5_replay_fixture(
                     "offline_truth_state": state,
                     "offline_truth_position": state[:2],
                     "feature": [
-                        1.0 if index == target_index else 0.0 for index in range(5)
+                        1.0 if index == target_index else 0.0
+                        for index in range(target_count)
                     ],
                 }
             )
@@ -383,6 +418,7 @@ def build_5v5_replay_fixture(
             )
         frames.append(
             {
+                "frame_index": frame_index,
                 "timestamp": timestamp,
                 "measurement_timestamp": timestamp,
                 "arrival_timestamp": timestamp + 0.08,
@@ -391,11 +427,14 @@ def build_5v5_replay_fixture(
                 "offline_truth_states": truth_states,
                 "replay_metadata": {
                     "seed": seed,
-                    "episode_id": f"d2-5v5-{seed:04d}",
-                    "scenario_name": "5v5_crossing_dense_missed_detection_false_alarm",
-                    "scenario_tags": ["5v5", "crossing", "dense", "missed_detection", "false_alarm"],
-                    "target_count": 5,
-                    "drone_count": 5,
+                    "episode_id": f"d2-{target_count}target-{seed:04d}",
+                    "scenario_name": (
+                        f"{target_count}target_crossing_dense_"
+                        "occlusion_missed_detection_false_alarm"
+                    ),
+                    "scenario_tags": scenario_tags,
+                    "target_count": target_count,
+                    "drone_count": target_count,
                 },
             }
         )

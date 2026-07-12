@@ -107,7 +107,7 @@ The current P1 fixture path also accepts real Blocks/CV-style JSONL/CSV fields s
 normalized into `SensorObservation.metadata` and carried into the latest `GlobalTrack.metadata`
 lineage without requiring PNG frames or an AirSim Python dependency.
 
-## 2026-07-10 AirSim 2v2 Contract Audit
+## Historical Baseline: 2026-07-10 AirSim 2v2 Contract Audit
 
 The reset-separated 2v2 smoke output under
 `research_modules/airsim_runtime/outputs/p1_gap_closure_2v2_smoke_20260710/` was replayed through
@@ -140,7 +140,7 @@ still enable simulation-only truth hints. The next D1 integration pass therefore
 provenance, truth-free multi-seed replay, explicit writer schema/coverage fields, expected-latency
 health calibration, and durable Blocks/CV fixtures open as P1.
 
-## 2026-07-11 Truth-Isolated 5v5 Runtime Evidence
+## Historical Baseline: 2026-07-11 Truth-Isolated 5v5 Runtime Evidence
 
 The three reset-separated 5v5 episodes under
 `research_modules/airsim_runtime/outputs/p1_runtime_truth_isolated_d4d5_smoke_20260711/`
@@ -220,13 +220,12 @@ Optional cue metadata can carry the secondary/mobile recon node, cue source, or 
 
 Video/image streams are represented only by derived observations such as bounding boxes, camera metadata, timestamps, and covariance. D1 does not require or store PNG frames.
 
-As of 2026-07-11, the D1-owned writer/provenance contract, expected-latency/OOSM health fields,
-fixed coverage-cell windows, covariance-growth windows, truth-free two-target replay, and durable
-Blocks/CV-shaped JSONL/CSV fixtures are implemented. Remaining P1 work is main/shared adoption of
-the governed writer, completion of the episode-bus D1 governance schema beyond the current short
-smoke, multi-seed threshold calibration, broader camera/bbox fixtures, D6 long-run batch schema alignment,
-IMM/model-set comparison, scene-adaptive covariance rules, cooperative runtime/replay integration, and
-full D1/D2 association-to-fusion validation.
+As of the final 2026-07-11 validation, the D1 governed writer/provenance contract is adopted by the
+main episode bus, online records strip truth/actor/object identity, and offline truth labels are written
+separately for evaluation. This closes the D1 contribution to the P1 contract layer. Remaining D1 work
+is validation and algorithm enhancement: longer real multi-seed maneuver/occlusion/node-loss replay,
+sensor-specific latency and health-window calibration, broader camera/bbox fixtures, RMSE/NIS/NEES
+consistency, cooperative runtime validation, and model-set/adaptive-covariance comparisons.
 Replay schema v1, legacy JSONL compatibility,
 covariance-required CSV replay, raw and fusion latency audit, sensor-health summaries, timestamp
 uncertainty, covariance floor/ceiling limiting, covariance scale reason passthrough, region quality
@@ -256,3 +255,78 @@ confident than the corresponding false-independent information sum. This is not 
 consensus path, a D2 association implementation, or a runtime integration claim. AirSim multi-seed
 replay, D1/D2 two-stage association/fusion, maneuver and occlusion benchmarks, and distributed
 end-to-end validation remain open.
+
+## Current P0/P1/P2 Status (2026-07-11 Final Validation)
+
+The authoritative status is
+`research_modules/airsim_runtime/outputs/p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md`.
+The P1 contract layer is closed: the main episode bus writes the D1 governed replay manifest and
+truth-stripped online records while keeping truth in a separate offline-label path. In the 10-seed
+ComputerVision batch, the downstream T001 two-primary contract met its 8/10 acceptance threshold;
+the secondary and distributed 3/3-ACK commit cases passed, and the 2/3-ACK case aborted fail-closed.
+These downstream results show that D1 state, covariance, timing, and lineage can feed the governed
+contract chain; they do not add control or coalition responsibilities to D1.
+
+- **P0 closed/regression baseline:** dual timestamps, NED, covariance, FDIR-light, covariance bounds,
+  timestamp uncertainty, source-lineage de-duplication, and N-target input remain mandatory. The
+  current D1 regression baseline is `62 passed`.
+- **P1 contract layer closed:** governed replay/schema/provenance is used by main, online truth is
+  isolated from offline scoring labels, and D1 timing/covariance/lineage records are present in the
+  accepted CV and degradation/fail-closed episode chain.
+- **Open D1 validation/enhancement:** real multi-seed maneuver/occlusion/node-loss/cooperative replay,
+  sensor-specific latency and health-window calibration, camera/bbox fixture expansion,
+  RMSE/NIS/NEES consistency, and model-set/adaptive-covariance comparison remain open. These are not
+  reasons to reopen the P1 contract-layer result.
+- **Physical boundary:** the 15 s SimpleFlight batch is diagnostic only. Its 0/30 active-pair physical
+  intercept result does not close physical interception and is not a D1 fusion-accuracy acceptance.
+- **P2 isolated only:** the frozen governed-replay harness now reports RMSE/NIS/NEES/time for the
+  current path. FilterPy and Stone Soup are unavailable in the validated environment and emit an
+  explicit `unavailable_reason`; they do not replace the NumPy EKF/fixed-lag default path.
+
+The next D1 sequence is real multi-seed replay and statistical calibration, followed by optional
+association-to-fusion and model-set comparisons. The acceptance command is:
+
+```bash
+PYTHONPATH=research_modules/d1_sensor_fusion/src pytest -q research_modules/d1_sensor_fusion/tests
+```
+
+## Governed Replay Manifest And Serializer
+
+`serialize_governed_replay()` is the frozen online entry point for main. It returns a JSON-safe
+`{"manifest": ..., "records": [...]}` bundle and validates the full batch before returning. The
+manifest uses `d1.governed_replay_manifest.v1` and records the observation schema, NED fusion working
+frame, scenario/config IDs, versions and digests, seed, timestamp ranges, coverage cells, and an
+opaque source-lineage entry for every observation.
+
+The strict path requires finite ordered dual timestamps, covariance matching the measurement shape,
+`coverage_cell`, and JSON-safe lineage. Online records recursively remove truth, actor, and object
+identifiers. `serialize_offline_governed_replay()` is the explicit offline-only path that places such
+labels under `offline_truth`; it never restores them into online metadata. Existing unversioned
+Blocks JSONL remains readable through the legacy compatibility reader, but it does not satisfy the
+strict governed manifest contract.
+
+This closes the D1-owned P1 manifest/serializer implementation. The main episode bus now adopts the
+API with scenario/config provenance and seed data; D1 still does not own AirSim launch, episode order,
+or runtime report generation.
+
+## Isolated P2 Filter Benchmark
+
+`p2_benchmark.py` consumes the frozen
+`tests/fixtures/p2_governed_filter_benchmark_v1.json` bundle. It validates the governed manifest,
+NED working frame, dual timestamps, observation covariance, source lineage, and truth-stripped online
+records before running the existing `FusionAdapter`. The separate `offline_truth` sidecar is used only
+after filtering to compute position RMSE and six-state NEES; track NIS is read from the current path.
+
+Run the benchmark with:
+
+```bash
+PYTHONPATH=research_modules/d1_sensor_fusion/src \
+python3 research_modules/d1_sensor_fusion/scripts/run_p2_isolated_benchmark.py
+```
+
+The 2026-07-11 validation produced RMSE `0.2335 m`, mean NIS `0.0426`, mean NEES `0.0651`, and
+`6.9-10.1 ms` wall time across two runs of six observations on the validation host. The low NIS/NEES values indicate a
+conservative covariance on this small synthetic fixture; they are evidence that the metric path runs,
+not a real-sensor consistency acceptance. Neither optional dependency is installed. FilterPy and
+Stone Soup therefore report `status=unavailable`, null metrics, and a non-empty `unavailable_reason`.
+No optional package was added to default requirements and no online D1 code path was changed.

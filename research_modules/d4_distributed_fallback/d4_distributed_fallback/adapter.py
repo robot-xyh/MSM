@@ -29,6 +29,7 @@ from .active_degradation import (
     summarize_secondary_lifecycle,
 )
 from .coalition_safety import (
+    CoalitionCommitState,
     CoalitionSafetyAction,
     CoalitionSafetyEvidence,
     build_coalition_safety_evidence,
@@ -103,6 +104,14 @@ ADAPTER_HARD_RISK_FACTORS = frozenset(
         "unauthorized_coalition_lock",
         "coalition_lock_count_exceeded",
         "coalition_lock_membership_unresolved",
+        "coalition_visual_track_mismatch",
+        "coalition_visual_plan_mismatch",
+        "coalition_visual_plan_version_stale",
+        "coalition_visual_coalition_mismatch",
+        "coalition_visual_coalition_version_stale",
+        "coalition_visual_conflict",
+        "coalition_visual_primary_incomplete",
+        "coalition_commit_incomplete",
     }
 )
 
@@ -112,6 +121,7 @@ CENTER_REPLAN_COOLDOWN_BYPASS_FACTORS = frozenset(
         "d5_duplicate_terminal_lock",
         "d5_resource_assignment_mismatch",
         "d2_id_switch_observed",
+        "d2_duplicate_track_observed",
         "d3_assignment_not_current",
         "d3_assignment_stale",
         "coalition_safety_hold",
@@ -128,6 +138,14 @@ CENTER_REPLAN_COOLDOWN_BYPASS_FACTORS = frozenset(
         "unauthorized_coalition_lock",
         "coalition_lock_count_exceeded",
         "coalition_lock_membership_unresolved",
+        "coalition_visual_track_mismatch",
+        "coalition_visual_plan_mismatch",
+        "coalition_visual_plan_version_stale",
+        "coalition_visual_coalition_mismatch",
+        "coalition_visual_coalition_version_stale",
+        "coalition_visual_conflict",
+        "coalition_visual_primary_incomplete",
+        "coalition_commit_incomplete",
     }
 )
 
@@ -191,6 +209,8 @@ class D4DecisionRecord:
     center_replan_cooldown_s: float = 2.0
     center_replan_cooldown_until: float | None = None
     center_replan_cooldown_active: bool = False
+    center_replan_coalition_recovered: bool = False
+    center_replan_resolution_hint: str | None = None
     coalition_safety: CoalitionSafetyEvidence = field(
         default_factory=CoalitionSafetyEvidence
     )
@@ -352,12 +372,28 @@ class D4DecisionRecord:
             "center_replan_cooldown_s": self.center_replan_cooldown_s,
             "center_replan_cooldown_until": self.center_replan_cooldown_until,
             "center_replan_cooldown_active": self.center_replan_cooldown_active,
+            "center_replan_coalition_recovered": (
+                self.center_replan_coalition_recovered
+            ),
+            "center_replan_resolution_hint": self.center_replan_resolution_hint,
             "coalition_safety": self.coalition_safety.to_dict(),
             "coalition_safety_action": self.coalition_safety.safety_action.value,
             "coalition_safety_reason": self.coalition_safety.safety_reason,
             "coalition_required": self.coalition_safety.coalition_required,
             "coalition_safe_to_execute": self.coalition_safety.safe_to_execute,
             "coalition_fallback_supported": self.coalition_safety.fallback_supported,
+            "atomic_coalition_formed": self.coalition_safety.atomic_coalition_formed,
+            "coalition_commit_state": self.coalition_safety.coalition_commit_state,
+            "coalition_commit_epoch": self.coalition_safety.coalition_commit_epoch,
+            "coalition_commit_coordinator_id": (
+                self.coalition_safety.coalition_commit_coordinator_id
+            ),
+            "coalition_commit_coordinator_role": (
+                self.coalition_safety.coalition_commit_coordinator_role
+            ),
+            "coalition_commit_lease_expires_at": (
+                self.coalition_safety.coalition_commit_lease_expires_at
+            ),
             "coalition_candidate_action": self.coalition_safety.candidate_action,
             "coalition_gated_action": self.coalition_safety.gated_action,
             "coalition_id": self.coalition_safety.coalition_id,
@@ -368,8 +404,24 @@ class D4DecisionRecord:
             "coalition_authorized_resource_ids": list(
                 self.coalition_safety.authorized_resource_ids
             ),
+            "coalition_primary_resource_ids": list(
+                self.coalition_safety.primary_resource_ids
+            ),
             "coalition_locked_resource_ids": list(
                 self.coalition_safety.locked_resource_ids
+            ),
+            "coalition_primary_locked_resource_ids": list(
+                self.coalition_safety.primary_locked_resource_ids
+            ),
+            "coalition_visual_consensus": (
+                self.coalition_safety.coalition_visual_consensus
+            ),
+            "coalition_visual_primary_complete": (
+                self.coalition_safety.coalition_visual_primary_complete
+            ),
+            "coalition_visual_current": self.coalition_safety.coalition_visual_current,
+            "coalition_center_consensus_recovered": (
+                self.coalition_safety.center_consensus_recovered
             ),
             "coalition_conflict_reasons": list(
                 self.coalition_safety.conflict_reasons
@@ -669,6 +721,7 @@ class D4ArbitrationAdapter:
         review_pre_window_s: float | None = None,
         review_post_window_s: float | None = None,
         center_replan_status: CenterReplanStatus | None = None,
+        coalition_commit_state: CoalitionCommitState | None = None,
     ) -> D4ArbitrationResult:
         """Build summaries, run the arbiter, and return a decision record."""
 
@@ -724,6 +777,8 @@ class D4ArbitrationAdapter:
             current_plan_version=current_plan_version,
             expected_plan_version=expected_plan_version,
             expected_coalition_version=expected_coalition_version,
+            coalition_commit_state=coalition_commit_state,
+            current_time_s=float(timestamp),
         )
         terminal_summary = build_terminal_association_summary(
             terminal_association=terminal_association,
@@ -896,6 +951,12 @@ class D4ArbitrationAdapter:
             center_replan_cooldown_s=center_replan_lifecycle["cooldown_s"],
             center_replan_cooldown_until=center_replan_lifecycle["cooldown_until"],
             center_replan_cooldown_active=center_replan_lifecycle["cooldown_active"],
+            center_replan_coalition_recovered=center_replan_lifecycle[
+                "coalition_recovered"
+            ],
+            center_replan_resolution_hint=center_replan_lifecycle[
+                "resolution_hint"
+            ],
             coalition_safety=coalition_safety,
             secondary_takeover=secondary_takeover,
             track_version=track_version or _optional_int(_metadata(track).get("track_version")),
@@ -1571,6 +1632,8 @@ def _apply_center_replan_lifecycle(
         "cooldown_s": cooldown_s,
         "cooldown_until": None,
         "cooldown_active": False,
+        "coalition_recovered": False,
+        "resolution_hint": None,
     }
     if center_replan_status is None:
         return decision, assessment
@@ -1637,6 +1700,29 @@ def _apply_center_replan_lifecycle(
     cooldown_active = bool(float(current_time_s) < cooldown_until)
     assessment["cooldown_until"] = cooldown_until
     assessment["cooldown_active"] = cooldown_active
+
+    if (
+        center_replan_status.state == "pending"
+        and coalition_safety.center_consensus_recovered
+        and decision.action
+        in {
+            DegradationAction.REQUEST_CENTER_REPLAN,
+            DegradationAction.CONTINUE_CENTER,
+        }
+    ):
+        assessment["coalition_recovered"] = True
+        assessment["resolution_hint"] = "acknowledged_no_change"
+        assessment["suppressed_duplicate"] = True
+        return ActiveDegradationDecision(
+            mode=DegradationMode.NONE,
+            action=DegradationAction.CONTINUE_CENTER,
+            reason="center_replan_pending_coalition_recovered",
+            coverage_cell=decision.coverage_cell,
+            terminal_consistent=decision.terminal_consistent,
+            risk_factors=decision.risk_factors,
+            requires_human_review=decision.requires_human_review,
+        ), assessment
+
     if risk_worsened and not cooldown_active:
         assessment["bypass_reason"] = "risk_worsened"
         return decision, assessment
@@ -1680,6 +1766,50 @@ def _enforce_coalition_safety(
             candidate_action=candidate_action,
             gated_action=candidate_action,
         )
+
+    if evidence.atomic_coalition_formed and decision.action in {
+        DegradationAction.DEGRADE_TO_SECONDARY,
+        DegradationAction.DEGRADE_TO_DISTRIBUTED,
+    }:
+        fallback_mode = evidence.metadata.get("coalition_fallback_mode")
+        expected_action = (
+            DegradationAction.DEGRADE_TO_SECONDARY
+            if fallback_mode == "secondary"
+            else DegradationAction.DEGRADE_TO_DISTRIBUTED
+        )
+        if decision.action != expected_action:
+            reason = "coalition_commit_mode_mismatch"
+            gated = ActiveDegradationDecision(
+                mode=(
+                    DegradationMode.PASSIVE_FAILOVER
+                    if not evidence.center_available
+                    else DegradationMode.ACTIVE_DEGRADATION
+                ),
+                action=DegradationAction.HOLD_FOR_REVIEW,
+                reason=reason,
+                coverage_cell=decision.coverage_cell,
+                terminal_consistent=False,
+                risk_factors=tuple(
+                    dict.fromkeys((*decision.risk_factors, reason))
+                ),
+                requires_human_review=True,
+            )
+            return gated, replace(
+                evidence,
+                safety_action=CoalitionSafetyAction.HOLD_OR_REVOKE,
+                safety_reason=reason,
+                safe_to_execute=False,
+                candidate_action=candidate_action,
+                gated_action=gated.action.value,
+                conflict_reasons=tuple(
+                    dict.fromkeys((*evidence.conflict_reasons, reason))
+                ),
+                metadata={
+                    **evidence.metadata,
+                    "candidate_action": candidate_action,
+                    "gated_action": gated.action.value,
+                },
+            )
 
     unsupported_fallback = decision.action in {
         DegradationAction.DEGRADE_TO_SECONDARY,
@@ -1861,10 +1991,41 @@ def build_association_risk_summary(
     duplicate_count = max(
         _first_int(_get(association_metrics, "duplicate_track_count"), 0),
         _first_int(_get(association_metrics, "duplicate_assignment_count"), 0),
+        _first_int(_get(association_metrics, "duplicate_track_delta"), 0),
+        _first_int(_get(association_metrics, "duplicate_assignment_delta"), 0),
+        _first_int(_get(association_metrics, "duplicate_track_delta_sum"), 0),
+        _first_int(_get(association_metrics, "duplicate_assignment_delta_sum"), 0),
+        _first_int(_get(association_result, "duplicate_track_count"), 0),
+        _first_int(_get(association_result, "duplicate_assignment_count"), 0),
+        _first_int(_get(association_result, "duplicate_track_delta"), 0),
+        _first_int(_get(association_result, "duplicate_assignment_delta"), 0),
         _first_int(result_metadata.get("duplicate_track_count"), 0),
+        _first_int(result_metadata.get("duplicate_assignment_count"), 0),
+        _first_int(result_metadata.get("duplicate_track_delta"), 0),
+        _first_int(result_metadata.get("duplicate_assignment_delta"), 0),
+        _first_int(result_metadata.get("duplicate_track_delta_sum"), 0),
+        _first_int(result_metadata.get("duplicate_assignment_delta_sum"), 0),
         _first_int(metric_summary.get("duplicate_track_count"), 0),
         _first_int(metric_summary.get("duplicate_assignment_count"), 0),
-        int(duplicate_risk >= 0.5),
+        _first_int(metric_summary.get("duplicate_track_delta"), 0),
+        _first_int(metric_summary.get("duplicate_assignment_delta"), 0),
+        _first_int(metric_summary.get("duplicate_track_delta_sum"), 0),
+        _first_int(metric_summary.get("duplicate_assignment_delta_sum"), 0),
+        int(
+            any(
+                _optional_bool(value) is True
+                for value in (
+                    _get(association_metrics, "duplicate_track_observed"),
+                    _get(association_metrics, "duplicate_assignment_observed"),
+                    _get(association_result, "duplicate_track_observed"),
+                    _get(association_result, "duplicate_assignment_observed"),
+                    result_metadata.get("duplicate_track_observed"),
+                    result_metadata.get("duplicate_assignment_observed"),
+                    metric_summary.get("duplicate_track_observed"),
+                    metric_summary.get("duplicate_assignment_observed"),
+                )
+            )
+        ),
     )
     return AssociationRiskSummary(
         track_id=track_id,
@@ -1876,6 +2037,7 @@ def build_association_risk_summary(
             0,
         ),
         duplicate_track_count=duplicate_count,
+        duplicate_track_risk=duplicate_risk,
         track_continuity=_first_float(
             _get(association_metrics, "track_continuity"),
             _get(association_metrics, "identity_continuity"),
