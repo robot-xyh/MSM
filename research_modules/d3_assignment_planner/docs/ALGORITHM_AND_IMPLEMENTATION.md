@@ -1,457 +1,678 @@
 # D3 集中式资源-目标分配算法与实施方案
 
-## 1. 模块定位与边界
+> 状态基线：2026-07-13。
+>
+> 本文依据本模块当前源码、测试、`README.md`、`PLAN.md`、
+> `docs/MODULE_PRINCIPLES_CN.md` 和根目录系统汇总同步编写。本文区分默认主线、
+> 已实现辅助能力、可选离线对照和未实现能力，不把计划项写成已完成能力。
 
-D3 是集中式资源-目标分配模块，输入来自 D2 的稳定 `GlobalTrack`/`global_track_id` 以及资源状态摘要，输出版本化候选 `AssignmentPlan`，供 D5 末端视觉配准知道“本资源当前应关注哪个全局目标”，也供 D4 在中心节点失效时作为降级协商基线。
+## 1. 模块定位
 
-本模块只研究离线科研仿真中的抽象候选分配。输出计划默认保持 `human_authorization_state="required"`，但可通过 `PlannerConfig.human_authorization_state` 显式设置为仿真记录态或外部授权层传入的状态；D3 不包含真实飞控、硬件驱动、火控参数、毁伤逻辑、自动处置或绕过授权流程。
+D3 是反无人机系统（Counter-Unmanned Aircraft System，C-UAS）科研仿真流程中的
+集中式资源-目标分配模块。它在中心节点可用时接收 D2 维护的规范全局航迹和资源状态，
+生成版本化 `AssignmentPlan`（分配计划），并向下游提供：
 
-## 2. 输入与输出
+1. 资源与 `global_track_id`（规范全局航迹标识）的绑定；
+2. 普通一资源对一目标分配；
+3. 高威胁目标的多资源联盟分配；
+4. 计划版本、迟滞、有效期和旧版本拒绝证据；
+5. D5 末端视觉反馈的保守写回入口；
+6. D4 二级节点接管时可继承的中心计划基线；
+7. D7 可消费但不能自行修改的导引绑定；
+8. D6 可记录和统计的分配证据。
 
-### 2.1 输入对象
+D3 输出的是科研仿真候选计划，不执行飞行控制，不决定目标身份，不执行分布式选主，
+也不生成真实处置授权。默认 `human_authorization_state`（人工授权状态）为
+`required`（需要授权），仿真运行时可由外部授权层传入记录态；D3 本身不能绕过授权。
 
-`TargetTrack` 表示一个可分配目标摘要，当前字段包括：
+## 2. 术语和缩写
 
-- `track_id`：来自 D2 的稳定全局航迹 ID。
-- `threat_score`：归一化威胁权重，数值越高越应避免未分配。
-- `covariance`：航迹不确定性摘要，通常可由 D1/D2 的协方差迹或门限归一化得到。
-- `window_cost`：接近窗口或时间窗口代价，越小表示当前资源更适合在该窗口内处理该目标。
-- `assignable`：是否允许进入候选分配。
-- `fov_difficulty_by_resource`、`conflict_risk_by_resource`、`feasibility_by_resource`：按资源细化的视场难度、冲突风险和可行性约束。
+| 中文名称 | 英文全称与缩写 | 本模块含义 |
+|---|---|---|
+| 应用程序编程接口 | Application Programming Interface，API | 模块公开函数和结构化调用合同 |
+| 数据传输对象 | Data Transfer Object，DTO | 只携带结构化数据、不执行控制的对象 |
+| 北-东-地坐标系 | North-East-Down，NED | 上游融合工作坐标系；D3 消费结果但不负责坐标转换 |
+| 视场 | Field of View，FOV | 某资源持续观察和确认某目标的相对困难程度 |
+| 预计到达时间 | Estimated Time of Arrival，ETA | 上游或 D7 提供的可达性信息；当前 D3 不求解完整到达动力学 |
+| 到达关键区时间 | Time to Critical Zone，TTC | D3 可解释威胁基线中的时间紧迫度；不同于 D7 末端语境的预计碰撞时间 |
+| 线性和分配问题 | Linear Sum Assignment Problem，LSAP | 普通匈牙利一对一匹配模型 |
+| 动态规划 | Dynamic Programming，DP | SciPy 不可用时的小规模后备求解方法 |
+| 约束规划-可满足性 | Constraint Programming-Satisfiability，CP-SAT | 规划中的复杂约束离线参考方法，当前未实现 |
+| 混合整数线性规划 | Mixed-Integer Linear Programming，MILP | 规划中的联盟全局参考方法，当前未实现 |
+| 确认应答 | Acknowledgement，ACK | D4 联盟提交协议中的确认消息，不由 D3 产生 |
+| 比例导航 | Proportional Navigation，PN | D7 中段导引方法，不属于 D3 |
+| 比例导航制导 | Proportional Navigation Guidance，PNG | D7 末端视觉导引方法，不属于 D3 |
+| 微软空中信息与机器人仿真器 | Aerial Informatics and Robotics Simulation，AirSim | 由 main 运行时负责启动、重置和场景编排 |
+| 简化飞行控制后端 | SimpleFlight | AirSim 内的多旋翼飞行控制后端，不是 D3 求解器 |
 
-`ResourceState` 表示一个资源摘要，当前字段包括：
+MSM 是项目既定代号，D1-D7 是模块编号，不作为英文缩写展开。
+本文将目标数记为 \(m\)，资源数记为 \(n\)。项目材料中的“动态 M 对 N”包含两层含义：
 
-- `resource_id`：资源 ID，需与 D5 的本地资源身份一致。
-- `status`：`available/degraded/busy/unavailable` 等抽象状态。
-- `health_score`、`busy_until`、`operator_hold`、`load_penalty`：资源健康、占用和人工保持状态。
-- `fov_difficulty`、`conflict_risk`：默认视场难度和资源间冲突风险。
-- `capability_class`、`metadata`：为后续容量、角色和区域约束预留。
+- \(m\) 与 \(n\) 可以相等，也可以不相等，并可在运行中变化；
+- 单个目标 \(i\) 还可以要求 \(k_i>1\) 个资源组成联盟。
 
-### 2.2 输出对象
+2 对 2、5 对 5 和 5 资源/2 目标只是试验配置，不是算法规模上限。
 
-`AssignmentPlan` 是 D3 的唯一计划输出，关键字段为：
+## 3. 系统位置和数据流
 
-- `plan_id`、`version`、`window_id`：计划身份、单调递增版本和滚动窗口编号。
-- `assignments`：`Assignment(target_id, resource_id, cost, cost_breakdown)` 列表。
-- `unassigned_target_ids`：未被分配的目标。
-- `total_cost`、`candidate_total_cost`、`previous_total_cost_current`：当前采用计划、候选计划和旧计划重评分成本。
-- `decision_state`：如 `accepted`、`unchanged`、`held_by_hysteresis`、`accepted_previous_infeasible`。
-- `human_authorization_state`：来自 `PlannerConfig.human_authorization_state`，默认 `required`；main runtime 可在仿真中使用 `recorded` 等状态，并由外部授权层解释。
-- `source_node_id`、`target_node_id`、`link_type`、`plan_version`、`stale_after_s`：跨中心、二级节点和资源节点传递计划时的通信合同字段。
-- `terminal_feedback_state`、`duplicate_terminal_lock_risk`：D5 末端反馈和重复锁定风险摘要，仅用于 hold/replan/arbitration 决策，不允许本地改写全局 ID。
-
-过期版本不得覆盖新版本。`AssignmentPlanner` 实例绑定单个 episode：首次调用允许 `previous_plan=None`；一旦内部记录 active `plan_id/version`，后续调用必须显式传入该 active plan。缺失前序计划会抛出 `StalePlanError(reason="previous_plan_required")`，提交旧 plan id/version 或不匹配的 `expected_previous_version` 也会被拒绝。新 episode 应创建新的 planner 实例，不使用隐式 reset。
-
-## 3. 数学模型
-
-设目标集合为 `T={1,...,M}`，资源集合为 `R={1,...,N}`。分配变量为：
-
-```text
-x_ij in {0,1}
+```mermaid
+flowchart LR
+    D1[D1 带协方差航迹] --> D2[D2 规范全局身份]
+    D2 --> D3[D3 资源-目标分配]
+    RS[资源状态] --> D3
+    D5[D5 末端反馈] -->|保持、禁配、视场难度| D3
+    D3 -->|版本化计划| D4[D4 接管与降级]
+    D3 -->|关注目标和联盟角色| D5
+    D3 -->|当前导引绑定| D7[D7 比例导航/视觉导引]
+    D3 -.分配记录与证据.-> D6[D6 评估]
 ```
 
-其中 `x_ij=1` 表示目标 `i` 分配给资源 `j`。当前主线采用一对一约束：
+边界规则如下：
 
-```text
-sum_j x_ij <= 1      for each target i
-sum_i x_ij <= 1      for each resource j
-```
+- D1/D2 提供位置、速度、协方差、规范全局航迹身份和关联风险；
+- D3 只引用 `global_track_id`，不创建、合并或重命名规范航迹；
+- D5 可以报告锁定、模糊、重复锁定和跨视角冲突，但不能本地改写分配；
+- D4 决定是否由中心、二级节点或完全分布式路径持有计划；
+- D7 只执行当前、有效、角色允许且通过 D4/D5 门控的绑定；
+- D6 被动消费计划、拒绝、重分配和联盟证据。
 
-滚动规划的候选目标函数为：
+## 4. 输入数据结构
 
-```text
-J = sum_i sum_j x_ij * (C_ij + S_ij) + sum_i u_i * U_i
-```
+### 4.1 目标航迹 `TargetTrack`
 
-`C_ij` 是资源 `j` 处理目标 `i` 的抽象基础代价。若目标在 `previous_plan` 中已有资源且候选边切换到其他资源，`S_ij=reassignment_switch_penalty`；保持原资源、无历史 assignment、不可行边和未分配 dummy 边均不加该项。`S_ij` 在 Hungarian/fallback 求解前写入矩阵，使 solver objective、`Assignment.cost`、cost breakdown 和 evidence 保持单次计费一致。`u_i=1` 表示目标 `i` 被保留为未分配，`U_i` 是未分配惩罚。未分配惩罚随威胁权重上升：
+| 字段 | 含义 | 算法用途 |
+|---|---|---|
+| `track_id` | D2 维护的规范全局航迹标识 | 分配目标身份，不允许 D3 改名 |
+| `threat_score` | 归一化威胁分数 | 降低高威胁目标分配成本并提高其未分配惩罚 |
+| `covariance` | 上游协方差的标量摘要 | 构成航迹不确定性惩罚 |
+| `window_cost` | 当前软窗口代价 | 对开放可行边排序 |
+| `assignable` | 是否允许进入分配 | 为假时所有真实资源边硬拒绝 |
+| `fov_difficulty_by_resource` | 按资源的视场困难度 | 接收 D5/main 写回并进入边代价 |
+| `conflict_risk_by_resource` | 按资源的冲突风险 | 进入边代价 |
+| `feasibility_by_resource` | 按资源的硬可行性 | 为假时对应边硬拒绝 |
+| 硬时间窗字段 | 开启、关闭、状态和资源特定窗口 | 当前规划时刻位于窗外时硬拒绝 |
+| `demand` | 可选 `TargetDemand` | 为空时严格退化为单资源独立需求 |
+| `metadata` | 来源、反馈和审计信息 | 不得作为未定义控制命令 |
 
-```text
-U_i = unassigned_base_cost * (0.5 + threat_score_i)
-```
+D1/D2 的 `measurement_timestamp`（量测时间戳）和
+`arrival_timestamp`（到达时间戳）仍由上游合同保留。D3 的 `timestamp`
+是规划评估时刻，不能替代这两个传感器时间语义。
 
-因此高威胁目标在资源不足时更不容易被放入未分配集合，但该设计仍只是离线评分，不代表自动处置。
+### 4.2 资源状态 `ResourceState`
 
-## 4. Hungarian/LAP 主算法
+| 字段 | 含义 | 算法用途 |
+|---|---|---|
+| `resource_id` | 资源身份 | 每个资源最多占用一个可执行需求槽 |
+| `status` | 可用、忙碌、降级或不可用 | 不可用硬拒绝，降级增加代价 |
+| `health_score` | 健康程度 | 健康越差，资源状态代价越高 |
+| `busy_until` | 忙碌截止时刻 | 当前时刻早于该值时硬拒绝 |
+| `operator_hold` | 外部保持状态 | 为真时该资源全部边硬拒绝 |
+| `capability_class` | 资源能力类别 | 与多资源需求槽能力匹配 |
+| `energy_fraction` | 剩余能量比例 | 为零时硬拒绝，其余进入代价 |
+| `availability_score` | 可用性分数 | 为零时硬拒绝，其余进入代价 |
+| `current_load` | 当前负载 | 进入资源状态代价 |
+| `history_failure_rate` | 历史失败率 | 进入资源状态代价 |
+| 目标可达字段 | 按目标的可行性和可达分数 | 硬拒绝或提高资源风险 |
 
-### 4.1 原理
+### 4.3 多资源目标需求 `TargetDemand`
 
-Hungarian 算法用于线性分配问题（LAP），在给定代价矩阵 `C` 时寻找总成本最小的一对一匹配。D3 使用它作为中心节点正常时的默认算法，因为：
+显式需求的核心参数是：
 
-- 适合 5v5、10v10 这类一对一滚动分配基线。
-- 结果确定、可解释，便于审计每条边的 `cost_breakdown`。
-- 复杂度通常记为 `O(k^3)`，`k` 为补齐后的矩阵规模；对当前离线仿真规模耗时很低。
-- Python 可直接使用 `scipy.optimize.linear_sum_assignment`，并提供小规模动态规划 fallback。
+- \(k_i=\)`required_resource_count`：目标所需资源总数；
+- \(p_i=\)`primary_resource_count`：其中主资源数量，满足
+  \(1\le p_i\le k_i\)；
+- `coordination_mode`：独立、同时、顺序或混合；
+- `required_capability_counts`：各能力类别所需槽数；
+- 到达窗口起止时刻、波次间隔和最小间隔；
+- `terminal_authorization_scope="per_primary"`：每个主资源独立接受末端门控；
+- `arrival_coordination_required=False`：当前阶段不要求同时到达。
 
-### 4.2 可选未分配建模
+只有显式构造 `TargetDemand()` 时，研究默认才是
+**2 个主资源（primary）+ 1 个备用资源（reserve）**。未提供 `demand` 的普通目标
+自动形成 \(k_i=1,p_i=1\) 的独立需求，不能把所有目标都误写成默认需要三架资源。
 
-真实滚动场景中，资源可能少于目标，或某些目标暂不可分配。因此 D3 在求解前给每个目标加入 dummy unassignment 列：
+## 5. 输出数据结构
 
-```text
-prepared_matrix = [C_resource_edges | C_unassigned_dummy_edges]
-```
+### 5.1 单条分配 `Assignment`
 
-若 Hungarian 选择真实资源列，则形成 `Assignment`；若选择 dummy 列，则该目标进入 `unassigned_target_ids`。这避免了强行把不可行目标分配给资源。
+单条分配记录目标、资源、总成本、成本分解、可行性、计划版本、联盟标识、联盟版本、
+成员角色、波次和到达窗口。多资源场景下，同一目标可以合法拥有多条分配。
 
-### 4.3 适用边界
+### 5.2 版本化计划 `AssignmentPlan`
 
-Hungarian 适用于：
+计划至少包含：
 
-- 每个目标最多一个主资源、每个资源最多一个目标。
-- 单个规划时刻的静态代价矩阵。
-- 需要快速、透明、可复现的中心化基线。
+- `plan_id`、`version`、`previous_plan_id` 和 `window_id`；
+- `resource_count`、`target_count` 和实际矩阵形状；
+- 可执行 `assignments` 和 `unassigned_target_ids`；
+- 当前、候选和旧计划重评分成本；
+- `decision_state`、`changed` 和人工授权状态；
+- `coalitions`、`demand_summaries` 和 `incomplete_target_ids`；
+- 来源节点、目标节点、链路类型、计划所有者和有效期；
+- 代价矩阵、拒绝原因、迟滞理由和反馈配置等审计元数据。
 
-它不直接表达：
+多资源调用方必须使用 `assignments_by_target()`。旧
+`assignment_map()` 只适用于每个目标恰好一条分配，遇到合法多资源目标会抛出错误，
+避免静默丢掉联盟成员。
 
-- 一个资源同时服务多个目标的容量约束。
-- 一个目标需要主资源和备份资源的需求约束。
-- 编组配额、区域配额、路径时间层、先后顺序等复杂约束。
-- 多窗口全局优化。
+### 5.3 联盟 `CoalitionPlan`
 
-这些场景应升级到最小费用流或混合整数规划，但不应破坏 D3 当前的 `AssignmentPlan` 外部契约。
+联盟记录：
 
-## 5. 最小费用流升级思路
+- 联盟身份、版本、纪元和状态；
+- 目标需要数、已分配数、缺口数和完整性；
+- 成员资源、主用/备用/重试角色；
+- 波次、能力要求和到达窗口；
+- 成员是否可执行。
 
-当前 `MinCostFlowAssignmentSolver` 是预留接口，会明确抛出 `NotImplementedError`，避免在没有 OR-Tools 依赖时产生隐式行为。后续若需要多容量和备份资源，可按以下图模型实现：
+完整联盟状态为 `committed`（已提交）；资源或能力不足时状态为
+`incomplete`（不完整）。不完整联盟保留候选成员和缺口证据，但不发布可执行分配。
 
-```text
-source
-  -> resource nodes        capacity = resource_capacity_j, cost = resource_state_cost
-  -> target-demand nodes   via resource-target arcs, cost = scaled C_ij
-  -> sink                 demand = target_demand_i
-```
+## 6. 数学模型
 
-可扩展约束包括：
+### 6.1 普通一对一模型
 
-- 资源容量：`capacity(resource_j -> target_i)` 限制单资源可承担数量。
-- 目标需求：高优先目标可设置主分配和备份分配需求。
-- 禁止边：不可行资源-目标对不建边或赋予高成本。
-- 区域/编组配额：加入 group nodes 约束区域资源使用。
-- 时间窗：复制多层时间节点，形成 time-expanded network。
+令 \(x_{ij}\in\{0,1\}\) 表示资源 \(j\) 是否分配给目标 \(i\)。普通目标满足：
 
-实施时需要把浮点代价缩放为整数，并记录缩放比例，保证报告中的成本仍能回映到原始 `CostBreakdown`。D3 当前建议仅在 Hungarian 无法表达容量或备份约束时启用该路径。
+\[
+\sum_{j=1}^{n}x_{ij}\le1,\qquad
+\sum_{i=1}^{m}x_{ij}\le1.
+\]
 
-## 6. 代价函数分解
+目标函数为：
 
-D3 当前 `CostModel.edge_cost()` 将每条边分解为六个主要项：
-
-```text
-C_ij =
-    w_window     * window_cost
-  + w_covariance * covariance_penalty
-  + w_threat     * (1 - threat_score)
-  + w_resource   * resource_state_penalty
-  + w_fov        * fov_difficulty
-  + w_conflict   * conflict_risk
-  + infeasible_penalty
-```
-
-### 6.1 接近窗口代价
-
-`window_cost` 由上游或仿真场景给出，用于表达当前资源相对该目标的滚动窗口优劣。它不表示真实拦截控制律，只是分配层排序特征。建议先归一化到 `[0,1]`，再进入 `CostWeights.window`。
-
-### 6.2 航迹不确定性惩罚
-
-`covariance` 来自 D1/D2 对目标位置、速度不确定性的摘要。协方差越大，错误分配和末端配准失败风险越高，因此代价增加。若 D2 输出完整协方差矩阵，可用位置协方差迹、最大特征值或门控椭圆面积归一化。
-
-### 6.3 威胁权重
-
-当前边代价使用 `(1 - threat_score)`，因此高威胁目标边代价更低，同时未分配惩罚 `U_i` 更高。这样在资源有限时，求解器自然倾向优先覆盖高威胁目标。
-
-### 6.4 资源状态惩罚
-
-`resource_state_penalty()` 综合 `status`、`health_score` 和 `load_penalty`。`operator_hold=True`、`status="unavailable"` 或忙碌未结束会直接判定不可行。`degraded/busy` 则表现为更高但仍可能可行的代价。
-
-### 6.5 视场确认难度
-
-`fov_difficulty` 用于表达资源对某目标的末端识别和持续观测难度。它为 D5 预留联动：如果 D5 或二级侦察节点报告某资源视场内目标重叠、遮挡或关联模糊，可通过该项提高对应边成本。
-
-### 6.6 资源间冲突风险
-
-`conflict_risk` 用于惩罚资源空间、视场或任务区域冲突风险。当前实现是边级抽象特征，不计算真实飞行路径冲突；后续如需显式多资源冲突约束，应升级到最小费用流或单独的约束优化层。
-
-### 6.7 不可行惩罚
-
-不可行边赋予 `infeasible_penalty`，且 `_assignments_from_solver()` 会过滤掉高惩罚边。这样求解器可以保持矩阵完整，同时发布计划不会包含不可行 assignment。
-
-## 7. 滚动重分配与迟滞逻辑
-
-每个决策周期，D3 先求解新的候选计划，再把旧计划在当前代价矩阵上重评分。若候选 assignment 与旧 assignment 不同，只有满足以下条件才接受换配：
-
-```text
-J_new < (1 - delta) * J_old
-and dwell_time > min_dwell
-and change_count <= max_changes_per_window
-```
+\[
+J=
+\sum_{i=1}^{m}\sum_{j=1}^{n}x_{ij}
+\left(C_{ij}+S_{ij}\right)
++\sum_{i=1}^{m}u_iU_i,
+\]
 
 其中：
 
-- `J_new` 是候选计划当前成本。
-- `J_old` 是旧 assignment 在当前矩阵上的重评分成本。
-- `delta` 是相对改善阈值，默认 `0.2`。
-- `min_dwell` 是旧计划最短保持时间，默认 `2.0 s`。
-- `max_changes_per_window` 可限制单窗口变更边数。
+- \(C_{ij}\) 是可解释基础边代价；
+- \(S_{ij}\) 是目标从旧资源切换到新资源时的切换惩罚；
+- \(u_i=1\) 表示目标选择虚拟未分配列；
+- \(U_i\) 是未分配惩罚。
 
-如果旧计划仍可行但候选提升不够，D3 输出新版本计划但保持旧 assignment，`decision_state="held_by_hysteresis"`。如果旧计划不可行，例如资源变为不可用、目标消失或边被标记不可行，则允许接受新计划并标记 `accepted_previous_infeasible`。
+当前未分配惩罚为：
 
-版本逻辑是降级场景的关键：D4 使用 D3 计划作为中心化基线时，必须拒绝更旧版本覆盖当前计划。D3 自身也通过 `StalePlanError` 防止 stale previous plan 继续滚动。
+\[
+U_i=C_{base}(0.5+q_i),
+\]
 
-## 8. 面向 D4 主动降级的计划有效性判据
+其中 \(q_i\) 是威胁分数，\(C_{base}\) 是
+`unassigned_base_cost`。高威胁目标因此更不容易被保留为未分配。
 
-D4 的降级可分为两类：一类是中心节点宕机、心跳丢失或通信中断导致的被动降级；另一类是中心节点仍在线，但原 `AssignmentPlan` 在当前态势下已经不可靠，需要主动请求二级节点或分布式协同介入。D3 不直接决定 D4 的降级执行方式，但应提供可审计的计划有效性摘要，帮助 D4 判断是中心滚动重分配即可解决，还是需要进入主动降级仲裁。
+### 6.2 多资源需求槽模型
 
-### 8.1 D3 可提供的主动降级触发信号
+当目标 \(i\) 需要 \(k_i>1\) 个资源时，将目标展开为
+\(\ell=1,\ldots,k_i\) 个需求槽。定义 \(x_{i\ell j}\) 表示资源 \(j\) 是否占用槽
+\(\ell\)：
 
-D3 侧建议持续计算以下信号，并写入计划日志或单独的 `AssignmentValiditySummary`：
+\[
+\sum_j x_{i\ell j}\le1,\qquad
+\sum_{i,\ell}x_{i\ell j}\le1.
+\]
 
-- `plan_age_s`：当前计划从 `created_at` 到评估时刻的年龄。超过规划周期上限时，优先触发中心重分配；若连续无法生成新计划，再请求 D4 仲裁。
-- `plan_version_stale`：调用方持有的 `plan_id/version` 与 D3 最新版本不一致。stale plan 不应被 D4、D5 或二级节点继续当作主计划使用。
-- `assignment_cost_growth`：旧 assignment 在当前代价矩阵上的成本增长量，可定义为 `J_old_current - J_old_at_accept`。
-- `new_vs_old_cost_ratio`：候选计划与旧计划重评分成本的比值，可定义为 `J_new / max(J_old_current, eps)`。该值明显小于 1 表示中心重分配有收益；该值接近或大于 1 且风险持续升高，说明单纯重分配可能不能解决。
-- `resource_state_change_count`：资源状态突变数量，例如 `available -> degraded/unavailable`、`operator_hold=True`、`busy_until` 延长等。
-- `window_failure_count`：接近窗口或任务窗口失效的目标数量，例如 `window_cost` 越过不可接受阈值、目标不再 `assignable` 或原边进入 `feasibility_by_resource=False`。
-- `hysteresis_hold_count`：迟滞反复保持旧计划的次数。若连续 `held_by_hysteresis` 且 `candidate_total_cost` 持续低于旧计划，说明中心仍可通过解除迟滞或调整权重解决；若保持期间 D5 多帧不一致，则应请求 D4 仲裁。
-- `high_threat_unassigned_count`：高威胁目标未分配数量。若中心仍有可用资源且仅因权重导致未分配，优先中心重分配；若资源区域或观测链路不足，转 D4。
-- `d2_uncertainty_level`：来自 D2 的关联不确定性、ID Switch 风险或协方差升高摘要。
-- `d5_consistency_state`：来自 D5 的末端一致性状态，如 `consistent`、`ambiguous`、`friend_overlap_hold`、`multi_frame_inconsistent`。
+理想的联盟全有或全无约束可写为：
 
-这些信号都是离线仿真和候选计划有效性指标，不表示真实处置命令。
+\[
+\sum_{\ell,j}x_{i\ell j}=k_i z_i,\qquad z_i\in\{0,1\}.
+\]
 
-### 8.2 `AssignmentValiditySummary` 已实现结构
+当前默认代码没有用混合整数线性规划直接求解 \(z_i\)。它采用需求槽启发式准入，
+在发布层保证全有或全无，不能据此宣称获得复杂联盟全局最优解。
 
-当前 D3 已实现 `AssignmentValiditySummary`，用于把 main/D4/D6 需要的 P1 运行时摘要从 `AssignmentPlan` 中稳定导出，并同步覆盖 N/M replay 所需的规模和变更计数字段：
+## 7. 可解释代价模型
 
-```python
-AssignmentValiditySummary(
-    plan_id: str,
-    version: int,
-    plan_age_s: float,
-    assignment_latency_s: float,
-    cost_margin: float,
-    stale_plan_version: bool,
-    duplicate_assignment_count: int,
-    unassigned_high_threat_count: int,
-    resource_count: int,
-    target_count: int,
-    assigned_count: int,
-    hysteresis_reject_count: int,
-    stale_reject_count: int,
-    reassign_count: int,
-)
-```
+对可行目标-资源边，基础代价为：
 
-导出 helper 为：
+\[
+\begin{aligned}
+C_{ij}={}&
+w_w C^{window}_{ij}
++w_p C^{cov}_{i}
++w_t(1-q_i)\\
+&+w_r C^{resource}_{ij}
++w_f C^{fov}_{ij}
++w_c C^{conflict}_{ij}.
+\end{aligned}
+\]
 
-```python
-summary = assignment_validity_summary_from_plan(
-    plan,
-    evaluated_at=t_now,
-    latest_version=latest_version,
-    latest_plan_id=latest_plan_id,
-    assignment_latency_s=latency_s,
-    tracks=tracks,
-    high_threat_threshold=0.7,
-)
-```
+### 7.1 接近窗口
 
-字段含义：
+`window_cost` 表示当前滚动时刻的软窗口偏好。它只排序开放边，不等于真实飞行到达时间，
+也不构成完整时空轨迹约束。
 
-- `plan_age_s`：`evaluated_at - plan.created_at`。
-- `assignment_latency_s`：由调用方传入，或通过 `input_timestamp_s`/计划 metadata 派生；缺省为 `0.0`。
-- `cost_margin`：优先使用 `previous_total_cost_current - candidate_total_cost`，正值表示候选计划相对旧计划重评分更便宜。
-- `stale_plan_version`：调用方提供的最新 `plan_id/version` 与该计划不一致时为真。
-- `duplicate_assignment_count`：同一目标被多个资源分配或同一资源被多个目标分配的异常计数。
-- `unassigned_high_threat_count`：未分配集合中高威胁目标数量，可由 `tracks` 和 `high_threat_threshold` 或显式 high-threat ID 集合计算。
-- `resource_count`、`target_count`、`assigned_count`：按当前输入和输出计划记录真实规模，不假设目标数等于资源数。
-- `hysteresis_reject_count`、`stale_reject_count`、`reassign_count`：供 D6 聚合迟滞保持、stale 拒绝和重分配趋势，也供 `summarize_assignment_mismatch_replay(...)` 聚合非等量 N/M replay。
+### 7.2 航迹不确定性
 
-该 summary 只描述计划有效性、成本变化、版本时效和跨模块一致性，不包含真实硬件、火控或自动处置含义。更细的 D2 不确定性、D5 多帧一致性、D4 主动降级执行状态仍由 main/D4 在运行时闭环里聚合。
+`covariance` 来自 D1/D2 的航迹不确定性摘要。数值越大，错误分配和末端配准风险越高，
+代价越大。D3 不修改协方差，也不把缺失协方差伪装为高精度。
 
-### 8.3 中心重分配与 D4 主动降级的边界
+### 7.3 威胁度
 
-D3 建议按三层判断：
+边代价使用 \(1-q_i\)，未分配惩罚随 \(q_i\) 增大。模块还提供
+`compose_threat_score_baseline()`，将关键区接近程度、到达关键区时间、速度、
+协方差和目标状态组合成可解释基线。该函数不是完整动态威胁评估模型。
 
-1. `keep_plan`：计划版本新、`plan_age_s` 在允许范围内、旧 assignment 当前仍可行、D5 多帧一致、D2 不确定性低或中等。此时即使 D1/D2 风险小幅升高，也可通过迟滞保持计划，避免抖动。
-2. `central_replan`：中心节点在线，资源和目标仍在中心视野/通信范围内，`J_new` 明显低于 `J_old_current`，或资源状态突变但 Hungarian 能生成可行新计划。此时应由 D3 发布新版本 `AssignmentPlan`，而不是立刻请求 D4 主动降级。
-3. `request_d4_arbitration`：中心仍在线，但 D3 发现计划失效不是单次重分配能解决，例如高动态延迟导致计划持续过期、D2 ID/协方差风险高且 D5 多帧不一致、多个资源状态突变使中心计划频繁 stale、或高威胁目标持续未分配。此时 D3 只发出仲裁请求，由 D4 决定降级到二级节点还是完全分布式。
+### 7.4 资源状态
 
-### 8.4 典型组合策略
+资源状态项综合健康、能量、可用性、当前负载、历史失败率和旧接口负载惩罚。不可用、
+人工保持、仍在忙碌、能量为零、可用性为零或目标不可达会形成硬拒绝，而不是仅增加小代价。
 
-| D1/D2 风险 | D5 末端一致性 | D3 成本/版本状态 | D3 建议动作 |
-|---|---|---|---|
-| 协方差升高但 ID 连续 | D5 一致 | 成本轻微升高，计划未 stale | `keep_plan` 或 `central_replan` |
-| 关联不确定性升高 | D5 一致 | `J_new` 明显优于旧计划 | `central_replan`，输出新版本 |
-| ID Switch 风险高 | D5 多帧不一致 | 旧计划成本恶化或窗口失效 | `request_d4_secondary_node`，请求二级节点利用局部侦察和区域通信仲裁 |
-| 资源状态突变较多 | D5 局部一致 | 旧计划不可行，中心可重算 | `central_replan`，标记 `accepted_previous_infeasible` |
-| 计划版本频繁 stale | D5 不一致或资源反馈延迟 | 重分配反复被迟滞/版本冲突阻断 | `request_d4_secondary_node` 或 `request_d4_distributed` |
-| 高威胁目标持续未分配 | D5 无法确认 | 中心候选计划也不可行 | `hold_for_observation` 并请求 D4 仲裁，不由 D3 本地升级处置 |
+### 7.5 视场与冲突
 
-核心原则是：D1/D2 风险上升但 D5 仍稳定时，优先保持或中心重分配；D5 连续多帧不一致、友方重叠保持、或 D3 计划代价恶化超过阈值时，D3 应请求 D4 主动降级仲裁。
+视场困难度可接收 D5 对遮挡、目标重叠、检测不稳定和跨视角困难的反馈。冲突风险用于表达
+资源空间或任务冲突摘要。当前二者都是边级特征，不等同于真实多机路径冲突求解。
 
-### 8.5 末端反馈 helper 合同
+### 7.6 硬时间窗和拒绝
 
-D3 提供 `evaluate_terminal_feedback(...)` 作为集成层最小 helper，用于把 D5 末端反馈转为保守分配建议：
+目标可配置通用或资源特定的硬时间窗。当前规划时刻尚未进入窗口、已经超过窗口或状态明确
+关闭时，对应边直接拒绝并导出原因。当前实现没有用真实预计到达时间求解多窗口连续动力学。
 
-| D5 反馈或风险 | D3 建议 | 约束 |
+## 8. 默认求解算法
+
+### 8.1 普通匈牙利路径
+
+普通目标使用 SciPy 科学计算库的
+`scipy.optimize.linear_sum_assignment()` 求解线性和分配问题。矩阵右侧为每个目标
+增加一个虚拟未分配列，因此 \(m>n\)、\(m<n\) 和 \(m=n\) 使用同一接口。
+
+选择匈牙利算法作为默认主线的原因是：
+
+- 适合当前中心化一资源占用一个任务槽的基线；
+- 结果确定、透明、易于重放；
+- 复杂度通常记为 \(O(r^3)\)，其中 \(r\) 是补齐后的矩阵规模；
+- 可以完整保留每条边的成本分解和拒绝原因；
+- 不需要复杂求解器运行时。
+
+SciPy 不可用时可使用小规模位掩码动态规划后备。后备路径的列数上限为 22，包含真实资源列
+和虚拟未分配列，因此不能把它当作大规模替代后端。
+
+### 8.2 多资源需求槽路径
+
+显式多资源需求由 `HungarianDemandSlotSolver` 执行：
+
+1. 按目标需求展开角色、波次、能力和窗口槽；
+2. 将目标-资源边代价复制到各槽；
+3. 应用能力门控、D5 反馈保护和旧主资源保护；
+4. 对高威胁目标施加更高准入优先级；
+5. 使用匈牙利算法求解槽-资源匹配；
+6. 若目标只得到部分槽，选择低优先目标整目标退出活动集合；
+7. 重新求解，直到剩余目标均完整满足；
+8. 只把完整联盟发布为可执行 `Assignment`；
+9. 对退出目标保留缺口、候选成员和拒绝证据。
+
+该方法保证**发布层全有或全无准入**。它是轻量确定性启发式，不保证与
+约束规划-可满足性或混合整数线性规划参考模型具有相同全局最优解。
+
+## 9. 角色、波次和窗口
+
+| 协同模式 | 角色和波次 | 当前含义 |
 |---|---|---|
-| `ambiguous` / `hold` / `friend_overlap_hold` | `hold` | 保持原 `assigned_global_track_id`，等待更多证据 |
-| `reacquire` | `replan` | 中心重新计算 `AssignmentPlan`，不允许本地换绑 |
-| `mismatch` / `multi_frame_inconsistent` / `cross_view_conflict` | `secondary_arbitration` | 请求 D4 二级节点仲裁 |
-| `duplicate_terminal_lock_risk=True` | `secondary_arbitration` | 抑制重复锁定，进入二级节点/中心协调 |
+| 独立 | 一个主资源，波次 0 | 普通一对一目标 |
+| 同时 | 所有成员为主资源，波次 0 | 共享合同窗口；是否要求同步仍由显式字段决定 |
+| 顺序 | 首个成员为主资源，后续为重试资源 | 波次依次递增 |
+| 混合 | 前 \(p_i\) 个为波次 0 主资源，其余为波次 1 备用资源 | 当前高威胁研究默认 |
 
-该 helper 的输出 `allow_local_rebind` 始终为 `False`，并显式带有 `main_action` 与 `planner_metadata`。`planner_metadata` 当前包含：
+第 \(w\) 波的合同窗口为：
 
-- `operator_hold_suggested`：`hold` 时建议 main 将对应资源输入映射为 `ResourceState.operator_hold=True`。
-- `prohibit_assignment_suggested`、`prohibited_edges`：`secondary_arbitration` 或重复末端锁定时建议 main 对当前边做禁配/二级仲裁处理。
-- `feasibility_suggestion`、`feasibility_by_resource`：用于把禁配或可行性复核写回下一轮 `TargetTrack.feasibility_by_resource`。
-- `fov_difficulty_suggestion`、`fov_difficulty_by_resource`：用于把末端视场困难写回下一轮 `TargetTrack.fov_difficulty_by_resource`。
-- `d7_gate_action`、`d4_request`：供 main 驱动 D7 gate 或 D4 仲裁请求。
+\[
+[t_i^{start}+w\Delta_i,\ t_i^{end}+w\Delta_i],
+\]
 
-正常态仍采用 Hungarian；复杂约束升级 OR-Tools Min Cost Flow；中心计划不可信但二级节点可用时，优先二级节点仲裁，再进入 CBBA/拍卖式保底。本轮未实现 OR-Tools Min Cost Flow 或 CP-SAT。
+其中 \(\Delta_i\) 是波次间隔。
 
-### 8.6 建议阈值与仿真记录
+当前默认高威胁方案是 **2 primary + 1 reserve**：
 
-具体阈值应在离线实验中扫描，而不是固定为真实系统参数。初始仿真可记录：
+- 两个主资源分别接受 D4、D5 和 D7 门控；
+- 一个备用资源保留容量但保持待命；
+- 备用绑定固定为 `hold/reserve_standby_not_activated`；
+- 只有新版本计划将其角色改为主资源或重试资源后，才可能进入执行；
+- 当前 `arrival_coordination_required=False`，不要求两个主资源同时到达；
+- 到达窗口是计划合同，不代表 D3 已经实现同步导引。
 
-- `max_plan_age_s = 2 到 3 个规划周期`。
-- `cost_growth_ratio_threshold = 1.25`，即旧计划当前成本较接受时增长 25% 以上时进入重分配检查。
-- `new_vs_old_replan_ratio = 0.85`，即候选计划较旧计划有 15% 以上改善时优先中心重分配。
-- `d4_arbitration_hold_limit = 3`，即连续多次迟滞保持且跨模块一致性恶化时请求 D4。
-- `d5_inconsistent_frame_limit = 3`，即 D5 多帧不一致不再由 D3 单独解释为普通成本波动。
+## 10. 滚动重规划与迟滞
 
-D6 应将这些阈值、触发次数和最终 `recommended_action` 进入批量统计，以比较“中心重分配优先”和“主动降级优先”两类策略的稳定性。
+### 10.1 全局迟滞
 
-## 9. 实施流程
+候选计划形成后，D3 将旧分配在当前矩阵上重新计价。默认相对改善阈值为
+\(\delta=0.2\)，最小驻留时间为 \(T_{min}=2.0\) 秒。普通换配需满足：
 
-当前代码路径如下：
+\[
+J_{new}<(1-\delta)J_{old},\qquad
+T_{dwell}\ge T_{min},
+\]
 
-1. 调用 `AssignmentPlanner.plan(tracks, resources, timestamp, previous_plan, expected_previous_version)`，先校验 active plan 连续性。
-2. `CostModel.build_matrix()` 计算 `M x N` 基础代价矩阵、未分配成本和每条边的分项解释。
-3. `_apply_switch_penalty_to_matrix()` 在可行改配边上加入 switch penalty，不修改原资源边、不可行边、新目标边和 dummy 未分配成本。
-4. `HungarianAssignmentSolver.solve()` 拼接 dummy 未分配列，并调用 SciPy Hungarian；若 SciPy 不可用，则小规模 fallback 使用动态规划搜索。
-5. `_assignments_from_solver()` 将 solver index 输出转为 `Assignment(target_id, resource_id, cost_breakdown)`。
-6. `_apply_hysteresis()` 在同一计费矩阵上比较候选计划与旧计划，决定接受、保持或因旧计划不可行而换配。
-7. `_remember_plan()` 记录最新 `plan_id/version`，供下一次缺失/stale plan 检查。
+并满足可选的单窗口最大变更数限制。
 
-核心接口：
+以下情况可以释放普通迟滞：
 
-```python
-plan = planner.plan(
-    tracks=tracks,
-    resources=resources,
-    timestamp=t,
-    previous_plan=previous_plan,
-    expected_previous_version=previous_plan.version if previous_plan else None,
-)
+- 旧计划边已经不可行；
+- 候选显著降低高威胁未分配目标数；
+- 收益、驻留和变更限制同时满足。
+
+否则保持旧分配，决策状态标为迟滞保持，并用当前矩阵更新诊断成本。
+
+### 10.2 切换惩罚
+
+`reassignment_switch_penalty` 在求解前加入矩阵：
+
+- 旧目标换到不同可行资源时计一次；
+- 保持原资源不计；
+- 新目标、不可行边和未分配列不计；
+- 求解器目标值、分配成本、成本分解和证据使用同一数值。
+
+这避免求解后再次追加惩罚造成目标值和证据不一致。
+
+### 10.3 联盟成员迟滞
+
+多资源目标按目标维护成员最近变化时刻。旧联盟完整且旧边仍可行时，成员或角色替换同样需要
+20% 成本改善和 2 秒驻留。资源失效、硬禁配、需求结构变化和主资源硬冲突会立即释放。
+
+普通成本评估刷新不会重置成员驻留时钟，也不会推动联盟版本和纪元。
+
+### 10.4 短时视觉反馈驻留
+
+D5 报告“主资源锁定稳定性不足”或短暂重新获取时，D3 在普通迟滞前应用帧级驻留：
+
+\[
+F_{effective}=\max(F_{D3},F_{D5}),
+\]
+
+其中 D3 默认最少 2 帧，不能削弱 D5 要求的更长稳定窗口。版本匹配且旧主资源仍可行时，
+在窗口完成前保持旧主资源。
+
+重复锁定、友方冲突、错误绑定、丢失、资源不可用、显式禁配或旧边不可行会立即绕过驻留。
+其他计划版本的反馈只用于审计。
+
+## 11. 计划身份、版本和旧计划拒绝
+
+`AssignmentPlanner` 是单个仿真回合内有状态的规划器：
+
+1. 首次规划允许 `previous_plan=None`，创建版本 1；
+2. 当前计划发布后，下一次规划必须精确传入该计划；
+3. 缺失前序计划会抛出 `StalePlanError(reason="previous_plan_required")`；
+4. 计划标识、版本或 `expected_previous_version` 不匹配时硬拒绝；
+5. `publish=False` 只生成候选，不推进当前身份；
+6. 新仿真回合必须新建规划器实例，不存在隐式重置。
+
+计划执行身份由 `execution_signature()`（执行签名）决定。签名覆盖资源、目标、联盟、
+角色、波次、窗口、所有者、授权和激活/租约语义：
+
+- 只更新成本和诊断时，保留计划标识、版本、创建时刻和联盟纪元；
+- 执行签名变化时，生成严格连续的新版本；
+- 强制重规划但签名不变时返回 `replan_ack_no_change`；
+- 强制重规划且签名变化时返回 `replan_applied`；
+- 跨中心/二级所有者切换形成明确的新计划谱系。
+
+旧版本不能因为尚未超过 `stale_after_s` 就覆盖当前版本；“新鲜”与“当前身份”是两个独立门控。
+
+## 12. D5 反馈闭环
+
+`evaluate_terminal_feedback()` 将 D5/main 已聚合的末端证据映射为保守建议：
+
+| D5 状态 | D3 建议 | 实施方式 |
+|---|---|---|
+| 一致 | 继续 | 保持当前计划 |
+| 模糊、保持、友方重叠 | 保持 | 建议资源 `operator_hold`，不换绑 |
+| 重新获取 | 中心重规划 | 调整下一轮代价或可行性 |
+| 不匹配、多帧不一致、跨视角冲突 | 二级仲裁 | 请求 main/D4 仲裁 |
+| 重复末端锁定风险 | 二级仲裁 | 禁配冲突边并阻断本地换绑 |
+
+`apply_terminal_feedback_to_planner_inputs()` 可将权威反馈写入下一轮：
+
+- 将冲突边设置为 `feasibility_by_resource=False`；
+- 提高对应 `fov_difficulty_by_resource`；
+- 对资源设置 `operator_hold=True`；
+- 保留源计划、联盟、稳定帧和冲突原因；
+- 给 D4 形成仲裁建议，给 D7 形成保持动作。
+
+`allow_local_rebind` 始终为假。D5 的本地视觉身份不能替换 D3 中的规范全局航迹绑定。
+
+备用资源的软反馈采用角色感知保护：若所有旧主资源仍一致、至少一个备用资源只报告软保持或
+重新获取，且旧主资源边仍可行，D3 固定健康主资源，只允许重解备用槽，避免健康主资源被旋转
+成备用角色。
+
+## 13. D4 接管接口
+
+D3 不决定主动或被动降级，也不选择二级节点。D4/main 负责健康判断、节点选择、领导者纪元、
+租约续期、完全分布式协商和中心恢复仲裁。
+
+D3 为 D4 提供三类能力：
+
+1. `AssignmentValiditySummary`：计划年龄、分配延迟、成本差、旧版本、重复分配、
+   高威胁未分配、迟滞和重分配计数；
+2. 最新中心计划：作为二级或分布式协商基线；
+3. 二级计划盖章和续行合同。
+
+`prepare_secondary_takeover_plan()` 只在 main/D4 已提供以下证据后激活候选：
+
+- 具体二级节点；
+- 持续满足的接管就绪状态；
+- 激活时刻；
+- 有效且未过期的租约；
+- 正数且单调的领导者纪元；
+- 精确替代的中心计划身份。
+
+`continue_active_secondary_plan()` 要求同一二级所有者、严格前序连续性、不回退的纪元和租约。
+main 应先用 `publish=False` 产生候选，再盖章或续行，最后调用
+`publish_plan()`，避免中间中心候选错误推进当前版本。
+
+中心和二级节点都失效时，D4 负责基于共识的捆绑算法
+（Consensus-Based Bundle Algorithm，CBBA）或拍卖式协商。D3 不实现该协议，只提供
+最新中心联盟、需求和版本语义作为参考。
+
+## 14. D7 导引绑定
+
+`guidance_bindings_from_assignment_plan()` 为每个合法成员生成
+`AssignmentGuidanceBinding`（分配-导引绑定），携带：
+
+- 当前计划和联盟身份、版本；
+- 资源和规范全局航迹绑定；
+- 主用/备用/重试角色；
+- 波次、协同模式和合同窗口；
+- 人工授权、有效期、所有者和链路；
+- 当前、保持、旧版本、撤销或已换配状态。
+
+活动绑定至少要求：
+
+1. 计划身份等于 main 声明的当前身份；
+2. 计划未过期、未撤销且资源未保持；
+3. 联盟已提交、版本一致且需求完整；
+4. 成员不是未激活备用资源；
+5. 二级计划已激活、持续就绪、纪元单调且租约有效。
+
+D7 还要独立检查 D4 许可和 D5 的末端锁定。D3 只发布绑定，不计算比例导航或视觉比例导航，
+不发飞控命令，也不授权处置。
+
+当前两个主资源是**独立门控**：每个主资源分别满足当前计划、D4 许可、D5 锁定和 D7 控制条件
+即可执行。本阶段不把“同时到达”设为成功前提。
+
+## 15. 增量规划
+
+`plan_incremental()` 是已实现辅助入口，不会根据一次耗时自动替换默认全量规划。流程为：
+
+1. 校验精确前序计划和输入指纹；
+2. 比较调用方声明的变化目标/资源与实际变化；
+3. 在当前可行二部图上定位受影响连通分量；
+4. 只求解安全的局部分量；
+5. 保留其他仍可行分配、联盟身份、角色和波次；
+6. 合并完整候选后再执行统一反馈驻留、成员迟滞和全局迟滞。
+
+缺少快照、漏报变化、目标/资源集合变化、需求变化、计划过期、时间相关约束或受影响分量扩展
+到全局时，会带 `incremental_fallback_reason` 回退全量规划。版本不一致仍是硬错误，
+不能静默回退。
+
+## 16. 一次全量规划的实施流程
+
+```text
+输入 TargetTrack[]、ResourceState[]、当前时刻、精确 previous_plan
+    |
+    +-- 1. 校验 plan_id/version/expected_previous_version
+    +-- 2. 构造边成本、硬拒绝、未分配成本和输入快照
+    +-- 3. 在求解前加入一次切换惩罚
+    +-- 4. 无显式 k>1 -> 普通匈牙利
+    |       显式 k>1 -> 需求槽匈牙利 + 全有或全无准入
+    +-- 5. 形成 Assignment、CoalitionPlan 和需求满足摘要
+    +-- 6. 应用短时 D5 反馈驻留
+    +-- 7. 应用联盟成员迟滞
+    +-- 8. 应用全局成本/驻留迟滞
+    +-- 9. 比较执行签名并确定计划身份和版本
+    +-- 10. publish=True 时正式发布
+    +-- 11. 导出 D4 摘要、D6 记录和 D7 绑定
 ```
 
-## 10. 参数与调参建议
+核心伪代码如下：
 
-建议按以下顺序调参：
+```python
+def plan(tracks, resources, now, previous_plan):
+    validate_previous_identity(previous_plan)
+    matrix = cost_model.build_matrix(tracks, resources, now)
+    matrix = add_switch_penalty_once(matrix, previous_plan)
 
-1. 先固定 `CostWeights` 全为 `1.0`，验证 Hungarian 基线能覆盖目标且没有重复分配。
-2. 调整 `unassigned_base_cost` 和 `high_threat_threshold`，确保资源不足时高威胁目标不被过度未分配。
-3. 扫描 `delta`：`0.1` 响应更快但更易换配，`0.2` 是当前推荐基线，`0.3` 更稳定但可能保持较差旧计划。
-4. 扫描 `min_dwell`：建议从 1 到 3 个决策周期开始，避免每帧抖动。
-5. 对目标密集、视场混叠场景，提高 `covariance`、`fov`、`conflict` 权重，减少把不确定目标直接推给末端资源的倾向。
-6. 若短时间内大量目标交叉导致换配集中，可设置 `max_changes_per_window` 或 `reassignment_switch_penalty`。
+    if uses_demand_slots(tracks):
+        slots = expand_role_wave_capability_slots(tracks)
+        candidate = demand_slot_hungarian(slots, resources, matrix)
+        candidate = remove_partial_coalitions_and_resolve(candidate)
+    else:
+        candidate = hungarian_with_unassignment(matrix)
 
-所有权重都应记录到实验配置和 D6 日志，避免只报告命中率而无法解释分配行为。
+    candidate = apply_transient_terminal_feedback_dwell(candidate, previous_plan)
+    candidate = apply_coalition_membership_hysteresis(candidate, previous_plan)
+    selected = apply_global_hysteresis(candidate, previous_plan)
+    selected = assign_identity_from_execution_signature(selected, previous_plan)
+    return publish_if_requested(selected)
+```
 
-主动降级相关阈值建议单独扫描，不与基础 Hungarian 权重混在一次实验中调整。优先固定 `CostWeights`，再分别扫描 `max_plan_age_s`、`cost_growth_ratio_threshold`、`new_vs_old_replan_ratio`、`d4_arbitration_hold_limit` 和 `d5_inconsistent_frame_limit`，观察重分配次数、D4 仲裁请求次数、计划 stale 次数和 D5 终端一致性变化。
+## 17. 代码模块对应关系
 
-## 11. 仿真验证与图表
+| 文件 | 实施职责 |
+|---|---|
+| `models.py` | DTO、计划身份、D5 反馈、D4 接管、D6 记录和 D7 绑定 |
+| `costs.py` | 可行性门控、成本矩阵、硬时间窗和成本分解 |
+| `solver.py` | SciPy 匈牙利、动态规划后备和需求槽求解 |
+| `planner.py` | 全量/增量规划、全有或全无准入、迟滞和版本发布 |
+| `cooperative_prescreen.py` | 末端距离、到达窗口和扇区候选预筛 |
+| `calibration.py` | 动态非等量场景的全量/增量配对校准 |
+| `fixtures.py` | 5v5、3v5、5v3 和动态事件确定性夹具 |
+| `min_cost_flow.py` | 可选 OR-Tools 最小费用流隔离求解器 |
+| `p2_benchmark.py` | SciPy 容量列展开与可选最小费用流同输入对照 |
 
-当前离线仿真位于 `simulations/run_rolling_assignment.py`。默认配置为：
+## 18. 默认、可选和未实现边界
 
-- 8 个目标、8 个资源。
-- 100 秒仿真时长。
-- 2 Hz 决策频率。
-- 对比无迟滞与 `delta=0.2, min_dwell=2.0`。
+| 分类 | 能力 | 2026-07-13 状态 |
+|---|---|---|
+| 默认主线 | SciPy 匈牙利普通分配 | 已实现并作为默认一对一后端 |
+| 默认主线 | 匈牙利需求槽与全有或全无发布 | 已实现；是轻量启发式，不是 MILP 全局最优 |
+| 默认主线 | 可解释成本、硬可行性、迟滞、版本和旧计划拒绝 | 已实现 |
+| 默认主线 | 2 primary + 1 reserve 显式高威胁需求 | 已实现；普通无需求目标仍是 \(k=1\) |
+| 已实现辅助 | 保守增量规划 | 已实现，条件不满足时回退全量 |
+| 已实现辅助 | D5 反馈写回、主资源保护和短时反馈驻留 | 已实现，真实权重仍需继续标定 |
+| 已实现辅助 | D4 二级接管盖章/续行和 D7 多绑定 | 已实现 D3 合同层 |
+| 已实现辅助 | 27 组协同候选预筛 | 已实现，不改变求解主线 |
+| 可选离线对照 | SciPy 容量列展开基准 | 已实现隔离对照 |
+| 可选离线对照 | 谷歌 OR-Tools 运筹优化工具库最小费用流 | 代码接口已实现；当前环境未安装，不进入默认规划器 |
+| 未实现 | CP-SAT/MILP 联盟全局参考模型 | 仅研究计划 |
+| 未实现 | 完整多窗口、连续动力学和承诺前缀优化 | 仅研究计划 |
+| 未实现 | 生产级分布式联盟协商 | 属于 D4，不属于 D3 |
+| 未实现 | 多主资源同步到达控制 | 当前明确不要求，具体导引属于 D7 |
 
-运行命令：
+不得声称 OR-Tools、最小费用流、约束规划-可满足性或混合整数线性规划已经替换默认
+SciPy 匈牙利/需求槽主线。
+
+## 19. 2026-07-13 验证证据
+
+### 19.1 模块回归
+
+既有 D3 回归基线为：
+
+```text
+139 passed, 1 skipped
+```
+
+唯一跳过项是当前环境缺少可选 OR-Tools 的已安装求解测试。标准命令为：
 
 ```bash
-cd research_modules/d3_assignment_planner
-python3 simulations/run_rolling_assignment.py
+python3 -m pytest -q research_modules/d3_assignment_planner/tests
 ```
 
-实验报告见 `docs/EXPERIMENT_REPORT.md`，自动生成报告见 `results/EXPERIMENT_REPORT_GENERATED.md`。
+本次工作只同步文档，没有修改代码，因此不重复运行全量模块测试。
 
-### 11.1 成本与重分配曲线
+### 19.2 确定性动态规模校准
 
-![D3 分配成本与重分配曲线](../results/cost_reassignment.png)
+8 类夹具覆盖：
 
-该曲线展示迟滞策略降低重分配事件，但会使部分时刻保留旧计划，因此总成本略高。
+- 5v5；
+- 3v5；
+- 5v3；
+- 新目标出现；
+- 资源失效；
+- 高威胁目标需求变化；
+- D5 备用资源反馈；
+- 硬时间窗变化。
 
-### 11.2 权重敏感性曲线
+全量和增量规划在 8/8 转换中达到分配与成本等价，并输出回退原因、联盟缺口、
+高威胁未分配和角色保持证据。该结果证明接口一致性，不等于真实 AirSim 多种子性能已经闭合。
 
-![D3 权重敏感性曲线](../results/weight_sensitivity.png)
+### 19.3 计算机视觉合同验证
 
-该曲线用于观察不同代价项权重对平均成本、高威胁未分配比例和重分配次数的影响。后续批量实验应由 D6 汇总多个随机种子下的均值、标准差和置信区间。
+2026-07-11 的 5 资源/2 目标 AirSim 计算机视觉模式 10 个随机种子中，高威胁目标
+`T001` 的双主资源视觉共识与当前计划门控达到 8/10；种子 7 和 27 保留为回归样例。
+这关闭的是 D3 多资源合同层，不等同于物理拦截完成。
 
-## 12. 评估指标
+### 19.4 SimpleFlight 物理闭环
 
-D3 本模块直接关注：
+2026-07-13 完成 40 个 5 资源/2 目标 SimpleFlight 回合，每种配置 10 个随机种子：
 
-- `reassignment_count`：计划发生实质变更的次数。
-- `changed_edges`：目标-资源边变化数量。
-- `duplicate_assignment_count`：同一资源或目标被重复分配的异常计数，正常应为 0。
-- `unassigned_high_threat_count` / `high_threat_unassigned_ratio`：高威胁目标未分配比例。
-- `total_cost` / `average_cost`：采用计划的滚动成本。
-- `candidate_total_cost` 与 `previous_total_cost_current`：迟滞决策解释变量。
-- `runtime_ms`、`p95_runtime_ms`：规划实时性指标。
-- `stale_plan_reject_count`：过期计划拒绝次数，建议由集成测试或 D6 汇总。
-- `assignment_validity_state_count`：`valid/replan_recommended/d4_arbitration_requested/invalid_hold` 的计数。
-- `d4_arbitration_request_count`：D3 请求 D4 主动降级仲裁的次数。
-- `plan_age_violation_count`：计划年龄超过阈值的次数。
-- `cost_growth_violation_count`：旧计划当前成本增长超过阈值的次数。
-- `hysteresis_repeated_hold_count`：迟滞连续保持且跨模块一致性恶化的次数。
+| 配置 | 联盟完成数 |
+|---|---:|
+| 基线 | 0/10 |
+| 20 米末端交接 / 3 秒主资源窗口 / 40 度扇区 | 5/10 |
+| 20 米末端交接 / 5 秒主资源窗口 / 40 度扇区 | 2/10 |
+| 20 米末端交接 / 8 秒主资源窗口 / 40 度扇区 | 1/10 |
 
-这些指标应通过 D6 统一记录，并与 D2 的 `id_switch_count`、D5 的 `terminal_association_accuracy`、D4 的 `failover_time` 联合分析。
+最佳候选是 5/10，低于 8/10 验收门限。全部配置合计是 8/40，不能误写为 40 个独立候选。
+主要失败来自 D5 未锁定和末端检测获取超时，少量失败来自检测框面积过小。
 
-## 13. 跨模块接口关系
+安全合同保持：
 
-### 13.1 与 D2 多目标跟踪
+- 备用资源越权执行：0；
+- `global_track_id` 本地改写：0；
+- 在线使用 AirSim 真实身份标签：0。
 
-D2 提供稳定 `global_track_id` 和航迹质量。D3 不应自行合并、拆分或重命名目标 ID；如果 D2 报告 ID Switch 风险高，D3 应通过更高 `covariance` 或 `assignable=False` 降低错误分配概率。
+D4 故障矩阵还证明二级和分布式提交正例可以消费 D3 当前绑定；缺确认应答时按保守原则关闭
+D7 执行许可。该结果不代表 D3 实现了 D4 的通信和共识协议。
 
-### 13.2 与 D4 降级接管
+## 20. 当前结论与剩余工作
 
-中心节点正常时，D3 的 `AssignmentPlan` 是主计划。中心失效时，D4 应把最新有效版本作为降级协商基线；二级节点或完全分布式 CBBA 只能在版本更新和时效规则内接管，不能用旧版本覆盖新计划。中心恢复后，应对比计划版本、时间戳和 assignment 差异，不应立即强行夺权。
+当前默认主线继续采用 SciPy 匈牙利算法、需求槽全有或全无准入、可解释成本、版本和迟滞。
+已有证据没有支持切换到更复杂求解后端。
 
-D4 主动降级场景下，D3 应额外提供 `AssignmentValiditySummary` 或等价日志字段。D4 可以按 `recommended_action` 处理：`central_replan` 由 D3 继续发布新版本；`request_d4_secondary_node` 交给二级侦察/区域节点仲裁；`request_d4_distributed` 才进入完全分布式协同。D3 不应越权选择具体降级节点，只提供计划有效性、版本、成本和跨模块一致性证据。
+D3 当前没有开放的优先级零或优先级一合同层阻塞项；优先级一的真实物理性能和参数标定仍然
+开放，最佳联盟完成数只有 5/10。这里的优先级零、优先级一和优先级二分别对应仓库中的
+Priority 0、Priority 1 和 Priority 2（P0、P1、P2）工作分级。
 
-当前 main runtime 已接入中心重规划闭环：`request_center_replan` 完成后会登记新的 `active_plan_owner=center`、`plan_id/version`、`replan_reason`、`supersedes_plan_id`、`supersedes_plan_version` 和 stale/rejected plan 归因。D3 侧还提供严格二级激活合同：`prepare_secondary_takeover_plan(...)` 要求 concrete secondary owner、持续 `takeover_ready`、精确 supersede、严格 version/leader epoch、激活时有效 lease，并把 readiness/activation/owner/supersede/epoch/lease 写入 plan、assignment、record 和 evidence。`guidance_bindings_from_assignment_plan(...)` 对 secondary plan 要求 main 显式传入 current plan id/version；历史、未激活或 lease 过期计划不能输出 `active/current` binding。二级/分布式 commit 正例和缺 ACK fail-closed 已通过；heartbeat/lease 长时校准与中心恢复合并仍属 D4/main policy。
+仍需补充的证据包括：
 
-若 D4/main 发布二级计划，应先保留 `pending_secondary_plan`，等持续 readiness 成立后再调用 D3 激活 helper。D3 不推断或选择具体二级节点；成功激活后 secondary binding 只有在 current identity 和 lease 同时有效时才可供 D7 消费，并始终保持 `allow_local_rebind=False`。
+1. 40 回合缺少逐规划时刻计划历史，联盟成员抖动和版本抖动当前不可用；
+2. 真实 3v5、5v3、目标新增、资源失效和高威胁需求变化仍缺多种子标定；
+3. D5 反馈权重、视场困难度、禁配边、驻留和切换惩罚尚未联合标定；
+4. 硬时间窗尚未接入真实预计到达时间、多窗口和连续动力学；
+5. 完整动态威胁模型仍未建立；
+6. 需求槽准入不具备 CP-SAT/MILP 意义下的全局最优证明；
+7. OR-Tools 当前未安装，最小费用流只有隔离合同和结构化不可用证据；
+8. 当前不要求主资源同时到达，不能从窗口字段推断已实现同步协同。
 
-### 13.3 与 D5 末端视觉配准
+## 21. 文档维护原则
 
-D5 使用 `AssignmentPlan.assignments` 判断某个资源应在视场中锁定哪个 `global_track_id`。D5 可以回传 `TerminalAssociation`、`IdentityClaim`、模糊视场事件或友方重叠状态，D3 可将这些反馈转化为 `fov_difficulty`、`conflict_risk`、`operator_hold` 或 `feasibility_by_resource`。D5 不允许本地改写 D3 的 `global_track_id` 或自行换绑全局 assignment。
+后续只有代码、测试和正式验证证据已经改变能力状态时，才更新本文对应结论。更新时必须：
 
-对主动降级判断，D5 的一致性比单帧视觉结果更重要。若 D5 仅单帧模糊但后续恢复一致，D3 可保持或重分配；若 D5 连续多帧不一致、出现友方重叠保持或本地 MOT 与全局计划长期冲突，D3 应将 `d5_consistency_state` 写入有效性摘要并建议 D4 仲裁。
-
-### 13.4 与 D6 系统评估
-
-D6 消费 D3 的计划日志、成本分解、版本变化和决策状态。D3 应保证每次规划输出可复现、可追溯，并保留足够元数据支持批量实验对比。
-
-D6 还应统计 `AssignmentValiditySummary` 的状态分布，区分中心滚动重分配、D4 主动降级仲裁和被动失效降级，避免把所有降级都归因于中心节点宕机。
-
-## 14. 局限与后续工作
-
-当前实现的主要局限：
-
-- 代价特征是归一化抽象量，尚未直接接入 D1/D2 的完整协方差矩阵和时间同步信息。
-- 无显式 demand 时 Hungarian 保持一对一主分配；显式 M-to-N 使用 demand-slot all-or-none，但复杂容量、备份资源和多窗口全局优化仍不在默认主线。
-- `conflict_risk` 是外部传入的边级摘要，未在 D3 内部计算真实轨迹冲突。
-- `human_authorization_state` 当前由 `PlannerConfig` 配置，默认 `required`；模块不实现授权工作流，也不把记录态仿真字段解释为处置授权。
-- 离线脚本覆盖 8v8 滚动场景；P1 合同层已由 CV 10-seed 的 8/10 双 primary、增量/role-aware 回归及 commit/fail-closed 场景闭合，真实非等量 M/N、crossing/dense 和长时物理控制仍需参数校准。
-- `AssignmentValiditySummary`、D6-compatible `AssignmentRecord`、N/M replay summary 和 D5 feedback calibration summary 已实现。后续局限在于真实 episode records 是否持续、稳定地写入并能支撑参数标定，而不是 D3 模块缺少数据结构。
-
-后续建议：
-
-- 基于真实 D6 records 和 P1 calibration sweep bundle 复核 D2 ID Switch 风险、D5 duplicate/friend/fov/geometry feedback、禁配边、`operator_hold` 和 D3 迟滞参数的长期权重阈值。
-- 配合 D4/main 校准计划版本冲突、二级 owner/lease、中心恢复合并和 stale secondary plan 拒绝策略；D3 不在本模块内实现 runtime 仲裁。
-- 在 main 运行时持续调用 D3 侧有效性评估器，输出 `AssignmentValiditySummary`、`AssignmentRecord` 和 D5 feedback calibration/replay summary，并由 D6 统计触发原因。
-- OR-Tools 最小费用流同输入 comparator 已实现；CP-SAT/MILP、复杂 flow 和大规模扫描仅作为 P2 隔离 benchmark。
-- 由 D6 批量运行多随机种子、多权重、多密度场景，输出统一中文实验报告和图表。
+- 保持动态 \(m\) 目标/\(n\) 资源，不写死 2v2 或 5v5；
+- 保持 `global_track_id` 的中心所有权；
+- 保持计划版本、前序连续性和旧版本拒绝；
+- 区分合法多资源联盟与异常重复分配；
+- 区分计划窗口与真实同步到达；
+- 区分默认主线、可选离线对照和未实现能力；
+- 不把一次候选结果或缺失依赖写成默认算法升级。

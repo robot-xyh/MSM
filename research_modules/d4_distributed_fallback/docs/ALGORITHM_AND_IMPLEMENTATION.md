@@ -1,512 +1,722 @@
-# D4 算法原理与实施方案
+# D4 分布式协同与降级接管算法及实施方案
 
-## 1. 模块定位
+**模块**：D4 分布式协同与降级接管
 
-D4 负责离线降级协同研究，包含两类模式：
+**同步基线**：2026-07-13 代码、模块说明文件、模块计划文件、模块原理文档和系统总汇总
 
-- 被动降级 `passive_failover`：中心 C2 被摧毁、失效或经 quorum 判定不可用，系统从中心 C2 降到二级节点，再降到完全无中心 CBBA/拍卖。
-- 主动降级 `active_degradation`：中心 C2 尚未失效，但 D1/D2/D3/D5 的风险证据显示当前中心分配已不再可靠，需要由 D4 仲裁是否继续、请求中心重分配、请求二级节点辅助或安全保持；不转移 plan owner。
+**适用范围**：Python 科研仿真、AirSim 单次试验时钟接线和离线故障回放
 
-它不替代 D3 的中心化最优分配，也不直接驱动 D5 的末端视觉锁定；它只在中心失效、信息不完整、通信受限或局部关联证据冲突的仿真条件下，维持最低限度的计划连续性，并把所有降级行为记录给 D6 评估。
+## 1. 文档目的与模块边界
 
-本模块边界固定为离线科研仿真：只处理粗粒度 `TrackSummary`、`ResourceSummary`、CBBA 状态和审计日志；不实现真实无线链路、飞控接口、硬件驱动、火控参数、毁伤模型、自动处置或授权绕过。
+D4 解决的不是单一“中心掉线后换一个节点”问题，而是以下三类协调状态之间的安全转换：
 
-## 2. 输入输出
+1. 中心节点仍有效，由 D3 维持中心化分配；
+2. 中心节点失效，或中心计划在高动态条件下持续不适用，由机动高空侦察二级节点接管；
+3. 中心和二级节点均不可用，拦截资源通过完全分布式协商维持最低任务连续性。
 
-### 2.1 输入
+本文中的指挥与控制（Command and Control，C2）表示中心协调权威；`C2Health` 表示其健康状态。D4 同时处理：
 
-- `TrackSummary[]`：来自 D1/D2 的全局航迹摘要，字段包括 `track_id`、`coarse_cell`、`age_s`、`confidence_band`、`source_count`、`epoch`。
-- `ResourceSummary[]`：来自资源状态管理或 D3 上一版计划的资源摘要，字段包括 `node_id`、`capability_class`、`availability_band`、`comm_band`、`operator_hold`、`takeover_priority`、`lease_epoch`、`node_role`、`coordinator_only`、`coverage_cell`、`heartbeat_timestamp_s`、`heartbeat_stale_after_s`、`cue_freshness_s`、`gimbal_pointing_ok`、`secondary_coverage_ratio`、`cross_view_support_count`、`epoch`。
-- `C2` 健康输入：heartbeat 状态、assignment digest 是否一致、center epoch、peer fail votes。
-- `SimulatedNetwork`：内存网络，提供延迟、丢包和消息计数。
-- `TrackUncertaintySummary`：来自 D1 的定位不确定度摘要，包含 `position_sigma_m`、`covariance_trace`、`measurement_age_s` 和 `coverage_cell`。
-- `AssociationRiskSummary`：来自 D2 的关联风险摘要，包含 `ambiguity_score`、`id_switch_count`、`duplicate_track_count`、`track_continuity`、`truth_metrics_available` 和 `continuity_available`。在线 truth 隔离时，后两个可用性标志阻止 IDSW/continuity 占位值进入硬风险；association ambiguity、duplicate track risk 和 track-quality-derived risk 仍可在线使用。
-- `AssignmentValiditySummary`：来自 D3 的分配有效性摘要，包含 `global_track_id`、`assigned_resource_id`、`plan_version`、`is_current`、`plan_age_s`、`cost_margin` 和证据 metadata。`plan_age_s` 表示最近评估活性年龄，优先使用 `plan.metadata.last_evaluated_at_s`（兼容 `last_evaluated_at/evaluated_at_s/evaluated_at`），缺失时回退 `created_at`；稳定计划身份年龄另存为 `metadata.identity_age_s`。
-- `TerminalAssociationSummary`：由 D5 的 `TerminalAssociation` 归一化得到，包含末端 `resource_id`、`terminal_evidence_applicable`、`decision_state`、`association_confidence`、`ambiguity_score`、连续非锁定帧数、连续不一致帧数、友方冲突、重复末端锁定标记、cross-view 风险和当前 `coverage_cell`。适用性默认 `true`；adapter 也接受 `evidence_applicable`、`visual_evidence_applicable`、`within_terminal_visual_window`、`terminal_visual_window_active`。
-- `CommunicationSummary[]`：来自 main 通信层的离线链路摘要，字段包括 `source_node_id`、`target_node_id`、`relay_node_id`、`link_type`、`sent_timestamp`、`received_timestamp`、`payload_kind` 和 `stale_after_s`。
+- **被动降级**（passive failover）：节点被摧毁、心跳超时、摘要冲突或网络分区导致原协调者不可用；
+- **主动降级**（active degradation）：中心仍在线，但传感器不确定性、目标身份歧义、计划时效或末端关联证据表明当前计划已不适用。
 
-### 2.2 输出
+必须纠正旧口径：主动降级不只包含“请求中心重规划”。系统允许两条受控路径：
 
-- `CBBAResult`：降级分配结果、共识轮数、是否收敛、冲突数、完成率、消息数量和字节估计。
-- `HealthTransition[]`：状态转移审计日志。
-- `MergeResult`：中心恢复后的双轨合并结果，区分 `accepted/review/conflicts`。
-- `final_views["coordination_mode"]`：写入 `state/leader_id/leader_role/coverage_cell`，并由 `build_cbba_d6_metadata()` 和 `run_failover_simulation()` 顶层 metrics 透传，便于 D6 区分二级节点接管与完全分布式 CBBA。
-- `ActiveDegradationDecision`：主动/被动仲裁结果，字段包括 `mode`、`action`、`reason`、`target_node_id`、`coverage_cell`、`terminal_consistent`、`risk_factors` 和 `requires_human_review`；`to_metrics()` 输出 main/D6 所需 D4 指标字段。
-- `SecondaryNodeLifecycleSummary`：二级节点生命周期摘要，字段包括 `heartbeat`、`lease_epoch`、`coverage_cell`、`video_cue_freshness_s`、`link_stale` 和 `secondary_available`。
-- `D4DecisionRecord.to_event_record_kwargs()`：输出 D6 `EventRecord` 兼容事件，metadata 包含 `degradation_mode`、`selected_coordinator`、`coverage_cell`、`trigger_reason`、`trigger_timestamp`、`decision_timestamp`、三值 `review_label`、secondary takeover plan lifecycle、`active_plan_owner`、二级 coverage/full-view、stable cross-view registration、not-registered 和 detect-to-registration 诊断，并保留 `d4_degradation_mode` 等 D4 原始字段。
-- `CBBACostGapBenchmark`：离线 benchmark 输出，使用 D3/main 提供的中心 plan 和 cost matrix，对比 D4 CBBA 的 cost/completion/conflict/message 差距；D4 不运行中心化 Hungarian。
-- `build_cbba_d6_metadata()`：将 `CBBAResult`、`coordination_mode`、`assignment_audit` 和可选 `CBBACostGapBenchmark` 转成 D6 多 seed 报告字段。
+- 风险尚可由中心修复时，D4 请求中心重规划，由 D3 发布新版本计划；
+- 风险持续、当前计划明显不适用，且机动高空侦察二级节点持续就绪时，D4 可提出转移到二级节点，随后由 main/D3 发布严格更新的二级计划并转移计划所有者。
 
-## 3. C2Health 状态机
+D4 自身不创建完整 `AssignmentPlan`，也不在本地改写 `global_track_id`。主动转移必须通过 main/D3 的计划发布、所有者、版本、时期和租约合同，不能把 D4 的单次风险判断直接解释为执行授权。
 
-状态定义：
+模块边界如下：
 
-- `normal`：中心 heartbeat、assignment digest 和 epoch 均可信。
-- `degraded`：中心质量下降，或已由备份/二级节点维持连续性，但还不能恢复完全中心控制。
-- `suspect`：heartbeat 过期、digest 冲突、epoch 倒退、节点投票不一致或恢复尚未通过合并校验。
-- `failed`：heartbeat 超过硬超时，或 peer quorum 判定中心不可用。
+- D4 读取 D1-D5 的摘要，不重复实现传感器滤波、数据关联、中心优化和像素几何；
+- D4 输出协调动作、二级接管元数据、联盟提交状态和审计记录，不直接输出飞控命令；
+- D7 仍独立检查计划、末端锁定和运动学条件；
+- 当前网络是内存队列或 AirSim 单次试验时钟上的故障注入，不代表真实无线链路；
+- 本模块不包含真实硬件、射频设备、视频编码器、火控、毁伤或自动处置逻辑。
 
-典型触发条件：
+## 2. 总体分层架构
 
-| 转移 | 触发条件 | 设计意图 |
+```mermaid
+flowchart TD
+    D1[D1 航迹协方差与时效] --> R[D4 风险仲裁]
+    D2[D2 关联歧义与身份连续性] --> R
+    D3[D3 计划版本、时效与可行性] --> R
+    D5[D5 末端绑定与跨视角证据] --> R
+    C2[C2Health 中心健康] --> R
+
+    R -->|风险低| KEEP[继续中心计划]
+    R -->|可由中心修复| REPLAN[请求中心重规划]
+    R -->|需要补充视角| ASSIST[请求二级图像或线索辅助]
+    R -->|风险持续且二级持续就绪| SEC[二级计划待生效]
+    R -->|友方或身份冲突| HOLD[保持并请求复核]
+
+    REPLAN --> D3NEW[D3 发布更新版本]
+    SEC --> D3SEC[main/D3 发布二级 owner/version/lease]
+    D3SEC --> SECACTIVE[二级计划激活]
+
+    C2FAIL[中心失效] --> SECFAIL{二级节点持续就绪?}
+    SECFAIL -->|是| SECACTIVE
+    SECFAIL -->|否| CBBA[完全分布式 CBBA 保底]
+    CBBA --> ACK[联盟 ACK 原子提交]
+
+    KEEP --> D7[D7 导引合同门控]
+    D3NEW --> D7
+    SECACTIVE --> D7
+    ACK --> D7
+    HOLD --> D7BLOCK[D7 保持闭锁]
+```
+
+默认优先级是：
+
+```text
+中心计划可用
+  -> 继续中心
+  -> 请求二级观测辅助
+  -> 请求中心重规划
+  -> 风险持续且二级持续就绪时，发布更新的二级计划
+  -> 中心和二级均不可用时，进入完全分布式保底
+  -> 证据、版本、租约或成员确认不完整时，闭锁或保持复核
+```
+
+主动转移和被动接管都可到达二级节点，但触发原因不同：前者是计划持续不适用，后者是中心不可用。两者进入同一套二级计划版本、来源、租约和 D7 门控，不允许维护两套互相矛盾的执行规则。
+
+## 3. 机动高空侦察二级节点
+
+### 3.1 当前场景角色
+
+当前系统假设中的二级节点是**机动高空侦察无人机**，不是固定系留节点。它与拦截资源同步出动，但不执行拦截，承担两种职责：
+
+1. **正常运行时的观测辅助**：利用高性能光电云台、雷达或 GlobalTrack 粗指向，在局部区域搜索目标，并向小范围拦截资源发送图像、检测结果、投影线索和覆盖摘要；
+2. **降级时的区域协调**：在中心失效或当前中心计划持续不适用时，基于其覆盖区、通信链路、计算能力和最新态势发布候选重分配，由 main/D3 转换为版本化二级计划。
+
+代码仍保留 `FIXED_TETHERED_SECONDARY` 等历史兼容枚举，以便读取旧回放，但新场景和实施说明以 `MOBILE_HIGH_RECON` 或 `MOBILE_SECONDARY_RECON` 为默认角色。兼容枚举不表示当前方案仍以固定系留节点为主。
+
+二级节点通常设置：
+
+- `coordinator_only=True`：只参与侦察和协调，不作为拦截执行资源出价；
+- `coverage_cell`：限定可辅助或接管的区域；
+- `heartbeat_timestamp_s` 和 `heartbeat_stale_after_s`：描述节点生命状态；
+- `cue_freshness_s`：描述图像或线索新鲜度；
+- `gimbal_pointing_ok`：表示云台是否正确指向目标区域；
+- `secondary_coverage_ratio`：表示覆盖目标的比例；
+- `secondary_network_joint_full_view_frame_rate`：表示二级网络同一帧联合覆盖完整目标集合的比例；
+- `cross_view_association_count` 和 `stable_cross_view_registration_count`：表示 D5 已形成的跨视角支持；
+- `lease_epoch` 和 `lease_expires_at_s`：表示接管权有效世代和到期时间。
+
+### 3.2 正常运行时的图像和线索流
+
+```text
+D1/D2 GlobalTrack 粗位置
+  -> main 生成雷达/航迹指向线索
+  -> 机动高空侦察节点调整云台
+  -> D5 处理二级图像和局部多目标轨迹
+  -> D5 输出跨视角注册、覆盖率和歧义摘要
+  -> D4 只消费摘要并评估二级节点就绪性
+```
+
+二级节点“看见目标”不等于“能接管”。检测框存在、云台指向正确或平均覆盖率较高，都不能替代时间同步、全局绑定、稳定跨视角注册、通信新鲜度、计划版本和租约检查。
+
+## 4. 输入、内部状态与输出合同
+
+### 4.1 上游输入
+
+| 来源 | D4 输入 | 关键语义 |
 |---|---|---|
-| `normal -> degraded` | heartbeat age 超过 `heartbeat_warning_s` | 提前进入谨慎模式，避免突然切主 |
-| `normal/degraded -> suspect` | heartbeat stale、digest conflict、center epoch stale | 区分“网络抖动”和“态势不一致” |
-| `suspect -> failed` | heartbeat age 超过 `heartbeat_failure_s` 或 peer votes 达到 quorum | 只有明确失效才启动降级规划 |
-| `failed -> degraded` | 备份/二级节点/集群代表接管 | 降级接管不等于恢复中心权威 |
-| `degraded/suspect -> normal` | 双轨合并无冲突且人工接受标志为真 | 防止短暂 heartbeat 恢复导致双主 |
+| D1 多传感器融合 | `TrackUncertaintySummary` | 位置标准差、协方差迹、速度标准差、量测年龄和覆盖小区 |
+| D2 多目标关联 | `AssociationRiskSummary` | 关联歧义、显式身份切换计数、重复航迹、连续率及真值指标可用性 |
+| D3 分配规划 | `AssignmentValiditySummary` | `global_track_id`、资源、计划版本、是否当前、最近评估年龄、代价裕度和资源可行性 |
+| D5 末端关联 | `TerminalAssociationSummary` | 当前绑定、末端证据适用性、锁定/歧义/保持/重捕获、友方冲突、重复锁定和跨视角证据 |
+| main/runtime | `C2Health`、`ResourceSummary[]`、`CommunicationSummary[]` | 当前时间、心跳、链路新鲜度、二级节点能力、计划所有者、时期和租约 |
 
-不能只靠 heartbeat 恢复的原因：
+D4 只接受上游规范 `global_track_id`。D5 本地轨迹标识、AirSim actor 名称和离线真值标识都不能在 D4 内生成新的全局身份。
 
-1. heartbeat 只能证明中心节点“还在发送”，不能证明它拥有最新航迹和分配版本。
-2. 中心恢复时可能落后于降级期间形成的 peer 计划，直接恢复会造成 stale assignment。
-3. 多节点网络可能分区，部分节点看到中心恢复，部分节点仍在降级协商，单次 heartbeat 会形成双主。
-4. D3/D5/D6 依赖 `plan_id/version/global_track_id` 连续性，恢复必须比较 digest、epoch 和所有权，再由人工接受标志闭环。
+### 4.2 主要内部状态
 
-因此 `merge_recovery()` 采用双轨合并：中心计划和 fallback 计划并行比较，完全一致进入 `accepted`，单边出现进入 `review`，重复所有者或版本冲突进入 `conflicts`。只有 `conflicts` 和 `review` 均为空且 `human_accept=True` 才恢复 `normal`。
+- `C2Health`：中心健康状态；
+- `ActiveDegradationDecision`：本次仲裁动作；
+- `SecondaryNodeLifecycleSummary`：二级节点心跳、链路、覆盖和就绪性；
+- `SecondaryTakeoverPlanMetadata`：二级计划待生效或已激活状态；
+- `CenterReplanStatus`：中心重规划请求生命周期；
+- `CoalitionMemberAck`：联盟成员确认应答；
+- `CoalitionCommitState`：联盟从提议到执行或中止的状态；
+- `CBBAResult`：完全分布式一对一保底结果；
+- `MergeResult`：中心恢复后的双轨校验结果。
 
-## 4. 层级降级链路
+### 4.3 下游输出
 
-降级顺序固定为分层仲裁，而不是直接从中心跳到完全无中心：
+| 输出 | 消费者 | 用途 |
+|---|---|---|
+| `ActiveDegradationDecision` | main、D6 | 继续中心、重规划、二级辅助、二级转移、分布式或保持复核 |
+| `D4DecisionRecord` | main、D6 | 保存触发证据、动作、时延、所有者、版本、租约和拒绝原因 |
+| `SecondaryTakeoverPlanMetadata` | main、D3、D7 | 描述二级计划待生效/已激活，不代替系统计划 |
+| `D7SecondaryHandoff` | D7 | 二级交接两阶段门控和视觉比例导航制导许可前置条件 |
+| `CBBAResult` | main、D6 | 分布式保底分配、共识轮数、冲突和消息开销 |
+| `CoalitionCommitState` | main、D5、D7、D6 | 多资源联盟是否已经原子提交并可执行 |
+| `HealthTransition[]`、`MergeResult` | main、D6 | 健康迁移、恢复审计和防双主评价 |
 
-```text
-中心 C2 正常
-  -> 风险低：continue_center
-  -> 中心可用但 D3 plan/version/freshness 硬风险：request_center_replan
-  -> 中心可用但 D1/D2/D5 需要补充视角：request_secondary_assist
-  -> 中心 C2 失效或 D5 多帧硬冲突：地面备份、固定系留或机动高空二级侦察节点接管区域协调
-  -> 二级节点不可用：集群代表 / 完全无中心 CBBA 或拍卖式协商
-  -> 协商不收敛：保持、继续观测或安全回退的离线占位状态
+## 5. `C2Health` 中心健康状态机
+
+### 5.1 状态定义
+
+| 状态 | 中文含义 | 判定依据 |
+|---|---|---|
+| `normal` | 正常 | 心跳、计划摘要校验值和中心时期可信 |
+| `degraded` | 降质 | 心跳抖动或已有降级协调者维持连续性 |
+| `suspect` | 可疑 | 心跳陈旧、摘要冲突、中心时期倒退或恢复待校验 |
+| `failed` | 失效 | 心跳硬超时或对等节点失效票达到法定多数 |
+
+### 5.2 状态迁移
+
+```mermaid
+stateDiagram-v2
+    [*] --> normal
+    normal --> degraded: 心跳警告或窗口内少量丢失
+    normal --> suspect: 摘要冲突或中心时期过旧
+    degraded --> suspect: 心跳陈旧且驻留条件满足
+    suspect --> failed: 硬超时或失效票达到法定多数
+    failed --> degraded: 二级或分布式接管开始
+    degraded --> suspect: 中心心跳恢复但尚未双轨校验
+    suspect --> normal: 双轨无冲突且显式接受
 ```
 
-### 4.1 二级侦察节点的角色
+`FailoverCoordinator.update_health()` 使用心跳滑动窗口、丢失阈值和状态驻留时间，避免单个迟到消息把中心直接判为失效。对等节点法定多数（quorum）可在明确分区或中心损坏时加速失效判定。
 
-固定系留或机动高空侦察无人机在 D4 中建模为区域二级节点：
+恢复路径刻意不对称：心跳恢复只证明中心重新发送消息，不能证明其计划是最新版本。因此 `observe_center()` 将恢复中的中心置为 `suspect`，只有双轨校验通过后才能回到 `normal`。
 
-- `node_role=NodeRole.SECONDARY_RECON`：表示该节点具备区域观测和协调能力。
-- `node_role=NodeRole.FIXED_TETHERED_SECONDARY/MOBILE_HIGH_RECON/MOBILE_SECONDARY_RECON` 或等价 `capability_class="tethered_recon" / "fixed_tethered_secondary" / "mobile_high_recon" / "mobile_secondary_recon"`：用于 leader 排序和审计。
-- `coordinator_only=True`：表示该节点只做区域协调和观测摘要，不作为执行资源参与任务所有权分配。
-- `coverage_cell`：表示节点覆盖的粗粒度小区或区域，后续应作为多区域接管过滤条件。
-- `heartbeat_timestamp_s` / `heartbeat_stale_after_s`：表示最近心跳和过期门限；心跳过期时二级节点不作为辅助或接管候选。
-- `lease_epoch`：表示二级节点租约版本；同等优先级下新租约优先。
-- `cue_freshness_s`、`gimbal_pointing_ok`、`secondary_coverage_ratio` 和 `cross_view_support_count`：表示来自 D5/D6/main 的二级侦察新鲜度、指向、覆盖和跨视角支持摘要；这些字段只影响候选和审计，不让 D4 自己做视觉注册。
+## 6. D1-D5 风险融合与主动降级
 
-当二级节点健康时，它可以作为区域协调者，向覆盖范围内的拦截资源提供：
+### 6.1 D1 航迹不确定性
 
-- 航迹摘要：例如 `TrackSummary` 的高置信 source count、age 和 coverage cell。
-- 局部资源摘要：附近资源的可用性、通信质量和 operator hold 状态。
-- 面向 D5 的观测/图像 cue 语义：例如某个 `global_track_id` 在二级节点视场中的候选位置和置信度。
-
-这些 cue 只作为 D5 末端视觉配准的辅助证据。它们不能授权本地处置，不能改变 `global_track_id`，不能绕过 D3 plan version，也不能替代 D5 的友方/未知身份保守判断。
-
-### 4.2 Leader 选择
-
-`FailoverCoordinator.elect_leader_resource()` 使用确定性排序：
-
-```text
-takeover_priority
--> node_role rank
--> lease_epoch
--> availability_band
--> comm_band
--> capability_class
--> node_id
-```
-
-设计意图：
-
-- `takeover_priority`：让预设备份或区域节点优先于临时资源。
-- `node_role`：优先级为 `ground_backup < secondary_recon < cluster_representative < interceptor`。
-- `lease_epoch`：同类节点中选择更新租约，减少旧 leader 复活。
-- `availability/comm/capability`：在前序条件相同的情况下选择状态更稳的节点。
-- `node_id`：最后使用确定性 tie-break，保证并行节点选择一致。
-
-当前实现中 `GROUND_BACKUP` 和 `SECONDARY_RECON` 都映射为 `coordination_mode="secondary_node"`。这表示“仍有区域/备份协调者”，不是完全无中心。若需要更细审计，后续可拆分为 `ground_backup_node` 与 `secondary_recon_node`。
-
-### 4.3 被动降级与主动降级
-
-D4 将降级触发源分成两类，避免把“中心真的失效”和“中心仍在但局部证据不可信”混为一类。
-
-| 模式 | 触发源 | 典型证据 | 首选动作 |
-|---|---|---|---|
-| `passive_failover` | C2 被摧毁、失效、heartbeat 超时、peer quorum 判定失败 | `C2Health.FAILED`、中心 epoch 停滞、assignment digest 长时间不可用 | 二级节点接管；无二级节点时进入 CBBA |
-| `active_degradation` | C2 未失效，但分辨率、定位、关联或分配证据不足 | D1 协方差增大、D2 ID switch 风险上升、D3 plan stale/not current/resource infeasible、D5 本地候选与分配目标不一致；cost margin 低、低置信度、无冲突 `ambiguous/reacquire` 只作为软证据 | 仲裁后继续中心、请求中心重分配、请求二级辅助或安全保持；不转移 plan owner |
-
-被动降级是“控制中心不可用”的结构性问题；主动降级是“中心计划仍存在但局部证据不支持继续执行”的一致性问题。主动降级不能直接绕过 D3/D5 的版本、授权和身份规则，它只是给出保守协调建议。
-
-### 4.4 主动降级仲裁器
-
-`ActiveDegradationArbiter` 是 D4 侧新增的离线规则仲裁器。它不订阅真实链路，也不发布控制命令；它只把 D1/D2/D3/D5 的摘要统一为一个 `ActiveDegradationDecision`，供仿真和 D6 评估。
-
-伪接口：
-
-```python
-decision = ActiveDegradationArbiter().evaluate(
-    track_uncertainty=TrackUncertaintySummary(...),
-    association_risk=AssociationRiskSummary(...),
-    assignment_validity=AssignmentValiditySummary(...),
-    terminal_association=TerminalAssociationSummary(...),
-    c2_health=C2Health.NORMAL,
-    secondary_nodes=[ResourceSummary(...)]
-)
-```
-
-输入语义：
-
-- `TrackUncertaintySummary`：D1 的定位质量，重点看位置标准差、协方差迹和量测年龄。
-- `AssociationRiskSummary`：D2 的身份连续性风险，重点看 ambiguity、ID switch、重复航迹和 track continuity。
-- `AssignmentValiditySummary`：D3 的分配是否仍有效，重点看 plan version、是否 current、计划年龄、cost margin 和显式 `resource_feasible`。
-- `TerminalAssociationSummary`：D5 的末端视觉配准结果。先看 `terminal_evidence_applicable` 是否已进入视觉适用窗口；窗口内再评估 lock/confidence/ambiguity 和 streak。resource/assigned-track/明确 observed-track mismatch、friend conflict 与 duplicate lock 不受窗口限制。
-- `C2Health`：判断是主动降级还是被动降级。若已为 `failed`，仲裁器直接走 `passive_failover`。
-- `secondary_nodes`：二级节点健康和覆盖信息，使用 `ResourceSummary.node_role`、`availability_band`、`operator_hold`、`coverage_cell` 判断可用性。
-- `communication_summaries`：可选通信摘要。若传入，二级节点必须存在未过期的 `c2_direct`、`secondary_relay` 或 `video_cue` 链路，才可被视为主动辅助/接管候选。
-- 二级生命周期：`summarize_secondary_lifecycle()` 会输出每个二级节点的 heartbeat age、lease epoch、coverage cell、video cue freshness、link stale 和 `secondary_available`，adapter 会把该摘要放入结果供 D6 审计。
-
-决策规则：
-
-| 条件 | D4 决策 |
-|---|---|
-| `terminal_evidence_applicable=false`，D1/D2/D3 风险低且无明确硬冲突 | 忽略普通 ambiguous/reacquire、低 confidence、高 ambiguity、cross-view 软风险和 streak，`continue_center` |
-| D5 与中心/二级分配一致，且 D1/D2/D3 风险低 | `mode=none`，`action=continue_center` |
-| D1/D2 风险上升，但 D5 仍一致，且二级节点覆盖该区域 | `active_degradation + request_secondary_assist`，请求二级节点提供区域观测/cue，不直接完全分布式 |
-| D3 分配 stale、非 current 或资源不可行 | `active_degradation + request_center_replan`，优先中心滚动重分配 |
-| 只有 `d3_assignment_cost_margin_low`、D5 低置信度或无冲突 `ambiguous/reacquire` | `continue_center` 或 `request_secondary_assist`，继续观察，不触发中心重规划或分布式降级 |
-| D5 单窗口不一致但未连续恶化 | 若无硬风险则继续观察；若需要补充视角且二级节点可用，则请求二级辅助 |
-| D5 持续 observed global track mismatch、资源错配或重复锁定 | 中心可用时 `request_center_replan`，二级节点只提供辅助观测，不改变 plan owner/version |
-| 中心 `failed` 且二级节点持续 ready | `degrade_to_secondary`；二级也不可用、不可达或不覆盖时才 `degrade_to_distributed` |
-| 友方冲突或身份证据冲突 | `hold_for_review`，只输出审计和人工复核需求 |
-| `duplicate_terminal_lock=True` | 不视为 D5 一致；中心可用时请求中心重规划 |
-| `cross_view_risk_score` 高 | 不视为稳定一致，进入主动仲裁，优先二级节点辅助/接管 |
-
-中心失效后的二级接管采用两阶段语义，防止 D7 在重分配尚未完成的同一帧直接进入视觉 PNG：
-
-1. 阶段 1：D4 输出 `degrade_to_secondary` 只表示已经选择二级节点并启动重分配；`build_d7_secondary_handoff()` 返回 `phase=1`、`reassignment_complete=false`、`visual_png_allowed=false`，且不输出 D7 动作。D7 不应在该帧进入视觉 PNG。
-2. 阶段 2：二级节点的新 plan 已生效且 readiness 为 `takeover_ready` 后，`build_d7_secondary_handoff()` 返回 `phase=2`、`reassignment_complete=true`，并携带 `new_plan_id` 与 `new_plan_version`。若新 plan 下 D5 仍需二级 cue，则对 D7 输出 `request_secondary_assist`；若新 plan 下末端一致，则输出 `continue_center`。`visible_only`、`registration_usable` 或缺失 readiness 均不允许进入 visual PNG gate。
-
-当前实现使用轻量规则阈值表达风险：
-
-- D1：`position_sigma_m >= 20m` 记为中风险，`>= 50m` 记为高风险；`covariance_trace` 和量测年龄也会增加风险因子。
-- D2：`ambiguity_score`、在线 duplicate/quality risk 始终按既有门限判断；只有 `truth_metrics_available=True` 时才使用 ID switch，只有 `continuity_available=True` 时才使用 track continuity。
-- D3：`is_current=False`、活性 `plan_age_s` 超限和显式 `resource_feasible=False` 是硬分配风险，且继续绕过中心重规划 cooldown；`cost_margin` 过低是软计划风险，单独出现时表示需要观察/迟滞，不直接请求中心重规划。
-- D5：friend conflict、重复末端锁定、资源错配、assigned/明确 observed `global_track_id` mismatch 是窗口内外都有效的硬证据；`association_confidence` 低、`ambiguity_score` 高、cross-view 高风险和无冲突连续非锁定帧属于末端适用窗口内的软证据。窗口外屏蔽这些软证据，窗口内默认继续中心或请求二级 cue。`friend_conflict` 优先级最高，直接 `hold_for_review`。
-- 通信：传入通信摘要时，二级节点链路超过 `stale_after_s` 会被视为不可用；只有二级节点不可用时，主动持续不一致才降到 `distributed_cbba/auction`。
-- 迟滞/防抖：`ActiveDegradationConfig` 提供 `min_dwell_s`、`release_consecutive_consistent_frames`、`risk_window_size` 和 `risk_window_threshold`。默认值保持轻量单步行为；复用同一个 arbiter 时，可要求多窗口风险满足阈值才从辅助升级到二级/分布式降级，并要求满足最短 dwell 和连续低风险 release 条件后才回到 `continue_center`。
-
-这些阈值是离线仿真默认值，不代表真实传感器或真实系统参数。后续应由 D6 批量实验做敏感性分析。
-
-### 4.5 二级侦察校准口径
-
-D4 不直接做相机投影、bbox 几何门控、跨视角注册或 global track 绑定；这些由 D5/main 写盘并由 D6 聚合。D4 只消费 coverage、heartbeat/link/cue freshness、gimbal pointing、stable cross-view registration、not-registered 诊断、review label 和 plan activation metadata。
-
-当前 AirSim/P1 证据分两层解释：
-
-- `p1_d4d5_mobile_recon_20260708_055948*`：3 seeds 下 mobile high recon 的 radar cue、gimbal pointing 和 D4 三类动作正常，但二级网络同帧全覆盖仍为 0.0，联合覆盖约 0.65-0.69，degradation case 多数仍是 `secondary_detect_available_but_not_registered`。
-- `p1_d4d5_registration_calibration_runtime_v2_20260708*`：单 seed、200 m、FOV 110、1920x1080、3 个机动高空二级节点下，D6 上游几何统计为 `projection_valid_rate=1.0`、`geometry_gate_pass_rate≈0.474`；stable cross-view registration 为 51/55/53，cross-view association 为 4/4/5，degradation case not-registered 为 35/35，平均 full-view 为 0.048，平均 coverage 为 0.771。它证明 stable registration/not-registered 字段可由 D5/D6/main 产生并被 D4 消费；projection/geometry gate 只作为上游标定背景，D4 不直接消费或计算，且仍需多 seed 标定阈值、误注册风险和 review label。
-
-因此 D4 把二级侦察结果记录为四级 readiness：`not_ready`、`visible_only`、`registration_usable`、`takeover_ready`。`visible_only` 只说明二级看见目标但没有可用 cross-view/global binding；`registration_usable` 说明稳定注册存在但 coverage、network full-view 或综合 score 还不足以接管；只有 `takeover_ready` 与新鲜二级链路、D3/main 回填的 plan owner/version 同时满足时，才能作为二级接管必要性和成功的正证据。仅有检测可见、gimbal OK 或 coverage ratio > 0 不会自动激活 `secondary_plan_active`。
-
-## 5. CBBA、拍卖和合同网协议
-
-### 5.1 CBBA 原理
-
-CBBA（Consensus-Based Bundle Algorithm）把任务分配拆成两个过程：
-
-1. Bundle building：每个节点根据本地收益把任务加入自己的 bundle。
-2. Consensus：节点交换各任务的 winner 和 bid，发现自己失去某个任务后释放该任务及其后的 bundle，再重新竞标。
-
-在本模块中，任务是连续性任务 `TrackSummary`，资源是可执行的 `ResourceSummary`。二级节点如果 `coordinator_only=True`，会被排除在执行资源之外。
-
-本模块的打分函数是合成研究基线：
+D1 以带协方差的全局航迹作为依据。位置风险可用位置协方差子矩阵表示：
 
 \[
-s_{ij}=2.0C_j+1.4A_i+0.5M_i+1.2Q_{ij}+1.0S_j-0.8R_j
+\sigma_p=\sqrt{\frac{\mathrm{tr}(P_{pos})}{3}}.
+\]
+
+当前轻量规则以位置标准差约 20 米作为中风险分档、50 米作为高风险分档，并结合协方差迹和量测年龄。门限是仿真基线，需要依据传感器配置和真实回放重新标定，不能直接作为硬件指标。
+
+### 6.2 D2 关联风险
+
+D4 读取：
+
+- 关联歧义分数；
+- 显式身份切换（Identity Switch，IDSW）计数；
+- 显式重复航迹事件；
+- 航迹连续率；
+- `truth_metrics_available` 和 `continuity_available` 可用性标志。
+
+在线真值隔离时，缺失真值产生的零值或占位值不能成为硬风险。连续重复风险评分只作软证据；只有显式重复计数、事件或增量才构成硬阻断。
+
+### 6.3 D3 计划有效性
+
+D4 不用计划创建时间简单判断陈旧，而优先读取最近评估时间。主要硬风险包括：
+
+- 计划不是当前版本；
+- 计划超过允许年龄；
+- 资源已不可行；
+- 当前资源、目标或联盟版本不匹配。
+
+代价裕度过低只表示计划容易抖动，是软证据，不能单独触发所有权转移。
+
+### 6.4 D5 末端证据
+
+D4 首先检查 `terminal_evidence_applicable`。尚未进入末端视觉适用窗口时，低置信度、高歧义和普通重捕获不会逐帧触发降级；友方冲突、重复锁定、资源错配和明确全局航迹错配仍是硬风险。
+
+进入末端窗口后，D4区分：
+
+- **绑定安全性**：资源、规范全局航迹、计划版本和联盟版本是否一致；
+- **视觉准备度**：D5 是否已经锁定、置信度是否足够、是否需要重捕获。
+
+`terminal_consistent=true` 只表示当前计划绑定未被硬证据推翻，不表示 D5 已锁定，也不授权 D7 切换视觉导引。
+
+### 6.5 主动降级动作选择
+
+| 条件 | 动作 | 所有者变化 |
+|---|---|---|
+| 风险低、绑定一致 | `continue_center` | 无 |
+| 软风险暂时升高 | 继续中心或 `request_secondary_assist` | 无 |
+| 计划陈旧、非当前或资源不可行 | `request_center_replan` | 等待 D3 新计划 |
+| D5 持续硬失配但中心仍能及时修复 | `request_center_replan` | 等待 D3 新计划 |
+| 风险持续、原计划明显不适用、中心重规划不足以及二级持续就绪 | `degrade_to_secondary` 候选 | main/D3 发布新版本后才转移 |
+| 友方冲突、身份冲突或联盟合同不完整 | `hold_for_review` | 不转移 |
+
+主动转移采用递进策略：
+
+1. 记录 D1-D5 风险并经过风险窗口和驻留时间，过滤单帧噪声；
+2. 能由中心滚动重规划修复时，先发出 `request_center_replan`；
+3. 中心计划在高动态条件下持续不适用，且二级节点达到持续 `takeover_ready` 时，允许提出二级转移；
+4. D4 只形成二级接管候选和待生效元数据；
+5. main/D3 生成严格更新的计划标识和版本，把计划来源设为选中的二级节点；
+6. 新计划通过来源、版本、时期和租约校验后，计划所有者才变为 `secondary_node`。
+
+当前通用 `ActiveDegradationArbiter` 主要实现继续中心、二级辅助、中心重规划和失效后的分层回退；系统级 AirSim 运行时已经接入主动 `degrade_to_secondary` 的两阶段场景。实施时应保持这一所有权边界：D4 做风险和转移仲裁，main/D3 做计划发布，不能让本地资源自行更换所有者。
+
+### 6.6 迟滞和中心重规划生命周期
+
+主动仲裁按资源/航迹对保存独立状态，避免一个目标的风险污染另一个目标。主要防抖机制包括：
+
+- `risk_window_size` 和 `risk_window_threshold`：风险窗口内满足足够样本才触发；
+- `min_dwell_s`：动作最短驻留时间；
+- `release_consecutive_consistent_frames`：恢复中心前需要的连续低风险帧；
+- `non_locked_frame_limit` 和 `mismatch_frame_limit`：区分普通失锁与持续错配；
+- `center_replan_cooldown_s`：中心重规划请求默认 2 秒冷却。
+
+`CenterReplanStatus` 包含 `pending`、`applied`、`acknowledged_no_change` 和 `expired`。硬安全风险可绕过冷却；非硬风险在冷却期内不重复发送请求。
+
+## 7. 二级节点就绪性与接管计划
+
+### 7.1 四级就绪性
+
+二级节点能力不是二值状态，而是四级状态：
+
+| 等级 | 含义 | 可否接管 |
+|---|---|---|
+| `not_ready` | 心跳、链路、云台、覆盖、租约或证据不足 | 否 |
+| `visible_only` | 能检测目标，但尚未完成稳定全局注册 | 否 |
+| `registration_usable` | 已有跨视角注册，但完整覆盖或综合能力不足 | 否，只可辅助 |
+| `takeover_ready` | 覆盖、网络全视野、注册、新鲜度、通信和综合评分均满足 | 可作为候选 |
+
+综合评分可抽象为：
+
+\[
+Q_s=w_c c+w_n n+w_r r+w_f f+w_g g+w_l l,
+\]
+
+其中 (c) 为覆盖率，(n) 为二级网络同帧全覆盖率，(r) 为跨视角注册质量，(f) 为线索新鲜度，(g) 为云台指向状态，(l) 为链路和租约状态。当前代码的接管基线包括：综合评分不低于 0.70、覆盖率不低于 0.65、网络同帧全覆盖率不低于 0.80。
+
+这些门限必须与场景配置一起记录。它们不是通用工程标准，也不能为了形成接管正例而降低身份、版本或租约安全门限。
+
+### 7.2 持续就绪
+
+单帧 `takeover_ready` 不足以接管。适配器默认要求：
+
+- 至少 3 个不同时间戳的连续就绪决策；
+- 持续时间至少 0.2 秒；
+- 相邻证据时间间隔不超过 1.0 秒。
+
+计数按二级节点、目标和覆盖小区隔离；同一时刻多次调用不增加连续计数。心跳、链路、云台、覆盖、注册或租约回落都会使持续就绪失效。
+
+### 7.3 所有者、版本、时期和租约
+
+二级计划是否可执行可写为：
+
+\[
+E_{sec}=I_{active}I_{source}I_{ready}I_{epoch}I_{lease}I_{version}.
 \]
 
 其中：
 
-- \(C_j\)：航迹置信等级。
-- \(A_i\)：资源可用性等级。
-- \(M_i\)：通信质量等级。
-- \(Q_{ij}\)：能力匹配分。
-- \(S_j\)：source count 奖励。
-- \(R_j\)：航迹年龄惩罚。
+- (I_{active})：main/D3 已明确回填二级计划激活；
+- (I_{source})：计划来源等于 D4 选中的二级节点；
+- (I_{ready})：二级节点持续就绪；
+- (I_{epoch})：租约时期不低于要求时期；
+- (I_{lease})：当前时间没有超过租约到期时间；
+- (I_{version})：新计划版本严格高于被替代计划，或确认为同一已激活二级计划。
 
-该分数只用于离线协商排序，不是实际效果或处置能力估计。
+`SecondaryTakeoverPlanMetadata` 有三种状态：
 
-### 5.2 收敛假设
+1. `not_applicable`：本次不是二级转移；
+2. `pending_secondary_plan`：D4 已选择二级来源，但当前所有者仍保持原值；
+3. `secondary_plan_active`：main/D3 已发布正确来源和更新版本，租约有效且持续就绪，所有者变为二级节点。
 
-CBBA 收敛依赖以下条件：
+旧版本、旧时期、过期租约、来源不匹配或就绪性回落都会使计划保持待生效或不可执行。
 
-- peer 图在仿真窗口内连通。
-- 任务和资源摘要在一个 `epoch` 内相对静态。
-- 每个节点使用相同 tie-break 规则。
-- 消息最终能在足够轮数内到达。
-- bundle 长度有限。
+### 7.4 两阶段 D7 交接
 
-若丢包过高或轮数不足，`CBBAResult.converged=False`，当前实现不会发布有效 assignment，而是保留审计信息。这是保守安全边界。
+```text
+阶段 1：D4 提出 degrade_to_secondary
+  -> 当前计划仍有效或进入保持
+  -> secondary_reassignment_complete=false
+  -> visual_png_allowed=false
 
-### 5.3 通信开销
-
-每轮每条边交换 winner/bid 状态，量级近似为：
-
-\[
-O(|E|\cdot|\mathcal{T}|)
-\]
-
-其中 \(E\) 为 peer 边数，\(\mathcal{T}\) 为任务数。全连接网络为 \(O(N^2|\mathcal{T}|)\)，稀疏网络减少单轮消息量，但增加网络直径和共识轮数。
-
-### 5.4 与拍卖和合同网的关系
-
-- 单轮拍卖：实现简单、通信少，但在冲突和重分配场景中容易出现局部最优或重复所有者。
-- 合同网协议：适合 manager/contractor 结构，若二级节点健康，可由二级节点扮演区域 manager；但 manager 失效后仍需 peer 共识。
-- CBBA：比单轮拍卖更重，但能通过 winner state 传播减少冲突，适合 D4 作为完全无中心降级基线。
-
-与 D3 的中心化 Hungarian 或最小费用流相比，CBBA 不保证全局最优。它的目标是中心失效时的保底一致性，而不是替代中心化最优计划。
-
-### 5.5 CBBA cost gap benchmark
-
-`build_cbba_cost_gap_benchmark()` 用于同场景离线对照：
-
-```python
-benchmark = build_cbba_cost_gap_benchmark(
-    cbba_result,
-    center_assignments={"track-1": "int-1"},
-    cost_by_task_resource={"track-1": {"int-1": 1.0, "int-2": 1.4}},
-)
+阶段 2：main/D3 回填新的二级计划
+  -> owner/source/version/epoch/lease 全部通过
+  -> secondary_reassignment_complete=true
+  -> D7 仍需检查 D5 锁定和自身运动学门控
 ```
 
-其中 `center_assignments` 和 `cost_by_task_resource` 必须来自 D3/main 的中心化计划和 cost matrix。D4 只计算 `cbba_total_cost`、`center_total_cost`、`absolute_cost_gap`、`relative_cost_gap`、completion gap、conflict/round/message 指标和缺失 cost pair 审计，不接入 MIT/CA-CBBA，也不在完全无中心路径构造虚拟中心。
+D4 的阶段 2 不是视觉比例导航制导（Proportional Navigation Guidance，PNG）的充分条件，只是 D7 的必要前置合同之一。
 
-## 6. 实施流程
+## 8. 被动降级实施流程
 
-### 6.1 正常运行
+被动降级用于中心结构性失效：
 
-1. D3 发布中心化 AssignmentPlan，D4 只记录 digest、epoch 和资源摘要。
-2. D4 定期接收 heartbeat 和 assignment digest。
-3. 固定系留或机动高空二级侦察节点在健康时作为区域观察源，维护覆盖区、cue freshness、gimbal 和 cross-view support 摘要。
+```text
+C2Health normal/degraded/suspect
+  -> 心跳硬超时、摘要长期冲突或 peer 法定多数判定失败
+  -> C2Health failed
+  -> 选择覆盖当前区域且持续就绪的机动高空侦察二级节点
+  -> 发布二级计划候选
+  -> main/D3 回填 owner/version/epoch/lease
+  -> 二级计划激活
+  -> 二级失效或不可用时进入完全分布式协商
+```
 
-### 6.2 中心失效
+如果二级节点只是可见、注册可用但未达到接管门限，系统不能把它解释为可执行协调者。中心已失效且无持续就绪二级节点时，D4 进入 `degrade_to_distributed` 或安全保持，而不是降低门限。
 
-1. `update_health()` 根据 heartbeat age 和 peer votes 转入 `failed`。
-2. `plan_degraded()` 调用 `elect_leader_resource()`。
-3. 若 leader 是 `ground_backup` 或 `secondary_recon`，进入 `coordination_mode="secondary_node"`。
-4. 若无可用二级/备份节点，则由集群代表或普通资源进入 `coordination_mode="distributed_cbba"`。
-5. `coordinator_only` 节点被排除出执行资源，只参与协调审计。
-6. `CBBANegotiator.run()` 生成保底 assignment 或非收敛审计结果。
+## 9. 完全分布式 CBBA 保底
 
-### 6.3 中心恢复
+### 9.1 算法角色
 
-1. heartbeat 恢复后先进入 `suspect`，不直接回 `normal`。
-2. `merge_recovery()` 对中心计划和 fallback 计划做双轨合并。
-3. 无冲突、无 review 且 `human_accept=True` 才恢复 `normal`。
-4. 否则保持 `degraded`，等待上层重新确认。
+中心和二级节点都不可用时，D4 使用本地轻量基于共识的捆绑算法（Consensus-Based Bundle Algorithm，CBBA）作为一对一任务连续性基线。它不是麻省理工学院外部 CBBA 工程，也不是通信感知 CBBA 的生产实现。
 
-### 6.4 主动降级流程
+对任务 (j) 和资源 (i)，基础出价为：
 
-1. 中心 C2 仍处于 `normal/degraded/suspect`，但 D4 收到 D1/D2/D3/D5 的风险摘要。
-2. `ActiveDegradationArbiter.evaluate()` 先判断 D5 末端结果是否与 D3 分配的 `global_track_id` 一致。
-3. 若 D5 一致且风险低，继续当前中心计划。
-4. 若 D5 一致但 D3 stale/not current 等硬分配风险上升，优先请求中心滚动重分配；若只是 cost margin 低，则继续观察。
-5. 若 D5 一致但 D1/D2 风险上升，优先请求二级节点补充观测，不直接进入完全分布式。
-6. 若 `friend_conflict=True`，直接 `hold_for_review`。
-7. 若 `duplicate_terminal_lock=True`，不视为一致锁定，进入主动仲裁。
-8. 若 D5 连续多帧 `ambiguous/hold/reacquire` 但没有 observed mismatch、资源错配、重复锁定或友方冲突，则只继续中心或请求二级 cue。
-9. 若本地视觉候选与分配目标持续不一致，或出现资源错配、重复锁定、plan stale/not-current/resource infeasible 等硬证据，中心可用时请求中心重规划。
-10. 二级节点在中心可用时只作为观测辅助；只有中心 failed 后才选择覆盖当前 `coverage_cell` 且链路新鲜的健康二级节点，无可用二级节点时进入完全无中心 CBBA/拍卖。
-11. 所有主动降级结果均输出 `ActiveDegradationDecision`，交给 D6 记录，不允许本地节点自行改写 `global_track_id`。
+\[
+s_{ij}=2.0q_j+1.4a_i+0.5c_i+1.2m_{ij}+b_{source}-0.8p_{age}+\Delta s_{D5},
+\]
 
-## 7. 关键接口
+其中 (q_j) 是航迹置信等级，(a_i) 是资源可用性，(c_i) 是通信等级，(m_{ij}) 是能力匹配，(b_{source}) 是多源观测增益，(p_{age}) 是航迹年龄惩罚，(Delta s_{D5}) 是分布式视觉证据修正。
 
-### 7.1 `FailoverCoordinator`
+### 9.2 共识过程
 
-- `observe_center(now_s, heartbeat_ok, digest_ok, center_epoch)`：处理中心状态观测。
-- `update_health(now_s, peer_fail_votes, quorum_size)`：根据超时和 quorum 更新状态。
-- `elect_leader_resource(resources)`：选择备份/二级/代表节点。
-- `plan_degraded(tasks, resources, network, now_s, ...)`：执行降级计划。
-- `merge_recovery(center_assignments, fallback_assignments, human_accept, now_s)`：中心恢复双轨合并。
+1. 每个资源根据本地任务摘要建立 bundle；
+2. 节点广播任务获胜者、出价、时期和约束摘要；
+3. 收到更高出价或更新时期后，节点更新 winner view；
+4. 节点失去 bundle 中某任务后释放该任务及其后续任务；
+5. 所有节点 winner view 一致或达到最大轮数后结束。
 
-### 7.2 `CBBANegotiator`
+确定性消歧按出价、时期、资源标识和约束摘要排序，避免相同输入产生随机所有者。
 
-- `run(tasks, resources, network, start_time_s)`：运行多轮 bundle building 和 winner consensus。
+全连接 (N) 个资源、(T) 个任务的单轮通信复杂度约为：
 
-### 7.3 `ActiveDegradationArbiter`
+\[
+O(N^2T).
+\]
 
-- `evaluate(track_uncertainty, association_risk, assignment_validity, terminal_association, c2_health, secondary_nodes)`：输出主动/被动仲裁决策。
-- 可选参数：`communication_summaries` 和 `current_time_s`。传入后，二级节点必须有未过期链路摘要才可用于 `request_secondary_assist` 或 `degrade_to_secondary`。
+稀疏网络可降低单轮消息量，但会增加传播轮数。`converged=false` 时不能把空结果或局部 winner view 当作有效计划。
 
-输出动作包括：
+### 9.3 D5 分布式视觉证据
 
-- `continue_center`：继续中心计划。
-- `request_center_replan`：请求 D3 滚动重分配。
-- `request_secondary_assist`：请求覆盖区二级节点补充观测摘要或图像 cue。
-- `degrade_to_secondary`：中心 failed 后降到二级节点区域协调；阶段 1 只表示二级重分配未完成，不是 D7 视觉 PNG 放行。
-- `degrade_to_distributed`：中心 failed 且无可用二级节点时进入完全无中心 CBBA/拍卖。
-- `hold_for_review`：友方冲突或身份冲突时只保持审计和人工复核。
+D5 多相机证据只作为风险或出价修正：
 
-`D7SecondaryHandoff`/`build_d7_secondary_handoff()` 用于把 `degrade_to_secondary` 转换为 D7 可消费的两阶段门控结果。阶段 1 不携带 `new_plan_id/new_plan_version` 且 `visual_png_allowed=false`；阶段 2 必须携带 `new_plan_id/new_plan_version` 和 `secondary_capability_class=takeover_ready`，并把 D7 动作限制为 `request_secondary_assist` 或 `continue_center`。
+- 多个资源支持同一个上游 `global_track_id`，可增加相应资源的支持分；
+- `hypothesis_only` 只产生弱正向证据；
+- 友方冲突、缺失或陈旧全局标识、身份冲突会阻断执行；
+- 重复末端锁定进入审计并强惩罚；
+- D4 不根据局部视觉生成新全局标识。
 
-`SecondaryTakeoverPlanMetadata`/`build_secondary_takeover_plan_metadata()` 是 D4 record 的 plan lifecycle 合同。它区分：
+### 9.4 能力边界
 
-- `pending_secondary_plan`：D4 已选择二级节点并触发重分配，但当前 active plan owner 仍是 center 或上游当前 owner；metadata 记录 source node、当前 plan id/version 和 supersedes 字段。
-- `secondary_plan_active`：main/D3 已回填二级 plan id/version 并标记 active；metadata 记录 `active_plan_owner=secondary_node` 和 `secondary_reassignment_complete=true`。
-- `not_applicable`：非二级接管动作，D4 只保留当前 active owner。
+当前轻量 CBBA 默认是单获胜者、一任务一资源保底。对于一个高威胁目标需要多个资源的情况，CBBA 可选择协调者或候选成员，但不能冒充完整联盟形成算法。多成员执行必须经过独立原子提交合同。
 
-D4 不在这个 metadata 中创建系统级 `AssignmentPlan`，只给 main/D3/D7 提供可消费状态。
+## 10. 多资源联盟与原子 ACK
 
-`ActiveDegradationDecision.to_metrics()` 输出：
+### 10.1 数据合同
 
-- `d4_action`
-- `degradation_mode`
-- `target_node_id`
-- `risk_factors`
-- `terminal_consistent`
-- `failover_time`
-- `secondary_selected_rate`
-- `distributed_conflict_count`
+`CoalitionMemberAck`（联盟成员确认应答）至少绑定：
 
-### 7.4 数据结构
+- 目标 `global_track_id`；
+- 联盟标识和联盟版本；
+- 计划标识和计划版本；
+- 成员资源标识；
+- 时期；
+- 租约到期时间；
+- 能力证据时间和摘要校验值。
 
-- `TrackSummary`：只保留粗粒度任务摘要，不携带高精度状态。
-- `ResourceSummary`：描述资源/节点角色、可用性、通信质量、租约和覆盖区域。
-- `CBBAResult`：用于 D6 的降级指标来源。
-- `TrackUncertaintySummary`：D1 定位不确定度摘要。
-- `AssociationRiskSummary`：D2 多目标关联风险摘要。
-- `AssignmentValiditySummary`：D3 分配有效性摘要。
-- `TerminalAssociationSummary`：D5 末端视觉配准摘要。
-- `CommunicationSummary`：D4 通信新鲜度摘要，表达源节点、目标节点、可选中继节点、链路类型、发送/接收时间、载荷类型和过期时间。
-- `SecondaryNodeLifecycleSummary`：二级节点生命周期摘要，表达 heartbeat、lease、coverage、video cue freshness、link stale 和最终可用性。
-- `ActiveDegradationDecision`：D4 仲裁结果。
-- `D4DecisionRecord`：D4 adapter 事件记录，可直接转换为 D6 `EventRecord` kwargs，含 secondary takeover plan lifecycle metadata。
-- `SecondaryTakeoverPlanMetadata`：D4 二级接管 metadata，表达 pending/active plan 状态、source node、当前/二级 plan id/version 和 supersedes 关系。
-- `CBBACostGapBenchmark`：D4 CBBA 与 D3 中心化 cost baseline 的离线对照字段。
+`CoalitionCommitState` 状态机为：
 
-## 8. 参数与调参建议
+```mermaid
+stateDiagram-v2
+    [*] --> proposed
+    proposed --> collecting_acks
+    collecting_acks --> committed: 必要成员 ACK 齐全
+    committed --> executing: 版本、时期、租约和摘要有效
+    collecting_acks --> aborted: 超时或冲突
+    executing --> reconfiguring: 成员退出、分区或租约失效
+    reconfiguring --> collecting_acks: 使用更高时期和版本重新提议
+    reconfiguring --> aborted: 无法形成完整成员集
+```
 
-| 参数 | 默认/位置 | 建议 |
+原子提交条件可表示为：
+
+\[
+C=I_{members}I_{plan}I_{coalition}I_{epoch}I_{lease}I_{digest}I_{network}.
+\]
+
+任一项为零都必须失效时闭锁（fail closed）。缺一个主成员确认、旧计划版本、旧联盟版本、过期租约、摘要冲突或网络分区都不能形成部分执行。
+
+### 10.2 独立执行与联盟执行
+
+多个独立主资源不要求在同一时刻到达，但每个资源仍需满足自己的计划和 D5/D7 门控。需要共享联盟状态的多成员任务则必须先原子提交；备用成员未被新版本计划激活前保持待命，不能自行补位。
+
+### 10.3 二级和完全分布式联盟
+
+- 二级节点可作为联盟协调者，但必须是持续就绪且持有有效计划租约；
+- 二级节点失效后，完全分布式 peer 协调者必须使用更高时期、计划版本和联盟版本重新提议；
+- 分区恢复后全部必要成员重新确认，旧 ACK 不可复用；
+- D5 只认可当前 committed/executing 联盟中的成员锁定；
+- D7 只执行当前 committed/executing 联盟及当前计划。
+
+## 11. 中心恢复与双轨校验
+
+中心恢复后同时存在两条状态轨迹：
+
+- 中心恢复前最后掌握的计划和航迹摘要；
+- 降级期间形成的二级或分布式计划、联盟提交和执行状态。
+
+`merge_recovery()` 当前比较任务所有者、时期和基础分配状态：
+
+- 完全一致进入 `accepted`；
+- 只在单侧存在或需要人工判断进入 `review`；
+- 重复所有者、时期倒退或版本冲突进入 `conflicts`。
+
+只有 `review` 和 `conflicts` 均为空，并且 `human_accept=true` 时才恢复中心权威。恢复心跳不能立即夺权。
+
+当前恢复合并仍是基础版。完整工程恢复还应比较：
+
+- 航迹摘要和协方差摘要校验值；
+- D3 计划及联盟摘要校验值；
+- D5 当前锁定和身份冲突；
+- D7 当前控制许可和执行前缀；
+- 通信链路状态、成员退出和租约历史。
+
+## 12. 与 D7 导引门控的关系
+
+D4 只决定协调权和计划状态，不决定比例导引或视觉导引公式。D7 放行至少需要：
+
+1. D3 当前计划和资源绑定有效；
+2. D4 当前所有者、模式、时期、版本和租约一致；
+3. 多成员任务已经完成必要 ACK 和原子提交；
+4. D5 锁定的 `assigned_global_track_id` 与计划一致；
+5. 没有友方冲突、重复锁定和身份冲突；
+6. D7 的相机识别能力、闭合速度、机动能力和导引切换条件满足。
+
+以下情况 D7 必须阻断视觉 PNG：
+
+- 二级计划仍为 `pending_secondary_plan`；
+- 所有者、来源或版本不匹配；
+- 租约过期或时期落后；
+- 二级节点只达到 `visible_only` 或 `registration_usable`；
+- 联盟缺 ACK、处于 `reconfiguring` 或 `aborted`；
+- D5 为歧义、保持、重捕获或友方冲突；
+- 当前计划已被替代但执行资源仍持有旧计划。
+
+## 13. 代码实施映射
+
+| 文件 | 实施职责 |
+|---|---|
+| `models.py` | 航迹、资源、通信、健康、分配和结果数据结构 |
+| `active_degradation.py` | D1-D5 风险规则、二级能力评分、动作仲裁、二级计划和 D7 交接合同 |
+| `adapter.py` | 上游字段归一化、按绑定隔离迟滞、持续就绪、中心重规划和 D6 事件输出 |
+| `coordinator.py` | 中心健康、协调者选择、被动接管和基础恢复合并 |
+| `cbba.py` | 轻量 CBBA、D5 视觉风险修正和中心代价差距辅助计算 |
+| `coalition_safety.py` | 多成员计划、联盟版本、ACK、时期、租约和摘要安全门控 |
+| `network.py` | 内存丢包和延迟模型、消息数量和估计字节统计 |
+| `episode_communication.py` | AirSim 单次试验时钟驱动的中心、二级、peer 顺序接管接口 |
+| `communication_fault_replay.py` | 多随机种子通信故障矩阵 |
+| `p1_failover_replay.py` | 确定性接管扰动回放 |
+| `p2_coalition_replay.py` | 隔离式联盟算法对照和外部能力探测 |
+
+main/runtime 负责：
+
+- AirSim 启动、重置和单次试验时钟；
+- 把 D1-D5 摘要送入 D4；
+- 把主动或被动二级转移请求交给 D3；
+- 回填新的计划标识、版本、所有者、时期和租约；
+- 把 D4 状态送给 D5、D7 和 D6；
+- 注入中心失效、二级失效、延迟、丢包和网络分区。
+
+## 14. 关键参数与调参原则
+
+| 参数 | 当前用途 | 调参原则 |
 |---|---|---|
-| `heartbeat_warning_s` | `FailoverCoordinator` | 应小于 stale 阈值，用于提前进入 degraded |
-| `heartbeat_stale_s` | `FailoverCoordinator` | 控制 suspect 灵敏度，过小会频繁误报 |
-| `heartbeat_failure_s` | `FailoverCoordinator` | 控制 failed 判定，必须大于正常抖动上界 |
-| `stable_recovery_s` | `FailoverCoordinator` | 后续可用于恢复稳定窗口 |
-| `takeover_priority` | `ResourceSummary` | 预设备份/二级节点应小于普通资源 |
-| `lease_epoch` | `ResourceSummary` | 新租约优先，防止旧 leader 复活 |
-| `bundle_limit` | `plan_degraded()` | 1 适合一资源一任务基线；多任务资源可增大 |
-| `max_rounds` | `CBBANegotiator` | 丢包或稀疏网络下需增大 |
-| `round_period_s` | `CBBANegotiator` | 影响 takeover duration 和消息传播 |
-| `packet_loss/min_delay/max_delay` | `SimulatedNetwork` | 用于通信退化敏感性实验 |
-| `position_sigma_medium_m/high_m` | `ActiveDegradationConfig` | D1 定位风险门限，需按仿真传感器精度标定 |
-| `association_ambiguity_medium/high` | `ActiveDegradationConfig` | D2 关联不确定度门限 |
-| `max_plan_age_s/min_cost_margin` | `ActiveDegradationConfig` | `max_plan_age_s` 是 D3 stale 硬门限；`min_cost_margin` 是软计划裕度门限，单独出现时只观察/迟滞 |
-| `terminal_confidence_min` | `ActiveDegradationConfig` | D5 locked 最低置信度 |
-| `cross_view_risk_high` | `ActiveDegradationConfig` | D5 多视角冲突/支持不足风险门限 |
-| `non_locked_frame_limit` | `ActiveDegradationConfig` | 连续 `ambiguous/hold/reacquire` 触发主动仲裁的帧数 |
-| `mismatch_frame_limit` | `ActiveDegradationConfig` | 末端候选与分配目标长期不一致的触发帧数 |
-| `risk_window_size/risk_window_threshold` | `ActiveDegradationConfig` | 主动降级窗口化风险阈值，用于防止单窗口噪声直接升级 |
-| `min_dwell_s` | `ActiveDegradationConfig` | 主动/被动降级决策的最短保持时间 |
-| `release_consecutive_consistent_frames` | `ActiveDegradationConfig` | 释放降级并回到中心计划前所需的连续低风险一致帧数 |
-| `heartbeat_timestamp_s/heartbeat_stale_after_s` | `ResourceSummary` | 二级节点生命周期心跳和过期门限 |
-| `stale_after_s` | `CommunicationSummary` | 二级链路过期时间；过期后不再作为可用二级辅助 |
+| `heartbeat_warning_s` | 进入降质观察 | 应大于正常心跳抖动 |
+| `heartbeat_stale_s` | 进入可疑状态 | 应结合消息周期和排队延迟 |
+| `heartbeat_failure_s` | 硬失效判定 | 必须大于正常抖动和短时丢包上界 |
+| `heartbeat_window_size` | 心跳滑动窗口 | 太小易误降级，太大增加接管延迟 |
+| `position_sigma_medium_m/high_m` | D1 风险分档 | 按雷达和融合真实误差标定 |
+| `max_plan_age_s` | D3 计划陈旧门限 | 按目标动态和分配周期标定 |
+| `non_locked_frame_limit` | D5 持续失锁门限 | 不可替代 D5 自身锁定门限 |
+| `risk_window_size/threshold` | 主动降级持续风险 | 用同随机种子正常/异常配对校准 |
+| `center_replan_cooldown_s` | 防止重规划抖动 | 默认 2 秒，硬风险可绕过 |
+| `takeover_ready_required_decisions` | 二级持续就绪帧数 | 默认 3 个不同时间戳 |
+| `takeover_ready_required_duration_s` | 二级持续时间 | 默认 0.2 秒 |
+| `lease_epoch/lease_expires_at_s` | 防止旧协调者复活 | 接管和重构必须单调更新 |
+| `bundle_limit/max_rounds` | CBBA 束长和轮数 | 网络越差，轮数预算越高 |
+| `packet_loss/min_delay/max_delay` | 内存网络实验 | 只作敏感性分析，不冒充真实链路 |
 
-二级节点调参建议：
+调参顺序应为：先固定身份、版本、租约和 ACK 安全门限，再标定风险窗口、覆盖和持续时间；不得为了提高接管率降低 `global_track_id`、友方冲突、旧版本或过期租约门控。
 
-- 区域二级节点使用 `node_role=SECONDARY_RECON`、`capability_class="tethered_recon"`、`coordinator_only=True`。
-- 若同一区域有多个二级节点，使用 `takeover_priority` 和 `lease_epoch` 明确主备。
-- 后续多区域仿真应按 `coverage_cell` 过滤二级节点接管范围，避免一个二级节点接管无覆盖区域。
+## 15. 典型实施流程
 
-## 9. 仿真验证
+### 15.1 正常中心流程
 
-默认脚本：
+1. D1 输出带协方差和双时间戳的 GlobalTrack；
+2. D2 稳定全局身份并输出关联风险；
+3. D3 发布中心计划；
+4. 机动高空侦察节点根据雷达/GlobalTrack 线索调整云台并提供图像或摘要；
+5. D5 形成末端关联和跨视角证据；
+6. D4 风险低时输出 `continue_center`；
+7. D7 独立执行导引门控。
+
+### 15.2 主动降级到中心重规划
+
+1. 中心仍健康；
+2. D3 计划陈旧或资源不可行，或 D5 形成明确持续失配；
+3. D4 输出 `request_center_replan`；
+4. D3 使用当前 GlobalTrack 和资源状态发布更高版本计划；
+5. D4 验证新版本和风险消退；
+6. D5/D7 只消费新计划，不沿用旧绑定。
+
+### 15.3 主动降级到二级节点
+
+1. 中心仍在线，但高动态条件下计划持续不适用；
+2. 风险窗口、驻留和重规划生命周期确认问题不是单帧噪声；
+3. 机动高空侦察二级节点持续达到 `takeover_ready`；
+4. D4 输出二级转移候选，状态为 `pending_secondary_plan`；
+5. main/D3 以选中二级节点为来源发布更高版本和有效租约；
+6. D4 校验来源、版本、时期、租约和持续就绪，状态变为 `secondary_plan_active`；
+7. D5 根据新计划重新确认目标；
+8. D7 在全部门控通过后才切换导引。
+
+### 15.4 被动中心失效
+
+1. 心跳窗口、硬超时或法定多数把中心判为 `failed`；
+2. D4 优先选择覆盖区内持续就绪的二级节点；
+3. 二级计划经过同一 owner/version/epoch/lease 流程激活；
+4. 二级不可用时，资源节点交换摘要并运行轻量 CBBA；
+5. 多成员任务必须完成原子 ACK；
+6. 中心恢复后进入双轨校验，不立即夺权。
+
+### 15.5 中心和二级均失效
+
+1. D4 明确进入 `degrade_to_distributed`；
+2. peer 使用当前时期的压缩航迹和资源摘要构造出价；
+3. CBBA 形成一对一任务所有者；
+4. 多资源任务使用更高计划/联盟版本发起 ACK；
+5. ACK 完整且租约有效时原子提交；
+6. 缺 ACK、分区、旧时期或摘要冲突时保持闭锁；
+7. 成员变化必须进入 `reconfiguring` 并全量重新确认。
+
+## 16. 当前验证结果
+
+### 16.1 D4 模块与规范回放
+
+截至当前同步基线，D4 验证记录包括：
+
+- D4 全量模块回归已有记录为 **198 项通过**；本次只同步文档，没有重跑测试；
+- 七个规范单次试验时间轴场景 **7/7 通过**，覆盖正常中心、中心失效后二级接管、二级再次失效后 peer 接管、缺 ACK、旧时期、过期租约和网络分区；
+- 逻辑时钟步为 0.25 秒时，中心故障到二级可执行所有者为 **1.25 秒**，二级故障到 peer 原子执行为 **1.00 秒**；
+- 二级和 peer 正例均以 3/3 ACK 进入执行，缺 ACK 负例以 2/3 ACK 中止并保持闭锁。
+
+### 16.2 60 组通信故障矩阵
+
+main/runtime 按 AirSim 单次试验时钟运行六类场景，每类 10 个随机种子，共 60 个案例：
+
+| 场景 | 主要验证内容 |
+|---|---|
+| 正常中心 | 不应误降级 |
+| 中心失效 | 二级节点优先接管 |
+| 中心和二级均失效 | 才允许 peer 完全分布式接管 |
+| 0.5 秒延迟 | 延迟 ACK 和旧消息拒绝 |
+| 30% 丢包 | ACK 完整才执行，缺 ACK 闭锁 |
+| 分区恢复 | 新时期、新计划/联盟版本和全员重新 ACK |
+
+结果为：
+
+- 安全结果 **60/60 通过**；
+- 正常场景误降级为 **0**；
+- 重复计划所有者为 **0**；
+- 脑裂防护失败为 **0**；
+- 30% 丢包场景中 3/10 ACK 完整后执行，7/10 因缺 ACK 保守闭锁。
+
+这些结果证明的是实验时钟上的状态迁移、版本、时期、租约、ACK 和唯一所有者合同。它们不能证明真实网络吞吐、实时性或硬件可靠性。
+
+### 16.3 二级视觉覆盖证据
+
+历史 5v5、50/200 米高差、多个机动高空二级节点的校准表明：基础投影和跨视角注册已能形成，但网络同帧完整覆盖持续性曾是二级接管的主要断点。D4 因此保留 `visible_only -> registration_usable -> takeover_ready` 的分级，不把平均覆盖率或单帧检测直接提升为接管能力。
+
+### 16.4 系统级边界
+
+D4 的 60/60 安全通过不等于整个拦截闭环完成。系统级多资源对少目标场景仍受 D5 第二主资源视觉锁定、D7 末端许可和物理闭合影响。D4 的职责是确保计划转移时不出现旧版本执行、部分联盟执行、重复所有者或脑裂。
+
+## 17. 真实网络限制与后续实施
+
+当前 `SimulatedNetwork` 和 episode 故障接口只模拟或记录：
+
+- 丢包概率；
+- 固定或随机消息延迟；
+- 消息数量和估计字节；
+- ACK 丢失；
+- 中心、二级和 peer 分区；
+- 租约、时期、版本和恢复状态。
+
+尚未验证：
+
+1. 真实射频（Radio Frequency，RF）链路预算和覆盖；
+2. 视频编码码率、突发流量与控制消息优先级；
+3. 节点时钟漂移、时间同步误差和时间戳回绕；
+4. 操作系统调度、网络队列、拥塞、抖动和乱序；
+5. 传输控制协议或用户数据报协议的重传和拥塞行为；
+6. 中心到二级、二级到拦截机以及 peer 网状链路的真实吞吐差异；
+7. 密钥、消息来源认证、重放防护和设备失陷；
+8. 长时间运行下的租约刷新、成员退出和分区合并统计；
+9. 真实视频与压缩 TrackSummary 竞争带宽时的接管时延。
+
+因此下一阶段网络实施应采用与现有合同一致的消息封装，至少保存：发送时间、到达时间、序列号、来源、目标、载荷类型、字节数、时期、计划版本、联盟版本、租约和认证状态。真实网络测试应逐步替换延迟/丢包模型，但不能绕过现有 fail-closed 规则。
+
+## 18. 已实现、可选和未实现能力
+
+| 类别 | 能力 | 当前状态 |
+|---|---|---|
+| 默认主线 | C2Health 四态、心跳窗口和恢复待校验 | 已实现 |
+| 默认主线 | D1-D5 风险摘要和主动仲裁 | 已实现 |
+| 默认主线 | 中心重规划请求生命周期 | 已实现 |
+| 默认主线 | 二级四级就绪、持续窗口和计划元数据 | 已实现 |
+| 系统集成 | 主动高动态场景转移到二级计划 | main/runtime 已接线，D4 不直接生成 D3 计划 |
+| 默认主线 | 中心失效后二级优先、再完全分布式 | 已实现 |
+| 默认主线 | 轻量一对一 CBBA 和 D5 风险修正 | 已实现 |
+| 默认主线 | 多成员 ACK、时期、租约和原子提交 | 已实现安全合同 |
+| 默认主线 | 中心恢复基础双轨校验 | 已实现基础版 |
+| 离线可选 | CBBA 与 D3 中心代价差距 | 辅助函数已实现，依赖 main/D3 保存代价矩阵 |
+| 离线可选 | 外部 CBBA 能力探测 | 只探测路径，不导入、不执行 |
+| 未实现 | 麻省理工学院 CBBA 生产适配器 | 未集成 |
+| 未实现 | 通信感知 CBBA、独立拍卖和合同网完整状态机 | 未实现 |
+| 未实现 | 多成员能力组合搜索和自主联盟形成 | 未实现，当前只提交上游给定成员集 |
+| 未实现 | 完整恢复摘要校验 | 尚未覆盖 D1-D7 全部状态 |
+| 未实现 | 真实无线、视频和安全认证链路 | 未实现 |
+
+## 19. 复核命令与证据入口
+
+本次只修改算法与实施文档，不改代码，因此无需运行全量测试。代码能力复核命令为：
 
 ```bash
 PYTHONPATH=research_modules/d4_distributed_fallback \
-python3 research_modules/d4_distributed_fallback/scripts/run_failover_simulation.py \
-  --nodes 5 --tasks 4 --packet-loss 0.10 --seed 7
+python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 ```
 
-当前默认仿真由 `default_resources()` 生成普通节点，没有构造 `NodeRole.SECONDARY_RECON`。因此默认结果代表“二级节点不可用或未建模时的 CBBA 降级基线”。二级节点优先接管由 `tests/test_coordinator.py` 中的单元测试覆盖：
+主要证据入口：
 
-- `test_center_failure_degrades_to_secondary_recon_node_before_distributed_cbba`
-- `test_secondary_unavailable_falls_back_to_distributed_cbba`
+- `research_modules/d4_distributed_fallback/README.md`
+- `research_modules/d4_distributed_fallback/PLAN.md`
+- `research_modules/d4_distributed_fallback/docs/MODULE_PRINCIPLES_CN.md`
+- `research_modules/d4_distributed_fallback/d4_distributed_fallback/active_degradation.py`
+- `research_modules/d4_distributed_fallback/d4_distributed_fallback/adapter.py`
+- `research_modules/d4_distributed_fallback/d4_distributed_fallback/coordinator.py`
+- `research_modules/d4_distributed_fallback/d4_distributed_fallback/cbba.py`
+- `research_modules/d4_distributed_fallback/d4_distributed_fallback/coalition_safety.py`
+- `research_modules/d4_distributed_fallback/d4_distributed_fallback/episode_communication.py`
+- `subagent_reviews/D4_DISTRIBUTED_FALLBACK_REVIEW_AND_PLAN.md`
+- `C_UAS_D1_D7_MODULE_PRINCIPLES_SUMMARY_CN.md`
 
-主动降级仲裁由 `tests/test_active_degradation.py` 覆盖：
+## 20. 缩写与术语
 
-- 低风险且 D5 一致时继续中心计划。
-- D1/D2 风险上升但 D5 一致时请求二级辅助，不直接完全分布式。
-- D3 分配无效但 D5 一致时请求中心滚动重分配。
-- D5 持续错绑、资源错配或重复锁定时请求中心重规划。
-- 只有 `C2Health.FAILED` 才进入二级或分布式被动接管。
-- `C2Health.FAILED` 时走 `passive_failover`。
-
-显式二级节点仿真场景已由 `run_failover_simulation()` summary-list 输入和单元测试覆盖，构造方式为：
-
-1. 在资源集中加入 `sec-1`，设置 `node_role=SECONDARY_RECON`、`coordinator_only=True`、`coverage_cell="cell-north"`。
-2. 让 `task.coarse_cell` 落在该覆盖区。
-3. 对比 `secondary_node` 与 `distributed_cbba` 的接管时间、消息量、冲突数。
-4. `coordination_mode/leader_role/coverage_cell` 已透传到 metrics JSON，供 D6 绘制分组统计。
-
-## 10. 指标
-
-D4 应向 D6 输出或支持计算：
-
-- `failover_time`：从中心故障到降级计划形成的时间。
-- `consensus_rounds`：CBBA 共识轮数。
-- `degraded_completion_rate`：降级模式下任务分配完成率。
-- `conflict_count`：过渡过程中 winner view 冲突次数。
-- `messages_sent/messages_delivered/messages_dropped`：通信开销和丢包影响。
-- `estimated_bytes`：粗略消息字节估计。
-- `coordination_mode`：`secondary_node` 或 `distributed_cbba`。
-- `leader_role`：`ground_backup/secondary_recon/cluster_representative/interceptor`。
-- `coverage_cell`：二级节点覆盖区域。
-- `degradation_mode`：D6 事件 metadata 使用 `none/passive/active`；D4 原始枚举另存为 `d4_degradation_mode`。
-- `selected_coordinator`：`center/secondary_node/distributed_cbba/hold_review`。
-- `trigger_reason` / `trigger_timestamp` / `decision_timestamp`：D6 主动降级评估所需触发和决策时间。
-- `review_label`：离线复核标签，取值为 `necessary/unnecessary/inconclusive`；缺少真实标签时 D6 不应从事件名自证必要性。
-- `degradation_action`：继续、请求重分配、请求二级辅助、降到二级、降到分布式或 hold。
-- `active_degradation_reason`：主动仲裁触发原因。
-- `risk_factors`：D1/D2/D3/D5 风险因子列表。
-- `terminal_consistent`：D4 是否仍信任 current resource/global-track/version/coalition binding。D5 的 lock、置信度、歧义和 reacquire 是独立视觉准备度，不由该字段重复判定。
-- `secondary_available/link_stale/video_cue_freshness_s`：二级节点生命周期和链路 freshness 审计字段。
-- `secondary_takeover_state/active_plan_owner/secondary_plan_source_node_id/secondary_plan_id/secondary_plan_version`：二级接管 pending/active 状态和 plan metadata。
-- `secondary_network_coverage_available/secondary_network_full_view_gap/secondary_network_mean_coverage_ratio`：二级网络覆盖与全覆盖缺口。
-- `cross_view_association_count/stable_cross_view_registration_count/not_registered_count`：D5/D6/main 输出的跨视角支持和未注册统计，供 D4 做接管必要性解释。
-- `secondary_detect_available_but_not_registered/secondary_detect_to_registration_gap`：二级可见但未完成 global binding/registration 的诊断。
-- `cbba_total_cost/center_total_cost/absolute_cost_gap/relative_cost_gap/completion_rate_gap`：CBBA 与 D3 中心化基线的离线 cost gap benchmark 字段。
-
-当前 `coordination_mode` 已存在于 `CBBAResult.final_views`，并由 `build_cbba_d6_metadata()` 与 `run_failover_simulation()` 透传到顶层 metrics，避免实验报告把二级节点接管和完全分布式 CBBA 混在一起统计。CBBA cost gap benchmark 仍需要 main/D3 保存同场景 cost matrix/current plan，D4 helper 只负责单场景计算与字段归一化。
-
-## 11. 与 D3/D5/D6 的接口关系
-
-### D3 集中式分配
-
-D3 是中心存在时的主分配模块。D4 不应覆盖 D3 的正常计划，只缓存 digest、version、epoch 和资源摘要。中心失效时，D4 使用上一版可验证计划作为降级基准；中心恢复后，D4 必须通过 `merge_recovery()` 与 D3 新计划对齐。主动降级中，如果 `AssignmentValiditySummary` 显示计划过期或非 current，D4 的首选动作是 `request_center_replan`，不是直接完全分布式；如果只是 `cost_margin` 过低，D4 将其视为软证据，继续中心或请求二级 cue，等待 D3/main 的正常滚动迟滞处理。
-
-### D5 终端视觉配准
-
-二级侦察节点健康时，可把区域图像 cue 或观测摘要传给小范围拦截资源，帮助 D5 做末端候选匹配。D4 只负责描述 cue 的来源、作用域和版本，不负责像素几何配准。D5 必须继续执行授权、plan version、友方身份和 `global_track_id` 不改写规则。主动降级中，D5 的长期目标不一致、资源错配、重复锁定或友方冲突是触发仲裁的强证据；无冲突的多帧 `ambiguous/hold/reacquire` 是软证据，优先请求二级 cue 或继续观察，避免过度切换。D4 只消费 D5/D6/main 的 stable registration、not-registered 和 coverage/freshness 汇总，不把二级 detect 可见直接解释为可接管。
-
-### D6 评估
-
-D6 消费 D4 的 transition log、CBBAResult 和 merge result，计算 failover、consensus、conflict、completion、通信开销和恢复合并指标。建议 D6 将 `coordination_mode` 作为分组变量，分别统计二级节点接管和完全分布式 CBBA。
-
-## 12. 局限与后续工作
-
-当前局限：
-
-- 默认仿真未构造 `secondary_recon`，二级节点路径主要由单元测试覆盖。
-- 主动仲裁已按 `coverage_cell` 过滤二级节点；被动 coordinator 的全局 leader 选择仍未按每个任务覆盖区拆分。
-- 默认仿真的默认资源集仍不构造 `secondary_recon`；显式 summary-list 场景已能在 metrics 顶层透传 `coordination_mode/leader_role/coverage_cell`。
-- CBBA 打分函数是合成基线，没有与 D3 的真实中心化代价函数完全对齐。
-- 网络模型是内存队列，只用于延迟/丢包统计，不代表真实链路。
-- 主动降级仲裁器目前是规则基线，已包含 dwell/release/window 防抖配置，但未用 5v5/N-v-N 批量 episode 标定阈值。
-- 2026-07-08 mobile recon 与 registration calibration 已跑通 coverage、stable registration 和 not-registered 字段，但 full-view 仍低、degradation case not-registered 仍高，且 registration v2 只有单 seed。
-- D5 `TerminalAssociation` 当前在 D4 内归一化为 `TerminalAssociationSummary`，跨模块字段合同还需要主智能体统一。
-
-后续工作：
-
-1. 增加二级节点默认或可选仿真场景。
-2. 增加多 `coverage_cell`、多二级节点租约冲突的 episode 级仿真。
-3. 在 main/D6 多 seed 报告中持续聚合 `coordination_mode/leader_role/coverage_cell`。
-4. 保留轻量 CBBA 为当前默认基线；如后续需要，另行评估 MIT CBBA/CA-CBBA/auction/contract-net 的许可证、依赖和同场景 benchmark。
-5. 把 D3 的 plan version、authorization state 和 D5 的 cue 审计字段纳入降级日志。
-6. 增加中心恢复后的多轮稳定窗口，而不是只依赖一次合并调用。
-7. 将主动降级决策接入系统级日志，交给 D6 统计 `active_degradation_count`、`false_degradation_rate`、`active_degradation_precision`、stable registration、not-registered 和 `terminal_disagreement_duration`。
+| 术语 | 中文全称与英文全称 | 本文含义 |
+|---|---|---|
+| C-UAS | 反无人机系统（Counter-Unmanned Aircraft System） | 本仓库研究的多模块拦截仿真体系 |
+| C2 | 指挥与控制（Command and Control） | 中心协调权威及其健康状态 |
+| CBBA | 基于共识的捆绑算法（Consensus-Based Bundle Algorithm） | 完全分布式的一对一轻量保底基线 |
+| ACK | 确认应答（Acknowledgement） | 成员对同一计划、联盟、时期和租约的有效确认 |
+| IDSW | 身份切换（Identity Switch） | D2 显式输出的目标身份交换事件 |
+| PNG | 比例导航制导（Proportional Navigation Guidance） | D7 末端导引模式，不是 D4 的执行动作 |
+| RF | 射频（Radio Frequency） | 当前尚未进行真实链路验证 |
+| GlobalTrack | 全局航迹 | D1/D2 维护、带规范全局标识和协方差的航迹 |
+| owner | 计划所有者 | 当前经 main/D3 认可的计划协调来源 |
+| version | 版本 | 拒绝过期计划和联盟状态的单调编号 |
+| epoch | 时期 | 接管、重构和分区恢复时拒绝旧状态的代际编号 |
+| lease | 租约 | 所有者、计划或联盟状态的限时有效合同 |
+| digest | 摘要校验值 | 用于比较计划、联盟和恢复双轨一致性的摘要 |
+| readiness | 就绪性 | 二级节点从未就绪到可持续接管的能力分级 |
+| fail closed | 失效时闭锁 | 证据缺失、冲突或过期时不允许执行 |
+| main/runtime | 主编排器/运行时 | 负责 AirSim 时钟、D3 计划发布和跨模块接线 |

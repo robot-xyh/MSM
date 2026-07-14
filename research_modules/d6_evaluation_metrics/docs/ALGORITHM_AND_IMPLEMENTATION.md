@@ -1,417 +1,779 @@
-# D6 系统级评估指标体系：算法原理与当前实现
+# D6 系统级离线评估：算法原理与实施说明
 
-## 1. 模块定位
+**状态日期：2026-07-13**
 
-D6 是 MSM 的系统级离线评估模块。它消费 D1-D7、main runtime、AirSim Blocks replay、合成仿真和人工/规则标注产生的日志，输出 episode 级指标、CSV、Markdown 报告和 PNG 图表。
+本文根据 D6 当前代码、`README.md`、`PLAN.md`、`MODULE_PRINCIPLES_CN.md` 和系统总汇总同步
+整理。文中“已实现”表示 D6 已能被动读取相应写盘证据并计算指标或生成报告，不表示上游算法
+已经达到工程准入门限，也不表示 D6 获得在线控制权限。
 
-D6 不参与实时控制，不发布航迹、分配、降级、末端配准或导引命令，不生成 fire-control 参数、毁伤逻辑、自动处置动作，也不绕过人工授权。所有 truth label、高威胁标签和 review label 都是评估侧信息，不能回写在线控制链路。
+## 1. 模块定位和安全边界
 
-系统评估不能只看单一成功率。D6 把失效拆为探测、跟踪、分配、降级、末端、通信、导引门控和安全八类，避免 ID Switch、重复分配、D4 reassign pending、D5 末端误配准、D7 terminal gate reject 或安全约束被总体命中率掩盖。
+D6 是 D1 至 D7 七个研究模块之后的系统证据汇总层。它读取单次实验（episode）的写盘日志，
+把异构记录转换为可审计的单次实验指标、批量统计、中文报告和图表。D6 的职责不是给系统增加
+一个无法解释的“总分”，而是保留探测、跟踪、分配、联盟、降级、末端配准、通信、导引、
+物理结果和安全约束之间的失效结构。
 
-D2/D6 强制规则：`id_switch_count` 必须作为显式指标保留。
+D6 是严格只读、离线、被动的评估模块：
 
-## 2. 输入输出模型
+- 不发布航迹，不创建、改写或重新绑定 `global_track_id`（中心维护的规范全局航迹标识）；
+- 不生成分配计划，不拒绝过时计划，不请求重规划，也不改变 D3 的迟滞参数；
+- 不触发中心、二级节点或完全分布式降级，不提交联盟，不续签租约；
+- 不执行目标检测、视觉关联、相机或云台控制、导引和飞行控制；
+- 不用离线真值、高威胁标签或后验复核结果修正在线模块；
+- 不生成真实火控参数、毁伤逻辑、自动授权或绕过人工审核的处置动作。
 
-### 2.1 输入数据类
+D2 数据关联模块和 D6 的共同硬规则是：`id_switch_count`（身份切换次数）必须显式保留，
+不能被总体准确率、任务成功率或联盟完成率掩盖。
 
-| 数据类 | 当前用途 | 关键字段 |
-|---|---|---|
-| `TrackRecord` | 探测、跟踪、ID switch、RMSE、continuity | `timestamp`, `global_track_id`, `truth_id`, `position`, `truth_position`, `covariance_trace`, `track_state`, `association_source` |
-| `AssignmentRecord` | 分配重复、高威胁未分配 | `timestamp`, `plan_id`, `version`, `resource_id`, `global_track_id`, `authorization_state`, `active`, `truth_id` |
-| `EventRecord` | 降级、安全、末端事件、D7 gate、通信 metadata | `timestamp`, `event_type`, `actor_id`, `value`, `metadata` |
-| `LinkRecord` | 跨节点通信、video metadata、bbox delivery | `source_node_id`, `target_node_id`, `sequence_id`, `sent_timestamp`, `received_timestamp`, `measurement_timestamp`, `arrival_timestamp`, `payload_kind`, `delivered`, `stale_after_s` |
-| `TerminalRecord` | D5 末端配准、local ID switch、lock/hold/ambiguity | `resource_id`, `assigned_global_track_id`, `local_track_id`, `decision_state`, `ambiguity_score`, `friend_conflict_state`, `expected_global_track_id`, `association_correct` |
-| `truth_summary` | 真值机会、高威胁标签、规模字段、场景 metadata | `truth_timestamps`, `total_truth_opportunities`, `high_threat_ids`, `high_threat_by_timestamp`, `scenario` |
+## 2. 总体实施架构
 
-### 2.2 输出
+### 2.1 离线数据流
 
-| 输出 | 当前状态 |
-|---|---|
-| `EpisodeMetrics` | 已实现，包含全部标量指标和 `metadata` |
-| `episode_metrics.csv` | 已实现，每个 episode 一行 |
-| `summary_metrics.csv` | 已实现，全局与场景/规模分组统计 |
-| `batch_report.md` | 已实现，中文 Markdown 报告 |
-| `plots/*.png` | 已实现，按指标族输出 PNG 图 |
-
-## 3. 规模归一化
-
-`EpisodeMetrics` 显式保留：
-
-```text
-drone_count
-resource_count
-target_count
-camera_count
+```mermaid
+flowchart LR
+    D1[D1 传感器融合证据] --> A[D6 文件适配器]
+    D2[D2 关联与身份证据] --> A
+    D3[D3 分配与联盟证据] --> A
+    D4[D4 降级与通信证据] --> A
+    D5A[D5 每主资源末端证据] --> A
+    D5B[D5 原生多目标跟踪证据] --> A
+    D7[D7 合同、控制与物理证据] --> A
+    RT[主运行时执行/合同指标] --> A
+    A --> N[模式识别、身份/时间/版本规范化]
+    N --> C[类型化记录与 MetricsCollector]
+    C --> E[EpisodeMetrics 与逐指标可用性]
+    E --> R[CSV、JSON、中文 Markdown、PNG 图表]
 ```
 
-计算口径：
+逗号分隔值文件（Comma-Separated Values，CSV）、JavaScript 对象表示法文件
+（JavaScript Object Notation，JSON）、逐行 JavaScript 对象表示法文件（JSON Lines，
+JSONL）、Markdown 文档和便携式网络图形（Portable Network Graphics，PNG）是当前主要
+输出格式。这里的 PNG 是图像格式；D7 的视觉 PNG 指比例导航制导
+（Proportional Navigation Guidance，PNG），两者不是同一概念。
 
-1. 优先使用 `truth_summary` 顶层字段或 `truth_summary["scenario"]` 字段。
-2. Blocks replay 从 `resources`、`truth_objects`、`cameras` 计算实际规模。
-3. 缺失时从 assignment、terminal、event、link metadata 中推断资源、目标和相机集合。
-4. `drone_count` 缺失时默认等于 `resource_count`。
-5. `2v2`、`5v5` 只作为 baseline 场景名，不作为算法规模或报告分母。
+主运行时负责微软 AirSim 无人系统仿真器的 Blocks 场景启动、复位、实验顺序、统一时钟和
+日志落盘。当前物理飞行实验使用 AirSim SimpleFlight 多旋翼飞行控制后端，入侵目标是移动
+场景对象（actor），不是额外的 SimpleFlight 飞行器。D6 不连接实时 AirSim 应用程序编程接口
+（Application Programming Interface，API），只在实验结束后读取文件。
 
-测试已覆盖 `scenario.name="blocks_cv_5v5"` 但实际 `drone/resource/target/camera=3/3/4/6` 的情况，D6 输出实际规模。
+### 2.2 2026-07-13 七源统一写盘输入
 
-## 4. 指标体系
+`P1SystemEvidenceInputs` 是当前一级收敛优先级（Priority 1，P1）统一报告的七源输入合同。
+七源是七类证据，不等同于七个模块各一份文件；D5 因为同时存在末端主资源证据和原生多目标
+跟踪证据而占两个独立来源。
 
-### 4.1 探测
+| 七源字段 | 生产者和内容 | 关键审计项 | 2026-07-13 行数 |
+| --- | --- | --- | ---: |
+| `d1_dense_crossing` | D1 密集交叉融合汇总 | 双时间戳、协方差、来源谱系、接受/拒绝和离线真值样本数 | 1 |
+| `d2_difficulty_profiles` | D2 难度配置和关联结果 | 身份切换、连续率、错误航迹、时延、候选准入 | 3660 |
+| `d3_assignment_churn` | D3 协同分配案例 | 成员、计划/联盟版本、主用/备用角色、过时和回滚 | 40 |
+| `d4_episode_communication` | D4 故障和通信案例 | 确认应答、租约、所有者、闭锁、切换时延 | 60 |
+| `d5_per_primary` | D5 每个已激活主成员证据 | 可见、关联、独立锁定、共同锁定和全局身份改写 | 160 |
+| `d5_native_mot` | D5 原生多目标跟踪筛选 | 后端、激活率、连续率、精确率/召回率、局部身份切换和时延 | 18 |
+| `d7_per_primary` | D7 每资源对和配置档证据 | 合同、控制、模式、物理结果、备用越权和最近距离 | 164 |
 
-```text
-detection_probability = TP / (TP + FN)
-false_alarm_rate = FP / T
-missed_detection_rate = FN / (TP + FN)
+D7 的 164 行由 160 行资源对/安全记录和 4 行配置档汇总组成。聚合器按 `family`（记录族）
+区分粒度，避免把资源对记录与配置档汇总重复计数。
+
+七源统一入口实现于 `d6_evaluation_metrics/p1_system_evidence.py`。每个来源可以是文件路径、
+映射对象、序列、数据类或提供 `to_dict()`/`as_dict()` 的对象。缺失来源在清单中标记为
+`unavailable`（证据不可用），不会被转换成零值记录。
+
+### 2.3 其他已实现输入适配器
+
+| 入口 | 输入 | 当前用途 |
+| --- | --- | --- |
+| `load_episode_log_jsonl()` | D6 标准 JSONL | 恢复类型化记录和真值摘要 |
+| `load_blocks_replay_jsonl()` | Blocks 帧日志和可选传感器日志 | 恢复实际规模、真值机会、检测、末端和通信证据 |
+| `load_main_episode_bus_metrics()` | 单个主总线指标文件 | 恢复执行或合同口径的 `EpisodeMetrics` |
+| `load_main_episode_bus_metric_files()` | 执行/合同双文件 | 同时保留两种指标口径 |
+| `load_d4_active_degradation_decisions()` | D4 主动降级逗号分隔值文件 | 形成降级事件和后验复核证据 |
+| `load_d7_intercept_outputs()` | D7 控制与拦截文件 | 形成门控、模式切换和物理结果指标 |
+| `load_d7_guidance_timeseries()` | D7 导引时序文件 | 形成末端滤波、短时保持和控制连续性元数据 |
+| `load_airsim_calibration_records()` | 多随机种子 AirSim 输出目录 | 形成二级感知、云台、跨视角和降级标定记录 |
+| `merge_replay_with_execution_metrics()` | 集成回放和正式执行指标 | 按可用性与规范来源合并，不用默认零覆盖执行值 |
+
+## 3. 类型化记录和统一数据模型
+
+### 3.1 基础记录
+
+1. **`TrackRecord`（航迹和探测记录）**
+
+   保存记录时间、全局航迹标识、仅供离线评分的真值身份、估计位置、真值位置、协方差矩阵
+   的迹、航迹状态和关联来源。位置真值缺失时可以保留在线航迹记录，但不能计算位置均方根
+   误差或真值身份指标。
+
+2. **`AssignmentRecord`（版本化分配记录）**
+
+   保存计划标识、计划版本、资源、目标全局航迹、授权状态、是否有效、成本分项以及联盟、
+   角色、需求资源数、波次、到达窗口和成员间距。分配指标必须按
+   `(timestamp, plan_id, version)` 快照计算，不能混合不同版本。
+
+3. **`TargetDemandRecord`（目标需求记录）**
+
+   保存目标需要的资源数量、已分配数、缺口、协同模式、联盟和窗口证据。它是 M 对 N
+   多资源需求满足率的正式分母来源。
+
+4. **`CoalitionRecord`（联盟生命周期记录）**
+
+   保存联盟成员、角色、计划与联盟版本、联盟时期 `epoch`、协调者、必要成员、已确认成员、
+   提交状态、租约、各阶段时间戳、消息数、字节数和共识轮次。D6 根据有序记录恢复状态驻留和
+   完成情况，但不驱动联盟状态转移。
+
+5. **`ArrivalRecord`（成员到达和波次记录）**
+
+   保存资源、目标、联盟版本、成员角色、实际到达时间、公共窗口、波次起止时间和成员间距，
+   用于同时、序贯和混合主备路线的离线评分。
+
+6. **`EventRecord`（通用事件记录）**
+
+   通过 `event_type`、参与者、严重度、数值和结构化元数据表达降级、门控、失败、安全、性能
+   和离线裁决事件。
+
+7. **`LinkRecord`（通信链路记录）**
+
+   同时保存发送、接收、测量产生和到达时间，另含源节点、目标节点、中继节点、消息序列号、
+   负载类型、是否送达和过时阈值。`measurement_timestamp`（测量时间戳）与
+   `arrival_timestamp`（到达时间戳）不能互相替代。
+
+8. **`TerminalRecord`（末端配准记录）**
+
+   保存资源、被分配的全局航迹、节点局部航迹、决策状态、歧义分数、友方冲突、分配版本、
+   联盟角色和离线正确性裁决。`expected_global_track_id` 和 `association_correct` 只能由离线
+   评估使用，不能进入 D5 在线匹配。
+
+### 3.2 单次实验输出 `EpisodeMetrics`
+
+`EpisodeMetrics` 保存：
+
+- 实验标识、随机种子、稳定场景组和指标口径；
+- `drone_count`、`resource_count`、`target_count`、`camera_count` 四个实际规模字段；
+- 探测、跟踪、分配、联盟、降级、末端、通信、导引、物理、安全和性能标量；
+- `metric_availability`（全部指标的可用性说明）；
+- `m_to_n_metric_availability`（多资源对多目标指标的专项可用性说明）；
+- 场景版本、标准映射版本、证据路径、失败原因和来源审计元数据。
+
+数值字段的 Python 默认值不是证据。加载器和报告器必须结合可用性表判断该值是否能进入
+统计分母。显式写盘的零表示“观察到且事件没有发生”，默认生成的零不能被自动解释为同一含义。
+
+### 3.3 收集器算法
+
+`MetricsCollector` 通过 `add_*`/`extend_*` 接收记录，由 `compute_episode()` 生成单次实验
+指标。核心步骤是：
+
+1. 加载并识别源数据模式；
+2. 保留路径、生产者、运行标识和原始来源；
+3. 规范化时间、身份、计划版本、联盟版本和时期；
+4. 确定实际规模；
+5. 按指标族计算分子、分母和标量；
+6. 为每项指标裁决可用性和原因；
+7. 按帧、成员、资源对、目标、联盟、实验和随机种子分层聚合；
+8. 按来源权威性合并回放、合同和执行证据；
+9. 输出表格、中文报告和图表。
+
+## 4. 实际规模和证据三态
+
+### 4.1 实际规模
+
+D6 不从 `2v2`、`5v5` 或 `M5N2` 场景名称推断规模。实际数量的优先级是：
+
+1. `truth_summary` 顶层字段；
+2. `truth_summary["scenario"]` 场景元数据；
+3. Blocks 帧中的资源、真值对象和相机集合；
+4. 分配、联盟、末端、事件和链路记录中的唯一身份集合；
+5. `drone_count` 缺失时才以 `resource_count` 作为保守兼容值。
+
+资源数、目标数和相机数使用独立集合。帧级检测数量不能当成目标数，逐案例行数不能当成独立
+随机种子数，资源对样本数也不能当成联盟机会数。
+
+### 4.2 三态语义
+
+| 状态 | 含义 | 统计处理 |
+| --- | --- | --- |
+| `available` | 必要字段和有效分母完整 | 可以进入统计；数值可以为零 |
+| `unavailable` | 缺真值、时间戳、协方差、事件、来源或分母 | 不进入该指标分母，报告缺失原因 |
+| `not_applicable` | 当前场景或路线本来没有该概念 | 与数据缺失分开报告 |
+
+例如，无备用成员的独立拦截场景中，备用激活率是“不适用”；有备用成员但没有写出激活事件时，
+该指标是“不可用”；明确记录备用成员始终待命时，备用越权次数可以是“可用且为零”。
+
+## 5. 指标算法
+
+### 5.1 探测指标
+
+设真正例（True Positive，TP）、假正例（False Positive，FP）、假负例
+（False Negative，FN）和实验持续时间 (T_e)，则：
+
+\[
+P_D=\frac{TP}{TP+FN},\qquad
+P_M=\frac{FN}{TP+FN},\qquad
+R_{FA}=\frac{FP}{T_e}.
+\]
+
+- (P_D)：探测概率；
+- (P_M)：漏检率；
+- (R_{FA})：每秒虚警率。
+
+真值机会与离线匹配/漏检裁决必须同时存在。只有真值机会列表而没有匹配裁决时，三项均为
+不可用。`truth_id is None` 的在线航迹不会自动计为虚警，因为它也可能只是尚未完成离线标注。
+
+### 5.2 跟踪、身份和协方差一致性
+
+对 (K) 个具有估计位置和真值位置的样本，位置均方根误差
+（Root Mean Square Error，RMSE）为：
+
+\[
+RMSE=\sqrt{\frac{1}{K}\sum_{k=1}^{K}
+\lVert\hat{\boldsymbol p}_k-\boldsymbol p_k\rVert_2^2}.
+\]
+
+航迹连续率为真值时间戳中获得有效匹配的比例。同一真值目标按时间排序后，其规范全局航迹
+身份变化次数为身份切换（Identity Switch，IDSW）：
+
+\[
+N_{IDSW}=\sum_j\sum_{k>1}
+\mathbf 1[g_j(t_k)\ne g_j(t_{k-1})].
+\]
+
+D6 还可消费上游明确写盘的归一化创新平方（Normalized Innovation Squared，NIS）和归一化
+估计误差平方（Normalized Estimation Error Squared，NEES）摘要：
+
+\[
+NIS_k=\boldsymbol\nu_k^T\boldsymbol S_k^{-1}\boldsymbol\nu_k,
+\]
+
+\[
+NEES_k=(\hat{\boldsymbol x}_k-\boldsymbol x_k)^T
+\boldsymbol P_k^{-1}(\hat{\boldsymbol x}_k-\boldsymbol x_k).
+\]
+
+通用 `TrackRecord` 只保存协方差迹，D6 不从协方差迹重建完整矩阵，也不从 RMSE 伪造
+NIS/NEES。缺离线真值时 NEES 不可用；创新和创新协方差完整时 NIS 可以独立可用。
+
+### 5.3 分配和多资源需求
+
+有效分配必须同时满足：
+
+- `active=True`；
+- 授权状态属于已记录、已授权、已批准、人工批准或操作员批准；
+- 计划标识和版本属于同一快照。
+
+对目标 (j) 在快照 (s) 的需求资源数 (k_{js}) 和有效已分配数 (a_{js})：
+
+\[
+s_{js}=\min(a_{js},k_{js}),\quad
+u_{js}=\max(k_{js}-a_{js},0),\quad
+o_{js}=\max(a_{js}-k_{js},0).
+\]
+
+其中 (s_{js}) 为满足槽位、(u_{js}) 为未满足槽位、(o_{js}) 为超额支持。微平均需求满足率
+按槽位加权，宏平均需求满足率对每个目标快照等权：
+
+\[
+R_{micro}=\frac{\sum s_{js}}{\sum k_{js}},\qquad
+R_{macro}=\frac{1}{Q}\sum_{j,s}\mathbf 1[a_{js}\ge k_{js}].
+\]
+
+`duplicate_assignment_count`（异常重复分配数）必须感知目标需求和当前联盟授权。一个高威胁
+目标合法要求两个主成员时，两条当前版本主成员绑定不是异常重复；超过需求、计划外、过时版本
+或冲突版本的绑定才计为错误。旧的一对一日志没有需求事件时，只能显式采用 (k=1) 兼容规则。
+
+分配族还报告未分配高威胁目标、资源目标比、覆盖率、未分配率、迟滞拒绝率、过时拒绝率、
+反馈接受率，以及有真实有序历史时的计划和联盟版本变化。只有最终快照时，变化次数保持不可用。
+
+### 5.4 联盟、主备和波次
+
+联盟形成时间和重构时间分别为：
+
+\[
+T_{form}=t_{first\ committed}-t_{request},
+\]
+
+\[
+T_{reconfig}=t_{first\ new\ committed\ version}-t_{trigger}.
+\]
+
+缺少成对时间戳时不可用，超时不能记为零。同时到达路线可计算必要主成员到达时刻的最大差；
+序贯波次可计算相邻波次间隔和顺序违反。当前项目已经实现独立、同时、序贯和混合主备路线的
+指标合同，但没有完成所有路线在全部中心层级和扰动条件下的在线控制实现。
+
+备用成员只有在显式激活、当前计划和当前联盟版本一致时才能进入需求满足和物理完成分母。
+待命备用成员不参与成功率，却必须进入越权执行审计。
+
+联盟提交指标包括：必要成员数、已确认成员数、确认应答率、确认延迟、提交次数、提交超时、
+中止、重构、租约到期、成员丢失、成员替换、摘要冲突、过时拒绝、通信消息和共识轮次。
+确认应答（Acknowledgement，ACK）不全、租约失效、计划版本或联盟时期过时时，上游应保持
+闭锁；D6 只核验是否按合同执行。
+
+### 5.5 D4 降级指标
+
+失效切换时间和降级任务完成率为：
+
+\[
+T_{failover}=t_{degraded\ stable}-t_{central\ failure},
+\]
+
+\[
+R_{degraded}=\frac{N_{completed}}
+{N_{completed}+N_{failed}+N_{cancelled}}.
+\]
+
+当前已实现的降级指标包括主动降级次数、被动失效切换次数、二级节点接管/重分配、重新分配
+等待、完全分布式回退、二级可用驻留、计划等待驻留、激活时延、租约到期和过时计划拒绝。
+
+主动降级精度为：
+
+\[
+P_{active}=\frac{N_{reviewed\ necessary}}{N_{reviewed}}.
+\]
+
+只有带 `review_label`（复核标签）、`active_degradation_necessary`（必要性标签）、后验结果或
+冻结前后风险窗口的样本进入分母。无复核标签样本只增加主动降级总次数，不能由事件名称自证
+为必要或不必要。
+
+### 5.6 D5 末端配准和二级感知指标
+
+末端关联准确率为：
+
+\[
+A_{terminal}=\frac{N_{correct\ adjudicated}}
+{N_{adjudicated\ attempts}}.
+\]
+
+正确性来自结果写盘后的离线裁决。末端局部身份切换按同一被分配全局航迹对应的节点局部航迹
+变化计数。首次锁定延迟等于首次锁定时刻减去首次进入视场时刻。
+
+基础末端指标包括：
+
+- 末端关联准确率和末端身份切换；
+- 歧义视场事件、友方重叠保持和首次锁定时间；
+- 锁定次数、多视角一致率、跨视角冲突和异常重复锁；
+- 检测召回率、局部身份连续率、跨视角注册率和视觉流水线时延；
+- 图像滤波的测量、预测、创新拒绝、复位和到期；
+- 软预测、短时保持预测（coast）、锁定连续性和视觉模式驻留。
+
+协同锁定必须区分“多个资源看见目标”和“当前联盟授权的多个主成员共同锁定”。同一资源
+跨帧持续锁定只计连续性，不计多个资源重复锁。普通 `associated`（已关联）状态不能冒充
+`locked`（已锁定）或共同锁定。
+
+二级侦察和跨视角指标包括：单相机全局视野率、二级网络联合覆盖率、联合全视野帧率、投影
+有效率、几何门控通过率、可注册候选数、稳定跨视角注册数、detect 已可用但未注册数、线索
+指向误差和云台指向误差。D6 不调整相机姿态、云台角度或几何门限。
+
+### 5.7 通信和时间指标
+
+端到端通信延迟和测量年龄分别为：
+
+\[
+L_{e2e}=1000(received\_timestamp-sent\_timestamp)\ \mathrm{ms},
+\]
+
+\[
+A_{measurement}=arrival\_timestamp-measurement\_timestamp.
+\]
+
+通信族报告跨节点平均时延、消息丢弃率、序列号倒退/显式乱序次数、过时航迹更新、视频元数据
+送达率、边界框元数据送达率和共识时延。轨迹消息的链路时延或测量年龄超过 `stale_after_s`
+时增加过时更新计数。负载字节缺失时，字节统计不可用，不能由消息条数估算。
+
+### 5.8 D7 四层漏斗
+
+D7 证据严格分为四层，每层有独立机会数、成功数和可用性：
+
+1. `contract_allowed`（合同允许）：D3、D4、D5 与 D7 合同条件通过；
+2. `control_allowed`（控制允许）：资源在当前时刻被允许实际执行控制；
+3. `mode_switched`（模式已切换）：导引模式发生实际切换；
+4. `physical_intercept`（物理拦截）：存在明确物理判据并满足成功条件。
+
+```mermaid
+flowchart LR
+    A[合同评估机会] -->|合同通过| B[控制许可]
+    B -->|控制真正执行| C[模式实际切换]
+    C -->|物理证据完整| D[进入拦截半径]
+    A -.合同拒绝.-> R1[拒绝原因]
+    B -.控制闭锁.-> R2[所有者/版本/角色原因]
+    C -.未切换.-> R3[视觉质量/机动裕度原因]
+    D -.未成功.-> R4[最近距离/超时/丢锁原因]
 ```
 
-实现来源：
+后层成功不能反推前层计数，前层允许也不能推导后层成功。只有计算机视觉
+（Computer Vision，CV）状态实验而没有物理执行时，物理层必须不可用；物理证据完整但没有
+进入拦截半径时才是可用且为零。
 
-- `TrackRecord.truth_id + timestamp` 落入 `truth_summary.truth_timestamps`，或显式 offline match/miss 事件完成裁决后，探测三项才可用；仅有 truth opportunity 列表不足以评分。
-- `TrackRecord.truth_id is None` 不自动计 FP；离线带标签检测落在 truth pair 集合外时才计 FP。
-- `truth_summary.total_truth_opportunities` 或 `truth_timestamps` 定义总机会数。
+D7 门控与末端指标还包括相机质量、视线质量、机动裕度和末端切换允许率，视觉 PNG 切换数、
+末端接管率、切换拒绝、合同拒绝、检测获取超时、图像卡尔曼预测、重新获取、盲推和短时保持
+到期。视线（Line of Sight，LOS）和预计碰撞时间（Time To Collision，TTC）相关拒绝原因
+分别保留，D6 不据此产生导引命令。
 
-### 4.2 跟踪
+### 5.9 三层物理结果
 
-```text
-track_rmse = sqrt(mean(||position - truth_position||^2))
-track_continuity = matched_truth_timestamp_pairs / truth_timestamp_pairs
-id_switch_count = count(global_track_id changes for the same truth_id over time)
-```
+物理结果按资源对、目标和联盟使用三个独立分母：
 
-`id_switch_count` 以 `truth_id` 分组、按 timestamp 排序，统计同一真值目标对应 `global_track_id` 的变化次数。D6 只统计，不修改 D2/main 中心维护的 `global_track_id`。
+\[
+R_{pair}=\frac{N_{successful\ active\ pairs}}
+{N_{active\ assigned\ pairs}},
+\]
 
-### 4.3 分配
+\[
+R_{target}=\frac{N_{targets\ with\ any\ successful\ pair}}
+{N_{participating\ targets}},
+\]
 
-```text
-duplicate_assignment_count =
-  count(targets assigned to more than one active resource in the same plan snapshot)
+\[
+R_{coalition}=\frac{N_{targets\ with\ all\ required\ primaries\ complete}}
+{N_{coalition\ opportunities}}.
+\]
 
-unassigned_high_threat_count =
-  count(high-threat targets without active effective assignment)
-```
+- 资源对成功表示一个当前有效主成员完成物理判据；
+- 目标成功表示该目标至少有一个参与资源对成功；
+- 联盟完成要求全部必要主成员分别具有明确物理完成证据并满足各自窗口。
 
-有效分配要求：
+联盟完成不等于同时到达，除非场景明确采用同时到达路线。2026-07-13 主线物理判据使用
+北-东-地坐标系（North-East-Down，NED）的三维欧氏距离不大于 5 米。报告同时保存拦截半径、
+距离坐标系、距离维度和判据版本，避免后续结果使用不同距离口径却被直接比较。
 
-- `AssignmentRecord.active == True`
-- `authorization_state` 属于 `recorded/authorized/approved/human_approved/operator_approved`
-- 同一 `(timestamp, plan_id, version)` 内比较资源和目标
+### 5.10 安全、性能和任务结果
 
-D6 不拒绝 stale plan、不生成 replan；版本化 `AssignmentPlan` 的在线合同由 D3/main 负责，D6 只在离线报告中统计结果。
+安全指标至少包括：
 
-### 4.4 降级
+- 约束违反次数和人工覆盖/拒绝次数；
+- 在线使用真值身份次数；
+- 规范全局身份改写次数；
+- 待命备用成员越权执行次数；
+- 重复所有者、脑裂防护失败、过时计划执行和异常重复锁；
+- 最小成员间距及碰撞风险暴露时间。
 
-基础指标：
+性能指标包括模块时长、循环时延、记录时延、中央处理器（Central Processing Unit，CPU）
+预算利用率、图形处理器（Graphics Processing Unit，GPU）预算利用率和预算违反次数。
 
-```text
-failover_time = mean(t(degraded_stable) - t(central_failure))
-consensus_rounds = mean(consensus_rounds event values)
-degraded_completion_rate =
-  degraded_task_completed / (degraded_task_completed + degraded_task_failed_or_cancelled)
-```
+`mission_outcome`（任务结果）可以为成功、部分成功、失败或中止。根因只从写盘记录和已计算
+指标派生，按跟踪、分配、末端门控、导引、覆盖、运行异常、通信、安全和性能类别报告。安全
+失败不能被任务成功、目标成功或联盟完成抵消。
 
-D4 主/被动降级扩展已进入 `EpisodeMetrics`：
+## 6. 执行口径、合同口径和来源合并
 
-```text
-active_degradation_count
-active_degradation_precision
-unnecessary_active_degradation_count
-passive_failover_count
-secondary_node_takeover_count
-secondary_reassignment_count
-d4_reassign_pending_count
-distributed_fallback_count
-failover_active_window_delta_s
-```
+### 6.1 双口径
 
-识别来源：
+正式 `main_episode_bus_metrics.json` 表示执行后的系统结果，使用
+`metric_scope=execution`（执行口径）。`main_episode_bus_contract_metrics.json` 表示执行前
+合同和门控诊断，使用 `metric_scope=contract`（合同口径）。
 
-- `EventRecord.event_type`：`active_degradation_decision`、`passive_failover`、`secondary_node_takeover`、`secondary_reassignment`、`d4_reassign_pending`、`distributed_fallback` 等。
-- `metadata.mode/degradation_mode/action/assignment_phase/fallback_type/d4_state`。
-- D7 reject reason 中的 `d4_reassign_pending`。
-- D4 active-degradation CSV loader。
+两者必须并列保留：
 
-`EpisodeMetrics.metadata` 当前保留：
+- 合同允许不等于控制实际执行；
+- 控制允许不等于导引模式已经切换；
+- 模式切换不等于已经进入物理拦截半径；
+- 执行失败不能通过合同口径中的允许值被覆盖。
 
-```text
-trigger_reason_distribution
-failover_active_window_deltas_s
-active_degradation_review_label_counts
-active_degradation_reviewed_count
-active_degradation_necessary_count
-```
+### 6.2 回放与执行合并
 
-P1 最小主动降级必要性口径已经正式输出：`active_degradation_precision` 只统计带有 `review_label`、`active_degradation_necessary`、`post_window_outcome` 或 pre/post risk/window 后验字段的主动降级样本；缺标签样本只进入 `active_degradation_count`，不进入 precision 分母。`unnecessary_active_degradation_count` 只统计被 review/后验判为不必要的主动降级。D6 不从事件名自证主动降级是否必要。
+集成回放继续提供探测、跟踪、分配等离线证据。对于末端关联、跨视角、在线真值审计、
+合同/控制/模式和物理字段，只要正式主总线提供明确执行值，执行值就是规范来源。合并器遵循：
 
-仍未正式输出的扩展主动降级质量指标：
+1. 先读取每个来源的数值与可用性声明；
+2. 显式零视为有效证据；
+3. 缺失值不能被数据类默认零替代；
+4. 正式执行证据可用时优先采用执行值；
+5. 执行值不可用时才保留回放值或不可用原因；
+6. 两侧原值、来源路径、可用性和最终选择写入来源审计。
 
-```text
-terminal_center_disagreement_count
-time_to_active_degradation_decision
-post_degradation_id_switch_delta
-post_degradation_assignment_conflict_delta
-```
+`persisted_frame_count`（实际写盘帧数）和 `warmup_inclusive_frame_count`（含预热帧数）是两项
+独立证据，不能假设固定相差一帧，也不能互相推导。
 
-原因是这些扩展指标仍需要 main/D4 持续提供 `trigger_timestamp`、`decision_timestamp`、`selected_coordinator`、`coverage_cell`、固定 pre/post 窗口、ID switch delta 和 assignment conflict delta。D6 当前只消费已写盘 review/window 字段，不参与 D4 仲裁或重分配。
+## 7. 真值离线隔离
 
-### 4.5 末端配准
+### 7.1 身份命名空间
 
-```text
-terminal_association_accuracy =
-  correct_terminal_associations / terminal_association_attempts
+D6 区分三类身份：
 
-terminal_id_switch_count =
-  count(local_track_id changes for the same assigned_global_track_id)
+- 中心或当前合法所有者维护的规范全局航迹身份；
+- 相机、节点或跟踪器内部的局部航迹身份；
+- AirSim actor 名称、分割标识或数据集标签形成的离线真值身份。
 
-time_to_terminal_lock =
-  first terminal_lock time - first fov_entry time
-```
+三者即使字符串相同也不能互换。局部航迹键应包含来源节点和局部时期，不能只比较一个局部
+数字。D6 只在在线结果写盘后，把真值用于探测匹配、位置误差、身份切换和末端正确性裁决。
 
-当前字段：
+### 7.2 在线真值违规审计
 
-```text
-terminal_association_accuracy
-terminal_id_switch_count
-ambiguous_fov_event_count
-friend_overlap_hold_count
-time_to_terminal_lock
-terminal_lock_count
-multi_view_consensus_rate
-cross_view_conflict_count
-duplicate_terminal_lock_count
-```
+以下情况必须单独计数：
 
-来源：
+- 在线 D5/D7 使用 actor 名称或真值目标身份进行绑定；
+- 在线模块用分割标识替代几何关联；
+- 局部航迹改写规范 `global_track_id`；
+- 评估标签、高威胁后验标签或复核标签回流在线控制。
 
-- `TerminalRecord.decision_state`、`ambiguity_score`、`friend_conflict_state`、`association_correct`。
-- `EventRecord`：`terminal_lock`、`terminal_fov_entry`、`terminal_ambiguous_fov`、`friend_overlap_hold`、`multi_view_consensus_result`、`cross_view_conflict`、`duplicate_terminal_lock`。
-- Blocks replay 的 bbox、相机内外参、camera ID、object label 和 truth label。
+统一报告不导出原始真值身份，只保留离线聚合和 `truth_identity_online_use_count` 等违规计数。
 
-D5 负责在线身份确认和跨视角一致性；D6 只统计结果，不改写 `global_track_id`。
+## 8. 批量统计、自助区间和来源审计
 
-### 4.6 通信链路
+### 8.1 分组和严格配对
 
-```text
-cross_node_latency_ms =
-  mean((received_timestamp - sent_timestamp) * 1000)
+批量报告至少按以下字段分组：
 
-message_drop_rate =
-  dropped_messages / attempted_messages
+- `metric_scope`：执行或合同口径；
+- 随机种子和批次随机种子；
+- 稳定场景组、场景版本和难度配置；
+- 实际飞行器、资源、目标和相机数量；
+- 二级节点高度、视场、节点数和检测后端；
+- 算法候选、配置档和判据版本。
 
-out_of_order_count =
-  explicit out-of-order events + decreasing sequence IDs per stream
+比较候选算法时，应冻结场景版本、初始几何、随机种子和真值口径。`case_id` 只用于审计，
+不能把同一随机种子下的多个案例误算为独立样本。
 
-stale_track_update_count =
-  track payload latency/age > stale_after_s
+### 8.2 描述统计和置信区间
 
-video_metadata_delivery_rate =
-  delivered video_metadata payloads / attempted video_metadata payloads
+通用报告输出样本数、均值、样本标准差、标准误、中位数、第 5 百分位和第 95 百分位，并保留
+基于标准误的正态近似 95% 置信区间。第 95 百分位（95th Percentile，P95）常用于循环时延。
 
-bbox_delivery_rate =
-  delivered bbox payloads / attempted bbox payloads
+2026-07-13 的 `P1SystemEvidenceReportGenerator` 对至少两个显式随机种子的逐种子均值使用
+固定 2000 次百分位自助重采样（bootstrap），随机数生成器
+（Random Number Generator，RNG）种子固定为 `20260713`。少于两个随机种子时只输出描述性
+结果，不生成推断区间。
 
-consensus_latency_s =
-  mean(consensus start-to-stable latency or consensus/bid link latency)
-```
+当前只有统一系统证据报告实现了上述专用自助区间。面向全部长尾计数、比率和配对差值的统一
+非参数统计框架仍未实现，不能把通用正态近似写成已经完成全面自助统计。
 
-`measurement_timestamp` 和 `arrival_timestamp` 必须保留。D6 用它们评估 stale track update，但不改变 D1 的时间合同。
+### 8.3 来源审计
 
-### 4.7 D7 gate、visual PNG switch 与拦截
+统一报告的来源清单为每个输入保存：
 
-当前字段：
+- 源数据模式和版本；
+- 文件路径；
+- 安全散列算法 256 位（Secure Hash Algorithm 256-bit，SHA-256）摘要；
+- 生产者、运行标识和证据来源链（provenance）；
+- 可用状态和缺失原因。
+
+这套审计用于回答“这个数由哪个文件、哪个生产者、哪次运行、哪个模式生成”，而不是只保存
+最终表格。内存对象没有真实文件时，文件散列可以不可用，但生产者和运行标识仍应尽量保留。
 
-```text
-camera_quality_gate_pass_rate
-los_quality_gate_pass_rate
-maneuver_margin_gate_pass_rate
-terminal_switch_allowed_rate
-visual_png_switch_count
-terminal_takeover_rate
-terminal_switch_reject_count
-mode_switch_count
-terminal_contract_reject_count
-intercept_success_count
-collision_intercept_count
-range_intercept_count
-time_to_intercept_s
-min_range_m
-gate_reject_count
-```
+## 9. 报告与图表实施
 
-来源：
+### 9.1 通用报告
 
-- `d7_control_command` / `control_command` event metadata。
-- `d7_guidance_record`、`d7_guidance_summary`、`d7_guidance_pair_summary`。
-- `d7_intercept_summary`、`d7_intercept_pair_summary`。
-- `control_commands.csv`、`guidance_records.csv`、`guidance_summaries.json`、`intercept_summary.json`。
+`ReportGenerator` 当前输出：
 
-规则：
+- `episode_metrics.csv`：每次实验一行；
+- `summary_metrics.csv`：全局及场景/规模分组统计；
+- `batch_report.md`：中文批量报告；
+- 探测、跟踪、分配、降级、末端、二级感知、通信、导引、安全和分布图表；
+- 标准指标映射和任务根因摘要。
+
+### 9.2 七源统一报告
 
-- `terminal_switch_allowed_rate` 的分母只包含带 `terminal_switch_allowed` 字段的 D7 command。
-- `visual_png_switch_count` 统计视觉 PNG/PNG guidance mode switch，不要求保存 PNG 文件。
-- `terminal_takeover_rate` 按 unique `(resource_id, target_id)` pair 统计；`terminal_handover_pending` 和 `detection_seen` 不能单独算 takeover。
-- reject reason、guidance law、D4/D5 state、plan/version 会进入 `EpisodeMetrics.metadata`，用于报告分组解释。
+`P1SystemEvidenceReportGenerator` 输出：
 
-### 4.8 安全
+- `p1_system_evidence_rows.csv`；
+- `p1_system_evidence_aggregate.json`；
+- `P1_SYSTEM_EVIDENCE_REPORT.md`；
+- `p1_system_evidence_overview.png`。
 
-```text
-constraint_violation_count
-human_override_count
-```
+### 9.3 专项报告
 
-安全事件是一级指标，不能被总体成功率平均掉。D6 只统计约束触发和人工覆盖/拒绝事件，不做在线干预。
+当前专项报告器包括：
 
-## 5. 已实现适配器
+- `DenseCrossingEvaluationReportGenerator`：D1/D2 密集交叉关联标定；
+- `CooperativeClosureReportGenerator`：M 对 N 多资源协同闭环；
+- `AirSimCalibrationReportGenerator`：二级节点覆盖、投影、跨视角和降级标定；
+- `NativeMotAirSimReportGenerator`：原生多目标跟踪准入；
+- D7 导引对照、末端交付和执行合并报告。
 
-| 适配器 | 输入 | 输出/用途 |
-|---|---|---|
-| `load_episode_log_jsonl()` | D6 标准化 JSONL | `MetricsCollector` + `truth_summary` |
-| `load_blocks_replay_jsonl()` | `blocks_frames.jsonl`、可选 `blocks_sensor_observations.jsonl` | Blocks truth、视觉检测、terminal、通信和规模字段 |
-| `load_main_episode_bus_metrics()` / `load_main_episode_bus_metric_files()` | `main_episode_bus_metrics.json`、`main_episode_bus_contract_metrics.json` | 还原 execution/contract 双口径 `EpisodeMetrics` |
-| `load_d4_active_degradation_decisions()` | D4 active-degradation CSV | D4 主动降级事件 |
-| `load_d7_intercept_outputs()` | D7 control/intercept CSV/JSON | D7 gate、visual switch、takeover、intercept 指标 |
-| `load_d7_guidance_timeseries()` | D7 guidance/control/intercept CSV/JSON | D7 time-series 与 metadata |
-| `load_airsim_calibration_records()` / `AirSimCalibrationReportGenerator` | AirSim batch/seed/case 目录 | 多 seed D4/D5 calibration records、summary 和中文 Markdown |
+所有报告器只读取文件或内存对象。D6 不控制 AirSim、相机、云台、降级、配准或导引。
 
-所有适配器都只读文件，不 import AirSim，不调用车辆控制 API。
+## 10. 代码实现映射
 
-## 6. AirSim 与 D4/D5/D7 integrated metrics 状态
+| 文件 | 主要职责 |
+| --- | --- |
+| `metrics.py` | 类型化记录、`EpisodeMetrics`、`MetricsCollector` 和核心指标 |
+| `m_to_n.py` | 多资源需求、联盟、波次、主备和协同锁定指标 |
+| `jsonl.py` | D6 标准 JSONL 往返 |
+| `blocks_replay.py` | Blocks 帧、传感器、检测、末端和通信记录适配 |
+| `main_bus.py` | 主总线执行/合同指标加载 |
+| `execution_merge.py` | 回放与执行规范来源合并和帧数审计 |
+| `d4_replay.py` | D4 主动降级写盘结果适配 |
+| `intercept_replay.py` | D7 控制、导引和物理结果适配 |
+| `airsim_calibration.py` | AirSim 多随机种子二级感知与 D4/D5/D7 标定报告 |
+| `p1_system_evidence.py` | 2026-07-13 七源统一证据报告和专用自助区间 |
+| `dense_crossing_evaluation.py` | D1/D2 严格密集交叉比较 |
+| `cooperative_closure.py` | M 对 N 协同闭环聚合 |
+| `native_mot_report.py` | D5 原生多目标跟踪准入报告 |
+| `motmetrics_adapter.py` | 可选 py-motmetrics 离线适配 |
+| `standard_mapping.py` | 本地指标与标准指标族的可追溯映射 |
+| `reporting.py` | 通用 CSV、Markdown 和二维图表输出 |
 
-D6 侧已经具备消费能力：
+## 11. 默认主线、可选对照和未实现能力
 
-- Blocks：truth summary、实际规模字段、visual detection、terminal records、video metadata/bbox links、多视角 consensus/conflict。
-- D4：active/passive、secondary takeover/reassignment、D4 reassign pending、distributed fallback、review label 和后验必要性字段。
-- D5：terminal association、local ID switch、lock、ambiguity、friend hold、多视角一致/冲突/重复锁定、secondary detection available but not registered、cross-view registration 和 cue/gimbal pointing metadata。
-- D7：gate pass/reject、visual PNG switch、terminal takeover、mode switch、contract reject、intercept 结果。
-- AirSim calibration：自动扫描 `d4d5_stress_metrics.json`、`airsim_blocks_summary.json` 和 main bus metrics，输出 `airsim_calibration_records.csv`、`airsim_calibration_summary.csv`、`airsim_calibration_summary.json`、`airsim_calibration_report.md`。
+### 11.1 已实现的默认主线
 
-截至 2026-07-07，main/orchestrator 已完成 D7 真实执行指标的正式回灌：`control_commands.csv` 与 `intercept_summary.json` 会在执行后合并到正式 `main_episode_bus_metrics.json`；执行前合同检查口径保留为 `main_episode_bus_contract_metrics.json`。D6 文档和报告口径以正式 metrics 表示执行后系统结果，以 raw contract metrics 表示 D3/D4/D5/D7 gate 诊断结果。
-
-截至 2026-07-08，main runtime 的 `--p1-calibration-sweep` 已在 batch 结束后自动调用 D6 `AirSimCalibrationReportGenerator.write_report_bundle()`。D6 report bundle 覆盖 coverage/funnel/gimbal、`secondary_detect_count`、`secondary_visible_target_union_ratio`、`secondary_network_joint_full_view_frame_rate`、`projection_valid_rate`、`geometry_gate_pass_rate`、`registered_candidate_count`、`stable_cross_view_registration_count`、`not_registered_count`、active degradation precision 和 D7 guidance reject reason。报告按实际 count 字段和 `metric_scope/seed/scenario/secondary_height/FOV/secondary_count/detection_backend` 分组，不从 `2v2/5v5` 场景名推断规模。
+- 本地类型化记录、标准 JSONL、Blocks、主总线、D4 和 D7 文件适配器；
+- `MetricsCollector` 与带实际规模、可用性和来源审计的 `EpisodeMetrics`；
+- 探测、跟踪、显式 IDSW、分配、多资源需求、联盟、降级、末端、通信、D7 四层漏斗、
+  三层物理、安全和性能指标；
+- 执行/合同双口径和回放/执行来源合并；
+- 通用、七源、密集交叉、协同闭环、AirSim 标定和原生多目标跟踪中文报告；
+- 固定随机种子的七源专用自助置信区间和 SHA-256 来源审计。
 
-当前 P1 AirSim 结论仍是评估状态而非控制动作：mobile recon gimbal 批次显示 bbox 面积改善、`secondary_gimbal_pointing_ok_rate=1.0`，但网络联合 full-view 和稳定注册仍需更多多 seed/N-v-N 批次沉淀长期趋势。
+### 11.2 已实现但仅限可选或离线对照
 
-仍需 main runtime bus/episode 写盘接线：
+1. Python 多目标跟踪评估库 `py-motmetrics` 的隔离适配器可在冻结的
+   `msm-offline-mot-v1` 数据模式上输出精确率与召回率调和评分（F-one Score，F1）中的身份
+   调和评分（Identity F1 Score，IDF1）、多目标
+   跟踪准确率（Multiple Object Tracking Accuracy，MOTA）和多目标跟踪精度
+   （Multiple Object Tracking Precision，MOTP）。它不进入默认依赖，也不替代 D6 本地指标。
+2. 联合概率数据关联（Joint Probabilistic Data Association，JPDA）的轻量研究结果可以进入
+   报告，但 2026-07-13 证据没有支持其替换默认全局最近邻
+   （Global Nearest Neighbor，GNN）/匈牙利关联路径。
+3. ByteTrack 和增强型在线实时多目标跟踪器（Bag of Tricks for Simple Online and Realtime
+   Tracking，BoT-SORT）的真实运行结果可以由 D6 评分，但检测准确性未达到准入门限。
+4. 四导引律同随机种子报告器和三维导引离线对照已经存在，但短窗口或单随机种子结果不能作为
+   在线主线替换依据。
 
-- 在同一 episode 目录持续写出 Blocks、D4、D5、D7、D6 标准化日志。
-- 保持统一 episode clock 和实际规模字段。
-- main 汇总时把多个 loader 的记录合并到同一个 `MetricsCollector`；D7 real execution 的单次正式指标合并已完成，但多 seed、5v5/N-v-N 和非默认 episode 仍需要持续验证。
-- D5 的 terminal consistency、cross-view conflict、duplicate lock、friend hold 和 validation label 需要稳定回灌。
-- D4 的 `review_label` 和窗口统计需要稳定回灌，才能计算主动降级必要性/精度。
+### 11.3 尚未实现或仍开放
 
-## 7. PNG 策略
+| 能力 | 当前状态 | 缺少条件 |
+| --- | --- | --- |
+| TrackEval 多目标跟踪评估库 | 未接入 | 冻结帧级真值/预测格式、遮挡与重现规则、版本依赖 |
+| 高阶跟踪准确度（Higher Order Tracking Accuracy，HOTA） | 不可用 | TrackEval 或等价实现；`py-motmetrics` 1.4.0 不提供该指标 |
+| 最优子模式分配距离（Optimal Subpattern Assignment，OSPA） | 未进入 `EpisodeMetrics` | 帧级真值/估计集合、截断距离和阶数合同 |
+| 广义最优子模式分配距离（Generalized OSPA，GOSPA） | 未进入 `EpisodeMetrics` | 目标出生/消失/遮挡规则和参数合同 |
+| Stone Soup 多目标跟踪研究库指标桥 | 未实现 | 对象映射、版本锁定、样例和门限测试 |
+| AirSim 原生录制通用解析器 | 未实现 | 稳定样例、字段版本、NED/相机/时间映射 |
+| 大规模多智能体协作机器人仿真环境（Simulating Collaborative Robots in Massive Multi-Agent Game Environments，SCRIMMAGE）指标桥 | 未实现 | 输出样例、身份映射、统一时钟和通信事件模式 |
+| 全指标统一非参数区间 | 未实现 | 按指标类型冻结重采样单位和配对规则 |
+| 长期跨提交趋势治理 | 尚未闭合 | 稳定批次目录、场景版本和失败原因词表 |
 
-PNG 截图不是指标主线输入。D6 依赖 metadata：
-
-```text
-bbox_xyxy
-camera_intrinsics
-camera_extrinsics
-timestamp
-resource_id
-camera_id
-local_track_id
-assigned_global_track_id
-object_name
-truth_label / validation_label
-gate outcome
-```
+TrackEval、HOTA、OSPA、GOSPA 和 Stone Soup 不得写成当前默认或已实现评估器。
 
-`--save-images` 只用于调试视角或人工复核。`visual_png_switch_count` 表示 D7 切换到视觉 PNG/PNG guidance 相关模式，不表示必须保存 PNG 文件。
+## 12. 2026-07-13 当前证据
 
-## 8. 与 OSPA、CLEAR MOT、HOTA/IDF1 的关系
+### 12.1 D1/D2 严格密集交叉
 
-D6 当前默认输出工程可解释指标，而不是完整外部 MOT benchmark：
+- 5 个目标，相邻目标三维间距严格为 4 米和 2 米；
+- 两个难度各 20 个随机种子，共 40 个真实 AirSim 计算机视觉实验；
+- 每次实验 51 帧，不保存截图；离线真值样本共 10200 条；
+- 在线真值泄漏为 0；
+- 基线平均 IDSW 为 1.3583，最佳 GNN 候选为 0.6167，下降 54.6%；
+- 航迹连续率由 0.9810 提高到 0.9840，绝对增益仅 0.0030；
+- 候选 P95 循环时延为 24 毫秒。
 
-- 已有本地 POD/FAR/MAR、RMSE、continuity、`id_switch_count`。
-- OSPA/GOSPA 只在文档中保留公式和扩展方向，未进入 `EpisodeMetrics.metric_names()`。
-- py-motmetrics 隔离 adapter 已基于 `msm-offline-mot-v1` 输出 IDF1/MOTA/MOTP；TrackEval 未接入，HOTA unavailable。
-- Stone Soup 未 import，也没有 Track/Detection/GroundTruthPath adapter。
+冻结准入条件要求 IDSW 相对下降、连续率绝对提高、错误航迹、时延和真值隔离同时通过。
+候选没有达到连续率增益门限，因此默认 GNN/匈牙利关联器不变。
 
-原因：
+### 12.2 D4 故障矩阵
 
-1. 当前系统评估跨越探测、分配、降级、通信、末端和导引，不只是 MOT benchmark。
-2. 默认测试需要轻依赖、可离线、可在 CI 中快速运行。
-3. 外部 evaluator 需要稳定帧级 truth-track/detection 匹配表、遮挡/重现规则、IoU/距离门限和依赖版本。
+正常、中心失效、中心加二级失效、0.5 秒延迟、30% 丢包和网络分区恢复各运行 10 个随机
+种子，共 60 个案例。安全结果为 60/60，错误降级、重复所有者和脑裂防护失败均为 0；30%
+丢包场景中 7/10 按合同闭锁。
 
-## 9. 批量统计与报告
+该结果证明实验时钟下的时期、租约、ACK 和闭锁证据可以被 D6 核验，不代表真实无线链路、
+硬件时钟漂移或带宽已经完成工程认证。
 
-当前 `ReportGenerator` 输出：
+### 12.3 D5 原生多目标跟踪
 
-- `episode_metrics.csv`
-- `summary_metrics.csv`
-- `batch_report.md`
-- `plots/detection_metrics.png`
-- `plots/tracking_metrics.png`
-- `plots/assignment_metrics.png`
-- `plots/degradation_metrics.png`
-- `plots/terminal_metrics.png`
-- `plots/secondary_sensing_metrics.png`
-- `plots/communication_metrics.png`
-- `plots/guidance_metrics.png`
-- `plots/safety_metrics.png`
-- `plots/selected_metric_distributions.png`
+真实筛选使用 1920x1080 相机、90 度视场、20/30/50 米距离、三组置信度和 ByteTrack/
+BoT-SORT 两个后端，共 18 个案例，每例 101 帧。
 
-当前 `AirSimCalibrationReportGenerator` 额外输出：
+- 20 米时，两后端激活率和连续率均为 1.0，IDSW 为 0；
+- P95 处理时延约为 7.4/16.2 毫秒；
+- 按交并比（Intersection over Union，IoU）0.5 的离线边界框口径，精确率约 0.30-0.32，
+  召回率约 0.26-0.33；
+- 30 米和 50 米没有有效接受检测；
+- 18 个候选均未准入，默认检测仍为 AirSim detect 元数据接口。
 
-- `airsim_calibration_records.csv`
-- `airsim_calibration_summary.csv`
-- `airsim_calibration_summary.json`
-- `airsim_calibration_report.md`
+### 12.4 M5N2 协同物理闭环
 
-该 bundle 的中文 Markdown 显式解释 coverage/funnel/gimbal、projection valid、geometry gate pass、stable registration、not registered、active degradation precision 和 D7 guidance reject reason。D6 只读取 main/D4/D5/D7 写盘结果，不控制 AirSim、camera/gimbal、D4 降级或 D5 注册。
+实验使用 5 个资源和 2 个目标，高威胁目标采用 2 个已激活主成员加 1 个待命备用成员。基线
+与三个 D3 候选配置各运行 10 个随机种子，共 40 个 SimpleFlight 实验。当前不要求同时到达，
+每个主成员独立通过合同和视觉门控，物理成功使用 NED 三维最近距离不大于 5 米。
 
-统计量：
+| 配置档 | 联盟完成 |
+| --- | ---: |
+| 基线 | 0/10 |
+| 20 米 / 3 秒 / 40 度 | 5/10 |
+| 20 米 / 5 秒 / 40 度 | 2/10 |
+| 20 米 / 8 秒 / 40 度 | 1/10 |
 
-```text
-count
-mean
-sample_std
-stderr
-normal-approximation 95% CI
-median
-p05
-p95
-```
+最佳配置只达到 5/10，低于 8/10 的冻结门限。四个配置档总体完成 8/40。主要失败原因是
+D5 未锁定和末端检测获取超时，少量为边界框面积过小。
 
-偏态或长尾指标，例如 `id_switch_count`、`constraint_violation_count`、`terminal_switch_reject_count`，正式论文/报告应补 bootstrap 或非参数 CI。当前实现主要服务工程回归和批量对比。
+### 12.5 七源四层漏斗和安全
 
-## 10. 外部项状态与原因
+统一报告的四层明确计数为：
 
-| 项目 | 当前状态 | 原因 | 缺少条件 |
-|---|---|---|---|
-| Stone Soup metrics | 未实现直接依赖和 adapter | 保持轻依赖；D1/D2 输出未冻结到 Stone Soup 对象 | 版本锁定、对象映射、测试 fixture、门限合同 |
-| OSPA/GOSPA | 未输出字段 | 需要帧级集合序列 | cutoff/order、truth/estimate set、birth/death/遮挡规则 |
-| py-motmetrics | 隔离 P2 adapter 已实现 IDF1/MOTA/MOTP | 默认依赖保持轻量 | 冻结 `msm-offline-mot-v1` schema；真实 replay 门限仍需校准 |
-| TrackEval/HOTA | 未实现；HOTA unavailable | py-motmetrics 1.4.0 不提供 HOTA | 完整帧级身份评估、重现/遮挡规则、标准格式导出 |
-| AirSim 原生 recording parser | 未实现 | 当前 Blocks JSONL 已满足主线；原生 recording schema 差异大 | 样例数据、字段版本、NED/相机/时间轴映射 |
-| Live AirSim replay | 未实现且非 D6 目标 | D6 只能离线读日志 | 由 main runtime replay 并导出日志 |
-| SCRIMMAGE metrics bridge | 未实现 | 当前无 SCRIMMAGE 输出样例和 schema | ID 映射、通信事件字段、episode clock、批量目录 |
+| 层级 | 计数 |
+| --- | ---: |
+| 合同允许 | 35 |
+| 控制允许 | 7 |
+| 模式切换 | 9 |
+| 资源对物理成功 | 62 |
 
-## 11. P1 下一步
+这些数字来自不同证据族和不同机会分母，不能彼此相除或逐层强行推导。D5 的 120 个有效主成员
+机会中，关联/锁定为 74/120，合同允许为 35/120，控制允许为 7/120。在线真值使用、规范全局
+身份改写和待命备用成员越权执行均为可用且为 0。
 
-1. 多 seed 自动汇总与长期趋势：持续使用 main runtime P1 calibration sweep 生成的 D6 bundle，跟踪 `mobile_recon_gimbal` 与 `fixed_downlook_secondary` 的 coverage、full-view、projection valid、geometry gate pass、registered candidate、stable registration、bbox area、cue/gimbal pointing 指标。
-2. D4 主动降级必要性：main/D4 持续写出 `review_label`、trigger/decision timestamp、selected coordinator、coverage cell、pre/post window 和后验 outcome/risk 字段；D6 不从事件名推断必要性。
-3. 真实 episode 日志完整性：D4/D5/D7/Blocks 产物持续落到同一 episode clock 和目录，D6 汇总阶段调用 loader 合并；D6 继续只消费日志，不参与控制、重规划或导引。
-4. 多 seed 双口径与 actual scale 分组：在 2v2、5v5、N-v-N 和非默认 episode 批量运行中持续保留 `metric_scope=execution/contract`、实际规模字段、seed/scenario 分组、D7 guidance reject reason metadata 和 D4/D5 calibration geometry 字段。
+### 12.6 回归状态
 
-## 12. P2 下一步
+截至该状态日期，D6 全量回归记录为 `115 passed`。本次任务只同步文档，没有修改代码或测试
+能力，因此不把重新运行全量测试作为本次文档验收条件。
 
-1. 定义帧级 truth/detection/track 匹配表。
-2. 接入 py-motmetrics 或 TrackEval 作为可选 benchmark。
-3. 接入 Stone Soup/OSPA/GOSPA 作为论文级对照。
-4. 增加 AirSim 原生 recording parser，仅在 Blocks JSONL 不足时推进。
-5. 增加 bootstrap/非参数 CI。
-6. 仅在 AirSim 无法回答通信或多机规模问题时，评估 SCRIMMAGE bridge。
+## 13. 结论边界和当前开放问题
 
-## 13. 推荐验证
+当前证据可以支持以下结论：
+
+1. 七源写盘证据、类型化记录、实际规模、可用性和中文报告链已经接通；
+2. 执行、合同、回放和执行后来源可以分开审计，不再用回放估计覆盖正式执行值；
+3. 多资源合法协同与异常重复分配、资源对成功与联盟完成已使用不同分母；
+4. D4 实验时钟下的时期、租约、确认应答和闭锁可以被离线核验；
+5. D7 合同、控制、模式和物理四层不再互相回填；
+6. 在线真值隔离、全局身份改写和备用成员越权具有显式安全审计项。
+
+仍不能据此声称：
+
+1. M5N2 多资源协同已经稳定成熟；最佳联盟完成仍只有 5/10；
+2. D2 候选已可替代默认关联器；连续率增益没有达到冻结门限；
+3. ByteTrack 或 BoT-SORT 已可替代 AirSim detect；当前检测精确率、召回率和远距离探测不足；
+4. D4 已通过真实无线网络、硬件时钟和带宽认证；当前是实验时钟故障注入；
+5. D3 计划变化、成员变化和联盟时期变化已完整可用；缺真实有序计划历史时这些指标仍不可用；
+6. TrackEval、HOTA、OSPA、GOSPA 或 Stone Soup 指标已经实现；它们仍是未接入能力；
+7. 专用 2000 次自助区间等于全指标统一非参数统计框架；后者尚未实现。
+
+## 14. 验证方式
+
+模块全量测试命令为：
 
 ```bash
 pytest -q research_modules/d6_evaluation_metrics/tests
+```
+
+生成 100 个随机种子的通用批量示例：
+
+```bash
 python3 research_modules/d6_evaluation_metrics/scripts/run_batch_example.py --seeds 100
 ```
 
-文档/空白检查：
+文档范围和空白检查：
 
 ```bash
-git diff --check -- research_modules/d6_evaluation_metrics subagent_reviews/D6_*
+git diff --check -- research_modules/d6_evaluation_metrics/docs/ALGORITHM_AND_IMPLEMENTATION.md
 ```
+
+## 15. 主要术语
+
+| 中文名称 | 英文全称和缩写/代码名 | 本文含义 |
+| --- | --- | --- |
+| 单次实验 | episode | 一次具有统一时钟、场景、随机种子和证据目录的运行 |
+| 实际规模 | `drone_count/resource_count/target_count/camera_count` | 飞行器、资源、目标和相机的实际数量 |
+| 北-东-地坐标系 | North-East-Down，NED | 当前融合和三维物理距离判据的工作坐标系 |
+| 身份切换 | Identity Switch，IDSW | 同一真值目标的规范全局航迹身份发生变化 |
+| 均方根误差 | Root Mean Square Error，RMSE | 估计位置与真值位置的平方误差均值开方 |
+| 归一化创新平方 | Normalized Innovation Squared，NIS | 创新相对创新协方差的一致性统计量 |
+| 归一化估计误差平方 | Normalized Estimation Error Squared，NEES | 状态误差相对状态协方差的一致性统计量 |
+| 确认应答 | Acknowledgement，ACK | 必要联盟成员对提交或消息的确认 |
+| 多目标跟踪 | Multi-Object Tracking，MOT | 在连续图像中维持多个目标局部身份的过程 |
+| 执行口径 | `metric_scope=execution` | 执行后正式结果 |
+| 合同口径 | `metric_scope=contract` | 执行前合同与门控诊断 |
+| 证据可用 | `available` | 字段和分母完整，显式零有效 |
+| 证据不可用 | `unavailable` | 缺必要证据，不能进入该指标分母 |
+| 策略不适用 | `not_applicable` | 场景或路线本来没有该指标概念 |
+| 视觉比例导航制导 | Proportional Navigation Guidance，PNG | D7 末端视觉导引模式，不是图像文件 |
+| 便携式网络图形 | Portable Network Graphics，PNG | D6 报告图像格式，不是导引模式 |
+| 来源审计 | provenance | 从源文件、生产者、运行标识到最终指标选择的证据链 |

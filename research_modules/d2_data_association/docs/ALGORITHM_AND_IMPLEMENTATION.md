@@ -1,485 +1,935 @@
-# D2 多目标跟踪与数据关联算法原理与实施方案
+# D2 多目标数据关联算法与实施方案
 
-## 1. 模块定位
+**状态日期**：2026-07-13
+**适用范围**：科研仿真、受治理日志回放、离线评估和跨节点航迹注册基础
+**默认主线**：全局最近邻（Global Nearest Neighbor，GNN）与匈牙利算法的一对一硬关联
+**安全边界**：本文不包含真实飞控、自动处置、毁伤评估或绕过人工授权的能力
 
-D2 负责把 D1 输出的多源融合观测或初始航迹整理成稳定的 `global_track_id` 序列。它解决的核心问题不是“位置是否足够准”，而是“同一个目标在交叉、遮挡、漏检和虚警条件下是否仍由同一个全局身份连续表示”。D2 输出供 D3 做资源-目标分配，供 D4 做主动降级风险仲裁证据，供 D5 做末端视觉配准，供 D6 计算系统级指标。
+本文依据 D2 当前代码、`README.md`、`PLAN.md`、`MODULE_PRINCIPLES_CN.md` 和系统总汇总同步编写。文中“已实现”必须有仓库代码或回放证据支撑；“可选”“部分实现”和“未实现”不得解释为默认工程能力。
 
-本模块仅用于离线科研仿真与日志回放评估，不包含真实飞控、硬件驱动、火控、毁伤、自动处置或授权绕过逻辑。
+## 1. 模块任务与工程边界
 
-## 2. 输入输出
+### 1.1 D2 在系统中的位置
 
-### 2.1 输入
-
-当前可执行实现使用二维位置量测作为研究基线：
-
-- `Detection.detection_id`：单帧观测唯一编号。
-- `Detection.timestamp`：量测时间。
-- `Detection.position`：二维位置或投影平面坐标。
-- `Detection.covariance`：二维量测协方差。
-- `Detection.feature`：可选外观、类别或声纹类特征向量。
-- `Detection.truth_id`：仅用于离线评估，不参与真实部署决策。
-
-在系统集成中，D1 的 `GlobalTrack` 可通过适配器转换为 D2 的 `Detection` 或直接扩展为带状态预测的航迹输入。关键要求是保留时间戳、协方差和来源元数据。
-
-每帧输入数量由调用方提供的集合决定。D2 不从场景名推断固定 2v2/5v5 数量，也不把 main runtime 的 `--drone-count` 复制为内部常量；关联器按实际 `active_tracks` 与 `detections` 长度构造 `N x M` 代价矩阵，Tracker 按未匹配观测动态建轨、按漏检动态丢失或删除航迹。
-
-### 2.2 输出
-
-D2 输出更新后的 `GlobalTrack` 列表和 `AssociationResult`：
-
-- `global_track_id`：稳定身份键，下游模块不得自行改写。
-- `state = [x, y, vx, vy]^T`：常速度研究状态。
-- `covariance`：状态不确定性。
-- `lifecycle_state`：`tentative / confirmed / engageable / lost / dropped`。
-- `matched_pairs`、`unmatched_track_ids`、`unmatched_detection_ids`：每帧关联结果。
-- `ambiguity_score`、`rejected_pairs`、`metadata`：解释失败和歧义来源。
-
-输出给 D3/D4/D5/D6 的 `global_track_id` 集合来自当前活动航迹列表，不截断或填充到固定数量。5v5 或 2v2 只表示某些离线 fixture 的规模，不是输出合同的一部分。
-
-## 3. 数学模型
-
-### 3.1 运动与观测模型
-
-默认状态向量为：
+D2 是反无人机系统（Counter-Unmanned Aircraft System，C-UAS）中的多目标数据关联与身份连续性模块。它位于 D1 多传感器融合之后、D3 资源分配之前，并向 D4 降级仲裁、D5 末端视觉关联和 D6 系统评估提供身份与风险证据。
 
 ```text
-x = [px, py, vx, vy]^T
+D1 受治理观测/粗航迹
+  -> D2 预测、门控、关联、建轨和身份维护
+  -> D3 使用稳定 global_track_id 进行资源分配
+  -> D5 使用同一 global_track_id 做末端投影配准
+
+D2 风险摘要 -> D4 主动降级仲裁
+D2 日志/离线指标 -> D6 统一评估
 ```
 
-常速度预测模型为：
+D2 的核心问题不是“目标位置是否足够接近真值”，而是：
+
+1. 同一物理目标在交叉、密集编队、漏检和短时遮挡后是否仍由同一个全局航迹标识符（Identifier，ID）表示；
+2. 新观测应更新已有航迹、生成暂定航迹，还是因统计不相容而被拒绝；
+3. 同一观测或同一物理目标是否被重复解释；
+4. 不同节点发布的局部航迹能否注册到同一规范全局航迹；
+5. 无在线真值时，如何发布可解释风险而不伪造身份切换结论。
+
+### 1.2 不属于 D2 的职责
+
+D2 不承担以下工作：
+
+- 不启动、重置或控制微软 AirSim 无人系统仿真器；
+- 不直接调用 AirSim 软件开发工具包（Software Development Kit，SDK）；
+- 不处理原始相机图像，不执行目标检测和 D5 局部视觉多目标跟踪；
+- 不生成或修改 D3 的版本化 `AssignmentPlan`；
+- 不直接决定 D4 是否切换到二级节点或完全分布式模式；
+- 不允许 D5、D7、源节点本地航迹或仿真对象名称改写 `global_track_id`；
+- 不实现原始乱序量测（Out-of-Sequence Measurement，OOSM）的回溯、重放和平滑；
+- 不把当前二维跟踪器表述成原生三维跟踪器；
+- 不把第三方对象转换适配器表述成端到端多目标跟踪系统。
+
+代码中的 `engageable` 只表示航迹质量足以供下游科研实验使用，不表示授权、处置或控制许可。
+
+### 1.3 动态规模原则
+
+当前活动航迹数记为 `N_t`，本帧观测数记为 `N_z`。D2 按实际输入构造 `N_t x N_z` 代价矩阵，不从场景名推断目标数量，不写死 2 对 2 或 5 对 5。固定规模场景只用于可重复的基准回放。
+
+因此，目标出生、漏检、虚警、丢失和删除造成的 `N_t != N_z` 是正常输入，不需要填充虚拟目标或截断观测。
+
+## 2. 当前能力分层
+
+| 能力 | 当前状态 | 是否默认 | 准确边界 |
+| --- | --- | --- | --- |
+| 二维常速度预测 | 已实现 | 是 | 状态为位置和速度四维向量 |
+| 协方差输入治理 | 已实现 | 是 | 拒绝非有限、明显非对称或明显非半正定输入 |
+| 马氏距离门控 | 已实现 | 是 | 基础门限默认 `9.21` |
+| 质量感知门限 | 已实现轻量基线 | 是 | 有界规则，不是完整通用自适应门控框架 |
+| 运动一致性代价 | 已实现 | 是 | 方向、短历史和异常加速度的轻量代价 |
+| GNN/匈牙利关联 | 已实现 | 是 | 默认一对一硬关联主线 |
+| 线性卡尔曼更新 | 已实现 | 是 | 使用 Joseph 协方差更新形式 |
+| 航迹生命周期 | 已实现 | 是 | 暂定、确认、可用、丢失、删除 |
+| 风险滑窗与软硬风险 | 已实现 | 是 | 风险分数不是身份错误后验概率 |
+| 在线真值隔离 | 已实现 | 是 | 真值只在关联完成后进入离线评估 |
+| 身份切换与连续性评估 | 已实现 | 离线 | 缺真值时显式标记不可用 |
+| 归一化创新平方 | 已实现 | 在线可用 | 用于创新统计一致性检查 |
+| 归一化估计误差平方 | 已实现 | 仅离线 | 需要四维离线真值状态 |
+| 跨节点规范航迹注册 | 已实现基础 | 显式调用 | 建立规范绑定和融合请求，不计算数值融合后验 |
+| 联合概率数据关联 | 轻量研究近似 | 否 | 没有概率混合状态和协方差更新 |
+| 多假设跟踪 | 有界研究近似 | 否 | 没有完整长期假设树和 N 次扫描剪枝 |
+| Stone Soup/FilterPy | 对象适配和冒烟测试 | 否 | 不是端到端关联跟踪器 |
+| 三维跟踪、扩展/无迹滤波、交互多模型 | 未实现 | 否 | 只能作为后续研究项 |
+
+优先级零、优先级一和优先级二（Priority 0 / Priority 1 / Priority 2，P0 / P1 / P2）表示工程优先级，不表示算法自动进入默认主线。
+
+## 3. D1 受治理输入
+
+### 3.1 输入合同
+
+D2 支持两类 D1 输入适配路径。
+
+第一类是 D1 六维北-东-地坐标系（North-East-Down，NED）`GlobalTrack` 的二维投影：
+
+- D1 状态顺序为 `[north, east, down, vn, ve, vd]`；
+- D1 协方差为 `6 x 6`；
+- D2 取北、东位置作为二维观测，取协方差左上 `2 x 2` 子矩阵；
+- 保留 `measurement_timestamp`、`arrival_timestamp`、来源 ID 和元数据；
+- 该适配只做二维投影，不把 D2 转换成三维跟踪器。
+
+第二类是 D1 受治理回放：
+
+- 清单版本为 `d1.governed_replay_manifest.v1`；
+- 观测版本为 `d1.sensor_observation.v1`；
+- 当前只把 NED 工作空间中的雷达球坐标记录转换为二维北-东观测；
+- 声学方位和光电（Electro-Optical，EO）像素观测因量测空间不同而显式跳过；
+- 跳过数量及原因写入报告元数据，不能把不同量纲直接混入同一位置代价矩阵；
+- 按量测时间和 AirSim 帧号聚合为 D2 帧。
+
+### 3.2 雷达球坐标到北-东平面的投影
+
+设雷达测得距离 `rho`、方位角 `a` 和俯仰角 `e`，传感器 NED 位置为 `(n_s,e_s,d_s)`，则水平位置为：
+
+\[
+\begin{aligned}
+n &= n_s + \rho\cos(e)\cos(a),\\
+e_N &= e_s + \rho\cos(e)\sin(a).
+\end{aligned}
+\]
+
+雷达球坐标量测协方差记为 `R_rae`，从球坐标到北-东平面的雅可比矩阵记为 `J`，投影协方差为：
+
+\[
+R_{ne}=J R_{rae}J^T.
+\]
+
+这样，距离相关噪声不会在转换后丢失。D2 后续门控使用 `R_ne`，而不是只比较投影位置的欧氏距离。
+
+### 3.3 双时间戳
+
+- `measurement_timestamp` 表示观测对应的物理时刻；
+- `arrival_timestamp` 表示观测到达处理链路的时刻。
+
+D2 受治理适配器保留二者。当前主跟踪器假定输入已按量测时间整理，并以量测时间推进状态。`dt` 被限制为非负数只能防止反向传播，不等于已经实现 OOSM 回溯。
+
+### 3.4 二维 `Detection`
+
+默认关联器消费 `Detection`：
+
+| 字段 | 含义 | 治理要求 |
+| --- | --- | --- |
+| `detection_id` | 单帧匿名观测 ID | 不是全局身份权威 |
+| `timestamp` | 量测时刻 | 必须为有限数值 |
+| `position` | 二维位置 | 固定为两维 |
+| `covariance` | 二维量测协方差 | 固定 `2 x 2`，进入一致性检查 |
+| `confidence` | 观测置信度 | 当前存储并透传，不直接进入默认代价 |
+| `feature` | 可选类别或外观特征 | 仅在维度一致时进入特征代价 |
+| `metadata` | 时间、来源、投影和谱系 | 在线路径递归移除真值字段 |
+| `truth_id` | 离线真值 ID | 在线受治理路径必须为空 |
+
+### 3.5 D2 `GlobalTrack`
+
+D2 规范航迹的默认状态为：
+
+\[
+\mathbf{x}=[p_x,p_y,v_x,v_y]^T,
+\]
+
+协方差为 `4 x 4`。主要字段包括：
+
+- `global_track_id`：由中心 D2 跟踪器创建的规范身份键；
+- `state`、`covariance`、`timestamp`：状态、协方差和有效时刻；
+- `lifecycle_state`：生命周期；
+- `hits`、`consecutive_hits`、`misses`、`age`：命中、漏检和年龄；
+- `identity_confidence`：轻量身份置信度；
+- `track_quality`：航迹质量；
+- `association_risk`：关联风险；
+- `quality_metadata`：质量和风险分项；
+- `history`、`transition_log`：状态历史和转移审计。
+
+新航迹按 `T001`、`T002` 等中心序号创建。源观测 ID、本地航迹 ID、仿真对象名称和离线真值 ID 都不能替代该编号。
+
+## 4. 默认算法主线
+
+### 4.1 每帧执行流程
 
 ```text
-x_k = F(dt) x_{k-1} + w
-P_k = F P_{k-1} F^T + Q(dt)
+受治理 DetectionBatch
+  -> 检查时间、维度和协方差
+  -> Tracker.predict_all(measurement_timestamp)
+  -> 构造创新和创新协方差
+  -> 马氏门控与质量感知门限
+  -> 计算特征和运动一致性代价
+  -> GNN/匈牙利一对一求解
+  -> 匹配航迹执行卡尔曼更新
+  -> 未匹配航迹执行漏检/丢失/删除逻辑
+  -> 未匹配观测生成暂定航迹
+  -> 更新质量、风险、状态转移和关联日志
+  -> 在线发布不含真值的活动航迹
+  -> 全回合结束后由离线评估器读取独立真值
 ```
 
-二维位置观测模型为：
+### 4.2 二维常速度预测
+
+默认使用常速度模型（Constant Velocity，CV）。这里的 CV 表示运动模型，不是 AirSim 的计算机视觉（Computer Vision）模式。
+
+设相邻量测时间差为 `dt`，状态转移矩阵为：
+
+\[
+F(dt)=
+\begin{bmatrix}
+1&0&dt&0\\
+0&1&0&dt\\
+0&0&1&0\\
+0&0&0&1
+\end{bmatrix}.
+\]
+
+预测方程为：
+
+\[
+\hat{\mathbf{x}}^-_k=F\hat{\mathbf{x}}^+_{k-1},
+\qquad
+P^-_k=F P^+_{k-1}F^T+Q(dt).
+\]
+
+过程噪声强度默认 `q=0.20`，离散过程噪声为：
+
+\[
+Q=q
+\begin{bmatrix}
+dt^4/4&0&dt^3/2&0\\
+0&dt^4/4&0&dt^3/2\\
+dt^3/2&0&dt^2&0\\
+0&dt^3/2&0&dt^2
+\end{bmatrix}.
+\]
+
+常速度模型计算稳定、参数少，适合建立可解释基线。其限制是强机动或明显垂直运动会增大预测误差，进而导致门内候选重叠。
+
+### 4.3 观测创新
+
+二维位置观测矩阵为：
+
+\[
+H=
+\begin{bmatrix}
+1&0&0&0\\
+0&1&0&0
+\end{bmatrix}.
+\]
+
+对航迹 `i` 与观测 `j`：
+
+\[
+\hat{\mathbf{z}}_i=H\hat{\mathbf{x}}^-_i,
+\quad
+\mathbf{r}_{ij}=\mathbf{z}_j-\hat{\mathbf{z}}_i,
+\quad
+S_{ij}=H P^-_iH^T+R_j.
+\]
+
+`r_ij` 是创新，`S_ij` 是创新协方差，`R_j` 是观测协方差。航迹和观测的不确定性同时进入匹配计算。
+
+### 4.4 协方差治理
+
+观测和航迹协方差必须满足：
+
+1. 形状正确；
+2. 所有元素有限；
+3. 在数值容差内对称；
+4. 在数值容差内为半正定（Positive Semidefinite，PSD）。
+
+明显非法的协方差直接拒绝。仅对浮点误差尺度内的缺陷执行：
+
+- `0.5(P+P^T)` 对称化；
+- 将极小或轻微负特征值抬升至机器精度相关下限。
+
+`covariance_consistency` 表示最新检查结果，`regularization_ever_applied` 和 `last_regularization` 保留历史正则化证据。输入矩阵合法不代表滤波统计一致，后者由归一化创新平方和归一化估计误差平方检查。
+
+### 4.5 马氏距离门控
+
+马氏平方距离为：
+
+\[
+d^2_{ij}=\mathbf{r}_{ij}^T S_{ij}^{-1}\mathbf{r}_{ij}.
+\]
+
+创新协方差不可逆时使用广义逆。基础门限 `g_0=9.21`，接近二维卡方分布 99% 分位。超过实际门限的候选被设为大代价 `10^9`，并记录 `mahalanobis_gate` 拒绝原因。
+
+门控先于全局分配，作用是排除统计上明显不相容的候选。它不是身份确认本身：多个目标协方差重叠时，多个候选可能同时通过门控。
+
+### 4.6 质量感知门限
+
+默认开启轻量质量感知门限。每条航迹质量为：
+
+\[
+q_t=0.28q_P+0.18q_H+0.12q_A+0.18q_M+0.16q_L+0.08q_I,
+\]
+
+其中：
+
+- `q_P`：位置协方差对应的不确定性质量；
+- `q_H`：累计命中质量；
+- `q_A`：航迹年龄质量；
+- `q_M`：漏检惩罚后的质量；
+- `q_L`：生命周期质量；
+- `q_I`：身份置信度。
+
+实际门限按以下结构调整：
+
+\[
+g_i=\operatorname{clip}
+\left(g_0(1+r_q+r_P-t_d-t_a),g_{min},g_{max}\right).
+\]
+
+- 低质量和大位置协方差会受控放宽门限，降低漏配概率；
+- 局部目标密度高时收紧门限，降低错误吸附概率；
+- 上一帧关联风险高且目标密集时进一步收紧；
+- 默认上下界为 `4.0` 和 `16.0`。
+
+这是可解释的有界基线，不是完整自适应门控理论，也没有在所有真实场景中完成冻结标定。
+
+### 4.7 关联代价
+
+门内候选总代价为：
+
+\[
+C_{ij}=d^2_{ij}+w_f C^{feature}_{ij}+w_m C^{motion}_{ij}.
+\]
+
+特征维度一致时：
+
+\[
+C^{feature}_{ij}=\|\mathbf{f}_i-\mathbf{f}_j\|^2.
+\]
+
+缺少特征或维度不一致时，特征项为零。运动一致性代价为：
+
+\[
+C^{motion}_{ij}=\min(3,C_{dir}+0.75C_{hist}+0.50C_{acc}).
+\]
+
+其中：
+
+- `C_dir` 比较当前速度方向与候选残差方向；
+- `C_hist` 比较短时历史运动方向与候选方向；
+- `C_acc` 惩罚异常大的候选加速度；
+- 方向项采用 `(1-cos(theta))/2`，同向接近零，反向接近一。
+
+运动一致性只是关联代价增强，不改变常速度预测模型。
+
+### 4.8 GNN/匈牙利一对一求解
+
+GNN 在当前帧求解：
+
+\[
+\min_{a_{ij}}\sum_{i=1}^{N_t}\sum_{j=1}^{N_z}a_{ij}C_{ij},
+\]
+
+满足：
+
+\[
+a_{ij}\in\{0,1\},\qquad
+\sum_j a_{ij}\leq1,\qquad
+\sum_i a_{ij}\leq1.
+\]
+
+即每条航迹最多匹配一个观测，每个观测最多匹配一条航迹。实现调用 Python 科学计算库 SciPy 的 `linear_sum_assignment`。求解后再次检查大代价和对应航迹门限，防止矩形矩阵中的门外项误入匹配结果。
+
+匈牙利求解复杂度约为 `O(max(N_t,N_z)^3)`。它不限制输入规模，但更大目标数仍需要计算预算和场景分区。
+
+### 4.9 歧义度
+
+对每条航迹，将门内代价升序排列。最优与次优代价差记为 `Delta_i`，行歧义分数为：
+
+\[
+A_i=\exp(-0.5\Delta_i).
+\]
+
+总体 `ambiguity_score` 是各行分数的平均值。仅有一个合法候选时该行记零。代价越接近，歧义越接近一，表示 GNN 硬判决越可能只是打破平局。
+
+### 4.10 卡尔曼更新
+
+匹配后执行线性卡尔曼更新：
+
+\[
+K=P^-H^T(HP^-H^T+R)^{-1},
+\]
+
+\[
+\hat{\mathbf{x}}^+=\hat{\mathbf{x}}^-+K\mathbf{r}.
+\]
+
+协方差使用 Joseph 形式：
+
+\[
+P^+=(I-KH)P^-(I-KH)^T+KRK^T.
+\]
+
+Joseph 形式更利于保持数值对称和半正定。更新后累计命中、清零漏检、记录最近观测 ID，并以默认平滑系数 `0.85` 更新可选特征。
+
+### 4.11 动态建轨
+
+未匹配观测生成暂定航迹：
+
+\[
+\mathbf{x}_0=[z_x,z_y,0,0]^T.
+\]
+
+初始位置方差为 `4.0`，初始速度方差为 `25.0`。新 ID 由中心 `Tracker` 顺序生成，不继承观测 ID 或仿真真值 ID。
+
+## 5. 生命周期与身份权威
+
+### 5.1 在线状态机
 
 ```text
-z_k = H x_k + v
-H = [[1, 0, 0, 0],
-     [0, 1, 0, 0]]
+tentative -> confirmed -> engageable
+     |           |             |
+     +-----------+------miss--> lost --more miss--> dropped
+                              |
+                              +--hit--> confirmed 或 engageable
 ```
 
-其中 `Q` 由 `Tracker.process_noise` 控制，`R` 来自 `Detection.covariance`。
+中文对应为：暂定、确认、可供下游研究使用、丢失和删除。当前没有 `engaged` 状态。
 
-### 3.2 马氏距离门控
+| 条件 | 转移 | 默认值 |
+| --- | --- | ---: |
+| 连续命中达到确认数 | `tentative -> confirmed` | `confirmation_hits=2` |
+| 累计命中和协方差满足质量条件 | `confirmed -> engageable` | `hits>=4` 且协方差迹 `<=20` |
+| 连续漏检达到丢失阈值 | 活动状态 `-> lost` | `lost_miss_threshold=2` |
+| 连续漏检达到删除阈值 | 非删除状态 `-> dropped` | `drop_miss_threshold=5` |
+| 丢失后重新命中 | `lost -> confirmed/engageable` | 按命中和协方差重新判断 |
 
-对航迹 `i` 和观测 `j`：
+不同的确认、丢失和删除阈值形成生命周期迟滞，防止单帧漏检立即删轨，也防止一次重获无条件恢复高质量状态。每次转移写入 `TrackTransition`，记录时刻、前后状态和原因。
 
-```text
-z_hat_i = H x_i
-S_ij = H P_i H^T + R_j
-r_ij = z_j - z_hat_i
-d_ij^2 = r_ij^T S_ij^-1 r_ij
-```
+### 5.2 在线确认与离线 M-of-N
 
-若 `d_ij^2 > gate_threshold`，该候选对被拒绝，并记录为 `RejectedPair(reason="mahalanobis_gate")`。默认 `gate_threshold=9.21`，约等于二维 99% 卡方门限，适合低维位置量测的初始基线。
+在线跟踪器按连续命中确认。`InitializationGovernanceProfile` 的默认“3 次扫描中至少命中 2 次”（M-of-N，当前为 2-of-3）只用于离线初始化评估，不会读取真值改变在线状态机。
 
-## 4. GNN/Hungarian 默认主线
+因此，“M-of-N 已实现”表示评估合同和标定工具存在，不表示在线跟踪器已经采用通用滑窗建轨器。
 
-GNN/Hungarian 是本模块默认硬关联方案。它把每一帧的“航迹-观测”匹配建模为线性分配问题：
+### 5.3 `global_track_id` 权威规则
 
-```text
-C_ij = d_ij^2 + w_f * feature_cost_ij
-```
+1. `global_track_id` 只由中心 D2 `Tracker` 或中心跨节点注册表创建和维护；
+2. D1 来源 ID 在二维投影中只作为元数据，不自动成为 D2 规范 ID；
+3. `detection_id` 只用于单帧匹配和日志；
+4. 本地视觉航迹 ID、节点局部航迹 ID、AirSim actor 名称和离线真值 ID 都无改名权限；
+5. D5 的末端不一致只能作为风险证据，不能直接把全局航迹重绑到另一个 ID；
+6. D7 只能消费 D2/D3 传递的全局 ID，不能按接近对象重新命名；
+7. 不因目标数量变化补齐固定长度 ID；
+8. 多个合法来源航迹绑定同一个规范航迹，不代表出现多个目标。
 
-其中 `d_ij^2` 是马氏距离，`feature_cost_ij` 是可选特征差异，`w_f` 对应 `feature_weight`。门外候选被填入大代价 `LARGE_COST`。随后使用 `scipy.optimize.linear_sum_assignment` 求解一对一最小总代价匹配。
+## 6. 在线真值隔离与离线评估
 
-适用边界：
+### 6.1 隔离流程
 
-- 目标数量中小；算法复杂度由每帧 `N` 条活动航迹和 `M` 个观测决定，而不是固定 2v2/5v5。
-- 每条航迹门内候选较少，典型候选数接近 1。
-- 观测频率稳定，短时漏检可由预测维持。
-- 交叉持续时间短，外观或类别特征能提供辅助区分。
+受治理回放默认执行：
 
-局限：
+1. 源观测 ID 替换为按帧匿名 ID；
+2. 在线 `Detection.truth_id` 置空；
+3. actor、truth、ground-truth 等嵌套元数据递归删除；
+4. 在线 `GlobalTrack.truth_id` 置空；
+5. 在线关联日志不携带真值标签、真值目标数或归一化估计误差平方；
+6. 全部在线关联完成后，独立离线评估器才读取真值文件。
 
-- GNN 是硬判决，一旦交叉帧选错，后续可能产生 ID Switch。
-- 当两条航迹协方差高度重叠、门内候选都合理时，GNN 无法表达“不确定但暂缓确认”。
-- 虚警密集时，若门限过宽或协方差过大，容易错误吸附杂波。
+离线标签合同为 `d2-offline-truth-label/v1`，使用 JavaScript 对象表示法（JavaScript Object Notation，JSON）的逐行格式（JSON Lines，JSONL）。每条记录至少包含回合 ID、帧号、时间、真值 ID 和二维位置。
 
-因此 GNN/Hungarian 是工程默认基线，不是所有场景的最终算法。
+在线帧与真值只允许在冻结的 `1e-9` 秒容差内精确对齐。无唯一对应时标记部分可用或拒绝，不能用最近邻时间补配制造虚假的身份改善。
 
-## 5. 漏检、虚警与航迹生命周期
+### 6.2 为什么必须隔离
 
-### 5.1 漏检处理
+AirSim actor ID 是仿真真值，不是现实传感器可获得的信息。若在线关联直接使用 actor ID，身份切换计数和连续性将失去意义。当前“在线匿名运行、写盘后独立评分”的方式保证算法只使用位置、时间、协方差、特征和历史，同时保留可重复评估。
 
-未匹配航迹不会立即删除，而是进入预测维持：
+### 6.3 可用性语义
 
-```text
-misses += 1
-consecutive_hits = 0
-identity_confidence -= 0.25
-```
+无离线真值时：
 
-当 `misses >= lost_miss_threshold` 时转为 `lost`；当 `misses >= drop_miss_threshold` 时转为 `dropped`。这样可以覆盖短时遮挡，但不会无限保留陈旧航迹。
+- `truth_metrics_available=false`；
+- `continuity_available=false`；
+- 身份切换、身份连续性和归一化估计误差平方不可解释；
+- 兼容字段即使为 `0.0`，也不能解释为“没有身份切换”或“连续性为零”。
 
-### 5.2 虚警处理
+## 7. 风险摘要和指标
 
-未匹配观测默认可以生成 `tentative` 航迹。只有连续命中达到 `confirmation_hits` 后才进入 `confirmed`，达到 `engageable_hits` 且协方差迹低于 `engageable_covariance_trace` 后才进入 `engageable`。这里的 `engageable` 只表示“可供下游离线分配实验使用的高质量航迹”，不代表授权或处置状态。
+### 7.1 航迹质量与关联风险
 
-### 5.3 生命周期状态机
+每条航迹输出 `track_quality` 和 `association_risk`。当前关联风险由以下分量组成并截断至 `[0,1]`：
 
-```text
-tentative -> confirmed -> engageable -> lost -> dropped
-             ^              |
-             |              v
-          reacquired <---- lost
-```
+- 低航迹质量；
+- 多候选；
+- 运动不一致；
+- 连续漏检；
+- 本帧未匹配；
+- 暂定或丢失状态；
+- 新建航迹。
 
-所有状态转移记录在 `TrackTransition`，用于 D6 复盘身份断裂、遮挡恢复和虚警形成过程。
+该值是可解释规则分数，不是“身份错误概率”。
 
-### 5.4 M-of-N 初始化治理与虚假航迹
+### 7.2 五帧风险滑窗
 
-在线 Tracker 当前仍按连续命中执行确定性状态转移；replay governance 另设版本化 `InitializationGovernanceProfile`，默认要求首个窗口内 `M=2` 次命中、窗口长度 `N=3` 帧，并允许 replay/sensitivity 调用方注入其他版本。离线评估输出每个 truth 的初始化和确认延迟、M-of-N 是否通过，以及由显式虚警观测形成且从未获得真实目标证据的 false-track 数量和比例。该评估用于标定 `confirmation_hits`，不使用 truth 改变在线状态机。
+`AssociationRiskSummaryWindowGenerator` 默认按五帧汇总：
 
-### 5.5 NIS 与 NEES
+- 关联歧义；
+- 候选重叠率；
+- 最优和次优代价间隔风险；
+- 身份切换窗口增量；
+- 重复分配窗口增量；
+- 可用时的连续性风险；
+- D5 末端不一致次数；
+- 航迹质量和最大关联风险；
+- 来源节点和链路类型。
 
-NIS 使用关联前创新 `r=z-Hx` 和创新协方差 `S=HPH^T+R`：
+不可用的连续性不参与硬风险计算。D2 向 D4 发布摘要，不要求 D4 解析完整代价矩阵。
 
-```text
-NIS = r^T S^-1 r
-```
+### 7.3 软风险和硬风险
 
-NIS 对所有在线匹配计算，不需要 truth；当前二维量测按自由度 2 的 95% 卡方区间评估。NEES 使用更新后四维状态误差和状态协方差：
+| 风险类型 | 证据 | 默认阈值 | 解释 |
+| --- | --- | ---: | --- |
+| 软风险 | 歧义分数 | `>=0.45` | 多个候选代价接近 |
+| 软风险 | 候选重叠率 | `>=0.30` | 多航迹共享候选 |
+| 软风险 | 代价间隔风险 | `>=0.45` | 最优优势不足 |
+| 软风险 | D5 不一致 | `>=1` | 末端证据与中心预测冲突 |
+| 硬风险 | 身份切换增量 | `>=1` | 已发生规范身份切换 |
+| 硬风险 | 重复分配增量 | `>=1` | 已出现重复解释 |
+| 硬风险 | 重复航迹风险 | `>=0.65` | 规范目标可能被重复表示 |
+| 硬风险 | 可用身份连续性 | `<0.75` | 身份稳定覆盖明显退化 |
 
-```text
-NEES = (x-x_truth)^T P^-1 (x-x_truth)
-```
+软风险只支持继续观察、提高 D3 迟滞或请求额外证据；不能由单帧软风险直接触发主动降级。D4 必须结合 D1 不确定度、D3 计划时效、D5 末端证据和通信健康状态仲裁。
 
-NEES 只在独立 `offline_truth_state=[x,y,vx,vy]` 存在时计算，按自由度 4 的 95% 卡方区间评估。在线关联器看不到 truth state，因此 NEES 只能用于离线协方差一致性标定。
+### 7.4 身份切换与连续性
 
-真实 replay 启用 truth isolation 后，源 detection/actor ID 会被替换为按帧匿名 ID，嵌套 actor/truth metadata 也会被递归删除。在线 association log 仅保留匿名 detection order、measurement/active-track count、门控诊断、risk profile/version 和 NIS；truth target count、身份标签与 NEES 只进入独立离线评估。
+标识符切换计数（Identifier Switch Count，IDSW）定义为：同一真实目标本帧的代表 `global_track_id` 与上一已分配帧不同，则计数增加一。
 
-## 6. JPDA 可插拔升级项
+设真实目标集合为 `U`，目标 `u` 存在 `T_u` 帧，被任意航迹覆盖 `C_u` 帧，由同一代表航迹稳定覆盖 `S_u` 帧：
 
-JPDA 将关联从硬判决改为概率边缘化。对于一帧内所有合法联合假设 `H_k`，简化似然为：
+\[
+\text{coverage continuity}=
+\frac{1}{|U|}\sum_{u\in U}\frac{C_u}{T_u},
+\]
 
-```text
-L(H_k) = Π matched exp(-0.5 d_ij^2)
-         * Pd^(matched_count)
-         * (1-Pd)^(missed_count)
-         * clutter_density^(unmatched_detection_count)
-```
+\[
+\text{identity continuity}=
+\frac{1}{|U|}\sum_{u\in U}\frac{S_u}{T_u}.
+\]
 
-归一化后得到每个候选对的边缘概率：
+当前 `track_continuity` 是 `identity_continuity` 的兼容别名。`duplicate_assignment_count` 统计同一观测、同一航迹或同一真实目标被重复使用和解释的异常。
 
-```text
-β_ij = Σ P(H_k | Z), for H_k containing (i, j)
-```
+### 7.5 几何误差
 
-当前实现枚举小规模联合假设，并以 `min_marginal_probability` 选出非冲突匹配。它适合作为中小规模目标交叉、遮挡和高歧义帧的研究对照；目标/观测数增加时依赖 `max_joint_hypotheses` 截断，而不是固定数量假设。
+均方根误差（Root Mean Square Error，RMSE）为：
 
-建议触发 JPDA 的条件：
+\[
+\mathrm{RMSE}=\sqrt{\frac{1}{K}\sum_{k=1}^{K}
+\|\hat{\mathbf{p}}_k-\mathbf{p}^{truth}_k\|^2}.
+\]
 
-- `candidate_counts_by_track` 的均值持续大于 1.5。
-- `ambiguity_score` 连续升高。
-- 目标协方差门重叠，且 GNN 在回放中出现 ID Switch。
-- 遮挡恢复阶段出现多个合理重连候选。
+RMSE 只衡量几何精度。两个目标交换身份但位置仍接近真值时，RMSE 可能较小，因此不能替代 IDSW 和身份连续性。
 
-代价是联合假设数量随目标和观测数量组合增长，必须限制 `max_joint_hypotheses`，并在 `metadata["truncated"]` 中记录截断状态。
+### 7.6 NIS 与 NEES
 
-## 7. MHT 可插拔升级项
+归一化创新平方（Normalized Innovation Squared，NIS）为：
 
-MHT 将多个帧的关联假设保留下来，延迟做全局选择。当前实现维护有界分支：
+\[
+\mathrm{NIS}=\mathbf{r}^T S^{-1}\mathbf{r}.
+\]
 
-```text
-branch = (score, history, branch_id)
-```
+它不需要真值，可在线计算。当前按二维量测自由度二的 95% 卡方区间统计样本数、均值、中位数和区间覆盖率。
 
-每帧扩展合法分配，加入漏检惩罚和虚警惩罚，保留 `max_hypotheses` 个最优分支，并用 `max_history` 限制历史长度。
+归一化估计误差平方（Normalized Estimation Error Squared，NEES）为：
 
-MHT 适合研究这些情况：
+\[
+\mathrm{NEES}=(\hat{\mathbf{x}}-\mathbf{x}^{truth})^T
+P^{-1}(\hat{\mathbf{x}}-\mathbf{x}^{truth}).
+\]
 
-- 长遮挡后需要回看多帧证据。
-- 单帧信息不足，但多帧轨迹连续性可以排除错误假设。
-- 需要与完整 Stone Soup MHT 或外部研究库对比。
+它需要四维离线真值状态，仅在独立评估器中计算，并按自由度四的 95% 卡方区间统计。缺真值状态时必须标记不可用，不能填零。
 
-局限是复杂度随时间和候选数呈指数趋势，必须依赖剪枝、N-scan、分簇或场景分区。当前实现是有界研究接口，不应被解释为完整工业级 MHT。
+## 8. 跨节点规范航迹注册
 
-## 8. IMM-EKF/UKF 的意义与当前状态
+该能力用于中心、二级高空侦察节点和拦截节点把各自局部航迹注册到规范全局身份。它与单帧 `Detection -> GlobalTrack` 关联路径分离。
 
-当前可执行基线使用二维常速度 Kalman 预测；代码中没有 EKF、UKF、IMMEstimator、CV/CA/CT 模型集或模型转移概率。若目标存在明显机动，预测误差会扩大，导致门控变宽或候选交叠，从而间接增加 ID Switch。IMM-EKF/UKF 的作用是未来改善预测质量，而不是替代数据关联：
+### 8.1 来源航迹合同
 
-- EKF：适合轻度非线性观测或二维/三维运动学扩展，计算轻。
-- UKF：适合非线性更强、雅可比难维护的模型。
-- IMM：并行维护常速度、常加速度、协调转弯等模型，并根据模型概率融合预测。
+`SourceTrackSummary` 包含：
 
-推荐路径是先保持 D2 的 `DataAssociator` 接口不变，建立 FilterPy 或自研 optional benchmark，再比较强机动场景下 `id_switch_count` 和 `identity_continuity` 是否确实改善。只有在 replay 证明确有收益后，才考虑把预测器从常速度 Kalman 升级为 IMM-EKF/UKF。
+- `(source_node_id, local_track_id, local_epoch)` 来源命名空间；
+- `measurement_timestamp` 和 `arrival_timestamp`；
+- 六维 NED 状态 `[north,east,down,vn,ve,vd]`；
+- `6 x 6` 协方差；
+- 质量、信息谱系和载荷消息 ID；
+- 相关性状态；
+- 非权威候选规范 ID 和当前规范 ID 提示。
 
-## 9. 主要实施流程
+候选提示没有改写权限，只有中心 `CrossNodeTrackRegistry` 能创建和维护规范绑定。
 
-每帧处理链路如下：
+### 8.2 公共时刻传播
 
-```text
-DetectionBatch
-  -> Tracker.predict_all(timestamp)
-  -> DataAssociator.associate(active_tracks, detections, timestamp)
-  -> matched tracks: Kalman update + lifecycle advance
-  -> unmatched tracks: miss/lost/drop handling
-  -> unmatched detections: create tentative tracks
-  -> MetricsRecorder.record_frame(...)
-```
+来源航迹先传播到公共融合时刻。六维常速度状态转移为：
 
-核心文件：
+\[
+F_6(dt)=
+\begin{bmatrix}
+I_3&dtI_3\\
+0&I_3
+\end{bmatrix}.
+\]
 
-- `d2_data_association/models.py`：数据结构和生命周期枚举。
-- `d2_data_association/gating.py`：马氏门控、代价矩阵、歧义分数。
-- `d2_data_association/associators.py`：GNN、JPDA、MHT 关联器。
-- `d2_data_association/tracker.py`：预测、更新、建轨、删轨、状态机。
-- `d2_data_association/metrics.py`：ID Switch、连续性、重复分配、RMSE。
-- `d2_data_association/simulation.py`：交叉、编队、遮挡、漏检、虚警场景。
+传播同时加入三维白噪声加速度过程协方差。融合时刻不得早于量测时刻或消息到达时刻，注册表时间必须单调。
 
-## 10. 关键接口
+### 8.3 航迹到航迹门控
+
+来源与规范航迹状态残差为：
+
+\[
+\mathbf{e}=\mathbf{x}_{source}-\mathbf{x}_{canonical}.
+\]
+
+已知交叉协方差 `P_sc` 时：
+
+\[
+P_\Delta=P_c+P_s-P_{sc}-P_{sc}^T.
+\]
+
+相关性未知时，当前门控采用保守膨胀：
+
+\[
+P_\Delta=2(P_c+P_s).
+\]
+
+随后计算六维马氏平方距离：
+
+\[
+d^2=\mathbf{e}^TP_\Delta^{\dagger}\mathbf{e},
+\]
+
+其中 `dagger` 表示广义逆，默认门限为 `16.812`。已有绑定可获得最多 `4.0` 的连续性代价偏置，但门外候选不能靠偏置回到门内。
+
+### 8.4 按来源分组的匈牙利注册
+
+注册表按 `source_node_id` 分组，对每个来源分别执行一对一匈牙利匹配：
+
+- 同一来源内部保持一对一；
+- 不同节点各自的一条来源航迹可以绑定同一个规范 ID；
+- 合法多源观测不会增加目标基数；
+- 无门内规范航迹时创建 `GT-000001` 等规范 ID。
+
+注册表拒绝重复来源键、重复载荷 ID、重复信息谱系、明确重复信息以及时间不递增的陈旧或重放消息。
+
+### 8.5 相关性决策与数值融合边界
+
+| 条件 | D2 输出 | 后续职责 |
+| --- | --- | --- |
+| 单一来源 | `NO_FUSION_SINGLE_SOURCE` | 不需要融合 |
+| 已知交叉协方差 | `REQUEST_EXACT_CORRELATED_FUSION` | 请求 D1 做精确相关融合 |
+| 相关性未知 | `REQUEST_COVARIANCE_INTERSECTION` | 请求 D1 做协方差交集 |
+| 重复信息 | `REJECT_DUPLICATE_INFORMATION` | 禁止重复使用 |
+
+协方差交集（Covariance Intersection，CI）用于未知交叉相关时的保守融合。D2 当前只完成身份对应、相关性分类、规范绑定和融合请求，不在本模块计算或回写数值后验。
+
+在线跨节点指标只统计规范重绑、重复拒绝和传输/排队/融合延迟。跨节点 IDSW、规范重复、精确率和召回率仍由独立离线评估器使用隔离真值计算。
+
+## 9. 可选研究算法的准确边界
+
+### 9.1 轻量 JPDA
+
+联合概率数据关联（Joint Probabilistic Data Association，JPDA）对每条航迹最多保留四个门内候选，最多枚举 `4096` 个联合假设。当前假设对数似然为：
+
+\[
+\log L(h)=
+\sum_{(i,j)\in h}
+\left[\log P_D-\frac{1}{2}C_{ij}\right]
++n_{miss}\log(1-P_D)
++n_{fa}\log\lambda_c.
+\]
+
+默认探测概率 `P_D=0.90`，杂波密度 `lambda_c=10^{-3}`。归一化后，候选边缘概率为包含该匹配的假设概率之和。当前只选取边缘概率不低于 `0.35` 的非冲突匹配，再由普通 `Tracker` 做单一观测卡尔曼更新。
+
+因此当前 JPDA：
+
+- 已实现小规模联合假设枚举、概率归一化和边缘概率；
+- 未实现概率加权状态混合和协方差混合；
+- 未实现航迹合并抑制和生产级分簇；
+- 目标数增大时依赖假设上限截断；
+- 必须显式选择，不会按风险自动替换 GNN；
+- 2026-07-13 同输入回放结果退化，未获主线晋级资格。
+
+### 9.2 有界 MHT
+
+多假设跟踪（Multiple Hypothesis Tracking，MHT）维护有限分支。分支代价为：
+
+\[
+J_{new}=J_{old}+\sum C_{ij}+6.0n_{miss}+4.0n_{fa}.
+\]
+
+默认每条航迹最多三个候选，每帧最多生成 `512` 个分配，保留最优 `16` 个分支和最近五帧历史，当前帧采用最优分支结果。
+
+当前 MHT：
+
+- 已实现有限分支、短历史、漏检和虚警惩罚；
+- 未实现完整 N 次扫描剪枝、长期假设树、分簇和确认管理；
+- 未建立真实场景下的中心算力预算；
+- 只用于接口、复杂度和离线对照研究；
+- 不能称为完整工业级 MHT。
+
+### 9.3 第三方框架
+
+P2 隔离基准可在同一冻结回放摘要下输出五类结果：默认 GNN、模块内轻量 JPDA、模块内有界 MHT、Stone Soup 和 FilterPy。
+
+- Stone Soup 多目标跟踪研究框架当前只完成 D2 `Detection` 到框架对象的转换和延时冒烟测试；
+- FilterPy 滤波算法库当前只创建二维常速度卡尔曼对象并执行对象级预测和更新；
+- 两条外部路径都没有端到端跨帧身份、生命周期和数据关联；
+- 外部路径的 IDSW 和连续性必须标记不可用；
+- 依赖缺失或接口失败时必须输出 `unavailable_reason`，不能静默回退；
+- 它们不进入默认依赖，不替换 NumPy/SciPy 主线。
+
+### 9.4 明确未实现的预测升级
+
+扩展卡尔曼滤波（Extended Kalman Filter，EKF）、无迹卡尔曼滤波（Unscented Kalman Filter，UKF）和交互多模型（Interacting Multiple Model，IMM）当前均未进入 D2 跟踪器。若未来证明机动预测误差是身份切换主因，应先冻结三维状态、非线性量测、模型转移概率和评估场景，再做同输入、同预算对照。
+
+## 10. 代码实施结构
+
+| 文件 | 主要职责 |
+| --- | --- |
+| `models.py` | `Detection`、`GlobalTrack`、关联结果和生命周期数据结构 |
+| `gating.py` | 协方差感知门控、质量门限、特征与运动一致性代价 |
+| `associators.py` | GNN/匈牙利、轻量 JPDA 和有界 MHT |
+| `tracker.py` | 预测、更新、动态建轨、漏检处理、状态机和质量风险 |
+| `metrics.py` | IDSW、连续性、重复分配、风险滑窗和风险分类 |
+| `d1_governed_adapter.py` | D1 受治理回放到匿名二维观测的转换 |
+| `d1_offline_truth_adapter.py` | D1 独立真值旁路到 D2 离线标签的严格对齐 |
+| `offline_truth.py` | 离线真值合同、评估和可用性语义 |
+| `replay_governance.py` | 初始化治理、日志模式和在线真值隔离 |
+| `replay.py` | JSON/JSONL 回放、报告和门限敏感性汇总 |
+| `p1_replay_stress.py` | 漏检、杂波、延迟噪声和组合压力变换 |
+| `p1_identity_calibration.py` | 54 配置筛选、20 种子确认和冻结准入规则 |
+| `calibration.py` | 密集交叉多种子校准工具 |
+| `cross_node_models.py` | 跨节点来源航迹、规范绑定和融合请求结构 |
+| `cross_node_registry.py` | 公共时刻传播、按来源匈牙利匹配和注册表 |
+| `cross_node_metrics.py` | 在线无真值指标和离线跨节点评分 |
+| `p2_benchmark.py` | 同输入可选算法与第三方对象适配基准 |
+| `dry_run_adapter.py` | AirSim 风格离线帧和跨模块总线消息适配 |
+
+### 10.1 核心调用关系
 
 ```python
-associator = GNNHungarianAssociator(gate_threshold=9.21, feature_weight=6.0)
+associator = GNNHungarianAssociator(
+    gate_threshold=9.21,
+    quality_aware_gate=True,
+)
 tracker = Tracker(associator=associator)
-result = tracker.step(detections, timestamp, truth_ids_present=truth_ids)
+result = tracker.step(detections, timestamp)
 summary = tracker.metrics.summary()
 ```
 
-`DataAssociator.associate()` 是插件边界。任何新算法只要返回 `AssociationResult`，即可复用现有 `Tracker`、生命周期和指标系统。
+`DataAssociator.associate(tracks, detections, timestamp)` 是关联器插件边界。新关联器必须返回统一 `AssociationResult`，才能复用跟踪器、生命周期、日志和评估。但接口兼容不等于算法已通过主线准入。
 
-## 11. 参数与调参建议
+### 10.2 关键输出
 
-| 参数 | 默认/示例 | 作用 | 调参建议 |
-|---|---:|---|---|
-| `gate_threshold` | `9.21` | 马氏门控大小 | IDSW 高且漏配少时收紧；漏检多时先检查协方差再放宽 |
-| `feature_weight` | `6.0` | 特征差异权重 | 只有特征稳定时提高；特征噪声大时降低 |
-| `process_noise` | `0.20` | 预测模型机动余量 | 机动目标门外漏配时提高；虚警吸附时降低 |
-| `confirmation_hits` | `2` | 建轨确认速度 | 虚警多时提高；短航迹多时降低 |
-| `engageable_hits` | `4` | 高质量航迹门槛 | 下游分配过早时提高 |
-| `lost_miss_threshold` | `2` | 进入 lost 的漏检帧数 | 短遮挡多时提高 |
-| `drop_miss_threshold` | `5` | 删除航迹的漏检帧数 | 长遮挡研究可提高，但会增加陈旧航迹 |
-| `min_marginal_probability` | `0.30-0.35` | JPDA 输出阈值 | 歧义高时提高以减少误连，或降低以提高覆盖 |
-| `max_hypotheses` | `16` | MHT 分支上限 | 仅在离线研究中按算力增加 |
+每帧 `AssociationResult` 至少包括：
 
-调参顺序建议：先校准协方差和门限，再引入特征权重，最后切换 JPDA/MHT。不要用复杂关联器掩盖错误的时间戳、坐标转换或协方差建模。
+- `matched_pairs`；
+- `unmatched_track_ids`；
+- `unmatched_detection_ids`；
+- `ambiguity_score`；
+- `rejected_pairs`；
+- `cost_matrix` 和 `distance_matrix`；
+- 各航迹门限、候选数量、运动一致性和质量风险元数据；
+- 可选风险摘要。
 
-## 12. 仿真验证与指标
+`AssociationLogEntry` 再增加运行耗时、输入规模、配置版本和可用性。下游使用摘要和规范航迹，不应自行重算或改写身份。
 
-内置仿真场景：
+## 11. 参数治理与调参顺序
 
-- `crossing`：两目标交叉。
-- `crossing_dense_5v5`：确定性 dense/crossing 5v5 基线 fixture。
-- `formation`：五目标近距编队。
-- `occlusion`：三目标短时遮挡。
-- `missed`：随机漏检。
-- `false_alarms`：虚警杂波。
+| 参数 | 默认/基线 | 作用 | 主要风险 |
+| --- | ---: | --- | --- |
+| `gate_threshold` | `9.21` | 基础马氏门限 | 太宽吸附错误目标，太窄增加漏配 |
+| 质量门限下界/上界 | `4.0 / 16.0` | 限制自适应幅度 | 未分层标定时不能任意扩大 |
+| `feature_weight` | 类默认 `1.0`；干运行显式 `6.0` | 可选特征代价 | 特征不稳定时可能反向伤害关联 |
+| `motion_weight` | `1.0` | 运动一致性权重 | 机动目标过高权重可能拒绝真实候选 |
+| `process_noise` | `0.20` | 常速度模型机动余量 | 过大使协方差膨胀，过小导致门外漏配 |
+| `confirmation_hits` | `2` | 在线确认速度 | 太低形成虚假航迹，太高增加确认延迟 |
+| `engageable_hits` | `4` | 高质量航迹命中要求 | 只影响研究质量状态，不是授权 |
+| `lost_miss_threshold` | `2` | 进入丢失状态 | 太低使短漏检频繁退化 |
+| `drop_miss_threshold` | `5` | 删除航迹 | 太高会保留陈旧航迹 |
+| JPDA 边缘概率阈值 | `0.35` | 研究对照匹配阈值 | 不应直接迁移到主线 |
+| MHT 最大分支数 | `16` | 限制研究对照计算量 | 分支过少可能提前剪掉正确历史 |
 
-这些场景用于回归和算法对照，保留固定规模是为了结果可重复。实际 D2 关联链路仍按输入帧内 `detections` 和 `active_tracks` 的长度运行；main runtime 用 `--drone-count` 选择的目标数量只需体现在传入 D2 的观测/航迹集合中。
+调参顺序必须是：
 
-运行示例：
+1. 检查时间戳、坐标和协方差；
+2. 校准固定马氏门限；
+3. 校准质量感知门限；
+4. 校准过程噪声和生命周期；
+5. 仅在特征可靠时引入特征权重；
+6. 最后才比较 JPDA/MHT。
+
+复杂关联器不能用来掩盖时间、坐标或协方差错误。
+
+## 12. 严格回放校准方法
+
+### 12.1 固定参数矩阵
+
+P1 身份校准固定 54 组 GNN 配置：
+
+- 马氏门限：`5.99 / 9.21 / 13.82`；
+- 质量感知门控：关闭/开启；
+- 丢失/删除阈值：`1/3`、`2/5`、`3/7`；
+- 运动权重倍数：`0.5 / 1.0 / 2.0`。
+
+十个唯一种子用于候选筛选，二十个唯一种子用于确认默认基线、最佳 GNN 和同输入轻量 JPDA。基准场景生成器不能在真实数据缺失时冒充 AirSim 结论。
+
+### 12.2 冻结准入条件
+
+候选必须同时满足：
+
+1. 平均 IDSW 至少下降 30%；
+2. 身份连续性至少提高 `0.10`；
+3. 虚假航迹增幅不超过 10%；
+4. 第 95 百分位（95th Percentile，P95）循环延迟不超过冻结预算；
+5. 在线真值泄漏为零。
+
+满足全部条件也只生成晋级评审建议，不会由运行器自动替换默认配置。
+
+### 12.3 六档压力场景
+
+回放治理已支持：
+
+- 标称；
+- 紧密交叉；
+- 连续漏检；
+- 杂波；
+- 延迟噪声；
+- 组合压力。
+
+压力变换只操作受治理雷达记录，不读取真值旁路，不移动目标几何。支持接口不等于六档长期真实 AirSim 数据已经全部完成。
+
+## 13. 2026-07-13 严格 4 米/2 米结果
+
+### 13.1 测试条件
+
+本轮权威证据来自主收敛验证报告：
+
+- AirSim ComputerVision（计算机视觉）模式；
+- 五个目标；
+- 标称相邻目标三维距离严格为 4 米；
+- 紧密相邻目标三维距离严格为 2 米；
+- 两种难度各 20 个种子，共 40 个真实 AirSim 回合；
+- 每回合 51 帧；
+- 仅离线评估器可见的真值样本共 10200 条；
+- 在线真值泄漏为零。
+
+### 13.2 结果
+
+| 指标 | 默认基线 | 最佳 GNN 候选 | 变化 |
+| --- | ---: | ---: | ---: |
+| 平均 IDSW | `1.3583` | `0.6167` | 下降 `54.6%` |
+| 身份连续性 | `0.9810` | `0.9840` | 提高 `0.0030` |
+| P95 循环延迟 | 基线行未单列 | `24` 毫秒 | 满足冻结实时筛选预算 |
+
+结果说明候选配置能够显著降低平均身份切换，但身份连续性只提高 `0.0030`，未达到冻结的 `+0.10` 门限。轻量 JPDA 在同输入下退化。
+
+### 13.3 未晋级结论
+
+本轮没有算法或参数候选获得主线晋级资格：
+
+- 最佳 GNN 候选未同时通过身份连续性门限；
+- 轻量 JPDA 没有表现出替换收益；
+- 完整 JPDA、完整 MHT 和端到端第三方跟踪器未实现，不能用名称替代证据；
+- 当前权威默认仍是门限 `9.21`、质量感知门控开启、丢失/删除阈值 `2/5`、运动权重倍数 `1.0` 的 GNN/匈牙利主线。
+
+“IDSW 下降 54.6%”不能单独解释为密集交叉问题已解决。准入采用多指标联合约束，避免优化一个指标却损害身份稳定覆盖、虚假航迹或实时性。
+
+## 14. 与其他模块的实施接口
+
+### 14.1 D1 到 D2
+
+D1 提供量测时间、到达时间、NED 状态或可投影观测、协方差、来源、谱系和可选分类提示。D2 只把合法二维位置观测送入默认关联器，不把声学方位或 EO 像素冒充北-东位置。
+
+### 14.2 D2 到 D3
+
+D3 消费 `global_track_id`、状态、协方差、生命周期、`track_quality` 和 `association_risk`。D3 可以对暂定、丢失或高风险航迹增加代价或延迟分配，但不能重命名目标。D2 不维护分配计划版本。
+
+### 14.3 D2 到 D4
+
+D2 发布软硬风险、IDSW 增量、重复解释、连续性可用性、来源节点和链路信息。D4 再结合 D1、D3、D5 和通信状态决定继续中心方案、请求重规划、请求二级辅助或降级。D2 不直接发出模式切换命令。
+
+### 14.4 D2 与 D5
+
+D5 使用 `global_track_id` 把中心航迹投影到局部相机图像。D5 可回传候选集合、匹配置信度、歧义和不一致，D2 可将其纳入风险摘要。D5 的本地多目标跟踪 ID 和 AirSim actor ID 均不得成为规范 ID。
+
+### 14.5 D2 与 D6
+
+D6 消费关联日志、状态转移、指标摘要、配置版本、离线真值评分和可用性。D2 与 D6 都必须显式保留 `id_switch_count`。D6 不能用 RMSE、覆盖率或物理拦截结果替代身份指标。
+
+### 14.6 D2 与 D7
+
+D7 沿用 D2/D3 传递的规范 ID 和计划上下文，不得因局部接近另一个目标而重绑身份。D2 不提供制导许可，也不使用物理接近结果反向修改离线真值。
+
+### 14.7 main runtime
+
+主运行时负责 AirSim 启动和重置、回合编排、`--drone-count N` 场景规模、在线受治理输入、独立离线真值文件和 D6 报告。D2 只消费受治理文件或总线消息，不直接管理 AirSim。
+
+## 15. 实施检查与回归
+
+### 15.1 文档对应的模块测试
 
 ```bash
 PYTHONPATH=research_modules/d2_data_association \
-python3 research_modules/d2_data_association/scripts/run_simulation.py --steps 36 --seed 7
+pytest -q research_modules/d2_data_association/tests
 ```
 
-必须显式评估的指标：
+本次同步只修改文档，不修改代码，因此不要求重新运行全量模块测试。2026-07-13 主报告记录既有 D2 回归结果为 `93 passed`；该数字是历史验证证据，不表示本次文档任务重新执行了测试。
 
-- `id_switch_count`：同一真值目标的代表航迹发生变化的次数。它直接反映身份连续性风险。
-- `track_continuity` / `identity_continuity`：真值存在期间由同一身份稳定覆盖的比例。
-- `coverage_continuity`：真值存在期间是否被任意航迹覆盖。
-- `duplicate_assignment_count`：同一帧一对多、多对一或同真值多航迹覆盖的异常数量。
-- `rmse`：位置误差，不能替代身份指标。
-- `confusion_matrix`：真值目标与全局航迹的对应分布。
-- `runtime_seconds_by_associator`：算法耗时，用于比较实时性余量。
+### 15.2 每次算法调整的验收顺序
 
-这些指标必须进入 D6，因为单看 RMSE 可能掩盖身份交换；单看命中或覆盖也可能掩盖重复分配。
+1. 检查在线输入不含真值和 actor ID；
+2. 检查量测时间、到达时间和协方差合同；
+3. 运行模块单元测试；
+4. 在冻结回放上比较默认与候选；
+5. 输出逐种子 IDSW、连续性、重复解释、NIS/NEES 可用性和延迟；
+6. 检查候选是否同时满足全部准入条件；
+7. 由 main 和 D6 汇总，禁止模块运行器自动替换默认主线。
 
-## 13. 面向 D4 主动降级的关联风险信号
+## 16. 当前局限与后续实施重点
 
-D4 的主动降级不是被动等待中心节点失效，而是在中心或二级节点仍存在时，根据态势质量判断当前中心化分配链路是否需要重评估、切换到二级节点辅助，或进入分布式协同对照。D2 不直接决定降级，也不改变 D3 的分配计划；D2 只提供“关联不确定度与 ID 风险”信号，供 D3/D4/D6 在离线仿真中仲裁。
+### 16.1 仍属 P1 的工作
 
-### 13.1 D2 可提供的触发信号
+- 扩展更长的真实 OOSM、遮挡、连续漏检、杂波和延迟噪声组合回放；
+- 按目标密度和漏检率冻结确认、丢失、删除和 M-of-N 评估参数；
+- 按传感器、距离、场景和种子分层标定 NIS/NEES；
+- 继续标定质量感知门限和风险阈值，控制软风险误报；
+- 闭合跨节点注册后的 D1 数值融合回写和 D6 统计一致性评估；
+- 明确二级或分布式模式下规范 ID 所有者和纪元切换合同。
 
-| 信号 | 数据来源 | 含义 | 风险解释 |
-|---|---|---|---|
-| `association_ambiguity` | `AssociationResult.ambiguity_score` | 候选代价差距是否变小 | 越接近 1，说明多个候选观测都合理，GNN 硬关联更容易选错 |
-| `cost_margin` | `cost_matrix` 每行最小和次小有效代价 | 最优匹配相对次优匹配的优势 | margin 小表示航迹身份容易交换 |
-| `gating_overlap_ratio` | `candidate_counts_by_track`、`candidate_counts_by_detection` | 多条航迹共享观测候选或单条航迹有多个候选 | 交叉、密集编队、协方差膨胀时会升高 |
-| `id_switch_rate` | `MetricsRecorder.id_switch_count` 窗口增量 | 单位时间 ID Switch 增长速度 | 直接说明 `global_track_id` 连续性已经失稳 |
-| `continuity_drop` | `track_continuity` / `identity_continuity` 窗口变化 | 身份连续性下降 | 说明目标仍被覆盖，但身份键可能不稳定 |
-| `duplicate_track_risk` | `duplicate_assignment_count`、混淆矩阵 | 同一真值或观测被多个航迹解释 | 会污染 D3 的一对一资源分配输入 |
-| `state_regression_count` | `TrackTransition` | `engageable/confirmed -> lost` 或高质量航迹退化 | 说明下游可用航迹数量正在下降 |
-| `jpda_recommended` | 候选数、歧义分数、门控重叠 | 是否建议从 GNN 升级到 JPDA 对照 | 适合短时交叉、遮挡恢复和多候选软关联 |
-| `mht_recommended` | 连续多帧歧义、遮挡历史、ID 证据冲突 | 是否建议启用 MHT 对照 | 适合需要跨多帧回溯的持续遮挡或反复交换 |
-| `d5_disagreement` | D5 终端关联反馈，若接入 | 中心航迹预测与终端局部观测长期不一致 | 说明中心身份链路可能与末端视觉证据冲突 |
+### 16.2 保持隔离的 P2 研究
 
-这些信号不等同于“目标处置建议”。它们只表示 D2 对当前 `global_track_id` 稳定性的可信程度。
+- 完整 JPDA 状态与协方差混合；
+- 完整 MHT 假设树、分簇和 N 次扫描剪枝；
+- Stone Soup 端到端跟踪对照；
+- FilterPy 扩展卡尔曼、无迹卡尔曼和交互多模型对照；
+- 原生三维 NED 跟踪；
+- 基于风险且带迟滞的 GNN/JPDA/MHT 自动切换。
 
-### 13.1.1 与 D4 P1 仲裁的软/硬风险分层
+这些研究只能在冻结回放和独立可选环境中进行。在同输入、同评估、同算力预算下未证明身份收益前，不进入默认依赖或在线控制路径。
 
-2026-07-07 的 D4 主动降级 P1 修复后，D4 不再把所有 D2 不确定性都视为立即重规划或降级条件。D2 输出到 D4 的证据应分为两层：
+## 17. 结论
 
-| D2 证据 | D4 解释 | 建议动作 |
-|---|---|---|
-| `association_ambiguity` 中等/偏高 | 软风险，表示 GNN 硬关联候选接近 | 继续观察、提高 D3 迟滞、请求二级节点 cue 或离线 JPDA 对照 |
-| cost margin 小、candidate overlap 高 | 软风险，表示密集/交叉窗口内身份不确定 | 不单独触发 `request_center_replan`，需要窗口持续或其他硬证据 |
-| 短时 D5 disagreement | 软风险，可能是终端相机视角/检测稳定性问题 | 结合 D5 一致性窗口判断，优先观察或二级 cue |
-| `id_switch_count` 或窗口 delta 增长 | 硬风险，说明规范身份已经发生切换 | 可作为 D4 主动仲裁硬证据 |
-| `duplicate_assignment_count`、`duplicate_track_risk` 增长 | 硬风险，说明同一目标/观测可能被重复解释 | 可触发中心重规划或二级/分布式校验 |
-| `track_continuity` 低于阈值 | 硬风险，说明身份连续性已经明显退化 | 可与 D1/D3/D5 证据共同触发主动仲裁 |
+截至 2026-07-13，D2 已形成一条可运行、可审计、按动态输入规模工作的二维多目标关联主线：D1 受治理输入经过二维常速度预测、协方差治理、马氏门控、质量感知门限、GNN/匈牙利分配、卡尔曼更新和生命周期管理，生成中心权威 `global_track_id`，并通过在线真值隔离、风险摘要和离线 IDSW/连续性/NIS/NEES 评估维持证据可信度。
 
-因此 D2 生成 `AssociationRiskSummary` 时应保留原始计数、窗口 delta 和 ambiguity 分数，而不是只给一个单一 `risk_score`。当前代码用 `RiskThresholds` 和 `classify_risk_summary()` 把每帧风险摘要转换为 soft/hard `RiskBreakdown`，并在 replay helper 的 `summarize_replay_risk()` / `run_threshold_sensitivity()` 中输出帧数、原因集合和最高分。D4 需要区分“需要观察的不确定性”和“已经破坏身份连续性的硬证据”。这也是防止 nominal 2v2/5v5 场景中单帧 ambiguity 或低 cost margin 反复触发 `request_center_replan` 的关键。
-
-### 13.2 `AssociationRiskSummary` 建议结构
-
-建议在 D2 风险摘要中表达跨视角弱证据和跨节点通信来源，而不是让 D4 直接解析完整代价矩阵。D2 仍是 `global_track_id` 权威；D5、二级节点和拦截机只能提交弱证据、候选 ID 和风险提示，不能直接改写规范 ID。字段建议如下：
-
-```text
-AssociationRiskSummary
-  timestamp: float
-  window_start: float
-  window_end: float
-  source_module: "D2"
-  source_node_id: str | None
-  link_type: c2_direct | secondary_relay | interceptor_peer | video_cue | None
-  associator_type: str
-  global_risk_score: float        # 0.0 nominal, 1.0 critical
-  risk_level: nominal | elevated | high | critical
-  affected_global_track_ids: list[str]
-  association_ambiguity_ema: float
-  mean_cost_margin: float
-  low_margin_pair_count: int
-  mean_candidates_per_track: float
-  multi_candidate_track_ratio: float
-  shared_detection_candidate_ratio: float
-  id_switch_rate: float
-  track_continuity: float
-  continuity_drop: float
-  duplicate_assignment_delta: int
-  state_regression_count: int
-  engageable_to_lost_count: int
-  d5_disagreement_count: int       # optional feedback field
-  jpda_recommended: bool
-  mht_recommended: bool
-  recommend_active_reevaluation: bool
-  evidence: list[str]
-```
-
-`window_start/window_end` 应采用滑动窗口，例如 3-10 秒或 5-20 帧。单帧歧义只应触发“观察/重评估”，连续窗口异常才建议 D4 进入主动降级仲裁，避免偶发噪声导致模式抖动。
-
-### 13.3 风险评分建议
-
-一个可解释的离线评分可以采用加权归一化：
-
-```text
-S = 0.25 * ambiguity_term
-  + 0.20 * gate_overlap_term
-  + 0.20 * id_switch_term
-  + 0.15 * continuity_drop_term
-  + 0.10 * duplicate_term
-  + 0.10 * state_regression_term
-```
-
-各分项建议定义：
-
-- `ambiguity_term = EMA(AssociationResult.ambiguity_score)`。
-- `gate_overlap_term = max(multi_candidate_track_ratio, shared_detection_candidate_ratio)`。
-- `id_switch_term = clamp(id_switch_delta / window_frames, 0, 1)`。
-- `continuity_drop_term = clamp(previous_continuity - current_continuity, 0, 1)`。
-- `duplicate_term = clamp(duplicate_assignment_delta / max(1, matched_pair_count), 0, 1)`。
-- `state_regression_term = clamp(state_regression_count / max(1, active_track_count), 0, 1)`。
-
-风险等级建议：
-
-| `global_risk_score` | `risk_level` | D2 解释 |
-|---:|---|---|
-| `< 0.25` | `nominal` | GNN 关联稳定，正常记录 |
-| `0.25-0.50` | `elevated` | 有局部歧义，建议 D3 延迟不必要重分配并继续观察 |
-| `0.50-0.75` | `high` | 身份连续性存在明显风险，建议 D4 主动重评估中心/二级节点链路 |
-| `>= 0.75` | `critical` | 多指标同时恶化，建议 D4 进入主动降级仲裁并请求 JPDA/MHT 对照结果 |
-
-阈值应通过离线仿真标定，不应直接用于真实系统。
-
-### 13.4 从现有日志提取风险
-
-当前 D2 已经记录或输出多数所需证据：
-
-- `AssociationResult.ambiguity_score`：直接作为歧义基础项。
-- `AssociationResult.cost_matrix`：计算每条航迹的最小/次小代价 margin。
-- `AssociationResult.metadata["candidate_counts_by_track"]`：统计多候选航迹比例。
-- `AssociationResult.metadata["candidate_counts_by_detection"]`：统计共享观测候选比例。
-- `AssociationResult.unmatched_track_ids`：结合航迹状态，统计高质量航迹漏配。
-- `MetricsRecorder.id_switch_count`：窗口差分得到 `id_switch_rate`。
-- `MetricsRecorder.track_continuity`：窗口差分得到 `continuity_drop`。
-- `MetricsRecorder.duplicate_assignment_count`：窗口差分得到重复解释风险。
-- `Tracker.state_transitions`：筛选 `confirmed/engageable -> lost/dropped` 得到退化计数。
-
-代价 margin 计算示例：
-
-```text
-valid_costs = sorted(row[row < LARGE_COST])
-if len(valid_costs) >= 2:
-    margin = valid_costs[1] - valid_costs[0]
-else:
-    margin = +inf
-low_margin = margin < margin_threshold
-```
-
-`margin_threshold` 可先取 `1.0-2.0` 的马氏距离代价差作为离线实验初值，再用交叉和编队场景标定。
-
-### 13.5 主动重评估触发条件
-
-以下情况应提示 D3/D4 进入主动重评估，而不是继续信任上一版分配：
-
-- 多目标交叉窗口内 `id_switch_rate` 上升，且 `association_ambiguity_ema > 0.5`。
-- 多个 `GlobalTrack` 同时把同一观测列为门内候选，`shared_detection_candidate_ratio` 持续升高。
-- `engageable` 航迹连续回退到 `lost`，导致 D3 的可分配目标集合不稳定。
-- `duplicate_assignment_count` 在窗口内增长，说明同一目标可能被多个全局身份解释。
-- D5 末端视觉配准长期报告“分配目标不在预期投影门内”或多个局部目标都可匹配同一 `global_track_id`。
-- GNN 输出稳定但 JPDA 边缘概率分散，说明硬关联结果可能只是任意打破平局。
-- MHT 多分支长期不能收敛到单一低代价历史，说明需要 D4 引入二级节点或分布式视角进行独立交叉校验。
-
-### 13.6 给 D4/D3 的接口建议
-
-D2 建议向 D4/D3 发布低频风险摘要，例如 1-2 Hz，而不是每帧发布完整矩阵。推荐消费方式：
-
-- D3：当 `risk_level >= elevated` 时，提高重分配迟滞，避免在身份不稳定窗口内频繁改分配；当 `risk_level >= high` 时，请求使用 `confirmed/engageable` 且低风险的航迹子集重新计算分配。
-- D4：当 `risk_level >= high` 且持续超过 `min_risk_dwell_time` 时，进入主动降级仲裁，比较中心节点、二级侦察节点和局部分布式节点的航迹一致性。
-- D6：记录 `AssociationRiskSummary`，用于统计主动降级是否真正减少 ID Switch、重复分配和末端不一致事件。
-
-D2 只给出 `recommend_active_reevaluation`、`jpda_recommended` 和 `mht_recommended` 等研究信号。是否切换二级节点、是否进入分布式协同，必须由 D4 在综合 D1/D3/D5 信号后决定。
-
-## 14. 跨模块接口关系
-
-### D1 -> D2
-
-D1 输出多传感器融合后的观测或粗航迹。D2 需要其中的时间戳、位置/投影、协方差、置信度、可选类别或特征。若 D1 使用三维 NED 航迹，进入 D2 前应明确投影平面或扩展 D2 状态维度。
-
-### D2 -> D3
-
-D3 依赖稳定的 `global_track_id`、状态、协方差和生命周期状态构造分配代价。D2 应避免把 `tentative` 或长期 `lost` 航迹直接作为高置信输入；推荐 D3 优先消费 `confirmed/engageable` 航迹。
-
-### D2 -> D5
-
-D5 使用 `global_track_id` 将中心航迹投影到终端相机平面。D5 可以回传终端关联置信度和身份冲突事件，但不得自行改写 D2 的规范 `global_track_id`。D2 向 D3/D4/D5/D6 暴露的是当前活动航迹集合中的全部 `global_track_id`，数量随输入和航迹生命周期变化，不依赖固定 2v2/5v5 配置。
-
-### D2 -> D6
-
-D6 消费 `AssociationLogEntry`、`TrackTransition`、`MetricsRecorder.summary()` 和混淆矩阵，用于批量实验统计、失败案例定位和算法对比。D2/D6 必须显式保留 `id_switch_count`：同一 truth 的代表 `global_track_id` 变化就是 ID Switch，不能只用 RMSE、覆盖率或命中数替代身份连续性。
-
-## 15. 局限与后续工作
-
-当前实现的主要局限：
-
-- 状态空间为二维常速度，尚未直接承载 D1 的完整三维 NED `GlobalTrack`。
-- JPDA 是小规模可执行研究实现，不是完整生产级 JPDA 滤波器。
-- MHT 是有界接口和对照基线，缺少完整 N-scan、分簇和高级剪枝。
-- 特征代价为简单欧氏差异，尚未区分类别置信、外观 embedding、声纹等来源。
-- OOSM 和异步传感器回溯主要由 D1 处理，D2 当前假设输入帧已按时间整理。
-- Stone Soup 和 FilterPy 仅有 optional availability 检测和 placeholder adapter，未进入默认运行路径。
-
-建议后续工作：
-
-- 增加三维状态和 D1 `GlobalTrack` 原生适配器。
-- 引入 IMM-EKF/UKF 预测器并比较机动场景 IDSW。
-- 增加 JPDA/MHT 与 Stone Soup 的离线基准对照。
-- 把 D5 的终端关联反馈作为低权重身份证据接入，但保持 D2 对 `global_track_id` 的唯一管理权。
-- 将 `ambiguity_score`、候选数、协方差重叠率作为自动切换 JPDA/MHT 的触发器。
-- D2-owned 已提供 `load_airsim_replay_frames()`、`run_airsim_replay_association()` 和 `run_threshold_sensitivity()`，可用 AirSim-like JSON/JSONL replay 输出 association logs、IDSW/continuity/duplicate 和 soft/hard risk summary。
-- 剩余集成工作是用真实或稳定导出的 AirSim ComputerVision replay 生产 D2 输入，并让 main/D6 固化 episode JSONL schema；随后用该 replay 校准 `AssociationRiskSummaryWindowGenerator`、`RiskThresholds` 和 D4 仲裁阈值。
+严格 4 米/2 米、40 回合 AirSim 结果证明参数候选可以降低 IDSW，但没有同时达到冻结的身份连续性准入门限。因此当前正确实施结论是：继续保持 GNN/匈牙利为默认主线；轻量 JPDA、有界 MHT 和第三方框架只作为显式、隔离的研究对照；跨节点注册只负责规范身份和融合请求，不越权承担 D1 数值融合或 D4 模式切换。

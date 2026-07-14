@@ -1,91 +1,307 @@
-# D1 多传感器融合与目标配准算法与实施说明
+# 第一研究模块：多传感器融合与目标配准算法与实施说明
 
-## 1. 模块定位
+> 文档日期：2026-07-13
+>
+> 适用范围：离线科研仿真、受治理回放和系统接口验证
+>
+> 实现依据：当前第一研究模块代码、`README.md`、`PLAN.md`、模块原理文档和系统总汇总
 
-D1 负责把异步雷达、声学和光电观测统一成带协方差的 `GlobalTrack`。它是后续 D2 数据关联、D3 资源分配、D5 末端投影配准和 D6 指标统计的输入源。模块仅用于离线科研仿真和算法评估，不包含真实飞控、硬件驱动、火控、毁伤、自动处置或绕过授权的内容。
+## 1. 文档目的与模块边界
 
-当前实现采用 NumPy EKF fallback，保留 FilterPy 和 Stone Soup 的可选适配位置。所有融合状态均在本地 NED 坐标系中维护，WGS84、ENU、传感器坐标和像素坐标应在传入融合器前完成标准化或带齐外参元数据。
+第一研究模块的项目代号为 D1。D1 将异步雷达、声学、光电和可选合成激光雷达观测统一到
+同一时间基准和坐标工作空间，输出带完整不确定度证据的 `GlobalTrack`。它解决的是“不同
+传感器的观测如何形成可供后续处理的航迹候选”，不负责下列事项：
 
-## 2. 输入输出
+- 不承担第二研究模块（D2）的密集多目标身份保持；
+- 不决定第三研究模块（D3）的资源分配；
+- 不决定第四研究模块（D4）的主动或被动降级；
+- 不执行第五研究模块（D5）的末端视觉绑定；
+- 不计算第七研究模块（D7）的导引控制量；
+- 不提供真实飞控、硬件驱动、火控、毁伤或自动处置接口。
 
-### 2.1 输入：`SensorObservation`
+当前默认在线研究路径是 NumPy 数值计算库实现的常速度扩展卡尔曼滤波、基础门控关联和固定
+滞后乱序量测回放。代码按输入数组长度处理目标与观测，不把 2 对 2 或 5 对 5 写成算法常量。
 
-统一观测结构位于 `src/d1_sensor_fusion/types.py`，关键字段为：
+## 2. 术语、缩写与代码名称
 
-- `observation_id`：观测唯一编号。
-- `sensor_id`：传感器编号，如 `radar_ground_01`。
-- `modality`：`radar`、`acoustic`、`eo` 或 optional dry-run/replay `lidar`。
-- `measurement_timestamp`：传感器实际采样时刻。
-- `arrival_timestamp`：融合节点收到观测的时刻。
-- `frame_id`：当前实现要求雷达/声学为 `ned`，EO 为 `pixel`。
-- `measurement`：传感器量测向量。
-- `covariance`：量测协方差，缺省时由观测模型按距离、置信度或框大小生成。
-- `classification_hint`、`confidence`、`quality_flags`：分类提示、置信度和遮挡/小框等质量标记。
-- `metadata`：传感器位置、相机内外参、bbox、仿真真值 ID 等辅助信息。
-- 通信元数据：可直接填字段，也可放入 `metadata`，包括 `source_node_id`、`target_node_id`、`relay_node_id`、`link_type`、`sent_timestamp`、`received_timestamp`、`payload_kind`、`stale_after_s` 和 `source_support`。
+本文首次使用的英文缩写统一在此定义，后文直接使用缩写或代码名称。
 
-跨节点通信字段用于离线评估链路延迟、转发路径、载荷类型和观测新鲜度。它们不改变传感器量测模型，也不产生控制或处置动作。
+| 中文名称 | 英文全称与缩写 | 本文含义 |
+| --- | --- | --- |
+| 北-东-地坐标系 | North-East-Down，NED | D1 的状态估计和跨模块工作空间 |
+| 东-北-天坐标系 | East-North-Up，ENU | 外部工具可能使用的本地切平面坐标 |
+| 世界大地测量系统 1984 | World Geodetic System 1984，WGS84 | 外部地理参考，不直接作为滤波状态坐标 |
+| 扩展卡尔曼滤波 | Extended Kalman Filter，EKF | 当前默认非线性状态估计器 |
+| 无迹卡尔曼滤波 | Unscented Kalman Filter，UKF | 尚未进入默认实现的可选对照 |
+| 交互多模型 | Interacting Multiple Model，IMM | 尚未进入默认实现的多运动模型路线 |
+| 常速度模型 | Constant Velocity，CV | 当前默认运动模型；不是 AirSim 计算机视觉模式 |
+| 常加速度模型 | Constant Acceleration，CA | 后续运动模型对照项 |
+| 协调转弯模型 | Coordinated Turn，CT | 后续运动模型对照项 |
+| 乱序量测 | Out-of-Sequence Measurement，OOSM | 到达顺序晚于物理量测时间顺序的观测 |
+| 光电传感器 | Electro-Optical sensor，EO | 当前以像素中心和检测框表达的视觉观测 |
+| 激光雷达 | Light Detection and Ranging，LiDAR | 当前仅有合成三维位置观测路径 |
+| 归一化创新平方 | Normalized Innovation Squared，NIS | 不使用真值的创新一致性和门控统计量 |
+| 归一化估计误差平方 | Normalized Estimation Error Squared，NEES | 需要离线真值的状态一致性指标 |
+| 均方根误差 | Root Mean Square Error，RMSE | 需要离线真值和正确身份映射的误差指标 |
+| 轻量故障检测、隔离与恢复 | Fault Detection, Isolation and Recovery Light，FDIR-light | 输出健康证据，不执行硬件隔离 |
+| 加权最小二乘 | Weighted Least Squares，WLS | 已确认同一身份后的多视线定位助手 |
+| 协方差交集 | Covariance Intersection，CI | 未知交叉相关性下的保守状态融合助手 |
+| 视线 | Line of Sight，LOS | 观察者到目标的方向射线 |
+| 逗号分隔值 | Comma-Separated Values，CSV | 可审计表格回放格式 |
+| 逐行存储的 JavaScript 对象表示法 | JSON Lines，JSONL | 观测和运行日志回放格式 |
+| JavaScript 对象表示法 | JavaScript Object Notation，JSON | 清单、配置和摘要的结构化文本格式 |
+| 应用程序编程接口 | Application Programming Interface，API | 模块对外的 Python 调用接口 |
+| 命令行界面 | Command-Line Interface，CLI | 脚本执行入口 |
+| 机器人操作系统第二版 | Robot Operating System 2，ROS 2 | 后置工程消息与坐标变换运行环境 |
+| 第二代坐标变换库 | Transform Library Version 2，tf2 | ROS 2 中维护坐标变换关系的库 |
+| 开源计算机视觉库 | Open Source Computer Vision Library，OpenCV | 后置相机标定和几何后端候选 |
+| 佐治亚理工平滑与建图库 | Georgia Tech Smoothing and Mapping，GTSAM | 后置图优化几何后端候选 |
 
-### 2.2 输出：`GlobalTrack`
+AirSim 是微软开源的无人系统仿真平台；本文中的 AirSim 数据只作为仿真输入和离线评分证据。
+`SensorObservation`、`GlobalTrack` 等名称是当前 Python 数据类或字段名，不属于英文缩写。
 
-输出航迹为六维 NED 状态：
+## 3. 软件结构与实施职责
 
-```text
-x = [px, py, pz, vx, vy, vz]^T
+D1 的主要实现文件如下。
+
+| 文件 | 当前职责 |
+| --- | --- |
+| `src/d1_sensor_fusion/types.py` | 观测、航迹、质量、健康、协同定位和回放摘要数据合同 |
+| `src/d1_sensor_fusion/motion.py` | 常速度状态转移、过程噪声和角度残差处理 |
+| `src/d1_sensor_fusion/observations.py` | 雷达、声学、EO、合成 LiDAR 观测模型和默认协方差 |
+| `src/d1_sensor_fusion/ekf.py` | EKF 预测、数值雅可比、Joseph 协方差更新 |
+| `src/d1_sensor_fusion/fusion.py` | `FusionAdapter`、关联、OOSM 回放、分级和健康审计 |
+| `src/d1_sensor_fusion/replay.py` | JSONL/CSV 读写、版本化回放和受治理序列化 |
+| `src/d1_sensor_fusion/airsim_replay_freeze.py` | 真实 AirSim 持久化输入冻结和在线真值隔离 |
+| `src/d1_sensor_fusion/quality.py` | 协方差增长率和区域时间窗口汇总 |
+| `src/d1_sensor_fusion/recon_cue.py` | 给机动高空侦察节点的粗指向摘要 |
+| `src/d1_sensor_fusion/cooperative.py` | 可选多观察者方位 WLS 和 CI 数值助手 |
+| `src/d1_sensor_fusion/long_replay.py` | 可复现长时异步合成回放和摘要 |
+| `src/d1_sensor_fusion/p2_benchmark.py` | 隔离的滤波器和一致性指标对照入口 |
+
+main 全局编排模块负责 AirSim 启动、场景重置、回合顺序、跨模块消息路由和结果收集。D1 只
+负责上述数据合同和算法，不在模块内部启动 AirSim，也不控制 D2-D7。
+
+## 4. 统一输入合同
+
+### 4.1 `SensorObservation`
+
+统一观测数据类位于 `types.py`，关键字段如下。
+
+```python
+SensorObservation(
+    observation_id: str,
+    sensor_id: str,
+    modality: str,
+    measurement_timestamp: float,
+    arrival_timestamp: float,
+    frame_id: str,
+    measurement: np.ndarray,
+    covariance: np.ndarray | None,
+    classification_hint: str | None,
+    confidence: float,
+    quality_flags: tuple[str, ...],
+    metadata: dict[str, Any],
+    source_node_id: str | None,
+    target_node_id: str | None,
+    relay_node_id: str | None,
+    link_type: str | None,
+    sent_timestamp: float | None,
+    received_timestamp: float | None,
+    payload_kind: str | None,
+    stale_after_s: float | None,
+    source_support: dict[str, int] | None,
+    timestamp_uncertainty_s: float | None,
+)
 ```
 
-`GlobalTrack` 同时携带 `6x6` 协方差、`track_level`、`source_support`、`identity_likelihood` 和元数据。`metadata.frame_id="ned"` 表示融合工作空间，`valid_at` 表示航迹状态有效时刻，`published_at` 表示当前发布时刻。
+硬性合同如下。
 
-`FusionAdapter` 会把最近观测的通信字段、`latest_measurement_timestamp`、`latest_arrival_timestamp`、`latest_observation_latency_s` 和 `latest_communication_latency_s` 写入 `GlobalTrack.metadata`。下游 D3/D4/D5/D7 可据此判断观测是否过期、是否来自二级节点中继、是否是拦截机 peer 数据或视频检测摘要。
+1. `measurement_timestamp` 和 `arrival_timestamp` 必须同时存在且为有限数。
+2. `measurement_timestamp` 表示物理采样时刻；`arrival_timestamp` 表示融合节点接收时刻。
+3. 每条严格受治理观测必须携带与量测维度匹配的协方差。
+4. `radar`、`acoustic` 和 `lidar` 只接受 `frame_id="ned"`；`eo` 只接受
+   `frame_id="pixel"`。
+5. 外部 WGS84、ENU、机体系和传感器体系必须在进入融合器前转换，或提供构成观测模型所需
+   的完整外参。
+6. `classification_hint` 是类别提示，不是规范目标身份。
+7. 通信字段描述来源、转发和新鲜度，不会自动改变任务分配或控制状态。
 
-## 3. 时间基准与 OOSM 处理
+数据类会规范化通信元数据和时间戳不确定度。秒和毫秒形式的时钟偏差、抖动或不确定度会归并
+为 `timestamp_uncertainty_s`。若到达时刻早于量测时刻，异常差值也会计入时间不确定度证据。
 
-D1 强制区分两个时间戳：
+### 4.2 来源谱系与重复抑制
 
-- `measurement_timestamp` 是物理测量发生的时间，应进入滤波更新方程。
-- `arrival_timestamp` 是消息到达融合器的时间，只用于日志排序、延迟统计和 fixed-lag replay 触发。
+`source_lineage_key` 用于识别“同一源载荷经不同中继重复到达”的情况。优先使用显式
+`source_lineage_key` 或 `lineage_id`；否则组合源节点、传感器、模态、载荷类型、源序号和
+载荷指纹。`FusionAdapter` 默认启用 `source_deduplication=True`，重复载荷只增加审计计数，
+不能再次执行滤波更新并虚假缩小协方差。
 
-延迟或乱序观测即 OOSM。当前 `FusionAdapter.compensate_latency()` 的处理流程为：
+来源谱系只用于去重和审计。它不能替代 D2 的目标身份关联，也不能把不同观察者的相关估计
+当成独立信息重复融合。
 
-1. 观测按 `arrival_timestamp` 到达。
-2. 选择或创建对应航迹。
-3. 将观测插入该航迹的历史观测列表。
-4. 按 `measurement_timestamp` 对观测重新排序。
-5. 从初始状态开始，逐条预测到量测时刻并 EKF 更新。
-6. 将更新后的状态重传播到当前 `arrival_timestamp`。
-7. 输出当前时刻的 `GlobalTrack`。
+### 4.3 在线身份和真值隔离
 
-若关闭 `latency_compensation`，系统会把量测时刻替换为到达时刻，用作消融基线。现有实验中，延迟补偿后 RMSE 明显低于不补偿基线。
+在线 D1 输入不得携带或使用 AirSim actor 名称、对象名称、真值目标编号或真值位置来选择
+航迹。当前 `FusionAdapter` 保留 `use_truth_hints_for_association` 测试兼容参数和部分旧仿真
+元数据兼容代码，但受治理回放、main 运行总线和正式在线验证必须保持该参数为 `False`，且在
+进入在线记录前递归移除身份真值。
 
-## 4. 坐标转换链路
+真值只允许写入 evaluator-only truth sidecar，即“仅评估器可见的真值旁路文件”。D2 和
+第六研究模块（D6）在在线算法完成后读取该旁路计算身份切换、RMSE 或 NEES。任何真值进入
+在线观测、`GlobalTrack`、D5 或 D7 都属于合同违规。
 
-D1 的融合工作空间是 NED：
+## 5. 输出合同与质量证据
+
+### 5.1 `GlobalTrack`
+
+输出状态为 NED 下的六维向量：
 
 ```text
-x: north
-y: east
-z: down
+x = [p_n, p_e, p_d, v_n, v_e, v_d]^T
 ```
 
-推荐坐标链路如下：
+其中前三项是北、东、地位置，后三项是对应速度。`GlobalTrack` 同时携带：
 
-- WGS84：外部地理坐标，仅用于接口互操作。
-- ENU：部分仿真或 ROS 工具常用的本地切平面坐标。
-- NED：D1 内部滤波、输出和跨模块合同坐标。
-- `sensor_frame`：雷达、声学阵列或相机自身坐标。
-- `pixel`：EO 图像平面坐标。
+- `global_track_id`：D1 候选航迹编号；进入规范身份链后由 D2 维护稳定身份；
+- `state`：六维状态均值；
+- `covariance`：6×6 状态协方差；
+- `timestamp`：状态有效时刻；
+- `track_level`：粗略、稳定、可交接或枚举中的丢失等级；
+- `source_support`：各传感器模态的累计支持；
+- `identity_likelihood`：类别提示的归一化权重，不是敌我结论；
+- `last_nis`：最近创新一致性证据；
+- `metadata`：时间、帧、来源、健康、时延和协方差治理审计。
 
-工程约定：
+发布元数据至少说明 `frame_id="ned"`、`valid_at`、`published_at`、`hits`、最近量测和到达
+时刻、延迟补偿状态、来源支持、重复计数、时延审计和传感器健康摘要。
 
-1. 雷达和声学桥接器先把传感器位置、姿态和量测方向转换到 NED，再生成 `frame_id="ned"` 的观测。
-2. EO 观测保留为像素框中心 `frame_id="pixel"`，但必须在 `metadata` 中提供相机内参、相机 NED 位置和 `rotation_world_to_camera`。
-3. 若输入来自 WGS84，应先固定局部原点，转换为本地 ENU，再按轴定义转换到 NED。
-4. 不允许把像素框、声学方位或单次雷达点直接当作三维真值；它们只能通过观测模型和协方差影响航迹。
-5. 视频/图像通信只进入检测框、相机元数据、时间戳、置信度和协方差；D1 不要求保存 PNG 或原始视频帧。
+### 5.2 衍生摘要
 
-## 5. 传感器观测模型
+D1 还提供以下只读证据，不直接作出分配或降级决定。
 
-### 5.1 雷达
+- `TrackUncertaintySummary`：位置/速度协方差迹、水平 95% 误差尺度、量测年龄、来源多样性、
+  NIS、协方差限制原因、增长率和交接准备度；
+- `SensorHealthSummary`：每个传感器的观测、拒绝、重复、OOSM、陈旧、低质量、协方差异常、
+  期望时延偏差和恢复状态；
+- `LatencyAuditSummary`：融合回放、OOSM、陈旧、重复、最大/平均时延和最大回放观测数；
+- `FusionQualityRegionSummary`：同一覆盖单元内的航迹数量、质量分布、时延、协方差和来源缺口；
+- `FusionQualityRegionWindowSummary`：多个时刻的区域趋势、增长率和时延窗口统计；
+- `ReconCueSummary`：给机动高空侦察节点的粗位置、协方差、时间戳和来源摘要。
+
+这些摘要是 D3 成本、D4 仲裁、D5 投影门限和 D6 评估的输入证据。D1 不输出
+`active_degrade_recommendation`，也不直接改变中心、二级或分布式模式。
+
+## 6. 时间处理与固定滞后回放
+
+### 6.1 双时间戳语义
+
+量测时延定义为：
+
+```text
+latency = arrival_timestamp - measurement_timestamp
+```
+
+通信时延在同时存在 `sent_timestamp` 和 `received_timestamp` 时定义为：
+
+```text
+communication_latency = received_timestamp - sent_timestamp
+```
+
+量测时刻决定状态在哪一时刻更新；到达时刻只决定消息何时可见、回放顺序和延迟审计。把二者
+合并会让迟到雷达量测在错误时刻修正当前状态，造成系统性位置偏差和过度自信。
+
+### 6.2 OOSM 处理流程
+
+`FusionAdapter.process()` 按到达顺序接收观测，默认执行以下步骤：
+
+1. `_prepare_observation()` 补齐或限制量测协方差，记录时间不确定度和质量放大原因；
+2. 更新当前到达时刻和时延、陈旧、OOSM、传感器健康计数；
+3. 将现有航迹预测到当前到达时刻；
+4. 按来源谱系拒绝重复载荷；
+5. 在观测的 `measurement_timestamp` 计算关联分数；
+6. 将新观测插入航迹历史，按“量测时刻、到达时刻、观测编号”确定性排序；
+7. 从最早雷达初始化状态开始，逐条预测到各量测时刻并更新；
+8. 将回放后的状态重新传播到当前发布时刻；
+9. 裁剪固定滞后窗口内非必要旧观测，保留初始化观测；
+10. 发布当前 `GlobalTrack` 和审计摘要。
+
+默认 `buffer_horizon=6.0 s`，`bucket_size=0.1 s`。固定滞后窗口必须覆盖预期最大传感器延迟；
+超出窗口的行为需通过陈旧计数和场景配置审计，不能假定任意长延迟都能无损恢复。
+
+设置 `latency_compensation=False` 时，融合器把量测时刻替换为到达时刻，形成延迟补偿消融
+基线。该开关用于对比，不是推荐在线配置。
+
+## 7. 坐标转换与空间基准
+
+D1 内部统一使用 NED：`x` 轴指北、`y` 轴指东、`z` 轴向下。推荐外部链路为：
+
+```text
+WGS84 -> 本地 ENU -> NED -> 传感器观测模型
+机体系/传感器体系 -> 标定外参 -> NED
+NED 目标状态 -> 相机外参和内参 -> EO 像素平面
+```
+
+实施规则如下。
+
+1. WGS84 只作为外部参考；应固定局部原点后转换为本地切平面。
+2. 雷达和声学桥接器先将传感器位置、姿态和方向转换到 NED。
+3. EO 保留像素量测，但必须提供相机 NED 位置、世界到相机旋转和内参。
+4. 相机默认模型只是测试后备值；真实回放必须携带场景实际标定值和版本。
+5. 不允许把像素中心、声学方位或检测器编号直接解释为三维目标位置或规范身份。
+6. 当前 D1 未接入机器人操作系统第二版（Robot Operating System 2，ROS 2）的坐标变换库
+   `tf2`；工程部署中的动态坐标树仍属于后置适配。
+
+## 8. 状态模型与滤波算法
+
+### 8.1 常速度预测
+
+当前状态转移为：
+
+```text
+x_k = F(dt) x_(k-1) + w_k
+
+F(dt) = [[I3, dt I3],
+         [03, I3   ]]
+```
+
+过程噪声采用白加速度谱密度近似：
+
+```text
+Q(dt) = q [[dt^4/4 I3, dt^3/2 I3],
+           [dt^3/2 I3, dt^2 I3  ]]
+```
+
+默认 `process_noise=6.0`。仿真真值可以转弯或加速，但当前滤波器不切换模型，只依靠过程噪声
+吸收机动误差。因此高动态目标的状态滞后和协方差一致性必须通过后续多模型基准验证。
+
+### 8.2 EKF 更新
+
+对非线性观测 `z=h(x)+v`，当前实现执行：
+
+```text
+x_minus = F x
+P_minus = F P F^T + Q
+y = wrap(z - h(x_minus))
+S = H P_minus H^T + R
+K = P_minus H^T S^(-1)
+x_plus = x_minus + K y
+P_plus = (I-KH) P_minus (I-KH)^T + K R K^T
+NIS = y^T S^(-1) y
+```
+
+`H` 由数值雅可比计算。角度残差使用包角处理，避免正负圆周边界跳变。协方差采用 Joseph
+稳定形式更新，并在矩阵求解失败时使用伪逆后备路径。
+
+### 8.3 默认选型理由
+
+当前使用 NumPy EKF 的原因是状态维度低、实现可审计、依赖少，且适合大量随机种子回放。
+UKF、IMM、FilterPy 和 Stone Soup 并未替换默认路径。它们只有在同一冻结输入上证明身份、
+一致性或时延收益，并满足运行预算后，才可能进入后续升级评审。
+
+## 9. 各传感器观测模型
+
+### 9.1 雷达
 
 雷达量测为：
 
@@ -93,16 +309,16 @@ z: down
 z_radar = [range, azimuth, elevation, radial_velocity]^T
 ```
 
-相对向量 `r = p - s`，其中 `p` 为目标 NED 位置，`s` 为雷达 NED 位置：
+设目标与雷达的 NED 相对向量为 `r=p-s`，则：
 
 ```text
 range = ||r||
-azimuth = atan2(ry, rx)
-elevation = atan2(-rz, sqrt(rx^2 + ry^2))
-radial_velocity = dot(v, r / ||r||)
+azimuth = atan2(r_e, r_n)
+elevation = atan2(-r_d, sqrt(r_n^2+r_e^2))
+radial_velocity = v dot (r / ||r||)
 ```
 
-当前代码的默认距离相关协方差原则为：
+缺少显式协方差时，默认标准差按距离增长：
 
 ```text
 sigma_range = 2.0 + 0.012 * range
@@ -111,425 +327,435 @@ sigma_elevation = deg2rad(0.35 + 0.0010 * range)
 sigma_radial_velocity = 0.35 + 0.0015 * range
 ```
 
-含义是：距离越远，距离、角度和径向速度不确定性越高。雷达是当前唯一可初始化新航迹的传感器，因为它能提供三维几何和径向速度骨架。
+这些系数由 `RadarCovarianceConfig` 管理，可由场景配置覆盖。当前只有雷达可初始化新航迹，
+因为它能提供三维位置骨架和径向速度。雷达初始化不代表完整三维速度已被直接观测，未观测的
+切向速度以较大初始协方差表达。
 
-默认系数由 `RadarCovarianceConfig` 表达，`radar_covariance_from_range(..., config=...)`、`FusionAdapter(radar_covariance_config=...)` 和 dry-run 雷达 sensor config 中的 `covariance_config` 都可覆盖这些参数。未传配置时保持上述默认行为。
+### 9.2 声学
 
-### 5.2 声学
-
-声学量测为粗方位：
+声学量测只包含水平粗方位：
 
 ```text
-z_acoustic = [azimuth]^T
-azimuth = atan2(ry, rx)
+z_acoustic = [azimuth]
+azimuth = atan2(r_e, r_n)
 ```
 
-声学观测只约束方位，不恢复三维距离。其协方差由置信度控制：
+默认角度标准差为：
 
 ```text
 sigma_deg = 2.5 + 8.0 * (1 - confidence)
 ```
 
-声学的主要作用是低频补充、类别/声纹提示和多源支持计数。工程上应把声学视为弱证据，不能单独把 `coarse` 升级为可交接航迹。
+单个声学方位不包含距离和高度信息，不能独立初始化三维航迹，也不能单独把粗略航迹提升为
+可交接航迹。声纹或类别提示只进入 `classification_hint` 和来源支持，不构成敌我身份判定。
 
-### 5.3 光电 EO
+### 9.3 EO
 
-EO 量测为像素中心：
+当前 EO 量测是检测框中心：
 
 ```text
 z_eo = [u_center, v_center]^T
-p_camera = R_world_to_camera * (p_ned - camera_position_ned)
-u = fx * x / z + cx
-v = fy * y / z + cy
+p_camera = R_world_to_camera (p_ned - camera_position_ned)
+u = fx * x_camera / z_camera + cx
+v = fy * y_camera / z_camera + cy
 ```
 
-EO 协方差由检测框大小、置信度和质量标记决定：
+相机模型支持嵌套或扁平元数据，包含位置、世界到相机旋转、焦距、主点和图像尺寸。缺少显式
+像素协方差时，`eo_covariance_from_bbox()` 根据检测框大小和置信度生成后备值：置信度越低，
+误差越大；`occluded` 和 `small_bbox` 标志继续放大协方差。
 
-- bbox 越小，像素中心误差越大。
-- `confidence` 越低，协方差越大。
-- `occluded`、`small_bbox` 会进一步放大协方差。
+EO 只提供投影方向约束，不把单帧检测框恢复成无协方差三维点。原始图像和视频不由 D1 保存；
+D1 接收的是检测框、相机参数、时间戳、质量和协方差。
 
-EO 是强方向约束，但不是直接三维位置观测。它适合降低横向不确定性，并为 D5 末端投影配准提供一致的几何基础。
+### 9.4 合成 LiDAR
 
-### 5.4 合成 LiDAR
-
-当前 LiDAR 只作为 dry-run/replay 中的合成 NED 三维位置观测：
+合成 LiDAR 量测为 NED 三维位置：
 
 ```text
-z_lidar = [px, py, pz]^T
+z_lidar = [p_n, p_e, p_d]^T
 h_lidar(x) = x[0:3]
 ```
 
-默认协方差随距离和置信度放大：
+默认标准差为：
 
 ```text
 sigma_xy = (0.35 + 0.0025 * distance) / confidence
 sigma_z = (0.50 + 0.0035 * distance) / confidence
 ```
 
-该模型用于保持 D1 的多源观测合同和 AirSim-like dry-run 回归，不代表 AirSim LiDAR plugin、真实雷达/激光硬件或硬件驱动已接入。当前仍由雷达初始化新航迹，LiDAR 作为已有航迹的三维位置更新源。
+该路径用于 dry-run 和回放合同测试，不表示真实 LiDAR 驱动或 AirSim LiDAR 插件已经接入。
+LiDAR 当前不能创建新航迹，只能更新已有航迹。
 
-## 6. 滤波算法原理
+## 10. 量测关联、初始化与生命周期边界
 
-### 6.1 默认运动模型
+### 10.1 D1 基础关联
 
-当前滤波状态为六维常速度模型：
+D1 的 `_associate()` 对每条观测和已有航迹计算量测时刻的分数：
+
+- 雷达使用三维位置差及观测、预测位置协方差构成马氏距离；
+- 声学、EO 和 LiDAR 使用对应观测创新的 NIS；
+- 最小分数不超过 `association_gate` 时接受，否则尝试新建航迹；
+- 非雷达观测无法初始化时被拒绝并记录 `unsupported_track_initializer`。
+
+默认 `association_gate=40.0`。该关联器只是融合前端的轻量基线，不替代 D2 的全局最近邻、
+联合概率数据关联或多假设跟踪。密集交叉场景中的规范身份、身份切换计数和航迹连续性归 D2。
+
+### 10.2 身份所有权
+
+D1 创建的 `global_track_001` 等编号是融合候选编号。规范 `global_track_id` 的跨时保持由 D2
+确认；D5 和 D7 禁止自行改写。协同 WLS/CI 也要求调用方先提供由 D2 确认的同一规范身份，
+不能利用几何助手绕过身份确认。
+
+### 10.3 当前生命周期限制
+
+`TrackLevel` 枚举包含 `LOST`，但默认 `_classify()` 只输出 `COARSE`、`STABLE` 和
+`HANDOVER`。当前没有完整的超时丢失、删除、合并、拆分或带迟滞质量状态机。因此长期目标
+消失时，上层运行总线和后续模块必须显式治理，不能把枚举存在误写为完整生命周期已实现。
+
+## 11. 协方差治理与轻量健康诊断
+
+### 11.1 量测协方差
+
+`_prepare_observation()` 对每条观测执行：
+
+1. 根据模态和元数据生成缺省协方差；
+2. 验证维度、有限性和对称性；
+3. 对对角值施加模态相关下限和统一上限；
+4. 对不合理成对相关项限幅；
+5. 根据低置信度、杂波、遮挡或低信噪比记录 `covariance_scale_reason`；
+6. 将限制原因写入观测和后续航迹元数据。
+
+严格受治理回放要求原始协方差存在且满足合同；普通运行入口允许使用后备模型是为了原型兼容，
+不应掩盖真实传感器未标定的问题。
+
+### 11.2 状态协方差
+
+默认六维状态协方差对角下限为：
 
 ```text
-x_k = F(dt) x_{k-1} + w
-F = [[I3, dt I3],
-     [03, I3]]
+[0.25, 0.25, 0.25, 0.04, 0.04, 0.04]
 ```
 
-过程噪声为白加速度谱密度近似：
+位置上限为 `1e6`，速度上限为 `1e4`。长时间外推、量测异常或限制动作都会写入
+`covariance_limit_reasons`。当前普通入口主要执行有限性、对称性、对角和相关项治理，尚未
+形成统一特征值投影和真实统计一致性保证。
 
-```text
-Q = q * [[dt^4/4 I3, dt^3/2 I3],
-         [dt^3/2 I3, dt^2 I3]]
-```
+### 11.3 FDIR-light
 
-仿真真值可以包含常加速度和协调转弯，但滤波器仍以 CV 作为稳健基线，通过调大 `process_noise` 吸收机动误差。
+传感器健康摘要统计：
 
-### 6.2 EKF 更新
+- 重复、拒绝、OOSM 和陈旧观测；
+- 低质量、异常协方差和时间戳不确定度；
+- 实际时延相对 `SensorTimingExpectation` 的超限；
+- 预期或意外 OOSM；
+- 故障原因、隔离提示和故障后的名义样本数量。
 
-各传感器观测模型均为非线性或局部非线性，因此采用 EKF：
+达到拒绝阈值只产生健康和隔离建议，不会关闭真实传感器、切断通信或触发 D4 降级。恢复状态
+同样是审计证据，不是硬件认证。
 
-```text
-x^- = F x
-P^- = F P F^T + Q
-y = wrap(z - h(x^-))
-S = H P^- H^T + R
-K = P^- H^T S^-1
-x^+ = x^- + K y
-P^+ = (I - K H) P^- (I - K H)^T + K R K^T
-```
+## 12. 航迹质量等级与交接准备度
 
-代码使用数值雅可比和 Joseph 形式协方差更新，以提升原型实现的稳定性。角度残差使用 wrap 处理，避免 `pi/-pi` 跳变导致错误创新。
-
-### 6.3 EKF、UKF、IMM 选型边界
-
-当前默认 EKF 的理由：
-
-- 状态维度低，观测模型清晰，数值雅可比足以覆盖研究原型。
-- 计算量小，便于批量实验和 D6 指标统计。
-- 雷达/声学/EO 的非线性强度可通过合理初始化和协方差放大控制。
-
-建议升级边界：
-
-- UKF：当 EO 投影角度极端、雷达近距离非线性明显，或数值雅可比敏感时使用。
-- IMM-EKF/IMM-UKF：当目标频繁切换匀速、加速、转弯模型，且 D2 关联质量受运动模型影响明显时使用。
-- 粒子滤波：仅适合强非高斯、多模态不确定性研究，不建议作为当前默认路径。
-
-## 7. 航迹分级
-
-D1 输出 `coarse`、`stable`、`handover` 三类研究质量等级。分级不是授权状态，只是给后续模块做质量门控。
-
-核心不确定性指标为水平 95% 误差椭圆长轴：
+水平 95% 误差尺度由位置协方差左上 2×2 子矩阵计算：
 
 ```text
 a95 = sqrt(chi2_2_0.95 * max_eigenvalue(P_xy))
+chi2_2_0.95 = 5.991464547...
 ```
 
-当前工程判据：
+当前分类规则是：
 
-- `coarse`：初始化初期、`a95` 大于稳定门限、观测支持不足或 NIS 通过率较低。
-- `stable`：`a95 <= stable_threshold_m`，命中次数达到要求，NIS 通过率基本合格。
-- `handover`：`a95 <= handover_threshold_m`，至少两类传感器支持，命中次数更多，NIS 通过率更高。
+- `handover`：`a95 <= 12 m`、至少两类传感器支持、命中不少于 8 次、近期 NIS 通过率不低于
+  0.55；
+- `stable`：`a95 <= 30 m`、命中不少于 3 次、近期 NIS 通过率不低于 0.45；
+- `coarse`：其他情况。
 
-默认参数在 `FusionAdapter` 中：
+`handover_readiness` 被限制在 `[0,1]`，取协方差、量测新鲜度、来源多样性、NIS 和等级得分
+中的最小值。它是保守质量证据，不是行动授权。单帧高协方差、等级回退或 OOSM 不应直接触发
+D4 主动降级；D4 必须结合持续时间、D2 身份风险、D3 计划状态、D5 末端冲突和指挥控制健康。
 
-- `stable_threshold_m = 30.0`
-- `handover_threshold_m = 12.0`
-- `association_gate = 40.0` 或仿真脚本中 `45.0`
-- `buffer_horizon = 6.0`
-- `bucket_size = 0.1`
+质量等级当前没有独立迟滞，因此阈值附近可能往返变化。D3/D4 应在各自决策层实施版本、驻留
+时间和恢复门限，D1 不越权实现任务状态迟滞。
 
-## 8. 面向 D4 主动降级的不确定度信号
+## 13. 受治理回放与证据链
 
-D4 的主动降级不是由中心节点失效触发，而是由态势质量不足触发：中心节点仍可运行，但全局定位分辨率、时间新鲜度或多源一致性已经不足以支撑稳定集中式分配。D1 应向 D3/D4/D5 提供可解释的不确定度摘要，使系统在离线仿真中能区分“节点坏了”和“中心态势仍在但质量不够好”。
+### 13.1 一般 JSONL/CSV 回放
 
-### 8.1 D1 可提供的核心信号
+`replay.py` 支持版本化 JSONL、兼容旧 Blocks JSONL 和最小 CSV 读写。回放记录保留：
 
-D1 侧可从 `GlobalTrack` 和近期观测历史派生以下信号：
+- 双时间戳和量测协方差；
+- 规范观测帧和 NED 融合工作空间；
+- 通信、相机、覆盖单元和来源谱系；
+- 可用的处理/发布时间、健康和质量元数据。
 
-- 位置协方差迹 `position_cov_trace = trace(P_xyz)`：衡量三维位置总体不确定度。
-- 水平协方差椭圆 `a95_xy`：由 `P_xy` 最大特征值计算，适合表达平面定位分辨率。
-- 垂向不确定度 `sigma_z = sqrt(P_zz)`：用于区分水平可用但高度不稳定的航迹。
-- 速度协方差迹 `velocity_cov_trace = trace(P_vxvyvz)`：衡量预测未来接近窗口时的不确定度。
-- 量测延迟 `measurement_latency = published_at - last_measurement_timestamp` 或单观测 `arrival_timestamp - measurement_timestamp`：用于判断观测是否已经落后于分配周期。
-- 连续外推时长 `extrapolation_age = published_at - valid_at`：表示当前发布航迹距离最近有效滤波时刻的时间差。
-- 轨迹桶 `track_bucket = floor(valid_at / bucket_size)`：用于 D3/D4 判断不同航迹摘要是否属于同一时间离散窗口。
-- 航迹等级 `track_level`：`handover`、`stable`、`coarse` 的质量门控结果。
-- 多源支持 `source_support`：雷达、声学、EO 最近窗口内的支持数量和比例。
-- 观测一致性 `last_nis` 或 NIS 通过率：雷达、EO、声学与预测状态是否一致的统计证据。
-- 降级趋势 `track_level_drop`：从 `handover` 退到 `stable/coarse`，或从 `stable` 退到 `coarse`。
+旧格式可读取不代表满足严格证据合同。正式比较应使用受治理入口。
 
-这些信号不包含处置指令，只描述定位质量、时间新鲜度和多源一致性。
+### 13.2 受治理序列化
 
-### 8.2 `TrackUncertaintySummary` 当前字段与 P1 扩展
-
-当前 D1 已落地单航迹 `TrackUncertaintySummary`，并可通过 `FusionAdapter.track_uncertainty_summaries()` 导出，作为 D3/D4/D5/D6 的离线质量输入。已实现字段如下：
-
-```python
-TrackUncertaintySummary(
-    track_id: str,
-    global_track_id: str,
-    valid_at: float,
-    published_at: float,
-    track_bucket: int,
-    track_level: str,
-    position_covariance_trace: float,
-    velocity_covariance_trace: float,
-    a95_m: float,
-    measurement_age_s: float,
-    source_support: dict[str, int],
-    coverage_cell: str | None,
-    measurement_timestamp: float | None,
-    arrival_timestamp: float | None,
-    covariance_growth_rate: float | None,
-    source_diversity_count: int,
-    last_nis: float | None,
-    handover_readiness: float,
-    quality_flags: tuple[str, ...],
-)
-```
-
-当前字段计算规则：
-
-- `valid_at` 取 `GlobalTrack.metadata["valid_at"]`，缺省时取 `GlobalTrack.timestamp`。
-- `published_at` 取 `GlobalTrack.metadata["published_at"]`，缺省时取当前回放时刻。
-- `track_bucket = FusionAdapter._bucket(valid_at)`，用于跨模块对齐同一决策周期。
-- `position_cov_trace = trace(covariance[:3, :3])`。
-- `velocity_cov_trace = trace(covariance[3:, 3:])`。
-- `a95_xy_m` 使用 D1 现有 `covariance_a95()` 逻辑。
-- `measurement_age_s` 使用 `published_at - latest_measurement_timestamp`。
-- `covariance_growth_rate` 在单帧摘要中可为空；`annotate_covariance_growth_rates()` 可用相邻摘要的 `position_cov_trace` 差分除以时间差填充。
-- `source_diversity_count` 统计当前摘要中非零支持的传感器类型数；D6/区域窗口可在批量日志层继续扩展最近窗口统计。
-- `handover_readiness` 已归一化到 `[0, 1]`，由 `a95_xy_m`、`source_diversity_count`、`track_level`、NIS 和 measurement age 共同计算。
-
-D1 已落地 `FusionQualityRegionSummary`、`FusionQualityRegionWindowSummary`、`LatencyAuditSummary`、OOSM/stale/replay/duplicate 计数、协方差增长率 helper 和最小 CSV replay。剩余 P1 摘要工作集中在 D6 长期批量 JSONL/CSV schema、真实多 seed 阈值校准和真实样本回归。
-
-一个保守的 `handover_readiness` 原型可定义为：
+`serialize_governed_replay()` 返回：
 
 ```text
-readiness = min(
-    clamp(handover_threshold_m / max(a95_xy_m, eps), 0, 1),
-    clamp(latency_budget_s / max(measurement_latency_s, eps), 0, 1),
-    source_diversity_score,
-    nis_consistency_score,
-    level_score
-)
+{
+  "manifest": {...},
+  "records": [...]
+}
 ```
 
-其中 `level_score` 可令 `handover=1.0`、`stable=0.6`、`coarse=0.2`。该指标只用于科研仿真中的质量门控，不代表授权状态。
+清单结构版本为 `d1.governed_replay_manifest.v1`，记录观测结构、NED 工作空间、场景/配置标识
+及版本、摘要、随机种子、时间范围、覆盖单元和每条观测的不透明来源谱系。严格路径会在返回前
+验证整个批次：双时间戳必须有限且有序，协方差必须匹配量测维度，覆盖单元和来源谱系必须存在，
+所有记录必须可安全序列化。
 
-### 8.3 主动降级触发信号
+在线记录递归删除真值、actor 和对象身份。`serialize_offline_governed_replay()` 是唯一显式
+离线入口，将评估标签置于独立 `offline_truth`，不会把标签恢复到在线元数据。
 
-以下情况说明中心节点仍在线，但中心态势质量可能不足，D4 可考虑从集中式分配切换到二级节点区域协同，或在更差条件下降级为分布式协同：
+### 13.3 AirSim 持久化输入冻结
 
-- 协方差突增：`position_cov_trace` 或 `a95_xy_m` 在短窗口内快速增加，例如超过上一窗口的 1.5-2.0 倍。
-- 连续外推过长：`extrapolation_age_s` 超过 D3 分配周期，说明当前发布航迹主要靠预测维持。
-- 延迟超过分配周期：`measurement_latency_s > assignment_period_s`，集中式分配可能基于过期态势。
-- 速度不确定度过高：`velocity_cov_trace` 增大，导致 D3 的接近窗口预测不稳定。
-- 多源不一致：雷达与 EO 的创新/NIS 长时间偏高，或同一目标在不同传感器下的残差方向系统性偏离。
-- 航迹等级回退：关键目标从 `handover` 回退到 `stable/coarse`，或 `stable` 回退到 `coarse`。
-- 传感器支持退化：`source_diversity_count` 从多源降到单源，尤其是 EO 或雷达连续缺失。
-- 空域局部质量不均：中心全局仍可用，但某个 `coverage_cell` 内多数航迹 `handover_readiness` 偏低，此时更适合交给该区域二级节点重新融合和协调。
+`freeze_airsim_replay_payloads()` 和对应 CLI 不连接 AirSim 软件开发工具包，只读取 main 已经
+落盘的 JSON/JSONL。输出为：
 
-主动降级应使用迟滞和持续时间约束，避免单帧噪声导致频繁切换。建议 D4 在仿真中采用：
+- `manifest.json`；
+- `sensor_observations.jsonl`；
+- `offline_truth.json`；
+- `summary.json`。
 
-```text
-active_degrade = bad_quality_ratio >= ratio_threshold
-                 and median_duration >= min_hold_time
-                 and affected_tracks include high_priority_tracks
+冻结器只为真实存在的量测创建观测。遮挡、漏检或节点退出事件若没有量测，只记录事件，不
+伪造传感器数据。在线观测编号改为不透明序号；真值编号和 NED 真值位置只进入旁路。
+
+捕获端必须显式声明场景版本、配置版本、随机种子、`target_spacing_m` 和 `evidence_path`。
+目标间距以捕获声明为权威，不从真值位置反推；调用参数、不同载荷声明或证据摘要冲突时拒绝
+冻结。清单和真值旁路通过来源摘要绑定。
+
+同一 `(truth_id, timestamp)` 的离线真值样本确定性去重：有位置样本覆盖仅身份样本；两个位置
+在 `1e-6 m` 容差外不一致时拒绝冻结；缺失位置不插值、不外推。
+
+### 13.4 长回放构造器
+
+`build_long_replay_scenario()` 可生成任意配置目标数的 60 秒级合成挑战，包含雷达距离噪声、
+声学粗方位、EO 像素观测、交叉杂波、遮挡、延迟雷达 OOSM 和中继重复。在线观测不含稳定
+目标槽位，真值轨迹只在独立旁路。该构造器验证回放和审计链，不替代真实传感器数据。
+
+## 14. 可选协同定位与保守航迹融合
+
+### 14.1 多观察者方位定位
+
+`localize_bearing_observation_group()` 对已经由 D2 确认为同一 `global_track_id` 的 2..N 条
+标定方位射线执行中心化 WLS。每条 `CooperativeBearingObservation` 携带：
+
+- 双时间戳；
+- 平台 NED 位置和机体到 NED 旋转；
+- 传感器安装平移和旋转；
+- 传感器系单位方位向量；
+- 方位、平台位姿、外参和时间不确定度协方差；
+- 不可变观察者来源谱系。
+
+助手拒绝观察者不足、基线过短、LOS 近共线、时间偏斜过大、缺少必需协方差、信息矩阵病态、
+负深度或残差过大。输出保留所有量测/到达时刻、交会角、信息矩阵条件数、残差、协方差膨胀
+和明确拒绝原因。
+
+### 14.2 协方差交集
+
+`covariance_intersection()` 将多个六状态 NED 估计传播到共同时间，在未知交叉相关性时搜索
+保守权重。它按消息编号和来源谱系去重，保持调用方给定的规范身份，并避免把相关信息按独立
+估计简单相加。
+
+WLS 和 CI 当前是已实现的独立数值基础，但没有接入默认 `FusionAdapter` 或真实多节点运行
+总线。它们不执行 D2 关联、不实现分布式共识，也不证明 3->2->1 观察节点退出时的端到端性能。
+
+## 15. 跨模块接口和消费方式
+
+```mermaid
+flowchart LR
+    S[雷达/声学/EO/合成LiDAR观测] --> D1[第一研究模块融合]
+    D1 -->|GlobalTrack与协方差| D2[第二研究模块身份关联]
+    D1 -->|质量与时延摘要| D3[第三研究模块资源分配]
+    D1 -->|区域质量与侦察粗指向| D4[第四研究模块降级协同]
+    D2 -->|规范global_track_id| D5[第五研究模块末端视觉关联]
+    D1 -->|NED状态与协方差| D5
+    D1 -->|中段状态证据| D7[第七研究模块导引]
+    D1 -.日志与旁路真值.-> D6[第六研究模块离线评估]
 ```
 
-其中 `bad_quality_ratio` 可按区域或全局统计 `handover_readiness < readiness_threshold` 的航迹比例。恢复集中式模式也应满足更严格的恢复门限，例如连续多个周期 `readiness` 回升并且延迟低于预算。
+### 15.1 D2
 
-2026-07-07 P1 复核后，D4 已把硬风险和软质量风险拆分。D1 的高协方差、低 freshness、source gap、低 handover readiness 或单帧等级回退只能作为软质量证据；除非持续窗口内与 D3 plan stale/version mismatch、D5 终端冲突、D2 ID 风险或 C2 health 异常共同成立，否则不应直接触发 `request_center_replan`、二级接管或分布式降级。
+D2 消费 D1 航迹候选、状态、协方差、时间和来源证据，维护规范身份并计算身份切换。D1 的
+最近邻门控不能替代 D2；离线真值只有 D2 关联完成后才能用于评分。
 
-### 8.4 面向 D3/D4/D5 的使用方式
+### 15.2 D3
 
-D3 使用方式：
+D3 可把位置/速度协方差、量测年龄、等级和交接准备度加入分配成本。高不确定度应产生惩罚或
+更强迟滞，但不应由 D1 直接取消分配。
 
-- 将 `a95_xy_m`、`position_cov_trace`、`velocity_cov_trace` 加入分配代价，避免对高不确定目标做频繁重分配。
-- 当 `track_bucket` 落后于当前分配周期时，提高该目标代价或保持原分配。
-- 当 `handover_readiness` 降低但未触发 D4 降级时，增加分配迟滞，减少抖动。
+### 15.3 D4
 
-D4 使用方式：
+D4 聚合 `TrackUncertaintySummary`、区域窗口、传感器健康和时延审计，区分节点失效导致的
+被动降级与态势质量不足导致的主动降级。D1 只提供证据；二级节点接管、完全分布式协商、租约
+和仲裁均由 D4 管理。
 
-- 以区域为单位聚合 `TrackUncertaintySummary`，判断是全局主动降级还是局部交给二级侦察节点。
-- 区分被动降级与主动降级：被动降级来自心跳/节点状态；主动降级来自 D1 不确定度、D3 重分配失败反馈和 D5 末端配准反馈。
-- 中心仍在线但某区域 `measurement_latency_s`、`a95_xy_m`、`handover_readiness` 长时间不达标时，优先切换到覆盖该区域的二级节点。
-- 若二级节点也无法提供新鲜观测或局部摘要，则再进入完全无中心的分布式协同。
+### 15.4 D5
 
-D5 使用方式：
+D5 使用 NED 状态、完整协方差、双时间戳和相机标定，将规范航迹投影到各相机像素平面。
+D5 的局部检测或多目标跟踪编号不得回写 D1/D2 的 `global_track_id`。D5 反馈可以作为质量
+冲突证据，但不能让 D1 利用局部真值重新绑定。
 
-- 用 `a95_xy_m` 和完整协方差传播到图像平面，决定终端投影门限大小。
-- 当 `handover_readiness` 低或航迹等级回退时，终端应倾向 `ambiguous/hold/reacquire`，而不是自行改写 `global_track_id`。
-- D5 的 `TerminalAssociation` 反馈可回传 D1/D4，作为“中心预测与局部视觉不一致”的辅助信号。
+### 15.5 D6
 
-### 8.5 给 D4 的目标接口
+D6 只读消费在线记录、质量摘要和离线真值旁路，计算 RMSE、NIS、NEES、时延、健康和区域
+趋势。指标缺少真值、身份映射、协方差或分母时必须标为不可用，不能填零。
 
-D1 到 D4 的目标消息可按周期发布，粒度为“单航迹摘要 + 区域聚合摘要 + 可选区域窗口摘要”。当前已落地单航迹 `TrackUncertaintySummary[]`、延迟审计 `LatencyAuditSummary`、轻量区域聚合 `FusionQualityRegionSummary[]` 和 `FusionQualityRegionWindowSummary[]`：
+### 15.6 D7
 
-```python
-TrackUncertaintySummary[]  # 每条航迹
-FusionQualityRegionSummary(
-    coverage_cell: str,
-    published_at: float,
-    track_count: int,
-    coarse_track_count: int,
-    stable_track_count: int,
-    handover_track_count: int,
-    stale_track_count: int,
-    mean_a95_m: float,
-    max_a95_m: float,
-    max_measurement_age_s: float,
-    mean_handover_readiness: float,
-    source_support: dict[str, int],
-    source_gap_modalities: tuple[str, ...],
-    quality_flags: tuple[str, ...],
-)
-```
+D7 使用 D1/D2 的中段状态和协方差支撑位置比例导引，并在 D5 与 D3/D4 合同一致时考虑末端
+视觉切换。D1 不计算导引律，也不决定控制许可。
 
-D1 不输出 `active_degrade_recommendation`。若需要 active degrade decision、median/p90 趋势或 lead-time 指标，应由 D4/D6 在 D1 区域摘要和区域窗口摘要之上计算。
+## 16. 默认参数与调参原则
 
-若后续新增 D1 质量建议字段，也只能表达态势质量建议，不直接改变任务状态。D4 应结合自身 `C2Health`、D3 分配版本、D5 末端反馈和人工授权状态后再决定降级模式。
+| 参数 | 当前默认值 | 实施含义 |
+| --- | ---: | --- |
+| `process_noise` | 6.0 | 机动吸收能力；过小会滞后，过大会膨胀协方差 |
+| `bucket_size` | 0.1 s | 时间离散桶和摘要对齐粒度 |
+| `buffer_horizon` | 6.0 s | 固定滞后历史窗口 |
+| `stable_threshold_m` | 30.0 m | 稳定等级水平误差门限 |
+| `handover_threshold_m` | 12.0 m | 可交接等级水平误差门限 |
+| `association_gate` | 40.0 | 基础马氏距离/NIS 关联门限 |
+| `latency_compensation` | `True` | 在量测时刻更新并重传播 |
+| `source_deduplication` | `True` | 抑制中继重复载荷 |
+| `long_extrapolation_s` | 3.0 s | 记录长外推协方差原因的门限 |
+| `timestamp_uncertainty_fault_s` | 0.05 s | 时间不确定度健康告警门限 |
+| `sensor_isolation_reject_threshold` | 3 | 生成隔离提示的连续拒绝基线 |
 
-严格 subagent 流程下，D1 only owns this evidence contract: D1 子智能体负责维护本模块代码、README、PLAN、GAP 和 review；main 负责把这些证据接入 AirSim runtime bus、收集 D6 指标并汇总跨模块结论。
+调参必须使用版本化场景、冻结输入和 D6 统计。不能为了降低单次 RMSE 人为压小协方差；不能
+用单帧表现设定 D4 降级门限；不能用离线真值帮助在线关联。真实雷达距离曲线、相机检测框误差、
+声学置信度和传感器时延应分别标定，不能共用一个经验放大系数。
 
-## 9. 主要实施流程
+## 17. 当前实施流程
 
-离线融合主流程：
+典型离线或 main 运行总线调用链如下。
 
-1. 传感器桥接器生成 `SensorObservation`。
-2. 观测按 `arrival_timestamp` 回放。
-3. `FusionAdapter.process()` 预测所有航迹到当前到达时刻。
-4. `_associate()` 计算观测与现有航迹的马氏距离/NIS 分数。
-5. 雷达观测可触发 `_create_track()` 初始化新航迹。
-6. 已有关联调用 `compensate_latency()` 在测量时刻更新并重传播。
-7. `_classify()` 根据协方差、多源支持、hits 和 NIS 生成质量等级。
-8. `global_tracks()` 发布当前 `GlobalTrack` 列表。
+1. main 或传感器适配器构造满足合同的 `SensorObservation`。
+2. 严格运行先通过受治理序列化或 AirSim 持久化冻结，建立清单、来源和真值旁路。
+3. 观测按 `arrival_timestamp` 输入 `FusionAdapter.process()`。
+4. D1 完成协方差准备、健康审计、基础关联、雷达初始化和固定滞后回放。
+5. `global_tracks()` 发布当前航迹候选。
+6. `track_uncertainty_summaries()`、`sensor_health_summaries()`、
+   `latency_audit_summary()` 和 `region_quality_summaries()` 发布质量证据。
+7. D2 维护规范身份，D3/D4/D5/D7 按各自合同消费，不反向改写 D1 航迹身份。
+8. D6 在回合结束后读取在线日志和隔离真值，输出可用性、指标和失败原因。
 
-关键代码位置：
-
-- `src/d1_sensor_fusion/types.py`：输入输出数据结构。
-- `src/d1_sensor_fusion/observations.py`：雷达、声学、EO 观测模型和协方差。
-- `src/d1_sensor_fusion/ekf.py`：EKF 预测、更新和数值雅可比。
-- `src/d1_sensor_fusion/fusion.py`：融合适配器、延迟补偿、关联、分级和不确定度摘要导出。
-- `src/d1_sensor_fusion/simulation.py`：离线质点仿真、图表和报告生成。
-
-## 10. 参数与调参建议
-
-- `process_noise`：机动越强取值越大。过小会导致转弯目标滞后，过大会导致协方差膨胀和分级保守。
-- `association_gate`：越大越容易关联，越小越容易新建或漏关联。D1 只做基础关联，密集交叉场景应交给 D2。
-- `stable_threshold_m`：影响 `stable` 输出数量。若 D3 需要更保守输入，可降低该值。
-- `handover_threshold_m`：影响交接质量。该值不应被解释为行动授权，只代表几何和协方差质量。
-- `buffer_horizon`：必须覆盖最大预期观测延迟。若雷达延迟上限为 2 s，建议留 4-6 s。
-- 雷达协方差：根据仿真距离、杂波、遮挡或信噪比调大，不要为了降低 RMSE 人为压小。
-- EO 协方差：小目标、逆光、遮挡、截断框应增加像素协方差。
-- 声学协方差：声源混叠、风噪或低置信度时应显著放大。
-- 主动降级门限：建议先用 D6 批量实验确定 `a95_xy_m`、`measurement_latency_s`、`handover_readiness` 的经验分位数，再设置区域级迟滞门限。
-
-## 11. 仿真验证与图表
-
-当前仿真入口：
+基础测试命令为：
 
 ```bash
 PYTHONPATH=research_modules/d1_sensor_fusion/src \
-python3 research_modules/d1_sensor_fusion/scripts/run_simulation.py \
-  --drone-count 3 \
-  --duration 60 \
-  --dt 0.1 \
-  --seed 7 \
-  --output research_modules/d1_sensor_fusion/reports
+pytest -q research_modules/d1_sensor_fusion/tests
 ```
 
-实验覆盖：
+长回放和隔离基准分别由 `scripts/run_long_replay.py`、
+`scripts/run_p2_isolated_benchmark.py` 调用。文档更新不改变这些入口。
 
-- `--drone-count 3` 是历史 3-target baseline；集成运行由 main 的 `--drone-count N` 决定规模。
-- D1 接收 main 提供的 N 个 target truth/观测源，按输入数组长度融合，不在算法路径写死 2 或 5。
-- N 个目标，循环覆盖常速度、转弯和轻机动。
-- 雷达 0.5-2.0 s 延迟，协方差随距离增长。
-- 声学粗方位和声纹式分类提示。
-- EO 像素框投影和 bbox/置信度相关协方差。
-- 延迟补偿与不补偿两条基线对比。
+## 18. 当前能力状态
 
-现有实验报告和图表：
+### 18.1 默认主线已实现
 
-- `reports/EXPERIMENT_REPORT.md`
-- `reports/tracks_xy.png`
-- `reports/rmse_latency_ablation.png`
+- NED 六状态、观测和航迹协方差；
+- 双时间戳、时间不确定度和固定滞后 OOSM 回放；
+- 雷达、声学、EO 和合成 LiDAR 观测模型；
+- NumPy CV/EKF、数值雅可比和 Joseph 协方差更新；
+- 雷达初始化、基础马氏距离/NIS 关联和来源谱系去重；
+- 粗略、稳定和可交接质量分级；
+- 协方差限制原因、FDIR-light、时延和区域质量摘要；
+- JSONL/CSV 回放、受治理清单、AirSim 输入冻结和在线真值隔离；
+- 不写死 2 对 2、5 对 5或固定目标数。
 
-主要指标：
+### 18.2 已实现但不在默认主线
 
-- `compensated_rmse_m`
-- `uncompensated_rmse_m`
-- `track_continuity`
-- `grading_accuracy`
-- `observation_count`
-- `mean_radar_latency_s`
+- 2..N 个已确认同一身份观察者的方位 WLS；
+- 未知交叉相关性的 CI；
+- 合成长回放和隔离滤波评分；
+- 旧 Blocks JSONL 兼容读取；
+- `use_truth_hints_for_association` 测试兼容参数。该参数严禁用于受治理在线验证。
 
-建议后续为主动降级增加指标：
+### 18.3 尚未实现或尚未闭合
 
-- `median_a95_xy_m`
-- `p90_a95_xy_m`
-- `stale_track_ratio`
-- `handover_ready_ratio`
-- `active_degrade_event_count`
-- `active_degrade_lead_time_s`
+- UKF、IMM-EKF、IMM-UKF 和完整多运动模型主线；
+- FilterPy、Stone Soup 可执行后端替换；
+- ROS 2 `tf2`、消息同步和真实传感器驱动；
+- D1 直连 AirSim 在线传感器；
+- 纯 EO/声学新航迹初始化；
+- 完整 `lost/dropped` 生命周期、航迹合并/拆分和质量迟滞；
+- WLS/CI 的真实多节点运行总线闭环；
+- 工程级真实雷达、声学和相机误差曲线冻结。
 
-## 12. 跨模块接口关系
+## 19. 2026-07-13 验证结果
 
-- D2：消费 D1 的 `GlobalTrack`，进一步执行多目标数据关联和稳定 `global_track_id` 管理。D1 的基础关联不替代 D2 的 GNN/JPDA/MHT。
-- D3：使用 `state`、`covariance`、`track_level` 和威胁/质量字段构造分配代价。高协方差航迹应提高分配惩罚。
-- D4：当前可消费 D1 的 `TrackUncertaintySummary`、`LatencyAuditSummary`、轻量 `FusionQualityRegionSummary` 和 `FusionQualityRegionWindowSummary` 区分被动降级与主动降级候选；最终阈值、迟滞和降级仲裁仍由 D4/D6 后续补齐。主动降级只表达态势质量不足，不代表节点失效。
-- D5：使用 `GlobalTrack` 的 NED 状态和协方差投影到局部相机平面。D5 不应直接使用 D1 内部单次传感器观测改写终端绑定。
-- D6：消费 D1 输出和日志，统计 RMSE、连续性、分级准确率、延迟补偿收益等指标。
+### 19.1 D1 回归基线
 
-跨模块硬约束：
+当前模块原理和计划记录的 D1 全量回归为 **79 passed**。本次只同步文档，没有修改代码，
+因此不重新声称执行全量测试。
 
-- 所有观测保留 `measurement_timestamp` 和 `arrival_timestamp`。
-- 所有航迹保留协方差。
-- D1 输出坐标系为 NED。
-- `handover` 仅代表研究质量等级，不代表授权或自动处置。
-- 主动降级信号只描述定位质量、延迟和一致性，不直接触发真实控制或处置动作。
+### 19.2 真实 AirSim 密集交叉输入
 
-## 13. 局限与后续工作
+当前严格输入证据包括：
 
-当前局限：
+- AirSim 计算机视觉模式，5 个目标；
+- 常规相邻间距严格 4 m、紧密相邻间距严格 2 m；
+- 每种间距 20 个随机种子，共 40 个真实 AirSim 回合；
+- 每回合 51 帧，默认不保存截图；
+- evaluator-only truth sidecar 共 10,200 个样本；
+- 在线真值泄漏计数为 0；
+- 全部冻结记录保留双时间戳、协方差、NED、来源谱系、场景/配置版本、随机种子、目标间距和
+  证据路径；
+- D6 将 `d1_dense_crossing` 证据标记为可用。
 
-- D1 只提供基础最近邻式关联，密集交叉目标下的 ID 保持能力有限。
-- 雷达是唯一新航迹初始化源，纯 EO/声学初始化尚未启用。
-- 仅实现 EKF fallback，UKF、IMM 和 Stone Soup OOSM 对照仍为后续扩展。
-- 坐标转换工具以接口约定为主，尚未集成 ROS 2 `tf2`。
-- 仿真为质点模型和合成传感器，不代表真实传感器标定误差全集。
-- `TrackUncertaintySummary` 已落地为 D1 代码数据类，`FusionAdapter.track_uncertainty_summaries()` 可导出每条航迹的 `track_id/global_track_id`、`position_covariance_trace`、`a95_m`、`track_level`、`measurement_age_s`、`source_support`、`coverage_cell`、`measurement_timestamp`、`arrival_timestamp`、`valid_at` 和 `published_at`。
-- D1 已提供 replay schema v1、legacy `blocks_sensor_observations.jsonl` 兼容、最小 CSV reader/replay、`LatencyAuditSummary`、轻量 `FusionQualityRegionSummary`、`FusionQualityRegionWindowSummary` 和 `ReconCueSummary`，可读回 main/AirSim runtime 或人工审计写出的 D1 观测并回放 `FusionAdapter`。
-- D1 已提供 source lineage 去重基线，按同一 source/sequence/payload lineage 抑制 relay 或重复投递造成的二次更新；未知相关性的跨节点 Track-to-Track fusion 和协方差交叉仍未实现。
+这组结果证明 AirSim 持久化输入冻结、捕获来源校验、真值旁路隔离和下游可消费性已经闭合。
+它不证明真实雷达/声学/EO 误差模型已经标定，也不证明 D1 在密集交叉中保持规范身份；后者
+属于 D2 的离线评分。
 
-后续建议：
+### 19.3 隔离合成基准
 
-P1 主线补强：
+六条雷达观测的小型冻结样本曾得到：
 
-已完成基线：
+- 位置 RMSE 约 0.2335 m；
+- 平均 NIS 约 0.0426；
+- 平均 NEES 约 0.0651；
+- 验证主机相关耗时约 6.9 至 10.1 ms。
 
-1. 已固化 `blocks_sensor_observations.jsonl`/未来 `sensor_observations.jsonl` 的 schema v1，并明确 camera metadata、communication metadata、source lineage 和可选评估标签字段。
-2. 已增加最小 CSV reader/replay，便于 D6 长期批量统计和人工审计。
-3. 已在 `TrackUncertaintySummary` 基线之上补轻量 `FusionQualityRegionSummary`，聚合 coverage cell、source gap、freshness、a95 和 handover readiness。
-4. 已为 OOSM/fixed-lag replay 增加 `LatencyAuditSummary`，包括 max/mean latency、OOSM replay 次数、stale/OOSM count、replay history 和重复观测计数。
-5. 已提供 `annotate_covariance_growth_rates()`、`summarize_region_quality_windows()` 和 `ReconCueSummary`，覆盖协方差增长率、区域窗口趋势、latency/OOSM flags 和二级侦察粗指向 cue。
+该样本规模很小，低 NIS/NEES 反而说明协方差偏保守。它只证明评分路径可运行，不能作为真实
+传感器精度或实时性结论。验证环境中的 FilterPy 和 Stone Soup 均不可用，结果明确标记
+`unavailable_reason`，没有替换当前 NumPy 路径。
 
-剩余 P1：
+### 19.4 合成长回放证据
 
-1. 增加来自 main/shared runtime 的 AirSim CV/Blocks fixture，覆盖 `simGetDetections`/detector boxes、actor label、camera metadata、timestamp、bbox covariance 和 N actor 输出，并形成真实样本回归。
-2. 将 D1 观测、摘要和 replay 审计日志与 D6 长期批量 JSONL/CSV schema 对齐。
-3. 基于真实多 seed 样本校准区域窗口、freshness/source-gap、协方差增长率和 handover readiness 的持续阈值。
-4. 补更细 NIS 统计和真实样本回归。
+默认长回放曾生成 843 条观测、21 个注入雷达 OOSM、6 个被抑制中继重复和 29 个区域窗口，
+在线真值泄漏为 0。RMSE/NEES 在缺少 D2 规范身份映射时保持不可用，不由 D1 猜测或填零。
 
-P2/P3 或后置对照：
+## 20. 剩余限制与下一步实施重点
 
-1. FilterPy、Stone Soup、UKF、IMM 和 Track-to-Track fusion 只作为离线对照或算法升级项，不替换当前 NumPy EKF fallback。
-2. OpenCV calibration、畸变校正、`projectPoints` 和 `solvePnP` 继续与 D5 视觉几何边界对齐，D1 保持 bbox/camera metadata/协方差合同。
-3. ROS 2 `tf2/message_filters` 等 topic/runtime 能力等 main/shared runtime、tf tree、bag/replay 和 topic schema 稳定后再评估。
+当前优先级一限制如下。
+
+1. **真实传感器挑战数据不足**：现有严格 4 m/2 m 回放主要验证几何声明、冻结和离线身份
+   输入，尚未覆盖有代表性的雷达/声学/EO 漏检、匿名虚警、遮挡、异步采样、特定时延、时钟
+   异常和节点退出分布。
+2. **长期阈值未冻结**：区域协方差增长、量测新鲜度、交接准备度、NIS/NEES、期望时延和
+   健康误报/漏报仍需正常/故障多随机种子对照。
+3. **协同定位未运行时闭环**：WLS/CI 助手存在，但 D1/D2 规范身份适配、部分共享谱系、
+   真实多节点回放和 3->2->1 节点退出质量退化尚未闭合。
+4. **单模型限制**：高机动目标仍由 CV 过程噪声吸收，缺少 CA/CT/IMM 同输入对照。
+5. **长期 D6 一致性**：跨场景和长时运行中的结构版本、可用性、证据路径、健康、区域窗口和
+   RMSE/NIS/NEES 汇总还需持续校验。
+6. **数值治理边界**：普通入口未形成统一半正定特征值投影与统计一致性保证。
+7. **生命周期不完整**：默认融合器尚无完整丢失、删除、合并、拆分和状态迟滞。
+
+优先级二只做隔离对照：UKF、IMM、FilterPy、Stone Soup、OpenCV/GTSAM 协同几何后端和
+ROS 2 适配均不得在未完成冻结输入、依赖、指标和收益评审前写成默认能力。下一阶段应先由
+main 提供版本化真实多随机种子长回放，D1 冻结实际观测并保持真值隔离，再由 D2/D6 完成身份
+映射和统计校准。
+
+## 21. 实施结论
+
+D1 已形成一条可执行、可审计的研究链：异构观测先经过双时间戳、坐标和协方差规范化，再由
+常速度 EKF 在量测时刻更新，通过固定滞后回放传播到发布时刻，最后输出带质量、来源、健康和
+不确定度证据的 `GlobalTrack`。严格回放将在线算法与离线真值物理分离，来源谱系避免中继重复
+造成虚假收敛。
+
+当前结论应限定为“科研仿真的融合合同和证据链已经闭合，真实传感器长期标定和高机动、多节点
+协同融合仍需验证”。不得把 AirSim 几何回放、合成低误差样本或枚举中存在的状态解释为真实
+设备性能、完整身份保持或工程部署能力。
