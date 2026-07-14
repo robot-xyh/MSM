@@ -170,6 +170,9 @@ def test_m_to_n_member_change_advances_once_then_stabilizes() -> None:
     assert changed.execution_signature() != first.execution_signature()
     assert refreshed.version == changed.version
     assert refreshed.plan_id == changed.plan_id
+    assert refreshed.coalitions[0].version == changed.coalitions[0].version
+    assert refreshed.metadata["plan_refresh_only"] is False
+    assert refreshed.metadata["evaluation_refresh_only"] is True
     assert refreshed.changed is False
 
 
@@ -229,9 +232,15 @@ def test_secondary_activation_and_coalition_role_change_advance_identity() -> No
     )
 
     assert takeover_candidate.plan_id == center.plan_id
+    assert takeover_candidate.version == center.version
+    assert takeover_candidate.metadata["evaluation_refresh_only"] is True
     assert secondary.version == center.version + 1
     assert secondary.plan_id != center.plan_id
     assert secondary.metadata["active_plan_owner"] == "secondary"
+    assert secondary.metadata["new_plan_lineage_reason"] == (
+        "secondary_takeover_owner_change"
+    )
+    assert secondary.metadata["identity_created_at_s"] == 1.1
     assert secondary.execution_signature() != center.execution_signature()
 
     secondary = planner.publish_plan(secondary)
@@ -253,3 +262,111 @@ def test_secondary_activation_and_coalition_role_change_advance_identity() -> No
     assert center_candidate.version == secondary.version + 1
     assert center_candidate.coalitions[0].version == secondary.coalitions[0].version + 1
     assert center_candidate.execution_signature() != secondary.execution_signature()
+
+
+def test_cooperative_cost_refresh_keeps_lineage_across_three_ticks() -> None:
+    planner = AssignmentPlanner(
+        config=PlannerConfig(
+            enable_hysteresis=False,
+            human_authorization_state="approved",
+        )
+    )
+    demand = TargetDemand(
+        required_resource_count=3,
+        primary_resource_count=2,
+        coordination_mode="hybrid",
+    )
+    resources = [ResourceState(f"R{i}") for i in range(1, 6)]
+    tracks = [
+        _track("T-HIGH", demand=demand),
+        _track("T-LOW", demand=TargetDemand.independent(), preferred="R4"),
+    ]
+    first = planner.plan(
+        tracks,
+        resources,
+        timestamp=0.0,
+    )
+    second = planner.plan(
+        tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=first,
+        expected_previous_version=first.version,
+    )
+    third = planner.plan(
+        tracks,
+        resources,
+        timestamp=2.0,
+        previous_plan=second,
+        expected_previous_version=second.version,
+    )
+
+    assert (first.version, second.version, third.version) == (1, 1, 1)
+    assert first.plan_id == second.plan_id == third.plan_id
+    assert first.created_at == second.created_at == third.created_at == 0.0
+    assert second.previous_plan_id == third.previous_plan_id == first.previous_plan_id
+    assert second.metadata["plan_refresh_only"] is False
+    assert third.metadata["plan_refresh_only"] is False
+    assert second.metadata["evaluation_refresh_only"] is True
+    assert third.metadata["evaluation_refresh_only"] is True
+    assert second.changed is third.changed is False
+    assert {
+        coalition.version
+        for plan in (first, second, third)
+        for coalition in plan.coalitions
+    } == {1}
+    assert {
+        tuple(
+            (coalition.target_id, member.resource_id, member.member_role)
+            for coalition in plan.coalitions
+            for member in coalition.members
+        )
+        for plan in (first, second, third)
+    } == {
+        tuple(
+            (coalition.target_id, member.resource_id, member.member_role)
+            for coalition in first.coalitions
+            for member in coalition.members
+        )
+    }
+    assert {assignment.plan_version for assignment in third.assignments} == {1}
+    assert all(
+        assignment.metadata["evaluation_refresh_only"] is True
+        for assignment in third.assignments
+    )
+    assert {
+        assignment.metadata["current_plan_id"] for assignment in third.assignments
+    } == {first.plan_id}
+
+    current = guidance_bindings_from_assignment_plan(
+        first,
+        current_plan_id=third.plan_id,
+        current_plan_version=third.version,
+    )
+    assert all(binding.binding_state != "stale" for binding in current)
+    assert all(
+        binding.binding_state == "active"
+        for binding in current
+        if binding.member_role == "primary"
+    )
+
+
+def test_publish_rejects_compatible_refresh_with_changed_lineage_id() -> None:
+    planner = _planner()
+    demand = TargetDemand()
+    resources = [ResourceState(f"R{i}") for i in range(1, 4)]
+    first = planner.plan([_track(demand=demand)], resources, timestamp=0.0)
+    refresh = planner.plan(
+        [_track(demand=demand)],
+        resources,
+        timestamp=1.0,
+        previous_plan=first,
+        publish=False,
+    )
+
+    assert refresh.plan_id == first.plan_id
+    with pytest.raises(
+        ValueError,
+        match="evaluation-only refresh cannot advance executable plan identity",
+    ):
+        planner.publish_plan(replace(refresh, plan_id="d3-plan-invalid-lineage"))

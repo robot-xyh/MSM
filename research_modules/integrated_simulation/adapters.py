@@ -326,6 +326,8 @@ def plan_to_terminal_assignments(plan: AssignmentPlan) -> list[TerminalAssignmen
             arrival_window_start_s=assignment.arrival_window_start_s,
             arrival_window_end_s=assignment.arrival_window_end_s,
             activation_state=activation_state,
+            terminal_authorization_scope=assignment.terminal_authorization_scope,
+            arrival_coordination_required=assignment.arrival_coordination_required,
         ))
     return output
 

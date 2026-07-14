@@ -316,6 +316,21 @@ class TerminalGuidanceDelivery:
             return ""
         if previous == context:
             return ""
+        identity_fields = (
+            "resource_id",
+            "assigned_global_track_id",
+            "local_track_id",
+            "plan_owner_id",
+        )
+        if (
+            all(getattr(previous, name) == getattr(context, name) for name in identity_fields)
+            and context.plan_version > previous.plan_version
+        ):
+            # A rolling D3 plan version does not change the visual target identity.
+            # The current version is still checked by D3/D4/D5 before this method
+            # is reached; only the already measured image-filter history survives.
+            self._lifecycle_context = context
+            return ""
         changed = [
             name
             for name in (

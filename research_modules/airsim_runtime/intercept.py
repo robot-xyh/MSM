@@ -911,11 +911,17 @@ def _initial_pairs(frame: AirSimFrame, config: BlocksSmokeConfig) -> list[Interc
             plan_id="airsim_control_cooperative_plan",
             plan_version=1,
             vehicle_names=vehicle_names,
-            arrival_windows={
-                target.object_id: (0.0, float(config.intercept_max_duration_s))
-                for target in sorted_targets
-                if required_counts[target.object_id] > 1
-            },
+            arrival_windows=(
+                {
+                    target.object_id: (0.0, float(config.intercept_max_duration_s))
+                    for target in sorted_targets
+                    if required_counts[target.object_id] > 1
+                }
+                if config.arrival_coordination_required
+                else {}
+            ),
+            terminal_authorization_scope=config.terminal_authorization_scope,
+            arrival_coordination_required=config.arrival_coordination_required,
         )
         return [
             InterceptPair(
@@ -957,6 +963,25 @@ def _refresh_pair_assignments(frame: AirSimFrame, pairs: list[InterceptPair]) ->
         resource = resources.get(pair.resource_id)
         if resource is None:
             continue
+        explicit_binding = _matching_metadata_record(
+            frame.metadata.get("assignment_guidance_bindings"),
+            resource_id=str(pair.resource_id),
+            target_id="",
+        )
+        if explicit_binding is None and pair.guidance_binding is not None:
+            # AirSim capture and main-bus processing are asynchronous. A sparse
+            # frame must not downgrade the last complete D3 binding to an
+            # ownerless synthetic plan while the bound actor still exists.
+            bound_target_id = (
+                pair.guidance_binding.target_object_id or pair.target_id
+            )
+            bound_target = targets.get(str(bound_target_id))
+            if bound_target is not None:
+                pair.target_id = bound_target.object_id
+                pair.assigned_global_track_id = (
+                    pair.guidance_binding.assigned_global_track_id
+                )
+                continue
         current_target = targets.get(pair.target_id)
         fallback_target = current_target or next(iter(targets.values()), None)
         if fallback_target is None:
@@ -1111,6 +1136,46 @@ def _binding_for_pair(
             target_actor_name=_optional_record_string(explicit, "target_actor_name"),
             target_object_id=_optional_record_string(explicit, "target_object_id"),
             target_mesh_aliases=_mesh_aliases_from_record(explicit),
+            coalition_id=_optional_record_string(explicit, "coalition_id"),
+            coalition_version=_optional_record_int(explicit, "coalition_version"),
+            coalition_epoch=_optional_record_int(explicit, "coalition_epoch"),
+            member_role=str(_record_value(explicit, "member_role", "primary")),
+            wave_id=int(_record_value(explicit, "wave_id", 0)),
+            coordination_mode=str(
+                _record_value(explicit, "coordination_mode", "independent")
+            ),
+            arrival_window_start_s=_optional_record_float(
+                explicit, "arrival_window_start_s"
+            ),
+            arrival_window_end_s=_optional_record_float(
+                explicit, "arrival_window_end_s"
+            ),
+            activation_state=str(
+                _record_value(explicit, "activation_state", "active")
+            ),
+            activation_plan_version=_optional_record_int(
+                explicit, "activation_plan_version"
+            ),
+            activation_track_version=_optional_record_int(
+                explicit, "activation_track_version"
+            ),
+            activation_coalition_version=_optional_record_int(
+                explicit, "activation_coalition_version"
+            ),
+            terminal_authorization_scope=str(
+                _record_value(
+                    explicit,
+                    "terminal_authorization_scope",
+                    "per_primary",
+                )
+            ),
+            arrival_coordination_required=bool(
+                _record_value(
+                    explicit,
+                    "arrival_coordination_required",
+                    False,
+                )
+            ),
             metadata=dict(_record_value(explicit, "metadata", {}) or {}),
         )
 
@@ -1139,6 +1204,12 @@ def _binding_for_pair(
         target_actor_name=actor_name or None,
         target_object_id=str(target.object_id),
         target_mesh_aliases=aliases,
+        terminal_authorization_scope=frame.metadata.get(
+            "terminal_authorization_scope", "per_primary"
+        ),
+        arrival_coordination_required=bool(
+            frame.metadata.get("arrival_coordination_required", False)
+        ),
         metadata={"source": "airsim_control_simulated_binding"},
     )
 
@@ -2186,7 +2257,25 @@ def _pair_summary(pair: InterceptPair) -> dict[str, Any]:
         "terminal_contract_reject_reason": pair.terminal_contract_reject_reason,
         "plan_id": _pair_plan_id(pair),
         "plan_version": _pair_plan_version(pair),
+        "plan_owner_node_id": None if binding is None else binding.owner_node_id,
         "track_version": _pair_track_version(pair),
+        "coalition_id": None if binding is None else binding.coalition_id,
+        "coalition_version": None if binding is None else binding.coalition_version,
+        "coalition_epoch": (
+            binding.coalition_epoch
+            if binding is not None and binding.coalition_epoch is not None
+            else None
+            if pair.d4_permission is None
+            else pair.d4_permission.coalition_epoch
+        ),
+        "coalition_commit_state": (
+            None if pair.d4_permission is None else pair.d4_permission.coalition_commit_state
+        ),
+        "coalition_lease_expires_at_s": (
+            None
+            if pair.d4_permission is None
+            else pair.d4_permission.coalition_lease_expires_at_s
+        ),
         "d4_action": _pair_d4_action(pair),
         "d4_mode": _pair_d4_mode(pair),
         "d4_target_node_id": _pair_d4_target_node_id(pair),

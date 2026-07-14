@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 import hashlib
 import json
+from math import isfinite
 from typing import Any
 
 import numpy as np
@@ -83,6 +84,15 @@ def d2_frames_from_d1_governed_replay(
         if isinstance(provenance_metadata, Mapping)
         else None
     )
+    target_spacing_m = _optional_positive_float(
+        provenance_metadata.get("target_spacing_m")
+        if isinstance(provenance_metadata, Mapping)
+        else None,
+        field="D1 provenance target_spacing_m",
+    )
+    stress_profile = manifest.get("d2_offline_stress_profile")
+    if stress_profile is not None and not isinstance(stress_profile, Mapping):
+        raise ValueError("D1 d2_offline_stress_profile must be a mapping")
     diagnostics = {
         "source_manifest_schema": D1_GOVERNED_MANIFEST_SCHEMA,
         "source_observation_schema": manifest.get("observation_schema_version"),
@@ -125,6 +135,12 @@ def d2_frames_from_d1_governed_replay(
             replay_metadata["seed"] = seed
         if target_count is not None:
             replay_metadata["target_count"] = int(target_count)
+        if target_spacing_m is not None:
+            replay_metadata["target_spacing_m"] = target_spacing_m
+        if stress_profile is not None:
+            replay_metadata["d2_offline_stress_profile"] = _json_ready(
+                dict(stress_profile)
+            )
         frames.append(
             {
                 "frame_index": source_frame_index,
@@ -248,3 +264,27 @@ def _first_string(*values: Any) -> str:
         if value is not None and str(value):
             return str(value)
     raise ValueError("at least one non-empty value is required")
+
+
+def _optional_positive_float(value: Any, *, field: str) -> float | None:
+    if value is None:
+        return None
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field} must be positive and finite") from exc
+    if not isfinite(result) or result <= 0.0:
+        raise ValueError(f"{field} must be positive and finite")
+    return result
+
+
+def _json_ready(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, Mapping):
+        return {str(key): _json_ready(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_ready(item) for item in value]
+    return value

@@ -9,7 +9,7 @@ from typing import Any, Iterable, Mapping
 
 import numpy as np
 
-from .geometry import mahalanobis_d2, project_track
+from .geometry import image_resolution_scale, mahalanobis_d2, project_track
 from .identity import IdentityChecker
 from .models import (
     Assignment,
@@ -23,6 +23,7 @@ from .models import (
     ReconImageCue,
     TerminalAssociation,
 )
+from .object_taxonomy import canonical_object_class
 
 
 AUTHORIZED_ASSIGNMENT_STATES = {
@@ -173,7 +174,9 @@ class TerminalAssociator:
                 projected_track,
                 camera,
                 regularization=self.config.projection_regularization,
-                image_margin_px=self.config.image_margin_px,
+                image_margin_px=(
+                    self.config.image_margin_px * image_resolution_scale(camera.image_size)
+                ),
             )
         return projections
 
@@ -682,7 +685,10 @@ class TerminalAssociator:
         friend_state = self.identity_checker.friend_conflict_state(
             local_track,
             identity_claims,
-            center_threshold_px=self.config.friend_center_threshold_px,
+            center_threshold_px=(
+                self.config.friend_center_threshold_px
+                * image_resolution_scale(projection.image_size)
+            ),
             iou_threshold=self.config.friend_iou_threshold,
         )
         friend_cost = self._friend_cost(friend_state)
@@ -737,7 +743,8 @@ class TerminalAssociator:
         if self.config.rate_sigma_px_s <= 0:
             return 0.0
         delta = local_track.bearing_rate - projection.predicted_px_velocity
-        normalized = float(np.linalg.norm(delta) / self.config.rate_sigma_px_s)
+        sigma = self.config.rate_sigma_px_s * image_resolution_scale(projection.image_size)
+        normalized = float(np.linalg.norm(delta) / sigma)
         if not np.isfinite(normalized):
             return self.config.cost_inf
         return self.config.rate_cost_weight * normalized * normalized
@@ -745,9 +752,11 @@ class TerminalAssociator:
     def _category_cost(self, projection: ProjectionResult, local_track: LocalVisualTrack) -> float:
         # Unknown categories are intentionally neutral; positive friend evidence
         # is handled by the identity checker and can force hold.
-        if projection.category == "unknown" or local_track.category == "unknown":
+        projection_class = canonical_object_class(projection.category)
+        local_class = canonical_object_class(local_track.category)
+        if projection_class == "unknown" or local_class == "unknown":
             return 0.0
-        if projection.category != local_track.category:
+        if projection_class != local_class:
             return self.config.category_mismatch_penalty
         return 0.0
 
@@ -782,7 +791,11 @@ class TerminalAssociator:
             if cue.center_px is None:
                 continue
             distance = float(np.linalg.norm(local_track.center_px - cue.center_px))
-            if distance <= self.config.recon_cue_center_threshold_px:
+            threshold_px = (
+                self.config.recon_cue_center_threshold_px
+                * image_resolution_scale(projection.image_size)
+            )
+            if distance <= threshold_px:
                 return -self.config.recon_cue_bonus * cue.confidence
         return 0.0
 
@@ -935,6 +948,8 @@ class TerminalAssociator:
             arrival_window_start_s=assignment.arrival_window_start_s,
             arrival_window_end_s=assignment.arrival_window_end_s,
             activation_state=assignment.activation_state,
+            terminal_authorization_scope=assignment.terminal_authorization_scope,
+            arrival_coordination_required=assignment.arrival_coordination_required,
         )
 
     def _candidate_costs(
@@ -1158,6 +1173,8 @@ class TerminalAssociator:
             "arrival_window_start_s": assignment.arrival_window_start_s,
             "arrival_window_end_s": assignment.arrival_window_end_s,
             "activation_state": assignment.activation_state,
+            "terminal_authorization_scope": assignment.terminal_authorization_scope,
+            "arrival_coordination_required": assignment.arrival_coordination_required,
             "global_id_policy": "existing_assigned_global_track_id_only",
             "truth_id_online_use": "ignored",
         }
@@ -1431,7 +1448,10 @@ class TerminalAssociator:
                     friend_conflict_state=self.identity_checker.friend_conflict_state(
                         local_track,
                         identity_claims,
-                        center_threshold_px=self.config.friend_center_threshold_px,
+                        center_threshold_px=(
+                            self.config.friend_center_threshold_px
+                            * image_resolution_scale(projection.image_size)
+                        ),
                         iou_threshold=self.config.friend_iou_threshold,
                     ),
                 )
@@ -1498,7 +1518,8 @@ class TerminalAssociator:
         history: _AssociationHistory,
         timestamp: float | None,
     ) -> float:
-        radius = float(self.config.reacquire_search_radius_px)
+        pixel_scale = image_resolution_scale(projection.image_size)
+        radius = float(self.config.reacquire_search_radius_px) * pixel_scale
         if projection.covariance_px is not None:
             eigvals = np.linalg.eigvalsh(projection.covariance_px)
             max_sigma = sqrt(max(0.0, float(np.max(eigvals))))
@@ -1512,7 +1533,10 @@ class TerminalAssociator:
             and projection.predicted_px_velocity is not None
         ):
             dt = max(0.0, float(timestamp) - float(history.last_locked_timestamp))
-            radius += min(60.0, float(np.linalg.norm(projection.predicted_px_velocity)) * dt)
+            radius += min(
+                60.0 * pixel_scale,
+                float(np.linalg.norm(projection.predicted_px_velocity)) * dt,
+            )
         return float(radius)
 
     def _history_recent_enough(

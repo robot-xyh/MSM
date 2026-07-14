@@ -7,6 +7,12 @@ from .airsim_dry_run import (
     guidance_records_from_assignment_dry_run,
     make_minimal_airsim_dry_run_fixture,
 )
+from .airsim_contract_replay import (
+    AIRSIM_CONTRACT_REPLAY_BOUNDARY,
+    AirSimContractReplayAnalysis,
+    ContractRejectImpact,
+    analyze_airsim_contract_replay,
+)
 from .calibration import (
     D7_GUIDANCE_CALIBRATION_BOUNDARY,
     DEFAULT_CALIBRATION_THRESHOLD_VERSION,
@@ -35,6 +41,16 @@ from .cooperative_topology import (
     CooperativeGuidanceTopologyValidation,
     build_cooperative_guidance_topology,
     validate_cooperative_guidance_topology,
+)
+from .cooperative_diagnostics import (
+    COOPERATIVE_GUIDANCE_DIAGNOSTIC_BOUNDARY,
+    AssignmentPairGuidanceDiagnostic,
+    CooperativeGuidanceCandidateMetadata,
+    CooperativeGuidanceDiagnosticSample,
+    build_assignment_pair_guidance_diagnostics,
+    coerce_cooperative_guidance_candidate,
+    prescreen_cooperative_guidance_candidates,
+    summarize_cooperative_guidance_diagnostics,
 )
 from .models import (
     GuidanceCommand,
@@ -126,10 +142,17 @@ from .vision_png import (
 
 __all__ = [
     "AIRSIM_PHASE1_DRY_RUN_BOUNDARY",
+    "AIRSIM_CONTRACT_REPLAY_BOUNDARY",
+    "AirSimContractReplayAnalysis",
     "AssignmentGuidanceBinding",
     "BBOX_LOS_REPLAY_BOUNDARY",
     "COOPERATIVE_TOPOLOGY_BOUNDARY",
+    "COOPERATIVE_GUIDANCE_DIAGNOSTIC_BOUNDARY",
+    "AssignmentPairGuidanceDiagnostic",
+    "CooperativeGuidanceCandidateMetadata",
+    "CooperativeGuidanceDiagnosticSample",
     "CooperativeGuidanceTargetTopology",
+    "ContractRejectImpact",
     "CooperativeGuidanceTopology",
     "CooperativeGuidanceTopologyValidation",
     "D7_GUIDANCE_CALIBRATION_BOUNDARY",
@@ -181,9 +204,12 @@ __all__ = [
     "VisionGuidanceQuality",
     "VISUAL_HANDOVER_LAWS",
     "bbox_replay_detection_to_observation",
+    "analyze_airsim_contract_replay",
     "build_cooperative_guidance_topology",
+    "build_assignment_pair_guidance_diagnostics",
     "coerce_assignment_guidance_binding",
     "coerce_d4_guidance_permission",
+    "coerce_cooperative_guidance_candidate",
     "coerce_vision_guidance_observation",
     "compute_pn_command",
     "compute_midcourse_reacquisition_command",
@@ -205,6 +231,7 @@ __all__ = [
     "run_optional_p2_point_mass_benchmark",
     "run_optional_p2_replay_benchmark",
     "select_runtime_guidance_law",
+    "prescreen_cooperative_guidance_candidates",
     "simulate_guidance_episode",
     "summarize_guidance_calibration",
     "summarize_guidance_records",
@@ -213,6 +240,7 @@ __all__ = [
     "summarize_optional_p2_benchmark",
     "summarize_png_ttc_calibration",
     "summarize_runtime_bus_outputs",
+    "summarize_cooperative_guidance_diagnostics",
     "summarize_terminal_switch_quality",
     "terminal_switch_allowed_rate",
     "validate_cooperative_guidance_topology",

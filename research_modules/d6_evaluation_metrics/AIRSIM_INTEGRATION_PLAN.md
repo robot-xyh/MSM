@@ -2,6 +2,14 @@
 
 本文只描述 D6 如何离线消费 AirSim/main runtime 已写盘产物。D6 不连接 AirSim client，不调用 `simGetDetections`、vehicle control、reset、pose 或任何实时 API；AirSim 启停、reset、episode 顺序、日志写盘和最终报告调度由 main runtime 负责。
 
+## 2026-07-13 正式产物消费状态
+
+七源统一报告已经消费正式 AirSim/main 产物，各 source 均 available：D1 `1` 行、D2 `3660` 行、D3 `40` 行、D4 `60` 行、D5 per-primary `160` 行、native MOT `18` 行、D7 `164` 行。D7 的 164 行由 160 条 pair/safety 记录和 4 条 profile 汇总组成，profile aggregate 不与逐 pair 四层重复计数。
+
+正式 M5N2 结果为最佳 profile coalition `5/10`、overall `8/40`；D7 四层为 contract `35`、control `7`、mode switch `9`、physical `62`。online truth use、`global_track_id` rewrite 和 reserve unauthorized execution 均为 0。D3 产物缺少逐时刻 plan history，因此 churn 保持 `unavailable`，D6 不从最终 snapshot 或 version 总数重建时序。
+
+当前 D6 回归为 `115 passed`。真实 4 m/2 m dense-crossing、M5N2、D4 episode fault 和 native MOT 已从“待 main 提供”转为“正式产物已消费”。开放 P1 仅包括长期 multi-seed 趋势、producer 逐时刻 schema 和跨批次失败原因治理；P2 工具保持 optional/offline，不进入默认路径。
+
 ## 1. 边界
 
 D6 AirSim 集成是 offline-only：
@@ -20,6 +28,8 @@ D6 AirSim 集成是 offline-only：
 | `load_d4_active_degradation_decisions()` | D4 active-degradation CSV | 读取主动降级、二级协助、触发原因和窗口 delta metadata | 不判断主动降级必要性，除非 main/D4 提供 review label |
 | `load_d7_intercept_outputs()` | `control_commands.csv`、`intercept_summary.json` | 读取 gate、visual PNG switch、terminal takeover、拦截结果、reject reason | 不运行 D7，不发控制 |
 | `load_d7_guidance_timeseries()` | `guidance_records.csv`、`guidance_summaries.json`，可合并 control/intercept 输出 | 读取 mode switch、D4/D5 state、plan/version、guidance law、terminal contract reject | 不负责保证 main 每个 episode 都写出这些文件 |
+| `P1SystemEvidenceReportGenerator` | D1-D7 正式 summary/aggregate 与 native MOT execution index | 统一展开七源 available 记录，输出 CSV、JSON、中文 Markdown 和 PNG，并保持四层、availability 和 truth 审计 | D3 缺逐时刻 history 时 churn 保持 unavailable |
+| `merge_replay_with_execution_metrics()` | integrated replay 与 main bus execution metrics | 按字段优先级合并离线 replay 和正式执行证据，保留 source/availability/provenance | 不回写 AirSim runtime，不从缺失值构造执行结果 |
 
 ## 3. Blocks Replay JSONL 合同
 
@@ -159,7 +169,7 @@ D6 当前转换为：
 
 必须保留 `measurement_timestamp` 与 `arrival_timestamp`。这既是 D1 时间合同，也是 D6 stale/latency 指标的来源。
 
-## 4. D4/D5/D7 AirSim 产物回灌状态
+## 4. D4/D5/D7 AirSim 产物回灌与长期治理状态
 
 ### 4.1 D4
 
@@ -169,7 +179,7 @@ D6 已实现：
 - 从 event/control metadata 识别 active/passive failover、secondary takeover、secondary reassignment、D4 reassign pending、distributed fallback。
 - 输出 `active_degradation_count`、`passive_failover_count`、`secondary_node_takeover_count`、`secondary_reassignment_count`、`d4_reassign_pending_count`、`distributed_fallback_count`、`failover_active_window_delta_s`。
 
-仍需 main/D4 接线：
+长期 producer schema 治理：
 
 - 在真实 AirSim episode 中持续写出 D4 decision/event 日志。
 - 写入 `trigger_timestamp`、`decision_timestamp`、`selected_coordinator`、`coverage_cell`、`review_label`。
@@ -183,7 +193,7 @@ D6 已实现：
 - Blocks bbox/camera metadata 的无 PNG 多视角基线。
 - `multi_view_consensus_rate`、`cross_view_conflict_count`、`duplicate_terminal_lock_count`。
 
-仍需 main/D5 接线：
+长期 producer schema 治理：
 
 - 把 D5 terminal association、identity claim、cross-view conflict、duplicate lock、friend overlap hold 和 terminal-center disagreement 事件写成 D6 可读 JSONL/CSV。
 - 保留 `assigned_global_track_id`、`local_track_id`、`resource_id/camera_id`、validation label、bbox、相机内外参和 timestamp。
@@ -203,7 +213,7 @@ main/orchestrator 已完成的接线：
 - 执行前合同检查结果另存为 `main_episode_bus_contract_metrics.json`，用于诊断 terminal contract、D4 reassign pending、D5 gate 等，不再覆盖正式执行结果。
 - 正式指标可同时看到 D7 执行结果与 `guidance_law_counts`，避免“执行前集成指标”和“执行后拦截指标”分裂。
 
-仍需 main/D7 持续接线：
+长期 producer schema 治理：
 
 - 在每个 integrated AirSim episode 中稳定产出这些 D7 文件。
 - 保持 D3 assignment plan version、D4 action/state、D5 terminal state 和 D7 guidance law 的同一时间轴。
@@ -222,7 +232,7 @@ main runtime 推荐按以下顺序写盘和评估：
 7. 调用 `compute_episode()`，传入同一 `truth_summary`、`episode_id`、`seed/batch_seed` 和实际规模字段。
 8. 批量调用 `ReportGenerator` 输出 CSV、Markdown、PNG。
 
-D6 代码已经具备第 6-8 步的模块能力；AirSim 启停、episode 顺序、跨文件合并调度和正式/contract metrics 文件写盘属于 main runtime。
+D6 代码已经具备第 6-8 步的模块能力，并已在本批正式产物上完成实际消费和统一报告。AirSim 启停、episode 顺序、跨文件合并调度和正式/contract metrics 文件写盘继续属于 main runtime；后续工作是长期 schema 与趋势治理，不是首次接入。
 
 ## 6. 时间、坐标和规模合同
 
@@ -302,6 +312,8 @@ gate outcome
 - 批量目录结构和 CI fixture。
 
 ## 9. 验证建议
+
+当前文档对应的 D6 全量回归基线为 `115 passed`。后续批次重点验证 source 行数、availability、逐时刻 provenance 和失败原因 taxonomy 的稳定性，不重新把已消费的正式 AirSim 产物标为待接入。
 
 D6 模块测试：
 

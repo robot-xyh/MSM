@@ -10,7 +10,12 @@ from typing import Any
 
 import numpy as np
 from airsim_dryrun.models import AirSimAdapterResult, AirSimFrame
-from d6_evaluation_metrics import EpisodeMetrics, ReportGenerator, load_d7_intercept_outputs
+from d6_evaluation_metrics import (
+    EpisodeMetrics,
+    ReportGenerator,
+    load_d7_intercept_outputs,
+    merge_replay_with_execution_metrics,
+)
 from d5_terminal_association import CameraModel
 from integrated_simulation import IntegratedEpisodeRunner
 from integrated_simulation.scenario import make_standard_scenario
@@ -25,7 +30,7 @@ from .adapters import (
 )
 from .blocks import BlocksProcessManager
 from .d4d5_stress import run_d4d5_stress_analysis
-from .episode_bus import MainEpisodeBusResult, run_main_episode_bus
+from .episode_bus import MainAirSimEpisodeBus, MainEpisodeBusResult, run_main_episode_bus
 from .intercept import run_controlled_intercept_episode
 from .models import BlocksSmokeConfig, BlocksSmokeResult
 from .real_runtime import RealAirSimRuntimeClient
@@ -94,8 +99,10 @@ class AirSimBlocksSmokeOrchestrator:
     ) -> None:
         self.runtime = runtime
         self.process_manager = process_manager
+        self._live_main_bus: MainAirSimEpisodeBus | None = None
 
     def run(self, config: BlocksSmokeConfig) -> BlocksSmokeResult:
+        self._live_main_bus = None
         output_dir = config.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
         process_manager = self.process_manager
@@ -152,17 +159,25 @@ class AirSimBlocksSmokeOrchestrator:
                 }
             else:
                 frames = self._capture_frames(runtime, config)
-            frames = _apply_episode_health_injection(frames, config)
+            if self._live_main_bus is None:
+                frames = _apply_episode_health_injection(frames, config)
             raw_log = _write_frames_jsonl(frames, output_dir / "blocks_frames.jsonl")
             sensor_log = _write_sensor_observations_jsonl(
                 frames,
                 output_dir / "blocks_sensor_observations.jsonl",
                 config,
             )
-            main_episode_bus = run_main_episode_bus(
-                config,
-                frames,
-                output_dir / "main_episode_bus",
+            main_episode_bus = (
+                self._live_main_bus.finalize(
+                    frames,
+                    output_dir / "main_episode_bus",
+                )
+                if self._live_main_bus is not None
+                else run_main_episode_bus(
+                    config,
+                    frames,
+                    output_dir / "main_episode_bus",
+                )
             )
             main_episode_bus = _merge_main_bus_execution_metrics(
                 main_episode_bus,
@@ -174,6 +189,11 @@ class AirSimBlocksSmokeOrchestrator:
                 self._run_integrated_replay(config, frames, output_dir)
                 if config.include_integrated_pipeline
                 else None
+            )
+            integrated = _merge_main_bus_into_integrated_metrics(
+                integrated,
+                main_episode_bus,
+                config,
             )
             integrated = _merge_d7_execution_metrics(
                 integrated,
@@ -300,6 +320,11 @@ class AirSimBlocksSmokeOrchestrator:
         runtime: RealAirSimRuntimeClient,
         config: BlocksSmokeConfig,
     ) -> list[AirSimFrame]:
+        self._live_main_bus = (
+            MainAirSimEpisodeBus(config)
+            if config.cv_camera_follow_assignments
+            else None
+        )
         frames: list[AirSimFrame] = []
         for warmup_index in range(max(0, int(config.detection_warmup_frames))):
             runtime.sample_frame(
@@ -310,7 +335,33 @@ class AirSimBlocksSmokeOrchestrator:
             )
             time.sleep(min(max(config.dt_s, 0.05), 1.0))
         for index, timestamp in enumerate(config.timestamps()):
-            frames.append(runtime.sample_frame(config, index, timestamp, config.output_dir / "images"))
+            sampled = runtime.sample_frame(
+                config,
+                index,
+                timestamp,
+                config.output_dir / "images",
+            )
+            frame = _apply_episode_health_injection([sampled], config)[0]
+            frames.append(frame)
+            if self._live_main_bus is not None:
+                try:
+                    self._live_main_bus.process_frame(frame)
+                    install_commands = getattr(
+                        runtime,
+                        "set_cv_camera_pointing_commands",
+                        None,
+                    )
+                    if callable(install_commands):
+                        install_commands(
+                            self._live_main_bus.cv_camera_pointing_commands(frame)
+                        )
+                except Exception as exc:
+                    self._live_main_bus.record_runtime_exception(
+                        module_id="main_episode_bus",
+                        timestamp=float(frame.timestamp),
+                        error=exc,
+                    )
+                    break
             if index < len(config.timestamps()) - 1:
                 time.sleep(min(max(config.dt_s, 0.05), 1.0))
         return frames
@@ -388,6 +439,73 @@ class AirSimBlocksSmokeOrchestrator:
                 "record_counts": episode.metadata.get("record_counts", {}),
             },
         )
+
+
+def _merge_main_bus_into_integrated_metrics(
+    integrated: AirSimAdapterResult | None,
+    main_episode_bus: MainEpisodeBusResult,
+    config: BlocksSmokeConfig,
+) -> AirSimAdapterResult | None:
+    if integrated is None:
+        return None
+    output_paths = dict(integrated.output_paths)
+    metrics_path = output_paths.get("metrics_json")
+    raw_replay_path = config.output_dir / "integrated_replay" / "replay_contract_metrics.json"
+    raw_replay_path.parent.mkdir(parents=True, exist_ok=True)
+    if metrics_path is not None and metrics_path.exists():
+        raw_replay_path.write_text(
+            metrics_path.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+    else:
+        raw_replay_path.write_text(
+            json.dumps(
+                {"metrics": integrated.metrics},
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+
+    merged_bundle = merge_replay_with_execution_metrics(
+        {"metrics": integrated.metrics, "metadata": integrated.metadata},
+        {
+            "metrics": main_episode_bus.metrics,
+            "metadata": main_episode_bus.summary,
+        },
+        persisted_frame_count=int(main_episode_bus.frame_count),
+        warmup_inclusive_frame_count=(
+            int(main_episode_bus.frame_count)
+            + max(0, int(config.detection_warmup_frames))
+        ),
+    )
+    merged_metrics = dict(merged_bundle["metrics"])
+    output_paths["replay_contract_metrics_json"] = raw_replay_path
+    if metrics_path is not None:
+        metrics_path.write_text(
+            json.dumps(
+                merged_bundle,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+    _rewrite_integrated_d6_reports(output_paths, merged_metrics)
+    return replace(
+        integrated,
+        metrics=merged_metrics,
+        output_paths=output_paths,
+        metadata={
+            **integrated.metadata,
+            **dict(merged_bundle.get("metadata", {})),
+            "execution_metrics_merged": bool(
+                merged_bundle.get("execution_metrics_merged", False)
+            ),
+            "replay_contract_metrics_path": str(raw_replay_path),
+        },
+    )
 
 
 def _merge_d7_execution_metrics(

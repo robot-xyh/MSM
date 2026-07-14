@@ -13,6 +13,9 @@
 5. **建议的工程研究默认是混合主备**：首批资源在可行时间窗内协调到达，后续资源保持时间/空间间隔并根据首批结果继续、等待或退出。它兼顾高威胁覆盖和互撞风险，但仍属于需要仿真验证的系统方案，不是已经形成唯一共识的控制律。
 6. **没有发现成熟、许可证明确、带测试、可直接复用的多旋翼 cooperative impact-time guidance 库**。许可证明确的候选只实现单拦截器 impact-time control；真正展示同步齐射或 cooperative PIP 的仓库均存在许可证或验证完整度问题。
 7. **MSM 已实现中心化 coalition 合同门控，但没有实现协同到达控制律**。D7 现可消费 coalition/version、role、wave、arrival window 和 activation/version，并按 assignment pair 独立 gate；它仍没有 coalition clock、time-to-go consensus、成员间防碰撞约束或协同导引通信状态。
+8. **arrival window 是视觉接管许可窗，不是 assignment 自动撤销时刻**。真实 posefix replay 显示窗口关闭样本仍需要 radar PN 保持中段控制并等待新版本；D7 已按此解释状态，但同步到达和窗口滚动仍由 D3/main 负责。
+9. **当前阶段可显式采用 per-primary terminal authorization**。当 D3 合同声明 `terminal_authorization_scope=per_primary` 且 `arrival_coordination_required=false`，D7 允许每个 active primary 独立满足 D5/视觉/机动门控后切换 PNG，不再等待共同锁定或同步到达；这是一种阶段性工程合同，不等价于 cooperative impact-time guidance，reserve 和分布式提交安全门控保持不变。
+10. **typed topology 已下发上述 policy**。构建器支持统一或按目标配置，并把 scope/arrival policy 写入 target summary 与每个 binding；因此 main 不应再通过临时 metadata 改写合同。默认调用仍保持旧 coalition/arrival gate。
 
 因此，本问题应列为 **P1 研究与合同缺口**，不是当前 P0 运行断链。现有 D3/D4/D5/D7 一对一执行链必须保持可用，且不得通过修改 `png_guidance_delivery` 公式或放宽 D3/D4/D5 gate 来伪造协同能力。
 
@@ -278,17 +281,18 @@ D4 正在 `request_center_replan/degrade_to_secondary/degrade_to_distributed` �
 - PN/Pure Pursuit/PNG VM/PNG TTC 单 pair 对照和 SimpleFlight 消费接口。
 - 中心化 coalition binding/runtime 字段，以及 primary/reserve/retry、wave、arrival window、activation 和 plan/track/coalition version gate。
 - D4/main 已接入 fallback 原子 commit；D7 对 `committed|executing`、lease、epoch、版本和 required ACK 做 commit-aware gate。缺 ACK、`reconfiguring|aborted`、过期 lease、旧 epoch/version、replan/degrade/pending 均 fail closed，no-change ACK 转为 `continue_center` 后仍执行 D5 gate。
-- D5 coalition visual completion 与 D3/D5 plan/track/coalition version 的 fail-closed 门控；T001 两个 primary 独立切换、T002 k=1、standby reserve 和新版本 activation 回归。
+- 默认 coalition scope 下的 D5 coalition visual completion，以及所有 scope 共用的 D3/D5 plan/track/coalition version fail-closed 门控；显式 per-primary scope 仅取消共同视觉完成/到达要求。T001 primary 独立切换、T002 k=1、standby reserve 和新版本 activation 均有回归。
 - main 已将 D5 coalition visual summary 接入 D7：当前 M=5/N=2 ComputerVision 10-seed 达到 8/10 双 primary 合同验收。历史基线 seeds 7/17/27 的 T002 4/5/4 帧、T001 双 primary 0 共识记录只作早期接线证据，不能替代当前结果，也不证明物理协同拦截。
 - D7 已实现 fallback 原子提交的被动消费 gate，D4/main 已完成 commit-aware 消息接线；二级接管、完全分布式和缺 ACK 故障注入分别验证 committed/executing 与 fail-closed。D7 仍不形成联盟、不选成员。
 - N/M binding topology helper 已接入 main AirSim 流程；当前 M=5/N=2 形成 T001 两个 active primary、一个 standby reserve，T002 一个 active primary，第五个资源未分配。
+- D7 已新增被动协同导引诊断/候选预筛接口：可按任意 primary 数输出 pair 六阶段漏斗、第二 primary 失败阶段、arrival-window error、closest approach、member separation 和 coalition arrival spread，并携带 D3 handoff range/arrival-window width/sector separation candidate metadata。该能力用于定位和筛选 main 后续 sweep，不是 impact-time consensus 或协同控制律。
 
 未实现：
 
 - 一个 `global_track_id` 对应多个成员时的共享 consensus/clock state；现有 filter/latch 仍按 resource-target pair 独立。
 - arrival window 已作为 gate 消费，但共同 time-to-go consensus 和 impact-time control 未实现。
 - leader/neighbor cooperative guidance message。
-- 成员间预测距离、终端扇区、impact-angle 和碰撞规避 gate。
+- 成员间预测距离、终端扇区、impact-angle 和碰撞规避 gate；当前只被动记录 main 提供的实际 member separation/safety evidence。
 - 物理协同拦截证据：同 topology 的 SimpleFlight 15 s 诊断中 30 个 active pair 为 0 命中，其中 24 个 `terminal_detection_timeout`；CV 8/10 不能关闭该缺口。
 - 成员掉队、失联或 D5 未锁定后的联盟重构由 D4/main 产生新 commit/version；D7 已能阻断 `reconfiguring/aborted`，但不自行重构联盟。
 

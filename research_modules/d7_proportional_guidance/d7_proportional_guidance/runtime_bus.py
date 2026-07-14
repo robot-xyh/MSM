@@ -131,6 +131,11 @@ class D7RuntimePairOutput:
     arrival_window_start_s: float | None = None
     arrival_window_end_s: float | None = None
     activation_state: str = "active"
+    terminal_authorization_scope: str = "coalition"
+    arrival_coordination_required: bool = True
+    per_primary_authorization_active: bool = False
+    coalition_visual_completion_bypassed: bool = False
+    bypassed_arrival_only: bool = False
     requested_guidance_law: str = RuntimeGuidanceLaw.PNG_VM.value
     previous_guidance_law: str | None = None
     guidance_law_transition: bool = False
@@ -345,6 +350,11 @@ class D7RuntimePairOutput:
             "arrival_window_start_s": self.arrival_window_start_s,
             "arrival_window_end_s": self.arrival_window_end_s,
             "activation_state": self.activation_state,
+            "terminal_authorization_scope": self.terminal_authorization_scope,
+            "arrival_coordination_required": self.arrival_coordination_required,
+            "per_primary_authorization_active": self.per_primary_authorization_active,
+            "coalition_visual_completion_bypassed": self.coalition_visual_completion_bypassed,
+            "bypassed_arrival_only": self.bypassed_arrival_only,
             "activation_plan_version": self.activation_plan_version,
             "activation_track_version": self.activation_track_version,
             "activation_coalition_version": self.activation_coalition_version,
@@ -490,6 +500,7 @@ class D7RuntimeBus:
         self.terminal_delivery_config = terminal_delivery_config or TerminalDeliveryConfig()
         self._deliveries: dict[str, TerminalGuidanceDelivery] = {}
         self._binding_signatures: dict[str, tuple[Any, ...]] = {}
+        self._current_bindings: dict[str, AssignmentGuidanceBinding] = {}
         self._requested_laws: dict[str, RuntimeGuidanceLaw] = {}
         self._terminal_latches: dict[str, _TerminalLatchState] = {}
         self._pending_delivery_reset_reasons: dict[str, str] = {}
@@ -501,6 +512,7 @@ class D7RuntimeBus:
     def reset(self) -> None:
         self._deliveries.clear()
         self._binding_signatures.clear()
+        self._current_bindings.clear()
         self._requested_laws.clear()
         self._terminal_latches.clear()
         self._pending_delivery_reset_reasons.clear()
@@ -508,6 +520,7 @@ class D7RuntimeBus:
     def reset_pair(self, control_context_id: str) -> None:
         self._deliveries.pop(control_context_id, None)
         self._binding_signatures.pop(control_context_id, None)
+        self._current_bindings.pop(control_context_id, None)
         self._requested_laws.pop(control_context_id, None)
         self._terminal_latches.pop(control_context_id, None)
         self._pending_delivery_reset_reasons.pop(control_context_id, None)
@@ -531,15 +544,27 @@ class D7RuntimeBus:
         control_context_id = _control_context_id(binding)
         signature = _binding_signature(binding)
         previous_signature = self._binding_signatures.get(control_context_id)
+        previous_binding = self._current_bindings.get(control_context_id)
+        binding_transition = _binding_transition(previous_binding, binding)
+        binding_state_preserved = False
         if previous_signature != signature:
-            self._deliveries[control_context_id] = self._new_terminal_delivery(selection)
+            binding_state_preserved = bool(
+                previous_binding is not None
+                and binding_transition == "monotonic_current_update"
+                and self._requested_laws.get(control_context_id) == selection.requested_law
+            )
+            if not binding_state_preserved:
+                self._deliveries[control_context_id] = self._new_terminal_delivery(selection)
+                self._terminal_latches[control_context_id] = _TerminalLatchState()
+                if previous_signature is not None:
+                    self._pending_delivery_reset_reasons[control_context_id] = (
+                        "binding_signature_changed"
+                    )
             self._binding_signatures[control_context_id] = signature
+            self._current_bindings[control_context_id] = binding
             self._requested_laws[control_context_id] = selection.requested_law
-            self._terminal_latches[control_context_id] = _TerminalLatchState()
-            if previous_signature is not None:
-                self._pending_delivery_reset_reasons[control_context_id] = (
-                    "binding_signature_changed"
-                )
+        elif previous_binding is None:
+            self._current_bindings[control_context_id] = binding
         elif self._requested_laws.get(control_context_id) != selection.requested_law:
             self._deliveries[control_context_id] = self._new_terminal_delivery(selection)
             self._requested_laws[control_context_id] = selection.requested_law
@@ -600,6 +625,15 @@ class D7RuntimeBus:
             terminal_timeout=timing["timed_out"],
             metadata={
                 "boundary": D7_RUNTIME_BUS_BOUNDARY,
+                "binding_transition": binding_transition,
+                "binding_state_preserved": binding_state_preserved,
+                "previous_binding_plan_version": (
+                    previous_binding.plan_version if previous_binding is not None else None
+                ),
+                "terminal_contract_fallback_guidance_law": (
+                    "" if decision.allowed else RuntimeGuidanceLaw.RADAR_PN.value
+                ),
+                "arrival_window_semantics": "terminal_png_permission_window",
                 **pair_input.metadata,
             },
         )
@@ -1045,6 +1079,7 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
     wave_ids: Counter[str] = Counter()
     coordination_modes: Counter[str] = Counter()
     activation_states: Counter[str] = Counter()
+    terminal_authorization_scopes: Counter[str] = Counter()
     for row in rows:
         guidance_laws[row.guidance_law] += 1
         requested_guidance_laws[row.requested_guidance_law] += 1
@@ -1090,6 +1125,7 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         wave_ids[str(row.wave_id)] += 1
         coordination_modes[row.coordination_mode] += 1
         activation_states[row.activation_state] += 1
+        terminal_authorization_scopes[row.terminal_authorization_scope] += 1
         if row.terminal_contract_reject_reason:
             contract_rejects[row.terminal_contract_reject_reason] += 1
         if row.terminal_switch_reject_reason:
@@ -1232,6 +1268,16 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         "wave_id_counts": dict(wave_ids),
         "coordination_mode_counts": dict(coordination_modes),
         "activation_state_counts": dict(activation_states),
+        "terminal_authorization_scope_counts": dict(terminal_authorization_scopes),
+        "per_primary_authorization_active_count": sum(
+            1 for row in rows if row.per_primary_authorization_active
+        ),
+        "coalition_visual_completion_bypassed_count": sum(
+            1 for row in rows if row.coalition_visual_completion_bypassed
+        ),
+        "bypassed_arrival_only_count": sum(
+            1 for row in rows if row.bypassed_arrival_only
+        ),
         "visual_png_switch_count": visual_png_switch_count,
         "visual_png_candidate_count": sum(1 for row in rows if row.png_guidance_law_candidate is not None),
         "terminal_handover_pending_count": sum(1 for row in rows if row.terminal_handover_pending),
@@ -1454,6 +1500,11 @@ def _common_output_kwargs(
         "arrival_window_start_s": binding.arrival_window_start_s,
         "arrival_window_end_s": binding.arrival_window_end_s,
         "activation_state": binding.activation_state,
+        "terminal_authorization_scope": decision.terminal_authorization_scope,
+        "arrival_coordination_required": decision.arrival_coordination_required,
+        "per_primary_authorization_active": decision.per_primary_authorization_active,
+        "coalition_visual_completion_bypassed": decision.coalition_visual_completion_bypassed,
+        "bypassed_arrival_only": decision.bypassed_arrival_only,
         "activation_plan_version": binding.activation_plan_version,
         "activation_track_version": binding.activation_track_version,
         "activation_coalition_version": binding.activation_coalition_version,
@@ -1838,7 +1889,75 @@ def _binding_signature(
         binding.activation_plan_version,
         binding.activation_track_version,
         binding.activation_coalition_version,
+        binding.terminal_authorization_scope,
+        binding.arrival_coordination_required,
     )
+
+
+def _binding_transition(
+    previous: AssignmentGuidanceBinding | None,
+    current: AssignmentGuidanceBinding,
+) -> str:
+    """Classify whether a rolling binding may retain visual-filter history.
+
+    This classification never authorizes visual PNG. The latest binding still
+    passes the complete D3/D4/D5 contract on every sample.
+    """
+
+    if previous is None:
+        return "initial"
+    if _binding_signature(previous) == _binding_signature(current):
+        return "unchanged"
+    if current.plan_version < previous.plan_version:
+        return "plan_version_regression"
+    if current.track_version < previous.track_version:
+        return "track_version_regression"
+    immutable_identity = (
+        previous.resource_id == current.resource_id
+        and previous.assigned_global_track_id == current.assigned_global_track_id
+        and previous.owner_node_id is not None
+        and previous.owner_node_id == current.owner_node_id
+        and previous.member_role == current.member_role
+        and previous.wave_id == current.wave_id
+        and previous.coordination_mode == current.coordination_mode
+        and previous.activation_state == current.activation_state
+        and previous.coalition_id == current.coalition_id
+        and previous.terminal_authorization_scope == current.terminal_authorization_scope
+        and previous.arrival_coordination_required == current.arrival_coordination_required
+    )
+    coalition_version_monotonic = (
+        previous.coalition_version == current.coalition_version
+        or (
+            previous.coalition_version is not None
+            and current.coalition_version is not None
+            and current.coalition_version > previous.coalition_version
+        )
+    )
+    version_advanced = bool(
+        current.plan_version > previous.plan_version
+        or current.track_version > previous.track_version
+        or (
+            previous.coalition_version is not None
+            and current.coalition_version is not None
+            and current.coalition_version > previous.coalition_version
+        )
+    )
+    plan_identity_monotonic = bool(
+        current.plan_id == previous.plan_id
+        or current.plan_version > previous.plan_version
+    )
+    if (
+        immutable_identity
+        and coalition_version_monotonic
+        and version_advanced
+        and plan_identity_monotonic
+        and current.is_authorized
+        and current.is_current
+        and current.plan_version >= previous.plan_version
+        and current.track_version >= previous.track_version
+    ):
+        return "monotonic_current_update"
+    return "control_identity_changed"
 
 
 def _resolve_timestamp_s(

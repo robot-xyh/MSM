@@ -39,6 +39,7 @@ BLOCKING_D4_ACTION_REASONS = {
 }
 SECONDARY_TAKEOVER_READY_CLASS = "takeover_ready"
 COORDINATION_MODES = frozenset({"independent", "simultaneous", "sequential", "hybrid"})
+TERMINAL_AUTHORIZATION_SCOPES = frozenset({"coalition", "per_primary"})
 COALITION_MEMBER_ROLES = frozenset({"primary", "reserve", "retry"})
 ACTIVE_COALITION_STATES = frozenset({"active", "activated"})
 HOLD_COALITION_STATES = frozenset({"inactive", "pending", "standby", "hold", "held"})
@@ -82,6 +83,8 @@ class AssignmentGuidanceBinding:
     activation_plan_version: int | None = None
     activation_track_version: int | None = None
     activation_coalition_version: int | None = None
+    terminal_authorization_scope: str = "coalition"
+    arrival_coordination_required: bool = True
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -188,6 +191,11 @@ class TerminalPngContractDecision:
     commit_plan_version: int | None = None
     commit_coalition_id: str | None = None
     commit_coalition_version: int | None = None
+    terminal_authorization_scope: str = "coalition"
+    arrival_coordination_required: bool = True
+    per_primary_authorization_active: bool = False
+    coalition_visual_completion_bypassed: bool = False
+    bypassed_arrival_only: bool = False
 
 
 def evaluate_terminal_png_contract(
@@ -266,6 +274,7 @@ def _evaluate_terminal_contract(
         return TerminalPngContractDecision(False, f"assignment_invalid:{exc}")
 
     permission = coerce_d4_guidance_permission(d4_permission)
+    per_primary_authorization = _per_primary_terminal_authorization(assignment)
     commit_gate_applicable = _coalition_commit_gate_required(assignment, permission)
     d3_plan_version_consistent = _d4_plan_version_consistent(permission, assignment)
     d3_owner_consistent = _d4_owner_consistent(permission, assignment)
@@ -296,6 +305,11 @@ def _evaluate_terminal_contract(
         "activation_plan_version": assignment.activation_plan_version,
         "activation_track_version": assignment.activation_track_version,
         "activation_coalition_version": assignment.activation_coalition_version,
+        "terminal_authorization_scope": assignment.terminal_authorization_scope,
+        "arrival_coordination_required": assignment.arrival_coordination_required,
+        "per_primary_authorization_active": per_primary_authorization,
+        "coalition_visual_completion_bypassed": False,
+        "bypassed_arrival_only": per_primary_authorization,
         "coalition_gate_applicable": _coalition_gate_applicable(assignment),
         "d4_coalition_id": permission.coalition_id,
         "d4_coalition_version": permission.coalition_version,
@@ -386,14 +400,14 @@ def _evaluate_terminal_contract(
         return TerminalPngContractDecision(False, "d4_plan_mismatch", **base)
     if permission.new_plan_version is not None and permission.new_plan_version != assignment.plan_version:
         return TerminalPngContractDecision(False, "d4_plan_mismatch", **base)
-    if permission.target_node_id is not None:
+    if permission.target_node_id is not None and not _secondary_assist_requested(permission):
         if assignment.owner_node_id is None:
             return TerminalPngContractDecision(False, "d4_owner_missing", **base)
         if permission.target_node_id != assignment.owner_node_id:
             return TerminalPngContractDecision(False, "d4_owner_mismatch", **base)
     if _secondary_takeover_readiness_required(permission, assignment):
         readiness_ready = _secondary_takeover_ready(permission)
-        if readiness_ready is False:
+        if readiness_ready is not True:
             return TerminalPngContractDecision(
                 False,
                 "secondary_capability_not_takeover_ready",
@@ -485,6 +499,9 @@ def _evaluate_terminal_contract(
     base["d5_coalition_support_count"] = coalition_support_count
     base["d5_required_resource_count"] = coalition_required_count
     base["d5_coalition_conflict_state"] = coalition_conflict_state
+    base["coalition_visual_completion_bypassed"] = bool(
+        per_primary_authorization and coalition_visual_complete is not True
+    )
     if d5_decision_state not in accepted_d5_states:
         return TerminalPngContractDecision(
             False,
@@ -608,7 +625,7 @@ def _evaluate_terminal_contract(
                 coalition_gate_reject_reason="coalition_visual_conflict",
                 **base,
             )
-        if coalition_visual_complete is None:
+        if coalition_visual_complete is None and not per_primary_authorization:
             return TerminalPngContractDecision(
                 False,
                 "coalition_visual_completion_missing",
@@ -618,7 +635,7 @@ def _evaluate_terminal_contract(
                 coalition_gate_reject_reason="coalition_visual_completion_missing",
                 **base,
             )
-        if not coalition_visual_complete:
+        if coalition_visual_complete is False and not per_primary_authorization:
             return TerminalPngContractDecision(
                 False,
                 "coalition_visual_incomplete",
@@ -682,7 +699,7 @@ def guidance_mode_from_terminal_contract(
         "coalition_visual_incomplete",
     }:
         return GuidanceMode.REACQUIRE
-    if reason == "coalition_window_not_open":
+    if reason in {"coalition_window_not_open", "coalition_window_closed"}:
         return GuidanceMode.RADAR_MIDCOURSE
     if reason in {
         "d4_hold",
@@ -700,7 +717,6 @@ def guidance_mode_from_terminal_contract(
         "secondary_capability_not_takeover_ready",
         "d4_revoke",
         "coalition_revoked",
-        "coalition_window_closed",
         "coalition_fallback_unsupported",
         "atomic_coalition_missing",
         "coalition_commit_state_missing",
@@ -763,6 +779,16 @@ def coerce_assignment_guidance_binding(
         activation_plan_version=_optional_int_value(value, "activation_plan_version"),
         activation_track_version=_optional_int_value(value, "activation_track_version"),
         activation_coalition_version=_optional_int_value(value, "activation_coalition_version"),
+        terminal_authorization_scope=_string_value_with_metadata(
+            value,
+            "terminal_authorization_scope",
+            default="coalition",
+        ),
+        arrival_coordination_required=_bool_value_with_metadata(
+            value,
+            "arrival_coordination_required",
+            default=True,
+        ),
         metadata=dict(_value(value, "metadata", default={}) or {}),
     )
 
@@ -1053,10 +1079,13 @@ def _coalition_binding_reject_reason(
     mode = assignment.coordination_mode.lower()
     role = assignment.member_role.lower()
     activation_state = assignment.activation_state.lower()
+    authorization_scope = assignment.terminal_authorization_scope.lower()
     if mode not in COORDINATION_MODES:
         return "coalition_coordination_mode_invalid"
     if role not in COALITION_MEMBER_ROLES:
         return "coalition_member_role_invalid"
+    if authorization_scope not in TERMINAL_AUTHORIZATION_SCOPES:
+        return "terminal_authorization_scope_invalid"
     if not assignment.coalition_id or assignment.coalition_version is None:
         return "coalition_binding_incomplete"
     if assignment.wave_id < 0:
@@ -1070,7 +1099,10 @@ def _coalition_binding_reject_reason(
     if activation_state in HOLD_COALITION_STATES or activation_state not in ACTIVE_COALITION_STATES:
         return "coalition_not_activated"
 
-    if mode in {"simultaneous", "sequential", "hybrid"}:
+    if (
+        mode in {"simultaneous", "sequential", "hybrid"}
+        and not _per_primary_terminal_authorization(assignment)
+    ):
         start_s = assignment.arrival_window_start_s
         end_s = assignment.arrival_window_end_s
         if start_s is None or end_s is None or end_s < start_s:
@@ -1114,6 +1146,18 @@ def _coalition_binding_reject_reason(
     return ""
 
 
+def _per_primary_terminal_authorization(
+    assignment: AssignmentGuidanceBinding,
+) -> bool:
+    """Return whether only collective arrival/co-lock gates may be bypassed."""
+
+    return bool(
+        assignment.terminal_authorization_scope.lower() == "per_primary"
+        and assignment.arrival_coordination_required is False
+        and assignment.member_role.lower() == "primary"
+    )
+
+
 def _d4_plan_version_consistent(
     permission: D4GuidancePermission,
     assignment: AssignmentGuidanceBinding,
@@ -1129,6 +1173,8 @@ def _d4_owner_consistent(
     permission: D4GuidancePermission,
     assignment: AssignmentGuidanceBinding,
 ) -> bool:
+    if _secondary_assist_requested(permission):
+        return True
     if permission.target_node_id is None:
         return True
     if assignment.owner_node_id is None:
@@ -1140,14 +1186,19 @@ def _secondary_takeover_readiness_required(
     permission: D4GuidancePermission,
     assignment: AssignmentGuidanceBinding,
 ) -> bool:
-    if permission.action.lower() == "request_secondary_assist":
-        return True
+    if _secondary_assist_requested(permission):
+        return False
     metadata_owner = str(assignment.metadata.get("active_plan_owner", "")).lower()
     if metadata_owner == "secondary":
         return True
-    if assignment.owner_node_id and assignment.owner_node_id.lower() not in {"center", "central"}:
-        return True
-    return bool(permission.target_node_id and permission.target_node_id.lower() not in {"center", "central"})
+    takeover_state = str(assignment.metadata.get("secondary_takeover_state", "")).lower()
+    return takeover_state in {"secondary_plan_active", "active", "executing"}
+
+
+def _secondary_assist_requested(permission: D4GuidancePermission) -> bool:
+    """Return whether D4 requests sensing assistance without plan ownership transfer."""
+
+    return permission.action.lower() == "request_secondary_assist"
 
 
 def _secondary_takeover_ready(permission: D4GuidancePermission) -> bool | None:
@@ -1317,6 +1368,11 @@ def _optional_string_value_with_metadata(record: Any, name: str) -> str | None:
     )
 
 
+def _string_value_with_metadata(record: Any, name: str, *, default: str) -> str:
+    value = _optional_string_value_with_metadata(record, name)
+    return default if value is None else value
+
+
 def _optional_int_value_with_metadata(record: Any, name: str) -> int | None:
     value = _optional_int_value(record, name)
     if value is not None:
@@ -1340,6 +1396,11 @@ def _optional_bool_value_with_metadata(record: Any, name: str) -> bool | None:
     if text in {"false", "f", "no", "n", "0", "blocked", "block", "rejected"}:
         return False
     return None
+
+
+def _bool_value_with_metadata(record: Any, name: str, *, default: bool) -> bool:
+    value = _optional_bool_value_with_metadata(record, name)
+    return default if value is None else value
 
 
 def _string_tuple(value: Any) -> tuple[str, ...]:

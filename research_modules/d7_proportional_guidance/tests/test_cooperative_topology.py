@@ -92,6 +92,160 @@ def test_topology_primary_contracts_allow_and_standby_reserve_is_blocked() -> No
     assert decisions["R3"].activation_state == "standby"
 
 
+def test_uniform_per_primary_scope_needs_no_arrival_window_for_active_primaries() -> None:
+    topology = build_cooperative_guidance_topology(
+        resource_ids=("R1", "R2", "R3"),
+        target_ids=("T001",),
+        required_counts={"T001": 3},
+        coordination_mode="hybrid",
+        primary_count=2,
+        terminal_authorization_scope="per_primary",
+        arrival_coordination_required=False,
+        plan_id="plan-per-primary",
+        plan_version=8,
+        track_versions=12,
+        coalition_versions=3,
+    )
+    permission = D4GuidancePermission(
+        action="continue_center",
+        target_node_id="center",
+        new_plan_id=topology.plan_id,
+        new_plan_version=topology.plan_version,
+        coalition_id=topology.bindings[0].coalition_id,
+        coalition_version=topology.bindings[0].coalition_version,
+        center_available=True,
+    )
+    decisions = {}
+    for binding in topology.bindings:
+        terminal = {
+            **_complete_terminal_association(binding),
+            "coalition_visual_complete": False,
+            "planned_cooperative_lock": False,
+            "support_count": 1,
+        }
+        decisions[binding.resource_id] = evaluate_terminal_png_contract(
+            binding=binding,
+            d4_permission=permission,
+            terminal_association=terminal,
+            timestamp_s=0.0,
+            resource_id=binding.resource_id,
+        )
+
+    primaries = [row for row in topology.bindings if row.member_role == "primary"]
+    reserve = next(row for row in topology.bindings if row.member_role == "reserve")
+    assert all(row.terminal_authorization_scope == "per_primary" for row in topology.bindings)
+    assert all(row.arrival_coordination_required is False for row in topology.bindings)
+    assert all(row.arrival_window_start_s is None for row in topology.bindings)
+    assert all(
+        row.metadata["arrival_window_required_before_terminal_png"] is False
+        for row in primaries
+    )
+    assert reserve.activation_state == "standby"
+    assert reserve.metadata["arrival_window_required_before_terminal_png"] is True
+    assert all(decisions[row.resource_id].allowed is True for row in primaries)
+    assert decisions[reserve.resource_id].allowed is False
+    assert decisions[reserve.resource_id].reject_reason == "coalition_not_activated"
+    assert topology.targets[0].terminal_authorization_scope == "per_primary"
+    assert topology.targets[0].arrival_coordination_required is False
+
+
+def test_per_target_terminal_authorization_policy_is_written_to_bindings() -> None:
+    topology = build_cooperative_guidance_topology(
+        resource_ids=("R1", "R2", "R3", "R4"),
+        target_ids=("T1", "T2"),
+        required_counts={"T1": 2, "T2": 2},
+        coordination_mode={"T1": "hybrid", "T2": "simultaneous"},
+        primary_count=1,
+        terminal_authorization_scope={"T1": "per_primary", "T2": "coalition"},
+        arrival_coordination_required={"T1": False, "T2": True},
+        arrival_windows={"T2": (1.0, 2.0)},
+    )
+    by_target = {
+        target_id: [
+            row
+            for row in topology.bindings
+            if row.assigned_global_track_id == target_id
+        ]
+        for target_id in ("T1", "T2")
+    }
+
+    assert {row.terminal_authorization_scope for row in by_target["T1"]} == {
+        "per_primary"
+    }
+    assert {row.arrival_coordination_required for row in by_target["T1"]} == {False}
+    assert {row.terminal_authorization_scope for row in by_target["T2"]} == {
+        "coalition"
+    }
+    assert {row.arrival_coordination_required for row in by_target["T2"]} == {True}
+    assert topology.targets[0].terminal_authorization_scope == "per_primary"
+    assert topology.targets[1].terminal_authorization_scope == "coalition"
+
+
+def test_default_topology_keeps_legacy_coalition_arrival_gate() -> None:
+    topology = build_cooperative_guidance_topology(
+        resource_ids=("R1", "R2"),
+        target_ids=("T1",),
+        required_counts=(2,),
+        coordination_mode="hybrid",
+        primary_count=2,
+    )
+    binding = topology.bindings[0]
+    decision = evaluate_terminal_png_contract(
+        binding=binding,
+        d4_permission=D4GuidancePermission(
+            action="continue_center",
+            target_node_id="center",
+            new_plan_id=topology.plan_id,
+            new_plan_version=topology.plan_version,
+            coalition_id=binding.coalition_id,
+            coalition_version=binding.coalition_version,
+        ),
+        terminal_association=_complete_terminal_association(binding),
+        timestamp_s=0.0,
+        resource_id=binding.resource_id,
+    )
+
+    assert binding.terminal_authorization_scope == "coalition"
+    assert binding.arrival_coordination_required is True
+    assert binding.metadata["arrival_window_required_before_terminal_png"] is True
+    assert decision.allowed is False
+    assert decision.reject_reason == "coalition_arrival_window_invalid"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        (
+            {"terminal_authorization_scope": "unsupported"},
+            "unsupported terminal authorization scopes",
+        ),
+        (
+            {"terminal_authorization_scope": {"T1": "per_primary"}},
+            "terminal_authorization_scope missing targets",
+        ),
+        (
+            {"arrival_coordination_required": {"T1": False}},
+            "arrival_coordination_required missing targets",
+        ),
+        (
+            {"arrival_coordination_required": {"T1": "false", "T2": True}},
+            "arrival_coordination_required must contain bool values",
+        ),
+    ],
+)
+def test_topology_rejects_invalid_terminal_authorization_policy(
+    kwargs: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises((TypeError, ValueError), match=message):
+        build_cooperative_guidance_topology(
+            resource_ids=("R1", "R2"),
+            target_ids=("T1", "T2"),
+            required_counts=(1, 1),
+            **kwargs,
+        )
+
+
 def test_topology_has_no_m5_n2_size_assumption() -> None:
     topology = build_cooperative_guidance_topology(
         resource_ids=tuple(f"R{index}" for index in range(1, 8)),

@@ -382,3 +382,56 @@ deduplicated relay copies, 29 region windows, and zero online truth leaks in abo
 validation host. This closes the D1-owned synthetic long-replay construction/summary gap, not the
 real Blocks/CV multi-seed calibration gap. The CLI has a subprocess regression that verifies
 argument propagation, output-directory creation, summary schema, and zero online truth leakage.
+
+## Real AirSim persisted-input freeze
+
+`airsim_replay_freeze.py` reads main-persisted JSON/JSONL observations or frames with embedded
+`sensor_observations`/`observations`/`records`. It does not import the AirSim SDK and processes the
+input array length without a 2v2/5v5 constant.
+
+The output is `manifest.json`, `sensor_observations.jsonl`, `offline_truth.json`, and `summary.json`.
+Online records reuse `d1.sensor_observation.v1` and preserve measurement/arrival timestamps,
+covariance, canonical observation frames, NED fusion working frame, coverage cell, lineage, sensor
+health, event labels, and scene/profile/source-schema identity. Missing processing/publish timestamps
+or sensor health are explicitly `unavailable`; they are not inferred from arrival time.
+
+Legacy Blocks IDs may encode actor/object/truth identity. The freezer replaces online observation IDs
+with opaque sequence IDs and recursively removes identity keys and strings containing known identity
+tokens. Truth ID and NED position are written only to the evaluator-only
+`d1.airsim_offline_truth.v1` sidecar. Crossing, occlusion, missed detection, false alarm, OOSM, and
+node-exit labels are diagnostic evidence; a frame without a real measurement never creates a sensor
+observation.
+
+```bash
+python3 research_modules/d1_sensor_fusion/scripts/freeze_airsim_replay.py \
+  INPUT.jsonl OUTPUT_DIR \
+  --scenario-id dense-crossing --scenario-version 2 \
+  --config-id blocks-settings-v4 --config-version 4 --seed 17 \
+  --target-spacing-m 4.0 \
+  --profile-id p1-dense-v1
+```
+
+This closes the D1-owned persisted-input freeze and truth-sidecar separation gap. Main still owns real
+AirSim capture; D2/D6 still own offline identity scoring and multi-seed RMSE/NIS/NEES and threshold
+calibration. D1 full regression after the sidecar follow-up is `74 passed`.
+
+### Offline truth sidecar deduplication
+
+The evaluator sidecar has one deterministic sample per `(truth_id, timestamp)`. If a frame truth
+sample has a position and observation metadata has only the same identity, the available position
+replaces the unavailable sample regardless of input order. Two available positions within `1e-6 m`
+are treated as the same sample; inconsistent available positions reject the freeze instead of
+silently selecting one. Samples at different timestamps remain separate. An identity with no source
+position remains `position_availability="unavailable"`; no position is interpolated or fabricated.
+
+Both the sidecar and summary publish position-availability counts so D2/D6 can distinguish valid
+position labels from identity-only labels before strict offline scoring.
+
+### Capture provenance gate
+
+AirSim freezing now requires an explicit capture-side declaration containing scenario/config version,
+seed, `target_spacing_m`, and `evidence_path`. The captured spacing is authoritative and is never
+inferred from truth positions. A conflicting CLI/API declaration or inconsistent declaration across
+payloads fails closed. Manifest and summary expose per-field availability; online records remain
+truth-free, while the evaluator sidecar is bound by the capture-provenance digest. Regression coverage
+includes 4 m and 2 m profiles across 20 seeds each. Current D1 regression: `79 passed`.

@@ -1,5 +1,64 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-13 最终统一报告状态
+
+D6 已消费正式 AirSim/main 产物并形成七源统一离线报告，不再处于“等待 main 后续提供真实 AirSim evidence”的阶段。当前各源均为 available，展开行数为 D1 `1`、D2 `3660`、D3 `40`、D4 `60`、D5 per-primary `160`、native MOT `18`、D7 `164`。D7 的 164 条包含 160 条 pair/safety 记录和 4 条 profile 汇总，聚合时不重复计数。
+
+正式结果为：M5N2 最佳 profile coalition `5/10`、全部 profile overall `8/40`；D7 四层分别为 contract `35`、control `7`、mode switch `9`、physical `62`。online truth use、`global_track_id` rewrite 和 reserve unauthorized execution 均为 0。D3 当前只有 case/final aggregate，没有逐时刻 plan history，因此 churn 明确保持 `unavailable`，不得从 version 总数或最终 snapshot 反推。
+
+D6-owned schema adapter、availability、分组、四层分离和中文报告缺口已经闭合，当前回归为 `115 passed`。开放 P1 收敛为三项：长期 multi-seed 趋势、producer 逐时刻 schema（优先 D3 churn）和跨批次失败原因治理。P2 工具继续只作 optional/offline benchmark，不进入默认依赖、默认报告主线或在线控制路径。下文较早批次内容只保留演进记录；冲突时以本节为准。
+
+## 2026-07-13 M5N2 正式写盘 schema 评审补充
+
+统一系统证据报告器此前只识别通用 `summaries/rows/records`，会把 main 的
+`cases/pair_rows/aggregates` 原始文件读成 0 个 D5 行，并把修正后的
+`d6-cooperative-closure-v2` 指标标为 unavailable。本轮增加两个明确、只读的 schema
+adapter，不改变 cooperative producer 或在线控制。
+
+原始路径按显式 case/pair 展开：D3 只统计 active primary 与 reserve 角色，不从无序
+plan version 推断 churn；D5 把 visible、由 `d5_decision_state=locked` 生成的
+associated、common-lock participation 和 global ID rewrite 分开；D7 只对 active primary
+统计四层 funnel，reserve 仅进入越权安全审计，并用 4 个 source aggregate 统计 coalition。
+修正 aggregate 路径只恢复其真实保留的 funnel、共同锁定、profile 和安全计数，不构造
+丢失的逐 pair 或 seed 数据。
+
+两种路径均复现正式结果：40 case、4 profile、最佳 profile `5/10`、总体 coalition
+`8/40`，D7 active-primary 四层为 `35/7/9/62`，reserve unauthorized、global ID rewrite、
+online truth use 均为 0。profile 分组键仅为 `profile`，`case_id` 只保留逐行审计，避免再次
+出现 40 个单 seed 组。D6 继续被动评估，不写回控制链路，也不导出 truth identity。
+
+## 2026-07-13 P1 统一系统验收补充
+
+本轮将既有专项报告收敛为一个被动统一入口。输入覆盖 D1 frozen dense-crossing、D2 difficulty profile、D3 M5N2 case/final aggregate、D4 episode/fault case、D5 per-primary/native MOT 和 D7 pair guidance/intercept；D6 只读取写盘 JSON/对象，不加载生产者算法，不参与 AirSim 调度。D3 未提供逐时刻 plan history，因此 churn 保持 unavailable。
+
+报告采用三项硬约束：第一，合同允许、控制允许、模式切换和物理拦截是四个独立观测层，禁止逐级推断；第二，所有数值保留 availability，缺字段不补 0；第三，source schema、SHA256、producer/run、provenance 和在线 truth 审计随 CSV/JSON 保留。多 seed 指标使用固定 RNG 的 percentile bootstrap 95% CI，单 seed 只作描述性结果。D1 rejection、D2 admission、D4 fault/ACK、D5 lock/MOT 和 D7 first-failure 统一进入失败原因分布，但不把失败统计回写控制链路。
+
+该能力关闭 D6 的 P1 聚合与报告代码缺口。正式 4 m/2 m replay、M5N2、D4 fault 和 native MOT 产物现已由统一入口消费；后续新批次缺失 evidence 时继续保持 unavailable。
+
+## 2026-07-12 D1/D2 dense-crossing 标定评估补充
+
+D6 新增独立、只读的 dense-crossing 报告路径。输入为 D1 governed manifest、evaluator-only truth summary 和 D2 10-seed/20-seed calibration 文件；输出按 seed 与算法配置保存，不参与在线关联、算法切换或控制授权。
+
+评估口径固定如下：
+
+1. screening 至少 10 seeds，只选择最佳 GNN 参数配置，不产生主线变更。
+2. confirmation 至少 20 seeds，分别比较 GNN baseline、相同 config ID 的最佳 GNN candidate 和轻量 JPDA。
+3. 晋级门限为 IDSW 相对下降 30%、identity continuity 绝对增加 0.10、false track 增幅不超过 10%、p95 loop latency 不超冻结预算、D1/D2 online truth leak 为 0。
+4. FilterPy/Stone Soup object adapter smoke 没有端到端身份指标，固定排除；轻量 JPDA 标记为 research approximation，不等同于完整 JPDA filter。
+5. IDSW、identity/coverage continuity、false track、RMSE、NIS/NEES、初始化延迟、p95 latency 和 truth leak 各自保留 availability。当前 D2 未提供 NIS/NEES mean 时，报告明确 unavailable。
+
+本轮关闭的是 D6 报告和严格 recommendation 逻辑。正式 AirSim 10/20-seed evidence 已由统一入口消费；是否晋级继续只按冻结门限判定，不因报告接线完成而自动晋级算法。
+
+## 2026-07-12 cooperative-closure-v2 实施复核
+
+D6 已新增完全离线的协同闭环报告器。逐 case/seed/profile 明细完整保留，但 acceptance 按 `profile` 聚合唯一 `seed`；分别构造 resource-target pair、target 和稳定 coalition 三种单位。coalition 只包含至少两个 active primary 的目标，并按 `coalition_id` 跨滚动 version/epoch 合并；版本和 epoch 只作审计 provenance。该口径避免把 pair、target 和 coalition 结果互相回填，也避免把普通单 primary 目标或未激活 reserve 当成联盟失败。
+
+D4 通信矩阵按其真实写盘合同读取：report 顶层的 `cases` 是评估行，`seeds` 只是批次索引；case 使用 `scenario_id` 作为故障分组、`passed` 作为 pass evidence，并原样保留 `fail_closed`。这组别名只在 D4 communication adapter 内生效，避免污染通用 cooperative row 的 `passed` 语义。
+
+共同锁定采用 D5/main 的显式 `common_lock` 证据；没有共同时间窗时不根据单机 `associated` 推断。到达离散使用同一 coalition 内 primary 的 arrival error 极差。第二 primary 按 member order/role 排序，只有 physical outcome 可用时才进入失败分母。所有验收结果均标记 `advisory_only=true`，D6 不参与控制。
+
+2026-07-13 真实 M5N2 summary 包含 40 个 case、4 个 profile、每 profile 10 个 seed。修复后的 profile 选择优先读取 source `best_candidate_profile`，缺失时才采用确定性 fallback；source 最佳 `d3-p1-h020.0-w03.0-s040.0` 得到 `5/10`，其余 profile 为 `0/10、2/10、1/10`，全 profile 完成 `8/40`，与 source aggregates 一致。门限检查因此是 available+failed，而不是 insufficient evidence；unavailable seed 单独计数，不折算为 0。
+
 ## 2026-07-12 P1 第二批统一报告补充
 
 D6 已新增独立的 P1 summary 聚合入口，直接消费 main terminal closure 和 D1-D5/D7 的版本化离线产物，不要求 D6 导入生产者模块。统一报告固定输出逐 seed/source CSV、聚合 JSON、中文 Markdown 和 PNG 概览图，并显式审计 source schema 与 evidence availability。
@@ -326,7 +385,7 @@ D5 不得本地改写 `global_track_id`。D6 只统计末端绑定与中心/评�
 - 主/被动降级、secondary takeover/reassignment、distributed fallback、D4 reassign pending、触发原因分布。
 - `review_label`、`active_degradation_necessary`、`post_window_outcome`、trigger/decision timestamp、selected coordinator、coverage cell 和 pre/post window 字段离线消费。
 
-仍需 main/D4：
+长期 producer schema 治理：
 
 - 持续写出真实 episode 的 D4 决策日志。
 - 在每个 episode 稳定提供 `review_label`、`trigger_timestamp`、`decision_timestamp`、`selected_coordinator`、`coverage_cell`。
@@ -340,7 +399,7 @@ D5 不得本地改写 `global_track_id`。D6 只统计末端绑定与中心/评�
 - Blocks replay 可提供无 PNG 的 bbox/camera metadata 基线。
 - 二级视角指标可消费 `secondary_node_type=fixed_downlook_secondary/mobile_recon_gimbal`、coverage/full-view、cross-view association、detect-available/not-registered 和 cue/gimbal pointing error metadata。
 
-仍需 main/D5：
+长期 producer schema 治理：
 
 - 写出 terminal association、identity claim、terminal-center disagreement、cross-view conflict、duplicate lock、friend overlap hold、validation label。
 - 保留 bbox、相机内外参、timestamp、`resource_id/camera_id`、`local_track_id`、`assigned_global_track_id`。
@@ -360,7 +419,7 @@ main/orchestrator 已完成：
 - 真实执行后的 `control_commands.csv` 与 `intercept_summary.json` 合并进正式 `main_episode_bus_metrics.json`。
 - 执行前合同检查口径保留为 `main_episode_bus_contract_metrics.json`，用于诊断 gate/reject，而不覆盖执行后拦截结果。
 
-仍需 main/D7：
+长期 producer schema 治理：
 
 - 每个 integrated AirSim episode 稳定写出 D7 文件。
 - 在多 seed、5v5/N-v-N 和非默认 episode 中保持正式 metrics 与 raw contract metrics 的双口径，并让 D6 报告继续按 `metric_scope/seed/scenario_group/scale` 分组。
@@ -534,19 +593,17 @@ D7 gate/intercept：
 - 是否需要人工复核：
 ```
 
-## 9. P1 下一步
+## 9. P1 最终开放项
 
-1. M 对 N 当前合同验收已闭合：T001 达到 8/10，secondary/distributed commit 与 missing-ACK fail-closed 正负例均成立。后续将 2 个未双锁 seed 留作鲁棒性回归，并继续扩充其他协调模式/扰动矩阵。
-2. 场景库已实现；下一步由 main/CI 消费其 scenario id/version、tags、difficulty、expected failure modes、actual scale、seed matrix 和 evidence path，输出跨提交趋势与回归摘要。
-3. CV 5v5 D1-D3 联合聚合：在同一 episode clock 下汇总 D1 感知/融合/协方差/延迟、D2 关联/连续性/ID switch 和 D3 分配/version/迟滞，生成从感知到分配的统一 funnel。
-4. YOLO/MOT 核心 recall/continuity/cross-view/latency/CPU/GPU budget 已实现；下一步补充 D5 写盘的 model version、输入分辨率、目标像素尺度、throughput、内存、drop/fallback 字段。D6 不加载权重、不运行检测。
-5. COURAGEOUS/MDPI/OCEF 完整标准化报告：补测试阶段、复现纪律、evidence index、场景覆盖矩阵、限制条件和外部审计说明。
-6. 使用真实成对 5v5/N-v-N 批次持续验证已实现的 paired effect size/bootstrap CI，并保持 missing seed、单 pair、无标签和 unavailable 的保守口径。
-7. 继续沉淀 D4/D5 coverage/funnel/gimbal/registration 与 active-degradation review/window 长期趋势。
-8. execution/contract/evidence availability 已完成，后续只做 schema 回归，不新增重复或同义拦截字段。
-9. SimpleFlight 下一轮优先拆解 24 个 detection timeout 与 6 个 timeout；延长 15 s 窗口或缩小 `control_dt=0.5 s` 后，仍必须将合同许可、控制许可、模式切换和物理拦截分开报告。
+1. **长期 multi-seed 趋势**：按冻结 scenario/version/profile/actual scale 持续形成跨提交趋势、门限稳定性、paired effect size 和 bootstrap CI；单批次结果不外推为长期结论。
+2. **producer 逐时刻 schema**：统一 episode clock、version/epoch、provenance 和 availability，优先补 D3 有序 plan history/churn；缺逐时刻记录时 churn 必须保持 unavailable。
+3. **跨批次失败原因治理**：冻结 reason taxonomy 和 schema version，明确 unknown、unavailable、not_applicable 与显式零，避免不同 producer 对同一失败重复计数或名称漂移。
 
-## 10. P2 下一步
+现有 execution/contract 四层、M5N2 profile、native MOT、D4 fault 和 dense-crossing 结果只需继续回归，不再列为首次接入缺口。
+
+## 10. P2 可选离线对照
+
+以下工具不进入默认依赖、默认七源报告主线或在线控制路径，只在 evidence schema 和样本条件满足时单独运行：
 
 1. `msm-offline-mot-v1` 最小 frame-level truth/detection/track schema 已完成；下一步只补真实 replay fixture 与门限版本。
 2. py-motmetrics adapter 已完成；使用真实冻结 replay 校准距离门限。TrackEval/HOTA 仍为可选 benchmark，HOTA 不得由现有指标推断或伪造。
@@ -571,3 +628,38 @@ git diff --check -- research_modules/d6_evaluation_metrics subagent_reviews/D6_*
 - AirSim APIs: <https://microsoft.github.io/AirSim/apis/>
 - AirSim recording: <https://microsoft.github.io/AirSim/modify_recording_data/>
 - SCRIMMAGE: <https://github.com/gtri/scrimmage>
+
+## 13. 2026-07-12 P1 汇总接口评审结论
+
+本轮 D6 以新增 `P1SystemEvidenceReportGenerator` 的方式扩展现有报告体系，未修改旧 `P1AcceptanceReportGenerator` 的字段和验收口径。该接口只读取 producer 已写盘 JSON-like summary，不导入 D2-D5/D7 在线模块，也不控制 AirSim。
+
+评审结论：
+
+1. D5 native MOT admission 已能按 backend、camera、resource 输出 native/fallback、precision/recall、continuity、local IDSW、P95 latency 和拒绝原因。
+2. D2 六难度结果按 difficulty profile 和 candidate 保留，IDSW 仍为必须项，non-discriminative 场景不会被隐藏。
+3. D3 接口可把普通 plan refresh 与 coalition membership/version/epoch churn 分开统计，per-primary 与 arrival coordination 配置进入证据行；本批正式 aggregate 没有逐时刻 history，因此 churn 仍为 unavailable。
+4. D4 按真实 tick 序列统计通信和接管状态，中心失效后的无 owner fail-closed 阶段不会被过滤。
+5. D7 的合同允许、控制允许、模式切换和物理拦截为四个独立 availability-aware 指标，不允许相互反推。
+6. 汇总输出不包含 raw truth ID；precision/recall/IDSW 只作为离线评估结果消费，显式在线 truth 使用单独报错。
+
+当前 D6-owned 代码缺口已闭合，正式 AirSim 多 seed 产物已经写盘并由 main 调用 D6 统一入口生成报告。剩余 P1 仅为长期趋势、逐时刻 producer schema 和跨批次失败原因治理；D6 不应把接口可用误写成算法通过 admission，也不把缺失时序证据补成 churn。
+
+## 14. Native MOT 专项评审（2026-07-12）
+
+早期专项报告位于 `research_modules/d6_evaluation_metrics/outputs/p1_native_mot_20260712/`；最终七源统一报告已消费正式 native MOT execution index 的 18 条记录。旧专项的 discovery/range/confirmation 分层只作历史过程记录，不替代最终 source manifest 行数。
+
+评审结论：20 m confirmation 的两种原生 MOT 都保持连续、无 IDSW、无 fallback；ByteTrack P95 约 8.292 ms，低于 BoT-SORT 的 18.232 ms。两者离线 precision/recall 分别约 0.324 和 0.293，均未通过准入。30/50 m 短检查无接受检测。当前只能确认 20 m 原生跟踪运行稳定，不能确认检测准确性达标，也不能确认 30/50 m 可用。
+
+D6 报告接口状态为完成；算法准入状态仍为拒绝。下一步先核对离线 truth 框、IoU/几何门限和时间对齐，再由 main/D5 复跑多 seed confirmation。D6 不参与在线检测、跟踪或阈值放宽。
+
+## 15. Main Bus 执行指标合并评审（2026-07-13）
+
+D6 新增 `d6.execution-metrics-merge.v1`。该接口解决历史 integrated replay 与实际 main bus 执行指标分裂的问题，不修改现有 `EpisodeMetrics` 和 loader，也不参与在线控制。
+
+评审结论：
+
+1. replay 继续保留离线评估结果，main bus 只对终端、cross-view、在线 truth、合同/控制/切换和物理执行字段拥有规范优先级，避免扩大覆盖范围到 D1-D3 离线指标。
+2. 所有覆盖均可审计：输出同时保存两侧值、availability、source path 和 selected source，历史 replay 值不会丢失。
+3. 缺失 execution 时 `execution_metrics_merged=false`，缺失指标为 unavailable，不因 `EpisodeMetrics` 默认字段而制造执行证据。
+4. 持久化 11 帧与包含 warmup 的 12 帧按两个字段记录，D6 不假设两者固定相差一帧。
+5. main 仍负责调用和写盘；本轮 D6 只提供纯函数、包导出、单元测试和文档合同。

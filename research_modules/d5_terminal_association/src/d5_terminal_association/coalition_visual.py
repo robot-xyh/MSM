@@ -87,6 +87,188 @@ class CoalitionVisualSummary:
 
 
 @dataclass(frozen=True)
+class CooperativeResourceTargetDiagnostic:
+    """Read-only visual funnel state for one resource-target binding."""
+
+    resource_id: str
+    global_track_id: str
+    target_id: str
+    plan_id: str | None
+    plan_version: int | None
+    plan_owner: str | None
+    owner_node_id: str | None
+    coalition_id: str | None
+    coalition_version: int | None
+    terminal_authorization_scope: str
+    arrival_coordination_required: bool
+    member_role: str
+    active_primary: bool
+    committed_member: bool
+    association_contract_matches: bool
+    visible: bool
+    projected: bool
+    gate_accepted: bool
+    locked: bool
+    stable_lock_frame_count: int
+    common_lock_window_participant: bool
+    association_confidence: float
+    ambiguity_score: float
+    friend_conflict_state: str
+    decision_state: str
+    first_failure_stage: str
+    reject_reason: str
+    measurement_timestamp: float | None = None
+    arrival_timestamp: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "resource_id": self.resource_id,
+            "global_track_id": self.global_track_id,
+            "target_id": self.target_id,
+            "plan_id": self.plan_id,
+            "plan_version": self.plan_version,
+            "plan_owner": self.plan_owner,
+            "owner_node_id": self.owner_node_id,
+            "coalition_id": self.coalition_id,
+            "coalition_version": self.coalition_version,
+            "terminal_authorization_scope": self.terminal_authorization_scope,
+            "arrival_coordination_required": self.arrival_coordination_required,
+            "member_role": self.member_role,
+            "active_primary": self.active_primary,
+            "committed_member": self.committed_member,
+            "association_contract_matches": self.association_contract_matches,
+            "visible": self.visible,
+            "projected": self.projected,
+            "gate_accepted": self.gate_accepted,
+            "locked": self.locked,
+            "stable_lock_frame_count": self.stable_lock_frame_count,
+            "common_lock_window_participant": self.common_lock_window_participant,
+            "association_confidence": self.association_confidence,
+            "ambiguity_score": self.ambiguity_score,
+            "friend_conflict_state": self.friend_conflict_state,
+            "decision_state": self.decision_state,
+            "first_failure_stage": self.first_failure_stage,
+            "reject_reason": self.reject_reason,
+            "measurement_timestamp": self.measurement_timestamp,
+            "arrival_timestamp": self.arrival_timestamp,
+            "truth_identity_used": False,
+        }
+
+
+@dataclass(frozen=True)
+class CooperativeTargetVisualFunnel:
+    """Dynamic-resource visual funnel for one center-owned global target."""
+
+    global_track_id: str
+    target_id: str
+    plan_id: str | None
+    plan_version: int | None
+    plan_owner: str | None
+    owner_node_id: str | None
+    coalition_id: str | None
+    coalition_version: int | None
+    terminal_authorization_scope: str
+    arrival_coordination_required: bool
+    common_lock_window_required: bool
+    primary_required_count: int
+    active_primary_resource_ids: tuple[str, ...]
+    reserve_resource_ids: tuple[str, ...]
+    resource_diagnostics: tuple[CooperativeResourceTargetDiagnostic, ...]
+    visible_primary_count: int
+    projected_primary_count: int
+    gate_accepted_primary_count: int
+    locked_primary_count: int
+    stable_primary_count: int
+    common_lock_frame_count: int
+    common_lock_window_start_s: float | None
+    common_lock_window_end_s: float | None
+    cooperative_completion: bool
+    second_primary_resource_id: str | None
+    second_primary_first_failure_stage: str | None
+    second_primary_reject_reason: str | None
+    reason: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "global_track_id": self.global_track_id,
+            "target_id": self.target_id,
+            "plan_id": self.plan_id,
+            "plan_version": self.plan_version,
+            "plan_owner": self.plan_owner,
+            "owner_node_id": self.owner_node_id,
+            "coalition_id": self.coalition_id,
+            "coalition_version": self.coalition_version,
+            "terminal_authorization_scope": self.terminal_authorization_scope,
+            "arrival_coordination_required": self.arrival_coordination_required,
+            "common_lock_window_required": self.common_lock_window_required,
+            "primary_required_count": self.primary_required_count,
+            "active_primary_resource_ids": list(self.active_primary_resource_ids),
+            "reserve_resource_ids": list(self.reserve_resource_ids),
+            "resource_diagnostics": [item.to_dict() for item in self.resource_diagnostics],
+            "visible_primary_count": self.visible_primary_count,
+            "projected_primary_count": self.projected_primary_count,
+            "gate_accepted_primary_count": self.gate_accepted_primary_count,
+            "locked_primary_count": self.locked_primary_count,
+            "stable_primary_count": self.stable_primary_count,
+            "common_lock_frame_count": self.common_lock_frame_count,
+            "common_lock_window_start_s": self.common_lock_window_start_s,
+            "common_lock_window_end_s": self.common_lock_window_end_s,
+            "cooperative_completion": self.cooperative_completion,
+            "second_primary_resource_id": self.second_primary_resource_id,
+            "second_primary_first_failure_stage": self.second_primary_first_failure_stage,
+            "second_primary_reject_reason": self.second_primary_reject_reason,
+            "reason": self.reason,
+            "truth_identity_used": False,
+        }
+
+
+@dataclass(frozen=True)
+class CooperativeVisualFunnelSummary:
+    """Episode/snapshot D5 diagnostics without online truth identity."""
+
+    target_summaries: tuple[CooperativeTargetVisualFunnel, ...]
+    resource_binding_count: int
+    target_count: int
+    active_primary_count: int
+    completed_target_count: int
+    funnel_counts: Mapping[str, int]
+    first_failure_stage_counts: Mapping[str, int]
+    second_primary_first_failure_stage_counts: Mapping[str, int]
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "funnel_counts", dict(self.funnel_counts))
+        object.__setattr__(
+            self,
+            "first_failure_stage_counts",
+            dict(self.first_failure_stage_counts),
+        )
+        object.__setattr__(
+            self,
+            "second_primary_first_failure_stage_counts",
+            dict(self.second_primary_first_failure_stage_counts),
+        )
+        object.__setattr__(self, "metadata", dict(self.metadata))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "target_summaries": [item.to_dict() for item in self.target_summaries],
+            "resource_binding_count": self.resource_binding_count,
+            "target_count": self.target_count,
+            "active_primary_count": self.active_primary_count,
+            "completed_target_count": self.completed_target_count,
+            "funnel_counts": dict(self.funnel_counts),
+            "first_failure_stage_counts": dict(self.first_failure_stage_counts),
+            "second_primary_first_failure_stage_counts": dict(
+                self.second_primary_first_failure_stage_counts
+            ),
+            "online_truth_use_count": 0,
+            "global_track_id_rewrite_count": 0,
+            "metadata": dict(self.metadata),
+        }
+
+
+@dataclass(frozen=True)
 class _Binding:
     resource_id: str
     global_track_id: str
@@ -104,6 +286,8 @@ class _Binding:
     authorization_state: str
     activation_state: str
     coalition_epoch: int | None
+    terminal_authorization_scope: str
+    arrival_coordination_required: bool
 
     @property
     def contract(self) -> tuple[Any, ...]:
@@ -120,6 +304,8 @@ class _Binding:
             self.primary_resource_count,
             self.required_resource_count,
             self.coalition_epoch,
+            self.terminal_authorization_scope,
+            self.arrival_coordination_required,
         )
 
 
@@ -345,6 +531,17 @@ def summarize_coalition_visual_completion(
         for resource_id, state in stability_states.items()
         if state.stale_plan_replay
     )
+    membership_transition = _primary_membership_transition_diagnostic(
+        bindings,
+        historical_binding_snapshots,
+    )
+    current_primary_diagnostics = _current_primary_failure_diagnostics(
+        primary_bindings,
+        current,
+        stable_counts=stable_counts,
+        required_stable_frames=int(required_stable_frames),
+        commit_conflict_reasons=commit_conflict_reasons,
+    )
     executing_resource_ids = _unique(current_execution_locks)
     excess_ids = _unique(
         (*unexpected_lock_ids, *executing_resource_ids[first.required_resource_count :])
@@ -472,6 +669,8 @@ def summarize_coalition_visual_completion(
             "coalition_commit_valid": not commit_conflict_reasons,
             "coalition_commit_evaluation_time_s": evidence_time_s,
             "coalition_commit_conflict_reasons": commit_conflict_reasons,
+            "primary_membership_transition": membership_transition,
+            "current_primary_failure_diagnostics": current_primary_diagnostics,
             "coalition_execution_state": (
                 "authorized"
                 if consensus
@@ -479,6 +678,395 @@ def summarize_coalition_visual_completion(
                 if conflict_state != "none"
                 else "cue_only"
             ),
+        },
+    )
+
+
+def summarize_cooperative_visual_funnel(
+    coalition_bindings: Iterable[Any],
+    current_associations: Iterable[TerminalAssociation | TerminalObservation],
+    historical_associations: Iterable[TerminalAssociation | TerminalObservation] = (),
+    *,
+    required_stable_frames: int = 2,
+    historical_bindings: Iterable[Any] = (),
+    invalid_historical_plan_versions: Iterable[int] = (),
+    coalition_commits: Mapping[str, Any] | Any | None = None,
+    current_time_s: float | None = None,
+    center_failed: bool = False,
+    fallback_active: bool = False,
+    common_window_tolerance_s: float = 0.15,
+) -> CooperativeVisualFunnelSummary:
+    """Build target/resource diagnostics from D5's existing read-only contracts.
+
+    Bindings are grouped by their existing ``global_track_id``. No local or
+    AirSim actor identity is admitted as a replacement identity. Funnel counts
+    use active primary members only; standby reserves remain diagnostic rows.
+    """
+
+    if int(required_stable_frames) < 1:
+        raise ValueError("required_stable_frames must be at least 1")
+    if float(common_window_tolerance_s) < 0.0:
+        raise ValueError("common_window_tolerance_s must be non-negative")
+
+    raw_bindings = tuple(coalition_bindings)
+    if not raw_bindings:
+        raise ValueError("coalition_bindings must not be empty")
+    current_items = tuple(current_associations)
+    history_items = tuple(historical_associations)
+    historical_raw_bindings = tuple(historical_bindings)
+    grouped_indices: dict[str, list[int]] = defaultdict(list)
+    for index, binding in enumerate(raw_bindings):
+        global_track_id = _binding_global_track_id(binding)
+        if global_track_id is None:
+            raise ValueError(
+                "each coalition binding requires assigned_global_track_id or global_track_id"
+            )
+        grouped_indices[global_track_id].append(index)
+    normalized_by_index: dict[int, _Binding] = {}
+    for indices in grouped_indices.values():
+        for index in indices:
+            normalized_by_index[index] = _normalize_binding(
+                raw_bindings[index],
+                coalition_size_hint=len(indices),
+            )
+    normalized = tuple(normalized_by_index[index] for index in range(len(raw_bindings)))
+
+    target_summaries: list[CooperativeTargetVisualFunnel] = []
+    all_diagnostics: list[CooperativeResourceTargetDiagnostic] = []
+    membership_diagnostics: dict[str, Mapping[str, Any]] = {}
+    for global_track_id in sorted(grouped_indices):
+        indices = grouped_indices[global_track_id]
+        group_raw = tuple(raw_bindings[index] for index in indices)
+        group_bindings = tuple(normalized[index] for index in indices)
+        group_current = tuple(
+            item
+            for item in current_items
+            if _evidence_global_track_id(item) in {None, global_track_id}
+            and _evidence_resource_id(item)
+            in {binding.resource_id for binding in group_bindings}
+        )
+        group_history = tuple(
+            item
+            for item in history_items
+            if _evidence_global_track_id(item) == global_track_id
+        )
+        group_historical_bindings = tuple(
+            binding
+            for binding in historical_raw_bindings
+            if _binding_global_track_id(binding) == global_track_id
+        )
+        association_current = tuple(
+            item for item in group_current if _terminal_association(item) is not None
+        )
+        association_history = tuple(
+            item for item in group_history if _terminal_association(item) is not None
+        )
+        commit = _resolve_coalition_commit(coalition_commits, group_bindings[0])
+        completion = summarize_coalition_visual_completion(
+            group_raw,
+            association_current,
+            association_history,
+            required_stable_frames=required_stable_frames,
+            historical_bindings=group_historical_bindings,
+            invalid_historical_plan_versions=invalid_historical_plan_versions,
+            coalition_commit=commit,
+            current_time_s=current_time_s,
+            center_failed=center_failed,
+            fallback_active=fallback_active,
+        )
+
+        association_evidence = tuple(
+            _normalize_evidence(item, input_order=index)
+            for index, item in enumerate((*association_history, *association_current))
+        )
+        current_association_evidence = tuple(
+            _normalize_evidence(item, input_order=index)
+            for index, item in enumerate(association_current)
+        )
+        primary_bindings = tuple(
+            binding for binding in group_bindings if binding.member_role in _PRIMARY_ROLES
+        )
+        active_primary_ids = _unique(
+            binding.resource_id
+            for binding in primary_bindings
+            if _binding_execution_active(binding)
+        )
+        reserve_ids = _unique(
+            binding.resource_id
+            for binding in group_bindings
+            if binding.member_role in _RESERVE_ROLES
+        )
+        common_window_required = not (
+            group_bindings[0].terminal_authorization_scope == "per_primary"
+            and not group_bindings[0].arrival_coordination_required
+        )
+        if common_window_required:
+            common_count, common_start, common_end = _common_primary_lock_window(
+                primary_bindings,
+                association_evidence,
+                historical_bindings=tuple(
+                    _normalize_binding(
+                        binding,
+                        coalition_size_hint=max(1, len(group_historical_bindings)),
+                    )
+                    for binding in group_historical_bindings
+                ),
+                source_plan_versions_by_resource=completion.metadata.get(
+                    "stability_source_plan_versions_by_resource",
+                    {},
+                ),
+                stable_frame_count_by_resource=completion.stable_lock_frame_count_by_resource,
+                tolerance_s=float(common_window_tolerance_s),
+            )
+        else:
+            common_count, common_start, common_end = 0, None, None
+        membership_diagnostics[global_track_id] = dict(
+            completion.metadata.get("primary_membership_transition", {})
+        )
+        common_complete = bool(
+            len(active_primary_ids) == completion.primary_required_count
+            and common_count >= int(required_stable_frames)
+        )
+        completion_window_satisfied = bool(
+            not common_window_required or common_complete
+        )
+
+        diagnostics: list[CooperativeResourceTargetDiagnostic] = []
+        for binding in group_bindings:
+            latest = _latest_binding_evidence(binding, current_association_evidence)
+            local_only = _latest_local_only_observation(binding, group_current)
+            association = latest.association if latest is not None else None
+            member_committed = _binding_member_committed(binding, completion)
+            contract_matches = bool(
+                association is not None
+                and member_committed
+                and _association_matches_binding(association, binding)
+            )
+            visible = _diagnostic_visible(latest, local_only)
+            projected = bool(association is not None and _projection_succeeded(association))
+            gate_accepted = bool(association is not None and _gate_accepted(association))
+            locked = bool(
+                latest is not None
+                and contract_matches
+                and latest.execution_locked
+                and binding.member_role in _PRIMARY_ROLES
+                and _binding_execution_active(binding)
+            )
+            stable_count = int(
+                completion.stable_lock_frame_count_by_resource.get(binding.resource_id, 0)
+            )
+            active_primary = bool(
+                binding.member_role in _PRIMARY_ROLES
+                and _binding_execution_active(binding)
+            )
+            failure_stage, reject_reason = _diagnostic_failure(
+                binding=binding,
+                association=association,
+                committed_member=member_committed,
+                contract_matches=contract_matches,
+                visible=visible,
+                projected=projected,
+                gate_accepted=gate_accepted,
+                locked=locked,
+                stable_count=stable_count,
+                required_stable_frames=int(required_stable_frames),
+                common_complete=common_complete,
+                common_window_required=common_window_required,
+            )
+            diagnostic = CooperativeResourceTargetDiagnostic(
+                resource_id=binding.resource_id,
+                global_track_id=binding.global_track_id,
+                target_id=binding.target_id,
+                plan_id=binding.plan_id,
+                plan_version=binding.plan_version,
+                plan_owner=binding.plan_owner,
+                owner_node_id=binding.owner_node_id,
+                coalition_id=binding.coalition_id,
+                coalition_version=binding.coalition_version,
+                terminal_authorization_scope=binding.terminal_authorization_scope,
+                arrival_coordination_required=binding.arrival_coordination_required,
+                member_role=binding.member_role,
+                active_primary=active_primary,
+                committed_member=member_committed,
+                association_contract_matches=contract_matches,
+                visible=visible,
+                projected=projected,
+                gate_accepted=gate_accepted,
+                locked=locked,
+                stable_lock_frame_count=stable_count,
+                common_lock_window_participant=bool(active_primary and common_count > 0),
+                association_confidence=(
+                    float(association.association_confidence) if association is not None else 0.0
+                ),
+                ambiguity_score=(
+                    float(association.ambiguity_score) if association is not None else 1.0
+                ),
+                friend_conflict_state=(
+                    association.friend_conflict_state if association is not None else "none"
+                ),
+                decision_state=(association.decision_state if association is not None else "unobserved"),
+                first_failure_stage=failure_stage,
+                reject_reason=reject_reason,
+                measurement_timestamp=(
+                    association.measurement_timestamp if association is not None else None
+                ),
+                arrival_timestamp=(
+                    association.arrival_timestamp if association is not None else None
+                ),
+            )
+            diagnostics.append(diagnostic)
+            all_diagnostics.append(diagnostic)
+
+        active_rows = tuple(item for item in diagnostics if item.active_primary)
+        second = active_rows[1] if len(active_rows) > 1 else None
+        cooperative_completion = bool(
+            completion.coalition_visual_consensus and completion_window_satisfied
+        )
+        if cooperative_completion:
+            target_reason = (
+                "cooperative_visual_completion"
+                if common_window_required
+                else "per_primary_visual_completion"
+            )
+        elif completion.coalition_conflict_state != "none":
+            target_reason = completion.coalition_conflict_state
+        elif common_window_required and common_count < int(required_stable_frames) and all(
+            item.stable_lock_frame_count >= int(required_stable_frames) for item in active_rows
+        ):
+            target_reason = "common_lock_window_insufficient"
+        else:
+            failing = next(
+                (item for item in active_rows if item.first_failure_stage != "complete"),
+                None,
+            )
+            target_reason = failing.reject_reason if failing is not None else completion.reason
+
+        target_summaries.append(
+            CooperativeTargetVisualFunnel(
+                global_track_id=completion.global_track_id,
+                target_id=group_bindings[0].target_id,
+                plan_id=completion.plan_id,
+                plan_version=completion.plan_version,
+                plan_owner=group_bindings[0].plan_owner,
+                owner_node_id=group_bindings[0].owner_node_id,
+                coalition_id=completion.coalition_id,
+                coalition_version=completion.coalition_version,
+                terminal_authorization_scope=(
+                    group_bindings[0].terminal_authorization_scope
+                ),
+                arrival_coordination_required=(
+                    group_bindings[0].arrival_coordination_required
+                ),
+                common_lock_window_required=common_window_required,
+                primary_required_count=completion.primary_required_count,
+                active_primary_resource_ids=active_primary_ids,
+                reserve_resource_ids=reserve_ids,
+                resource_diagnostics=tuple(diagnostics),
+                visible_primary_count=sum(
+                    item.committed_member and item.visible for item in active_rows
+                ),
+                projected_primary_count=sum(
+                    item.committed_member
+                    and item.association_contract_matches
+                    and item.visible
+                    and item.projected
+                    for item in active_rows
+                ),
+                gate_accepted_primary_count=sum(
+                    item.committed_member
+                    and item.association_contract_matches
+                    and item.visible
+                    and item.projected
+                    and item.gate_accepted
+                    for item in active_rows
+                ),
+                locked_primary_count=sum(item.locked for item in active_rows),
+                stable_primary_count=sum(
+                    item.stable_lock_frame_count >= int(required_stable_frames)
+                    for item in active_rows
+                ),
+                common_lock_frame_count=common_count,
+                common_lock_window_start_s=common_start,
+                common_lock_window_end_s=common_end,
+                cooperative_completion=cooperative_completion,
+                second_primary_resource_id=(second.resource_id if second is not None else None),
+                second_primary_first_failure_stage=(
+                    second.first_failure_stage if second is not None else None
+                ),
+                second_primary_reject_reason=(second.reject_reason if second is not None else None),
+                reason=target_reason,
+            )
+        )
+
+    active_rows = tuple(item for item in all_diagnostics if item.active_primary)
+    funnel_counts = {
+        "active_primary": len(active_rows),
+        "visible": sum(
+            item.committed_member and item.visible for item in active_rows
+        ),
+        "projected": sum(
+            item.committed_member
+            and item.association_contract_matches
+            and item.visible
+            and item.projected
+            for item in active_rows
+        ),
+        "gate_accepted": sum(
+            item.committed_member
+            and item.association_contract_matches
+            and item.visible
+            and item.projected
+            and item.gate_accepted
+            for item in active_rows
+        ),
+        "locked": sum(item.locked for item in active_rows),
+        "stable_lock": sum(
+            item.stable_lock_frame_count >= int(required_stable_frames) for item in active_rows
+        ),
+        "common_lock_window": sum(
+            target.primary_required_count
+            for target in target_summaries
+            if target.common_lock_window_required
+            and target.common_lock_frame_count >= int(required_stable_frames)
+        ),
+        "completion_eligible": sum(
+            target.primary_required_count
+            for target in target_summaries
+            if target.cooperative_completion
+        ),
+    }
+    first_failure_counts: dict[str, int] = defaultdict(int)
+    for item in active_rows:
+        first_failure_counts[item.first_failure_stage] += 1
+    second_failure_counts: dict[str, int] = defaultdict(int)
+    for target in target_summaries:
+        if target.second_primary_first_failure_stage is not None:
+            second_failure_counts[target.second_primary_first_failure_stage] += 1
+
+    return CooperativeVisualFunnelSummary(
+        target_summaries=tuple(target_summaries),
+        resource_binding_count=len(normalized),
+        target_count=len(target_summaries),
+        active_primary_count=len(active_rows),
+        completed_target_count=sum(target.cooperative_completion for target in target_summaries),
+        funnel_counts=funnel_counts,
+        first_failure_stage_counts=dict(sorted(first_failure_counts.items())),
+        second_primary_first_failure_stage_counts=dict(sorted(second_failure_counts.items())),
+        metadata={
+            "required_stable_frames": int(required_stable_frames),
+            "common_window_tolerance_s": float(common_window_tolerance_s),
+            "completion_policy_by_global_track_id": {
+                target.global_track_id: (
+                    "common_lock_window"
+                    if target.common_lock_window_required
+                    else "independent_per_primary"
+                )
+                for target in target_summaries
+            },
+            "reserve_completion_policy": "standby_excluded",
+            "global_id_policy": "existing_assigned_global_track_id_only",
+            "online_truth_fields_consumed": [],
+            "primary_membership_transition_by_global_track_id": membership_diagnostics,
         },
     )
 
@@ -539,6 +1127,12 @@ def _normalize_binding(value: Any, *, coalition_size_hint: int) -> _Binding:
                 "secondary_leader_epoch",
                 "epoch",
             )
+        ),
+        terminal_authorization_scope=_text(
+            _read(value, "terminal_authorization_scope", default="coalition")
+        ).lower(),
+        arrival_coordination_required=bool(
+            _read(value, "arrival_coordination_required", default=True)
         ),
     )
 
@@ -823,6 +1417,33 @@ def _association_matches_binding(association: TerminalAssociation, binding: _Bin
         and association.member_role == binding.member_role
         and association.required_resource_count == binding.required_resource_count
         and association.coordination_mode == binding.coordination_mode
+        and association.terminal_authorization_scope
+        == binding.terminal_authorization_scope
+        and association.arrival_coordination_required
+        == binding.arrival_coordination_required
+        and _association_owner_matches_binding(association, binding)
+    )
+
+
+def _association_owner_matches_binding(
+    association: TerminalAssociation,
+    binding: _Binding,
+) -> bool:
+    """Compare owner evidence when the terminal record carries it explicitly."""
+
+    metadata = association.metadata
+    association_owner = _optional_text(
+        _read(metadata, "active_plan_owner", "plan_owner", "current_plan_owner")
+    )
+    association_owner_node = _optional_text(
+        _read(metadata, "owner_node_id", "current_plan_owner_node_id")
+    )
+    return bool(
+        (association_owner is None or association_owner == binding.plan_owner)
+        and (
+            association_owner_node is None
+            or association_owner_node == binding.owner_node_id
+        )
     )
 
 
@@ -1171,6 +1792,472 @@ def _group_evidence_frames(
         frames,
         key=lambda item: (item[2], item[1] if item[1] is not None else -1, item[0]),
     )
+
+
+def _terminal_association(
+    value: TerminalAssociation | TerminalObservation,
+) -> TerminalAssociation | None:
+    if isinstance(value, TerminalAssociation):
+        return value
+    if isinstance(value, TerminalObservation):
+        return value.terminal_association
+    raise TypeError("visual evidence must be TerminalAssociation or TerminalObservation")
+
+
+def _evidence_global_track_id(
+    value: TerminalAssociation | TerminalObservation,
+) -> str | None:
+    association = _terminal_association(value)
+    if association is not None:
+        return association.assigned_global_track_id
+    if isinstance(value, TerminalObservation):
+        return _optional_text(value.metadata.get("assigned_global_track_id"))
+    return None
+
+
+def _evidence_resource_id(
+    value: TerminalAssociation | TerminalObservation,
+) -> str | None:
+    if isinstance(value, TerminalObservation):
+        return value.resource_id
+    return value.resource_id or _optional_text(value.metadata.get("resource_id"))
+
+
+def _binding_global_track_id(value: Any) -> str | None:
+    return _optional_text(
+        _read(value, "assigned_global_track_id", "global_track_id", "target_id")
+    )
+
+
+def _resolve_coalition_commit(
+    commits: Mapping[str, Any] | Any | None,
+    binding: _Binding,
+) -> Any | None:
+    if commits is None:
+        return None
+    if not isinstance(commits, Mapping):
+        return commits
+    if any(key in commits for key in ("state", "commit_state", "status")):
+        return commits
+    for key in (binding.global_track_id, binding.target_id, binding.coalition_id):
+        if key is not None and key in commits:
+            return commits[key]
+    return None
+
+
+def _binding_member_committed(
+    binding: _Binding,
+    completion: CoalitionVisualSummary,
+) -> bool:
+    if binding.authorization_state not in _AUTHORIZED_STATES:
+        return False
+    if binding.member_role in _PRIMARY_ROLES and not _binding_execution_active(binding):
+        return False
+    if completion.coalition_commit_required:
+        required = set(completion.coalition_commit_required_member_ids)
+        acked = set(completion.coalition_commit_acked_member_ids)
+        return bool(
+            completion.coalition_commit_valid
+            and binding.resource_id in required
+            and binding.resource_id in acked
+        )
+    return True
+
+
+def _latest_binding_evidence(
+    binding: _Binding,
+    evidence_items: Iterable[_Evidence],
+) -> _Evidence | None:
+    candidates = tuple(
+        evidence
+        for evidence in evidence_items
+        if evidence.resource_id == binding.resource_id
+        and evidence.association.assigned_global_track_id == binding.global_track_id
+    )
+    if not candidates:
+        return None
+    return max(
+        candidates,
+        key=lambda evidence: (
+            evidence.timestamp,
+            evidence.frame_index if evidence.frame_index is not None else -1,
+            int(_association_matches_binding(evidence.association, binding)),
+            int(evidence.execution_locked),
+            float(evidence.association.association_confidence),
+        ),
+    )
+
+
+def _latest_local_only_observation(
+    binding: _Binding,
+    evidence_items: Iterable[TerminalAssociation | TerminalObservation],
+) -> TerminalObservation | None:
+    candidates = tuple(
+        item
+        for item in evidence_items
+        if isinstance(item, TerminalObservation)
+        and item.resource_id == binding.resource_id
+        and item.terminal_association is None
+        and item.local_track is not None
+        and _evidence_global_track_id(item) in {None, binding.global_track_id}
+    )
+    return max(candidates, key=lambda item: item.timestamp) if candidates else None
+
+
+def _diagnostic_visible(
+    evidence: _Evidence | None,
+    local_only: TerminalObservation | None,
+) -> bool:
+    if evidence is not None:
+        return bool(
+            evidence.has_own_local_detection
+            and evidence.association.local_track_state == "measured"
+        )
+    return bool(
+        local_only is not None
+        and local_only.local_track is not None
+        and local_only.local_track.local_track_state == "measured"
+    )
+
+
+def _projection_succeeded(association: TerminalAssociation) -> bool:
+    metadata = association.metadata
+    if metadata.get("projection_valid") is not None:
+        return bool(metadata["projection_valid"])
+    selected = metadata.get("selected_pair")
+    if isinstance(selected, Mapping) and selected.get("projected_px") is not None:
+        return True
+    return any(
+        isinstance(item, Mapping) and item.get("projected_px") is not None
+        for item in metadata.get("candidate_pair_logs", ())
+    )
+
+
+def _gate_accepted(association: TerminalAssociation) -> bool:
+    metadata = association.metadata
+    if int(metadata.get("gate_pass_count", 0) or 0) > 0:
+        return True
+    selected = metadata.get("selected_pair")
+    if isinstance(selected, Mapping) and bool(selected.get("gate_pass", False)):
+        return True
+    return any(
+        isinstance(item, Mapping) and bool(item.get("gate_pass", False))
+        for item in metadata.get("candidate_pair_logs", ())
+    )
+
+
+def _diagnostic_failure(
+    *,
+    binding: _Binding,
+    association: TerminalAssociation | None,
+    committed_member: bool,
+    contract_matches: bool,
+    visible: bool,
+    projected: bool,
+    gate_accepted: bool,
+    locked: bool,
+    stable_count: int,
+    required_stable_frames: int,
+    common_complete: bool,
+    common_window_required: bool,
+) -> tuple[str, str]:
+    if binding.member_role in _RESERVE_ROLES and binding.activation_state not in _ACTIVE_STATES:
+        return "standby_reserve", "reserve_standby_excluded_from_primary_completion"
+    if not committed_member:
+        return "contract", "coalition_member_not_committed"
+    if association is not None and not contract_matches:
+        if not _association_owner_matches_binding(association, binding):
+            return "contract", "plan_owner_mismatch"
+        if (
+            association.terminal_authorization_scope
+            != binding.terminal_authorization_scope
+            or association.arrival_coordination_required
+            != binding.arrival_coordination_required
+        ):
+            return "contract", "terminal_authorization_contract_mismatch"
+        return "contract", "plan_or_coalition_version_mismatch"
+    if not visible:
+        return (
+            "visible",
+            _association_rejection_reason(association)
+            if association is not None
+            else "no_current_local_visual_detection",
+        )
+    if not projected:
+        return "projected", association.reason if association is not None else "projection_unavailable"
+    if not gate_accepted:
+        return "gate_accepted", association.reason if association is not None else "geometry_gate_rejected"
+    if not locked:
+        return "locked", association.reason if association is not None else "terminal_lock_not_available"
+    if stable_count < required_stable_frames:
+        return "stable_lock", "primary_lock_stability_incomplete"
+    if common_window_required and not common_complete:
+        return "common_lock_window", "common_lock_window_insufficient"
+    return (
+        "complete",
+        "cooperative_visual_completion"
+        if common_window_required
+        else "per_primary_visual_completion",
+    )
+
+
+def _primary_membership_transition_diagnostic(
+    current_bindings: tuple[_Binding, ...],
+    historical_bindings: tuple[_Binding, ...],
+) -> dict[str, Any]:
+    current_primary_ids = _unique(
+        binding.resource_id
+        for binding in current_bindings
+        if binding.member_role in _PRIMARY_ROLES
+    )
+    first = current_bindings[0]
+    prior_versions = sorted(
+        {
+            binding.plan_version
+            for binding in historical_bindings
+            if binding.plan_version is not None
+            and first.plan_version is not None
+            and binding.plan_version < first.plan_version
+            and binding.global_track_id == first.global_track_id
+            and binding.target_id == first.target_id
+        }
+    )
+    if not prior_versions:
+        return {
+            "available": False,
+            "current_plan_version": first.plan_version,
+            "previous_plan_version": None,
+            "current_primary_resource_ids": list(current_primary_ids),
+            "previous_primary_resource_ids": [],
+            "membership_changed": False,
+            "added_primary_resource_ids": [],
+            "removed_primary_resource_ids": [],
+        }
+
+    previous_version = prior_versions[-1]
+    previous_primary_ids = _unique(
+        binding.resource_id
+        for binding in historical_bindings
+        if binding.plan_version == previous_version
+        and binding.global_track_id == first.global_track_id
+        and binding.target_id == first.target_id
+        and binding.member_role in _PRIMARY_ROLES
+    )
+    current_set = set(current_primary_ids)
+    previous_set = set(previous_primary_ids)
+    return {
+        "available": True,
+        "current_plan_version": first.plan_version,
+        "previous_plan_version": previous_version,
+        "current_primary_resource_ids": list(current_primary_ids),
+        "previous_primary_resource_ids": list(previous_primary_ids),
+        "membership_changed": current_set != previous_set,
+        "added_primary_resource_ids": sorted(current_set - previous_set),
+        "removed_primary_resource_ids": sorted(previous_set - current_set),
+    }
+
+
+def _current_primary_failure_diagnostics(
+    primary_bindings: tuple[_Binding, ...],
+    current_evidence: tuple[_Evidence, ...],
+    *,
+    stable_counts: Mapping[str, int],
+    required_stable_frames: int,
+    commit_conflict_reasons: tuple[str, ...],
+) -> dict[str, dict[str, Any]]:
+    diagnostics: dict[str, dict[str, Any]] = {}
+    for binding in primary_bindings:
+        candidates = tuple(
+            evidence
+            for evidence in current_evidence
+            if evidence.resource_id == binding.resource_id
+            and evidence.association.assigned_global_track_id == binding.global_track_id
+        )
+        latest = max(candidates, key=_frame_order_token) if candidates else None
+        association = latest.association if latest is not None else None
+        contract_matches = bool(
+            association is not None and _association_matches_binding(association, binding)
+        )
+        visible = bool(
+            latest is not None
+            and latest.has_own_local_detection
+            and association is not None
+            and association.local_track_state == "measured"
+        )
+        projected = bool(association is not None and _projection_succeeded(association))
+        gate_accepted = bool(association is not None and _gate_accepted(association))
+        locked = bool(latest is not None and latest.execution_locked and contract_matches)
+        stable_count = int(stable_counts.get(binding.resource_id, 0))
+
+        if commit_conflict_reasons:
+            failure_stage = "contract"
+            failure_reason = commit_conflict_reasons[0]
+        elif not _binding_execution_active(binding):
+            failure_stage = "contract"
+            failure_reason = "primary_binding_not_execution_authorized"
+        elif association is not None and not contract_matches:
+            failure_stage = "contract"
+            failure_reason = "plan_or_coalition_version_mismatch"
+        elif not visible:
+            failure_stage = "visible"
+            failure_reason = (
+                _association_rejection_reason(association)
+                if association is not None
+                else "no_current_local_visual_detection"
+            )
+        elif not projected:
+            failure_stage = "projected"
+            failure_reason = _association_rejection_reason(association)
+        elif not gate_accepted:
+            failure_stage = "gate_accepted"
+            failure_reason = _association_rejection_reason(association)
+        elif not locked:
+            failure_stage = "locked"
+            failure_reason = _association_rejection_reason(association)
+        elif stable_count < required_stable_frames:
+            failure_stage = "stable_lock"
+            failure_reason = "primary_lock_stability_incomplete"
+        else:
+            failure_stage = "complete"
+            failure_reason = "primary_visual_lock_complete"
+
+        diagnostics[binding.resource_id] = {
+            "decision_state": association.decision_state if association is not None else "unobserved",
+            "association_reason": association.reason if association is not None else None,
+            "association_rejection_reason": (
+                _association_rejection_reason(association)
+                if association is not None
+                else None
+            ),
+            "association_contract_matches": contract_matches,
+            "has_own_local_detection": bool(
+                latest is not None and latest.has_own_local_detection
+            ),
+            "visible": visible,
+            "projected": projected,
+            "gate_accepted": gate_accepted,
+            "locked": locked,
+            "stable_lock_frame_count": stable_count,
+            "friend_conflict_state": (
+                association.friend_conflict_state if association is not None else "none"
+            ),
+            "first_failure_stage": failure_stage,
+            "failure_reason": failure_reason,
+        }
+    return diagnostics
+
+
+def _association_rejection_reason(association: TerminalAssociation) -> str:
+    value = association.metadata.get("association_rejection_reason")
+    return str(value) if value else association.reason
+
+
+def _common_primary_lock_window(
+    primary_bindings: tuple[_Binding, ...],
+    evidence_items: tuple[_Evidence, ...],
+    *,
+    historical_bindings: tuple[_Binding, ...] = (),
+    source_plan_versions_by_resource: Mapping[str, Iterable[int]] | None = None,
+    stable_frame_count_by_resource: Mapping[str, int] | None = None,
+    tolerance_s: float,
+) -> tuple[int, float | None, float | None]:
+    active_bindings = tuple(
+        binding for binding in primary_bindings if _binding_execution_active(binding)
+    )
+    if not active_bindings:
+        return 0, None, None
+
+    source_versions = source_plan_versions_by_resource or {}
+    stable_frame_counts = stable_frame_count_by_resource or {}
+    all_bindings = (*primary_bindings, *historical_bindings)
+    eligible: dict[str, tuple[_Evidence, ...]] = {}
+    for binding in active_bindings:
+        deduplicated: dict[tuple[str, float], _Evidence] = {}
+        allowed_versions = {
+            int(version)
+            for version in source_versions.get(binding.resource_id, ())
+        }
+        if not allowed_versions and binding.plan_version is not None:
+            allowed_versions.add(binding.plan_version)
+        for evidence in evidence_items:
+            exact_binding_match = any(
+                candidate.resource_id == binding.resource_id
+                and candidate.global_track_id == binding.global_track_id
+                and candidate.target_id == binding.target_id
+                and _association_matches_binding(evidence.association, candidate)
+                for candidate in all_bindings
+            )
+            if (
+                evidence.resource_id != binding.resource_id
+                or not evidence.execution_locked
+                or evidence.association.plan_version not in allowed_versions
+                or not exact_binding_match
+                or not _evidence_safe_for_continuity(evidence)
+            ):
+                continue
+            deduplicated[(evidence.frame_key, evidence.timestamp)] = evidence
+        recent = tuple(sorted(deduplicated.values(), key=_frame_order_token))
+        stable_tail_length = max(
+            0,
+            int(stable_frame_counts.get(binding.resource_id, len(recent))),
+        )
+        eligible[binding.resource_id] = (
+            recent[-stable_tail_length:] if stable_tail_length else ()
+        )
+    if any(not values for values in eligible.values()):
+        return 0, None, None
+
+    indexed = {
+        resource_id: {
+            evidence.frame_index: evidence.timestamp
+            for evidence in values
+            if evidence.frame_index is not None
+        }
+        for resource_id, values in eligible.items()
+    }
+    if all(values for values in indexed.values()):
+        common_indices = sorted(set.intersection(*(set(values) for values in indexed.values())))
+        runs: list[list[int]] = []
+        for frame_index in common_indices:
+            if not runs or frame_index != runs[-1][-1] + 1:
+                runs.append([frame_index])
+            else:
+                runs[-1].append(frame_index)
+        if runs:
+            best = max(runs, key=lambda run: (len(run), run[-1]))
+            timestamps = [
+                sum(indexed[resource_id][frame_index] for resource_id in indexed) / len(indexed)
+                for frame_index in best
+            ]
+            return len(best), min(timestamps), max(timestamps)
+
+    resource_ids = tuple(eligible)
+    reference = eligible[resource_ids[0]]
+    common_timestamps: list[float] = []
+    for evidence in reference:
+        matches = [evidence.timestamp]
+        for resource_id in resource_ids[1:]:
+            candidate = min(
+                eligible[resource_id],
+                key=lambda value: abs(value.timestamp - evidence.timestamp),
+            )
+            if abs(candidate.timestamp - evidence.timestamp) > tolerance_s:
+                break
+            matches.append(candidate.timestamp)
+        else:
+            common_timestamps.append(sum(matches) / len(matches))
+    if not common_timestamps:
+        return 0, None, None
+    unique_times = sorted(dict.fromkeys(round(value, 9) for value in common_timestamps))
+    max_gap = max(0.25, 3.0 * tolerance_s)
+    runs: list[list[float]] = []
+    for timestamp in unique_times:
+        if not runs or timestamp - runs[-1][-1] > max_gap:
+            runs.append([timestamp])
+        else:
+            runs[-1].append(timestamp)
+    best_times = max(runs, key=lambda run: (len(run), run[-1]))
+    return len(best_times), best_times[0], best_times[-1]
 
 
 def _read(value: Any, *names: str, default: Any = None) -> Any:

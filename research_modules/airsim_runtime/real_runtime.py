@@ -24,6 +24,8 @@ from d5_terminal_association.airsim_geometry import (
 )
 from d5_terminal_association import (
     LocalVisualTrack,
+    NativeMotAdmissionMonitor,
+    NativeMotScenarioMetadata,
     YoloMotAdapter,
     YoloMotAdapterConfig,
 )
@@ -67,6 +69,7 @@ class RealAirSimRuntimeClient:
         self.client = self._new_client()
         self._yolo_adapter_factory = yolo_adapter_factory
         self._yolo_mot_adapters: dict[str, YoloMotAdapter] = {}
+        self._native_mot_admission = NativeMotAdmissionMonitor()
         self._yolo_adapter_config_signature: tuple[Any, ...] | None = None
         self._scene_image_frame_cache: dict[tuple[int, str, str], tuple[Any, dict[str, Any]]] = {}
         self._active_actor_targets: dict[str, dict[str, Any]] = {}
@@ -74,6 +77,7 @@ class RealAirSimRuntimeClient:
         self._detection_history: dict[str, int] = {}
         self._builtin_detection_track_states: dict[str, dict[str, dict[str, Any]]] = {}
         self._builtin_detection_next_sequence: dict[str, int] = {}
+        self._cv_camera_pointing_commands: dict[str, dict[str, Any]] = {}
 
     def _new_client(self) -> Any:
         return self.client_factory(ip=self.ip, port=self.port, timeout_value=self.timeout_value)
@@ -110,6 +114,7 @@ class RealAirSimRuntimeClient:
         for vehicle_name in config.resource_vehicle_names:
             self.client.enableApiControl(True, vehicle_name=vehicle_name)
             self.client.armDisarm(True, vehicle_name=vehicle_name)
+        self._apply_cooperative_initial_pose_offsets(config)
         for vehicle_name in config.resource_vehicle_names:
             _join_future(
                 self.client.takeoffAsync(
@@ -132,6 +137,31 @@ class RealAirSimRuntimeClient:
                 )
             )
             _join_future(self.client.hoverAsync(vehicle_name=vehicle_name))
+
+    def _apply_cooperative_initial_pose_offsets(self, config: BlocksSmokeConfig) -> None:
+        if not bool(config.metadata.get("cooperative_pose_via_api", False)):
+            return
+        raw_offsets = config.metadata.get("cooperative_vehicle_pose_offsets_ned", {})
+        if not isinstance(raw_offsets, dict):
+            raise ValueError("cooperative_vehicle_pose_offsets_ned must be a mapping")
+        orientation = self._quaternion_from_euler(0.0, 0.0, 0.0)
+        for vehicle_name in config.resource_vehicle_names:
+            raw = raw_offsets.get(vehicle_name, (0.0, 0.0, 0.0))
+            if not isinstance(raw, (list, tuple)) or len(raw) != 3:
+                raise ValueError(
+                    f"invalid cooperative pose offset for {vehicle_name}: {raw!r}"
+                )
+            position = tuple(float(value) for value in raw)
+            pose = self._pose_from_position_orientation(position, orientation)
+            result = self.client.simSetVehiclePose(
+                pose,
+                ignore_collision=True,
+                vehicle_name=vehicle_name,
+            )
+            if result is False:
+                raise RuntimeError(
+                    f"AirSim rejected cooperative initial pose for {vehicle_name}"
+                )
 
     def command_velocity_z(
         self,
@@ -233,12 +263,16 @@ class RealAirSimRuntimeClient:
         self._detection_history = {}
         self._builtin_detection_track_states = {}
         self._builtin_detection_next_sequence = {}
+        self._cv_camera_pointing_commands = {}
+        self._native_mot_admission.reset_all_streams()
         yolo_signature = (
             str(config.yolo_weights_path),
             str(config.yolo_tracker_backend),
             float(config.yolo_confidence_threshold),
             bool(config.yolo_use_native_tracker),
             bool(config.yolo_allow_iou_fallback),
+            config.yolo_primary_inference_imgsz,
+            config.yolo_secondary_inference_imgsz,
         )
         if yolo_signature == self._yolo_adapter_config_signature:
             reset_adapters: dict[str, YoloMotAdapter] = {}
@@ -386,6 +420,7 @@ class RealAirSimRuntimeClient:
                 "lidar": lidar_metas[0] if lidar_metas else {"ok": False, "reason": "no_lidar_vehicle"},
                 "lidars": lidar_metas,
                 "detections": detection_meta,
+                "native_mot_admission": self.native_mot_admission_summaries(),
                 "detection_count": len(visual_detections),
                 "camera_vehicle_names": list(camera_vehicle_names),
                 "resource_vehicle_names": list(config.resource_vehicle_names),
@@ -661,6 +696,11 @@ class RealAirSimRuntimeClient:
                 }
             )
             camera_id = f"{vehicle_name}:{config.camera_name}"
+            image_size = _camera_dimensions_from_settings(
+                config,
+                vehicle_name,
+                config.camera_name,
+            )
             boxes = [_bbox2d_from_detection(raw) for raw in raw_detections]
             local_assignments = self._assign_builtin_detection_tracks(
                 camera_id,
@@ -687,6 +727,13 @@ class RealAirSimRuntimeClient:
                         metadata={
                             "source": "airsim_builtin_detection",
                             "mot_history_length": history_length,
+                            "track_transition_state": (
+                                "continued" if history_length > 1 else "initialized"
+                            ),
+                            "image_size": image_size,
+                            "measurement_timestamp": float(timestamp),
+                            "arrival_timestamp": float(timestamp),
+                            "exposure_timestamp": float(timestamp),
                             "offline_truth_actor_name": name,
                             "offline_truth_only": True,
                             "relative_pose": _pose_to_dict(getattr(raw, "relative_pose", None)),
@@ -791,11 +838,43 @@ class RealAirSimRuntimeClient:
                 "frame_id": f"{camera_id}:{frame_index:04d}",
                 "timestamp": timestamp,
             }
-            if config.yolo_offline_truth_evaluation:
-                adapter_kwargs["offline_truth_detections"] = (
-                    self._offline_truth_bboxes_for_camera(config, vehicle_name)
-                )
+            target_distance_m = self._native_mot_target_distance_m(config)
+            if isinstance(adapter, YoloMotAdapter):
+                adapter_kwargs["target_distance_m"] = target_distance_m
             result = adapter.process_frame(image_frame, **adapter_kwargs)
+            offline_truth_records: tuple[dict[str, Any], ...] = ()
+            if config.yolo_offline_truth_evaluation:
+                # Truth is fetched only after the online detector/tracker result exists.
+                offline_truth_records = self._offline_truth_records_for_camera(
+                    config,
+                    vehicle_name,
+                )
+            admission_summary: dict[str, Any] | None = None
+            if all(
+                hasattr(result, name)
+                for name in ("resource_id", "camera_id", "tracks", "metadata")
+            ):
+                scenario = NativeMotScenarioMetadata(
+                    confidence_threshold=float(config.yolo_confidence_threshold),
+                    target_distance_m=target_distance_m,
+                    warmup_frame_count=int(
+                        config.metadata.get("mot_admission_warmup_frames", 5)
+                    ),
+                    scenario_id=str(
+                        config.metadata.get("mot_calibration_case_id", config.episode_id)
+                    ),
+                )
+                self._native_mot_admission.observe(
+                    result,
+                    scenario=scenario,
+                    offline_truth_detections=(
+                        offline_truth_records if offline_truth_records else None
+                    ),
+                )
+                admission_summary = self._native_mot_admission.summary(
+                    resource_id,
+                    camera_id,
+                ).to_dict()
             result_meta = {
                 "ok": result.status == "ok",
                 "backend": "yolo",
@@ -807,6 +886,7 @@ class RealAirSimRuntimeClient:
                 "detector_backend": result.detector_backend,
                 "tracker_backend": result.tracker_backend,
                 "count": len(result.tracks),
+                "native_mot_admission": admission_summary,
                 "image": image_meta,
                 **dict(result.metadata),
             }
@@ -838,6 +918,53 @@ class RealAirSimRuntimeClient:
         except Exception:
             return ()
         return tuple(_bbox2d_from_detection(item) for item in detections)
+
+    def _offline_truth_records_for_camera(
+        self,
+        config: BlocksSmokeConfig,
+        vehicle_name: str,
+    ) -> tuple[dict[str, Any], ...]:
+        """Return evaluator-only boxes with actor identity after online tracking."""
+
+        try:
+            detections = self.client.simGetDetections(
+                config.camera_name,
+                self.airsim.ImageType.Scene,
+                vehicle_name=vehicle_name,
+            )
+        except Exception:
+            return ()
+        records: list[dict[str, Any]] = []
+        for index, detection in enumerate(detections):
+            truth_id = str(
+                getattr(detection, "name", "")
+                or getattr(detection, "object_name", "")
+                or f"offline-truth-{index:04d}"
+            )
+            records.append(
+                {
+                    "bbox_xyxy": _bbox2d_from_detection(detection),
+                    "truth_id": truth_id,
+                    "offline_truth_only": True,
+                }
+            )
+        return tuple(records)
+
+    def _native_mot_target_distance_m(self, config: BlocksSmokeConfig) -> float:
+        configured = config.metadata.get("mot_target_distance_m")
+        if configured is not None:
+            return max(float(configured), 1e-3)
+        if config.target_actor_specs:
+            distances = [
+                float(np.linalg.norm(np.asarray(spec.start_ned, dtype=float)))
+                for spec in config.target_actor_specs
+            ]
+            if distances:
+                return max(float(np.mean(distances)), 1e-3)
+        return 30.0
+
+    def native_mot_admission_summaries(self) -> list[dict[str, Any]]:
+        return [summary.to_dict() for summary in self._native_mot_admission.summaries()]
 
     def _capture_scene_image_frame(
         self,
@@ -887,6 +1014,12 @@ class RealAirSimRuntimeClient:
         adapter = self._yolo_mot_adapters.get(camera_id)
         if adapter is not None:
             return adapter
+        vehicle_name = str(camera_id).split(":", 1)[0]
+        inference_imgsz = (
+            config.yolo_secondary_inference_imgsz
+            if vehicle_name in config.secondary_camera_vehicle_names
+            else config.yolo_primary_inference_imgsz
+        )
         adapter_config = YoloMotAdapterConfig(
             weights_path=config.yolo_weights_path,
             tracker_backend=config.yolo_tracker_backend,
@@ -896,6 +1029,7 @@ class RealAirSimRuntimeClient:
             compute_device=config.yolo_compute_device,
             cpu_budget_ms=config.yolo_cpu_budget_ms,
             gpu_budget_ms=config.yolo_gpu_budget_ms,
+            inference_imgsz=inference_imgsz,
         )
         adapter = (
             self._yolo_adapter_factory(adapter_config)
@@ -947,6 +1081,13 @@ class RealAirSimRuntimeClient:
         unique_filters = tuple(dict.fromkeys(filters))
         for vehicle_name in config.effective_camera_vehicle_names():
             configured: list[str] = []
+            radius_cm = int(config.detection_radius_cm)
+            if vehicle_name in config.secondary_camera_vehicle_names:
+                radius_cm = int(
+                    config.secondary_detection_radius_cm
+                    if config.secondary_detection_radius_cm is not None
+                    else config.detection_radius_cm
+                )
             try:
                 self.client.simClearDetectionMeshNames(
                     config.camera_name,
@@ -956,7 +1097,7 @@ class RealAirSimRuntimeClient:
                 self.client.simSetDetectionFilterRadius(
                     config.camera_name,
                     self.airsim.ImageType.Scene,
-                    int(config.detection_radius_cm),
+                    radius_cm,
                     vehicle_name=vehicle_name,
                 )
                 for mesh_name in unique_filters:
@@ -972,7 +1113,12 @@ class RealAirSimRuntimeClient:
                         "ok": True,
                         "camera_vehicle_name": vehicle_name,
                         "camera_name": config.camera_name,
-                        "radius_cm": int(config.detection_radius_cm),
+                        "radius_cm": radius_cm,
+                        "camera_role": (
+                            "secondary_recon"
+                            if vehicle_name in config.secondary_camera_vehicle_names
+                            else "interceptor"
+                        ),
                         "filters": configured,
                     }
                 )
@@ -997,15 +1143,43 @@ class RealAirSimRuntimeClient:
         truth_by_id = {truth.object_id: truth for truth in truth_objects}
         guidance: list[dict[str, Any]] = []
         for vehicle_name in config.resource_vehicle_names:
+            command = self._cv_camera_pointing_commands.get(vehicle_name)
             target_id, phase = _cv_assignment_target_id(config, vehicle_name, timestamp)
-            target = truth_by_id.get(target_id)
-            if target is None:
+            stress_reassignment_active = (
+                config.cv_reassignment_time_s is not None
+                and timestamp >= config.cv_reassignment_time_s
+            )
+            target_position: tuple[float, float, float] | None = None
+            plan_id: str | None = None
+            plan_version: int | None = None
+            pointing_source = (
+                "explicit_reassignment_stress"
+                if stress_reassignment_active
+                else "scenario_bootstrap"
+            )
+            if command is not None and not stress_reassignment_active:
+                target_id = str(command.get("global_track_id") or target_id)
+                phase = "d3_current_assignment"
+                raw_position = command.get("look_at_ned")
+                if raw_position is not None and len(raw_position) == 3:
+                    target_position = tuple(float(value) for value in raw_position)
+                plan_id = str(command.get("plan_id") or "") or None
+                plan_version = int(command["plan_version"])
+                pointing_source = "d3_binding_d2_predicted_state"
+            if target_position is None:
+                target = truth_by_id.get(target_id)
+                if target is not None:
+                    target_position = target.position_ned
+            if target_position is None:
                 guidance.append(
                     {
                         "vehicle_name": vehicle_name,
                         "role": "interceptor_camera",
                         "target_id": target_id,
                         "assignment_phase": phase,
+                        "pointing_source": pointing_source,
+                        "plan_id": plan_id,
+                        "plan_version": plan_version,
                         "pose_update_ok": False,
                         "reason": "target_not_available",
                     }
@@ -1014,18 +1188,26 @@ class RealAirSimRuntimeClient:
             start = _vehicle_start_offset(config, vehicle_name)
             position = _follow_position(
                 start,
-                target.position_ned,
+                target_position,
                 follow_distance_m=config.cv_camera_follow_distance_m,
             )
-            pose_update = self._set_vehicle_pose_look_at(config, vehicle_name, position, target.position_ned)
+            pose_update = self._set_vehicle_pose_look_at(
+                config,
+                vehicle_name,
+                position,
+                target_position,
+            )
             guidance.append(
                 {
                     "vehicle_name": vehicle_name,
                     "role": "interceptor_camera",
                     "target_id": target_id,
                     "assignment_phase": phase,
+                    "pointing_source": pointing_source,
+                    "plan_id": plan_id,
+                    "plan_version": plan_version,
                     "position_ned": position,
-                    "look_at_ned": target.position_ned,
+                    "look_at_ned": target_position,
                     **pose_update,
                 }
             )
@@ -1059,6 +1241,23 @@ class RealAirSimRuntimeClient:
                     }
                 )
         return guidance
+
+    def set_cv_camera_pointing_commands(
+        self,
+        commands: dict[str, dict[str, Any]],
+    ) -> None:
+        """Install truth-free D3/D2 commands used by the next CV frame."""
+
+        normalized: dict[str, dict[str, Any]] = {}
+        for vehicle_name, command in commands.items():
+            look_at = command.get("look_at_ned")
+            if look_at is None or len(look_at) != 3:
+                continue
+            normalized[str(vehicle_name)] = {
+                **dict(command),
+                "look_at_ned": tuple(float(value) for value in look_at),
+            }
+        self._cv_camera_pointing_commands = normalized
 
     def _set_vehicle_pose_look_at(
         self,
@@ -1514,6 +1713,13 @@ def _detection_from_yolo_track(
             "requested_tracker_backend": result_metadata.get("requested_tracker_backend"),
             "detector_status": result_metadata.get("status"),
             "mot_history_length": int(track.mot_history_length),
+            "track_transition_state": track.track_transition_state,
+            "track_reset_reason": track.track_reset_reason,
+            "image_size": track.image_size,
+            "measurement_timestamp": float(track.timestamp),
+            "arrival_timestamp": float(track.arrival_timestamp),
+            "exposure_timestamp": float(track.exposure_timestamp),
+            "raw_classification_hint": str(track.category),
         },
     )
 

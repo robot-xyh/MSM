@@ -1,0 +1,5 @@
+timestamp_s,resource_id,target_id,terminal_contract_reject_reason
+0.0,INT-02,T001,
+0.1,INT-03,T001,d4_terminal_inconsistent
+0.4,INT-01,T001,d4_terminal_inconsistent
+1.0,INT-04,T002,stale_plan_version

@@ -187,7 +187,7 @@ def test_case_001_no_degradation_continue_center() -> None:
     assert decision.risk_factors == ()
 
 
-def test_case_002_degrade_to_secondary_after_high_dynamic_terminal_mismatch() -> None:
+def test_case_002_requests_center_replan_after_persistent_terminal_mismatch() -> None:
     decision = ActiveDegradationArbiter().evaluate(
         track_uncertainty=_track_uncertainty(position_sigma_m=55.0),
         association_risk=_association_risk(ambiguity_score=0.75),
@@ -206,13 +206,13 @@ def test_case_002_degrade_to_secondary_after_high_dynamic_terminal_mismatch() ->
     )
 
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
-    assert decision.action == DegradationAction.DEGRADE_TO_SECONDARY
-    assert decision.target_node_id == "sec-north-1"
+    assert decision.action == DegradationAction.REQUEST_CENTER_REPLAN
+    assert decision.target_node_id is None
     assert not decision.terminal_consistent
     assert "d1_track_uncertainty_high" in decision.risk_factors
     assert "d2_association_ambiguity_high" in decision.risk_factors
     assert "d5_cross_view_risk_high" in decision.risk_factors
-    assert "terminal_persistent_disagreement" in decision.risk_factors
+    assert "d5_terminal_id_mismatch" in decision.risk_factors
 
 
 def test_blocks_2v2_degrade_to_secondary_frame_does_not_enter_visual_png() -> None:
@@ -227,7 +227,7 @@ def test_blocks_2v2_degrade_to_secondary_frame_does_not_enter_visual_png() -> No
             mismatch_frames=2,
             cross_view_risk_score=0.8,
         ),
-        c2_health=C2Health.NORMAL,
+        c2_health=C2Health.FAILED,
         secondary_nodes=_fake_phase1_resources(secondary_available=True),
         communication_summaries=[_fake_secondary_video_link()],
         current_time_s=10.5,
@@ -261,7 +261,7 @@ def test_blocks_2v2_secondary_plan_activation_hands_new_plan_to_d7() -> None:
             mismatch_frames=2,
             cross_view_risk_score=0.8,
         ),
-        c2_health=C2Health.NORMAL,
+        c2_health=C2Health.FAILED,
         secondary_nodes=_fake_phase1_resources(secondary_available=True),
         communication_summaries=[_fake_secondary_video_link()],
         current_time_s=10.5,
@@ -310,7 +310,7 @@ def test_d7_handoff_rejects_visible_only_secondary_capability() -> None:
             mismatch_frames=2,
             cross_view_risk_score=0.8,
         ),
-        c2_health=C2Health.NORMAL,
+        c2_health=C2Health.FAILED,
         secondary_nodes=_fake_phase1_resources(secondary_available=True),
         communication_summaries=[_fake_secondary_video_link()],
         current_time_s=10.5,
@@ -410,14 +410,14 @@ def test_decision_metrics_contains_main_required_d4_fields() -> None:
         distributed_conflict_count=0,
     )
 
-    assert metrics["d4_action"] == "degrade_to_secondary"
+    assert metrics["d4_action"] == "request_center_replan"
     assert metrics["degradation_mode"] == "active_degradation"
-    assert metrics["target_node_id"] == "sec-north-1"
+    assert metrics["target_node_id"] is None
     assert metrics["terminal_consistent"] is False
     assert metrics["failover_time"] == 1.5
     assert metrics["secondary_selected_rate"] == 1.0
     assert metrics["distributed_conflict_count"] == 0
-    assert "terminal_persistent_disagreement" in metrics["risk_factors"]
+    assert "d5_terminal_id_mismatch" in metrics["risk_factors"]
 
 
 def test_fake_airsim_center_failed_passively_degrades_to_secondary_node() -> None:
@@ -485,7 +485,7 @@ def test_fake_airsim_uncertainty_with_consistent_terminal_requests_active_second
     assert "d2_association_ambiguity_medium" in decision.risk_factors
 
 
-def test_fake_airsim_terminal_mismatch_actively_degrades_to_secondary_when_available() -> None:
+def test_fake_airsim_terminal_mismatch_requests_center_replan_when_available() -> None:
     decision = ActiveDegradationArbiter().evaluate(
         track_uncertainty=_track_uncertainty(),
         association_risk=_association_risk(),
@@ -501,10 +501,10 @@ def test_fake_airsim_terminal_mismatch_actively_degrades_to_secondary_when_avail
     )
 
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
-    assert decision.action == DegradationAction.DEGRADE_TO_SECONDARY
-    assert decision.target_node_id == "sec-north-1"
+    assert decision.action == DegradationAction.REQUEST_CENTER_REPLAN
+    assert decision.target_node_id is None
     assert not decision.terminal_consistent
-    assert "terminal_persistent_disagreement" in decision.risk_factors
+    assert "d5_terminal_id_mismatch" in decision.risk_factors
 
 
 def test_fake_airsim_terminal_reacquire_without_secondary_continues_center() -> None:
@@ -524,12 +524,13 @@ def test_fake_airsim_terminal_reacquire_without_secondary_continues_center() -> 
 
     assert decision.mode == DegradationMode.NONE
     assert decision.action == DegradationAction.CONTINUE_CENTER
-    assert decision.reason == "terminal_persistent_reacquire_no_secondary"
+    assert decision.reason == "terminal_persistent_reacquire_center_binding_stable"
     assert decision.target_node_id is None
     assert decision.coverage_cell == "cell-north"
+    assert decision.terminal_consistent
 
 
-def test_fake_airsim_terminal_mismatch_actively_degrades_to_distributed_without_secondary() -> None:
+def test_fake_airsim_terminal_mismatch_requests_center_replan_without_secondary() -> None:
     decision = ActiveDegradationArbiter().evaluate(
         track_uncertainty=_track_uncertainty(),
         association_risk=_association_risk(),
@@ -545,12 +546,12 @@ def test_fake_airsim_terminal_mismatch_actively_degrades_to_distributed_without_
     )
 
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
-    assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
+    assert decision.action == DegradationAction.REQUEST_CENTER_REPLAN
     assert decision.target_node_id is None
     assert decision.coverage_cell == "cell-north"
 
 
-def test_fake_airsim_terminal_mismatch_with_stale_secondary_link_degrades_to_distributed() -> None:
+def test_fake_airsim_terminal_mismatch_with_stale_secondary_link_requests_center_replan() -> None:
     decision = ActiveDegradationArbiter().evaluate(
         track_uncertainty=_track_uncertainty(),
         association_risk=_association_risk(),
@@ -568,7 +569,7 @@ def test_fake_airsim_terminal_mismatch_with_stale_secondary_link_degrades_to_dis
     )
 
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
-    assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
+    assert decision.action == DegradationAction.REQUEST_CENTER_REPLAN
     assert decision.target_node_id is None
 
 

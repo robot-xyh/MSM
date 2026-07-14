@@ -1,7 +1,7 @@
 # 框架评估 P0/P1/P2 缺口确认
 
-**文档版本**: v2.2
-**更新日期**: 2026-07-12
+**文档版本**: v2.5
+**更新日期**: 2026-07-13
 **生成角色**: main agent
 **定位**: EVAL 层跨模块优先级归并，不直接替代 D1-D7 owned GAP/PLAN。
 
@@ -27,6 +27,31 @@ v2.2 继续同步以下当前状态证据：
 - `research_modules/airsim_runtime/outputs/png_delivery_enhancement_eval_20260712/` 的 D6 结构化对照。
 - `research_modules/airsim_runtime/outputs/p1_terminal_closure_10seed_20260712/` 的 80-episode 同条件 M5N2、`png_ttc`、dropout 和 D1-D5/D6 统一证据。
 
+v2.3 新增同步：
+
+- `subagent_reviews/MAIN_P1_COOPERATIVE_AND_IDENTITY_CALIBRATION_REPORT_20260712.md`。
+- `research_modules/airsim_runtime/outputs/p1_cooperative_closure_v2_contractfix_smoke_20260712/` 的四组 M5N2 cooperative smoke。
+- `research_modules/airsim_runtime/outputs/p1_sparse_binding_owner_smoke_20260712/` 的 owner/version 保持专项。
+- `research_modules/airsim_runtime/outputs/p1_identity_dense_crossing_cv20_20260712/` 的真实 CV 20-seed D1/D2/D6 标定。
+
+v2.4 新增同步代码状态：
+
+- cooperative terminal 改为 active primary 独立授权，不再要求同时到达；reserve 保持 standby。
+- D3 纯成本/诊断重评不再推进 plan id/version/coalition epoch。
+- D4 episode communication 已接入 AirSim frame clock，并对 ownerless/partition/reconfiguring fail-closed。
+- D5 ByteTrack/BoT-SORT 原生准入和 post-online truth 评分已接入 main；IoU fallback 不可准入。
+- D2 六 difficulty profile 已实现真实受控观测变换，2 m tight geometry 必须来自真实 AirSim 捕获。
+- D6 已提供 D2-D5/D7 统一 CSV/JSON/中文 Markdown/PNG 汇总接口。
+
+v2.5 新增同步真实执行证据：
+
+- 4 m/2 m strict dense crossing 各 20 seeds，共 40 个真实 AirSim episode；最佳 GNN 候选 IDSW 下降 54.6%，但 continuity 未达到冻结晋级门限。
+- M5N2 `2 primary + 1 reserve` 共 40 个 SimpleFlight episode；最佳 profile coalition completion 为 `5/10`，总体 `8/40`，仍未达到 `8/10`。
+- D4 六类 episode-time 通信/失效注入共 60/60 通过，false degradation 和 duplicate owner 均为 0。
+- ByteTrack/BoT-SORT 18-case 原生 MOT 筛选完成；20 m 延时和 continuity 合格，但 precision/recall 仅约 0.26-0.33，30/50 m 无检测，0 个候选准入。
+- D6 已修复 cooperative profile 分组并生成七类来源均 available 的统一 P1 报告；D3 缺失时序 churn 保持 unavailable。
+- D1-D7 owner 已分别同步各自 PLAN/GAP；main 只维护本文件和总 GAP。P0/P1 状态以 2026-07-13 顶部权威段为准，文内更早测试计数均属于历史阶段证据。
+
 仍然参考的原始评估材料：
 
 - `EVAL/FRAMEWORK_EVAL_D1_SENSOR_FUSION.md`
@@ -51,6 +76,11 @@ v2.2 继续同步以下当前状态证据：
 5. **P2 是较重架构升级或高阶算法**：ROS 2/DDS 生产化、PTP 多节点时间同步、Track-to-Track 融合、跨视角联合优化、多资源协同拦截、完整分区合并、标准 MOT/HOTA/OSPA 适配。
 6. **2026-07-09 P1 接口补齐已完成一轮**：main runtime 已补齐 P1 calibration suite/threshold metadata、高度对比和 D6 标准报告 bundle；D1-D7 各模块已补充本模块 P1 metadata、summary、evidence 或 gate 字段；剩余工作从“接口缺口”转为“真实 AirSim 多 seed 标定和长期趋势治理”。
 7. **2026-07-12 当前无新增 P0 blocker**：同一 `z=-30 m`、35 s 的 M5N2 paired 已完成 10 seeds；candidate 从 baseline 的 pair/target `7` 降为 `4`，coalition 均为 `0/10`，因此 optional soft/trend 不得晋级默认。1-5 帧 dropout 矩阵已完整执行，逐 seed 为 49/50（单帧 seed 2 未进入预测）；tuned 2v2 `png_ttc` 为 20/20。
+8. **cooperative 合同错误已修正但性能未闭合**：D4 不再把 D5 non-locked 当成绑定冲突，arbiter 状态按 pair 隔离；main typed camera geometry 和稀疏 binding 已接通。四个单-seed case 中 `d4_terminal_inconsistent=0`、`d4_owner_missing` 专项为 0，但 control `0/12`、coalition `0/4`，继续列为 P1。
+9. **D2 真实 CV 20-seed 对照不支持换主线**：默认 GNN 与候选/轻量 JPDA 均为 IDSW=0、continuity=1.0；JPDA 延迟更高，未达到晋级收益。该 fixture 区分度不足，后续提高漏检、虚警和遮挡难度，不把 JPDA 提前升级为默认。
+10. **P1 接口与场景生成缺口已经转入实测判定，不等于算法晋级**：早期 20/30/50 m 预检已经由 18-case 正式筛选取代。正式结果仍为 20 m native active/continuity 合格、30/50 m 零检测，且 20 m 离线 precision/recall 只有约 0.26-0.33；因此没有后端进入 10-seed confirmation，默认 detect、GNN/Hungarian 和既有 PN/PNG 主线不变。
+11. **2026-07-13 真实执行已完成，但性能 P1 仍开放**：D2 strict dense crossing、D4 60-case、M5N2 40-episode 和原生 MOT 18-case 均已实际运行。M5N2 最佳只有 `5/10`，原生 MOT 没有候选通过准入，因此不能把场景执行完成表述为性能闭合。
+12. **当前仍无新增 P0 blocker**：reserve 越权、`global_track_id` 改写、在线 truth 使用、duplicate owner 和 false degradation 均为 0；模块和 main 回归通过。下一步仍是 D5 第二 primary 获取/锁定、远距检测尺度与 D3 逐时刻 churn 证据，不启动 P2 主线替换。
 
 ### 2.1 v2.2 当前权威状态
 

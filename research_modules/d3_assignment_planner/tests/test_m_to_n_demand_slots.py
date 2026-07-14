@@ -12,6 +12,7 @@ from d3_assignment_planner import (
     ResourceState,
     TargetDemand,
     TargetTrack,
+    assignment_records_from_plan,
     assignment_validity_summary_from_plan,
     guidance_bindings_from_assignment_plan,
 )
@@ -76,7 +77,12 @@ def test_three_to_one_default_explicit_demand_builds_hybrid_two_plus_one() -> No
 
     bindings = guidance_bindings_from_assignment_plan(plan)
     assert len(bindings) == 3
-    assert all(binding.binding_state == "active" for binding in bindings)
+    assert sum(binding.binding_state == "active" for binding in bindings) == 2
+    reserve_binding = next(
+        binding for binding in bindings if binding.member_role == "reserve"
+    )
+    assert reserve_binding.binding_state == "hold"
+    assert reserve_binding.revoke_reason == "reserve_standby_not_activated"
     assert {binding.coordination_mode for binding in bindings} == {"hybrid"}
     assert {binding.minimum_separation_s for binding in bindings} == {2.0}
 
@@ -208,7 +214,7 @@ def test_coordination_mode_role_and_wave_contract(
     assert sorted(item.wave_id for item in ordered) == sorted(expected_waves)
 
 
-def test_member_window_change_increments_coalition_version_and_stales_old_binding() -> None:
+def test_member_window_change_rolls_plan_but_preserves_membership_epoch() -> None:
     planner = _planner(hysteresis=True)
     resources = [ResourceState(f"R{i}") for i in range(3)]
     first = planner.plan(
@@ -224,7 +230,9 @@ def test_member_window_change_increments_coalition_version_and_stales_old_bindin
     )
 
     assert second.coalitions[0].coalition_id == first.coalitions[0].coalition_id
-    assert second.coalitions[0].version == first.coalitions[0].version + 1
+    assert second.version == first.version + 1
+    assert second.coalitions[0].version == first.coalitions[0].version
+    assert second.coalitions[0].epoch == first.coalitions[0].epoch
     assert second.decision_state == "accepted_previous_infeasible"
     assert second.stable_signature != first.stable_signature
     old = guidance_bindings_from_assignment_plan(
@@ -234,6 +242,59 @@ def test_member_window_change_increments_coalition_version_and_stales_old_bindin
     )
     assert all(binding.binding_state == "stale" for binding in old)
     assert all(binding.revoke_reason == "not_current_assignment_plan" for binding in old)
+
+
+def test_per_primary_contract_and_reserve_standby_are_explicit() -> None:
+    plan = _planner().plan(
+        [_track("HIGH", demand=TargetDemand())],
+        [ResourceState(f"R{i}") for i in range(1, 4)],
+        timestamp=0.0,
+    )
+
+    assert plan.metadata["terminal_authorization_scope"] == "per_primary"
+    assert plan.metadata["arrival_coordination_required"] is False
+    assert plan.coalitions[0].terminal_authorization_scope == "per_primary"
+    assert plan.coalitions[0].arrival_coordination_required is False
+    assert all(item.terminal_authorization_scope == "per_primary" for item in plan.assignments)
+    assert all(item.arrival_coordination_required is False for item in plan.assignments)
+    reserve = next(item for item in plan.assignments if item.member_role == "reserve")
+    assert reserve.metadata["activation_state"] == "standby"
+
+    records = assignment_records_from_plan(plan)
+    primary_records = [item for item in records if item.member_role == "primary"]
+    (reserve_record,) = [item for item in records if item.member_role == "reserve"]
+    assert len(primary_records) == 2
+    assert all(item.active for item in primary_records)
+    assert all(item.activation_state == "active" for item in primary_records)
+    assert all(item.assignment_validity_state == "current" for item in primary_records)
+    assert all(item.terminal_authorization_eligible for item in primary_records)
+    assert reserve_record.active is False
+    assert reserve_record.activation_state == "standby"
+    assert reserve_record.assignment_validity_state == "standby"
+    assert reserve_record.terminal_authorization_eligible is False
+    assert {item.terminal_authorization_scope for item in records} == {"per_primary"}
+    assert {item.plan_owner for item in records} == {"center"}
+    assert {item.version for item in records} == {plan.version}
+    assert {item.coalition_version for item in records} == {
+        plan.coalitions[0].version
+    }
+    assert {item.coalition_epoch for item in records} == {plan.coalitions[0].epoch}
+    assert {item.coalition_complete for item in records} == {True}
+    assert {item.wave_id for item in primary_records} == {0}
+    assert reserve_record.wave_id == 1
+    assert {item.plan_churn_count for item in records} == {0}
+    assert {item.plan_rollback_detected for item in records} == {False}
+    assert {item.stale_reject_count for item in records} == {0}
+
+    bindings = guidance_bindings_from_assignment_plan(plan)
+    primary_bindings = [item for item in bindings if item.member_role == "primary"]
+    reserve_binding = next(item for item in bindings if item.member_role == "reserve")
+    assert all(item.metadata["terminal_authorization_eligible"] for item in primary_bindings)
+    assert all(item.metadata["coalition_epoch"] == plan.coalitions[0].epoch for item in bindings)
+    assert all(item.metadata["plan_churn_count"] == 0 for item in bindings)
+    assert reserve_binding.metadata["activation_state"] == "standby"
+    assert reserve_binding.metadata["executable"] is False
+    assert reserve_binding.metadata["terminal_authorization_eligible"] is False
 
 
 def test_primary_count_change_increments_coalition_version() -> None:

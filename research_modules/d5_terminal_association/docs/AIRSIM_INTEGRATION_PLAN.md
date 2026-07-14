@@ -4,6 +4,13 @@
 
 本计划只描述 AirSim 数据采集、离线回放和评估接入。不调用实机飞控、硬件驱动、武器/毁伤模型、自动处置接口，也不绕过人工授权。D5 模块只输出 `TerminalAssociation`，不改写中心维护的 `global_track_id`。
 
+## 2026-07-13 最新实测基线
+
+- M5N2 paired AirSim 已形成 `120` 条 active-primary 证据、`120` 条 visible 证据和 `74` 条 D5 关联/锁定证据；最佳 coalition completion 为 `5/10`。当前 P1 是第二 primary 的持续检测、稳定 bbox 和连续 measured lock，主要失败原因为 `d5_not_locked` 与 `terminal_detection_acquisition_timeout`。
+- 原生 MOT 已完成 `18`-case 正式 screening：`1920x1080`、FOV `90`、距离 `20/30/50 m`、confidence `0.1/0.2/0.3`、ByteTrack/BoT-SORT。20 m native active rate/continuity 均为 `1.0`、IDSW 为 `0`、P95 约 `7.4/16.2 ms`；precision/recall 仅约 `0.26-0.33`，30/50 m 无检测。
+- screening 准入候选为 `0`，two-camera confirmation 为 `0`。默认在线检测保持 AirSim `simGetDetections`，不得把 20 m tracker 连续性写成原生 MOT 已晋级。
+- 2026-07-13 最新 D5 全量回归为 `232 passed`。开放 P1 为第二 primary 稳定锁定、bbox 口径/尺度/时间对齐、远距召回，以及候选通过 screening 后的多 seed confirmation。
+
 ## 数据来源
 
 从 AirSim 场景离线采集：
@@ -40,9 +47,9 @@ MOT 的 `local_track_id` 只作为本地观测 ID，不得替代或重写 `globa
 
 - 已接入：`simGetDetections` 风格 `box2D/bbox_xyxy/xyxy` schema 转 `LocalVisualTrack`，`TerminalObservationBus` 汇总多相机观测，`TerminalCrossViewFusion` 输出 metadata-only peer evidence。
 - 已接入：`register_local_visual_tracks_to_global_tracks()` 按 `GlobalTrack[]`、D2/D3 binding/`Assignment`、每相机 `CameraModel(K/R/t)`、timestamp、像素协方差和 `LocalVisualTrack[]` 做像素马氏门控 + Hungarian/确定性唯一匹配，输出 registration candidate、`TerminalObservation`、即时 `CrossViewAssociation` 和稳定 `stable_cross_view_associations`。candidate/observation metadata 携带 `pixel_error_px`、`mahalanobis_d2`、`gate_pass`、`projection_valid`、`camera_pose_source`、`bbox_area_px`、`offline_truth_global_id` 和 3 帧 2 次通过的稳定窗口字段；truth/actor ID 只作为离线 metadata。
-- 已接入：`YoloMotAdapter.process_frame()` 可消费图像帧或 mock detector 输出；默认权重路径为 `/home/linux/Documents/MSM/research_modules/d5_terminal_association/best.pt`，可请求 ultralytics ByteTrack/BoT-SORT 原生 tracker，依赖、权重或原生 tracker 不可用时返回 `unavailable` 或退回确定性 IoU tracker，并在 metadata 中标明实际 detector/tracker backend。
+- 已接入：`YoloMotAdapter.process_frame()` 可消费图像帧或 mock detector 输出；默认权重路径为 `/home/linux/Documents/MSM/research_modules/d5_terminal_association/best.pt`，可请求 ultralytics ByteTrack/BoT-SORT 原生 tracker，依赖、权重或原生 tracker 不可用时返回 `unavailable` 或退回确定性 IoU tracker，并在 metadata 中标明实际 detector/tracker backend。main/AirSim 连续 RGB episode 接线已用于 18-case 正式 screening。
 - 部分接入：OpenCV 用于 `projectPoints` 投影和可选畸变参数消费；OpenDroneID/MAVLink/DDS/AprilTag 仅可通过仿真字典转为 `IdentityClaim`。
-- 未接入：main/AirSim 连续 RGB/PNG 图像流到 `YoloMotAdapter` 的 episode 接线、GPU/CPU 部署参数与真实多 seed 阈值标定、Deep SORT/ReID、OpenCV calibration/`solvePnP` 标定链、ROS 2 `tf2/message_filters`、真实 OpenDroneID/MAVLink/DDS/AprilTag 身份认证链路。
+- 未闭合：bbox 定义/尺度/时间对齐、30/50 m 远距召回、候选多 seed confirmation、GPU/CPU 长期预算、Deep SORT/ReID、OpenCV calibration/`solvePnP` 真实标定链、ROS 2 `tf2/message_filters`、真实 OpenDroneID/MAVLink/DDS/AprilTag 身份认证链路。
 
 因此，若 main/runtime 提供真实 frame、detector 或 tracker 输出，D5 只消费归一化后的 bbox、类别、置信度、时间戳和本地 track ID；D5 不管理 AirSim 图像采集、GPU 部署或 episode 调度，也不把 tracker ID 提升为全局身份。
 
@@ -53,7 +60,7 @@ MOT 的 `local_track_id` 只作为本地观测 ID，不得替代或重写 `globa
 - 5 个 `Interceptor_Cam_*` 主镜头。
 - 5 个目标，目标距拦截镜头约 50m。
 - 目标间距约 20m，镜头间距约 20m，使每个主镜头视场内出现多个目标。
-- 一个或多个高空系留二级侦察镜头，比目标高约 200m，分辨率更高，覆盖全局视野。
+- 一个或多个可机动高空侦察节点，可保持约 200m 高差，携带高分辨率、高性能光电云台，并按 GlobalTrack/radar cue 指向目标簇。
 
 每个主镜头的 `simGetDetections` 结果应被转换为：
 
@@ -94,7 +101,7 @@ D5 只生成 `LocalVisualTrack`、`TerminalAssociation`、`IdentityClaim`、`Rec
 
 ## 二级侦察节点图像 cue
 
-AirSim 场景中可加入高空系留侦察无人机作为二级节点。二级节点正常时，将其覆盖小区内的离线图像 cue 转换为 `ReconImageCue`：
+AirSim 场景中可加入可机动高空侦察无人机作为二级节点。节点携带高性能光电云台，按 GlobalTrack/radar cue 指向目标簇；二级节点正常时，将其覆盖小区内的离线图像 cue 转换为 `ReconImageCue`：
 
 ```json
 {
@@ -135,7 +142,7 @@ ComputerVision N-v-N 专项回放中，额外执行：
 
 1. 对 runtime 当前提供的所有 camera/resource 分别调用检测转换 helper，统计每个镜头检测数量。
 2. 对每个资源发布本地观测和终端关联结果。
-3. 对二级系留侦察镜头发布已重投影的 `ReconImageCue`；过期或不可用 cue 必须显式标记。
+3. 对二级可机动高空侦察节点的光电云台发布已重投影的 `ReconImageCue`；云台按 GlobalTrack/radar cue 指向目标簇，过期或不可用 cue 必须显式标记。
 4. 调用 `register_local_visual_tracks_to_global_tracks()` 把本地 detect 注册为既有 `global_track_id` 的候选/稳定跨视角支持；单帧 gate pass 只作为 candidate，默认 3 帧内 2 次通过才进入稳定支持。
 5. 调用 `TerminalObservationBus.cross_view_associations()` 或 registration result 中的 `cross_view_associations` / `stable_cross_view_associations` 汇总重叠视场支持。
 6. 调用 `compute_terminal_stress_metrics()`、`summarize_degradation_case()`、`summarize_multiseed_calibration_readiness()` 和 `summarize_secondary_visual_coverage_funnel()` 生成 D5 证据、字段覆盖审计和二级 detect 漏斗。
@@ -165,6 +172,7 @@ ComputerVision N-v-N 专项回放中，额外执行：
 - `camera_pose_source`、`bbox_area_px`、`pixel_error_px`、`mahalanobis_d2`、`gate_pass` 和 `projection_valid` 字段覆盖率。
 - `secondary_single_camera_full_view_frame_rate` 与 `secondary_network_joint_full_view_frame_rate`。
 - `detector_backend` / `tracker_backend` 分布，以及 YOLO/MOT 多 seed 阈值标定结果。
+- `native_active_frame_rate`、fallback frame、local continuity、terminal local IDSW、P95 latency、offline precision/recall、admission candidate 和 confirmation case 数。
 
 ## 防护约束
 
@@ -177,8 +185,8 @@ ComputerVision N-v-N 专项回放中，额外执行：
 
 ## 里程碑
 
-1. 已完成 AirSim `simGetDetections` bbox dry-run、geometry log、truth ID 在线隔离、YOLO/MOT frame adapter、detect-to-global-track registration、multi-seed readiness helper 和 secondary coverage funnel。
-2. 已完成 P1 D4/D5 calibration sweep 与 D6 bundle 的 D5 evidence 输入口径；D5 不启动 AirSim、不写总报告，只维护 evidence DTO、registration helper、truth ID 隔离和 `global_track_id` 不变式。
-3. 剩余 P1：用真实多 seed sweep 校准二级节点几何/覆盖策略、registration 门限、AirSim camera pose metadata、YOLO/MOT 阈值和 D4/D7 消费口径。
+1. 已完成 AirSim `simGetDetections` bbox dry-run、geometry log、truth ID 在线隔离、YOLO/MOT frame adapter、连续 RGB episode 接线、detect-to-global-track registration、multi-seed readiness helper 和 secondary coverage funnel。
+2. 已完成 P1 D4/D5 calibration sweep、M5N2 120/120/74 漏斗、原生 MOT 18-case screening 与 D6 bundle 的 D5 evidence 输入口径；0 个 MOT 候选进入 confirmation，默认 detect 不变。
+3. 剩余 P1：提升第二 primary 稳定锁定；校正 bbox 口径/尺度/时间对齐；恢复 30/50 m 召回；候选通过 screening 后运行至少 10 seeds confirmation。二级覆盖、真实 camera pose/registration 门限和 D4/D7 逐决策消费继续按既有安全口径校准。
 4. 剩余 P1/P2：建立 AirSim/replay 标定样本、`solvePnP`/PnP RANSAC、重投影误差阈值和外参 drift 告警。
 5. 剩余 P2：评估 BoT-SORT/Deep SORT/ReID 质量，接入真实身份来源为 `IdentityClaim` adapter，并在需要时接入 ROS 2 `tf2/message_filters`。

@@ -6,7 +6,7 @@ This plan is for offline log ingestion and replay-based evaluation only. The D2 
 
 ## Goal
 
-Convert AirSim-recorded sensor/truth logs into D2 `Detection` inputs and optional truth-frame metadata so GNN, JPDA, and MHT can be evaluated on replayed scenarios.
+Convert AirSim-recorded sensor/truth logs into D2 `Detection` inputs and evaluator-only truth metadata so the default GNN/Hungarian path and optional JPDA/MHT research adapters can be evaluated on frozen replay without leaking truth online.
 
 ## Inputs
 
@@ -66,7 +66,18 @@ The helper `run_airsim_replay_association()` wraps this loop and returns `id_swi
 
 Online logs use schema `d2-association-log/v2`. They contain risk profile/version, track/anonymized-detection order, measurement/active-track counts, gate diagnostics and NIS, but no actor name, truth label, truth target count or NEES. `offline_truth_evaluation` separately contains truth target count, confusion matrix, initialization latency, false-track statistics and NEES. This separation is mandatory for ComputerVision replay because AirSim object names are evaluation truth, not deployable identity evidence.
 
-When an external truth JSONL only carries `match_annotation.offline_only=true`, the evaluator-only copy may match projected detections to truth positions with Hungarian assignment and a default 25 m gate. This occurs after the online association run and is never written back to the frozen replay or online logs.
+Truth samples first require a unique replay frame within the frozen `1e-9 s` timestamp tolerance. Samples without an exact frame remain `partial/unmatched`; nearest-neighbor timestamp filling and fabricated labels are forbidden. Only after this exact-time alignment may an external truth JSONL with `match_annotation.offline_only=true` match projected detections to truth positions with Hungarian assignment and a default 25 m spatial gate. This occurs after the online association run and is never written back to the frozen replay or online logs.
+
+## 2026-07-13 Strict Calibration Baseline
+
+Main/runtime captured and froze real D1 governed replay for both strict geometries:
+
+- nominal 4 m: 20 unique seeds;
+- tight 2 m: 20 unique seeds.
+
+The best GNN candidate reduced mean IDSW from `1.3583` to `0.6167` (`54.6%`) while identity continuity changed from `0.9810` to `0.9840`; P95 loop latency was `24 ms`. The frozen promotion contract requires at least `+0.10` continuity improvement. The observed gain was only `+0.0030`, so the candidate was not promoted. The lightweight JPDA comparison degraded on the same input. The online default therefore remains GNN/Hungarian.
+
+Online truth leakage was zero. Exact timestamp matching uses the `1e-9 s` tolerance described above, with unmatched samples retained for audit rather than imputed. The latest complete D2 regression is `93 passed`; the local Matplotlib `Axes3D` warning does not affect association, metrics, or calibration results.
 
 ## Target Count and Replan Identity Contract
 
@@ -126,6 +137,18 @@ This is covered by
 - FilterPy can be used later for IMM/EKF/UKF experiments if maneuvering prediction becomes the main IDSW driver.
 - These dependencies must remain optional so the NumPy/SciPy fallback tests keep passing on the current host.
 
+## Next AirSim Calibration Stage
+
+The 2 m capture is complete and is no longer an open action. P1 AirSim work now extends the frozen 4 m/2 m contract with:
+
+- longer replay windows and repeated crossings;
+- explicit OOSM/arrival-order stress while preserving both timestamps;
+- controlled occlusion, missed detections, and clutter combinations;
+- M-of-N initialization, lost/drop lifecycle, false-track, gate/risk, and NIS/NEES calibration;
+- per-seed and aggregate continuity checks under the same truth-isolation rules.
+
+JPDA/MHT, Stone Soup end-to-end tracking, FilterPy EKF/UKF/IMM, and native 3D tracking remain optional P2/offline benchmarks. They must not replace the default GNN/Hungarian path without passing the frozen multi-metric admission contract on the same replay and compute budget.
+
 ## Acceptance Checks
 
 - AirSim replay works without network or simulator connection.
@@ -135,3 +158,6 @@ This is covered by
 - No command/control topics or APIs are imported by the D2 adapter.
 - Missing optional fields produce explicit warnings or default covariance/feature behavior.
 - Metrics from AirSim replay can be compared against synthetic simulation metrics with the same recorder.
+- Strict nominal 4 m and tight 2 m evidence remains traceable to 20 unique seeds each.
+- Truth alignment is exact within `1e-9 s`; unmatched samples remain auditable and never use nearest-neighbor timestamp fabrication.
+- Candidate promotion requires all frozen IDSW, continuity, false-track, latency, and truth-isolation thresholds; the current candidate remains rejected.

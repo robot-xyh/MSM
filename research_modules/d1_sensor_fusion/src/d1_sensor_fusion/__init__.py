@@ -9,6 +9,18 @@ from .airsim_dry_run import (
     make_minimal_airsim_dry_run_fixture,
     observations_from_airsim_dry_run_fixture,
 )
+from .airsim_replay_freeze import (
+    AIRSIM_CAPTURE_PROVENANCE_SCHEMA_VERSION,
+    AIRSIM_FREEZE_OUTPUT_SCHEMA_VERSION,
+    AIRSIM_FREEZE_SUMMARY_SCHEMA_VERSION,
+    AIRSIM_OFFLINE_TRUTH_SCHEMA_VERSION,
+    AirSimReplayFreezeResult,
+    file_sha256,
+    freeze_airsim_replay_file,
+    freeze_airsim_replay_payloads,
+    load_airsim_replay_payloads,
+    write_frozen_airsim_replay,
+)
 from .cooperative import (
     BearingLocalizationConfig,
     covariance_intersection,
@@ -80,7 +92,12 @@ from .types import (
 )
 
 __all__ = [
+    "AIRSIM_CAPTURE_PROVENANCE_SCHEMA_VERSION",
     "AIRSIM_DRY_RUN_FIXTURE_SCHEMA_VERSION",
+    "AIRSIM_FREEZE_OUTPUT_SCHEMA_VERSION",
+    "AIRSIM_FREEZE_SUMMARY_SCHEMA_VERSION",
+    "AIRSIM_OFFLINE_TRUTH_SCHEMA_VERSION",
+    "AirSimReplayFreezeResult",
     "BearingLocalizationConfig",
     "CISourceWeight",
     "CooperativeBearingObservation",
@@ -121,8 +138,12 @@ __all__ = [
     "build_governed_replay_manifest",
     "build_long_replay_scenario",
     "covariance_intersection",
+    "file_sha256",
+    "freeze_airsim_replay_file",
+    "freeze_airsim_replay_payloads",
     "make_minimal_airsim_dry_run_fixture",
     "localize_bearing_observation_group",
+    "load_airsim_replay_payloads",
     "load_frozen_governed_replay",
     "observations_from_airsim_dry_run_fixture",
     "read_blocks_sensor_observations_jsonl",
@@ -142,5 +163,6 @@ __all__ = [
     "summarize_sensor_observation_latency_audit",
     "write_sensor_observations_csv",
     "write_sensor_observations_jsonl",
+    "write_frozen_airsim_replay",
     "summarize_recon_cue_from_tracks",
 ]

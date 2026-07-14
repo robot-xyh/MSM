@@ -37,6 +37,8 @@ DEFAULT_FEEDBACK_PROFILE_VERSION = "1.0.0"
 SECONDARY_PLAN_SCHEMA_V2 = "secondary_plan_v2"
 SECONDARY_PLAN_ACTIVE_STATE = "secondary_plan_active"
 SECONDARY_TAKEOVER_READY = "takeover_ready"
+TERMINAL_AUTHORIZATION_PER_PRIMARY = "per_primary"
+TERMINAL_AUTHORIZATION_SCOPES = frozenset({TERMINAL_AUTHORIZATION_PER_PRIMARY})
 GUIDANCE_BINDING_STATES = frozenset(
     {
         GUIDANCE_BINDING_ACTIVE,
@@ -82,6 +84,8 @@ class TargetDemand:
     arrival_window_end_s: float | None = None
     wave_interval_s: float = 0.0
     minimum_separation_s: float | None = None
+    terminal_authorization_scope: str = TERMINAL_AUTHORIZATION_PER_PRIMARY
+    arrival_coordination_required: bool = False
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -113,10 +117,21 @@ class TargetDemand:
             raise ValueError("wave_interval_s must be non-negative")
         if self.minimum_separation_s is not None and self.minimum_separation_s < 0.0:
             raise ValueError("minimum_separation_s must be non-negative")
+        authorization_scope = str(self.terminal_authorization_scope).strip().lower()
+        if authorization_scope not in TERMINAL_AUTHORIZATION_SCOPES:
+            raise ValueError(
+                f"unsupported terminal_authorization_scope: {authorization_scope}"
+            )
         object.__setattr__(self, "required_resource_count", count)
         object.__setattr__(self, "primary_resource_count", primary_count)
         object.__setattr__(self, "coordination_mode", mode)
         object.__setattr__(self, "required_capability_counts", capability_counts)
+        object.__setattr__(self, "terminal_authorization_scope", authorization_scope)
+        object.__setattr__(
+            self,
+            "arrival_coordination_required",
+            bool(self.arrival_coordination_required),
+        )
 
     @classmethod
     def independent(cls) -> "TargetDemand":
@@ -244,6 +259,8 @@ class Assignment:
     arrival_window_start_s: float | None = None
     arrival_window_end_s: float | None = None
     required_resource_count: int = 1
+    terminal_authorization_scope: str = TERMINAL_AUTHORIZATION_PER_PRIMARY
+    arrival_coordination_required: bool = False
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -293,7 +310,15 @@ class CoalitionPlan:
     primary_resource_count: int = 1
     members: tuple[CoalitionMember, ...] = ()
     minimum_separation_s: float | None = None
+    terminal_authorization_scope: str = TERMINAL_AUTHORIZATION_PER_PRIMARY
+    arrival_coordination_required: bool = False
     metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def epoch(self) -> int:
+        """Coalition membership epoch; it advances only on member/role changes."""
+
+        return self.version
 
     @property
     def summary(self) -> CoalitionSummary:
@@ -429,6 +454,8 @@ def _assignment_signature(assignment: Assignment) -> tuple[Any, ...]:
         _optional_float_signature(assignment.arrival_window_start_s),
         _optional_float_signature(assignment.arrival_window_end_s),
         assignment.required_resource_count,
+        assignment.terminal_authorization_scope,
+        assignment.arrival_coordination_required,
         assignment.feasibility_state,
         assignment.source_node_id or "",
         assignment.target_node_id or "",
@@ -465,6 +492,8 @@ _ASSIGNMENT_EXECUTION_METADATA_KEYS = (
     "coordination_mode",
     "primary_resource_count",
     "minimum_separation_s",
+    "terminal_authorization_scope",
+    "arrival_coordination_required",
     "required_capability_class",
     "plan_owner",
     "active_plan_owner",
@@ -492,6 +521,8 @@ def _coalition_execution_signature(coalition: CoalitionPlan) -> tuple[Any, ...]:
         coalition.shortfall,
         coalition.complete,
         coalition.primary_resource_count,
+        coalition.terminal_authorization_scope,
+        coalition.arrival_coordination_required,
         _optional_float_signature(coalition.minimum_separation_s),
         tuple(
             sorted(
@@ -624,7 +655,20 @@ class AssignmentRecord:
     hysteresis_reject_count: int = 0
     stale_reject_count: int = 0
     reassign_count: int = 0
+    plan_churn_count: int = 0
+    plan_rollback_detected: bool = False
     assignment_matrix_shape: tuple[int, int] | None = None
+    coalition_id: str | None = None
+    coalition_version: int | None = None
+    coalition_epoch: int | None = None
+    coalition_complete: bool | None = None
+    member_role: str = CoalitionMemberRole.PRIMARY.value
+    wave_id: int = 0
+    activation_state: str = "active"
+    assignment_validity_state: str = "current"
+    terminal_authorization_scope: str = TERMINAL_AUTHORIZATION_PER_PRIMARY
+    terminal_authorization_eligible: bool = True
+    arrival_coordination_required: bool = False
     plan_owner: str | None = None
     active_plan_owner: str | None = None
     owner_node_id: str | None = None
@@ -776,6 +820,8 @@ class AssignmentGuidanceBinding:
     arrival_window_start_s: float | None = None
     arrival_window_end_s: float | None = None
     minimum_separation_s: float | None = None
+    terminal_authorization_scope: str = TERMINAL_AUTHORIZATION_PER_PRIMARY
+    arrival_coordination_required: bool = False
     last_evaluated_at_s: float | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
@@ -920,6 +966,8 @@ class AssignmentGuidanceBinding:
             "arrival_window_start_s": self.arrival_window_start_s,
             "arrival_window_end_s": self.arrival_window_end_s,
             "minimum_separation_s": self.minimum_separation_s,
+            "terminal_authorization_scope": self.terminal_authorization_scope,
+            "arrival_coordination_required": self.arrival_coordination_required,
             "source_node_id": self.source_node_id,
             "target_node_id": self.target_node_id,
             "link_type": self.link_type,
@@ -1010,6 +1058,15 @@ def guidance_bindings_from_assignment_plan(
     coalition_by_id = {
         coalition.coalition_id: coalition for coalition in plan.coalitions
     }
+    plan_churn_count = _metadata_int(plan_metadata.get("plan_churn_count"))
+    if plan_churn_count is None:
+        plan_churn_count = _reassign_count(plan, previous_plan=previous_plan)
+    plan_rollback_detected = _metadata_bool(
+        plan_metadata.get("plan_rollback_detected")
+    ) or (
+        previous_plan is not None and plan.version < previous_plan.version
+    )
+    stale_reject_count = _stale_reject_count(plan)
 
     bindings: list[AssignmentGuidanceBinding] = []
     for index, assignment in enumerate(plan.assignments, start=1):
@@ -1059,6 +1116,12 @@ def guidance_bindings_from_assignment_plan(
         ):
             binding_state = GUIDANCE_BINDING_HOLD
             revoke_reason = "coalition_not_committed"
+        if (
+            assignment.member_role == CoalitionMemberRole.RESERVE.value
+            and binding_state == GUIDANCE_BINDING_ACTIVE
+        ):
+            binding_state = GUIDANCE_BINDING_HOLD
+            revoke_reason = "reserve_standby_not_activated"
         resource_actor_name = _resource_actor_name(
             resource_id=assignment.resource_id,
             vehicle_name=resource_vehicle_map.get(assignment.resource_id),
@@ -1112,6 +1175,12 @@ def guidance_bindings_from_assignment_plan(
                 minimum_separation_s=(
                     coalition.minimum_separation_s if coalition is not None else None
                 ),
+                terminal_authorization_scope=(
+                    assignment.terminal_authorization_scope
+                ),
+                arrival_coordination_required=(
+                    assignment.arrival_coordination_required
+                ),
                 last_evaluated_at_s=last_evaluated_at_s,
                 metadata={
                     "assignment_cost": assignment.cost,
@@ -1123,6 +1192,31 @@ def guidance_bindings_from_assignment_plan(
                     "plan_owner": plan_owner,
                     "active_plan_owner": active_plan_owner,
                     "owner_node_id": owner_node_id,
+                    "coalition_epoch": (
+                        coalition.epoch if coalition is not None else None
+                    ),
+                    "coalition_complete": (
+                        coalition.complete if coalition is not None else None
+                    ),
+                    "activation_state": (
+                        "standby"
+                        if assignment.member_role == CoalitionMemberRole.RESERVE.value
+                        else "active"
+                    ),
+                    "executable": (
+                        assignment.member_role != CoalitionMemberRole.RESERVE.value
+                        and binding_state == GUIDANCE_BINDING_ACTIVE
+                    ),
+                    "terminal_authorization_eligible": (
+                        assignment.member_role == CoalitionMemberRole.PRIMARY.value
+                        and binding_state == GUIDANCE_BINDING_ACTIVE
+                    ),
+                    "terminal_authorization_scope": (
+                        assignment.terminal_authorization_scope
+                    ),
+                    "arrival_coordination_required": (
+                        assignment.arrival_coordination_required
+                    ),
                     "selected_secondary_node_id": _metadata_text(
                         plan_metadata,
                         "selected_secondary_node_id",
@@ -1130,6 +1224,12 @@ def guidance_bindings_from_assignment_plan(
                     "secondary_plan_version": _metadata_int(
                         plan_metadata.get("secondary_plan_version")
                     ),
+                    "plan_churn_count": plan_churn_count,
+                    "plan_rollback_detected": plan_rollback_detected,
+                    "stale_plan_rejected": _metadata_bool(
+                        plan_metadata.get("stale_plan_rejected")
+                    ),
+                    "stale_reject_count": stale_reject_count,
                     "secondary_takeover_state": _metadata_text(
                         plan_metadata,
                         "secondary_takeover_state",
@@ -1800,6 +1900,9 @@ def assignment_records_from_plan(
     hysteresis_reject_count = _hysteresis_reject_count(plan)
     stale_reject_count = _stale_reject_count(plan)
     reassign_count = _reassign_count(plan, previous_plan=previous_plan)
+    plan_churn_count = _metadata_int(plan_metadata.get("plan_churn_count"))
+    if plan_churn_count is None:
+        plan_churn_count = reassign_count
     plan_owner = _metadata_text(plan_metadata, "plan_owner") or "center"
     active_plan_owner = (
         _metadata_text(plan_metadata, "active_plan_owner") or plan_owner
@@ -1822,6 +1925,14 @@ def assignment_records_from_plan(
     secondary_plan_version = _metadata_int(plan_metadata.get("secondary_plan_version"))
     if secondary_plan_version is None and active_plan_owner == "secondary":
         secondary_plan_version = plan.version
+    plan_rollback_detected = _metadata_bool(
+        plan_metadata.get("plan_rollback_detected")
+    ) or (
+        previous_plan is not None and plan.version < previous_plan.version
+    )
+    coalition_by_id = {
+        coalition.coalition_id: coalition for coalition in plan.coalitions
+    }
     return tuple(
         AssignmentRecord(
             timestamp=record_timestamp,
@@ -1831,7 +1942,11 @@ def assignment_records_from_plan(
             global_track_id=assignment.target_id,
             cost_breakdown=dict(assignment.cost_breakdown),
             authorization_state=record_auth,
-            active=active and assignment.feasibility_state == "feasible",
+            active=(
+                active
+                and assignment.feasibility_state == "feasible"
+                and assignment.member_role != CoalitionMemberRole.RESERVE.value
+            ),
             truth_id=truth_id_by_target.get(assignment.target_id),
             window_id=plan.window_id,
             decision_state=plan.decision_state,
@@ -1845,7 +1960,49 @@ def assignment_records_from_plan(
             hysteresis_reject_count=hysteresis_reject_count,
             stale_reject_count=stale_reject_count,
             reassign_count=reassign_count,
+            plan_churn_count=plan_churn_count,
+            plan_rollback_detected=plan_rollback_detected,
             assignment_matrix_shape=assignment_matrix_shape,
+            coalition_id=assignment.coalition_id,
+            coalition_version=assignment.coalition_version,
+            coalition_epoch=(
+                coalition_by_id[assignment.coalition_id].epoch
+                if assignment.coalition_id in coalition_by_id
+                else None
+            ),
+            coalition_complete=(
+                coalition_by_id[assignment.coalition_id].complete
+                if assignment.coalition_id in coalition_by_id
+                else None
+            ),
+            member_role=assignment.member_role,
+            wave_id=assignment.wave_id,
+            activation_state=(
+                "standby"
+                if assignment.member_role == CoalitionMemberRole.RESERVE.value
+                else "active"
+            ),
+            assignment_validity_state=(
+                "stale"
+                if _metadata_bool(plan_metadata.get("stale_plan_rejected"))
+                else "invalid"
+                if assignment.feasibility_state != "feasible"
+                else "standby"
+                if assignment.member_role == CoalitionMemberRole.RESERVE.value
+                else "inactive"
+                if not active
+                else "current"
+            ),
+            terminal_authorization_scope=assignment.terminal_authorization_scope,
+            terminal_authorization_eligible=(
+                active
+                and assignment.member_role == CoalitionMemberRole.PRIMARY.value
+                and assignment.feasibility_state == "feasible"
+                and not _metadata_bool(plan_metadata.get("stale_plan_rejected"))
+                and str(record_auth).strip().lower()
+                in EFFECTIVE_GUIDANCE_AUTH_STATES
+            ),
+            arrival_coordination_required=assignment.arrival_coordination_required,
             plan_owner=plan_owner,
             active_plan_owner=active_plan_owner,
             owner_node_id=owner_node_id,
@@ -2405,6 +2562,36 @@ def prepare_secondary_takeover_plan(
         raise ValueError(
             "secondary takeover plan version must extend the superseded plan exactly once"
         )
+    elif plan.plan_id == supersedes_plan.plan_id:
+        next_plan_id = f"d3-plan-{uuid4().hex[:12]}"
+        plan = replace(
+            plan,
+            plan_id=next_plan_id,
+            created_at=activation_time,
+            last_changed_at=activation_time,
+            previous_plan_id=supersedes_plan.plan_id,
+            assignments=tuple(
+                replace(
+                    assignment,
+                    metadata={
+                        **dict(assignment.metadata),
+                        "current_plan_id": next_plan_id,
+                        "current_plan_version": plan.version,
+                        "plan_version": plan.version,
+                        "identity_created_at_s": activation_time,
+                        "last_evaluated_at_s": activation_time,
+                    },
+                )
+                for assignment in plan.assignments
+            ),
+            metadata={
+                **dict(plan.metadata),
+                "new_plan_lineage_reason": "secondary_takeover_owner_change",
+                "plan_refresh_only": False,
+                "identity_created_at_s": activation_time,
+                "last_evaluated_at_s": activation_time,
+            },
+        )
     if plan.plan_id == supersedes_plan.plan_id:
         raise ValueError("secondary takeover plan id must differ from the superseded plan")
     if plan.previous_plan_id != supersedes_plan.plan_id:
@@ -2446,6 +2633,11 @@ def prepare_secondary_takeover_plan(
         "previous_plan_id": supersedes_plan.plan_id,
         "previous_plan_version": supersedes_plan.version,
         "plan_version": plan.version,
+        "new_plan_lineage_reason": "secondary_takeover_owner_change",
+        "plan_refresh_only": False,
+        "evaluation_refresh_only": False,
+        "identity_created_at_s": activation_time,
+        "last_evaluated_at_s": activation_time,
         "allow_local_rebind": False,
         "secondary_lease_expires_at_s": lease_expiry,
         "secondary_leader_epoch": activation_epoch,
@@ -2489,6 +2681,11 @@ def prepare_secondary_takeover_plan(
                     "supersedes_plan_id": supersedes_plan.plan_id,
                     "supersedes_plan_version": supersedes_plan.version,
                     "plan_version": plan.version,
+                    "new_plan_lineage_reason": "secondary_takeover_owner_change",
+                    "plan_refresh_only": False,
+                    "evaluation_refresh_only": False,
+                    "identity_created_at_s": activation_time,
+                    "last_evaluated_at_s": activation_time,
                     "allow_local_rebind": False,
                 },
             )

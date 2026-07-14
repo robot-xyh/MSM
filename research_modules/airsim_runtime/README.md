@@ -443,6 +443,97 @@ bbox, local track id, actor/object id for offline truth evaluation, and
 timestamps. D5 consumes the bbox metadata and never rewrites D2/D3
 `global_track_id`.
 
+## Radar-Direct Midcourse Policy
+
+Normal ComputerVision episodes keep the current center-owned D3 plan unless a
+real hard invalidation, center failure, or an explicit stress option is
+present. Main publishes `terminal_evidence_applicable=false` while the assigned
+resource remains outside `intercept_terminal_switch_range_m`. D4 then records
+ordinary D1/D2/D3 soft risk without requesting secondary visual assistance;
+stale or infeasible plans, observed ID switches/duplicate tracks, friend
+conflict, duplicate terminal lock, and explicit resource/track mismatches keep
+their existing fail-closed behavior. D7 remains on radar PN until the normal
+D5 terminal contract is applicable and passes.
+
+`--cv-reassignment-time` is reserved for a deliberate camera/association
+stress injection. Once its timestamp is reached, the runtime overrides the
+live D3/D2 camera pointing command with the configured reassignment geometry
+and labels it `explicit_reassignment_stress`. Omitting the option preserves the
+live center binding for the complete episode.
+
+The 2026-07-13 real AirSim validation report and evidence are at:
+
+- `subagent_reviews/MAIN_RADAR_DIRECT_ASSIGNMENT_AIRSIM_VALIDATION_REPORT_20260713.md`
+- `research_modules/airsim_runtime/outputs/radar_direct_2v2_far_policy_v2_20260713/`
+- `research_modules/airsim_runtime/outputs/radar_direct_5v5_yolo_bytetrack_20260713/`
+- `research_modules/airsim_runtime/outputs/explicit_cv_reassignment_stress_5v5_v2_20260713/`
+
+## P1 Cooperative Closure V2
+
+`--p1-cooperative-closure-sweep` preserves the frozen terminal-closure v1
+suite and creates a separate `p1-cooperative-closure-v2` evidence bundle. Main
+first runs the D3 27-profile grid through D7's offline 2D point-mass model,
+then promotes three profiles using the fixed safety/coalition/pair/arrival
+ordering. Baseline and candidates run as M5N2 SimpleFlight episodes with
+`2 primary + 1 reserve`, 35 s duration, NED `z=-30 m`, AirSim detect, PNG-VM,
+and the 5 m physical success rule. Soft prediction and trend coast remain off.
+
+Candidate initial sectors are applied after every reset with
+`simSetVehiclePose`; reset alone does not reload a new settings file. The
+stored frames therefore contain the actual candidate positions rather than
+metadata-only geometry. Outputs include the point-mass screen, pair funnel,
+pair/target/coalition summary, D4 six-case communication replay, and D6
+Chinese report bundle.
+
+For D1/D2 dense-crossing calibration, first collect real CV 5-target episodes,
+then pass their full-flow directories to `run_p1_identity_pipeline.py` using
+repeated `--episode SEED=PATH`. Main joins frame truth with anonymous sensor
+observations, D1 writes truth-isolated governed replay and evaluator-only truth
+sidecars, D2 runs the fixed 54-profile 10/20-seed matrix, and D6 produces the
+availability-aware identity report. Fewer than 10/20 unique seeds remain
+explicitly unavailable and do not promote a candidate.
+
+The current cooperative terminal policy is `per_primary` with arrival-time
+coordination disabled. Each active primary must independently pass its own
+D3/D4/D5/camera/maneuver gates and is scored against the 5 m NED success
+radius. The standby reserve cannot switch until a newer plan explicitly
+activates it. D4 atomic ACK/epoch/lease checks remain mandatory after center
+loss; a pending, partitioned, or ownerless episode communication state blocks
+visual PNG.
+
+Native MOT calibration is available as a separate, non-promoting sweep:
+
+```bash
+python3 research_modules/airsim_runtime/run_blocks_sequence.py \
+  --p1-mot-calibration-sweep \
+  --sequence-id p1_native_mot \
+  --yolo-weights research_modules/d5_terminal_association/best.pt
+```
+
+Main runs 18 reset-separated single-camera screening cases for ByteTrack and
+BoT-SORT at confidence 0.1/0.2/0.3 and range 20/30/50 m, then runs 10 seeds of
+two-camera confirmation per selected backend. Cameras use 1920x1080, 90 deg
+FOV. IoU fallback is disabled and cannot pass admission. AirSim truth boxes
+and actor identity are fetched only after each online result and are consumed
+only by D5/D6 offline scoring. Outputs include the execution index, Chinese
+Markdown report, and D6 CSV/JSON/PNG report bundle.
+
+For D2 identity calibration, pass nominal 4 m captures with `--episode` and
+tight 2 m captures with `--tight-episode`:
+
+```bash
+python3 research_modules/airsim_runtime/run_p1_identity_pipeline.py \
+  --episode 7=/path/to/nominal_seed007/episode_006_full_flow \
+  --tight-episode 7=/path/to/tight_seed007/episode_006_full_flow \
+  --output-dir /path/to/p1_identity
+```
+
+D1 first freezes both geometries. D2 then creates deterministic, truth-free
+dropout, clutter, delayed/noisy, and combined governed replays. Tight geometry
+is never synthesized: `tight_crossing` and `combined` require a declared
+approximately 2 m AirSim capture. Screening and confirmation require 10 and 20
+unique seeds per difficulty profile.
+
 ## AirSim Docs And Source Findings
 
 - `docs/settings.md` confirms `SimMode: Multirotor`, `ViewMode: NoDisplay`,

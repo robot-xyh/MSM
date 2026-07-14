@@ -442,3 +442,69 @@ sensor-specific expected latency、health/region window、模型集和场景自�
 
 本轮没有新增或关闭 P2/P3 外部依赖项。Stone Soup/FilterPy 仍为隔离 benchmark，不进入默认
 运行路径。
+
+## 17. 真实 AirSim Replay 冻结缺口更新（2026-07-12）
+
+| P1 项 | 当前状态 | 本轮证据 | 后续缺口 |
+| --- | --- | --- | --- |
+| main JSON/JSONL 到 governed replay | D1-owned 已实现 | 直接观测/frame 内嵌观测 loader、冻结 API、CLI 和四文件输出；不导入 AirSim SDK | main 仍需采集更长真实 multi-seed dense/crossing payload |
+| 时间、NED、covariance、health 和 provenance | 已实现冻结合同 | measurement/arrival 严格保留；processing/publish、health、scene/profile/source schema 可用则保留，否则 unavailable；canonical frame/covariance/coverage 强校验 | sensor-specific latency 与 health/window 阈值仍需真实数据标定 |
+| online truth 隔离 | 已实现并强化 | observation ID 不透明化；递归剥离 actor/object/truth key 和已知 identity token；truth ID/position 只进 evaluator-only sidecar | D2/D6 只可离线消费 sidecar，仍需 canonical mapping 审计 |
+| crossing/遮挡/漏检/虚警/OOSM/节点退出 | 输入与诊断合同已实现 | 事件进入 summary；没有 measurement 的 frame 不生成 observation，`missing_measurements_fabricated=0` | 需要真实多 seed 事件分布和故障对照，不以 fixture 代替精度验收 |
+| D2/D6 可消费产物 | D1-owned 输出已实现 | manifest、records JSONL、offline truth JSON、diagnostic summary JSON | RMSE/NIS/NEES、ID continuity 和长期趋势仍由 D2/D6 离线计算 |
+
+当前 D1 无新增 P0 blocker。该实现关闭“D1 无法冻结 main 已持久化真实 AirSim 输入”的 P1
+代码缺口，但不关闭真实采集、统计标定、D2 identity association 或 D6 长期报告缺口。D1
+全量回归在 sidecar follow-up 后为 `74 passed`。
+
+### 17.1 Truth sidecar 重复键修复
+
+| 项目 | 当前状态 | 规则与证据 |
+| --- | --- | --- |
+| 同键 available/unavailable | 已修复 | `(truth_id,timestamp)` 唯一；available 确定性覆盖 unavailable，输入顺序不影响结果 |
+| 同键 available 冲突 | fail-closed | 三维位置差异超过 `1e-6 m` 时直接拒绝 freeze，不选择任一来源 |
+| 不同 timestamp | 保留 | 同一 identity 的时序 truth 样本不合并 |
+| 仅 unavailable | 保守保留 | 不伪造位置；sidecar/summary 输出 availability counts 和 unavailable sample count |
+
+该修复关闭 D1 -> D2 strict offline adapter 的重复键兼容缺口，不改变在线 replay、D2 关联或
+main 采集逻辑。
+
+### 17.2 Capture provenance 冻结合同
+
+| P1 项 | 状态 | 证据 | 剩余条件 |
+| --- | --- | --- | --- |
+| 4 m/2 m 几何声明 | D1-owned 已关闭，真实采集已验证 | `target_spacing_m` 必须来自捕获 provenance；不从 truth 几何推断；调用或跨帧冲突 fail closed | 保持 4 m/2 m 各 20 seeds、共 40 episode 的回归，不把几何合同等同传感器精度标定 |
+| scenario/config/seed/evidence | D1-owned 已关闭，D6 已消费 | manifest、records provenance、summary 均保留版本、seed、evidence path 和 digest；D6 将 `d1_dense_crossing` 标记为 `available` | 继续验证长时、跨场景 schema 和 evidence availability 一致性 |
+| truth 在线隔离 | 保持关闭 | 在线 records 不含 truth；sidecar evaluator-only 并与 capture digest 绑定 | D2 仅离线消费 sidecar |
+| 20-seed 合同回归 | 已实现并完成真实运行 | 4 m/2 m 各 20 seeds，共 40 个真实 AirSim episode；每 episode 51 帧；D1 全量 `79 passed` | 该证据验证冻结、truth policy 与可消费性，不替代 radar/acoustic/EO 长期误差标定 |
+
+当前 D1 无 P0 blocker。仍开放的 D1 P1 是实际 Blocks/CV 长 replay 的 sensor-specific latency、
+health/window、covariance 和 NIS/NEES 标定，不是冻结接口缺失。
+
+## 18. 2026-07-13 P1 证据收敛复核
+
+### 18.1 已关闭或保持关闭
+
+| 项目 | 2026-07-13 真实证据 | GAP 判定 |
+| --- | --- | --- |
+| strict dense crossing 输入 | nominal 4 m 与 tight 2 m 各 20 seeds，共 40 个真实 AirSim episode、每 episode 51 帧、5 个目标 | D1 输入冻结与严格几何 provenance 缺口关闭 |
+| evaluator-only truth | sidecar 共 10,200 个样本，`online_truth_leak_count=0` | 在线 truth 隔离保持关闭；truth 只供 D2/D6 离线评分 |
+| governed replay 核心合同 | 双时间戳、covariance、NED、source lineage、scenario/config/seed/spacing/evidence path 均被保留和校验 | P0/P1 合同层已闭合，后续作为强制回归，不再列为实现缺口 |
+| D6 消费状态 | 统一报告中 `d1_dense_crossing=available`，schema、digest 和 evidence path 可追溯 | D1 summary 可消费性关闭；缺失指标仍必须为 `unavailable` |
+| D1 回归 | `79 passed` | 当前无 D1 P0 blocker |
+
+### 18.2 仍开放的 P1
+
+| P1 缺口 | 当前边界 | 关闭条件 |
+| --- | --- | --- |
+| 真实漏检/虚警/遮挡/异步率 fixture | 当前 strict 4 m/2 m capture 不能代表完整 radar/acoustic/EO 工程误差和故障分布 | 采集版本化多 seed 长 replay，显式覆盖各传感器漏检、匿名虚警、部分/完全遮挡、异步采样、sensor-specific latency 和节点退出；缺失量测保持缺失，不补造 |
+| 区域窗口与协方差长期治理 | region/window、expected-latency/OOSM、sensor health 和 covariance reason 接口已实现，但真实持续阈值未冻结 | 正常/故障对照下给出跨 seed 误报/漏报、covariance growth、NIS/NEES 和 handover readiness 阈值；raw OOSM 不直接解释为故障或主动降级 |
+| D1/D2-confirmed 协同融合 | WLS/CI helper 已实现，真实 canonical-ID adapter、部分共享 lineage 和节点退出 replay 未闭合 | 关联不唯一时 fail closed；3 -> 2 -> 1 节点退出时 continuity 保持且质量显式下降；relay 重发不改变 posterior |
+| D6 长期趋势一致性 | 本轮 D1 source 已为 `available`，但证据集中于 dense crossing | D6 在跨场景长 replay 上稳定消费 availability、evidence path、latency/health/region window 和 RMSE/NIS/NEES；缺失项不补零 |
+| 模型与自适应 covariance 标定 | 默认仍为 NumPy CV/EKF；CV/CA/CT/IMM 和 scene-aware scale 尚未完成真实对照 | 同一冻结 replay 下比较 RMSE/NIS/NEES、continuity、耗时和 reason 稳定性；收益不足不替换默认路径 |
+
+### 18.3 P2 可选项不变
+
+FilterPy、Stone Soup、UKF/IMM、OpenCV/GTSAM 和 ROS 2 `tf2`/`message_filters` 仍是可选
+benchmark 或后续工程适配。当前第三方后端未安装或未接入时必须记录 `unavailable_reason`；
+不得把 placeholder、availability probe 或当前 NumPy 结果写成第三方算法已实现。

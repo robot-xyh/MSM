@@ -23,6 +23,7 @@ from .models import (
     PeerCameraState,
     VisualTrackletSummary,
 )
+from .object_taxonomy import canonical_object_class
 
 
 @dataclass(frozen=True)
@@ -137,7 +138,10 @@ class TerminalCrossViewFusion:
             if bearing_rate is None and dt > 1e-9 and latest.bearing is not None and first.bearing is not None:
                 bearing_rate = _bearing_delta(latest.bearing, first.bearing) / dt
             if bearing_rate is None and dt > 1e-9 and latest.center_px is not None and first.center_px is not None:
-                bearing_rate = (latest.center_px - first.center_px) / dt
+                bearing_rate = (
+                    _pixel_in_reference(latest.center_px, latest.image_size)
+                    - _pixel_in_reference(first.center_px, first.image_size)
+                ) / dt
 
             first_area = _bbox_area(first.bbox)
             latest_area = _bbox_area(latest.bbox)
@@ -162,6 +166,7 @@ class TerminalCrossViewFusion:
                 VisualTrackletSummary(
                     resource_id=latest.resource_id,
                     camera_id=latest.camera_id,
+                    image_size=latest.image_size,
                     frame_id=latest.frame_id,
                     local_track_id=latest.local_track_id,
                     measurement_timestamp=latest.measurement_timestamp,
@@ -266,7 +271,11 @@ class TerminalCrossViewFusion:
             bearing_delta = float(np.linalg.norm(_bearing_delta(left.bearing, right.bearing)))
             cost += (bearing_delta / max(cfg.bearing_sigma, 1e-9)) ** 2
         elif left.center_px is not None and right.center_px is not None:
-            pixel_delta = float(np.linalg.norm(left.center_px - right.center_px))
+            pixel_delta = float(
+                np.linalg.norm(
+                    _center_in_reference_pixels(left) - _center_in_reference_pixels(right)
+                )
+            )
             cost += (pixel_delta / max(cfg.pixel_sigma, 1e-9)) ** 2
         else:
             cost += cfg.missing_geometry_penalty
@@ -276,13 +285,15 @@ class TerminalCrossViewFusion:
             cost += (rate_delta / max(cfg.bearing_rate_sigma, 1e-9)) ** 2
 
         if left.bbox_area > 0.0 and right.bbox_area > 0.0:
-            area_delta = abs(log(left.bbox_area / right.bbox_area))
+            left_area = _bbox_area_in_reference_pixels(left)
+            right_area = _bbox_area_in_reference_pixels(right)
+            area_delta = abs(log(left_area / right_area))
             cost += (area_delta / max(cfg.bbox_log_area_sigma, 1e-9)) ** 2
             scale_delta = abs(left.scale_rate - right.scale_rate)
             cost += (scale_delta / max(cfg.scale_rate_sigma, 1e-9)) ** 2
 
-        left_category = left.category.lower()
-        right_category = right.category.lower()
+        left_category = canonical_object_class(left.category)
+        right_category = canonical_object_class(right.category)
         if left_category == "unknown" or right_category == "unknown":
             cost += cfg.unknown_category_penalty
         elif left_category != right_category:
@@ -382,6 +393,7 @@ class TerminalCrossViewFusion:
             },
             "current_time": current_time,
             "duplicate_lock_resource_ids": duplicate_resources,
+            "pixel_reference_image_size": (640, 480),
         }
         return CrossPeerAssociationHypothesis(
             hypothesis_id=hypothesis_id,
@@ -542,19 +554,21 @@ def _camera_state_index(
 
 
 def _covariance_trace_px(summary: VisualTrackletSummary, default_covariance_px: float) -> float:
-    if summary.covariance_px is not None:
-        return float(np.trace(summary.covariance_px))
-    if summary.covariance is not None and summary.covariance.shape[0] >= 2:
-        return float(np.trace(summary.covariance[:2, :2]))
-    return float(default_covariance_px * 2.0)
+    return float(np.trace(_covariance_px(summary, default_covariance_px)))
 
 
 def _covariance_px(summary: VisualTrackletSummary, default_covariance_px: float) -> np.ndarray:
     if summary.covariance_px is not None:
-        return summary.covariance_px
-    if summary.covariance is not None and summary.covariance.shape[0] >= 2:
-        return summary.covariance[:2, :2].copy()
-    return np.eye(2, dtype=float) * default_covariance_px
+        covariance = summary.covariance_px.copy()
+    elif summary.covariance is not None and summary.covariance.shape[0] >= 2:
+        covariance = summary.covariance[:2, :2].copy()
+    else:
+        covariance = np.eye(2, dtype=float) * default_covariance_px
+    if summary.image_size is None:
+        return covariance
+    width, height = summary.image_size
+    transform = np.diag([640.0 / float(width), 480.0 / float(height)])
+    return transform @ covariance @ transform.T
 
 
 def _aggregate_covariance_px(
@@ -563,6 +577,35 @@ def _aggregate_covariance_px(
 ) -> np.ndarray:
     matrices = [_covariance_px(summary, default_covariance_px) for summary in summaries]
     return np.mean(np.stack(matrices, axis=0), axis=0)
+
+
+def _center_in_reference_pixels(summary: VisualTrackletSummary) -> np.ndarray:
+    if summary.center_px is None:
+        raise ValueError("center_px is required for reference-pixel conversion")
+    return _pixel_in_reference(summary.center_px, summary.image_size)
+
+
+def _pixel_in_reference(
+    pixel: np.ndarray,
+    image_size: tuple[int, int] | None,
+) -> np.ndarray:
+    if image_size is None:
+        return np.asarray(pixel, dtype=float)
+    width, height = image_size
+    return np.array(
+        [
+            pixel[0] * 640.0 / float(width),
+            pixel[1] * 480.0 / float(height),
+        ],
+        dtype=float,
+    )
+
+
+def _bbox_area_in_reference_pixels(summary: VisualTrackletSummary) -> float:
+    if summary.image_size is None:
+        return summary.bbox_area
+    width, height = summary.image_size
+    return summary.bbox_area * (640.0 * 480.0) / float(width * height)
 
 
 def _category_summary(categories: Iterable[str]) -> str:

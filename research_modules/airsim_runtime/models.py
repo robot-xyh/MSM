@@ -73,6 +73,7 @@ class BlocksSmokeConfig:
     detection_backend: str = "airsim"
     detection_filter_names: tuple[str, ...] = ("MSM_TargetActor_*",)
     detection_radius_cm: int = 80 * 100
+    secondary_detection_radius_cm: int | None = None
     detection_warmup_frames: int = 0
     yolo_weights_path: Path = Path("research_modules/d5_terminal_association/best.pt")
     yolo_tracker_backend: str = "bytetrack"
@@ -82,6 +83,8 @@ class BlocksSmokeConfig:
     yolo_compute_device: str = "auto"
     yolo_cpu_budget_ms: float | None = None
     yolo_gpu_budget_ms: float | None = None
+    yolo_primary_inference_imgsz: int | tuple[int, int] | None = None
+    yolo_secondary_inference_imgsz: int | tuple[int, int] | None = None
     yolo_offline_truth_evaluation: bool = False
     destroy_spawned_actor_targets: bool = True
     include_integrated_pipeline: bool = True
@@ -115,6 +118,8 @@ class BlocksSmokeConfig:
     cooperative_primary_count: int = 2
     cooperative_wave_gap_s: float = 2.0
     cooperative_minimum_separation_s: float = 0.5
+    terminal_authorization_scope: str = "per_primary"
+    arrival_coordination_required: bool = False
     target_asset_name: str = "Quadrotor1"
     target_detection_filter: str = "MSM_TargetActor_*"
     intercept_takeoff_timeout_s: float = 10.0
@@ -266,6 +271,7 @@ def write_dynamic_multirotor_settings(
     *,
     vehicle_names: tuple[str, ...],
     y_spacing_m: float = 10.0,
+    vehicle_positions_ned: dict[str, Vector3] | None = None,
     tuned_terminal_camera: bool = False,
     fov_degrees: float = 120.0,
     lidar_range_m: float = 80.0,
@@ -277,9 +283,10 @@ def write_dynamic_multirotor_settings(
     vehicles: dict[str, Any] = {}
     y_positions = _centered_positions(len(vehicle_names), float(y_spacing_m))
     for index, (name, y_pos) in enumerate(zip(vehicle_names, y_positions, strict=True)):
+        position = (vehicle_positions_ned or {}).get(name, (0.0, float(y_pos), 0.0))
         vehicles[name] = _simpleflight_vehicle_settings(
             index=index,
-            y_pos=float(y_pos),
+            position_ned=position,
             tuned_terminal_camera=tuned_terminal_camera,
             lidar_range_m=lidar_range_m,
         )
@@ -563,7 +570,7 @@ def _base_settings(
 def _simpleflight_vehicle_settings(
     *,
     index: int,
-    y_pos: float,
+    position_ned: Vector3,
     tuned_terminal_camera: bool,
     lidar_range_m: float,
 ) -> dict[str, Any]:
@@ -575,9 +582,9 @@ def _simpleflight_vehicle_settings(
         "EnableCollisionPassthrogh": False,
         "EnableCollisions": True,
         "EnableTrace": False,
-        "X": 0,
-        "Y": float(y_pos),
-        "Z": 0,
+        "X": float(position_ned[0]),
+        "Y": float(position_ned[1]),
+        "Z": float(position_ned[2]),
         "Pitch": 0,
         "Roll": 0,
         "Yaw": 0,

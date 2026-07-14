@@ -7,6 +7,7 @@ import argparse
 import copy
 import csv
 import json
+import math
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -48,6 +49,21 @@ from airsim_runtime.p1_terminal_closure import (
     build_terminal_closure_cases,
     write_terminal_closure_bundle,
 )
+from airsim_runtime.p1_cooperative_closure import (
+    CooperativeCandidate,
+    CooperativeClosureCase,
+    build_cooperative_closure_cases,
+    build_pair_funnel_rows,
+    run_pointmass_candidate_screen,
+    write_cooperative_closure_bundle,
+)
+from airsim_runtime.p1_mot_calibration import (
+    MotCalibrationCase,
+    build_mot_confirmation_cases,
+    build_mot_screening_cases,
+    select_backend_thresholds,
+    write_mot_execution_index,
+)
 from airsim_runtime.sequence import (
     D4D5_STRESS_EPISODES,
     DEFAULT_BLOCKS_EPISODES,
@@ -56,10 +72,23 @@ from airsim_runtime.sequence import (
 )
 from d6_evaluation_metrics import (
     AirSimCalibrationReportGenerator,
+    CooperativeClosureInputs,
+    CooperativeClosureReportGenerator,
     GuidanceLawComparisonReportGenerator,
+    P1SystemEvidenceInputs,
+    P1SystemEvidenceReportGenerator,
     ScenarioDefinition,
     ScenarioLibrary,
     load_main_episode_bus_metrics,
+)
+from d4_distributed_fallback import (
+    CommunicationReplayConfig,
+    run_p1_communication_fault_matrix,
+)
+from d3_assignment_planner import (
+    CooperativeCandidateObservation,
+    build_p1_cooperative_candidate_grid,
+    rank_cooperative_candidates,
 )
 
 DEFAULT_SETTINGS = "research_modules/airsim_runtime/settings/blocks_smoke_settings.json"
@@ -165,10 +194,45 @@ def parse_args() -> argparse.Namespace:
         help="Minimum temporal separation in seconds between coalition members.",
     )
     parser.add_argument(
+        "--terminal-authorization-scope",
+        choices=("coalition", "per_primary"),
+        default="per_primary",
+        help=(
+            "Terminal authorization scope for cooperative targets. "
+            "per_primary lets each active primary satisfy D5/D7 independently."
+        ),
+    )
+    parser.add_argument(
+        "--arrival-coordination-required",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Require cooperative arrival-window coordination. Use "
+            "--no-arrival-coordination-required for independent-primary calibration."
+        ),
+    )
+    parser.add_argument(
+        "--cooperative-approach-sector-separation",
+        type=float,
+        default=0.0,
+        help=(
+            "Initial LOS sector separation in degrees for the first two active "
+            "primaries in a cooperative SimpleFlight calibration case."
+        ),
+    )
+    parser.add_argument(
+        "--cooperative-pose-via-api",
+        action="store_true",
+        help=(
+            "Apply cooperative initial-position offsets with simSetVehiclePose after "
+            "each reset. Used by reset-separated candidate sweeps sharing one settings file."
+        ),
+    )
+    parser.add_argument(
         "--secondary-count",
         type=int,
         default=2,
-        help="Number of high recon secondary ComputerVision nodes for CV scenarios.",
+        help="Number of high recon secondary ComputerVision nodes; use 0 for primary-camera-only tests.",
     )
     parser.add_argument(
         "--actor-2v2",
@@ -226,6 +290,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--p1-mot-calibration-sweep",
+        action="store_true",
+        help=(
+            "Run native ByteTrack/BoT-SORT screening and two-camera confirmation. "
+            "IoU fallback is disabled and AirSim truth is used only for offline scoring."
+        ),
+    )
+    parser.add_argument(
         "--p1-terminal-closure-sweep",
         action="store_true",
         help=(
@@ -233,6 +305,21 @@ def parse_args() -> argparse.Namespace:
             "P1 closure suite. M5N2 and 2v2 groups use separate Blocks launches "
             "because their vehicle settings differ."
         ),
+    )
+    parser.add_argument(
+        "--p1-cooperative-closure-sweep",
+        action="store_true",
+        help=(
+            "Run P1 cooperative-closure-v2: screen the D3 3x3x3 grid with the "
+            "D7 point-mass model, then run baseline and the top candidates as "
+            "reset-separated M5N2 SimpleFlight episodes."
+        ),
+    )
+    parser.add_argument(
+        "--p1-cooperative-candidate-limit",
+        type=int,
+        default=3,
+        help="Number of point-mass candidates promoted to AirSim.",
     )
     parser.add_argument(
         "--p1-dropout-frames",
@@ -301,6 +388,24 @@ def parse_args() -> argparse.Namespace:
         help="Override secondary recon Scene/Depth image height.",
     )
     parser.add_argument(
+        "--camera-width",
+        type=int,
+        default=None,
+        help="Override primary ComputerVision camera width.",
+    )
+    parser.add_argument(
+        "--camera-height",
+        type=int,
+        default=None,
+        help="Override primary ComputerVision camera height.",
+    )
+    parser.add_argument(
+        "--camera-fov",
+        type=float,
+        default=None,
+        help="Override primary ComputerVision camera horizontal FOV in degrees.",
+    )
+    parser.add_argument(
         "--secondary-recon-standoff",
         type=float,
         default=0.0,
@@ -314,7 +419,10 @@ def parse_args() -> argparse.Namespace:
         "--cv-reassignment-time",
         type=float,
         default=None,
-        help="ComputerVision 5v5 secondary reassignment time. Defaults to half the duration.",
+        help=(
+            "Explicit ComputerVision forced-reassignment time for stress tests. "
+            "Normal episodes keep the current D3 assignment when omitted."
+        ),
     )
     parser.add_argument("--connection-timeout", type=float, default=90.0)
     parser.add_argument("--client-timeout", type=float, default=2.0)
@@ -457,12 +565,33 @@ def parse_args() -> argparse.Namespace:
         help="Initial lateral target spacing for actor targets in controlled 5v5 mode.",
     )
     parser.add_argument(
+        "--actor-target-x-spacing",
+        type=float,
+        default=None,
+        help=(
+            "Optional longitudinal spacing between generated actor targets. "
+            "Set to 0 for a strict lateral 4 m/2 m dense-crossing capture."
+        ),
+    )
+    parser.add_argument(
         "--actor-target-speed-scale",
         type=float,
         default=1.0,
         help="Velocity multiplier for actor targets in controlled 5v5 mode.",
     )
     parser.add_argument("--target-detection-filter", default="MSM_TargetActor_*")
+    parser.add_argument(
+        "--primary-detection-radius-m",
+        type=float,
+        default=None,
+        help="AirSim simGetDetections radius for interceptor cameras in metres.",
+    )
+    parser.add_argument(
+        "--secondary-detection-radius-m",
+        type=float,
+        default=None,
+        help="AirSim simGetDetections radius for high-recon cameras in metres.",
+    )
     parser.add_argument(
         "--detection-warmup-frames",
         type=int,
@@ -490,6 +619,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--yolo-device", default="auto")
     parser.add_argument("--yolo-cpu-budget-ms", type=float, default=None)
     parser.add_argument("--yolo-gpu-budget-ms", type=float, default=None)
+    parser.add_argument(
+        "--yolo-primary-imgsz",
+        type=int,
+        default=None,
+        help="Optional Ultralytics inference imgsz for interceptor-camera streams.",
+    )
+    parser.add_argument(
+        "--yolo-secondary-imgsz",
+        type=int,
+        default=None,
+        help="Optional Ultralytics inference imgsz for high-recon streams.",
+    )
     parser.add_argument(
         "--yolo-offline-truth-eval",
         action="store_true",
@@ -523,6 +664,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.p1_mot_calibration_sweep:
+        return _run_p1_mot_calibration_sweep(args)
+    if args.p1_cooperative_closure_sweep:
+        return _run_p1_cooperative_closure_sweep(args)
     if args.p1_terminal_closure_sweep:
         return _run_p1_terminal_closure_sweep(args)
     if args.p1_calibration_sweep:
@@ -804,6 +949,37 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         actor_resource_count = resource_count or 5
         actor_target_count = target_count or 5
         actor_5v5_resources = default_interceptor_vehicle_names(actor_resource_count)
+        cooperative_positions = _cooperative_primary_vehicle_positions(
+            actor_5v5_resources,
+            target_count=actor_target_count,
+            target_distance_m=(
+                args.actor_target_distance
+                if args.actor_target_distance is not None
+                else 35.0
+            ),
+            target_spacing_m=(
+                args.actor_target_spacing
+                if args.actor_target_spacing is not None
+                else 10.0
+            ),
+            default_resource_spacing_m=(
+                args.actor_target_spacing
+                if args.actor_target_spacing is not None
+                else 10.0
+            ),
+            sector_separation_deg=float(
+                args.cooperative_approach_sector_separation
+            ),
+        )
+        cooperative_pose_offsets = _vehicle_position_offsets(
+            actor_5v5_resources,
+            desired_positions=cooperative_positions,
+            default_resource_spacing_m=(
+                args.actor_target_spacing
+                if args.actor_target_spacing is not None
+                else 10.0
+            ),
+        )
         if explicit_counts:
             settings_path = write_dynamic_multirotor_settings(
                 generated_settings_dir
@@ -812,6 +988,9 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                 y_spacing_m=args.actor_target_spacing
                 if args.actor_target_spacing is not None
                 else 10.0,
+                vehicle_positions_ned=(
+                    None if args.cooperative_pose_via_api else cooperative_positions
+                ),
                 tuned_terminal_camera=False,
                 fov_degrees=120.0,
                 lidar_range_m=80.0,
@@ -879,6 +1058,12 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                 if args.actor_target_spacing is not None
                 else 10.0,
                 "actor_target_speed_scale": args.actor_target_speed_scale,
+                "cooperative_approach_sector_separation_deg": float(
+                    args.cooperative_approach_sector_separation
+                ),
+                "cooperative_initial_vehicle_positions_ned": cooperative_positions,
+                "cooperative_pose_via_api": bool(args.cooperative_pose_via_api),
+                "cooperative_vehicle_pose_offsets_ned": cooperative_pose_offsets,
             },
         }
     if args.cv_5v5 or args.cv_5v5_d4d5_stress:
@@ -890,7 +1075,9 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             else default_cv_5v5_camera_vehicle_names()
         )
         cv_secondaries = (
-            default_cv_secondary_vehicle_names(args.secondary_count)
+            ()
+            if args.secondary_count == 0
+            else default_cv_secondary_vehicle_names(args.secondary_count)
             if explicit_counts or args.secondary_count != 2
             else default_cv_5v5_secondary_vehicle_names()
         )
@@ -925,6 +1112,9 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             if args.cv_5v5_d4d5_stress_200m
             else 480
         )
+        primary_width = int(args.camera_width if args.camera_width is not None else 640)
+        primary_height = int(args.camera_height if args.camera_height is not None else 480)
+        primary_fov = float(args.camera_fov if args.camera_fov is not None else 90.0)
         if (
             explicit_counts
             or args.secondary_count != 2
@@ -932,6 +1122,9 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             or args.secondary_fov is not None
             or args.secondary_width is not None
             or args.secondary_height is not None
+            or args.camera_width is not None
+            or args.camera_height is not None
+            or args.camera_fov is not None
         ):
             settings_path = write_dynamic_computer_vision_settings(
                 generated_settings_dir
@@ -944,8 +1137,10 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                 camera_z=-10.0,
                 target_z=-10.0,
                 secondary_height_above_targets_m=secondary_height_above_targets_m,
-                fov_degrees=90.0,
+                fov_degrees=primary_fov,
                 secondary_fov_degrees=secondary_fov,
+                width=primary_width,
+                height=primary_height,
                 secondary_camera_pitch_deg=0.0
                 if args.mobile_secondary_recon
                 else -90.0
@@ -1000,7 +1195,11 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                     asset_name=args.target_asset_name,
                     target_scale_m=target_scale_m or 1.0,
                     target_speed_scale=args.actor_target_speed_scale,
-                    x_spacing_m=4.0,
+                    x_spacing_m=(
+                        float(args.actor_target_x_spacing)
+                        if args.actor_target_x_spacing is not None
+                        else 4.0
+                    ),
                     x_speed_base_mps=1.4,
                     x_speed_step_mps=0.1,
                     y_speed_span_mps=1.2,
@@ -1025,18 +1224,33 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             or not bool(args.cv_5v5_d4d5_stress),
             "cv_secondary_mobile_recon_enabled": bool(args.mobile_secondary_recon),
             "cv_secondary_recon_standoff_m": float(args.secondary_recon_standoff),
-            "cv_reassignment_time_s": (
-                args.cv_reassignment_time
-                if args.cv_reassignment_time is not None
-                else max(args.dt, args.duration * 0.5)
-            ),
+            "cv_reassignment_time_s": args.cv_reassignment_time,
             "lidar_vehicle_name": cv_resources[0],
             "lidar_vehicle_names": (),
             "target_vehicle_names": (),
             "resource_vehicle_names": cv_resources,
             "target_actor_specs": target_specs,
             "detection_filter_names": detection_filters,
-            "detection_radius_cm": (260 if args.cv_5v5_d4d5_stress else 160) * 100,
+            "detection_radius_cm": int(
+                round(
+                    (
+                        float(args.primary_detection_radius_m)
+                        if args.primary_detection_radius_m is not None
+                        else (260.0 if args.cv_5v5_d4d5_stress else 160.0)
+                    )
+                    * 100.0
+                )
+            ),
+            "secondary_detection_radius_cm": int(
+                round(
+                    (
+                        float(args.secondary_detection_radius_m)
+                        if args.secondary_detection_radius_m is not None
+                        else 300.0
+                    )
+                    * 100.0
+                )
+            ),
             "metadata": {
                 "runtime_mode": (
                     "computer_vision_nvN_d4d5_stress"
@@ -1088,10 +1302,22 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                 "secondary_camera_fov_degrees": secondary_fov,
                 "secondary_camera_width": secondary_width,
                 "secondary_camera_height": secondary_height,
+                "primary_camera_width": primary_width,
+                "primary_camera_height": primary_height,
+                "primary_camera_fov_degrees": primary_fov,
                 "secondary_recon_standoff_m": float(args.secondary_recon_standoff),
                 "secondary_look_at_runtime_enabled": bool(args.mobile_secondary_recon)
                 or not bool(args.cv_5v5_d4d5_stress),
                 "target_asset_name": args.target_asset_name,
+                "actor_target_distance_m": args.actor_target_distance
+                if args.actor_target_distance is not None
+                else 35.0,
+                "actor_target_spacing_m": args.actor_target_spacing
+                if args.actor_target_spacing is not None
+                else 10.0,
+                "actor_target_x_spacing_m": args.actor_target_x_spacing
+                if args.actor_target_x_spacing is not None
+                else 4.0,
             },
         }
     actor_config.setdefault("metadata", {})
@@ -1106,6 +1332,20 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             "intercept_max_turn_rate_radps": float(args.intercept_max_turn_rate),
             "intercept_max_lateral_accel_mps2": float(args.intercept_max_lateral_accel),
             "intercept_min_maneuver_margin": float(args.intercept_min_maneuver_margin),
+            "terminal_authorization_scope": str(args.terminal_authorization_scope),
+            "arrival_coordination_required": bool(args.arrival_coordination_required),
+            "episode_communication_enabled": bool(
+                args.enable_cooperative_demand
+                or args.center_failure_time is not None
+                or args.secondary_failure_time is not None
+                or args.coalition_commit_fault != "none"
+                or (
+                    explicit_counts
+                    and resource_count is not None
+                    and target_count is not None
+                    and resource_count != target_count
+                )
+            ),
         }
     )
     if args.center_failure_time is not None:
@@ -1167,6 +1407,8 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         cooperative_primary_count=int(args.cooperative_primary_count),
         cooperative_wave_gap_s=float(args.cooperative_wave_gap),
         cooperative_minimum_separation_s=float(args.cooperative_minimum_separation),
+        terminal_authorization_scope=str(args.terminal_authorization_scope),
+        arrival_coordination_required=bool(args.arrival_coordination_required),
         target_asset_name=args.target_asset_name,
         target_detection_filter=args.target_detection_filter,
         detection_warmup_frames=int(args.detection_warmup_frames),
@@ -1179,6 +1421,8 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         yolo_compute_device=args.yolo_device,
         yolo_cpu_budget_ms=args.yolo_cpu_budget_ms,
         yolo_gpu_budget_ms=args.yolo_gpu_budget_ms,
+        yolo_primary_inference_imgsz=args.yolo_primary_imgsz,
+        yolo_secondary_inference_imgsz=args.yolo_secondary_imgsz,
         yolo_offline_truth_evaluation=args.yolo_offline_truth_eval,
         **actor_config,
     )
@@ -1194,6 +1438,54 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         for spec in selected_episode_specs
     )
     return base_config, sequence_id, episode_specs
+
+
+def _cooperative_primary_vehicle_positions(
+    vehicle_names: tuple[str, ...],
+    *,
+    target_count: int,
+    target_distance_m: float,
+    target_spacing_m: float,
+    default_resource_spacing_m: float,
+    sector_separation_deg: float,
+) -> dict[str, tuple[float, float, float]] | None:
+    """Place the first two primaries symmetrically about target-1's initial LOS."""
+
+    if sector_separation_deg <= 0.0 or len(vehicle_names) < 2 or target_count < 1:
+        return None
+    if sector_separation_deg >= 180.0:
+        raise SystemExit("--cooperative-approach-sector-separation must be below 180")
+    center = (len(vehicle_names) - 1) / 2.0
+    positions = {
+        name: (0.0, (index - center) * default_resource_spacing_m, 0.0)
+        for index, name in enumerate(vehicle_names)
+    }
+    first_target_y = -((target_count - 1) / 2.0) * target_spacing_m
+    lateral_offset = target_distance_m * math.tan(
+        math.radians(sector_separation_deg / 2.0)
+    )
+    positions[vehicle_names[0]] = (0.0, first_target_y - lateral_offset, 0.0)
+    positions[vehicle_names[1]] = (0.0, first_target_y + lateral_offset, 0.0)
+    return positions
+
+
+def _vehicle_position_offsets(
+    vehicle_names: tuple[str, ...],
+    *,
+    desired_positions: dict[str, tuple[float, float, float]] | None,
+    default_resource_spacing_m: float,
+) -> dict[str, tuple[float, float, float]]:
+    if desired_positions is None:
+        return {}
+    center = (len(vehicle_names) - 1) / 2.0
+    offsets: dict[str, tuple[float, float, float]] = {}
+    for index, name in enumerate(vehicle_names):
+        baseline = (0.0, (index - center) * default_resource_spacing_m, 0.0)
+        desired = desired_positions.get(name, baseline)
+        offsets[name] = tuple(
+            float(desired[axis] - baseline[axis]) for axis in range(3)
+        )
+    return offsets
 
 
 def _resolve_scenario_counts(
@@ -1262,8 +1554,21 @@ def _validate_cooperative_options(args: argparse.Namespace) -> None:
         raise SystemExit("--cooperative-wave-gap must be non-negative")
     if float(args.cooperative_minimum_separation) < 0.0:
         raise SystemExit("--cooperative-minimum-separation must be non-negative")
+    sector = float(args.cooperative_approach_sector_separation)
+    if not 0.0 <= sector < 180.0:
+        raise SystemExit(
+            "--cooperative-approach-sector-separation must be in [0, 180)"
+        )
+    if int(args.p1_cooperative_candidate_limit) <= 0:
+        raise SystemExit("--p1-cooperative-candidate-limit must be positive")
     if int(args.detection_warmup_frames) < 0:
         raise SystemExit("--detection-warmup-frames must be non-negative")
+    for name in ("camera_width", "camera_height"):
+        value = getattr(args, name)
+        if value is not None and int(value) <= 0:
+            raise SystemExit(f"--{name.replace('_', '-')} must be positive")
+    if args.camera_fov is not None and not 0.0 < float(args.camera_fov) < 180.0:
+        raise SystemExit("--camera-fov must be in (0, 180)")
     if float(args.intercept_max_turn_rate) <= 0.0:
         raise SystemExit("--intercept-max-turn-rate must be positive")
     if float(args.intercept_max_lateral_accel) <= 0.0:
@@ -1317,6 +1622,187 @@ def _parse_batch_seeds(raw: str | None, *, default: int) -> list[int]:
     if not seeds:
         raise SystemExit("--batch-seeds did not contain any integer seeds")
     return seeds
+
+
+def _run_p1_cooperative_closure_sweep(args: argparse.Namespace) -> int:
+    """Screen cooperative candidates offline, then run the top profiles in Blocks."""
+
+    seeds = _parse_batch_seeds(args.batch_seeds, default=args.seed)
+    d3_candidates = build_p1_cooperative_candidate_grid()
+    main_candidates = tuple(
+        CooperativeCandidate(
+            candidate_id=candidate.candidate_id,
+            terminal_handoff_range_m=candidate.terminal_handoff_range_m,
+            primary_arrival_window_width_s=candidate.primary_arrival_window_width_s,
+            approach_sector_separation_deg=candidate.approach_sector_separation_deg,
+        )
+        for candidate in d3_candidates
+    )
+    screening_rows = run_pointmass_candidate_screen(main_candidates, seeds=seeds)
+    observations = tuple(
+        CooperativeCandidateObservation(
+            candidate_id=str(row["candidate_id"]),
+            safety_violation_count=int(row["safety_violation_count"]),
+            coalition_completion_count=int(row["coalition_completion_count"]),
+            coalition_opportunity_count=int(row["coalition_opportunity_count"]),
+            pair_success_count=int(row["pair_success_count"]),
+            pair_opportunity_count=int(row["pair_opportunity_count"]),
+            arrival_spread_s=float(row["arrival_spread_s"]),
+            evidence_source=str(row["evidence_source"]),
+            metadata={"suite_version": "p1-cooperative-closure-v2"},
+        )
+        for row in screening_rows
+    )
+    ranked = rank_cooperative_candidates(
+        d3_candidates,
+        observations,
+        limit=int(args.p1_cooperative_candidate_limit),
+    )
+    selected_ids = {row.candidate.candidate_id for row in ranked}
+    selected = tuple(
+        candidate for candidate in main_candidates if candidate.candidate_id in selected_ids
+    )
+    cases = build_cooperative_closure_cases(seeds, selected)
+    output_dir = Path(args.output_root) / args.sequence_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    screening_path = output_dir / "p1_cooperative_pointmass_screen.json"
+    screening_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "main-p1-cooperative-pointmass-screen-v1",
+                "suite_version": "p1-cooperative-closure-v2",
+                "rows": screening_rows,
+                "ranked": [row.as_dict() for row in ranked],
+                "selected_candidate_ids": [row.candidate.candidate_id for row in ranked],
+                "default_runtime_candidate_changed": False,
+                "png_core_formula_changed": False,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    runs = tuple(_build_cooperative_closure_run(args, case) for case in cases)
+    results = run_blocks_batch_sequences(
+        runs,
+        batch_id=f"{args.sequence_id}_m5n2_cooperative_v2",
+    )
+    pair_rows: list[dict[str, object]] = []
+    for case, result in zip(cases, results, strict=True):
+        _print_sequence_result(result)
+        episode = _controlled_episode_from_result(result)
+        if episode is None:
+            continue
+        summary_path = episode.output_paths.get("intercept_summary")
+        commands_path = episode.output_paths.get("control_commands")
+        summary = (
+            json.loads(Path(summary_path).read_text(encoding="utf-8"))
+            if summary_path is not None and Path(summary_path).exists()
+            else {"pairs": []}
+        )
+        commands = _read_csv_rows(commands_path)
+        rows = build_pair_funnel_rows(case, summary, commands)
+        for row in rows:
+            row["connected"] = bool(getattr(result, "connected", False))
+            row["intercept_summary"] = (
+                None if summary_path is None else str(summary_path)
+            )
+            row["control_commands"] = (
+                None if commands_path is None else str(commands_path)
+            )
+        pair_rows.extend(rows)
+
+    paths = write_cooperative_closure_bundle(output_dir, cases, pair_rows)
+    communication_report = run_p1_communication_fault_matrix(
+        CommunicationReplayConfig(
+            member_ids=("INT-01", "INT-02", "INT-03"),
+            secondary_node_ids=("SEC-01", "SEC-02"),
+        ),
+        seeds=seeds,
+    )
+    communication_path = output_dir / "d4_communication_fault_matrix.json"
+    communication_path.write_text(
+        json.dumps(communication_report.to_dict(), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    d6_paths = CooperativeClosureReportGenerator().write_report_bundle(
+        output_dir / "d6_cooperative_closure",
+        inputs=CooperativeClosureInputs(
+            rows=pair_rows,
+            d3_candidate=screening_path,
+            d4_communication=communication_report.cases,
+            d5_visibility=pair_rows,
+            d7_guidance=pair_rows,
+        ),
+    )
+    print(f"p1_cooperative_screen={screening_path.resolve()}")
+    print(f"p1_cooperative_summary={paths['json'].resolve()}")
+    print(f"p1_cooperative_report={paths['markdown'].resolve()}")
+    print(f"p1_cooperative_d4_communication={communication_path.resolve()}")
+    print(f"p1_cooperative_d6_report={d6_paths['markdown'].resolve()}")
+    return 0
+
+
+def _build_cooperative_closure_run(
+    args: argparse.Namespace,
+    case: CooperativeClosureCase,
+):
+    case_args = copy.deepcopy(args)
+    case_args.p1_cooperative_closure_sweep = False
+    case_args.p1_terminal_closure_sweep = False
+    case_args.p1_calibration_sweep = False
+    case_args.guidance_law_sweep = False
+    case_args.actor_2v2 = False
+    case_args.actor_5v5 = True
+    case_args.cv_5v5 = False
+    case_args.cv_5v5_d4d5_stress = False
+    case_args.resource_count = int(case.resource_count)
+    case_args.target_count = int(case.target_count)
+    case_args.drone_count = None
+    case_args.execute_intercept = True
+    case_args.full_flow_only = True
+    case_args.no_lidar = True
+    case_args.duration = float(case.duration_s)
+    case_args.intercept_max_duration = float(case.duration_s)
+    case_args.intercept_altitude_z = float(case.intercept_altitude_z)
+    case_args.intercept_terminal_range = float(
+        case.candidate.terminal_handoff_range_m
+    )
+    case_args.intercept_yaw_mode = "look_at_target"
+    case_args.guidance_law = "png_vm"
+    case_args.terminal_soft_prediction = False
+    case_args.terminal_trend_coast = False
+    case_args.enable_cooperative_demand = True
+    case_args.high_threat_resource_count = 3
+    case_args.cooperative_primary_count = 2
+    case_args.cooperative_coordination_mode = "hybrid"
+    case_args.cooperative_wave_gap = float(
+        case.candidate.primary_arrival_window_width_s
+    )
+    case_args.cooperative_approach_sector_separation = float(
+        case.candidate.approach_sector_separation_deg
+    )
+    case_args.cooperative_pose_via_api = True
+    case_args.settings = DEFAULT_SETTINGS
+    sequence_id = f"{args.sequence_id}_{case.case_id}"
+    config, selected_sequence_id, episode_specs = _build_sequence_run(
+        case_args,
+        seed=case.seed,
+        sequence_id=sequence_id,
+    )
+    config = replace(
+        config,
+        metadata={**config.metadata, **case.metadata()},
+    )
+    return config, selected_sequence_id, episode_specs
+
+
+def _read_csv_rows(path: object) -> list[dict[str, str]]:
+    if path is None or not Path(path).exists():
+        return []
+    with Path(path).open("r", encoding="utf-8", newline="") as stream:
+        return [dict(row) for row in csv.DictReader(stream)]
 
 
 def _run_p1_terminal_closure_sweep(args: argparse.Namespace) -> int:
@@ -1518,6 +2004,239 @@ def _terminal_closure_command_counts(path: object) -> dict[str, int]:
 
 def _csv_bool(value: object) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes"}
+
+
+def _run_p1_mot_calibration_sweep(args: argparse.Namespace) -> int:
+    """Run native MOT screening and confirmation in reset-separated CV episodes."""
+
+    if any((args.actor_2v2, args.actor_5v5, args.cv_5v5_d4d5_stress)):
+        raise SystemExit(
+            "--p1-mot-calibration-sweep cannot be combined with actor or D4/D5 stress modes"
+        )
+    screening_cases = build_mot_screening_cases(seed=int(args.seed))
+    screening_runs = tuple(
+        _mot_calibration_case_run(args, case, camera_count=1)
+        for case in screening_cases
+    )
+    screening_results = run_blocks_batch_sequences(
+        screening_runs,
+        batch_id=f"{args.sequence_id}_screening",
+    )
+    screening_rows = _native_mot_rows_from_results(screening_cases, screening_results)
+    selected = select_backend_thresholds(screening_rows)
+
+    confirmation_seeds = _parse_batch_seeds(args.batch_seeds, default=args.seed)
+    if args.batch_seeds is None:
+        confirmation_seeds = list(range(int(args.seed), int(args.seed) + 10))
+    confirmation_cases = build_mot_confirmation_cases(selected, confirmation_seeds)
+    confirmation_results = ()
+    confirmation_rows: list[dict[str, object]] = []
+    if confirmation_cases:
+        confirmation_runs = tuple(
+            _mot_calibration_case_run(args, case, camera_count=2)
+            for case in confirmation_cases
+        )
+        confirmation_results = run_blocks_batch_sequences(
+            confirmation_runs,
+            batch_id=f"{args.sequence_id}_confirmation",
+        )
+        confirmation_rows = _native_mot_rows_from_results(
+            confirmation_cases,
+            confirmation_results,
+        )
+
+    output_dir = Path(args.output_root) / args.sequence_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    all_cases = (*screening_cases, *confirmation_cases)
+    all_rows = [*screening_rows, *confirmation_rows]
+    index_path = write_mot_execution_index(
+        output_dir / "p1_native_mot_execution_index.json",
+        cases=all_cases,
+        rows=all_rows,
+    )
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    payload.update(
+        {
+            "selected_thresholds": selected,
+            "screening_case_count": len(screening_cases),
+            "confirmation_case_count": len(confirmation_cases),
+            "confirmation_seeds": confirmation_seeds,
+            "settings_strategy": (
+                "one_single_camera_blocks_process_then_one_two_camera_blocks_process; "
+                "reset_between_cases"
+            ),
+            "online_truth_identity_used": False,
+            "iou_fallback_admitted": False,
+        }
+    )
+    index_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    report_path = output_dir / "P1_NATIVE_MOT_AIRSIM_CALIBRATION_REPORT.md"
+    report_path.write_text(_native_mot_markdown(payload), encoding="utf-8")
+    d6_outputs = P1SystemEvidenceReportGenerator().write_report_bundle(
+        output_dir / "d6_native_mot",
+        inputs=P1SystemEvidenceInputs(d5_native_mot=index_path),
+        title="D6 P1 原生 MOT AirSim 标定汇总",
+    )
+    for result in (*screening_results, *confirmation_results):
+        _print_sequence_result(result)
+    print(f"p1_mot_calibration_index={index_path.resolve()}")
+    print(f"p1_mot_calibration_report={report_path.resolve()}")
+    print(f"p1_mot_d6_report={d6_outputs['markdown'].resolve()}")
+    return 0
+
+
+def _mot_calibration_case_run(
+    args: argparse.Namespace,
+    case: MotCalibrationCase,
+    *,
+    camera_count: int,
+) -> tuple[BlocksSmokeConfig, str, tuple[BlocksEpisodeSpec, ...]]:
+    case_args = copy.copy(args)
+    case_args.p1_mot_calibration_sweep = False
+    case_args.cv_5v5 = True
+    case_args.cv_5v5_d4d5_stress = False
+    case_args.cv_5v5_d4d5_stress_200m = False
+    case_args.actor_2v2 = False
+    case_args.actor_5v5 = False
+    case_args.drone_count = None
+    case_args.resource_count = int(camera_count)
+    case_args.target_count = int(camera_count)
+    case_args.duration = float(case.frame_count) * 0.1
+    case_args.dt = 0.1
+    case_args.no_lidar = True
+    case_args.detection_backend = "yolo"
+    case_args.yolo_tracker_backend = case.tracker_backend
+    case_args.yolo_confidence = float(case.confidence_threshold)
+    case_args.no_yolo_native_tracker = False
+    case_args.no_yolo_iou_fallback = True
+    case_args.yolo_offline_truth_eval = True
+    case_args.camera_width = int(case.camera_width)
+    case_args.camera_height = int(case.camera_height)
+    case_args.camera_fov = float(case.camera_fov_deg)
+    case_args.secondary_count = 0
+    case_args.actor_target_distance = float(case.target_distance_m)
+    case_args.actor_target_spacing = 8.0
+    case_args.actor_target_speed_scale = 0.6
+    case_args.full_flow_only = False
+    sequence_id = f"{args.sequence_id}_{case.case_id}"
+    config, selected_sequence_id, _ = _build_sequence_run(
+        case_args,
+        seed=case.seed,
+        sequence_id=sequence_id,
+    )
+    config = replace(
+        config,
+        duration_s=case_args.duration,
+        dt_s=case_args.dt,
+        include_integrated_pipeline=False,
+        cv_camera_follow_assignments=False,
+        target_actor_specs=tuple(
+            replace(
+                spec,
+                velocity_ned=(
+                    0.0,
+                    (0.35 if index % 2 == 0 else -0.35),
+                    0.0,
+                ),
+            )
+            for index, spec in enumerate(config.target_actor_specs)
+        ),
+        metadata={
+            **dict(config.metadata),
+            **case.metadata(),
+            "mot_calibration_case_id": case.case_id,
+            "mot_target_distance_m": case.target_distance_m,
+            "mot_admission_warmup_frames": case.warmup_frames,
+            "mot_range_control": "fixed_camera_lateral_target_motion",
+        },
+    )
+    episode = BlocksEpisodeSpec(
+        episode_id=f"episode_{case.case_id}",
+        focus="D5 native MOT calibration",
+        scenario_name="blocks_cv_native_mot_calibration",
+        duration_s=case_args.duration,
+        dt_s=case_args.dt,
+        include_integrated_pipeline=False,
+        metadata=case.metadata(),
+    )
+    return config, selected_sequence_id, (episode,)
+
+
+def _native_mot_rows_from_results(
+    cases: tuple[MotCalibrationCase, ...],
+    results: tuple[object, ...],
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for case, result in zip(cases, results, strict=True):
+        for episode in getattr(result, "episode_results", ()):
+            log_path = episode.output_paths.get("blocks_frames_jsonl")
+            if log_path is None:
+                continue
+            summaries = _last_native_mot_summaries(Path(log_path))
+            for summary in summaries:
+                rows.append(
+                    {
+                        **case.metadata(),
+                        **summary,
+                        "tracker_backend": summary.get(
+                            "requested_tracker_backend", case.tracker_backend
+                        ),
+                        "detector_precision": summary.get("offline_detector_precision"),
+                        "detector_recall": summary.get("offline_detector_recall"),
+                        "local_track_continuity": summary.get("local_continuity"),
+                        "online_truth_use_count": 0,
+                        "connected": bool(getattr(result, "connected", False)),
+                    }
+                )
+    return rows
+
+
+def _last_native_mot_summaries(path: Path) -> list[dict[str, object]]:
+    last: dict[str, object] | None = None
+    with path.open("r", encoding="utf-8") as stream:
+        for line in stream:
+            if line.strip():
+                last = json.loads(line)
+    if not last:
+        return []
+    metadata = last.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        return []
+    summaries = metadata.get("native_mot_admission") or []
+    return [dict(item) for item in summaries if isinstance(item, dict)]
+
+
+def _native_mot_markdown(payload: dict[str, object]) -> str:
+    rows = payload.get("rows") or []
+    admission = payload.get("admission") or []
+    admitted = sum(
+        1 for item in admission if isinstance(item, dict) and item.get("admitted")
+    )
+    selected = payload.get("selected_thresholds") or {}
+    return "\n".join(
+        [
+            "# P1 原生 MOT AirSim 标定报告",
+            "",
+            "## 配置",
+            "",
+            f"- 筛选工况数：{payload.get('screening_case_count', 0)}",
+            f"- 双相机确认工况数：{payload.get('confirmation_case_count', 0)}",
+            f"- 结果行数：{len(rows)}",
+            f"- 通过准入行数：{admitted}",
+            f"- ByteTrack 阈值：{selected.get('bytetrack', '未选出')}",
+            f"- BoT-SORT 阈值：{selected.get('botsort', '未选出')}",
+            "- IoU fallback：禁止作为真实 MOT 准入结果。",
+            "- AirSim actor/truth ID：仅在在线跟踪完成后用于离线评分。",
+            "",
+            "## 判定",
+            "",
+            "只有原生激活率、检测精确率/召回率、局部连续性、ID Switch 和 P95 延时全部满足门限，候选后端才可进入主线评审；本脚本不会自动替换默认 detect/GNN 路径。",
+            "",
+        ]
+    )
 
 
 def _run_p1_calibration_sweep(args: argparse.Namespace) -> int:

@@ -23,8 +23,10 @@ from .models import (
 )
 from .coalition_visual import (
     CoalitionVisualSummary,
+    CooperativeVisualFunnelSummary,
     snapshot_coalition_bindings,
     summarize_coalition_visual_completion,
+    summarize_cooperative_visual_funnel,
 )
 
 
@@ -274,6 +276,41 @@ class TerminalObservationBus:
             self._coalition_invalid_plan_versions.add(
                 (summary.global_track_id, summary.plan_version)
             )
+        return summary
+
+    def cooperative_visual_funnel(
+        self,
+        coalition_bindings: Iterable[Any],
+        *,
+        historical_associations: Iterable[TerminalAssociation | TerminalObservation] = (),
+        required_stable_frames: int = 2,
+        coalition_commits: Any | None = None,
+        current_time_s: float | None = None,
+        center_failed: bool = False,
+        fallback_active: bool = False,
+        common_window_tolerance_s: float = 0.15,
+    ) -> CooperativeVisualFunnelSummary:
+        """Diagnose all current resource-target bindings without reassignment."""
+
+        current_bindings = tuple(coalition_bindings)
+        current_binding_snapshots = snapshot_coalition_bindings(current_bindings)
+        if not current_binding_snapshots:
+            raise ValueError("coalition_bindings must not be empty")
+        summary = summarize_cooperative_visual_funnel(
+            current_bindings,
+            tuple(self._observations),
+            historical_associations,
+            required_stable_frames=required_stable_frames,
+            historical_bindings=tuple(self._coalition_binding_history),
+            coalition_commits=coalition_commits,
+            current_time_s=current_time_s,
+            center_failed=center_failed,
+            fallback_active=fallback_active,
+            common_window_tolerance_s=common_window_tolerance_s,
+        )
+        for snapshot in current_binding_snapshots:
+            if snapshot not in self._coalition_binding_history:
+                self._coalition_binding_history.append(snapshot)
         return summary
 
     def cross_view_associations(

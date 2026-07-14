@@ -23,7 +23,7 @@
 - **成熟默认方案**: 对只有基数需求、边成本可加、无强协同效应的中心化问题，优先使用 capacitated bipartite b-matching 或最小费用流。OR-Tools 和 NetworkX 提供成熟求解基础，但需要 MSM 自己构造 `k_j`、禁配边和未满足惩罚合同。
 - **可插拔升级**: 有能力互补、任务启用、主备关系、同步窗口、波次和碰撞约束时，使用 CP-SAT/MILP；Pyomo/PuLP 是建模层，OR-Tools CP-SAT 是可选求解后端。它们适合离线或较低频滚动规划，不应未经预算测试替换 Hungarian 高频基线。
 - **研究型方案**: one-to-many matching、联盟形成启发式、通信感知分布式联盟和时空逻辑联合规划有明确论文依据，但没有一个成熟开源库能直接满足 MSM 的版本化计划、D4 接管、D5 视觉反馈和 D7 到达时序全部合同。
-- **推荐到达策略**: 默认研究假设采用**混合 2+1**，即两架主资源在同一终端窗口内协同到达，第三架作为有序后备波次；只有任务效果明确要求同时夹击、同步观测或空间包围时才采用 3 架同时到达。独立尝试且结果可观测时优先分批，减少碰撞、相互遮挡和资源浪费。
+- **当前实施口径**: 保持**混合 2+1** 的资源角色，但本阶段两个 primary 独立授权、独立统计 5 m 结果，不要求同时到达；第三架仍为 standby reserve。同步到达只保留为后续研究对照。
 - **调研时项目状态**: Hungarian、版本、迟滞和 D7 单资源 binding 已实现；`target_demand=k_j`、联盟原子激活、波次、同步到达窗口、联盟版本变更和合法多资源锁定语义均未实现。本段保留调研起点，实施更新见下节。
 
 ### 1.1 2026-07-11 实施更新
@@ -35,6 +35,8 @@
 OR-Tools Min-Cost Flow 已接入 optional 容量 benchmark：同一 4-resource/3-target、5-slot hybrid primary+reserve 输入由 SciPy 容量列展开和 flow 原生容量共享，缺 OR-Tools 时结构化输出 unavailable reason；它不进入默认依赖或 planner 主线。当前增量规划、role-aware primary 保持和跨模块 P1 合同验证已完成：ComputerVision 10 seeds 中 T001 双 primary 视觉共识与当前计划授权为 8/10，二级/分布式 commit 正例及缺 ACK fail-closed 通过。15 s SimpleFlight 仍无物理命中，物理闭环开放；installed flow 实证、CP-SAT/MILP 和复杂 flow 仅保留为 P2 隔离 benchmark。
 
 2026-07-12 进一步补齐 D3 可复用校准支撑：versioned 8-scenario matrix 覆盖 3v5、5v3、目标新增、资源失效、高威胁需求切换为 `2 primary + 1 reserve`、D5 reserve hold 和 hard-window。paired full/incremental runner 的 8/8 转换 assignment/cost 等价；D5 场景保持两个健康 primary，仅替换 reserve，并统一导出 latency、churn、unassigned high-threat 和 coalition shortfall。该结果关闭 deterministic 支撑缺口，不替代真实 AirSim 多 seed 或协同物理验收。
+
+本轮复核进一步统一逐 pair 输出：D6 record 与 D7 binding 均携带 plan owner/version、coalition id/version/epoch、member role、wave、activation、validity、per-primary 授权资格、churn/rollback/stale reject。两个 primary 独立授权，不要求同时到达；reserve 仅占用计划容量并保持 standby/hold。该补充是诊断合同，不修改 Hungarian、迟滞、成员选择或 PNG 控制。
 
 ## 2. 问题模型与算法边界
 

@@ -11,9 +11,19 @@
 
 2026-07-12 P1 增量：新增 `d4_p1_failover_disturbance_replay_v1` 版本化扰动矩阵和 CLI。九个确定性场景 9/9 满足预期：中心正常保持 `continue_center`；二级节点只有 required-member ACK 完整后才能 `executing`；missing ACK、旧 epoch、过期 lease 和 digest conflict 均 fail-closed；成员丢失和网络分区先进入 `reconfiguring`，随后必须使用更高 epoch/plan/coalition version 并全员重新 ACK；中心恢复只进入 dual-track review，不立即夺权。当前 D4 全量测试 155 项通过，并包含四成员规模无关回归。该结论只关闭模块合同 replay，不关闭真实 AirSim 多 seed 的分区时序、误降级、恢复时间和物理任务连续性。
 
-SimpleFlight 15 s 只用于诊断，30 个 active pair 物理命中为 0，系统物理拦截仍未闭合。D4 后续 P1 工作是把已冻结的扰动合同映射到真实 AirSim，补齐 heartbeat/link/cue/gimbal/source、secondary-interceptor/peer split、误降级、恢复时间与物理连续性的成对多 seed 统计。P2 只允许隔离式 benchmark，不替换轻量 CBBA 与 ACK/lease/epoch 合同。
+2026-07-12 通信时序增量：新增 `d4_p1_communication_fault_replay_v1` 和 CLI，接口按调用方提供的 member/secondary 列表运行，不固定 2v2/5v5。10 seeds x 6 场景共 60/60 满足安全预期：normal 无误降级；0.5 s delay 全部完整提交并拒绝乱序旧 plan-version ACK；30% loss 下 3/10 全 ACK 执行、7/10 缺 ACK fail-closed；center failure 保持 secondary 优先，center+secondary failure 才进入 distributed；partition recovery 必须新 epoch/plan/coalition version 和全员 re-ACK，旧 owner 被拒绝。逐场景 summary 已记录 owner/version、ACK/lease/epoch、首个失败原因、退出/重构、消息统计、重复 owner 和 split-brain prevention。加入 posefix 专项后当前 D4 全量测试为 167 项通过；真实 AirSim 网络注入仍不由 D4 模块 replay 替代。
 
-2026-07-11 P2 隔离 replay 已补齐：原生 6/6 场景满足预期安全结果，中心 -> 二级 -> 完全分布式与成员丢失/补位均 7 轮完成、最优绝对差距 0；其余故障在 1-3 轮 fail closed。MIT/CA-CBBA 仅做可选 path/source capability probe，默认输出 unavailable，不 import/执行外部工程，不新增依赖，也不进入在线 D4。该 deterministic replay 不关闭 AirSim 多 seed 扰动矩阵。
+2026-07-12 episode 接线增量：新增 `d4_airsim_episode_communication_v1`，供 main 用 AirSim episode timestamp 逐 tick 驱动。输入包含中心/二级 heartbeat、消息 delay/drop、missing ACK、partition、center digest 与 recovery authorization；输出包含 heartbeat/message 事件、ACK/missing/reject、lease、epoch、owner、plan transition、commit、fail-closed 和 recovery 状态。normal、center failure、center+secondary failure、partition/missing ACK 四类纯 Python replay 已通过；分区恢复强制新 generation 全量 re-ACK，中心恢复要求双轨 digest 连续校验且不立即夺权。独立 primary 不要求同时到达，但 secondary/distributed 多成员执行仍须原子 ACK。该接口随后已由 2026-07-13 episode-clock 批量矩阵完成 main 侧多 seed 验收；真实网络仍不在该接口结论内。
+
+2026-07-13 主动降级策略增量：中心可用时不再由持续视觉错绑直接转移到二级或 distributed。低风险保持中心，进入末端适用窗口后的暂时 ambiguous/reacquire 或感知软风险只请求二级观测辅助；stale/not-current/resource infeasible、重复锁定、资源错配和持续 global-track mismatch 请求中心重规划。追加 `terminal_evidence_applicable` 后，远距雷达/GlobalTrack 充分且尚未进入视觉窗口时，普通视觉软证据、streak，以及中心正常/current/feasible、binding 安全条件下仅由 D1/D2/D3 非 hard-active 因子组成的组合均不触发 secondary assist；风险仍写入审计。高 D1 不确定度/陈旧量测、observed IDSW/duplicate、低 continuity、friend conflict、duplicate lock、资源或明确 ID 错绑始终保留。只有中心 failed 才进入二级接管，中心与二级均不可用才 distributed。assist/takeover 和适用性均进入 event 审计，该阶段 D4 全量测试为 193 项通过，最新 episode-time 增量后的总数见下一段。
+
+2026-07-13 episode-time 验收增量：`d4_p1_episode_fault_validation_matrix_v1` 将正常、中心失效后二级接管、二级再次失效后 peer 接管、missing ACK、stale epoch、expired lease 和 partition 分为 7 个独立规范场景。顺序降级场景先在 1.25 s 内形成二级 executable owner，再注入二级 heartbeat loss，并在 1.00 s 内完成 peer 原子 commit；验收上限分别为 1.5 s 和 2.5 s。normal 误降级为 0，四类安全异常均 fail closed，逐 tick owner、plan/coalition version、epoch 和 lease 审计完整。main/runtime 进一步按 AirSim episode clock 对 `normal`、`center_failure`、`center_secondary_failure`、`delay_0_5s`、`loss_30pct` 和 `partition_recovery` 六类场景各运行 10 seeds，共 60 case：60/60 safety outcome 通过，误降级、duplicate owner 和 split-brain prevention failure 均为 0。D4 全量回归为 198 项通过。该结果关闭 episode-clock 批量注入，不代表真实 RF、吞吐带宽、节点时钟漂移、操作系统/网络排队、乱序、重传或硬件链路已验证。
+
+2026-07-12 posefix terminal consistency 专项：历史四组 smoke 中，中心 owner、current coalition 且 hard risk 为空时仍有 1087/1094/585/1064 条 `terminal_consistent=false`，对应 control CSV 的 `d4_terminal_inconsistent` 为 158/112/113/122 条。该现象不是正常安全拒绝，而是 D4 将 D5 readiness 再次解释为 plan binding，并共享单一 arbiter 迟滞状态造成的实现缺陷。修复后 binding 只由 resource/global-track/version/coalition、friend、duplicate、mismatch 等硬证据决定；D5 lock/confidence/ambiguity/reacquire 保持独立，持续失锁只请求 cue。adapter 按 pair 隔离状态，并输出 binding reject reasons、visual state 和 state key；active secondary lease 过期显式 hold。D4 全量测试现为 167 项通过，历史 AirSim 日志不回写，main 仍需重跑系统验收。
+
+SimpleFlight 15 s 只用于诊断，30 个 active pair 物理命中为 0，系统物理拦截仍未闭合。D4 的 episode-clock 批量故障注入已经完成；后续 P1 转为真实吞吐带宽、节点时钟漂移、网络/操作系统排队抖动、乱序/重传、secondary-interceptor/peer 实际链路和长时间恢复统计，同时保留 heartbeat/link/cue/gimbal/source 与物理连续性审计。P2 只允许隔离式 benchmark，不替换轻量 CBBA 与 ACK/lease/epoch 合同。
+
+2026-07-11 P2 隔离 replay 已补齐：原生 6/6 场景满足预期安全结果，中心 -> 二级 -> 完全分布式与成员丢失/补位均 7 轮完成、最优绝对差距 0；其余故障在 1-3 轮 fail closed。MIT/CA-CBBA 仅做可选 path/source capability probe，默认输出 unavailable，不 import/执行外部工程，不新增依赖，也不进入在线 D4。该 deterministic replay 和已通过的 episode-clock 批量矩阵都不能替代真实网络验证。
 
 ### 历史实施记录（不作为当前状态）
 
@@ -68,7 +78,7 @@ D4 必须明确区分两类降级，因为触发源、优先级和恢复条件�
 | 类型 | 触发条件 | 主要目标 | 默认策略 |
 |---|---|---|---|
 | 被动降级 `passive_failover` | 中心节点被摧毁、失联、heartbeat 超时、中心摘要长期不可用、peer quorum 判定中心失败 | 在中心不可用时维持保底任务连续性 | 中心 C2 -> 二级节点 -> 完全无中心 CBBA/拍卖 |
-| 主动降级 `active_degradation` | 中心未失效，但 D1/D2/D3/D5 证据显示当前计划不可靠 | 防止“中心仍在线但局部计划已经失效” | 继续中心计划、请求中心重分配、请求二级节点辅助、主动降到二级或局部分布式 |
+| 主动降级 `active_degradation` | 中心未失效，但 D1/D2/D3/D5 证据显示当前计划不可靠 | 防止“中心仍在线但局部计划已经失效” | 继续中心计划、请求中心重分配或请求二级观测辅助；不转移 plan owner |
 
 被动降级是结构性故障处理；主动降级是一致性和不确定性仲裁。主动降级不代表中心失权，也不能允许本地节点自行改写 `global_track_id` 或绕过 D3/D5 的版本、身份和授权约束。
 
@@ -114,13 +124,13 @@ passive_failover
 
 active_degradation
   -> continue_center      : D5 与分配一致，D1/D2/D3 风险低
-  -> request_center_replan: D3 分配过期或版本不当前
+  -> request_center_replan: D3 分配过期/版本不当前/资源不可行，或 D5 持续硬错绑/重复锁定
   -> continue/assist      : 仅代价裕度不足、低置信度或无冲突 reacquire 时继续观察
   -> request_secondary_assist: D1/D2 风险升高但 D5 仍一致
-  -> degrade_to_secondary : D5 多帧硬不一致且二级节点覆盖该区域
-  -> degrade_to_distributed: D5 硬不一致持续且二级节点不可用或局部分区
   -> hold_for_review      : friend_conflict 或身份冲突
 ```
+
+`degrade_to_secondary/degrade_to_distributed` 只由 `C2Health == failed` 的被动链路产生。二级节点可见、覆盖充分或 readiness 高均不能在中心可用时触发接管。
 
 ---
 
@@ -230,6 +240,7 @@ D5 应向 D4 提供 `TerminalAssociationSummary`：
 - `resource_id`
 - `assigned_global_track_id`
 - `observed_global_track_id`
+- `terminal_evidence_applicable`（默认 `true`；兼容 `evidence_applicable`、`visual_evidence_applicable`、`within_terminal_visual_window`、`terminal_visual_window_active`）
 - `decision_state`: `locked | ambiguous | hold | reacquire`
 - `association_confidence`
 - `ambiguity_score`
@@ -240,10 +251,12 @@ D5 应向 D4 提供 `TerminalAssociationSummary`：
 
 主动降级风险：
 
-- D5 多帧 `ambiguous/hold/reacquire` 但没有观测 ID mismatch、资源错配、重复锁定或友方冲突时，只作为软证据。
+- `terminal_evidence_applicable=false` 且中心正常时，多帧 `ambiguous/hold/reacquire`、低置信度、高歧义、cross-view 软风险、无明确观测 ID 的 streak，以及仅含 D1/D2/D3 非 hard-active 因子的组合不参与辅助/重规划；这些风险保留审计并继续中心。
+- `terminal_evidence_applicable=true` 时，D5 多帧 `ambiguous/hold/reacquire` 但没有观测 ID mismatch、资源错配、重复锁定或友方冲突，只作为软证据。
 - 本地视觉候选与 D3 分配目标长期不一致。
 - `resource_id` 与 D3 指派资源不一致。
 - `friend_conflict=True`，必须进入 `hold_for_review`，不能降级为自动协商。
+- 明确的 observed/assigned `global_track_id` mismatch、重复锁定和资源错配在窗口外也不得忽略。
 
 ---
 
@@ -278,10 +291,14 @@ D4 仲裁器的核心原则：能继续中心计划就继续；能请求中心�
      -> 无硬风险则 continue_center；需要补充视角时 request_secondary_assist
 
 8. 若 D5 多帧硬不一致、长期目标 mismatch、资源错配、重复锁定或友方冲突：
-     -> 二级节点覆盖则 degrade_to_secondary
+     -> 中心可用时 request_center_replan
+     -> friend conflict 则 hold_for_review
+
+9. 只有中心 failed 才进入 fallback：
+     -> 二级节点持续 ready 则 degrade_to_secondary
      -> 二级不可用则 degrade_to_distributed
 
-9. 若 CBBA/拍卖不收敛：
+10. 若 CBBA/拍卖不收敛：
      -> hold / continue_observe，只输出审计日志
 ```
 
@@ -307,7 +324,6 @@ D4 仲裁器的核心原则：能继续中心计划就继续；能请求中心�
 进入完全无中心协商的条件：
 
 - 中心 failed 且二级节点 failed。
-- 主动降级时 D5 多帧不一致，且二级节点不可用或不覆盖。
 - 网络分区导致只能局部保底。
 
 CBBA/拍卖结果必须带 epoch、版本和冲突统计。若不收敛，不得发布有效 `AssignmentPlan`，只能发布 `EventRecord`。
@@ -563,7 +579,7 @@ CBBA 通过 winner/bid 向量扩散和一致性消解，在连通图、确定仲
 | D2 ID switch 上升但 D5 一致 | 请求二级辅助或中心重分配 |
 | D3 plan stale 但 D5 一致 | `request_center_replan` |
 | D5 多帧无冲突 `ambiguous/hold/reacquire` | 继续中心或请求二级 cue，不直接重规划/降级 |
-| D5 多帧硬不一致或资源/身份冲突 | 主动仲裁；二级覆盖则二级接管，否则完全无中心保底 |
+| D5 多帧硬不一致或资源错配/重复锁定 | 中心可用时 `request_center_replan`，不转移 owner |
 | D5 `friend_conflict=True` | `hold_for_review`，不发布新计划 |
 | CBBA 超时 | 不发布有效 assignment，只写事件 |
 | 中心恢复但日志落后 | 双轨校验失败，保持 degraded/suspect |
@@ -581,7 +597,7 @@ CBBA 通过 winner/bid 向量扩散和一致性消解，在连通图、确定仲
 7. mobile recon 的 `gimbal_pointing_ok`、`radar_global_track_cue` 和 `mobile_high_recon` capability 只能证明候选节点可用；二级网络同帧全覆盖不足或 not-registered 仍高时，D4 应继续记录 coverage/registration 断点并等待上游校准。
 8. `degrade_to_secondary` 前必须通过 D4 sustained readiness；进入 pending 后继续校验 source/version/lease，并区分 active 与回落。main 必须复用 adapter 实例，D3 只生成计划，D7/D6 分别消费 current binding 和 transition/timing/fallback metadata。
 9. 后续 D4/D5 AirSim 校准应优先使用 main runtime 的 P1 calibration sweep 和 D6 标准 bundle 输出；D4 只消费 sweep 产生的摘要与 report 字段，不直接启动 AirSim 或写 main runtime。
-10. 后续扰动矩阵需覆盖旧 epoch、过期 lease、成员不可执行、center-secondary、secondary-interceptor、peer split/recovery、digest conflict 和成员退出/重构；误降级测试必须有同 seed 正常/故障对照，并输出 false/missed degradation、动作混淆、重复 owner、恢复时间和 merge outcome。已通过的二级/peer 3/3 与缺 ACK 2/3 场景保持回归。
+10. 旧 epoch、过期 lease、center/secondary failure、30% loss、0.5 s delay 和 partition recovery 已在规范 replay 与六类、10-seed、60-case episode-clock 矩阵中保持回归；下一阶段只补真实带宽、时钟漂移、排队/抖动/乱序/重传、secondary-interceptor/peer 实际链路以及成员退出/重构。D6 继续输出 false/missed degradation、动作混淆、duplicate owner、split-brain prevention failure、恢复时间和 merge outcome。
 
 ---
 

@@ -4,7 +4,79 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
-**P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。当前未发现新的运行级 P0 阻塞断链。2026-07-12 已完成同一 `z=-30 m`、35 s、10-seed 的 M5N2 baseline/candidate paired、锁定后 1-5 帧 dropout、真实 `png_ttc` 10-seed、D1-D5 版本化模块证据和 D6 统一报告。该轮关闭的是“缺少可比实验和写盘接口”，没有关闭协同拦截性能缺口：M5N2 candidate 相对 baseline 退化且 coalition completion 仍为 0；D2 dense crossing 治理阈值未通过。soft prediction/trend coast 因而继续默认关闭，P2 仍只在隔离环境评估，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
+**P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。当前未发现新的运行级 P0 阻塞断链。2026-07-13 已完成严格 4 m/2 m dense crossing 各 20 seeds、M5N2 cooperative closure 40 个真实 AirSim episode、D4 六场景 60-case episode-time 故障矩阵和 ByteTrack/BoT-SORT 18-case 原生筛选。统一 D6 报告已正确展开 D1-D7 写盘证据。当前最高优先级仍是性能型 P1：M5N2 最佳 profile 的 coalition completion 为 `5/10`，未达到 `8/10`；原生 MOT 在 30/50 m 无检测，20 m 离线 precision/recall 约 `0.26-0.33`，没有后端通过准入。P2 仍只在隔离环境评估，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
+
+## 2026-07-13 P1 收敛实测与统一验收
+
+详细结果见 `subagent_reviews/MAIN_P1_CONVERGENCE_VALIDATION_REPORT_20260713.md`，统一 D6 证据位于 `research_modules/airsim_runtime/outputs/p1_convergence_20260713/d6_system_evidence/`。
+
+| 范围 | 真实 AirSim/离线验收结果 | 当前判定 |
+|---|---|---|
+| D1/D2 dense crossing | 4 m 与 2 m 横向间距各 20 seeds，共 40 episode、10200 条 evaluator-only truth；在线 truth 泄漏 0。最佳 GNN 候选 IDSW `1.3583 -> 0.6167`，下降 54.6%，continuity `0.9810 -> 0.9840`，P95 24 ms | 未达到冻结的 continuity `+0.10` 晋级条件；默认 GNN/Hungarian 不变，轻量 JPDA 不晋级 |
+| D4 episode-time fault matrix | normal、center failure、center+secondary failure、0.5 s delay、30% loss、partition recovery，共 60/60 safety outcome 通过；false degradation、duplicate owner 均为 0 | episode-time 接管/原子 fail-closed 合同闭合；不等同真实 RF/网络验证 |
+| M5N2 cooperative closure | 10 seeds、baseline + 3 个候选，共 40 episode；最佳 20 m/3 s/40 deg profile 为 `5/10`，其他为 `2/10`、`1/10`，baseline `0/10`；总体 `8/40` | 未达到 `8/10`。主要断点为 `d5_not_locked` 与 terminal detection acquisition timeout；继续列 P1 |
+| D5 原生 MOT | 18 个 1920x1080 筛选工况全部 connected；20 m native active/continuity=1、IDSW=0，ByteTrack P95 约 7.4 ms、BoT-SORT 约 16.2 ms；30/50 m 无检测 | 20 m precision/recall 仅约 0.26-0.33，0 个候选准入，未启动 confirmation；默认 detect 不变 |
+| 安全合同 | reserve unauthorized=0、global track rewrite=0、online truth use=0 | P0 安全门控保持 |
+| D6 | 修正 profile 分组并展开 40 case、160 条 D5 和 164 条 D7 证据；合同/控制/模式/物理严格分层 | 统一 P1 证据入口闭合；缺失的 D3 时序 churn 保持 unavailable |
+
+本轮还修正了 main-owned integrated point-mass 回归的旧断言：中心健康时，持续 D5 ID 不一致的正确动作是先请求二级辅助、再请求中心重规划，不直接转移计划 owner。该修正未改变 D4 模块策略。
+
+统一回归结果：D1 79、D2 93、D3 139（optional OR-Tools 1 skipped）、D4 198、D5 232、D6 115、D7 178、AirSim runtime 124、integrated/dry-run 11，全部通过。matplotlib `Axes3D` 为本机依赖 warning，不影响本轮二维图表。
+
+### D1-D7 PLAN/GAP 同步状态
+
+2026-07-13 已由 D1-D7 owner 分别复核并更新各自 `research_modules/Dx_*/PLAN.md` 与 `subagent_reviews/Dx_IMPLEMENTATION_GAP_AUDIT.md`。本次同步只更新状态、证据和后续验收口径，没有修改模块算法代码。当前权威开放 P1 为：
+
+| Owner | 当前开放 P1 |
+|---|---|
+| D1 | 真实漏检/虚警/遮挡/异步采样 fixture，区域时间窗和协方差长期治理 |
+| D2 | 更长 OOSM/遮挡/杂波 replay、gate/risk 与 NIS/NEES 分档；当前候选不晋级 |
+| D3 | 逐时刻 plan/coalition history、D5 feedback 权重/迟滞和动态 N/M 标定 |
+| D4 | 真实带宽、时钟漂移、排队/抖动/乱序/重传与长期恢复统计 |
+| D5 | 第二 primary 稳定获取、bbox 口径/尺度/时间对齐、30/50 m 召回和候选 confirmation |
+| D6 | 长期 multi-seed 趋势、producer 逐时刻 schema 和跨批次失败原因治理 |
+| D7 | 第二 primary 视觉 gate/acquisition、closing speed/range、三维几何和机动标定 |
+
+P2 内容保持原计划，不因本次文档同步提前进入默认依赖或在线路径。
+
+## 2026-07-13 远距雷达直接分配增量
+
+详细实现与实测见 `subagent_reviews/MAIN_RADAR_DIRECT_ASSIGNMENT_AIRSIM_VALIDATION_REPORT_20260713.md`。main 已将正常 CV 场景的相机指向改为持续消费当前 D3 binding 和 D2 预测位置；`--cv-reassignment-time` 只作为显式压力注入。D4 新增末端视觉证据适用范围：约 50 m 雷达中段、中心正常、计划 current/feasible 且只有 D1/D2/D3 软风险时继续中心计划，不请求二级视觉辅助；高不确定度/陈旧量测、已观测 IDSW/duplicate、计划硬失效和 D5 身份冲突保持原强门控。
+
+真实 2v2 复测为 14/14 `continue_center`、14/14 `radar_midcourse`、plan owner/version 全程 `center/v1`、owner mismatch=0。5v5 YOLOv8+ByteTrack 三 seed 为 105/105 `continue_center`、active degradation=0、在线 truth 违规=0，视觉平均处理耗时约 12.99 ms。P1 尚未关闭的是视觉效果准入：18 个相机-seed 流均因 episode 仅 8 个 warmup-inclusive 帧或召回不足未获 native MOT admission，第三主相机无稳定检测，200 m 二级相机离线召回约 0.08-0.09；后续需更长 episode 和视角/尺度/阈值校准，但不再作为远距中心分配的前置条件。
+
+## 2026-07-12 P1 Cooperative/Identity 收敛增量
+
+详细实施与实测报告见 `subagent_reviews/MAIN_P1_COOPERATIVE_AND_IDENTITY_CALIBRATION_REPORT_20260712.md`。
+
+| 范围 | 已关闭缺口 | 当前开放 P1 |
+|---|---|---|
+| D1 | 真实 AirSim replay 冻结、governed schema、独立 truth sidecar、双时间戳/协方差/NED/lineage | 增加漏检、虚警、遮挡和不等采样率 fixture |
+| D2 | 54 组固定矩阵、10/20-seed screening/confirmation、轻量 JPDA 同输入对照；真实 AirSim 证据分类修正 | 当前 crossing fixture 区分度不足，不能据 `IDSW=0` 关闭身份治理 |
+| D3/D7 | 27 组 cooperative 候选、质点预筛、滚动兼容版本保持视觉滤波历史；PN/PNG 公式未改 | top-3 至少 10 seeds；第二 primary 可达性和同步窗口仍未闭合 |
+| D4 | binding 与视觉 readiness 解耦；arbiter 按 pair 隔离；六类通信 replay 60/60 | 真实通信时序和二级/peer 联盟继续多 seed |
+| D5/main | 有 local track 的 596/596 条记录携带有效 typed camera geometry；无 truth 回填 | 同步双 primary 锁定、候选 margin 和失锁恢复仍需标定 |
+| D6/main | cooperative/dense crossing 中文报告、曲线和 D3-D7 evidence manifest | 长期趋势、难度分层和 10-seed cooperative 汇总 |
+
+本轮四个 35 s M5N2 case 全部 connected。D4 错误 `d4_terminal_inconsistent` 已降为 0；D6 active-primary 漏斗为 assigned/visible/associated `12/12`、contract `2/12`、control `0/12`、physical `1/12`，coalition completion `0/4`。12 s 稀疏 binding 专项中 `d4_owner_missing=0`。因此当前无新增 P0，但 M5N2 协同物理闭环仍是最高优先级 P1。
+
+真实 CV dense crossing 20 seeds 中默认 GNN 的 IDSW=0、identity/coverage continuity=1.0、false track=0、RMSE 约 0.164 m、P95 约 3.7 ms；轻量 JPDA 指标无改善且 P95 约 4.7 ms，`promotion_recommended=false`，默认 GNN/Hungarian 不变。
+
+### 2026-07-12 独立主资源、原生 MOT 与运行时失效接线
+
+本轮不再研究同时到达。高威胁目标继续采用 `2 primary + 1 reserve`，但两个 active primary 使用 `terminal_authorization_scope=per_primary`、`arrival_coordination_required=false`，分别通过 D3/D4/D5/相机质量/机动余量门控，并分别按 NED 三维 5 m 判断物理成功；reserve 仍为 standby，未激活不得切换视觉 PNG。PN、`png_vm`、`png_ttc` 公式均未修改。
+
+| 范围 | 本轮关闭的实现缺口 | 仍开放的 P1 |
+|---|---|---|
+| D3/main/D5/D7 | 同名授权字段已贯通 demand、plan、D5 Assignment、D7 binding 和 SimpleFlight topology；纯成本/诊断刷新不再推进 plan id/version/coalition epoch | 需真实 M5N2 多 seed 复跑，确认每个 primary 的 contract/control/mode/physical 四层结果 |
+| D4/main | AirSim frame 时钟驱动 center/secondary/peer heartbeat、ACK、lease、epoch、owner；无可执行 owner、分区、reconfiguring 时 fail-closed 阻断视觉 PNG | 需真实 center failure、center+secondary failure、missing ACK 多 seed episode |
+| D5/main | ByteTrack 与 BoT-SORT 原生准入监测接入真实帧；truth RPC 严格在 online result 之后，IoU fallback 不可准入 | 需实际运行 18-case screening 和每后端 10-seed 双相机 confirmation |
+| D2/main | 六 difficulty profile 不再只换标签；dropout 删除量测、clutter 注入匿名虚警、delayed/noisy 增加延迟并放大协方差；2 m tight geometry 必须真实捕获 | 需采集 4 m nominal 与 2 m tight 各 10/20 seeds 并完成阈值治理 |
+| D6 | 新增统一 P1 evidence CSV/JSON/中文 Markdown/PNG，分离 contract/control/mode/physical，汇总 D2-D5/D7 availability | 需用真实 AirSim 产物填充全部 source，当前代码回归不能替代实测结论 |
+
+本轮代码级回归已覆盖 main runtime、跨模块合同和 D1-D7 模块测试；原生 MOT 与新的多 seed AirSim 矩阵尚未实际启动，因此不得把“接口闭合”表述为算法已晋级。默认在线检测/关联主线继续保持 AirSim detect 与 GNN/Hungarian，ByteTrack/BoT-SORT 只有达到准入阈值后才进入主线评审。
+
+后续真实预检已完成 20/30/50 m 距离矩阵和 20 m、102 帧单相机确认。20 m 下 ByteTrack/BoT-SORT 均达到 native active=1、continuity=1、IDSW=0、fallback=0，P95 分别约 8.29/18.23 ms；30/50 m 均无检测。20 m 使用 AirSim detect 框做 IoU=0.5 post-online 评分时 precision/recall 仅约 0.29-0.32，因此两者均未通过准入。P1 开放项已从“原生 MOT 未运行”细化为：30/50 m 小目标检测召回、YOLO/AirSim bbox 口径与 IoU 多阈值标定、之后再运行完整 confidence 和多 seed 矩阵。
 
 ## 2026-07-12 P1 Terminal Closure 10-Seed 结果
 

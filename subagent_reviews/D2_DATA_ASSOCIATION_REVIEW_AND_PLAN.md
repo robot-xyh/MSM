@@ -2,7 +2,7 @@
 
 **定位**：维护稳定的 `global_track_id`，在目标交叉、密集编队、漏检、遮挡和虚警条件下抑制 ID Switch。
 **边界**：本文只讨论科研仿真、离线回放、多目标跟踪、数据关联、状态机和指标记录，不包含真实飞控、火控、毁伤、自动处置或绕过人工授权的流程。
-**当前代码口径**：已落地 GNN/Hungarian、二维常速度 Kalman fallback、Track 状态机、P1 D1-governed input/offline truth/10-seed runner，以及隔离 P2 frozen replay comparison。P2 v2 同场输出默认 GNN、模块内 JPDA/MHT research adapter 与 Stone Soup/FilterPy object adapter；后两者仍不是端到端 tracker，模块内 JPDA/MHT 也不是完整算法。P1 loader 可直接读取 D1 governed manifest/records，将 radar 球坐标投影到 N/E；声学/EO 因量测空间不同而显式跳过。
+**当前代码口径**：已落地 GNN/Hungarian、二维常速度 Kalman fallback、Track 状态机、P1 D1-governed input/offline truth/10/20-seed runner，以及隔离 P2 frozen replay comparison。2026-07-13 strict 4 m/2 m 各 20 seeds 的真实 D1 replay 已完成，最新模块回归为 `93 passed`。P2 v2 同场输出默认 GNN、模块内 JPDA/MHT research adapter 与 Stone Soup/FilterPy object adapter；后两者仍不是端到端 tracker，模块内 JPDA/MHT 也不是完整算法。P1 loader 可直接读取 D1 governed manifest/records，将 radar 球坐标投影到 N/E；声学/EO 因量测空间不同而显式跳过。
 
 ---
 
@@ -10,11 +10,11 @@
 
 - **P0**：无 P0 blocker。GNN/Hungarian、显式 `id_switch_count`、`track_continuity`、risk summary、replay helper、按输入集合长度运行、航迹质量评分、运动一致性约束和 quality-aware gate baseline 已是当前主线并保持回归。
 - **P1 合同层已闭合**：D1 governed adapter、online/offline truth 分离、association log/profile version、`d2-offline-truth-label/v1`、N-target dense/crossing fixture、至少 10-seed runner、availability-aware summary、M-of-N/false-track/NIS/NEES 接口及中心 canonical registry 基础已回归。
-- **P1 闭合后研究**：专用真实 AirSim dense/crossing 性能标定、完整 adaptive gate 和 JPDA 同 seed/同预算对照仍可继续，但不再是 P1 合同 blocker。
+- **P1 首轮真实标定已完成，长期标定仍开放**：strict nominal 4 m 与 tight 2 m 各 20 seeds 已形成真实证据。最佳 GNN 候选 IDSW `1.3583 -> 0.6167`（下降 `54.6%`），continuity `0.9810 -> 0.9840`，P95 `24 ms`；continuity 增益 `0.0030` 未达到冻结 `+0.10` 门限，因此不晋级。后续 P1 转向更长 OOSM、遮挡、杂波和生命周期标定。
 - **历史基线**：2026-07-10 的 5v5/2v2 批次和 2026-07-11 早期的 seeds 7/17/27 当时不足以关闭 D2 P1，且 T001 双 primary 尚未通过。这些只作为实施前/过渡基线，不代表当前状态。
 - **当前 ComputerVision 证据**：M=5、N=2 的 10 seeds 中，T001 双 primary 共识/计划授权为 8/10；D2 `id_switch_count=0`、错误 duplicate=0、`global_track_id` 改写/重绑=0 均为 10/10。
 - **commit 与物理边界**：二级/完全分布式 commit 正例通过，缺 ACK 时 fail-closed；这是下游沿用 D2 中心 `global_track_id` 的合同证据，不是 D2 owner failover/临时 ID 合并实现。SimpleFlight 15 s 只是诊断，30 个 active pair 无命中，物理拦截未闭合。
-- **回归与 P2 边界**：D1 governed loader 属于 P1 输入合同；P2 只做隔离 benchmark。GNN/JPDA/MHT 在同一 truth-free replay 上复用 Tracker，随后由 offline evaluator 输出 IDSW/continuity；Stone Soup 1.9.1 与 FilterPy 1.4.5 只输出 object-adapter latency，身份指标以 `unavailable_reason` 标明不可用。默认依赖与在线 GNN 未改变。
+- **回归与 P2 边界**：2026-07-13 最新 D2 完整回归为 `93 passed`；本机 Matplotlib `Axes3D` warning 不影响关联、指标或标定结论。D1 governed loader 属于 P1 输入合同；P2 只做隔离 benchmark。轻量 JPDA 在 strict 同输入对照中退化，GNN/JPDA/MHT research adapter 和 Stone Soup 1.9.1/FilterPy 1.4.5 object adapter 均不得进入默认主线。默认依赖与在线 GNN/Hungarian 未改变。
 
 ## 1. 研究问题
 
@@ -337,11 +337,11 @@ PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_da
 
 ## 11. 后续研究与 P2 边界
 
-当前顺序为：维护已闭合的 P1 D1-governed/replay/truth 合同和 10-seed runner；如有需要，再扩展真实 AirSim dense/crossing 性能标定与 adaptive gate/JPDA 同预算对照。P2 只保留隔离 adapter benchmark。
+当前顺序为：维护已闭合的 P1 D1-governed/replay/truth 合同和 10/20-seed runner，以 2026-07-13 strict 4 m/2 m 真实基线扩展更长 OOSM、遮挡、漏检、杂波和生命周期标定。P2 只保留隔离 adapter benchmark，不因本轮 JPDA 对照而升级主线。
 
 ### P1 闭合维护与后续性能研究
 
-1. 持续回归 D1 governed adapter、无 truth 在线输入/log、`d2-offline-truth-label/v1`、`rejected_pairs`、track lifecycle 与 threshold profile/version。如新增专用真实 dense/crossing replay，沿用同一合同。
+1. 持续回归 D1 governed adapter、无 truth 在线输入/log、`d2-offline-truth-label/v1`、`rejected_pairs`、track lifecycle 与 threshold profile/version。新增真实 OOSM/遮挡/杂波 replay 时沿用 strict 4 m/2 m 的同一合同。
 2. 用多 seed 数据治理 gate/risk/IDSW 阈值，输出 IDSW、continuity、duplicate、软风险误触发率和硬风险漏报率，并保留非 2/5 数量合同验收。
 3. 使用现有 M-of-N/false-track 接口做真实多 seed 网格标定，输出 init latency、漏建轨率和重复航迹率。
 4. 将现有 NIS/NEES 卡方覆盖接入 D6，按传感器、距离和场景分组，严格区分 covariance 输入合法性与滤波统计一致性。
@@ -403,9 +403,10 @@ Tracker 生成。离线 evaluator 在运行结束后计算 IDSW、identity/cover
 false-track、RMSE 和 NEES；NIS 来自在线 innovation。缺 truth 时必须保持 unavailable，
 不能写成零。默认 GNN/Hungarian 未变，完整 JPDA/MHT 仍只属于 P2 optional 对照。
 
-该入口可直接用于后续 main/D6 导入真实 governed replay 时的字段对齐。当前验收只
-关闭 D2-owned runner/schema/test 缺口；真实 AirSim 数据冻结、阈值选择、跨节点
-owner failover 和 D1 数值融合仍是开放项。
+该入口已用于 main/D6 导入真实 governed replay。2026-07-12 阶段只关闭了 D2-owned
+runner/schema/test 缺口；2026-07-13 strict 4 m/2 m 各 20-seed 数据冻结和首轮参数
+评审已经完成。更长 OOSM/遮挡/杂波、生命周期参数、跨节点 owner failover 和 D1
+数值融合仍是开放项。
 
 默认 5 目标、120 帧、10 seeds 的 CLI smoke 结果为：平均 IDSW `139.6`、identity
 continuity `0.691`、coverage continuity `0.924`、false-track `5.3`、RMSE
@@ -413,3 +414,115 @@ continuity `0.691`、coverage continuity `0.924`、false-track `5.3`、RMSE
 online truth leakage 为 0；每 seed 平均运行约 `0.586 s`。当前 profile 的 governance
 判定为不通过，说明长机动/重复交叉条件下 CV+GNN 身份连续性仍需真实数据标定，
 不能因为 runner 已实现而宣称关联问题已解决。
+
+## 15. P1 Dense/Crossing 固定标定矩阵评审
+
+新增 runner 将 GNN 工程参数治理固定为 54 个组合，并明确区分 screening、
+confirmation 和 promotion review：10-seed 阶段只负责在同一 frozen input digest 上
+排序；20-seed 阶段只复跑 baseline、最佳 GNN 和最佳输入上的轻量 JPDA。所有指标均
+来自已有 truth-isolated online tracker 加 evaluator-only truth，在线 leakage 必须为
+0。
+
+排序不能解释成自动调参或运行时切换。20-seed 准入同时要求 IDSW、identity
+continuity、false-track、p95 latency 和 truth isolation 五项门限，任何 unavailable
+均不通过。即使候选通过，输出也只是 `promotion_recommended`，默认在线关联器继续为
+GNN/Hungarian，需 main/D6 复核真实 AirSim 证据后另行决定。
+
+单元测试覆盖完整 54 组合、同 digest、10/20 seed 接口、逐项指标和缺真实输入时
+unavailable。2026-07-13 已输入 strict nominal 4 m 与 tight 2 m 各 20 seeds 的真实
+AirSim/D1 replay 和冻结预算：最佳 GNN 候选 IDSW `1.3583 -> 0.6167`（下降
+`54.6%`），continuity `0.9810 -> 0.9840`，P95 `24 ms`。continuity 增益只有
+`0.0030`，未达到冻结 `+0.10`，因此不晋级；轻量 JPDA 在同输入下退化，默认
+GNN/Hungarian 不变，也不宣称轻量 JPDA 已达到完整 JPDA 工程能力。
+
+### 15.1 D1 Freeze Truth Sidecar 评审
+
+D1 freeze 的在线产物和离线真值采用不同 schema：governed records 不含身份，
+`offline_truth.json` 才包含 evaluator-only samples。D2 现在保持该隔离边界，先转换
+在线 records，再由独立 adapter 把 D1 三维 NED sample 映射成 D2 二维离线 label。
+
+frame mapping 以 measurement timestamp 为主，不把 `source_payload_index` 无条件当作
+D2 frame index；只有同时间候选不唯一时才允许用二者相等消歧。任一 sample 的 NED、
+时间、identity、position 或 replay frame 映射不合法都会拒绝整个 sidecar，避免静默
+错标造成虚假的 IDSW/continuity 结论。适配结果只在 offline evaluator 中出现，不改变
+默认 GNN/Hungarian、中心 `global_track_id` 或在线日志合同。
+
+### 15.2 真实 AirSim 来源分类复核
+
+main 的冻结流程使用 `real_airsim_blocks_d1_governed_replay` 标识来源，原实现却仅以
+`source == "airsim"` 判定，造成真实输出的 `airsim_evidence` 假阴性。D2 已统一
+screening、confirmation 和 JPDA 对照的分类规则：legacy `airsim` 与
+`real_airsim_*` 为真实 AirSim，synthetic 来源不能靠字符串包含关系通过。该元数据修复
+不改变任何关联结果和准入结论。2026-07-13 strict 输出已使用修复后的分类规则生成；
+更早历史 JSON 不回写。
+
+## 16. 六档身份连续性难度治理评审
+
+本轮把 `nominal`、紧密交叉、漏检、杂波、延迟噪声和组合压力六档作为显式证据维度，
+而不是从 replay 名称猜测场景。实际注入参数由 main 记录，D2 只验证同档一致性、
+truth sidecar 隔离和输入 digest。相同 seed 可在不同档复用，但同档重复 seed 被拒绝。
+
+报告同时保留总体排序和按档指标，避免 nominal 的理想结果稀释 combined 的身份风险。
+每档都能查看 baseline/最佳 GNN/轻量 JPDA 的 IDSW、continuity、false-track、RMSE、
+latency 和准入结果。若全部算法仍取得零 IDSW 与满 continuity，系统明确记录该 fixture
+没有算法区分度；此时即使绝对指标很好，也不能据此升级 JPDA 或冻结新 GNN 参数。
+
+代码回归已覆盖六档复用 seed、分档聚合、combined 20-seed confirmation、无区分度
+判断、未知档位与不一致元数据 fail closed。真实六档 AirSim 采集和难度有效性结论仍属
+main/D6 后续工作。
+
+## 17. Truth-free 观测压力 transformer 评审
+
+仅把同一易 replay 改成六个标签不能形成有效算法试验。新增 transformer 因此工作在
+D1 governed record 层：保留真实捕获几何，仅对 D2 可见的雷达观测施加连续漏检、匿名
+杂波、异步到达和协方差膨胀。它不接受 sidecar，输出也由递归字段审计确认 online
+truth leak 为 0。
+
+设计上将“场景几何”和“观测压力”分离。2026-07-13 已由 main 完成并声明 2 m tight
+crossing 与 4 m nominal 各 20-seed 捕获，D2 没有移动观测去伪造交叉。实际 spacing
+写入 D1 provenance 后由 transformer 交叉校验。该边界继续适用于后续场景：transformer
+能证明压力注入真实发生且可复现，但不能单独证明目标真实间距，最终证据仍由 main
+capture metadata 与 D6 报告共同给出。
+
+专项测试覆盖统计差异、匿名虚警、双时间戳/协方差/lineage、同 seed 可复现、输入不被
+修改、truth key fail closed 和现有 D2 adapter 兼容。默认 GNN/Hungarian、54 组矩阵及
+JPDA 准入逻辑没有改变。
+
+## 18. Spacing provenance 与逐 seed 治理复核
+
+真实 AirSim P1 case 现在不能只依赖 manifest 的难度名称。D1 governed adapter 会把
+捕获时的 `target_spacing_m` 和 D2 stress profile 传入 frame metadata；loader 与 runner
+都验证 nominal/单压力约 4 m、tight/combined 约 2 m。spacing 缺失、来源值冲突或
+profile difficulty 冲突均 fail closed，避免把 4 m replay 错报成 2 m tight crossing。
+
+治理键保持 `(difficulty, seed)`。实际 dropout 时长、延迟和杂波数可按 seed 变化；
+profile/schema/version 等同档不变量仍须一致。分档输出补充 NIS/NEES availability，
+promotion 仍固定使用 IDSW、continuity、false-track、P95 和 truth leakage 五项门限，
+通过也只生成评审建议，不自动替换默认 GNN/Hungarian。
+
+## 19. 真实稀疏 Replay Truth 对齐复核
+
+D1 truth sidecar 是完整 AirSim truth 时间线，governed replay 则可能因某时刻没有匿名
+传感器观测而缺 frame。原 adapter 把这种合法稀疏性当作结构错误，导致 40-episode
+pipeline 在 `t=4.6` 中止。修复后仅精确对齐冻结 `1e-9 s` 容差内的 replay frame，
+缺 frame 样本计入 identity-free unmatched 审计，不做最近邻或伪造 label。
+
+alignment summary 随 FrozenReplayCase 进入 screening、confirmation、逐 seed 和分档
+聚合，明确报告 complete/partial/unavailable、matched/unmatched 数和原因。无匹配标签
+时 truth-based 指标 unavailable；非法位置/时间、重复样本、同时间多 frame 无法消歧
+仍 fail closed。spacing/provenance 和默认 GNN/JPDA promotion 合同未改变。
+
+## 20. 2026-07-13 Strict 真实 AirSim 权威状态
+
+- nominal 4 m 与 tight 2 m 各完成 `20` 个真实 D1 governed replay seeds；2 m 捕获不再
+  是待办项。
+- 最佳 GNN 候选 IDSW `1.3583 -> 0.6167`，下降 `54.6%`；continuity
+  `0.9810 -> 0.9840`；P95 loop latency `24 ms`。
+- 冻结 admission 要求 continuity 至少提高 `0.10`，实际只提高 `0.0030`，故候选不
+  晋级。轻量 JPDA 退化，默认 GNN/Hungarian 不变。
+- truth timestamp 只在 `1e-9 s` 内 exact matching。无严格对应 frame 的样本保留为
+  `partial/unmatched`，不做最近邻补齐，不伪造 label；online truth leakage 为 0。
+- 最新 D2 完整回归为 `93 passed`。本机 Matplotlib `Axes3D` warning 不影响 D2 功能。
+- 下一轮 P1 使用更长时窗和 OOSM/遮挡/漏检/杂波组合，标定 gate/risk、M-of-N、
+  false-track、NIS/NEES 和 track lifecycle。完整 JPDA/MHT、Stone Soup/FilterPy
+  端到端 tracker 与原生 3D 继续保持 P2 optional/offline 边界。

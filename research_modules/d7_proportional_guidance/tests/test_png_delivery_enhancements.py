@@ -66,7 +66,7 @@ def test_png_vm_does_not_apply_ttc_validity_gate() -> None:
     assert second.guidance_law == "png_vm"
 
 
-def test_local_track_and_plan_changes_emit_reset_and_do_not_inherit_history() -> None:
+def test_local_track_change_resets_but_monotonic_plan_update_preserves_history() -> None:
     bus = D7RuntimeBus(_png_config())
     for index in range(2):
         bus.evaluate_pair(_pair_input(index * 0.1, local_track_id="BT-1"))
@@ -80,13 +80,21 @@ def test_local_track_and_plan_changes_emit_reset_and_do_not_inherit_history() ->
     plan_switch = bus.evaluate_pair(
         _pair_input(0.3, local_track_id="BT-2", plan_version=2)
     )
-    assert plan_switch.terminal_lifecycle_reset is True
-    assert plan_switch.terminal_lifecycle_reset_reason == "binding_signature_changed"
-    assert plan_switch.terminal_filter_audit_state == "reset"
+    assert plan_switch.terminal_lifecycle_reset is False
+    assert plan_switch.metadata["binding_transition"] == "monotonic_current_update"
+    assert plan_switch.metadata["binding_state_preserved"] is True
+    assert plan_switch.stable_frame_count == 2
+
+    plan_regression = bus.evaluate_pair(
+        _pair_input(0.4, local_track_id="BT-2", plan_version=1)
+    )
+    assert plan_regression.terminal_lifecycle_reset is True
+    assert plan_regression.terminal_lifecycle_reset_reason == "binding_signature_changed"
+    assert plan_regression.terminal_filter_audit_state == "reset"
 
     global_switch_without_measurement = bus.evaluate_pair(
         _pair_input(
-            0.4,
+            0.5,
             local_track_id="BT-3",
             global_track_id="G2",
             observation=False,

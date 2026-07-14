@@ -20,6 +20,7 @@ from .associator import (
     TerminalAssociator,
     calibration_health_metadata,
 )
+from .geometry import image_resolution_scale
 from .models import (
     Assignment,
     CameraModel,
@@ -99,6 +100,8 @@ class GlobalTrackBinding:
     arrival_window_end_s: float | None = None
     activation_state: str = "active"
     metadata: dict[str, Any] = field(default_factory=dict)
+    terminal_authorization_scope: str = "coalition"
+    arrival_coordination_required: bool = True
 
     def __post_init__(self) -> None:
         if not self.global_track_id:
@@ -136,6 +139,15 @@ class GlobalTrackBinding:
             raise ValueError("arrival window start must not exceed end")
         object.__setattr__(self, "coordination_mode", str(self.coordination_mode).strip().lower())
         object.__setattr__(self, "activation_state", str(self.activation_state).strip().lower())
+        authorization_scope = str(self.terminal_authorization_scope).strip().lower()
+        if authorization_scope not in {"coalition", "per_primary"}:
+            raise ValueError("terminal_authorization_scope must be coalition or per_primary")
+        object.__setattr__(self, "terminal_authorization_scope", authorization_scope)
+        object.__setattr__(
+            self,
+            "arrival_coordination_required",
+            bool(self.arrival_coordination_required),
+        )
         if self.arrival_window_start_s is not None:
             object.__setattr__(self, "arrival_window_start_s", float(self.arrival_window_start_s))
         if self.arrival_window_end_s is not None:
@@ -377,6 +389,8 @@ def binding_from_assignment(
         arrival_window_start_s=assignment.arrival_window_start_s,
         arrival_window_end_s=assignment.arrival_window_end_s,
         activation_state=assignment.activation_state,
+        terminal_authorization_scope=assignment.terminal_authorization_scope,
+        arrival_coordination_required=assignment.arrival_coordination_required,
     )
 
 
@@ -696,6 +710,8 @@ def _publish_registered(
         "arrival_window_start_s": binding.arrival_window_start_s,
         "arrival_window_end_s": binding.arrival_window_end_s,
         "activation_state": binding.activation_state,
+        "terminal_authorization_scope": binding.terminal_authorization_scope,
+        "arrival_coordination_required": binding.arrival_coordination_required,
         "global_id_policy": "existing_global_track_id_support_only",
         "truth_id_online_use": "ignored",
         "truth_identity_used": False,
@@ -735,6 +751,8 @@ def _publish_registered(
         arrival_window_start_s=binding.arrival_window_start_s,
         arrival_window_end_s=binding.arrival_window_end_s,
         activation_state=binding.activation_state,
+        terminal_authorization_scope=binding.terminal_authorization_scope,
+        arrival_coordination_required=binding.arrival_coordination_required,
         association_source="geometric_detect",
         measurement_timestamp=local_track.timestamp,
         arrival_timestamp=(
@@ -879,6 +897,12 @@ def _normalize_binding(binding: GlobalTrackBinding | Assignment | Mapping[str, A
             arrival_window_end_s=_optional_float(binding.get("arrival_window_end_s")),
             activation_state=str(binding.get("activation_state", binding.get("binding_state", "active"))),
             metadata=_online_metadata(binding.get("metadata", {})),
+            terminal_authorization_scope=str(
+                binding.get("terminal_authorization_scope", "coalition")
+            ),
+            arrival_coordination_required=bool(
+                binding.get("arrival_coordination_required", True)
+            ),
         )
     raise TypeError(f"unsupported binding type: {type(binding)!r}")
 
@@ -1086,6 +1110,12 @@ def _pair_candidate(
             "bbox_area_px": _finite_or_none(record.bbox_area_px),
             "offline_truth_global_id": record.offline_truth_global_id,
             "binding_source": record.binding.binding_source,
+            "terminal_authorization_scope": (
+                record.binding.terminal_authorization_scope
+            ),
+            "arrival_coordination_required": (
+                record.binding.arrival_coordination_required
+            ),
             "truth_id_online_use": "ignored",
             "global_id_policy": "existing_global_track_id_support_only",
         },
@@ -1182,8 +1212,11 @@ def adaptive_pixel_covariance_px(
     area = max(0.0, float(bbox_area_px))
     width, height = image_size
     image_diag_px = hypot(float(width), float(height))
-    sigma = max(float(min_sigma_px), 0.5 * sqrt(area), 0.008 * image_diag_px)
-    sigma = float(np.clip(sigma, float(min_sigma_px), float(max_sigma_px)))
+    pixel_scale = image_resolution_scale(image_size)
+    scaled_min_sigma = float(min_sigma_px) * pixel_scale
+    scaled_max_sigma = float(max_sigma_px) * pixel_scale
+    sigma = max(scaled_min_sigma, 0.5 * sqrt(area), 0.008 * image_diag_px)
+    sigma = float(np.clip(sigma, scaled_min_sigma, scaled_max_sigma))
     return np.diag([sigma * sigma, sigma * sigma])
 
 

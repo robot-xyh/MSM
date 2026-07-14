@@ -55,6 +55,7 @@ _HARD_ASSIGNMENT_RISK_FACTORS = frozenset(
     {
         "d3_assignment_not_current",
         "d3_assignment_stale",
+        "d3_resource_infeasible",
     }
 )
 
@@ -117,6 +118,7 @@ class AssignmentValiditySummary:
     is_current: bool = True
     plan_age_s: float = 0.0
     cost_margin: float = 1.0
+    resource_feasible: bool = True
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -128,6 +130,7 @@ class TerminalAssociationSummary:
     association_confidence: float
     ambiguity_score: float
     coverage_cell: str
+    terminal_evidence_applicable: bool = True
     observed_global_track_id: str | None = None
     consecutive_non_locked_frames: int = 0
     consecutive_mismatch_frames: int = 0
@@ -309,8 +312,14 @@ class ActiveDegradationArbiter:
             assignment_validity,
             terminal_association,
         )
+        terminal_arbitration_required = self._terminal_requires_active_arbitration(
+            terminal_association
+        )
         risk_window_met = self._update_risk_window(
-            bool(risk_factors) or not terminal_consistent or c2_health == C2Health.FAILED
+            bool(risk_factors)
+            or not terminal_consistent
+            or terminal_arbitration_required
+            or c2_health == C2Health.FAILED
         )
 
         if terminal_association.friend_conflict:
@@ -344,7 +353,51 @@ class ActiveDegradationArbiter:
                 risk_factors=risk_factors,
             )
 
-        if self._terminal_requires_active_arbitration(terminal_association) and risk_window_met:
+        if self._center_plan_requires_replan(
+            assignment_validity,
+            terminal_association,
+            risk_window_met=risk_window_met,
+        ):
+            return self._apply_hysteresis(
+                ActiveDegradationDecision(
+                    mode=DegradationMode.ACTIVE_DEGRADATION,
+                    action=DegradationAction.REQUEST_CENTER_REPLAN,
+                    reason="center_plan_hard_invalidation",
+                    coverage_cell=coverage_cell,
+                    terminal_consistent=terminal_consistent,
+                    risk_factors=risk_factors,
+                ),
+                current_time_s,
+                terminal_consistent=terminal_consistent,
+                risk_factors=risk_factors,
+            )
+
+        if (
+            c2_health == C2Health.NORMAL
+            and not terminal_association.terminal_evidence_applicable
+            and terminal_consistent
+            and risk_factors
+            and all(
+                factor.startswith(("d1_", "d2_", "d3_"))
+                for factor in risk_factors
+            )
+            and not self._risk_requires_active_arbitration(risk_factors)
+        ):
+            return self._apply_hysteresis(
+                ActiveDegradationDecision(
+                    mode=DegradationMode.NONE,
+                    action=DegradationAction.CONTINUE_CENTER,
+                    reason="midcourse_soft_risk_continue_center",
+                    coverage_cell=coverage_cell,
+                    terminal_consistent=True,
+                    risk_factors=risk_factors,
+                ),
+                current_time_s,
+                terminal_consistent=True,
+                risk_factors=risk_factors,
+            )
+
+        if terminal_arbitration_required and risk_window_met:
             if not self._terminal_has_assignment_conflict(
                 assignment_validity,
                 terminal_association,
@@ -357,34 +410,34 @@ class ActiveDegradationArbiter:
                             reason="terminal_persistent_reacquire_request_secondary_cue",
                             target_node_id=secondary_assist.node_id,
                             coverage_cell=coverage_cell,
-                            terminal_consistent=False,
+                            terminal_consistent=terminal_consistent,
                             risk_factors=(*risk_factors, "terminal_persistent_reacquire"),
                         ),
                         current_time_s,
-                        terminal_consistent=False,
+                        terminal_consistent=terminal_consistent,
                         risk_factors=(*risk_factors, "terminal_persistent_reacquire"),
                     )
                 return self._apply_hysteresis(
                     ActiveDegradationDecision(
                         mode=DegradationMode.NONE,
                         action=DegradationAction.CONTINUE_CENTER,
-                        reason="terminal_persistent_reacquire_no_secondary",
+                        reason="terminal_persistent_reacquire_center_binding_stable",
                         coverage_cell=coverage_cell,
-                        terminal_consistent=False,
+                        terminal_consistent=terminal_consistent,
                         risk_factors=(*risk_factors, "terminal_persistent_reacquire"),
                     ),
                     current_time_s,
-                    terminal_consistent=False,
+                    terminal_consistent=terminal_consistent,
                     risk_factors=(*risk_factors, "terminal_persistent_reacquire"),
                 )
             return self._apply_hysteresis(
-                self._fallback_decision(
-                    DegradationMode.ACTIVE_DEGRADATION,
-                    secondary_takeover,
-                    coverage_cell,
-                    terminal_consistent,
-                    (*risk_factors, "terminal_persistent_disagreement"),
-                    "terminal_persistent_disagreement",
+                ActiveDegradationDecision(
+                    mode=DegradationMode.ACTIVE_DEGRADATION,
+                    action=DegradationAction.REQUEST_CENTER_REPLAN,
+                    reason="terminal_persistent_disagreement_request_center_replan",
+                    coverage_cell=coverage_cell,
+                    terminal_consistent=terminal_consistent,
+                    risk_factors=(*risk_factors, "terminal_persistent_disagreement"),
                 ),
                 current_time_s,
                 terminal_consistent=terminal_consistent,
@@ -647,6 +700,8 @@ class ActiveDegradationArbiter:
             factors.append("d3_assignment_not_current")
         if assignment.plan_age_s > cfg.max_plan_age_s:
             factors.append("d3_assignment_stale")
+        if not assignment.resource_feasible:
+            factors.append("d3_resource_infeasible")
         if assignment.cost_margin < cfg.min_cost_margin:
             factors.append("d3_assignment_cost_margin_low")
         if terminal.resource_id != assignment.assigned_resource_id:
@@ -657,17 +712,21 @@ class ActiveDegradationArbiter:
                 terminal.observed_global_track_id is not None
                 and terminal.observed_global_track_id != assignment.global_track_id
             )
-            or terminal.consecutive_mismatch_frames > 0
+            or (
+                terminal.terminal_evidence_applicable
+                and terminal.consecutive_mismatch_frames > 0
+            )
         ):
             factors.append("d5_terminal_id_mismatch")
         if terminal.duplicate_terminal_lock:
             factors.append("d5_duplicate_terminal_lock")
-        if terminal.cross_view_risk_score >= cfg.cross_view_risk_high:
-            factors.append("d5_cross_view_risk_high")
-        if terminal.ambiguity_score >= cfg.terminal_ambiguity_high:
-            factors.append("d5_terminal_ambiguity_high")
-        if terminal.association_confidence < cfg.terminal_confidence_min:
-            factors.append("d5_terminal_confidence_low")
+        if terminal.terminal_evidence_applicable:
+            if terminal.cross_view_risk_score >= cfg.cross_view_risk_high:
+                factors.append("d5_cross_view_risk_high")
+            if terminal.ambiguity_score >= cfg.terminal_ambiguity_high:
+                factors.append("d5_terminal_ambiguity_high")
+            if terminal.association_confidence < cfg.terminal_confidence_min:
+                factors.append("d5_terminal_confidence_low")
         return tuple(factors)
 
     def _terminal_is_consistent(
@@ -675,51 +734,53 @@ class ActiveDegradationArbiter:
         assignment: AssignmentValiditySummary,
         terminal: TerminalAssociationSummary,
     ) -> bool:
-        # This flag represents whether D4 still trusts the center-plan binding,
-        # not whether D5 is currently ready to hand off terminal guidance.
+        return not self.terminal_binding_reject_reasons(assignment, terminal)
+
+    def terminal_binding_reject_reasons(
+        self,
+        assignment: AssignmentValiditySummary,
+        terminal: TerminalAssociationSummary,
+    ) -> tuple[str, ...]:
+        """Return hard reasons why the current plan binding is not trustworthy.
+
+        D5 visual readiness is deliberately excluded. A low-confidence lock,
+        ambiguity, or prolonged reacquire may request another cue, but it does
+        not prove that the center-owned resource/track binding is wrong.
+        """
+
+        reasons: list[str] = []
         if terminal.friend_conflict:
-            return False
+            reasons.append("terminal_friend_conflict")
         if terminal.duplicate_terminal_lock:
-            return False
+            reasons.append("d5_duplicate_terminal_lock")
         if not assignment.is_current:
-            return False
+            reasons.append("d3_assignment_not_current")
         if assignment.plan_age_s > self.config.max_plan_age_s:
-            return False
+            reasons.append("d3_assignment_stale")
+        if not assignment.resource_feasible:
+            reasons.append("d3_resource_infeasible")
         if terminal.resource_id != assignment.assigned_resource_id:
-            return False
+            reasons.append("d5_resource_assignment_mismatch")
         if terminal.assigned_global_track_id != assignment.global_track_id:
-            return False
+            reasons.append("d5_terminal_id_mismatch")
         if (
             terminal.observed_global_track_id is not None
             and terminal.observed_global_track_id != assignment.global_track_id
         ):
-            return False
-        if terminal.consecutive_mismatch_frames > 0:
-            return False
-
-        if terminal.decision_state in {
-            TerminalDecisionState.AMBIGUOUS,
-            TerminalDecisionState.REACQUIRE,
-        }:
-            return terminal.consecutive_non_locked_frames <= max(
-                0,
-                int(self.config.non_locked_frame_limit),
-            )
-
-        if terminal.decision_state != TerminalDecisionState.LOCKED:
-            return False
-        if terminal.cross_view_risk_score >= self.config.cross_view_risk_high:
-            return False
-        if terminal.association_confidence < self.config.terminal_confidence_min:
-            return False
-        if terminal.ambiguity_score >= self.config.terminal_ambiguity_high:
-            return False
-        return True
+            reasons.append("d5_terminal_id_mismatch")
+        if (
+            terminal.terminal_evidence_applicable
+            and terminal.consecutive_mismatch_frames > 0
+        ):
+            reasons.append("d5_terminal_id_mismatch")
+        return tuple(dict.fromkeys(reasons))
 
     def _terminal_requires_active_arbitration(
         self,
         terminal: TerminalAssociationSummary,
     ) -> bool:
+        if not terminal.terminal_evidence_applicable:
+            return False
         if terminal.consecutive_mismatch_frames >= self.config.mismatch_frame_limit:
             return True
         if (
@@ -734,6 +795,39 @@ class ActiveDegradationArbiter:
         ):
             return True
         return False
+
+    def _center_plan_requires_replan(
+        self,
+        assignment: AssignmentValiditySummary,
+        terminal: TerminalAssociationSummary,
+        *,
+        risk_window_met: bool,
+    ) -> bool:
+        """Return whether a center-owned plan is no longer executable as-is."""
+
+        if not assignment.is_current:
+            return True
+        if assignment.plan_age_s > self.config.max_plan_age_s:
+            return True
+        if not assignment.resource_feasible:
+            return True
+        if terminal.duplicate_terminal_lock:
+            return True
+        if terminal.resource_id != assignment.assigned_resource_id:
+            return True
+        if terminal.assigned_global_track_id != assignment.global_track_id:
+            return True
+        observed_track_mismatch = bool(
+            terminal.observed_global_track_id is not None
+            and terminal.observed_global_track_id != assignment.global_track_id
+        )
+        if observed_track_mismatch and not terminal.terminal_evidence_applicable:
+            return True
+        return bool(
+            observed_track_mismatch
+            and terminal.consecutive_mismatch_frames >= self.config.mismatch_frame_limit
+            and risk_window_met
+        )
 
     def _terminal_has_assignment_conflict(
         self,

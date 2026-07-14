@@ -138,16 +138,26 @@ Output candidate plan record:
 - Logs must include `decision_state`, version, total cost, and per-assignment cost breakdown.
 - When main/D4 requests `request_center_replan`, the next D3 plan must increment version and main/runtime must log `replan_reason`, `supersedes_plan_id`, `supersedes_plan_version`, and `active_plan_owner="center"`.
 
-## Validation Status Through 2026-07-11
+## Validation Status Through 2026-07-13
 
 - The real 5v5 calibration completed 60 connected cases: seeds 1-10, secondary heights 50/200 m, and `no_degradation`, `degrade_to_secondary`, and `degrade_to_distributed` cases.
 - The historical runtime path has not activated a secondary plan. All 20 requested secondary cases fell back conservatively to distributed operation; 15 of 1300 D4 decisions reached momentary `takeover_ready`, all stopped at `pending_secondary_plan`, and `secondary_plan_active=0`.
 - D3 provides the strict activation contract. The current secondary and distributed commit positive cases passed, and missing ACK aborted fail-closed. Stale-center, lease/epoch, and recovery cases remain long-term main/D4 regression and calibration concerns, not open D3 P1 contract work.
 - The deterministic 3v5, 5v3, target-arrival, resource-failure, demand-change, and incremental/full suite closes the D3 N/M interface contract. Real non-equal multi-seed replay remains parameter-tuning evidence rather than missing implementation.
 - The current 2026-07-11 ComputerVision M-to-N validation used 5 resources, 2 targets, and 10 seeds. T001 achieved two-primary visual consensus with current-plan authorization in 8/10 seeds; seeds 7 and 27 remain regressions. Combined with incremental planning and role-aware primary preservation, the D3 P1 contract layer is closed.
-- Downstream secondary and distributed commit positive cases passed, while missing ACK aborted fail-closed with zero D7 permissions. The 15 s SimpleFlight run remained diagnostic: all 30 active pairs missed, so the physical interception loop is still open.
+- Real M5N2 SimpleFlight validation has now run. It used `2 primary + 1 standby reserve`, did not require simultaneous primary arrival, and completed 40 episodes: 10 baseline seeds plus 10 seeds for each of three candidates.
+- Coalition completion was `0/10` for baseline, `5/10` for the best `20 m / 3 s / 40 deg` profile, and `2/10` and `1/10` for the other two profiles. The best profile did not meet the `8/10` acceptance gate, so cooperative physical closure remains open even though real AirSim execution is no longer pending.
+- Plan version, stale-plan rejection, member-role contracts, and reserve standby safety remained in force. The reserve was not authorized as an active primary.
 - P2 results remain isolated optional benchmarks and do not select or replace the default Hungarian/demand-slot path.
-- D3 unit regression currently reports `118 passed, 1 skipped`; the skip is the installed-only optional OR-Tools test.
+- D3 unit regression currently reports `139 passed, 1 skipped`; the skip is the installed-only optional OR-Tools test.
+
+## Open P1 Calibration Work
+
+- Persist per-planning-tick plan history, including plan id/version, coalition membership/epoch, D5 feedback, hysteresis decision/reason, and assignment outcome.
+- D6 can expand all 40 M5N2 cases, but the formal aggregate does not contain per-tick plan history. Membership/version churn is therefore `unavailable` and must not be inferred or filled with zero.
+- Calibrate D5 feedback weights and `delta`, `min_dwell`, and `reassignment_switch_penalty` from paired per-tick evidence.
+- Run dynamic N/M multi-seed cases, including 3v5, 5v3, target arrival, resource loss, and demand changes.
+- Do not add a simultaneous-arrival requirement to this P1 acceptance path.
 
 ## Future OR-Tools Path
 

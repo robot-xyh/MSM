@@ -206,10 +206,36 @@ def test_assignment_records_export_stale_rejection_reason_metadata() -> None:
 
     assert record.stale_plan_rejected is True
     assert record.stale_reject_reason == "stale_previous_version"
+    assert record.stale_reject_count == 1
+    assert record.assignment_validity_state == "stale"
+    assert record.terminal_authorization_eligible is False
+    assert record.plan_rollback_detected is False
     assert record.latest_plan_id == second.plan_id
     assert record.latest_plan_version == second.version
     assert evidence.stale_plan_rejected is True
     assert evidence.stale_reject_reason == "stale_previous_version"
+
+
+def test_assignment_records_flag_explicit_plan_identity_rollback() -> None:
+    planner = AssignmentPlanner(config=PlannerConfig(enable_hysteresis=False))
+    plan = planner.plan(
+        [TargetTrack("T1", threat_score=0.9, covariance=0.1, window_cost=0.1)],
+        [ResourceState("R1")],
+        timestamp=4.0,
+    )
+    annotated = replace(
+        plan,
+        metadata={
+            **dict(plan.metadata),
+            "plan_rollback_detected": True,
+            "plan_churn_count": 3,
+        },
+    )
+
+    (record,) = assignment_records_from_plan(annotated)
+
+    assert record.plan_rollback_detected is True
+    assert record.plan_churn_count == 3
 
 
 def test_assignment_records_can_preserve_plan_authorization_state() -> None:

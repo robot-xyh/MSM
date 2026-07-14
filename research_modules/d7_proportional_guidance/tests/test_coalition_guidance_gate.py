@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -132,6 +133,222 @@ def test_coordinated_modes_do_not_switch_before_arrival_window(
     assert output.terminal_contract_reject_reason == "coalition_window_not_open"
     assert output.coalition_gate_reject_reason == "coalition_window_not_open"
     assert output.png_command is None
+
+
+def test_per_primary_scope_switches_without_common_lock_or_arrival_window() -> None:
+    binding = replace(
+        _coalition_binding(resource_id="R1", role="primary", wave_id=0),
+        terminal_authorization_scope="per_primary",
+        arrival_coordination_required=False,
+        arrival_window_start_s=5.0,
+        arrival_window_end_s=6.0,
+    )
+    own_lock_only = {
+        **_terminal_association(binding),
+        "coalition_visual_complete": False,
+        "planned_cooperative_lock": False,
+        "support_count": 1,
+        "required_resource_count": 2,
+    }
+    bus = D7RuntimeBus(_config())
+    outputs = [
+        bus.evaluate_pair(
+            _pair_input(
+                binding,
+                timestamp_s=timestamp_s,
+                half_size=half_size,
+                terminal_association=own_lock_only,
+            )
+        )
+        for timestamp_s, half_size in ((0.0, 28.0), (0.1, 32.0), (0.2, 36.0))
+    ]
+    final = outputs[-1]
+    record = final.as_log_record()
+    summary = summarize_runtime_bus_outputs(outputs)
+
+    assert all(row.terminal_contract_allowed for row in outputs)
+    assert final.visual_png_enabled is True
+    assert final.guidance_law == "png_vm"
+    assert final.terminal_authorization_scope == "per_primary"
+    assert final.arrival_coordination_required is False
+    assert final.per_primary_authorization_active is True
+    assert final.coalition_visual_completion_bypassed is True
+    assert final.bypassed_arrival_only is True
+    assert record["terminal_authorization_scope"] == "per_primary"
+    assert record["bypassed_arrival_only"] is True
+    assert summary["terminal_authorization_scope_counts"] == {"per_primary": 3}
+    assert summary["bypassed_arrival_only_count"] == 3
+
+
+def test_per_primary_scope_requires_explicit_arrival_coordination_false() -> None:
+    binding = replace(
+        _coalition_binding(resource_id="R1", role="primary", wave_id=0),
+        terminal_authorization_scope="per_primary",
+        arrival_coordination_required=True,
+        arrival_window_start_s=5.0,
+        arrival_window_end_s=6.0,
+    )
+    terminal = {
+        **_terminal_association(binding),
+        "coalition_visual_complete": False,
+    }
+    decision = evaluate_terminal_png_contract(
+        binding=binding,
+        d4_permission=_permission(binding),
+        terminal_association=terminal,
+        timestamp_s=4.9,
+        resource_id="R1",
+    )
+
+    assert decision.allowed is False
+    assert decision.reject_reason == "coalition_window_not_open"
+    assert decision.per_primary_authorization_active is False
+    assert decision.bypassed_arrival_only is False
+
+
+def test_per_primary_scope_does_not_activate_standby_reserve() -> None:
+    reserve = replace(
+        _coalition_binding(
+            resource_id="R3",
+            role="reserve",
+            wave_id=1,
+            activation_state="standby",
+            arrival_window=(3.0, 4.0),
+        ),
+        terminal_authorization_scope="per_primary",
+        arrival_coordination_required=False,
+    )
+    decision = evaluate_terminal_png_contract(
+        binding=reserve,
+        d4_permission=_permission(reserve),
+        terminal_association=_terminal_association(reserve),
+        timestamp_s=1.0,
+        resource_id="R3",
+    )
+
+    assert decision.allowed is False
+    assert decision.reject_reason == "coalition_not_activated"
+
+
+def test_per_primary_scope_does_not_bypass_arrival_gate_for_activated_reserve() -> None:
+    reserve = replace(
+        _activated_reserve(),
+        terminal_authorization_scope="per_primary",
+        arrival_coordination_required=False,
+    )
+    decision = evaluate_terminal_png_contract(
+        binding=reserve,
+        d4_permission=_permission(reserve),
+        terminal_association=_terminal_association(reserve),
+        timestamp_s=2.9,
+        resource_id="R3",
+    )
+
+    assert decision.allowed is False
+    assert decision.reject_reason == "coalition_window_not_open"
+    assert decision.per_primary_authorization_active is False
+
+
+@pytest.mark.parametrize(
+    ("permission", "expected_reason"),
+    [
+        (
+            D4GuidancePermission(action="request_center_replan", mode="pending"),
+            "d4_reassign_pending",
+        ),
+        (
+            D4GuidancePermission(action="degrade_to_distributed", mode="reconfiguring"),
+            "d4_reassign_pending",
+        ),
+    ],
+)
+def test_per_primary_scope_keeps_d4_pending_and_reconfiguring_blocked(
+    permission: D4GuidancePermission,
+    expected_reason: str,
+) -> None:
+    binding = replace(
+        _coalition_binding(resource_id="R1", role="primary", wave_id=0),
+        terminal_authorization_scope="per_primary",
+        arrival_coordination_required=False,
+    )
+    decision = evaluate_terminal_png_contract(
+        binding=binding,
+        d4_permission=permission,
+        terminal_association=_terminal_association(binding),
+        timestamp_s=1.1,
+        resource_id="R1",
+    )
+
+    assert decision.allowed is False
+    assert decision.reject_reason == expected_reason
+
+
+@pytest.mark.parametrize(
+    ("permission_factory", "expected_reason"),
+    [
+        (
+            lambda binding: _fallback_permission(binding, acked=("R1",)),
+            "coalition_required_ack_incomplete",
+        ),
+        (
+            lambda binding: _fallback_permission(binding, lease_expires_at_s=1.0),
+            "coalition_commit_lease_expired",
+        ),
+        (
+            lambda binding: _fallback_permission(binding, state="reconfiguring"),
+            "coalition_commit_reconfiguring",
+        ),
+    ],
+)
+def test_per_primary_scope_keeps_distributed_commit_safety_gates(
+    permission_factory: Callable[[AssignmentGuidanceBinding], object],
+    expected_reason: str,
+) -> None:
+    binding = replace(
+        _coalition_binding(resource_id="R1", role="primary", wave_id=0),
+        terminal_authorization_scope="per_primary",
+        arrival_coordination_required=False,
+    )
+    decision = evaluate_terminal_png_contract(
+        binding=binding,
+        d4_permission=permission_factory(binding),
+        terminal_association=_terminal_association(binding),
+        timestamp_s=1.1,
+        resource_id="R1",
+    )
+
+    assert decision.allowed is False
+    assert decision.reject_reason == expected_reason
+
+
+@pytest.mark.parametrize(
+    ("terminal_update", "expected_reason"),
+    [
+        ({"friend_conflict_state": "verified_friend"}, "friend_conflict"),
+        ({"duplicate_terminal_lock_risk": True}, "duplicate_lock_conflict"),
+        ({"decision_state": "reacquire"}, "d5_not_locked"),
+    ],
+)
+def test_per_primary_scope_keeps_own_d5_safety_gates(
+    terminal_update: dict[str, object],
+    expected_reason: str,
+) -> None:
+    binding = replace(
+        _coalition_binding(resource_id="R1", role="primary", wave_id=0),
+        terminal_authorization_scope="per_primary",
+        arrival_coordination_required=False,
+    )
+    terminal = {**_terminal_association(binding), **terminal_update}
+    decision = evaluate_terminal_png_contract(
+        binding=binding,
+        d4_permission=_permission(binding),
+        terminal_association=terminal,
+        timestamp_s=0.0,
+        resource_id="R1",
+    )
+
+    assert decision.allowed is False
+    assert decision.reject_reason == expected_reason
 
 
 @pytest.mark.parametrize(

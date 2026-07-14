@@ -29,7 +29,11 @@ from airsim_runtime.adapters import (
 )
 from airsim_runtime.blocks import BlocksProcessManager
 from airsim_runtime.d4d5_stress import run_d4d5_stress_analysis
-from airsim_runtime.episode_bus import MainAirSimEpisodeBus, run_main_episode_bus
+from airsim_runtime.episode_bus import (
+    MainAirSimEpisodeBus,
+    _d4_permission,
+    run_main_episode_bus,
+)
 from airsim_runtime.intercept import (
     InterceptPair,
     _apply_intercept_detection_dropout,
@@ -37,6 +41,7 @@ from airsim_runtime.intercept import (
     _assigned_detection,
     _initial_pairs,
     _intercept_success_semantics,
+    _refresh_pair_assignments,
     _reset_midcourse_selector_for_binding_change,
     _terminal_detection_acquisition_timed_out,
     _terminal_delivery_for_pair,
@@ -67,6 +72,8 @@ from airsim_runtime.real_runtime import RealAirSimRuntimeClient
 from airsim_runtime.run_blocks_sequence import (
     _build_sequence_run,
     _d4d5_calibration_rows,
+    _last_native_mot_summaries,
+    _mot_calibration_case_run,
     _parse_float_list,
     _parse_int_list,
     _write_guidance_law_sweep_outputs,
@@ -89,6 +96,7 @@ from d5_terminal_association import (
     evaluate_associations_offline,
 )
 from d6_evaluation_metrics import load_episode_log_jsonl
+from airsim_runtime.p1_mot_calibration import build_mot_screening_cases
 
 
 def test_terminal_delivery_candidate_profile_is_explicit_and_opt_in() -> None:
@@ -104,6 +112,88 @@ def test_terminal_delivery_candidate_profile_is_explicit_and_opt_in() -> None:
     delivery = _terminal_delivery_for_pair(candidate, InterceptPair("R1", "V1", "G1"))
     assert delivery.config.soft_innovation_reject_prediction is True
     assert delivery.config.delivery_trend_coast is True
+
+
+def test_default_cooperative_terminal_policy_is_independent_per_primary() -> None:
+    config = BlocksSmokeConfig(cooperative_demand_enabled=True)
+
+    assert config.terminal_authorization_scope == "per_primary"
+    assert config.arrival_coordination_required is False
+
+
+def test_episode_communication_without_executable_owner_blocks_visual_png() -> None:
+    tick = SimpleNamespace(
+        execution_allowed=False,
+        single_executable_owner=True,
+        selected_layer="partition_hold",
+        to_dict=lambda: {"commit_state": "reconfiguring"},
+    )
+
+    permission = _d4_permission(None, episode_communication_tick=tick)
+
+    assert permission.visual_png_allowed is False
+    assert permission.reason == "episode_communication_no_executable_owner"
+    assert permission.center_available is False
+
+
+def test_native_mot_summary_reader_uses_last_frame(tmp_path: Path) -> None:
+    path = tmp_path / "frames.jsonl"
+    path.write_text(
+        "\n".join(
+            (
+                json.dumps({"metadata": {"native_mot_admission": []}}),
+                json.dumps(
+                    {
+                        "metadata": {
+                            "native_mot_admission": [
+                                {
+                                    "resource_id": "INT-01",
+                                    "requested_tracker_backend": "bytetrack",
+                                    "frame_count": 100,
+                                }
+                            ]
+                        }
+                    }
+                ),
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    summaries = _last_native_mot_summaries(path)
+
+    assert summaries == [
+        {
+            "resource_id": "INT-01",
+            "requested_tracker_backend": "bytetrack",
+            "frame_count": 100,
+        }
+    ]
+
+
+def test_native_mot_case_keeps_range_axis_fixed(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--p1-mot-calibration-sweep",
+            "--output-root",
+            str(tmp_path),
+        ],
+    )
+    args = parse_args()
+
+    config, _, _ = _mot_calibration_case_run(
+        args,
+        build_mot_screening_cases(7)[0],
+        camera_count=1,
+    )
+
+    assert config.cv_camera_follow_assignments is False
+    assert config.secondary_camera_vehicle_names == ()
+    assert all(spec.velocity_ned[0] == 0.0 for spec in config.target_actor_specs)
+    assert config.metadata["mot_range_control"] == "fixed_camera_lateral_target_motion"
 
 
 def test_runtime_visual_observation_carries_truth_free_camera_geometry() -> None:
@@ -149,6 +239,62 @@ def test_runtime_visual_observation_carries_truth_free_camera_geometry() -> None
         (0.0, 0.0, 1.0),
     )
     assert "offline-truth-only" not in str(observation.metadata)
+
+
+def test_episode_bus_attaches_typed_truth_free_camera_geometry() -> None:
+    camera_info = AirSimCameraInfo(
+        camera_id="V1:0",
+        owner_id="V1",
+        timestamp=2.0,
+        position_ned=(4.0, -2.0, -8.0),
+        rotation_world_to_camera=((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
+        fx=600.0,
+        fy=600.0,
+        cx=320.0,
+        cy=240.0,
+        width=640,
+        height=480,
+    )
+    frame = AirSimFrame(
+        episode_id="typed-geometry",
+        scenario_name="unit",
+        frame_index=0,
+        timestamp=2.0,
+        truth_objects=(),
+        resources=(
+            AirSimResourceState(
+                resource_id="INT-01",
+                timestamp=2.0,
+                position_ned=(4.0, -2.0, -8.0),
+                metadata={"airsim_vehicle_name": "V1"},
+            ),
+        ),
+        cameras=(camera_info,),
+        metadata={"arrival_timestamp": 2.03},
+    )
+    camera = camera_model_from_airsim_camera_info(camera_info)
+    local_track = LocalVisualTrack(
+        local_track_id="V1:0:local:1",
+        center_px=np.array([320.0, 240.0]),
+        bbox=(300.0, 220.0, 340.0, 260.0),
+        timestamp=2.0,
+    )
+
+    attached = episode_bus_module._attach_camera_geometry_evidence(
+        frame,
+        "INT-01",
+        camera,
+        [local_track],
+    )
+
+    evidence = attached[0].camera_geometry
+    assert evidence is not None
+    assert evidence.geometry_valid is True
+    assert evidence.arrival_timestamp == pytest.approx(2.03)
+    assert evidence.attitude_timestamp == pytest.approx(2.0)
+    assert evidence.source == "airsim_camera_info"
+    assert evidence.camera_position_ned.tolist() == pytest.approx([4.0, -2.0, -8.0])
+    assert "truth" not in str(evidence.to_metadata()).lower()
 
 
 def test_repo_blocks_settings_are_valid_and_enable_lidar() -> None:
@@ -512,6 +658,156 @@ def test_sequence_builder_supports_independent_resource_and_target_counts(
     assert config.high_threat_required_resource_count == 3
     assert config.cooperative_coordination_mode == "hybrid"
     assert config.cooperative_primary_count == 2
+
+
+def test_cv_dense_crossing_can_disable_longitudinal_target_spacing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--cv-5v5",
+            "--resource-count",
+            "5",
+            "--target-count",
+            "5",
+            "--actor-target-spacing",
+            "2.0",
+            "--actor-target-x-spacing",
+            "0.0",
+            "--output-root",
+            str(tmp_path),
+            "--sequence-id",
+            "pytest_cv_dense_2m",
+        ],
+    )
+
+    args = parse_args()
+    config, _, _ = _build_sequence_run(args, seed=7, sequence_id=args.sequence_id)
+    starts = [spec.start_ned for spec in config.target_actor_specs]
+
+    assert {start[0] for start in starts} == {35.0}
+    assert [start[1] for start in starts] == [-4.0, -2.0, 0.0, 2.0, 4.0]
+    assert config.metadata["actor_target_spacing_m"] == 2.0
+    assert config.metadata["actor_target_x_spacing_m"] == 0.0
+
+
+def test_sequence_builder_exposes_independent_primary_terminal_contract(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--actor-5v5",
+            "--resource-count",
+            "5",
+            "--target-count",
+            "2",
+            "--enable-cooperative-demand",
+            "--terminal-authorization-scope",
+            "per_primary",
+            "--no-arrival-coordination-required",
+            "--output-root",
+            str(tmp_path),
+            "--sequence-id",
+            "pytest_independent_primary",
+        ],
+    )
+
+    args = parse_args()
+    config, _, _ = _build_sequence_run(args, seed=7, sequence_id=args.sequence_id)
+
+    assert config.terminal_authorization_scope == "per_primary"
+    assert config.arrival_coordination_required is False
+    assert config.metadata["terminal_authorization_scope"] == "per_primary"
+    assert config.metadata["arrival_coordination_required"] is False
+    assert config.metadata["episode_communication_enabled"] is True
+
+
+def test_sequence_builder_writes_primary_cv_mot_camera_settings(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--cv-5v5",
+            "--resource-count",
+            "1",
+            "--target-count",
+            "1",
+            "--camera-width",
+            "1920",
+            "--camera-height",
+            "1080",
+            "--camera-fov",
+            "90",
+            "--detection-backend",
+            "yolo",
+            "--yolo-tracker-backend",
+            "bytetrack",
+            "--no-yolo-iou-fallback",
+            "--output-root",
+            str(tmp_path),
+            "--sequence-id",
+            "pytest_native_mot_camera",
+        ],
+    )
+
+    args = parse_args()
+    config, _, _ = _build_sequence_run(args, seed=7, sequence_id=args.sequence_id)
+    settings = json.loads(config.settings_path.read_text(encoding="utf-8"))
+    capture = settings["CameraDefaults"]["CaptureSettings"][0]
+
+    assert capture["Width"] == 1920
+    assert capture["Height"] == 1080
+    assert capture["FOV_Degrees"] == 90.0
+    assert config.detection_backend == "yolo"
+    assert config.yolo_tracker_backend == "bytetrack"
+    assert config.yolo_allow_iou_fallback is False
+
+
+def test_cv_sequence_keeps_assignment_stable_by_default_and_splits_sensor_ranges(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--cv-5v5",
+            "--resource-count",
+            "2",
+            "--target-count",
+            "2",
+            "--secondary-count",
+            "1",
+            "--yolo-primary-imgsz",
+            "960",
+            "--yolo-secondary-imgsz",
+            "1280",
+            "--output-root",
+            str(tmp_path),
+        ],
+    )
+
+    args = parse_args()
+    config, _, _ = _build_sequence_run(args, seed=7, sequence_id="stable_default")
+
+    assert config.cv_reassignment_time_s is None
+    assert config.detection_radius_cm == 16000
+    assert config.secondary_detection_radius_cm == 30000
+    assert config.yolo_primary_inference_imgsz == 960
+    assert config.yolo_secondary_inference_imgsz == 1280
 
 
 def test_sequence_builder_validates_cooperative_options(
@@ -1229,15 +1525,20 @@ def test_real_runtime_yolo_backend_uses_d5_adapter_without_simgetdetections(
     assert "TargetActor" not in detection.object_id
 
 
-def test_yolo_offline_truth_evaluation_passes_bbox_only_to_d5(tmp_path: Path) -> None:
+def test_yolo_offline_truth_evaluation_fetches_truth_after_online_result(
+    tmp_path: Path,
+) -> None:
     captured: dict[str, object] = {}
+    events: list[str] = []
 
     class OfflineTruthClient(FakeAirSimClient):
         def simGetDetections(self, camera_name, image_type, vehicle_name="", external=False):
+            events.append("offline_truth_rpc")
             return [_detection("MSM_TargetActor_1")]
 
     class OfflineEvalAdapter:
         def process_frame(self, frame, **kwargs):
+            events.append("online_result")
             captured.update(kwargs)
             return SimpleNamespace(
                 tracks=(),
@@ -1275,11 +1576,8 @@ def test_yolo_offline_truth_evaluation_passes_bbox_only_to_d5(tmp_path: Path) ->
 
     frame = runtime.sample_frame(config, frame_index=0, timestamp=1.0, output_dir=tmp_path)
 
-    assert captured["offline_truth_detections"]
-    assert all(
-        isinstance(bbox, tuple) and len(bbox) == 4
-        for bbox in captured["offline_truth_detections"]
-    )
+    assert "offline_truth_detections" not in captured
+    assert events == ["online_result", "offline_truth_rpc"]
     assert frame.metadata["detections"][0]["offline_detector_evaluation"][
         "used_by_online_tracker"
     ] is False
@@ -1369,6 +1667,37 @@ def test_real_runtime_resets_yolo_mot_streams_at_episode_boundary(tmp_path: Path
     assert len(adapters) == 1
 
 
+def test_real_runtime_configures_role_specific_yolo_inference_size(
+    tmp_path: Path,
+) -> None:
+    configs = []
+
+    def make_adapter(adapter_config):
+        configs.append(adapter_config)
+        return SimpleNamespace(reset_all_streams=lambda: None)
+
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: FakeAirSimClient(),
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+        yolo_adapter_factory=make_adapter,
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        camera_vehicle_names=("Interceptor_Cam_1",),
+        secondary_camera_vehicle_names=("Secondary_Recon_1",),
+        resource_vehicle_names=("Interceptor_Cam_1",),
+        detection_backend="yolo",
+        yolo_primary_inference_imgsz=960,
+        yolo_secondary_inference_imgsz=1280,
+    )
+
+    runtime._yolo_mot_adapter(config, "Interceptor_Cam_1:0")
+    runtime._yolo_mot_adapter(config, "Secondary_Recon_1:0")
+
+    assert [item.inference_imgsz for item in configs] == [960, 1280]
+
+
 def test_real_runtime_captures_computer_vision_5v5_cameras(tmp_path: Path) -> None:
     settings_path = tmp_path / "cv5v5_settings.json"
     resources = default_cv_5v5_camera_vehicle_names()
@@ -1423,6 +1752,39 @@ def test_real_runtime_captures_computer_vision_5v5_cameras(tmp_path: Path) -> No
         *resources,
         *secondaries,
     }
+
+
+def test_real_runtime_uses_separate_primary_and_secondary_detection_radii(
+    tmp_path: Path,
+) -> None:
+    resources = ("Interceptor_Cam_1", "Interceptor_Cam_2")
+    secondaries = ("Secondary_Recon_1",)
+    fake_client = FakeAirSimClient(vehicle_names=(*resources, *secondaries))
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        camera_vehicle_names=resources,
+        secondary_camera_vehicle_names=secondaries,
+        resource_vehicle_names=resources,
+        target_vehicle_names=(),
+        target_actor_specs=default_cv_5v5_actor_target_specs()[:2],
+        detection_radius_cm=16000,
+        secondary_detection_radius_cm=30000,
+    )
+
+    runtime.setup_episode(config)
+
+    assert fake_client.detection_radii_cm[resources[0]] == 16000
+    assert fake_client.detection_radii_cm[resources[1]] == 16000
+    assert fake_client.detection_radii_cm[secondaries[0]] == 30000
+    filters = runtime._episode_setup_metadata["detection_filters"]
+    by_vehicle = {item["camera_vehicle_name"]: item for item in filters}
+    assert by_vehicle[resources[0]]["camera_role"] == "interceptor"
+    assert by_vehicle[secondaries[0]]["camera_role"] == "secondary_recon"
 
 
 def test_real_runtime_orients_cv_cameras_toward_initial_and_secondary_assignments(
@@ -1487,6 +1849,93 @@ def test_real_runtime_orients_cv_cameras_toward_initial_and_secondary_assignment
     assert "yaw_deg" in secondary_guidance["Interceptor_Cam_2"]
     assert "pitch_deg" in secondary_guidance["Secondary_Recon_1"]
     assert "Interceptor_Cam_2" in fake_client.vehicle_poses
+
+
+def test_real_runtime_prefers_current_d3_d2_camera_pointing_command(
+    tmp_path: Path,
+) -> None:
+    resource = "Interceptor_Cam_1"
+    fake_client = FakeAirSimClient(vehicle_names=(resource,))
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        camera_vehicle_names=(resource,),
+        resource_vehicle_names=(resource,),
+        target_vehicle_names=(),
+        target_actor_specs=default_cv_5v5_actor_target_specs()[:1],
+        cv_camera_follow_assignments=True,
+        cv_reassignment_time_s=None,
+        capture_lidar=False,
+    )
+    runtime.setup_episode(config)
+    runtime.set_cv_camera_pointing_commands(
+        {
+            resource: {
+                "global_track_id": "G-D2-007",
+                "look_at_ned": (42.0, -7.0, -10.0),
+                "plan_id": "center-plan",
+                "plan_version": 4,
+            }
+        }
+    )
+
+    frame = runtime.sample_frame(config, frame_index=1, timestamp=2.0, output_dir=tmp_path)
+    guidance = frame.metadata["cv_camera_guidance"][0]
+
+    assert guidance["target_id"] == "G-D2-007"
+    assert guidance["assignment_phase"] == "d3_current_assignment"
+    assert guidance["pointing_source"] == "d3_binding_d2_predicted_state"
+    assert guidance["plan_id"] == "center-plan"
+    assert guidance["plan_version"] == 4
+    assert guidance["look_at_ned"] == pytest.approx((42.0, -7.0, -10.0))
+
+
+def test_real_runtime_explicit_reassignment_stress_overrides_live_d3_pointing(
+    tmp_path: Path,
+) -> None:
+    resources = default_cv_5v5_camera_vehicle_names()[:3]
+    fake_client = FakeAirSimClient(vehicle_names=resources)
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        camera_vehicle_names=resources,
+        resource_vehicle_names=resources,
+        target_vehicle_names=(),
+        target_actor_specs=default_cv_5v5_actor_target_specs()[:3],
+        cv_camera_follow_assignments=True,
+        cv_reassignment_time_s=1.0,
+        capture_lidar=False,
+    )
+    runtime.setup_episode(config)
+    runtime.set_cv_camera_pointing_commands(
+        {
+            resources[1]: {
+                "global_track_id": "G-D2-002",
+                "look_at_ned": (42.0, -7.0, -10.0),
+                "plan_id": "center-plan",
+                "plan_version": 4,
+            }
+        }
+    )
+
+    frame = runtime.sample_frame(config, frame_index=1, timestamp=2.0, output_dir=tmp_path)
+    guidance = {
+        item["vehicle_name"]: item for item in frame.metadata["cv_camera_guidance"]
+    }[resources[1]]
+
+    assert guidance["target_id"] == "TGT-003"
+    assert guidance["assignment_phase"] == "secondary_reassignment"
+    assert guidance["pointing_source"] == "explicit_reassignment_stress"
+    assert guidance["plan_id"] is None
+    assert guidance["plan_version"] is None
 
 
 def test_real_runtime_mobile_secondary_recon_uses_cued_subclusters(tmp_path: Path) -> None:
@@ -1703,8 +2152,8 @@ def test_d4d5_stress_analysis_outputs_expected_case_actions(tmp_path: Path) -> N
     assert secondary.metrics["d4_action_counts"]["degrade_to_secondary"] >= 1
     assert secondary.metrics["selected_secondary_node_id"] == "SEC-01"
     assert secondary.metrics["comparison_role"] == "enhanced"
-    assert secondary.metrics["active_degradation_label_count"] > 0
-    assert secondary.metrics["active_degradation_precision"] == 1.0
+    assert secondary.metrics["active_degradation_label_count"] == 0
+    assert secondary.metrics["active_degradation_precision"] is None
     assert distributed.metrics["d4_action_counts"]["degrade_to_distributed"] >= 1
     assert no_degrade.metrics["multi_target_fov_rate"] == 1.0
     assert no_degrade.metrics["secondary_global_view_rate"] == 1.0
@@ -1957,6 +2406,35 @@ def test_blocks_detection_adapter_does_not_override_bbox_center_by_default() -> 
     )
 
     assert tuple(local_tracks[0].center_px) == (20.0, 30.0)
+
+
+def test_geometric_adapter_preserves_runtime_image_and_mot_evidence() -> None:
+    frame = _sample_frame(timestamp=2.0, frame_index=4)
+    detection = replace(
+        frame.visual_detections[0],
+        local_track_id="Interceptor:0:mot:7",
+        metadata={
+            "source": "yolov8_mot",
+            "mot_history_length": 6,
+            "track_transition_state": "continued",
+            "image_size": (1920, 1080),
+            "measurement_timestamp": 1.96,
+            "arrival_timestamp": 2.0,
+            "exposure_timestamp": 1.95,
+        },
+    )
+    frame = replace(frame, visual_detections=(detection,))
+
+    (track,) = geometric_local_visual_tracks_from_blocks_frame(frame)
+
+    assert track.image_size == (1920, 1080)
+    assert track.mot_history_length == 6
+    assert track.track_transition_state == "continued"
+    assert track.timestamp == pytest.approx(1.96)
+    assert track.arrival_timestamp == pytest.approx(2.0)
+    assert track.exposure_timestamp == pytest.approx(1.95)
+    assert track.detection_source == "yolov8_mot"
+    assert track.metadata["raw_classification_hint"] == "uav"
 
 
 def test_geometric_adapter_ignores_wrong_object_ids_for_online_assignment() -> None:
@@ -2405,6 +2883,73 @@ def test_simpleflight_cooperative_initial_pairs_use_d7_m_to_n_topology() -> None
     assert sum(pair.active for pair in high_threat) == 2
     assert pairs[-1].target_id == "TGT-002"
     assert pairs[-1].member_role == "primary"
+
+
+def test_main_episode_bus_records_tick_driven_secondary_communication() -> None:
+    resources = tuple(f"Interceptor{index}" for index in range(1, 6))
+    config = BlocksSmokeConfig(
+        episode_id="pytest_episode_communication",
+        scenario_name="blocks_cv_m5_n2",
+        duration_s=2.0,
+        dt_s=0.5,
+        launch_blocks=False,
+        resource_vehicle_names=resources,
+        camera_vehicle_names=resources,
+        secondary_camera_vehicle_names=("Secondary_Recon_1",),
+        target_vehicle_names=(),
+        cooperative_demand_enabled=True,
+        metadata={
+            "episode_communication_enabled": True,
+            "center_node_id": "C2",
+        },
+    )
+    bus = MainAirSimEpisodeBus(config)
+    states = []
+    for index, timestamp in enumerate((0.0, 0.5, 1.0, 1.5, 2.0)):
+        frame = _sample_m5_n2_frame(timestamp=timestamp, frame_index=index)
+        if timestamp > 0.0:
+            frame = replace(frame, center_node_alive=False)
+        tick = bus.process_frame(frame)
+        states.append(tick.d4["episode_communication"])
+
+    assert states[0]["owner_id"] == "C2"
+    assert all(state["single_executable_owner"] for state in states)
+    assert any(state["selected_layer"] == "secondary" for state in states)
+    assert any(state["execution_allowed"] for state in states if state["selected_layer"] == "secondary")
+    assert any(
+        event.event_type == "d4_episode_communication_tick"
+        for event in bus.collector.event_records
+    )
+
+
+def test_sparse_control_frame_preserves_last_complete_guidance_binding() -> None:
+    frame = _sample_m5_n2_frame(timestamp=0.0, frame_index=0)
+    config = BlocksSmokeConfig(
+        cooperative_demand_enabled=True,
+        cooperative_high_threat_target_count=1,
+        high_threat_required_resource_count=3,
+        cooperative_coordination_mode="hybrid",
+        cooperative_primary_count=2,
+    )
+    pair = _initial_pairs(frame, config)[0]
+    pair.guidance_binding = replace(
+        pair.guidance_binding,
+        plan_id="d3-current-plan",
+        plan_version=12,
+        owner_node_id="C2",
+        assigned_global_track_id="T001",
+        target_object_id="TGT-001",
+        metadata={"source": "main_episode_bus"},
+    )
+    pair.assigned_global_track_id = "T001"
+
+    _refresh_pair_assignments(frame, [pair])
+
+    assert pair.target_id == "TGT-001"
+    assert pair.assigned_global_track_id == "T001"
+    assert pair.guidance_binding.plan_id == "d3-current-plan"
+    assert pair.guidance_binding.plan_version == 12
+    assert pair.guidance_binding.owner_node_id == "C2"
 
 
 def test_range_intercept_semantics_are_pair_target_and_coalition_separated() -> None:
@@ -3661,6 +4206,7 @@ class FakeAirSimClient:
         self.spawned_objects: list[str] = []
         self.destroyed_objects: list[str] = []
         self.detection_filters: dict[str, list[str]] = {}
+        self.detection_radii_cm: dict[str, int] = {}
         self.control_calls: list[tuple] = []
         self.vehicle_names = tuple(vehicle_names)
 
@@ -3756,6 +4302,7 @@ class FakeAirSimClient:
         self.detection_filters[vehicle_name] = []
 
     def simSetDetectionFilterRadius(self, camera_name, image_type, radius_cm, vehicle_name="", external=False):
+        self.detection_radii_cm[vehicle_name] = int(radius_cm)
         return None
 
     def simAddDetectionFilterMeshName(

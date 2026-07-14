@@ -2,7 +2,7 @@
 
 **定位**: 在由 main runtime `--drone-count` 决定的 N 对 N 或非等量资源/目标场景中，由中心节点生成滚动 `AssignmentPlan`，并通过迟滞逻辑避免频繁重分配；5v5 只作为示例和基准场景。
 **边界**: 本文只讨论抽象资源-目标匹配、离线评估和人工授权前的候选计划，不包含真实火控参数、毁伤模型或自动处置流程。
-**D3 复核状态 2026-07-11**: active-plan 连续性、execution-signature identity、candidate/published 分离、forced replan ack/applied、solve 前 switch penalty、secondary activation/current-binding、same-owner continuation、M-to-N demand-slot、保守增量规划、transient feedback dwell 和 role-aware primary 保持均已关闭。历史第一次 M=5/N=2 复验曾暴露 soft reserve hold 导致 healthy primary 旋转，现已按 previous-plan member role 固定健康 primary、只重解 reserve。当前 ComputerVision 10-seed 中 T001 双 primary 视觉共识与当前计划授权为 8/10；二级/分布式 commit 正例和缺 ACK fail-closed 已通过，因此 D3 P1 合同层闭合。15 s SimpleFlight 仍是 0 物理命中的诊断，物理闭环开放；P2 仅为隔离 optional benchmark。
+**D3 复核状态 2026-07-13**: active-plan 连续性、execution-signature identity、candidate/published 分离、forced replan ack/applied、solve 前 switch penalty、secondary activation/current-binding、same-owner continuation、M-to-N demand-slot、保守增量规划、transient feedback dwell 和 role-aware primary 保持均已关闭。M5N2 采用 `2 primary + 1 standby reserve`，不要求两个 primary 同时到达。真实 SimpleFlight 已完成 baseline 与三个候选各 10 seeds、共 40 个 episode；coalition completion 依次为 `0/10`、`5/10`、`2/10`、`1/10`，最佳 `20 m / 3 s / 40 deg` profile 未达到 `8/10`。版本/stale/role 合同及 reserve 安全保持；P1 开放项转为逐时刻 plan history/churn、D5 feedback 权重/迟滞和动态 N/M 标定。P2 仅为隔离 optional benchmark。
 
 **P1 switch-penalty 状态 2026-07-10**: done。`reassignment_switch_penalty` 已从 solve 后追加改为 solve 前进入可行改配边；同 resource、不可行边、无历史 assignment 的 target 和 unassigned cost 不变。solver matrix、breakdown total、objective、Assignment 和 evidence 使用同一成本且无双重计费。新 current plan binding 即使发生改配仍为 `active/current`，旧 plan 由 current plan id/version gate 失效。
 
@@ -14,8 +14,9 @@
 - P1 下游合同证据 done：二级接管和完全分布式 commit 正例通过；缺 ACK 时 coalition aborted、D7 许可为 0，fail-closed 通过。该结果不等于物理拦截。
 - P1 transient feedback dwell done：`primary_lock_stability_incomplete`/短暂 reacquire 只在 source plan version 匹配、旧 primary 仍可行且无硬冲突时保护 coalition primary；effective window 为 D3 配置和上游 required stable frames 的最大值，持续到阈值或硬风险可立即换员。
 - P1 reserve role protection done：若所有旧 primary 都是同版本 `consistent/continue`，且旧 reserve 仅为普通 `hold/hold` 或 `reacquire/replan`，D3 从 previous assignment role 推导 primary pins，只替换 reserve；不要求 main 提供 reason/required/member_role。
-- P1：D5 feedback 权重与 dwell/迟滞阈值仍需用真实 D6 records 配对标定。
-- P1 增量接口 done：输入快照、changed-set 完整性、独立连通分量局部求解、全量 fallback reason、全局迟滞、M-to-N all-or-none 和增量/全量 comparison summary 已测试；仍缺真实非等量 3v5/5v3、目标新增、资源失效和 crossing/dense 多 seed 校准。
+- P1：D6 可展开 40 个 M5N2 case，但正式 aggregate 缺逐时刻 plan history，因此 membership/version churn 为 `unavailable`，不得推断或补零；需要 main 写盘逐 planning tick 记录。
+- P1：D5 feedback 权重与 dwell/迟滞阈值仍需用逐时刻 D6 records 配对标定。
+- P1 增量接口 done：输入快照、changed-set 完整性、独立连通分量局部求解、全量 fallback reason、全局迟滞、M-to-N all-or-none 和增量/全量 comparison summary 已测试；仍缺真实非等量 3v5/5v3、目标新增、资源失效和 crossing/dense 动态 N/M 多 seed 校准。
 - P1 deterministic calibration support done：versioned 8-scenario matrix 新增高威胁需求变化、D5 reserve feedback 和 hard-window；paired runner 统一比较 full/incremental latency、churn、unassigned high-threat、coalition shortfall 和 fallback/reject，8/8 转换 assignment/cost 等价。
 - P1：D3 secondary activation/current-binding 合同已闭合，并已由二级/分布式 commit 正例与缺 ACK fail-closed 覆盖下游消费；D4 协商与恢复策略仍属 D4/main 边界。
 - Optional benchmark done：OR-Tools 同输入 Min-Cost Flow 接口已实现，不是待关闭 P1；CP-SAT/MILP、复杂 flow 和大规模扫描保留为 P2 optional。
@@ -24,7 +25,7 @@
 
 ## 0. 当前代码状态摘要
 
-截至 2026-07-10，D3 代码已经实现：
+截至 2026-07-13，D3 代码已经实现：
 
 - SciPy Hungarian / `linear_sum_assignment` 主线，带 dummy unassignment 列。
 - 无 SciPy 时的小规模 `FallbackAssignmentSolver` 位掩码 DP fallback。
@@ -34,6 +35,7 @@
 - D5 terminal feedback helper，始终 `allow_local_rebind=False`。
 - D7 `AssignmentGuidanceBinding`，携带 `assigned_global_track_id`、`plan_version`、binding state、source/target/link 和 `allow_local_rebind=False`。
 - `AssignmentValiditySummary` 和 D6-compatible `AssignmentRecord` 导出；assignment records 携带 multi-seed 分组所需的 owner/source/schema、replan/takeover reason、previous/supersede、secondary owner/version/epoch/lease/readiness/activation、迟滞决策、矩阵规模、cost gap 和 N/M mismatch replay 字段。
+- M5N2 逐 pair 诊断已统一：record/binding 同时输出 plan owner/version、coalition id/version/epoch、role/wave/activation/validity、per-primary 授权资格及 churn/rollback/stale reject；两个 primary 独立 active，reserve 固定 standby/hold。纯 current evaluation refresh 输出零 churn、无 rollback，并保持 plan identity 与 coalition epoch。
 - `AssignmentEvidenceExport` 导出 current plan id/version/owner/source、完整 current cost matrix、per-edge cost breakdown、hard rejected edges/reasons、stale rejection reason，以及 secondary readiness/activation/owner/version/epoch/lease/supersede 字段。
 - 轻量 hard time-window baseline：显式 closed/expired/not-yet-open 的边会被 hard rejected，不进入最终 assignment，`window_cost` 继续作为 open edge 软排序项。
 - synthetic AirSim dry-run adapter，不 import AirSim，不控制 Blocks runtime。
@@ -47,7 +49,7 @@
 - `MinCostFlowAssignmentSolver` 支持 optional OR-Tools 资源容量；隔离 runner 用同一非等量 N/M、hybrid demand-slot 输入比较 SciPy 与 flow，未安装时输出结构化 `unavailable_reason`，不进入默认依赖或 planner。
 - `secondary_plan_v2` 的 D3 activation/current-binding 合同已实现；main runtime 仍需传入 sustained readiness、activation time、leader epoch、live lease 和 current plan identity。二级节点选择、lease 续期、中心恢复合并和 active owner runtime 仲裁仍属 D4/main policy。
 - D4 `request_center_replan`、`degrade_to_secondary`、`degrade_to_distributed` 仍由 main/D4 消费 D3 证据后触发，D3 不自动调用；其中中心 `request_center_replan` 的 owner/version/supersede runtime 记录已由 main 接线，D3 只需保持版本化计划和 stale 拒绝合同。
-- 剩余 D3 P1 是增量/全量真实多 seed 标定、真实非等量 N/M 与动态事件、D5 feedback/迟滞权重、hard-window 多场景和完整动态威胁；secondary 只剩跨模块 runtime 验证，不再是 D3 DTO 缺口。增量接口和 optional OR-Tools 同输入接口已经完成。
+- 剩余 D3 P1 是逐时刻 plan history/churn 写盘、真实非等量 N/M 与动态事件、D5 feedback/迟滞权重、hard-window 多场景和完整动态威胁；secondary 只剩跨模块 runtime 验证，不再是 D3 DTO 缺口。M5N2 真实 SimpleFlight 已运行，增量接口和 optional OR-Tools 同输入接口已经完成。
 - D3 不负责末端视觉重绑，不改写 `global_track_id`。
 
 ---
@@ -210,7 +212,7 @@ class HysteresisManager:
         return accept(candidate, "accepted_gain_and_dwell")
 ```
 
-当前实现只以已发布计划执行 stale 校验；`publish=False` 候选不推进 latest，`publish_plan()` 才提交 identity。同执行签名刷新保留 `plan_id/version/created_at`、`identity_created_at_s` 和 assignment `plan_version`，但 plan/assignment metadata 的 `last_evaluated_at_s` 始终更新为本轮 `plan()` timestamp；forced no-change 同样只刷新该活性时间，真实身份变化时两者更新。record/evidence/binding 发布快照均可读取两个时间。forced replan 分别输出 `replan_ack_no_change` 或 `replan_applied`。switch penalty 仍在 solve 前进入 `CostMatrixResult`，每轮 N/M 规模和 evidence 字段保持输出。
+当前实现只以已发布计划执行 stale 校验；`publish=False` 候选不推进 latest，`publish_plan()` 才提交 identity。纯成本/诊断重评不属于可执行计划变化：`k=1` 与 `k>1` 均保留 `plan_id/version/created_at`、assignment version 和 coalition epoch，写入 `evaluation_refresh_only=True`，仅更新当前成本证据与 `last_evaluated_at_s`。资源、角色、目标、owner、授权或 activation 变化才推进执行版本；secondary takeover 明确建立新 lineage。record/evidence/binding 始终透传稳定 current identity。
 
 ---
 
@@ -332,7 +334,7 @@ N 对 N 基准迟滞建议可从 5v5 参数开始扫描：`delta=0.2`，`min_dwe
 
 ## 10. 离线验证
 
-当前已实现的离线验证覆盖 Hungarian/fallback、demand-slot M-to-N、execution identity/publish semantics、forced replan、solve 前 switch penalty、matrix/breakdown/objective/evidence 一致性、迟滞/stale、coalition binding/duplicate、保守增量规划与全量回退、版本化 transient feedback dwell、reserve-soft-feedback primary role protection、D5 feedback、secondary takeover/continuation、D6 export、synthetic AirSim dry-run adapter，以及同输入容量约束 SciPy/optional flow benchmark。新增的 8-scenario P1 runner 对 full/incremental 路径给出 8/8 assignment/cost 等价，并输出 latency、churn、高威胁漏分配、coalition shortfall、hard-window reject 和 primary 保持。CLI 可选 `--output` 已由 stdout/file 等价测试覆盖。当前全量基线为 `127 passed, 1 skipped`，唯一 skip 是未安装 optional OR-Tools 的 installed-only 测试。真实 10-seed CV 已将 role-aware 结果推进到 8/10，并完成二级/分布式 commit 正例和缺 ACK fail-closed，P1 合同层闭合。下一阶段聚焦同条件 M5N2 物理验收和真实多 seed 参数标定；P2 只运行隔离 benchmark：
+当前已实现的离线验证覆盖 Hungarian/fallback、demand-slot M-to-N、execution identity/publish semantics、forced replan、solve 前 switch penalty、matrix/breakdown/objective/evidence 一致性、迟滞/stale、coalition binding/duplicate、保守增量规划与全量回退、版本化 transient feedback dwell、reserve-soft-feedback primary role protection、D5 feedback、secondary takeover/continuation、D6 export、synthetic AirSim dry-run adapter，以及同输入容量约束 SciPy/optional flow benchmark。新增的 8-scenario P1 runner 对 full/incremental 路径给出 8/8 assignment/cost 等价，并输出 latency、churn、高威胁漏分配、coalition shortfall、hard-window reject 和 primary 保持。CLI 可选 `--output` 已由 stdout/file 等价测试覆盖。当前全量基线为 `139 passed, 1 skipped`，唯一 skip 是未安装 optional OR-Tools 的 installed-only 测试。真实 SimpleFlight M5N2 已完成 40 个 episode：baseline `0/10`，三个候选分别为 `5/10`、`2/10`、`1/10`，最佳未达 `8/10`；两个 primary 独立验收、reserve 保持 standby。下一阶段聚焦逐时刻 plan history/churn、D5 feedback 权重/迟滞和动态 N/M 多 seed 标定；P2 只运行隔离 benchmark：
 
 ```text
 Hungarian without hysteresis
@@ -397,9 +399,9 @@ secondary_plan_activation_count
 
 已实现 `required_resource_count`、`primary_resource_count`、coalition identity/version/state、成员 role/wave/window、demand satisfaction、能力槽、simultaneous/sequential/hybrid baseline、coalition-aware duplicate 语义和 D7 多成员 current binding。显式 `TargetDemand()` 才启用默认 `k=3 hybrid 2+1`；缺省仍为 `k=1 independent primary=1`。hybrid 使用显式 primary 数，且该值进入 demand template、coalition signature/version 和 binding metadata。不完整 coalition 不发布 executable assignment，合法 `<=k_j` multiplicity 不计 duplicate。
 
-迟滞、change count、switch penalty 与 reassign export 已转为 stable signature/set 语义；成员/角色/window/demand 模板变化递增 coalition version，旧 binding 由 current identity gate stale。OR-Tools flow 是 optional benchmark，不进入默认依赖或默认 planner。
+迟滞、change count、switch penalty 与 reassign export 已转为 stable signature/set 语义。当前 `k>1` 成员至少保持 2 s；只有成员硬不可行，或候选联盟成本改善超过 20%且 dwell 满足时才替换。普通成本/诊断刷新不推进 plan identity；成员或角色变化才推进 coalition version/epoch。只有真实可执行版本变化才使旧 binding stale。OR-Tools flow 是 optional benchmark，不进入默认依赖或默认 planner。
 
-当前合同缺口已关闭；剩余研究项是物理闭环所需的真实 ETA/同步动力学、长时多 seed 参数标定和 D6 coalition 指标长期分析。CP-SAT/MILP 小规模参考、复杂 flow 与大规模扫描仅为 P2 隔离 benchmark。D3 不执行协同定位；D1/D2/D5 负责多源/多视角定位与身份连续性，D3 仅调度角色并消费协方差和几何收益。
+当前合同缺口已关闭；40 个真实 SimpleFlight M5N2 episode 已完成，但最佳 coalition completion 仅 `5/10`。剩余 P1 是逐时刻 plan history/churn、D5 feedback 权重/迟滞和动态 N/M 标定。CP-SAT/MILP 小规模参考、复杂 flow 与大规模扫描仅为 P2 隔离 benchmark。D3 不执行协同定位；D1/D2/D5 负责多源/多视角定位与身份连续性，D3 仅调度角色并消费协方差和几何收益。
 
 ### 13.3 新增主要证据
 
@@ -415,3 +417,29 @@ secondary_plan_activation_count
 - Distributed multi-task assignment: <https://doi.org/10.1109/TCYB.2015.2418052>
 - CBBA foundation: <https://doi.org/10.1109/TRO.2009.2022423>
 - Synchronization modeling: <https://doi.org/10.1287/trsc.1110.0400>
+
+---
+
+## 14. M5N2 协同候选预筛接口（2026-07-12）
+
+D3 已补充独立的 `cooperative_prescreen` 层，但没有改变 Hungarian 或 demand-slot 求解。该层把下一阶段实验拆成三个明确边界：
+
+1. **候选定义**：固定形成 `20/30/40 m x 3/5/8 s x 20/40/60 deg` 共 27 组稳定 candidate；候选不携带固定资源数或目标数。
+2. **计划元数据**：在调用方的 `TargetDemand` 和当前 `AssignmentPlan` 上保留 required/primary 数、arrival window、wave、minimum separation、member role、plan/coalition version。hybrid reserve 导出为 standby，不因候选入选而激活。
+3. **实测排序**：main/D6 必须提供每组实际 safety violation、coalition completion、pair success 和 arrival spread。D3 不补齐缺失观测，不用规划代价冒充物理命中；固定排序后只返回前三候选。
+
+版本安全采用 fail-closed：导出时必须显式给出 current plan id/version，且 assignment/coalition version 与 committed coalition 一致。该接口可供 main runtime 和 D6 序列化消费，但不控制 AirSim、不决定物理可达，也不修改 D7 PN/PNG。
+
+真实 AirSim 验收已于 2026-07-13 运行：baseline 与前三候选各 10 seeds，共 40 个 SimpleFlight episode。高威胁目标保持 `2 primary + 1 standby reserve`，两个 active primary 分别统计合同许可与 5 m 结果，不把同时到达作为成功前提。coalition completion 为 baseline `0/10`、最佳 `20 m / 3 s / 40 deg` `5/10`、其余 `2/10` 和 `1/10`，未达到 `8/10`；reserve 越权、stale/role 合同和身份改写安全约束保持。
+
+D6 已能展开全部 40 case，但正式 aggregate 没有逐时刻 plan history，因而 membership/version churn 仍为 `unavailable`，不能补零。下一阶段由 main 写盘逐 tick plan/coalition/feedback/迟滞记录，D3 再据此标定 D5 feedback 权重、`delta/min_dwell/reassignment_switch_penalty` 和动态 N/M 场景。
+
+---
+
+## 15. Per-primary 授权与成员迟滞复核（2026-07-12）
+
+本阶段明确不把“同时到达”作为 D3 授权条件。高威胁目标仍分配两个 primary 和一个 reserve，但每个 primary 由自己的 D5 lock、当前 plan binding、D4 permission 和 D7 机动门控独立授权。D3 通过 `terminal_authorization_scope=per_primary` 与 `arrival_coordination_required=false` 明示该合同；reserve 只占用计划容量，其 guidance binding 保持 standby/hold。
+
+成员稳定性采用目标级迟滞，不再用频繁 evaluation refresh 重置驻留时间。每个 coalition 保存 `membership_changed_at_s`，并审计前后成员、成员成本、改善比例、dwell 和保持依据。普通成本刷新沿用同一 `plan_id/version`，coalition epoch 保持；资源或角色真正改变时才增加 epoch。真实 M5N2 连续三 tick 回归固定为同一 A/v1，而不是 `{v1,v2}`。该实现不改变 Hungarian/demand-slot 求解器。
+
+逐 pair 审计不改变执行策略：`AssignmentRecord.active` 只对可行 active primary 为 true，reserve 即使占用 demand slot 也保持 false；D7 binding 对 reserve 输出 `hold/revoke_reason=reserve_standby_not_activated`。main/D6 可据 `plan_churn_count`、`plan_rollback_detected`、`stale_reject_count` 区分成员实质变化、非法 identity 回退和旧计划拒绝。

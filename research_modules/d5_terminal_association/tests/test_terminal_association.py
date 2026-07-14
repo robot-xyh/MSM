@@ -15,6 +15,7 @@ from d5_terminal_association import (
     LocalVisualTrack,
     ReconImageCue,
     TerminalAssociator,
+    per_primary_terminal_evidence,
 )
 
 
@@ -87,6 +88,42 @@ def test_projection_covariance_and_mahalanobis_gate() -> None:
     assert result.costs[0, 1] == associator.config.cost_inf
 
 
+def test_equivalent_1080p_and_4k_geometry_uses_resolution_scaled_pixel_terms() -> None:
+    associator = TerminalAssociator()
+    track = make_track(velocity=(0.2, 0.0, 0.0))
+
+    def camera(width: int, height: int, scale: float) -> CameraModel:
+        return CameraModel(
+            K=np.array(
+                [
+                    [960.0 * scale, 0.0, width * 0.5],
+                    [0.0, 960.0 * scale, height * 0.5],
+                    [0.0, 0.0, 1.0],
+                ]
+            ),
+            R=np.eye(3),
+            t=np.zeros(3),
+            image_size=(width, height),
+            measurement_cov=np.diag([16.0 * scale * scale, 16.0 * scale * scale]),
+        )
+
+    costs = []
+    for image_size, scale in (((1920, 1080), 1.0), ((3840, 2160), 2.0)):
+        projection = associator.project_tracks_to_image(
+            [track], camera(*image_size, scale)
+        )["G-1"]
+        local = make_local(
+            f"local-{image_size[0]}",
+            (projection.pixel[0] + 8.0 * scale, projection.pixel[1]),
+            bearing_rate=(projection.predicted_px_velocity[0] + 4.0 * scale, 0.0),
+        )
+        result = associator.build_cost_matrix({"G-1": projection}, [local])
+        costs.append(result.costs[0, 0])
+        assert projection.image_size == image_size
+
+    np.testing.assert_allclose(costs[0], costs[1], rtol=1e-6, atol=1e-6)
+
+
 def test_decide_locks_assigned_projection_not_nearest_local_track() -> None:
     associator = TerminalAssociator()
     camera = make_camera()
@@ -108,6 +145,84 @@ def test_decide_locks_assigned_projection_not_nearest_local_track() -> None:
     assert decision.decision_state == "locked"
     assert decision.assigned_global_track_id == "G-assigned"
     assert decision.local_track_id == "assigned_visual"
+
+
+def test_per_primary_assignment_contract_is_preserved_without_global_id_rewrite() -> None:
+    associator = TerminalAssociator()
+    assignment = Assignment(
+        "G-assigned",
+        assignment_version=0,
+        resource_id="R-primary",
+        plan_id="plan-4",
+        plan_version=4,
+        coalition_id="coalition-G-assigned",
+        coalition_version=2,
+        member_role="primary",
+        required_resource_count=2,
+        activation_state="executing",
+        terminal_authorization_scope="per_primary",
+        arrival_coordination_required=False,
+    )
+
+    decision = associator.decide(
+        assignment,
+        [make_track("G-assigned")],
+        [make_local("local-primary", (320.0, 240.0))],
+        [],
+        make_camera(),
+    )
+
+    assert decision.decision_state == "locked"
+    assert decision.assigned_global_track_id == assignment.assigned_global_track_id
+    assert decision.terminal_authorization_scope == "per_primary"
+    assert decision.arrival_coordination_required is False
+    assert decision.truth_identity_used is False
+    assert decision.metadata["truth_identity_used"] is False
+    assert decision.metadata["terminal_authorization_scope"] == "per_primary"
+    assert decision.metadata["arrival_coordination_required"] is False
+    runtime_record = decision.to_runtime_record()
+    assert runtime_record["assigned_global_track_id"] == "G-assigned"
+    assert runtime_record["terminal_authorization_scope"] == "per_primary"
+    assert runtime_record["arrival_coordination_required"] is False
+    evidence = per_primary_terminal_evidence(decision)
+    assert evidence.independently_locked is True
+    assert evidence.to_dict()["grants_control_authority"] is False
+
+
+def test_assignment_defaults_keep_old_coalition_contract_and_reserve_standby_is_blocked() -> None:
+    default_assignment = Assignment("G-assigned")
+    assert default_assignment.terminal_authorization_scope == "coalition"
+    assert default_assignment.arrival_coordination_required is True
+
+    reserve = Assignment(
+        "G-assigned",
+        resource_id="R-reserve",
+        plan_id="plan-4",
+        plan_version=4,
+        coalition_id="coalition-G-assigned",
+        coalition_version=2,
+        member_role="reserve",
+        required_resource_count=2,
+        activation_state="standby",
+        terminal_authorization_scope="per_primary",
+        arrival_coordination_required=False,
+    )
+    decision = TerminalAssociator().decide(
+        reserve,
+        [make_track("G-assigned")],
+        [make_local("reserve-local", (320.0, 240.0))],
+        [],
+        make_camera(),
+    )
+
+    assert decision.decision_state == "hold"
+    assert decision.reason == "coalition_member_not_activated"
+    assert decision.assigned_global_track_id == "G-assigned"
+    assert decision.truth_identity_used is False
+    evidence = per_primary_terminal_evidence(decision)
+    assert evidence.independently_locked is False
+    assert "member_role_not_active_primary" in evidence.rejection_reasons
+    assert "primary_not_active" in evidence.rejection_reasons
 
 
 def test_decision_metadata_records_geometry_gate_and_measurement_age_fields() -> None:
@@ -438,6 +553,37 @@ def test_rate_and_category_costs_are_reflected_in_matrix() -> None:
 
     assert result.costs[0, 0] < result.costs[0, 1]
     assert result.breakdowns[("G-moving", "category_bad")].category_cost > 0
+
+
+@pytest.mark.parametrize(
+    "local_category",
+    ("UAV", "drone", "INTRUDER", "intruder-uav", "Unmanned_Aerial_Vehicle"),
+)
+def test_uav_category_aliases_have_zero_association_penalty(local_category: str) -> None:
+    associator = TerminalAssociator()
+    projection = associator.project_tracks_to_image(
+        [make_track("G-uav", category="uav")], make_camera()
+    )
+    local = make_local("local-uav", (320.0, 240.0), category=local_category)
+
+    result = associator.build_cost_matrix(projection, [local])
+
+    assert result.breakdowns[("G-uav", "local-uav")].category_cost == 0.0
+
+
+def test_true_object_class_mismatch_keeps_category_penalty() -> None:
+    associator = TerminalAssociator()
+    projection = associator.project_tracks_to_image(
+        [make_track("G-uav", category="uav")], make_camera()
+    )
+    local = make_local("local-bird", (320.0, 240.0), category="bird")
+
+    result = associator.build_cost_matrix(projection, [local])
+
+    assert (
+        result.breakdowns[("G-uav", "local-bird")].category_cost
+        == associator.config.category_mismatch_penalty
+    )
 
 
 def test_secondary_recon_cue_lowers_cost_only_for_scoped_resource() -> None:

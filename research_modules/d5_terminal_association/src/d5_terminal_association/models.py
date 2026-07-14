@@ -101,6 +101,18 @@ def _optional_pair_tuple(values: Any | None) -> tuple[float, float] | None:
     return (float(array[0]), float(array[1]))
 
 
+def _optional_image_size(values: Any | None) -> tuple[int, int] | None:
+    if values is None:
+        return None
+    array = np.asarray(values, dtype=int).reshape(-1)
+    if array.shape != (2,):
+        raise ValueError(f"image_size must have shape (2,), got {array.shape}")
+    width, height = int(array[0]), int(array[1])
+    if width <= 0 or height <= 0:
+        raise ValueError("image_size must be positive (width, height)")
+    return (width, height)
+
+
 def _visual_tracklet_key(resource_id: str, camera_id: str | None, local_track_id: str) -> str:
     if camera_id:
         return f"{resource_id}/{camera_id}:{local_track_id}"
@@ -147,9 +159,10 @@ class CameraModel:
         if self.dist_coeffs is not None:
             coeffs = np.asarray(self.dist_coeffs, dtype=float).reshape(-1).copy()
             object.__setattr__(self, "dist_coeffs", coeffs)
-        width, height = self.image_size
-        if width <= 0 or height <= 0:
-            raise ValueError("image_size must be positive (width, height)")
+        image_size = _optional_image_size(self.image_size)
+        if image_size is None:
+            raise ValueError("image_size is required")
+        object.__setattr__(self, "image_size", image_size)
 
 
 @dataclass(frozen=True)
@@ -300,6 +313,7 @@ class LocalVisualTrack:
     track_reset_reason: str | None = None
     bbox_edge_clipped: bool = False
     bbox_edge_clip_sides: tuple[str, ...] = ()
+    image_size: tuple[int, int] | None = None
     camera_geometry: CameraGeometryEvidence | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -330,6 +344,7 @@ class LocalVisualTrack:
         if transition not in {"initialized", "continued", "switched", "reacquired", "reset", "unknown"}:
             raise ValueError("invalid track_transition_state")
         clip_sides = _normalized_clip_sides(self.bbox_edge_clip_sides)
+        image_size = _optional_image_size(self.image_size)
         object.__setattr__(self, "timestamp", float(self.timestamp))
         object.__setattr__(self, "arrival_timestamp", arrival_timestamp)
         object.__setattr__(self, "exposure_timestamp", exposure_timestamp)
@@ -338,6 +353,7 @@ class LocalVisualTrack:
         object.__setattr__(self, "track_reset_reason", _optional_string(self.track_reset_reason))
         object.__setattr__(self, "bbox_edge_clipped", bool(self.bbox_edge_clipped or clip_sides))
         object.__setattr__(self, "bbox_edge_clip_sides", clip_sides)
+        object.__setattr__(self, "image_size", image_size)
         object.__setattr__(self, "metadata", dict(self.metadata))
 
     def to_evidence_metadata(self) -> dict[str, Any]:
@@ -366,6 +382,7 @@ class LocalVisualTrack:
             "association_input_confidence": float(self.quality),
             "bbox_edge_clipped": self.bbox_edge_clipped,
             "bbox_edge_clip_sides": list(self.bbox_edge_clip_sides),
+            "image_size": self.image_size,
             "camera_geometry": geometry,
             "truth_identity_used": False,
         }
@@ -392,6 +409,7 @@ class DistributedVisualObservation:
     bearing_rate: np.ndarray | None = None
     covariance: np.ndarray | None = None
     camera_id: str | None = None
+    image_size: tuple[int, int] | None = None
     category: str = "unknown"
     confidence: float = 1.0
     assigned_global_track_id: str | None = None
@@ -421,6 +439,7 @@ class DistributedVisualObservation:
         if self.center_px is None and self.bearing is None:
             raise ValueError("DistributedVisualObservation requires center_px or bearing")
         object.__setattr__(self, "camera_id", _optional_string(self.camera_id))
+        object.__setattr__(self, "image_size", _optional_image_size(self.image_size))
         object.__setattr__(self, "assigned_global_track_id", _optional_string(self.assigned_global_track_id))
         object.__setattr__(self, "source_node_id", _optional_string(self.source_node_id))
         object.__setattr__(self, "confidence", float(np.clip(self.confidence, 0.0, 1.0)))
@@ -448,6 +467,7 @@ class VisualTrackletSummary:
     bearing_rate: np.ndarray | None = None
     covariance: np.ndarray | None = None
     camera_id: str | None = None
+    image_size: tuple[int, int] | None = None
     category: str = "unknown"
     confidence: float = 1.0
     bbox_area: float = 0.0
@@ -483,6 +503,7 @@ class VisualTrackletSummary:
         if self.center_px is None and self.bearing is None:
             raise ValueError("VisualTrackletSummary requires center_px or bearing")
         object.__setattr__(self, "camera_id", _optional_string(self.camera_id))
+        object.__setattr__(self, "image_size", _optional_image_size(self.image_size))
         object.__setattr__(self, "confidence", float(np.clip(self.confidence, 0.0, 1.0)))
         object.__setattr__(self, "bbox_area", max(0.0, float(self.bbox_area or _bbox_area(self.bbox))))
         object.__setattr__(self, "scale_rate", float(self.scale_rate))
@@ -572,6 +593,8 @@ class Assignment:
     arrival_window_start_s: float | None = None
     arrival_window_end_s: float | None = None
     activation_state: str = "active"
+    terminal_authorization_scope: str = "coalition"
+    arrival_coordination_required: bool = True
 
     def __post_init__(self) -> None:
         if not self.assigned_global_track_id:
@@ -597,6 +620,15 @@ class Assignment:
         object.__setattr__(self, "required_resource_count", int(self.required_resource_count))
         object.__setattr__(self, "coordination_mode", str(self.coordination_mode).strip().lower())
         object.__setattr__(self, "activation_state", str(self.activation_state).strip().lower())
+        authorization_scope = str(self.terminal_authorization_scope).strip().lower()
+        if authorization_scope not in {"coalition", "per_primary"}:
+            raise ValueError("terminal_authorization_scope must be coalition or per_primary")
+        object.__setattr__(self, "terminal_authorization_scope", authorization_scope)
+        object.__setattr__(
+            self,
+            "arrival_coordination_required",
+            bool(self.arrival_coordination_required),
+        )
         if self.arrival_window_start_s is not None:
             object.__setattr__(self, "arrival_window_start_s", float(self.arrival_window_start_s))
         if self.arrival_window_end_s is not None:
@@ -688,6 +720,7 @@ class ProjectionResult:
     valid: bool
     reason: str = ""
     predicted_px_velocity: np.ndarray = field(default_factory=lambda: np.zeros(2, dtype=float))
+    image_size: tuple[int, int] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "pixel", _optional_vector(self.pixel, 2, "pixel"))
@@ -698,6 +731,7 @@ class ProjectionResult:
         object.__setattr__(
             self, "predicted_px_velocity", _as_vector(self.predicted_px_velocity, 2, "predicted_px_velocity")
         )
+        object.__setattr__(self, "image_size", _optional_image_size(self.image_size))
 
 
 @dataclass(frozen=True)
@@ -809,6 +843,8 @@ class TerminalAssociation:
     bbox_edge_clip_sides: tuple[str, ...] = ()
     camera_geometry: CameraGeometryEvidence | None = None
     duplicate_terminal_lock_risk: bool = False
+    terminal_authorization_scope: str = "coalition"
+    arrival_coordination_required: bool = True
 
     def __post_init__(self) -> None:
         if not self.assigned_global_track_id:
@@ -881,6 +917,15 @@ class TerminalAssociation:
         object.__setattr__(self, "detection_source", str(self.detection_source or "unknown"))
         object.__setattr__(self, "bbox_edge_clipped", bool(self.bbox_edge_clipped or clip_sides))
         object.__setattr__(self, "bbox_edge_clip_sides", clip_sides)
+        authorization_scope = str(self.terminal_authorization_scope).strip().lower()
+        if authorization_scope not in {"coalition", "per_primary"}:
+            raise ValueError("terminal_authorization_scope must be coalition or per_primary")
+        object.__setattr__(self, "terminal_authorization_scope", authorization_scope)
+        object.__setattr__(
+            self,
+            "arrival_coordination_required",
+            bool(self.arrival_coordination_required),
+        )
         duplicate_terminal_lock_risk = bool(
             self.duplicate_terminal_lock_risk
             or self.metadata.get("duplicate_terminal_lock_risk", False)
@@ -919,6 +964,10 @@ class TerminalAssociation:
                     }
                 ),
                 "duplicate_terminal_lock_risk": duplicate_terminal_lock_risk,
+                "terminal_authorization_scope": authorization_scope,
+                "arrival_coordination_required": bool(
+                    self.arrival_coordination_required
+                ),
             }
         )
         object.__setattr__(self, "metadata", metadata)
@@ -958,6 +1007,8 @@ class TerminalAssociation:
             "plan_id": self.plan_id,
             "plan_version": self.plan_version,
             "resource_id": self.resource_id,
+            "terminal_authorization_scope": self.terminal_authorization_scope,
+            "arrival_coordination_required": self.arrival_coordination_required,
             "metadata": dict(self.metadata),
         }
 

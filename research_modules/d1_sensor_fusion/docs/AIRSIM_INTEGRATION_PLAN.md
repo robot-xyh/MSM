@@ -1,5 +1,21 @@
 # D1 AirSim 集成计划
 
+## 0. 当前权威状态（2026-07-13）
+
+- strict dense crossing 已完成 nominal 4 m 与 tight 2 m 各 20 seeds，共 40 个真实 AirSim
+  episode；每个 episode 51 帧、5 个目标。
+- D1 governed replay 在该批证据中保留 `measurement_timestamp`、`arrival_timestamp`、
+  covariance、NED、source lineage、scenario/config version、seed、`target_spacing_m` 和
+  `evidence_path`。
+- evaluator-only truth sidecar 共 10,200 个样本，`online_truth_leak_count=0`；truth 不进入
+  在线 `SensorObservation`、`GlobalTrack` 或控制链。
+- D6 统一报告中 `d1_dense_crossing=available`，schema、digest 和 evidence path 可追溯；
+  D1 全量回归为 `79 passed`。
+- 当前下一阶段不再重复建设 dense crossing freezer，而是采集真实漏检、匿名虚警、遮挡、
+  异步采样率、sensor-specific latency/故障样本，并校准区域时间窗和协方差长期治理阈值。
+- ROS 2 `tf2/message_filters`、OpenCV 标定、Stone Soup 和 FilterPy 仍未进入当前在线路径，
+  继续作为 P2/P3 可选集成或隔离 benchmark。
+
 ## 1. 范围与边界
 
 本文只描述 D1 在 AirSim/offline research simulation 中的观测适配、回放和评估合同。D1 不负责 AirSim Blocks 启停、episode reset、actor target 移动、`simGetDetections` 调用、frame capture、runtime bus 编排、真实飞控、硬件驱动、火控、毁伤或自动处置。
@@ -146,10 +162,19 @@ GlobalTrack(
 
 ### P1
 
-- 已完成 `blocks_sensor_observations.jsonl`/未来 `sensor_observations.jsonl` schema v1、legacy JSONL 兼容、最小 CSV reader/replay、latency/OOSM audit、轻量区域质量摘要、区域窗口摘要、协方差增长率 helper 和 `ReconCueSummary`。
-- 增加来自 main/shared runtime 的真实 AirSim CV detection fixture，覆盖 bbox、camera metadata、actor label、timestamp、covariance 和 N actor 输出，并形成真实样本回归。
-- 与 D6 对齐长期批量 JSONL/CSV schema，稳定 `TrackUncertaintySummary[]`、`LatencyAuditSummary`、`FusionQualityRegionSummary[]` 和 `FusionQualityRegionWindowSummary[]` 字段。
-- 基于真实多 seed 样本校准区域窗口、freshness/source-gap、协方差增长率和 handover readiness 的持续阈值，并补更细 NIS 统计。
+- 已完成 governed replay/schema/provenance、legacy JSONL 兼容、最小 CSV reader/replay、
+  latency/OOSM audit、区域质量/窗口摘要、协方差增长率 helper、`ReconCueSummary`，以及 4 m/2 m
+  各 20 seeds 的真实 AirSim 输入冻结。40 episode 的在线 truth 泄漏为 0，D6 source 已为
+  `available`。
+- 由 main/shared runtime 采集版本化真实 challenge fixture，显式覆盖 radar/acoustic/EO 的
+  漏检、匿名虚警、部分/完全遮挡、异步采样率、sensor-specific latency、故障注入和节点退出；
+  actor/truth identity 只进入 evaluator-only sidecar。
+- 在正常/故障多 seed 长 replay 上校准区域时间窗、freshness/source-gap、covariance growth、
+  expected-latency/OOSM、sensor health、handover readiness、NIS/NEES 和
+  `covariance_scale_reason` 的持续阈值。
+- 与 D6 保持长期批量 JSONL/CSV schema 对齐，稳定消费 `TrackUncertaintySummary[]`、
+  `LatencyAuditSummary`、`FusionQualityRegionSummary[]`、`FusionQualityRegionWindowSummary[]`
+  和 evidence availability；缺失项不得补零。
 - 保持 D1 不直连真实 AirSim runtime bus，由 main/shared runtime 继续拥有 AirSim 启停和日志写出。
 
 ### P2

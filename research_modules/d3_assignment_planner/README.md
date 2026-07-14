@@ -10,6 +10,7 @@ Boundary: this module only supports offline simulation, evaluation, and human-re
 - `src/d3_assignment_planner/`: Python implementation.
 - `src/d3_assignment_planner/fixtures.py`: versioned non-equal, dynamic-event, D5-feedback, and hard-window fixtures.
 - `src/d3_assignment_planner/calibration.py`: reusable full/incremental P1 matrix runner and D6-friendly summaries.
+- `src/d3_assignment_planner/cooperative_prescreen.py`: versioned M-to-N cooperative candidate grid, observed-result ranking, and current-plan metadata export.
 - `tests/`: unit tests.
 - `simulations/run_rolling_assignment.py`: 100 s, 2 Hz rolling simulation.
 - `docs/ALGORITHM_AND_IMPLEMENTATION.md`: Chinese algorithm principles and implementation guide.
@@ -63,20 +64,21 @@ Use `assignments_by_target()` for multiplicity and `assignment_by_resource()`
 for the resource index. The legacy `assignment_map()` remains valid for
 one-to-one plans and raises `ValueError` for multi-resource targets. Stable
 assignment signatures drive hysteresis, change counts, and switch penalties;
-coalition member/role/window changes increment coalition version. D7 bindings
+coalition member/role changes increment coalition version; executable window
+changes increment plan version, while pure cost evaluation preserves it. D7 bindings
 carry coalition identity, role, wave, mode, window, and minimum separation, and
 only a current committed coalition can produce an active binding.
 Changing `primary_resource_count` also changes the coalition demand signature,
 increments coalition version, and is exported in binding fields/metadata.
 `AssignmentPlan.execution_signature()` additionally covers executable bindings,
 coalition state/members, role/wave/windows, owner, and activation/lease semantics.
-Only a change to that signature advances `plan_id/version`; an ordinary refresh
-with the same signature retains `plan_id`, `version`, `created_at`, and each
-assignment's `plan_version`, and returns `changed=False`. Plan and assignment
-metadata use `identity_created_at_s` for that stable identity creation time and
-`last_evaluated_at_s` for the current `plan()` timestamp. A no-change or forced
-no-change refresh advances only `last_evaluated_at_s`; a real identity change
-sets both timestamps to the new planning timestamp.
+For both `k=1` and `k>1`, a pure cost/evaluation refresh retains executable
+`plan_id/version`, assignment `plan_version`, `created_at`, and coalition
+`version/epoch`; it sets `evaluation_refresh_only=True` and updates only
+diagnostic costs and `last_evaluated_at_s`. A resource/role/target/owner or
+activation change advances executable identity. Secondary takeover is an
+explicit new lineage. Plan and assignment metadata keep lineage creation time
+in `identity_created_at_s` and the current evaluation tick separately.
 
 OR-Tools is not a default dependency. The isolated P2 benchmark feeds one
 unequal-N/M, hybrid primary+reserve, capacity-constrained demand-slot problem
@@ -226,4 +228,58 @@ replace the default Hungarian/demand-slot planner.
 
 Local resources must not rewrite `global_track_id`; D3 publishes versioned candidate plans for review. For `secondary_plan_v2`, D3 does not choose a concrete secondary node, renew leases, elect leaders, or perform recovery arbitration. D4/main supplies those decisions; D3 validates the activation snapshot and prevents expired, non-monotonic, or non-current plans from yielding an executable D7 binding. Normal operation uses Hungarian/demand-slot assignment. The optional same-input capacity comparator is implemented and is not an open online P1 dependency. CP-SAT/MILP coalition admission, backup-resource quotas, multi-window flow, and large-scale sweeps remain isolated P2 benchmarks. D4 secondary-node arbitration is preferred before CBBA-style fallback.
 
-Current D3 regression baseline (2026-07-12): `127 passed, 1 skipped` with `python3 -m pytest research_modules/d3_assignment_planner/tests -q -o addopts='' -ra`. The skip is the installed-only OR-Tools benchmark in an environment without the optional dependency.
+Current D3 regression baseline (2026-07-13): `139 passed, 1 skipped` with `python3 -m pytest research_modules/d3_assignment_planner/tests -q -o addopts='' -ra`. The skip is the installed-only OR-Tools benchmark in an environment without the optional dependency.
+
+## Per-primary authorization and coalition membership hysteresis
+
+Cooperative demand now carries the versioned contract
+`terminal_authorization_scope="per_primary"` and
+`arrival_coordination_required=False`. Each active primary may therefore be
+authorized independently by downstream D4/D5/D7 gates; a reserve binding is
+explicitly `hold` with `reserve_standby_not_activated` and cannot execute
+without a newer plan changing its role.
+
+Per-pair diagnostics use the same contract in both D6 records and D7 binding
+metadata. They expose plan owner/version, coalition id/version/epoch, role,
+wave, activation, assignment validity, authorization eligibility, plan churn,
+rollback detection, and stale-reject count. Only feasible active primaries are
+reported as active/eligible; reserve rows remain standby and inactive. A
+compatible current-plan evaluation refresh reports zero churn and no rollback
+while preserving plan identity and coalition epoch.
+
+For `k>1`, executable members and roles have a separate membership clock.
+They remain fixed for at least `PlannerConfig.min_dwell` and may be replaced
+only when the previous member set is hard-infeasible, or when the candidate
+coalition cost improves by more than `delta` after dwell. Plan metadata exports
+the previous/current member sets, reason, target cost comparison, dwell result,
+and hold basis. Ordinary compatible cost refreshes preserve both `plan_id` and
+plan version; coalition `version/epoch` advances only when a resource or role
+actually changes. The Hungarian/demand-slot solver is unchanged.
+
+## P1 Cooperative Candidate Prescreen
+
+`build_p1_cooperative_candidate_grid()` defines the stable 27-candidate grid
+used by main's M5N2 paired sweep: terminal handoff range `20/30/40 m`, primary
+arrival-window width `3/5/8 s`, and approach-sector separation
+`20/40/60 deg`. Candidate IDs are deterministic and do not depend on resource
+or target count. `demand_for_cooperative_candidate()` applies only the timing
+and audit metadata to an existing `TargetDemand`; required resources, primary
+count, hybrid/simultaneous/sequential mode, capability requirements, wave
+interval, and minimum separation remain caller-owned.
+
+`export_cooperative_candidate_plan_metadata()` emits candidate ID, current
+plan/coalition versions, target/resource IDs, role, wave, arrival window,
+minimum separation, and an explicit activation state. A primary is `active`;
+a reserve/retry is `standby`. The export rejects a non-current plan, stale
+assignment version, or stale/non-committed coalition. It is read-only and does
+not activate a reserve or alter Hungarian/demand-slot planning.
+
+`rank_cooperative_candidates()` accepts only complete physical observations
+from main/D6. It refuses missing candidate observations instead of estimating
+success. Ranking is deterministic: zero safety violations first, then maximum
+coalition-completion rate, maximum pair-success rate, minimum arrival spread,
+and finally candidate ID as the tie break. The default output is the top three
+candidates. D3 therefore supplies experiment design and plan/reachability
+metadata; it does not manufacture AirSim outcomes. Same-geometry 10-seed M5N2
+execution and the `8/10` coalition-completion acceptance target remain open at
+the main/runtime level.

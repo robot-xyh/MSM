@@ -63,15 +63,22 @@ def test_secondary_destroyed_falls_back_to_distributed(tmp_path: Path) -> None:
     )
 
 
-def test_active_terminal_mismatch_triggers_active_degradation(tmp_path: Path) -> None:
+def test_active_terminal_mismatch_requests_assist_then_center_replan(
+    tmp_path: Path,
+) -> None:
     config = make_standard_scenario("active_terminal_mismatch", seed=14, duration_s=6.0)
 
     result = run_integrated_episode(config, output_dir=tmp_path)
 
-    assert any(
-        decision.mode == "active_degradation"
-        and decision.action in {"degrade_to_secondary", "degrade_to_distributed"}
+    active_actions = {
+        decision.action
         for decision in result.decisions
+        if decision.mode == "active_degradation"
+    }
+    assert "request_secondary_assist" in active_actions
+    assert "request_center_replan" in active_actions
+    assert not active_actions.intersection(
+        {"degrade_to_secondary", "degrade_to_distributed"}
     )
     assert result.metrics.terminal_association_accuracy < 1.0
 

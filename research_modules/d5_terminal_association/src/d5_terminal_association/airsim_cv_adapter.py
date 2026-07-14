@@ -70,7 +70,8 @@ class AirSimCVScenarioSpec:
     interceptor_camera_spacing_m: float = 20.0
     secondary_recon_height_offset_m: float = 200.0
     secondary_recon_role: str = "tethered_high_recon"
-    secondary_recon_resolution: tuple[int, int] = (1920, 1080)
+    interceptor_camera_resolution: tuple[int, int] = (1920, 1080)
+    secondary_recon_resolution: tuple[int, int] = (3840, 2160)
 
     def __post_init__(self) -> None:
         if self.interceptor_count <= 0 or self.target_count <= 0:
@@ -81,6 +82,12 @@ class AirSimCVScenarioSpec:
             raise ValueError("spacing values must be positive")
         if self.secondary_recon_height_offset_m <= 0.0:
             raise ValueError("secondary_recon_height_offset_m must be positive")
+        for name, image_size in (
+            ("interceptor_camera_resolution", self.interceptor_camera_resolution),
+            ("secondary_recon_resolution", self.secondary_recon_resolution),
+        ):
+            if len(image_size) != 2 or min(int(image_size[0]), int(image_size[1])) <= 0:
+                raise ValueError(f"{name} must be positive (width, height)")
 
 
 @dataclass(frozen=True)
@@ -505,8 +512,13 @@ def local_visual_tracks_from_sim_detections(
                 track_reset_reason=_get_any(detection, "track_reset_reason"),
                 bbox_edge_clipped=bool(clip_sides),
                 bbox_edge_clip_sides=clip_sides,
+                image_size=image_size,
                 camera_geometry=camera_geometry,
-                metadata={"resource_id": resource_id, "camera_id": camera_id},
+                metadata={
+                    "resource_id": resource_id,
+                    "camera_id": camera_id,
+                    "image_size": image_size,
+                },
             )
         )
     return tracks
@@ -594,8 +606,13 @@ def local_visual_tracks_from_offline_yolo_bytetrack(
                 track_reset_reason=_get_any(detection, "track_reset_reason"),
                 bbox_edge_clipped=bool(clip_sides),
                 bbox_edge_clip_sides=clip_sides,
+                image_size=image_size,
                 camera_geometry=camera_geometry,
-                metadata={"resource_id": resource_id, "camera_id": camera_id},
+                metadata={
+                    "resource_id": resource_id,
+                    "camera_id": camera_id,
+                    "image_size": image_size,
+                },
             )
         )
     return tracks

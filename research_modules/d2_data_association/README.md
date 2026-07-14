@@ -172,6 +172,92 @@ inversion/late measurement 暴露，但不宣称实现原始量测 OOSM 回溯�
 availability、版本化 gate/risk profile、中心 ID owner 和 online truth leakage。
 量测数可以小于或大于目标数，目标数和代价矩阵均来自当前输入，不依赖场景名。
 
+P1 dense/crossing 固定矩阵标定：
+
+```bash
+PYTHONPATH=research_modules/d2_data_association \
+python3 research_modules/d2_data_association/scripts/run_p1_identity_calibration.py \
+  --screening-manifest /path/to/screening-10seed-manifest.json \
+  --confirmation-manifest /path/to/confirmation-20seed-manifest.json \
+  --output /tmp/d2-p1-identity-calibration.json
+```
+
+manifest schema 为 `d2-p1-identity-calibration-input/v1`，每个 seed 显式给出
+`replay_path` 和 evaluator-only `truth_path`，并冻结
+`frozen_p95_loop_latency_budget_s`。runner 对全部 54 组 GNN 配置使用同一个
+replay/truth digest，覆盖 gate `5.99/9.21/13.82`、quality-aware off/on、
+lost/drop `1/3, 2/5, 3/7` 和 motion weight `0.5/1/2` 倍。轻量 JPDA 只在最佳
+GNN 的输入、gate 和 lifecycle 上做离线同预算对照。缺少 10 或 20 个唯一 seed 时
+对应阶段显式 `unavailable`，不会用 synthetic fixture 补齐或冒充 AirSim 结论。
+准入报告只给出评审建议，不会替换默认 GNN/Hungarian。
+
+`truth_path` 按 suffix 和 schema 显式选择：`.jsonl` 读取
+`d2-offline-truth-label/v1`；`.json` 只接受 D1 freeze 生成的
+`d1.airsim_offline_truth.v1`。D1 JSON adapter 校验 `evaluator_only=true`、NED
+frame、有限 timestamp、非空 `truth_id` 和有限三维 `position_ned`，再按量测时间
+映射到 governed replay frame，并投影为 D2 水平 N/E label。Down 分量只进入离线审计
+annotation。无法唯一匹配 replay frame、位置不可用或 schema 不支持时直接拒绝，绝不
+把 sidecar 内容写入在线 frame。
+
+证据分类兼容 legacy `airsim` 和受治理的 `real_airsim_*` 来源标识，因此 main 生成的
+`real_airsim_blocks_d1_governed_replay` 会在 screening、confirmation 和 JPDA 对照中
+正确标为 `airsim_evidence=true`。包含 `airsim` 字样但不以 `real_airsim_` 开头的
+synthetic 来源不会被误分类。该字段只描述证据来源，不参与参数排序或算法准入。
+
+P1 高难度 replay 使用六个固定 `scenario_difficulty`：`nominal`、
+`tight_crossing`、`dropout`、`clutter`、`delayed_noisy`、`combined`。manifest 可在
+顶层设置统一难度，也可在 case 中覆盖；可选 `difficulty_metadata` 记录 main 实际注入
+参数。D2 只校验和消费元数据，不在模块内生成 AirSim 数据。混合 manifest 的 case
+唯一键为 `(scenario_difficulty, seed)`，每个出现的难度档都必须满足 screening 10 个
+seed；confirmation 通常只提供 `combined` 的 20 个 seed。
+
+每个 GNN/JPDA 结果新增 `aggregate_by_difficulty`，报告的 `difficulty_results` 直接给出
+每档 baseline、最佳 GNN、JPDA 的 IDSW、identity continuity、false-track、RMSE 和
+p95 latency，以及分档 admission。若所有受评算法在某档均为 `IDSW=0` 且
+`identity_continuity=1.0`，该档显式标记
+`scenario_still_non_discriminative=true`，禁止把理想但无区分度的 fixture 解释为候选
+算法优于默认 GNN/Hungarian。在线 truth 隔离和既有准入门限保持不变。
+
+真实 governed replay 的观测压力使用纯离线 API：
+
+```python
+from d2_data_association import transform_d1_governed_replay
+
+result = transform_d1_governed_replay(
+    d1_governed_bundle,
+    scenario_difficulty="combined",
+    seed=7,
+    declared_target_spacing_m=2.0,
+)
+# main 写 result.payload，并把 result.profile_metadata 放入校准 manifest。
+```
+
+transformer 不接收 truth sidecar：`dropout` 在量测时间中段删除 0.6-1.2 s 雷达记录，
+`clutter` 每帧注入 1-3 条匿名雷达虚警，`delayed_noisy` 增加 0.2-0.5 s 到达延迟并将
+协方差放大 3 倍，`combined` 组合三者。保留的记录维持 measurement timestamp、
+arrival timestamp、covariance 和原 source lineage；延迟/噪声 profile 在保留原值
+来源的同时生成受治理新值和追加 lineage。虚警仅使用 opaque ID，并带
+`injected_evaluator_scenario`。
+
+几何不能由该 API 伪造：`nominal/dropout/clutter/delayed_noisy` 只接受 main 声明的
+约 4 m 捕获，`tight_crossing/combined` 只接受约 2 m 捕获。若 D1 provenance 已携带
+`target_spacing_m`，声明必须一致；没有该字段时，报告明确标记为
+`capture_declaration_only_no_truth_geometry`。输出包含 profile metadata、输入/输出
+digest、实际注入参数、计数和 online truth leak 审计。
+
+进入真实 AirSim P1 标定 manifest 时规则更严格：D1 adapter 会把
+`target_spacing_m` 和 `d2_offline_stress_profile` 透传到每个 D2 frame；
+`airsim`/`real_airsim_*` case 缺少 spacing、4 m/2 m 档位不符、frame 与 profile
+数值冲突或 difficulty 冲突时直接拒绝。六档治理仍以 `(difficulty, seed)` 为唯一键，
+允许不同 seed 保留不同的实际 dropout/delay/clutter 参数，仅 profile/schema/version
+等不变量要求同档一致。分档摘要同时报告 NIS/NEES available seed count。
+
+D1 offline truth 允许比 governed replay 更稠密。adapter 只在量测时间戳位于冻结
+`1e-9 s` 容差且 frame 可唯一确定时生成 evaluator label；没有匿名传感器观测而缺失的
+replay frame 记为 unmatched，不做最近邻补配。输出 `complete/partial/unavailable`、
+matched/unmatched sample count、原因和不含身份的样本索引/时间审计。非法 sidecar、
+重复样本或同时间多 frame 无法消歧仍 fail closed；truth 不进入在线 frame。
+
 ## 可选集成
 
 `filterpy` 和 `stonesoup` 不是运行时依赖。默认环境缺依赖时，对应行输出 `dependency_available=false`、`executed=false` 和明确的 `unavailable_reason`；不会静默回退。隔离环境已验证 FilterPy 1.4.5 与 Stone Soup 1.9.1 的对象 adapter，但完整外部框架 JPDA/MHT、EKF/UKF/IMM 和 optional 端到端 IDSW/continuity 仍未实现。模块内 `JPDAAssociator`/`MHTAssociator` 不需要外部依赖，只作为显式 research adapter 运行，不能解释为完整算法已经实现。

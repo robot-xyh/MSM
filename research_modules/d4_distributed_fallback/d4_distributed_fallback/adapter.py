@@ -83,6 +83,7 @@ ADAPTER_HARD_RISK_FACTORS = frozenset(
         "d2_track_continuity_low",
         "d3_assignment_not_current",
         "d3_assignment_stale",
+        "d3_resource_infeasible",
         "d5_duplicate_terminal_lock",
         "d5_resource_assignment_mismatch",
         "d5_terminal_id_mismatch",
@@ -126,6 +127,7 @@ CENTER_REPLAN_COOLDOWN_BYPASS_FACTORS = frozenset(
         "d2_duplicate_track_observed",
         "d3_assignment_not_current",
         "d3_assignment_stale",
+        "d3_resource_infeasible",
         "coalition_safety_hold",
         "coalition_plan_version_stale",
         "coalition_version_stale",
@@ -229,6 +231,10 @@ class D4DecisionRecord:
     target_node_id: str | None = None
     coverage_cell: str | None = None
     terminal_consistent: bool = False
+    terminal_binding_reject_reasons: tuple[str, ...] = ()
+    terminal_visual_state: str | None = None
+    terminal_evidence_applicable: bool = True
+    arbitration_state_key: str | None = None
     secondary_single_camera_full_view_frame_rate: float | None = None
     secondary_network_joint_full_view_frame_rate: float | None = None
     secondary_network_mean_coverage_ratio: float | None = None
@@ -246,6 +252,7 @@ class D4DecisionRecord:
     secondary_detect_to_cross_view_diagnostic: str | None = None
     secondary_network_coverage_available: bool = False
     secondary_network_full_view_gap: float | None = None
+    secondary_assist_requested: bool = False
     secondary_takeover_candidate: bool = False
     secondary_takeover_success: bool = False
     secondary_takeover_necessity_label: str | None = None
@@ -474,6 +481,13 @@ class D4DecisionRecord:
             "target_node_id": self.target_node_id,
             "coverage_cell": self.coverage_cell,
             "terminal_consistent": self.terminal_consistent,
+            "terminal_binding_consistent": self.terminal_consistent,
+            "terminal_binding_reject_reasons": list(
+                self.terminal_binding_reject_reasons
+            ),
+            "terminal_visual_state": self.terminal_visual_state,
+            "terminal_evidence_applicable": self.terminal_evidence_applicable,
+            "arbitration_state_key": self.arbitration_state_key,
             "secondary_single_camera_full_view_frame_rate": (
                 self.secondary_single_camera_full_view_frame_rate
             ),
@@ -511,6 +525,7 @@ class D4DecisionRecord:
             "secondary_network_full_view_gap": self.secondary_network_full_view_gap,
             "secondary_capability_class": self.secondary_capability_class,
             "secondary_capability_inputs": self.secondary_capability_inputs,
+            "secondary_assist_requested": self.secondary_assist_requested,
             "secondary_takeover_candidate": self.secondary_takeover_candidate,
             "secondary_takeover_success": self.secondary_takeover_success,
             "secondary_takeover_necessity_label": self.secondary_takeover_necessity_label,
@@ -677,6 +692,9 @@ class D4ArbitrationAdapter:
         readiness_config: SecondaryReadinessWindowConfig | None = None,
     ) -> None:
         self.arbiter = arbiter or ActiveDegradationArbiter()
+        self._arbiters_by_binding: dict[
+            tuple[str, str], ActiveDegradationArbiter
+        ] = {}
         self.readiness_config = readiness_config or SecondaryReadinessWindowConfig()
         self._secondary_readiness_memory: dict[
             tuple[str, str, str], _SecondaryReadinessMemory
@@ -684,6 +702,21 @@ class D4ArbitrationAdapter:
         self._secondary_takeover_memory: dict[
             tuple[str, str], _SecondaryTakeoverMemory
         ] = {}
+
+    def _arbiter_for_binding(
+        self,
+        binding_key: tuple[str, str],
+    ) -> ActiveDegradationArbiter:
+        arbiter = self._arbiters_by_binding.get(binding_key)
+        if arbiter is not None:
+            return arbiter
+        arbiter = (
+            self.arbiter
+            if not self._arbiters_by_binding
+            else ActiveDegradationArbiter(self.arbiter.config)
+        )
+        self._arbiters_by_binding[binding_key] = arbiter
+        return arbiter
 
     def evaluate(
         self,
@@ -799,6 +832,12 @@ class D4ArbitrationAdapter:
                 duplicate_terminal_lock=False,
                 cross_view_risk_score=terminal_summary.ambiguity_score,
             )
+        binding_key = (resolved_resource_id, resolved_track_id)
+        binding_arbiter = self._arbiter_for_binding(binding_key)
+        binding_reject_reasons = binding_arbiter.terminal_binding_reject_reasons(
+            assignment_summary,
+            terminal_summary,
+        )
         communications = tuple(
             item
             for item in (
@@ -820,7 +859,7 @@ class D4ArbitrationAdapter:
             global_track_id=resolved_track_id,
             coverage_cell=resolved_coverage,
         )
-        decision = self.arbiter.evaluate(
+        decision = binding_arbiter.evaluate(
             track_uncertainty=track_summary,
             association_risk=association_summary,
             assignment_validity=assignment_summary,
@@ -835,6 +874,18 @@ class D4ArbitrationAdapter:
             decision,
             coalition_safety,
         )
+        if not decision.terminal_consistent and not coalition_safety.safe_to_execute:
+            binding_reject_reasons = tuple(
+                dict.fromkeys(
+                    reason
+                    for reason in (
+                        *binding_reject_reasons,
+                        coalition_safety.safety_reason,
+                        *coalition_safety.conflict_reasons,
+                    )
+                    if reason
+                )
+            )
         resolved_plan_id = plan_id or _string_or_none(_get(plan, "plan_id"))
         resolved_plan_version = _optional_int(
             _get(plan, "version", _get(plan, "plan_version"))
@@ -850,7 +901,10 @@ class D4ArbitrationAdapter:
             current_plan_id=resolved_plan_id,
             current_plan_version=resolved_plan_version,
             current_time_s=float(timestamp),
-            cooldown_s=max(0.0, float(self.arbiter.config.center_replan_cooldown_s)),
+            cooldown_s=max(
+                0.0,
+                float(binding_arbiter.config.center_replan_cooldown_s),
+            ),
         )
         selected_lifecycle = _diagnostic_secondary_lifecycle(
             lifecycle,
@@ -886,6 +940,44 @@ class D4ArbitrationAdapter:
             secondary_readiness_sustained=readiness_sustained,
             decision_timestamp=timestamp,
         )
+        if (
+            str(active_plan_owner).strip().lower() in {"secondary", "secondary_node"}
+            and not secondary_takeover.secondary_plan_executable
+        ):
+            reject_reason = (
+                secondary_takeover.secondary_plan_reject_reason
+                or "secondary_plan_not_executable"
+            )
+            decision = ActiveDegradationDecision(
+                mode=DegradationMode.ACTIVE_DEGRADATION,
+                action=DegradationAction.HOLD_FOR_REVIEW,
+                reason=reject_reason,
+                target_node_id=decision.target_node_id,
+                coverage_cell=decision.coverage_cell,
+                terminal_consistent=False,
+                risk_factors=tuple(
+                    dict.fromkeys((*decision.risk_factors, reject_reason))
+                ),
+                requires_human_review=True,
+            )
+            binding_reject_reasons = tuple(
+                dict.fromkeys((*binding_reject_reasons, reject_reason))
+            )
+            secondary_takeover = build_secondary_takeover_plan_metadata(
+                decision,
+                current_plan_id=resolved_plan_id,
+                current_plan_version=resolved_plan_version,
+                current_plan_owner=active_plan_owner,
+                secondary_plan_id=secondary_plan_id,
+                secondary_plan_version=secondary_plan_version,
+                secondary_plan_active=secondary_plan_active,
+                secondary_plan_source_node_id=secondary_plan_source_node_id,
+                secondary_plan_lease_epoch=resolved_secondary_lease_epoch,
+                required_secondary_plan_lease_epoch=required_lease_epoch,
+                secondary_plan_lease_expires_at_s=secondary_plan_lease_expires_at_s,
+                secondary_readiness_sustained=readiness_sustained,
+                decision_timestamp=timestamp,
+            )
         resolved_trigger_timestamp = float(
             trigger_timestamp if trigger_timestamp is not None else timestamp
         )
@@ -908,10 +1000,12 @@ class D4ArbitrationAdapter:
         )
         diagnostic_lifecycle = selected_lifecycle
         network_coverage = _secondary_network_coverage_metadata(terminal_summary)
-        secondary_takeover_candidate = decision.action in {
-            DegradationAction.REQUEST_SECONDARY_ASSIST,
-            DegradationAction.DEGRADE_TO_SECONDARY,
-        }
+        secondary_assist_requested = (
+            decision.action == DegradationAction.REQUEST_SECONDARY_ASSIST
+        )
+        secondary_takeover_candidate = (
+            decision.action == DegradationAction.DEGRADE_TO_SECONDARY
+        )
         risk_classification = _risk_classification_metadata(
             decision.risk_factors,
             decision=decision,
@@ -965,6 +1059,12 @@ class D4ArbitrationAdapter:
             target_node_id=decision.target_node_id,
             coverage_cell=decision.coverage_cell or resolved_coverage,
             terminal_consistent=decision.terminal_consistent,
+            terminal_binding_reject_reasons=binding_reject_reasons,
+            terminal_visual_state=terminal_summary.decision_state.value,
+            terminal_evidence_applicable=(
+                terminal_summary.terminal_evidence_applicable
+            ),
+            arbitration_state_key=f"{resolved_resource_id}:{resolved_track_id}",
             secondary_single_camera_full_view_frame_rate=(
                 terminal_summary.secondary_single_camera_full_view_frame_rate
             ),
@@ -996,6 +1096,7 @@ class D4ArbitrationAdapter:
             ),
             secondary_network_coverage_available=network_coverage["available"],
             secondary_network_full_view_gap=network_coverage["full_view_gap"],
+            secondary_assist_requested=secondary_assist_requested,
             secondary_takeover_candidate=secondary_takeover_candidate,
             secondary_takeover_success=_secondary_takeover_success(
                 secondary_takeover,
@@ -2098,6 +2199,44 @@ def build_assignment_validity_summary(
     if stale_after_s is not None and plan_age > stale_after_s:
         is_current = False
 
+    assignment_metadata = _metadata(assignment)
+    resource_feasible = True
+    feasibility_source = "default_true"
+    feasibility_candidates = (
+        ("assignment.resource_feasible", _get(assignment, "resource_feasible")),
+        ("assignment.is_resource_feasible", _get(assignment, "is_resource_feasible")),
+        ("assignment.feasible", _get(assignment, "feasible")),
+        ("assignment.metadata.resource_feasible", assignment_metadata.get("resource_feasible")),
+        ("plan.metadata.resource_feasible", plan_metadata.get("resource_feasible")),
+    )
+    for source, raw_value in feasibility_candidates:
+        parsed = _optional_bool(raw_value)
+        if parsed is not None:
+            resource_feasible = parsed
+            feasibility_source = source
+            break
+
+    if feasibility_source == "default_true":
+        state_candidates = (
+            ("assignment.resource_feasibility", _get(assignment, "resource_feasibility")),
+            ("assignment.feasibility_state", _get(assignment, "feasibility_state")),
+            (
+                "assignment.metadata.resource_feasibility",
+                assignment_metadata.get("resource_feasibility"),
+            ),
+            ("plan.metadata.resource_feasibility", plan_metadata.get("resource_feasibility")),
+        )
+        for source, raw_state in state_candidates:
+            state = (_string_or_none(raw_state) or "").strip().lower()
+            if state in {"feasible", "available", "ready", "executable"}:
+                resource_feasible = True
+                feasibility_source = source
+                break
+            if state in {"infeasible", "unavailable", "failed", "not_executable"}:
+                resource_feasible = False
+                feasibility_source = source
+                break
+
     return AssignmentValiditySummary(
         global_track_id=global_track_id,
         assigned_resource_id=resource_id,
@@ -2105,10 +2244,16 @@ def build_assignment_validity_summary(
         is_current=is_current,
         plan_age_s=plan_age,
         cost_margin=_cost_margin(plan, assignment),
+        resource_feasible=resource_feasible,
         metadata={
             "plan_age_reference": age_reference,
             "plan_age_reference_timestamp_s": activity_timestamp,
             "identity_age_s": identity_age,
+            **(
+                {"resource_feasibility_source": feasibility_source}
+                if feasibility_source != "default_true"
+                else {}
+            ),
         },
     )
 
@@ -2130,6 +2275,11 @@ def build_terminal_association_summary(
             return terminal_association
         return replace(
             terminal_association,
+            terminal_evidence_applicable=_terminal_evidence_applicable(
+                terminal_association,
+                d5_evidence,
+                cross_view_summary,
+            ),
             **_secondary_visual_conversion_fields(
                 terminal_association=terminal_association,
                 cross_view_summary=cross_view_summary,
@@ -2165,6 +2315,11 @@ def build_terminal_association_summary(
         association_confidence=_first_float(_get(terminal_association, "association_confidence"), 0.0),
         ambiguity_score=_first_float(_get(terminal_association, "ambiguity_score"), 1.0),
         coverage_cell=coverage_cell,
+        terminal_evidence_applicable=_terminal_evidence_applicable(
+            terminal_association,
+            d5_evidence,
+            cross_view_summary,
+        ),
         observed_global_track_id=observed_global_track_id
         or _string_or_none(_get(terminal_association, "observed_global_track_id")),
         consecutive_non_locked_frames=int(consecutive_non_locked_frames),
@@ -2176,6 +2331,22 @@ def build_terminal_association_summary(
         cross_view_support_count=cross_view_support_count,
         **secondary_visual_fields,
     )
+
+
+def _terminal_evidence_applicable(*sources: Any) -> bool:
+    field_names = (
+        "terminal_evidence_applicable",
+        "evidence_applicable",
+        "visual_evidence_applicable",
+        "within_terminal_visual_window",
+        "terminal_visual_window_active",
+    )
+    for source in sources:
+        for field_name in field_names:
+            parsed = _optional_bool(_evidence_field_value(source, field_name))
+            if parsed is not None:
+                return parsed
+    return True
 
 
 def _secondary_visual_conversion_fields(

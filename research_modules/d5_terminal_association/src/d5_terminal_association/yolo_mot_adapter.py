@@ -17,6 +17,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 import numpy as np
 
 from .models import CameraGeometryEvidence, LocalVisualTrack
+from .object_taxonomy import canonical_object_class
 
 
 DEFAULT_YOLOV8_WEIGHTS_PATH = Path(
@@ -67,6 +68,7 @@ class YoloMotAdapterConfig:
     cpu_budget_ms: float | None = None
     gpu_budget_ms: float | None = None
     offline_evaluation_iou_threshold: float = 0.5
+    inference_imgsz: int | Sequence[int] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "weights_path", Path(self.weights_path))
@@ -93,6 +95,7 @@ class YoloMotAdapterConfig:
         )
         if not 0.0 <= self.offline_evaluation_iou_threshold <= 1.0:
             raise ValueError("offline_evaluation_iou_threshold must be in [0, 1]")
+        object.__setattr__(self, "inference_imgsz", _normalize_inference_imgsz(self.inference_imgsz))
 
 
 @dataclass(frozen=True)
@@ -123,6 +126,12 @@ class _DetectorDetection:
     class_id: int | None = None
     source_track_id: str | int | None = None
     mot_history_length: int = 1
+    raw_category: str | None = None
+
+    def __post_init__(self) -> None:
+        raw_category = str(self.category if self.raw_category is None else self.raw_category)
+        object.__setattr__(self, "raw_category", raw_category)
+        object.__setattr__(self, "category", canonical_object_class(raw_category))
 
 
 @dataclass
@@ -134,6 +143,7 @@ class _TrackState:
     class_id: int | None = None
     hits: int = 1
     missed_frames: int = 0
+    raw_category: str = "unknown"
 
 
 @dataclass(frozen=True)
@@ -144,6 +154,7 @@ class _TrackedDetection:
     class_id: int | None
     track_id: str | int
     mot_history_length: int
+    raw_category: str = "unknown"
 
 
 class IouFallbackTracker:
@@ -202,6 +213,7 @@ class IouFallbackTracker:
                     class_id=detection.class_id,
                     hits=1,
                     missed_frames=0,
+                    raw_category=str(detection.raw_category),
                 )
             else:
                 state = self._tracks[track_id]
@@ -209,6 +221,7 @@ class IouFallbackTracker:
                 state.category = detection.category
                 state.confidence = detection.confidence
                 state.class_id = detection.class_id
+                state.raw_category = str(detection.raw_category)
                 state.hits += 1
                 state.missed_frames = 0
 
@@ -221,6 +234,7 @@ class IouFallbackTracker:
                     class_id=detection.class_id,
                     track_id=track_id,
                     mot_history_length=max(state.hits, detection.mot_history_length),
+                    raw_category=str(detection.raw_category),
                 )
             )
 
@@ -273,6 +287,7 @@ class YoloMotAdapter:
         arrival_timestamp: float | None = None,
         exposure_timestamp: float | None = None,
         camera_geometry: CameraGeometryEvidence | None = None,
+        target_distance_m: float | None = None,
         offline_truth_detections: Any | None = None,
         raise_on_unavailable: bool = False,
     ) -> YoloMotFrameResult:
@@ -289,6 +304,7 @@ class YoloMotAdapter:
         effective_arrival_timestamp = (
             float(arrival_timestamp) if arrival_timestamp is not None else float(timestamp)
         )
+        normalized_target_distance_m = _optional_positive_float(target_distance_m)
         metadata: dict[str, Any] = {
             "requested_tracker_backend": self.config.tracker_backend,
             "stream_key": {
@@ -308,6 +324,28 @@ class YoloMotAdapter:
             },
             "native_tracker_preferred": self._native_tracker_requested(),
             "iou_fallback_allowed": self.config.allow_iou_fallback,
+            "confidence_threshold": self.config.confidence_threshold,
+            "offline_evaluation_iou_threshold": (
+                self.config.offline_evaluation_iou_threshold
+            ),
+            "inference_imgsz_requested": _inference_imgsz_metadata_value(
+                self.config.inference_imgsz
+            ),
+            "mot_admission_scenario": {
+                "confidence_threshold": self.config.confidence_threshold,
+                "target_distance_m": normalized_target_distance_m,
+                "standard_confidence_grid": any(
+                    np.isclose(self.config.confidence_threshold, value)
+                    for value in (0.1, 0.2, 0.3)
+                ),
+                "standard_distance_grid": (
+                    normalized_target_distance_m is not None
+                    and any(
+                        np.isclose(normalized_target_distance_m, value)
+                        for value in (20.0, 30.0, 50.0)
+                    )
+                ),
+            },
             "_processing_started_perf_counter_s": perf_counter(),
             "_offline_truth_bboxes": _offline_truth_bboxes(offline_truth_detections),
             "measurement_timestamp": float(timestamp),
@@ -397,6 +435,7 @@ class YoloMotAdapter:
                             class_id=item.class_id,
                             track_id=item.source_track_id,
                             mot_history_length=item.mot_history_length,
+                            raw_category=str(item.raw_category),
                         )
                         for item in detections
                         if item.source_track_id is not None
@@ -640,6 +679,7 @@ class YoloMotAdapter:
             tracker=tracker_file,
             conf=self.config.confidence_threshold,
             verbose=False,
+            **_ultralytics_imgsz_kwargs(self.config.inference_imgsz),
             **_ultralytics_device_kwargs(self.config.compute_device),
         )
         detections = self._filter_detections(
@@ -659,6 +699,7 @@ class YoloMotAdapter:
                 frame,
                 conf=self.config.confidence_threshold,
                 verbose=False,
+                **_ultralytics_imgsz_kwargs(self.config.inference_imgsz),
                 **_ultralytics_device_kwargs(self.config.compute_device),
             )
         if callable(model):
@@ -694,6 +735,12 @@ class YoloMotAdapter:
         )
         offline_truth_bboxes = completed_metadata.pop("_offline_truth_bboxes", None)
         detected_bboxes = tuple(completed_metadata.pop("_detected_bboxes", ()))
+        completed_metadata["detector_bboxes_xyxy"] = [
+            [float(value) for value in bbox]
+            for bbox in detected_bboxes
+        ]
+        completed_metadata["detector_bbox_count"] = len(detected_bboxes)
+        completed_metadata["detector_bboxes_online_safe"] = True
         completed_metadata.update(
             _runtime_performance_metadata(
                 processing_latency_ms,
@@ -748,6 +795,14 @@ def _ultralytics_device_kwargs(compute_device: str) -> dict[str, str]:
     return {"device": device}
 
 
+def _ultralytics_imgsz_kwargs(
+    inference_imgsz: int | tuple[int, int] | None,
+) -> dict[str, int | tuple[int, int]]:
+    if inference_imgsz is None:
+        return {}
+    return {"imgsz": inference_imgsz}
+
+
 def _model_compute_device(model: Any, requested: str) -> str:
     device = getattr(model, "device", None)
     if device is None:
@@ -796,7 +851,14 @@ def _to_local_visual_tracks(
                 ),
                 bbox_edge_clipped=bool(clip_sides),
                 bbox_edge_clip_sides=clip_sides,
+                image_size=image_size,
                 camera_geometry=camera_geometry,
+                metadata={
+                    "image_size": image_size,
+                    "object_class": item.category,
+                    "raw_category": item.raw_category,
+                    "affiliation_inferred_from_category": False,
+                },
             )
         )
     return tuple(tracks)
@@ -826,6 +888,8 @@ def _tracked_frame_metadata(
     transition_by_id: dict[str, str] = {}
     bbox_clipped_by_id: dict[str, bool] = {}
     bbox_clip_sides_by_id: dict[str, list[str]] = {}
+    object_class_by_id: dict[str, str] = {}
+    raw_category_by_id: dict[str, str] = {}
 
     for item, track in zip(tracked, tracks):
         area = _bbox_area(item.bbox)
@@ -841,6 +905,8 @@ def _tracked_frame_metadata(
         transition_by_id[track.local_track_id] = track.track_transition_state
         bbox_clipped_by_id[track.local_track_id] = track.bbox_edge_clipped
         bbox_clip_sides_by_id[track.local_track_id] = list(track.bbox_edge_clip_sides)
+        object_class_by_id[track.local_track_id] = item.category
+        raw_category_by_id[track.local_track_id] = item.raw_category
 
     continuity_count = sum(1 for history in mot_history_by_id.values() if history > 1)
     continuity_rate = (
@@ -850,6 +916,7 @@ def _tracked_frame_metadata(
     )
 
     return {
+        "image_size": frame_size,
         "confidence_by_local_track_id": confidence_by_id,
         "class_id_by_local_track_id": class_id_by_id,
         "bbox_area_px_by_local_track_id": bbox_area_by_id,
@@ -861,6 +928,9 @@ def _tracked_frame_metadata(
         "track_transition_state_by_local_track_id": transition_by_id,
         "bbox_edge_clipped_by_local_track_id": bbox_clipped_by_id,
         "bbox_edge_clip_sides_by_local_track_id": bbox_clip_sides_by_id,
+        "object_class_by_local_track_id": object_class_by_id,
+        "raw_category_by_local_track_id": raw_category_by_id,
+        "affiliation_inferred_from_category": False,
         "camera_local_id_count": len(mot_history_by_id),
         "camera_local_id_continuity_count": continuity_count,
         "camera_local_id_continuity_rate": continuity_rate,
@@ -1335,4 +1405,44 @@ def _optional_nonnegative_float(value: float | None) -> float | None:
     numeric = float(value)
     if numeric < 0.0:
         raise ValueError("budget values must be non-negative")
+    return numeric
+
+
+def _normalize_inference_imgsz(
+    value: int | Sequence[int] | None,
+) -> int | tuple[int, int] | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError("inference_imgsz must be a positive integer or a (height, width) pair")
+    if isinstance(value, (int, np.integer)):
+        size = int(value)
+        if size <= 0:
+            raise ValueError("inference_imgsz must be positive")
+        return size
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        dimensions = tuple(value)
+        if len(dimensions) != 2:
+            raise ValueError("inference_imgsz pair must contain (height, width)")
+        if any(isinstance(item, bool) or not isinstance(item, (int, np.integer)) for item in dimensions):
+            raise ValueError("inference_imgsz dimensions must be positive integers")
+        height, width = (int(item) for item in dimensions)
+        if height <= 0 or width <= 0:
+            raise ValueError("inference_imgsz dimensions must be positive")
+        return (height, width)
+    raise ValueError("inference_imgsz must be a positive integer or a (height, width) pair")
+
+
+def _inference_imgsz_metadata_value(
+    value: int | tuple[int, int] | None,
+) -> int | tuple[int, int] | None:
+    return value
+
+
+def _optional_positive_float(value: float | None) -> float | None:
+    if value is None:
+        return None
+    numeric = float(value)
+    if not np.isfinite(numeric) or numeric <= 0.0:
+        raise ValueError("target_distance_m must be positive and finite")
     return numeric

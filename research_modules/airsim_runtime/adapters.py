@@ -304,10 +304,29 @@ def geometric_local_visual_tracks_from_blocks_frame(frame: AirSimFrame) -> list[
     computes the measurement center from `bbox_xyxy`.
     """
 
+    camera_sizes = {
+        str(camera.camera_id): (int(camera.width), int(camera.height))
+        for camera in frame.cameras
+    }
+    arrival_timestamp = float(
+        frame.metadata.get("arrival_timestamp", frame.timestamp)
+    )
     local_tracks: list[LocalVisualTrack] = []
     for index, detection in enumerate(frame.visual_detections):
         x1, y1, x2, y2 = (float(value) for value in detection.bbox_xyxy)
         local_track_id = str(detection.local_track_id or detection.detection_id or f"{detection.camera_id}:{index}")
+        metadata = dict(detection.metadata)
+        raw_image_size = metadata.get("image_size") or camera_sizes.get(
+            str(detection.camera_id)
+        )
+        image_size = (
+            None
+            if raw_image_size is None
+            else (int(raw_image_size[0]), int(raw_image_size[1]))
+        )
+        measurement_timestamp = float(
+            metadata.get("measurement_timestamp", detection.timestamp)
+        )
         local_tracks.append(
             LocalVisualTrack(
                 local_track_id=local_track_id,
@@ -316,11 +335,49 @@ def geometric_local_visual_tracks_from_blocks_frame(frame: AirSimFrame) -> list[
                 bearing_rate=np.zeros(2, dtype=float),
                 category=detection.classification_hint,
                 quality=float(detection.confidence),
-                mot_history_length=int(detection.metadata.get("mot_history_length", 1)),
-                timestamp=detection.timestamp,
+                mot_history_length=int(metadata.get("mot_history_length", 1)),
+                timestamp=measurement_timestamp,
+                arrival_timestamp=float(
+                    metadata.get("arrival_timestamp", arrival_timestamp)
+                ),
+                exposure_timestamp=float(
+                    metadata.get("exposure_timestamp", measurement_timestamp)
+                ),
+                detection_source=str(
+                    metadata.get("source", "airsim_runtime_detection")
+                ),
+                track_transition_state=str(
+                    metadata.get("track_transition_state", "unknown")
+                ),
+                track_reset_reason=metadata.get("track_reset_reason"),
+                image_size=image_size,
+                metadata={
+                    "camera_id": str(detection.camera_id),
+                    "resource_id": _resource_id_for_detection(frame, detection.camera_id),
+                    "raw_classification_hint": str(detection.classification_hint),
+                    "image_size": image_size,
+                },
             )
         )
     return local_tracks
+
+
+def _resource_id_for_detection(frame: AirSimFrame, camera_id: str) -> str | None:
+    camera = next(
+        (item for item in frame.cameras if str(item.camera_id) == str(camera_id)),
+        None,
+    )
+    if camera is None:
+        return None
+    resource = next(
+        (
+            item
+            for item in frame.resources
+            if str(item.metadata.get("airsim_vehicle_name", "")) == str(camera.owner_id)
+        ),
+        None,
+    )
+    return None if resource is None else str(resource.resource_id)
 
 
 def offline_truth_map_from_blocks_frame(

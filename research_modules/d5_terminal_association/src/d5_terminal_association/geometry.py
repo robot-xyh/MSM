@@ -15,6 +15,29 @@ except Exception:  # pragma: no cover
     _HAS_CV2 = False
 
 
+REFERENCE_IMAGE_SIZE = (640, 480)
+
+
+def image_resolution_scale(
+    image_size: tuple[int, int] | None,
+    reference_image_size: tuple[int, int] = REFERENCE_IMAGE_SIZE,
+) -> float:
+    """Return the isotropic pixel scale relative to a reference image.
+
+    Fixed pixel thresholds are authored at 640x480. Scaling them by image
+    diagonal keeps their approximate angular meaning when 1080p and 4K
+    cameras are used in the same episode.
+    """
+
+    if image_size is None:
+        return 1.0
+    width, height = image_size
+    ref_width, ref_height = reference_image_size
+    if min(width, height, ref_width, ref_height) <= 0:
+        raise ValueError("image sizes must be positive")
+    return float(np.hypot(width, height) / np.hypot(ref_width, ref_height))
+
+
 def _project_pixel(track: GlobalTrack, camera: CameraModel) -> tuple[np.ndarray, np.ndarray]:
     """Return `(pixel, camera_point)` for a world point."""
 
@@ -85,6 +108,7 @@ def project_track(
             depth=depth,
             valid=False,
             reason="behind_camera",
+            image_size=camera.image_size,
         )
     if not np.all(np.isfinite(pixel)):
         return ProjectionResult(
@@ -95,6 +119,7 @@ def project_track(
             depth=depth,
             valid=False,
             reason="non_finite_projection",
+            image_size=camera.image_size,
         )
 
     width, height = camera.image_size
@@ -112,6 +137,7 @@ def project_track(
             depth=depth,
             valid=False,
             reason="outside_image",
+            image_size=camera.image_size,
         )
 
     jacobian = projection_jacobian(camera_point, camera)
@@ -128,6 +154,7 @@ def project_track(
             depth=depth,
             valid=False,
             reason="non_finite_covariance",
+            image_size=camera.image_size,
         )
 
     return ProjectionResult(
@@ -139,6 +166,7 @@ def project_track(
         valid=True,
         reason="ok",
         predicted_px_velocity=predicted_px_velocity,
+        image_size=camera.image_size,
     )
 
 

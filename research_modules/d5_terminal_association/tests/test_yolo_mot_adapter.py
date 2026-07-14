@@ -24,9 +24,12 @@ class _FakeNativeModel:
         self.fail_native = fail_native
         self.track_calls = 0
         self.predict_calls = 0
+        self.track_kwargs: list[dict[str, object]] = []
+        self.predict_kwargs: list[dict[str, object]] = []
 
     def track(self, frame: np.ndarray, **kwargs: object) -> list[dict]:
         self.track_calls += 1
+        self.track_kwargs.append(dict(kwargs))
         if self.fail_native:
             raise RuntimeError("native tracker unavailable in fixture")
         return [
@@ -41,6 +44,7 @@ class _FakeNativeModel:
 
     def predict(self, frame: np.ndarray, **kwargs: object) -> list[dict]:
         self.predict_calls += 1
+        self.predict_kwargs.append(dict(kwargs))
         return [
             {
                 "xyxy": (10.0, 10.0, 30.0, 30.0),
@@ -174,6 +178,41 @@ def test_iou_fallback_state_is_isolated_across_interleaved_resource_camera_strea
     assert first[2].metadata["stream_key_text"] == "UAV2/front_rgb"
     assert all(result.metadata["tracker_state_isolated"] is True for result in first + second)
     assert all(result.metadata["tracker_instance_scope"] == "per_stream" for result in first + second)
+
+
+def test_per_stream_frame_resolution_is_preserved_for_1080p_and_4k() -> None:
+    adapter = YoloMotAdapter(
+        YoloMotAdapterConfig(tracker_backend="iou_fallback", confidence_threshold=0.2),
+        detector=lambda frame: [
+            {
+                "xyxy": (10.0, 10.0, float(frame.shape[1] - 1), float(frame.shape[0] - 1)),
+                "confidence": 0.9,
+                "class_name": "uav",
+            }
+        ],
+    )
+
+    interceptor = adapter.process_frame(
+        np.zeros((1080, 1920, 3), dtype=np.uint8),
+        resource_id="INT-1",
+        camera_id="front_rgb",
+        timestamp=1.0,
+    )
+    recon = adapter.process_frame(
+        np.zeros((2160, 3840, 3), dtype=np.uint8),
+        resource_id="RECON-1",
+        camera_id="gimbal_rgb",
+        timestamp=1.0,
+    )
+
+    assert interceptor.metadata["image_size"] == (1920, 1080)
+    assert recon.metadata["image_size"] == (3840, 2160)
+    assert interceptor.tracks[0].image_size == (1920, 1080)
+    assert recon.tracks[0].image_size == (3840, 2160)
+    assert interceptor.tracks[0].metadata["image_size"] == (1920, 1080)
+    assert recon.tracks[0].metadata["image_size"] == (3840, 2160)
+    assert interceptor.tracks[0].bbox_edge_clip_sides == ("right", "bottom")
+    assert recon.tracks[0].bbox_edge_clip_sides == ("right", "bottom")
 
 
 def test_episode_reset_apis_clear_only_requested_or_all_fallback_streams() -> None:
@@ -379,6 +418,38 @@ def test_detector_class_id_names_mapping_remains_valid_online_category() -> None
     assert result.metadata["class_id_by_local_track_id"][result.tracks[0].local_track_id] == 2
 
 
+@pytest.mark.parametrize(
+    "raw_category",
+    ("UAV", "drone", "INTRUDER", "intruder-uav", "Unmanned Aerial Vehicle"),
+)
+def test_yolo_category_alias_is_canonicalized_and_raw_label_is_preserved(
+    raw_category: str,
+) -> None:
+    adapter = YoloMotAdapter(
+        YoloMotAdapterConfig(tracker_backend="iou_fallback", confidence_threshold=0.1),
+        detector=lambda frame: [
+            {
+                "xyxy": (4.0, 5.0, 24.0, 25.0),
+                "confidence": 0.9,
+                "class_name": raw_category,
+            }
+        ],
+    )
+
+    result = adapter.process_frame(
+        _frame(), resource_id="UAV1", camera_id="front_rgb", timestamp=2.0
+    )
+    track = result.tracks[0]
+
+    assert track.category == "uav"
+    assert track.metadata["object_class"] == "uav"
+    assert track.metadata["raw_category"] == raw_category
+    assert track.metadata["affiliation_inferred_from_category"] is False
+    assert result.metadata["raw_category_by_local_track_id"][track.local_track_id] == raw_category
+    assert result.metadata["object_class_by_local_track_id"][track.local_track_id] == "uav"
+    assert result.metadata["affiliation_inferred_from_category"] is False
+
+
 def test_no_ultralytics_returns_unavailable_with_clear_fallback_status() -> None:
     def missing_loader(weights_path: Path) -> object:
         raise ModuleNotFoundError("No module named 'ultralytics'")
@@ -433,6 +504,7 @@ def test_botsort_native_path_is_selected_before_iou_fallback() -> None:
     assert len(loaded_models) == 1
     assert loaded_models[0].track_calls == 1
     assert loaded_models[0].predict_calls == 0
+    assert "imgsz" not in loaded_models[0].track_kwargs[0]
     assert result.status == "ok"
     assert result.tracker_backend == "botsort"
     assert result.metadata["tracker_selection"] == {
@@ -446,6 +518,68 @@ def test_botsort_native_path_is_selected_before_iou_fallback() -> None:
     }
     assert result.metadata["processing_latency_ms"] >= 0.0
     assert result.metadata["observed_compute_device"] == "cpu"
+
+
+def test_inference_imgsz_is_validated_and_passed_to_native_track() -> None:
+    loaded_models: list[_FakeNativeModel] = []
+
+    def loader(weights_path: Path) -> _FakeNativeModel:
+        model = _FakeNativeModel()
+        loaded_models.append(model)
+        return model
+
+    adapter = YoloMotAdapter(
+        YoloMotAdapterConfig(
+            weights_path=Path(__file__),
+            tracker_backend="bytetrack",
+            inference_imgsz=(1080, 1920),
+        ),
+        ultralytics_loader=loader,
+    )
+
+    result = adapter.process_frame(
+        _frame(), resource_id="UAV1", camera_id="front_rgb", timestamp=4.1
+    )
+
+    assert loaded_models[0].track_kwargs[0]["imgsz"] == (1080, 1920)
+    assert result.metadata["inference_imgsz_requested"] == (1080, 1920)
+
+
+def test_inference_imgsz_is_passed_to_predict_and_none_preserves_default_call() -> None:
+    configured_model = _FakeNativeModel()
+    configured = YoloMotAdapter(
+        YoloMotAdapterConfig(
+            tracker_backend="iou_fallback",
+            inference_imgsz=1280,
+        ),
+        model=configured_model,
+    )
+    configured_result = configured.process_frame(
+        _frame(), resource_id="UAV1", camera_id="front_rgb", timestamp=4.2
+    )
+
+    default_model = _FakeNativeModel()
+    default = YoloMotAdapter(
+        YoloMotAdapterConfig(tracker_backend="iou_fallback"),
+        model=default_model,
+    )
+    default_result = default.process_frame(
+        _frame(), resource_id="UAV2", camera_id="front_rgb", timestamp=4.2
+    )
+
+    assert configured_model.predict_kwargs[0]["imgsz"] == 1280
+    assert configured_result.metadata["inference_imgsz_requested"] == 1280
+    assert "imgsz" not in default_model.predict_kwargs[0]
+    assert default_result.metadata["inference_imgsz_requested"] is None
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    (0, -1, True, (), (640,), (640, 0), (640, 480, 3), (640.0, 480), "640"),
+)
+def test_inference_imgsz_rejects_invalid_values(invalid: object) -> None:
+    with pytest.raises(ValueError, match="inference_imgsz"):
+        YoloMotAdapterConfig(inference_imgsz=invalid)  # type: ignore[arg-type]
 
 
 def test_offline_detector_recall_fields_do_not_change_online_local_ids() -> None:

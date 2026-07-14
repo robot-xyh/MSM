@@ -416,7 +416,11 @@ def test_incremental_hysteresis_matches_full_plan_stability() -> None:
         previous_plan=first,
     )
 
-    assert incremental.decision_state == full.decision_state == "held_by_hysteresis"
+    assert (
+        incremental.decision_state
+        == full.decision_state
+        == "held_by_coalition_membership_hysteresis"
+    )
     assert incremental.plan_id == first.plan_id
     assert incremental.version == first.version
     assert summary.assignment_equivalent is True

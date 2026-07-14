@@ -577,3 +577,79 @@ truth leak，验证主机耗时约 8.8 s。CLI 子进程测试覆盖参数透传
 缺口。仍开放的 P1 是：main 采集真实 Blocks/CV 多 seed 长 replay；D2-confirmed canonical-ID
 映射后计算 RMSE/NEES；真实 sensor-specific latency/health/window、camera/bbox、节点退出和
 covariance 阈值标定；CV/CA/CT/IMM 及场景自适应 covariance 对照。P2 外部库安排不变。
+
+## 20. P1 真实 AirSim dense/crossing 输入冻结落实（2026-07-12）
+
+本轮在既有 governed replay 上增加不连接 AirSim SDK 的真实持久化输入边界：
+
+1. loader 接受 JSON/JSONL 直接观测和 frame 内嵌观测，按输入长度处理。
+2. freezer 只转换实际存在且满足 covariance、coverage 和 canonical frame 合同的观测；缺
+   measurement 的遮挡、漏检或节点退出 frame 只记事件，不伪造量测。
+3. online observation ID 改为不透明序号，递归剥离 actor/object/truth identity；truth ID 和
+   NED position 只进入 evaluator-only sidecar。
+4. measurement/arrival 严格必填；processing/publish、sensor health、scene/profile/source
+   schema 缺失时显式 `unavailable`。事件覆盖 crossing、遮挡、漏检、虚警、OOSM 和节点退出。
+5. writer 输出 governed manifest、records、offline truth 和 summary；CLI 只负责参数、digest
+   和文件写出，不复制转换逻辑。
+
+本阶段验收为 online truth leak 0、缺失量测伪造 0、5-target fixture 和任意长度输入可运行、
+四类文件可被现有 reader 消费。后续仍需 main 提供真实 multi-seed payload，D2 提供离线
+canonical mapping，D6 汇总 RMSE/NIS/NEES、latency、health 和区域窗口统计。本轮 D1 全量
+回归在 sidecar follow-up 后为 `74 passed`。
+
+### 20.1 Truth sidecar 唯一键修复
+
+main + D2 端到端验证发现同一 `(truth_id, timestamp)` 可能同时来自 frame truth 和 observation
+metadata。D1 在 sidecar 构造阶段按该二元组确定性归并：available position 覆盖 unavailable；
+两个 available 在 `1e-6 m` 内视为同一值，超过容差直接拒绝冻结；不同 timestamp 独立保留。
+仅有 identity 的样本继续保留为 unavailable，summary 显式输出 unavailable 数量，不插值、不
+外推、不借用相邻帧位置。该规则保证 D2 strict adapter 不再因同键 available/unavailable 重复
+拒绝整个 sidecar，同时不会掩盖真实 truth 冲突。
+
+### 20.2 捕获 Provenance 强校验（2026-07-13）
+
+D1 AirSim freeze 现在要求捕获文件显式携带 scenario/config version、seed、
+`target_spacing_m` 和 `evidence_path`。目标间距只以捕获 provenance 为权威来源，不从 truth
+几何反推；API/CLI 声明、跨 payload 声明与捕获值不一致时 fail closed。manifest/summary
+输出字段 availability，在线 records 与 evaluator-only truth sidecar 通过 provenance digest
+绑定。专项测试覆盖 4 m/2 m 各 20 seeds，D1 全量回归为 `79 passed`。截至 2026-07-13，main
+已经完成对应的 40 个真实 AirSim episode，D2/D6 已分别消费冻结产物做离线关联标定和统一
+汇总；该结果关闭的是输入冻结与证据可消费性，不代表真实传感器误差和长期融合精度已标定。
+
+## 21. 2026-07-13 真实 Dense Crossing 证据与后续计划
+
+### 21.1 已完成并作为当前基线
+
+- main 在 ComputerVision 模式完成 nominal 4 m 与 tight 2 m 两组严格几何，各 20 seeds，共
+  40 个真实 AirSim episode；每个 episode 51 帧，目标数为 5，默认不保存截图。
+- D1 governed replay 在全部 episode 保留 `measurement_timestamp`、`arrival_timestamp`、
+  covariance、NED 工作空间、source lineage、scenario/config version、seed、
+  `target_spacing_m` 和 `evidence_path`。捕获声明与 API/CLI 或跨 payload 不一致时继续
+  fail closed。
+- evaluator-only truth sidecar 共 10,200 个样本，`online_truth_leak_count=0`。truth 只用于
+  D2/D6 离线评分，不进入在线 D1 观测、`GlobalTrack` 或下游控制链。
+- D6 统一报告把 `d1_dense_crossing` 标记为 `available`，并携带 schema、digest 与 evidence
+  path；缺失指标仍保持 `unavailable`，不由 D1 或 D6 补零。
+- D1 全量回归为 `79 passed`。双时间戳、协方差、NED、source lineage、governed replay、
+  capture provenance 和 truth 隔离均属于已闭合且必须保持的回归合同。
+
+### 21.2 仍开放的 P1
+
+1. **真实传感器 challenge fixture**：现有 4 m/2 m 数据主要验证几何、冻结合同和离线身份
+   评估输入，尚未覆盖可代表工程传感器的雷达/声学/EO 漏检率、虚警率、遮挡过程、异步采样
+   率、sensor-specific latency 和故障注入分布。后续由 main 采集版本化长 replay，D1 只冻结
+   实际观测，不为缺失帧伪造量测。
+2. **长期质量与协方差治理**：需要在正常/故障多 seed 长 replay 上标定区域时间窗口、
+   covariance growth、expected-latency/OOSM、sensor health、NIS/NEES 和
+   `covariance_scale_reason` 的持续阈值；raw OOSM 或短窗口高协方差不得直接触发 D4 降级。
+3. **协同融合运行时验证**：D1/D2-confirmed canonical-ID adapter、部分共享 lineage、节点
+   退出和 3 -> 2 -> 1 质量退化仍需真实 replay。D2 未确认同一 `global_track_id` 时，D1
+   继续拒绝跨平台 Track-to-Track 融合。
+4. **D6 长期统计一致性**：当前 D1 summary 已可用，但仍需验证跨场景、跨 seed、长时运行
+   时 schema、availability、evidence path、区域窗口和 RMSE/NIS/NEES 汇总的一致性。
+
+### 21.3 P2 可选项
+
+FilterPy、Stone Soup、UKF/IMM、OpenCV/GTSAM 协同几何后端和 ROS 2 `tf2`/
+`message_filters` 继续作为隔离 benchmark 或后续工程适配项。当前未安装或未接入的后端必须
+显式报告 `unavailable`，不得写成已实现，也不得替换 NumPy EKF/fixed-lag 默认路径。

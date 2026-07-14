@@ -48,12 +48,15 @@ from d3_assignment_planner import (
 from d4_distributed_fallback import (
     ActiveDegradationArbiter,
     ActiveDegradationConfig,
+    AirSimEpisodeCommunicationAdapter,
     C2Health,
     CenterReplanStatus,
     CoalitionCommitCoordinator,
     CoalitionCommitState,
     CoalitionMemberAck,
     D4ArbitrationAdapter,
+    EpisodeCommunicationConfig,
+    EpisodeCommunicationTickInput,
     build_center_replan_risk_signature,
     build_coalition_commit_d6_metadata,
 )
@@ -67,6 +70,7 @@ from d5_terminal_association import (
     TerminalConsistencyTracker,
     TerminalObservationBus,
     annotate_visual_png_handoff,
+    camera_geometry_evidence_from_camera_model,
     camera_model_from_airsim_camera_info,
 )
 from d6_evaluation_metrics import (
@@ -256,11 +260,14 @@ class MainAirSimEpisodeBus:
         self._last_coalition_commit_event_signature: dict[str, tuple[Any, ...]] = {}
         self._governed_observations: list[SensorObservation] = []
         self._offline_truth_labels: list[OfflineTruthLabel] = []
+        self._episode_communication_adapter = self._build_episode_communication_adapter()
+        self._last_episode_communication_tick: Any | None = None
         self.ticks: list[MainEpisodeBusTick] = []
 
     def process_frame(self, frame: AirSimFrame) -> MainEpisodeBusTick:
         frame_started = time.perf_counter()
         timestamp = float(frame.timestamp)
+        self._last_episode_communication_tick = self._tick_episode_communication(frame)
         self._expire_center_replan_requests(timestamp)
         self._record_yolo_mot_frame_events(frame)
         truth_states = truth_states_from_blocks_frame(frame)
@@ -372,6 +379,9 @@ class MainAirSimEpisodeBus:
                     target_id: state.to_dict()
                     for target_id, state in self._coalition_commit_by_target.items()
                 },
+                "episode_communication": None
+                if self._last_episode_communication_tick is None
+                else self._last_episode_communication_tick.to_dict(),
             },
             d5={
                 "terminal_association_count": len(terminal_contexts),
@@ -407,6 +417,82 @@ class MainAirSimEpisodeBus:
         self.ticks.append(tick)
         return tick
 
+    def _build_episode_communication_adapter(
+        self,
+    ) -> AirSimEpisodeCommunicationAdapter | None:
+        if not bool(self.config.metadata.get("episode_communication_enabled", False)):
+            return None
+        member_ids = tuple(
+            f"INT-{index + 1:02d}"
+            for index in range(len(self.config.resource_vehicle_names))
+        )
+        secondary_ids = tuple(self.config.secondary_camera_vehicle_names) or ("RECON-01",)
+        return AirSimEpisodeCommunicationAdapter(
+            EpisodeCommunicationConfig(
+                member_ids=member_ids,
+                secondary_node_ids=secondary_ids,
+                center_node_id=str(self.config.metadata.get("center_node_id", "C2")),
+                global_track_id=str(
+                    self.config.metadata.get("episode_communication_global_track_id", "T001")
+                ),
+                coalition_id=str(
+                    self.config.metadata.get(
+                        "episode_communication_coalition_id", "coalition-episode-1"
+                    )
+                ),
+                plan_id=str(
+                    self.config.metadata.get(
+                        "episode_communication_plan_id", "plan-episode-1"
+                    )
+                ),
+            )
+        )
+
+    def _tick_episode_communication(self, frame: AirSimFrame) -> Any | None:
+        adapter = self._episode_communication_adapter
+        if adapter is None:
+            return None
+        metadata = dict(frame.metadata)
+        fault = str(metadata.get("coalition_commit_fault", "none")).lower()
+        partitioned = bool(metadata.get("episode_partitioned", fault == "partition"))
+        dropped = tuple(metadata.get("episode_dropped_ack_member_ids") or ())
+        if fault == "missing_ack" and not dropped:
+            dropped = (f"INT-{len(self.config.resource_vehicle_names):02d}",)
+        secondary_ids = (
+            tuple(self.config.secondary_camera_vehicle_names) or ("RECON-01",)
+            if frame.secondary_nodes_alive
+            else ()
+        )
+        tick = adapter.tick(
+            EpisodeCommunicationTickInput(
+                timestamp_s=float(frame.timestamp),
+                center_heartbeat_received=bool(frame.center_node_alive),
+                secondary_heartbeat_ids=secondary_ids,
+                message_delay_s=float(metadata.get("episode_message_delay_s", 0.1)),
+                dropped_ack_member_ids=dropped,
+                partitioned=partitioned,
+                center_digest_matches=metadata.get("center_digest_matches"),
+                recovery_authorized=bool(metadata.get("center_recovery_authorized", False)),
+                metadata={
+                    "episode_id": frame.episode_id,
+                    "frame_index": frame.frame_index,
+                    "terminal_authorization_scope": self.config.terminal_authorization_scope,
+                    "arrival_coordination_required": self.config.arrival_coordination_required,
+                },
+            )
+        )
+        self.collector.add_event(
+            EventRecord(
+                timestamp=float(frame.timestamp),
+                event_type="d4_episode_communication_tick",
+                actor_id="D4",
+                severity="warning" if tick.fail_closed else "info",
+                note=tick.plan_transition,
+                metadata=tick.to_dict(),
+            )
+        )
+        return tick
+
     def control_evidence(self) -> dict[str, dict[str, Any]]:
         """Return truth-isolated D3-D5 evidence for the SimpleFlight consumer."""
 
@@ -424,12 +510,53 @@ class MainAirSimEpisodeBus:
             evidence[str(binding.resource_id)] = {
                 "binding": _binding_for_d7(binding),
                 "d4_permission": _d4_permission(
-                    d4_by_pair.get(pair_key) or self._last_d4_by_pair.get(pair_key)
+                    d4_by_pair.get(pair_key) or self._last_d4_by_pair.get(pair_key),
+                    episode_communication_tick=self._last_episode_communication_tick,
                 ),
                 "terminal_association": d5_by_pair.get(pair_key),
                 "online_truth_id_used": False,
             }
         return evidence
+
+    def cv_camera_pointing_commands(
+        self,
+        frame: AirSimFrame,
+    ) -> dict[str, dict[str, Any]]:
+        """Export current D3 bindings with D2 positions for the next CV frame."""
+
+        vehicle_by_resource = _resource_vehicle_map(frame)
+        commands: dict[str, dict[str, Any]] = {}
+        for binding in self.current_bindings:
+            if str(binding.assignment_validity_state).lower() != "current":
+                continue
+            global_track_id = str(binding.assigned_global_track_id)
+            source = self._d2_source_kinematics.get(global_track_id)
+            if source is None:
+                continue
+            raw_position = source.get("position_3d")
+            if raw_position is None or len(raw_position) != 3:
+                continue
+            vehicle_name = (
+                binding.resource_actor_name
+                or binding.vehicle_name
+                or vehicle_by_resource.get(str(binding.resource_id))
+            )
+            if not vehicle_name:
+                continue
+            commands[str(vehicle_name)] = {
+                "resource_id": str(binding.resource_id),
+                "global_track_id": global_track_id,
+                "look_at_ned": tuple(float(value) for value in raw_position),
+                "measurement_timestamp": float(
+                    source.get("measurement_timestamp", frame.timestamp)
+                ),
+                "plan_id": str(binding.plan_id),
+                "plan_version": int(binding.plan_version),
+                "binding_id": str(binding.binding_id),
+                "binding_state": str(binding.binding_state),
+                "online_truth_id_used": False,
+            }
+        return commands
 
     def finalize(self, frames: Iterable[AirSimFrame], output_dir: Path) -> MainEpisodeBusResult:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -804,6 +931,8 @@ class MainAirSimEpisodeBus:
                 primary_resource_count=self.config.cooperative_primary_count,
                 wave_gap_s=self.config.cooperative_wave_gap_s,
                 minimum_separation_s=self.config.cooperative_minimum_separation_s,
+                terminal_authorization_scope=self.config.terminal_authorization_scope,
+                arrival_coordination_required=self.config.arrival_coordination_required,
                 window_anchor_by_track=self._cooperative_window_anchor_by_track,
             )
         if not target_tracks:
@@ -1373,6 +1502,13 @@ class MainAirSimEpisodeBus:
                 continue
             camera = _camera_for_resource(frame, assignment.resource_id, assignment.target_id, terminal_tracks)
             scoped_local_tracks = _local_tracks_for_resource(frame, assignment.resource_id, local_tracks)
+            scoped_local_tracks = _attach_camera_geometry_evidence(
+                frame,
+                assignment.resource_id,
+                camera,
+                scoped_local_tracks,
+                max_attitude_age_s=max(0.1, float(self.config.dt_s) * 1.5),
+            )
             recon_cues = _recon_cues_for_assignment(
                 frame,
                 assignment.resource_id,
@@ -1401,15 +1537,16 @@ class MainAirSimEpisodeBus:
                     decision.assigned_global_track_id
                 ].duplicate_terminal_lock_risk
             )
+            range_to_assigned_track_m = _range_for_terminal_context(
+                frame,
+                assignment.resource_id,
+                d2_by_id.get(assignment.target_id),
+            )
             decision = annotate_visual_png_handoff(
                 decision,
                 local_track_history=scoped_local_tracks,
                 image_size=camera.image_size,
-                range_to_assigned_track_m=_range_for_terminal_context(
-                    frame,
-                    assignment.resource_id,
-                    d2_by_id.get(assignment.target_id),
-                ),
+                range_to_assigned_track_m=range_to_assigned_track_m,
                 closing_speed_mps=float(self.config.intercept_speed_mps),
                 measurement_age_s=None
                 if local_track is None
@@ -1418,6 +1555,28 @@ class MainAirSimEpisodeBus:
                 assignment_consistent=True,
                 current_assigned_global_track_id=assignment.target_id,
                 duplicate_terminal_lock_risk=duplicate_risk_hint,
+            )
+            terminal_evidence_max_range_m = float(
+                self.config.intercept_terminal_switch_range_m
+            )
+            terminal_evidence_applicable = (
+                range_to_assigned_track_m is not None
+                and float(range_to_assigned_track_m)
+                <= terminal_evidence_max_range_m
+            )
+            decision = replace(
+                decision,
+                metadata={
+                    **dict(decision.metadata),
+                    "terminal_evidence_applicable": terminal_evidence_applicable,
+                    "terminal_evidence_range_m": range_to_assigned_track_m,
+                    "terminal_evidence_max_range_m": terminal_evidence_max_range_m,
+                    "terminal_evidence_phase": (
+                        "terminal"
+                        if terminal_evidence_applicable
+                        else "radar_midcourse"
+                    ),
+                },
             )
             observed_global_track_id = (
                 local_truth_map.get(decision.local_track_id)
@@ -1812,7 +1971,10 @@ class MainAirSimEpisodeBus:
             d4_result = d4_by_pair.get(pair) or self._last_d4_by_pair.get(pair)
             if resource is None or track is None or binding is None:
                 continue
-            d4_permission = _d4_permission(d4_result)
+            d4_permission = _d4_permission(
+                d4_result,
+                episode_communication_tick=self._last_episode_communication_tick,
+            )
             binding_for_d7 = _binding_for_d7(binding)
             contract = evaluate_terminal_png_contract(
                 binding=binding_for_d7,
@@ -2732,17 +2894,68 @@ def _camera_id_for_resource(frame: AirSimFrame, resource_id: str) -> str | None:
     return f"{vehicle}:0"
 
 
+def _camera_info_for_resource(frame: AirSimFrame, resource_id: str) -> Any | None:
+    vehicle_name = _resource_vehicle_map(frame).get(resource_id)
+    if vehicle_name is None:
+        return None
+    return next(
+        (camera for camera in frame.cameras if camera.owner_id == vehicle_name),
+        None,
+    )
+
+
+def _attach_camera_geometry_evidence(
+    frame: AirSimFrame,
+    resource_id: str,
+    camera: CameraModel,
+    local_tracks: Iterable[LocalVisualTrack],
+    *,
+    max_attitude_age_s: float = 0.1,
+) -> list[LocalVisualTrack]:
+    """Attach synchronized, truth-free D5 camera geometry to local tracks."""
+
+    camera_info = _camera_info_for_resource(frame, resource_id)
+    attitude_timestamp = (
+        None if camera_info is None else float(camera_info.timestamp)
+    )
+    arrival_timestamp = float(
+        frame.metadata.get("arrival_timestamp", frame.timestamp)
+    )
+    source = (
+        "airsim_camera_info"
+        if camera_info is not None
+        else "main_bus_fallback_camera_model"
+    )
+    attached: list[LocalVisualTrack] = []
+    for local_track in local_tracks:
+        evidence = camera_geometry_evidence_from_camera_model(
+            camera,
+            measurement_timestamp=float(local_track.timestamp),
+            arrival_timestamp=arrival_timestamp,
+            exposure_timestamp=float(local_track.exposure_timestamp),
+            attitude_timestamp=attitude_timestamp,
+            max_attitude_age_s=float(max_attitude_age_s),
+            source=source,
+        )
+        attached.append(
+            replace(
+                local_track,
+                arrival_timestamp=arrival_timestamp,
+                camera_geometry=evidence,
+            )
+        )
+    return attached
+
+
 def _camera_for_resource(
     frame: AirSimFrame,
     resource_id: str,
     global_track_id: str,
     terminal_tracks: list[Any],
 ) -> CameraModel:
-    vehicle_name = _resource_vehicle_map(frame).get(resource_id)
-    if vehicle_name is not None:
-        for camera in frame.cameras:
-            if camera.owner_id == vehicle_name:
-                return camera_model_from_airsim_camera_info(camera, measurement_sigma_px=12.0)
+    camera_info = _camera_info_for_resource(frame, resource_id)
+    if camera_info is not None:
+        return camera_model_from_airsim_camera_info(camera_info, measurement_sigma_px=12.0)
     resource = next((item for item in frame.resources if item.resource_id == resource_id), None)
     track = next((item for item in terminal_tracks if item.global_track_id == global_track_id), None)
     camera_position = np.asarray(
@@ -2846,44 +3059,85 @@ def _secondary_takeover_source_node_id(
     return secondary_names[0] if secondary_names else "SEC-NORTH"
 
 
-def _d4_permission(d4_result: Any | None) -> D4GuidancePermission:
+def _d4_permission(
+    d4_result: Any | None,
+    *,
+    episode_communication_tick: Any | None = None,
+) -> D4GuidancePermission:
     if d4_result is None:
-        return D4GuidancePermission()
-    record = d4_result.record
-    metadata = record.to_event_metadata()
-    coalition_safety = metadata.get("coalition_safety") or {}
-    coalition_safety_metadata = coalition_safety.get("metadata") or {}
-    commit = coalition_safety_metadata.get("coalition_commit") or {}
-    action = record.action.value
+        permission = D4GuidancePermission()
+    else:
+        record = d4_result.record
+        metadata = record.to_event_metadata()
+        coalition_safety = metadata.get("coalition_safety") or {}
+        coalition_safety_metadata = coalition_safety.get("metadata") or {}
+        commit = coalition_safety_metadata.get("coalition_commit") or {}
+        action = record.action.value
+        if (
+            action == "degrade_to_secondary"
+            and metadata.get("secondary_takeover_state") == "secondary_plan_active"
+            and metadata.get("secondary_plan_id") is not None
+            and metadata.get("secondary_plan_version") is not None
+        ):
+            action = "request_secondary_assist"
+        permission = D4GuidancePermission(
+            action=action,
+            mode=record.mode.value,
+            reason=record.reason,
+            target_node_id=record.target_node_id or metadata.get("secondary_plan_source_node_id"),
+            terminal_consistent=record.terminal_consistent,
+            requires_human_review=record.requires_human_review,
+            new_plan_id=metadata.get("secondary_plan_id"),
+            new_plan_version=metadata.get("secondary_plan_version"),
+            coalition_id=metadata.get("coalition_id"),
+            coalition_version=metadata.get("coalition_version"),
+            center_available=coalition_safety.get("center_available"),
+            atomic_coalition_formed=coalition_safety.get("atomic_coalition_formed"),
+            coalition_commit_state=commit.get("state"),
+            coalition_epoch=commit.get("epoch"),
+            coalition_lease_expires_at_s=commit.get("lease_expires_at"),
+            coalition_required_member_ids=tuple(commit.get("required_member_ids") or ()),
+            coalition_acked_member_ids=tuple(commit.get("acked_member_ids") or ()),
+            commit_plan_id=commit.get("plan_id"),
+            commit_plan_version=commit.get("plan_version"),
+            commit_coalition_id=commit.get("coalition_id"),
+            commit_coalition_version=commit.get("coalition_version"),
+            metadata=metadata,
+        )
+
+    if episode_communication_tick is None:
+        return permission
+    communication = episode_communication_tick.to_dict()
+    metadata = {
+        **dict(permission.metadata),
+        "episode_communication": communication,
+        "episode_communication_execution_allowed": bool(
+            episode_communication_tick.execution_allowed
+        ),
+        "episode_communication_single_executable_owner": bool(
+            episode_communication_tick.single_executable_owner
+        ),
+    }
+    center_available = episode_communication_tick.selected_layer == "center"
     if (
-        action == "degrade_to_secondary"
-        and metadata.get("secondary_takeover_state") == "secondary_plan_active"
-        and metadata.get("secondary_plan_id") is not None
-        and metadata.get("secondary_plan_version") is not None
+        not episode_communication_tick.execution_allowed
+        or not episode_communication_tick.single_executable_owner
     ):
-        action = "request_secondary_assist"
-    return D4GuidancePermission(
-        action=action,
-        mode=record.mode.value,
-        reason=record.reason,
-        target_node_id=record.target_node_id or metadata.get("secondary_plan_source_node_id"),
-        terminal_consistent=record.terminal_consistent,
-        requires_human_review=record.requires_human_review,
-        new_plan_id=metadata.get("secondary_plan_id"),
-        new_plan_version=metadata.get("secondary_plan_version"),
-        coalition_id=metadata.get("coalition_id"),
-        coalition_version=metadata.get("coalition_version"),
-        center_available=coalition_safety.get("center_available"),
-        atomic_coalition_formed=coalition_safety.get("atomic_coalition_formed"),
-        coalition_commit_state=commit.get("state"),
-        coalition_epoch=commit.get("epoch"),
-        coalition_lease_expires_at_s=commit.get("lease_expires_at"),
-        coalition_required_member_ids=tuple(commit.get("required_member_ids") or ()),
-        coalition_acked_member_ids=tuple(commit.get("acked_member_ids") or ()),
-        commit_plan_id=commit.get("plan_id"),
-        commit_plan_version=commit.get("plan_version"),
-        commit_coalition_id=commit.get("coalition_id"),
-        commit_coalition_version=commit.get("coalition_version"),
+        reason = (
+            "episode_communication_no_executable_owner"
+            if not episode_communication_tick.execution_allowed
+            else "episode_communication_multiple_executable_owners"
+        )
+        return replace(
+            permission,
+            reason=reason,
+            visual_png_allowed=False,
+            center_available=center_available,
+            metadata=metadata,
+        )
+    return replace(
+        permission,
+        center_available=center_available,
         metadata=metadata,
     )
 
@@ -2960,6 +3214,7 @@ def _vision_observation_for_d7(
                 or measurement_timestamp
             ),
             "measurement_age_s": max(0.0, arrival_timestamp - measurement_timestamp),
+            "image_size": local_track.image_size,
             "mot_history_length": getattr(terminal_association, "mot_history_length", None),
             "track_transition_state": getattr(
                 terminal_association, "track_transition_state", "unknown"
@@ -3204,6 +3459,8 @@ def _attach_cooperative_target_demands(
     primary_resource_count: int,
     wave_gap_s: float,
     minimum_separation_s: float,
+    terminal_authorization_scope: str,
+    arrival_coordination_required: bool,
     window_anchor_by_track: dict[str, float],
 ) -> list[Any]:
     """Attach simulated classifier demand without consulting AirSim truth IDs."""
@@ -3232,9 +3489,13 @@ def _attach_cooperative_target_demands(
             arrival_window_end_s=window_end,
             wave_interval_s=wave_gap_s,
             minimum_separation_s=minimum_separation_s,
+            terminal_authorization_scope=terminal_authorization_scope,
+            arrival_coordination_required=arrival_coordination_required,
             metadata={
                 "primary_resource_count": primary_resource_count,
                 "source": "main_online_ranked_threat_prior",
+                "terminal_authorization_scope": terminal_authorization_scope,
+                "arrival_coordination_required": arrival_coordination_required,
             },
         )
         output.append(

@@ -251,7 +251,7 @@ def test_k3_center_failure_blocks_secondary_and_distributed_fallback() -> None:
     assert "coalition_fallback_unsupported" in metadata["hard_risk_factors"]
 
 
-def test_k3_center_available_redirects_active_distributed_candidate_to_replan() -> None:
+def test_k3_center_available_requests_replan_without_entering_fallback() -> None:
     plan = _plan()
     terminal = SimpleNamespace(
         resource_id="INT-1",
@@ -286,20 +286,14 @@ def test_k3_center_available_redirects_active_distributed_candidate_to_replan() 
     )
 
     assert result.decision.action == DegradationAction.REQUEST_CENTER_REPLAN
-    assert result.decision.reason == (
-        "coalition_fallback_unsupported_request_center_replan"
-    )
-    assert result.coalition_safety.safety_action == (
-        CoalitionSafetyAction.REQUEST_CENTER_REPLAN
-    )
-    assert result.coalition_safety.candidate_action == "degrade_to_distributed"
+    assert result.decision.reason == "center_plan_hard_invalidation"
+    assert result.coalition_safety.safety_action == CoalitionSafetyAction.CONTINUE_CENTER
+    assert result.coalition_safety.candidate_action == "request_center_replan"
     assert result.coalition_safety.gated_action == "request_center_replan"
-    assert result.coalition_safety.safe_to_execute is False
-    assert "coalition_atomic_fallback_unavailable" in (
-        result.coalition_safety.conflict_reasons
-    )
+    assert result.coalition_safety.safe_to_execute is True
+    assert result.coalition_safety.conflict_reasons == ()
     metadata = result.record.to_event_metadata()
-    assert metadata["coalition_candidate_action"] == "degrade_to_distributed"
+    assert metadata["coalition_candidate_action"] == "request_center_replan"
     assert metadata["coalition_gated_action"] == "request_center_replan"
 
 
@@ -362,7 +356,7 @@ def test_replan_ack_cools_down_new_soft_risk_until_boundary_but_not_hard_risk() 
 
     assert acknowledged.decision.action == DegradationAction.CONTINUE_CENTER
     assert acknowledged.decision.reason == "center_replan_acknowledged_no_change"
-    assert acknowledged.decision.terminal_consistent is False
+    assert acknowledged.decision.terminal_consistent is True
     assert acknowledged.record.center_replan_suppressed_duplicate is True
 
     soft_metrics = SimpleNamespace(
@@ -486,9 +480,15 @@ def test_k3_rejects_stale_plan_and_coalition_versions() -> None:
     assert stale_plan.decision.action == DegradationAction.HOLD_FOR_REVIEW
     assert stale_plan.decision.reason == "coalition_plan_version_stale"
     assert stale_plan.coalition_safety.stale_plan_version is True
+    assert "coalition_plan_version_stale" in (
+        stale_plan.record.terminal_binding_reject_reasons
+    )
     assert stale_coalition.decision.action == DegradationAction.HOLD_FOR_REVIEW
     assert stale_coalition.decision.reason == "coalition_version_stale"
     assert stale_coalition.coalition_safety.stale_coalition_version is True
+    assert "coalition_version_stale" in (
+        stale_coalition.record.terminal_binding_reject_reasons
+    )
 
 
 def test_pending_soft_replan_converges_when_current_coalition_consensus_recovers() -> None:
@@ -665,6 +665,9 @@ def test_incomplete_commit_cannot_claim_current_coalition_recovery() -> None:
     assert result.coalition_safety.center_consensus_recovered is False
     assert "coalition_commit_incomplete" in result.coalition_safety.conflict_reasons
     assert result.decision.action == DegradationAction.HOLD_FOR_REVIEW
+    assert "coalition_commit_incomplete" in (
+        result.record.terminal_binding_reject_reasons
+    )
     assert result.record.center_replan_bypass_reason == "hard_safety_risk"
 
 

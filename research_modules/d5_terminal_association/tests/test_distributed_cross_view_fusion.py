@@ -65,6 +65,67 @@ def test_two_peers_build_supported_metadata_only_hypothesis_for_same_target() ->
     assert associations[0].supporting_resource_ids == ("UAV1", "UAV2")
 
 
+def test_cross_view_uav_category_aliases_do_not_split_same_target() -> None:
+    fusion = _fusion()
+    hypotheses = fusion.build_hypotheses(
+        observations=[
+            _observation("UAV1", "L2", (0.12, 0.01), category="UAV"),
+            _observation(
+                "UAV2",
+                "R7",
+                (0.125, 0.012),
+                timestamp=10.05,
+                category="intruder-drone",
+            ),
+        ]
+    )
+
+    assert len(hypotheses) == 1
+    assert hypotheses[0].support_count == 2
+
+
+def test_mixed_1080p_and_4k_tracklets_are_compared_in_reference_pixel_space() -> None:
+    observations = [
+        DistributedVisualObservation(
+            resource_id="INT-1",
+            camera_id="front_rgb",
+            image_size=(1920, 1080),
+            frame_id="INT-1/front_rgb",
+            local_track_id="L1",
+            measurement_timestamp=10.0,
+            arrival_timestamp=10.02,
+            center_px=np.array([1200.0, 540.0]),
+            bbox=(1140.0, 510.0, 1260.0, 570.0),
+            covariance_px=np.diag([9.0, 9.0]),
+            category="uav",
+            confidence=1.0,
+        ),
+        DistributedVisualObservation(
+            resource_id="RECON-1",
+            camera_id="gimbal_rgb",
+            image_size=(3840, 2160),
+            frame_id="RECON-1/gimbal_rgb",
+            local_track_id="L9",
+            measurement_timestamp=10.01,
+            arrival_timestamp=10.03,
+            center_px=np.array([2400.0, 1080.0]),
+            bbox=(2280.0, 1020.0, 2520.0, 1140.0),
+            covariance_px=np.diag([36.0, 36.0]),
+            category="uav",
+            confidence=1.0,
+        ),
+    ]
+    fusion = TerminalCrossViewFusion(
+        TerminalCrossViewFusionConfig(max_pair_cost=1.0, covariance_trace_weight=0.0)
+    )
+
+    hypotheses = fusion.build_hypotheses(observations=observations)
+
+    assert len(hypotheses) == 1
+    assert hypotheses[0].support_count == 2
+    assert hypotheses[0].total_cost == 0.0
+
+
 def test_same_local_track_id_on_different_resources_is_namespaced_not_conflicted() -> None:
     fusion = _fusion()
     observations = [

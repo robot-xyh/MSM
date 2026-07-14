@@ -129,6 +129,8 @@ def test_airsim_cv_scenario_defaults_are_stress_baseline_not_runtime_limit() -> 
     assert spec.target_spacing_m == 20.0
     assert spec.interceptor_camera_spacing_m == 20.0
     assert spec.secondary_recon_height_offset_m == 200.0
+    assert spec.interceptor_camera_resolution == (1920, 1080)
+    assert spec.secondary_recon_resolution == (3840, 2160)
 
     runtime_spec = AirSimCVScenarioSpec(interceptor_count=7, target_count=7)
     assert runtime_spec.interceptor_count == 7

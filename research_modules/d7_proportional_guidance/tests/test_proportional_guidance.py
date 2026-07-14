@@ -474,6 +474,53 @@ def test_terminal_png_contract_allows_only_consistent_locked_handoff() -> None:
     assert decision.d5_decision_state == "locked"
 
 
+def test_secondary_assist_target_is_cue_not_assignment_owner() -> None:
+    binding = _binding_for_pair("R1", "G1", 21, owner_node_id="center")
+    terminal = {
+        "assigned_global_track_id": "G1",
+        "local_track_id": "R1:BT:assist",
+        "decision_state": "locked",
+        "friend_conflict_state": "none",
+        "assignment_version": 21,
+    }
+    bus = D7RuntimeBus(_tuned_png_config())
+    outputs = [
+        bus.evaluate_pair(
+            D7RuntimePairInput(
+                binding=binding,
+                d4_permission=D4GuidancePermission(
+                    action="request_secondary_assist",
+                    target_node_id="secondary-recon-1",
+                    new_plan_id=binding.plan_id,
+                    new_plan_version=binding.plan_version,
+                    secondary_capability_class="visible_only",
+                ),
+                terminal_association=terminal,
+                observation=_runtime_observation(
+                    timestamp_s=index * 0.1,
+                    half_size=half_size,
+                    local_track_id="R1:BT:assist",
+                ),
+                handover_pending=True,
+                terminal_locked=True,
+                current_heading_rad=0.0,
+                current_speed_mps=8.0,
+                intercept_speed_mps=8.0,
+                relative_position_ned=(25.0, 0.5, 0.0),
+                relative_velocity_ned=(-5.0, 0.0, 0.0),
+            )
+        )
+        for index, half_size in enumerate((36.0, 40.0, 44.0), start=1)
+    ]
+
+    assert all(output.terminal_contract_allowed for output in outputs)
+    assert all(output.d3_owner_consistent is True for output in outputs)
+    assert all(output.d4_target_node_id == "secondary-recon-1" for output in outputs)
+    assert outputs[0].guidance_law == "radar_pn"
+    assert outputs[-1].visual_png_enabled is True
+    assert outputs[-1].guidance_law == "png_vm"
+
+
 def test_terminal_png_contract_rejects_non_locked_d5_state() -> None:
     terminal = {
         "assigned_global_track_id": "G1",
@@ -613,6 +660,10 @@ def test_2v2_active_secondary_visual_png_requires_effective_secondary_plan() -> 
         target_actor_name="MSM_TargetActor_1",
         target_object_id="G1",
         target_mesh_aliases=("MSM_TargetActor_1", "G1"),
+        metadata={
+            "active_plan_owner": "secondary",
+            "secondary_takeover_state": "secondary_plan_active",
+        },
     )
     secondary_terminal = {
         "assigned_global_track_id": "G1",
@@ -624,10 +675,11 @@ def test_2v2_active_secondary_visual_png_requires_effective_secondary_plan() -> 
     stale_plan = evaluate_terminal_png_contract(
         binding=secondary_binding,
         d4_permission=D4GuidancePermission(
-            action="request_secondary_assist",
+            action="continue_center",
             target_node_id="secondary-1",
             new_plan_id="plan-2v2-secondary",
             new_plan_version=1,
+            secondary_readiness_class="takeover_ready",
         ),
         terminal_association=secondary_terminal,
         observation={"assigned_global_track_id": "G1"},
@@ -641,10 +693,11 @@ def test_2v2_active_secondary_visual_png_requires_effective_secondary_plan() -> 
     active_secondary = evaluate_terminal_png_contract(
         binding=secondary_binding,
         d4_permission=D4GuidancePermission(
-            action="request_secondary_assist",
+            action="continue_center",
             target_node_id="secondary-1",
             new_plan_id="plan-2v2-secondary",
             new_plan_version=2,
+            secondary_readiness_class="takeover_ready",
         ),
         terminal_association=secondary_terminal,
         observation={"assigned_global_track_id": "G1"},
@@ -658,6 +711,7 @@ def test_2v2_active_secondary_visual_png_requires_effective_secondary_plan() -> 
             target_node_id="secondary-1",
             new_plan_id="plan-2v2-secondary",
             new_plan_version=2,
+            secondary_readiness_class="takeover_ready",
         ),
         terminal_association=secondary_terminal,
         observation={"assigned_global_track_id": "G1"},
@@ -1379,6 +1433,10 @@ def test_runtime_bus_resets_filter_when_same_pair_plan_signature_changes() -> No
         assigned_global_track_id="G1",
         track_version=11,
         authorization_state="approved",
+        metadata={
+            "active_plan_owner": "secondary",
+            "secondary_takeover_state": "secondary_plan_active",
+        },
     )
     terminal_2 = {
         "assigned_global_track_id": "G1",
@@ -1391,10 +1449,11 @@ def test_runtime_bus_resets_filter_when_same_pair_plan_signature_changes() -> No
         D7RuntimePairInput(
             binding=plan_2,
             d4_permission=D4GuidancePermission(
-                action="request_secondary_assist",
+                action="continue_center",
                 target_node_id="secondary-1",
                 new_plan_id="plan-secondary-2",
                 new_plan_version=2,
+                secondary_readiness_class="takeover_ready",
             ),
             terminal_association=terminal_2,
             observation=_runtime_observation(timestamp_s=0.6, half_size=42.0),
@@ -1594,12 +1653,28 @@ def test_runtime_bus_blocks_secondary_plan_until_takeover_ready_and_reports_reas
         "friend_conflict_state": "none",
         "assignment_version": 91,
     }
+    missing_readiness = evaluate_terminal_png_contract(
+        binding=secondary_binding,
+        d4_permission=D4GuidancePermission(
+            action="continue_center",
+            target_node_id="secondary-1",
+            new_plan_id="plan-secondary-2",
+            new_plan_version=2,
+        ),
+        terminal_association=terminal,
+        observation={"assigned_global_track_id": "G1"},
+        timestamp_s=0.9,
+        resource_id="R1",
+    )
+
+    assert missing_readiness.allowed is False
+    assert missing_readiness.reject_reason == "secondary_capability_not_takeover_ready"
 
     blocked = bus.evaluate_pair(
         D7RuntimePairInput(
             binding=secondary_binding,
             d4_permission=D4GuidancePermission(
-                action="request_secondary_assist",
+                action="continue_center",
                 target_node_id="secondary-1",
                 new_plan_id="plan-secondary-2",
                 new_plan_version=2,
@@ -1639,7 +1714,7 @@ def test_runtime_bus_blocks_secondary_plan_until_takeover_ready_and_reports_reas
         D7RuntimePairInput(
             binding=secondary_binding,
             d4_permission=D4GuidancePermission(
-                action="request_secondary_assist",
+                action="continue_center",
                 target_node_id="secondary-1",
                 new_plan_id="plan-secondary-2",
                 new_plan_version=2,
@@ -1802,6 +1877,10 @@ def test_terminal_contract_blocks_d4_reassign_until_new_owner_version_and_d5_loc
         assigned_global_track_id="G1",
         track_version=11,
         authorization_state="approved",
+        metadata={
+            "active_plan_owner": "secondary",
+            "secondary_takeover_state": "secondary_plan_active",
+        },
     )
     stale_d5 = {
         "assigned_global_track_id": "G1",
@@ -1819,10 +1898,11 @@ def test_terminal_contract_blocks_d4_reassign_until_new_owner_version_and_d5_loc
     stale_version = evaluate_terminal_png_contract(
         binding=new_binding,
         d4_permission=D4GuidancePermission(
-            action="request_secondary_assist",
+            action="continue_center",
             target_node_id="secondary-1",
             new_plan_id="plan-secondary-2",
             new_plan_version=2,
+            secondary_readiness_class="takeover_ready",
         ),
         terminal_association=stale_d5,
         observation={"assigned_global_track_id": "G1"},
@@ -1832,10 +1912,11 @@ def test_terminal_contract_blocks_d4_reassign_until_new_owner_version_and_d5_loc
     owner_mismatch = evaluate_terminal_png_contract(
         binding=new_binding,
         d4_permission=D4GuidancePermission(
-            action="request_secondary_assist",
+            action="continue_center",
             target_node_id="center",
             new_plan_id="plan-secondary-2",
             new_plan_version=2,
+            secondary_readiness_class="takeover_ready",
         ),
         terminal_association=current_d5,
         observation={"assigned_global_track_id": "G1"},
@@ -1845,10 +1926,11 @@ def test_terminal_contract_blocks_d4_reassign_until_new_owner_version_and_d5_loc
     valid_new_plan = evaluate_terminal_png_contract(
         binding=new_binding,
         d4_permission={
-            "action": "request_secondary_assist",
+            "action": "continue_center",
             "new_plan_owner_id": "secondary-1",
             "new_plan_id": "plan-secondary-2",
             "new_plan_version": 2,
+            "secondary_readiness_class": "takeover_ready",
         },
         terminal_association=current_d5,
         observation={"assigned_global_track_id": "G1"},
@@ -1874,10 +1956,11 @@ def test_terminal_contract_rejects_d4_target_owner_without_d3_owner() -> None:
     decision = evaluate_terminal_png_contract(
         binding=binding_without_owner,
         d4_permission=D4GuidancePermission(
-            action="request_secondary_assist",
+            action="continue_center",
             target_node_id="secondary-1",
             new_plan_id="plan-runtime-n",
             new_plan_version=7,
+            secondary_readiness_class="takeover_ready",
         ),
         terminal_association=terminal,
         observation={"assigned_global_track_id": "G1"},

@@ -1060,6 +1060,10 @@ class AssignmentPlanner:
                     )
                 self._latest_published_plan = plan
                 return plan
+            if plan.execution_signature() == latest.execution_signature():
+                raise ValueError(
+                    "evaluation-only refresh cannot advance executable plan identity"
+                )
             if plan.version != latest.version + 1:
                 raise StalePlanError(
                     "published plan version must extend the latest published plan",
@@ -1077,10 +1081,6 @@ class AssignmentPlanner:
                     previous_version=plan.version - 1,
                     latest_plan_id=latest.plan_id,
                     latest_version=latest.version,
-                )
-            if plan.execution_signature() == latest.execution_signature():
-                raise ValueError(
-                    "published plan identity may advance only when execution semantics change"
                 )
         self._latest_version = plan.version
         self._latest_plan_id = plan.plan_id
@@ -1100,6 +1100,7 @@ class AssignmentPlanner:
             previous_plan is None
             or plan.execution_signature() != previous_plan.execution_signature()
         )
+        evaluation_refresh = previous_plan is not None and not execution_changed
         identity_created_at_s = (
             plan.created_at
             if previous_plan is None or execution_changed
@@ -1112,6 +1113,8 @@ class AssignmentPlanner:
             "identity_created_at_s": identity_created_at_s,
             "last_evaluated_at_s": last_evaluated_at_s,
             "plan_published": publish,
+            "plan_refresh_only": False,
+            "evaluation_refresh_only": evaluation_refresh,
         }
         assignments = tuple(
             replace(
@@ -1158,6 +1161,8 @@ class AssignmentPlanner:
                     "plan_version": previous_plan.version,
                     "current_plan_id": previous_plan.plan_id,
                     "current_plan_version": previous_plan.version,
+                    "plan_refresh_only": False,
+                    "evaluation_refresh_only": True,
                 },
             )
             for assignment in assignments
@@ -1209,6 +1214,7 @@ class AssignmentPlanner:
                 matrix_result.target_ids,
                 assignments,
                 previous_plan,
+                timestamp,
             )
         assignments = self._annotate_assignment_context(assignments, version)
         if unassigned_target_ids is None:
@@ -1303,6 +1309,27 @@ class AssignmentPlanner:
                 "transient_feedback_dwell_frames": max(
                     1,
                     int(self.config.transient_feedback_dwell_frames),
+                ),
+                "terminal_authorization_scope": "per_primary",
+                "arrival_coordination_required": False,
+                "coalition_membership": tuple(
+                    {
+                        "target_id": coalition.target_id,
+                        "coalition_id": coalition.coalition_id,
+                        "coalition_version": coalition.version,
+                        "coalition_epoch": coalition.epoch,
+                        "terminal_authorization_scope": coalition.terminal_authorization_scope,
+                        "arrival_coordination_required": coalition.arrival_coordination_required,
+                        "membership_change_reason": coalition.metadata.get(
+                            "membership_change_reason"
+                        ),
+                        "previous_members": coalition.metadata.get("previous_members", ()),
+                        "current_members": coalition.metadata.get("current_members", ()),
+                        "membership_hold_basis": coalition.metadata.get(
+                            "membership_hold_basis"
+                        ),
+                    }
+                    for coalition in coalitions
                 ),
                 "high_threat_threshold": self.config.high_threat_threshold,
                 "assignment_profile_schema": ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1,
@@ -1613,6 +1640,7 @@ class AssignmentPlanner:
                 members=members,
                 complete=complete,
                 previous=previous_coalition_by_target.get(track.track_id),
+                timestamp=timestamp,
             )
             coalitions.append(coalition)
             if not complete:
@@ -1636,11 +1664,34 @@ class AssignmentPlanner:
                         arrival_window_start_s=slot.arrival_window_start_s,
                         arrival_window_end_s=slot.arrival_window_end_s,
                         required_resource_count=slot.demand.required_resource_count,
+                        terminal_authorization_scope=(
+                            slot.demand.terminal_authorization_scope
+                        ),
+                        arrival_coordination_required=(
+                            slot.demand.arrival_coordination_required
+                        ),
                         metadata={
                             "required_capability_class": slot.required_capability_class,
                             "coordination_mode": slot.demand.coordination_mode,
                             "primary_resource_count": slot.demand.primary_resource_count,
                             "minimum_separation_s": slot.demand.minimum_separation_s,
+                            "terminal_authorization_scope": (
+                                slot.demand.terminal_authorization_scope
+                            ),
+                            "arrival_coordination_required": (
+                                slot.demand.arrival_coordination_required
+                            ),
+                            "coalition_epoch": coalition.epoch,
+                            "activation_state": (
+                                "standby"
+                                if slot.member_role
+                                == CoalitionMemberRole.RESERVE.value
+                                else "active"
+                            ),
+                            "executable": (
+                                slot.member_role
+                                != CoalitionMemberRole.RESERVE.value
+                            ),
                         },
                     )
                 )
@@ -1876,6 +1927,7 @@ class AssignmentPlanner:
         members: tuple[CoalitionMember, ...],
         complete: bool,
         previous: CoalitionPlan | None,
+        timestamp: float,
     ) -> CoalitionPlan:
         demand = track.effective_demand
         state = (
@@ -1883,24 +1935,13 @@ class AssignmentPlanner:
             if complete
             else CoalitionState.INCOMPLETE.value
         )
-        signature = self._coalition_signature(
-            demand=demand,
-            state=state,
-            members=members,
+        membership_signature = self._coalition_membership_signature(members)
+        previous_signature = (
+            None
+            if previous is None
+            else self._coalition_membership_signature(previous.members)
         )
-        previous_signature = None
-        if previous is not None:
-            previous_demand = TargetDemand(
-                required_resource_count=previous.required_resource_count,
-                primary_resource_count=previous.primary_resource_count,
-                coordination_mode=previous.coordination_mode,
-                minimum_separation_s=previous.minimum_separation_s,
-            )
-            previous_signature = self._coalition_signature(
-                demand=previous_demand,
-                state=previous.state,
-                members=previous.members,
-            )
+        membership_changed = membership_signature != previous_signature
         coalition_id = (
             previous.coalition_id
             if previous is not None
@@ -1909,7 +1950,22 @@ class AssignmentPlanner:
         coalition_version = (
             1
             if previous is None
-            else previous.version + (signature != previous_signature)
+            else previous.version + membership_changed
+        )
+        previous_members = () if previous is None else previous_signature
+        membership_changed_at_s = (
+            float(timestamp)
+            if previous is None or membership_changed
+            else float(previous.metadata.get("membership_changed_at_s", timestamp))
+        )
+        membership_change_reason = (
+            "initial_membership"
+            if previous is None
+            else (
+                "member_or_role_changed"
+                if membership_changed
+                else "members_held_cost_refresh"
+            )
         )
         assigned = len(members)
         return CoalitionPlan(
@@ -1925,6 +1981,8 @@ class AssignmentPlanner:
             primary_resource_count=demand.primary_resource_count,
             members=members,
             minimum_separation_s=demand.minimum_separation_s,
+            terminal_authorization_scope=demand.terminal_authorization_scope,
+            arrival_coordination_required=demand.arrival_coordination_required,
             metadata={
                 "primary_resource_count": demand.primary_resource_count,
                 "demand_template": (
@@ -1936,9 +1994,33 @@ class AssignmentPlanner:
                     demand.arrival_window_end_s,
                     demand.wave_interval_s,
                     demand.minimum_separation_s,
-                )
+                    demand.terminal_authorization_scope,
+                    demand.arrival_coordination_required,
+                ),
+                "coalition_epoch": coalition_version,
+                "membership_changed_at_s": membership_changed_at_s,
+                "membership_change_reason": membership_change_reason,
+                "previous_members": previous_members,
+                "current_members": membership_signature,
+                "membership_hold_basis": (
+                    "initial_admission"
+                    if previous is None
+                    else (
+                        "hard_infeasible_or_gain_and_dwell"
+                        if membership_changed
+                        else "same_members_and_roles"
+                    )
+                ),
+                "terminal_authorization_scope": demand.terminal_authorization_scope,
+                "arrival_coordination_required": demand.arrival_coordination_required,
             },
         )
+
+    @staticmethod
+    def _coalition_membership_signature(
+        members: tuple[CoalitionMember, ...],
+    ) -> tuple[tuple[str, str], ...]:
+        return tuple(sorted((member.resource_id, member.member_role) for member in members))
 
     @staticmethod
     def _coalition_signature(
@@ -1984,6 +2066,7 @@ class AssignmentPlanner:
         target_ids: tuple[str, ...],
         assignments: tuple[Assignment, ...],
         previous_plan: AssignmentPlan | None,
+        timestamp: float,
     ) -> tuple[tuple[Assignment, ...], tuple[CoalitionPlan, ...]]:
         assignment_by_target = {item.target_id: item for item in assignments}
         previous_by_target = {
@@ -2011,6 +2094,7 @@ class AssignmentPlanner:
                 members=members,
                 complete=assignment is not None,
                 previous=previous_by_target.get(target_id),
+                timestamp=timestamp,
             )
             coalitions.append(coalition)
             if assignment is not None:
@@ -2022,6 +2106,12 @@ class AssignmentPlanner:
                         member_role=CoalitionMemberRole.PRIMARY.value,
                         wave_id=0,
                         required_resource_count=1,
+                        terminal_authorization_scope=(
+                            coalition.terminal_authorization_scope
+                        ),
+                        arrival_coordination_required=(
+                            coalition.arrival_coordination_required
+                        ),
                     )
                 )
         return tuple(annotated), tuple(coalitions)
@@ -2346,6 +2436,50 @@ class AssignmentPlanner:
         previous_cost, previous_feasible, previous_assignments, previous_unassigned = (
             self._score_previous_plan(previous_plan, matrix_result, candidate)
         )
+        membership_audit = self._coalition_membership_audit(
+            candidate=candidate,
+            previous_plan=previous_plan,
+            rescored_previous_assignments=previous_assignments,
+            timestamp=timestamp,
+        )
+        if membership_audit["membership_hold_required"]:
+            solver_result = SolverResult(
+                assignments=(),
+                unassigned_target_indices=(),
+                objective_value=previous_cost,
+                solver_name=candidate.solver_name,
+                status="held",
+            )
+            held_plan = self._build_plan(
+                matrix_result=matrix_result,
+                solver_result=solver_result,
+                timestamp=timestamp,
+                previous_plan=previous_plan,
+                window_id=window_id,
+                decision_state="held_by_coalition_membership_hysteresis",
+                changed=False,
+                last_changed_at=previous_plan.last_changed_at,
+                total_cost=previous_cost,
+                assignments=previous_assignments,
+                unassigned_target_ids=previous_unassigned,
+                coalitions=previous_plan.coalitions,
+                incomplete_target_ids=previous_plan.incomplete_target_ids,
+                demand_summaries=tuple(
+                    coalition.summary for coalition in previous_plan.coalitions
+                ),
+            )
+            return replace(
+                held_plan,
+                candidate_total_cost=candidate.total_cost,
+                previous_total_cost_current=previous_cost,
+                metadata={
+                    **dict(held_plan.metadata),
+                    **membership_audit,
+                    "hysteresis_state": "held",
+                    "hysteresis_reason": "coalition_membership_hold",
+                    "hysteresis_reasons": ("coalition_membership_hold",),
+                },
+            )
         same_assignment = candidate.stable_signature == self._assignment_signature(
             previous_assignments
         )
@@ -2374,6 +2508,7 @@ class AssignmentPlanner:
                 unassigned_target_ids=previous_unassigned,
                 metadata={
                     **dict(candidate.metadata),
+                    **membership_audit,
                     **self._hysteresis_metadata(
                         state="unchanged",
                         reason="same_assignment",
@@ -2393,7 +2528,7 @@ class AssignmentPlanner:
             )
 
         improvement_ok = candidate.total_cost < (1.0 - self.config.delta) * previous_cost
-        dwell_ok = dwell_time > self.config.min_dwell
+        dwell_ok = dwell_time >= self.config.min_dwell
         change_limit_ok = (
             self.config.max_changes_per_window is None
             or change_count <= self.config.max_changes_per_window
@@ -2445,6 +2580,7 @@ class AssignmentPlanner:
                 previous_total_cost_current=previous_cost,
                 metadata={
                     **dict(held_plan.metadata),
+                    **membership_audit,
                     **self._hysteresis_metadata(
                         state="held",
                         reason=hold_reasons[0],
@@ -2479,6 +2615,7 @@ class AssignmentPlanner:
             previous_total_cost_current=previous_cost,
             metadata={
                 **dict(candidate.metadata),
+                **membership_audit,
                 **self._hysteresis_metadata(
                     state="released",
                     reason=release_reason,
@@ -2499,6 +2636,144 @@ class AssignmentPlanner:
                 ),
             },
         )
+
+    def _coalition_membership_audit(
+        self,
+        *,
+        candidate: AssignmentPlan,
+        previous_plan: AssignmentPlan,
+        rescored_previous_assignments: tuple[Assignment, ...],
+        timestamp: float,
+    ) -> dict[str, object]:
+        """Evaluate member/role replacement per target, independently of plan refresh."""
+
+        previous_by_target = {
+            coalition.target_id: coalition for coalition in previous_plan.coalitions
+        }
+        candidate_by_target = {
+            coalition.target_id: coalition for coalition in candidate.coalitions
+        }
+        previous_cost_by_target: dict[str, float] = {}
+        previous_feasible_by_target: dict[str, bool] = {}
+        previous_count_by_target: dict[str, int] = {}
+        for assignment in rescored_previous_assignments:
+            previous_cost_by_target[assignment.target_id] = (
+                previous_cost_by_target.get(assignment.target_id, 0.0) + assignment.cost
+            )
+            previous_count_by_target[assignment.target_id] = (
+                previous_count_by_target.get(assignment.target_id, 0) + 1
+            )
+            previous_feasible_by_target[assignment.target_id] = (
+                previous_feasible_by_target.get(assignment.target_id, True)
+                and assignment.feasibility_state == "feasible"
+            )
+        candidate_cost_by_target: dict[str, float] = {}
+        for assignment in candidate.assignments:
+            candidate_cost_by_target[assignment.target_id] = (
+                candidate_cost_by_target.get(assignment.target_id, 0.0) + assignment.cost
+            )
+
+        records: list[dict[str, object]] = []
+        hold_required = False
+        changed_targets: list[str] = []
+        for target_id in sorted(set(previous_by_target) | set(candidate_by_target)):
+            previous = previous_by_target.get(target_id)
+            current = candidate_by_target.get(target_id)
+            if max(
+                0 if previous is None else previous.required_resource_count,
+                0 if current is None else current.required_resource_count,
+            ) <= 1:
+                continue
+            previous_members = (
+                ()
+                if previous is None
+                else self._coalition_membership_signature(previous.members)
+            )
+            current_members = (
+                ()
+                if current is None
+                else self._coalition_membership_signature(current.members)
+            )
+            if previous_members == current_members:
+                continue
+            changed_targets.append(target_id)
+            changed_at_s = (
+                previous_plan.last_changed_at
+                if previous is None
+                else float(
+                    previous.metadata.get(
+                        "membership_changed_at_s", previous_plan.last_changed_at
+                    )
+                )
+            )
+            dwell_s = max(0.0, float(timestamp) - changed_at_s)
+            dwell_ok = dwell_s >= self.config.min_dwell
+            required = 0 if previous is None else previous.required_resource_count
+            previous_feasible = (
+                previous is not None
+                and previous.complete
+                and current is not None
+                and current.required_resource_count == previous.required_resource_count
+                and current.primary_resource_count == previous.primary_resource_count
+                and previous_count_by_target.get(target_id, 0) == required
+                and previous_feasible_by_target.get(target_id, False)
+            )
+            previous_target_cost = previous_cost_by_target.get(
+                target_id, self.config.infeasible_penalty
+            )
+            candidate_target_cost = candidate_cost_by_target.get(
+                target_id, self.config.infeasible_penalty
+            )
+            improvement_ok = candidate_target_cost < (
+                (1.0 - self.config.delta) * previous_target_cost
+            )
+            release_reason = (
+                "previous_members_hard_infeasible"
+                if not previous_feasible
+                else (
+                    "coalition_gain_and_dwell_passed"
+                    if improvement_ok and dwell_ok
+                    else "coalition_membership_hold"
+                )
+            )
+            target_hold = previous_feasible and not (improvement_ok and dwell_ok)
+            hold_required = hold_required or target_hold
+            records.append(
+                {
+                    "target_id": target_id,
+                    "previous_members": previous_members,
+                    "current_members": current_members,
+                    "membership_changed_at_s": changed_at_s,
+                    "membership_dwell_s": dwell_s,
+                    "membership_min_dwell_s": self.config.min_dwell,
+                    "previous_coalition_cost": previous_target_cost,
+                    "candidate_coalition_cost": candidate_target_cost,
+                    "required_relative_gain": self.config.delta,
+                    "dwell_ok": dwell_ok,
+                    "improvement_ok": improvement_ok,
+                    "previous_members_feasible": previous_feasible,
+                    "membership_change_reason": release_reason,
+                    "membership_hold_basis": (
+                        "keep_executable_members_until_gain_and_dwell"
+                        if target_hold
+                        else release_reason
+                    ),
+                }
+            )
+        return {
+            "membership_change_reason": (
+                "no_member_or_role_change"
+                if not records
+                else (
+                    "coalition_membership_hold"
+                    if hold_required
+                    else "coalition_membership_released"
+                )
+            ),
+            "membership_changed_target_ids": tuple(changed_targets),
+            "membership_change_records": tuple(records),
+            "membership_hold_required": hold_required,
+        }
 
     def _score_previous_plan(
         self,
@@ -2718,6 +2993,20 @@ class AssignmentPlanner:
                 "arrival_window_start_s": assignment.arrival_window_start_s,
                 "arrival_window_end_s": assignment.arrival_window_end_s,
                 "required_resource_count": assignment.required_resource_count,
+                "terminal_authorization_scope": (
+                    assignment.terminal_authorization_scope
+                ),
+                "arrival_coordination_required": (
+                    assignment.arrival_coordination_required
+                ),
+                "activation_state": (
+                    "standby"
+                    if assignment.member_role == CoalitionMemberRole.RESERVE.value
+                    else "active"
+                ),
+                "executable": (
+                    assignment.member_role != CoalitionMemberRole.RESERVE.value
+                ),
             }
             annotated.append(
                 replace(

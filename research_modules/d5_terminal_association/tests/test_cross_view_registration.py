@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from d5_terminal_association import (
+    Assignment,
     CameraLocalTrackBatch,
     CameraModel,
     GlobalTrack,
@@ -11,9 +12,32 @@ from d5_terminal_association import (
     RegistrationStabilityConfig,
     STABILITY_WINDOW_FAILED_REASON,
     adaptive_pixel_covariance_px,
+    binding_from_assignment,
     register_local_visual_tracks_to_global_tracks,
     summarize_secondary_visual_coverage_funnel,
 )
+
+
+def test_assignment_to_registration_binding_preserves_per_primary_contract() -> None:
+    assignment = Assignment(
+        "G1",
+        assignment_version=7,
+        resource_id="INT-1",
+        plan_id="plan-7",
+        plan_version=7,
+        coalition_id="coalition-G1",
+        coalition_version=3,
+        member_role="primary",
+        required_resource_count=2,
+        terminal_authorization_scope="per_primary",
+        arrival_coordination_required=False,
+    )
+
+    binding = binding_from_assignment(assignment, camera_id="front_rgb")
+
+    assert binding.global_track_id == assignment.assigned_global_track_id
+    assert binding.terminal_authorization_scope == "per_primary"
+    assert binding.arrival_coordination_required is False
 
 
 def _camera() -> CameraModel:
@@ -211,6 +235,13 @@ def test_adaptive_pixel_covariance_uses_bbox_area_and_relaxes_secondary_gate() -
     assert with_area.candidates[0].covariance_px is not None
     assert with_area.candidates[0].covariance_px[0, 0] > 600.0
     assert all(not candidate.selected for candidate in without_area.candidates)
+
+
+def test_adaptive_pixel_covariance_preserves_scale_between_1080p_and_4k() -> None:
+    covariance_1080p = adaptive_pixel_covariance_px(120.0 * 60.0, (1920, 1080))
+    covariance_4k = adaptive_pixel_covariance_px(240.0 * 120.0, (3840, 2160))
+
+    np.testing.assert_allclose(covariance_4k, covariance_1080p * 4.0)
 
 
 def test_default_registration_requires_two_gate_passes_in_three_frame_window_for_stable_support() -> None:

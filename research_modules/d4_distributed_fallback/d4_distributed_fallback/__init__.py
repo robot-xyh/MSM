@@ -18,6 +18,10 @@ from .active_degradation import (
     build_secondary_takeover_plan_metadata,
     summarize_secondary_lifecycle,
 )
+from .airsim_terminal_consistency_replay import (
+    AirSimTerminalConsistencyAudit,
+    audit_airsim_terminal_consistency,
+)
 from .adapter import (
     D4ArbitrationAdapter,
     D4ArbitrationResult,
@@ -44,6 +48,28 @@ from .coalition_safety import (
     build_coalition_safety_evidence,
 )
 from .coordinator import FailoverCoordinator
+from .episode_communication import (
+    EPISODE_COMMUNICATION_SCHEMA,
+    EPISODE_FAULT_SCENARIOS,
+    P1_EPISODE_VALIDATION_VERSION,
+    AirSimEpisodeCommunicationAdapter,
+    EpisodeCommunicationConfig,
+    EpisodeFaultValidationMatrixReport,
+    EpisodeCommunicationReplayReport,
+    EpisodeCommunicationTick,
+    EpisodeCommunicationTickInput,
+    run_p1_episode_fault_validation_matrix,
+    run_episode_communication_replay,
+)
+from .communication_fault_replay import (
+    P1_COMMUNICATION_MATRIX_VERSION,
+    P1_COMMUNICATION_SCENARIOS,
+    CommunicationFaultCaseSummary,
+    CommunicationFaultReplay,
+    CommunicationFaultReplayReport,
+    CommunicationReplayConfig,
+    run_p1_communication_fault_matrix,
+)
 from .p1_failover_replay import (
     P1_FAILOVER_MATRIX_VERSION,
     P1_FAILOVER_SCENARIOS,
@@ -89,6 +115,7 @@ from .models import (
 __all__ = [
     "ActiveDegradationArbiter",
     "ActiveDegradationConfig",
+    "AirSimTerminalConsistencyAudit",
     "ActiveDegradationDecision",
     "Assignment",
     "AssignmentValiditySummary",
@@ -105,6 +132,10 @@ __all__ = [
     "CoalitionSafetyEvidence",
     "CoalitionReplayCaseResult",
     "CoalitionReplayReport",
+    "CommunicationFaultCaseSummary",
+    "CommunicationFaultReplay",
+    "CommunicationFaultReplayReport",
+    "CommunicationReplayConfig",
     "CommBand",
     "CommunicationSummary",
     "ConfidenceBand",
@@ -116,6 +147,15 @@ __all__ = [
     "DegradationAction",
     "DegradationMode",
     "FailoverCoordinator",
+    "AirSimEpisodeCommunicationAdapter",
+    "EpisodeCommunicationConfig",
+    "EpisodeFaultValidationMatrixReport",
+    "EpisodeCommunicationReplayReport",
+    "EpisodeCommunicationTick",
+    "EpisodeCommunicationTickInput",
+    "EPISODE_COMMUNICATION_SCHEMA",
+    "EPISODE_FAULT_SCENARIOS",
+    "P1_EPISODE_VALIDATION_VERSION",
     "ExternalCoalitionReplayAdapter",
     "ExternalReplayCapability",
     "EXTERNAL_REFERENCE_BACKENDS",
@@ -123,6 +163,8 @@ __all__ = [
     "NodeRole",
     "NativeCoalitionFaultReplay",
     "PayloadKind",
+    "P1_COMMUNICATION_MATRIX_VERSION",
+    "P1_COMMUNICATION_SCENARIOS",
     "P1_FAILOVER_MATRIX_VERSION",
     "P1_FAILOVER_SCENARIOS",
     "P1FailoverCaseResult",
@@ -141,6 +183,7 @@ __all__ = [
     "build_assignment_validity_summary",
     "build_association_risk_summary",
     "attach_distributed_visual_evidence",
+    "audit_airsim_terminal_consistency",
     "build_communication_summary",
     "build_distributed_visual_evidence_summary",
     "build_resource_summary",
@@ -158,6 +201,9 @@ __all__ = [
     "is_secondary_node_resource",
     "merge_distributed_visual_evidence_into_tracks",
     "run_p1_failover_disturbance_replay",
+    "run_p1_communication_fault_matrix",
+    "run_episode_communication_replay",
+    "run_p1_episode_fault_validation_matrix",
     "run_p2_coalition_fault_replay",
     "SECONDARY_NODE_ROLES",
     "secondary_capability_class",

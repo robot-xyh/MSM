@@ -291,8 +291,8 @@ def write_d4d5_sequence_report(
             "## 结论",
             "",
             "- `no_degradation` 用于验证中心分配、终端视觉和二级侦察证据一致时，D4 不触发降级。",
-            "- `degrade_to_secondary` 用于验证终端证据持续不一致时，二级系留侦察节点优先于完全分散协商。",
-            "- `degrade_to_distributed` 用于验证二级节点不可用或链路过期时，D4 才进入完全无中心的分散模式。",
+            "- `degrade_to_secondary` 用于验证中心失效后，二级侦察节点优先接管；中心正常时终端不一致只请求观测辅助或中心重规划。",
+            "- `degrade_to_distributed` 用于验证中心和二级节点均不可用或链路过期后，D4 才进入完全无中心的分散模式。",
             "- D5 全程只汇报观测、身份和跨视角风险，不创建或改写 `global_track_id`。",
             "- 兼容字段：`secondary_global_view_rate` 等价于单二级全局视野；`secondary_network_global_view_rate` 等价于二级网络联合覆盖。",
             "- 单二级全局视野表示单个二级相机同帧看全目标；二级网络联合覆盖表示所有二级相机同帧目标并集看全目标；`cross_view_association_count` 才表示已形成既有 `global_track_id` 支持。",
@@ -629,7 +629,11 @@ def _d4_decisions_for_frame(
             assignment=assignment_validity,
             terminal_association=terminal_summary,
             d5_evidence=d5_evidence,
-            c2_health=C2Health.NORMAL,
+            c2_health=(
+                C2Health.NORMAL
+                if case_name == "no_degradation"
+                else C2Health.FAILED
+            ),
             secondary_nodes=secondary_nodes,
             communication_records=communications,
             coverage_cell=track_uncertainty.coverage_cell,

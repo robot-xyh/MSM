@@ -2,6 +2,12 @@
 
 离线科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块只输出 `TerminalAssociation` 决策，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-13 per-primary 漏斗与 MOT sweep 合同
+
+- M5N2 漏斗按每个 active primary 独立记录 `visible -> projected -> gate_accepted -> locked -> stable_lock`、plan owner/version 和 first failure。显式 `per_primary + arrival_coordination_required=false` 不计算或要求共同锁定窗口；旧 `coalition` 合同仍保留共同窗口门控。standby reserve 不计入完成。
+- MOT 准入显式区分 100 帧 screening 与 200 帧 confirmation；summary 同时输出 main sweep 使用的 `tracker_backend`、`detector_precision/recall`、`local_track_continuity` 等字段。IoU fallback 不计 native，truth 必须在 online result 形成后逐帧评分。
+- 当前模块回归为 `232 passed`；真实 AirSim sweep 仍由 main 调度。
+
 ## 目录
 
 - `src/d5_terminal_association/`: Python 实现。
@@ -20,6 +26,16 @@ python3 research_modules/d5_terminal_association/scripts/run_p2_opencv_geometry_
 
 核心测试仅依赖 Python 标准库、NumPy、OpenCV 和 pytest；OpenCV 不可用时，投影函数会退回简化针孔模型。`YoloMotAdapter` 可选使用 `ultralytics` 与本地权重运行 YOLOv8/ByteTrack/BoT-SORT，缺依赖或原生 tracker 不可用时会返回 `unavailable` 或退回确定性 IoU tracker。
 
+### 混合相机分辨率
+
+D5 支持同一 episode 内每个 `(resource_id, camera_id)` 使用独立分辨率。当前 AirSim 场景基线为拦截相机 `1920x1080`、高空侦察相机 `3840x2160`。`CameraModel.image_size`、每帧 YOLO/MOT 输入尺寸和 bbox 边缘判定均按相机独立保存；固定像素门限按 `640x480` 参考尺度转换，二级配准协方差与无中心跨视角的中心、协方差、bbox 面积也先归一到参考像素尺度。原始 bbox 和像素坐标仍保留用于日志，不使用 truth ID，也不改变 `global_track_id`。
+
+### 对象类别与 YOLO 推理尺寸
+
+`YoloMotAdapter` 将 detector 的 `uav`、`drone`、`intruder` 及常见大小写、空格、连字符和下划线变体统一为对象类别 `uav`。原始标签保存在每条 `LocalVisualTrack.metadata.raw_category` 和 frame metadata 中；类别归一化不推断 `friend/hostile`，敌我属性仍只来自独立 `IdentityClaim` 证据。真实类别差异（例如 `uav` 与 `bird`）继续产生类别不一致惩罚。
+
+`YoloMotAdapterConfig.inference_imgsz` 可选接受正整数或 `(height, width)` 正整数二元组，并透传给 Ultralytics `model.track()`/`model.predict()`；`None` 不传 `imgsz`，保持 Ultralytics 默认行为。该参数允许 1080p 拦截相机和 4K 侦察相机使用不同推理尺度，但不自动证明远距检测质量，仍需 main 在真实 AirSim 多 seed 中标定显存、延迟和召回率。
+
 ## 核心接口
 
 - `TerminalAssociator.project_tracks_to_image(global_tracks, camera)`
@@ -30,7 +46,9 @@ python3 research_modules/d5_terminal_association/scripts/run_p2_opencv_geometry_
 - `TerminalObservationBus.runtime_records()`
 - `TerminalObservationBus.cross_view_associations(as_of_timestamp=None, max_age_s=None, plan_id=None, plan_version=None)`
 - `TerminalObservationBus.coalition_visual_summary(coalition_bindings, historical_associations=(), required_stable_frames=2, coalition_commit=None, current_time_s=None, center_failed=False, fallback_active=False)`
+- `TerminalObservationBus.cooperative_visual_funnel(coalition_bindings, historical_associations=(), required_stable_frames=2, coalition_commits=None, current_time_s=None, center_failed=False, fallback_active=False)`
 - `summarize_coalition_visual_completion(coalition_bindings, current_associations, historical_associations=(), required_stable_frames=2, historical_bindings=(), coalition_commit=None, current_time_s=None, center_failed=False, fallback_active=False)`
+- `summarize_cooperative_visual_funnel(coalition_bindings, current_associations, historical_associations=(), required_stable_frames=2, historical_bindings=(), coalition_commits=None, current_time_s=None, center_failed=False, fallback_active=False)`
 - `TerminalCrossViewFusion.summarize_observations(...)`
 - `TerminalCrossViewFusion.build_hypotheses(...)`
 - `TerminalCrossViewFusion.associate(...)`
@@ -43,6 +61,11 @@ python3 research_modules/d5_terminal_association/scripts/run_p2_opencv_geometry_
 - `YoloMotAdapter.process_frame(...)`
 - `YoloMotAdapter.reset_stream(resource_id, camera_id)`
 - `YoloMotAdapter.reset_all_streams()`
+- `NativeMotAdmissionMonitor.observe(result, scenario=..., offline_truth_detections=...)`
+- `NativeMotAdmissionMonitor.summary(resource_id, camera_id)`
+- `NativeMotAdmissionMonitor.reset_stream(resource_id, camera_id)`
+- `evaluate_offline_detector_after_online(result, offline_truth_detections)`
+- `per_primary_terminal_evidence(association, expected_resource_id=..., expected_plan_version=...)`
 - `publish_sim_detections_as_local_observations(...)`
 - `compute_terminal_stress_metrics(...)`
 - `summarize_degradation_case(...)`
@@ -68,6 +91,50 @@ decision = associator.decide(
     camera_pose_source="runtime_guidance_pose",
 )
 ```
+
+## 原生 MOT 准入
+
+`YoloMotAdapter` 继续用本地 `best.pt` 请求 Ultralytics 原生 ByteTrack 或 BoT-SORT，并在已完成 frame result 中记录实际 backend、confidence、可选 `target_distance_m` 和不带身份的 `detector_bboxes_xyxy`。标准标定网格为 confidence `0.1/0.2/0.3`、距离 `20/30/50 m`。`NativeMotAdmissionMonitor` 按 `(resource_id, camera_id)` 独立累计：原生 active 帧率、IoU fallback 帧数、accepted detections、去除预热帧后的 P95 延迟、local continuity、terminal local IDSW，以及离线 detector TP/FP/FN、precision/recall。
+
+双路 AirSim 评价汇总同时保留 `online_detector_box_count`/`online_yolo_detection_count`、`online_local_track_count`、离线参考框 matched/missed/unmatched-online 计数以及 native/fallback 帧数。这样报告不会把 YOLO 原始框数、本地 MOT 输出数和 `simGetDetections` 离线参考框混为同一个 detection count；`simGetDetections` 的 actor/object identity 仍不会写入在线 result、local track 或全局绑定。
+
+严格时序为：main 先调用 `process_frame()`，再获取 AirSim offline truth boxes，最后调用 `monitor.observe(result, offline_truth_detections=...)`。`evaluate_offline_detector_after_online()` 直接比较 result 中已冻结的 detector bbox 与后到 truth，不修改 result 或 local tracks。旧的 `process_frame(offline_truth_detections=...)` metadata 评分继续兼容；同一帧若 monitor 同时收到后到 truth，则优先 post-online 重算，忽略 legacy metadata，避免双计数。
+
+IoU fallback 明确是失败基线，任何 fallback 帧都不会计入 native active，也会使默认准入失败。identity-bearing truth 只在 `YoloMotFrameResult` 已形成后送入 monitor 计算 local IDSW；summary 只输出计数，不保存 truth ID。episode 切换时 main 必须同时 reset adapter 与 monitor。当前完成的是准入 DTO、统计和 fail-closed 判定，尚未完成真实 AirSim 连续图像多 seed 质量验收，因此 detect 仍是默认在线路径。
+
+`Assignment` 现在只读携带 `terminal_authorization_scope` 和 `arrival_coordination_required`，字段名与 D3 assignment/guidance binding 一致。main 的 D3->D5 adapter 应显式复制这两个字段；旧输入缺字段时使用 `coalition + true`，保持原共同视觉/到达合同。字段沿 `GlobalTrackBinding`、`TerminalAssociation.metadata` 和 runtime record 无损透传。
+
+`per_primary_terminal_evidence()` 默认直接读取 association 内的合同。只有 `terminal_authorization_scope=per_primary` 且 `arrival_coordination_required=false` 时，每个已授权、激活、版本匹配的 primary 才可独立报告 D5 lock，不要求另一个 primary 同帧锁定。函数参数只能核对预期合同，不能覆盖 DTO。它不授予控制权，reserve standby、friend conflict、duplicate risk、缺 plan/coalition 版本或 execution gate 拒绝仍 fail closed，且只回显中心拥有的 `assigned_global_track_id`。
+
+### 2026-07-12 真实 AirSim 20 m 原生 MOT 复核
+
+受控条件为固定前视相机、目标横向运动、`1920x1080`、90 度 FOV、`Quadrotor1` actor、confidence `0.10`。ByteTrack 与 BoT-SORT 均完成 102 帧，`native_active_frame_rate=1.0`、`local_continuity=1.0`、`terminal_local_id_switch_count=0`、`fallback_frame_count=0`、在线 truth 使用和 `global_track_id` 改写均为 0。去除 5 帧预热后的 P95 分别为 8.29 ms 和 18.23 ms。ByteTrack 当前延迟更低，但两者都未通过准入，不能据此把任一 backend 提升为默认主线。
+
+未准入的直接原因是 IoU=0.5 的离线 AirSim detect bbox 评分偏低：ByteTrack 为 33 TP、69 FP、69 FN，precision/recall 均为 0.3235；BoT-SORT 为 29 TP、70 FP、70 FN，precision/recall 均为 0.2929。20 m 日志中的 YOLO 框宽约 49-59 px、高约 26-30 px、置信度中位数约 0.83，说明该距离下 detector 和 native tracker 持续工作。30 m 和 50 m 在 confidence `0.10` 下两后端均为零检测；preflight 中 30 m 即使降到 `0.05` 仍为零，因此不能把远距失败简单归因于当前 `0.10` confidence 门限。
+
+当前证据支持三个待分离因素：
+
+1. 20 m 连续检出而 30/50 m 完全失效，强烈提示 `best.pt` 对当前 actor 的像素尺度、视角或渲染域泛化存在上限。
+2. 20 m 每帧基本各有一个稳定 YOLO 框，而 TP 失败同时增加一个 FP 和 FN，强烈提示 YOLO 可见机体/旋翼框与 AirSim mesh-level detect 框定义不同，或二者存在采集时序偏移。
+3. IoU=0.5 对窄小框可能敏感，但现有 `blocks_frames.jsonl` 只持久化 YOLO 在线框和累计评分，没有逐帧 AirSim truth bbox，尚不能证明应修改 IoU 阈值。BoT-SORT 在 frame 7、29、33 未增加离线评分计数，最终仅 99/102 帧有 truth score；现有日志无法区分临时空 detect、RPC 抖动或转换失败。
+
+因此下一轮先做离线诊断，不改变在线安全门限：保存后到的 AirSim bbox、采集时间和有效性原因，扫 IoU `0.1/0.2/0.3/0.4/0.5`、同帧及 `-1/0/+1` 帧对齐，并报告中心误差/真值框对角线、宽高比、面积比和 containment。距离矩阵扩展为 `20/25/30/40/50 m`，confidence 使用主网格 `0.1/0.2/0.3` 并增加 `0.05` 诊断点；每个 backend 记录 bbox 像素尺度、置信度、native rate、continuity、IDSW、fallback 和 P95。候选配置确定后至少运行 10 seeds、每组 100 帧以上。
+
+准入继续 fail closed：native rate >= 0.95、fallback=0、continuity >= 0.90、terminal local IDSW <= 1/episode、去预热 P95 <= 100 ms、离线 truth 帧覆盖率 >= 0.99 且缺帧原因可审计；在经验证的 bbox 约定下，20 m precision >= 0.90、recall >= 0.80。30/50 m 在零检测状态下不得准入。IoU sweep 只用于离线评估口径诊断，不能直接降低 D5 在线马氏几何门、唯一性、版本、友方、duplicate 或授权门限，truth 仍只能在 online result 形成后用于评分。
+
+## P1 M5N2 双 primary 视觉诊断
+
+`summarize_cooperative_visual_funnel()` 按现有 `global_track_id` 对动态数量的资源/目标分组，并输出逐资源、逐目标的只读诊断。逐资源阶段固定为：当前合同、可见、投影、几何门控、锁定、稳定锁定、共同锁定窗口；同时保留 association confidence、ambiguity、friend conflict 和首个拒绝原因。逐目标汇总输出 active-primary 漏斗、最长共同锁定窗口、协同完成状态，以及第二 primary 的首个失败阶段。
+
+接口只认可当前 plan/coalition 双版本匹配且已授权激活的 primary。fallback 联盟还必须通过 D4 committed/executing、epoch、lease 和全成员 ACK 校验。standby reserve 只保留诊断行，不进入 active-primary 分母或完成率。`LocalVisualTrack` 可通过 `TerminalObservation` 提供“已看见但尚未投影/注册”的断点证据；它不能创建或换绑 `global_track_id`。输出不传播或消费 AirSim actor/object/truth ID。
+
+模块回归覆盖双 primary 不同视场、共同窗口不足、版本不一致、友方冲突、稳定共同锁定、动态资源/目标数和 fallback 缺 ACK，叠加原生 MOT 准入、严格后评分时序、per-primary DTO 与混合 1080p/4K 相机回归后，当前 D5 全量为 `204 passed`。main/D6 尚需把这些 summary 接入真实 M5N2 paired AirSim 日志和统一漏斗报告；该运行级接线不由 D5 修改。
+
+### 2026-07-12 pose-fix smoke 复核与 D5 修正
+
+对四组 `p1_cooperative_closure_v2_posefix_smoke_20260712_*` 的 `control_commands.csv`、`blocks_frames.jsonl` 和 `main_episode_bus` 对时复核表明，T001 双 primary 不足不是单一门限问题。四组运行中 T001 primary 集合分别变化 73、87、48、70 次；`h020/w05/s040` 的 183 帧中，133 帧没有 current primary lock、25 帧只有一个 lock、25 帧两个 primary 同帧 locked，最终只有 18 帧两个成员均达到两帧稳定。仅用于离线诊断的 actor label 显示，该组各拦截相机对 T001 的可见率约 63%-100%，且两个目标同框率约 38%-100%，所以问题不是“完全看不见”，而是多候选歧义与成员/时序连续性。主要 association 断点为 `insufficient_best_second_margin`、`terminal_visual_evidence_expired`，其次为 arrival-window、投影出图和本地检测门限。所有 active-primary runtime record 的强类型 `camera_geometry` 为 unavailable，但 candidate pair log 仍有 `projected_px`/Mahalanobis/gate 证据；这是 main 的几何证据透传缺口，不能在 D5 内用 actor/object truth pose 补齐。
+
+复核同时发现共同窗口 helper 的实现缺陷：单资源稳定计数已经允许安全的 plan/coalition 单调升版连续性，但共同窗口只接受当前版本 association，导致同一 primary 构型跨版本连续锁定仍只计 1 帧。现已统一语义：共同窗口只复用单资源稳定逻辑认可的 source versions，并只取当前连续尾段；每帧仍需匹配其原始 immutable binding。primary 换员、owner/epoch/coalition/target 变化、旧版本、friend/duplicate/expired evidence 均不跨接。summary 另输出 `primary_membership_transition` 和 `current_primary_failure_diagnostics`，可直接区分成员抖动、无检测、投影、几何门控、锁定和稳定帧断点。该修复由真实 replay 风格 fixture 覆盖；已有 smoke 输出是修复前证据，仍需 main 重跑或重放后才能更新系统级完成率。
 
 ## P1 Detect-first 在线合同
 

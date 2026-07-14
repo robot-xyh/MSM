@@ -9,7 +9,11 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, Mapping, Sequence
 
-from .terminal_gate import AssignmentGuidanceBinding, COORDINATION_MODES
+from .terminal_gate import (
+    AssignmentGuidanceBinding,
+    COORDINATION_MODES,
+    TERMINAL_AUTHORIZATION_SCOPES,
+)
 
 
 COOPERATIVE_TOPOLOGY_BOUNDARY = (
@@ -25,6 +29,8 @@ class CooperativeGuidanceTargetTopology:
     reserve_count: int
     coordination_mode: str
     resource_ids: tuple[str, ...]
+    terminal_authorization_scope: str = "coalition"
+    arrival_coordination_required: bool = True
 
 
 @dataclass(frozen=True)
@@ -82,13 +88,16 @@ def build_cooperative_guidance_topology(
     coalition_epochs: int | Mapping[str, int] | None = None,
     vehicle_names: Mapping[str, str] | None = None,
     arrival_windows: Mapping[str, tuple[float, float]] | None = None,
+    terminal_authorization_scope: str | Mapping[str, str] = "coalition",
+    arrival_coordination_required: bool | Mapping[str, bool] = True,
 ) -> CooperativeGuidanceTopology:
     """Expand ordered D3 resources into arbitrary N/M D7 coalition bindings.
 
     Resource ordering is authoritative: the helper fills target demand slots
     in target order. It does not solve assignment cost or mutate target IDs.
     Coordinated bindings without an explicit arrival window remain fail-closed
-    in the terminal gate until main/D3 supplies one.
+    in the terminal gate until main/D3 supplies one, except for active primaries
+    explicitly configured as ``per_primary`` with arrival coordination disabled.
     """
 
     resources = _unique_nonempty_ids(resource_ids, "resource_ids")
@@ -110,6 +119,25 @@ def build_cooperative_guidance_topology(
     invalid_modes = sorted({mode for mode in modes.values() if mode not in COORDINATION_MODES})
     if invalid_modes:
         raise ValueError(f"unsupported coordination modes: {invalid_modes}")
+    authorization_scopes = _target_string_values(
+        targets,
+        terminal_authorization_scope,
+        "terminal_authorization_scope",
+    )
+    invalid_scopes = sorted(
+        {
+            scope
+            for scope in authorization_scopes.values()
+            if scope not in TERMINAL_AUTHORIZATION_SCOPES
+        }
+    )
+    if invalid_scopes:
+        raise ValueError(f"unsupported terminal authorization scopes: {invalid_scopes}")
+    arrival_coordination_by_target = _target_bool_values(
+        targets,
+        arrival_coordination_required,
+        "arrival_coordination_required",
+    )
     requested_primary = _target_int_values(targets, primary_count, "primary_count")
     if any(value <= 0 for value in requested_primary.values()):
         raise ValueError("primary counts must be positive")
@@ -134,6 +162,8 @@ def build_cooperative_guidance_topology(
         allocated_resources = resources[resource_cursor : resource_cursor + required_count]
         resource_cursor += required_count
         mode = modes[target_id] if required_count > 1 else "independent"
+        authorization_scope = authorization_scopes[target_id]
+        target_arrival_coordination_required = arrival_coordination_by_target[target_id]
         window = (arrival_windows or {}).get(target_id)
         if window is not None and (len(window) != 2 or window[1] < window[0]):
             raise ValueError(f"invalid arrival window for target {target_id}")
@@ -175,6 +205,8 @@ def build_cooperative_guidance_topology(
                     arrival_window_start_s=window[0] if window is not None else None,
                     arrival_window_end_s=window[1] if window is not None else None,
                     activation_state=activation_state,
+                    terminal_authorization_scope=authorization_scope,
+                    arrival_coordination_required=target_arrival_coordination_required,
                     metadata={
                         "boundary": COOPERATIVE_TOPOLOGY_BOUNDARY,
                         "topology_contract_only": True,
@@ -185,6 +217,11 @@ def build_cooperative_guidance_topology(
                         "arrival_window_required_before_terminal_png": (
                             mode in {"simultaneous", "sequential", "hybrid"}
                             and window is None
+                            and not (
+                                is_primary
+                                and authorization_scope == "per_primary"
+                                and not target_arrival_coordination_required
+                            )
                         ),
                     },
                 )
@@ -197,6 +234,8 @@ def build_cooperative_guidance_topology(
                 reserve_count=required_count - effective_primary_count,
                 coordination_mode=mode,
                 resource_ids=tuple(allocated_resources),
+                terminal_authorization_scope=authorization_scope,
+                arrival_coordination_required=target_arrival_coordination_required,
             )
         )
 
@@ -260,6 +299,18 @@ def validate_cooperative_guidance_topology(
             errors.append(f"{target_id}:primary_wave_invalid")
         if any(binding.wave_id <= 0 for binding in reserves):
             errors.append(f"{target_id}:reserve_wave_invalid")
+        if any(
+            binding.terminal_authorization_scope
+            != target.terminal_authorization_scope
+            for binding in rows
+        ):
+            errors.append(f"{target_id}:terminal_authorization_scope_mismatch")
+        if any(
+            binding.arrival_coordination_required
+            != target.arrival_coordination_required
+            for binding in rows
+        ):
+            errors.append(f"{target_id}:arrival_coordination_policy_mismatch")
 
     unknown_targets = sorted(
         {
@@ -334,3 +385,21 @@ def _target_string_values(
         target_id: str(values[target_id]).strip().lower()
         for target_id in target_ids
     }
+
+
+def _target_bool_values(
+    target_ids: tuple[str, ...],
+    values: bool | Mapping[str, bool],
+    name: str,
+) -> dict[str, bool]:
+    if isinstance(values, bool):
+        return {target_id: values for target_id in target_ids}
+    if not isinstance(values, Mapping):
+        raise TypeError(f"{name} must be bool or a target mapping")
+    missing = [target_id for target_id in target_ids if target_id not in values]
+    if missing:
+        raise ValueError(f"{name} missing targets: {missing}")
+    invalid = [target_id for target_id in target_ids if not isinstance(values[target_id], bool)]
+    if invalid:
+        raise TypeError(f"{name} must contain bool values for targets: {invalid}")
+    return {target_id: values[target_id] for target_id in target_ids}

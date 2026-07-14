@@ -49,6 +49,7 @@ def _assignment(
     is_current: bool = True,
     cost_margin: float = 0.8,
     plan_age_s: float = 1.0,
+    resource_feasible: bool = True,
 ) -> AssignmentValiditySummary:
     return AssignmentValiditySummary(
         global_track_id="track-1",
@@ -57,6 +58,7 @@ def _assignment(
         is_current=is_current,
         plan_age_s=plan_age_s,
         cost_margin=cost_margin,
+        resource_feasible=resource_feasible,
     )
 
 
@@ -67,6 +69,7 @@ def _terminal(
     ambiguity_score: float = 0.05,
     consecutive_non_locked_frames: int = 0,
     consecutive_mismatch_frames: int = 0,
+    terminal_evidence_applicable: bool = True,
 ) -> TerminalAssociationSummary:
     return TerminalAssociationSummary(
         resource_id="int-1",
@@ -76,6 +79,7 @@ def _terminal(
         association_confidence=confidence,
         ambiguity_score=ambiguity_score,
         coverage_cell="cell-north",
+        terminal_evidence_applicable=terminal_evidence_applicable,
         consecutive_non_locked_frames=consecutive_non_locked_frames,
         consecutive_mismatch_frames=consecutive_mismatch_frames,
     )
@@ -161,6 +165,192 @@ def test_low_risk_consistent_terminal_continues_center_plan() -> None:
     assert decision.risk_factors == ()
 
 
+def test_far_range_terminal_soft_evidence_does_not_request_assist() -> None:
+    terminal = replace(
+        _terminal(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id=None,
+            confidence=0.1,
+            ambiguity_score=0.95,
+            consecutive_non_locked_frames=20,
+            consecutive_mismatch_frames=5,
+            terminal_evidence_applicable=False,
+        ),
+        cross_view_risk_score=0.9,
+    )
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=terminal,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+    )
+
+    assert decision.mode == DegradationMode.NONE
+    assert decision.action == DegradationAction.CONTINUE_CENTER
+    assert decision.terminal_consistent
+    assert decision.risk_factors == ()
+
+
+def test_far_range_midcourse_d1_d2_d3_soft_risks_continue_center() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=replace(
+            _association(ambiguity_score=0.4),
+            duplicate_track_risk=0.8,
+        ),
+        assignment_validity=_assignment(cost_margin=0.02),
+        terminal_association=_terminal(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id=None,
+            confidence=0.1,
+            ambiguity_score=0.95,
+            consecutive_non_locked_frames=20,
+            terminal_evidence_applicable=False,
+        ),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+    )
+
+    assert decision.mode == DegradationMode.NONE
+    assert decision.action == DegradationAction.CONTINUE_CENTER
+    assert decision.reason == "midcourse_soft_risk_continue_center"
+    assert decision.terminal_consistent
+    assert decision.risk_factors == (
+        "d2_association_ambiguity_medium",
+        "d2_duplicate_track_risk_high",
+        "d3_assignment_cost_margin_low",
+    )
+
+
+def test_far_range_high_track_uncertainty_keeps_secondary_assist_path() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(position_sigma_m=60.0),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=_terminal(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id=None,
+            terminal_evidence_applicable=False,
+        ),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+    )
+
+    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.action == DegradationAction.REQUEST_SECONDARY_ASSIST
+    assert decision.target_node_id == "sec-1"
+    assert "d1_track_uncertainty_high" in decision.risk_factors
+    assert "d1_covariance_trace_high" in decision.risk_factors
+
+
+def test_terminal_window_keeps_persistent_reacquire_assist_strategy() -> None:
+    terminal = replace(
+        _terminal(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id=None,
+            confidence=0.1,
+            ambiguity_score=0.95,
+            consecutive_non_locked_frames=20,
+            terminal_evidence_applicable=True,
+        ),
+        cross_view_risk_score=0.9,
+    )
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=terminal,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+    )
+
+    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.action == DegradationAction.REQUEST_SECONDARY_ASSIST
+    assert "d5_terminal_confidence_low" in decision.risk_factors
+    assert "terminal_persistent_reacquire" in decision.risk_factors
+
+
+def test_far_range_friend_conflict_still_holds_for_review() -> None:
+    terminal = replace(
+        _terminal(terminal_evidence_applicable=False),
+        friend_conflict=True,
+    )
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=terminal,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+    )
+
+    assert decision.action == DegradationAction.HOLD_FOR_REVIEW
+    assert decision.requires_human_review
+
+
+def test_far_range_duplicate_lock_still_requests_center_replan() -> None:
+    terminal = replace(
+        _terminal(terminal_evidence_applicable=False),
+        duplicate_terminal_lock=True,
+    )
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=terminal,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+    )
+
+    assert decision.action == DegradationAction.REQUEST_CENTER_REPLAN
+    assert "d5_duplicate_terminal_lock" in decision.risk_factors
+
+
+def test_far_range_explicit_observed_track_mismatch_requests_center_replan() -> None:
+    terminal = _terminal(
+        observed_global_track_id="track-2",
+        consecutive_mismatch_frames=0,
+        terminal_evidence_applicable=False,
+    )
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=terminal,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+    )
+
+    assert decision.action == DegradationAction.REQUEST_CENTER_REPLAN
+    assert "d5_terminal_id_mismatch" in decision.risk_factors
+
+
+def test_far_range_resource_mismatch_requests_center_replan() -> None:
+    terminal = replace(
+        _terminal(terminal_evidence_applicable=False),
+        resource_id="int-2",
+    )
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=terminal,
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+    )
+
+    assert decision.action == DegradationAction.REQUEST_CENTER_REPLAN
+    assert "d5_resource_assignment_mismatch" in decision.risk_factors
+
+
 def test_risk_rising_but_terminal_consistent_requests_secondary_assist() -> None:
     decision = ActiveDegradationArbiter().evaluate(
         track_uncertainty=_track(position_sigma_m=30.0),
@@ -193,6 +383,22 @@ def test_assignment_risk_with_consistent_terminal_requests_center_replan() -> No
     assert "d3_assignment_not_current" in decision.risk_factors
 
 
+def test_resource_infeasible_requests_center_replan_without_secondary_takeover() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(resource_feasible=False),
+        terminal_association=_terminal(),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=[_secondary()],
+    )
+
+    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.action == DegradationAction.REQUEST_CENTER_REPLAN
+    assert decision.target_node_id is None
+    assert "d3_resource_infeasible" in decision.risk_factors
+
+
 def test_soft_assignment_margin_with_consistent_terminal_observes_without_replan() -> None:
     decision = ActiveDegradationArbiter().evaluate(
         track_uncertainty=_track(),
@@ -210,7 +416,7 @@ def test_soft_assignment_margin_with_consistent_terminal_observes_without_replan
     assert decision.risk_factors == ("d3_assignment_cost_margin_low",)
 
 
-def test_soft_margin_and_transient_low_terminal_confidence_observes_without_replan() -> None:
+def test_soft_margin_and_low_terminal_confidence_preserve_center_binding() -> None:
     decision = ActiveDegradationArbiter().evaluate(
         track_uncertainty=_track(),
         association_risk=_association(),
@@ -222,8 +428,8 @@ def test_soft_margin_and_transient_low_terminal_confidence_observes_without_repl
 
     assert decision.mode == DegradationMode.NONE
     assert decision.action == DegradationAction.CONTINUE_CENTER
-    assert decision.reason == "terminal_transient_observe_more"
-    assert not decision.terminal_consistent
+    assert decision.reason == "soft_risk_terminal_consistent_observe_more"
+    assert decision.terminal_consistent
     assert decision.risk_factors == (
         "d3_assignment_cost_margin_low",
         "d5_terminal_confidence_low",
@@ -282,7 +488,7 @@ def test_detect_loss_frames_through_limit_preserve_center_plan_consistency() -> 
         assert "d5_terminal_confidence_low" in decision.risk_factors
 
 
-def test_reacquire_grace_ends_after_non_locked_frame_limit() -> None:
+def test_persistent_reacquire_preserves_center_binding_without_hard_conflict() -> None:
     decision = ActiveDegradationArbiter().evaluate(
         track_uncertainty=_track(),
         association_risk=_association(),
@@ -297,8 +503,8 @@ def test_reacquire_grace_ends_after_non_locked_frame_limit() -> None:
     )
 
     assert decision.action == DegradationAction.CONTINUE_CENTER
-    assert decision.reason == "terminal_persistent_reacquire_no_secondary"
-    assert not decision.terminal_consistent
+    assert decision.reason == "terminal_persistent_reacquire_center_binding_stable"
+    assert decision.terminal_consistent
 
 
 def test_transient_reacquire_with_stale_plan_fails_closed() -> None:
@@ -340,7 +546,7 @@ def test_transient_reacquire_with_prior_id_mismatch_fails_closed() -> None:
     assert "d5_terminal_id_mismatch" in decision.risk_factors
 
 
-def test_persistent_terminal_disagreement_degrades_to_secondary_if_covered() -> None:
+def test_persistent_terminal_disagreement_requests_center_replan_if_center_alive() -> None:
     decision = ActiveDegradationArbiter().evaluate(
         track_uncertainty=_track(),
         association_risk=_association(),
@@ -356,8 +562,9 @@ def test_persistent_terminal_disagreement_degrades_to_secondary_if_covered() -> 
     )
 
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
-    assert decision.action == DegradationAction.DEGRADE_TO_SECONDARY
-    assert decision.target_node_id == "sec-1"
+    assert decision.action == DegradationAction.REQUEST_CENTER_REPLAN
+    assert decision.reason == "center_plan_hard_invalidation"
+    assert decision.target_node_id is None
     assert not decision.terminal_consistent
 
 
@@ -377,7 +584,8 @@ def test_persistent_terminal_reacquire_without_secondary_continues_center() -> N
 
     assert decision.mode == DegradationMode.NONE
     assert decision.action == DegradationAction.CONTINUE_CENTER
-    assert decision.reason == "terminal_persistent_reacquire_no_secondary"
+    assert decision.reason == "terminal_persistent_reacquire_center_binding_stable"
+    assert decision.terminal_consistent
 
 
 def test_persistent_terminal_reacquire_with_secondary_requests_cue_not_takeover() -> None:
@@ -398,6 +606,7 @@ def test_persistent_terminal_reacquire_with_secondary_requests_cue_not_takeover(
     assert decision.action == DegradationAction.REQUEST_SECONDARY_ASSIST
     assert decision.reason == "terminal_persistent_reacquire_request_secondary_cue"
     assert decision.target_node_id == "sec-1"
+    assert decision.terminal_consistent
 
 
 def test_center_failed_uses_passive_failover_to_secondary() -> None:
@@ -454,11 +663,12 @@ def test_secondary_outside_coverage_is_not_selected() -> None:
 
     assert decision.mode == DegradationMode.NONE
     assert decision.action == DegradationAction.CONTINUE_CENTER
-    assert decision.reason == "terminal_persistent_reacquire_no_secondary"
+    assert decision.reason == "terminal_persistent_reacquire_center_binding_stable"
     assert decision.target_node_id is None
+    assert decision.terminal_consistent
 
 
-def test_active_arbitration_selects_secondary_from_dynamic_resource_list() -> None:
+def test_passive_failover_selects_secondary_from_dynamic_resource_list() -> None:
     resources = [
         ResourceSummary(
             "sec-south",
@@ -523,7 +733,7 @@ def test_active_arbitration_selects_secondary_from_dynamic_resource_list() -> No
             consecutive_non_locked_frames=3,
             consecutive_mismatch_frames=2,
         ),
-        c2_health=C2Health.NORMAL,
+        c2_health=C2Health.FAILED,
         secondary_nodes=resources,
         current_time_s=10.5,
     )
@@ -570,7 +780,7 @@ def test_mobile_high_recon_evidence_does_not_auto_take_over_low_risk_frame() -> 
     assert lifecycle[0].cross_view_support_count == 2
 
 
-def test_mobile_secondary_role_and_coverage_ratio_can_be_selected_on_hard_mismatch() -> None:
+def test_mobile_secondary_role_and_coverage_ratio_can_be_selected_after_center_failure() -> None:
     mobile = ResourceSummary(
         node_id="msec-1",
         capability_class="observe",
@@ -600,13 +810,13 @@ def test_mobile_secondary_role_and_coverage_ratio_can_be_selected_on_hard_mismat
             consecutive_non_locked_frames=3,
             consecutive_mismatch_frames=2,
         ),
-        c2_health=C2Health.NORMAL,
+        c2_health=C2Health.FAILED,
         secondary_nodes=[mobile],
         current_time_s=10.2,
     )
     lifecycle = summarize_secondary_lifecycle([mobile], "cell-north", current_time_s=10.2)
 
-    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.mode == DegradationMode.PASSIVE_FAILOVER
     assert decision.action == DegradationAction.DEGRADE_TO_SECONDARY
     assert decision.target_node_id == "msec-1"
     assert lifecycle[0].secondary_available is True
@@ -629,12 +839,12 @@ def test_mobile_high_recon_bad_gimbal_or_stale_cue_is_not_secondary_candidate() 
                 consecutive_non_locked_frames=3,
                 consecutive_mismatch_frames=2,
             ),
-            c2_health=C2Health.NORMAL,
+            c2_health=C2Health.FAILED,
             secondary_nodes=[mobile],
             current_time_s=10.2,
         )
 
-        assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+        assert decision.mode == DegradationMode.PASSIVE_FAILOVER
         assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
         assert decision.target_node_id is None
 
@@ -664,7 +874,7 @@ def test_visible_but_not_registered_secondary_is_not_takeover_capable() -> None:
         association_risk=_association(),
         assignment_validity=_assignment(),
         terminal_association=terminal,
-        c2_health=C2Health.NORMAL,
+        c2_health=C2Health.FAILED,
         secondary_nodes=[secondary],
         current_time_s=10.1,
     )
@@ -675,7 +885,7 @@ def test_visible_but_not_registered_secondary_is_not_takeover_capable() -> None:
         terminal_association=terminal,
     )
 
-    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.mode == DegradationMode.PASSIVE_FAILOVER
     assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
     assert lifecycle[0].secondary_visible is True
     assert lifecycle[0].secondary_registered is False
@@ -706,7 +916,7 @@ def test_registered_secondary_with_low_network_full_view_is_not_takeover_ready()
         association_risk=_association(),
         assignment_validity=_assignment(),
         terminal_association=terminal,
-        c2_health=C2Health.NORMAL,
+        c2_health=C2Health.FAILED,
         secondary_nodes=[_secondary()],
         current_time_s=10.1,
     )
@@ -717,7 +927,7 @@ def test_registered_secondary_with_low_network_full_view_is_not_takeover_ready()
         terminal_association=terminal,
     )
 
-    assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
+    assert decision.mode == DegradationMode.PASSIVE_FAILOVER
     assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
     assert lifecycle[0].secondary_visible is True
     assert lifecycle[0].secondary_registered is True
@@ -748,7 +958,8 @@ def test_terminal_from_different_resource_is_not_consistent() -> None:
     )
 
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
-    assert decision.action == DegradationAction.REQUEST_SECONDARY_ASSIST
+    assert decision.action == DegradationAction.REQUEST_CENTER_REPLAN
+    assert decision.reason == "center_plan_hard_invalidation"
     assert not decision.terminal_consistent
     assert "d5_resource_assignment_mismatch" in decision.risk_factors
 
@@ -770,7 +981,7 @@ def test_fresh_secondary_link_supports_active_secondary_assist() -> None:
     assert decision.target_node_id == "sec-1"
 
 
-def test_stale_secondary_link_allows_distributed_only_after_persistent_terminal_mismatch() -> None:
+def test_stale_secondary_link_does_not_bypass_center_replan_on_persistent_mismatch() -> None:
     decision = ActiveDegradationArbiter().evaluate(
         track_uncertainty=_track(),
         association_risk=_association(),
@@ -788,7 +999,7 @@ def test_stale_secondary_link_allows_distributed_only_after_persistent_terminal_
     )
 
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
-    assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
+    assert decision.action == DegradationAction.REQUEST_CENTER_REPLAN
     assert decision.target_node_id is None
 
 
@@ -814,7 +1025,8 @@ def test_duplicate_terminal_lock_is_not_treated_as_consistent() -> None:
     )
 
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
-    assert decision.action == DegradationAction.REQUEST_SECONDARY_ASSIST
+    assert decision.action == DegradationAction.REQUEST_CENTER_REPLAN
+    assert decision.reason == "center_plan_hard_invalidation"
     assert not decision.terminal_consistent
     assert "d5_duplicate_terminal_lock" in decision.risk_factors
 
@@ -868,7 +1080,7 @@ def test_stale_secondary_heartbeat_prevents_secondary_takeover() -> None:
             consecutive_non_locked_frames=3,
             consecutive_mismatch_frames=2,
         ),
-        c2_health=C2Health.NORMAL,
+        c2_health=C2Health.FAILED,
         secondary_nodes=[stale_secondary],
         communication_summaries=[_secondary_link(received_timestamp=10.0, stale_after_s=2.0)],
         current_time_s=10.0,
@@ -917,8 +1129,8 @@ def test_windowed_risk_threshold_debounces_persistent_mismatch_escalation() -> N
 
     assert first.action == DegradationAction.CONTINUE_CENTER
     assert first.reason == "terminal_transient_observe_more"
-    assert second.action == DegradationAction.DEGRADE_TO_SECONDARY
-    assert second.reason == "terminal_persistent_disagreement"
+    assert second.action == DegradationAction.REQUEST_CENTER_REPLAN
+    assert second.reason == "center_plan_hard_invalidation"
 
 
 def test_min_dwell_and_release_frames_hold_degradation_before_release() -> None:
@@ -949,7 +1161,7 @@ def test_min_dwell_and_release_frames_hold_degradation_before_release() -> None:
     held = arbiter.evaluate(**low_risk)
     released = arbiter.evaluate(**{**low_risk, "current_time_s": 16.0})
 
-    assert degraded.action == DegradationAction.DEGRADE_TO_SECONDARY
-    assert held.action == DegradationAction.DEGRADE_TO_SECONDARY
+    assert degraded.action == DegradationAction.REQUEST_CENTER_REPLAN
+    assert held.action == DegradationAction.REQUEST_CENTER_REPLAN
     assert held.reason == "release_condition_pending"
     assert released.action == DegradationAction.CONTINUE_CENTER

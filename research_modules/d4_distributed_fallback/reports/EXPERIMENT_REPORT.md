@@ -15,7 +15,7 @@ D4 验证中心节点异常时的保底策略：
 - 优先考虑备份节点、二级侦察节点、lease 优先级和覆盖小区。
 - 中心恢复后不允许靠单次心跳直接回到 normal，必须经过双轨合并和人工确认。
 - CBBA 未收敛时只输出审计信息，不发布有效 assignment。
-- 中心节点未失效但 D1/D2/D3/D5 风险升高时，由 `ActiveDegradationArbiter` 判断继续中心计划、请求中心重分配、请求二级节点辅助、主动降到二级节点或降到分布式。
+- 中心节点未失效但 D1/D2/D3/D5 风险升高时，由 `ActiveDegradationArbiter` 判断继续中心计划、请求中心重分配、请求二级节点辅助或安全保持；不转移 plan owner。
 
 ## 3. 二级节点降级层级
 
@@ -38,7 +38,7 @@ D4 验证中心节点异常时的保底策略：
 
 - D1：`TrackUncertaintySummary`，表示定位协方差、位置标准差和量测年龄。
 - D2：`AssociationRiskSummary`，表示关联 ambiguity、ID switch、重复航迹和连续性。
-- D3：`AssignmentValiditySummary`，表示分配版本、是否 current、计划年龄和 cost margin。
+- D3：`AssignmentValiditySummary`，表示分配版本、是否 current、计划年龄、cost margin 和资源可行性。
 - D5：`TerminalAssociationSummary`，表示末端视觉是否来自被指派 `resource_id`、是否 `locked`、是否多帧 `ambiguous/hold/reacquire`、是否与 assigned `global_track_id` 一致。
 
 仲裁结论：
@@ -47,11 +47,12 @@ D4 验证中心节点异常时的保底策略：
 |---|---|
 | D5 与分配目标一致，且 D1/D2/D3 风险低 | `continue_center` |
 | D1/D2 风险上升但 D5 一致 | `request_secondary_assist`，请求二级节点辅助观测/cue |
-| D3 分配 stale/not current 且 D5 一致 | `request_center_replan` |
+| D3 分配 stale/not current 或资源不可行 | `request_center_replan` |
 | 仅 cost margin 过低且 D5 一致 | `continue_center` 或请求二级 cue，继续观察 |
 | D5 多帧非锁定但无观测 ID mismatch、资源错配、重复锁定或友方冲突 | `continue_center` 或 `request_secondary_assist` |
-| D5 多帧硬不一致，二级节点覆盖该区域 | `degrade_to_secondary` |
-| D5 多帧硬不一致且二级节点不可用/不覆盖 | `degrade_to_distributed` |
+| D5 持续 global-track mismatch、资源错配或重复锁定 | 中心可用时 `request_center_replan` |
+| 中心 failed，二级节点持续 ready | `degrade_to_secondary` |
+| 中心 failed 且二级节点不可用/不覆盖 | `degrade_to_distributed` |
 | 友方身份冲突 | `hold_for_review` |
 
 该逻辑已由 `tests/test_active_degradation.py` 的规则测试覆盖。当前报告图表仍是被动降级/CBBA 通信退化曲线；主动降级的批量统计曲线应在后续 D6 集成后生成。

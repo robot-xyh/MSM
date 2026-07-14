@@ -1,0 +1,6 @@
+timestamp,resource_id,global_track_id,decision_state,association_confidence,ambiguity_score,consecutive_non_locked_frames,is_current,plan_age_s,observed_global_track_id,expected_terminal_consistent
+0.0,INT-02,T001,ambiguous,0.20,0.50,1,true,0.0,,true
+0.1,INT-03,T001,locked,0.40,0.00,0,true,0.1,T001,true
+0.4,INT-01,T001,ambiguous,0.20,0.50,5,true,0.4,,true
+1.0,INT-04,T002,reacquire,0.00,1.00,8,false,0.1,,false
+5.0,INT-05,T002,locked,0.95,0.01,0,true,4.1,T002,false

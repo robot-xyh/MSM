@@ -1,0 +1,105 @@
+{
+  "schema_version": "d6-cooperative-closure-v2",
+  "offline_only": true,
+  "funnels": {
+    "pair": {
+      "visible": {"available": 120, "passed": 120, "rate": 1.0, "status": "available", "unavailable": 0},
+      "associated": {"available": 120, "passed": 74, "rate": 0.6166666666666667, "status": "available", "unavailable": 0},
+      "contract_allowed": {"available": 120, "passed": 35, "rate": 0.2916666666666667, "status": "available", "unavailable": 0},
+      "control_allowed": {"available": 120, "passed": 7, "rate": 0.058333333333333334, "status": "available", "unavailable": 0},
+      "mode_switched": {"available": 120, "passed": 9, "rate": 0.075, "status": "available", "unavailable": 0},
+      "physical_intercept": {"available": 120, "passed": 62, "rate": 0.5166666666666667, "status": "available", "unavailable": 0}
+    }
+  },
+  "common_lock": {
+    "available": 40,
+    "passed": 11,
+    "rate": 0.275,
+    "status": "available",
+    "unavailable": 27
+  },
+  "acceptance": {
+    "advisory_only": true,
+    "all_passed": false,
+    "checks": {
+      "coalition_at_least_8_of_10": {
+        "available_seed_count": 10,
+        "failed_seed_count": 5,
+        "passed_seed_count": 5,
+        "profile_selection_source": "source_summary.best_candidate_profile",
+        "selected_profile": "d3-p1-h020.0-w03.0-s040.0",
+        "status": "available",
+        "threshold": 0.8,
+        "value": false
+      },
+      "global_track_id_rewrite_zero": {
+        "available_seed_count": 40,
+        "count": 0,
+        "status": "available",
+        "threshold": 0,
+        "value": true
+      },
+      "online_truth_use_zero": {
+        "available_seed_count": 40,
+        "count": 0,
+        "status": "available",
+        "threshold": 0,
+        "value": true
+      },
+      "reserve_unauthorized_zero": {
+        "available_seed_count": 40,
+        "count": 0,
+        "status": "available",
+        "threshold": 0,
+        "value": true
+      }
+    },
+    "overall_status": "available"
+  },
+  "primary_source": {
+    "calibration_suite": "p1_cooperative_closure",
+    "calibration_suite_version": "p1-cooperative-closure-v2",
+    "scenario_version": "airsim-m5n2-cooperative-high-clearance-v2",
+    "threshold_version": "p1-cooperative-thresholds-v2",
+    "case_count": 40,
+    "best_candidate_profile": "d3-p1-h020.0-w03.0-s040.0",
+    "aggregates": [
+      {
+        "profile": "baseline",
+        "seed_count": 10,
+        "pair_opportunity_count": 30,
+        "coalition_opportunity_count": 10,
+        "coalition_completion_count": 0,
+        "funnel": {"assigned": 30, "visible": 30, "associated": 16, "contract_allowed": 6, "control_allowed": 1, "mode_switched": 1, "physical_intercept": 14},
+        "second_primary_failure_distribution": {"assignment_not_current": 1, "completed": 1, "d5_not_locked": 2, "not_associated": 4, "terminal_detection_acquisition_timeout": 2}
+      },
+      {
+        "profile": "d3-p1-h020.0-w03.0-s040.0",
+        "seed_count": 10,
+        "pair_opportunity_count": 30,
+        "coalition_opportunity_count": 10,
+        "coalition_completion_count": 5,
+        "funnel": {"assigned": 30, "visible": 30, "associated": 20, "contract_allowed": 8, "control_allowed": 1, "mode_switched": 1, "physical_intercept": 18},
+        "second_primary_failure_distribution": {"d5_not_locked": 8, "not_associated": 1, "terminal_detection_acquisition_timeout": 1}
+      },
+      {
+        "profile": "d3-p1-h020.0-w05.0-s040.0",
+        "seed_count": 10,
+        "pair_opportunity_count": 30,
+        "coalition_opportunity_count": 10,
+        "coalition_completion_count": 2,
+        "funnel": {"assigned": 30, "visible": 30, "associated": 15, "contract_allowed": 9, "control_allowed": 1, "mode_switched": 1, "physical_intercept": 14},
+        "second_primary_failure_distribution": {"assignment_not_current": 1, "d5_not_locked": 5, "not_associated": 3, "terminal_detection_acquisition_timeout": 1}
+      },
+      {
+        "profile": "d3-p1-h020.0-w08.0-s040.0",
+        "seed_count": 10,
+        "pair_opportunity_count": 30,
+        "coalition_opportunity_count": 10,
+        "coalition_completion_count": 1,
+        "funnel": {"assigned": 30, "visible": 30, "associated": 23, "contract_allowed": 12, "control_allowed": 4, "mode_switched": 6, "physical_intercept": 16},
+        "second_primary_failure_distribution": {"bbox_area_too_small": 1, "d5_not_locked": 9}
+      }
+    ]
+  }
+}
