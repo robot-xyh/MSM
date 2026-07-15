@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
+
 from d4_distributed_fallback.active_degradation import (
     ActiveDegradationArbiter,
     ActiveDegradationConfig,
@@ -93,12 +95,17 @@ def _secondary(available: bool = True, coverage_cell: str = "cell-north") -> Res
         comm_band=CommBand.GOOD,
         takeover_priority=20,
         lease_epoch=4,
+        lease_expires_at_s=20.0,
         epoch=1,
         node_role=NodeRole.SECONDARY_RECON,
         coordinator_only=True,
         coverage_cell=coverage_cell,
         heartbeat_timestamp_s=10.0,
         heartbeat_stale_after_s=2.0,
+        cue_freshness_s=0.1,
+        gimbal_pointing_ok=True,
+        secondary_coverage_ratio=0.90,
+        secondary_network_full_view_rate=0.90,
         stable_cross_view_registration_count=2,
     )
 
@@ -117,6 +124,7 @@ def _mobile_high_recon(
         comm_band=CommBand.GOOD,
         takeover_priority=15,
         lease_epoch=6,
+        lease_expires_at_s=20.0,
         epoch=1,
         node_role=NodeRole.MOBILE_HIGH_RECON,
         coordinator_only=True,
@@ -126,6 +134,7 @@ def _mobile_high_recon(
         cue_freshness_s=cue_freshness_s,
         gimbal_pointing_ok=gimbal_pointing_ok,
         secondary_coverage_ratio=secondary_coverage_ratio,
+        secondary_network_full_view_rate=0.90,
         cross_view_support_count=2,
         stable_cross_view_registration_count=2,
     )
@@ -135,9 +144,10 @@ def _secondary_link(
     received_timestamp: float = 10.0,
     stale_after_s: float = 1.0,
     payload_kind: PayloadKind = PayloadKind.VIDEO_METADATA,
+    node_id: str = "sec-1",
 ) -> CommunicationSummary:
     return CommunicationSummary(
-        source_node_id="sec-1",
+        source_node_id=node_id,
         target_node_id="int-1",
         relay_node_id=None,
         link_type=LinkType.VIDEO_CUE,
@@ -145,7 +155,7 @@ def _secondary_link(
         received_timestamp=received_timestamp,
         payload_kind=payload_kind,
         stale_after_s=stale_after_s,
-        sequence_id="sec-1:10",
+        sequence_id=f"{node_id}:10",
     )
 
 
@@ -157,6 +167,7 @@ def test_low_risk_consistent_terminal_continues_center_plan() -> None:
         terminal_association=_terminal(),
         c2_health=C2Health.NORMAL,
         secondary_nodes=[_secondary()],
+        current_time_s=10.1,
     )
 
     assert decision.mode == DegradationMode.NONE
@@ -186,6 +197,7 @@ def test_far_range_terminal_soft_evidence_does_not_request_assist() -> None:
         terminal_association=terminal,
         c2_health=C2Health.NORMAL,
         secondary_nodes=[_secondary()],
+        current_time_s=10.1,
     )
 
     assert decision.mode == DegradationMode.NONE
@@ -212,6 +224,7 @@ def test_far_range_midcourse_d1_d2_d3_soft_risks_continue_center() -> None:
         ),
         c2_health=C2Health.NORMAL,
         secondary_nodes=[_secondary()],
+        current_time_s=10.1,
     )
 
     assert decision.mode == DegradationMode.NONE
@@ -237,6 +250,8 @@ def test_far_range_high_track_uncertainty_keeps_secondary_assist_path() -> None:
         ),
         c2_health=C2Health.NORMAL,
         secondary_nodes=[_secondary()],
+        communication_summaries=[_secondary_link()],
+        current_time_s=10.1,
     )
 
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
@@ -266,6 +281,8 @@ def test_terminal_window_keeps_persistent_reacquire_assist_strategy() -> None:
         terminal_association=terminal,
         c2_health=C2Health.NORMAL,
         secondary_nodes=[_secondary()],
+        communication_summaries=[_secondary_link()],
+        current_time_s=10.1,
     )
 
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
@@ -359,6 +376,8 @@ def test_risk_rising_but_terminal_consistent_requests_secondary_assist() -> None
         terminal_association=_terminal(),
         c2_health=C2Health.NORMAL,
         secondary_nodes=[_secondary()],
+        communication_summaries=[_secondary_link()],
+        current_time_s=10.1,
     )
 
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
@@ -375,6 +394,7 @@ def test_assignment_risk_with_consistent_terminal_requests_center_replan() -> No
         terminal_association=_terminal(),
         c2_health=C2Health.NORMAL,
         secondary_nodes=[_secondary()],
+        current_time_s=10.1,
     )
 
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
@@ -600,6 +620,8 @@ def test_persistent_terminal_reacquire_with_secondary_requests_cue_not_takeover(
         ),
         c2_health=C2Health.NORMAL,
         secondary_nodes=[_secondary()],
+        communication_summaries=[_secondary_link()],
+        current_time_s=10.1,
     )
 
     assert decision.mode == DegradationMode.ACTIVE_DEGRADATION
@@ -617,6 +639,8 @@ def test_center_failed_uses_passive_failover_to_secondary() -> None:
         terminal_association=_terminal(),
         c2_health=C2Health.FAILED,
         secondary_nodes=[_secondary()],
+        communication_summaries=[_secondary_link()],
+        current_time_s=10.1,
     )
 
     assert decision.mode == DegradationMode.PASSIVE_FAILOVER
@@ -639,6 +663,7 @@ def test_no_conflict_reacquire_requests_secondary_cue_without_takeover() -> None
         ),
         c2_health=C2Health.NORMAL,
         secondary_nodes=[_secondary()],
+        communication_summaries=[_secondary_link()],
         current_time_s=10.1,
     )
 
@@ -677,11 +702,16 @@ def test_passive_failover_selects_secondary_from_dynamic_resource_list() -> None
             CommBand.GOOD,
             takeover_priority=1,
             lease_epoch=9,
+            lease_expires_at_s=20.0,
             epoch=1,
             node_role=NodeRole.SECONDARY_RECON,
             coordinator_only=True,
             coverage_cell="cell-south",
             heartbeat_timestamp_s=10.0,
+            cue_freshness_s=0.1,
+            gimbal_pointing_ok=True,
+            secondary_coverage_ratio=0.90,
+            secondary_network_full_view_rate=0.90,
             stable_cross_view_registration_count=2,
         ),
         ResourceSummary(
@@ -691,11 +721,16 @@ def test_passive_failover_selects_secondary_from_dynamic_resource_list() -> None
             CommBand.GOOD,
             takeover_priority=20,
             lease_epoch=3,
+            lease_expires_at_s=20.0,
             epoch=1,
             node_role=NodeRole.SECONDARY_RECON,
             coordinator_only=True,
             coverage_cell="cell-north",
             heartbeat_timestamp_s=10.0,
+            cue_freshness_s=0.1,
+            gimbal_pointing_ok=True,
+            secondary_coverage_ratio=0.90,
+            secondary_network_full_view_rate=0.90,
             stable_cross_view_registration_count=2,
         ),
         ResourceSummary(
@@ -705,11 +740,16 @@ def test_passive_failover_selects_secondary_from_dynamic_resource_list() -> None
             CommBand.GOOD,
             takeover_priority=30,
             lease_epoch=4,
+            lease_expires_at_s=20.0,
             epoch=1,
             node_role=NodeRole.SECONDARY_RECON,
             coordinator_only=True,
             coverage_cell="cell-north",
             heartbeat_timestamp_s=10.0,
+            cue_freshness_s=0.1,
+            gimbal_pointing_ok=True,
+            secondary_coverage_ratio=0.90,
+            secondary_network_full_view_rate=0.90,
             stable_cross_view_registration_count=2,
         ),
         ResourceSummary(
@@ -735,9 +775,21 @@ def test_passive_failover_selects_secondary_from_dynamic_resource_list() -> None
         ),
         c2_health=C2Health.FAILED,
         secondary_nodes=resources,
+        communication_summaries=[
+            _secondary_link(node_id="sec-north-primary"),
+            _secondary_link(node_id="sec-north-backup"),
+        ],
         current_time_s=10.5,
     )
-    lifecycle = summarize_secondary_lifecycle(resources, "cell-north", current_time_s=10.5)
+    lifecycle = summarize_secondary_lifecycle(
+        resources,
+        "cell-north",
+        communication_summaries=[
+            _secondary_link(node_id="sec-north-primary"),
+            _secondary_link(node_id="sec-north-backup"),
+        ],
+        current_time_s=10.5,
+    )
 
     assert decision.action == DegradationAction.DEGRADE_TO_SECONDARY
     assert decision.target_node_id == "sec-north-primary"
@@ -747,6 +799,138 @@ def test_passive_failover_selects_secondary_from_dynamic_resource_list() -> None
         "sec-north-primary",
         "sec-north-backup",
     }
+
+
+@pytest.mark.parametrize(
+    (
+        "lease_expires_at_s",
+        "current_time_s",
+        "expected_action",
+        "expected_reject_reason",
+        "expected_lease_expired",
+    ),
+    [
+        (None, 10.1, DegradationAction.DEGRADE_TO_DISTRIBUTED, "lease_expiry_missing", None),
+        (10.2, 10.1, DegradationAction.DEGRADE_TO_SECONDARY, None, False),
+        (10.1, 10.1, DegradationAction.DEGRADE_TO_DISTRIBUTED, "lease_expired", True),
+        (10.0, 10.1, DegradationAction.DEGRADE_TO_DISTRIBUTED, "lease_expired", True),
+        (10.2, None, DegradationAction.DEGRADE_TO_DISTRIBUTED, "lease_current_time_missing", None),
+    ],
+)
+def test_secondary_resource_lease_is_strict_and_fail_closed(
+    lease_expires_at_s: float | None,
+    current_time_s: float | None,
+    expected_action: DegradationAction,
+    expected_reject_reason: str | None,
+    expected_lease_expired: bool | None,
+) -> None:
+    secondary = replace(_secondary(), lease_expires_at_s=lease_expires_at_s)
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=_terminal(),
+        c2_health=C2Health.FAILED,
+        secondary_nodes=[secondary],
+        communication_summaries=[_secondary_link()],
+        current_time_s=current_time_s,
+    )
+    lifecycle = summarize_secondary_lifecycle(
+        [secondary],
+        "cell-north",
+        communication_summaries=[_secondary_link()],
+        current_time_s=current_time_s,
+    )[0]
+
+    assert decision.action == expected_action
+    assert lifecycle.secondary_available is (expected_reject_reason is None)
+    assert lifecycle.lease_expired is expected_lease_expired
+    if expected_reject_reason is not None:
+        assert expected_reject_reason in lifecycle.secondary_capability_reasons
+
+
+@pytest.mark.parametrize(
+    ("missing_evidence", "expected_reason"),
+    [
+        ("current_time", "heartbeat_current_time_missing"),
+        ("heartbeat_timestamp", "heartbeat_timestamp_missing"),
+        ("cue_freshness", "cue_freshness_missing"),
+        ("gimbal_pointing", "gimbal_pointing_unknown"),
+        ("communication_summary", "communication_summary_missing"),
+        ("network_full_view_rate", "network_full_view_rate_missing"),
+    ],
+)
+def test_secondary_takeover_requires_complete_fresh_capability_evidence(
+    missing_evidence: str,
+    expected_reason: str,
+) -> None:
+    secondary = _secondary()
+    current_time_s: float | None = 10.1
+    communication_summaries: list[CommunicationSummary] | None = [_secondary_link()]
+    if missing_evidence == "current_time":
+        current_time_s = None
+    elif missing_evidence == "heartbeat_timestamp":
+        secondary = replace(secondary, heartbeat_timestamp_s=None)
+    elif missing_evidence == "cue_freshness":
+        secondary = replace(secondary, cue_freshness_s=None)
+    elif missing_evidence == "gimbal_pointing":
+        secondary = replace(secondary, gimbal_pointing_ok=None)
+    elif missing_evidence == "communication_summary":
+        communication_summaries = None
+    elif missing_evidence == "network_full_view_rate":
+        secondary = replace(secondary, secondary_network_full_view_rate=None)
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=_terminal(),
+        c2_health=C2Health.FAILED,
+        secondary_nodes=[secondary],
+        communication_summaries=communication_summaries,
+        current_time_s=current_time_s,
+    )
+    lifecycle = summarize_secondary_lifecycle(
+        [secondary],
+        "cell-north",
+        communication_summaries=communication_summaries,
+        current_time_s=current_time_s,
+        terminal_association=_terminal(),
+    )[0]
+
+    assert decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
+    assert lifecycle.secondary_takeover_capable is False
+    assert lifecycle.secondary_readiness_class != "takeover_ready"
+    assert expected_reason in lifecycle.secondary_capability_reasons
+
+
+def test_secondary_takeover_accepts_complete_fresh_capability_evidence() -> None:
+    secondary = _secondary()
+    communication_summaries = [_secondary_link()]
+
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track(),
+        association_risk=_association(),
+        assignment_validity=_assignment(),
+        terminal_association=_terminal(),
+        c2_health=C2Health.FAILED,
+        secondary_nodes=[secondary],
+        communication_summaries=communication_summaries,
+        current_time_s=10.1,
+    )
+    lifecycle = summarize_secondary_lifecycle(
+        [secondary],
+        "cell-north",
+        communication_summaries=communication_summaries,
+        current_time_s=10.1,
+        terminal_association=_terminal(),
+    )[0]
+
+    assert decision.action == DegradationAction.DEGRADE_TO_SECONDARY
+    assert decision.target_node_id == "sec-1"
+    assert lifecycle.secondary_takeover_capable is True
+    assert lifecycle.secondary_readiness_class == "takeover_ready"
 
 
 def test_mobile_high_recon_evidence_does_not_auto_take_over_low_risk_frame() -> None:
@@ -759,9 +943,15 @@ def test_mobile_high_recon_evidence_does_not_auto_take_over_low_risk_frame() -> 
         terminal_association=_terminal(),
         c2_health=C2Health.NORMAL,
         secondary_nodes=[mobile],
+        communication_summaries=[_secondary_link(node_id="mhr-1")],
         current_time_s=10.1,
     )
-    lifecycle = summarize_secondary_lifecycle([mobile], "cell-north", current_time_s=10.1)
+    lifecycle = summarize_secondary_lifecycle(
+        [mobile],
+        "cell-north",
+        communication_summaries=[_secondary_link(node_id="mhr-1")],
+        current_time_s=10.1,
+    )
 
     assert decision.mode == DegradationMode.NONE
     assert decision.action == DegradationAction.CONTINUE_CENTER
@@ -788,6 +978,7 @@ def test_mobile_secondary_role_and_coverage_ratio_can_be_selected_after_center_f
         comm_band=CommBand.GOOD,
         takeover_priority=10,
         lease_epoch=7,
+        lease_expires_at_s=20.0,
         epoch=1,
         node_role="mobile_secondary_recon",
         coordinator_only=True,
@@ -797,6 +988,7 @@ def test_mobile_secondary_role_and_coverage_ratio_can_be_selected_after_center_f
         cue_freshness_s=0.1,
         gimbal_pointing_ok=True,
         secondary_coverage_ratio=0.72,
+        secondary_network_full_view_rate=0.90,
         stable_cross_view_registration_count=2,
     )
 
@@ -812,9 +1004,15 @@ def test_mobile_secondary_role_and_coverage_ratio_can_be_selected_after_center_f
         ),
         c2_health=C2Health.FAILED,
         secondary_nodes=[mobile],
+        communication_summaries=[_secondary_link(node_id="msec-1")],
         current_time_s=10.2,
     )
-    lifecycle = summarize_secondary_lifecycle([mobile], "cell-north", current_time_s=10.2)
+    lifecycle = summarize_secondary_lifecycle(
+        [mobile],
+        "cell-north",
+        communication_summaries=[_secondary_link(node_id="msec-1")],
+        current_time_s=10.2,
+    )
 
     assert decision.mode == DegradationMode.PASSIVE_FAILOVER
     assert decision.action == DegradationAction.DEGRADE_TO_SECONDARY
@@ -876,11 +1074,13 @@ def test_visible_but_not_registered_secondary_is_not_takeover_capable() -> None:
         terminal_association=terminal,
         c2_health=C2Health.FAILED,
         secondary_nodes=[secondary],
+        communication_summaries=[_secondary_link()],
         current_time_s=10.1,
     )
     lifecycle = summarize_secondary_lifecycle(
         [secondary],
         "cell-north",
+        communication_summaries=[_secondary_link()],
         current_time_s=10.1,
         terminal_association=terminal,
     )
@@ -918,11 +1118,13 @@ def test_registered_secondary_with_low_network_full_view_is_not_takeover_ready()
         terminal_association=terminal,
         c2_health=C2Health.FAILED,
         secondary_nodes=[_secondary()],
+        communication_summaries=[_secondary_link()],
         current_time_s=10.1,
     )
     lifecycle = summarize_secondary_lifecycle(
         [_secondary()],
         "cell-north",
+        communication_summaries=[_secondary_link()],
         current_time_s=10.1,
         terminal_association=terminal,
     )

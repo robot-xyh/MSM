@@ -28,6 +28,7 @@ from .models import (
     to_jsonable,
 )
 from .network import SimulatedNetwork
+from .secondary_readiness import SecondaryReadinessEvidence
 
 
 REPLAY_SCENARIOS = (
@@ -43,6 +44,37 @@ EXTERNAL_REFERENCE_BACKENDS = ("mit_cbba", "ca_cbba")
 _TRACK_ID = "G-P2-COALITION-1"
 _COALITION_ID = "coalition-p2-1"
 _PLAN_ID = "plan-p2-1"
+
+
+def _secondary_readiness_metadata(
+    *,
+    node_id: str,
+    timestamp: float,
+    lease_expires_at: float,
+) -> dict[str, Any]:
+    evidence = SecondaryReadinessEvidence(
+        node_id=node_id,
+        current_time_s=timestamp,
+        readiness_timestamp_s=timestamp,
+        readiness_stale_after_s=1.0,
+        availability_confirmed=True,
+        lease_epoch=1,
+        lease_expires_at_s=lease_expires_at,
+        heartbeat_timestamp_s=timestamp,
+        heartbeat_stale_after_s=1.0,
+        cue_freshness_s=0.1,
+        cue_stale_after_s=1.0,
+        gimbal_pointing_ok=True,
+        communication_received_timestamp_s=timestamp,
+        communication_stale_after_s=1.0,
+        coverage_matches_requested_cell=True,
+        coverage_ratio=0.9,
+        network_full_view_rate=0.9,
+        takeover_ready_sustained=True,
+        takeover_ready_since_s=timestamp - 0.3,
+        takeover_ready_observation_count=3,
+    )
+    return {"secondary_readiness_evidence": evidence.to_dict()}
 _MEMBERS = ("INT-1", "INT-2", "INT-3")
 
 
@@ -239,7 +271,11 @@ class NativeCoalitionFaultReplay:
             members=_MEMBERS,
             timestamp=10.0,
             lease_expires_at=20.0,
-            metadata={"takeover_ready": True},
+            metadata=_secondary_readiness_metadata(
+                node_id="RECON-1",
+                timestamp=10.0,
+                lease_expires_at=20.0,
+            ),
         )
         secondary = self._ack_all(coordinator, secondary, start_time=10.1)
         secondary = coordinator.mark_executing(secondary, timestamp=10.5)

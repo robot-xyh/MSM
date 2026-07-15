@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -12,6 +13,7 @@ from d4_distributed_fallback.episode_communication import (
     run_p1_episode_fault_validation_matrix,
     run_episode_communication_replay,
 )
+from d4_distributed_fallback.secondary_readiness import SecondaryReadinessEvidence
 
 
 def _config(**overrides: object) -> EpisodeCommunicationConfig:
@@ -41,12 +43,20 @@ def _tick(
     digest: bool | None = None,
     authorized: bool = False,
     epoch_overrides: dict[str, int] | None = None,
+    readiness_evidence: SecondaryReadinessEvidence | None = None,
+    include_readiness: bool = True,
 ) -> object:
+    readiness = readiness_evidence or _readiness(timestamp)
     return adapter.tick(
         EpisodeCommunicationTickInput(
             timestamp_s=timestamp,
             center_heartbeat_received=center,
             secondary_heartbeat_ids=("RECON-1",) if secondary else (),
+            secondary_readiness_evidence=(
+                {"RECON-1": readiness}
+                if secondary and include_readiness
+                else {}
+            ),
             message_delay_s=delay,
             dropped_ack_member_ids=dropped,
             partitioned=partitioned,
@@ -55,6 +65,32 @@ def _tick(
             ack_epoch_overrides=epoch_overrides or {},
         )
     )
+
+
+def _readiness(timestamp: float, **overrides: object) -> SecondaryReadinessEvidence:
+    evidence = SecondaryReadinessEvidence(
+        node_id="RECON-1",
+        current_time_s=timestamp,
+        readiness_timestamp_s=timestamp,
+        readiness_stale_after_s=0.4,
+        availability_confirmed=True,
+        lease_epoch=2,
+        lease_expires_at_s=timestamp + 2.0,
+        heartbeat_timestamp_s=timestamp,
+        heartbeat_stale_after_s=0.4,
+        cue_freshness_s=0.05,
+        cue_stale_after_s=0.4,
+        gimbal_pointing_ok=True,
+        communication_received_timestamp_s=timestamp,
+        communication_stale_after_s=0.4,
+        coverage_matches_requested_cell=True,
+        coverage_ratio=0.9,
+        network_full_view_rate=0.9,
+        takeover_ready_sustained=True,
+        takeover_ready_since_s=timestamp - 0.25,
+        takeover_ready_observation_count=3,
+    )
+    return replace(evidence, **overrides)
 
 
 @pytest.mark.parametrize("scenario_id", EPISODE_FAULT_SCENARIOS)
@@ -133,6 +169,68 @@ def test_center_failure_has_no_owner_until_secondary_receives_every_ack() -> Non
     assert executing.acked_member_ids == ("INT-1", "INT-2", "INT-3")
     assert executing.metadata["arrival_coordination_required"] is False
     assert executing.metadata["multi_member_atomic_authorization_required"] is True
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value"),
+    [
+        ("current_time_s", None),
+        ("lease_expires_at_s", None),
+        ("lease_expires_at_s", 0.6),
+        ("heartbeat_timestamp_s", None),
+        ("heartbeat_timestamp_s", 0.1),
+        ("cue_freshness_s", None),
+        ("gimbal_pointing_ok", None),
+        ("gimbal_pointing_ok", False),
+        ("communication_received_timestamp_s", None),
+        ("coverage_ratio", None),
+        ("coverage_ratio", 0.64),
+        ("network_full_view_rate", None),
+        ("network_full_view_rate", 0.79),
+        ("takeover_ready_sustained", False),
+    ],
+)
+def test_secondary_heartbeat_cannot_propose_with_incomplete_readiness_evidence(
+    field_name: str,
+    field_value: object,
+) -> None:
+    adapter = AirSimEpisodeCommunicationAdapter(_config())
+    _tick(adapter, 0.0, center=True, secondary=True)
+    _tick(adapter, 0.3, center=False, secondary=True)
+    malformed = replace(_readiness(0.6), **{field_name: field_value})
+
+    result = _tick(
+        adapter,
+        0.6,
+        center=False,
+        secondary=True,
+        readiness_evidence=malformed,
+    )
+
+    assert result.selected_layer == "distributed"
+    assert result.owner_id != "RECON-1"
+    assert "RECON-1" not in result.executable_owner_ids
+    assessment = result.metadata["secondary_readiness_assessments"]["RECON-1"]
+    assert assessment["ready"] is False
+
+
+def test_secondary_heartbeat_without_readiness_dto_falls_back_to_distributed() -> None:
+    adapter = AirSimEpisodeCommunicationAdapter(_config())
+    _tick(adapter, 0.0, center=True, secondary=True)
+    _tick(adapter, 0.3, center=False, secondary=True)
+
+    result = _tick(
+        adapter,
+        0.6,
+        center=False,
+        secondary=True,
+        include_readiness=False,
+    )
+
+    assert result.selected_layer == "distributed"
+    assert result.owner_id != "RECON-1"
+    assert "RECON-1" not in result.executable_owner_ids
+    assert result.metadata["secondary_readiness_assessments"] == {}
 
 
 def test_center_and_secondary_failure_commits_distributed_owner_atomically() -> None:

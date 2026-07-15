@@ -2,7 +2,7 @@
 
 **模块**：D4 分布式协同与降级接管
 
-**同步基线**：2026-07-13 代码、模块说明文件、模块计划文件、模块原理文档和系统总汇总
+**同步基线**：2026-07-15 D4 代码、模块说明、计划、GAP/review 与模块报告
 
 **适用范围**：Python 科研仿真、AirSim 单次试验时钟接线和离线故障回放
 
@@ -310,7 +310,7 @@ E_{sec}=I_{active}I_{source}I_{ready}I_{epoch}I_{lease}I_{version}.
 - (I_{source})：计划来源等于 D4 选中的二级节点；
 - (I_{ready})：二级节点持续就绪；
 - (I_{epoch})：租约时期不低于要求时期；
-- (I_{lease})：当前时间没有超过租约到期时间；
+- (I_{lease})：expiry 与当前时间都存在，且严格满足 `current_time < lease_expiry`；
 - (I_{version})：新计划版本严格高于被替代计划，或确认为同一已激活二级计划。
 
 `SecondaryTakeoverPlanMetadata` 有三种状态：
@@ -319,7 +319,7 @@ E_{sec}=I_{active}I_{source}I_{ready}I_{epoch}I_{lease}I_{version}.
 2. `pending_secondary_plan`：D4 已选择二级来源，但当前所有者仍保持原值；
 3. `secondary_plan_active`：main/D3 已发布正确来源和更新版本，租约有效且持续就绪，所有者变为二级节点。
 
-旧版本、旧时期、过期租约、来源不匹配或就绪性回落都会使计划保持待生效或不可执行。
+缺 expiry、缺当前时间、`current_time == lease_expiry`、过期、旧时期、来源不匹配或就绪性回落都会使计划保持待生效或不可执行。该规则同时用于 resource candidate、plan 发布、已激活 owner 维持和 D7 handoff，不能由同 plan id/version 绕过。
 
 ### 7.4 两阶段 D7 交接
 
@@ -439,6 +439,8 @@ C=I_{members}I_{plan}I_{coalition}I_{epoch}I_{lease}I_{digest}I_{network}.
 ### 10.2 独立执行与联盟执行
 
 多个独立主资源不要求在同一时刻到达，但每个资源仍需满足自己的计划和 D5/D7 门控。需要共享联盟状态的多成员任务则必须先原子提交；备用成员未被新版本计划激活前保持待命，不能自行补位。
+
+现有 `member_loss_replacement`/成员补位 replay 由测试预先给定替换成员，再验证更高 epoch/version 和全员重新 ACK。它不是在线 reserve 发现、选择、激活或自主补位状态机；这些能力继续保持 P1 未实现。
 
 ### 10.3 二级和完全分布式联盟
 
@@ -595,7 +597,11 @@ main/runtime 负责：
 
 截至当前同步基线，D4 验证记录包括：
 
-- D4 全量模块回归已有记录为 **198 项通过**；本次只同步文档，没有重跑测试；
+- 2026-07-15 D4 全量模块回归为 **280/280 项通过**，验收阈值为零失败；此前 278/278 未覆盖两个公开 secondary plan helper 的 sustained/source/epoch `None`，不能作为所有公开入口闭锁证据；
+- `SecondaryReadinessEvidence` 统一要求 current time、lease epoch/expiry、fresh heartbeat/cue/communication、gimbal、coverage、network full-view 和 sustained readiness；coordinator、episode adapter 与 coalition proposal 任一缺字段均拒绝 secondary owner；
+- `build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 对 active secondary plan 要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且有效、`current_time < expiry`；逐字段缺失给出稳定 reject reason，同 id/version 维持路径不豁免；
+- distributed interceptor/peer 路径不消费上述二级视觉 readiness，原 ACK/lease/epoch/commit 合同保持；
+- D6 coalition metadata 缺 current time 时不再推断 lease valid 或 atomic coalition formed；
 - 七个规范单次试验时间轴场景 **7/7 通过**，覆盖正常中心、中心失效后二级接管、二级再次失效后 peer 接管、缺 ACK、旧时期、过期租约和网络分区；
 - 逻辑时钟步为 0.25 秒时，中心故障到二级可执行所有者为 **1.25 秒**，二级故障到 peer 原子执行为 **1.00 秒**；
 - 二级和 peer 正例均以 3/3 ACK 进入执行，缺 ACK 负例以 2/3 ACK 中止并保持闭锁。
@@ -630,6 +636,14 @@ main/runtime 按 AirSim 单次试验时钟运行六类场景，每类 10 个随�
 ### 16.4 系统级边界
 
 D4 的 60/60 安全通过不等于整个拦截闭环完成。系统级多资源对少目标场景仍受 D5 第二主资源视觉锁定、D7 末端许可和物理闭合影响。D4 的职责是确保计划转移时不出现旧版本执行、部分联盟执行、重复所有者或脑裂。
+
+### 16.5 2026-07-15 M5N2 中心继续执行负对照
+
+真实 AirSim M5N2 baseline/candidate 各运行 10 seeds，共完成 20/20 case。所有 case 中心 owner 保持有效，`active degradation=0`；因此该批只验证中心路径下的 D4 不误降级和 M-to-N 末端断点，不验证二级接管、完全分布式 commit、网络分区恢复或降级后的物理任务连续性。
+
+聚合结果为 coalition completion `0/20`、第二 primary 进入 5 m `0/20`。20 个第二 primary 最终状态均为 `collision_stop`，但当前日志没有 collision object，算法层不得把它自动映射为 `request_center_replan`、`degrade_to_secondary` 或 `degrade_to_distributed`。主动仲裁仍按第 6 节执行：组合 D1 协方差和时效、D2 关联与重复风险、D3 计划 current/version/resource feasibility、D5 current binding/身份/跨视角证据，并保留迟滞和 fail-closed 规则。
+
+D4 main-bus 阶段 timing 样本的 mean/P95/max 约为 `5.59/6.70/94.10 ms`。该阶段不是当前约 1 s control tick 的主要瓶颈，后续优化应保持 D4 合同门控，不以放宽仲裁换取性能。终止多 seed suite 前额外完成的 `png_ttc_2v2_seed001` 不纳入上述统计，dropout case 数为 0。
 
 ## 17. 真实网络限制与后续实施
 

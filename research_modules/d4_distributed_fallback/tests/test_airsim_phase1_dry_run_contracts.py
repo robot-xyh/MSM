@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from d4_distributed_fallback.active_degradation import (
     ActiveDegradationArbiter,
     AssignmentValiditySummary,
@@ -10,6 +12,7 @@ from d4_distributed_fallback.active_degradation import (
     TerminalDecisionState,
     TrackUncertaintySummary,
     build_d7_secondary_handoff,
+    build_secondary_takeover_plan_metadata,
 )
 from d4_distributed_fallback.coordinator import FailoverCoordinator
 from d4_distributed_fallback.models import (
@@ -36,10 +39,38 @@ def _resource_from_fake_airsim(row: dict[str, object]) -> ResourceSummary:
         operator_hold=bool(row.get("operator_hold", False)),
         takeover_priority=int(row.get("takeover_priority", 100)),
         lease_epoch=int(row.get("lease_epoch", 0)),
+        lease_expires_at_s=(
+            None
+            if row.get("lease_expires_at_s") is None
+            else float(row["lease_expires_at_s"])
+        ),
         epoch=int(row.get("epoch", 1)),
         node_role=NodeRole(str(row.get("node_role", NodeRole.INTERCEPTOR.value))),
         coordinator_only=bool(row.get("coordinator_only", False)),
         coverage_cell=None if row.get("coverage_cell") is None else str(row["coverage_cell"]),
+        heartbeat_timestamp_s=(
+            None
+            if row.get("heartbeat_timestamp_s") is None
+            else float(row["heartbeat_timestamp_s"])
+        ),
+        cue_freshness_s=(
+            None if row.get("cue_freshness_s") is None else float(row["cue_freshness_s"])
+        ),
+        gimbal_pointing_ok=(
+            None
+            if row.get("gimbal_pointing_ok") is None
+            else bool(row["gimbal_pointing_ok"])
+        ),
+        secondary_coverage_ratio=(
+            None
+            if row.get("secondary_coverage_ratio") is None
+            else float(row["secondary_coverage_ratio"])
+        ),
+        secondary_network_full_view_rate=(
+            None
+            if row.get("secondary_network_full_view_rate") is None
+            else float(row["secondary_network_full_view_rate"])
+        ),
         stable_cross_view_registration_count=(
             None
             if row.get("stable_cross_view_registration_count") is None
@@ -57,9 +88,15 @@ def _fake_phase1_resources(secondary_available: bool = True) -> list[ResourceSum
             "comm_band": "good",
             "takeover_priority": 20,
             "lease_epoch": 4,
+            "lease_expires_at_s": 20.0,
             "node_role": "secondary_recon",
             "coordinator_only": True,
             "coverage_cell": "cell-north",
+            "heartbeat_timestamp_s": 10.0,
+            "cue_freshness_s": 0.2,
+            "gimbal_pointing_ok": True,
+            "secondary_coverage_ratio": 0.90,
+            "secondary_network_full_view_rate": 0.90,
             "stable_cross_view_registration_count": 2,
             "epoch": 1,
         },
@@ -273,7 +310,14 @@ def test_blocks_2v2_secondary_plan_activation_hands_new_plan_to_d7() -> None:
         new_plan_id="secondary-2v2-plan-008",
         new_plan_version=8,
         secondary_plan_active=True,
+        expected_secondary_source_node_id="sec-north-1",
+        secondary_plan_source_node_id="sec-north-1",
+        secondary_plan_lease_epoch=4,
+        required_secondary_plan_lease_epoch=4,
         secondary_capability_class="takeover_ready",
+        secondary_readiness_sustained=True,
+        secondary_plan_lease_expires_at_s=12.0,
+        current_time_s=10.5,
         terminal_consistent_after_plan=False,
     )
     continue_handoff = build_d7_secondary_handoff(
@@ -283,7 +327,14 @@ def test_blocks_2v2_secondary_plan_activation_hands_new_plan_to_d7() -> None:
         new_plan_id="secondary-2v2-plan-009",
         new_plan_version=9,
         secondary_plan_active=True,
+        expected_secondary_source_node_id="sec-north-1",
+        secondary_plan_source_node_id="sec-north-1",
+        secondary_plan_lease_epoch=4,
+        required_secondary_plan_lease_epoch=4,
         secondary_capability_class="takeover_ready",
+        secondary_readiness_sustained=True,
+        secondary_plan_lease_expires_at_s=12.0,
+        current_time_s=10.5,
         terminal_consistent_after_plan=True,
     )
 
@@ -323,7 +374,14 @@ def test_d7_handoff_rejects_visible_only_secondary_capability() -> None:
         new_plan_id="secondary-2v2-plan-008",
         new_plan_version=8,
         secondary_plan_active=True,
+        expected_secondary_source_node_id="sec-north-1",
+        secondary_plan_source_node_id="sec-north-1",
+        secondary_plan_lease_epoch=4,
+        required_secondary_plan_lease_epoch=4,
         secondary_capability_class="visible_only",
+        secondary_readiness_sustained=True,
+        secondary_plan_lease_expires_at_s=12.0,
+        current_time_s=10.5,
     )
     unknown = build_d7_secondary_handoff(
         decision,
@@ -332,6 +390,13 @@ def test_d7_handoff_rejects_visible_only_secondary_capability() -> None:
         new_plan_id="secondary-2v2-plan-008",
         new_plan_version=8,
         secondary_plan_active=True,
+        expected_secondary_source_node_id="sec-north-1",
+        secondary_plan_source_node_id="sec-north-1",
+        secondary_plan_lease_epoch=4,
+        required_secondary_plan_lease_epoch=4,
+        secondary_readiness_sustained=True,
+        secondary_plan_lease_expires_at_s=12.0,
+        current_time_s=10.5,
     )
     ready = build_d7_secondary_handoff(
         decision,
@@ -340,7 +405,14 @@ def test_d7_handoff_rejects_visible_only_secondary_capability() -> None:
         new_plan_id="secondary-2v2-plan-008",
         new_plan_version=8,
         secondary_plan_active=True,
+        expected_secondary_source_node_id="sec-north-1",
+        secondary_plan_source_node_id="sec-north-1",
+        secondary_plan_lease_epoch=4,
+        required_secondary_plan_lease_epoch=4,
         secondary_capability_class="takeover_ready",
+        secondary_readiness_sustained=True,
+        secondary_plan_lease_expires_at_s=12.0,
+        current_time_s=10.5,
     )
     instantaneous_only = build_d7_secondary_handoff(
         decision,
@@ -349,8 +421,14 @@ def test_d7_handoff_rejects_visible_only_secondary_capability() -> None:
         new_plan_id="secondary-2v2-plan-008",
         new_plan_version=8,
         secondary_plan_active=True,
+        expected_secondary_source_node_id="sec-north-1",
+        secondary_plan_source_node_id="sec-north-1",
+        secondary_plan_lease_epoch=4,
+        required_secondary_plan_lease_epoch=4,
         secondary_capability_class="takeover_ready",
         secondary_readiness_sustained=False,
+        secondary_plan_lease_expires_at_s=12.0,
+        current_time_s=10.5,
     )
 
     assert blocked.phase == 1
@@ -363,6 +441,322 @@ def test_d7_handoff_rejects_visible_only_secondary_capability() -> None:
     assert instantaneous_only.phase == 1
     assert instantaneous_only.visual_png_allowed is False
     assert instantaneous_only.reason == "secondary_readiness_not_sustained"
+
+
+def test_d7_handoff_enforces_lease_time_source_and_epoch_strictness() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track_uncertainty(position_sigma_m=55.0),
+        association_risk=_association_risk(ambiguity_score=0.75),
+        assignment_validity=_assignment_validity(),
+        terminal_association=_terminal_summary(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id="track-north-2",
+            non_locked_frames=3,
+            mismatch_frames=2,
+            cross_view_risk_score=0.8,
+        ),
+        c2_health=C2Health.FAILED,
+        secondary_nodes=_fake_phase1_resources(secondary_available=True),
+        communication_summaries=[_fake_secondary_video_link()],
+        current_time_s=10.5,
+    )
+    common = {
+        "current_plan_id": "center-2v2-plan-007",
+        "current_plan_version": 7,
+        "new_plan_id": "secondary-2v2-plan-008",
+        "new_plan_version": 8,
+        "secondary_plan_active": True,
+        "secondary_capability_class": "takeover_ready",
+        "expected_secondary_source_node_id": "sec-north-1",
+        "secondary_plan_source_node_id": "sec-north-1",
+        "secondary_plan_lease_epoch": 4,
+        "required_secondary_plan_lease_epoch": 4,
+        "secondary_readiness_sustained": True,
+    }
+
+    missing_expiry = build_d7_secondary_handoff(
+        decision,
+        **common,
+        current_time_s=10.5,
+    )
+    missing_time = build_d7_secondary_handoff(
+        decision,
+        **common,
+        secondary_plan_lease_expires_at_s=12.0,
+    )
+    equal_expiry = build_d7_secondary_handoff(
+        decision,
+        **common,
+        secondary_plan_lease_expires_at_s=10.5,
+        current_time_s=10.5,
+    )
+    expired = build_d7_secondary_handoff(
+        decision,
+        **common,
+        secondary_plan_lease_expires_at_s=10.4,
+        current_time_s=10.5,
+    )
+    stale_epoch = build_d7_secondary_handoff(
+        decision,
+        **{**common, "secondary_plan_lease_epoch": 3},
+        secondary_plan_lease_expires_at_s=12.0,
+        current_time_s=10.5,
+    )
+    wrong_source = build_d7_secondary_handoff(
+        decision,
+        **{**common, "secondary_plan_source_node_id": "sec-other"},
+        secondary_plan_lease_expires_at_s=12.0,
+        current_time_s=10.5,
+    )
+    missing_readiness = build_d7_secondary_handoff(
+        decision,
+        **{**common, "secondary_readiness_sustained": None},
+        secondary_plan_lease_expires_at_s=12.0,
+        current_time_s=10.5,
+    )
+    missing_expected_source = build_d7_secondary_handoff(
+        decision,
+        **{**common, "expected_secondary_source_node_id": None},
+        secondary_plan_lease_expires_at_s=12.0,
+        current_time_s=10.5,
+    )
+    missing_source = build_d7_secondary_handoff(
+        decision,
+        **{**common, "secondary_plan_source_node_id": None},
+        secondary_plan_lease_expires_at_s=12.0,
+        current_time_s=10.5,
+    )
+    missing_plan_epoch = build_d7_secondary_handoff(
+        decision,
+        **{**common, "secondary_plan_lease_epoch": None},
+        secondary_plan_lease_expires_at_s=12.0,
+        current_time_s=10.5,
+    )
+    missing_required_epoch = build_d7_secondary_handoff(
+        decision,
+        **{**common, "required_secondary_plan_lease_epoch": None},
+        secondary_plan_lease_expires_at_s=12.0,
+        current_time_s=10.5,
+    )
+    valid = build_d7_secondary_handoff(
+        decision,
+        **common,
+        secondary_plan_lease_expires_at_s=12.0,
+        current_time_s=10.5,
+    )
+
+    assert missing_expiry.reason == "secondary_plan_lease_expiry_missing"
+    assert missing_time.reason == "secondary_plan_current_time_missing"
+    assert equal_expiry.reason == "secondary_plan_lease_expired"
+    assert expired.reason == "secondary_plan_lease_expired"
+    assert stale_epoch.reason == "secondary_plan_lease_epoch_stale"
+    assert wrong_source.reason == "secondary_plan_source_mismatch"
+    assert missing_readiness.reason == "secondary_readiness_sustained_missing"
+    assert missing_expected_source.reason == "secondary_plan_expected_source_missing"
+    assert missing_source.reason == "secondary_plan_source_missing"
+    assert missing_plan_epoch.reason == "secondary_plan_lease_epoch_missing"
+    assert missing_required_epoch.reason == (
+        "required_secondary_plan_lease_epoch_missing"
+    )
+    for blocked in (
+        missing_readiness,
+        missing_expected_source,
+        missing_source,
+        missing_plan_epoch,
+        missing_required_epoch,
+        missing_expiry,
+        missing_time,
+        equal_expiry,
+        expired,
+        stale_epoch,
+        wrong_source,
+    ):
+        assert blocked.phase == 1
+        assert blocked.visual_png_allowed is False
+    assert valid.phase == 2
+    assert valid.visual_png_allowed is True
+
+
+def test_secondary_takeover_metadata_fail_closes_each_missing_active_field() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track_uncertainty(position_sigma_m=55.0),
+        association_risk=_association_risk(ambiguity_score=0.75),
+        assignment_validity=_assignment_validity(),
+        terminal_association=_terminal_summary(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id="track-north-2",
+            non_locked_frames=3,
+            mismatch_frames=2,
+            cross_view_risk_score=0.8,
+        ),
+        c2_health=C2Health.FAILED,
+        secondary_nodes=_fake_phase1_resources(secondary_available=True),
+        communication_summaries=[_fake_secondary_video_link()],
+        current_time_s=10.5,
+    )
+    common = {
+        "current_plan_id": "center-2v2-plan-007",
+        "current_plan_version": 7,
+        "current_plan_owner": "center",
+        "secondary_plan_id": "secondary-2v2-plan-008",
+        "secondary_plan_version": 8,
+        "secondary_plan_active": True,
+        "secondary_plan_source_node_id": "sec-north-1",
+        "secondary_plan_lease_epoch": 4,
+        "required_secondary_plan_lease_epoch": 4,
+        "secondary_plan_lease_expires_at_s": 12.0,
+        "secondary_readiness_sustained": True,
+        "decision_timestamp": 10.5,
+    }
+    missing_cases = (
+        (
+            "secondary_readiness_sustained",
+            "secondary_readiness_sustained_missing",
+        ),
+        ("secondary_plan_source_node_id", "secondary_plan_source_missing"),
+        ("secondary_plan_lease_epoch", "secondary_plan_lease_epoch_missing"),
+        (
+            "required_secondary_plan_lease_epoch",
+            "required_secondary_plan_lease_epoch_missing",
+        ),
+        (
+            "secondary_plan_lease_expires_at_s",
+            "secondary_plan_lease_expiry_missing",
+        ),
+        ("decision_timestamp", "secondary_plan_current_time_missing"),
+    )
+
+    for field_name, expected_reason in missing_cases:
+        values = {**common, field_name: None}
+        metadata = build_secondary_takeover_plan_metadata(decision, **values)
+        assert metadata.state.value == "pending_secondary_plan"
+        assert metadata.secondary_plan_executable is False
+        assert metadata.secondary_plan_reject_reason == expected_reason
+        if field_name == "secondary_plan_source_node_id":
+            assert metadata.secondary_plan_source_node_id is None
+
+    missing_expected_source = build_secondary_takeover_plan_metadata(
+        replace(decision, target_node_id=None),
+        **common,
+    )
+    complete = build_secondary_takeover_plan_metadata(decision, **common)
+
+    assert missing_expected_source.state.value == "pending_secondary_plan"
+    assert missing_expected_source.secondary_plan_executable is False
+    assert missing_expected_source.secondary_plan_reject_reason == (
+        "secondary_plan_expected_source_missing"
+    )
+    assert complete.state.value == "secondary_plan_active"
+    assert complete.secondary_plan_executable is True
+    assert complete.secondary_plan_reject_reason is None
+
+
+def test_secondary_takeover_metadata_revalidates_same_active_plan_fields() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track_uncertainty(position_sigma_m=55.0),
+        association_risk=_association_risk(ambiguity_score=0.75),
+        assignment_validity=_assignment_validity(),
+        terminal_association=_terminal_summary(
+            decision_state=TerminalDecisionState.REACQUIRE,
+            observed_global_track_id="track-north-2",
+            non_locked_frames=3,
+            mismatch_frames=2,
+            cross_view_risk_score=0.8,
+        ),
+        c2_health=C2Health.FAILED,
+        secondary_nodes=_fake_phase1_resources(secondary_available=True),
+        communication_summaries=[_fake_secondary_video_link()],
+        current_time_s=10.5,
+    )
+    common = {
+        "current_plan_id": "secondary-2v2-plan-008",
+        "current_plan_version": 8,
+        "current_plan_owner": "secondary",
+        "secondary_plan_id": "secondary-2v2-plan-008",
+        "secondary_plan_version": 8,
+        "secondary_plan_active": True,
+        "secondary_plan_source_node_id": "sec-north-1",
+        "secondary_plan_lease_epoch": 4,
+        "required_secondary_plan_lease_epoch": 4,
+        "secondary_plan_lease_expires_at_s": 12.0,
+        "secondary_readiness_sustained": True,
+        "decision_timestamp": 10.5,
+    }
+
+    for field_name in (
+        "secondary_readiness_sustained",
+        "secondary_plan_source_node_id",
+        "secondary_plan_lease_epoch",
+        "required_secondary_plan_lease_epoch",
+        "secondary_plan_lease_expires_at_s",
+        "decision_timestamp",
+    ):
+        metadata = build_secondary_takeover_plan_metadata(
+            decision,
+            **{**common, field_name: None},
+        )
+        assert metadata.state.value == "pending_secondary_plan"
+        assert metadata.secondary_plan_executable is False
+        assert metadata.secondary_plan_reject_reason is not None
+
+    missing_expected_source = build_secondary_takeover_plan_metadata(
+        replace(decision, target_node_id=None),
+        **common,
+    )
+    complete = build_secondary_takeover_plan_metadata(decision, **common)
+
+    assert missing_expected_source.state.value == "pending_secondary_plan"
+    assert missing_expected_source.secondary_plan_executable is False
+    assert complete.state.value == "secondary_plan_active"
+    assert complete.secondary_plan_executable is True
+    assert complete.secondary_plan_epoch_monotonic is True
+
+
+def test_d7_handoff_revalidates_maintained_secondary_owner() -> None:
+    decision = ActiveDegradationArbiter().evaluate(
+        track_uncertainty=_track_uncertainty(),
+        association_risk=_association_risk(),
+        assignment_validity=_assignment_validity(),
+        terminal_association=_terminal_summary(),
+        c2_health=C2Health.NORMAL,
+        secondary_nodes=_fake_phase1_resources(secondary_available=True),
+        communication_summaries=[_fake_secondary_video_link()],
+        current_time_s=10.5,
+    )
+    common = {
+        "current_plan_id": "secondary-2v2-plan-008",
+        "current_plan_version": 8,
+        "new_plan_id": "secondary-2v2-plan-008",
+        "new_plan_version": 8,
+        "secondary_plan_active": True,
+        "current_plan_owner": "secondary",
+        "expected_secondary_source_node_id": "sec-north-1",
+        "secondary_plan_source_node_id": "sec-north-1",
+        "secondary_capability_class": "takeover_ready",
+        "secondary_readiness_sustained": True,
+        "secondary_plan_lease_epoch": 4,
+        "required_secondary_plan_lease_epoch": 4,
+        "current_time_s": 10.5,
+    }
+
+    boundary = build_d7_secondary_handoff(
+        decision,
+        **common,
+        secondary_plan_lease_expires_at_s=10.5,
+    )
+    valid = build_d7_secondary_handoff(
+        decision,
+        **common,
+        secondary_plan_lease_expires_at_s=10.6,
+    )
+
+    assert decision.action == DegradationAction.CONTINUE_CENTER
+    assert boundary.phase == 1
+    assert boundary.visual_png_allowed is False
+    assert boundary.reason == "secondary_plan_lease_expired"
+    assert valid.phase == 2
+    assert valid.visual_png_allowed is True
+    assert valid.d7_action == DegradationAction.CONTINUE_CENTER
 
 
 def test_case_003_degrade_to_distributed_when_center_or_secondary_unavailable() -> None:
@@ -388,6 +782,25 @@ def test_case_003_degrade_to_distributed_when_center_or_secondary_unavailable() 
     assert decision.target_node_id is None
     assert "d5_cross_view_risk_high" in decision.risk_factors
 
+    handoff = build_d7_secondary_handoff(
+        decision,
+        secondary_plan_active=True,
+        current_plan_owner="distributed_cbba",
+    )
+    metadata = build_secondary_takeover_plan_metadata(
+        decision,
+        secondary_plan_active=True,
+        current_plan_owner="distributed_cbba",
+    )
+
+    assert handoff.phase == 2
+    assert handoff.d7_action == DegradationAction.DEGRADE_TO_DISTRIBUTED
+    assert handoff.visual_png_allowed is False
+    assert handoff.reason == decision.reason
+    assert metadata.state.value == "not_applicable"
+    assert metadata.active_plan_owner == "distributed_cbba"
+    assert metadata.secondary_plan_reject_reason is None
+
 
 def test_decision_metrics_contains_main_required_d4_fields() -> None:
     decision = ActiveDegradationArbiter().evaluate(
@@ -402,6 +815,7 @@ def test_decision_metrics_contains_main_required_d4_fields() -> None:
         ),
         c2_health=C2Health.NORMAL,
         secondary_nodes=_fake_phase1_resources(secondary_available=True),
+        current_time_s=10.5,
     )
 
     metrics = decision.to_metrics(
@@ -422,6 +836,15 @@ def test_decision_metrics_contains_main_required_d4_fields() -> None:
 
 def test_fake_airsim_center_failed_passively_degrades_to_secondary_node() -> None:
     resources = _fake_phase1_resources(secondary_available=True)
+    resources[0] = replace(
+        resources[0],
+        heartbeat_timestamp_s=4.9,
+        readiness_timestamp_s=4.9,
+        readiness_stale_after_s=1.0,
+        takeover_ready_since_s=4.7,
+        takeover_ready_observation_count=3,
+        takeover_ready_sustained=True,
+    )
     node_ids = [resource.node_id for resource in resources]
     coordinator = FailoverCoordinator("int-1", ["sec-north-1", "int-2"])
     coordinator.update_health(now_s=5.0)
@@ -432,6 +855,7 @@ def test_fake_airsim_center_failed_passively_degrades_to_secondary_node() -> Non
         network=SimulatedNetwork(node_ids=node_ids, packet_loss=0.0, min_delay_s=0.1, max_delay_s=0.1),
         now_s=5.0,
         max_rounds=10,
+        communication_summaries=[_fake_secondary_video_link(received_timestamp=4.9)],
     )
 
     assert coordinator.health == C2Health.DEGRADED
@@ -581,6 +1005,8 @@ def test_fake_airsim_decision_payload_is_bus_serializable_without_airsim_types()
         terminal_association=_terminal_summary(),
         c2_health=C2Health.NORMAL,
         secondary_nodes=_fake_phase1_resources(secondary_available=True),
+        communication_summaries=[_fake_secondary_video_link()],
+        current_time_s=10.5,
     )
 
     payload = decision.to_dict()

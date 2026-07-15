@@ -198,6 +198,11 @@ class ResourceSummary:
     secondary_network_full_view_rate: float | None = None
     stable_cross_view_registration_count: int | None = None
     not_registered_count: int | None = None
+    readiness_timestamp_s: float | None = None
+    readiness_stale_after_s: float | None = None
+    takeover_ready_since_s: float | None = None
+    takeover_ready_observation_count: int | None = None
+    takeover_ready_sustained: bool | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)

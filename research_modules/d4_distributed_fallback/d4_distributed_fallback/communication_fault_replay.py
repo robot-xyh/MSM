@@ -17,6 +17,7 @@ from .coalition_safety import (
 )
 from .models import to_jsonable
 from .network import SimulatedNetwork
+from .secondary_readiness import SecondaryReadinessEvidence
 
 
 P1_COMMUNICATION_MATRIX_VERSION = "d4-p1-communication-fault-matrix-v1"
@@ -28,6 +29,41 @@ P1_COMMUNICATION_SCENARIOS = (
     "center_secondary_failure",
     "partition_recovery",
 )
+
+
+def _secondary_readiness_metadata(
+    *,
+    node_id: str,
+    timestamp: float,
+    lease_expires_at: float,
+    metadata: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    evidence = SecondaryReadinessEvidence(
+        node_id=node_id,
+        current_time_s=timestamp,
+        readiness_timestamp_s=timestamp,
+        readiness_stale_after_s=1.0,
+        availability_confirmed=True,
+        lease_epoch=1,
+        lease_expires_at_s=lease_expires_at,
+        heartbeat_timestamp_s=timestamp,
+        heartbeat_stale_after_s=1.0,
+        cue_freshness_s=0.1,
+        cue_stale_after_s=1.0,
+        gimbal_pointing_ok=True,
+        communication_received_timestamp_s=timestamp,
+        communication_stale_after_s=1.0,
+        coverage_matches_requested_cell=True,
+        coverage_ratio=0.9,
+        network_full_view_rate=0.9,
+        takeover_ready_sustained=True,
+        takeover_ready_since_s=timestamp - 0.3,
+        takeover_ready_observation_count=3,
+    )
+    return {
+        **dict(metadata or {}),
+        "secondary_readiness_evidence": evidence.to_dict(),
+    }
 
 
 @dataclass(frozen=True)
@@ -269,7 +305,12 @@ class CommunicationFaultReplay:
             required_member_ids=self.config.member_ids,
             lease_expires_at=recovery_start + self.config.lease_duration_s,
             timestamp=recovery_start + 0.8,
-            metadata={"takeover_ready": True, "split_brain_probe": True},
+            metadata=_secondary_readiness_metadata(
+                node_id=self.config.secondary_node_ids[0],
+                timestamp=recovery_start + 0.8,
+                lease_expires_at=recovery_start + self.config.lease_duration_s,
+                metadata={"split_brain_probe": True},
+            ),
         )
         trace.append(self._snapshot("stale_owner_rejected", stale, recovery_start + 0.8))
         split_brain_prevented = bool(
@@ -391,7 +432,15 @@ class CommunicationFaultReplay:
         start_time: float = 0.0,
         inject_stale_ack: bool = False,
     ) -> tuple[CoalitionCommitState, dict[str, Any], list[str]]:
-        metadata = {"takeover_ready": True} if coordinator_role == "mobile_high_recon" else {}
+        metadata = (
+            _secondary_readiness_metadata(
+                node_id=owner_id,
+                timestamp=start_time,
+                lease_expires_at=start_time + self.config.lease_duration_s,
+            )
+            if coordinator_role == "mobile_high_recon"
+            else {}
+        )
         state = coordinator.propose(
             global_track_id=self.config.global_track_id,
             coalition_id=self.config.coalition_id,

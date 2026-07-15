@@ -17,6 +17,11 @@ from .coalition_safety import (
     CoalitionMemberAck,
 )
 from .models import C2Health, to_jsonable
+from .secondary_readiness import (
+    SecondaryReadinessAssessment,
+    SecondaryReadinessEvidence,
+    assess_secondary_readiness,
+)
 
 
 EPISODE_COMMUNICATION_SCHEMA = "d4_airsim_episode_communication_v1"
@@ -35,6 +40,37 @@ _EPISODE_FAULT_SCENARIO_ALIASES = {"partition_missing_ack": "partition"}
 
 def _unique(values: Sequence[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(str(value) for value in values if str(value)))
+
+
+def _replay_secondary_readiness(
+    node_id: str,
+    *,
+    now_s: float,
+    lease_expires_at_s: float,
+    stale_after_s: float,
+) -> SecondaryReadinessEvidence:
+    return SecondaryReadinessEvidence(
+        node_id=node_id,
+        current_time_s=now_s,
+        readiness_timestamp_s=now_s,
+        readiness_stale_after_s=stale_after_s,
+        availability_confirmed=True,
+        lease_epoch=2,
+        lease_expires_at_s=lease_expires_at_s,
+        heartbeat_timestamp_s=now_s,
+        heartbeat_stale_after_s=stale_after_s,
+        cue_freshness_s=0.05,
+        cue_stale_after_s=stale_after_s,
+        gimbal_pointing_ok=True,
+        communication_received_timestamp_s=now_s,
+        communication_stale_after_s=stale_after_s,
+        coverage_matches_requested_cell=True,
+        coverage_ratio=0.90,
+        network_full_view_rate=0.90,
+        takeover_ready_sustained=True,
+        takeover_ready_since_s=now_s - 0.25,
+        takeover_ready_observation_count=3,
+    )
 
 
 @dataclass(frozen=True)
@@ -95,6 +131,9 @@ class EpisodeCommunicationTickInput:
     timestamp_s: float
     center_heartbeat_received: bool
     secondary_heartbeat_ids: tuple[str, ...] = ()
+    secondary_readiness_evidence: Mapping[
+        str, SecondaryReadinessEvidence | Mapping[str, Any]
+    ] = field(default_factory=dict)
     message_delay_s: float = 0.0
     dropped_ack_member_ids: tuple[str, ...] = ()
     partitioned: bool = False
@@ -112,6 +151,14 @@ class EpisodeCommunicationTickInput:
             raise ValueError("message_delay_s must be non-negative")
         object.__setattr__(
             self, "secondary_heartbeat_ids", _unique(self.secondary_heartbeat_ids)
+        )
+        object.__setattr__(
+            self,
+            "secondary_readiness_evidence",
+            {
+                str(node_id): SecondaryReadinessEvidence.from_value(value)
+                for node_id, value in self.secondary_readiness_evidence.items()
+            },
         )
         object.__setattr__(
             self, "dropped_ack_member_ids", _unique(self.dropped_ack_member_ids)
@@ -255,7 +302,10 @@ class AirSimEpisodeCommunicationAdapter:
             center_age=center_age,
             heartbeat_received=evidence.center_heartbeat_received,
         )
-        healthy_secondaries = self._healthy_secondaries(now)
+        healthy_secondaries, readiness_assessments = self._ready_secondaries(
+            evidence,
+            now,
+        )
 
         messages.extend(self._deliver_pending_acks(evidence))
         if self._commit_state is not None:
@@ -389,6 +439,10 @@ class AirSimEpisodeCommunicationAdapter:
                 "multi_member_atomic_authorization_required": len(self.config.member_ids) > 1,
                 "validation_scope": "episode_time_fault_injection",
                 "real_rf_network_validated": False,
+                "secondary_readiness_assessments": {
+                    node_id: assessment.to_dict()
+                    for node_id, assessment in readiness_assessments.items()
+                },
                 "previous_owner_id": previous_owner,
                 "previous_layer": previous_layer,
                 "previous_plan_version": previous_plan,
@@ -414,6 +468,11 @@ class AirSimEpisodeCommunicationAdapter:
         unknown = set(evidence.secondary_heartbeat_ids) - set(self.config.secondary_node_ids)
         if unknown:
             raise ValueError(f"unknown secondary heartbeat ids: {sorted(unknown)}")
+        unknown_readiness = set(evidence.secondary_readiness_evidence) - set(
+            self.config.secondary_node_ids
+        )
+        if unknown_readiness:
+            raise ValueError(f"unknown secondary readiness ids: {sorted(unknown_readiness)}")
         for node_id in self.config.secondary_node_ids:
             received = node_id in set(evidence.secondary_heartbeat_ids)
             if received:
@@ -441,14 +500,39 @@ class AirSimEpisodeCommunicationAdapter:
             return C2Health.SUSPECT
         return C2Health.DEGRADED
 
-    def _healthy_secondaries(self, now: float) -> tuple[str, ...]:
-        return tuple(
-            node_id
-            for node_id in self.config.secondary_node_ids
-            if node_id in self._secondary_heartbeats
-            and now - self._secondary_heartbeats[node_id]
-            <= self.config.secondary_stale_after_s
-        )
+    def _ready_secondaries(
+        self,
+        evidence: EpisodeCommunicationTickInput,
+        now: float,
+    ) -> tuple[
+        tuple[str, ...],
+        dict[str, SecondaryReadinessAssessment],
+    ]:
+        ready: list[str] = []
+        assessments: dict[str, SecondaryReadinessAssessment] = {}
+        for node_id in self.config.secondary_node_ids:
+            value = evidence.secondary_readiness_evidence.get(node_id)
+            if value is None:
+                continue
+            assessment = assess_secondary_readiness(
+                value,
+                expected_current_time_s=now,
+            )
+            assessments[node_id] = assessment
+            observed_heartbeat = self._secondary_heartbeats.get(node_id)
+            transport_heartbeat_fresh = bool(
+                observed_heartbeat is not None
+                and 0.0 <= now - observed_heartbeat <= self.config.secondary_stale_after_s
+                and value.heartbeat_timestamp_s is not None
+                and value.heartbeat_timestamp_s <= observed_heartbeat + 1e-9
+            )
+            if (
+                assessment.ready
+                and value.node_id == node_id
+                and transport_heartbeat_fresh
+            ):
+                ready.append(node_id)
+        return tuple(ready), assessments
 
     def _desired_owner(self, healthy_secondaries: tuple[str, ...]) -> tuple[str, str]:
         if self._center_health != C2Health.FAILED:
@@ -493,6 +577,22 @@ class AirSimEpisodeCommunicationAdapter:
         self._ack_deadline_at = now + self.config.ack_deadline_s
         self._last_drop_signature = tuple(sorted(evidence.dropped_ack_member_ids))
         role = "mobile_high_recon" if desired_layer == "secondary" else "cluster_representative"
+        readiness_evidence = evidence.secondary_readiness_evidence.get(desired_owner)
+        lease_expires_at = now + self.config.lease_duration_s
+        metadata: dict[str, Any] = {
+            "arrival_coordination_required": False,
+            "atomic_member_authorization": True,
+        }
+        if desired_layer == "secondary":
+            if readiness_evidence is None:
+                raise RuntimeError("secondary takeover selected without readiness evidence")
+            if readiness_evidence.lease_expires_at_s is None:
+                raise RuntimeError("secondary takeover selected without readiness lease")
+            lease_expires_at = min(
+                lease_expires_at,
+                float(readiness_evidence.lease_expires_at_s),
+            )
+            metadata["secondary_readiness_evidence"] = readiness_evidence.to_dict()
         self._commit_state = self._coordinator.propose(
             global_track_id=self.config.global_track_id,
             coalition_id=self.config.coalition_id,
@@ -503,13 +603,9 @@ class AirSimEpisodeCommunicationAdapter:
             coordinator_id=desired_owner,
             coordinator_role=role,
             required_member_ids=self.config.member_ids,
-            lease_expires_at=now + self.config.lease_duration_s,
+            lease_expires_at=lease_expires_at,
             timestamp=now,
-            metadata={
-                "takeover_ready": desired_layer == "secondary",
-                "arrival_coordination_required": False,
-                "atomic_member_authorization": True,
-            },
+            metadata=metadata,
         )
         for member_id in self.config.member_ids:
             sent_at = now
@@ -725,6 +821,15 @@ def run_episode_communication_replay(
                     timestamp_s=now,
                     center_heartbeat_received=center_ok,
                     secondary_heartbeat_ids=secondary_ids,
+                    secondary_readiness_evidence={
+                        node_id: _replay_secondary_readiness(
+                            node_id,
+                            now_s=now,
+                            lease_expires_at_s=now + cfg.lease_duration_s,
+                            stale_after_s=cfg.secondary_stale_after_s,
+                        )
+                        for node_id in secondary_ids
+                    },
                     message_delay_s=0.1,
                     dropped_ack_member_ids=dropped,
                     partitioned=partitioned,

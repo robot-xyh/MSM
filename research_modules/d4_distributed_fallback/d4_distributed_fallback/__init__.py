@@ -111,6 +111,16 @@ from .models import (
     is_secondary_node_resource,
     secondary_capability_class,
 )
+from .secondary_readiness import (
+    MIN_SECONDARY_COVERAGE_RATIO,
+    MIN_SECONDARY_NETWORK_FULL_VIEW_RATE,
+    MIN_SUSTAINED_READINESS_DURATION_S,
+    MIN_SUSTAINED_READINESS_OBSERVATIONS,
+    SecondaryReadinessAssessment,
+    SecondaryReadinessEvidence,
+    assess_secondary_readiness,
+    readiness_evidence_from_resource,
+)
 
 __all__ = [
     "ActiveDegradationArbiter",
@@ -173,6 +183,8 @@ __all__ = [
     "ResourceSummary",
     "REPLAY_SCENARIOS",
     "SecondaryNodeLifecycleSummary",
+    "SecondaryReadinessAssessment",
+    "SecondaryReadinessEvidence",
     "SecondaryReadinessWindowConfig",
     "SecondaryTakeoverPlanMetadata",
     "SecondaryTakeoverPlanState",
@@ -207,5 +219,11 @@ __all__ = [
     "run_p2_coalition_fault_replay",
     "SECONDARY_NODE_ROLES",
     "secondary_capability_class",
+    "assess_secondary_readiness",
+    "readiness_evidence_from_resource",
     "summarize_secondary_lifecycle",
+    "MIN_SECONDARY_COVERAGE_RATIO",
+    "MIN_SECONDARY_NETWORK_FULL_VIEW_RATE",
+    "MIN_SUSTAINED_READINESS_DURATION_S",
+    "MIN_SUSTAINED_READINESS_OBSERVATIONS",
 ]

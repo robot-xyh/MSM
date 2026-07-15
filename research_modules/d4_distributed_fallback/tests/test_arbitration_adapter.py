@@ -126,14 +126,35 @@ def _secondary(available: bool = True) -> ResourceSummary:
         comm_band=CommBand.GOOD,
         takeover_priority=10,
         lease_epoch=5,
+        lease_expires_at_s=20.0,
         epoch=1,
         node_role=NodeRole.SECONDARY_RECON,
         coordinator_only=True,
         coverage_cell="cell-north",
         heartbeat_timestamp_s=9.9,
         heartbeat_stale_after_s=2.0,
+        cue_freshness_s=0.1,
+        gimbal_pointing_ok=True,
+        secondary_coverage_ratio=0.90,
+        secondary_network_full_view_rate=0.90,
         stable_cross_view_registration_count=2,
     )
+
+
+def _fresh_secondary_communication(
+    *,
+    node_id: str = "SEC-1",
+    received_timestamp: float = 9.9,
+) -> dict[str, object]:
+    return {
+        "source_node_id": node_id,
+        "target_node_id": "INT-01",
+        "link_type": "video_cue",
+        "payload_kind": "video_metadata",
+        "sent_timestamp": received_timestamp - 0.1,
+        "received_timestamp": received_timestamp,
+        "stale_after_s": 1.0,
+    }
 
 
 def _immediate_readiness_adapter() -> D4ArbitrationAdapter:
@@ -153,6 +174,10 @@ def _evaluate_takeover(
     communication_records: list[object] | None = None,
     **overrides: object,
 ):
+    if communication_records is None:
+        communication_records = [
+            _fresh_secondary_communication(received_timestamp=timestamp - 0.1)
+        ]
     kwargs: dict[str, object] = {
         "timestamp": timestamp,
         "track": _track(position_sigma_m=60.0),
@@ -169,7 +194,7 @@ def _evaluate_takeover(
         "consecutive_mismatch_frames": 2,
         "c2_health": C2Health.FAILED,
         "secondary_nodes": [secondary or _secondary()],
-        "communication_records": communication_records or (),
+        "communication_records": communication_records,
     }
     kwargs.update(overrides)
     return adapter.evaluate(**kwargs)
@@ -428,9 +453,11 @@ def test_adapter_consumes_mobile_high_recon_metadata_without_auto_takeover() -> 
         "coverage_cell": "cell-north",
         "heartbeat_timestamp_s": 9.9,
         "heartbeat_stale_after_s": 2.0,
+        "lease_expires_at_s": 20.0,
         "cue_freshness": 0.2,
         "gimbal_pointing_ok": True,
         "secondary_coverage_ratio": 0.86,
+        "secondary_network_full_view_rate": 0.90,
         "cross_view_support_count": 2,
     }
     d5_evidence = {
@@ -451,6 +478,7 @@ def test_adapter_consumes_mobile_high_recon_metadata_without_auto_takeover() -> 
         terminal_association=_terminal(),
         c2_health=C2Health.NORMAL,
         secondary_nodes=[mobile_node],
+        communication_records=[_fresh_secondary_communication(node_id="MHR-1")],
         d5_evidence=d5_evidence,
     )
     metadata = result.record.to_event_metadata()
@@ -497,6 +525,7 @@ def test_secondary_assist_preserves_center_plan_owner_and_version() -> None:
         terminal_association=_terminal(),
         c2_health=C2Health.NORMAL,
         secondary_nodes=[_secondary()],
+        communication_records=[_fresh_secondary_communication()],
     )
     metadata = result.record.to_event_metadata()
 
@@ -817,6 +846,7 @@ def test_adapter_reports_secondary_detect_visible_without_cross_view_registratio
         terminal_association=_terminal(),
         c2_health=C2Health.NORMAL,
         secondary_nodes=[_secondary()],
+        communication_records=[_fresh_secondary_communication()],
         d5_evidence=d5_evidence,
     )
 
@@ -918,6 +948,7 @@ def test_adapter_exposes_secondary_takeover_pending_and_active_plan_metadata() -
         consecutive_mismatch_frames=2,
         c2_health=C2Health.FAILED,
         secondary_nodes=[_secondary()],
+        communication_records=[_fresh_secondary_communication()],
     )
 
     pending = _immediate_readiness_adapter().evaluate(**kwargs)
@@ -938,8 +969,9 @@ def test_adapter_exposes_secondary_takeover_pending_and_active_plan_metadata() -
     assert pending_metadata["secondary_plan_pending_duration_s"] == 0.0
     assert pending_metadata["secondary_supersedes_plan_id"] == "d3-plan-test"
     assert pending_metadata["secondary_supersedes_plan_version"] == 3
-    assert pending_metadata["secondary_plan_lease_epoch"] == 5
-    assert pending_metadata["secondary_plan_lease_valid"] is True
+    assert pending_metadata["secondary_plan_lease_epoch"] is None
+    assert pending_metadata["required_secondary_plan_lease_epoch"] == 5
+    assert pending_metadata["secondary_plan_lease_valid"] is False
     assert pending_metadata["secondary_plan_executable"] is False
     assert pending_metadata["recovery_dual_track_audit"]["center_track_plan_id"] == (
         "d3-plan-test"
@@ -951,6 +983,8 @@ def test_adapter_exposes_secondary_takeover_pending_and_active_plan_metadata() -
         secondary_plan_id="secondary-plan-004",
         secondary_plan_version=4,
         secondary_plan_active=True,
+        secondary_plan_source_node_id="SEC-1",
+        secondary_plan_lease_epoch=5,
         secondary_plan_lease_expires_at_s=12.0,
     )
     active_metadata = active.record.to_event_metadata()
@@ -985,10 +1019,13 @@ def test_adapter_accepts_current_active_secondary_plan_with_same_id_and_version(
         consecutive_mismatch_frames=2,
         c2_health=C2Health.FAILED,
         secondary_nodes=[_secondary()],
+        communication_records=[_fresh_secondary_communication()],
         active_plan_owner="secondary",
         secondary_plan_id="d3-plan-test",
         secondary_plan_version=4,
         secondary_plan_active=True,
+        secondary_plan_source_node_id="SEC-1",
+        secondary_plan_lease_epoch=5,
         secondary_plan_lease_expires_at_s=12.0,
     )
     metadata = result.record.to_event_metadata()
@@ -1005,6 +1042,108 @@ def test_adapter_accepts_current_active_secondary_plan_with_same_id_and_version(
     assert metadata["secondary_takeover_success"] is True
 
 
+@pytest.mark.parametrize(
+    ("lease_expires_at_s", "expected_executable", "expected_reject_reason"),
+    [
+        (None, False, "secondary_plan_lease_expiry_missing"),
+        (10.1, True, None),
+        (10.0, False, "secondary_plan_lease_expired"),
+        (9.9, False, "secondary_plan_lease_expired"),
+    ],
+)
+def test_secondary_plan_publish_requires_strict_unexpired_lease(
+    lease_expires_at_s: float | None,
+    expected_executable: bool,
+    expected_reject_reason: str | None,
+) -> None:
+    result = _evaluate_takeover(
+        _immediate_readiness_adapter(),
+        timestamp=10.0,
+        secondary_plan_id="secondary-plan-004",
+        secondary_plan_version=4,
+        secondary_plan_active=True,
+        secondary_plan_source_node_id="SEC-1",
+        secondary_plan_lease_epoch=5,
+        secondary_plan_lease_expires_at_s=lease_expires_at_s,
+    )
+    metadata = result.record.to_event_metadata()
+
+    assert metadata["secondary_plan_lease_valid"] is expected_executable
+    assert metadata["secondary_plan_executable"] is expected_executable
+    assert metadata["secondary_plan_reject_reason"] == expected_reject_reason
+    assert metadata["secondary_takeover_state"] == (
+        "secondary_plan_active" if expected_executable else "pending_secondary_plan"
+    )
+
+
+@pytest.mark.parametrize(
+    ("missing_evidence", "expected_reason"),
+    [
+        ("heartbeat_timestamp", "heartbeat_timestamp_missing"),
+        ("cue_freshness", "cue_freshness_missing"),
+        ("gimbal_pointing", "gimbal_pointing_unknown"),
+        ("communication_summary", "communication_summary_missing"),
+        ("network_full_view_rate", "network_full_view_rate_missing"),
+    ],
+)
+def test_adapter_does_not_publish_takeover_when_capability_evidence_is_missing(
+    missing_evidence: str,
+    expected_reason: str,
+) -> None:
+    secondary = _secondary()
+    communication_records: list[object] = [_fresh_secondary_communication()]
+    if missing_evidence == "heartbeat_timestamp":
+        secondary = replace(secondary, heartbeat_timestamp_s=None)
+    elif missing_evidence == "cue_freshness":
+        secondary = replace(secondary, cue_freshness_s=None)
+    elif missing_evidence == "gimbal_pointing":
+        secondary = replace(secondary, gimbal_pointing_ok=None)
+    elif missing_evidence == "communication_summary":
+        communication_records = []
+    elif missing_evidence == "network_full_view_rate":
+        secondary = replace(secondary, secondary_network_full_view_rate=None)
+
+    result = _evaluate_takeover(
+        _immediate_readiness_adapter(),
+        timestamp=10.0,
+        secondary=secondary,
+        communication_records=communication_records,
+        secondary_plan_id="secondary-plan-004",
+        secondary_plan_version=4,
+        secondary_plan_active=True,
+        secondary_plan_source_node_id="SEC-1",
+        secondary_plan_lease_epoch=5,
+        secondary_plan_lease_expires_at_s=12.0,
+    )
+    metadata = result.record.to_event_metadata()
+
+    assert result.decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED
+    assert metadata["secondary_takeover_ready_sustained"] is False
+    assert metadata["secondary_takeover_state"] == "not_applicable"
+    assert metadata["secondary_plan_executable"] is False
+    assert metadata["secondary_takeover_readiness_fallback_reason"] == expected_reason
+
+
+def test_adapter_publishes_takeover_with_complete_fresh_capability_evidence() -> None:
+    result = _evaluate_takeover(
+        _immediate_readiness_adapter(),
+        timestamp=10.0,
+        secondary_plan_id="secondary-plan-004",
+        secondary_plan_version=4,
+        secondary_plan_active=True,
+        secondary_plan_source_node_id="SEC-1",
+        secondary_plan_lease_epoch=5,
+        secondary_plan_lease_expires_at_s=12.0,
+    )
+    metadata = result.record.to_event_metadata()
+
+    assert result.decision.action == DegradationAction.DEGRADE_TO_SECONDARY
+    assert metadata["secondary_capability_class"] == "takeover_ready"
+    assert metadata["secondary_takeover_ready_sustained"] is True
+    assert metadata["secondary_takeover_state"] == "secondary_plan_active"
+    assert metadata["secondary_plan_executable"] is True
+
+
 def test_adapter_rejects_expired_secondary_plan_as_not_executable() -> None:
     result = _immediate_readiness_adapter().evaluate(
         timestamp=10.0,
@@ -1019,9 +1158,12 @@ def test_adapter_rejects_expired_secondary_plan_as_not_executable() -> None:
         consecutive_mismatch_frames=2,
         c2_health=C2Health.FAILED,
         secondary_nodes=[_secondary()],
+        communication_records=[_fresh_secondary_communication()],
         secondary_plan_id="secondary-plan-expired",
         secondary_plan_version=4,
         secondary_plan_active=True,
+        secondary_plan_source_node_id="SEC-1",
+        secondary_plan_lease_epoch=5,
         secondary_plan_lease_expires_at_s=9.9,
     )
     metadata = result.record.to_event_metadata()
@@ -1046,10 +1188,13 @@ def test_active_secondary_with_expired_lease_holds_fail_closed() -> None:
         terminal_association=_terminal(),
         c2_health=C2Health.FAILED,
         secondary_nodes=[_secondary()],
+        communication_records=[_fresh_secondary_communication()],
         active_plan_owner="secondary",
         secondary_plan_id="d3-plan-test",
         secondary_plan_version=4,
         secondary_plan_active=True,
+        secondary_plan_source_node_id="SEC-1",
+        secondary_plan_lease_epoch=5,
         secondary_plan_lease_expires_at_s=9.9,
     )
     metadata = result.record.to_event_metadata()
@@ -1062,6 +1207,44 @@ def test_active_secondary_with_expired_lease_holds_fail_closed() -> None:
     assert metadata["terminal_binding_reject_reasons"] == [
         "secondary_plan_lease_expired"
     ]
+
+
+@pytest.mark.parametrize(
+    ("lease_expires_at_s", "expected_reject_reason"),
+    [
+        (None, "secondary_plan_lease_expiry_missing"),
+        (10.0, "secondary_plan_lease_expired"),
+    ],
+)
+def test_active_secondary_owner_cannot_maintain_invalid_lease(
+    lease_expires_at_s: float | None,
+    expected_reject_reason: str,
+) -> None:
+    result = _immediate_readiness_adapter().evaluate(
+        timestamp=10.0,
+        track=_track(),
+        association_metrics=_metrics(),
+        plan=_plan(version=4, created_at=9.5),
+        assignment=_assignment(),
+        terminal_association=_terminal(),
+        c2_health=C2Health.FAILED,
+        secondary_nodes=[_secondary()],
+        communication_records=[_fresh_secondary_communication()],
+        active_plan_owner="secondary",
+        secondary_plan_id="d3-plan-test",
+        secondary_plan_version=4,
+        secondary_plan_active=True,
+        secondary_plan_source_node_id="SEC-1",
+        secondary_plan_lease_epoch=5,
+        secondary_plan_lease_expires_at_s=lease_expires_at_s,
+    )
+    metadata = result.record.to_event_metadata()
+
+    assert result.decision.action == DegradationAction.HOLD_FOR_REVIEW
+    assert result.record.active_plan_owner == "hold_review"
+    assert metadata["secondary_plan_executable"] is False
+    assert metadata["secondary_plan_reject_reason"] == expected_reject_reason
+    assert expected_reject_reason in metadata["terminal_binding_reject_reasons"]
 
 
 def test_adapter_rejects_non_monotonic_secondary_plan_version() -> None:
@@ -1078,9 +1261,12 @@ def test_adapter_rejects_non_monotonic_secondary_plan_version() -> None:
         consecutive_mismatch_frames=2,
         c2_health=C2Health.FAILED,
         secondary_nodes=[_secondary()],
+        communication_records=[_fresh_secondary_communication()],
         secondary_plan_id="secondary-plan-stale",
         secondary_plan_version=3,
         secondary_plan_active=True,
+        secondary_plan_source_node_id="SEC-1",
+        secondary_plan_lease_epoch=5,
         secondary_plan_lease_expires_at_s=12.0,
     )
     metadata = result.record.to_event_metadata()
@@ -1211,12 +1397,12 @@ def test_sustained_readiness_enters_pending_then_active_with_transition_timing()
     [
         (
             replace(_secondary(), heartbeat_timestamp_s=7.0),
-            (),
+            (_fresh_secondary_communication(),),
             "heartbeat_stale",
         ),
         (
             replace(_secondary(), cue_freshness_s=3.0),
-            (),
+            (_fresh_secondary_communication(),),
             "cue_stale",
         ),
         (

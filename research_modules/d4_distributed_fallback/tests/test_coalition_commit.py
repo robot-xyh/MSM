@@ -12,6 +12,7 @@ from d4_distributed_fallback import (
     CoalitionSafetyAction,
     D4ArbitrationAdapter,
     DegradationAction,
+    SecondaryReadinessEvidence,
     build_coalition_commit_d6_metadata,
     build_coalition_safety_evidence,
 )
@@ -91,7 +92,31 @@ def _propose(
     lease_expires_at: float = 20.0,
     required_member_ids: tuple[str, ...] = MEMBERS,
 ):
-    metadata = {"takeover_ready": True} if role == "mobile_high_recon" else {}
+    metadata = {}
+    if role == "mobile_high_recon":
+        readiness = SecondaryReadinessEvidence(
+            node_id="RECON-1",
+            current_time_s=10.0,
+            readiness_timestamp_s=10.0,
+            readiness_stale_after_s=1.0,
+            availability_confirmed=True,
+            lease_epoch=epoch,
+            lease_expires_at_s=lease_expires_at,
+            heartbeat_timestamp_s=10.0,
+            heartbeat_stale_after_s=1.0,
+            cue_freshness_s=0.1,
+            cue_stale_after_s=1.0,
+            gimbal_pointing_ok=True,
+            communication_received_timestamp_s=10.0,
+            communication_stale_after_s=1.0,
+            coverage_matches_requested_cell=True,
+            coverage_ratio=0.9,
+            network_full_view_rate=0.9,
+            takeover_ready_sustained=True,
+            takeover_ready_since_s=9.7,
+            takeover_ready_observation_count=3,
+        )
+        metadata = {"secondary_readiness_evidence": readiness.to_dict()}
     return coordinator.propose(
         global_track_id=TRACK_ID,
         coalition_id=COALITION_ID,
@@ -183,6 +208,28 @@ def test_takeover_ready_secondary_commit_is_valid_atomic_fallback() -> None:
     assert evidence.metadata["coalition_fallback_mode"] == "secondary"
 
 
+def test_legacy_takeover_ready_boolean_cannot_authorize_secondary_proposal() -> None:
+    coordinator = CoalitionCommitCoordinator()
+
+    state = coordinator.propose(
+        global_track_id=TRACK_ID,
+        coalition_id=COALITION_ID,
+        coalition_version=2,
+        plan_id=PLAN_ID,
+        plan_version=4,
+        epoch=7,
+        coordinator_id="RECON-1",
+        coordinator_role="mobile_high_recon",
+        required_member_ids=MEMBERS,
+        lease_expires_at=20.0,
+        timestamp=10.0,
+        metadata={"takeover_ready": True},
+    )
+
+    assert state.state == "aborted"
+    assert state.reason == "secondary_readiness_evidence_missing"
+
+
 def test_distributed_three_member_commit_allows_existing_adapter_path() -> None:
     coordinator = CoalitionCommitCoordinator()
     state = _commit(coordinator)
@@ -204,6 +251,10 @@ def test_distributed_three_member_commit_allows_existing_adapter_path() -> None:
     assert state.state == "executing"
     assert result.coalition_safety.atomic_coalition_formed is True
     metadata = build_coalition_commit_d6_metadata(state)
+    assert metadata["atomic_coalition_formed"] is False
+    assert metadata["coalition_lease_valid"] is False
+    assert metadata["coalition_lease_current_time_present"] is False
+    metadata = build_coalition_commit_d6_metadata(state, current_time_s=11.0)
     assert metadata["atomic_coalition_formed"] is True
     assert metadata["coalition_acked_member_ids"] == list(MEMBERS)
 

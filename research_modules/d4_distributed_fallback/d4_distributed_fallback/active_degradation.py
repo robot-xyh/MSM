@@ -941,7 +941,7 @@ class ActiveDegradationArbiter:
         current_time_s: float | None,
     ) -> bool:
         if current_time_s is None or resource.heartbeat_timestamp_s is None:
-            return True
+            return False
         return float(current_time_s) - float(resource.heartbeat_timestamp_s) <= float(
             resource.heartbeat_stale_after_s
         )
@@ -951,19 +951,36 @@ class ActiveDegradationArbiter:
         resource: ResourceSummary,
         current_time_s: float | None,
     ) -> bool:
-        if current_time_s is None or resource.lease_expires_at_s is None:
-            return True
-        return float(current_time_s) <= float(resource.lease_expires_at_s)
+        return (
+            ActiveDegradationArbiter._secondary_lease_reject_reason(
+                resource,
+                current_time_s,
+            )
+            is None
+        )
+
+    @staticmethod
+    def _secondary_lease_reject_reason(
+        resource: ResourceSummary,
+        current_time_s: float | None,
+    ) -> str | None:
+        if resource.lease_expires_at_s is None:
+            return "lease_expiry_missing"
+        if current_time_s is None:
+            return "lease_current_time_missing"
+        if float(current_time_s) >= float(resource.lease_expires_at_s):
+            return "lease_expired"
+        return None
 
     @staticmethod
     def _secondary_cue_is_usable(resource: ResourceSummary) -> bool:
         if resource.cue_freshness_s is None:
-            return True
+            return False
         return 0.0 <= float(resource.cue_freshness_s) <= float(resource.heartbeat_stale_after_s)
 
     @staticmethod
     def _secondary_gimbal_is_usable(resource: ResourceSummary) -> bool:
-        return resource.gimbal_pointing_ok is not False
+        return resource.gimbal_pointing_ok is True
 
     @staticmethod
     def _secondary_capability_rank(resource: ResourceSummary) -> int:
@@ -986,8 +1003,8 @@ class ActiveDegradationArbiter:
         communication_summaries: list[CommunicationSummary] | None,
         current_time_s: float | None,
     ) -> bool:
-        if communication_summaries is None:
-            return True
+        if not communication_summaries or current_time_s is None:
+            return False
         usable_link_types = {
             LinkType.C2_DIRECT,
             LinkType.SECONDARY_RELAY,
@@ -1052,6 +1069,10 @@ class ActiveDegradationArbiter:
             resource,
             current_time_s,
         )
+        lease_reject_reason = ActiveDegradationArbiter._secondary_lease_reject_reason(
+            resource,
+            current_time_s,
+        )
         cue_ok = ActiveDegradationArbiter._secondary_cue_is_usable(resource)
         gimbal_ok = ActiveDegradationArbiter._secondary_gimbal_is_usable(resource)
         link_ok = ActiveDegradationArbiter._secondary_link_is_usable(
@@ -1074,15 +1095,27 @@ class ActiveDegradationArbiter:
             reasons.append("secondary_unavailable")
         if coverage_ratio <= 0.0:
             reasons.append("coverage_unavailable")
-        if not heartbeat_ok:
+        if current_time_s is None:
+            reasons.append("heartbeat_current_time_missing")
+        elif resource.heartbeat_timestamp_s is None:
+            reasons.append("heartbeat_timestamp_missing")
+        elif not heartbeat_ok:
             reasons.append("heartbeat_stale")
-        if not lease_ok:
-            reasons.append("lease_expired")
-        if not cue_ok:
+        if lease_reject_reason is not None:
+            reasons.append(lease_reject_reason)
+        if resource.cue_freshness_s is None:
+            reasons.append("cue_freshness_missing")
+        elif not cue_ok:
             reasons.append("cue_stale")
-        if not gimbal_ok:
+        if resource.gimbal_pointing_ok is None:
+            reasons.append("gimbal_pointing_unknown")
+        elif not gimbal_ok:
             reasons.append("gimbal_not_pointing")
-        if not link_ok:
+        if not communication_summaries:
+            reasons.append("communication_summary_missing")
+        elif current_time_s is None:
+            reasons.append("communication_current_time_missing")
+        elif not link_ok:
             reasons.append("link_stale")
 
         if terminal_association is not None:
@@ -1132,7 +1165,7 @@ class ActiveDegradationArbiter:
         network_score = (
             _clamp01(network_full_view_rate)
             if network_full_view_rate is not None
-            else coverage_score
+            else 0.0
         )
         heartbeat_score = 1.0 if heartbeat_ok else 0.0
         link_score = 1.0 if link_ok else 0.0
@@ -1160,10 +1193,9 @@ class ActiveDegradationArbiter:
         takeover_capable = readiness_class == TAKEOVER_READY_SECONDARY_CAPABILITY_CLASS
         if visible:
             reasons.append("secondary_visible")
-        if (
-            network_full_view_rate is not None
-            and network_full_view_rate < _MIN_TAKEOVER_NETWORK_FULL_VIEW_RATE
-        ):
+        if network_full_view_rate is None:
+            reasons.append("network_full_view_rate_missing")
+        elif network_full_view_rate < _MIN_TAKEOVER_NETWORK_FULL_VIEW_RATE:
             reasons.append("network_full_view_rate_low")
         if takeover_capable:
             reasons.append("takeover_capable")
@@ -1176,12 +1208,19 @@ class ActiveDegradationArbiter:
             "stable_registration_evidence_present": stable_registration_count is not None,
             "not_registered_evidence_present": not_registered_count is not None,
             "gimbal_ok": gimbal_ok,
+            "gimbal_evidence_present": resource.gimbal_pointing_ok is not None,
             "cue_freshness_s": resource.cue_freshness_s,
             "cue_fresh": cue_ok,
+            "cue_freshness_evidence_present": resource.cue_freshness_s is not None,
             "link_fresh": link_ok,
+            "communication_summary_present": bool(communication_summaries),
             "heartbeat_fresh": heartbeat_ok,
             "heartbeat_timestamp_s": resource.heartbeat_timestamp_s,
+            "heartbeat_timestamp_present": resource.heartbeat_timestamp_s is not None,
+            "current_time_s": current_time_s,
+            "current_time_present": current_time_s is not None,
             "heartbeat_stale_after_s": resource.heartbeat_stale_after_s,
+            "network_full_view_rate_present": network_full_view_rate is not None,
             "registration_known": registration_known,
             "registered": registered,
         }
@@ -1215,8 +1254,8 @@ class ActiveDegradationArbiter:
         if not registered:
             return VISIBLE_ONLY_SECONDARY_CAPABILITY_CLASS
         network_ready = (
-            network_full_view_rate is None
-            or network_full_view_rate >= _MIN_TAKEOVER_NETWORK_FULL_VIEW_RATE
+            network_full_view_rate is not None
+            and network_full_view_rate >= _MIN_TAKEOVER_NETWORK_FULL_VIEW_RATE
         )
         if (
             coverage_ratio < _MIN_TAKEOVER_COVERAGE_RATIO
@@ -1334,6 +1373,11 @@ def build_d7_secondary_handoff(
     new_plan_id: str | None = None,
     new_plan_version: int | None = None,
     secondary_plan_active: bool = False,
+    current_plan_owner: str = "center",
+    expected_secondary_source_node_id: str | None = None,
+    secondary_plan_source_node_id: str | None = None,
+    secondary_plan_lease_epoch: int | None = None,
+    required_secondary_plan_lease_epoch: int | None = None,
     secondary_capability_class: str | None = None,
     secondary_readiness_sustained: bool | None = None,
     secondary_plan_lease_expires_at_s: float | None = None,
@@ -1349,7 +1393,13 @@ def build_d7_secondary_handoff(
     the handoff carries the new plan id/version to D7.
     """
 
-    if decision.action != DegradationAction.DEGRADE_TO_SECONDARY:
+    maintaining_secondary_plan = (
+        secondary_plan_active and _is_secondary_plan_owner(current_plan_owner)
+    )
+    if (
+        decision.action != DegradationAction.DEGRADE_TO_SECONDARY
+        and not maintaining_secondary_plan
+    ) or decision.action == DegradationAction.DEGRADE_TO_DISTRIBUTED:
         return D7SecondaryHandoff(
             phase=2,
             d4_action=decision.action,
@@ -1368,21 +1418,21 @@ def build_d7_secondary_handoff(
     strictness = _secondary_plan_strictness(
         current_plan_id=current_plan_id,
         current_plan_version=current_plan_version,
-        current_plan_owner="center",
+        current_plan_owner=current_plan_owner,
         secondary_plan_id=new_plan_id,
         secondary_plan_version=new_plan_version,
         secondary_plan_active=secondary_plan_active,
-        expected_secondary_source_node_id=None,
-        secondary_plan_source_node_id=None,
-        secondary_plan_lease_epoch=None,
-        required_secondary_plan_lease_epoch=None,
+        expected_secondary_source_node_id=expected_secondary_source_node_id,
+        secondary_plan_source_node_id=secondary_plan_source_node_id,
+        secondary_plan_lease_epoch=secondary_plan_lease_epoch,
+        required_secondary_plan_lease_epoch=required_secondary_plan_lease_epoch,
         secondary_plan_lease_expires_at_s=secondary_plan_lease_expires_at_s,
         secondary_readiness_sustained=secondary_readiness_sustained,
         current_time_s=current_time_s,
     )
     capability_ready = (
         str(secondary_capability_class) == TAKEOVER_READY_SECONDARY_CAPABILITY_CLASS
-        and secondary_readiness_sustained is not False
+        and secondary_readiness_sustained is True
     )
     plan_core_ready = (
         secondary_plan_active
@@ -1395,7 +1445,9 @@ def build_d7_secondary_handoff(
         reject_reason = strictness["reject_reason"]
         if reject_reason is None and plan_core_ready and not capability_ready:
             reject_reason = (
-                "secondary_readiness_not_sustained"
+                "secondary_readiness_sustained_missing"
+                if secondary_readiness_sustained is None
+                else "secondary_readiness_not_sustained"
                 if secondary_readiness_sustained is False
                 else "secondary_capability_not_takeover_ready"
             )
@@ -1414,9 +1466,13 @@ def build_d7_secondary_handoff(
     return D7SecondaryHandoff(
         phase=2,
         d4_action=decision.action,
-        d7_action=DegradationAction.CONTINUE_CENTER
-        if terminal_consistent_after_plan
-        else DegradationAction.REQUEST_SECONDARY_ASSIST,
+        d7_action=(
+            DegradationAction.CONTINUE_CENTER
+            if terminal_consistent_after_plan
+            else DegradationAction.REQUEST_SECONDARY_ASSIST
+        )
+        if decision.action == DegradationAction.DEGRADE_TO_SECONDARY
+        else decision.action,
         target_node_id=decision.target_node_id,
         reassignment_complete=True,
         visual_png_allowed=True,
@@ -1446,19 +1502,32 @@ def build_secondary_takeover_plan_metadata(
 ) -> SecondaryTakeoverPlanMetadata:
     """Build the D4 metadata contract for secondary takeover plan state."""
 
-    source_node_id = secondary_plan_source_node_id or decision.target_node_id
+    secondary_contract_applicable = (
+        decision.action == DegradationAction.DEGRADE_TO_SECONDARY
+        or (
+            secondary_plan_active
+            and _is_secondary_plan_owner(current_plan_owner)
+            and decision.action != DegradationAction.DEGRADE_TO_DISTRIBUTED
+        )
+    )
+    source_node_id = secondary_plan_source_node_id
+    reported_source_node_id = source_node_id
+    if not secondary_plan_active and reported_source_node_id is None:
+        reported_source_node_id = decision.target_node_id
     readiness_gate = (
         secondary_readiness_sustained
-        if decision.action == DegradationAction.DEGRADE_TO_SECONDARY or secondary_plan_active
+        if secondary_contract_applicable
         else None
     )
     strictness = _secondary_plan_strictness(
         current_plan_id=current_plan_id,
         current_plan_version=current_plan_version,
-        current_plan_owner=current_plan_owner,
+        current_plan_owner=(
+            current_plan_owner if secondary_contract_applicable else "non_secondary"
+        ),
         secondary_plan_id=secondary_plan_id,
         secondary_plan_version=secondary_plan_version,
-        secondary_plan_active=secondary_plan_active,
+        secondary_plan_active=secondary_plan_active and secondary_contract_applicable,
         expected_secondary_source_node_id=decision.target_node_id,
         secondary_plan_source_node_id=source_node_id,
         secondary_plan_lease_epoch=secondary_plan_lease_epoch,
@@ -1481,13 +1550,13 @@ def build_secondary_takeover_plan_metadata(
         secondary_readiness_sustained=secondary_readiness_sustained,
         secondary_plan_executable=bool(strictness["executable"]),
     )
-    if decision.action != DegradationAction.DEGRADE_TO_SECONDARY:
+    if not secondary_contract_applicable:
         return SecondaryTakeoverPlanMetadata(
             state=SecondaryTakeoverPlanState.NOT_APPLICABLE,
             active_plan_owner=_active_owner_for_non_secondary(decision, current_plan_owner),
             current_plan_id=current_plan_id,
             current_plan_version=current_plan_version,
-            secondary_plan_source_node_id=source_node_id,
+            secondary_plan_source_node_id=reported_source_node_id,
             secondary_plan_id=secondary_plan_id,
             secondary_plan_version=secondary_plan_version,
             secondary_plan_lease_epoch=secondary_plan_lease_epoch,
@@ -1513,9 +1582,13 @@ def build_secondary_takeover_plan_metadata(
         reject_reason = strictness["reject_reason"] or "secondary_reassignment_pending"
         return SecondaryTakeoverPlanMetadata(
             state=SecondaryTakeoverPlanState.PENDING_SECONDARY_PLAN,
-            active_plan_owner=current_plan_owner,
+            active_plan_owner=(
+                "hold_review"
+                if decision.action == DegradationAction.HOLD_FOR_REVIEW
+                else current_plan_owner
+            ),
             pending_plan_owner="secondary_node",
-            secondary_plan_source_node_id=source_node_id,
+            secondary_plan_source_node_id=reported_source_node_id,
             current_plan_id=current_plan_id,
             current_plan_version=current_plan_version,
             secondary_plan_id=secondary_plan_id,
@@ -1539,7 +1612,7 @@ def build_secondary_takeover_plan_metadata(
     return SecondaryTakeoverPlanMetadata(
         state=SecondaryTakeoverPlanState.SECONDARY_PLAN_ACTIVE,
         active_plan_owner="secondary_node",
-        secondary_plan_source_node_id=source_node_id,
+        secondary_plan_source_node_id=reported_source_node_id,
         current_plan_id=current_plan_id,
         current_plan_version=current_plan_version,
         secondary_plan_id=secondary_plan_id,
@@ -1587,24 +1660,34 @@ def _secondary_plan_strictness(
     secondary_readiness_sustained: bool | None,
     current_time_s: float | None,
 ) -> dict[str, object]:
-    lease_valid = True
-    if (
-        secondary_plan_lease_expires_at_s is not None
-        and current_time_s is not None
-        and float(current_time_s) > float(secondary_plan_lease_expires_at_s)
-    ):
-        lease_valid = False
+    strict_evidence_required = secondary_plan_active or _is_secondary_plan_owner(
+        current_plan_owner
+    )
+    lease_reject_reason: str | None = None
+    if secondary_plan_lease_expires_at_s is None:
+        lease_reject_reason = "secondary_plan_lease_expiry_missing"
+    elif current_time_s is None:
+        lease_reject_reason = "secondary_plan_current_time_missing"
+    elif float(current_time_s) >= float(secondary_plan_lease_expires_at_s):
+        lease_reject_reason = "secondary_plan_lease_expired"
+    lease_valid = lease_reject_reason is None
 
+    expected_source_present = bool(
+        str(expected_secondary_source_node_id or "").strip()
+    )
+    source_present = bool(str(secondary_plan_source_node_id or "").strip())
     source_matches_target: bool | None = None
-    if expected_secondary_source_node_id is not None:
+    if expected_source_present:
         source_matches_target = (
-            secondary_plan_source_node_id is not None
+            source_present
             and str(secondary_plan_source_node_id) == str(expected_secondary_source_node_id)
         )
+    plan_lease_epoch_present = secondary_plan_lease_epoch is not None
+    required_lease_epoch_present = required_secondary_plan_lease_epoch is not None
     lease_epoch_valid: bool | None = None
-    if required_secondary_plan_lease_epoch is not None:
+    if required_lease_epoch_present:
         lease_epoch_valid = (
-            secondary_plan_lease_epoch is not None
+            plan_lease_epoch_present
             and int(secondary_plan_lease_epoch) >= int(required_secondary_plan_lease_epoch)
         )
 
@@ -1625,25 +1708,40 @@ def _secondary_plan_strictness(
         epoch_monotonic = True
 
     reject_reason = None
-    if secondary_readiness_sustained is False:
-        reject_reason = "secondary_readiness_not_sustained"
-    elif source_matches_target is False:
-        reject_reason = "secondary_plan_source_mismatch"
-    elif lease_epoch_valid is False:
-        reject_reason = "secondary_plan_lease_epoch_stale"
-    elif not lease_valid:
-        reject_reason = "secondary_plan_lease_expired"
-    elif secondary_plan_active and not bool(epoch_monotonic):
-        reject_reason = "secondary_plan_epoch_not_monotonic"
+    if strict_evidence_required:
+        if secondary_readiness_sustained is None:
+            reject_reason = "secondary_readiness_sustained_missing"
+        elif secondary_readiness_sustained is not True:
+            reject_reason = "secondary_readiness_not_sustained"
+        elif not expected_source_present:
+            reject_reason = "secondary_plan_expected_source_missing"
+        elif not source_present:
+            reject_reason = "secondary_plan_source_missing"
+        elif source_matches_target is not True:
+            reject_reason = "secondary_plan_source_mismatch"
+        elif not plan_lease_epoch_present:
+            reject_reason = "secondary_plan_lease_epoch_missing"
+        elif not required_lease_epoch_present:
+            reject_reason = "required_secondary_plan_lease_epoch_missing"
+        elif lease_epoch_valid is not True:
+            reject_reason = "secondary_plan_lease_epoch_stale"
+        elif lease_reject_reason is not None:
+            reject_reason = lease_reject_reason
+        elif epoch_monotonic is not True:
+            reject_reason = "secondary_plan_epoch_not_monotonic"
 
     executable = (
         secondary_plan_active
         and secondary_plan_version is not None
         and lease_valid
-        and source_matches_target is not False
-        and lease_epoch_valid is not False
-        and secondary_readiness_sustained is not False
-        and epoch_monotonic is not False
+        and expected_source_present
+        and source_present
+        and source_matches_target is True
+        and plan_lease_epoch_present
+        and required_lease_epoch_present
+        and lease_epoch_valid is True
+        and secondary_readiness_sustained is True
+        and epoch_monotonic is True
     )
     return {
         "lease_valid": lease_valid,
@@ -1653,6 +1751,10 @@ def _secondary_plan_strictness(
         "executable": executable,
         "reject_reason": reject_reason,
     }
+
+
+def _is_secondary_plan_owner(owner: str | None) -> bool:
+    return str(owner or "").strip().lower() in {"secondary", "secondary_node"}
 
 
 def _is_same_active_secondary_plan(
@@ -1727,37 +1829,28 @@ def summarize_secondary_lifecycle(
             communication_summaries,
             current_time_s,
         )
-        cue_freshness = (
-            resource.cue_freshness_s
-            if resource.cue_freshness_s is not None
-            else video_freshness
+        cue_freshness = resource.cue_freshness_s
+        link_usable = ActiveDegradationArbiter._secondary_link_is_usable(
+            resource,
+            communication_summaries,
+            current_time_s,
         )
-        link_stale = None
-        if communication_summaries is not None:
-            link_stale = not ActiveDegradationArbiter._secondary_link_is_usable(
-                resource,
-                communication_summaries,
-                current_time_s,
-            )
+        link_stale = not link_usable
         coverage_matches_requested_cell = ActiveDegradationArbiter._secondary_covers_cell(
             resource,
             coverage_cell,
         )
-        heartbeat_stale = None
-        if current_time_s is not None and resource.heartbeat_timestamp_s is not None:
-            heartbeat_stale = not ActiveDegradationArbiter._secondary_heartbeat_is_usable(
-                resource,
-                current_time_s,
-            )
+        heartbeat_stale = not ActiveDegradationArbiter._secondary_heartbeat_is_usable(
+            resource,
+            current_time_s,
+        )
         lease_expired = None
         if current_time_s is not None and resource.lease_expires_at_s is not None:
             lease_expired = not ActiveDegradationArbiter._secondary_lease_is_usable(
                 resource,
                 current_time_s,
             )
-        cue_stale = None
-        if resource.cue_freshness_s is not None:
-            cue_stale = not ActiveDegradationArbiter._secondary_cue_is_usable(resource)
+        cue_stale = not ActiveDegradationArbiter._secondary_cue_is_usable(resource)
         secondary_available = (
             not resource.operator_hold
             and resource.availability_band != AvailabilityBand.NONE
@@ -1766,7 +1859,7 @@ def summarize_secondary_lifecycle(
             and ActiveDegradationArbiter._secondary_lease_is_usable(resource, current_time_s)
             and ActiveDegradationArbiter._secondary_cue_is_usable(resource)
             and ActiveDegradationArbiter._secondary_gimbal_is_usable(resource)
-            and not bool(link_stale)
+            and link_usable
         )
         capability = ActiveDegradationArbiter._secondary_capability_metadata(
             resource,
@@ -1791,7 +1884,7 @@ def summarize_secondary_lifecycle(
                 coverage_matches_requested_cell=coverage_matches_requested_cell,
                 heartbeat_stale=heartbeat_stale,
                 cue_stale=cue_stale,
-                link_fresh=None if link_stale is None else not link_stale,
+                link_fresh=link_usable,
                 heartbeat=resource.heartbeat_timestamp_s,
                 video_cue_freshness=video_freshness,
                 capability_class=resource.capability_class,

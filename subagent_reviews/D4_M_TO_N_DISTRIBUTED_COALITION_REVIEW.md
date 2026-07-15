@@ -4,6 +4,8 @@
 **范围**：中心 C2、二级侦察节点和完全无中心三种运行层级下，面向 `k_j > 1` 协同任务的联盟形成、通信、一致性、成员退出和中心恢复。
 **模块边界**：D4 研究“谁组成联盟、谁协调、何时重构以及如何保持版本一致”；D3 拥有中心化资源分配，D7 拥有到达时序和导引，D5/D2 提供身份与关联证据。本文不运行 AirSim；2026-07-11 已在调研结论上补充第一阶段 fail-closed 安全实现。
 
+**2026-07-15 合同同步**：secondary coordinator proposal 与两个公开 secondary plan helper 均已 fail-closed；helper active/maintained 路径要求 readiness exact-true、expected/actual source、plan/required lease epoch 和严格未过期时间证据。此前 278/278 不含 helper 的逐字段 `None`，不能证明全部公开入口；当前 280/280 已补齐。distributed peer commit 继续只受 member/双版本/epoch/lease/digest/partition 合同约束，不套用二级视觉门。未运行新 AirSim；真实网络和自主成员形成仍为 P1。
+
 ## 1. 问题定义与关键结论
 
 设资源集合为 `R={r_i}`，目标集合为 `T={t_j}`，目标 `t_j` 的最低协同需求为 `k_j`，联盟为 `C_j subseteq R`。一个可执行联盟至少满足：
@@ -146,9 +148,15 @@ CBBA-PR 的“部分释放 bundle 后缀”可作为动态补位的研究参考�
 
 D4 所属 P1 合同层已闭合。ComputerVision 总体验收为 8/10；二级协调者 `Secondary_Recon_1` 以 ACK 3/3 进入 `executing`，完全分布式 `INT-02` peer 以 ACK 3/3 进入 `executing`，缺 ACK 场景以 2/3 ACK 进入 `aborted` 并令 T001 三成员 `hold_for_review`。这些结果关闭了 secondary/distributed commit 正例与缺 ACK fail-closed，不关闭自主成员形成、联盟重构或物理拦截。
 
-SimpleFlight 15 s 仅用于诊断，30 个 active pair 物理命中为 0。2026-07-12 新增 P1 版本化确定性 replay，模块层已覆盖旧 epoch、过期 lease、成员不可执行/补位、网络分区/恢复、digest conflict 和中心恢复双轨审计，九场景 9/9 通过；真实 AirSim 的 secondary-interceptor/peer split、误降级、恢复时间和物理连续性矩阵仍开放。P2 只允许隔离 benchmark，不替换当前 commit 合同或轻量 CBBA 默认路径。
+SimpleFlight 15 s 仅用于诊断，30 个 active pair 物理命中为 0。2026-07-12 P1 版本化 replay 覆盖旧 epoch、过期 lease、成员不可执行和手工给定替换成员后的重新提交、网络分区/恢复、digest conflict 和中心恢复双轨审计，九场景 9/9 通过；它不实现自主补位。真实 AirSim 的 secondary-interceptor/peer split、误降级、恢复时间和物理连续性矩阵仍开放。
 
-P2 隔离合同 replay 已实现并保持上述边界：本地 commit + CBBA 风格候选选择覆盖中心/二级/peer 转换及 missing ACK、stale epoch、expired lease、partition、member loss/replacement，逐场景输出 round/completion/conflict/gap-or-unavailable。MIT CBBA/CA-CBBA 仅返回 capability/unavailable；没有外部性能结果，不能据此比较算法优劣。
+P2 隔离合同 replay 已实现并保持上述边界：member loss/replacement 场景由 replay 手工给定替换成员，再验证版本和 ACK，不代表在线成员选择或自动补位；其余场景逐项输出 round/completion/conflict/gap-or-unavailable。MIT CBBA/CA-CBBA 仅返回 capability/unavailable；没有外部性能结果。
+
+### 2026-07-15 M5N2 中心负对照
+
+最新真实 AirSim M5N2 完成 baseline/candidate 各 10 seeds，共 20/20 case。该批 `active degradation=0`，没有执行二级接管或完全分布式联盟，因此 coalition `0/20` 和第二 primary 5 m `0/20` 只能说明中心计划下的物理协同闭环未完成，不能作为 fallback 算法性能结论。20 个第二 primary 均为 `collision_stop`，但未记录碰撞对象；D4 不根据该单一终态自动降级，仍依赖 D1/D2/D3/D5 证据仲裁。D4 main-bus 阶段 mean/P95/max 约 `5.59/6.70/94.10 ms`。额外 `png_ttc_2v2_seed001` 排除，dropout case 为 0。
+
+因此真实 secondary/distributed 多 seed 仍为 P1：需在同几何和 seeds 下显式注入中心失效、二级再次失效和可审计主动风险，验证原子 commit、owner/version、误降级、恢复以及物理连续性。
 
 ### 历史基线（2026-07-11 最终 P1 验证前）
 
@@ -171,7 +179,7 @@ P2 隔离合同 replay 已实现并保持上述边界：本地 commit + CBBA 风
 
 ### P1 缺口
 
-- 已读取 coalition id、target demand、member role 和双版本，并实现 required-member ACK bitmap、commit lifecycle、lease/epoch、digest、分区和恢复审计；真实 episode 的二级/peer commit 正例与缺 ACK 负例已通过，模块级成员补位/分区恢复矩阵也已版本化。D7 timing feasibility 和真实 AirSim 多 seed 扰动仍开放。
+- 已读取 coalition id、target demand、member role 和双版本，并实现 required-member ACK bitmap、commit lifecycle、lease/epoch、digest、分区和恢复审计；真实 episode 的二级/peer commit 正例与缺 ACK 负例已通过。模块级分区恢复及手工 member-replacement replay 已版本化，但自主补位未实现；D7 timing feasibility 和真实 AirSim 多 seed 扰动仍开放。
 - 完全无中心路径可对上游已经给定的 `k_j=3` 成员集合做本地原子 commit，但尚不能自主完成成员形成，也没有 reserve 激活、缩编/补位/整盟重组状态机。
 - 二级接管已证明协调者与 required-member 3/3 ACK 可进入 `executing`；该合同证据不等于成员运动学可达或物理拦截完成。
 - 中心正常路径的 D5 visual consensus recovery 已校验 current coalition scope 和 primary 集合；中心失效后的恢复仍只比较 assignment owner，尚未比较完整 coalition digest、成员执行前缀、波次和 reserve 状态。

@@ -11,6 +11,7 @@ from .models import (
     AvailabilityBand,
     C2Health,
     CommBand,
+    CommunicationSummary,
     ConfidenceBand,
     ResourceSummary,
     TrackSummary,
@@ -69,6 +70,7 @@ def run_failover_simulation(
     seed: int = 7,
     resources: Sequence[ResourceSummary] | None = None,
     tasks: Sequence[TrackSummary] | None = None,
+    communication_summaries: Sequence[CommunicationSummary] | None = None,
 ) -> dict[str, Any]:
     epoch = 1
     if resources is None:
@@ -142,6 +144,7 @@ def run_failover_simulation(
                 bundle_limit=1,
                 max_rounds=max(18, len(node_ids) + len(task_list) + 4),
                 round_period_s=0.5,
+                communication_summaries=communication_summaries,
             )
             takeover_completed_at_s = now_s + cbba_result.duration_s
             break

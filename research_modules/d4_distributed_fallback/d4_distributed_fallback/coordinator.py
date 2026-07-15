@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from .cbba import CBBANegotiator
 from .models import (
@@ -12,6 +12,7 @@ from .models import (
     C2Health,
     CBBAResult,
     CommBand,
+    CommunicationSummary,
     HealthTransition,
     MergeResult,
     NodeRole,
@@ -23,6 +24,10 @@ from .models import (
     secondary_capability_class,
 )
 from .network import SimulatedNetwork
+from .secondary_readiness import (
+    assess_secondary_readiness,
+    readiness_evidence_from_resource,
+)
 
 
 AVAILABILITY_RANK = {
@@ -207,8 +212,16 @@ class FailoverCoordinator:
         self,
         resources: Iterable[ResourceSummary],
         tasks: Iterable[TrackSummary] | None = None,
+        *,
+        current_time_s: float | None = None,
+        communication_summaries: Sequence[CommunicationSummary] | None = None,
     ) -> str | None:
-        leader = self.elect_leader_resource(resources, tasks=tasks)
+        leader = self.elect_leader_resource(
+            resources,
+            tasks=tasks,
+            current_time_s=current_time_s,
+            communication_summaries=communication_summaries,
+        )
         self.leader_id = None if leader is None else leader.node_id
         return self.leader_id
 
@@ -216,17 +229,32 @@ class FailoverCoordinator:
         self,
         resources: Iterable[ResourceSummary],
         tasks: Iterable[TrackSummary] | None = None,
+        *,
+        current_time_s: float | None = None,
+        communication_summaries: Sequence[CommunicationSummary] | None = None,
     ) -> ResourceSummary | None:
+        task_list = tuple(tasks or ())
         task_cells = {
             task.coarse_cell
-            for task in tasks or ()
+            for task in task_list
             if task.coarse_cell not in {None, ""}
         }
         candidates = [
             resource
             for resource in resources
             if not resource.operator_hold and resource.availability_band != AvailabilityBand.NONE
-            and self._resource_covers_task_cells(resource, task_cells)
+            and (
+                not is_secondary_node_resource(resource)
+                or assess_secondary_readiness(
+                    readiness_evidence_from_resource(
+                        resource,
+                        current_time_s=current_time_s,
+                        requested_coverage_cells=tuple(sorted(task_cells)),
+                        communication_summaries=communication_summaries,
+                    ),
+                    expected_current_time_s=current_time_s,
+                ).ready
+            )
         ]
         if not candidates:
             self.leader_id = None
@@ -254,6 +282,7 @@ class FailoverCoordinator:
         bundle_limit: int = 1,
         max_rounds: int = 20,
         round_period_s: float = 0.5,
+        communication_summaries: Sequence[CommunicationSummary] | None = None,
     ) -> CBBAResult:
         if self.health != C2Health.FAILED:
             self.update_health(now_s)
@@ -274,7 +303,12 @@ class FailoverCoordinator:
                 ),
             }
             return result
-        leader_resource = self.elect_leader_resource(resources, tasks=tasks)
+        leader_resource = self.elect_leader_resource(
+            resources,
+            tasks=tasks,
+            current_time_s=now_s,
+            communication_summaries=communication_summaries,
+        )
         if leader_resource is None:
             self._transition(C2Health.SUSPECT, now_s, "no_eligible_fallback_leader")
             return self._safe_hold_result(now_s, "no_eligible_fallback_leader")
@@ -307,6 +341,29 @@ class FailoverCoordinator:
             "secondary_capability_class": secondary_capability_class(leader_resource),
             "coverage_cell": leader_resource.coverage_cell or "",
         }
+        if is_secondary_node_resource(leader_resource):
+            readiness = assess_secondary_readiness(
+                readiness_evidence_from_resource(
+                    leader_resource,
+                    current_time_s=now_s,
+                    requested_coverage_cells=tuple(
+                        sorted(
+                            task.coarse_cell
+                            for task in tasks
+                            if task.coarse_cell not in {None, ""}
+                        )
+                    ),
+                    communication_summaries=communication_summaries,
+                ),
+                expected_current_time_s=now_s,
+            )
+            self.last_plan.final_views["secondary_readiness"] = {
+                "state": "takeover_ready" if readiness.ready else "not_ready",
+                "node_id": leader_resource.node_id,
+                "lease_valid": str(readiness.lease_valid).lower(),
+                "sustained_ready": str(readiness.sustained_ready).lower(),
+                "reject_reasons": ",".join(readiness.reject_reasons),
+            }
         if not self.last_plan.converged:
             self._transition(C2Health.SUSPECT, now_s, "fallback_consensus_not_converged")
         return self.last_plan
@@ -410,17 +467,3 @@ class FailoverCoordinator:
         if is_secondary_node_resource(leader):
             return "secondary_node"
         return "distributed_cbba"
-
-    @staticmethod
-    def _resource_covers_task_cells(resource: ResourceSummary, task_cells: set[str]) -> bool:
-        if not task_cells or not is_secondary_node_resource(resource):
-            return True
-        return (
-            resource.coverage_cell is None
-            or resource.coverage_cell == ""
-            or resource.coverage_cell in task_cells
-            or (
-                resource.secondary_coverage_ratio is not None
-                and resource.secondary_coverage_ratio > 0.0
-            )
-        )

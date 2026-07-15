@@ -3,15 +3,19 @@
 **模块定位**：D4 负责中心 C2 异常、二级节点接管、主动降级仲裁和完全无中心协商的离线科研仿真方案。
 **核心边界**：本文只讨论摘要交换、状态机、故障注入、降级协同和评估日志；不包含真实通信链路、飞控控制、火控参数、毁伤逻辑、自动处置或授权绕过。
 
+**2026-07-15 P0 更新**：此前 278/278 只覆盖 coordinator、episode adapter、secondary coalition proposal、resource lease 和 D6 metadata，把它写成所有公开入口已闭锁属于过度声明。`build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 现要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格未过期；同一 active plan 维持路径也复核。D4 全量 280/280 passed，阈值零失败；未运行新 AirSim。distributed peer 不套用二级视觉门，真实网络/硬件与自主联盟重构仍为 P1。
+
+**2026-07-15 M5N2 证据更新**：baseline/candidate 各 10 seeds、共 20/20 case 已完成，但全部是中心继续执行负对照，`active degradation=0`。coalition completion `0/20`、第二 primary 进入 5 m `0/20`，20 个第二 primary 均为 `collision_stop`；因 collision object 缺失，不把失败标签自动升级为主动降级。D4 仍联合 D1/D2/D3/D5 证据仲裁。D4 main-bus 阶段 mean/P95/max 约 `5.59/6.70/94.10 ms`。额外 `png_ttc_2v2_seed001` 排除，dropout=0。该批不能关闭 secondary/distributed 多 seed P1。
+
 ---
 
 ## 0. 2026-07-11 P1 状态更新
 
 当前结论以 `p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md` 为准：D4 所属 P1 合同层已闭合，ComputerVision 总体验收为 8/10。二级协调者 `Secondary_Recon_1` 以 ACK 3/3 进入 `executing` 并输出 `degrade_to_secondary`；完全分布式 `INT-02` peer 以 ACK 3/3 进入 `executing` 并输出 `degrade_to_distributed`；缺 ACK 场景以 2/3 ACK 进入 `aborted`，T001 三成员均 `hold_for_review`。这组正负例证明 commit 与 fail-closed，不证明物理拦截。
 
-2026-07-12 P1 增量：新增 `d4_p1_failover_disturbance_replay_v1` 版本化扰动矩阵和 CLI。九个确定性场景 9/9 满足预期：中心正常保持 `continue_center`；二级节点只有 required-member ACK 完整后才能 `executing`；missing ACK、旧 epoch、过期 lease 和 digest conflict 均 fail-closed；成员丢失和网络分区先进入 `reconfiguring`，随后必须使用更高 epoch/plan/coalition version 并全员重新 ACK；中心恢复只进入 dual-track review，不立即夺权。当前 D4 全量测试 155 项通过，并包含四成员规模无关回归。该结论只关闭模块合同 replay，不关闭真实 AirSim 多 seed 的分区时序、误降级、恢复时间和物理任务连续性。
+2026-07-12 P1 增量：新增 `d4_p1_failover_disturbance_replay_v1` 版本化扰动矩阵和 CLI。九个确定性场景 9/9 满足预期：中心正常保持 `continue_center`；二级节点只有 required-member ACK 完整后才能 `executing`；missing ACK、旧 epoch、过期 lease 和 digest conflict 均 fail-closed；成员丢失和网络分区先进入 `reconfiguring`，随后必须使用更高 epoch/plan/coalition version 并全员重新 ACK；中心恢复只进入 dual-track review，不立即夺权。该阶段 D4 全量测试 155 项通过，并包含四成员规模无关回归。该结论只关闭模块合同 replay，不关闭真实 AirSim 多 seed 的分区时序、误降级、恢复时间和物理任务连续性。
 
-2026-07-12 通信时序增量：新增 `d4_p1_communication_fault_replay_v1` 和 CLI，接口按调用方提供的 member/secondary 列表运行，不固定 2v2/5v5。10 seeds x 6 场景共 60/60 满足安全预期：normal 无误降级；0.5 s delay 全部完整提交并拒绝乱序旧 plan-version ACK；30% loss 下 3/10 全 ACK 执行、7/10 缺 ACK fail-closed；center failure 保持 secondary 优先，center+secondary failure 才进入 distributed；partition recovery 必须新 epoch/plan/coalition version 和全员 re-ACK，旧 owner 被拒绝。逐场景 summary 已记录 owner/version、ACK/lease/epoch、首个失败原因、退出/重构、消息统计、重复 owner 和 split-brain prevention。加入 posefix 专项后当前 D4 全量测试为 167 项通过；真实 AirSim 网络注入仍不由 D4 模块 replay 替代。
+2026-07-12 通信时序增量：新增 `d4_p1_communication_fault_replay_v1` 和 CLI，接口按调用方提供的 member/secondary 列表运行，不固定 2v2/5v5。10 seeds x 6 场景共 60/60 满足安全预期：normal 无误降级；0.5 s delay 全部完整提交并拒绝乱序旧 plan-version ACK；30% loss 下 3/10 全 ACK 执行、7/10 缺 ACK fail-closed；center failure 保持 secondary 优先，center+secondary failure 才进入 distributed；partition recovery 必须新 epoch/plan/coalition version 和全员 re-ACK，旧 owner 被拒绝。逐场景 summary 已记录 owner/version、ACK/lease/epoch、首个失败原因、退出/重构、消息统计、重复 owner 和 split-brain prevention。加入 posefix 专项后该阶段 D4 全量测试为 167 项通过；真实 AirSim 网络注入仍不由 D4 模块 replay 替代。
 
 2026-07-12 episode 接线增量：新增 `d4_airsim_episode_communication_v1`，供 main 用 AirSim episode timestamp 逐 tick 驱动。输入包含中心/二级 heartbeat、消息 delay/drop、missing ACK、partition、center digest 与 recovery authorization；输出包含 heartbeat/message 事件、ACK/missing/reject、lease、epoch、owner、plan transition、commit、fail-closed 和 recovery 状态。normal、center failure、center+secondary failure、partition/missing ACK 四类纯 Python replay 已通过；分区恢复强制新 generation 全量 re-ACK，中心恢复要求双轨 digest 连续校验且不立即夺权。独立 primary 不要求同时到达，但 secondary/distributed 多成员执行仍须原子 ACK。该接口随后已由 2026-07-13 episode-clock 批量矩阵完成 main 侧多 seed 验收；真实网络仍不在该接口结论内。
 
@@ -19,7 +23,7 @@
 
 2026-07-13 episode-time 验收增量：`d4_p1_episode_fault_validation_matrix_v1` 将正常、中心失效后二级接管、二级再次失效后 peer 接管、missing ACK、stale epoch、expired lease 和 partition 分为 7 个独立规范场景。顺序降级场景先在 1.25 s 内形成二级 executable owner，再注入二级 heartbeat loss，并在 1.00 s 内完成 peer 原子 commit；验收上限分别为 1.5 s 和 2.5 s。normal 误降级为 0，四类安全异常均 fail closed，逐 tick owner、plan/coalition version、epoch 和 lease 审计完整。main/runtime 进一步按 AirSim episode clock 对 `normal`、`center_failure`、`center_secondary_failure`、`delay_0_5s`、`loss_30pct` 和 `partition_recovery` 六类场景各运行 10 seeds，共 60 case：60/60 safety outcome 通过，误降级、duplicate owner 和 split-brain prevention failure 均为 0。D4 全量回归为 198 项通过。该结果关闭 episode-clock 批量注入，不代表真实 RF、吞吐带宽、节点时钟漂移、操作系统/网络排队、乱序、重传或硬件链路已验证。
 
-2026-07-12 posefix terminal consistency 专项：历史四组 smoke 中，中心 owner、current coalition 且 hard risk 为空时仍有 1087/1094/585/1064 条 `terminal_consistent=false`，对应 control CSV 的 `d4_terminal_inconsistent` 为 158/112/113/122 条。该现象不是正常安全拒绝，而是 D4 将 D5 readiness 再次解释为 plan binding，并共享单一 arbiter 迟滞状态造成的实现缺陷。修复后 binding 只由 resource/global-track/version/coalition、friend、duplicate、mismatch 等硬证据决定；D5 lock/confidence/ambiguity/reacquire 保持独立，持续失锁只请求 cue。adapter 按 pair 隔离状态，并输出 binding reject reasons、visual state 和 state key；active secondary lease 过期显式 hold。D4 全量测试现为 167 项通过，历史 AirSim 日志不回写，main 仍需重跑系统验收。
+2026-07-12 posefix terminal consistency 专项：历史四组 smoke 中，中心 owner、current coalition 且 hard risk 为空时仍有 1087/1094/585/1064 条 `terminal_consistent=false`，对应 control CSV 的 `d4_terminal_inconsistent` 为 158/112/113/122 条。该现象不是正常安全拒绝，而是 D4 将 D5 readiness 再次解释为 plan binding，并共享单一 arbiter 迟滞状态造成的实现缺陷。修复后 binding 只由 resource/global-track/version/coalition、friend、duplicate、mismatch 等硬证据决定；D5 lock/confidence/ambiguity/reacquire 保持独立，持续失锁只请求 cue。adapter 按 pair 隔离状态，并输出 binding reject reasons、visual state 和 state key；active secondary lease 过期显式 hold。该专项阶段 D4 全量测试为 167 项通过，历史 AirSim 日志不回写，main 仍需重跑系统验收。
 
 SimpleFlight 15 s 只用于诊断，30 个 active pair 物理命中为 0，系统物理拦截仍未闭合。D4 的 episode-clock 批量故障注入已经完成；后续 P1 转为真实吞吐带宽、节点时钟漂移、网络/操作系统排队抖动、乱序/重传、secondary-interceptor/peer 实际链路和长时间恢复统计，同时保留 heartbeat/link/cue/gimbal/source 与物理连续性审计。P2 只允许隔离式 benchmark，不替换轻量 CBBA 与 ACK/lease/epoch 合同。
 

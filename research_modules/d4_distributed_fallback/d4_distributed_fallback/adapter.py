@@ -915,11 +915,7 @@ class D4ArbitrationAdapter:
             if selected_lifecycle is not None and decision.target_node_id is not None
             else None
         )
-        resolved_secondary_lease_epoch = (
-            secondary_plan_lease_epoch
-            if secondary_plan_lease_epoch is not None
-            else required_lease_epoch
-        )
+        resolved_secondary_lease_epoch = secondary_plan_lease_epoch
         readiness_sustained = (
             selected_lifecycle.takeover_ready_sustained
             if selected_lifecycle is not None
@@ -942,6 +938,7 @@ class D4ArbitrationAdapter:
         )
         if (
             str(active_plan_owner).strip().lower() in {"secondary", "secondary_node"}
+            and decision.action != DegradationAction.DEGRADE_TO_DISTRIBUTED
             and not secondary_takeover.secondary_plan_executable
         ):
             reject_reason = (
@@ -1496,15 +1493,24 @@ def _readiness_fallback_reason(
     if sustained:
         return None
     reason_priority = (
+        "heartbeat_current_time_missing",
+        "heartbeat_timestamp_missing",
         "heartbeat_stale",
+        "communication_summary_missing",
+        "communication_current_time_missing",
         "link_stale",
+        "cue_freshness_missing",
         "cue_stale",
+        "lease_expiry_missing",
+        "lease_current_time_missing",
         "lease_expired",
+        "gimbal_pointing_unknown",
         "gimbal_not_pointing",
         "secondary_unavailable",
         "coverage_unavailable",
         "secondary_detect_available_but_not_registered",
         "stable_registration_missing",
+        "network_full_view_rate_missing",
         "network_full_view_rate_low",
     )
     for reason in reason_priority:
@@ -2816,6 +2822,21 @@ def build_resource_summary(resource: Any) -> ResourceSummary | None:
                 "not_registered_count",
                 _get(resource, "secondary_not_registered_count"),
             )
+        ),
+        readiness_timestamp_s=_optional_float(
+            _get(resource, "readiness_timestamp_s")
+        ),
+        readiness_stale_after_s=_optional_float(
+            _get(resource, "readiness_stale_after_s")
+        ),
+        takeover_ready_since_s=_optional_float(
+            _get(resource, "takeover_ready_since_s")
+        ),
+        takeover_ready_observation_count=_optional_int(
+            _get(resource, "takeover_ready_observation_count")
+        ),
+        takeover_ready_sustained=_optional_bool(
+            _get(resource, "takeover_ready_sustained")
         ),
     )
 

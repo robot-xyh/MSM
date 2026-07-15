@@ -4,6 +4,8 @@
 
 本报告覆盖两类离线降级逻辑：中心节点失效后的被动降级连续性仿真，以及中心节点未失效但局部不确定性升高时的主动降级仲裁规则测试。节点通过内存网络交换粗粒度摘要，不涉及真实无线通信、火控参数、毁伤逻辑、实机飞控、硬件驱动、自动处置或绕过人工授权的流程。
 
+2026-07-15 新增证据严格限定为已完成的 20 个真实 AirSim M5N2 case。终止命令生效前额外完成的 `png_ttc_2v2_seed001` 不纳入本报告 M5N2 聚合；其余 tuned case 未执行，dropout case 完成数为 0，缺失项保持 unavailable。
+
 ## 2. 实验目的
 
 D4 验证中心节点异常时的保底策略：
@@ -56,6 +58,27 @@ D4 验证中心节点异常时的保底策略：
 | 友方身份冲突 | `hold_for_review` |
 
 该逻辑已由 `tests/test_active_degradation.py` 的规则测试覆盖。当前报告图表仍是被动降级/CBBA 通信退化曲线；主动降级的批量统计曲线应在后续 D6 集成后生成。
+
+### 4.1 2026-07-15 secondary readiness/lease P0 边界验证
+
+本次只运行 D4 Python 模块测试，未启动 AirSim。此前 278/278 验收覆盖 coordinator election、episode readiness DTO、secondary coalition proposal、resource lease 和 D6 metadata，但没有覆盖两个公开 secondary plan helper 对 sustained/source/epoch 的 `None`；此前“所有公开入口都已闭锁”的结论过度，现不再作为证据。新增矩阵对 `build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 逐项删除 readiness、expected/actual source、plan/required lease epoch、expiry/current time，并覆盖完整 evidence 与同一 active plan 维持正例。统一判定为仅 exact-true readiness、匹配 source、有效 epoch 且 `current_time < expiry` 的二级 plan 可 execute；interceptor peer distributed fallback 不使用二级视觉门。
+
+验收命令为 `PYTHONPATH=research_modules/d4_distributed_fallback python3 -m pytest -q research_modules/d4_distributed_fallback/tests`，阈值为 100% 测试通过且任何不完整 readiness/source/epoch/time evidence 都不得产生 executable secondary owner。结果为 280/280 passed，满足阈值；本次样本为确定性单元测试，无 AirSim seed/episode 样本。剩余限制是未生成新的 AirSim、真实网络或物理任务证据；P1 自主成员形成、reserve 激活、补位/缩编/整盟重组也未实现。
+
+### 4.2 2026-07-15 M5N2 中心负对照
+
+| 项目 | 结果 | D4 解释 |
+|---|---:|---|
+| 完整 case | 20/20 | baseline/candidate 各 10 seeds |
+| active degradation | 0 | 中心 owner 继续执行，无 secondary/distributed 动作 |
+| coalition completion | 0/20 | M-to-N 联盟物理闭环未完成 |
+| 第二 primary 进入 5 m | 0/20 | 第二 primary 仍是主要物理断点 |
+| 第二 primary `collision_stop` | 20/20 | collision object 未记录，不能判定碰撞类型 |
+| D4 main-bus mean/P95/max | 5.59/6.70/94.10 ms | 不是当前 control tick 的主要瓶颈 |
+
+该批是负对照，不评价二级接管或完全分布式联盟性能。`collision_stop` 和 5 m 未闭合只进入诊断记录，不自动触发主动降级。D4 动作仍需 D1/D2/D3/D5 的可审计组合证据；本批没有这些降级条件，因此 `active degradation=0` 是预期行为。
+
+验收阈值按证据域分开：中心负对照要求 `active degradation=0` 且 center owner 持续 current，本批满足；M-to-N 物理闭环要求第二 primary 进入 5 m 且 coalition completion 成立，本批 `0/20`，未满足；secondary/distributed 性能因本批未执行而标记 unavailable，不以零值替代。
 
 ## 5. 默认被动降级场景
 
@@ -112,4 +135,6 @@ python3 research_modules/d4_distributed_fallback/scripts/run_failover_simulation
 
 ## 9. 结论
 
-D4 当前适合作为“中心节点、二级侦察节点、完全分布式”三级被动降级链路，以及“中心未失效但局部证据冲突”的主动降级仲裁框架。它能验证接管时间、共识轮数、任务完成率、通信开销和主动仲裁动作，但仍应通过 D3/D5/D6 的统一合同继续传递 `plan_id/version/authorization_state`、`global_track_id`、`risk_factors` 和 `terminal_consistent`，避免降级路径破坏中心身份链。
+D4 当前适合作为“中心节点、二级侦察节点、完全分布式”三级被动降级链路，以及“中心未失效但局部证据冲突”的主动降级仲裁框架。secondary resource、plan、owner 和 handoff 已统一执行严格 lease fail-closed，但该模块结果仍不是 AirSim 物理闭环或自主成员补位证明。系统应继续通过 D3/D5/D6 的统一合同传递 `plan_id/version/authorization_state`、`global_track_id`、`risk_factors` 和 `terminal_consistent`。
+
+M5N2 中心负对照已完成 20/20，但 coalition 和第二 primary 5 m 均为 0/20；这说明物理协同闭环仍开放，不说明 D4 fallback 失败。本批未执行二级或完全分布式接管，真实 secondary/distributed 多 seed 继续列为 P1。后续必须补 collision object，并运行同 seeds 的中心失效、中心与二级连续失效和可审计主动风险 paired case。

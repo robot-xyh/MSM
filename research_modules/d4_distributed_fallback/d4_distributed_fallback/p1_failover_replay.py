@@ -25,6 +25,7 @@ from .coalition_safety import (
     CoalitionMemberAck,
 )
 from .models import C2Health, to_jsonable
+from .secondary_readiness import SecondaryReadinessEvidence
 
 
 P1_FAILOVER_MATRIX_VERSION = "d4-p1-fallback-matrix-v1"
@@ -154,7 +155,11 @@ class P1FailoverDisturbanceReplay:
             coordinator,
             coordinator_id="RECON-1",
             coordinator_role="mobile_high_recon",
-            metadata={"takeover_ready": True},
+            metadata=self._secondary_readiness_metadata(
+                node_id="RECON-1",
+                timestamp=10.0,
+                lease_expires_at=20.0,
+            ),
         )
         trace = [self._snapshot("secondary_proposed", state, 10.0)]
         state = self._ack_all(coordinator, state, start_time=10.1, trace=trace)
@@ -461,6 +466,37 @@ class P1FailoverDisturbanceReplay:
             timestamp=timestamp,
             metadata=metadata,
         )
+
+    @staticmethod
+    def _secondary_readiness_metadata(
+        *,
+        node_id: str,
+        timestamp: float,
+        lease_expires_at: float,
+    ) -> dict[str, Any]:
+        evidence = SecondaryReadinessEvidence(
+            node_id=node_id,
+            current_time_s=timestamp,
+            readiness_timestamp_s=timestamp,
+            readiness_stale_after_s=1.0,
+            availability_confirmed=True,
+            lease_epoch=1,
+            lease_expires_at_s=lease_expires_at,
+            heartbeat_timestamp_s=timestamp,
+            heartbeat_stale_after_s=1.0,
+            cue_freshness_s=0.1,
+            cue_stale_after_s=1.0,
+            gimbal_pointing_ok=True,
+            communication_received_timestamp_s=timestamp,
+            communication_stale_after_s=1.0,
+            coverage_matches_requested_cell=True,
+            coverage_ratio=0.9,
+            network_full_view_rate=0.9,
+            takeover_ready_sustained=True,
+            takeover_ready_since_s=timestamp - 0.3,
+            takeover_ready_observation_count=3,
+        )
+        return {"secondary_readiness_evidence": evidence.to_dict()}
 
     def _ack_all(
         self,

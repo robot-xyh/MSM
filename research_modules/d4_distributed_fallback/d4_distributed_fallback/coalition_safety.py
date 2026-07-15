@@ -7,6 +7,10 @@ from enum import Enum
 from typing import Any, Iterable, Mapping, Sequence
 
 from .models import to_jsonable
+from .secondary_readiness import (
+    SecondaryReadinessEvidence,
+    assess_secondary_readiness,
+)
 
 
 class CoalitionSafetyAction(str, Enum):
@@ -181,15 +185,50 @@ class CoalitionCommitCoordinator:
                 resolved_at=float(timestamp),
                 reason="coalition_lease_expired",
             )
-        if _fallback_mode(proposal.coordinator_role) == "secondary" and not bool(
-            proposal_metadata.get("takeover_ready")
-            or proposal_metadata.get("secondary_readiness_class") == "takeover_ready"
-        ):
-            return replace(
+        if _fallback_mode(proposal.coordinator_role) == "secondary":
+            readiness_value = proposal_metadata.get("secondary_readiness_evidence")
+            try:
+                readiness_evidence = SecondaryReadinessEvidence.from_value(readiness_value)
+                readiness = assess_secondary_readiness(
+                    readiness_evidence,
+                    expected_current_time_s=float(timestamp),
+                )
+            except (TypeError, ValueError):
+                readiness_evidence = None
+                readiness = None
+            reject_reason = None
+            if readiness is None:
+                reject_reason = "secondary_readiness_evidence_missing"
+            elif readiness_evidence.node_id != proposal.coordinator_id:
+                reject_reason = "secondary_readiness_node_mismatch"
+            elif not readiness.ready:
+                reject_reason = f"secondary_readiness_{readiness.primary_reject_reason}"
+            elif (
+                readiness_evidence.lease_expires_at_s is None
+                or proposal.lease_expires_at > readiness_evidence.lease_expires_at_s
+            ):
+                reject_reason = "secondary_readiness_lease_scope_exceeded"
+            if reject_reason is not None:
+                return replace(
+                    proposal,
+                    state="aborted",
+                    resolved_at=float(timestamp),
+                    reason=reject_reason,
+                    metadata={
+                        **proposal.metadata,
+                        "secondary_readiness_reject_reasons": (
+                            [] if readiness is None else list(readiness.reject_reasons)
+                        ),
+                    },
+                )
+            proposal = replace(
                 proposal,
-                state="aborted",
-                resolved_at=float(timestamp),
-                reason="secondary_not_takeover_ready",
+                metadata={
+                    **proposal.metadata,
+                    "takeover_ready": True,
+                    "secondary_readiness_class": "takeover_ready",
+                    "secondary_readiness_assessment": readiness.to_dict(),
+                },
             )
 
         current = self._states_by_track.get(proposal.global_track_id)
@@ -419,7 +458,8 @@ def build_coalition_commit_d6_metadata(
             "atomic_coalition_formed": False,
         }
     lease_valid = bool(
-        current_time_s is None or float(current_time_s) < state.lease_expires_at
+        current_time_s is not None
+        and float(current_time_s) < state.lease_expires_at
     )
     committed = bool(
         state.state in {"committed", "executing"}
@@ -437,6 +477,7 @@ def build_coalition_commit_d6_metadata(
         "coalition_acked_member_ids": list(state.acked_member_ids),
         "coalition_missing_member_ids": list(state.missing_member_ids),
         "coalition_lease_expires_at": state.lease_expires_at,
+        "coalition_lease_current_time_present": current_time_s is not None,
         "coalition_lease_valid": lease_valid,
         "atomic_coalition_formed": committed,
     }

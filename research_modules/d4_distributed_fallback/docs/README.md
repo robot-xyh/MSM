@@ -9,7 +9,7 @@
 - `../reports/EXPERIMENT_REPORT.md`：当前实验结果、指标表和丢包率曲线。
 - `../reports/AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放数据如何映射到 D4 摘要模型。
 
-当前 D4 侧状态见 `../PLAN.md` 的“已实现 / 部分实现 / 未实现 / P1/P2 下一步”：已补二级节点 lifecycle、主动降级迟滞/防抖、D6-compatible event metadata、D6-compatible CBBA report metadata、D5 distributed visual evidence -> CBBA 风险加权、`assignment_audit` 和 N 规模输入；轻量 CBBA 仍是完全无中心保底，不构造虚拟中心 Hungarian。MIT/CA-CBBA、真实通信/视频链路、Contract Net 和 SCRIMMAGE 不属本轮范围；独立 auction baseline 后置为可选对照，不替代当前 CBBA 保底。
+当前 D4 侧状态见 `../PLAN.md` 的“已实现 / 部分实现 / 未实现 / P1/P2 下一步”：已补二级节点 lifecycle、主动降级迟滞/防抖、D6-compatible event metadata、D6-compatible CBBA report metadata、D5 distributed visual evidence -> CBBA 风险加权、`assignment_audit` 和 N 规模输入；轻量 CBBA 仍是完全无中心保底，不构造虚拟中心 Hungarian。2026-07-15 的 20-case M5N2 是 `active degradation=0` 的中心继续执行负对照，coalition 和第二 primary 5 m 均为 `0/20`，不能替代真实 secondary/distributed 多 seed 验收。MIT/CA-CBBA、真实通信/视频链路、Contract Net 和 SCRIMMAGE 不属本轮范围；独立 auction baseline 后置为可选对照，不替代当前 CBBA 保底。
 
 ## 阅读顺序
 

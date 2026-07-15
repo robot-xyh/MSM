@@ -480,7 +480,7 @@ E_{sec}=
 \mathbf{1}[\text{来源匹配}]
 \mathbf{1}[\text{持续就绪}]
 \mathbf{1}[e_{lease}\ge e_{required}]
-\mathbf{1}[t\le t_{lease}]
+\mathbf{1}[t<t_{lease}]
 \mathbf{1}[v_{new}>v_{current}\ \text{或同一已激活计划}].
 \]
 
@@ -574,13 +574,20 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 | 虚拟中心优化 | 明确不在无中心路径运行中心匈牙利算法或最小费用流；只允许离线对照 |
 | D4 直接生成系统计划 | 明确不做；D3/main 拥有 `AssignmentPlan` |
 
-## 9. 2026-07-13 验证状态
+## 9. 2026-07-15 验证状态
 
 ### 9.1 当前结果
 
+最新真实 AirSim M5N2 批次完成 baseline/candidate 各 10 seeds，共 20/20 case。该批中心 owner 始终有效且 `active degradation=0`，属于中心继续执行的负对照，不是 secondary/distributed 故障注入。物理结果为 coalition completion `0/20`、第二 primary 进入 5 m `0/20`；20 个第二 primary 均报告 `collision_stop`，但未持久化碰撞对象，因而不能从该字段推断冲突类型。
+
+这组结果只支持两个判断：一是没有因物理失败自动误触发 D4 主动降级；二是 M-to-N 第二 primary 和联盟物理闭环仍未完成。D4 不使用单个 `collision_stop` 或“未进入 5 m”直接改变 owner，而继续依据 D1/D2/D3/D5 的不确定性、关联、计划有效性和末端一致性证据仲裁。D4 main-bus 阶段 mean/P95/max 约为 `5.59/6.70/94.10 ms`，当前 control tick 总体超时不能归因于 D4 算法计算。额外 `png_ttc_2v2_seed001` 排除在聚合之外，dropout case 为 0。
+
 根据 2026-07-13 主验证报告与 D4 审计：
 
-- D4 全量模块回归为 **198 项通过**；这是已有验证报告中的结果，本次仅新增文档，没有重跑全量测试。
+- 2026-07-15 D4 全量模块回归为 **280/280 项通过**，验收阈值为零失败。此前 278/278 只证明 coordinator、episode、coalition、D6 和既有 lease 边界，未覆盖两个公开 plan helper 对 sustained/source/epoch 的 `None`；“所有公开入口均已闭锁”的旧说法属于过度声明，现已纠正。
+- `build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 当前统一要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格 `current_time < expiry`。逐字段 `None`、完整正例和同 id/version 维持路径均有回归；未运行新 AirSim episode。
+- 完全分布式 interceptor/peer 选择不套用二级视觉 readiness 门；动态 N/M、版本/epoch/lease、ACK 和 `global_track_id` 所有权规则未改变。
+- 二级 resource 和 plan lease 只有在 expiry/current time 均存在且严格 `current_time < expiry` 时有效；等于边界按过期处理。缺字段分别输出可审计原因并 fail-closed，不能发布或维持 executable secondary plan。
 - 七个规范单次试验时间轴（episode time）场景为 **7/7 通过**：正常中心、中心失效、中心后二级再次失效、缺 ACK、旧 epoch、过期 lease、分区。
 - 在 0.25 秒逻辑时钟步下，中心故障到二级可执行所有者为 **1.25 秒**，二级故障到对等节点原子执行为 **1.00 秒**；对应验收上限为 1.5 秒和 2.5 秒。
 - 主编排器/运行时又按 AirSim 单次试验时钟（episode clock）运行六类场景、每类 10 个随机种子（seed），共 **60 个试验用例（case）**：安全结果 **60/60**，误降级 0，重复所有者 0，脑裂防护失败 0。
@@ -603,12 +610,15 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 
 ### 9.3 剩余局限
 
+- 真实 secondary takeover 和完全分布式 commit 尚未在与上述 M5N2 相同的多 seed 几何中执行，继续是 P1。
+- 20 个 `collision_stop` 缺少 collision object/source lineage，无法区分成员间碰撞、环境碰撞或 AirSim 状态异常；在证据补齐前不得把它设为主动降级硬触发。
+
 1. **真实网络未验证**：带宽、拥塞、时钟漂移、操作系统/网络排队、抖动、乱序、重传、实际二级节点到执行资源链路和对等节点图分裂仍开放。
 2. **恢复合并不完整**：当前基础合并没有覆盖完整航迹摘要校验值、计划摘要校验值、末端锁定、通信链路、联盟执行前缀和 D5/D7 门控。
-3. **自主联盟形成未实现**：现有原子提交验证上游给定成员集合，不解决 \(k_j>1\) 的能力组合搜索、预留激活、缩编、补位和整盟重构。
+3. **自主联盟形成未实现**：现有原子提交验证上游给定成员集合；member-loss/replacement replay 也由测试手工给定替换成员，只验证新 generation 全量 ACK，不解决 \(k_j>1\) 的能力组合搜索、预留激活、缩编、补位和整盟重构。
 4. **CBBA 是合成基线**：评分函数未与 D3 的真实中心代价完全对齐；真实单次试验尚未持续保存同场景中心代价矩阵并由 D6 做多随机种子差距聚合。
 5. **D5 分布式视觉合流仍需标定**：模块内辅助函数已实现，但真实无中心多随机种子下的合流频率、风险权重和覆盖小区切换仍未闭合。
-6. **物理闭环不能由 D4 合同结果替代**：2026-07-13 五资源对二目标（Five Resources to Two Targets，M5N2）系统级最佳联盟完成率为 5/10，主要瓶颈在第二主资源的视觉获取与稳定锁定。该结果说明全系统物理闭环仍有性能缺口，不能归因于或由 D4 的 60/60 安全门控结果关闭。
+6. **物理闭环不能由 D4 合同结果替代**：2026-07-15 中心负对照的五资源对二目标（Five Resources to Two Targets，M5N2）20-case 聚合中，联盟完成率为 0/20、第二主资源进入 5 米为 0/20。较早的 5/10 结果属于不同批次历史证据，不覆盖本次同口径聚合。当前物理缺口不能归因于或由 D4 的 60/60 安全门控结果关闭。
 7. **外部算法无性能结论**：MIT CBBA 与 CA-CBBA 当前只有能力不可用记录；未执行就不能比较优劣。
 
 ## 10. 选型理由
