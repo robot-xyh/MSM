@@ -1,5 +1,23 @@
 # D7 M 对 N 多无人机协同导引与到达时序综述
 
+## 2026-07-15 M5N2 baseline/candidate 各 10 seeds 复核
+
+本轮只复核 20 个已完成的真实 AirSim SimpleFlight M5N2 case。M5N2 `20/20` 后 TERM 生效前仅额外完成 `p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed001`；该单 seed 不纳入本次 M5N2 统计，也不用于分析或晋级，其余 tuned case 和全部 dropout 均未执行。高威胁目标的联盟仍为 2 个 active primary + 1 个 standby reserve，验收仍是每个 active primary 在同 case 分别进入 NED 三维 5 米，不要求同时到达。
+
+baseline 和 candidate 的 active-primary 成功都是 `6/30`，target 都是 `6/20`，coalition 都是 `0/10`；合计 pair/target/coalition 为 `12/60`、`12/40`、`0/20`。第二 primary 按各 case 的 active membership 动态识别，不固定资源编号；七阶段证据为 `assigned/visible/associated/contract=20/20`、`control/mode=17/20`、physical=`0/20`。最近距离仍为 `8.873-14.740 m` 和 `8.843-14.309 m`。其中 baseline 的首失败为 physical 8/terminal control 2，candidate 为 physical 9/terminal control 1。这一证据将主要问题从“合同没接上”进一步收敛到“视觉可控状态不持续或物理航路/停控未闭合”。
+
+20 个第二 primary 最终均为 `collision_stop`，但 collision object 为空，故当前不能区分是友方协同冲突、环境碰撞、机体状态还是其他 AirSim 原因，也不能归因于导引公式。这是下一轮最直接的 P1 证据缺口，不能用放宽 D5/D7 安全门代替。candidate 逐 seed non-degradation=false，paired 结果为 2 改善、2 退化、6 持平，trend coast 触发=0、soft-specific duration=0，故继续 default-off。D7 阶段 mean/P95 为 `4.84/5.78 ms`，不是主要时序瓶颈。online truth identity/state 均为 0，位置 PN、VM/TTC PNG、LOS 和外推公式未修改。
+
+## 2026-07-15 第二 primary 诊断补充
+
+联盟摘要不再只给第二 primary 的一个最终字符串，而是保留 `assigned -> active -> radar -> D5 visible/associated/locked -> contract -> control -> mode -> physical` 全漏斗、每级首达时刻、规范首失败和 measured-lock 时序。该能力适用于任意 primary 数量；“第二 primary”仅是联盟内按资源/assignment 稳定排序后的 ordinal 2 诊断视图，不写死 M5N2，也不要求同时到达。
+
+本地确定性回归中，第二 primary 在 contract 已达、control 未达时被正确定位为 `terminal_control`；reserve、owner/version 和 D3/D4/D5 门控语义保持不变。2026-07-15 D7 全量 `190 passed`；真实 AirSim 多 seed、第二 primary 5 米完成率和成员安全间距仍为 P1。
+
+## 2026-07-14 actual-execution 证据补充
+
+最新真实 AirSim seed-1 证据不改变“多个独立 pair 不等于协同导引”的结论。canonical actual 五层按 contract/control/terminal-switch/mode/physical 独立统计：tuned 2v2 为 `35/26/26/2/2`，M5N2 为 `67/0/0/0/2`，合计 `102/26/26/2/4`；五层均为 `available`，且 `terminal_switch_allowed_count` 直接从已写盘 `control_commands` 独立统计。M5N2 active pair 为 `2/3`、第二 primary 最近约 `11.02 m`，target `2/2` 只表示目标覆盖，coalition completion 是独立的 `0/1`。两个 actual-execution case 均 available 且 identity/state online truth 为 0，P0 证据链关闭。当前 P1 是第二 primary、multi-seed/dropout/candidate、延迟及 pair funnel/closing-speed/三维机动标定；3D PN、True PN、APN、FRPN 在线化和同时到达不列当前 P1。
+
 ## 1. 调研结论摘要
 
 本报告面向一个高威胁目标由多架拦截无人机协同处置的 `M resources -> N targets` 场景。以目标 `j` 的资源需求 `k_j=3` 为例，未来 D3 即使为同一个 `global_track_id` 形成三成员联盟，也不自动构成协同导引。只有三架资源共享或协调到达时间、剩余时间、通信拓扑、终端进入方向或安全间隔，并据此改变各自导引命令，才能称为协同导引。
@@ -16,8 +34,11 @@
 8. **arrival window 是视觉接管许可窗，不是 assignment 自动撤销时刻**。真实 posefix replay 显示窗口关闭样本仍需要 radar PN 保持中段控制并等待新版本；D7 已按此解释状态，但同步到达和窗口滚动仍由 D3/main 负责。
 9. **当前阶段可显式采用 per-primary terminal authorization**。当 D3 合同声明 `terminal_authorization_scope=per_primary` 且 `arrival_coordination_required=false`，D7 允许每个 active primary 独立满足 D5/视觉/机动门控后切换 PNG，不再等待共同锁定或同步到达；这是一种阶段性工程合同，不等价于 cooperative impact-time guidance，reserve 和分布式提交安全门控保持不变。
 10. **typed topology 已下发上述 policy**。构建器支持统一或按目标配置，并把 scope/arrival policy 写入 target summary 与每个 binding；因此 main 不应再通过临时 metadata 改写合同。默认调用仍保持旧 coalition/arrival gate。
+11. **pair/coalition 聚合采用版本化末端语义**。`d7_terminal_semantics_v2` 分离 raw gate、effective contract、latched mode、effective control、mode transition 和 termination snapshot；bounded coast 必须标记 scope，终止行不参与 live coalition control/mode 分母。旧字段仅为 effective 口径 alias，不能再把 raw D5 non-lock 与合规 coast 或 episode 终止混成同一计数。
+12. **M5N2 no-switch 必须按 pair 首失败解释**。`d7_pair_guidance_funnel_v2` 先区分是否进入配置交接距离，再区分 D5 declared/measured lock、raw gate、camera/LOS/closing-speed/maneuver 和 latch/effective control。seed-1 现有输出中，两个 active pair 在约 `35-39 m` 停止，未进入约 `30 m` 交接区；一个 pair 进入约 `26 m` 后仍 `d5_not_locked`。主 CSV 缺 raw reject/measured-lock 字段时必须报 evidence missing，不能把默认 false 解释成具体视觉门限失败。
+13. **配置视觉律、候选视觉律与实际执行律必须分开**。`d7_guidance_law_semantics_v1` 规定 main 选择 `png_vm/png_ttc` 只代表配置了 radar-to-vision 策略；本帧候选 PNG 经过 camera/LOS/maneuver gate 后，只有 effective control 与 visual latch 都成立才可成为 executed law。gate 失败时实际执行仍是 `radar_pn`。联盟统计必须使用同一 live state instance 的 `executed_visual_mode_switch`，不能从 candidate、handover 状态或 legacy active-sample 字段推断切换。
 
-因此，本问题应列为 **P1 研究与合同缺口**，不是当前 P0 运行断链。现有 D3/D4/D5/D7 一对一执行链必须保持可用，且不得通过修改 `png_guidance_delivery` 公式或放宽 D3/D4/D5 gate 来伪造协同能力。
+因此，协同到达属于后置研究，不是当前 P0 或 P1 运行断链。impact-time consensus、同步到达和到达离散优化不进入当前 P1 验收；当前只保持 per-primary 独立完成、联盟版本/角色/激活合同和安全门控。D7-owned pair 诊断与导引律执行语义已由 `188 passed` 关闭，main/D6 canonical 五层也已正式闭合；开放项仅为第二 primary、multi-seed/dropout/candidate、延迟及 pair-funnel/closing-speed/三维机动标定。现有 D3/D4/D5/D7 执行链必须保持可用，且不得通过修改 `png_guidance_delivery` 公式或放宽 D3/D4/D5 gate 来伪造协同能力。
 
 ## 2. 问题定义与判定边界
 
@@ -286,6 +307,7 @@ D4 正在 `request_center_replan/degrade_to_secondary/degrade_to_distributed` �
 - D7 已实现 fallback 原子提交的被动消费 gate，D4/main 已完成 commit-aware 消息接线；二级接管、完全分布式和缺 ACK 故障注入分别验证 committed/executing 与 fail-closed。D7 仍不形成联盟、不选成员。
 - N/M binding topology helper 已接入 main AirSim 流程；当前 M=5/N=2 形成 T001 两个 active primary、一个 standby reserve，T002 一个 active primary，第五个资源未分配。
 - D7 已新增被动协同导引诊断/候选预筛接口：可按任意 primary 数输出 pair 六阶段漏斗、第二 primary 失败阶段、arrival-window error、closest approach、member separation 和 coalition arrival spread，并携带 D3 handoff range/arrival-window width/sector separation candidate metadata。该能力用于定位和筛选 main 后续 sweep，不是 impact-time consensus 或协同控制律。
+- D7 已在本地 `188 passed` 回归中关闭末端状态/指标语义、导引律执行语义及 pair 首失败诊断接口；main/D6 canonical actual 五层也已独立 `available`。future multi-seed/dropout/candidate 继续保持同一 state instance，pair 漏斗的 range、measured lock、camera/LOS/closing/maneuver 覆盖作为 P1 标定，不改变 coalition gate 或 PN/PNG 控制律。
 
 未实现：
 
@@ -293,7 +315,7 @@ D4 正在 `request_center_replan/degrade_to_secondary/degrade_to_distributed` �
 - arrival window 已作为 gate 消费，但共同 time-to-go consensus 和 impact-time control 未实现。
 - leader/neighbor cooperative guidance message。
 - 成员间预测距离、终端扇区、impact-angle 和碰撞规避 gate；当前只被动记录 main 提供的实际 member separation/safety evidence。
-- 物理协同拦截证据：同 topology 的 SimpleFlight 15 s 诊断中 30 个 active pair 为 0 命中，其中 24 个 `terminal_detection_timeout`；CV 8/10 不能关闭该缺口。
+- 物理协同拦截证据仍不足：2026-07-14 actual-v2 M5N2 seed-1 的 active pair 为 `2/3`，但第二 primary 最近约 `11.02 m`、coalition `0/1`，且视觉控制/mode switch 为 0。它关闭 canonical P0 证据链，不关闭多 seed 物理 coalition P1；早期 15 秒 0/30 active-pair 诊断仅保留为历史断点。
 - 成员掉队、失联或 D5 未锁定后的联盟重构由 D4/main 产生新 commit/version；D7 已能阻断 `reconfiguring/aborted`，但不自行重构联盟。
 
 ## 9. P0/P1 建议
@@ -302,18 +324,11 @@ D4 正在 `request_center_replan/degrade_to_secondary/degrade_to_distributed` �
 
 本次调研没有发现新的 D7 P0 运行断链。现有一对一和 N-pair 独立执行链应保持回归：D7 不分配、不授权、不改写 `global_track_id`，D4 降级/重规划期间继续阻断视觉 PNG。
 
-### P1
+### P1（当前项）
 
-新增并保持以下研究缺口：
+当前 P1 明确收敛为：M5N2 第二 primary 末端检测/锁定与 5 米闭环；PN/Pure Pursuit/PNG-VM/PNG-TTC 同几何 multi-seed；真实 dropout/candidate 配对；控制延迟；pair funnel、closing speed、三维几何与平台机动标定。未激活 reserve 必须继续 standby，不能用 target `2/2` 或 CV 合同验收替代 coalition 物理评分。
 
-1. 定义 cooperative guidance 与 independent multi-pair 的可测试边界。
-2. 保持已实现并接线的 coalition/arrival-window/wave/role/commit 合同；D7 只消费，不决定联盟。
-3. 建立同一目标 3 个成员的 point-mass 对照：独立 PN、同步 ITCG、序贯、混合。
-4. 增加终端扇区、最小成员距离、命令饱和和 FOV 丢失评价。
-5. 对通信时延、间歇通信、成员丢失和 leader/中心失效进行敏感性分析。
-6. 先使用独立实现和数值回归，不引入无许可证仓库。
-
-P1 当前聚焦物理闭环：先定位 15 s 诊断中 24 次末端检测超时和 0/30 命中的分层原因，再以更高控制频率和更长时限完成 PN/Pure Pursuit/PNG-VM/PNG-TTC 多 seed 对照。未激活 reserve 必须继续 standby，不能用 CV 合同验收替代物理命中证据。
+以下均为后置研究，不列当前 P1：cooperative guidance 与 independent multi-pair 的新边界实现；同一目标多成员的同步 ITCG、序贯/混合 point-mass 对照；终端扇区、impact angle、同步到达离散、通信一致性与协同避碰；3D PN、True PN、APN、FRPN 在线化。现阶段只保持已接线的 coalition/arrival-window/wave/role/commit 合同，D7 只消费，不决定联盟。
 
 ### P2 optional benchmark
 

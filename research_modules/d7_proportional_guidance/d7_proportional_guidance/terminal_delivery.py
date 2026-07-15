@@ -49,6 +49,16 @@ class TerminalFilterAuditState(str, Enum):
     EXPIRED = "expired"
 
 
+class TerminalDropoutReasonScope(str, Enum):
+    """Why a no-observation terminal sample did or did not retain state."""
+
+    NOT_APPLICABLE = "not_applicable"
+    BOUNDED_PREDICTION = "bounded_prediction"
+    CONTRACT_RESET = "contract_reset"
+    PREDICTION_WINDOW = "prediction_window"
+    MEASURED_LOCK_NOT_ESTABLISHED = "measured_lock_not_established"
+
+
 @dataclass(frozen=True)
 class TerminalLifecycleContext:
     """Identity and plan tuple that may own one terminal-filter history."""
@@ -132,6 +142,14 @@ class TerminalDeliveryResult:
     filter_audit_reason: str = ""
     lifecycle_reset: bool = False
     lifecycle_reset_reason: str = ""
+    dropout_reason_scope: TerminalDropoutReasonScope = (
+        TerminalDropoutReasonScope.NOT_APPLICABLE
+    )
+    dropout_reason: str = ""
+    measured_lock_history_available: bool = False
+    measured_lock_ever_established: bool = False
+    contract_reset_reason: str = ""
+    prediction_window_expired: bool = False
     image_innovation_norm_rad: float | None = None
     trend_coast_applied: bool = False
     trend_coast_velocity_ned: tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -300,6 +318,7 @@ class TerminalGuidanceDelivery:
         self._last_measurement_timestamp_s: float | None = None
         self._loss_frame_count = 0
         self._had_measured_lock = False
+        self._ever_established_measured_lock = False
         self._loss_started_after_lock = False
         self._blind_started_at_s: float | None = None
         self._blind_base_command: PngGuidanceCommand | None = None
@@ -353,15 +372,63 @@ class TerminalGuidanceDelivery:
 
         return self._had_measured_lock and self._last_observation is not None
 
+    @property
+    def measured_lock_ever_established(self) -> bool:
+        """Return whether the current delivery context ever accepted a measurement."""
+
+        return self._ever_established_measured_lock
+
+    @property
+    def lifecycle_context(self) -> TerminalLifecycleContext | None:
+        """Return the context that owns predictive history for audit checks."""
+
+        return self._lifecycle_context
+
+    def coast_context_reject_reason(self, context: TerminalLifecycleContext) -> str:
+        """Reject coast unless current identity/owner is the measured context."""
+
+        previous = self._lifecycle_context
+        if not self.has_measured_lock or previous is None:
+            return "terminal_coast_measured_lock_not_established"
+        if previous.resource_id != context.resource_id:
+            return "terminal_coast_resource_identity_mismatch"
+        if previous.assigned_global_track_id != context.assigned_global_track_id:
+            return "terminal_coast_global_identity_mismatch"
+        if (
+            previous.local_track_id is None
+            or context.local_track_id is None
+            or previous.local_track_id != context.local_track_id
+        ):
+            return "terminal_coast_local_identity_mismatch"
+        if previous.plan_owner_id != context.plan_owner_id:
+            return "terminal_coast_plan_owner_mismatch"
+        if context.plan_version < previous.plan_version:
+            return "terminal_coast_plan_version_regression"
+        return ""
+
     def block(
         self,
         *,
         assigned_global_track_id: str,
         reason: str,
+        dropout_sample: bool = False,
     ) -> TerminalDeliveryResult:
         """Immediately block and clear all extrapolation state for this pair."""
 
-        acquiring = not self._had_measured_lock and reason == "d5_not_locked"
+        had_measured_lock = self._had_measured_lock
+        ever_established = self._ever_established_measured_lock
+        acquiring = not had_measured_lock and reason == "d5_not_locked"
+        dropout_scope = TerminalDropoutReasonScope.NOT_APPLICABLE
+        dropout_reason = ""
+        contract_reset_reason = ""
+        if dropout_sample:
+            if acquiring:
+                dropout_scope = TerminalDropoutReasonScope.MEASURED_LOCK_NOT_ESTABLISHED
+                dropout_reason = "terminal_visual_measured_lock_not_established"
+            else:
+                dropout_scope = TerminalDropoutReasonScope.CONTRACT_RESET
+                dropout_reason = "terminal_visual_contract_reset"
+                contract_reset_reason = reason
         self.reset()
         self._assigned_global_track_id = assigned_global_track_id
         return TerminalDeliveryResult(
@@ -374,6 +441,11 @@ class TerminalGuidanceDelivery:
             assigned_global_track_id=assigned_global_track_id,
             filter_audit_state=TerminalFilterAuditState.EXPIRED,
             filter_audit_reason=reason,
+            dropout_reason_scope=dropout_scope,
+            dropout_reason=dropout_reason,
+            measured_lock_history_available=False,
+            measured_lock_ever_established=ever_established,
+            contract_reset_reason=contract_reset_reason,
             metadata={"boundary": TERMINAL_GUIDANCE_DELIVERY_BOUNDARY, "blocked": True},
         )
 
@@ -403,6 +475,7 @@ class TerminalGuidanceDelivery:
             return self.block(
                 assigned_global_track_id=assigned_global_track_id,
                 reason="d5_safety_gate_blocked",
+                dropout_sample=observation is None,
             )
         if (
             self._assigned_global_track_id is not None
@@ -411,6 +484,7 @@ class TerminalGuidanceDelivery:
             return self.block(
                 assigned_global_track_id=assigned_global_track_id,
                 reason="terminal_identity_mismatch",
+                dropout_sample=observation is None,
             )
         self._assigned_global_track_id = assigned_global_track_id
 
@@ -497,6 +571,9 @@ class TerminalGuidanceDelivery:
                 filter_audit_reason=kf_result.reason,
                 lifecycle_reset=bool(lifecycle_reset_reason),
                 lifecycle_reset_reason=lifecycle_reset_reason,
+                measured_lock_history_available=False,
+                measured_lock_ever_established=self._ever_established_measured_lock,
+                contract_reset_reason=lifecycle_reset_reason,
                 metadata={"boundary": TERMINAL_GUIDANCE_DELIVERY_BOUNDARY},
             )
         command = self._filter.evaluate(
@@ -515,6 +592,7 @@ class TerminalGuidanceDelivery:
             self._last_measurement_timestamp_s = timestamp_s
         self._loss_frame_count = 0
         self._had_measured_lock = True
+        self._ever_established_measured_lock = True
         self._loss_started_after_lock = False
         self._blind_started_at_s = None
         self._blind_base_command = None
@@ -557,6 +635,9 @@ class TerminalGuidanceDelivery:
             ),
             lifecycle_reset=bool(lifecycle_reset_reason),
             lifecycle_reset_reason=lifecycle_reset_reason,
+            measured_lock_history_available=True,
+            measured_lock_ever_established=True,
+            contract_reset_reason=lifecycle_reset_reason,
             image_innovation_norm_rad=kf_result.innovation_norm_rad,
             metadata={"boundary": TERMINAL_GUIDANCE_DELIVERY_BOUNDARY},
         )
@@ -580,6 +661,12 @@ class TerminalGuidanceDelivery:
                 assigned_global_track_id=assigned_global_track_id,
                 filter_audit_state=TerminalFilterAuditState.EXPIRED,
                 filter_audit_reason="image_kf_uninitialized",
+                dropout_reason_scope=(
+                    TerminalDropoutReasonScope.MEASURED_LOCK_NOT_ESTABLISHED
+                ),
+                dropout_reason="terminal_visual_measured_lock_not_established",
+                measured_lock_history_available=False,
+                measured_lock_ever_established=self._ever_established_measured_lock,
                 metadata={"boundary": TERMINAL_GUIDANCE_DELIVERY_BOUNDARY},
             )
 
@@ -612,6 +699,10 @@ class TerminalGuidanceDelivery:
                     command_sample_count=len(self._command_samples),
                     filter_audit_state=TerminalFilterAuditState.PREDICTED,
                     filter_audit_reason="image_kf_detection_loss_predict",
+                    dropout_reason_scope=TerminalDropoutReasonScope.BOUNDED_PREDICTION,
+                    dropout_reason="terminal_visual_bounded_prediction",
+                    measured_lock_history_available=True,
+                    measured_lock_ever_established=True,
                     metadata={"boundary": TERMINAL_GUIDANCE_DELIVERY_BOUNDARY},
                 )
 
@@ -629,6 +720,11 @@ class TerminalGuidanceDelivery:
                 command_sample_count=len(self._command_samples),
                 filter_audit_state=TerminalFilterAuditState.EXPIRED,
                 filter_audit_reason="image_kf_predict_timeout",
+                dropout_reason_scope=TerminalDropoutReasonScope.PREDICTION_WINDOW,
+                dropout_reason="terminal_visual_prediction_window_expired",
+                measured_lock_history_available=True,
+                measured_lock_ever_established=True,
+                prediction_window_expired=True,
                 metadata={"boundary": TERMINAL_GUIDANCE_DELIVERY_BOUNDARY},
             )
 
@@ -665,6 +761,10 @@ class TerminalGuidanceDelivery:
                 command_sample_count=len(self._command_samples),
                 filter_audit_state=TerminalFilterAuditState.PREDICTED,
                 filter_audit_reason="terminal_command_coast",
+                dropout_reason_scope=TerminalDropoutReasonScope.BOUNDED_PREDICTION,
+                dropout_reason="terminal_visual_bounded_prediction",
+                measured_lock_history_available=True,
+                measured_lock_ever_established=True,
                 trend_coast_applied=trend_applied,
                 trend_coast_velocity_ned=tuple(
                     float(value) * decay for value in self._blind_trend_velocity
@@ -683,6 +783,10 @@ class TerminalGuidanceDelivery:
             command_sample_count=len(self._command_samples),
             filter_audit_state=TerminalFilterAuditState.EXPIRED,
             filter_audit_reason="terminal_visual_lost_after_coast",
+            dropout_reason_scope=TerminalDropoutReasonScope.PREDICTION_WINDOW,
+            dropout_reason="terminal_visual_coast_window_expired",
+            measured_lock_history_available=True,
+            measured_lock_ever_established=True,
             metadata={"boundary": TERMINAL_GUIDANCE_DELIVERY_BOUNDARY},
         )
 

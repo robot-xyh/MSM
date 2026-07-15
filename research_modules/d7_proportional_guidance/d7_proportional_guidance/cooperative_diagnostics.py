@@ -19,6 +19,7 @@ from .runtime_bus import D7RuntimePairOutput
 COOPERATIVE_GUIDANCE_DIAGNOSTIC_BOUNDARY = (
     "d7_passive_diagnostic_only_no_assignment_no_gate_bypass_no_vehicle_control"
 )
+COOPERATIVE_GUIDANCE_DIAGNOSTIC_SCHEMA = "d7_pair_guidance_funnel_v2"
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,25 @@ class CooperativeGuidanceDiagnosticSample:
     d5_visible: bool = True
     d5_associated: bool = True
     d5_locked: bool = True
+    d5_measured_lock_observed: bool = False
+    d5_measured_lock_established: bool = False
+    terminal_visual_lock_measured: bool = False
+    terminal_measured_lock_history_available: bool = False
+    terminal_measured_lock_ever_established: bool = False
+    terminal_dropout_reason_scope: str = ""
+    terminal_dropout_reason: str = ""
+    terminal_loss_frame_count: int = 0
+    raw_terminal_gate_applicable: bool | None = None
+    raw_terminal_gate_allowed: bool | None = None
+    raw_terminal_gate_reject_reason: str = ""
+    camera_quality_gate_passed: bool | None = None
+    los_quality_gate_passed: bool | None = None
+    closing_speed_gate_passed: bool | None = None
+    closing_speed_gate_threshold_mps: float | None = None
+    maneuver_margin_gate_passed: bool | None = None
+    latched_visual_mode_active: bool | None = None
+    effective_terminal_contract_allowed: bool | None = None
+    effective_control_authorized: bool | None = None
     terminal_contract_allowed: bool = False
     terminal_control_allowed: bool = False
     terminal_mode_entered: bool = False
@@ -172,7 +192,7 @@ class CooperativeGuidanceDiagnosticSample:
             else bool(d5_associated)
         )
         resolved_locked = (
-            output.d5_decision_state == "locked" and output.d5_lock_consistent is not False
+            output.d5_decision_state == "locked"
             if d5_locked is None
             else bool(d5_locked)
         )
@@ -187,10 +207,16 @@ class CooperativeGuidanceDiagnosticSample:
             else bool(version_mismatch)
         )
         control_reason = (
-            output.ttc_reject_reason
+            output.raw_terminal_switch_reject_reason
             or output.terminal_switch_reject_reason
-            or output.raw_terminal_switch_reject_reason
+            or output.ttc_reject_reason
             or output.terminal_delivery_reason
+        )
+        measured_lock_observed = bool(
+            output.terminal_delivery_state
+            or output.terminal_delivery_reason
+            or output.terminal_measured_lock_history_available
+            or output.terminal_visual_lock_measured
         )
         return cls(
             timestamp_s=output.timestamp_s,
@@ -216,8 +242,33 @@ class CooperativeGuidanceDiagnosticSample:
             d5_visible=resolved_visible,
             d5_associated=resolved_associated,
             d5_locked=resolved_locked,
-            terminal_contract_allowed=output.terminal_contract_allowed,
-            terminal_control_allowed=output.terminal_switch_allowed,
+            d5_measured_lock_observed=measured_lock_observed,
+            d5_measured_lock_established=output.terminal_visual_lock_measured,
+            terminal_visual_lock_measured=output.terminal_visual_lock_measured,
+            terminal_measured_lock_history_available=(
+                output.terminal_measured_lock_history_available
+            ),
+            terminal_measured_lock_ever_established=(
+                output.terminal_measured_lock_ever_established
+            ),
+            terminal_dropout_reason_scope=output.terminal_dropout_reason_scope,
+            terminal_dropout_reason=output.terminal_dropout_reason,
+            terminal_loss_frame_count=output.terminal_loss_frame_count,
+            raw_terminal_gate_applicable=output.raw_terminal_gate_applicable,
+            raw_terminal_gate_allowed=output.raw_terminal_gate_allowed,
+            raw_terminal_gate_reject_reason=output.raw_terminal_gate_reject_reason,
+            camera_quality_gate_passed=output.camera_quality_gate_passed,
+            los_quality_gate_passed=output.los_quality_gate_passed,
+            closing_speed_gate_passed=output.closing_speed_gate_passed,
+            closing_speed_gate_threshold_mps=output.closing_speed_gate_threshold_mps,
+            maneuver_margin_gate_passed=output.maneuver_margin_gate_passed,
+            latched_visual_mode_active=output.latched_visual_mode_active,
+            effective_terminal_contract_allowed=(
+                output.effective_terminal_contract_allowed
+            ),
+            effective_control_authorized=output.effective_control_authorized,
+            terminal_contract_allowed=output.effective_terminal_contract_allowed,
+            terminal_control_allowed=output.effective_control_authorized,
             terminal_mode_entered=output.terminal_mode_entered
             or output.mode == GuidanceMode.VISION_TERMINAL,
             physical_intercept=physical_intercept,
@@ -271,9 +322,29 @@ class AssignmentPairGuidanceDiagnostic:
     active_reached: bool
     radar_midcourse_reached: bool
     reacquisition_reached: bool
+    terminal_handoff_range_observed: bool
+    terminal_handoff_range_reached: bool
     d5_visible_reached: bool
     d5_associated_reached: bool
     d5_locked_reached: bool
+    d5_measured_lock_observed: bool
+    d5_measured_lock_reached: bool
+    raw_terminal_gate_observed: bool
+    raw_terminal_gate_reached: bool
+    camera_quality_gate_observed: bool
+    camera_quality_gate_reached: bool
+    los_quality_gate_observed: bool
+    los_quality_gate_reached: bool
+    closing_speed_gate_observed: bool
+    closing_speed_gate_reached: bool
+    maneuver_margin_gate_observed: bool
+    maneuver_margin_gate_reached: bool
+    latched_visual_mode_observed: bool
+    latched_visual_mode_reached: bool
+    effective_terminal_contract_observed: bool
+    effective_terminal_contract_reached: bool
+    effective_control_observed: bool
+    effective_control_reached: bool
     terminal_contract_reached: bool
     terminal_control_reached: bool
     terminal_mode_reached: bool
@@ -292,6 +363,12 @@ class AssignmentPairGuidanceDiagnostic:
     version_mismatch_count: int
     first_failure_stage: str
     first_failure_reason: str
+    canonical_first_failure_stage: str
+    canonical_first_failure_reason: str
+    diagnostic_reason_missing_count: int
+    funnel_first_reached_timestamp_s: dict[str, float | None]
+    measured_lock_timing: dict[str, Any]
+    measured_lock_timeline: tuple[dict[str, Any], ...]
     disturbance_types: tuple[str, ...]
     disturbance_reject_reasons: tuple[str, ...]
 
@@ -305,6 +382,7 @@ class AssignmentPairGuidanceDiagnostic:
                 "active_primary": bool(
                     self.member_role == "primary" and self.active_reached
                 ),
+                "diagnostic_schema": COOPERATIVE_GUIDANCE_DIAGNOSTIC_SCHEMA,
                 "assigned": self.assigned_reached,
                 "visible": self.d5_visible_reached,
                 "associated": self.d5_associated_reached,
@@ -318,6 +396,8 @@ class AssignmentPairGuidanceDiagnostic:
                 "owner_version_mismatch_count": (
                     self.owner_mismatch_count + self.version_mismatch_count
                 ),
+                "funnel": _pair_funnel_payload(self),
+                "canonical_funnel": _canonical_pair_funnel_payload(self),
             }
         )
         return payload
@@ -408,6 +488,11 @@ def summarize_cooperative_guidance_diagnostics(
         for row in coalitions
         if row["second_primary_failure_stage"]
     )
+    second_primary_canonical_failures = Counter(
+        row["second_primary_canonical_first_failure_stage"]
+        for row in coalitions
+        if row["second_primary_canonical_first_failure_stage"]
+    )
     primary_failure_by_ordinal: dict[str, Counter[str]] = defaultdict(Counter)
     for coalition in coalitions:
         for primary in coalition["primary_diagnostics"]:
@@ -415,8 +500,10 @@ def summarize_cooperative_guidance_diagnostics(
                 primary_failure_by_ordinal[str(primary["primary_ordinal"])][
                     primary["first_failure_stage"]
                 ] += 1
+    funnel_stage_names = tuple(_pair_funnel_payload(pairs[0])) if pairs else ()
     return {
         "boundary": COOPERATIVE_GUIDANCE_DIAGNOSTIC_BOUNDARY,
+        "schema": COOPERATIVE_GUIDANCE_DIAGNOSTIC_SCHEMA,
         "sample_count": len(sample_rows),
         "pair_count": len(pairs),
         "candidate_count": len(candidate_summaries),
@@ -426,10 +513,51 @@ def summarize_cooperative_guidance_diagnostics(
         "coalition_diagnostics": coalitions,
         "candidate_summaries": candidate_summaries,
         "second_primary_failure_stage_counts": dict(second_primary_failures),
+        "second_primary_canonical_first_failure_stage_counts": dict(
+            second_primary_canonical_failures
+        ),
         "primary_failure_stage_counts_by_ordinal": {
             ordinal: dict(counts)
             for ordinal, counts in sorted(primary_failure_by_ordinal.items())
         },
+        "pair_first_failure_stage_counts": dict(
+            Counter(pair.first_failure_stage for pair in pairs if pair.first_failure_stage)
+        ),
+        "pair_first_failure_reason_counts": dict(
+            Counter(pair.first_failure_reason for pair in pairs if pair.first_failure_reason)
+        ),
+        "pair_canonical_first_failure_stage_counts": dict(
+            Counter(
+                pair.canonical_first_failure_stage
+                for pair in pairs
+                if pair.canonical_first_failure_stage
+            )
+        ),
+        "pair_canonical_first_failure_reason_counts": dict(
+            Counter(
+                pair.canonical_first_failure_reason
+                for pair in pairs
+                if pair.canonical_first_failure_reason
+            )
+        ),
+        "pair_funnel_reached_counts": {
+            stage: sum(
+                bool(_pair_funnel_payload(pair)[stage]["reached"])
+                for pair in pairs
+                if _pair_funnel_payload(pair)[stage]["available"]
+            )
+            for stage in funnel_stage_names
+        },
+        "pair_funnel_available_counts": {
+            stage: sum(
+                bool(_pair_funnel_payload(pair)[stage]["available"])
+                for pair in pairs
+            )
+            for stage in funnel_stage_names
+        },
+        "diagnostic_reason_missing_count": sum(
+            pair.diagnostic_reason_missing_count for pair in pairs
+        ),
         "disturbance_first_failure_reason_counts": dict(
             Counter(
                 pair.first_failure_reason
@@ -504,14 +632,95 @@ def _build_pair_diagnostic(
     assigned_reached = any(row.assigned for row in rows)
     active_reached = any(row.active for row in rows)
     radar_reached = any(row.radar_midcourse_active for row in rows)
+    handoff_range_observed = bool(range_rows)
+    handoff_range_reached = any(
+        float(row.range_m) <= first.candidate.terminal_handoff_range_m
+        for row in range_rows
+    )
     visible_reached = any(row.d5_visible for row in rows)
     associated_reached = any(row.d5_associated for row in rows)
     locked_reached = any(row.d5_locked for row in rows)
+    measured_lock_observed = any(row.d5_measured_lock_observed for row in rows)
+    measured_lock_reached = any(row.d5_measured_lock_established for row in rows)
+    raw_gate_rows = [
+        row
+        for row in rows
+        if row.raw_terminal_gate_applicable is not False
+        and row.raw_terminal_gate_allowed is not None
+    ]
+    raw_gate_observed = bool(raw_gate_rows)
+    raw_gate_reached = any(row.raw_terminal_gate_allowed is True for row in raw_gate_rows)
+    camera_gate_rows = [
+        row for row in rows if row.camera_quality_gate_passed is not None
+    ]
+    los_gate_rows = [row for row in rows if row.los_quality_gate_passed is not None]
+    closing_gate_rows = [
+        row for row in rows if row.closing_speed_gate_passed is not None
+    ]
+    maneuver_gate_rows = [
+        row for row in rows if row.maneuver_margin_gate_passed is not None
+    ]
+    latch_rows = [
+        row for row in rows if row.latched_visual_mode_active is not None
+    ]
+    effective_contract_rows = [
+        row for row in rows if row.effective_terminal_contract_allowed is not None
+    ]
+    effective_control_rows = [
+        row for row in rows if row.effective_control_authorized is not None
+    ]
+    camera_gate_reached = any(row.camera_quality_gate_passed is True for row in camera_gate_rows)
+    los_gate_reached = any(row.los_quality_gate_passed is True for row in los_gate_rows)
+    closing_gate_reached = any(row.closing_speed_gate_passed is True for row in closing_gate_rows)
+    maneuver_gate_reached = any(
+        row.maneuver_margin_gate_passed is True for row in maneuver_gate_rows
+    )
+    latch_reached = any(row.latched_visual_mode_active is True for row in latch_rows)
+    effective_contract_reached = any(
+        row.effective_terminal_contract_allowed is True
+        for row in effective_contract_rows
+    )
+    effective_control_reached = any(
+        row.effective_control_authorized is True for row in effective_control_rows
+    )
     contract_reached = any(row.terminal_contract_allowed for row in rows)
     control_reached = any(row.terminal_control_allowed for row in rows)
     mode_reached = any(row.terminal_mode_entered for row in rows)
     physical_reached = arrival is not None
     failure_stage, failure_reason = _first_failure(
+        rows,
+        assigned_reached=assigned_reached,
+        active_reached=active_reached,
+        radar_reached=radar_reached,
+        handoff_range_observed=handoff_range_observed,
+        handoff_range_reached=handoff_range_reached,
+        visible_reached=visible_reached,
+        associated_reached=associated_reached,
+        locked_reached=locked_reached,
+        measured_lock_observed=measured_lock_observed,
+        measured_lock_reached=measured_lock_reached,
+        raw_gate_observed=raw_gate_observed,
+        raw_gate_reached=raw_gate_reached,
+        camera_gate_observed=bool(camera_gate_rows),
+        camera_gate_reached=camera_gate_reached,
+        los_gate_observed=bool(los_gate_rows),
+        los_gate_reached=los_gate_reached,
+        closing_gate_observed=bool(closing_gate_rows),
+        closing_gate_reached=closing_gate_reached,
+        maneuver_gate_observed=bool(maneuver_gate_rows),
+        maneuver_gate_reached=maneuver_gate_reached,
+        latch_observed=bool(latch_rows),
+        latch_reached=latch_reached,
+        effective_contract_observed=bool(effective_contract_rows),
+        effective_contract_reached=effective_contract_reached,
+        effective_control_observed=bool(effective_control_rows),
+        effective_control_reached=effective_control_reached,
+        contract_reached=contract_reached,
+        control_reached=control_reached,
+        mode_reached=mode_reached,
+        physical_reached=physical_reached,
+    )
+    canonical_failure_stage, canonical_failure_reason = _canonical_first_failure(
         rows,
         assigned_reached=assigned_reached,
         active_reached=active_reached,
@@ -524,6 +733,9 @@ def _build_pair_diagnostic(
         mode_reached=mode_reached,
         physical_reached=physical_reached,
     )
+    funnel_first_reached = _funnel_first_reached_timestamps(rows)
+    measured_lock_timeline = _measured_lock_timeline(rows)
+    measured_lock_timing = _measured_lock_timing(measured_lock_timeline)
     arrival_error = _arrival_window_error(arrival)
     separations = [
         row.member_separation_m
@@ -559,9 +771,29 @@ def _build_pair_diagnostic(
         active_reached=active_reached,
         radar_midcourse_reached=radar_reached,
         reacquisition_reached=any(row.reacquisition_active for row in rows),
+        terminal_handoff_range_observed=handoff_range_observed,
+        terminal_handoff_range_reached=handoff_range_reached,
         d5_visible_reached=visible_reached,
         d5_associated_reached=associated_reached,
         d5_locked_reached=locked_reached,
+        d5_measured_lock_observed=measured_lock_observed,
+        d5_measured_lock_reached=measured_lock_reached,
+        raw_terminal_gate_observed=raw_gate_observed,
+        raw_terminal_gate_reached=raw_gate_reached,
+        camera_quality_gate_observed=bool(camera_gate_rows),
+        camera_quality_gate_reached=camera_gate_reached,
+        los_quality_gate_observed=bool(los_gate_rows),
+        los_quality_gate_reached=los_gate_reached,
+        closing_speed_gate_observed=bool(closing_gate_rows),
+        closing_speed_gate_reached=closing_gate_reached,
+        maneuver_margin_gate_observed=bool(maneuver_gate_rows),
+        maneuver_margin_gate_reached=maneuver_gate_reached,
+        latched_visual_mode_observed=bool(latch_rows),
+        latched_visual_mode_reached=latch_reached,
+        effective_terminal_contract_observed=bool(effective_contract_rows),
+        effective_terminal_contract_reached=effective_contract_reached,
+        effective_control_observed=bool(effective_control_rows),
+        effective_control_reached=effective_control_reached,
         terminal_contract_reached=contract_reached,
         terminal_control_reached=control_reached,
         terminal_mode_reached=mode_reached,
@@ -588,6 +820,12 @@ def _build_pair_diagnostic(
         version_mismatch_count=sum(1 for row in rows if row.version_mismatch),
         first_failure_stage=failure_stage,
         first_failure_reason=failure_reason,
+        canonical_first_failure_stage=canonical_failure_stage,
+        canonical_first_failure_reason=canonical_failure_reason,
+        diagnostic_reason_missing_count=_diagnostic_reason_missing_count(rows),
+        funnel_first_reached_timestamp_s=funnel_first_reached,
+        measured_lock_timing=measured_lock_timing,
+        measured_lock_timeline=measured_lock_timeline,
         disturbance_types=tuple(
             sorted({row.disturbance_type for row in rows if row.disturbance_type})
         ),
@@ -615,9 +853,29 @@ def _first_failure(
     assigned_reached: bool,
     active_reached: bool,
     radar_reached: bool,
+    handoff_range_observed: bool,
+    handoff_range_reached: bool,
     visible_reached: bool,
     associated_reached: bool,
     locked_reached: bool,
+    measured_lock_observed: bool,
+    measured_lock_reached: bool,
+    raw_gate_observed: bool,
+    raw_gate_reached: bool,
+    camera_gate_observed: bool,
+    camera_gate_reached: bool,
+    los_gate_observed: bool,
+    los_gate_reached: bool,
+    closing_gate_observed: bool,
+    closing_gate_reached: bool,
+    maneuver_gate_observed: bool,
+    maneuver_gate_reached: bool,
+    latch_observed: bool,
+    latch_reached: bool,
+    effective_contract_observed: bool,
+    effective_contract_reached: bool,
+    effective_control_observed: bool,
+    effective_control_reached: bool,
     contract_reached: bool,
     control_reached: bool,
     mode_reached: bool,
@@ -639,6 +897,8 @@ def _first_failure(
         return "activation", reason
     if not radar_reached:
         return "radar_midcourse", "radar_midcourse_not_observed"
+    if handoff_range_observed and not handoff_range_reached:
+        return "terminal_handoff_range", "terminal_handoff_range_not_reached"
     if not visible_reached:
         return "d5_visible", "d5_target_not_visible"
     if not associated_reached:
@@ -653,12 +913,61 @@ def _first_failure(
             "d5_not_locked",
         )
         return "d5_locked", reason
+    if raw_gate_observed and not raw_gate_reached:
+        reason = _first_nonempty(
+            row.raw_terminal_gate_reject_reason for row in rows
+        ) or _first_nonempty(row.terminal_contract_reject_reason for row in rows)
+        return (
+            "raw_terminal_gate",
+            reason or "raw_terminal_gate_reject_reason_missing",
+        )
+    if measured_lock_observed and not measured_lock_reached:
+        reason = _first_nonempty(row.terminal_delivery_reason for row in rows)
+        return "d5_measured_lock", reason or "measured_lock_not_established"
+    disturbance_reason = _first_nonempty(
+        row.ttc_reject_reason
+        for row in rows
+        if row.disturbance_type and row.ttc_reject_reason
+    )
+    if disturbance_reason:
+        return "terminal_control", disturbance_reason
+    if camera_gate_observed and not camera_gate_reached:
+        return (
+            "camera_quality",
+            _first_control_reason(rows, _CAMERA_REJECT_REASONS)
+            or "camera_quality_gate_not_passed",
+        )
+    if los_gate_observed and not los_gate_reached:
+        return (
+            "los_quality",
+            _first_control_reason(rows, _LOS_REJECT_REASONS)
+            or "los_quality_gate_not_passed",
+        )
+    if closing_gate_observed and not closing_gate_reached:
+        return "closing_speed", "not_closing"
+    if maneuver_gate_observed and not maneuver_gate_reached:
+        return (
+            "maneuver_margin",
+            _first_control_reason(rows, {"maneuver_margin_low"})
+            or "maneuver_margin_gate_not_passed",
+        )
+    if effective_contract_observed and not effective_contract_reached:
+        reason = _first_nonempty(
+            row.raw_terminal_gate_reject_reason for row in rows
+        ) or _first_nonempty(row.terminal_contract_reject_reason for row in rows)
+        return "effective_terminal_contract", reason or "effective_contract_not_allowed"
     if not contract_reached:
         reason = next(
             (row.terminal_contract_reject_reason for row in rows if row.terminal_contract_reject_reason),
             "terminal_contract_not_allowed",
         )
         return "terminal_contract", reason
+    if latch_observed and not latch_reached:
+        reason = _first_nonempty(row.terminal_control_reject_reason for row in rows)
+        return "latched_visual_mode", reason or "visual_mode_not_latched"
+    if effective_control_observed and not effective_control_reached:
+        reason = _first_nonempty(row.terminal_control_reject_reason for row in rows)
+        return "effective_control", reason or "effective_control_not_authorized"
     if not control_reached:
         reason = next(
             (
@@ -672,6 +981,321 @@ def _first_failure(
     if not mode_reached:
         return "terminal_mode", "terminal_mode_not_entered"
     return "physical", "physical_intercept_not_achieved"
+
+
+def _canonical_first_failure(
+    rows: list[CooperativeGuidanceDiagnosticSample],
+    *,
+    assigned_reached: bool,
+    active_reached: bool,
+    radar_reached: bool,
+    visible_reached: bool,
+    associated_reached: bool,
+    locked_reached: bool,
+    contract_reached: bool,
+    control_reached: bool,
+    mode_reached: bool,
+    physical_reached: bool,
+) -> tuple[str, str]:
+    """Return the fixed main/D6 pair funnel without hiding missing stages."""
+
+    stages = (
+        ("assignment", assigned_reached, "not_assigned"),
+        ("activation", active_reached, "assignment_not_active"),
+        ("radar_midcourse", radar_reached, "radar_midcourse_not_observed"),
+        ("d5_visible", visible_reached, "d5_target_not_visible"),
+        ("d5_associated", associated_reached, "d5_target_not_associated"),
+        ("d5_locked", locked_reached, "d5_not_locked"),
+        ("terminal_contract", contract_reached, "terminal_contract_not_allowed"),
+        ("terminal_control", control_reached, "terminal_control_not_allowed"),
+        ("terminal_mode", mode_reached, "terminal_mode_not_entered"),
+        ("physical", physical_reached, "physical_intercept_not_achieved"),
+    )
+    for stage, reached, fallback_reason in stages:
+        if reached:
+            continue
+        if stage in {"activation", "d5_locked", "terminal_contract"}:
+            reason = _first_nonempty(
+                row.terminal_contract_reject_reason for row in rows
+            )
+        elif stage == "terminal_control":
+            reason = _first_nonempty(
+                row.terminal_control_reject_reason for row in rows
+            )
+        else:
+            reason = ""
+        return stage, reason or fallback_reason
+    return "", ""
+
+
+_CAMERA_REJECT_REASONS = {
+    "detection_confidence_low",
+    "bbox_area_too_small",
+    "bbox_near_image_edge",
+    "stable_frame_count_low",
+    "visual_latency_high",
+}
+
+_LOS_REJECT_REASONS = {
+    "los_history_too_short",
+    "los_rate_window_too_short",
+    "los_rate_variance_high",
+    "los_rate_outlier_rejected",
+}
+
+
+def _first_nonempty(values: Iterable[str]) -> str:
+    return next((str(value) for value in values if value), "")
+
+
+def _first_control_reason(
+    rows: Iterable[CooperativeGuidanceDiagnosticSample],
+    accepted: set[str],
+) -> str:
+    return next(
+        (
+            row.terminal_control_reject_reason
+            for row in rows
+            if row.terminal_control_reject_reason in accepted
+        ),
+        "",
+    )
+
+
+def _diagnostic_reason_missing_count(
+    rows: Iterable[CooperativeGuidanceDiagnosticSample],
+) -> int:
+    return sum(
+        1
+        for row in rows
+        if row.raw_terminal_gate_applicable is not False
+        and row.raw_terminal_gate_allowed is False
+        and not row.raw_terminal_gate_reject_reason
+        and not row.terminal_contract_reject_reason
+    )
+
+
+def _pair_funnel_payload(
+    pair: AssignmentPairGuidanceDiagnostic,
+) -> dict[str, dict[str, bool]]:
+    return {
+        "assigned": {"available": True, "reached": pair.assigned_reached},
+        "active": {"available": True, "reached": pair.active_reached},
+        "radar_midcourse": {
+            "available": True,
+            "reached": pair.radar_midcourse_reached,
+        },
+        "terminal_handoff_range": {
+            "available": pair.terminal_handoff_range_observed,
+            "reached": pair.terminal_handoff_range_reached,
+        },
+        "d5_visible": {"available": True, "reached": pair.d5_visible_reached},
+        "d5_associated": {
+            "available": True,
+            "reached": pair.d5_associated_reached,
+        },
+        "d5_locked": {"available": True, "reached": pair.d5_locked_reached},
+        "raw_terminal_gate": {
+            "available": pair.raw_terminal_gate_observed,
+            "reached": pair.raw_terminal_gate_reached,
+        },
+        "d5_measured_lock": {
+            "available": pair.d5_measured_lock_observed,
+            "reached": pair.d5_measured_lock_reached,
+        },
+        "camera_quality": {
+            "available": pair.camera_quality_gate_observed,
+            "reached": pair.camera_quality_gate_reached,
+        },
+        "los_quality": {
+            "available": pair.los_quality_gate_observed,
+            "reached": pair.los_quality_gate_reached,
+        },
+        "closing_speed": {
+            "available": pair.closing_speed_gate_observed,
+            "reached": pair.closing_speed_gate_reached,
+        },
+        "maneuver_margin": {
+            "available": pair.maneuver_margin_gate_observed,
+            "reached": pair.maneuver_margin_gate_reached,
+        },
+        "effective_terminal_contract": {
+            "available": pair.effective_terminal_contract_observed,
+            "reached": pair.effective_terminal_contract_reached,
+        },
+        "latched_visual_mode": {
+            "available": pair.latched_visual_mode_observed,
+            "reached": pair.latched_visual_mode_reached,
+        },
+        "effective_control": {
+            "available": pair.effective_control_observed,
+            "reached": pair.effective_control_reached,
+        },
+        "terminal_mode": {"available": True, "reached": pair.terminal_mode_reached},
+        "physical_intercept": {
+            "available": True,
+            "reached": pair.physical_intercept_reached,
+        },
+    }
+
+
+def _canonical_pair_funnel_payload(
+    pair: AssignmentPairGuidanceDiagnostic,
+) -> dict[str, dict[str, bool]]:
+    """Stable coarse funnel requested by main/D6 for 2v2 and M-to-N runs."""
+
+    return {
+        "assigned": {"available": True, "reached": pair.assigned_reached},
+        "active": {"available": True, "reached": pair.active_reached},
+        "radar_midcourse": {
+            "available": True,
+            "reached": pair.radar_midcourse_reached,
+        },
+        "d5_visible": {"available": True, "reached": pair.d5_visible_reached},
+        "d5_associated": {
+            "available": True,
+            "reached": pair.d5_associated_reached,
+        },
+        "d5_locked": {"available": True, "reached": pair.d5_locked_reached},
+        "terminal_contract": {
+            "available": True,
+            "reached": pair.terminal_contract_reached,
+        },
+        "terminal_control": {
+            "available": True,
+            "reached": pair.terminal_control_reached,
+        },
+        "terminal_mode": {
+            "available": True,
+            "reached": pair.terminal_mode_reached,
+        },
+        "physical_intercept": {
+            "available": True,
+            "reached": pair.physical_intercept_reached,
+        },
+    }
+
+
+def _funnel_first_reached_timestamps(
+    rows: list[CooperativeGuidanceDiagnosticSample],
+) -> dict[str, float | None]:
+    predicates = {
+        "assigned": lambda row: row.assigned,
+        "active": lambda row: row.active,
+        "radar_midcourse": lambda row: row.radar_midcourse_active,
+        "d5_visible": lambda row: row.d5_visible,
+        "d5_associated": lambda row: row.d5_associated,
+        "d5_locked": lambda row: row.d5_locked,
+        "d5_measured_lock": lambda row: row.terminal_visual_lock_measured,
+        "terminal_contract": lambda row: row.terminal_contract_allowed,
+        "terminal_control": lambda row: row.terminal_control_allowed,
+        "terminal_mode": lambda row: row.terminal_mode_entered,
+        "physical_intercept": lambda row: row.physical_intercept,
+    }
+    return {
+        stage: next(
+            (float(row.timestamp_s) for row in rows if predicate(row)),
+            None,
+        )
+        for stage, predicate in predicates.items()
+    }
+
+
+def _measured_lock_timeline(
+    rows: list[CooperativeGuidanceDiagnosticSample],
+) -> tuple[dict[str, Any], ...]:
+    return tuple(
+        {
+            "timestamp_s": float(row.timestamp_s),
+            "d5_declared_locked": bool(row.d5_locked),
+            "terminal_visual_lock_measured": bool(
+                row.terminal_visual_lock_measured
+            ),
+            "terminal_measured_lock_history_available": bool(
+                row.terminal_measured_lock_history_available
+            ),
+            "terminal_measured_lock_ever_established": bool(
+                row.terminal_measured_lock_ever_established
+            ),
+            "terminal_delivery_state": row.terminal_delivery_state,
+            "terminal_delivery_reason": row.terminal_delivery_reason,
+            "terminal_dropout_reason_scope": row.terminal_dropout_reason_scope,
+            "terminal_dropout_reason": row.terminal_dropout_reason,
+            "terminal_loss_frame_count": int(row.terminal_loss_frame_count),
+            "terminal_prediction_age_s": row.terminal_prediction_age_s,
+            "terminal_contract_allowed": bool(row.terminal_contract_allowed),
+            "terminal_control_allowed": bool(row.terminal_control_allowed),
+            "terminal_mode_entered": bool(row.terminal_mode_entered),
+        }
+        for row in rows
+        if row.d5_measured_lock_observed
+        or row.terminal_delivery_state
+        or row.terminal_dropout_reason_scope
+    )
+
+
+def _measured_lock_timing(
+    timeline: tuple[dict[str, Any], ...],
+) -> dict[str, Any]:
+    measured_indices = [
+        index
+        for index, row in enumerate(timeline)
+        if row["terminal_visual_lock_measured"]
+    ]
+    dropout_indices = [
+        index
+        for index, row in enumerate(timeline)
+        if row["terminal_dropout_reason_scope"] == "bounded_prediction"
+        or row["terminal_delivery_state"] in {"image_kf_predict", "blind_push"}
+    ]
+    dropout_runs: list[list[int]] = []
+    for index in dropout_indices:
+        if not dropout_runs or index != dropout_runs[-1][-1] + 1:
+            dropout_runs.append([index])
+        else:
+            dropout_runs[-1].append(index)
+    first_dropout = dropout_indices[0] if dropout_indices else None
+    first_reacquired = next(
+        (
+            index
+            for index, row in enumerate(timeline)
+            if first_dropout is not None
+            and index > first_dropout
+            and row["terminal_visual_lock_measured"]
+        ),
+        None,
+    )
+    measured_before_dropout = (
+        any(index < first_dropout for index in measured_indices)
+        if first_dropout is not None
+        else None
+    )
+    return {
+        "evidence_available": bool(timeline),
+        "first_measured_lock_timestamp_s": (
+            timeline[measured_indices[0]]["timestamp_s"] if measured_indices else None
+        ),
+        "first_dropout_timestamp_s": (
+            timeline[first_dropout]["timestamp_s"]
+            if first_dropout is not None
+            else None
+        ),
+        "first_reacquired_timestamp_s": (
+            timeline[first_reacquired]["timestamp_s"]
+            if first_reacquired is not None
+            else None
+        ),
+        "measured_lock_before_first_dropout": measured_before_dropout,
+        "dropout_run_lengths": [len(run) for run in dropout_runs],
+        "max_consecutive_dropout_frames": max(
+            (len(run) for run in dropout_runs), default=0
+        ),
+        "single_frame_dropout_reacquired": bool(
+            dropout_runs
+            and len(dropout_runs[0]) == 1
+            and first_reacquired is not None
+        ),
+    }
 
 
 def _arrival_window_error(
@@ -742,6 +1366,17 @@ def _coalition_diagnostics(
                 "physical_intercept_reached": member.physical_intercept_reached,
                 "first_failure_stage": member.first_failure_stage,
                 "first_failure_reason": member.first_failure_reason,
+                "canonical_first_failure_stage": (
+                    member.canonical_first_failure_stage
+                ),
+                "canonical_first_failure_reason": (
+                    member.canonical_first_failure_reason
+                ),
+                "canonical_funnel": _canonical_pair_funnel_payload(member),
+                "funnel_first_reached_timestamp_s": (
+                    member.funnel_first_reached_timestamp_s
+                ),
+                "measured_lock_timing": member.measured_lock_timing,
                 "physical_arrival_time_s": member.physical_arrival_time_s,
             }
             for index, member in enumerate(primaries, start=1)
@@ -783,6 +1418,27 @@ def _coalition_diagnostics(
                 ),
                 "second_primary_failure_reason": (
                     second["first_failure_reason"] if second is not None else ""
+                ),
+                "second_primary_canonical_first_failure_stage": (
+                    second["canonical_first_failure_stage"]
+                    if second is not None
+                    else ""
+                ),
+                "second_primary_canonical_first_failure_reason": (
+                    second["canonical_first_failure_reason"]
+                    if second is not None
+                    else ""
+                ),
+                "second_primary_funnel": (
+                    second["canonical_funnel"] if second is not None else {}
+                ),
+                "second_primary_first_reached_timestamp_s": (
+                    second["funnel_first_reached_timestamp_s"]
+                    if second is not None
+                    else {}
+                ),
+                "second_primary_measured_lock_timing": (
+                    second["measured_lock_timing"] if second is not None else {}
                 ),
             }
         )

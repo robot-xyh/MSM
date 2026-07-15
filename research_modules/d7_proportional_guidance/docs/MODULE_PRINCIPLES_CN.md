@@ -1,6 +1,46 @@
 # 比例导引模块中文原理
 
-本文说明本模块在科研仿真中的职责、数学模型、跨模块合同、状态机、能力边界和截至 2026-07-13 的验证结论。本文描述的是研究软件与仿真控制抽象，不是实机控制规范，也不构成任何自动授权、真实处置或绕过人工审核的设计。
+## 2026-07-15 M5N2 真实证据的原理解读
+
+20 个真实 AirSim SimpleFlight M5N2 case 使用同一原理边界：D7 对每个 active primary 独立运行雷达中段 PN 与末端视觉 PNG，联盟完成只表示所有必要 primary 各自进入 NED 三维 5 米范围，不要求同时到达。baseline/candidate 各 10 seeds 均只完成 `6/30` active pair 和 `6/20` target opportunity，联盟均为 `0/10`；合计 pair/target/coalition 为 `12/60`、`12/40`、`0/20`。第二 primary 按每个 case 的 active membership 动态识别，不固定资源编号，合计为 `0/20`。这说明“某目标至少被一个资源拦截”不能替代“高威胁目标的全部必要 primary 完成”。
+
+第二 primary 七阶段证据全部可用：`assigned/visible/associated/contract=20/20`、`control/mode=17/20`、physical=`0/20`。最近距离均值为 `12.736 m` 与 `12.573 m`，20 个第二 primary 最终都记录 `collision_stop`，但 collision object 为空。因此当前首要结论是“持续末端锁定/航路/平台停控归因不足”，不能简化为仅放宽视觉 gate，也不能归因于导引公式。
+
+candidate 的逐 seed non-degradation=false，trend coast 触发=0、soft-specific duration=0；paired seed 的 active-pair 结果为 2 改善、2 退化、6 持平，所以不符合“候选实际触发且稳定非退化”的晋级原则，继续 default-off。本轮不改位置 PN、VM/TTC PNG、LOS 滤波、image-KF/有界外推核心公式，online truth identity/state 均为 0。M5N2 后额外完成的 `png_ttc_2v2_seed001` 已排除，dropout 执行数为 0。
+
+实时性必须按包含关系分层理解：control tick 外层均值/P95 为 `1069.4/1254.1 ms`，main-bus 内层为 `349.3/487.4 ms`，D7 guidance-contract 仅为 `4.84/5.78 ms`。外层已包含内层，不能相加；当前优化应先指向 AirSim frame sampling、D1 fusion 和 control RPC，而不是更换 D7 核心导引公式。
+
+## 2026-07-15 被动可解释性补充
+
+D7 对每个资源-目标 pair 使用两层漏斗。规范漏斗固定为“已分配、已激活、雷达中段、D5 可见、已关联、声明锁定、末端合同、控制许可、模式进入、5 米物理结果”，便于 main/D6 跨场景比较；细粒度漏斗在其间继续保留交接距离、真实 measured lock、相机框、视线、闭合速度、机动裕度和锁存状态。联盟中的第二 primary 携带完整漏斗和各阶段首达时刻，不再只有最终失败标签。
+
+“声明锁定”不等于“本帧有真实图像量测”。诊断分别记录 `terminal_visual_lock_measured`、历史可用、历史曾建立、dropout scope、连续丢测帧数和 reacquisition。2026-07-15 seed2 本地单帧受控序列在 `0.3s` 进入一次 image-KF prediction、`0.4s` 重获；TTC 面积跳变和裁剪均 fail closed 并保持雷达 PN 与全局身份。D7 全量 `190 passed`；真实 AirSim 多 seed 仍待采集，不能由该本地回归推导物理成功率。
+
+## 2026-07-14 actual-execution 证据原则
+
+真实 AirSim seed-1 的 canonical 证据必须按五层解释，顺序为 contract/control/terminal-switch/mode/physical：tuned 2v2 为 `35/26/26/2/2`，M5N2 为 `67/0/0/0/2`，合计 `102/26/26/2/4`，五层均独立 `available`。`terminal_switch_allowed_count` 直接从已写盘 `control_commands` 统计，不能由 control 层回填。M5N2 active pair 为 `2/3`，第二 primary 最近约 `11.02 m`；target `2/2` 和 coalition `0/1` 不能替代。两个 required case 的 availability 为 `2/2`，identity/state online truth 均为 0，故 canonical P0 证据链关闭。
+
+该证据同步不改变位置 PN、VM/TTC PNG、LOS、外推或 D3/D4/D5 安全门。D6 formal overall fail 表示完整 P1 suite 不完整；terminal-switch 层和 main/D6 canonical 聚合均已闭合。当前 P1 只包括第二 primary、multi-seed/dropout/candidate、延迟及 pair funnel/closing-speed/三维机动标定；3D PN、True PN、APN、FRPN 在线化和同时到达不在当前 P1。
+
+本文说明本模块在科研仿真中的职责、数学模型、跨模块合同、状态机、能力边界和截至 2026-07-14 的验证结论。本文描述的是研究软件与仿真控制抽象，不是实机控制规范，也不构成任何自动授权、真实处置或绕过人工审核的设计。
+
+## 2026-07-14 导引律语义原则
+
+配置了视觉比例导航制导，不等于本帧执行了视觉比例导航制导。D7 用 `d7_guidance_law_semantics_v1` 分离配置策略、视觉候选律和实际执行律：配置律说明计划尝试哪种策略；候选律说明视觉命令已经计算并进入质量门；实际执行律说明 main 本帧唯一可以消费的命令来源。当相机框过小、视线质量不足或机动裕度不满足时，候选可以是 `png_vm`，实际执行必须仍是 `radar_pn`。
+
+“视觉模式切换”也不能由配置律、候选律或普通状态变化推断。只有有效合同、视觉锁存和有效控制全部成立，并且 live 状态从非视觉模式进入 `vision_terminal`，`executed_visual_mode_switch` 才为真。持续视觉控制只记录 `visual_control_active`，不重复记录入口切换；终止快照没有实际执行律。该不变量已由 `188 passed` 回归验证；canonical actual 五层现已按统一 producer/scope/lifecycle 正式聚合，未来多 seed 仍须保持同一 state instance 和持久化口径。
+
+## 2026-07-14 no-switch 诊断原则
+
+末端未切换必须按最早不可通过的阶段解释，不能只报一个 `terminal_switch_allowed=false`。当前 `d7_pair_guidance_funnel_v2` 先区分“尚未进入交接距离”和“已经进入交接区”，再区分 D5 声明锁定、D7 是否获得真实图像量测、相机框质量、视线角速度质量、闭合速度、平台机动裕度、迟滞锁存和最终控制许可。距离阶段只是诊断 D3 候选的交接区是否实际到达，不新增授权；闭合速度字段只是公开既有门限结果，不改变公式。
+
+对 seed-1 真实输出的审计表明，M5N2 两个 pair 在约 `35-39 m` 终止，未到约 `30 m` 交接区；另一个在约 `26 m` 进入交接区后仍未建立 D5 lock/measured lock。主 CSV 中 raw gate false 但 reason 为空的行属于证据缺失，必须显式报告，不能归因到 camera/LOS/maneuver。D7 当前全量测试为 `188 passed`；该结果不代表 M5N2 物理闭环已完成，也不改变上游门控或全局航迹身份。
+
+## 2026-07-14 末端语义规范
+
+`d7_terminal_semantics_v2` 把末端状态分为六层，不允许用一个布尔量替代：raw terminal gate 是本帧 fresh D3/D4/D5 合同；latched visual mode 是 dwell/release/reacquire 迟滞状态；effective terminal contract 是 raw gate 或满足全部安全条件的 bounded coast；effective control authorization 是本帧最终可执行视觉命令；mode transition 是 live 状态变化事件；termination snapshot 是 episode 结束后的非控制记录。旧 `terminal_contract_allowed` 映射 effective contract，旧 `terminal_switch_allowed`、`terminal_control_allowed`、`visual_png_enabled/switch` 映射 effective control。termination snapshot 的 live contract/control 固定为 false，终止前状态写入独立 `termination_prior_*` 字段，且不进入 live 聚合。
+
+D5 `reacquire` 且无 observation 时，delivery 用 `terminal_dropout_reason_scope` 区分 `contract_reset`、`prediction_window`、`measured_lock_not_established` 和仍在时限内的 `bounded_prediction`。coast 只在 raw reject 为 `d5_not_locked`、已有 measured history 和 active latch 时尝试，并逐帧要求 resource/global/local identity、current plan/owner/version、D4 许可及 friend/duplicate/safety 全部一致。2026-07-14 D7 全量测试现为 `188 passed`，验收阈值为零失败；canonical actual 五层日志已经接入，真实 dropout/candidate 和完整 pair-funnel 标定仍待 P1 扩展。位置 PN、VM/TTC PNG 和 `png_guidance_delivery` 核心公式未修改。
 
 ## 1. 阅读约定与缩写首次定义
 
@@ -189,8 +229,11 @@ D7 有两类输出：
 
 `D7RuntimePairOutput`（单 pair 运行输出）同时给出：
 
-- `terminal_contract_allowed`（上游合同是否允许）；
-- `terminal_switch_allowed`（迟滞后是否允许视觉切换）；
+- `raw_terminal_gate_allowed`（本帧 fresh 上游合同是否允许）；
+- `effective_terminal_contract_allowed`（fresh gate 或合规 bounded coast 是否形成有效合同）；
+- `latched_visual_mode_active`（迟滞状态是否仍在视觉模式）；
+- `effective_control_authorized`（本帧是否最终授权视觉控制）；
+- `terminal_contract_allowed` 与 `terminal_switch_allowed`（分别兼容映射上述 effective contract/control）；
 - `camera_quality_gate_passed`（相机质量门）；
 - `los_quality_gate_passed`（LOS 质量门）；
 - `maneuver_margin_gate_passed`（机动裕度门）；
@@ -564,7 +607,8 @@ control_context_id = resource_id + "->" + assigned_global_track_id
 - D5 `assigned_global_track_id`、D3 binding 和视觉 observation 三者必须一致。
 - D5 `local_track_id` 只限定图像滤波生命周期，不能替代中心身份。
 - friend conflict、duplicate lock risk 或 D5 execution/safety false 都立即 fail closed。
-- 在线 D5/D7 不使用 AirSim actor truth ID 做身份绑定；truth 只允许在写盘后由 D6 离线评分。
+- 在线 D5/D7 不使用 AirSim actor truth ID 做身份绑定，也不使用 actor truth 位置/速度生成导引命令；truth 只允许在写盘后由 D6 离线评分。
+- `truth_identity_online_use_count` 和 `truth_state_online_use_count` 必须分别为 0。前者不能替代后者，迁移前只记录身份计数的结果不能追溯升级为 truth-isolated 物理证据。
 
 联盟规则：
 
@@ -623,20 +667,24 @@ FRPN 项尤其只是 research approximation，未复现标准模糊规则库，�
 - 真实无线链路、时钟漂移、带宽限制和多机网络认证；
 - 自动创建 assignment、自动授权、自动激活 reserve 或绕过人工审核。
 
-## 9. 2026-07-13 结果与结论边界
+## 9. 2026-07-14 结果与结论边界
 
-### 9.1 2v2 PNG-TTC
+### 9.1 当前 actual-v2 seed-1
 
-截至 2026-07-13 的批量证据中，2 资源对 2 目标的 `png_ttc` 场景覆盖 10 个 seed、20 个资源-目标 pair：
+2026-07-14 tuned 2v2 `png_ttc` 的 pair 级 NED 三维 5 米物理成功为 `2/2`；M5N2 的 active-pair 成功为 `2/3`，第二 primary 最近约 `11.02 m`，有效视觉控制样本和 mode switch 都为 0。M5N2 target 成功 `2/2` 与 coalition completion `0/1` 分母不同，不能把 target 结果写成 coalition 完成。两个 actual-execution case 均 available，双 truth-online-use 计数均为 0，因此 P0 证据链关闭；每场景仅 1 个 seed，且 loop latency 约为 `123.3/384.6 ms`，完整 P1 仍未关闭。
+
+### 9.2 历史 2v2 PNG-TTC
+
+截至 2026-07-13 的迁移前批量证据中，2 资源对 2 目标的 `png_ttc` 场景覆盖 10 个 seed、20 个资源-目标 pair：
 
 - 5 米物理成功 `20/20`；
 - 目标成功 `20/20`；
 - 视觉控制允许样本 84；
 - 模式切换计数 20；
-- 在线 truth identity 使用 0；
+- 在线 truth identity 使用 0；truth state 当时未独立审计；
 - 面积不扩张和 TTC 越界拒绝在日志中实际出现，说明面积质量门不是空门。
 
-该结果证明当前 `png_ttc` API、D3/D4/D5 gate、面积治理和 SimpleFlight 执行链在该 2v2、8 秒、10-seed 几何下能够闭合。它不证明：
+该结果证明迁移前 `png_ttc` API、D3/D4/D5 gate、面积治理和 SimpleFlight 执行链在该 2v2、8 秒、10-seed 几何下曾可运行。它不能替代当前 actual-v2，也不证明当前多 seed truth-isolated P1 已关闭，且不证明：
 
 - `png_ttc` 优于 `png_vm` 或雷达 PN；
 - 20/20 都由视觉模式单独贡献；
@@ -644,7 +692,7 @@ FRPN 项尤其只是 research approximation，未复现标准模糊规则库，�
 - 检测框面积 TTC 等于真实测距或真实碰撞时间；
 - 已完成实机飞控、真实视觉或通信安全验证。
 
-### 9.2 M5N2 联盟物理闭环
+### 9.3 历史 M5N2 联盟物理闭环
 
 五资源对二目标场景（M equals 5, N equals 2，M5N2）的最终收敛批次包含 40 个 SimpleFlight episode：baseline 和三个 D3 profile 各 10 seeds。高威胁目标使用 2 个 active primary 和 1 个 standby reserve；联盟完成定义为同一 episode 内两个 active primary 分别进入 NED 三维 5 米范围，不要求同时到达。
 
@@ -657,7 +705,7 @@ FRPN 项尤其只是 research approximation，未复现标准模糊规则库，�
 | 20 米 / 5 秒 / 40 度 | 2/10 |
 | 20 米 / 8 秒 / 40 度 | 1/10 |
 
-最佳 profile 是 `5/10`，未达到 `8/10` 晋级门限；全部 profile 合计 `8/40`。主要失败断点是第二 primary 的 `d5_not_locked`（D5 未锁定）和 `terminal_detection_acquisition_timeout`（末端检测获取超时），少量为 `bbox_area_too_small`（检测框面积过小）。安全结果为 reserve unauthorized 0、`global_track_id` rewrite 0、online truth use 0。
+最佳 profile 是 `5/10`，未达到 `8/10` 晋级门限；全部 profile 合计 `8/40`。主要失败断点是第二 primary 的 `d5_not_locked`（D5 未锁定）和 `terminal_detection_acquisition_timeout`（末端检测获取超时），少量为 `bbox_area_too_small`（检测框面积过小）。迁移前安全结果为 reserve unauthorized 0、`global_track_id` rewrite 0、truth identity online use 0；truth state 当时未独立审计。
 
 D6 在统一报告中分别统计 contract 35、control 7、mode switch 9、pair physical 62。这四层样本口径和判定条件不同，只能分别审计，不能相互反推。尤其：
 
@@ -719,7 +767,7 @@ D6 消费 D7 和 main 的逐帧/逐 pair 记录，不回写控制。关键字段
 - 相机/LOS/机动门和拒绝原因；
 - 外推状态、预测年龄、coast 到期和重捕计数；
 - `time_to_intercept_s`、assigned collision object、5 米 physical result；
-- reserve 越权、owner/version mismatch、global ID rewrite 和 online truth use。
+- reserve 越权、owner/version mismatch、global ID rewrite，以及分开的 truth identity/state online use。
 
 D6 必须保留 raw contract 与 execution 的双口径，不能用 aggregate 计数覆盖逐帧事实。
 
@@ -735,7 +783,9 @@ main 拥有仿真生命周期和实际执行：
 6. 通过 `moveByVelocityZAsync` 向 SimpleFlight 拦截机下发高层水平速度和高度命令。
 7. 输出 `control_commands.csv`（逐帧控制日志）、`intercept_summary.json`（拦截摘要）、D6 metrics 和 Markdown 报告。
 
-目标 actor 当前不是 SimpleFlight 车辆。成功判据必须绑定 assigned target：距离进入阈值，或 collision object name 与 assigned actor/object 匹配。撞地、撞障碍或撞到其他目标不能记为成功。
+目标 actor 当前不是 SimpleFlight 车辆。在线控制只消费 D2 estimated state：估计距离进入阈值只能触发 `estimated_range_stop`，不能直接作为物理成功。episode 结束后，离线 scorer 才可用 actor truth pairing 计算 assigned target 的 NED 三维 5 米结果；collision object name 仅作离线诊断。撞地、撞障碍或撞到其他目标不能记为成功。
+
+2026-07-14 main/runtime 已以 `130 passed` mock 回归覆盖默认、主动中心重规划和主动二级接管的状态真值隔离，actual-v2 seed-1 真实 AirSim 又以两个 available case、独立五层和双 truth-online-use 计数为 0 关闭 canonical P0 证据链。第二 primary、同配置 multi-seed/dropout/candidate、延迟及 pair funnel/closing-speed/三维机动标定仍是 P1。多 primary 同时到达和 impact-time consensus 不属于当前 P1。
 
 ## 11. 中文术语表
 
@@ -767,7 +817,10 @@ main 拥有仿真生命周期和实际执行：
 | 主成员 | `primary` | 当前版本中可执行的主要资源成员。 |
 | 备用成员 | `reserve` | 默认 standby，必须由新版本显式激活后才可执行。 |
 | fail closed | conservative rejection | 缺字段、过期、冲突或不一致时拒绝执行，而不是猜测补值。 |
-| 合同允许 | `terminal_contract_allowed` | D3/D4/D5、身份、版本和联盟规则通过。 |
+| raw 合同允许 | `raw_terminal_gate_allowed` | 本帧 fresh D3/D4/D5、身份、版本和联盟规则通过。 |
+| effective 合同允许 | `effective_terminal_contract_allowed` | raw gate 通过，或同身份/计划上下文的 bounded coast 通过。 |
+| effective 控制授权 | `effective_control_authorized` | effective contract、视觉候选与 latch 均允许本帧命令。 |
+| 兼容字段 | `terminal_contract_allowed` / `terminal_switch_allowed` | 分别映射 effective contract / effective control，不再代表 raw gate。 |
 | 控制允许 | `terminal_control_allowed` | 候选控制经过执行侧条件允许。 |
 | 模式切换 | `mode_transition` | 当前导引模式相对上一样本发生变化。 |
 | 物理成功 | `physical_intercept` | assigned pair 达到规定距离或匹配碰撞对象；不能反推前述各门均通过。 |

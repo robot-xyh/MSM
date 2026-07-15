@@ -22,6 +22,7 @@ from d7_proportional_guidance import (
     evaluate_trend_coast_promotion,
     summarize_locked_dropout_matrix,
     summarize_png_ttc_calibration,
+    summarize_png_ttc_controlled_disturbances,
     summarize_runtime_bus_outputs,
 )
 
@@ -376,6 +377,57 @@ def test_png_ttc_multiseed_summary_covers_required_rejections() -> None:
     assert summary["required_reject_coverage_complete"] is True
     assert summary["ttc_reject_class_counts"]["bbox_clipping"] == 3
     assert summary["default_png_vm_changed"] is False
+
+
+def test_png_ttc_controlled_disturbances_block_control_and_preserve_binding() -> None:
+    jump_bus = D7RuntimeBus(_png_config(law="png_ttc"))
+    jump_bus.evaluate_pair(
+        replace(_pair_input(0.0), observation=_observation(0.0, size_px=40.0))
+    )
+    jump_bus.evaluate_pair(
+        replace(_pair_input(0.1), observation=_observation(0.1, size_px=44.0))
+    )
+    jump = jump_bus.evaluate_pair(
+        replace(_pair_input(0.2), observation=_observation(0.2, size_px=120.0))
+    )
+
+    clip_bus = D7RuntimeBus(_png_config(law="png_ttc"))
+    clipped_observation = replace(
+        _observation(0.0, size_px=44.0),
+        bbox_xyxy=(0.0, 218.0, 44.0, 262.0),
+    )
+    clipped = clip_bus.evaluate_pair(
+        replace(_pair_input(0.0), observation=clipped_observation)
+    )
+
+    records = []
+    for disturbance_type, output in (
+        ("bbox_area_jump", jump),
+        ("bbox_clipping", clipped),
+    ):
+        records.append(
+            {
+                **output.as_log_record(),
+                "disturbance_type": disturbance_type,
+                "expected_global_track_id": "G1",
+            }
+        )
+
+    summary = summarize_png_ttc_controlled_disturbances(records)
+
+    assert jump.ttc_reject_reason == "bbox_area_jump"
+    assert clipped.ttc_reject_reason == "bbox_left_clipped"
+    assert jump.effective_control_authorized is False
+    assert clipped.effective_control_authorized is False
+    assert jump.assigned_global_track_id == "G1"
+    assert clipped.assigned_global_track_id == "G1"
+    assert summary["coverage_complete"] is True
+    assert all(
+        row["coverage_pass"] for row in summary["matrix"].values()
+    )
+    assert summary["png_ttc_formula_changed"] is False
+    assert summary["d3_d4_d5_gate_bypassed"] is False
+    assert summary["global_track_id_rebound_allowed"] is False
 
 
 def test_trend_coast_promotion_requires_all_non_regression_criteria() -> None:

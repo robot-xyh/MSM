@@ -29,10 +29,12 @@ from .comparison import (
 from .delivery_calibration import (
     D7_DELIVERY_CALIBRATION_BOUNDARY,
     DEFAULT_DROPOUT_FRAME_COUNTS,
+    PNG_TTC_CONTROLLED_DISTURBANCE_TYPES,
     PNG_TTC_REQUIRED_REJECT_CLASSES,
     evaluate_trend_coast_promotion,
     summarize_locked_dropout_matrix,
     summarize_png_ttc_calibration,
+    summarize_png_ttc_controlled_disturbances,
 )
 from .cooperative_topology import (
     COOPERATIVE_TOPOLOGY_BOUNDARY,
@@ -44,6 +46,7 @@ from .cooperative_topology import (
 )
 from .cooperative_diagnostics import (
     COOPERATIVE_GUIDANCE_DIAGNOSTIC_BOUNDARY,
+    COOPERATIVE_GUIDANCE_DIAGNOSTIC_SCHEMA,
     AssignmentPairGuidanceDiagnostic,
     CooperativeGuidanceCandidateMetadata,
     CooperativeGuidanceDiagnosticSample,
@@ -104,10 +107,13 @@ from .selector import (
 )
 from .runtime_bus import (
     D7_RUNTIME_BUS_BOUNDARY,
+    GUIDANCE_LAW_SEMANTICS_VERSION,
+    TERMINAL_SEMANTICS_VERSION,
     D7RuntimeBus,
     D7RuntimePairInput,
     D7RuntimePairOutput,
     coerce_vision_guidance_observation,
+    guidance_law_semantic_violations,
     summarize_runtime_bus_outputs,
 )
 from .simulator import simulate_guidance_episode, summarize_guidance_records
@@ -126,6 +132,7 @@ from .terminal_delivery import (
     TerminalDeliveryConfig,
     TerminalDeliveryResult,
     TerminalDeliveryState,
+    TerminalDropoutReasonScope,
     TerminalFilterAuditState,
     TerminalGuidanceDelivery,
     TerminalLifecycleContext,
@@ -148,6 +155,7 @@ __all__ = [
     "BBOX_LOS_REPLAY_BOUNDARY",
     "COOPERATIVE_TOPOLOGY_BOUNDARY",
     "COOPERATIVE_GUIDANCE_DIAGNOSTIC_BOUNDARY",
+    "COOPERATIVE_GUIDANCE_DIAGNOSTIC_SCHEMA",
     "AssignmentPairGuidanceDiagnostic",
     "CooperativeGuidanceCandidateMetadata",
     "CooperativeGuidanceDiagnosticSample",
@@ -158,9 +166,11 @@ __all__ = [
     "D7_GUIDANCE_CALIBRATION_BOUNDARY",
     "D7_DELIVERY_CALIBRATION_BOUNDARY",
     "D7_RUNTIME_BUS_BOUNDARY",
+    "GUIDANCE_LAW_SEMANTICS_VERSION",
     "D7RuntimeBus",
     "D7RuntimePairInput",
     "D7RuntimePairOutput",
+    "TERMINAL_SEMANTICS_VERSION",
     "D4GuidancePermission",
     "DEFAULT_CALIBRATION_GUIDANCE_LAWS",
     "DEFAULT_CALIBRATION_THRESHOLD_VERSION",
@@ -196,6 +206,7 @@ __all__ = [
     "TerminalDeliveryConfig",
     "TerminalDeliveryResult",
     "TerminalDeliveryState",
+    "TerminalDropoutReasonScope",
     "TerminalFilterAuditState",
     "TerminalGuidanceDelivery",
     "TerminalLifecycleContext",
@@ -221,6 +232,7 @@ __all__ = [
     "evaluate_trend_coast_promotion",
     "evaluate_bbox_los_replay",
     "guidance_mode_from_terminal_contract",
+    "guidance_law_semantic_violations",
     "guidance_records_from_airsim_dry_run_fixture",
     "guidance_records_from_airsim_phase1_dry_run",
     "guidance_records_from_assignment_dry_run",

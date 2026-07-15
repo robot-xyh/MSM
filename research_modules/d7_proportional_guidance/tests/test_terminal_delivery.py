@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from d7_proportional_guidance import (
@@ -172,13 +174,32 @@ def test_runtime_allows_bounded_coast_for_consistent_d5_reacquire_only() -> None
         )
     )
 
-    assert predicted.terminal_contract_allowed is False
-    assert predicted.terminal_contract_reject_reason == "d5_not_locked"
+    assert predicted.raw_terminal_gate_allowed is False
+    assert predicted.raw_terminal_gate_reject_reason == "d5_not_locked"
+    assert predicted.terminal_contract_allowed is True
+    assert predicted.effective_terminal_contract_allowed is True
+    assert predicted.effective_terminal_contract_scope == "bounded_coast"
+    assert predicted.terminal_contract_reject_reason == ""
     assert predicted.terminal_coast_contract_allowed is True
     assert predicted.terminal_coast_contract_reason == "bounded_coast_reacquire"
     assert predicted.terminal_delivery_state == "image_kf_predict"
     assert predicted.terminal_using_extrapolation is True
+    assert predicted.latched_visual_mode_active is True
+    assert predicted.effective_control_authorized is True
+    assert predicted.effective_control_authorization_scope == "bounded_coast"
     assert predicted.selected_velocity_ned is not None
+    coast_summary = summarize_runtime_bus_outputs([predicted])
+    assert coast_summary["raw_terminal_gate_allowed_count"] == 0
+    assert coast_summary["raw_terminal_gate_reject_reasons"] == {"d5_not_locked": 1}
+    assert coast_summary["effective_terminal_contract_allowed_count"] == 1
+    assert coast_summary["effective_terminal_contract_scope_counts"] == {
+        "bounded_coast": 1
+    }
+    assert coast_summary["latched_visual_mode_active_count"] == 1
+    assert coast_summary["effective_control_authorized_count"] == 1
+    assert coast_summary["effective_control_authorization_scope_counts"] == {
+        "bounded_coast": 1
+    }
 
     blocked = bus.evaluate_pair(
         _pair_input(
@@ -246,6 +267,177 @@ def test_runtime_contract_failure_immediately_clears_pair_coast(
     )
     assert fresh_without_measurement.terminal_delivery_state == "acquiring"
     assert fresh_without_measurement.selected_velocity_ned is None
+
+
+def test_termination_snapshot_is_not_a_live_gate_or_control_sample() -> None:
+    bus = D7RuntimeBus(_png_config())
+    live_outputs = [
+        bus.evaluate_pair(
+            _pair_input(
+                timestamp_s=index * 0.1,
+                observation=_observation(index * 0.1, center_x=320.0 + index),
+            )
+        )
+        for index in range(3)
+    ]
+    assert live_outputs[-1].effective_control_authorized is True
+
+    snapshot = bus.evaluate_pair(
+        replace(
+            _pair_input(timestamp_s=0.3, observation=None),
+            termination_snapshot=True,
+            termination_status="aborted",
+            termination_reason="terminal_detection_timeout",
+        )
+    )
+    record = snapshot.as_log_record()
+    summary = summarize_runtime_bus_outputs([*live_outputs, snapshot])
+
+    assert snapshot.termination_snapshot is True
+    assert snapshot.raw_terminal_gate_allowed is None
+    assert snapshot.latched_visual_mode_active is False
+    assert snapshot.effective_terminal_contract_allowed is False
+    assert snapshot.effective_terminal_contract_scope == "termination_snapshot"
+    assert snapshot.effective_control_authorized is False
+    assert snapshot.effective_control_authorization_scope == "termination_snapshot"
+    assert snapshot.terminal_contract_allowed is False
+    assert snapshot.terminal_switch_allowed is False
+    assert snapshot.termination_prior_latched_visual_mode_active is True
+    assert snapshot.termination_prior_effective_control_authorized is True
+    assert snapshot.mode_transition is False
+    assert record["terminal_control_allowed"] is False
+    assert summary["sample_count"] == 4
+    assert summary["live_control_sample_count"] == 3
+    assert summary["termination_snapshot_count"] == 1
+    assert summary["termination_status_counts"] == {"aborted": 1}
+    assert summary["termination_prior_effective_control_authorized_count"] == 1
+    assert summary["terminal_switch_allowed_count"] == summary[
+        "effective_control_authorized_count"
+    ]
+
+    initial_snapshot = D7RuntimeBus(_png_config()).evaluate_pair(
+        replace(
+            _pair_input(timestamp_s=0.0, observation=None),
+            termination_snapshot=True,
+            termination_status="aborted",
+            termination_reason="resource_missing",
+        )
+    )
+    assert initial_snapshot.terminal_contract_applicable is False
+    assert initial_snapshot.raw_terminal_contract_allowed is None
+    assert initial_snapshot.terminal_handoff_state == "termination_snapshot"
+    assert initial_snapshot.terminal_switch_allowed is False
+
+
+def test_dropout_audit_distinguishes_missing_lock_prediction_and_contract_reset() -> None:
+    reacquire = _terminal_association()
+    reacquire["decision_state"] = "reacquire"
+
+    never_locked = D7RuntimeBus(_png_config()).evaluate_pair(
+        _pair_input(
+            timestamp_s=0.1,
+            observation=None,
+            terminal_association=reacquire,
+        )
+    )
+    assert never_locked.terminal_delivery_state == "acquiring"
+    assert never_locked.terminal_dropout_reason_scope == "measured_lock_not_established"
+    assert never_locked.terminal_measured_lock_ever_established is False
+
+    prediction_bus = D7RuntimeBus(_png_config())
+    for index in range(3):
+        prediction_bus.evaluate_pair(
+            _pair_input(
+                timestamp_s=index * 0.1,
+                observation=_observation(index * 0.1, center_x=320.0 + index),
+            )
+        )
+    prediction_expired = prediction_bus.evaluate_pair(
+        _pair_input(
+            timestamp_s=0.6,
+            observation=None,
+            terminal_association=reacquire,
+        )
+    )
+    assert prediction_expired.terminal_delivery_state == "expired"
+    assert prediction_expired.terminal_dropout_reason_scope == "prediction_window"
+    assert prediction_expired.terminal_prediction_window_expired is True
+    assert prediction_expired.terminal_contract_reset_reason == ""
+
+    reset_bus = D7RuntimeBus(_png_config())
+    for index in range(3):
+        reset_bus.evaluate_pair(
+            _pair_input(
+                timestamp_s=index * 0.1,
+                observation=_observation(index * 0.1, center_x=320.0 + index),
+            )
+        )
+    reset_binding = replace(
+        _binding(),
+        plan_id="plan-2",
+        plan_version=2,
+        owner_node_id="secondary-1",
+    )
+    contract_reset = reset_bus.evaluate_pair(
+        replace(
+            _pair_input(
+                timestamp_s=0.3,
+                observation=None,
+                terminal_association=reacquire,
+            ),
+            binding=reset_binding,
+            d4_permission=D4GuidancePermission(
+                action="continue_center",
+                target_node_id="secondary-1",
+                new_plan_id="plan-2",
+                new_plan_version=2,
+            ),
+        )
+    )
+    assert contract_reset.terminal_dropout_reason_scope == "contract_reset"
+    assert contract_reset.terminal_contract_reset_reason == "binding_signature_changed"
+    assert contract_reset.terminal_measured_lock_history_available is False
+    assert contract_reset.terminal_measured_lock_ever_established is True
+
+    summary = summarize_runtime_bus_outputs(
+        [never_locked, prediction_expired, contract_reset]
+    )
+    assert summary["terminal_dropout_reason_scope_counts"] == {
+        "measured_lock_not_established": 1,
+        "prediction_window": 1,
+        "contract_reset": 1,
+    }
+    assert summary["terminal_contract_reset_reason_counts"] == {
+        "binding_signature_changed": 1
+    }
+
+
+def test_bounded_coast_rejects_changed_local_identity() -> None:
+    bus = D7RuntimeBus(_png_config())
+    for index in range(3):
+        bus.evaluate_pair(
+            _pair_input(
+                timestamp_s=index * 0.1,
+                observation=_observation(index * 0.1, center_x=320.0 + index),
+            )
+        )
+    reacquire = _terminal_association()
+    reacquire.update(decision_state="reacquire", local_track_id="BT-2")
+
+    blocked = bus.evaluate_pair(
+        _pair_input(
+            timestamp_s=0.3,
+            observation=None,
+            terminal_association=reacquire,
+        )
+    )
+
+    assert blocked.raw_terminal_gate_allowed is False
+    assert blocked.effective_terminal_contract_allowed is False
+    assert blocked.terminal_coast_contract_allowed is False
+    assert blocked.terminal_delivery_reason == "terminal_coast_local_identity_mismatch"
+    assert blocked.effective_control_authorized is False
+    assert blocked.selected_velocity_ned is None
 
 
 def _png_config() -> PngGuidanceConfig:

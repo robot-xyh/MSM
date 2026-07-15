@@ -19,6 +19,7 @@ from .models import GuidanceMode
 from .selector import (
     GuidanceLawSelection,
     RuntimeGuidanceLaw,
+    VISUAL_HANDOVER_LAWS,
     select_runtime_guidance_law,
 )
 from .terminal_gate import (
@@ -34,6 +35,7 @@ from .terminal_delivery import (
     TerminalDeliveryConfig,
     TerminalDeliveryResult,
     TerminalDeliveryState,
+    TerminalDropoutReasonScope,
     TerminalFilterAuditState,
     TerminalGuidanceDelivery,
     TerminalLifecycleContext,
@@ -46,6 +48,8 @@ from .vision_png import (
 
 
 D7_RUNTIME_BUS_BOUNDARY = "d7_runtime_bus_state_injection_only_no_vehicle_control"
+TERMINAL_SEMANTICS_VERSION = "d7_terminal_semantics_v2"
+GUIDANCE_LAW_SEMANTICS_VERSION = "d7_guidance_law_semantics_v1"
 
 REACQUIRE_CONTRACT_REJECT_REASONS = frozenset(
     {
@@ -80,6 +84,12 @@ class _TerminalLatchState:
 
 
 @dataclass(frozen=True)
+class _PendingDeliveryReset:
+    reason: str
+    measured_lock_was_established: bool
+
+
+@dataclass(frozen=True)
 class D7RuntimePairInput:
     """Injected D7 state for one assignment pair at one runtime sample."""
 
@@ -100,6 +110,9 @@ class D7RuntimePairInput:
     requested_guidance_law: RuntimeGuidanceLaw | str | None = None
     terminal_handover_started_at_s: float | None = None
     terminal_timeout_s: float | None = None
+    termination_snapshot: bool = False
+    termination_status: str | None = None
+    termination_reason: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -147,6 +160,24 @@ class D7RuntimePairOutput:
     mode_transition_count: int = 0
     terminal_contract_applicable: bool = True
     raw_terminal_contract_allowed: bool | None = None
+    terminal_semantics_version: str = TERMINAL_SEMANTICS_VERSION
+    raw_terminal_gate_applicable: bool = True
+    raw_terminal_gate_allowed: bool | None = None
+    raw_terminal_gate_reject_reason: str = ""
+    latched_visual_mode_active: bool = False
+    effective_terminal_contract_allowed: bool = False
+    effective_terminal_contract_scope: str = "blocked"
+    effective_terminal_contract_reason: str = ""
+    effective_control_authorized: bool = False
+    effective_control_authorization_scope: str = "not_authorized"
+    effective_control_authorization_reason: str = ""
+    termination_snapshot: bool = False
+    termination_status: str | None = None
+    termination_reason: str = ""
+    termination_prior_mode: str | None = None
+    termination_prior_latched_visual_mode_active: bool = False
+    termination_prior_effective_terminal_contract_allowed: bool = False
+    termination_prior_effective_control_authorized: bool = False
     terminal_coast_contract_allowed: bool = False
     terminal_coast_contract_reason: str = ""
     raw_terminal_switch_allowed: bool | None = None
@@ -233,6 +264,8 @@ class D7RuntimePairOutput:
     terminal_mode_entered: bool = False
     camera_quality_gate_passed: bool | None = None
     los_quality_gate_passed: bool | None = None
+    closing_speed_gate_passed: bool | None = None
+    closing_speed_gate_threshold_mps: float | None = None
     maneuver_margin_gate_passed: bool | None = None
     bbox_area_ratio: float | None = None
     edge_margin_ratio: float | None = None
@@ -278,6 +311,12 @@ class D7RuntimePairOutput:
     terminal_filter_audit_reason: str = ""
     terminal_lifecycle_reset: bool = False
     terminal_lifecycle_reset_reason: str = ""
+    terminal_dropout_reason_scope: str = TerminalDropoutReasonScope.NOT_APPLICABLE.value
+    terminal_dropout_reason: str = ""
+    terminal_measured_lock_history_available: bool = False
+    terminal_measured_lock_ever_established: bool = False
+    terminal_contract_reset_reason: str = ""
+    terminal_prediction_window_expired: bool = False
     terminal_image_innovation_norm_rad: float | None = None
     terminal_trend_coast_applied: bool = False
     terminal_trend_coast_velocity_ned: tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -293,6 +332,75 @@ class D7RuntimePairOutput:
     png_command: PngGuidanceCommand | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    @property
+    def terminal_control_allowed(self) -> bool:
+        """Backward-compatible alias for effective control authorization."""
+
+        return self.effective_control_authorized
+
+    @property
+    def configured_guidance_law(self) -> str:
+        """Normalized strategy requested by the runtime configuration."""
+
+        return self.requested_guidance_law
+
+    @property
+    def configured_midcourse_guidance_law(self) -> str:
+        """Law configured for the midcourse segment of the strategy."""
+
+        if self.requested_guidance_law in {
+            RuntimeGuidanceLaw.PNG_VM.value,
+            RuntimeGuidanceLaw.PNG_TTC.value,
+        }:
+            return RuntimeGuidanceLaw.RADAR_PN.value
+        return self.requested_guidance_law
+
+    @property
+    def configured_terminal_guidance_law(self) -> str | None:
+        """Configured visual law, before any terminal gate is evaluated."""
+
+        if self.requested_guidance_law in {
+            RuntimeGuidanceLaw.PNG_VM.value,
+            RuntimeGuidanceLaw.PNG_TTC.value,
+        }:
+            return self.requested_guidance_law
+        return None
+
+    @property
+    def candidate_guidance_law(self) -> str | None:
+        """Visual command law evaluated this sample, whether accepted or rejected."""
+
+        return self.png_guidance_law_candidate
+
+    @property
+    def executed_guidance_law(self) -> str | None:
+        """Law whose command is executable for this live sample.
+
+        Termination snapshots are audit-only and therefore have no executed law,
+        even though the legacy ``guidance_law`` field retains the prior/fallback
+        value for backward compatibility.
+        """
+
+        return None if self.termination_snapshot else self.guidance_law
+
+    @property
+    def visual_control_active(self) -> bool:
+        """Canonical current-sample visual-control authorization."""
+
+        return bool(not self.termination_snapshot and self.effective_control_authorized)
+
+    @property
+    def executed_visual_mode_switch(self) -> bool:
+        """True only for a live transition into an authorized visual-control mode."""
+
+        return bool(
+            self.visual_control_active
+            and self.latched_visual_mode_active
+            and self.mode == GuidanceMode.VISION_TERMINAL
+            and self.mode_transition
+            and self.previous_mode != GuidanceMode.VISION_TERMINAL.value
+        )
+
     def as_log_record(self) -> dict[str, Any]:
         """Return JSON/CSV-friendly D7 runtime bus fields."""
 
@@ -304,6 +412,18 @@ class D7RuntimePairOutput:
             "control_context_id": self.control_context_id,
             "assignment_id": self.assignment_id,
             "mode": self.mode.value,
+            "guidance_law_semantics_version": GUIDANCE_LAW_SEMANTICS_VERSION,
+            "configured_guidance_law": self.configured_guidance_law,
+            "configured_midcourse_guidance_law": (
+                self.configured_midcourse_guidance_law
+            ),
+            "configured_terminal_guidance_law": (
+                self.configured_terminal_guidance_law
+            ),
+            "candidate_guidance_law": self.candidate_guidance_law,
+            "executed_guidance_law": self.executed_guidance_law,
+            "visual_control_active": self.visual_control_active,
+            "executed_visual_mode_switch": self.executed_visual_mode_switch,
             "guidance_law": self.guidance_law,
             "requested_guidance_law": self.requested_guidance_law,
             "previous_guidance_law": self.previous_guidance_law,
@@ -314,6 +434,30 @@ class D7RuntimePairOutput:
             "mode_transition": self.mode_transition,
             "mode_transition_reason": self.mode_transition_reason,
             "mode_transition_count": self.mode_transition_count,
+            "terminal_semantics_version": self.terminal_semantics_version,
+            "raw_terminal_gate_applicable": self.raw_terminal_gate_applicable,
+            "raw_terminal_gate_allowed": self.raw_terminal_gate_allowed,
+            "raw_terminal_gate_reject_reason": self.raw_terminal_gate_reject_reason,
+            "latched_visual_mode_active": self.latched_visual_mode_active,
+            "effective_terminal_contract_allowed": self.effective_terminal_contract_allowed,
+            "effective_terminal_contract_scope": self.effective_terminal_contract_scope,
+            "effective_terminal_contract_reason": self.effective_terminal_contract_reason,
+            "effective_control_authorized": self.effective_control_authorized,
+            "effective_control_authorization_scope": self.effective_control_authorization_scope,
+            "effective_control_authorization_reason": self.effective_control_authorization_reason,
+            "termination_snapshot": self.termination_snapshot,
+            "termination_status": self.termination_status,
+            "termination_reason": self.termination_reason,
+            "termination_prior_mode": self.termination_prior_mode,
+            "termination_prior_latched_visual_mode_active": (
+                self.termination_prior_latched_visual_mode_active
+            ),
+            "termination_prior_effective_terminal_contract_allowed": (
+                self.termination_prior_effective_terminal_contract_allowed
+            ),
+            "termination_prior_effective_control_authorized": (
+                self.termination_prior_effective_control_authorized
+            ),
             "visual_png_enabled": self.visual_png_enabled,
             "visual_png_switch": self.visual_png_enabled,
             "terminal_contract_allowed": self.terminal_contract_allowed,
@@ -325,6 +469,7 @@ class D7RuntimePairOutput:
             "raw_terminal_switch_allowed": self.raw_terminal_switch_allowed,
             "raw_terminal_switch_reject_reason": self.raw_terminal_switch_reject_reason,
             "terminal_switch_allowed": self.terminal_switch_allowed,
+            "terminal_control_allowed": self.terminal_control_allowed,
             "terminal_switch_reject_reason": self.terminal_switch_reject_reason,
             "terminal_wait_duration_s": self.terminal_wait_duration_s,
             "terminal_timeout_s": self.terminal_timeout_s,
@@ -427,6 +572,8 @@ class D7RuntimePairOutput:
             "threshold_advisory_version": self.threshold_advisory_version,
             "camera_quality_gate_passed": self.camera_quality_gate_passed,
             "los_quality_gate_passed": self.los_quality_gate_passed,
+            "closing_speed_gate_passed": self.closing_speed_gate_passed,
+            "closing_speed_gate_threshold_mps": self.closing_speed_gate_threshold_mps,
             "maneuver_margin_gate_passed": self.maneuver_margin_gate_passed,
             "bbox_area_ratio": self.bbox_area_ratio,
             "edge_margin_ratio": self.edge_margin_ratio,
@@ -472,6 +619,16 @@ class D7RuntimePairOutput:
             "terminal_filter_audit_reason": self.terminal_filter_audit_reason,
             "terminal_lifecycle_reset": self.terminal_lifecycle_reset,
             "terminal_lifecycle_reset_reason": self.terminal_lifecycle_reset_reason,
+            "terminal_dropout_reason_scope": self.terminal_dropout_reason_scope,
+            "terminal_dropout_reason": self.terminal_dropout_reason,
+            "terminal_measured_lock_history_available": (
+                self.terminal_measured_lock_history_available
+            ),
+            "terminal_measured_lock_ever_established": (
+                self.terminal_measured_lock_ever_established
+            ),
+            "terminal_contract_reset_reason": self.terminal_contract_reset_reason,
+            "terminal_prediction_window_expired": self.terminal_prediction_window_expired,
             "terminal_image_innovation_norm_rad": self.terminal_image_innovation_norm_rad,
             "terminal_trend_coast_applied": self.terminal_trend_coast_applied,
             "terminal_trend_coast_velocity_ned": self.terminal_trend_coast_velocity_ned,
@@ -503,7 +660,8 @@ class D7RuntimeBus:
         self._current_bindings: dict[str, AssignmentGuidanceBinding] = {}
         self._requested_laws: dict[str, RuntimeGuidanceLaw] = {}
         self._terminal_latches: dict[str, _TerminalLatchState] = {}
-        self._pending_delivery_reset_reasons: dict[str, str] = {}
+        self._pending_delivery_resets: dict[str, _PendingDeliveryReset] = {}
+        self._last_outputs: dict[str, D7RuntimePairOutput] = {}
 
     @property
     def control_context_ids(self) -> tuple[str, ...]:
@@ -515,7 +673,8 @@ class D7RuntimeBus:
         self._current_bindings.clear()
         self._requested_laws.clear()
         self._terminal_latches.clear()
-        self._pending_delivery_reset_reasons.clear()
+        self._pending_delivery_resets.clear()
+        self._last_outputs.clear()
 
     def reset_pair(self, control_context_id: str) -> None:
         self._deliveries.pop(control_context_id, None)
@@ -523,7 +682,8 @@ class D7RuntimeBus:
         self._current_bindings.pop(control_context_id, None)
         self._requested_laws.pop(control_context_id, None)
         self._terminal_latches.pop(control_context_id, None)
-        self._pending_delivery_reset_reasons.pop(control_context_id, None)
+        self._pending_delivery_resets.pop(control_context_id, None)
+        self._last_outputs.pop(control_context_id, None)
 
     def inject_state(
         self,
@@ -542,6 +702,13 @@ class D7RuntimeBus:
             default_visual_law=self.config.law,
         )
         control_context_id = _control_context_id(binding)
+        if pair_input.termination_snapshot:
+            return self._termination_snapshot(
+                pair_input,
+                binding=binding,
+                selection=selection,
+                control_context_id=control_context_id,
+            )
         signature = _binding_signature(binding)
         previous_signature = self._binding_signatures.get(control_context_id)
         previous_binding = self._current_bindings.get(control_context_id)
@@ -554,11 +721,16 @@ class D7RuntimeBus:
                 and self._requested_laws.get(control_context_id) == selection.requested_law
             )
             if not binding_state_preserved:
+                previous_delivery = self._deliveries.get(control_context_id)
                 self._deliveries[control_context_id] = self._new_terminal_delivery(selection)
                 self._terminal_latches[control_context_id] = _TerminalLatchState()
                 if previous_signature is not None:
-                    self._pending_delivery_reset_reasons[control_context_id] = (
-                        "binding_signature_changed"
+                    self._pending_delivery_resets[control_context_id] = _PendingDeliveryReset(
+                        reason="binding_signature_changed",
+                        measured_lock_was_established=bool(
+                            previous_delivery is not None
+                            and previous_delivery.measured_lock_ever_established
+                        ),
                     )
             self._binding_signatures[control_context_id] = signature
             self._current_bindings[control_context_id] = binding
@@ -566,10 +738,15 @@ class D7RuntimeBus:
         elif previous_binding is None:
             self._current_bindings[control_context_id] = binding
         elif self._requested_laws.get(control_context_id) != selection.requested_law:
+            previous_delivery = self._deliveries.get(control_context_id)
             self._deliveries[control_context_id] = self._new_terminal_delivery(selection)
             self._requested_laws[control_context_id] = selection.requested_law
-            self._pending_delivery_reset_reasons[control_context_id] = (
-                "requested_guidance_law_changed"
+            self._pending_delivery_resets[control_context_id] = _PendingDeliveryReset(
+                reason="requested_guidance_law_changed",
+                measured_lock_was_established=bool(
+                    previous_delivery is not None
+                    and previous_delivery.measured_lock_ever_established
+                ),
             )
             latch = self._terminal_latches.setdefault(control_context_id, _TerminalLatchState())
             _reset_terminal_candidate_state(latch)
@@ -596,16 +773,32 @@ class D7RuntimeBus:
             resource_id=pair_input.resource_id or binding.resource_id,
         )
         delivery_handler = self._deliveries[control_context_id]
+        lifecycle_context = _terminal_lifecycle_context(binding, decision, observation)
         coast_decision = TerminalPngContractDecision(False, "")
-        if not decision.allowed and observation is None and delivery_handler.has_measured_lock:
-            coast_decision = evaluate_terminal_coast_contract(
-                binding=binding,
-                d4_permission=pair_input.d4_permission,
-                terminal_association=pair_input.terminal_association,
-                observation=None,
-                timestamp_s=timestamp_s,
-                resource_id=pair_input.resource_id or binding.resource_id,
+        coast_context_reject_reason = ""
+        if (
+            not decision.allowed
+            and decision.reject_reason == "d5_not_locked"
+            and observation is None
+            and delivery_handler.has_measured_lock
+        ):
+            coast_context_reject_reason = delivery_handler.coast_context_reject_reason(
+                lifecycle_context
             )
+            if coast_context_reject_reason:
+                coast_decision = TerminalPngContractDecision(
+                    False,
+                    coast_context_reject_reason,
+                )
+            else:
+                coast_decision = evaluate_terminal_coast_contract(
+                    binding=binding,
+                    d4_permission=pair_input.d4_permission,
+                    terminal_association=pair_input.terminal_association,
+                    observation=None,
+                    timestamp_s=timestamp_s,
+                    resource_id=pair_input.resource_id or binding.resource_id,
+                )
 
         common = _common_output_kwargs(
             timestamp_s=timestamp_s,
@@ -640,6 +833,7 @@ class D7RuntimeBus:
 
         if not selection.requires_terminal_gate:
             self._deliveries[control_context_id].reset()
+            self._pending_delivery_resets.pop(control_context_id, None)
             _reset_terminal_candidate_state(latch)
             baseline_common = {
                 **common,
@@ -676,6 +870,12 @@ class D7RuntimeBus:
             delivery = self._deliveries[control_context_id].block(
                 assigned_global_track_id=binding.assigned_global_track_id,
                 reason="terminal_handover_timeout",
+                dropout_sample=observation is None,
+            )
+            delivery = self._apply_pending_delivery_reset(
+                control_context_id,
+                delivery,
+                dropout_sample=observation is None,
             )
             _reset_terminal_candidate_state(latch)
             output = D7RuntimePairOutput(
@@ -707,9 +907,16 @@ class D7RuntimeBus:
             )
 
         if not decision.allowed and not coast_decision.allowed:
+            block_reason = coast_context_reject_reason or decision.reject_reason
             delivery = self._deliveries[control_context_id].block(
                 assigned_global_track_id=binding.assigned_global_track_id,
-                reason=decision.reject_reason,
+                reason=block_reason,
+                dropout_sample=observation is None,
+            )
+            delivery = self._apply_pending_delivery_reset(
+                control_context_id,
+                delivery,
+                dropout_sample=observation is None,
             )
             _reset_terminal_candidate_state(latch)
             if decision.reject_reason in REACQUIRE_CONTRACT_REJECT_REASONS:
@@ -754,35 +961,18 @@ class D7RuntimeBus:
             relative_position_ned=pair_input.relative_position_ned,
             relative_velocity_ned=pair_input.relative_velocity_ned,
             command_z_ned_m=pair_input.command_z_ned_m,
-            lifecycle_context=TerminalLifecycleContext(
-                resource_id=binding.resource_id,
-                assigned_global_track_id=binding.assigned_global_track_id,
-                local_track_id=(
-                    observation.local_track_id
-                    if observation is not None and observation.local_track_id is not None
-                    else decision.local_track_id or coast_decision.local_track_id
-                ),
-                plan_owner_id=binding.owner_node_id,
-                plan_version=binding.plan_version,
-            ),
+            lifecycle_context=lifecycle_context,
             soft_prediction_eligible=bool(
                 decision.allowed
                 and decision.d5_lock_consistent is True
                 and not decision.d5_coalition_conflict_state
             ),
         )
-        pending_reset_reason = self._pending_delivery_reset_reasons.pop(
+        delivery = self._apply_pending_delivery_reset(
             control_context_id,
-            "",
+            delivery,
+            dropout_sample=observation is None,
         )
-        if pending_reset_reason:
-            delivery = replace(
-                delivery,
-                filter_audit_state=TerminalFilterAuditState.RESET,
-                filter_audit_reason=pending_reset_reason,
-                lifecycle_reset=True,
-                lifecycle_reset_reason=pending_reset_reason,
-            )
         command = delivery.command
         if command is None:
             _reset_terminal_candidate_state(latch)
@@ -843,6 +1033,16 @@ class D7RuntimeBus:
             terminal_mode_entered=visual_png_enabled,
             camera_quality_gate_passed=quality.camera_quality_gate_passed,
             los_quality_gate_passed=quality.los_quality_gate_passed,
+            closing_speed_gate_passed=(
+                None
+                if pair_input.relative_position_ned is None
+                else quality.closing_speed_mps > self.config.min_closing_speed_mps
+            ),
+            closing_speed_gate_threshold_mps=(
+                self.config.min_closing_speed_mps
+                if pair_input.relative_position_ned is not None
+                else None
+            ),
             maneuver_margin_gate_passed=quality.maneuver_margin_gate_passed,
             bbox_area_ratio=quality.bbox_area_ratio,
             edge_margin_ratio=quality.edge_margin_ratio,
@@ -890,6 +1090,164 @@ class D7RuntimeBus:
             ),
         )
 
+    def _apply_pending_delivery_reset(
+        self,
+        control_context_id: str,
+        delivery: TerminalDeliveryResult,
+        *,
+        dropout_sample: bool,
+    ) -> TerminalDeliveryResult:
+        pending = self._pending_delivery_resets.pop(control_context_id, None)
+        if pending is None:
+            return delivery
+        updates: dict[str, Any] = {
+            "filter_audit_state": TerminalFilterAuditState.RESET,
+            "filter_audit_reason": pending.reason,
+            "lifecycle_reset": True,
+            "lifecycle_reset_reason": pending.reason,
+            "contract_reset_reason": pending.reason,
+            "measured_lock_history_available": False,
+            "measured_lock_ever_established": pending.measured_lock_was_established,
+        }
+        if dropout_sample:
+            updates.update(
+                dropout_reason_scope=TerminalDropoutReasonScope.CONTRACT_RESET,
+                dropout_reason="terminal_visual_context_reset_before_dropout",
+            )
+        return replace(delivery, **updates)
+
+    def _termination_snapshot(
+        self,
+        pair_input: D7RuntimePairInput,
+        *,
+        binding: AssignmentGuidanceBinding,
+        selection: GuidanceLawSelection,
+        control_context_id: str,
+    ) -> D7RuntimePairOutput:
+        status = (pair_input.termination_status or "").strip()
+        if not status:
+            raise ValueError("termination_status is required for a termination snapshot")
+        reason = pair_input.termination_reason.strip() or status
+        previous = self._last_outputs.get(control_context_id)
+        timestamp_s = float(
+            pair_input.timestamp_s
+            if pair_input.timestamp_s is not None
+            else binding.created_at_s
+        )
+        if previous is None:
+            abort_statuses = {"abort", "aborted", "failed", "failure", "timeout"}
+            snapshot = D7RuntimePairOutput(
+                timestamp_s=timestamp_s,
+                resource_id=binding.resource_id,
+                assigned_global_track_id=binding.assigned_global_track_id,
+                control_context_id=control_context_id,
+                mode=(
+                    GuidanceMode.ABORT_REVOKE
+                    if status.lower() in abort_statuses
+                    else GuidanceMode.HOLD
+                ),
+                guidance_law=selection.midcourse_law.value,
+                visual_png_enabled=False,
+                terminal_contract_allowed=False,
+                terminal_contract_reject_reason="",
+                terminal_switch_allowed=False,
+                terminal_switch_reject_reason="termination_snapshot_not_live_control",
+                plan_id=binding.plan_id,
+                plan_version=binding.plan_version,
+                track_version=binding.track_version,
+                d4_action="",
+                d5_decision_state="",
+                requested_guidance_law=selection.requested_law.value,
+                owner_node_id=binding.owner_node_id,
+                assignment_id=binding.assignment_id,
+            )
+        else:
+            snapshot = replace(
+                previous,
+                timestamp_s=timestamp_s,
+                visual_png_enabled=False,
+                terminal_contract_allowed=False,
+                terminal_contract_reject_reason="",
+                terminal_contract_applicable=False,
+                raw_terminal_contract_allowed=None,
+                terminal_coast_contract_allowed=False,
+                terminal_coast_contract_reason="",
+                raw_terminal_switch_allowed=None,
+                raw_terminal_switch_reject_reason="",
+                terminal_switch_allowed=False,
+                terminal_switch_reject_reason="termination_snapshot_not_live_control",
+                terminal_handoff_state="termination_snapshot",
+                terminal_mode_entered=False,
+                terminal_latch_active=False,
+                selected_velocity_ned=None,
+                png_command=None,
+                command_saturated=None,
+                command_saturation_scope="not_computed",
+                command_saturation_reason="",
+            )
+        snapshot = replace(
+            snapshot,
+            terminal_semantics_version=TERMINAL_SEMANTICS_VERSION,
+            visual_png_enabled=False,
+            terminal_contract_allowed=False,
+            terminal_contract_reject_reason="",
+            terminal_contract_applicable=False,
+            raw_terminal_contract_allowed=None,
+            raw_terminal_gate_applicable=False,
+            raw_terminal_gate_allowed=None,
+            raw_terminal_gate_reject_reason="",
+            terminal_coast_contract_allowed=False,
+            terminal_coast_contract_reason="",
+            raw_terminal_switch_allowed=None,
+            raw_terminal_switch_reject_reason="",
+            terminal_switch_allowed=False,
+            terminal_switch_reject_reason="termination_snapshot_not_live_control",
+            terminal_handoff_state="termination_snapshot",
+            terminal_mode_entered=False,
+            terminal_latch_active=False,
+            latched_visual_mode_active=False,
+            effective_terminal_contract_allowed=False,
+            effective_terminal_contract_scope="termination_snapshot",
+            effective_terminal_contract_reason=reason,
+            effective_control_authorized=False,
+            effective_control_authorization_scope="termination_snapshot",
+            effective_control_authorization_reason=reason,
+            termination_snapshot=True,
+            termination_status=status,
+            termination_reason=reason,
+            termination_prior_mode=previous.mode.value if previous is not None else None,
+            termination_prior_latched_visual_mode_active=(
+                previous.latched_visual_mode_active if previous is not None else False
+            ),
+            termination_prior_effective_terminal_contract_allowed=(
+                previous.effective_terminal_contract_allowed if previous is not None else False
+            ),
+            termination_prior_effective_control_authorized=(
+                previous.effective_control_authorized if previous is not None else False
+            ),
+            previous_mode=previous.mode.value if previous is not None else None,
+            mode_transition=False,
+            mode_transition_reason="",
+            previous_guidance_law=previous.guidance_law if previous is not None else None,
+            guidance_law_transition=False,
+            guidance_law_transition_reason="",
+            metadata={
+                **snapshot.metadata,
+                "boundary": D7_RUNTIME_BUS_BOUNDARY,
+                "termination_snapshot_not_live_control": True,
+                **pair_input.metadata,
+            },
+        )
+        delivery = self._deliveries.get(control_context_id)
+        if delivery is not None:
+            delivery.reset()
+        latch = self._terminal_latches.get(control_context_id)
+        if latch is not None:
+            _reset_terminal_candidate_state(latch)
+        self._pending_delivery_resets.pop(control_context_id, None)
+        self._last_outputs[control_context_id] = snapshot
+        return snapshot
+
     def _new_terminal_delivery(
         self,
         selection: GuidanceLawSelection,
@@ -900,8 +1258,8 @@ class D7RuntimeBus:
             config=self.terminal_delivery_config,
         )
 
-    @staticmethod
     def _finalize_output(
+        self,
         output: D7RuntimePairOutput,
         latch: _TerminalLatchState,
         *,
@@ -917,7 +1275,7 @@ class D7RuntimeBus:
             latch.guidance_law_transition_count += 1
         latch.last_mode = output.mode
         latch.last_guidance_law = output.guidance_law
-        return replace(
+        finalized = replace(
             output,
             previous_mode=previous_mode.value if previous_mode is not None else None,
             mode_transition=mode_transition,
@@ -928,6 +1286,12 @@ class D7RuntimeBus:
             guidance_law_transition_reason=transition_reason if law_transition else "",
             guidance_law_transition_count=latch.guidance_law_transition_count,
         )
+        finalized = _normalize_terminal_semantics(
+            finalized,
+            latched_visual_mode_active=latch.terminal_active,
+        )
+        self._last_outputs[output.control_context_id] = finalized
+        return finalized
 
 
 def _reset_terminal_candidate_state(latch: _TerminalLatchState) -> None:
@@ -935,6 +1299,83 @@ def _reset_terminal_candidate_state(latch: _TerminalLatchState) -> None:
     latch.candidate_allowed_streak = 0
     latch.candidate_rejected_streak = 0
     latch.reacquire_grace_remaining = 0
+
+
+def _normalize_terminal_semantics(
+    output: D7RuntimePairOutput,
+    *,
+    latched_visual_mode_active: bool,
+) -> D7RuntimePairOutput:
+    """Derive canonical contract/control fields and their legacy aliases."""
+
+    raw_applicable = output.terminal_contract_applicable
+    raw_allowed = output.raw_terminal_contract_allowed if raw_applicable else None
+    raw_reject_reason = (
+        output.terminal_contract_reject_reason
+        if raw_applicable and raw_allowed is False
+        else ""
+    )
+    if not raw_applicable:
+        effective_contract_allowed = False
+        effective_contract_scope = "not_applicable"
+        effective_contract_reason = "terminal_gate_not_applicable"
+    elif raw_allowed is True:
+        effective_contract_allowed = True
+        effective_contract_scope = "raw_terminal_gate"
+        effective_contract_reason = "raw_terminal_gate_allowed"
+    elif output.terminal_coast_contract_allowed:
+        effective_contract_allowed = True
+        effective_contract_scope = "bounded_coast"
+        effective_contract_reason = (
+            output.terminal_coast_contract_reason or "bounded_coast_allowed"
+        )
+    else:
+        effective_contract_allowed = False
+        effective_contract_scope = "raw_terminal_gate"
+        effective_contract_reason = raw_reject_reason or "raw_terminal_gate_rejected"
+
+    effective_control_authorized = bool(
+        output.visual_png_enabled and effective_contract_allowed
+    )
+    if effective_control_authorized:
+        control_scope = effective_contract_scope
+        control_reason = "latched_visual_mode_authorized"
+    elif not effective_contract_allowed:
+        control_scope = "effective_terminal_contract_blocked"
+        control_reason = effective_contract_reason
+    else:
+        control_scope = "latched_visual_mode_inactive"
+        control_reason = (
+            output.terminal_switch_reject_reason
+            or output.raw_terminal_switch_reject_reason
+            or output.terminal_handoff_state
+            or "latched_visual_mode_inactive"
+        )
+
+    return replace(
+        output,
+        terminal_semantics_version=TERMINAL_SEMANTICS_VERSION,
+        terminal_contract_applicable=raw_applicable,
+        raw_terminal_contract_allowed=raw_allowed,
+        raw_terminal_gate_applicable=raw_applicable,
+        raw_terminal_gate_allowed=raw_allowed,
+        raw_terminal_gate_reject_reason=raw_reject_reason,
+        latched_visual_mode_active=latched_visual_mode_active,
+        effective_terminal_contract_allowed=effective_contract_allowed,
+        effective_terminal_contract_scope=effective_contract_scope,
+        effective_terminal_contract_reason=effective_contract_reason,
+        effective_control_authorized=effective_control_authorized,
+        effective_control_authorization_scope=control_scope,
+        effective_control_authorization_reason=control_reason,
+        # Existing consumers keep their field names but now receive one
+        # internally consistent effective contract/control view.
+        terminal_contract_allowed=effective_contract_allowed,
+        terminal_contract_reject_reason=(
+            "" if effective_contract_allowed else output.terminal_contract_reject_reason
+        ),
+        visual_png_enabled=effective_control_authorized,
+        terminal_switch_allowed=effective_control_authorized,
+    )
 
 
 def _terminal_handover_timing(
@@ -968,6 +1409,24 @@ def _terminal_handover_timing(
     }
 
 
+def _terminal_lifecycle_context(
+    binding: AssignmentGuidanceBinding,
+    decision: TerminalPngContractDecision,
+    observation: VisionGuidanceObservation | None,
+) -> TerminalLifecycleContext:
+    return TerminalLifecycleContext(
+        resource_id=binding.resource_id,
+        assigned_global_track_id=binding.assigned_global_track_id,
+        local_track_id=(
+            observation.local_track_id
+            if observation is not None and observation.local_track_id is not None
+            else decision.local_track_id
+        ),
+        plan_owner_id=binding.owner_node_id,
+        plan_version=binding.plan_version,
+    )
+
+
 def _command_saturation_reason(command: PngGuidanceCommand) -> str:
     if not command.control_saturated:
         return ""
@@ -993,6 +1452,16 @@ def _terminal_delivery_output_fields(
         "terminal_filter_audit_reason": result.filter_audit_reason,
         "terminal_lifecycle_reset": result.lifecycle_reset,
         "terminal_lifecycle_reset_reason": result.lifecycle_reset_reason,
+        "terminal_dropout_reason_scope": result.dropout_reason_scope.value,
+        "terminal_dropout_reason": result.dropout_reason,
+        "terminal_measured_lock_history_available": (
+            result.measured_lock_history_available
+        ),
+        "terminal_measured_lock_ever_established": (
+            result.measured_lock_ever_established
+        ),
+        "terminal_contract_reset_reason": result.contract_reset_reason,
+        "terminal_prediction_window_expired": result.prediction_window_expired,
         "terminal_image_innovation_norm_rad": result.image_innovation_norm_rad,
         "terminal_trend_coast_applied": result.trend_coast_applied,
         "terminal_trend_coast_velocity_ned": result.trend_coast_velocity_ned,
@@ -1042,15 +1511,78 @@ def coerce_vision_guidance_observation(
     )
 
 
+def guidance_law_semantic_violations(
+    output: D7RuntimePairOutput,
+) -> tuple[str, ...]:
+    """Return canonical configured/candidate/executed-law contract violations.
+
+    This helper is passive: it does not change a gate result or a command.  It
+    lets main/D6 reject ambiguous persistence where a configured visual law is
+    incorrectly reported as the law actually executed by the vehicle.
+    """
+
+    violations: list[str] = []
+    visual_laws = {law.value for law in VISUAL_HANDOVER_LAWS}
+    configured_terminal = output.configured_terminal_guidance_law
+    candidate = output.candidate_guidance_law
+    executed = output.executed_guidance_law
+
+    if candidate is not None and configured_terminal is None:
+        violations.append("candidate_visual_law_without_visual_configuration")
+    elif candidate is not None and candidate != configured_terminal:
+        violations.append("candidate_visual_law_mismatches_configuration")
+
+    if output.termination_snapshot:
+        if executed is not None:
+            violations.append("termination_snapshot_has_executed_law")
+        if output.effective_control_authorized:
+            violations.append("termination_snapshot_has_effective_control")
+        if output.executed_visual_mode_switch:
+            violations.append("termination_snapshot_has_visual_mode_switch")
+        return tuple(violations)
+
+    if output.effective_control_authorized:
+        if not output.effective_terminal_contract_allowed:
+            violations.append("effective_control_without_effective_contract")
+        if not output.latched_visual_mode_active:
+            violations.append("effective_control_without_visual_latch")
+        if output.mode != GuidanceMode.VISION_TERMINAL:
+            violations.append("effective_control_outside_visual_mode")
+        if candidate is None:
+            violations.append("effective_control_without_candidate_law")
+        if executed not in visual_laws:
+            violations.append("effective_control_without_executed_visual_law")
+        if candidate is not None and executed != candidate:
+            violations.append("executed_visual_law_mismatches_candidate")
+        if output.selected_velocity_ned is None:
+            violations.append("effective_control_without_selected_velocity")
+    else:
+        if output.mode == GuidanceMode.VISION_TERMINAL:
+            violations.append("visual_mode_without_effective_control")
+        if executed in visual_laws:
+            violations.append("executed_visual_law_without_effective_control")
+        if output.selected_velocity_ned is not None:
+            violations.append("selected_visual_velocity_without_effective_control")
+
+    if output.executed_visual_mode_switch and not output.effective_control_authorized:
+        violations.append("visual_mode_switch_without_effective_control")
+    return tuple(violations)
+
+
 def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dict[str, Any]:
     """Summarize D7 runtime bus fields without rerunning guidance or control."""
 
     rows = list(outputs)
+    live_rows = [row for row in rows if not row.termination_snapshot]
     contract_rejects: Counter[str] = Counter()
+    raw_gate_rejects: Counter[str] = Counter()
     switch_rejects: Counter[str] = Counter()
     raw_switch_rejects: Counter[str] = Counter()
     guidance_laws: Counter[str] = Counter()
     requested_guidance_laws: Counter[str] = Counter()
+    configured_midcourse_laws: Counter[str] = Counter()
+    configured_terminal_laws: Counter[str] = Counter()
+    guidance_law_semantic_violation_reasons: Counter[str] = Counter()
     guidance_modes: Counter[str] = Counter()
     mode_transition_reasons: Counter[str] = Counter()
     guidance_law_transition_reasons: Counter[str] = Counter()
@@ -1080,9 +1612,30 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
     coordination_modes: Counter[str] = Counter()
     activation_states: Counter[str] = Counter()
     terminal_authorization_scopes: Counter[str] = Counter()
-    for row in rows:
-        guidance_laws[row.guidance_law] += 1
-        requested_guidance_laws[row.requested_guidance_law] += 1
+    effective_contract_scopes: Counter[str] = Counter()
+    effective_control_scopes: Counter[str] = Counter()
+    dropout_reason_scopes: Counter[str] = Counter()
+    contract_reset_reasons: Counter[str] = Counter()
+    termination_statuses: Counter[str] = Counter(
+        row.termination_status or "unspecified"
+        for row in rows
+        if row.termination_snapshot
+    )
+    termination_reasons: Counter[str] = Counter(
+        row.termination_reason
+        for row in rows
+        if row.termination_snapshot and row.termination_reason
+    )
+    for row in live_rows:
+        if row.executed_guidance_law is not None:
+            guidance_laws[row.executed_guidance_law] += 1
+        requested_guidance_laws[row.configured_guidance_law] += 1
+        configured_midcourse_laws[row.configured_midcourse_guidance_law] += 1
+        if row.configured_terminal_guidance_law is not None:
+            configured_terminal_laws[row.configured_terminal_guidance_law] += 1
+        guidance_law_semantic_violation_reasons.update(
+            guidance_law_semantic_violations(row)
+        )
         guidance_modes[row.mode.value] += 1
         handoff_states[row.terminal_handoff_state or row.mode.value] += 1
         if row.d4_action:
@@ -1126,8 +1679,15 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         coordination_modes[row.coordination_mode] += 1
         activation_states[row.activation_state] += 1
         terminal_authorization_scopes[row.terminal_authorization_scope] += 1
+        effective_contract_scopes[row.effective_terminal_contract_scope] += 1
+        effective_control_scopes[row.effective_control_authorization_scope] += 1
+        dropout_reason_scopes[row.terminal_dropout_reason_scope] += 1
+        if row.terminal_contract_reset_reason:
+            contract_reset_reasons[row.terminal_contract_reset_reason] += 1
         if row.terminal_contract_reject_reason:
             contract_rejects[row.terminal_contract_reject_reason] += 1
+        if row.raw_terminal_gate_reject_reason:
+            raw_gate_rejects[row.raw_terminal_gate_reject_reason] += 1
         if row.terminal_switch_reject_reason:
             switch_rejects[row.terminal_switch_reject_reason] += 1
         if row.raw_terminal_switch_reject_reason:
@@ -1139,33 +1699,55 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         if row.command_saturated and row.command_saturation_reason:
             command_saturation_reasons[row.command_saturation_reason] += 1
 
-    visual_png_switch_count = sum(1 for row in rows if row.visual_png_enabled)
-    gate_sample_rows = [row for row in rows if row.camera_quality_gate_passed is not None]
-    ttc_values = [row.ttc_s for row in rows if row.ttc_s is not None]
-    terminal_range_values = [row.terminal_range_m for row in rows if row.terminal_range_m is not None]
-    closing_speed_values = [row.closing_speed_mps for row in rows if row.closing_speed_mps is not None]
-    bbox_values = [row.bbox_area_ratio for row in rows if row.bbox_area_ratio is not None]
-    edge_values = [row.edge_margin_ratio for row in rows if row.edge_margin_ratio is not None]
-    measurement_age_values = [row.measurement_age_s for row in rows if row.measurement_age_s is not None]
-    projection_depth_values = [row.projection_depth_m for row in rows if row.projection_depth_m is not None]
-    reprojection_error_values = [
-        row.reprojection_error_px for row in rows if row.reprojection_error_px is not None
+    effective_control_authorized_count = sum(
+        1 for row in live_rows if row.effective_control_authorized
+    )
+    visual_png_switch_count = effective_control_authorized_count
+    gate_sample_rows = [row for row in live_rows if row.camera_quality_gate_passed is not None]
+    closing_speed_gate_rows = [
+        row for row in live_rows if row.closing_speed_gate_passed is not None
     ]
-    mahalanobis_values = [row.mahalanobis_d2 for row in rows if row.mahalanobis_d2 is not None]
+    ttc_values = [row.ttc_s for row in live_rows if row.ttc_s is not None]
+    terminal_range_values = [
+        row.terminal_range_m for row in live_rows if row.terminal_range_m is not None
+    ]
+    closing_speed_values = [
+        row.closing_speed_mps for row in live_rows if row.closing_speed_mps is not None
+    ]
+    bbox_values = [row.bbox_area_ratio for row in live_rows if row.bbox_area_ratio is not None]
+    edge_values = [row.edge_margin_ratio for row in live_rows if row.edge_margin_ratio is not None]
+    measurement_age_values = [
+        row.measurement_age_s for row in live_rows if row.measurement_age_s is not None
+    ]
+    projection_depth_values = [
+        row.projection_depth_m for row in live_rows if row.projection_depth_m is not None
+    ]
+    reprojection_error_values = [
+        row.reprojection_error_px for row in live_rows if row.reprojection_error_px is not None
+    ]
+    mahalanobis_values = [
+        row.mahalanobis_d2 for row in live_rows if row.mahalanobis_d2 is not None
+    ]
     covariance_trace_values = [
-        row.covariance_px_trace for row in rows if row.covariance_px_trace is not None
+        row.covariance_px_trace for row in live_rows if row.covariance_px_trace is not None
     ]
     projection_covariance_trace_values = [
         row.projection_covariance_px_trace
-        for row in rows
+        for row in live_rows
         if row.projection_covariance_px_trace is not None
     ]
-    bbox_area_px_values = [row.bbox_area_px for row in rows if row.bbox_area_px is not None]
+    bbox_area_px_values = [
+        row.bbox_area_px for row in live_rows if row.bbox_area_px is not None
+    ]
     association_probability_values = [
-        row.association_probability for row in rows if row.association_probability is not None
+        row.association_probability
+        for row in live_rows
+        if row.association_probability is not None
     ]
     mot_history_values = [
-        float(row.mot_history_length) for row in rows if row.mot_history_length is not None
+        float(row.mot_history_length)
+        for row in live_rows
+        if row.mot_history_length is not None
     ]
     los_rate_abs_values = [
         abs(row.los_rate_radps)
@@ -1181,24 +1763,47 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         for row in gate_sample_rows
         if row.raw_los_rate_radps is not None
     ]
-    height_delta_values = [row.height_delta_m for row in rows if row.height_delta_m is not None]
-    range_3d_values = [row.range_3d_m for row in rows if row.range_3d_m is not None]
+    height_delta_values = [
+        row.height_delta_m for row in live_rows if row.height_delta_m is not None
+    ]
+    range_3d_values = [row.range_3d_m for row in live_rows if row.range_3d_m is not None]
     pn3d_los_rate_values = [
         row.pn3d_los_rate_norm_radps
-        for row in rows
+        for row in live_rows
         if row.pn3d_los_rate_norm_radps is not None
     ]
     terminal_wait_values = [
         row.terminal_wait_duration_s
-        for row in rows
+        for row in live_rows
         if row.terminal_wait_duration_s is not None
     ]
-    raw_switch_rows = [row for row in rows if row.raw_terminal_switch_allowed is not None]
-    saturation_rows = [row for row in rows if row.command_saturated is not None]
-    contract_rows = [row for row in rows if row.terminal_contract_applicable]
+    raw_switch_rows = [
+        row for row in live_rows if row.raw_terminal_switch_allowed is not None
+    ]
+    saturation_rows = [row for row in live_rows if row.command_saturated is not None]
+    raw_gate_rows = [row for row in live_rows if row.raw_terminal_gate_applicable]
+    contract_rows = [row for row in live_rows if row.terminal_contract_applicable]
     summary = {
         "boundary": D7_RUNTIME_BUS_BOUNDARY,
+        "terminal_semantics_version": TERMINAL_SEMANTICS_VERSION,
+        "guidance_law_semantics_version": GUIDANCE_LAW_SEMANTICS_VERSION,
         "sample_count": len(rows),
+        "live_control_sample_count": len(live_rows),
+        "termination_snapshot_count": len(rows) - len(live_rows),
+        "termination_status_counts": dict(termination_statuses),
+        "termination_reason_counts": dict(termination_reasons),
+        "termination_prior_visual_mode_active_count": sum(
+            1
+            for row in rows
+            if row.termination_snapshot
+            and row.termination_prior_latched_visual_mode_active
+        ),
+        "termination_prior_effective_control_authorized_count": sum(
+            1
+            for row in rows
+            if row.termination_snapshot
+            and row.termination_prior_effective_control_authorized
+        ),
         "control_context_count": len({row.control_context_id for row in rows}),
         "control_context_ids": sorted({row.control_context_id for row in rows}),
         "resource_ids": sorted({row.resource_id for row in rows}),
@@ -1214,53 +1819,61 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
                 if row.coalition_version is not None
             )
         ),
-        "coalition_gate_applicable_count": sum(1 for row in rows if row.coalition_gate_applicable),
-        "coalition_gate_allowed_count": sum(1 for row in rows if row.coalition_gate_allowed is True),
+        "coalition_gate_applicable_count": sum(
+            1 for row in live_rows if row.coalition_gate_applicable
+        ),
+        "coalition_gate_allowed_count": sum(
+            1 for row in live_rows if row.coalition_gate_allowed is True
+        ),
         "coalition_gate_reject_reasons": dict(coalition_gate_rejects),
         "coalition_commit_gate_applicable_count": sum(
-            1 for row in rows if row.coalition_commit_gate_applicable
+            1 for row in live_rows if row.coalition_commit_gate_applicable
         ),
         "coalition_commit_gate_allowed_count": sum(
-            1 for row in rows if row.coalition_commit_gate_allowed is True
+            1 for row in live_rows if row.coalition_commit_gate_allowed is True
         ),
         "coalition_commit_gate_reject_count": sum(coalition_commit_gate_rejects.values()),
         "coalition_commit_gate_reject_reasons": dict(coalition_commit_gate_rejects),
         "coalition_commit_state_counts": dict(coalition_commit_states),
-        "coalition_lease_valid_count": sum(1 for row in rows if row.coalition_lease_valid is True),
+        "coalition_lease_valid_count": sum(
+            1 for row in live_rows if row.coalition_lease_valid is True
+        ),
         "coalition_resource_required_count": sum(
-            1 for row in rows if row.coalition_resource_required is True
+            1 for row in live_rows if row.coalition_resource_required is True
         ),
         "coalition_resource_acked_count": sum(
-            1 for row in rows if row.coalition_resource_acked is True
+            1 for row in live_rows if row.coalition_resource_acked is True
         ),
         "terminal_delivery_state_counts": dict(terminal_delivery_states),
         "terminal_delivery_reason_counts": dict(terminal_delivery_reasons),
         "terminal_filter_audit_state_counts": dict(terminal_filter_audit_states),
         "terminal_filter_audit_reason_counts": dict(terminal_filter_audit_reasons),
+        "terminal_dropout_reason_scope_counts": dict(dropout_reason_scopes),
+        "terminal_contract_reset_reason_counts": dict(contract_reset_reasons),
         "terminal_lifecycle_reset_count": sum(
-            1 for row in rows if row.terminal_lifecycle_reset
+            1 for row in live_rows if row.terminal_lifecycle_reset
         ),
         "terminal_trend_coast_applied_count": sum(
-            1 for row in rows if row.terminal_trend_coast_applied
+            1 for row in live_rows if row.terminal_trend_coast_applied
         ),
-        "ttc_valid_count": sum(1 for row in rows if row.ttc_valid is True),
+        "ttc_valid_count": sum(1 for row in live_rows if row.ttc_valid is True),
         "ttc_reject_reasons": dict(ttc_reject_reasons),
         "terminal_extrapolation_count": sum(
-            1 for row in rows if row.terminal_using_extrapolation
+            1 for row in live_rows if row.terminal_using_extrapolation
         ),
         "terminal_reacquired_count": sum(
             1
-            for row in rows
+            for row in live_rows
             if row.terminal_delivery_state == TerminalDeliveryState.REACQUIRED.value
         ),
         "terminal_visual_coast_expired_count": sum(
             1
-            for row in rows
+            for row in live_rows
             if row.terminal_delivery_reason == "terminal_visual_lost_after_coast"
         ),
         "terminal_prediction_window_expired_count": sum(
             1
-            for row in rows
+            for row in live_rows
             if row.terminal_delivery_reason
             == "terminal_visual_prediction_window_expired"
         ),
@@ -1269,19 +1882,55 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         "coordination_mode_counts": dict(coordination_modes),
         "activation_state_counts": dict(activation_states),
         "terminal_authorization_scope_counts": dict(terminal_authorization_scopes),
+        "raw_terminal_gate_applicable_count": len(raw_gate_rows),
+        "raw_terminal_gate_allowed_count": sum(
+            1 for row in raw_gate_rows if row.raw_terminal_gate_allowed is True
+        ),
+        "raw_terminal_gate_reject_count": sum(
+            1 for row in raw_gate_rows if row.raw_terminal_gate_allowed is False
+        ),
+        "raw_terminal_gate_reject_reasons": dict(raw_gate_rejects),
+        "effective_terminal_contract_allowed_count": sum(
+            1 for row in live_rows if row.effective_terminal_contract_allowed
+        ),
+        "effective_terminal_contract_scope_counts": dict(effective_contract_scopes),
+        "latched_visual_mode_active_count": sum(
+            1 for row in live_rows if row.latched_visual_mode_active
+        ),
+        "effective_control_authorized_count": effective_control_authorized_count,
+        "visual_control_active_count": effective_control_authorized_count,
+        "effective_control_authorization_scope_counts": dict(effective_control_scopes),
+        "visual_mode_entry_transition_count": sum(
+            1
+            for row in live_rows
+            if row.executed_visual_mode_switch
+        ),
+        "executed_visual_mode_switch_count": sum(
+            1 for row in live_rows if row.executed_visual_mode_switch
+        ),
+        "guidance_law_semantic_violation_count": sum(
+            guidance_law_semantic_violation_reasons.values()
+        ),
+        "guidance_law_semantic_violation_reasons": dict(
+            guidance_law_semantic_violation_reasons
+        ),
         "per_primary_authorization_active_count": sum(
-            1 for row in rows if row.per_primary_authorization_active
+            1 for row in live_rows if row.per_primary_authorization_active
         ),
         "coalition_visual_completion_bypassed_count": sum(
-            1 for row in rows if row.coalition_visual_completion_bypassed
+            1 for row in live_rows if row.coalition_visual_completion_bypassed
         ),
         "bypassed_arrival_only_count": sum(
-            1 for row in rows if row.bypassed_arrival_only
+            1 for row in live_rows if row.bypassed_arrival_only
         ),
         "visual_png_switch_count": visual_png_switch_count,
-        "visual_png_candidate_count": sum(1 for row in rows if row.png_guidance_law_candidate is not None),
-        "terminal_handover_pending_count": sum(1 for row in rows if row.terminal_handover_pending),
-        "terminal_locked_input_count": sum(1 for row in rows if row.terminal_locked),
+        "visual_png_candidate_count": sum(
+            1 for row in live_rows if row.png_guidance_law_candidate is not None
+        ),
+        "terminal_handover_pending_count": sum(
+            1 for row in live_rows if row.terminal_handover_pending
+        ),
+        "terminal_locked_input_count": sum(1 for row in live_rows if row.terminal_locked),
         "terminal_contract_applicable_count": len(contract_rows),
         "terminal_contract_allowed_count": sum(
             1 for row in contract_rows if row.terminal_contract_allowed
@@ -1291,9 +1940,37 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         ),
         "terminal_contract_reject_count": sum(contract_rejects.values()),
         "terminal_contract_reject_reasons": dict(contract_rejects),
-        "terminal_switch_allowed_count": sum(1 for row in rows if row.terminal_switch_allowed),
+        "terminal_switch_allowed_count": effective_control_authorized_count,
         "terminal_switch_reject_count": sum(switch_rejects.values()),
         "terminal_switch_reject_reasons": dict(switch_rejects),
+        "backward_compatible_aliases": {
+            "requested_guidance_law": "configured_guidance_law",
+            "png_guidance_law_candidate": "candidate_guidance_law",
+            "guidance_law": "executed_guidance_law_live_samples_only",
+            "terminal_contract_applicable": "raw_terminal_gate_applicable",
+            "raw_terminal_contract_allowed": "raw_terminal_gate_allowed",
+            "terminal_contract_allowed": "effective_terminal_contract_allowed",
+            "terminal_switch_allowed": "effective_control_authorized",
+            "terminal_control_allowed": "effective_control_authorized",
+            "visual_png_enabled": "effective_control_authorized",
+            "visual_png_switch": "effective_control_authorized",
+            "terminal_contract_allowed_count": (
+                "effective_terminal_contract_allowed_count"
+            ),
+            "terminal_switch_allowed_count": "effective_control_authorized_count",
+            "visual_png_switch_count": "effective_control_authorized_count",
+        },
+        "main_persistence_contract": {
+            "configured_law_field": "configured_guidance_law",
+            "candidate_law_field": "candidate_guidance_law",
+            "executed_law_field": "executed_guidance_law",
+            "raw_gate_field": "raw_terminal_gate_allowed",
+            "latched_mode_field": "latched_visual_mode_active",
+            "effective_control_field": "effective_control_authorized",
+            "visual_control_active_field": "visual_control_active",
+            "visual_mode_switch_field": "executed_visual_mode_switch",
+            "legacy_visual_png_switch_is_active_sample_not_transition": True,
+        },
         "raw_terminal_switch_observed_count": len(raw_switch_rows),
         "raw_terminal_switch_allowed_count": sum(
             1 for row in raw_switch_rows if row.raw_terminal_switch_allowed
@@ -1302,12 +1979,14 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
             row.raw_terminal_switch_allowed for row in raw_switch_rows
         ),
         "raw_terminal_switch_reject_reasons": dict(raw_switch_rejects),
-        "terminal_switch_allowed_rate": visual_png_switch_count / len(rows) if rows else 0.0,
-        "terminal_timeout_count": sum(1 for row in rows if row.terminal_timeout),
-        "mode_transition_count": sum(1 for row in rows if row.mode_transition),
+        "terminal_switch_allowed_rate": (
+            visual_png_switch_count / len(live_rows) if live_rows else 0.0
+        ),
+        "terminal_timeout_count": sum(1 for row in live_rows if row.terminal_timeout),
+        "mode_transition_count": sum(1 for row in live_rows if row.mode_transition),
         "mode_transition_reasons": dict(mode_transition_reasons),
         "guidance_law_transition_count": sum(
-            1 for row in rows if row.guidance_law_transition
+            1 for row in live_rows if row.guidance_law_transition
         ),
         "guidance_law_transition_reasons": dict(guidance_law_transition_reasons),
         "command_saturation_observed_count": len(saturation_rows),
@@ -1316,38 +1995,58 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         "command_saturation_reasons": dict(command_saturation_reasons),
         "d4_action_block_count": sum(d4_action_block_reasons.values()),
         "d4_action_block_reasons": dict(d4_action_block_reasons),
-        "d5_lock_consistent_count": sum(1 for row in rows if row.d5_lock_consistent is True),
-        "d5_lock_consistent_rate": _bool_rate(row.d5_lock_consistent for row in rows),
+        "d5_lock_consistent_count": sum(
+            1 for row in live_rows if row.d5_lock_consistent is True
+        ),
+        "d5_lock_consistent_rate": _bool_rate(
+            row.d5_lock_consistent for row in live_rows
+        ),
         "d5_lock_consistency_reasons": dict(d5_lock_reasons),
         "d3_plan_version_consistent_count": sum(
-            1 for row in rows if row.d3_plan_version_consistent is True
+            1 for row in live_rows if row.d3_plan_version_consistent is True
         ),
         "d3_plan_version_consistent_rate": _bool_rate(
-            row.d3_plan_version_consistent for row in rows
+            row.d3_plan_version_consistent for row in live_rows
         ),
-        "d3_owner_consistent_count": sum(1 for row in rows if row.d3_owner_consistent is True),
-        "d3_owner_consistent_rate": _bool_rate(row.d3_owner_consistent for row in rows),
+        "d3_owner_consistent_count": sum(
+            1 for row in live_rows if row.d3_owner_consistent is True
+        ),
+        "d3_owner_consistent_rate": _bool_rate(
+            row.d3_owner_consistent for row in live_rows
+        ),
         "d3_owner_version_consistent_count": sum(
-            1 for row in rows if row.d3_owner_version_consistent is True
+            1 for row in live_rows if row.d3_owner_version_consistent is True
         ),
         "d3_owner_version_consistent_rate": _bool_rate(
-            row.d3_owner_version_consistent for row in rows
+            row.d3_owner_version_consistent for row in live_rows
         ),
         "secondary_capability_class_counts": dict(secondary_capability_classes),
         "secondary_readiness_class_counts": dict(secondary_readiness_classes),
         "detect_registration_outcome_counts": dict(detect_registration_outcomes),
         "detect_registration_reject_reasons": dict(detect_registration_reject_reasons),
-        "projection_valid_rate": _bool_rate(row.projection_valid for row in rows),
-        "d5_gate_pass_rate": _bool_rate(row.gate_pass for row in rows),
+        "projection_valid_rate": _bool_rate(row.projection_valid for row in live_rows),
+        "d5_gate_pass_rate": _bool_rate(row.gate_pass for row in live_rows),
         "tracker_backend_counts": dict(tracker_backends),
         "threshold_advisory_version": DEFAULT_CALIBRATION_THRESHOLD_VERSION,
-        "terminal_dwell_active_count": sum(1 for row in rows if row.terminal_dwell_active),
-        "terminal_release_grace_active_count": sum(1 for row in rows if row.terminal_release_grace_active),
-        "terminal_reacquire_grace_active_count": sum(1 for row in rows if row.terminal_reacquire_grace_active),
-        "los_rate_clamped_count": sum(1 for row in rows if row.los_rate_clamped),
-        "los_rate_outlier_rejected_count": sum(1 for row in rows if row.los_rate_outlier_rejected),
-        "pn3d_benchmark_sample_count": sum(1 for row in rows if row.pn3d_benchmark_only),
-        "pn3d_default_api_replaced": any(row.pn3d_default_api_replaced for row in rows),
+        "terminal_dwell_active_count": sum(
+            1 for row in live_rows if row.terminal_dwell_active
+        ),
+        "terminal_release_grace_active_count": sum(
+            1 for row in live_rows if row.terminal_release_grace_active
+        ),
+        "terminal_reacquire_grace_active_count": sum(
+            1 for row in live_rows if row.terminal_reacquire_grace_active
+        ),
+        "los_rate_clamped_count": sum(1 for row in live_rows if row.los_rate_clamped),
+        "los_rate_outlier_rejected_count": sum(
+            1 for row in live_rows if row.los_rate_outlier_rejected
+        ),
+        "pn3d_benchmark_sample_count": sum(
+            1 for row in live_rows if row.pn3d_benchmark_only
+        ),
+        "pn3d_default_api_replaced": any(
+            row.pn3d_default_api_replaced for row in live_rows
+        ),
         "terminal_contract_allowed_rate": (
             sum(1 for row in contract_rows if row.terminal_contract_allowed) / len(contract_rows)
             if contract_rows
@@ -1359,16 +2058,32 @@ def summarize_runtime_bus_outputs(outputs: Iterable[D7RuntimePairOutput]) -> dic
         "los_quality_gate_pass_rate": _bool_rate(
             row.los_quality_gate_passed for row in gate_sample_rows
         ),
+        "closing_speed_gate_observed_count": len(closing_speed_gate_rows),
+        "closing_speed_gate_pass_count": sum(
+            1 for row in closing_speed_gate_rows if row.closing_speed_gate_passed
+        ),
+        "closing_speed_gate_pass_rate": _bool_rate(
+            row.closing_speed_gate_passed for row in closing_speed_gate_rows
+        ),
         "maneuver_margin_gate_pass_rate": _bool_rate(
             row.maneuver_margin_gate_passed for row in gate_sample_rows
         ),
         "guidance_law_counts": dict(guidance_laws),
+        "executed_guidance_law_counts": dict(guidance_laws),
         "requested_guidance_law_counts": dict(requested_guidance_laws),
+        "configured_guidance_law_counts": dict(requested_guidance_laws),
+        "configured_midcourse_guidance_law_counts": dict(
+            configured_midcourse_laws
+        ),
+        "configured_terminal_guidance_law_counts": dict(
+            configured_terminal_laws
+        ),
         "guidance_mode_counts": dict(guidance_modes),
         "terminal_handoff_state_counts": dict(handoff_states),
         "d4_action_counts": dict(d4_actions),
         "d5_decision_state_counts": dict(d5_states),
         "png_guidance_law_candidate_counts": dict(candidate_laws),
+        "candidate_guidance_law_counts": dict(candidate_laws),
     }
     summary.update(_numeric_summary("ttc_s", ttc_values))
     summary.update(_numeric_summary("terminal_range_m", terminal_range_values))
@@ -1859,6 +2574,20 @@ def _coerce_pair_input(value: D7RuntimePairInput | Mapping[str, Any] | Any) -> D
         terminal_timeout_s=_optional_float_value(
             value,
             ("terminal_timeout_s", "handover_timeout_s"),
+        ),
+        termination_snapshot=bool(
+            _value(value, ("termination_snapshot", "is_termination_snapshot"), default=False)
+        ),
+        termination_status=_optional_string_value(
+            value,
+            ("termination_status", "terminal_status"),
+        ),
+        termination_reason=(
+            _optional_string_value(
+                value,
+                ("termination_reason", "abort_reason", "terminal_reason"),
+            )
+            or ""
         ),
         metadata=dict(_value(value, ("metadata",), default={}) or {}),
     )

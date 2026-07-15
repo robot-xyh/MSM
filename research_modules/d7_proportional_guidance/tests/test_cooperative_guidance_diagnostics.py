@@ -69,8 +69,21 @@ def test_dynamic_primary_diagnostics_identify_second_primary_failure() -> None:
     assert coalition["coalition_arrival_spread_complete"] is False
     assert coalition["second_primary_failure_stage"] == "terminal_control"
     assert summary["second_primary_failure_stage_counts"] == {"terminal_control": 1}
+    assert coalition["second_primary_canonical_first_failure_stage"] == (
+        "terminal_control"
+    )
+    assert coalition["second_primary_funnel"]["assigned"]["reached"] is True
+    assert coalition["second_primary_funnel"]["d5_locked"]["reached"] is True
+    assert coalition["second_primary_funnel"]["terminal_contract"]["reached"] is True
+    assert coalition["second_primary_funnel"]["terminal_control"]["reached"] is False
+    assert coalition["second_primary_first_reached_timestamp_s"][
+        "terminal_contract"
+    ] == pytest.approx(5.5)
     assert summary["primary_failure_stage_counts_by_ordinal"] == {
         "2": {"terminal_control": 1}
+    }
+    assert summary["second_primary_canonical_first_failure_stage_counts"] == {
+        "terminal_control": 1
     }
 
 
@@ -217,6 +230,196 @@ def test_runtime_output_adapter_preserves_explicit_d5_funnel_evidence() -> None:
     assert sample.version_mismatch is False
 
 
+def test_m5n2_no_switch_funnel_separates_range_and_d5_lock_failures() -> None:
+    candidate = _candidate("M5N2-SEMANTICS-V2")
+    bus = D7RuntimeBus(_png_config())
+    cases = (
+        ("INT-01", "G1", 35.6, "ambiguous"),
+        ("INT-02", "G1", 26.3, "reacquire"),
+        ("INT-04", "G2", 38.9, "ambiguous"),
+    )
+    samples = []
+    outputs = []
+    for index, (resource_id, target_id, range_m, decision_state) in enumerate(cases):
+        binding = replace(
+            _binding(),
+            assignment_id=f"assign-{resource_id}-{target_id}",
+            resource_id=resource_id,
+            vehicle_name=f"Interceptor-{resource_id}",
+            assigned_global_track_id=target_id,
+        )
+        terminal = _terminal_association(binding)
+        terminal["decision_state"] = decision_state
+        pair_input = replace(
+            _runtime_input(binding, index * 0.1, terminal=terminal),
+            terminal_locked=False,
+            relative_position_ned=(range_m, 0.0, 0.0),
+        )
+        output = bus.evaluate_pair(pair_input)
+        outputs.append(output)
+        samples.append(
+            CooperativeGuidanceDiagnosticSample.from_runtime_output(
+                output,
+                candidate=candidate,
+                episode_id="p1-m5n2-seed-001",
+                seed=1,
+                d5_visible=True,
+                d5_associated=True,
+            )
+        )
+
+    summary = summarize_cooperative_guidance_diagnostics(samples)
+    rows = {row["resource_id"]: row for row in summary["rows"]}
+
+    assert all(output.raw_terminal_gate_allowed is False for output in outputs)
+    assert all(output.latched_visual_mode_active is False for output in outputs)
+    assert all(output.effective_terminal_contract_allowed is False for output in outputs)
+    assert all(output.effective_control_authorized is False for output in outputs)
+    assert rows["INT-01"]["first_failure_stage"] == "terminal_handoff_range"
+    assert rows["INT-01"]["first_failure_reason"] == "terminal_handoff_range_not_reached"
+    assert rows["INT-02"]["first_failure_stage"] == "d5_locked"
+    assert rows["INT-02"]["first_failure_reason"] == "d5_not_locked"
+    assert rows["INT-02"]["funnel"]["raw_terminal_gate"] == {
+        "available": True,
+        "reached": False,
+    }
+    assert rows["INT-02"]["funnel"]["d5_measured_lock"] == {
+        "available": True,
+        "reached": False,
+    }
+    assert rows["INT-04"]["first_failure_stage"] == "terminal_handoff_range"
+    assert summary["pair_first_failure_stage_counts"] == {
+        "terminal_handoff_range": 2,
+        "d5_locked": 1,
+    }
+    assert summary["diagnostic_reason_missing_count"] == 0
+
+
+def test_detailed_funnel_reports_measured_lock_camera_closing_and_maneuver() -> None:
+    candidate = _candidate("DETAILED-GATES")
+    binding = _binding()
+
+    no_measurement_output = D7RuntimeBus(_png_config()).evaluate_pair(
+        replace(
+            _runtime_input(binding, 0.0),
+            observation=None,
+            relative_position_ned=(20.0, 0.0, 0.0),
+        )
+    )
+    no_measurement = CooperativeGuidanceDiagnosticSample.from_runtime_output(
+        no_measurement_output,
+        candidate=candidate,
+        d5_visible=True,
+        d5_associated=True,
+        d5_locked=True,
+    )
+
+    camera_bus = D7RuntimeBus(replace(_png_config(), min_stable_frames=2))
+    camera_output = camera_bus.evaluate_pair(
+        replace(
+            _runtime_input(binding, 0.0),
+            relative_position_ned=(20.0, 0.0, 0.0),
+        )
+    )
+    camera_sample = CooperativeGuidanceDiagnosticSample.from_runtime_output(
+        camera_output,
+        candidate=candidate,
+    )
+
+    closing_bus = D7RuntimeBus(_png_config())
+    closing_outputs = [
+        closing_bus.evaluate_pair(
+            replace(
+                _runtime_input(binding, timestamp_s),
+                relative_position_ned=(20.0, 0.0, 0.0),
+                relative_velocity_ned=(5.0, 0.0, 0.0),
+            )
+        )
+        for timestamp_s in (0.0, 0.1, 0.2)
+    ]
+    closing_samples = [
+        CooperativeGuidanceDiagnosticSample.from_runtime_output(
+            output,
+            candidate=candidate,
+        )
+        for output in closing_outputs
+    ]
+
+    maneuver_sample = replace(
+        closing_samples[-1],
+        assignment_id="maneuver-R1-G1",
+        camera_quality_gate_passed=True,
+        los_quality_gate_passed=True,
+        closing_speed_gate_passed=True,
+        maneuver_margin_gate_passed=False,
+        terminal_control_reject_reason="maneuver_margin_low",
+    )
+    diagnostics = build_assignment_pair_guidance_diagnostics(
+        [
+            replace(no_measurement, assignment_id="measured-R1-G1"),
+            replace(camera_sample, assignment_id="camera-R1-G1"),
+            *[
+                replace(sample, assignment_id="closing-R1-G1")
+                for sample in closing_samples
+            ],
+            maneuver_sample,
+        ]
+    )
+    by_assignment = {row.assignment_id: row for row in diagnostics}
+
+    assert by_assignment["measured-R1-G1"].first_failure_stage == "d5_measured_lock"
+    assert by_assignment["measured-R1-G1"].first_failure_reason == (
+        "terminal_visual_acquiring"
+    )
+    assert by_assignment["camera-R1-G1"].first_failure_stage == "camera_quality"
+    assert by_assignment["camera-R1-G1"].first_failure_reason == "stable_frame_count_low"
+    assert by_assignment["closing-R1-G1"].first_failure_stage == "closing_speed"
+    assert by_assignment["closing-R1-G1"].first_failure_reason == "not_closing"
+    assert closing_outputs[-1].closing_speed_gate_passed is False
+    assert closing_outputs[-1].closing_speed_gate_threshold_mps == pytest.approx(0.2)
+    assert closing_outputs[-1].as_log_record()["closing_speed_gate_passed"] is False
+    assert closing_outputs[-1].as_log_record()[
+        "closing_speed_gate_threshold_mps"
+    ] == pytest.approx(0.2)
+    assert by_assignment["maneuver-R1-G1"].first_failure_stage == "maneuver_margin"
+    assert by_assignment["maneuver-R1-G1"].first_failure_reason == "maneuver_margin_low"
+
+
+def test_raw_gate_false_without_reason_is_explicitly_flagged() -> None:
+    candidate = _candidate("MISSING-REASON")
+    output = D7RuntimeBus(_png_config()).evaluate_pair(
+        _runtime_input(_binding(), 0.0)
+    )
+    sample = CooperativeGuidanceDiagnosticSample.from_runtime_output(
+        output,
+        candidate=candidate,
+    )
+    malformed = replace(
+        sample,
+        raw_terminal_gate_allowed=False,
+        raw_terminal_gate_reject_reason="",
+        terminal_contract_reject_reason="",
+        effective_terminal_contract_allowed=False,
+        effective_control_authorized=False,
+        terminal_contract_allowed=False,
+        terminal_control_allowed=False,
+        d5_measured_lock_observed=False,
+        camera_quality_gate_passed=None,
+        los_quality_gate_passed=None,
+        closing_speed_gate_passed=None,
+        maneuver_margin_gate_passed=None,
+        latched_visual_mode_active=False,
+    )
+
+    summary = summarize_cooperative_guidance_diagnostics([malformed])
+    row = summary["rows"][0]
+
+    assert row["first_failure_stage"] == "raw_terminal_gate"
+    assert row["first_failure_reason"] == "raw_terminal_gate_reject_reason_missing"
+    assert row["diagnostic_reason_missing_count"] == 1
+    assert summary["diagnostic_reason_missing_count"] == 1
+
+
 @pytest.mark.parametrize(
     ("permission", "terminal_override", "binding_override", "expected_reason"),
     [
@@ -343,6 +546,61 @@ def test_dropout_seed_boundary_reports_two_predictions_then_hard_expiry() -> Non
     )
     assert samples[-1].terminal_delivery_reason == "terminal_visual_prediction_window_expired"
     assert samples[-1].terminal_control_allowed is False
+
+
+def test_single_frame_dropout_seed2_explains_measured_lock_and_reacquisition() -> None:
+    bus = D7RuntimeBus(_png_config(law="png_vm"))
+    binding = _binding()
+    measured_outputs = [
+        bus.evaluate_pair(_runtime_input(binding, index * 0.1))
+        for index in range(3)
+    ]
+    reacquire = _terminal_association(binding)
+    reacquire["decision_state"] = "reacquire"
+    dropout = bus.evaluate_pair(
+        replace(
+            _runtime_input(binding, 0.3, terminal=reacquire),
+            observation=None,
+        )
+    )
+    reacquired = bus.evaluate_pair(_runtime_input(binding, 0.4))
+    outputs = [*measured_outputs, dropout, reacquired]
+    samples = [
+        CooperativeGuidanceDiagnosticSample.from_runtime_output(
+            output,
+            candidate=_candidate("DROP-SEED-2-SINGLE"),
+            episode_id="2v2-dropout-seed-002",
+            seed=2,
+            disturbance_type=(
+                "single_frame_detection_dropout" if index == 3 else ""
+            ),
+            metadata={"dropout_frame_index": 1 if index == 3 else 0},
+        )
+        for index, output in enumerate(outputs)
+    ]
+
+    diagnostic = build_assignment_pair_guidance_diagnostics(samples)[0]
+    timing = diagnostic.measured_lock_timing
+
+    assert dropout.terminal_delivery_state == "image_kf_predict"
+    assert dropout.terminal_visual_lock_measured is False
+    assert dropout.terminal_measured_lock_history_available is True
+    assert reacquired.terminal_delivery_state == "reacquired"
+    assert reacquired.terminal_visual_lock_measured is True
+    assert timing["first_measured_lock_timestamp_s"] == pytest.approx(0.0)
+    assert timing["first_dropout_timestamp_s"] == pytest.approx(0.3)
+    assert timing["first_reacquired_timestamp_s"] == pytest.approx(0.4)
+    assert timing["measured_lock_before_first_dropout"] is True
+    assert timing["dropout_run_lengths"] == [1]
+    assert timing["max_consecutive_dropout_frames"] == 1
+    assert timing["single_frame_dropout_reacquired"] is True
+    assert diagnostic.funnel_first_reached_timestamp_s["d5_measured_lock"] == (
+        pytest.approx(0.0)
+    )
+    assert len(diagnostic.measured_lock_timeline) == 5
+    assert diagnostic.measured_lock_timeline[3][
+        "terminal_dropout_reason_scope"
+    ] == "bounded_prediction"
 
 
 def test_candidate_metadata_validation_is_fail_fast() -> None:

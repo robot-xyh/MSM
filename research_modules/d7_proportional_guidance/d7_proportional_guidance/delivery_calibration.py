@@ -15,6 +15,10 @@ PNG_TTC_REQUIRED_REJECT_CLASSES = (
     "area_not_expanding",
     "ttc_out_of_range",
 )
+PNG_TTC_CONTROLLED_DISTURBANCE_TYPES = (
+    "bbox_area_jump",
+    "bbox_clipping",
+)
 
 
 def summarize_locked_dropout_matrix(
@@ -144,6 +148,104 @@ def summarize_png_ttc_calibration(records: Iterable[Any]) -> dict[str, Any]:
         "ttc_s_min": min(ttc_values) if ttc_values else None,
         "ttc_s_max": max(ttc_values) if ttc_values else None,
         "default_png_vm_changed": False,
+        "advisory_only": True,
+    }
+
+
+def summarize_png_ttc_controlled_disturbances(
+    records: Iterable[Any],
+) -> dict[str, Any]:
+    """Verify controlled TTC rejection without changing identity or control gates."""
+
+    rows = [_coerce_record(record) for record in records]
+    matrix: dict[str, Any] = {}
+    for disturbance_type in PNG_TTC_CONTROLLED_DISTURBANCE_TYPES:
+        disturbance_rows = [
+            row
+            for row in rows
+            if _text_value(row, "disturbance_type") == disturbance_type
+        ]
+        reason_match_count = 0
+        control_blocked_count = 0
+        radar_fallback_count = 0
+        identity_evidence_count = 0
+        identity_preserved_count = 0
+        row_pass_count = 0
+        reasons: Counter[str] = Counter()
+        for row in disturbance_rows:
+            reason = _text_value(row, "ttc_reject_reason")
+            if reason:
+                reasons[reason] += 1
+            reason_matches = (
+                reason == "bbox_area_jump"
+                if disturbance_type == "bbox_area_jump"
+                else _ttc_reject_class(reason) == "bbox_clipping"
+            )
+            reason_match_count += int(reason_matches)
+
+            control_allowed = _bool_value(
+                row,
+                "effective_control_authorized",
+                "terminal_control_allowed",
+                "terminal_switch_allowed",
+            )
+            control_blocked = control_allowed is False
+            control_blocked_count += int(control_blocked)
+
+            executed_law = _text_value(
+                row,
+                "executed_guidance_law",
+                "guidance_law",
+            )
+            radar_fallback = executed_law in {"radar_pn", "pn"}
+            radar_fallback_count += int(radar_fallback)
+
+            expected_track_id = _text_value(
+                row,
+                "expected_global_track_id",
+                "binding_global_track_id",
+            )
+            actual_track_id = _text_value(row, "assigned_global_track_id")
+            identity_available = bool(expected_track_id and actual_track_id)
+            identity_preserved = (
+                identity_available and expected_track_id == actual_track_id
+            )
+            identity_evidence_count += int(identity_available)
+            identity_preserved_count += int(identity_preserved)
+            row_pass_count += int(
+                reason_matches
+                and control_blocked
+                and radar_fallback
+                and identity_preserved
+            )
+
+        count = len(disturbance_rows)
+        matrix[disturbance_type] = {
+            "record_count": count,
+            "reject_reason_counts": dict(reasons),
+            "reject_reason_match_count": reason_match_count,
+            "effective_control_blocked_count": control_blocked_count,
+            "radar_pn_fallback_count": radar_fallback_count,
+            "identity_evidence_count": identity_evidence_count,
+            "identity_preserved_count": identity_preserved_count,
+            "compliant_count": row_pass_count,
+            "coverage_pass": count > 0 and row_pass_count == count,
+        }
+
+    return {
+        "boundary": D7_DELIVERY_CALIBRATION_BOUNDARY,
+        "kind": "png_ttc_controlled_disturbance_coverage",
+        "record_count": len(rows),
+        "required_disturbance_types": list(PNG_TTC_CONTROLLED_DISTURBANCE_TYPES),
+        "matrix": matrix,
+        "coverage_complete": all(
+            matrix[name]["coverage_pass"]
+            for name in PNG_TTC_CONTROLLED_DISTURBANCE_TYPES
+        ),
+        "default_png_vm_changed": False,
+        "png_ttc_formula_changed": False,
+        "d3_d4_d5_gate_bypassed": False,
+        "global_track_id_rebound_allowed": False,
         "advisory_only": True,
     }
 
