@@ -19,6 +19,13 @@ class TrackLifecycleState(str, Enum):
     DROPPED = "dropped"
 
 
+class TrackerTruthPolicy(str, Enum):
+    """Controls whether evaluator-only truth may enter the tracker."""
+
+    ONLINE = "online"
+    OFFLINE = "offline"
+
+
 @dataclass(slots=True)
 class AssociationRiskSummary:
     """Weak cross-view association risk evidence for offline coordination.
@@ -258,6 +265,7 @@ class GlobalTrack:
     track_quality: float = 0.0
     association_risk: float = 0.0
     quality_metadata: dict[str, Any] = field(default_factory=dict)
+    source_track_ids: set[str] = field(default_factory=set)
     feature: np.ndarray | None = None
     history: list[dict[str, Any]] = field(default_factory=list)
     transition_log: list[TrackTransition] = field(default_factory=list)
@@ -274,6 +282,11 @@ class GlobalTrack:
         self.last_update_time = float(self.last_update_time)
         self.track_quality = float(np.clip(self.track_quality, 0.0, 1.0))
         self.association_risk = float(np.clip(self.association_risk, 0.0, 1.0))
+        self.source_track_ids = {
+            str(source_track_id)
+            for source_track_id in self.source_track_ids
+            if source_track_id is not None and str(source_track_id)
+        }
 
     def ensure_covariance_consistency(self) -> None:
         covariance, diagnostics = govern_covariance(
@@ -332,6 +345,7 @@ class GlobalTrack:
             "track_quality": self.track_quality,
             "association_risk": self.association_risk,
             "quality_metadata": _json_ready(self.quality_metadata),
+            "source_track_ids": sorted(self.source_track_ids),
             "feature": None if self.feature is None else self.feature.tolist(),
             "history": _json_ready(self.history),
             "transition_log": [transition.to_dict() for transition in self.transition_log],

@@ -6,6 +6,21 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 
 规模边界：D2 消费每帧传入的 `tracks`、`detections` 和当前 `active_tracks` 集合，不从场景名推断目标数量，不写死 2v2 或 5v5。`crossing_dense_5v5` 等名称只是可重复 baseline fixture；main runtime 的 `--drone-count N` 只应体现为传入 D2 的输入集合长度。
 
+### 2026-07-15 M5N2 真实 AirSim 20-case 证据同步
+
+- 本批为 SimpleFlight M5N2：baseline 10 seed、candidate 10 seed，共 20 case；M5N2 达到
+  20/20 后终止多 seed 批次。`TERM` 生效前仅额外完成一个被排除的
+  `png_ttc_2v2_seed001`，其结果不进入 M5N2 聚合；dropout case 完成数为 0。
+- 20 case 共记录 3805 个可用 D2 association main-bus 样本，mean/P95/max 分别为
+  `2.521/3.147/98.942 ms`。均值和 P95 明显低于整个 main bus，但 98.942 ms 的单次
+  尾部值仍需在后续性能审计中保留，不能只报告均值。
+- 在线 truth identity/state 使用均为 0。由于在线 D2 没有 truth assignment，本批在线
+  `id_switch_count`、`track_continuity` 和其他依赖真值的身份指标必须保持
+  `None + unavailable`，不得写成 0；如需身份结论，必须另用隔离 sidecar 在写盘后评分。
+- 本批第二 primary 进入 5 m 为 0/20，且其最终停止原因均记录为 `collision_stop`；但
+  artifact 没有持久化碰撞对象，当前证据不能把该失败归因于 D2 关联。默认
+  GNN/Hungarian、中心拥有 `global_track_id`、D5/D7 禁止本地重绑的合同均保持不变。
+
 ## 当前能力
 
 已实现：
@@ -14,10 +29,11 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - `DataAssociator` 可插拔接口，当前有 GNN、JPDA、MHT 三条接口兼容路径。
 - 马氏门控、二维 `[x,y,vx,vy]` 常速度 Kalman fallback 和 4x4 covariance；Detection/GlobalTrack covariance 在输入和门控边界拒绝非有限、明显非对称或明显非 PSD 矩阵，仅对数值容差内缺陷做对称化/特征值 floor。`covariance_consistency` 表示最新检查，`covariance_regularized`/`regularization_ever_applied` 与 `last_regularization` 保留历史正则化证据。
 - GNN/Hungarian 主线在保留马氏门控和 `linear_sum_assignment` 的基础上，加入速度方向、短时历史和加速度异常组成的轻量运动一致性代价，并输出 motion consistency diagnostics。
+- 在线 D1 track-to-track 输入增加非真值 `source_global_track_id` 连续性代价和来源谱系治理：已落入现有门限但未被一对一分配的上游影子航迹不立即 birth，仍绑定活动 D2 航迹但发生统计大跳的同源输入先隔离并记录原因；该保护不读取 actor/truth ID，不替代马氏门控或 GNN/Hungarian。
 - quality-aware gate baseline：按 track quality、局部目标密度、位置协方差和上一帧 association risk 对每条 track 的 gate 做保守放宽或收紧；这不是完整自适应门控框架。
-- `tentative/confirmed/engageable/lost/dropped` Track 状态机。
+- `tentative/confirmed/engageable/lost/dropped` Track 状态机；summary 另导出不依赖 truth 的 `birth_count/lost_count/drop_count/rebirth_count` 和完整 lifecycle transitions。`rebirth` 仅指同一 `global_track_id` 从 `lost` 重获，不把 dropped 后新建航迹猜成同一真实目标。
 - 每条 `GlobalTrack` 输出 `track_quality`、`association_risk` 和 `quality_metadata`；`AssociationResult.metadata`、association logs、risk summary metadata 与 metrics summary 同步输出 track-level 质量和风险字典，供 D3/D5/D6 消费。
-- `id_switch_count`、`track_continuity`、`identity_continuity`、`coverage_continuity`、`duplicate_assignment_count`、RMSE、confusion matrix 和 runtime 指标；无 offline truth label 时保留兼容数值字段，同时用 `truth_metrics_available=false`、`continuity_available=false` 明确标记 identity/coverage continuity 不可用。旧 replay 缺 availability 字段时按不可用处理，不能从兼容值 `0.0` 推断 continuity collapse。
+- `id_switch_count`、`track_continuity`、`identity_continuity`、`coverage_continuity`、`duplicate_assignment_count`、RMSE、confusion matrix 和 runtime 指标；无 truth assignment 时 IDSW、continuity 和 RMSE 字段仍存在，但值为 `None`，并分别输出一致的 `available=false` 与 `reason=truth_assignment_unavailable`。truth 可用且 IDSW 确实为零时输出可用的整数 `0`，不再用伪零表示 unavailable。
 - `AssociationRiskSummaryWindowGenerator` 滑窗风险摘要，汇总代价 margin、候选重叠、IDSW delta、duplicate delta、可用 continuity、D5 disagreement、source node 和 link type；不可用 continuity 不参与 `duplicate_track_risk`、`continuity_collapse` 或 hard risk 计算。
 - `RiskThresholds` / `classify_risk_summary()` 软/硬风险分层，按 D4 口径区分 ambiguity/cost margin/candidate overlap 与 IDSW/duplicate/continuity collapse。
 - D1 6D NED `GlobalTrack` 到 D2 2D `Detection` 的投影 adapter，保留 `measurement_timestamp`、`arrival_timestamp`、covariance 和 metadata。
@@ -35,6 +51,44 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - `CrossNodeTrackAssociator` 将 source tracks 传播到公共时刻，按完整 6D 状态和差分协方差做 Mahalanobis gate，并按 source 节点分组使用 Hungarian；`CrossNodeTrackRegistry` 因而支持一个 canonical `global_track_id` 绑定多个观察节点的 source tracklets，同时保持同一 source 内一对一。
 - registry 对 `exact_known_correlation` 输出 D1 数值相关融合请求，对 `unknown_correlation` 只输出 CI/保守融合请求，对显式 duplicate、重复 payload、重复 lineage 和 stale/replay source track 在关联前拒绝；D2 不复制数值 CI。
 - cross-node 在线指标输出 source binding rebind ID switch、duplicate payload rejection 和 transport/queue/fusion latency；`OfflineCrossNodeMetricsEvaluator` 在独立 truth mapping 下计算 canonical duplicate 与 track-to-track association precision/recall，不向在线 registry 暴露 truth。
+
+### 2026-07-15 Ceiling-aware 身份连续性准入
+
+- P1 报告 schema 已升级为 `d2-p1-identity-calibration/v2`，准入策略版本为
+  `d2-p1-identity-admission/ceiling-aware-error-reduction-v1`。基线连续性为
+  `C_b` 时，剩余误差空间 `H=max(0, 1-C_b)`；候选实际提升
+  `Delta=C_c-C_b`；v2 所需提升为 `Delta_req=min(0.10, 0.10*H)`。当 `H>0`
+  时同时输出 `Delta/H`，即候选消除基线剩余身份错误的比例；当 `H=0` 时只接受合法、
+  不退化的 `C_c=1`。
+- 每个候选输出 baseline headroom、实际/所需提升、headroom/error reduction fraction、
+  policy version，以及 IDSW、continuity、false-track、P95 latency、truth leakage 五项
+  gate 的 `passed/reason/actual/required`。缺指标、非有限值、越界连续性、零 IDSW
+  基线、continuity 退化、false-track 超限、延时超预算或任一在线 truth leakage 均
+  fail-closed；不能只凭 IDSW 改善晋级。
+- v1 的固定 `+0.10` 仍在报告中以 `legacy/deprecated` 字段保留，仅供历史审计，明确
+  `used_for_admission=false`，不改变旧字段曾表示“绝对提升”的语义。任何通过结果仍
+  只是 promotion review 建议，`default_online_path_changed=false`，默认在线
+  GNN/Hungarian 不变。
+- 2026-07-15 已使用冻结的六档真实 AirSim replay/truth manifest 离线重算完整 v2
+  报告，本批没有重新启动 AirSim。candidate `gnn-g5.99-qa1-ld3_7-mw0.5x` 的总体
+  IDSW `1.358333 -> 0.616667`，continuity `0.981046 -> 0.983954`；headroom
+  `0.018954`、所需提升 `0.001895`、实际提升 `0.002908`、error reduction
+  `15.3448%`。false-track 0、P95 `15.470 ms`、baseline/candidate truth leakage 0，
+  五项联合 gate 全部通过，因此 `promotion_recommended=true`。该字段只表示评审建议；
+  `selected_online_path=baseline_gnn_hungarian` 且
+  `default_online_path_changed=false`。
+- 分档只有 `clutter` 和 `combined` 通过完整联合 gate；其余四档 baseline IDSW=0，
+  按 `baseline_zero_no_measurable_reduction_evidence` fail-closed。dropout 的 offline
+  truth alignment 为 partial，未做最近邻补齐，也没有在线 truth 泄漏。
+- 2026-07-15 模块回归：`113 passed, 1 warning`；warning 仍是本机 Matplotlib
+  `Axes3D` 多版本导入问题，不影响准入判据。
+
+### 2026-07-14 Online Truth Policy 与 Truthless 指标收口
+
+- `TrackerTruthPolicy` 显式区分 `online` 与 `offline`，默认 `online`。在线 `step()` 在状态预测和关联前 fail-closed：拒绝 `Detection.truth_id`、任何显式 `truth_ids_present`，以及 Detection/frame metadata 中递归出现的 truth、actor 或 object identity。`online_truth_isolated`、`online_truth_hints_used`、`truth_metrics_available`、`continuity_available` 仅作为布尔治理状态允许通过；非布尔值仍拒绝。拒绝发生时不建轨、不计帧。
+- replay 的在线路径显式使用 `online` tracker；synthetic simulation 和允许 truth 的 evaluator/dry-run 路径显式使用 `offline`。offline evaluator 继续允许 truth，并保持“真实零 IDSW = available `0`”。
+- 验证日期为 2026-07-14：8 类拒绝用例、main owner 四布尔状态正例、3 帧和 5 帧 truthless replay、7 帧 birth/lost/rebirth/drop 状态序列及完整 D2 回归均通过；验收阈值为零失败、在线拒绝发生于状态变更前、truthless 三个身份/误差字段均为 `None`。完整结果为 `98 passed, 1 warning`，warning 是环境中的 Matplotlib `Axes3D` 多版本导入问题。
+- 本批没有修改 `confirmation_hits`、`lost_miss_threshold`、`drop_miss_threshold` 或 gate。真实 replay 中 `T001 -> T005` 航迹序列对应的 birth/lost/drop/rebirth 参数标定仍为 P1。
 
 ### 2026-07-12 状态同步
 
@@ -189,7 +243,8 @@ replay/truth digest，覆盖 gate `5.99/9.21/13.82`、quality-aware off/on、
 lost/drop `1/3, 2/5, 3/7` 和 motion weight `0.5/1/2` 倍。轻量 JPDA 只在最佳
 GNN 的输入、gate 和 lifecycle 上做离线同预算对照。缺少 10 或 20 个唯一 seed 时
 对应阶段显式 `unavailable`，不会用 synthetic fixture 补齐或冒充 AirSim 结论。
-准入报告只给出评审建议，不会替换默认 GNN/Hungarian。
+准入报告使用 `d2-p1-identity-calibration/v2` 和版本化 ceiling-aware 联合门限，
+只给出评审建议，不会替换默认 GNN/Hungarian。
 
 `truth_path` 按 suffix 和 schema 显式选择：`.jsonl` 读取
 `d2-offline-truth-label/v1`；`.json` 只接受 D1 freeze 生成的
@@ -216,7 +271,7 @@ seed；confirmation 通常只提供 `combined` 的 20 个 seed。
 p95 latency，以及分档 admission。若所有受评算法在某档均为 `IDSW=0` 且
 `identity_continuity=1.0`，该档显式标记
 `scenario_still_non_discriminative=true`，禁止把理想但无区分度的 fixture 解释为候选
-算法优于默认 GNN/Hungarian。在线 truth 隔离和既有准入门限保持不变。
+算法优于默认 GNN/Hungarian。在线 truth 隔离和 v2 版本化联合准入保持不变。
 
 真实 governed replay 的观测压力使用纯离线 API：
 
@@ -272,3 +327,53 @@ PYTHONPATH=research_modules/d2_data_association \
 ```
 
 输出 schema 为 `d2-optional-framework-benchmark/v2`。每行统一包含 `id_switch_count`、`track_continuity`、`latency_seconds` 和 `unavailable_reason`：GNN/JPDA/MHT 行在离线标签有效时提供身份指标；FilterPy/Stone Soup 对象行的身份指标保持 unavailable，并用 `adapter_only_no_end_to_end_association` 说明原因。所有行继续声明完整 JPDA/MHT 的真实实现状态。输入若为 D1 governed replay，报告 `input_metadata.d1_governed_adapter` 会给出接受的 radar 数量、跳过模态及投影方法。
+
+## 2026-07-14 AirSim `T008` 来源谱系膨胀 P1 修复
+
+- 修复前审计对象为真实 Blocks episode
+  `p1_terminal_closure_truthisolated_preflight_v2_20260714_m5n2_baseline_seed001`，
+  seed 1、351 帧、在线目标数 2。D1 在 31.3 秒由 2 条航迹增至 3 条：新增
+  `global_track_003` 只有单次雷达支持，却与原 `global_track_002` 同时落入 D2
+  `T002` 门限；之后 `global_track_002` 又从约 `[77,-19] m` 跳至
+  `[13.5,-24.9] m`。D2 未使用上游航迹谱系，因而累计 birth 8、drop 4，并在
+  34.4 秒生成 `T008`；D3 随后把它纳入新计划，放大为 plan/pair churn。
+- D2 修复由 `GlobalTrack.source_track_ids`、GNN 来源连续性代价、门内影子 birth
+  抑制和已绑定来源的马氏大跳隔离组成。来源 ID 只是 D1 航迹谱系，不是目标真值；
+  新来源在几何允许时可并入既有 D2 航迹，D2 规范 `global_track_id` 不被重写。
+- 修复后验证为 4 帧匿名在线回归：2 条目标轨迹、1 条近邻重复来源和 1 次同源
+  teleport；验收阈值为活动 D2 航迹始终恰为 2、影子 birth 抑制 1 次、大跳隔离
+  1 次、truth 输入 0。专项与完整回归通过，最新结果为 `99 passed, 1 warning`；
+  warning 仍是本机 Matplotlib `Axes3D` 环境问题。
+- 修复后的同 seed 真实复跑已经完成，详见下一节。2026-07-15 后续 M5N2 已完成
+  baseline/candidate 各 10 seed，但未注入显式 teleport/影子扰动，也未形成该批 D2
+  offline identity 评分，因此仍不能把 seed 数量达标外推为 P1 参数冻结结论。
+
+## 2026-07-14 Post-batch M5N2 同 seed 复验
+
+审计对象为以下两组真实 Blocks、M5N2、seed 1 episode，均不保存在线真值：
+
+- `p1_terminal_closure_postbatch_seed1_20260714_m5n2_baseline_seed001`；
+- `p1_terminal_closure_postbatch_seed1_20260714_m5n2_candidate_soft_prediction_trend_coast_seed001`。
+
+baseline 共 142 帧，candidate 共 141 帧。两组 D1 均在前 2 帧后稳定输出
+`global_track_001/global_track_002`；D2 分别在后续 140/139 帧只维护
+`T001/T002`，最大活动规范航迹数为 2，未再出现 `T008`。两组 truth-free 生命周期
+均为 `birth=2, lost=0, drop=0, rebirth=0`，状态只发生
+`tentative -> confirmed -> engageable` 各两次。来源绑定最终均为
+`global_track_001 -> T001`、`global_track_002 -> T002`。
+
+在线摘要按设计保持 `id_switch_count=None`、`track_continuity=None` 和
+`truth_assignment_unavailable`；这不是零 IDSW 的在线声明。独立 sidecar 只在写盘后
+进入 evaluator：对 D1 governed replay 运行现有 `run_airsim_replay_association()`，
+两组均得到 IDSW 0、identity/coverage continuity 1.0、false track 0、online truth
+isolation violation 0。对 main 实际发布的 track records 做独立位置匈牙利裁决时，
+baseline/candidate 分别得到 IDSW 0、continuity 0.985915/0.985816；差异仅来自 D1/D2
+启动前 2 帧尚无规范航迹，混淆关系始终为 `TGT-001 -> T001`、
+`TGT-002 -> T002`。
+
+本次平稳 episode 中 `suppressed_births=0`、quarantine 0、source conflict 0，说明
+来源治理没有误触发，但没有真实激发 teleport 抑制。teleport/影子能力仍由匿名专项
+回归证明。当前判断是：`T008` 同 seed 复发缺口已关闭；2026-07-15 的 20-case 已满足
+普通 M5N2 运行数量并补齐 D2 阶段时延，但没有覆盖重复来源、teleport、漏检、杂波、
+合法新目标 birth 延迟或独立离线身份评分，相关 P1 仍开放。默认 GNN/Hungarian、中心
+`global_track_id` 所有权和在线 truth 隔离均不变。

@@ -9,7 +9,13 @@ from typing import Iterable
 
 import numpy as np
 
-from .models import AssociationLogEntry, AssociationResult, AssociationRiskSummary
+from .models import (
+    AssociationLogEntry,
+    AssociationResult,
+    AssociationRiskSummary,
+    TrackLifecycleState,
+    TrackTransition,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -281,6 +287,11 @@ class MetricsRecorder:
     latest_low_quality_track_count: int = 0
     source_node_ids: set[str] = field(default_factory=set)
     link_types: set[str] = field(default_factory=set)
+    birth_count: int = 0
+    lost_count: int = 0
+    drop_count: int = 0
+    rebirth_count: int = 0
+    lifecycle_transitions: list[TrackTransition] = field(default_factory=list)
     risk_summary_generator: AssociationRiskSummaryWindowGenerator = field(
         default_factory=AssociationRiskSummaryWindowGenerator
     )
@@ -292,6 +303,8 @@ class MetricsRecorder:
         association_result: AssociationResult,
         assignments: list[tuple[str, str, float | None]],
         runtime_seconds: float,
+        lifecycle_birth_track_ids: Iterable[str] = (),
+        lifecycle_transitions: Iterable[TrackTransition] = (),
     ) -> None:
         """Record one tracker frame.
 
@@ -301,6 +314,22 @@ class MetricsRecorder:
 
         del timestamp
         self.frame_count += 1
+        self.birth_count += len(set(lifecycle_birth_track_ids))
+        for transition in lifecycle_transitions:
+            self.lifecycle_transitions.append(transition)
+            if transition.to_state == TrackLifecycleState.LOST.value:
+                self.lost_count += 1
+            if transition.to_state == TrackLifecycleState.DROPPED.value:
+                self.drop_count += 1
+            if (
+                transition.from_state == TrackLifecycleState.LOST.value
+                and transition.to_state
+                in {
+                    TrackLifecycleState.CONFIRMED.value,
+                    TrackLifecycleState.ENGAGEABLE.value,
+                }
+            ):
+                self.rebirth_count += 1
         id_switch_count_before = self.id_switch_count
         duplicate_assignment_count_before = self.duplicate_assignment_count
         truth_ids = {truth_id for truth_id in truth_ids_present if truth_id is not None}
@@ -469,14 +498,30 @@ class MetricsRecorder:
             if self.risk_frame_count
             else 0.0
         )
+        truth_available = self.truth_metrics_available
+        truth_reason = None if truth_available else "truth_assignment_unavailable"
+        rmse_available = truth_available and bool(self.squared_errors)
+        rmse_reason = None
+        if not rmse_available:
+            rmse_reason = (
+                truth_reason
+                if truth_reason is not None
+                else "truth_position_assignment_unavailable"
+            )
         return {
             "frame_count": self.frame_count,
-            "id_switch_count": self.id_switch_count,
-            "track_continuity": self.track_continuity,
-            "coverage_continuity": self.coverage_continuity,
-            "identity_continuity": self.identity_continuity,
-            "truth_metrics_available": self.truth_metrics_available,
+            "id_switch_count": self.id_switch_count if truth_available else None,
+            "id_switch_count_available": truth_available,
+            "id_switch_count_reason": truth_reason,
+            "track_continuity": self.track_continuity if truth_available else None,
+            "track_continuity_available": truth_available,
+            "track_continuity_reason": truth_reason,
+            "coverage_continuity": self.coverage_continuity if truth_available else None,
+            "identity_continuity": self.identity_continuity if truth_available else None,
+            "truth_metrics_available": truth_available,
+            "truth_metrics_reason": truth_reason,
             "continuity_available": self.continuity_available,
+            "continuity_reason": truth_reason,
             "duplicate_assignment_count": self.duplicate_assignment_count,
             "d5_disagreement_count": self.d5_disagreement_count,
             "duplicate_track_risk": self.latest_duplicate_track_risk,
@@ -494,10 +539,22 @@ class MetricsRecorder:
             "low_quality_track_count": self.latest_low_quality_track_count,
             "source_node_ids": sorted(self.source_node_ids),
             "link_types": sorted(self.link_types),
-            "rmse": self.rmse,
+            "rmse": self.rmse if rmse_available else None,
+            "rmse_available": rmse_available,
+            "rmse_reason": rmse_reason,
             "assignment_count": int(sum(sum(c.values()) for c in self.confusion_matrix.values())),
             "runtime_seconds_by_associator": dict(self.runtime_seconds_by_associator),
             "confusion_matrix": self.confusion_matrix_as_dict(),
+            "lifecycle_metrics_available": True,
+            "lifecycle_metrics_reason": "truth_free_tracker_state_events",
+            "birth_count": self.birth_count,
+            "lost_count": self.lost_count,
+            "drop_count": self.drop_count,
+            "rebirth_count": self.rebirth_count,
+            "lifecycle_transition_count": len(self.lifecycle_transitions),
+            "lifecycle_transitions": [
+                transition.to_dict() for transition in self.lifecycle_transitions
+            ],
         }
 
 

@@ -13,7 +13,7 @@ from typing import Any
 import numpy as np
 
 from .associators import GNNHungarianAssociator
-from .models import AssociationResult, Detection
+from .models import AssociationResult, Detection, TrackerTruthPolicy
 from .tracker import Tracker
 
 
@@ -82,11 +82,15 @@ class DryRunAssociationResult:
         }
 
 
-def build_default_dry_run_tracker() -> Tracker:
+def build_default_dry_run_tracker(
+    *,
+    truth_policy: TrackerTruthPolicy | str = TrackerTruthPolicy.ONLINE,
+) -> Tracker:
     """Build the default D2 phase-1 dry-run tracker."""
 
     return Tracker(
-        associator=GNNHungarianAssociator(gate_threshold=9.21, feature_weight=6.0)
+        associator=GNNHungarianAssociator(gate_threshold=9.21, feature_weight=6.0),
+        truth_policy=truth_policy,
     )
 
 
@@ -167,6 +171,7 @@ def detections_from_d1_global_tracks(
                 "source_format": "d1_global_track",
                 "frame_id": "ned",
                 "global_track_id": global_track_id,
+                "source_global_track_id": global_track_id,
                 "measurement_timestamp": measurement_timestamp,
                 "arrival_timestamp": arrival_timestamp,
                 "source_track_timestamp": track_timestamp,
@@ -323,7 +328,22 @@ def run_airsim_dry_run_association(
 ) -> DryRunAssociationResult:
     """Run the existing D2 Tracker/GNN path on synthetic dry-run frames."""
 
-    active_tracker = tracker if tracker is not None else build_default_dry_run_tracker()
+    active_tracker = (
+        tracker
+        if tracker is not None
+        else build_default_dry_run_tracker(
+            truth_policy=(
+                TrackerTruthPolicy.ONLINE
+                if isolate_offline_truth
+                else TrackerTruthPolicy.OFFLINE
+            )
+        )
+    )
+    if (
+        isolate_offline_truth
+        and active_tracker.truth_policy != TrackerTruthPolicy.ONLINE
+    ):
+        raise ValueError("isolate_offline_truth requires an online Tracker truth policy")
     output_frames: list[DryRunAssociationFrame] = []
 
     for frame_index, frame in enumerate(frames):
@@ -346,7 +366,11 @@ def run_airsim_dry_run_association(
         association_result = active_tracker.step(
             online_detections,
             timestamp=timestamp,
-            truth_ids_present=[] if isolate_offline_truth else truth_ids,
+            truth_ids_present=(
+                None
+                if active_tracker.truth_policy == TrackerTruthPolicy.ONLINE
+                else truth_ids
+            ),
             frame_metadata=_association_frame_metadata(
                 frame,
                 frame_index=frame_index,
@@ -489,6 +513,8 @@ def _without_offline_truth(
 
 
 _ONLINE_FORBIDDEN_METADATA_KEYS = {
+    "actor",
+    "actor_id",
     "actor_name",
     "ground_truth",
     "ground_truth_id",
@@ -499,13 +525,21 @@ _ONLINE_FORBIDDEN_METADATA_KEYS = {
     "offline_truth_label",
     "offline_truth_position",
     "offline_truth_state",
+    "object",
+    "object_id",
+    "object_identity",
+    "object_name",
+    "sim_object_id",
     "sim_truth_id",
+    "source_object_id",
+    "truth",
     "truth_id",
     "truth_label",
     "truth_label_source",
     "truth_label_usage",
     "truth_position",
     "truth_state",
+    "truth_object_id",
 }
 
 

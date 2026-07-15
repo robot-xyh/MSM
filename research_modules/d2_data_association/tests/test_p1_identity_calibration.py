@@ -21,6 +21,48 @@ from d2_data_association import (
 )
 
 
+_MISSING = object()
+
+
+def _aggregate_metric(value: float | None, *, p95: float | None = None) -> dict:
+    return {
+        "available": value is not None,
+        "count": 0 if value is None else 20,
+        "mean": value,
+        "minimum": value,
+        "maximum": value,
+        "p95": value if p95 is None else p95,
+    }
+
+
+def _admission_row(
+    config_id: str,
+    *,
+    is_baseline: bool,
+    id_switch_count: float | None = 1.0,
+    identity_continuity: float | None = 0.9,
+    false_track_count: float | None = 1.0,
+    p95_loop_latency_s: float | None = 0.02,
+    online_truth_leakage_count: int | object = 0,
+) -> dict:
+    aggregate = {
+        "id_switch_count": _aggregate_metric(id_switch_count),
+        "identity_continuity": _aggregate_metric(identity_continuity),
+        "false_track_count": _aggregate_metric(false_track_count),
+        "p95_loop_latency_s": _aggregate_metric(
+            p95_loop_latency_s, p95=p95_loop_latency_s
+        ),
+    }
+    if online_truth_leakage_count is not _MISSING:
+        aggregate["online_truth_leakage_count"] = online_truth_leakage_count
+    return {
+        "associator": "GNNHungarianAssociator",
+        "config": {"config_id": config_id, "is_baseline": is_baseline},
+        "aggregate": aggregate,
+        "aggregate_by_difficulty": {},
+    }
+
+
 def _cases(
     count: int,
     *,
@@ -103,6 +145,7 @@ def test_twenty_seed_confirmation_reports_metrics_and_keeps_mainline() -> None:
         frozen_p95_loop_latency_budget_s=0.1,
     ).to_dict()
 
+    assert report["schema_version"] == "d2-p1-identity-calibration/v2"
     confirmation = report["confirmation"]
     assert confirmation["available"] is True
     assert confirmation["provided_seed_count"] == 20
@@ -125,6 +168,9 @@ def test_twenty_seed_confirmation_reports_metrics_and_keeps_mainline() -> None:
     assert report["decision"]["available"] is True
     assert report["decision"]["selected_online_path"] == "baseline_gnn_hungarian"
     assert report["decision"]["default_online_path_changed"] is False
+    assert report["decision"]["policy"]["promotion_effect"] == (
+        "review_recommendation_only"
+    )
     assert set(report["decision"]["by_difficulty"]) == {"combined"}
     combined = report["difficulty_results"]["confirmation"]["by_difficulty"][
         "combined"
@@ -143,6 +189,251 @@ def test_twenty_seed_confirmation_reports_metrics_and_keeps_mainline() -> None:
     assert combined["baseline_gnn"]["metrics"]["p95_loop_latency_s"][
         "available"
     ] is True
+
+
+def test_ceiling_aware_continuity_can_form_review_without_changing_mainline() -> None:
+    baseline = _admission_row(
+        "baseline",
+        is_baseline=True,
+        id_switch_count=1.3583,
+        identity_continuity=0.981,
+        false_track_count=1.0,
+        p95_loop_latency_s=0.024,
+    )
+    candidate = _admission_row(
+        "candidate",
+        is_baseline=False,
+        id_switch_count=0.6167,
+        identity_continuity=0.984,
+        false_track_count=1.05,
+        p95_loop_latency_s=0.024,
+    )
+
+    decision = identity_calibration._admission_decision(
+        {"available": True, "results": [baseline, candidate]},
+        {"executed": False},
+        latency_budget_s=0.1,
+    )
+    assessment = decision["candidate_assessments"][0]
+
+    assert decision["policy_version"] == (
+        "d2-p1-identity-admission/ceiling-aware-error-reduction-v1"
+    )
+    assert decision["promotion_recommended"] is True
+    assert decision["default_online_path_changed"] is False
+    assert decision["selected_online_path"] == "baseline_gnn_hungarian"
+    assert assessment["identity_continuity_baseline_headroom"] == pytest.approx(
+        0.019
+    )
+    assert assessment["identity_continuity_increase"] == pytest.approx(0.003)
+    assert assessment["identity_continuity_required_increase"] == pytest.approx(
+        0.0019
+    )
+    assert assessment[
+        "identity_continuity_headroom_reduction_fraction"
+    ] == pytest.approx(0.003 / 0.019)
+    assert assessment["checks"]["identity_continuity_ceiling_aware"] is True
+    assert assessment["legacy_v1_identity_continuity_gate"] == {
+        "minimum_absolute_increase": 0.1,
+        "passed": False,
+        "status": "deprecated_not_used_for_v2_admission",
+        "used_for_admission": False,
+    }
+    assert all(assessment["checks"].values())
+    assert all(assessment["gate_reasons"].values())
+
+
+@pytest.mark.parametrize("baseline", [0.0, 0.5, 0.981, 0.999999, 1.0])
+def test_continuity_required_increase_never_exceeds_theoretical_headroom(
+    baseline: float,
+) -> None:
+    gate = identity_calibration._continuity_admission_gate(1.0, baseline)
+
+    assert gate["required_increase"] <= gate["baseline_headroom"]
+    assert baseline + gate["required_increase"] <= 1.0 + 1.0e-12
+    assert gate["passed"] is True
+
+
+def test_perfect_baseline_is_non_degradation_only_and_degradation_fails() -> None:
+    unchanged = identity_calibration._continuity_admission_gate(1.0, 1.0)
+    degraded = identity_calibration._continuity_admission_gate(0.999, 1.0)
+    invalid = identity_calibration._continuity_admission_gate(1.001, 1.0)
+
+    assert unchanged["passed"] is True
+    assert unchanged["required_increase"] == 0.0
+    assert unchanged["headroom_reduction_fraction"] is None
+    assert unchanged["reason"] == (
+        "no_baseline_headroom_and_candidate_non_degrading"
+    )
+    assert degraded["passed"] is False
+    assert degraded["reason"] == "identity_continuity_degraded"
+    assert invalid["passed"] is False
+    assert invalid["reason"] == "candidate_metric_above_valid_range"
+
+
+def test_id_switch_improvement_alone_never_recommends_promotion() -> None:
+    baseline = _admission_row(
+        "baseline",
+        is_baseline=True,
+        id_switch_count=1.0,
+        identity_continuity=0.5,
+    )
+    candidate = _admission_row(
+        "candidate",
+        is_baseline=False,
+        id_switch_count=0.5,
+        identity_continuity=0.51,
+    )
+
+    decision = identity_calibration._admission_decision(
+        {"available": True, "results": [baseline, candidate]},
+        {"executed": False},
+        latency_budget_s=0.1,
+    )
+    assessment = decision["candidate_assessments"][0]
+
+    assert assessment["checks"]["id_switch_reduction"] is True
+    assert assessment["checks"]["identity_continuity_ceiling_aware"] is False
+    assert assessment["gate_reasons"]["identity_continuity_ceiling_aware"] == (
+        "insufficient_continuity_error_reduction"
+    )
+    assert decision["promotion_recommended"] is False
+    assert decision["default_online_path_changed"] is False
+
+
+@pytest.mark.parametrize(
+    ("field", "expected_gate", "expected_reason"),
+    [
+        (
+            "id_switch_count",
+            "id_switch_reduction",
+            "candidate_metric_unavailable",
+        ),
+        (
+            "identity_continuity",
+            "identity_continuity_ceiling_aware",
+            "candidate_metric_unavailable",
+        ),
+        (
+            "false_track_count",
+            "false_track_limit",
+            "candidate_metric_unavailable",
+        ),
+        (
+            "p95_loop_latency_s",
+            "p95_loop_latency_budget",
+            "candidate_metric_unavailable",
+        ),
+        (
+            "online_truth_leakage_count",
+            "truth_leakage_zero",
+            "candidate_metric_unavailable",
+        ),
+    ],
+)
+def test_missing_admission_metrics_fail_closed_with_reason(
+    field: str,
+    expected_gate: str,
+    expected_reason: str,
+) -> None:
+    kwargs = {
+        "id_switch_count": 0.5,
+        "identity_continuity": 0.95,
+        "false_track_count": 1.0,
+        "p95_loop_latency_s": 0.02,
+        "online_truth_leakage_count": 0,
+    }
+    kwargs[field] = _MISSING if field == "online_truth_leakage_count" else None
+    baseline = _admission_row("baseline", is_baseline=True)
+    candidate = _admission_row("candidate", is_baseline=False, **kwargs)
+
+    assessment = identity_calibration._assess_candidate(
+        candidate, baseline, latency_budget_s=0.1
+    )
+
+    assert assessment["checks"][expected_gate] is False
+    assert assessment["gate_reasons"][expected_gate] == expected_reason
+    assert assessment["all_thresholds_passed"] is False
+
+
+def test_other_joint_admission_gates_remain_fail_safe() -> None:
+    baseline_zero_idsw = _admission_row(
+        "baseline", is_baseline=True, id_switch_count=0.0
+    )
+    candidate_zero_idsw = _admission_row(
+        "candidate", is_baseline=False, id_switch_count=0.0
+    )
+    zero_assessment = identity_calibration._assess_candidate(
+        candidate_zero_idsw, baseline_zero_idsw, latency_budget_s=0.1
+    )
+    assert zero_assessment["checks"]["id_switch_reduction"] is False
+    assert zero_assessment["gate_reasons"]["id_switch_reduction"] == (
+        "baseline_zero_no_measurable_reduction_evidence"
+    )
+
+    for candidate, gate, reason in (
+        (
+            _admission_row(
+                "false-track",
+                is_baseline=False,
+                id_switch_count=0.5,
+                identity_continuity=0.95,
+                false_track_count=1.11,
+            ),
+            "false_track_limit",
+            "false_track_growth_exceeds_limit",
+        ),
+        (
+            _admission_row(
+                "latency",
+                is_baseline=False,
+                id_switch_count=0.5,
+                identity_continuity=0.95,
+                p95_loop_latency_s=0.101,
+            ),
+            "p95_loop_latency_budget",
+            "p95_loop_latency_budget_exceeded",
+        ),
+        (
+            _admission_row(
+                "truth-leakage",
+                is_baseline=False,
+                id_switch_count=0.5,
+                identity_continuity=0.95,
+                online_truth_leakage_count=1,
+            ),
+            "truth_leakage_zero",
+            "online_truth_leakage_detected",
+        ),
+    ):
+        assessment = identity_calibration._assess_candidate(
+            candidate,
+            _admission_row("baseline", is_baseline=True),
+            latency_budget_s=0.1,
+        )
+        assert assessment["checks"][gate] is False
+        assert assessment["gate_reasons"][gate] == reason
+        assert assessment["all_thresholds_passed"] is False
+
+    baseline_leakage_assessment = identity_calibration._assess_candidate(
+        _admission_row(
+            "candidate",
+            is_baseline=False,
+            id_switch_count=0.5,
+            identity_continuity=0.95,
+        ),
+        _admission_row(
+            "baseline-truth-leakage",
+            is_baseline=True,
+            online_truth_leakage_count=1,
+        ),
+        latency_budget_s=0.1,
+    )
+    assert baseline_leakage_assessment["checks"]["truth_leakage_zero"] is False
+    assert baseline_leakage_assessment["gate_reasons"]["truth_leakage_zero"] == (
+        "online_truth_leakage_detected"
+    )
+    assert baseline_leakage_assessment["all_thresholds_passed"] is False
 
 
 def test_insufficient_real_input_is_unavailable_not_synthetic() -> None:

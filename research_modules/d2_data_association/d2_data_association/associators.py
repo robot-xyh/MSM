@@ -11,7 +11,13 @@ from typing import Iterable
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from .gating import GatedCost, LARGE_COST, ambiguity_score_from_costs, build_gated_cost_matrix
+from .gating import (
+    GatedCost,
+    LARGE_COST,
+    ambiguity_score_from_costs,
+    build_gated_cost_matrix,
+    source_track_ids_from_detection,
+)
 from .models import AssociationResult, Detection, GlobalTrack, MatchedPair, RejectedPair
 
 
@@ -35,6 +41,7 @@ class GNNHungarianAssociator(DataAssociator):
     gate_threshold: float = 9.21
     feature_weight: float = 1.0
     motion_weight: float = 1.0
+    source_continuity_weight: float = 2.0
     quality_aware_gate: bool = True
     min_gate_threshold: float = 4.0
     max_gate_threshold: float = 16.0
@@ -49,15 +56,16 @@ class GNNHungarianAssociator(DataAssociator):
         track_list = list(tracks)
         detection_list = list(detections)
         gated = build_gated_cost_matrix(
-            track_list,
-            detection_list,
-            self.gate_threshold,
-            self.large_cost,
-            self.feature_weight,
-            self.motion_weight,
-            self.quality_aware_gate,
-            self.min_gate_threshold,
-            self.max_gate_threshold,
+            tracks=track_list,
+            detections=detection_list,
+            gate_threshold=self.gate_threshold,
+            large_cost=self.large_cost,
+            feature_weight=self.feature_weight,
+            motion_weight=self.motion_weight,
+            quality_aware_gate=self.quality_aware_gate,
+            min_gate_threshold=self.min_gate_threshold,
+            max_gate_threshold=self.max_gate_threshold,
+            source_continuity_weight=self.source_continuity_weight,
         )
 
         matched_pairs: list[MatchedPair] = []
@@ -124,6 +132,7 @@ class GNNHungarianAssociator(DataAssociator):
                 ],
                 "feature_weight": self.feature_weight,
                 "motion_weight": self.motion_weight,
+                "source_continuity_weight": self.source_continuity_weight,
                 "quality_aware_gate": self.quality_aware_gate,
                 "quality_aware_gate_bounds": {
                     "min_gate_threshold": self.min_gate_threshold,
@@ -143,6 +152,19 @@ class GNNHungarianAssociator(DataAssociator):
                     gated.previous_association_risk_by_track
                 ),
                 "motion_consistency_cost_matrix": gated.motion_cost_matrix,
+                "source_continuity_cost_matrix": (
+                    gated.source_continuity_cost_matrix
+                ),
+                "source_track_ids_by_track": {
+                    track.global_track_id: sorted(track.source_track_ids)
+                    for track in track_list
+                },
+                "source_track_ids_by_detection": {
+                    detection.detection_id: sorted(
+                        source_track_ids_from_detection(detection)
+                    )
+                    for detection in detection_list
+                },
                 "motion_consistency_by_pair": _motion_consistency_by_pair(
                     track_list,
                     detection_list,

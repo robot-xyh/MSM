@@ -1,12 +1,29 @@
 # D2 数据关联模块原理与当前实现说明
 
-**状态日期**：2026-07-13
+**状态日期**：2026-07-15
 
 **适用范围**：科研仿真、受治理日志回放、离线评估与跨节点航迹注册基础
 
 **能力口径**：本文只描述当前仓库已经实现并有代码或验证证据支撑的能力。优先级零、优先级一和优先级二（Priority 0 / Priority 1 / Priority 2，P0 / P1 / P2）用于区分工程优先级，不表示算法自动进入主线。
 
 本文中的 D1-D7 是仓库内模块代号。D2 的默认工程主线是全局最近邻（Global Nearest Neighbor，GNN）与匈牙利算法（Hungarian algorithm）的组合；联合概率数据关联（Joint Probabilistic Data Association，JPDA）和多假设跟踪（Multiple Hypothesis Tracking，MHT）仅处于显式选择的研究对照状态。标识符（Identifier，ID）及其连续性是本模块的核心对象。
+
+## 0. 2026-07-15 M5N2 真实运行证据边界
+
+本轮 SimpleFlight 运行完成 baseline 10 seed 和 candidate 10 seed，共 20 个 M5N2
+case。在线 D2 仍只接收受治理状态、协方差和时间戳，truth identity/state use 均为 0；
+仿真真值只允许在写盘后由独立评估器使用。因此，本批在线身份切换次数和航迹连续性没有
+真值分配时是“不可用”，不是数值零。
+
+D2 association main-bus 在 3805 个 control tick 上全部有计时，平均值、第 95 百分位和
+最大值分别为 `2.521 ms`、`3.147 ms` 和 `98.942 ms`。这说明 D2 常态计算不是本轮
+约 1.07 秒外层控制周期的主要耗时，但单次接近 100 ms 的尾部值仍需继续追踪。第二
+primary 的 5 米成功率为 0/20，且最终均为 `collision_stop`；由于碰撞对象没有写盘，
+该现象不能归因于 D2，也不能用来调整关联门限或身份规则。
+
+默认 GNN/匈牙利硬关联、中心节点对 `global_track_id` 的唯一所有权以及“末端节点不得
+本地重绑规范 ID”的原则均未改变。M5N2 完成后批次已终止；终止前额外完成的单个
+`png_ttc_2v2_seed001` 被排除，dropout case 未执行。
 
 ## 1. 模块定位、问题与边界
 
@@ -794,10 +811,11 @@ P1 身份校准固定 54 个 GNN 配置：
 
 十个唯一种子用于筛选；二十个唯一种子用于确认默认基线、最佳 GNN 和同输入轻量 JPDA。缺少要求数量时对应阶段为不可用，不用合成基准场景（fixture）冒充真实 AirSim 结论。
 
-冻结准入条件同时要求：
+当前 v2 版本化联合准入同时要求：
 
 - IDSW 至少下降 30%；
-- 身份连续性至少提高 `0.10`；
+- 身份连续性按剩余误差空间判定：`H=max(0,1-C_b)`，所需提升为
+  `min(0.10,0.10H)`，且候选不得退化；
 - 虚假航迹增幅不超过 10%；
 - 第 95 百分位（95th Percentile，P95）循环延迟不超过冻结预算；
 - 在线真值泄漏为零。
@@ -833,11 +851,32 @@ P1 身份校准固定 54 个 GNN 配置：
 | 身份连续性 | `0.9810` | `0.9840` | 仅提高 `0.0030` |
 | P95 循环延迟 | 未在基线行报告 | `24` 毫秒 | 满足冻结实时筛选预算 |
 
-最佳候选虽然显著降低 IDSW，但身份连续性增益没有达到 `+0.10` 准入门限，因此不晋级。轻量 JPDA 在同输入下退化。**2026-07-13 的权威选择仍是默认 GNN/匈牙利主线，不是候选参数，也不是 JPDA。**
+2026-07-15 已按 v2 在六档冻结真实 replay/truth 上完整重算。`0.981046 -> 0.983954`
+对应 headroom `0.018954`、所需提升 `0.001895`、实际提升 `0.002908`，消除
+`15.3448%` 的剩余错误；IDSW、false-track、P95 和 truth isolation gate 也同时通过，
+因此生成总体 promotion review recommendation。轻量 JPDA 在同输入下退化。
+**推荐评审不等于自动晋级，默认仍是 GNN/匈牙利基线参数，不是候选参数，也不是
+JPDA。**
+
+### 11.3 2026-07-15 准入实现状态
+
+- 报告 schema：`d2-p1-identity-calibration/v2`。
+- 策略版本：`d2-p1-identity-admission/ceiling-aware-error-reduction-v1`。
+- 报告显式携带 baseline headroom、实际/所需提升、error reduction fraction、每项
+  gate reason 和弃用的 v1 `+0.10` 审计字段。
+- IDSW 至少改善 30%、false-track 最多增长 10%、P95 冻结预算、baseline/candidate
+  truth leakage 为 0 等门限保持；任一 unavailable 均拒绝，IDSW 单项不能触发晋级。
+- 通过只生成评审建议，`default_online_path_changed=false`。
+- 2026-07-15 证据重算为 6x10 screening 和 6x20 confirmation，实际耗时
+  `2501.32 s`；未重新启动 AirSim。总体联合 gate 通过，分档仅 clutter/combined
+  通过，其余四档 baseline IDSW=0 fail-closed；dropout truth alignment 为 partial。
 
 ### 11.2 模块回归状态
 
-2026-07-13 main 报告记录 D2 完整回归为 `93 passed`（93 项通过）。本次仅新增原理文档，按任务约束不重新运行全量测试。当前模块使用 Python pytest 测试框架，并通过环境变量 `PYTHONPATH`（Python 模块搜索路径）指向 D2 模块目录；既有测试命令核对为：
+2026-07-13 main 报告记录的历史回归为 `93 passed`。2026-07-14 Post-batch 审计后
+已重新运行完整 D2 suite，当前结果为 `99 passed, 1 warning`；warning 来自本机
+Matplotlib `Axes3D` 环境，不影响 D2 结论。当前模块使用 Python pytest 测试框架，
+并通过环境变量 `PYTHONPATH`（Python 模块搜索路径）指向 D2 模块目录：
 
 ```bash
 PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_data_association/tests
@@ -944,3 +983,35 @@ PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_da
 ## 14. 当前结论
 
 截至 2026-07-13，D2 已形成可运行、可审计、按动态输入规模工作的二维数据关联主线，并闭合了 D1 受治理输入、在线真值隔离、离线身份评分、风险可用性、固定矩阵校准和中心跨节点注册基础。严格真实 AirSim 标定证明参数候选可以降低 IDSW，但没有同时达到冻结的身份连续性晋级门限。因此，当前正确工程结论是继续使用 GNN/匈牙利默认主线，并把 JPDA、MHT、第三方框架、原生三维、自动切换和跨节点数值融合保持在明确的可选或未实现边界内。
+
+### 14.1 2026-07-14 truth 与 lifecycle 原则补充
+
+在线 Tracker 默认采用显式 `online` truth policy，并在状态变更前拒绝 truth、AirSim actor 和 simulator object identity；只有显式 `offline` evaluator 可消费 truth。布尔型 truth governance/availability 状态不是身份：已知的四个状态键只在值为布尔型时允许通过，非布尔值和 offline truth payload 仍拒绝。无 truth assignment 时 IDSW、track continuity 和 RMSE 必须输出 `None + available=false + reason`，不能用零代替不可用；有 truth 且确实无 ID switch 时零值仍然有效。
+
+birth/lost/drop/rebirth 计数和状态转移是 truth-free 航迹事件。rebirth 只表示同一 `global_track_id` 从 lost 重获，不能据此宣称 dropped 后新建航迹属于同一真实目标。2026-07-14 完整回归为 `98 passed, 1 warning`；本批未调整 gate/lost/drop，`T001 -> T005` 生命周期参数冻结仍为 P1。
+
+### 14.2 来源航迹 ID 与规范航迹 ID 不同
+
+`source_global_track_id` 是 D1 上游航迹谱系，不是 AirSim 真值，也不是 D2 规范身份。
+D2 可以用它在马氏门内保持同源连续性，并把多个重复上游来源保守归并到同一个
+`global_track_id`；D2 不能把来源 ID 直接复制成规范 ID，也不能仅凭来源名称越过
+几何门限。
+
+当同帧新来源与既有规范航迹重叠时，D2 延迟其 birth，避免把跨模态影子立即解释为
+新目标；当已绑定来源发生统计大跳时，D2 fail-closed 隔离该输入，避免连续 mint 新
+ID。2026-07-14 匿名四帧回归验证了这两条原则，完整测试为 `99 passed`。真实 AirSim
+同 seed 复跑已不再出现 `T008`；2026-07-15 的 20-case 普通 M5N2 已补齐多 seed
+运行时延证据，但没有显式上游重复/跳变扰动和该批离线身份评分，二者仍是独立开放项。
+
+### 14.3 Post-batch 单 seed 原则结论
+
+真实 M5N2 baseline/candidate seed 1 分别运行 142/141 帧。前 2 帧为 D1/D2 启动期，
+之后均只存在两条 D1 来源航迹和两条 D2 规范航迹；生命周期均为
+`birth=2, lost=0, drop=0, rebirth=0`，没有 `T008`。在线不读取 truth，因此在线
+IDSW/continuity 必须保持 unavailable；独立离线评分才可报告 IDSW 0 和 continuity。
+
+该证据关闭的是“同 seed 修复后仍膨胀”的疑问，不是完整 P1。两个 episode 没有触发
+shadow suppression 或 teleport quarantine，只能说明正常数据未被误拦。后续普通
+M5N2 已达到 20 case，但没有专门构造重复来源、teleport、漏检、杂波与合法新目标，
+也没有为该批冻结离线身份评分；这些受治理专项完成前，不能冻结来源连续性权重、抑制
+窗口或 lifecycle 参数，也不能用 seed 数量替换既有严格 admission。

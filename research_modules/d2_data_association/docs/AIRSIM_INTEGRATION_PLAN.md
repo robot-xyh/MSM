@@ -4,6 +4,22 @@
 
 This plan is for offline log ingestion and replay-based evaluation only. The D2 module will not publish vehicle commands, control hardware, change flight paths, perform automatic disposition, or bypass human authorization.
 
+## 2026-07-15 M5N2 Runtime Evidence Sync
+
+- Scope: SimpleFlight M5N2 baseline 10 seeds plus candidate 10 seeds, 20 completed cases.
+  The multi-seed run was terminated after M5N2 completion. One excluded
+  `png_ttc_2v2_seed001` finished before `TERM` took effect; no dropout case finished.
+- Online truth identity/state use was zero. Online D2 IDSW and continuity therefore remain
+  unavailable rather than numerical zero; evaluator-only truth must stay outside the online
+  association path.
+- The D2 association main-bus stage was available for all 3805 ticks. Mean/P95/max were
+  `2.521/3.147/98.942 ms`. These timings are nested inside main-bus timing and must not be
+  added to it again.
+- The second primary failed to reach 5 m in all 20 cases and ended with `collision_stop`, but
+  collision-object evidence was not persisted. This is not sufficient evidence to attribute the
+  failure to D2 or to retune its gate/lifecycle parameters.
+- The default GNN/Hungarian path and center-owned `global_track_id` contract remain unchanged.
+
 ## Goal
 
 Convert AirSim-recorded sensor/truth logs into D2 `Detection` inputs and evaluator-only truth metadata so the default GNN/Hungarian path and optional JPDA/MHT research adapters can be evaluated on frozen replay without leaking truth online.
@@ -75,9 +91,9 @@ Main/runtime captured and froze real D1 governed replay for both strict geometri
 - nominal 4 m: 20 unique seeds;
 - tight 2 m: 20 unique seeds.
 
-The best GNN candidate reduced mean IDSW from `1.3583` to `0.6167` (`54.6%`) while identity continuity changed from `0.9810` to `0.9840`; P95 loop latency was `24 ms`. The frozen promotion contract requires at least `+0.10` continuity improvement. The observed gain was only `+0.0030`, so the candidate was not promoted. The lightweight JPDA comparison degraded on the same input. The online default therefore remains GNN/Hungarian.
+On 2026-07-15 D2 consumed the frozen six-difficulty real AirSim replay/truth manifests without launching AirSim. The complete v2 rerun used 6x10 screening and 6x20 confirmation seeds. Candidate `gnn-g5.99-qa1-ld3_7-mw0.5x` reduced mean IDSW from `1.358333` to `0.616667` (`54.6012%`) and changed identity continuity from `0.981046` to `0.983954`; its headroom reduction was `15.3448%`. False-track remained zero, P95 loop latency was `15.470 ms`, and baseline/candidate online truth leakage was zero. All five overall gates passed and the runner emitted a promotion review recommendation. Only clutter and combined passed every per-difficulty gate; four strata failed closed because baseline IDSW was zero. The lightweight JPDA comparison degraded. The online default remains baseline GNN/Hungarian and `default_online_path_changed=false`.
 
-Online truth leakage was zero. Exact timestamp matching uses the `1e-9 s` tolerance described above, with unmatched samples retained for audit rather than imputed. The latest complete D2 regression is `93 passed`; the local Matplotlib `Axes3D` warning does not affect association, metrics, or calibration results.
+Online truth leakage was zero. Exact timestamp matching uses the `1e-9 s` tolerance described above, with unmatched samples retained for audit rather than imputed. The latest complete D2 regression on 2026-07-14 is `99 passed, 1 warning`; the local Matplotlib `Axes3D` warning does not affect association, metrics, or calibration results.
 
 ## Target Count and Replan Identity Contract
 
@@ -160,4 +176,51 @@ JPDA/MHT, Stone Soup end-to-end tracking, FilterPy EKF/UKF/IMM, and native 3D tr
 - Metrics from AirSim replay can be compared against synthetic simulation metrics with the same recorder.
 - Strict nominal 4 m and tight 2 m evidence remains traceable to 20 unique seeds each.
 - Truth alignment is exact within `1e-9 s`; unmatched samples remain auditable and never use nearest-neighbor timestamp fabrication.
-- Candidate promotion requires all frozen IDSW, continuity, false-track, latency, and truth-isolation thresholds; the current candidate remains rejected.
+- Candidate promotion requires all versioned IDSW, ceiling-aware continuity, false-track, latency, and truth-isolation gates. The complete frozen v2 report now passes all overall gates and recommends review, but the runner does not change the online default. Per-difficulty zero-baseline IDSW failures and dropout partial truth alignment remain explicit review inputs.
+
+## 2026-07-14 Truth Boundary Acceptance
+
+- Online replay uses an explicit `TrackerTruthPolicy.ONLINE`; any `Detection.truth_id`, explicit `truth_ids_present`, or nested truth/actor/object identity fails before prediction or association.
+- Main-owner boolean status fields `online_truth_isolated`, `online_truth_hints_used`, `truth_metrics_available`, and `continuity_available` are accepted. Non-boolean values under those keys, offline truth payloads, and identity fields remain rejected.
+- Offline evaluation explicitly opts into `TrackerTruthPolicy.OFFLINE` and continues to report an available integer `0` when truth proves there were no ID switches.
+- Truthless IDSW, continuity, and RMSE remain present as `None` with consistent availability/reason fields. Truth-free birth/lost/drop/rebirth counts and transitions remain available for AirSim lifecycle summaries.
+- Validation covered eight rejection cases, the main-owner four-boolean positive case, 3-frame and 5-frame truthless replays, and a 7-frame lifecycle sequence on 2026-07-14. Full D2 regression passed `98` tests with one environment-only Matplotlib warning; acceptance required zero failures and no state mutation on rejected online input.
+- No lost/drop/gate threshold changed. Calibration of the real `T001 -> T005` lifecycle pattern remains P1.
+
+## 2026-07-14 Source-Lineage Inflation Guard
+
+The audited real Blocks input contained two targets but D1 emitted a third
+track at frame 313 and later teleported an existing D1 track. D2 now treats
+`source_global_track_id` as anonymous upstream lineage: it adds a continuity
+cost inside the existing Mahalanobis gate, suppresses an unmatched gated
+shadow birth, and quarantines a bound source that jumps outside the lineage
+gate. AirSim actor/object identity is not consumed.
+
+The module-level acceptance fixture contains four frames, two moving sources,
+one overlapping duplicate source, and one source teleport. It passed with two
+canonical D2 IDs, one suppressed shadow, and one quarantined discontinuity;
+the full D2 suite passed 99 tests on 2026-07-14.
+
+## 2026-07-14 Post-batch Same-seed Evidence
+
+Main completed the real M5N2 seed-1 baseline and candidate reruns. The 142/141
+frame episodes each had two D1 source tracks after the first two startup
+frames, and D2 retained only `T001/T002` for all 140/139 active frames. Both
+ended with birth/lost/drop/rebirth `2/0/0/0`; no `T008` record existed.
+
+Online IDSW and continuity correctly remained unavailable because actor/truth
+identity was absent. Evaluator-only replay with the external sidecar produced
+IDSW 0, continuity 1.0, false-track count 0, and zero truth-isolation
+violations. Post-hoc adjudication of the emitted track records produced IDSW 0
+and continuity 0.985915/0.985816 because the two startup frames had no emitted
+track.
+
+No shadow or teleport event occurred in either smooth episode: suppression,
+quarantine, and source-conflict counts were all zero. Therefore the same-seed
+inflation recurrence is closed. A later 20-case M5N2 run satisfied the ordinary
+multi-seed count and timing collection, but did not inject duplicate-source,
+teleport, dropout, clutter, or legitimate-new-target events and did not produce
+batch-specific offline identity metrics. The remaining P1 acceptance is now a
+targeted governed suite, not another ordinary minimum-seed run; it must report
+lifecycle, offline identity availability, plan/pair churn, and false-suppression
+results.

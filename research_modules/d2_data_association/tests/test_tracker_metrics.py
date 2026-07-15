@@ -6,7 +6,12 @@ import sys
 
 import pytest
 
-from d2_data_association import Detection, GNNHungarianAssociator, Tracker
+from d2_data_association import (
+    Detection,
+    GNNHungarianAssociator,
+    Tracker,
+    TrackerTruthPolicy,
+)
 from d2_data_association.metrics import (
     AssociationRiskSummaryWindowGenerator,
     MetricsRecorder,
@@ -40,6 +45,7 @@ def detection(step: int, x: float, truth_id: str = "A") -> Detection:
 def test_tracker_lifecycle_reaches_engageable_then_lost_and_dropped() -> None:
     tracker = Tracker(
         associator=GNNHungarianAssociator(),
+        truth_policy=TrackerTruthPolicy.OFFLINE,
         confirmation_hits=2,
         engageable_hits=3,
         lost_miss_threshold=1,
@@ -68,6 +74,7 @@ def test_tracker_lifecycle_reaches_engageable_then_lost_and_dropped() -> None:
 def test_tracker_exports_track_quality_and_association_risk_metadata() -> None:
     tracker = Tracker(
         associator=GNNHungarianAssociator(),
+        truth_policy=TrackerTruthPolicy.OFFLINE,
         confirmation_hits=2,
         engageable_hits=3,
         engageable_covariance_trace=100.0,
@@ -161,6 +168,305 @@ def test_metrics_records_id_switch_continuity_duplicate_and_confusion() -> None:
     assert summary["confusion_matrix"]["A"]["T1"] == 1
     assert summary["confusion_matrix"]["A"]["T2"] == 1
     assert summary["rmse"] == pytest.approx(2.0**0.5)
+    assert summary["id_switch_count_available"] is True
+    assert summary["id_switch_count_reason"] is None
+    assert summary["rmse_available"] is True
+    assert summary["rmse_reason"] is None
+
+
+def test_online_tracker_rejects_truth_fields_before_mutating_state() -> None:
+    clean_detection = Detection(
+        detection_id="online-1",
+        timestamp=0.0,
+        position=np.zeros(2),
+        covariance=np.eye(2),
+    )
+    cases = [
+        (
+            Detection(
+                detection_id="truth-id",
+                timestamp=0.0,
+                position=np.zeros(2),
+                covariance=np.eye(2),
+                truth_id="target-A",
+            ),
+            None,
+            None,
+            "truth_id",
+        ),
+        (clean_detection, [], None, "truth_ids_present"),
+        (
+            Detection(
+                detection_id="metadata-truth",
+                timestamp=0.0,
+                position=np.zeros(2),
+                covariance=np.eye(2),
+                metadata={"nested": {"truth_object_id": "target-A"}},
+            ),
+            None,
+            None,
+            "truth_object_id",
+        ),
+        (
+            clean_detection,
+            None,
+            {"nested": [{"actor_name": "Intruder01"}]},
+            "actor_name",
+        ),
+        (
+            clean_detection,
+            None,
+            {"object_identity": "Intruder01"},
+            "object_identity",
+        ),
+        (
+            clean_detection,
+            None,
+            {"truth_id": "target-A"},
+            "truth_id",
+        ),
+        (
+            clean_detection,
+            None,
+            {"offline_truth_payload": {"target": "target-A"}},
+            "offline_truth_payload",
+        ),
+        (
+            clean_detection,
+            None,
+            {"truth_metrics_available": "target-A"},
+            "truth_metrics_available",
+        ),
+    ]
+
+    for candidate, truth_ids, frame_metadata, expected_path in cases:
+        tracker = Tracker(truth_policy=TrackerTruthPolicy.ONLINE)
+        with pytest.raises(ValueError, match=expected_path):
+            tracker.step(
+                [candidate],
+                timestamp=0.0,
+                truth_ids_present=truth_ids,
+                frame_metadata=frame_metadata,
+            )
+        assert tracker.tracks == {}
+        assert tracker.metrics.frame_count == 0
+
+
+def test_online_tracker_allows_boolean_truth_governance_status() -> None:
+    tracker = Tracker(truth_policy=TrackerTruthPolicy.ONLINE)
+    frame_metadata = {
+        "online_truth_hints_used": False,
+        "truth_metrics_available": False,
+        "continuity_available": False,
+        "online_truth_isolated": True,
+    }
+
+    result = tracker.step(
+        [
+            Detection(
+                detection_id="anonymous-status-1",
+                timestamp=0.0,
+                position=np.zeros(2),
+                covariance=np.eye(2),
+            )
+        ],
+        timestamp=0.0,
+        frame_metadata=frame_metadata,
+    )
+
+    for key, value in frame_metadata.items():
+        assert result.metadata[key] is value
+        assert result.metadata["replay_metadata"][key] is value
+    assert tracker.metrics.frame_count == 1
+    assert set(tracker.tracks) == {"T001"}
+
+
+def test_offline_tracker_allows_truth_and_reports_available_zero_id_switch() -> None:
+    tracker = Tracker(truth_policy=TrackerTruthPolicy.OFFLINE)
+
+    tracker.step(
+        [detection(0, 0.0)],
+        timestamp=0.0,
+        truth_ids_present=["A"],
+        frame_metadata={"actor_name": "Intruder01", "object_id": "actor-1"},
+    )
+
+    summary = tracker.metrics.summary()
+    assert summary["truth_metrics_available"] is True
+    assert summary["id_switch_count_available"] is True
+    assert summary["id_switch_count"] == 0
+    assert summary["id_switch_count_reason"] is None
+
+
+def test_truthless_summary_keeps_metric_fields_unavailable_instead_of_zero() -> None:
+    tracker = Tracker(truth_policy=TrackerTruthPolicy.ONLINE)
+    tracker.step(
+        [
+            Detection(
+                detection_id="anonymous-1",
+                timestamp=0.0,
+                position=np.zeros(2),
+                covariance=np.eye(2),
+                metadata={"online_truth_isolated": True},
+            )
+        ],
+        timestamp=0.0,
+    )
+
+    summary = tracker.metrics.summary()
+    for field in ("id_switch_count", "track_continuity", "rmse"):
+        assert field in summary
+        assert summary[field] is None
+    assert summary["truth_metrics_available"] is False
+    assert summary["truth_metrics_reason"] == "truth_assignment_unavailable"
+    assert summary["id_switch_count_available"] is False
+    assert summary["id_switch_count_reason"] == "truth_assignment_unavailable"
+    assert summary["track_continuity_available"] is False
+    assert summary["track_continuity_reason"] == "truth_assignment_unavailable"
+    assert summary["rmse_available"] is False
+    assert summary["rmse_reason"] == "truth_assignment_unavailable"
+
+
+def test_tracker_exports_truth_free_lifecycle_counts_and_transitions() -> None:
+    tracker = Tracker(
+        truth_policy=TrackerTruthPolicy.ONLINE,
+        confirmation_hits=1,
+        engageable_hits=2,
+        lost_miss_threshold=1,
+        drop_miss_threshold=3,
+        engageable_covariance_trace=100.0,
+    )
+
+    def anonymous(step: int, x: float) -> Detection:
+        return Detection(
+            detection_id=f"anonymous-{step}",
+            timestamp=float(step),
+            position=np.array([x, 0.0]),
+            covariance=np.eye(2) * 0.2,
+        )
+
+    tracker.step([anonymous(0, 0.0)], timestamp=0.0)
+    tracker.step([anonymous(1, 1.0)], timestamp=1.0)
+    tracker.step([], timestamp=2.0)
+    tracker.step([anonymous(3, 3.0)], timestamp=3.0)
+    tracker.step([], timestamp=4.0)
+    tracker.step([], timestamp=5.0)
+    tracker.step([], timestamp=6.0)
+
+    summary = tracker.metrics.summary()
+    assert summary["lifecycle_metrics_available"] is True
+    assert summary["lifecycle_metrics_reason"] == "truth_free_tracker_state_events"
+    assert summary["birth_count"] == 1
+    assert summary["lost_count"] == 2
+    assert summary["drop_count"] == 1
+    assert summary["rebirth_count"] == 1
+    assert summary["lifecycle_transition_count"] == len(
+        summary["lifecycle_transitions"]
+    )
+    assert any(
+        transition["from_state"] == "lost"
+        and transition["to_state"] == "engageable"
+        for transition in summary["lifecycle_transitions"]
+    )
+
+
+def test_online_d1_source_lineage_prevents_shadow_birth_and_teleport_rebirth() -> None:
+    tracker = Tracker(
+        associator=GNNHungarianAssociator(
+            gate_threshold=16.0,
+            source_continuity_weight=2.0,
+        ),
+        truth_policy=TrackerTruthPolicy.ONLINE,
+        confirmation_hits=2,
+        engageable_hits=3,
+    )
+
+    def source_detection(
+        source_track_id: str,
+        timestamp: float,
+        x: float,
+        y: float = 0.0,
+    ) -> Detection:
+        return Detection(
+            detection_id=f"{source_track_id}_{timestamp:.1f}",
+            timestamp=timestamp,
+            position=np.array([x, y], dtype=float),
+            covariance=np.eye(2) * 0.25,
+            metadata={
+                "source_global_track_id": source_track_id,
+                "source_support": {"radar": int(timestamp) + 1},
+                "identity_policy": "online_anonymous",
+            },
+        )
+
+    tracker.step(
+        [
+            source_detection("global_track_001", 0.0, 0.0),
+            source_detection("global_track_002", 0.0, 10.0),
+        ],
+        timestamp=0.0,
+    )
+    tracker.step(
+        [
+            source_detection("global_track_001", 1.0, 1.0),
+            source_detection("global_track_002", 1.0, 11.0),
+        ],
+        timestamp=1.0,
+    )
+
+    duplicate_result = tracker.step(
+        [
+            source_detection("global_track_001", 2.0, 2.0),
+            source_detection("global_track_002", 2.0, 12.2),
+            source_detection("global_track_003", 2.0, 12.0),
+        ],
+        timestamp=2.0,
+    )
+
+    assert [track.global_track_id for track in tracker.active_tracks()] == [
+        "T001",
+        "T002",
+    ]
+    assert {
+        pair.track_id: pair.detection_id for pair in duplicate_result.matched_pairs
+    }["T002"] == "global_track_002_2.0"
+    assert duplicate_result.metadata["suppressed_birth_detection_ids"] == [
+        "global_track_003_2.0"
+    ]
+    assert duplicate_result.metadata["suppressed_births"][0]["reason"] == (
+        "gated_shadow_of_existing_track"
+    )
+
+    teleport_result = tracker.step(
+        [
+            source_detection("global_track_001", 3.0, 3.0),
+            source_detection("global_track_002", 3.0, -50.0),
+            source_detection("global_track_003", 3.0, 13.0),
+        ],
+        timestamp=3.0,
+    )
+
+    assert [track.global_track_id for track in tracker.active_tracks()] == [
+        "T001",
+        "T002",
+    ]
+    lineage = teleport_result.metadata["source_lineage_governance"]
+    assert lineage["quarantined_detection_ids"] == ["global_track_002_3.0"]
+    assert lineage["quarantined_sources"][0]["reason"] == (
+        "bound_source_mahalanobis_discontinuity"
+    )
+    assert {
+        pair.track_id: pair.detection_id for pair in teleport_result.matched_pairs
+    }["T002"] == "global_track_003_3.0"
+    assert teleport_result.metadata["source_track_bindings"] == {
+        "global_track_001": "T001",
+        "global_track_002": "T002",
+        "global_track_003": "T002",
+    }
+    assert tracker.tracks["T002"].source_track_ids == {
+        "global_track_002",
+        "global_track_003",
+    }
 
 
 def test_identity_continuity_drops_when_track_id_changes_every_frame() -> None:

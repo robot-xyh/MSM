@@ -205,6 +205,8 @@ def test_main_d6_jsonl_metadata_and_offline_truth_labels_flow_to_logs(tmp_path) 
     assert report.replay_metadata["episode_id"] == "episode-031"
     assert report.replay_metadata["scenario"] == "real_airsim_replay_fixture"
     assert report.metrics["id_switch_count"] == 0
+    assert report.metrics["id_switch_count_available"] is True
+    assert report.metrics["id_switch_count_reason"] is None
     assert report.metrics["confusion_matrix"]["target-A"] == {"T001": 3}
     assert report.metrics["confusion_matrix"]["target-B"] == {"T002": 3}
     assert set(report.global_track_ids) == {"T001", "T002"}
@@ -256,7 +258,9 @@ def test_replay_target_count_falls_back_to_input_count_without_truth_labels() ->
 
     assert report.target_count == 6
     assert report.replay_metadata["seed"] == 22
-    assert report.metrics["id_switch_count"] == 0
+    assert report.metrics["id_switch_count"] is None
+    assert report.metrics["id_switch_count_available"] is False
+    assert report.metrics["id_switch_count_reason"] == "truth_assignment_unavailable"
     assert "track_continuity" in report.metrics
     assert report.metrics["truth_metrics_available"] is False
     assert report.metrics["continuity_available"] is False
@@ -282,7 +286,9 @@ def test_no_truth_multiframe_replay_does_not_create_false_hard_risk() -> None:
 
     report = run_airsim_replay_association(frames, replay_name="no_truth_continuity")
 
-    assert report.metrics["track_continuity"] == 0.0
+    assert report.metrics["track_continuity"] is None
+    assert report.metrics["rmse"] is None
+    assert report.metrics["truth_metrics_reason"] == "truth_assignment_unavailable"
     assert report.metrics["truth_metrics_available"] is False
     assert report.metrics["continuity_available"] is False
     assert report.risk_summary["hard_risk_frame_count"] == 0

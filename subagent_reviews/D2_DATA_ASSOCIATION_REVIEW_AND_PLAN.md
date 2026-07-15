@@ -2,7 +2,7 @@
 
 **定位**：维护稳定的 `global_track_id`，在目标交叉、密集编队、漏检、遮挡和虚警条件下抑制 ID Switch。
 **边界**：本文只讨论科研仿真、离线回放、多目标跟踪、数据关联、状态机和指标记录，不包含真实飞控、火控、毁伤、自动处置或绕过人工授权的流程。
-**当前代码口径**：已落地 GNN/Hungarian、二维常速度 Kalman fallback、Track 状态机、P1 D1-governed input/offline truth/10/20-seed runner，以及隔离 P2 frozen replay comparison。2026-07-13 strict 4 m/2 m 各 20 seeds 的真实 D1 replay 已完成，最新模块回归为 `93 passed`。P2 v2 同场输出默认 GNN、模块内 JPDA/MHT research adapter 与 Stone Soup/FilterPy object adapter；后两者仍不是端到端 tracker，模块内 JPDA/MHT 也不是完整算法。P1 loader 可直接读取 D1 governed manifest/records，将 radar 球坐标投影到 N/E；声学/EO 因量测空间不同而显式跳过。
+**当前代码口径**：已落地 GNN/Hungarian、二维常速度 Kalman fallback、Track 状态机、P1 D1-governed input/offline truth/10/20-seed runner，以及隔离 P2 frozen replay comparison。2026-07-15 已用六档冻结真实 AirSim replay/truth 完成 ceiling-aware v2 的 6x10 screening 和 6x20 confirmation；总体最佳 GNN 候选五项联合 gate 通过并形成 promotion review recommendation，但默认路径未改变。2026-07-14 Post-batch M5N2 同 seed 的 `T008` 不复发状态不变。P2 v2 同场输出默认 GNN、模块内 JPDA/MHT research adapter 与 Stone Soup/FilterPy object adapter；后两者仍不是端到端 tracker，模块内 JPDA/MHT 也不是完整算法。
 
 ---
 
@@ -10,11 +10,18 @@
 
 - **P0**：无 P0 blocker。GNN/Hungarian、显式 `id_switch_count`、`track_continuity`、risk summary、replay helper、按输入集合长度运行、航迹质量评分、运动一致性约束和 quality-aware gate baseline 已是当前主线并保持回归。
 - **P1 合同层已闭合**：D1 governed adapter、online/offline truth 分离、association log/profile version、`d2-offline-truth-label/v1`、N-target dense/crossing fixture、至少 10-seed runner、availability-aware summary、M-of-N/false-track/NIS/NEES 接口及中心 canonical registry 基础已回归。
-- **P1 首轮真实标定已完成，长期标定仍开放**：strict nominal 4 m 与 tight 2 m 各 20 seeds 已形成真实证据。最佳 GNN 候选 IDSW `1.3583 -> 0.6167`（下降 `54.6%`），continuity `0.9810 -> 0.9840`，P95 `24 ms`；continuity 增益 `0.0030` 未达到冻结 `+0.10` 门限，因此不晋级。后续 P1 转向更长 OOSM、遮挡、杂波和生命周期标定。
+- **P1 完整冻结 v2 证据已生成，长期标定仍开放**：最佳 GNN 候选 IDSW `1.358333 -> 0.616667`（下降 `54.6012%`），continuity `0.981046 -> 0.983954`，P95 `15.470 ms`；false-track/truth leakage 均为 0。总体联合 gate 全部通过，`promotion_recommended=true`；分档仅 clutter/combined 通过，另外四档 baseline IDSW=0 fail-closed。后续 P1 是跨模块评审、更长 OOSM/遮挡/杂波和生命周期标定，不再是缺少 v2 联合报告。
 - **历史基线**：2026-07-10 的 5v5/2v2 批次和 2026-07-11 早期的 seeds 7/17/27 当时不足以关闭 D2 P1，且 T001 双 primary 尚未通过。这些只作为实施前/过渡基线，不代表当前状态。
 - **当前 ComputerVision 证据**：M=5、N=2 的 10 seeds 中，T001 双 primary 共识/计划授权为 8/10；D2 `id_switch_count=0`、错误 duplicate=0、`global_track_id` 改写/重绑=0 均为 10/10。
 - **commit 与物理边界**：二级/完全分布式 commit 正例通过，缺 ACK 时 fail-closed；这是下游沿用 D2 中心 `global_track_id` 的合同证据，不是 D2 owner failover/临时 ID 合并实现。SimpleFlight 15 s 只是诊断，30 个 active pair 无命中，物理拦截未闭合。
-- **回归与 P2 边界**：2026-07-13 最新 D2 完整回归为 `93 passed`；本机 Matplotlib `Axes3D` warning 不影响关联、指标或标定结论。D1 governed loader 属于 P1 输入合同；P2 只做隔离 benchmark。轻量 JPDA 在 strict 同输入对照中退化，GNN/JPDA/MHT research adapter 和 Stone Soup 1.9.1/FilterPy 1.4.5 object adapter 均不得进入默认主线。默认依赖与在线 GNN/Hungarian 未改变。
+- **回归与 P2 边界**：2026-07-15 最新 D2 完整回归为 `113 passed, 1 warning`；warning 不影响关联、指标或标定结论。D1 governed loader 属于 P1 输入合同；P2 只做隔离 benchmark。轻量 JPDA 在 strict 同输入对照中退化，GNN/JPDA/MHT research adapter 和 Stone Soup 1.9.1/FilterPy 1.4.5 object adapter 均不得进入默认主线。默认依赖与在线 GNN/Hungarian 未改变。
+- **2026-07-15 M5N2 20-case 证据**：baseline/candidate 各 10 seed，共 20/20 case；
+  D2 association main-bus 3805/3805 可用，mean/P95/max 为
+  `2.521/3.147/98.942 ms`。在线 truth identity/state use 为 0，故本批在线
+  IDSW/continuity 是 unavailable，不是 0。第二 primary `0/20` 进入 5 m 且最终均为
+  `collision_stop`，但碰撞对象未持久化，不归因于 D2。默认 GNN/Hungarian 和中心
+  `global_track_id` 所有权不变；终止前额外完成的一个 `png_ttc_2v2_seed001` 被排除，
+  dropout case 为 0。
 
 ## 1. 研究问题
 
@@ -432,8 +439,11 @@ GNN/Hungarian，需 main/D6 复核真实 AirSim 证据后另行决定。
 unavailable。2026-07-13 已输入 strict nominal 4 m 与 tight 2 m 各 20 seeds 的真实
 AirSim/D1 replay 和冻结预算：最佳 GNN 候选 IDSW `1.3583 -> 0.6167`（下降
 `54.6%`），continuity `0.9810 -> 0.9840`，P95 `24 ms`。continuity 增益只有
-`0.0030`，未达到冻结 `+0.10`，因此不晋级；轻量 JPDA 在同输入下退化，默认
-GNN/Hungarian 不变，也不宣称轻量 JPDA 已达到完整 JPDA 工程能力。
+`0.002908`。v1 固定 `+0.10` 曾据此拒绝；完整 v2 重算得到 headroom `0.018954`、
+所需提升 `0.001895`、error reduction `15.3448%`，并同时证明 IDSW、false-track、
+P95 和 truth isolation gate 通过，因此形成总体 promotion review recommendation。
+轻量 JPDA 在同输入下退化，默认 GNN/Hungarian 不变，也不宣称轻量 JPDA 已达到完整
+JPDA 工程能力。
 
 ### 15.1 D1 Freeze Truth Sidecar 评审
 
@@ -518,11 +528,77 @@ alignment summary 随 FrozenReplayCase 进入 screening、confirmation、逐 see
   是待办项。
 - 最佳 GNN 候选 IDSW `1.3583 -> 0.6167`，下降 `54.6%`；continuity
   `0.9810 -> 0.9840`；P95 loop latency `24 ms`。
-- 冻结 admission 要求 continuity 至少提高 `0.10`，实际只提高 `0.0030`，故候选不
-  晋级。轻量 JPDA 退化，默认 GNN/Hungarian 不变。
+- v1 admission 要求 continuity 绝对提高 `0.10`，该规则在高基线时不可达；v2 已改为
+  消除至少 10% 基线剩余错误。2026-07-15 完整冻结重算中总体联合 gate 已通过并形成
+  promotion review recommendation；轻量 JPDA 退化，默认 GNN/Hungarian 不变。
 - truth timestamp 只在 `1e-9 s` 内 exact matching。无严格对应 frame 的样本保留为
   `partial/unmatched`，不做最近邻补齐，不伪造 label；online truth leakage 为 0。
-- 最新 D2 完整回归为 `93 passed`。本机 Matplotlib `Axes3D` warning 不影响 D2 功能。
+- 2026-07-13 当时 D2 完整回归为 `93 passed`；当前完整回归为 2026-07-14 的
+  `99 passed, 1 warning`。本机 Matplotlib `Axes3D` warning 不影响 D2 功能。
 - 下一轮 P1 使用更长时窗和 OOSM/遮挡/漏检/杂波组合，标定 gate/risk、M-of-N、
   false-track、NIS/NEES 和 track lifecycle。完整 JPDA/MHT、Stone Soup/FilterPy
   端到端 tracker 与原生 3D 继续保持 P2 optional/offline 边界。
+
+## 21. 2026-07-14 Truth Policy 与 Lifecycle 评审
+
+本轮 P0 修复不改变 GNN/Hungarian、Kalman、gate 或 lost/drop 数值。`Tracker` 新增显式 `online/offline` truth policy：online 是默认 fail-closed 路径，在状态变更前递归拒绝 Detection、frame 参数和 metadata 中的 truth/actor/object identity；offline 仅供 synthetic/evaluator truth 评分。main owner 的 `online_truth_isolated/online_truth_hints_used/truth_metrics_available/continuity_available` 仅在值为布尔型时作为状态通过，不能承载身份字符串。
+
+truthless summary 不再以 `0` 冒充 IDSW、continuity 或 RMSE，三个字段保留但值为 `None`，并带一致的 availability/reason。离线 truth 确实证明零 IDSW 时仍输出 available `0`。birth/lost/drop/rebirth 与 transitions 现可从不含 truth 的 tracker 状态事件直接审计，其中 rebirth 仅表示 lost 航迹重获。
+
+2026-07-14 专项场景包含 8 类拒绝输入、main owner 四布尔状态正例、3/5 帧 truthless replay 和 7 帧 lifecycle 序列；完整 D2 测试为 `98 passed, 1 warning`，验收阈值为零失败和零在线状态副作用。`T001 -> T005` 的真实 lifecycle 参数调优、M-of-N/false-track 分档冻结仍是 P1，不由本批接口收口替代。
+
+## 22. `T008` 真实 episode 复核与处理决定
+
+2026-07-14 对 1 个真实 M5N2 baseline seed、351 帧进行只读复核。离线真值仅用于
+事后确认问题性质：`T002` 与 `T003` 在 31.3--31.7 秒均位于第二个真实目标附近，
+证明 D1 `global_track_002/003` 是重复解释；在线修复没有读取该结论。31.8 秒
+`global_track_002` 对应位置跳到约 `[13.5,-24.9] m`，后续又多次跳变，D2 因缺少
+上游 source-track 约束产生 `T004...T008`，并由下游形成计划版本 33--45 的额外变更。
+
+D2 决定不扩大马氏门限、不降低确认条件、不换 JPDA/MHT，也不使用 AirSim actor ID。
+本次采用上游航迹谱系连续性、门内影子 birth 抑制和同源 teleport 隔离。四帧匿名
+回归证明两个真实运动链只保留两个规范 ID，且新 D1 source ID 可在几何可行时归并到
+既有 D2 ID。完整回归 `99 passed`。
+
+该决定是模块级 P1 修复，不替代 D1 重复航迹修复，也不替代 main 的真实 AirSim
+复跑。修复后同 seed 结果已经获得，详见下一节；2026-07-15 的普通 M5N2 已完成
+20 case 并补齐 D2 时延，但显式 teleport/影子扰动、offline identity 和计划 churn 的
+统计稳定性仍列为 main 集成验收项。
+
+## 23. Post-batch baseline/candidate 复核决定
+
+2026-07-14 复核真实 Blocks M5N2 seed 1 的 post-batch baseline 142 帧和 candidate
+141 帧。D1 前 2 帧未形成航迹，之后始终只有 `global_track_001/002`；D2 同期始终
+只有 `T001/T002`，最大活动规范航迹数 2。两组最终生命周期均为 birth 2、lost 0、
+drop 0、rebirth 0，未出现 `T003...T008`。来源绑定稳定为
+`global_track_001 -> T001`、`global_track_002 -> T002`。
+
+在线 IDSW/continuity 仍不可用，这是在线 truth 隔离的正确行为。使用独立 sidecar 的
+D2 governed replay 评分得到两组 IDSW 0、continuity 1.0、false track 0、truth
+leakage 0；对 main 已发布 track records 的事后裁决得到 IDSW 0，continuity 为
+0.985915/0.985816，差额是启动前 2 帧无规范航迹，而不是身份交换。
+
+本批没有出现 source conflict，`suppressed_births` 和 quarantine 都为 0，因此只能
+确认来源治理没有误杀正常数据，不能用这两个平稳 episode 宣称 teleport 抑制已在
+真实扰动下标定。D2 评审决定：同 seed `T008` 复发项关闭。后续普通 M5N2 已完成
+20 case，但未加入重复来源、teleport、dropout、clutter、合法新目标 birth 或该批离线
+身份评分；下一验收改为至少 10 个显式受治理扰动 case，不再把普通 seed 数量作为缺口。
+默认 GNN/Hungarian 和全部 P0 合同不变。
+
+## 24. 2026-07-15 Ceiling-aware v2 完整冻结证据评审
+
+- **输入**：六档真实 AirSim frozen replay/truth；screening 6x10 seeds，confirmation
+  6x20 seeds；本批未启动 AirSim。
+- **治理**：schema `d2-p1-identity-calibration/v2`，policy
+  `d2-p1-identity-admission/ceiling-aware-error-reduction-v1`；阶段内 digest 唯一，
+  全部在线 truth leakage 为 0。
+- **总体候选**：`gnn-g5.99-qa1-ld3_7-mw0.5x`，IDSW 下降 `54.6012%`，continuity
+  error reduction `15.3448%`，false-track 0，P95 `15.470 ms`。五项联合 gate 均
+  通过，`promotion_recommended=true`。
+- **分档**：clutter/combined 完整通过；nominal/tight/dropout/delayed 的 baseline
+  IDSW=0，按不可测改善比例 fail-closed。dropout truth alignment 为 partial，不做
+  最近邻补齐。
+- **算法评审**：候选只获得提交评审资格；`default_online_path_changed=false`。JPDA
+  research adapter 的 IDSW/continuity 明显退化，不进入主线候选。
+- **耗时与产物**：runner wall time `2501.32 s`；完整 JSON、中文报告和真实数据图位于
+  `research_modules/d2_data_association/outputs/p1_identity_ceiling_aware_v2_20260715/`。

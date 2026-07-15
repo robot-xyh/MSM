@@ -28,12 +28,22 @@ from .offline_truth import (
     load_offline_truth_labels_jsonl,
     strip_offline_truth_from_frames,
 )
+from .models import TrackerTruthPolicy
 from .replay import load_airsim_replay_frames, run_airsim_replay_association
 from .tracker import Tracker
 
 
-P1_IDENTITY_MATRIX_SCHEMA_VERSION = "d2-p1-identity-calibration/v1"
+P1_IDENTITY_MATRIX_SCHEMA_VERSION = "d2-p1-identity-calibration/v2"
 P1_IDENTITY_INPUT_SCHEMA_VERSION = "d2-p1-identity-calibration-input/v1"
+P1_IDENTITY_ADMISSION_POLICY_VERSION = (
+    "d2-p1-identity-admission/ceiling-aware-error-reduction-v1"
+)
+IDENTITY_CONTINUITY_THEORETICAL_UPPER_BOUND = 1.0
+MINIMUM_ID_SWITCH_REDUCTION_FRACTION = 0.30
+MINIMUM_CONTINUITY_ERROR_REDUCTION_FRACTION = 0.10
+LEGACY_MINIMUM_IDENTITY_CONTINUITY_INCREASE = 0.10
+MAXIMUM_FALSE_TRACK_INCREASE_FRACTION = 0.10
+_ADMISSION_NUMERICAL_TOLERANCE = 1.0e-12
 GATE_THRESHOLDS = (5.99, 9.21, 13.82)
 QUALITY_AWARE_OPTIONS = (False, True)
 LIFECYCLE_OPTIONS = ((1, 3), (2, 5), (3, 7))
@@ -596,6 +606,7 @@ def _run_associator_config(
             raise ValueError(f"unsupported associator_name: {associator_name}")
         tracker = Tracker(
             associator=associator,
+            truth_policy=TrackerTruthPolicy.ONLINE,
             lost_miss_threshold=config.lost_miss_threshold,
             drop_miss_threshold=config.drop_miss_threshold,
         )
@@ -765,14 +776,18 @@ def _admission_decision(
     *,
     latency_budget_s: float,
 ) -> dict[str, Any]:
+    policy = _admission_policy(latency_budget_s)
     if not confirmation.get("available", False):
         return {
             "available": False,
             "unavailable_reason": confirmation.get("unavailable_reason"),
             "selected_online_path": "baseline_gnn_hungarian",
             "default_online_path_changed": False,
+            "promotion_recommended": False,
             "candidate_assessments": [],
             "by_difficulty": {},
+            "policy_version": P1_IDENTITY_ADMISSION_POLICY_VERSION,
+            "policy": policy,
         }
     rows = list(confirmation.get("results", []))
     baseline = next(
@@ -787,8 +802,11 @@ def _admission_decision(
             "unavailable_reason": "baseline_confirmation_result_missing",
             "selected_online_path": "baseline_gnn_hungarian",
             "default_online_path_changed": False,
+            "promotion_recommended": False,
             "candidate_assessments": [],
             "by_difficulty": {},
+            "policy_version": P1_IDENTITY_ADMISSION_POLICY_VERSION,
+            "policy": policy,
         }
     assessments = [
         _assess_candidate(candidate, baseline, latency_budget_s=latency_budget_s)
@@ -809,14 +827,58 @@ def _admission_decision(
         "promotion_candidates": [item["candidate_id"] for item in passing],
         "candidate_assessments": assessments,
         "by_difficulty": difficulty_assessments,
-        "policy": {
-            "minimum_id_switch_reduction_fraction": 0.30,
-            "minimum_identity_continuity_increase": 0.10,
-            "maximum_false_track_increase_fraction": 0.10,
-            "maximum_p95_loop_latency_s": latency_budget_s,
-            "required_online_truth_leakage_count": 0,
-        },
+        "policy_version": P1_IDENTITY_ADMISSION_POLICY_VERSION,
+        "policy": policy,
         "note": "passing only recommends review; this runner never changes mainline",
+    }
+
+
+def _admission_policy(latency_budget_s: float) -> dict[str, Any]:
+    return {
+        "policy_version": P1_IDENTITY_ADMISSION_POLICY_VERSION,
+        "minimum_id_switch_reduction_fraction": (
+            MINIMUM_ID_SWITCH_REDUCTION_FRACTION
+        ),
+        "identity_continuity": {
+            "theoretical_upper_bound": (
+                IDENTITY_CONTINUITY_THEORETICAL_UPPER_BOUND
+            ),
+            "minimum_error_reduction_fraction": (
+                MINIMUM_CONTINUITY_ERROR_REDUCTION_FRACTION
+            ),
+            "required_increase_formula": (
+                "min(legacy_absolute_increase, "
+                "baseline_headroom * minimum_error_reduction_fraction)"
+            ),
+            "baseline_headroom_formula": "1.0 - baseline_identity_continuity",
+            "error_reduction_fraction_formula": (
+                "(candidate_identity_continuity - baseline_identity_continuity) "
+                "/ baseline_headroom"
+            ),
+            "no_headroom_rule": (
+                "when baseline is 1.0, candidate must be valid and non-degrading"
+            ),
+            "legacy_absolute_increase": (
+                LEGACY_MINIMUM_IDENTITY_CONTINUITY_INCREASE
+            ),
+            "legacy_absolute_increase_status": (
+                "deprecated_v1_direct_gate_not_used_for_v2_admission"
+            ),
+        },
+        # Kept only so v1 report consumers can identify the old frozen value.
+        "minimum_identity_continuity_increase": (
+            LEGACY_MINIMUM_IDENTITY_CONTINUITY_INCREASE
+        ),
+        "minimum_identity_continuity_increase_status": (
+            "legacy_deprecated_not_used_for_v2_admission"
+        ),
+        "maximum_false_track_increase_fraction": (
+            MAXIMUM_FALSE_TRACK_INCREASE_FRACTION
+        ),
+        "maximum_p95_loop_latency_s": latency_budget_s,
+        "required_online_truth_leakage_count": 0,
+        "promotion_effect": "review_recommendation_only",
+        "default_online_path_changed": False,
     }
 
 
@@ -1056,50 +1118,330 @@ def _assess_candidate(
     candidate_false_tracks = _mean(candidate_aggregate, "false_track_count")
     baseline_false_tracks = _mean(baseline_aggregate, "false_track_count")
     candidate_latency = _p95_across_seed_p95(candidate)
-    idsw_reduction = (
-        (baseline_idsw - candidate_idsw) / baseline_idsw
-        if baseline_idsw is not None and baseline_idsw > 0.0 and candidate_idsw is not None
-        else None
+    idsw_gate = _id_switch_admission_gate(candidate_idsw, baseline_idsw)
+    continuity_gate = _continuity_admission_gate(
+        candidate_continuity, baseline_continuity
     )
-    continuity_increase = (
-        candidate_continuity - baseline_continuity
-        if candidate_continuity is not None and baseline_continuity is not None
-        else None
+    false_track_gate = _false_track_admission_gate(
+        candidate_false_tracks, baseline_false_tracks
     )
-    false_track_limit = (
-        baseline_false_tracks * 1.10 if baseline_false_tracks is not None else None
+    latency_gate = _latency_admission_gate(candidate_latency, latency_budget_s)
+    truth_leakage_gate = _truth_leakage_admission_gate(
+        candidate_aggregate, baseline_aggregate
     )
-    checks = {
-        "id_switch_reduction": idsw_reduction is not None and idsw_reduction >= 0.30,
-        "identity_continuity_increase": (
-            continuity_increase is not None and continuity_increase >= 0.10
-        ),
-        "false_track_limit": (
-            candidate_false_tracks is not None
-            and false_track_limit is not None
-            and candidate_false_tracks <= false_track_limit
-        ),
-        "p95_loop_latency_budget": (
-            candidate_latency is not None and candidate_latency <= latency_budget_s
-        ),
-        "truth_leakage_zero": int(
-            candidate_aggregate.get("online_truth_leakage_count", 0)
-        )
-        == 0,
+    gates = {
+        "id_switch_reduction": idsw_gate,
+        "identity_continuity_ceiling_aware": continuity_gate,
+        "false_track_limit": false_track_gate,
+        "p95_loop_latency_budget": latency_gate,
+        "truth_leakage_zero": truth_leakage_gate,
     }
+    checks = {name: bool(gate["passed"]) for name, gate in gates.items()}
     return {
         "candidate_id": candidate["config"]["config_id"]
         if candidate["associator"] == "GNNHungarianAssociator"
         else "jpda-on-" + candidate["config"]["config_id"],
         "associator": candidate["associator"],
-        "id_switch_reduction_fraction": idsw_reduction,
-        "identity_continuity_increase": continuity_increase,
+        "admission_policy_version": P1_IDENTITY_ADMISSION_POLICY_VERSION,
+        "baseline_id_switch_mean": baseline_idsw,
+        "candidate_id_switch_mean": candidate_idsw,
+        "id_switch_reduction_fraction": idsw_gate["actual_reduction_fraction"],
+        "baseline_identity_continuity": baseline_continuity,
+        "candidate_identity_continuity": candidate_continuity,
+        "identity_continuity_baseline_headroom": continuity_gate[
+            "baseline_headroom"
+        ],
+        "identity_continuity_increase": continuity_gate["actual_increase"],
+        "identity_continuity_required_increase": continuity_gate[
+            "required_increase"
+        ],
+        "identity_continuity_headroom_reduction_fraction": continuity_gate[
+            "headroom_reduction_fraction"
+        ],
+        "identity_continuity_error_reduction_fraction": continuity_gate[
+            "headroom_reduction_fraction"
+        ],
         "candidate_false_track_mean": candidate_false_tracks,
-        "false_track_mean_limit": false_track_limit,
+        "baseline_false_track_mean": baseline_false_tracks,
+        "false_track_mean_limit": false_track_gate["maximum_candidate_mean"],
         "candidate_p95_loop_latency_s": candidate_latency,
+        "gates": gates,
         "checks": checks,
+        "gate_reasons": {
+            name: str(gate["reason"]) for name, gate in gates.items()
+        },
+        "legacy_v1_identity_continuity_gate": {
+            "minimum_absolute_increase": (
+                LEGACY_MINIMUM_IDENTITY_CONTINUITY_INCREASE
+            ),
+            "passed": bool(
+                continuity_gate["actual_increase"] is not None
+                and continuity_gate["actual_increase"]
+                >= LEGACY_MINIMUM_IDENTITY_CONTINUITY_INCREASE
+            ),
+            "status": "deprecated_not_used_for_v2_admission",
+            "used_for_admission": False,
+        },
         "all_thresholds_passed": all(checks.values()),
     }
+
+
+def _id_switch_admission_gate(
+    candidate_idsw: float | None,
+    baseline_idsw: float | None,
+) -> dict[str, Any]:
+    result = {
+        "passed": False,
+        "reason": "metric_unavailable",
+        "baseline_mean": baseline_idsw,
+        "candidate_mean": candidate_idsw,
+        "actual_reduction_fraction": None,
+        "required_reduction_fraction": MINIMUM_ID_SWITCH_REDUCTION_FRACTION,
+    }
+    if not _is_finite_nonnegative(baseline_idsw) or not _is_finite_nonnegative(
+        candidate_idsw
+    ):
+        result["reason"] = _metric_pair_reason(
+            baseline_idsw, candidate_idsw, lower=0.0, upper=None
+        )
+        return result
+    if baseline_idsw <= _ADMISSION_NUMERICAL_TOLERANCE:
+        result["reason"] = "baseline_zero_no_measurable_reduction_evidence"
+        return result
+    reduction = (baseline_idsw - candidate_idsw) / baseline_idsw
+    result["actual_reduction_fraction"] = float(reduction)
+    if reduction + _ADMISSION_NUMERICAL_TOLERANCE < (
+        MINIMUM_ID_SWITCH_REDUCTION_FRACTION
+    ):
+        result["reason"] = "insufficient_id_switch_reduction"
+        return result
+    result.update(passed=True, reason="required_id_switch_reduction_met")
+    return result
+
+
+def _continuity_admission_gate(
+    candidate_continuity: float | None,
+    baseline_continuity: float | None,
+) -> dict[str, Any]:
+    result = {
+        "passed": False,
+        "reason": "metric_unavailable",
+        "policy_version": P1_IDENTITY_ADMISSION_POLICY_VERSION,
+        "theoretical_upper_bound": IDENTITY_CONTINUITY_THEORETICAL_UPPER_BOUND,
+        "baseline": baseline_continuity,
+        "candidate": candidate_continuity,
+        "baseline_headroom": None,
+        "actual_increase": None,
+        "required_increase": None,
+        "headroom_reduction_fraction": None,
+        "minimum_headroom_reduction_fraction": (
+            MINIMUM_CONTINUITY_ERROR_REDUCTION_FRACTION
+        ),
+    }
+    if not _is_finite_bounded(baseline_continuity, 0.0, 1.0) or not (
+        _is_finite_bounded(candidate_continuity, 0.0, 1.0)
+    ):
+        result["reason"] = _metric_pair_reason(
+            baseline_continuity,
+            candidate_continuity,
+            lower=0.0,
+            upper=IDENTITY_CONTINUITY_THEORETICAL_UPPER_BOUND,
+        )
+        return result
+
+    headroom = max(
+        0.0, IDENTITY_CONTINUITY_THEORETICAL_UPPER_BOUND - baseline_continuity
+    )
+    actual_increase = candidate_continuity - baseline_continuity
+    required_increase = min(
+        LEGACY_MINIMUM_IDENTITY_CONTINUITY_INCREASE,
+        headroom * MINIMUM_CONTINUITY_ERROR_REDUCTION_FRACTION,
+    )
+    reduction_fraction = (
+        actual_increase / headroom
+        if headroom > _ADMISSION_NUMERICAL_TOLERANCE
+        else None
+    )
+    result.update(
+        baseline_headroom=float(headroom),
+        actual_increase=float(actual_increase),
+        required_increase=float(required_increase),
+        headroom_reduction_fraction=(
+            None if reduction_fraction is None else float(reduction_fraction)
+        ),
+    )
+    if actual_increase < -_ADMISSION_NUMERICAL_TOLERANCE:
+        result["reason"] = "identity_continuity_degraded"
+        return result
+    if actual_increase + _ADMISSION_NUMERICAL_TOLERANCE < required_increase:
+        result["reason"] = "insufficient_continuity_error_reduction"
+        return result
+    result.update(
+        passed=True,
+        reason=(
+            "no_baseline_headroom_and_candidate_non_degrading"
+            if headroom <= _ADMISSION_NUMERICAL_TOLERANCE
+            else "required_continuity_error_reduction_met"
+        ),
+    )
+    return result
+
+
+def _false_track_admission_gate(
+    candidate_false_tracks: float | None,
+    baseline_false_tracks: float | None,
+) -> dict[str, Any]:
+    result = {
+        "passed": False,
+        "reason": "metric_unavailable",
+        "baseline_mean": baseline_false_tracks,
+        "candidate_mean": candidate_false_tracks,
+        "maximum_increase_fraction": MAXIMUM_FALSE_TRACK_INCREASE_FRACTION,
+        "maximum_candidate_mean": None,
+    }
+    if not _is_finite_nonnegative(
+        baseline_false_tracks
+    ) or not _is_finite_nonnegative(candidate_false_tracks):
+        result["reason"] = _metric_pair_reason(
+            baseline_false_tracks,
+            candidate_false_tracks,
+            lower=0.0,
+            upper=None,
+        )
+        return result
+    limit = baseline_false_tracks * (1.0 + MAXIMUM_FALSE_TRACK_INCREASE_FRACTION)
+    result["maximum_candidate_mean"] = float(limit)
+    if candidate_false_tracks > limit + _ADMISSION_NUMERICAL_TOLERANCE:
+        result["reason"] = "false_track_growth_exceeds_limit"
+        return result
+    result.update(passed=True, reason="false_track_limit_met")
+    return result
+
+
+def _latency_admission_gate(
+    candidate_latency: float | None,
+    latency_budget_s: float,
+) -> dict[str, Any]:
+    result = {
+        "passed": False,
+        "reason": "metric_unavailable",
+        "candidate_p95_loop_latency_s": candidate_latency,
+        "maximum_p95_loop_latency_s": latency_budget_s,
+    }
+    if not _is_finite_nonnegative(candidate_latency):
+        result["reason"] = _metric_reason(
+            candidate_latency, role="candidate", lower=0.0, upper=None
+        )
+        return result
+    if candidate_latency > latency_budget_s + _ADMISSION_NUMERICAL_TOLERANCE:
+        result["reason"] = "p95_loop_latency_budget_exceeded"
+        return result
+    result.update(passed=True, reason="p95_loop_latency_budget_met")
+    return result
+
+
+def _truth_leakage_admission_gate(
+    candidate_aggregate: Mapping[str, Any],
+    baseline_aggregate: Mapping[str, Any],
+) -> dict[str, Any]:
+    candidate = candidate_aggregate.get("online_truth_leakage_count")
+    baseline = baseline_aggregate.get("online_truth_leakage_count")
+    result = {
+        "passed": False,
+        "reason": "metric_unavailable",
+        "baseline_count": baseline,
+        "candidate_count": candidate,
+        "required_count": 0,
+    }
+    if not _is_nonnegative_integer_count(baseline):
+        result["reason"] = _metric_reason(
+            baseline, role="baseline", lower=0.0, upper=None
+        )
+        return result
+    if not _is_nonnegative_integer_count(candidate):
+        result["reason"] = _metric_reason(
+            candidate, role="candidate", lower=0.0, upper=None
+        )
+        return result
+    if int(baseline) != 0 or int(candidate) != 0:
+        result["reason"] = "online_truth_leakage_detected"
+        return result
+    result.update(passed=True, reason="online_truth_leakage_zero")
+    return result
+
+
+def _is_finite_nonnegative(value: Any) -> bool:
+    return _is_finite_bounded(value, 0.0, None)
+
+
+def _is_finite_bounded(
+    value: Any, lower: float | None, upper: float | None
+) -> bool:
+    if value is None or isinstance(value, (bool, np.bool_)):
+        return False
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return False
+    if not np.isfinite(numeric):
+        return False
+    if lower is not None and numeric < lower - _ADMISSION_NUMERICAL_TOLERANCE:
+        return False
+    if upper is not None and numeric > upper + _ADMISSION_NUMERICAL_TOLERANCE:
+        return False
+    return True
+
+
+def _is_nonnegative_integer_count(value: Any) -> bool:
+    if not _is_finite_nonnegative(value):
+        return False
+    numeric = float(value)
+    return bool(
+        np.isclose(
+            numeric,
+            round(numeric),
+            atol=_ADMISSION_NUMERICAL_TOLERANCE,
+            rtol=0.0,
+        )
+    )
+
+
+def _metric_pair_reason(
+    baseline: Any,
+    candidate: Any,
+    *,
+    lower: float | None,
+    upper: float | None,
+) -> str:
+    if not _is_finite_bounded(baseline, lower, upper):
+        return _metric_reason(
+            baseline, role="baseline", lower=lower, upper=upper
+        )
+    return _metric_reason(candidate, role="candidate", lower=lower, upper=upper)
+
+
+def _metric_reason(
+    value: Any,
+    *,
+    role: str,
+    lower: float | None,
+    upper: float | None,
+) -> str:
+    if value is None:
+        return f"{role}_metric_unavailable"
+    if isinstance(value, (bool, np.bool_)):
+        return f"{role}_metric_invalid_type"
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return f"{role}_metric_invalid_type"
+    if not np.isfinite(numeric):
+        return f"{role}_metric_not_finite"
+    if lower is not None and numeric < lower - _ADMISSION_NUMERICAL_TOLERANCE:
+        return f"{role}_metric_below_valid_range"
+    if upper is not None and numeric > upper + _ADMISSION_NUMERICAL_TOLERANCE:
+        return f"{role}_metric_above_valid_range"
+    return f"{role}_metric_invalid"
 
 
 def _validate_cases(

@@ -97,6 +97,7 @@ from .p1_identity_calibration import (
     IdentityMatrixConfig,
     P1IdentityCalibrationReport,
     P1_IDENTITY_INPUT_SCHEMA_VERSION,
+    P1_IDENTITY_ADMISSION_POLICY_VERSION,
     P1_IDENTITY_MATRIX_SCHEMA_VERSION,
     SCENARIO_DIFFICULTIES,
     baseline_identity_config,
@@ -139,6 +140,7 @@ from .models import (
     RejectedPair,
     TrackLifecycleState,
     TrackTransition,
+    TrackerTruthPolicy,
 )
 from .tracker import Tracker
 
@@ -185,6 +187,7 @@ __all__ = [
     "P1IdentityCalibrationReport",
     "P1_REPLAY_STRESS_SCHEMA_VERSION",
     "P1_IDENTITY_INPUT_SCHEMA_VERSION",
+    "P1_IDENTITY_ADMISSION_POLICY_VERSION",
     "P1_IDENTITY_MATRIX_SCHEMA_VERSION",
     "SCENARIO_DIFFICULTIES",
     "RiskBreakdown",
@@ -207,6 +210,7 @@ __all__ = [
     "SourceTrackSummary",
     "TrackLifecycleState",
     "TrackTransition",
+    "TrackerTruthPolicy",
     "TrackToTrackMatch",
     "Tracker",
     "build_default_dry_run_tracker",

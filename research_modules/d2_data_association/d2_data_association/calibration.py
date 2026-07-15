@@ -13,6 +13,7 @@ import numpy as np
 
 from .associators import GNNHungarianAssociator
 from .metrics import RiskThresholds
+from .models import TrackerTruthPolicy
 from .offline_truth import (
     OFFLINE_TRUTH_SCHEMA_VERSION,
     extract_offline_truth_labels,
@@ -235,7 +236,8 @@ def _run_governed_replay_calibration(
         tracker = Tracker(
             associator=GNNHungarianAssociator(
                 gate_threshold=active_gate.mahalanobis_threshold,
-            )
+            ),
+            truth_policy=TrackerTruthPolicy.ONLINE,
         )
         report = run_airsim_replay_association(
             online_frames,

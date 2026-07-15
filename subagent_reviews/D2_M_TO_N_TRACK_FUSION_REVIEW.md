@@ -298,3 +298,24 @@ MSM DTO
 - 当前环境没有 Web of Science 订阅或导出数据，因此未声称完成 WOS 收录/被引分析。
 - Google Scholar 仅可作为发现入口，本报告没有把 Scholar 搜索摘要作为证据；结论均落到 DOI、arXiv、期刊开放页或官方仓库。
 - 引用年份以正式发表年份为主；部分论文 DOI 注册或 online-first 年份可能早一年。
+
+## 11. 2026-07-15 M5N2 真实运行证据同步
+
+本轮完成 baseline/candidate 各 10 seed 的 SimpleFlight M5N2，共 20 case。它验证的是
+单中心 D2 主线在 M 对 N 任务合同下的运行时边界，不是跨节点数值融合或完全分布式
+identity consensus 的完成证据：
+
+- D2 association main-bus 3805/3805 样本可用，mean/P95/max 为
+  `2.521/3.147/98.942 ms`；
+- 在线 truth identity/state use 为 0，在线 IDSW/continuity 因没有 truth assignment
+  保持 unavailable，不能写成 0；
+- 多个 primary 仍共同引用中心维护的同一个目标 `global_track_id`，没有把多资源需求
+  复制成多条全局目标航迹，也没有允许末端节点本地重绑规范 ID；
+- 第二 primary 物理失败和 `collision_stop` 没有碰撞对象证据，不能归因于跨节点关联或
+  canonical registry；
+- 现有 GNN/Hungarian 默认路径、one canonical-to-many source registration 基础和
+  D1/D2 数值融合职责边界均不变。
+
+批次在 M5N2 20/20 后终止；终止前额外完成的 `png_ttc_2v2_seed001` 被排除，dropout
+case 为 0。后续跨节点 P1 仍需 owner/epoch failover、高歧义多帧回放和独立离线真值
+评分，不能用本批物理结果替代。

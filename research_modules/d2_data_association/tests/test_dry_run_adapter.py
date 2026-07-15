@@ -244,6 +244,7 @@ def test_d1_global_track_adapter_projects_ned_state_covariance_and_timestamps() 
     assert detection.metadata["frame_id"] == "ned"
     assert detection.metadata["source_format"] == "d1_global_track"
     assert detection.metadata["global_track_id"] == "G-A"
+    assert detection.metadata["source_global_track_id"] == "G-A"
     assert detection.metadata["measurement_timestamp"] == 10.0
     assert detection.metadata["arrival_timestamp"] == 10.4
     assert detection.metadata["covariance_projection"] == "ned_6d_to_xy"

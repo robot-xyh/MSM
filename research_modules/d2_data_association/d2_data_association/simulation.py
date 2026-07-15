@@ -14,7 +14,7 @@ from .associators import (
     JPDAAssociator,
     MHTAssociator,
 )
-from .models import Detection
+from .models import Detection, TrackerTruthPolicy
 from .tracker import Tracker
 
 ASSOCIATOR_NAMES = ("gnn", "jpda", "mht")
@@ -286,7 +286,10 @@ def run_scenario(
     seed: int = 7,
 ) -> ScenarioRunResult:
     frames = generate_scenario_frames(scenario_name, steps=steps, seed=seed)
-    tracker = Tracker(associator=make_associator(associator_name))
+    tracker = Tracker(
+        associator=make_associator(associator_name),
+        truth_policy=TrackerTruthPolicy.OFFLINE,
+    )
 
     start = perf_counter()
     for frame in frames:

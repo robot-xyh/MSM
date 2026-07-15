@@ -20,6 +20,7 @@ from .compat import (
 )
 from .dry_run_adapter import detections_from_airsim_frame
 from .metrics import RiskThresholds
+from .models import TrackerTruthPolicy
 from .offline_truth import (
     OFFLINE_TRUTH_SCHEMA_VERSION,
     OfflineTruthLabel,
@@ -244,7 +245,10 @@ def _run_research_associator_benchmark(
         report = run_airsim_replay_association(
             frames,
             replay_name=f"p2_frozen_replay_{adapter_name}",
-            tracker=Tracker(associator=associator),
+            tracker=Tracker(
+                associator=associator,
+                truth_policy=TrackerTruthPolicy.ONLINE,
+            ),
             risk_thresholds=risk_thresholds,
             offline_truth_labels=labels,
         )

@@ -17,7 +17,7 @@ from .d1_governed_adapter import (
 )
 from .dry_run_adapter import run_airsim_dry_run_association
 from .metrics import RiskThresholds, classify_risk_summary
-from .models import AssociationRiskSummary
+from .models import AssociationRiskSummary, TrackerTruthPolicy
 from .offline_truth import OfflineTruthLabel, evaluation_frames_with_offline_truth
 from .replay_governance import (
     InitializationGovernanceProfile,
@@ -210,7 +210,8 @@ def run_threshold_sensitivity(
                 associator=GNNHungarianAssociator(
                     gate_threshold=float(gate_threshold),
                     feature_weight=feature_weight,
-                )
+                ),
+                truth_policy=TrackerTruthPolicy.ONLINE,
             )
             result = run_airsim_dry_run_association(
                 frame_list,
@@ -417,10 +418,20 @@ def summarize_replay_risk(
         "soft_risk_reasons": soft_reasons,
         "hard_risk_reasons": hard_reasons,
         "latest_breakdown": breakdowns[-1].to_dict() if breakdowns else None,
-        "id_switch_count": int(metrics.get("id_switch_count", 0)),
-        "track_continuity": float(metrics.get("track_continuity", 0.0)),
+        "id_switch_count": (
+            int(metrics["id_switch_count"])
+            if truth_metrics_available and metrics.get("id_switch_count") is not None
+            else None
+        ),
+        "track_continuity": (
+            float(metrics["track_continuity"])
+            if continuity_available and metrics.get("track_continuity") is not None
+            else None
+        ),
         "truth_metrics_available": truth_metrics_available,
+        "truth_metrics_reason": metrics.get("truth_metrics_reason"),
         "continuity_available": continuity_available,
+        "continuity_reason": metrics.get("continuity_reason"),
         "duplicate_assignment_count": int(
             metrics.get("duplicate_assignment_count", 0)
         ),

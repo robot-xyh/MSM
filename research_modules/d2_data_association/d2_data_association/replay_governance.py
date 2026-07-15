@@ -250,6 +250,18 @@ def evaluate_offline_truth(
         accumulator.stable_frame_count,
         accumulator.truth_frame_count,
     )
+    truth_metrics_available = bool(truth_ids)
+    truth_metrics_reason = (
+        None if truth_metrics_available else "truth_assignment_unavailable"
+    )
+    rmse_available = truth_metrics_available and bool(accumulator.squared_errors)
+    rmse_reason = None
+    if not rmse_available:
+        rmse_reason = (
+            truth_metrics_reason
+            if truth_metrics_reason is not None
+            else "truth_position_assignment_unavailable"
+        )
     m_of_n_pass_by_truth = {
         truth_id: _passes_m_of_n(
             accumulator,
@@ -260,13 +272,27 @@ def evaluate_offline_truth(
     }
     summary = {
         "frame_count": len(frame_metrics),
-        "truth_metrics_available": bool(truth_ids),
-        "continuity_available": bool(truth_ids),
+        "truth_metrics_available": truth_metrics_available,
+        "truth_metrics_reason": truth_metrics_reason,
+        "continuity_available": truth_metrics_available,
+        "continuity_reason": truth_metrics_reason,
         "truth_target_count": len(truth_ids),
-        "id_switch_count": accumulator.id_switch_count,
-        "track_continuity": identity_continuity,
-        "identity_continuity": identity_continuity,
-        "coverage_continuity": coverage_continuity,
+        "id_switch_count": (
+            accumulator.id_switch_count if truth_metrics_available else None
+        ),
+        "id_switch_count_available": truth_metrics_available,
+        "id_switch_count_reason": truth_metrics_reason,
+        "track_continuity": (
+            identity_continuity if truth_metrics_available else None
+        ),
+        "track_continuity_available": truth_metrics_available,
+        "track_continuity_reason": truth_metrics_reason,
+        "identity_continuity": (
+            identity_continuity if truth_metrics_available else None
+        ),
+        "coverage_continuity": (
+            coverage_continuity if truth_metrics_available else None
+        ),
         "duplicate_assignment_count": accumulator.duplicate_assignment_count,
         "assignment_count": int(
             sum(sum(counts.values()) for counts in accumulator.confusion.values())
@@ -277,9 +303,11 @@ def evaluate_offline_truth(
         },
         "rmse": (
             sqrt(sum(accumulator.squared_errors) / len(accumulator.squared_errors))
-            if accumulator.squared_errors
-            else 0.0
+            if rmse_available
+            else None
         ),
+        "rmse_available": rmse_available,
+        "rmse_reason": rmse_reason,
         "initialization_latency_s_by_truth": initialization_latency,
         "confirmation_latency_s_by_truth": confirmation_latency,
         "mean_initialization_latency_s": _mean_available(initialization_latency),

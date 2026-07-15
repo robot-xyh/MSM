@@ -24,6 +24,7 @@ class GatedCost:
     distance_matrix: np.ndarray
     feature_cost_matrix: np.ndarray
     motion_cost_matrix: np.ndarray
+    source_continuity_cost_matrix: np.ndarray
     gate_threshold_matrix: np.ndarray
     rejected_pairs: list[RejectedPair]
     candidate_counts_by_track: dict[str, int]
@@ -68,6 +69,7 @@ def build_gated_cost_matrix(
     quality_aware_gate: bool = False,
     min_gate_threshold: float = 4.0,
     max_gate_threshold: float = 16.0,
+    source_continuity_weight: float = 0.0,
 ) -> GatedCost:
     for track in tracks:
         track.ensure_covariance_consistency()
@@ -80,6 +82,7 @@ def build_gated_cost_matrix(
     distance_matrix = np.full((rows, cols), np.inf, dtype=float)
     feature_cost_matrix = np.zeros((rows, cols), dtype=float)
     motion_cost_matrix = np.zeros((rows, cols), dtype=float)
+    source_continuity_cost_matrix = np.zeros((rows, cols), dtype=float)
     gate_threshold_matrix = np.full((rows, cols), float(gate_threshold), dtype=float)
     rejected: list[RejectedPair] = []
     target_density_by_track = _target_density_by_track(tracks, detections)
@@ -132,12 +135,15 @@ def build_gated_cost_matrix(
             feature_cost_matrix[row, col] = feature_cost
             motion_cost = motion_consistency_cost(track, detection)
             motion_cost_matrix[row, col] = motion_cost
+            source_continuity_cost = _source_continuity_cost(track, detection)
+            source_continuity_cost_matrix[row, col] = source_continuity_cost
             gate_threshold_matrix[row, col] = track_gate_threshold
             if distance <= track_gate_threshold:
                 cost_matrix[row, col] = (
                     distance
                     + feature_weight * feature_cost
                     + motion_weight * motion_cost
+                    + source_continuity_weight * source_continuity_cost
                 )
             else:
                 rejected.append(
@@ -162,6 +168,7 @@ def build_gated_cost_matrix(
         distance_matrix=distance_matrix,
         feature_cost_matrix=feature_cost_matrix,
         motion_cost_matrix=motion_cost_matrix,
+        source_continuity_cost_matrix=source_continuity_cost_matrix,
         gate_threshold_matrix=gate_threshold_matrix,
         rejected_pairs=rejected,
         candidate_counts_by_track=candidate_counts_by_track,
@@ -175,6 +182,27 @@ def build_gated_cost_matrix(
         covariance_consistency_by_track=covariance_consistency_by_track,
         covariance_consistency_by_detection=covariance_consistency_by_detection,
     )
+
+
+def source_track_ids_from_detection(detection: Detection) -> set[str]:
+    """Return upstream track lineage identifiers, never evaluator truth IDs."""
+
+    values: list[object] = []
+    for key in ("source_global_track_id", "source_track_id"):
+        value = detection.metadata.get(key)
+        if value is not None:
+            values.append(value)
+    multiple = detection.metadata.get("source_track_ids")
+    if isinstance(multiple, (list, tuple, set, frozenset)):
+        values.extend(multiple)
+    return {str(value) for value in values if value is not None and str(value)}
+
+
+def _source_continuity_cost(track: GlobalTrack, detection: Detection) -> float:
+    detection_source_ids = source_track_ids_from_detection(detection)
+    if not track.source_track_ids or not detection_source_ids:
+        return 0.0
+    return 0.0 if track.source_track_ids & detection_source_ids else 1.0
 
 
 def ambiguity_score_from_costs(
