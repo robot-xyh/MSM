@@ -26,6 +26,12 @@ from .cooperative import (
     covariance_intersection,
     localize_bearing_observation_group,
 )
+from .covariance_contract import (
+    OFFLINE_LEGACY_COVARIANCE_IMPUTATION_SCHEMA_VERSION,
+    OFFLINE_LEGACY_COVARIANCE_MIGRATION_MODE,
+    validate_online_sensor_observation,
+    validate_sensor_observation_covariance,
+)
 from .fusion import FusionAdapter
 from .long_replay import (
     LONG_REPLAY_CONFIG_VERSION,
@@ -41,6 +47,10 @@ from .long_replay import (
     summarize_long_replay,
 )
 from .observations import RadarCovarianceConfig
+from .online_anonymization import (
+    anonymize_online_observations,
+    assert_online_observations_identity_free,
+)
 from .p2_benchmark import (
     OFFLINE_TRUTH_SCHEMA_VERSION,
     P2_BENCHMARK_SCHEMA_VERSION,
@@ -55,6 +65,7 @@ from .replay import (
     REPLAY_SCHEMA_VERSION,
     ReplayProvenance,
     build_governed_replay_manifest,
+    migrate_offline_legacy_sensor_observation,
     read_blocks_sensor_observations_jsonl,
     read_sensor_observations_csv,
     read_sensor_observations_jsonl,
@@ -77,6 +88,8 @@ from .types import (
     CooperativeObservationGroup,
     CooperativeTrackEstimate,
     CovarianceIntersectionSummary,
+    FusionBatchResult,
+    FusionBatchSummary,
     FusionQualityRegionSummary,
     FusionQualityRegionWindowSummary,
     GlobalTrack,
@@ -106,6 +119,8 @@ __all__ = [
     "CooperativeTrackEstimate",
     "CovarianceIntersectionSummary",
     "FusionAdapter",
+    "FusionBatchResult",
+    "FusionBatchSummary",
     "FusionQualityRegionSummary",
     "FusionQualityRegionWindowSummary",
     "GlobalTrack",
@@ -121,6 +136,8 @@ __all__ = [
     "LongReplayScenario",
     "LongReplaySummary",
     "ObserverLineage",
+    "OFFLINE_LEGACY_COVARIANCE_IMPUTATION_SCHEMA_VERSION",
+    "OFFLINE_LEGACY_COVARIANCE_MIGRATION_MODE",
     "OFFLINE_TRUTH_SCHEMA_VERSION",
     "P2_BENCHMARK_SCHEMA_VERSION",
     "REPLAY_MANIFEST_SCHEMA_VERSION",
@@ -135,6 +152,8 @@ __all__ = [
     "TrackLevel",
     "TrackUncertaintySummary",
     "annotate_covariance_growth_rates",
+    "anonymize_online_observations",
+    "assert_online_observations_identity_free",
     "build_governed_replay_manifest",
     "build_long_replay_scenario",
     "covariance_intersection",
@@ -145,6 +164,7 @@ __all__ = [
     "localize_bearing_observation_group",
     "load_airsim_replay_payloads",
     "load_frozen_governed_replay",
+    "migrate_offline_legacy_sensor_observation",
     "observations_from_airsim_dry_run_fixture",
     "read_blocks_sensor_observations_jsonl",
     "read_sensor_observations_csv",
@@ -161,6 +181,8 @@ __all__ = [
     "summarize_region_quality_windows",
     "summarize_long_replay",
     "summarize_sensor_observation_latency_audit",
+    "validate_online_sensor_observation",
+    "validate_sensor_observation_covariance",
     "write_sensor_observations_csv",
     "write_sensor_observations_jsonl",
     "write_frozen_airsim_replay",

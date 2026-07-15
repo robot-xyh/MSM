@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 import numpy as np
 
+from .covariance_contract import validate_sensor_observation_covariance
 from .ekf import numerical_jacobian
 from .motion import wrap_angle
 from .types import SensorObservation
@@ -183,9 +184,10 @@ def radar_state_from_observation(
     state[:3] = sensor_position + rel
     state[3:] = radial_velocity * unit
 
-    r = observation.covariance
-    if r is None:
-        r = radar_covariance_from_range(float(rho), covariance_config)
+    r = validate_sensor_observation_covariance(
+        observation,
+        context="D1 radar state initialization",
+    )
     sigma_rho, sigma_az, sigma_el, sigma_rv = np.sqrt(np.diag(r))
     tangential = max(float(rho), 1.0) * max(float(sigma_az), float(sigma_el))
     covariance = np.diag(
@@ -257,20 +259,19 @@ def measurement_model_for(
     radar_covariance_config: RadarCovarianceConfig | dict | None = None,
 ) -> MeasurementModel:
     modality = observation.modality.lower()
+    covariance = validate_sensor_observation_covariance(
+        observation,
+        context="D1 measurement model",
+    )
     if modality == "radar":
         sensor_position = sensor_position_from_metadata(observation)
-        r = (
-            observation.covariance
-            if observation.covariance is not None
-            else radar_covariance_from_range(float(observation.measurement[0]), radar_covariance_config)
-        )
 
         def h_fn(x: np.ndarray) -> np.ndarray:
             return radar_h(x, sensor_position)
 
         return MeasurementModel(
             z=observation.measurement.reshape(-1),
-            r=r,
+            r=covariance,
             h_fn=h_fn,
             h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
             angle_indices=(1, 2),
@@ -278,11 +279,6 @@ def measurement_model_for(
 
     if modality == "acoustic":
         sensor_position = sensor_position_from_metadata(observation)
-        r = (
-            observation.covariance
-            if observation.covariance is not None
-            else acoustic_covariance(observation.confidence)
-        )
 
         def h_fn(x: np.ndarray) -> np.ndarray:
             return acoustic_h(x, sensor_position)
@@ -290,7 +286,7 @@ def measurement_model_for(
         z = np.array([wrap_angle(float(observation.measurement[0]))], dtype=float)
         return MeasurementModel(
             z=z,
-            r=r,
+            r=covariance,
             h_fn=h_fn,
             h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
             angle_indices=(0,),
@@ -298,42 +294,27 @@ def measurement_model_for(
 
     if modality == "eo":
         camera = CameraModel.from_metadata(observation.metadata)
-        bbox = observation.metadata.get("bbox")
-        if bbox is None:
-            bbox = observation.metadata.get("bbox_xyxy")
-        r = (
-            observation.covariance
-            if observation.covariance is not None
-            else eo_covariance_from_bbox(bbox, observation.confidence, observation.quality_flags)
-        )
 
         def h_fn(x: np.ndarray) -> np.ndarray:
             return eo_project(x, camera)
 
         return MeasurementModel(
             z=observation.measurement.reshape(-1)[:2],
-            r=r,
+            r=covariance,
             h_fn=h_fn,
             h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
             angle_indices=(),
         )
 
     if modality == "lidar":
-        sensor_position = sensor_position_from_metadata(observation)
         z = observation.measurement.reshape(-1)[:3]
-        distance = float(np.linalg.norm(z - sensor_position))
-        r = (
-            observation.covariance
-            if observation.covariance is not None
-            else lidar_covariance(distance, observation.confidence)
-        )
 
         def h_fn(x: np.ndarray) -> np.ndarray:
             return np.asarray(x[:3], dtype=float)
 
         return MeasurementModel(
             z=z,
-            r=r,
+            r=covariance,
             h_fn=h_fn,
             h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
             angle_indices=(),

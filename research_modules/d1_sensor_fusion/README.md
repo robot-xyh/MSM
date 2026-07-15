@@ -2,6 +2,24 @@
 
 Offline research module for radar, acoustic, EO, and optional synthetic lidar heterogeneous observation fusion. The module estimates six-state NED `GlobalTrack` objects with covariance.
 
+## 当前权威增量（2026-07-15）
+
+- main 已完成真实 AirSim M5N2 baseline 10 case 与 candidate 10 case，共 20 case；本轮
+  在线 `truth_identity` 与 `truth_state` 使用计数均为 0。
+- 20 case 共记录 3,805 个 main-bus tick。D1 fusion 阶段 mean/P95/max 为
+  `320.00/451.46/1234.88 ms`，是 main-bus 内层主导阶段；main-bus 整体为
+  `349.34/487.40/1305.99 ms`。因此 100 ms 系统预算仍是开放 P1，不能把此前 D1-only
+  batch replay 加速写成真实运行时已经达标。
+- `measurement_timestamp`、`arrival_timestamp`、观测/航迹 covariance 和 NED 工作空间合同
+  继续作为强制基线保持。本批是终端闭环与时序实验，未提供可用的 NIS、NEES 或 RMSE 标定
+  结果，不能据此声称传感器噪声模型或估计一致性已经闭合。
+- M5N2 达到 20/20 后批次终止；TERM 生效前额外完成的 1 个 `png_ttc_2v2_seed001` 被明确
+  排除，dropout 完成数为 0。
+
+权威证据为 `subagent_reviews/MAIN_M5N2_TIMING_AND_SECOND_PRIMARY_REPORT_20260715.md` 和
+`research_modules/airsim_runtime/outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2/`
+下的两个汇总 JSON。后文保留历史实现与验证记录。
+
 ## Scope
 
 This directory is limited to simulation and offline evaluation. It does not include real fire-control parameters, damage logic, hardware drivers, real vehicle control, automatic action, or bypass of human authorization.
@@ -435,3 +453,120 @@ inferred from truth positions. A conflicting CLI/API declaration or inconsistent
 payloads fails closed. Manifest and summary expose per-field availability; online records remain
 truth-free, while the evaluator sidecar is bound by the capture-provenance digest. Regression coverage
 includes 4 m and 2 m profiles across 20 seeds each. Current D1 regression: `79 passed`.
+
+## Online scene-observation anonymization (2026-07-14)
+
+AirSim or another simulator may use scene truth to generate a noisy `SensorObservation`; that does
+not authorize the online fusion path to receive the actor/object identity used to generate it. Main
+or runtime must apply the public boundary before sending scene-derived observations to online D1/D2
+algorithms:
+
+```python
+from d1_sensor_fusion import (
+    anonymize_online_observations,
+    assert_online_observations_identity_free,
+)
+
+online = anonymize_online_observations(
+    scene_observations,
+    identity_tokens=scene_actor_names,
+    stream_id="online",
+)
+assert_online_observations_identity_free(
+    online,
+    identity_tokens=scene_actor_names,
+)
+```
+
+`anonymize_online_observations()` returns new objects. It recursively removes truth/actor/object/
+segmentation identity keys, removes inferred or caller-supplied identity tokens from nested values
+and `classification_hint`, and replaces `observation_id` plus source lineage with frame-local opaque
+IDs. It preserves measurement, covariance, both timestamps, sensor fields, communication timing,
+and sensor/camera geometry. `assert_online_observations_identity_free()` fails closed on any remaining
+identity key or supplied/inferred identity token.
+
+The existing dry-run and offline evaluator paths are unchanged. In particular, evaluator-only truth
+sidecars remain available from the original scene observations; callers must not build an offline
+sidecar from the anonymous online copies. Validation on 2026-07-14 used two two-observation EO batches
+whose geometry and all non-identity fields were identical while target, actor, and truth names were
+changed. Acceptance required exact equality of every anonymized `SensorObservation` field, unchanged
+numeric/camera geometry, zero identity leakage, validator rejection of injected leaks, and unchanged
+offline sidecar labels. All conditions passed; full D1 regression is `83 passed`.
+
+This closes the D1-owned P0 API gap. System closure still requires main/runtime to call this boundary
+at every scene-state online ingress. Values whose identity is not represented by an identity metadata
+key must be supplied through `identity_tokens`; omission is a caller contract violation and the main
+integration must maintain the complete scene identity-token set.
+
+## Association governance and fixed-lag checkpoint correction (2026-07-14)
+
+An audit of the persisted AirSim M5N2 seed-001 episode found that D1 could update one track more than
+once from one physical observer scan, create a duplicate radar birth after a strict-gate miss, and
+discard intermediate filter posteriors while pruning the fixed-lag window. The last behavior made a
+later replay restart from the original anchor and could move an existing state discontinuously.
+
+`FusionAdapter` now limits each `(modality, observer, scan)` to one update per track, permits only a
+unique recent mature-track radar reacquisition under a separate chi-square gate, suppresses ambiguous
+radar births, and audits inconsistent bearing-only Cartesian corrections. Fixed-lag pruning now places
+the posterior checkpoint immediately after the latest accepted observation not newer than the lag
+boundary. This preserves the original process-noise intervals; observations older than the checkpoint
+remain available in a history archive for legal measurement-time OOSM replay. Modality is part of the
+scan key, so a delayed acoustic observation is not rejected merely because radar used the same scan
+number.
+
+Validation on 2026-07-14: focused association/OOSM tests passed `5/5`, the complete D1 suite passed
+`87/87`, and main reported the complete AirSim runtime suite passed `134/134`. These are code and
+interface regressions. The corrected D1 implementation has not yet rerun the same real AirSim seed;
+elimination of the historical third birth and 31.8 s state jump remains a P1 episode acceptance item.
+
+## Covariance contract hardening (2026-07-14)
+
+Every observation entering `FusionAdapter`, online anonymization validation, versioned replay writing/
+reading, or AirSim persisted-input freezing must now carry a modality-sized covariance: radar `4x4`,
+acoustic `1x1`, EO `2x2`, and lidar `3x3`. The matrix must be finite, symmetric, and positive
+semidefinite. Invalid or missing input raises `ValueError` before a filter update; D1 no longer repairs
+it with a default model, reshapes flat arrays, symmetrizes it, or resets it silently. Existing quality
+scaling and covariance floor/ceiling handling still apply after a legal input passes this gate.
+
+Unversioned historical records that omitted covariance are accepted only through
+`migrate_offline_legacy_sensor_observation()`. That explicit evaluator-only API records the migration
+mode, original missing reason, model/default identifier, parameter source, generation inputs, and
+resulting dimensions under `covariance_imputation_provenance`. Migrated observations are rejected by
+online fusion, online governed serialization, and AirSim freeze. Ordinary legacy readers fail closed.
+
+Validation on 2026-07-14 covered missing, non-finite, non-symmetric, non-PSD, and wrong-sized radar
+covariance; explicit radar legacy migration; governed replay; legal OOSM/fixed-lag observations; and
+the existing seven-record AirSim freeze fixture. The full D1 suite passed `92/92`. No real AirSim
+episode was run. Sensor-model defaults used for offline migration remain research defaults, not
+real-sensor calibration evidence.
+
+## 同帧批量 fixed-lag 处理（2026-07-14）
+
+`FusionAdapter.process_batch(observations)` 是正式的同帧/同到达批次入口。它保留调用方给定
+的到达顺序，并对每条观测分别执行 covariance 合同、`measurement_timestamp`/
+`arrival_timestamp` 审计、NED/pixel 帧校验、source lineage 去重、observer scan 约束和关联；
+优化仅缓存同一航迹历史版本在同一测量时刻的状态，并把每条更新后的全历史发布重放合并为
+每个受影响航迹一次。它不会丢弃观测、伪造同步时间、缩短 fixed-lag 证据或改写来源信息。
+
+main 的推荐调用为：
+
+```python
+batch_result = fusion_adapter.process_batch(frame_observations)
+global_tracks = list(batch_result.tracks)
+batch_audit = batch_result.summary.to_dict()
+```
+
+`tracks` 是处理完整个输入序列后、统一发布于本批最终融合时刻的确定性快照，不是每条观测的
+中间快照。`summary` 显式给出输入/接受/未接受/重复观测数、创建/更新数量、受影响航迹、历史
+重放数、origin 重放数、状态缓存命中/未命中、终结重放数和被合并的更新重放数。空批次返回
+当前航迹快照；`ingest_many()` 保持先按 arrival 排序的兼容语义并改用该批处理实现。
+
+2026-07-14 验证包含 6 个无随机 seed 的构造测试：逐条/批量数值等价、乱序 OOSM、relay
+重复 source、radar/lidar/acoustic 跨模态、fixed-lag 检查点边界和确定性重放性能。5 航迹、
+15 条同帧观测中，历史重放由 95 次降至 24 次，减少 74.7%，状态与 covariance 在
+`1e-9` 绝对容差内等价。对已有 M5N2 seed-001 baseline 的前 40 帧、786 条持久化观测做
+D1-only 重放，逐条为 18.05 s/1267 次重放，批处理为 5.70 s/351 次重放，约 3.17 倍加速，
+状态与 covariance 最大绝对差均为 0。D1 全量 `98 passed`。
+
+这些证据关闭 D1-owned 的批量 API 与最少重放实现缺口，但 main/runtime 尚未改用该接口，
+完整 245/248 帧控制循环、多 seed 增益和 100 ms 预算仍是系统 P1 验收项。

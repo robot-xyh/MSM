@@ -420,7 +420,7 @@ def test_latency_audit_summary_counts_delay_oosm_and_replay() -> None:
     assert tracks[0].metadata["latency_audit"]["max_delay_s"] == pytest.approx(1.8)
 
 
-def test_sensor_health_summary_flags_duplicate_latency_quality_and_covariance_faults() -> None:
+def test_sensor_health_summary_flags_duplicate_and_rejects_invalid_covariance() -> None:
     adapter = FusionAdapter(latency_compensation=True, association_gate=25.0)
     sensor_position = np.zeros(3)
     state = np.array([100.0, 15.0, -8.0, 3.0, 0.5, 0.0])
@@ -470,11 +470,11 @@ def test_sensor_health_summary_flags_duplicate_latency_quality_and_covariance_fa
         metadata={"sensor_position_ned": sensor_position},
         stale_after_s=0.1,
     )
-    adapter.process(delayed_low_quality)
+    with pytest.raises(ValueError, match="positive semidefinite"):
+        adapter.process(delayed_low_quality)
 
     summaries = {summary.sensor_id: summary for summary in adapter.sensor_health_summaries()}
     radar = summaries["radar-health"]
-    acoustic = summaries["acoustic-health"]
 
     assert isinstance(radar, SensorHealthSummary)
     assert radar.status == "degraded"
@@ -484,17 +484,60 @@ def test_sensor_health_summary_flags_duplicate_latency_quality_and_covariance_fa
     assert radar.recovery_state == "monitoring_fault"
     assert radar.to_dict()["sensor_id"] == "radar-health"
 
-    acoustic_payload = acoustic.to_dict()
-    assert acoustic_payload["status"] == "degraded"
-    assert acoustic_payload["sensor_id"] == "acoustic-health"
-    assert acoustic_payload["reject_count"] == 0
-    assert acoustic_payload["oosm_count"] == 1
-    assert acoustic_payload["stale_count"] == 1
-    assert acoustic_payload["low_quality_count"] == 1
-    assert acoustic_payload["anomalous_covariance_count"] == 1
-    assert "fault_reason" in acoustic_payload
-    assert "isolation_hint" in acoustic_payload
-    assert "recovery_state" in acoustic_payload
+    assert "acoustic-health" not in summaries
+
+
+def test_online_fusion_rejects_missing_covariance() -> None:
+    observation = SensorObservation(
+        observation_id="missing-covariance",
+        sensor_id="radar-contract",
+        modality="radar",
+        measurement_timestamp=1.0,
+        arrival_timestamp=1.2,
+        frame_id="ned",
+        measurement=np.array([100.0, 0.0, 0.0, 2.0]),
+    )
+
+    with pytest.raises(ValueError, match="requires covariance"):
+        FusionAdapter().process(observation)
+
+
+@pytest.mark.parametrize(
+    ("covariance", "message"),
+    [
+        (np.diag([1.0, 1.0, 1.0, np.inf]), "finite"),
+        (
+            np.array(
+                [
+                    [1.0, 0.5, 0.0, 0.0],
+                    [0.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 0.0],
+                    [0.0, 0.0, 0.0, 1.0],
+                ]
+            ),
+            "symmetric",
+        ),
+        (np.diag([1.0, 1.0, 1.0, -1.0]), "positive semidefinite"),
+        (np.eye(3), "covariance shape"),
+    ],
+)
+def test_online_fusion_rejects_invalid_covariance(
+    covariance: np.ndarray,
+    message: str,
+) -> None:
+    observation = SensorObservation(
+        observation_id=f"invalid-covariance-{message}",
+        sensor_id="radar-contract",
+        modality="radar",
+        measurement_timestamp=1.0,
+        arrival_timestamp=1.2,
+        frame_id="ned",
+        measurement=np.array([100.0, 0.0, 0.0, 2.0]),
+        covariance=covariance,
+    )
+
+    with pytest.raises(ValueError, match=message):
+        FusionAdapter().process(observation)
 
 
 def test_covariance_limits_and_timestamp_uncertainty_reach_track_summary() -> None:

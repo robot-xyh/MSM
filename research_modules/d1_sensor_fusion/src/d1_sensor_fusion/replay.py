@@ -9,7 +9,22 @@ from typing import Any, Iterable, Mapping
 
 import numpy as np
 
+from .covariance_contract import (
+    COVARIANCE_IMPUTATION_METADATA_KEY,
+    OBSERVATION_MEASUREMENT_DIMENSIONS,
+    OFFLINE_LEGACY_COVARIANCE_IMPUTATION_SCHEMA_VERSION,
+    OFFLINE_LEGACY_COVARIANCE_MIGRATION_MODE,
+    validate_online_sensor_observation,
+    validate_sensor_observation_covariance,
+)
 from .fusion import FusionAdapter
+from .observations import (
+    RadarCovarianceConfig,
+    acoustic_covariance,
+    eo_covariance_from_bbox,
+    lidar_covariance,
+    radar_covariance_from_range,
+)
 from .types import COMMUNICATION_METADATA_KEYS, GlobalTrack, LatencyAuditSummary, SensorObservation
 
 REPLAY_SCHEMA_VERSION = "d1.sensor_observation.v1"
@@ -213,7 +228,7 @@ def sensor_observation_from_jsonl_record(record: dict[str, Any]) -> SensorObserv
         key: record.get(key, communication.get(key, metadata.get(key)))
         for key in COMMUNICATION_METADATA_KEYS
     }
-    return SensorObservation(
+    observation = SensorObservation(
         observation_id=str(record["observation_id"]),
         sensor_id=str(record["sensor_id"]),
         modality=str(record["modality"]),
@@ -228,6 +243,11 @@ def sensor_observation_from_jsonl_record(record: dict[str, Any]) -> SensorObserv
         metadata=metadata,
         **kwargs,
     )
+    validate_sensor_observation_covariance(
+        observation,
+        context="D1 replay record",
+    )
+    return observation
 
 
 def sensor_observation_from_csv_row(row: dict[str, Any]) -> SensorObservation:
@@ -282,6 +302,64 @@ def sensor_observation_from_csv_row(row: dict[str, Any]) -> SensorObservation:
     return sensor_observation_from_jsonl_record(record)
 
 
+def migrate_offline_legacy_sensor_observation(
+    record: Mapping[str, Any],
+    *,
+    covariance_missing_reason: str,
+    radar_covariance_config: RadarCovarianceConfig | Mapping[str, Any] | None = None,
+) -> SensorObservation:
+    """Explicitly impute one unversioned legacy record for offline evaluation."""
+
+    source = dict(record)
+    if _schema_version_from_record(source) is not None:
+        raise ValueError(
+            "D1 offline legacy covariance migration only accepts unversioned legacy records"
+        )
+    if _non_empty(source.get("covariance")) is not None:
+        raise ValueError("D1 offline legacy covariance migration requires missing covariance")
+    missing_reason = str(covariance_missing_reason).strip()
+    if not missing_reason:
+        raise ValueError("covariance_missing_reason must be non-empty")
+
+    _validate_replay_required_fields(
+        source,
+        LEGACY_BLOCKS_REPLAY_SCHEMA_VERSION,
+        allow_missing_covariance=True,
+    )
+    modality = str(source["modality"]).lower()
+    expected_dimension = OBSERVATION_MEASUREMENT_DIMENSIONS.get(modality)
+    if expected_dimension is None:
+        raise ValueError(f"unsupported observation modality: {modality}")
+
+    staging_record = dict(source)
+    staging_record["covariance"] = np.eye(expected_dimension, dtype=float).tolist()
+    staging = sensor_observation_from_jsonl_record(staging_record)
+    covariance, model_provenance = _offline_legacy_default_covariance(
+        staging,
+        radar_covariance_config=radar_covariance_config,
+    )
+    imputation_provenance = {
+        "schema_version": OFFLINE_LEGACY_COVARIANCE_IMPUTATION_SCHEMA_VERSION,
+        "migration_mode": OFFLINE_LEGACY_COVARIANCE_MIGRATION_MODE,
+        "offline_only": True,
+        "original_covariance_status": "missing",
+        "original_missing_reason": missing_reason,
+        "generated_by": model_provenance,
+        "measurement_dimension": expected_dimension,
+        "covariance_shape": [expected_dimension, expected_dimension],
+    }
+    json.dumps(imputation_provenance, sort_keys=True, allow_nan=False)
+
+    metadata = dict(source.get("metadata") or {})
+    if COVARIANCE_IMPUTATION_METADATA_KEY in metadata:
+        raise ValueError("legacy record already contains covariance imputation provenance")
+    metadata[COVARIANCE_IMPUTATION_METADATA_KEY] = imputation_provenance
+    migrated_record = dict(source)
+    migrated_record["metadata"] = metadata
+    migrated_record["covariance"] = covariance.tolist()
+    return sensor_observation_from_jsonl_record(migrated_record)
+
+
 def sensor_observation_to_replay_record(
     observation: SensorObservation,
     provenance: ReplayProvenance | Mapping[str, Any],
@@ -290,8 +368,16 @@ def sensor_observation_to_replay_record(
 ) -> dict[str, Any]:
     """Serialize one canonical observation without exposing online truth hints."""
 
-    if observation.covariance is None:
-        raise ValueError("D1 replay writer requires covariance on every observation")
+    if include_offline_truth:
+        validate_sensor_observation_covariance(
+            observation,
+            context="D1 offline replay writer",
+        )
+    else:
+        validate_online_sensor_observation(
+            observation,
+            context="D1 online replay writer",
+        )
     provenance_payload = _provenance_payload(provenance)
     metadata = _sanitize_online_metadata(observation.metadata)
     coverage_cell = _optional_str(metadata.get("coverage_cell"))
@@ -665,13 +751,26 @@ def _schema_version_from_record(record: dict[str, Any]) -> Any:
     return None
 
 
-def _validate_replay_required_fields(record: dict[str, Any], schema_version: str) -> None:
+def _validate_replay_required_fields(
+    record: dict[str, Any],
+    schema_version: str,
+    *,
+    allow_missing_covariance: bool = False,
+) -> None:
     required = list(_REQUIRED_REPLAY_FIELDS)
-    if schema_version != LEGACY_BLOCKS_REPLAY_SCHEMA_VERSION:
+    if not (allow_missing_covariance and schema_version == LEGACY_BLOCKS_REPLAY_SCHEMA_VERSION):
         required.append("covariance")
     missing = [field for field in required if _non_empty(record.get(field)) is None]
     if missing:
-        raise ValueError(f"D1 replay record missing required field(s): {', '.join(missing)}")
+        suffix = ""
+        if "covariance" in missing and schema_version == LEGACY_BLOCKS_REPLAY_SCHEMA_VERSION:
+            suffix = (
+                "; use migrate_offline_legacy_sensor_observation() only for explicit "
+                "offline legacy migration"
+            )
+        raise ValueError(
+            f"D1 replay record missing required field(s): {', '.join(missing)}{suffix}"
+        )
 
 
 def _metadata_from_replay_record(record: dict[str, Any], schema_version: str) -> dict[str, Any]:
@@ -692,6 +791,99 @@ def _metadata_from_replay_record(record: dict[str, Any], schema_version: str) ->
     if isinstance(provenance, dict):
         metadata["d1_replay_provenance"] = dict(provenance)
     return metadata
+
+
+def _offline_legacy_default_covariance(
+    observation: SensorObservation,
+    *,
+    radar_covariance_config: RadarCovarianceConfig | Mapping[str, Any] | None,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    modality = observation.modality
+    common = {
+        "source_type": "sensor_model_default",
+        "implementation_module": "d1_sensor_fusion.observations",
+    }
+    if modality == "radar":
+        if radar_covariance_config is None:
+            config = RadarCovarianceConfig()
+            parameter_source = "RadarCovarianceConfig.defaults"
+        elif isinstance(radar_covariance_config, RadarCovarianceConfig):
+            config = radar_covariance_config
+            parameter_source = "explicit_migration_argument"
+        else:
+            config = RadarCovarianceConfig(**dict(radar_covariance_config))
+            parameter_source = "explicit_migration_argument"
+        distance_m = float(observation.measurement.reshape(-1)[0])
+        return radar_covariance_from_range(distance_m, config), {
+            **common,
+            "sensor_model_id": "d1.radar_covariance_from_range.v1",
+            "default_profile_id": "d1.RadarCovarianceConfig.v1",
+            "parameter_source": parameter_source,
+            "parameters": asdict(config),
+            "generation_inputs": {"distance_m": distance_m},
+        }
+    if modality == "acoustic":
+        return acoustic_covariance(observation.confidence), {
+            **common,
+            "sensor_model_id": "d1.acoustic_covariance.v1",
+            "default_profile_id": "d1.acoustic_confidence_default.v1",
+            "parameter_source": "implementation_defaults",
+            "parameters": {
+                "sigma_base_deg": 2.5,
+                "sigma_confidence_span_deg": 8.0,
+            },
+            "generation_inputs": {"confidence": observation.confidence},
+        }
+    if modality == "eo":
+        bbox = observation.metadata.get("bbox")
+        if bbox is None:
+            bbox = observation.metadata.get("bbox_xyxy")
+        return eo_covariance_from_bbox(
+            bbox,
+            observation.confidence,
+            observation.quality_flags,
+        ), {
+            **common,
+            "sensor_model_id": "d1.eo_covariance_from_bbox.v1",
+            "default_profile_id": "d1.eo_bbox_confidence_default.v1",
+            "parameter_source": "implementation_defaults",
+            "parameters": {
+                "missing_bbox_sigma_px": 12.0,
+                "minimum_bbox_sigma_px": 2.0,
+                "bbox_extent_scale": 0.08,
+                "occlusion_scale": 2.0,
+                "small_bbox_scale": 1.5,
+            },
+            "generation_inputs": {
+                "bbox": _json_safe(bbox),
+                "confidence": observation.confidence,
+                "quality_flags": list(observation.quality_flags),
+            },
+        }
+    if modality == "lidar":
+        position = observation.measurement.reshape(-1)[:3]
+        sensor_position = np.asarray(
+            observation.metadata.get("sensor_position_ned", [0.0, 0.0, 0.0]),
+            dtype=float,
+        ).reshape(3)
+        distance_m = float(np.linalg.norm(position - sensor_position))
+        return lidar_covariance(distance_m, observation.confidence), {
+            **common,
+            "sensor_model_id": "d1.lidar_covariance.v1",
+            "default_profile_id": "d1.synthetic_lidar_default.v1",
+            "parameter_source": "implementation_defaults",
+            "parameters": {
+                "sigma_xy_base_m": 0.35,
+                "sigma_xy_per_m": 0.0025,
+                "sigma_z_base_m": 0.50,
+                "sigma_z_per_m": 0.0035,
+            },
+            "generation_inputs": {
+                "distance_m": distance_m,
+                "confidence": observation.confidence,
+            },
+        }
+    raise ValueError(f"unsupported observation modality: {modality}")
 
 
 def _provenance_payload(
@@ -730,6 +922,12 @@ def _serialize_governed_replay_bundle(
     include_offline_truth: bool,
 ) -> dict[str, Any]:
     items = list(observations)
+    if not include_offline_truth:
+        for observation in items:
+            validate_online_sensor_observation(
+                observation,
+                context="D1 governed online replay",
+            )
     manifest = build_governed_replay_manifest(items, provenance)
     records = [
         sensor_observation_to_replay_record(
@@ -778,21 +976,10 @@ def _validate_governed_observation(observation: SensorObservation) -> dict[str, 
             "D1 governed replay arrival_timestamp must not precede measurement_timestamp"
         )
 
-    covariance = observation.covariance
-    if covariance is None:
-        raise ValueError("D1 governed replay requires covariance on every observation")
-    covariance_array = np.asarray(covariance, dtype=float)
-    measurement_size = int(np.asarray(observation.measurement).size)
-    if covariance_array.shape != (measurement_size, measurement_size):
-        raise ValueError(
-            "D1 governed replay covariance shape must match flattened measurement size"
-        )
-    if not np.isfinite(covariance_array).all():
-        raise ValueError("D1 governed replay covariance must be finite")
-    if not np.allclose(covariance_array, covariance_array.T, atol=1e-9):
-        raise ValueError("D1 governed replay covariance must be symmetric")
-    if float(np.linalg.eigvalsh(covariance_array).min()) < -1e-9:
-        raise ValueError("D1 governed replay covariance must be positive semidefinite")
+    validate_sensor_observation_covariance(
+        observation,
+        context="D1 governed replay",
+    )
 
     coverage_cell = _optional_str(observation.metadata.get("coverage_cell"))
     if coverage_cell is None:
@@ -988,16 +1175,7 @@ def _optional_array(value: Any) -> np.ndarray | None:
 
 
 def _covariance_array(value: Any) -> np.ndarray | None:
-    covariance = _optional_array(value)
-    if covariance is None:
-        return None
-    if covariance.ndim == 0:
-        return covariance.reshape(1, 1)
-    if covariance.ndim == 1:
-        size = int(np.sqrt(covariance.size))
-        if size * size == covariance.size:
-            return covariance.reshape(size, size)
-    return covariance
+    return _optional_array(value)
 
 
 def _array_cell(value: Any, field_name: str) -> Any:

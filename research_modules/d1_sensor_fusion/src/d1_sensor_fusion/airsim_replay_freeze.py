@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from .covariance_contract import validate_online_sensor_observation
 from .replay import (
     REPLAY_SCHEMA_VERSION,
     ReplayProvenance,
@@ -653,8 +654,10 @@ def _canonical_observation(
         record.get("classification_hint"), identity_tokens
     )
     observation = sensor_observation_from_jsonl_record(record)
-    if observation.covariance is None:
-        raise ValueError("D1 AirSim freeze requires covariance; missing data is not fabricated")
+    validate_online_sensor_observation(
+        observation,
+        context="D1 AirSim freeze",
+    )
     if not observation.metadata.get("coverage_cell"):
         raise ValueError("D1 AirSim freeze requires coverage_cell")
     return observation

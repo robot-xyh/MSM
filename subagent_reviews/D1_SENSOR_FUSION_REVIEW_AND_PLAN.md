@@ -5,9 +5,26 @@
 
 ---
 
-## 0. 当前权威状态（2026-07-13）
+## 0. 当前权威状态（2026-07-15）
 
 本节覆盖后文按日期保留的历史阶段结论；历史内容用于说明实现演进，不代表当前 GAP 状态。
+
+- main 已完成真实 AirSim M5N2 baseline 10 case 与 candidate 10 case，共 20 case。在线
+  identity/state truth use 均为 0，既有 truth 隔离 P0 保持通过。
+- 20 case 共记录 3,805 个 main-bus tick。D1 fusion mean/P95/max 为
+  `320.00/451.46/1234.88 ms`，是 main-bus 内层主导阶段；main-bus 整体 mean/P95/max 为
+  `349.34/487.40/1305.99 ms`。100 ms 预算仍是开放 P1。
+- 双时间戳、观测/航迹 covariance、NED 与 source lineage 继续作为硬合同。此前 D1-only
+  batch replay 等价性成立，但不能据此声称真实 AirSim 循环已达标。
+- 本批面向终端闭环和时序，不提供可用 NIS、NEES 或 RMSE，不能关闭真实 sensor-specific
+  covariance、滤波一致性和定位精度标定。
+- M5N2 20/20 后已停止；TERM 前额外完成 1 个 `png_ttc_2v2_seed001`，明确排除；dropout
+  完成数为 0。
+- 当前计划优先级为：先在冻结输入下定位 D1 fusion 的 fixed-lag/batch/history 成本并由 main
+  复跑多 seed 预算，再单独建设带 availability 的 NIS/NEES/RMSE 标定；不得通过放宽时间或
+  covariance 合同换性能。
+
+### 0.1 历史 Dense Crossing 权威状态（2026-07-13）
 
 - main 已完成 strict dense crossing 的真实 AirSim 采集：nominal 4 m 与 tight 2 m 各
   20 seeds，共 40 个 episode，每个 episode 51 帧、5 个目标。
@@ -601,3 +618,87 @@ D6 已将 D1 source 标为 `available`。因此当前下一步不再是“补齐
 
 上述事项仍是 P1。Stone Soup、FilterPy、ROS 2、OpenCV/GTSAM 等第三方路径继续保持
 P2/P3 可选状态，不能因本次 AirSim 证据写成已经接入。
+
+## 20. 在线 Scene Observation 身份边界评审（2026-07-14）
+
+本轮定位到的 P0 不是“仿真 scene truth 完全不能参与传感器仿真”，而是 scene state 生成
+`SensorObservation` 后，原 `observation_id`、source lineage、classification 和嵌套 metadata
+仍可能携带目标/actor/object/segmentation 身份。D1 现从包顶层提供：
+
+- `anonymize_online_observations(observations, *, identity_tokens=(), stream_id="online")`；
+- `assert_online_observations_identity_free(observations, *, identity_tokens=())`。
+
+前者返回深拷贝匿名观测，按 frame/帧内顺序生成不透明 observation ID，并把原 source lineage
+映射为匿名 lineage；同一原 lineage 的 relay duplicate 仍保持同一映射。递归身份键、嵌套
+token 和 classification target token 被清理。measurement、covariance、measurement/arrival
+双时间戳、sensor/camera geometry 和通信时间不变。后者遍历在线对象并在任何残留身份键或
+已知 token 时 fail closed；匿名化函数返回前必经该 validator。
+
+2026-07-14 专项回归用两组各 2 条 EO 观测，仅替换 target/actor/truth 名字，要求匿名结果所有
+字段严格相等、数值/相机几何逐元素一致、在线泄漏为 0、注入泄漏全部拒绝，并确认原 observation
+和 evaluator-only sidecar 不变。结果专项 `4 passed`，D1 全量 `83 passed`。因此 D1-owned P0
+API 缺口关闭；main/runtime 仍须在每个 scene-state 在线入口接线，并通过 `identity_tokens`
+补充无法从身份键推断的别名。本轮没有修改 dry-run/offline evaluator、AirSim episode 编排、
+D2 身份关联或 D6 评分。
+
+剩余 P1 仍是：真实 sensor-specific challenge 长 replay 和 latency/health 分布、区域/
+covariance/NIS/NEES 持续阈值、D1/D2-confirmed 协同融合与 3->2->1 节点退出、D6 跨场景长期
+一致性，以及 CV/CA/CT/IMM 和场景自适应 covariance 对照。第三方库继续保持 P2/P3 可选。
+
+## 21. 真实 Episode 重复 Birth/Teleport 专项评审（2026-07-14）
+
+对 `p1_terminal_closure_truthisolated_preflight_v2_20260714_m5n2_baseline_seed001` 的持久化
+观测和 main bus 进行只读审计后，D1 侧确认三个相互叠加的问题：同一物理 observer scan 可
+重复更新同一航迹；严格雷达门限失败可直接生成重复 birth；fixed-lag 裁剪丢弃了中间滤波后验，
+后续回放可能从过旧锚点长时间外推。source lineage 能识别重复 payload，但不能替代匿名目标
+关联，因此修复不能依赖 actor/truth ID。
+
+当前实现增加扫描唯一性、唯一近期成熟雷达重捕、模糊 birth 抑制、非测距状态修正审计和
+`d1.association_audit.v1`。fixed-lag 检查点放在滞后边界之前最近的已接受量测后验，避免任意
+拆分当前过程噪声区间；更早的合法 OOSM 通过 origin/archive 回放。回归明确覆盖同 scan 编号
+的跨模态 acoustic 融合，防止 observer-scan 规则误伤。
+
+2026-07-14 验证：专项 `5/5`、D1 全量 `87/87`；main 报告 AirSim runtime `134/134`。
+修复后同 M5N2 seed 尚未复跑，所以评审结论是“D1 根因与代码回归已闭合，真实 episode P1
+证据仍开放”。下一步仅由 main 复跑并检查航迹数、状态步长和审计原因；D1 后续再基于多 seed
+统计校准门限和回放资源预算。
+
+## 22. Covariance 输入合同复核（2026-07-14）
+
+复核确认历史风险来自两条旁路：普通 legacy reader 可产生 `covariance=None`，而
+`FusionAdapter` 会用 modality default 替换缺失/非法矩阵。现已统一为正式路径 fail closed：
+radar/acoustic/EO/lidar 分别要求 `4x4/1x1/2x2/3x3`，并校验有限、对称和半正定；测量模型、
+在线融合、governed replay 和 AirSim freeze 不再修复坏输入。
+
+历史兼容被隔离到显式 `migrate_offline_legacy_sensor_observation()`。provenance 固定记录
+`explicit_offline_legacy_migration`、原始缺失原因、model/default ID、参数来源和生成输入；
+带该标记的 observation 只能供 evaluator 使用，进入在线融合、在线 serializer 或 freezer 会
+被拒绝。2026-07-14 无随机 seed 的构造合同用例与既有 replay/OOSM/AirSim freeze 回归全部
+通过，D1 全量 `92/92`。
+
+评审结论是 D1-owned covariance 合同硬化缺口已关闭。仍开放的是用真实多 seed 传感器数据
+标定 covariance、NIS/NEES consistency、故障/遮挡 scale 和长期阈值；offline migration default
+不得作为上述证据。
+
+## 23. 同帧批量 OOSM/Fused Replay 评审（2026-07-14）
+
+main 对最新 M5N2 seed-001 前 40 帧的只读 profile 显示，同一 tick 多模态观测逐条处理会反复
+计算同一航迹、同一 measurement time 的历史状态，并在每次接受后重放到 current time。D1
+新增正式 `process_batch()`，仍按输入顺序逐条执行 covariance、双时间戳、NED/pixel、source
+lineage、scan uniqueness、关联和 OOSM 规则，仅复用相同 history revision 的 state-at-time，
+并把发布重放合并到每个 changed track 一次。
+
+批量结果明确区分 `tracks` 批末快照和 `summary` 审计。后者提供 observation/accept/duplicate、
+created/updated、affected tracks、history/origin replay、cache hit/miss、finalization replay 和
+deferred replay avoidance。`ingest_many()` 保持 arrival 排序兼容并使用该实现；需要每条中间
+快照的调用方仍使用 streaming `process()`。
+
+验证日期 2026-07-14。构造场景为 5 航迹/15 条 radar-lidar-acoustic 同帧 observation，
+replay 95 -> 24、下降 74.7%，state/covariance 在 `1e-9` 容差内等价。已有 M5N2 baseline
+seed-001 前 40 帧共 786 条持久化 observation，逐条 18.05 s/1267 replay，batch
+5.70 s/351 replay，3.17 倍加速，state/covariance 最大差 0。专项 `6/6`，D1 全量
+`98/98`。
+
+评审结论：D1-owned 批量接口和最少 replay P1 已闭合；main/runtime call site、完整 245/248
+帧及多 seed 100 ms loop 验收仍开放。不得将 D1-only persisted replay 的 3.17 倍加速写成系统
+实时预算已经达成。Stone Soup、FilterPy、ROS 2 等 P2/P3 状态不变。

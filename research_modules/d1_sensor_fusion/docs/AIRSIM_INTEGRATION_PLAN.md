@@ -1,6 +1,24 @@
 # D1 AirSim 集成计划
 
-## 0. 当前权威状态（2026-07-13）
+## 0. 当前权威状态（2026-07-15）
+
+- main 已完成真实 AirSim M5N2 baseline/candidate 各 10 case，共 20 case；在线
+  `truth_identity` 与 `truth_state` 使用计数均为 0。
+- 20 case 共记录 3,805 个 main-bus tick。D1 fusion mean/P95/max 为
+  `320.00/451.46/1234.88 ms`，是 main-bus 内层主导阶段；100 ms 运行预算未闭合。
+- 当前 AirSim 接入必须继续保留 `measurement_timestamp`、`arrival_timestamp`、合法
+  covariance、NED、source lineage 和 offline truth sidecar 隔离。运行时优化不得通过丢弃观测、
+  改写时间或收紧 covariance 实现。
+- 本批的实际执行和时序证据可用，但 NIS、NEES、RMSE 及 sensor-specific latency/dropout
+  consistency 不可用，后续必须另建传感器标定 case，并显式报告 availability。
+- M5N2 达到 20/20 后已停止多 seed 批次；TERM 生效前额外完成的 1 个
+  `png_ttc_2v2_seed001` 排除，dropout 完成数为 0。
+
+下一步 AirSim 集成优先级是：在相同冻结输入和同一 20-case 规模下继续拆分 D1 的观测数、
+航迹数、fixed-lag replay/cache/finalization 成本；由 main 复测完整 control tick。不得以此前
+D1-only 3.17 倍重放加速替代真实运行时验收。
+
+### 0.1 历史 Dense Crossing 状态（2026-07-13）
 
 - strict dense crossing 已完成 nominal 4 m 与 tight 2 m 各 20 seeds，共 40 个真实 AirSim
   episode；每个 episode 51 帧、5 个目标。
@@ -143,11 +161,12 @@ GlobalTrack(
 ## 6. Replay 与评估流程
 
 1. main/shared runtime 运行 AirSim episode，控制 Blocks launch/reset/actor target/检测记录。
-2. runtime 将每个 actor target 的 simulation-derived observation 写为 D1 JSONL record，例如 `blocks_sensor_observations.jsonl`。
-3. D1 使用 `read_blocks_sensor_observations_jsonl()` 读回观测，并按 `arrival_timestamp` replay。
-4. 分别运行 latency-compensated 与 uncompensated fusion，比较 RMSE、连续性、分级准确性和延迟补偿效果。
-5. 对 N actor 合同，D1 应按输入数组长度输出对应 `GlobalTrack[]`，不依赖 2v2/5v5 固定数量。
-6. 评估结果可交给 D6 汇总；D1 已提供 replay schema v1/legacy JSONL 兼容、最小 CSV reader、`LatencyAuditSummary`、轻量 `FusionQualityRegionSummary`、`FusionQualityRegionWindowSummary` 和协方差增长率 helper，后续仍需与 D6 对齐长期批量 schema、真实多 seed 阈值和固定真实样本回归。
+2. runtime 可使用 actor scene state 生成带噪 simulation-derived observation，但须将 truth 标签保存在独立 evaluator-only sidecar。
+3. runtime 调用 `anonymize_online_observations()`，并用 `assert_online_observations_identity_free()` fail closed 验证后，才可将在线观测写为 D1 JSONL record 或送入融合；未出现在身份键下的 scene 名称须通过 `identity_tokens` 提供。
+4. D1 使用 `read_blocks_sensor_observations_jsonl()` 读回匿名观测，并按 `arrival_timestamp` replay。
+5. 分别运行 latency-compensated 与 uncompensated fusion，比较 RMSE、连续性、分级准确性和延迟补偿效果；RMSE 的 truth 只在滤波后由离线 evaluator 对齐。
+6. 对 N actor 合同，D1 应按输入数组长度输出对应 `GlobalTrack[]`，不依赖 2v2/5v5 固定数量。
+7. 评估结果可交给 D6 汇总；D1 已提供 replay schema v1/legacy JSONL 兼容、最小 CSV reader、`LatencyAuditSummary`、轻量 `FusionQualityRegionSummary`、`FusionQualityRegionWindowSummary` 和协方差增长率 helper，后续仍需与 D6 对齐长期批量 schema、真实多 seed 阈值和固定真实样本回归。
 
 ## 7. 对 D2-D7 的接口影响
 
@@ -183,3 +202,66 @@ GlobalTrack(
 - 可选接入 Stone Soup OOSM/JPDA/MHT/Track Fusion 离线实验，先做指标对照再决定是否扩大使用。
 - 与 D5 对齐 OpenCV calibration/projectPoints/solvePnP 边界。
 - 等 ROS 2 runtime、tf tree、topic schema 和 bag/replay 稳定后再评估 `tf2/message_filters`。
+
+## 9. 2026-07-14 在线身份边界验收
+
+D1 包顶层已导出 `anonymize_online_observations()` 和
+`assert_online_observations_identity_free()`。仿真 scene state 可以生成噪声 measurement，但
+actor/object/truth/segmentation 身份只能进入 evaluator-only sidecar，不能进入在线 D1/D2。
+匿名化保持 measurement、covariance、双时间戳和 sensor/camera geometry，并重写 observation
+ID/source lineage；validator 对残留身份 fail closed。
+
+验收场景为两组各 2 条 EO observation，只更换 target/actor/truth 名称，几何和其余字段完全
+一致。阈值是匿名输出逐字段严格一致、几何逐元素不变、泄漏为 0、注入泄漏必须拒绝；专项
+`4 passed`、D1 全量 `83 passed`。D1-owned P0 API 已关闭，main-owned runtime call-site 接线仍
+是系统完成条件。开放 P1 仍为真实 challenge 长 replay、持续阈值、协同融合和 D6 长期统计，
+本次没有启动 AirSim、保存截图或改变 episode 编排。
+
+## 10. 关联治理修复后的 AirSim 验收项（2026-07-14）
+
+历史 M5N2 seed-001 产物显示 31.3 s 出现第三条 D1 航迹，31.8 s 既有航迹发生大幅状态变化。
+D1 已完成同扫描唯一更新、雷达唯一重捕、模糊 birth 抑制、非测距修正审计和事件对齐 fixed-lag
+检查点修复。D1 全量 `87/87`，main 报告 runtime 全量 `134/134`，说明接口和 episode 编排
+没有测试回归。
+
+真实场景关闭条件仍由 main 执行：使用相同设置和 seed 重跑，在线路径继续禁用 truth hints，
+检查航迹总数、birth/reacquisition/suppression 计数、31.8 s 状态步长、双时间戳、协方差和
+source lineage。只有航迹保持 2 且状态跳变消失后，才能把该 P1 episode 缺口标为关闭。
+
+## 11. AirSim Covariance Freeze 边界（2026-07-14）
+
+main 持久化的每条 radar/acoustic/EO/lidar candidate 必须在 freeze 前携带对应
+`4x4/1x1/2x2/3x3` covariance，且矩阵有限、对称、半正定。freezer 不生成、reshape、对称化或
+重置 covariance；非法 candidate 进入 `rejected_observations`，不得成为在线 record。带
+`covariance_imputation_provenance` 的 offline legacy observation 同样禁止冻结到在线总线。
+
+现有七条合法 AirSim freeze fixture、双时间戳、NED/pixel 输入、coverage/source lineage 和
+OOSM 回归在 2026-07-14 D1 全量 `92/92` 中保持通过。本轮没有启动真实 AirSim，也没有改变
+launch/reset/episode 顺序。main 后续真实 writer 必须直接提供传感器模型 covariance；历史缺值
+只能先走 D1 显式 offline migration，并且只能用于 evaluator。
+
+## 12. main 每帧批量调用接入（2026-07-14）
+
+最新 M5N2 seed-001 的 main profiling 表明逐条 `FusionAdapter.process()` 会让相同 tick 的多模态
+量测重复触发 fixed-lag 历史重放。D1 已提供正式 `process_batch()`，但按模块边界本轮没有修改
+`research_modules/airsim_runtime/**`。main 应在已经生成、匿名化并校验完整个 tick 的
+`SensorObservation[]` 后一次调用：
+
+```python
+d1_result = fusion_adapter.process_batch(sensor_observations_for_frame)
+global_tracks = list(d1_result.tracks)
+d1_batch_summary = d1_result.summary.to_dict()
+```
+
+接线约束：
+
+1. batch 边界是当前 episode frame/tick，不跨 tick 等待，也不改变列表内到达顺序；
+2. 继续保留 radar latency 产生的真实 measurement time，不把它改成 frame arrival time；
+3. 不在 main 预去重独立观测，D1 只按 source lineage 去掉真正 relay duplicate；
+4. main 发布 `tracks` 前可记录 summary，但 D6 离线报告不能阻塞控制循环；
+5. 保留逐条路径作为对照开关，使用同一持久化输入比较状态、covariance、track ID、OOSM 和耗时。
+
+D1-only 接入前验证使用既有 M5N2 baseline seed-001 前 40 帧、786 条 observation：18.05 s
+降至 5.70 s，history replay 1267 降至 351，状态和 covariance 最大差为 0。main 验收仍需覆盖
+完整 245/248 帧及至少 10 seeds，并拆分 observation generation、D1、D2-D7、日志和 D6 离线
+报告耗时。只有完整 loop 达到项目预算后才能关闭系统实时性能 P1。

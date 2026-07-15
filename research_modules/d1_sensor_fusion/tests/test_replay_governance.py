@@ -14,6 +14,7 @@ from d1_sensor_fusion import (
     REPLAY_MANIFEST_SCHEMA_VERSION,
     SensorObservation,
     SensorTimingExpectation,
+    migrate_offline_legacy_sensor_observation,
     read_sensor_observations_csv,
     read_sensor_observations_jsonl,
     sensor_observation_from_jsonl_record,
@@ -214,7 +215,7 @@ def test_governed_manifest_serializes_multi_target_contract_and_lineage() -> Non
         np.testing.assert_allclose(loaded.covariance, source.covariance)
 
 
-def test_governed_manifest_rejects_missing_fields_but_legacy_reader_remains_compatible() -> None:
+def test_governed_manifest_rejects_missing_fields_and_legacy_requires_migration() -> None:
     observation = _radar_observation(
         observation_id="strict-required-fields",
         measurement_timestamp=0.0,
@@ -268,19 +269,41 @@ def test_governed_manifest_rejects_missing_fields_but_legacy_reader_remains_comp
     with pytest.raises(ValueError, match="covariance"):
         serialize_governed_replay([observation], _governed_provenance())
 
-    legacy = sensor_observation_from_jsonl_record(
-        {
-            "observation_id": "legacy-radar",
-            "sensor_id": "legacy-sensor",
-            "modality": "radar",
-            "measurement_timestamp": 0.0,
-            "arrival_timestamp": 0.2,
-            "frame_id": "ned",
-            "measurement": [100.0, 0.0, 0.0, 3.0],
-        }
+    legacy_record = {
+        "observation_id": "legacy-radar",
+        "sensor_id": "legacy-sensor",
+        "modality": "radar",
+        "measurement_timestamp": 0.0,
+        "arrival_timestamp": 0.2,
+        "frame_id": "ned",
+        "measurement": [100.0, 0.0, 0.0, 3.0],
+    }
+    with pytest.raises(ValueError, match="explicit offline legacy migration"):
+        sensor_observation_from_jsonl_record(legacy_record)
+
+    legacy = migrate_offline_legacy_sensor_observation(
+        legacy_record,
+        covariance_missing_reason="historical Blocks writer omitted covariance",
     )
-    assert legacy.covariance is None
+    assert legacy.covariance is not None
     assert legacy.metadata["d1_replay_schema_version"] == "legacy.blocks_sensor_observations"
+    imputation = legacy.metadata["covariance_imputation_provenance"]
+    assert imputation["migration_mode"] == "explicit_offline_legacy_migration"
+    assert imputation["offline_only"] is True
+    assert imputation["original_covariance_status"] == "missing"
+    assert imputation["original_missing_reason"] == (
+        "historical Blocks writer omitted covariance"
+    )
+    assert imputation["generated_by"]["sensor_model_id"] == (
+        "d1.radar_covariance_from_range.v1"
+    )
+    assert imputation["generated_by"]["default_profile_id"] == (
+        "d1.RadarCovarianceConfig.v1"
+    )
+    assert imputation["generated_by"]["parameters"]
+    json.dumps(imputation, allow_nan=False)
+    with pytest.raises(ValueError, match="evaluator-only"):
+        FusionAdapter().process(legacy)
 
 
 def test_online_truth_is_deeply_stripped_and_offline_export_is_explicit() -> None:

@@ -342,6 +342,19 @@ class GlobalTrack:
             metadata=dict(self.metadata),
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "global_track_id": self.global_track_id,
+            "state": self.state.tolist(),
+            "covariance": self.covariance.tolist(),
+            "timestamp": self.timestamp,
+            "track_level": self.track_level.value,
+            "source_support": dict(self.source_support),
+            "identity_likelihood": dict(self.identity_likelihood),
+            "last_nis": self.last_nis,
+            "metadata": dict(self.metadata),
+        }
+
 
 @dataclass(frozen=True)
 class ObserverLineage:
@@ -900,6 +913,70 @@ class LatencyAuditSummary:
             "max_replay_observation_count": self.max_replay_observation_count,
             "latency_compensation": self.latency_compensation,
             "published_at": self.published_at,
+        }
+
+
+@dataclass(frozen=True)
+class FusionBatchSummary:
+    """Audit summary for one ordered batch of arrived observations.
+
+    A batch preserves the caller-provided arrival order.  Each observation is
+    still validated, audited, associated, and retained individually; only
+    repeated fixed-lag history evaluations and end-of-update publication are
+    coalesced.
+    """
+
+    observation_count: int
+    accepted_observation_count: int
+    unaccepted_observation_count: int
+    duplicate_observation_count: int
+    created_track_count: int
+    updated_observation_count: int
+    updated_track_count: int
+    affected_track_ids: tuple[str, ...]
+    history_replay_count: int
+    origin_replay_count: int
+    state_cache_hit_count: int
+    state_cache_miss_count: int
+    finalization_replay_count: int
+    deferred_update_replay_avoidance_count: int
+    published_at: float
+    ordering: str = "input_arrival_order"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "observation_count": self.observation_count,
+            "accepted_observation_count": self.accepted_observation_count,
+            "unaccepted_observation_count": self.unaccepted_observation_count,
+            "duplicate_observation_count": self.duplicate_observation_count,
+            "created_track_count": self.created_track_count,
+            "updated_observation_count": self.updated_observation_count,
+            "updated_track_count": self.updated_track_count,
+            "affected_track_ids": tuple(self.affected_track_ids),
+            "history_replay_count": self.history_replay_count,
+            "origin_replay_count": self.origin_replay_count,
+            "state_cache_hit_count": self.state_cache_hit_count,
+            "state_cache_miss_count": self.state_cache_miss_count,
+            "finalization_replay_count": self.finalization_replay_count,
+            "deferred_update_replay_avoidance_count": (
+                self.deferred_update_replay_avoidance_count
+            ),
+            "published_at": self.published_at,
+            "ordering": self.ordering,
+        }
+
+
+@dataclass(frozen=True)
+class FusionBatchResult:
+    """Final publication and audit evidence produced by ``process_batch``."""
+
+    tracks: tuple[GlobalTrack, ...]
+    summary: FusionBatchSummary
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tracks": tuple(track.to_dict() for track in self.tracks),
+            "summary": self.summary.to_dict(),
         }
 
 

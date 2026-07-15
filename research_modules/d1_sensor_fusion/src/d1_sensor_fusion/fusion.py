@@ -6,20 +6,18 @@ from typing import Any, Iterable
 
 import numpy as np
 
+from .covariance_contract import validate_online_sensor_observation
 from .ekf import EKFState, ekf_update, predict_to
 from .motion import wrap_residual
 from .observations import (
     RadarCovarianceConfig,
-    acoustic_covariance,
-    eo_covariance_from_bbox,
-    lidar_covariance,
     measurement_model_for,
-    radar_covariance_from_range,
     radar_state_from_observation,
-    sensor_position_from_metadata,
 )
 from .types import (
     COMMUNICATION_METADATA_KEYS,
+    FusionBatchResult,
+    FusionBatchSummary,
     FusionQualityRegionSummary,
     GlobalTrack,
     LatencyAuditSummary,
@@ -31,6 +29,7 @@ from .types import (
 )
 
 CHI2_2_95 = 5.991464547107979
+CHI2_3_999 = 16.26623619623813
 OBSERVATION_METADATA_LINEAGE_KEYS = (
     "coverage_cell",
     "quality_flags",
@@ -134,6 +133,13 @@ class TrackRecord:
     created_timestamp: float = 0.0
     hits: int = 0
     covariance_limit_reasons: Counter = field(default_factory=Counter)
+    association_diagnostics: Counter = field(default_factory=Counter)
+    checkpoint_active: bool = False
+    checkpoint_count: int = 0
+    origin_state: EKFState | None = None
+    origin_observation_id: str | None = None
+    archived_observations: list[SensorObservation] = field(default_factory=list)
+    accepted_observer_scan_keys: set[tuple[str, str, str]] = field(default_factory=set)
     metadata: dict = field(default_factory=dict)
 
 
@@ -159,6 +165,24 @@ class SensorHealthState:
     max_latency_s: float = 0.0
     latency_budget_exceedance_count: int = 0
     unexpected_oosm_count: int = 0
+
+
+@dataclass
+class _BatchProcessingContext:
+    state_cache: dict[tuple[str, int, float], EKFState] = field(default_factory=dict)
+    history_revision: Counter = field(default_factory=Counter)
+    dirty_track_ids: set[str] = field(default_factory=set)
+    checkpoint_dirty_track_ids: set[str] = field(default_factory=set)
+    affected_track_ids: set[str] = field(default_factory=set)
+    created_track_ids: set[str] = field(default_factory=set)
+    accepted_observation_count: int = 0
+    accepted_update_count: int = 0
+    created_track_count: int = 0
+    history_replay_count: int = 0
+    origin_replay_count: int = 0
+    state_cache_hit_count: int = 0
+    state_cache_miss_count: int = 0
+    finalization_replay_count: int = 0
 
 
 class FusionAdapter:
@@ -187,6 +211,10 @@ class FusionAdapter:
         low_quality_confidence_threshold: float = 0.5,
         timestamp_uncertainty_fault_s: float = 0.05,
         sensor_isolation_reject_threshold: int = 3,
+        radar_reacquisition_gate: float | None = None,
+        radar_reacquisition_max_gap_s: float = 0.5,
+        non_range_position_correction_gate: float = CHI2_3_999,
+        non_range_correction_min_radar_hits: int = 2,
         sensor_timing_expectations: dict[
             str, SensorTimingExpectation | dict[str, Any]
         ] | None = None,
@@ -221,6 +249,26 @@ class FusionAdapter:
         self.low_quality_confidence_threshold = float(low_quality_confidence_threshold)
         self.timestamp_uncertainty_fault_s = float(timestamp_uncertainty_fault_s)
         self.sensor_isolation_reject_threshold = int(sensor_isolation_reject_threshold)
+        self.radar_reacquisition_gate = (
+            max(self.association_gate, CHI2_3_999)
+            if radar_reacquisition_gate is None
+            else float(radar_reacquisition_gate)
+        )
+        self.radar_reacquisition_max_gap_s = float(radar_reacquisition_max_gap_s)
+        self.non_range_position_correction_gate = float(
+            non_range_position_correction_gate
+        )
+        self.non_range_correction_min_radar_hits = int(
+            non_range_correction_min_radar_hits
+        )
+        if self.radar_reacquisition_gate < self.association_gate:
+            raise ValueError("radar_reacquisition_gate must not be below association_gate")
+        if self.radar_reacquisition_max_gap_s < 0.0:
+            raise ValueError("radar_reacquisition_max_gap_s must be non-negative")
+        if self.non_range_position_correction_gate <= 0.0:
+            raise ValueError("non_range_position_correction_gate must be positive")
+        if self.non_range_correction_min_radar_hits < 1:
+            raise ValueError("non_range_correction_min_radar_hits must be positive")
         self.sensor_timing_expectations = {
             str(key): (
                 value
@@ -243,6 +291,15 @@ class FusionAdapter:
         self.max_delay_s = 0.0
         self._latency_delay_sum_s = 0.0
         self.max_replay_observation_count = 0
+        self.observer_scan_suppression_count = 0
+        self.radar_reacquisition_count = 0
+        self.ambiguous_radar_birth_suppression_count = 0
+        self.non_range_state_correction_rejection_count = 0
+        self.pre_checkpoint_oosm_replay_count = 0
+        self.max_non_range_position_correction_score = 0.0
+        self._last_association_rejection_reason: str | None = None
+        self._last_association_rejection_track_ids: tuple[str, ...] = ()
+        self._batch_context: _BatchProcessingContext | None = None
 
     def _bucket(self, timestamp: float) -> int:
         """Return the fixed-lag cache bucket for a timestamp."""
@@ -274,6 +331,9 @@ class FusionAdapter:
 
         track_id = self._associate(effective)
         if track_id is None:
+            if self._last_association_rejection_reason is not None:
+                self._mark_observation_processed(effective)
+                return self.global_tracks()
             record = self._create_track(effective, current_time)
             if record is None:
                 self._record_sensor_fault(
@@ -288,6 +348,137 @@ class FusionAdapter:
             self.compensate_latency(track_id, effective, current_time)
         self._predict_all_to(current_time)
         return self.global_tracks()
+
+    def process_batch(
+        self,
+        observations: Iterable[SensorObservation],
+    ) -> FusionBatchResult:
+        """Process an ordered arrival batch with one final track publication.
+
+        The iterable order has the same meaning as repeatedly calling
+        :meth:`process` in that order.  Every observation keeps its physical
+        measurement and arrival timestamps, covariance, source lineage, and
+        modality.  The optimization only caches repeated state-at-time queries
+        and defers full track replay to one pass per changed track.
+
+        The call is not a rollback transaction: if an unexpected runtime error
+        occurs after validation, observations handled before that error remain
+        applied, matching the streaming API's failure semantics.
+        """
+
+        if self._batch_context is not None:
+            raise RuntimeError("nested FusionAdapter.process_batch calls are not supported")
+
+        prepared = tuple(self._prepare_observation(item) for item in observations)
+        duplicate_before = self.duplicate_observation_count
+        context = _BatchProcessingContext()
+        self._batch_context = context
+        try:
+            for observation in prepared:
+                self._process_prepared_batch_observation(observation, context)
+
+            for track_id in sorted(context.dirty_track_ids):
+                record = self.tracks[track_id]
+                self._ensure_batch_checkpoint_current(record)
+                self._finalize_record_replay(record, self.current_time)
+                context.finalization_replay_count += 1
+            self._predict_all_to(self.current_time)
+            tracks = tuple(self.global_tracks())
+        finally:
+            self._batch_context = None
+
+        duplicate_count = self.duplicate_observation_count - duplicate_before
+        unaccepted_count = max(
+            0,
+            len(prepared) - context.accepted_observation_count,
+        )
+        summary = FusionBatchSummary(
+            observation_count=len(prepared),
+            accepted_observation_count=context.accepted_observation_count,
+            unaccepted_observation_count=unaccepted_count,
+            duplicate_observation_count=duplicate_count,
+            created_track_count=context.created_track_count,
+            updated_observation_count=context.accepted_update_count,
+            updated_track_count=len(
+                context.affected_track_ids - context.created_track_ids
+            ),
+            affected_track_ids=tuple(sorted(context.affected_track_ids)),
+            history_replay_count=context.history_replay_count,
+            origin_replay_count=context.origin_replay_count,
+            state_cache_hit_count=context.state_cache_hit_count,
+            state_cache_miss_count=context.state_cache_miss_count,
+            finalization_replay_count=context.finalization_replay_count,
+            deferred_update_replay_avoidance_count=max(
+                0,
+                context.accepted_update_count - context.finalization_replay_count,
+            ),
+            published_at=float(self.current_time),
+        )
+        return FusionBatchResult(tracks=tracks, summary=summary)
+
+    def _process_prepared_batch_observation(
+        self,
+        observation: SensorObservation,
+        context: _BatchProcessingContext,
+    ) -> None:
+        previous_time = self.current_time
+        current_time = max(self.current_time, float(observation.arrival_timestamp))
+        self.current_time = current_time
+        is_oosm, is_stale = self._record_latency_audit(
+            observation,
+            previous_time,
+            current_time,
+        )
+        self._record_sensor_observation(
+            observation,
+            is_oosm=is_oosm,
+            is_stale=is_stale,
+        )
+        effective = observation
+        if not self.latency_compensation:
+            effective = observation.with_measurement_timestamp(observation.arrival_timestamp)
+
+        # Preserve the streaming API's arrival-time prediction semantics for
+        # untouched tracks while deferring history reconstruction for tracks
+        # changed inside this batch.
+        self._predict_all_to(current_time)
+        if self._is_duplicate_observation(effective):
+            self.duplicate_observation_count += 1
+            self._record_sensor_fault(effective, "duplicate_observation", rejected=True)
+            return
+
+        track_id = self._associate(effective)
+        if track_id is None:
+            if self._last_association_rejection_reason is not None:
+                self._mark_observation_processed(effective)
+                return
+            record = self._create_track(effective, current_time)
+            if record is None:
+                self._record_sensor_fault(
+                    effective,
+                    "unsupported_track_initializer",
+                    rejected=True,
+                )
+                return
+            context.accepted_observation_count += 1
+            context.created_track_count += 1
+            context.affected_track_ids.add(record.track_id)
+            context.created_track_ids.add(record.track_id)
+            return
+
+        # Streaming ``process`` prepares once before association and public
+        # ``compensate_latency`` prepares again before update.  Retain that
+        # established covariance/quality behavior for numerical equivalence.
+        effective = self._prepare_observation(effective)
+        if self._apply_associated_observation(
+            self.tracks[track_id],
+            effective,
+            current_time,
+            defer_replay=True,
+        ):
+            context.accepted_observation_count += 1
+            context.accepted_update_count += 1
+            context.affected_track_ids.add(track_id)
 
     def predict_track(self, track: str | GlobalTrack, timestamp: float) -> GlobalTrack:
         """Predict an internal or detached track to `timestamp`."""
@@ -342,6 +533,9 @@ class FusionAdapter:
         if track_id is None:
             track_id = self._associate(observation)
         if track_id is None:
+            if self._last_association_rejection_reason is not None:
+                self._mark_observation_processed(observation)
+                return None
             record = self._create_track(observation, current_time)
             if record is None:
                 self._record_sensor_fault(
@@ -363,30 +557,161 @@ class FusionAdapter:
         observation = self._prepare_observation(observation)
         record = self.tracks[track_id]
         current_time = self.current_time if current_time is None else float(current_time)
+        self._apply_associated_observation(
+            record,
+            observation,
+            current_time,
+            defer_replay=False,
+        )
+        return self._to_global_track(record)
+
+    def _apply_associated_observation(
+        self,
+        record: TrackRecord,
+        observation: SensorObservation,
+        current_time: float,
+        *,
+        defer_replay: bool,
+    ) -> bool:
         if self._is_duplicate_observation(observation):
             self.duplicate_observation_count += 1
             self._record_sensor_fault(observation, "duplicate_observation", rejected=True)
             record.current_state = predict_to(record.current_state, current_time, self.process_noise)
             self._limit_record_covariance(record)
-            return self._to_global_track(record)
+            return False
+
+        if self._record_has_observer_scan(record, observation):
+            self._record_association_rejection(
+                observation,
+                "observer_scan_conflict",
+                (record.track_id,),
+            )
+            record.association_diagnostics["observer_scan_conflict"] += 1
+            record.current_state = predict_to(record.current_state, current_time, self.process_noise)
+            self._limit_record_covariance(record)
+            self._mark_observation_processed(observation)
+            return False
+
+        correction_score = self._non_range_position_correction_score(record, observation)
+        if correction_score is not None:
+            self.max_non_range_position_correction_score = max(
+                self.max_non_range_position_correction_score,
+                correction_score,
+            )
+            if correction_score > self.non_range_position_correction_gate:
+                self.non_range_state_correction_rejection_count += 1
+                record.association_diagnostics["non_range_state_correction_rejected"] += 1
+                record.metadata["latest_non_range_position_correction_score"] = float(
+                    correction_score
+                )
+                record.metadata["non_range_position_correction_gate"] = float(
+                    self.non_range_position_correction_gate
+                )
+                self._record_sensor_fault(
+                    observation,
+                    "non_range_state_correction_rejected",
+                    rejected=True,
+                )
+                record.current_state = predict_to(
+                    record.current_state,
+                    current_time,
+                    self.process_noise,
+                )
+                self._limit_record_covariance(record)
+                self._mark_observation_processed(observation)
+                return False
+
+        if (
+            record.checkpoint_active
+            and observation.measurement_timestamp < record.initial_state.timestamp - 1e-9
+        ):
+            return self._compensate_pre_checkpoint_oosm(
+                record,
+                observation,
+                current_time,
+                defer_replay=defer_replay,
+            )
 
         inserted_observation = False
         if observation.observation_id not in {obs.observation_id for obs in record.observations}:
             record.observations.append(observation)
             inserted_observation = True
+            self._mark_batch_history_changed(record)
         self._record_replay_audit(record, inserted_observation)
         record.hits += 1
         record.source_support[observation.modality] += 1
         if observation.classification_hint:
             record.identity_likelihood[observation.classification_hint] += observation.confidence
         self._update_record_metadata_from_observation(record, observation)
+        record.accepted_observer_scan_keys.add(self._observer_scan_key(observation))
+        if defer_replay:
+            if inserted_observation:
+                context = self._require_batch_context()
+                context.dirty_track_ids.add(record.track_id)
+        else:
+            self._finalize_record_replay(record, current_time)
+        self._mark_observation_processed(observation)
+        return True
+
+    def _finalize_record_replay(self, record: TrackRecord, current_time: float) -> None:
         state, nises = self._replay_record(record, current_time)
         record.current_state = state
         record.recent_nis = deque(nises[-50:], maxlen=50)
         self._limit_record_covariance(record)
         self._prune_record(record, current_time)
+
+    def _compensate_pre_checkpoint_oosm(
+        self,
+        record: TrackRecord,
+        observation: SensorObservation,
+        current_time: float,
+        *,
+        defer_replay: bool = False,
+    ) -> bool:
+        """Rebuild a checkpoint only when a legal observation predates it."""
+
+        if record.origin_state is None or record.origin_observation_id is None:
+            raise RuntimeError("fixed-lag OOSM archive is missing the original track anchor")
+        existing_ids = {
+            item.observation_id
+            for item in (*record.archived_observations, *record.observations)
+        }
+        inserted_observation = observation.observation_id not in existing_ids
+        if inserted_observation:
+            record.archived_observations.append(observation)
+            self._mark_batch_history_changed(record, checkpoint_dirty=True)
+
+        checkpoint_timestamp = float(record.initial_state.timestamp)
+        if defer_replay:
+            if inserted_observation:
+                context = self._require_batch_context()
+                context.dirty_track_ids.add(record.track_id)
+        else:
+            checkpoint, _ = self._replay_from_origin(record, checkpoint_timestamp)
+            record.initial_state = checkpoint
+            self._finalize_record_replay(record, current_time)
+
+        self._record_replay_audit(record, inserted_observation)
+        record.hits += 1
+        record.source_support[observation.modality] += 1
+        if observation.classification_hint:
+            record.identity_likelihood[observation.classification_hint] += observation.confidence
+        self._update_record_metadata_from_observation(record, observation)
+        record.accepted_observer_scan_keys.add(self._observer_scan_key(observation))
+        record.association_diagnostics["pre_checkpoint_oosm_replayed"] += 1
+        self.pre_checkpoint_oosm_replay_count += 1
+        record.metadata.update(
+            {
+                "fixed_lag_checkpoint_active": True,
+                "fixed_lag_checkpoint_timestamp": checkpoint_timestamp,
+                "pre_checkpoint_oosm_replay_count": self.pre_checkpoint_oosm_replay_count,
+                "latest_pre_checkpoint_oosm_measurement_timestamp": float(
+                    observation.measurement_timestamp
+                ),
+            }
+        )
         self._mark_observation_processed(observation)
-        return self._to_global_track(record)
+        return True
 
     def global_tracks(self) -> list[GlobalTrack]:
         return [self._to_global_track(record) for record in self.tracks.values()]
@@ -470,6 +795,35 @@ class FusionAdapter:
             latency_compensation=self.latency_compensation,
             published_at=self.current_time,
         )
+
+    def association_audit_summary(self) -> dict[str, Any]:
+        """Return truth-free diagnostics for D1 association governance."""
+
+        return {
+            "schema_version": "d1.association_audit.v1",
+            "observer_scan_suppression_count": self.observer_scan_suppression_count,
+            "radar_reacquisition_count": self.radar_reacquisition_count,
+            "ambiguous_radar_birth_suppression_count": (
+                self.ambiguous_radar_birth_suppression_count
+            ),
+            "non_range_state_correction_rejection_count": (
+                self.non_range_state_correction_rejection_count
+            ),
+            "pre_checkpoint_oosm_replay_count": self.pre_checkpoint_oosm_replay_count,
+            "max_non_range_position_correction_score": float(
+                self.max_non_range_position_correction_score
+            ),
+            "association_gate": float(self.association_gate),
+            "radar_reacquisition_gate": float(self.radar_reacquisition_gate),
+            "radar_reacquisition_max_gap_s": float(
+                self.radar_reacquisition_max_gap_s
+            ),
+            "non_range_position_correction_gate": float(
+                self.non_range_position_correction_gate
+            ),
+            "latest_rejection_reason": self._last_association_rejection_reason,
+            "latest_rejection_track_ids": self._last_association_rejection_track_ids,
+        }
 
     def region_quality_summaries(
         self,
@@ -561,6 +915,8 @@ class FusionAdapter:
             identity_likelihood=identity_likelihood,
             created_timestamp=observation.measurement_timestamp,
             hits=1,
+            origin_state=initial.copy(),
+            origin_observation_id=observation.observation_id,
             metadata={
                 **(
                     {"truth_id": observation.metadata["truth_id"]}
@@ -572,6 +928,7 @@ class FusionAdapter:
         )
         self._limit_record_covariance(record)
         self.tracks[track_id] = record
+        record.accepted_observer_scan_keys.add(self._observer_scan_key(observation))
         self._mark_observation_processed(observation)
         return record
 
@@ -586,24 +943,158 @@ class FusionAdapter:
                 self._limit_record_covariance(record, reasons)
 
     def _associate(self, observation: SensorObservation) -> str | None:
+        self._last_association_rejection_reason = None
+        self._last_association_rejection_track_ids = ()
         if not self.tracks:
             return None
         if self.use_truth_hints_for_association and "truth_id" in observation.metadata:
             truth_id = observation.metadata.get("truth_id")
             for track_id, record in self.tracks.items():
-                if record.metadata.get("truth_id") == truth_id:
+                if (
+                    record.metadata.get("truth_id") == truth_id
+                    and not self._record_has_observer_scan(record, observation)
+                ):
                     return track_id
 
-        best_track_id: str | None = None
-        best_score = np.inf
+        candidates: list[tuple[float, str, TrackRecord]] = []
+        blocked: list[tuple[float, str, TrackRecord]] = []
         for track_id, record in self.tracks.items():
             score = self._association_score(record, observation)
-            if score < best_score:
-                best_score = score
-                best_track_id = track_id
-        if best_score <= self.association_gate:
-            return best_track_id
+            item = (float(score), track_id, record)
+            if self._record_has_observer_scan(record, observation):
+                blocked.append(item)
+            else:
+                candidates.append(item)
+
+        candidates.sort(key=lambda item: (item[0], item[1]))
+        blocked.sort(key=lambda item: (item[0], item[1]))
+        if candidates and candidates[0][0] <= self.association_gate:
+            return candidates[0][1]
+
+        if observation.modality == "radar":
+            reacquisition_candidates = [
+                item
+                for item in candidates
+                if item[0] <= self.radar_reacquisition_gate
+                and self._radar_reacquisition_eligible(item[2], observation)
+            ]
+            if len(reacquisition_candidates) == 1:
+                score, track_id, record = reacquisition_candidates[0]
+                self.radar_reacquisition_count += 1
+                record.association_diagnostics["radar_reacquisition"] += 1
+                record.metadata["latest_radar_reacquisition_score"] = float(score)
+                record.metadata["radar_reacquisition_gate"] = float(
+                    self.radar_reacquisition_gate
+                )
+                return track_id
+            if len(reacquisition_candidates) > 1:
+                track_ids = tuple(item[1] for item in reacquisition_candidates)
+                self._record_association_rejection(
+                    observation,
+                    "ambiguous_radar_birth_suppressed",
+                    track_ids,
+                )
+                for _, _, record in reacquisition_candidates:
+                    record.association_diagnostics[
+                        "ambiguous_radar_birth_suppressed"
+                    ] += 1
+                return None
+
+        if blocked and blocked[0][0] <= self.association_gate:
+            track_ids = tuple(
+                item[1] for item in blocked if item[0] <= self.association_gate
+            )
+            self._record_association_rejection(
+                observation,
+                "observer_scan_conflict",
+                track_ids,
+            )
+            for _, track_id, record in blocked:
+                if track_id in track_ids:
+                    record.association_diagnostics["observer_scan_conflict"] += 1
         return None
+
+    def _record_has_observer_scan(
+        self,
+        record: TrackRecord,
+        observation: SensorObservation,
+    ) -> bool:
+        return self._observer_scan_key(observation) in record.accepted_observer_scan_keys
+
+    def _observer_scan_key(self, observation: SensorObservation) -> tuple[str, str, str]:
+        if observation.modality == "eo":
+            observer_id = observation.metadata.get("camera_id") or observation.sensor_id
+        else:
+            observer_id = observation.sensor_id
+        scan_id = None
+        for key in ("scan_id", "sequence_id", "airsim_frame_index", "frame_index"):
+            if observation.metadata.get(key) is not None:
+                scan_id = observation.metadata[key]
+                break
+        if scan_id is None:
+            scan_id = f"bucket-{self._bucket(observation.measurement_timestamp)}"
+        return observation.modality, str(observer_id), str(scan_id)
+
+    def _radar_reacquisition_eligible(
+        self,
+        record: TrackRecord,
+        observation: SensorObservation,
+    ) -> bool:
+        if record.hits < 3 or record.source_support.get("radar", 0) < 2:
+            return False
+        previous_radar_timestamps = [
+            float(item.measurement_timestamp)
+            for item in record.observations
+            if item.modality == "radar"
+            and item.measurement_timestamp <= observation.measurement_timestamp + 1e-9
+            and self._observer_scan_key(item) != self._observer_scan_key(observation)
+        ]
+        if not previous_radar_timestamps:
+            return False
+        gap_s = max(
+            0.0,
+            float(observation.measurement_timestamp) - max(previous_radar_timestamps),
+        )
+        return gap_s <= self.radar_reacquisition_max_gap_s + 1e-9
+
+    def _record_association_rejection(
+        self,
+        observation: SensorObservation,
+        reason: str,
+        track_ids: Iterable[str],
+    ) -> None:
+        self._last_association_rejection_reason = str(reason)
+        self._last_association_rejection_track_ids = tuple(str(item) for item in track_ids)
+        if reason == "observer_scan_conflict":
+            self.observer_scan_suppression_count += 1
+        elif reason == "ambiguous_radar_birth_suppressed":
+            self.ambiguous_radar_birth_suppression_count += 1
+
+    def _non_range_position_correction_score(
+        self,
+        record: TrackRecord,
+        observation: SensorObservation,
+    ) -> float | None:
+        if observation.modality not in {"eo", "acoustic"}:
+            return None
+        if record.source_support.get("radar", 0) < self.non_range_correction_min_radar_hits:
+            return None
+        try:
+            prior = self._state_at(record, observation.measurement_timestamp)
+            model = measurement_model_for(observation, self.radar_covariance_config)
+            updated, _ = ekf_update(
+                prior,
+                model.z,
+                model.h_fn,
+                model.h_jacobian_fn,
+                model.r,
+                model.angle_indices,
+            )
+            correction = updated.state[:3] - prior.state[:3]
+            covariance = prior.covariance[:3, :3] + 1e-9 * np.eye(3)
+            return float(correction.T @ np.linalg.pinv(covariance) @ correction)
+        except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+            return np.inf
 
     def _association_score(self, record: TrackRecord, observation: SensorObservation) -> float:
         try:
@@ -631,14 +1122,103 @@ class FusionAdapter:
         return float(residual.T @ np.linalg.pinv(s) @ residual)
 
     def _state_at(self, record: TrackRecord, timestamp: float) -> EKFState:
-        state, _ = self._replay_record(record, timestamp)
+        context = self._batch_context
+        if context is not None:
+            if (
+                record.track_id in context.checkpoint_dirty_track_ids
+                and timestamp >= record.initial_state.timestamp - 1e-9
+            ):
+                self._ensure_batch_checkpoint_current(record)
+            revision = int(context.history_revision[record.track_id])
+            key = (record.track_id, revision, float(timestamp))
+            cached = context.state_cache.get(key)
+            if cached is not None:
+                context.state_cache_hit_count += 1
+                return cached.copy()
+            context.state_cache_miss_count += 1
+
+        if record.checkpoint_active and timestamp < record.initial_state.timestamp - 1e-9:
+            state = self._replay_from_origin(record, timestamp)[0]
+        else:
+            state, _ = self._replay_record(record, timestamp)
+        if context is not None:
+            context.state_cache[key] = state.copy()
         return state
+
+    def _mark_batch_history_changed(
+        self,
+        record: TrackRecord,
+        *,
+        checkpoint_dirty: bool = False,
+    ) -> None:
+        context = self._batch_context
+        if context is None:
+            return
+        context.history_revision[record.track_id] += 1
+        if checkpoint_dirty:
+            context.checkpoint_dirty_track_ids.add(record.track_id)
+
+    def _ensure_batch_checkpoint_current(self, record: TrackRecord) -> None:
+        context = self._batch_context
+        if context is None or record.track_id not in context.checkpoint_dirty_track_ids:
+            return
+        checkpoint_timestamp = float(record.initial_state.timestamp)
+        checkpoint, _ = self._replay_from_origin(record, checkpoint_timestamp)
+        record.initial_state = checkpoint
+        context.checkpoint_dirty_track_ids.remove(record.track_id)
+
+    def _require_batch_context(self) -> _BatchProcessingContext:
+        if self._batch_context is None:
+            raise RuntimeError("deferred fusion replay requires an active process_batch call")
+        return self._batch_context
+
+    def _replay_from_origin(
+        self,
+        record: TrackRecord,
+        until_time: float,
+    ) -> tuple[EKFState, list[float]]:
+        if self._batch_context is not None:
+            self._batch_context.origin_replay_count += 1
+        if record.origin_state is None or record.origin_observation_id is None:
+            raise RuntimeError("track origin is unavailable for historical OOSM replay")
+        state = record.origin_state.copy()
+        nises: list[float] = []
+        observations_by_id = {
+            observation.observation_id: observation
+            for observation in (*record.archived_observations, *record.observations)
+        }
+        sorted_observations = sorted(
+            observations_by_id.values(),
+            key=lambda obs: (obs.measurement_timestamp, obs.arrival_timestamp, obs.observation_id),
+        )
+        for observation in sorted_observations:
+            if observation.observation_id == record.origin_observation_id:
+                continue
+            if observation.measurement_timestamp < state.timestamp - 1e-9:
+                continue
+            if observation.measurement_timestamp > until_time + 1e-9:
+                continue
+            state = predict_to(state, observation.measurement_timestamp, self.process_noise)
+            model = measurement_model_for(observation, self.radar_covariance_config)
+            state, nis = ekf_update(
+                state,
+                model.z,
+                model.h_fn,
+                model.h_jacobian_fn,
+                model.r,
+                model.angle_indices,
+            )
+            nises.append(nis)
+        state = predict_to(state, until_time, self.process_noise)
+        return state, nises
 
     def _replay_record(
         self,
         record: TrackRecord,
         until_time: float,
     ) -> tuple[EKFState, list[float]]:
+        if self._batch_context is not None:
+            self._batch_context.history_replay_count += 1
         self._refresh_initial(record)
         state = record.initial_state.copy()
         nises: list[float] = []
@@ -668,6 +1248,8 @@ class FusionAdapter:
         return state, nises
 
     def _refresh_initial(self, record: TrackRecord) -> None:
+        if record.checkpoint_active:
+            return
         radar_observations = [obs for obs in record.observations if obs.modality == "radar"]
         if not radar_observations:
             return
@@ -683,16 +1265,89 @@ class FusionAdapter:
         record.created_timestamp = earliest.measurement_timestamp
 
     def _prune_record(self, record: TrackRecord, current_time: float) -> None:
-        """Keep all radar initializers but limit old non-essential observations."""
+        """Rebase at the latest observation not newer than the lag boundary.
+
+        The CV process-noise model represents one random acceleration sample per
+        prediction interval.  Splitting an existing interval at an arbitrary
+        wall-clock boundary changes its covariance and therefore the gain of a
+        later nonlinear update.  Anchoring the checkpoint immediately after an
+        accepted observation preserves the original prediction intervals while
+        still bounding the live observation window.
+        """
 
         if self.buffer_horizon <= 0:
             return
         min_time = current_time - self.buffer_horizon
-        kept: list[SensorObservation] = []
-        for obs in record.observations:
-            if obs.observation_id == record.initial_observation_id or obs.measurement_timestamp >= min_time:
-                kept.append(obs)
-        record.observations = kept
+        if min_time <= record.initial_state.timestamp + 1e-9:
+            return
+
+        checkpoint_candidates = [
+            observation
+            for observation in record.observations
+            if observation.measurement_timestamp <= min_time + 1e-9
+        ]
+        if not checkpoint_candidates:
+            return
+        checkpoint_timestamp = max(
+            float(observation.measurement_timestamp)
+            for observation in checkpoint_candidates
+        )
+        if checkpoint_timestamp < record.initial_state.timestamp - 1e-9:
+            return
+
+        state_before_rebase = record.current_state.copy()
+        checkpoint, _ = self._replay_record(record, checkpoint_timestamp)
+        discarded = [
+            observation
+            for observation in record.observations
+            if observation.measurement_timestamp <= checkpoint_timestamp + 1e-9
+        ]
+        retained = [
+            observation
+            for observation in record.observations
+            if observation.measurement_timestamp > checkpoint_timestamp + 1e-9
+        ]
+        archived_ids = {
+            observation.observation_id for observation in record.archived_observations
+        }
+        record.archived_observations.extend(
+            observation
+            for observation in discarded
+            if observation.observation_id not in archived_ids
+        )
+        discarded_count = len(discarded)
+        record.initial_state = checkpoint
+        record.initial_observation_id = (
+            f"fixed-lag-checkpoint:{record.track_id}:{checkpoint_timestamp:.9f}"
+        )
+        record.observations = retained
+        record.checkpoint_active = True
+        record.checkpoint_count += 1
+
+        rebased_state, rebased_nises = self._replay_record(record, current_time)
+        record.current_state = rebased_state
+        record.recent_nis = deque(rebased_nises[-50:], maxlen=50)
+        continuity_error_m = float(
+            np.linalg.norm(rebased_state.state[:3] - state_before_rebase.state[:3])
+        )
+        record.metadata.update(
+            {
+                "fixed_lag_checkpoint_active": True,
+                "fixed_lag_checkpoint_timestamp": checkpoint_timestamp,
+                "fixed_lag_requested_boundary_timestamp": float(min_time),
+                "fixed_lag_checkpoint_boundary_lag_s": float(
+                    min_time - checkpoint_timestamp
+                ),
+                "fixed_lag_checkpoint_count": int(record.checkpoint_count),
+                "fixed_lag_discarded_observation_count": int(discarded_count),
+                "fixed_lag_retained_observation_count": len(retained),
+                "fixed_lag_archived_observation_count": len(
+                    record.archived_observations
+                ),
+                "fixed_lag_rebase_continuity_error_m": continuity_error_m,
+            }
+        )
+        self._limit_record_covariance(record)
 
     def _update_record_metadata_from_observation(
         self,
@@ -730,6 +1385,8 @@ class FusionAdapter:
                 "hits": record.hits,
                 "latency_compensation": self.latency_compensation,
                 "source_support": dict(record.source_support),
+                "association_diagnostics": dict(record.association_diagnostics),
+                "association_audit": self.association_audit_summary(),
                 "duplicate_observation_count": self.duplicate_observation_count,
                 "latency_audit": self.latency_audit_summary().to_dict(),
                 "sensor_health": {
@@ -831,38 +1488,11 @@ class FusionAdapter:
     ) -> tuple[np.ndarray, tuple[str, ...], bool]:
         reasons: list[str] = []
         anomaly = False
-        default_covariance = self._default_measurement_covariance(observation)
-        expected_dim = default_covariance.shape[0]
-        covariance = observation.covariance
-        if covariance is None:
-            covariance = default_covariance
-        else:
-            try:
-                covariance = np.asarray(covariance, dtype=float)
-                if covariance.ndim == 0:
-                    covariance = covariance.reshape(1, 1)
-                if covariance.ndim == 1:
-                    size = int(np.sqrt(covariance.size))
-                    if size * size == covariance.size:
-                        covariance = covariance.reshape(size, size)
-                    elif covariance.size == expected_dim:
-                        covariance = np.diag(covariance)
-                if covariance.shape != (expected_dim, expected_dim):
-                    reasons.append("observation_covariance_shape_reset")
-                    anomaly = True
-                    covariance = default_covariance
-            except (TypeError, ValueError):
-                reasons.append("observation_covariance_invalid_reset")
-                anomaly = True
-                covariance = default_covariance
-
-        covariance = np.asarray(covariance, dtype=float)
-        if not np.isfinite(covariance).all():
-            reasons.append("observation_covariance_nonfinite_reset")
-            anomaly = True
-            covariance = default_covariance
-
-        covariance = 0.5 * (covariance + covariance.T)
+        covariance = validate_online_sensor_observation(
+            observation,
+            context="D1 online fusion",
+        ).copy()
+        expected_dim = covariance.shape[0]
         quality_scale = self._observation_quality_covariance_scale(observation)
         if quality_scale > 1.0:
             covariance = covariance * quality_scale
@@ -886,9 +1516,6 @@ class FusionAdapter:
         if any(
             reason
             in {
-                "observation_covariance_shape_reset",
-                "observation_covariance_invalid_reset",
-                "observation_covariance_nonfinite_reset",
                 "observation_covariance_floor",
                 "observation_covariance_ceiling",
             }
@@ -896,24 +1523,6 @@ class FusionAdapter:
         ):
             anomaly = True
         return covariance, tuple(dict.fromkeys(reasons)), anomaly
-
-    def _default_measurement_covariance(self, observation: SensorObservation) -> np.ndarray:
-        if observation.modality == "radar":
-            distance = float(observation.measurement.reshape(-1)[0])
-            return radar_covariance_from_range(distance, self.radar_covariance_config)
-        if observation.modality == "acoustic":
-            return acoustic_covariance(observation.confidence)
-        if observation.modality == "eo":
-            bbox = observation.metadata.get("bbox")
-            if bbox is None:
-                bbox = observation.metadata.get("bbox_xyxy")
-            return eo_covariance_from_bbox(bbox, observation.confidence, observation.quality_flags)
-        if observation.modality == "lidar":
-            sensor_position = sensor_position_from_metadata(observation)
-            z = observation.measurement.reshape(-1)[:3]
-            distance = float(np.linalg.norm(z - sensor_position))
-            return lidar_covariance(distance, observation.confidence)
-        raise ValueError(f"Unsupported modality: {observation.modality}")
 
     def _observation_quality_covariance_scale(self, observation: SensorObservation) -> float:
         flags = {str(flag).lower() for flag in observation.quality_flags}
@@ -1193,10 +1802,8 @@ class FusionAdapter:
             self._processed_lineage_keys.add(observation.source_lineage_key)
 
     def ingest_many(self, observations: Iterable[SensorObservation]) -> list[GlobalTrack]:
-        tracks: list[GlobalTrack] = []
-        for observation in sorted(observations, key=lambda obs: obs.arrival_timestamp):
-            tracks = self.process(observation)
-        return tracks
+        ordered = sorted(observations, key=lambda obs: obs.arrival_timestamp)
+        return list(self.process_batch(ordered).tracks)
 
 
 def _metadata_from_observation(observation: SensorObservation) -> dict:

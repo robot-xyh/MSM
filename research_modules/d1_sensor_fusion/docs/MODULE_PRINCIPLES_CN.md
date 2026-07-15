@@ -1,8 +1,24 @@
 # 第一研究模块（D1）异构传感器融合原理与当前实现
 
-**状态日期：2026-07-13**
+**状态日期：2026-07-15**
 
 **适用范围：科研仿真、离线回放与接口验证**
+
+## 当前权威增量（2026-07-15）
+
+真实 AirSim M5N2 已完成 baseline/candidate 各 10 case，共 20 case。在线控制链中的
+identity/state truth use 均为 0，说明本轮没有以 AirSim actor/truth 身份或真值状态替代 D1
+估计。20 case 共得到 3,805 个 main-bus tick，D1 fusion 阶段 mean/P95/max 为
+`320.00/451.46/1234.88 ms`，是 main-bus 内层主导阶段。该结果证明当前首要工程问题是融合
+路径实时性，而不是改变融合原则。
+
+双时间戳、观测与航迹 covariance、NED 和 source lineage 仍是不可放宽的正确性合同。性能
+优化只能减少重复传播、重复回放和非关键处理，不能丢弃有效观测、把 arrival time 当作
+measurement time，或人为缩小 covariance。本批实验面向终端闭环和阶段时序，没有形成可用
+NIS、NEES 或 RMSE 统计，因此不证明传感器噪声模型、滤波一致性或真实定位精度已经闭合。
+TERM 前额外完成的 1 个 `png_ttc_2v2_seed001` 不进入 M5N2 统计，dropout 完成数为 0。
+
+后文保留此前算法原理和历史验证；当前状态判断以上述边界为准。
 
 `D1` 是第一研究模块编号，不是英文缩写。项目面向反无人机系统
 （Counter-Unmanned Aircraft System，C-UAS）的多无人机协同仿真研究。本文只描述仓库当前
@@ -779,3 +795,66 @@ P2 表示隔离对照或后置工程适配：UKF、IMM、FilterPy、Stone Soup�
 了输入冻结、来源证明、在线真值隔离和下游可消费性，但没有关闭真实传感器长期误差标定、
 协同运行时接线、多模型滤波或动态阈值治理。所有 P1/P2 项必须继续按“已实现数值助手、可选
 离线对照、未实现运行能力”三类明确表述。
+
+## 14. 2026-07-14 在线身份真值隔离补充原则
+
+仿真器中的 scene truth 有两个不同用途，必须物理区分：
+
+1. **量测生成允许使用**：scene state 可用于投影、加噪、漏检/遮挡事件生成和离线评分标签。
+2. **在线算法禁止使用**：量测生成后，actor/object/truth/segmentation 身份、目标名字、带目标
+   token 的 classification/lineage 和原始 observation ID 不得进入 D1/D2 在线路径。
+
+D1 已提供 `anonymize_online_observations()` 和
+`assert_online_observations_identity_free()`。前者返回匿名副本、递归清理身份并重写帧内不透明
+ID/lineage；后者在残留身份键或已知 token 时 fail closed。measurement、covariance、双时间
+戳、sensor/camera geometry 保持不变。dry-run 和 evaluator-only truth sidecar 不经过破坏性
+修改，离线评分仍使用与在线记录分离的原始标签。
+
+2026-07-14 验证使用两组各 2 条、仅身份名字不同且几何完全相同的 EO scene observations。
+接受阈值为匿名结果全字段严格相等、几何逐元素不变、在线泄漏为 0、注入泄漏 100% 拒绝；
+专项 `4 passed`，D1 全量 `83 passed`。该结果关闭 D1-owned P0 API 缺口，但 main/runtime 仍须
+在每个 scene-state 在线入口实际调用该边界，并提供没有出现在身份键下的额外 identity token。
+真实传感器长期标定、协同运行时、持续阈值和 D6 长期一致性仍是 P1。
+
+## 15. 扫描唯一性与固定滞后检查点原则（2026-07-14）
+
+同一物理观测者在一次扫描内产生的多条候选量测不能重复更新同一航迹，否则会形成虚假信息
+增益；但雷达、声学和光电是不同 modality，即使 scan 序号相同也必须允许合法跨模态融合。
+雷达严格门限外的重捕仅允许“近期、成熟、唯一候选”，多候选时保守抑制新 birth。
+
+固定滞后检查点不能任意放在两个量测之间。本模块的常速度过程噪声按一个预测区间离散，任意
+拆分区间会改变协方差和后续扩展卡尔曼滤波增益。检查点因此对齐到滞后边界之前最近的已接受
+量测后验；更早的合法乱序量测从原始锚点和历史 archive 重放。该语义保持双时间戳、NED、
+协方差和 source lineage，不使用在线 truth。
+
+2026-07-14 回归结果为 D1 `87/87`、main 报告 AirSim runtime `134/134`。修复后同一真实
+AirSim seed 尚未复跑，因此历史 episode 的第三航迹和状态跳变只能记为“根因已定位、代码回归
+已通过”，不能记为真实场景缺口已关闭。
+
+## 16. Covariance 必须先合法再治理（2026-07-14）
+
+正式在线、versioned governed replay 和 AirSim freeze 的 observation covariance 是硬输入，
+不是可选质量提示。radar/acoustic/EO/lidar 必须分别提供 `4x4/1x1/2x2/3x3` 的有限、对称、
+半正定矩阵；缺失或非法时在滤波更新前 fail closed。质量缩放与 floor/ceiling 只能治理已通过
+合同的合法矩阵，不能用于修复来源不明的缺值或坏值。
+
+历史缺值仅允许显式 offline migration，并必须保留原始缺失原因、migration mode、生成它的
+sensor model/default、参数来源和生成输入。迁移结果是 evaluator-only，不能进入在线 bus、
+在线 governed serializer 或 AirSim freeze。2026-07-14 构造合同回归无随机 seed，D1 全量
+`92/92`；真实传感器 covariance 与长期 NIS/NEES 标定仍是 P1。
+
+## 17. 批处理不等于时间同步或观测合并（2026-07-14）
+
+D1 的正式批处理原则是“同一到达批次共享计算，不共享证据”。`process_batch()` 不把不同传感器
+改成同一个时间戳，也不把多个量测平均成一条；每条观测仍以自己的 measurement time 更新，
+arrival time 仍用于 OOSM/延迟审计，covariance、NED/pixel frame、modality 和 source lineage
+完整保留。batch 只复用相同航迹历史版本在相同测量时刻的预测结果，并把多次发布时刻历史
+重放收敛为每个被改变航迹一次。
+
+航迹历史一旦加入新量测，其 revision 立即变化，只失效该航迹的缓存。检查点之前的合法 OOSM
+继续使用 origin/archive；检查点按需重建，不能为了性能剪掉旧证据。因而性能优化的安全边界是
+计算复用，不是观测降采样、时间伪同步或 covariance 人为收紧。
+
+2026-07-14 构造回归中重放减少 74.7%，M5N2 seed-001 前 40 帧持久化输入 D1-only 加速
+3.17 倍，逐条与 batch 的最终 state/covariance 差为 0，D1 全量 `98/98`。main 尚需完成正式
+runtime 接线和完整多 seed 预算验收。

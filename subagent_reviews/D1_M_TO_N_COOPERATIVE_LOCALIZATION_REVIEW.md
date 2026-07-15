@@ -6,6 +6,19 @@
 
 **问题**：当一个高威胁目标由 3 架拦截/侦察无人机共同观测时，如何把异步测角、测距和局部航迹融合为带一致协方差的中心 `GlobalTrack`。
 
+## 0. 2026-07-15 M5N2 证据增量
+
+main 已完成真实 AirSim M5N2 baseline/candidate 各 10 case，共 20 case。该批确认在线
+identity/state truth use 均为 0，并保持 D1 双时间戳、covariance 和 NED 合同；但实验目标是
+终端闭环与时序，不是协同定位精度标定。其 3,805 个 main-bus tick 中 D1 fusion
+mean/P95/max=`320.00/451.46/1234.88 ms`，表明多观测/多航迹融合的实时性仍是 P1。
+
+本批没有可用 NIS、NEES、RMSE、交会角/条件数分档或按 observer 数量拆分的协同定位指标，
+因此不能用 20-case 结果声称 `2..N` bearing-ray WLS、协方差交集或节点退出链路已完成真实
+AirSim 验收。TERM 前额外完成的 1 个 `png_ttc_2v2_seed001` 已排除，dropout 完成数为 0。
+后续 M-to-N 协同定位仍需独立冻结多 observer 观测、平台位姿/外参及其 covariance，并按
+几何质量和 observer 退出模式报告 availability 与误差；不得使用 actor/truth ID 做在线配准。
+
 ## 1. 结论摘要
 
 1. **三机不要求严格同时观测**。对运动目标，所有观测必须按 `measurement_timestamp` 和平台在该时刻的位姿，传播到同一估计时刻后再融合。同步观测能减小运动模型误差，但“同时到达拦截点”是 D3/D7 的任务调度与协同导引问题，不是 D1 定位成立的必要条件。

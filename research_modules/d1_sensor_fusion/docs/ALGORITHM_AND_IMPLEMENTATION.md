@@ -1,10 +1,29 @@
 # 第一研究模块：多传感器融合与目标配准算法与实施说明
 
-> 文档日期：2026-07-13
+> 文档日期：2026-07-15
 >
 > 适用范围：离线科研仿真、受治理回放和系统接口验证
 >
 > 实现依据：当前第一研究模块代码、`README.md`、`PLAN.md`、模块原理文档和系统总汇总
+
+## 当前权威增量（2026-07-15）
+
+最新真实 AirSim 证据覆盖 M5N2 baseline 10 case 和 candidate 10 case，共 20 case、3,805 个
+main-bus tick。D1 fusion 的 mean/P95/max 为 `320.00/451.46/1234.88 ms`，明显主导
+main-bus 内层 `349.34/487.40/1305.99 ms`，所以当前算法实施缺口是 fixed-lag/batch 路径在
+真实多航迹、多观测循环中的运行时预算，而不是缺少接口级批处理函数。
+
+当前实施约束保持不变：
+
+- 以 `measurement_timestamp` 更新，以 `arrival_timestamp` 审计传输和乱序；
+- 每条正式观测和每条航迹必须携带合法 covariance；
+- 工作状态在 NED 表达，AirSim truth identity/state 不进入在线估计；本批计数均为 0；
+- 性能优化只允许复用预测/雅可比/历史状态和减少重复终结回放，不允许通过观测降采样、时间
+  伪同步或 covariance 人为收紧绕过正确性合同。
+
+本批没有输出可用 NIS、NEES 或 RMSE，故不用于选择 EKF/UKF/IMM，也不用于关闭真实
+sensor-specific covariance 标定。M5N2 之外仅额外完成 1 个被排除的 `png_ttc_2v2_seed001`，
+dropout 为 0；二者不构成算法比较证据。后文历史算法与实现记录继续保留。
 
 ## 1. 文档目的与模块边界
 
@@ -759,3 +778,107 @@ D1 已形成一条可执行、可审计的研究链：异构观测先经过双�
 当前结论应限定为“科研仿真的融合合同和证据链已经闭合，真实传感器长期标定和高机动、多节点
 协同融合仍需验证”。不得把 AirSim 几何回放、合成低误差样本或枚举中存在的状态解释为真实
 设备性能、完整身份保持或工程部署能力。
+
+## 22. 在线 Scene Observation 匿名化算法（2026-07-14）
+
+scene-derived observation 的边界流程为：
+
+```text
+scene truth
+-> sensor projection/noise/miss/occlusion generation
+-> SensorObservation[] + separate offline truth labels
+-> anonymize_online_observations()
+-> assert_online_observations_identity_free()
+-> online D1/D2 algorithms
+```
+
+匿名化先从调用方 `identity_tokens` 和递归身份 metadata 键收集 token。随后深拷贝观测，删除
+truth/actor/object/segmentation/identity/instance 等身份键，清理嵌套字符串、quality flag 和
+`classification_hint` 中的 token，并删除原 source-lineage metadata。frame 优先使用已存在的
+frame index，否则使用 `measurement_timestamp`；每个 frame 按输入顺序分配不透明 observation
+序号。原始 source lineage 在 frame 内按首次出现顺序映射为不透明 source 序号，因此 relay
+重复可保持同 lineage，而目标名字不会进入新 ID。
+
+算法只复制而不改写输入，并逐元素复制 measurement/covariance。双时间戳、sensor ID、通信
+时间、payload kind、NED/pixel frame、bbox 和相机内外参保持。构造完成后 validator 遍历全部
+在线字符串、metadata 容器和 dataclass；任何身份键或已知 token 立即抛出 `ValueError`。对于
+未出现在身份键中的任意别名，main/runtime 必须通过 `identity_tokens` 显式声明，不能假设 D1
+可从任意字符串自动判断语义身份。
+
+2026-07-14 单测以两组各 2 条仅更换 target/actor/truth 名字的 EO 观测验证全字段严格相等、
+数值和 camera geometry 不变、嵌套 key/value、observation ID、classification 和 lineage 无
+泄漏；同时验证人工注入泄漏 fail closed，以及原始 observation/offline sidecar 不变。专项
+`4 passed`，模块全量 `83 passed`。本实现不改变 dry-run、replay reader、offline serializer
+或 evaluator sidecar。
+
+## 23. 无真值关联治理与事件对齐检查点（2026-07-14）
+
+关联阶段为每条已接受观测生成 `(modality, observer_id, scan_id)` 键。同一航迹已消费该键时，
+后续候选记为 `observer_scan_conflict`，不更新也不生成新航迹。因为键中含 modality，同一时刻
+的 radar 与 acoustic/EO 可分别提供一次支持。雷达严格关联失败后，只对近期、至少已有两次
+雷达支持且总命中成熟的航迹计算独立重捕候选；唯一候选可重捕，多候选记为
+`ambiguous_radar_birth_suppressed`。非测距更新则以更新前后位置改变量对先验位置协方差计算
+马氏分数，异常修正拒绝并记录传感器健康原因。
+
+固定滞后裁剪不再把初始雷达状态长期作为唯一回放起点。算法先找到滞后边界之前最新的已接受
+量测时刻，重放到该时刻并保存量测后的后验，再只保留其后的活动窗口。选择量测时刻而不是任意
+墙钟边界，是因为当前常随机加速度离散过程噪声不满足任意分段后协方差完全等价；事件对齐可
+保持原预测区间和后续更新增益。被裁剪观测进入 archive，仅在合法旧 OOSM 到达时从 origin
+重建检查点。输出审计使用 `d1.association_audit.v1`，不包含 actor/truth ID。
+
+专项测试覆盖同扫描去重、唯一雷达重捕、非测距异常修正拒绝、检查点连续性和检查点之前的
+声学 OOSM。结果专项 `5/5`、D1 全量 `87/87`；main 的 AirSim runtime 接口回归为
+`134/134`。修复后的真实同 seed episode 仍待 main 复跑。
+
+## 24. Observation Covariance 硬门控（2026-07-14）
+
+`validate_sensor_observation_covariance()` 按 modality 固定 measurement/covariance 维度，并依次
+检查缺失、数值转换、shape、finite、symmetry 和最小特征值。`FusionAdapter` 使用
+`validate_online_sensor_observation()`，额外拒绝带 offline imputation provenance 的对象；
+测量模型和雷达初始化不再调用 default covariance 作为缺值回退。合法输入随后仍执行既有低
+质量 scale、diagonal floor/ceiling、EKF 更新和 fixed-lag/OOSM replay。
+
+普通 JSONL/CSV reader 对 legacy 和 v1 均要求 covariance，且不再把 flat array reshape 成矩阵。
+`migrate_offline_legacy_sensor_observation()` 是唯一缺值兼容入口：根据 radar range、acoustic
+confidence、EO bbox/confidence/flags 或 synthetic lidar distance 显式生成研究默认值，并写入
+可 JSON 序列化的 model/default provenance。该 observation 在 online/governed/AirSim 路径被
+拒绝。
+
+2026-07-14 验收覆盖 missing、non-finite、non-symmetric、non-PSD、wrong shape、显式 legacy
+migration、governed round trip、合法 OOSM 和 AirSim freeze 回归；无随机 seed，D1 `92/92`。
+这些测试证明合同行为，不证明默认噪声模型已按真实传感器标定。
+
+## 25. 批量观测的惰性状态重放算法（2026-07-14）
+
+逐条模式对每条观测执行两类高成本操作：关联时计算每个候选航迹的 measurement-time 状态，
+接受后再把该航迹全历史重放到 current time。同一帧有 `M` 条观测、`N` 条航迹时，未缓存的
+关联近似重复执行 `O(MN)` 次历史遍历，接受更新又增加 `O(M)` 次发布重放。
+
+批量实现维护 `_BatchProcessingContext`：
+
+```text
+state_cache[(track_id, history_revision, measurement_timestamp)] -> EKFState
+dirty_track_ids                                               -> set
+checkpoint_dirty_track_ids                                    -> set
+```
+
+算法步骤：
+
+1. 先对全批观测执行不修改滤波状态的正式 covariance/online 合同校验；
+2. 按调用方输入顺序逐条更新 current arrival watermark、latency/OOSM 和 sensor health；
+3. 逐条执行 duplicate、observer scan、关联和非测距修正门控；
+4. `_state_at()` 先按 track history revision 查缓存，命中返回副本；
+5. 接受量测后写入原始 observation history，并仅增加对应 track revision；
+6. 检查点前 OOSM 写入 archive 并标记 checkpoint dirty，只有需要检查点后状态时才重建；
+7. 批末按 track ID 排序，每个 dirty track 重放一次到最终 current time、更新 NIS、covariance
+   限制和 fixed-lag checkpoint，然后统一生成 `GlobalTrack[]`。
+
+缓存不能跨 batch 保留，避免配置、健康状态或外部调用导致隐式陈旧。输出顺序沿用内部 track
+插入顺序，终结处理使用 track ID 排序，因此相同初始状态和相同输入序列产生确定输出。异常
+语义与 streaming API 一致：预校验失败不修改状态；处理阶段发生意外异常时已经成功处理的前缀
+不会自动回滚。
+
+`FusionBatchResult.tracks` 是批末快照，`summary` 给出接受/拒绝/重复、创建/更新、实际 replay、
+cache hit/miss 和合并的发布重放。2026-07-14 的 5 航迹/15 观测测试中 replay 为 95 -> 24；
+真实 M5N2 seed-001 前 40 帧 D1-only 为 1267 -> 351，最终数值完全一致。完整 D1 回归为
+`98 passed`。

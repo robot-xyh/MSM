@@ -1,5 +1,27 @@
 # D1 多传感器融合与目标配准实施计划
 
+## 当前权威增量与后续计划（2026-07-15）
+
+真实 AirSim M5N2 已完成 baseline/candidate 各 10 case，共 20 case。在线 identity/state truth
+使用均为 0；3,805 个 main-bus tick 中 D1 fusion mean/P95/max 为
+`320.00/451.46/1234.88 ms`，是 main-bus 内层主导阶段。现有双时间戳、covariance 和 NED
+合同必须保持，不能通过丢弃观测、改写量测时刻或人为收紧 covariance 来换取耗时下降。
+
+本轮计划状态更新如下：
+
+1. **已获得的系统证据**：D1 已进入真实 M5N2 20-case 在线链路，truth identity/state use 为
+   0；M5N2 case 与实际执行产物完整。
+2. **仍开放的 P1 性能项**：100 ms 系统预算未闭合。后续必须在相同冻结输入上继续拆分
+   observation 数量、航迹数量、fixed-lag replay、batch cache、历史窗口和日志开销，再由 main
+   复跑多 seed 验收；不得仅以单元基准关闭该项。
+3. **仍开放的 P1 精度项**：本批没有提供可用 NIS、NEES、RMSE、sensor-specific latency/
+   dropout 或 covariance consistency 证据。需另设带离线 truth sidecar、明确 availability 和
+   正确身份映射的传感器标定实验。
+4. **停止边界**：统计只含 M5N2 20 case；TERM 前额外完成的 1 个 `png_ttc_2v2_seed001`
+   排除，dropout 完成数为 0，均不得补零或并入本计划验收。
+
+后文历史计划继续保留；与上述状态冲突时，以本节和 2026-07-15 main 报告为准。
+
 ## 0. 边界与用途
 
 本模块仅用于科研仿真、离线评估和算法可复现实验。输出为带协方差的 `GlobalTrack`，用于态势估计、误差分析和人工复核接口设计。模块不包含真实火控参数、毁伤逻辑、实机飞控或硬件驱动、自动处置流程，也不包含绕过人工授权的控制接口。
@@ -653,3 +675,148 @@ D1 AirSim freeze 现在要求捕获文件显式携带 scenario/config version、
 FilterPy、Stone Soup、UKF/IMM、OpenCV/GTSAM 协同几何后端和 ROS 2 `tf2`/
 `message_filters` 继续作为隔离 benchmark 或后续工程适配项。当前未安装或未接入的后端必须
 显式报告 `unavailable`，不得写成已实现，也不得替换 NumPy EKF/fixed-lag 默认路径。
+
+## 22. 2026-07-14 P0 在线 Scene Truth 身份边界
+
+### 22.1 D1-owned 实施结果
+
+- 包顶层新增稳定 API：`anonymize_online_observations(observations, *, identity_tokens=(),
+  stream_id="online")` 和 `assert_online_observations_identity_free(observations, *,
+  identity_tokens=())`。
+- 仿真器允许用 scene truth 生成噪声量测；生成完成后，main/runtime 必须先调用匿名化 API，
+  才能把 `SensorObservation[]` 交给在线融合/关联。scene actor/object/truth/segmentation 身份不
+  是在线算法输入。
+- 匿名化递归删除身份键，清理嵌套身份值和 `classification_hint` 中的目标 token，并按 frame
+  及帧内顺序重写 `observation_id`。source lineage 同样映射为不含目标名字的不透明 ID；原始
+  lineage 相同的 relay 重复仍映射到同一匿名 lineage。
+- 返回新对象并保持 measurement、covariance、`measurement_timestamp`、
+  `arrival_timestamp`、sensor/camera geometry 及通信时间字段。返回前强制执行 fail-closed
+  validator，任何残留身份键或已知 token 都会抛出 `ValueError`。
+- dry-run、governed/offline evaluator 和 truth sidecar 原路径不改；offline evaluator 必须继续
+  消费原 scene observation 对应的独立 sidecar，不得从匿名在线副本反推身份。
+
+### 22.2 验收证据与边界
+
+2026-07-14 专项场景包含两组各 2 条 EO 观测，仅替换 target/actor/truth 名字，measurement、
+covariance、双时间戳、bbox、相机内外参和其余字段完全相同。验收阈值为匿名结果逐字段严格
+相等、数值/相机几何逐元素不变、身份泄漏数为 0、人工注入泄漏必须拒绝、原离线 sidecar 标签
+保持。专项 `4 passed`，D1 全量 `83 passed`，全部满足。
+
+D1-owned P0 API 缺口关闭；main-owned 系统接线仍必须把该 API 和 validator 放在每个 scene
+state 在线入口。若身份值没有出现在可识别身份键下，main 必须通过 `identity_tokens` 提供完整
+token 集。该集成条件不改变以下开放 P1：真实 radar/acoustic/EO challenge 长 replay、区域/
+协方差/健康持续阈值、D1/D2-confirmed 协同融合、D6 长期一致性，以及 CV/CA/CT/IMM 和场景
+自适应 covariance 对照。
+
+## 23. 2026-07-14 关联治理与固定滞后回放修复
+
+### 23.1 已完成
+
+- 同一物理观测者的一次扫描对同一航迹最多更新一次；扫描键包含 modality，合法雷达/声学/
+  光电跨模态融合不互相阻断。
+- 近期成熟航迹可在唯一候选条件下使用独立雷达重捕门限；多候选时抑制新 birth 并保留审计，
+  不使用 truth/actor ID。
+- 非测距观测增加笛卡尔状态修正审计；超门限观测拒绝更新，不通过伪造协方差提高确定性。
+- fixed-lag 检查点改为滞后边界之前最近的已接受量测后验，保持原预测区间的过程噪声语义；
+  更早到达的合法 OOSM 通过 origin/archive 重建检查点后继续传播。
+- 新增 `d1.association_audit.v1` 计数和回归测试。2026-07-14 D1 全量 `87 passed`；main
+  报告 AirSim runtime 全量 `134 passed`。
+
+### 23.2 剩余 P1 与验收
+
+1. 由 main 对同一 M5N2 seed-001 真实 episode 复跑或冻结输入重放，验证 D1 航迹数保持 2、
+   不再生成历史 `global_track_003`，且 31.8 s 不再出现状态 teleport。
+2. 在多 seed、交叉、遮挡、虚警和漏检场景标定雷达重捕门限、非测距修正门限及模糊 birth
+   拒绝率；不得用离线 truth 参与在线关联。
+3. 记录 fixed-lag 检查点边界滞后、回放长度和循环耗时，确认历史 archive 只服务迟到量测，
+   不造成在线时间或内存无界增长。
+
+## 24. 2026-07-14 Covariance 合同硬化批次计划
+
+本批先收紧观测入口合同，不改变 NED 状态、双时间戳或 fixed-lag/OOSM 数值流程：
+
+1. 为 `SensorObservation` 定义按 modality/measurement 的 covariance 维度，并统一校验有限、
+   对称、半正定和维度正确；正式 online、versioned governed replay 与 AirSim freeze 路径对
+   缺失或非法 covariance 一律 fail-closed。
+2. 删除正式融合入口对缺失/非法 observation covariance 的静默 default/reset；保留合法
+   covariance 的既有质量缩放和上下界治理行为。
+3. 历史缺失 covariance 仅通过显式 offline legacy migration API 补齐，并在 observation
+   metadata 中记录 migration mode、原始缺失原因、sensor model/default 标识及其参数来源；
+   普通 legacy reader 不得无标记放行缺失 covariance。
+4. 补充回归，覆盖 governed/online 缺失拒绝、非有限/非对称/非半正定/维度错误拒绝、显式
+   offline migration provenance，以及当前合法正式 observation、NED、双时间戳和 OOSM 行为
+   不变。
+
+验收口径：D1 全量测试通过；非法 covariance 在进入滤波更新或 governed bus 前抛出明确
+`ValueError`；迁移观测携带完整且可序列化的 imputation provenance；`git diff --check` 无
+格式问题。完成后同步 README、PLAN、D1 GAP audit 和受影响 review，并把真实传感器 covariance
+标定继续保留为开放项。
+
+### 24.1 执行结果
+
+2026-07-14 已完成统一 covariance validator、在线/序列化/AirSim freeze fail-closed 接线和
+`migrate_offline_legacy_sensor_observation()`。正式入口拒绝缺失、非有限、非对称、非半正定及
+modality 维度错误 covariance；显式迁移记录 mode、原始缺失原因、sensor model/default、参数
+来源和生成输入，并被所有在线入口拒绝。合法 covariance 后续质量缩放、上下界、双时间戳、
+NED 和 OOSM/fixed-lag 流程保持原行为。
+
+验收日期为 2026-07-14；构造性合同测试无随机 seed，覆盖 radar 五类非法/缺失拒绝与一条
+legacy migration，并保持 governed replay、现有合法 OOSM 和七条 AirSim freeze observation
+回归。D1 全量结果 `92 passed`。本批关闭 covariance 合同硬化实现缺口；真实 radar/acoustic/
+EO/lidar sensor-specific covariance 标定与长期 NIS/NEES consistency 仍为开放 P1。
+
+## 25. P1 同帧批处理与 fixed-lag 重放预算（2026-07-14）
+
+### 25.1 问题与约束
+
+main 对最新 M5N2 seed-001 前 40 帧剖析显示 D1 占 episode bus 绝大部分时间。根因是同一
+main tick 内 radar、EO、acoustic/lidar 等观测逐条调用 `process()`：每次关联都从活动历史
+重建 measurement-time 状态，每次接受后又重放到发布时刻。同一/近同测量时刻因此重复遍历
+同一 fixed-lag 历史。
+
+本批必须保持：
+
+1. 每条观测原始 `measurement_timestamp`、`arrival_timestamp`、covariance、frame、modality
+   和 source lineage 不变；
+2. 关联与 observer scan/source duplicate 门控逐条执行，不能用聚合均值替换量测；
+3. 乱序和检查点前 OOSM 仍从合法 origin/archive 重建；
+4. 输出在相同输入顺序下与逐条处理数值等价且确定；
+5. 性能收益来自消除重复 replay，而非丢观测、改时间或缩短证据。
+
+### 25.2 接口与实现
+
+已实现 `FusionAdapter.process_batch(observations) -> FusionBatchResult`。处理顺序是调用方输入
+顺序；每条观测仍做正式校验、延迟/健康审计和关联。批内状态缓存键为
+`(global_track_id, history_revision, measurement_timestamp)`：未改变的航迹可复用同测量时刻
+状态；某航迹接受新观测后仅该航迹 revision 失效。接受更新先写入权威 observation history，
+批次末按 track ID 确定性排序，每个 dirty track 只做一次发布时刻重放。
+
+检查点之前的新 OOSM 会标记 checkpoint dirty。若后续关联只查询检查点之前的时刻，直接从
+origin/archive 计算；首次查询检查点之后状态或批次终结时才重建检查点，因此同批旧 OOSM 不会
+无条件重复重建。`FusionBatchSummary` 记录实际 history/origin replay、cache hit/miss、每航迹
+终结重放和 deferred update replay avoidance，供 main/D6 做性能审计。
+
+main 接线方式：
+
+```python
+result = fusion_adapter.process_batch(observations_received_this_tick)
+tracks = list(result.tracks)
+batch_summary = result.summary.to_dict()
+```
+
+一个 batch 应对应 main 已收齐的同一 episode tick 输入，不应跨未来 tick 等待水位线，也不应
+改写观测时间。`tracks` 只表示批末快照；若调用方需要每条观测中间状态，继续使用 `process()`。
+
+### 25.3 验收结果与后续
+
+- 构造验收：5 航迹、15 条 radar/lidar/acoustic 同帧观测；逐条 95 次 history replay，batch
+  24 次，减少 74.7%；最终 state/covariance 在 `1e-9` 绝对容差内等价。
+- fixed-lag 验收：先接收窗口内观测、再接收 checkpoint 前 OOSM，逐条与 batch 的 checkpoint
+  timestamp/count、pre-checkpoint replay count、state/covariance 一致。
+- 真实持久化输入：M5N2 seed-001 baseline 前 40 帧、786 条观测；逐条 18.05 s/1267 次，
+  batch 5.70 s/351 次，3.17 倍加速，state/covariance 最大差为 0。
+- 2026-07-14 D1 全量：`98 passed`；`git diff --check` 通过。
+
+D1-owned P1 实现已完成。剩余系统 P1 由 main 把逐条调用替换为每 tick 一次 batch，复测完整
+245/248 帧、记录 D1 与总 loop 分项耗时并做多 seed；在该证据完成前不能宣称 100 ms 实时预算
+闭合。

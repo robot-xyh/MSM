@@ -4,7 +4,23 @@
 **范围**: 对照 `subagent_reviews/D1_SENSOR_FUSION_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md`、`research_modules/d1_sensor_fusion` 源码和测试，审计共识算法、开源方案和当前实现差距。  
 **边界**: 本审计只覆盖离线科研仿真、数据合同、传感器观测、航迹融合和评估接口；不涉及真实飞控、硬件驱动、火控、毁伤或自动处置。
 
-**更新时间**: 2026-07-12。
+**更新时间**: 2026-07-15。
+
+## 0. 当前权威 GAP 增量（2026-07-15）
+
+本节覆盖后文按日期保留的历史状态，不删除既有实现与验证记录。
+
+| GAP/合同 | 当前状态 | 2026-07-15 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| 在线 identity/state truth 隔离 | P0 持续回归通过 | M5N2 baseline/candidate 各 10 case，共 20 case；两项在线使用计数均为 0 | 保持所有 runtime 入口 fail-closed，不把 offline sidecar 回灌在线链 |
+| 双时间戳、covariance、NED | P0 合同保持 | 本轮未修改合同；D1 仍以正式观测合同进入 main bus | 后续性能优化不得丢观测、改时间或人为收紧 covariance |
+| 真实运行时 100 ms 预算 | P1 开放，当前最直接缺口 | 3,805 tick；D1 fusion mean/P95/max=`320.00/451.46/1234.88 ms`，为 main-bus 内层主导阶段 | 相同冻结输入上 profile/优化后复跑多 seed；P95 达到系统预算且数值/审计不退化 |
+| 真实传感器精度与 consistency | P1 开放 | 本批 NIS/NEES/RMSE 均不可用 | 独立 sensor-specific 多 seed case，带 truth sidecar、正确身份映射和 availability |
+| M5N2 停止边界 | 已冻结 | M5N2 20/20；额外 1 个 `png_ttc_2v2_seed001` 排除；dropout=0 | 缺失 case 保持 unavailable，不补零、不混入本批统计 |
+
+因此当前没有新增 D1 P0 blocker。此前 D1-owned `process_batch()`、fixed-lag 重放最小化和
+covariance 合同实现保持有效，但真实 M5N2 证明“接口存在”不等于“运行时预算闭合”。下一步
+P1 应优先治理 D1 fusion 内层耗时，并另行补 NIS/NEES/RMSE；两类验收不得互相替代。
 
 ## 1. 总体结论
 
@@ -508,3 +524,61 @@ health/window、covariance 和 NIS/NEES 标定，不是冻结接口缺失。
 FilterPy、Stone Soup、UKF/IMM、OpenCV/GTSAM 和 ROS 2 `tf2`/`message_filters` 仍是可选
 benchmark 或后续工程适配。当前第三方后端未安装或未接入时必须记录 `unavailable_reason`；
 不得把 placeholder、availability probe 或当前 NumPy 结果写成第三方算法已实现。
+
+## 19. 2026-07-14 P0 在线身份 Truth 暴露修复
+
+| 项目 | 状态 | 证据 | 剩余边界 |
+| --- | --- | --- | --- |
+| Scene-derived `SensorObservation` 匿名化 API | D1-owned P0 已关闭 | 包顶层导出 `anonymize_online_observations()`；递归清理 truth/actor/object/segmentation 身份并重写 observation ID/source lineage | main/runtime 必须在每个 scene-state 在线入口调用；D1 不修改 main-owned call site |
+| Fail-closed 在线 validator | 已关闭 | `assert_online_observations_identity_free()` 对残留身份键或已知 token 抛 `ValueError`；匿名化返回前强制调用 | 未出现在身份键下的别名必须由调用方通过 `identity_tokens` 完整提供 |
+| 数值与几何保真 | 已关闭 | 两组各 2 条 EO 观测仅改身份名，匿名输出所有字段严格相等；measurement/covariance/双时间戳/bbox/camera geometry 不变 | 后续 main 集成需保持同一 API 顺序，不得在匿名化后重新附加 scene metadata |
+| Offline truth sidecar | 保持原能力 | 单测证明输入对象未修改，`serialize_offline_governed_replay()` 仍保留原 truth/actor/object/classification 标签 | sidecar 仅供离线 evaluator，在线算法不得消费 |
+| 2026-07-14 回归 | 通过 | 专项 `4 passed`；D1 全量 `83 passed`；接受阈值为全字段严格相等、0 泄漏、注入泄漏全部拒绝 | 本轮未运行 AirSim，系统 call-site 由 main 集成验证 |
+
+该修复明确区分“仿真器使用 scene truth 生成噪声量测”和“在线算法看到身份 truth”：前者允许，
+后者禁止。当前无 D1-owned P0 blocker。仍开放 P1 不变：真实 radar/acoustic/EO challenge 长
+replay 与 sensor-specific latency/health，区域/covariance/NIS/NEES 持续阈值，D1/D2-confirmed
+协同融合与节点退出，D6 跨场景长期一致性，以及同冻结输入上的模型/自适应 covariance 对照。
+
+## 20. 2026-07-14 P1 重复 Birth 与状态跳变修复状态
+
+| 项目 | 当前状态 | D1 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| 同 observer scan 重复更新 | 代码与单测已关闭 | `(modality, observer, scan)` 每航迹只接受一次；跨 modality 同 scan 合法 | 同 seed 真实 replay 中 suppression 原因分布合理 |
+| 雷达严格门限外重复 birth | 最小修复已实现 | 仅近期成熟唯一候选允许重捕；多候选 fail-closed 并审计 | 多 seed 标定重捕/误抑制率；不得使用 truth |
+| 非测距状态异常修正 | 最小修复已实现 | 使用先验位置协方差审计修正分数，超门限拒绝 | 真实 EO/acoustic 场景标定门限和拒绝原因 |
+| fixed-lag 后验丢失 | 代码与单测已关闭 | 检查点对齐最近已接受量测后验；origin/archive 支持旧 OOSM | 量测间隔、archive 内存和循环耗时多 seed 验证 |
+| 历史 31.3/31.8 s AirSim 现象 | 根因已定位，场景证据未关闭 | D1 `87/87`；main runtime `134/134` | main 复跑同 M5N2 seed-001，航迹保持 2 且状态 teleport 消失 |
+
+本轮未新增 D1 P0。开放 P1 是修复后同 seed 与多 seed 真实 AirSim 验收、门限统计和回放资源
+预算；不把单元测试通过写成真实 episode 已闭合。Stone Soup、FilterPy、UKF/IMM、ROS 2
+等可选项状态不变。
+
+## 21. 2026-07-14 Covariance 合同硬化状态
+
+| 项目 | 当前状态 | D1 证据 | 剩余边界 |
+| --- | --- | --- | --- |
+| 正式 online covariance | D1-owned 缺口已关闭 | `FusionAdapter`/在线匿名 validator 统一拒绝缺失、非有限、非对称、非半正定及 radar 4x4/acoustic 1x1/EO 2x2/lidar 3x3 维度错误；拒绝发生在滤波状态修改前 | main/runtime 仍须调用 D1 正式入口，不得旁路构造内部滤波更新 |
+| versioned governed replay | 已关闭 | reader、writer、manifest/serializer 共用严格 numeric contract；不再把一维数组静默 reshape | schema 新版本仍须保持相同或更强合同 |
+| AirSim freeze | 已关闭并保持回归 | 缺/坏 covariance candidate 被拒绝，不生成在线 observation；现有七条合法 freeze record 保持通过 | 本轮未运行真实 AirSim episode，真实采集仍由 main 负责 |
+| legacy 缺 covariance | 仅显式 offline migration 可用 | `migrate_offline_legacy_sensor_observation()` 写完整 imputation provenance；普通 reader 和所有在线/governed/AirSim 入口拒绝 migration object | migration default 仅供历史离线重放，不是传感器标定结果 |
+| 2026-07-14 验收 | 通过 | 构造用例无 seed；覆盖缺失、non-finite、non-symmetric、non-PSD、wrong-shape、显式 migration 和合法正式路径；D1 `92/92` | 真实多 seed NIS/NEES 与 sensor-specific covariance 标定仍开放 |
+
+该实现关闭“缺 covariance 可由在线融合器静默补成可信量测”的合同缺口，不关闭真实雷达、
+声学、EO、lidar 噪声模型标定、长期 consistency 或场景自适应 scale。现有 covariance floor/
+ceiling 只在合法输入通过后生效，不再承担输入修复。
+
+## 22. 2026-07-14 P1 fixed-lag 批处理性能缺口
+
+| 项目 | 当前状态 | D1 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| 正式 batch API | D1-owned 已关闭 | `process_batch() -> FusionBatchResult`；逐条校验/审计/关联，批末每 dirty track 一次发布 | main/runtime 改为每 tick 一次调用 |
+| 双时间戳/covariance/NED/source 保真 | 已关闭并回归 | 逐条与 batch 保留所有原始观测；重复 source 仅按 lineage 抑制；不同 modality 不合并 | main 接线不得预丢观测或改写 measurement time |
+| OOSM 与 fixed-lag 边界 | 已关闭并回归 | checkpoint 前 observation 从 origin/archive 重放；dirty checkpoint 按需只重建必要次数 | 长时多 seed 继续审计 archive 内存和极端乱序成本 |
+| 数值确定性 | 已关闭 | 同一输入顺序的 track ID/state/covariance 等价；构造容差 `1e-9`，真实 40 帧最大差 0 | main 完整 episode 比较 D1/D2 下游输出 |
+| D1 重放性能 | D1-owned 代码缺口关闭 | 5-track/15-observation replay 95 -> 24；M5N2 seed-001 前 40 帧 1267 -> 351、18.05 -> 5.70 s | 完整 245/248 帧及至少 10 seeds 预算证据 |
+| 系统 100 ms loop | 仍开放 P1，main-owned | 当前仅 D1-only persisted replay 证明 3.17 倍加速 | main 接线后拆分 RPC、观测生成、D1-D7、日志和 D6；达标前不得关闭 |
+
+2026-07-14 D1 专项 `6 passed`、全量 `98 passed`，`git diff --check` 通过。当前仍无 D1 P0
+blocker。该批关闭“D1 没有最少重放批处理能力”的 P1 实现缺口，不关闭完整 AirSim 实时预算、
+真实 sensor-specific covariance/NIS/NEES、多 seed 长时阈值和 D1/D2-confirmed 协同融合。
