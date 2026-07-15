@@ -143,7 +143,7 @@ def _runtime_feedback_tracks(*, reserve_replan: bool) -> tuple[TargetTrack, ...]
     )
 
 
-def test_reserve_soft_hold_replaces_only_reserve_when_primaries_consistent() -> None:
+def test_reserve_soft_hold_preserves_primaries_and_respects_min_dwell() -> None:
     planner = _planner()
     resources = _runtime_feedback_resources()
     first = planner.plan(
@@ -201,18 +201,17 @@ def test_reserve_soft_hold_replaces_only_reserve_when_primaries_consistent() -> 
         "INT-02": "primary",
         "INT-03": "primary",
     }
-    assert replanned_members == {
-        "INT-02": "primary",
-        "INT-03": "primary",
-        "INT-04": "reserve",
-    }
-    assert writeback.hold_resource_ids == ("INT-01",)
+    assert replanned_members == first_members
+    assert writeback.hold_resource_ids == ()
+    assert all(resource.operator_hold is False for resource in writeback.resources)
     assert all(event["reason"] is None for event in writeback.metadata["terminal_feedback_events"])
     assert all(
         event["required_stable_frames"] is None
         for event in writeback.metadata["terminal_feedback_events"]
     )
-    assert replanned.version == first.version + 1
+    assert replanned.version == first.version
+    assert replanned.decision_state == "held_by_coalition_membership_hysteresis"
+    assert replanned.metadata["membership_change_records"][0]["dwell_ok"] is False
     assert replanned.metadata["feedback_primary_role_protection_applied"] is True
     assert replanned.metadata["feedback_primary_role_protection_by_target"] == (
         {
@@ -224,7 +223,7 @@ def test_reserve_soft_hold_replaces_only_reserve_when_primaries_consistent() -> 
     )
 
 
-def test_transient_stability_feedback_holds_primary_until_dwell_completes() -> None:
+def test_transient_feedback_window_does_not_bypass_coalition_min_dwell() -> None:
     planner = _planner()
     resources = _resources()
     first = planner.plan(_tracks(switch_primary=False), resources, timestamp=0.0)
@@ -271,12 +270,14 @@ def test_transient_stability_feedback_holds_primary_until_dwell_completes() -> N
     )
     assert held.metadata["incremental_applied"] is True
 
-    assert _primary_ids(released) == {"INT-02", "INT-04"}
-    assert released.version == first.version + 1
+    assert _primary_ids(released) == _primary_ids(first)
+    assert released.version == first.version
+    assert released.decision_state == "held_by_coalition_membership_hysteresis"
     assert released.metadata["transient_feedback_dwell_state"] == "released"
     assert released.metadata["transient_feedback_dwell_reason"] == (
         "required_window_complete"
     )
+    assert released.metadata["membership_change_records"][0]["dwell_ok"] is False
 
 
 def test_hard_binding_conflict_replans_without_waiting_for_transient_dwell() -> None:

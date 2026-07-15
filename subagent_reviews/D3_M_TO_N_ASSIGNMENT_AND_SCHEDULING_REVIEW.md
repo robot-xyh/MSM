@@ -34,9 +34,11 @@
 
 OR-Tools Min-Cost Flow 已接入 optional 容量 benchmark：同一 4-resource/3-target、5-slot hybrid primary+reserve 输入由 SciPy 容量列展开和 flow 原生容量共享，缺 OR-Tools 时结构化输出 unavailable reason；它不进入默认依赖或 planner 主线。当前增量规划、role-aware primary 保持和跨模块 P1 合同验证已完成：ComputerVision 10 seeds 中 T001 双 primary 视觉共识与当前计划授权为 8/10，二级/分布式 commit 正例及缺 ACK fail-closed 通过。15 s SimpleFlight 仍无物理命中，物理闭环开放；installed flow 实证、CP-SAT/MILP 和复杂 flow 仅保留为 P2 隔离 benchmark。
 
-2026-07-12 进一步补齐 D3 可复用校准支撑：versioned 8-scenario matrix 覆盖 3v5、5v3、目标新增、资源失效、高威胁需求切换为 `2 primary + 1 reserve`、D5 reserve hold 和 hard-window。paired full/incremental runner 的 8/8 转换 assignment/cost 等价；D5 场景保持两个健康 primary，仅替换 reserve，并统一导出 latency、churn、unassigned high-threat 和 coalition shortfall。该结果关闭 deterministic 支撑缺口，不替代真实 AirSim 多 seed 或协同物理验收。
+2026-07-12 进一步补齐 D3 可复用校准支撑：versioned 8-scenario matrix 覆盖 3v5、5v3、目标新增、资源失效、高威胁需求切换为 `2 primary + 1 reserve`、D5 reserve hold 和 hard-window。paired full/incremental runner 的 8/8 转换 assignment/cost 等价；D5 场景保持两个健康 primary，只生成 reserve 替换 candidate，并统一导出 latency、churn、unassigned high-threat 和 coalition shortfall。2026-07-14 分级修复后，soft reserve candidate 仍需 `min_dwell`/成员迟滞放行，不再借资源 `operator_hold` 绕过迟滞。该结果关闭 deterministic 支撑缺口，不替代真实 AirSim 多 seed 或协同物理验收。
 
 本轮复核进一步统一逐 pair 输出：D6 record 与 D7 binding 均携带 plan owner/version、coalition id/version/epoch、member role、wave、activation、validity、per-primary 授权资格、churn/rollback/stale reject。两个 primary 独立授权，不要求同时到达；reserve 仅占用计划容量并保持 standby/hold。该补充是诊断合同，不修改 Hungarian、迟滞、成员选择或 PNG 控制。
+
+2026-07-14 D3 又补齐单 planning-tick canonical history schema/export：`plan_history_record_from_plan(...)` 生成 `d3_plan_history_record_v1`，按 main 提供的 `[sequence_index, timestamp]` 排序，集中记录 owner/epoch/lease、ordered primary/reserve assignments、可恢复 coalition members、迟滞/成员变化、soft/hard feedback、成本和 stale/rollback/replan reason，`to_dict()` 严格 JSON 且排除 truth 字段。它不改变 Hungarian、all-or-none、reserve standby 或 `global_track_id` 合同。历史 40-case 没有逐 tick history；2026-07-15 最新 20-case 已由 main 写盘并可计算实际 churn，因此两批证据必须分开。pair hold 扩大仍只是旧批次根因线索，不是已证明物理因果。
 
 ## 2. 问题模型与算法边界
 
@@ -211,7 +213,7 @@ D3 后续只需要在代价中消费 `cooperative_localization_gain`、预期几
 - D7 binding：同一 `global_track_id` 可有多个合法 resource binding，但每个都必须携带同一 current coalition/plan identity 和独立 role/wave。
 - D6/D3 export：D3 已区分合法 coalition multiplicity 与异常重复分配并记录 demand satisfaction；到达离散度、波次完成和联盟重组次数继续作为 D6 长期参数校准指标，不是未实现的 D3 P1 合同。
 
-该能力现为 **P1 contract done**。现有 Hungarian 不退化，仍是无显式 demand 的 `k_j=1` 默认基线；`hungarian_demand_slots` 是显式 demand 主线。`plan_incremental` 已能对独立连通分量保持 coalition all-or-none，并在需求/容量/版本或全局约束变化时保守回退。历史第一次真实复验暴露 soft reserve hold 会顺带旋转 healthy primary；D3 现从 previous plan 推导 member role，在同版本 healthy primaries + soft reserve failure 时固定旧 primary slots，只重解 reserve。deterministic 8-scenario paired runner 已关闭非等量/动态事件的本地复用与汇总缺口。当前 ComputerVision 10 seeds 中 T001 双 primary 视觉共识与当前计划授权为 8/10，且二级/分布式 commit 正例和缺 ACK fail-closed 通过；真实多 seed 参数与协同物理闭环仍开放，CP-SAT/MILP 和复杂 flow 只作为 P2 隔离 benchmark。
+该能力现为 **P1 contract done**。现有 Hungarian 不退化，仍是无显式 demand 的 `k_j=1` 默认基线；`hungarian_demand_slots` 是显式 demand 主线。`plan_incremental` 已能对独立连通分量保持 coalition all-or-none，并在需求/容量/版本或全局约束变化时保守回退。历史第一次真实复验暴露 soft reserve hold 会顺带旋转 healthy primary；D3 现从 previous plan 推导 member role，在同版本 healthy primaries + soft reserve failure 时固定旧 primary slots，只重解 reserve candidate，并继续执行成员/全局迟滞。普通 pair hold 也不再扩大为 resource-hard。deterministic 8-scenario paired runner 已关闭非等量/动态事件的本地复用与汇总缺口。当前 ComputerVision 10 seeds 中 T001 双 primary 视觉共识与当前计划授权为 8/10，且二级/分布式 commit 正例和缺 ACK fail-closed 通过；真实多 seed 参数与协同物理闭环仍开放，CP-SAT/MILP 和复杂 flow 只作为 P2 隔离 benchmark。
 
 ## 8. 参考链接
 
@@ -241,3 +243,63 @@ D3 后续只需要在代价中消费 `cooperative_localization_gain`、预期几
 - Dynamic Task Allocation: <https://github.com/nubot-nudt/dynamic_task_allocation>
 - HeteroMRTA: <https://github.com/marmotlab/HeteroMRTA>
 - Hierarchical-LTL-STAP: <https://github.com/XushengLuo92/Hierarchical-LTL-STAP>
+
+## 15. M-to-N Hold Scope 补充结论（2026-07-14）
+
+真实 M5N2 seed 001 暴露的版本问题不在 demand-slot 求解本身，而在 hold 输出范围：
+候选新目标被写入上一 current plan 的 unassigned scope，导致联盟成员虽被 hold，计划
+身份仍推进。D3 已使 coalition membership hold 保留上一完整 execution signature，
+并把新目标放入 pending candidate 审计。`2 primary + 1 reserve` 的原子需求和
+reserve standby 合同未改变。
+
+本次日志还说明，M-to-N 不能假定目标集合固定。D2 晚到航迹会动态改变 M，D3 必须
+先接收明确 lifecycle admission，再进行 demand-slot 求解；不能按物理场景已知目标数
+截断，也不能用 AirSim truth 判断 T008。当前 D3 侧回归通过，但 main/D2 仍需把
+tentative/confirmed 与 engageable 的准入语义明确传入，main runtime 仍需在成员从
+primary 变为 reserve 时撤销旧 active pair。
+
+## 16. M-to-N 同窗口成员抖动治理补充（2026-07-14）
+
+最新 M5N2 seed 1 的 347 条记录和 v1..v35 表明，需求槽本身能够形成完整
+`2 primary + 1 reserve`，但 search-only feedback/slot 成本若与 previous base cost
+混比，会让完整联盟在成员集合之间周期性旋转。D3 现将两种 objective 分离：
+
+- demand-slot Hungarian 继续使用 switch penalty、soft feedback、slot priority 和
+  role pin 找候选；
+- coalition membership 与全局 `delta` 同时使用
+  `d3_hysteresis_current_objective_v1`，按当前 base edge、hard feasibility 和
+  demand/unassigned 统一重评 candidate/previous；
+- `d3_cumulative_window_change_budget_v1` 在同 `window_id` 累计已接受成员变更，
+  hold/refresh 不消耗，新 window 恢复；
+- missing execution target 的 lifecycle release 优先于另一联盟的 membership hold，
+  previous-only target 不进入新 coalition 或 membership audit。
+
+该修复不改变 `k_j`、primary 数、reserve standby、coalition all-or-none、动态 M/N、
+版本或 `global_track_id` 所有权。2026-07-14 D3 全量为 `157 passed, 1 skipped`；
+新增确定性测试零失败，未重跑 AirSim。真实多 seed 物理结果和 main/runtime role
+demotion 仍是跨模块 P1，CP-SAT/MILP/复杂 flow 仍为 P2 optional。
+
+## 17. 最新 M5N2 20-Case 对 M-to-N 合同的验证（2026-07-15）
+
+最新批次固定为 5 resources/2 targets，但仍由输入 `TargetDemand` 生成槽位：T001 为
+2 primary + 1 reserve，T002 为 1 primary。20 个 case、3725 个 planning tick 全部
+保持该结构，并且每个 case 的 plan/version、owner 和成员 roster 都没有发生实际转换。
+这证明当前 demand-slot + 两层迟滞能在该静态几何批次稳定维持联盟，但不证明动态
+3v5/5v3 或资源失效场景已经闭合。
+
+`3555` 条 membership records 是对候选换员的审计：`3524` 条记录成员保持，`31` 条
+成员收益/驻留条件通过后又被全局迟滞保持。M-to-N 报告必须把“candidate membership
+evaluation count”和“actual coalition roster churn”分开，后者本批为 0。
+
+20 个 case 中有 1 个 candidate seed 使用 `INT-01/INT-02` 作为 T001 primary，其他
+19 个使用 `INT-02/INT-03`。因此联盟语义必须依赖 plan identity、target、role 和 wave，
+不得把第二 primary 固定成某一资源。
+
+物理 aggregate 为 pair 12/60、canonical target 12/40、coalition 0/20，第二 primary
+0/20，说明稳定联盟计划仍未转化为 required-primary 物理完成。`canonical target
+success` 是目标级统计，`cooperative target diagnosis` 才是 T001 两 primary/coalition
+诊断，二者不得混用。20 个第二 primary 的 `collision_stop` 缺碰撞对象，candidate
+paired non-degradation 失败也不构成 D3 demand-slot 退化证据。
+
+额外完成的 `png_ttc_2v2_seed001` 排除在 M5N2 20-case 之外；全部 dropout case 未
+执行。未执行结果保持 `unavailable`，不补零。

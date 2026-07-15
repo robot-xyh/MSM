@@ -44,6 +44,39 @@ class _DemandSlot:
     demand: TargetDemand
 
 
+@dataclass(frozen=True)
+class _WindowChangeBudget:
+    window_id: int
+    limit: int | None
+    used_before: int
+    candidate_changes: int
+    used_if_accepted: int
+    allowed: bool
+    remaining_before: int | None
+    remaining_if_accepted: int | None
+
+
+_HYSTERESIS_COST_BASIS_SCHEMA = "d3_hysteresis_current_objective_v1"
+_WINDOW_CHANGE_BUDGET_SCHEMA = "d3_cumulative_window_change_budget_v1"
+_PLAN_OWNER_CONTROL_KEYS = (
+    "plan_owner",
+    "active_plan_owner",
+    "owner_node_id",
+    "current_plan_owner",
+    "current_plan_owner_node_id",
+)
+_PLAN_ACTIVATION_CONTROL_KEYS = (
+    "secondary_takeover_state",
+    "secondary_plan_executable",
+    "secondary_activated_at_s",
+    "secondary_lease_expires_at_s",
+    "secondary_leader_epoch",
+    "activation_state",
+    "activation_at_s",
+    "executable",
+)
+
+
 _TRANSIENT_FEEDBACK_REASONS = frozenset(
     {"primary_lock_stability_incomplete", "short_reacquire", "reacquire"}
 )
@@ -402,7 +435,7 @@ class AssignmentPlanner:
         if previous_plan is None:
             result = candidate
         else:
-            candidate, transient_held = self._apply_transient_feedback_dwell(
+            candidate, feedback_decision_final = self._apply_transient_feedback_dwell(
                 candidate=candidate,
                 previous_plan=previous_plan,
                 matrix_result=matrix_result,
@@ -410,8 +443,28 @@ class AssignmentPlanner:
                 window_id=window_id,
                 tracks=tracks,
             )
-            if transient_held:
-                return candidate
+            if feedback_decision_final:
+                change_count = self._change_count(
+                    previous_plan.assignments,
+                    candidate.assignments,
+                )
+                hard_bypass_reason = (
+                    candidate.decision_state
+                    if candidate.decision_state
+                    in {
+                        "accepted_hard_feedback_release",
+                        "accepted_previous_infeasible",
+                    }
+                    else None
+                )
+                accepted = candidate.decision_state.startswith("accepted_")
+                return self._annotate_window_change_budget(
+                    candidate,
+                    previous_plan=previous_plan,
+                    change_count=change_count,
+                    accepted=accepted,
+                    bypass_reason=hard_bypass_reason,
+                )
         if previous_plan is not None and not self.config.enable_hysteresis:
             changed = candidate.stable_signature != previous_plan.stable_signature
             result = replace(
@@ -432,8 +485,27 @@ class AssignmentPlanner:
                 matrix_result=matrix_result,
                 timestamp=timestamp,
                 window_id=window_id,
+                tracks=tracks,
             )
+            result = self._carry_candidate_feedback_audit(result, candidate)
         return result
+
+    @staticmethod
+    def _carry_candidate_feedback_audit(
+        result: AssignmentPlan,
+        candidate: AssignmentPlan,
+    ) -> AssignmentPlan:
+        feedback_metadata = {
+            key: value
+            for key, value in candidate.metadata.items()
+            if key.startswith(("feedback_", "transient_feedback_"))
+        }
+        if not feedback_metadata:
+            return result
+        return replace(
+            result,
+            metadata={**dict(result.metadata), **feedback_metadata},
+        )
 
     def _finalize_and_publish(
         self,
@@ -1305,6 +1377,24 @@ class AssignmentPlanner:
                 "hysteresis_delta": self.config.delta,
                 "hysteresis_min_dwell_s": self.config.min_dwell,
                 "hysteresis_max_changes_per_window": self.config.max_changes_per_window,
+                "hysteresis_cost_basis_schema": _HYSTERESIS_COST_BASIS_SCHEMA,
+                "hysteresis_window_change_budget_schema": (
+                    _WINDOW_CHANGE_BUDGET_SCHEMA
+                ),
+                "hysteresis_change_window_id": plan_window_id,
+                "hysteresis_window_changes_used_before": 0,
+                "hysteresis_window_changes_used": 0,
+                "hysteresis_window_candidate_change_count": 0,
+                "hysteresis_window_changes_if_accepted": 0,
+                "hysteresis_window_change_budget_remaining_before": (
+                    self.config.max_changes_per_window
+                ),
+                "hysteresis_window_change_budget_remaining": (
+                    self.config.max_changes_per_window
+                ),
+                "hysteresis_window_change_budget_ok": True,
+                "hysteresis_window_change_budget_bypassed": False,
+                "hysteresis_window_change_budget_bypass_reason": None,
                 "reassignment_switch_penalty": self.config.reassignment_switch_penalty,
                 "transient_feedback_dwell_frames": max(
                     1,
@@ -2151,8 +2241,27 @@ class AssignmentPlanner:
             )
             if isinstance(record, Mapping) and record.get("target_id") is not None
         }
+        comparison_matrix_result = self._hysteresis_comparison_matrix(
+            matrix_result,
+            tracks,
+        )
         previous_cost, previous_feasible, previous_assignments, previous_unassigned = (
-            self._score_previous_plan(previous_plan, matrix_result, candidate)
+            self._score_previous_plan(
+                previous_plan,
+                comparison_matrix_result,
+                candidate,
+            )
+        )
+        candidate_cost, _, _, _ = self._score_previous_plan(
+            candidate,
+            comparison_matrix_result,
+            candidate,
+        )
+        missing_previous_execution_target_ids = (
+            self._missing_previous_execution_target_ids(
+                previous_plan,
+                matrix_result,
+            )
         )
         default_required = max(
             1,
@@ -2254,11 +2363,16 @@ class AssignmentPlanner:
             "transient_feedback_hard_release_reasons": tuple(
                 sorted(set(hard_release_reasons))
             ),
+            "previous_missing_execution_target_ids": (
+                missing_previous_execution_target_ids
+            ),
         }
         if hard_release_reasons:
             return (
                 replace(
                     candidate,
+                    candidate_total_cost=candidate_cost,
+                    previous_total_cost_current=previous_cost,
                     decision_state=(
                         "accepted_hard_feedback_release"
                         if previous_feasible
@@ -2270,6 +2384,11 @@ class AssignmentPlanner:
                         "transient_feedback_dwell_state": "released",
                         "transient_feedback_dwell_reason": "hard_risk",
                         "transient_feedback_protected_target_ids": (),
+                        **self._hysteresis_cost_basis_metadata(
+                            search_candidate_cost=candidate.total_cost,
+                            comparison_candidate_cost=candidate_cost,
+                            comparison_previous_cost=previous_cost,
+                        ),
                     },
                 ),
                 True,
@@ -2293,7 +2412,7 @@ class AssignmentPlanner:
                 last_changed_at=previous_plan.last_changed_at,
                 total_cost=previous_cost,
                 assignments=previous_assignments,
-                unassigned_target_ids=previous_unassigned,
+                unassigned_target_ids=previous_plan.unassigned_target_ids,
                 coalitions=previous_plan.coalitions,
                 incomplete_target_ids=previous_plan.incomplete_target_ids,
                 demand_summaries=tuple(
@@ -2303,7 +2422,7 @@ class AssignmentPlanner:
             return (
                 replace(
                     held_plan,
-                    candidate_total_cost=candidate.total_cost,
+                    candidate_total_cost=candidate_cost,
                     previous_total_cost_current=previous_cost,
                     metadata={
                         **dict(held_plan.metadata),
@@ -2313,6 +2432,16 @@ class AssignmentPlanner:
                             "primary_lock_stability_incomplete"
                         ),
                         "transient_feedback_previous_feasible": previous_feasible,
+                        **self._hysteresis_cost_basis_metadata(
+                            search_candidate_cost=candidate.total_cost,
+                            comparison_candidate_cost=candidate_cost,
+                            comparison_previous_cost=previous_cost,
+                        ),
+                        **self._held_candidate_scope_metadata(
+                            candidate=candidate,
+                            previous_plan=previous_plan,
+                            matrix_result=matrix_result,
+                        ),
                     },
                 ),
                 True,
@@ -2332,7 +2461,7 @@ class AssignmentPlanner:
                         ),
                     },
                 ),
-                True,
+                False,
             )
 
         return (
@@ -2391,6 +2520,24 @@ class AssignmentPlanner:
     @staticmethod
     def _hard_feedback_reasons(event: Mapping[str, Any]) -> tuple[str, ...]:
         reasons: list[str] = []
+        constraint_class = str(
+            event.get("feedback_constraint_class") or ""
+        ).strip().lower()
+        if constraint_class:
+            if constraint_class in {
+                "resource_target_edge_hard",
+                "resource_hard",
+                "target_hard",
+            }:
+                reasons.append(
+                    str(
+                        event.get("feedback_classification_reason")
+                        or constraint_class
+                    )
+                )
+                if bool(event.get("duplicate_terminal_lock_risk")):
+                    reasons.append("duplicate_terminal_lock_risk")
+            return tuple(dict.fromkeys(reasons))
         state = str(event.get("terminal_feedback_state") or "").strip().lower()
         conflict = str(event.get("coalition_conflict_state") or "").strip().lower()
         friend_conflict = str(event.get("friend_conflict_state") or "").strip().lower()
@@ -2432,17 +2579,58 @@ class AssignmentPlanner:
         matrix_result: CostMatrixResult,
         timestamp: float,
         window_id: int | None,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
     ) -> AssignmentPlan:
+        comparison_matrix_result = self._hysteresis_comparison_matrix(
+            matrix_result,
+            tracks,
+        )
         previous_cost, previous_feasible, previous_assignments, previous_unassigned = (
-            self._score_previous_plan(previous_plan, matrix_result, candidate)
+            self._score_previous_plan(
+                previous_plan,
+                comparison_matrix_result,
+                candidate,
+            )
+        )
+        (
+            candidate_cost,
+            _,
+            candidate_comparison_assignments,
+            candidate_comparison_unassigned,
+        ) = self._score_previous_plan(
+            candidate,
+            comparison_matrix_result,
+            candidate,
+        )
+        missing_previous_execution_target_ids = (
+            self._missing_previous_execution_target_ids(
+                previous_plan,
+                comparison_matrix_result,
+            )
+        )
+        change_count = self._change_count(
+            previous_plan.assignments,
+            candidate.assignments,
+        )
+        budget = self._window_change_budget(
+            previous_plan=previous_plan,
+            window_id=candidate.window_id,
+            change_count=change_count,
+        )
+        execution_control_change_reasons = self._execution_control_change_reasons(
+            previous_plan,
+            candidate,
         )
         membership_audit = self._coalition_membership_audit(
             candidate=candidate,
             previous_plan=previous_plan,
             rescored_previous_assignments=previous_assignments,
+            rescored_candidate_assignments=candidate_comparison_assignments,
             timestamp=timestamp,
         )
-        if membership_audit["membership_hold_required"]:
+        if membership_audit["membership_hold_required"] and previous_feasible and not (
+            execution_control_change_reasons
+        ):
             solver_result = SolverResult(
                 assignments=(),
                 unassigned_target_indices=(),
@@ -2461,7 +2649,7 @@ class AssignmentPlanner:
                 last_changed_at=previous_plan.last_changed_at,
                 total_cost=previous_cost,
                 assignments=previous_assignments,
-                unassigned_target_ids=previous_unassigned,
+                unassigned_target_ids=previous_plan.unassigned_target_ids,
                 coalitions=previous_plan.coalitions,
                 incomplete_target_ids=previous_plan.incomplete_target_ids,
                 demand_summaries=tuple(
@@ -2470,7 +2658,7 @@ class AssignmentPlanner:
             )
             return replace(
                 held_plan,
-                candidate_total_cost=candidate.total_cost,
+                candidate_total_cost=candidate_cost,
                 previous_total_cost_current=previous_cost,
                 metadata={
                     **dict(held_plan.metadata),
@@ -2478,30 +2666,45 @@ class AssignmentPlanner:
                     "hysteresis_state": "held",
                     "hysteresis_reason": "coalition_membership_hold",
                     "hysteresis_reasons": ("coalition_membership_hold",),
+                    **self._hysteresis_cost_basis_metadata(
+                        search_candidate_cost=candidate.total_cost,
+                        comparison_candidate_cost=candidate_cost,
+                        comparison_previous_cost=previous_cost,
+                    ),
+                    **self._window_change_budget_metadata(
+                        budget,
+                        accepted=False,
+                    ),
+                    **self._held_candidate_scope_metadata(
+                        candidate=candidate,
+                        previous_plan=previous_plan,
+                        matrix_result=matrix_result,
+                    ),
                 },
             )
         same_assignment = candidate.stable_signature == self._assignment_signature(
             previous_assignments
         )
         dwell_time = timestamp - previous_plan.last_changed_at
-        change_count = self._change_count(
-            previous_plan.assignments,
-            candidate.assignments,
-        )
         previous_high_threat_unassigned = self._high_threat_unassigned_count(
             matrix_result,
             previous_unassigned,
         )
         candidate_high_threat_unassigned = self._high_threat_unassigned_count(
             matrix_result,
-            candidate.unassigned_target_ids,
+            candidate_comparison_unassigned,
         )
-        if same_assignment:
+        if (
+            same_assignment
+            and previous_feasible
+            and not execution_control_change_reasons
+        ):
             return replace(
                 candidate,
                 changed=False,
                 decision_state="unchanged",
                 last_changed_at=previous_plan.last_changed_at,
+                candidate_total_cost=candidate_cost,
                 previous_total_cost_current=previous_cost,
                 total_cost=previous_cost,
                 assignments=previous_assignments,
@@ -2515,7 +2718,7 @@ class AssignmentPlanner:
                         reasons=("same_assignment",),
                         dwell_time=dwell_time,
                         previous_cost=previous_cost,
-                        candidate_cost=candidate.total_cost,
+                        candidate_cost=candidate_cost,
                         change_count=change_count,
                         improvement_ok=True,
                         dwell_ok=True,
@@ -2524,21 +2727,27 @@ class AssignmentPlanner:
                         previous_high_threat_unassigned=previous_high_threat_unassigned,
                         candidate_high_threat_unassigned=candidate_high_threat_unassigned,
                     ),
+                    **self._hysteresis_cost_basis_metadata(
+                        search_candidate_cost=candidate.total_cost,
+                        comparison_candidate_cost=candidate_cost,
+                        comparison_previous_cost=previous_cost,
+                    ),
+                    **self._window_change_budget_metadata(
+                        budget,
+                        accepted=False,
+                    ),
                 },
             )
 
-        improvement_ok = candidate.total_cost < (1.0 - self.config.delta) * previous_cost
+        improvement_ok = candidate_cost < (1.0 - self.config.delta) * previous_cost
         dwell_ok = dwell_time >= self.config.min_dwell
-        change_limit_ok = (
-            self.config.max_changes_per_window is None
-            or change_count <= self.config.max_changes_per_window
-        )
+        change_limit_ok = budget.allowed
         high_threat_release = (
             candidate_high_threat_unassigned < previous_high_threat_unassigned
         )
         release_ok = (
             improvement_ok and dwell_ok and change_limit_ok
-        ) or high_threat_release
+        ) or high_threat_release or bool(execution_control_change_reasons)
 
         if previous_feasible and not release_ok:
             hold_reason = "held_by_hysteresis"
@@ -2567,7 +2776,7 @@ class AssignmentPlanner:
                 last_changed_at=previous_plan.last_changed_at,
                 total_cost=previous_cost,
                 assignments=previous_assignments,
-                unassigned_target_ids=previous_unassigned,
+                unassigned_target_ids=previous_plan.unassigned_target_ids,
                 coalitions=previous_plan.coalitions,
                 incomplete_target_ids=previous_plan.incomplete_target_ids,
                 demand_summaries=tuple(
@@ -2576,7 +2785,7 @@ class AssignmentPlanner:
             )
             return replace(
                 held_plan,
-                candidate_total_cost=candidate.total_cost,
+                candidate_total_cost=candidate_cost,
                 previous_total_cost_current=previous_cost,
                 metadata={
                     **dict(held_plan.metadata),
@@ -2587,7 +2796,7 @@ class AssignmentPlanner:
                         reasons=hold_reasons,
                         dwell_time=dwell_time,
                         previous_cost=previous_cost,
-                        candidate_cost=candidate.total_cost,
+                        candidate_cost=candidate_cost,
                         change_count=change_count,
                         improvement_ok=improvement_ok,
                         dwell_ok=dwell_ok,
@@ -2596,13 +2805,30 @@ class AssignmentPlanner:
                         previous_high_threat_unassigned=previous_high_threat_unassigned,
                         candidate_high_threat_unassigned=candidate_high_threat_unassigned,
                     ),
+                    **self._hysteresis_cost_basis_metadata(
+                        search_candidate_cost=candidate.total_cost,
+                        comparison_candidate_cost=candidate_cost,
+                        comparison_previous_cost=previous_cost,
+                    ),
+                    **self._window_change_budget_metadata(
+                        budget,
+                        accepted=False,
+                    ),
+                    **self._held_candidate_scope_metadata(
+                        candidate=candidate,
+                        previous_plan=previous_plan,
+                        matrix_result=matrix_result,
+                    ),
                 },
             )
 
         reason = "accepted_previous_infeasible"
         release_reason = "previous_assignment_infeasible"
         if previous_feasible:
-            if high_threat_release:
+            if execution_control_change_reasons:
+                reason = "accepted_execution_control_change"
+                release_reason = execution_control_change_reasons[0]
+            elif high_threat_release:
                 reason = "accepted_high_threat_release"
                 release_reason = "high_threat_unassigned_reduced"
             else:
@@ -2610,6 +2836,7 @@ class AssignmentPlanner:
                 release_reason = "gain_dwell_change_limit_passed"
         return replace(
             candidate,
+            candidate_total_cost=candidate_cost,
             decision_state=reason,
             last_changed_at=timestamp,
             previous_total_cost_current=previous_cost,
@@ -2624,7 +2851,7 @@ class AssignmentPlanner:
                     release_condition=reason,
                     dwell_time=dwell_time,
                     previous_cost=previous_cost,
-                    candidate_cost=candidate.total_cost,
+                    candidate_cost=candidate_cost,
                     change_count=change_count,
                     improvement_ok=improvement_ok,
                     dwell_ok=dwell_ok,
@@ -2633,6 +2860,32 @@ class AssignmentPlanner:
                     previous_high_threat_unassigned=previous_high_threat_unassigned,
                     candidate_high_threat_unassigned=candidate_high_threat_unassigned,
                     high_threat_release=high_threat_release,
+                ),
+                **self._hysteresis_cost_basis_metadata(
+                    search_candidate_cost=candidate.total_cost,
+                    comparison_candidate_cost=candidate_cost,
+                    comparison_previous_cost=previous_cost,
+                ),
+                **self._window_change_budget_metadata(
+                    budget,
+                    accepted=True,
+                    bypass_reason=(
+                        reason
+                        if not budget.allowed
+                        and reason
+                        in {
+                            "accepted_previous_infeasible",
+                            "accepted_high_threat_release",
+                            "accepted_execution_control_change",
+                        }
+                        else None
+                    ),
+                ),
+                "previous_missing_execution_target_ids": (
+                    missing_previous_execution_target_ids
+                ),
+                "execution_control_change_reasons": (
+                    execution_control_change_reasons
                 ),
             },
         )
@@ -2643,6 +2896,7 @@ class AssignmentPlanner:
         candidate: AssignmentPlan,
         previous_plan: AssignmentPlan,
         rescored_previous_assignments: tuple[Assignment, ...],
+        rescored_candidate_assignments: tuple[Assignment, ...],
         timestamp: float,
     ) -> dict[str, object]:
         """Evaluate member/role replacement per target, independently of plan refresh."""
@@ -2668,7 +2922,7 @@ class AssignmentPlanner:
                 and assignment.feasibility_state == "feasible"
             )
         candidate_cost_by_target: dict[str, float] = {}
-        for assignment in candidate.assignments:
+        for assignment in rescored_candidate_assignments:
             candidate_cost_by_target[assignment.target_id] = (
                 candidate_cost_by_target.get(assignment.target_id, 0.0) + assignment.cost
             )
@@ -2676,7 +2930,9 @@ class AssignmentPlanner:
         records: list[dict[str, object]] = []
         hold_required = False
         changed_targets: list[str] = []
-        for target_id in sorted(set(previous_by_target) | set(candidate_by_target)):
+        # A previous-only target is a lifecycle removal, not a membership change.
+        # Its stale coalition must not leak into hold audit or execution output.
+        for target_id in sorted(candidate_by_target):
             previous = previous_by_target.get(target_id)
             current = candidate_by_target.get(target_id)
             if max(
@@ -2793,7 +3049,10 @@ class AssignmentPlanner:
             coalition.target_id: coalition for coalition in previous_plan.coalitions
         }
         total = 0.0
-        feasible = True
+        feasible = not self._missing_previous_execution_target_ids(
+            previous_plan,
+            matrix_result,
+        )
         assignments: list[Assignment] = []
         unassigned: list[str] = []
         used_resources: set[str] = set()
@@ -2867,6 +3126,17 @@ class AssignmentPlanner:
 
         return total, feasible, tuple(assignments), tuple(unassigned)
 
+    @staticmethod
+    def _missing_previous_execution_target_ids(
+        previous_plan: AssignmentPlan,
+        matrix_result: CostMatrixResult,
+    ) -> tuple[str, ...]:
+        current_target_ids = set(matrix_result.target_ids)
+        previous_execution_target_ids = {
+            assignment.target_id for assignment in previous_plan.assignments
+        }
+        return tuple(sorted(previous_execution_target_ids - current_target_ids))
+
     def _validate_previous_plan(
         self,
         previous_plan: AssignmentPlan | None,
@@ -2914,6 +3184,246 @@ class AssignmentPlanner:
                 latest_plan_id=self._latest_plan_id,
                 latest_version=self._latest_version or None,
             )
+
+    def _hysteresis_comparison_matrix(
+        self,
+        matrix_result: CostMatrixResult,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+    ) -> CostMatrixResult:
+        """Remove candidate-search-only shaping from the gain comparison."""
+
+        matrix = matrix_result.matrix.copy()
+        breakdown_rows = [
+            [dict(breakdown) for breakdown in row]
+            for row in matrix_result.breakdowns
+        ]
+        track_by_id = {track.track_id: track for track in tracks}
+        fov_weight = float(self.cost_model.weights.fov)
+
+        for target_index, target_id in enumerate(matrix_result.target_ids):
+            track = track_by_id.get(target_id)
+            base_fov: Mapping[str, Any] = {}
+            applied_fov: Mapping[str, Any] = {}
+            if track is not None:
+                raw_base = track.metadata.get(
+                    "terminal_feedback_fov_base_by_resource",
+                    {},
+                )
+                raw_applied = track.metadata.get(
+                    "terminal_feedback_fov_applied_by_resource",
+                    {},
+                )
+                if isinstance(raw_base, Mapping):
+                    base_fov = raw_base
+                if isinstance(raw_applied, Mapping):
+                    applied_fov = raw_applied
+
+            for resource_index, resource_id in enumerate(matrix_result.resource_ids):
+                reject_reason = matrix_result.reject_reasons[target_index][resource_index]
+                breakdown = breakdown_rows[target_index][resource_index]
+                switch_penalty = max(
+                    0.0,
+                    float(breakdown.get("reassignment_switch_penalty", 0.0)),
+                )
+                feedback_fov_cost = 0.0
+                if resource_id in base_fov and resource_id in applied_fov:
+                    try:
+                        base_value = max(0.0, min(1.0, float(base_fov[resource_id])))
+                        applied_value = max(
+                            0.0,
+                            min(1.0, float(applied_fov[resource_id])),
+                        )
+                    except (TypeError, ValueError):
+                        base_value = applied_value = 0.0
+                    feedback_fov_cost = fov_weight * max(
+                        0.0,
+                        applied_value - base_value,
+                    )
+
+                if reject_reason is None:
+                    comparison_cost = max(
+                        0.0,
+                        float(matrix[target_index, resource_index])
+                        - switch_penalty
+                        - feedback_fov_cost,
+                    )
+                    matrix[target_index, resource_index] = comparison_cost
+                    breakdown["fov"] = max(
+                        0.0,
+                        float(breakdown.get("fov", 0.0)) - feedback_fov_cost,
+                    )
+                    breakdown["reassignment_switch_penalty"] = 0.0
+                    breakdown["total"] = comparison_cost
+                breakdown["hysteresis_excluded_switch_penalty"] = switch_penalty
+                breakdown["hysteresis_excluded_soft_feedback_fov"] = (
+                    feedback_fov_cost
+                )
+
+        return replace(
+            matrix_result,
+            matrix=matrix,
+            breakdowns=tuple(
+                tuple(breakdown for breakdown in row)
+                for row in breakdown_rows
+            ),
+        )
+
+    @staticmethod
+    def _hysteresis_cost_basis_metadata(
+        *,
+        search_candidate_cost: float,
+        comparison_candidate_cost: float,
+        comparison_previous_cost: float,
+    ) -> dict[str, object]:
+        return {
+            "hysteresis_cost_basis_schema": _HYSTERESIS_COST_BASIS_SCHEMA,
+            "hysteresis_cost_basis": "current_tick_base_execution_objective",
+            "hysteresis_cost_basis_excludes": (
+                "reassignment_switch_penalty",
+                "soft_feedback_fov_search_shaping",
+                "demand_slot_priority_and_role_pins",
+            ),
+            "hysteresis_cost_basis_includes": (
+                "current_target_resource_base_cost",
+                "hard_feasibility",
+                "unassigned_cost_times_current_demand",
+            ),
+            "hysteresis_candidate_search_total_cost": float(search_candidate_cost),
+            "hysteresis_candidate_comparison_total_cost": float(
+                comparison_candidate_cost
+            ),
+            "hysteresis_previous_comparison_total_cost": float(
+                comparison_previous_cost
+            ),
+        }
+
+    def _window_change_budget(
+        self,
+        *,
+        previous_plan: AssignmentPlan,
+        window_id: int,
+        change_count: int,
+    ) -> _WindowChangeBudget:
+        limit = self.config.max_changes_per_window
+        if limit is not None:
+            limit = max(0, int(limit))
+        prior_window_id = previous_plan.metadata.get(
+            "hysteresis_change_window_id",
+            previous_plan.window_id,
+        )
+        try:
+            same_window = int(prior_window_id) == int(window_id)
+        except (TypeError, ValueError):
+            same_window = previous_plan.window_id == window_id
+        used_before = 0
+        if same_window:
+            try:
+                used_before = max(
+                    0,
+                    int(
+                        previous_plan.metadata.get(
+                            "hysteresis_window_changes_used",
+                            0,
+                        )
+                    ),
+                )
+            except (TypeError, ValueError):
+                used_before = 0
+        candidate_changes = max(0, int(change_count))
+        used_if_accepted = used_before + candidate_changes
+        allowed = limit is None or used_if_accepted <= limit
+        remaining_before = (
+            None if limit is None else max(0, limit - used_before)
+        )
+        remaining_if_accepted = (
+            None if limit is None else max(0, limit - used_if_accepted)
+        )
+        return _WindowChangeBudget(
+            window_id=int(window_id),
+            limit=limit,
+            used_before=used_before,
+            candidate_changes=candidate_changes,
+            used_if_accepted=used_if_accepted,
+            allowed=allowed,
+            remaining_before=remaining_before,
+            remaining_if_accepted=remaining_if_accepted,
+        )
+
+    @staticmethod
+    def _window_change_budget_metadata(
+        budget: _WindowChangeBudget,
+        *,
+        accepted: bool,
+        bypass_reason: str | None = None,
+    ) -> dict[str, object]:
+        used_after = budget.used_if_accepted if accepted else budget.used_before
+        remaining_after = (
+            budget.remaining_if_accepted if accepted else budget.remaining_before
+        )
+        bypassed = bool(accepted and bypass_reason)
+        return {
+            "hysteresis_window_change_budget_schema": _WINDOW_CHANGE_BUDGET_SCHEMA,
+            "hysteresis_change_window_id": budget.window_id,
+            "hysteresis_window_changes_used_before": budget.used_before,
+            "hysteresis_window_changes_used": used_after,
+            "hysteresis_window_candidate_change_count": budget.candidate_changes,
+            "hysteresis_window_changes_if_accepted": budget.used_if_accepted,
+            "hysteresis_window_change_budget_remaining_before": (
+                budget.remaining_before
+            ),
+            "hysteresis_window_change_budget_remaining": remaining_after,
+            "hysteresis_window_change_budget_ok": budget.allowed,
+            "hysteresis_window_change_budget_bypassed": bypassed,
+            "hysteresis_window_change_budget_bypass_reason": (
+                bypass_reason if bypassed else None
+            ),
+        }
+
+    def _annotate_window_change_budget(
+        self,
+        plan: AssignmentPlan,
+        *,
+        previous_plan: AssignmentPlan,
+        change_count: int,
+        accepted: bool,
+        bypass_reason: str | None = None,
+    ) -> AssignmentPlan:
+        budget = self._window_change_budget(
+            previous_plan=previous_plan,
+            window_id=plan.window_id,
+            change_count=change_count,
+        )
+        return replace(
+            plan,
+            metadata={
+                **dict(plan.metadata),
+                **self._window_change_budget_metadata(
+                    budget,
+                    accepted=accepted,
+                    bypass_reason=bypass_reason,
+                ),
+            },
+        )
+
+    @staticmethod
+    def _execution_control_change_reasons(
+        previous_plan: AssignmentPlan,
+        candidate: AssignmentPlan,
+    ) -> tuple[str, ...]:
+        reasons: list[str] = []
+        previous_metadata = previous_plan.metadata
+        candidate_metadata = candidate.metadata
+        if tuple(previous_metadata.get(key) for key in _PLAN_OWNER_CONTROL_KEYS) != tuple(
+            candidate_metadata.get(key) for key in _PLAN_OWNER_CONTROL_KEYS
+        ):
+            reasons.append("execution_owner_changed")
+        if tuple(
+            previous_metadata.get(key) for key in _PLAN_ACTIVATION_CONTROL_KEYS
+        ) != tuple(candidate_metadata.get(key) for key in _PLAN_ACTIVATION_CONTROL_KEYS):
+            reasons.append("execution_activation_changed")
+        if previous_plan.human_authorization_state != candidate.human_authorization_state:
+            reasons.append("execution_authorization_changed")
+        return tuple(reasons)
 
     def _apply_switch_penalty_to_matrix(
         self,
@@ -3067,6 +3577,50 @@ class AssignmentPlanner:
             "hysteresis_cost_margin": cost_margin,
             "hysteresis_required_relative_gain": self.config.delta,
             "reassignment_switch_penalty": self.config.reassignment_switch_penalty,
+        }
+
+    @staticmethod
+    def _held_candidate_scope_metadata(
+        *,
+        candidate: AssignmentPlan,
+        previous_plan: AssignmentPlan,
+        matrix_result: CostMatrixResult,
+    ) -> dict[str, object]:
+        """Audit current inputs without admitting them into a held plan identity."""
+
+        candidate_target_ids = tuple(
+            sorted(str(value) for value in matrix_result.target_ids)
+        )
+        execution_target_ids = tuple(
+            sorted(
+                {
+                    *(assignment.target_id for assignment in previous_plan.assignments),
+                    *(coalition.target_id for coalition in previous_plan.coalitions),
+                    *previous_plan.unassigned_target_ids,
+                    *previous_plan.incomplete_target_ids,
+                }
+            )
+        )
+        candidate_targets = set(candidate_target_ids)
+        execution_targets = set(execution_target_ids)
+        return {
+            "hysteresis_candidate_target_ids": candidate_target_ids,
+            "hysteresis_candidate_unassigned_target_ids": tuple(
+                sorted(candidate.unassigned_target_ids)
+            ),
+            "hysteresis_candidate_incomplete_target_ids": tuple(
+                sorted(candidate.incomplete_target_ids)
+            ),
+            "hysteresis_held_execution_target_ids": execution_target_ids,
+            "hysteresis_pending_new_target_ids": tuple(
+                sorted(candidate_targets - execution_targets)
+            ),
+            "hysteresis_missing_previous_target_ids": tuple(
+                sorted(execution_targets - candidate_targets)
+            ),
+            "hysteresis_scope_policy": (
+                "candidate_audit_only_until_execution_release"
+            ),
         }
 
     @staticmethod

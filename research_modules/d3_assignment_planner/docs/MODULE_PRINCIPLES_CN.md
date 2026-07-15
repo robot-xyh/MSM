@@ -1,6 +1,6 @@
 # 集中式资源-目标分配模块（项目模块编号 D3）原理
 
-> 状态基线：2026-07-13。本文只描述当前仓库已实现行为、已验证证据和明确保留的研究边界，不改变模块能力状态。
+> 状态基线：2026-07-15。本文只描述当前仓库已实现行为、已验证证据和明确保留的研究边界，不改变模块能力状态。
 
 ## 1. 文档范围与术语约定
 
@@ -135,7 +135,7 @@ D3 发布的是科研仿真和人工审核前的候选计划。`human_authorizat
 | `status`（资源状态） | 可用、忙碌、降级或不可用 | 不可用直接硬拒绝；其他状态进入代价。 |
 | `health_score`（健康分数） | 归一化健康程度 | 健康越差，资源状态代价越高。 |
 | `busy_until`（忙碌截止时刻） | 忙碌资源恢复时间 | 当前时刻早于该值时拒绝。 |
-| `operator_hold`（操作员保持） | 外部人工或反馈要求暂缓 | 为真时该资源所有边硬拒绝。 |
+| `operator_hold`（操作员保持） | 外部明确的人工或 resource-hard 要求 | 为真时该资源所有边硬拒绝；普通 pair hold 不得写入。 |
 | `load_penalty`（负载惩罚） | 兼容旧接口的负载摘要 | 进入资源状态代价。 |
 | `capability_class`（能力类别） | 资源的主要能力标签 | 与需求槽能力要求匹配。 |
 | `energy_fraction`（剩余能量比例） | 归一化剩余能量 | 为零时硬拒绝，否则进入代价。 |
@@ -214,10 +214,11 @@ D3 发布的是科研仿真和人工审核前的候选计划。`human_authorizat
 | `AssignmentPlanner.publish_plan()`（显式发布入口） | 提交审核后的候选并更新当前身份 | 已实现。 |
 | `guidance_bindings_from_assignment_plan()`（导引绑定导出） | 生成 D7 可消费的版本化被动绑定 | 已实现。 |
 | `evaluate_terminal_feedback()`（末端反馈评估） | 把反馈映射为继续、保持、重规划或二级仲裁 | 已实现。 |
-| `apply_terminal_feedback_to_planner_inputs()`（反馈写回） | 把权威反馈写入下一轮可行性、FOV 难度和资源保持 | 已实现。 |
+| `apply_terminal_feedback_to_planner_inputs()`（反馈写回） | 分级写入 edge-soft/hard、资源/目标 hard 和 D7 gate | 已实现并兼容旧 metadata。 |
 | `assignment_validity_summary_from_plan()`（有效性摘要导出） | 生成 D4/D6 计划质量与旧版本摘要 | 已实现。 |
 | `assignment_records_from_plan()`（分配记录导出） | 生成逐成员 D6 记录 | 已实现。 |
 | `assignment_evidence_from_plan()`（计划证据导出） | 导出当前矩阵、边分解、拒绝和所有者证据 | 已实现。 |
+| `plan_history_record_from_plan()`（单时刻历史导出） | 生成 canonical、稳定排序、可 JSON 序列化的单 planning-tick 记录 | 已实现 D3 schema/export。 |
 | `prepare_secondary_takeover_plan()`（二级接管计划盖章） | 校验所有者、前序、纪元、就绪和租约 | 已实现 D3 侧合同。 |
 | `continue_active_secondary_plan()`（活动二级计划续行） | 保持同一二级所有者的严格版本连续性 | 已实现 D3 侧合同。 |
 | `run_p1_assignment_calibration_matrix()`（P1 校准矩阵） | 比较确定性全量与增量转换 | 已实现离线校准。 |
@@ -428,6 +429,14 @@ SciPy 科学计算库可用时调用其线性和指派求解器；不可用时�
 
 排序优先级是：零安全违规、联盟完成数更高、资源对成功数更高、到达离散更小、候选标识稳定破同分。缺失物理观测不会被预测值补齐。
 
+### 5.5 Canonical 单时刻计划历史
+
+`plan_history_record_from_plan(plan, sequence_index=..., timestamp=..., previous_plan=..., feedback_metadata=...)` 为一个规划时刻生成 `PlanningTickHistoryRecord`。schema 固定为 `d3_plan_history_record_v1`；main 提供的非负 `sequence_index` 和有限 `timestamp` 形成字典序 `[sequence_index, timestamp]`，不能用可能保持不变的计划版本代替时刻顺序。
+
+记录在计划级只保存一次身份、版本、窗口、决策、资源/目标/分配数、所有者/来源、二级纪元/租约、总/候选/前序成本和 stale/rollback/replan 原因。分配按目标、联盟、波次、角色、资源排序，包含主用/备用激活状态、活动标志、联盟标识/版本/纪元、有效性和成本；联盟提供稳定排序的可恢复成员集合。迟滞、成员变化和 feedback soft/hard 分类也使用白名单字段。
+
+调用 `to_dict()` 后只得到 JSON 原生值。该在线历史接口没有真实身份标签参数，并递归排除 truth 命名字段；旧 `assignment_records_from_plan()` 及其离线评估标签能力保持兼容。D3 不负责 JSONL 写盘，也不计算跨时刻 churn。
+
 ## 6. 状态机、门控、迟滞与安全规则
 
 ### 6.1 规划器身份状态机
@@ -483,18 +492,20 @@ N_{change}\le N_{max}.
 | D5/main 输入状态 | D3 建议 | 含义 |
 |---|---|---|
 | 一致或未见风险 | 继续 | 保留当前计划。 |
-| 模糊、保持、友方重叠保持 | 保持 | 暂缓该资源，不改变全局身份。 |
-| 需要重新获取 | 中心重规划 | 调整下一轮边代价或可行性。 |
+| 模糊、普通保持 | 保持 | 只提高当前资源-目标边代价并保持 D7，不设置资源级保持。 |
+| 需要重新获取、几何/FOV/检测不稳定 | 中心重规划 | 形成边级 soft feedback，进入代价和迟滞。 |
+| 友方重叠保持 | 保持 | resource-hard，整资源保持。 |
+| verified friend | 保持 | target-hard，目标停止分配。 |
 | 不匹配、多帧不一致、跨视角冲突 | 二级仲裁 | 请求 D4/main 处理所有者与降级。 |
 | 重复末端锁定风险 | 二级仲裁 | 阻断本地重绑并形成禁配建议。 |
 
 写回函数把已经权威聚合的反馈转换为：
 
-- `feasibility_by_resource`（按资源可行性）中的禁配边；
-- `fov_difficulty_by_resource`（按资源视场难度）的升高；
-- `operator_hold`（操作员保持）的资源级保持；
+- 安全身份冲突、duplicate 或显式 feasibility reject 对应的硬禁配边；
+- 普通 ambiguous/hold/reacquire 与几何/FOV/检测不稳定对应的边级 FOV 代价；
+- 仅明确 resource-hard 风险使用的 `operator_hold`，以及 verified friend 的 target-hard；
 - 供 D4 的请求和供 D7 的保持动作；
-- 带源计划版本、稳定帧数和冲突原因的规范化反馈事件。
+- 带源计划版本、稳定帧数、constraint class/scope 和分类原因的规范化反馈事件。
 
 任何写回均固定 `allow_local_rebind`（允许本地换绑）为假。
 
@@ -506,7 +517,7 @@ N_{change}\le N_{max}.
 F_{effective}=\max(F_{D3},F_{upstream}),
 \]
 
-其中 D3 默认阈值 $F_{D3}=2$，上游阈值来自 D5 的稳定窗口。未达到阈值且旧主资源仍可行时保持旧主资源；达到阈值后释放。重复锁定、友方冲突、错误绑定、丢失、资源不可用、显式禁配或旧计划不可行会立即绕过该驻留。来自其他计划版本的反馈只用于审计。
+其中 D3 默认阈值 $F_{D3}=2$，上游阈值来自 D5 的稳定窗口。未达到阈值且旧主资源仍可行时保持旧主资源；达到阈值后只释放帧级保护，soft candidate 仍必须通过联盟成员和全局 `min_dwell`/收益迟滞。重复锁定、verified friend/友方冲突、错误绑定、资源不可用、显式禁配或旧计划不可行会立即绕过该驻留；普通检测丢失仍是当前边 soft feedback。来自其他计划版本的反馈只用于审计。
 
 另有成员角色保护规则：若所有旧主资源都报告同版本“一致/继续”，至少一个旧备用资源只报告普通“保持”或“重新获取”，且旧主资源边与能力仍可行，则需求槽矩阵固定旧主资源集合，只重解备用槽。主资源自身失败、硬冲突、需求变化或旧反馈会禁用该保护。
 
@@ -574,7 +585,7 @@ D3 给 D5 的信息是“该资源当前应观察哪个全局航迹”，不是�
 
 ### 8.5 D6 评估指标
 
-D3 导出计划身份、规模、矩阵、边代价、拒绝原因、迟滞原因、联盟需求满足、角色、波次、所有者、租约和绑定状态。D6 负责跨回合统计、物理结果关联和报告。缺失逐时刻历史时，联盟成员或版本抖动指标必须保持“不可用”，不能补零。
+D3 导出计划身份、规模、矩阵、边代价、拒绝原因、迟滞原因、联盟需求满足、角色、波次、所有者、租约和绑定状态，并已提供 canonical 单时刻 history schema/export。D6 负责跨回合统计、物理结果关联和报告。main 尚未把该记录写入现有 40 回合正式 aggregate，D6 也未据此计算 churn，因此联盟成员或版本抖动指标仍必须保持“不可用”，不能补零。
 
 ### 8.6 D7 导引
 
@@ -587,7 +598,7 @@ D7 只消费当前、有效、未保持的版本化绑定。每个主资源独�
 - 通过 `--drone-count`（飞行器数量参数）建立资源记录；
 - 启动和重置 AirSim、顺序运行回合并移动演员目标；
 - 聚合 D1-D7 消息、选择当前计划所有者并调用 D3；
-- 写盘每个规划时刻的计划、联盟、反馈、迟滞和结果；
+- 每个规划时刻调用 `plan_history_record_from_plan(...).to_dict()`，以 `[sequence_index, timestamp]` 排序合同写盘计划、联盟、反馈、迟滞和结果；
 - 把当前计划标识和版本传给二级绑定导出；
 - 调用 D6 形成最终证据。
 
@@ -597,7 +608,7 @@ D3 的 AirSim 风格干运行适配器只接收字典或轻量对象，不导入
 
 ### 9.1 模块回归与确定性证据
 
-主收敛验证报告记录 D3 回归为 **139 个通过，1 个跳过**。唯一跳过项是当前环境缺少可选 OR-Tools 的已安装求解测试。本文档任务没有改变代码，也不重复运行全量测试；Python 编程语言的 pytest 测试工具在仓库中的既有命令为：
+2026-07-14 当前 D3 回归为 **149 个通过，1 个跳过**。唯一跳过项是当前环境缺少可选 OR-Tools 的已安装求解测试；本轮新增 5 个 canonical history case，验证 primary/reserve、所有者/纪元/租约、soft/hard feedback、迟滞/成本、JSON 序列化、旧 metadata 和 truth 排除。标准命令为：
 
 ```bash
 python3 -m pytest -q research_modules/d3_assignment_planner/tests
@@ -630,7 +641,7 @@ python3 -m pytest -q research_modules/d3_assignment_planner/tests
 | 20 m / 5 s / 40 度 | 2/10 |
 | 20 m / 8 s / 40 度 | 1/10 |
 
-最佳候选 5/10，未达到 8/10 门限。主要失败来自 D5 未锁定、末端检测获取超时，少量来自检测框面积过小。安全合同没有退化：备用资源越权执行为 0，全局航迹身份改写为 0，在线真实身份标签使用为 0。全部配置合计是 8/40，不能误报为 40 个独立单种子配置。
+最佳候选 5/10，未达到 8/10 门限。主要失败来自 D5 未锁定、末端检测获取超时，少量来自检测框面积过小。安全合同没有退化：备用资源越权执行为 0，全局航迹身份改写为 0，在线真实身份标签使用为 0。全部配置合计是 8/40，不能误报为 40 个独立单种子配置。2026-07-14 的 D3 修复证明普通 pair hold 不应扩大为资源不可行；这是 churn 根因线索，不是对这 40 回合的因果证明，因为 aggregate 没有逐 planning tick 计划和反馈历史。
 
 D4 故障矩阵的下游证据显示，二级和分布式提交正例可消费 D3 当前绑定；缺 ACK 会关闭执行许可。该结果证明版本化绑定可被保守门控消费，但 D4 通信协议本身不属于 D3。
 
@@ -643,7 +654,7 @@ D4 故障矩阵的下游证据显示，二级和分布式提交正例可消费 D
 
 ## 10. 剩余局限与后续证据需求
 
-1. 40 回合正式聚合缺少逐规划时刻的计划历史，因此联盟成员抖动和版本抖动当前不可用。
+1. D3 canonical history schema/export 已实现，但 40 回合正式聚合尚无 main 写盘记录，D6 也未计算联盟成员/版本抖动；指标仍不可用，普通 hold 扩大机制只可列为根因线索，不能据此归因具体回合。
 2. 真实 3v5、5v3、目标新增、资源失效和高威胁需求变化仍缺多种子标定；确定性夹具不能代替该证据。
 3. D5 反馈写回已接通，但 FOV 权重、禁配边、资源保持、相对收益门限、驻留时间和切换惩罚尚未用真实逐时刻结果联合标定。
 4. 硬时间窗只完成单窗口和当前时刻边拒绝基线；没有真实 ETA、多窗口、连续动力学或承诺前缀优化。
@@ -691,3 +702,88 @@ D4 故障矩阵的下游证据显示，二级和分布式提交正例可消费 D
 本文依据当前 `README.md`（模块说明文件）、`PLAN.md`（模块计划文件）、`models.py`（数据模型源码）、`costs.py`（代价模型源码）、`solver.py`（求解器源码）、`planner.py`（规划器源码）、适配与校准源码、D3 测试、D3 差距审计/综述，以及 `MAIN_P1_CONVERGENCE_VALIDATION_REPORT_20260713.md`（主 P1 收敛验证报告）编写。
 
 后续只有在代码、测试和正式验证证据已经改变能力状态时，才应更新本文对应结论。计划项、可选依赖、一次性候选结果或跨模块设想不得单独升级为“默认主线已实现”。
+
+## 13. 保持计划与候选目标范围隔离（2026-07-14）
+
+迟滞中的“保持”必须保持整个可执行身份，而不只是资源-目标 assignment 集合。可执行
+身份还包括 coalition、unassigned/incomplete scope、授权状态和 owner/version。
+如果 D2 在某 tick 新增候选航迹，而 D3 因 dwell、收益门限或成员迟滞决定 hold，
+该候选不能先进入 current plan 的 unassigned scope，否则即使 assignment 不变，
+execution signature 仍会变化并错误生成新版本。
+
+当前实现遵循：
+
+```text
+当前 D2 候选集合
+  -> 计算 candidate plan
+  -> hysteresis hold
+  -> 保留 previous current execution identity
+  -> 候选只写入 hysteresis_candidate_* 审计
+  -> release 后才形成新 current plan/version
+```
+
+这不是目标识别过滤器。D3 仍以 D2/main 提供的 `assignable` 为准，不使用 AirSim
+truth，也不按已知物理目标数截断。真实 seed 001 中 T008 是 D2 后段新生航迹；是否为
+幻影必须由 D2 生命周期和 main 准入合同解决。D3 只保证在迟滞未释放时不提前赋予它
+current execution identity。
+
+## 14. 同窗口累计变更与双成本口径原则（2026-07-14）
+
+迟滞收益不能直接比较两个来源不同的 objective。D3 现在显式区分：
+
+- **候选搜索成本**：包含 switch penalty、soft-feedback FOV shaping、demand-slot
+  priority 和 role pin，用于减少搜索空间并生成候选；
+- **执行比较成本**：candidate 与 previous 均按当前 tick 的基础边成本、硬可行性和
+  当前 demand/unassigned 规则重评分，用于 `delta` 和 membership gain；schema 为
+  `d3_hysteresis_current_objective_v1`。
+
+`max_changes_per_window` 的“窗口”由调用方 `window_id` 定义。计划 metadata 在同一
+window 内累计已经接受的 assignment change count；普通 hold 和评估刷新不增加，
+新 window 从零开始。目标消失、资源硬失效以及 plan-level owner/activation/
+authorization 变化属于 fail-closed release，不可被普通预算阻止，但必须记录 bypass
+和 release reason。primary/reserve 成员候选仍属于 coalition membership 变化，不能
+伪装成外部 activation 来绕过迟滞。
+
+最新真实动因是 1 个 M5N2 seed 的 347 records、v1..v35；本批验收是 5 个新增
+确定性测试函数，全量 `157 passed, 1 skipped`，零失败。没有重跑 AirSim，因此真实
+10-seed 稳定性、上游 lifecycle admission、runtime reserve demotion 和 `8/10`
+coalition completion 仍保持开放。动态 M/N、truth 隔离和中心 `global_track_id`
+所有权原则未改变。
+
+## 15. Actual-v2 证据分层原则（2026-07-14）
+
+真实运行的 command、actual metrics 和 canonical history 必须携带同一计划身份。
+tuned 2v2 seed 1 三层均为 `d3-plan-c3cc6d28c365/1`，history 24 条；M5N2
+seed 1 三层均为 `d3-plan-cfdd088a10e1/1`，history 214 条。D6 两个 history
+case 均 available 且无 validation reason，故运行级计划身份 P0 证据链关闭。
+
+M5N2 feedback churn 为 50，但计划版本、成员和 owner churn 为 0；物理
+pair/target/coalition 为 `2/3`、`2/2`、`0/1`。目标级 `2/2` 不等于联盟
+完成，第二 primary 的 5 m 闭环与多 seed 仍属 P1。
+
+## 16. M5N2 20-Case 对算法原理的验证（2026-07-15）
+
+本批采用 5 个资源、2 个目标：高威胁 T001 显式要求 2 个 active primary 与 1 个
+standby reserve，T002 要求 1 个 primary。20 个真实 AirSim case 共写入 `3725` 个
+canonical planning tick，每条都保留动态 N/M、计划版本、成员角色、联盟状态、迟滞
+与反馈审计。这验证了 D3 原理中的三点：
+
+1. **资源数与目标数解耦**：所有记录均为 `resource_count=5`、`target_count=2`，
+   不是方阵 N 对 N 假设；每 tick 的 4 个 assignment 来自任务需求槽，而不是写死数量。
+2. **执行身份与候选评估解耦**：每个 case 只有一个 current `plan_id/version=1`，
+   `3555` 次成员候选评估均未改变实际 roster；其中 `3524` 次由成员迟滞保持，另有
+   `31` 次通过成员层后被全局迟滞保持。
+3. **角色而非资源编号定义协同成员**：19 个 case 的 T001 primary 是
+   `INT-02/INT-03`，另 1 个 case 是 `INT-01/INT-02`。第二 primary 必须按当前计划、
+   target 和 role 识别，不能固定成 `INT-03` 或数组第二项。
+
+物理层 pair `12/60`、canonical target `12/40`、coalition `0/20`，第二 primary
+`0/20` 进入 5 m。该结果说明“计划完整且稳定”不是“协同物理完成”的充分条件；
+D3 的职责是形成 current coalition 和抑制无依据换员，D5/D7/runtime 还必须完成视觉、
+控制和碰撞诊断。20 个 `collision_stop` 没有碰撞对象证据，不能据此调整 D3 成本或
+推断分配器退化。candidate 非退化失败同理只是不满足系统级晋级条件。
+
+统计术语必须保持分层：`canonical target success` 指 D6 的标准目标级结果，
+`cooperative target diagnosis` 指 T001 的两个 primary、第二 primary 和 coalition
+诊断。前者不能替代后者。额外 `png_ttc_2v2_seed001` 和未执行 dropout case 不进入
+本节样本，缺失项保持不可用。

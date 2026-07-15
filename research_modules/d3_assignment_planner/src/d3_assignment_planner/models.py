@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from math import sqrt
+from math import isfinite, sqrt
 from typing import Any, Iterable, Mapping
 from uuid import uuid4
 
@@ -18,6 +18,55 @@ TERMINAL_FEEDBACK_REPLAN_STATES = frozenset({"reacquire"})
 TERMINAL_FEEDBACK_ARBITRATION_STATES = frozenset(
     {"mismatch", "multi_frame_inconsistent", "cross_view_conflict"}
 )
+_FEEDBACK_CONSTRAINT_CLASSIFICATION_SCHEMA_V1 = (
+    "d3_feedback_constraint_classification_v1"
+)
+_SOFT_TERMINAL_FEEDBACK_STATES = frozenset(
+    {
+        "ambiguous",
+        "detection_lost",
+        "hold",
+        "lost",
+        "not_detected",
+        "reacquire",
+    }
+)
+_SAFETY_IDENTITY_CONFLICT_VALUES = frozenset(
+    {
+        "assignment_mismatch",
+        "coalition_or_plan_version_mismatch",
+        "conflicting_assigned_global_track_ids",
+        "cross_view_conflict",
+        "identity_conflict",
+        "local_track_id_conflict",
+        "mismatch",
+        "multi_frame_inconsistent",
+        "primary_binding_count_mismatch",
+        "primary_binding_not_execution_authorized",
+        "resource_multiple_local_locks",
+        "safety_identity_conflict",
+        "wrong_binding",
+    }
+)
+_SOFT_FEEDBACK_EVIDENCE_VALUES = frozenset(
+    {
+        "ambiguous",
+        "bbox_area_unstable",
+        "bbox_area_unstable_or_too_small",
+        "camera_geometry_not_provided",
+        "detection_unstable",
+        "detection_lost",
+        "fov_unstable",
+        "geometry_gate_rejected",
+        "hold",
+        "hypothesis_only",
+        "lost",
+        "measurement_age_stale",
+        "not_detected",
+        "reacquire",
+        "stability_window_failed",
+    }
+)
 EFFECTIVE_GUIDANCE_AUTH_STATES = frozenset(
     {"recorded", "authorized", "approved", "human_approved", "operator_approved"}
 )
@@ -28,6 +77,7 @@ GUIDANCE_BINDING_REASSIGNED = "reassigned"
 GUIDANCE_BINDING_HOLD = "hold"
 ASSIGNMENT_PLAN_SCHEMA_V1 = "assignment_plan_v1"
 ASSIGNMENT_PLAN_SCHEMA_V2 = "assignment_plan_v2"
+PLAN_HISTORY_RECORD_SCHEMA_V1 = "d3_plan_history_record_v1"
 ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1 = "d3_assignment_calibration_profile_v1"
 TERMINAL_FEEDBACK_PROFILE_SCHEMA_V1 = "d3_terminal_feedback_profile_v1"
 DEFAULT_COST_PROFILE_ID = "d3_hungarian_baseline"
@@ -70,6 +120,14 @@ class CoalitionMemberRole(str, Enum):
     RESERVE = "reserve"
     OBSERVER = "observer"
     RETRY = "retry"
+
+
+class _FeedbackConstraintClass(str, Enum):
+    NONE = "none"
+    EDGE_SOFT = "resource_target_edge_soft"
+    EDGE_HARD = "resource_target_edge_hard"
+    RESOURCE_HARD = "resource_hard"
+    TARGET_HARD = "target_hard"
 
 
 @dataclass(frozen=True)
@@ -771,6 +829,108 @@ class AssignmentEvidenceExport:
 
 
 @dataclass(frozen=True)
+class PlanningTickHistoryRecord:
+    """Canonical online record for exactly one D3 planning tick.
+
+    ``sequence_index`` is supplied by main. History consumers order records by
+    ``ordering_key``; D3 never infers cross-tick order from plan versions.
+    """
+
+    schema: str
+    schema_version: int
+    sequence_index: int
+    ordering_key: tuple[int, float]
+    timestamp: float
+    plan_schema: str
+    plan_id: str
+    plan_version: int
+    window_id: int
+    changed: bool
+    decision_state: str
+    resource_count: int
+    target_count: int
+    assigned_count: int
+    plan_owner: str
+    active_plan_owner: str
+    owner_node_id: str | None
+    source_node_id: str | None
+    selected_secondary_node_id: str | None
+    secondary_plan_version: int | None
+    secondary_leader_epoch: int | None
+    secondary_lease_expires_at_s: float | None
+    previous_plan_id: str | None
+    previous_plan_version: int | None
+    supersedes_plan_id: str | None
+    supersedes_plan_version: int | None
+    assignments: tuple[Mapping[str, Any], ...]
+    coalitions: tuple[Mapping[str, Any], ...]
+    hysteresis: Mapping[str, Any]
+    membership_change_records: tuple[Mapping[str, Any], ...]
+    feedback_constraints: Mapping[str, Any]
+    total_cost: float
+    candidate_total_cost: float | None
+    previous_total_cost_current: float | None
+    stale_plan_rejected: bool
+    stale_reject_reason: str | None
+    latest_plan_id: str | None
+    latest_plan_version: int | None
+    rollback_detected: bool
+    rollback_reason: str | None
+    replan_reason: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a deterministic, JSON-native mapping without truth fields."""
+
+        payload = {
+            "schema": self.schema,
+            "schema_version": self.schema_version,
+            "sequence_index": self.sequence_index,
+            "ordering_key": self.ordering_key,
+            "timestamp": self.timestamp,
+            "plan_schema": self.plan_schema,
+            "plan_id": self.plan_id,
+            "plan_version": self.plan_version,
+            "window_id": self.window_id,
+            "changed": self.changed,
+            "decision_state": self.decision_state,
+            "resource_count": self.resource_count,
+            "target_count": self.target_count,
+            "assigned_count": self.assigned_count,
+            "plan_owner": self.plan_owner,
+            "active_plan_owner": self.active_plan_owner,
+            "owner_node_id": self.owner_node_id,
+            "source_node_id": self.source_node_id,
+            "selected_secondary_node_id": self.selected_secondary_node_id,
+            "secondary_plan_version": self.secondary_plan_version,
+            "secondary_leader_epoch": self.secondary_leader_epoch,
+            "secondary_lease_expires_at_s": self.secondary_lease_expires_at_s,
+            "previous_plan_id": self.previous_plan_id,
+            "previous_plan_version": self.previous_plan_version,
+            "supersedes_plan_id": self.supersedes_plan_id,
+            "supersedes_plan_version": self.supersedes_plan_version,
+            "assignments": self.assignments,
+            "coalitions": self.coalitions,
+            "hysteresis": self.hysteresis,
+            "membership_change_records": self.membership_change_records,
+            "feedback_constraints": self.feedback_constraints,
+            "total_cost": self.total_cost,
+            "candidate_total_cost": self.candidate_total_cost,
+            "previous_total_cost_current": self.previous_total_cost_current,
+            "stale_plan_rejected": self.stale_plan_rejected,
+            "stale_reject_reason": self.stale_reject_reason,
+            "latest_plan_id": self.latest_plan_id,
+            "latest_plan_version": self.latest_plan_version,
+            "rollback_detected": self.rollback_detected,
+            "rollback_reason": self.rollback_reason,
+            "replan_reason": self.replan_reason,
+        }
+        normalized = _history_json_value(payload)
+        if not isinstance(normalized, dict):
+            raise TypeError("planning history payload must be a mapping")
+        return normalized
+
+
+@dataclass(frozen=True)
 class ThreatScoreBaseline:
     """Explainable baseline threat score assembled from simple scene terms."""
 
@@ -1315,6 +1475,7 @@ class TerminalFeedbackWriteback:
     d4_requests: tuple[str, ...] = ()
     allow_local_rebind: bool = False
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    hard_target_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1566,6 +1727,10 @@ def apply_terminal_feedback_to_planner_inputs(
                 "feedback_profile_id": resolved_feedback_profile_id,
                 "feedback_profile_version": resolved_feedback_profile_version,
                 "fov_cap": float(fov_cap),
+                "feedback_constraint_classification_schema": (
+                    _FEEDBACK_CONSTRAINT_CLASSIFICATION_SCHEMA_V1
+                ),
+                "feedback_classifications": (),
             },
         )
 
@@ -1574,8 +1739,11 @@ def apply_terminal_feedback_to_planner_inputs(
     target_feedback_events: dict[str, list[Mapping[str, Any]]] = {}
     hold_resource_ids: list[str] = []
     hold_resource_set: set[str] = set()
+    hard_target_ids: list[str] = []
+    hard_target_set: set[str] = set()
     prohibited_edges: list[tuple[str, str]] = []
     prohibited_edge_set: set[tuple[str, str]] = set()
+    feedback_classifications: list[Mapping[str, Any]] = []
     d4_requests: list[str] = []
     d7_gate_action = "continue"
 
@@ -1583,6 +1751,11 @@ def apply_terminal_feedback_to_planner_inputs(
         if resource_id and resource_id not in hold_resource_set:
             hold_resource_set.add(resource_id)
             hold_resource_ids.append(resource_id)
+
+    def add_hard_target(target_id: str | None) -> None:
+        if target_id and target_id not in hard_target_set:
+            hard_target_set.add(target_id)
+            hard_target_ids.append(target_id)
 
     def add_prohibited_edge(target_id: str | None, resource_id: str | None) -> None:
         if not target_id or not resource_id:
@@ -1618,6 +1791,9 @@ def apply_terminal_feedback_to_planner_inputs(
             "assigned_resource_id",
             "owner",
         )
+        resource_update = metadata.get("resource_update")
+        if resource_id is None and isinstance(resource_update, Mapping):
+            resource_id = _metadata_text(resource_update, "resource_id")
         action = _metadata_text(
             metadata,
             "main_action",
@@ -1630,11 +1806,38 @@ def apply_terminal_feedback_to_planner_inputs(
         d4_request = _metadata_text(metadata, "d4_request")
         gate_action = _metadata_text(metadata, "d7_gate_action")
 
+        constraint_class, classification_reason = _classify_feedback_constraint(
+            metadata,
+            target_id=target_id,
+            resource_id=resource_id,
+            terminal_state=terminal_state,
+            action=action,
+        )
+        constraint_scope = _feedback_constraint_scope(constraint_class)
+        feedback_classifications.append(
+            {
+                "target_id": target_id,
+                "resource_id": resource_id,
+                "terminal_feedback_state": terminal_state,
+                "constraint_class": constraint_class.value,
+                "constraint_scope": constraint_scope,
+                "classification_reason": classification_reason,
+                "hard_reject": constraint_class
+                in {
+                    _FeedbackConstraintClass.EDGE_HARD,
+                    _FeedbackConstraintClass.RESOURCE_HARD,
+                    _FeedbackConstraintClass.TARGET_HARD,
+                },
+            }
+        )
+
         feedback_event = _terminal_feedback_event(
             metadata,
             target_id=target_id,
             resource_id=resource_id,
             terminal_state=terminal_state,
+            constraint_class=constraint_class,
+            classification_reason=classification_reason,
         )
         if target_id and feedback_event is not None:
             target_feedback_events.setdefault(target_id, []).append(feedback_event)
@@ -1645,24 +1848,20 @@ def apply_terminal_feedback_to_planner_inputs(
             d7_gate_action = gate_action
         elif action and action != "continue" and d7_gate_action == "continue":
             d7_gate_action = "hold"
-
-        resource_update = metadata.get("resource_update")
-        if isinstance(resource_update, Mapping):
-            update_resource_id = (
-                _metadata_text(resource_update, "resource_id") or resource_id
-            )
-            if _metadata_bool(resource_update.get("operator_hold")):
-                add_hold(update_resource_id)
-
-        if (
-            _metadata_bool(metadata.get("operator_hold_suggested"))
-            or action == "hold"
-            or terminal_state == "friend_overlap_hold"
+        elif (
+            constraint_class != _FeedbackConstraintClass.NONE
+            and d7_gate_action == "continue"
         ):
-            add_hold(resource_id)
+            d7_gate_action = "hold"
 
-        if _metadata_bool(metadata.get("duplicate_terminal_lock_risk")):
+        if constraint_class == _FeedbackConstraintClass.RESOURCE_HARD:
+            add_hold(resource_id)
+        elif constraint_class == _FeedbackConstraintClass.TARGET_HARD:
+            add_hard_target(target_id)
+        elif constraint_class == _FeedbackConstraintClass.EDGE_HARD:
             add_prohibited_edge(target_id, resource_id)
+        elif constraint_class == _FeedbackConstraintClass.EDGE_SOFT:
+            add_fov(target_id, resource_id, fov_cap)
 
         raw_edges = metadata.get("prohibited_edges") or ()
         if isinstance(raw_edges, Mapping):
@@ -1714,31 +1913,56 @@ def apply_terminal_feedback_to_planner_inputs(
 
     updated_target_ids: list[str] = []
     updated_tracks: list[TargetTrack] = []
+    resource_by_id = {resource.resource_id: resource for resource in resource_tuple}
     for track in track_tuple:
         feasibility = dict(track.feasibility_by_resource)
         fov = dict(track.fov_difficulty_by_resource)
+        feedback_fov_base_by_resource: dict[str, float] = {}
+        feedback_fov_applied_by_resource: dict[str, float] = {}
         changed = False
         if track.track_id in target_feasibility:
             feasibility.update(target_feasibility[track.track_id])
             changed = True
         if track.track_id in target_fov:
             for resource_id, value in target_fov[track.track_id].items():
+                resource = resource_by_id.get(resource_id)
+                base_value = float(
+                    track.fov_difficulty_by_resource.get(
+                        resource_id,
+                        0.0 if resource is None else resource.fov_difficulty,
+                    )
+                )
                 fov[resource_id] = max(float(fov.get(resource_id, 0.0)), value)
+                feedback_fov_base_by_resource[resource_id] = base_value
+                feedback_fov_applied_by_resource[resource_id] = float(
+                    fov[resource_id]
+                )
             changed = True
         feedback_events = tuple(target_feedback_events.get(track.track_id, ()))
         if feedback_events:
+            changed = True
+        target_hard = track.track_id in hard_target_set
+        if target_hard and track.assignable:
             changed = True
         if changed:
             updated_target_ids.append(track.track_id)
             updated_tracks.append(
                 replace(
                     track,
+                    assignable=False if target_hard else track.assignable,
                     feasibility_by_resource=feasibility,
                     fov_difficulty_by_resource=fov,
                     metadata={
                         **dict(track.metadata),
                         "terminal_feedback_writeback_applied": True,
                         "terminal_feedback_events": feedback_events,
+                        "terminal_feedback_target_hard": target_hard,
+                        "terminal_feedback_fov_base_by_resource": (
+                            feedback_fov_base_by_resource
+                        ),
+                        "terminal_feedback_fov_applied_by_resource": (
+                            feedback_fov_applied_by_resource
+                        ),
                     },
                 )
             )
@@ -1771,6 +1995,7 @@ def apply_terminal_feedback_to_planner_inputs(
         "feedback_count": len(metadata_items),
         "prohibited_edges": edge_metadata,
         "hold_resource_ids": tuple(hold_resource_ids),
+        "hard_target_ids": tuple(hard_target_ids),
         "updated_target_ids": tuple(updated_target_ids),
         "updated_resource_ids": tuple(updated_resource_ids),
         "d7_gate_action": d7_gate_action,
@@ -1780,6 +2005,26 @@ def apply_terminal_feedback_to_planner_inputs(
         "feedback_profile_id": resolved_feedback_profile_id,
         "feedback_profile_version": resolved_feedback_profile_version,
         "fov_cap": float(fov_cap),
+        "feedback_constraint_classification_schema": (
+            _FEEDBACK_CONSTRAINT_CLASSIFICATION_SCHEMA_V1
+        ),
+        "feedback_classifications": tuple(feedback_classifications),
+        "soft_edge_feedback_count": sum(
+            item["constraint_class"] == _FeedbackConstraintClass.EDGE_SOFT.value
+            for item in feedback_classifications
+        ),
+        "hard_edge_feedback_count": sum(
+            item["constraint_class"] == _FeedbackConstraintClass.EDGE_HARD.value
+            for item in feedback_classifications
+        ),
+        "resource_hard_feedback_count": sum(
+            item["constraint_class"] == _FeedbackConstraintClass.RESOURCE_HARD.value
+            for item in feedback_classifications
+        ),
+        "target_hard_feedback_count": sum(
+            item["constraint_class"] == _FeedbackConstraintClass.TARGET_HARD.value
+            for item in feedback_classifications
+        ),
         "terminal_feedback_events": tuple(
             event
             for target_id in sorted(target_feedback_events)
@@ -1797,6 +2042,7 @@ def apply_terminal_feedback_to_planner_inputs(
         d4_requests=tuple(d4_requests),
         allow_local_rebind=False,
         metadata=metadata,
+        hard_target_ids=tuple(hard_target_ids),
     )
 
 
@@ -2251,6 +2497,438 @@ def assignment_evidence_from_plan(plan: AssignmentPlan) -> AssignmentEvidenceExp
         ),
         cost_weights=_metadata_float_mapping(plan_metadata.get("cost_weights")),
         planner_thresholds=_metadata_mapping(plan_metadata.get("planner_thresholds")),
+    )
+
+
+def plan_history_record_from_plan(
+    plan: AssignmentPlan,
+    *,
+    sequence_index: int,
+    timestamp: float,
+    previous_plan: AssignmentPlan | None = None,
+    feedback_metadata: Mapping[str, Any] | None = None,
+) -> PlanningTickHistoryRecord:
+    """Build one canonical planning-tick record for main persistence and D6.
+
+    Main owns ``sequence_index`` and the tick ``timestamp``. The optional
+    ``feedback_metadata`` accepts the metadata mapping returned by
+    :func:`apply_terminal_feedback_to_planner_inputs`; when omitted, the same
+    backward-compatible keys are read from ``plan.metadata``.
+    """
+
+    if isinstance(sequence_index, bool) or not isinstance(sequence_index, int):
+        raise TypeError("sequence_index must be an integer")
+    if sequence_index < 0:
+        raise ValueError("sequence_index must be non-negative")
+    record_timestamp = float(timestamp)
+    if not isfinite(record_timestamp):
+        raise ValueError("timestamp must be finite")
+
+    plan_metadata = dict(plan.metadata)
+    evidence = assignment_evidence_from_plan(plan)
+    assignment_records = assignment_records_from_plan(
+        plan,
+        timestamp=record_timestamp,
+        previous_plan=previous_plan,
+    )
+    assignment_pairs = sorted(
+        zip(plan.assignments, assignment_records),
+        key=lambda pair: _history_assignment_sort_key(pair[0]),
+    )
+    assignments = tuple(
+        {
+            "target_id": assignment.target_id,
+            "resource_id": assignment.resource_id,
+            "member_role": record.member_role,
+            "wave_id": record.wave_id,
+            "activation_state": record.activation_state,
+            "active": record.active,
+            "coalition_id": record.coalition_id,
+            "coalition_version": record.coalition_version,
+            "coalition_epoch": record.coalition_epoch,
+            "coalition_complete": record.coalition_complete,
+            "assignment_validity_state": record.assignment_validity_state,
+            "feasibility_state": assignment.feasibility_state,
+            "cost": float(assignment.cost),
+            "cost_breakdown": dict(assignment.cost_breakdown),
+        }
+        for assignment, record in assignment_pairs
+    )
+    coalitions = tuple(
+        _history_coalition_record(coalition)
+        for coalition in sorted(
+            plan.coalitions,
+            key=lambda item: (item.target_id, item.coalition_id, item.version),
+        )
+    )
+    membership_change_records = _history_membership_change_records(
+        plan_metadata.get("membership_change_records")
+    )
+
+    previous_plan_version = _metadata_int(
+        plan_metadata.get("previous_plan_version")
+    )
+    if previous_plan_version is None and previous_plan is not None:
+        previous_plan_version = previous_plan.version
+    if previous_plan_version is None and plan.previous_plan_id and plan.version > 1:
+        previous_plan_version = plan.version - 1
+    rollback_detected = _metadata_bool(
+        plan_metadata.get("plan_rollback_detected")
+    ) or (previous_plan is not None and plan.version < previous_plan.version)
+
+    return PlanningTickHistoryRecord(
+        schema=PLAN_HISTORY_RECORD_SCHEMA_V1,
+        schema_version=1,
+        sequence_index=sequence_index,
+        ordering_key=(sequence_index, record_timestamp),
+        timestamp=record_timestamp,
+        plan_schema=_plan_schema(plan),
+        plan_id=plan.plan_id,
+        plan_version=plan.version,
+        window_id=plan.window_id,
+        changed=bool(plan.changed),
+        decision_state=plan.decision_state,
+        resource_count=evidence.resource_count,
+        target_count=evidence.target_count,
+        assigned_count=evidence.assigned_count,
+        plan_owner=evidence.plan_owner,
+        active_plan_owner=evidence.active_plan_owner,
+        owner_node_id=evidence.owner_node_id,
+        source_node_id=evidence.source_node_id,
+        selected_secondary_node_id=evidence.selected_secondary_node_id,
+        secondary_plan_version=evidence.secondary_plan_version,
+        secondary_leader_epoch=evidence.secondary_leader_epoch,
+        secondary_lease_expires_at_s=evidence.secondary_lease_expires_at_s,
+        previous_plan_id=plan.previous_plan_id,
+        previous_plan_version=previous_plan_version,
+        supersedes_plan_id=evidence.supersedes_plan_id,
+        supersedes_plan_version=evidence.supersedes_plan_version,
+        assignments=assignments,
+        coalitions=coalitions,
+        hysteresis=_history_hysteresis_record(plan_metadata),
+        membership_change_records=membership_change_records,
+        feedback_constraints=_history_feedback_constraints(
+            plan_metadata,
+            feedback_metadata=feedback_metadata,
+        ),
+        total_cost=float(plan.total_cost),
+        candidate_total_cost=(
+            None
+            if plan.candidate_total_cost is None
+            else float(plan.candidate_total_cost)
+        ),
+        previous_total_cost_current=(
+            None
+            if plan.previous_total_cost_current is None
+            else float(plan.previous_total_cost_current)
+        ),
+        stale_plan_rejected=evidence.stale_plan_rejected,
+        stale_reject_reason=evidence.stale_reject_reason,
+        latest_plan_id=evidence.latest_plan_id,
+        latest_plan_version=evidence.latest_plan_version,
+        rollback_detected=rollback_detected,
+        rollback_reason=_metadata_text(
+            plan_metadata,
+            "plan_rollback_reason",
+            "rollback_reason",
+        ),
+        replan_reason=_metadata_text(plan_metadata, "replan_reason"),
+    )
+
+
+def _history_assignment_sort_key(assignment: Assignment) -> tuple[Any, ...]:
+    role_rank = {
+        CoalitionMemberRole.PRIMARY.value: 0,
+        CoalitionMemberRole.RESERVE.value: 1,
+        CoalitionMemberRole.RETRY.value: 2,
+        CoalitionMemberRole.OBSERVER.value: 3,
+    }
+    return (
+        assignment.target_id,
+        assignment.coalition_id or "",
+        assignment.wave_id,
+        role_rank.get(assignment.member_role, 99),
+        assignment.member_role,
+        assignment.resource_id,
+    )
+
+
+def _history_coalition_record(coalition: CoalitionPlan) -> Mapping[str, Any]:
+    members = tuple(
+        {
+            "resource_id": member.resource_id,
+            "member_role": member.member_role,
+            "wave_id": member.wave_id,
+            "arrival_window_start_s": member.arrival_window_start_s,
+            "arrival_window_end_s": member.arrival_window_end_s,
+            "required_capability_class": member.required_capability_class,
+            "executable": bool(member.executable),
+        }
+        for member in sorted(
+            coalition.members,
+            key=lambda item: (
+                item.wave_id,
+                {
+                    CoalitionMemberRole.PRIMARY.value: 0,
+                    CoalitionMemberRole.RESERVE.value: 1,
+                    CoalitionMemberRole.RETRY.value: 2,
+                    CoalitionMemberRole.OBSERVER.value: 3,
+                }.get(item.member_role, 99),
+                item.member_role,
+                item.resource_id,
+            ),
+        )
+    )
+    return {
+        "coalition_id": coalition.coalition_id,
+        "version": coalition.version,
+        "epoch": coalition.epoch,
+        "target_id": coalition.target_id,
+        "state": coalition.state,
+        "coordination_mode": coalition.coordination_mode,
+        "required_resource_count": coalition.required_resource_count,
+        "primary_resource_count": coalition.primary_resource_count,
+        "assigned_resource_count": coalition.assigned_resource_count,
+        "shortfall": coalition.shortfall,
+        "complete": bool(coalition.complete),
+        "members": members,
+    }
+
+
+def _history_hysteresis_record(metadata: Mapping[str, Any]) -> Mapping[str, Any]:
+    return {
+        "state": _metadata_text(metadata, "hysteresis_state"),
+        "reason": _metadata_text(metadata, "hysteresis_reason"),
+        "reasons": _metadata_text_tuple(metadata.get("hysteresis_reasons")),
+        "release_reason": _metadata_text(metadata, "hysteresis_release_reason"),
+        "release_condition": _metadata_text(
+            metadata,
+            "hysteresis_release_condition",
+        ),
+        "dwell_time_s": _metadata_float(metadata.get("hysteresis_dwell_time_s")),
+        "min_dwell_s": _metadata_float(metadata.get("hysteresis_min_dwell_s")),
+        "delta": _metadata_float(metadata.get("hysteresis_delta")),
+        "candidate_change_count": _metadata_int(
+            metadata.get("hysteresis_candidate_change_count")
+            if "hysteresis_candidate_change_count" in metadata
+            else metadata.get("candidate_change_count")
+        ),
+        "max_changes_per_window": _metadata_int(
+            metadata.get("hysteresis_max_changes_per_window")
+            if "hysteresis_max_changes_per_window" in metadata
+            else metadata.get("max_changes_per_window")
+        ),
+        "previous_feasible": _metadata_bool_optional(
+            metadata.get("hysteresis_previous_feasible")
+        ),
+        "improvement_ok": _metadata_bool_optional(
+            metadata.get("hysteresis_improvement_ok")
+        ),
+        "dwell_ok": _metadata_bool_optional(metadata.get("hysteresis_dwell_ok")),
+        "change_limit_ok": _metadata_bool_optional(
+            metadata.get("hysteresis_change_limit_ok")
+        ),
+        "cost_basis_schema": _metadata_text(
+            metadata,
+            "hysteresis_cost_basis_schema",
+        ),
+        "candidate_search_total_cost": _metadata_float(
+            metadata.get("hysteresis_candidate_search_total_cost")
+        ),
+        "candidate_comparison_total_cost": _metadata_float(
+            metadata.get("hysteresis_candidate_comparison_total_cost")
+        ),
+        "previous_comparison_total_cost": _metadata_float(
+            metadata.get("hysteresis_previous_comparison_total_cost")
+        ),
+        "change_window_id": _metadata_int(
+            metadata.get("hysteresis_change_window_id")
+        ),
+        "window_change_budget_schema": _metadata_text(
+            metadata,
+            "hysteresis_window_change_budget_schema",
+        ),
+        "window_changes_used_before": _metadata_int(
+            metadata.get("hysteresis_window_changes_used_before")
+        ),
+        "window_changes_used": _metadata_int(
+            metadata.get("hysteresis_window_changes_used")
+        ),
+        "window_candidate_change_count": _metadata_int(
+            metadata.get("hysteresis_window_candidate_change_count")
+        ),
+        "window_changes_if_accepted": _metadata_int(
+            metadata.get("hysteresis_window_changes_if_accepted")
+        ),
+        "window_change_budget_remaining": _metadata_int(
+            metadata.get("hysteresis_window_change_budget_remaining")
+        ),
+        "window_change_budget_ok": _metadata_bool_optional(
+            metadata.get("hysteresis_window_change_budget_ok")
+        ),
+        "window_change_budget_bypassed": _metadata_bool_optional(
+            metadata.get("hysteresis_window_change_budget_bypassed")
+        ),
+        "window_change_budget_bypass_reason": _metadata_text(
+            metadata,
+            "hysteresis_window_change_budget_bypass_reason",
+        ),
+        "high_threat_release": _metadata_bool_optional(
+            metadata.get("hysteresis_high_threat_release")
+        ),
+    }
+
+
+def _history_membership_change_records(value: Any) -> tuple[Mapping[str, Any], ...]:
+    if isinstance(value, Mapping):
+        raw_records = (value,)
+    elif isinstance(value, (tuple, list)):
+        raw_records = tuple(item for item in value if isinstance(item, Mapping))
+    else:
+        raw_records = ()
+    normalized = tuple(
+        item
+        for item in (_history_json_value(dict(record)) for record in raw_records)
+        if isinstance(item, dict)
+    )
+    return tuple(
+        sorted(
+            normalized,
+            key=lambda item: (
+                str(item.get("target_id") or ""),
+                str(item.get("membership_change_reason") or ""),
+                repr(item),
+            ),
+        )
+    )
+
+
+def _history_feedback_constraints(
+    plan_metadata: Mapping[str, Any],
+    *,
+    feedback_metadata: Mapping[str, Any] | None,
+) -> Mapping[str, Any]:
+    source = dict(plan_metadata)
+    if feedback_metadata is not None:
+        source.update(dict(feedback_metadata))
+    raw_classifications = source.get("feedback_classifications")
+    if not raw_classifications:
+        raw_classifications = source.get("terminal_feedback_events", ())
+    if isinstance(raw_classifications, Mapping):
+        raw_classifications = (raw_classifications,)
+    if not isinstance(raw_classifications, (tuple, list)):
+        raw_classifications = ()
+
+    classifications = tuple(
+        sorted(
+            (
+                _history_feedback_classification(item)
+                for item in raw_classifications
+                if isinstance(item, Mapping)
+            ),
+            key=lambda item: (
+                str(item.get("target_id") or ""),
+                str(item.get("resource_id") or ""),
+                str(item.get("constraint_class") or ""),
+                str(item.get("terminal_feedback_state") or ""),
+                str(item.get("classification_reason") or ""),
+            ),
+        )
+    )
+    class_counts = {
+        item["constraint_class"]: sum(
+            other["constraint_class"] == item["constraint_class"]
+            for other in classifications
+        )
+        for item in classifications
+    }
+
+    def category_count(metadata_key: str, constraint_class: str) -> int:
+        if classifications:
+            return int(class_counts.get(constraint_class, 0))
+        return max(0, _metadata_int(source.get(metadata_key)) or 0)
+
+    soft_edge_count = category_count(
+        "soft_edge_feedback_count",
+        _FeedbackConstraintClass.EDGE_SOFT.value,
+    )
+    hard_edge_count = category_count(
+        "hard_edge_feedback_count",
+        _FeedbackConstraintClass.EDGE_HARD.value,
+    )
+    resource_hard_count = category_count(
+        "resource_hard_feedback_count",
+        _FeedbackConstraintClass.RESOURCE_HARD.value,
+    )
+    target_hard_count = category_count(
+        "target_hard_feedback_count",
+        _FeedbackConstraintClass.TARGET_HARD.value,
+    )
+    return {
+        "schema": _metadata_text(
+            source,
+            "feedback_constraint_classification_schema",
+        )
+        or _FEEDBACK_CONSTRAINT_CLASSIFICATION_SCHEMA_V1,
+        "classifications": classifications,
+        "soft_count": soft_edge_count,
+        "hard_count": hard_edge_count + resource_hard_count + target_hard_count,
+        "soft_edge_count": soft_edge_count,
+        "hard_edge_count": hard_edge_count,
+        "resource_hard_count": resource_hard_count,
+        "target_hard_count": target_hard_count,
+    }
+
+
+def _history_feedback_classification(value: Mapping[str, Any]) -> Mapping[str, Any]:
+    constraint_class = str(
+        value.get("constraint_class")
+        or value.get("feedback_constraint_class")
+        or _FeedbackConstraintClass.NONE.value
+    )
+    hard_reject = constraint_class in {
+        _FeedbackConstraintClass.EDGE_HARD.value,
+        _FeedbackConstraintClass.RESOURCE_HARD.value,
+        _FeedbackConstraintClass.TARGET_HARD.value,
+    }
+    return {
+        "target_id": value.get("target_id"),
+        "resource_id": value.get("resource_id"),
+        "terminal_feedback_state": value.get("terminal_feedback_state"),
+        "constraint_class": constraint_class,
+        "constraint_scope": value.get("constraint_scope")
+        or value.get("feedback_constraint_scope"),
+        "classification_reason": value.get("classification_reason")
+        or value.get("feedback_classification_reason"),
+        "hard_reject": _metadata_bool(value.get("hard_reject"))
+        or _metadata_bool(value.get("feedback_hard_reject"))
+        or hard_reject,
+    }
+
+
+def _history_json_value(value: Any) -> Any:
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if not isfinite(value):
+            raise ValueError("planning history values must be finite")
+        return value
+    if isinstance(value, Enum):
+        return _history_json_value(value.value)
+    if isinstance(value, Mapping):
+        return {
+            str(key): _history_json_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+            if "truth" not in str(key).strip().lower()
+        }
+    if isinstance(value, (tuple, list)):
+        return [_history_json_value(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        normalized = [_history_json_value(item) for item in value]
+        return sorted(normalized, key=repr)
+    raise TypeError(
+        "planning history values must use JSON-native types; "
+        f"got {type(value).__name__}"
     )
 
 
@@ -3548,6 +4226,8 @@ def _terminal_feedback_event(
     target_id: str | None,
     resource_id: str | None,
     terminal_state: str | None,
+    constraint_class: _FeedbackConstraintClass,
+    classification_reason: str,
 ) -> Mapping[str, Any] | None:
     """Keep only D3-relevant, versioned terminal feedback evidence."""
 
@@ -3630,7 +4310,197 @@ def _terminal_feedback_event(
         ),
         "stable_lock_frame_count_by_resource": normalized_stable_counts,
         "required_stable_frames": normalized_required,
+        "feedback_constraint_class": constraint_class.value,
+        "feedback_constraint_scope": _feedback_constraint_scope(constraint_class),
+        "feedback_classification_reason": classification_reason,
     }
+
+
+def _classify_feedback_constraint(
+    metadata: Mapping[str, Any],
+    *,
+    target_id: str | None,
+    resource_id: str | None,
+    terminal_state: str | None,
+    action: str | None,
+) -> tuple[_FeedbackConstraintClass, str]:
+    """Classify D5 feedback without promoting pair uncertainty to resource hold."""
+
+    values = _feedback_semantic_values(metadata)
+    state = str(terminal_state or "").strip().lower()
+    normalized_action = str(action or "").strip().lower()
+    friend_state = str(metadata.get("friend_conflict_state") or "").strip().lower()
+    explicit_class = _explicit_feedback_constraint_class(metadata)
+
+    duplicate_assignment_count = _metadata_int(
+        metadata.get("duplicate_assignment_count")
+    )
+    duplicate = (
+        _metadata_bool(metadata.get("duplicate_terminal_lock_risk"))
+        or _metadata_bool(metadata.get("duplicate_assignment"))
+        or (duplicate_assignment_count is not None and duplicate_assignment_count > 0)
+        or any(
+            value.startswith(("duplicate_assignment", "duplicate_terminal_lock", "duplicate_lock"))
+            for value in values
+        )
+    )
+    if duplicate:
+        return _FeedbackConstraintClass.EDGE_HARD, "duplicate_assignment_or_lock"
+
+    if friend_state == "verified_friend_overlap" or any(
+        value.startswith("verified_friend") for value in values
+    ):
+        return _FeedbackConstraintClass.TARGET_HARD, "verified_friend"
+    if state == "friend_overlap_hold" or "friend_overlap_hold" in values:
+        return _FeedbackConstraintClass.RESOURCE_HARD, "friend_overlap_hold"
+    if state == "resource_unavailable" or "resource_unavailable" in values:
+        return _FeedbackConstraintClass.RESOURCE_HARD, "resource_unavailable"
+
+    coalition_conflict = str(
+        metadata.get("coalition_conflict_state") or ""
+    ).strip().lower()
+    if (
+        state in TERMINAL_FEEDBACK_ARBITRATION_STATES
+        or coalition_conflict not in {"", "none"}
+        or bool(values & _SAFETY_IDENTITY_CONFLICT_VALUES)
+    ):
+        return _FeedbackConstraintClass.EDGE_HARD, "safety_identity_conflict"
+
+    raw_feasibility = metadata.get("feasibility_by_resource")
+    explicit_feasibility_reject = (
+        _has_false_feasibility(raw_feasibility)
+        or bool(metadata.get("prohibited_edges"))
+        or _metadata_bool(metadata.get("prohibit_assignment_suggested"))
+        or _metadata_text(metadata, "feasibility_suggestion")
+        == "temporarily_mark_current_edge_infeasible"
+    )
+    if explicit_feasibility_reject:
+        return _FeedbackConstraintClass.EDGE_HARD, "explicit_feasibility_reject"
+
+    resource_update = metadata.get("resource_update")
+    explicit_resource_hold = (
+        isinstance(resource_update, Mapping)
+        and _metadata_bool(resource_update.get("operator_hold"))
+    ) or _metadata_bool(metadata.get("operator_hold_suggested"))
+    if explicit_class in {
+        _FeedbackConstraintClass.RESOURCE_HARD,
+        _FeedbackConstraintClass.TARGET_HARD,
+        _FeedbackConstraintClass.EDGE_HARD,
+    }:
+        return explicit_class, "explicit_constraint_class"
+    if explicit_resource_hold and target_id is None:
+        return _FeedbackConstraintClass.RESOURCE_HARD, "explicit_resource_hard_hold"
+
+    edge_context = target_id is not None and resource_id is not None
+    if explicit_resource_hold and edge_context:
+        return _FeedbackConstraintClass.EDGE_SOFT, "legacy_pair_hold_downgraded"
+    if explicit_class == _FeedbackConstraintClass.EDGE_SOFT:
+        return explicit_class, (
+            _metadata_text(metadata, "feedback_classification_reason")
+            or "explicit_edge_soft_feedback"
+        )
+    if state in _SOFT_TERMINAL_FEEDBACK_STATES or normalized_action in {
+        "hold",
+        "replan",
+    }:
+        return _FeedbackConstraintClass.EDGE_SOFT, "ordinary_terminal_uncertainty"
+    if edge_context and (
+        bool(values & _SOFT_FEEDBACK_EVIDENCE_VALUES)
+        or bool(metadata.get("fov_difficulty_by_resource"))
+        or _metadata_text(metadata, "fov_difficulty_suggestion")
+        == "increase_current_edge"
+    ):
+        return (
+            _FeedbackConstraintClass.EDGE_SOFT,
+            "geometry_fov_or_detection_instability",
+        )
+    if normalized_action == "secondary_arbitration" and edge_context:
+        return _FeedbackConstraintClass.EDGE_HARD, "legacy_secondary_arbitration"
+    if explicit_class is not None:
+        return explicit_class, "explicit_constraint_class"
+    return _FeedbackConstraintClass.NONE, "no_planner_constraint"
+
+
+def _explicit_feedback_constraint_class(
+    metadata: Mapping[str, Any],
+) -> _FeedbackConstraintClass | None:
+    raw_value = _metadata_text(
+        metadata,
+        "feedback_constraint_class",
+        "constraint_class",
+    )
+    aliases = {
+        "edge_soft": _FeedbackConstraintClass.EDGE_SOFT,
+        "soft": _FeedbackConstraintClass.EDGE_SOFT,
+        "edge_hard": _FeedbackConstraintClass.EDGE_HARD,
+        "hard": _FeedbackConstraintClass.EDGE_HARD,
+        "resource": _FeedbackConstraintClass.RESOURCE_HARD,
+        "target": _FeedbackConstraintClass.TARGET_HARD,
+    }
+    if raw_value is None:
+        return None
+    normalized = raw_value.strip().lower()
+    if normalized in aliases:
+        return aliases[normalized]
+    try:
+        return _FeedbackConstraintClass(normalized)
+    except ValueError:
+        return None
+
+
+def _feedback_constraint_scope(constraint_class: _FeedbackConstraintClass) -> str:
+    return {
+        _FeedbackConstraintClass.NONE: "none",
+        _FeedbackConstraintClass.EDGE_SOFT: "resource_target_edge",
+        _FeedbackConstraintClass.EDGE_HARD: "resource_target_edge",
+        _FeedbackConstraintClass.RESOURCE_HARD: "resource",
+        _FeedbackConstraintClass.TARGET_HARD: "target",
+    }[constraint_class]
+
+
+def _feedback_semantic_values(metadata: Mapping[str, Any]) -> set[str]:
+    values: set[str] = set()
+    pending: list[Mapping[str, Any]] = [metadata]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        for key in (
+            "terminal_feedback_state",
+            "friend_conflict_state",
+            "coalition_conflict_state",
+            "decision_state",
+            "reason",
+            "reasons",
+            "reject_reason",
+            "revoke_reason",
+            "visual_png_handoff_blockers",
+        ):
+            raw_value = current.get(key)
+            raw_items = (raw_value,) if isinstance(raw_value, str) else raw_value or ()
+            if not isinstance(raw_items, (tuple, list, set, frozenset)):
+                raw_items = (raw_items,)
+            for raw_item in raw_items:
+                text = str(raw_item).strip().lower()
+                if not text:
+                    continue
+                values.add(text)
+                split_text = text
+                for delimiter in (":", ",", ";", "/", "|", " "):
+                    split_text = split_text.replace(delimiter, " ")
+                values.update(part for part in split_text.split() if part)
+        if _metadata_bool(current.get("duplicate_terminal_lock_risk")):
+            values.add("duplicate_terminal_lock_risk")
+        duplicate_count = _metadata_int(current.get("duplicate_assignment_count"))
+        if duplicate_count is not None and duplicate_count > 0:
+            values.add("duplicate_assignment")
+        for nested_key in ("coalition_visual_summary", "consistency", "metadata"):
+            nested = current.get(nested_key)
+            if isinstance(nested, Mapping):
+                pending.append(nested)
+    return values
 
 
 def _clamp01_model(value: float) -> float:
@@ -3683,8 +4553,23 @@ def _feedback_planner_metadata(
     feedback_profile_id: str,
     feedback_profile_version: str,
 ) -> dict[str, Any]:
-    operator_hold = action == "hold"
-    prohibit_assignment = action == "secondary_arbitration"
+    if duplicate_terminal_lock_risk:
+        constraint_class = _FeedbackConstraintClass.EDGE_HARD
+        classification_reason = "duplicate_assignment_or_lock"
+    elif state == "friend_overlap_hold":
+        constraint_class = _FeedbackConstraintClass.RESOURCE_HARD
+        classification_reason = "friend_overlap_hold"
+    elif state in TERMINAL_FEEDBACK_ARBITRATION_STATES:
+        constraint_class = _FeedbackConstraintClass.EDGE_HARD
+        classification_reason = "safety_identity_conflict"
+    elif action == "continue":
+        constraint_class = _FeedbackConstraintClass.NONE
+        classification_reason = "no_planner_constraint"
+    else:
+        constraint_class = _FeedbackConstraintClass.EDGE_SOFT
+        classification_reason = "ordinary_terminal_uncertainty"
+    operator_hold = constraint_class == _FeedbackConstraintClass.RESOURCE_HARD
+    prohibit_assignment = constraint_class == _FeedbackConstraintClass.EDGE_HARD
     increase_fov = action in {"hold", "replan", "secondary_arbitration"}
     metadata: dict[str, Any] = {
         "main_action": action,
@@ -3713,6 +4598,18 @@ def _feedback_planner_metadata(
         "feedback_profile_schema": TERMINAL_FEEDBACK_PROFILE_SCHEMA_V1,
         "feedback_profile_id": str(feedback_profile_id),
         "feedback_profile_version": str(feedback_profile_version),
+        "feedback_constraint_classification_schema": (
+            _FEEDBACK_CONSTRAINT_CLASSIFICATION_SCHEMA_V1
+        ),
+        "feedback_constraint_class": constraint_class.value,
+        "feedback_constraint_scope": _feedback_constraint_scope(constraint_class),
+        "feedback_classification_reason": classification_reason,
+        "feedback_hard_reject": constraint_class
+        in {
+            _FeedbackConstraintClass.EDGE_HARD,
+            _FeedbackConstraintClass.RESOURCE_HARD,
+            _FeedbackConstraintClass.TARGET_HARD,
+        },
     }
     if resource_id is not None:
         metadata["resource_id"] = resource_id

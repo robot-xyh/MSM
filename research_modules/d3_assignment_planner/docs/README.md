@@ -10,3 +10,8 @@ D3 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 6. `../results/EXPERIMENT_REPORT_GENERATED.md`：脚本生成的实验报告快照。
 
 本模块只生成候选分配计划和审计数据，不包含真实飞控、硬件、火控、毁伤或自动处置逻辑。
+
+最新证据基线为 2026-07-15 的 M5N2 baseline/candidate 各 10 seeds、共 20 case。
+`EXPERIMENT_REPORT.md` 记录物理结果与 D3 history 聚合，`AIRSIM_INTEGRATION_PLAN.md`
+记录写盘可用性和后续接线，`PLAN.md` 记录剩余 P1。额外的
+`png_ttc_2v2_seed001` 不属于该 M5N2 聚合，未运行 case 不补零。

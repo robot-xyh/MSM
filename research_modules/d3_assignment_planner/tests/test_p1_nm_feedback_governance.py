@@ -250,6 +250,56 @@ def test_fov_feedback_changes_cost_but_hysteresis_holds_short_dwell() -> None:
         "observed_frames"
     ] == 1
 
+    third = planner.plan(
+        writeback.tracks,
+        writeback.resources,
+        timestamp=2.0,
+        previous_plan=second,
+    )
+
+    assert third.assignment_map() == first.assignment_map()
+    assert third.decision_state == "held_by_hysteresis"
+    assert third.metadata["hysteresis_dwell_ok"] is False
+    assert third.version == first.version
+
+
+def test_ambiguous_soft_hold_uses_cost_and_does_not_bypass_min_dwell() -> None:
+    planner = _fov_planner()
+    tracks = (
+        TargetTrack(
+            "T03",
+            0.9,
+            0.1,
+            0.1,
+            fov_difficulty_by_resource={"R01": 0.0, "R02": 0.3},
+        ),
+    )
+    resources = (ResourceState("R01"), ResourceState("R02"))
+    first = planner.plan(tracks, resources, timestamp=0.0)
+    feedback = evaluate_terminal_feedback(
+        "ambiguous",
+        plan_version=first.version,
+        resource_id="R01",
+        target_id="T03",
+    )
+    writeback = apply_terminal_feedback_to_planner_inputs(tracks, resources, feedback)
+
+    second = planner.plan(
+        writeback.tracks,
+        writeback.resources,
+        timestamp=1.0,
+        previous_plan=first,
+    )
+
+    assert writeback.hold_resource_ids == ()
+    assert all(resource.operator_hold is False for resource in writeback.resources)
+    assert writeback.prohibited_edges == ()
+    assert second.metadata["cost_matrix"][0] == (1.0, 0.3)
+    assert second.assignment_map() == first.assignment_map()
+    assert second.decision_state == "held_by_hysteresis"
+    assert second.metadata["hysteresis_dwell_ok"] is False
+    assert second.version == first.version
+
 
 def test_explicit_feasibility_feedback_creates_hard_reject() -> None:
     planner = _fov_planner(enable_hysteresis=False)

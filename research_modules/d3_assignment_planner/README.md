@@ -157,7 +157,7 @@ printed to stdout.
 - `reacquire` -> `replan`
 - `mismatch` or duplicate terminal lock risk -> `secondary_arbitration`
 
-The feedback decision includes `main_action` and `planner_metadata` so main can apply a conservative integration action without local rebinding. The metadata explicitly carries `operator_hold_suggested`, `prohibit_assignment_suggested`, `feasibility_suggestion`, `fov_difficulty_suggestion`, optional `feasibility_by_resource`, optional `fov_difficulty_by_resource`, and optional `prohibited_edges`. `apply_terminal_feedback_to_planner_inputs(...)` maps that metadata into next-round `TargetTrack` and `ResourceState` DTOs: duplicate/explicit prohibited edges become `feasibility_by_resource=False`, fov/friend feedback increases `fov_difficulty_by_resource`, and friend/hold feedback sets `ResourceState.operator_hold`.
+The feedback decision includes `main_action` and `planner_metadata` so main can apply a conservative integration action without local rebinding. The metadata explicitly carries the backward-compatible hold/feasibility/FOV fields plus additive `feedback_constraint_class`, scope, hard-reject flag, and classification reason. `apply_terminal_feedback_to_planner_inputs(...)` classifies ordinary `ambiguous`, `hold`, `reacquire`, geometry/FOV, and detection-instability evidence as `resource_target_edge_soft`: it raises only that edge's FOV cost, keeps D7 on hold, and leaves `ResourceState.operator_hold=False`. `friend_overlap_hold` remains resource-hard, verified-friend evidence is target-hard, and safety identity conflict, duplicate assignment/lock, or explicit feasibility rejection remains fail-closed. Existing metadata names, including nested `resource_update`, remain accepted; a legacy pair hold is downgraded to soft and audited rather than expanded to the whole resource.
 
 The writeback also preserves normalized `terminal_feedback_events` with target,
 resource, source plan version, coalition reason/conflict, stable-lock counts, and
@@ -167,7 +167,9 @@ primary membership. `PlannerConfig.transient_feedback_dwell_frames` defaults to
 2; the effective window is the maximum of this value and D5's
 `required_stable_frames`, so D3 cannot weaken the visual gate. A short
 `primary_lock_stability_incomplete` or `reacquire` holds a still-feasible
-primary set until that window completes. Duplicate/friendly conflict, wrong
+primary set until that window completes. Completing the frame window does not
+bypass ordinary `delta`, `min_dwell`, change-limit, or coalition-member
+hysteresis. Duplicate/friendly conflict, wrong
 binding, loss, resource unavailability, explicit prohibited edges, or any other
 old-plan infeasibility bypass the dwell immediately. Feedback for another plan
 version is audit-only and cannot protect or release the current coalition.
@@ -179,7 +181,8 @@ every previous primary reports `consistent/continue`, at least one previous
 reserve reports a soft `hold/hold` or `reacquire/replan`, and all old primary
 edges and capabilities remain feasible, the demand-slot matrix pins exactly
 that previous primary set. The solver may constrain or replace reserve slots
-without rotating a healthy primary into reserve. Any primary failure,
+without rotating a healthy primary into reserve. The resulting reserve change
+is still a candidate and must pass ordinary member/global hysteresis. Any primary failure,
 duplicate/friendly/wrong-binding conflict, unavailable primary edge, changed
 demand, or stale feedback disables the pin and follows the existing hard-risk
 or primary-failure policy.
@@ -196,6 +199,7 @@ D3 also exports:
 
 - `assignment_validity_summary_from_plan(...)` -> `AssignmentValiditySummary(plan_id, version, plan_age_s, assignment_latency_s, cost_margin, stale_plan_version, duplicate_assignment_count, unassigned_high_threat_count, resource_count, target_count, assigned_count, hysteresis_reject_count, stale_reject_count, reassign_count)`.
 - `assignment_records_from_plan(...)` and `assignment_evidence_from_plan(...)` -> D6/main outputs containing current plan identity, `identity_created_at_s`, `last_evaluated_at_s`, N/M shape, costs/reject reasons, hysteresis state, secondary audit fields, plus `assignment_profile_schema`, cost/feedback profile id/version, the exact cost-weight snapshot, and planner thresholds. A record without an explicit export timestamp uses `last_evaluated_at_s`, not the stable identity creation time.
+- `plan_history_record_from_plan(plan, sequence_index=..., timestamp=..., previous_plan=..., feedback_metadata=...)` -> one canonical `PlanningTickHistoryRecord` per planning tick. `feedback_metadata` is optional and accepts `TerminalFeedbackWriteback.metadata`; otherwise compatible feedback keys are read from `plan.metadata`. Call `to_dict()` before JSONL persistence. The schema is `d3_plan_history_record_v1`, and history order is the lexicographic `[sequence_index, timestamp]` key supplied by main.
 - `summarize_assignment_mismatch_replay(...)` -> `AssignmentMismatchReplaySummary(resource_count, target_count, assigned_count, unassigned_high_threat_count, hysteresis_reject_count, stale_reject_count, reassign_count)` for N/M mismatch replay aggregation.
 - `summarize_incremental_planning_comparison(...)` -> `IncrementalPlanningComparisonSummary` with incremental/full cost delta, equivalence, latency, change counts, and preserved targets/assignments.
 - `summarize_terminal_feedback_calibration(...)` -> advisory `TerminalFeedbackCalibrationSummary` from multi-seed assignment/feedback records. It reports duplicate/friend/fov/geometry reject counts and cost/hysteresis tuning directions, but never rewrites `CostWeights` or `PlannerConfig` defaults.
@@ -204,6 +208,37 @@ D3 also exports:
 - `continue_active_secondary_plan(...)` -> converts the next ordinary rolling candidate into a same-owner secondary plan without a second takeover. It derives the concrete owner/source from the previous active plan, requires strict version/supersede continuity, sustained readiness, non-regressing epoch, and a live non-regressing lease; main must not hand-build these metadata fields.
 - `build_p1_assignment_fixtures()` -> versioned deterministic 5v5, 3v5, 5v3, new-target, resource-failure, high-threat demand-change, D5-feedback, and hard-window inputs. Labels use `resources x targets`; explicit counts and changed IDs are present in fixture metadata.
 - `run_p1_assignment_calibration_matrix()` -> paired full/incremental transition rows and aggregate latency/churn/high-threat/coalition-shortfall totals for main/D6.
+
+The plan-history payload stores plan identity/state/counts and owner/source/
+secondary epoch/lease once per tick, then deterministically orders assignments
+by target, coalition, wave, role, and resource. Each assignment includes role,
+activation/active state, coalition identity/version/epoch, validity, scalar cost,
+and cost breakdown. The record also contains recoverable ordered coalition
+members, hysteresis and membership-change evidence, feedback classifications
+with soft/hard counts, costs, stale/rollback/replan audit reasons, and plan
+lineage. It uses only JSON-native values; no `truth_id` argument exists and any
+truth-named nested metadata key is excluded. `assignment_records_from_plan()`
+remains backward compatible, including its offline-only optional truth label.
+
+Main should persist one line per successful planning tick as follows:
+
+```python
+history_record = plan_history_record_from_plan(
+    plan,
+    sequence_index=tick_sequence_index,
+    timestamp=planning_timestamp_s,
+    previous_plan=previous_plan,
+    feedback_metadata=None if writeback is None else writeback.metadata,
+)
+jsonl_writer.write(history_record.to_dict())
+```
+
+D3 defines and validates this record but does not own JSONL storage. The
+existing 40-case aggregate predates main persistence of these records, so its
+membership/version churn remains `unavailable`; the former pair-hold promotion
+is a root-cause lead, not proven causality for those outcomes. A later actual-v2
+run has separately proved main persistence and D6 consumption, as recorded
+below.
 
 `PlannerConfig.human_authorization_state` is the source of the plan authorization field. The planner records both `configured_human_authorization_state` and `effective_human_authorization_state` in plan metadata so main can run record-only simulation gates without hard-coding D3 to `"required"`.
 
@@ -228,7 +263,7 @@ replace the default Hungarian/demand-slot planner.
 
 Local resources must not rewrite `global_track_id`; D3 publishes versioned candidate plans for review. For `secondary_plan_v2`, D3 does not choose a concrete secondary node, renew leases, elect leaders, or perform recovery arbitration. D4/main supplies those decisions; D3 validates the activation snapshot and prevents expired, non-monotonic, or non-current plans from yielding an executable D7 binding. Normal operation uses Hungarian/demand-slot assignment. The optional same-input capacity comparator is implemented and is not an open online P1 dependency. CP-SAT/MILP coalition admission, backup-resource quotas, multi-window flow, and large-scale sweeps remain isolated P2 benchmarks. D4 secondary-node arbitration is preferred before CBBA-style fallback.
 
-Current D3 regression baseline (2026-07-13): `139 passed, 1 skipped` with `python3 -m pytest research_modules/d3_assignment_planner/tests -q -o addopts='' -ra`. The skip is the installed-only OR-Tools benchmark in an environment without the optional dependency.
+Current D3 regression baseline (2026-07-14): `157 passed, 1 skipped` with `python3 -m pytest -q research_modules/d3_assignment_planner/tests`. The five newest deterministic tests cover soft-feedback/round-trip stability, cumulative same-window change budget, cross-window recovery, hard resource failure, missing-target plus another membership hold, plan-level owner change, and history budget export. Earlier plan-history, held-scope/lifecycle, and feedback-governance cases remain covered. The skip is the installed-only OR-Tools benchmark in an environment without the optional dependency.
 
 ## Per-primary authorization and coalition membership hysteresis
 
@@ -283,3 +318,117 @@ candidates. D3 therefore supplies experiment design and plan/reachability
 metadata; it does not manufacture AirSim outcomes. Same-geometry 10-seed M5N2
 execution and the `8/10` coalition-completion acceptance target remain open at
 the main/runtime level.
+
+## 2026-07-14 真实 AirSim 计划历史审计
+
+对 `p1_terminal_closure_truthisolated_preflight_v2_20260714_m5n2_baseline_seed001`
+的 `episode_006_full_flow` 做了单 seed、349 个 planning tick 的只读复核。D3
+初始计划包含 T001 的 2 个 active primary、1 个 standby reserve，以及 T002
+的 1 个 active primary。后段 D2 连续产生 T003/T005/T007/T008 等新航迹，最终
+current plan 为 T001 三成员、T002 一成员和 T008 一成员，因此执行产物出现 5 个
+pair。T008 在 34.4 秒创建、34.5 秒 confirmed、34.6 秒 engageable；D3 不使用
+truth，无法把它判定为物理目标或幻影航迹。
+
+审计发现一个 D3-owned P1 合同缺陷：当候选因普通迟滞、联盟成员迟滞或 transient
+feedback dwell 被 hold 时，当前输入中的新目标曾被写入 held plan 的
+`unassigned_target_ids`，从而使 execution signature 改变并错误推进 plan/version。
+修复后 held plan 完整保留上一 current plan 的 assignment、coalition、unassigned
+和 incomplete 执行范围；当前候选只进入 `hysteresis_candidate_*`、
+`hysteresis_pending_new_target_ids` 等审计字段。候选释放前不获得 current plan
+身份。该规则不依赖 truth，不写死 M/N，也不放宽 stale、version 或 coalition 门控。
+
+本次确定性验收标准是 hold 后 plan ID/version 与 execution signature 均不变，同时
+仍记录实际输入 `target_count` 和 pending target。若上一已分配目标从当前输入消失，旧计划
+直接判为 infeasible 并发布新版本，不允许迟滞继续持有不存在的执行目标。D3 全量结果为 `157 passed,
+1 skipped`；唯一 skip 是 optional OR-Tools installed-only benchmark。真实 episode
+没有在本任务中重跑。
+
+两个跨模块问题保持开放：AirSim adapter 当前把除 lost/dropped 外的 D2 航迹都标为
+assignable，应由 main/D2 准入链只向 D3 提交 engageable 或显式批准的航迹；D3 不以
+本地 dwell 掩盖 D2 幻影。其次，D3 最终仍把 INT-01 reserve 输出为 standby/hold，
+`intercept_summary.json` 中后续 active 来自 runtime pair 在 primary 变为 reserve
+时未撤销旧 active 状态，不属于 D3 reserve activation。
+
+## 2026-07-14 P1 计划抖动预算与统一成本口径
+
+最新 truth-isolated M5N2 baseline seed 001 有 347 条 canonical planning records，
+执行版本为 v1..v35。稳定双目标阶段仍约每秒往返换员。记录中的一个代表性 tick
+把候选联盟成本写成 `0.8868`、previous 写成 `2.8520`；previous 当前边内含
+`2.2` 的 soft-feedback FOV shaping，去除该候选搜索项后 previous 基础执行成本约为
+`0.6520`，候选并未达到 20% 改善。该现象证明原 membership gain 比较混用了
+search objective 与 execution comparison objective。
+
+planner 现在使用 `d3_hysteresis_current_objective_v1` 同时重评 candidate 和
+previous：包含当前 target-resource 基础成本、硬可行性和
+`unassigned_cost * required_resource_count`；排除只用于搜索的 switch penalty、
+soft-feedback FOV shaping、demand-slot priority 和 role pin。solver/evidence 仍保留
+完整 search cost，metadata 同时记录 search/comparison 两套数值，避免再把口径差异
+误判为 `delta=0.2` 收益。
+
+`max_changes_per_window` 现在由 plan metadata 延续
+`d3_cumulative_window_change_budget_v1`：同一 `window_id` 累加已接受的 assignment
+change count，hold/evaluation refresh 不计费，新 window 清零。execution target
+缺失、资源硬失效和 plan-level owner/activation/authorization 改变仍立即生成新版本，
+预算不足时记录 bypass；成员 primary/reserve 候选本身仍受 coalition hysteresis，
+不会借 activation 名义绕过。missing target 与另一联盟 hold 同时出现时，消失目标
+不会进入新 assignment、coalition 或 membership audit。
+
+本批只完成确定性实现验收，未重跑 AirSim。D3 全量为 `157 passed, 1 skipped`，零
+失败达到接受阈值；剩余 P1 是 main/D2 lifecycle admission、runtime reserve
+demotion、至少 10 个同几何 seeds 的 churn/高威胁未分配复验，以及 M5N2 物理
+coalition completion 从当前最佳 `5/10` 达到 `8/10`。
+
+## 2026-07-14 Actual-v2 真实 AirSim 证据链
+
+本次只同步 main 已完成的真实 AirSim 证据，不修改 D3 代码、Hungarian/demand-slot、
+迟滞、版本或 primary/reserve 语义。两个 seed-1 sequence 的 command CSV、
+`d7-actual-execution-metrics-v2` 与 canonical D3 history 使用相同计划身份：
+
+| Case | command/actual/history plan | History | D6 feedback churn |
+|---|---|---:|---:|
+| tuned 2v2 | `d3-plan-c3cc6d28c365/1` | 24 | 3 |
+| M5N2 | `d3-plan-cfdd088a10e1/1` | 214 | 50 |
+
+D6 对两条 history 的可用/不可用 case 为 `2/0`，validation reasons 为空；actual
+execution required/available/unavailable case 为 `2/2/0`。因此 D3 计划从 history
+到 command 再到 actual metrics 的运行级 P0 可追溯链已关闭。M5N2 的 plan version、
+成员和 owner churn 均为 0，但 feedback churn 50 仍是单 seed P1 标定信号，不是
+P1 稳定性通过。物理结果为 pair `2/3`、target `2/2`、coalition `0/1`；T001 第二
+primary 最近约 11.02 m，未进入 5 m。目标级 `2/2` 不能写成联盟完成。第二 primary
+物理闭环和同配置多 seed 复验继续保持 P1。
+
+## 2026-07-15 M5N2 20-Case 计划历史复核
+
+main 在 M5N2 baseline 与 `candidate_soft_prediction_trend_coast` 各完成 10 seeds 后
+终止了后续多 seed suite。D3 对这 20 个 case 的
+`main_episode_bus/d3_plan_history.json` 做了只读复核：共 `3725` 个 planning tick，
+其中 baseline `1869`、candidate `1856`；20/20 个文件的 `record_count` 与实际数组长度
+一致，全部记录均为 `d3_plan_history_record_v1`、`assignment_plan_v2`。
+
+每个 tick 都报告动态规模 `resource_count=5`、`target_count=2`，并保持 T001 的
+`2 primary + 1 standby reserve` 和 T002 的 `1 primary`，总计 4 个 assignment。
+20 个 case 各自只出现一个 `plan_id/version=1`；逐 tick 计划身份、owner 和实际成员
+roster 转换均为 0，stale reject 与 rollback 也均为 0。`3555` 条
+`membership_change_records` 是候选换员评估，不是实际 churn：其中 `3524` 条由成员
+迟滞保持，`31` 条虽通过成员收益/驻留条件，但又由全局迟滞保持，最终未改变 current
+plan。由此，canonical history 的写盘和 D3 计划/成员/churn 可用性在本批已闭合，
+不再是 `unavailable`。
+
+跨 case 不能写死“第二 primary”的资源编号。19 个 case 的 T001 primary 为
+`INT-02/INT-03`，1 个 candidate seed 的 primary 为 `INT-01/INT-02`；D3 文档只按
+`target_id + member_role + current plan identity` 统计。系统物理结果为 pair
+`12/60`、canonical target `12/40`、coalition `0/20`，第二 primary `0/20` 进入 5 m，
+20 个第二 primary 的 `stop_reason` 均为 `collision_stop`。这些结果保留为跨模块 P1：
+D3 history 未记录碰撞对象，不能把物理失败归因于分配器；candidate 的配对非退化
+判据失败也不等于 D3 算法退化，因为两组的 D3 执行身份和成员均保持稳定。
+
+术语必须分开：`canonical target success` 是 D6 对两个目标的标准目标级统计；
+`cooperative target diagnosis` 专指 T001 两个 active primary 与 coalition 的诊断，
+不能用前者替代联盟完成。TERM 生效前额外完成的 `png_ttc_2v2_seed001` 不纳入上述
+M5N2 聚合；其余 tuned case 未执行，dropout case 数为 0，缺失结果保持
+`unavailable`。
+
+本次 D3 证据同步的验收门限是 20/20 history 可读、record count 无缺失、actual
+plan/member/owner churn 可计算，且模块测试零失败；结果满足。物理验收门限仍为每个
+active primary 进入 5 m，第二 primary 与 coalition 未满足。D3 全量测试为
+`157 passed, 1 skipped`，唯一 skip 是 optional OR-Tools installed-only case。

@@ -382,9 +382,10 @@ F_{effective}=\max(F_{D3},F_{D5}),
 \]
 
 其中 D3 默认最少 2 帧，不能削弱 D5 要求的更长稳定窗口。版本匹配且旧主资源仍可行时，
-在窗口完成前保持旧主资源。
+在窗口完成前保持旧主资源。窗口完成只结束该前置保护，soft candidate 仍必须进入联盟成员和
+全局 `delta/min_dwell/change-limit` 迟滞，不能直接发布新执行版本。
 
-重复锁定、友方冲突、错误绑定、丢失、资源不可用、显式禁配或旧边不可行会立即绕过驻留。
+重复锁定、verified friend/友方冲突、错误绑定、资源不可用、显式禁配或旧边不可行会立即绕过驻留；普通检测丢失仍是当前边 soft feedback。
 其他计划版本的反馈只用于审计。
 
 ## 11. 计划身份、版本和旧计划拒绝
@@ -416,17 +417,20 @@ F_{effective}=\max(F_{D3},F_{D5}),
 | D5 状态 | D3 建议 | 实施方式 |
 |---|---|---|
 | 一致 | 继续 | 保持当前计划 |
-| 模糊、保持、友方重叠 | 保持 | 建议资源 `operator_hold`，不换绑 |
-| 重新获取 | 中心重规划 | 调整下一轮代价或可行性 |
+| 模糊、普通保持 | 保持 | 当前资源-目标边 soft cost + D7 hold，不设置资源 `operator_hold` |
+| 重新获取、几何/FOV/检测不稳定 | 中心重规划 | 提高当前边代价并进入普通迟滞，不硬禁配 |
+| 友方重叠保持 | 保持 | resource-hard，整资源保持 |
+| verified friend | 保持 | target-hard，目标停止分配 |
 | 不匹配、多帧不一致、跨视角冲突 | 二级仲裁 | 请求 main/D4 仲裁 |
 | 重复末端锁定风险 | 二级仲裁 | 禁配冲突边并阻断本地换绑 |
 
 `apply_terminal_feedback_to_planner_inputs()` 可将权威反馈写入下一轮：
 
-- 将冲突边设置为 `feasibility_by_resource=False`；
-- 提高对应 `fov_difficulty_by_resource`；
-- 对资源设置 `operator_hold=True`；
+- 将安全身份冲突、duplicate 或显式 feasibility reject 边设置为 `feasibility_by_resource=False`；
+- 对普通 ambiguous/hold/reacquire、几何/FOV/检测不稳定提高对应 `fov_difficulty_by_resource`；
+- 仅对明确 resource-hard 风险设置 `operator_hold=True`，verified friend 则设置 target-hard；
 - 保留源计划、联盟、稳定帧和冲突原因；
+- 输出 constraint class、scope、classification reason 和 hard-reject 审计字段；
 - 给 D4 形成仲裁建议，给 D7 形成保持动作。
 
 `allow_local_rebind` 始终为假。D5 的本地视觉身份不能替换 D3 中的规范全局航迹绑定。
@@ -507,6 +511,32 @@ D7 还要独立检查 D4 许可和 D5 的末端锁定。D3 只发布绑定，不
 
 ## 16. 一次全量规划的实施流程
 
+### Canonical 单 planning-tick 历史
+
+主运行时在每次成功规划后调用：
+
+```python
+record = plan_history_record_from_plan(
+    plan,
+    sequence_index=tick_sequence_index,
+    timestamp=planning_timestamp_s,
+    previous_plan=previous_plan,
+    feedback_metadata=None if writeback is None else writeback.metadata,
+)
+payload = record.to_dict()
+```
+
+`PlanningTickHistoryRecord` 使用 `d3_plan_history_record_v1`。main 提供的
+`sequence_index` 和 `timestamp` 形成 `[sequence_index, timestamp]` 字典序，
+不能从计划版本推断 tick 顺序。计划级字段只记录一次；assignment 按目标、联盟、
+波次、角色、资源排序，coalition member 也稳定排序。记录覆盖 primary/reserve 的
+active/standby、联盟 id/version/epoch、有效性和成本，以及迟滞、成员变化、soft/hard
+feedback、总/候选/前序成本和 stale/rollback/replan 原因。
+
+`to_dict()` 只输出 JSON 原生值，使用白名单而不是透传整个 metadata，并排除 truth
+命名字段。`assignment_records_from_plan()` 兼容不变。D3 只定义单 tick schema；JSONL
+写盘属于 main，跨 tick churn 计算属于 D6。
+
 ```text
 输入 TargetTrack[]、ResourceState[]、当前时刻、精确 previous_plan
     |
@@ -550,7 +580,7 @@ def plan(tracks, resources, now, previous_plan):
 
 | 文件 | 实施职责 |
 |---|---|
-| `models.py` | DTO、计划身份、D5 反馈、D4 接管、D6 记录和 D7 绑定 |
+| `models.py` | DTO、计划身份、D5 反馈、D4 接管、D6 记录、canonical history 和 D7 绑定 |
 | `costs.py` | 可行性门控、成本矩阵、硬时间窗和成本分解 |
 | `solver.py` | SciPy 匈牙利、动态规划后备和需求槽求解 |
 | `planner.py` | 全量/增量规划、全有或全无准入、迟滞和版本发布 |
@@ -582,14 +612,14 @@ def plan(tracks, resources, now, previous_plan):
 不得声称 OR-Tools、最小费用流、约束规划-可满足性或混合整数线性规划已经替换默认
 SciPy 匈牙利/需求槽主线。
 
-## 19. 2026-07-13 验证证据
+## 19. 2026-07-14 验证证据
 
 ### 19.1 模块回归
 
-既有 D3 回归基线为：
+当前 D3 回归基线为：
 
 ```text
-139 passed, 1 skipped
+157 passed, 1 skipped
 ```
 
 唯一跳过项是当前环境缺少可选 OR-Tools 的已安装求解测试。标准命令为：
@@ -598,7 +628,7 @@ SciPy 匈牙利/需求槽主线。
 python3 -m pytest -q research_modules/d3_assignment_planner/tests
 ```
 
-本次工作只同步文档，没有修改代码，因此不重复运行全量模块测试。
+本轮在既有 feedback 分级/迟滞 case 上新增 5 个 canonical history case，并运行全量模块测试。新增覆盖 primary/reserve、owner/epoch/lease、soft/hard feedback、迟滞/成本、稳定排序、严格 JSON 序列化、旧 metadata、truth 排除和 ordering 输入校验。唯一跳过项仍是当前环境缺少可选 OR-Tools 的已安装求解测试。
 
 ### 19.2 确定性动态规模校准
 
@@ -636,6 +666,11 @@ python3 -m pytest -q research_modules/d3_assignment_planner/tests
 最佳候选是 5/10，低于 8/10 验收门限。全部配置合计是 8/40，不能误写为 40 个独立候选。
 主要失败来自 D5 未锁定和末端检测获取超时，少量失败来自检测框面积过小。
 
+2026-07-14 已修复普通 pair hold 被扩大为资源 `operator_hold` 的 D3 根因机制，并以 5 个新增
+确定性 case 验证 soft/hard 分类和 `min_dwell`。该机制是解释 40-case churn 的根因线索，
+不是已证明因果：正式 aggregate 缺逐 planning tick 的 plan/feedback/迟滞历史，不能把某次
+成员变化或物理失败归因于该机制。
+
 安全合同保持：
 
 - 备用资源越权执行：0；
@@ -656,7 +691,7 @@ Priority 0、Priority 1 和 Priority 2（P0、P1、P2）工作分级。
 
 仍需补充的证据包括：
 
-1. 40 回合缺少逐规划时刻计划历史，联盟成员抖动和版本抖动当前不可用；
+1. D3 已提供 canonical 单 tick history schema/export，但 main 尚未写入 40 回合正式 aggregate，D6 也未计算联盟成员/版本抖动；feedback 扩大机制仅为根因线索，尚不能形成因果结论；
 2. 真实 3v5、5v3、目标新增、资源失效和高威胁需求变化仍缺多种子标定；
 3. D5 反馈权重、视场困难度、禁配边、驻留和切换惩罚尚未联合标定；
 4. 硬时间窗尚未接入真实预计到达时间、多窗口和连续动力学；
@@ -676,3 +711,133 @@ Priority 0、Priority 1 和 Priority 2（P0、P1、P2）工作分级。
 - 区分计划窗口与真实同步到达；
 - 区分默认主线、可选离线对照和未实现能力；
 - 不把一次候选结果或缺失依赖写成默认算法升级。
+
+## 22. Hold 分支的执行范围实现（2026-07-14）
+
+### 22.1 问题
+
+原 hold 分支使用 `_score_previous_plan(...)` 返回的 `previous_unassigned` 构造输出。
+该集合是把上一 assignment 投影到“当前”目标矩阵后得到的，因此会包含本 tick 新出现
+但尚未获准执行的目标。`AssignmentPlan.execution_signature()` 又包含
+`unassigned_target_ids` 和 coalition，结果是 `decision_state=held_*` 仍可能推进
+plan ID/version。
+
+### 22.2 修复
+
+普通迟滞、联盟成员迟滞和 transient feedback dwell 的 held plan 现在使用：
+
+```python
+unassigned_target_ids = previous_plan.unassigned_target_ids
+incomplete_target_ids = previous_plan.incomplete_target_ids
+coalitions = previous_plan.coalitions
+assignments = rescored_previous_assignments
+```
+
+重评分成本只用于评估，assignment 的目标、资源、角色、coalition version 和激活语义
+不变。当前候选范围通过 `_held_candidate_scope_metadata(...)` 输出，不参与 executable
+identity。字段包括：
+
+- `hysteresis_candidate_target_ids`；
+- `hysteresis_candidate_unassigned_target_ids`；
+- `hysteresis_candidate_incomplete_target_ids`；
+- `hysteresis_held_execution_target_ids`；
+- `hysteresis_pending_new_target_ids`；
+- `hysteresis_missing_previous_target_ids`。
+
+该实现保留动态 M/N，且没有引入 truth、目标白名单或 D2 身份重绑。
+
+### 22.3 验证边界
+
+新增测试分别覆盖普通一对一迟滞和 `2 primary + 1 reserve` 联盟成员迟滞。新目标进入
+时，held plan 的 ID/version 和 execution signature 必须与上一 current plan 一致，
+而 `target_count` 与候选审计仍反映当前输入。另外，上一已分配目标从当前矩阵消失时，
+`_score_previous_plan(...)` 将上一计划判为
+不可行，避免 same-assignment 快路径错误 hold；新版本记录
+`previous_missing_execution_target_ids`。当前全量结果为 `157 passed, 1 skipped`。
+该测试不证明 D2 新生航迹真实，也不修复 runtime reserve
+状态同步。
+
+## 23. 累计 Window Budget 与统一 Comparison Objective（2026-07-14）
+
+### 23.1 两层成本
+
+候选求解目标 (J_{search}) 可以包含稳定搜索所需的正则项，但迟滞收益必须使用同一
+口径 (J_{cmp})：
+
+```text
+J_search(candidate) = base + switch + soft-feedback shaping + slot search terms
+J_cmp(plan) = current base edges + hard feasibility + current unassigned * demand
+release if J_cmp(candidate) < (1 - delta) * J_cmp(previous)
+```
+
+`_hysteresis_comparison_matrix(...)` 从当前矩阵去除 switch penalty 和由
+`apply_terminal_feedback_to_planner_inputs(...)` 标记的 soft FOV 增量；candidate 与
+previous 再通过相同的 `_score_previous_plan(...)` 投影到当前 target/demand。硬 reject
+不被去除。demand-slot priority 和 primary role pin 只生成候选，不进入单边 gain。
+metadata schema 为 `d3_hysteresis_current_objective_v1`，同时输出 search candidate、
+comparison candidate 和 comparison previous cost。
+
+### 23.2 累计预算
+
+同一 `window_id=w` 的普通 release 条件改为：
+
+```text
+used_w + candidate_change_count <= max_changes_per_window
+```
+
+`used_w` 存在 previous plan metadata 中，只有接受执行 assignment 变化时增加；hold 和
+evaluation refresh 保持原值，新 `window_id` 从零开始。schema
+`d3_cumulative_window_change_budget_v1` 输出 used-before/after、candidate、remaining、
+是否满足和 hard bypass reason。目标消失、资源硬失效、高威胁保护及 plan-level
+owner/activation/authorization 变化可绕过普通预算；旧版本仍因新 identity fail closed。
+联盟成员角色候选继续走 membership hysteresis，不能按 activation 强制释放。
+
+### 23.3 Missing + Hold 顺序
+
+先判定 previous execution target 是否仍存在及旧资源是否硬可行，再决定另一联盟能否
+hold。previous-only target 是 lifecycle removal，不生成 membership record。只要有
+真实 missing/hard failure，就发布 candidate 新版本；新输出不保留消失目标的
+assignment、coalition、demand summary 或 audit。
+
+最新真实动因是 M5N2 seed 1 的 347 records/v1..v35；本批没有重跑 Blocks。5 个新增
+确定性测试函数使全量达到 `157 passed, 1 skipped`，接受阈值为零失败。真实至少
+10-seed churn、高威胁未分配和物理结果仍需 main+D6 复验。
+
+## 24. Actual-v2 计划身份闭环（2026-07-14）
+
+本批不改变 D3 算法，只校验已写盘产物。tuned 2v2 seed 1 的 command、actual、
+24 条 history 均使用 `d3-plan-c3cc6d28c365/1`；M5N2 seed 1 的 command、
+actual、214 条 history 均使用 `d3-plan-cfdd088a10e1/1`。D6 history
+available/unavailable=`2/0` 且 validation reasons 为空，command/actual/history
+身份链 P0 关闭。
+
+M5N2 feedback churn=50，plan version/membership/owner churn=0。物理
+pair/target/coalition=`2/3`、`2/2`、`0/1`，第二 primary 最近约 11.02 m；
+因此参数稳定性、第二 primary 和多 seed P1 均未关闭。
+
+## 25. 20-Case History 对迟滞实现的复核（2026-07-15）
+
+对 20 个 M5N2 case 的 `d3_plan_history.json` 逐条读取后，迟滞实现的运行证据如下：
+
+| 项目 | 结果 | 实现解释 |
+|---|---:|---|
+| canonical planning ticks | 3725 | baseline 1869、candidate 1856，全部 schema/version 可用 |
+| actual plan/version transitions | 0 | 每 case 仅一个 current `plan_id/version=1` |
+| actual coalition roster transitions | 0 | 成员/角色组合在单个 case 内不变化 |
+| owner transitions | 0 | 全部为 center / `d3_central` |
+| stale rejects / rollback | 0 / 0 | 本批未触发旧计划或身份回退 |
+| membership candidate audit | 3555 | 3524 member hold；31 member pass 后由 global hysteresis hold |
+| transient feedback dwell hold | 150 | 保护短时反馈，不推进执行身份 |
+
+实现上必须以 consecutive record 的 execution identity/roster transition 计算 actual
+churn，不能直接把 `membership_change_records` 数量或 `changed=true` 数量当成换员。
+本批每个 case 只有第一个 accepted tick 的 `changed=true`，它表示首次发布，不是重分配。
+
+跨 case 的成员组合不同也不是 churn。D3 通过 demand-slot 成本在每个新 episode 选择
+资源；统计“第二 primary”时必须读取 current assignment 的 `member_role=primary` 和
+目标绑定，不得固定资源编号。系统 candidate 的非退化门限失败不改变上述 D3 结论，
+因为 baseline/candidate 都没有计划版本或 roster 抖动。
+
+物理层的 `collision_stop` 只作为外部 outcome 进入 D6。当前 D3 history 没有碰撞对象
+和控制状态，因此不依据该字段自动修改 switch penalty、`delta` 或成员角色。后续如需
+调整代价，必须先由 main/runtime 提供可区分的 collision lineage，再做配对标定。

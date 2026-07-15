@@ -134,3 +134,48 @@ def test_cost_evaluation_refresh_keeps_plan_and_membership_epoch() -> None:
     assert {record.coalition_epoch for record in records} == {
         first.coalitions[0].epoch
     }
+
+
+def test_membership_hold_does_not_admit_new_target_into_execution_identity() -> None:
+    planner = _planner()
+    resources = [ResourceState(f"R{i}") for i in range(1, 6)]
+    first = planner.plan(
+        [_track({"R1": 0.0, "R2": 0.1, "R3": 0.2, "R4": 5.0, "R5": 5.0})],
+        resources,
+        timestamp=0.0,
+    )
+    new_target = TargetTrack(
+        "NEW",
+        threat_score=0.5,
+        covariance=0.0,
+        window_cost=0.0,
+        feasibility_by_resource={
+            resource.resource_id: resource.resource_id == "R5"
+            for resource in resources
+        },
+    )
+
+    held = planner.plan(
+        [
+            _track({"R1": 5.0, "R2": 0.1, "R3": 0.2, "R4": 0.0, "R5": 5.0}),
+            new_target,
+        ],
+        resources,
+        timestamp=0.5,
+        previous_plan=first,
+    )
+
+    assert held.decision_state == "held_by_coalition_membership_hysteresis"
+    assert held.plan_id == first.plan_id
+    assert held.version == first.version
+    assert held.execution_signature() == first.execution_signature()
+    assert held.stable_signature == first.stable_signature
+    assert held.unassigned_target_ids == first.unassigned_target_ids == ()
+    assert held.incomplete_target_ids == first.incomplete_target_ids == ()
+    assert held.target_count == 2
+    assert held.metadata["hysteresis_candidate_target_ids"] == ("HIGH", "NEW")
+    assert held.metadata["hysteresis_pending_new_target_ids"] == ("NEW",)
+    assert held.metadata["hysteresis_held_execution_target_ids"] == ("HIGH",)
+    assert held.metadata["hysteresis_scope_policy"] == (
+        "candidate_audit_only_until_execution_release"
+    )

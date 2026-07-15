@@ -209,6 +209,71 @@ def test_hysteresis_holds_when_dwell_time_is_too_short() -> None:
     assert record.hysteresis_candidate_change_count == 2
 
 
+def test_hysteresis_hold_audits_new_target_without_versioning_it() -> None:
+    config = PlannerConfig(delta=0.2, min_dwell=2.0)
+    planner = _planner(config)
+    resources = _resources()
+    first = planner.plan(
+        [
+            TargetTrack(
+                "T1",
+                0.9,
+                0.1,
+                0.1,
+                fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0},
+            ),
+            TargetTrack(
+                "T2",
+                0.8,
+                0.1,
+                0.1,
+                fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0},
+            ),
+        ],
+        resources,
+        timestamp=0.0,
+    )
+    candidate_tracks = [
+        TargetTrack(
+            "T1",
+            0.9,
+            0.1,
+            0.1,
+            fov_difficulty_by_resource={"R1": 0.8, "R2": 0.0},
+        ),
+        TargetTrack(
+            "T2",
+            0.8,
+            0.1,
+            0.1,
+            fov_difficulty_by_resource={"R1": 0.0, "R2": 0.8},
+        ),
+        TargetTrack(
+            "T3",
+            0.4,
+            0.1,
+            0.1,
+            feasibility_by_resource={"R1": False, "R2": False},
+        ),
+    ]
+
+    held = planner.plan(
+        candidate_tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=first,
+    )
+
+    assert held.decision_state == "held_by_hysteresis"
+    assert held.plan_id == first.plan_id
+    assert held.version == first.version
+    assert held.execution_signature() == first.execution_signature()
+    assert held.unassigned_target_ids == first.unassigned_target_ids == ()
+    assert held.target_count == 3
+    assert held.metadata["hysteresis_candidate_unassigned_target_ids"] == ("T3",)
+    assert held.metadata["hysteresis_pending_new_target_ids"] == ("T3",)
+
+
 def test_hysteresis_accepts_when_gain_and_dwell_pass() -> None:
     config = PlannerConfig(delta=0.2, min_dwell=2.0)
     planner = _planner(config)
@@ -290,6 +355,53 @@ def test_previous_infeasible_plan_is_replaced_even_inside_dwell() -> None:
 
     assert second.decision_state == "accepted_previous_infeasible"
     assert second.assignment_map() == {"T2": "R2"}
+
+
+def test_missing_previous_execution_target_releases_hold_fail_closed() -> None:
+    planner = _planner(PlannerConfig(delta=0.9, min_dwell=30.0))
+    resources = _resources()
+    first = planner.plan(
+        [
+            TargetTrack(
+                "T1",
+                0.9,
+                0.1,
+                0.1,
+                fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0},
+            ),
+            TargetTrack(
+                "T2",
+                0.8,
+                0.1,
+                0.1,
+                fov_difficulty_by_resource={"R1": 1.0, "R2": 0.0},
+            ),
+        ],
+        resources,
+        timestamp=0.0,
+    )
+
+    replanned = planner.plan(
+        [
+            TargetTrack(
+                "T1",
+                0.9,
+                0.1,
+                0.1,
+                fov_difficulty_by_resource={"R1": 0.0, "R2": 1.0},
+            )
+        ],
+        resources,
+        timestamp=0.5,
+        previous_plan=first,
+    )
+
+    assert replanned.decision_state == "accepted_previous_infeasible"
+    assert replanned.plan_id != first.plan_id
+    assert replanned.version == first.version + 1
+    assert replanned.assignment_map() == {"T1": "R1"}
+    assert {coalition.target_id for coalition in replanned.coalitions} == {"T1"}
+    assert replanned.metadata["previous_missing_execution_target_ids"] == ("T2",)
 
 
 def test_planner_hard_rejects_closed_time_window_edge() -> None:
