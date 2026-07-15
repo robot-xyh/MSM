@@ -20,7 +20,7 @@ from d1_sensor_fusion.observations import (
     radar_covariance_from_range,
     radar_h,
 )
-from d2_data_association import GNNHungarianAssociator, Tracker
+from d2_data_association import GNNHungarianAssociator, Tracker, TrackerTruthPolicy
 from d3_assignment_planner import (
     AssignmentPlan,
     AssignmentPlanner,
@@ -69,6 +69,7 @@ from .adapters import (
     plan_to_terminal_assignments,
     resources_to_d3,
     resources_to_d4,
+    secondary_communications_to_d4,
     terminal_summary_from_record,
     terminal_to_record,
     track_records_from_d2,
@@ -113,6 +114,7 @@ class IntegratedEpisodeRunner:
         )
         self.tracker = Tracker(
             associator=GNNHungarianAssociator(gate_threshold=18.0, feature_weight=0.0),
+            truth_policy=TrackerTruthPolicy.OFFLINE,
             process_noise=0.8,
             confirmation_hits=2,
             engageable_hits=3,
@@ -194,7 +196,11 @@ class IntegratedEpisodeRunner:
             truth_by_id = {state.truth_id: state for state in truth_states}
             self._process_d1_observations(timestamp)
             d1_tracks = self.fusion.global_tracks()
-            detections = d1_tracks_to_d2_detections(d1_tracks, timestamp)
+            detections = d1_tracks_to_d2_detections(
+                d1_tracks,
+                timestamp,
+                include_offline_truth=True,
+            )
             association_result = self.tracker.step(
                 detections,
                 timestamp=timestamp,
@@ -728,6 +734,15 @@ class IntegratedEpisodeRunner:
             friend_conflict=friend_conflict,
         )
         c2_health = C2Health.FAILED if self._central_failure_recorded else C2Health.NORMAL
+        secondary_nodes = [
+            summary
+            for summary in resources_to_d4(
+                self.resources,
+                self._secondary_available(timestamp),
+                current_time_s=timestamp,
+            )
+            if summary.coordinator_only
+        ]
         decision = self.arbiter.evaluate(
             track_uncertainty=track_uncertainty_summary(d2_track, truth, timestamp),
             association_risk=association_risk_summary(
@@ -745,11 +760,12 @@ class IntegratedEpisodeRunner:
             ),
             terminal_association=terminal_summary,
             c2_health=c2_health,
-            secondary_nodes=[
-                summary
-                for summary in resources_to_d4(self.resources, self._secondary_available(timestamp))
-                if summary.coordinator_only
-            ],
+            secondary_nodes=secondary_nodes,
+            communication_summaries=secondary_communications_to_d4(
+                secondary_nodes,
+                current_time_s=timestamp,
+            ),
+            current_time_s=timestamp,
         )
         self.decisions.append(
             IntegratedDecisionRecord(
@@ -808,7 +824,11 @@ class IntegratedEpisodeRunner:
 
         d2_tracks = self.tracker.active_tracks()
         tasks = d2_tracks_to_d4_tasks(d2_tracks, truth_by_id, timestamp)
-        resources = resources_to_d4(self.resources, self._secondary_available(timestamp))
+        resources = resources_to_d4(
+            self.resources,
+            self._secondary_available(timestamp),
+            current_time_s=timestamp,
+        )
         executor_resources = [resource for resource in resources if not resource.coordinator_only]
         if not tasks or not executor_resources:
             return

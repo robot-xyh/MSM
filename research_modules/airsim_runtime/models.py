@@ -97,6 +97,7 @@ class BlocksSmokeConfig:
     intercept_navigation_constant: float = 3.0
     intercept_terminal_switch_range_m: float = 8.0
     intercept_detection_timeout_s: float = 1.0
+    intercept_abort_on_terminal_acquisition_timeout: bool = False
     intercept_guidance_law: str = "png_vm"
     intercept_yaw_mode: str = "velocity"
     intercept_min_bbox_area_ratio: float = 0.0008
@@ -123,6 +124,10 @@ class BlocksSmokeConfig:
     target_asset_name: str = "Quadrotor1"
     target_detection_filter: str = "MSM_TargetActor_*"
     intercept_takeoff_timeout_s: float = 10.0
+    intercept_altitude_settle_timeout_s: float = 45.0
+    intercept_altitude_tolerance_m: float = 1.0
+    intercept_altitude_settle_samples: int = 3
+    intercept_altitude_poll_interval_s: float = 0.1
     intercept_land_after: bool = True
     metadata: dict[str, Any] = field(default_factory=dict)
 

@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 import airsim_runtime.episode_bus as episode_bus_module
+import airsim_runtime.timing as timing_module
 from airsim_dryrun.models import (
     AirSimCameraInfo,
     AirSimDetectionBox,
@@ -25,6 +26,7 @@ from airsim_runtime.adapters import (
     offline_truth_map_from_blocks_frame,
     observations_from_blocks_frame,
     resources_from_blocks_frame,
+    target_tracks_from_online_d2,
     truth_states_from_blocks_frame,
 )
 from airsim_runtime.blocks import BlocksProcessManager
@@ -36,18 +38,27 @@ from airsim_runtime.episode_bus import (
 )
 from airsim_runtime.intercept import (
     InterceptPair,
+    OnlineTargetEstimate,
+    _annotate_active_replan_frame,
+    _apply_frame_control_contract_overrides,
     _apply_intercept_detection_dropout,
     _apply_online_control_evidence,
     _assigned_detection,
+    _consume_new_collision_event,
     _initial_pairs,
     _intercept_success_semantics,
     _refresh_pair_assignments,
     _reset_midcourse_selector_for_binding_change,
+    _score_physical_intercepts_offline,
+    _step_pairs,
+    _sync_pairs_from_control_evidence,
     _terminal_detection_acquisition_timed_out,
     _terminal_delivery_for_pair,
     _terminal_delivery_profile,
     _terminal_delivery_requires_abort,
+    _visual_metadata,
     _vision_observation_from_detection,
+    run_controlled_intercept_episode,
 )
 from airsim_runtime.models import (
     BlocksActorTargetSpec,
@@ -69,6 +80,7 @@ from airsim_runtime.orchestrator import (
     _apply_episode_health_injection,
 )
 from airsim_runtime.real_runtime import RealAirSimRuntimeClient
+from airsim_runtime.real_runtime import InterceptorPreparationError
 from airsim_runtime.run_blocks_sequence import (
     _build_sequence_run,
     _d4d5_calibration_rows,
@@ -85,17 +97,23 @@ from airsim_runtime.sequence import (
     D4D5_STRESS_EPISODES,
     run_blocks_batch_sequences,
 )
+from airsim_runtime.timing import StageTimingCapture, summarize_stage_timings
 from d5_terminal_association import (
     AssociationConfig,
     CameraModel,
     GlobalTrack,
     LocalVisualTrack,
+    TerminalAssociation,
     TerminalAssociator,
     associate_tracks_to_detections_geometrically,
     camera_model_from_airsim_camera_info,
     evaluate_associations_offline,
 )
-from d6_evaluation_metrics import load_episode_log_jsonl
+from d6_evaluation_metrics import (
+    P1SystemEvidenceInputs,
+    P1SystemEvidenceReportGenerator,
+    load_episode_log_jsonl,
+)
 from airsim_runtime.p1_mot_calibration import build_mot_screening_cases
 
 
@@ -119,6 +137,163 @@ def test_default_cooperative_terminal_policy_is_independent_per_primary() -> Non
 
     assert config.terminal_authorization_scope == "per_primary"
     assert config.arrival_coordination_required is False
+
+
+def test_intercept_loop_budget_uses_control_period_by_default() -> None:
+    intercept_bus = MainAirSimEpisodeBus(
+        BlocksSmokeConfig(execute_intercept=True, dt_s=0.5, control_dt_s=0.1)
+    )
+    intercept_bus._frame_processing_durations_s = [0.08, 0.2]
+    replay_bus = MainAirSimEpisodeBus(
+        BlocksSmokeConfig(execute_intercept=False, dt_s=0.5, control_dt_s=0.1)
+    )
+    replay_bus._frame_processing_durations_s = [0.08, 0.2]
+
+    assert intercept_bus._performance_budget_violation_count() == 1
+    assert replay_bus._performance_budget_violation_count() == 0
+
+
+def test_stage_timing_contract_distinguishes_available_and_not_applicable(
+    monkeypatch,
+) -> None:
+    clock = iter((0.0, 0.001, 0.004, 0.010))
+    monkeypatch.setattr(timing_module.time, "perf_counter", lambda: next(clock))
+    timing = StageTimingCapture(
+        schema_version="test-stage-timing-v1",
+        scope="pytest",
+        total_stage_name="total",
+        stage_names=("executed", "skipped"),
+        frame_index=3,
+        timestamp_s=1.5,
+        budget_ms=8.0,
+    )
+
+    with timing.measure("executed"):
+        pass
+    record = timing.finalize()
+
+    assert record["stages_ms"]["executed"] == pytest.approx(3.0)
+    assert record["stage_status"] == {
+        "executed": "available",
+        "skipped": "not_applicable",
+    }
+    assert record["stages_ms"]["skipped"] is None
+    assert record["total_ms"] == pytest.approx(10.0)
+    assert record["unattributed_ms"] == pytest.approx(7.0)
+    assert record["budget_exceeded"] is True
+    summary = summarize_stage_timings([record])
+    assert summary["stages"]["executed"]["sample_count"] == 1
+    assert summary["stages"]["skipped"]["sample_count"] == 0
+    assert summary["dominant_stage"] == "executed"
+
+
+def test_stage_timing_contract_retains_partial_measurement_on_error(monkeypatch) -> None:
+    clock = iter((0.0, 0.001, 0.003, 0.006))
+    monkeypatch.setattr(timing_module.time, "perf_counter", lambda: next(clock))
+    timing = StageTimingCapture(
+        schema_version="test-stage-timing-v1",
+        scope="pytest",
+        total_stage_name="total",
+        stage_names=("failing", "not_reached"),
+        frame_index=4,
+        timestamp_s=2.0,
+        budget_ms=10.0,
+    )
+
+    with pytest.raises(RuntimeError, match="timing failure") as exc_info:
+        with timing.measure("failing"):
+            raise RuntimeError("timing failure")
+    record = timing.finalize(error=exc_info.value)
+
+    assert record["stage_status"]["failing"] == "error"
+    assert record["stages_ms"]["failing"] == pytest.approx(2.0)
+    assert record["stage_status"]["not_reached"] == "not_applicable"
+    assert record["error_type"] == "RuntimeError"
+    assert record["error_message"] == "timing failure"
+
+
+def test_control_tick_timing_is_persisted_when_frame_sampling_fails(
+    tmp_path: Path,
+) -> None:
+    class FailingRuntime:
+        def prepare_interceptor_control(self, _config):
+            return None
+
+        def collision_info(self, _vehicle_name):
+            return {"has_collided": False, "time_stamp": 0}
+
+        def sample_frame(self, *_args, **_kwargs):
+            raise RuntimeError("sample failed")
+
+        def land_and_release_interceptors(self, _vehicle_names, *, land):
+            assert land is True
+
+    config = BlocksSmokeConfig(
+        execute_intercept=True,
+        intercept_max_duration_s=0.1,
+        control_dt_s=0.1,
+        resource_vehicle_names=("Interceptor1",),
+    )
+
+    with pytest.raises(RuntimeError, match="sample failed"):
+        run_controlled_intercept_episode(FailingRuntime(), config, tmp_path)
+
+    timing_path = tmp_path / "control_tick_timings.jsonl"
+    records = [
+        json.loads(line)
+        for line in timing_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(records) == 1
+    assert records[0]["stage_status"]["airsim_frame_sample"] == "error"
+    assert records[0]["stage_status"]["bus_processing"] == "not_applicable"
+    assert records[0]["error_type"] == "RuntimeError"
+
+
+@pytest.mark.parametrize(
+    ("decision_state", "friend_conflict_state", "expected_class", "hard"),
+    (
+        ("ambiguous", "none", "resource_target_edge_soft", False),
+        ("hold", "none", "resource_target_edge_soft", False),
+        ("reacquire", "none", "resource_target_edge_soft", False),
+        ("hold", "verified_friend_overlap", "target_hard", True),
+        ("ambiguous", "spoof_suspected_overlap", "target_hard", True),
+        ("ambiguous", "stale_friend_overlap", "resource_target_edge_soft", False),
+    ),
+)
+def test_main_d5_feedback_bridge_separates_pair_soft_and_identity_hard(
+    decision_state: str,
+    friend_conflict_state: str,
+    expected_class: str,
+    hard: bool,
+) -> None:
+    assignment = SimpleNamespace(
+        target_id="T001",
+        resource_id="INT-01",
+    )
+    decision = TerminalAssociation(
+        assigned_global_track_id="T001",
+        local_track_id="L001",
+        association_confidence=0.5,
+        ambiguity_score=0.5,
+        friend_conflict_state=friend_conflict_state,
+        decision_state=decision_state,
+        assignment_version=1,
+        plan_id="plan-1",
+        plan_version=1,
+        resource_id="INT-01",
+    )
+
+    metadata = episode_bus_module._terminal_feedback_metadata(
+        assignment=assignment,
+        decision=decision,
+        consistency=None,
+        local_track=None,
+    )
+
+    assert metadata["feedback_constraint_class"] == expected_class
+    assert "operator_hold_suggested" not in metadata
+    assert ("prohibited_edges" in metadata) is hard
+    assert metadata["d7_gate_action"] == "hold"
 
 
 def test_episode_communication_without_executable_owner_blocks_visual_png() -> None:
@@ -2315,6 +2490,106 @@ def test_real_runtime_control_helpers_call_multirotor_api(tmp_path: Path) -> Non
     assert collision["has_collided"] is False
 
 
+def test_real_runtime_preparation_dispatches_takeoff_and_climb_in_parallel(
+    tmp_path: Path,
+) -> None:
+    events: list[tuple[str, str]] = []
+
+    class ParallelEvidenceClient(FakeAirSimClient):
+        def takeoffAsync(self, timeout_sec=20, vehicle_name=""):
+            self.control_calls.append(("takeoffAsync", vehicle_name))
+            events.append(("dispatch_takeoff", vehicle_name))
+            return SimpleNamespace(join=lambda: events.append(("join_takeoff", vehicle_name)))
+
+        def moveToZAsync(
+            self,
+            z,
+            velocity,
+            timeout_sec=3e38,
+            yaw_mode=None,
+            lookahead=-1,
+            adaptive_lookahead=1,
+            vehicle_name="",
+        ):
+            self.control_calls.append(("moveToZAsync", vehicle_name, z))
+            events.append(("dispatch_climb", vehicle_name))
+            self.vehicle_poses[vehicle_name] = _pose(0.0, 0.0, z)
+            return SimpleNamespace(join=lambda: events.append(("join_climb", vehicle_name)))
+
+    fake_client = ParallelEvidenceClient()
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+        client_kind="multirotor",
+    )
+    config = BlocksSmokeConfig(
+        episode_id="parallel_prepare",
+        output_root=tmp_path,
+        resource_vehicle_names=("Interceptor1", "Interceptor2"),
+        intercept_altitude_ned_z=-30.0,
+        intercept_altitude_settle_samples=1,
+    )
+
+    evidence = runtime.prepare_interceptor_control(config)
+
+    first_takeoff_join = next(i for i, event in enumerate(events) if event[0] == "join_takeoff")
+    first_climb_join = next(i for i, event in enumerate(events) if event[0] == "join_climb")
+    assert sum(event[0] == "dispatch_takeoff" for event in events[:first_takeoff_join]) == 2
+    assert sum(event[0] == "dispatch_climb" for event in events[:first_climb_join]) == 2
+    assert evidence["settled"] is True
+    assert evidence["final_altitude_error_m"] == {
+        "Interceptor1": 0.0,
+        "Interceptor2": 0.0,
+    }
+    assert (config.output_dir / "interceptor_preparation.json").exists()
+
+
+def test_real_runtime_preparation_fails_closed_when_altitude_does_not_settle(
+    tmp_path: Path,
+) -> None:
+    class StalledAltitudeClient(FakeAirSimClient):
+        def moveToZAsync(
+            self,
+            z,
+            velocity,
+            timeout_sec=3e38,
+            yaw_mode=None,
+            lookahead=-1,
+            adaptive_lookahead=1,
+            vehicle_name="",
+        ):
+            self.control_calls.append(("moveToZAsync", vehicle_name, z))
+            return _future()
+
+    fake_client = StalledAltitudeClient()
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+        client_kind="multirotor",
+    )
+    config = BlocksSmokeConfig(
+        episode_id="stalled_prepare",
+        output_root=tmp_path,
+        resource_vehicle_names=("Interceptor1", "Interceptor2"),
+        intercept_altitude_ned_z=-30.0,
+        intercept_altitude_settle_timeout_s=0.0,
+        intercept_altitude_settle_samples=1,
+    )
+
+    with pytest.raises(InterceptorPreparationError) as exc_info:
+        runtime.prepare_interceptor_control(config)
+
+    assert exc_info.value.evidence["settled"] is False
+    assert exc_info.value.evidence["failure_reason"] == "altitude_settle_timeout"
+    assert all(call[0] != "moveByVelocityZAsync" for call in fake_client.control_calls)
+    persisted = json.loads(
+        (config.output_dir / "interceptor_preparation.json").read_text(encoding="utf-8")
+    )
+    assert persisted["settled"] is False
+
+
 def test_blocks_frame_adapters_feed_d1_and_integrated_models() -> None:
     frame = _sample_frame()
 
@@ -2327,6 +2602,197 @@ def test_blocks_frame_adapters_feed_d1_and_integrated_models() -> None:
     assert resources[0].resource_id == "INT-01"
     assert all(obs.metadata["real_airsim_used"] is True for obs in observations)
     assert all(obs.metadata["dry_run"] is False for obs in observations)
+    serialized = repr(observations)
+    assert "TGT-001" not in serialized
+    assert "Intruder" not in serialized
+
+
+def test_blocks_online_observations_are_identity_rename_invariant_and_use_real_eo_bbox() -> None:
+    camera = AirSimCameraInfo(
+        camera_id="Interceptor:0",
+        owner_id="Interceptor",
+        timestamp=0.0,
+        position_ned=(0.5, 0.0, -2.0),
+        rotation_world_to_camera=((0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 0.0)),
+        fx=500.0,
+        fy=500.0,
+        cx=320.0,
+        cy=240.0,
+        width=640,
+        height=480,
+    )
+    alpha = replace(
+        _sample_frame(),
+        cameras=(camera,),
+        truth_objects=(
+            replace(
+                _sample_frame().truth_objects[0],
+                object_id="TargetAlpha",
+                metadata={"airsim_actor_name": "ActorAlpha"},
+            ),
+        ),
+        visual_detections=(
+            replace(
+                _sample_frame().visual_detections[0],
+                object_id="TargetAlpha",
+                local_track_id="Interceptor:0:ActorAlpha",
+                detection_id="det-ActorAlpha",
+                center_px=(1.0, 1.0),
+                bbox_xyxy=(100.0, 120.0, 140.0, 160.0),
+            ),
+        ),
+        metadata={**_sample_frame().metadata, "vehicle_names": ["Interceptor", "ActorAlpha"]},
+    )
+    bravo = replace(
+        alpha,
+        truth_objects=(
+            replace(
+                alpha.truth_objects[0],
+                object_id="TargetBravo",
+                metadata={"airsim_actor_name": "ActorBravo"},
+            ),
+        ),
+        visual_detections=(
+            replace(
+                alpha.visual_detections[0],
+                object_id="TargetBravo",
+                local_track_id="Interceptor:0:ActorBravo",
+                detection_id="det-ActorBravo",
+            ),
+        ),
+        metadata={**alpha.metadata, "vehicle_names": ["Interceptor", "ActorBravo"]},
+    )
+
+    alpha_observations = observations_from_blocks_frame(alpha, arrival_timestamp=0.2)
+    bravo_observations = observations_from_blocks_frame(bravo, arrival_timestamp=0.2)
+
+    assert [repr(item) for item in alpha_observations] == [
+        repr(item) for item in bravo_observations
+    ]
+    eo = next(item for item in alpha_observations if item.modality == "eo")
+    np.testing.assert_allclose(eo.measurement, (120.0, 140.0))
+    assert eo.arrival_timestamp == 0.0
+    assert "TargetAlpha" not in repr(alpha_observations)
+    assert "ActorAlpha" not in repr(alpha_observations)
+
+
+def test_main_episode_bus_delivers_observations_only_after_arrival_timestamp() -> None:
+    config = BlocksSmokeConfig(
+        radar_latency_s=0.2,
+        capture_lidar=False,
+        resource_vehicle_names=("Interceptor",),
+        camera_vehicle_names=("Interceptor",),
+        target_vehicle_names=(),
+    )
+    bus = MainAirSimEpisodeBus(config)
+
+    first = bus.process_frame(_sample_frame(timestamp=0.0, frame_index=0))
+    second = bus.process_frame(_sample_frame(timestamp=0.1, frame_index=1))
+    third = bus.process_frame(_sample_frame(timestamp=0.2, frame_index=2))
+
+    assert first.d1["generated_observation_count"] == 2
+    assert first.d1["observation_count"] == 0
+    assert first.d1["pending_observation_count"] == 2
+    assert second.d1["observation_count"] == 0
+    assert third.d1["observation_count"] == 2
+    assert all(
+        summary["arrival_timestamp"] <= third.timestamp
+        for summary in third.d1["observations"]
+    )
+    assert all(
+        float(track.metadata.get("valid_at", track.timestamp)) <= third.timestamp
+        for track in bus.fusion.global_tracks()
+    )
+    assert third.d2["id_switch_count"] is None
+    assert third.d2["track_continuity"] is None
+
+
+def test_main_control_evidence_exports_truth_isolated_d2_target_state() -> None:
+    config = BlocksSmokeConfig(
+        radar_latency_s=0.0,
+        capture_lidar=False,
+        resource_vehicle_names=("Interceptor",),
+        camera_vehicle_names=("Interceptor",),
+        target_vehicle_names=(),
+    )
+    bus = MainAirSimEpisodeBus(config)
+
+    frame = None
+    for frame_index in range(6):
+        frame = _sample_frame(timestamp=0.1 * frame_index, frame_index=frame_index)
+        frame = replace(
+            frame,
+            visual_detections=(
+                replace(
+                    frame.visual_detections[0],
+                    detection_id=f"det-anonymous-{frame_index + 1}",
+                    local_track_id="Interceptor:0:track:0001",
+                ),
+            ),
+        )
+        bus.process_frame(frame)
+    assert frame is not None
+    evidence = bus.control_evidence()
+
+    assert set(evidence) == {"INT-01"}
+    item = evidence["INT-01"]
+    estimate = item["target_estimate"]
+    binding = item["binding"]
+    assert item["control_state_valid"] is True
+    assert item["online_truth_id_used"] is False
+    assert item["online_truth_state_used"] is False
+    assert estimate["source"] == "d2_estimated_global_track"
+    assert estimate["global_track_id"] == binding["assigned_global_track_id"]
+    assert len(estimate["position_3d"]) == 3
+    assert len(estimate["velocity_3d"]) == 3
+    assert np.asarray(estimate["covariance_ned"]).shape == (3, 3)
+    assert estimate["measurement_timestamp"] <= estimate["arrival_timestamp"]
+    assert estimate["state_valid_at"] <= estimate["published_at"]
+    assert binding["target_actor_name"] is None
+    assert binding["target_object_id"] is None
+    assert binding["target_mesh_aliases"] == []
+    assert item["terminal_visual_observation"] is not None
+    assert item["terminal_visual_observation"]["bbox_xyxy"]
+    assert item["terminal_visual_observation"]["metadata"][
+        "d5_live_visual_funnel"
+    ]["schema_version"] == "d5_live_visual_funnel_v1"
+    online_payload = repr(evidence)
+    assert "TGT-001" not in online_payload
+    assert "MSM_TargetActor" not in online_payload
+    assert bus.offline_truth_binding_map(frame)
+
+
+def test_main_d1_processes_each_arrival_frame_as_one_batch(monkeypatch) -> None:
+    bus = MainAirSimEpisodeBus(
+        BlocksSmokeConfig(
+            radar_latency_s=0.0,
+            capture_lidar=False,
+            resource_vehicle_names=("Interceptor",),
+            camera_vehicle_names=("Interceptor",),
+            target_vehicle_names=(),
+        )
+    )
+    calls: list[int] = []
+    original_batch = bus.fusion.process_batch
+
+    def process_batch(observations):
+        batch = tuple(observations)
+        calls.append(len(batch))
+        return original_batch(batch)
+
+    monkeypatch.setattr(bus.fusion, "process_batch", process_batch)
+    monkeypatch.setattr(
+        bus.fusion,
+        "process",
+        lambda _observation: pytest.fail("main must use the D1 batch API"),
+    )
+
+    tick = bus.process_frame(_sample_frame(timestamp=0.0, frame_index=0))
+
+    assert len(calls) == 1
+    assert calls[0] == tick.d1["observation_count"]
+    assert tick.d1["batch_summary"]["batch_api_used"] is True
+    assert tick.d1["batch_summary"]["observation_count"] == calls[0]
 
 
 def test_blocks_detection_adapter_feeds_d5_local_visual_tracks() -> None:
@@ -2567,6 +3033,7 @@ def test_real_runtime_camera_metadata_uses_settings_intrinsics_and_pose(tmp_path
         camera_vehicle_names=("Cam1",),
         resource_vehicle_names=(),
         target_vehicle_names=(),
+        radar_latency_s=0.0,
         capture_lidar=False,
     )
 
@@ -2586,23 +3053,24 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
     resources = tuple(f"Interceptor{index}" for index in range(1, 6))
     frames = [
         _sample_5v5_frame(timestamp=float(index) * 0.5, frame_index=index)
-        for index in range(3)
+        for index in range(4)
     ]
     config = BlocksSmokeConfig(
         episode_id="pytest_main_bus_5v5",
         scenario_name="blocks_actor_n5",
-        duration_s=1.0,
+        duration_s=1.5,
         dt_s=0.5,
         output_root=tmp_path,
         launch_blocks=False,
         resource_vehicle_names=resources,
         camera_vehicle_names=resources,
         target_vehicle_names=(),
+        radar_latency_s=0.0,
     )
 
     result = run_main_episode_bus(config, frames, tmp_path / "main_bus")
 
-    assert result.frame_count == 3
+    assert result.frame_count == 4
     for path in result.output_paths.values():
         assert path.exists()
     governed_replay = json.loads(
@@ -2620,7 +3088,7 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
         .read_text(encoding="utf-8")
         .splitlines()
     ]
-    assert len(offline_truth_rows) == 15
+    assert len(offline_truth_rows) == 20
     assert all(row["schema_version"] == "d2-offline-truth-label/v1" for row in offline_truth_rows)
     collector, truth_summary = load_episode_log_jsonl(
         result.output_paths["main_episode_bus_jsonl"]
@@ -2654,7 +3122,62 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
         .read_text(encoding="utf-8")
         .splitlines()
     ]
-    assert len(ticks) == 3
+    stage_timings = [
+        json.loads(line)
+        for line in result.output_paths["main_stage_timings_jsonl"]
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    d3_history = json.loads(
+        result.output_paths["d3_plan_history_json"].read_text(encoding="utf-8")
+    )
+    assert len(ticks) == 4
+    assert len(stage_timings) == 4
+    assert all(
+        record["schema_version"] == "main-stage-timing-v1"
+        for record in stage_timings
+    )
+    assert all(record["scope"] == "main_episode_bus" for record in stage_timings)
+    assert all(record["total_ms"] >= record["measured_stage_sum_ms"] for record in stage_timings)
+    assert all(
+        record["stage_status"]["d1_fusion"] == "available"
+        for record in stage_timings
+    )
+    assert ticks[0]["clock"]["stage_timing"] == stage_timings[0]
+    assert d3_history["schema"] == "d3_plan_history_v1"
+    assert d3_history["record_count"] == 2
+    assert [record["sequence_index"] for record in d3_history["history"]] == [
+        0,
+        1,
+    ]
+    assert all(
+        record["schema"] == "d3_plan_history_record_v1"
+        for record in d3_history["history"]
+    )
+    assert [tick["d3"]["plan_history_record"] is not None for tick in ticks] == [
+        False,
+        False,
+        True,
+        True,
+    ]
+    assert "truth_id" not in json.dumps(d3_history, sort_keys=True)
+    assert result.summary["d3_plan_history_record_count"] == 2
+    d6_history_outputs = P1SystemEvidenceReportGenerator().write_report_bundle(
+        tmp_path / "d6_d3_history",
+        inputs=P1SystemEvidenceInputs(
+            d3_assignment_churn=result.output_paths["d3_plan_history_json"]
+        ),
+    )
+    d6_history_rows = list(
+        csv.DictReader(d6_history_outputs["rows_csv"].open(encoding="utf-8"))
+    )
+    d6_d3_row = next(
+        row for row in d6_history_rows if row["source"] == "d3_assignment_churn"
+    )
+    assert d6_d3_row["d3_history_validation_status"] == "available"
+    assert d6_d3_row["d3_history_record_count"] == "2"
+    assert d6_d3_row["plan_version_churn_count_availability"] == "available"
+    assert d6_d3_row["membership_change_count_availability"] == "available"
     assert ticks[0]["clock"]["clock_source"] == "airsim_frame_timestamp"
     assert ticks[0]["clock"]["episode_time_s"] == 0.0
     assert ticks[0]["clock"]["publish_timestamp"] == 0.0
@@ -2662,7 +3185,7 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
     assert ticks[0]["module_health"]["D6"]["status"] == "passive_collector"
     first_observation = ticks[0]["d1"]["observations"][0]
     assert first_observation["measurement_timestamp"] == 0.0
-    assert first_observation["arrival_timestamp"] == 0.2
+    assert first_observation["arrival_timestamp"] == 0.0
     assert first_observation["covariance_trace"] is not None
     assert "id_switch_count" in ticks[-1]["d2"]
     assert "track_continuity" in ticks[-1]["d2"]
@@ -2716,7 +3239,9 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
     metrics_metadata = metrics_payload["metrics"]["metadata"]
     assert metrics_metadata["mission_outcome"] == "success"
     assert metrics_metadata["success_reason"] == "episode_bus_records_complete"
-    assert metrics_metadata["clock"]["frame_count"] == 3
+    assert metrics_metadata["clock"]["frame_count"] == 4
+    assert metrics_metadata["clock"]["stage_timing"]["record_count"] == 4
+    assert metrics_metadata["clock"]["stage_timing"]["total"]["sample_count"] == 4
     assert metrics_metadata["module_health"]["D7"]["status"] == "ok"
     assert metrics_metadata["standard_mapping_version"] == "cuas-standard-map-v1"
     assert metrics_metadata["experiment_guidance_law"] == config.intercept_guidance_law
@@ -2741,6 +3266,52 @@ def test_main_episode_bus_writes_d1_to_d7_records_for_d6(tmp_path: Path) -> None
     )
 
 
+def test_main_episode_bus_d3_history_omits_non_planning_frames(tmp_path: Path) -> None:
+    resources = tuple(f"Interceptor{index}" for index in range(1, 6))
+    frames = [
+        _sample_5v5_frame(timestamp=timestamp, frame_index=index)
+        for index, timestamp in enumerate((0.0, 0.25, 0.5))
+    ]
+    config = BlocksSmokeConfig(
+        episode_id="pytest_d3_sparse_planning_history",
+        scenario_name="blocks_actor_n5",
+        duration_s=0.5,
+        dt_s=0.5,
+        output_root=tmp_path,
+        launch_blocks=False,
+        resource_vehicle_names=resources,
+        camera_vehicle_names=resources,
+        target_vehicle_names=(),
+        radar_latency_s=0.0,
+    )
+
+    bus = MainAirSimEpisodeBus(config)
+    bus.process_frame(frames[0])
+    # Isolate the scheduler path: ordinary D5 feedback intentionally requests
+    # another planning cycle and is covered by the end-to-end test above.
+    bus._pending_terminal_feedback = []
+    bus.process_frame(frames[1])
+    bus.process_frame(frames[2])
+    result = bus.finalize(frames, tmp_path / "main_bus_sparse")
+    ticks = [
+        json.loads(line)
+        for line in result.output_paths["main_episode_bus_ticks_jsonl"]
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    history = json.loads(
+        result.output_paths["d3_plan_history_json"].read_text(encoding="utf-8")
+    )
+
+    assert [tick["d3"]["plan_history_record"] is not None for tick in ticks] == [
+        False,
+        False,
+        True,
+    ]
+    assert history["record_count"] == 1
+    assert [record["sequence_index"] for record in history["history"]] == [0]
+
+
 def test_main_episode_bus_runs_centralized_m5_n2_coalition_without_pair_collapse() -> None:
     resources = tuple(f"Interceptor{index}" for index in range(1, 6))
     frames = [
@@ -2762,15 +3333,17 @@ def test_main_episode_bus_runs_centralized_m5_n2_coalition_without_pair_collapse
         cooperative_coordination_mode="hybrid",
         cooperative_primary_count=2,
         cooperative_wave_gap_s=2.0,
+        radar_latency_s=0.0,
     )
     bus = MainAirSimEpisodeBus(config)
 
     ticks = [bus.process_frame(frame) for frame in frames]
 
     assert bus.current_plan is not None
-    assert len({tick.d3["plan_id"] for tick in ticks}) == 1
-    assert {tick.d3["plan_version"] for tick in ticks} == {1}
-    assert [tick.d3["plan_changed"] for tick in ticks] == [True, False, False]
+    assert [tick.d3["plan_id"] for tick in ticks[:2]] == [None, None]
+    assert ticks[-1].d3["plan_id"] == bus.current_plan.plan_id
+    assert [tick.d3["plan_version"] for tick in ticks] == [None, None, 1]
+    assert [tick.d3["plan_changed"] for tick in ticks] == [False, False, True]
     counts = sorted(
         len(assignments)
         for assignments in bus.current_plan.assignments_by_target().values()
@@ -2781,6 +3354,13 @@ def test_main_episode_bus_runs_centralized_m5_n2_coalition_without_pair_collapse
     )
     assert high_demand.coalition_complete is True
     assert high_demand.demand_shortfall == 0
+    high_assignments = [
+        assignment
+        for assignment in bus.current_plan.assignments
+        if assignment.target_id == high_demand.target_id
+    ]
+    assert all(item.arrival_window_start_s is None for item in high_assignments)
+    assert all(item.arrival_window_end_s is None for item in high_assignments)
     assert ticks[-1].d3["coalition_count"] == 2
     assert ticks[-1].d5["terminal_association_count"] == 4
     assert set(ticks[-1].d5["coalition_visual_summaries"]) == {"T001", "T002"}
@@ -2833,6 +3413,7 @@ def test_main_episode_bus_fails_closed_when_distributed_coalition_ack_missing() 
         high_threat_required_resource_count=3,
         cooperative_coordination_mode="hybrid",
         cooperative_primary_count=2,
+        radar_latency_s=0.0,
     )
     bus = MainAirSimEpisodeBus(config)
     for index in range(3):
@@ -2868,6 +3449,7 @@ def test_simpleflight_cooperative_initial_pairs_use_d7_m_to_n_topology() -> None
         high_threat_required_resource_count=3,
         cooperative_coordination_mode="hybrid",
         cooperative_primary_count=2,
+        radar_latency_s=0.0,
         intercept_max_duration_s=90.0,
     )
 
@@ -2885,7 +3467,39 @@ def test_simpleflight_cooperative_initial_pairs_use_d7_m_to_n_topology() -> None
     assert pairs[-1].member_role == "primary"
 
 
-def test_main_episode_bus_records_tick_driven_secondary_communication() -> None:
+def test_main_episode_bus_records_standby_reserve_as_inactive() -> None:
+    config = BlocksSmokeConfig(
+        cooperative_demand_enabled=True,
+        cooperative_high_threat_target_count=1,
+        high_threat_required_resource_count=3,
+        cooperative_coordination_mode="hybrid",
+        cooperative_primary_count=2,
+        radar_latency_s=0.0,
+    )
+    bus = MainAirSimEpisodeBus(config)
+
+    for frame_index in range(3):
+        bus.process_frame(
+            _sample_m5_n2_frame(
+                timestamp=0.5 * frame_index,
+                frame_index=frame_index,
+            )
+        )
+
+    high_threat_records = [
+        record
+        for record in bus.collector.assignment_records
+        if record.global_track_id == "T001"
+    ]
+    assert len(high_threat_records) == 3
+    reserve = next(
+        record for record in high_threat_records if record.member_role == "reserve"
+    )
+    assert reserve.active is False
+    assert sum(record.active for record in high_threat_records) == 2
+
+
+def test_main_episode_bus_does_not_execute_secondary_from_heartbeat_alone() -> None:
     resources = tuple(f"Interceptor{index}" for index in range(1, 6))
     config = BlocksSmokeConfig(
         episode_id="pytest_episode_communication",
@@ -2902,6 +3516,7 @@ def test_main_episode_bus_records_tick_driven_secondary_communication() -> None:
             "episode_communication_enabled": True,
             "center_node_id": "C2",
         },
+        radar_latency_s=0.0,
     )
     bus = MainAirSimEpisodeBus(config)
     states = []
@@ -2914,11 +3529,94 @@ def test_main_episode_bus_records_tick_driven_secondary_communication() -> None:
 
     assert states[0]["owner_id"] == "C2"
     assert all(state["single_executable_owner"] for state in states)
-    assert any(state["selected_layer"] == "secondary" for state in states)
-    assert any(state["execution_allowed"] for state in states if state["selected_layer"] == "secondary")
+    assert all(state["selected_layer"] != "secondary" for state in states)
+    assert all(
+        not state["metadata"]["secondary_readiness_assessments"]
+        for state in states
+    )
     assert any(
         event.event_type == "d4_episode_communication_tick"
         for event in bus.collector.event_records
+    )
+
+
+def test_main_episode_bus_secondary_communication_requires_d4_readiness() -> None:
+    resources = tuple(f"Interceptor{index}" for index in range(1, 6))
+    secondary_names = ("Secondary_Recon_1", "Secondary_Recon_2")
+    config = BlocksSmokeConfig(
+        episode_id="pytest_episode_communication_strict_secondary",
+        scenario_name="blocks_cv_m5_n2",
+        duration_s=3.5,
+        dt_s=0.5,
+        launch_blocks=False,
+        resource_vehicle_names=resources,
+        camera_vehicle_names=resources,
+        secondary_camera_vehicle_names=secondary_names,
+        target_vehicle_names=(),
+        cooperative_demand_enabled=True,
+        metadata={
+            "episode_communication_enabled": True,
+            "center_node_id": "C2",
+        },
+        radar_latency_s=0.0,
+    )
+    bus = MainAirSimEpisodeBus(config)
+    states = []
+    for index in range(8):
+        frame = _sample_5v5_frame(timestamp=0.5 * index, frame_index=index)
+        frame = replace(
+            frame,
+            center_node_alive=index <= 2,
+            secondary_nodes_alive=True,
+            metadata={
+                **frame.metadata,
+                "secondary_camera_vehicle_names": list(secondary_names),
+                "images": [
+                    {
+                        "camera_vehicle_name": name,
+                        "camera_name": "0",
+                        "ok": True,
+                        "width": 1280,
+                        "height": 720,
+                    }
+                    for name in secondary_names
+                ],
+            },
+        )
+        states.append(bus.process_frame(frame).d4["episode_communication"])
+
+    secondary_states = [
+        state for state in states if state["selected_layer"] == "secondary"
+    ]
+    assert secondary_states
+    assert any(
+        assessment["ready"] is True
+        for state in secondary_states
+        for assessment in state["metadata"][
+            "secondary_readiness_assessments"
+        ].values()
+    )
+    assert any(state["execution_allowed"] for state in secondary_states)
+    assert all(
+        state["lease_valid"] is True
+        for state in secondary_states
+        if state["execution_allowed"]
+    )
+
+
+def test_main_episode_bus_rejects_conflicting_secondary_lease_evidence() -> None:
+    left = episode_bus_module.SecondaryReadinessEvidence(
+        node_id="Secondary_Recon_1",
+        current_time_s=4.0,
+        lease_epoch=3,
+        lease_expires_at_s=6.0,
+        takeover_ready_sustained=True,
+    )
+    right = replace(left, lease_epoch=4)
+
+    assert (
+        episode_bus_module._merge_secondary_readiness_evidence(left, right)
+        is None
     )
 
 
@@ -2960,6 +3658,8 @@ def test_range_intercept_semantics_are_pair_target_and_coalition_separated() -> 
             target_id="TGT-001",
             status="range_intercept",
             active=False,
+            physical_success=True,
+            physical_evidence_available=True,
             member_role="primary",
             activation_state="active",
         ),
@@ -3020,6 +3720,7 @@ def test_simpleflight_range_success_uses_inclusive_3d_ned_distance(
         execute_intercept=True,
         intercept_max_duration_s=0.0,
         intercept_radius_m=5.0,
+        metadata={"allow_truth_state_control_fixture": True},
     )
 
     result = AirSimBlocksSmokeOrchestrator(runtime=VerticalRangeRuntime()).run(config)
@@ -3076,6 +3777,373 @@ def test_online_control_evidence_coerces_d3_compatibility_fields() -> None:
     assert pair.guidance_binding is not None
     assert pair.guidance_binding.assigned_global_track_id == "G-001"
     assert pair.online_truth_id_used is False
+
+
+def test_online_control_evidence_routes_d5_bbox_to_simpleflight_d7() -> None:
+    pair = InterceptPair(
+        resource_id="INT-01",
+        vehicle_name="Interceptor",
+        target_id="G-001",
+    )
+    evidence = {
+        "INT-01": {
+            "terminal_visual_observation": {
+                "timestamp_s": 19.0,
+                "frame_timestamp_s": 18.9,
+                "bbox_xyxy": (100.0, 80.0, 220.0, 200.0),
+                "detection_confidence": 0.9,
+                "local_track_id": "INT-01:0:track:7",
+                "assigned_global_track_id": "G-001",
+                "camera_id": "Interceptor:0",
+                "metadata": {
+                    "image_size": (1920, 1080),
+                    "local_track_state": "measured",
+                    "truth_identity_used": False,
+                },
+            }
+        }
+    }
+
+    _apply_online_control_evidence([pair], evidence)
+
+    assert pair.terminal_visual_observation is not None
+    assert pair.terminal_visual_observation.bbox_xyxy == (
+        100.0,
+        80.0,
+        220.0,
+        200.0,
+    )
+    assert pair.terminal_visual_observation.assigned_global_track_id == "G-001"
+    assert "truth" not in pair.terminal_visual_observation.local_track_id.lower()
+
+
+def _online_target_estimate(
+    *,
+    position_ned: tuple[float, float, float] = (40.0, 8.0, -2.0),
+    valid: bool = True,
+) -> OnlineTargetEstimate:
+    return OnlineTargetEstimate(
+        global_track_id="G-001",
+        position_ned=position_ned,
+        velocity_ned=(0.0, 0.0, 0.0),
+        covariance_ned=((4.0, 0.0, 0.0), (0.0, 4.0, 0.0), (0.0, 0.0, 9.0)),
+        measurement_timestamp_s=0.0,
+        arrival_timestamp_s=0.1,
+        state_valid_at_s=0.2,
+        published_at_s=0.2,
+        measurement_age_s=0.2,
+        stale_after_s=1.0,
+        lifecycle_state="confirmed",
+        control_state_valid=valid,
+        reject_reason="" if valid else "target_estimate_stale",
+    )
+
+
+def test_truth_isolated_step_uses_d2_estimate_not_actor_truth() -> None:
+    config = BlocksSmokeConfig(
+        intercept_guidance_law="radar_pn",
+        intercept_radius_m=5.0,
+    )
+    base = _sample_frame(timestamp=0.2, frame_index=2)
+    moved_truth = replace(
+        base,
+        truth_objects=(
+            replace(base.truth_objects[0], position_ned=(-500.0, 700.0, -100.0)),
+        ),
+    )
+    outputs = []
+    for frame in (base, moved_truth):
+        runtime = FakeBlocksRuntime()
+        pair = InterceptPair(
+            resource_id="INT-01",
+            vehicle_name="Interceptor",
+            target_id="G-001",
+            assigned_global_track_id="G-001",
+            target_estimate=_online_target_estimate(),
+        )
+        records = []
+        _step_pairs(runtime, config, frame, [pair], records)
+        outputs.append((runtime.velocity_commands, records[0]))
+
+    assert outputs[0][0] == outputs[1][0]
+    assert outputs[0][1].range_m == pytest.approx(outputs[1][1].range_m)
+    assert outputs[0][1].truth_state_online_use is False
+    assert outputs[0][1].target_state_source == "d2_estimated_global_track"
+    assert outputs[0][1].target_state_valid_at_s == pytest.approx(0.2)
+
+
+def test_d3_adapter_admits_only_engageable_d2_tracks() -> None:
+    resources = resources_from_blocks_frame(_sample_frame())
+    tracks = [
+        SimpleNamespace(
+            global_track_id=f"T{index:03d}",
+            state=np.asarray((40.0 + index, 8.0, 0.0, 0.0), dtype=float),
+            covariance=np.eye(4, dtype=float),
+            lifecycle_state=SimpleNamespace(value=lifecycle),
+        )
+        for index, lifecycle in enumerate(
+            ("tentative", "confirmed", "engageable", "lost", "dropped"),
+            start=1,
+        )
+    ]
+
+    planned = target_tracks_from_online_d2(tracks, resources)
+
+    assert [track.assignable for track in planned] == [False, False, True, False, False]
+    assert [track.metadata["d2_lifecycle_state"] for track in planned] == [
+        "tentative",
+        "confirmed",
+        "engageable",
+        "lost",
+        "dropped",
+    ]
+    assert planned[2].metadata["assignment_admission"] == "engageable"
+    assert all(track.metadata["online_truth_id_used"] is False for track in planned)
+
+
+def test_truth_isolated_collision_gate_ignores_latched_precontrol_event() -> None:
+    event_state = {"Interceptor": (True, 100)}
+
+    assert not _consume_new_collision_event(
+        {"has_collided": True, "time_stamp": 100, "object_name": "Ground"},
+        event_state,
+        "Interceptor",
+    )
+    assert _consume_new_collision_event(
+        {"has_collided": True, "time_stamp": 200, "object_name": "Target"},
+        event_state,
+        "Interceptor",
+    )
+    assert not _consume_new_collision_event(
+        {"has_collided": True, "time_stamp": 200, "object_name": "Target"},
+        event_state,
+        "Interceptor",
+    )
+
+
+def test_truth_isolated_collision_gate_accepts_false_to_true_without_timestamp() -> None:
+    event_state = {"Interceptor": (False, 0)}
+
+    assert _consume_new_collision_event(
+        {"has_collided": True, "time_stamp": 0, "object_name": ""},
+        event_state,
+        "Interceptor",
+    )
+
+
+def test_active_center_contract_override_keeps_commands_independent_of_actor_truth() -> None:
+    config = BlocksSmokeConfig(
+        intercept_guidance_law="radar_pn",
+        intercept_radius_m=5.0,
+        intercept_terminal_switch_range_m=100.0,
+        intercept_min_bbox_area_ratio=0.001,
+        intercept_min_stable_detection_frames=1,
+        metadata={
+            "active_center_replan_visual_png": True,
+            "active_degradation_time_s": 0.0,
+            "center_replan_time_s": 0.0,
+            "center_node_id": "C2",
+        },
+    )
+    base = _sample_frame(timestamp=0.2, frame_index=2)
+    moved_truth = replace(
+        base,
+        truth_objects=(
+            replace(
+                base.truth_objects[0],
+                object_id="RENAMED-OFFLINE-TRUTH",
+                position_ned=(-500.0, 700.0, -100.0),
+                velocity_ned=(25.0, -30.0, 5.0),
+            ),
+        ),
+    )
+    base_evidence = {
+        "INT-01": {
+            "binding": {
+                "plan_id": "d3-plan-v1",
+                "plan_version": 1,
+                "resource_id": "INT-01",
+                "vehicle_name": "Interceptor",
+                "assigned_global_track_id": "G-001",
+                "track_version": 1,
+                "authorization_state": "recorded",
+                "assignment_validity_state": "current",
+                "member_role": "primary",
+                "activation_state": "active",
+                "terminal_authorization_scope": "per_primary",
+                "arrival_coordination_required": False,
+                "target_actor_name": None,
+                "target_object_id": None,
+                "target_mesh_aliases": (),
+            },
+            "d4_permission": None,
+            "terminal_association": None,
+            "target_estimate": {
+                "global_track_id": "G-001",
+                "position_3d": (40.0, 8.0, -2.0),
+                "velocity_3d": (0.0, 0.0, 0.0),
+                "covariance_ned": (
+                    (4.0, 0.0, 0.0),
+                    (0.0, 4.0, 0.0),
+                    (0.0, 0.0, 9.0),
+                ),
+                "measurement_timestamp": 0.0,
+                "arrival_timestamp": 0.1,
+                "state_valid_at": 0.2,
+                "published_at": 0.2,
+                "measurement_age_s": 0.2,
+                "stale_after_s": 1.0,
+                "lifecycle_state": "confirmed",
+                "source": "d2_estimated_global_track",
+                "control_state_valid": True,
+                "reject_reason": "",
+            },
+            "control_state_valid": True,
+            "control_state_reject_reason": "",
+            "online_truth_id_used": False,
+            "online_truth_state_used": False,
+        }
+    }
+
+    outputs = []
+    for frame in (base, moved_truth):
+        annotated = _annotate_active_replan_frame(config, frame, base_evidence)
+        evidence = _apply_frame_control_contract_overrides(base_evidence, annotated)
+        binding = evidence["INT-01"]["binding"]
+        assert binding["target_actor_name"] is None
+        assert binding["target_object_id"] is None
+        assert not binding["target_mesh_aliases"]
+        runtime = FakeBlocksRuntime()
+        pairs = _sync_pairs_from_control_evidence([], evidence)
+        records = []
+        _step_pairs(runtime, config, annotated, pairs, records)
+        outputs.append((runtime.velocity_commands, records[0]))
+
+    assert outputs[0][0] == outputs[1][0]
+    assert outputs[0][1].range_m == pytest.approx(outputs[1][1].range_m)
+    assert outputs[0][1].truth_state_online_use is False
+    assert outputs[0][1].target_state_source == "d2_estimated_global_track"
+
+
+def test_truth_isolated_step_fails_closed_without_valid_d2_estimate() -> None:
+    config = BlocksSmokeConfig(intercept_guidance_law="radar_pn")
+    for estimate, reason in (
+        (None, "target_estimate_missing"),
+        (_online_target_estimate(valid=False), "target_estimate_stale"),
+    ):
+        runtime = FakeBlocksRuntime()
+        pair = InterceptPair(
+            resource_id="INT-01",
+            vehicle_name="Interceptor",
+            target_id="G-001",
+            assigned_global_track_id="G-001",
+            target_estimate=estimate,
+        )
+        _step_pairs(runtime, config, _sample_frame(), [pair], [])
+        assert pair.status == "aborted"
+        assert pair.abort_reason == reason
+        assert not getattr(runtime, "velocity_commands", [])
+
+
+def test_runtime_demotes_primary_to_standby_reserve_and_can_reactivate() -> None:
+    runtime = FakeBlocksRuntime()
+    pair = InterceptPair(
+        resource_id="INT-01",
+        vehicle_name="Interceptor",
+        target_id="G-001",
+        assigned_global_track_id="G-001",
+        active=True,
+        status="active",
+        member_role="primary",
+        activation_state="active",
+    )
+    reserve_evidence = {
+        "INT-01": {
+            "binding": {
+                "plan_id": "plan-2",
+                "plan_version": 2,
+                "resource_id": "INT-01",
+                "vehicle_name": "Interceptor",
+                "assigned_global_track_id": "G-001",
+                "track_version": 2,
+                "authorization_state": "recorded",
+                "assignment_validity_state": "current",
+                "member_role": "reserve",
+                "activation_state": "standby",
+            },
+            "target_estimate": _online_target_estimate(),
+        }
+    }
+
+    demoted = _sync_pairs_from_control_evidence(
+        [pair],
+        reserve_evidence,
+        runtime=runtime,
+    )[0]
+
+    assert demoted.active is False
+    assert demoted.status == "standby"
+    assert demoted.member_role == "reserve"
+    assert demoted.activation_state == "standby"
+    assert runtime.hover_calls == ["Interceptor"]
+
+    active_evidence = {
+        "INT-01": {
+            **reserve_evidence["INT-01"],
+            "binding": {
+                **reserve_evidence["INT-01"]["binding"],
+                "plan_version": 3,
+                "track_version": 3,
+                "member_role": "primary",
+                "activation_state": "active",
+            },
+        }
+    }
+    reactivated = _sync_pairs_from_control_evidence(
+        [demoted],
+        active_evidence,
+        runtime=runtime,
+    )[0]
+
+    assert reactivated.active is True
+    assert reactivated.status == "active"
+    assert reactivated.member_role == "primary"
+    assert reactivated.activation_state == "active"
+
+
+def test_offline_physical_scorer_keeps_truth_out_of_online_status() -> None:
+    frame = _sample_frame(timestamp=0.0, frame_index=0)
+    resource = frame.resources[0]
+    target = replace(
+        frame.truth_objects[0],
+        position_ned=(
+            resource.position_ned[0] + 3.0,
+            resource.position_ned[1],
+            resource.position_ned[2],
+        ),
+    )
+    frame = replace(frame, truth_objects=(target,))
+    pair = InterceptPair(
+        resource_id="INT-01",
+        vehicle_name="Interceptor",
+        target_id="G-001",
+        assigned_global_track_id="G-001",
+        active=False,
+        status="estimated_range_stop",
+    )
+
+    _score_physical_intercepts_offline(
+        frames=[frame],
+        pairs=[pair],
+        truth_binding_history={0.0: {"G-001": target.object_id}},
+        radius_m=5.0,
+    )
+
+    assert pair.status == "estimated_range_stop"
+    assert pair.physical_success is True
+    assert pair.physical_min_range_m == pytest.approx(3.0)
+    assert pair.physical_intercept_time_s == pytest.approx(0.0)
+    assert pair.online_truth_state_used is False
 
 
 def test_non_loss_contract_block_does_not_become_physical_abort() -> None:
@@ -3178,6 +4246,138 @@ def test_terminal_detection_timeout_counts_only_continuous_misses() -> None:
         detection_seen=False,
         timeout_s=1.0,
     )
+    assert pair.terminal_acquisition_timeout_active is True
+    assert not _terminal_detection_acquisition_timed_out(
+        pair,
+        timestamp_s=2.2,
+        in_terminal_range=True,
+        detection_seen=False,
+        timeout_s=1.0,
+    )
+    assert not _terminal_detection_acquisition_timed_out(
+        pair,
+        timestamp_s=2.3,
+        in_terminal_range=True,
+        detection_seen=True,
+        timeout_s=1.0,
+    )
+    assert pair.terminal_acquisition_timeout_active is False
+
+
+def test_rejected_visual_candidate_does_not_overwrite_executed_guidance_law() -> None:
+    quality = SimpleNamespace(
+        camera_quality_gate_passed=False,
+        los_quality_gate_passed=True,
+        maneuver_margin_gate_passed=True,
+        terminal_switch_allowed=False,
+        reject_reason="bbox_area_too_small",
+        bbox_area_ratio=0.0002,
+        los_rate_variance_radps2=0.0,
+        ttc_s=None,
+        ttc_raw_area_px2=None,
+        ttc_filtered_area_px2=None,
+        ttc_area_dot_px2_s=None,
+        ttc_reject_reason="",
+        maneuver_margin=1.0,
+        required_turn_rate_radps=0.0,
+        turn_rate_capacity_radps=0.9,
+    )
+    metadata = _visual_metadata(
+        SimpleNamespace(
+            guidance_law="png_vm",
+            quality=quality,
+            control_saturated=False,
+        )
+    )
+
+    assert metadata["candidate_guidance_law"] == "png_vm"
+    assert "guidance_law" not in metadata
+
+
+def test_controlled_intercept_keeps_radar_pn_during_visual_acquisition_timeout(
+    tmp_path: Path,
+) -> None:
+    class NoVisualDetectionRuntime(FakeBlocksRuntime):
+        def sample_frame(self, config, frame_index, timestamp, output_dir):
+            return replace(
+                super().sample_frame(config, frame_index, timestamp, output_dir),
+                visual_detections=(),
+            )
+
+    config = BlocksSmokeConfig(
+        episode_id="pytest_terminal_acquisition_radar_fallback",
+        output_root=tmp_path,
+        launch_blocks=False,
+        include_integrated_pipeline=False,
+        execute_intercept=True,
+        control_dt_s=0.1,
+        intercept_max_duration_s=1.3,
+        intercept_terminal_switch_range_m=100.0,
+        intercept_detection_timeout_s=0.2,
+        intercept_abort_on_terminal_acquisition_timeout=False,
+        metadata={"allow_truth_state_control_fixture": True},
+    )
+
+    result = AirSimBlocksSmokeOrchestrator(
+        runtime=NoVisualDetectionRuntime()
+    ).run(config)
+    summary = json.loads(
+        result.output_paths["intercept_summary"].read_text(encoding="utf-8")
+    )
+    with result.output_paths["control_commands"].open(
+        encoding="utf-8", newline=""
+    ) as stream:
+        rows = list(csv.DictReader(stream))
+
+    assert summary["pairs"][0]["abort_reason"] is None
+    assert summary["pairs"][0]["terminal_acquisition_timeout_count"] == 1
+    assert summary["pairs"][0]["terminal_acquisition_timeout_action"] == (
+        "continue_radar_pn"
+    )
+    timeout_rows = [
+        row for row in rows if row["terminal_acquisition_timed_out"] == "True"
+    ]
+    assert timeout_rows
+    assert {row["guidance_law"] for row in timeout_rows} == {"radar_pn"}
+    assert {row["executed_guidance_law"] for row in timeout_rows} == {"radar_pn"}
+    assert all(float(row["command_vx_mps"]) != 0.0 for row in timeout_rows)
+
+
+def test_controlled_intercept_can_explicitly_abort_on_visual_acquisition_timeout(
+    tmp_path: Path,
+) -> None:
+    class NoVisualDetectionRuntime(FakeBlocksRuntime):
+        def sample_frame(self, config, frame_index, timestamp, output_dir):
+            return replace(
+                super().sample_frame(config, frame_index, timestamp, output_dir),
+                visual_detections=(),
+            )
+
+    config = BlocksSmokeConfig(
+        episode_id="pytest_terminal_acquisition_abort",
+        output_root=tmp_path,
+        launch_blocks=False,
+        include_integrated_pipeline=False,
+        execute_intercept=True,
+        control_dt_s=0.1,
+        intercept_max_duration_s=1.3,
+        intercept_terminal_switch_range_m=100.0,
+        intercept_detection_timeout_s=0.2,
+        intercept_abort_on_terminal_acquisition_timeout=True,
+        metadata={"allow_truth_state_control_fixture": True},
+    )
+
+    result = AirSimBlocksSmokeOrchestrator(
+        runtime=NoVisualDetectionRuntime()
+    ).run(config)
+    summary = json.loads(
+        result.output_paths["intercept_summary"].read_text(encoding="utf-8")
+    )
+
+    assert summary["pairs"][0]["status"] == "aborted"
+    assert summary["pairs"][0]["abort_reason"] == (
+        "terminal_detection_acquisition_timeout"
+    )
 
 
 def test_intercept_detection_dropout_removes_online_boxes_only_in_window() -> None:
@@ -3236,6 +4436,7 @@ def test_main_episode_bus_distributed_coalition_faults_fail_closed(fault: str) -
         resource_vehicle_names=resources,
         camera_vehicle_names=resources,
         target_vehicle_names=(),
+        radar_latency_s=0.0,
         cooperative_demand_enabled=True,
         cooperative_high_threat_target_count=1,
         high_threat_required_resource_count=3,
@@ -3288,18 +4489,19 @@ def test_main_episode_bus_retains_current_plan_after_stale_rejection(
     resources = tuple(f"Interceptor{index}" for index in range(1, 6))
     frames = [
         _sample_5v5_frame(timestamp=float(index) * 0.5, frame_index=index)
-        for index in range(2)
+        for index in range(4)
     ]
     config = BlocksSmokeConfig(
         episode_id="pytest_main_bus_stale_plan",
         scenario_name="blocks_actor_n5",
-        duration_s=0.5,
+        duration_s=1.5,
         dt_s=0.5,
         output_root=tmp_path,
         launch_blocks=False,
         resource_vehicle_names=resources,
         camera_vehicle_names=resources,
         target_vehicle_names=(),
+        radar_latency_s=0.0,
     )
 
     result = run_main_episode_bus(config, frames, tmp_path / "main_bus_stale")
@@ -3345,6 +4547,7 @@ def test_main_episode_bus_exports_replan_and_truth_availability_metrics(
         cooperative_coordination_mode="hybrid",
         cooperative_primary_count=2,
         cooperative_wave_gap_s=2.0,
+        radar_latency_s=0.0,
     )
 
     result = run_main_episode_bus(config, frames, tmp_path / "main_bus_m5_n2")
@@ -3421,7 +4624,7 @@ def test_main_episode_bus_marks_secondary_takeover_plan_for_d7(tmp_path: Path) -
         frame = _sample_5v5_frame(timestamp=float(index) * 0.5, frame_index=index)
         frame = replace(
             frame,
-            center_node_alive=index == 0,
+            center_node_alive=index <= 2,
             secondary_nodes_alive=True,
             metadata={
                 **frame.metadata,
@@ -3450,6 +4653,7 @@ def test_main_episode_bus_marks_secondary_takeover_plan_for_d7(tmp_path: Path) -
         camera_vehicle_names=resources,
         secondary_camera_vehicle_names=secondary_names,
         target_vehicle_names=(),
+        radar_latency_s=0.0,
     )
 
     result = run_main_episode_bus(config, frames, tmp_path / "main_bus_secondary")
@@ -3460,16 +4664,15 @@ def test_main_episode_bus_marks_secondary_takeover_plan_for_d7(tmp_path: Path) -
         .read_text(encoding="utf-8")
         .splitlines()
     ]
-    assert ticks[1]["d3"]["active_plan_owner"] == "center"
-    assert "degrade_to_distributed" in ticks[1]["d4"]["actions"]
-    assert "degrade_to_secondary" in ticks[2]["d4"]["actions"]
-    assert set(ticks[2]["d7"]["terminal_contract_reject_reasons"]) <= {
+    assert ticks[2]["d3"]["active_plan_owner"] == "center"
+    assert "degrade_to_distributed" in ticks[3]["d4"]["actions"]
+    assert "degrade_to_secondary" in ticks[4]["d4"]["actions"]
+    assert set(ticks[4]["d7"]["terminal_contract_reject_reasons"]) <= {
         "d4_reassign_pending",
         "d4_terminal_inconsistent",
     }
-    assert ticks[3]["d3"]["active_plan_owner"] == "secondary"
-    assert ticks[3]["d3"]["plan_schema"] == "secondary_plan_v2"
-    assert all(tick["d3"]["active_plan_owner"] == "secondary" for tick in ticks[3:])
+    assert ticks[5]["d3"]["active_plan_owner"] == "secondary"
+    assert ticks[5]["d3"]["plan_schema"] == "secondary_plan_v2"
     assert result.summary["current_plan"]["active_plan_owner"] == "secondary"
     assert result.summary["current_plan"]["plan_schema"] == "secondary_plan_v2"
     assert result.summary["current_plan"]["owner_node_id"] in secondary_names
@@ -3629,6 +4832,7 @@ def test_blocks_orchestrator_runs_mock_controlled_intercept(tmp_path: Path) -> N
         intercept_terminal_switch_range_m=100.0,
         intercept_min_bbox_area_ratio=0.001,
         intercept_min_stable_detection_frames=2,
+        metadata={"allow_truth_state_control_fixture": True},
     )
     runtime = FakeBlocksRuntime()
     orchestrator = AirSimBlocksSmokeOrchestrator(runtime=runtime)
@@ -3638,8 +4842,12 @@ def test_blocks_orchestrator_runs_mock_controlled_intercept(tmp_path: Path) -> N
     assert result.connected is True
     assert result.metadata["control_api_used"] is True
     assert result.metadata["intercept"]["command_record_count"] > 0
+    assert result.metadata["intercept"]["control_tick_timing"]["availability"] == (
+        "available"
+    )
     assert result.output_paths["intercept_summary"].exists()
     assert result.output_paths["control_commands"].exists()
+    assert result.output_paths["control_tick_timings"].exists()
     assert result.output_paths["intercept_trajectory_plot"].exists()
     summary = json.loads(result.output_paths["intercept_summary"].read_text(encoding="utf-8"))
     assert summary["control_api_used"] is True
@@ -3647,6 +4855,27 @@ def test_blocks_orchestrator_runs_mock_controlled_intercept(tmp_path: Path) -> N
     assert summary["parameters"]["intercept_radius_m"] == pytest.approx(5.0)
     assert summary["parameters"]["intercept_distance_dimension"] == "3d_euclidean"
     assert summary["success_semantics"]["criteria_version"] == "airsim-range-intercept-v2"
+    assert summary["control_tick_timing"]["availability"] == "available"
+    assert summary["control_tick_timing"]["record_count"] > 0
+    control_tick_timings = [
+        json.loads(line)
+        for line in result.output_paths["control_tick_timings"]
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert len(control_tick_timings) == summary["control_tick_timing"]["record_count"]
+    assert all(
+        record["schema_version"] == "control-tick-stage-timing-v1"
+        for record in control_tick_timings
+    )
+    assert all(
+        record["stage_status"]["airsim_frame_sample"] == "available"
+        for record in control_tick_timings
+    )
+    assert all(
+        record["total_ms"] >= record["measured_stage_sum_ms"]
+        for record in control_tick_timings
+    )
     assert result.metadata["main_episode_bus"]["execution_metrics_merged"] is True
     assert result.output_paths["main_episode_bus_contract_metrics_json"].exists()
     bus_metrics = json.loads(
@@ -3672,6 +4901,107 @@ def test_blocks_orchestrator_runs_mock_controlled_intercept(tmp_path: Path) -> N
     assert "d5_decision_state" in commands
 
 
+def test_controlled_intercept_default_path_uses_d2_state_and_offline_truth_scorer(
+    tmp_path: Path,
+) -> None:
+    config = BlocksSmokeConfig(
+        episode_id="pytest_truth_isolated_intercept",
+        duration_s=0.2,
+        dt_s=0.1,
+        output_root=tmp_path,
+        launch_blocks=False,
+        connection_timeout_s=0.1,
+        include_integrated_pipeline=True,
+        execute_intercept=True,
+        radar_latency_s=0.0,
+        control_dt_s=0.1,
+        intercept_max_duration_s=0.2,
+        intercept_radius_m=100.0,
+        intercept_terminal_switch_range_m=5.0,
+        intercept_guidance_law="radar_pn",
+        metadata={"sequence_id": "pytest_truth_isolated_sequence"},
+    )
+
+    result = AirSimBlocksSmokeOrchestrator(runtime=FakeBlocksRuntime()).run(config)
+    summary = json.loads(
+        result.output_paths["intercept_summary"].read_text(encoding="utf-8")
+    )
+    with result.output_paths["control_commands"].open(
+        encoding="utf-8", newline=""
+    ) as stream:
+        rows = list(csv.DictReader(stream))
+
+    assert rows
+    assert summary["truth_state_online_use_count"] == 0
+    assert summary["online_control_state_source"] == "d2_estimated_global_track"
+    assert summary["physical_intercept_source"] == "offline_truth_distance_scorer"
+    assert summary["success_semantics"]["criteria_version"] == (
+        "airsim-offline-range-intercept-v3"
+    )
+    assert all(row["truth_state_online_use"] == "False" for row in rows)
+    assert {row["target_state_source"] for row in rows} == {
+        "d2_estimated_global_track"
+    }
+    assert all(row["target_state_valid_at_s"] for row in rows)
+    assert all(row["collision_object_name"] == "" for row in rows)
+    physical_rows = [row for row in rows if row["physical_intercept"] == "True"]
+    assert len(physical_rows) == summary["success_count"]
+    assert len(physical_rows) == sum(
+        bool(pair["physical_success"])
+        for pair in summary["pairs"]
+        if pair["activation_state"] == "active"
+    )
+    assert len(
+        {(row["resource_id"], row["target_id"]) for row in physical_rows}
+    ) == len(physical_rows)
+    bus_metrics = json.loads(
+        result.output_paths["main_episode_bus_metrics_json"].read_text(
+            encoding="utf-8"
+        )
+    )["metrics"]
+    assert bus_metrics["truth_state_online_use_count"] == 0
+    assert bus_metrics["truth_identity_online_use_count"] == 0
+    assert bus_metrics["metadata"]["online_control_state_source"] == (
+        "d2_estimated_global_track"
+    )
+    assert bus_metrics["metadata"]["physical_intercept_source"] == (
+        "offline_truth_distance_scorer"
+    )
+    assert result.output_paths["d7_execution_metrics"].exists()
+    actual_execution = json.loads(
+        result.output_paths["d7_execution_metrics"].read_text(encoding="utf-8")
+    )
+    assert actual_execution["schema"] == "d7-actual-execution-metrics-v2"
+    assert actual_execution["case_id"] == "pytest_truth_isolated_sequence"
+    assert (
+        actual_execution["metrics"]["physical_intercept_count"]
+        == summary["success_count"]
+    )
+    terminal_switch_allowed_count = sum(
+        row["terminal_switch_allowed"] == "True" for row in rows
+    )
+    assert (
+        actual_execution["metrics"]["terminal_switch_allowed_count"]
+        == terminal_switch_allowed_count
+    )
+    terminal_switch_availability = actual_execution["metrics"][
+        "metric_availability"
+    ]["terminal_switch_allowed_count"]
+    assert terminal_switch_availability["status"] == "available"
+    assert terminal_switch_availability["source_artifact"] == "control_commands"
+
+    history = json.loads(
+        result.output_paths["d3_plan_history_json"].read_text(encoding="utf-8")
+    )
+    command_plan_ids = {row["plan_id"] for row in rows if row["plan_id"]}
+    history_plan_ids = {
+        record["plan_id"] for record in history["history"] if record.get("plan_id")
+    }
+    assert command_plan_ids
+    assert command_plan_ids <= history_plan_ids
+    assert set(actual_execution["metadata"]["plan_ids"]) == command_plan_ids
+
+
 def test_controlled_intercept_honors_non_visual_guidance_laws(tmp_path: Path) -> None:
     for law in ("pure_pursuit", "radar_pn"):
         config = BlocksSmokeConfig(
@@ -3687,6 +5017,7 @@ def test_controlled_intercept_honors_non_visual_guidance_laws(tmp_path: Path) ->
             intercept_max_duration_s=0.2,
             intercept_terminal_switch_range_m=100.0,
             intercept_guidance_law=law,
+            metadata={"allow_truth_state_control_fixture": True},
         )
         result = AirSimBlocksSmokeOrchestrator(runtime=FakeBlocksRuntime()).run(config)
         with result.output_paths["control_commands"].open(encoding="utf-8", newline="") as stream:
@@ -3722,6 +5053,7 @@ def test_blocks_orchestrator_runs_mock_5v5_controlled_intercept(tmp_path: Path) 
         target_vehicle_names=(),
         resource_vehicle_names=resources,
         target_actor_specs=default_5v5_actor_target_specs(target_z=-5.0),
+        metadata={"allow_truth_state_control_fixture": True},
     )
     runtime = FiveVFiveFakeBlocksRuntime()
     orchestrator = AirSimBlocksSmokeOrchestrator(runtime=runtime)
@@ -3747,15 +5079,16 @@ def test_controlled_5v5_active_center_replan_visual_png(tmp_path: Path) -> None:
     config = BlocksSmokeConfig(
         episode_id="pytest_intercept_5v5_active_center",
         scenario_name="blocks_actor_5v5_active_center_replan",
-        duration_s=0.4,
+        duration_s=0.8,
         dt_s=0.1,
         output_root=tmp_path,
         launch_blocks=False,
         connection_timeout_s=0.1,
         include_integrated_pipeline=True,
         execute_intercept=True,
+        radar_latency_s=0.0,
         control_dt_s=0.1,
-        intercept_max_duration_s=0.4,
+        intercept_max_duration_s=0.8,
         intercept_terminal_switch_range_m=100.0,
         intercept_min_bbox_area_ratio=0.001,
         intercept_min_stable_detection_frames=1,
@@ -3769,8 +5102,8 @@ def test_controlled_5v5_active_center_replan_visual_png(tmp_path: Path) -> None:
         target_actor_specs=default_5v5_actor_target_specs(target_z=-5.0),
         metadata={
             "active_center_replan_visual_png": True,
-            "active_degradation_time_s": 0.1,
-            "center_replan_time_s": 0.2,
+            "active_degradation_time_s": 0.3,
+            "center_replan_time_s": 0.5,
             "center_node_id": "C2",
         },
     )
@@ -3783,6 +5116,9 @@ def test_controlled_5v5_active_center_replan_visual_png(tmp_path: Path) -> None:
     assert result.output_paths["center_replan_events"].exists()
     summary = json.loads(result.output_paths["intercept_summary"].read_text(encoding="utf-8"))
     assert summary["pair_count"] == 5
+    assert summary["truth_state_online_use_count"] == 0
+    assert summary["online_control_state_source"] == "d2_estimated_global_track"
+    assert summary["physical_intercept_source"] == "offline_truth_distance_scorer"
     assert {pair["plan_id"] for pair in summary["pairs"]} == {"center_plan_v2"}
     assert {pair["d4_action"] for pair in summary["pairs"]} == {"continue_center"}
     commands = result.output_paths["control_commands"].read_text(encoding="utf-8")
@@ -3802,7 +5138,32 @@ def test_controlled_5v5_active_center_replan_visual_png(tmp_path: Path) -> None:
     assert metrics["d4_reassign_pending_count"] >= 1
     assert metrics["terminal_lock_count"] >= 1
     assert metrics["visual_png_switch_count"] >= 1
+    assert metrics["truth_state_online_use_count"] == 0
+    assert metrics["truth_identity_online_use_count"] == 0
     assert "center_plan_v2" in metrics["metadata"]["plan_ids"]
+    with result.output_paths["control_commands"].open(encoding="utf-8", newline="") as stream:
+        command_rows = list(csv.DictReader(stream))
+    assert command_rows
+    assert all(row["truth_state_online_use"] == "False" for row in command_rows)
+    assert {row["target_state_source"] for row in command_rows} == {
+        "d2_estimated_global_track"
+    }
+    frame_rows = [
+        json.loads(line)
+        for line in result.output_paths["blocks_frames_jsonl"].read_text(
+            encoding="utf-8"
+        ).splitlines()
+        if line.strip()
+    ]
+    bindings = [
+        binding
+        for frame_row in frame_rows
+        for binding in frame_row["metadata"].get("assignment_guidance_bindings", ())
+    ]
+    assert bindings
+    assert all(binding.get("target_actor_name") is None for binding in bindings)
+    assert all(binding.get("target_object_id") is None for binding in bindings)
+    assert all(not binding.get("target_mesh_aliases") for binding in bindings)
 
 
 def test_controlled_intercept_uses_bounded_d7_prediction_then_hard_expiry(
@@ -3824,6 +5185,7 @@ def test_controlled_intercept_uses_bounded_d7_prediction_then_hard_expiry(
         launch_blocks=False,
         include_integrated_pipeline=True,
         execute_intercept=True,
+        radar_latency_s=0.0,
         control_dt_s=0.1,
         intercept_max_duration_s=0.9,
         intercept_terminal_switch_range_m=100.0,
@@ -3877,15 +5239,16 @@ def test_controlled_2v2_active_degradation_secondary_plan_visual_png(
     config = BlocksSmokeConfig(
         episode_id="pytest_intercept_2v2_active_secondary",
         scenario_name="blocks_actor_2v2_active_secondary_visual_png",
-        duration_s=0.4,
+        duration_s=0.8,
         dt_s=0.1,
         output_root=tmp_path,
         launch_blocks=False,
         connection_timeout_s=0.1,
         include_integrated_pipeline=True,
         execute_intercept=True,
+        radar_latency_s=0.0,
         control_dt_s=0.1,
-        intercept_max_duration_s=0.4,
+        intercept_max_duration_s=0.8,
         intercept_terminal_switch_range_m=100.0,
         intercept_min_bbox_area_ratio=0.001,
         intercept_min_stable_detection_frames=1,
@@ -3912,8 +5275,8 @@ def test_controlled_2v2_active_degradation_secondary_plan_visual_png(
         ),
         metadata={
             "active_secondary_visual_png": True,
-            "active_degradation_time_s": 0.1,
-            "secondary_plan_time_s": 0.2,
+            "active_degradation_time_s": 0.3,
+            "secondary_plan_time_s": 0.5,
             "secondary_node_id": "SEC-01",
         },
     )
@@ -3926,8 +5289,11 @@ def test_controlled_2v2_active_degradation_secondary_plan_visual_png(
     assert result.output_paths["secondary_reassignment_events"].exists()
     summary = json.loads(result.output_paths["intercept_summary"].read_text(encoding="utf-8"))
     assert summary["pair_count"] == 2
+    assert summary["truth_state_online_use_count"] == 0
+    assert summary["online_control_state_source"] == "d2_estimated_global_track"
+    assert summary["physical_intercept_source"] == "offline_truth_distance_scorer"
     assert {pair["plan_id"] for pair in summary["pairs"]} == {"secondary_plan_v2"}
-    assert {pair["target_id"] for pair in summary["pairs"]} == {"TGT-001", "TGT-002"}
+    assert {pair["target_id"] for pair in summary["pairs"]} == {"T001", "T002"}
     commands = result.output_paths["control_commands"].read_text(encoding="utf-8")
     assert "degrade_to_secondary" in commands
     assert "d4_reassign_pending" in commands
@@ -3940,7 +5306,32 @@ def test_controlled_2v2_active_degradation_secondary_plan_visual_png(
     assert metrics["d4_reassign_pending_count"] >= 1
     assert metrics["terminal_lock_count"] >= 1
     assert metrics["visual_png_switch_count"] >= 1
+    assert metrics["truth_state_online_use_count"] == 0
+    assert metrics["truth_identity_online_use_count"] == 0
     assert "secondary_plan_v2" in metrics["metadata"]["plan_ids"]
+    with result.output_paths["control_commands"].open(encoding="utf-8", newline="") as stream:
+        command_rows = list(csv.DictReader(stream))
+    assert command_rows
+    assert all(row["truth_state_online_use"] == "False" for row in command_rows)
+    assert {row["target_state_source"] for row in command_rows} == {
+        "d2_estimated_global_track"
+    }
+    frame_rows = [
+        json.loads(line)
+        for line in result.output_paths["blocks_frames_jsonl"].read_text(
+            encoding="utf-8"
+        ).splitlines()
+        if line.strip()
+    ]
+    bindings = [
+        binding
+        for frame_row in frame_rows
+        for binding in frame_row["metadata"].get("assignment_guidance_bindings", ())
+    ]
+    assert bindings
+    assert all(binding.get("target_actor_name") is None for binding in bindings)
+    assert all(binding.get("target_object_id") is None for binding in bindings)
+    assert all(not binding.get("target_mesh_aliases") for binding in bindings)
 
 
 def test_controlled_intercept_blocks_png_when_d5_is_not_locked(tmp_path: Path) -> None:
@@ -3958,6 +5349,7 @@ def test_controlled_intercept_blocks_png_when_d5_is_not_locked(tmp_path: Path) -
         intercept_terminal_switch_range_m=100.0,
         intercept_min_bbox_area_ratio=0.001,
         intercept_min_stable_detection_frames=2,
+        metadata={"allow_truth_state_control_fixture": True},
     )
     runtime = D5AmbiguousFakeRuntime()
     orchestrator = AirSimBlocksSmokeOrchestrator(runtime=runtime)
@@ -3986,6 +5378,7 @@ def test_controlled_intercept_blocks_png_when_d4_holds_for_review(tmp_path: Path
         intercept_terminal_switch_range_m=100.0,
         intercept_min_bbox_area_ratio=0.001,
         intercept_min_stable_detection_frames=2,
+        metadata={"allow_truth_state_control_fixture": True},
     )
     runtime = D4HoldFakeRuntime()
     orchestrator = AirSimBlocksSmokeOrchestrator(runtime=runtime)
@@ -4229,6 +5622,7 @@ class FakeAirSimClient:
 
     def moveToZAsync(self, z, velocity, timeout_sec=3e38, yaw_mode=None, lookahead=-1, adaptive_lookahead=1, vehicle_name=""):
         self.control_calls.append(("moveToZAsync", vehicle_name, z))
+        self.vehicle_poses[vehicle_name] = _pose(0.0, 0.0, z)
         return _future()
 
     def moveByVelocityZAsync(self, vx, vy, z, duration, *args, vehicle_name=""):

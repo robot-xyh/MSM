@@ -11,7 +11,6 @@ from dataclasses import asdict, dataclass, field, is_dataclass, replace
 import json
 import math
 from pathlib import Path
-import time
 from typing import Any, Iterable, Mapping
 
 import numpy as np
@@ -21,6 +20,7 @@ from d1_sensor_fusion import (
     FusionAdapter,
     ReplayProvenance,
     SensorObservation,
+    assert_online_observations_identity_free,
     serialize_governed_replay,
 )
 from d2_data_association import (
@@ -43,6 +43,7 @@ from d3_assignment_planner import (
     apply_terminal_feedback_to_planner_inputs,
     continue_active_secondary_plan,
     guidance_bindings_from_assignment_plan,
+    plan_history_record_from_plan,
     prepare_secondary_takeover_plan,
 )
 from d4_distributed_fallback import (
@@ -57,6 +58,7 @@ from d4_distributed_fallback import (
     D4ArbitrationAdapter,
     EpisodeCommunicationConfig,
     EpisodeCommunicationTickInput,
+    SecondaryReadinessEvidence,
     build_center_replan_risk_signature,
     build_coalition_commit_d6_metadata,
 )
@@ -115,6 +117,12 @@ from .adapters import (
     truth_states_from_blocks_frame,
 )
 from .models import BlocksSmokeConfig
+from .timing import (
+    MAIN_BUS_STAGE_NAMES,
+    StageTimingCapture,
+    summarize_stage_timings,
+    write_stage_timings_jsonl,
+)
 
 
 STANDARD_MAPPING_VERSION = "cuas-standard-map-v1"
@@ -244,14 +252,21 @@ class MainAirSimEpisodeBus:
         self._pending_secondary_takeover: dict[str, Any] | None = None
         self._pending_terminal_feedback: list[dict[str, Any]] = []
         self._last_terminal_feedback_writeback: dict[str, Any] = {}
+        self._d3_plan_history_records: list[dict[str, Any]] = []
+        self._last_d3_plan_history_record: dict[str, Any] | None = None
+        self._d3_plan_history_emitted_this_frame = False
         self._last_d7_runtime_summary: dict[str, Any] = {}
+        self._last_d7_runtime_by_pair: dict[tuple[str, str], dict[str, Any]] = {}
         self._clock_source = str(
             config.metadata.get("clock_source", "airsim_frame_timestamp")
         )
         self._module_health: dict[str, dict[str, Any]] = {}
         self._runtime_errors: list[dict[str, Any]] = []
         self._frame_processing_durations_s: list[float] = []
+        self._stage_timing_records: list[dict[str, Any]] = []
+        self._last_stage_timing_record: dict[str, Any] | None = None
         self._d2_source_kinematics: dict[str, dict[str, Any]] = {}
+        self._last_episode_timestamp = 0.0
         self._last_secondary_readiness_state: str | None = None
         self._last_secondary_plan_state: str | None = None
         self._cooperative_window_anchor_by_track: dict[str, float] = {}
@@ -259,65 +274,135 @@ class MainAirSimEpisodeBus:
         self._coalition_commit_by_target: dict[str, CoalitionCommitState] = {}
         self._last_coalition_commit_event_signature: dict[str, tuple[Any, ...]] = {}
         self._governed_observations: list[SensorObservation] = []
+        self._pending_d1_observations: list[SensorObservation] = []
+        self._last_d1_generated_count = 0
+        self._last_d1_batch_summary: dict[str, Any] = {
+            "schema_version": "d1_fusion_batch_summary_v1",
+            "observation_count": 0,
+            "batch_api_used": True,
+        }
         self._offline_truth_labels: list[OfflineTruthLabel] = []
         self._episode_communication_adapter = self._build_episode_communication_adapter()
         self._last_episode_communication_tick: Any | None = None
         self.ticks: list[MainEpisodeBusTick] = []
 
     def process_frame(self, frame: AirSimFrame) -> MainEpisodeBusTick:
-        frame_started = time.perf_counter()
         timestamp = float(frame.timestamp)
-        self._last_episode_communication_tick = self._tick_episode_communication(frame)
-        self._expire_center_replan_requests(timestamp)
-        self._record_yolo_mot_frame_events(frame)
-        truth_states = truth_states_from_blocks_frame(frame)
-        self._record_offline_truth_labels(frame, truth_states)
-        truth_by_id = {state.truth_id: state for state in truth_states}
-        resources = resources_from_blocks_frame(frame)
-        observations = self._process_d1(frame)
-        self._mark_module_health("D1", timestamp, record_count=len(observations))
-        d1_tracks = self.fusion.global_tracks()
-        association_result = self._process_d2(timestamp, d1_tracks)
-        self._mark_module_health("D2", timestamp, record_count=len(d1_tracks))
-        d2_tracks = self.tracker.active_tracks()
-        self.collector.extend_tracks(track_records_from_d2(d2_tracks, truth_by_id, timestamp))
-
-        plan_changed = self._maybe_plan(timestamp, frame, d2_tracks, truth_by_id, resources)
-        self._mark_module_health(
-            "D3",
-            timestamp,
-            record_count=0 if self.current_plan is None else len(self.current_plan.assignments),
+        default_budget_s = (
+            self.config.control_dt_s if self.config.execute_intercept else self.config.dt_s
         )
-        self._update_coalition_commit_states(frame)
-        terminal_contexts: list[_TerminalDecisionContext] = []
-        d4_results: list[Any] = []
-        d7_events: list[EventRecord] = []
-        if self.current_plan is not None:
-            terminal_contexts = self._process_d5(frame, d2_tracks, truth_by_id)
-            self._mark_module_health("D5", timestamp, record_count=len(terminal_contexts))
-            d4_results = self._process_d4(
-                frame=frame,
-                d2_tracks=d2_tracks,
-                association_result=association_result,
-                terminal_contexts=terminal_contexts,
-                resources=resources,
-                communication_records=self._communication_records_for_frame(frame, observations),
+        timing = StageTimingCapture(
+            schema_version="main-stage-timing-v1",
+            scope="main_episode_bus",
+            total_stage_name="bus_total",
+            stage_names=MAIN_BUS_STAGE_NAMES,
+            frame_index=int(frame.frame_index),
+            timestamp_s=timestamp,
+            budget_ms=float(
+                self.config.metadata.get("loop_budget_s", default_budget_s)
             )
-            self._mark_module_health("D4", timestamp, record_count=len(d4_results))
-            d7_events = self._process_d7(frame, d2_tracks, resources, terminal_contexts, d4_results)
-            self._mark_module_health("D7", timestamp, record_count=len(d7_events))
-            self.collector.extend_events(d7_events)
-        else:
-            self._mark_module_health("D5", timestamp, status="idle", record_count=0)
-            self._mark_module_health("D4", timestamp, status="idle", record_count=0)
-            self._mark_module_health("D7", timestamp, status="idle", record_count=0)
+            * 1000.0,
+        )
+        try:
+            with timing.measure("communication"):
+                self._last_episode_timestamp = timestamp
+                self._d3_plan_history_emitted_this_frame = False
+                self._last_episode_communication_tick = self._tick_episode_communication(frame)
+                self._expire_center_replan_requests(timestamp)
+                self._record_yolo_mot_frame_events(frame)
+                truth_states = truth_states_from_blocks_frame(frame)
+                self._record_offline_truth_labels(frame, truth_states)
+                truth_by_id = {state.truth_id: state for state in truth_states}
+                resources = resources_from_blocks_frame(frame)
 
-        self._last_terminal_contexts = list(terminal_contexts)
-        self._last_d4_results = list(d4_results)
+            with timing.measure("d1_fusion"):
+                observations = self._process_d1(frame)
+                self._mark_module_health("D1", timestamp, record_count=len(observations))
+                d1_tracks = self.fusion.global_tracks()
 
-        self._record_frame_links(frame, observations)
-        self._record_cross_view_events(frame.timestamp)
-        processing_duration_s = max(0.0, time.perf_counter() - frame_started)
+            with timing.measure("d2_association"):
+                association_result = self._process_d2(timestamp, d1_tracks)
+                d2_metric_summary = self.tracker.metrics.summary()
+                self._mark_module_health("D2", timestamp, record_count=len(d1_tracks))
+                d2_tracks = self.tracker.active_tracks()
+
+            with timing.measure("d6_track_recording"):
+                self.collector.extend_tracks(
+                    track_records_from_d2(d2_tracks, truth_by_id, timestamp)
+                )
+
+            with timing.measure("d3_assignment"):
+                plan_changed = self._maybe_plan(
+                    timestamp, frame, d2_tracks, truth_by_id, resources
+                )
+                self._mark_module_health(
+                    "D3",
+                    timestamp,
+                    record_count=(
+                        0
+                        if self.current_plan is None
+                        else len(self.current_plan.assignments)
+                    ),
+                )
+
+            with timing.measure("coalition_commit"):
+                self._update_coalition_commit_states(frame)
+
+            terminal_contexts: list[_TerminalDecisionContext] = []
+            d4_results: list[Any] = []
+            d7_events: list[EventRecord] = []
+            if self.current_plan is not None:
+                with timing.measure("d5_terminal_association"):
+                    terminal_contexts = self._process_d5(frame, d2_tracks, truth_by_id)
+                    self._mark_module_health(
+                        "D5", timestamp, record_count=len(terminal_contexts)
+                    )
+                with timing.measure("d4_arbitration"):
+                    d4_results = self._process_d4(
+                        frame=frame,
+                        d2_tracks=d2_tracks,
+                        association_result=association_result,
+                        terminal_contexts=terminal_contexts,
+                        resources=resources,
+                        communication_records=self._communication_records_for_frame(
+                            frame, observations
+                        ),
+                    )
+                    self._mark_module_health(
+                        "D4", timestamp, record_count=len(d4_results)
+                    )
+                with timing.measure("d7_guidance_contract"):
+                    d7_events = self._process_d7(
+                        frame, d2_tracks, resources, terminal_contexts, d4_results
+                    )
+                    self._mark_module_health(
+                        "D7", timestamp, record_count=len(d7_events)
+                    )
+                    self.collector.extend_events(d7_events)
+            else:
+                self._mark_module_health("D5", timestamp, status="idle", record_count=0)
+                self._mark_module_health("D4", timestamp, status="idle", record_count=0)
+                self._mark_module_health("D7", timestamp, status="idle", record_count=0)
+
+            self._last_terminal_contexts = list(terminal_contexts)
+            self._last_d4_results = list(d4_results)
+
+            with timing.measure("link_and_cross_view_recording"):
+                self._record_frame_links(frame, observations)
+                self._record_cross_view_events(frame.timestamp)
+        except BaseException as exc:
+            timing_record = timing.finalize(error=exc)
+            self._stage_timing_records.append(timing_record)
+            self._last_stage_timing_record = timing_record
+            self._frame_processing_durations_s.append(
+                float(timing_record["total_ms"]) / 1000.0
+            )
+            raise
+
+        timing_record = timing.finalize()
+        self._stage_timing_records.append(timing_record)
+        self._last_stage_timing_record = timing_record
+        processing_duration_s = float(timing_record["total_ms"]) / 1000.0
         self._frame_processing_durations_s.append(processing_duration_s)
         tick = MainEpisodeBusTick(
             timestamp=timestamp,
@@ -325,10 +410,14 @@ class MainAirSimEpisodeBus:
             clock=self._clock_snapshot(
                 frame=frame,
                 processing_duration_s=processing_duration_s,
+                stage_timing=timing_record,
             ),
             module_health=self._module_health_snapshot(timestamp),
             d1={
+                "generated_observation_count": self._last_d1_generated_count,
                 "observation_count": len(observations),
+                "pending_observation_count": len(self._pending_d1_observations),
+                "batch_summary": dict(self._last_d1_batch_summary),
                 "track_count": len(d1_tracks),
                 "track_ids": [track.global_track_id for track in d1_tracks],
                 "uncertainty_summaries": [
@@ -340,9 +429,9 @@ class MainAirSimEpisodeBus:
                 "track_count": len(d2_tracks),
                 "global_track_ids": [track.global_track_id for track in d2_tracks],
                 "association_result": association_result.to_dict(),
-                "id_switch_count": self.tracker.metrics.id_switch_count,
-                "track_continuity": self.tracker.metrics.track_continuity,
-                "risk": self.tracker.metrics.summary(),
+                "id_switch_count": d2_metric_summary["id_switch_count"],
+                "track_continuity": d2_metric_summary["track_continuity"],
+                "risk": d2_metric_summary,
             },
             d3={
                 "plan_changed": plan_changed,
@@ -370,6 +459,9 @@ class MainAirSimEpisodeBus:
                 "demand_summaries": []
                 if self.current_plan is None
                 else _jsonable(self.current_plan.demand_summaries),
+                "plan_history_record": self._last_d3_plan_history_record
+                if self._d3_plan_history_emitted_this_frame
+                else None,
             },
             d4={
                 "decision_count": len(d4_results),
@@ -416,6 +508,11 @@ class MainAirSimEpisodeBus:
         )
         self.ticks.append(tick)
         return tick
+
+    def write_stage_timing_records(self, path: Path) -> Path:
+        """Persist completed and partial timing records without finalizing D6."""
+
+        return write_stage_timings_jsonl(path, self._stage_timing_records)
 
     def _build_episode_communication_adapter(
         self,
@@ -468,6 +565,9 @@ class MainAirSimEpisodeBus:
                 timestamp_s=float(frame.timestamp),
                 center_heartbeat_received=bool(frame.center_node_alive),
                 secondary_heartbeat_ids=secondary_ids,
+                secondary_readiness_evidence=(
+                    self._secondary_readiness_evidence_for_communication(frame)
+                ),
                 message_delay_s=float(metadata.get("episode_message_delay_s", 0.1)),
                 dropped_ack_member_ids=dropped,
                 partitioned=partitioned,
@@ -493,8 +593,120 @@ class MainAirSimEpisodeBus:
         )
         return tick
 
+    def _secondary_readiness_evidence_for_communication(
+        self,
+        frame: AirSimFrame,
+    ) -> dict[str, SecondaryReadinessEvidence]:
+        """Advance prior D4 readiness evidence to the current episode clock.
+
+        Communication failover runs before the current frame's D4 arbitration,
+        so it may only consume the previous completed decision. Missing,
+        conflicting, stale, or incomplete evidence remains absent and the D4
+        communication adapter fails closed for secondary ownership.
+        """
+
+        now = float(frame.timestamp)
+        configured_nodes = set(self.config.secondary_camera_vehicle_names)
+        if not configured_nodes or not frame.secondary_nodes_alive:
+            return {}
+        readiness_stale_after_s = float(
+            self.config.metadata.get(
+                "secondary_readiness_stale_after_s",
+                max(1.0, 2.0 * float(self.config.dt_s)),
+            )
+        )
+        heartbeat_stale_after_s = float(
+            self.config.metadata.get("secondary_heartbeat_stale_after_s", 2.0)
+        )
+        evidence_by_node: dict[str, SecondaryReadinessEvidence] = {}
+        rejected_nodes: set[str] = set()
+        for result in self._last_d4_results:
+            record = result.record
+            node_id = str(record.secondary_diagnostic_node_id or "")
+            if node_id not in configured_nodes:
+                continue
+            if record.secondary_takeover_ready_sustained is not True:
+                rejected_nodes.add(node_id)
+                evidence_by_node.pop(node_id, None)
+                continue
+            lifecycle = next(
+                (
+                    item
+                    for item in result.secondary_lifecycle
+                    if str(item.node_id) == node_id
+                ),
+                None,
+            )
+            if lifecycle is None or lifecycle.takeover_ready_sustained is not True:
+                rejected_nodes.add(node_id)
+                evidence_by_node.pop(node_id, None)
+                continue
+            communication = max(
+                (
+                    item
+                    for item in result.communication_summaries
+                    if item.involves_node(node_id)
+                ),
+                key=lambda item: float(item.received_timestamp),
+                default=None,
+            )
+            if communication is None:
+                rejected_nodes.add(node_id)
+                evidence_by_node.pop(node_id, None)
+                continue
+            evidence_timestamp = float(record.timestamp)
+            elapsed_s = max(0.0, now - evidence_timestamp)
+            cue_freshness_s = (
+                None
+                if lifecycle.cue_freshness_s is None
+                else float(lifecycle.cue_freshness_s) + elapsed_s
+            )
+            candidate = SecondaryReadinessEvidence(
+                node_id=node_id,
+                current_time_s=now,
+                readiness_timestamp_s=evidence_timestamp,
+                readiness_stale_after_s=readiness_stale_after_s,
+                availability_confirmed=bool(lifecycle.secondary_available),
+                lease_epoch=int(lifecycle.lease_epoch),
+                lease_expires_at_s=lifecycle.lease_expires_at_s,
+                heartbeat_timestamp_s=lifecycle.heartbeat_timestamp_s,
+                heartbeat_stale_after_s=heartbeat_stale_after_s,
+                cue_freshness_s=cue_freshness_s,
+                cue_stale_after_s=heartbeat_stale_after_s,
+                gimbal_pointing_ok=lifecycle.gimbal_pointing_ok,
+                communication_received_timestamp_s=float(
+                    communication.received_timestamp
+                ),
+                communication_stale_after_s=float(communication.stale_after_s),
+                coverage_matches_requested_cell=bool(
+                    lifecycle.coverage_matches_requested_cell
+                ),
+                coverage_ratio=lifecycle.secondary_coverage_ratio,
+                network_full_view_rate=lifecycle.secondary_network_full_view_rate,
+                takeover_ready_sustained=bool(
+                    lifecycle.takeover_ready_sustained
+                ),
+                takeover_ready_since_s=lifecycle.takeover_ready_since_s,
+                takeover_ready_observation_count=int(
+                    lifecycle.takeover_ready_consecutive_decisions
+                ),
+            )
+            if node_id in rejected_nodes:
+                continue
+            previous = evidence_by_node.get(node_id)
+            if previous is None:
+                evidence_by_node[node_id] = candidate
+                continue
+            merged = _merge_secondary_readiness_evidence(previous, candidate)
+            if merged is None:
+                rejected_nodes.add(node_id)
+                evidence_by_node.pop(node_id, None)
+                continue
+            evidence_by_node[node_id] = merged
+        return evidence_by_node
+
     def control_evidence(self) -> dict[str, dict[str, Any]]:
-        """Return truth-isolated D3-D5 evidence for the SimpleFlight consumer."""
+        """Return truth-isolated D2-D5 evidence for the SimpleFlight consumer."""
 
         d5_by_pair = {
             (context.assignment.resource_id, context.assignment.target_id): context.terminal_association
@@ -507,16 +719,103 @@ class MainAirSimEpisodeBus:
         evidence: dict[str, dict[str, Any]] = {}
         for binding in self.current_bindings:
             pair_key = (binding.resource_id, binding.assigned_global_track_id)
+            target_estimate = self._control_target_estimate(
+                str(binding.assigned_global_track_id)
+            )
+            terminal_association = d5_by_pair.get(pair_key)
             evidence[str(binding.resource_id)] = {
                 "binding": _binding_for_d7(binding),
                 "d4_permission": _d4_permission(
                     d4_by_pair.get(pair_key) or self._last_d4_by_pair.get(pair_key),
                     episode_communication_tick=self._last_episode_communication_tick,
                 ),
-                "terminal_association": d5_by_pair.get(pair_key),
+                "terminal_association": terminal_association,
+                "terminal_visual_observation": _vision_observation_for_d7(
+                    terminal_association,
+                    self._last_terminal_contexts,
+                    str(binding.resource_id),
+                    str(binding.assigned_global_track_id),
+                    float(self._last_episode_timestamp),
+                ),
+                "d7_runtime": self._last_d7_runtime_by_pair.get(pair_key),
+                "target_estimate": target_estimate,
+                "control_state_valid": bool(
+                    target_estimate is not None
+                    and target_estimate.get("control_state_valid", False)
+                ),
+                "control_state_reject_reason": (
+                    "target_estimate_missing"
+                    if target_estimate is None
+                    else str(target_estimate.get("reject_reason", ""))
+                ),
                 "online_truth_id_used": False,
+                "online_truth_state_used": False,
             }
         return evidence
+
+    def offline_truth_binding_map(self, frame: AirSimFrame) -> dict[str, str]:
+        """Return global-track -> AirSim truth labels for offline scoring only."""
+
+        truth_to_global = offline_truth_to_global_track_map(
+            frame,
+            self.tracker.active_tracks(),
+        )
+        return {
+            str(global_track_id): str(truth_id)
+            for truth_id, global_track_id in truth_to_global.items()
+        }
+
+    def _control_target_estimate(self, global_track_id: str) -> dict[str, Any] | None:
+        source = self._d2_source_kinematics.get(str(global_track_id))
+        if source is None:
+            return None
+        estimate = dict(source)
+        measurement_timestamp = float(
+            estimate.get("measurement_timestamp", self._last_episode_timestamp)
+        )
+        arrival_timestamp = float(
+            estimate.get("arrival_timestamp", measurement_timestamp)
+        )
+        state_valid_at = float(
+            estimate.get("state_valid_at", self._last_episode_timestamp)
+        )
+        measurement_age_s = max(
+            0.0,
+            float(self._last_episode_timestamp) - measurement_timestamp,
+        )
+        stale_after_s = float(
+            self.config.metadata.get(
+                "online_control_track_stale_after_s",
+                max(
+                    1.0,
+                    float(self.config.radar_latency_s)
+                    + 3.0 * max(float(self.config.control_dt_s), float(self.config.dt_s)),
+                ),
+            )
+        )
+        lifecycle_state = str(estimate.get("lifecycle_state", "unknown"))
+        reject_reason = ""
+        if lifecycle_state in {"lost", "dropped"}:
+            reject_reason = f"target_track_{lifecycle_state}"
+        elif measurement_age_s > stale_after_s + 1e-9:
+            reject_reason = "target_estimate_stale"
+        estimate.update(
+            {
+                "global_track_id": str(global_track_id),
+                "measurement_timestamp": measurement_timestamp,
+                "arrival_timestamp": arrival_timestamp,
+                "state_valid_at": state_valid_at,
+                "published_at": float(self._last_episode_timestamp),
+                "measurement_age_s": measurement_age_s,
+                "stale_after_s": stale_after_s,
+                "control_state_valid": not reject_reason,
+                "reject_reason": reject_reason,
+                "source": "d2_estimated_global_track",
+                "online_truth_id_used": False,
+                "online_truth_state_used": False,
+            }
+        )
+        return estimate
 
     def cv_camera_pointing_commands(
         self,
@@ -621,6 +920,22 @@ class MainAirSimEpisodeBus:
                 self.ticks,
                 output_dir / "main_episode_bus_ticks.jsonl",
             ),
+            "main_stage_timings_jsonl": write_stage_timings_jsonl(
+                output_dir / "stage_timings.jsonl",
+                self._stage_timing_records,
+            ),
+            "d3_plan_history_json": _write_json(
+                output_dir / "d3_plan_history.json",
+                {
+                    "schema": "d3_plan_history_v1",
+                    "schema_version": 1,
+                    "episode_id": self.config.episode_id,
+                    "scenario_name": self.config.scenario_name,
+                    "seed": self.config.seed,
+                    "record_count": len(self._d3_plan_history_records),
+                    "history": self._d3_plan_history_records,
+                },
+            ),
             "main_episode_bus_metrics_json": _write_json(
                 output_dir / "main_episode_bus_metrics.json",
                 {
@@ -648,7 +963,9 @@ class MainAirSimEpisodeBus:
             "module_order": ["D1", "D2", "D3", "D5", "D4", "D7", "D6"],
             "record_counts": self._record_counts(),
             "d2_metrics": self.tracker.metrics.summary(),
+            "pending_d1_observation_count": len(self._pending_d1_observations),
             "current_plan": None if self.current_plan is None else _plan_summary(self.current_plan),
+            "d3_plan_history_record_count": len(self._d3_plan_history_records),
             "guidance_binding_count": len(self.current_bindings),
             "last_terminal_feedback_writeback": self._last_terminal_feedback_writeback,
             "last_d7_runtime_summary": self._last_d7_runtime_summary,
@@ -790,17 +1107,52 @@ class MainAirSimEpisodeBus:
             )
 
     def _process_d1(self, frame: AirSimFrame) -> list[SensorObservation]:
-        observations = observations_from_blocks_frame(
+        generated = observations_from_blocks_frame(
             frame,
             arrival_timestamp=frame.timestamp + self.config.radar_latency_s,
             include_lidar=self.config.capture_lidar,
         )
-        observations.sort(key=lambda obs: (obs.arrival_timestamp, obs.modality, obs.observation_id))
-        for observation in observations:
+        assert_online_observations_identity_free(generated)
+        self._last_d1_generated_count = len(generated)
+        for observation in generated:
+            # Governed replay includes observations that are still in flight,
+            # so replay-required metadata must be complete before enqueueing.
             observation.metadata.setdefault("coverage_cell", "cell-unknown")
             observation.metadata.setdefault("airsim_frame_index", int(frame.frame_index))
-            self.fusion.process(observation)
-        self._governed_observations.extend(observations)
+        self._governed_observations.extend(generated)
+        self._pending_d1_observations.extend(generated)
+        self._pending_d1_observations.sort(
+            key=lambda obs: (
+                obs.arrival_timestamp,
+                obs.measurement_timestamp,
+                obs.modality,
+                obs.observation_id,
+            )
+        )
+        observations = [
+            observation
+            for observation in self._pending_d1_observations
+            if float(observation.arrival_timestamp) <= float(frame.timestamp) + 1e-9
+        ]
+        self._pending_d1_observations = [
+            observation
+            for observation in self._pending_d1_observations
+            if float(observation.arrival_timestamp) > float(frame.timestamp) + 1e-9
+        ]
+        if observations:
+            batch_result = self.fusion.process_batch(observations)
+            self._last_d1_batch_summary = {
+                "schema_version": "d1_fusion_batch_summary_v1",
+                "batch_api_used": True,
+                **batch_result.summary.to_dict(),
+            }
+        else:
+            self._last_d1_batch_summary = {
+                "schema_version": "d1_fusion_batch_summary_v1",
+                "observation_count": 0,
+                "accepted_observation_count": 0,
+                "batch_api_used": True,
+            }
         return observations
 
     def _record_offline_truth_labels(
@@ -852,10 +1204,6 @@ class MainAirSimEpisodeBus:
 
     def _process_d2(self, timestamp: float, d1_tracks: list[Any]) -> Any:
         detections = d1_tracks_to_d2_detections(d1_tracks, timestamp)
-        for detection in detections:
-            detection.truth_id = None
-            for key in ("truth_id", "truth_position", "actor_name", "object_id"):
-                detection.metadata.pop(key, None)
         result = self.tracker.step(
             detections,
             timestamp=timestamp,
@@ -869,14 +1217,75 @@ class MainAirSimEpisodeBus:
         detections_by_id = {detection.detection_id: detection for detection in detections}
         for track in self.tracker.active_tracks():
             detection = detections_by_id.get(track.last_detection_id or "")
-            if detection is None:
+            previous = self._d2_source_kinematics.get(
+                str(track.global_track_id),
+                {},
+            )
+            if detection is not None:
+                raw_position = detection.metadata.get(
+                    "position_3d",
+                    (track.state[0], track.state[1], -5.0),
+                )
+                raw_velocity = detection.metadata.get(
+                    "velocity_3d",
+                    (track.state[2], track.state[3], 0.0),
+                )
+                measurement_timestamp = float(
+                    detection.metadata.get("measurement_timestamp", detection.timestamp)
+                )
+                arrival_timestamp = float(
+                    detection.metadata.get("arrival_timestamp", detection.timestamp)
+                )
+                covariance_trace_3d = float(
+                    detection.metadata.get(
+                        "covariance_trace_3d",
+                        np.trace(track.covariance[:2, :2]) + 25.0,
+                    )
+                )
+                previous = {
+                    **previous,
+                    "z_ned_m": float(raw_position[2]),
+                    "vz_ned_mps": float(raw_velocity[2]),
+                    "measurement_timestamp": measurement_timestamp,
+                    "arrival_timestamp": arrival_timestamp,
+                    "covariance_trace_3d": covariance_trace_3d,
+                    "source_global_track_id": detection.metadata.get(
+                        "source_global_track_id"
+                    ),
+                }
+            if not previous:
                 continue
+            position_covariance = np.asarray(track.covariance[:2, :2], dtype=float)
+            z_variance = max(
+                float(previous.get("covariance_trace_3d", 25.0))
+                - float(np.trace(position_covariance)),
+                1e-6,
+            )
+            covariance_ned = np.array(
+                [
+                    [position_covariance[0, 0], position_covariance[0, 1], 0.0],
+                    [position_covariance[1, 0], position_covariance[1, 1], 0.0],
+                    [0.0, 0.0, z_variance],
+                ],
+                dtype=float,
+            )
             self._d2_source_kinematics[str(track.global_track_id)] = {
-                "position_3d": list(detection.metadata.get("position_3d", (track.state[0], track.state[1], -5.0))),
-                "velocity_3d": list(detection.metadata.get("velocity_3d", (track.state[2], track.state[3], 0.0))),
-                "measurement_timestamp": float(detection.timestamp),
-                "source_global_track_id": detection.metadata.get("source_global_track_id"),
+                **previous,
+                "position_3d": [
+                    float(track.state[0]),
+                    float(track.state[1]),
+                    float(previous.get("z_ned_m", -5.0)),
+                ],
+                "velocity_3d": [
+                    float(track.state[2]),
+                    float(track.state[3]),
+                    float(previous.get("vz_ned_mps", 0.0)),
+                ],
+                "covariance_ned": covariance_ned.tolist(),
+                "state_valid_at": float(track.timestamp),
+                "lifecycle_state": str(track.lifecycle_state.value),
                 "online_truth_id_used": False,
+                "online_truth_state_used": False,
             }
         return result
 
@@ -936,6 +1345,10 @@ class MainAirSimEpisodeBus:
                 window_anchor_by_track=self._cooperative_window_anchor_by_track,
             )
         if not target_tracks:
+            return False
+        if self.current_plan is None and not any(
+            bool(track.assignable) for track in target_tracks
+        ):
             return False
         resource_states = resources_to_d3(resources)
         feedback_writeback = None
@@ -1076,6 +1489,18 @@ class MainAirSimEpisodeBus:
                 lease_expires_at_s=lease_expires_at_s,
             )
             self._pending_secondary_takeover = None
+        history_record = plan_history_record_from_plan(
+            plan,
+            sequence_index=len(self._d3_plan_history_records),
+            timestamp=timestamp,
+            previous_plan=previous,
+            feedback_metadata=(
+                None if feedback_writeback is None else feedback_writeback.metadata
+            ),
+        ).to_dict()
+        self._d3_plan_history_records.append(history_record)
+        self._last_d3_plan_history_record = history_record
+        self._d3_plan_history_emitted_this_frame = True
         self.previous_plan = previous
         self.current_plan = plan
         self._next_assignment_time_s = timestamp + max(float(self.config.dt_s), 1e-6)
@@ -1088,7 +1513,6 @@ class MainAirSimEpisodeBus:
         self.current_bindings = guidance_bindings_from_assignment_plan(
             plan,
             resource_vehicle_map=_resource_vehicle_map(frame),
-            target_alias_map=_offline_actuation_target_alias_map(frame, d2_tracks),
             guidance_phase="radar_midcourse",
             now_s=timestamp,
             previous_plan=previous,
@@ -1517,6 +1941,22 @@ class MainAirSimEpisodeBus:
                 camera,
                 self.terminal,
             )
+            coalition = coalition_by_target.get(assignment.target_id)
+            committed_member_ids = _committed_primary_member_ids(
+                coalition,
+                fallback_resource_id=assignment.resource_id,
+            )
+            duplicate_risk_hint = bool(
+                cross_view_before.get(assignment.target_id)
+                and cross_view_before[assignment.target_id].duplicate_terminal_lock_risk
+            )
+            camera_id, stream_id, detector_backend, tracker_backend = (
+                _terminal_visual_history_context(
+                    frame,
+                    assignment.resource_id,
+                    scoped_local_tracks,
+                )
+            )
             decision = self.terminal.decide(
                 terminal_assignment,
                 terminal_tracks,
@@ -1529,14 +1969,14 @@ class MainAirSimEpisodeBus:
                 arrival_timestamp=float(
                     frame.metadata.get("arrival_timestamp", timestamp)
                 ),
+                camera_id=camera_id,
+                stream_id=stream_id,
+                detector_backend=detector_backend,
+                tracker_backend=tracker_backend,
+                committed_coalition_member_ids=committed_member_ids,
+                duplicate_terminal_lock_risk=duplicate_risk_hint,
             )
             local_track = _local_track_by_id(scoped_local_tracks, decision.local_track_id)
-            duplicate_risk_hint = bool(
-                cross_view_before.get(decision.assigned_global_track_id)
-                and cross_view_before[
-                    decision.assigned_global_track_id
-                ].duplicate_terminal_lock_risk
-            )
             range_to_assigned_track_m = _range_for_terminal_context(
                 frame,
                 assignment.resource_id,
@@ -1805,6 +2245,7 @@ class MainAirSimEpisodeBus:
             for item in resources_to_d4(
                 resources,
                 _secondary_available(frame),
+                current_time_s=timestamp,
                 epoch=1,
                 secondary_node_ids=self.config.secondary_camera_vehicle_names,
             )
@@ -2013,6 +2454,8 @@ class MainAirSimEpisodeBus:
                 )
             )
             runtime_outputs.append(runtime_output)
+            runtime_record = runtime_output.as_log_record()
+            self._last_d7_runtime_by_pair[pair] = runtime_record
             mode = guidance_mode_from_terminal_contract(
                 contract,
                 handover_pending=handover_pending,
@@ -2046,17 +2489,12 @@ class MainAirSimEpisodeBus:
                 "d4_mode": d4_permission.mode,
                 "d5_state": "" if terminal_association is None else terminal_association.decision_state,
                 "d5_decision_state": "" if terminal_association is None else terminal_association.decision_state,
-                "terminal_switch_allowed": bool(contract.allowed),
                 "terminal_handover_pending": handover_pending,
-                "terminal_mode_entered": mode == GuidanceMode.VISION_TERMINAL,
-                "terminal_contract_reject_reason": contract.reject_reason or None,
-                "terminal_switch_reject_reason": contract.reject_reason or None,
-                "guidance_law": "png_vm" if mode == GuidanceMode.VISION_TERMINAL else "radar_pn",
-                "mode_switch": previous_mode is not None and previous_mode != mode_text,
                 "range_m": range_m,
                 "camera_quality_gate_passed": terminal_association is not None,
                 "los_quality_gate_passed": True,
                 "maneuver_margin_gate_passed": True,
+                **runtime_record,
                 "d7_runtime_bus_boundary": runtime_output.metadata.get("boundary"),
                 "d7_runtime_control_context_id": runtime_output.control_context_id,
                 "d7_runtime_visual_png_enabled": runtime_output.visual_png_enabled,
@@ -2313,6 +2751,7 @@ class MainAirSimEpisodeBus:
         *,
         frame: AirSimFrame,
         processing_duration_s: float,
+        stage_timing: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         timestamp = float(frame.timestamp)
         return {
@@ -2324,11 +2763,13 @@ class MainAirSimEpisodeBus:
             "processing_timestamp": timestamp,
             "processing_duration_s": float(processing_duration_s),
             "frame_index": int(frame.frame_index),
+            "stage_timing": None if stage_timing is None else _jsonable(stage_timing),
         }
 
     def _episode_clock_metadata(self, frames: list[AirSimFrame]) -> dict[str, Any]:
         timestamps = [float(frame.timestamp) for frame in frames]
         durations = list(self._frame_processing_durations_s)
+        stage_timing_summary = summarize_stage_timings(self._stage_timing_records)
         return {
             "clock_source": self._clock_source,
             "episode_time_start_s": min(timestamps) if timestamps else 0.0,
@@ -2338,6 +2779,7 @@ class MainAirSimEpisodeBus:
                 float(sum(durations) / len(durations)) if durations else 0.0
             ),
             "max_processing_duration_s": max(durations) if durations else 0.0,
+            "stage_timing": stage_timing_summary,
         }
 
     def _scenario_config_metadata(self, frames: list[AirSimFrame] | None = None) -> dict[str, Any]:
@@ -2440,7 +2882,10 @@ class MainAirSimEpisodeBus:
         return float(sum(latencies_ms) / len(latencies_ms)) if latencies_ms else 0.0
 
     def _performance_budget_violation_count(self) -> int:
-        budget_s = float(self.config.metadata.get("loop_budget_s", self.config.dt_s))
+        default_budget_s = (
+            self.config.control_dt_s if self.config.execute_intercept else self.config.dt_s
+        )
+        budget_s = float(self.config.metadata.get("loop_budget_s", default_budget_s))
         return sum(1 for value in self._frame_processing_durations_s if value > budget_s)
 
 
@@ -2847,28 +3292,6 @@ def _resource_vehicle_map(frame: AirSimFrame) -> dict[str, str]:
     return mapping
 
 
-def _offline_actuation_target_alias_map(
-    frame: AirSimFrame,
-    d2_tracks: list[Any],
-) -> dict[str, Mapping[str, Any]]:
-    """Map center tracks to AirSim actors only at the simulator actuation edge."""
-
-    d2_by_truth = offline_truth_to_global_track_map(frame, d2_tracks)
-    aliases: dict[str, Mapping[str, Any]] = {}
-    for obj in frame.truth_objects:
-        global_track_id = d2_by_truth.get(str(obj.object_id))
-        if global_track_id is None:
-            continue
-        aliases[global_track_id] = {
-            "target_object_id": obj.object_id,
-            "target_actor_name": obj.metadata.get("airsim_actor_name"),
-            "actor_name": obj.metadata.get("airsim_actor_name"),
-            "actor_asset_name": obj.metadata.get("actor_asset_name"),
-            "alias_source": "airsim_offline_actuation_only",
-        }
-    return aliases
-
-
 def _local_tracks_for_resource(
     frame: AirSimFrame,
     resource_id: str,
@@ -2892,6 +3315,71 @@ def _camera_id_for_resource(frame: AirSimFrame, resource_id: str) -> str | None:
         if camera.owner_id == vehicle:
             return camera.camera_id
     return f"{vehicle}:0"
+
+
+def _terminal_visual_history_context(
+    frame: AirSimFrame,
+    resource_id: str,
+    local_tracks: Iterable[LocalVisualTrack],
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """Return stable, truth-free identity for one D5 camera stream."""
+
+    tracks = tuple(local_tracks)
+    camera_id = _camera_id_for_resource(frame, resource_id)
+    if camera_id is None:
+        camera_ids = {
+            str(track.metadata.get("camera_id"))
+            for track in tracks
+            if track.metadata.get("camera_id")
+        }
+        if len(camera_ids) == 1:
+            camera_id = next(iter(camera_ids))
+    stream_id = (
+        None
+        if camera_id is None
+        else f"{frame.episode_id}:{camera_id}"
+    )
+    detector_backends = {
+        str(track.metadata.get("detector_backend"))
+        for track in tracks
+        if track.metadata.get("detector_backend")
+    }
+    tracker_backends = {
+        str(track.metadata.get("tracker_backend"))
+        for track in tracks
+        if track.metadata.get("tracker_backend")
+    }
+    detector_backend = (
+        next(iter(detector_backends)) if len(detector_backends) == 1 else None
+    )
+    tracker_backend = (
+        next(iter(tracker_backends)) if len(tracker_backends) == 1 else None
+    )
+    return camera_id, stream_id, detector_backend, tracker_backend
+
+
+def _committed_primary_member_ids(
+    coalition: Any | None,
+    *,
+    fallback_resource_id: str,
+) -> tuple[str, ...]:
+    """Return members allowed to contribute to current terminal consensus."""
+
+    if coalition is None:
+        return (str(fallback_resource_id),)
+    if not bool(getattr(coalition, "complete", False)):
+        return ()
+    members = tuple(
+        sorted(
+            {
+                str(member.resource_id)
+                for member in getattr(coalition, "members", ())
+                if bool(getattr(member, "executable", False))
+                and str(getattr(member, "member_role", "")).lower() == "primary"
+            }
+        )
+    )
+    return members
 
 
 def _camera_info_for_resource(frame: AirSimFrame, resource_id: str) -> Any | None:
@@ -3242,6 +3730,15 @@ def _vision_observation_for_d7(
             ),
             "visual_png_handoff_recommended": metadata.get("visual_png_handoff_recommended"),
             "visual_png_handoff_blockers": metadata.get("visual_png_handoff_blockers"),
+            "local_track_state": getattr(
+                terminal_association, "local_track_state", "unknown"
+            ),
+            "d5_live_visual_funnel": metadata.get("d5_live_visual_funnel"),
+            "d7_handoff_input": dict(
+                (metadata.get("d5_live_visual_funnel") or {}).get(
+                    "d7_handoff_input", {}
+                )
+            ),
             **camera_geometry,
         },
     }
@@ -3385,13 +3882,17 @@ def _terminal_feedback_metadata(
         consistency_metadata.get("duplicate_terminal_lock_risk")
         or decision_metadata.get("duplicate_terminal_lock_risk")
     )
-    friend_conflict = decision.friend_conflict_state != "none"
+    friend_conflict_state = str(decision.friend_conflict_state).strip().lower()
+    hard_friend_conflict = friend_conflict_state in {
+        "verified_friend_overlap",
+        "spoof_suspected_overlap",
+    }
     consistency_state = str(consistency_metadata.get("consistency_state", "unknown"))
     terminal_state = _terminal_feedback_state(
         decision.decision_state,
         consistency_state=consistency_state,
         duplicate_risk=duplicate_risk,
-        friend_conflict=friend_conflict,
+        friend_conflict=hard_friend_conflict,
     )
     recommended_action = _terminal_feedback_action(terminal_state, duplicate_risk)
     metadata: dict[str, Any] = {
@@ -3432,14 +3933,25 @@ def _terminal_feedback_metadata(
     if local_track is not None:
         metadata["bbox_xyxy"] = list(local_track.bbox) if local_track.bbox is not None else None
         metadata["local_track_quality"] = local_track.quality
-    if duplicate_risk or friend_conflict:
+    if duplicate_risk or hard_friend_conflict:
         metadata["d4_request"] = "secondary_arbitration"
         metadata["prohibit_assignment_suggested"] = True
         metadata["prohibited_edges"] = (
             {"target_id": assignment.target_id, "resource_id": assignment.resource_id},
         )
-    elif decision.decision_state == "hold":
-        metadata["operator_hold_suggested"] = True
+        metadata["feedback_constraint_class"] = (
+            "resource_target_edge_hard" if duplicate_risk else "target_hard"
+        )
+        metadata["feedback_classification_reason"] = (
+            "duplicate_assignment_or_lock"
+            if duplicate_risk
+            else "verified_or_spoof_suspected_identity_conflict"
+        )
+    elif terminal_state in {"ambiguous", "hold", "reacquire"}:
+        metadata["feedback_constraint_class"] = "resource_target_edge_soft"
+        metadata["feedback_classification_reason"] = (
+            "ordinary_terminal_uncertainty"
+        )
     if (
         recommended_action != "continue"
         and not bool(decision_metadata.get("visual_png_gate_pass", False))
@@ -3476,11 +3988,18 @@ def _attach_cooperative_target_demands(
         if track.track_id not in selected_ids:
             output.append(track)
             continue
-        window_anchor = window_anchor_by_track.setdefault(
-            str(track.track_id),
-            float(timestamp),
-        )
-        window_end = window_anchor + wave_gap_s if wave_gap_s > 0.0 else None
+        if arrival_coordination_required:
+            window_anchor = window_anchor_by_track.setdefault(
+                str(track.track_id),
+                float(timestamp),
+            )
+            window_end = window_anchor + wave_gap_s if wave_gap_s > 0.0 else None
+        else:
+            # Independent primary execution has no common arrival deadline.
+            # Treating the first planning tick plus wave gap as a deadline
+            # rejected valid measured locks late in long M5N2 episodes.
+            window_anchor = None
+            window_end = None
         demand = TargetDemand(
             required_resource_count=required_resource_count,
             coordination_mode=coordination_mode,
@@ -3496,6 +4015,8 @@ def _attach_cooperative_target_demands(
                 "source": "main_online_ranked_threat_prior",
                 "terminal_authorization_scope": terminal_authorization_scope,
                 "arrival_coordination_required": arrival_coordination_required,
+                "arrival_window_time_basis": "episode_absolute_s",
+                "arrival_window_enforced": bool(arrival_coordination_required),
             },
         )
         output.append(
@@ -3527,9 +4048,9 @@ def _terminal_feedback_state(
         return "cross_view_conflict"
     if friend_conflict:
         return "friend_overlap_hold"
-    if consistency_state == "conflict":
+    if consistency_state in {"conflict", "inconsistent"}:
         return "cross_view_conflict"
-    if decision_state == "hold":
+    if decision_state in {"ambiguous", "hold", "reacquire"}:
         return decision_state
     return "consistent"
 
@@ -3537,8 +4058,10 @@ def _terminal_feedback_state(
 def _terminal_feedback_action(terminal_state: str, duplicate_risk: bool) -> str:
     if duplicate_risk or terminal_state in {"cross_view_conflict", "mismatch", "multi_frame_inconsistent"}:
         return "secondary_arbitration"
-    if terminal_state in {"hold", "friend_overlap_hold"}:
+    if terminal_state in {"ambiguous", "hold", "friend_overlap_hold"}:
         return "hold"
+    if terminal_state == "reacquire":
+        return "replan"
     return "continue"
 
 
@@ -3580,6 +4103,107 @@ def _unit_vector(vector: np.ndarray, *, fallback: np.ndarray) -> np.ndarray:
     if not np.isfinite(norm) or norm <= 1e-9:
         return fallback.astype(float)
     return np.asarray(vector, dtype=float) / norm
+
+
+def _merge_secondary_readiness_evidence(
+    left: SecondaryReadinessEvidence,
+    right: SecondaryReadinessEvidence,
+) -> SecondaryReadinessEvidence | None:
+    """Conservatively merge same-node D4 evidence or reject lease conflicts."""
+
+    if left.node_id != right.node_id or left.lease_epoch != right.lease_epoch:
+        return None
+    if (
+        left.lease_expires_at_s is not None
+        and right.lease_expires_at_s is not None
+        and not math.isclose(
+            float(left.lease_expires_at_s),
+            float(right.lease_expires_at_s),
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        )
+    ):
+        return None
+
+    def minimum(*values: float | None) -> float | None:
+        present = [float(value) for value in values if value is not None]
+        return min(present) if present else None
+
+    def maximum(*values: float | None) -> float | None:
+        present = [float(value) for value in values if value is not None]
+        return max(present) if present else None
+
+    counts = [
+        int(value)
+        for value in (
+            left.takeover_ready_observation_count,
+            right.takeover_ready_observation_count,
+        )
+        if value is not None
+    ]
+    return SecondaryReadinessEvidence(
+        node_id=left.node_id,
+        current_time_s=minimum(left.current_time_s, right.current_time_s),
+        readiness_timestamp_s=minimum(
+            left.readiness_timestamp_s,
+            right.readiness_timestamp_s,
+        ),
+        readiness_stale_after_s=minimum(
+            left.readiness_stale_after_s,
+            right.readiness_stale_after_s,
+        ),
+        availability_confirmed=(
+            left.availability_confirmed is True
+            and right.availability_confirmed is True
+        ),
+        lease_epoch=left.lease_epoch,
+        lease_expires_at_s=minimum(
+            left.lease_expires_at_s,
+            right.lease_expires_at_s,
+        ),
+        heartbeat_timestamp_s=minimum(
+            left.heartbeat_timestamp_s,
+            right.heartbeat_timestamp_s,
+        ),
+        heartbeat_stale_after_s=minimum(
+            left.heartbeat_stale_after_s,
+            right.heartbeat_stale_after_s,
+        ),
+        cue_freshness_s=maximum(left.cue_freshness_s, right.cue_freshness_s),
+        cue_stale_after_s=minimum(
+            left.cue_stale_after_s,
+            right.cue_stale_after_s,
+        ),
+        gimbal_pointing_ok=(
+            left.gimbal_pointing_ok is True and right.gimbal_pointing_ok is True
+        ),
+        communication_received_timestamp_s=minimum(
+            left.communication_received_timestamp_s,
+            right.communication_received_timestamp_s,
+        ),
+        communication_stale_after_s=minimum(
+            left.communication_stale_after_s,
+            right.communication_stale_after_s,
+        ),
+        coverage_matches_requested_cell=(
+            left.coverage_matches_requested_cell is True
+            and right.coverage_matches_requested_cell is True
+        ),
+        coverage_ratio=minimum(left.coverage_ratio, right.coverage_ratio),
+        network_full_view_rate=minimum(
+            left.network_full_view_rate,
+            right.network_full_view_rate,
+        ),
+        takeover_ready_sustained=(
+            left.takeover_ready_sustained is True
+            and right.takeover_ready_sustained is True
+        ),
+        takeover_ready_since_s=maximum(
+            left.takeover_ready_since_s,
+            right.takeover_ready_since_s,
+        ),
+        takeover_ready_observation_count=min(counts) if counts else None,
+    )
 
 
 def _jsonable(value: Any) -> Any:

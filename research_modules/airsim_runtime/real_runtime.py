@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import json
 import math
 import time
 from pathlib import Path
@@ -31,6 +32,14 @@ from d5_terminal_association import (
 )
 
 from .models import BlocksActorTargetSpec, BlocksSmokeConfig
+
+
+class InterceptorPreparationError(RuntimeError):
+    """Raised when interceptor control cannot enter the configured flight envelope."""
+
+    def __init__(self, message: str, evidence: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.evidence = evidence
 
 
 class RealAirSimRuntimeClient:
@@ -108,35 +117,126 @@ class RealAirSimRuntimeClient:
         time.sleep(1.0)
         self.reconnect()
 
-    def prepare_interceptor_control(self, config: BlocksSmokeConfig) -> None:
+    def prepare_interceptor_control(self, config: BlocksSmokeConfig) -> dict[str, Any]:
         """Enable API control, arm, take off, and settle at intercept altitude."""
 
+        started_at = time.monotonic()
+        evidence: dict[str, Any] = {
+            "schema_version": "airsim-interceptor-preparation-v1",
+            "episode_id": config.episode_id,
+            "resource_vehicle_names": list(config.resource_vehicle_names),
+            "target_altitude_ned_z_m": float(config.intercept_altitude_ned_z),
+            "altitude_tolerance_m": float(config.intercept_altitude_tolerance_m),
+            "settle_timeout_s": float(config.intercept_altitude_settle_timeout_s),
+            "required_consecutive_samples": int(config.intercept_altitude_settle_samples),
+            "takeoff_dispatch": "parallel",
+            "climb_dispatch": "parallel",
+            "settled": False,
+            "failure_reason": None,
+        }
         for vehicle_name in config.resource_vehicle_names:
             self.client.enableApiControl(True, vehicle_name=vehicle_name)
             self.client.armDisarm(True, vehicle_name=vehicle_name)
         self._apply_cooperative_initial_pose_offsets(config)
-        for vehicle_name in config.resource_vehicle_names:
-            _join_future(
-                self.client.takeoffAsync(
-                    timeout_sec=config.intercept_takeoff_timeout_s,
-                    vehicle_name=vehicle_name,
-                )
+
+        takeoff_futures = [
+            self.client.takeoffAsync(
+                timeout_sec=config.intercept_takeoff_timeout_s,
+                vehicle_name=vehicle_name,
             )
-        for vehicle_name in config.resource_vehicle_names:
-            target_z = _local_z_from_global_z(
-                config,
-                vehicle_name,
-                config.intercept_altitude_ned_z,
+            for vehicle_name in config.resource_vehicle_names
+        ]
+        for future in takeoff_futures:
+            _join_future(future)
+
+        climb_deadline = time.monotonic() + max(
+            0.0,
+            float(config.intercept_altitude_settle_timeout_s),
+        )
+        climb_futures = [
+            self.client.moveToZAsync(
+                _local_z_from_global_z(
+                    config,
+                    vehicle_name,
+                    config.intercept_altitude_ned_z,
+                ),
+                max(1.0, min(config.intercept_speed_mps, 3.0)),
+                timeout_sec=config.intercept_altitude_settle_timeout_s,
+                vehicle_name=vehicle_name,
             )
-            _join_future(
-                self.client.moveToZAsync(
-                    target_z,
-                    max(1.0, min(config.intercept_speed_mps, 3.0)),
-                    timeout_sec=config.intercept_takeoff_timeout_s,
-                    vehicle_name=vehicle_name,
-                )
+            for vehicle_name in config.resource_vehicle_names
+        ]
+        for future in climb_futures:
+            _join_future(future)
+
+        required_samples = max(1, int(config.intercept_altitude_settle_samples))
+        tolerance_m = max(0.0, float(config.intercept_altitude_tolerance_m))
+        consecutive_samples = 0
+        sample_count = 0
+        final_altitudes: dict[str, float | None] = {}
+        final_errors: dict[str, float | None] = {}
+        while True:
+            sample_count += 1
+            final_altitudes = {}
+            final_errors = {}
+            all_within_tolerance = True
+            for vehicle_name in config.resource_vehicle_names:
+                try:
+                    altitude = float(
+                        self._vehicle_position_ned(vehicle_name, config=config)[2]
+                    )
+                except Exception:
+                    altitude = float("nan")
+                if not math.isfinite(altitude):
+                    final_altitudes[vehicle_name] = None
+                    final_errors[vehicle_name] = None
+                    all_within_tolerance = False
+                    continue
+                error = abs(altitude - float(config.intercept_altitude_ned_z))
+                final_altitudes[vehicle_name] = altitude
+                final_errors[vehicle_name] = error
+                all_within_tolerance = all_within_tolerance and error <= tolerance_m
+            consecutive_samples = (
+                consecutive_samples + 1 if all_within_tolerance else 0
             )
-            _join_future(self.client.hoverAsync(vehicle_name=vehicle_name))
+            if consecutive_samples >= required_samples:
+                evidence["settled"] = True
+                break
+            if time.monotonic() >= climb_deadline:
+                evidence["failure_reason"] = "altitude_settle_timeout"
+                break
+            time.sleep(max(0.0, float(config.intercept_altitude_poll_interval_s)))
+
+        hover_futures = [
+            self.client.hoverAsync(vehicle_name=vehicle_name)
+            for vehicle_name in config.resource_vehicle_names
+        ]
+        for future in hover_futures:
+            _join_future(future)
+
+        evidence.update(
+            {
+                "sample_count": sample_count,
+                "consecutive_samples": consecutive_samples,
+                "final_altitude_ned_z_m": final_altitudes,
+                "final_altitude_error_m": final_errors,
+                "duration_s": max(0.0, time.monotonic() - started_at),
+            }
+        )
+        preparation_path = config.output_dir / "interceptor_preparation.json"
+        preparation_path.parent.mkdir(parents=True, exist_ok=True)
+        evidence["evidence_path"] = str(preparation_path)
+        preparation_path.write_text(
+            json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        self._episode_setup_metadata["interceptor_preparation"] = evidence
+        if not evidence["settled"]:
+            raise InterceptorPreparationError(
+                "interceptor altitude preparation did not settle within tolerance",
+                evidence,
+            )
+        return evidence
 
     def _apply_cooperative_initial_pose_offsets(self, config: BlocksSmokeConfig) -> None:
         if not bool(config.metadata.get("cooperative_pose_via_api", False)):
@@ -428,6 +528,9 @@ class RealAirSimRuntimeClient:
                 "cv_camera_guidance": cv_camera_guidance,
                 "actor_targets": self._episode_setup_metadata.get("actor_targets", []),
                 "detection_filters": self._episode_setup_metadata.get("detection_filters", []),
+                "interceptor_preparation": self._episode_setup_metadata.get(
+                    "interceptor_preparation", {}
+                ),
                 "scene_object_count": len(scene_objects),
                 "scene_objects_sample": scene_objects[:20],
             },

@@ -10,7 +10,7 @@ from typing import Any, Iterable
 
 
 SUITE_NAME = "p1_terminal_closure"
-SUITE_VERSION = "p1-terminal-closure-v1"
+SUITE_VERSION = "p1-terminal-closure-v3"
 THRESHOLD_VERSION = "p1-terminal-thresholds-v1"
 
 
@@ -45,9 +45,9 @@ class TerminalClosureCase:
             "scenario_version": (
                 "airsim-m5n2-high-clearance-v1"
                 if self.family == "m5n2_paired"
-                else "airsim-2v2-png-ttc-v1"
+                else "airsim-2v2-png-ttc-v2"
                 if self.family == "png_ttc"
-                else "airsim-2v2-locked-dropout-v1"
+                else "airsim-2v2-locked-dropout-v2"
             ),
         }
 
@@ -104,7 +104,7 @@ def build_terminal_closure_cases(
                 resource_count=2,
                 target_count=2,
                 duration_s=float(dropout_duration_s),
-                intercept_altitude_z=-2.0,
+                intercept_altitude_z=-5.0,
                 guidance_law="png_ttc",
             )
         )
@@ -118,7 +118,7 @@ def build_terminal_closure_cases(
                     resource_count=2,
                     target_count=2,
                     duration_s=float(dropout_duration_s),
-                    intercept_altitude_z=-2.0,
+                    intercept_altitude_z=-5.0,
                     guidance_law="png_vm",
                     soft_prediction_enabled=True,
                     trend_coast_enabled=False,
@@ -157,6 +157,26 @@ def summarize_terminal_closure_rows(
                 "coalition_opportunity_count": _sum_available(selected, "coalition_opportunity_count"),
                 "coalition_completion_count": _sum_available(selected, "coalition_completion_count"),
                 "online_truth_use_count": _sum_available(selected, "online_truth_use_count"),
+                "truth_identity_online_use_count": _sum_available(
+                    selected, "truth_identity_online_use_count"
+                ),
+                "truth_state_online_use_count": _sum_available(
+                    selected, "truth_state_online_use_count"
+                ),
+                "physical_metrics_available_count": sum(
+                    row.get("physical_metrics_available") is True for row in selected
+                ),
+                "physical_metrics_unavailable_count": sum(
+                    row.get("physical_metrics_available") is not True for row in selected
+                ),
+                "actual_execution_available_count": sum(
+                    row.get("d7_actual_execution_status") == "available"
+                    for row in selected
+                ),
+                "actual_execution_unavailable_count": sum(
+                    row.get("d7_actual_execution_status") != "available"
+                    for row in selected
+                ),
                 "contract_allowed_count": _sum_available(selected, "contract_allowed_count"),
                 "control_allowed_count": _sum_available(selected, "control_allowed_count"),
                 "mode_switched_count": _sum_available(selected, "mode_switched_count"),
@@ -171,6 +191,26 @@ def summarize_terminal_closure_rows(
         )
 
     paired = _paired_m5n2_rows(row_list)
+    all_results_present = len(case_list) == len(row_list)
+    truth_identity_zero = bool(row_list) and all(
+        row.get("truth_identity_online_use_count") == 0 for row in row_list
+    )
+    truth_state_zero = bool(row_list) and all(
+        row.get("truth_state_online_use_count") == 0 for row in row_list
+    )
+    physical_available = bool(row_list) and all(
+        row.get("physical_metrics_available") is True for row in row_list
+    )
+    actual_execution_all_available = bool(row_list) and all(
+        row.get("d7_actual_execution_status") == "available" for row in row_list
+    )
+    dropout_acceptance = _dropout_acceptance(row_list)
+    candidate_target_non_degradation = paired.get(
+        "candidate_target_non_degradation"
+    )
+    candidate_pair_non_degradation = paired.get(
+        "candidate_pair_non_degradation"
+    )
     return {
         "calibration_suite": SUITE_NAME,
         "calibration_suite_version": SUITE_VERSION,
@@ -185,14 +225,24 @@ def summarize_terminal_closure_rows(
             "online_truth_use_zero": all(
                 int(row.get("online_truth_use_count") or 0) == 0 for row in row_list
             ),
-            "all_results_present": len(case_list) == len(row_list),
-            "candidate_target_non_degradation": paired.get(
-                "candidate_target_non_degradation"
+            "truth_identity_online_use_zero": truth_identity_zero,
+            "truth_state_online_use_zero": truth_state_zero,
+            "physical_metrics_available": physical_available,
+            "actual_execution_all_available": actual_execution_all_available,
+            "all_results_present": all_results_present,
+            "candidate_target_non_degradation": candidate_target_non_degradation,
+            "candidate_pair_non_degradation": candidate_pair_non_degradation,
+            "dropout_matrix": dropout_acceptance,
+            "overall_acceptance_passed": bool(
+                all_results_present
+                and truth_identity_zero
+                and truth_state_zero
+                and physical_available
+                and actual_execution_all_available
+                and candidate_target_non_degradation is True
+                and candidate_pair_non_degradation is True
+                and dropout_acceptance.get("all_passed") is True
             ),
-            "candidate_pair_non_degradation": paired.get(
-                "candidate_pair_non_degradation"
-            ),
-            "dropout_matrix": _dropout_acceptance(row_list),
         },
     }
 
@@ -340,15 +390,17 @@ def _markdown(payload: dict[str, Any]) -> str:
         "",
         "## 聚合结果",
         "",
-        "| Family | Profile | Seeds | Connected | Pair | PairSuccess | Target | TargetSuccess | Coalition | CoalitionDone | TruthUse | Switch | Predicted | WindowExpired |",
-        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Family | Profile | Seeds | Connected | Pair | PairSuccess | Target | TargetSuccess | Coalition | CoalitionDone | IdentityTruth | StateTruth | PhysicalAvailable | ActualAvailable | Switch | Predicted | WindowExpired |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for row in payload["aggregates"]:
         lines.append(
             "| {family} | {profile} | {seed_count} | {connected_count} | "
             "{pair_opportunity_count} | {pair_success_count} | {target_opportunity_count} | "
             "{target_success_count} | {coalition_opportunity_count} | "
-            "{coalition_completion_count} | {online_truth_use_count} | "
+            "{coalition_completion_count} | {truth_identity_online_use_count} | "
+            "{truth_state_online_use_count} | {physical_metrics_available_count} | "
+            "{actual_execution_available_count} | "
             "{terminal_switch_allowed_count} | {terminal_prediction_count} | "
             "{terminal_prediction_window_expired_count} |".format(**row)
         )
@@ -363,8 +415,13 @@ def _markdown(payload: dict[str, Any]) -> str:
             f"- Candidate target non-degradation: `{acceptance.get('candidate_target_non_degradation')}`",
             f"- Candidate pair non-degradation: `{acceptance.get('candidate_pair_non_degradation')}`",
             f"- Online truth use zero: `{acceptance.get('online_truth_use_zero')}`",
+            f"- Truth identity online use zero/available: `{acceptance.get('truth_identity_online_use_zero')}`",
+            f"- Truth state online use zero/available: `{acceptance.get('truth_state_online_use_zero')}`",
+            f"- Physical metrics available for all cases: `{acceptance.get('physical_metrics_available')}`",
+            f"- Canonical actual execution available for all cases: `{acceptance.get('actual_execution_all_available')}`",
             f"- All results present: `{acceptance.get('all_results_present')}`",
             f"- Dropout matrix passed: `{acceptance.get('dropout_matrix', {}).get('all_passed')}`",
+            f"- Overall acceptance passed: `{acceptance.get('overall_acceptance_passed')}`",
             "",
             "本文件只给出 main 执行索引和基础分层结果；置信区间、失败原因分布和曲线由 D6 bundle 生成。",
             "",

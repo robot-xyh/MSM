@@ -21,8 +21,11 @@ from d4_distributed_fallback.active_degradation import (
 from d4_distributed_fallback.models import (
     AvailabilityBand,
     CommBand,
+    CommunicationSummary,
     ConfidenceBand,
+    LinkType,
     NodeRole,
+    PayloadKind,
     ResourceSummary,
     TrackSummary,
 )
@@ -42,17 +45,36 @@ from .models import ResourcePlatform, TruthState
 def d1_tracks_to_d2_detections(
     d1_tracks: Iterable[D1GlobalTrack],
     timestamp: float,
+    *,
+    include_offline_truth: bool = False,
 ) -> list[Detection]:
-    """Convert fused 3D tracks to D2 2D detections."""
+    """Convert fused 3D tracks to D2 2D detections.
+
+    Online callers must keep ``include_offline_truth`` disabled.  Synthetic
+    scene truth may be used by a simulator to generate a noisy measurement,
+    but it must not select, merge, or label the detections consumed by D2.
+    Offline point-mass evaluators opt in explicitly so their truth metrics
+    remain reproducible and isolated from the runtime contract.
+    """
 
     detections: list[Detection] = []
-    for track in _best_d1_track_per_truth(d1_tracks):
-        truth_id = track.metadata.get("truth_id")
+    tracks = list(d1_tracks)
+    if include_offline_truth:
+        tracks = _best_d1_track_per_truth(tracks)
+    for track in tracks:
+        truth_id = track.metadata.get("truth_id") if include_offline_truth else None
+        state_valid_at = float(track.metadata.get("valid_at", track.timestamp))
+        measurement_timestamp = float(
+            track.metadata.get("latest_measurement_timestamp", state_valid_at)
+        )
+        arrival_timestamp = float(
+            track.metadata.get("latest_arrival_timestamp", state_valid_at)
+        )
         covariance_2d = track.covariance[:2, :2] + np.eye(2) * 0.5
         detections.append(
             Detection(
-                detection_id=f"{track.global_track_id}_{timestamp:.2f}",
-                timestamp=timestamp,
+                detection_id=f"{track.global_track_id}_{state_valid_at:.6f}",
+                timestamp=state_valid_at,
                 position=track.position[:2],
                 covariance=covariance_2d,
                 truth_id=None if truth_id is None else str(truth_id),
@@ -63,6 +85,16 @@ def d1_tracks_to_d2_detections(
                     "covariance_trace_3d": float(np.trace(track.covariance[:3, :3])),
                     "position_3d": track.position.tolist(),
                     "velocity_3d": track.velocity.tolist(),
+                    "measurement_timestamp": measurement_timestamp,
+                    "arrival_timestamp": arrival_timestamp,
+                    "state_valid_at": state_valid_at,
+                    "adapter_timestamp": float(timestamp),
+                    "identity_policy": (
+                        "offline_evaluator_truth"
+                        if include_offline_truth
+                        else "online_anonymous"
+                    ),
+                    "online_truth_id_used": False,
                 },
             )
         )
@@ -174,8 +206,10 @@ def resources_to_d3(resources: Iterable[ResourcePlatform]) -> list[ResourceState
 def resources_to_d4(
     resources: Iterable[ResourcePlatform],
     secondary_available: bool,
+    current_time_s: float,
     epoch: int = 1,
     secondary_node_ids: Iterable[str] | None = None,
+    secondary_lease_duration_s: float = 1.5,
 ) -> list[ResourceSummary]:
     """Build D4 secondary-node and executor summaries."""
 
@@ -193,9 +227,12 @@ def resources_to_d4(
                 comm_band=CommBand.GOOD,
                 takeover_priority=10 + index,
                 lease_epoch=5,
+                lease_expires_at_s=float(current_time_s)
+                + float(secondary_lease_duration_s),
                 epoch=epoch,
                 node_role=NodeRole.SECONDARY_RECON,
                 coordinator_only=True,
+                heartbeat_timestamp_s=float(current_time_s),
                 coverage_cell="cell-north" if index % 2 == 0 else "cell-south",
                 cue_freshness_s=0.0 if secondary_available else None,
                 gimbal_pointing_ok=secondary_available,
@@ -226,6 +263,33 @@ def resources_to_d4(
             )
         )
     return summaries
+
+
+def secondary_communications_to_d4(
+    secondary_nodes: Iterable[ResourceSummary],
+    *,
+    current_time_s: float,
+    stale_after_s: float = 0.5,
+) -> list[CommunicationSummary]:
+    """Build explicit synthetic video/data-link evidence for D4 arbitration."""
+
+    return [
+        CommunicationSummary(
+            source_node_id=node.node_id,
+            target_node_id="MAIN-C2",
+            relay_node_id=None,
+            link_type=LinkType.VIDEO_CUE,
+            sent_timestamp=float(current_time_s),
+            received_timestamp=float(current_time_s),
+            payload_kind=PayloadKind.VIDEO_METADATA,
+            stale_after_s=float(stale_after_s),
+            sequence_id=f"{node.node_id}:{float(current_time_s):.6f}",
+        )
+        for node in secondary_nodes
+        if node.coordinator_only
+        and node.availability_band != AvailabilityBand.NONE
+        and node.gimbal_pointing_ok is True
+    ]
 
 
 def d2_tracks_to_d4_tasks(
@@ -341,6 +405,14 @@ def plan_to_assignment_records(
     for assignment in plan.assignments:
         track = d2_by_id.get(assignment.target_id)
         coalition = coalition_by_target.get(assignment.target_id)
+        activation_state = str(
+            assignment.metadata.get(
+                "activation_state",
+                "active"
+                if assignment.member_role == "primary" and assignment.wave_id == 0
+                else "standby",
+            )
+        )
         records.append(
             AssignmentRecord(
                 timestamp=plan.created_at,
@@ -350,7 +422,7 @@ def plan_to_assignment_records(
                 global_track_id=assignment.target_id,
                 cost_breakdown=assignment.cost_breakdown,
                 authorization_state=plan.human_authorization_state,
-                active=True,
+                active=activation_state == "active",
                 truth_id=None if track is None else track.truth_id,
                 coordination_mode=None if coalition is None else coalition.coordination_mode,
                 coalition_id=assignment.coalition_id,

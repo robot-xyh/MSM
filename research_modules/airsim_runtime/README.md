@@ -1,5 +1,125 @@
 # AirSim Blocks Runtime
 
+## 2026-07-15 M5N2 20-Case Stop And Result
+
+Main completed only the M5N2 portion of
+`p1_terminal_timing_funnel_10seed_20260715`: baseline seeds 1-10 and
+`candidate_soft_prediction_trend_coast` seeds 1-10. The batch was terminated
+after 20/20 M5N2 cases. One `png_ttc_2v2_seed001` case completed during the
+process transition before TERM took effect; it is excluded from this M5N2
+result and is not a multi-seed result. Dropout completed zero cases, and no
+missing outcome may be represented as a zero-valued result.
+
+Both profiles produced `6/30` active-primary physical successes, `6/20`
+target successes, and `0/10` coalition completions. The second required
+primary reached the 5 m threshold in `0/10` cases for both profiles. Candidate
+prediction/control activity increased but paired non-degradation failed, so
+soft prediction and trend coast remain candidate-only and disabled by default.
+All 20 canonical actual-execution artifacts are available; online truth
+identity/state use is zero.
+
+Pooled real timing contains 3805 records per layer. Main bus mean/P95/max is
+`349.34/487.40/1305.99 ms`, dominated by D1 fusion. Control tick
+mean/P95/max is `1069.45/1254.06/2072.51 ms`, dominated by AirSim frame
+sampling; all 3805 outer ticks exceed 100 ms. The outer layer includes bus
+processing and must not be added to the inner total. Raw per-case timing is
+valid, while suite-level D6 timing remains unavailable until a versioned
+multi-episode manifest supports reset frame indices without weakening the
+strict single-episode schema.
+
+All 20 second-primary executions ended with `collision_stop`. The stop record
+does not yet persist the collision object, contact normal, or member/environment
+separation, so this remains a P1 provenance gap rather than evidence that D5
+alone caused the physical failure.
+
+Evidence and figures are indexed by
+`subagent_reviews/MAIN_M5N2_TIMING_AND_SECOND_PRIMARY_REPORT_20260715.md` and
+`outputs/p1_terminal_timing_funnel_10seed_20260715_m5n2/`.
+
+## 2026-07-15 Strict Secondary Readiness Integration
+
+Main no longer treats a secondary heartbeat as sufficient takeover evidence.
+The episode communication tick consumes only the previous completed D4
+decision and requires the shared D4 readiness contract: explicit episode time,
+valid epoch/lease, fresh heartbeat/cue/communication, valid gimbal and coverage
+state, network full-view evidence, and sustained readiness. Missing, stale, or
+incomplete evidence fails closed. Multiple records for the same secondary are
+merged conservatively; conflicting lease epoch or expiry rejects that node
+instead of allowing last-write-wins ownership.
+
+The heartbeat-only negative case, complete-readiness positive case, and
+conflicting-lease negative case pass. Current deterministic regressions are
+`D4 278`, AirSim runtime `147`, and integrated point-mass `7`. No new AirSim
+episode was launched for this change. Real network delay, loss, reordering,
+clock drift, retransmission, and multi-seed failover timing remain P1.
+
+## 2026-07-14 Actual-Execution Real AirSim Validation
+
+The P0 evidence path has now been exercised in real Blocks for tuned 2v2 and
+M5N2 seed 1. Both runs generated `d7_actual_execution_metrics.json` with
+schema `d7-actual-execution-metrics-v2`; neither generated an unavailable
+artifact. The command CSV, intercept summary, and actual envelope agree on
+physical successes (`2/2` for 2v2 and `2/3` active pairs for M5N2), and command,
+actual metadata, and canonical D3 history carry the same plan ID. Online truth
+identity and state use are both zero.
+
+Direct-run evidence identity follows `case_id > sequence_id > episode_id`.
+This keeps independent full-flow sequences distinct even though each contains
+an episode named `episode_006_full_flow`. The combined D6 report is under
+`outputs/p0_actual_v2_validation_20260714/d6_acceptance/` and reports canonical
+actual availability `2/2`. Its overall P1 acceptance remains false because the
+two-case P0 smoke does not include the full paired candidate, dropout, and
+multi-seed matrix.
+
+M5N2 remains a P1 performance issue: both targets were intercepted by at least
+one resource, but the second active primary for the high-threat target reached
+only about `11.02 m`, so coalition completion was `0/1`. Loop latency was about
+`123.3 ms` for 2v2 and `384.6 ms` for M5N2.
+
+The actual envelope validates five independent layers: contract, control,
+terminal-switch permission, mode switch, and physical interception. The
+terminal-switch count is recomputed from the final command CSV and is not
+inferred from control permission. D6 also recomputes target-state freshness
+from the source-hash-verified command CSV. The two seed-1 cases provide 656
+available samples, pooled mean/P95/max age of about `0.0872/0.2/0.2 s`, zero
+stale samples, and only `d2_estimated_global_track` as the online state source.
+The remaining P1 is multi-seed distribution and latency calibration, not
+schema registration.
+
+## 2026-07-14 Actual-Execution Plan Provenance
+
+After SimpleFlight control completes, main now asks D6 to build
+`d7_actual_execution_metrics.json` with schema
+`d7-actual-execution-metrics-v2`. The artifact hashes the final command,
+intercept-summary, and main-bus metric sources and preserves the plan IDs,
+positive plan versions, owner availability, online truth safety counts,
+effective visual-control transitions, physical results, and runtime samples.
+Integrated replay data is diagnostic only and cannot supply missing execution
+provenance.
+
+Plan ID and version are mandatory on each command row. Owner provenance is
+required for effectively authorized secondary or distributed execution; an
+ordinary center row or a non-authorized transition may leave it unavailable.
+The two controlled center/secondary regressions and the full runtime suite now
+pass (`142 passed`). The real seed-1 gate described above is complete; the
+remaining campaign is the same-configuration multi-seed P1 calibration.
+
+## 2026-07-14 P1 Terminal Semantics Integration
+
+Main now passes stable camera/stream/detector/tracker identity, executable
+primary membership, and duplicate-lock risk into D5. D7 guidance events use
+the module's canonical `d7_terminal_semantics_v2` record, and SimpleFlight
+termination rows force live contract/control fields false while retaining
+prior latch/authorization audit fields. The P1 terminal-closure sweep writes
+metric envelopes with producer/scope/denominator/lifecycle, physical and
+performance context, D3 history paths, D7 execution paths, and automatic D6
+suite/per-case reports.
+
+This closes runtime schema wiring only. It does not replace the required real
+AirSim rerun for M5N2 second-primary acquisition, 30/50 m visual recall,
+native-MOT admission, dropout behavior, physical interception, or loop-latency
+calibration.
+
 This package runs the first real AirSim Blocks gates. It starts Blocks with a
 repository-local settings file, connects through the Python RPC API, samples
 vehicle poses, actor targets, scene images, LiDAR metadata, AirSim built-in
@@ -17,6 +137,46 @@ SimpleFlight-compatible PNG guidance gate: detector boxes must pass bbox,
 LOS-rate, visual latency, and maneuver-margin checks before the controller
 switches from `radar_midcourse` to
 `vision_terminal`.
+
+## 2026-07-14 Feedback Contract
+
+The episode bus now separates terminal uncertainty from safety conflicts before
+the next D3 planning cycle. Ordinary D5 `ambiguous`, `hold`, and `reacquire`
+states are emitted as resource-target edge-soft feedback: they still block the
+current pair's visual handoff, but they do not mark the whole interceptor
+unavailable. Verified-friend overlap, spoof-suspected identity conflict,
+duplicate lock, and explicit assignment conflicts remain fail-closed hard
+feedback. Assignment evidence also derives `active` from D3's
+`activation_state`, so an unactivated reserve is recorded as standby rather
+than active.
+
+This is a contract and regression fix, not new AirSim performance evidence.
+The M5N2 `5/10` result remains the pre-fix baseline until main reruns the same
+geometry and seeds.
+
+## Online Truth Boundary
+
+The main episode bus now keeps AirSim actor identity out of online D1/D2 DTOs,
+delivers observations only after their arrival timestamp, and leaves truthless
+D2/D6 metrics unavailable instead of reporting zero. Offline integrated replay
+uses an explicit offline truth policy.
+
+The controlled SimpleFlight executor now consumes the D2 estimated target
+position, velocity, covariance, measurement timestamp, and arrival timestamp.
+The default path, active center replan path, and active secondary takeover path
+all use the same truth-isolated control evidence. Active-degradation fixtures
+may override D3 plan/version, D4 permission, and D5 lock state, but they cannot
+provide target kinematics or actor/object/mesh aliases. Missing or stale target
+estimates fail closed.
+
+AirSim actor truth remains available only to synthetic sensor generation,
+trajectory plotting, offline global-track-to-truth pairing, and the post-run
+three-dimensional 5 m scorer. `truth_state_online_use_count` is distinct from
+`truth_identity_online_use_count`; strict integrated paths require both online
+uses to be zero. The D7 PN/PNG core formulas were not changed. Runtime and
+module regressions close the code-level P0, but historical physical results do
+not become truth-isolated evidence retroactively. The same-seed real AirSim
+rerun remains a P1 evidence task.
 
 ## Run
 
@@ -285,7 +445,8 @@ python3 research_modules/airsim_runtime/run_blocks_sequence.py \
 
 The M5N2 baseline/candidate cases use the same `z=-30 m`, 35-second
 high-clearance geometry. Real `png_ttc` and the dropout matrix use tuned 2v2
-camera settings so visual handoff is observable; dropout starts at 0.8 seconds,
+camera settings at `z=-5 m` so SimpleFlight can settle at the requested global
+NED altitude before horizontal control; dropout starts at 0.8 seconds,
 after the stable-lock warm-up and before the usual 5 m intercept. The two
 settings families use separate Blocks launches and reset-separated cases. The suite writes
 `p1_terminal_closure_summary.json`, `p1_terminal_closure_rows.csv`, and a
@@ -398,14 +559,45 @@ The output directory contains:
 - `main_episode_bus/main_episode_bus_ticks.jsonl`: per-frame D1-D7 debug
   snapshots, including D1 timestamps/covariance, D2 ID metrics, D3 plan
   version, D4 actions, D5 decision states, and D7 gate rejects.
+- `main_episode_bus/stage_timings.jsonl`: availability-aware per-frame main-bus
+  stage timings (`main-stage-timing-v1`) for communication, D1, D2, D6 track
+  recording, D3, coalition commit, D5, D4, D7, and link/cross-view recording.
+  A stage that did not run is `not_applicable` with a null duration, not zero.
+- `main_episode_bus/d3_plan_history.json`: ordered canonical D3 planning-tick
+  records with assignments, primary/reserve activation, coalition
+  version/epoch, owner/lease, hysteresis, feedback classification, and costs.
+  Non-planning frames do not duplicate this history, and online truth fields
+  are excluded.
 - `main_episode_bus/main_episode_bus_metrics.json`: D6 episode metrics from
   the bus records.
 - `main_episode_bus/main_episode_bus_summary.json`: final module summaries and
   record counts.
 
+SimpleFlight control episodes additionally write `control_tick_timings.jsonl`
+with `control-tick-stage-timing-v1`. It separates AirSim frame sampling,
+main-bus processing, control-evidence/pair synchronization, and guidance plus
+control RPC from the enclosing control tick. Both timing contracts use the
+monotonic `perf_counter` clock, retain partial timing on errors, record the
+configured budget and unattributed residual, and never feed timing values back
+into D1-D7 decisions. Legacy outputs without these files remain unavailable
+for stage-level analysis instead of being reconstructed from total latency.
+
 `airsim_blocks_summary.json` includes the same paths and `main_episode_bus`
 metadata. Online D5 association in this bus uses geometric detection data only;
 AirSim object IDs are carried only as offline scoring labels.
+
+Generate the availability-aware D6 churn report directly from one episode:
+
+```bash
+python3 research_modules/d6_evaluation_metrics/scripts/run_p1_system_evidence_report.py \
+  --d3-plan-history /path/to/main_episode_bus/d3_plan_history.json \
+  --output-dir /path/to/d6_d3_history_report
+```
+
+The report rejects duplicate or non-monotonic sequence indices, timestamp
+regression, wrapper/record schema mismatch, and histories shorter than two
+planning ticks. Rejected evidence remains `unavailable`; it is never converted
+to zero churn.
 
 Use `--no-launch` when Blocks is already running with compatible settings.
 By default the launcher adds `-windowed -ResX=640 -ResY=480 -NoVSync` and

@@ -1,4 +1,4 @@
-"""Controlled 2v2 AirSim interception episode for Blocks.
+"""Controlled N-resource AirSim interception episode for Blocks.
 
 This module is still simulation-only. It commands SimpleFlight vehicles inside
 AirSim and uses non-vehicle Unreal actors as targets.
@@ -31,6 +31,7 @@ from d7_proportional_guidance import (
     VisionGuidanceObservation,
     build_cooperative_guidance_topology,
     coerce_assignment_guidance_binding,
+    coerce_vision_guidance_observation,
     compute_midcourse_reacquisition_command,
     compute_pure_pursuit_command,
     evaluate_terminal_png_contract,
@@ -39,6 +40,32 @@ from d7_proportional_guidance import (
 )
 
 from .models import BlocksSmokeConfig
+from .timing import (
+    CONTROL_TICK_STAGE_NAMES,
+    StageTimingCapture,
+    summarize_stage_timings,
+    write_stage_timings_jsonl,
+)
+
+
+@dataclass(frozen=True)
+class OnlineTargetEstimate:
+    """Truth-isolated D2 target state consumed by the SimpleFlight loop."""
+
+    global_track_id: str
+    position_ned: tuple[float, float, float]
+    velocity_ned: tuple[float, float, float]
+    covariance_ned: tuple[tuple[float, float, float], ...]
+    measurement_timestamp_s: float
+    arrival_timestamp_s: float
+    state_valid_at_s: float
+    published_at_s: float
+    measurement_age_s: float
+    stale_after_s: float
+    lifecycle_state: str
+    source: str = "d2_estimated_global_track"
+    control_state_valid: bool = True
+    reject_reason: str = ""
 
 
 @dataclass
@@ -69,9 +96,24 @@ class InterceptPair:
     terminal_delivery_state: str = ""
     terminal_delivery_reason: str = ""
     terminal_local_track_id: str | None = None
+    terminal_visual_observation: VisionGuidanceObservation | None = None
+    target_estimate: OnlineTargetEstimate | None = None
+    online_truth_state_used: bool = False
+    control_stop_reason: str | None = None
+    control_stop_time_s: float | None = None
+    physical_success: bool = False
+    physical_min_range_m: float = float("inf")
+    physical_intercept_time_s: float | None = None
+    physical_truth_target_id: str | None = None
+    physical_evidence_available: bool = False
     midcourse_selector: MidcourseReacquisitionSelector | None = None
     midcourse_binding_key: tuple[str, str, str, int] | None = None
     last_recorded_mode: str | None = None
+    last_effective_terminal_contract_allowed: bool = False
+    last_effective_control_authorized: bool = False
+    terminal_acquisition_timeout_active: bool = False
+    terminal_acquisition_timeout_count: int = 0
+    terminal_acquisition_timeout_action: str = ""
 
 
 @dataclass
@@ -100,10 +142,26 @@ class InterceptCommandRecord:
     terminal_contract_reject_reason: str
     terminal_contract_allowed: bool
     terminal_control_allowed: bool
+    terminal_semantics_version: str
+    raw_terminal_gate_allowed: bool
+    latched_visual_mode_active: bool
+    effective_terminal_contract_allowed: bool
+    effective_control_authorized: bool
+    termination_snapshot: bool
+    termination_status: str
+    termination_reason: str
+    termination_prior_latched_visual_mode_active: bool
+    termination_prior_effective_terminal_contract_allowed: bool
+    termination_prior_effective_control_authorized: bool
     mode_switched: bool
     physical_intercept: bool
     detection_seen: bool
     guidance_law: str
+    configured_guidance_law: str
+    candidate_guidance_law: str
+    executed_guidance_law: str
+    terminal_acquisition_timed_out: bool
+    terminal_acquisition_timeout_action: str
     camera_quality_gate_passed: bool
     los_quality_gate_passed: bool
     maneuver_margin_gate_passed: bool
@@ -131,6 +189,13 @@ class InterceptCommandRecord:
     visual_reacquisition: bool
     terminal_visual_lost_after_coast: bool
     truth_identity_online_use: bool
+    truth_state_online_use: bool
+    target_state_source: str
+    target_state_valid_at_s: float | None
+    target_measurement_timestamp_s: float | None
+    target_arrival_timestamp_s: float | None
+    target_measurement_age_s: float | None
+    target_state_stale: bool
     bbox_area_ratio: float
     los_rate_variance_radps2: float
     ttc_s: float | None
@@ -152,11 +217,13 @@ class InterceptRunResult:
     frames: list[AirSimFrame]
     pairs: list[InterceptPair]
     command_records: list[InterceptCommandRecord]
+    control_tick_timings: list[dict[str, Any]] = field(default_factory=list)
     output_paths: dict[str, Path] = field(default_factory=dict)
+    control_bus: Any | None = None
 
     @property
     def success_count(self) -> int:
-        return sum(1 for pair in self.pairs if pair.status in {"collision_intercept", "range_intercept"})
+        return sum(1 for pair in self.pairs if pair.physical_success)
 
 
 def run_controlled_intercept_episode(
@@ -170,52 +237,150 @@ def run_controlled_intercept_episode(
 
     frames: list[AirSimFrame] = []
     command_records: list[InterceptCommandRecord] = []
+    control_tick_timings: list[dict[str, Any]] = []
     pairs: list[InterceptPair] = []
+    offline_truth_binding_history: dict[float, dict[str, str]] = {}
     control_bus = None
-    if config.include_integrated_pipeline and not (
-        _active_center_replan_enabled(config) or _active_secondary_visual_png_enabled(config)
-    ):
+    if config.include_integrated_pipeline:
         from .episode_bus import MainAirSimEpisodeBus
 
         control_bus = MainAirSimEpisodeBus(config)
+    elif not bool(config.metadata.get("allow_truth_state_control_fixture", False)):
+        raise ValueError(
+            "SimpleFlight interception requires the integrated main episode bus; "
+            "truth-state control is allowed only for an explicitly marked fixture"
+        )
     runtime.prepare_interceptor_control(config)
+    collision_event_state = (
+        _initial_collision_event_state(runtime, config.resource_vehicle_names)
+        if control_bus is not None
+        else None
+    )
     try:
         for frame_index, timestamp in enumerate(_control_timestamps(config)):
-            frame = runtime.sample_frame(config, frame_index, timestamp, output_dir / "images")
-            frame = _annotate_active_replan_frame(config, frame)
-            frame = _apply_intercept_detection_dropout(config, frame)
-            control_evidence: dict[str, dict[str, Any]] = {}
-            if control_bus is not None:
-                control_bus.process_frame(frame)
-                control_evidence = control_bus.control_evidence()
-            frames.append(frame)
-            if not pairs:
-                pairs = _initial_pairs(frame, config)
+            timing = StageTimingCapture(
+                schema_version="control-tick-stage-timing-v1",
+                scope="simpleflight_control_tick",
+                total_stage_name="control_tick_total",
+                stage_names=CONTROL_TICK_STAGE_NAMES,
+                frame_index=frame_index,
+                timestamp_s=float(timestamp),
+                budget_ms=float(
+                    config.metadata.get(
+                        "control_tick_budget_s",
+                        config.metadata.get("loop_budget_s", config.control_dt_s),
+                    )
+                )
+                * 1000.0,
+            )
+            try:
+                with timing.measure("airsim_frame_sample"):
+                    frame = runtime.sample_frame(
+                        config, frame_index, timestamp, output_dir / "images"
+                    )
+                    frame = _apply_intercept_detection_dropout(config, frame)
+
+                control_evidence: dict[str, dict[str, Any]] = {}
+                with timing.measure("bus_processing"):
+                    if control_bus is not None:
+                        control_bus.process_frame(frame)
+                        control_evidence = control_bus.control_evidence()
+                        offline_truth_binding_history[float(frame.timestamp)] = (
+                            control_bus.offline_truth_binding_map(frame)
+                        )
+                        frame = _annotate_active_replan_frame(
+                            config,
+                            frame,
+                            control_evidence,
+                        )
+                        control_evidence = _apply_frame_control_contract_overrides(
+                            control_evidence,
+                            frame,
+                        )
+                    else:
+                        frame = _annotate_active_replan_frame(config, frame, {})
+
+                with timing.measure("control_evidence_and_pair_sync"):
+                    frames.append(frame)
+                    if control_bus is not None:
+                        pairs = _sync_pairs_from_control_evidence(
+                            pairs,
+                            control_evidence,
+                            runtime=runtime,
+                        )
+                    elif not pairs:
+                        pairs = _initial_pairs(frame, config)
+                    if pairs:
+                        if control_bus is None:
+                            _refresh_pair_assignments(frame, pairs)
+                            for pair in pairs:
+                                pair.online_truth_state_used = True
+                        else:
+                            _apply_online_control_evidence(pairs, control_evidence)
+                        for pair in pairs:
+                            _reset_midcourse_selector_for_binding_change(pair)
+
+                if pairs:
+                    with timing.measure("guidance_and_control_rpc"):
+                        _step_pairs(
+                            runtime,
+                            config,
+                            frame,
+                            pairs,
+                            command_records,
+                            truth_state_fixture=control_bus is None,
+                            collision_event_state=collision_event_state,
+                        )
+            except BaseException as exc:
+                control_tick_timings.append(timing.finalize(error=exc))
+                write_stage_timings_jsonl(
+                    output_dir / "control_tick_timings.jsonl",
+                    control_tick_timings,
+                )
+                if control_bus is not None:
+                    control_bus.write_stage_timing_records(
+                        output_dir / "main_episode_bus" / "stage_timings.jsonl"
+                    )
+                raise
+            else:
+                control_tick_timings.append(timing.finalize())
             if not pairs:
                 continue
-            _refresh_pair_assignments(frame, pairs)
-            _apply_online_control_evidence(pairs, control_evidence)
-            for pair in pairs:
-                _reset_midcourse_selector_for_binding_change(pair)
-            _step_pairs(runtime, config, frame, pairs, command_records)
             if all(not pair.active for pair in pairs):
                 break
         for pair in pairs:
             if pair.active:
                 pair.active = False
                 pair.status = "timeout"
+        if control_bus is not None:
+            _score_physical_intercepts_offline(
+                frames=frames,
+                pairs=pairs,
+                truth_binding_history=offline_truth_binding_history,
+                radius_m=float(config.intercept_radius_m),
+            )
+            _sync_offline_physical_results_to_command_records(
+                pairs,
+                command_records,
+            )
         output_paths = _write_intercept_outputs(
             config,
             output_dir,
             frames,
             pairs,
             command_records,
+            control_tick_timings,
         )
+        preparation_path = output_dir / "interceptor_preparation.json"
+        if preparation_path.exists():
+            output_paths["interceptor_preparation"] = preparation_path
         return InterceptRunResult(
             frames=frames,
             pairs=pairs,
             command_records=command_records,
+            control_tick_timings=control_tick_timings,
             output_paths=output_paths,
+            control_bus=control_bus,
         )
     finally:
         vehicle_names = tuple(pair.vehicle_name for pair in pairs) or tuple(config.resource_vehicle_names)
@@ -228,43 +393,112 @@ def _step_pairs(
     frame: AirSimFrame,
     pairs: list[InterceptPair],
     command_records: list[InterceptCommandRecord],
+    *,
+    truth_state_fixture: bool = False,
+    collision_event_state: dict[str, tuple[bool, int]] | None = None,
 ) -> None:
     resources = {resource.resource_id: resource for resource in frame.resources}
-    targets = {target.object_id: target for target in frame.truth_objects if target.object_type == "target"}
+    targets = (
+        {
+            target.object_id: target
+            for target in frame.truth_objects
+            if target.object_type == "target"
+        }
+        if truth_state_fixture
+        else {}
+    )
     detections = _detections_by_resource(frame)
     for pair in pairs:
         if not pair.active:
             continue
         resource = resources.get(pair.resource_id)
-        target = targets.get(pair.target_id)
         if resource is None:
             _abort_pair(runtime, pair, "resource_missing")
             continue
-        if target is None:
-            _abort_pair(runtime, pair, "target_missing")
-            continue
 
         resource_position = np.asarray(resource.position_ned, dtype=float)
-        target_position = np.asarray(target.position_ned, dtype=float)
         resource_velocity = np.asarray(resource.velocity_ned, dtype=float)
-        target_velocity = np.asarray(target.velocity_ned, dtype=float)
+        target = targets.get(pair.target_id) if truth_state_fixture else None
+        if truth_state_fixture:
+            if target is None:
+                _abort_pair(runtime, pair, "target_missing")
+                continue
+            pair.online_truth_state_used = True
+            target_position = np.asarray(target.position_ned, dtype=float)
+            target_velocity = np.asarray(target.velocity_ned, dtype=float)
+        else:
+            estimate = pair.target_estimate
+            if estimate is None:
+                _abort_pair(runtime, pair, "target_estimate_missing")
+                continue
+            if not estimate.control_state_valid:
+                _abort_pair(
+                    runtime,
+                    pair,
+                    estimate.reject_reason or "target_estimate_invalid",
+                )
+                continue
+            pair.online_truth_state_used = False
+            target_position = np.asarray(estimate.position_ned, dtype=float)
+            target_velocity = np.asarray(estimate.velocity_ned, dtype=float)
         relative = target_position - resource_position
         range_m = float(np.linalg.norm(relative))
         pair.min_range_m = min(pair.min_range_m, range_m)
+        if truth_state_fixture:
+            pair.physical_evidence_available = True
+            pair.physical_min_range_m = min(pair.physical_min_range_m, range_m)
 
-        collision = runtime.collision_info(pair.vehicle_name)
-        collision_seen = _is_assigned_target_collision(collision, target)
+        raw_collision = runtime.collision_info(pair.vehicle_name)
+        if truth_state_fixture:
+            collision = raw_collision
+            collision_seen = _is_assigned_target_collision(collision, target)
+        else:
+            collision_seen = (
+                bool(raw_collision.get("has_collided", False))
+                if collision_event_state is None
+                else _consume_new_collision_event(
+                    raw_collision,
+                    collision_event_state,
+                    pair.vehicle_name,
+                )
+            )
+            collision = {
+                "has_collided": bool(raw_collision.get("has_collided", False)),
+                "object_name": "",
+                "time_stamp": _collision_time_stamp(raw_collision),
+                "stale_latched_collision": bool(
+                    raw_collision.get("has_collided", False) and not collision_seen
+                ),
+                "truth_identity_redacted": True,
+            }
         collision["target_collision_seen"] = collision_seen
         if collision_seen:
-            pair.status = "collision_intercept"
-            pair.time_to_intercept_s = frame.timestamp
+            pair.status = (
+                "collision_intercept" if truth_state_fixture else "collision_stop"
+            )
+            pair.control_stop_reason = "collision_stop"
+            pair.control_stop_time_s = frame.timestamp
+            if truth_state_fixture:
+                pair.physical_success = True
+                pair.physical_evidence_available = True
+                pair.physical_intercept_time_s = frame.timestamp
+                pair.time_to_intercept_s = frame.timestamp
             pair.active = False
             runtime.hover_interceptor(pair.vehicle_name)
             _record_command(config, frame.timestamp, pair, range_m, (0.0, 0.0, 0.0), None, True, collision, command_records)
             continue
         if range_m <= config.intercept_radius_m:
-            pair.status = "range_intercept"
-            pair.time_to_intercept_s = frame.timestamp
+            pair.status = (
+                "range_intercept" if truth_state_fixture else "estimated_range_stop"
+            )
+            pair.control_stop_reason = "estimated_range_stop"
+            pair.control_stop_time_s = frame.timestamp
+            if truth_state_fixture:
+                pair.physical_success = True
+                pair.physical_evidence_available = True
+                pair.physical_min_range_m = min(pair.physical_min_range_m, range_m)
+                pair.physical_intercept_time_s = frame.timestamp
+                pair.time_to_intercept_s = frame.timestamp
             pair.active = False
             runtime.hover_interceptor(pair.vehicle_name)
             _record_command(config, frame.timestamp, pair, range_m, (0.0, 0.0, 0.0), None, True, collision, command_records)
@@ -273,19 +507,39 @@ def _step_pairs(
         pair.d4_permission = _d4_permission_for_pair(frame, pair)
         pair.terminal_association = _terminal_association_for_pair(frame, pair, None)
         visible_detection = _assigned_detection(frame, pair)
-        detection_seen = visible_detection is not None
+        d5_measured_observation = bool(
+            pair.terminal_visual_observation is not None
+            and str(
+                pair.terminal_visual_observation.metadata.get(
+                    "local_track_state", "unknown"
+                )
+            ).lower()
+            == "measured"
+        )
+        detection_seen = visible_detection is not None or d5_measured_observation
         if detection_seen:
             pair.last_detection_s = frame.timestamp
             pair.terminal_acquisition_started_s = None
         in_terminal_range = range_m <= config.intercept_terminal_switch_range_m
         if in_terminal_range:
             pair.terminal_handover_pending = True
-        if _terminal_detection_acquisition_timed_out(
+        acquisition_timed_out = _terminal_detection_acquisition_timed_out(
             pair,
             timestamp_s=frame.timestamp,
             in_terminal_range=in_terminal_range,
             detection_seen=detection_seen,
             timeout_s=config.intercept_detection_timeout_s,
+        )
+        if acquisition_timed_out:
+            pair.terminal_acquisition_timeout_count += 1
+            pair.terminal_acquisition_timeout_action = (
+                "abort"
+                if config.intercept_abort_on_terminal_acquisition_timeout
+                else "continue_radar_pn"
+            )
+        if (
+            acquisition_timed_out
+            and config.intercept_abort_on_terminal_acquisition_timeout
         ):
             _abort_pair(runtime, pair, "terminal_detection_acquisition_timeout")
             _record_command(config, frame.timestamp, pair, range_m, (0.0, 0.0, 0.0), None, False, collision, command_records)
@@ -384,7 +638,11 @@ def _pn_velocity_command(
         timestamp_s=timestamp,
         position_m=(float(target_position[0]), float(target_position[1])),
         velocity_mps=(float(target_velocity[0]), float(target_velocity[1])),
-        source="airsim_actor_track",
+        source=(
+            "airsim_actor_truth_fixture"
+            if pair.online_truth_state_used
+            else "d2_estimated_global_track"
+        ),
     )
     if law_selection.midcourse_law.value == "pure_pursuit":
         command = compute_pure_pursuit_command(
@@ -416,6 +674,15 @@ def _pn_velocity_command(
         )
         command.metadata["guidance_law"] = command.metadata.get("guidance_law", "radar_pn")
     command.metadata["configured_guidance_law"] = configured_law
+    command.metadata["candidate_guidance_law"] = ""
+    command.metadata["terminal_acquisition_timed_out"] = bool(
+        pair.terminal_acquisition_timeout_active
+    )
+    command.metadata["terminal_acquisition_timeout_action"] = str(
+        pair.terminal_acquisition_timeout_action
+    )
+    command.metadata["online_truth_state_used"] = pair.online_truth_state_used
+    command.metadata["target_state_source"] = target_state.source
     predicted_resource_velocity = np.asarray(_midcourse_velocity(config, command), dtype=float)
     if visual_guidance_enabled and pair.terminal_handover_pending:
         if str(config.intercept_yaw_mode).lower() == "look_at_target":
@@ -425,16 +692,14 @@ def _pn_velocity_command(
             )
         else:
             current_heading = math.atan2(float(resource_velocity[1]), float(resource_velocity[0]))
-        observation = (
-            None
-            if visible_detection is None
-            else _vision_observation_from_detection(
+        observation = pair.terminal_visual_observation
+        if observation is None and visible_detection is not None:
+            observation = _vision_observation_from_detection(
                 frame_timestamp=timestamp,
                 pair=pair,
                 detection=visible_detection,
                 camera_info=camera_info,
             )
-        )
         contract = evaluate_terminal_png_contract(
             binding=pair.guidance_binding,
             d4_permission=pair.d4_permission,
@@ -570,6 +835,7 @@ def _pn_velocity_command(
                     "track_version": contract.track_version,
                     "mode_override": GuidanceMode.VISION_TERMINAL.value,
                     "guidance_law": visual_command.guidance_law,
+                    "candidate_guidance_law": visual_command.guidance_law,
                     "camera_quality_gate_passed": visual_command.quality.camera_quality_gate_passed,
                     "los_quality_gate_passed": visual_command.quality.los_quality_gate_passed,
                     "maneuver_margin_gate_passed": visual_command.quality.maneuver_margin_gate_passed,
@@ -849,7 +1115,7 @@ def _bbox_edge_clipped(bbox_xyxy: Any, camera_info: Any | None) -> bool:
 
 def _visual_metadata(visual_command: Any) -> dict[str, Any]:
     return {
-        "guidance_law": visual_command.guidance_law,
+        "candidate_guidance_law": visual_command.guidance_law,
         "camera_quality_gate_passed": visual_command.quality.camera_quality_gate_passed,
         "los_quality_gate_passed": visual_command.quality.los_quality_gate_passed,
         "maneuver_margin_gate_passed": visual_command.quality.maneuver_margin_gate_passed,
@@ -1090,14 +1356,116 @@ def _apply_online_control_evidence(
     for pair in pairs:
         evidence = evidence_by_resource.get(pair.resource_id)
         if evidence is None:
+            pair.target_estimate = None
             continue
         binding = evidence.get("binding")
         if binding is not None:
             pair.guidance_binding = coerce_assignment_guidance_binding(binding)
             pair.assigned_global_track_id = pair.guidance_binding.assigned_global_track_id
+            pair.target_id = pair.guidance_binding.assigned_global_track_id
         pair.d4_permission = evidence.get("d4_permission")
         pair.terminal_association = evidence.get("terminal_association")
+        raw_visual_observation = evidence.get("terminal_visual_observation")
+        pair.terminal_visual_observation = (
+            None
+            if raw_visual_observation is None
+            else coerce_vision_guidance_observation(raw_visual_observation)
+        )
+        pair.target_estimate = _coerce_online_target_estimate(
+            evidence.get("target_estimate")
+        )
         pair.online_truth_id_used = bool(evidence.get("online_truth_id_used", False))
+        pair.online_truth_state_used = bool(
+            evidence.get("online_truth_state_used", False)
+        )
+
+
+def _sync_pairs_from_control_evidence(
+    pairs: list[InterceptPair],
+    evidence_by_resource: dict[str, dict[str, Any]],
+    *,
+    runtime: Any | None = None,
+) -> list[InterceptPair]:
+    """Create/update pairs from D3 bindings without consulting actor truth."""
+
+    by_resource = {pair.resource_id: pair for pair in pairs}
+    output: list[InterceptPair] = []
+    for resource_id, evidence in sorted(evidence_by_resource.items()):
+        raw_binding = evidence.get("binding")
+        if raw_binding is None:
+            continue
+        binding = coerce_assignment_guidance_binding(raw_binding)
+        should_activate = (
+            str(binding.assignment_validity_state).lower() == "current"
+            and str(binding.member_role).lower() != "reserve"
+            and str(binding.activation_state).lower() == "active"
+        )
+        pair = by_resource.get(str(resource_id))
+        if pair is None:
+            pair = InterceptPair(
+                resource_id=str(resource_id),
+                vehicle_name=str(binding.vehicle_name or resource_id),
+                target_id=str(binding.assigned_global_track_id),
+                assigned_global_track_id=str(binding.assigned_global_track_id),
+                active=should_activate,
+                status="active" if should_activate else "standby",
+                member_role=str(binding.member_role),
+                wave_id=int(binding.wave_id),
+                activation_state=str(binding.activation_state),
+            )
+        elif pair.active and not should_activate:
+            pair.active = False
+            pair.status = "standby"
+            pair.activation_state = str(binding.activation_state)
+            if runtime is not None:
+                runtime.hover_interceptor(pair.vehicle_name)
+        elif not pair.active and pair.status in {"standby", "waiting_for_estimate"}:
+            if should_activate:
+                pair.active = True
+                pair.status = "active"
+                pair.activation_state = str(binding.activation_state)
+        pair.vehicle_name = str(binding.vehicle_name or pair.vehicle_name)
+        pair.member_role = str(binding.member_role)
+        pair.wave_id = int(binding.wave_id)
+        pair.activation_state = str(binding.activation_state)
+        output.append(pair)
+    _apply_online_control_evidence(output, evidence_by_resource)
+    return output
+
+
+def _coerce_online_target_estimate(value: Any | None) -> OnlineTargetEstimate | None:
+    if value is None:
+        return None
+    if isinstance(value, OnlineTargetEstimate):
+        return value
+    if not isinstance(value, dict):
+        raise TypeError("target_estimate must be a mapping or OnlineTargetEstimate")
+    position = tuple(float(item) for item in value.get("position_3d", ()))
+    velocity = tuple(float(item) for item in value.get("velocity_3d", ()))
+    if len(position) != 3 or len(velocity) != 3:
+        raise ValueError("target_estimate requires 3D position_3d and velocity_3d")
+    raw_covariance = value.get("covariance_ned")
+    covariance = np.asarray(raw_covariance, dtype=float)
+    if covariance.shape != (3, 3) or not np.all(np.isfinite(covariance)):
+        raise ValueError("target_estimate covariance_ned must be a finite 3x3 matrix")
+    return OnlineTargetEstimate(
+        global_track_id=str(value.get("global_track_id") or ""),
+        position_ned=position,
+        velocity_ned=velocity,
+        covariance_ned=tuple(
+            tuple(float(item) for item in row) for row in covariance
+        ),
+        measurement_timestamp_s=float(value.get("measurement_timestamp", 0.0)),
+        arrival_timestamp_s=float(value.get("arrival_timestamp", 0.0)),
+        state_valid_at_s=float(value.get("state_valid_at", 0.0)),
+        published_at_s=float(value.get("published_at", 0.0)),
+        measurement_age_s=float(value.get("measurement_age_s", 0.0)),
+        stale_after_s=float(value.get("stale_after_s", 0.0)),
+        lifecycle_state=str(value.get("lifecycle_state", "unknown")),
+        source=str(value.get("source", "d2_estimated_global_track")),
+        control_state_valid=bool(value.get("control_state_valid", False)),
+        reject_reason=str(value.get("reject_reason", "")),
+    )
 
 
 def _binding_for_pair(
@@ -1217,22 +1585,28 @@ def _binding_for_pair(
 def _annotate_active_replan_frame(
     config: BlocksSmokeConfig,
     frame: AirSimFrame,
+    evidence_by_resource: dict[str, dict[str, Any]],
 ) -> AirSimFrame:
     if _active_center_replan_enabled(config):
-        return _annotate_active_center_replan_frame(config, frame)
-    return _annotate_active_secondary_visual_png_frame(config, frame)
+        return _annotate_active_center_replan_frame(
+            config,
+            frame,
+            evidence_by_resource,
+        )
+    return _annotate_active_secondary_visual_png_frame(
+        config,
+        frame,
+        evidence_by_resource,
+    )
 
 
 def _annotate_active_center_replan_frame(
     config: BlocksSmokeConfig,
     frame: AirSimFrame,
+    evidence_by_resource: dict[str, dict[str, Any]],
 ) -> AirSimFrame:
-    truth_targets = sorted(
-        (target for target in frame.truth_objects if target.object_type == "target"),
-        key=lambda item: item.object_id,
-    )
-    resources = sorted(frame.resources, key=lambda item: item.resource_id)
-    if not truth_targets or not resources:
+    assignments = _online_assignments_from_control_evidence(evidence_by_resource)
+    if not assignments:
         return frame
 
     active_time = float(config.metadata.get("active_degradation_time_s", 1.5))
@@ -1263,41 +1637,48 @@ def _annotate_active_center_replan_frame(
         d4_terminal_consistent = True
         terminal_locked = True
 
-    targets_by_id = {target.object_id: target for target in truth_targets}
-    initial_assignments = {
-        resource.resource_id: truth_targets[index % len(truth_targets)].object_id
-        for index, resource in enumerate(resources)
-    }
-    replan_assignments = _center_replan_assignments(resources, truth_targets)
-    assignments = replan_assignments if phase == "center_replan_v2" else initial_assignments
     bindings: list[dict[str, Any]] = []
     permissions: list[dict[str, Any]] = []
     terminal_associations: list[dict[str, Any]] = []
-    for resource_index, resource in enumerate(resources):
-        target_id = assignments[resource.resource_id]
-        target = targets_by_id[target_id]
-        vehicle_name = str(resource.metadata.get("airsim_vehicle_name") or resource.resource_id)
-        actor_name = str(target.metadata.get("airsim_actor_name") or target.object_id)
-        assignment_id = f"{resource.resource_id}:{target_id}:v{plan_version}"
+    for resource_index, resource_id in enumerate(sorted(assignments)):
+        target_id = assignments[resource_id]
+        base_evidence = evidence_by_resource[resource_id]
+        base_binding = _control_binding_record(base_evidence.get("binding"))
+        vehicle_name = str(base_binding.get("vehicle_name") or resource_id)
+        assignment_id = f"{resource_id}:{target_id}:v{plan_version}"
+        coalition_id = base_binding.get("coalition_id")
+        coalition_version = plan_version if coalition_id else None
         bindings.append(
             {
+                **base_binding,
                 "plan_id": plan_id,
                 "plan_version": plan_version,
                 "assignment_id": assignment_id,
-                "resource_id": resource.resource_id,
+                "resource_id": resource_id,
                 "vehicle_name": vehicle_name,
                 "assigned_global_track_id": target_id,
                 "target_id": target_id,
-                "target_object_id": target_id,
+                "target_object_id": None,
                 "owner_node_id": center_node_id,
                 "source_node_id": center_node_id,
                 "track_version": plan_version,
+                "current_plan_id": plan_id,
+                "current_plan_version": plan_version,
+                "expected_current_plan_id": plan_id,
+                "expected_current_plan_version": plan_version,
+                "version": plan_version,
+                "coalition_version": coalition_version,
+                "activation_plan_version": plan_version,
+                "activation_track_version": plan_version,
+                "activation_coalition_version": coalition_version,
                 "authorization_state": "recorded",
                 "assignment_validity_state": "current",
                 "created_at_s": frame.timestamp,
-                "target_actor_name": actor_name,
-                "target_mesh_aliases": (actor_name, target_id),
+                "target_actor_name": None,
+                "target_mesh_aliases": (),
+                "actor_aliases": {},
                 "metadata": {
+                    **dict(base_binding.get("metadata") or {}),
                     "source": "main_active_center_replan_visual_png",
                     "plan_schema": "center_plan_v2"
                     if phase == "center_replan_v2"
@@ -1310,9 +1691,11 @@ def _annotate_active_center_replan_frame(
         )
         permissions.append(
             {
-                "resource_id": resource.resource_id,
+                "resource_id": resource_id,
                 "assigned_global_track_id": target_id,
                 "target_id": target_id,
+                "coalition_id": coalition_id,
+                "coalition_version": coalition_version,
                 "action": d4_action,
                 "mode": "active_degradation" if phase != "center_initial" else "none",
                 "reason": d4_reason,
@@ -1331,7 +1714,7 @@ def _annotate_active_center_replan_frame(
         )
         terminal_associations.append(
             {
-                "resource_id": resource.resource_id,
+                "resource_id": resource_id,
                 "assigned_global_track_id": target_id,
                 "target_id": target_id,
                 "local_track_id": f"{vehicle_name}:0:det:{resource_index + 1:04d}",
@@ -1340,6 +1723,26 @@ def _annotate_active_center_replan_frame(
                 "friend_conflict_state": "none",
                 "decision_state": "locked" if terminal_locked else "ambiguous",
                 "assignment_version": plan_version,
+                "plan_id": plan_id,
+                "plan_version": plan_version,
+                "coalition_id": coalition_id,
+                "coalition_version": coalition_version,
+                "member_role": str(base_binding.get("member_role", "primary")),
+                "required_resource_count": int(
+                    base_binding.get("required_resource_count", 1)
+                ),
+                "coordination_mode": str(
+                    base_binding.get("coordination_mode", "independent")
+                ),
+                "activation_state": str(
+                    base_binding.get("activation_state", "active")
+                ),
+                "terminal_authorization_scope": str(
+                    base_binding.get("terminal_authorization_scope", "per_primary")
+                ),
+                "arrival_coordination_required": bool(
+                    base_binding.get("arrival_coordination_required", False)
+                ),
                 "reason": "center_plan_v2_consistent_visual_lock"
                 if terminal_locked
                 else "awaiting_center_replan",
@@ -1373,28 +1776,18 @@ def _annotate_active_center_replan_frame(
     return replace(frame, metadata=metadata)
 
 
-def _center_replan_assignments(resources: list[Any], truth_targets: list[Any]) -> dict[str, str]:
-    # This center-node active-degradation gate validates plan versioning and
-    # D4/D5/D7 contracts. It intentionally keeps the same resource-target
-    # binding so the current camera can still see the assigned target.
-    return {
-        resource.resource_id: truth_targets[index % len(truth_targets)].object_id
-        for index, resource in enumerate(resources)
-    }
-
-
 def _annotate_active_secondary_visual_png_frame(
     config: BlocksSmokeConfig,
     frame: AirSimFrame,
+    evidence_by_resource: dict[str, dict[str, Any]],
 ) -> AirSimFrame:
     if not _active_secondary_visual_png_enabled(config):
         return frame
-    truth_targets = sorted(
-        (target for target in frame.truth_objects if target.object_type == "target"),
-        key=lambda item: item.object_id,
+    secondary_assignments = _online_assignments_from_control_evidence(
+        evidence_by_resource
     )
-    resources = sorted(frame.resources, key=lambda item: item.resource_id)
-    if len(truth_targets) < 2 or len(resources) < 2:
+    resource_ids = sorted(secondary_assignments)
+    if len(resource_ids) < 2:
         return frame
 
     active_time = float(config.metadata.get("active_degradation_time_s", 1.5))
@@ -1428,45 +1821,53 @@ def _annotate_active_secondary_visual_png_frame(
         d4_terminal_consistent = True
         terminal_locked = True
 
-    center_assignments = {
-        resources[0].resource_id: truth_targets[1].object_id,
-        resources[1].resource_id: truth_targets[0].object_id,
-    }
-    secondary_assignments = {
-        resources[0].resource_id: truth_targets[0].object_id,
-        resources[1].resource_id: truth_targets[1].object_id,
-    }
+    target_ids = [secondary_assignments[resource_id] for resource_id in resource_ids]
+    rotated_target_ids = target_ids[1:] + target_ids[:1]
+    center_assignments = dict(zip(resource_ids, rotated_target_ids, strict=True))
     assignments = secondary_assignments if phase == "secondary_reassignment" else center_assignments
-    targets_by_id = {target.object_id: target for target in truth_targets}
     bindings: list[dict[str, Any]] = []
     permissions: list[dict[str, Any]] = []
     terminal_associations: list[dict[str, Any]] = []
-    for resource_index, resource in enumerate(resources[:2]):
-        target_id = assignments[resource.resource_id]
-        target = targets_by_id[target_id]
-        vehicle_name = str(resource.metadata.get("airsim_vehicle_name") or resource.resource_id)
-        actor_name = str(target.metadata.get("airsim_actor_name") or target.object_id)
-        assignment_id = f"{resource.resource_id}:{target_id}:v{plan_version}"
+    for resource_index, resource_id in enumerate(resource_ids):
+        target_id = assignments[resource_id]
+        base_evidence = evidence_by_resource[resource_id]
+        base_binding = _control_binding_record(base_evidence.get("binding"))
+        vehicle_name = str(base_binding.get("vehicle_name") or resource_id)
+        assignment_id = f"{resource_id}:{target_id}:v{plan_version}"
         owner_node_id = secondary_node_id if phase == "secondary_reassignment" else "C2"
+        coalition_id = base_binding.get("coalition_id")
+        coalition_version = plan_version if coalition_id else None
         bindings.append(
             {
+                **base_binding,
                 "plan_id": plan_id,
                 "plan_version": plan_version,
                 "assignment_id": assignment_id,
-                "resource_id": resource.resource_id,
+                "resource_id": resource_id,
                 "vehicle_name": vehicle_name,
                 "assigned_global_track_id": target_id,
                 "target_id": target_id,
-                "target_object_id": target_id,
+                "target_object_id": None,
                 "owner_node_id": owner_node_id,
                 "source_node_id": owner_node_id,
                 "track_version": plan_version,
+                "current_plan_id": plan_id,
+                "current_plan_version": plan_version,
+                "expected_current_plan_id": plan_id,
+                "expected_current_plan_version": plan_version,
+                "version": plan_version,
+                "coalition_version": coalition_version,
+                "activation_plan_version": plan_version,
+                "activation_track_version": plan_version,
+                "activation_coalition_version": coalition_version,
                 "authorization_state": "recorded",
                 "assignment_validity_state": "current",
                 "created_at_s": frame.timestamp,
-                "target_actor_name": actor_name,
-                "target_mesh_aliases": (actor_name, target_id),
+                "target_actor_name": None,
+                "target_mesh_aliases": (),
+                "actor_aliases": {},
                 "metadata": {
+                    **dict(base_binding.get("metadata") or {}),
                     "source": "main_active_secondary_visual_png",
                     "plan_schema": "secondary_plan_v2"
                     if phase == "secondary_reassignment"
@@ -1479,9 +1880,11 @@ def _annotate_active_secondary_visual_png_frame(
         )
         permissions.append(
             {
-                "resource_id": resource.resource_id,
+                "resource_id": resource_id,
                 "assigned_global_track_id": target_id,
                 "target_id": target_id,
+                "coalition_id": coalition_id,
+                "coalition_version": coalition_version,
                 "action": d4_action,
                 "mode": d4_mode,
                 "reason": d4_reason,
@@ -1504,7 +1907,7 @@ def _annotate_active_secondary_visual_png_frame(
         )
         terminal_associations.append(
             {
-                "resource_id": resource.resource_id,
+                "resource_id": resource_id,
                 "assigned_global_track_id": target_id,
                 "target_id": target_id,
                 "local_track_id": f"{vehicle_name}:0:det:{resource_index + 1:04d}",
@@ -1513,6 +1916,26 @@ def _annotate_active_secondary_visual_png_frame(
                 "friend_conflict_state": "none",
                 "decision_state": "locked" if terminal_locked else "ambiguous",
                 "assignment_version": plan_version,
+                "plan_id": plan_id,
+                "plan_version": plan_version,
+                "coalition_id": coalition_id,
+                "coalition_version": coalition_version,
+                "member_role": str(base_binding.get("member_role", "primary")),
+                "required_resource_count": int(
+                    base_binding.get("required_resource_count", 1)
+                ),
+                "coordination_mode": str(
+                    base_binding.get("coordination_mode", "independent")
+                ),
+                "activation_state": str(
+                    base_binding.get("activation_state", "active")
+                ),
+                "terminal_authorization_scope": str(
+                    base_binding.get("terminal_authorization_scope", "per_primary")
+                ),
+                "arrival_coordination_required": bool(
+                    base_binding.get("arrival_coordination_required", False)
+                ),
                 "reason": "secondary_plan_consistent_visual_lock"
                 if terminal_locked
                 else "awaiting_secondary_reassignment",
@@ -1544,6 +1967,133 @@ def _annotate_active_secondary_visual_png_frame(
         "terminal_associations": terminal_associations,
     }
     return replace(frame, metadata=metadata)
+
+
+def _online_assignments_from_control_evidence(
+    evidence_by_resource: dict[str, dict[str, Any]],
+) -> dict[str, str]:
+    assignments: dict[str, str] = {}
+    for resource_id, evidence in sorted(evidence_by_resource.items()):
+        binding = evidence.get("binding")
+        target_id = (
+            _optional_record_string(binding, "assigned_global_track_id")
+            or _optional_record_string(binding, "target_id")
+            or _optional_record_string(binding, "global_track_id")
+        )
+        if binding is None or target_id is None:
+            continue
+        assignments[str(resource_id)] = str(target_id)
+    return assignments
+
+
+def _control_binding_record(binding: Any | None) -> dict[str, Any]:
+    if binding is None:
+        return {}
+    if isinstance(binding, dict):
+        return dict(binding)
+    if hasattr(binding, "to_assignment_metadata"):
+        return dict(binding.to_assignment_metadata())
+    if hasattr(binding, "__dataclass_fields__"):
+        return asdict(binding)
+    return dict(vars(binding)) if hasattr(binding, "__dict__") else {}
+
+
+def _apply_frame_control_contract_overrides(
+    evidence_by_resource: dict[str, dict[str, Any]],
+    frame: AirSimFrame,
+) -> dict[str, dict[str, Any]]:
+    """Overlay testable D3-D5 contract transitions without adding target truth."""
+
+    binding_records = frame.metadata.get("assignment_guidance_bindings")
+    if not binding_records:
+        return evidence_by_resource
+    estimates_by_track: dict[str, Any] = {}
+    for evidence in evidence_by_resource.values():
+        estimate = evidence.get("target_estimate")
+        track_id = _optional_record_string(estimate, "global_track_id")
+        if estimate is None or track_id is None:
+            continue
+        estimates_by_track[str(track_id)] = estimate
+        normalized = _normalize_track_id(track_id)
+        if normalized is not None:
+            estimates_by_track[str(normalized)] = estimate
+            estimates_by_track[f"G-{normalized}"] = estimate
+
+    output: dict[str, dict[str, Any]] = {}
+    for resource_id, base_evidence in sorted(evidence_by_resource.items()):
+        binding = _matching_metadata_record(
+            binding_records,
+            resource_id=str(resource_id),
+            target_id="",
+        )
+        if binding is None:
+            output[str(resource_id)] = dict(base_evidence)
+            continue
+        target_id = (
+            _optional_record_string(binding, "assigned_global_track_id")
+            or _optional_record_string(binding, "target_id")
+            or _optional_record_string(binding, "global_track_id")
+        )
+        target_estimate = None if target_id is None else estimates_by_track.get(target_id)
+        d4_record = _matching_metadata_record(
+            frame.metadata.get("d4_guidance_permissions"),
+            resource_id=str(resource_id),
+            target_id=str(target_id or ""),
+        )
+        terminal_record = _matching_metadata_record(
+            frame.metadata.get("terminal_associations"),
+            resource_id=str(resource_id),
+            target_id=str(target_id or ""),
+        )
+        control_state_valid = bool(
+            target_estimate is not None
+            and _record_value(target_estimate, "control_state_valid", False)
+        )
+        output[str(resource_id)] = {
+            **dict(base_evidence),
+            "binding": binding,
+            "d4_permission": _override_d4_permission(
+                base_evidence.get("d4_permission"),
+                d4_record,
+            ),
+            "terminal_association": terminal_record,
+            "target_estimate": target_estimate,
+            "control_state_valid": control_state_valid,
+            "control_state_reject_reason": (
+                "target_estimate_missing_for_reassigned_track"
+                if target_estimate is None
+                else str(_record_value(target_estimate, "reject_reason", ""))
+            ),
+            "online_truth_id_used": False,
+            "online_truth_state_used": False,
+        }
+    return output
+
+
+def _override_d4_permission(
+    base_permission: D4GuidancePermission | None,
+    record: Any | None,
+) -> D4GuidancePermission | None:
+    if record is None:
+        return base_permission
+    metadata = dict(_record_value(record, "metadata", {}) or {})
+    return D4GuidancePermission(
+        action=str(_record_value(record, "action", "continue_center")),
+        mode=str(_record_value(record, "mode", "none")),
+        reason=str(_record_value(record, "reason", "")),
+        target_node_id=_optional_record_string(record, "target_node_id"),
+        terminal_consistent=bool(
+            _record_value(record, "terminal_consistent", True)
+        ),
+        requires_human_review=bool(
+            _record_value(record, "requires_human_review", False)
+        ),
+        new_plan_id=_optional_record_string(record, "new_plan_id"),
+        new_plan_version=_optional_record_int(record, "new_plan_version"),
+        coalition_id=_optional_record_string(record, "coalition_id"),
+        coalition_version=_optional_record_int(record, "coalition_version"),
+        metadata=metadata,
+    )
 
 
 def _active_secondary_visual_png_enabled(config: BlocksSmokeConfig) -> bool:
@@ -1689,6 +2239,54 @@ def _is_assigned_target_collision(collision: dict[str, Any], target: Any) -> boo
     return bool(object_name and str(target.object_id) in object_name)
 
 
+def _initial_collision_event_state(
+    runtime: Any,
+    vehicle_names: tuple[str, ...],
+) -> dict[str, tuple[bool, int]]:
+    """Snapshot latched AirSim collisions after takeoff and before control."""
+
+    return {
+        str(vehicle_name): _collision_sample(runtime.collision_info(vehicle_name))
+        for vehicle_name in vehicle_names
+    }
+
+
+def _consume_new_collision_event(
+    collision: dict[str, Any],
+    event_state: dict[str, tuple[bool, int]],
+    vehicle_name: str,
+) -> bool:
+    """Return true only for a collision newer than the control-start snapshot."""
+
+    key = str(vehicle_name)
+    current = _collision_sample(collision)
+    previous = event_state.get(key, (False, 0))
+    event_state[key] = current
+    current_has_collided, current_time_stamp = current
+    previous_has_collided, previous_time_stamp = previous
+    return bool(
+        current_has_collided
+        and (
+            not previous_has_collided
+            or current_time_stamp > previous_time_stamp
+        )
+    )
+
+
+def _collision_sample(collision: dict[str, Any]) -> tuple[bool, int]:
+    return (
+        bool(collision.get("has_collided", False)),
+        _collision_time_stamp(collision),
+    )
+
+
+def _collision_time_stamp(collision: dict[str, Any]) -> int:
+    try:
+        return int(collision.get("time_stamp", 0) or 0)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
 def _abort_pair(runtime: Any, pair: InterceptPair, reason: str) -> None:
     pair.status = "aborted"
     pair.abort_reason = reason
@@ -1713,11 +2311,18 @@ def _terminal_detection_acquisition_timed_out(
 ) -> bool:
     if detection_seen or not in_terminal_range or pair.terminal_locked:
         pair.terminal_acquisition_started_s = None
+        pair.terminal_acquisition_timeout_active = False
+        pair.terminal_acquisition_timeout_action = ""
         return False
     if pair.terminal_acquisition_started_s is None:
         pair.terminal_acquisition_started_s = float(timestamp_s)
         return False
-    return float(timestamp_s) - pair.terminal_acquisition_started_s > float(timeout_s)
+    if float(timestamp_s) - pair.terminal_acquisition_started_s <= float(timeout_s):
+        return False
+    if pair.terminal_acquisition_timeout_active:
+        return False
+    pair.terminal_acquisition_timeout_active = True
+    return True
 
 
 def _apply_intercept_detection_dropout(
@@ -1762,10 +2367,38 @@ def _record_command(
 ) -> None:
     collision_seen = _recorded_collision_seen(collision)
     command_mode = _command_mode(pn_command, pair)
-    mode_switched = bool(
-        pair.last_recorded_mode is not None and pair.last_recorded_mode != command_mode
+    termination_snapshot = not pair.active
+    raw_terminal_gate_allowed = bool(
+        _command_metadata(
+            pn_command,
+            "raw_terminal_gate_allowed",
+            _command_metadata(pn_command, "terminal_contract_allowed", False),
+        )
     )
-    pair.last_recorded_mode = command_mode
+    effective_terminal_contract_allowed = bool(
+        _command_metadata(pn_command, "terminal_contract_allowed", False)
+    )
+    effective_control_authorized = bool(
+        effective_terminal_contract_allowed
+        and command_mode == GuidanceMode.VISION_TERMINAL.value
+    )
+    prior_latched = bool(pair.terminal_locked)
+    prior_contract = bool(pair.last_effective_terminal_contract_allowed)
+    prior_control = bool(pair.last_effective_control_authorized)
+    if termination_snapshot:
+        effective_terminal_contract_allowed = False
+        effective_control_authorized = False
+    mode_switched = bool(
+        not termination_snapshot
+        and effective_control_authorized
+        and not pair.last_effective_control_authorized
+    )
+    if not termination_snapshot:
+        pair.last_recorded_mode = command_mode
+        pair.last_effective_terminal_contract_allowed = (
+            effective_terminal_contract_allowed
+        )
+        pair.last_effective_control_authorized = effective_control_authorized
     command_records.append(
         InterceptCommandRecord(
             timestamp_s=float(timestamp),
@@ -1796,21 +2429,87 @@ def _record_command(
                     pair.terminal_contract_reject_reason,
                 )
             ),
-            terminal_contract_allowed=bool(
-                _command_metadata(pn_command, "terminal_contract_allowed", False)
+            terminal_contract_allowed=effective_terminal_contract_allowed,
+            terminal_control_allowed=effective_control_authorized,
+            terminal_semantics_version="d7_terminal_semantics_v2",
+            raw_terminal_gate_allowed=(
+                False if termination_snapshot else raw_terminal_gate_allowed
             ),
-            terminal_control_allowed=bool(
-                _command_metadata(pn_command, "terminal_switch_allowed", False)
+            latched_visual_mode_active=(
+                False if termination_snapshot else bool(pair.terminal_locked)
+            ),
+            effective_terminal_contract_allowed=(
+                effective_terminal_contract_allowed
+            ),
+            effective_control_authorized=effective_control_authorized,
+            termination_snapshot=termination_snapshot,
+            termination_status=pair.status if termination_snapshot else "",
+            termination_reason=(
+                str(pair.abort_reason or pair.control_stop_reason or pair.status)
+                if termination_snapshot
+                else ""
+            ),
+            termination_prior_latched_visual_mode_active=(
+                prior_latched if termination_snapshot else False
+            ),
+            termination_prior_effective_terminal_contract_allowed=(
+                prior_contract if termination_snapshot else False
+            ),
+            termination_prior_effective_control_authorized=(
+                prior_control if termination_snapshot else False
             ),
             mode_switched=mode_switched,
-            physical_intercept=pair.status in {"collision_intercept", "range_intercept"},
+            physical_intercept=bool(pair.physical_success),
             detection_seen=bool(detection_seen),
-            guidance_law=str(_command_metadata(pn_command, "guidance_law", "radar_pn" if not pair.terminal_locked else "los")),
+            guidance_law=str(
+                _command_metadata(
+                    pn_command,
+                    "guidance_law",
+                    "none"
+                    if termination_snapshot
+                    else "radar_pn"
+                    if not pair.terminal_locked
+                    else "los",
+                )
+            ),
+            configured_guidance_law=str(
+                _command_metadata(pn_command, "configured_guidance_law", "") or ""
+            ),
+            candidate_guidance_law=str(
+                _command_metadata(pn_command, "candidate_guidance_law", "") or ""
+            ),
+            executed_guidance_law=str(
+                _command_metadata(
+                    pn_command,
+                    "guidance_law",
+                    "none"
+                    if termination_snapshot
+                    else "radar_pn"
+                    if not pair.terminal_locked
+                    else "los",
+                )
+            ),
+            terminal_acquisition_timed_out=bool(
+                pair.terminal_acquisition_timeout_active
+            ),
+            terminal_acquisition_timeout_action=str(
+                pair.terminal_acquisition_timeout_action
+            ),
             camera_quality_gate_passed=bool(_command_metadata(pn_command, "camera_quality_gate_passed", False)),
             los_quality_gate_passed=bool(_command_metadata(pn_command, "los_quality_gate_passed", False)),
             maneuver_margin_gate_passed=bool(_command_metadata(pn_command, "maneuver_margin_gate_passed", False)),
-            terminal_switch_allowed=bool(_command_metadata(pn_command, "terminal_switch_allowed", pair.terminal_locked)),
-            terminal_switch_reject_reason=str(_command_metadata(pn_command, "terminal_switch_reject_reason", pair.terminal_switch_reject_reason)),
+            terminal_switch_allowed=effective_control_authorized,
+            terminal_switch_reject_reason=str(
+                _command_metadata(
+                    pn_command,
+                    "terminal_switch_reject_reason",
+                    (
+                        f"termination_snapshot:{pair.status}"
+                        if termination_snapshot
+                        else pair.terminal_switch_reject_reason
+                    ),
+                )
+            ),
             terminal_delivery_state=str(
                 _command_metadata(
                     pn_command,
@@ -1908,6 +2607,44 @@ def _record_command(
                     pair.online_truth_id_used,
                 )
             ),
+            truth_state_online_use=bool(
+                _command_metadata(
+                    pn_command,
+                    "online_truth_state_used",
+                    pair.online_truth_state_used,
+                )
+            ),
+            target_state_source=(
+                ""
+                if pair.target_estimate is None and not pair.online_truth_state_used
+                else "airsim_actor_truth_fixture"
+                if pair.online_truth_state_used
+                else str(pair.target_estimate.source)
+            ),
+            target_state_valid_at_s=(
+                None
+                if pair.target_estimate is None
+                else float(pair.target_estimate.state_valid_at_s)
+            ),
+            target_measurement_timestamp_s=(
+                None
+                if pair.target_estimate is None
+                else float(pair.target_estimate.measurement_timestamp_s)
+            ),
+            target_arrival_timestamp_s=(
+                None
+                if pair.target_estimate is None
+                else float(pair.target_estimate.arrival_timestamp_s)
+            ),
+            target_measurement_age_s=(
+                None
+                if pair.target_estimate is None
+                else float(pair.target_estimate.measurement_age_s)
+            ),
+            target_state_stale=bool(
+                pair.target_estimate is not None
+                and not pair.target_estimate.control_state_valid
+            ),
             bbox_area_ratio=float(_command_metadata(pn_command, "bbox_area_ratio", 0.0) or 0.0),
             los_rate_variance_radps2=float(_command_metadata(pn_command, "los_rate_variance_radps2", 0.0) or 0.0),
             ttc_s=_optional_float(_command_metadata(pn_command, "ttc_s", None)),
@@ -2000,12 +2737,97 @@ def _control_timestamps(config: BlocksSmokeConfig) -> list[float]:
     return [round(index * config.control_dt_s, 6) for index in range(step_count + 1)]
 
 
+def _score_physical_intercepts_offline(
+    *,
+    frames: list[AirSimFrame],
+    pairs: list[InterceptPair],
+    truth_binding_history: dict[float, dict[str, str]],
+    radius_m: float,
+) -> None:
+    """Score physical distance after control without feeding truth back online."""
+
+    for pair in pairs:
+        global_track_id = str(pair.assigned_global_track_id or pair.target_id)
+        minimum_range = float("inf")
+        intercept_time: float | None = None
+        truth_target_id: str | None = None
+        evidence_count = 0
+        for frame in frames:
+            binding_map = truth_binding_history.get(float(frame.timestamp), {})
+            mapped_truth_id = binding_map.get(global_track_id)
+            if mapped_truth_id is None:
+                continue
+            resource = next(
+                (
+                    item
+                    for item in frame.resources
+                    if str(item.resource_id) == str(pair.resource_id)
+                ),
+                None,
+            )
+            target = next(
+                (
+                    item
+                    for item in frame.truth_objects
+                    if item.object_type == "target"
+                    and str(item.object_id) == str(mapped_truth_id)
+                ),
+                None,
+            )
+            if resource is None or target is None:
+                continue
+            evidence_count += 1
+            distance = float(
+                np.linalg.norm(
+                    np.asarray(target.position_ned, dtype=float)
+                    - np.asarray(resource.position_ned, dtype=float)
+                )
+            )
+            if distance < minimum_range:
+                minimum_range = distance
+                truth_target_id = str(mapped_truth_id)
+            if intercept_time is None and distance <= float(radius_m):
+                intercept_time = float(frame.timestamp)
+        pair.physical_evidence_available = evidence_count > 0
+        pair.physical_min_range_m = minimum_range
+        pair.physical_success = intercept_time is not None
+        pair.physical_intercept_time_s = intercept_time
+        pair.physical_truth_target_id = truth_target_id
+        pair.time_to_intercept_s = intercept_time
+
+
+def _sync_offline_physical_results_to_command_records(
+    pairs: list[InterceptPair],
+    command_records: list[InterceptCommandRecord],
+) -> None:
+    """Mark one final command row for each offline-confirmed successful pair."""
+
+    for record in command_records:
+        record.physical_intercept = False
+    for pair in pairs:
+        if pair.activation_state != "active" or not pair.physical_success:
+            continue
+        target_ids = {
+            str(pair.target_id),
+            str(pair.assigned_global_track_id or pair.target_id),
+        }
+        candidates = [
+            record
+            for record in command_records
+            if record.resource_id == pair.resource_id
+            and record.target_id in target_ids
+        ]
+        if candidates:
+            candidates[-1].physical_intercept = True
+
+
 def _write_intercept_outputs(
     config: BlocksSmokeConfig,
     output_dir: Path,
     frames: list[AirSimFrame],
     pairs: list[InterceptPair],
     command_records: list[InterceptCommandRecord],
+    control_tick_timings: list[dict[str, Any]],
 ) -> dict[str, Path]:
     paths: dict[str, Path] = {}
     commands_path = output_dir / "control_commands.csv"
@@ -2016,13 +2838,46 @@ def _write_intercept_outputs(
             writer.writerow(asdict(record))
     paths["control_commands"] = commands_path
 
+    control_tick_timings_path = write_stage_timings_jsonl(
+        output_dir / "control_tick_timings.jsonl",
+        control_tick_timings,
+    )
+    paths["control_tick_timings"] = control_tick_timings_path
+    control_tick_timing_summary = summarize_stage_timings(control_tick_timings)
+
     success_semantics = _intercept_success_semantics(config, pairs)
+    physical_evidence_available = bool(pairs) and all(
+        pair.physical_evidence_available
+        for pair in pairs
+        if pair.activation_state == "active"
+    )
+    truth_state_fixture_used = any(pair.online_truth_state_used for pair in pairs)
+    criteria_version = (
+        "airsim-range-intercept-v2"
+        if truth_state_fixture_used
+        else "airsim-offline-range-intercept-v3"
+    )
     summary = {
         "control_api_used": True,
         "runtime_mode": "SimpleFlight",
-        "physical_intercept_available": True,
-        "physical_intercept_unavailable_reason": "",
-        "success_count": sum(1 for pair in pairs if pair.status in {"collision_intercept", "range_intercept"}),
+        "physical_intercept_available": physical_evidence_available,
+        "physical_intercept_unavailable_reason": (
+            "" if physical_evidence_available else "offline_truth_pairing_unavailable"
+        ),
+        "physical_intercept_source": (
+            "online_truth_state_fixture"
+            if truth_state_fixture_used
+            else "offline_truth_distance_scorer"
+        ),
+        "online_control_state_source": (
+            "airsim_actor_truth_fixture"
+            if truth_state_fixture_used
+            else "d2_estimated_global_track"
+        ),
+        "truth_state_online_use_count": sum(
+            bool(pair.online_truth_state_used) for pair in pairs
+        ),
+        "success_count": sum(1 for pair in pairs if pair.physical_success),
         "pair_count": len(pairs),
         "success_semantics": success_semantics,
         **{
@@ -2038,10 +2893,13 @@ def _write_intercept_outputs(
             "intercept_radius_m": config.intercept_radius_m,
             "intercept_distance_frame": "NED",
             "intercept_distance_dimension": "3d_euclidean",
-            "intercept_success_criteria_version": "airsim-range-intercept-v2",
+            "intercept_success_criteria_version": criteria_version,
             "intercept_max_duration_s": config.intercept_max_duration_s,
             "terminal_switch_range_m": config.intercept_terminal_switch_range_m,
             "detection_timeout_s": config.intercept_detection_timeout_s,
+            "abort_on_terminal_acquisition_timeout": (
+                config.intercept_abort_on_terminal_acquisition_timeout
+            ),
             "detection_dropout_start_s": config.intercept_detection_dropout_start_s,
             "detection_dropout_end_s": config.intercept_detection_dropout_end_s,
             "terminal_delivery_profile": _terminal_delivery_profile(config),
@@ -2056,7 +2914,10 @@ def _write_intercept_outputs(
             "cooperative_demand_enabled": config.cooperative_demand_enabled,
             "cooperative_coordination_mode": config.cooperative_coordination_mode,
             "cooperative_primary_count": config.cooperative_primary_count,
+            "terminal_authorization_scope": config.terminal_authorization_scope,
+            "arrival_coordination_required": config.arrival_coordination_required,
         },
+        "control_tick_timing": control_tick_timing_summary,
         "pairs": [_pair_summary(pair) for pair in pairs],
         "record_count": len(command_records),
     }
@@ -2069,6 +2930,10 @@ def _write_intercept_outputs(
         pair["required_primary_count"] = required_primary_counts.get(str(pair["target_id"]))
         if pair["min_range_m"] == float("inf"):
             pair["min_range_m"] = None
+        if pair["estimated_min_range_m"] == float("inf"):
+            pair["estimated_min_range_m"] = None
+        if pair["physical_min_range_m"] == float("inf"):
+            pair["physical_min_range_m"] = None
     summary_path = output_dir / "intercept_summary.json"
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     paths["intercept_summary"] = summary_path
@@ -2108,9 +2973,8 @@ def _intercept_success_semantics(
     config: BlocksSmokeConfig,
     pairs: list[InterceptPair],
 ) -> dict[str, Any]:
-    success_statuses = {"collision_intercept", "range_intercept"}
     participating = [pair for pair in pairs if pair.activation_state == "active"]
-    successful = [pair for pair in participating if pair.status in success_statuses]
+    successful = [pair for pair in participating if pair.physical_success]
     target_ids = sorted({pair.target_id for pair in participating})
     successful_target_ids = sorted({pair.target_id for pair in successful})
     coalition_target_ids = sorted(
@@ -2133,12 +2997,15 @@ def _intercept_success_semantics(
             for pair in participating
             if pair.target_id == target_id and pair.member_role == "primary"
         ]
-        if required_primaries and all(
-            pair.status in success_statuses for pair in required_primaries
-        ):
+        if required_primaries and all(pair.physical_success for pair in required_primaries):
             completed_coalition_target_ids.append(target_id)
+    truth_state_fixture_used = any(pair.online_truth_state_used for pair in pairs)
     return {
-        "criteria_version": "airsim-range-intercept-v2",
+        "criteria_version": (
+            "airsim-range-intercept-v2"
+            if truth_state_fixture_used
+            else "airsim-offline-range-intercept-v3"
+        ),
         "distance_frame": "NED",
         "distance_dimension": "3d_euclidean",
         "range_threshold_m": float(config.intercept_radius_m),
@@ -2238,7 +3105,7 @@ def _center_replan_events(
 
 def _pair_summary(pair: InterceptPair) -> dict[str, Any]:
     binding = pair.guidance_binding
-    physical_success = pair.status in {"collision_intercept", "range_intercept"}
+    physical_success = bool(pair.physical_success)
     return {
         "resource_id": pair.resource_id,
         "vehicle_name": pair.vehicle_name,
@@ -2249,8 +3116,17 @@ def _pair_summary(pair: InterceptPair) -> dict[str, Any]:
         "status": pair.status,
         "abort_reason": pair.abort_reason,
         "min_range_m": pair.min_range_m,
+        "estimated_min_range_m": pair.min_range_m,
+        "physical_min_range_m": pair.physical_min_range_m,
+        "physical_evidence_available": pair.physical_evidence_available,
+        "physical_truth_target_id": pair.physical_truth_target_id,
+        "physical_intercept_time_s": pair.physical_intercept_time_s,
+        "control_stop_reason": pair.control_stop_reason,
+        "control_stop_time_s": pair.control_stop_time_s,
         "time_to_intercept_s": pair.time_to_intercept_s,
         "last_detection_s": pair.last_detection_s,
+        "terminal_acquisition_timeout_count": pair.terminal_acquisition_timeout_count,
+        "terminal_acquisition_timeout_action": pair.terminal_acquisition_timeout_action,
         "terminal_locked": pair.terminal_locked,
         "terminal_handover_pending": pair.terminal_handover_pending,
         "terminal_switch_reject_reason": pair.terminal_switch_reject_reason,
@@ -2289,9 +3165,23 @@ def _pair_summary(pair: InterceptPair) -> dict[str, Any]:
         "arrival_window": None
         if binding is None
         else [binding.arrival_window_start_s, binding.arrival_window_end_s],
+        "terminal_authorization_scope": (
+            None if binding is None else binding.terminal_authorization_scope
+        ),
+        "arrival_coordination_required": (
+            None if binding is None else binding.arrival_coordination_required
+        ),
         "arrival_timestamp_s": pair.time_to_intercept_s,
         "physical_success": physical_success,
         "online_truth_id_used": pair.online_truth_id_used,
+        "online_truth_state_used": pair.online_truth_state_used,
+        "target_state_source": (
+            "airsim_actor_truth_fixture"
+            if pair.online_truth_state_used
+            else None
+            if pair.target_estimate is None
+            else pair.target_estimate.source
+        ),
         "terminal_delivery_state": pair.terminal_delivery_state,
         "terminal_delivery_reason": pair.terminal_delivery_reason,
     }

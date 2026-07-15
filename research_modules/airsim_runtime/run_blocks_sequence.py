@@ -77,8 +77,11 @@ from d6_evaluation_metrics import (
     GuidanceLawComparisonReportGenerator,
     P1SystemEvidenceInputs,
     P1SystemEvidenceReportGenerator,
+    P1AcceptanceInputs,
+    P1AcceptanceReportGenerator,
     ScenarioDefinition,
     ScenarioLibrary,
+    load_d7_intercept_outputs,
     load_main_episode_bus_metrics,
 )
 from d4_distributed_fallback import (
@@ -435,6 +438,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--intercept-speed", type=float, default=6.0)
     parser.add_argument("--intercept-altitude-z", type=float, default=-2.0)
     parser.add_argument(
+        "--intercept-altitude-settle-timeout",
+        type=float,
+        default=45.0,
+        help="Maximum seconds allowed for all interceptors to reach the commanded global NED altitude.",
+    )
+    parser.add_argument(
+        "--intercept-altitude-tolerance",
+        type=float,
+        default=1.0,
+        help="Maximum per-vehicle global NED altitude error before horizontal control starts.",
+    )
+    parser.add_argument(
+        "--intercept-altitude-settle-samples",
+        type=int,
+        default=3,
+        help="Required consecutive in-tolerance altitude samples before horizontal control starts.",
+    )
+    parser.add_argument(
         "--intercept-radius",
         type=float,
         default=5.0,
@@ -443,6 +464,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--intercept-max-duration", type=float, default=8.0)
     parser.add_argument("--intercept-terminal-range", type=float, default=8.0)
     parser.add_argument("--intercept-detection-timeout", type=float, default=1.0)
+    parser.add_argument(
+        "--intercept-abort-on-terminal-acquisition-timeout",
+        action="store_true",
+        help=(
+            "Abort when terminal visual acquisition times out. By default a current "
+            "D2 estimate keeps radar PN active while D5 continues reacquisition."
+        ),
+    )
     parser.add_argument(
         "--intercept-max-turn-rate",
         type=float,
@@ -1323,6 +1352,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
     actor_config.setdefault("metadata", {})
     actor_config["metadata"].update(
         {
+            "sequence_id": args.sequence_id,
             "guidance_law": args.guidance_law,
             "experiment_guidance_law": args.guidance_law,
             "guidance_comparison_group": args.sequence_id,
@@ -1377,10 +1407,16 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         control_dt_s=args.control_dt,
         intercept_speed_mps=args.intercept_speed,
         intercept_altitude_ned_z=args.intercept_altitude_z,
+        intercept_altitude_settle_timeout_s=args.intercept_altitude_settle_timeout,
+        intercept_altitude_tolerance_m=args.intercept_altitude_tolerance,
+        intercept_altitude_settle_samples=args.intercept_altitude_settle_samples,
         intercept_radius_m=args.intercept_radius,
         intercept_max_duration_s=args.intercept_max_duration,
         intercept_terminal_switch_range_m=args.intercept_terminal_range,
         intercept_detection_timeout_s=args.intercept_detection_timeout,
+        intercept_abort_on_terminal_acquisition_timeout=bool(
+            args.intercept_abort_on_terminal_acquisition_timeout
+        ),
         intercept_max_turn_rate_radps=args.intercept_max_turn_rate,
         intercept_max_lateral_accel_mps2=args.intercept_max_lateral_accel,
         intercept_min_maneuver_margin=args.intercept_min_maneuver_margin,
@@ -1843,9 +1879,99 @@ def _run_p1_terminal_closure_sweep(args: argparse.Namespace) -> int:
             rows.append(_terminal_closure_result_row(case, result))
 
     paths = write_terminal_closure_bundle(output_dir, cases, rows)
+    main_stage_timings = _merge_terminal_closure_stage_timings(
+        rows,
+        field="main_stage_timings",
+        output_path=output_dir / "d6_stage_timing" / "main_bus_stage_timings.jsonl",
+    )
+    control_tick_stage_timings = _merge_terminal_closure_stage_timings(
+        rows,
+        field="control_tick_stage_timings",
+        output_path=output_dir / "d6_stage_timing" / "control_tick_stage_timings.jsonl",
+    )
+    d6_suite_paths = P1AcceptanceReportGenerator().write_report_bundle(
+        output_dir / "d6_acceptance_suite",
+        inputs=P1AcceptanceInputs(
+            main_terminal_closure=paths["json"],
+            main_stage_timings=main_stage_timings,
+            control_tick_stage_timings=control_tick_stage_timings,
+        ),
+        title="P1 末端闭环统一验收报告",
+    )
+    for row in rows:
+        case_id = str(row.get("case_id") or "unknown_case")
+        case_summary = {
+            "schema_version": "main-p1-terminal-closure-case-v1",
+            "rows": [row],
+        }
+        d3_history = _existing_path(row.get("d3_plan_history"))
+        d7_execution = _existing_path(row.get("d7_execution_metrics"))
+        P1AcceptanceReportGenerator().write_report_bundle(
+            output_dir / "d6_acceptance_cases" / case_id,
+            inputs=P1AcceptanceInputs(
+                main_terminal_closure=case_summary,
+                d3_plan_history=d3_history,
+                d7_terminal_execution=d7_execution,
+                main_stage_timings=_existing_path(row.get("main_stage_timings")),
+                control_tick_stage_timings=_existing_path(
+                    row.get("control_tick_stage_timings")
+                ),
+            ),
+            title=f"P1 末端闭环单场景验收：{case_id}",
+        )
     print(f"p1_terminal_closure_summary={paths['json'].resolve()}")
     print(f"p1_terminal_closure_report={paths['markdown'].resolve()}")
+    print(f"p1_terminal_closure_d6_report={d6_suite_paths['markdown'].resolve()}")
     return 0
+
+
+def _merge_terminal_closure_stage_timings(
+    rows: list[dict[str, object]],
+    *,
+    field: str,
+    output_path: Path,
+) -> Path | None:
+    """Merge one timing layer only when every case registered valid records."""
+
+    output_path.unlink(missing_ok=True)
+    merged: list[dict[str, object]] = []
+    if not rows:
+        return None
+    for row in rows:
+        raw_path = row.get(field)
+        if raw_path in {None, ""}:
+            return None
+        path = Path(str(raw_path))
+        if not path.exists():
+            return None
+        case_records: list[dict[str, object]] = []
+        with path.open(encoding="utf-8") as stream:
+            for line in stream:
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    return None
+                if not isinstance(record, dict):
+                    return None
+                case_records.append(
+                    {
+                        **record,
+                        "case_id": row.get("case_id"),
+                        "family": row.get("family"),
+                        "profile": row.get("profile"),
+                        "seed": row.get("seed"),
+                    }
+                )
+        if not case_records:
+            return None
+        merged.extend(case_records)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as stream:
+        for record in merged:
+            stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+    return output_path
 
 
 def _build_terminal_closure_run(
@@ -1901,16 +2027,96 @@ def _terminal_closure_result_row(
     episode = _controlled_episode_from_result(result)
     summary_path = None if episode is None else episode.output_paths.get("intercept_summary")
     commands_path = None if episode is None else episode.output_paths.get("control_commands")
+    main_metrics_path = (
+        None
+        if episode is None
+        else episode.output_paths.get("main_episode_bus_metrics_json")
+    )
+    d3_history_path = (
+        None if episode is None else episode.output_paths.get("d3_plan_history_json")
+    )
+    d7_execution_path = (
+        None if episode is None else episode.output_paths.get("d7_execution_metrics")
+    )
+    d7_actual_execution_path = (
+        None
+        if episode is None
+        else episode.output_paths.get("d7_actual_execution_metrics")
+    )
+    d7_actual_unavailable_path = (
+        None
+        if episode is None
+        else episode.output_paths.get("d7_actual_execution_unavailable")
+    )
+    main_stage_timings_path = (
+        None
+        if episode is None
+        else episode.output_paths.get("main_stage_timings_jsonl")
+    )
+    control_tick_stage_timings_path = (
+        None
+        if episode is None
+        else episode.output_paths.get("control_tick_timings")
+    )
+    d7_actual_unavailable = _read_json_mapping(d7_actual_unavailable_path)
+    d7_actual_status = (
+        "available"
+        if d7_actual_execution_path is not None
+        and Path(d7_actual_execution_path).exists()
+        else "unavailable"
+    )
     summary: dict[str, object] = {}
     if summary_path is not None and Path(summary_path).exists():
         summary = json.loads(Path(summary_path).read_text(encoding="utf-8"))
     pairs = [pair for pair in summary.get("pairs", []) or [] if isinstance(pair, dict)]
     command_counts = _terminal_closure_command_counts(commands_path)
+    main_metrics_payload = _read_json_mapping(main_metrics_path)
+    main_metrics = dict(main_metrics_payload.get("metrics", {}) or {})
+    main_metrics_metadata = dict(main_metrics_payload.get("metadata", {}) or {})
+    record_counts = dict(main_metrics_metadata.get("record_counts", {}) or {})
+    d6_metrics = load_d7_intercept_outputs(
+        control_commands_path=commands_path,
+        intercept_summary_path=summary_path,
+    ).compute_episode(
+        f"{case.case_id}_truth_isolated_execution",
+        seed=case.seed,
+        duration=case.duration_s,
+    ).to_dict()
+    d6_metadata = dict(d6_metrics.get("metadata", {}) or {})
     command_counts["online_truth_use_count"] = max(
         int(command_counts["online_truth_use_count"]),
-        sum(bool(pair.get("online_truth_id_used")) for pair in pairs),
+        int(d6_metrics.get("truth_identity_online_use_count") or 0),
     )
+    pair_opportunity_count = d6_metadata.get("pair_physical_opportunity_count")
+    target_opportunity_count = d6_metadata.get("target_intercept_opportunity_count")
+    coalition_opportunity_count = d6_metadata.get("coalition_opportunity_count")
+    live_command_count = int(command_counts.get("live_command_count") or 0)
+    terminal_metric_envelopes = {
+        name: {
+            "metric_name": name,
+            "value": command_counts.get(name),
+            "producer": "d7_simpleflight_execution",
+            "metric_scope": "pair_control_sample",
+            "denominator": live_command_count,
+            "lifecycle": "live_non_termination",
+        }
+        for name in (
+            "contract_allowed_count",
+            "control_allowed_count",
+            "terminal_switch_allowed_count",
+            "mode_switched_count",
+        )
+    }
+    terminal_metric_envelopes["physical_intercept_count"] = {
+        "metric_name": "physical_intercept_count",
+        "value": d6_metrics.get("physical_intercept_count"),
+        "producer": "offline_truth_distance_scorer",
+        "metric_scope": "assigned_active_pair_outcome",
+        "denominator": pair_opportunity_count,
+        "lifecycle": "episode_final",
+    }
     return {
+        "schema_version": "main-p1-terminal-closure-row-v3",
         "case_id": case.case_id,
         "family": case.family,
         "profile": case.profile,
@@ -1921,13 +2127,35 @@ def _terminal_closure_result_row(
         "guidance_law": case.guidance_law,
         "dropout_frames": case.dropout_frames,
         "connected": bool(getattr(result, "connected", False)),
-        "pair_opportunity_count": summary.get("pair_physical_opportunity_count"),
-        "pair_success_count": summary.get("pair_physical_success_count"),
-        "target_opportunity_count": summary.get("target_intercept_opportunity_count"),
-        "target_success_count": summary.get("target_intercept_success_count"),
-        "coalition_opportunity_count": summary.get("coalition_opportunity_count"),
-        "coalition_completion_count": summary.get("coalition_completion_count"),
-        "physical_intercept_count": summary.get("pair_physical_success_count"),
+        "pair_opportunity_count": pair_opportunity_count,
+        "pair_success_count": d6_metrics.get("pair_physical_success_count"),
+        "target_opportunity_count": target_opportunity_count,
+        "target_success_count": d6_metrics.get("target_intercept_success_count"),
+        "coalition_opportunity_count": coalition_opportunity_count,
+        "coalition_completion_count": d6_metrics.get("coalition_completion_count"),
+        "physical_intercept_count": d6_metrics.get("physical_intercept_count"),
+        "truth_identity_online_use_count": d6_metrics.get(
+            "truth_identity_online_use_count"
+        ),
+        "truth_state_online_use_count": d6_metrics.get(
+            "truth_state_online_use_count"
+        ),
+        "online_control_state_source": d6_metadata.get(
+            "online_control_state_source"
+        ),
+        "physical_intercept_source": d6_metadata.get("physical_intercept_source"),
+        "physical_metrics_available": bool(
+            d6_metadata.get("physical_intercept_evidence_available")
+        ),
+        "physical_metrics_unavailable_reason": d6_metadata.get(
+            "physical_intercept_unavailable_reason"
+        ),
+        "coalition_completion_availability": d6_metadata.get(
+            "coalition_completion_availability"
+        ),
+        "coalition_completion_unavailable_reason": d6_metadata.get(
+            "coalition_completion_unavailable_reason"
+        ),
         "reserve_unauthorized_success_count": sum(
             bool(pair.get("physical_success"))
             and str(pair.get("member_role")) == "reserve"
@@ -1935,14 +2163,62 @@ def _terminal_closure_result_row(
             for pair in pairs
         ),
         **command_counts,
+        "terminal_metric_envelopes": terminal_metric_envelopes,
+        "physical_metric_context": {
+            "producer": "offline_truth_distance_scorer",
+            "metric_scope": "assigned_active_pair_target_coalition_outcome",
+            "lifecycle": "episode_final",
+        },
+        "performance_metrics": {
+            "sample_count": int(record_counts.get("ticks") or 0),
+            "loop_latency_ms": main_metrics.get("loop_latency_ms"),
+            "performance_budget_violation_count": main_metrics.get(
+                "performance_budget_violation_count"
+            ),
+        },
         "intercept_summary": str(summary_path) if summary_path is not None else None,
         "control_commands": str(commands_path) if commands_path is not None else None,
+        "main_episode_bus_metrics": (
+            str(main_metrics_path) if main_metrics_path is not None else None
+        ),
+        "main_stage_timings": (
+            str(main_stage_timings_path)
+            if main_stage_timings_path is not None
+            else None
+        ),
+        "control_tick_stage_timings": (
+            str(control_tick_stage_timings_path)
+            if control_tick_stage_timings_path is not None
+            else None
+        ),
+        "d3_plan_history": (
+            str(d3_history_path) if d3_history_path is not None else None
+        ),
+        "d7_execution_metrics": (
+            str(d7_execution_path) if d7_execution_path is not None else None
+        ),
+        "d7_actual_execution_status": d7_actual_status,
+        "d7_actual_execution_metrics": (
+            str(d7_actual_execution_path)
+            if d7_actual_execution_path is not None
+            else None
+        ),
+        "d7_actual_execution_unavailable": (
+            str(d7_actual_unavailable_path)
+            if d7_actual_unavailable_path is not None
+            else None
+        ),
+        "d7_actual_execution_unavailable_reasons": list(
+            d7_actual_unavailable.get("reasons", []) or []
+        ),
     }
 
 
 def _terminal_closure_command_counts(path: object) -> dict[str, int]:
     counts = {
         "command_count": 0,
+        "live_command_count": 0,
+        "termination_snapshot_count": 0,
         "contract_allowed_count": 0,
         "control_allowed_count": 0,
         "mode_switched_count": 0,
@@ -1963,8 +2239,23 @@ def _terminal_closure_command_counts(path: object) -> dict[str, int]:
     with Path(path).open(encoding="utf-8", newline="") as stream:
         for row in csv.DictReader(stream):
             counts["command_count"] += 1
-            contract_allowed = _csv_bool(row.get("terminal_contract_allowed"))
-            switch_allowed = _csv_bool(row.get("terminal_switch_allowed"))
+            termination_snapshot = _csv_bool(row.get("termination_snapshot"))
+            if termination_snapshot:
+                counts["termination_snapshot_count"] += 1
+                continue
+            counts["live_command_count"] += 1
+            contract_allowed = _csv_bool(
+                row.get("effective_terminal_contract_allowed")
+                if row.get("effective_terminal_contract_allowed") not in {None, ""}
+                else row.get("terminal_contract_allowed")
+            )
+            switch_allowed = _csv_bool(
+                row.get("effective_control_authorized")
+                if row.get("effective_control_authorized") not in {None, ""}
+                else row.get("terminal_control_allowed")
+                if row.get("terminal_control_allowed") not in {None, ""}
+                else row.get("terminal_switch_allowed")
+            )
             if contract_allowed:
                 counts["contract_allowed_count"] += 1
             if contract_allowed and switch_allowed:
@@ -2000,6 +2291,21 @@ def _terminal_closure_command_counts(path: object) -> dict[str, int]:
             if "out_of_range" in reason or "max_ttc" in reason:
                 counts["ttc_out_of_range_reject_count"] += 1
     return counts
+
+
+def _read_json_mapping(path: object) -> dict[str, object]:
+    resolved = _existing_path(path)
+    if resolved is None:
+        return {}
+    payload = json.loads(resolved.read_text(encoding="utf-8"))
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _existing_path(path: object) -> Path | None:
+    if path is None:
+        return None
+    resolved = Path(path)
+    return resolved if resolved.exists() else None
 
 
 def _csv_bool(value: object) -> bool:

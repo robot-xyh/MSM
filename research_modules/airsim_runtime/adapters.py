@@ -8,6 +8,11 @@ import numpy as np
 
 from airsim_dryrun.adapters import observations_from_airsim_frame
 from airsim_dryrun.models import AirSimFrame
+from d1_sensor_fusion import (
+    anonymize_online_observations,
+    assert_online_observations_identity_free,
+)
+from d1_sensor_fusion.observations import eo_covariance_from_bbox
 from d1_sensor_fusion.types import SensorObservation
 from d3_assignment_planner import TargetTrack
 from d5_terminal_association import GlobalTrack as TerminalGlobalTrack
@@ -25,34 +30,214 @@ def observations_from_blocks_frame(
 ) -> list[SensorObservation]:
     """Convert a captured Blocks frame to D1 observations.
 
-    Radar/acoustic remain synthetic measurements derived from AirSim truth.
-    EO/LiDAR observations are currently geometry-compatible observations with
-    real Blocks capture status attached in metadata.
+    Radar/acoustic/lidar remain synthetic measurements derived from AirSim scene
+    state, but the online DTO is anonymized before it leaves this adapter. EO
+    observations come from captured detector boxes and camera calibration; the
+    detector's simulator object identity is never copied into the observation.
     """
 
     observations = observations_from_airsim_frame(
         frame,
         arrival_timestamp=arrival_timestamp,
         include_acoustic=include_acoustic,
-        include_eo=include_eo,
+        include_eo=False,
         include_lidar=include_lidar,
     )
+    if include_eo:
+        observations.extend(_eo_observations_from_blocks_detections(frame))
     for observation in observations:
-        observation.observation_id = observation.observation_id.replace("dry_", "blocks_", 1)
         observation.sensor_id = observation.sensor_id.replace("DRY-", "BLOCKS-")
         observation.source_node_id = observation.source_node_id or "MAIN-C2"
         observation.target_node_id = observation.target_node_id or "D1-FUSION"
         observation.link_type = observation.link_type or "c2_replay"
-        observation.sent_timestamp = observation.sent_timestamp or observation.measurement_timestamp
-        observation.received_timestamp = observation.received_timestamp or observation.arrival_timestamp
-        observation.payload_kind = observation.payload_kind or f"{observation.modality}_observation"
+        observation.sent_timestamp = (
+            observation.sent_timestamp or observation.measurement_timestamp
+        )
+        observation.received_timestamp = (
+            observation.received_timestamp or observation.arrival_timestamp
+        )
+        observation.payload_kind = (
+            observation.payload_kind or f"{observation.modality}_observation"
+        )
         observation.stale_after_s = observation.stale_after_s or 1.5
         observation.metadata["dry_run"] = False
         observation.metadata["real_airsim_used"] = True
         observation.metadata["runtime"] = "Blocks"
         observation.metadata["frame_metadata"] = _compact_frame_metadata(frame.metadata)
         observation.metadata.update(observation.communication_metadata)
+    observations.sort(key=_identity_independent_observation_sort_key)
+    identity_tokens = _scene_identity_tokens(frame)
+    observations = anonymize_online_observations(
+        observations,
+        identity_tokens=identity_tokens,
+        stream_id=f"blocks-{int(frame.frame_index):08d}",
+    )
+    assert_online_observations_identity_free(
+        observations,
+        identity_tokens=identity_tokens,
+    )
     return observations
+
+
+def _eo_observations_from_blocks_detections(
+    frame: AirSimFrame,
+) -> list[SensorObservation]:
+    cameras = {str(camera.camera_id): camera for camera in frame.cameras}
+    detections = sorted(
+        frame.visual_detections,
+        key=lambda item: (
+            str(item.camera_id),
+            float(item.timestamp),
+            *(float(value) for value in item.bbox_xyxy),
+            -float(item.confidence),
+        ),
+    )
+    observations: list[SensorObservation] = []
+    for index, detection in enumerate(detections, start=1):
+        camera = cameras.get(str(detection.camera_id))
+        if camera is None:
+            continue
+        bbox = np.asarray(detection.bbox_xyxy, dtype=float).reshape(4)
+        width = max(float(bbox[2] - bbox[0]), 0.0)
+        height = max(float(bbox[3] - bbox[1]), 0.0)
+        quality_flags: tuple[str, ...] = ()
+        if min(width, height) < 14.0:
+            quality_flags = ("small_bbox",)
+        measurement_timestamp = float(
+            detection.metadata.get("measurement_timestamp", detection.timestamp)
+        )
+        arrival_timestamp = float(
+            detection.metadata.get(
+                "arrival_timestamp",
+                frame.metadata.get("arrival_timestamp", frame.timestamp),
+            )
+        )
+        observations.append(
+            SensorObservation(
+                observation_id=str(detection.detection_id or f"eo-{index:04d}"),
+                sensor_id=f"BLOCKS-EO-{index:04d}",
+                modality="eo",
+                measurement_timestamp=measurement_timestamp,
+                arrival_timestamp=max(arrival_timestamp, measurement_timestamp),
+                frame_id="pixel",
+                measurement=np.array(
+                    [(bbox[0] + bbox[2]) * 0.5, (bbox[1] + bbox[3]) * 0.5],
+                    dtype=float,
+                ),
+                covariance=eo_covariance_from_bbox(
+                    bbox,
+                    float(detection.confidence),
+                    quality_flags,
+                ),
+                classification_hint=str(detection.classification_hint or "uav"),
+                confidence=float(detection.confidence),
+                quality_flags=quality_flags,
+                metadata={
+                    "bbox_xyxy": bbox,
+                    "camera_id": str(camera.camera_id),
+                    "camera_model": {
+                        "position_ned": tuple(float(value) for value in camera.position_ned),
+                        "rotation_world_to_camera": tuple(
+                            tuple(float(value) for value in row)
+                            for row in camera.rotation_world_to_camera
+                        ),
+                        "fx": float(camera.fx),
+                        "fy": float(camera.fy),
+                        "cx": float(camera.cx),
+                        "cy": float(camera.cy),
+                        "width": int(camera.width),
+                        "height": int(camera.height),
+                    },
+                    "source_lineage_key": (
+                        "blocks_visual_detection",
+                        str(detection.camera_id),
+                        str(detection.local_track_id or detection.detection_id),
+                    ),
+                    "detector_source": str(
+                        detection.metadata.get("source", "airsim_runtime_detection")
+                    ),
+                    "airsim_frame_index": int(frame.frame_index),
+                    "online_truth_id_used": False,
+                },
+                source_node_id=str(camera.owner_id or camera.camera_id),
+                target_node_id="D1-FUSION",
+                link_type="video_cue",
+                sent_timestamp=measurement_timestamp,
+                received_timestamp=max(arrival_timestamp, measurement_timestamp),
+                payload_kind="bbox",
+                stale_after_s=0.5,
+                timestamp_uncertainty_s=max(
+                    0.0,
+                    float(detection.metadata.get("timestamp_uncertainty_s", 0.0)),
+                ),
+            )
+        )
+    return observations
+
+
+def _identity_independent_observation_sort_key(
+    observation: SensorObservation,
+) -> tuple[Any, ...]:
+    return (
+        float(observation.arrival_timestamp),
+        float(observation.measurement_timestamp),
+        str(observation.modality),
+        str(observation.sensor_id),
+        tuple(float(value) for value in observation.measurement.reshape(-1)),
+    )
+
+
+def _scene_identity_tokens(frame: AirSimFrame) -> tuple[str, ...]:
+    tokens: set[str] = set()
+    for obj in frame.truth_objects:
+        tokens.add(str(obj.object_id))
+        _collect_identity_metadata_tokens(obj.metadata, tokens)
+
+    platform_names = {
+        str(resource.metadata.get("airsim_vehicle_name"))
+        for resource in frame.resources
+        if resource.metadata.get("airsim_vehicle_name")
+    }
+    platform_names.update(str(camera.owner_id) for camera in frame.cameras)
+    for raw_name in frame.metadata.get("vehicle_names", ()) or ():
+        name = str(raw_name)
+        if name and name not in platform_names:
+            tokens.add(name)
+    return tuple(sorted(token for token in tokens if token))
+
+
+def _collect_identity_metadata_tokens(
+    value: Any,
+    tokens: set[str],
+    *,
+    identity: bool = False,
+) -> None:
+    if isinstance(value, dict):
+        for raw_key, item in value.items():
+            key = str(raw_key).lower().replace("-", "_")
+            parts = set(key.split("_"))
+            _collect_identity_metadata_tokens(
+                item,
+                tokens,
+                identity=identity
+                or bool(
+                    parts
+                    & {"actor", "object", "truth", "target", "segmentation", "mesh"}
+                ),
+            )
+        return
+    if isinstance(value, (list, tuple, set, frozenset)):
+        for item in value:
+            _collect_identity_metadata_tokens(item, tokens, identity=identity)
+        return
+    if identity and isinstance(value, (str, bytes)):
+        token = (
+            value.decode("utf-8", errors="replace")
+            if isinstance(value, bytes)
+            else value
+        )
+        if token.strip():
+            tokens.add(token.strip())
 
 
 def truth_states_from_blocks_frame(frame: AirSimFrame) -> list[TruthState]:
@@ -107,7 +292,7 @@ def target_tracks_from_online_d2(
     for track in tracks:
         position = np.asarray(track.state[:2], dtype=float)
         lifecycle = getattr(getattr(track, "lifecycle_state", None), "value", None)
-        assignable = lifecycle not in {"lost", "dropped"}
+        assignable = lifecycle == "engageable"
         covariance_norm = min(float(np.trace(track.covariance[:2, :2])) / 120.0, 1.0)
         coverage_cell = _nearest_resource_coverage_cell(position, resources)
         fov_difficulty: dict[str, float] = {}
@@ -136,6 +321,10 @@ def target_tracks_from_online_d2(
                     "position": position.tolist(),
                     "identity_source": "d2_center_owned_global_track_id",
                     "threat_source": "runtime_default_prior",
+                    "d2_lifecycle_state": lifecycle or "unknown",
+                    "assignment_admission": (
+                        "engageable" if assignable else "lifecycle_not_engageable"
+                    ),
                     "online_truth_id_used": False,
                 },
             )
@@ -327,6 +516,15 @@ def geometric_local_visual_tracks_from_blocks_frame(frame: AirSimFrame) -> list[
         measurement_timestamp = float(
             metadata.get("measurement_timestamp", detection.timestamp)
         )
+        detection_source = str(
+            metadata.get("source", "airsim_runtime_detection")
+        )
+        detector_backend = metadata.get("detector_backend")
+        tracker_backend = metadata.get("tracker_backend")
+        if detector_backend is None and detection_source == "airsim_builtin_detection":
+            detector_backend = "airsim_detect"
+        if tracker_backend is None and detection_source == "airsim_builtin_detection":
+            tracker_backend = "airsim_builtin_tracklet"
         local_tracks.append(
             LocalVisualTrack(
                 local_track_id=local_track_id,
@@ -343,9 +541,9 @@ def geometric_local_visual_tracks_from_blocks_frame(frame: AirSimFrame) -> list[
                 exposure_timestamp=float(
                     metadata.get("exposure_timestamp", measurement_timestamp)
                 ),
-                detection_source=str(
-                    metadata.get("source", "airsim_runtime_detection")
-                ),
+                detection_source=detection_source,
+                local_track_state=str(metadata.get("local_track_state", "measured")),
+                prediction_age_s=metadata.get("prediction_age_s"),
                 track_transition_state=str(
                     metadata.get("track_transition_state", "unknown")
                 ),
@@ -356,6 +554,13 @@ def geometric_local_visual_tracks_from_blocks_frame(frame: AirSimFrame) -> list[
                     "resource_id": _resource_id_for_detection(frame, detection.camera_id),
                     "raw_classification_hint": str(detection.classification_hint),
                     "image_size": image_size,
+                    "detector_backend": detector_backend,
+                    "tracker_backend": tracker_backend,
+                    "stream_id": metadata.get("stream_id"),
+                    "local_track_state": str(
+                        metadata.get("local_track_state", "measured")
+                    ),
+                    "prediction_age_s": metadata.get("prediction_age_s"),
                 },
             )
         )

@@ -11,10 +11,12 @@ from typing import Any
 import numpy as np
 from airsim_dryrun.models import AirSimAdapterResult, AirSimFrame
 from d6_evaluation_metrics import (
+    ActualExecutionEvidenceError,
     EpisodeMetrics,
     ReportGenerator,
     load_d7_intercept_outputs,
     merge_replay_with_execution_metrics,
+    write_d7_actual_execution_evidence,
 )
 from d5_terminal_association import CameraModel
 from integrated_simulation import IntegratedEpisodeRunner
@@ -34,6 +36,7 @@ from .episode_bus import MainAirSimEpisodeBus, MainEpisodeBusResult, run_main_ep
 from .intercept import run_controlled_intercept_episode
 from .models import BlocksSmokeConfig, BlocksSmokeResult
 from .real_runtime import RealAirSimRuntimeClient
+from .timing import summarize_stage_timings
 
 
 def _apply_episode_health_injection(
@@ -136,12 +139,16 @@ class AirSimBlocksSmokeOrchestrator:
             intercept_metadata: dict[str, Any] = {}
             if config.execute_intercept:
                 intercept_result = run_controlled_intercept_episode(runtime, config, output_dir)
+                self._live_main_bus = intercept_result.control_bus
                 frames = intercept_result.frames
                 intercept_output_paths = dict(intercept_result.output_paths)
                 intercept_metadata = {
                     "success_count": intercept_result.success_count,
                     "pair_count": len(intercept_result.pairs),
                     "command_record_count": len(intercept_result.command_records),
+                    "control_tick_timing": summarize_stage_timings(
+                        intercept_result.control_tick_timings
+                    ),
                     "pairs": [
                         {
                             "resource_id": pair.resource_id,
@@ -185,6 +192,20 @@ class AirSimBlocksSmokeOrchestrator:
                 intercept_output_paths,
                 config,
             )
+            actual_execution_path = _write_actual_execution_evidence(
+                output_dir,
+                intercept_output_paths,
+                main_episode_bus,
+                config,
+            )
+            if actual_execution_path is not None:
+                intercept_output_paths["d7_actual_execution_metrics"] = (
+                    actual_execution_path
+                )
+                main_episode_bus = _register_actual_execution_evidence(
+                    main_episode_bus,
+                    actual_execution_path,
+                )
             integrated = (
                 self._run_integrated_replay(config, frames, output_dir)
                 if config.include_integrated_pipeline
@@ -194,12 +215,14 @@ class AirSimBlocksSmokeOrchestrator:
                 integrated,
                 main_episode_bus,
                 config,
+                actual_execution_path=actual_execution_path,
             )
             integrated = _merge_d7_execution_metrics(
                 integrated,
                 output_dir,
                 intercept_output_paths,
                 config,
+                actual_execution_path=actual_execution_path,
             )
             d4d5_stress = (
                 run_d4d5_stress_analysis(
@@ -231,6 +254,16 @@ class AirSimBlocksSmokeOrchestrator:
                     "blocks_sensor_observations_jsonl": sensor_log,
                     **main_episode_bus.output_paths,
                     **intercept_output_paths,
+                    **(
+                        {
+                            "d7_execution_metrics": integrated.output_paths[
+                                "d7_execution_metrics"
+                            ]
+                        }
+                        if integrated is not None
+                        and "d7_execution_metrics" in integrated.output_paths
+                        else {}
+                    ),
                     **({} if d4d5_stress is None else d4d5_stress.output_paths),
                 },
                 integrated_result=integrated,
@@ -445,6 +478,8 @@ def _merge_main_bus_into_integrated_metrics(
     integrated: AirSimAdapterResult | None,
     main_episode_bus: MainEpisodeBusResult,
     config: BlocksSmokeConfig,
+    *,
+    actual_execution_path: Path | None = None,
 ) -> AirSimAdapterResult | None:
     if integrated is None:
         return None
@@ -468,12 +503,21 @@ def _merge_main_bus_into_integrated_metrics(
             encoding="utf-8",
         )
 
+    if actual_execution_path is None or not actual_execution_path.exists():
+        return replace(
+            integrated,
+            output_paths=output_paths,
+            metadata={
+                **integrated.metadata,
+                "execution_metrics_merged": False,
+                "execution_evidence_status": "unavailable",
+                "replay_contract_metrics_path": str(raw_replay_path),
+            },
+        )
+    execution_payload = json.loads(actual_execution_path.read_text(encoding="utf-8"))
     merged_bundle = merge_replay_with_execution_metrics(
         {"metrics": integrated.metrics, "metadata": integrated.metadata},
-        {
-            "metrics": main_episode_bus.metrics,
-            "metadata": main_episode_bus.summary,
-        },
+        execution_payload,
         persisted_frame_count=int(main_episode_bus.frame_count),
         warmup_inclusive_frame_count=(
             int(main_episode_bus.frame_count)
@@ -481,6 +525,35 @@ def _merge_main_bus_into_integrated_metrics(
         ),
     )
     merged_metrics = dict(merged_bundle["metrics"])
+    metric_availability = dict(
+        merged_metrics.get("metric_availability", {}) or {}
+    )
+    if merged_metrics.get("mode_switched_count") is not None:
+        merged_metrics["mode_switch_count"] = merged_metrics[
+            "mode_switched_count"
+        ]
+        metric_availability["mode_switch_count"] = dict(
+            metric_availability.get("mode_switched_count", {})
+            or {
+                "status": "available",
+                "source": "d7_actual_execution_metrics",
+            }
+        )
+    if (
+        merged_metrics.get("contract_evaluated_count") is not None
+        and merged_metrics.get("contract_allowed_count") is not None
+    ):
+        merged_metrics["terminal_contract_reject_count"] = max(
+            0,
+            int(merged_metrics["contract_evaluated_count"])
+            - int(merged_metrics["contract_allowed_count"]),
+        )
+        metric_availability["terminal_contract_reject_count"] = {
+            "status": "available",
+            "source": "d7_actual_execution_metrics",
+            "reason": "derived from validated contract evaluated/allowed counts",
+        }
+    merged_metrics["metric_availability"] = metric_availability
     output_paths["replay_contract_metrics_json"] = raw_replay_path
     if metrics_path is not None:
         metrics_path.write_text(
@@ -513,6 +586,8 @@ def _merge_d7_execution_metrics(
     output_dir: Path,
     intercept_output_paths: dict[str, Path],
     config: BlocksSmokeConfig,
+    *,
+    actual_execution_path: Path | None = None,
 ) -> AirSimAdapterResult | None:
     if integrated is None or not config.execute_intercept:
         return integrated
@@ -530,40 +605,43 @@ def _merge_d7_execution_metrics(
         duration=config.intercept_max_duration_s,
     )
     d7_metrics_payload = d7_metrics.to_dict()
-    d7_metrics_path = output_dir / "integrated_replay" / "d7_execution_metrics.json"
-    d7_metrics_path.parent.mkdir(parents=True, exist_ok=True)
-    d7_metrics_path.write_text(
+    diagnostics_path = (
+        output_dir / "integrated_replay" / "d7_execution_diagnostics.json"
+    )
+    diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
+    diagnostics_path.write_text(
         json.dumps(d7_metrics_payload, ensure_ascii=False, indent=2, sort_keys=True),
         encoding="utf-8",
     )
 
-    merged_metrics = dict(integrated.metrics)
-    for key, value in d7_metrics_payload.items():
-        if key == "metadata":
-            merged_metadata = dict(merged_metrics.get("metadata", {}) or {})
-            merged_metadata.update(value)
-            merged_metrics["metadata"] = merged_metadata
-        elif key not in {"episode_id", "seed", "duration"}:
-            merged_metrics[key] = value
-
     output_paths = dict(integrated.output_paths)
-    output_paths["d7_execution_metrics"] = d7_metrics_path
-    _merge_integrated_metrics_file(output_paths.get("metrics_json"), merged_metrics)
-    _rewrite_integrated_d6_reports(output_paths, merged_metrics)
+    output_paths["d7_execution_diagnostics"] = diagnostics_path
+    if actual_execution_path is not None:
+        output_paths["d7_execution_metrics"] = actual_execution_path
     return replace(
         integrated,
-        metrics=merged_metrics,
         output_paths=output_paths,
         metadata={
             **integrated.metadata,
             "control_api_used": True,
-            "d7_execution_metrics_path": str(d7_metrics_path),
+            "d7_execution_metrics_path": (
+                None
+                if actual_execution_path is None
+                else str(actual_execution_path)
+            ),
+            "d7_execution_diagnostics_path": str(diagnostics_path),
+            "d7_execution_diagnostics_audit_only": True,
         },
     )
 
 
 MAIN_BUS_EXECUTION_METRIC_KEYS = frozenset(
     {
+        "contract_evaluated_count",
+        "contract_allowed_count",
+        "control_evaluated_count",
+        "control_allowed_count",
+        "mode_switched_count",
         "camera_quality_gate_pass_rate",
         "los_quality_gate_pass_rate",
         "maneuver_margin_gate_pass_rate",
@@ -589,6 +667,7 @@ MAIN_BUS_EXECUTION_METRIC_KEYS = frozenset(
         "visual_reacquisition_count",
         "terminal_visual_lost_after_coast_count",
         "truth_identity_online_use_count",
+        "truth_state_online_use_count",
         "time_to_intercept_s",
         "min_range_m",
         "terminal_takeover_rate",
@@ -618,6 +697,14 @@ MAIN_BUS_EXECUTION_METADATA_KEYS = frozenset(
         "physical_success_criteria_matches_5m_ned_3d",
         "physical_intercept_evidence_available",
         "physical_intercept_unavailable_reason",
+        "physical_intercept_source",
+        "physical_intercept_source_valid",
+        "physical_intercept_acceptance_class",
+        "online_control_state_source",
+        "target_state_source_counts",
+        "truth_state_online_use_provenance",
+        "coalition_completion_availability",
+        "coalition_completion_unavailable_reason",
     }
 )
 
@@ -655,6 +742,8 @@ def _merge_main_bus_execution_metrics(
     for key in MAIN_BUS_EXECUTION_METRIC_KEYS:
         if key in d7_metrics:
             merged_metrics[key] = d7_metrics[key]
+    if d7_metrics.get("mode_switched_count") is not None:
+        merged_metrics["mode_switch_count"] = d7_metrics["mode_switched_count"]
 
     merged_metadata = dict(merged_metrics.get("metadata", {}) or {})
     d7_metadata = dict(d7_metrics.get("metadata", {}) or {})
@@ -698,6 +787,107 @@ def _merge_main_bus_execution_metrics(
     return replace(
         main_episode_bus,
         metrics=merged_metrics,
+        summary=summary,
+        output_paths=output_paths,
+    )
+
+
+def _write_actual_execution_evidence(
+    output_dir: Path,
+    intercept_output_paths: dict[str, Path],
+    main_episode_bus: MainEpisodeBusResult,
+    config: BlocksSmokeConfig,
+) -> Path | None:
+    """Persist the only canonical post-SimpleFlight execution envelope."""
+
+    if not config.execute_intercept:
+        return None
+    source_paths = {
+        "control_commands": intercept_output_paths.get("control_commands"),
+        "intercept_summary": intercept_output_paths.get("intercept_summary"),
+        "main_episode_bus_metrics": main_episode_bus.output_paths.get(
+            "main_episode_bus_metrics_json"
+        ),
+    }
+    missing = sorted(name for name, path in source_paths.items() if path is None)
+    unavailable_path = output_dir / "d7_actual_execution_unavailable.json"
+    if missing:
+        unavailable_path.write_text(
+            json.dumps(
+                {
+                    "schema": "d7-actual-execution-unavailable-v1",
+                    "status": "unavailable",
+                    "reasons": [
+                        f"d7_actual_execution_source_path_missing:{name}"
+                        for name in missing
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        intercept_output_paths["d7_actual_execution_unavailable"] = (
+            unavailable_path
+        )
+        return None
+
+    output_path = output_dir / "d7_actual_execution_metrics.json"
+    case_id = str(
+        config.metadata.get("case_id")
+        or config.metadata.get("sequence_id")
+        or config.episode_id
+    )
+    try:
+        return write_d7_actual_execution_evidence(
+            output_path,
+            source_paths["control_commands"],
+            source_paths["intercept_summary"],
+            source_paths["main_episode_bus_metrics"],
+            case_id=case_id,
+        )
+    except ActualExecutionEvidenceError as exc:
+        unavailable_path.write_text(
+            json.dumps(
+                {
+                    "schema": "d7-actual-execution-unavailable-v1",
+                    "status": "unavailable",
+                    "case_id": case_id,
+                    "reasons": list(exc.reasons),
+                },
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        intercept_output_paths["d7_actual_execution_unavailable"] = (
+            unavailable_path
+        )
+        return None
+
+
+def _register_actual_execution_evidence(
+    main_episode_bus: MainEpisodeBusResult,
+    actual_execution_path: Path,
+) -> MainEpisodeBusResult:
+    """Register evidence without mutating any hashed source artifact."""
+
+    output_paths = dict(main_episode_bus.output_paths)
+    output_paths["d7_actual_execution_metrics"] = actual_execution_path
+    output_paths["d7_execution_metrics"] = actual_execution_path
+    summary = dict(main_episode_bus.summary)
+    summary["d7_actual_execution_metrics_path"] = str(actual_execution_path)
+    summary["d7_execution_metric_scope"] = "actual_execution"
+    summary_path = output_paths.get("main_episode_bus_summary_json")
+    if summary_path is not None:
+        summary_path.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+    return replace(
+        main_episode_bus,
         summary=summary,
         output_paths=output_paths,
     )

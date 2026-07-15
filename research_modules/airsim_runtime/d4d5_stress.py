@@ -1289,8 +1289,15 @@ def _secondary_nodes(
                 availability_band=AvailabilityBand.HIGH,
                 comm_band=CommBand.GOOD,
                 takeover_priority=index + 1,
+                lease_epoch=1,
+                lease_expires_at_s=(
+                    float(frame.timestamp) + 1.5 if frame is not None else None
+                ),
                 node_role=role,
                 coordinator_only=True,
+                heartbeat_timestamp_s=(
+                    float(frame.timestamp) if frame is not None else None
+                ),
                 coverage_cell=str(
                     guidance.get("coverage_cell")
                     or _secondary_coverage_cell_for_index(
