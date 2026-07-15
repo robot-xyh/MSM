@@ -26,6 +26,40 @@ from .standard_mapping import (
 
 Position = Sequence[float]
 
+_TRUTH_TRACKING_METRIC_NAMES = (
+    "track_rmse",
+    "track_continuity",
+    "id_switch_count",
+)
+
+_PHYSICAL_LAYER_METRIC_NAMES = (
+    "physical_intercept_count",
+    "pair_physical_success_count",
+    "pair_physical_success_rate",
+    "target_intercept_success_count",
+    "target_intercept_success_rate",
+    "coalition_completion_count",
+    "coalition_completion_rate",
+)
+
+_VALID_PHYSICAL_INTERCEPT_SOURCES = {
+    "offline_truth_distance_scorer",
+    "online_truth_state_fixture",
+}
+_PHYSICAL_SCORER_SUCCESS_STATUSES = {
+    "collision_intercept",
+    "range_intercept",
+}
+_PHYSICAL_SCORER_FAILURE_STATUSES = {
+    "aborted",
+    "timeout",
+}
+_ESTIMATED_ONLINE_CONTROL_STATE_SOURCES = {"d2_estimated_global_track"}
+_TRUTH_ONLINE_CONTROL_STATE_SOURCES = {
+    "airsim_actor_truth_fixture",
+    "online_truth_state_fixture",
+}
+
 _D1_D3_GOVERNANCE_METRIC_NAMES = (
     "governance_schema_provenance_rate",
     "governance_config_provenance_rate",
@@ -320,9 +354,9 @@ class EpisodeMetrics:
     detection_probability: float | None = None
     false_alarm_rate: float | None = None
     missed_detection_rate: float | None = None
-    track_rmse: float = 0.0
-    track_continuity: float = 0.0
-    id_switch_count: int = 0
+    track_rmse: float | None = None
+    track_continuity: float | None = None
+    id_switch_count: int | None = None
     duplicate_assignment_count: int = 0
     unassigned_high_threat_count: int = 0
     target_demand_satisfaction_rate_micro: float | None = None
@@ -498,6 +532,7 @@ class EpisodeMetrics:
     visual_reacquisition_count: int | None = None
     terminal_visual_lost_after_coast_count: int | None = None
     truth_identity_online_use_count: int | None = None
+    truth_state_online_use_count: int | None = None
     terminal_filter_measured_count: int | None = None
     terminal_filter_predicted_count: int | None = None
     terminal_filter_innovation_rejected_count: int | None = None
@@ -662,6 +697,7 @@ class EpisodeMetrics:
             "visual_reacquisition_count",
             "terminal_visual_lost_after_coast_count",
             "truth_identity_online_use_count",
+            "truth_state_online_use_count",
             *_TERMINAL_DELIVERY_METRIC_NAMES,
             "intercept_success_count",
             "collision_intercept_count",
@@ -689,7 +725,28 @@ class EpisodeMetrics:
         ]
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = asdict(self)
+        availability = dict(payload.get("metric_availability", {}))
+        for metric_name in _TRUTH_TRACKING_METRIC_NAMES:
+            raw_entry = availability.get(metric_name, {})
+            entry = dict(raw_entry) if isinstance(raw_entry, Mapping) else {}
+            status = str(entry.get("status", "")).strip().lower()
+            value = payload.get(metric_name)
+            if status in {"unavailable", "not_applicable"}:
+                payload[metric_name] = None
+            elif value is None:
+                entry = {
+                    "status": "unavailable",
+                    "reason": "truth-to-track metric value is absent",
+                }
+            elif status != "available":
+                entry = {
+                    "status": "available",
+                    "reason": "explicit episode metric value",
+                }
+            availability[metric_name] = entry
+        payload["metric_availability"] = availability
+        return payload
 
     def numeric_metric_dict(self) -> dict[str, float | None]:
         return {
@@ -1022,6 +1079,7 @@ class MetricsCollector:
         )
         detection_metadata = detection.pop("_metadata", {})
         tracking = self._compute_tracking_metrics(truth_summary)
+        tracking_metadata = tracking.pop("_metadata", {})
         assignment = self._compute_assignment_metrics(truth_summary)
         m_to_n, m_to_n_metadata = compute_m_to_n_metrics(
             demand_records=self.target_demand_records,
@@ -1082,8 +1140,10 @@ class MetricsCollector:
         )
         metrics.metric_availability = {
             **dict(detection_metadata.get("metric_availability", {})),
+            **dict(tracking_metadata.get("metric_availability", {})),
             **metrics.m_to_n_metric_availability,
             **dict(terminal_delivery_metadata.get("metric_availability", {})),
+            **dict(intercept_metadata.get("metric_availability", {})),
         }
         metrics.duplicate_assignment_count = int(
             m_to_n_metadata["m_to_n_duplicate_assignment_count"]
@@ -1125,6 +1185,7 @@ class MetricsCollector:
             "standard_mapping": standard_mapping_summary(),
             **scale_counts,
             **detection_metadata,
+            **tracking_metadata,
             **m_to_n_metadata,
             **governance_metadata,
             **degradation_metadata,
@@ -1137,6 +1198,7 @@ class MetricsCollector:
             **performance_metadata,
             **mission_metadata,
             **eval_metadata,
+            "metric_availability": dict(metrics.metric_availability),
         }
         return metrics
 
@@ -1393,40 +1455,100 @@ class MetricsCollector:
     def _compute_tracking_metrics(
         self,
         truth_summary: Mapping[str, Any],
-    ) -> dict[str, float | int]:
+    ) -> dict[str, Any]:
         truth_timestamps = _truth_timestamps_by_id(truth_summary)
+        identity_records = [
+            record
+            for record in self.track_records
+            if record.truth_id is not None and record.global_track_id is not None
+        ]
+        detected_pairs = {
+            (str(record.truth_id), float(record.timestamp))
+            for record in identity_records
+        }
+        truth_pairs = {
+            (truth_id, timestamp)
+            for truth_id, timestamps in truth_timestamps.items()
+            for timestamp in timestamps
+        }
+
         squared_errors: list[float] = []
-        for record in self.track_records:
-            if record.truth_id is None:
-                continue
+        for record in identity_records:
             distance = _euclidean_distance(record.position, record.truth_position)
             if distance is not None:
                 squared_errors.append(distance * distance)
-        track_rmse = math.sqrt(sum(squared_errors) / len(squared_errors)) if squared_errors else 0.0
+        track_rmse = (
+            math.sqrt(sum(squared_errors) / len(squared_errors))
+            if squared_errors
+            else None
+        )
 
-        detected_pairs = {
-            (record.truth_id, record.timestamp)
-            for record in self.track_records
-            if record.truth_id is not None
-        }
-        if truth_timestamps:
-            truth_pairs = {
-                (truth_id, timestamp)
-                for truth_id, timestamps in truth_timestamps.items()
-                for timestamp in timestamps
-            }
-            matched_count = len(detected_pairs & truth_pairs)
-            total_truth_count = len(truth_pairs)
-            track_continuity = matched_count / total_truth_count if total_truth_count else 0.0
+        unmatched_sidecar_pairs = detected_pairs - truth_pairs
+        if not identity_records:
+            track_continuity = None
+            continuity_reason = "no offline truth-to-track identity pairs"
+        elif not truth_pairs:
+            track_continuity = None
+            continuity_reason = "truth timestamp sidecar is missing or empty"
+        elif unmatched_sidecar_pairs:
+            track_continuity = None
+            continuity_reason = (
+                "truth timestamp sidecar is incomplete for linked track records"
+            )
         else:
-            track_continuity = 1.0 if detected_pairs else 0.0
+            track_continuity = len(detected_pairs & truth_pairs) / len(truth_pairs)
+            continuity_reason = "complete truth timestamps and linked track identities"
 
-        id_switch_count = self._count_track_id_switches()
+        id_switch_count = self._count_track_id_switches() if identity_records else None
+        availability = {
+            "track_rmse": {
+                "status": "available" if track_rmse is not None else "unavailable",
+                "reason": (
+                    "offline paired track/truth positions"
+                    if track_rmse is not None
+                    else "no offline truth-to-track pair with track and truth positions"
+                ),
+                "sample_count": len(squared_errors),
+            },
+            "track_continuity": {
+                "status": (
+                    "available" if track_continuity is not None else "unavailable"
+                ),
+                "reason": continuity_reason,
+                "numerator": (
+                    len(detected_pairs & truth_pairs)
+                    if track_continuity is not None
+                    else None
+                ),
+                "denominator": len(truth_pairs) if truth_pairs else None,
+            },
+            "id_switch_count": {
+                "status": (
+                    "available" if id_switch_count is not None else "unavailable"
+                ),
+                "reason": (
+                    "offline truth-to-track identity history"
+                    if id_switch_count is not None
+                    else "no offline truth-to-track identity pairs"
+                ),
+                "sample_count": len(identity_records),
+            },
+        }
 
         return {
             "track_rmse": track_rmse,
             "track_continuity": track_continuity,
             "id_switch_count": id_switch_count,
+            "_metadata": {
+                "metric_availability": availability,
+                "tracking_truth_evidence": {
+                    "identity_pair_count": len(identity_records),
+                    "unique_identity_pair_count": len(detected_pairs),
+                    "position_pair_count": len(squared_errors),
+                    "truth_timestamp_pair_count": len(truth_pairs),
+                    "unmatched_sidecar_pair_count": len(unmatched_sidecar_pairs),
+                },
+            },
         }
 
     def _count_track_id_switches(self) -> int:
@@ -3660,39 +3782,26 @@ class MetricsCollector:
             if summary_success_count is not None:
                 result["intercept_success_count"] = summary_success_count
 
-        command_physical_evidence = any(
-            any(
-                key in record.metadata
-                for key in (
-                    "status",
-                    "collision_seen",
-                    "target_collision_seen",
-                    "physical_intercept",
-                )
-            )
-            for record in command_events
-        )
-        physical_available, unavailable_reason = _physical_intercept_availability(
-            summary_metadata,
-            default_available=bool(
-                pair_events or command_physical_evidence or summary_success_count is not None
-            ),
-        )
-        layered = _layered_physical_success_metrics(
-            pair_events=pair_events,
-            command_events=command_events,
-            summary_metadata=summary_metadata,
-            physical_available=physical_available,
-        )
-        result.update({key: value for key, value in layered.items() if key != "_metadata"})
-        result["physical_intercept_count"] = result["pair_physical_success_count"]
-
         diagnostics = _detect_coast_diagnostics(
             summary_events=summary_events,
             pair_events=pair_events,
             command_events=command_events,
         )
         result.update({key: value for key, value in diagnostics.items() if key != "_metadata"})
+
+        physical_available, unavailable_reason = _physical_intercept_availability(
+            summary_metadata,
+            summary_present=bool(summary_events),
+            pair_events=pair_events,
+            truth_state_online_use_count=result["truth_state_online_use_count"],
+        )
+        layered = _layered_physical_success_metrics(
+            pair_events=pair_events,
+            summary_metadata=summary_metadata,
+            physical_available=physical_available,
+        )
+        result.update({key: value for key, value in layered.items() if key != "_metadata"})
+        result["physical_intercept_count"] = result["pair_physical_success_count"]
 
         terminal_takeover = self._terminal_takeover_metrics(
             pair_events,
@@ -3706,24 +3815,67 @@ class MetricsCollector:
                 if key != "_metadata"
             }
         )
+        physical_source = _state(
+            _metadata_text(summary_metadata, "physical_intercept_source")
+        )
+        online_control_state_source = _state(
+            _metadata_text(summary_metadata, "online_control_state_source")
+        )
+        diagnostic_metadata = diagnostics.get("_metadata", {})
+        physical_metric_availability = {
+            name: _physical_metric_availability_entry(
+                name,
+                layered_metadata=layered.get("_metadata", {}),
+                physical_available=physical_available,
+                physical_source=physical_source or None,
+                unavailable_reason=unavailable_reason,
+            )
+            for name in _PHYSICAL_LAYER_METRIC_NAMES
+        }
+        legacy_physical_status_present = bool(
+            summary_success_count is not None
+            or any(
+                any(
+                    key in record.metadata
+                    for key in (
+                        "status",
+                        "collision_seen",
+                        "target_collision_seen",
+                        "physical_intercept",
+                    )
+                )
+                for record in (*pair_events, *command_events)
+            )
+        )
         result["_metadata"] = {
             **result.get("_metadata", {}),
             **terminal_takeover.get("_metadata", {}),
             **layered.get("_metadata", {}),
-            **diagnostics.get("_metadata", {}),
+            **diagnostic_metadata,
+            "metric_availability": {
+                **dict(diagnostic_metadata.get("metric_availability", {})),
+                **physical_metric_availability,
+            },
             "intercept_summary_success_count": summary_success_count,
             "intercept_summary_pair_count": summary_pair_count,
             "intercept_pair_event_count": len(pair_events),
             "d7_control_command_event_count": len(command_events),
             "physical_intercept_evidence_available": physical_available,
             "physical_intercept_unavailable_reason": unavailable_reason,
-            "physical_intercept_source": (
-                "pair_or_control_status"
-                if physical_available and (pair_events or command_physical_evidence)
-                else "intercept_summary"
-                if physical_available and summary_events
+            "physical_intercept_source": physical_source or None,
+            "physical_intercept_source_valid": (
+                physical_source in _VALID_PHYSICAL_INTERCEPT_SOURCES
+            ),
+            "physical_intercept_acceptance_class": (
+                "offline_truth_scorer"
+                if physical_available and physical_source == "offline_truth_distance_scorer"
+                else "explicit_truth_state_fixture"
+                if physical_available and physical_source == "online_truth_state_fixture"
                 else "unavailable"
             ),
+            "online_control_state_source": online_control_state_source or None,
+            "legacy_physical_status_present": legacy_physical_status_present,
+            "legacy_physical_status_promoted": False,
         }
         return result
 
@@ -3749,12 +3901,19 @@ class MetricsCollector:
             elif status == "range_intercept":
                 range_count += 1
 
-            min_range = _metadata_float(metadata, "min_range_m")
+            min_range = _metadata_float(metadata, "physical_min_range_m")
+            if min_range is None:
+                min_range = _metadata_float(metadata, "min_range_m")
             if min_range is not None:
                 min_ranges.append(min_range)
 
             if status in self.INTERCEPT_SUCCESS_STATUSES:
-                time_to_intercept = _metadata_float(metadata, "time_to_intercept_s")
+                time_to_intercept = _metadata_float(
+                    metadata,
+                    "physical_intercept_time_s",
+                )
+                if time_to_intercept is None:
+                    time_to_intercept = _metadata_float(metadata, "time_to_intercept_s")
                 if time_to_intercept is not None:
                     time_to_intercepts.append(time_to_intercept)
 
@@ -4080,7 +4239,11 @@ class MetricsCollector:
                 metrics.missed_detection_rate,
                 f"missed_detection_rate={metrics.missed_detection_rate:.6g}",
             )
-        if metrics.track_continuity > 0.0 and metrics.track_continuity < 0.95:
+        if (
+            metrics.track_continuity is not None
+            and metrics.track_continuity > 0.0
+            and metrics.track_continuity < 0.95
+        ):
             add(
                 "tracking",
                 1.0 - metrics.track_continuity,
@@ -4692,7 +4855,9 @@ def _has_partial_progress(metrics: EpisodeMetrics) -> bool:
         (
             metrics.detection_probability is not None
             and metrics.detection_probability > 0.0,
-            metrics.track_continuity > 0.0,
+            metrics.track_rmse is not None,
+            metrics.track_continuity is not None
+            and metrics.track_continuity > 0.0,
             metrics.terminal_lock_count > 0,
             metrics.visual_png_switch_count > 0,
             metrics.degraded_completion_rate > 0.0,
@@ -5675,31 +5840,106 @@ def _intercept_pair_key(record: EventRecord) -> tuple[str, str] | None:
 def _physical_intercept_availability(
     summary_metadata: Mapping[str, Any],
     *,
-    default_available: bool,
+    summary_present: bool,
+    pair_events: Sequence[EventRecord],
+    truth_state_online_use_count: int | None,
 ) -> tuple[bool, str | None]:
+    if not summary_present:
+        return False, (
+            "physical intercept evidence requires an intercept summary; "
+            "command-only inputs are unavailable"
+        )
     runtime_mode = _state(_metadata_text(summary_metadata, "runtime_mode"))
     if "computer_vision" in runtime_mode or runtime_mode == "computervision":
         return False, "ComputerVision episodes do not provide physical intercept evidence"
+    physical_source = _state(
+        _metadata_text(summary_metadata, "physical_intercept_source")
+    )
+    if physical_source not in _VALID_PHYSICAL_INTERCEPT_SOURCES:
+        return False, (
+            "physical_intercept_source must be offline_truth_distance_scorer "
+            "or online_truth_state_fixture"
+        )
     explicit = _first_metadata_bool(
         summary_metadata,
-        ("physical_intercept_available",),
+        (
+            "physical_intercept_available",
+            "physical_intercept_evidence_available",
+        ),
     )
-    if explicit is False:
+    if explicit is not True:
         return False, (
             _metadata_text(summary_metadata, "physical_intercept_unavailable_reason")
-            or "physical intercept evidence was marked unavailable"
+            or "physical_intercept_available must be explicitly true"
         )
-    if explicit is True:
-        return True, None
-    if default_available:
-        return True, None
-    return False, "no collision/range physical intercept evidence"
+
+    online_source = _state(
+        _metadata_text(summary_metadata, "online_control_state_source")
+    )
+    if physical_source == "offline_truth_distance_scorer":
+        if online_source not in _ESTIMATED_ONLINE_CONTROL_STATE_SOURCES:
+            return False, (
+                "offline_truth_distance_scorer requires "
+                "online_control_state_source=d2_estimated_global_track"
+            )
+    else:
+        if online_source not in _TRUTH_ONLINE_CONTROL_STATE_SOURCES:
+            return False, (
+                "online_truth_state_fixture requires an explicit truth fixture "
+                "online_control_state_source"
+            )
+
+    if not pair_events:
+        return False, (
+            "physical intercept evidence requires persisted pair summaries; "
+            "summary-only and command-row fallbacks are unavailable"
+        )
+    participating = [
+        record for record in pair_events if _active_assigned_pair(record.metadata)
+    ]
+    if not participating:
+        return False, "no active assigned pair has physical scorer evidence"
+    if any(
+        _first_metadata_bool(
+            record.metadata,
+            ("physical_evidence_available",),
+        )
+        is not True
+        for record in participating
+    ):
+        return False, (
+            "every active assigned pair must declare "
+            "physical_evidence_available=true"
+        )
+    if any(
+        _state(_metadata_text(record.metadata, "target_state_source"))
+        != online_source
+        for record in participating
+    ):
+        return False, (
+            "every active assigned pair target_state_source must match "
+            f"online_control_state_source={online_source}"
+        )
+    if any(_physical_result(record.metadata) is None for record in participating):
+        return False, (
+            "every active assigned pair must persist physical_success, "
+            "physical_intercept, or a canonical physical scorer terminal status"
+        )
+    if physical_source == "offline_truth_distance_scorer":
+        if truth_state_online_use_count not in {0, None}:
+            return False, (
+                "offline_truth_distance_scorer conflicts with online truth-state use"
+            )
+    elif not truth_state_online_use_count:
+        return False, (
+            "online_truth_state_fixture requires visible truth-state online use"
+        )
+    return True, None
 
 
 def _layered_physical_success_metrics(
     *,
     pair_events: Sequence[EventRecord],
-    command_events: Sequence[EventRecord],
     summary_metadata: Mapping[str, Any],
     physical_available: bool,
 ) -> dict[str, Any]:
@@ -5739,9 +5979,9 @@ def _layered_physical_success_metrics(
     if not physical_available:
         return {**{name: None for name in metric_names}, "_metadata": metadata}
 
-    pair_rows = _physical_pair_rows(pair_events, command_events)
+    pair_rows = [record.metadata for record in pair_events]
     participating = [row for row in pair_rows if _active_assigned_pair(row)]
-    successful = [row for row in participating if _physical_success(row)]
+    successful = [row for row in participating if _physical_result(row) is True]
     pair_opportunities = len(participating)
     pair_success_count = len(successful)
 
@@ -5751,33 +5991,17 @@ def _layered_physical_success_metrics(
         for target_id in [_metadata_text(row, "target_id")]
         if target_id is not None
     }
+    target_ids_complete = all(
+        _metadata_text(row, "target_id") is not None for row in participating
+    )
     successful_target_ids = {
         target_id
         for row in successful
         for target_id in [_metadata_text(row, "target_id")]
         if target_id is not None
     }
-
-    if not pair_rows:
-        pair_success_count = _metadata_int(
-            summary_metadata,
-            "pair_physical_success_count",
-        )
-        pair_opportunities = _metadata_int(
-            summary_metadata,
-            "pair_physical_opportunity_count",
-        )
-        target_success_count = _metadata_int(
-            summary_metadata,
-            "target_intercept_success_count",
-        )
-        target_opportunities = _metadata_int(
-            summary_metadata,
-            "target_intercept_opportunity_count",
-        )
-    else:
-        target_success_count = len(successful_target_ids)
-        target_opportunities = len(target_ids)
+    target_success_count = len(successful_target_ids) if target_ids_complete else None
+    target_opportunities = len(target_ids) if target_ids_complete else None
 
     coalition = _coalition_completion_metrics(
         participating,
@@ -5791,6 +6015,55 @@ def _layered_physical_success_metrics(
             **coalition.pop("_metadata"),
         }
     )
+    available_reason = "validated persisted physical scorer result for every active assigned pair"
+    target_reason = (
+        available_reason
+        if target_ids_complete
+        else "every active assigned pair must persist target_id for target-level scoring"
+    )
+    coalition_status = metadata.get("coalition_completion_availability", "unavailable")
+    coalition_reason = metadata.get(
+        "coalition_completion_unavailable_reason",
+        "coalition completion evidence is incomplete",
+    )
+    coalition_available_reason = metadata.get(
+        "coalition_completion_available_reason",
+        "complete required-primary and arrival-window evidence",
+    )
+    metadata["metric_availability"] = {
+        "pair_physical_success_count": {
+            "status": "available",
+            "reason": available_reason,
+        },
+        "pair_physical_success_rate": {
+            "status": "available",
+            "reason": available_reason,
+        },
+        "target_intercept_success_count": {
+            "status": "available" if target_ids_complete else "unavailable",
+            "reason": target_reason,
+        },
+        "target_intercept_success_rate": {
+            "status": "available" if target_ids_complete else "unavailable",
+            "reason": target_reason,
+        },
+        "coalition_completion_count": {
+            "status": coalition_status,
+            "reason": (
+                coalition_available_reason
+                if coalition_status == "available"
+                else coalition_reason
+            ),
+        },
+        "coalition_completion_rate": {
+            "status": coalition_status,
+            "reason": (
+                coalition_available_reason
+                if coalition_status == "available"
+                else coalition_reason
+            ),
+        },
+    }
     return {
         "pair_physical_success_count": pair_success_count,
         "pair_physical_success_rate": _optional_rate(
@@ -5805,37 +6078,6 @@ def _layered_physical_success_metrics(
         **coalition,
         "_metadata": metadata,
     }
-
-
-def _physical_pair_rows(
-    pair_events: Sequence[EventRecord],
-    command_events: Sequence[EventRecord],
-) -> list[Mapping[str, Any]]:
-    if pair_events:
-        return [record.metadata for record in pair_events]
-    grouped: dict[tuple[str, str], list[EventRecord]] = defaultdict(list)
-    for record in command_events:
-        key = _intercept_pair_key(record)
-        if key is not None:
-            grouped[key].append(record)
-    rows: list[Mapping[str, Any]] = []
-    for records in grouped.values():
-        ordered = sorted(records, key=lambda item: item.timestamp)
-        row = dict(ordered[-1].metadata)
-        row.setdefault("resource_id", ordered[-1].actor_id)
-        collision_seen = any(
-            _bool_from_metadata(
-                record.metadata,
-                ("collision_seen", "target_collision_seen"),
-                default=False,
-            )
-            for record in ordered
-        )
-        if collision_seen:
-            row["status"] = "collision_intercept"
-        rows.append(row)
-    return rows
-
 
 def _active_assigned_pair(metadata: Mapping[str, Any]) -> bool:
     assigned = _first_metadata_bool(metadata, ("assigned", "assignment_active"))
@@ -5854,14 +6096,65 @@ def _active_assigned_pair(metadata: Mapping[str, Any]) -> bool:
     return True
 
 
-def _physical_success(metadata: Mapping[str, Any]) -> bool:
-    explicit = _first_metadata_bool(metadata, ("physical_success", "physical_intercept"))
-    if explicit is not None:
-        return explicit
-    return _state(_metadata_text(metadata, "status")) in {
-        "collision_intercept",
-        "range_intercept",
-    }
+def _physical_result(metadata: Mapping[str, Any]) -> bool | None:
+    for name in ("physical_success", "physical_intercept"):
+        if name in metadata and metadata.get(name) is not None:
+            return _strict_optional_bool(metadata.get(name))
+    status = _state(_metadata_text(metadata, "status"))
+    if status in _PHYSICAL_SCORER_SUCCESS_STATUSES:
+        return True
+    if status in _PHYSICAL_SCORER_FAILURE_STATUSES:
+        return False
+    return None
+
+
+def _strict_optional_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if value in {0, 1}:
+            return bool(value)
+        return None
+    text = str(value).strip().lower() if value is not None else ""
+    if text in {"true", "t", "yes", "y", "1", "pass", "passed"}:
+        return True
+    if text in {"false", "f", "no", "n", "0", "fail", "failed"}:
+        return False
+    return None
+
+
+def _physical_metric_availability_entry(
+    metric_name: str,
+    *,
+    layered_metadata: Mapping[str, Any],
+    physical_available: bool,
+    physical_source: str | None,
+    unavailable_reason: str | None,
+) -> dict[str, Any]:
+    if not physical_available:
+        return {
+            "status": "unavailable",
+            "source": physical_source,
+            "reason": unavailable_reason,
+        }
+    layered_availability = layered_metadata.get("metric_availability", {})
+    raw_entry = (
+        layered_availability.get(metric_name, {})
+        if isinstance(layered_availability, Mapping)
+        else {}
+    )
+    entry = dict(raw_entry) if isinstance(raw_entry, Mapping) else {}
+    if metric_name == "physical_intercept_count":
+        raw_pair_entry = (
+            layered_availability.get("pair_physical_success_count", {})
+            if isinstance(layered_availability, Mapping)
+            else {}
+        )
+        entry = dict(raw_pair_entry) if isinstance(raw_pair_entry, Mapping) else {}
+    entry.setdefault("status", "unavailable")
+    entry.setdefault("reason", "physical metric evidence is incomplete")
+    entry["source"] = physical_source
+    return entry
 
 
 def _coalition_completion_metrics(
@@ -5876,6 +6169,9 @@ def _coalition_completion_metrics(
             by_target[target_id].append(row)
 
     coalition_targets: dict[str, tuple[int, list[Mapping[str, Any]]]] = {}
+    denominator_missing_targets: list[str] = []
+    member_missing_targets: list[str] = []
+    denominator_mismatch_targets: list[str] = []
     for target_id, rows in by_target.items():
         explicit_required = [
             value
@@ -5891,56 +6187,189 @@ def _coalition_completion_metrics(
         primary_rows = explicitly_required_rows or [
             row for row in rows if _state(_metadata_text(row, "member_role")) == "primary"
         ]
-        required_count = max(explicit_required) if explicit_required else len(primary_rows)
+        cooperative_indicated = bool(
+            len(primary_rows) > 1
+            or any(_metadata_text(row, "coalition_id") is not None for row in rows)
+            or any(value > 1 for value in explicit_required)
+        )
+        if len(set(explicit_required)) > 1:
+            denominator_mismatch_targets.append(target_id)
+            continue
+        if not explicit_required:
+            if cooperative_indicated:
+                denominator_missing_targets.append(target_id)
+            continue
+        required_count = explicit_required[0]
         if required_count > 1:
+            if len(primary_rows) < required_count:
+                member_missing_targets.append(target_id)
             coalition_targets[target_id] = (required_count, primary_rows)
 
+    explicit_opportunities = _metadata_int(
+        summary_metadata,
+        "coalition_opportunity_count",
+    )
+    explicit_count = _metadata_int(
+        summary_metadata,
+        "coalition_completion_count",
+    )
+    window_enforced = _first_metadata_bool(
+        summary_metadata,
+        ("coalition_arrival_window_enforced",),
+    )
+    summary_arrival_coordination_required = _first_metadata_bool(
+        summary_metadata,
+        ("arrival_coordination_required",),
+    )
+
+    if denominator_mismatch_targets:
+        return _unavailable_coalition_metrics(
+            "required_primary_count is inconsistent across persisted pair summaries",
+            opportunity_count=(len(coalition_targets) or explicit_opportunities),
+            source="pair_summary",
+            coalition_required_primary_count_mismatch_target_ids=sorted(
+                denominator_mismatch_targets
+            ),
+        )
+    if denominator_missing_targets:
+        return _unavailable_coalition_metrics(
+            "coalition required-primary denominator is missing",
+            opportunity_count=(len(coalition_targets) or explicit_opportunities),
+            source="pair_summary",
+            coalition_missing_denominator_target_ids=sorted(
+                denominator_missing_targets
+            ),
+        )
+    if member_missing_targets:
+        return _unavailable_coalition_metrics(
+            "required_primary_count exceeds persisted required primary pair count",
+            opportunity_count=len(coalition_targets),
+            source="pair_summary",
+            coalition_missing_required_primary_target_ids=sorted(member_missing_targets),
+        )
+
     if not coalition_targets:
-        explicit_opportunities = _metadata_int(
-            summary_metadata,
-            "coalition_opportunity_count",
-        )
-        explicit_count = _metadata_int(
-            summary_metadata,
-            "coalition_completion_count",
-        )
-        window_enforced = _first_metadata_bool(
-            summary_metadata,
-            ("coalition_arrival_window_enforced",),
-        )
-        if explicit_opportunities is not None and window_enforced is True:
+        if explicit_opportunities is None:
+            return _unavailable_coalition_metrics(
+                "coalition opportunity denominator is missing",
+                opportunity_count=None,
+                source="summary",
+            )
+        if explicit_count is None:
+            return _unavailable_coalition_metrics(
+                "coalition summary has opportunities but completion count is missing",
+                opportunity_count=explicit_opportunities,
+                source="summary",
+            )
+        if explicit_count < 0 or explicit_count > explicit_opportunities:
+            return _unavailable_coalition_metrics(
+                "coalition completion count is outside the persisted opportunity denominator",
+                opportunity_count=explicit_opportunities,
+                source="summary",
+            )
+        if (
+            explicit_opportunities > 0
+            and summary_arrival_coordination_required is not False
+            and window_enforced is not True
+        ):
+            return _unavailable_coalition_metrics(
+                "coalition arrival window evidence is missing",
+                opportunity_count=explicit_opportunities,
+                source="summary",
+            )
+        if explicit_opportunities > 0:
             return {
-                "coalition_completion_count": explicit_count or 0,
+                "coalition_completion_count": explicit_count,
                 "coalition_completion_rate": _optional_rate(
-                    explicit_count or 0,
+                    explicit_count,
                     explicit_opportunities,
                 ),
                 "_metadata": {
                     "coalition_opportunity_count": explicit_opportunities,
                     "coalition_completion_availability": "available",
                     "coalition_completion_source": "summary",
+                    "arrival_coordination_required": (
+                        summary_arrival_coordination_required
+                    ),
+                    "coalition_completion_semantics": (
+                        "independent_required_primary_physical_success"
+                        if summary_arrival_coordination_required is False
+                        else "required_primary_arrival_window"
+                    ),
+                    "coalition_completion_available_reason": (
+                        "all required active primaries are scored independently; "
+                        "arrival coordination explicitly disabled"
+                        if summary_arrival_coordination_required is False
+                        else "complete required-primary and arrival-window evidence"
+                    ),
                 },
             }
-        return {
-            "coalition_completion_count": 0,
-            "coalition_completion_rate": None,
-            "_metadata": {
-                "coalition_opportunity_count": 0,
-                "coalition_completion_availability": "no_coalition_opportunity",
-            },
-        }
+        return _unavailable_coalition_metrics(
+            "coalition completion rate requires a positive opportunity denominator",
+            opportunity_count=explicit_opportunities,
+            source="summary",
+        )
+
+    if explicit_opportunities is not None and explicit_opportunities != len(
+        coalition_targets
+    ):
+        return _unavailable_coalition_metrics(
+            "summary coalition opportunity count does not match pair-derived denominator",
+            opportunity_count=explicit_opportunities,
+            source="pair_summary",
+            coalition_pair_derived_opportunity_count=len(coalition_targets),
+        )
 
     completed_targets: list[str] = []
     missing_window_targets: list[str] = []
+    missing_arrival_targets: list[str] = []
+    coordination_conflict_targets: list[str] = []
+    independent_targets: list[str] = []
     for target_id, (required_count, primary_rows) in coalition_targets.items():
-        if len(primary_rows) < required_count:
-            continue
         required_rows = primary_rows[:required_count]
+        pair_coordination_values = [
+            _first_metadata_bool(row, ("arrival_coordination_required",))
+            for row in required_rows
+        ]
+        explicit_pair_values = {
+            value for value in pair_coordination_values if value is not None
+        }
+        if len(explicit_pair_values) > 1 or (
+            summary_arrival_coordination_required is not None
+            and explicit_pair_values
+            and explicit_pair_values != {summary_arrival_coordination_required}
+        ):
+            coordination_conflict_targets.append(target_id)
+            continue
+        independent = (
+            summary_arrival_coordination_required is False
+            or (
+                summary_arrival_coordination_required is None
+                and pair_coordination_values
+                and all(value is False for value in pair_coordination_values)
+            )
+        )
+        if independent:
+            independent_targets.append(target_id)
+            if all(_physical_result(row) is True for row in required_rows):
+                completed_targets.append(target_id)
+            continue
         if any(_arrival_window(row) is None for row in required_rows):
             missing_window_targets.append(target_id)
             continue
+        if any(
+            _physical_result(row) is True
+            and _first_metadata_float(
+                row,
+                ("arrival_timestamp_s", "time_to_intercept_s"),
+            )
+            is None
+            for row in required_rows
+        ):
+            missing_arrival_targets.append(target_id)
+            continue
         if all(
-            _physical_success(row) and _inside_arrival_window(row)
+            _physical_result(row) is True and _inside_arrival_window(row)
             for row in required_rows
         ):
             completed_targets.append(target_id)
@@ -5949,12 +6378,56 @@ def _coalition_completion_metrics(
         "coalition_opportunity_count": len(coalition_targets),
         "completed_coalition_target_ids": sorted(completed_targets),
         "coalition_missing_arrival_window_target_ids": sorted(missing_window_targets),
+        "coalition_missing_arrival_timestamp_target_ids": sorted(
+            missing_arrival_targets
+        ),
         "coalition_completion_source": "pair_summary",
+        "arrival_coordination_required": (
+            False
+            if independent_targets
+            and len(independent_targets) == len(coalition_targets)
+            else True
+        ),
+        "coalition_completion_semantics": (
+            "independent_required_primary_physical_success"
+            if independent_targets
+            and len(independent_targets) == len(coalition_targets)
+            else "required_primary_arrival_window"
+        ),
+        "coalition_independent_arrival_target_ids": sorted(independent_targets),
+        "coalition_arrival_coordination_conflict_target_ids": sorted(
+            coordination_conflict_targets
+        ),
     }
-    if missing_window_targets:
+    if explicit_count is not None and explicit_count != len(completed_targets):
+        metadata["coalition_completion_availability"] = "unavailable"
+        metadata["coalition_completion_unavailable_reason"] = (
+            "summary coalition completion count does not match pair-derived result"
+        )
+        metadata["coalition_summary_completion_count"] = explicit_count
+        metadata["coalition_pair_derived_completion_count"] = len(completed_targets)
+        return {
+            "coalition_completion_count": None,
+            "coalition_completion_rate": None,
+            "_metadata": metadata,
+        }
+    if coordination_conflict_targets:
+        metadata["coalition_completion_availability"] = "unavailable"
+        metadata["coalition_completion_unavailable_reason"] = (
+            "arrival_coordination_required is inconsistent across summary or "
+            "required primary pairs"
+        )
+        return {
+            "coalition_completion_count": None,
+            "coalition_completion_rate": None,
+            "_metadata": metadata,
+        }
+    if missing_window_targets or missing_arrival_targets:
         metadata["coalition_completion_availability"] = "unavailable"
         metadata["coalition_completion_unavailable_reason"] = (
             "required primary arrival window evidence is incomplete"
+            if missing_window_targets
+            else "successful required primary arrival timestamp evidence is incomplete"
         )
         return {
             "coalition_completion_count": None,
@@ -5962,10 +6435,37 @@ def _coalition_completion_metrics(
             "_metadata": metadata,
         }
     metadata["coalition_completion_availability"] = "available"
+    metadata["coalition_completion_available_reason"] = (
+        "all required active primaries are scored independently; arrival "
+        "coordination explicitly disabled"
+        if independent_targets
+        and len(independent_targets) == len(coalition_targets)
+        else "complete required-primary and arrival-window evidence"
+    )
     return {
         "coalition_completion_count": len(completed_targets),
         "coalition_completion_rate": len(completed_targets) / len(coalition_targets),
         "_metadata": metadata,
+    }
+
+
+def _unavailable_coalition_metrics(
+    reason: str,
+    *,
+    opportunity_count: int | None,
+    source: str,
+    **metadata: Any,
+) -> dict[str, Any]:
+    return {
+        "coalition_completion_count": None,
+        "coalition_completion_rate": None,
+        "_metadata": {
+            "coalition_opportunity_count": opportunity_count,
+            "coalition_completion_availability": "unavailable",
+            "coalition_completion_unavailable_reason": reason,
+            "coalition_completion_source": source,
+            **metadata,
+        },
     }
 
 
@@ -6314,8 +6814,16 @@ def _detect_coast_diagnostics(
         "visual_reacquisition_count",
         "terminal_visual_lost_after_coast_count",
         "truth_identity_online_use_count",
+        "truth_state_online_use_count",
     )
     result = {name: _metadata_int(summary_metadata, name) for name in names}
+
+    truth_state_count, truth_state_provenance = _truth_state_online_use_diagnostic(
+        summary_metadata=summary_metadata,
+        pair_events=pair_events,
+        command_events=command_events,
+    )
+    result["truth_state_online_use_count"] = truth_state_count
 
     if result["detection_acquisition_timeout_count"] is None and pair_events:
         timeout_pairs = {
@@ -6365,7 +6873,11 @@ def _detect_coast_diagnostics(
         truth_records = [
             record
             for record in (*pair_events, *command_events)
-            if "truth_identity_online_use" in record.metadata
+            if _first_metadata_bool(
+                record.metadata,
+                ("truth_identity_online_use",),
+            )
+            is not None
         ]
         if truth_records:
             result["truth_identity_online_use_count"] = sum(
@@ -6414,14 +6926,117 @@ def _detect_coast_diagnostics(
             else inferred_lost
         )
 
+    metric_availability = {
+        name: {
+            "status": "available" if result[name] is not None else "unavailable",
+            "source": (
+                truth_state_provenance.get("selected_source")
+                if name == "truth_state_online_use_count"
+                else "intercept_summary_or_persisted_rows"
+            ),
+            "reason": (
+                "persisted truth-state provenance evidence"
+                if name == "truth_state_online_use_count" and result[name] is not None
+                else "persisted D7 diagnostic evidence"
+                if result[name] is not None
+                else "required D7 diagnostic fields are absent"
+            ),
+        }
+        for name in names
+    }
     return {
         **result,
         "_metadata": {
             "detect_coast_diagnostic_availability": {
                 name: "available" if result[name] is not None else "unavailable"
                 for name in names
-            }
+            },
+            "truth_state_online_use_provenance": truth_state_provenance,
+            "metric_availability": metric_availability,
         },
+    }
+
+
+def _truth_state_online_use_diagnostic(
+    *,
+    summary_metadata: Mapping[str, Any],
+    pair_events: Sequence[EventRecord],
+    command_events: Sequence[EventRecord],
+) -> tuple[int | None, dict[str, Any]]:
+    summary_count = _metadata_int(summary_metadata, "truth_state_online_use_count")
+    online_source = _state(
+        _metadata_text(summary_metadata, "online_control_state_source")
+    )
+    pair_count = _metadata_int(summary_metadata, "pair_count")
+
+    true_pair_keys: set[tuple[str, str]] = set()
+    anonymous_true_count = 0
+    row_evidence_count = 0
+    source_counts: dict[str, int] = defaultdict(int)
+    row_true_counts = {"pair_rows": 0, "command_rows": 0}
+    for label, records in (
+        ("pair_rows", pair_events),
+        ("command_rows", command_events),
+    ):
+        for record in records:
+            explicit = _first_metadata_bool(
+                record.metadata,
+                ("truth_state_online_use", "online_truth_state_used"),
+            )
+            target_source = _state(
+                _metadata_text(record.metadata, "target_state_source")
+            )
+            if explicit is None and not target_source:
+                continue
+            row_evidence_count += 1
+            if target_source:
+                source_counts[target_source] += 1
+            truth_used = (
+                explicit
+                if explicit is not None
+                else target_source in _TRUTH_ONLINE_CONTROL_STATE_SOURCES
+            )
+            if not truth_used:
+                continue
+            row_true_counts[label] += 1
+            pair_key = _intercept_pair_key(record)
+            if pair_key is None:
+                anonymous_true_count += 1
+            else:
+                true_pair_keys.add(pair_key)
+
+    observed_pair_count = len(true_pair_keys) + anonymous_true_count
+    candidates: list[tuple[str, int]] = []
+    if summary_count is not None:
+        candidates.append(("intercept_summary", summary_count))
+    if row_evidence_count:
+        candidates.append(("persisted_pair_or_command_rows", observed_pair_count))
+    if (
+        not candidates
+        and online_source in _TRUTH_ONLINE_CONTROL_STATE_SOURCES
+        and pair_count is not None
+    ):
+        candidates.append(("online_control_state_source", pair_count))
+    elif (
+        not candidates
+        and online_source in _ESTIMATED_ONLINE_CONTROL_STATE_SOURCES
+    ):
+        candidates.append(("online_control_state_source", 0))
+
+    selected_count = max((value for _, value in candidates), default=None)
+    selected_sources = [source for source, value in candidates if value == selected_count]
+    distinct_counts = sorted({value for _, value in candidates})
+    return selected_count, {
+        "selected_source": "+".join(selected_sources) if selected_sources else None,
+        "summary_count": summary_count,
+        "observed_unique_pair_count": observed_pair_count if row_evidence_count else None,
+        "pair_row_true_count": row_true_counts["pair_rows"],
+        "command_row_true_count": row_true_counts["command_rows"],
+        "row_evidence_count": row_evidence_count,
+        "online_control_state_source": online_source or None,
+        "target_state_source_counts": dict(sorted(source_counts.items())),
+        "source_count_mismatch": len(distinct_counts) > 1,
+        "candidate_counts": {source: value for source, value in candidates},
     }
 
 

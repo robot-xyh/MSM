@@ -156,6 +156,12 @@ def _add_intercept_summary_events(collector: MetricsCollector, path: Path) -> No
                     summary.get("physical_intercept_unavailable_reason")
                     or summary.get("unavailable_reason")
                 ),
+                "physical_intercept_source": _optional_text(
+                    summary.get("physical_intercept_source")
+                ),
+                "online_control_state_source": _optional_text(
+                    summary.get("online_control_state_source")
+                ),
                 "intercept_radius_m": _optional_float(
                     parameters.get("intercept_radius_m")
                     or success_semantics.get("range_threshold_m")
@@ -208,15 +214,41 @@ def _add_intercept_summary_events(collector: MetricsCollector, path: Path) -> No
                     "status": _optional_text(pair.get("status")),
                     "abort_reason": _optional_text(pair.get("abort_reason")),
                     "min_range_m": _optional_float(pair.get("min_range_m")),
+                    "physical_min_range_m": _optional_float(
+                        pair.get("physical_min_range_m")
+                    ),
+                    "physical_evidence_available": _optional_bool(
+                        pair.get("physical_evidence_available")
+                    ),
+                    "physical_intercept_time_s": _optional_float(
+                        pair.get("physical_intercept_time_s")
+                    ),
                     "time_to_intercept_s": _optional_float(pair.get("time_to_intercept_s")),
                     "last_detection_s": _optional_float(pair.get("last_detection_s")),
                     "physical_success": _optional_bool(pair.get("physical_success")),
+                    "truth_identity_online_use": _first_mapping_bool(
+                        pair,
+                        "truth_identity_online_use",
+                        "online_truth_id_used",
+                    ),
+                    "truth_state_online_use": _first_mapping_bool(
+                        pair,
+                        "truth_state_online_use",
+                        "online_truth_state_used",
+                    ),
+                    "target_state_source": _optional_text(
+                        pair.get("target_state_source")
+                    ),
                     "member_role": _optional_text(pair.get("member_role")),
                     "required_primary": _optional_bool(pair.get("required_primary")),
                     "required_primary_count": _first_mapping_int(
                         pair,
                         "required_primary_count",
                         "required_resource_count",
+                    ),
+                    "arrival_coordination_required": _first_mapping_bool(
+                        pair,
+                        "arrival_coordination_required",
                     ),
                     "arrival_window": pair.get("arrival_window"),
                     "arrival_window_start_s": _first_mapping_float(
@@ -407,6 +439,24 @@ def _control_command_metadata(row: Mapping[str, Any], *, source_path: Path) -> d
             "online_truth_identity_used",
             "truth_id_used_online",
         ),
+        "truth_state_online_use": _first_bool(
+            row,
+            "truth_state_online_use",
+            "online_truth_state_used",
+            "truth_state_used_online",
+        ),
+        "target_state_source": _optional_text(row.get("target_state_source")),
+        "target_state_valid_at_s": _optional_float(row.get("target_state_valid_at_s")),
+        "target_measurement_timestamp_s": _optional_float(
+            row.get("target_measurement_timestamp_s")
+        ),
+        "target_arrival_timestamp_s": _optional_float(
+            row.get("target_arrival_timestamp_s")
+        ),
+        "target_measurement_age_s": _optional_float(
+            row.get("target_measurement_age_s")
+        ),
+        "target_state_stale": _optional_bool(row.get("target_state_stale")),
         "contract_allowed": _first_bool(
             row,
             "contract_allowed",
@@ -448,6 +498,9 @@ def _control_command_metadata(row: Mapping[str, Any], *, source_path: Path) -> d
         "control_saturated": _optional_bool(row.get("control_saturated")),
         "collision_seen": _optional_bool(row.get("collision_seen")),
         "physical_intercept": _optional_bool(row.get("physical_intercept")),
+        "physical_evidence_available": _optional_bool(
+            row.get("physical_evidence_available")
+        ),
         "collision_object_name": _optional_text(row.get("collision_object_name")),
         "status": _optional_text(row.get("status")),
         "abort_reason": _optional_text(row.get("abort_reason")),
@@ -483,6 +536,7 @@ def _summary_count_metadata(
         "visual_reacquisition_count",
         "terminal_visual_lost_after_coast_count",
         "truth_identity_online_use_count",
+        "truth_state_online_use_count",
         "terminal_filter_measured_count",
         "terminal_filter_predicted_count",
         "terminal_filter_innovation_rejected_count",
@@ -511,6 +565,14 @@ def _summary_count_metadata(
     )
     if arrival_window_enforced is not None:
         metadata["coalition_arrival_window_enforced"] = arrival_window_enforced
+    arrival_coordination_required = _optional_bool(
+        summary.get(
+            "arrival_coordination_required",
+            success_semantics.get("arrival_coordination_required"),
+        )
+    )
+    if arrival_coordination_required is not None:
+        metadata["arrival_coordination_required"] = arrival_coordination_required
     return metadata
 
 

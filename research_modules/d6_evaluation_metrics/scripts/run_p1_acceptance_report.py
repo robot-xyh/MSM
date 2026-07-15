@@ -25,11 +25,27 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--d1-summary", type=Path)
     parser.add_argument("--d2-summary", type=Path)
     parser.add_argument("--d3-summary", type=Path)
+    parser.add_argument(
+        "--d3-plan-history",
+        type=Path,
+        help="Canonical D3 d3_plan_history_v1 JSON file",
+    )
     parser.add_argument("--d4-summary", type=Path)
     parser.add_argument("--d5-summary", type=Path)
+    parser.add_argument("--d7-execution-summary", type=Path)
     parser.add_argument("--d7-dropout-summary", type=Path)
     parser.add_argument("--d7-png-ttc-summary", type=Path)
     parser.add_argument("--d7-trend-summary", type=Path)
+    parser.add_argument(
+        "--main-stage-timings",
+        type=Path,
+        help="main-stage-timing-v1 JSONL produced by the main episode bus",
+    )
+    parser.add_argument(
+        "--control-tick-stage-timings",
+        type=Path,
+        help="control-tick-stage-timing-v1 JSONL produced by SimpleFlight",
+    )
     return parser
 
 
@@ -42,11 +58,15 @@ def main() -> int:
             d1_long_replay=args.d1_summary,
             d2_long_replay=args.d2_summary,
             d3_assignment_calibration=args.d3_summary,
+            d3_plan_history=args.d3_plan_history,
             d4_failover_matrix=args.d4_summary,
             d5_visual_calibration=args.d5_summary,
+            d7_terminal_execution=args.d7_execution_summary,
             d7_locked_dropout=args.d7_dropout_summary,
             d7_png_ttc=args.d7_png_ttc_summary,
             d7_trend_coast=args.d7_trend_summary,
+            main_stage_timings=args.main_stage_timings,
+            control_tick_stage_timings=args.control_tick_stage_timings,
         ),
     )
     for name, path in outputs.items():

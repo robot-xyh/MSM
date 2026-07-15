@@ -17,7 +17,7 @@ import statistics
 from typing import Any, Mapping, Sequence
 
 
-COOPERATIVE_CLOSURE_SCHEMA_VERSION = "d6-cooperative-closure-v2"
+COOPERATIVE_CLOSURE_SCHEMA_VERSION = "d6-cooperative-closure-v3"
 
 STAGES = (
     "assigned",
@@ -92,8 +92,33 @@ _PER_SEED_FIELDS = (
         for stage in STAGES
         for suffix in ("passed", "available", "unavailable", "rate")
     ),
+    *(
+        f"second_primary_{stage}_{suffix}"
+        for stage in STAGES
+        for suffix in ("passed", "available", "unavailable", "rate")
+    ),
+    *(
+        f"{level}_first_failure_reason_{suffix}"
+        for level in ("pair", "target", "coalition")
+        for suffix in (
+            "availability",
+            "availability_reason",
+            "failed_unit_count",
+            "available_unit_count",
+            "unavailable_unit_count",
+            "distribution",
+        )
+    ),
+    "second_primary_member_count",
     "second_primary_opportunity_count",
+    "second_primary_success_count",
     "second_primary_failure_count",
+    "second_primary_availability",
+    "second_primary_availability_reason",
+    "second_primary_first_failure_reason_availability",
+    "second_primary_first_failure_reason_availability_reason",
+    "second_primary_first_failure_reason_available_count",
+    "second_primary_first_failure_reason_unavailable_count",
     "second_primary_failure_distribution",
     "common_lock_passed",
     "common_lock_available",
@@ -498,6 +523,14 @@ def _build_seed_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
                 summary = _stage_summary(units, stage)
                 for suffix, value in summary.items():
                     row[f"{level}_{stage}_{suffix}"] = value
+            failure_reason = _failure_reason_summary(units)
+            for suffix, value in failure_reason.items():
+                field = f"{level}_first_failure_reason_{suffix}"
+                row[field] = (
+                    json.dumps(value, ensure_ascii=False, sort_keys=True)
+                    if suffix == "distribution"
+                    else value
+                )
 
         second = _second_primary_summary(primary_members)
         row.update(second)
@@ -520,17 +553,9 @@ def _build_seed_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
             if item.get("member_separation_m") is not None
         ]
         row["minimum_member_separation_m"] = min(separations) if separations else None
-        row["first_failure_distribution"] = json.dumps(
-            dict(
-                Counter(
-                    str(item["first_failure_reason"])
-                    for item in members
-                    if item.get("first_failure_reason")
-                )
-            ),
-            ensure_ascii=False,
-            sort_keys=True,
-        )
+        row["first_failure_distribution"] = row[
+            "pair_first_failure_reason_distribution"
+        ]
         row.update(_safety_summary(members))
         row["second_primary_failure_distribution"] = json.dumps(
             row["second_primary_failure_distribution"],
@@ -598,25 +623,137 @@ def _second_primary_summary(
     grouped: dict[Any, list[Mapping[str, Any]]] = defaultdict(list)
     for item in members:
         grouped[item.get("target_id")].append(item)
-    distribution: Counter[str] = Counter()
-    opportunities = 0
-    failures = 0
+    second_members: list[Mapping[str, Any]] = []
     for values in grouped.values():
         ordered = sorted(values, key=_member_sort_key)
         if len(ordered) < 2:
             continue
-        second = ordered[1]
-        if second.get("physical_intercept") is None:
-            continue
-        opportunities += 1
-        if second.get("physical_intercept") is False:
-            failures += 1
-            distribution[str(second.get("first_failure_reason") or "unspecified")] += 1
-    return {
-        "second_primary_opportunity_count": opportunities,
-        "second_primary_failure_count": failures,
-        "second_primary_failure_distribution": dict(distribution),
+        second_members.append(ordered[1])
+
+    units = [[item] for item in second_members]
+    result: dict[str, Any] = {
+        "second_primary_member_count": len(second_members),
     }
+    stage_summaries: dict[str, dict[str, int | float | None]] = {}
+    for stage in STAGES:
+        summary = _stage_summary(units, stage)
+        stage_summaries[stage] = summary
+        for suffix, value in summary.items():
+            result[f"second_primary_{stage}_{suffix}"] = value
+
+    physical = stage_summaries["physical_intercept"]
+    opportunities = int(physical["available"])
+    successes = int(physical["passed"])
+    unavailable = int(physical["unavailable"])
+    availability, availability_reason = _outcome_availability(
+        unit_count=len(second_members),
+        available_count=opportunities,
+        unavailable_count=unavailable,
+        empty_reason="second_primary_member_not_present",
+        missing_reason="second_primary_physical_intercept_evidence_missing",
+    )
+    failure_reason = _failure_reason_summary(units)
+    result.update(
+        {
+            "second_primary_opportunity_count": opportunities,
+            "second_primary_success_count": successes if opportunities else None,
+            "second_primary_failure_count": (
+                opportunities - successes if opportunities else None
+            ),
+            "second_primary_availability": availability,
+            "second_primary_availability_reason": availability_reason,
+            "second_primary_first_failure_reason_availability": failure_reason[
+                "availability"
+            ],
+            "second_primary_first_failure_reason_availability_reason": failure_reason[
+                "availability_reason"
+            ],
+            "second_primary_first_failure_reason_available_count": failure_reason[
+                "available_unit_count"
+            ],
+            "second_primary_first_failure_reason_unavailable_count": failure_reason[
+                "unavailable_unit_count"
+            ],
+            "second_primary_failure_distribution": failure_reason["distribution"],
+        }
+    )
+    return result
+
+
+def _failure_reason_summary(
+    units: Sequence[Sequence[Mapping[str, Any]]],
+) -> dict[str, Any]:
+    """Summarize producer-provided first-failure reasons without filling gaps."""
+
+    distribution: Counter[str] = Counter()
+    failed_unit_count = 0
+    available_unit_count = 0
+    unavailable_unit_count = 0
+    physical_available_unit_count = 0
+    for unit in units:
+        physical_values = [item.get("physical_intercept") for item in unit]
+        if not physical_values or any(value is None for value in physical_values):
+            continue
+        physical_available_unit_count += 1
+        failed_members = [
+            item for item in unit if item.get("physical_intercept") is False
+        ]
+        if not failed_members:
+            continue
+        failed_unit_count += 1
+        reasons = [
+            str(item["first_failure_reason"]).strip()
+            for item in failed_members
+            if isinstance(item.get("first_failure_reason"), str)
+            and str(item["first_failure_reason"]).strip()
+        ]
+        if reasons:
+            available_unit_count += 1
+            distribution.update(reasons)
+        else:
+            unavailable_unit_count += 1
+
+    if failed_unit_count == 0:
+        if physical_available_unit_count:
+            availability = "not_applicable"
+            availability_reason = "no_explicit_physical_failure"
+        else:
+            availability = "unavailable"
+            availability_reason = "physical_intercept_evidence_unavailable"
+    elif unavailable_unit_count == 0:
+        availability = "available"
+        availability_reason = None
+    elif available_unit_count:
+        availability = "partial"
+        availability_reason = "first_failure_reason_missing_for_some_failed_units"
+    else:
+        availability = "unavailable"
+        availability_reason = "first_failure_reason_missing_for_failed_units"
+    return {
+        "availability": availability,
+        "availability_reason": availability_reason,
+        "failed_unit_count": failed_unit_count,
+        "available_unit_count": available_unit_count,
+        "unavailable_unit_count": unavailable_unit_count,
+        "distribution": dict(distribution),
+    }
+
+
+def _outcome_availability(
+    *,
+    unit_count: int,
+    available_count: int,
+    unavailable_count: int,
+    empty_reason: str,
+    missing_reason: str,
+) -> tuple[str, str | None]:
+    if unit_count == 0:
+        return "unavailable", empty_reason
+    if available_count == 0:
+        return "unavailable", missing_reason
+    if unavailable_count:
+        return "partial", missing_reason
+    return "available", None
 
 
 def _common_lock_summary(
@@ -748,11 +885,40 @@ def _build_aggregate(
         }
         for level in ("pair", "target", "coalition")
     }
+    physical_outcomes = {
+        level: _physical_outcome_summary(funnels[level]["physical_intercept"])
+        for level in ("pair", "target", "coalition")
+    }
+    first_failure_reasons = {
+        level: _aggregate_failure_reason(seed_rows, prefix=level)
+        for level in ("pair", "target", "coalition")
+    }
+    second_primary_funnel = {
+        stage: _sum_prefixed_stage(seed_rows, "second_primary", stage)
+        for stage in STAGES
+    }
+    second_primary_outcome = _physical_outcome_summary(
+        second_primary_funnel["physical_intercept"]
+    )
+    second_first_failure = _aggregate_failure_reason(
+        seed_rows, prefix="second_primary"
+    )
     second_distribution: Counter[str] = Counter()
-    failure_distribution: Counter[str] = Counter()
     for row in seed_rows:
         second_distribution.update(json.loads(row["second_primary_failure_distribution"]))
-        failure_distribution.update(json.loads(row["first_failure_distribution"]))
+    second_opportunities = sum(
+        int(row["second_primary_opportunity_count"]) for row in seed_rows
+    )
+    second_successes = sum(
+        int(value)
+        for row in seed_rows
+        if (value := row.get("second_primary_success_count")) is not None
+    )
+    second_failures = sum(
+        int(value)
+        for row in seed_rows
+        if (value := row.get("second_primary_failure_count")) is not None
+    )
 
     common_passed = sum(int(row["common_lock_passed"]) for row in seed_rows)
     common_available = sum(int(row["common_lock_available"]) for row in seed_rows)
@@ -780,12 +946,32 @@ def _build_aggregate(
         "optional_evidence_manifest": dict(manifest),
         "primary_source": dict(primary_source),
         "funnels": funnels,
-        "second_primary": {
-            "opportunity_count": sum(int(row["second_primary_opportunity_count"]) for row in seed_rows),
-            "failure_count": sum(int(row["second_primary_failure_count"]) for row in seed_rows),
-            "failure_distribution": dict(second_distribution),
+        "physical_outcomes": physical_outcomes,
+        "coalition_completion": {
+            **physical_outcomes["coalition"],
+            "completion_count": physical_outcomes["coalition"]["success_count"],
+            "completion_rate": physical_outcomes["coalition"]["success_rate"],
+            "first_failure_reason": first_failure_reasons["coalition"],
         },
-        "first_failure_distribution": dict(failure_distribution),
+        "second_primary": {
+            "availability": second_primary_outcome["availability"],
+            "availability_reason": second_primary_outcome[
+                "availability_reason"
+            ],
+            "member_count": sum(
+                int(row["second_primary_member_count"]) for row in seed_rows
+            ),
+            "opportunity_count": second_opportunities,
+            "success_count": second_successes if second_opportunities else None,
+            "failure_count": second_failures if second_opportunities else None,
+            "failure_distribution": dict(second_distribution),
+            "first_failure_reason": second_first_failure,
+            "funnel": second_primary_funnel,
+        },
+        "first_failure_reasons": first_failure_reasons,
+        "first_failure_distribution": first_failure_reasons["pair"][
+            "distribution"
+        ],
         "common_lock": {
             "status": "available" if common_available else "unavailable",
             "passed": common_passed if common_available else None,
@@ -844,6 +1030,117 @@ def _sum_stage(
         "available": available,
         "unavailable": unavailable,
         "rate": passed / available if available else None,
+    }
+
+
+def _sum_prefixed_stage(
+    seed_rows: Sequence[Mapping[str, Any]], prefix: str, stage: str
+) -> dict[str, Any]:
+    passed = sum(int(row[f"{prefix}_{stage}_passed"]) for row in seed_rows)
+    available = sum(int(row[f"{prefix}_{stage}_available"]) for row in seed_rows)
+    unavailable = sum(int(row[f"{prefix}_{stage}_unavailable"]) for row in seed_rows)
+    return {
+        "status": "available" if available else "unavailable",
+        "passed": passed if available else None,
+        "available": available,
+        "unavailable": unavailable,
+        "rate": passed / available if available else None,
+    }
+
+
+def _physical_outcome_summary(stage: Mapping[str, Any]) -> dict[str, Any]:
+    available = int(stage.get("available") or 0)
+    unavailable = int(stage.get("unavailable") or 0)
+    unit_count = available + unavailable
+    passed = stage.get("passed")
+    availability, availability_reason = _outcome_availability(
+        unit_count=unit_count,
+        available_count=available,
+        unavailable_count=unavailable,
+        empty_reason="physical_opportunity_not_present",
+        missing_reason="physical_intercept_evidence_missing",
+    )
+    return {
+        "availability": availability,
+        "availability_reason": availability_reason,
+        "unit_count": unit_count,
+        "available_opportunity_count": available,
+        "unavailable_opportunity_count": unavailable,
+        "success_count": int(passed) if passed is not None else None,
+        "failure_count": (
+            available - int(passed) if passed is not None else None
+        ),
+        "success_rate": stage.get("rate") if available else None,
+    }
+
+
+def _aggregate_failure_reason(
+    seed_rows: Sequence[Mapping[str, Any]], *, prefix: str
+) -> dict[str, Any]:
+    if prefix == "second_primary":
+        available_field = (
+            "second_primary_first_failure_reason_available_count"
+        )
+        unavailable_field = (
+            "second_primary_first_failure_reason_unavailable_count"
+        )
+        distribution_field = "second_primary_failure_distribution"
+        failed_count = sum(
+            int(value)
+            for row in seed_rows
+            if (value := row.get("second_primary_failure_count")) is not None
+        )
+        physical_available = sum(
+            int(row["second_primary_physical_intercept_available"])
+            for row in seed_rows
+        )
+    else:
+        available_field = f"{prefix}_first_failure_reason_available_unit_count"
+        unavailable_field = (
+            f"{prefix}_first_failure_reason_unavailable_unit_count"
+        )
+        distribution_field = f"{prefix}_first_failure_reason_distribution"
+        physical_available = sum(
+            int(row[f"{prefix}_physical_intercept_available"])
+            for row in seed_rows
+        )
+        failed_count = sum(
+            int(row[f"{prefix}_first_failure_reason_failed_unit_count"])
+            for row in seed_rows
+        )
+    reason_available_count = sum(
+        int(row[available_field]) for row in seed_rows
+    )
+    reason_unavailable_count = sum(
+        int(row[unavailable_field]) for row in seed_rows
+    )
+    distribution: Counter[str] = Counter()
+    for row in seed_rows:
+        distribution.update(json.loads(row[distribution_field]))
+
+    if failed_count == 0:
+        if physical_available:
+            availability = "not_applicable"
+            availability_reason = "no_explicit_physical_failure"
+        else:
+            availability = "unavailable"
+            availability_reason = "physical_intercept_evidence_unavailable"
+    elif reason_unavailable_count == 0:
+        availability = "available"
+        availability_reason = None
+    elif reason_available_count:
+        availability = "partial"
+        availability_reason = "first_failure_reason_missing_for_some_failed_units"
+    else:
+        availability = "unavailable"
+        availability_reason = "first_failure_reason_missing_for_failed_units"
+    return {
+        "availability": availability,
+        "availability_reason": availability_reason,
+        "failed_unit_count": failed_count,
+        "reason_available_unit_count": reason_available_count,
+        "reason_unavailable_unit_count": reason_unavailable_count,
+        "distribution": dict(distribution),
     }
 
 
@@ -1027,7 +1324,7 @@ def _write_plot(
     ]
     axes[0, 1].bar(
         seed_labels,
-        [0 if value is None else value for value in coalition_rates],
+        [math.nan if value is None else value for value in coalition_rates],
         color="#4C78A8",
     )
     axes[0, 1].set_ylim(0, 1.05)
@@ -1039,7 +1336,10 @@ def _write_plot(
         axes[1, 0].bar(distribution.keys(), distribution.values(), color="#E45756")
         axes[1, 0].tick_params(axis="x", rotation=25)
     else:
-        axes[1, 0].text(0.5, 0.5, "unavailable", ha="center", va="center")
+        reason_status = aggregate["second_primary"]["first_failure_reason"][
+            "availability"
+        ]
+        axes[1, 0].text(0.5, 0.5, reason_status, ha="center", va="center")
     axes[1, 0].set_title("Second-primary failure reasons")
 
     arrival = [
@@ -1086,6 +1386,24 @@ def _render_markdown(
                 f"| {level} | {stage} | {_ratio(item.get('passed'), item.get('available'))} | {item['unavailable']} | {_fmt(item.get('rate'))} |"
             )
 
+    lines.extend(
+        [
+            "",
+            "## 物理结果独立分母",
+            "",
+            "pair、target、coalition 各自使用本层写盘机会数，不允许由相邻层结果回填。`unavailable` 不计为失败或成功。",
+            "",
+            "| 层级 | Availability | Units | 有效机会 | 不可用机会 | 成功 | 失败 | 成功率 | 首失败原因可用性 | 原因分布 |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---|---|",
+        ]
+    )
+    for level in ("pair", "target", "coalition"):
+        outcome = aggregate["physical_outcomes"][level]
+        failure = aggregate["first_failure_reasons"][level]
+        lines.append(
+            f"| {level} | {outcome['availability']} | {outcome['unit_count']} | {outcome['available_opportunity_count']} | {outcome['unavailable_opportunity_count']} | {_fmt(outcome.get('success_count'))} | {_fmt(outcome.get('failure_count'))} | {_fmt(outcome.get('success_rate'))} | {failure['availability']} | `{json.dumps(failure['distribution'], ensure_ascii=False, sort_keys=True)}` |"
+        )
+
     second = aggregate["second_primary"]
     common = aggregate["common_lock"]
     arrival = aggregate["arrival_dispersion"]
@@ -1094,16 +1412,25 @@ def _render_markdown(
             "",
             "## 协同质量",
             "",
-            f"- 第二 primary 失败：`{second['failure_count']}/{second['opportunity_count']}`；分布 `{json.dumps(second['failure_distribution'], ensure_ascii=False, sort_keys=True)}`。",
+            f"- 第二 primary 物理结果：availability=`{second['availability']}`，成功/有效机会=`{second['success_count']}/{second['opportunity_count']}`，失败=`{second['failure_count']}`，不可用成员=`{second['funnel']['physical_intercept']['unavailable']}`。",
+            f"- 第二 primary 首失败原因：availability=`{second['first_failure_reason']['availability']}`，原因有效/缺失失败单元=`{second['first_failure_reason']['reason_available_unit_count']}/{second['first_failure_reason']['reason_unavailable_unit_count']}`，分布 `{json.dumps(second['failure_distribution'], ensure_ascii=False, sort_keys=True)}`。缺原因不会写成 `unspecified`。",
             f"- 共同锁定率：`{_fmt(common.get('rate'))}`，有效目标 `{common.get('available')}`，不可用目标 `{common.get('unavailable')}`。",
             f"- 到达离散：有效联盟 `{arrival.get('group_count')}`，均值 `{_fmt(arrival.get('mean_s'))} s`，最大 `{_fmt(arrival.get('max_s'))} s`。",
-            f"- 首失败原因：`{json.dumps(aggregate['first_failure_distribution'], ensure_ascii=False, sort_keys=True)}`。",
+            f"- pair 首失败原因（兼容字段）：`{json.dumps(aggregate['first_failure_distribution'], ensure_ascii=False, sort_keys=True)}`。",
             f"- 最近距离：最小 `{_fmt(aggregate['closest_range'].get('minimum_m'))} m`，逐 seed 最小值均值 `{_fmt(aggregate['closest_range'].get('mean_of_seed_minimum_m'))} m`。",
             "",
-            "## 通信故障",
+            "### 第二 primary 逐阶段漏斗",
             "",
+            "| 阶段 | Availability | 通过/有效 | 不可用 | 比例 |",
+            "|---|---|---:|---:|---:|",
         ]
     )
+    for stage in STAGES:
+        item = second["funnel"][stage]
+        lines.append(
+            f"| {stage} | {item['status']} | {_ratio(item.get('passed'), item.get('available'))} | {item['unavailable']} | {_fmt(item.get('rate'))} |"
+        )
+    lines.extend(["", "## 通信故障", ""])
     communication = aggregate["communication_faults"]
     if communication.get("status") != "available":
         lines.append("D4 communication summary：`unavailable`。")

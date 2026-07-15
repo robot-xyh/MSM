@@ -1,6 +1,302 @@
 # D6 Evaluation Metrics Plan
 
-## 2026-07-13 最终状态入口
+## 2026-07-15 M5N2 20-case 实测状态
+
+- [x] 只消费 baseline/candidate 各 10 seed 的 20 个真实 M5N2 case；M5N2 完成后、`TERM` 生效前
+  额外完成的 `png_ttc` seed001 明确排除在本批聚合与验收之外。其余 tuned 2v2 和全部 dropout
+  未执行；缺失 case 保持 unavailable，不补零，也不把本批声明为完整 terminal-closure suite。
+- [x] canonical actual execution required/available/unavailable=`20/20/0`，validation reason 为 0；
+  truth identity/state 在线使用均为 0，10389 条目标状态样本均来自
+  `d2_estimated_global_track`，stale=0。
+- [x] 正式物理分母保持独立：pair=`12/60`、target=`12/40`、coalition=`0/20`；baseline/candidate
+  均为 `6/30`、`6/20`、`0/10`。总量持平不能覆盖逐 seed non-degradation=false。
+- [x] 第二 primary 漏斗 availability 完整：前四阶段 `20/20`、control/mode=`17/20`、physical
+  `0/20`；20 个失败原因全部可用，最近距离 mean/min/max=`12.654/8.843/14.740 m`。
+- [x] 文档术语统一：`12/40` 只称为 canonical target physical success（至少一个 participating
+  pair 成功）；“全部 required member 通过阶段”只称为 cooperative target-stage diagnostic，
+  不得写成或回填正式 `target_intercept_success`。
+- [ ] 补齐 `collision_stop` 的 collision object/actor、时间戳和来源。当前第二 primary
+  `20/20` 最终为 `collision_stop`，但对象字段未写盘，D6 必须保持原因 unavailable，不推断成员
+  冲突、环境碰撞或 AirSim 状态问题。
+- [x] 20 个 case 的两层 timing 原始流逐 case 严格校验；每层 3805 条，main-bus 与 control-tick
+  分别汇总，禁止相加。
+- [ ] main 将 timing 以 case-aware manifest 输入 D6，或在合并时生成全局严格递增的 frame/time；
+  当前 partial acceptance 未注册路径，现有合并流在 case 边界重置，正式 suite timing 保持
+  unavailable，不补零。
+- [ ] 将上述 target 术语固定为 producer schema/字段级 semantics，避免后续 suite 或旧 consumer
+  仍按同名字段误聚合；文档口径已统一，代码字段治理仍开放。
+- [ ] 降低 main-bus `349.34 ms` 和 control-tick `1069.45 ms` 均值及其预算违例；优先定位 D1
+  fusion、AirSim frame sample、bus processing 和 control RPC。
+- [ ] 关闭第二 primary `0/20` 五米物理结果和 coalition `0/20`；candidate 当前不晋升默认路径。
+
+## 2026-07-15 第二 primary/coalition 被动报告状态
+
+- [x] 第二 primary 七阶段漏斗按显式写盘证据输出 passed/available/unavailable/rate。
+- [x] pair、target、coalition 使用独立物理机会数；新增 availability-aware 物理结果和独立
+  coalition completion，禁止 target 或 pair 回填 coalition。
+- [x] 首失败原因只消费显式 `first_failure_reason`；缺失为 unavailable/partial，不生成
+  `unspecified`，缺物理证据不补零。
+- [x] 2026-07-15 确定性 fixture 专项 `11 passed`、D6 全量 `246 passed`、`py_compile` 通过；未
+  启动 AirSim。
+- [x] main 已完成同配置 M5N2 baseline/candidate 各 10 seed，并提供完整 actual、物理与失败原因
+  证据；额外 `png_ttc` seed001 不进入本批聚合与验收，其余 tuned 2v2 和全部 dropout 未执行。第二
+  primary 和 coalition 性能未达标，继续保持 P1。
+
+## 2026-07-15 分阶段延迟可观测性 P1 状态
+
+- [x] 严格校验两层 schema/scope、阶段状态和值、frame/timestamp 顺序、总和、未归因耗时和预算
+  flag；非法证据 fail closed，旧 artifact 缺 timing 为 unavailable。
+- [x] 两层分别汇总 sample、mean/P95/max、N/A/error、总 tick、预算违例和 dominant stage；禁止
+  嵌套耗时跨层相加。
+- [x] 提供稳定 API、CLI、CSV/JSON/中文 Markdown/PNG，并接入 P1 acceptance v5。
+- [x] 2026-07-15 动态规模无关 fixture：合法两层各 2 帧，专项 `20 passed`、全量
+  `236 passed`；未启动 AirSim。
+- [x] 已用真实 M5N2 20 case 的逐 case timing 定位主导阶段并确认 `100 ms` 未达标；两层各 3805
+  samples，main-bus/control-tick P95=`487.40/1254.06 ms`。
+- [ ] 修复 case-aware suite timing 注册后，再完成瓶颈优化、paired 复验与跨提交趋势。
+
+## 2026-07-14 actual target-state freshness/stale P1 关闭状态
+
+- [x] 将六个最终 command 字段冻结为 canonical 必需列；缺列、空/非有限/负数、时间顺序冲突、
+  age 冲突、非法 stale 布尔和空 source 全部 fail closed，不补零。
+- [x] 每 case 输出 sample、mean/p95/max age、stale count/rate、source distribution，以及独立
+  availability/source/semantics。
+- [x] formal validator 在 source SHA256 通过后重读 CSV 复算并比对 payload，禁止只信 JSON。
+- [x] case suite、pooled aggregate、aggregate CSV/JSON 和中文 Markdown 正式报告完成接入；不修改
+  physical、末端五层、truth 隔离和既有 availability 语义。
+- [x] 2026-07-14 最新真实持久化源达到门限：2v2 `48`、M5N2 `608` samples，stale 均为 `0`，
+  source 均为 `d2_estimated_global_track`；D6 全量 `216 passed`。
+- [x] 同配置 M5N2 multi-seed freshness 已由本页顶部 20 case、10389 条样本补齐，stale=0。
+- [ ] 建立跨提交 freshness 趋势和 failure taxonomy；该项不回退单 seed 指标链和本批 multi-seed
+  证据状态。
+
+## 2026-07-14 actual v2 真实 AirSim 证据状态
+
+- [x] tuned 2v2 seed-1 与 M5N2 seed-1 均生成并显式注册通过校验的 canonical
+  `d7-actual-execution-metrics-v2`；required/available/unavailable=`2/2/0`，actual P0 证据门关闭。
+- [x] 两场景 summary/CSV/actual 物理成功计数均为 `2/2/2`；旧
+  `d7_actual_execution_command_physical_count_conflict` 未复现，不再列为开放 GAP。
+- [x] 保留三层独立分母：M5N2 pair=`2/3`、target=`2/2`、coalition=available `0/1`；不得以
+  target 成功覆盖 coalition 显式失败。
+- [x] M5N2 baseline/candidate 同配置各 10 seed 成对比较已完成；结果见本页顶部。
+- [ ] 1-5 帧 dropout 全矩阵仍未执行，完成数为 0；缺失 case 保持 unavailable，不能据此声明完整
+  terminal-closure suite 通过。
+- [ ] 分解并降低 2v2/M5N2 `123.3/384.6 ms` loop latency，复验性能预算违例 `19+212=231`；
+  该项继续作为 P1，不由本轮 actual P0 关闭。
+- [ ] 关闭 M5N2 第二 required primary 约 `11.02 m` 的物理缺口，使 coalition 从 available
+  `0/1` 达到接受目标 `1/1`。
+
+本次为证据和状态同步，不修改 D6 代码。验收日期 2026-07-14；每个场景 1 seed，共 2 case。
+
+## 2026-07-14 actual-execution 最终复核状态（真实重跑前历史）
+
+- [x] required case 只有校验通过的 canonical `d7-actual-execution-metrics-v2` 才算 actual
+  execution available；缺失或显式 unavailable 时 `actual_execution_all_available=false`，suite
+  总验收 fail closed。
+- [x] legacy main row 与离线五米结果只保留 diagnostics，不能替代或补齐 actual envelope。
+- [x] `arrival_coordination_required=false` 时按每个 required active primary 的独立五米成功计算
+  coalition completion；required member/denominator/physical result/开关缺失或 summary-pair 冲突
+  仍输出 `null/unavailable`。
+- [x] 2026-07-14 代码级验收：专项 `14 passed, 24 deselected`，D6 全量 `190 passed`；唯一
+  Matplotlib `Axes3D` warning 只表示 3D projection 不可用，不影响 JSON/CSV/Markdown、二维报告
+  或本轮口径结论。未运行 AirSim。
+
+**仍开放 main P0/P1**：M5N2 baseline、M5N2 candidate、2v2 PNG-TTC、1-frame dropout 四个
+历史真实 seed-1 actual artifact 仍为 `unavailable`，原因均为
+`d7_actual_execution_command_physical_count_conflict`。main 必须真实重跑并注册有效 v2 artifact，
+先关闭 seed-1 fail-closed 门，再进行同条件 multi-seed provenance、趋势和失败原因治理。D6 本轮
+不修改 runtime，也不扩展算法范围。
+
+## 2026-07-14 actual plan identity provenance P0 状态（真实重跑前代码验收）
+
+- [x] actual envelope 升级为 `d7-actual-execution-metrics-v2`，强制 command CSV 提供
+  `plan_id/plan_version/d4_target_node_id` 列；plan ID 和正整数 version 每行必填。
+- [x] 输出去重排序的 `metadata.plan_ids/plan_versions/owner_node_ids`；version 规范化为正整数，
+  owner 仅在 effective-authorized secondary/distributed active/execution/reassignment 或显式
+  execute action 行必填。中心授权及未授权 pending 可为空；没有 authoritative owner 时 owner
+  provenance 为 `unavailable`，owner-required 行缺值 fail closed。
+- [x] 为三项 metadata 写出并校验 `status/source_artifact/reason/semantics`；hash 校验路径重读
+  CSV 对照 envelope，阻止 metadata 脱离持久化来源被篡改。
+- [x] merge 升级为 `d6.execution-metrics-merge.v3`；清除 replay 同名字段，只从 validated
+  actual envelope 写最终 `metrics.metadata`，不改变 safety/physical/mode semantics。
+- [x] 2026-07-14，seed N/A，execution-evidence focused `20 passed`、D6 全量 `184 passed`；
+  中心授权空 owner 和未授权 pending 空 owner 可用，secondary/distributed effective-authorized
+  空 owner fail closed，plan/version 仍逐行必填；1 条既有 matplotlib warning。未运行真实 AirSim。
+
+**后续状态**：main/runtime 已用最终 producer 文件生成并注册本页顶部两条真实 SimpleFlight
+seed-1 v2 artifact；target-state freshness/stale 的单 seed 正式分布链已由本页顶部关闭。剩余 P1
+是同几何、同配置 multi-seed 的 seed/config/schema/hash provenance、跨提交 freshness 趋势和
+failure taxonomy。D2 lifecycle 与 D3 plan/membership churn
+的 episode-clock join 也仍开放；本次单元测试不替代这些证据。
+
+## 2026-07-14 actual execution P0 收尾状态（真实重跑前代码验收）
+
+- [x] 冻结 `d7-actual-execution-metrics-v2`，只认可显式 producer、post-control phase、actual
+  scope、case/seed/规模、三份来源路径和 SHA256。
+- [x] 增加 `build_d7_actual_execution_evidence()` 与
+  `write_d7_actual_execution_evidence()`；输入仅为最终 `control_commands.csv`、
+  `intercept_summary.json`、`main_episode_bus_metrics.json`，D6 不负责 episode 调度。
+- [x] contract/control/mode 从 command rows 计算，physical 从 summary 计算，performance 从
+  main bus clock 计算；来源冲突、缺样本、hash 篡改和 integrated replay 全部 fail closed。
+- [x] 强制 `mode_switched_count <= control_allowed_count`；raw mode 变化只进 metadata audit。
+- [x] actual diagnostic count 从 command CSV 按冻结语义计算；视觉 PNG transition 与持续授权 sample
+  分离，sample 仅作 supplemental。
+- [x] `truth_identity_online_use_count` 与 `truth_state_online_use_count` 并列进入 required count、
+  source、semantics、availability 和 validator；identity 来自 command CSV，state 来自 intercept
+  summary，禁止互相回填。
+- [x] case consumer 在注册后重新计算 source hash，merge 缺 actual 时不再回退 replay。
+- [x] 正负测试覆盖有效写盘、零性能样本、main/command mode 冲突、effective-control 冲突、
+  source hash 篡改、raw replay 冒充 actual、安全计数来源和视觉 transition/sample 分离；D6 全量
+  `173 passed`。
+
+**后续状态**：main 已在三份 producer 文件 finalize 后生成并注册两条独立 artifact，真实 seed-1
+门以 `2/2/0` 关闭。source hash 与 actual mode/control/physical/performance 的一致性要求不变；
+multi-seed P1 和性能 P1 仍开放。D6 本批没有修改 runtime。
+
+## 2026-07-14 terminal closure case evidence 计划状态（先前四案例）
+
+本批 D6 owner 工作已完成：
+
+- main terminal summary 中的多条 `d3_plan_history` 路径按 `case_id/seed` 独立加载、校验和聚合；
+- suite 输出逐 case、逐 seed、总记录数和 churn 合计，单个缺文件或 schema mismatch 不污染其他 case；
+- D7 路径缺失、文件缺失、registration/schema/seed mismatch 都保持 unavailable 并输出原因；
+- 提供 `register_terminal_closure_case_evidence()` 给 main 在 producer 文件写盘后注册路径；
+- raw D7 metrics 不具备 terminal envelope 时不进入四层指标，防止猜测语义和重复计数；
+- suite、per-case、缺文件和 schema mismatch 回归已加入，全量 `159 passed`。
+
+剩余跨模块 P1 由 main/runtime owner 执行：在 `_terminal_closure_result_row` 形成 summary 行前，
+使用 episode `output_paths["d7_execution_metrics"]` 调用 registration helper；随后重生成
+seed-1 正式 suite，验收 4/4 D7 case registered，最后再进入 multi-seed。D6 不修改 runtime，
+也不会以目录搜索代替注册。当前实际 seed-1 的 D3 4/4 case、543 records 已可用；D7 原 summary
+仍为 0/4 registered，这是明确 wiring 缺口，不是零执行结果。
+
+## 2026-07-14 terminal suite P1 closure（D6-owned 已关闭）
+
+本批次只修改 D6 owned paths，消费 main/D3/D7 已落盘文件，不参与在线控制或回写 producer。
+
+- [x] 冻结 terminal-suite metric envelope：contract/control/mode/switch/physical 每条指标强制携带
+  `producer`、`metric_scope`、`denominator`、`lifecycle`；以完整语义键隔离 main-bus
+  planned-lock 与 D7 execution，禁止同名跨来源比较、求和或覆盖。
+- [x] 提供 D3 canonical history file input；校验 schema/order/count/timestamp 后输出 plan/version、
+  primary/reserve membership、owner 与 feedback churn；缺文件或无有效 history 必须保持
+  `unavailable`。
+- [x] 汇总 `loop_latency_ms`、`performance_budget_violation_count` 及逐项 availability；无样本时
+  不得以 `0/0` 或数值零代替 unavailable。
+- [x] candidate non-degradation 同时输出 effectiveness evidence；baseline/candidate 效果均为零且
+  candidate mechanism trigger 为零时结论只能是 `inconclusive`，不得 promotion。
+- [x] 输出 seed-level 与 aggregate 的中文 Markdown、JSON、CSV，并保持 contract/control/mode/
+  physical 四层分离；补齐 README、PLAN、D6 GAP/review 文档。
+- [x] 验收：`pytest -q research_modules/d6_evaluation_metrics/tests`；
+  `git diff --check -- research_modules/d6_evaluation_metrics subagent_reviews/D6_*`。
+
+实现冻结为 `d6-p1-unified-acceptance-v2` 与 `d6-terminal-metric-envelope-v1`。同名指标只在
+`source + producer + metric_scope + lifecycle` 单一语义组内聚合；出现多个语义组时顶层
+`sum/denominator_sum/mean` 为 `None`，逐组结果保留。D3 terminal-suite 新入口为
+`P1AcceptanceInputs.d3_plan_history` / CLI `--d3-plan-history`；缺文件或校验失败保持
+unavailable。输出新增 per-seed JSON、terminal metric CSV 和 aggregate CSV。
+
+**验证**：2026-07-14，4 类新增确定性离线场景，seed 1/2/7 或 N/A：planned-lock 与 D7
+execution 同名隔离、零样本性能、零效果且零触发 inconclusive、两 tick canonical history。
+接受门限全部满足；D6 terminal-suite 专项 `8 passed`，canonical 专项 `24 passed`，D6 全量
+`154 passed`，1 条既有 matplotlib `Axes3D` warning；未运行 AirSim。
+
+**main 接线仍开放**：main-owned `p1_terminal_closure` 需逐 metric 写出 producer/scope/正分母/
+lifecycle，分开 main planned-lock 与 D7 execution；逐 physical level 写
+`physical_metric_context` 和 pair/target/coalition 分母；写出正 `performance sample_count`、
+latency/budget violation；传入 `d3_plan_history.json`，并保留 candidate 实际 trigger/effect。
+本批次不直接修改 runtime。
+
+## 2026-07-14 truth-state/physical provenance P0 状态
+
+- **P0 已关闭**：`truth_state_online_use_count` 与既有
+  `truth_identity_online_use_count` 独立；summary、pair、command 的正证据按实际 pair 聚合，
+  严格 D2 estimated-state 路径为 available `0`，truth-state fixture 必须 `>0`。
+- **physical gate P0 已关闭**：summary 和 active pair summaries 都必须存在；command-only 与
+  summary-only 不得发布 physical 指标。每个 active pair 必须显式
+  `physical_evidence_available=true`，且 `target_state_source` 等于 summary
+  `online_control_state_source`。offline scorer 只接受 D2 estimated class，truth fixture 只接受
+  显式 fixture class。每个参与 pair 还必须有显式 physical 布尔结果或规范 scorer 终态；
+  evidence flag 本身不代表失败结果。缺 pair result 时所有层为 `None/unavailable`。
+- **coalition completeness P0 已关闭**：`required_primary_count` 超过实际 persisted required
+  primary 数、缺 arrival window、缺 coalition denominator，或 summary 有 opportunity 但缺
+  completion count 时，coalition count/rate 为 `None/unavailable`；证据完整的显式零保持
+  available `0`。pair/target 可用性不被 coalition-only 缺口回填或降级。
+- **CSV/legacy 边界已关闭**：command loader 保留 `physical_evidence_available` 供审计，但
+  command rows 不生成 physical pair；无来源 legacy status 只作 raw audit。
+- **报告链已关闭**：字段进入 `EpisodeMetrics`、standard mapping、execution merge、episode
+  CSV、聚合 JSON 和 Markdown；coalition metadata 与各格式使用同一 unavailable reason。
+- **验证**：2026-07-14，7 类确定性离线 provenance 场景、seed N/A，接受门限为合法 offline
+  scorer/truth fixture available，legacy、command 缺证据、summary-only 和 pair source mismatch
+  全层 unavailable，并新增 7 项 result/member/window/denominator/显式零回归；D6 全量
+  `150 passed`，1 条既有 matplotlib warning，未运行 AirSim。
+- **历史口径**：2026-07-11 至 07-13 缺新 provenance 的 physical 结果不得回填为新 offline
+  scorer evidence，也不得与迁移后结果直接比较。
+- **开放 P1**：本次只关闭 D6 代码/测试 P0。main/runtime 仍需按新 schema 形成同条件
+  multi-seed AirSim 批次，逐 pair 写盘 evidence/source，并统计 target measurement/arrival age、
+  stale/reject 分布和跨提交趋势。
+
+## 2026-07-14 truth tracking P0/P1 状态
+
+- **P0 已关闭**：`track_rmse/track_continuity/id_switch_count` 缺 truth-to-track 证据时为
+  `None/unavailable`；完整 identity history 的零切换保留为 available `0`，D2/D6
+  `id_switch_count` 字段仍显式存在。
+- **报告链已关闭**：JSON、episode CSV、batch summary、Markdown、main-bus loader 和
+  replay/execution merge 均尊重 availability；旧载荷的 unavailable `0` 不进入统计。
+- **验证**：2026-07-14，5 个确定性场景、seed N/A；空输入、匿名 track、不完整 sidecar、
+  完整 truth 零切换、完整 truth 有切换全部达到门限。D6 全量 `137 passed`，1 条既有
+  matplotlib `Axes3D` warning；未运行 AirSim。
+- **剩余 P1**：真实 multi-seed producer 的 seed/config/schema/hash provenance 完整性；
+  D2 lifecycle 与 D3 plan/membership churn 按 episode clock、`global_track_id`、plan/version
+  的跨源 join 和长期趋势。两项均未由本次单元回归替代。
+- **剩余 P2**：外部 MOT/HOTA、OSPA/GOSPA、Stone Soup 和原生 recording parser 状态不变。
+
+## 2026-07-14 第二批当前 P0/P1/P2 状态
+
+- **canonical history 接线已闭合**：D6 识别 `d3_plan_history_v1` wrapper 和
+  `d3_plan_history_record_v1` record，不依赖 cooperative snapshot 推断 churn。
+- **严格校验已闭合**：至少 2 条；record_count 一致；sequence index 唯一且严格递增；
+  ordering key 与 sequence/timestamp 一致且严格递增；timestamp 不倒退；record schema 和
+  指标所需 assignment/coalition/owner/feedback 结构完整；禁止 truth 字段。失败原因进入
+  CSV、聚合 JSON 和 Markdown，全部 history-derived 指标保持 unavailable。
+- **指标已闭合**：计划、联盟 version/epoch churn；基于 assignment snapshot diff 的总体、
+  primary、reserve membership change；owner change；soft/hard feedback；history record count
+  与 validation audit。membership audit event 不作为计数来源。
+- **兼容性已闭合**：旧 snapshot、旧 ordered history 和 formal cooperative-role 输入继续
+  可读；只有证据充分的旧有序历史可计算，snapshot/cooperative-role 不足证据仍 unavailable。
+- **验证**：2026-07-14 canonical 专项 `24 passed`，D6 全量 `132 passed`，1 条 matplotlib
+  `Axes3D` 环境 warning。测试覆盖稳定零、版本/成员/owner/feedback 变化、乱序、重复索引、
+  timestamp 倒退、单记录、schema/count/order key 错误和无 truth 字段。
+- **剩余 P1**：在真实 AirSim/main multi-seed episode 上持续运行该入口，建立跨提交趋势、
+  门限稳定性和统一 failure reason taxonomy。本轮只闭合 D6 schema/metric/report 接线，没有
+  新物理实验结论。
+- **剩余 P2**：真实 D2/D5 replay 的 py-motmetrics 门限、遮挡和重现标定；TrackEval/HOTA、
+  Stone Soup metrics、OSPA/GOSPA、AirSim 原生 recording parser 等 optional/offline 项。
+
+main/D6 调用保持 file-only：CLI 使用 `--d3-plan-history <episode/d3_plan_history.json>`，或
+Python API 传入 `P1SystemEvidenceInputs(d3_assignment_churn=history_path)`。D6 不回写 main/D3。
+
+以下第一批 2026-07-14 状态和 2026-07-13 更早章节是历史快照。
+
+## 2026-07-14 第一批 P0/P1/P2 状态（历史）
+
+- **评估级 P0 已闭合**：D3 最终快照、空 mapping、单条无序记录不再把
+  `plan_version_churn_count`、`coalition_version_churn_count`、
+  `coalition_epoch_churn_count`、`membership_change_count` 推断为 available `0`。
+- **可用性合同已冻结**：只有显式 count，或至少两条带顺序语义且同名证据完整的历史记录，
+  才计算 churn。稳定有序历史和显式零均输出 available `0`；缺字段、单快照和不完整历史输出
+  `unavailable`。formal cooperative-role `pair_rows` 分支继续只报告角色，不补 churn。
+- **验证**：2026-07-14 使用 5 类 fixture（最终快照、空输入、单条无序、两条稳定有序、
+  显式零）验收，接受标准是前三类四项全 unavailable、后两类四项全 available `0`；专项
+  `12 passed`，D6 全量 `120 passed`，1 条 matplotlib `Axes3D` 环境 warning。
+- **剩余 P1**：main/D3 写出真实有序 plan history、统一 episode clock、version/epoch、source
+  provenance 和 availability；建立长期真实 multi-seed 跨提交趋势；治理跨批次 failure reason
+  taxonomy。最终 snapshot 仍不能替代历史。
+- **剩余 P2**：真实 D2/D5 replay 的 py-motmetrics 门限、遮挡和重现标定；TrackEval/HOTA、
+  Stone Soup metrics、OSPA/GOSPA、AirSim 原生 recording parser 等 optional/offline 项。
+
+以下 2026-07-13 及更早章节均为历史状态和证据快照；历史数字不改写为当前结论。
+
+## 2026-07-13 历史最终状态入口
 
 D6 的统一离线报告入口已经兼容 cooperative 原始 `cases/pair_rows/aggregates` 和修正后的 `d6-cooperative-closure-v2` aggregate。当前冻结证据可展开为：D1 1 条、D2 3660 条、D3 40 条、D4 60 条、D5 per-primary 160 条、native MOT 18 条、D7 164 条。D7 的 164 条由 160 条 pair/safety 记录和 4 条 profile 汇总组成，profile 汇总不与逐 pair 四层指标重复计数。
 
@@ -41,7 +337,7 @@ D6 已实现 `d6-dense-crossing-evaluation/v1` 文件协议报告器，直接兼
 
 - 10-seed screening 只用于选出明确标记或按 IDSW、continuity、false track、latency 排序的最佳 GNN candidate；不足 10 seeds 不形成选择。
 - 20-seed confirmation 分开聚合 GNN baseline、同 config ID 的最佳 GNN candidate 和轻量 JPDA；不足 20 seeds 不形成晋级。
-- promotion 固定检查 IDSW `-30%`、identity continuity `+0.10`、false track `+10%` 上限、冻结 p95 loop latency budget 和 truth leak `=0`。
+- 历史 `d6-dense-crossing-evaluation/v1` promotion 对照固定检查 IDSW `-30%`、identity continuity `+0.10`、false track `+10%` 上限、冻结 p95 loop latency budget 和 truth leak `=0`；该 `+0.10` 已标记为 legacy，不再用于解释 D2 v2。统一 system-evidence v2 忠实消费 D2 ceiling-aware admission 的显式 gate、门限值和失败原因，不在 D6 内重算判决。
 - 每个指标独立携带 available/unavailable 与原因。当前 D2 仅写 NIS/NEES availability 而未写 per-seed mean 时，均值保持 unavailable。
 - FilterPy/Stone Soup object adapter smoke、MHT 和未分类实现不进入本轮晋级；轻量 JPDA 保留 `research_approximation` 成熟度标签。
 - 固定输出 `dense_crossing_per_seed.csv`、`dense_crossing_aggregate.json`、中文 `DENSE_CROSSING_CALIBRATION_REPORT.md` 和 `dense_crossing_metrics.png`。
@@ -57,6 +353,30 @@ D4 真实合同已对齐：`CommunicationFaultReplayReport` 同时含 `seeds` �
 2026-07-13 已用真实 M5N2 40-case/4-profile/10-seed summary 完成 schema 回归并修正聚合键：逐 case/seed 明细继续保留，但 acceptance 按 profile 的唯一 seed 计数；稳定 `coalition_id` 用于跨滚动 version/epoch 合并联盟；只有至少两个 active primary 的目标进入 coalition 分母。source 声明的 `best_candidate_profile` 优先于 D6 fallback 排序，缺少声明时才按通过数、完成率、available seed 数和稳定名称排序。
 
 修正后 source 最佳 profile `d3-p1-h020.0-w03.0-s040.0` 为 `5/10`，`coalition_at_least_8_of_10` 明确为 available+failed，不再因 40 个单 seed case group 误报 insufficient evidence。四 profile 完成数 `0/10、5/10、2/10、1/10` 与 source summary 一致；缺失 seed 继续单列 unavailable，不补 0。后续只需 main 持续提供同 schema 证据，D6 不负责 AirSim 调度。
+
+## 2026-07-15 D2 v2/legacy 准入证据兼容计划状态
+
+本批计划已经完成：
+
+1. 将统一 system-evidence 输出升级为 v2，增加 D2 策略版本、连续率上限感知字段、全部门限状态和逐字段 availability。
+2. 失败原因按 v2 gates、legacy structured checks、legacy bool checks 的顺序解析；v2 具体 gate reason 优先，缺 reason 时仍保留 gate 名。
+3. aggregate JSON 和中文 Markdown 新增 D2 准入评审段，明确 recommendation-only，不参与控制或默认主线切换。
+4. 新增通过、失败、structured legacy、bool legacy 和缺字段回归；缺失值保持 `None/unavailable`。
+5. 同步 README、PLAN、GAP/review、模块原理、算法、AirSim 接口和实验文档。
+
+2026-07-15 正式证据闭环：
+
+6. [x] 消费 frozen replay 的 `d2-p1-identity-calibration/v2`，生成 D2-only CSV/JSON/中文
+   Markdown/PNG；其他六源显式 unavailable，`full_system_decision=not_evaluated`。
+7. [x] aggregate 保留 promotion recommendation/candidates、selected/default path、14 条 overall/
+   分档 assessment、五 gate reason 和 dropout truth-alignment summary；legacy 缺字段仍为
+   `None/unavailable`，D6 不重算 producer decision。
+8. [x] 记录总体五 gate 通过但仅建议评审；仅 clutter/combined 分档通过，四档 baseline IDSW=0
+   fail-closed；JPDA research adapter 不准入，默认在线 GNN/Hungarian 未改变。
+
+验收日期 2026-07-15：system-evidence 专项 `31 passed`，D6 全量 `243 passed`；本批未运行
+AirSim。“D6 尚无 D2 v2 正式证据”的 P1 报告缺口已关闭。仍需 D2/main owner 完成 promotion
+评审决定；D1/D3/D4/D5/D7 未与本批同 case/seed 组合，因此全系统判决仍未评估。
 
 ## 1. 模块定位与边界
 

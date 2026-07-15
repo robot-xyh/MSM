@@ -16,6 +16,13 @@ from .standard_mapping import (
 )
 
 
+_TRUTH_TRACKING_METRIC_NAMES = (
+    "track_rmse",
+    "track_continuity",
+    "id_switch_count",
+)
+
+
 def load_main_episode_bus_metrics(path: str | Path) -> EpisodeMetrics:
     """Load one persisted main episode bus metrics JSON file.
 
@@ -62,6 +69,7 @@ def load_main_episode_bus_metrics(path: str | Path) -> EpisodeMetrics:
     values["metadata"] = metadata
 
     metrics = EpisodeMetrics(**values)
+    _normalize_truth_tracking_availability(metrics)
     _normalize_active_degradation_precision(metrics, metrics_payload, metadata)
     if mission_outcome_missing:
         _backfill_mission_status(metrics)
@@ -105,6 +113,7 @@ def load_main_episode_bus_metrics(path: str | Path) -> EpisodeMetrics:
         metrics.standard_metric_family_summary,
     )
     metrics.metadata.setdefault("standard_mapping", standard_mapping_summary())
+    metrics.metadata["metric_availability"] = dict(metrics.metric_availability)
     return metrics
 
 
@@ -119,6 +128,32 @@ def load_main_episode_bus_metric_files(
 def _episode_metric_values(payload: Mapping[str, Any]) -> dict[str, Any]:
     allowed = {field.name for field in fields(EpisodeMetrics)}
     return {key: value for key, value in payload.items() if key in allowed}
+
+
+def _normalize_truth_tracking_availability(metrics: EpisodeMetrics) -> None:
+    raw_availability = metrics.metric_availability
+    availability = (
+        dict(raw_availability) if isinstance(raw_availability, Mapping) else {}
+    )
+    for metric_name in _TRUTH_TRACKING_METRIC_NAMES:
+        raw_entry = availability.get(metric_name, {})
+        entry = dict(raw_entry) if isinstance(raw_entry, Mapping) else {}
+        status = str(entry.get("status", "")).strip().lower()
+        value = getattr(metrics, metric_name)
+        if status in {"unavailable", "not_applicable"}:
+            setattr(metrics, metric_name, None)
+        elif value is None:
+            entry = {
+                "status": "unavailable",
+                "reason": "persisted truth-to-track metric value is absent",
+            }
+        elif status != "available":
+            entry = {
+                "status": "available",
+                "reason": "explicit persisted truth-to-track metric value",
+            }
+        availability[metric_name] = entry
+    metrics.metric_availability = availability
 
 
 def _normalize_active_degradation_precision(

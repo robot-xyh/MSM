@@ -1,5 +1,204 @@
 # D6 M 对 N 协同拦截评估框架审查
 
+## 2026-07-15 M5N2 20-case 正式复核
+
+本批只有 M5N2 baseline/candidate 各 10 seed，共 20 case。actual execution
+required/available/unavailable=`20/20/0`，truth identity/state 在线使用为 0。M5N2 完成后、`TERM`
+生效前额外完成的 `png_ttc` seed001 明确排除在 M5N2 20-case 聚合与验收之外。其余 tuned 2v2 和
+全部 dropout 未执行；缺失 case 不计入机会数、不把 unavailable 写成 0，也不宣称完整 suite 通过。
+
+正式三层物理结果为 pair=`12/60`、target=`12/40`、coalition=`0/20`。baseline 和 candidate
+各为 `6/30`、`6/20`、`0/10`；逐 seed non-degradation=false。第二 primary 漏斗通过数依次为
+`20,20,20,20,17,17,0`，对应阶段分母全部为 20。首失败原因 availability=`20/20`，以预测窗
+过期 10、视觉获取未稳定 6 为主；最近距离均未进入 5 m。因此 coalition 零是 available failure，
+不是缺证据。
+
+术语统一为 canonical target physical success（至少一个 participating pair 成功，本批 `12/40`）
+和 cooperative target-stage diagnostic（全部 required member 通过某阶段）。后者不等于正式
+`target_intercept_success`。此外，第二 primary `20/20` 最终为 `collision_stop`，但 collision
+object 未落盘，不能归因为成员冲突、环境碰撞或 AirSim 状态问题；对象原因保持 unavailable。
+
+main-bus/control-tick 各有 3805 条逐 case 合法 timing，mean/P95/max 分别为
+`349.34/487.40/1305.99 ms` 和 `1069.45/1254.06/2072.51 ms`。两层嵌套，禁止相加。当前正式
+partial acceptance 没有注册 timing path，合并 JSONL 又保留局部 frame/time 重置，故 suite 层
+保持 unavailable。剩余 P1 是 case-aware timing 接线、性能优化、第二 primary/coalition 物理闭环
+和 candidate 稳健性；D6 consumer 本身无新增 P0。
+
+## 2026-07-15 第二 primary 漏斗与独立分母审查
+
+`d6-cooperative-closure-v3` 将第二 primary 从单一最终失败计数扩展为七阶段漏斗，同时继续把
+pair、target、coalition 作为三个独立统计单位。每层分别发布 unit、有效机会、不可用机会、成功、
+失败和 rate；coalition completion 只由该层显式物理结果计算。任何层缺证据均保持 unavailable，
+不能由相邻层补值。
+
+首失败原因是 producer 字段的被动聚合。失败单元缺原因时记录 reason unavailable/partial 及缺失
+数量，不使用 `unspecified`。2026-07-15 确定性专项 `11 passed`、当时 D6 全量 `246 passed`。
+代码级 P1 报告缺口关闭；其后 20-case 真实结果已由本页顶部回填，性能仍未达标。
+
+## 2026-07-15 M 对 N 分阶段延迟评估接线
+
+D6 现按真实 timing 帧数分别统计 main bus 与 control tick，不从 M/N 或场景名推断规模。两层为
+嵌套测量域，禁止相加；旧或未注册 timing 为 unavailable。2026-07-15 动态规模无关 fixture
+专项 `20 passed`、当时全量 `236 passed`。其后 20-case M5N2 已定位主导阶段并确认 `100 ms` 未
+达标；正式 suite 的 case-aware timing 接线和优化后复验继续开放。
+
+## 2026-07-14 M 对 N actual target-state freshness/stale 关闭结论
+
+M 对 N actual evidence 现按每条最终 command 的 control/measurement/arrival/age/stale/source
+评估目标状态新鲜度，不从 M/N 场景名或 physical pair 推断。canonical case 输出 samples、
+mean/p95/max age、stale count/rate 和 source distribution；validator 在 SHA256 通过后从 CSV 重算。
+任一缺列、非法数值、时间/age 冲突、非法 stale 或空 source 使整个 case unavailable。
+
+2026-07-14 真实 M5N2 seed-1 为 608 samples、mean/p95/max=`0.091118/0.2/0.2 s`、stale 0、
+`d2_estimated_global_track:608`；对照 2v2 为 48 samples、`0.0375/0.2/0.2 s`、stale 0。两 case
+均通过 source-hash 复算，D6 全量 `216 passed`。该指标不生成 physical pair、不改写 coalition、
+末端五层或 truth 结论。单 seed 链关闭；顶部 20-case 已补齐 10389 条同配置 multi-seed freshness
+样本。跨提交趋势、failure taxonomy 和独立批次复验仍开放。
+
+## 2026-07-14 M5N2 actual v2 真实证据结论
+
+真实 AirSim M5N2 seed-1 与 tuned 2v2 seed-1 的 canonical actual artifact 均通过 D6 校验，
+suite required/available/unavailable=`2/2/0`。两例 summary/CSV/actual 物理成功计数均为
+`2/2/2`，旧 `d7_actual_execution_command_physical_count_conflict` 未复现，actual P0 证据门关闭。
+
+M5N2 分层结果为 pair=`2/3`、target=`2/2`、coalition=available `0/1`。required-primary
+成员和分母均存在，因此 coalition 零是显式失败而非 unavailable；第二 primary 最近约
+`11.02 m`，不能用 target 层成功回填。`overall_acceptance_passed=false` 只表示两个 seed-1 case
+不构成 baseline/candidate、1-5 帧 dropout 和 multi-seed 的完整 P1 矩阵。
+
+M 对 N 性能 P1 也未关闭：2v2/M5N2 loop latency=`123.3/384.6 ms`，budget violations
+`19/212`、合计 `231`。本节是 2026-07-14 单 seed 结论；顶部 20-case 已补齐同配置 multi-seed，
+但第二 required primary 物理闭环和时延预算仍未关闭。本次不增加同步到达算法，也不修改 D6 代码。
+
+## 2026-07-14 M 对 N actual gate 与独立到达最终语义（真实重跑前历史）
+
+M 对 N formal suite 对每个 required case 只接受通过校验的 canonical
+`d7-actual-execution-metrics-v2`；缺失或 explicit unavailable 时 suite 总验收 fail closed。legacy
+main row 与离线五米结果仅 diagnostics，不得替代 actual envelope。
+
+`arrival_coordination_required=false` 不是“coalition 不评估”，而是按每个 required active primary
+独立五米成功评分；全部 required primary 成功才完成该 target coalition。required-primary
+denominator/member、physical result 或 coordination 字段缺失，以及 summary/pair 冲突时仍为
+`null/unavailable`。这只关闭既有独立到达分支口径，不增加同步到达窗口性能算法。
+
+2026-07-14 代码级专项 `14 passed, 24 deselected`、D6 全量 `190 passed`；唯一 Matplotlib
+`Axes3D` warning 仅限制 3D projection，不影响本轮 JSON/CSV/Markdown、二维报告或结论。没有
+运行 AirSim。M5N2 baseline/candidate 及同 suite 的 2v2 PNG-TTC、1-frame dropout 四个历史真实
+seed-1 actual artifact 仍为 `unavailable`，原因均为
+`d7_actual_execution_command_physical_count_conflict`，main 必须真实重跑并注册有效 v2 artifact。
+
+## 2026-07-14 M 对 N owner provenance 最终语义
+
+M 对 N actual command 的 plan ID/version 仍逐行必填，但 owner provenance 可以 unavailable。中心
+effective-authorized 行和未授权 pre-transition/pending 行不因空 owner 失败；只有
+effective-authorized 且属于 secondary/distributed active/execution/reassignment，或显式 execute
+secondary/distributed action 的行缺 owner 时 fail closed。这样保留真实接管 owner 证明，同时不
+为中心路径补造 `d4_target_node_id`。
+
+2026-07-14 确定性离线验收（seed N/A）为 execution-evidence focused `20 passed`、D6 全量
+`184 passed`，1 条既有 matplotlib warning；未运行 AirSim，不形成新的 M5N2 物理结论。
+
+## 2026-07-14 M 对 N actual plan provenance 补充
+
+M 对 N episode 可包含多个不同 plan/version/owner，D6 v2 actual envelope 会按 command rows 去重
+保留；它不把“多个版本”本身判为错误。错误条件是同一 `plan_id` 绑定多个 version、字段缺失/
+非法，或 envelope 与 hashed CSV 不一致。merge v3 不从 replay 恢复这些字段，因此最终 coalition
+评估的计划身份具有 actual provenance。
+
+该能力于 2026-07-14 通过 focused `24 passed` 和 D6 全量 `180 passed`；该代码阶段没有运行
+真实 AirSim。M5N2 seed-1 注册已由顶部证据关闭，同条件 multi-seed provenance/趋势仍为 P1。
+
+## 2026-07-14 M5N2 terminal suite 先前四案例证据状态
+
+新的 case evidence 聚合已覆盖当前 M5N2 baseline/candidate 与同 suite 的 2v2 专项，不从场景名
+推断规模。M5N2 两个 case 的 D3 canonical history 分别为 244/241 records，均保持 2-primary +
+1-reserve membership 证据；suite 连同两个 2v2 case 共 543 records。D7 原 summary 未登记执行
+文件路径，因此 M5N2 D7 evidence 仍 unavailable，不能用相邻目录中实际存在的文件替代正式
+wiring。
+
+D6 侧 P1 consumer 已关闭并通过全量 `159 passed`。M 对 N 下一步验收仍要求 main 对每个 case
+显式注册 D7 path，之后按 case/seed 检查 primary/coalition execution；缺失路径、schema mismatch
+和 seed mismatch 必须保持 fail-closed。新增同步到达窗口性能指标仍不进入本轮范围；
+`arrival_coordination_required=false` 的独立五米完成语义以本文最新章节为准。P2/P3 计划不变。
+
+## 0.6 2026-07-14 terminal suite 多层语义闭合
+
+M 对 N terminal suite 现在要求每个 contract/control/switch/mode/physical count 携带
+producer、metric scope、正 denominator 和 lifecycle。main planned cooperative lock 与 D7
+terminal execution 即使同名也分组；多个语义组时不产生跨组总和。pair、target、coalition
+继续使用各自 physical denominator，并携带统一 physical producer/scope/lifecycle。
+
+D3 canonical file input 在 terminal suite 中输出 plan/version、primary/reserve 成员、owner 和
+feedback churn；缺历史 unavailable。性能 0 需要正 sample count。candidate 多 seed 非退化还
+必须有机制触发和效果证据；baseline/candidate 双零且 trigger=0 时只能 inconclusive。
+
+2026-07-14 file-only 回归全量 `154 passed`，未运行 AirSim。D6-owned P1 口径已关闭；main
+`p1_terminal_closure` 仍需接入 envelope、D3 history、D7 execution、performance sample 与
+candidate effect，真实 multi-seed M 对 N 结论仍开放。
+
+## 0.5 2026-07-14 truth-state 与 M 对 N physical provenance
+
+M 对 N 的 pair/target/coalition physical 分母现共享同一严格 gate：summary 与 active pair
+summaries 必须同时存在，command-only/summary-only 不进入分母；合法 offline scorer 或显式
+truth-state fixture source、summary online source、逐 pair `physical_evidence_available=true` 与
+逐 pair `target_state_source` 必须一致。command CSV evidence 只审计，不生成 physical pair。
+每个 active pair 还必须写出显式 physical result 或规范 scorer 终态；仅 evidence=true 不进入
+可用分母。required-primary 数量超过实际 persisted members、arrival coordination required 时缺
+arrival window、缺 coalition
+denominator 或 summary opportunity 缺 completion 时 coalition 为 null/unavailable；完整显式零
+保持 available `0`，standby reserve 仍不进入分母。
+`truth_state_online_use_count` 与既有 identity count 分离，strict 路径为 available `0`，fixture
+为 `>0`。无来源历史 pair status 不进入 M 对 N physical 分母。
+
+2026-07-14 使用既有 provenance 矩阵并新增 7 项 result/coalition completeness 场景验收，
+seed N/A，D6 全量 `150 passed`，1 条
+既有 matplotlib warning，未运行 AirSim。该结果只关闭 D6 physical provenance P0 代码/测试。
+迁移前 M5N2 physical 数值只保留历史口径；单 seed freshness/stale 正式链已关闭，新 schema 的
+真实同条件 multi-seed M5N2 重跑与 freshness 趋势仍为 P1。
+
+## 0.4 2026-07-14 truth tracking availability 对齐
+
+M 对 N 报告中的 RMSE、continuity 和 D2/D6 显式 IDSW 现在遵守同一证据规则：没有
+truth-to-track pair 是 null/unavailable，完整 identity history 中的零切换才是 available `0`。
+collector、JSON/CSV/Markdown、main-bus load 和 replay/execution merge 不再把默认或遗留零
+升级为观测证据。
+
+2026-07-14 采用 5 个确定性场景、seed N/A 验收，完整 stable/switch 的 IDSW 分别为
+available `0/1`，truthless 场景不进入统计；D6 全量 `137 passed`，1 条既有 matplotlib
+warning，未运行 AirSim。该 P0 已关闭。真实 seed/provenance 和 D2 lifecycle-D3 churn join
+仍为 P1；M 对 N 外部 benchmark P2 状态不变。
+
+## 0.3 2026-07-14 canonical D3 history 回填
+
+M 对 N membership churn 已从“等待真实有序 producer schema”推进为 D6 可消费 canonical
+history：每 tick assignment 以 `(target_id, resource_id)` 为成员键，以 role、activation
+state、active 为状态。相邻状态变化形成总体 membership count；变化涉及 primary/reserve 时
+进入对应分项。`membership_change_records` 仅供审计，重复出现不重复计数。
+
+同一 validated history 还提供 plan version、coalition version/epoch、active owner/node、
+soft/hard feedback。wrapper/record schema、record count、sequence/order key、timestamp 或结构
+校验失败时全部 history-derived 指标 unavailable，并输出原因。旧 cooperative-role 只有角色
+快照时仍不能产生 churn。
+
+2026-07-14 专项 `24 passed`、D6 全量 `132 passed`，1 条 matplotlib `Axes3D` 环境 warning；
+无新物理 AirSim 实验。剩余 P1 为真实 multi-seed episode 趋势和 failure taxonomy，P2 optional
+外部指标不变。CLI 使用 `--d3-plan-history`，Python API 仍传
+`P1SystemEvidenceInputs.d3_assignment_churn`。以下 0.2 及更早小节为历史记录。
+
+## 0.2 2026-07-14 D3 churn availability 修正
+
+M 对 N 的 coalition/member role 最终快照可以证明当时成员结构，但不能证明跨计划周期的
+churn 为零。D6 现要求 producer 显式提供 count，或至少两条顺序明确且 version/epoch/
+membership change 字段完整的历史记录，才计算 plan、coalition version、coalition epoch 和
+membership churn。稳定有序历史和显式零为 available `0`；最终快照、空 mapping、单条无序
+记录及不完整历史为 unavailable。
+
+2026-07-14 使用 5 类 fixture 验收，前三类四项全 unavailable、后两类四项全 available
+`0`；正式 40-case cooperative-role fixture 的角色计数保持兼容且 churn 全 unavailable。
+专项 `12 passed`，D6 全量 `120 passed`，1 条 matplotlib `Axes3D` 环境 warning。该评估级
+P0 已闭合；真实有序 D3 history/provenance 仍是 P1 evidence，外部 MOT/OSPA/HOTA 等仍是
+P2 optional。D6 只消费日志的边界不变。以下 2026-07-12 及 2026-07-11 内容为历史记录。
+
 ## 0.1 2026-07-12 统一验收回填
 
 `P1AcceptanceReportGenerator` 已将 M5N2 main summary 纳入统一离线报告，按同一 profile/seed 分别保留 active pair、unique target 和 coalition completion 的机会数、成功数和成功率。四层执行证据与三层物理结果继续分离；缺 required-primary 或 arrival-window evidence 时 coalition 不由 pair/target 反推。当前代码入口已闭合，真实同条件 M5N2 baseline/candidate 多 seed 数据仍是开放 P1。

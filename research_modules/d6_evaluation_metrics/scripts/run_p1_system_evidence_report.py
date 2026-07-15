@@ -23,7 +23,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--d1-dense-crossing-summary", type=Path)
     parser.add_argument("--d2-difficulty-summary", type=Path)
-    parser.add_argument("--d3-churn-summary", type=Path)
+    parser.add_argument(
+        "--d3-churn-summary",
+        "--d3-plan-history",
+        dest="d3_churn_summary",
+        type=Path,
+        help="D3 summary or canonical d3_plan_history.json",
+    )
     parser.add_argument("--d4-communication-summary", type=Path)
     parser.add_argument("--d5-per-primary-summary", type=Path)
     parser.add_argument("--d5-native-mot-summary", type=Path)

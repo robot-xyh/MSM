@@ -5,13 +5,30 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Mapping
 
+from .execution_evidence import validate_d7_actual_execution_payload
 
-EXECUTION_METRICS_MERGE_SCHEMA_VERSION = "d6.execution-metrics-merge.v1"
+
+EXECUTION_METRICS_MERGE_SCHEMA_VERSION = "d6.execution-metrics-merge.v3"
+
+_EXECUTION_IDENTITY_METADATA_NAMES = (
+    "plan_ids",
+    "plan_versions",
+    "owner_node_ids",
+)
+
+_TRUTH_TRACKING_METRIC_NAMES = (
+    "track_rmse",
+    "track_continuity",
+    "id_switch_count",
+)
 
 # These values describe what happened in the online/main-bus execution path.
 # Replay still contributes the remaining offline metrics and remains visible in
 # per-metric provenance when an execution value supersedes it.
 EXECUTION_CANONICAL_METRIC_NAMES = (
+    "active_degradation_count",
+    "secondary_reassignment_count",
+    "d4_reassign_pending_count",
     "terminal_association_accuracy",
     "terminal_id_switch_count",
     "ambiguous_fov_event_count",
@@ -63,6 +80,7 @@ EXECUTION_CANONICAL_METRIC_NAMES = (
     "visual_reacquisition_count",
     "terminal_visual_lost_after_coast_count",
     "truth_identity_online_use_count",
+    "truth_state_online_use_count",
     "terminal_filter_measured_count",
     "terminal_filter_predicted_count",
     "terminal_filter_innovation_rejected_count",
@@ -79,6 +97,12 @@ EXECUTION_CANONICAL_METRIC_NAMES = (
     "time_to_intercept_s",
     "min_range_m",
     "gate_reject_count",
+    "module_duration_ms",
+    "loop_latency_ms",
+    "record_latency_ms",
+    "cpu_budget_utilization",
+    "gpu_budget_utilization",
+    "performance_budget_violation_count",
 )
 
 
@@ -100,8 +124,9 @@ def merge_replay_with_execution_metrics(
     """
 
     replay = _normalize_source(replay_metrics, source_name="integrated_replay")
+    execution_validation = _execution_validation(execution_metrics)
     execution = _normalize_source(
-        execution_metrics,
+        execution_metrics if execution_validation["status"] == "available" else None,
         source_name="main_episode_bus_execution",
     )
     merged_metrics = deepcopy(replay["metrics"])
@@ -114,11 +139,10 @@ def merge_replay_with_execution_metrics(
     for metric_name in EXECUTION_CANONICAL_METRIC_NAMES:
         replay_evidence = _metric_evidence(replay, metric_name)
         execution_evidence = _metric_evidence(execution, metric_name)
-        selected = (
-            execution_evidence
-            if execution_evidence["available"]
-            else replay_evidence
-        )
+        # These fields describe post-control behavior.  Integrated replay is
+        # retained for audit only and can never become canonical execution
+        # evidence when the actual-execution envelope is absent or invalid.
+        selected = execution_evidence
 
         if selected["available"]:
             selected_availability = "available"
@@ -134,9 +158,9 @@ def merge_replay_with_execution_metrics(
         else:
             selected_source = None
             merged_metrics.pop(metric_name, None)
-            unavailable_evidence = _preferred_unavailable_evidence(
+            unavailable_evidence = _execution_unavailable_evidence(
                 execution_evidence,
-                replay_evidence,
+                execution_validation,
             )
             selected_availability = str(unavailable_evidence["availability"])
             merged_metric_availability[metric_name] = {
@@ -156,6 +180,29 @@ def merge_replay_with_execution_metrics(
             "execution": execution_evidence,
         }
 
+    for metric_name in _TRUTH_TRACKING_METRIC_NAMES:
+        replay_evidence = _metric_evidence(replay, metric_name)
+        if replay_evidence["available"]:
+            merged_metrics[metric_name] = deepcopy(replay_evidence["value"])
+            merged_metric_availability[metric_name] = {
+                "status": "available",
+                "source": replay_evidence["source"],
+                "reason": replay_evidence["reason"],
+            }
+        else:
+            # Keep the D2/D6 field explicit while preventing a stale/default
+            # zero from being promoted during replay/execution merge.
+            merged_metrics[metric_name] = None
+            merged_metric_availability[metric_name] = {
+                "status": replay_evidence["availability"],
+                "source": (
+                    replay_evidence["source"]
+                    if replay_evidence["declared"]
+                    else None
+                ),
+                "reason": replay_evidence["reason"],
+            }
+
     merged_metrics["metric_availability"] = merged_metric_availability
     frame_counts = _frame_count_summary(
         replay,
@@ -165,16 +212,24 @@ def merge_replay_with_execution_metrics(
     )
     merge_metadata = {
         "execution_metrics_merged": execution_value_merged,
-        "metric_authority": "main_episode_bus_execution_when_available",
+        "metric_authority": "validated_post_simpleflight_execution_only",
+        "execution_evidence_validation": deepcopy(execution_validation),
+        "replay_execution_metrics_audit_only": True,
         "execution_metric_provenance": provenance,
         **frame_counts,
     }
 
-    metrics_metadata = _mapping_copy(merged_metrics.get("metadata"))
+    metrics_metadata = _validated_execution_identity_metadata(
+        merged_metrics.get("metadata"),
+        execution_validation,
+    )
     metrics_metadata.update(deepcopy(merge_metadata))
     merged_metrics["metadata"] = metrics_metadata
 
-    top_metadata = deepcopy(replay["top_metadata"])
+    top_metadata = _validated_execution_identity_metadata(
+        replay["top_metadata"],
+        execution_validation,
+    )
     top_metadata.update(deepcopy(merge_metadata))
     return {
         "schema_version": EXECUTION_METRICS_MERGE_SCHEMA_VERSION,
@@ -261,17 +316,72 @@ def _metric_evidence(source: Mapping[str, Any], metric_name: str) -> dict[str, A
     }
 
 
-def _preferred_unavailable_evidence(
+def _execution_validation(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {
+            "status": "unavailable",
+            "schema": None,
+            "validation_reasons": ["d7_actual_execution_payload_missing"],
+            "provenance": None,
+        }
+    if not isinstance(value, Mapping):
+        return {
+            "status": "unavailable",
+            "schema": None,
+            "validation_reasons": ["d7_actual_execution_payload_not_object"],
+            "provenance": None,
+        }
+    return validate_d7_actual_execution_payload(
+        value,
+        verify_source_hashes=True,
+    )
+
+
+def _validated_execution_identity_metadata(
+    value: Any,
+    validation: Mapping[str, Any],
+) -> dict[str, Any]:
+    merged = _mapping_copy(value)
+    for name in _EXECUTION_IDENTITY_METADATA_NAMES:
+        merged.pop(name, None)
+
+    availability = _mapping_copy(merged.get("metadata_availability"))
+    for name in _EXECUTION_IDENTITY_METADATA_NAMES:
+        availability.pop(name, None)
+
+    validated = validation.get("metadata")
+    if isinstance(validated, Mapping):
+        for name in _EXECUTION_IDENTITY_METADATA_NAMES:
+            merged[name] = deepcopy(validated[name])
+        validated_availability = validated.get("metadata_availability")
+        if isinstance(validated_availability, Mapping):
+            for name in _EXECUTION_IDENTITY_METADATA_NAMES:
+                availability[name] = deepcopy(validated_availability[name])
+
+    if availability or "metadata_availability" in merged:
+        merged["metadata_availability"] = availability
+    return merged
+
+
+def _execution_unavailable_evidence(
     execution: Mapping[str, Any],
-    replay: Mapping[str, Any],
-) -> Mapping[str, Any]:
-    for evidence in (execution, replay):
-        if evidence["declared"] and evidence["availability"] == "not_applicable":
-            return evidence
-    for evidence in (execution, replay):
-        if evidence["declared"]:
-            return evidence
-    return replay
+    validation: Mapping[str, Any],
+) -> dict[str, Any]:
+    reasons = validation.get("validation_reasons")
+    reason = (
+        ";".join(str(item) for item in reasons)
+        if isinstance(reasons, list) and reasons
+        else "validated post-control execution metric is unavailable"
+    )
+    return {
+        **dict(execution),
+        "source": "main_episode_bus_execution",
+        "declared": False,
+        "available": False,
+        "availability": "unavailable",
+        "reason": reason,
+        "value": None,
+    }
 
 
 def _frame_count_summary(

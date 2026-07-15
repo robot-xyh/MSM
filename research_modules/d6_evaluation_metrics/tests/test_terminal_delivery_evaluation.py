@@ -174,6 +174,7 @@ def test_terminal_delivery_report_separates_profiles_and_actual_nm(tmp_path) -> 
             "pair_physical_success_count",
             "target_intercept_success_count",
             "coalition_completion_count",
+            "truth_state_online_use_count",
         )
     }
     episodes = [
@@ -189,8 +190,20 @@ def test_terminal_delivery_report_separates_profiles_and_actual_nm(tmp_path) -> 
             pair_physical_success_count=2,
             target_intercept_success_count=2,
             coalition_completion_count=None,
-            metric_availability=available,
-            metadata={"terminal_delivery_profile": "baseline"},
+            truth_state_online_use_count=0,
+            metric_availability={
+                **available,
+                "coalition_completion_count": {
+                    "status": "unavailable",
+                    "reason": "coalition opportunity denominator is missing",
+                },
+            },
+            metadata={
+                "terminal_delivery_profile": "baseline",
+                "physical_intercept_source": "offline_truth_distance_scorer",
+                "online_control_state_source": "d2_estimated_global_track",
+                "physical_intercept_evidence_available": True,
+            },
         ),
         EpisodeMetrics(
             episode_id="m5n2_candidate_seed1",
@@ -204,8 +217,14 @@ def test_terminal_delivery_report_separates_profiles_and_actual_nm(tmp_path) -> 
             pair_physical_success_count=2,
             target_intercept_success_count=2,
             coalition_completion_count=0,
+            truth_state_online_use_count=1,
             metric_availability=available,
-            metadata={"terminal_delivery_profile": "candidate"},
+            metadata={
+                "terminal_delivery_profile": "candidate",
+                "physical_intercept_source": "online_truth_state_fixture",
+                "online_control_state_source": "airsim_actor_truth_fixture",
+                "physical_intercept_evidence_available": True,
+            },
         ),
     ]
 
@@ -225,9 +244,26 @@ def test_terminal_delivery_report_separates_profiles_and_actual_nm(tmp_path) -> 
     assert "baseline" in report
     assert "candidate" in report
     assert "coalition completion" in report
+    assert "Truth-state online" in report
+    assert "offline_truth_distance_scorer:1" in report
+    assert "coalition opportunity denominator is missing:1" in report
     csv_rows = list(csv.DictReader(outputs["episode_csv"].open(encoding="utf-8")))
     assert len(csv_rows) == 2
     assert "terminal_filter_measured_count_availability" in csv_rows[0]
+    assert csv_rows[0]["truth_state_online_use_count"] == "0"
+    assert csv_rows[0]["physical_intercept_source"] == (
+        "offline_truth_distance_scorer"
+    )
+    assert csv_rows[0]["coalition_completion_count_availability"] == "unavailable"
+    assert csv_rows[0]["coalition_completion_count_unavailable_reason"] == (
+        "coalition opportunity denominator is missing"
+    )
+    baseline_group = next(
+        row for row in payload["groups"] if row["profile"] == "baseline"
+    )
+    assert baseline_group["metrics"]["coalition_completion_count"][
+        "unavailable_reasons"
+    ] == {"coalition opportunity denominator is missing": 1}
 
 
 def _write_legacy_control_csv(tmp_path):

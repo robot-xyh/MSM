@@ -1061,6 +1061,7 @@ def test_episode_metrics_contains_all_required_names() -> None:
         "visual_reacquisition_count",
         "terminal_visual_lost_after_coast_count",
         "truth_identity_online_use_count",
+        "truth_state_online_use_count",
         "terminal_filter_measured_count",
         "terminal_filter_predicted_count",
         "terminal_filter_innovation_rejected_count",
@@ -1209,6 +1210,19 @@ def test_terminal_execution_funnel_separates_cv_contract_from_physical_intercept
     physical_collector = MetricsCollector()
     physical_collector.add_event(
         EventRecord(
+            0.0,
+            "d7_intercept_summary",
+            actor_id="d7",
+            metadata={
+                "physical_intercept_available": True,
+                "physical_intercept_source": "offline_truth_distance_scorer",
+                "online_control_state_source": "d2_estimated_global_track",
+                "truth_state_online_use_count": 0,
+            },
+        )
+    )
+    physical_collector.add_event(
+        EventRecord(
             3.0,
             "d7_control_command",
             actor_id="R2",
@@ -1228,6 +1242,14 @@ def test_terminal_execution_funnel_separates_cv_contract_from_physical_intercept
     assert physical_metrics.contract_allowed_count == 1
     assert physical_metrics.control_allowed_count == 1
     assert physical_metrics.mode_switched_count == 1
-    assert physical_metrics.physical_intercept_count == 1
+    assert physical_metrics.physical_intercept_count is None
+    assert physical_metrics.pair_physical_success_count is None
+    assert physical_metrics.target_intercept_success_count is None
+    assert physical_metrics.coalition_completion_count is None
     assert physical_metrics.intercept_success_count == 1
-    assert physical_metrics.metadata["physical_intercept_evidence_available"] is True
+    assert physical_metrics.metadata["physical_intercept_evidence_available"] is False
+    assert physical_metrics.metadata["physical_intercept_unavailable_reason"] == (
+        "physical intercept evidence requires persisted pair summaries; "
+        "summary-only and command-row fallbacks are unavailable"
+    )
+    assert physical_metrics.truth_state_online_use_count == 0

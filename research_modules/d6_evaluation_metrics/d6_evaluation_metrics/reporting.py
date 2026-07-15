@@ -53,6 +53,24 @@ _TERMINAL_DELIVERY_REPORT_METRICS = (
     "target_intercept_success_rate",
     "coalition_completion_count",
     "coalition_completion_rate",
+    "truth_identity_online_use_count",
+    "truth_state_online_use_count",
+)
+
+_TRUTH_TRACKING_REPORT_METRICS = (
+    "track_rmse",
+    "track_continuity",
+    "id_switch_count",
+)
+
+_PHYSICAL_OUTCOME_REPORT_METRICS = (
+    "physical_intercept_count",
+    "pair_physical_success_count",
+    "pair_physical_success_rate",
+    "target_intercept_success_count",
+    "target_intercept_success_rate",
+    "coalition_completion_count",
+    "coalition_completion_rate",
 )
 
 
@@ -216,6 +234,7 @@ class ReportGenerator:
             "visual_reacquisition_count",
             "terminal_visual_lost_after_coast_count",
             "truth_identity_online_use_count",
+            "truth_state_online_use_count",
             "terminal_filter_measured_count",
             "terminal_filter_predicted_count",
             "terminal_filter_innovation_rejected_count",
@@ -300,6 +319,14 @@ class ReportGenerator:
         rows = []
         for episode in episodes:
             row = episode.to_dict()
+            for metric_name in EpisodeMetrics.metric_names():
+                if _metric_status(episode, metric_name) != "available":
+                    row[metric_name] = None
+            for metric_name in _TRUTH_TRACKING_REPORT_METRICS:
+                row[f"{metric_name}_availability"] = _metric_status(
+                    episode,
+                    metric_name,
+                )
             row["metadata"] = json.dumps(
                 row.get("metadata", {}),
                 ensure_ascii=False,
@@ -334,6 +361,9 @@ class ReportGenerator:
             "standard_mapping_version",
             "standard_metric_family_summary",
         ] + EpisodeMetrics.metric_names() + [
+            f"{metric_name}_availability"
+            for metric_name in _TRUTH_TRACKING_REPORT_METRICS
+        ] + [
             "metric_availability",
             "m_to_n_metric_availability",
             "metadata",
@@ -394,6 +424,10 @@ class ReportGenerator:
             "scenario_group",
             "batch_seed",
             *EpisodeMetrics.scale_names(),
+            "physical_intercept_source",
+            "online_control_state_source",
+            "physical_intercept_evidence_available",
+            "physical_intercept_unavailable_reason",
             "metric",
             "count",
             "unavailable_count",
@@ -436,9 +470,19 @@ class ReportGenerator:
             "seed",
             "batch_seed",
             *EpisodeMetrics.scale_names(),
+            "physical_intercept_source",
+            "physical_intercept_unavailable_reason",
+            "physical_intercept_evidence_available",
+            "online_control_state_source",
         ]
         for metric_name in _TERMINAL_DELIVERY_REPORT_METRICS:
-            csv_fields.extend((metric_name, f"{metric_name}_availability"))
+            csv_fields.extend(
+                (
+                    metric_name,
+                    f"{metric_name}_availability",
+                    f"{metric_name}_unavailable_reason",
+                )
+            )
         with csv_path.open("w", newline="", encoding="utf-8") as stream:
             writer = csv.DictWriter(stream, fieldnames=csv_fields)
             writer.writeheader()
@@ -536,7 +580,7 @@ class ReportGenerator:
         )
         for row in performance_rows:
             lines.append(
-                "| {episode_id} | {module_duration_ms:.6g} | {loop_latency_ms:.6g} | {record_latency_ms:.6g} | {cpu_budget_utilization:.6g} | {gpu_budget_utilization:.6g} | {performance_budget_violation_count:.6g} |".format(
+                "| {episode_id} | {module_duration_ms} | {loop_latency_ms} | {record_latency_ms} | {cpu_budget_utilization} | {gpu_budget_utilization} | {performance_budget_violation_count} |".format(
                     **row
                 )
             )
@@ -603,6 +647,46 @@ class ReportGenerator:
                 )
             )
 
+        lines.extend(
+            [
+                "",
+                "## Tracking Truth Availability",
+                "",
+                "| Episode | Metric | Status | Reason |",
+                "|---|---|---|---|",
+            ]
+        )
+        for episode in episode_list:
+            for metric_name in _TRUTH_TRACKING_REPORT_METRICS:
+                lines.append(
+                    "| {episode_id} | {metric_name} | {status} | {reason} |".format(
+                        episode_id=episode.episode_id,
+                        metric_name=metric_name,
+                        status=_metric_status(episode, metric_name),
+                        reason=_metric_availability_reason(episode, metric_name),
+                    )
+                )
+
+        lines.extend(
+            [
+                "",
+                "## Physical Outcome Availability",
+                "",
+                "| Episode | Metric | Status | Reason |",
+                "|---|---|---|---|",
+            ]
+        )
+        for episode in episode_list:
+            for metric_name in _PHYSICAL_OUTCOME_REPORT_METRICS:
+                lines.append(
+                    "| {episode_id} | {metric_name} | {status} | {reason} |".format(
+                        episode_id=episode.episode_id,
+                        metric_name=metric_name,
+                        status=_metric_status(episode, metric_name),
+                        reason=_metric_availability_reason(episode, metric_name),
+                    )
+                )
+
         if governance_rows:
             lines.extend(
                 [
@@ -634,7 +718,7 @@ class ReportGenerator:
             )
             for metric_scope, seed, scenario_group, scoped_episodes in scenario_rows:
                 lines.append(
-                    "| {metric_scope} | {seed} | {scenario_group} | {drone_count} | {resource_count} | {target_count} | {camera_count} | {count} | {batch_seed} | {active:.6g} | {active_precision} | {label_count:.6g} | {unnecessary:.6g} | {passive:.6g} | {mode_switch:.6g} | {contract_reject:.6g} |".format(
+                    "| {metric_scope} | {seed} | {scenario_group} | {drone_count} | {resource_count} | {target_count} | {camera_count} | {count} | {batch_seed} | {active} | {active_precision} | {label_count} | {unnecessary} | {passive} | {mode_switch} | {contract_reject} |".format(
                         metric_scope=metric_scope,
                         seed=seed,
                         scenario_group=scenario_group,
@@ -644,27 +728,38 @@ class ReportGenerator:
                         camera_count=_scale_range_text(scoped_episodes, "camera_count"),
                         count=len(scoped_episodes),
                         batch_seed=_batch_seed_range_text(scoped_episodes),
-                        active=_mean_metric(scoped_episodes, "active_degradation_count"),
+                        active=_format_optional_metric(
+                            _mean_metric(scoped_episodes, "active_degradation_count")
+                        ),
                         active_precision=_format_optional_metric(
                             _mean_metric(
                                 scoped_episodes,
                                 "active_degradation_precision",
                             )
                         ),
-                        label_count=_mean_metric(
-                            scoped_episodes,
-                            "active_degradation_label_count",
-                        )
-                        or 0.0,
-                        unnecessary=_mean_metric(
-                            scoped_episodes,
-                            "unnecessary_active_degradation_count",
+                        label_count=_format_optional_metric(
+                            _mean_metric(
+                                scoped_episodes,
+                                "active_degradation_label_count",
+                            )
                         ),
-                        passive=_mean_metric(scoped_episodes, "passive_failover_count"),
-                        mode_switch=_mean_metric(scoped_episodes, "mode_switch_count"),
-                        contract_reject=_mean_metric(
-                            scoped_episodes,
-                            "terminal_contract_reject_count",
+                        unnecessary=_format_optional_metric(
+                            _mean_metric(
+                                scoped_episodes,
+                                "unnecessary_active_degradation_count",
+                            )
+                        ),
+                        passive=_format_optional_metric(
+                            _mean_metric(scoped_episodes, "passive_failover_count")
+                        ),
+                        mode_switch=_format_optional_metric(
+                            _mean_metric(scoped_episodes, "mode_switch_count")
+                        ),
+                        contract_reject=_format_optional_metric(
+                            _mean_metric(
+                                scoped_episodes,
+                                "terminal_contract_reject_count",
+                            )
                         ),
                     )
                 )
@@ -683,9 +778,21 @@ class ReportGenerator:
                 ]
             )
             for row in secondary_sensing_rows:
+                formatted_row = _format_optional_row_metrics(
+                    row,
+                    (
+                        "joint_full_view_rate",
+                        "mean_coverage_ratio",
+                        "single_camera_full_view_rate",
+                        "cross_view_association_count",
+                        "detect_not_registered_count",
+                        "cue_error_mean_deg",
+                        "gimbal_error_mean_deg",
+                    ),
+                )
                 lines.append(
-                    "| {metric_scope} | {seed} | {scenario_group} | {node_type} | {drone_count} | {resource_count} | {target_count} | {camera_count} | {joint_full_view_rate:.6g} | {mean_coverage_ratio:.6g} | {single_camera_full_view_rate:.6g} | {cross_view_association_count:.6g} | {detect_not_registered_count:.6g} | {cue_error_mean_deg:.6g} | {gimbal_error_mean_deg:.6g} |".format(
-                        **row
+                    "| {metric_scope} | {seed} | {scenario_group} | {node_type} | {drone_count} | {resource_count} | {target_count} | {camera_count} | {joint_full_view_rate} | {mean_coverage_ratio} | {single_camera_full_view_rate} | {cross_view_association_count} | {detect_not_registered_count} | {cue_error_mean_deg} | {gimbal_error_mean_deg} |".format(
+                        **formatted_row
                     )
                 )
             section_number += 1
@@ -866,10 +973,7 @@ def _terminal_delivery_metric_status(
     episode: EpisodeMetrics,
     metric_name: str,
 ) -> str:
-    if getattr(episode, metric_name) is not None:
-        return "available"
-    availability = episode.metric_availability or {}
-    return str(availability.get(metric_name, {}).get("status", "unavailable"))
+    return _metric_status(episode, metric_name)
 
 
 def _terminal_delivery_episode_rows(
@@ -885,12 +989,32 @@ def _terminal_delivery_episode_rows(
             "seed": episode.seed,
             "batch_seed": episode.batch_seed,
             **{name: getattr(episode, name) for name in EpisodeMetrics.scale_names()},
+            "physical_intercept_source": episode.metadata.get(
+                "physical_intercept_source"
+            ),
+            "online_control_state_source": episode.metadata.get(
+                "online_control_state_source"
+            ),
+            "physical_intercept_evidence_available": episode.metadata.get(
+                "physical_intercept_evidence_available"
+            ),
+            "physical_intercept_unavailable_reason": episode.metadata.get(
+                "physical_intercept_unavailable_reason"
+            ),
         }
         for metric_name in _TERMINAL_DELIVERY_REPORT_METRICS:
-            row[metric_name] = getattr(episode, metric_name)
-            row[f"{metric_name}_availability"] = _terminal_delivery_metric_status(
+            status = _terminal_delivery_metric_status(
                 episode,
                 metric_name,
+            )
+            row[metric_name] = (
+                getattr(episode, metric_name) if status == "available" else None
+            )
+            row[f"{metric_name}_availability"] = status
+            row[f"{metric_name}_unavailable_reason"] = (
+                ""
+                if status == "available"
+                else _metric_availability_reason(episode, metric_name)
             )
         rows.append(row)
     return rows
@@ -940,6 +1064,10 @@ def _terminal_delivery_aggregate_rows(
                 )
                 if values
                 else None,
+                "unavailable_reasons": _metric_unavailable_reason_counts(
+                    scoped,
+                    metric_name,
+                ),
             }
         rows.append(
             {
@@ -953,6 +1081,14 @@ def _terminal_delivery_aggregate_rows(
                 "episode_count": len(scoped),
                 "seeds": sorted(
                     episode.seed for episode in scoped if episode.seed is not None
+                ),
+                "physical_intercept_source_counts": _metadata_value_counts(
+                    scoped,
+                    "physical_intercept_source",
+                ),
+                "online_control_state_source_counts": _metadata_value_counts(
+                    scoped,
+                    "online_control_state_source",
                 ),
                 "metrics": metrics,
             }
@@ -977,13 +1113,13 @@ def _terminal_delivery_markdown(
         "",
         "## 分组结果",
         "",
-        "| Scope | 场景 | Profile | 资源/目标 | Seeds | Contract | Control | Mode switch | Pair physical | Target success | Coalition completion |",
-        "|---|---|---|---|---|---:|---:|---:|---:|---:|---:|",
+        "| Scope | 场景 | Profile | 资源/目标 | Seeds | Contract | Control | Mode switch | Truth-state online | Pair physical | Target success | Coalition completion | Physical source |",
+        "|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for row in aggregate_rows:
         metrics = row["metrics"]
         lines.append(
-            "| {scope} | {scenario} | {profile} | {resources}/{targets} | {seeds} | {contract} | {control} | {mode} | {pair} | {target} | {coalition} |".format(
+            "| {scope} | {scenario} | {profile} | {resources}/{targets} | {seeds} | {contract} | {control} | {mode} | {truth_state} | {pair} | {target} | {coalition} | {physical_source} |".format(
                 scope=row["metric_scope"],
                 scenario=row["scenario_group"],
                 profile=row["profile"],
@@ -993,9 +1129,15 @@ def _terminal_delivery_markdown(
                 contract=_format_terminal_aggregate(metrics["contract_allowed_count"]),
                 control=_format_terminal_aggregate(metrics["control_allowed_count"]),
                 mode=_format_terminal_aggregate(metrics["mode_switched_count"]),
+                truth_state=_format_terminal_aggregate(
+                    metrics["truth_state_online_use_count"]
+                ),
                 pair=_format_terminal_aggregate(metrics["pair_physical_success_count"]),
                 target=_format_terminal_aggregate(metrics["target_intercept_success_count"]),
                 coalition=_format_terminal_aggregate(metrics["coalition_completion_count"]),
+                physical_source=_format_source_counts(
+                    row["physical_intercept_source_counts"]
+                ),
             )
         )
 
@@ -1004,8 +1146,8 @@ def _terminal_delivery_markdown(
             "",
             "## PNG Delivery 诊断",
             "",
-            "| Scope/场景/Profile/N/M | 指标 | 可用 | unavailable | Sum | Mean | Std |",
-            "|---|---|---:|---:|---:|---:|---:|",
+            "| Scope/场景/Profile/N/M | 指标 | 可用 | unavailable | Sum | Mean | Std | Unavailable reason |",
+            "|---|---|---:|---:|---:|---:|---:|---|",
         ]
     )
     for row in aggregate_rows:
@@ -1019,7 +1161,7 @@ def _terminal_delivery_markdown(
         for metric_name in _TERMINAL_DELIVERY_REPORT_METRICS:
             metric = row["metrics"][metric_name]
             lines.append(
-                "| {group} | {name} | {available} | {unavailable} | {sum_value} | {mean} | {std} |".format(
+                "| {group} | {name} | {available} | {unavailable} | {sum_value} | {mean} | {std} | {reason} |".format(
                     group=group,
                     name=metric_name,
                     available=metric["available_count"],
@@ -1027,6 +1169,7 @@ def _terminal_delivery_markdown(
                     sum_value=_format_optional_metric(metric["sum"]),
                     mean=_format_optional_metric(metric["mean"]),
                     std=_format_optional_metric(metric["std"]),
+                    reason=_markdown_reason_counts(metric["unavailable_reasons"]),
                 )
             )
 
@@ -1037,7 +1180,8 @@ def _terminal_delivery_markdown(
             "",
             "- `measured/predicted/rejected/reset/expired` 是滤波样本或事件计数，不等同于目标命中数。",
             "- soft prediction 与 coast 只评估持续时间、到期和控制平滑性；不得作为身份或授权证据。",
-            "- `physical_intercept_5m` 只来自显式物理拦截证据；ComputerVision 只读 episode 应为 unavailable。",
+            "- `physical_intercept_5m` 只接受 availability=true 且 source/online-state/pair evidence 一致的离线 scorer 或显式 truth-state fixture；ComputerVision 和 legacy 无来源结果为 unavailable。",
+            "- `truth_identity_online_use_count` 与 `truth_state_online_use_count` 独立；后者为零必须有 summary、command row 或 estimated-state source 证据。",
             "- M5N2 中任一目标成功不能回填全部 active-primary pair 成功，也不能回填 coalition completion。",
             "",
         ]
@@ -1049,6 +1193,48 @@ def _format_terminal_aggregate(metric: Mapping[str, Any]) -> str:
     if metric.get("available_count", 0) <= 0:
         return "NA"
     return _format_optional_metric(metric.get("sum"))
+
+
+def _metadata_value_counts(
+    episodes: Iterable[EpisodeMetrics],
+    key: str,
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for episode in episodes:
+        value = episode.metadata.get(key)
+        if value is None or not str(value).strip():
+            continue
+        label = str(value)
+        counts[label] = counts.get(label, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _metric_unavailable_reason_counts(
+    episodes: Iterable[EpisodeMetrics],
+    metric_name: str,
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for episode in episodes:
+        if _metric_status(episode, metric_name) == "available":
+            continue
+        reason = _metric_availability_reason(episode, metric_name)
+        counts[reason] = counts.get(reason, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _markdown_reason_counts(counts: Mapping[str, int]) -> str:
+    if not counts:
+        return "NA"
+    return ", ".join(
+        f"{str(reason).replace('|', '\\|')}:{count}"
+        for reason, count in counts.items()
+    )
+
+
+def _format_source_counts(counts: Mapping[str, int]) -> str:
+    if not counts:
+        return "NA"
+    return ", ".join(f"{name}:{count}" for name, count in counts.items())
 
 
 def _empty_summary_row(
@@ -1242,19 +1428,29 @@ def _top_failure_causes_text(value: Any) -> str:
 
 def _performance_monitoring_rows(
     episodes: list[EpisodeMetrics],
-) -> list[dict[str, float | str]]:
-    rows: list[dict[str, float | str]] = []
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
     for episode in episodes:
         rows.append(
             {
                 "episode_id": _markdown_cell(episode.episode_id),
-                "module_duration_ms": float(episode.module_duration_ms),
-                "loop_latency_ms": float(episode.loop_latency_ms),
-                "record_latency_ms": float(episode.record_latency_ms),
-                "cpu_budget_utilization": float(episode.cpu_budget_utilization),
-                "gpu_budget_utilization": float(episode.gpu_budget_utilization),
-                "performance_budget_violation_count": float(
-                    episode.performance_budget_violation_count
+                "module_duration_ms": _format_episode_metric(
+                    episode, "module_duration_ms"
+                ),
+                "loop_latency_ms": _format_episode_metric(
+                    episode, "loop_latency_ms"
+                ),
+                "record_latency_ms": _format_episode_metric(
+                    episode, "record_latency_ms"
+                ),
+                "cpu_budget_utilization": _format_episode_metric(
+                    episode, "cpu_budget_utilization"
+                ),
+                "gpu_budget_utilization": _format_episode_metric(
+                    episode, "gpu_budget_utilization"
+                ),
+                "performance_budget_violation_count": _format_episode_metric(
+                    episode, "performance_budget_violation_count"
                 ),
             }
         )
@@ -1428,7 +1624,7 @@ def _available_metric_values(
         float(value)
         for episode in episodes
         for value in [getattr(episode, metric_name)]
-        if value is not None
+        if value is not None and _metric_status(episode, metric_name) == "available"
     ]
 
 
@@ -1439,15 +1635,9 @@ def _metric_status_counts(
     unavailable = 0
     not_applicable = 0
     for episode in episodes:
-        if getattr(episode, metric_name) is not None:
+        status = _metric_status(episode, metric_name)
+        if status == "available":
             continue
-        status = "unavailable"
-        availability = episode.metric_availability or {}
-        if metric_name not in availability and metric_name in M_TO_N_METRIC_NAMES:
-            availability = episode.m_to_n_metric_availability or {}
-        status = str(
-            availability.get(metric_name, {}).get("status", "unavailable")
-        )
         if status == "not_applicable":
             not_applicable += 1
         else:
@@ -1456,6 +1646,31 @@ def _metric_status_counts(
         "unavailable_count": unavailable,
         "not_applicable_count": not_applicable,
     }
+
+
+def _metric_status(episode: EpisodeMetrics, metric_name: str) -> str:
+    availability = episode.metric_availability or {}
+    if metric_name not in availability and metric_name in M_TO_N_METRIC_NAMES:
+        availability = episode.m_to_n_metric_availability or {}
+    raw_entry = availability.get(metric_name, {})
+    entry = raw_entry if isinstance(raw_entry, Mapping) else {}
+    declared = str(entry.get("status", "")).strip().lower()
+    if declared in {"unavailable", "not_applicable"}:
+        return declared
+    if getattr(episode, metric_name) is None:
+        return "unavailable"
+    return "available"
+
+
+def _metric_availability_reason(
+    episode: EpisodeMetrics,
+    metric_name: str,
+) -> str:
+    availability = episode.metric_availability or {}
+    raw_entry = availability.get(metric_name, {})
+    entry = raw_entry if isinstance(raw_entry, Mapping) else {}
+    reason = str(entry.get("reason", "metric value is absent")).replace("|", "\\|")
+    return reason or "metric value is absent"
 
 
 def _mean_metric(
@@ -1471,7 +1686,28 @@ def _mean_metric(
 def _format_optional_metric(value: Any) -> str:
     if value is None:
         return "unavailable"
-    return f"{float(value):.6g}"
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return "unavailable"
+    if not np.isfinite(numeric):
+        return "unavailable"
+    return f"{numeric:.6g}"
+
+
+def _format_episode_metric(episode: EpisodeMetrics, metric_name: str) -> str:
+    if _metric_status(episode, metric_name) != "available":
+        return "unavailable"
+    return _format_optional_metric(getattr(episode, metric_name, None))
+
+
+def _format_optional_row_metrics(
+    row: Mapping[str, Any], metric_names: tuple[str, ...]
+) -> dict[str, Any]:
+    formatted = dict(row)
+    for name in metric_names:
+        formatted[name] = _format_optional_metric(row.get(name))
+    return formatted
 
 
 def _secondary_sensing_comparison_rows(

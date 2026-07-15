@@ -4,6 +4,8 @@ import csv
 import json
 from pathlib import Path
 
+import pytest
+
 from d6_evaluation_metrics import (
     P1SystemEvidenceInputs,
     P1SystemEvidenceReportGenerator,
@@ -16,6 +18,404 @@ REAL_M5N2_40_CASE = FIXTURES / "p1_m5n2_cooperative_40case_20260713.json"
 CORRECTED_M5N2_AGGREGATE = (
     FIXTURES / "p1_m5n2_cooperative_corrected_aggregate_20260713.json"
 )
+D3_CHURN_METRICS = (
+    "plan_version_churn_count",
+    "coalition_version_churn_count",
+    "coalition_epoch_churn_count",
+    "membership_change_count",
+)
+D3_CANONICAL_HISTORY_METRICS = (
+    *D3_CHURN_METRICS,
+    "primary_membership_change_count",
+    "reserve_membership_change_count",
+    "owner_change_count",
+    "soft_feedback_count",
+    "hard_feedback_count",
+)
+
+
+def _d3_row(tmp_path: Path, payload: object) -> dict[str, str]:
+    outputs = P1SystemEvidenceReportGenerator().write_report_bundle(
+        tmp_path,
+        inputs=P1SystemEvidenceInputs(d3_assignment_churn=payload),
+    )
+    rows = list(csv.DictReader(outputs["rows_csv"].open(encoding="utf-8")))
+    return next(row for row in rows if row["source"] == "d3_assignment_churn")
+
+
+def _canonical_assignment(
+    resource_id: str,
+    *,
+    role: str,
+    activation_state: str,
+) -> dict[str, object]:
+    return {
+        "target_id": "T1",
+        "resource_id": resource_id,
+        "member_role": role,
+        "wave_id": 0,
+        "activation_state": activation_state,
+        "active": activation_state == "active",
+        "coalition_id": "C1",
+        "coalition_version": 1,
+        "coalition_epoch": 1,
+        "coalition_complete": True,
+        "assignment_validity_state": "current",
+        "feasibility_state": "feasible",
+        "cost": 1.0,
+        "cost_breakdown": {"total": 1.0},
+    }
+
+
+def _canonical_history_record(
+    sequence_index: int,
+    timestamp: float,
+    *,
+    plan_version: int = 1,
+    coalition_version: int = 1,
+    coalition_epoch: int = 1,
+    assignments: list[dict[str, object]] | None = None,
+    active_plan_owner: str = "center",
+    owner_node_id: str | None = "CENTER",
+    soft_count: int = 0,
+    hard_count: int = 0,
+) -> dict[str, object]:
+    if assignments is None:
+        assignments = [
+            _canonical_assignment("R1", role="primary", activation_state="active"),
+            _canonical_assignment("R2", role="reserve", activation_state="standby"),
+        ]
+    normalized_assignments = []
+    for assignment in assignments:
+        item = dict(assignment)
+        item["coalition_version"] = coalition_version
+        item["coalition_epoch"] = coalition_epoch
+        normalized_assignments.append(item)
+    return {
+        "schema": "d3_plan_history_record_v1",
+        "schema_version": 1,
+        "sequence_index": sequence_index,
+        "ordering_key": [sequence_index, timestamp],
+        "timestamp": timestamp,
+        "plan_schema": "assignment_plan_v2",
+        "plan_id": f"plan-{plan_version}",
+        "plan_version": plan_version,
+        "window_id": 1,
+        "changed": sequence_index > 0,
+        "decision_state": "accepted",
+        "resource_count": 3,
+        "target_count": 1,
+        "assigned_count": len(normalized_assignments),
+        "plan_owner": active_plan_owner,
+        "active_plan_owner": active_plan_owner,
+        "owner_node_id": owner_node_id,
+        "source_node_id": owner_node_id,
+        "selected_secondary_node_id": (
+            owner_node_id if active_plan_owner == "secondary" else None
+        ),
+        "secondary_plan_version": (
+            plan_version if active_plan_owner == "secondary" else None
+        ),
+        "secondary_leader_epoch": (
+            coalition_epoch if active_plan_owner == "secondary" else None
+        ),
+        "secondary_lease_expires_at_s": (
+            timestamp + 5.0 if active_plan_owner == "secondary" else None
+        ),
+        "previous_plan_id": None,
+        "previous_plan_version": None,
+        "supersedes_plan_id": None,
+        "supersedes_plan_version": None,
+        "assignments": normalized_assignments,
+        "coalitions": [
+            {
+                "coalition_id": "C1",
+                "version": coalition_version,
+                "epoch": coalition_epoch,
+                "target_id": "T1",
+                "state": "committed",
+                "coordination_mode": "hybrid_primary_reserve",
+                "required_resource_count": 1,
+                "primary_resource_count": sum(
+                    item["member_role"] == "primary"
+                    for item in normalized_assignments
+                ),
+                "assigned_resource_count": len(normalized_assignments),
+                "shortfall": 0,
+                "complete": True,
+                "members": [],
+            }
+        ],
+        "hysteresis": {"state": "stable", "reason": None},
+        # This audit record is deliberately repeated across ticks. D6 must use
+        # assignment snapshot differences instead of summing this list.
+        "membership_change_records": [
+            {
+                "target_id": "T1",
+                "membership_change_reason": "historical_audit_only",
+            }
+        ],
+        "feedback_constraints": {
+            "schema": "d3_feedback_constraint_classification_v1",
+            "classifications": [],
+            "soft_count": soft_count,
+            "hard_count": hard_count,
+            "soft_edge_count": soft_count,
+            "hard_edge_count": hard_count,
+            "resource_hard_count": 0,
+            "target_hard_count": 0,
+        },
+        "total_cost": 2.0,
+        "candidate_total_cost": None,
+        "previous_total_cost_current": None,
+        "stale_plan_rejected": False,
+        "stale_reject_reason": None,
+        "latest_plan_id": f"plan-{plan_version}",
+        "latest_plan_version": plan_version,
+        "rollback_detected": False,
+        "rollback_reason": None,
+        "replan_reason": None,
+    }
+
+
+def _canonical_history(
+    records: list[dict[str, object]],
+    *,
+    record_count: int | None = None,
+) -> dict[str, object]:
+    return {
+        "schema": "d3_plan_history_v1",
+        "schema_version": 1,
+        "episode_id": "canonical-history-test",
+        "scenario_name": "M3N1_history",
+        "record_count": len(records) if record_count is None else record_count,
+        "history": records,
+    }
+
+
+def _d2_evidence_row_and_aggregate(
+    tmp_path: Path,
+    *,
+    assessment: dict[str, object] | None,
+    schema_version: str = "d2-p1-identity-calibration/v2",
+) -> tuple[dict[str, str], dict[str, object], str]:
+    decision: dict[str, object] = {
+        "selected_online_path": "baseline_gnn_hungarian",
+        "default_online_path_changed": False,
+        "promotion_recommended": False,
+        "candidate_assessments": [] if assessment is None else [assessment],
+    }
+    if schema_version.endswith("/v2"):
+        decision["policy_version"] = (
+            "d2-p1-identity-admission/ceiling-aware-error-reduction-v1"
+        )
+    payload = {
+        "schema_version": schema_version,
+        "decision": decision,
+        "confirmation": {
+            "results": [
+                {
+                    "config": {"config_id": "candidate"},
+                    "associator": "GNNHungarianAssociator",
+                    "per_seed": [
+                        {
+                            "seed": 7,
+                            "id_switch_count": 1,
+                            "identity_continuity": 0.984,
+                            "false_track_count": 1,
+                            "p95_loop_latency_s": 0.024,
+                            "online_truth_leakage_count": 0,
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+    outputs = P1SystemEvidenceReportGenerator().write_report_bundle(
+        tmp_path,
+        inputs=P1SystemEvidenceInputs(d2_difficulty_profiles=payload),
+    )
+    rows = list(csv.DictReader(outputs["rows_csv"].open(encoding="utf-8")))
+    row = next(item for item in rows if item["source"] == "d2_difficulty_profiles")
+    aggregate = json.loads(outputs["aggregate_json"].read_text(encoding="utf-8"))
+    markdown = outputs["markdown"].read_text(encoding="utf-8")
+    return row, aggregate, markdown
+
+
+@pytest.fixture
+def d2_ceiling_aware_v2_payload() -> dict[str, object]:
+    policy = "d2-p1-identity-admission/ceiling-aware-error-reduction-v1"
+
+    def assessment(
+        difficulty: str,
+        *,
+        associator: str = "GNNHungarianAssociator",
+    ) -> dict[str, object]:
+        passing = difficulty in {"overall", "clutter", "combined"}
+        baseline_idsw = 1.0 if passing else 0.0
+        candidate_id = (
+            "candidate" if associator == "GNNHungarianAssociator" else "jpda-candidate"
+        )
+        return {
+            "candidate_id": candidate_id,
+            "associator": associator,
+            "admission_policy_version": policy,
+            "baseline_id_switch_mean": baseline_idsw,
+            "candidate_id_switch_mean": 0.5 if passing else 0.0,
+            "id_switch_reduction_fraction": 0.5 if passing else None,
+            "baseline_identity_continuity": 0.98 if passing else 1.0,
+            "candidate_identity_continuity": 0.985 if passing else 1.0,
+            "identity_continuity_baseline_headroom": 0.02 if passing else 0.0,
+            "identity_continuity_increase": 0.005 if passing else 0.0,
+            "identity_continuity_required_increase": 0.002 if passing else 0.0,
+            "identity_continuity_error_reduction_fraction": 0.25 if passing else None,
+            "baseline_false_track_mean": 0.0,
+            "candidate_false_track_mean": 0.0,
+            "candidate_p95_loop_latency_s": 0.02,
+            "gates": {
+                "id_switch_reduction": {
+                    "passed": passing,
+                    "reason": (
+                        "required_id_switch_reduction_met"
+                        if passing
+                        else "baseline_zero_no_measurable_reduction_evidence"
+                    ),
+                },
+                "identity_continuity_ceiling_aware": {
+                    "passed": True,
+                    "reason": "required_continuity_error_reduction_met",
+                },
+                "false_track_limit": {
+                    "passed": True,
+                    "reason": "false_track_limit_met",
+                },
+                "p95_loop_latency_budget": {
+                    "passed": True,
+                    "reason": "p95_loop_latency_budget_met",
+                },
+                "truth_leakage_zero": {
+                    "passed": True,
+                    "reason": "online_truth_leakage_zero",
+                    "candidate_count": 0,
+                    "required_count": 0,
+                },
+            },
+            "gate_reasons": {
+                "id_switch_reduction": (
+                    "required_id_switch_reduction_met"
+                    if passing
+                    else "baseline_zero_no_measurable_reduction_evidence"
+                ),
+                "identity_continuity_ceiling_aware": (
+                    "required_continuity_error_reduction_met"
+                ),
+                "false_track_limit": "false_track_limit_met",
+                "p95_loop_latency_budget": "p95_loop_latency_budget_met",
+                "truth_leakage_zero": "online_truth_leakage_zero",
+            },
+            "all_thresholds_passed": passing,
+        }
+
+    overall_gnn = assessment("overall")
+    overall_jpda = assessment(
+        "nominal", associator="JPDAAssociatorResearchAdapter"
+    )
+    difficulties = (
+        "clutter",
+        "combined",
+        "delayed_noisy",
+        "dropout",
+        "nominal",
+        "tight_crossing",
+    )
+    return {
+        "schema_version": "d2-p1-identity-calibration/v2",
+        "default_online_path": "GNNHungarianAssociator",
+        "default_online_path_changed": False,
+        "decision": {
+            "available": True,
+            "policy_version": policy,
+            "policy": {"promotion_effect": "review_recommendation_only"},
+            "promotion_recommended": True,
+            "promotion_candidates": ["candidate"],
+            "selected_online_path": "baseline_gnn_hungarian",
+            "default_online_path_changed": False,
+            "candidate_assessments": [overall_gnn, overall_jpda],
+            "by_difficulty": {
+                difficulty: {
+                    "available": True,
+                    "promotion_recommended": difficulty in {"clutter", "combined"},
+                    "promotion_candidates": (
+                        ["candidate"] if difficulty in {"clutter", "combined"} else []
+                    ),
+                    "candidate_assessments": [assessment(difficulty)],
+                }
+                for difficulty in difficulties
+            },
+        },
+        "screening": {
+            "scenario_difficulties": list(difficulties),
+            "offline_truth_alignment_availability_counts": {
+                "complete": 5,
+                "partial": 1,
+                "unavailable": 0,
+            },
+            "offline_truth_unmatched_sample_count": 2,
+            "offline_truth_alignment_by_case": {
+                "dropout:1": {
+                    "availability": "partial",
+                    "matched_sample_count": 10,
+                    "unmatched_sample_count": 2,
+                    "online_truth_injected": False,
+                }
+            },
+        },
+        "confirmation": {
+            "scenario_difficulties": list(difficulties),
+            "offline_truth_alignment_availability_counts": {
+                "complete": 10,
+                "partial": 2,
+                "unavailable": 0,
+            },
+            "offline_truth_unmatched_sample_count": 4,
+            "offline_truth_alignment_by_case": {
+                "dropout:1": {
+                    "availability": "partial",
+                    "matched_sample_count": 10,
+                    "unmatched_sample_count": 2,
+                    "online_truth_injected": False,
+                },
+                "dropout:2": {
+                    "availability": "partial",
+                    "matched_sample_count": 10,
+                    "unmatched_sample_count": 2,
+                    "online_truth_injected": False,
+                },
+            },
+            "results": [
+                {
+                    "config": {"config_id": "candidate"},
+                    "associator": "GNNHungarianAssociator",
+                    "per_seed": [
+                        {
+                            "seed": 1,
+                            "scenario_difficulty": "dropout",
+                            "id_switch_count": 0,
+                            "identity_continuity": 1.0,
+                            "false_track_count": 0,
+                            "p95_loop_latency_s": 0.02,
+                            "online_truth_leakage_count": 0,
+                            "offline_truth_alignment": {
+                                "availability": "partial",
+                                "unmatched_sample_count": 2,
+                            },
+                        }
+                    ],
+                }
+            ],
+        },
+        "jpda_comparison": {"research_adapter_only": True},
+    }
 
 
 def _inputs() -> P1SystemEvidenceInputs:
@@ -191,7 +591,7 @@ def test_report_bundle_aggregates_all_p1_sources(tmp_path) -> None:
     assert all(path.exists() for path in outputs.values())
     assert outputs["plot"].stat().st_size > 0
     aggregate = json.loads(outputs["aggregate_json"].read_text(encoding="utf-8"))
-    assert aggregate["schema_version"] == "d6-p1-system-evidence-v1"
+    assert aggregate["schema_version"] == "d6-p1-system-evidence-v2"
     assert aggregate["offline_only"] is True
     assert aggregate["controls_air_sim"] is False
     assert aggregate["truth_policy"]["status"] == "pass"
@@ -208,11 +608,273 @@ def test_report_bundle_aggregates_all_p1_sources(tmp_path) -> None:
     assert d3["arrival_coordination_required"] == "False"
     assert d3["membership_change_count"] == "1"
     assert d3["plan_version_churn_count"] == "1"
+    assert d3["coalition_version_churn_count"] == "1"
+    assert d3["coalition_epoch_churn_count"] == "1"
+    for metric in D3_CHURN_METRICS:
+        assert d3[f"{metric}_availability"] == "available"
     d4 = next(row for row in rows if row["source"] == "d4_episode_communication")
     assert d4["failover_count"] == "1"
     assert d4["ack_count"] == "2"
     assert d4["missing_ack_count"] == "1"
     assert d4["owner_change_count"] == "2"
+
+
+def test_d2_v2_admission_preserves_ceiling_aware_fields_and_gate_reason(
+    tmp_path,
+) -> None:
+    policy = "d2-p1-identity-admission/ceiling-aware-error-reduction-v1"
+    row, aggregate, markdown = _d2_evidence_row_and_aggregate(
+        tmp_path,
+        assessment={
+            "candidate_id": "candidate",
+            "admission_policy_version": policy,
+            "baseline_identity_continuity": 0.981,
+            "candidate_identity_continuity": 0.982,
+            "identity_continuity_baseline_headroom": 0.019,
+            "identity_continuity_increase": 0.001,
+            "identity_continuity_required_increase": 0.0019,
+            "identity_continuity_error_reduction_fraction": 0.001 / 0.019,
+            "gates": {
+                "id_switch_reduction": {
+                    "passed": True,
+                    "reason": "required_id_switch_reduction_met",
+                },
+                "identity_continuity_ceiling_aware": {
+                    "passed": False,
+                    "reason": "insufficient_continuity_error_reduction",
+                },
+            },
+            "checks": {
+                "id_switch_reduction": True,
+                "identity_continuity_ceiling_aware": False,
+            },
+            "gate_reasons": {
+                "identity_continuity_ceiling_aware": (
+                    "less_specific_fallback_must_not_win"
+                )
+            },
+            "all_thresholds_passed": False,
+        },
+    )
+
+    assert row["admission_policy_version"] == policy
+    assert float(row["baseline_identity_continuity"]) == pytest.approx(0.981)
+    assert float(row["identity_continuity_baseline_headroom"]) == pytest.approx(
+        0.019
+    )
+    assert float(row["identity_continuity_increase"]) == pytest.approx(0.001)
+    assert float(row["identity_continuity_required_increase"]) == pytest.approx(
+        0.0019
+    )
+    assert float(
+        row["identity_continuity_error_reduction_fraction"]
+    ) == pytest.approx(0.001 / 0.019)
+    assert row["all_thresholds_passed"] == "False"
+    assert row["failure_reasons_availability"] == "available"
+    assert json.loads(row["failure_reasons"]) == [
+        "identity_continuity_ceiling_aware:insufficient_continuity_error_reduction"
+    ]
+    review = aggregate["d2_admission_review"]
+    assert review["effect"] == "review_recommendation_only"
+    assert review["changes_online_control"] is False
+    assert review["changes_default_online_path"] is False
+    assert review["records"][0]["identity_continuity_baseline_headroom"] == (
+        pytest.approx(0.019)
+    )
+    assert policy in markdown
+    assert "insufficient_continuity_error_reduction" in markdown
+
+
+def test_d2_v2_passing_assessment_has_available_empty_failures(tmp_path) -> None:
+    row, aggregate, _ = _d2_evidence_row_and_aggregate(
+        tmp_path,
+        assessment={
+            "candidate_id": "candidate",
+            "admission_policy_version": "d2-policy-v2",
+            "baseline_identity_continuity": 0.981,
+            "identity_continuity_baseline_headroom": 0.019,
+            "identity_continuity_increase": 0.003,
+            "identity_continuity_required_increase": 0.0019,
+            "identity_continuity_error_reduction_fraction": 0.003 / 0.019,
+            "gates": {
+                "identity_continuity_ceiling_aware": {
+                    "passed": True,
+                    "reason": "required_continuity_error_reduction_met",
+                }
+            },
+            "checks": {"identity_continuity_ceiling_aware": True},
+            "all_thresholds_passed": True,
+        },
+    )
+
+    assert row["association_admitted"] == "True"
+    assert row["all_thresholds_passed"] == "True"
+    assert row["failure_reasons_availability"] == "available"
+    assert json.loads(row["failure_reasons"]) == []
+    assert aggregate["d2_admission_review"]["status"] == "available"
+
+
+@pytest.mark.parametrize(
+    ("checks", "expected_reason"),
+    [
+        (
+            {
+                "identity_continuity_gain": {
+                    "passed": False,
+                    "reason": "legacy_absolute_gain_not_met",
+                }
+            },
+            "identity_continuity_gain:legacy_absolute_gain_not_met",
+        ),
+        ({"identity_continuity_gain": False}, "identity_continuity_gain"),
+    ],
+)
+def test_d2_legacy_structured_and_bool_checks_remain_supported(
+    tmp_path,
+    checks: dict[str, object],
+    expected_reason: str,
+) -> None:
+    row, aggregate, _ = _d2_evidence_row_and_aggregate(
+        tmp_path,
+        schema_version="d2-p1-identity-calibration/v1",
+        assessment={
+            "candidate_id": "candidate",
+            "checks": checks,
+            "all_thresholds_passed": False,
+        },
+    )
+
+    assert json.loads(row["failure_reasons"]) == [expected_reason]
+    assert row["failure_reasons_availability"] == "available"
+    assert row["admission_policy_version"] == ""
+    assert row["admission_policy_version_availability"] == "unavailable"
+    assert aggregate["d2_admission_review"]["records"][0][
+        "admission_policy_version"
+    ] is None
+
+
+def test_d2_missing_admission_fields_stay_unavailable_and_never_become_zero(
+    tmp_path,
+) -> None:
+    row, aggregate, markdown = _d2_evidence_row_and_aggregate(
+        tmp_path,
+        schema_version="d2-p1-identity-calibration/v1",
+        assessment={
+            "candidate_id": "candidate",
+            "all_thresholds_passed": False,
+        },
+    )
+
+    for name in (
+        "admission_policy_version",
+        "baseline_identity_continuity",
+        "identity_continuity_baseline_headroom",
+        "identity_continuity_increase",
+        "identity_continuity_required_increase",
+        "identity_continuity_error_reduction_fraction",
+    ):
+        assert row[name] == ""
+        assert row[f"{name}_availability"] == "unavailable"
+    assert row["all_thresholds_passed"] == "False"
+    assert row["failure_reasons"] == "[]"
+    assert row["failure_reasons_availability"] == "unavailable"
+    record = aggregate["d2_admission_review"]["records"][0]
+    assert record["baseline_identity_continuity"] is None
+    assert record["identity_continuity_baseline_headroom"] is None
+    assert record["failure_reasons_availability"] == "unavailable"
+    assert "unavailable" in markdown
+
+
+def test_d2_v2_source_decision_and_alignment_are_preserved_without_recalculation(
+    tmp_path: Path,
+    d2_ceiling_aware_v2_payload: dict[str, object],
+) -> None:
+    outputs = P1SystemEvidenceReportGenerator().write_report_bundle(
+        tmp_path,
+        inputs=P1SystemEvidenceInputs(
+            d2_difficulty_profiles=d2_ceiling_aware_v2_payload
+        ),
+    )
+    aggregate = json.loads(outputs["aggregate_json"].read_text(encoding="utf-8"))
+    review = aggregate["d2_admission_review"]
+
+    assert review["source_schema_version"] == "d2-p1-identity-calibration/v2"
+    assert review["source_decision_status"] == "available"
+    assert review["promotion_recommended"] is True
+    assert review["promotion_candidates"] == ["candidate"]
+    assert review["selected_online_path"] == "baseline_gnn_hungarian"
+    assert review["default_online_path"] == "GNNHungarianAssociator"
+    assert review["default_online_path_changed"] is False
+    assert review["producer_decision_recalculated_by_d6"] is False
+    assert review["record_count"] == 8
+    assert review["by_difficulty"]["clutter"]["promotion_recommended"] is True
+    assert review["by_difficulty"]["dropout"]["promotion_recommended"] is False
+    dropout = review["truth_alignment_summary"]["stages"]["confirmation"][
+        "by_difficulty"
+    ]["dropout"]
+    assert dropout["availability_counts"] == {
+        "complete": 0,
+        "partial": 2,
+        "unavailable": 0,
+    }
+    assert dropout["matched_sample_count"] == 20
+    assert dropout["unmatched_sample_count"] == 4
+    assert review["jpda_research_adapter_only"] is True
+
+    rows = list(csv.DictReader(outputs["rows_csv"].open(encoding="utf-8")))
+    overall = next(
+        row
+        for row in rows
+        if row["family"] == "association_admission_assessment"
+        and row["assessment_scope"] == "overall"
+        and row["associator"] == "GNNHungarianAssociator"
+    )
+    assert overall["promotion_recommended"] == "True"
+    assert overall["default_online_path_changed"] == "False"
+    assert json.loads(overall["admission_gate_reasons"])[
+        "truth_leakage_zero"
+    ] == "online_truth_leakage_zero"
+
+    markdown = outputs["markdown"].read_text(encoding="utf-8")
+    assert "总体 GNN 候选五项 gate" in markdown
+    assert "分档仅 `clutter, combined` 通过" in markdown
+    assert "baseline IDSW=0" in markdown
+    assert "Dropout truth alignment" in markdown
+    assert "research_adapter_only=true" in markdown
+    assert "default_online_path_changed=false" in markdown
+    assert "D2-only 证据不得表述为全系统通过" in markdown
+
+
+def test_d2_legacy_missing_source_decision_fields_remain_unavailable(
+    tmp_path: Path,
+) -> None:
+    outputs = P1SystemEvidenceReportGenerator().write_report_bundle(
+        tmp_path,
+        inputs=P1SystemEvidenceInputs(
+            d2_difficulty_profiles={
+                "schema_version": "d2-p1-identity-calibration/v1",
+                "profiles": [
+                    {
+                        "scenario_difficulty": "legacy",
+                        "candidate": "legacy",
+                        "id_switch_count": 0,
+                    }
+                ],
+            }
+        ),
+    )
+    review = json.loads(
+        outputs["aggregate_json"].read_text(encoding="utf-8")
+    )["d2_admission_review"]
+
+    assert review["source_decision_status"] == "unavailable"
+    assert review["promotion_recommended"] is None
+    assert review["promotion_candidates"] is None
+    assert review["selected_online_path"] is None
+    assert review["default_online_path_changed"] is None
+    assert review["by_difficulty"] is None
+    assert review["truth_alignment_summary"]["status"] == "unavailable"
+    assert review["producer_decision_recalculated_by_d6"] is False
 
 
 def test_missing_metrics_remain_unavailable_and_layers_do_not_promote(tmp_path) -> None:
@@ -240,6 +902,290 @@ def test_missing_metrics_remain_unavailable_and_layers_do_not_promote(tmp_path) 
     assert row["mode_switched_count_availability"] == "unavailable"
     assert row["physical_intercept_count"] == ""
     assert row["physical_intercept_count_availability"] == "unavailable"
+
+
+def test_d3_final_snapshot_does_not_infer_zero_churn(tmp_path) -> None:
+    row = _d3_row(
+        tmp_path,
+        {
+            "schema_version": "d3-assignment-plan-v1",
+            "version": 7,
+            "metadata": {"membership_change_records": []},
+            "coalitions": [{"coalition_id": "C1", "version": 4, "epoch": 4}],
+        },
+    )
+
+    for metric in D3_CHURN_METRICS:
+        assert row[metric] == ""
+        assert row[f"{metric}_availability"] == "unavailable"
+
+
+def test_d3_empty_input_keeps_churn_unavailable(tmp_path) -> None:
+    row = _d3_row(tmp_path, {})
+
+    for metric in D3_CHURN_METRICS:
+        assert row[metric] == ""
+        assert row[f"{metric}_availability"] == "unavailable"
+
+
+def test_d3_single_unordered_record_does_not_infer_zero_churn(tmp_path) -> None:
+    row = _d3_row(
+        tmp_path,
+        {
+            "records": [
+                {
+                    "version": 7,
+                    "metadata": {"membership_change_records": []},
+                    "coalitions": [
+                        {"coalition_id": "C1", "version": 4, "epoch": 4}
+                    ],
+                }
+            ]
+        },
+    )
+
+    for metric in D3_CHURN_METRICS:
+        assert row[metric] == ""
+        assert row[f"{metric}_availability"] == "unavailable"
+
+
+def test_d3_two_stable_ordered_history_records_report_available_zero_churn(
+    tmp_path,
+) -> None:
+    row = _d3_row(
+        tmp_path,
+        {
+            "schema_version": "d3-plan-history-v1",
+            "history": [
+                {
+                    "version": 7,
+                    "metadata": {"membership_change_records": []},
+                    "coalitions": [
+                        {"coalition_id": "C1", "version": 4, "epoch": 4}
+                    ],
+                },
+                {
+                    "version": 7,
+                    "metadata": {"membership_change_records": []},
+                    "coalitions": [
+                        {"coalition_id": "C1", "version": 4, "epoch": 4}
+                    ],
+                },
+            ],
+        },
+    )
+
+    for metric in D3_CHURN_METRICS:
+        assert row[metric] == "0"
+        assert row[f"{metric}_availability"] == "available"
+
+
+def test_d3_explicit_zero_churn_is_available_without_history(tmp_path) -> None:
+    row = _d3_row(
+        tmp_path,
+        {metric: 0 for metric in D3_CHURN_METRICS},
+    )
+
+    for metric in D3_CHURN_METRICS:
+        assert row[metric] == "0"
+        assert row[f"{metric}_availability"] == "available"
+
+
+def test_d3_canonical_stable_history_reports_explicit_zero_without_truth(
+    tmp_path,
+) -> None:
+    payload = _canonical_history(
+        [
+            _canonical_history_record(0, 0.0),
+            _canonical_history_record(1, 1.0),
+        ]
+    )
+    assert "truth" not in json.dumps(payload, sort_keys=True).lower()
+
+    row = _d3_row(tmp_path, payload)
+
+    assert row["family"] == "canonical_ordered_plan_history"
+    assert row["d3_history_validation_status"] == "available"
+    assert json.loads(row["d3_history_validation_reasons"]) == []
+    assert row["d3_history_record_count"] == "2"
+    for metric in D3_CANONICAL_HISTORY_METRICS:
+        assert row[metric] == "0"
+        assert row[f"{metric}_availability"] == "available"
+
+
+def test_d3_canonical_history_counts_plan_and_coalition_version_changes(
+    tmp_path,
+) -> None:
+    row = _d3_row(
+        tmp_path,
+        _canonical_history(
+            [
+                _canonical_history_record(0, 0.0),
+                _canonical_history_record(
+                    1,
+                    1.0,
+                    plan_version=2,
+                    coalition_version=2,
+                    coalition_epoch=2,
+                ),
+            ]
+        ),
+    )
+
+    assert row["plan_version_churn_count"] == "1"
+    assert row["coalition_version_churn_count"] == "1"
+    assert row["coalition_epoch_churn_count"] == "1"
+    assert row["membership_change_count"] == "0"
+
+
+def test_d3_canonical_history_counts_membership_owner_and_feedback_changes(
+    tmp_path,
+) -> None:
+    changed_assignments = [
+        _canonical_assignment("R3", role="primary", activation_state="active"),
+        _canonical_assignment("R2", role="reserve", activation_state="active"),
+    ]
+    row = _d3_row(
+        tmp_path,
+        _canonical_history(
+            [
+                _canonical_history_record(0, 0.0, soft_count=1),
+                _canonical_history_record(
+                    1,
+                    1.0,
+                    assignments=changed_assignments,
+                    active_plan_owner="secondary",
+                    owner_node_id="SECONDARY-1",
+                    soft_count=2,
+                    hard_count=1,
+                ),
+            ]
+        ),
+    )
+
+    assert row["membership_change_count"] == "3"
+    assert row["primary_membership_change_count"] == "2"
+    assert row["reserve_membership_change_count"] == "1"
+    assert row["owner_change_count"] == "1"
+    assert row["soft_feedback_count"] == "3"
+    assert row["hard_feedback_count"] == "1"
+
+
+@pytest.mark.parametrize(
+    ("records", "expected_reason"),
+    [
+        (
+            [
+                _canonical_history_record(1, 0.0),
+                _canonical_history_record(0, 1.0),
+            ],
+            "sequence_index_non_monotonic",
+        ),
+        (
+            [
+                _canonical_history_record(0, 0.0),
+                _canonical_history_record(0, 1.0),
+            ],
+            "sequence_index_duplicate",
+        ),
+        (
+            [
+                _canonical_history_record(0, 1.0),
+                _canonical_history_record(1, 0.5),
+            ],
+            "timestamp_regression",
+        ),
+    ],
+)
+def test_d3_canonical_invalid_order_keeps_history_metrics_unavailable(
+    tmp_path,
+    records: list[dict[str, object]],
+    expected_reason: str,
+) -> None:
+    row = _d3_row(tmp_path, _canonical_history(records))
+
+    assert row["d3_history_validation_status"] == "unavailable"
+    assert expected_reason in json.loads(row["d3_history_validation_reasons"])
+    for metric in D3_CANONICAL_HISTORY_METRICS:
+        assert row[metric] == ""
+        assert row[f"{metric}_availability"] == "unavailable"
+
+
+def test_d3_canonical_single_record_history_is_unavailable_with_reason(
+    tmp_path,
+) -> None:
+    row = _d3_row(
+        tmp_path,
+        _canonical_history([_canonical_history_record(0, 0.0)]),
+    )
+
+    assert row["d3_history_validation_status"] == "unavailable"
+    assert "history_requires_at_least_two_records" in json.loads(
+        row["d3_history_validation_reasons"]
+    )
+    for metric in D3_CANONICAL_HISTORY_METRICS:
+        assert row[metric] == ""
+
+
+@pytest.mark.parametrize(
+    ("mutator", "expected_reason"),
+    [
+        (
+            lambda payload: payload["history"][1].update(
+                {"schema": "wrong_history_record"}
+            ),
+            "history_record_schema_mismatch",
+        ),
+        (
+            lambda payload: payload.update({"record_count": 3}),
+            "history_record_count_mismatch",
+        ),
+        (
+            lambda payload: payload["history"][1].update(
+                {"ordering_key": [99, 1.0]}
+            ),
+            "ordering_key_mismatch",
+        ),
+        (
+            lambda payload: payload["history"][1].pop("total_cost"),
+            "history_record_missing_field:total_cost",
+        ),
+    ],
+)
+def test_d3_canonical_schema_errors_report_reason_and_no_false_zero(
+    tmp_path,
+    mutator,
+    expected_reason: str,
+) -> None:
+    payload = _canonical_history(
+        [_canonical_history_record(0, 0.0), _canonical_history_record(1, 1.0)]
+    )
+    mutator(payload)
+
+    row = _d3_row(tmp_path, payload)
+
+    assert expected_reason in json.loads(row["d3_history_validation_reasons"])
+    for metric in D3_CANONICAL_HISTORY_METRICS:
+        assert row[metric] == ""
+
+
+def test_d3_canonical_validation_reason_reaches_json_and_markdown(tmp_path) -> None:
+    payload = _canonical_history(
+        [_canonical_history_record(0, 0.0), _canonical_history_record(0, 1.0)]
+    )
+    outputs = P1SystemEvidenceReportGenerator().write_report_bundle(
+        tmp_path,
+        inputs=P1SystemEvidenceInputs(d3_assignment_churn=payload),
+    )
+
+    aggregate = json.loads(outputs["aggregate_json"].read_text(encoding="utf-8"))
+    validation = aggregate["d3_history_validation"]
+    assert validation["status"] == "unavailable"
+    assert validation["record_count"] == 2
+    assert "sequence_index_duplicate" in validation["reasons"]
+    markdown = outputs["markdown"].read_text(encoding="utf-8")
+    assert "D3 canonical plan history" in markdown
+    assert "sequence_index_duplicate" in markdown
 
 
 def test_loader_accepts_sequence_and_report_keeps_explicit_truth_violation(tmp_path) -> None:
@@ -411,7 +1357,8 @@ def test_real_m5n2_raw_schema_expands_d3_d5_d7_without_case_profile_regrouping(
     d3 = aggregate["by_source"]["d3_assignment_churn"]["metrics"]
     assert d3["primary_assignment_count"]["sum"] == 120
     assert d3["reserve_assignment_count"]["sum"] == 40
-    assert d3["plan_version_churn_count"]["status"] == "unavailable"
+    for metric in D3_CHURN_METRICS:
+        assert d3[metric]["status"] == "unavailable"
 
     d5 = aggregate["d5_per_primary"]
     assert d5["per_primary_evidence_count"]["sum"] == 120

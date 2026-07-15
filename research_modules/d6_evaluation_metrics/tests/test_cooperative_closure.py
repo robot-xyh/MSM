@@ -162,6 +162,153 @@ def test_missing_evidence_is_unavailable_not_zero(tmp_path: Path) -> None:
     )
 
 
+def test_second_primary_funnel_and_independent_physical_denominators(
+    tmp_path: Path,
+) -> None:
+    rows = [
+        _member("R1", "T1", "primary_1", 1, physical=True),
+        _member(
+            "R2",
+            "T1",
+            "primary_2",
+            2,
+            physical=False,
+            associated=False,
+            first_failure_reason="d5_not_locked",
+        ),
+        _member("R3", "T2", "primary_1", 1, physical=True),
+    ]
+    outputs = CooperativeClosureReportGenerator().write_report_bundle(
+        tmp_path, inputs=CooperativeClosureInputs(rows=rows)
+    )
+    aggregate = json.loads(outputs["aggregate_json"].read_text(encoding="utf-8"))
+
+    assert aggregate["physical_outcomes"]["pair"] == {
+        "availability": "available",
+        "availability_reason": None,
+        "unit_count": 3,
+        "available_opportunity_count": 3,
+        "unavailable_opportunity_count": 0,
+        "success_count": 2,
+        "failure_count": 1,
+        "success_rate": pytest.approx(2 / 3),
+    }
+    assert aggregate["physical_outcomes"]["target"]["unit_count"] == 2
+    assert aggregate["physical_outcomes"]["target"]["success_count"] == 1
+    coalition = aggregate["coalition_completion"]
+    assert coalition["unit_count"] == 1
+    assert coalition["available_opportunity_count"] == 1
+    assert coalition["completion_count"] == 0
+    assert coalition["success_count"] == 0
+    assert coalition["failure_count"] == 1
+
+    second = aggregate["second_primary"]
+    assert second["member_count"] == 1
+    assert second["funnel"]["assigned"]["passed"] == 1
+    assert second["funnel"]["associated"]["passed"] == 0
+    assert second["funnel"]["physical_intercept"] == {
+        "available": 1,
+        "passed": 0,
+        "rate": 0.0,
+        "status": "available",
+        "unavailable": 0,
+    }
+    assert second["failure_count"] == 1
+    assert second["first_failure_reason"] == {
+        "availability": "available",
+        "availability_reason": None,
+        "failed_unit_count": 1,
+        "reason_available_unit_count": 1,
+        "reason_unavailable_unit_count": 0,
+        "distribution": {"d5_not_locked": 1},
+    }
+    report = outputs["markdown"].read_text(encoding="utf-8")
+    assert "第二 primary 逐阶段漏斗" in report
+    assert "物理结果独立分母" in report
+
+
+def test_missing_first_failure_reason_is_unavailable_not_unspecified(
+    tmp_path: Path,
+) -> None:
+    rows = [
+        _member("R1", "T1", "primary_1", 1, physical=True),
+        _member("R2", "T1", "primary_2", 2, physical=False),
+    ]
+    outputs = CooperativeClosureReportGenerator().write_report_bundle(
+        tmp_path, inputs=CooperativeClosureInputs(rows=rows)
+    )
+    aggregate = json.loads(outputs["aggregate_json"].read_text(encoding="utf-8"))
+
+    second = aggregate["second_primary"]
+    assert second["failure_count"] == 1
+    assert second["failure_distribution"] == {}
+    assert second["first_failure_reason"]["availability"] == "unavailable"
+    assert second["first_failure_reason"]["reason_available_unit_count"] == 0
+    assert second["first_failure_reason"]["reason_unavailable_unit_count"] == 1
+    assert aggregate["coalition_completion"]["first_failure_reason"][
+        "availability"
+    ] == "unavailable"
+    assert "unspecified" not in json.dumps(aggregate, ensure_ascii=False)
+
+
+def test_missing_second_primary_physical_result_stays_unavailable(
+    tmp_path: Path,
+) -> None:
+    second = _member("R2", "T1", "primary_2", 2, physical=True)
+    second.pop("physical_intercept")
+    outputs = CooperativeClosureReportGenerator().write_report_bundle(
+        tmp_path,
+        inputs=CooperativeClosureInputs(
+            rows=[
+                _member("R1", "T1", "primary_1", 1, physical=True),
+                second,
+            ]
+        ),
+    )
+    aggregate = json.loads(outputs["aggregate_json"].read_text(encoding="utf-8"))
+
+    second_summary = aggregate["second_primary"]
+    assert second_summary["availability"] == "unavailable"
+    assert second_summary["opportunity_count"] == 0
+    assert second_summary["success_count"] is None
+    assert second_summary["failure_count"] is None
+    assert second_summary["funnel"]["physical_intercept"]["available"] == 0
+    assert second_summary["funnel"]["physical_intercept"]["unavailable"] == 1
+    assert aggregate["physical_outcomes"]["pair"]["availability"] == "partial"
+    assert aggregate["physical_outcomes"]["target"]["availability"] == "unavailable"
+    assert aggregate["coalition_completion"]["availability"] == "unavailable"
+
+
+def _member(
+    resource_id: str,
+    target_id: str,
+    role: str,
+    order: int,
+    *,
+    physical: bool,
+    associated: bool = True,
+    first_failure_reason: str | None = None,
+) -> dict[str, object]:
+    return {
+        "case": "m5n2-denominator-fixture",
+        "seed": 7,
+        "profile": "baseline",
+        "resource_id": resource_id,
+        "target_id": target_id,
+        "member_role": role,
+        "member_order": order,
+        "coalition_id": "C1" if target_id == "T1" else None,
+        "assigned": True,
+        "visible": True,
+        "associated": associated,
+        "contract_allowed": associated,
+        "control_allowed": associated,
+        "mode_switched": associated,
+        "physical_intercept": physical,
+        "first_failure_reason": first_failure_reason,
+    }
+
+
 def test_acceptance_uses_declared_profile_without_hiding_other_profiles(
     tmp_path: Path,
 ) -> None:

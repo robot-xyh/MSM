@@ -262,6 +262,7 @@ STANDARD_METRIC_MAPPINGS: tuple[StandardMetricMapping, ...] = (
             "visual_reacquisition_count",
             "terminal_visual_lost_after_coast_count",
             "truth_identity_online_use_count",
+            "truth_state_online_use_count",
             "terminal_filter_measured_count",
             "terminal_filter_predicted_count",
             "terminal_filter_innovation_rejected_count",

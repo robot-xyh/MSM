@@ -13,12 +13,58 @@ import csv
 from dataclasses import asdict, dataclass, is_dataclass
 import hashlib
 import json
+from math import isfinite
 from pathlib import Path
 import random
 from typing import Any
 
 
-P1_SYSTEM_EVIDENCE_SCHEMA_VERSION = "d6-p1-system-evidence-v1"
+P1_SYSTEM_EVIDENCE_SCHEMA_VERSION = "d6-p1-system-evidence-v2"
+D3_PLAN_HISTORY_SCHEMA_V1 = "d3_plan_history_v1"
+D3_PLAN_HISTORY_RECORD_SCHEMA_V1 = "d3_plan_history_record_v1"
+D3_PLAN_HISTORY_RECORD_REQUIRED_FIELDS = (
+    "schema",
+    "schema_version",
+    "sequence_index",
+    "ordering_key",
+    "timestamp",
+    "plan_schema",
+    "plan_id",
+    "plan_version",
+    "window_id",
+    "changed",
+    "decision_state",
+    "resource_count",
+    "target_count",
+    "assigned_count",
+    "plan_owner",
+    "active_plan_owner",
+    "owner_node_id",
+    "source_node_id",
+    "selected_secondary_node_id",
+    "secondary_plan_version",
+    "secondary_leader_epoch",
+    "secondary_lease_expires_at_s",
+    "previous_plan_id",
+    "previous_plan_version",
+    "supersedes_plan_id",
+    "supersedes_plan_version",
+    "assignments",
+    "coalitions",
+    "hysteresis",
+    "membership_change_records",
+    "feedback_constraints",
+    "total_cost",
+    "candidate_total_cost",
+    "previous_total_cost_current",
+    "stale_plan_rejected",
+    "stale_reject_reason",
+    "latest_plan_id",
+    "latest_plan_version",
+    "rollback_detected",
+    "rollback_reason",
+    "replan_reason",
+)
 
 SOURCE_NAMES = (
     "d1_dense_crossing",
@@ -51,11 +97,16 @@ METRIC_NAMES = (
     "scenario_still_non_discriminative",
     "association_admitted",
     # D3 plan and coalition stability.
+    "d3_history_record_count",
     "membership_change_count",
+    "primary_membership_change_count",
+    "reserve_membership_change_count",
     "membership_hold_count",
     "plan_version_churn_count",
     "coalition_version_churn_count",
     "coalition_epoch_churn_count",
+    "soft_feedback_count",
+    "hard_feedback_count",
     "primary_assignment_count",
     "reserve_assignment_count",
     "reserve_standby_count",
@@ -111,6 +162,27 @@ METRIC_NAMES = (
     "online_truth_use_count",
 )
 
+D2_ADMISSION_VALUE_FIELDS = (
+    "admission_policy_version",
+    "baseline_id_switch_mean",
+    "candidate_id_switch_mean",
+    "id_switch_reduction_fraction",
+    "baseline_identity_continuity",
+    "candidate_identity_continuity",
+    "identity_continuity_baseline_headroom",
+    "identity_continuity_increase",
+    "identity_continuity_required_increase",
+    "identity_continuity_error_reduction_fraction",
+    "baseline_false_track_mean",
+    "candidate_false_track_mean",
+    "false_track_mean_limit",
+    "candidate_p95_loop_latency_s",
+    "maximum_p95_loop_latency_s",
+    "candidate_online_truth_leakage_count",
+    "required_online_truth_leakage_count",
+    "all_thresholds_passed",
+)
+
 ROW_FIELDS = (
     "source",
     "source_schema_version",
@@ -133,7 +205,22 @@ ROW_FIELDS = (
     "selected_layer",
     "owner_id",
     "commit_state_counts",
+    "d3_history_validation_status",
+    "d3_history_validation_reasons",
+    "d3_churn_availability_reason",
     "admission_reasons",
+    "assessment_scope",
+    "associator",
+    "admission_gate_results",
+    "admission_gate_reasons",
+    "promotion_recommended",
+    "default_online_path_changed",
+    "selected_online_path",
+    "research_adapter_only",
+    "offline_truth_alignment_availability",
+    "offline_truth_unmatched_sample_count",
+    *D2_ADMISSION_VALUE_FIELDS,
+    *(f"{name}_availability" for name in D2_ADMISSION_VALUE_FIELDS),
     "failure_reasons",
     "failure_reasons_availability",
     "source_sha256",
@@ -173,7 +260,7 @@ class P1SystemEvidenceReportGenerator:
         output_dir.mkdir(parents=True, exist_ok=True)
         payloads, manifest = _load_sources(inputs)
         rows = _normalize_rows(payloads, manifest)
-        aggregate = _build_aggregate(rows, manifest)
+        aggregate = _build_aggregate(rows, manifest, payloads=payloads)
 
         csv_path = output_dir / "p1_system_evidence_rows.csv"
         with csv_path.open("w", newline="", encoding="utf-8") as stream:
@@ -278,8 +365,12 @@ def _normalize_rows(
         rows.extend(_normalize_d1(payload, manifest["d1_dense_crossing"]))
     if payload := payloads.get("d2_difficulty_profiles"):
         rows.extend(_normalize_d2(payload, manifest["d2_difficulty_profiles"]))
-    if payload := payloads.get("d3_assignment_churn"):
-        rows.extend(_normalize_d3(payload, manifest["d3_assignment_churn"]))
+    if "d3_assignment_churn" in payloads:
+        rows.extend(
+            _normalize_d3(
+                payloads["d3_assignment_churn"], manifest["d3_assignment_churn"]
+            )
+        )
     if payload := payloads.get("d4_episode_communication"):
         rows.extend(_normalize_d4(payload, manifest["d4_episode_communication"]))
     if payload := payloads.get("d5_per_primary"):
@@ -633,6 +724,7 @@ def _normalize_d2(
                     source=source,
                 )
             )
+    rows.extend(_d2_decision_rows(payload, decision, source))
     if rows:
         return rows
 
@@ -648,6 +740,13 @@ def _normalize_d2(
             ]
             for candidate, candidate_payload in candidates:
                 admission = _mapping(profile_map.get("admission"))
+                assessment = _find_d2_assessment(
+                    _mapping_rows(admission.get("candidate_assessments")),
+                    str(
+                        _first(candidate_payload, "config_id", "associator")
+                        or candidate
+                    ),
+                )
                 promotion_candidates = set(
                     str(value)
                     for value in _sequence(admission.get("promotion_candidates"))
@@ -655,10 +754,25 @@ def _normalize_d2(
                 candidate_id = str(
                     _first(candidate_payload, "config_id", "associator") or candidate
                 )
-                admitted = (
-                    candidate_id in promotion_candidates
-                    if admission.get("available") is True
+                assessment_passed = (
+                    assessment.get("all_thresholds_passed")
+                    if assessment is not None
                     else None
+                )
+                admitted = (
+                    assessment_passed
+                    if isinstance(assessment_passed, bool)
+                    else (
+                        candidate_id in promotion_candidates
+                        if admission.get("available") is True
+                        else None
+                    )
+                )
+                assessment_fields = _d2_assessment_fields(
+                    assessment,
+                    policy_version=_first(
+                        admission, "policy_version", "admission_policy_version"
+                    ),
                 )
                 item = {
                     "scenario_difficulty": profile,
@@ -670,10 +784,19 @@ def _normalize_d2(
                         "online_truth_leakage_count"
                     ),
                     "association_admitted": admitted,
-                    "admission_reasons": admission.get("reasons", ()),
+                    "admission_reasons": (
+                        assessment_fields["failure_reasons"]
+                        if assessment is not None
+                        else admission.get("reasons", ())
+                    ),
+                    "failure_reasons": assessment_fields["failure_reasons"],
+                    "failure_reasons_availability": assessment_fields[
+                        "failure_reasons_availability"
+                    ],
                     "scenario_still_non_discriminative": profile_map.get(
                         "scenario_still_non_discriminative"
                     ),
+                    **assessment_fields,
                 }
                 rows.append(_d2_row(item, _mapping(item["metrics"]), source))
     if rows:
@@ -703,40 +826,152 @@ def _d2_result_seed_rows(
         or _first(result, "candidate_id", "associator")
         or "unspecified"
     )
-    assessment = next(
-        (
-            item
-            for item in _mapping_rows(decision.get("candidate_assessments"))
-            if str(_first(item, "candidate_id", "config_id")) == candidate
-        ),
-        None,
+    assessment = _find_d2_assessment(
+        _mapping_rows(decision.get("candidate_assessments")), candidate
     )
-    admitted = (
-        bool(assessment.get("all_thresholds_passed"))
+    if assessment is None and result.get("associator") is not None:
+        assessment = next(
+            (
+                dict(item)
+                for item in _mapping_rows(decision.get("candidate_assessments"))
+                if item.get("associator") == result.get("associator")
+            ),
+            None,
+        )
+    if assessment is not None:
+        candidate = str(
+            _first(assessment, "candidate_id", "config_id") or candidate
+        )
+    assessment_passed = (
+        assessment.get("all_thresholds_passed")
         if assessment is not None
         else None
     )
-    reasons = _d2_assessment_failure_reasons(assessment or {})
+    admitted = assessment_passed if isinstance(assessment_passed, bool) else None
+    assessment_fields = _d2_assessment_fields(
+        assessment,
+        policy_version=_first(
+            decision, "policy_version", "admission_policy_version"
+        ),
+    )
+    reasons = assessment_fields["failure_reasons"]
+    promotion_candidates = {
+        str(value) for value in _sequence(decision.get("promotion_candidates"))
+    }
+    gate_results, gate_reasons = _d2_gate_evidence(assessment)
+    research_adapter_only = stage_name.startswith("jpda_")
     per_seed = _mapping_rows(result.get("per_seed"))
     return [
         _d2_row(
             {
                 **item,
                 "stage": stage_name,
+                "assessment_scope": "overall",
                 "candidate": candidate,
                 "associator": result.get("associator"),
                 "association_admitted": admitted,
                 "admission_reasons": reasons,
-                "failure_reasons": reasons,
-                "failure_reasons_availability": (
-                    "available" if assessment is not None else "unavailable"
+                "admission_gate_results": gate_results,
+                "admission_gate_reasons": gate_reasons,
+                "promotion_recommended": (
+                    decision.get("promotion_recommended") is True
+                    and candidate in promotion_candidates
                 ),
+                "default_online_path_changed": decision.get(
+                    "default_online_path_changed"
+                ),
+                "selected_online_path": decision.get("selected_online_path"),
+                "research_adapter_only": research_adapter_only,
+                "offline_truth_alignment_availability": _mapping(
+                    item.get("offline_truth_alignment")
+                ).get("availability"),
+                "offline_truth_unmatched_sample_count": _mapping(
+                    item.get("offline_truth_alignment")
+                ).get("unmatched_sample_count"),
+                **assessment_fields,
             },
             item,
             source,
         )
         for item in per_seed
     ]
+
+
+def _d2_decision_rows(
+    payload: Mapping[str, Any],
+    decision: Mapping[str, Any],
+    source: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Preserve producer-owned overall and per-difficulty admission decisions."""
+
+    if not decision:
+        return []
+    scopes: list[tuple[str, str | None, Mapping[str, Any]]] = [
+        ("overall", None, decision)
+    ]
+    scopes.extend(
+        (str(difficulty), str(difficulty), _mapping(item))
+        for difficulty, item in _mapping(decision.get("by_difficulty")).items()
+    )
+    research_adapter_only = _mapping(payload.get("jpda_comparison")).get(
+        "research_adapter_only"
+    )
+    rows: list[dict[str, Any]] = []
+    for scope, difficulty, scope_decision in scopes:
+        promotion_candidates = {
+            str(value)
+            for value in _sequence(scope_decision.get("promotion_candidates"))
+        }
+        for assessment in _mapping_rows(
+            scope_decision.get("candidate_assessments")
+        ):
+            candidate = str(
+                _first(assessment, "candidate_id", "config_id") or "unspecified"
+            )
+            gate_results, gate_reasons = _d2_gate_evidence(assessment)
+            assessment_fields = _d2_assessment_fields(
+                assessment,
+                policy_version=_first(
+                    decision, "policy_version", "admission_policy_version"
+                ),
+            )
+            associator = assessment.get("associator")
+            is_research_adapter = (
+                research_adapter_only is True
+                and associator == "JPDAAssociatorResearchAdapter"
+            )
+            rows.append(
+                _d2_row(
+                    {
+                        "stage": "decision",
+                        "family": "association_admission_assessment",
+                        "assessment_scope": scope,
+                        "scenario_difficulty": difficulty,
+                        "candidate": candidate,
+                        "associator": associator,
+                        "association_admitted": assessment.get(
+                            "all_thresholds_passed"
+                        ),
+                        "admission_reasons": assessment_fields["failure_reasons"],
+                        "admission_gate_results": gate_results,
+                        "admission_gate_reasons": gate_reasons,
+                        "promotion_recommended": (
+                            scope_decision.get("promotion_recommended") is True
+                            and candidate in promotion_candidates
+                        ),
+                        "default_online_path_changed": _coalesce(
+                            decision.get("default_online_path_changed"),
+                            payload.get("default_online_path_changed"),
+                        ),
+                        "selected_online_path": decision.get("selected_online_path"),
+                        "research_adapter_only": is_research_adapter,
+                        **assessment_fields,
+                    },
+                    {},
+                    source,
+                )
+            )
+    return rows
 
 
 def _d2_row(
@@ -746,10 +981,62 @@ def _d2_row(
     if leakage is None:
         leakage = _metric_value(item.get("online_truth_use_count"), prefer="sum")
     admitted = _first(item, "association_admitted", "admitted")
+    nested_assessment = _mapping(
+        _first(item, "admission_assessment", "candidate_assessment", "assessment")
+    )
+    assessment = nested_assessment or (
+        dict(item)
+        if any(
+            name in item
+            for name in (
+                "gates",
+                "checks",
+                "all_thresholds_passed",
+                "admission_policy_version",
+            )
+        )
+        else None
+    )
+    assessment_fields = _d2_assessment_fields(
+        assessment,
+        policy_version=_first(item, "policy_version", "admission_policy_version"),
+    )
+    explicit_reasons = _first(
+        item, "failure_reasons", "admission_reasons", "reasons"
+    )
+    reasons = (
+        explicit_reasons
+        if explicit_reasons is not None
+        else assessment_fields["failure_reasons"]
+    )
+    reasons_availability = item.get(
+        "failure_reasons_availability",
+        (
+            "available"
+            if explicit_reasons is not None
+            else assessment_fields["failure_reasons_availability"]
+        ),
+    )
+    admission_values = {
+        name: (
+            item.get(name)
+            if name in item
+            else assessment_fields.get(name)
+        )
+        for name in D2_ADMISSION_VALUE_FIELDS
+    }
+    admission_availability = {
+        f"{name}_availability": (
+            item.get(f"{name}_availability")
+            if f"{name}_availability" in item
+            else assessment_fields.get(f"{name}_availability")
+        )
+        for name in D2_ADMISSION_VALUE_FIELDS
+    }
     return _finish_row(
         {
             "source": "d2_difficulty_profiles",
-            "family": "association_difficulty_profile",
+            "family": item.get("family") or "association_difficulty_profile",
             "scenario_id": _first(item, "scenario_id", "replay_name", "stage"),
             "scenario_difficulty": _first(
                 item, "scenario_difficulty", "profile", "difficulty"
@@ -774,18 +1061,24 @@ def _d2_row(
             ),
             "association_admitted": admitted,
             "admission_reasons": _first(item, "admission_reasons", "reasons") or (),
-            "failure_reasons": _first(
-                item, "failure_reasons", "admission_reasons", "reasons"
-            ) or (),
-            "failure_reasons_availability": item.get(
-                "failure_reasons_availability",
-                "available"
-                if any(
-                    key in item
-                    for key in ("failure_reasons", "admission_reasons", "reasons")
-                )
-                else "unavailable",
+            "assessment_scope": item.get("assessment_scope"),
+            "associator": item.get("associator"),
+            "admission_gate_results": item.get("admission_gate_results"),
+            "admission_gate_reasons": item.get("admission_gate_reasons"),
+            "promotion_recommended": item.get("promotion_recommended"),
+            "default_online_path_changed": item.get("default_online_path_changed"),
+            "selected_online_path": item.get("selected_online_path"),
+            "research_adapter_only": item.get("research_adapter_only"),
+            "offline_truth_alignment_availability": item.get(
+                "offline_truth_alignment_availability"
             ),
+            "offline_truth_unmatched_sample_count": item.get(
+                "offline_truth_unmatched_sample_count"
+            ),
+            **admission_values,
+            **admission_availability,
+            "failure_reasons": reasons or (),
+            "failure_reasons_availability": reasons_availability,
             "online_truth_use_count": leakage,
         },
         source,
@@ -795,26 +1088,31 @@ def _d2_row(
 def _normalize_d3(
     payload: Mapping[str, Any], source: Mapping[str, Any]
 ) -> list[dict[str, Any]]:
+    if _is_canonical_d3_history(payload):
+        return [_normalize_d3_canonical_history(payload, source)]
+
     cooperative_rows = _cooperative_pair_rows(payload)
     if cooperative_rows:
         return _normalize_d3_cooperative_roles(cooperative_rows, source)
 
-    records = _record_list(payload, ("plans", "rows", "records", "history"))
-    if not records:
-        records = [payload]
+    records, ordered_history = _d3_history_records(payload)
+    if not records and payload:
+        records = [dict(payload)]
     metadata_records = [
         record for record in records if isinstance(record, Mapping)
     ]
-    plan_versions = [_optional_int(_first(item, "plan_version", "version")) for item in metadata_records]
+    plan_versions = [
+        _optional_int(_first(item, "plan_version", "version"))
+        for item in metadata_records
+    ]
     coalition_versions: dict[str, list[int | None]] = {}
     coalition_epochs: dict[str, list[int | None]] = {}
-    membership_changes = 0
+    membership_changes = _d3_membership_change_count(
+        metadata_records, ordered_history=ordered_history
+    )
     membership_holds = 0
     for item in metadata_records:
         metadata = _mapping(item.get("metadata"))
-        change_records = _mapping_rows(metadata.get("membership_change_records"))
-        membership_changes += len(change_records)
-        membership_changes += _optional_int(item.get("membership_change_count")) or 0
         membership_holds += int(bool(metadata.get("membership_held", False)))
         membership_holds += _optional_int(item.get("membership_hold_count")) or 0
         coalitions = _mapping_rows(item.get("coalitions"))
@@ -837,7 +1135,7 @@ def _normalize_d3(
                 _optional_int(_first(item, "coalition_epoch", "epoch"))
             )
 
-    last = metadata_records[-1]
+    last = metadata_records[-1] if metadata_records else {}
     last_metadata = _mapping(last.get("metadata"))
     scope = _first(last, "terminal_authorization_scope") or _first(
         last_metadata, "terminal_authorization_scope"
@@ -891,19 +1189,42 @@ def _normalize_d3(
         "membership_change_count": _prefer_explicit(
             payload.get("membership_change_count"), membership_changes
         ),
+        "membership_change_count_availability": payload.get(
+            "membership_change_count_availability"
+        ),
         "membership_hold_count": _prefer_explicit(
             payload.get("membership_hold_count"), membership_holds
         ),
         "plan_version_churn_count": _prefer_explicit(
-            payload.get("plan_version_churn_count"), _change_count(plan_versions)
+            payload.get("plan_version_churn_count"),
+            _ordered_history_change_count(
+                plan_versions, ordered_history=ordered_history
+            ),
+        ),
+        "plan_version_churn_count_availability": payload.get(
+            "plan_version_churn_count_availability"
         ),
         "coalition_version_churn_count": _prefer_explicit(
             payload.get("coalition_version_churn_count"),
-            sum(_change_count(values) for values in coalition_versions.values()),
+            _ordered_group_change_count(
+                coalition_versions,
+                record_count=len(metadata_records),
+                ordered_history=ordered_history,
+            ),
+        ),
+        "coalition_version_churn_count_availability": payload.get(
+            "coalition_version_churn_count_availability"
         ),
         "coalition_epoch_churn_count": _prefer_explicit(
             payload.get("coalition_epoch_churn_count"),
-            sum(_change_count(values) for values in coalition_epochs.values()),
+            _ordered_group_change_count(
+                coalition_epochs,
+                record_count=len(metadata_records),
+                ordered_history=ordered_history,
+            ),
+        ),
+        "coalition_epoch_churn_count_availability": payload.get(
+            "coalition_epoch_churn_count_availability"
         ),
         "primary_assignment_count": primary_count if roles_explicit else None,
         "reserve_assignment_count": reserve_count if roles_explicit else None,
@@ -930,6 +1251,612 @@ def _normalize_d3(
         "online_truth_use_count": _optional_int(payload.get("online_truth_use_count")),
     }
     return [_finish_row(row, source)]
+
+
+def _is_canonical_d3_history(payload: Mapping[str, Any]) -> bool:
+    if payload.get("schema") == D3_PLAN_HISTORY_SCHEMA_V1:
+        return True
+    return any(
+        item.get("schema") == D3_PLAN_HISTORY_RECORD_SCHEMA_V1
+        for item in _mapping_rows(payload.get("history"))
+    )
+
+
+def _normalize_d3_canonical_history(
+    payload: Mapping[str, Any], source: Mapping[str, Any]
+) -> dict[str, Any]:
+    records, reasons = _validate_d3_canonical_history(payload)
+    valid = not reasons
+    last = records[-1] if valid else {}
+    assignments = _mapping_rows(last.get("assignments"))
+    membership = (
+        _d3_canonical_membership_changes(records) if valid else (None, None, None)
+    )
+    plan_churn = (
+        _change_count([item["plan_version"] for item in records])
+        if valid
+        else None
+    )
+    coalition_version_churn = (
+        _d3_canonical_coalition_change_count(records, "version")
+        if valid
+        else None
+    )
+    coalition_epoch_churn = (
+        _d3_canonical_coalition_change_count(records, "epoch")
+        if valid
+        else None
+    )
+    owner_change_count = (
+        _change_count([_d3_owner_key(item) for item in records])
+        if valid
+        else None
+    )
+    feedback_counts = (
+        _d3_canonical_feedback_counts(records) if valid else (None, None)
+    )
+    primary_count = sum(_is_primary_role(item.get("member_role")) for item in assignments)
+    reserve_count = sum(
+        str(item.get("member_role", "")).lower() == "reserve"
+        for item in assignments
+    )
+    reserve_standby = sum(
+        str(item.get("member_role", "")).lower() == "reserve"
+        and str(item.get("activation_state", "")).lower() == "standby"
+        and item.get("active") is not True
+        for item in assignments
+    )
+    failure_reasons = tuple(
+        reason
+        for item in records
+        for reason in (
+            item.get("stale_reject_reason"),
+            item.get("rollback_reason"),
+        )
+        if reason
+    )
+    actual_history_count = (
+        len(payload.get("history", ()))
+        if isinstance(payload.get("history"), Sequence)
+        and not isinstance(payload.get("history"), (str, bytes))
+        else None
+    )
+    row = {
+        "source": "d3_assignment_churn",
+        "family": "canonical_ordered_plan_history",
+        "scenario_id": _first(payload, "scenario_name", "episode_id"),
+        "seed": payload.get("seed"),
+        "resource_count": last.get("resource_count"),
+        "target_count": last.get("target_count"),
+        "selected_layer": last.get("active_plan_owner"),
+        "owner_id": _coalesce(last.get("owner_node_id"), last.get("active_plan_owner")),
+        "d3_history_validation_status": "available" if valid else "unavailable",
+        "d3_history_validation_reasons": reasons,
+        "d3_churn_availability_reason": () if valid else reasons,
+        "d3_history_record_count": actual_history_count,
+        "membership_change_count": membership[0],
+        "primary_membership_change_count": membership[1],
+        "reserve_membership_change_count": membership[2],
+        "membership_hold_count": (
+            sum(
+                str(_mapping(item.get("hysteresis")).get("state") or "").lower()
+                == "held"
+                for item in records
+            )
+            if valid
+            else None
+        ),
+        "plan_version_churn_count": plan_churn,
+        "coalition_version_churn_count": coalition_version_churn,
+        "coalition_epoch_churn_count": coalition_epoch_churn,
+        "soft_feedback_count": feedback_counts[0],
+        "hard_feedback_count": feedback_counts[1],
+        "primary_assignment_count": primary_count if valid else None,
+        "reserve_assignment_count": reserve_count if valid else None,
+        "reserve_standby_count": reserve_standby if valid else None,
+        "stale_reject_count": (
+            sum(item.get("stale_plan_rejected") is True for item in records)
+            if valid
+            else None
+        ),
+        "plan_rollback_detected_count": (
+            sum(item.get("rollback_detected") is True for item in records)
+            if valid
+            else None
+        ),
+        "owner_change_count": owner_change_count,
+        "failure_reasons": failure_reasons,
+        "failure_reasons_availability": "available" if valid else "unavailable",
+        "online_truth_use_count": None,
+        "provenance": {
+            "episode_id": payload.get("episode_id"),
+            "scenario_name": payload.get("scenario_name"),
+            "history_schema": payload.get("schema"),
+            "history_record_schema": D3_PLAN_HISTORY_RECORD_SCHEMA_V1,
+        },
+    }
+    return _finish_row(row, source)
+
+
+def summarize_d3_canonical_history(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate and summarize one persisted D3 canonical history.
+
+    The result is intentionally JSON-native so terminal-suite reporting can
+    consume it without importing D3. Churn values are unavailable unless the
+    complete ordered history passes the canonical validation contract.
+    """
+
+    records, reasons = _validate_d3_canonical_history(payload)
+    base = {
+        "schema": "d6_d3_canonical_history_summary_v1",
+        "status": "unavailable" if reasons else "available",
+        "validation_reasons": list(reasons),
+        "episode_id": payload.get("episode_id"),
+        "scenario_name": payload.get("scenario_name"),
+        "seed": payload.get("seed"),
+        "record_count": len(records) if records else None,
+        "latest_plan": None,
+        "primary_membership": None,
+        "reserve_membership": None,
+        "owner": None,
+        "churn": None,
+    }
+    if reasons:
+        return base
+
+    last = records[-1]
+    assignments = _mapping_rows(last.get("assignments"))
+    primary_membership = sorted(
+        (_d3_membership_item(item) for item in assignments if _is_primary_role(item.get("member_role"))),
+        key=lambda item: (item["target_id"], item["resource_id"]),
+    )
+    reserve_membership = sorted(
+        (
+            _d3_membership_item(item)
+            for item in assignments
+            if str(item.get("member_role", "")).lower() == "reserve"
+        ),
+        key=lambda item: (item["target_id"], item["resource_id"]),
+    )
+    membership = _d3_canonical_membership_changes(records)
+    soft_feedback_churn, hard_feedback_churn, feedback_churn = (
+        _d3_canonical_feedback_churn(records)
+    )
+    latest_feedback = _mapping(last.get("feedback_constraints"))
+    return {
+        **base,
+        "latest_plan": {
+            "plan_schema": last.get("plan_schema"),
+            "plan_id": last.get("plan_id"),
+            "plan_version": last.get("plan_version"),
+            "window_id": last.get("window_id"),
+        },
+        "primary_membership": primary_membership,
+        "reserve_membership": reserve_membership,
+        "owner": {
+            "plan_owner": last.get("plan_owner"),
+            "active_plan_owner": last.get("active_plan_owner"),
+            "owner_node_id": last.get("owner_node_id"),
+            "source_node_id": last.get("source_node_id"),
+            "change_count": _change_count(
+                [_d3_owner_key(record) for record in records]
+            ),
+        },
+        "churn": {
+            "plan_version_churn_count": _change_count(
+                [record["plan_version"] for record in records]
+            ),
+            "coalition_version_churn_count": (
+                _d3_canonical_coalition_change_count(records, "version")
+            ),
+            "coalition_epoch_churn_count": (
+                _d3_canonical_coalition_change_count(records, "epoch")
+            ),
+            "membership_change_count": membership[0],
+            "primary_membership_change_count": membership[1],
+            "reserve_membership_change_count": membership[2],
+            "owner_change_count": _change_count(
+                [_d3_owner_key(record) for record in records]
+            ),
+            "feedback_churn_count": feedback_churn,
+            "soft_feedback_churn_count": soft_feedback_churn,
+            "hard_feedback_churn_count": hard_feedback_churn,
+            "latest_soft_feedback_count": latest_feedback.get("soft_count"),
+            "latest_hard_feedback_count": latest_feedback.get("hard_count"),
+        },
+    }
+
+
+def _d3_membership_item(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "target_id": str(item["target_id"]),
+        "resource_id": str(item["resource_id"]),
+        "member_role": str(item["member_role"]),
+        "activation_state": str(item["activation_state"]),
+        "active": bool(item["active"]),
+        "coalition_id": item.get("coalition_id"),
+    }
+
+
+def _validate_d3_canonical_history(
+    payload: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], tuple[str, ...]]:
+    reasons: list[str] = []
+    if payload.get("schema") != D3_PLAN_HISTORY_SCHEMA_V1:
+        reasons.append("history_wrapper_schema_mismatch")
+    if _strict_nonnegative_int(payload.get("schema_version")) != 1:
+        reasons.append("history_wrapper_schema_version_mismatch")
+
+    raw_history = payload.get("history")
+    if not isinstance(raw_history, Sequence) or isinstance(raw_history, (str, bytes)):
+        return [], tuple(dict.fromkeys((*reasons, "history_not_a_sequence")))
+    actual_count = len(raw_history)
+    record_count = _strict_nonnegative_int(payload.get("record_count"))
+    if record_count is None:
+        reasons.append("history_record_count_invalid")
+    elif record_count != actual_count:
+        reasons.append("history_record_count_mismatch")
+    if actual_count < 2:
+        reasons.append("history_requires_at_least_two_records")
+
+    records: list[dict[str, Any]] = []
+    for item in raw_history:
+        if not isinstance(item, Mapping):
+            reasons.append("history_record_not_a_mapping")
+            continue
+        record = dict(item)
+        records.append(record)
+        _validate_d3_canonical_record(record, reasons)
+
+    sequence_indices = [
+        value
+        for record in records
+        if (value := _strict_nonnegative_int(record.get("sequence_index")))
+        is not None
+    ]
+    if len(sequence_indices) == len(records):
+        if len(set(sequence_indices)) != len(sequence_indices):
+            reasons.append("sequence_index_duplicate")
+        if any(
+            current <= previous
+            for previous, current in zip(sequence_indices, sequence_indices[1:])
+        ):
+            reasons.append("sequence_index_non_monotonic")
+
+    timestamps = [
+        value
+        for record in records
+        if (value := _finite_number(record.get("timestamp"))) is not None
+    ]
+    if len(timestamps) == len(records) and any(
+        current < previous
+        for previous, current in zip(timestamps, timestamps[1:])
+    ):
+        reasons.append("timestamp_regression")
+
+    ordering_keys = [_d3_canonical_ordering_key(record) for record in records]
+    if all(value is not None for value in ordering_keys):
+        keys = [value for value in ordering_keys if value is not None]
+        if len(set(keys)) != len(keys):
+            reasons.append("ordering_key_duplicate")
+        if any(
+            current <= previous
+            for previous, current in zip(keys, keys[1:])
+        ):
+            reasons.append("ordering_key_non_monotonic")
+    return records, tuple(dict.fromkeys(reasons))
+
+
+def _validate_d3_canonical_record(
+    record: Mapping[str, Any], reasons: list[str]
+) -> None:
+    for field in D3_PLAN_HISTORY_RECORD_REQUIRED_FIELDS:
+        if field not in record:
+            reasons.append(f"history_record_missing_field:{field}")
+    if record.get("schema") != D3_PLAN_HISTORY_RECORD_SCHEMA_V1:
+        reasons.append("history_record_schema_mismatch")
+    if _strict_nonnegative_int(record.get("schema_version")) != 1:
+        reasons.append("history_record_schema_version_mismatch")
+    sequence_index = _strict_nonnegative_int(record.get("sequence_index"))
+    if sequence_index is None:
+        reasons.append("sequence_index_invalid")
+    timestamp = _finite_number(record.get("timestamp"))
+    if timestamp is None:
+        reasons.append("timestamp_invalid")
+    ordering_key = _d3_canonical_ordering_key(record)
+    if ordering_key is None:
+        reasons.append("ordering_key_invalid")
+    elif sequence_index is not None and timestamp is not None and ordering_key != (
+        sequence_index,
+        timestamp,
+    ):
+        reasons.append("ordering_key_mismatch")
+
+    if not _nonempty_text(record.get("plan_id")):
+        reasons.append("plan_id_invalid")
+    if _strict_nonnegative_int(record.get("plan_version")) is None:
+        reasons.append("plan_version_invalid")
+    if not _nonempty_text(record.get("plan_schema")) or not _nonempty_text(
+        record.get("decision_state")
+    ):
+        reasons.append("plan_state_fields_invalid")
+    if any(
+        _strict_nonnegative_int(record.get(name)) is None
+        for name in ("window_id", "resource_count", "target_count", "assigned_count")
+    ):
+        reasons.append("plan_count_fields_invalid")
+    if not isinstance(record.get("changed"), bool):
+        reasons.append("plan_changed_invalid")
+    if not _nonempty_text(record.get("plan_owner")) or not _nonempty_text(
+        record.get("active_plan_owner")
+    ):
+        reasons.append("plan_owner_invalid")
+    if any(
+        not _optional_text_valid(record.get(name))
+        for name in (
+            "owner_node_id",
+            "source_node_id",
+            "selected_secondary_node_id",
+            "previous_plan_id",
+            "supersedes_plan_id",
+            "stale_reject_reason",
+            "latest_plan_id",
+            "rollback_reason",
+            "replan_reason",
+        )
+    ):
+        reasons.append("optional_text_field_invalid")
+    if any(
+        not _optional_nonnegative_int_valid(record.get(name))
+        for name in (
+            "secondary_plan_version",
+            "secondary_leader_epoch",
+            "previous_plan_version",
+            "supersedes_plan_version",
+            "latest_plan_version",
+        )
+    ):
+        reasons.append("optional_version_field_invalid")
+    lease_expiry = record.get("secondary_lease_expires_at_s")
+    if lease_expiry is not None and _finite_number(lease_expiry) is None:
+        reasons.append("secondary_lease_invalid")
+
+    assignments = _strict_mapping_sequence(record.get("assignments"))
+    if assignments is None:
+        reasons.append("assignments_invalid")
+    else:
+        member_keys: set[tuple[str, str]] = set()
+        for assignment in assignments:
+            target_id = assignment.get("target_id")
+            resource_id = assignment.get("resource_id")
+            if not all(
+                _nonempty_text(value)
+                for value in (
+                    target_id,
+                    resource_id,
+                    assignment.get("member_role"),
+                    assignment.get("activation_state"),
+                )
+            ) or not isinstance(assignment.get("active"), bool):
+                reasons.append("assignment_membership_fields_invalid")
+                continue
+            member_key = (str(target_id), str(resource_id))
+            if member_key in member_keys:
+                reasons.append("assignment_member_duplicate")
+            member_keys.add(member_key)
+
+    coalitions = _strict_mapping_sequence(record.get("coalitions"))
+    if coalitions is None:
+        reasons.append("coalitions_invalid")
+    else:
+        coalition_ids: set[str] = set()
+        for coalition in coalitions:
+            coalition_id = coalition.get("coalition_id")
+            if (
+                not _nonempty_text(coalition_id)
+                or _strict_nonnegative_int(coalition.get("version")) is None
+                or _strict_nonnegative_int(coalition.get("epoch")) is None
+            ):
+                reasons.append("coalition_version_fields_invalid")
+                continue
+            normalized_id = str(coalition_id)
+            if normalized_id in coalition_ids:
+                reasons.append("coalition_id_duplicate")
+            coalition_ids.add(normalized_id)
+
+    if not isinstance(record.get("hysteresis"), Mapping):
+        reasons.append("hysteresis_invalid")
+    if _strict_mapping_sequence(record.get("membership_change_records")) is None:
+        reasons.append("membership_change_records_invalid")
+    feedback = record.get("feedback_constraints")
+    if not isinstance(feedback, Mapping):
+        reasons.append("feedback_constraints_invalid")
+    elif any(
+        _strict_nonnegative_int(feedback.get(name)) is None
+        for name in ("soft_count", "hard_count")
+    ):
+        reasons.append("feedback_counts_invalid")
+    if _finite_number(record.get("total_cost")) is None or any(
+        not _optional_finite_number_valid(record.get(name))
+        for name in ("candidate_total_cost", "previous_total_cost_current")
+    ):
+        reasons.append("cost_fields_invalid")
+    if not isinstance(record.get("stale_plan_rejected"), bool) or not isinstance(
+        record.get("rollback_detected"), bool
+    ):
+        reasons.append("audit_boolean_fields_invalid")
+    if _contains_truth_key(record):
+        reasons.append("history_record_truth_field_present")
+
+
+def _d3_canonical_ordering_key(record: Mapping[str, Any]) -> tuple[int, float] | None:
+    raw_key = record.get("ordering_key")
+    if not isinstance(raw_key, Sequence) or isinstance(raw_key, (str, bytes)):
+        return None
+    if len(raw_key) != 2:
+        return None
+    sequence_index = _strict_nonnegative_int(raw_key[0])
+    timestamp = _finite_number(raw_key[1])
+    if sequence_index is None or timestamp is None:
+        return None
+    return sequence_index, timestamp
+
+
+def _d3_canonical_membership_changes(
+    records: Sequence[Mapping[str, Any]],
+) -> tuple[int, int, int]:
+    snapshots = [_d3_assignment_snapshot(record) for record in records]
+    total = 0
+    primary = 0
+    reserve = 0
+    for previous, current in zip(snapshots, snapshots[1:]):
+        for member_key in previous.keys() | current.keys():
+            previous_state = previous.get(member_key)
+            current_state = current.get(member_key)
+            if previous_state == current_state:
+                continue
+            total += 1
+            roles = {
+                state[0]
+                for state in (previous_state, current_state)
+                if state is not None
+            }
+            primary += int(any(_is_primary_role(role) for role in roles))
+            reserve += int("reserve" in roles)
+    return total, primary, reserve
+
+
+def _d3_assignment_snapshot(
+    record: Mapping[str, Any],
+) -> dict[tuple[str, str], tuple[str, str, bool]]:
+    return {
+        (str(item["target_id"]), str(item["resource_id"])): (
+            str(item["member_role"]).lower(),
+            str(item["activation_state"]).lower(),
+            bool(item["active"]),
+        )
+        for item in _mapping_rows(record.get("assignments"))
+    }
+
+
+def _d3_canonical_coalition_change_count(
+    records: Sequence[Mapping[str, Any]], field: str
+) -> int:
+    snapshots = [
+        {
+            str(coalition["coalition_id"]): int(coalition[field])
+            for coalition in _mapping_rows(record.get("coalitions"))
+        }
+        for record in records
+    ]
+    missing = object()
+    return sum(
+        previous.get(coalition_id, missing) != current.get(coalition_id, missing)
+        for previous, current in zip(snapshots, snapshots[1:])
+        for coalition_id in previous.keys() | current.keys()
+    )
+
+
+def _d3_owner_key(record: Mapping[str, Any]) -> tuple[str, str | None]:
+    return (
+        str(record["active_plan_owner"]),
+        None if record.get("owner_node_id") is None else str(record["owner_node_id"]),
+    )
+
+
+def _d3_canonical_feedback_counts(
+    records: Sequence[Mapping[str, Any]],
+) -> tuple[int, int]:
+    feedback = [_mapping(record.get("feedback_constraints")) for record in records]
+    return (
+        sum(int(item["soft_count"]) for item in feedback),
+        sum(int(item["hard_count"]) for item in feedback),
+    )
+
+
+def _d3_canonical_feedback_churn(
+    records: Sequence[Mapping[str, Any]],
+) -> tuple[int, int, int]:
+    feedback = [_mapping(record.get("feedback_constraints")) for record in records]
+    soft_counts = [int(item["soft_count"]) for item in feedback]
+    hard_counts = [int(item["hard_count"]) for item in feedback]
+    snapshots = [
+        json.dumps(
+            _json_ready(
+                item.get(
+                    "classifications",
+                    {
+                        "soft_count": item["soft_count"],
+                        "hard_count": item["hard_count"],
+                    },
+                )
+            ),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        for item in feedback
+    ]
+    return (
+        sum(abs(current - previous) for previous, current in zip(soft_counts, soft_counts[1:])),
+        sum(abs(current - previous) for previous, current in zip(hard_counts, hard_counts[1:])),
+        _change_count(snapshots),
+    )
+
+
+def _strict_nonnegative_int(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def _finite_number(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    normalized = float(value)
+    return normalized if isfinite(normalized) else None
+
+
+def _nonempty_text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _optional_text_valid(value: Any) -> bool:
+    return value is None or _nonempty_text(value)
+
+
+def _optional_nonnegative_int_valid(value: Any) -> bool:
+    return value is None or _strict_nonnegative_int(value) is not None
+
+
+def _optional_finite_number_valid(value: Any) -> bool:
+    return value is None or _finite_number(value) is not None
+
+
+def _strict_mapping_sequence(value: Any) -> list[dict[str, Any]] | None:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return None
+    if not all(isinstance(item, Mapping) for item in value):
+        return None
+    return [dict(item) for item in value]
+
+
+def _contains_truth_key(value: Any) -> bool:
+    if isinstance(value, Mapping):
+        return any(
+            "truth" in str(key).lower() or _contains_truth_key(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return any(_contains_truth_key(item) for item in value)
+    return False
+
+
+def _is_primary_role(value: Any) -> bool:
+    return str(value or "").lower() in {
+        "primary",
+        "lead_primary",
+        "support_primary",
+    }
 
 
 def _normalize_d3_cooperative_roles(
@@ -1452,6 +2379,16 @@ def _finish_row(row: Mapping[str, Any], source: Mapping[str, Any]) -> dict[str, 
         "not_applicable",
     }:
         normalized["failure_reasons_availability"] = "unavailable"
+    for name in D2_ADMISSION_VALUE_FIELDS:
+        availability_name = f"{name}_availability"
+        explicit = normalized.get(availability_name)
+        if explicit in {"unavailable", "not_applicable"}:
+            normalized[name] = None
+            normalized[availability_name] = explicit
+        else:
+            normalized[availability_name] = (
+                "available" if normalized.get(name) is not None else "unavailable"
+            )
     for name in METRIC_NAMES:
         availability_name = f"{name}_availability"
         explicit = normalized.get(availability_name)
@@ -1466,7 +2403,10 @@ def _finish_row(row: Mapping[str, Any], source: Mapping[str, Any]) -> dict[str, 
 
 
 def _build_aggregate(
-    rows: Sequence[Mapping[str, Any]], manifest: Mapping[str, Mapping[str, Any]]
+    rows: Sequence[Mapping[str, Any]],
+    manifest: Mapping[str, Mapping[str, Any]],
+    *,
+    payloads: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     by_source: dict[str, Any] = {}
     for source_name in SOURCE_NAMES:
@@ -1495,11 +2435,31 @@ def _build_aggregate(
     ]
     d7_layer_rows = d7_pair_rows or d7_profile_rows or d7_rows
     online_truth_total = _sum_available(rows, "online_truth_use_count")
+    d2_payload = _mapping(
+        _mapping(payloads or {}).get("d2_difficulty_profiles")
+    )
+    available_sources = [
+        name
+        for name, item in manifest.items()
+        if _mapping(item).get("status") == "available"
+    ]
+    unavailable_sources = [
+        name
+        for name, item in manifest.items()
+        if _mapping(item).get("status") != "available"
+    ]
     return {
         "schema_version": P1_SYSTEM_EVIDENCE_SCHEMA_VERSION,
         "offline_only": True,
         "controls_air_sim": False,
         "source_manifest": dict(manifest),
+        "bundle_scope": {
+            "available_sources": available_sources,
+            "unavailable_sources": unavailable_sources,
+            "full_system_decision": (
+                "not_evaluated" if unavailable_sources else "source_complete"
+            ),
+        },
         "row_count": len(rows),
         "actual_scale_policy": "explicit_fields_only",
         "truth_policy": {
@@ -1513,6 +2473,7 @@ def _build_aggregate(
             ),
         },
         "by_source": by_source,
+        "d3_history_validation": _d3_history_validation_summary(rows),
         "d1_by_target_spacing_m": _group_metrics(
             d1_rows,
             "target_spacing_m",
@@ -1529,6 +2490,9 @@ def _build_aggregate(
             d2_rows,
             "scenario_difficulty",
             ("id_switch_count", "track_continuity", "false_track_count", "track_rmse", "p95_loop_latency_s"),
+        ),
+        "d2_admission_review": _d2_admission_review_summary(
+            d2_rows, payload=d2_payload
         ),
         "d5_by_backend": _group_metrics(
             d5_rows,
@@ -1571,6 +2535,250 @@ def _build_aggregate(
             "rng_seed": BOOTSTRAP_RNG_SEED,
             "minimum_available_samples": 2,
         },
+    }
+
+
+def _d3_history_validation_summary(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    canonical_rows = [
+        row
+        for row in rows
+        if row.get("source") == "d3_assignment_churn"
+        and row.get("family") == "canonical_ordered_plan_history"
+    ]
+    if not canonical_rows:
+        return {
+            "status": "not_applicable",
+            "record_count": None,
+            "reasons": [],
+            "expected_wrapper_schema": D3_PLAN_HISTORY_SCHEMA_V1,
+            "expected_record_schema": D3_PLAN_HISTORY_RECORD_SCHEMA_V1,
+        }
+    row = canonical_rows[0]
+    return {
+        "status": row.get("d3_history_validation_status"),
+        "record_count": row.get("d3_history_record_count"),
+        "reasons": list(_sequence(row.get("d3_history_validation_reasons"))),
+        "expected_wrapper_schema": D3_PLAN_HISTORY_SCHEMA_V1,
+        "expected_record_schema": D3_PLAN_HISTORY_RECORD_SCHEMA_V1,
+    }
+
+
+def _d2_admission_review_summary(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    payload: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    source_payload = _mapping(payload)
+    decision = _mapping(source_payload.get("decision"))
+    decision_rows = [
+        row
+        for row in rows
+        if row.get("family") == "association_admission_assessment"
+    ]
+    review_rows = decision_rows or list(rows)
+    records: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in review_rows:
+        record = {
+            "scenario_id": row.get("scenario_id"),
+            "scenario_difficulty": row.get("scenario_difficulty"),
+            "candidate": row.get("candidate"),
+            "association_admitted": row.get("association_admitted"),
+            "assessment_scope": row.get("assessment_scope"),
+            "associator": row.get("associator"),
+            "admission_gate_results": row.get("admission_gate_results"),
+            "admission_gate_reasons": row.get("admission_gate_reasons"),
+            "promotion_recommended": row.get("promotion_recommended"),
+            "default_online_path_changed": row.get(
+                "default_online_path_changed"
+            ),
+            "selected_online_path": row.get("selected_online_path"),
+            "research_adapter_only": row.get("research_adapter_only"),
+            **{name: row.get(name) for name in D2_ADMISSION_VALUE_FIELDS},
+            **{
+                f"{name}_availability": row.get(f"{name}_availability")
+                for name in D2_ADMISSION_VALUE_FIELDS
+            },
+            "failure_reasons": list(_sequence(row.get("failure_reasons"))),
+            "failure_reasons_availability": row.get(
+                "failure_reasons_availability", "unavailable"
+            ),
+        }
+        identity = json.dumps(record, ensure_ascii=False, sort_keys=True)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        records.append(record)
+    available = any(
+        record.get("failure_reasons_availability") == "available"
+        or any(
+            record.get(f"{name}_availability") == "available"
+            for name in D2_ADMISSION_VALUE_FIELDS
+        )
+        for record in records
+    )
+    source_decision_available = bool(decision)
+    return {
+        "status": (
+            "available" if available or source_decision_available else "unavailable"
+        ),
+        "source_schema_version": source_payload.get("schema_version"),
+        "source_decision_status": (
+            "available" if source_decision_available else "unavailable"
+        ),
+        "source_decision_unavailable_reason": (
+            None if source_decision_available else "decision field was not provided"
+        ),
+        "policy_version": _first(
+            decision, "policy_version", "admission_policy_version"
+        ),
+        "policy": decision.get("policy") if "policy" in decision else None,
+        "promotion_recommended": (
+            decision.get("promotion_recommended")
+            if "promotion_recommended" in decision
+            else None
+        ),
+        "promotion_candidates": (
+            list(_sequence(decision.get("promotion_candidates")))
+            if "promotion_candidates" in decision
+            else None
+        ),
+        "selected_online_path": (
+            decision.get("selected_online_path")
+            if "selected_online_path" in decision
+            else None
+        ),
+        "default_online_path": (
+            source_payload.get("default_online_path")
+            if "default_online_path" in source_payload
+            else None
+        ),
+        "default_online_path_changed": _coalesce(
+            (
+                decision.get("default_online_path_changed")
+                if "default_online_path_changed" in decision
+                else None
+            ),
+            (
+                source_payload.get("default_online_path_changed")
+                if "default_online_path_changed" in source_payload
+                else None
+            ),
+        ),
+        "effect": _first(_mapping(decision.get("policy")), "promotion_effect")
+        or "review_recommendation_only",
+        "changes_online_control": False,
+        "changes_default_online_path": _coalesce(
+            (
+                decision.get("default_online_path_changed")
+                if "default_online_path_changed" in decision
+                else None
+            ),
+            (
+                source_payload.get("default_online_path_changed")
+                if "default_online_path_changed" in source_payload
+                else None
+            ),
+        ),
+        "overall_candidate_assessments": (
+            _json_ready(_mapping_rows(decision.get("candidate_assessments")))
+            if "candidate_assessments" in decision
+            else None
+        ),
+        "by_difficulty": (
+            _json_ready(_mapping(decision.get("by_difficulty")))
+            if "by_difficulty" in decision
+            else None
+        ),
+        "truth_alignment_summary": _d2_truth_alignment_summary(source_payload),
+        "jpda_research_adapter_only": (
+            _mapping(source_payload.get("jpda_comparison")).get(
+                "research_adapter_only"
+            )
+            if "jpda_comparison" in source_payload
+            else None
+        ),
+        "producer_decision_recalculated_by_d6": False,
+        "record_count": len(records),
+        "records": records,
+    }
+
+
+def _d2_truth_alignment_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
+    stages: dict[str, Any] = {}
+    any_available = False
+    for stage_name in ("screening", "confirmation"):
+        stage = _mapping(payload.get(stage_name))
+        by_case = _mapping(stage.get("offline_truth_alignment_by_case"))
+        if not stage or (
+            "offline_truth_alignment_availability_counts" not in stage
+            and not by_case
+        ):
+            stages[stage_name] = {
+                "status": "unavailable",
+                "availability_counts": None,
+                "offline_truth_unmatched_sample_count": None,
+                "by_difficulty": None,
+            }
+            continue
+        any_available = True
+        difficulty_names = set(
+            str(value) for value in _sequence(stage.get("scenario_difficulties"))
+        )
+        difficulty_names.update(str(key).split(":", 1)[0] for key in by_case)
+        by_difficulty: dict[str, Any] = {}
+        for difficulty in sorted(difficulty_names):
+            cases = [
+                _mapping(value)
+                for key, value in by_case.items()
+                if str(key).split(":", 1)[0] == difficulty
+            ]
+            counts = Counter(
+                str(case.get("availability") or "unavailable") for case in cases
+            )
+            matched = [
+                case.get("matched_sample_count")
+                for case in cases
+                if isinstance(case.get("matched_sample_count"), (int, float))
+            ]
+            unmatched = [
+                case.get("unmatched_sample_count")
+                for case in cases
+                if isinstance(case.get("unmatched_sample_count"), (int, float))
+            ]
+            by_difficulty[difficulty] = {
+                "status": "available" if cases else "unavailable",
+                "case_count": len(cases),
+                "availability_counts": {
+                    "complete": counts.get("complete", 0),
+                    "partial": counts.get("partial", 0),
+                    "unavailable": counts.get("unavailable", 0),
+                }
+                if cases
+                else None,
+                "matched_sample_count": sum(matched) if matched else None,
+                "unmatched_sample_count": sum(unmatched) if unmatched else None,
+                "online_truth_injected_count": (
+                    sum(case.get("online_truth_injected") is True for case in cases)
+                    if cases
+                    else None
+                ),
+            }
+        stages[stage_name] = {
+            "status": "available",
+            "availability_counts": _json_ready(
+                _mapping(stage.get("offline_truth_alignment_availability_counts"))
+            ),
+            "offline_truth_unmatched_sample_count": stage.get(
+                "offline_truth_unmatched_sample_count"
+            ),
+            "by_difficulty": by_difficulty,
+        }
+    return {
+        "status": "available" if any_available else "unavailable",
+        "stages": stages,
     }
 
 
@@ -1687,6 +2895,27 @@ def _render_markdown(
         lines.append(
             f"| {name} | {item.get('status', 'unavailable')} | {item.get('schema_version') or 'NA'} | {item.get('producer') or 'NA'}/{item.get('run_id') or 'NA'} | {item.get('sha256') or 'NA'} | {detail} |"
         )
+    bundle_scope = _mapping(aggregate.get("bundle_scope"))
+    lines.extend(
+        [
+            "",
+            f"- 本批可用源：`{json.dumps(bundle_scope.get('available_sources', []), ensure_ascii=False)}`；不可用源：`{json.dumps(bundle_scope.get('unavailable_sources', []), ensure_ascii=False)}`。",
+            f"- 全系统判决：`{bundle_scope.get('full_system_decision', 'not_evaluated')}`。D2-only 证据不得表述为全系统通过。",
+        ]
+    )
+
+    d3_history = _mapping(aggregate.get("d3_history_validation"))
+    lines.extend(
+        [
+            "",
+            "## D3 canonical plan history",
+            "",
+            f"- 校验状态：`{d3_history.get('status', 'not_applicable')}`；记录数：`{_display(d3_history.get('record_count'))}`。",
+            f"- 不可用原因：`{json.dumps(d3_history.get('reasons', []), ensure_ascii=False)}`。",
+            f"- 期望 wrapper/record schema：`{d3_history.get('expected_wrapper_schema')}` / `{d3_history.get('expected_record_schema')}`。",
+            "- membership churn 由相邻 tick 的 target/resource/role/activation assignment 状态计算，不累加 producer 审计事件。",
+        ]
+    )
 
     truth = _mapping(aggregate.get("truth_policy"))
     lines.extend(
@@ -1697,6 +2926,137 @@ def _render_markdown(
             f"- 在线 truth 使用状态：`{truth.get('status')}`。",
             f"- 显式在线 truth 使用计数：`{truth.get('online_truth_use_count')}`。",
             "- D2/D5 的 precision、recall、IDSW 等 truth 指标仅来自离线评估汇总；本报告不导出 truth identity，也不回流在线控制。",
+        ]
+    )
+
+    d2_admission = _mapping(aggregate.get("d2_admission_review"))
+    lines.extend(
+        [
+            "",
+            "## D2 候选准入评审证据",
+            "",
+            f"- 状态：`{d2_admission.get('status', 'unavailable')}`；语义：`{d2_admission.get('effect', 'review_recommendation_only')}`。",
+            "- D6 仅被动记录评审建议，不改变控制授权，也不切换默认在线 GNN/Hungarian 主线。",
+            "- 历史 artifact 缺失的策略、连续性或门限字段保持 `unavailable` / `None`，不推断、不补零。",
+        ]
+    )
+    overall_assessments = _mapping_rows(
+        d2_admission.get("overall_candidate_assessments")
+    )
+    overall_gnn = next(
+        (
+            item
+            for item in overall_assessments
+            if item.get("associator") == "GNNHungarianAssociator"
+        ),
+        overall_assessments[0] if overall_assessments else {},
+    )
+    overall_jpda = next(
+        (
+            item
+            for item in overall_assessments
+            if item.get("associator") == "JPDAAssociatorResearchAdapter"
+        ),
+        {},
+    )
+    if d2_admission.get("source_decision_status") == "available":
+        lines.extend(
+            [
+                "",
+                "### Source-level decision 总览",
+                "",
+                f"- Source schema/policy：`{d2_admission.get('source_schema_version')}` / `{d2_admission.get('policy_version')}`。D6 原样消费 producer decision，`producer_decision_recalculated_by_d6={str(d2_admission.get('producer_decision_recalculated_by_d6')).lower()}`。",
+                f"- `promotion_recommended={str(d2_admission.get('promotion_recommended')).lower()}`；`promotion_candidates={json.dumps(d2_admission.get('promotion_candidates'), ensure_ascii=False)}`；仅建议评审。",
+                f"- `selected_online_path={d2_admission.get('selected_online_path')}`；`default_online_path={d2_admission.get('default_online_path')}`；`default_online_path_changed={str(d2_admission.get('default_online_path_changed')).lower()}`。默认在线 GNN/Hungarian 未改变。",
+                f"- 总体 GNN 候选五项 gate：`all_thresholds_passed={str(overall_gnn.get('all_thresholds_passed')).lower()}`；IDSW baseline/candidate/reduction=`{_display(overall_gnn.get('baseline_id_switch_mean'))}` / `{_display(overall_gnn.get('candidate_id_switch_mean'))}` / `{_display(overall_gnn.get('id_switch_reduction_fraction'))}`。",
+                f"- Continuity baseline/headroom/actual/required/error reduction=`{_display(overall_gnn.get('baseline_identity_continuity'))}` / `{_display(overall_gnn.get('identity_continuity_baseline_headroom'))}` / `{_display(overall_gnn.get('identity_continuity_increase'))}` / `{_display(overall_gnn.get('identity_continuity_required_increase'))}` / `{_display(overall_gnn.get('identity_continuity_error_reduction_fraction'))}`。",
+                "",
+                "| Overall gate | 通过 | Producer reason |",
+                "|---|---|---|",
+            ]
+        )
+        gate_reasons = _mapping(overall_gnn.get("gate_reasons"))
+        for gate_name, gate in _mapping(overall_gnn.get("gates")).items():
+            gate_item = _mapping(gate)
+            lines.append(
+                f"| {gate_name} | {_display(gate_item.get('passed'))} | {gate_item.get('reason') or gate_reasons.get(gate_name) or 'unavailable'} |"
+            )
+
+        by_difficulty = _mapping(d2_admission.get("by_difficulty"))
+        lines.extend(
+            [
+                "",
+                "### 分 difficulty 判决",
+                "",
+                "| Difficulty | GNN 五 gate | Baseline/Candidate IDSW | Continuity headroom/actual/required/error reduction | IDSW gate reason |",
+                "|---|---|---:|---|---|",
+            ]
+        )
+        passed_difficulties: list[str] = []
+        failed_difficulties: list[str] = []
+        for difficulty, difficulty_item in sorted(by_difficulty.items()):
+            difficulty_map = _mapping(difficulty_item)
+            assessments = _mapping_rows(difficulty_map.get("candidate_assessments"))
+            gnn = next(
+                (
+                    item
+                    for item in assessments
+                    if item.get("associator") == "GNNHungarianAssociator"
+                ),
+                assessments[0] if assessments else {},
+            )
+            passed = gnn.get("all_thresholds_passed")
+            (passed_difficulties if passed is True else failed_difficulties).append(
+                str(difficulty)
+            )
+            reasons = _mapping(gnn.get("gate_reasons"))
+            lines.append(
+                f"| {difficulty} | {_display(passed)} | {_display(gnn.get('baseline_id_switch_mean'))} / {_display(gnn.get('candidate_id_switch_mean'))} | {_display(gnn.get('identity_continuity_baseline_headroom'))} / {_display(gnn.get('identity_continuity_increase'))} / {_display(gnn.get('identity_continuity_required_increase'))} / {_display(gnn.get('identity_continuity_error_reduction_fraction'))} | {reasons.get('id_switch_reduction') or 'unavailable'} |"
+            )
+        lines.extend(
+            [
+                "",
+                f"- 分档仅 `{', '.join(passed_difficulties) or 'none'}` 通过；`{', '.join(failed_difficulties) or 'none'}` fail-closed。后四档的 producer reason 为 baseline IDSW=0 时无可测 reduction evidence，不由 D6 改判。",
+            ]
+        )
+
+        alignment = _mapping(d2_admission.get("truth_alignment_summary"))
+        alignment_stages = _mapping(alignment.get("stages"))
+        lines.extend(["", "### Dropout truth alignment", ""])
+        for stage_name in ("screening", "confirmation"):
+            stage = _mapping(alignment_stages.get(stage_name))
+            dropout = _mapping(_mapping(stage.get("by_difficulty")).get("dropout"))
+            counts = _mapping(dropout.get("availability_counts"))
+            lines.append(
+                f"- {stage_name}：`partial`，case complete/partial/unavailable=`{counts.get('complete')}` / `{counts.get('partial')}` / `{counts.get('unavailable')}`，matched/unmatched samples=`{dropout.get('matched_sample_count')}` / `{dropout.get('unmatched_sample_count')}`。"
+            )
+        lines.extend(
+            [
+                "",
+                f"- JPDA：`research_adapter_only={str(d2_admission.get('jpda_research_adapter_only')).lower()}`，`all_thresholds_passed={str(overall_jpda.get('all_thresholds_passed')).lower()}`；不准入默认在线路径。",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                "Source-level decision：`unavailable`。以下仅列 legacy row 字段，不推断 promotion、默认路径或分档判决。",
+                "",
+                "| Candidate/Stage | Policy | Continuity baseline | Headroom | Actual increase | Required increase | Error reduction | All gates | Failure reason availability/reasons |",
+                "|---|---|---:|---:|---:|---:|---:|---|---|",
+            ]
+        )
+        for item in _sequence(d2_admission.get("records")):
+            record = _mapping(item)
+            reasons = json.dumps(
+                list(_sequence(record.get("failure_reasons"))), ensure_ascii=False
+            )
+            lines.append(
+                f"| {record.get('candidate') or 'NA'}/{record.get('scenario_id') or 'NA'} | {_display(record.get('admission_policy_version'))} | {_display(record.get('baseline_identity_continuity'))} | {_display(record.get('identity_continuity_baseline_headroom'))} | {_display(record.get('identity_continuity_increase'))} | {_display(record.get('identity_continuity_required_increase'))} | {_display(record.get('identity_continuity_error_reduction_fraction'))} | {_display(record.get('all_thresholds_passed'))} | {record.get('failure_reasons_availability', 'unavailable')}: {reasons} |"
+            )
+
+    lines.extend(
+        [
             "",
             "## D7 末端四层结果",
             "",
@@ -1896,6 +3256,65 @@ def _record_list(
         if isinstance(value, Mapping):
             return [dict(item) for item in value.values() if isinstance(item, Mapping)]
     return []
+
+
+def _d3_history_records(
+    payload: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], bool]:
+    for name in ("plans", "rows", "records", "history"):
+        value = payload.get(name)
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            records = _mapping_rows(value)
+            if not records:
+                continue
+            if len(records) != len(value):
+                return records, False
+            if len(records) < 2:
+                return records, False
+            if name in {"plans", "history"}:
+                return records, True
+            ordered = _order_d3_records(records)
+            return (ordered, True) if ordered is not None else (records, False)
+        if isinstance(value, Mapping):
+            records = [
+                dict(item) for item in value.values() if isinstance(item, Mapping)
+            ]
+            ordered = _order_d3_records(records) if len(records) >= 2 else None
+            return (ordered, True) if ordered is not None else (records, False)
+    return [], False
+
+
+def _order_d3_records(
+    records: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]] | None:
+    order_fields = (
+        "history_index",
+        "sequence",
+        "sequence_number",
+        "record_index",
+        "timestamp_s",
+        "timestamp",
+        "effective_timestamp",
+        "created_at",
+    )
+    for field in order_fields:
+        values = [record.get(field) for record in records]
+        if any(value is None for value in values):
+            continue
+        tokens = [_d3_order_token(value) for value in values]
+        if len(set(tokens)) != len(tokens):
+            continue
+        return [
+            dict(record)
+            for _, record in sorted(zip(tokens, records), key=lambda item: item[0])
+        ]
+    return None
+
+
+def _d3_order_token(value: Any) -> tuple[int, float | str]:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return (0, float(value))
+    return (1, str(value))
 
 
 def _cooperative_pair_rows(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -2110,17 +3529,214 @@ def _failure_reasons(item: Mapping[str, Any]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
 
 
-def _d2_assessment_failure_reasons(
-    assessment: Mapping[str, Any],
-) -> tuple[str, ...]:
-    reasons = list(_failure_reasons(assessment))
-    checks = _mapping(assessment.get("checks"))
-    reasons.extend(
-        str(name)
-        for name, value in checks.items()
-        if isinstance(value, Mapping) and value.get("passed") is False
+def _find_d2_assessment(
+    assessments: Sequence[Mapping[str, Any]], candidate: str
+) -> dict[str, Any] | None:
+    return next(
+        (
+            dict(item)
+            for item in assessments
+            if str(_first(item, "candidate_id", "config_id")) == candidate
+        ),
+        None,
     )
-    return tuple(dict.fromkeys(reasons))
+
+
+def _d2_gate_evidence(
+    assessment: Mapping[str, Any] | None,
+) -> tuple[dict[str, bool], dict[str, str]]:
+    """Copy producer gate outcomes and reasons without recalculating them."""
+
+    item = _mapping(assessment)
+    results: dict[str, bool] = {}
+    reasons: dict[str, str] = {}
+    explicit_reasons = _mapping(item.get("gate_reasons"))
+    for name, raw_gate in _mapping(item.get("gates")).items():
+        gate = _mapping(raw_gate)
+        if isinstance(gate.get("passed"), bool):
+            results[str(name)] = gate["passed"]
+        reason = _coalesce(gate.get("reason"), explicit_reasons.get(name))
+        if reason is not None:
+            reasons[str(name)] = str(reason)
+    if not results:
+        for name, raw_check in _mapping(item.get("checks")).items():
+            passed = (
+                raw_check.get("passed")
+                if isinstance(raw_check, Mapping)
+                else raw_check
+            )
+            if isinstance(passed, bool):
+                results[str(name)] = passed
+            reason = explicit_reasons.get(name)
+            if reason is not None:
+                reasons[str(name)] = str(reason)
+    return results, reasons
+
+
+def _d2_assessment_fields(
+    assessment: Mapping[str, Any] | None,
+    *,
+    policy_version: Any = None,
+) -> dict[str, Any]:
+    item = _mapping(assessment)
+    gates = _mapping(item.get("gates"))
+    idsw_gate = _mapping(gates.get("id_switch_reduction"))
+    continuity_gate = _mapping(gates.get("identity_continuity_ceiling_aware"))
+    false_track_gate = _mapping(gates.get("false_track_limit"))
+    latency_gate = _mapping(gates.get("p95_loop_latency_budget"))
+    truth_gate = _mapping(gates.get("truth_leakage_zero"))
+    reasons, reason_availability = _d2_assessment_failure_details(item)
+    values = {
+        "admission_policy_version": _coalesce(
+            _first(item, "admission_policy_version", "policy_version"),
+            policy_version,
+        ),
+        "baseline_id_switch_mean": _coalesce(
+            item.get("baseline_id_switch_mean"), idsw_gate.get("baseline_mean")
+        ),
+        "candidate_id_switch_mean": _coalesce(
+            item.get("candidate_id_switch_mean"), idsw_gate.get("candidate_mean")
+        ),
+        "id_switch_reduction_fraction": _coalesce(
+            item.get("id_switch_reduction_fraction"),
+            idsw_gate.get("actual_reduction_fraction"),
+        ),
+        "baseline_identity_continuity": _first(
+            item,
+            "baseline_identity_continuity",
+            "identity_continuity_baseline",
+            "continuity_baseline",
+        ),
+        "candidate_identity_continuity": item.get(
+            "candidate_identity_continuity"
+        ),
+        "identity_continuity_baseline_headroom": _first(
+            item,
+            "identity_continuity_baseline_headroom",
+            "continuity_baseline_headroom",
+            "continuity_headroom",
+        ),
+        "identity_continuity_increase": _first(
+            item,
+            "identity_continuity_increase",
+            "continuity_actual_increase",
+        ),
+        "identity_continuity_required_increase": _first(
+            item,
+            "identity_continuity_required_increase",
+            "continuity_required_increase",
+        ),
+        "identity_continuity_error_reduction_fraction": _first(
+            item,
+            "identity_continuity_error_reduction_fraction",
+            "identity_continuity_headroom_reduction_fraction",
+            "continuity_error_reduction_fraction",
+        ),
+        "baseline_false_track_mean": _coalesce(
+            item.get("baseline_false_track_mean"),
+            false_track_gate.get("baseline_mean"),
+        ),
+        "candidate_false_track_mean": _coalesce(
+            item.get("candidate_false_track_mean"),
+            false_track_gate.get("candidate_mean"),
+        ),
+        "false_track_mean_limit": _coalesce(
+            item.get("false_track_mean_limit"),
+            false_track_gate.get("maximum_candidate_mean"),
+        ),
+        "candidate_p95_loop_latency_s": _coalesce(
+            item.get("candidate_p95_loop_latency_s"),
+            latency_gate.get("candidate_p95_loop_latency_s"),
+        ),
+        "maximum_p95_loop_latency_s": latency_gate.get(
+            "maximum_p95_loop_latency_s"
+        ),
+        "candidate_online_truth_leakage_count": truth_gate.get(
+            "candidate_count"
+        ),
+        "required_online_truth_leakage_count": truth_gate.get("required_count"),
+        "all_thresholds_passed": (
+            item.get("all_thresholds_passed")
+            if isinstance(item.get("all_thresholds_passed"), bool)
+            else None
+        ),
+    }
+    return {
+        **values,
+        **{
+            f"{name}_availability": (
+                "available" if value is not None else "unavailable"
+            )
+            for name, value in values.items()
+        },
+        "failure_reasons": reasons,
+        "failure_reasons_availability": reason_availability,
+    }
+
+
+def _d2_assessment_failure_details(
+    assessment: Mapping[str, Any],
+) -> tuple[tuple[str, ...], str]:
+    """Return ordered D2 admission failures without inventing missing reasons."""
+
+    reasons: list[str] = []
+    gate_reasons = _mapping(assessment.get("gate_reasons"))
+    gates = _mapping(assessment.get("gates"))
+    gate_evidence = False
+    for name, raw_gate in gates.items():
+        gate = _mapping(raw_gate)
+        passed = gate.get("passed")
+        if not isinstance(passed, bool):
+            continue
+        gate_evidence = True
+        if passed is False:
+            reason = _coalesce(gate.get("reason"), gate_reasons.get(name))
+            reasons.append(
+                f"{name}:{reason}"
+                if reason is not None and str(reason).strip()
+                else f"{name}:reason_unavailable"
+            )
+
+    check_evidence = False
+    if not gate_evidence:
+        for name, raw_check in _mapping(assessment.get("checks")).items():
+            if isinstance(raw_check, Mapping):
+                passed = raw_check.get("passed")
+                reason = _coalesce(raw_check.get("reason"), gate_reasons.get(name))
+            else:
+                passed = raw_check if isinstance(raw_check, bool) else None
+                reason = gate_reasons.get(name)
+            if not isinstance(passed, bool):
+                continue
+            check_evidence = True
+            if passed is False:
+                if reason is not None and str(reason).strip():
+                    reasons.append(f"{name}:{reason}")
+                else:
+                    reasons.append(str(name))
+
+    explicit_reasons = _failure_reasons(assessment)
+    reasons.extend(explicit_reasons)
+    explicit_reason_evidence = any(
+        name in assessment
+        for name in (
+            "failure_reasons",
+            "rejection_reasons",
+            "admission_reasons",
+            "failure_reason",
+            "first_failure_reason",
+        )
+    )
+    all_passed = assessment.get("all_thresholds_passed")
+    availability = (
+        "available"
+        if gate_evidence
+        or check_evidence
+        or explicit_reason_evidence
+        or all_passed is True
+        else "unavailable"
+    )
+    return tuple(dict.fromkeys(reasons)), availability
 
 
 def _d4_failure_reasons(
@@ -2249,8 +3865,67 @@ def _optional_int(value: Any) -> int | None:
         return None
 
 
-def _prefer_explicit(explicit: Any, derived: int) -> Any:
+def _prefer_explicit(explicit: Any, derived: Any) -> Any:
     return explicit if explicit is not None else derived
+
+
+def _d3_membership_change_count(
+    records: Sequence[Mapping[str, Any]], *, ordered_history: bool
+) -> int | None:
+    if not ordered_history or len(records) < 2:
+        return None
+    total = 0
+    for item in records:
+        metadata = _mapping(item.get("metadata"))
+        evidence_present = False
+        if "membership_change_records" in metadata:
+            raw_records = metadata.get("membership_change_records")
+            if not isinstance(raw_records, Sequence) or isinstance(
+                raw_records, (str, bytes)
+            ):
+                return None
+            change_records = _mapping_rows(raw_records)
+            if len(change_records) != len(raw_records):
+                return None
+            total += len(change_records)
+            evidence_present = True
+        if "membership_change_count" in item:
+            explicit_count = _optional_int(item.get("membership_change_count"))
+            if explicit_count is None:
+                return None
+            total += explicit_count
+            evidence_present = True
+        if not evidence_present:
+            return None
+    return total
+
+
+def _ordered_history_change_count(
+    values: Sequence[Any], *, ordered_history: bool
+) -> int | None:
+    if (
+        not ordered_history
+        or len(values) < 2
+        or any(value is None for value in values)
+    ):
+        return None
+    return _change_count(values)
+
+
+def _ordered_group_change_count(
+    values_by_group: Mapping[str, Sequence[Any]],
+    *,
+    record_count: int,
+    ordered_history: bool,
+) -> int | None:
+    if not ordered_history or record_count < 2 or not values_by_group:
+        return None
+    if any(
+        len(values) != record_count or any(value is None for value in values)
+        for values in values_by_group.values()
+    ):
+        return None
+    return sum(_change_count(values) for values in values_by_group.values())
 
 
 def _change_count(values: Sequence[Any]) -> int:
