@@ -56,6 +56,24 @@ Subagent rules:
 - Subagents must not modify files outside their ownership boundary unless main explicitly coordinates it.
 - Main owns AirSim launch/reset/episode order/log collection and final reports.
 
+### Mandatory Documentation Sync After GAP Work
+
+Documentation synchronization is part of GAP completion and does not require a separate user reminder.
+
+- Whenever a task closes, partially closes, reclassifies, or adds evidence for a P0/P1/P2/P3 GAP, the owning D1-D7 subagent must update the affected module documentation in the same task.
+- The same rule applies when a task changes an algorithm, interface, data contract, state machine, threshold, default/optional capability status, AirSim adapter, validation result, or implementation plan.
+- Before reporting completion, the owning subagent must inspect all of the following within its ownership boundary and update every affected file:
+  - module `README.md`;
+  - module `PLAN.md`;
+  - module GAP audit and review files under `subagent_reviews/Dx_*`;
+  - `docs/MODULE_PRINCIPLES_CN.md`;
+  - `docs/ALGORITHM_AND_IMPLEMENTATION.md`;
+  - `docs/AIRSIM_INTEGRATION_PLAN.md` and `docs/EXPERIMENT_REPORT.md` when the change affects AirSim integration or experimental evidence.
+- Do not create unrelated documentation churn. If an inspected file does not need modification, the subagent must explicitly report that it was checked and why no update was required.
+- Documentation must distinguish implemented and tested behavior from interface-only, optional/offline, unavailable, planned, or unimplemented behavior. It must include the actual validation date, scenario, seed/sample count, result, acceptance threshold, and remaining limitation when evidence changes.
+- A GAP implementation task is not complete until the owning subagent has synchronized the affected documentation and run its requested code tests plus documentation format checks.
+- After module owners finish, main must update affected main-level GAP/status documents and root system reports for cross-module changes, verify terminology and contract consistency, and state the documentation synchronization result in the final summary.
+
 ## Core System Rules
 
 - Simulation scale is set by main through `--drone-count N`; algorithms must not hard-code 2v2 or 5v5.

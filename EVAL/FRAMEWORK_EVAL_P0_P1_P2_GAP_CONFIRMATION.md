@@ -1,9 +1,40 @@
 # 框架评估 P0/P1/P2 缺口确认
 
-**文档版本**: v2.5
-**更新日期**: 2026-07-13
+**文档版本**: v2.21
+**更新日期**: 2026-07-15
 **生成角色**: main agent
 **定位**: EVAL 层跨模块优先级归并，不直接替代 D1-D7 owned GAP/PLAN。
+
+v2.19 同步 2026-07-15 D4 公开 helper P0 复审：旧 `278/278` 回归未覆盖
+`secondary_readiness_sustained/source/lease epoch=None` 的组合，两个公开 helper 可把
+缺失证据解释为“非 False”并放行 active secondary plan。D4 owner 已改为 exact-true、
+逐字段 fail-closed，并补齐 same-active-plan 和 distributed-peer 边界回归；D4 `280`、
+AirSim runtime `147`、integrated point-mass `7` 均通过。本批未启动 AirSim。
+
+v2.20 同步 D2/D6 ceiling-aware v2 正式联合证据：原冻结 replay 已重生成完整
+false-track、P95、baseline/candidate truth leakage、逐 gate reason、逐 difficulty 和 dropout
+truth-alignment 证据。总体 GNN 候选五项 gate 通过，但仅 `clutter/combined` 分档通过；
+其余四档因 baseline IDSW 为零而 fail-closed，dropout truth alignment 为 partial，JPDA 不准入。
+该结果只形成 promotion review，`selected_online_path=baseline_gnn_hungarian`、
+`default_online_path_changed=false`。D6 全量 `243 passed`，本批未启动 AirSim。
+
+v2.21 同步真实 M5N2 terminal/timing 批次：baseline 与 soft-prediction/trend-coast
+candidate 各完成 10 seed，共 20/20 case 后按用户指令终止。TERM 生效前额外完成 1 个
+`png_ttc_2v2_seed001`，但不纳入 M5N2 聚合或多 seed 验收；dropout 完成数为 0，任何缺失
+case 都不补零。两组 active-primary/target/coalition 分别为
+`6/30`、`6/20`、`0/10`，第二 primary 均为 `0/10` 进入 5 m；candidate 的逐 seed
+non-degradation 为 false，因此保持 optional/default-off。20 个 actual artifact 全部 available，
+identity/state online truth use 均为 0，无新增 P0。真实 pooled main-bus 与 control-tick
+mean/P95 分别为 `349.34/487.40 ms` 与 `1069.45/1254.06 ms`，100 ms 预算违例率为
+`95.90%/100%`；两层禁止相加。新增 P1 是第二 primary/联盟物理闭环、D1/AirSim/RPC
+性能，以及 D6 对 reset-separated 多 episode timing 的版本化 envelope/manifest 支持。
+第二 primary 七阶段漏斗为前四阶段 `20/20`、control/mode `17/20`、5 m physical `0/20`；
+20 个最终 stop reason 均为 `collision_stop`，但碰撞对象/法向/成员环境距离未写盘。碰撞
+provenance 和 canonical/cooperative target success 术语统一继续作为 P1，当前不能把失败
+单独归因于视觉门限。
+模块复核同时确认 D1 fusion 为 main-bus 主导耗时，D2 association 不是主要时序瓶颈且
+truthless IDSW/continuity 保持 unavailable，D3 20 case 的实际 plan/member/owner churn 为 0，
+D4 `active_degradation=0` 仅是中心负对照。各 owner 已将这些边界同步到模块 GAP/PLAN。
 
 ## 1. 输入材料
 
@@ -52,6 +83,106 @@ v2.5 新增同步真实执行证据：
 - D6 已修复 cooperative profile 分组并生成七类来源均 available 的统一 P1 报告；D3 缺失时序 churn 保持 unavailable。
 - D1-D7 owner 已分别同步各自 PLAN/GAP；main 只维护本文件和总 GAP。P0/P1 状态以 2026-07-13 顶部权威段为准，文内更早测试计数均属于历史阶段证据。
 
+v2.6 新增可信闭环复核：
+
+- D1 AirSim 在线观测已匿名化，EO 使用 detection bbox；D2 在线策略对 truth 字段 fail-closed。
+- D2/D6 在无 truth 配对时将 RMSE、continuity、IDSW 标记为 `unavailable`，不再填 0。
+- D1 observation arrival queue 只在量测到达后更新融合状态，离线 integrated replay 显式使用 offline truth policy。
+- 当时发现一个开放 P0：SimpleFlight 控制仍直接读取 actor truth 的位置/速度用于导引、距离门限和相机朝向。该代码缺口已由 v2.7 关闭；既有 `online_truth_use=0` 仍只覆盖身份标签，历史物理结果继续按迁移前 smoke 处理并等待同 seed 重跑。
+
+v2.7 新增 P0 关闭证据：
+
+- 默认、主动中心重规划和主动二级接管统一从 main episode bus 消费 D2 估计位置/速度、协方差、measurement timestamp 和 arrival timestamp。
+- 主动降级 fixture 只覆盖 D3 plan/version、D4 permission 和 D5 lock，不再提供目标运动状态或 actor/object/mesh alias；目标重分配后按 canonical `global_track_id` 重新选择同帧 D2 estimate。
+- 缺失/陈旧 estimate fail-closed；actor truth 仅保留给合成传感器、离线 pairing、轨迹图和 post-run NED 三维 5 m scorer。
+- D6 分离 `truth_state_online_use_count` 与 `truth_identity_online_use_count`。本批代码级回归为 AirSim runtime 130、D1 83、D2 98、D3 全量通过（1 skipped）、D4 198、D5 235、D6 138、D7 178、integrated 7。
+- 本批未运行新的真实 AirSim episode，因此代码级 P0 关闭，真实同 seed 物理结果重跑保持 P1 evidence task；历史结果不自动升级。
+
+v2.8 新增 D6 physical provenance P0 关闭证据：
+
+- physical 指标不再从 command rows 回退生成 pair；必须存在 intercept summary 和逐 pair summary。
+- 每个参与 pair 必须显式携带 `physical_evidence_available=true`，且 `target_state_source` 必须与 episode 的 `online_control_state_source` 一致。
+- command-only、summary-only、缺证据和来源冲突全部输出 `None/unavailable`；合法 offline scorer、显式 truth fixture 和 standby reserve 排除语义保持。
+- 回归为 D6 `143 passed`、AirSim runtime `130 passed`、integrated point-mass `7 passed`；未运行新的真实 AirSim episode。
+
+v2.9 新增 D4 lease 与 D6 physical completeness P0 关闭证据：
+
+- D4 secondary resource、plan、active owner 和 D7 handoff 统一要求 expiry/current time 都存在且严格 `current_time < lease_expiry`；缺字段、边界相等、过期、旧 epoch 和 source mismatch 全部 fail-closed。
+- D6 要求每个 active pair 除 provenance 外还必须存在可判定 physical result；required-primary 成员不足、缺 arrival window、缺 denominator 或 summary opportunity 缺 completion 时 coalition unavailable，完整显式失败仍为 available `0`。
+- main/integrated 合法 fixture 已补 episode time、heartbeat、lease epoch/expiry，没有放宽 D4 安全合同。
+- 回归为 D4 `211 passed`、D6 `150 passed`、D7 `178 passed`、AirSim runtime `130 passed`、integrated point-mass `7 passed`；未运行新的真实 AirSim episode。
+
+v2.10 新增 D5 native MOT history P1 子缺口关闭证据：
+
+- 原生 Ultralytics Results 的 camera-local tracker ID 现按 resource、camera、backend 和 native ID 累计连续实测命中，不再把每帧历史固定为 1。
+- 空帧、ID/backend 切换、native model 重建、stream reset 和 episode reset 都中断稳定证据；短时 coast 不计入锁定历史。
+- 没有降低 `min_mot_history`，没有放宽身份、重复锁定、版本、时间或标定门控，也没有改写 `global_track_id`。
+- 回归为 D5 `241 passed`、AirSim runtime YOLO/MOT focused `10 passed`、runtime 全量 `130 passed`；真实图像多 seed 准入仍是 P1。
+
+v2.11 新增 D1 covariance 与 D4 二级接管证据完整性 P0 关闭证据：
+
+- D1 正式 online、governed replay 和 AirSim freeze 现在统一要求每条观测携带维度正确、有限、对称、半正定的 covariance；缺失或非法矩阵在滤波更新前 fail-closed，不再静默使用默认矩阵。
+- 历史缺 covariance 数据只允许通过显式 offline legacy migration API 迁移。迁移记录必须携带原始缺失原因、sensor model/default、生成参数和 `offline_only` provenance，且禁止回流在线融合、在线 replay 或 AirSim freeze。
+- D4 二级节点只有在 current time、heartbeat、cue freshness、gimbal、communication summary、network full-view 和严格 lease 证据完整且新鲜时才可达到 `takeover_ready`；任一字段缺失均输出明确拒绝原因并 fail-closed。
+- main-owned 质点集成适配器补充显式二级视频/数据链摘要，不再依赖“缺通信默认可用”。中心健康、主动中心重规划、完整二级接管正例和二级失效后 distributed 顺序保持。
+- 回归为 D1 `92 passed`、D4 `224 passed`、integrated point-mass/contracts `10 passed`、AirSim runtime `134 passed`。本批未运行新的真实 AirSim episode；真实网络时序、多 seed covariance consistency 和二级接管实测仍为 P1。
+
+v2.12 新增第二批 P1 代码闭合与 main runtime 接线：
+
+- D3 已统一迟滞比较成本口径，并把 `max_changes_per_window` 改为同一窗口内的累计已执行变更预算；硬失效仍可 fail-closed 绕过预算。D3 回归 `157 passed, 1 skipped`，skip 仅为可选 OR-Tools 未安装。
+- D5 已按 resource/target/local-track/camera/backend/stream 和 committed primary membership 累积 bbox/MOT 历史；普通 plan version 刷新不再清空，换绑、换员、身份/友方/重复冲突仍重置。D5 回归 `255 passed`。
+- D7 已区分 raw terminal gate、visual latch、effective contract、effective control 和 termination snapshot，并细分 bounded prediction、contract reset、prediction window 和 measured-lock-not-established 丢帧原因；PN/PNG 核心公式未改。D7 回归 `181 passed`。
+- D6 已用带 producer/scope/denominator/lifecycle 的 terminal metric envelope 隔离 planned-lock 与 execution 指标，接入 canonical D3 history、性能样本和 `inconclusive` 双零判读。D6 回归 `154 passed`。
+- main runtime 已传递 D5 稳定相机/流/后端、当前可执行 primary 成员和 duplicate risk；D7 event 直接采用 canonical runtime record；SimpleFlight 终止行不再把历史 latch 计作当前授权；P1 bundle 自动生成 D6 suite/case 报告并携带 D3 history、D7 execution、physical context 和性能字段。AirSim runtime `140 passed`，integrated/dry-run `14 passed`。
+- 本批仍未运行新的真实 AirSim。代码级 P0 继续无开放 blocker；真实同几何 10-seed M5N2/2v2/dropout 复跑、M5N2 第二 primary、D3 长期 churn、D5 30/50 m 召回/native-MOT 准入、二级真实网络时序和约 1.3 s loop latency 仍是开放 P1。
+
+v2.13 新增 D6 actual-execution 计划来源 P0 关闭证据：
+
+- 复核发现 formal actual-execution merge 会丢失实际 `plan_id/plan_version/owner`，导致中心重规划和二级接管虽已执行，正式 D6 指标却无法证明控制使用的计划来源。
+- `d7-actual-execution-metrics-v2` 现在只从最终 `control_commands.csv` 提取计划 ID、正整数版本和 owner provenance，并校验 source hash、字段类型、同一计划版本一致性和 availability。integrated replay 不再作为回填来源。
+- 计划 ID/版本逐行必需；二级或分布式有效控制行缺 owner 时 fail-closed。普通中心授权、未授权过渡和 pending 行可缺 owner，并将 owner provenance 显式标为 unavailable，而不是使无关 actual 指标失真。
+- D6 回归 `184 passed`，AirSim runtime `142 passed`，P1 terminal/integrated/dry-run 组合 `17 passed`，`git diff --check` 通过。当前无开放运行级 P0。
+- 本批没有运行真实 AirSim；历史产物不具备 v2 envelope，真实 seed-1 注册及同配置多 seed 仍是 P1 evidence。
+
+v2.14 新增 canonical actual-execution 真实 AirSim P0 复验：
+
+- tuned 2v2 seed-1 与 M5N2 seed-1 均生成通过结构、source hash、计划来源和物理计数校验的 `d7-actual-execution-metrics-v2`；两场景均无 unavailable artifact，identity/state online truth use 均为 0。
+- 离线 5 m scorer 结果已精确同步到每个成功 pair 的一条最终 command row；2v2 的 summary/CSV/actual 均为 `2`，M5N2 均为 `2`，旧 `d7_actual_execution_command_physical_count_conflict` 未复现。
+- 控制阶段和 finalize 阶段复用同一个 live `MainAirSimEpisodeBus`。两个场景中 command、actual metadata 与 canonical D3 history 的 plan ID 完全一致。
+- direct run 的 canonical case 标识改为 `case_id > sequence_id > episode_id`，修复跨 sequence 聚合时两个 artifact 都名为 `episode_006_full_flow` 的冲突。D6 联合验收 actual available `2/2`。
+- 回归为 AirSim runtime `142 passed`、terminal closure `7 passed`、D6 `216 passed`、D5 `261 passed`、D7 `188 passed`、integrated point-mass `7 passed`，`git diff --check` 通过。actual evidence P0 关闭。
+- P1 仍开放：M5N2 active pair `2/3`、coalition `0/1`，第二 primary 最近约 `11.02 m`；2v2/M5N2 loop latency 约 `123.3/384.6 ms`；同配置多 seed、完整 dropout/candidate 矩阵及长期趋势尚未执行。actual v2 已独立注册 `terminal_switch_allowed_count`，并从最终 CSV 严格重算 freshness/stale。两例共 656 samples，mean/P95/max age=`0.0872/0.2/0.2 s`、stale=`0/656`、来源全部为 `d2_estimated_global_track`；该 seed-1 正式链路关闭，多 seed 分布仍为 P1。
+
+v2.15 新增 actual target-state freshness/stale P1 证据链关闭：
+
+- D6 只从 source-hash 已验证的最终 `control_commands.csv` 逐行消费控制时间、目标量测时间、到达时间、量测年龄、stale 和状态来源；缺列、空值、非有限值、负值、时间逆序、age 冲突、非法布尔或空来源全部 fail closed。
+- 两个 required case 均 available：2v2 为 48 samples，mean/P95/max=`0.0375/0.2/0.2 s`；M5N2 为 608 samples，mean/P95/max=`0.091118/0.2/0.2 s`；stale 均为 0，来源均为 `d2_estimated_global_track`。
+- case、pooled aggregate、CSV、JSON 和中文 Markdown 已接入 freshness/stale availability、年龄分布、stale 数量/比例和来源分布。D6 `216 passed`，D5/D7 文档同步分别 `261/188 passed`；完整 paired/dropout/multi-seed 和 100 ms 性能预算仍为 P1。
+
+v2.16 新增 runtime 分阶段延迟可观测性 P1 实现闭合：
+
+- main bus 新增 `main-stage-timing-v1`，按 frame 分离 communication、D1、D2、D6 track recording、D3、coalition commit、D5、D4、D7 和 link/cross-view recording，并写入 `main_episode_bus/stage_timings.jsonl`。
+- SimpleFlight 外层新增 `control-tick-stage-timing-v1`，分离 AirSim frame sample、bus processing、control evidence/pair sync 和 guidance/control RPC，并写入 `control_tick_timings.jsonl`。外层包含 bus processing，两层禁止求和。
+- 未执行阶段严格使用 `not_applicable + null`；异常保留部分计时；每条记录保存 total、measured sum、unattributed、budget 和 error。历史产物缺文件保持 unavailable，不从旧总耗时反推阶段。
+- D6 新增严格离线 validator、分阶段 mean/P95/max、dominant stage、预算违例及 CSV/JSON/中文 Markdown/PNG 报告，并接入 `d6-p1-unified-acceptance-v5`。D6 `236 passed`，AirSim runtime `145 passed`，terminal/integrated `14 passed`。
+- 真实 2v2/M5N2 seed-1 旧产物兼容报告均正确显示两层 `stage_timing_artifact_missing`。本批未启动 AirSim，100 ms 预算、真实 dominant stage 和优化后 multi-seed 复验仍为 P1。
+
+v2.17 新增 D4 多入口二级接管 P0 复核与关闭：
+
+- 复核发现 D4 核心仲裁、episode communication 和 main runtime 对二级 readiness 的要求不完全一致：heartbeat-only 曾可能被通信入口解释为可接管，缺 current time 的 D6 metadata 也可能错误保留 lease 可用语义。
+- D4 owner 已建立统一 `SecondaryReadinessEvidence`/assessment。二级 owner 必须同时具备显式 current time、有效 epoch/lease、新鲜 heartbeat/cue/communication、gimbal、coverage、network full-view 和持续 readiness；缺失、陈旧或未持续均 fail-closed。
+- main communication tick 只消费上一完整 D4 decision，避免使用当前帧尚未完成的仲裁结果；同一节点多条 readiness 的 lease epoch/expiry 冲突时整节点拒绝，不采用后写覆盖。
+- heartbeat-only 负例、完整 readiness 正例和冲突 lease 负例均通过；回归为 D4 `278 passed`、AirSim runtime `147 passed`、integrated point-mass `7 passed`。本批未启动 AirSim；真实 RF、带宽、时钟漂移、排队、乱序、重传和 multi-seed failover time 仍为 P1。
+- 同轮只读审计确认 D2 strict candidate 的 continuity 绝对提升 `0.10` 在 baseline=`0.9810` 时不可达。默认 GNN 因 fail-safe 未被错误替换，因此不是 P0；但准入规则必须由 D2/D6 改成 ceiling-aware、可复现且多指标联合的 P1 治理口径。
+
+v2.18 新增 D2/D6 ceiling-aware 准入 P1 代码闭合：
+
+- D2 将 continuity 规则升级为 `d2-p1-identity-admission/ceiling-aware-error-reduction-v1`。基线剩余空间为 `H=max(0,1-C_baseline)`，所需提升为 `min(0.10,0.10H)`；基线为 1.0 时只接受合法且不退化的候选。旧 `+0.10` 字段保留为 deprecated 审计信息，不参与 v2 判决。
+- IDSW、continuity、false-track、P95 和 baseline/candidate truth leakage 仍是联合 fail-safe gate；仅 IDSW 改善不能晋级，任何通过只产生 promotion review，`default_online_path_changed=false`。
+- D6 system evidence v2 同时兼容 D2 v2 gates、legacy structured checks 和 bool checks，并保留 policy version、headroom、实际/所需提升、误差消除比例、all-pass 和具体失败原因；历史缺字段保持 unavailable。
+- `0.9810 -> 0.9840` 对应 headroom `0.0190`、所需 `0.0019`、实际 `0.0030`、误差消除约 `15.79%`，因此 continuity 单项通过；旧产物缺完整 false-track 和逐 gate v2 证据，不能追认完整 promotion review。
+- 正式联合证据已由原冻结 replay 重生成。总体候选 IDSW `1.3583 -> 0.6167`、continuity `0.9810 -> 0.9840`、false-track `0 -> 0`、P95 `15.47 ms`、truth leakage `0`；只形成评审建议，不改变默认 GNN/Hungarian。回归为 D2 `113 passed`、D6 `243 passed`、AirSim runtime `147 passed`、integrated point-mass `7 passed`。本批未启动 AirSim。
+
 仍然参考的原始评估材料：
 
 - `EVAL/FRAMEWORK_EVAL_D1_SENSOR_FUSION.md`
@@ -69,7 +200,7 @@ v2.5 新增同步真实执行证据：
 
 本轮确认：
 
-1. **当前没有新的运行级 P0 blocker**。现有 D1-D7 模块测试、main runtime tests、AirSim 2v2 SimpleFlight smoke 已能运行。
+1. **当前无开放运行级 P0 blocker**。SimpleFlight 默认、主动中心重规划和主动二级接管均已改接 D2 估计状态，actor truth 只进入离线 scorer；D4 二次审计发现并关闭公开 helper 对缺失 sustained readiness/source/lease epoch 的 fail-open，active secondary plan 现要求完整证据 exact-true，heartbeat-only、缺字段与冲突 lease 均 fail-closed。真实 AirSim multi-seed 仍是 P1 证据任务。
 2. **不要把成熟外部工具本身等同为 P0**。例如 OR-Tools、etcd、ROS 2、MLflow、RTI Connext、Kalibr、Apollo Cyber RT 很有价值，但“立即集成这些完整框架”不是当前 P0。
 3. **P0 应限定为最小可信闭环硬化项**：时间/配置/健康/异常、任务 outcome、根因诊断、FDIR-light、质量门控、分配迟滞、二级能力判断、终端重捕获、D7 切换迟滞/LOS 滤波、标准化评估映射。
 4. **P1 是三个月内能力增强和标定**：标准对齐报告、OR-Tools 对照、JPDA/MHT 选型、Raft 选举对照、YOLO/MOT 多 seed 校准、IBVS/间歇可见性重捕获、3D True PN/APN 对照。
@@ -80,28 +211,39 @@ v2.5 新增同步真实执行证据：
 9. **D2 真实 CV 20-seed 对照不支持换主线**：默认 GNN 与候选/轻量 JPDA 均为 IDSW=0、continuity=1.0；JPDA 延迟更高，未达到晋级收益。该 fixture 区分度不足，后续提高漏检、虚警和遮挡难度，不把 JPDA 提前升级为默认。
 10. **P1 接口与场景生成缺口已经转入实测判定，不等于算法晋级**：早期 20/30/50 m 预检已经由 18-case 正式筛选取代。正式结果仍为 20 m native active/continuity 合格、30/50 m 零检测，且 20 m 离线 precision/recall 只有约 0.26-0.33；因此没有后端进入 10-seed confirmation，默认 detect、GNN/Hungarian 和既有 PN/PNG 主线不变。
 11. **2026-07-13 真实执行已完成，但性能 P1 仍开放**：D2 strict dense crossing、D4 60-case、M5N2 40-episode 和原生 MOT 18-case 均已实际运行。M5N2 最佳只有 `5/10`，原生 MOT 没有候选通过准入，因此不能把场景执行完成表述为性能闭合。
-12. **当前仍无新增 P0 blocker**：reserve 越权、`global_track_id` 改写、在线 truth 使用、duplicate owner 和 false degradation 均为 0；模块和 main 回归通过。下一步仍是 D5 第二 primary 获取/锁定、远距检测尺度与 D3 逐时刻 churn 证据，不启动 P2 主线替换。
+12. **2026-07-14 状态修正与关闭**：reserve 越权、`global_track_id` 改写、truth identity/state 使用、duplicate owner 和 false degradation 分开审计。SimpleFlight 状态真值隔离已在默认和两条主动降级路径关闭；D5 第二 primary、远距检测尺度、真实同 seed 复跑和长期 D3 churn 保持 P1，不启动 P2 主线替换。
+13. **D6 physical provenance P0 已关闭**：command-only、summary-only、缺逐 pair evidence 或 pair/source 不一致时，物理指标保持 unavailable；历史缺 provenance 的结果不能因聚合字段或 command status 被升级为物理证据。
+14. **D4 lease 与 D6 completeness P0 已关闭**：secondary 各执行层统一严格校验 lease 边界；D6 不再把 evidence flag 当作物理结果，也不在联盟成员、到达窗口或分母不完整时发布 coalition 零值。
+15. **D5 native MOT history 代码断点已关闭**：真实 Results 路径能够累计连续实测命中，空帧、reset 和 native/fallback 切换不会继承锁定历史；远距召回、精度、连续性和延时仍按 P1 多 seed 准入。
+16. **D4 多入口 readiness P0 边界已关闭**：核心仲裁、episode communication、main runtime 和 D6 metadata 统一要求完整、可校验且未过期的二级证据；heartbeat-only、缺 current time、未持续 readiness 和冲突 lease 不再生成可执行 owner。
+17. **D2 continuity 准入不可达 P1 与联合报告缺口已关闭**：ceiling-aware v2、D6 双 schema 消费和原冻结 replay 正式联合报告均已通过回归；总体候选进入 promotion review，但逐 difficulty 证据不足以替换默认 GNN/Hungarian，dropout truth alignment 仍为 partial，JPDA 不准入。
+18. **D4 公开 helper 缺失证据 P0 已二次关闭**：旧测试只覆盖主 readiness 入口，未覆盖 public handoff/metadata helper 的 `None` 组合。当前两个 helper、已激活同 plan 维持路径和 adapter 均要求 sustained readiness、expected/actual source、plan/required epoch、expiry/current time 与 monotonic plan 完整通过；逐字段负例和 distributed peer 不受误约束的回归已加入，D4 `280 passed`。
 
-### 2.1 v2.2 当前权威状态
+### 2.1 v2.10 历史状态表
+
+本表保留 v2.10 阶段证据，不再作为当前入口。当前状态以本文 v2.20 增量和
+`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md` 第 7 节为准。
 
 | 范围 | 当前证据 | 状态判定 |
 |---|---|---|
-| P0 | D1-D7、安全门控、truth 隔离、版本拒绝和 main runtime 回归通过 | 无开放运行级 blocker，保持回归 |
-| 2v2 SimpleFlight | candidate 10 seeds、20/20 pair 在 5 m 内成功，online truth=0；旧基线 19/20 | 达到非退化验收；自然 soft/trend 未触发，不归因于增强算法 |
+| P0 | D1/D2/D6 身份隔离、availability、时间队列、truth-state provenance、D4 strict lease 和逐 pair physical provenance/result/coalition completeness gate 回归通过；三条 SimpleFlight 路径均使用 D2 estimate | **代码级无开放 blocker**；truth 仅留离线 scorer，过期 owner、缺证据、缺结果或来源冲突 fail closed |
+| 2v2 SimpleFlight | 历史 candidate 10 seeds、20/20 pair 在 5 m 内成功；本批代码/fixture state use=0 | 历史结果仍只作迁移前 smoke；需按同 seed 真实重跑后发布新版 truth-isolated 物理证据 |
 | 检测丢失 | 10 seeds：1 帧预测 9/10、2 帧 10/10；3-5 帧各 10/10 命中 0.25 s 硬过期；物理 100/100 | 矩阵完整但存在单帧 seed 2 时序尾部；truth/identity/version 回归通过 |
 | D5/D7 | 双时间戳/相机几何证据、生命周期重置、`png_ttc` 面积治理已实现 | P1 合同闭合；真实同步/阈值继续标定 |
+| D5 native MOT | Results 连续历史按 resource/camera/backend/native ID 隔离；空帧/reset/backend 切换后从 1 重计；D5 `241 passed` | 代码级历史断点已关闭；真实 AirSim/真实图像多 seed 准入仍开放 |
 | Optional delivery | 10-seed paired 中 candidate pair/target `4`，baseline 为 `7`；trend 实际触发 0 | 明确不晋级默认 profile；6D LOS KF 继续 replay-only |
 | M5N2 | 同条件 10 seeds：baseline pair `7/30`、target `7/20`；candidate `4/30`、`4/20`；coalition 均 `0/10` | paired 数据闭合，协同物理性能仍未闭合 |
 | `png_ttc` | tuned 2v2 10 seeds、20/20；not-expanding 13、TTC out-of-range 22 | 真实多 seed 主链闭合；area-jump/clipping 受控覆盖开放 |
-| D6 | main/D1-D5 证据全部 available，80 行四层指标和曲线已生成 | availability/zero、pair/target/coalition 继续分离 |
+| D4 | secondary resource/plan/active owner/D7 handoff 统一要求 `current_time < lease_expiry`；D4 `211 passed` | lease 边界与失效 owner 已 fail closed；真实网络时序和自主成员重构保持 P1 |
+| D6 | physical gate 已要求 summary + pair evidence + result + source 一致，并校验 coalition completeness；D6 `150 passed` | availability/zero、pair/target/coalition 继续分离；历史缺 provenance/result 结果保持 unavailable |
 
-当前验证计数：D1 62、D2 67、D3 123（optional OR-Tools 1 skipped）、D4 148、D5 161、D6 84、D7 137、AirSim runtime 98、质点集成 7、dry-run 4、跨模块合同 3。
+2026-07-14 最新回归计数：D1 83、D2 98、D3 全量通过（optional OR-Tools 1 skipped）、D4 211、D5 241、D6 150、D7 178、AirSim runtime 130、质点集成 7，均通过。未启动新的真实 AirSim episode；matplotlib `Axes3D` 为环境 warning，不影响二维评估。
 
 ## 3. 分级口径
 
 | 等级 | 含义 | 是否阻塞当前测试 | 是否近期排期 |
 |---|---|---:|---:|
-| P0 | 当前轻量主线进入可信多 seed/闭环验证前必须具备的最小硬化项 | 否 | 是 |
+| P0 | 当前轻量主线进入可信多 seed/闭环验证前必须具备的最小硬化项 | 是（阻塞可信闭环证据，不阻塞单元测试执行） | 是 |
 | P1 | 三个月内增强、标定、对照和报告能力 | 否 | 是 |
 | P2 | 六个月左右的架构升级、较重依赖或高阶算法 | 否 | 视资源 |
 | 规避/P3 | 前沿但实时性、可解释性或认证风险过高，不进入当前路线 | 否 | 否 |
@@ -197,6 +339,7 @@ P1 是三个月内能力增强、对照实验、标定和标准化报告。
 | D2 | JPDA/MHT/BP 选型对照 | IEEE OJSP 2024 track coalescence | dense/crossing 下输出 IDSW、coalescence、latency 对照 |
 | D2 | SORT/ByteTrack style fallback | SORT/ByteTrack 工程实践 | GNN 异常或视觉 MOT 场景可回退轻量 baseline |
 | D2 | N/M 初始化和协方差一致性检查 | MATLAB/Stone Soup | false track rate、init latency、NIS/NEES 或等价 flag |
+| D2/D6/main | ceiling-aware v2 候选评审与完整系统证据 | 正式联合报告已生成；总体五项 gate 通过，但只有 `clutter/combined` 通过，四个零 baseline-IDSW difficulty fail-closed，dropout truth alignment 为 partial | 保持默认 GNN/Hungarian；补同 case/seed 的完整 D1-D7 system bundle 和长期趋势后再决定候选是否晋级，JPDA 继续不准入 |
 | D3 | OR-Tools Min Cost Flow 对照 | OR-Tools patch | 同输入下输出 Hungarian vs min-cost-flow 对照计划 |
 | D3 | 增量分配和时间窗口硬约束 | OR-Tools/工业调度实践 | 目标新增/资源失效时 update latency 下降，closed window 不被分配 |
 | D3 | 完整动态威胁评估 | Iron Dome 公开思路 | threat score 可解释并进入 D6 scenario report |
@@ -204,13 +347,14 @@ P1 是三个月内能力增强、对照实验、标定和标准化报告。
 | D4 | Event-Driven CBBA 通信优化 | arXiv 2025 Event-Driven CBBA | 共识消息量下降，冲突率和完成率可统计 |
 | D4 | 网络分区检测与恢复韧性指标 | UAV resilience metric | 输出 partition state、merge audit、resilience score |
 | D4 | DDS QoS 通信策略仿真 | ROS 2 DDS QoS / RTI | 丢包、stale link、priority delivery 进入 D6 指标 |
-| D5 | YOLOv8 + ByteTrack/BoT-SORT 多 seed 标定 | YOLO/ByteTrack patch | 目标尺度、FOV、置信度、tracker backend、CPU/GPU budget 形成报告 |
+| D5 | YOLOv8 + ByteTrack/BoT-SORT 多 seed 标定 | YOLO/ByteTrack patch | Results 历史累计、遮挡/reset/backend 隔离已关闭；继续以真实 AirSim/真实图像校验目标尺度、FOV、置信度、远距召回、IDSW/continuity、tracker backend、CPU/GPU P95 budget，不改写 `global_track_id` |
 | D5 | IBVS/间歇可见性重捕获对照 | IEEE TIE/TAES/arXiv | lost/reacquire 时间下降，误锁仍为 0 |
 | D5 | 多模态友方识别 replay adapter | OpenDroneID/MAVLink/DDS/AprilTag 规划 | 至少一个 replay path 输出 verified/stale/unverified |
 | D5 | 完整相机在线标定/畸变校正 | Kalibr/OpenCV | 标定样本中重投影误差下降，distortion 进入 projection |
 | D6 | COURAGEOUS/MDPI/OCEF 标准化报告 | WebSearch patch 最大收获 | D6 报告增加标准指标映射、测试阶段、复现纪律字段 |
 | D6 | 基线对比和统计显著性 | MLflow/OCEF/pytest-benchmark | baseline vs enhanced、多 seed 均值/方差/置信区间 |
 | D6 | 场景库管理和 CI 回归摘要 | OCEF、MLflow、CI 工程实践 | scenario tags、difficulty、expected failure modes、test matrix |
+| Main/D6 | 分阶段实时性能 multi-seed 标定 | pytest-benchmark/OCEF 复现纪律 | 使用两层 timing JSONL 分别报告阶段 mean/P95/max、dominant stage 和预算违例；同配置 2v2/M5N2 优化后复验 100 ms，禁止跨层求和 |
 | D7 | 3D True PN/APN/ADRC 对照 | Aerospace S&T、IECON、PX4 L1 | 作为 benchmark，不替换默认 PN/PNG，不绕过 D3/D4/D5 gate |
 | D7 | 预测拦截点和动力学补偿 | 导引工程实践 | predicted intercept point、命令饱和、响应延迟写入 guidance log |
 | Main/System | ROS 2 replay 原型 | ROS 2/RTI/DDS patch | 离线 replay 节点原型，不重写当前 Python runtime |
@@ -317,7 +461,7 @@ P2 是较重外部依赖、生产化架构、高阶算法和长期对照。P2 �
 
 1. **已完成的 P0**：保持回归，不重复列为新 blocker。
 2. **已完成的 P1 接口补齐**：保持回归，后续不要重复列为“缺字段/缺接口”。
-3. **剩余 P1 标定项**：M5N2 paired、1-5 帧 dropout 和真实 `png_ttc` 多 seed 已执行，不再列为“未运行”。当前开放项是 M5N2 candidate 退化与 coalition 0/10 的根因、D2 dense crossing ID 连续性、`png_ttc` area-jump/clipping 受控覆盖、二级真实通信时序、YOLO/MOT 真实图像阈值和 D6 长期趋势治理。
+3. **剩余 P1 标定项**：M5N2 paired、1-5 帧 dropout、真实 `png_ttc` 多 seed 和 D5 原生 MOT history 代码修复已执行，不再列为“未运行/未实现”。当前开放项是 M5N2 candidate 退化与 coalition 0/10 的根因、D2 dense crossing ID 连续性、`png_ttc` area-jump/clipping 受控覆盖、二级真实通信时序、D5 真实图像阈值与多 seed 准入、D6 长期趋势治理。
 4. **P2**：作为后续子智能体任务来源，由 main 分发给对应 D-agent 后再同步模块 GAP/PLAN。
 
 ## 10. 建议执行顺序

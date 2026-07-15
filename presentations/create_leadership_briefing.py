@@ -291,9 +291,9 @@ def create_deck() -> Path:
     add_rect(slide, 0.72, 3.2, 5.3, 2.15, "F6F7F8", LINE, False)
     rows = [
         ("汇报范围", "总体架构、D1-D7 模块、AirSim 验证、下一阶段计划"),
-        ("当前阶段", "P1 合同层闭合，物理拦截闭环专项验证中"),
+        ("当前阶段", "P1 性能收敛：2v2 闭合，M5N2 协同仍需标定"),
         ("验证环境", "质点模型 + AirSim ComputerVision / SimpleFlight"),
-        ("汇报日期", "2026 年 7 月"),
+        ("汇报日期", "2026 年 7 月 13 日"),
     ]
     for idx, (label, value) in enumerate(rows):
         y = 3.42 + idx * 0.44
@@ -303,8 +303,19 @@ def create_deck() -> Path:
             line = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.95), Inches(y + 0.32), Inches(4.75), Inches(0.01))
             set_fill(line, LINE)
             line.line.fill.background()
-    add_picture_contain(slide, ASSETS["air_3d"], 6.55, 0.72, 6.0, 5.9, True, WHITE)
-    add_text(slide, "图：AirSim 受控拦截三维轨迹（历史验证样例）", 7.0, 6.65, 5.1, 0.24, 9, MUTED, False, PP_ALIGN.CENTER)
+    add_rect(slide, 6.55, 0.72, 6.0, 5.9, "F7F9FA", LINE, False)
+    add_text(slide, "体系运行闭环", 6.92, 1.02, 2.0, 0.34, 15, INK, True)
+    add_text(slide, "中心主控 · 二级连续 · 分布式保底", 9.0, 1.05, 3.05, 0.28, 10.5, MUTED, False, PP_ALIGN.RIGHT)
+    add_node(slide, "地面雷达 / 多源观测", "位置、速度、协方差\n双时间戳", 6.95, 1.7, 2.25, 1.0, TEAL, PALE_TEAL, 12)
+    add_node(slide, "中心 C2", "融合、关联、分配\n授权与审计", 9.85, 1.7, 2.25, 1.0, BLUE, PALE_BLUE, 12)
+    add_arrow(slide, 9.25, 2.2, 9.78, 2.2, MUTED, 1.4)
+    add_node(slide, "机动高空侦察节点", "区域光电、通信中继\n中心失效后二级接管", 8.4, 3.2, 2.45, 1.05, PURPLE, PALE_PURPLE, 11.5)
+    add_arrow(slide, 10.95, 2.75, 10.2, 3.12, MUTED, 1.2)
+    add_node(slide, "拦截无人机集群", "D5 末端配准\nD7 位置 PN → 视觉 PNG", 9.85, 4.85, 2.25, 1.05, GREEN, PALE_GREEN, 11.5)
+    add_node(slide, "目标群", "交叉、机动、遮挡\n高威胁 M 对 N", 6.95, 4.85, 1.9, 1.05, RED, PALE_RED, 11.5)
+    add_arrow(slide, 9.1, 5.38, 9.78, 5.38, RED, 1.4)
+    add_arrow(slide, 9.65, 4.3, 10.35, 4.78, GREEN, 1.2)
+    add_badge(slide, "统一 GlobalTrack / AssignmentPlan / 版本与身份门控", 7.0, 6.12, 5.05, BLUE, PALE_BLUE, 9.3)
     add_text(slide, "说明：本项目处于科研仿真阶段，不涉及实装处置与自动授权。", 0.75, 6.65, 5.4, 0.24, 9.5, MUTED)
     add_footer(slide, 1, "MSM C-UAS · 阶段技术汇报")
 
@@ -328,13 +339,13 @@ def create_deck() -> Path:
         add_text(slide, value, 2.22, y + 0.15, 5.25, 0.32, 10.5, INK)
     add_text(slide, "2. 阶段状态", 8.05, 1.72, 2.1, 0.34, 15, INK, True)
     status_rows = [
-        ("P1 合同层", "完成", GREEN),
-        ("CV 双 primary", "8/10", GREEN),
-        ("二级/peer 联盟", "ACK 3/3", TEAL),
-        ("ID Switch / 错误重复锁", "0", BLUE),
-        ("SimpleFlight 物理命中", "0/30", RED),
-        ("末端检测超时", "24/30", RED),
-        ("P2 外部算法", "隔离对照", PURPLE),
+        ("模块与运行时回归", "1169 通过", GREEN),
+        ("严格 crossing", "IDSW -54.6%", BLUE),
+        ("D4 故障矩阵", "60/60", TEAL),
+        ("2v2 PNG-TTC", "20/20", GREEN),
+        ("M5N2 最佳联盟", "5/10", RED),
+        ("原生 MOT 准入", "0 个", RED),
+        ("P0 安全违规", "0", PURPLE),
     ]
     add_rect(slide, 8.05, 2.15, 4.55, 3.35, WHITE, LINE, False)
     for idx, (label, value, color) in enumerate(status_rows):
@@ -347,7 +358,7 @@ def create_deck() -> Path:
             line.line.fill.background()
     add_rect(slide, 0.7, 5.85, 11.9, 0.72, "F2F4F6", LINE, False)
     add_text(slide, "下一阶段主任务", 0.95, 6.05, 1.75, 0.28, 12, BLUE, True)
-    add_text(slide, "完成末端检测持续性、D5 锁定、D7 切换和物理接近闭环的分层标定。", 2.75, 6.02, 9.35, 0.32, 13, INK, True)
+    add_text(slide, "把第二 primary 的持续获取与 D5 锁定率提升到可支撑 M5N2 联盟 8/10。", 2.75, 6.02, 9.35, 0.32, 13, INK, True)
     add_footer(slide, 2)
 
     # 03 Scenario
@@ -508,13 +519,26 @@ def create_deck() -> Path:
     add_footer(slide, 10)
 
     # 11 D2 result
-    slide = new_slide(prs, "D2 验证结果", "身份连续性已经成为系统级硬指标，而不是事后观察项", "MODULE D2")
-    add_picture_contain(slide, ASSETS["d2_result"], 0.65, 1.7, 7.45, 4.95)
-    add_metric(slide, "0", "CV 10-seed ID Switch", 8.55, 1.95, 1.85, BLUE)
-    add_metric(slide, "1.0", "P2 replay continuity", 10.6, 1.95, 1.85, GREEN)
-    add_card(slide, "主线路径", "NumPy/SciPy GNN/Hungarian 端到端 replay 可运行，保持轻量和可解释。", 8.55, 3.55, 3.9, 1.1, BLUE, PALE_BLUE, 13, 10.5)
-    add_card(slide, "P2 边界", "Stone Soup / FilterPy 目前只是对象 adapter smoke，不是完整 JPDA/MHT tracker。", 8.55, 4.9, 3.9, 1.1, PURPLE, PALE_PURPLE, 13, 10.5)
-    add_text(slide, "下一步：真实长时 crossing / 遮挡 / 漏检 replay 下校准风险阈值", 8.6, 6.27, 3.8, 0.4, 11, AMBER, True, PP_ALIGN.CENTER)
+    slide = new_slide(prs, "D2 严格交叉场景验证", "4 m / 2 m 间距各 20 seeds；在线控制链不使用 AirSim truth ID", "MODULE D2")
+    add_rect(slide, 0.7, 1.75, 7.1, 4.65, WHITE, LINE, False)
+    add_text(slide, "身份指标对比", 1.0, 1.98, 2.2, 0.35, 15, BLUE, True)
+    add_text(slide, "ID Switch（越低越好）", 1.0, 2.58, 2.5, 0.28, 11.5, MUTED, True)
+    add_rect(slide, 1.0, 3.0, 4.9, 0.42, "EEF1F4", "EEF1F4", False, 0)
+    add_rect(slide, 1.0, 3.0, 4.9, 0.42, PALE_RED, RED, False, 0)
+    add_text(slide, "基线 GNN  1.3583", 1.15, 3.08, 2.2, 0.24, 10.5, RED, True)
+    add_rect(slide, 1.0, 3.58, 2.22, 0.42, PALE_BLUE, BLUE, False, 0)
+    add_text(slide, "候选 GNN  0.6167", 1.15, 3.66, 2.2, 0.24, 10.5, BLUE, True)
+    add_badge(slide, "下降 54.6%", 5.95, 3.28, 1.35, BLUE, PALE_BLUE)
+    add_text(slide, "身份连续性（越高越好）", 1.0, 4.45, 2.5, 0.28, 11.5, MUTED, True)
+    add_rect(slide, 1.0, 4.88, 5.55, 0.38, PALE_TEAL, TEAL, False, 0)
+    add_text(slide, "0.9810", 6.68, 4.94, 0.62, 0.24, 10.5, TEAL, True, PP_ALIGN.RIGHT)
+    add_rect(slide, 1.0, 5.45, 5.57, 0.38, PALE_GREEN, GREEN, False, 0)
+    add_text(slide, "0.9840", 6.68, 5.51, 0.62, 0.24, 10.5, GREEN, True, PP_ALIGN.RIGHT)
+    add_text(slide, "P95 循环时延：24 ms", 1.0, 6.0, 2.7, 0.28, 11.5, INK, True)
+    add_metric(slide, "40", "真实 AirSim episode", 8.2, 1.92, 1.8, BLUE)
+    add_metric(slide, "10200", "离线 truth 样本", 10.25, 1.92, 2.0, TEAL)
+    add_card(slide, "当前结论", "IDSW 明显下降，但 continuity 只从 0.9810 提升到 0.9840，未达到冻结的 +0.10 晋级门槛。", 8.2, 3.45, 4.05, 1.25, AMBER, PALE_AMBER, 13, 10.5)
+    add_card(slide, "主线不变", "继续使用 GNN/Hungarian；轻量 JPDA、Stone Soup 和 FilterPy 保持离线对照，不进入默认运行时。", 8.2, 4.95, 4.05, 1.25, BLUE, PALE_BLUE, 13, 10.5)
     add_footer(slide, 11)
 
     # 12 D3 intro
@@ -557,8 +581,8 @@ def create_deck() -> Path:
     add_picture_contain(slide, ASSETS["d3_result"], 0.65, 1.72, 7.05, 4.82)
     add_metric(slide, "1.0", "需求满足率（合同场景）", 8.05, 1.95, 2.0, GREEN)
     add_metric(slide, "0", "错误重复分配", 10.3, 1.95, 2.0, BLUE)
-    add_card(slide, "P1 已完成", "demand-slot、增量规划、role-aware primary、current-binding 与版本拒绝。", 8.05, 3.55, 4.25, 1.05, GREEN, PALE_GREEN, 13, 10.5)
-    add_card(slide, "P1 仍开放", "真实动态 3v5/5v3、目标新增/资源失效、反馈权重和长期迟滞标定。", 8.05, 4.82, 4.25, 1.05, AMBER, PALE_AMBER, 13, 10.5)
+    add_card(slide, "P1 已完成", "demand-slot、增量规划、role-aware primary、current-binding、版本拒绝与 M5N2 候选 profile。", 8.05, 3.55, 4.25, 1.05, GREEN, PALE_GREEN, 13, 10.5)
+    add_card(slide, "P1 仍开放", "逐时刻 plan/coalition history、D5 反馈权重、动态 N/M 与长期迟滞标定。", 8.05, 4.82, 4.25, 1.05, AMBER, PALE_AMBER, 13, 10.5)
     add_badge(slide, "默认：SciPy Hungarian", 8.05, 6.12, 2.25, AMBER, PALE_AMBER)
     add_badge(slide, "P2：OR-Tools 仅接口", 10.55, 6.12, 1.95, PURPLE, PALE_PURPLE, 9.2)
     add_footer(slide, 14)
@@ -589,17 +613,23 @@ def create_deck() -> Path:
     add_footer(slide, 15)
 
     # 16 D4 evidence
-    slide = new_slide(prs, "D4 验证结果", "二级接管、完全分布式和缺 ACK 负例均已形成结构化证据", "MODULE D4")
-    add_picture_contain(slide, ASSETS["d4_curve"], 0.65, 1.72, 6.4, 3.65)
-    add_rect(slide, 7.35, 1.75, 5.3, 3.55, WHITE, LINE)
-    add_text(slide, "联盟状态验收", 7.65, 1.98, 2.0, 0.35, 15, PURPLE, True)
-    add_status_dot(slide, 7.75, 2.65, TEAL, "二级节点接管", "ACK 3/3")
-    add_status_dot(slide, 7.75, 3.35, GREEN, "完全分布式 peer", "ACK 3/3")
-    add_status_dot(slide, 7.75, 4.05, RED, "缺 ACK 场景", "2/3 → aborted")
-    add_text(slide, "缺 ACK 时三个 T001 成员 hold_for_review，D7 许可为 0。", 7.75, 4.62, 4.45, 0.38, 11, MUTED)
-    add_card(slide, "已完成", "commit / ACK / epoch / lease 正负例，secondary 与 peer 均可成为计划 owner。", 0.8, 5.62, 3.65, 0.85, GREEN, PALE_GREEN, 12.5, 10)
-    add_card(slide, "仍需", "成员退出与补位、分区恢复、中心恢复 digest、误降级率的完整扰动矩阵。", 4.65, 5.62, 3.65, 0.85, AMBER, PALE_AMBER, 12.5, 10)
-    add_card(slide, "P2 边界", "MIT/CA-CBBA 未接入；当前仍为本地轻量 CBBA 与原子 commit 主线。", 8.5, 5.62, 3.65, 0.85, PURPLE, PALE_PURPLE, 12.5, 10)
+    slide = new_slide(prs, "D4 运行时故障矩阵", "六类 episode-time 故障场景，共 60 case；安全结果全部通过", "MODULE D4")
+    add_rect(slide, 0.7, 1.75, 7.3, 4.65, WHITE, LINE, False)
+    add_text(slide, "每类 10 seeds 的安全结果", 1.0, 2.0, 3.2, 0.35, 15, PURPLE, True)
+    fault_rows = [
+        ("中心正常", "10/10"), ("中心失效", "10/10"), ("中心+二级失效", "10/10"),
+        ("0.5 s 延迟", "10/10"), ("30% 丢包", "10/10"), ("分区恢复", "10/10"),
+    ]
+    for idx, (label, value) in enumerate(fault_rows):
+        y = 2.62 + idx * 0.56
+        add_text(slide, label, 1.02, y + 0.05, 1.65, 0.24, 10.5, INK, True)
+        add_rect(slide, 2.72, y, 4.1, 0.34, PALE_GREEN, GREEN, False, 0)
+        add_text(slide, value, 6.95, y + 0.04, 0.55, 0.24, 10.5, GREEN, True, PP_ALIGN.RIGHT)
+    add_metric(slide, "0", "错误主动降级", 8.35, 1.92, 1.75, GREEN)
+    add_metric(slide, "0", "重复 plan owner", 10.35, 1.92, 1.75, BLUE)
+    add_metric(slide, "0", "分裂脑防护失败", 8.35, 3.35, 1.75, PURPLE)
+    add_metric(slide, "60/60", "安全结果通过", 10.35, 3.35, 1.75, TEAL)
+    add_card(slide, "验证边界", "当前是 AirSim episode 时钟下的延迟、丢包、失联与恢复注入；不能等价为真实 RF、时钟漂移和重传验证。", 8.35, 4.88, 3.75, 1.32, AMBER, PALE_AMBER, 12.5, 10.2)
     add_footer(slide, 16)
 
     # 17 D5 geometry
@@ -645,17 +675,30 @@ def create_deck() -> Path:
     add_footer(slide, 18)
 
     # 19 D5 results
-    slide = new_slide(prs, "D5 验证结果与当前断点", "合同层已经形成，但视觉持续性仍是物理闭环首要瓶颈", "MODULE D5")
-    add_picture_contain(slide, ASSETS["d5_timeline"], 0.65, 1.72, 7.2, 4.85)
-    add_metric(slide, "8/10", "双 primary 视觉合同", 8.15, 1.88, 1.9, GREEN)
-    add_metric(slide, "0", "错误 duplicate", 10.3, 1.88, 1.9, BLUE)
-    add_card(slide, "P2 几何对照", "合成 calibration / solvePnP 后投影 RMSE：约 24.0 px → 1.63 px。", 8.15, 3.45, 4.05, 1.02, PURPLE, PALE_PURPLE, 13, 10.5)
-    add_card(slide, "当前断点", "ComputerVision control_allowed=0；SimpleFlight 24/30 active pair 发生 terminal_detection_timeout。", 8.15, 4.7, 4.05, 1.02, RED, PALE_RED, 13, 10.5)
-    add_text(slide, "下一步：真实图像下持续 detection、MOT 稳定性、相机外参漂移与 D7 gate 联合标定", 8.2, 5.98, 3.95, 0.5, 11, AMBER, True, PP_ALIGN.CENTER)
+    slide = new_slide(prs, "D5 末端视觉漏斗与当前断点", "M5N2 共 120 个 active-primary 机会；可见不等于关联，更不等于控制许可", "MODULE D5")
+    stages = [
+        ("已分配", 120, 1.00, BLUE), ("可见", 120, 1.00, TEAL),
+        ("配准/锁定", 74, 0.617, AMBER), ("合同允许", 35, 0.292, PURPLE),
+        ("控制允许", 7, 0.058, RED),
+    ]
+    add_rect(slide, 0.7, 1.75, 7.15, 4.7, WHITE, LINE, False)
+    add_text(slide, "active-primary 漏斗", 1.0, 2.0, 2.4, 0.35, 15, RED, True)
+    for idx, (label, count, ratio, color) in enumerate(stages):
+        y = 2.65 + idx * 0.67
+        add_text(slide, label, 1.0, y + 0.07, 1.25, 0.26, 11, INK, True)
+        add_rect(slide, 2.32, y, 4.15, 0.4, "EEF1F4", "EEF1F4", False, 0)
+        add_rect(slide, 2.32, y, max(0.12, 4.15 * ratio), 0.4, color, color, False, 0)
+        add_text(slide, f"{count}/120", 6.58, y + 0.06, 0.75, 0.24, 10.5, color, True, PP_ALIGN.RIGHT)
+    add_text(slide, "物理接近 62/120 不反推前置合同；D6 保持四层结果独立。", 1.0, 6.06, 6.4, 0.28, 10.5, MUTED, True)
+    add_metric(slide, "0", "global ID 改写", 8.25, 1.9, 1.75, BLUE)
+    add_metric(slide, "0", "在线 truth 使用", 10.25, 1.9, 1.75, GREEN)
+    add_card(slide, "原生 MOT 筛选", "ByteTrack / BoT-SORT 在 20 m 可连续跟踪且 IDSW=0；P95 约 7.4 / 16.2 ms。", 8.25, 3.42, 3.75, 1.15, TEAL, PALE_TEAL, 13, 10.3)
+    add_card(slide, "未通过准入", "20 m precision/recall 约 0.26-0.33；30/50 m 无检测，18 个工况中 0 个候选进入 confirmation。", 8.25, 4.78, 3.75, 1.28, RED, PALE_RED, 13, 10.3)
+    add_text(slide, "默认仍使用 AirSim simGetDetections；YOLO/MOT 不因已接线而自动晋级。", 8.3, 6.28, 3.65, 0.36, 10.5, AMBER, True, PP_ALIGN.CENTER)
     add_footer(slide, 19)
 
     # 20 D7 guidance
-    slide = new_slide(prs, "D7 比例导引：雷达中段到视觉末端", "保持经典 PN/PNG 核心公式，重点完善安全切换条件", "MODULE D7")
+    slide = new_slide(prs, "D7 比例导引：雷达中段到视觉末端", "保持经典 PN/PNG 核心公式，切换由 D3/D4/D5 合同和平台能力共同约束", "MODULE D7")
     add_module_banner(slide, "D7", "比例导引", "位置 PN → 视觉 PNG", color=GREEN, fill=PALE_GREEN)
     add_phase_band(slide, 0.85, 3.0, 2.2, "雷达中段 PN", "GlobalTrack 位置/速度", BLUE, PALE_BLUE)
     add_phase_band(slide, 3.45, 3.0, 2.2, "交接准备", "距离/检测框稳定", AMBER, PALE_AMBER)
@@ -666,11 +709,10 @@ def create_deck() -> Path:
     add_arrow(slide, 8.28, 3.45, 8.6, 3.45, MUTED, 1.4)
     add_card(slide, "切换必须同时满足", "分配一致、联盟 committed、D5 locked、相机质量、LOS 稳定、机动余量和剩余窗口。", 1.0, 4.55, 5.4, 1.15, GREEN, PALE_GREEN, 13, 10.5)
     add_card(slide, "任何一项不满足", "保持 radar_midcourse / hold / reacquire；不得绕过门控，不得激活 standby reserve。", 6.75, 4.55, 5.4, 1.15, RED, PALE_RED, 13, 10.5)
-    add_badge(slide, "P2：3D PN", 2.1, 6.15, 1.55, BLUE, PALE_BLUE)
-    add_badge(slide, "True PN", 3.9, 6.15, 1.35, TEAL, PALE_TEAL)
-    add_badge(slide, "APN", 5.5, 6.15, 1.2, GREEN, PALE_GREEN)
-    add_badge(slide, "FRPN 研究近似", 6.95, 6.15, 2.1, PURPLE, PALE_PURPLE)
-    add_text(slide, "P2 仅离线质点对照，未替换默认位置 PN / 视觉 PNG", 9.25, 6.18, 3.15, 0.28, 10, MUTED, True, PP_ALIGN.CENTER)
+    add_badge(slide, "2v2 PNG-TTC：20/20", 1.35, 6.15, 2.35, GREEN, PALE_GREEN)
+    add_badge(slide, "M5N2 最佳联盟：5/10", 3.95, 6.15, 2.55, RED, PALE_RED)
+    add_badge(slide, "P2：3D / True PN / APN", 6.75, 6.15, 2.65, PURPLE, PALE_PURPLE, 9.3)
+    add_text(slide, "P2 只做离线质点对照，不替换位置 PN / 视觉 PNG", 9.55, 6.18, 2.8, 0.28, 9.5, MUTED, True, PP_ALIGN.CENTER)
     add_footer(slide, 20)
 
     # 21 Full-flow simulation
@@ -702,17 +744,27 @@ def create_deck() -> Path:
     add_badge(slide, "control_allowed", 5.6, 5.97, 1.8, TEAL, PALE_TEAL, 9.2)
     add_badge(slide, "mode_switched", 7.65, 5.97, 1.65, AMBER, PALE_AMBER, 9.2)
     add_badge(slide, "physical_intercept", 9.55, 5.97, 2.15, GREEN, PALE_GREEN, 9.2)
-    add_text(slide, "D6 只消费日志，不参与控制。", 4.3, 6.7, 4.8, 0.24, 10.5, MUTED, True, PP_ALIGN.CENTER)
+    add_text(slide, "本轮统一展开：D2 3660 行、D4 60 行、D5 160 行、D7 164 行；缺失数据保持 unavailable。", 2.2, 6.67, 8.9, 0.26, 10.5, MUTED, True, PP_ALIGN.CENTER)
     add_footer(slide, 22)
 
     # 23 validation
-    slide = new_slide(prs, "当前 AirSim 验证结论", "合同层达标，物理闭环尚未达标：两者必须分开汇报", "VALIDATION")
-    add_picture_contain(slide, ASSETS["cv_accept"], 0.65, 1.72, 6.0, 3.0)
-    add_picture_contain(slide, ASSETS["sf_diag"], 6.85, 1.72, 5.85, 3.0)
-    add_card(slide, "ComputerVision 合同层", "双 primary 8/10；IDSW=0；错误重复锁=0；二级/peer ACK 3/3；缺 ACK 正确 aborted。", 0.75, 5.0, 3.75, 1.15, GREEN, PALE_GREEN, 13, 10.5)
-    add_card(slide, "SimpleFlight 物理层", "10 seeds / 30 active pair / 0 命中；24 次末端检测超时；平均最小距离 29.849 m。", 4.8, 5.0, 3.75, 1.15, RED, PALE_RED, 13, 10.5)
-    add_card(slide, "正确解释", "CV 证明合同与安全门控；15 秒、2 Hz 只定位断点，不能评价 PN/PNG 优劣。", 8.85, 5.0, 3.75, 1.15, AMBER, PALE_AMBER, 13, 10.5)
-    add_text(slide, "下一轮优先：相机取景 → detection 持续性 → D5 lock → D7 gate → closing speed", 1.2, 6.5, 10.9, 0.35, 13, INK, True, PP_ALIGN.CENTER)
+    slide = new_slide(prs, "2026-07-13 AirSim 验证总览", "同一套运行时分别验证身份、降级、协同闭环和真实视觉后端", "VALIDATION")
+    experiment_cards = [
+        ("严格 dense crossing", "40 episode\nIDSW 下降 54.6%\n候选未晋级", BLUE, PALE_BLUE),
+        ("D4 故障矩阵", "60 case\n安全结果 60/60\n误降级/重复 owner=0", PURPLE, PALE_PURPLE),
+        ("M5N2 协同闭环", "40 episode\n最佳 profile 5/10\n目标门槛 8/10", RED, PALE_RED),
+        ("原生 MOT 筛选", "18 case\n20 m 可跟踪\n30/50 m 无检测", AMBER, PALE_AMBER),
+    ]
+    for idx, (title, body, color, fill) in enumerate(experiment_cards):
+        x = 0.75 + idx * 3.08
+        add_card(slide, title, body, x, 1.82, 2.72, 2.0, color, fill, 14, 11)
+    add_rect(slide, 0.75, 4.2, 11.95, 1.18, WHITE, LINE, False)
+    add_text(slide, "系统证据结论", 1.0, 4.45, 1.8, 0.32, 15, INK, True)
+    add_text(slide, "P0 安全合同保持：reserve 越权=0、global_track_id 改写=0、在线 truth 使用=0。", 2.75, 4.42, 9.35, 0.35, 13, GREEN, True)
+    add_text(slide, "P1 主要断点：第二 primary 的 D5 锁定与末端 detection acquisition timeout。", 2.75, 4.85, 9.35, 0.35, 13, RED, True)
+    add_card(slide, "已经证明", "运行时合同、版本/身份安全、故障注入与统一离线验收可重复执行。", 0.85, 5.75, 3.55, 0.85, GREEN, PALE_GREEN, 12.5, 10.2)
+    add_card(slide, "尚未证明", "M5N2 在真实视觉链路下达到 8/10；原生 YOLO/MOT 可替代 detect。", 4.82, 5.75, 3.55, 0.85, RED, PALE_RED, 12.5, 10.2)
+    add_card(slide, "默认策略", "GNN/Hungarian、SciPy、保守 D4/D5、AirSim detect、现有 PN/PNG 不变。", 8.78, 5.75, 3.55, 0.85, BLUE, PALE_BLUE, 12.5, 10.2)
     add_footer(slide, 23)
 
     # 24 maturity
@@ -724,46 +776,47 @@ def create_deck() -> Path:
         add_rect(slide, x, 1.78, w, 0.5, INK, INK, False)
         add_text(slide, label, x + 0.05, 1.91, w - 0.1, 0.22, 11, WHITE, True, PP_ALIGN.CENTER)
     rows = [
-        ("D1", "完成", "长 replay / CI 标定", "未启动第三方"),
-        ("D2", "完成", "真实 crossing replay", "Stone Soup/FilterPy adapter"),
-        ("D3", "完成", "动态非等量标定", "OR-Tools 仅接口"),
-        ("D4", "完成", "扰动矩阵 / 重构", "外部 CBBA 未接入"),
-        ("D5", "8/10", "持续检测 / control gate", "PnP 合成对照"),
-        ("D6", "完成", "长期场景库 / CI", "motmetrics 两帧 smoke"),
-        ("D7", "完成", "0/30 物理闭环", "3D/APN/FRPN 质点"),
+        ("D1", "完成", "长 replay / 协方差治理", "FilterPy/Stone Soup 可选"),
+        ("D2", "完成", "候选未过晋级门槛", "JPDA/MHT 离线对照"),
+        ("D3", "完成", "plan history / 动态 N/M", "OR-Tools 仅接口"),
+        ("D4", "60/60", "真实 RF / 时钟 / 重传", "外部 CBBA 未接入"),
+        ("D5", "74/120", "第二 primary / 30-50 m", "MOT 0 个准入"),
+        ("D6", "完成", "长期趋势 / schema 治理", "motmetrics 可选"),
+        ("D7", "2v2 20/20", "M5N2 最佳 5/10", "3D/APN/FRPN 质点"),
     ]
     for idx, row in enumerate(rows):
         y = 2.35 + idx * 0.59
         fill = WHITE if idx % 2 == 0 else "EEF1F4"
         for x, w, text in zip(col_x, widths, row):
             add_rect(slide, x, y, w, 0.52, fill, LINE, False, 0.6)
-            color = GREEN if text in {"完成", "8/10"} else INK
-            add_text(slide, text, x + 0.06, y + 0.12, w - 0.12, 0.25, 10.2, color, text in {"完成", "8/10"}, PP_ALIGN.CENTER)
-    add_card(slide, "总体判断", "P1 合同层可支撑继续仿真集成；P1 物理闭环是下一阶段主线；P2 只做隔离对照，不替换默认算法。", 1.05, 6.62, 11.2, 0.5, BLUE, PALE_BLUE, 11.5, 9.5)
+            color = GREEN if text in {"完成", "60/60", "2v2 20/20"} else INK
+            add_text(slide, text, x + 0.06, y + 0.12, w - 0.12, 0.25, 10.2, color, text in {"完成", "60/60", "2v2 20/20"}, PP_ALIGN.CENTER)
+    add_rect(slide, 1.05, 6.55, 11.2, 0.48, PALE_BLUE, BLUE, False)
+    add_text(slide, "总体判断：当前无运行级 P0 blocker；P1 主线转为 M5N2 第二 primary 视觉获取与联盟完成率；P2 不替换默认算法。", 1.28, 6.67, 10.75, 0.24, 10.5, BLUE, True, PP_ALIGN.CENTER)
     add_footer(slide, 24)
 
     # 25 roadmap
     slide = new_slide(prs, "下一阶段工作计划与资源建议", "先关闭物理闭环，再进入更真实飞控和硬件联试", "ROADMAP")
-    add_phase_band(slide, 0.8, 1.85, 2.75, "阶段 1：视觉漏斗", "检测持续性 / MOT / 外参", RED, PALE_RED)
-    add_phase_band(slide, 3.85, 1.85, 2.75, "阶段 2：物理闭环", "90 s / 更高频 / 多 seed", AMBER, PALE_AMBER)
-    add_phase_band(slide, 6.9, 1.85, 2.75, "阶段 3：鲁棒协同", "成员重构 / 网络分区 / 恢复", TEAL, PALE_TEAL)
-    add_phase_band(slide, 9.95, 1.85, 2.55, "阶段 4：工程化", "PX4/ROS2/硬件在环", BLUE, PALE_BLUE)
+    add_phase_band(slide, 0.8, 1.85, 2.75, "阶段 1：第二主资源", "持续 detection / D5 lock", RED, PALE_RED)
+    add_phase_band(slide, 3.85, 1.85, 2.75, "阶段 2：M5N2 收敛", "最佳 profile 达到 8/10", AMBER, PALE_AMBER)
+    add_phase_band(slide, 6.9, 1.85, 2.75, "阶段 3：通信实装", "时钟 / 带宽 / 乱序 / 恢复", TEAL, PALE_TEAL)
+    add_phase_band(slide, 9.95, 1.85, 2.55, "阶段 4：工程化", "PX4 / ROS 2 / 硬件在环", BLUE, PALE_BLUE)
     add_arrow(slide, 3.58, 2.28, 3.82, 2.28, MUTED, 1.5)
     add_arrow(slide, 6.63, 2.28, 6.87, 2.28, MUTED, 1.5)
     add_arrow(slide, 9.68, 2.28, 9.92, 2.28, MUTED, 1.5)
     add_text(slide, "资源与组织建议", 0.9, 3.35, 1.8, 0.35, 16, INK, True)
     decisions = [
-        ("资源聚焦", "短期停止扩展新算法名录，集中攻克 D5/D7 物理闭环。", RED, PALE_RED),
-        ("验证门槛", "以长时多 seed、分层失败原因和可复现报告作为阶段验收。", GREEN, PALE_GREEN),
-        ("平台路线", "AirSim 继续作为统一仿真入口；P2 依赖保持隔离，不污染主线。", BLUE, PALE_BLUE),
-        ("工程准备", "同步冻结传感器、通信、算力和相机标定接口，为后续硬件在环做准备。", TEAL, PALE_TEAL),
+        ("资源聚焦", "优先提高第二 primary 获取率，不再把二级全局观察作为远距分配前置条件。", RED, PALE_RED),
+        ("验证门槛", "M5N2 最佳 profile 至少 8/10，且身份、版本和 reserve 安全违规保持 0。", GREEN, PALE_GREEN),
+        ("算法准入", "ByteTrack/BoT-SORT 先解决 30/50 m 召回，再进入多 seed confirmation。", BLUE, PALE_BLUE),
+        ("工程准备", "冻结相机 K/R/t、时间同步、链路延迟与平台机动能力配置，支撑硬件在环。", TEAL, PALE_TEAL),
     ]
     for idx, (title, body, color, fill) in enumerate(decisions):
         x = 0.9 + (idx % 2) * 6.0
         y = 3.9 + (idx // 2) * 1.18
         add_card(slide, title, body, x, y, 5.55, 0.95, color, fill, 13, 10.5)
     add_rect(slide, 1.05, 6.38, 11.2, 0.58, DARK, DARK)
-    add_text(slide, "阶段验收目标：物理闭环完成，失败原因可分层统计，实验结果可复现", 1.3, 6.53, 10.7, 0.28, 15, WHITE, True, PP_ALIGN.CENTER)
+    add_text(slide, "阶段验收目标：M5N2 联盟完成率达到 8/10，P0 安全指标继续保持零违规", 1.3, 6.53, 10.7, 0.28, 15, WHITE, True, PP_ALIGN.CENTER)
     add_footer(slide, 25, "MSM C-UAS · 领导汇报")
 
     # 26 Appendix: node capability targets
@@ -815,7 +868,7 @@ def create_deck() -> Path:
         add_text(slide, label, x + 0.06, 1.89, w - 0.12, 0.24, 10.5, WHITE, True, PP_ALIGN.CENTER)
     link_rows = [
         ("C2—雷达", "<10 Mbps", "1 GbE/专线 + 时间同步", "雷达端到端 <100-200 ms"),
-        ("C2—二级节点", "1-10 Mbps metadata", "系留 100 Mbps + 无线备份", "heartbeat stale 约 2 s"),
+        ("C2—二级节点", "1-10 Mbps metadata", "10-100 Mbps MANET + 双链路备份", "heartbeat stale 约 2 s"),
         ("二级—拦截机", "1-10 Mbps metadata", "10-100 Mbps MANET；视频定向", "跨相机 skew <50-100 ms"),
         ("C2—拦截机", "0.5-2 Mbps/架", "控制/状态 QoS 高于视频", "计划与 bbox <100-200 ms"),
         ("拦截机—拦截机", "0.1-1 Mbps/架", "低时延 MANET；丢包可观测", "CBBA round 约 0.5 s"),
