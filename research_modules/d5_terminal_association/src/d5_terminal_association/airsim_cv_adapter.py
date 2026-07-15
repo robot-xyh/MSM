@@ -517,6 +517,22 @@ def local_visual_tracks_from_sim_detections(
                 metadata={
                     "resource_id": resource_id,
                     "camera_id": camera_id,
+                    "stream_id": str(
+                        _get_any(detection, "stream_id", "stream_key")
+                        or f"{resource_id}/{camera_id}"
+                    ),
+                    "detector_backend": _get_any(
+                        detection,
+                        "detector_backend",
+                        "detector",
+                    )
+                    or detection_source,
+                    "tracker_backend": _get_any(
+                        detection,
+                        "tracker_backend",
+                        "tracker",
+                    )
+                    or detection_source,
                     "image_size": image_size,
                 },
             )
@@ -611,6 +627,22 @@ def local_visual_tracks_from_offline_yolo_bytetrack(
                 metadata={
                     "resource_id": resource_id,
                     "camera_id": camera_id,
+                    "stream_id": str(
+                        _get_any(detection, "stream_id", "stream_key")
+                        or f"{resource_id}/{camera_id}"
+                    ),
+                    "detector_backend": _get_any(
+                        detection,
+                        "detector_backend",
+                        "detector",
+                    )
+                    or source_name,
+                    "tracker_backend": _get_any(
+                        detection,
+                        "tracker_backend",
+                        "tracker",
+                    )
+                    or source_name,
                     "image_size": image_size,
                 },
             )

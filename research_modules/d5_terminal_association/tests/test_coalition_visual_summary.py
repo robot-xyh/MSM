@@ -57,6 +57,7 @@ def _association(
     coalition_id: str = "C-G1",
     coalition_version: int = 4,
     global_track_id: str = "G1",
+    local_track_id: str | None = None,
     metadata: dict[str, object] | None = None,
 ) -> TerminalAssociation:
     association_metadata = {
@@ -71,7 +72,7 @@ def _association(
     }
     return TerminalAssociation(
         assigned_global_track_id=global_track_id,
-        local_track_id=f"mot-{resource_id}-{frame_index}",
+        local_track_id=local_track_id or f"mot-{resource_id}",
         association_confidence=0.95,
         ambiguity_score=0.05,
         friend_conflict_state="none",
@@ -512,6 +513,13 @@ def test_missing_member_ack_blocks_consensus() -> None:
     assert summary.coalition_conflict_state == "coalition_commit_member_ack_incomplete"
     assert summary.coalition_commit_acked_member_ids == ("R1", "R2")
     assert summary.coalition_visual_consensus is False
+    assert summary.primary_locked_resource_ids == ()
+    assert summary.stable_lock_frame_count_by_resource == {"R1": 0, "R2": 0}
+    assert summary.metadata["committed_current_primary_resource_ids"] == ()
+    assert summary.metadata["uncommitted_current_primary_resource_ids"] == (
+        "R1",
+        "R2",
+    )
 
 
 def test_commit_plan_version_conflict_blocks_consensus() -> None:

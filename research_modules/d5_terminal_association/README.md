@@ -2,11 +2,87 @@
 
 离线科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块只输出 `TerminalAssociation` 决策，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-15 真实 AirSim M5N2 20-case 复核
+
+main 已完成 M5N2 baseline seed 001-010 与 `candidate_soft_prediction_trend_coast` seed 001-010，共 20 个 reset-separated SimpleFlight case。TERM 生效前还额外完整生成了 `p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed001` 的 `intercept_summary.json`；该独立 case 不进入本节 M5N2 的 `3725` 条记录或任何比例，其他 tuned case 与 dropout case 均未执行。D5 只读复核每场 M5N2 `intercept_summary.json` 后按当前 active-primary 资源 ID 排序选取第二 primary，不能固定写成 `INT-03`：candidate seed 002 的第二 primary 为 `INT-02`，其余 19 场为 `INT-03`。
+
+20 场共有 `3805` 个 main tick，其中 D5 前四个 warmup tick/场为 not applicable；其余 `3725/3725` 个 D5-available tick 均持久化了第二 primary runtime record、决策状态和 `d5_live_visual_funnel_v1` 首断点。决策分布为 `locked=1721 (46.20%)`、`ambiguous=795 (21.34%)`、`reacquire=1209 (32.46%)`、`hold=0`。首断点以 bbox 稳定性 `1283 (34.44%)`、当前检测/新鲜度 `1209 (32.46%)` 和视觉候选关联 `764 (20.51%)` 为主；严格 `complete` 只有 `52 (1.40%)`。当前 measured bbox 为 `2516/3725 (67.54%)`，bbox stable 与 D7 handoff-ready 均为 `161/3725 (4.32%)`；投影有效 `3725/3725`，但正常 geometry-gate accepted 仅 `2312/3725 (62.07%)`。
+
+时间证据方面，`visual_evidence_fresh=2657/3725 (71.33%)`，`terminal_visual_evidence_expired=1068`；measurement age 为 `3724/3725` available，均值约 `0.672 s`、P95 `3.4 s`、最大 `12.5 s`。`timing_gate_pass=3725/3725` 是另一层合同字段，不能覆盖 visual freshness 失败。实际 active second primary 未出现 plan/assignment/global-ID、友方或 duplicate 冲突，online truth identity use 为 0；这只能说明本场景未注入相应冲突，不能替代确定性安全回归。
+
+第二 primary 的 5 m 物理结果为 baseline `0/10`、candidate `0/10`，20 场最近物理距离为 `8.843-14.740 m`，均值约 `12.654 m`；T001 physical coalition completion 为 `0/20`。candidate 的 handoff-ready 快照从 baseline 的 `58/1869 (3.10%)` 增至 `103/1856 (5.55%)`，但 locked、freshness 和 coalition-consensus 比例没有一致改善，且没有转化为物理成功，因此 soft prediction/trend coast 不因本批晋级。直接 `failure_category` envelope 未写入这批 runtime artifact，当前只能用已持久化 stage/reason 统计；这项可用性仍是 P1 报告接线缺口。
+
+20 个第二 primary 的最终控制结果均记录为 `collision_stop`；该字段仅是 D7 停控证据，且本批未持久化碰撞对象，无法区分成员碰撞、环境碰撞或 AirSim 状态问题，不能据此把 `0/20` 单独归因于 D5。
+
+## 2026-07-15 第二 primary 被动失败漏斗
+
+D5 复用既有 `TerminalAssociation`、`d5_live_visual_funnel_v1` 和 cooperative summary，没有新增并行运行时 DTO。`summarize_cooperative_visual_funnel()` 现为每个 resource-target 输出 `failure_category`，并分别聚合全部 active primary 与第二 primary 的分类计数。分类可区分：不可见、投影无效、几何门拒绝、bbox 不稳定或边缘裁切、候选不唯一、时间戳或量测陈旧、计划/版本/`assigned_global_track_id` 合同不一致、友方或重复锁定冲突，以及已关联但稳定锁定未完成；成功、standby reserve 和共同锁定窗口不足保留独立口径。
+
+错误 `assigned_global_track_id` 的最新资源证据不再被诊断层过滤成“不可见”，而是显式报告 `assignment_or_identity_contract_mismatch`；输出行仍保留中心 binding 的 `global_track_id`，不采纳冲突 ID。该变更只增加只读诊断，不改变 `locked/hold/reacquire`、bbox、友方、重复锁定、版本或身份门控。
+
+2026-07-15 确定性测试覆盖上述失败类别和完整成功，共 11 个专项 case；D5 全量 `272 passed`，接受阈值为零失败。未启动新 AirSim。仍需 main 在真实 2v2/M5N2 至少 10 seeds 中验证分类覆盖率、第二 primary 分布和 unknown/other 比例，M5N2 第二 primary 5 m/联盟闭环、真实几何 drift、detect/YOLO/MOT 和二级同 tick freshness 继续为 P1。
+
+## 2026-07-14 actual-v2 真实 AirSim 证据同步
+
+本节同步 main/D6 已写盘的两个 seed-1 actual-execution case，不包含 D5 代码或算法修改。tuned 2v2（8 s、`png_ttc`）和 M5N2（35 s、`png_vm`）均继续以 AirSim `simGetDetections` metadata（AirSim detect）作为默认在线检测输入，不保存 PNG；YOLO/ByteTrack/BoT-SORT 没有因此晋级默认路径。
+
+- canonical actual 五层已经分别注册为 available；两 case 的 contract/control/terminal-switch/mode/physical 总计为 `102/26/26/2/4`。其中 `terminal_switch_allowed_count` 从最终 `control_commands.csv` 独立统计，2v2/M5N2 为 `26/0`，不由 `control_allowed_count` 推断或回填。2v2 的 `terminal_lock_count=3`、visual/mode switch `2/2` 说明该单 seed 已真实发生末端视觉切换。
+- M5N2 canonical actual 虽记录 `terminal_lock_count=24`，但视觉控制允许样本、visual switch 和 mode switch 均为 `0`，main diagnostics 的 terminal switch 也为 `0`。物理层为 active pair `2/3`、target `2/2`、coalition `0/1`；T001 第二 primary 最近距离约 `11.02 m`。因此“出现 lock acquisition”不等于“视觉控制或联盟闭环”。
+- 两 case 的 online identity/state truth use 均为 `0/0`。D5 继续只读回显中心拥有的 `global_track_id`，不得创建、改写、换绑或用 AirSim actor/object truth ID 修正在线关联。
+
+本批 actual-execution canonical artifact 和五层 schema 可用性均为 `2/2`，但 D6 formal overall status 仍为 `fail`：每个场景只有 1 个 seed，且未完成 baseline/candidate 成对比较、1-5 帧 dropout 全矩阵和完整多 seed P1 suite。D5 当前开放 P1 是 M5N2 第二 primary、真实 AirSim/replay 几何 drift、detect/YOLO/MOT 多 seed，以及二级证据同一 decision tick 的 freshness；不是五层 schema 或 main 接线缺口。IBVS、真实身份源、完整在线 PnP 和 ROS 2 保持 P2/P3。M5N2 既有视觉完成验收目标仍至少 `8/10`，与本轮 physical coalition `0/1` 使用不同分母，均不能由 target `2/2` 替代。
+
+证据：`research_modules/airsim_runtime/outputs/p0_actual_v2_validation_20260714/d6_acceptance/P1_UNIFIED_ACCEPTANCE_REPORT.md` 与 `subagent_reviews/MAIN_P0_ACTUAL_EXECUTION_AIRSIM_VALIDATION_REPORT_20260714.md`。
+
+## 2026-07-14 postbatch M5N2 DTO 与执行锁定语义收尾
+
+最新只读证据来自 `p1_terminal_closure_postbatch_seed1_20260714_m5n2_{baseline,candidate_soft_prediction_trend_coast}_seed001`。baseline 有 `330` 条控制记录和 `151` 条 D5 几何 `locked`，candidate 有 `311` 条控制记录和 `120` 条 D5 几何 `locked`；两组都只有 INT-03 在控制阶段形成 `40` 条非零 bbox，baseline 最大面积比约 `2.4943e-4`。其余 active pair 在约 `23-29 m` 因 `terminal_detection_acquisition_timeout` 退出。相机作用域分别保持为 `InterceptorN:0`，没有发现跨资源相机串用、在线 truth ID 或 `global_track_id` 改写。
+
+本轮关闭两个 D5-owned P1 子缺口。第一，`LocalVisualTrack.to_evidence_metadata()` 和 `d7_handoff_input` 现在显式携带 `bbox_xyxy`、`center_px`、`resource_id`、`camera_id`、`stream_id`、detector/tracker backend、双时间戳以及 measured/stability 状态。第二，几何 `decision_state="locked"` 与 `execution_lock_allowed` 明确分离：后者只有在本资源相机 measured bbox、作用域一致、合同完整、连续 measured lock、bbox 尺度/稳定性及全部既有安全门同时通过时才为真；bbox 缺失或过小只能形成 `association_lock_only`。相机/资源 producer scope 明确冲突时直接 `hold`。
+
+2026-07-14 验证：Python 语法检查通过，D5 全量 `261 passed`，接受阈值为零失败。未降低 identity、friend、duplicate、plan/version、calibration 或 bbox 门，也未启动新 AirSim。真实多相机持续 detection、当前 `640x480` 小框尺度、candidate 中单帧约 `0.64-0.70` 的异常大框，以及至少 10 seeds 统计仍为 P1。
+
+## 2026-07-14 semantics_v2 seed-1 历史 live funnel 诊断
+
+最新真实证据取自 `p1_terminal_closure_semantics_v2_seed1_20260714_m5n2_{baseline,candidate_soft_prediction_trend_coast}_seed001`。T001 的第二 primary `INT-02` 在 baseline/candidate 中分别有 `195/193` 帧 measured detection、`140/142` 帧原始视觉匹配为 locked、`18/18` 帧最终执行 lock；T001 两组均有 `14` 帧 coalition visual consensus，稳定锁定最大连续计数均为 `17`。因此 `terminal_detection_acquisition_timeout/d5_not_locked` 不能再笼统解释为 detect 未到达。
+
+真实断点是时序错位：两组执行合同只在 `0.4-2.2 s` 内通过，INT-02 的 bbox 分别到 `19.0 s`、`18.6 s` 才达到当前面积/CV 稳定门限；从 `2.3 s` 起上游 `arrival_window_expired` 把原始视觉 lock 转为 `hold`。该批旧 `control_commands.csv` 的面积比全为零，当时作为待查路由问题；顶部 postbatch 复核现已确认 main 能传递当前 local track，其他资源控制 bbox 为零主要因为末端阶段已无当前 measured detection。D5 不通过放宽身份、版本、friend、duplicate、timestamp、calibration 或唯一性门限处理该问题。
+
+D5 现增加 `d5_live_visual_funnel_v1`：逐帧区分 measured detection、projection、geometry gate、raw visual lock、execution contract、连续 measured execution lock、bbox stability 和 handoff。`TerminalAssociation.to_runtime_record()` 同时顶层输出 `visual_match_decision_state`、`execution_gate_pass/reason`、`measured_lock_streak_count`、`measured_stable_lock`、`bbox_stable`、`handoff_recommended` 及首断点/责任域；handoff annotation 追加完整 `d7_handoff_input`，但不授予控制权。2026-07-14 新增 3 个专项回归，D5 全量 `258 passed`，接受阈值为零失败；本任务复用既有 seed-1 输出，没有启动新 AirSim。
+
+## 2026-07-14 bbox 稳定历史与共同视觉 P1 闭合
+
+postfix seed-1 只读复核显示：M5N2 baseline/candidate 的 `bbox_stable=true` 均为 `0/1388`，T001 consensus 分别仅 `13/347`、`12/347`；2v2 PNG/TTC 为 `0/52`。所有旧记录 `visible_frame_count <= 1`。根因是 runtime 每 tick 只把当前 `scoped_local_tracks` 交给 handoff，旧 D5 handoff 本身不跨调用保存 bbox 历史；M5N2 T001 同时有 `326/347` tick 的真实 primary membership 变化，这部分必须继续重置共同证据。
+
+`TerminalAssociator` 现按 resource-target-local track-camera-stream-detector/tracker backend 及 committed/current membership 保存 measured bbox 历史。普通 plan/coalition version 刷新不进入 continuity signature；上述身份和成员不变时历史继续累计。resource-target 换绑、成员变化/缺失、local track、camera/backend/stream、producer reset、predicted/lost、identity/friend/duplicate 冲突都会 fail closed 清空 bbox/MOT/stable-lock 历史。association/handoff metadata 输出 `bbox_history_length`、`bbox_area_cv`、`bbox_history_reset_reason`、`bbox_history_key`、`bbox_history_signature`、`bbox_history_evidence_source`、source plan versions，以及 raw/effective MOT history 和合同完整性。`annotate_visual_png_handoff()` 优先消费这组 D5 累积证据，不再要求 main 传入四帧列表。
+
+M-to-N 共同视觉只认可当前 committed coalition 中的 active primary；membership 缺失、无效 commit 或换员不累计共同窗口。YOLO 输入缺显式 detector/tracker backend 时 fail closed；AirSim builtin 可由稳定的 detection source/backend 映射接入。锁定门限、bbox `N=4/CV<=0.30`、`global_track_id` 和 YOLO/native-MOT 准入状态均未改变。2026-07-14 D5 全量 `255 passed`，接受阈值为零失败；本轮未运行新 AirSim episode。
+
+canonical actual 路径现已传递 committed coalition、pre-decision duplicate hint 及 camera/stream/backend/local-track transition/MOT 字段，并将五层同名 envelope 持久化；该接线不再是开放 GAP。真实 M5N2 第二 primary、几何 drift、detect/YOLO/MOT 多 seed 和二级同 tick freshness 仍是开放 P1。
+
+## 2026-07-14 原生 MOT 连续实测历史 P1 修复
+
+`YoloMotAdapter` 不再依赖 Ultralytics `Results` 中不存在的历史长度字段。对原生 ByteTrack/BoT-SORT 输出，适配器按 `(resource_id, camera_id, tracker_backend, native tracker id)` 累计 `mot_history_length`，其口径是**连续实测命中帧数**：同一流同一 ID 连续出现时从 1 增至 2 及以上；ID 变化、一次空帧后重现、backend 切换、流重置或 episode 重置都从 1 重新积累。空帧中的 ID 状态最多保留 `max_track_age_frames`，但 coast 不计实测历史；长期消失后复用 ID 不会自动满足锁定历史门限。
+
+原生 tracker 异常转入 IoU fallback 时，D5 清除该流原生历史并释放失败模型；连续 fallback 段使用自己独立的 IoU 历史，原生模型恢复后仍从 1 开始。新增 `reset_episode()` 作为 `reset_all_streams()` 的 episode 边界接口。2026-07-14 使用 Ultralytics `Results`-like 连续帧、双 backend、跨资源/相机、ID 切换、空帧/遮挡、stream/episode reset 和 native-fallback-native 场景验证，D5 全量 `241 passed`，验收门槛为零失败。
+
+这是代码级 P1 断点闭合，不代表真实 AirSim/真实图像多 seed 准入完成。默认 `min_mot_history=2`、友方/重复锁定/版本/时间戳/标定门控、truth 隔离和 center-owned `global_track_id` 合同均未改变。
+
+## 2026-07-14 D3 planner feedback 分级合同
+
+D5 现用既有字段稳定区分两类输出，不新增公共 DTO：
+
+- **pair 级视觉不确定性**：候选接近、普通 `hold/reacquire`、geometry gate、bbox 或时序不稳定继续输出 `ambiguous/hold/reacquire`；`TerminalConsistencySummary.consistency_state=unknown`，`recommended_d4_action` 只能是 `observe/request_secondary_cue`。它们阻断当前 pair 的 D7 视觉切换或请求重新获取，不表示整架资源 `resource_unavailable`，也不得单独触发 D3 hard planner feedback。
+- **安全冲突**：`verified_friend_overlap`、`spoof_suspected_overlap`、`duplicate_terminal_lock_risk`、授权/版本冲突和持续 assignment/ID conflict 继续 fail closed；一致性输出为 `conflict/inconsistent`，并用 `report_conflict/arbitrate` 明确允许 D3/main 形成 hard planner feedback。
+- stale/unverified 身份只表示待确认，不推断敌方；未知类别同样不得升级为敌方。所有路径保持输入 `assigned_global_track_id`，online `truth_identity_used=false`。
+
+2026-07-14 专项单元回归覆盖单机 ambiguity/geometry reacquire/bbox hold、verified friend、spoof、TerminalAssociation 自带与 cross-view duplicate，以及分布式 unknown/unverified identity；专项 `52 passed`，随后当时 D5 全量 `235 passed`。验收门槛为零失败、普通不确定性无 `report_conflict/arbitrate/resource_unavailable` 语义、hard conflict 必须有 hard action。该结果是 D5 合同级证据，不是新增 AirSim episode 或资源健康实测。
+
 ## 2026-07-13 per-primary 漏斗与 MOT sweep 合同
 
 - M5N2 漏斗按每个 active primary 独立记录 `visible -> projected -> gate_accepted -> locked -> stable_lock`、plan owner/version 和 first failure。显式 `per_primary + arrival_coordination_required=false` 不计算或要求共同锁定窗口；旧 `coalition` 合同仍保留共同窗口门控。standby reserve 不计入完成。
 - MOT 准入显式区分 100 帧 screening 与 200 帧 confirmation；summary 同时输出 main sweep 使用的 `tracker_backend`、`detector_precision/recall`、`local_track_continuity` 等字段。IoU fallback 不计 native，truth 必须在 online result 形成后逐帧评分。
-- 当前模块回归为 `232 passed`；真实 AirSim sweep 仍由 main 调度。
+- 2026-07-13 当日模块回归为 `232 passed`；2026-07-14 最新全量回归为 `241 passed`，真实 AirSim sweep 仍由 main 调度。
 
 ## 目录
 
@@ -61,6 +137,7 @@ D5 支持同一 episode 内每个 `(resource_id, camera_id)` 使用独立分辨�
 - `YoloMotAdapter.process_frame(...)`
 - `YoloMotAdapter.reset_stream(resource_id, camera_id)`
 - `YoloMotAdapter.reset_all_streams()`
+- `YoloMotAdapter.reset_episode()`
 - `NativeMotAdmissionMonitor.observe(result, scenario=..., offline_truth_detections=...)`
 - `NativeMotAdmissionMonitor.summary(resource_id, camera_id)`
 - `NativeMotAdmissionMonitor.reset_stream(resource_id, camera_id)`
@@ -128,7 +205,7 @@ IoU fallback 明确是失败基线，任何 fallback 帧都不会计入 native a
 
 接口只认可当前 plan/coalition 双版本匹配且已授权激活的 primary。fallback 联盟还必须通过 D4 committed/executing、epoch、lease 和全成员 ACK 校验。standby reserve 只保留诊断行，不进入 active-primary 分母或完成率。`LocalVisualTrack` 可通过 `TerminalObservation` 提供“已看见但尚未投影/注册”的断点证据；它不能创建或换绑 `global_track_id`。输出不传播或消费 AirSim actor/object/truth ID。
 
-模块回归覆盖双 primary 不同视场、共同窗口不足、版本不一致、友方冲突、稳定共同锁定、动态资源/目标数和 fallback 缺 ACK，叠加原生 MOT 准入、严格后评分时序、per-primary DTO 与混合 1080p/4K 相机回归后，当前 D5 全量为 `204 passed`。main/D6 尚需把这些 summary 接入真实 M5N2 paired AirSim 日志和统一漏斗报告；该运行级接线不由 D5 修改。
+模块回归覆盖双 primary 不同视场、共同窗口不足、版本不一致、友方冲突、稳定共同锁定、动态资源/目标数和 fallback 缺 ACK，叠加原生 MOT 准入、严格后评分时序、per-primary DTO 与混合 1080p/4K 相机回归后，该实现阶段 D5 全量为 `204 passed`。后续 main/D6 已在真实 M5N2 paired AirSim 日志和统一漏斗报告中消费这些 summary；该运行级接线已完成。
 
 ### 2026-07-12 pose-fix smoke 复核与 D5 修正
 
@@ -146,7 +223,7 @@ IoU fallback 明确是失败基线，任何 fallback 帧都不会计入 native a
 
 面向 D7 身份感知 KF/TTC/可选 6D LOS replay，D5 新增 `CameraGeometryEvidence` 和兼容扩展后的 `LocalVisualTrack`。detect、离线 schema 与 YOLO/MOT adapter 可输出稳定的 camera-local ID、`mot_history_length`、`initialized/continued/switched/reacquired/reset` 迁移证据、measurement/arrival 双时间戳、检测来源、bbox 四边裁剪状态，以及 K、camera-to-NED rotation、camera position、姿态时间戳/年龄/有效性。`geometry_valid` 只有在内参、外参和同步姿态均有效时为真；缺字段显式给出 `geometry_unavailable_reasons`。这些字段经 `TerminalAssociation` 和 runtime record 透传，但 MOT coast、predicted track、二级 cue 仍不能授权视觉 PNG，也不能改写 `global_track_id`。当前 D5 全量回归为 `161 passed`。
 
-main 尚需在真实 AirSim episode 中把曝光/measurement timestamp、arrival timestamp、实际 camera pose、机体姿态时间戳和 `CameraModel` 接到 adapter 的 `camera_geometry` 参数；未接线前 6D LOS 必须保持 unavailable，不能用 AirSim actor/object truth pose 补齐。
+canonical actual 路径现已携带 measurement/arrival timestamp、camera pose、姿态时戳和 `CameraModel` 几何证据；P1 转为真实 AirSim/replay 多 seed 的外参 drift 与时间同步标定。任一 case 字段不完整时 6D LOS 仍必须 fail closed 为 unavailable，不能用 AirSim actor/object truth pose 补齐；完整在线 PnP 保持 P2。
 
 本轮不启动 YOLO/ByteTrack 数据集标定，该 P2 工作保持 deferred。已有 OpenCV calibration/`solvePnP` geometry benchmark 仅复核为隔离式离线对照，未导入默认在线路径、未写回 `CameraModel`。
 
@@ -220,7 +297,7 @@ truth identity 只在所有投影与门控完成后附加为 `offline_truth_labe
 - AirSim/main runtime 的最小 RGB 图像链和 2 帧冒烟入口已接通，但持续多帧、多 seed 的真实 detector/tracker 质量验收尚未完成。当前 actor/相机几何下 YOLO 无有效 accepted detection，原生 ByteTrack 无 track ID 并回退 IoU；仍需标定目标尺度、视角、置信度/class map、连续帧长度、CPU/GPU 预算、真实标定链、真实身份认证链路和跨相机三维联合优化。episode 边界仍必须调用 `reset_all_streams()`。
 - 在线 D5 不得使用 AirSim `object_id`、`actor_name` 或 actor truth ID。truth ID 只能作为离线评分标签进入 metadata/evaluator，用于 `terminal_lock_accuracy`、`locked_mismatch` 等指标。
 
-剩余 P1/P2 聚焦真实工程链路，而不是 D5 侧 evidence 字段：P1 合同层和 2v2 主线非退化门槛已闭合，二级/分布式完整 ACK commit 正例和缺 ACK fail-closed 已验证；仍开放的是同几何长时 M5N2 paired 验收、持续检测/native MOT 质量、二级网络覆盖、外参/时间扰动、长 dropout/重捕和 `bbox_near_image_edge` 标定。P2 为 Deep SORT/ReID、真实身份 adapter、真实标定采集/在线外参更新以及 ROS 2 `tf2/message_filters`。D5 的 OpenCV calibration/`solvePnP` 仅为隔离式合成 benchmark，不等同于在线 AirSim 或硬件 PnP。
+剩余工程状态不在 D5 evidence schema：P1 仅为 M5N2 第二 primary、真实几何 drift、detect/YOLO/MOT 多 seed 和二级同 tick freshness，其中 dropout、edge margin 与远距召回作为多 seed 检测/关联子场景。P2 为 Deep SORT/ReID、真实身份 adapter 和完整在线 PnP/标定链；IBVS 与 ROS 2 `tf2/message_filters` 保持 P3 可选研究。D5 的 OpenCV calibration/`solvePnP` 仅为隔离式合成 benchmark，不等同于在线 AirSim 或硬件 PnP。
 
 ## 决策状态
 
@@ -302,7 +379,7 @@ D5 提供不依赖 AirSim Python 包的 dry-run 适配器，用于消费 `simGet
 
 2026-07-10 状态：`p0_truth_isolation_smoke_20260710` 的三类 case 均连续运行 5 帧，匿名 local/detection ID 不含 actor 名，actor 名只保留在 `offline_truth_only=True` 元数据，每类 cross-view association 均为 4；truth ID 在线隔离 P0 已闭合。随后 `p1_gap_closure_calibration_20260710` 完成 5v5、10 seeds、50/200 m、三类 case 共 60 个 registration case，`not_registered_count=0`、`secondary_detect_available_but_not_registered=0`，平均 `projection_valid_rate=1.0`、stable registration `92.233`、cross-view association `4.417`。基础 detect-to-global registration 已闭合，但网络同帧全目标覆盖率均值仅 `0.0231`、平均覆盖率 `0.7059`，不能据此声明二级接管态势完整。
 
-下一阶段 P1 聚焦真实 YOLOv8 + ByteTrack/BoT-SORT 多 seed、外参漂移和 measurement/arrival timestamp 同步扰动、D4 逐决策 evidence、遮挡/交叉与 local MOT ID 变化、友方身份真实 replay，以及二级网络完整覆盖。所有校准保持现有唯一性、友方冲突、版本、时效和 D7 独立安全门控；在线 D5 仍不得使用 truth ID 或 tracker ID 生成、改写、换绑 `global_track_id`。
+当前 P1 仅聚焦 M5N2 第二 primary、真实几何 drift、detect/YOLO/MOT 多 seed 和二级证据同一 decision tick freshness；遮挡/交叉与 local MOT ID 变化归入多 seed 检测/关联矩阵。真实身份源保持 P2。所有校准保持现有唯一性、友方冲突、版本、时效和 D7 独立安全门控；在线 D5 仍不得使用 truth ID 或 tracker ID 生成、改写、换绑 `global_track_id`。
 
 ## AirSim Blocks 2v2 二级计划语义
 

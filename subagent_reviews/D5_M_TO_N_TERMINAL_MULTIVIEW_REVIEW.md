@@ -1,5 +1,53 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-15 M5N2 20-case 多视角复核
+
+main 已完成 baseline/candidate 各 10 seeds 的真实 AirSim M5N2。TERM 生效前额外完整生成一个 `png_ttc_2v2_seed001`，其余 tuned/dropout case 未执行；该额外 case 不进入以下 M5N2 统计。D5 对 current active second primary 的 `3725` 条适用记录复核得到：`locked=1721`、`ambiguous=795`、`reacquire=1209`、`hold=0`；bbox-stability/live-detection/visual-association/geometry/complete 首断点为 `1283/1209/764/204/52`。直接 `failure_category` 未在本批 artifact 中持久化，因此只能报告原始 stage/reason 可用，不能补写分类 envelope。
+
+多视角过程证据并未转化为协同完成。T001 coalition visual consensus 有 `494` 个 tick 快照，但第二 primary 5 m 为 `0/20`，physical coalition completion 为 `0/20`；bbox stable/handoff-ready 只有 `161/3725`。这支持既有边界：peer/cross-view 证据用于关联和仲裁，不能替代每个 active primary 自己的当前 measured bbox 和执行交接合同。
+
+20 个第二 primary 最终均记录为 `collision_stop`。该字段是 D7 停控证据，不是 D5 配准失败类别；本批没有持久化碰撞对象，无法区分成员碰撞、环境碰撞或 AirSim 状态问题，不能把 `0/20` 单独归因于 D5。
+
+本批在线 truth use、global-ID mismatch、friend/duplicate conflict 均为 0。第二 primary 必须按每场 current membership 动态确定；candidate seed 002 为 `INT-02`，不能固定按 `INT-03` 汇总。candidate 的 soft prediction/trend coast 没有带来物理收益，不改变 D5 默认主线或多视角合同。额外完成的 `png_ttc_2v2_seed001` 不纳入本 M5N2 结论；其余 tuned/dropout 未执行。
+
+## 2026-07-15 第二 primary 失败分类补充
+
+`summarize_cooperative_visual_funnel()` 已在原有逐资源/逐目标漏斗上增加 `failure_category_counts` 和 `second_primary_failure_category_counts`。第二 primary 可被动区分不可见、投影无效、几何门拒绝、bbox 不稳定/裁切、候选不唯一、量测陈旧、计划/版本/assigned-global-ID 不一致、友方/重复锁定冲突及已关联但稳定锁定不足。最新资源证据若携带错误 global ID，诊断为合同不一致，不再落入 visibility，且不换绑中心 ID。
+
+2026-07-15 确定性专项共 11 case，D5 全量 `272 passed`，零失败；未启动 AirSim、未降低门控。真实 M5N2 至少 10 seeds 的类别分布、第二 primary 5 m 和 coalition completion 仍是开放 P1。
+
+## 2026-07-14 actual-v2 M5N2 联盟证据
+
+最新 M5N2 seed-1 actual-execution 继续使用默认 AirSim detect。canonical 持久化指标出现 `terminal_lock_count=24`，但 visual control、visual switch 和 mode switch 均为 `0`；main diagnostics 的 terminal-switch allowed 也为 `0`。物理层 active pair `2/3`、target `2/2`、coalition `0/1`，T001 第二 primary 最近约 `11.02 m`。这直接证明多次 local/resource-target lock acquisition 不能替代每个 required primary 的可执行视觉证据，也不能替代 coalition completion。
+
+同批 tuned 2v2 seed-1 canonical 已有 visual control `26`、visual/mode switch `2/2`。canonical `terminal_switch_allowed_count` 现已从最终 `control_commands.csv` 独立统计，2v2/M5N2 为 `26/0`；五层 contract/control/terminal-switch/mode/physical 总计 `102/26/26/2/4`，均为 available。缺口集中在 M5N2 第二 primary、几何 drift、detect/YOLO/MOT 多 seed 和二级同 tick freshness，不是五层 schema。两 case identity/state online truth use 为 `0/0`，D5 继续只读中心 `global_track_id`，不得用 peer、actor/object truth 或本地 MOT ID 创建、改写、换绑全局身份。
+
+当前仅有每场景 1 seed，D6 formal overall status=`fail`。D5 当前开放 P1 为上述四类；IBVS、真实身份源、完整在线 PnP/ROS 2 保持 P2/P3。M5N2 至少 `8/10` 的既有视觉完成门与 physical coalition `0/1` 分母独立。默认检测仍为 AirSim detect。本节只同步运行证据，不改变多视角合同或算法。
+
+## 2026-07-14 M5N2 本机证据与多视角证据边界
+
+postbatch baseline/candidate 表明，多视角或联盟历史不能替代每个 active primary 的当前本机 measured bbox。D5 虽有 `151/120` 条几何 locked，但控制阶段两组均仅 INT-03 有 `40` 条非零 bbox，其余 active pair 在约 `23-29 m` acquisition timeout。camera scope 已按 `InterceptorN:0` 隔离；没有证据表明匿名 detection 被跨资源共享。
+
+当前合同把跨视角支持保留为关联/仲裁证据，只有 own-camera measured bbox、连续稳定 lock、bbox scale/stability 及安全合同全部成立时，单个 primary 的 `execution_lock_allowed` 才为真。DTO 已携带 bbox/中心和完整 producer scope，D5 不从 peer bbox 构造本机控制输入，也不改写 `global_track_id`。代码级 P1 已关闭并通过 `261` 项测试；真实多相机持续 detection、异常大框与至少 10 seeds 仍开放。
+
+## 2026-07-14 semantics_v2 M5N2 第二 primary 历史断点
+
+最新 seed-1 的 T001 第二 primary 已经形成持续本地视觉证据：baseline/candidate 的 INT-02 measured detect 为 `195/193`，raw visual lock 为 `140/142`，final execution lock 为 `18/18`，两组 coalition consensus 均为 `14`。因此 M-to-N 共同视觉的主要缺口不是 LocalVisualTrack 完全缺失，而是 bbox 稳定时间晚于当前 `arrival_window_end_s=2.2`：bbox 分别在 `19.0/18.6 s` 才稳定，后续 raw lock 被执行合同 fail closed。
+
+D5 新增逐资源 `d5_live_visual_funnel_v1` 与 measured-lock streak，使第二 primary 的 first failure 可稳定归类为 detection、geometry、association、evidence contract、execution contract、stable lock、bbox 或 handoff，不依赖 AirSim truth ID。M-to-N 缺 committed membership 仍在 evidence-contract 阶段阻断；计划/联盟版本、friend、duplicate 和 `global_track_id` 规则均未变化。该阶段 D5 全量 `258 passed`。顶部 postbatch 章节已确认 current local track 可进入下游，后续重点转为持续 detection、bbox 尺度和多 seed。
+
+## 2026-07-14 committed/current 共同视觉连续性补充
+
+postfix seed-1 的 M5N2 baseline/candidate 中，T001 consensus 仅 `13/347`、`12/347`，且两组 `bbox_stable=true` 均为 `0/1388`。旧 runtime 每 tick 仅交付当前 local track，导致所有 bbox history 的 `visible_frame_count <= 1`；与此同时 T001 有 `326/347` tick 的真实 primary membership 变化。D5 现可跨普通 plan version 刷新保留同一 resource-target-local track-camera-backend-stream 的 measured history，但 membership 换员、缺少 committed/current 成员合同或其他身份/安全冲突仍立即重置。
+
+共同视觉和 stable-lock continuity 只统计 current committed coalition 的 active primary，不允许历史成员、standby reserve、无效 commit 或旧 plan snapshot 补足完成度；`global_track_id` 仍只回显中心绑定。输出新增 bbox history length/CV/reset/key/signature/source 等审计字段。2026-07-14 D5 全量 `255 passed`，零失败，未运行新 AirSim；锁定门限和 YOLO/native-MOT 准入状态不变。后续 canonical actual 已传递 committed membership、pre-decision duplicate hint 和稳定的 camera/stream/backend/local-track transition/MOT 字段，该接线不再是开放项。
+
+## 2026-07-14 多视角反馈分级补充
+
+M-to-N 跨视角输出继续区分“看不清”与“安全冲突”。单视角/多视角 confidence、geometry、bbox、timestamp 或 unknown/unverified identity 不足时，输出 `hypothesis_only/ambiguous/hold/reacquire` 与 `observe/request_secondary_cue`，只影响该 pair 的视觉授权，不表示资源不可用。verified friend、spoof、local/global ID conflict 和 duplicate terminal lock 输出 `report_conflict/arbitrate`，保持 hard fail-closed；合法 planned cooperative lock 仍不等于 duplicate。
+
+2026-07-14 确定性专项 52 项和当时 D5 全量 235 项全部通过；本日原生 MOT 历史修复后最新全量为 `241 passed`。接受阈值为零失败、未知不推断敌方、普通不确定性无 hard planner action、`global_track_id` rewrite 与 online truth use 为 0。本次未运行新的 M5N2 AirSim episode；当前 P1 为第二 primary、几何 drift、detect/YOLO/MOT 多 seed 和二级同 tick freshness。三维联合几何/ReID/真实身份链保持 P2，IBVS/ROS 2 保持 P3。
+
 **调研日期**：2026-07-11
 
 **范围**：多拦截器共同观测同一 `global_track_id`、跨视角投影、三角定位、相对位姿与时间同步、多视角 MOT、遮挡与小目标，以及计划内多机锁定与错误重复锁定。

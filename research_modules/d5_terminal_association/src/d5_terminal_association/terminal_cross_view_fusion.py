@@ -373,6 +373,12 @@ class TerminalCrossViewFusion:
         if friend_state == "verified_friend_overlap":
             support_state = "hold"
             reason = "verified_friend_overlap"
+        elif friend_state == "spoof_suspected_overlap":
+            support_state = "ambiguous"
+            reason = "spoof_suspected_overlap"
+        elif friend_state in {"stale_friend_overlap", "unverified_friend_overlap"}:
+            support_state = "ambiguous"
+            reason = "identity_confirmation_required"
         if global_conflict:
             support_state = "ambiguous"
             reason = "conflicting_assigned_global_track_ids"
@@ -498,6 +504,10 @@ class TerminalCrossViewFusion:
     def _decision_state(self, hypothesis: CrossPeerAssociationHypothesis) -> tuple[str, str, str]:
         if hypothesis.friend_conflict_state == "verified_friend_overlap":
             return "hold", "report_conflict", "verified_friend_overlap"
+        if hypothesis.friend_conflict_state == "spoof_suspected_overlap":
+            return "ambiguous", "report_conflict", "spoof_suspected_overlap"
+        if hypothesis.friend_conflict_state in {"stale_friend_overlap", "unverified_friend_overlap"}:
+            return "ambiguous", "observe", "identity_confirmation_required"
         if hypothesis.local_id_conflict:
             return "ambiguous", "arbitrate", "local_track_id_conflict"
         if hypothesis.global_track_id_conflict:

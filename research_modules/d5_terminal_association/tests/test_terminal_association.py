@@ -283,6 +283,11 @@ def test_ambiguous_when_two_candidates_have_close_costs() -> None:
     assert decision.decision_state == "ambiguous"
     assert decision.local_track_id in {"candidate_left", "candidate_right"}
     assert decision.reason == "insufficient_best_second_margin"
+    runtime_record = decision.to_runtime_record()
+    assert runtime_record["assigned_global_track_id"] == "G-assigned"
+    assert runtime_record["truth_identity_used"] is False
+    assert runtime_record["duplicate_terminal_lock_risk"] is False
+    assert "resource_unavailable" not in runtime_record
 
 
 def test_verified_friend_overlap_forces_hold() -> None:
@@ -316,6 +321,8 @@ def test_verified_friend_overlap_forces_hold() -> None:
     assert decision.decision_state == "hold"
     assert decision.friend_conflict_state == "verified_friend_overlap"
     assert decision.reason == "verified_friend_overlap_inside_gate"
+    assert decision.assigned_global_track_id == "G-assigned"
+    assert decision.to_runtime_record()["truth_identity_used"] is False
 
 
 def test_unsigned_friend_claim_makes_candidate_ambiguous_not_locked() -> None:
@@ -365,6 +372,10 @@ def test_reacquire_when_no_local_track_inside_gate() -> None:
 
     assert decision.decision_state == "reacquire"
     assert decision.local_track_id is None
+    runtime_record = decision.to_runtime_record()
+    assert runtime_record["assigned_global_track_id"] == "G-assigned"
+    assert runtime_record["truth_identity_used"] is False
+    assert "resource_unavailable" not in runtime_record
 
 
 def test_active_reacquire_recovers_assigned_track_from_search_window() -> None:

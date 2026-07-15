@@ -116,6 +116,7 @@ class CooperativeResourceTargetDiagnostic:
     friend_conflict_state: str
     decision_state: str
     first_failure_stage: str
+    failure_category: str
     reject_reason: str
     measurement_timestamp: float | None = None
     arrival_timestamp: float | None = None
@@ -148,6 +149,7 @@ class CooperativeResourceTargetDiagnostic:
             "friend_conflict_state": self.friend_conflict_state,
             "decision_state": self.decision_state,
             "first_failure_stage": self.first_failure_stage,
+            "failure_category": self.failure_category,
             "reject_reason": self.reject_reason,
             "measurement_timestamp": self.measurement_timestamp,
             "arrival_timestamp": self.arrival_timestamp,
@@ -185,6 +187,7 @@ class CooperativeTargetVisualFunnel:
     cooperative_completion: bool
     second_primary_resource_id: str | None
     second_primary_first_failure_stage: str | None
+    second_primary_failure_category: str | None
     second_primary_reject_reason: str | None
     reason: str
 
@@ -216,6 +219,7 @@ class CooperativeTargetVisualFunnel:
             "cooperative_completion": self.cooperative_completion,
             "second_primary_resource_id": self.second_primary_resource_id,
             "second_primary_first_failure_stage": self.second_primary_first_failure_stage,
+            "second_primary_failure_category": self.second_primary_failure_category,
             "second_primary_reject_reason": self.second_primary_reject_reason,
             "reason": self.reason,
             "truth_identity_used": False,
@@ -233,7 +237,9 @@ class CooperativeVisualFunnelSummary:
     completed_target_count: int
     funnel_counts: Mapping[str, int]
     first_failure_stage_counts: Mapping[str, int]
+    failure_category_counts: Mapping[str, int]
     second_primary_first_failure_stage_counts: Mapping[str, int]
+    second_primary_failure_category_counts: Mapping[str, int]
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -248,6 +254,16 @@ class CooperativeVisualFunnelSummary:
             "second_primary_first_failure_stage_counts",
             dict(self.second_primary_first_failure_stage_counts),
         )
+        object.__setattr__(
+            self,
+            "failure_category_counts",
+            dict(self.failure_category_counts),
+        )
+        object.__setattr__(
+            self,
+            "second_primary_failure_category_counts",
+            dict(self.second_primary_failure_category_counts),
+        )
         object.__setattr__(self, "metadata", dict(self.metadata))
 
     def to_dict(self) -> dict[str, Any]:
@@ -259,8 +275,12 @@ class CooperativeVisualFunnelSummary:
             "completed_target_count": self.completed_target_count,
             "funnel_counts": dict(self.funnel_counts),
             "first_failure_stage_counts": dict(self.first_failure_stage_counts),
+            "failure_category_counts": dict(self.failure_category_counts),
             "second_primary_first_failure_stage_counts": dict(
                 self.second_primary_first_failure_stage_counts
+            ),
+            "second_primary_failure_category_counts": dict(
+                self.second_primary_failure_category_counts
             ),
             "online_truth_use_count": 0,
             "global_track_id_rewrite_count": 0,
@@ -334,6 +354,7 @@ class _Evidence:
     frame_key: str
     input_order: int
     has_own_local_detection: bool
+    camera_id: str | None = None
 
     @property
     def visual_match_locked(self) -> bool:
@@ -362,6 +383,9 @@ class _StabilityState:
     reset_reason: str | None = None
     stale_plan_replay: bool = False
     source_plan_versions: tuple[int, ...] = ()
+    history_key: Mapping[str, Any] = field(default_factory=dict)
+    history_signature: Mapping[str, Any] = field(default_factory=dict)
+    evidence_source: str = "unavailable"
 
 
 def summarize_coalition_visual_completion(
@@ -460,6 +484,20 @@ def summarize_coalition_visual_completion(
         commit_required=commit_required,
         evaluation_time_s=evidence_time_s,
     )
+    committed_current_primary_ids = frozenset(
+        binding.resource_id
+        for binding in primary_bindings
+        if _binding_execution_active(binding)
+        and (
+            not commit_required
+            or (
+                not commit_conflict_reasons
+                and normalized_commit is not None
+                and binding.resource_id in normalized_commit.required_member_ids
+                and binding.resource_id in normalized_commit.acked_member_ids
+            )
+        )
+    )
 
     version_conflict_ids: list[str] = []
     unexpected_lock_ids: list[str] = []
@@ -498,10 +536,17 @@ def summarize_coalition_visual_completion(
     primary_locked_ids: list[str] = []
     for binding in primary_bindings:
         resource_id = binding.resource_id
-        current_locked = bool(current_execution_locks.get(resource_id))
+        member_committed_current = resource_id in committed_current_primary_ids
+        current_locked = bool(
+            member_committed_current and current_execution_locks.get(resource_id)
+        )
         stability = _stable_lock_state(
             binding,
-            current_execution_locks.get(resource_id, ()),
+            (
+                current_execution_locks.get(resource_id, ())
+                if member_committed_current
+                else ()
+            ),
             history,
             bindings,
             historical_binding_snapshots,
@@ -513,6 +558,7 @@ def summarize_coalition_visual_completion(
                 and resource_id not in duplicate_local_lock_ids
                 and resource_id not in current_continuity_unsafe_ids
             ),
+            member_committed_current=member_committed_current,
         )
         stability_states[resource_id] = stability
         stable_counts[resource_id] = stability.count
@@ -641,6 +687,14 @@ def summarize_coalition_visual_completion(
             "required_stable_frames": int(required_stable_frames),
             "binding_resource_ids": _unique(binding.resource_id for binding in bindings),
             "primary_resource_ids": _unique(binding.resource_id for binding in primary_bindings),
+            "committed_current_primary_resource_ids": tuple(
+                sorted(committed_current_primary_ids)
+            ),
+            "uncommitted_current_primary_resource_ids": _unique(
+                binding.resource_id
+                for binding in primary_bindings
+                if binding.resource_id not in committed_current_primary_ids
+            ),
             "reserve_resource_ids": _unique(binding.resource_id for binding in reserve_bindings),
             "inactive_primary_resource_ids": inactive_primary_ids,
             "version_conflict_resource_ids": _unique(version_conflict_ids),
@@ -660,6 +714,18 @@ def summarize_coalition_visual_completion(
             },
             "stability_source_plan_versions_by_resource": {
                 resource_id: list(state.source_plan_versions)
+                for resource_id, state in stability_states.items()
+            },
+            "stability_history_key_by_resource": {
+                resource_id: dict(state.history_key)
+                for resource_id, state in stability_states.items()
+            },
+            "stability_history_signature_by_resource": {
+                resource_id: dict(state.history_signature)
+                for resource_id, state in stability_states.items()
+            },
+            "stability_evidence_source_by_resource": {
+                resource_id: state.evidence_source
                 for resource_id, state in stability_states.items()
             },
             "reserve_visual_png_authorized": False,
@@ -738,12 +804,19 @@ def summarize_cooperative_visual_funnel(
         indices = grouped_indices[global_track_id]
         group_raw = tuple(raw_bindings[index] for index in indices)
         group_bindings = tuple(normalized[index] for index in indices)
+        group_resource_ids = {
+            binding.resource_id for binding in group_bindings
+        }
+        group_resource_current = tuple(
+            item
+            for item in current_items
+            if _evidence_resource_id(item) in group_resource_ids
+        )
         group_current = tuple(
             item
             for item in current_items
             if _evidence_global_track_id(item) in {None, global_track_id}
-            and _evidence_resource_id(item)
-            in {binding.resource_id for binding in group_bindings}
+            and _evidence_resource_id(item) in group_resource_ids
         )
         group_history = tuple(
             item
@@ -783,13 +856,25 @@ def summarize_cooperative_visual_funnel(
             _normalize_evidence(item, input_order=index)
             for index, item in enumerate(association_current)
         )
+        resource_current_association_evidence = tuple(
+            _normalize_evidence(item, input_order=index)
+            for index, item in enumerate(
+                item
+                for item in group_resource_current
+                if _terminal_association(item) is not None
+            )
+        )
         primary_bindings = tuple(
             binding for binding in group_bindings if binding.member_role in _PRIMARY_ROLES
         )
+        committed_current_primary_bindings = tuple(
+            binding
+            for binding in primary_bindings
+            if _binding_member_committed(binding, completion)
+        )
         active_primary_ids = _unique(
             binding.resource_id
-            for binding in primary_bindings
-            if _binding_execution_active(binding)
+            for binding in committed_current_primary_bindings
         )
         reserve_ids = _unique(
             binding.resource_id
@@ -802,7 +887,7 @@ def summarize_cooperative_visual_funnel(
         )
         if common_window_required:
             common_count, common_start, common_end = _common_primary_lock_window(
-                primary_bindings,
+                committed_current_primary_bindings,
                 association_evidence,
                 historical_bindings=tuple(
                     _normalize_binding(
@@ -833,7 +918,10 @@ def summarize_cooperative_visual_funnel(
 
         diagnostics: list[CooperativeResourceTargetDiagnostic] = []
         for binding in group_bindings:
-            latest = _latest_binding_evidence(binding, current_association_evidence)
+            latest = _latest_resource_evidence(
+                binding,
+                resource_current_association_evidence,
+            )
             local_only = _latest_local_only_observation(binding, group_current)
             association = latest.association if latest is not None else None
             member_committed = _binding_member_committed(binding, completion)
@@ -858,6 +946,7 @@ def summarize_cooperative_visual_funnel(
             active_primary = bool(
                 binding.member_role in _PRIMARY_ROLES
                 and _binding_execution_active(binding)
+                and member_committed
             )
             failure_stage, reject_reason = _diagnostic_failure(
                 binding=binding,
@@ -872,6 +961,17 @@ def summarize_cooperative_visual_funnel(
                 required_stable_frames=int(required_stable_frames),
                 common_complete=common_complete,
                 common_window_required=common_window_required,
+            )
+            failure_category = _diagnostic_failure_category(
+                association=association,
+                failure_stage=failure_stage,
+                reject_reason=reject_reason,
+                visible=visible,
+                projected=projected,
+                gate_accepted=gate_accepted,
+                locked=locked,
+                stable_count=stable_count,
+                required_stable_frames=int(required_stable_frames),
             )
             diagnostic = CooperativeResourceTargetDiagnostic(
                 resource_id=binding.resource_id,
@@ -906,6 +1006,7 @@ def summarize_cooperative_visual_funnel(
                 ),
                 decision_state=(association.decision_state if association is not None else "unobserved"),
                 first_failure_stage=failure_stage,
+                failure_category=failure_category,
                 reject_reason=reject_reason,
                 measurement_timestamp=(
                     association.measurement_timestamp if association is not None else None
@@ -993,6 +1094,9 @@ def summarize_cooperative_visual_funnel(
                 second_primary_first_failure_stage=(
                     second.first_failure_stage if second is not None else None
                 ),
+                second_primary_failure_category=(
+                    second.failure_category if second is not None else None
+                ),
                 second_primary_reject_reason=(second.reject_reason if second is not None else None),
                 reason=target_reason,
             )
@@ -1036,12 +1140,19 @@ def summarize_cooperative_visual_funnel(
         ),
     }
     first_failure_counts: dict[str, int] = defaultdict(int)
+    failure_category_counts: dict[str, int] = defaultdict(int)
     for item in active_rows:
         first_failure_counts[item.first_failure_stage] += 1
+        failure_category_counts[item.failure_category] += 1
     second_failure_counts: dict[str, int] = defaultdict(int)
+    second_failure_category_counts: dict[str, int] = defaultdict(int)
     for target in target_summaries:
         if target.second_primary_first_failure_stage is not None:
             second_failure_counts[target.second_primary_first_failure_stage] += 1
+        if target.second_primary_failure_category is not None:
+            second_failure_category_counts[
+                target.second_primary_failure_category
+            ] += 1
 
     return CooperativeVisualFunnelSummary(
         target_summaries=tuple(target_summaries),
@@ -1051,7 +1162,11 @@ def summarize_cooperative_visual_funnel(
         completed_target_count=sum(target.cooperative_completion for target in target_summaries),
         funnel_counts=funnel_counts,
         first_failure_stage_counts=dict(sorted(first_failure_counts.items())),
+        failure_category_counts=dict(sorted(failure_category_counts.items())),
         second_primary_first_failure_stage_counts=dict(sorted(second_failure_counts.items())),
+        second_primary_failure_category_counts=dict(
+            sorted(second_failure_category_counts.items())
+        ),
         metadata={
             "required_stable_frames": int(required_stable_frames),
             "common_window_tolerance_s": float(common_window_tolerance_s),
@@ -1342,6 +1457,7 @@ def _normalize_evidence(
         resource_id = value.resource_id
         timestamp = value.timestamp
         frame_id = value.frame_id
+        camera_id = value.camera_id
         local_track_matches = (
             value.local_track is None
             or association.local_track_id == value.local_track.local_track_id
@@ -1359,6 +1475,11 @@ def _normalize_evidence(
             )
         )
         frame_id = association.metadata.get("frame_id")
+        camera_id = _optional_text(
+            association.metadata.get("camera_history_scope")
+            or association.metadata.get("measurement_camera_id")
+            or association.metadata.get("camera_id")
+        )
         local_track_matches = True
         observation_metadata = {}
     else:
@@ -1377,6 +1498,7 @@ def _normalize_evidence(
         frame_index=frame_index,
         frame_key=frame_key,
         input_order=input_order,
+        camera_id=_optional_text(camera_id),
         has_own_local_detection=bool(
             association.local_track_id
             and local_track_matches
@@ -1486,11 +1608,24 @@ def _stable_lock_state(
     *,
     invalid_historical_plan_versions: frozenset[int],
     allow_cross_version_continuity: bool,
+    member_committed_current: bool,
 ) -> _StabilityState:
+    if not member_committed_current:
+        return _StabilityState(
+            count=0,
+            reset_reason="coalition_member_not_committed_current",
+            history_key=_stability_history_key(binding),
+            evidence_source="unavailable",
+        )
     current_frames = _frame_states(current_locks, binding)
     if not current_frames:
-        return _StabilityState(count=0)
+        return _StabilityState(
+            count=0,
+            history_key=_stability_history_key(binding),
+            evidence_source="unavailable",
+        )
     current = current_frames[-1]
+    later_evidence = max(current[4], key=_frame_order_token)
     count = 1
     previous = current
     source_versions: list[int] = []
@@ -1519,6 +1654,9 @@ def _stable_lock_state(
             reset_reason="stale_plan_version_replay",
             stale_plan_replay=True,
             source_plan_versions=tuple(source_versions),
+            history_key=_stability_history_key(binding),
+            history_signature=_visual_history_signature(later_evidence),
+            evidence_source=_visual_evidence_source(later_evidence),
         )
 
     grouped_history = _group_evidence_frames(resource_history)
@@ -1539,6 +1677,7 @@ def _stable_lock_state(
             historical_bindings=historical_bindings,
             invalid_historical_plan_versions=invalid_historical_plan_versions,
             allow_cross_version_continuity=allow_cross_version_continuity,
+            later_evidence=later_evidence,
         )
         if evidence is None or historical_binding is None:
             reset_reason = reason or "historical_lock_not_eligible"
@@ -1550,11 +1689,15 @@ def _stable_lock_state(
             source_versions.append(historical_binding.plan_version)
         previous = frame
         later_binding = historical_binding
+        later_evidence = evidence
     return _StabilityState(
         count=count,
         continued_across_plan_version=continued,
         reset_reason=reset_reason,
         source_plan_versions=tuple(dict.fromkeys(source_versions)),
+        history_key=_stability_history_key(binding),
+        history_signature=_visual_history_signature(max(current[4], key=_frame_order_token)),
+        evidence_source=_visual_evidence_source(max(current[4], key=_frame_order_token)),
     )
 
 
@@ -1567,6 +1710,7 @@ def _select_continuity_evidence(
     historical_bindings: tuple[_Binding, ...],
     invalid_historical_plan_versions: frozenset[int],
     allow_cross_version_continuity: bool,
+    later_evidence: _Evidence,
 ) -> tuple[_Evidence | None, _Binding | None, str | None]:
     locked_items = tuple(
         evidence
@@ -1593,6 +1737,13 @@ def _select_continuity_evidence(
             continue
         if not _association_matches_binding(association, historical_binding):
             reset_reason = "historical_association_binding_mismatch"
+            continue
+        visual_identity_conflict = _visual_history_transition_conflict(
+            newer=later_evidence,
+            older=evidence,
+        )
+        if visual_identity_conflict is not None:
+            reset_reason = visual_identity_conflict
             continue
         if historical_binding.plan_version == later_binding.plan_version:
             if historical_binding == later_binding:
@@ -1681,6 +1832,98 @@ def _binding_identity_conflict(newer: _Binding, older: _Binding) -> str | None:
     return None
 
 
+def _stability_history_key(binding: _Binding) -> dict[str, Any]:
+    return {
+        "resource_id": binding.resource_id,
+        "assigned_global_track_id": binding.global_track_id,
+        "target_id": binding.target_id,
+    }
+
+
+def _visual_history_signature(evidence: _Evidence) -> dict[str, Any]:
+    association = evidence.association
+    metadata = association.metadata
+    audited = metadata.get("bbox_history_signature")
+    audited_signature = dict(audited) if isinstance(audited, Mapping) else {}
+    camera_id = (
+        audited_signature.get("camera_id")
+        or evidence.camera_id
+        or metadata.get("camera_history_scope")
+        or metadata.get("measurement_camera_id")
+        or metadata.get("camera_id")
+    )
+    detector_backend = (
+        audited_signature.get("detector_backend")
+        or metadata.get("detector_backend")
+        or association.detection_source
+    )
+    tracker_backend = (
+        audited_signature.get("tracker_backend")
+        or metadata.get("tracker_backend")
+        or association.detection_source
+    )
+    stream_id = (
+        audited_signature.get("stream_id")
+        or metadata.get("stream_id")
+        or metadata.get("stream_key")
+        or camera_id
+    )
+    return {
+        "resource_id": evidence.resource_id,
+        "assigned_global_track_id": association.assigned_global_track_id,
+        "local_track_id": association.local_track_id,
+        "camera_id": _optional_text(camera_id),
+        "detector_backend": _optional_text(detector_backend),
+        "tracker_backend": _optional_text(tracker_backend),
+        "stream_id": _optional_text(stream_id),
+        "evidence_source": _visual_evidence_source(evidence),
+    }
+
+
+def _visual_evidence_source(evidence: _Evidence) -> str:
+    state = evidence.association.local_track_state
+    if state:
+        return str(state).strip().lower()
+    return str(
+        evidence.association.metadata.get("bbox_history_evidence_source", "unavailable")
+    ).strip().lower()
+
+
+def _visual_history_transition_conflict(
+    *,
+    newer: _Evidence,
+    older: _Evidence,
+) -> str | None:
+    newer_association = newer.association
+    if newer_association.track_reset_reason:
+        return f"producer_track_reset:{newer_association.track_reset_reason}"
+    if newer_association.track_transition_state in {"switched", "reset"}:
+        return f"track_transition:{newer_association.track_transition_state}"
+    newer_signature = _visual_history_signature(newer)
+    older_signature = _visual_history_signature(older)
+    if (
+        newer_signature["resource_id"] != older_signature["resource_id"]
+        or newer_signature["assigned_global_track_id"]
+        != older_signature["assigned_global_track_id"]
+    ):
+        return "resource_target_binding_changed"
+    if newer_signature["local_track_id"] != older_signature["local_track_id"]:
+        return "local_track_id_changed"
+    if newer_signature["camera_id"] != older_signature["camera_id"]:
+        return "camera_changed"
+    if newer_signature["detector_backend"] != older_signature["detector_backend"]:
+        return "detector_backend_changed"
+    if newer_signature["tracker_backend"] != older_signature["tracker_backend"]:
+        return "tracker_backend_changed"
+    if newer_signature["stream_id"] != older_signature["stream_id"]:
+        return "stream_changed"
+    if newer_signature["evidence_source"] != "measured":
+        return f"non_measured_visual_source:{newer_signature['evidence_source']}"
+    if older_signature["evidence_source"] != "measured":
+        return f"non_measured_visual_source:{older_signature['evidence_source']}"
+    return None
+
+
 def _primary_membership_transition_conflict(
     *,
     newer: _Binding,
@@ -1727,6 +1970,12 @@ def _evidence_safe_for_continuity(evidence: _Evidence) -> bool:
     if str(metadata.get("coalition_conflict_state", "none")).lower() not in {"", "none"}:
         return False
     if metadata.get("measurement_age_ok") is False:
+        return False
+    if metadata.get("bbox_history_contract_complete") is False:
+        return False
+    if association.local_track_state not in {"", "measured"}:
+        return False
+    if bool(metadata.get("identity_conflict", False)):
         return False
     for key in ("assignment_validity_state", "evidence_state", "freshness_state"):
         if str(metadata.get(key, "")).strip().lower() in {
@@ -1888,6 +2137,35 @@ def _latest_binding_evidence(
     )
 
 
+def _latest_resource_evidence(
+    binding: _Binding,
+    evidence_items: Iterable[_Evidence],
+) -> _Evidence | None:
+    """Return the latest resource evidence, including a conflicting binding.
+
+    The cooperative diagnostic must expose a current assignment/global-track
+    mismatch instead of silently converting it into an apparent visibility
+    loss. This helper is read-only and never treats the conflicting ID as a
+    replacement for the binding's center-owned ``global_track_id``.
+    """
+
+    candidates = tuple(
+        evidence
+        for evidence in evidence_items
+        if evidence.resource_id == binding.resource_id
+    )
+    if not candidates:
+        return None
+    return max(
+        candidates,
+        key=lambda evidence: (
+            evidence.timestamp,
+            evidence.frame_index if evidence.frame_index is not None else -1,
+            evidence.input_order,
+        ),
+    )
+
+
 def _latest_local_only_observation(
     binding: _Binding,
     evidence_items: Iterable[TerminalAssociation | TerminalObservation],
@@ -1966,6 +2244,8 @@ def _diagnostic_failure(
     if not committed_member:
         return "contract", "coalition_member_not_committed"
     if association is not None and not contract_matches:
+        if association.assigned_global_track_id != binding.global_track_id:
+            return "contract", "assigned_global_track_id_mismatch"
         if not _association_owner_matches_binding(association, binding):
             return "contract", "plan_owner_mismatch"
         if (
@@ -1999,6 +2279,150 @@ def _diagnostic_failure(
         if common_window_required
         else "per_primary_visual_completion",
     )
+
+
+def _diagnostic_failure_category(
+    *,
+    association: TerminalAssociation | None,
+    failure_stage: str,
+    reject_reason: str,
+    visible: bool,
+    projected: bool,
+    gate_accepted: bool,
+    locked: bool,
+    stable_count: int,
+    required_stable_frames: int,
+) -> str:
+    """Normalize existing D5 evidence into a passive failure category.
+
+    This classifier does not alter association, lock, hold, or reacquire
+    decisions. It only provides a stable aggregation key for the next AirSim
+    multi-seed failure-funnel report.
+    """
+
+    if failure_stage == "complete":
+        return "complete"
+    if failure_stage == "standby_reserve":
+        return "standby_reserve"
+
+    live_funnel = (
+        association.metadata.get("d5_live_visual_funnel", {})
+        if association is not None
+        else {}
+    )
+    if not isinstance(live_funnel, Mapping):
+        live_funnel = {}
+    live_stage = str(live_funnel.get("first_failure_stage") or "").lower()
+    live_reason = str(live_funnel.get("first_failure_reason") or "")
+    reason_text = " ".join(
+        value
+        for value in (
+            str(reject_reason or ""),
+            live_reason,
+            str(association.reason if association is not None else ""),
+        )
+        if value
+    ).lower()
+
+    if failure_stage == "contract" or any(
+        token in reason_text
+        for token in (
+            "assigned_global_track_id_mismatch",
+            "plan_or_coalition_version_mismatch",
+            "plan_owner_mismatch",
+            "assignment_version_mismatch",
+            "stale_plan_version_rejected",
+            "authorization_contract_mismatch",
+            "coalition_member_not_committed",
+        )
+    ):
+        return "assignment_or_identity_contract_mismatch"
+
+    duplicate_risk = bool(
+        association is not None
+        and (
+            association.duplicate_terminal_lock_risk
+            or association.metadata.get("duplicate_terminal_lock_risk", False)
+        )
+    )
+    friend_conflict = bool(
+        association is not None
+        and association.friend_conflict_state != "none"
+    )
+    if duplicate_risk or friend_conflict or any(
+        token in reason_text
+        for token in ("duplicate_terminal_lock", "friend_conflict", "friend_overlap")
+    ):
+        return "friend_or_duplicate_lock_conflict"
+
+    if any(
+        token in reason_text
+        for token in (
+            "measurement_age",
+            "measurement_stale",
+            "visual_evidence_expired",
+            "timestamp_stale",
+            "arrival_window_expired",
+            "prediction_age_exceeded",
+        )
+    ):
+        return "timestamp_or_measurement_stale"
+
+    bbox_edge_clipped = bool(
+        association is not None
+        and (
+            association.bbox_edge_clipped
+            or association.metadata.get("bbox_edge_clipped", False)
+        )
+    )
+    if bbox_edge_clipped or live_stage == "bbox_stability" or any(
+        token in reason_text
+        for token in (
+            "bbox_area_unstable",
+            "bbox_history",
+            "bbox_edge",
+            "bbox_clipped",
+            "bbox_too_small",
+        )
+    ):
+        return "bbox_unstable_or_edge_clipped"
+
+    if not visible or failure_stage in {"visible", "live_detection", "measured_bbox"}:
+        return "not_visible"
+    if not projected or failure_stage in {"projected", "projection"}:
+        return "projection_invalid"
+    if not gate_accepted or failure_stage in {"gate_accepted", "geometry_gate"}:
+        return "geometry_gate_rejected"
+
+    visual_state = str(
+        live_funnel.get(
+            "visual_match_decision_state",
+            association.decision_state if association is not None else "",
+        )
+    ).lower()
+    gate_pass_count = int(
+        association.metadata.get("gate_pass_count", 0) or 0
+    ) if association is not None else 0
+    if visual_state == "ambiguous" or any(
+        token in reason_text
+        for token in (
+            "candidate_margin",
+            "multiple_candidate",
+            "candidate_not_unique",
+            "ambiguous_candidate",
+        )
+    ) or (gate_pass_count > 1 and not locked):
+        return "candidate_not_unique"
+
+    if (
+        failure_stage in {"locked", "stable_lock", "measured_stable_lock", "execution_lock"}
+        or not locked
+        or stable_count < required_stable_frames
+    ):
+        return "associated_but_stable_lock_incomplete"
+    if failure_stage == "common_lock_window":
+        return "coalition_lock_window_incomplete"
+    return "other_terminal_failure"
 
 
 def _primary_membership_transition_diagnostic(

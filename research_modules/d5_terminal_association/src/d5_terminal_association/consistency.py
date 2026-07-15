@@ -8,6 +8,21 @@ from math import inf
 from .models import CrossViewAssociation, TerminalAssociation, TerminalConsistencySummary
 
 
+_HARD_IDENTITY_CONFLICT_STATES = frozenset(
+    {
+        "verified_friend_overlap",
+        "spoof_suspected_overlap",
+    }
+)
+_HARD_ASSIGNMENT_CONFLICT_REASONS = frozenset(
+    {
+        "assignment_not_authorized",
+        "assignment_version_mismatch",
+        "stale_plan_version_rejected",
+    }
+)
+
+
 @dataclass(frozen=True)
 class TerminalConsistencyConfig:
     """Thresholds for deriving advisory consistency state."""
@@ -18,6 +33,8 @@ class TerminalConsistencyConfig:
     stable_candidate_margin: float = 3.0
     stable_locked_frames: int = 1
     ambiguous_frames_for_secondary: int = 5
+    # Legacy field names retained for constructor compatibility. These visual
+    # uncertainty streaks now request a secondary cue instead of hard feedback.
     hold_frames_for_conflict_report: int = 2
     reacquire_frames_for_arbitration: int = 5
     conflict_frames_for_arbitration: int = 3
@@ -111,8 +128,11 @@ class TerminalConsistencyTracker:
         )
 
         duplicate_risk = bool(
-            cross_view_association is not None
-            and cross_view_association.duplicate_terminal_lock_risk
+            association.duplicate_terminal_lock_risk
+            or (
+                cross_view_association is not None
+                and cross_view_association.duplicate_terminal_lock_risk
+            )
         )
         candidate_margin = candidate_cost_margin(association)
         consistency_state, recommended_action, reason = self._classify(
@@ -240,6 +260,9 @@ class TerminalConsistencyTracker:
         if duplicate_terminal_lock_risk:
             return "conflict", "arbitrate", "duplicate_terminal_lock_risk"
 
+        if association.friend_conflict_state in _HARD_IDENTITY_CONFLICT_STATES:
+            return "conflict", "report_conflict", association.friend_conflict_state
+
         if (
             local_best_conflicts_with_assignment
             and consecutive_assignment_conflict_frames >= cfg.conflict_frames_for_arbitration
@@ -247,19 +270,15 @@ class TerminalConsistencyTracker:
             return "inconsistent", "arbitrate", "local_best_conflicts_with_assignment"
 
         if association.decision_state == "hold":
-            if (
-                association.friend_conflict_state == "verified_friend_overlap"
-                or "version" in association.reason
-                or "authorized" in association.reason
-            ):
+            if association.reason in _HARD_ASSIGNMENT_CONFLICT_REASONS:
                 return "conflict", "report_conflict", association.reason
             if consecutive_hold_frames >= cfg.hold_frames_for_conflict_report:
-                return "conflict", "report_conflict", association.reason
+                return "unknown", "request_secondary_cue", association.reason
             return "unknown", "observe", association.reason
 
         if association.decision_state == "reacquire":
             if consecutive_reacquire_frames >= cfg.reacquire_frames_for_arbitration:
-                return "unknown", "arbitrate", association.reason
+                return "unknown", "request_secondary_cue", association.reason
             return "unknown", "observe", association.reason
 
         if association.decision_state == "ambiguous":

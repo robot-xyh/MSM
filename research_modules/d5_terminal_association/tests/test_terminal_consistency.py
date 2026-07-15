@@ -21,6 +21,7 @@ def _association(
     cue_used: bool = False,
     costs: list[tuple[str, float]] | None = None,
     assignment_version: int = 2,
+    duplicate_risk: bool = False,
 ) -> TerminalAssociation:
     return TerminalAssociation(
         assigned_global_track_id="G1",
@@ -33,6 +34,7 @@ def _association(
         reason=reason,
         candidate_costs=costs or [("L1", 1.0), ("L2", 5.5)],
         recon_cue_used=cue_used,
+        duplicate_terminal_lock_risk=duplicate_risk,
     )
 
 
@@ -73,7 +75,7 @@ def test_consistency_summary_tracks_locked_lost_and_reacquired_events() -> None:
     assert reacquired.previous_decision_state == "reacquire"
 
 
-def test_consistency_summary_recommends_secondary_cue_and_arbitration_after_streaks() -> None:
+def test_visual_uncertainty_streaks_only_request_pair_level_secondary_cue() -> None:
     tracker = TerminalConsistencyTracker(
         TerminalConsistencyConfig(
             ambiguous_frames_for_secondary=2,
@@ -95,18 +97,69 @@ def test_consistency_summary_recommends_secondary_cue_and_arbitration_after_stre
     first_reacquire = tracker.update(
         resource_id="UAV1",
         timestamp=1.2,
-        association=_association(decision="reacquire", confidence=0.0, ambiguity=1.0, local_id=None),
+        association=_association(
+            decision="reacquire",
+            confidence=0.0,
+            ambiguity=1.0,
+            local_id=None,
+            reason="no_local_track_inside_projection_gate",
+        ),
     )
     second_reacquire = tracker.update(
         resource_id="UAV1",
         timestamp=1.3,
-        association=_association(decision="reacquire", confidence=0.0, ambiguity=1.0, local_id=None),
+        association=_association(
+            decision="reacquire",
+            confidence=0.0,
+            ambiguity=1.0,
+            local_id=None,
+            reason="no_local_track_inside_projection_gate",
+        ),
     )
 
     assert first_ambiguous.recommended_d4_action == "observe"
     assert second_ambiguous.recommended_d4_action == "request_secondary_cue"
     assert first_reacquire.recommended_d4_action == "observe"
-    assert second_reacquire.recommended_d4_action == "arbitrate"
+    assert second_reacquire.consistency_state == "unknown"
+    assert second_reacquire.recommended_d4_action == "request_secondary_cue"
+    assert second_reacquire.assigned_global_track_id == "G1"
+    assert second_reacquire.metadata["truth_identity_used"] is False
+    assert second_reacquire.metadata.get("resource_unavailable") is not True
+
+
+def test_ordinary_hold_streak_does_not_become_resource_or_planner_conflict() -> None:
+    tracker = TerminalConsistencyTracker(
+        TerminalConsistencyConfig(hold_frames_for_conflict_report=2)
+    )
+
+    first = tracker.update(
+        resource_id="UAV1",
+        timestamp=3.0,
+        association=_association(
+            decision="hold",
+            confidence=0.2,
+            ambiguity=0.9,
+            reason="bbox_temporally_unstable",
+        ),
+    )
+    second = tracker.update(
+        resource_id="UAV1",
+        timestamp=3.1,
+        association=_association(
+            decision="hold",
+            confidence=0.2,
+            ambiguity=0.9,
+            reason="bbox_temporally_unstable",
+        ),
+    )
+
+    assert first.consistency_state == "unknown"
+    assert first.recommended_d4_action == "observe"
+    assert second.consistency_state == "unknown"
+    assert second.recommended_d4_action == "request_secondary_cue"
+    assert second.recommended_d4_action not in {"report_conflict", "arbitrate"}
+    assert second.metadata.get("resource_unavailable") is not True
+    assert second.assigned_global_track_id == "G1"
 
 
 def test_consistency_streak_survives_plan_version_updates_for_same_assignment_pair() -> None:
@@ -144,7 +197,7 @@ def test_consistency_streak_survives_plan_version_updates_for_same_assignment_pa
     assert second.to_metadata()["assignment_version_resets_window"] is False
 
 
-def test_consistency_summary_reports_friend_and_duplicate_lock_conflicts() -> None:
+def test_consistency_summary_reports_friend_spoof_and_duplicate_lock_conflicts() -> None:
     friend_summary = summarize_terminal_consistency(
         resource_id="UAV1",
         timestamp=2.0,
@@ -156,6 +209,45 @@ def test_consistency_summary_reports_friend_and_duplicate_lock_conflicts() -> No
             reason="verified_friend_overlap_inside_gate",
         ),
     )
+    spoof_summary = summarize_terminal_consistency(
+        resource_id="UAV1",
+        timestamp=2.05,
+        association=_association(
+            decision="ambiguous",
+            confidence=0.3,
+            ambiguity=0.9,
+            friend_state="spoof_suspected_overlap",
+            reason="spoof_suspected_overlap",
+        ),
+    )
+    duplicate_summary = summarize_terminal_consistency(
+        resource_id="UAV1",
+        timestamp=2.1,
+        association=_association(decision="hold", duplicate_risk=True),
+    )
+    assignment_summary = summarize_terminal_consistency(
+        resource_id="UAV1",
+        timestamp=2.2,
+        association=_association(
+            decision="hold",
+            confidence=0.0,
+            ambiguity=1.0,
+            reason="assignment_version_mismatch",
+        ),
+    )
+
+    assert friend_summary.consistency_state == "conflict"
+    assert friend_summary.recommended_d4_action == "report_conflict"
+    assert spoof_summary.consistency_state == "conflict"
+    assert spoof_summary.recommended_d4_action == "report_conflict"
+    assert duplicate_summary.consistency_state == "conflict"
+    assert duplicate_summary.recommended_d4_action == "arbitrate"
+    assert duplicate_summary.duplicate_terminal_lock_risk is True
+    assert assignment_summary.consistency_state == "conflict"
+    assert assignment_summary.recommended_d4_action == "report_conflict"
+
+
+def test_cross_view_duplicate_details_remain_available_for_hard_feedback() -> None:
     duplicate_cross_view = CrossViewAssociation(
         global_track_id="G1",
         supporting_resource_ids=("UAV1", "UAV2"),
@@ -168,19 +260,18 @@ def test_consistency_summary_reports_friend_and_duplicate_lock_conflicts() -> No
         support_count=2,
         duplicate_lock_resource_ids=("UAV1", "UAV2"),
     )
-    duplicate_summary = summarize_terminal_consistency(
+
+    summary = summarize_terminal_consistency(
         resource_id="UAV1",
         timestamp=2.1,
         association=_association(decision="locked"),
         cross_view_association=duplicate_cross_view,
     )
 
-    assert friend_summary.consistency_state == "conflict"
-    assert friend_summary.recommended_d4_action == "report_conflict"
-    assert duplicate_summary.consistency_state == "conflict"
-    assert duplicate_summary.recommended_d4_action == "arbitrate"
-    assert duplicate_summary.cross_view_support_count == 2
-    assert duplicate_summary.duplicate_lock_resource_ids == ("UAV1", "UAV2")
+    assert summary.consistency_state == "conflict"
+    assert summary.recommended_d4_action == "arbitrate"
+    assert summary.cross_view_support_count == 2
+    assert summary.duplicate_lock_resource_ids == ("UAV1", "UAV2")
 
 
 def test_candidate_cost_margin_handles_single_candidate() -> None:

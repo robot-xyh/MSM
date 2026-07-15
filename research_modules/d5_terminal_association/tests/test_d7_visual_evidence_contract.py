@@ -90,6 +90,10 @@ def test_detect_adapter_emits_truth_free_timing_clipping_and_geometry_evidence()
     assert track.bbox_edge_clip_sides == ("left",)
     assert track.detection_source == "simGetDetections"
     assert evidence["camera_geometry"]["geometry_valid"] is True
+    assert evidence["center_px"] == [15.0, 26.0]
+    assert evidence["bbox_xyxy"] == [0.0, 12.0, 30.0, 40.0]
+    assert evidence["resource_id"] == "UAV1"
+    assert evidence["camera_id"] == "front_rgb"
     assert evidence["truth_identity_used"] is False
     assert "TargetActor" not in track.local_track_id
     assert "G-truth" not in track.local_track_id

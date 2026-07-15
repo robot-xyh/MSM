@@ -21,6 +21,7 @@ def _observation(
     category: str = "uav",
     confidence: float = 0.92,
     bbox_size: float = 20.0,
+    friend_conflict_state: str = "none",
 ) -> DistributedVisualObservation:
     center = np.array([320.0 + bearing[0] * 100.0, 240.0 + bearing[1] * 100.0])
     half = bbox_size / 2.0
@@ -40,6 +41,7 @@ def _observation(
         confidence=confidence,
         assigned_global_track_id=assigned_global_track_id,
         assigned_global_track_stale=assigned_global_track_stale,
+        friend_conflict_state=friend_conflict_state,
     )
 
 
@@ -177,6 +179,41 @@ def test_duplicate_terminal_lock_risk_is_marked_and_blocks_locked_state() -> Non
     assert association.duplicate_lock_resource_ids == ("UAV1", "UAV2")
     assert association.decision_state == "hold"
     assert association.reason == "duplicate_terminal_lock_risk"
+    assert association.recommended_d4_action == "arbitrate"
+
+
+def test_identity_spoof_is_hard_feedback_but_unverified_identity_is_not() -> None:
+    fusion = _fusion()
+    spoof = fusion.associate(
+        observations=[
+            _observation(
+                "UAV1",
+                "L1",
+                (0.1, 0.0),
+                assigned_global_track_id="G2",
+                friend_conflict_state="spoof_suspected_overlap",
+            )
+        ]
+    )[0]
+    unverified = fusion.associate(
+        observations=[
+            _observation(
+                "UAV1",
+                "L2",
+                (0.1, 0.0),
+                assigned_global_track_id="G2",
+                friend_conflict_state="unverified_friend_overlap",
+            )
+        ]
+    )[0]
+
+    assert spoof.decision_state == "ambiguous"
+    assert spoof.recommended_d4_action == "report_conflict"
+    assert spoof.reason == "spoof_suspected_overlap"
+    assert unverified.decision_state == "ambiguous"
+    assert unverified.recommended_d4_action == "observe"
+    assert unverified.reason == "identity_confirmation_required"
+    assert spoof.assigned_global_track_id == unverified.assigned_global_track_id == "G2"
 
 
 def test_single_view_target_is_kept_as_conservative_hypothesis() -> None:

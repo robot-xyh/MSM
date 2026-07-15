@@ -55,6 +55,53 @@ class _FakeNativeModel:
         ]
 
 
+class _ResultsLikeBoxes:
+    def __init__(self, track_ids: list[int]) -> None:
+        count = len(track_ids)
+        self.xyxy = np.asarray(
+            [
+                (10.0 + index, 10.0, 30.0 + index, 30.0)
+                for index in range(count)
+            ],
+            dtype=float,
+        ).reshape(-1, 4)
+        self.conf = np.full(count, 0.9, dtype=float)
+        self.cls = np.zeros(count, dtype=float)
+        self.id = np.asarray(track_ids, dtype=float)
+
+
+class _ResultsLike:
+    names = {0: "uav"}
+
+    def __init__(self, track_ids: list[int]) -> None:
+        self.boxes = _ResultsLikeBoxes(track_ids)
+
+
+class _ResultsLikeNativeModel:
+    names = {0: "uav"}
+
+    def __init__(self, events: list[list[int] | Exception]) -> None:
+        self.events = list(events)
+
+    def track(self, frame: np.ndarray, **kwargs: object) -> list[_ResultsLike]:
+        if not self.events:
+            raise AssertionError("unexpected native tracker call")
+        event = self.events.pop(0)
+        if isinstance(event, Exception):
+            raise event
+        return [_ResultsLike(event)]
+
+    def predict(self, frame: np.ndarray, **kwargs: object) -> list[dict]:
+        return [
+            {
+                "xyxy": (10.0, 10.0, 30.0, 30.0),
+                "confidence": 0.9,
+                "class_id": 0,
+                "names": self.names,
+            }
+        ]
+
+
 def test_mock_yolo_output_becomes_local_visual_track_with_fallback_metadata() -> None:
     adapter = YoloMotAdapter(
         YoloMotAdapterConfig(
@@ -325,13 +372,166 @@ def test_native_failure_falls_back_to_per_stream_iou_tracker_without_sharing() -
         _frame(), resource_id="UAV1", camera_id="front_rgb", timestamp=1.1
     )
 
-    assert len(loaded_models) == 2
+    assert len(loaded_models) == 3
     assert [a_first.tracks[0].mot_history_length, b_first.tracks[0].mot_history_length] == [1, 1]
     assert a_second.tracks[0].mot_history_length == 2
     assert a_first.tracker_backend == b_first.tracker_backend == "iou_fallback"
     assert a_first.metadata["tracker_state_backend"] == "iou_fallback"
     assert a_first.metadata["native_model_scope"] == "per_stream"
     assert "native tracker unavailable" in a_first.metadata["tracker_fallback_reason"]
+
+
+@pytest.mark.parametrize("backend", ("bytetrack", "botsort"))
+def test_ultralytics_results_history_accumulates_consecutive_native_hits(
+    backend: str,
+) -> None:
+    adapter = YoloMotAdapter(
+        YoloMotAdapterConfig(
+            tracker_backend=backend,
+            confidence_threshold=0.2,
+        ),
+        model=_ResultsLikeNativeModel([[7], [7], [7]]),
+    )
+
+    results = [
+        adapter.process_frame(
+            _frame(),
+            resource_id="UAV1",
+            camera_id="front_rgb",
+            timestamp=1.0 + index * 0.1,
+        )
+        for index in range(3)
+    ]
+
+    assert [result.tracks[0].mot_history_length for result in results] == [1, 2, 3]
+    assert results[1].tracks[0].track_transition_state == "continued"
+    assert results[2].metadata["native_mot_history_semantics"] == (
+        "consecutive_measured_hits_per_resource_camera_backend_id"
+    )
+
+
+def test_ultralytics_results_history_isolated_by_resource_camera_and_native_id() -> None:
+    adapter = YoloMotAdapter(
+        YoloMotAdapterConfig(tracker_backend="bytetrack"),
+        model=_ResultsLikeNativeModel([[7], [7], [9]]),
+    )
+
+    uav1_front_first = adapter.process_frame(
+        _frame(), resource_id="UAV1", camera_id="front_rgb", timestamp=1.0
+    )
+    uav1_wide_first = adapter.process_frame(
+        _frame(), resource_id="UAV1", camera_id="wide_rgb", timestamp=1.0
+    )
+    uav2_front_first = adapter.process_frame(
+        _frame(), resource_id="UAV2", camera_id="front_rgb", timestamp=1.0
+    )
+    uav1_front_second = adapter.process_frame(
+        _frame(), resource_id="UAV1", camera_id="front_rgb", timestamp=1.1
+    )
+    uav1_wide_id_switch = adapter.process_frame(
+        _frame(), resource_id="UAV1", camera_id="wide_rgb", timestamp=1.1
+    )
+
+    assert uav1_front_first.tracks[0].mot_history_length == 1
+    assert uav1_wide_first.tracks[0].mot_history_length == 1
+    assert uav2_front_first.tracks[0].mot_history_length == 1
+    assert uav1_front_second.tracks[0].mot_history_length == 2
+    assert uav1_wide_id_switch.tracks[0].mot_history_length == 2
+
+    uav1_wide_new_id = adapter.process_frame(
+        _frame(), resource_id="UAV1", camera_id="wide_rgb", timestamp=1.2
+    )
+    assert uav1_wide_new_id.tracks[0].local_track_id.endswith(":track:9")
+    assert uav1_wide_new_id.tracks[0].mot_history_length == 1
+
+
+def test_ultralytics_results_empty_frames_reset_measured_history_and_bound_id_reuse() -> None:
+    adapter = YoloMotAdapter(
+        YoloMotAdapterConfig(
+            tracker_backend="bytetrack",
+            max_track_age_frames=2,
+        ),
+        model=_ResultsLikeNativeModel([[7], [7], [], [7], [], [], [], [7]]),
+    )
+
+    histories: list[int | None] = []
+    for index in range(8):
+        result = adapter.process_frame(
+            _frame(),
+            resource_id="UAV1",
+            camera_id="front_rgb",
+            timestamp=1.0 + index * 0.1,
+        )
+        histories.append(result.tracks[0].mot_history_length if result.tracks else None)
+        assert result.tracker_backend == "bytetrack"
+
+    assert histories == [1, 2, None, 1, None, None, None, 1]
+
+
+def test_ultralytics_results_reset_stream_and_episode_clear_native_history() -> None:
+    adapter = YoloMotAdapter(
+        YoloMotAdapterConfig(tracker_backend="botsort"),
+        model=_ResultsLikeNativeModel([[7], [7]]),
+    )
+
+    adapter.process_frame(_frame(), resource_id="UAV1", camera_id="front_rgb", timestamp=1.0)
+    second = adapter.process_frame(
+        _frame(), resource_id="UAV1", camera_id="front_rgb", timestamp=1.1
+    )
+    adapter.reset_stream("UAV1", "front_rgb")
+    after_stream_reset = adapter.process_frame(
+        _frame(), resource_id="UAV1", camera_id="front_rgb", timestamp=2.0
+    )
+    adapter.process_frame(_frame(), resource_id="UAV2", camera_id="front_rgb", timestamp=2.0)
+    adapter.reset_episode()
+    after_episode_reset = adapter.process_frame(
+        _frame(), resource_id="UAV2", camera_id="front_rgb", timestamp=3.0
+    )
+
+    assert second.tracks[0].mot_history_length == 2
+    assert after_stream_reset.tracks[0].mot_history_length == 1
+    assert after_episode_reset.tracks[0].mot_history_length == 1
+
+
+def test_native_failure_fallback_and_reinitialized_native_do_not_share_history() -> None:
+    loaded_models: list[_ResultsLikeNativeModel] = []
+
+    def loader(weights_path: Path) -> _ResultsLikeNativeModel:
+        events: list[list[int] | Exception]
+        if not loaded_models:
+            events = [[7], RuntimeError("native tracker failed after first result")]
+        else:
+            events = [[7]]
+        model = _ResultsLikeNativeModel(events)
+        loaded_models.append(model)
+        return model
+
+    adapter = YoloMotAdapter(
+        YoloMotAdapterConfig(
+            weights_path=Path(__file__),
+            tracker_backend="bytetrack",
+            allow_iou_fallback=True,
+        ),
+        ultralytics_loader=loader,
+    )
+
+    native_first = adapter.process_frame(
+        _frame(), resource_id="UAV1", camera_id="front_rgb", timestamp=1.0
+    )
+    fallback = adapter.process_frame(
+        _frame(), resource_id="UAV1", camera_id="front_rgb", timestamp=1.1
+    )
+    native_reinitialized = adapter.process_frame(
+        _frame(), resource_id="UAV1", camera_id="front_rgb", timestamp=1.2
+    )
+
+    assert native_first.tracker_backend == "bytetrack"
+    assert native_first.tracks[0].mot_history_length == 1
+    assert fallback.tracker_backend == "iou_fallback"
+    assert fallback.tracks[0].mot_history_length == 1
+    assert native_reinitialized.tracker_backend == "bytetrack"
+    assert native_reinitialized.tracks[0].mot_history_length == 1
+    assert len(loaded_models) == 2
 
 
 def test_truth_and_global_fields_are_ignored_by_yolo_mot_adapter_online() -> None:

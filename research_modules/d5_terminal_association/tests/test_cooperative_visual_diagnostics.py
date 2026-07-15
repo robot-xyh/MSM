@@ -76,7 +76,7 @@ def _association(
     metadata: dict[str, object] | None = None,
 ) -> TerminalAssociation:
     local_track_id = (
-        f"mot-{resource_id}-{frame_index}"
+        f"mot-{resource_id}"
         if local_track_id is None and decision_state != "reacquire"
         else local_track_id
     )

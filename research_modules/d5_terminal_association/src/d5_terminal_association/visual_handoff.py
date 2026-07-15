@@ -124,12 +124,34 @@ def annotate_visual_png_handoff(
         los_rate_norm_px_s=los_rate_norm,
         config=cfg,
     )
-    stability = bbox_area_stability(
+    supplied_stability = bbox_area_stability(
         scoped_history,
         image_size=image_size,
         local_track_id=association.local_track_id,
         config=cfg,
     )
+    audited_stability = _audited_bbox_stability(association, config=cfg)
+    stability = (
+        audited_stability
+        if audited_stability is not None
+        and (
+            len(scoped_history) <= 1
+            or audited_stability.visible_frame_count
+            >= supplied_stability.visible_frame_count
+        )
+        else supplied_stability
+    )
+    bbox_history_reset_reason = association.metadata.get("bbox_history_reset_reason")
+    if duplicate_terminal_lock_risk:
+        stability = replace(
+            stability,
+            visible_frame_count=0,
+            bbox_area_cv=inf,
+            bbox_stability_score=0.0,
+            stable=False,
+            reason="duplicate_terminal_lock_risk",
+        )
+        bbox_history_reset_reason = "duplicate_terminal_lock_risk"
     range_band = range_band_for_handoff(range_to_assigned_track_m, cfg)
     time_to_go_s = _time_to_go(range_to_assigned_track_m, closing_speed_mps)
 
@@ -164,6 +186,20 @@ def annotate_visual_png_handoff(
     elif not handoff_blockers and range_band == "near_priority":
         reason = "near_range_bbox_unstable_keep_radar_pn"
 
+    live_funnel = _handoff_live_visual_funnel(
+        association,
+        handoff_recommended=handoff_recommended,
+        prelock_recommended=prelock_recommended,
+        handoff_reason=reason,
+        handoff_blockers=handoff_blockers,
+        range_band=range_band,
+        range_to_assigned_track_m=range_to_assigned_track_m,
+        closing_speed_mps=closing_speed_mps,
+        measurement_age_s=measurement_age_s,
+        bbox_stable=stability.stable,
+        bbox_area_ratio=stability.bbox_area_ratio,
+        timing_gate_pass=timing_ok,
+    )
     metadata = {
         **association.metadata,
         "handoff_recommended": handoff_recommended,
@@ -181,6 +217,14 @@ def annotate_visual_png_handoff(
         "bbox_stable": stability.stable,
         "visible_frame_count": stability.visible_frame_count,
         "required_visible_frame_count": stability.required_frame_count,
+        "bbox_history_length": stability.visible_frame_count,
+        "bbox_history_measured_length": stability.visible_frame_count,
+        "bbox_history_predicted_length": 0,
+        "bbox_history_reset_reason": bbox_history_reset_reason,
+        "bbox_history_evidence_source": association.metadata.get(
+            "bbox_history_evidence_source",
+            _history_evidence_source(scoped_history),
+        ),
         "range_to_assigned_track_m": range_to_assigned_track_m,
         "handoff_candidate_range_m": cfg.handoff_candidate_range_m,
         "range_band_edges_m": {
@@ -207,6 +251,7 @@ def annotate_visual_png_handoff(
         "current_assigned_global_track_id": current_assigned_global_track_id,
         "assignment_consistent": assignment_consistent,
         "duplicate_terminal_lock_risk": duplicate_terminal_lock_risk,
+        "d5_live_visual_funnel": live_funnel,
     }
     return replace(association, measurement_age_s=measurement_age_s, metadata=metadata)
 
@@ -260,6 +305,250 @@ def bbox_area_stability(
         stable=stable,
         reason=reason,
     )
+
+
+def _audited_bbox_stability(
+    association: TerminalAssociation,
+    *,
+    config: VisualPngHandoffConfig,
+) -> BBoxStability | None:
+    metadata = association.metadata
+    if "bbox_history_length" not in metadata:
+        return None
+    raw_ratios = metadata.get("bbox_history_area_ratios")
+    ratios: tuple[float, ...] = ()
+    if isinstance(raw_ratios, (list, tuple)):
+        ratios = tuple(
+            float(value)
+            for value in raw_ratios
+            if value is not None and np.isfinite(float(value)) and float(value) >= 0.0
+        )
+    if ratios:
+        return _bbox_stability_from_area_ratios(ratios, config=config)
+
+    visible = max(0, int(metadata.get("bbox_history_length", 0) or 0))
+    raw_cv = metadata.get("bbox_area_cv")
+    cv = float(raw_cv) if raw_cv is not None and np.isfinite(float(raw_cv)) else inf
+    stable = bool(
+        metadata.get("bbox_history_contract_complete", True)
+        and metadata.get("bbox_stable", False)
+        and visible >= config.min_stable_frames
+    )
+    return BBoxStability(
+        visible_frame_count=visible,
+        required_frame_count=config.min_stable_frames,
+        bbox_area_ratio=float(metadata.get("bbox_area_ratio", 0.0) or 0.0),
+        mean_bbox_area_ratio=float(metadata.get("bbox_area_ratio_mean", 0.0) or 0.0),
+        bbox_area_cv=cv,
+        bbox_stability_score=float(metadata.get("bbox_stability_score", 0.0) or 0.0),
+        stable=stable,
+        reason=str(metadata.get("bbox_history_reason") or "bbox_history_not_eligible"),
+    )
+
+
+def _bbox_stability_from_area_ratios(
+    ratios: tuple[float, ...],
+    *,
+    config: VisualPngHandoffConfig,
+) -> BBoxStability:
+    visible = len(ratios)
+    current = float(ratios[-1]) if ratios else 0.0
+    mean = float(np.mean(ratios)) if ratios else 0.0
+    if visible < config.min_stable_frames or mean <= 0.0:
+        return BBoxStability(
+            visible_frame_count=visible,
+            required_frame_count=config.min_stable_frames,
+            bbox_area_ratio=current,
+            mean_bbox_area_ratio=mean,
+            bbox_area_cv=inf,
+            bbox_stability_score=0.0,
+            stable=False,
+            reason="insufficient_visible_frames",
+        )
+    cv = float(np.std(np.asarray(ratios, dtype=float)) / mean)
+    score = float(np.clip(1.0 - cv / max(config.max_bbox_area_cv, 1e-9), 0.0, 1.0))
+    stable = bool(cv <= config.max_bbox_area_cv and current >= config.min_bbox_area_ratio)
+    return BBoxStability(
+        visible_frame_count=visible,
+        required_frame_count=config.min_stable_frames,
+        bbox_area_ratio=current,
+        mean_bbox_area_ratio=mean,
+        bbox_area_cv=cv,
+        bbox_stability_score=score,
+        stable=stable,
+        reason="bbox_area_stable" if stable else "bbox_area_unstable_or_too_small",
+    )
+
+
+def _history_evidence_source(history: tuple[LocalVisualTrack, ...]) -> str:
+    if not history:
+        return "lost"
+    states = tuple(dict.fromkeys(track.local_track_state for track in history))
+    return states[0] if len(states) == 1 else "mixed"
+
+
+def _handoff_live_visual_funnel(
+    association: TerminalAssociation,
+    *,
+    handoff_recommended: bool,
+    prelock_recommended: bool,
+    handoff_reason: str,
+    handoff_blockers: tuple[str, ...] | list[str],
+    range_band: str,
+    range_to_assigned_track_m: float | None,
+    closing_speed_mps: float | None,
+    measurement_age_s: float | None,
+    bbox_stable: bool,
+    bbox_area_ratio: float,
+    timing_gate_pass: bool,
+) -> dict[str, object]:
+    diagnostic = dict(association.metadata.get("d5_live_visual_funnel", {}))
+    local_visual_evidence = dict(
+        association.metadata.get("local_visual_evidence") or {}
+    )
+    if not diagnostic:
+        diagnostic = {
+            "schema_version": "d5_live_visual_funnel_v1",
+            "resource_id": association.resource_id,
+            "assigned_global_track_id": association.assigned_global_track_id,
+            "plan_id": association.plan_id,
+            "plan_version": association.plan_version,
+            "local_track_id": association.local_track_id,
+            "local_track_state": association.local_track_state,
+            "measurement_timestamp": association.measurement_timestamp,
+            "arrival_timestamp": association.arrival_timestamp,
+            "detection_source": association.detection_source,
+            "first_failure_stage": "association",
+            "first_failure_reason": association.reason,
+            "failure_domain": "d5_association",
+            "truth_identity_used": False,
+            "global_track_id_policy": "existing_assigned_global_track_id_only",
+        }
+
+    previous_stage = str(diagnostic.get("first_failure_stage") or "")
+    if previous_stage == "handoff_evaluation":
+        if handoff_recommended:
+            first_failure_stage = "complete"
+            first_failure_reason = "d5_visual_handoff_evidence_ready"
+            failure_domain = "none"
+        else:
+            first_failure_stage = "handoff_gate"
+            first_failure_reason = handoff_reason
+            failure_domain = "d5_handoff_gate"
+    else:
+        first_failure_stage = previous_stage or "association"
+        first_failure_reason = str(
+            diagnostic.get("first_failure_reason") or association.reason
+        )
+        failure_domain = str(
+            diagnostic.get("failure_domain") or "d5_association"
+        )
+
+    own_camera_measured_bbox_available = bool(
+        diagnostic.get("own_camera_measured_bbox_available", False)
+    )
+    execution_lock_allowed = bool(
+        diagnostic.get("execution_lock_allowed", False)
+    )
+    d7_handoff_input_ready = bool(
+        handoff_recommended
+        and execution_lock_allowed
+        and own_camera_measured_bbox_available
+    )
+    if handoff_recommended and not d7_handoff_input_ready:
+        first_failure_stage = "handoff_contract"
+        first_failure_reason = "own_camera_executable_bbox_contract_incomplete"
+        failure_domain = "d5_handoff_contract"
+
+    diagnostic.update(
+        {
+            "bbox_stable": bool(bbox_stable),
+            "bbox_area_ratio": float(bbox_area_ratio),
+            "handoff_evaluated": True,
+            "handoff_recommended": bool(handoff_recommended),
+            "prelock_recommended": bool(prelock_recommended),
+            "handoff_reason": handoff_reason,
+            "handoff_blockers": list(handoff_blockers),
+            "range_band": range_band,
+            "range_to_assigned_track_m": range_to_assigned_track_m,
+            "closing_speed_mps": closing_speed_mps,
+            "measurement_age_s": measurement_age_s,
+            "timing_gate_pass": bool(timing_gate_pass),
+            "d7_handoff_input_ready": d7_handoff_input_ready,
+            "d7_handoff_input": {
+                "assigned_global_track_id": association.assigned_global_track_id,
+                "local_track_id": association.local_track_id,
+                "local_track_state": association.local_track_state,
+                "camera_id": local_visual_evidence.get("camera_id"),
+                "resource_id": association.resource_id,
+                "stream_id": local_visual_evidence.get("stream_id"),
+                "detector_backend": local_visual_evidence.get(
+                    "detector_backend"
+                ),
+                "tracker_backend": local_visual_evidence.get(
+                    "tracker_backend"
+                ),
+                "image_size": local_visual_evidence.get("image_size"),
+                "center_px": local_visual_evidence.get("center_px"),
+                "bbox_xyxy": local_visual_evidence.get("bbox_xyxy"),
+                "detection_source": association.detection_source,
+                "decision_state": association.decision_state,
+                "association_confidence": association.association_confidence,
+                "measurement_timestamp": association.measurement_timestamp,
+                "arrival_timestamp": association.arrival_timestamp,
+                "measurement_age_s": measurement_age_s,
+                "bbox_area_ratio": float(bbox_area_ratio),
+                "bbox_stable": bool(bbox_stable),
+                "range_to_assigned_track_m": range_to_assigned_track_m,
+                "closing_speed_mps": closing_speed_mps,
+                "friend_conflict_state": association.friend_conflict_state,
+                "duplicate_terminal_lock_risk": (
+                    association.duplicate_terminal_lock_risk
+                ),
+                "plan_id": association.plan_id,
+                "plan_version": association.plan_version,
+                "terminal_authorization_scope": (
+                    association.terminal_authorization_scope
+                ),
+                "local_visual_scope_consistent": diagnostic.get(
+                    "local_visual_scope_consistent", False
+                ),
+                "local_visual_scope_evidence_complete": diagnostic.get(
+                    "local_visual_scope_evidence_complete", False
+                ),
+                "measured_detection_available": diagnostic.get(
+                    "measured_detection_available", False
+                ),
+                "measured_bbox_available": diagnostic.get(
+                    "measured_bbox_available", False
+                ),
+                "own_camera_measured_bbox_available": (
+                    own_camera_measured_bbox_available
+                ),
+                "measured_lock_streak_count": diagnostic.get(
+                    "measured_lock_streak_count", 0
+                ),
+                "measured_lock_required_frames": diagnostic.get(
+                    "measured_lock_required_frames", 0
+                ),
+                "measured_stable_lock": diagnostic.get(
+                    "measured_stable_lock", False
+                ),
+                "bbox_history_length": diagnostic.get(
+                    "bbox_history_length", 0
+                ),
+                "bbox_stable": bool(bbox_stable),
+                "association_lock_only": diagnostic.get(
+                    "association_lock_only", False
+                ),
+                "execution_lock_allowed": execution_lock_allowed,
+            },
+            "first_failure_stage": first_failure_stage,
+            "first_failure_reason": first_failure_reason,
+            "failure_domain": failure_domain,
+        }
+    )
+    return diagnostic
 
 
 def range_band_for_handoff(

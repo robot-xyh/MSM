@@ -146,6 +146,14 @@ class _TrackState:
     raw_category: str = "unknown"
 
 
+@dataclass
+class _NativeTrackHistoryState:
+    """Adapter-owned evidence history for one native camera-local track ID."""
+
+    consecutive_measured_hits: int = 1
+    missed_frames: int = 0
+
+
 @dataclass(frozen=True)
 class _TrackedDetection:
     bbox: tuple[float, float, float, float]
@@ -275,6 +283,11 @@ class YoloMotAdapter:
         self._fallback_tracker_template = fallback_tracker
         self._fallback_trackers: dict[tuple[str, str], IouFallbackTracker] = {}
         self._native_models: dict[tuple[str, str], Any] = {}
+        self._native_track_histories: dict[
+            tuple[str, str, str],
+            dict[str | int, _NativeTrackHistoryState],
+        ] = {}
+        self._active_tracker_backends: dict[tuple[str, str], str] = {}
 
     def process_frame(
         self,
@@ -366,6 +379,7 @@ class YoloMotAdapter:
 
         try:
             if self._detector is not None:
+                self._activate_tracker_backend(stream_key, "iou_fallback")
                 detections = self._filter_detections(
                     _normalize_detections(
                         self._detector(frame),
@@ -426,19 +440,11 @@ class YoloMotAdapter:
                 try:
                     native_model = self._native_model_for_stream(stream_key)
                     detections = self._run_native_tracker(native_model, frame)
+                    self._activate_tracker_backend(stream_key, self.config.tracker_backend)
                     metadata["_detected_bboxes"] = tuple(item.bbox for item in detections)
-                    tracked = tuple(
-                        _TrackedDetection(
-                            bbox=item.bbox,
-                            confidence=item.confidence,
-                            category=item.category,
-                            class_id=item.class_id,
-                            track_id=item.source_track_id,
-                            mot_history_length=item.mot_history_length,
-                            raw_category=str(item.raw_category),
-                        )
-                        for item in detections
-                        if item.source_track_id is not None
+                    tracked = self._accumulate_native_track_history(
+                        stream_key,
+                        detections,
                     )
                     tracks = _to_local_visual_tracks(
                         tracked,
@@ -453,7 +459,7 @@ class YoloMotAdapter:
                         image_size=_frame_size(frame),
                         camera_geometry=camera_geometry,
                     )
-                    if tracks:
+                    if tracks or not detections:
                         metadata.update(
                             {
                                 "raw_detection_count": len(detections),
@@ -467,6 +473,12 @@ class YoloMotAdapter:
                                 "observed_compute_device": _model_compute_device(
                                     native_model,
                                     self.config.compute_device,
+                                ),
+                                "native_mot_history_semantics": (
+                                    "consecutive_measured_hits_per_resource_camera_backend_id"
+                                ),
+                                "native_mot_history_max_age_frames": (
+                                    self.config.max_track_age_frames
                                 ),
                             }
                         )
@@ -494,10 +506,13 @@ class YoloMotAdapter:
                 except Exception as exc:
                     if not self.config.allow_iou_fallback:
                         raise
+                    self._invalidate_native_stream(stream_key)
+                    self._activate_tracker_backend(stream_key, "iou_fallback")
                     metadata["tracker_fallback_reason"] = str(exc)
 
             if not self.config.allow_iou_fallback and self.config.tracker_backend != "iou_fallback":
                 raise YoloMotUnavailableError("native tracker unavailable and IoU fallback is disabled")
+            self._activate_tracker_backend(stream_key, "iou_fallback")
             model = native_model if native_model is not None else self._load_model()
             detections = self._filter_detections(
                 _normalize_detections(
@@ -598,12 +613,21 @@ class YoloMotAdapter:
         stream_key = _mot_stream_key(resource_id, camera_id)
         self._fallback_trackers.pop(stream_key, None)
         self._native_models.pop(stream_key, None)
+        self._active_tracker_backends.pop(stream_key, None)
+        self._clear_native_track_history(stream_key)
 
     def reset_all_streams(self) -> None:
         """Release all per-stream MOT state at an episode boundary."""
 
         self._fallback_trackers.clear()
         self._native_models.clear()
+        self._native_track_histories.clear()
+        self._active_tracker_backends.clear()
+
+    def reset_episode(self) -> None:
+        """Release all camera-local detector/tracker evidence for a new episode."""
+
+        self.reset_all_streams()
 
     def _load_model(self) -> Any:
         if self._model is not None:
@@ -665,6 +689,83 @@ class YoloMotAdapter:
         self._native_models[stream_key] = model
         return model
 
+    def _activate_tracker_backend(
+        self,
+        stream_key: tuple[str, str],
+        tracker_backend: str,
+    ) -> None:
+        previous_backend = self._active_tracker_backends.get(stream_key)
+        if previous_backend == tracker_backend:
+            return
+        if tracker_backend == "iou_fallback":
+            self._fallback_trackers.pop(stream_key, None)
+        else:
+            self._clear_native_track_history(stream_key)
+            self._fallback_trackers.pop(stream_key, None)
+        self._active_tracker_backends[stream_key] = tracker_backend
+
+    def _invalidate_native_stream(self, stream_key: tuple[str, str]) -> None:
+        self._native_models.pop(stream_key, None)
+        self._clear_native_track_history(stream_key)
+
+    def _clear_native_track_history(self, stream_key: tuple[str, str]) -> None:
+        for history_key in tuple(self._native_track_histories):
+            if history_key[:2] == stream_key:
+                del self._native_track_histories[history_key]
+
+    def _accumulate_native_track_history(
+        self,
+        stream_key: tuple[str, str],
+        detections: Sequence[_DetectorDetection],
+    ) -> tuple[_TrackedDetection, ...]:
+        history_key = (*stream_key, self.config.tracker_backend)
+        history = self._native_track_histories.setdefault(history_key, {})
+        current_ids = [
+            detection.source_track_id
+            for detection in detections
+            if detection.source_track_id is not None
+        ]
+        if len(current_ids) != len(set(current_ids)):
+            raise YoloMotUnavailableError("native tracker reused one local track ID in a frame")
+        current_id_set = set(current_ids)
+
+        for track_id, state in tuple(history.items()):
+            if track_id in current_id_set:
+                continue
+            state.missed_frames += 1
+            state.consecutive_measured_hits = 0
+            if state.missed_frames > self.config.max_track_age_frames:
+                del history[track_id]
+
+        tracked: list[_TrackedDetection] = []
+        for detection in detections:
+            track_id = detection.source_track_id
+            if track_id is None:
+                continue
+            state = history.get(track_id)
+            if state is None:
+                state = _NativeTrackHistoryState()
+                history[track_id] = state
+            elif state.missed_frames == 0:
+                state.consecutive_measured_hits += 1
+            else:
+                # A coasted/reused native ID is identity continuity evidence,
+                # but it is not a consecutive measured hit for the lock gate.
+                state.consecutive_measured_hits = 1
+            state.missed_frames = 0
+            tracked.append(
+                _TrackedDetection(
+                    bbox=detection.bbox,
+                    confidence=detection.confidence,
+                    category=detection.category,
+                    class_id=detection.class_id,
+                    track_id=track_id,
+                    mot_history_length=state.consecutive_measured_hits,
+                    raw_category=str(detection.raw_category),
+                )
+            )
+        return tuple(tracked)
+
     def _native_tracker_requested(self) -> bool:
         return (
             self.config.tracker_backend in {"bytetrack", "botsort"}
@@ -689,7 +790,7 @@ class YoloMotAdapter:
                 default_category=self.config.default_category,
             )
         )
-        if not any(item.source_track_id is not None for item in detections):
+        if detections and not any(item.source_track_id is not None for item in detections):
             raise YoloMotUnavailableError(f"{self.config.tracker_backend} produced no local track IDs")
         return detections
 
@@ -854,6 +955,10 @@ def _to_local_visual_tracks(
                 image_size=image_size,
                 camera_geometry=camera_geometry,
                 metadata={
+                    "camera_id": camera_id,
+                    "stream_id": camera_id,
+                    "detector_backend": source_name,
+                    "tracker_backend": tracker_backend,
                     "image_size": image_size,
                     "object_class": item.category,
                     "raw_category": item.raw_category,

@@ -370,6 +370,15 @@ class LocalVisualTrack:
         )
         return {
             "local_track_id": self.local_track_id,
+            "center_px": [float(value) for value in self.center_px],
+            "bbox_xyxy": (
+                [float(value) for value in self.bbox]
+                if self.bbox is not None
+                else None
+            ),
+            "bearing_rate_px_s": [float(value) for value in self.bearing_rate],
+            "category": self.category,
+            "quality": float(self.quality),
             "mot_history_length": int(self.mot_history_length),
             "local_track_state": self.local_track_state,
             "track_transition_state": self.track_transition_state,
@@ -383,6 +392,11 @@ class LocalVisualTrack:
             "bbox_edge_clipped": self.bbox_edge_clipped,
             "bbox_edge_clip_sides": list(self.bbox_edge_clip_sides),
             "image_size": self.image_size,
+            "camera_id": self.metadata.get("camera_id"),
+            "resource_id": self.metadata.get("resource_id"),
+            "stream_id": self.metadata.get("stream_id") or self.metadata.get("stream_key"),
+            "detector_backend": self.metadata.get("detector_backend"),
+            "tracker_backend": self.metadata.get("tracker_backend"),
             "camera_geometry": geometry,
             "truth_identity_used": False,
         }
@@ -975,6 +989,7 @@ class TerminalAssociation:
     def to_runtime_record(self) -> dict[str, Any]:
         """Return the stable online association contract for main/D6 sinks."""
 
+        live_funnel = dict(self.metadata.get("d5_live_visual_funnel", {}))
         return {
             "association_source": self.association_source,
             "assigned_global_track_id": self.assigned_global_track_id,
@@ -1009,6 +1024,62 @@ class TerminalAssociation:
             "resource_id": self.resource_id,
             "terminal_authorization_scope": self.terminal_authorization_scope,
             "arrival_coordination_required": self.arrival_coordination_required,
+            "d5_live_visual_funnel": live_funnel,
+            "visual_match_decision_state": live_funnel.get(
+                "visual_match_decision_state",
+                self.metadata.get("visual_match_decision_state", self.decision_state),
+            ),
+            "execution_gate_pass": live_funnel.get(
+                "execution_gate_pass",
+                self.metadata.get("execution_gate_pass"),
+            ),
+            "execution_gate_reason": live_funnel.get(
+                "execution_gate_reason",
+                self.metadata.get("execution_gate_reason"),
+            ),
+            "measured_bbox_available": live_funnel.get(
+                "measured_bbox_available",
+                self.metadata.get("measured_bbox_available", False),
+            ),
+            "local_visual_scope_consistent": live_funnel.get(
+                "local_visual_scope_consistent",
+                self.metadata.get("local_visual_scope_consistent", False),
+            ),
+            "own_camera_measured_bbox_available": live_funnel.get(
+                "own_camera_measured_bbox_available",
+                self.metadata.get("own_camera_measured_bbox_available", False),
+            ),
+            "execution_lock_allowed": live_funnel.get(
+                "execution_lock_allowed", False
+            ),
+            "association_lock_only": live_funnel.get(
+                "association_lock_only", False
+            ),
+            "d7_handoff_input_ready": live_funnel.get(
+                "d7_handoff_input_ready", False
+            ),
+            "d7_handoff_input": dict(
+                live_funnel.get("d7_handoff_input") or {}
+            ),
+            "measured_lock_streak_count": live_funnel.get(
+                "measured_lock_streak_count",
+                self.metadata.get("measured_lock_streak_count", 0),
+            ),
+            "measured_stable_lock": live_funnel.get(
+                "measured_stable_lock",
+                self.metadata.get("measured_stable_lock", False),
+            ),
+            "bbox_stable": live_funnel.get(
+                "bbox_stable",
+                self.metadata.get("bbox_stable", False),
+            ),
+            "handoff_recommended": live_funnel.get(
+                "handoff_recommended",
+                self.metadata.get("handoff_recommended", False),
+            ),
+            "d5_first_failure_stage": live_funnel.get("first_failure_stage"),
+            "d5_first_failure_reason": live_funnel.get("first_failure_reason"),
+            "d5_failure_domain": live_funnel.get("failure_domain"),
             "metadata": dict(self.metadata),
         }
 
