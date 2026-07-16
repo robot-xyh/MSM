@@ -256,18 +256,22 @@ def d2_detection_kwargs(
 ) -> dict[str, Any]:
     """Return kwargs for constructing a D2 Detection from a canonical track."""
 
+    metadata = {
+        "frame_id": "ned",
+        "global_track_id": canonical.global_track_id,
+        "track_version": canonical.track_version,
+        "published_at": canonical.published_at,
+    }
+    source_track_ids = _source_track_ids(canonical.metadata)
+    if source_track_ids:
+        metadata["source_track_ids"] = source_track_ids
     return {
         "detection_id": detection_id,
         "timestamp": canonical.valid_at,
         "position": canonical.position_ned[:2].copy(),
         "covariance": canonical.covariance_xy,
         "truth_id": truth_id,
-        "metadata": {
-            "frame_id": "ned",
-            "global_track_id": canonical.global_track_id,
-            "track_version": canonical.track_version,
-            "published_at": canonical.published_at,
-        },
+        "metadata": metadata,
     }
 
 
@@ -335,6 +339,20 @@ def d5_assignment_kwargs(handoff: AssignmentHandoff) -> dict[str, Any]:
         "arrival_window_end_s": handoff.arrival_window_end_s,
         "activation_state": handoff.activation_state,
     }
+
+
+def _source_track_ids(metadata: Mapping[str, Any] | None) -> tuple[str, ...]:
+    if not metadata or "source_track_ids" not in metadata:
+        return ()
+    values = metadata["source_track_ids"]
+    if not isinstance(values, (list, tuple, set, frozenset)):
+        raise ValueError("CanonicalTrack metadata.source_track_ids must be a sequence")
+    normalized = {
+        str(value).strip()
+        for value in values
+        if value is not None and str(value).strip()
+    }
+    return tuple(sorted(normalized))
 
 
 def _vector(value: Any, size: int, name: str) -> np.ndarray:

@@ -5,8 +5,13 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from d1_sensor_fusion.types import GlobalTrack as D1GlobalTrack
-from d1_sensor_fusion.types import TrackLevel
+from d1_sensor_fusion import FusionAdapter, sensor_observation_from_local_image_track
+from d1_sensor_fusion.observations import radar_covariance_from_range, radar_h
+from d1_sensor_fusion.types import (
+    GlobalTrack as D1GlobalTrack,
+    SensorObservation,
+    TrackLevel,
+)
 from d2_data_association.models import Detection
 from d3_assignment_planner import AssignmentPlanner, CostModel, CostWeights, PlannerConfig
 from d3_assignment_planner.models import ResourceState, TargetTrack
@@ -40,6 +45,59 @@ def test_d1_canonical_track_can_feed_d2_detection_contract() -> None:
     assert detection.metadata["frame_id"] == "ned"
     assert detection.metadata["global_track_id"] == "G-1"
     np.testing.assert_allclose(detection.position, np.array([10.0, 2.0]))
+
+
+def test_d5_local_lineage_reaches_d2_without_pixel_measurements() -> None:
+    local_track = LocalImageTrackObservation(
+        sensor_id="eo-camera-01",
+        stream_id="visible-main",
+        local_track_id="local-003",
+        local_epoch=2,
+        spectral_band="visible",
+        measurement_timestamp=0.1,
+        arrival_timestamp=0.15,
+        center_px=np.array([640.25, 359.75]),
+        bbox_xyxy=(620.0, 340.0, 660.0, 380.0),
+        pixel_covariance=np.diag([4.0, 4.0]),
+        confidence=0.9,
+        track_state="measured",
+        metadata={"source": "d5_terminal_association"},
+    )
+    eo_observation = sensor_observation_from_local_image_track(local_track)
+    assert eo_observation is not None
+
+    state = np.array([100.0, 0.0, -10.0, 0.0, 0.0, 0.0])
+    radar_measurement = radar_h(state, np.zeros(3))
+    radar_observation = SensorObservation(
+        observation_id="radar-seed",
+        sensor_id="radar-main",
+        modality="radar",
+        measurement_timestamp=0.0,
+        arrival_timestamp=0.0,
+        frame_id="ned",
+        measurement=radar_measurement,
+        covariance=radar_covariance_from_range(radar_measurement[0]),
+        metadata={"sensor_position_ned": np.zeros(3), "scan_id": 0},
+    )
+    fusion = FusionAdapter()
+    fusion.process(radar_observation)
+    fused_tracks = fusion.process(eo_observation)
+
+    canonical = canonical_track_from_d1(fused_tracks[0])
+    detection = Detection(
+        **d2_detection_kwargs(canonical, detection_id="D-from-D1")
+    )
+
+    assert detection.metadata["source_track_ids"] == (
+        local_track.source_track_key,
+    )
+    assert detection.metadata["frame_id"] == "ned"
+    assert detection.position.shape == (2,)
+    assert detection.covariance.shape == (2, 2)
+    assert "center_px" not in detection.metadata
+    assert "bbox_xyxy" not in detection.metadata
+    assert "pixel_covariance" not in detection.metadata
+    assert detection.metadata["global_track_id"] != local_track.source_track_key
 
 
 def test_d3_required_plan_cannot_be_handed_to_d5_for_locking() -> None:

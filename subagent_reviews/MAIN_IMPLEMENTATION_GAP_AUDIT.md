@@ -6,6 +6,31 @@
 
 **P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。2026-07-14 canonical actual-execution 证据链已完成真实 AirSim seed-1 复验：tuned 2v2 与 M5N2 均生成并通过校验的 `d7-actual-execution-metrics-v2`，不存在 unavailable artifact；`control_commands.csv`、`intercept_summary.json` 和 actual envelope 的物理成功数一致，控制计划 ID 与同一个 canonical D3 history 一致，身份和状态在线真值使用计数均为 0。2026-07-15 main/D6 进一步关闭“只有总耗时、无法定位预算违例阶段”的 P1 可观测性实现缺口；随后复核并关闭 D4 多入口二级接管证据不一致的系统级 P0 边界，以及 D2 continuity 固定 `+0.10` 在高基线下不可达的 P1 准入规则缺口。同日第二次只读审计发现 D4 两个公开 helper 仍把部分缺失证据 `None` 当成“非 False”放行；D4 owner 已改为 exact-true/fail-closed，补齐逐字段缺失负例并完成跨模块回归。D2/D6 随后已用原冻结 replay 生成 ceiling-aware v2 正式联合证据：总体 GNN 候选五项 gate 通过，但只有 `clutter`、`combined` 两个 difficulty 通过，dropout truth alignment 仍为 partial，JPDA 不准入，因此只形成 promotion review，默认 GNN/Hungarian 不变。最新相关回归为 D2 `113`、D4 `280`、D6 `272`、AirSim runtime `157`、integrated point-mass `7`；当前无开放运行级或证据级 P0 blocker。P1 继续包括 D3 长期 churn、M5N2 第二 primary/物理联盟、candidate `3/2/1` 机会合同、ClockSpeed 与顺序控制 RPC 解耦、D5 30/50 m 与 native MOT 准入、真实二级网络时序、D2 候选的跨 difficulty/完整系统评审，以及基于新分阶段证据达到 100 ms 实时预算。P2 仍只在隔离环境评估，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
 
+## 2026-07-16 本地图像航迹可复用机制接入
+
+`b.mp4` 人工框选实验继续作为 P2 离线诊断支线，不进入默认 AirSim、D1 融合或 D2
+关联路径。本轮只抽取了与具体视频、亮度和跟踪器无关的机制：
+
+| 层级 | 已实现内容 | 当前边界 |
+| --- | --- | --- |
+| main 合同 | `LocalImageTrackObservation` 统一携带 camera-local ID、local epoch、可见光/红外波段、measurement/arrival 双时间戳、像素中心/框、2×2 协方差、confidence 和显式 lost | metadata 禁止 global/truth identity；local ID 永远不是 `global_track_id` |
+| D5 离线适配 | 人工视频记录可转换为上述合同；重复量测整批拒绝，lost 不携带旧像素 | 人工 ROI、CSRT、亮度候选、固定像素门限仍是离线案例调优，不晋级主线 |
+| D1 融合边界 | `measured -> EO/pixel SensorObservation`，`lost -> None`；namespaced `source_track_key` 去重累积到 `GlobalTrack.metadata.source_track_ids` | 不改变全局 ID；真实相机模型、像素噪声和 producer 接线仍需标定 |
+| main 到 D2 | `CanonicalTrack -> Detection` 只保留 NED 位置、位置协方差、版本和 `source_track_ids` | 像素中心、bbox 和像素协方差不进入 D2 |
+| D2 审计 | 显式累计来源绑定冲突、来源不连续隔离和上游本地身份拒绝；进入 metrics、risk 和 replay 聚合 | 三项是审计量，不替代 `id_switch_count`，不自动改变 GNN/Hungarian、门限或风险分类 |
+
+验证日期为 2026-07-16：D5 `288 passed`，D1 `111 passed`，D2
+`123 passed, 1 warning`，跨模块合同 `7 passed`；warning 是既有 Matplotlib
+`Axes3D` 环境提示。本批未启动 AirSim。D5 文档记录的 95 帧、5 local ID、475 条离线
+记录转换结果为 `470 measured / 5 lost`，只证明合同转换，不证明通用多目标跟踪性能。
+
+本轮关闭的是“局部图像航迹无法以双时间戳、协方差和命名空间来源进入 D1/D2”的接口
+缺口。仍开放的 P1 是：真实可见光/红外/雷达 producer 接线、相机内外参和时间同步、
+像素协方差标定、D5 拒绝计数到 main/D2 frame metadata 的运行时接线，以及至少 10 个
+duplicate-source、teleport、dropout、clutter 和合法新目标 AirSim 受治理 case 的
+false-suppression、recall、离线 IDSW/continuity 与置信区间。亮度差分、人工 ROI 身份、
+固定 20 px gate、两点像素外推和 CSRT 权重不列为主线待办。
+
 ## 2026-07-15 M5N2 ClockSpeed 三档 60-Case 对比
 
 main 使用同一 M5N2 baseline/candidate、seed 1-10 和 reset-separated Blocks
@@ -674,11 +699,11 @@ D1 NumPy EKF/FusionAdapter
 
 | Owner | P0 状态 | 必须保持的合同 | 验收 |
 | --- | --- | --- | --- |
-| D1 | 无新增 blocker | 双时间戳、NED、协方差、OOSM、source de-dup 和 GlobalTrack | D1 模块测试 |
-| D2 | 无新增 blocker | GNN/Hungarian、稳定 global_track_id、id_switch_count、continuity | D2 模块测试 |
+| D1 | 无新增 blocker | 双时间戳、NED、协方差、OOSM、source de-dup、局部图像航迹 fail-closed 适配和 GlobalTrack | D1 `111 passed` |
+| D2 | 无新增 blocker | GNN/Hungarian、稳定 global_track_id、id_switch_count、continuity 和来源身份治理显式计数 | D2 `123 passed, 1 warning` |
 | D3 | 无新增 blocker | 版本化 AssignmentPlan、迟滞、stale rejection、D7 binding | D3 模块测试 |
 | D4 | 无新增 blocker | C2Health、主动/被动降级、二级 lifecycle；active secondary helper/owner 必须对 sustained readiness、expected/actual source、plan/required epoch、expiry/current time 和 plan monotonicity exact-true；冲突或缺失证据 fail-closed | D4 `280 passed` |
-| D5 | 无新增 blocker | 不改写 global_track_id、truth 隔离、friend/duplicate 保守门控；原生 MOT 连续实测历史按 stream/backend/ID 隔离并在空帧/reset 后重计 | D5 `241 passed` |
+| D5 | 无新增 blocker | 不改写 global_track_id、truth 隔离、friend/duplicate 保守门控；原生 MOT 连续实测历史按 stream/backend/ID 隔离并在空帧/reset 后重计；离线人工记录转换重复坍缩 fail-closed | D5 `288 passed` |
 | D6 | 无新增 blocker | 只消费日志；实际规模、id_switch_count、unavailable/zero 分离；逐 pair physical evidence/result/source 和联盟完整性严格门控 | D6 `243 passed` |
 | D7 | 核心公式无 blocker；控制输入 P0 由 main/runtime 持有 | 不分配目标；D3/D4/D5 gate 失败时阻断视觉 PNG；不修改 PN/PNG 核心公式 | D7 模块测试 + truth-isolated control contract |
 | main/runtime | 无新增 blocker | episode bus 可回放；在线 truth identity/state 均为 0；SimpleFlight 只消费 D2 estimate；二级 communication 只消费上一完整 D4 readiness；actor truth 仅离线 5 m scorer；默认不保存 PNG | actor truth 扰动命令不变量 + heartbeat-only/strict-readiness 正反合同 + AirSim runtime `147 passed` |
@@ -693,6 +718,7 @@ D1 NumPy EKF/FusionAdapter
 | D5/D7/main | 单帧 dropout 尾部 | 2-5 帧逐 seed 全通过，物理结果 100/100，truth/ID/version 无违规 | 复核 seed 2 在 0.8 s 注入时没有进入 image-KF 的锁定时序；不得用聚合计数掩盖 |
 | D7/main/D6 | `png_ttc` 受控覆盖 | tuned 2v2 10 seeds 为 20/20，not-expanding/TTC-out-of-range 已实测 | 补 area-jump 与 bbox-clipping 受控注入，不把未自然出现解释为算法缺失 |
 | D5/main | YOLOv8/native MOT 校准 | adapter、Results 连续历史和离线 benchmark 已有；当前在线明确继续使用 AirSim detect | 等数据集补充后再校准类别、尺度、置信度、远距召回、IDSW/continuity、GPU/CPU P95 延时和失败回退；代码级历史累计已关闭，不阻塞 detect-first P1 |
+| D1/D2/D5/main | 通用图像来源谱系真实运行标定 | 局部观测合同、D5 离线适配、D1 EO 入口、D1 `source_track_ids`、main NED-only D2 handoff 和 D2 三项来源治理计数已实现 | 接入真实可见光/红外 producer 与 D5 拒绝计数，冻结内外参/时间同步/像素协方差；至少 10 个来源扰动 AirSim case 评估 false-suppression、recall 和离线 IDSW/continuity |
 | D1/D2/D3/main | 长 replay 治理阈值 | 版本化 replay/CLI 已具备；D2 10 seeds 的 IDSW=138.1、continuity=0.694 | 默认 GNN 未通过阈值；继续调 gate/lifecycle/model，不用 truth 或本地重绑掩盖问题 |
 | D4/main | 联盟重构、二级接管和恢复实测 | 9/9 确定性矩阵通过，含 member replacement、partition recovery 和双轨合并；严格二级 readiness 已统一到所有入口 | 映射到真实 AirSim 通信延迟/丢包/乱序/时钟漂移多 seed，并量化 failover time；不得以 heartbeat-only 作为正例 |
 | D5/D6 | M 对 N 视觉鲁棒性 | 确定性 10/10，外参漂移/时间偏差保守拒绝，ID rewrite=0 | 在真实多视角 AirSim/相机同步和持续 detect 下复验，不以确定性 fixture 代替实测 |
