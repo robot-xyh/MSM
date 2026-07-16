@@ -636,6 +636,15 @@ def _run_associator_config(
                 "id_switch_count": _available_metric(
                     metrics, "id_switch_count", "truth_metrics_available", int
                 ),
+                "source_binding_conflict_count": int(
+                    metrics.get("source_binding_conflict_count", 0)
+                ),
+                "source_lineage_quarantine_count": int(
+                    metrics.get("source_lineage_quarantine_count", 0)
+                ),
+                "upstream_local_identity_rejection_count": int(
+                    metrics.get("upstream_local_identity_rejection_count", 0)
+                ),
                 "identity_continuity": _available_metric(
                     metrics, "identity_continuity", "continuity_available", float
                 ),
@@ -688,6 +697,9 @@ def _run_associator_config(
 def _aggregate_runs(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     metric_keys = (
         "id_switch_count",
+        "source_binding_conflict_count",
+        "source_lineage_quarantine_count",
+        "upstream_local_identity_rejection_count",
         "identity_continuity",
         "coverage_continuity",
         "false_track_count",
@@ -1002,6 +1014,9 @@ def _algorithm_difficulty_summary(
             key: _json_ready(aggregate.get(key))
             for key in (
                 "id_switch_count",
+                "source_binding_conflict_count",
+                "source_lineage_quarantine_count",
+                "upstream_local_identity_rejection_count",
                 "identity_continuity",
                 "false_track_count",
                 "false_track_rate",

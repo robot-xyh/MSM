@@ -527,3 +527,35 @@ false track 0、online truth isolation violation 0。对 main 实际 track recor
 - main/D6 复核总体 recommendation 与分档 fail-closed 差异；任何正式默认参数变更都应
   另建版本化决策，不由本 runner 自动执行。
 - 更长 OOSM/遮挡/杂波、M-of-N/lifecycle 和跨节点 owner/epoch 标定状态不变。
+
+## 16. 2026-07-16 来源身份治理审计指标 GAP 收口
+
+### GAP 变化
+
+- **已关闭 D2-owned P1 接口缺口**：来源绑定冲突和来源不连续隔离此前只有逐帧明细，
+  现已分别形成 `source_binding_conflict_count` 与
+  `source_lineage_quarantine_count`；上游本地身份塌缩拒绝形成独立的
+  `upstream_local_identity_rejection_count`，三项进入 metrics、risk 和 replay
+  逐 seed/聚合输出。
+- **fail-closed 边界已关闭**：上游拒绝计数只接受验证后的 frame metadata 非负整数；
+  缺失为 0，负数、布尔、浮点、字符串和 `None` 在 tracker 状态变化前拒绝。
+- **身份权威未变化**：source/local ID 仍仅是 namespaced lineage。D2 不消费原始像素，
+  不复制 `bright_hungarian`，不从审计计数创建 Detection/Track，也不把 local ID
+  复制或重绑为中心 `global_track_id`。`id_switch_count` 仍显式保留并仅由可用离线真值
+  解释。
+
+### 验证证据
+
+- 日期：2026-07-16；专项样本：连续同源、binding conflict、Mahalanobis discontinuity、
+  零检测 upstream audit、5 类非法 metadata 和 legacy 无 metadata。
+- replay：synthetic seed 7/8，各 3 帧；conflict=`1/1`、quarantine=`1/1`、upstream
+  rejection=`2/4`，聚合均值=`1/1/3`。阈值为精确一致且旧流程三项为 0。
+- 全量 D2：`123 passed, 1 warning`，验收阈值零失败；warning 是环境 Matplotlib
+  `Axes3D` 导入，不影响结果。未启动 AirSim，未产生新的真实飞行证据。
+
+### 仍开放
+
+- 真实 AirSim 至少 10 个 duplicate-source、teleport、dropout、clutter 和合法新目标
+  受治理 case 的 false-suppression/recall、offline IDSW/continuity 与置信区间仍为 P1。
+- main/D1 的 namespaced `source_track_ids` 与可信 upstream rejection metadata 生产、
+  D6 跨模块总报告接入由各 owner/main 后续完成；本轮未修改默认关联器、门限或风险分类。

@@ -55,6 +55,62 @@ def dense_airsim_like_frames(target_count: int = 5, steps: int = 6) -> list[dict
     return frames
 
 
+def source_governance_replay_frames(
+    *,
+    seed: int,
+    upstream_rejection_count: int,
+) -> list[dict[str, object]]:
+    covariance = [[0.25, 0.0], [0.0, 0.25]]
+    return [
+        {
+            "timestamp": 0.0,
+            "seed": seed,
+            "scenario_name": "source_lineage_governance",
+            "detections": [
+                {
+                    "detection_id": "source-a-0",
+                    "position": [0.0, 0.0],
+                    "covariance": covariance,
+                    "metadata": {"source_track_ids": ["d1:a"]},
+                },
+                {
+                    "detection_id": "source-b-0",
+                    "position": [0.2, 0.0],
+                    "covariance": covariance,
+                    "metadata": {"source_track_ids": ["d1:b"]},
+                },
+            ],
+        },
+        {
+            "timestamp": 1.0,
+            "seed": seed,
+            "scenario_name": "source_lineage_governance",
+            "detections": [
+                {
+                    "detection_id": "combined-source-1",
+                    "position": [0.1, 0.0],
+                    "covariance": covariance,
+                    "metadata": {"source_track_ids": ["d1:a", "d1:b"]},
+                }
+            ],
+        },
+        {
+            "timestamp": 2.0,
+            "seed": seed,
+            "scenario_name": "source_lineage_governance",
+            "upstream_local_identity_rejection_count": upstream_rejection_count,
+            "detections": [
+                {
+                    "detection_id": "discontinuous-source-2",
+                    "position": [100.0, 0.0],
+                    "covariance": covariance,
+                    "metadata": {"source_track_ids": ["d1:a"]},
+                }
+            ],
+        },
+    ]
+
+
 def test_airsim_jsonl_replay_runs_5_target_association_and_writes_logs(tmp_path) -> None:
     frames = dense_airsim_like_frames()
     replay_path = tmp_path / "airsim_dense_5v5.jsonl"
@@ -151,6 +207,46 @@ def test_airsim_jsonl_replay_runs_5_target_association_and_writes_logs(tmp_path)
     assert report_json["replay_metadata"]["seed"] == 11
     assert len(log_lines) == len(frames)
     assert "risk_summary" in log_lines[-1]
+
+
+def test_replay_and_multi_seed_summaries_preserve_source_governance_counts() -> None:
+    report = run_airsim_replay_association(
+        source_governance_replay_frames(seed=7, upstream_rejection_count=2),
+        replay_name="source_governance_seed_7",
+        gate_thresholds=[9.21],
+    )
+
+    expected = {
+        "source_binding_conflict_count": 1,
+        "source_lineage_quarantine_count": 1,
+        "upstream_local_identity_rejection_count": 2,
+    }
+    for key, value in expected.items():
+        assert report.metrics[key] == value
+        assert report.risk_summary[key] == value
+        assert report.threshold_sensitivity[0][key] == value
+        assert report.threshold_sensitivity_summary[key]["mean"] == value
+
+    rows = list(report.threshold_sensitivity)
+    rows.extend(
+        run_threshold_sensitivity(
+            source_governance_replay_frames(
+                seed=8,
+                upstream_rejection_count=4,
+            ),
+            gate_thresholds=[9.21],
+        )
+    )
+    aggregate = summarize_multi_seed_risk_calibration(rows)
+    group = aggregate["groups"][0]
+
+    assert group["seed_count"] == 2
+    assert group["source_binding_conflict_count"]["mean"] == 1.0
+    assert group["source_lineage_quarantine_count"]["mean"] == 1.0
+    assert group["upstream_local_identity_rejection_count"]["mean"] == 3.0
+    assert aggregate["recommended"]["summary"][
+        "mean_upstream_local_identity_rejection_count"
+    ] == 3.0
 
 
 def test_main_d6_jsonl_metadata_and_offline_truth_labels_flow_to_logs(tmp_path) -> None:

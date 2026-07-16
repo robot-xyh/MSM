@@ -270,6 +270,15 @@ def run_threshold_sensitivity(
                     "duplicate_assignment_count": metrics[
                         "duplicate_assignment_count"
                     ],
+                    "source_binding_conflict_count": metrics[
+                        "source_binding_conflict_count"
+                    ],
+                    "source_lineage_quarantine_count": metrics[
+                        "source_lineage_quarantine_count"
+                    ],
+                    "upstream_local_identity_rejection_count": metrics[
+                        "upstream_local_identity_rejection_count"
+                    ],
                     "initialization_success_rate": metrics[
                         "initialization_success_rate"
                     ],
@@ -434,6 +443,15 @@ def summarize_replay_risk(
         "continuity_reason": metrics.get("continuity_reason"),
         "duplicate_assignment_count": int(
             metrics.get("duplicate_assignment_count", 0)
+        ),
+        "source_binding_conflict_count": int(
+            metrics.get("source_binding_conflict_count", 0)
+        ),
+        "source_lineage_quarantine_count": int(
+            metrics.get("source_lineage_quarantine_count", 0)
+        ),
+        "upstream_local_identity_rejection_count": int(
+            metrics.get("upstream_local_identity_rejection_count", 0)
         ),
         "gate_summary": diagnostics["gate_summary"],
         "motion_risk_summary": diagnostics["motion_risk_summary"],
@@ -728,6 +746,15 @@ def _summarize_threshold_sensitivity(
         "duplicate_assignment_count": _distribution(
             _float_values(rows, "duplicate_assignment_count")
         ),
+        "source_binding_conflict_count": _distribution(
+            _float_values(rows, "source_binding_conflict_count")
+        ),
+        "source_lineage_quarantine_count": _distribution(
+            _float_values(rows, "source_lineage_quarantine_count")
+        ),
+        "upstream_local_identity_rejection_count": _distribution(
+            _float_values(rows, "upstream_local_identity_rejection_count")
+        ),
         "soft_risk_frame_rate": _distribution(
             _risk_frame_rates(rows, "soft_risk_frame_count")
         ),
@@ -754,6 +781,15 @@ def _threshold_subset_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, An
         "duplicate_assignment_count": _distribution(
             _float_values(rows, "duplicate_assignment_count")
         ),
+        "source_binding_conflict_count": _distribution(
+            _float_values(rows, "source_binding_conflict_count")
+        ),
+        "source_lineage_quarantine_count": _distribution(
+            _float_values(rows, "source_lineage_quarantine_count")
+        ),
+        "upstream_local_identity_rejection_count": _distribution(
+            _float_values(rows, "upstream_local_identity_rejection_count")
+        ),
         "soft_risk_frame_rate": _distribution(
             _risk_frame_rates(rows, "soft_risk_frame_count")
         ),
@@ -778,6 +814,9 @@ def _recommended_threshold_row(
         "id_switch_count",
         "track_continuity",
         "duplicate_assignment_count",
+        "source_binding_conflict_count",
+        "source_lineage_quarantine_count",
+        "upstream_local_identity_rejection_count",
         "soft_risk_frame_count",
         "hard_risk_frame_count",
         "max_soft_risk_score",
@@ -822,6 +861,15 @@ def _summarize_calibration_group(
     continuity_distribution = _distribution(_float_values(rows, "track_continuity"))
     duplicate_distribution = _distribution(
         _float_values(rows, "duplicate_assignment_count")
+    )
+    source_binding_conflict_distribution = _distribution(
+        _float_values(rows, "source_binding_conflict_count")
+    )
+    source_lineage_quarantine_distribution = _distribution(
+        _float_values(rows, "source_lineage_quarantine_count")
+    )
+    upstream_local_identity_rejection_distribution = _distribution(
+        _float_values(rows, "upstream_local_identity_rejection_count")
     )
     soft_count_distribution = _distribution(
         _float_values(rows, "soft_risk_frame_count")
@@ -880,6 +928,13 @@ def _summarize_calibration_group(
         "id_switch_count": id_switch_distribution,
         "track_continuity": continuity_distribution,
         "duplicate_assignment_count": duplicate_distribution,
+        "source_binding_conflict_count": source_binding_conflict_distribution,
+        "source_lineage_quarantine_count": (
+            source_lineage_quarantine_distribution
+        ),
+        "upstream_local_identity_rejection_count": (
+            upstream_local_identity_rejection_distribution
+        ),
         "soft_risk_frame_count": soft_count_distribution,
         "hard_risk_frame_count": hard_count_distribution,
         "soft_risk_frame_rate": soft_rate_distribution,
@@ -893,6 +948,15 @@ def _summarize_calibration_group(
             "mean_id_switch_count": id_switch_distribution["mean"],
             "mean_track_continuity": continuity_distribution["mean"],
             "mean_duplicate_assignment_count": duplicate_distribution["mean"],
+            "mean_source_binding_conflict_count": (
+                source_binding_conflict_distribution["mean"]
+            ),
+            "mean_source_lineage_quarantine_count": (
+                source_lineage_quarantine_distribution["mean"]
+            ),
+            "mean_upstream_local_identity_rejection_count": (
+                upstream_local_identity_rejection_distribution["mean"]
+            ),
             "mean_hard_risk_frame_rate": hard_rate_distribution["mean"],
         },
     }
@@ -1291,6 +1355,15 @@ def _risk_summary_from_payload(payload: Mapping[str, Any]) -> AssociationRiskSum
         source_node_id=_optional_string(payload.get("source_node_id")),
         link_type=_optional_string(payload.get("link_type")),
         d5_disagreement_count=int(payload.get("d5_disagreement_count", 0)),
+        source_binding_conflict_count=int(
+            payload.get("source_binding_conflict_count", 0)
+        ),
+        source_lineage_quarantine_count=int(
+            payload.get("source_lineage_quarantine_count", 0)
+        ),
+        upstream_local_identity_rejection_count=int(
+            payload.get("upstream_local_identity_rejection_count", 0)
+        ),
         duplicate_track_risk=float(payload.get("duplicate_track_risk", 0.0)),
         association_ambiguity=float(payload.get("association_ambiguity", 0.0)),
         covariance_overlap_rate=float(payload.get("covariance_overlap_rate", 0.0)),

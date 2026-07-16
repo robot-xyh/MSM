@@ -467,6 +467,138 @@ def test_online_d1_source_lineage_prevents_shadow_birth_and_teleport_rebirth() -
         "global_track_002",
         "global_track_003",
     }
+    assert teleport_result.metadata["quarantined_sources"] == lineage[
+        "quarantined_sources"
+    ]
+    summary = tracker.metrics.summary()
+    assert summary["source_binding_conflict_count"] == 0
+    assert summary["source_lineage_quarantine_count"] == 1
+    assert summary["upstream_local_identity_rejection_count"] == 0
+    latest_risk = tracker.metrics.association_logs[-1].risk_summary
+    assert latest_risk is not None
+    assert latest_risk.source_lineage_quarantine_count == 1
+
+
+def test_continuous_namespaced_source_track_id_has_no_binding_conflict() -> None:
+    tracker = Tracker(truth_policy=TrackerTruthPolicy.ONLINE)
+
+    for step in range(3):
+        result = tracker.step(
+            [
+                Detection(
+                    detection_id=f"source-{step}",
+                    timestamp=float(step),
+                    position=np.array([float(step), 0.0]),
+                    covariance=np.eye(2) * 0.25,
+                    metadata={"source_track_id": "d1:radar:track-007"},
+                )
+            ],
+            timestamp=float(step),
+        )
+        assert result.metadata["source_binding_conflicts"] == []
+        assert result.metadata["quarantined_sources"] == []
+
+    summary = tracker.metrics.summary()
+    assert set(tracker.tracks) == {"T001"}
+    assert summary["source_binding_conflict_count"] == 0
+    assert summary["source_lineage_quarantine_count"] == 0
+
+
+def test_one_source_binding_to_two_global_tracks_counts_conflict() -> None:
+    tracker = Tracker(truth_policy=TrackerTruthPolicy.ONLINE)
+
+    tracker.step(
+        [
+            Detection(
+                detection_id="source-a-0",
+                timestamp=0.0,
+                position=np.array([0.0, 0.0]),
+                covariance=np.eye(2) * 0.25,
+                metadata={"source_track_ids": ["d1:a"]},
+            ),
+            Detection(
+                detection_id="source-b-0",
+                timestamp=0.0,
+                position=np.array([0.2, 0.0]),
+                covariance=np.eye(2) * 0.25,
+                metadata={"source_track_ids": ["d1:b"]},
+            ),
+        ],
+        timestamp=0.0,
+    )
+    result = tracker.step(
+        [
+            Detection(
+                detection_id="combined-source-1",
+                timestamp=1.0,
+                position=np.array([0.1, 0.0]),
+                covariance=np.eye(2) * 0.25,
+                metadata={"source_track_ids": ["d1:a", "d1:b"]},
+            )
+        ],
+        timestamp=1.0,
+    )
+
+    assert len(result.metadata["source_binding_conflicts"]) == 1
+    assert result.metadata["source_binding_conflicts"][0]["reason"] == (
+        "source_track_binding_conflict"
+    )
+    assert tracker.metrics.summary()["source_binding_conflict_count"] == 1
+    risk = tracker.metrics.association_logs[-1].to_dict()["risk_summary"]
+    assert risk["source_binding_conflict_count"] == 1
+
+
+def test_upstream_local_identity_rejection_is_audit_only() -> None:
+    tracker = Tracker(truth_policy=TrackerTruthPolicy.ONLINE)
+
+    result = tracker.step(
+        [],
+        timestamp=0.0,
+        frame_metadata={"upstream_local_identity_rejection_count": 3},
+    )
+
+    assert result.matched_pairs == []
+    assert result.unmatched_detection_ids == []
+    assert tracker.tracks == {}
+    assert result.metadata["upstream_local_identity_rejection_count"] == 3
+    summary = tracker.metrics.summary()
+    assert summary["upstream_local_identity_rejection_count"] == 3
+    assert summary["birth_count"] == 0
+    risk = tracker.metrics.association_logs[-1].to_dict()["risk_summary"]
+    assert risk["upstream_local_identity_rejection_count"] == 3
+
+
+@pytest.mark.parametrize("invalid_count", [-1, 1.5, "1", True, None])
+def test_upstream_local_identity_rejection_count_fails_closed(
+    invalid_count: object,
+) -> None:
+    tracker = Tracker(truth_policy=TrackerTruthPolicy.ONLINE)
+
+    with pytest.raises(
+        ValueError,
+        match="upstream_local_identity_rejection_count.*non-negative integer",
+    ):
+        tracker.step(
+            [],
+            timestamp=0.0,
+            frame_metadata={
+                "upstream_local_identity_rejection_count": invalid_count
+            },
+        )
+
+    assert tracker.tracks == {}
+    assert tracker.metrics.frame_count == 0
+
+
+def test_legacy_frame_without_metadata_reports_zero_source_governance_metrics() -> None:
+    tracker = Tracker(truth_policy=TrackerTruthPolicy.ONLINE)
+
+    tracker.step([], timestamp=0.0)
+
+    summary = tracker.metrics.summary()
+    assert summary["source_binding_conflict_count"] == 0
+    assert summary["source_lineage_quarantine_count"] == 0
+    assert summary["upstream_local_identity_rejection_count"] == 0
 
 
 def test_identity_continuity_drops_when_track_id_changes_every_frame() -> None:

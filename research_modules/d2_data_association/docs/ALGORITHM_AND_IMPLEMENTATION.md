@@ -1025,3 +1025,36 @@ D1/D2 航迹。两种口径都证明没有身份交换，但前者是重新运�
 canonical `global_track_id` 不由来源 ID 或离线 truth 改写。2026-07-15 的普通 M5N2
 20-case 已补齐时延和运行数量；下一步只做带独立离线真值的扰动专项，不因单 seed 或
 无真值多 seed 结果调整默认 GNN/Hungarian。
+
+## 21. 来源治理诊断的显式累计实现
+
+`Tracker.step()` 仍先做在线 truth/identity policy 与来源连续性治理，再调用原
+GNN/Hungarian。关联完成后，D2 在 `AssociationResult.metadata` 中规范化输出：
+
+- `source_binding_conflicts`：一个 namespaced source 已绑定活动 canonical track，
+  却又随本帧匹配尝试绑定另一个 canonical track；
+- `quarantined_sources`：已绑定 source 与其 canonical track 的 Mahalanobis distance
+  超出原来源治理门限；
+- `upstream_local_identity_rejection_count`：上游在本帧已拒绝的局部身份塌缩数量。
+
+`MetricsRecorder.record_frame()` 对前两个列表取条目数并跨帧累加。第三项不从 Detection
+metadata、association metadata 或 local ID 反推，而只从传给 `Tracker.step()` 的
+frame metadata 读取。验证伪代码为：
+
+```text
+if key missing: count = 0
+elif type(value) is an integer-like non-bool and value >= 0: count = value
+else: reject frame before predict/associate/update/birth
+```
+
+逐帧 `AssociationRiskSummary` 输出当前滑窗计数和 delta；episode metrics/risk 输出累计值；
+threshold sensitivity、multi-seed group、dense/long replay calibration 与 P1 identity
+calibration 输出逐 seed 和分布聚合。三项没有加入 `RiskThresholds` 或
+`classify_risk_summary()` 的 hard/soft 判定，因此不会隐式改变现有仲裁门限。
+
+2026-07-16 单元/回放验证使用连续 source、双 canonical binding conflict、绑定 source
+teleport、零观测 upstream audit、5 类非法值和 legacy 缺失字段。两个 3-frame replay
+seed 7/8 精确得到 conflict=`1/1`、quarantine=`1/1`、upstream rejection=`2/4`；
+多 seed 均值为 `1/1/3`。全量 `123 passed, 1 warning`，验收阈值为零失败、非法输入
+零状态副作用。默认 GNN/Hungarian、gate、source weight 和 lifecycle 均未变化；未运行
+AirSim，真实扰动召回率与误抑制率仍不可用。

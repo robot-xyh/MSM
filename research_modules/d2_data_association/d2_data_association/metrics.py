@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict, deque
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from math import sqrt
+from numbers import Integral
 from typing import Iterable
 
 import numpy as np
@@ -103,6 +105,9 @@ class AssociationRiskSummaryWindowGenerator:
         *,
         id_switch_delta: int = 0,
         duplicate_assignment_delta: int = 0,
+        source_binding_conflict_delta: int = 0,
+        source_lineage_quarantine_delta: int = 0,
+        upstream_local_identity_rejection_delta: int = 0,
         track_continuity: float = 0.0,
         truth_metrics_available: bool = True,
         continuity_available: bool = True,
@@ -120,6 +125,13 @@ class AssociationRiskSummaryWindowGenerator:
             "cost_margin_risk": _cost_margin_risk(association_result.cost_matrix),
             "id_switch_delta": int(id_switch_delta),
             "duplicate_assignment_delta": int(duplicate_assignment_delta),
+            "source_binding_conflict_delta": int(source_binding_conflict_delta),
+            "source_lineage_quarantine_delta": int(
+                source_lineage_quarantine_delta
+            ),
+            "upstream_local_identity_rejection_delta": int(
+                upstream_local_identity_rejection_delta
+            ),
             "continuity_risk": (
                 max(0.0, 1.0 - float(track_continuity))
                 if continuity_available
@@ -152,6 +164,16 @@ class AssociationRiskSummaryWindowGenerator:
         id_switch_delta_sum = sum(int(item["id_switch_delta"]) for item in window)
         duplicate_assignment_delta_sum = sum(
             int(item["duplicate_assignment_delta"]) for item in window
+        )
+        source_binding_conflict_count = sum(
+            int(item["source_binding_conflict_delta"]) for item in window
+        )
+        source_lineage_quarantine_count = sum(
+            int(item["source_lineage_quarantine_delta"]) for item in window
+        )
+        upstream_local_identity_rejection_count = sum(
+            int(item["upstream_local_identity_rejection_delta"])
+            for item in window
         )
         continuity_risks = [
             float(item["continuity_risk"])
@@ -206,6 +228,11 @@ class AssociationRiskSummaryWindowGenerator:
             source_node_id=_latest_string(window, "source_node_id"),
             link_type=_latest_string(window, "link_type"),
             d5_disagreement_count=d5_disagreement_count,
+            source_binding_conflict_count=source_binding_conflict_count,
+            source_lineage_quarantine_count=source_lineage_quarantine_count,
+            upstream_local_identity_rejection_count=(
+                upstream_local_identity_rejection_count
+            ),
             duplicate_track_risk=duplicate_track_risk,
             association_ambiguity=association_ambiguity,
             covariance_overlap_rate=covariance_overlap_rate,
@@ -218,6 +245,22 @@ class AssociationRiskSummaryWindowGenerator:
                 "id_switch_delta_sum": id_switch_delta_sum,
                 "duplicate_assignment_delta": int(duplicate_assignment_delta),
                 "duplicate_assignment_delta_sum": duplicate_assignment_delta_sum,
+                "source_binding_conflict_delta": int(
+                    source_binding_conflict_delta
+                ),
+                "source_binding_conflict_count": source_binding_conflict_count,
+                "source_lineage_quarantine_delta": int(
+                    source_lineage_quarantine_delta
+                ),
+                "source_lineage_quarantine_count": (
+                    source_lineage_quarantine_count
+                ),
+                "upstream_local_identity_rejection_delta": int(
+                    upstream_local_identity_rejection_delta
+                ),
+                "upstream_local_identity_rejection_count": (
+                    upstream_local_identity_rejection_count
+                ),
                 "d5_disagreement_delta": int(
                     metadata.get("d5_disagreement_count", 0)
                 ),
@@ -253,6 +296,9 @@ class MetricsRecorder:
 
     id_switch_count: int = 0
     duplicate_assignment_count: int = 0
+    source_binding_conflict_count: int = 0
+    source_lineage_quarantine_count: int = 0
+    upstream_local_identity_rejection_count: int = 0
     frame_count: int = 0
     last_truth_to_track: dict[str, str] = field(default_factory=dict)
     truth_frame_count: dict[str, int] = field(default_factory=lambda: defaultdict(int))
@@ -305,6 +351,7 @@ class MetricsRecorder:
         runtime_seconds: float,
         lifecycle_birth_track_ids: Iterable[str] = (),
         lifecycle_transitions: Iterable[TrackTransition] = (),
+        frame_metadata: Mapping[str, object] | None = None,
     ) -> None:
         """Record one tracker frame.
 
@@ -312,8 +359,26 @@ class MetricsRecorder:
         False alarms are omitted by the caller because they have no truth id.
         """
 
+        upstream_local_identity_rejection_delta = (
+            validated_upstream_local_identity_rejection_count(frame_metadata)
+        )
+        source_binding_conflict_delta = _diagnostic_entry_count(
+            association_result.metadata,
+            "source_binding_conflicts",
+        )
+        source_lineage_quarantine_delta = _diagnostic_entry_count(
+            association_result.metadata,
+            "quarantined_sources",
+            nested_container="source_lineage_governance",
+        )
+
         del timestamp
         self.frame_count += 1
+        self.source_binding_conflict_count += source_binding_conflict_delta
+        self.source_lineage_quarantine_count += source_lineage_quarantine_delta
+        self.upstream_local_identity_rejection_count += (
+            upstream_local_identity_rejection_delta
+        )
         self.birth_count += len(set(lifecycle_birth_track_ids))
         for transition in lifecycle_transitions:
             self.lifecycle_transitions.append(transition)
@@ -375,6 +440,11 @@ class MetricsRecorder:
             duplicate_assignment_delta=(
                 self.duplicate_assignment_count
                 - duplicate_assignment_count_before
+            ),
+            source_binding_conflict_delta=source_binding_conflict_delta,
+            source_lineage_quarantine_delta=source_lineage_quarantine_delta,
+            upstream_local_identity_rejection_delta=(
+                upstream_local_identity_rejection_delta
             ),
             track_continuity=self.track_continuity,
             truth_metrics_available=self.truth_metrics_available,
@@ -523,6 +593,13 @@ class MetricsRecorder:
             "continuity_available": self.continuity_available,
             "continuity_reason": truth_reason,
             "duplicate_assignment_count": self.duplicate_assignment_count,
+            "source_binding_conflict_count": self.source_binding_conflict_count,
+            "source_lineage_quarantine_count": (
+                self.source_lineage_quarantine_count
+            ),
+            "upstream_local_identity_rejection_count": (
+                self.upstream_local_identity_rejection_count
+            ),
             "d5_disagreement_count": self.d5_disagreement_count,
             "duplicate_track_risk": self.latest_duplicate_track_risk,
             "max_duplicate_track_risk": self.max_duplicate_track_risk,
@@ -575,17 +652,57 @@ def _risk_summary_from_result(
     generator: AssociationRiskSummaryWindowGenerator | None = None,
     id_switch_delta: int = 0,
     duplicate_assignment_delta: int = 0,
+    source_binding_conflict_delta: int = 0,
+    source_lineage_quarantine_delta: int = 0,
+    upstream_local_identity_rejection_delta: int = 0,
     track_continuity: float = 0.0,
     truth_metrics_available: bool = True,
     continuity_available: bool = True,
 ) -> AssociationRiskSummary:
     if association_result.risk_summary is not None:
-        return association_result.risk_summary
+        risk_summary = association_result.risk_summary
+        risk_summary.source_binding_conflict_count = int(
+            source_binding_conflict_delta
+        )
+        risk_summary.source_lineage_quarantine_count = int(
+            source_lineage_quarantine_delta
+        )
+        risk_summary.upstream_local_identity_rejection_count = int(
+            upstream_local_identity_rejection_delta
+        )
+        risk_summary.metadata.update(
+            {
+                "source_binding_conflict_delta": int(
+                    source_binding_conflict_delta
+                ),
+                "source_binding_conflict_count": int(
+                    source_binding_conflict_delta
+                ),
+                "source_lineage_quarantine_delta": int(
+                    source_lineage_quarantine_delta
+                ),
+                "source_lineage_quarantine_count": int(
+                    source_lineage_quarantine_delta
+                ),
+                "upstream_local_identity_rejection_delta": int(
+                    upstream_local_identity_rejection_delta
+                ),
+                "upstream_local_identity_rejection_count": int(
+                    upstream_local_identity_rejection_delta
+                ),
+            }
+        )
+        return risk_summary
     if generator is not None:
         return generator.update(
             association_result,
             id_switch_delta=id_switch_delta,
             duplicate_assignment_delta=duplicate_assignment_delta,
+            source_binding_conflict_delta=source_binding_conflict_delta,
+            source_lineage_quarantine_delta=source_lineage_quarantine_delta,
+            upstream_local_identity_rejection_delta=(
+                upstream_local_identity_rejection_delta
+            ),
             track_continuity=track_continuity,
             truth_metrics_available=truth_metrics_available,
             continuity_available=continuity_available,
@@ -598,15 +715,73 @@ def _risk_summary_from_result(
         or _optional_string(metadata.get("source_node_id")),
         link_type=association_result.link_type or _optional_string(metadata.get("link_type")),
         d5_disagreement_count=int(metadata.get("d5_disagreement_count", 0)),
+        source_binding_conflict_count=source_binding_conflict_delta,
+        source_lineage_quarantine_count=source_lineage_quarantine_delta,
+        upstream_local_identity_rejection_count=(
+            upstream_local_identity_rejection_delta
+        ),
         duplicate_track_risk=float(metadata.get("duplicate_track_risk", 0.0)),
         association_ambiguity=float(
             metadata.get("association_ambiguity", association_result.ambiguity_score)
         ),
         covariance_overlap_rate=float(metadata.get("covariance_overlap_rate", 0.0)),
-        metadata=dict(metadata.get("risk_metadata", {})),
+        metadata={
+            **dict(metadata.get("risk_metadata", {})),
+            "source_binding_conflict_delta": source_binding_conflict_delta,
+            "source_binding_conflict_count": source_binding_conflict_delta,
+            "source_lineage_quarantine_delta": source_lineage_quarantine_delta,
+            "source_lineage_quarantine_count": source_lineage_quarantine_delta,
+            "upstream_local_identity_rejection_delta": (
+                upstream_local_identity_rejection_delta
+            ),
+            "upstream_local_identity_rejection_count": (
+                upstream_local_identity_rejection_delta
+            ),
+        },
         truth_metrics_available=truth_metrics_available,
         continuity_available=continuity_available,
     )
+
+
+def validated_upstream_local_identity_rejection_count(
+    frame_metadata: Mapping[str, object] | None,
+) -> int:
+    """Validate the sole frame-level source for the upstream rejection audit."""
+
+    if frame_metadata is None:
+        return 0
+    if not isinstance(frame_metadata, Mapping):
+        raise ValueError("frame_metadata must be a mapping")
+    key = "upstream_local_identity_rejection_count"
+    if key not in frame_metadata:
+        return 0
+    value = frame_metadata[key]
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise ValueError(f"frame_metadata.{key} must be a non-negative integer")
+    normalized = int(value)
+    if normalized < 0:
+        raise ValueError(f"frame_metadata.{key} must be a non-negative integer")
+    return normalized
+
+
+def _diagnostic_entry_count(
+    metadata: Mapping[str, object],
+    key: str,
+    *,
+    nested_container: str | None = None,
+) -> int:
+    value = metadata.get(key)
+    if value is None and nested_container is not None:
+        nested = metadata.get(nested_container)
+        if isinstance(nested, Mapping):
+            value = nested.get(key)
+    if value is None:
+        return 0
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        return len(value)
+    raise ValueError(f"AssociationResult.metadata.{key} must be a sequence")
 
 
 def classify_risk_summary(

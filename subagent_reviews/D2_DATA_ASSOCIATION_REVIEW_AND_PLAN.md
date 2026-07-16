@@ -602,3 +602,34 @@ leakage 0；对 main 已发布 track records 的事后裁决得到 IDSW 0，cont
   research adapter 的 IDSW/continuity 明显退化，不进入主线候选。
 - **耗时与产物**：runner wall time `2501.32 s`；完整 JSON、中文报告和真实数据图位于
   `research_modules/d2_data_association/outputs/p1_identity_ceiling_aware_v2_20260715/`。
+
+## 25. 2026-07-16 来源身份治理指标评审
+
+本轮复用现有 GNN/Hungarian、Mahalanobis gate、source continuity cost、shadow-birth
+suppression 和 bound-source quarantine，没有引入第二套局部视觉关联器。D2 对
+namespaced `source_track_ids` 的使用仍限于弱来源谱系：它可以约束既有规范航迹的连续性，
+但不能把 D1/D5 local ID 直接变成 `global_track_id`。
+
+新增三项显式审计指标：
+
+- `source_binding_conflict_count`：逐帧累计
+  `AssociationResult.metadata.source_binding_conflicts`；
+- `source_lineage_quarantine_count`：逐帧累计 `quarantined_sources`；
+- `upstream_local_identity_rejection_count`：只累计经验证的 frame metadata 非负整数，
+  缺失为 0，类型错误或负数 fail closed。
+
+三项已进入 `MetricsRecorder.summary()`、逐帧 risk summary、episode replay risk、threshold
+sensitivity 行、多 seed group、dense/long calibration per-seed/aggregate 和 P1 identity
+calibration 聚合。它们当前是审计字段，不新增 D4 soft/hard 原因，也不改变
+`id_switch_count`、truth availability 或默认 admission/ranking。
+
+2026-07-16 验证覆盖连续同源无冲突、同一来源集合跨两个 canonical track 冲突、绑定来源
+马氏不连续隔离、零检测上游塌缩拒绝只审计、5 类非法 metadata 和 legacy 零值。两条
+3-frame synthetic replay seed 7/8 输出 conflict=`1/1`、quarantine=`1/1`、upstream
+rejection=`2/4`，多 seed 均值=`1/1/3`。完整 D2 结果为
+`123 passed, 1 warning`，验收阈值零失败；warning 为环境 `Axes3D`。
+
+评审结论：D2-owned 显式指标接口缺口关闭；默认 GNN/Hungarian、gate、source weight、
+lifecycle 和 risk thresholds 不变。本轮没有 AirSim 实跑或真实统计证据。真实至少 10 个
+受治理扰动 case、false suppression/recall 和 offline identity 置信区间继续列为 P1，
+main/D1 负责生产可信 namespaced lineage 与 upstream audit metadata。

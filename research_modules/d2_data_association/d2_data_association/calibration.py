@@ -281,6 +281,15 @@ def _run_governed_replay_calibration(
                 "duplicate_assignment_count": metrics.get(
                     "duplicate_assignment_count"
                 ),
+                "source_binding_conflict_count": metrics.get(
+                    "source_binding_conflict_count"
+                ),
+                "source_lineage_quarantine_count": metrics.get(
+                    "source_lineage_quarantine_count"
+                ),
+                "upstream_local_identity_rejection_count": metrics.get(
+                    "upstream_local_identity_rejection_count"
+                ),
             },
         }
         seed_row = {
@@ -329,6 +338,15 @@ def _run_governed_replay_calibration(
             "rmse": float(metrics["rmse"]) if truth_available else None,
             "duplicate_assignment_count": int(
                 metrics.get("duplicate_assignment_count", 0)
+            ),
+            "source_binding_conflict_count": int(
+                metrics.get("source_binding_conflict_count", 0)
+            ),
+            "source_lineage_quarantine_count": int(
+                metrics.get("source_lineage_quarantine_count", 0)
+            ),
+            "upstream_local_identity_rejection_count": int(
+                metrics.get("upstream_local_identity_rejection_count", 0)
             ),
             "nis": nis,
             "nees": nees,
@@ -409,6 +427,18 @@ def summarize_dense_crossing_calibration(
             "coverage_continuity",
             availability_key="continuity_available",
         ),
+        "source_binding_conflict_count": _available_distribution(
+            rows,
+            "source_binding_conflict_count",
+        ),
+        "source_lineage_quarantine_count": _available_distribution(
+            rows,
+            "source_lineage_quarantine_count",
+        ),
+        "upstream_local_identity_rejection_count": _available_distribution(
+            rows,
+            "upstream_local_identity_rejection_count",
+        ),
         "false_track_count": _available_distribution(
             rows,
             "false_track_count",
@@ -483,6 +513,15 @@ def _risk_calibration_row(seed_row: Mapping[str, Any]) -> dict[str, Any]:
         "id_switch_count": seed_row["id_switch_count"],
         "track_continuity": seed_row["track_continuity"],
         "duplicate_assignment_count": seed_row["duplicate_assignment_count"],
+        "source_binding_conflict_count": seed_row[
+            "source_binding_conflict_count"
+        ],
+        "source_lineage_quarantine_count": seed_row[
+            "source_lineage_quarantine_count"
+        ],
+        "upstream_local_identity_rejection_count": seed_row[
+            "upstream_local_identity_rejection_count"
+        ],
         "false_track_count": seed_row.get("false_track_count"),
         "rmse": seed_row.get("rmse"),
         "soft_risk_frame_count": risk_summary.get("soft_risk_frame_count", 0),

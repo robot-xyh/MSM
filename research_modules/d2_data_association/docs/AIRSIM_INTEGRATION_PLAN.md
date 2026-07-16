@@ -224,3 +224,26 @@ batch-specific offline identity metrics. The remaining P1 acceptance is now a
 targeted governed suite, not another ordinary minimum-seed run; it must report
 lifecycle, offline identity availability, plan/pair churn, and false-suppression
 results.
+
+## 2026-07-16 Source-Governance Metric Contract
+
+The AirSim-style replay adapter now forwards the frame-level
+`upstream_local_identity_rejection_count` audit field into `Tracker.step()`.
+The value must be a non-boolean, non-negative integer; a missing field means
+zero, while invalid type or range fails before tracker state changes. It is an
+upstream rejection count only: D2 does not turn it into a detection or track
+and does not promote any local/source ID to `global_track_id`.
+
+`source_binding_conflict_count`, `source_lineage_quarantine_count`, and
+`upstream_local_identity_rejection_count` are present in metrics, replay risk,
+threshold-sensitivity per-seed rows, and multi-seed/calibration aggregates.
+They remain diagnostics and do not alter GNN/Hungarian, Mahalanobis/source
+lineage gates, lifecycle thresholds, or the current soft/hard risk profile.
+
+Validation on 2026-07-16 used two three-frame synthetic replay seeds: each
+produced one binding conflict and one quarantine, while upstream rejection
+counts were 2 and 4; the aggregate means were 1, 1, and 3. The full D2 suite
+passed 123 tests with one environment-only Matplotlib warning. No AirSim
+Blocks episode was launched for this change, so real duplicate-source,
+teleport, clutter, and legitimate-new-target acceptance remains the existing
+P1 targeted-suite requirement.

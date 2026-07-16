@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from numbers import Integral
 from typing import Any
 
 import numpy as np
@@ -45,10 +46,25 @@ class AssociationRiskSummary:
     metadata: dict[str, Any] = field(default_factory=dict)
     truth_metrics_available: bool = True
     continuity_available: bool = True
+    source_binding_conflict_count: int = 0
+    source_lineage_quarantine_count: int = 0
+    upstream_local_identity_rejection_count: int = 0
 
     def __post_init__(self) -> None:
         self.timestamp = float(self.timestamp)
         self.d5_disagreement_count = int(self.d5_disagreement_count)
+        self.source_binding_conflict_count = _nonnegative_integer(
+            self.source_binding_conflict_count,
+            "source_binding_conflict_count",
+        )
+        self.source_lineage_quarantine_count = _nonnegative_integer(
+            self.source_lineage_quarantine_count,
+            "source_lineage_quarantine_count",
+        )
+        self.upstream_local_identity_rejection_count = _nonnegative_integer(
+            self.upstream_local_identity_rejection_count,
+            "upstream_local_identity_rejection_count",
+        )
         self.duplicate_track_risk = float(self.duplicate_track_risk)
         self.association_ambiguity = float(self.association_ambiguity)
         self.covariance_overlap_rate = float(self.covariance_overlap_rate)
@@ -61,6 +77,13 @@ class AssociationRiskSummary:
             "source_node_id": self.source_node_id,
             "link_type": self.link_type,
             "d5_disagreement_count": self.d5_disagreement_count,
+            "source_binding_conflict_count": self.source_binding_conflict_count,
+            "source_lineage_quarantine_count": (
+                self.source_lineage_quarantine_count
+            ),
+            "upstream_local_identity_rejection_count": (
+                self.upstream_local_identity_rejection_count
+            ),
             "duplicate_track_risk": self.duplicate_track_risk,
             "association_ambiguity": self.association_ambiguity,
             "covariance_overlap_rate": self.covariance_overlap_rate,
@@ -68,6 +91,15 @@ class AssociationRiskSummary:
             "continuity_available": self.continuity_available,
             "metadata": _json_ready(self.metadata),
         }
+
+
+def _nonnegative_integer(value: Any, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise ValueError(f"{name} must be a non-negative integer")
+    normalized = int(value)
+    if normalized < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+    return normalized
 
 
 def _as_vector(value: Any, size: int, name: str) -> np.ndarray:

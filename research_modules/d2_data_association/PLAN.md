@@ -536,3 +536,33 @@ MHT、Stone Soup/FilterPy 仅保留为 P2 optional/offline benchmark，不进入
 - 分档 clutter/combined 通过，其余四档 baseline IDSW=0 fail-closed；dropout truth
   alignment partial。后续计划是跨模块评审该混合证据及继续长 replay/lifecycle 标定，
   不是由 D2 runner 自动切换参数。
+
+## 16. 2026-07-16 来源身份治理指标收口
+
+### 16.1 已实现合同
+
+1. 保持现有 GNN/Hungarian、马氏门控和 source-lineage governance，不建立独立的
+   pixel/local tracker，也不复制 D5 `bright_hungarian`。
+2. 每帧从 D2 自身产生的 `source_binding_conflicts` 与 `quarantined_sources` 累计
+   `source_binding_conflict_count` 和 `source_lineage_quarantine_count`。
+3. `upstream_local_identity_rejection_count` 只从验证后的 frame metadata 累计：
+   缺失为 0，值必须是非布尔的非负整数；非法值在 tracker 状态变化前拒绝。
+4. 三项计数进入 metrics、association risk、replay report、threshold sensitivity、
+   多 seed group、dense/long calibration per-seed/aggregate 和 P1 identity calibration
+   聚合；`id_switch_count` 的 availability 与显式字段保持不变。
+5. 三项计数只审计来源身份风险，不创建观测/航迹、不重命名或重绑中心
+   `global_track_id`，也不直接改变现有 soft/hard risk 阈值结果。
+
+### 16.2 验证、完成状态与剩余计划
+
+- 验证日期 2026-07-16；专项场景为连续 namespaced source、同一 source 集合跨两个
+  canonical track 的 binding conflict、绑定来源 Mahalanobis discontinuity、零检测
+  upstream rejection、5 类非法 metadata 和 legacy missing metadata。
+- 两个 3-frame synthetic replay seed 的精确结果为 conflict `1/1`、quarantine
+  `1/1`、upstream rejection `2/4`，聚合均值 `1/1/3`；旧流程三项均为 0。
+- 验收门限是专项精确计数、非法 metadata 零 tracker/metrics 副作用以及全量测试零失败；
+  结果 `123 passed, 1 warning`，warning 为环境 Matplotlib `Axes3D`，不影响合同。
+- 本项关闭“来源治理只有明细、没有显式累计指标”和“上游本地身份塌缩拒绝无法进入
+  D2 replay 审计”的 D2-owned 缺口。真实 AirSim 至少 10 个显式扰动 case、
+  false-suppression/recall 与独立 offline IDSW/continuity 仍为 P1；main/D1 仍负责提供
+  namespaced `source_track_ids` 和可信 frame-level rejection count。

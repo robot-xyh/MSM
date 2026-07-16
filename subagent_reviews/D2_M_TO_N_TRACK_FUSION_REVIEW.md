@@ -319,3 +319,18 @@ identity consensus 的完成证据：
 批次在 M5N2 20/20 后终止；终止前额外完成的 `png_ttc_2v2_seed001` 被排除，dropout
 case 为 0。后续跨节点 P1 仍需 owner/epoch failover、高歧义多帧回放和独立离线真值
 评分，不能用本批物理结果替代。
+
+## 12. 2026-07-16 来源谱系治理可观测性补充
+
+中心 canonical registry 的原则未变：`(source_node_id, local_track_id, local_epoch)` 或
+等价 namespaced `source_track_id` 只是来源键，不能成为全局身份权威。D2 现将现有
+binding/quarantine 明细累计为 `source_binding_conflict_count` 与
+`source_lineage_quarantine_count`，并接收 frame-level
+`upstream_local_identity_rejection_count` 审计上游已拒绝的本地身份塌缩。第三项只允许
+非负整数，缺失为 0，非法值 fail closed；它不构造来源航迹或 canonical track。
+
+三项计数已进入 risk 与 replay 单 seed/多 seed 聚合，但不参与当前关联代价、默认门限
+或自动 owner 切换。2026-07-16 两个 3-frame synthetic seed 的结果为 conflict 均 1、
+quarantine 均 1、upstream rejection 为 2/4，完整 D2 回归为
+`123 passed, 1 warning`。本轮没有真实跨节点 AirSim 数据，因此 owner/epoch failover、
+高歧义多帧注册、false suppression/recall 和 fusion NEES/ANEES 缺口均不重分类。

@@ -117,6 +117,9 @@ def test_ten_seed_calibration_is_reproducible_and_reports_availability(tmp_path)
     assert first.aggregate["continuity_available_seed_count"] == 10
     assert first.aggregate["id_switch_count"]["available_seed_count"] == 10
     assert first.aggregate["track_continuity"]["available_seed_count"] == 10
+    assert first.aggregate["source_binding_conflict_count"]["mean"] == 0.0
+    assert first.aggregate["source_lineage_quarantine_count"]["mean"] == 0.0
+    assert first.aggregate["upstream_local_identity_rejection_count"]["mean"] == 0.0
     assert first.aggregate["nis_availability"]["available_seed_count"] == 10
     assert first.aggregate["nees_availability"]["available_seed_count"] == 10
     assert first.aggregate["online_truth_isolation_violation_count"] == 0
@@ -127,6 +130,9 @@ def test_ten_seed_calibration_is_reproducible_and_reports_availability(tmp_path)
         assert row["gate_profile"]["profile_version"] == "v1"
         assert row["risk_profile_version"] == "v1"
         assert isinstance(row["id_switch_count"], int)
+        assert row["source_binding_conflict_count"] == 0
+        assert row["source_lineage_quarantine_count"] == 0
+        assert row["upstream_local_identity_rejection_count"] == 0
         assert isinstance(row["track_continuity"], float)
         assert row["nis"]["available"] is True
         assert row["nees"]["available"] is True

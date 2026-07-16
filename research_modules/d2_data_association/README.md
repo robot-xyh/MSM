@@ -377,3 +377,25 @@ baseline/candidate 分别得到 IDSW 0、continuity 0.985915/0.985816；差异�
 普通 M5N2 运行数量并补齐 D2 阶段时延，但没有覆盖重复来源、teleport、漏检、杂波、
 合法新目标 birth 延迟或独立离线身份评分，相关 P1 仍开放。默认 GNN/Hungarian、中心
 `global_track_id` 所有权和在线 truth 隔离均不变。
+
+## 2026-07-16 来源身份治理显式指标
+
+- `MetricsRecorder.summary()`、逐帧 `AssociationRiskSummary`、replay risk summary、
+  threshold sensitivity 逐 seed 行及多 seed/校准聚合现在显式保留
+  `source_binding_conflict_count`、`source_lineage_quarantine_count` 和
+  `upstream_local_identity_rejection_count`；`id_switch_count` 仍是独立且显式的
+  truth-based 指标，未被三项在线治理诊断替代。
+- 前两项分别只累计每帧 `AssociationResult.metadata.source_binding_conflicts` 和
+  `quarantined_sources` 的条目数。第三项只接受经 `Tracker.step(frame_metadata=...)`
+  验证的同名非负整数；字段缺失为 0，布尔、浮点、字符串、`None` 和负数均在预测、
+  关联或建轨前 fail closed。该上游计数只记录 D1/main 已拒绝的本地身份塌缩候选，
+  不合成 Detection、不创建 Track，也不把 local/source ID 升级为 `global_track_id`。
+- 2026-07-16 专项验证包含连续同源、同源跨两个规范航迹冲突、绑定来源马氏不连续隔离、
+  零观测上游审计、5 类非法 metadata 和旧帧无 metadata 兼容。两条 3-frame replay
+  seed 7/8 各得到 conflict=1、quarantine=1，上游拒绝分别为 2/4；多 seed 均值为
+  1/1/3。验收阈值为精确计数、非法输入零状态副作用和完整回归零失败，结果为
+  `123 passed, 1 warning`；warning 仍是本机 Matplotlib `Axes3D` 环境问题。
+- 本批没有启动 AirSim、没有读取像素或 actor/truth ID、没有复制 D5
+  `bright_hungarian`，也没有改变默认 GNN/Hungarian、马氏门限、来源连续性权重、
+  lifecycle 门限或风险阈值。三项计数当前是审计证据，不自动新增 soft/hard risk 原因；
+  至少 10 个真实 duplicate-source/teleport/合法新目标受治理 case 的统计标定仍开放。

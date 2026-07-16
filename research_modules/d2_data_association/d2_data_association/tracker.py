@@ -16,7 +16,10 @@ from .gating import (
     source_track_ids_from_detection,
     track_position_covariance_trace,
 )
-from .metrics import MetricsRecorder
+from .metrics import (
+    MetricsRecorder,
+    validated_upstream_local_identity_rejection_count,
+)
 from .models import (
     AssociationResult,
     Detection,
@@ -74,6 +77,9 @@ class Tracker:
     ) -> AssociationResult:
         detection_list = list(detections)
         timestamp = float(timestamp)
+        upstream_local_identity_rejection_count = (
+            validated_upstream_local_identity_rejection_count(frame_metadata)
+        )
         self._enforce_truth_policy(
             detection_list,
             truth_ids_present=truth_ids_present,
@@ -113,6 +119,10 @@ class Tracker:
                 result.metadata,
                 frame_metadata,
             )
+        result.metadata["quarantined_sources"] = quarantined_sources
+        result.metadata["upstream_local_identity_rejection_count"] = (
+            upstream_local_identity_rejection_count
+        )
 
         detections_by_id = {
             detection.detection_id: detection for detection in association_detections
@@ -184,6 +194,7 @@ class Tracker:
             runtime_seconds=runtime,
             lifecycle_birth_track_ids=created_track_ids,
             lifecycle_transitions=self.state_transitions[transition_count_before:],
+            frame_metadata=frame_metadata,
         )
         return result
 

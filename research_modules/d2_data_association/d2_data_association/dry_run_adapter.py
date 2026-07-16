@@ -462,6 +462,7 @@ def _association_frame_metadata(
             "threshold_profile_version",
             "risk_profile",
             "risk_profile_version",
+            "upstream_local_identity_rejection_count",
         ]
         if include_offline_truth:
             safe_keys.extend(("target_count", "intruder_count"))

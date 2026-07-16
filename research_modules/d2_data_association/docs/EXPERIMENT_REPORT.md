@@ -237,3 +237,41 @@ unmatched evaluator sample。未做最近邻补齐，online truth leakage 仍为
 
 - `outputs/p1_identity_ceiling_aware_v2_20260715/D2_P1_IDENTITY_CEILING_AWARE_V2_REPORT_CN.md`；
 - `outputs/p1_identity_ceiling_aware_v2_20260715/d2_identity_calibration_v2_comparison.png`。
+
+## 13. 2026-07-16 来源身份治理指标专项
+
+### 13.1 目的与方法
+
+本专项验证 D5 人工视频支线暴露的“tracker success 仍可能伴随本地身份塌缩”能够以
+审计计数进入 D2，而不把像素/local ID 变成 D2 观测或规范身份。D2 继续使用现有
+GNN/Hungarian、Mahalanobis gate 和 source-lineage governance。
+
+样本包括：连续 namespaced source、同一来源集合跨两个 canonical track 的 binding
+conflict、绑定来源统计大跳 quarantine、零 detection 的 upstream rejection、5 类非法
+frame metadata，以及缺 metadata 的 legacy 帧。replay 使用 synthetic seed 7/8，
+每个 3 帧；本批没有启动 AirSim Blocks，也没有使用 actor/truth ID 或原始像素。
+
+### 13.2 结果
+
+| 指标 | Seed 7 | Seed 8 | 多 seed 均值 |
+| --- | ---: | ---: | ---: |
+| `source_binding_conflict_count` | 1 | 1 | 1.0 |
+| `source_lineage_quarantine_count` | 1 | 1 | 1.0 |
+| `upstream_local_identity_rejection_count` | 2 | 4 | 3.0 |
+
+连续同一 source 的冲突/隔离均为 0；legacy 无 metadata 的三项均为 0。零 detection
+upstream rejection 只增加审计数，track 数和 birth 数保持 0。负数、布尔、浮点、
+字符串和 `None` 均在 tracker 状态变化前被拒绝。
+
+全量 D2 结果为 `123 passed, 1 warning`，验收阈值为零失败、表中计数精确一致、非法
+输入零状态副作用。warning 为本机 Matplotlib `Axes3D` 多版本导入，不影响指标。
+
+### 13.3 结论与限制
+
+三项已进入 metrics summary、逐帧/episode risk summary、replay threshold sensitivity
+逐 seed 行、多 seed group 以及 dense/long/P1 calibration 聚合；`id_switch_count` 仍显式
+保留。本轮没有改变默认关联器、门限、source weight、lifecycle 或 risk classification。
+
+该专项证明的是接口、计数与 fail-closed 行为，不是实际 AirSim 场景的统计性能。至少
+10 个真实 duplicate-source/teleport/dropout/clutter/合法新目标 case 的 recall、false
+suppression、offline IDSW/continuity 和置信区间仍不可用，继续作为 P1 验收限制。

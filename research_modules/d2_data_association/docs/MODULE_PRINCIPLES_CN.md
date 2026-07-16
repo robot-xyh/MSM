@@ -1015,3 +1015,22 @@ shadow suppression 或 teleport quarantine，只能说明正常数据未被误�
 M5N2 已达到 20 case，但没有专门构造重复来源、teleport、漏检、杂波与合法新目标，
 也没有为该批冻结离线身份评分；这些受治理专项完成前，不能冻结来源连续性权重、抑制
 窗口或 lifecycle 参数，也不能用 seed 数量替换既有严格 admission。
+
+### 14.4 来源身份治理的计数原则
+
+来源治理必须可累计审计，但计数本身不获得身份权威。D2 从每帧关联结果中分别累计
+`source_binding_conflicts` 和 `quarantined_sources`，形成
+`source_binding_conflict_count` 与 `source_lineage_quarantine_count`。上游在像素/局部
+tracker 支线中已经拒绝的身份塌缩，只能通过 frame metadata 的
+`upstream_local_identity_rejection_count` 作为审计数进入 D2；字段缺失为 0，且只有
+非布尔的非负整数合法。非法值必须在预测、关联和建轨前 fail closed。
+
+这三项不生成观测或航迹，不把 local/source ID 提升为 `global_track_id`，不替代
+`id_switch_count`，也不自动构成软/硬风险阈值命中。D2 不消费原始像素、不复制 D5
+`bright_hungarian`，而是继续复用 GNN/Hungarian、马氏门控与来源谱系治理。
+
+2026-07-16 的连续同源、binding conflict、Mahalanobis discontinuity、零检测 upstream
+audit、非法 metadata 和 legacy 回归均通过；两个 3-frame synthetic seed 输出
+conflict=`1/1`、quarantine=`1/1`、upstream rejection=`2/4`，全量结果为
+`123 passed, 1 warning`，验收阈值零失败。该证据是模块合同/回放证据，不是实际
+AirSim 受扰运行证据；真实至少 10 个来源扰动 case 仍待标定。
