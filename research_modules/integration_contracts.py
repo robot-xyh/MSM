@@ -22,6 +22,144 @@ EFFECTIVE_AUTHORIZATION_STATES = {
     "recorded",
 }
 
+LOCAL_IMAGE_TRACK_STATES = {"measured", "lost"}
+LOCAL_IMAGE_SPECTRAL_BANDS = {"visible", "infrared"}
+
+
+@dataclass(frozen=True)
+class LocalImageTrackObservation:
+    """Module-neutral, camera-local track sample without global identity."""
+
+    sensor_id: str
+    stream_id: str
+    local_track_id: str
+    local_epoch: int
+    spectral_band: str
+    measurement_timestamp: float
+    arrival_timestamp: float
+    center_px: np.ndarray | None
+    bbox_xyxy: tuple[float, float, float, float] | None
+    pixel_covariance: np.ndarray | None
+    confidence: float
+    track_state: str
+    quality_flags: tuple[str, ...] = ()
+    metadata: Mapping[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("sensor_id", "stream_id", "local_track_id"):
+            value = str(getattr(self, name)).strip()
+            if not value:
+                raise ValueError(f"{name} must be non-empty")
+            object.__setattr__(self, name, value)
+
+        local_epoch = int(self.local_epoch)
+        if local_epoch < 0:
+            raise ValueError("local_epoch must be non-negative")
+        object.__setattr__(self, "local_epoch", local_epoch)
+
+        spectral_band = str(self.spectral_band).strip().lower()
+        if spectral_band not in LOCAL_IMAGE_SPECTRAL_BANDS:
+            raise ValueError(
+                f"spectral_band must be one of {sorted(LOCAL_IMAGE_SPECTRAL_BANDS)}"
+            )
+        object.__setattr__(self, "spectral_band", spectral_band)
+
+        measurement_timestamp = float(self.measurement_timestamp)
+        arrival_timestamp = float(self.arrival_timestamp)
+        if not np.isfinite(measurement_timestamp) or not np.isfinite(arrival_timestamp):
+            raise ValueError("track timestamps must be finite")
+        if arrival_timestamp < measurement_timestamp:
+            raise ValueError("arrival_timestamp cannot precede measurement_timestamp")
+        object.__setattr__(self, "measurement_timestamp", measurement_timestamp)
+        object.__setattr__(self, "arrival_timestamp", arrival_timestamp)
+
+        confidence = float(self.confidence)
+        if not np.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+            raise ValueError("confidence must be finite and within [0, 1]")
+        object.__setattr__(self, "confidence", confidence)
+
+        track_state = str(self.track_state).strip().lower()
+        if track_state not in LOCAL_IMAGE_TRACK_STATES:
+            raise ValueError(f"track_state must be one of {sorted(LOCAL_IMAGE_TRACK_STATES)}")
+        object.__setattr__(self, "track_state", track_state)
+
+        center = (
+            None
+            if self.center_px is None
+            else _vector(self.center_px, 2, "center_px")
+        )
+        bbox = _optional_bbox_xyxy(self.bbox_xyxy)
+        covariance = (
+            None
+            if self.pixel_covariance is None
+            else _covariance(self.pixel_covariance, (2, 2), "pixel_covariance")
+        )
+        if track_state == "measured":
+            if center is None or covariance is None:
+                raise ValueError(
+                    "measured local image tracks require center_px and pixel_covariance"
+                )
+        elif center is not None or bbox is not None or covariance is not None:
+            raise ValueError(
+                "lost local image tracks cannot carry stale center, bbox, or covariance"
+            )
+        object.__setattr__(self, "center_px", center)
+        object.__setattr__(self, "bbox_xyxy", bbox)
+        object.__setattr__(self, "pixel_covariance", covariance)
+
+        quality_flags = tuple(
+            dict.fromkeys(str(flag).strip() for flag in self.quality_flags if str(flag).strip())
+        )
+        object.__setattr__(self, "quality_flags", quality_flags)
+        metadata = dict(self.metadata or {})
+        forbidden = {
+            key
+            for key in ("global_track_id", "truth_id", "object_id", "actor_name")
+            if metadata.get(key) is not None
+        }
+        if forbidden:
+            raise ValueError(
+                "local image observation metadata cannot contain global/truth identity: "
+                + ", ".join(sorted(forbidden))
+            )
+        object.__setattr__(self, "metadata", metadata)
+
+    @property
+    def source_track_key(self) -> str:
+        """Return an observer-scoped source identity, never a global track ID."""
+
+        return (
+            f"{self.sensor_id}/{self.stream_id}/epoch-{self.local_epoch}/"
+            f"{self.local_track_id}"
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "sensor_id": self.sensor_id,
+            "stream_id": self.stream_id,
+            "local_track_id": self.local_track_id,
+            "local_epoch": self.local_epoch,
+            "source_track_key": self.source_track_key,
+            "spectral_band": self.spectral_band,
+            "measurement_timestamp": self.measurement_timestamp,
+            "arrival_timestamp": self.arrival_timestamp,
+            "center_px": (
+                None if self.center_px is None else self.center_px.tolist()
+            ),
+            "bbox_xyxy": (
+                None if self.bbox_xyxy is None else list(self.bbox_xyxy)
+            ),
+            "pixel_covariance": (
+                None
+                if self.pixel_covariance is None
+                else self.pixel_covariance.tolist()
+            ),
+            "confidence": self.confidence,
+            "track_state": self.track_state,
+            "quality_flags": list(self.quality_flags),
+            "metadata": dict(self.metadata or {}),
+        }
+
 
 @dataclass(frozen=True)
 class CanonicalTrack:
@@ -211,3 +349,28 @@ def _matrix(value: Any, shape: tuple[int, int], name: str) -> np.ndarray:
     if array.shape != shape:
         raise ValueError(f"{name} must have shape {shape}, got {array.shape}")
     return array.copy()
+
+
+def _covariance(value: Any, shape: tuple[int, int], name: str) -> np.ndarray:
+    array = _matrix(value, shape, name)
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f"{name} must contain only finite values")
+    if not np.allclose(array, array.T, rtol=1e-7, atol=1e-9):
+        raise ValueError(f"{name} must be symmetric")
+    if float(np.min(np.linalg.eigvalsh(array))) < -1e-9:
+        raise ValueError(f"{name} must be positive semidefinite")
+    return array
+
+
+def _optional_bbox_xyxy(
+    value: Any | None,
+) -> tuple[float, float, float, float] | None:
+    if value is None:
+        return None
+    array = np.asarray(value, dtype=float).reshape(-1)
+    if array.shape != (4,) or not np.all(np.isfinite(array)):
+        raise ValueError("bbox_xyxy must contain four finite values")
+    x1, y1, x2, y2 = (float(item) for item in array)
+    if x2 < x1 or y2 < y1:
+        raise ValueError("bbox_xyxy must be (x_min, y_min, x_max, y_max)")
+    return (x1, y1, x2, y2)

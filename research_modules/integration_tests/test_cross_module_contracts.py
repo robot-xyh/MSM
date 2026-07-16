@@ -14,6 +14,7 @@ from d5_terminal_association import Assignment as D5Assignment
 from d5_terminal_association import CameraModel, GlobalTrack, LocalVisualTrack, TerminalAssociator
 from d6_evaluation_metrics import MetricsCollector, TerminalRecord
 from integration_contracts import (
+    LocalImageTrackObservation,
     assignment_handoff_from_d3,
     canonical_track_from_d1,
     d2_detection_kwargs,
@@ -126,3 +127,82 @@ def test_authorized_handoff_locks_terminal_and_is_counted_by_d6() -> None:
 
     assert decision.decision_state == "locked"
     assert metrics.terminal_association_accuracy == 1.0
+
+
+def test_local_image_track_observation_carries_uncertainty_and_local_scope() -> None:
+    observation = LocalImageTrackObservation(
+        sensor_id="eo-camera-01",
+        stream_id="visible-main",
+        local_track_id="local-003",
+        local_epoch=2,
+        spectral_band="visible",
+        measurement_timestamp=10.0,
+        arrival_timestamp=10.08,
+        center_px=np.array([120.0, 80.0]),
+        bbox_xyxy=(112.0, 72.0, 128.0, 88.0),
+        pixel_covariance=np.diag([9.0, 16.0]),
+        confidence=0.85,
+        track_state="measured",
+        quality_flags=("small_bbox",),
+    )
+
+    payload = observation.to_dict()
+    assert observation.source_track_key == (
+        "eo-camera-01/visible-main/epoch-2/local-003"
+    )
+    assert "global_track_id" not in payload
+    assert payload["pixel_covariance"] == [[9.0, 0.0], [0.0, 16.0]]
+
+
+def test_local_image_track_observation_lost_state_is_fail_closed() -> None:
+    lost = LocalImageTrackObservation(
+        sensor_id="ir-camera-01",
+        stream_id="infrared-main",
+        local_track_id="local-004",
+        local_epoch=0,
+        spectral_band="infrared",
+        measurement_timestamp=4.0,
+        arrival_timestamp=4.1,
+        center_px=None,
+        bbox_xyxy=None,
+        pixel_covariance=None,
+        confidence=0.0,
+        track_state="lost",
+    )
+    assert lost.center_px is None
+    assert lost.pixel_covariance is None
+
+    with pytest.raises(ValueError, match="cannot carry stale"):
+        LocalImageTrackObservation(
+            sensor_id="ir-camera-01",
+            stream_id="infrared-main",
+            local_track_id="local-004",
+            local_epoch=0,
+            spectral_band="infrared",
+            measurement_timestamp=4.0,
+            arrival_timestamp=4.1,
+            center_px=np.array([1.0, 2.0]),
+            bbox_xyxy=None,
+            pixel_covariance=None,
+            confidence=0.0,
+            track_state="lost",
+        )
+
+
+def test_local_image_track_observation_rejects_global_or_truth_identity() -> None:
+    with pytest.raises(ValueError, match="cannot contain global/truth identity"):
+        LocalImageTrackObservation(
+            sensor_id="eo-camera-01",
+            stream_id="visible-main",
+            local_track_id="local-001",
+            local_epoch=0,
+            spectral_band="visible",
+            measurement_timestamp=1.0,
+            arrival_timestamp=1.0,
+            center_px=np.array([10.0, 12.0]),
+            bbox_xyxy=None,
+            pixel_covariance=np.eye(2),
+            confidence=1.0,
+            track_state="measured",
+            metadata={"global_track_id": "GT-001"},
+        )
