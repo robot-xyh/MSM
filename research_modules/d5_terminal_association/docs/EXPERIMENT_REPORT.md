@@ -1,5 +1,45 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-15 `b.mp4` 人工五目标 local MOT
+
+输入视频为 `496x640`、5 FPS、95 帧。五个目标用 `12x12` ROI 按顺序初始化。纯 CSRT 12/16 像素框分别在第 38/28 帧出现中心/框塌缩，尽管 summary 显示 95/95 measured；KCF 仅保持 2-3 帧。因此 tracker success 不作为身份连续验收。
+
+人工 ROI 为：
+
+```text
+367,275,12,12; 386,262,12,12; 405,268,12,12;
+431,260,12,12; 451,260,12,12
+```
+
+选择顺序固定生成 `local-001...local-005`。实验没有读取视频真值身份，也没有使用 `global_track_id`。
+
+最终配置为 CSRT proposal + `bright_hungarian`：全帧 `gray - GaussianBlur(31x31)`、阈值 12、常速度预测、Hungarian 一对一关联和 20 像素门。五 ID 有效/丢失为 `92/3`、`95/0`、`93/2`、`95/0`、`95/0`；`duplicate_measurement_count=0`、重复帧 0、最小中心间距 5 px、最大 bbox IoU 0.4118。contact sheet 复核 frame 0/20/40/60/80/94 未发现 ID 同帧共享同一量测。
+
+### 对照结果
+
+| 配置 | tracker success 表象 | 身份连续性复核 | 判定 |
+| --- | --- | --- | --- |
+| CSRT，16 px ROI | 五 ID 均 `95/95 measured` | 第 28 帧起出现完全重叠，末端多 ID 收敛到同一亮点 | 假连续性，不验收 |
+| CSRT，12 px ROI | 五 ID 均 `95/95 measured` | 第 38 帧 `local-002/local-003=(208,286)`；后续 `local-001/002/003` 继续塌缩 | 假连续性，不验收 |
+| KCF，12 px ROI | 每 ID 仅 2-3 帧 measured | 不能维持本视频目标 | 失败对照 |
+| CSRT + `bright_hungarian` | 允许显式 lost | 重复量测 0，短时 lost 后恢复原 ID | 本视频通过 |
+
+### 五轨迹结果
+
+| 本地 ID | measured | lost | lost 帧 | 最终状态 |
+| --- | ---: | ---: | --- | --- |
+| `local-001` | 92 | 3 | 57, 58, 89 | measured |
+| `local-002` | 95 | 0 | 无 | measured |
+| `local-003` | 93 | 2 | 34, 35 | measured |
+| `local-004` | 95 | 0 | 无 | measured |
+| `local-005` | 95 | 0 | 无 | measured |
+
+本实验的接受条件不是“五条 tracker 都返回 true”，而是 95 帧处理完成、lost 不伪造量测、`duplicate_measurement_count=0`，并由 contact sheet 确认六个抽样时刻没有同帧共享量测。最终 MP4 为 95 帧，逐帧 CSV 为 `95x5=475` 行。
+
+本实验只证明该亮目标视频中的人工初始化 local ID 可区分，不证明通用无人机检测/MOT、GlobalTrack 注册、敌我识别、跨相机关联或 D7 视觉控制准入。完整报告见 `../reports/D5_MANUAL_VIDEO_TRACKING_B_20260715.md`。
+
+验证日期为 2026-07-15，样本为 1 个真实视频、95 帧、5 个 ID、475 条逐帧记录；D5 全量 `284 passed`，零测试失败，语法与格式检查通过。
+
 ## 2026-07-15 真实 AirSim M5N2 20-case 复核
 
 ### 范围与数据

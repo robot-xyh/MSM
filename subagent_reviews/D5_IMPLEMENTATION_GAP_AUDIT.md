@@ -1,5 +1,17 @@
 # D5 实现差距审计
 
+## 2026-07-15 人工初始化视频 local MOT GAP 状态
+
+**已实现：** D5 新增普通视频人工多 ROI 初始化工具。每个 ROI 获得不可自动换绑的 `local-xxx`，默认独立 CSRT、可选 KCF，并输出 MP4、逐帧 CSV 和 JSON summary。纯 tracker 的重叠重复量测失败关闭；亮目标专项可使用正对比峰候选、常速度预测和 Hungarian 一对一分配。丢失帧不携带旧 bbox/center。
+
+**真实证据：** 2026-07-15 对 `research_modules/b.mp4` 运行 95 帧、5 个 `12x12` 人工框。最终五 ID 有效/丢失为 `92/3`、`95/0`、`93/2`、`95/0`、`95/0`；最小有效中心间距 `5 px`、最大 bbox IoU `0.4118`、`duplicate_measurement_count=0`。纯 CSRT 12/16 px 对照会在第 38/28 帧出现框合并，KCF 只保持 2-3 个有效帧，因此不能把独立 tracker 的 success 标志等同 ID 连续性。
+
+**不关闭的 GAP：** 该工具只验证人工初始化单相机 local ID。它不关闭 detect/YOLO/ByteTrack/BoT-SORT 多 seed 准入、GlobalTrack 几何注册、跨相机关联、敌我识别、M5N2 第二 primary 或物理拦截 P1。亮点候选依赖目标相对背景为正对比，尚未证明适用于普通纹理无人机、遮挡、交叉或相机剧烈运动。
+
+**优先级判定：** 本任务没有新增 P0。人工视频复现工具作为 D5 诊断能力已闭合；通用 detector/MOT 准入和真实 AirSim 多 seed 仍按原 P1 保持开放。
+
+**验证：** 2026-07-15，真实视频 1 个、95 帧、5 个 local ID，逐帧记录 475 行；D5 全量 `284 passed`，`py_compile` 与 owned-path `git diff --check` 通过，接受阈值为零测试失败且 `duplicate_measurement_count=0`。
+
 ## 2026-07-15 M5N2 20-case GAP 更新
 
 **已闭合/有真实证据：** baseline/candidate 各 10 seeds 共 20 个 M5N2 case 已形成 `3725/3725` 条适用的第二 primary D5 runtime record，decision state 与 live first-failure stage/reason 全部 available；actual execution 和离线 5 m 物理证据 `20/20` available；online identity/state truth use、global-ID mismatch、friend/duplicate conflict 均为 0。第二 primary 按 current active membership 动态选择，未把 standby reserve 错计为 primary。

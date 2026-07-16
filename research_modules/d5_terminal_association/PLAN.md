@@ -1,5 +1,18 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-15 人工初始化本地视频 MOT（已完成）
+
+- [x] 新增首帧 `selectROIs` 和无界面 `--rois`，目标数量由输入决定，选择顺序固定为 `local-001...`。
+- [x] 新增每目标独立 CSRT 默认路径和 KCF 可选路径；重复 tracker 框失败关闭，不把同一量测写给多个 ID。
+- [x] 新增亮目标正对比峰 + 常速度预测 + Hungarian 一对一关联选项，用于 `b.mp4` 中五个相邻亮目标。
+- [x] 输出 MP4、逐帧 CSV、JSON summary；lost 帧的 bbox/center 为 null/空，不沿用旧框伪造量测。
+- [x] 2026-07-15 无界面运行 `b.mp4` 95 帧：五 ID 有效/丢失为 `92/3`、`95/0`、`93/2`、`95/0`、`95/0`；`duplicate_measurement_count=0`，最小中心间距 `5 px`，最大 bbox IoU `0.4118`。
+- [x] 单元测试覆盖 ROI 解析/边界、ID 稳定、lost 语义、合成 MP4 和一对一亮点关联。
+- [x] 2026-07-15 验证：D5 全量 `284 passed`，`py_compile` 和 owned-path `git diff --check` 通过，接受阈值为零失败。
+- [ ] 后续仅在独立 benchmark 中增加人工重选事件日志、外观模板或通用检测器比较；不得把本工具的 local ID 直接注册为 GlobalTrack。
+
+本工具是离线人工初始化 local MOT，不是敌我识别、GlobalTrack 注册、跨相机关联、D7 视觉 PNG 授权或 ByteTrack/BoT-SORT 准入证据。它不改变 AirSim detect-first 默认路径，因此 `docs/AIRSIM_INTEGRATION_PLAN.md` 已检查但无需修改。
+
 ## 2026-07-15 M5N2 20-case 复核与停止状态
 
 - [x] 只读复核 baseline seed 001-010 与 `candidate_soft_prediction_trend_coast` seed 001-010；共 20 个真实 AirSim M5N2 case。TERM 生效前额外完成 `png_ttc_2v2_seed001`，但不进入 M5N2 统计；其余 tuned case 与 dropout case 均未执行。

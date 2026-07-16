@@ -4,6 +4,40 @@
 
 **适用范围：** 本文描述第五研究模块（D5）当前代码、测试和主运行链路已经具备的能力。文中将默认主线、已实现但非默认的辅助/离线能力、尚未实现能力严格分开。计划项不能据此解释为已上线能力。
 
+## 2026-07-15 人工初始化本地视频轨迹
+
+D5 新增的 `manual_video_tracker.py` 是单相机离线诊断工具。人工首帧 ROI 只定义目标数量、初始位置和 `local-001...` 顺序。默认保留每目标独立 CSRT，KCF 作为对照；对小型亮目标可使用 `bright_hungarian`，按 `gray - GaussianBlur(31x31)` 提取全帧匿名正对比候选，并用常速度预测、20 像素运动门和 Hungarian 算法完成一对一分配。
+
+设第 `t` 帧灰度图为 `G_t`，局部对比响应为：
+
+```text
+R_t = G_t - GaussianBlur_31x31(G_t)
+C_t = LocalMax(R_t),  R_t(q_j) >= 12
+```
+
+`C_t` 只产生匿名像素候选 `q_j`，不携带真实目标 ID。候选在全帧提取，不写死 y 坐标范围；背景峰由轨迹运动门剔除。人工 ROI 第一次赋予本地 ID 后，第 `i` 条轨迹采用最近两次有效量测作常速度外推：
+
+```text
+v_i = (p_i,k - p_i,k-1) / (f_k - f_k-1)
+p_hat_i,t = p_i,k + v_i (f_t - f_k)
+```
+
+关联代价以预测距离为主，CSRT proposal 只占小权重：
+
+```text
+c_ij = ||q_j - p_hat_i,t||_2 + 0.05 ||q_j - p_csrt_i,t||_2
+```
+
+Hungarian 求解时，每条轨迹最多选择一个候选，每个候选最多支持一条轨迹。最终还要求 `||q_j-p_hat_i,t|| <= 20 px`；超门限与无候选都不得输出当前量测。
+
+一对一约束意味着同一候选不能同时支持两个本地 ID。未匹配轨迹只能输出 lost，bbox/center 为空；短时恢复沿用人工初始化 ID。summary 同时审计重复量测对数、重复帧数、最小中心间距和最大框交并比，禁止把 `tracker.update=True` 直接解释为身份连续。
+
+重复量测审计对每帧所有 measured pair 计算中心距离和边界框交并比。当中心距离不大于 `1e-6 px`，或交并比不小于 `0.70` 时，计为一个 duplicate measurement。该审计是本地轨迹塌缩告警，不是 GlobalTrack 身份判断。
+
+`b.mp4` 的 95 帧结果为五 ID 有效/丢失 `92/3、95/0、93/2、95/0、95/0`，`duplicate_measurement_count=0`。纯 CSRT 的 `95/95 measured` 对照已发生身份塌缩，只能作为失败案例。该能力不是 GlobalTrack 注册、敌我识别、跨视角融合、D7 控制许可或 MOT 算法准入证明。
+
+2026-07-15 验证为 1 个真实视频、95 帧、5 个 ID、475 条记录，D5 全量 `284 passed`，零测试失败。
+
 ## 2026-07-15 M5N2 20-case 原理验证边界
 
 真实 AirSim M5N2 baseline/candidate 各 10 seeds 已证明 D5 能在全部 `3725` 个适用 tick 上保持第二 primary 的中心绑定并输出 `locked/ambiguous/reacquire` 与逐 tick 首断点；online truth identity/state use 均为 0。第二 primary 必须由每场 current active-primary 合同确定，不能由固定资源编号或 AirSim actor ID推断。

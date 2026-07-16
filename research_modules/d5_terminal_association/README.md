@@ -2,6 +2,33 @@
 
 离线科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块只输出 `TerminalAssociation` 决策，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 人工初始化的本地视频多目标跟踪
+
+`scripts/run_manual_video_tracking.py` 支持在普通离线视频首帧用 OpenCV `selectROIs` 按顺序框选任意数量目标，或用 `--rois 'x,y,w,h;...'` 无界面复现。选择顺序固定生成 `local-001...`；默认每目标运行独立 CSRT，可选 KCF。纯 tracker 路径会把高度重叠的重复量测失败关闭为 `lost`，不允许两个本地 ID 同时占用同一框。
+
+针对小型亮目标，可显式启用 `--association bright_hungarian`：程序以 `gray - GaussianBlur(31x31)` 提取全帧正对比峰，再使用本地轨迹常速度预测和 Hungarian 一对一分配。候选区域不写死 y 范围，运动门限负责剔除远端背景峰。候选只能归属一个 `local_track_id`，短时丢失帧的 bbox/center 留空，恢复后仍沿用用户初始化的本地 ID。该路径不读取 truth ID、actor name 或 `global_track_id`。
+
+交互运行：
+
+```bash
+python3 research_modules/d5_terminal_association/scripts/run_manual_video_tracking.py \
+  --input research_modules/b.mp4 --display
+```
+
+无界面复现本次五目标实验：
+
+```bash
+python3 research_modules/d5_terminal_association/scripts/run_manual_video_tracking.py \
+  --input research_modules/b.mp4 \
+  --output-dir research_modules/d5_terminal_association/outputs/manual_video_tracking/b_bright_hungarian_20260715 \
+  --tracker csrt --association bright_hungarian \
+  --rois '367,275,12,12;386,262,12,12;405,268,12,12;431,260,12,12;451,260,12,12'
+```
+
+输出为带彩色框、ID、轨迹尾迹和 lost 标签的 MP4，以及逐帧 CSV 和 JSON summary。2026-07-15 对 `b.mp4` 的 95 帧实测中，五个 ID 有效/丢失帧分别为 `92/3`、`95/0`、`93/2`、`95/0`、`95/0`；summary 明确 `duplicate_measurement_count=0`、最小中心间距 `5 px`。详见 `reports/D5_MANUAL_VIDEO_TRACKING_B_20260715.md`。
+
+能力边界：这是**人工初始化的单相机 local MOT 工具**，不是 GlobalTrack 注册、敌我识别、跨相机身份融合、D7 控制许可或算法准入证明。`local_track_id` 不能替代或换绑中心拥有的 `global_track_id`。
+
 ## 2026-07-15 真实 AirSim M5N2 20-case 复核
 
 main 已完成 M5N2 baseline seed 001-010 与 `candidate_soft_prediction_trend_coast` seed 001-010，共 20 个 reset-separated SimpleFlight case。TERM 生效前还额外完整生成了 `p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed001` 的 `intercept_summary.json`；该独立 case 不进入本节 M5N2 的 `3725` 条记录或任何比例，其他 tuned case 与 dropout case 均未执行。D5 只读复核每场 M5N2 `intercept_summary.json` 后按当前 active-primary 资源 ID 排序选取第二 primary，不能固定写成 `INT-03`：candidate seed 002 的第二 primary 为 `INT-02`，其余 19 场为 `INT-03`。

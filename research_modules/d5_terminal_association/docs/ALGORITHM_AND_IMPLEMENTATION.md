@@ -4,6 +4,80 @@
 
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
 
+## 2026-07-15 人工视频 local MOT 实现
+
+`manual_video_tracker.py` 与 `scripts/run_manual_video_tracking.py` 提供首帧 `selectROIs` 和无界面 ROI 参数。每个 ROI 建立固定 `local_track_id` 和独立 CSRT/KCF。纯 tracker 模式对高交并比重复输出失败关闭；小型亮目标模式额外执行：
+
+1. 计算 `gray - GaussianBlur(gray, 31x31)`，阈值默认 12，并在全帧执行局部极大值抑制，不写死图像 y 范围。
+2. 根据每条轨迹最近两次有效中心做常速度预测；底层 CSRT 中心只作为很小的辅助代价。
+3. 构造预测中心到匿名亮点候选的距离矩阵，使用 Hungarian 算法一对一分配，并执行默认 20 像素运动门。
+4. 未匹配输出 lost，严禁沿用旧框作为当前量测；后续重现时仍使用用户初始化的 local ID。
+
+### 人工初始化与状态所有权
+
+首帧 ROI 按用户选择顺序编号：
+
+```text
+ROI_1 -> local-001, ROI_2 -> local-002, ..., ROI_N -> local-NNN
+```
+
+目标数 `N` 完全由 ROI 列表决定，不写死 2、5 或其他规模。该 ID 只在当前视频流内有效，程序不接收 actor name、truth ID、任务分配或 `global_track_id`，也不提供自动换绑接口。CSRT/KCF 各自维护一个 tracker instance，但其 `update=True` 仅表示内部相关滤波器返回 proposal，不代表 proposal 仍属于原目标。
+
+### 候选与预测模型
+
+对灰度图 `G_t` 计算：
+
+```text
+R_t(u,v) = G_t(u,v) - GaussianBlur_31x31(G_t)(u,v)
+```
+
+在 `R_t >= tau`、`tau=12` 的像素中执行 `7x7` 非极大值抑制和连通分量峰值选择，得到全帧匿名候选集合 `C_t={q_j}`。算法不使用固定 y 范围。每条轨迹最近两个 measured 记录位于帧 `f_k-1,f_k`，中心为 `p_i,k-1,p_i,k`，则：
+
+```text
+v_i = (p_i,k - p_i,k-1) / max(1, f_k - f_k-1)
+p_hat_i,t = p_i,k + v_i max(1, f_t - f_k)
+```
+
+只有一条历史时，以本帧 CSRT proposal 中心作为预测；CSRT 不可用时保留最后有效中心作为搜索基准。该外推仅服务像素关联，不形成三维目标运动模型。
+
+### 一对一联合关联
+
+对第 `i` 条轨迹和第 `j` 个候选构造：
+
+```text
+c_ij = ||q_j-p_hat_i,t||_2 + lambda ||q_j-p_csrt_i,t||_2
+lambda = 0.05
+```
+
+Hungarian 求解以下线性分配：
+
+```text
+min sum_i sum_j x_ij c_ij
+sum_j x_ij <= 1
+sum_i x_ij <= 1
+x_ij in {0,1}
+```
+
+求解后再执行预测残差门：`||q_j-p_hat_i,t||_2 <= 20 px`。因此一个候选不可能在同一帧成为两个 ID 的有效 measurement。未分配、超门或非法候选的记录均为 `status=lost,bbox=null,center=null`；旧 bbox 只可用于画 lost 标签位置，不能写入 CSV 充当当前量测。后续候选重新通过一对一分配时恢复原人工 ID，不创建新 ID。
+
+### 重复量测审计
+
+逐帧对 measured track pair 计算：
+
+```text
+d_min = min ||p_i-p_j||_2
+IoU_max = max IoU(B_i,B_j)
+duplicate = (||p_i-p_j||_2 <= 1e-6) or (IoU(B_i,B_j) >= 0.70)
+```
+
+summary 输出 `duplicate_measurement_count`、`duplicate_measurement_frame_count`、`minimum_center_separation_px`、`maximum_bbox_iou` 和使用的 IoU 阈值。纯 tracker 模式也在落盘前对高重叠 proposal 失败关闭，避免继续生成明显重复的有效量测。
+
+逐帧 CSV 记录 frame、timestamp、local ID、bbox、center、status、tracker/association backend。JSON summary 增加 `duplicate_measurement_count`、重复帧数、最小中心间距和最大 bbox IoU。2026-07-15 `b.mp4` 95 帧实测的重复量测为 0；纯 CSRT 虽报告 95/95 success，却在第 28-38 帧后发生 ID 塌缩，不能作为正确关联结论。
+
+该实现不包含 `global_track_id`、分配计划或身份声明字段，不能绕过本模块正式主线中的 GlobalTrack 投影、协方差、时间戳、几何门控、友方冲突和计划版本检查。
+
+2026-07-15 验证：真实视频 1 个、95 帧、5 个 ID、475 条逐帧记录；D5 全量 `284 passed`，语法与格式检查通过，接受阈值为零测试失败和零重复量测。
+
 ## 2026-07-15 M5N2 20-case 实施证据
 
 本轮不改算法，只验证现有 runtime record。main 完成 baseline/candidate 各 10 seeds 后发出 TERM；TERM 生效前额外完成一个 `png_ttc_2v2_seed001`，其余 tuned/dropout case 未执行。该额外 case 不进入以下 M5N2 统计。D5 按每场最终 active-primary 合同动态选取第二 primary，再读取 `main_episode_bus_ticks.jsonl` 中本资源的 `d5_live_visual_funnel_v1`。20 场 `3725/3725` 个适用 tick 均有 decision、first-failure stage/reason，证明 producer/consumer 接线可用；直接 `failure_category` envelope 未持久化，因此该字段的真实可用性仍为未验收。

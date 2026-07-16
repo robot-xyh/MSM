@@ -1,5 +1,15 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-15 人工框选视频轨迹关联审查
+
+D5 已增加独立的人工初始化 local MOT 工具。用户在首帧按顺序框选目标，或用显式 ROI 列表复现；顺序固定形成 `local-001...`。默认跟踪后端是每目标独立 CSRT，KCF 仅为对照。为处理 `b.mp4` 中邻近亮点，工具可增加正对比峰候选和 Hungarian 一对一关联，避免多个 tracker 把同一亮点同时写成有效量测。
+
+95 帧五目标结果为 `92/3`、`95/0`、`93/2`、`95/0`、`95/0`（有效/丢失），`duplicate_measurement_count=0`。短时 lost 后 ID 仍按人工初始化顺序恢复，lost 行不保留旧 bbox。纯 CSRT success 标志会掩盖 ID 合并，因此今后本地视频审查必须同时报告重复量测、最小中心间距、框 IoU 和 lost，而不能只报 tracker success。
+
+审查结论仅适用于该单相机亮目标视频。工具不接收分配计划、GlobalTrack 或身份声明，不做敌我识别，不产生 `TerminalAssociation locked`，也不授予 D7 视觉 PNG。任何后续接入 D5 主线都必须先经过 GlobalTrack 投影、时间戳/协方差、几何门控和现有安全合同。
+
+2026-07-15 验证口径为 1 个真实视频、95 帧、5 个 local ID 和 475 条逐帧记录；D5 全量 `284 passed`，接受阈值为零测试失败、零重复量测。语法和格式检查通过。
+
 ## 2026-07-15 真实 M5N2 20-case 审查结论
 
 审查范围严格限定为 baseline/candidate 各 10 seeds 的 M5N2。第二 primary 由每场 active-primary 合同动态确定，20 场中 19 场为 `INT-03`、candidate seed 002 为 `INT-02`。D5 在 `3725/3725` 个适用 tick 上均有 decision 与 live first-failure stage/reason；直接 `failure_category` 未持久化，故本审查不把代码级分类能力写成真实 artifact 可用。
