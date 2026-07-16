@@ -1,5 +1,53 @@
 # D6 M 对 N 协同拦截评估框架审查
 
+## 2026-07-15 legacy 1.0 provenance 与真实三档审查
+
+旧 1.0 summary 无 ClockSpeed，但 20 个注册 case 的 sibling generated settings 均显式为 1.0。D6 仅
+对路径输入且 suite/cases/rows 全无显式值的情形启用此 fallback，要求 20/20 文件和值闭合；目录名、
+默认值、缺文件/缺键/冲突/非有限值均不准入。真实 0.2/0.1 仍使用 result row provenance。
+
+三档各 20 case 已形成 20 个完整 M5N2 配对。合同审计 56 match/4 mismatch：0.1 candidate seed007
+为 `1/1/0`、seed009 为 `2/1/1`；0.2 candidate seed006/009 为 `2/1/1`，seed006 另有 D7 actual
+unavailable count conflicts。四 case 的相关聚合不可用，reserve 不计 active-primary；truth identity/
+state 全 0，main/control 仍分层。专项 `18 passed`、D6 全量 `272 passed`。当前证据支持报告可用的
+baseline 与 1.0 aggregate，但不支持用 0.1/0.2 candidate 部分值判定性能提升。
+
+## 2026-07-15 ClockSpeed=0.1 P1 NameError 回归审查
+
+timing mode helper 已前置并统一命名，20-case 双层 case-aware evaluator 回归直接覆盖真实 merged
+suite 调用。真实 0.1 main/control 各 4036 records、20 case，P1 v6 只读生成成功，manifest match，
+输入 hash 不变。专项 `28 passed`、全量 `264 passed`。该结论只关闭 D6 P1 接线异常；M 对 N 分层、
+固定机会合同和 reserve 排除口径不变。该段记录紧急修复当时状态；三档 comparator 随后已完成。
+
+## 2026-07-15 ClockSpeed=0.2 case-aware 与冻结合同审查
+
+case-aware timing envelope 已实现：merged suite 只接受四个 case metadata，逐 case 单调、边界可
+重置，case 不得重现；main bus/control tick manifest 对齐且不相加。真实 0.2 两层各 6567 records、
+20 case 的 P1 v6 只读复测通过，输入 hash 未改变。
+
+M5N2 机会不随实际缺项计划缩小，固定 pair/target/coalition=`3/2/1`。真实 0.2 中 candidate seed006
+因 D7 actual unavailable 和 `2/1/1` 标为 contract mismatch；其 standby reserve success 不计
+active-primary。candidate seed009 虽 D7 available，也因 `2/1/1` 标为 mismatch。审计总计 18 match/
+2 mismatch，受影响指标 unavailable。该 0.2 阶段专项 `27/10 passed`、当时全量 `263 passed`。0.1
+P1 状态见顶部，本节不预写三档性能结论。
+
+## 2026-07-15 M5N2 ClockSpeed 三档对比审查
+
+D6 新入口只接受 ClockSpeed=`1.0/0.2/0.1` 三个完整 M5N2 suite，每档 baseline/candidate 各 seed
+1-10；suite 内和跨档都按 `case_id/profile/seed` 校验。family/resource_count/target_count 必须显式
+为 M5N2，不从名字推断。ClockSpeed 必须来自 suite/case 持久化 provenance；目录名和根部裸字段
+不能参与分组，多来源存在时必须一致。
+
+M 对 N 口径继续保持 pair/target/coalition 独立分母。第二 primary、最终锁、coalition consensus
+和 collision stop 从 required active-primary 终态读取；缺字段保持 unavailable。main bus/control
+tick 分层报告，禁止相加；归一化 simulated time/tick 只用 control tick wall mean 乘 ClockSpeed。
+truth identity/state 分开审计，不把缺失补成零。
+
+2026-07-15 的验证样本是三档各 20 case、总计 60 case 的确定性 fixture，门限是完整配对、
+provenance、availability、truth 正负例及 nested timing 语义全部通过；结果专项 `8 passed`、全量
+`254 passed`。该段是运行前记录；真实三档 comparator 随后已完成，availability-aware 结果见顶部，
+不会覆盖既有 ClockSpeed=1.0 单档证据或把 unavailable 的 candidate 指标写成结论。
+
 ## 2026-07-15 M5N2 20-case 正式复核
 
 本批只有 M5N2 baseline/candidate 各 10 seed，共 20 case。actual execution
@@ -21,7 +69,7 @@ object 未落盘，不能归因为成员冲突、环境碰撞或 AirSim 状态�
 main-bus/control-tick 各有 3805 条逐 case 合法 timing，mean/P95/max 分别为
 `349.34/487.40/1305.99 ms` 和 `1069.45/1254.06/2072.51 ms`。两层嵌套，禁止相加。当前正式
 partial acceptance 没有注册 timing path，合并 JSONL 又保留局部 frame/time 重置，故 suite 层
-保持 unavailable。剩余 P1 是 case-aware timing 接线、性能优化、第二 primary/coalition 物理闭环
+保持 unavailable。case-aware timing 接线已由顶部关闭；剩余 P1 是性能优化、第二 primary/coalition 物理闭环
 和 candidate 稳健性；D6 consumer 本身无新增 P0。
 
 ## 2026-07-15 第二 primary 漏斗与独立分母审查
@@ -40,7 +88,7 @@ pair、target、coalition 作为三个独立统计单位。每层分别发布 un
 D6 现按真实 timing 帧数分别统计 main bus 与 control tick，不从 M/N 或场景名推断规模。两层为
 嵌套测量域，禁止相加；旧或未注册 timing 为 unavailable。2026-07-15 动态规模无关 fixture
 专项 `20 passed`、当时全量 `236 passed`。其后 20-case M5N2 已定位主导阶段并确认 `100 ms` 未
-达标；正式 suite 的 case-aware timing 接线和优化后复验继续开放。
+达标；正式 suite 的 case-aware timing 接线已关闭，优化后复验继续开放。
 
 ## 2026-07-14 M 对 N actual target-state freshness/stale 关闭结论
 

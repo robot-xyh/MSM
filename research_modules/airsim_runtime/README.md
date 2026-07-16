@@ -1,5 +1,34 @@
 # AirSim Blocks Runtime
 
+## 2026-07-15 M5N2 ClockSpeed 1.0/0.2/0.1 Comparison
+
+Main completed reset-separated SimpleFlight M5N2 campaigns for
+`ClockSpeed=0.2` and `ClockSpeed=0.1` using the same 20-case matrix as the
+existing `ClockSpeed=1.0` campaign: baseline and
+`candidate_soft_prediction_trend_coast`, seeds 1-10. Intruders remained moved
+Unreal actors, interceptors remained SimpleFlight vehicles, the control period
+remained 0.1 s, and the 5 m offline physical-intercept criterion was unchanged.
+No camera screenshots were saved.
+
+The three-suite D6 comparison contains 60 real AirSim cases and 20 complete
+cross-speed pairings. Baseline pair/target/coalition results are respectively
+`6/30, 6/20, 0/10` at 1.0; `9/30, 9/20, 0/10` at 0.2; and
+`4/30, 4/20, 0/10` at 0.1. Thus 0.2 is the best measured baseline setting in
+this matrix; reducing to 0.1 did not improve physical completion. Baseline
+control-tick wall means increased from about 1070 ms at 1.0 to 2208 ms at 0.2
+and 3453 ms at 0.1. The current sequential per-primary AirSim RPC dispatch is
+therefore coupled to ClockSpeed and must not be interpreted as a fixed-rate
+controller.
+
+D6 froze each M5N2 case at 3 active-primary, 2 target, and 1 coalition
+opportunities. Four candidate cases have incomplete or conflicting opportunity
+evidence: 0.1 seeds 7 and 9, and 0.2 seeds 6 and 9. Their candidate aggregates
+remain unavailable; standby reserve outcomes are never counted as active
+primary success. Identity and state online truth use are zero in all 60 cases.
+The Chinese report and curves are under
+`outputs/m5n2_clock_speed_comparison_20260715/`; the main interpretation is in
+`subagent_reviews/MAIN_M5N2_CLOCK_SPEED_COMPARISON_REPORT_20260715.md`.
+
 ## 2026-07-15 M5N2 20-Case Stop And Result
 
 Main completed only the M5N2 portion of

@@ -709,6 +709,7 @@ def test_dynamic_n_settings_files_match_requested_vehicle_count(tmp_path: Path) 
         vehicle_names=default_interceptor_vehicle_names(3),
         y_spacing_m=8.0,
         tuned_terminal_camera=True,
+        clock_speed=0.2,
     )
     cv_path = write_dynamic_computer_vision_settings(
         tmp_path / "n4_cv.json",
@@ -719,15 +720,18 @@ def test_dynamic_n_settings_files_match_requested_vehicle_count(tmp_path: Path) 
         target_z=-10.0,
         secondary_width=1280,
         secondary_height=720,
+        clock_speed=0.1,
     )
 
     multirotor = json.loads(multirotor_path.read_text(encoding="utf-8"))
     cv = json.loads(cv_path.read_text(encoding="utf-8"))
     assert multirotor["SimMode"] == "Multirotor"
+    assert multirotor["ClockSpeed"] == pytest.approx(0.2)
     assert list(multirotor["Vehicles"]) == ["Interceptor1", "Interceptor2", "Interceptor3"]
     assert [multirotor["Vehicles"][name]["Y"] for name in multirotor["Vehicles"]] == [-8.0, 0.0, 8.0]
     assert all(vehicle["Cameras"]["0"]["X"] == 0.5 for vehicle in multirotor["Vehicles"].values())
     assert cv["SimMode"] == "ComputerVision"
+    assert cv["ClockSpeed"] == pytest.approx(0.1)
     assert set(cv["Vehicles"]) == {
         "Interceptor_Cam_1",
         "Interceptor_Cam_2",
@@ -745,6 +749,38 @@ def test_dynamic_n_settings_files_match_requested_vehicle_count(tmp_path: Path) 
     assert cv["Vehicles"]["Secondary_Recon_1"]["Cameras"]["0"]["CaptureSettings"][0]["Width"] == 1280
     assert cv["Vehicles"]["Secondary_Recon_1"]["Cameras"]["0"]["Pitch"] == -90.0
     assert len(cv["Vehicles"]["Secondary_Recon_1"]["Cameras"]["0"]["CaptureSettings"]) == 2
+
+
+def test_sequence_builder_propagates_clock_speed_to_settings_and_provenance(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_blocks_sequence.py",
+            "--actor-5v5",
+            "--resource-count",
+            "5",
+            "--target-count",
+            "2",
+            "--clock-speed",
+            "0.2",
+            "--output-root",
+            str(tmp_path),
+            "--sequence-id",
+            "pytest_clock_speed",
+        ],
+    )
+
+    args = parse_args()
+    config, _, _ = _build_sequence_run(args, seed=7, sequence_id=args.sequence_id)
+    settings = json.loads(config.settings_path.read_text(encoding="utf-8"))
+
+    assert config.clock_speed == pytest.approx(0.2)
+    assert config.metadata["clock_speed"] == pytest.approx(0.2)
+    assert settings["ClockSpeed"] == pytest.approx(0.2)
 
 
 def test_sequence_builder_uses_dynamic_n_scenario_names(tmp_path: Path, monkeypatch) -> None:

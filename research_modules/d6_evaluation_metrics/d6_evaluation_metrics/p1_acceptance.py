@@ -10,10 +10,14 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .p1_system_evidence import summarize_d3_canonical_history
-from .stage_timing import StageTimingInputs, evaluate_stage_timing_inputs
+from .stage_timing import (
+    SINGLE_EPISODE_TIMING_MODE,
+    StageTimingInputs,
+    evaluate_stage_timing_inputs,
+)
 from .terminal_closure_evidence import summarize_terminal_closure_case_evidence
 
-P1_ACCEPTANCE_SCHEMA_VERSION = "d6-p1-unified-acceptance-v5"
+P1_ACCEPTANCE_SCHEMA_VERSION = "d6-p1-unified-acceptance-v6"
 TERMINAL_METRIC_ENVELOPE_SCHEMA_VERSION = "d6-terminal-metric-envelope-v1"
 
 SOURCE_NAMES = (
@@ -154,6 +158,7 @@ class P1AcceptanceInputs:
     d7_trend_coast: Any | None = None
     main_stage_timings: str | Path | None = None
     control_tick_stage_timings: str | Path | None = None
+    stage_timing_input_mode: str = SINGLE_EPISODE_TIMING_MODE
 
 
 class P1AcceptanceReportGenerator:
@@ -199,6 +204,7 @@ class P1AcceptanceReportGenerator:
             StageTimingInputs(
                 main_bus=inputs.main_stage_timings,
                 control_tick=inputs.control_tick_stage_timings,
+                input_mode=inputs.stage_timing_input_mode,
             )
         )
 
@@ -1826,9 +1832,10 @@ def _render_markdown(
             "",
             "### 分阶段延迟证据",
             "",
+            f"- 输入模式：`{_fmt(stage_timing.get('input_mode'))}`；case-aware case manifest match=`{_fmt(stage_timing.get('case_manifest_match'))}`；跨 case 总时长=`{_fmt(stage_timing.get('cross_case_total_ms'))}`。",
             f"- `main_bus`：availability=`{_fmt(main_timing.get('availability'))}`，samples=`{_fmt(main_total.get('sample_count'))}`，mean/P95/max=`{_fmt(main_total.get('mean_ms'))}/{_fmt(main_total.get('p95_ms'))}/{_fmt(main_total.get('max_ms'))}` ms，budget violations=`{_fmt(main_timing.get('budget_violation_count'))}`，dominant stage=`{_fmt(main_timing.get('dominant_stage'))}`，reason=`{_fmt(main_timing.get('unavailable_reason'))}`。",
             f"- `control_tick`：availability=`{_fmt(control_timing.get('availability'))}`，samples=`{_fmt(control_total.get('sample_count'))}`，mean/P95/max=`{_fmt(control_total.get('mean_ms'))}/{_fmt(control_total.get('p95_ms'))}/{_fmt(control_total.get('max_ms'))}` ms，budget violations=`{_fmt(control_timing.get('budget_violation_count'))}`，dominant stage=`{_fmt(control_timing.get('dominant_stage'))}`，reason=`{_fmt(control_timing.get('unavailable_reason'))}`。",
-            "- main bus 是 control tick 的内部组成部分，两层不相加；旧 artifact 缺 timing 显示 unavailable，不补零。",
+            "- main bus 是 control tick 的内部组成部分，两层不相加；case-aware suite 不跨 case 拼接伪连续 episode；旧 artifact 缺 timing 显示 unavailable，不补零。",
             "",
             "## D3 canonical history",
             "",

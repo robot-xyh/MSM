@@ -1,5 +1,66 @@
 # D6 系统级离线评估模块原理
 
+## Legacy provenance 必须由完整持久化证据闭合（2026-07-15）
+
+目录名缺省值不是 provenance。旧 suite 若 summary/cases/rows 都未持久化 ClockSpeed，只有在调用者
+提供真实路径时，D6 才可按已注册的 20 个 case_id 读取固定 sibling generated settings；20/20 文件
+和显式有限正数必须存在且一致。少一份、缺一个键、出现冲突或非有限值均应拒绝整档，而不是猜测
+1.0。inline mapping 不允许触发环境相关搜索，部分显式值也不得与 fallback 混合。
+
+真实三档运行中，1.0 由上述 20 份 settings 闭合，0.2/0.1 由 result row 闭合。机会合同是独立于
+provenance 的第二道门：60 case 中 4 case 机会不符，相关 aggregate 保持 unavailable；这优先于
+对剩余 case 计算看似更好的成功率。truth 审计、reserve 排除、main/control 分层和缺值不补零原则
+均未改变。
+
+## Timing mode 名称必须先定义后分派（2026-07-15）
+
+case-aware 能力不仅要求数据合同正确，也要求 loader、summarizer、evaluator 共享同一个模块级模式
+规范化函数。当前唯一名称 `_normalize_stage_timing_input_mode` 在三个入口之前定义，避免私有名称漂移
+导致运行期 NameError。真实形态回归固定使用 20 case、双层、逐 case frame/time 重置，不再只用单层
+或少量 case 间接覆盖。
+
+真实 0.1 P1 只读复测确认两层各 4036 records/20 case、manifest 一致、输入 hash 不变。该事实证明
+case-aware P1 接线可运行，不自动证明三档性能比较结论。当前 timing 专项 `28 passed`、D6 全量
+`264 passed`。
+
+## Case-aware timing 与冻结机会原则（2026-07-15）
+
+分阶段 timing 有两种不可混用的证据形态。`single_episode` 保持原字段白名单和全流 frame/timestamp
+严格递增；`case_aware_suite` 额外且只允许 `case_id/family/profile/seed`，按连续 case envelope
+分别校验单调性，case 边界可以重置。suite 汇总只池化同一 scope 的耗时分布，不定义跨 case 时间轴；
+main bus/control tick 的 case manifest 必须一致且两层仍禁止相加。
+
+M5N2 frozen contract 不从实际缺项计划反推分母：每 case active-primary pair/target/coalition 固定为
+`3/2/1`。actual-execution unavailable、row opportunity 或 intercept active 结构不符，均使受影响 case
+指标 unavailable，而不是将缺项记成不存在的机会。standby reserve 不属于 required active primary，
+即使 physical success=true 也只能进入排除审计。真实 0.2 已验证 20 case 中 18 match、2 mismatch；
+seed006 为 D7 unavailable，seed009 为 D7 available 但机会不符。真实 0.1 P1 状态见顶部；该段仍只
+描述 0.2 合同审计。
+
+## ClockSpeed 对比的证据与归一化原则（2026-07-15）
+
+三档对比首先是严格配对问题，不是目录分组问题。D6 要求 ClockSpeed=`1.0/0.2/0.1` 每档都有
+baseline/candidate 各 seed 1-10，并按 `case_id/profile/seed` 形成 20 个跨档配对。ClockSpeed 只能
+来自 suite/case 持久化 provenance；20 个 result row 的全量一致显式字段属于 case-level
+provenance，目录名和 summary 根部裸字段不属于。旧 suite 的 20/20 sibling generated settings 是
+路径输入下的封闭兼容证据，不是目录名推断。多处显式值存在时必须一致。
+
+availability 先于数值聚合。任一 profile 的 10 个 case 中有一个指标 unavailable，该 profile/
+ClockSpeed 的对应 aggregate 也保持 unavailable，同时报告 available/unavailable case 数；不得用
+剩余 9 个 case 的均值冒充完整 10-seed 结果。truth identity/state 分开审计，缺失不是零，显式正值
+也不会被其他 case 的零覆盖。
+
+wall timing 保留两个嵌套 scope：main episode bus 内层与 SimpleFlight control tick 外层。D6 分别
+报告两层 mean/P95，不产生 cross-layer total。ClockSpeed 归一化 simulated time/tick 定义为
+`control_tick_wall_mean_ms / 1000 * ClockSpeed`，只改变单位解释，不把 main bus 再加到 control
+tick。case wall elapsed 是另一个独立指标，缺失时保持 unavailable。
+
+第二 primary 按同一 target 内 required active primary 的稳定 `resource_id` 顺序选择第 2 个；五米
+结果读取显式 offline physical scorer，最终锁/coalition consensus 读取 episode 终态，collision
+stop 只读取显式 stop reason。三者语义独立。运行前 60-case fixture 当时达到专项 `8 passed`、全量
+`254 passed`；0.2 阶段 case-aware/合同回归为专项 `27/10 passed`、当时全量 `263 passed`。真实
+0.1 P1 与三档 comparator 随后均已完成，最终 availability-aware 结果见顶部。
+
 ## 真实 M5N2 多 case 证据判读原则（2026-07-15）
 
 2026-07-15 的正式复核样本是 baseline/candidate 各 10 seed 的 20 个 M5N2 case。M5N2 完成后、
@@ -47,8 +108,8 @@ D6 将延迟作为只读证据。`not_applicable` 表示阶段未执行，`error
 一致；非法证据 fail closed。
 
 main bus 是 control tick 的内部组成，D6 只在各自测量域内计算分布和主导阶段，禁止跨层相加。
-旧日志缺 timing 为 unavailable。该原则经 20 个专项和 236 个全量测试验证；随后真实 M5N2
-20-case 已确认 `100 ms` 预算未达标。正式 case-aware 接线、性能优化和跨提交复验仍开放。
+旧日志缺 timing 为 unavailable。该原则最初经 20 个专项和 236 个全量测试验证；随后真实 M5N2
+20-case 已确认 `100 ms` 预算未达标。正式 case-aware 接线已关闭，性能优化和跨提交复验仍开放。
 
 ## Freshness 必须由最终命令源证明（2026-07-14）
 

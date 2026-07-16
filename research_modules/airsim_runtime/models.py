@@ -41,6 +41,7 @@ class BlocksSmokeConfig:
     scenario_name: str = "blocks_readonly_smoke"
     duration_s: float = 2.0
     dt_s: float = 0.5
+    clock_speed: float = 1.0
     seed: int = 7
     radar_latency_s: float = 0.2
     blocks_script: Path = Path("Blocks/LinuxBlocks1.8.1/LinuxNoEditor/Blocks.sh")
@@ -281,6 +282,7 @@ def write_dynamic_multirotor_settings(
     fov_degrees: float = 120.0,
     lidar_range_m: float = 80.0,
     api_port: int = 41451,
+    clock_speed: float = 1.0,
 ) -> Path:
     """Write an AirSim SimpleFlight settings file for N interceptor vehicles."""
 
@@ -295,7 +297,12 @@ def write_dynamic_multirotor_settings(
             tuned_terminal_camera=tuned_terminal_camera,
             lidar_range_m=lidar_range_m,
         )
-    payload = _base_settings("Multirotor", fov_degrees=fov_degrees, api_port=api_port)
+    payload = _base_settings(
+        "Multirotor",
+        fov_degrees=fov_degrees,
+        api_port=api_port,
+        clock_speed=clock_speed,
+    )
     payload["Vehicles"] = vehicles
     return _write_settings(path, payload)
 
@@ -319,6 +326,7 @@ def write_dynamic_computer_vision_settings(
     secondary_width: int | None = None,
     secondary_height: int | None = None,
     api_port: int = 41451,
+    clock_speed: float = 1.0,
 ) -> Path:
     """Write an AirSim ComputerVision settings file for N cameras."""
 
@@ -383,6 +391,7 @@ def write_dynamic_computer_vision_settings(
         height=height,
         api_port=api_port,
         include_depth=True,
+        clock_speed=clock_speed,
     )
     payload["Vehicles"] = vehicles
     return _write_settings(path, payload)
@@ -529,7 +538,10 @@ def _base_settings(
     height: int = 480,
     api_port: int,
     include_depth: bool = False,
+    clock_speed: float = 1.0,
 ) -> dict[str, Any]:
+    if float(clock_speed) <= 0.0:
+        raise ValueError("clock_speed must be positive")
     capture_settings: list[dict[str, Any]] = [
         {
             "ImageType": 0,
@@ -557,7 +569,7 @@ def _base_settings(
         "RpcEnabled": True,
         "ApiServerPort": int(api_port),
         "LocalHostIp": "127.0.0.1",
-        "ClockSpeed": 1.0,
+        "ClockSpeed": float(clock_speed),
         "ViewMode": "NoDisplay",
         "CameraDefaults": {"CaptureSettings": capture_settings},
         "SubWindows": [

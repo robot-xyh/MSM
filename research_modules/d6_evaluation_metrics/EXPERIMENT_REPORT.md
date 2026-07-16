@@ -1,5 +1,86 @@
 # D6 系统级评估指标实验报告
 
+## 2.0 2026-07-15 真实 M5N2 三档 ClockSpeed 对比
+
+输入为 1.0 `p1_terminal_timing_funnel_10seed_20260715_m5n2`、0.2
+`p1_clockspeed_0p2_m5n2_20case_20260715_v2`、0.1
+`p1_clockspeed_0p1_m5n2_20case_20260715`。每档 baseline/candidate 各 seed 1-10，总计 60 case，按
+`case_id/profile/seed` 形成 20 个完整跨档配对。0.2/0.1 ClockSpeed 来自 case result；旧 1.0 summary
+无该字段，D6 从 20/20 sibling case generated settings 的显式一致 `ClockSpeed=1.0` 建立 provenance，
+没有按目录名推断或默认补值。三份 summary 加 20 份 legacy settings 的“绝对路径+内容”组合
+SHA-256 前后同为 `fdb745ee54f0c5ff414a812bf8e75eacd56fa5ea91ff02f64008fb6ee1759cd1`。
+
+| ClockSpeed | Profile | Pair | Target | Coalition | Simulated time/tick |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 0.1 | baseline | 4/30 | 4/20 | 0/10 | 0.345297 s |
+| 0.1 | candidate | unavailable | unavailable | unavailable | 0.362730 s |
+| 0.2 | baseline | 9/30 | 9/20 | 0/10 | 0.441508 s |
+| 0.2 | candidate | unavailable | unavailable | unavailable | 0.469176 s |
+| 1.0 | baseline | 6/30 | 6/20 | 0/10 | 1.069535 s |
+| 1.0 | candidate | 6/30 | 6/20 | 0/10 | 1.066734 s |
+
+M5N2 冻结机会合同在 60 case 中 56 match、4 mismatch：0.1 candidate seed007 实际 `1/1/0`、
+seed009 `2/1/1`；0.2 candidate seed006/009 均为 `2/1/1`，其中 seed006 另有 D7 actual execution
+unavailable 及三类 count conflict。四个 case 的受影响物理、第二 primary、最终锁/共识和 collision
+指标均为 unavailable，不用 8-case 或缩小机会数发布完整 candidate aggregate。standby reserve
+成功不计 active-primary。truth identity/state 在线使用审计为 60 case 全 0。case wall elapsed 因源
+row 没有该字段，六个 profile/speed aggregate 均 unavailable。
+
+main-bus/control-tick wall mean 继续分别报告，禁止相加；上表归一化值只使用
+`control_tick_wall_mean_ms / 1000 * ClockSpeed`。基于可用 baseline 可陈述观测值，但 candidate 0.1/
+0.2 的物理 aggregate 不完整，因此本报告不据此判定 ClockSpeed 性能优劣或 candidate 准入。完整
+产物位于 `../airsim_runtime/outputs/m5n2_clock_speed_comparison_20260715/`。
+
+## 1.9 2026-07-15 真实 ClockSpeed=0.1 P1 紧急回归
+
+故障表现是 `evaluate_stage_timing_inputs()` 调用缺失的 `_timing_input_mode`。修复将唯一模式规范化
+函数前置并统一命名，新增 baseline/candidate 各 seed 1-10 的 20-case 双层 merged evaluator 回归。
+
+真实输入为 `p1_clockspeed_0p1_m5n2_20case_20260715`，验收门限为 P1 v6 无异常生成、两层 available、
+records=`4036/4036`、case=`20/20`、manifest match、跨 case/跨层 total 为 null、输入 hash 不变；
+全部满足。报告位于
+`outputs/p1_clockspeed_0p1_m5n2_20case_20260715_case_aware_validation/`。timing 专项
+`28 passed`、D6 全量 `264 passed`，仅既有 Matplotlib warning。该报告验证 P1 接线，不替代三档
+ClockSpeed comparator，不发布三档性能结论。
+
+## 1.8 2026-07-15 真实 ClockSpeed=0.2 case-aware 复测
+
+输入是 main 已完成的 M5N2 20/20 case summary 及 merged timing。D6 以只读方式运行 P1 v6；main bus/
+control tick 各 6567 records、20 个 case envelope，ordered manifest 一致。每个 case 内 frame/time
+严格递增，case 切换从 0 重置；顶层 `frame_index_first/last`、`timestamp_first/last` 与
+`cross_case_total_ms` 不发布，`cross_layer_total_ms` 也为 null。三份 runtime 输入 SHA-256 前后不变。
+
+冻结机会合同审计要求每 case pair/target/coalition=`3/2/1`，不采用实际产物缩小后的分母。20 case
+中 18 match、2 mismatch：candidate seed006 的 D7 actual-execution unavailable，reasons 为
+physical-pair、command-physical、main-physical-intercept count conflict，suite/intercept 均为
+`2/1/1`；其 standby reserve physical success=true，raw top-level success=2，但 active-primary 与
+`success_semantics` 均为 1。candidate seed009 的 D7 actual-execution available，但机会同为 `2/1/1`，
+也按 contract mismatch 处理。两例受影响指标均为 unavailable，不形成 28 或其他缩分母结果。
+
+验收门限为 loader 不抛异常、两层 available、records=`6567/6567`、case=`20/20`、manifest match、
+跨 case/跨层 total 为 null、输入 hash 不变；全部满足。timing 专项 `27 passed`、ClockSpeed 专项
+`10 passed`、D6 当时全量 `263 passed`。0.1 后续 P1 复测见 1.9 节；本节仍不提供三档结论。
+
+## 1.7 2026-07-15 ClockSpeed 三档离线接口回归
+
+本批是确定性 consumer/report 回归，不是真实 AirSim 实验。fixture 构造 ClockSpeed=`1.0/0.2/0.1`
+三档 M5N2 summary，每档 baseline/candidate 各 seed 1-10、20 case，总计 60 case；三档共享同一
+`case_id/profile/seed` 键。每 case 提供显式 suite provenance、三层物理分母、required
+active-primary 终态、truth identity/state、case wall 和两层合法 timing。
+
+接受门限为：恰好三档且 provenance 值集合为 `0.1/0.2/1.0`；每档 baseline/candidate 均完整覆盖
+seed 1-10；20 个 case key 全部形成三档配对；M5N2 规模来自显式 family/resource/target；main bus
+与 control tick 不相加；缺 truth 或第二 primary 距离时为 unavailable 而不是 0；显式非零 truth
+使 `all_zero=false`；输出 JSON、两份 CSV、中文 Markdown 和非空 PNG。
+
+结果为专项 `8 passed`、D6 全量 `254 passed`，`py_compile` 通过；唯一 warning 是既有 Matplotlib
+`Axes3D` 环境问题，不影响二维曲线。归一化 fixture 验证 control tick wall mean=`100 ms` 时，
+ClockSpeed=`0.1` 的 `simulated_time_per_tick_s=0.01`；main bus=`10 ms` 保持独立，未与 control tick
+相加。负例覆盖缺 seed、跨档 case key 不一致、目录/根字段冒充 ClockSpeed、缺指标和非零 truth。
+
+该节是运行前接口记录；真实三档 comparator 随后已由三个完整 suite 生成，见 2.0 节。2.0 对合同
+mismatch 和缺 wall timing 继续保持 unavailable，不用部分值补写结论。
+
 ## 1.6 2026-07-15 真实 AirSim M5N2 20-case 结果
 
 本次实验只纳入 M5N2 baseline/candidate 各 10 seed，共 20 个 SimpleFlight case。M5N2 完成后、

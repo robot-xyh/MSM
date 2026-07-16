@@ -1,5 +1,67 @@
 # D6 实现差距审计
 
+## 2026-07-15 legacy ClockSpeed provenance 兼容 GAP 关闭
+
+- **关闭范围**：路径输入且 suite/cases/rows 全无 ClockSpeed 时，按 20 个 case_id 读取固定 sibling
+  generated settings；20/20 文件、显式键、有限正数和全量一致全部强制。
+- **fail-closed**：不从目录名推断、不默认 1.0、不对 mapping 搜索文件系统；缺文件、缺键、冲突和
+  NaN/Inf/字符串均拒绝，部分显式 provenance 不与 fallback 混合。
+- **真实证据**：1.0/0.2/0.1 各 20 case 完整配对；1.0 manifest 记录 20 个 settings evidence path，
+  0.2/0.1 使用 case result。23 个源的“绝对路径+内容”组合 SHA-256 前后均为
+  `fdb745ee54f0c5ff414a812bf8e75eacd56fa5ea91ff02f64008fb6ee1759cd1`。
+- **合同审计**：60 case 为 56 match/4 mismatch；0.1 candidate seed007/009、0.2 candidate seed006/
+  009 的受影响指标 unavailable，不缩分母、不纳入 reserve。
+- **验证**：ClockSpeed 专项 `18 passed`、D6 全量 `272 passed`、`py_compile` 和 `diff --check` 通过。
+- **剩余限制**：candidate 0.1/0.2 物理 aggregate 因合同缺项不可用；全部 case wall timing 缺源字段。
+  D6 不据部分证据发布 ClockSpeed 优劣或 candidate 准入结论。
+
+## 2026-07-15 0.1 P1 NameError 回归 GAP 关闭
+
+- **根因/修复**：timing input-mode helper 前置并统一为唯一名称，loader/summarizer/evaluator 三处
+  dispatch 一致，删除旧缺失名称。
+- **回归**：新增 baseline/candidate 各 seed 1-10 的 20-case 双层 case-aware evaluator 测试，每 case
+  frame/time 重置；manifest 与跨层禁止相加口径保持不变。
+- **真实证据**：ClockSpeed=0.1 M5N2 20/20 case，merged main/control 各 4036 records、20 case；P1
+  v6 只读 bundle 成功，输入 SHA-256 前后不变。
+- **验证**：timing 专项 `28 passed`、D6 全量 `264 passed`、`py_compile` 和 `diff --check` 通过。
+- **后续状态**：本 GAP 当时只关闭 NameError 和 0.1 P1 接线；三档 comparator 随后已完成，见顶部。
+
+## 2026-07-15 Case-aware timing 与冻结机会合同 P1 GAP 关闭
+
+- **关闭范围**：stage timing v2 显式分离 strict single episode 与 case-aware merged suite；后者只准入
+  `case_id/family/profile/seed`，逐 case 校验 frame/timestamp 并允许边界重置，拒绝 case 重现。P1
+  acceptance v6 和 CLI 已接线。
+- **层级安全**：main bus/control tick ordered manifest 必须一致；跨 case continuity/total 和跨层 total
+  均不定义。单 episode validator 未放宽。
+- **机会合同**：ClockSpeed comparator v2 冻结 M5N2 每 case pair/target/coalition=`3/2/1`。D7 actual
+  unavailable 或 suite/intercept 机会不符时，受影响物理/末端指标 unavailable，不缩小分母、不补零；
+  standby reserve 不计 active-primary success。
+- **真实证据**：ClockSpeed=0.2 M5N2 20/20 case；merged main/control 各 6567 records、20 case，P1
+  只读复测通过且输入 hash 不变。合同 18 match/2 mismatch：candidate seed006 为 D7 unavailable 并有
+  三类 count conflict，seed009 为 D7 available 但同样是 `2/1/1`。seed006 reserve success=true 只作
+  排除审计，active-primary success=1，raw success=2。
+- **验证**：timing 专项 `27 passed`、ClockSpeed 专项 `10 passed`、D6 全量 `263 passed`，仅既有
+  Matplotlib warning。
+- **后续状态**：真实 0.1 P1 与三档 comparator 已由顶部复核；candidate 合同缺项和长期趋势仍
+  开放，不能由 fixture 或单档 P1 证据关闭。
+
+## 2026-07-15 ClockSpeed 三档离线汇总 P1 GAP 关闭
+
+- **关闭范围**：新增三个 suite root/summary 的严格完整性、profile/seed、显式 M5N2 规模、
+  ClockSpeed provenance 和 `case_id/profile/seed` 跨档配对校验；输出 JSON、两份 CSV、中文 Markdown
+  与曲线。
+- **指标范围**：active-primary pair、target、coalition 独立成功率；第二 primary 五米/最小距离；
+  required active-primary 最终锁、coalition 最终锁共识、collision stop；case/main/control wall timing；
+  ClockSpeed 归一化 simulated time/tick；truth identity/state 在线使用。
+- **fail-closed**：目录名和 summary 根部裸 ClockSpeed 不准入；缺 seed、重复 case、跨档 key 不同、
+  provenance 冲突直接拒绝。缺指标/坏 artifact 为 unavailable，不补零；任一 profile case 缺证据时
+  该 aggregate 不发布部分均值。main bus/control tick 嵌套且禁止相加。
+- **验证**：2026-07-15，三档各 20 case、总计 60 case 的确定性 M5N2 fixture；接受门限为三档/
+  profile/seed/配对/provenance 全完整及 availability/truth/timing 负例全部通过。专项 `8 passed`、
+  D6 当时全量 `254 passed`，仅有既有 Matplotlib `Axes3D` warning。
+- **状态**：这是运行前关闭记录；真实 comparator 已由顶部完成。合同 mismatch 与缺失 timing 仍按
+  unavailable 处理，不能由 fixture、单档或部分 aggregate 关闭。
+
 ## 2026-07-15 M5N2 20-case GAP 复核
 
 - **P0 状态**：无新增 D6 P0。20 个 M5N2 canonical actual artifact 全部通过校验，
@@ -15,9 +77,8 @@
 - **P1 性能**：逐 case timing 可严格校验。main-bus/control-tick 各 3805 samples，mean/P95=
   `349.34/487.40 ms` 与 `1069.45/1254.06 ms`，预算违例 `3649/3805` 与 `3805/3805`。
   主导阶段分别是 D1 fusion 和 AirSim frame sample；性能门未闭合。
-- **P1 timing 接线**：partial acceptance 未注册 timing path；现有 suite 合并 JSONL 在 case 边界
-  重置 frame/time，严格单流 loader 会拒绝。需要 main 提供 case-aware manifest 或全局单调合并
-  序列。修复前正式 suite timing 是 unavailable，不能把逐 case 池化数值冒充正式接线。
+- **P1 timing 接线**：该历史缺口已由顶部 case-aware envelope 关闭；case 边界重置按 metadata 分组
+  校验，不再要求伪造全局连续 frame/time，且跨 case total 仍不发布。
 - **P1 target 语义治理**：canonical actual 的 target physical success 按“至少一个 participating
   pair 成功”得到 `12/40`；cooperative 七阶段 target unit 当前按“全部成员阶段通过”形成更严格
   诊断。文档统一称前者为 canonical target physical success、后者为 cooperative target-stage
@@ -69,11 +130,11 @@
 - **fail-closed**：负数、NaN/Inf、状态冲突、重复/倒序帧、和式及预算冲突均拒绝；旧 artifact
   缺 timing 为 unavailable，不补零。
 - **报告**：每层独立输出 sample、mean/P95/max、N/A/error、总 tick、预算违例和 dominant
-  stage，支持 CSV/JSON/中文 Markdown/PNG 与 P1 acceptance v5；嵌套层禁止相加。
+  stage；历史接线为 P1 acceptance v5，当前 case-aware 接线为 v6；嵌套层禁止相加。
 - **证据**：2026-07-15，动态规模无关、seed N/A fixture，合法两层各 2 帧及负例矩阵；专项
   `20 passed`、D6 全量 `236 passed`，未运行 AirSim。代码门限已满足。
 - **剩余 P1 更新**：M5N2 多 seed timing 已取得并确认 `100 ms` 未达标；正式 case-aware suite
-  接线、瓶颈优化及 paired/跨提交趋势仍开放。聚合外 `png_ttc` seed001 不在本批，其余 tuned 2v2
+  接线已关闭，瓶颈优化及 paired/跨提交趋势仍开放。聚合外 `png_ttc` seed001 不在本批，其余 tuned 2v2
   和全部 dropout 未执行。本批不改变 P2/P3。
 
 ## 2026-07-14 P1 actual target-state freshness/stale GAP 关闭

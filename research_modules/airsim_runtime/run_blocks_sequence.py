@@ -122,6 +122,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--duration", type=float, default=2.0)
     parser.add_argument("--dt", type=float, default=0.5)
+    parser.add_argument(
+        "--clock-speed",
+        type=float,
+        default=1.0,
+        help=(
+            "AirSim simulation clock multiplier written to generated settings. "
+            "Wall-clock stage timing remains unscaled and is reported separately."
+        ),
+    )
     parser.add_argument("--output-root", default="research_modules/airsim_runtime/outputs")
     parser.add_argument("--blocks-script", default="Blocks/LinuxBlocks1.8.1/LinuxNoEditor/Blocks.sh")
     parser.add_argument(
@@ -307,6 +316,14 @@ def parse_args() -> argparse.Namespace:
             "Run the paired M5N2, png_ttc, and 1-5 frame locked-dropout "
             "P1 closure suite. M5N2 and 2v2 groups use separate Blocks launches "
             "because their vehicle settings differ."
+        ),
+    )
+    parser.add_argument(
+        "--p1-terminal-closure-m5n2-only",
+        action="store_true",
+        help=(
+            "Limit --p1-terminal-closure-sweep to the paired M5N2 baseline and "
+            "soft-prediction/trend-coast cases; skip png_ttc and dropout families."
         ),
     )
     parser.add_argument(
@@ -838,6 +855,8 @@ def _run_guidance_law_sweep(args: argparse.Namespace) -> int:
 
 
 def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str):
+    if float(args.clock_speed) <= 0.0:
+        raise SystemExit("--clock-speed must be positive")
     resource_count, target_count, explicit_counts = _resolve_scenario_counts(args)
     _validate_cooperative_options(args)
     settings_path = Path(args.settings)
@@ -916,6 +935,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                 tuned_terminal_camera=bool(args.terminal_handoff_tuned),
                 fov_degrees=120.0,
                 lidar_range_m=60.0 if args.terminal_handoff_tuned else 80.0,
+                clock_speed=args.clock_speed,
             )
         actor_config = {
             "camera_vehicle_name": actor_resources[0],
@@ -1023,6 +1043,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                 tuned_terminal_camera=False,
                 fov_degrees=120.0,
                 lidar_range_m=80.0,
+                clock_speed=args.clock_speed,
             )
         actor_config = {
             "camera_vehicle_name": actor_5v5_resources[0],
@@ -1177,6 +1198,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
                 else 0.0,
                 secondary_width=secondary_width,
                 secondary_height=secondary_height,
+                clock_speed=args.clock_speed,
             )
         target_specs = (
             (
@@ -1357,6 +1379,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
             "experiment_guidance_law": args.guidance_law,
             "guidance_comparison_group": args.sequence_id,
             "scenario_tags": [scenario_name, "airsim_blocks"],
+            "clock_speed": float(args.clock_speed),
             "c2_health_mode": args.c2_health_mode,
             "coalition_commit_fault": args.coalition_commit_fault,
             "intercept_max_turn_rate_radps": float(args.intercept_max_turn_rate),
@@ -1391,6 +1414,7 @@ def _build_sequence_run(args: argparse.Namespace, *, seed: int, sequence_id: str
         scenario_name=scenario_name,
         duration_s=args.duration,
         dt_s=args.dt,
+        clock_speed=float(args.clock_speed),
         seed=seed,
         output_root=Path(args.output_root),
         blocks_script=Path(args.blocks_script),
@@ -1855,6 +1879,10 @@ def _run_p1_terminal_closure_sweep(args: argparse.Namespace) -> int:
         control_dt_s=float(args.control_dt),
         dropout_start_s=float(args.p1_dropout_start),
     )
+    cases = _select_terminal_closure_cases(
+        cases,
+        m5n2_only=bool(args.p1_terminal_closure_m5n2_only),
+    )
     output_dir = Path(args.output_root) / args.sequence_id
     output_dir.mkdir(parents=True, exist_ok=True)
     rows: list[dict[str, object]] = []
@@ -1923,6 +1951,16 @@ def _run_p1_terminal_closure_sweep(args: argparse.Namespace) -> int:
     print(f"p1_terminal_closure_report={paths['markdown'].resolve()}")
     print(f"p1_terminal_closure_d6_report={d6_suite_paths['markdown'].resolve()}")
     return 0
+
+
+def _select_terminal_closure_cases(
+    cases: tuple[TerminalClosureCase, ...],
+    *,
+    m5n2_only: bool,
+) -> tuple[TerminalClosureCase, ...]:
+    if not m5n2_only:
+        return cases
+    return tuple(case for case in cases if case.family == "m5n2_paired")
 
 
 def _merge_terminal_closure_stage_timings(
@@ -2124,6 +2162,7 @@ def _terminal_closure_result_row(
         "resource_count": case.resource_count,
         "target_count": case.target_count,
         "duration_s": case.duration_s,
+        "clock_speed": (summary.get("parameters", {}) or {}).get("clock_speed"),
         "guidance_law": case.guidance_law,
         "dropout_frames": case.dropout_frames,
         "connected": bool(getattr(result, "connected", False)),

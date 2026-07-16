@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from d6_evaluation_metrics import (  # noqa: E402
+    STAGE_TIMING_INPUT_MODES,
     StageTimingInputs,
     StageTimingReportGenerator,
 )
@@ -23,6 +24,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--main-stage-timings", type=Path)
     parser.add_argument("--control-tick-stage-timings", type=Path)
+    parser.add_argument(
+        "--stage-timing-input-mode",
+        choices=STAGE_TIMING_INPUT_MODES,
+        default="single_episode",
+    )
     return parser
 
 
@@ -33,6 +39,7 @@ def main() -> int:
         inputs=StageTimingInputs(
             main_bus=args.main_stage_timings,
             control_tick=args.control_tick_stage_timings,
+            input_mode=args.stage_timing_input_mode,
         ),
     )
     for name, path in outputs.items():

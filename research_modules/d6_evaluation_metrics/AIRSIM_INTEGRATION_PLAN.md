@@ -1,5 +1,73 @@
 # D6 AirSim 离线集成计划
 
+## 2026-07-15 legacy 1.0 settings provenance 接入与三档生成
+
+D6 未修改或启动 main runtime。旧 1.0 suite root/summary 本身无 ClockSpeed，因此 comparator 仅在
+summary/cases/rows 全无显式值时，按 20 个已注册 `case_id` 定位同批 sibling case 的
+`generated_settings/blocks_actor_m5_n2_settings.json`。必须 20/20 文件存在、每份显式包含同一有限
+正数 `ClockSpeed`；不读目录名、不默认 1.0，任一缺失/冲突/非法值即拒绝。0.2/0.1 继续直接使用
+case result provenance。
+
+真实三档只读报告已生成到
+`../airsim_runtime/outputs/m5n2_clock_speed_comparison_20260715/`，60 case/20 对配对完整。机会合同审计
+为 56 match/4 mismatch；0.1 candidate seed007/009 与 0.2 candidate seed006/009 的受影响结果保持
+unavailable。main bus/control tick 分层且归一化只乘 control tick wall mean；case wall timing 因源
+字段缺失为 unavailable。三档 summary 与 20 个 1.0 settings 的组合 hash 前后不变。
+
+## 2026-07-15 ClockSpeed=0.1 P1 紧急接线复测
+
+D6 未修改 runtime。输入模式规范化函数已前置并统一命名，防止
+`evaluate_stage_timing_inputs()` 在 case-aware 双层入口引用不存在的私有名称。真实 0.1 summary 和
+`d6_stage_timing/main_bus_stage_timings.jsonl`、`control_tick_stage_timings.jsonl` 只读接入成功：两层
+各 4036 records、20 case，manifest 一致，输入 hash 不变。报告写入 D6-owned
+`outputs/p1_clockspeed_0p1_m5n2_20case_20260715_case_aware_validation/`。该段记录当时的单档复测；
+三档 comparator 随后已完成，见本页顶部。
+
+## 2026-07-15 ClockSpeed=0.2 merged suite 接线完成
+
+main 已完成真实 ClockSpeed=0.2 M5N2 20/20 case。D6 不修改 runtime，只读消费 summary 与两层 merged
+JSONL；调用时必须显式指定 `case_aware_suite`。该模式只准入 `case_id/family/profile/seed` metadata，
+逐 case 校验 frame/timestamp，case 边界允许重置；双层 ordered case manifest 必须相同。main bus 和
+control tick 继续分层，禁止跨 case 拼接和跨层相加。
+
+2026-07-15 复测确认两层各 6567 records、20 case，P1 v6 bundle 无异常生成，输入 SHA-256 未改变。
+冻结 M5N2 机会合同为每 case `3/2/1`；真实 0.2 中 candidate seed006（D7 unavailable）和 seed009
+（D7 available）均因实际 `2/1/1` 标为 contract mismatch。seed006 的 standby reserve 成功只作
+排除审计，不计 active-primary success。真实 0.1 P1 已按顶部复测，仍不在本节写三档比较结论。
+
+```bash
+python3 research_modules/d6_evaluation_metrics/scripts/run_p1_acceptance_report.py \
+  --output-dir <d6_report_dir> \
+  --main-summary <clock_0_2_summary.json> \
+  --main-stage-timings <merged_main_bus.jsonl> \
+  --control-tick-stage-timings <merged_control_tick.jsonl> \
+  --stage-timing-input-mode case_aware_suite
+```
+
+## 2026-07-15 ClockSpeed 三档 suite 接线
+
+main 分别运行 ClockSpeed=`1.0/0.2/0.1` 后，将三个 M5N2-only suite root 或
+`p1_terminal_closure_summary.json` 传给 D6。每档必须只包含 baseline/candidate 各 seed 1-10，case
+注册与 result row 的 `case_id/profile/seed/family/resource_count/target_count` 必须一致；三档 case
+键集合也必须完全相同。既有 `comparison_role=enhanced` 按 candidate 归一化。D6 不从路径中的
+`0.2/0.1` 字样推断 ClockSpeed。唯一 legacy 兼容是本页顶部按注册 case_id 对 20 个 sibling
+generated settings 的封闭审计，不做泛化目录搜索。
+
+ClockSpeed 的正式来源是 suite/case provenance；当前 runtime 若只在每个 result row 持久化
+`clock_speed`，D6 要求 20/20 行完整且一致，并与已注册
+`intercept_summary.parameters.clock_speed` 交叉验证。summary 根部未归档的裸字段不能替代上述
+case provenance。缺 case、重复 seed、profile 角色冲突或跨档 case key 不同均直接拒绝该比较。
+
+每 case 继续显式注册 `intercept_summary`、`main_stage_timings` 和
+`control_tick_stage_timings`。D6 从前者重算第二 primary 五米结果/距离、required active-primary
+最终锁、coalition 最终锁共识与 collision stop；从后两者分别计算 wall timing。control tick 的
+`bus_processing` 已嵌套 main bus，两层不得相加。归一化指标定义为 control tick wall mean 乘
+ClockSpeed，不使用目录名或跨层总和。缺路径、坏 schema 或字段缺失保持 unavailable。
+
+2026-07-15 仅完成三档各 20 case、总计 60 case 的确定性接口验收：专项 `8 passed`、全量
+`254 passed`。接受门限是三档/seed/profile/配对/provenance 全部完整，truth 缺失不补零，嵌套 timing
+不相加。该段是运行前接口记录；真实三档 comparator 随后已完成，结果与限制见本页顶部。
+
 ## 2026-07-15 M5N2 20-case 接入复核
 
 本批唯一正式输入是
@@ -26,11 +94,9 @@ object。后续 runtime 应写出 collision object/actor identifier、事件时�
 `349.34/487.40/1305.99 ms`，control tick=`1069.45/1254.06/2072.51 ms`。后者包含
 `bus_processing`，禁止与前者相加。
 
-当前 main 生成的 partial acceptance 未把两层路径传入正式 D6 bundle；合并 JSONL 也保留了每个
-case 从 frame 0、timestamp 0 开始的局部序列，严格单流 loader 会在 case 边界拒绝重复/倒序。
-main 后续应选择一种接线：传入 case manifest 由 D6 分 case 校验后池化，或在合并文件中重写为
-全局单调 frame/time 并保留 case_id。修复前正式 suite timing 必须保持 unavailable，逐 case
-统计只能作为本次离线审计证据。
+该段记录修复前状态：partial acceptance 未传两层路径，strict single stream 会拒绝 case 边界重置。
+当前已采用顶部 `case_aware_suite` 方案按 manifest 分 case 校验；不再要求重写全局 frame/time，旧
+strict single-episode 行为也未改变。
 
 ## 2026-07-15 第二 primary/coalition 多 seed 输入合同
 
@@ -55,7 +121,7 @@ main 分别落盘 main bus 的 `stage_timings.jsonl`（`main-stage-timing-v1`）
 control tick 的 `bus_processing` 已包含 main bus，所以两层只并列统计，不能相加。D6 输出两层
 独立分布、预算违例和 dominant stage，不改变 AirSim reset、D1-D7 调度或控制。2026-07-15 仅以
 两层各 2 帧 fixture 完成 `20/20` 专项和 `236/236` 全量测试。其后真实 M5N2 20-case 已证明
-`100 ms` 未达标；case-aware 正式接线和优化后复验仍待 main 完成。
+`100 ms` 未达标；case-aware 正式接线已关闭，优化后复验仍待 main 完成。
 
 ## 2026-07-14 actual target-state freshness/stale 正式接入
 

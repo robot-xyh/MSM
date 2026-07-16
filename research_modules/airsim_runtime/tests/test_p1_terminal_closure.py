@@ -14,6 +14,7 @@ from airsim_runtime.p1_terminal_closure import (
 )
 from airsim_runtime.run_blocks_sequence import (
     _merge_terminal_closure_stage_timings,
+    _select_terminal_closure_cases,
     _terminal_closure_command_counts,
     _terminal_closure_result_row,
 )
@@ -38,6 +39,20 @@ def test_terminal_closure_case_matrix_is_paired_and_versioned() -> None:
     m5n2 = next(case for case in cases if case.family == "m5n2_paired")
     assert (m5n2.resource_count, m5n2.target_count) == (5, 2)
     assert (m5n2.duration_s, m5n2.intercept_altitude_z) == (35.0, -30.0)
+
+
+def test_terminal_closure_m5n2_only_selection_keeps_paired_20_case_scope() -> None:
+    cases = build_terminal_closure_cases(range(1, 11))
+
+    selected = _select_terminal_closure_cases(cases, m5n2_only=True)
+
+    assert len(selected) == 20
+    assert {case.family for case in selected} == {"m5n2_paired"}
+    assert {case.seed for case in selected} == set(range(1, 11))
+    assert {case.profile for case in selected} == {
+        "baseline",
+        "candidate_soft_prediction_trend_coast",
+    }
 
 
 def test_terminal_closure_timing_merge_requires_every_case(tmp_path: Path) -> None:
@@ -225,6 +240,7 @@ def test_terminal_closure_result_uses_d6_physical_provenance_gate(
                 "success_count": 1,
                 "pair_count": 1,
                 "parameters": {
+                    "clock_speed": 0.2,
                     "intercept_radius_m": 5.0,
                     "intercept_distance_frame": "NED",
                     "intercept_distance_dimension": "3d_euclidean",
@@ -284,6 +300,7 @@ def test_terminal_closure_result_uses_d6_physical_provenance_gate(
     assert row["truth_state_online_use_count"] == 0
     assert row["online_control_state_source"] == "d2_estimated_global_track"
     assert row["physical_intercept_source"] == "offline_truth_distance_scorer"
+    assert row["clock_speed"] == pytest.approx(0.2)
     assert row["physical_metrics_available"] is True
     assert row["pair_opportunity_count"] == 1
     assert row["pair_success_count"] == 1

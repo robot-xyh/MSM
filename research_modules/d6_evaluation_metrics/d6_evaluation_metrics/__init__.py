@@ -17,6 +17,13 @@ from .cooperative_closure import (
     CooperativeClosureReportGenerator,
     load_cooperative_rows,
 )
+from .clock_speed_comparison import (
+    CLOCK_SPEED_COMPARISON_SCHEMA_VERSION,
+    ClockSpeedComparisonReportGenerator,
+    ClockSpeedComparisonValidationError,
+    compare_clock_speed_suites,
+    render_clock_speed_comparison_markdown,
+)
 from .d4_replay import load_d4_active_degradation_decisions
 from .dense_crossing_evaluation import (
     DENSE_CROSSING_EVALUATION_SCHEMA_VERSION,
@@ -116,6 +123,10 @@ from .standard_mapping import (
     standard_metric_family_summary,
 )
 from .stage_timing import (
+    CASE_AWARE_SUITE_TIMING_MODE,
+    CASE_AWARE_TIMING_METADATA_FIELDS,
+    SINGLE_EPISODE_TIMING_MODE,
+    STAGE_TIMING_INPUT_MODES,
     STAGE_TIMING_REPORT_SCHEMA_VERSION,
     STAGE_TIMING_SCOPE_SUMMARY_SCHEMA_VERSION,
     StageTimingInputs,
@@ -126,6 +137,7 @@ from .stage_timing import (
     render_stage_timing_markdown,
     stage_timing_csv_rows,
     summarize_stage_timing_records,
+    validate_case_aware_stage_timing_record,
     validate_stage_timing_record,
 )
 
@@ -137,10 +149,16 @@ __all__ = [
     "ActualExecutionEvidenceError",
     "AssignmentRecord",
     "CoalitionRecord",
+    "CLOCK_SPEED_COMPARISON_SCHEMA_VERSION",
+    "ClockSpeedComparisonReportGenerator",
+    "ClockSpeedComparisonValidationError",
+    "CASE_AWARE_SUITE_TIMING_MODE",
+    "CASE_AWARE_TIMING_METADATA_FIELDS",
     "COOPERATIVE_CLOSURE_SCHEMA_VERSION",
     "CooperativeClosureInputs",
     "CooperativeClosureReportGenerator",
     "compare_paired_airsim_calibration_records",
+    "compare_clock_speed_suites",
     "build_d7_actual_execution_evidence",
     "DEFAULT_BOOTSTRAP_RESAMPLES",
     "DEFAULT_BOOTSTRAP_RNG_SEED",
@@ -203,6 +221,8 @@ __all__ = [
     "STANDARD_MAPPING_VERSION",
     "STAGE_TIMING_REPORT_SCHEMA_VERSION",
     "STAGE_TIMING_SCOPE_SUMMARY_SCHEMA_VERSION",
+    "STAGE_TIMING_INPUT_MODES",
+    "SINGLE_EPISODE_TIMING_MODE",
     "StageTimingInputs",
     "StageTimingReportGenerator",
     "StageTimingValidationError",
@@ -225,10 +245,12 @@ __all__ = [
     "load_p1_system_evidence_source",
     "load_stage_timing_jsonl",
     "render_stage_timing_markdown",
+    "render_clock_speed_comparison_markdown",
     "stage_timing_csv_rows",
     "summarize_d3_canonical_history",
     "summarize_terminal_closure_case_evidence",
     "summarize_stage_timing_records",
+    "validate_case_aware_stage_timing_record",
     "validate_d7_actual_execution_payload",
     "write_d7_actual_execution_evidence",
     "validate_stage_timing_record",

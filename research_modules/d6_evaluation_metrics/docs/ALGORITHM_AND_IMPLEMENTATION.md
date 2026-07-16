@@ -1,5 +1,81 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## Legacy suite ClockSpeed provenance 解析（2026-07-15）
+
+`_clock_speed_from_provenance()` 仍优先解析 suite/case/result 的显式持久化值。仅当输入为文件系统
+suite root 或 summary 路径，且三个层级完全没有显式 ClockSpeed 时，才调用
+`_clock_speed_from_sibling_case_settings()`：由 summary 的 20 个 `case_id` 去除 `m5n2_` 前缀，构造
+同批 sibling case 目录，再读取固定相对路径
+`generated_settings/blocks_actor_m5_n2_settings.json`。每个 case_id 先做 M5N2 前缀与单路径段安全
+校验；20 个文件必须全部存在、JSON root 必须是 object、顶层 `ClockSpeed` 必须是有限正数且 20 个值
+严格一致。任一条件失败即抛 `ClockSpeedComparisonValidationError`。
+
+该 fallback 不接受 mapping 输入，不在部分显式 provenance 时启动，不解析目录名，也不提供默认
+1.0。成功时 manifest scope 为 `sibling_case_generated_settings`，并保存 20 个 resolve 后绝对路径。
+真实三档运行确认旧 1.0 使用此 scope，0.2/0.1 继续使用 `case_result`；60 case 配对完整，冻结合同
+56 match/4 mismatch，truth identity/state 全 0。当前 D6 全量 `272 passed`，ClockSpeed 专项
+`18 passed`。
+
+## Timing mode NameError 回归修复（2026-07-15）
+
+模式校验函数现为单一模块级 `_normalize_stage_timing_input_mode(value)`，定义在 report generator、
+JSONL loader、scope summarizer 和双层 evaluator 之前。三处 dispatch 先调用该函数，再选择 strict
+single episode 或 case-aware validator；旧 `_timing_input_mode` 名称已删除。
+
+回归 fixture 生成 20 个 M5N2 case、每层每 case 两帧，case 边界均重置为 0，并同时把 main bus 与
+control tick 交给 `evaluate_stage_timing_inputs()`。真实 0.1 P1 复测进一步覆盖两层各 4036 records/
+20 case，manifest match 且输入 SHA-256 不变。专项 `28 passed`、全量 `264 passed`。该算法修复不改变
+分层 timing、availability 或三档 comparator 口径。
+
+## Case-aware timing envelope 与 M5N2 合同门（2026-07-15）
+
+`load_stage_timing_jsonl(..., input_mode="case_aware_suite")` 先对 base timing schema 做原严格校验，再
+验证恰好四个 case metadata。排序检查器以 `(case_id,family,profile,seed)` 划分连续组：组内复用
+strict frame/timestamp 单调规则，组间清空顺序状态并允许从 0 重置；已完成组再次出现直接拒绝。
+每个 case 单独生成 timing summary，suite 顶层只池化 duration distribution，将跨 case 首尾和
+`cross_case_total_ms` 设为 null。双层输入要求 ordered manifest 相同，`cross_layer_total_ms` 始终为
+null。默认 `single_episode` 未改变。P1 acceptance schema 为 `d6-p1-unified-acceptance-v6`。
+
+ClockSpeed comparator schema v2 对每个 row 建立 `opportunity_contract`：expected 固定 `3/2/1`，
+observed 来自 suite row，intercept-derived 只统计
+`member_role=primary, required_primary=true, activation_state=active`。D7 actual status 非 available 或
+任一 observed/derived 值不等于 expected 时，合同 status=`contract_mismatch`，所有物理/末端派生指标
+置 unavailable。active-primary 成功数从上述筛选后的 intercept pairs 重算；standby reserve 的数量、
+成功数与 raw top-level success 仅写审计字段，不参与成功数或分母。
+
+真实 0.2 merged timing 两层各 6567 records/20 case，P1 只读复测通过。合同审计识别 candidate
+seed006 和 seed009 两例 `2/1/1`；前者另有 D7 三类 count conflict，后者 D7 状态 available。测试为
+timing `27 passed`、ClockSpeed `10 passed`、D6 当时全量 `263 passed`。0.1 后续 P1 复测见顶部，
+该段仍只记录 0.2 合同审计。
+
+## M5N2 ClockSpeed 三档聚合算法（2026-07-15）
+
+`compare_clock_speed_suites()` 对三个输入依次执行：定位显式 suite summary；验证 cases/rows 均为
+20；校验 baseline/candidate 各 seed 1-10（main 的 `enhanced` 角色归一化为 candidate）和显式 M5N2
+规模；从 suite/case/result provenance 解析
+ClockSpeed；在 suite 内连接 `case_id/profile/seed`，再比较三档键集合。输入顺序不参与 ClockSpeed
+判定，根字段或目录名不会进入解析器；旧 suite 的封闭 sibling settings 兼容见顶部。注册的
+`intercept_summary.parameters.clock_speed` 若存在，
+必须与 suite/case provenance 一致。
+
+逐 case 物理计数直接消费 suite row 的独立 pair/target/coalition count 和 denominator。第二 primary
+从 `intercept_summary.pairs` 中筛选 `member_role=primary`、`required_primary=true`、
+`activation_state=active`，按 target 分组并用 `resource_id` 稳定排序；物理成功、最小距离、最终锁和
+collision stop 都要求显式字段。coalition terminal consensus 是同一多-primary target 的所有成员
+最终 `terminal_locked=true`，不从 target physical success 推断。
+
+两层 timing 复用 `stage_timing.py` 的严格 JSONL loader，分别生成 main-bus/control-tick wall
+mean/P95/sample。`simulated_time_per_tick_s = control_tick_wall_mean_ms / 1000 * clock_speed`；实现中
+没有 main+control 加法，JSON 的 `cross_layer_total_ms` 固定为 null。profile aggregate 只有在 10 个
+case 全 available 时才发布数值；否则 value=null 并记录 available/unavailable case 数。
+
+稳定入口为 `ClockSpeedComparisonReportGenerator.write_report_bundle()` 和
+`scripts/run_clock_speed_comparison.py`，输出 schema `d6-m5n2-clock-speed-comparison-v2`、case CSV、
+aggregate CSV、中文 Markdown 与四面板 PNG。2026-07-15 的 60-case fixture 专项 `8 passed`、D6
+全量 `254 passed`。验收覆盖完整正例及缺 seed、跨档 key 冲突、非法 provenance、缺指标、truth
+正值和 nested timing 负例。该段是运行前记录；真实 0.2/0.1 均已有 P1 复核，三档 comparator 需
+单独运行。
+
 ## M5N2 20-case 实测消费方法（2026-07-15）
 
 本轮不改代码，只使用 main 显式登记的 20 个 M5N2 case。`terminal_closure_evidence.py` 对每个
@@ -58,8 +134,8 @@ D6 重新计算 `measured_sum = sum(stage_ms | status in {available, error})`，
 每层独立计算 sample、mean、线性插值 P95、max、状态计数、预算违例率和 mean 最大的 dominant
 stage。JSON 明确令跨层总和为 null。稳定入口为 `load_stage_timing_jsonl()`、
 `summarize_stage_timing_records()`、`evaluate_stage_timing_inputs()` 和
-`StageTimingReportGenerator`；P1 acceptance v5 只读接线。2026-07-15 专项 `20 passed`、全量
-`236 passed`，未运行 AirSim。
+`StageTimingReportGenerator`；P1 acceptance 当时为 v5，当前 case-aware 接线为 v6。2026-07-15
+原专项 `20 passed`、全量 `236 passed`，未运行 AirSim。
 
 ## Actual target-state freshness/stale 算法（2026-07-14）
 

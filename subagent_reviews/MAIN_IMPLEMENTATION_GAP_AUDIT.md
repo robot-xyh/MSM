@@ -4,7 +4,32 @@
 **审计目标**：列出共识算法与计划使用的开源代码哪些已经实现，哪些没有实现，为什么没有实现，以及缺少哪些条件。
 **边界**：本文只用于科研仿真、接口补齐和后续工程排期；不涉及真实硬件、实机处置、火控或绕过授权的自动动作。
 
-**P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。2026-07-14 canonical actual-execution 证据链已完成真实 AirSim seed-1 复验：tuned 2v2 与 M5N2 均生成并通过校验的 `d7-actual-execution-metrics-v2`，不存在 unavailable artifact；`control_commands.csv`、`intercept_summary.json` 和 actual envelope 的物理成功数一致，控制计划 ID 与同一个 canonical D3 history 一致，身份和状态在线真值使用计数均为 0。2026-07-15 main/D6 进一步关闭“只有总耗时、无法定位预算违例阶段”的 P1 可观测性实现缺口；随后复核并关闭 D4 多入口二级接管证据不一致的系统级 P0 边界，以及 D2 continuity 固定 `+0.10` 在高基线下不可达的 P1 准入规则缺口。同日第二次只读审计发现 D4 两个公开 helper 仍把部分缺失证据 `None` 当成“非 False”放行；D4 owner 已改为 exact-true/fail-closed，补齐逐字段缺失负例并完成跨模块回归。D2/D6 随后已用原冻结 replay 生成 ceiling-aware v2 正式联合证据：总体 GNN 候选五项 gate 通过，但只有 `clutter`、`combined` 两个 difficulty 通过，dropout truth alignment 仍为 partial，JPDA 不准入，因此只形成 promotion review，默认 GNN/Hungarian 不变。最新相关回归为 D2 `113`、D4 `280`、D6 `243`、AirSim runtime `147`、integrated point-mass `7`；当前无开放运行级或证据级 P0 blocker。P1 继续包括同配置多 seed 分阶段性能、D3 长期 churn、M5N2 第二 primary/物理联盟、D5 30/50 m 与 native MOT 准入、真实二级网络时序、D2 候选的跨 difficulty/完整系统评审，以及基于新分阶段证据达到 100 ms 实时预算。P2 仍只在隔离环境评估，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
+**P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。2026-07-14 canonical actual-execution 证据链已完成真实 AirSim seed-1 复验：tuned 2v2 与 M5N2 均生成并通过校验的 `d7-actual-execution-metrics-v2`，不存在 unavailable artifact；`control_commands.csv`、`intercept_summary.json` 和 actual envelope 的物理成功数一致，控制计划 ID 与同一个 canonical D3 history 一致，身份和状态在线真值使用计数均为 0。2026-07-15 main/D6 进一步关闭“只有总耗时、无法定位预算违例阶段”的 P1 可观测性实现缺口；随后复核并关闭 D4 多入口二级接管证据不一致的系统级 P0 边界，以及 D2 continuity 固定 `+0.10` 在高基线下不可达的 P1 准入规则缺口。同日第二次只读审计发现 D4 两个公开 helper 仍把部分缺失证据 `None` 当成“非 False”放行；D4 owner 已改为 exact-true/fail-closed，补齐逐字段缺失负例并完成跨模块回归。D2/D6 随后已用原冻结 replay 生成 ceiling-aware v2 正式联合证据：总体 GNN 候选五项 gate 通过，但只有 `clutter`、`combined` 两个 difficulty 通过，dropout truth alignment 仍为 partial，JPDA 不准入，因此只形成 promotion review，默认 GNN/Hungarian 不变。最新相关回归为 D2 `113`、D4 `280`、D6 `272`、AirSim runtime `157`、integrated point-mass `7`；当前无开放运行级或证据级 P0 blocker。P1 继续包括 D3 长期 churn、M5N2 第二 primary/物理联盟、candidate `3/2/1` 机会合同、ClockSpeed 与顺序控制 RPC 解耦、D5 30/50 m 与 native MOT 准入、真实二级网络时序、D2 候选的跨 difficulty/完整系统评审，以及基于新分阶段证据达到 100 ms 实时预算。P2 仍只在隔离环境评估，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
+
+## 2026-07-15 M5N2 ClockSpeed 三档 60-Case 对比
+
+main 使用同一 M5N2 baseline/candidate、seed 1-10 和 reset-separated Blocks
+流程，补跑 `ClockSpeed=0.2` 与 `0.1`，并与既有 `1.0` 批次组成 60 个真实
+AirSim case。D6 按 `case_id/profile/seed` 形成 20 组跨档配对；0.1/0.2 的
+ClockSpeed 来自 case result，旧 1.0 来自 20/20 sibling generated settings，禁止按
+目录名推断。三个 suite 的 identity/state online truth use 均为 0。
+
+| ClockSpeed | Baseline active-primary | Baseline target | Baseline coalition | Control tick mean | 判定 |
+|---:|---:|---:|---:|---:|---|
+| `1.0` | `6/30` | `6/20` | `0/10` | `1070 ms` | 原实时倍率基线 |
+| `0.2` | `9/30` | `9/20` | `0/10` | `2208 ms` | 本矩阵物理结果最好，但墙钟代价约翻倍 |
+| `0.1` | `4/30` | `4/20` | `0/10` | `3453 ms` | 锁定和最近距离改善未转化为物理完成率 |
+
+该结果不支持“ClockSpeed 越低，拦截效果越好”的假设。当前每个 active primary 的
+`moveByVelocityZAsync(duration=0.1)` 顺序等待，导致 AirSim ClockSpeed 同时改变 RPC
+墙钟占用和每个名义控制步覆盖的仿真时间；这不是严格固定步长闭环。P1 新增/保持两项：
+
+1. 将控制派发改造成可审计的并行/固定仿真时钟调度后，按同一 20-case 矩阵复验；在此之前不以 `0.1` 作为默认运行倍率。
+2. 修复 candidate 机会合同：0.1 seed007/009、0.2 seed006/009 共 4 个 case 的 observed active-primary/target/coalition 与冻结 `3/2/1` 不一致。相关 candidate aggregate 保持 unavailable，不以缩小分母发布性能结论。
+
+本批关闭 multi-episode timing manifest、三档 provenance 和比较报告能力；未关闭 100 ms
+实时预算、第二 primary/联盟完成率和 candidate 机会合同。D6 `272 passed`，AirSim runtime
+`157 passed`。报告见 `subagent_reviews/MAIN_M5N2_CLOCK_SPEED_COMPARISON_REPORT_20260715.md`。
 
 ## 2026-07-15 M5N2 20-Case 实测完成与批次终止
 

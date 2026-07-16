@@ -1,5 +1,57 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-15 legacy provenance 与真实三档评审
+
+评审确认 legacy fallback 是 case 注册驱动的持久化证据审计，不是目录名推断：仅路径输入且所有
+summary/case/result provenance 缺失时，要求 20/20 sibling generated settings 显式、有限、正数且
+一致。缺文件、缺键、冲突、NaN/Inf/字符串均 fail closed；mapping 与部分显式 provenance 不回退。
+
+真实三档报告已生成：60 case、20 个跨档配对、truth identity/state 全 0；1.0 由 20 份 settings
+闭合，0.2/0.1 为 case result provenance。冻结合同为 56 match/4 mismatch，四个受影响 candidate
+case 明列原因且 aggregate unavailable；reserve 排除和 timing 分层不变。baseline 可用物理结果为
+0.1 `4/30,4/20,0/10`、0.2 `9/30,9/20,0/10`、1.0 `6/30,6/20,0/10`。case wall timing 缺源字段。
+因此不从 candidate 0.1/0.2 部分证据给出性能或准入结论。专项 `18 passed`、全量 `272 passed`。
+
+## 2026-07-15 0.1 P1 NameError 紧急评审
+
+评审确认根因修复不是放宽 case-aware 合同，而是消除模式 helper 的名称/定义顺序漂移：唯一 helper
+在所有 dispatch 之前定义，三个调用点一致。新增 20-case 双层 merged evaluator 回归直接覆盖此次
+失败入口。
+
+真实 0.1 P1 v6 只读报告生成成功，两层各 4036 records、20 case，manifest match，runtime 输入 hash
+不变。timing 专项 `28 passed`、D6 全量 `264 passed`。该证据关闭 D6 runtime NameError 回归，不代表
+三档 comparator 已完成或形成性能结论，无新增 D6 P0。
+
+## 2026-07-15 0.2 case-aware 与机会合同评审
+
+评审确认 `d6-stage-timing-report-v2`/P1 v6 已关闭 merged suite loader 缺口。suite 模式仅接受
+`case_id/family/profile/seed`，每 case 内保持严格单调，边界可重置；双层 manifest 必须一致，禁止
+跨 case 连续化和 main/control 求和。默认 single episode 行为未改变。
+
+`d6-m5n2-clock-speed-comparison-v2` 将每 case 机会冻结为 `3/2/1`。actual-execution unavailable 或
+机会不符时，整项 unavailable，报告列 case/reasons；standby reserve 即使成功也不计 active-primary。
+真实 0.2 20-case 审计为 18 match/2 mismatch：candidate seed006 为 D7 unavailable 且 reserve success
+被排除，candidate seed009 的 D7 available 但机会仍为 `2/1/1`。两层 merged timing 各 6567 records/
+20 case 的只读 P1 复测通过。该 0.2 阶段专项 `27/10 passed`、当时全量 `263 passed`。真实 0.1 P1
+状态见顶部；该段记录 0.2 阶段状态，三档 comparator 随后已完成。
+
+## 2026-07-15 ClockSpeed 三档能力评审
+
+评审确认当时的 `d6-m5n2-clock-speed-comparison-v1` 已关闭 D6 离线比较入口缺口；当前 schema 已按
+顶部合同审计升级为 v2。三档输入必须各包含
+baseline/candidate seed 1-10，并按 `case_id/profile/seed` 完整配对；ClockSpeed 来自 suite/case
+persisted provenance，不能由目录名决定。result row 全量一致的显式 `clock_speed` 可作为 case-level
+provenance，并与注册 artifact 中的显式值交叉校验。
+
+报告保留三层独立物理分母、第二 primary 五米/距离、最终锁/coalition consensus、collision stop、
+case wall、main-bus/control-tick wall timing、归一化 simulated time/tick 和 truth identity/state
+审计。缺证据为 unavailable；main bus 是 control tick 内层，禁止相加。任一 profile 的 10 case
+不完整时不发布部分 aggregate。
+
+2026-07-15 三档各 20 case 的确定性验收专项 `8 passed`、D6 全量 `254 passed`，仅有既有
+Matplotlib `Axes3D` warning。该段是运行前结论；真实三档 comparator 随后已完成，availability-aware
+结果见顶部。candidate 0.1/0.2 仍因合同 mismatch 不形成完整准入结论，无新增 D6 P0。
+
 ## 2026-07-15 M5N2 20-case 评审结论
 
 评审范围严格限定为 baseline/candidate 各 10 seed 的 20 个真实 AirSim M5N2 case。M5N2 完成后、
@@ -57,11 +109,11 @@ adapter 且不准入。默认在线 GNN/Hungarian 未改变。
 D6 已具备 main bus 与 SimpleFlight control tick 两层持久化计时的严格离线消费能力。非法合同、
 数值、状态、顺序、和式或预算标志 fail closed；旧日志缺 timing 保持 unavailable。每层独立报告
 分布、状态计数、预算违例和 dominant stage，禁止把 control tick 内的 `bus_processing` 与 main
-bus 相加。P1 acceptance v5 可选接入。
+bus 相加。该历史阶段 P1 acceptance 为 v5，当前 case-aware 接线为 v6。
 
 2026-07-15 合法两层各 2 帧及负例矩阵专项 `20 passed`、D6 全量 `236 passed`，未启动 AirSim。
 关闭的是计时可观测性代码 P1，不是系统性能 P1；其后 M5N2 20-case 已确认 `100 ms` 不达标，
-case-aware 正式接线和瓶颈优化仍开放。
+case-aware 正式接线已关闭，瓶颈优化仍开放。
 
 ## 2026-07-14 actual target-state freshness/stale P1 评审结论
 

@@ -1,5 +1,67 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-15 legacy provenance 与三档 comparator 完成状态
+
+- [x] 对路径输入且 summary/cases/rows 全无 ClockSpeed 的 legacy suite，按 20 个注册 `case_id` 定位
+  sibling generated settings；20/20 文件、显式键、有限正数和全量一致均为强制门。
+- [x] 保持 mapping 输入无文件系统发现、目录名不推断、无默认 1.0；部分显式 provenance 不能触发
+  fallback，缺文件/缺键/冲突/非有限值 fail closed。
+- [x] 用真实 1.0/0.2/0.1 各 20 case 生成 JSON、两份 CSV、中文 Markdown 和 PNG；60 case 形成 20
+  个完整跨档配对，truth identity/state 审计全 0，源组合 hash 前后不变。
+- [x] 冻结 `3/2/1` 机会合同审计为 56 match/4 mismatch；0.1 candidate seed007/009、0.2 candidate
+  seed006/009 的受影响 aggregate 保持 unavailable，reserve 仍排除。
+- [x] D6 全量 `272 passed`；ClockSpeed 专项 `18 passed`，`py_compile` 与 `diff --check` 通过。
+- [ ] candidate 0.1/0.2 因合同 mismatch 不发布完整物理 aggregate；case wall timing 源字段缺失，
+  三档均 unavailable。后续由 main 修复 producer 证据后再重跑，不从当前部分数据给出准入结论。
+
+## 2026-07-15 0.1 NameError 紧急回归状态
+
+- [x] 将 timing input-mode 规范化函数前置并统一命名，loader/summarizer/evaluator 三处引用一致，旧
+  私有名称删除。
+- [x] 新增真实形态 20-case 双层 case-aware evaluator 回归：baseline/candidate 各 seed 1-10，逐 case
+  frame/time 重置，manifest match，跨 case/跨层 total 为 null。
+- [x] 真实 0.1 P1 只读生成成功：两层各 4036 records、20 case，输入 SHA-256 前后不变。
+- [x] timing 专项 `28 passed`、D6 全量 `264 passed`、`py_compile`/`diff --check` 通过。
+- [x] 已完成 1.0/0.2/0.1 三个 suite 的 ClockSpeed comparator；availability-aware 结果见顶部，
+  不对 unavailable 的 candidate 0.1/0.2 发布性能结论。
+
+## 2026-07-15 0.2 case-aware timing 与冻结机会合同状态
+
+- [x] `single_episode` 与 `case_aware_suite` 显式分离；suite 只接受
+  `case_id/family/profile/seed` 四个 metadata，逐 case frame/timestamp 严格单调并允许 case 切换重置，
+  禁止 case 重现和跨 case 伪连续。
+- [x] main bus/control tick case manifest 一致性校验完成；两层仍为嵌套 scope，不相加，跨 case/跨层
+  total 均为 null；P1 acceptance v6 和两个 CLI 已支持显式 suite 模式。
+- [x] 用真实 0.2 merged timing 只读复测：两层各 6567 records、20 case，manifest match，P1 bundle
+  成功生成，runtime 三个输入 SHA-256 前后不变。
+- [x] comparator v2 冻结每 case pair/target/coalition opportunities=`3/2/1`；actual-execution
+  unavailable 或机会合同不符时，受影响 case 指标整体 unavailable，不缩分母、不补零。
+- [x] standby reserve 从 active-primary success 与 denominator 排除并单独审计。真实 0.2 为 18 match/
+  2 mismatch：candidate seed006 是 D7 unavailable 且 `2/1/1`；candidate seed009 是 D7 available 但
+  同为 `2/1/1`。
+- [x] 2026-07-15 0.2 阶段 timing/ClockSpeed 专项 `27/10 passed`，当时 D6 全量 `263 passed`。
+- [x] main 已运行真实 ClockSpeed=0.1，P1 case-aware 复测见顶部。
+- [x] 已连同 1.0/0.2/0.1 三个完整 suite 调用 comparator；合同 mismatch 项保持 unavailable。
+
+## 2026-07-15 ClockSpeed 1.0/0.2/0.1 对比状态
+
+- [x] 提供 Python API 和 CLI，输入三个 suite root/summary；强制每档 baseline/candidate 各 seed
+  1-10、恰好 20 case，并按 `case_id/profile/seed` 完成 suite 内连接和三档配对。
+- [x] ClockSpeed 只从 suite/case provenance 或全量一致的 case result row 读取；拒绝目录名和 summary
+  根部裸字段，交叉检查 suite/case/artifact 显式值。
+- [x] 输出 availability-aware JSON、case CSV、aggregate CSV、中文 Markdown 与 PNG 曲线；覆盖三层
+  物理成功、第二 primary 五米/距离、最终锁/共识、collision stop、wall timing、ClockSpeed 归一化
+  simulated time/tick 和 truth identity/state 审计。
+- [x] main bus/control tick 保持嵌套层，cross-layer total 为 null；任何缺失指标、坏 timing 或缺
+  artifact 为 unavailable，不补零。
+- [x] 2026-07-15 三档各 20 case 的确定性 fixture 达到接受门限；专项 `8 passed`、D6 全量
+  `254 passed`，仅有既有 Matplotlib `Axes3D` warning。
+- [x] main 真实运行 ClockSpeed=`0.1` 已完成，D6 P1 case-aware 只读复测通过。
+- [x] 已与 1.0/0.2 同套件配对调用 comparator；真实可用值和 unavailable 边界见顶部。
+- [x] 旧 1.0 suite 的 20 个 sibling generated settings 已作为显式持久化 provenance 通过全量一致
+  审计；新 suite 仍应优先保证所有 20 个 result row 都持久化同一 `clock_speed`，并与
+  `intercept_summary.parameters.clock_speed` 一致；缺任一 case 时整套拒绝。
+
 ## 2026-07-15 M5N2 20-case 实测状态
 
 - [x] 只消费 baseline/candidate 各 10 seed 的 20 个真实 M5N2 case；M5N2 完成后、`TERM` 生效前
@@ -20,9 +82,8 @@
   冲突、环境碰撞或 AirSim 状态问题。
 - [x] 20 个 case 的两层 timing 原始流逐 case 严格校验；每层 3805 条，main-bus 与 control-tick
   分别汇总，禁止相加。
-- [ ] main 将 timing 以 case-aware manifest 输入 D6，或在合并时生成全局严格递增的 frame/time；
-  当前 partial acceptance 未注册路径，现有合并流在 case 边界重置，正式 suite timing 保持
-  unavailable，不补零。
+- [x] main 的 merged timing 已由 D6 `case_aware_suite` envelope 正式消费；case 边界重置合法，
+  逐 case 单调与双层 manifest 已校验，禁止改写成全局伪连续时间轴。
 - [ ] 将上述 target 术语固定为 producer schema/字段级 semantics，避免后续 suite 或旧 consumer
   仍按同名字段误聚合；文档口径已统一，代码字段治理仍开放。
 - [ ] 降低 main-bus `349.34 ms` 和 control-tick `1069.45 ms` 均值及其预算违例；优先定位 D1
@@ -48,12 +109,14 @@
   flag；非法证据 fail closed，旧 artifact 缺 timing 为 unavailable。
 - [x] 两层分别汇总 sample、mean/P95/max、N/A/error、总 tick、预算违例和 dominant stage；禁止
   嵌套耗时跨层相加。
-- [x] 提供稳定 API、CLI、CSV/JSON/中文 Markdown/PNG，并接入 P1 acceptance v5。
+- [x] 提供稳定 API、CLI、CSV/JSON/中文 Markdown/PNG；历史接入 P1 acceptance v5，当前 case-aware
+  接线已升级为 v6。
 - [x] 2026-07-15 动态规模无关 fixture：合法两层各 2 帧，专项 `20 passed`、全量
   `236 passed`；未启动 AirSim。
 - [x] 已用真实 M5N2 20 case 的逐 case timing 定位主导阶段并确认 `100 ms` 未达标；两层各 3805
   samples，main-bus/control-tick P95=`487.40/1254.06 ms`。
-- [ ] 修复 case-aware suite timing 注册后，再完成瓶颈优化、paired 复验与跨提交趋势。
+- [x] case-aware suite timing 注册和只读 P1 复测完成。
+- [ ] 完成瓶颈优化、三档 paired comparator 与跨提交趋势；0.1 P1 输入已可用。
 
 ## 2026-07-14 actual target-state freshness/stale P1 关闭状态
 

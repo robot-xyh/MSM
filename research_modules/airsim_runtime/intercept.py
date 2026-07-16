@@ -2886,6 +2886,7 @@ def _write_intercept_outputs(
             if key.endswith("_count")
         },
         "parameters": {
+            "clock_speed": float(config.clock_speed),
             "guidance_law": config.intercept_guidance_law,
             "control_dt_s": config.control_dt_s,
             "intercept_speed_mps": config.intercept_speed_mps,

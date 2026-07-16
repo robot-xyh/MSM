@@ -1,5 +1,99 @@
 # D6 Evaluation Metrics
 
+## 2026-07-15 legacy ClockSpeed provenance 兼容与三档实测
+
+ClockSpeed comparator v2 现兼容旧 1.0 suite 的持久化 settings provenance：仅当调用输入是 suite
+root/summary 路径且 summary、20 个 case、20 个 result row 完全没有显式 ClockSpeed 时，才按每个
+`case_id` 定位 sibling case 的
+`generated_settings/blocks_actor_m5_n2_settings.json`。20/20 文件必须存在、顶层显式包含有限正数
+`ClockSpeed` 且全量一致；缺文件、缺键、冲突、非有限值和字符串均 fail closed。mapping 输入不搜索
+文件系统，目录名仍不参与推断，也不默认填 1.0。报告 manifest 保存 20 个绝对 evidence path。
+
+真实 1.0/0.2/0.1 三档 comparator 已只读运行，输出在
+`../airsim_runtime/outputs/m5n2_clock_speed_comparison_20260715/`。三档各 20 case、20 个跨档配对、truth
+identity/state 在线使用均为 0；1.0 provenance scope 为
+`sibling_case_generated_settings`，0.2/0.1 为 `case_result`。冻结机会合同在 60 case 中 56 match、4
+mismatch；0.1 candidate seed007/009 和 0.2 candidate seed006/009 的受影响 aggregate 为
+unavailable，不使用缩小分母。baseline pair/target/coalition 分别为 0.1 `4/30,4/20,0/10`、0.2
+`9/30,9/20,0/10`、1.0 `6/30,6/20,0/10`。case wall timing 三档均缺源字段，保持 unavailable；
+candidate 0.1/0.2 因合同不完整不形成成功率结论。三档 summary 加 20 个 legacy settings 的“绝对
+路径+内容”组合 SHA-256 前后均为
+`fdb745ee54f0c5ff414a812bf8e75eacd56fa5ea91ff02f64008fb6ee1759cd1`。
+
+## 2026-07-15 ClockSpeed=0.1 NameError 紧急回归修复
+
+`stage_timing.py` 的输入模式规范化函数现统一命名为
+`_normalize_stage_timing_input_mode`，并前置定义在 loader、summarizer 和
+`evaluate_stage_timing_inputs()` 三个调用点之前；旧 `_timing_input_mode` 名称已删除，避免实际批次
+加载到缺失私有名称。新增回归按真实 suite 形态构造 baseline/candidate 各 seed 1-10 的 20-case
+双层 merged JSONL，每 case 从 frame/timestamp 0 重置，直接调用 evaluator。
+
+真实 ClockSpeed=0.1 M5N2 20/20 case 已用 P1 v6 只读复测：main bus/control tick 各 4036 records、
+20 case，manifest match=true，两层 available，跨 case/跨层 total 均为 null。summary 与两份 timing
+输入 SHA-256 前后不变。报告位于
+`outputs/p1_clockspeed_0p1_m5n2_20case_20260715_case_aware_validation/`。本轮 timing 专项
+`28 passed`、D6 全量 `264 passed`、`py_compile` 与 `diff --check` 通过。该句记录紧急修复当时状态；
+三档 comparator 随后已完成，见本页顶部。
+
+## 2026-07-15 ClockSpeed=0.2 case-aware 真实证据复核
+
+`stage_timing.py` 现显式区分默认严格 `single_episode` 与 `case_aware_suite`。suite 模式要求每条记录
+除原 schema 外恰好携带 `case_id/family/profile/seed`，拒绝其他 extra field；每个 case 内
+frame/timestamp 严格递增，case 切换可重置且已离开的 case 不得再次出现。main bus/control tick 的
+ordered case manifest 必须一致，只允许按 scope 池化分布；跨 case 首尾/总时长和跨层总时长均为
+null。单 episode 的字段白名单和全流单调规则未放宽。P1 acceptance 升级为 v6，并以显式
+`--stage-timing-input-mode case_aware_suite` 启用该 envelope。
+
+真实 ClockSpeed=0.2 M5N2 suite 已完成 20/20 case。D6 对两份 merged timing 做只读复测：main bus
+与 control tick 各 6567 records、20 个连续 case envelope，双层 manifest 一致，P1 报告生成成功，
+输入文件复测前后 SHA-256 不变。输出位于
+`outputs/p1_clockspeed_0p2_m5n2_20case_20260715_v2_case_aware_validation/`。
+
+ClockSpeed comparator v2 冻结每 case opportunities 为 active-primary pair/target/coalition=`3/2/1`。
+actual-execution unavailable 或 suite/intercept 机会数不符时，该 case 的物理与末端派生指标整体为
+unavailable，不缩小分母、不补零。standby reserve 只进入排除审计，不计 active-primary success。
+真实 0.2 审计为 18 match/2 mismatch：candidate seed006 为 D7 actual-execution unavailable，三类
+physical/command/main conflict，实际机会 `2/1/1`；其 reserve physical success=true，但 active-primary
+success=1、raw top-level success=2。candidate seed009 的 actual-execution available，但实际机会也为
+`2/1/1`，因此同样是 contract mismatch。该段记录 0.2 审计；0.1 真实 P1 复测状态见顶部，不在此
+混写三档性能结论。
+
+2026-07-15 验证：timing 专项 `27 passed`、ClockSpeed 专项 `10 passed`、D6 全量 `263 passed`；仅有
+既有 Matplotlib `Axes3D` warning。
+
+## 2026-07-15 M5N2 ClockSpeed 三档离线对比接口
+
+新增 `clock_speed_comparison.py` 和 `run_clock_speed_comparison.py`，输入同一套 M5N2
+ClockSpeed=`1.0/0.2/0.1` 的三个 suite root 或 summary。入口强制每档恰有 20 个 case：baseline 与
+candidate 各 seed 1-10；suite 内按 `case_id/profile/seed` 连接 case/result，三档之间再按同一键完整
+配对。main 既有 `comparison_role=enhanced` 规范归一化为 candidate；family/resource/target 必须显式
+为 `m5n2_paired/5/2`，不从目录名或场景简称推断规模。
+
+ClockSpeed 只接受 suite/case `provenance`，或 20 个 result row 全量一致的显式 case-level
+`clock_speed`；summary 根部裸字段和目录名都不作为来源。若 suite、case、result row 或注册的
+`intercept_summary.parameters.clock_speed` 同时存在，值必须一致。输出包括 case CSV、profile
+aggregate CSV、JSON、中文 Markdown 和 PNG 曲线。
+
+指标覆盖 active-primary pair、target、coalition 三个独立物理分母，第二 primary 五米成功与最小
+距离，required active-primary 最终锁、coalition 最终锁共识、`collision_stop`，case wall、main-bus
+和 control-tick wall timing，以及
+`simulated_time_per_tick_s = control_tick_wall_mean_ms / 1000 * ClockSpeed`。main bus 是 control tick
+内层，两层禁止相加，cross-layer total 固定为 null。truth identity/state 在线使用继续逐 case 审计；
+任一缺字段或坏 artifact 均为 `availability=unavailable`，不补零。
+
+2026-07-15 确定性验收使用三档各 20 case、总计 60 case，baseline/candidate 各 seed 1-10；接受
+门限为三档和 60 case 完整、20 个三档配对键完整、provenance 一致、缺失指标不补零及嵌套 timing
+不相加。专项 `8 passed`，D6 当时全量 `254 passed`，仅有既有 Matplotlib `Axes3D` warning。该段是
+运行前接口记录；真实三档调用与 availability-aware 结果已由本页顶部更新。
+
+```bash
+python3 research_modules/d6_evaluation_metrics/scripts/run_clock_speed_comparison.py \
+  --suite <clock_1_0_suite_root_or_summary> \
+  --suite <clock_0_2_suite_root_or_summary> \
+  --suite <clock_0_1_suite_root_or_summary> \
+  --output-dir <comparison_report_dir>
+```
+
 ## 2026-07-15 真实 AirSim M5N2 20-case 复核
 
 本轮只复核 `p1_terminal_timing_funnel_10seed_20260715_m5n2_*` 下 20 个已完成的
@@ -64,11 +158,11 @@ D6 新增 `stage_timing.py`，严格离线消费 `main-stage-timing-v1` 与
 及和式冲突全部 fail closed。旧产物缺 timing 显示 `unavailable`，不补零。
 
 每层独立输出阶段 sample、mean/P95/max、N/A/error、总 tick、预算违例和 dominant stage，并生成
-CSV、JSON、中文 Markdown 与 PNG；嵌套的 main bus 与 control tick 禁止相加。P1 acceptance 已
-升级为 v5 并支持两个可选 timing 路径。2026-07-15 确定性动态规模无关 fixture（合法两层各
+CSV、JSON、中文 Markdown 与 PNG；嵌套的 main bus 与 control tick 禁止相加。P1 acceptance 当时
+升级为 v5，当前已由顶部 case-aware 工作升级为 v6。2026-07-15 确定性动态规模无关 fixture（合法两层各
 2 帧及完整负例矩阵）专项 `20 passed`、D6 全量 `236 passed`，未启动 AirSim。真实多 seed
-M5N2 20-case 随后已实测并确认 `100 ms` 未达标；case-aware 正式接线、瓶颈优化和跨提交复验仍为
-开放 P1。
+M5N2 20-case 随后已实测并确认 `100 ms` 未达标；case-aware 正式接线现已关闭，瓶颈优化和跨提交
+复验仍为开放 P1。
 
 ```bash
 python3 research_modules/d6_evaluation_metrics/scripts/run_stage_timing_report.py \

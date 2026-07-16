@@ -6,6 +6,7 @@ import json
 import pytest
 
 from d6_evaluation_metrics import (
+    CASE_AWARE_SUITE_TIMING_MODE,
     P1AcceptanceInputs,
     P1AcceptanceReportGenerator,
     STAGE_TIMING_REPORT_SCHEMA_VERSION,
@@ -69,6 +70,177 @@ def test_valid_two_layer_input_is_aggregated_without_nested_sum(tmp_path) -> Non
     assert control["record_count"] == 2
     assert control["stages"]["bus_processing"]["mean_ms"] == pytest.approx(14.0)
     assert "combined" not in summary
+
+
+def test_case_aware_suite_allows_only_metadata_and_per_case_reset(tmp_path) -> None:
+    records = [
+        _case_record("main_bus", 0, 0.0, case_id="case-a", seed=1),
+        _case_record("main_bus", 1, 0.1, case_id="case-a", seed=1),
+        _case_record("main_bus", 0, 0.0, case_id="case-b", seed=2),
+        _case_record("main_bus", 1, 0.1, case_id="case-b", seed=2),
+    ]
+    path = _write_jsonl(tmp_path / "merged.jsonl", records)
+
+    loaded = load_stage_timing_jsonl(
+        path,
+        expected_layer="main_bus",
+        input_mode=CASE_AWARE_SUITE_TIMING_MODE,
+    )
+    summary = summarize_stage_timing_records(
+        loaded,
+        expected_layer="main_bus",
+        input_mode=CASE_AWARE_SUITE_TIMING_MODE,
+    )
+
+    assert summary["input_mode"] == CASE_AWARE_SUITE_TIMING_MODE
+    assert summary["case_count"] == 2
+    assert summary["record_count"] == 4
+    assert summary["episode_continuity_assumed"] is False
+    assert summary["pooled_across_cases"] is True
+    assert summary["cross_case_total_ms"] is None
+    assert summary["frame_index_first"] is None
+    assert [item["record_count"] for item in summary["case_summaries"]] == [2, 2]
+    assert [item["frame_index_first"] for item in summary["case_summaries"]] == [0, 0]
+
+
+def test_case_aware_twenty_case_two_layer_evaluator_regression(tmp_path) -> None:
+    main_path = _write_jsonl(
+        tmp_path / "main_bus_stage_timings.jsonl",
+        _twenty_case_suite_records("main_bus"),
+    )
+    control_path = _write_jsonl(
+        tmp_path / "control_tick_stage_timings.jsonl",
+        _twenty_case_suite_records("control_tick"),
+    )
+
+    summary = evaluate_stage_timing_inputs(
+        StageTimingInputs(
+            main_bus=main_path,
+            control_tick=control_path,
+            input_mode=CASE_AWARE_SUITE_TIMING_MODE,
+        )
+    )
+
+    assert summary["availability"] == "available"
+    assert summary["input_mode"] == CASE_AWARE_SUITE_TIMING_MODE
+    assert summary["case_manifest_match"] is True
+    assert summary["cross_case_total_ms"] is None
+    assert summary["cross_layer_total_ms"] is None
+    for layer in summary["layers"].values():
+        assert layer["availability"] == "available"
+        assert layer["case_count"] == 20
+        assert layer["record_count"] == 40
+        assert layer["frame_index_first"] is None
+        assert all(
+            item["frame_index_first"] == 0
+            and item["timestamp_first_s"] == 0.0
+            for item in layer["case_summaries"]
+        )
+
+
+def test_single_episode_strict_fields_are_not_relaxed_by_suite_support(tmp_path) -> None:
+    path = _write_jsonl(
+        tmp_path / "single_with_case_fields.jsonl",
+        [_case_record("main_bus", 0, 0.0, case_id="case-a", seed=1)],
+    )
+
+    with pytest.raises(StageTimingValidationError, match="extra=.*case_id"):
+        load_stage_timing_jsonl(path, expected_layer="main_bus")
+
+
+def test_case_aware_suite_rejects_unknown_extra_and_missing_metadata(tmp_path) -> None:
+    extra = _case_record("main_bus", 0, 0.0, case_id="case-a", seed=1)
+    extra["episode_name"] = "not-allowed"
+    path = _write_jsonl(tmp_path / "extra.jsonl", [extra])
+    with pytest.raises(StageTimingValidationError, match="extra=.*episode_name"):
+        load_stage_timing_jsonl(
+            path,
+            expected_layer="main_bus",
+            input_mode=CASE_AWARE_SUITE_TIMING_MODE,
+        )
+
+    missing = _case_record("main_bus", 0, 0.0, case_id="case-a", seed=1)
+    del missing["profile"]
+    path = _write_jsonl(tmp_path / "missing.jsonl", [missing])
+    with pytest.raises(StageTimingValidationError, match="missing=.*profile"):
+        load_stage_timing_jsonl(
+            path,
+            expected_layer="main_bus",
+            input_mode=CASE_AWARE_SUITE_TIMING_MODE,
+        )
+
+
+def test_case_aware_suite_rejects_reset_within_case_and_noncontiguous_case() -> None:
+    reset_within_case = [
+        _case_record("main_bus", 0, 0.0, case_id="case-a", seed=1),
+        _case_record("main_bus", 0, 0.0, case_id="case-a", seed=1),
+    ]
+    with pytest.raises(StageTimingValidationError, match="within case"):
+        summarize_stage_timing_records(
+            reset_within_case,
+            expected_layer="main_bus",
+            input_mode=CASE_AWARE_SUITE_TIMING_MODE,
+        )
+
+    conflicting_metadata = [
+        _case_record("main_bus", 0, 0.0, case_id="case-a", seed=1),
+        _case_record("main_bus", 0, 0.0, case_id="case-a", seed=2),
+    ]
+    with pytest.raises(StageTimingValidationError, match="conflicting metadata"):
+        summarize_stage_timing_records(
+            conflicting_metadata,
+            expected_layer="main_bus",
+            input_mode=CASE_AWARE_SUITE_TIMING_MODE,
+        )
+
+    reappearing_case = [
+        _case_record("main_bus", 0, 0.0, case_id="case-a", seed=1),
+        _case_record("main_bus", 0, 0.0, case_id="case-b", seed=2),
+        _case_record("main_bus", 1, 0.1, case_id="case-a", seed=1),
+    ]
+    with pytest.raises(StageTimingValidationError, match="reappeared"):
+        summarize_stage_timing_records(
+            reappearing_case,
+            expected_layer="main_bus",
+            input_mode=CASE_AWARE_SUITE_TIMING_MODE,
+        )
+
+
+def test_case_aware_nested_layers_require_same_case_manifest(tmp_path) -> None:
+    main_path = _write_jsonl(
+        tmp_path / "main.jsonl",
+        [_case_record("main_bus", 0, 0.0, case_id="case-a", seed=1)],
+    )
+    control_path = _write_jsonl(
+        tmp_path / "control.jsonl",
+        [_case_record("control_tick", 0, 0.0, case_id="case-b", seed=2)],
+    )
+
+    with pytest.raises(StageTimingValidationError, match="manifests differ"):
+        evaluate_stage_timing_inputs(
+            StageTimingInputs(
+                main_bus=main_path,
+                control_tick=control_path,
+                input_mode=CASE_AWARE_SUITE_TIMING_MODE,
+            )
+        )
+
+
+def test_case_aware_merged_stream_rejects_mixed_timing_layers(tmp_path) -> None:
+    path = _write_jsonl(
+        tmp_path / "mixed_layers.jsonl",
+        [
+            _case_record("main_bus", 0, 0.0, case_id="case-a", seed=1),
+            _case_record("control_tick", 1, 0.1, case_id="case-a", seed=1),
+        ],
+    )
+
+    with pytest.raises(StageTimingValidationError, match="expected schema"):
+        load_stage_timing_jsonl(
+            path,
+            expected_layer="main_bus",
+            input_mode=CASE_AWARE_SUITE_TIMING_MODE,
+        )
 
 
 def test_not_applicable_and_error_statuses_keep_distinct_counts() -> None:
@@ -276,6 +448,32 @@ def test_p1_acceptance_consumes_optional_stage_timing_inputs(tmp_path) -> None:
     assert "两层不相加" in markdown
 
 
+def test_p1_acceptance_accepts_explicit_case_aware_timing_envelope(tmp_path) -> None:
+    main_path = _write_jsonl(
+        tmp_path / "merged_main.jsonl",
+        [
+            _case_record("main_bus", 0, 0.0, case_id="case-a", seed=1),
+            _case_record("main_bus", 0, 0.0, case_id="case-b", seed=2),
+        ],
+    )
+    outputs = P1AcceptanceReportGenerator().write_report_bundle(
+        tmp_path / "p1-suite",
+        inputs=P1AcceptanceInputs(
+            main_stage_timings=main_path,
+            stage_timing_input_mode=CASE_AWARE_SUITE_TIMING_MODE,
+        ),
+    )
+
+    aggregate = json.loads(outputs["aggregate_json"].read_text(encoding="utf-8"))
+    timing = aggregate["stage_timing"]
+    assert timing["input_mode"] == CASE_AWARE_SUITE_TIMING_MODE
+    assert timing["layers"]["main_bus"]["case_count"] == 2
+    assert timing["cross_case_total_ms"] is None
+    assert timing["cross_layer_total_ms"] is None
+    markdown = outputs["markdown"].read_text(encoding="utf-8")
+    assert "不跨 case 拼接伪连续 episode" in markdown
+
+
 def _record(
     layer: str,
     frame_index: int,
@@ -325,6 +523,44 @@ def _record(
         "error_type": "RuntimeError" if error_stage is not None else "",
         "error_message": "fixture failure" if error_stage is not None else "",
     }
+
+
+def _case_record(
+    layer: str,
+    frame_index: int,
+    timestamp_s: float,
+    *,
+    case_id: str,
+    seed: int,
+) -> dict:
+    return {
+        **_record(layer, frame_index, timestamp_s),
+        "case_id": case_id,
+        "family": "m5n2_paired",
+        "profile": "baseline" if seed == 1 else "candidate",
+        "seed": seed,
+    }
+
+
+def _twenty_case_suite_records(layer: str) -> list[dict]:
+    records: list[dict] = []
+    for profile, role in (
+        ("baseline", "baseline"),
+        ("candidate_soft_prediction_trend_coast", "candidate"),
+    ):
+        for seed in range(1, 11):
+            case_id = f"m5n2_{role}_seed{seed:03d}"
+            for frame_index, timestamp_s in ((0, 0.0), (1, 0.1)):
+                record = _case_record(
+                    layer,
+                    frame_index,
+                    timestamp_s,
+                    case_id=case_id,
+                    seed=seed,
+                )
+                record["profile"] = profile
+                records.append(record)
+    return records
 
 
 def _write_jsonl(path, records: list[dict]):

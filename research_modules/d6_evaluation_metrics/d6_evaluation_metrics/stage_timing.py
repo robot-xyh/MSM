@@ -15,8 +15,20 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 
-STAGE_TIMING_REPORT_SCHEMA_VERSION = "d6-stage-timing-report-v1"
-STAGE_TIMING_SCOPE_SUMMARY_SCHEMA_VERSION = "d6-stage-timing-scope-summary-v1"
+STAGE_TIMING_REPORT_SCHEMA_VERSION = "d6-stage-timing-report-v2"
+STAGE_TIMING_SCOPE_SUMMARY_SCHEMA_VERSION = "d6-stage-timing-scope-summary-v2"
+SINGLE_EPISODE_TIMING_MODE = "single_episode"
+CASE_AWARE_SUITE_TIMING_MODE = "case_aware_suite"
+STAGE_TIMING_INPUT_MODES = (
+    SINGLE_EPISODE_TIMING_MODE,
+    CASE_AWARE_SUITE_TIMING_MODE,
+)
+CASE_AWARE_TIMING_METADATA_FIELDS = (
+    "case_id",
+    "family",
+    "profile",
+    "seed",
+)
 
 
 @dataclass(frozen=True)
@@ -96,6 +108,17 @@ class StageTimingInputs:
 
     main_bus: str | Path | None = None
     control_tick: str | Path | None = None
+    input_mode: str = SINGLE_EPISODE_TIMING_MODE
+
+
+def _normalize_stage_timing_input_mode(value: Any) -> str:
+    """Return one supported timing mode before any loader/evaluator dispatch."""
+
+    if not isinstance(value, str) or value not in STAGE_TIMING_INPUT_MODES:
+        raise StageTimingValidationError(
+            f"input_mode must be one of {list(STAGE_TIMING_INPUT_MODES)}, got {value!r}"
+        )
+    return value
 
 
 class StageTimingReportGenerator:
@@ -149,6 +172,7 @@ def load_stage_timing_jsonl(
     path: str | Path,
     *,
     expected_layer: str,
+    input_mode: str = SINGLE_EPISODE_TIMING_MODE,
 ) -> list[dict[str, Any]]:
     """Load and strictly validate one timing JSONL stream.
 
@@ -157,6 +181,7 @@ def load_stage_timing_jsonl(
     """
 
     spec = _scope_spec(expected_layer)
+    mode = _normalize_stage_timing_input_mode(input_mode)
     source_path = Path(path)
     records: list[dict[str, Any]] = []
     try:
@@ -176,14 +201,19 @@ def load_stage_timing_jsonl(
                 raise StageTimingValidationError(
                     f"{expected_layer} line {line_number}: invalid JSON: {exc}"
                 ) from exc
+            validator = (
+                validate_stage_timing_record
+                if mode == SINGLE_EPISODE_TIMING_MODE
+                else validate_case_aware_stage_timing_record
+            )
             records.append(
-                validate_stage_timing_record(
+                validator(
                     raw,
                     expected_layer=spec.layer,
                     line_number=line_number,
                 )
             )
-    _validate_record_order(records, layer=spec.layer)
+    _validate_timing_record_order(records, layer=spec.layer, input_mode=mode)
     return records
 
 
@@ -345,29 +375,87 @@ def validate_stage_timing_record(
     }
 
 
+def validate_case_aware_stage_timing_record(
+    raw: Any,
+    *,
+    expected_layer: str,
+    line_number: int | None = None,
+) -> dict[str, Any]:
+    """Validate one suite-envelope record without relaxing episode records."""
+
+    spec = _scope_spec(expected_layer)
+    prefix = spec.layer
+    if line_number is not None:
+        prefix += f" line {line_number}"
+    if not isinstance(raw, Mapping):
+        raise StageTimingValidationError(f"{prefix}: record must be a JSON object")
+    expected_fields = _REQUIRED_RECORD_FIELDS | set(CASE_AWARE_TIMING_METADATA_FIELDS)
+    fields = set(raw)
+    missing = sorted(expected_fields - fields)
+    extra = sorted(fields - expected_fields)
+    if missing or extra:
+        raise StageTimingValidationError(
+            f"{prefix}: case-aware record fields mismatch; "
+            f"missing={missing}, extra={extra}"
+        )
+
+    metadata: dict[str, Any] = {}
+    for field in ("case_id", "family", "profile"):
+        value = raw[field]
+        if not isinstance(value, str) or not value.strip():
+            raise StageTimingValidationError(
+                f"{prefix}: case metadata {field} must be a non-empty string"
+            )
+        metadata[field] = value
+    seed = raw["seed"]
+    if isinstance(seed, bool) or not isinstance(seed, int) or seed <= 0:
+        raise StageTimingValidationError(
+            f"{prefix}: case metadata seed must be a positive integer"
+        )
+    metadata["seed"] = seed
+
+    episode_record = {
+        field: raw[field] for field in _REQUIRED_RECORD_FIELDS
+    }
+    normalized = validate_stage_timing_record(
+        episode_record,
+        expected_layer=expected_layer,
+        line_number=line_number,
+    )
+    return {**normalized, **metadata}
+
+
 def summarize_stage_timing_records(
     records: Sequence[Mapping[str, Any]],
     *,
     expected_layer: str,
     evidence_path: str | Path | None = None,
+    input_mode: str = SINGLE_EPISODE_TIMING_MODE,
 ) -> dict[str, Any]:
     """Validate and summarize one layer without combining nested durations."""
 
     spec = _scope_spec(expected_layer)
+    mode = _normalize_stage_timing_input_mode(input_mode)
+    validator = (
+        validate_stage_timing_record
+        if mode == SINGLE_EPISODE_TIMING_MODE
+        else validate_case_aware_stage_timing_record
+    )
     normalized = [
-        validate_stage_timing_record(
+        validator(
             record,
             expected_layer=spec.layer,
             line_number=index,
         )
         for index, record in enumerate(records, start=1)
     ]
-    _validate_record_order(normalized, layer=spec.layer)
+    _validate_timing_record_order(normalized, layer=spec.layer, input_mode=mode)
     if not normalized:
         return _unavailable_layer_summary(
             spec,
             reason="stage_timing_records_empty",
             evidence_path=evidence_path,
+            input_mode=mode,
         )
 
     stages: dict[str, dict[str, Any]] = {}
@@ -401,20 +489,55 @@ def summarize_stage_timing_records(
         else None
     )
     violation_count = sum(record["budget_exceeded"] for record in normalized)
+    case_summaries = (
+        _case_timing_summaries(normalized, spec=spec)
+        if mode == CASE_AWARE_SUITE_TIMING_MODE
+        else []
+    )
+    case_order = [item["case"] for item in case_summaries]
     return {
         "schema_version": STAGE_TIMING_SCOPE_SUMMARY_SCHEMA_VERSION,
         "availability": "available",
         "unavailable_reason": "",
         "layer": spec.layer,
+        "input_mode": mode,
+        "case_aware": mode == CASE_AWARE_SUITE_TIMING_MODE,
+        "episode_continuity_assumed": mode == SINGLE_EPISODE_TIMING_MODE,
+        "case_metadata_fields": (
+            list(CASE_AWARE_TIMING_METADATA_FIELDS)
+            if mode == CASE_AWARE_SUITE_TIMING_MODE
+            else []
+        ),
+        "case_count": len(case_summaries) if case_summaries else None,
+        "case_order": case_order,
+        "case_summaries": case_summaries,
         "source_schema_version": spec.schema_version,
         "scope": spec.scope,
         "total_stage_name": spec.total_stage_name,
         "evidence_path": str(evidence_path) if evidence_path is not None else None,
         "record_count": len(normalized),
-        "frame_index_first": normalized[0]["frame_index"],
-        "frame_index_last": normalized[-1]["frame_index"],
-        "timestamp_first_s": normalized[0]["timestamp_s"],
-        "timestamp_last_s": normalized[-1]["timestamp_s"],
+        "frame_index_first": (
+            normalized[0]["frame_index"]
+            if mode == SINGLE_EPISODE_TIMING_MODE
+            else None
+        ),
+        "frame_index_last": (
+            normalized[-1]["frame_index"]
+            if mode == SINGLE_EPISODE_TIMING_MODE
+            else None
+        ),
+        "timestamp_first_s": (
+            normalized[0]["timestamp_s"]
+            if mode == SINGLE_EPISODE_TIMING_MODE
+            else None
+        ),
+        "timestamp_last_s": (
+            normalized[-1]["timestamp_s"]
+            if mode == SINGLE_EPISODE_TIMING_MODE
+            else None
+        ),
+        "pooled_across_cases": mode == CASE_AWARE_SUITE_TIMING_MODE,
+        "cross_case_total_ms": None,
         "total": _distribution([record["total_ms"] for record in normalized]),
         "unattributed": _distribution(
             [record["unattributed_ms"] for record in normalized]
@@ -434,10 +557,33 @@ def summarize_stage_timing_records(
 def evaluate_stage_timing_inputs(inputs: StageTimingInputs) -> dict[str, Any]:
     """Evaluate both timing paths while preserving their nested scope boundary."""
 
+    mode = _normalize_stage_timing_input_mode(inputs.input_mode)
     layers = {
-        "main_bus": _evaluate_path(inputs.main_bus, spec=_MAIN_BUS_SPEC),
-        "control_tick": _evaluate_path(inputs.control_tick, spec=_CONTROL_TICK_SPEC),
+        "main_bus": _evaluate_path(
+            inputs.main_bus, spec=_MAIN_BUS_SPEC, input_mode=mode
+        ),
+        "control_tick": _evaluate_path(
+            inputs.control_tick, spec=_CONTROL_TICK_SPEC, input_mode=mode
+        ),
     }
+    case_manifest_match: bool | None = None
+    if mode == CASE_AWARE_SUITE_TIMING_MODE:
+        available_layers = [
+            layer
+            for layer in layers.values()
+            if layer["availability"] == "available"
+        ]
+        if len(available_layers) == 2:
+            manifests = [
+                [_case_key(item) for item in layer["case_order"]]
+                for layer in available_layers
+            ]
+            case_manifest_match = manifests[0] == manifests[1]
+            if not case_manifest_match:
+                raise StageTimingValidationError(
+                    "case-aware timing layer manifests differ between main_bus "
+                    "and control_tick"
+                )
     available_count = sum(
         layer["availability"] == "available" for layer in layers.values()
     )
@@ -453,6 +599,11 @@ def evaluate_stage_timing_inputs(inputs: StageTimingInputs) -> dict[str, Any]:
             "" if available_count else "stage_timing_artifacts_unavailable"
         ),
         "offline_only": True,
+        "input_mode": mode,
+        "case_aware": mode == CASE_AWARE_SUITE_TIMING_MODE,
+        "case_manifest_match": case_manifest_match,
+        "cross_case_continuity_prohibited": mode == CASE_AWARE_SUITE_TIMING_MODE,
+        "cross_case_total_ms": None,
         "cross_layer_aggregation_prohibited": True,
         "cross_layer_total_ms": None,
         "available_layer_count": available_count,
@@ -477,6 +628,8 @@ def stage_timing_csv_rows(summary: Mapping[str, Any]) -> list[dict[str, Any]]:
             "layer": layer_name,
             "scope": layer.get("scope"),
             "source_schema_version": layer.get("source_schema_version"),
+            "input_mode": layer.get("input_mode"),
+            "case_count": layer.get("case_count"),
             "evidence_path": layer.get("evidence_path"),
             "unavailable_reason": layer.get("unavailable_reason"),
         }
@@ -529,6 +682,7 @@ def render_stage_timing_markdown(
         f"![分阶段延迟]({plot_name})",
         "",
         "main bus 是 control tick 的内部组成部分，两层同名或嵌套耗时禁止相加；本报告不发布跨层总延迟。",
+        f"输入模式：`{_format_value(summary.get('input_mode'))}`。case-aware suite 仅按 case 池化耗时分布，不把多个 episode 拼成连续时间轴，`cross_case_total_ms` 固定为 `null`。",
         "",
     ]
     layers = summary.get("layers", {})
@@ -554,6 +708,7 @@ def render_stage_timing_markdown(
         lines.extend(
             [
                 f"- schema/scope：`{layer.get('source_schema_version')}` / `{layer.get('scope')}`。",
+                f"- 输入模式：`{layer.get('input_mode')}`；case count：`{_format_value(layer.get('case_count'))}`；跨 case 连续性：`{str(bool(layer.get('episode_continuity_assumed'))).lower()}`。",
                 f"- 帧数：`{layer.get('record_count')}`；总延迟 mean/P95/max：`{_format_value(_mapping_get(total, 'mean_ms'))}/{_format_value(_mapping_get(total, 'p95_ms'))}/{_format_value(_mapping_get(total, 'max_ms'))}` ms。",
                 f"- 预算 mean：`{_format_value(_mapping_get(budget, 'mean_ms'))}` ms；违例：`{layer.get('budget_violation_count')}/{layer.get('record_count')}`，比例 `{_format_value(layer.get('budget_violation_rate'))}`。",
                 f"- 主导阶段：`{_format_value(layer.get('dominant_stage'))}`，mean `{_format_value(layer.get('dominant_stage_mean_ms'))}` ms；error records：`{layer.get('error_record_count')}`。",
@@ -588,12 +743,14 @@ def _evaluate_path(
     path: str | Path | None,
     *,
     spec: _TimingScopeSpec,
+    input_mode: str,
 ) -> dict[str, Any]:
     if path is None:
         return _unavailable_layer_summary(
             spec,
             reason="stage_timing_artifact_not_provided",
             evidence_path=None,
+            input_mode=input_mode,
         )
     source_path = Path(path)
     if not source_path.exists():
@@ -601,12 +758,18 @@ def _evaluate_path(
             spec,
             reason="stage_timing_artifact_missing",
             evidence_path=source_path,
+            input_mode=input_mode,
         )
-    records = load_stage_timing_jsonl(source_path, expected_layer=spec.layer)
+    records = load_stage_timing_jsonl(
+        source_path,
+        expected_layer=spec.layer,
+        input_mode=input_mode,
+    )
     return summarize_stage_timing_records(
         records,
         expected_layer=spec.layer,
         evidence_path=source_path,
+        input_mode=input_mode,
     )
 
 
@@ -615,12 +778,24 @@ def _unavailable_layer_summary(
     *,
     reason: str,
     evidence_path: str | Path | None,
+    input_mode: str = SINGLE_EPISODE_TIMING_MODE,
 ) -> dict[str, Any]:
     return {
         "schema_version": STAGE_TIMING_SCOPE_SUMMARY_SCHEMA_VERSION,
         "availability": "unavailable",
         "unavailable_reason": reason,
         "layer": spec.layer,
+        "input_mode": input_mode,
+        "case_aware": input_mode == CASE_AWARE_SUITE_TIMING_MODE,
+        "episode_continuity_assumed": input_mode == SINGLE_EPISODE_TIMING_MODE,
+        "case_metadata_fields": (
+            list(CASE_AWARE_TIMING_METADATA_FIELDS)
+            if input_mode == CASE_AWARE_SUITE_TIMING_MODE
+            else []
+        ),
+        "case_count": None,
+        "case_order": [],
+        "case_summaries": [],
         "source_schema_version": spec.schema_version,
         "scope": spec.scope,
         "total_stage_name": spec.total_stage_name,
@@ -630,6 +805,8 @@ def _unavailable_layer_summary(
         "frame_index_last": None,
         "timestamp_first_s": None,
         "timestamp_last_s": None,
+        "pooled_across_cases": input_mode == CASE_AWARE_SUITE_TIMING_MODE,
+        "cross_case_total_ms": None,
         "total": _distribution([]),
         "unattributed": _distribution([]),
         "budget": _distribution([]),
@@ -658,6 +835,113 @@ def _validate_record_order(records: Sequence[Mapping[str, Any]], *, layer: str) 
             )
         previous_frame = frame_index
         previous_timestamp = timestamp_s
+
+
+def _validate_timing_record_order(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    layer: str,
+    input_mode: str,
+) -> None:
+    if input_mode == SINGLE_EPISODE_TIMING_MODE:
+        _validate_record_order(records, layer=layer)
+        return
+
+    completed_cases: set[tuple[str, str, str, int]] = set()
+    metadata_by_case_id: dict[str, tuple[str, str, str, int]] = {}
+    current_case: tuple[str, str, str, int] | None = None
+    previous_frame: int | None = None
+    previous_timestamp: float | None = None
+    for position, record in enumerate(records, start=1):
+        case_key = _case_key(record)
+        case_id = case_key[0]
+        previous_metadata = metadata_by_case_id.setdefault(case_id, case_key)
+        if previous_metadata != case_key:
+            raise StageTimingValidationError(
+                f"{layer} record {position}: conflicting metadata for case_id "
+                f"{case_id!r}"
+            )
+        if case_key != current_case:
+            if current_case is not None:
+                completed_cases.add(current_case)
+            if case_key in completed_cases:
+                raise StageTimingValidationError(
+                    f"{layer} record {position}: case metadata reappeared after case switch"
+                )
+            current_case = case_key
+            previous_frame = None
+            previous_timestamp = None
+
+        frame_index = int(record["frame_index"])
+        timestamp_s = float(record["timestamp_s"])
+        if previous_frame is not None and frame_index <= previous_frame:
+            raise StageTimingValidationError(
+                f"{layer} record {position}: duplicate or out-of-order frame_index "
+                "within case"
+            )
+        if previous_timestamp is not None and timestamp_s <= previous_timestamp:
+            raise StageTimingValidationError(
+                f"{layer} record {position}: duplicate or out-of-order timestamp_s "
+                "within case"
+            )
+        previous_frame = frame_index
+        previous_timestamp = timestamp_s
+
+
+def _case_key(record: Mapping[str, Any]) -> tuple[str, str, str, int]:
+    return (
+        str(record["case_id"]),
+        str(record["family"]),
+        str(record["profile"]),
+        int(record["seed"]),
+    )
+
+
+def _case_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {field: record[field] for field in CASE_AWARE_TIMING_METADATA_FIELDS}
+
+
+def _case_timing_summaries(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    spec: _TimingScopeSpec,
+) -> list[dict[str, Any]]:
+    groups: list[list[Mapping[str, Any]]] = []
+    current_key: tuple[str, str, str, int] | None = None
+    for record in records:
+        key = _case_key(record)
+        if key != current_key:
+            groups.append([])
+            current_key = key
+        groups[-1].append(record)
+
+    result: list[dict[str, Any]] = []
+    for group in groups:
+        episode_records = [
+            {field: record[field] for field in _REQUIRED_RECORD_FIELDS}
+            for record in group
+        ]
+        episode = summarize_stage_timing_records(
+            episode_records,
+            expected_layer=spec.layer,
+            input_mode=SINGLE_EPISODE_TIMING_MODE,
+        )
+        result.append(
+            {
+                "case": _case_metadata(group[0]),
+                "record_count": episode["record_count"],
+                "frame_index_first": episode["frame_index_first"],
+                "frame_index_last": episode["frame_index_last"],
+                "timestamp_first_s": episode["timestamp_first_s"],
+                "timestamp_last_s": episode["timestamp_last_s"],
+                "total": episode["total"],
+                "budget_violation_count": episode["budget_violation_count"],
+                "budget_violation_rate": episode["budget_violation_rate"],
+                "error_record_count": episode["error_record_count"],
+                "dominant_stage": episode["dominant_stage"],
+            }
+        )
+    return result
 
 
 def _scope_spec(layer: str) -> _TimingScopeSpec:
@@ -823,6 +1107,8 @@ _CSV_FIELDS = (
     "layer",
     "scope",
     "source_schema_version",
+    "input_mode",
+    "case_count",
     "row_type",
     "stage_name",
     "availability",

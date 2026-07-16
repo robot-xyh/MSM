@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 from d6_evaluation_metrics import (  # noqa: E402
     P1AcceptanceInputs,
     P1AcceptanceReportGenerator,
+    STAGE_TIMING_INPUT_MODES,
 )
 
 
@@ -46,6 +47,12 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="control-tick-stage-timing-v1 JSONL produced by SimpleFlight",
     )
+    parser.add_argument(
+        "--stage-timing-input-mode",
+        choices=STAGE_TIMING_INPUT_MODES,
+        default="single_episode",
+        help="strict single episode or case-aware merged suite envelope",
+    )
     return parser
 
 
@@ -67,6 +74,7 @@ def main() -> int:
             d7_trend_coast=args.d7_trend_summary,
             main_stage_timings=args.main_stage_timings,
             control_tick_stage_timings=args.control_tick_stage_timings,
+            stage_timing_input_mode=args.stage_timing_input_mode,
         ),
     )
     for name, path in outputs.items():

@@ -1,5 +1,32 @@
 # D6 文档索引
 
+2026-07-15 已同步 legacy 1.0 provenance 兼容与真实三档报告。fallback 只在路径输入且 suite/cases/
+rows 全无显式 ClockSpeed 时读取 20/20 sibling generated settings；不猜目录名、不默认 1.0，缺文件/
+缺键/冲突/非法值 fail closed。真实 1.0/0.2/0.1 共 60 case、20 个跨档配对，合同 56 match/4
+mismatch，truth identity/state 全 0；candidate 0.1/0.2 的受影响 aggregate unavailable。输出见
+`../../airsim_runtime/outputs/m5n2_clock_speed_comparison_20260715/`。ClockSpeed 专项 `18 passed`、D6
+全量 `272 passed`，源组合 hash 前后不变。
+
+2026-07-15 已同步 0.1 P1 NameError 紧急回归：timing mode helper 前置并统一命名；新增 20-case 双层
+case-aware evaluator 测试。真实 0.1 两层各 4036 records/20 case 的 P1 v6 只读报告生成成功，输入
+hash 不变。timing 专项 `28 passed`、D6 全量 `264 passed`。该段记录紧急修复当时状态；真实三档
+comparator 随后已完成，见顶部同步项。
+
+2026-07-15 已同步 case-aware merged suite timing 与真实 ClockSpeed=0.2 证据。P1 v6 显式区分
+`single_episode/case_aware_suite`，后者只接受四个 case metadata、逐 case 单调并允许边界重置；两层
+各 6567 records/20 case 的只读复测通过，禁止跨 case 伪连续和 main/control 相加。ClockSpeed
+comparator v2 冻结 M5N2 每 case `3/2/1`，真实 0.2 审计为 18 match/2 mismatch（candidate seed006/
+seed009）；reserve 成功不计 active-primary。该 0.2 阶段专项 `27/10 passed`、当时全量
+`263 passed`。真实 0.1 P1 状态见顶部，不预写三档结论。
+
+2026-07-15 已同步 M5N2 ClockSpeed=`1.0/0.2/0.1` 三档离线比较接口。每档强制
+baseline/candidate 各 seed 1-10，并按 `case_id/profile/seed` 跨档配对；ClockSpeed 来自 suite/case
+persisted provenance，不从目录名推断。报告覆盖三层物理结果、第二 primary、最终锁/共识、
+collision stop、独立 wall timing、归一化 simulated time/tick 和 truth identity/state availability。
+确定性 fixture 为三档各 20 case、总计 60 case，专项 `8 passed`、D6 全量 `254 passed`。
+运行前接口记录已由本页顶部更新：真实 0.2/0.1 均已完成 P1 复核；算法见 `ALGORITHM_AND_IMPLEMENTATION.md`，
+接线见 `../AIRSIM_INTEGRATION_PLAN.md`，测试证据见 `../EXPERIMENT_REPORT.md` 1.7 节。
+
 2026-07-15 已同步真实 AirSim M5N2 20-case 复核。baseline/candidate 各 10 seed；actual execution
 为 `20/20` available，正式物理 pair/target/coalition=`12/60`、`12/40`、`0/20`，在线 truth
 identity/state 均为 0。第二 primary 七阶段分母全部 available，但 5 m physical=`0/20`。两层
@@ -19,7 +46,7 @@ required member 通过阶段只称 cooperative target-stage diagnostic。第二 
 
 2026-07-15 已同步两层分阶段延迟能力：模块原理说明嵌套域与 availability，算法文档说明严格
 校验、P95、预算和 dominant stage；模块根目录 AirSim 计划与实验报告记录接入和测试证据。代码
-可观测性已闭合；M5N2 20-case 已确认预算不达标，正式 case-aware 接线和优化复验仍为 P1。
+可观测性已闭合；M5N2 20-case 已确认预算不达标，正式 case-aware 接线已关闭，优化复验仍为 P1。
 
 2026-07-14 actual target-state freshness/stale 正式指标链已关闭：canonical v2 强制消费最终
 command 的六个 freshness 字段，formal validator 从 SHA256 已验证 CSV 复算，case/pooled
