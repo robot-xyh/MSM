@@ -5,7 +5,22 @@
 
 ---
 
-## 0. 当前权威状态（2026-07-15）
+## 0. 当前权威状态（2026-07-16）
+
+- D1 已实现 `sensor_observation_from_local_image_track()`：只把 `measured` 本地图像航迹转换为
+  EO/pixel `SensorObservation`；`lost` 返回 `None`，不复用旧 center/bbox/covariance。
+- 适配边界保真双时间戳、2×2 pixel covariance、confidence、quality flags 和 visible/
+  infrared 波段；缺失、非法或非半正定 covariance 以及 global/truth identity 均 fail closed。
+- sensor/stream/local epoch/local ID 组成 namespaced `source_track_key`。它与量测时刻共同形成
+  可去重 lineage；被接受视觉来源仅累积到 `GlobalTrack.metadata.source_track_ids`，绝不作为
+  `global_track_id`。
+- 2026-07-16 构造合同场景无随机 seed；专项 `13/13`、D1 全量 `111/111`。验收阈值为合法
+  字段逐项保真、非法 covariance/identity 100% 拒绝、lost 0 输出、来源累积且 global ID
+  不变。本轮未运行 AirSim，不提供新的 RMSE/NIS/NEES 或 runtime timing 结论。
+- main 后续负责把真实 producer 接到该 API，并验证 backend/batch audit、相机模型和重复投递
+  行为；D1 的适配器完成不等价于跨模块运行时接线已完成。
+
+### 0.1 历史权威状态（2026-07-15）
 
 本节覆盖后文按日期保留的历史阶段结论；历史内容用于说明实现演进，不代表当前 GAP 状态。
 
@@ -24,7 +39,7 @@
   复跑多 seed 预算，再单独建设带 availability 的 NIS/NEES/RMSE 标定；不得通过放宽时间或
   covariance 合同换性能。
 
-### 0.1 历史 Dense Crossing 权威状态（2026-07-13）
+### 0.2 历史 Dense Crossing 权威状态（2026-07-13）
 
 - main 已完成 strict dense crossing 的真实 AirSim 采集：nominal 4 m 与 tight 2 m 各
   20 seeds，共 40 个 episode，每个 episode 51 帧、5 个目标。

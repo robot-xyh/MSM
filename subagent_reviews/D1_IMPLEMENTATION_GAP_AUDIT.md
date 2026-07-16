@@ -4,9 +4,23 @@
 **范围**: 对照 `subagent_reviews/D1_SENSOR_FUSION_REVIEW_AND_PLAN.md`、`C_UAS_MAINSTREAM_SOLUTIONS_AND_DIFFICULTIES.md`、`research_modules/d1_sensor_fusion` 源码和测试，审计共识算法、开源方案和当前实现差距。  
 **边界**: 本审计只覆盖离线科研仿真、数据合同、传感器观测、航迹融合和评估接口；不涉及真实飞控、硬件驱动、火控、毁伤或自动处置。
 
-**更新时间**: 2026-07-15。
+**更新时间**: 2026-07-16。
 
-## 0. 当前权威 GAP 增量（2026-07-15）
+## 0. 当前权威 GAP 增量（2026-07-16）
+
+| GAP/合同 | 当前状态 | 2026-07-16 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| `LocalImageTrackObservation` 到 D1 EO 合同 | D1-owned 已关闭 | `measured -> eo/pixel`，`lost -> None`；双时间戳、2×2 covariance、confidence、quality flags 和 spectral band 保真 | main/runtime producer 接线和真实 episode 消费验证 |
+| 非法视觉 covariance | P0 边界持续通过 | 缺失、non-finite、non-symmetric、wrong-shape、non-PSD 均在适配边界拒绝 | 保持上游直接提供有来源的 pixel covariance，不增加在线默认回填 |
+| 本地视觉来源与全局身份隔离 | D1-owned 已关闭 | global/truth identity（含嵌套键）拒绝；`source_track_key` 只累积为 `source_track_ids`，不重绑定 global ID | main/D2/D5 继续保持本地来源键与 canonical/global ID 分离 |
+| 重复来源 lineage | D1-owned 已关闭 | sensor/stream/epoch/local ID/measurement time 形成确定性 ID 和显式 lineage；重复样本 key 相同 | 真实 runtime 重投递计数仍由 main 验证 |
+| 2026-07-16 验收 | 通过 | 无随机 seed；专项 `13 passed`，D1 全量 `111 passed` | 本轮无 AirSim、RMSE/NIS/NEES 或时延预算新证据 |
+
+因此本轮关闭的是此前缺失的模块中立本地图像航迹适配层及其 D1 元数据传播，不关闭真实
+AirSim producer wiring、相机标定、像素 covariance 标定或 100 ms 运行预算 P1。默认 AirSim
+检测源、launch/reset/episode 顺序和图片保存策略均未改变。
+
+## 0.1 历史权威 GAP 增量（2026-07-15）
 
 本节覆盖后文按日期保留的历史状态，不删除既有实现与验证记录。
 

@@ -1,10 +1,27 @@
 # 第一研究模块（D1）异构传感器融合原理与当前实现
 
-**状态日期：2026-07-15**
+**状态日期：2026-07-16**
 
 **适用范围：科研仿真、离线回放与接口验证**
 
-## 当前权威增量（2026-07-15）
+## 当前权威增量（2026-07-16）
+
+D1 新增模块中立本地图像航迹适配边界。`LocalImageTrackObservation` 只有在状态为
+`measured` 时才生成 `SensorObservation(modality="eo", frame_id="pixel")`；`lost` 不生成
+任何观测，因而旧 center、bbox 或 covariance 不能作为新量测重入滤波。visible 和 infrared
+均保持内部 EO 模态，波段写入 `metadata.spectral_band`。
+
+适配器原样复制 measurement/arrival 双时间戳、2×2 pixel covariance、confidence 和质量
+标志，并在 D1 边界再次检查形状、有限性、对称性与半正定性。sensor、stream、local epoch、
+local track ID 和量测时刻形成确定性本地 observation ID 与可去重 source lineage。namespaced
+`source_track_key` 只作为来源证据累积到 `GlobalTrack.metadata.source_track_ids`，不能成为或
+覆盖 `global_track_id`。metadata 保留 bbox/center、backend/batch 等在线安全审计字段，但含
+global/truth identity 的顶层或嵌套键直接拒绝。
+
+2026-07-16 无随机 seed 的构造合同回归为专项 13 项和 D1 全量 111 项全部通过。该证据只证明
+API 合同与融合元数据传播，不证明真实 AirSim 接线、相机标定、像素噪声标定或实时预算。
+
+## 历史权威增量（2026-07-15）
 
 真实 AirSim M5N2 已完成 baseline/candidate 各 10 case，共 20 case。在线控制链中的
 identity/state truth use 均为 0，说明本轮没有以 AirSim actor/truth 身份或真值状态替代 D1

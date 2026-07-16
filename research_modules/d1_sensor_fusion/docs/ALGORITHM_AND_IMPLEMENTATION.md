@@ -1,12 +1,38 @@
 # 第一研究模块：多传感器融合与目标配准算法与实施说明
 
-> 文档日期：2026-07-15
+> 文档日期：2026-07-16
 >
 > 适用范围：离线科研仿真、受治理回放和系统接口验证
 >
 > 实现依据：当前第一研究模块代码、`README.md`、`PLAN.md`、模块原理文档和系统总汇总
 
-## 当前权威增量（2026-07-15）
+## 当前权威增量（2026-07-16）
+
+本轮新增 `local_image_track.py` 的保守适配算法。输入是 main-owned
+`LocalImageTrackObservation`，输出是 `SensorObservation | None`：
+
+```text
+track_state == lost
+  -> None
+
+track_state == measured
+  -> revalidate timestamps/confidence/center/bbox/2x2 covariance/metadata identity
+  -> SensorObservation(modality=eo, frame_id=pixel)
+  -> explicit lineage=(local_image_track, source_track_key, measurement_time)
+```
+
+visible 与 infrared 不拆成新的内部 modality，而是统一使用 EO 量测模型，并在
+`metadata.spectral_band` 区分。默认 observation ID 显式编码 sensor、stream、local epoch、
+local track ID 和量测时刻；因此同一本地样本重投递生成同一 ID/lineage，新量测时刻仍保持
+唯一。输入 metadata 深复制并保留 backend、batch 与相机等在线审计字段；global/truth identity
+键在任意嵌套层级触发拒绝。
+
+融合器接受 EO 更新后，将 namespaced `source_track_key` 去重累积到
+`GlobalTrack.metadata.source_track_ids`。该集合用于来源审计而非规范身份，算法不读取它来
+生成、选择或改写 `global_track_id`。2026-07-16 的无随机 seed 构造验证为专项 13/13、D1
+全量 111/111；没有运行 AirSim，也没有新增 RMSE/NIS/NEES 或 runtime 性能结论。
+
+## 历史权威增量（2026-07-15）
 
 最新真实 AirSim 证据覆盖 M5N2 baseline 10 case 和 candidate 10 case，共 20 case、3,805 个
 main-bus tick。D1 fusion 的 mean/P95/max 为 `320.00/451.46/1234.88 ms`，明显主导
@@ -88,6 +114,7 @@ D1 的主要实现文件如下。
 | `src/d1_sensor_fusion/types.py` | 观测、航迹、质量、健康、协同定位和回放摘要数据合同 |
 | `src/d1_sensor_fusion/motion.py` | 常速度状态转移、过程噪声和角度残差处理 |
 | `src/d1_sensor_fusion/observations.py` | 雷达、声学、EO、合成 LiDAR 观测模型和默认协方差 |
+| `src/d1_sensor_fusion/local_image_track.py` | 本地图像航迹到 EO/pixel 观测的 fail-closed 适配与来源谱系 |
 | `src/d1_sensor_fusion/ekf.py` | EKF 预测、数值雅可比、Joseph 协方差更新 |
 | `src/d1_sensor_fusion/fusion.py` | `FusionAdapter`、关联、OOSM 回放、分级和健康审计 |
 | `src/d1_sensor_fusion/replay.py` | JSONL/CSV 读写、版本化回放和受治理序列化 |

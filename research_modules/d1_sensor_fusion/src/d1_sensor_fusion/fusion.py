@@ -45,6 +45,10 @@ OBSERVATION_METADATA_LINEAGE_KEYS = (
     "detection_metadata",
     "detection_id",
     "local_track_id",
+    "local_epoch",
+    "source_track_key",
+    "spectral_band",
+    "stream_id",
     "object_id_offline_only",
     "truth_object_id_offline_only",
     "recon_cue",
@@ -1364,6 +1368,14 @@ class FusionAdapter:
             existing = set(record.metadata.get("source_node_ids", ()))
             existing.add(str(source_node_id))
             record.metadata["source_node_ids"] = tuple(sorted(existing))
+        if observation.modality == "eo":
+            source_track_key = observation.metadata.get("source_track_key")
+            if source_track_key is not None:
+                source_track_key = str(source_track_key).strip()
+                if source_track_key:
+                    existing = set(record.metadata.get("source_track_ids", ()))
+                    existing.add(source_track_key)
+                    record.metadata["source_track_ids"] = tuple(sorted(existing))
 
     def _to_global_track(self, record: TrackRecord) -> GlobalTrack:
         self._limit_record_covariance(record)

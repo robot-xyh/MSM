@@ -2,7 +2,25 @@
 
 Offline research module for radar, acoustic, EO, and optional synthetic lidar heterogeneous observation fusion. The module estimates six-state NED `GlobalTrack` objects with covariance.
 
-## 当前权威增量（2026-07-15）
+## 当前权威增量（2026-07-16）
+
+- 顶层 API 新增 `sensor_observation_from_local_image_track()`，把 main-owned
+  `LocalImageTrackObservation` 保守适配为 D1 `SensorObservation | None`。只有 `measured`
+  输出 `modality="eo"`、`frame_id="pixel"`；`lost` 始终返回 `None`，不会把旧像素再次送入融合。
+- 适配器逐字段复制 measurement/arrival 双时间戳、2×2 pixel covariance、confidence 和
+  quality flags；可见光/红外统一进入 EO 模态，同时以 `metadata.spectral_band` 保留波段。
+  缺失、非有限、非对称、错误形状或非半正定 covariance 在 D1 边界 fail closed。
+- metadata 保留 namespaced sensor/stream/epoch/local track、bbox/center 和 backend/batch 等
+  在线审计字段；global/truth identity（含嵌套键）被拒绝。未显式传入 observation ID 时，ID
+  由 sensor/stream/epoch/local track/measurement time 确定性生成；显式 source lineage 可对
+  重复投递去重。
+- 被接受的视觉观测把 `source_track_key` 去重累积到
+  `GlobalTrack.metadata.source_track_ids`，但不会把本地来源键写成或重绑定
+  `global_track_id`。
+- 2026-07-16 无随机 seed 的构造合同回归为专项 `13 passed`、D1 全量 `111 passed`。本轮未
+  启动 AirSim，未改变默认检测源、launch/reset/episode 顺序，也未生成新的 RMSE/NIS/NEES。
+
+## 历史系统增量（2026-07-15）
 
 - main 已完成真实 AirSim M5N2 baseline 10 case 与 candidate 10 case，共 20 case；本轮
   在线 `truth_identity` 与 `truth_state` 使用计数均为 0。

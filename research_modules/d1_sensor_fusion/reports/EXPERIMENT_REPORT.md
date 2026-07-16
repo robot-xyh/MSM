@@ -1,6 +1,30 @@
 # D1 Sensor Fusion Offline Experiment Report
 
-## 2026-07-15 真实 AirSim M5N2 权威增量
+## 2026-07-16 Local Image Track 合同回归
+
+本轮是无随机 seed 的 API/合同构造测试，不是 AirSim episode 或传感器精度实验。13 项专项
+覆盖 visible、infrared、lost、measurement/arrival 双时间戳、2×2 covariance 深复制、
+confidence/quality flags、bbox/center 与 backend/batch metadata、确定性 observation ID、可去重
+lineage、多个视觉来源累积，以及 global/truth identity 拒绝。另通过构造后变异验证 D1 边界会
+拒绝缺失、non-finite 和 non-PSD covariance；lost 即使被错误附上旧像素也保持 0 输出。
+
+接受阈值与结果：
+
+| 验收项 | 阈值 | 结果 |
+| --- | --- | --- |
+| 合法可见光/红外字段保真 | 所有指定字段逐项相等 | 通过 |
+| lost 旧量测抑制 | 输出数为 0 | 通过 |
+| 非法 covariance | 100% fail closed | 通过 |
+| global/truth identity | 顶层与嵌套注入 100% 拒绝 | 通过 |
+| source lineage | 重复样本 key 相同；不同来源集合累积 | 通过 |
+| global ID 边界 | 接受视觉来源后 global ID 不变且不等于 source key | 通过 |
+| 专项/全量回归 | 13/13；111/111 | 通过 |
+
+本轮未启动 AirSim，AirSim 默认 `simGetDetections`/detector box 输入、launch/reset/episode 顺序
+和截图策略均未改变；seed、样本帧数、RMSE、NIS、NEES 和 runtime latency 不适用。真实
+producer 接线、相机模型与 pixel covariance 标定仍需 main 后续 episode 证据。
+
+## 2026-07-15 真实 AirSim M5N2 历史权威增量
 
 本节是当前最新系统证据；后文 3-target RMSE 表和 2026-07-14 专项均为独立历史实验，分母和
 用途不能混用。

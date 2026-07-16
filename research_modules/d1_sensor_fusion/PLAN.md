@@ -1,6 +1,28 @@
 # D1 多传感器融合与目标配准实施计划
 
-## 当前权威增量与后续计划（2026-07-15）
+## 当前权威增量与后续计划（2026-07-16）
+
+`LocalImageTrackObservation -> SensorObservation | None` 的 D1-owned 合同适配已完成：
+`measured` 严格转换为 EO/pixel，`lost` 不产生量测；双时间戳、2×2 covariance、confidence、
+quality flags、visible/infrared 波段和在线安全审计 metadata 均保真。默认 observation ID 与
+source lineage 由 sensor/stream/epoch/local ID/量测时刻确定，重复投递可去重。视觉来源只以
+namespaced `source_track_key` 累积到 `GlobalTrack.metadata.source_track_ids`，不参与
+`global_track_id` 生成或重绑定。
+
+本轮后续计划状态：
+
+1. **D1 合同项已关闭**：适配器对缺失/非法/非半正定 covariance 和 global/truth identity
+   fail closed；lost 即使被外部错误附上旧像素也返回 `None`。
+2. **验证已完成**：2026-07-16，无随机 seed，专项 13 项、D1 全量 111 项全部通过；接受阈值
+   是合法可见光/红外字段逐项保真、非法 covariance/identity 100% 拒绝、lost 0 输出、来源
+   集合累积且 global ID 不变。
+3. **仍属 main 的集成项**：把 producer 输出接到该 API、验证真实运行时 batch/backend
+   metadata 和相机模型，并在 AirSim episode 中确认重复投递计数；这些尚未由本轮 D1 单测
+   证明。
+4. **AirSim 默认路径不变**：本轮不改变 `simGetDetections`/detector box 来源、launch/reset、
+   episode 编排或截图策略，也不新增精度/性能证据。
+
+## 历史权威增量与后续计划（2026-07-15）
 
 真实 AirSim M5N2 已完成 baseline/candidate 各 10 case，共 20 case。在线 identity/state truth
 使用均为 0；3,805 个 main-bus tick 中 D1 fusion mean/P95/max 为

@@ -46,6 +46,7 @@ from .long_replay import (
     build_long_replay_scenario,
     summarize_long_replay,
 )
+from .local_image_track import sensor_observation_from_local_image_track
 from .observations import RadarCovarianceConfig
 from .online_anonymization import (
     anonymize_online_observations,
@@ -175,6 +176,7 @@ __all__ = [
     "run_p2_isolated_benchmark",
     "sensor_observation_from_csv_row",
     "sensor_observation_from_jsonl_record",
+    "sensor_observation_from_local_image_track",
     "sensor_observation_to_replay_record",
     "serialize_governed_replay",
     "serialize_offline_governed_replay",
