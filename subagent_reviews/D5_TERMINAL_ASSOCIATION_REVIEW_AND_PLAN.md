@@ -1,5 +1,25 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-16 人工记录局部观测适配器审查
+
+D5 已在离线 manual tracker 子模块增加公开转换器，把人工轨迹逐帧记录转为
+`LocalImageTrackObservation`，但不把该记录直接注册到任何 GlobalTrack。输出保留
+camera-local ID、measurement/arrival timestamp、frame、backend 与连续 measured
+history；measured 的 bbox 为 `xyxy` 并携带现有自适应像素协方差，lost 不携带
+center/bbox/covariance 且 confidence 为 0。identity audit 在转换前执行，重复量测
+大于 0 时整批拒绝。
+
+包边界审查确认 `manual_video_tracker` 不再由 D5 根包导出或强制加载；离线 CLI 与测试
+显式导入子模块。该变化减少默认 AirSim/D5 包导入对离线视频依赖的耦合，不改变
+CSRT、KCF、`bright_hungarian`、AirSim detect-first、TerminalAssociation 或 D7 gate。
+输出不包含 `global_track_id`，local ID 仍不能替代中心身份。
+
+2026-07-16 验证使用既有 95 帧五目标记录 475 条，得到
+`470 measured / 5 lost`、重复量测 0；确定性回归覆盖协方差、双时间戳、
+infrared、`xyxy`、历史重置、坍缩拒绝和根包导入边界，D5 全量 `288 passed`。
+接受阈值为零失败、重复坍缩必须 fail closed。该审查只关闭离线合同适配子项；
+通用视频、真实 AirSim、多视角身份与物理拦截证据仍开放。
+
 ## 2026-07-15 人工框选视频轨迹关联审查
 
 D5 已增加独立的人工初始化 local MOT 工具。用户在首帧按顺序框选目标，或用显式 ROI 列表复现；顺序固定形成 `local-001...`。默认跟踪后端是每目标独立 CSRT，KCF 仅为对照。为处理 `b.mp4` 中邻近亮点，工具可增加正对比峰候选和 Hungarian 一对一关联，避免多个 tracker 把同一亮点同时写成有效量测。

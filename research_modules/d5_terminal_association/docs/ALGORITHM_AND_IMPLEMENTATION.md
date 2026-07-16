@@ -1,8 +1,40 @@
 # D5 终端视觉配准与身份认证算法原理与实施文档
 
-**状态日期：2026-07-15**
+**状态日期：2026-07-16**
 
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
+
+## 2026-07-16 `LocalImageTrackObservation` 离线适配实现
+
+公开入口位于
+`d5_terminal_association.manual_video_tracker.manual_records_to_local_image_observations`，
+不从 D5 包根重导出。函数接收 `ManualTrackFrameRecord[]` 以及
+`sensor_id`、`stream_id`、`image_size`，可选参数为
+`spectral_band="visible"`、`local_epoch=0`、`arrival_delay_s=0.0`、
+`confidence=1.0`。转换过程为：
+
+1. 固化输入序列并调用 `audit_tracking_identity()`；duplicate count 大于 0 时抛出
+   `ManualVideoTrackingError`，不生成部分 DTO。
+2. 按 `local_track_id` 保存上一 frame 与连续 measured count。只有 frame 连续且上一条
+   也是 measured 时计数加一；lost 或 gap 后下一条 measured 从 1 开始。
+3. measured 将 `bbox=(x,y,w,h)` 转为 `(x,y,x+w,y+h)`，中心转为二维数组，以
+   `w*h` 和 `image_size` 调用 `adaptive_pixel_covariance_px()`，arrival timestamp
+   设置为 `timestamp_s + arrival_delay_s`。
+4. lost 强制 `center_px=None`、`bbox_xyxy=None`、`pixel_covariance=None`、
+   `confidence=0`；metadata 只保留离线 source、frame、image size、
+   tracker/association backend 和连续 measured history。
+
+`LocalImageTrackObservation` 自身继续校验 visible/infrared、双时间戳顺序、
+confidence、协方差形状及 global/truth metadata 禁令。适配器不创建或消费
+`global_track_id`，也不调用 AirSim。包根移除 manual tracker 导入后，默认
+`import d5_terminal_association` 不再无条件加载 manual OpenCV/SciPy 支线；CLI 和
+manual 测试显式导入子模块。
+
+2026-07-16 以既有 `b.mp4` 95 帧、5 local ID、475 条记录做离线复核，结果为
+`470 measured / 5 lost`、duplicate 0。确定性测试覆盖协方差、双时间戳、
+infrared、`xyxy`、连续历史、lost、重复坍缩和屏蔽离线依赖的根包导入；
+D5 全量 `288 passed`，接受阈值为零失败、重复量测整批拒绝。该实现只证明合同转换，
+不证明通用检测/MOT、GlobalTrack 注册、AirSim 接入或终端控制闭环。
 
 ## 2026-07-15 人工视频 local MOT 实现
 

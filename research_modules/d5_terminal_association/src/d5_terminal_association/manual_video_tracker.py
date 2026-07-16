@@ -18,6 +18,10 @@ import cv2
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
+from research_modules.integration_contracts import LocalImageTrackObservation
+
+from .cross_view_registration import adaptive_pixel_covariance_px
+
 
 SUPPORTED_TRACKER_BACKENDS = ("csrt", "kcf")
 SUPPORTED_ASSOCIATION_BACKENDS = ("tracker", "bright_hungarian")
@@ -176,6 +180,139 @@ class ManualVideoTrackingResult:
     output_video_path: Path
     records_csv_path: Path
     summary_json_path: Path
+
+
+def manual_records_to_local_image_observations(
+    records: Sequence[ManualTrackFrameRecord],
+    *,
+    sensor_id: str,
+    stream_id: str,
+    image_size: tuple[int, int],
+    spectral_band: str = "visible",
+    local_epoch: int = 0,
+    arrival_delay_s: float = 0.0,
+    confidence: float = 1.0,
+) -> tuple[LocalImageTrackObservation, ...]:
+    """Convert offline manual-track records to module-neutral local observations.
+
+    The adapter preserves only camera-local identity. It audits the complete
+    input sequence before conversion and rejects the batch if two local tracks
+    collapse onto a duplicate same-frame measurement.
+    """
+
+    normalized_records = tuple(records)
+    identity_audit = audit_tracking_identity(normalized_records)
+    if identity_audit.duplicate_measurement_count > 0:
+        raise ManualVideoTrackingError(
+            "manual record conversion rejected by identity audit: "
+            f"{identity_audit.duplicate_measurement_count} duplicate measurement(s) "
+            f"across {identity_audit.duplicate_measurement_frame_count} frame(s)"
+        )
+
+    normalized_sensor_id = str(sensor_id).strip()
+    normalized_stream_id = str(stream_id).strip()
+    if not normalized_sensor_id or not normalized_stream_id:
+        raise ValueError("sensor_id and stream_id must be non-empty")
+    try:
+        width, height = (int(value) for value in image_size)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("image_size must be a (width, height) pair") from exc
+    normalized_image_size = (width, height)
+    if width <= 0 or height <= 0:
+        raise ValueError("image_size must be positive (width, height)")
+
+    normalized_spectral_band = str(spectral_band).strip().lower()
+    if normalized_spectral_band not in {"visible", "infrared"}:
+        raise ValueError("spectral_band must be 'visible' or 'infrared'")
+    normalized_local_epoch = int(local_epoch)
+    if normalized_local_epoch < 0:
+        raise ValueError("local_epoch must be non-negative")
+    normalized_arrival_delay_s = float(arrival_delay_s)
+    if not math.isfinite(normalized_arrival_delay_s) or normalized_arrival_delay_s < 0.0:
+        raise ValueError("arrival_delay_s must be finite and non-negative")
+    normalized_confidence = float(confidence)
+    if not math.isfinite(normalized_confidence) or not 0.0 <= normalized_confidence <= 1.0:
+        raise ValueError("confidence must be finite and within [0, 1]")
+
+    history_by_local_track: dict[str, tuple[int, int]] = {}
+    observations: list[LocalImageTrackObservation] = []
+    for record in normalized_records:
+        previous_frame, previous_history = history_by_local_track.get(
+            record.local_track_id,
+            (-2, 0),
+        )
+        if record.status == TRACK_STATUS_MEASURED:
+            measured_history = (
+                previous_history + 1
+                if previous_history > 0 and record.frame_index == previous_frame + 1
+                else 1
+            )
+        else:
+            measured_history = 0
+        history_by_local_track[record.local_track_id] = (
+            record.frame_index,
+            measured_history,
+        )
+
+        metadata = {
+            "source": "manual_video_tracker",
+            "frame_index": record.frame_index,
+            "image_size": normalized_image_size,
+            "tracker_backend": record.tracker_backend,
+            "association_backend": record.association_backend,
+            "mot_history_length": measured_history,
+            "continuous_measured_history": measured_history,
+        }
+        arrival_timestamp = record.timestamp_s + normalized_arrival_delay_s
+        if record.status == TRACK_STATUS_LOST:
+            observations.append(
+                LocalImageTrackObservation(
+                    sensor_id=normalized_sensor_id,
+                    stream_id=normalized_stream_id,
+                    local_track_id=record.local_track_id,
+                    local_epoch=normalized_local_epoch,
+                    spectral_band=normalized_spectral_band,
+                    measurement_timestamp=record.timestamp_s,
+                    arrival_timestamp=arrival_timestamp,
+                    center_px=None,
+                    bbox_xyxy=None,
+                    pixel_covariance=None,
+                    confidence=0.0,
+                    track_state=TRACK_STATUS_LOST,
+                    metadata=metadata,
+                )
+            )
+            continue
+
+        if record.bbox is None or record.center is None:  # Defensive for external records.
+            raise ValueError("measured manual records require bbox and center")
+        x, y, bbox_width, bbox_height = record.bbox
+        observations.append(
+            LocalImageTrackObservation(
+                sensor_id=normalized_sensor_id,
+                stream_id=normalized_stream_id,
+                local_track_id=record.local_track_id,
+                local_epoch=normalized_local_epoch,
+                spectral_band=normalized_spectral_band,
+                measurement_timestamp=record.timestamp_s,
+                arrival_timestamp=arrival_timestamp,
+                center_px=np.asarray(record.center, dtype=float),
+                bbox_xyxy=(
+                    float(x),
+                    float(y),
+                    float(x + bbox_width),
+                    float(y + bbox_height),
+                ),
+                pixel_covariance=adaptive_pixel_covariance_px(
+                    float(bbox_width * bbox_height),
+                    normalized_image_size,
+                ),
+                confidence=normalized_confidence,
+                track_state=TRACK_STATUS_MEASURED,
+                metadata=metadata,
+            )
+        )
+    return tuple(observations)
 
 
 @dataclass

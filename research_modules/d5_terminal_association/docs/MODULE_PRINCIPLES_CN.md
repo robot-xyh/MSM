@@ -1,8 +1,36 @@
 # 第五研究模块末端视觉关联（Terminal Association, D5）原理
 
-**状态日期：2026-07-15**
+**状态日期：2026-07-16**
 
 **适用范围：** 本文描述第五研究模块（D5）当前代码、测试和主运行链路已经具备的能力。文中将默认主线、已实现但非默认的辅助/离线能力、尚未实现能力严格分开。计划项不能据此解释为已上线能力。
+
+## 2026-07-16 人工记录到局部图像观测原则
+
+`manual_records_to_local_image_observations()` 是 manual video 离线支线到模块中立
+`LocalImageTrackObservation` 合同的被动适配器。它不执行 GlobalTrack 选择或注册。
+每条输出的身份作用域固定为：
+
+```text
+sensor_id / stream_id / local_epoch / local_track_id
+```
+
+measured 记录保留视频 measurement timestamp，并用显式 `arrival_delay_s` 构造
+arrival timestamp；`xywh=(x,y,w,h)` 转为
+`xyxy=(x,y,x+w,y+h)`，以 bbox 面积和 `image_size` 调用现有
+`adaptive_pixel_covariance_px()` 生成 `2x2` 协方差。逐 local ID 的连续 measured
+history 只在相邻 frame 均 measured 时递增；lost 或 frame gap 后从 1 重新开始。
+lost 输出必须同时满足 center、bbox、covariance 为空且 confidence 为 0。
+
+安全顺序是先对完整输入序列执行 identity audit，再进行任何输出转换。只要存在同帧
+重复中心或超过审计 IoU 阈值的重复量测，就拒绝整批，不能返回部分观测。输出只保留
+tracker/association backend、frame index 和 camera-local ID，不包含
+`global_track_id` 或 truth identity。
+
+该离线子模块不再由 D5 包根强制导入；默认包导入不应因缺少 manual OpenCV/SciPy
+依赖失败。2026-07-16 以既有真实视频 475 条记录复核为
+`470 measured / 5 lost`，重复量测 0；D5 全量 `288 passed`，接受阈值为零失败、
+重复坍缩必须拒绝、lost 不得携带 stale 量测。限制是人工初始化单相机离线记录，
+未接入默认 AirSim、跨视角融合或控制许可。
 
 ## 2026-07-15 人工初始化本地视频轨迹
 

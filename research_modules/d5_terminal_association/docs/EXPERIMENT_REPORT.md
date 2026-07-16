@@ -1,5 +1,30 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-16 人工轨迹局部观测合同复核
+
+本次不重新运行 tracker，也不启动 AirSim。输入为 2026-07-15
+`b.mp4` 五目标实验已生成的 95 帧、475 条 `ManualTrackFrameRecord` 等价记录；
+image size 为 `640x496`，local ID 数为 5，identity audit 的重复量测为 0。
+
+调用 `manual_records_to_local_image_observations()` 后得到：
+
+| 输出状态 | 数量 | 合同判读 |
+| --- | ---: | --- |
+| measured | 470 | center、`xyxy`、`2x2` 自适应像素协方差、双时间戳可用 |
+| lost | 5 | center/bbox/covariance 为空，confidence 为 0 |
+| 总计 | 475 | 与 `95 frames x 5 local IDs` 一致 |
+
+确定性测试另使用 infrared、非零 arrival delay 和 measured-lost-recovered 序列验证：
+双时间戳保持顺序，`xywh` 正确转为 `xyxy`，连续 measured history 在 lost 后重置；
+重复框/中心坍缩输入在生成任何观测前被 identity audit 拒绝。根包导入测试屏蔽
+OpenCV/SciPy，确认不加载 `manual_video_tracker`，从而保持离线依赖边界。
+
+验证日期为 2026-07-16；真实记录样本为 1 个视频、95 帧、5 个 local ID、
+475 条记录，确定性边界用例覆盖 visible/infrared、协方差、双时间戳、lost、
+duplicate 和 import boundary；D5 全量 `288 passed`。接受阈值为零测试失败、
+重复量测必须 fail closed、lost 不得携带 stale 量测。剩余限制为人工初始化、
+单相机和离线转换；本结果不代表默认 AirSim、跨视角身份或 D7 控制接入。
+
 ## 2026-07-15 `b.mp4` 人工五目标 local MOT
 
 输入视频为 `496x640`、5 FPS、95 帧。五个目标用 `12x12` ROI 按顺序初始化。纯 CSRT 12/16 像素框分别在第 38/28 帧出现中心/框塌缩，尽管 summary 显示 95/95 measured；KCF 仅保持 2-3 帧。因此 tracker success 不作为身份连续验收。

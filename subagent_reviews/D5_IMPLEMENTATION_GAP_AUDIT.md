@@ -1,5 +1,29 @@
 # D5 实现差距审计
 
+## 2026-07-16 人工轨迹局部观测合同 GAP 状态
+
+**已关闭的 D5-owned 接口缺口：** 离线
+`manual_records_to_local_image_observations()` 已把
+`ManualTrackFrameRecord[]` 规范化为 main 的 `LocalImageTrackObservation[]`。
+measured 记录提供双时间戳、`xyxy`、`2x2` 自适应像素协方差、camera-local ID、
+backend、frame index 和连续 measured history；lost 不保留 stale 量测且
+confidence 为 0。IR 使用合同值 `infrared`。整批转换先运行 identity audit，
+发现任一重复量测即 fail closed。
+
+**依赖与身份边界：** D5 包根不再导入 manual tracker，默认包导入不强制加载该离线
+OpenCV/SciPy 支线。适配器 metadata 不含 global/truth identity，不创建、改写或换绑
+`global_track_id`；没有接入 AirSim detect、TerminalAssociation 或 D7 handoff。
+
+**验证：** 2026-07-16，既有真实视频记录 1 组、95 帧、5 个 local ID、475 条记录，
+转换得到 `470 measured / 5 lost`，identity audit 重复量测为 0。确定性回归覆盖
+协方差、双时间戳、infrared、`xyxy`、连续历史重置、重复坍缩拒绝和根包在屏蔽
+OpenCV/SciPy 时的导入边界；D5 全量 `288 passed`。接受阈值为零测试失败、
+重复坍缩零容忍、lost 零 stale 量测。
+
+**仍开放的 GAP：** 该接口只关闭“人工离线记录无法进入模块中立局部图像观测合同”
+这一 D5-owned 子项。人工初始化、单相机和亮目标数据局限仍在；真实 AirSim 默认路径、
+通用 detector/MOT、多视角身份、M5N2 第二 primary 与物理闭环 P1 均未关闭。
+
 ## 2026-07-15 人工初始化视频 local MOT GAP 状态
 
 **已实现：** D5 新增普通视频人工多 ROI 初始化工具。每个 ROI 获得不可自动换绑的 `local-xxx`，默认独立 CSRT、可选 KCF，并输出 MP4、逐帧 CSV 和 JSON summary。纯 tracker 的重叠重复量测失败关闭；亮目标专项可使用正对比峰候选、常速度预测和 Hungarian 一对一分配。丢失帧不携带旧 bbox/center。

@@ -2,18 +2,24 @@ from __future__ import annotations
 
 from collections import deque
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import cv2
 import numpy as np
 import pytest
 
+from d5_terminal_association.cross_view_registration import adaptive_pixel_covariance_px
 from d5_terminal_association.manual_video_tracker import (
     ManualTrackFrameRecord,
+    ManualVideoTrackingError,
     RoiXYWH,
     TRACK_STATUS_LOST,
     TRACK_STATUS_MEASURED,
     audit_tracking_identity,
+    manual_records_to_local_image_observations,
     parse_rois,
     track_manual_rois_in_video,
     validate_rois_for_frame,
@@ -213,3 +219,194 @@ def test_duplicate_measurement_audit_detects_collapsed_tracks() -> None:
     assert audit.minimum_center_separation_px == pytest.approx(1.0)
     assert audit.maximum_bbox_iou is not None
     assert audit.maximum_bbox_iou > 0.70
+
+
+def test_manual_records_convert_covariance_timestamps_infrared_bbox_and_history() -> None:
+    records = (
+        ManualTrackFrameRecord(
+            frame_index=0,
+            timestamp_s=1.0,
+            local_track_id="local-007",
+            bbox=(10.0, 20.0, 12.0, 8.0),
+            center=(16.0, 24.0),
+            status=TRACK_STATUS_MEASURED,
+            tracker_backend="csrt",
+            association_backend="bright_hungarian",
+        ),
+        ManualTrackFrameRecord(
+            frame_index=1,
+            timestamp_s=1.2,
+            local_track_id="local-007",
+            bbox=(11.0, 21.0, 12.0, 8.0),
+            center=(17.0, 25.0),
+            status=TRACK_STATUS_MEASURED,
+            tracker_backend="csrt",
+            association_backend="bright_hungarian",
+        ),
+        ManualTrackFrameRecord(
+            frame_index=2,
+            timestamp_s=1.4,
+            local_track_id="local-007",
+            bbox=None,
+            center=None,
+            status=TRACK_STATUS_LOST,
+            tracker_backend="csrt",
+            association_backend="bright_hungarian",
+        ),
+        ManualTrackFrameRecord(
+            frame_index=3,
+            timestamp_s=1.6,
+            local_track_id="local-007",
+            bbox=(13.0, 22.0, 12.0, 8.0),
+            center=(19.0, 26.0),
+            status=TRACK_STATUS_MEASURED,
+            tracker_backend="csrt",
+            association_backend="bright_hungarian",
+        ),
+    )
+
+    observations = manual_records_to_local_image_observations(
+        records,
+        sensor_id="ir-camera-01",
+        stream_id="manual-offline",
+        image_size=(640, 480),
+        spectral_band="infrared",
+        local_epoch=3,
+        arrival_delay_s=0.05,
+        confidence=0.8,
+    )
+
+    assert len(observations) == 4
+    first, second, lost, recovered = observations
+    assert first.local_track_id == "local-007"
+    assert first.source_track_key == "ir-camera-01/manual-offline/epoch-3/local-007"
+    assert first.spectral_band == "infrared"
+    assert first.measurement_timestamp == pytest.approx(1.0)
+    assert first.arrival_timestamp == pytest.approx(1.05)
+    assert first.bbox_xyxy == (10.0, 20.0, 22.0, 28.0)
+    assert np.allclose(
+        first.pixel_covariance,
+        adaptive_pixel_covariance_px(12.0 * 8.0, (640, 480)),
+    )
+    assert first.confidence == pytest.approx(0.8)
+    assert first.metadata["frame_index"] == 0
+    assert first.metadata["tracker_backend"] == "csrt"
+    assert first.metadata["association_backend"] == "bright_hungarian"
+    assert [
+        observation.metadata["mot_history_length"] for observation in observations
+    ] == [1, 2, 0, 1]
+    assert second.metadata["continuous_measured_history"] == 2
+    assert lost.track_state == TRACK_STATUS_LOST
+    assert lost.center_px is None
+    assert lost.bbox_xyxy is None
+    assert lost.pixel_covariance is None
+    assert lost.confidence == 0.0
+    assert recovered.track_state == TRACK_STATUS_MEASURED
+    assert "global_track_id" not in str([observation.to_dict() for observation in observations])
+
+
+def test_documented_95_frame_records_convert_to_470_measured_and_5_lost() -> None:
+    lost_frames = {
+        "local-001": {57, 58, 89},
+        "local-003": {34, 35},
+    }
+    records: list[ManualTrackFrameRecord] = []
+    for frame_index in range(95):
+        for track_index in range(5):
+            local_track_id = f"local-{track_index + 1:03d}"
+            lost = frame_index in lost_frames.get(local_track_id, set())
+            x = 20.0 + 100.0 * track_index + 0.1 * frame_index
+            y = 30.0 + 3.0 * track_index
+            records.append(
+                ManualTrackFrameRecord(
+                    frame_index=frame_index,
+                    timestamp_s=frame_index / 5.0,
+                    local_track_id=local_track_id,
+                    bbox=None if lost else (x, y, 12.0, 12.0),
+                    center=None if lost else (x + 6.0, y + 6.0),
+                    status=TRACK_STATUS_LOST if lost else TRACK_STATUS_MEASURED,
+                    tracker_backend="csrt",
+                    association_backend="bright_hungarian",
+                )
+            )
+
+    observations = manual_records_to_local_image_observations(
+        records,
+        sensor_id="visible-camera-01",
+        stream_id="b-mp4-manual",
+        image_size=(640, 496),
+    )
+
+    assert len(observations) == 475
+    assert sum(item.track_state == TRACK_STATUS_MEASURED for item in observations) == 470
+    assert sum(item.track_state == TRACK_STATUS_LOST for item in observations) == 5
+    recovered = next(
+        item
+        for item in observations
+        if item.local_track_id == "local-001" and item.metadata["frame_index"] == 59
+    )
+    assert recovered.metadata["mot_history_length"] == 1
+
+
+def test_manual_record_conversion_rejects_duplicate_track_collapse() -> None:
+    records = (
+        ManualTrackFrameRecord(
+            frame_index=4,
+            timestamp_s=0.8,
+            local_track_id="local-001",
+            bbox=(10.0, 10.0, 12.0, 12.0),
+            center=(16.0, 16.0),
+            status=TRACK_STATUS_MEASURED,
+            tracker_backend="csrt",
+        ),
+        ManualTrackFrameRecord(
+            frame_index=4,
+            timestamp_s=0.8,
+            local_track_id="local-002",
+            bbox=(10.0, 10.0, 12.0, 12.0),
+            center=(16.0, 16.0),
+            status=TRACK_STATUS_MEASURED,
+            tracker_backend="csrt",
+        ),
+    )
+
+    with pytest.raises(ManualVideoTrackingError, match="identity audit.*duplicate"):
+        manual_records_to_local_image_observations(
+            records,
+            sensor_id="visible-camera-01",
+            stream_id="collapsed",
+            image_size=(640, 480),
+        )
+
+
+def test_root_package_import_does_not_load_manual_video_dependencies() -> None:
+    module_root = Path(__file__).resolve().parents[1]
+    repository_root = Path(__file__).resolve().parents[3]
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(module_root / "src")
+    script = """
+import builtins
+import sys
+
+real_import = builtins.__import__
+
+def without_offline_video_dependencies(name, *args, **kwargs):
+    if name == "cv2" or name.startswith("scipy"):
+        raise ModuleNotFoundError(name)
+    return real_import(name, *args, **kwargs)
+
+builtins.__import__ = without_offline_video_dependencies
+import d5_terminal_association
+
+assert "d5_terminal_association.manual_video_tracker" not in sys.modules
+assert not hasattr(d5_terminal_association, "ManualTrackFrameRecord")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repository_root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr

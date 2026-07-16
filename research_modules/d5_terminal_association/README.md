@@ -2,6 +2,33 @@
 
 离线科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块只输出 `TerminalAssociation` 决策，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-16 人工轨迹到局部图像观测合同
+
+离线子模块 `d5_terminal_association.manual_video_tracker` 公开
+`manual_records_to_local_image_observations()`，把 `ManualTrackFrameRecord[]`
+转换为 main 提交的
+`research_modules.integration_contracts.LocalImageTrackObservation[]`。调用方必须显式提供
+`sensor_id`、`stream_id` 和 `(width, height)`，并可设置
+`spectral_band`、`local_epoch`、`arrival_delay_s` 与 measured confidence。
+
+measured 记录保留 camera-local `local_track_id`、frame index、tracker/association
+backend 和逐 local ID 的连续 measured history；`xywh` 转为 `xyxy`，像素协方差复用
+`adaptive_pixel_covariance_px()`。measurement timestamp 使用视频帧时间，
+arrival timestamp 为帧时间加显式延时。lost 记录强制
+`center_px/bbox_xyxy/pixel_covariance=None`、`confidence=0`，并清零连续 measured
+history。转换前对整批记录执行 identity audit，只要重复量测数大于 0 就拒绝整批转换。
+
+该函数不生成、接收或换绑 `global_track_id`。`manual_video_tracker` 已从 D5 包根
+`__init__.py` 移除；离线 CLI 和测试显式导入子模块，因此默认导入
+`d5_terminal_association` 不再强制加载 manual tracker 的 OpenCV/SciPy 离线视频依赖。
+该适配器未接入默认 AirSim detect、TerminalAssociation 或 D7 handoff。
+
+2026-07-16 对既有 `b.mp4` 475 条记录做离线转换复核，得到
+`470 measured / 5 lost`，identity audit 重复量测为 0；确定性测试另覆盖协方差、
+双时间戳、infrared、bbox `xyxy`、lost、连续历史、重复坍缩拒绝和根包导入边界。
+D5 全量 `288 passed`，接受阈值为零失败、重复坍缩必须 fail closed。剩余限制仍是
+人工初始化、单相机、离线输入；不构成通用 MOT、跨视角身份或真实 AirSim 性能证据。
+
 ## 人工初始化的本地视频多目标跟踪
 
 `scripts/run_manual_video_tracking.py` 支持在普通离线视频首帧用 OpenCV `selectROIs` 按顺序框选任意数量目标，或用 `--rois 'x,y,w,h;...'` 无界面复现。选择顺序固定生成 `local-001...`；默认每目标运行独立 CSRT，可选 KCF。纯 tracker 路径会把高度重叠的重复量测失败关闭为 `lost`，不允许两个本地 ID 同时占用同一框。

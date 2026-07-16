@@ -1,5 +1,28 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-16 人工轨迹局部观测适配器（已完成）
+
+- [x] 在离线 `manual_video_tracker` 子模块公开
+  `manual_records_to_local_image_observations()`，参数固定包含 `sensor_id`、
+  `stream_id`、`image_size`、`spectral_band="visible"`、`local_epoch=0`、
+  `arrival_delay_s=0.0`、`confidence=1.0`。
+- [x] measured 将 `xywh` 转为 `xyxy`，复用
+  `adaptive_pixel_covariance_px()` 生成 `2x2` 像素协方差，保留双时间戳、
+  camera-local ID、frame index、tracker/association backend 和逐 local ID
+  连续 measured history；lost 不携带 stale center/bbox/covariance，confidence 固定为 0。
+- [x] 转换前运行整批 identity audit；`duplicate_measurement_count > 0` 时拒绝转换，
+  不输出部分结果。
+- [x] 从包根移除 `manual_video_tracker` 强制导入；CLI/测试使用显式子模块导入，
+  根包在 manual OpenCV/SciPy 依赖不可用时仍可导入。
+- [x] 2026-07-16 复核既有 95 帧、5 local ID、475 条记录，转换结果为
+  `470 measured / 5 lost`、重复量测 0。D5 全量 `288 passed`，接受阈值为零失败、
+  lost 无 stale 量测且重复坍缩必须 fail closed。
+- [ ] 保持该能力为人工初始化单相机离线支线；不接入默认 AirSim，不将 local ID
+  提升为 `global_track_id`，不据此关闭通用 detector/MOT、多视角或物理闭环 GAP。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查：本任务没有 AirSim 输入、runtime episode、
+默认 detector 或 handoff 接线变化，因此不修改该文件。
+
 ## 2026-07-15 人工初始化本地视频 MOT（已完成）
 
 - [x] 新增首帧 `selectROIs` 和无界面 `--rois`，目标数量由输入决定，选择顺序固定为 `local-001...`。
