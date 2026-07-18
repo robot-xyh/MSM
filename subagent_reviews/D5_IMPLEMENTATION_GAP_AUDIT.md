@@ -1,5 +1,32 @@
 # D5 实现差距审计
 
+## 2026-07-16 ComputerVision 5+1 最终证据与 GAP 状态
+
+**真实样本：** main 的独立专项分支使用 5 个 `1920x1080`/60 度局部相机、
+1 个 `3840x2160`/75 度侦察相机和 5 个 `Quadrotor1` actor；两个 episode 均为
+12 秒、49 帧、seed 7。D5 按每个相机 batch 的 `measurement_timestamp` 投影。
+
+**结果：** detect 的召回/配准/稳定/联合覆盖/侦察全覆盖/IDSW =
+`1.000/1.000/0.975/1.000/0.918/0`；YOLOv8 + 原生 ByteTrack =
+`0.622/0.996（严格 0.966）/0.955/1.000/0.878/25`，P50/P95 约
+`10.42/12.37 ms`。两路 online truth use 和 `global_track_id` rewrite 均为 0。
+
+**truth/fixture 边界：** 本隔离专项没有运行 D1/D2。main 使用 actor truth
+运动学合成带中心 `global_track_id` 的 `GlobalTrack` fixture，truth 同时用于
+离线评分。`online_truth_identity_use=0` 仅说明 D5 的 local bbox 到 fixture
+关联代价、Hungarian 选择和稳定窗口不读取 actor/object/truth identity，不代表
+整个专项完全不读取 truth。
+
+**门限与判定：** detect/YOLO 召回门限为 `>=0.95/>=0.90`，严格配准
+`>=0.95`、稳定 `>=0.90`、联合覆盖 `>=0.95`、侦察全覆盖 `>=0.90`、IDSW
+`<=0/<=5`，truth use/rewrite=0。detect 几何基线已通过该单 seed 专项；不等于
+关闭多 seed P1，也不改变默认 D1-D7 主线。
+
+**仍开放 P1：** YOLO+ByteTrack 的召回、IDSW、侦察全覆盖和多 seed confirmation
+均未闭合，故继续标记 optional。单 seed 不得写为主线晋级；M5N2 第二 primary、
+真实几何 drift、二级同 tick freshness 等既有 GAP 状态亦不因本专项自动关闭。
+本轮只同步证据，不修改 D5 算法、默认 backend 或安全门限。
+
 ## 2026-07-16 人工轨迹局部观测合同 GAP 状态
 
 **已关闭的 D5-owned 接口缺口：** 离线

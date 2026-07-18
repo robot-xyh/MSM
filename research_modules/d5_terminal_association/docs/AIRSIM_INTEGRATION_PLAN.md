@@ -1,5 +1,30 @@
 # AirSim 离线集成计划
 
+## 2026-07-16 独立 ComputerVision 5+1 专项接线结果
+
+main 已完成真实 AirSim 接线：5 个 `1920x1080`、60 度局部相机，1 个
+`3840x2160`、75 度侦察相机，5 个 `Quadrotor1` actor；两个 reset-separated
+episode 各运行 12 秒、49 帧、seed 7。每个相机 batch 均按自己的
+`measurement_timestamp` 投影，不使用最后一帧时间替代逐批量测时间。
+
+AirSim detect 几何基线的召回/配准/稳定/联合覆盖/侦察全覆盖/IDSW =
+`1.000/1.000/0.975/1.000/0.918/0`，通过全部门限。YOLOv8 + 原生 ByteTrack =
+`0.622/0.996（严格 0.966）/0.955/1.000/0.878/25`，P50/P95 约
+`10.42/12.37 ms`；召回、侦察全覆盖和 IDSW 未通过。两路 online truth use 和
+`global_track_id` rewrite 均为 0。
+
+验收门限为 detect/YOLO 召回 `>=0.95/>=0.90`、严格配准 `>=0.95`、稳定
+`>=0.90`、联合覆盖 `>=0.95`、侦察全覆盖 `>=0.90`、IDSW `<=0/<=5`，
+并要求 truth use/rewrite=0。接线结论是 detect 几何基线通过；YOLO+ByteTrack
+继续作为 optional 分支，后续需改善召回、IDSW、侦察全覆盖并运行多 seed。
+本单 seed 专项不触发默认后端或主线晋级，也不替换默认 D1-D7 episode 流程。
+
+该隔离专项本身没有运行 D1/D2。main 读取 actor truth 运动学，合成带中心
+`global_track_id` 的 `GlobalTrack` fixture，truth 另用于离线评分。这里的
+`online_truth_identity_use=0` 只约束 D5 的 local bbox 到 fixture 关联代价、
+Hungarian 选择和稳定窗口不读取 actor/object/truth identity，不能解释为整个专项
+完全不读取 truth。
+
 ## 2026-07-15 M5N2 20-case 接线复核
 
 main 已完成 M5N2 baseline/candidate 各 10 seeds。TERM 生效前额外完整生成一个 `png_ttc_2v2_seed001` 的 `intercept_summary.json`，但该 case 明确排除在本节 M5N2 证据之外；其余 tuned case 和 dropout case 均未执行。20 场 M5N2 `main_episode_bus_ticks.jsonl` 对第二 primary 的 decision 与 `d5_live_visual_funnel_v1.first_failure_stage/reason` 为 `3725/3725` available，actual execution artifact 与离线 5 m 物理结果均为 `20/20` available。在线 truth identity/state use 为 `0/0`。

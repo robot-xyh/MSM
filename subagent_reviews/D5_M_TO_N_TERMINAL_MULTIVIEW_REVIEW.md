@@ -1,5 +1,30 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-16 真实 ComputerVision 5+1 多视角复核
+
+独立专项使用 5 个 `1920x1080`/60 度局部相机、1 个 `3840x2160`/75 度侦察相机、
+5 个 `Quadrotor1` actor，运行 12 秒、49 帧、seed 7。每个局部相机允许只覆盖目标
+子集，D5 按各 camera batch 的 `measurement_timestamp` 投影；侦察相机全视场
+证据不能替代局部 measured evidence、创建全局 ID 或触发重分配。
+
+detect 的召回/配准/稳定/联合覆盖/侦察全覆盖/IDSW 为
+`1.000/1.000/0.975/1.000/0.918/0`，通过全部门限。YOLOv8 + ByteTrack 为
+`0.622/0.996（严格 0.966）/0.955/1.000/0.878/25`，P50/P95 约
+`10.42/12.37 ms`；召回、侦察全覆盖和 IDSW 未通过。两路 online truth use 与
+`global_track_id` rewrite 均为 0。
+
+本隔离专项没有运行 D1/D2；main 根据 actor truth 运动学合成带中心
+`global_track_id` 的 `GlobalTrack` fixture，truth 另用于离线评分。
+`online_truth_identity_use=0` 只约束 D5 的 local bbox 到 fixture 关联代价、
+Hungarian 选择和稳定窗口不读取 actor/object/truth identity，不能解释为整个专项
+完全不读取 truth。
+
+门限为 detect/YOLO 召回 `>=0.95/>=0.90`、严格配准 `>=0.95`、稳定
+`>=0.90`、联合覆盖 `>=0.95`、侦察全覆盖 `>=0.90`、IDSW `<=0/<=5`，
+truth use/rewrite=0。多视角结论只确认 detect 几何基线；YOLO+ByteTrack 保持
+optional，仍缺召回、IDSW、侦察全覆盖及多 seed。单 seed 不支持主线晋级，
+专项分支不替换默认 D1-D7 流程或既有 M-to-N 物理完成判据。
+
 ## 2026-07-15 M5N2 20-case 多视角复核
 
 main 已完成 baseline/candidate 各 10 seeds 的真实 AirSim M5N2。TERM 生效前额外完整生成一个 `png_ttc_2v2_seed001`，其余 tuned/dropout case 未执行；该额外 case 不进入以下 M5N2 统计。D5 对 current active second primary 的 `3725` 条适用记录复核得到：`locked=1721`、`ambiguous=795`、`reacquire=1209`、`hold=0`；bbox-stability/live-detection/visual-association/geometry/complete 首断点为 `1283/1209/764/204/52`。直接 `failure_category` 未在本批 artifact 中持久化，因此只能报告原始 stage/reason 可用，不能补写分类 envelope。

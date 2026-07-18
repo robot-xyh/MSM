@@ -1,5 +1,30 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-16 ComputerVision 5+1 真实专项审查
+
+main 已在独立分支完成两个真实 AirSim episode：5 个 `1920x1080`/60 度局部相机、
+1 个 `3840x2160`/75 度侦察相机、5 个 `Quadrotor1` actor；每个 episode 为
+12 秒、49 帧、seed 7。审查确认 D5 对每个相机 batch 使用
+`measurement_timestamp` 投影，没有把最后一帧时间用于整段注册。
+
+detect 的召回/配准/稳定/联合覆盖/侦察全覆盖/IDSW =
+`1.000/1.000/0.975/1.000/0.918/0`；YOLOv8 + 原生 ByteTrack =
+`0.622/0.996（严格 0.966）/0.955/1.000/0.878/25`，P50/P95 约
+`10.42/12.37 ms`。两路 online truth use=0、`global_track_id` rewrite=0。
+
+该隔离专项没有运行 D1/D2。main 使用 actor truth 运动学合成带中心
+`global_track_id` 的 `GlobalTrack` fixture，truth 同时用于离线评分。
+`online_truth_identity_use=0` 仅表示 D5 的 local bbox 到 fixture 关联代价、
+Hungarian 选择和稳定窗口不读取 actor/object/truth identity，不表示整个专项完全
+不读取 truth。
+
+验收门限为 detect/YOLO 召回 `>=0.95/>=0.90`、严格配准 `>=0.95`、稳定
+`>=0.90`、联合覆盖 `>=0.95`、侦察全覆盖 `>=0.90`、IDSW `<=0/<=5`，
+truth use/rewrite=0。审查判定 detect 几何基线通过；YOLO+ByteTrack 因召回、
+IDSW 和侦察全覆盖失败而保持 optional。后续必须补齐这些质量缺口和多 seed；
+单 seed 不构成默认主线晋级。独立专项不替换默认 D1-D7 流程，也不改变既有
+身份、几何、稳定或执行安全门。
+
 ## 2026-07-16 人工记录局部观测适配器审查
 
 D5 已在离线 manual tracker 子模块增加公开转换器，把人工轨迹逐帧记录转为

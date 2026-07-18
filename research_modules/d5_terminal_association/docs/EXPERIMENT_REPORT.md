@@ -1,5 +1,33 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-16 真实 AirSim ComputerVision 5+1 专项报告
+
+样本为单个 seed（seed 7）的两个 reset-separated episode，每个 12 秒、49 帧。
+场景包含 5 个 `1920x1080`/60 度局部相机、1 个 `3840x2160`/75 度侦察相机和
+5 个 `Quadrotor1` actor。注册按每个相机 batch 的 `measurement_timestamp` 投影；
+该隔离专项没有运行 D1/D2，main 使用 actor truth 运动学合成带中心
+`global_track_id` 的 `GlobalTrack` fixture，truth 同时用于离线评分。
+`online_truth_identity_use=0` 仅表示 D5 的 local bbox 到 fixture 关联代价、
+Hungarian 选择和稳定窗口不读取 actor/object/truth identity，不表示整个专项完全
+不读取 truth。
+原始报告和两份指标 JSON 位于
+`research_modules/airsim_runtime/outputs/d5_cv_5v5_multicamera_formal_20260716/`。
+
+| 主检测后端 | 召回 | 配准准确率 | 严格准确率 | 稳定配准率 | 联合覆盖 | 侦察全覆盖 | IDSW |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| AirSim detect | 1.000 | 1.000 | 1.000 | 0.975 | 1.000 | 0.918 | 0 |
+| YOLOv8 + ByteTrack | 0.622 | 0.996 | 0.966 | 0.955 | 1.000 | 0.878 | 25 |
+
+YOLO+ByteTrack 的 P50/P95 约为 `10.42/12.37 ms`；两路 online truth use 和
+`global_track_id` rewrite 均为 `0`。
+
+门限为 detect/YOLO 召回 `>=0.95/>=0.90`、严格配准 `>=0.95`、稳定配准
+`>=0.90`、联合覆盖 `>=0.95`、侦察全覆盖 `>=0.90`、IDSW `<=0/<=5`，
+truth use/rewrite=0。detect 几何基线全部通过；YOLO+ByteTrack 仅配准、稳定与
+联合覆盖通过，因召回、侦察全覆盖和 IDSW 未通过而保持 optional。剩余实验缺口是
+召回、IDSW、侦察全覆盖及多 seed；单 seed 不构成主线晋级或总体完成证据。
+该专项分支不替换默认 D1-D7 流程，也不形成物理拦截结论。
+
 ## 2026-07-16 人工轨迹局部观测合同复核
 
 本次不重新运行 tracker，也不启动 AirSim。输入为 2026-07-15

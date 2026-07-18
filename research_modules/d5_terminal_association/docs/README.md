@@ -4,10 +4,16 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 
 1. `../README.md`：模块用途、运行方式和接口入口。
 2. `../PLAN.md`：终端视觉配准与身份认证研发计划。
-3. `ALGORITHM_AND_IMPLEMENTATION.md`：图像投影、几何门控、局部 MOT、身份正向确认、`ReconImageCue` 约束、`TerminalConsistencyTracker`、distributed visual association 和 D4/D7 合同。
-4. `EXPERIMENT_REPORT.md`：离线仿真结果、终端决策曲线和二级侦察 cue 说明。
-5. `AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放接入计划。
-6. `../reports/D5_MANUAL_VIDEO_TRACKING_B_20260715.md`：人工初始化五目标视频 local MOT 实测报告。
+3. `D5_MULTICAMERA_ASSOCIATION_REPORT_CN.md`：D5 多相机几何关联技术报告，使用模块内稳定图片路径。
+4. `D5_MULTICAMERA_ASSOCIATION_REPORT_CN.docx`：Word 技术报告，严格区分已实现、单 seed 仿真验证、建议指标和待验证内容。
+5. `ALGORITHM_AND_IMPLEMENTATION.md`：图像投影、几何门控、局部 MOT、身份正向确认、`ReconImageCue` 约束、`TerminalConsistencyTracker`、distributed visual association 和 D4/D7 合同。
+6. `EXPERIMENT_REPORT.md`：离线仿真结果、终端决策曲线和二级侦察 cue 说明。
+7. `AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放接入计划。
+8. `../reports/D5_MANUAL_VIDEO_TRACKING_B_20260715.md`：人工初始化五目标视频 local MOT 实测报告。
+
+`../scripts/generate_multicamera_report.py` 用于生成中文原理图、中文仿真图表和
+Word 技术报告。默认从 `assets/d5_multicamera_association/` 读取稳定截图与
+绘图数据；只有显式使用 `--sync-formal-assets` 时才从正式 AirSim 输出同步副本。
 
 本模块只输出 `TerminalAssociation`、`TerminalConsistencySummary`、跨视角证据和身份/配准判断，不输出控制量、处置动作、真实火控参数、降级动作或授权绕过流程；在线 D5 不得使用 AirSim truth ID，truth 只用于离线评分。2026-07-07 后，连续一致性窗口按 `resource_id + assigned_global_track_id` 维护，不因同一 assignment pair 的 D3 `assignment_version` 滚动更新而清零。
 

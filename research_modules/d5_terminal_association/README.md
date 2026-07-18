@@ -2,6 +2,42 @@
 
 离线科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块只输出 `TerminalAssociation` 决策，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-16 AirSim ComputerVision 5+1 单种子仿真证据
+
+报告入口：
+
+- [Markdown 技术报告](docs/D5_MULTICAMERA_ASSOCIATION_REPORT_CN.md)：详细算法、数据合同、逐相机误差和正式图表。
+- [Word 技术报告](docs/D5_MULTICAMERA_ASSOCIATION_REPORT_CN.docx)：按体系架构、关键技术、关联方案、实验结果和边界与计划组织。
+
+Word 与静态原理图可通过
+[`scripts/generate_multicamera_report.py`](scripts/generate_multicamera_report.py)
+复现；报告图片和绘图数据固定在
+`docs/assets/d5_multicamera_association/`，不依赖 `outputs` 目录显示。
+
+main 已完成独立专项分支的两个 reset-separated episode。场景使用 5 个
+`1920x1080`、60 度局部相机，1 个 `3840x2160`、75 度侦察相机，以及 5 个
+`Quadrotor1` actor；运行 12 秒、49 帧、seed 7。D5 对每个相机 batch 使用自己的
+`measurement_timestamp` 投影 `GlobalTrack`，没有用最后一帧时间覆盖整段观测。
+
+| 主检测后端 | 召回 | 配准准确率（严格） | 稳定配准率 | 联合覆盖 | 侦察全覆盖 | 本地 IDSW |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| AirSim detect 几何基线 | 1.000 | 1.000（1.000） | 0.975 | 1.000 | 0.918 | 0 |
+| YOLOv8 + 原生 ByteTrack | 0.622 | 0.996（0.966） | 0.955 | 1.000 | 0.878 | 25 |
+
+YOLO+ByteTrack 推理时延 P50/P95 约为 `10.42/12.37 ms`。两路 episode 的
+online truth use 和 `global_track_id` rewrite 均为 `0`。本隔离专项没有运行
+D1/D2；main 根据 actor truth 运动学合成带中心 `global_track_id` 的 `GlobalTrack`
+fixture，truth 还用于离线评分。`online_truth_identity_use=0` 仅表示 D5 从 local
+bbox 到该 fixture 的关联代价、Hungarian 选择和稳定窗口不读取 actor/object/truth
+identity，不表示整个专项完全不读取 truth。
+
+验收门限为 detect/YOLO 召回分别 `>=0.95/>=0.90`、严格配准 `>=0.95`、稳定配准
+`>=0.90`、联合覆盖 `>=0.95`、侦察全覆盖 `>=0.90`、本地 IDSW 分别 `<=0/<=5`，
+且 truth use/rewrite 必须为 `0`。因此 detect 几何基线通过；YOLO+ByteTrack 的召回、
+侦察全覆盖和 IDSW 未通过，继续作为 optional 研究后端。当前剩余缺口是提升召回、
+降低 IDSW、恢复侦察全覆盖并完成多 seed 验证；单 seed 结果不构成主线晋级。
+该独立专项分支不替换默认 D1-D7 流程，也不改变 D5 的默认在线路径或安全门限。
+
 ## 2026-07-16 人工轨迹到局部图像观测合同
 
 离线子模块 `d5_terminal_association.manual_video_tracker` 公开

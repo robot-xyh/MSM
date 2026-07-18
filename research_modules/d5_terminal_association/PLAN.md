@@ -1,5 +1,30 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-16 ComputerVision 5+1 独立专项状态
+
+- [x] 完成 5 个 `1920x1080`/60 度局部相机、1 个 `3840x2160`/75 度侦察相机、
+  5 个 `Quadrotor1` actor 的真实 AirSim 运行；样本为 12 秒、49 帧、seed 7。
+- [x] AirSim detect 与 YOLOv8 + 原生 ByteTrack 两路均按每个相机 batch 的
+  `measurement_timestamp` 投影，并保持 online truth use=0、
+  `global_track_id` rewrite=0。
+- [x] detect 几何基线达到召回/配准/稳定/联合覆盖/侦察全覆盖/IDSW =
+  `1.000/1.000/0.975/1.000/0.918/0`，通过全部专项门限。
+- [x] 记录 YOLO+ByteTrack 的 `0.622/0.996（严格 0.966）/0.955/1.000/0.878/25`，
+  P50/P95 约 `10.42/12.37 ms`；召回、侦察全覆盖和 IDSW 未过门限，保持 optional。
+- [ ] 提升 YOLO 召回、降低 ByteTrack IDSW、恢复侦察全覆盖，并完成多 seed
+  confirmation；单 seed 不允许作为默认主线晋级依据。
+
+本专项门限为 detect/YOLO 召回分别 `>=0.95/>=0.90`、严格配准 `>=0.95`、
+稳定配准 `>=0.90`、联合覆盖 `>=0.95`、侦察全覆盖 `>=0.90`、IDSW 分别
+`<=0/<=5`，且 truth use/rewrite 均为 `0`。专项分支不替换默认 D1-D7 流程；
+本轮只同步真实证据，不修改 D5 算法、默认 backend 或安全阈值。
+
+本隔离专项未运行 D1/D2。main 使用 actor truth 运动学合成带中心
+`global_track_id` 的 `GlobalTrack` fixture，truth 同时用于离线评分。
+`online_truth_identity_use=0` 的边界仅覆盖 D5 的 local bbox 到 fixture
+关联代价、Hungarian 选择和稳定窗口不读取 actor/object/truth identity；它不表示
+整个专项完全不读取 truth。
+
 ## 2026-07-16 人工轨迹局部观测适配器（已完成）
 
 - [x] 在离线 `manual_video_tracker` 子模块公开
