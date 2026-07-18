@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="720" viewBox="0 0 1600 720">
+  <defs>
+    <style>
+      .title{font:700 34px 'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#16385f}
+      .phase{font:700 22px 'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#ffffff}
+      .h{font:700 25px 'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#17324d}
+      .t{font:500 19px 'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#31465b}
+      .s{font:400 17px 'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#5b6d80}
+    </style>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#70859a"/></marker>
+  </defs>
+  <rect width="1600" height="720" fill="#f7f9fc"/>
+  <text x="800" y="55" text-anchor="middle" class="title">体系改进与验证路线</text>
+
+  <g transform="translate(60,120)">
+    <rect width="330" height="430" rx="24" fill="#e8f0f8" stroke="#3478b8" stroke-width="3"/>
+    <rect width="330" height="62" rx="24" fill="#3478b8"/><rect y="38" width="330" height="24" fill="#3478b8"/>
+    <text x="165" y="40" text-anchor="middle" class="phase">阶段一　基线冻结</text>
+    <text x="165" y="112" text-anchor="middle" class="h">统一口径</text>
+    <text x="34" y="158" class="t">• X/Ku 配置与图表统一</text>
+    <text x="34" y="198" class="t">• 威胁速度与可达域分档</text>
+    <text x="34" y="238" class="t">• 12 秒时序预算</text>
+    <text x="34" y="278" class="t">• 雷达—光电误差预算</text>
+    <text x="34" y="318" class="t">• 效能指标改为验证目标</text>
+    <text x="165" y="390" text-anchor="middle" class="s">退出：每项指标可追溯、可测量</text>
+  </g>
+  <line x1="395" y1="335" x2="435" y2="335" stroke="#70859a" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <g transform="translate(435,120)">
+    <rect width="330" height="430" rx="24" fill="#e7f3f0" stroke="#278b76" stroke-width="3"/>
+    <rect width="330" height="62" rx="24" fill="#278b76"/><rect y="38" width="330" height="24" fill="#278b76"/>
+    <text x="165" y="40" text-anchor="middle" class="phase">阶段二　部件实测</text>
+    <text x="165" y="112" text-anchor="middle" class="h">形成真实基线</text>
+    <text x="34" y="158" class="t">• 雷达原始量测与航迹日志</text>
+    <text x="34" y="198" class="t">• 光电成像与云台标定</text>
+    <text x="34" y="238" class="t">• 平台动力学与飞控时延</text>
+    <text x="34" y="278" class="t">• 声学虚警和有效距离</text>
+    <text x="34" y="318" class="t">• 真实链路与时间同步</text>
+    <text x="165" y="390" text-anchor="middle" class="s">退出：仿真参数均有实测来源</text>
+  </g>
+  <line x1="770" y1="335" x2="810" y2="335" stroke="#70859a" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <g transform="translate(810,120)">
+    <rect width="330" height="430" rx="24" fill="#fff3df" stroke="#d28a12" stroke-width="3"/>
+    <rect width="330" height="62" rx="24" fill="#d28a12"/><rect y="38" width="330" height="24" fill="#d28a12"/>
+    <text x="165" y="40" text-anchor="middle" class="phase">阶段三　闭环收敛</text>
+    <text x="165" y="112" text-anchor="middle" class="h">先解决当前瓶颈</text>
+    <text x="34" y="158" class="t">• 30/50 m 视觉获取</text>
+    <text x="34" y="198" class="t">• 第二主用资源稳定锁定</text>
+    <text x="34" y="238" class="t">• 5 对 2 联盟达到门限</text>
+    <text x="34" y="278" class="t">• 效果确认与重规划闭环</text>
+    <text x="34" y="318" class="t">• 半实物与真实网络</text>
+    <text x="165" y="390" text-anchor="middle" class="s">退出：小规模物理闭环稳定复现</text>
+  </g>
+  <line x1="1145" y1="335" x2="1185" y2="335" stroke="#70859a" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <g transform="translate(1185,120)">
+    <rect width="355" height="430" rx="24" fill="#f7e9e9" stroke="#b84949" stroke-width="3"/>
+    <rect width="355" height="62" rx="24" fill="#b84949"/><rect y="38" width="355" height="24" fill="#b84949"/>
+    <text x="178" y="40" text-anchor="middle" class="phase">阶段四　规模与体系联试</text>
+    <text x="178" y="112" text-anchor="middle" class="h">逐级扩展</text>
+    <text x="34" y="158" class="t">• 16、32、64 资源分级验证</text>
+    <text x="34" y="198" class="t">• 10、20、30 目标压力场景</text>
+    <text x="34" y="238" class="t">• 多车、被动节点与接管</text>
+    <text x="34" y="278" class="t">• 外层和内层火力交接</text>
+    <text x="34" y="318" class="t">• 天气、遮挡、故障综合矩阵</text>
+    <text x="178" y="390" text-anchor="middle" class="s">退出：体系指标有成组证据支撑</text>
+  </g>
+
+  <rect x="185" y="610" width="1230" height="60" rx="18" fill="#ffffff" stroke="#70859a" stroke-width="2"/>
+  <text x="800" y="648" text-anchor="middle" class="t">总体原则：先冻结口径和物理基线，再闭合小规模链路，最后扩展到单车资源池与多层火力协同</text>
+</svg>

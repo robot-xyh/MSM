@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="920" viewBox="0 0 1600 920">
+  <defs>
+    <style>
+      .title{font:700 34px 'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#16385f}
+      .h{font:700 25px 'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#17324d}
+      .t{font:500 20px 'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#25384c}
+      .s{font:400 17px 'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#536579}
+      .w{font:700 21px 'Noto Sans CJK SC','Microsoft YaHei',sans-serif;fill:#ffffff}
+    </style>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 z" fill="#58728d"/>
+    </marker>
+  </defs>
+  <rect width="1600" height="920" fill="#f7f9fc"/>
+  <text x="800" y="55" text-anchor="middle" class="title">修订后的体系表达：三套视图、一个闭环</text>
+
+  <text x="70" y="115" class="h">作战火力分层</text>
+  <rect x="70" y="140" width="445" height="125" rx="18" fill="#e9eef5" stroke="#8295aa" stroke-width="2"/>
+  <rect x="577" y="140" width="445" height="125" rx="18" fill="#e4f2ee" stroke="#278b76" stroke-width="3"/>
+  <rect x="1085" y="140" width="445" height="125" rx="18" fill="#f9eee3" stroke="#c47a2d" stroke-width="2"/>
+  <text x="292" y="182" text-anchor="middle" class="h">外层火力</text>
+  <text x="292" y="216" text-anchor="middle" class="t">远程预警、前置消耗与目标交接</text>
+  <text x="292" y="244" text-anchor="middle" class="s">具体距离由上级体系和可达域共同冻结</text>
+  <text x="800" y="182" text-anchor="middle" class="h">无人机协同拦截核心域</text>
+  <text x="800" y="216" text-anchor="middle" class="t">可信航迹、滚动规划、中末段导引</text>
+  <text x="800" y="244" text-anchor="middle" class="s">按目标速度、几何和剩余窗口判定可拦截性</text>
+  <text x="1307" y="182" text-anchor="middle" class="h">内层末端防护</text>
+  <text x="1307" y="216" text-anchor="middle" class="t">近界补盲、末端火力与安全兜底</text>
+  <text x="1307" y="244" text-anchor="middle" class="s">接收漏防目标与近界被动告警</text>
+  <line x1="515" y1="202" x2="570" y2="202" stroke="#58728d" stroke-width="3" marker-end="url(#arrow)"/>
+  <line x1="1022" y1="202" x2="1077" y2="202" stroke="#58728d" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <text x="70" y="330" class="h">部署拓扑</text>
+  <rect x="70" y="355" width="330" height="120" rx="18" fill="#e6eff8" stroke="#3478b8" stroke-width="2"/>
+  <rect x="465" y="355" width="330" height="120" rx="18" fill="#edf6f5" stroke="#278b76" stroke-width="2"/>
+  <rect x="860" y="355" width="330" height="120" rx="18" fill="#fff3dc" stroke="#d28a12" stroke-width="2"/>
+  <rect x="1255" y="355" width="275" height="120" rx="18" fill="#f5e9ea" stroke="#b84949" stroke-width="2"/>
+  <text x="235" y="398" text-anchor="middle" class="h">侦察火力车</text>
+  <text x="235" y="434" text-anchor="middle" class="t">主雷达、光电、中心节点、资源池</text>
+  <text x="630" y="398" text-anchor="middle" class="h">被动感知节点</text>
+  <text x="630" y="434" text-anchor="middle" class="t">光电、声学、定向通信与中继</text>
+  <text x="1025" y="398" text-anchor="middle" class="h">区域二级节点</text>
+  <text x="1025" y="434" text-anchor="middle" class="t">高视角补盲、区域接管、身份辅助</text>
+  <text x="1392" y="398" text-anchor="middle" class="h">多车协同</text>
+  <text x="1392" y="434" text-anchor="middle" class="t">跨车资源调度与火力接力</text>
+  <line x1="400" y1="415" x2="457" y2="415" stroke="#58728d" stroke-width="3" marker-end="url(#arrow)"/>
+  <line x1="795" y1="415" x2="852" y2="415" stroke="#58728d" stroke-width="3" marker-end="url(#arrow)"/>
+  <line x1="1190" y1="415" x2="1247" y2="415" stroke="#58728d" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <text x="70" y="540" class="h">指挥控制层级</text>
+  <rect x="140" y="565" width="330" height="105" rx="18" fill="#245b8f"/>
+  <rect x="635" y="565" width="330" height="105" rx="18" fill="#278b76"/>
+  <rect x="1130" y="565" width="330" height="105" rx="18" fill="#c47a2d"/>
+  <text x="305" y="608" text-anchor="middle" class="w">中心节点</text>
+  <text x="305" y="642" text-anchor="middle" class="w">全局航迹与版本化计划</text>
+  <text x="800" y="608" text-anchor="middle" class="w">合法二级所有者</text>
+  <text x="800" y="642" text-anchor="middle" class="w">限定区域接管与恢复合并</text>
+  <text x="1295" y="608" text-anchor="middle" class="w">拦截资源节点</text>
+  <text x="1295" y="642" text-anchor="middle" class="w">身份核对与受控导引</text>
+  <line x1="470" y1="617" x2="627" y2="617" stroke="#58728d" stroke-width="4" marker-end="url(#arrow)"/>
+  <line x1="965" y1="617" x2="1122" y2="617" stroke="#58728d" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <rect x="70" y="728" width="1460" height="125" rx="22" fill="#ffffff" stroke="#557896" stroke-width="3"/>
+  <text x="800" y="770" text-anchor="middle" class="h">统一数据与安全合同</text>
+  <text x="800" y="810" text-anchor="middle" class="t">双时间戳 · 坐标与外参 · 协方差 · 全局航迹编号 · 计划所有者与版本 · 角色和有效期 · 友方声明</text>
+  <text x="800" y="840" text-anchor="middle" class="s">三套视图分别描述火力边界、物理部署和控制权，统一合同保证交接与降级过程一致</text>
+</svg>
