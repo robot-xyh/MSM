@@ -6,6 +6,39 @@
 
 **P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。2026-07-14 canonical actual-execution 证据链已完成真实 AirSim seed-1 复验：tuned 2v2 与 M5N2 均生成并通过校验的 `d7-actual-execution-metrics-v2`，不存在 unavailable artifact；`control_commands.csv`、`intercept_summary.json` 和 actual envelope 的物理成功数一致，控制计划 ID 与同一个 canonical D3 history 一致，身份和状态在线真值使用计数均为 0。2026-07-15 main/D6 进一步关闭“只有总耗时、无法定位预算违例阶段”的 P1 可观测性实现缺口；随后复核并关闭 D4 多入口二级接管证据不一致的系统级 P0 边界，以及 D2 continuity 固定 `+0.10` 在高基线下不可达的 P1 准入规则缺口。同日第二次只读审计发现 D4 两个公开 helper 仍把部分缺失证据 `None` 当成“非 False”放行；D4 owner 已改为 exact-true/fail-closed，补齐逐字段缺失负例并完成跨模块回归。D2/D6 随后已用原冻结 replay 生成 ceiling-aware v2 正式联合证据：总体 GNN 候选五项 gate 通过，但只有 `clutter`、`combined` 两个 difficulty 通过，dropout truth alignment 仍为 partial，JPDA 不准入，因此只形成 promotion review，默认 GNN/Hungarian 不变。最新相关回归为 D2 `113`、D4 `280`、D6 `272`、AirSim runtime `157`、integrated point-mass `7`；当前无开放运行级或证据级 P0 blocker。P1 继续包括 D3 长期 churn、M5N2 第二 primary/物理联盟、candidate `3/2/1` 机会合同、ClockSpeed 与顺序控制 RPC 解耦、D5 30/50 m 与 native MOT 准入、真实二级网络时序、D2 候选的跨 difficulty/完整系统评审，以及基于新分阶段证据达到 100 ms 实时预算。P2 仍只在隔离环境评估，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
 
+## 2026-07-16 D5 5+1 ComputerVision 多相机专项
+
+main 新增隔离入口 `run_d5_multicamera_branch.py`，单次启动 Blocks 后用 reset 分隔
+AirSim detect 基线与 YOLOv8+原生 ByteTrack 候选。场景包含 5 个
+`1920x1080/60°` 主相机、1 个 `3840x2160/75°` 俯视侦察相机和 5 个
+`Quadrotor1` actor；运行 12 s、49 帧、seed 7，并按 2 s 间隔保存本专项要求的画面。
+五个主相机允许只看到目标子集，侦察相机提供较宽视野。本专项未运行 D1/D2，main
+用 actor 运动学合成中心侧 GlobalTrack fixture，并用 truth 做离线交并比评分；D5
+关联代价、Hungarian 选择和稳定窗口只使用既有 GlobalTrack ID、相机内外参、双时间戳、
+协方差和 camera-local track，不读取局部 actor/object/truth identity。
+
+首次分析把全部 camera batch 的投影时间错误覆盖为最后一帧，导致前半段系统性像素偏移。
+main 已修正为按各批次 `measurement_timestamp` 投影，并增加 `--replay-existing`，使用
+完全相同的原始 AirSim 帧重算，未重新检测或改变仿真输入。
+
+| 后端 | 检测召回 | 配准准确率 | 严格准确率 | 稳定配准 | 主相机联合覆盖 | 侦察全覆盖 | local IDSW | P50/P95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| AirSim detect | `1.000` | `1.000` | `1.000` | `0.975` | `1.000` | `0.918` | `0` | N/A |
+| YOLOv8 + ByteTrack | `0.622` | `0.996` | `0.966` | `0.955` | `1.000` | `0.878` | `25` | `10.42/12.37 ms` |
+
+两条路径的在线 truth use 和 `global_track_id` rewrite 均为 0。结论是 detect 几何基线
+通过本专项门限，证明“局部子集视场 + 侦察视场 + GlobalTrack 投影 + Hungarian/稳定
+窗口”链路在该单 seed 场景可运行；YOLOv8+ByteTrack 虽满足延迟和配准门限，但召回、
+本地身份连续性和侦察全覆盖未通过，继续保持 optional，不替换默认 detect。开放 P1
+细化为：同几何至少 10 seeds、不同目标间距/遮挡、YOLO 类别和尺度标定、ByteTrack
+IDSW 治理、侦察视野稳定性及真实相机同步/外参漂移。专项报告位于
+`research_modules/airsim_runtime/outputs/d5_cv_5v5_multicamera_formal_20260716/`
+`D5_CV_5V5_MULTICAMERA_BRANCH_REPORT_CN.md`。
+
+回归结果：D5 `291 passed`，AirSim runtime `154 passed`；后者只有既有 Matplotlib
+`Axes3D` 环境提示，不影响二维曲线或相机截图。两条路径各保存 7 个 2×3 间隔拼图，
+共 14 个，覆盖 `0/2/4/6/8/10/12 s`。
+
 ## 2026-07-16 本地图像航迹可复用机制接入
 
 `b.mp4` 人工框选实验继续作为 P2 离线诊断支线，不进入默认 AirSim、D1 融合或 D2
