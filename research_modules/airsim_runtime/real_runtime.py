@@ -718,11 +718,13 @@ class RealAirSimRuntimeClient:
                     },
                 )
                 metadata["decode_backend"] = decode_backend
-            if config.save_images:
+            save_interval = max(int(config.image_save_interval_frames), 1)
+            if config.save_images and frame_index >= 0 and frame_index % save_interval == 0:
                 image_path = output_dir / f"frame_{frame_index:04d}_{vehicle_name}_scene.png"
                 image_path.write_bytes(data)
                 metadata["saved"] = True
                 metadata["path"] = str(image_path)
+                metadata["save_interval_frames"] = save_interval
             return metadata
         except Exception as exc:
             return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
@@ -755,7 +757,55 @@ class RealAirSimRuntimeClient:
         timestamp: float,
         camera_vehicle_names: tuple[str, ...],
     ) -> tuple[tuple[AirSimDetectionBox, ...], list[dict[str, Any]]]:
-        backend = str(config.detection_backend).lower()
+        secondary_names = set(config.secondary_camera_vehicle_names)
+        secondary_backend = (
+            None
+            if config.secondary_detection_backend is None
+            else str(config.secondary_detection_backend).lower()
+        )
+        if secondary_backend is None or secondary_backend == str(config.detection_backend).lower():
+            return self._capture_detections_with_backend(
+                config,
+                frame_index=frame_index,
+                timestamp=timestamp,
+                camera_vehicle_names=camera_vehicle_names,
+                backend=str(config.detection_backend).lower(),
+            )
+
+        primary_camera_names = tuple(
+            name for name in camera_vehicle_names if name not in secondary_names
+        )
+        secondary_camera_names = tuple(
+            name for name in camera_vehicle_names if name in secondary_names
+        )
+        primary_detections, primary_metadata = self._capture_detections_with_backend(
+            config,
+            frame_index=frame_index,
+            timestamp=timestamp,
+            camera_vehicle_names=primary_camera_names,
+            backend=str(config.detection_backend).lower(),
+        )
+        secondary_detections, secondary_metadata = self._capture_detections_with_backend(
+            config,
+            frame_index=frame_index,
+            timestamp=timestamp,
+            camera_vehicle_names=secondary_camera_names,
+            backend=secondary_backend,
+        )
+        return (
+            (*primary_detections, *secondary_detections),
+            [*primary_metadata, *secondary_metadata],
+        )
+
+    def _capture_detections_with_backend(
+        self,
+        config: BlocksSmokeConfig,
+        *,
+        frame_index: int,
+        timestamp: float,
+        camera_vehicle_names: tuple[str, ...],
+        backend: str,
+    ) -> tuple[tuple[AirSimDetectionBox, ...], list[dict[str, Any]]]:
         if backend in {"yolo", "yolov8", "yolo_mot"}:
             return self._capture_yolo_mot_detections(
                 config,
@@ -793,6 +843,7 @@ class RealAirSimRuntimeClient:
             metadata.append(
                 {
                     "ok": True,
+                    "backend": "airsim",
                     "camera_vehicle_name": vehicle_name,
                     "camera_name": config.camera_name,
                     "count": len(raw_detections),
@@ -993,6 +1044,9 @@ class RealAirSimRuntimeClient:
                 "image": image_meta,
                 **dict(result.metadata),
             }
+            if offline_truth_records:
+                result_meta["offline_truth_records"] = offline_truth_records
+                result_meta["offline_truth_only"] = True
             metadata.append(result_meta)
             for index, track in enumerate(result.tracks):
                 detections.append(

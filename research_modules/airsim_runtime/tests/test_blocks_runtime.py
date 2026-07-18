@@ -79,8 +79,11 @@ from airsim_runtime.orchestrator import (
     AirSimBlocksSmokeOrchestrator,
     _apply_episode_health_injection,
 )
-from airsim_runtime.real_runtime import RealAirSimRuntimeClient
-from airsim_runtime.real_runtime import InterceptorPreparationError
+from airsim_runtime.real_runtime import (
+    InterceptorPreparationError,
+    RealAirSimRuntimeClient,
+    _look_at_euler_ned,
+)
 from airsim_runtime.run_blocks_sequence import (
     _build_sequence_run,
     _d4d5_calibration_rows,
@@ -91,6 +94,16 @@ from airsim_runtime.run_blocks_sequence import (
     _write_guidance_law_sweep_outputs,
     _write_p1_calibration_sweep_outputs,
     parse_args,
+)
+from airsim_runtime.run_d5_multicamera_branch import (
+    _acceptance_checks,
+    _actor_motion_metrics,
+    _association_diagnostics,
+    _branch_target_specs,
+    _episode_configs,
+    _match_local_tracks_to_offline_truth,
+    _snapshot_interval_frames,
+    parse_args as parse_d5_branch_args,
 )
 from airsim_runtime.sequence import (
     AirSimBlocksSequenceOrchestrator,
@@ -1584,6 +1597,132 @@ def test_real_runtime_can_opt_in_to_persist_sampled_images(tmp_path: Path) -> No
     assert Path(frame.metadata["image"]["path"]).exists()
 
 
+def test_real_runtime_saves_images_at_requested_frame_interval(tmp_path: Path) -> None:
+    fake_client = FakeAirSimClient()
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: fake_client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        duration_s=0.0,
+        save_images=True,
+        image_save_interval_frames=2,
+    )
+
+    skipped = runtime.sample_frame(
+        config,
+        frame_index=1,
+        timestamp=0.25,
+        output_dir=tmp_path,
+    )
+    saved = runtime.sample_frame(
+        config,
+        frame_index=2,
+        timestamp=0.50,
+        output_dir=tmp_path,
+    )
+
+    assert skipped.metadata["image"]["saved"] is False
+    assert "path" not in skipped.metadata["image"]
+    assert saved.metadata["image"]["saved"] is True
+    assert saved.metadata["image"]["save_interval_frames"] == 2
+    assert Path(saved.metadata["image"]["path"]).exists()
+
+
+def test_d5_multicamera_branch_fast_motion_and_snapshot_defaults() -> None:
+    args = parse_d5_branch_args([])
+    specs = _branch_target_specs(args)
+
+    assert args.drone_count == 5
+    assert args.snapshot_interval == pytest.approx(0.5)
+    assert args.target_speed_scale == pytest.approx(5.0)
+    assert _snapshot_interval_frames(args.snapshot_interval, args.dt) == 2
+    assert [np.linalg.norm(spec.velocity_ned) for spec in specs] == pytest.approx(
+        [3.90512484, 3.48209707, 3.5, 3.95284708, 4.71699057]
+    )
+    assert [np.sign(spec.velocity_ned[1]) for spec in specs] == [
+        1.0,
+        1.0,
+        0.0,
+        -1.0,
+        -1.0,
+    ]
+
+
+def test_d5_multicamera_branch_can_select_one_detect_episode(tmp_path: Path) -> None:
+    base_config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        image_save_interval_frames=2,
+        metadata={
+            "online_truth_identity_allowed": False,
+            "offline_truth_for_scoring_only": True,
+        },
+    )
+
+    configs = _episode_configs(
+        base_config,
+        campaign_id="fast_detect",
+        primary_backend="detect",
+    )
+
+    assert len(configs) == 1
+    assert configs[0].episode_id == "fast_detect_detect"
+    assert configs[0].detection_backend == "airsim"
+    assert configs[0].secondary_detection_backend == "airsim"
+    assert configs[0].image_save_interval_frames == 2
+    assert configs[0].metadata["online_truth_identity_allowed"] is False
+
+
+def test_d5_multicamera_branch_records_measured_actor_motion() -> None:
+    def frame(
+        frame_index: int,
+        timestamp: float,
+        positions: tuple[tuple[float, float, float], ...],
+    ) -> AirSimFrame:
+        return AirSimFrame(
+            episode_id="fast_detect",
+            scenario_name="d5_cv_multicamera_branch",
+            frame_index=frame_index,
+            timestamp=timestamp,
+            truth_objects=tuple(
+                AirSimTruthObject(
+                    object_id=f"TGT-{index + 1:03d}",
+                    object_type="target",
+                    timestamp=timestamp,
+                    position_ned=position,
+                    velocity_ned=(3.0, 1.0 if index == 0 else -1.0, 0.0),
+                )
+                for index, position in enumerate(positions)
+            ),
+            resources=(),
+        )
+
+    metrics = _actor_motion_metrics(
+        [
+            frame(0, 0.0, ((30.0, -4.0, -50.0), (30.0, 4.0, -50.0))),
+            frame(4, 2.0, ((36.0, -2.0, -50.0), (36.0, 2.0, -50.0))),
+        ]
+    )
+
+    assert metrics["measured_actor_speed_min_mps"] == pytest.approx(np.sqrt(10.0))
+    assert metrics["measured_actor_speed_max_mps"] == pytest.approx(np.sqrt(10.0))
+    assert metrics["actor_lateral_span_start_m"] == pytest.approx(8.0)
+    assert metrics["actor_lateral_span_end_m"] == pytest.approx(4.0)
+
+
+def test_computer_vision_look_at_uses_negative_pitch_for_lower_ned_target() -> None:
+    pitch, roll, yaw = _look_at_euler_ned(
+        (30.0, 0.0, -100.0),
+        (30.0, 0.0, -50.0),
+    )
+
+    assert pitch == pytest.approx(-np.pi / 2.0)
+    assert roll == pytest.approx(0.0)
+    assert yaw == pytest.approx(0.0)
+
+
 def test_real_runtime_moves_actor_targets_and_captures_builtin_detections(tmp_path: Path) -> None:
     fake_client = FakeAirSimClient()
     runtime = RealAirSimRuntimeClient(
@@ -1736,6 +1875,59 @@ def test_real_runtime_yolo_backend_uses_d5_adapter_without_simgetdetections(
     assert "TargetActor" not in detection.object_id
 
 
+def test_real_runtime_supports_yolo_primary_and_detect_secondary(
+    tmp_path: Path,
+) -> None:
+    class RoleAwareClient(FakeAirSimClient):
+        def __init__(self) -> None:
+            super().__init__(vehicle_names=("D5_Primary_1", "D5_Recon_1"))
+            self.detect_vehicles: list[str] = []
+
+        def simGetDetections(self, camera_name, image_type, vehicle_name="", external=False):
+            self.detect_vehicles.append(vehicle_name)
+            return super().simGetDetections(camera_name, image_type, vehicle_name, external)
+
+    class EmptyYoloAdapter:
+        def process_frame(self, frame, *, resource_id, camera_id, timestamp, frame_id=None):
+            return SimpleNamespace(
+                tracks=(),
+                status="ok",
+                detector_backend="fake_yolov8",
+                tracker_backend="bytetrack",
+                metadata={"processing_latency_ms": 4.0},
+            )
+
+    client = RoleAwareClient()
+    runtime = RealAirSimRuntimeClient(
+        client_factory=lambda **_: client,
+        airsim_module=FakeAirSimModule,
+        timeout_value=0.1,
+        yolo_adapter_factory=lambda _config: EmptyYoloAdapter(),
+    )
+    config = BlocksSmokeConfig(
+        output_root=tmp_path,
+        duration_s=0.0,
+        camera_vehicle_name="D5_Primary_1",
+        camera_vehicle_names=("D5_Primary_1",),
+        secondary_camera_vehicle_names=("D5_Recon_1",),
+        resource_vehicle_names=("D5_Primary_1",),
+        target_vehicle_names=(),
+        detection_backend="yolo",
+        secondary_detection_backend="airsim",
+    )
+
+    frame = runtime.sample_frame(config, frame_index=0, timestamp=0.0, output_dir=tmp_path)
+
+    assert client.detect_vehicles == ["D5_Recon_1"]
+    assert {
+        (item["camera_vehicle_name"], item["backend"])
+        for item in frame.metadata["detections"]
+    } == {
+        ("D5_Primary_1", "yolo"),
+        ("D5_Recon_1", "airsim"),
+    }
+
+
 def test_yolo_offline_truth_evaluation_fetches_truth_after_online_result(
     tmp_path: Path,
 ) -> None:
@@ -1792,6 +1984,99 @@ def test_yolo_offline_truth_evaluation_fetches_truth_after_online_result(
     assert frame.metadata["detections"][0]["offline_detector_evaluation"][
         "used_by_online_tracker"
     ] is False
+    assert frame.metadata["detections"][0]["offline_truth_only"] is True
+    assert frame.metadata["detections"][0]["offline_truth_records"][0][
+        "truth_id"
+    ] == "MSM_TargetActor_1"
+
+
+def test_d5_branch_offline_iou_match_keeps_truth_outside_local_tracks() -> None:
+    local_tracks = (
+        LocalVisualTrack(
+            local_track_id="camera-1/track-7",
+            center_px=np.array([20.0, 30.0]),
+            bbox=(10.0, 20.0, 30.0, 40.0),
+        ),
+    )
+    truth_records = (
+        {
+            "bbox_xyxy": (11.0, 21.0, 31.0, 41.0),
+            "global_track_id": "G-101",
+        },
+    )
+
+    matches = _match_local_tracks_to_offline_truth(local_tracks, truth_records)
+
+    assert matches == {"camera-1/track-7": "G-101"}
+    assert "G-101" not in local_tracks[0].local_track_id
+
+
+def test_d5_branch_association_diagnostics_separate_camera_time_and_unmatched() -> None:
+    rows = [
+        {
+            "timestamp": 0.0,
+            "camera_id": "Primary:0",
+            "global_track_id": "G-101",
+            "truth_global_track_id": "G-101",
+            "id_match": True,
+        },
+        {
+            "timestamp": 1.0,
+            "camera_id": "Primary:0",
+            "global_track_id": "G-102",
+            "truth_global_track_id": "G-101",
+            "id_match": False,
+        },
+        {
+            "timestamp": 2.0,
+            "camera_id": "Recon:0",
+            "global_track_id": "G-102",
+            "truth_global_track_id": "G-102",
+            "id_match": True,
+        },
+        {
+            "timestamp": 3.0,
+            "camera_id": "Primary:0",
+            "global_track_id": "G-103",
+            "truth_global_track_id": None,
+            "id_match": None,
+        },
+    ]
+
+    diagnostics = _association_diagnostics(
+        rows,
+        primary_camera_ids={"Primary:0"},
+        recon_camera_ids={"Recon:0"},
+    )
+
+    assert diagnostics["primary_offline_association_accuracy"] == 0.5
+    assert diagnostics["first_half_association_accuracy"] == 0.5
+    assert diagnostics["second_half_association_accuracy"] == 1.0
+    assert diagnostics["selected_registration_without_truth_count"] == 1
+    assert diagnostics["mismatch_pair_counts"] == {"G-101->G-102": 1}
+    assert diagnostics["per_camera_association"]["Recon:0"]["camera_role"] == "recon"
+
+
+def test_d5_branch_acceptance_keeps_yolo_candidate_optional_on_low_recall() -> None:
+    metrics = {
+        "primary_detection_backend": "bytetrack",
+        "offline_detector_recall": 0.62,
+        "strict_association_accuracy": 0.96,
+        "stable_registration_rate": 0.93,
+        "primary_union_coverage_rate_mean": 1.0,
+        "recon_full_view_frame_rate": 0.92,
+        "local_id_switch_count": 25,
+        "online_truth_identity_use_count": 0,
+        "global_track_id_rewrite_count": 0,
+    }
+
+    checks = _acceptance_checks(metrics)
+
+    outcomes = {label: passed for label, _threshold, _value, passed in checks}
+    assert outcomes["离线检测召回"] is False
+    assert outcomes["本地身份切换"] is False
+    assert outcomes["在线真值身份使用"] is True
+    assert outcomes["GlobalTrack 身份改写"] is True
 
 
 def test_main_bus_records_d5_yolo_mot_frame_budget_without_online_truth() -> None:

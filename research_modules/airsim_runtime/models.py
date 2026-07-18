@@ -76,6 +76,7 @@ class BlocksSmokeConfig:
     detection_radius_cm: int = 80 * 100
     secondary_detection_radius_cm: int | None = None
     detection_warmup_frames: int = 0
+    secondary_detection_backend: str | None = None
     yolo_weights_path: Path = Path("research_modules/d5_terminal_association/best.pt")
     yolo_tracker_backend: str = "bytetrack"
     yolo_confidence_threshold: float = 0.25
@@ -88,6 +89,7 @@ class BlocksSmokeConfig:
     yolo_secondary_inference_imgsz: int | tuple[int, int] | None = None
     yolo_offline_truth_evaluation: bool = False
     destroy_spawned_actor_targets: bool = True
+    image_save_interval_frames: int = 1
     include_integrated_pipeline: bool = True
     execute_intercept: bool = False
     control_dt_s: float = 0.1

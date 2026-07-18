@@ -352,6 +352,57 @@ python3 research_modules/airsim_runtime/run_blocks_sequence.py \
 By default, sampled camera frames are checked but not written as PNG files. Add
 `--save-images` only when debugging camera views or detection boxes.
 
+Run the isolated D5 5-primary-camera plus 1-recon-camera branch experiment:
+
+```bash
+python3 research_modules/airsim_runtime/run_d5_multicamera_branch.py \
+  --campaign-id d5_cv_5v5_multicamera_fast_detect \
+  --drone-count 5 \
+  --primary-backend detect \
+  --duration 6 \
+  --dt 0.25 \
+  --target-speed-scale 5.0 \
+  --snapshot-interval 0.5
+```
+
+The branch scales from `--drone-count N`; `5` is the formal baseline rather than
+an algorithm limit. `--target-speed-scale 5.0` multiplies every component of the
+original converging velocity pattern, preserving direction while producing
+about 3.48-4.72 m/s in the 5-target case. `--snapshot-interval` is converted to
+runtime frame intervals, so `0.5` with `--dt 0.25` saves every second sampled
+frame. The 6 s fast run ends before the linear lateral trajectories meet, so
+the sampled formation remains convergent throughout the episode.
+
+With `--primary-backend detect`, the branch runs one anonymous AirSim detect
+episode on all cameras. Use `--primary-backend all` to launch Blocks once and
+run the detect baseline plus YOLOv8/native ByteTrack candidate as
+reset-separated episodes; the recon camera remains on AirSim detect. This
+isolated D5 branch does not run D1/D2: main synthesizes the center-side
+`GlobalTrack` fixture from actor kinematics and keeps actor identity available
+for offline scoring. D5 association costs and selections receive only the
+pre-existing GlobalTrack IDs, camera-local tracks, timestamps, covariance, and
+geometry; they do not read local actor/object/truth identity. Interval images
+are enabled deliberately for this visual-inspection branch and remain disabled
+by default elsewhere.
+
+Recompute registration metrics and the Chinese report from the captured frames
+without launching Blocks:
+
+```bash
+python3 research_modules/airsim_runtime/run_d5_multicamera_branch.py \
+  --campaign-id d5_cv_5v5_multicamera_fast_detect \
+  --drone-count 5 \
+  --primary-backend detect \
+  --replay-existing
+```
+
+Registration projects each `GlobalTrack` at the individual camera batch
+measurement timestamp. Passing the last episode timestamp for every frame
+causes a systematic image-plane shift in moving-target sequences and is
+explicitly avoided. The report separates detector recall, scored and strict
+association accuracy, per-camera errors, local ID switches, coverage, online
+truth use, and `global_track_id` rewrite count.
+
 Run the ComputerVision 5v5 D1-D5 replay sequence. All interceptor and secondary
 nodes are `ComputerVision` camera vehicles; targets remain spawned/moved actors.
 This mode validates fusion, association, assignment, terminal visual
