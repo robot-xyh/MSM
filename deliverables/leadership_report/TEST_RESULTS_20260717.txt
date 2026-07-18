@@ -1,0 +1,41 @@
+MSM 规定测试复核
+日期：2026-07-17
+分支基线：main d02167c
+说明：在干净文档集成 worktree 中执行，不包含主工作区尚未提交的 D5/AirSim 修改。
+
+1. D1 多源融合
+命令：PYTHONPATH=research_modules/d1_sensor_fusion/src pytest -q research_modules/d1_sensor_fusion/tests
+结果：111 passed in 29.77s
+
+2. D2 数据关联
+命令：PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_data_association/tests
+结果：123 passed, 1 matplotlib environment warning in 35.68s
+
+3. D3 分配规划
+命令：python3 -m pytest -q research_modules/d3_assignment_planner/tests
+结果：158 collected；157 passed，1 optional skipped
+跳过原因：可选 OR-Tools 依赖未安装。
+
+4. D4 分布式降级
+命令：PYTHONPATH=research_modules/d4_distributed_fallback python3 -m pytest -q research_modules/d4_distributed_fallback/tests
+结果：280 passed in 1.71s
+
+5. D5 末端关联
+命令：pytest -q research_modules/d5_terminal_association/tests
+结果：288 passed in 2.92s
+
+6. D6 评估指标
+命令：pytest -q research_modules/d6_evaluation_metrics/tests
+结果：272 passed, 1 matplotlib environment warning in 15.68s
+
+7. D7 比例导引
+命令：python3 -m pytest -q research_modules/d7_proportional_guidance/tests
+结果：190 passed in 2.18s
+
+8. AirSim runtime
+命令：pytest -q research_modules/airsim_runtime/tests/test_blocks_runtime.py
+结果：148 passed, 1 matplotlib environment warning in 49.51s
+
+合计：1569 passed，1 optional skipped。
+
+环境说明：Matplotlib 警告为本机同时存在多个 Matplotlib 安装导致 Axes3D 导入不可用；本次被测用例全部通过。该警告不应被解释为三维绘图能力已经完成环境验收。
