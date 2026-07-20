@@ -1,0 +1,31 @@
+{
+  "schema": "d3_scalable_assignment_benchmark_v1",
+  "resource_count": 200,
+  "target_count": 200,
+  "max_candidate_edges_per_target": 32,
+  "repeat": 5,
+  "reference": {
+    "cost_build_path": "legacy_python_all_pairs",
+    "runs_ms": [2145.194, 1904.261, 1908.284, 1831.332, 1869.129],
+    "median_ms": 1904.261,
+    "assignment_count": 200,
+    "candidate_edge_count": 6400,
+    "candidate_full_edge_count": 40000,
+    "python_full_pair_cost_evaluation_count": 40000,
+    "candidate_breakdown_materialization_count": 40000
+  },
+  "vectorized": {
+    "cost_build_path": "vectorized_sparse_candidates",
+    "runs_ms": [83.48, 85.367, 84.677, 85.692, 132.215],
+    "median_ms": 85.367,
+    "assignment_count": 200,
+    "candidate_edge_count": 6400,
+    "candidate_full_edge_count": 40000,
+    "python_full_pair_cost_evaluation_count": 0,
+    "candidate_breakdown_materialization_count": 6400
+  },
+  "median_speedup": 22.307,
+  "semantic_contract": "same_rule_costs_hard_constraints_and_hungarian",
+  "validation_date": "2026-07-20",
+  "evidence_scope": "D3 standalone deterministic benchmark; not an AirSim or full-stack real-time claim"
+}

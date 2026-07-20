@@ -298,3 +298,28 @@ plan 的 target/role 识别，不能固定资源编号。`png_ttc_2v2_seed001` �
 OR-Tools。`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查：本批未接 AirSim adapter、runtime
 或 actor/control 合同，因此不改其已验证/未验证状态。`docs/EXPERIMENT_REPORT.md` 只
 记录本地确定性样本，并明确不是 AirSim/PPO 证据。
+
+## 18. 200×200 性能与区域计划合同 GAP 更新（2026-07-20）
+
+| GAP/能力 | 当前状态 | 证据与剩余边界 |
+|---|---|---|
+| top-32 仍遍历全部 Python pair | D3-owned closed | 40,000 次全边调用降为 0；只物化 6,400 个候选 breakdown |
+| 200×200 D3 成本/求解耗时 | deterministic benchmark done | 同进程 5 次中位 1904.261 ms -> 85.367 ms，22.307×；不是全栈实时验收 |
+| 向量化规则语义 | D3-owned closed | 20×23 矩阵、mask、reject reason 一致，breakdown 容差 `1e-11` |
+| 稀疏 Hungarian | D3-owned closed | SciPy 默认；候选二部图按连通分量求解，无候选目标走未分配代价 |
+| 复杂 pair-specific 约束 | regression protected | 自动回退旧路径；尚未向量化，不影响既有语义 |
+| D4 裁决的多个 secondary owner | D3 interface done | 单计划、多区域 owner、epoch/lease/source 校验通过；main/D4 尚待映射 |
+| fully distributed coalition | D3 interface done | committed、完整 ACK、成员/epoch/lease 一致才发布；运行时闭环仍 open |
+| stale/old epoch/expired lease/missing ACK | D3 fail-closed done | 专项测试均拒绝；尚需 main 故障注入复验 |
+| 区域计划 D6 指标 | cross-module P1 open | 尚缺 owner transition、commit latency、reject reason 和 lease violation 汇总 |
+| AirSim/多 seed | P1 open | 本批未运行，不以模块 benchmark 替代系统证据 |
+
+本轮没有新增 D3 P0。D3 全量共收集 182 项，`181 passed, 1 skipped`，零失败满足门限；
+唯一 skip 为 optional OR-Tools。main 需要复跑施工中间态曾失败的 5v5、200v200、中心
+失效和二级失效 module-stack 回归，并把 D4 区域裁决接入
+`plan_regional_authority()`。在该接线完成前，多 owner 和 fully distributed 仍标为
+接口已实现、系统未集成。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已复核。本轮未改变 AirSim adapter、actor、控制、
+话题或 settings，因此不改该文件。实验文档已新增本地性能和合同证据，并明确未运行
+AirSim、多 seed 或全栈实时验收。

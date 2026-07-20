@@ -929,3 +929,77 @@ checkpoint、离线 policy evaluation 或 PPO。
 统计，标定 confidence/OOD/deadline，并完成 shadow paired non-degradation。当前环境
 没有 gymnasium/stable_baselines3，本轮也未实现大规模 PPO；不得把 BC 单测或随机
 初始化 shadow 写成强化学习验收完成。
+
+## 26. 向量化稀疏成本与局部 Hungarian（2026-07-20）
+
+### 26.1 路径选择
+
+`CostModel.build_matrix()` 仅在候选稀疏化、向量化稀疏成本和每目标候选上限同时启用
+时进入 `_build_vectorized_sparse_matrix()`。`PlannerConfig.scalable_3d()` 默认满足
+该条件。若输入包含按资源定义的视场、冲突、可达性、友方冲突或时间窗覆盖，方法自动
+回退 `_build_matrix_legacy()`，并在 metadata 中记录
+`legacy_complex_constraint_fallback`。该回退用于保持复杂规则的原有解释和优先级。
+
+### 26.2 批量成本构造
+
+目标和资源的位置、速度、协方差、最大速度、最大距离、状态、区域及需求先转成 NumPy
+数组。广播运算一次计算 `N_target × N_resource` 的解析截获根、截获距离、协方差项、
+资源状态项和区域项。硬拒绝按固定顺序写入拒绝原因。随后按 `(规则成本,
+resource_id)` 稳定排序，每个目标保留：
+
+```text
+k_effective = max(configured_top_k, required_resource_count)
+```
+
+上一发布计划中仍可行的成员边额外保留。矩阵仍保留完整形状，以兼容学习残差、迟滞
+重评分和既有 DTO；只有候选边生成完整 `CostBreakdown`。剪枝边共享不可行解释模板，
+并以 `candidate_pruned_sparse` 标记，避免逐边构造字典。
+
+### 26.3 稀疏确定性求解
+
+`HungarianAssignmentSolver.solve()` 接收与成本矩阵同形的 `candidate_mask`。求解器先
+在候选二部图上查找连通分量，再为每个分量构造目标行、资源列和虚拟未分配列组成的
+局部矩阵。分量之间没有共享资源，因此局部最优值之和等于该稀疏候选图的全局最优值。
+没有候选资源的目标直接计入未分配代价。默认求解器仍为 SciPy
+`linear_sum_assignment`；没有新增强制依赖。
+
+### 26.4 语义与性能验收
+
+20×23 对照场景逐边比较新旧路径。成本矩阵、候选掩码和拒绝原因一致，候选解释的
+浮点差在 `1e-11` 容差内。200×200、top-32、同进程各重复 5 次的中位耗时由
+1904.261 ms 降到 85.367 ms，加速 22.307 倍；两条路径均分配 200/200。结构计数由
+40,000 次 Python 全边规则调用降到 0，完整解释物化数由 40,000 降到 6,400。
+
+## 27. D4 裁决后的区域计划接口（2026-07-20）
+
+### 27.1 输入合同
+
+`RegionalAuthorityInput` 表示同一 D4 裁决帧，可包含多个 `RegionalAuthorityGrant`。
+每个 grant 指定区域、owner 层级、owner 节点、角色、epoch、来源计划、lease、目标
+集合和 D4 已确定的资源成员。`RegionalCoalitionCommitEvidence` 提供联盟协调者、
+成员集合、ACK 集合、commit 状态、epoch、lease 及可选联盟身份。D3 不导入 D4 类型，
+由 main 负责 DTO 映射。
+
+### 27.2 验证和发布
+
+`AssignmentPlanner.plan_regional_authority()` 先执行既有 previous plan/version 校验，
+再验证完整目标范围、来源身份、epoch 单调性、lease、资源唯一性和执行许可。指定成员
+必须存在于本轮资源输入中，并通过规则候选、能力和 M-to-N 需求完整性检查。以下目标
+必须提供原子提交证据：
+
+- owner 层级为 fully distributed；
+- `required_resource_count > 1`。
+
+提交状态不是 committed、ACK 不完整、协调者/epoch/成员不一致、联盟 lease 超出区域
+lease、联盟身份或版本不匹配时，接口抛出 `RegionalPlanAuthorityError`。通过验证后，
+普通 `Assignment`、`CoalitionPlan` 和 `AssignmentPlan` 写入区域 owner、epoch、lease、
+commit metadata，并继续进入迟滞和严格版本发布。D3 不改写 `global_track_id`，也不
+把缺证据的区域输入降级成可执行计划。
+
+### 27.3 当前边界
+
+模块测试覆盖两个 secondary owner，以及 distributed committed、缺 ACK、旧 epoch、
+过期 lease 和 stale source。2026-07-20 D3 全量共收集 182 项，结果为 181 passed、
+1 optional OR-Tools skipped。main/D4 尚未完成运行时 DTO 映射，D6 尚未汇总区域计划
+形成时间、拒绝原因和 owner/epoch/lease 迁移。因此本节只能声明 D3 接口已实现并通过
+模块测试，不能声明二级或完全分布式全流程已经闭合。

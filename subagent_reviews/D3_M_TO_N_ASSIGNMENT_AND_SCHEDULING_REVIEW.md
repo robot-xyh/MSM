@@ -320,3 +320,20 @@ target-resource 候选边共享输出 residual，展开后的 role/wave/capabili
 200v200 M-to-N、能力异构、动态资源失效或 AirSim 协同物理完成。全量结果为
 `170 passed, 1 skipped`；真实 M5N2 第二 primary/coalition、多 seed 和 PPO 均保持
 开放或未实现状态。
+
+## 19. 区域降级下的 M-to-N 提交合同（2026-07-20）
+
+中心、二级或完全分布式层级变化不能降低 M-to-N 的全有或全无要求。D4 先裁决区域
+owner 和成员，D3 再检查成员数量是否等于 `required_resource_count`、资源是否重复、
+每条边是否仍可行及能力是否满足。任何 `k>1` 目标均必须附带 committed 联盟证据；
+完全分布式层级即使 `k=1` 也要求 commit，以防不同网络分区分别发布可执行任务。
+
+联盟证据必须与区域 owner、epoch、成员集合和 lease 一致，并包含全部必要成员 ACK。
+缺 ACK、未 committed、过期 lease、旧 epoch、协调者不一致或成员不一致均 fail closed。
+通过后仍生成普通 `CoalitionPlan` 和版本化 `AssignmentPlan`，角色、波次、备用成员和
+既有迟滞语义不变。D3 不自行选择二级节点，也不在分布式状态下本地重写目标身份。
+
+模块测试已覆盖两个 secondary owner、distributed 三成员 committed，以及缺 ACK、
+旧 epoch、过期 lease 和 stale source 拒绝。该结果证明 D3 发布合同可执行，不证明
+D4 已完成区域裁决映射，也不证明网络分区下的运行时原子提交。main/D4 接线和 D6
+commit latency/abort/reconfigure 统计仍为 P1。

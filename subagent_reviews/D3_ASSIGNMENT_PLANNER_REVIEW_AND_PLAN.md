@@ -561,3 +561,24 @@ optional OR-Tools installed-only case 是唯一 skip，owned-path diff 检查通
 skip 仅 optional OR-Tools。200v200 单次本地调用 0.621 s 只记录为单样本功能时延。
 开放 P1/P2 是真实轨迹 BC 数据、checkpoint、confidence/OOD/deadline 标定、多 seed
 shadow paired non-degradation、scalable simulation/AirSim 物理闭环和任何 PPO 研究。
+
+## 21. 大规模性能和区域所有权复核（2026-07-20）
+
+此前 200×200、top-32 的主要耗时不在 Hungarian 本身，而在求解前的 Python 全边
+规则计算和解释字典构造。当前实现将核心三维规则改为 NumPy 批量计算，在候选选择后
+只为 6,400 条边生成完整解释；候选图按连通分量进入局部 Hungarian。默认求解器、
+M-to-N demand slot、迟滞、硬门控和学习有界残差保持不变。
+
+同进程 5 次基准中，旧路径中位 1904.261 ms，新路径 85.367 ms，分配结果均为
+200/200。20×23 语义对照通过。该数据足以关闭 D3-owned 的 Python 全边性能缺口，
+不能替代 main 的 module-stack、多 seed、通信和 AirSim 时延验收。
+
+区域计划接口遵循“D4 裁决、D3 验证和发布”。一个版本化计划可承载多个 secondary
+owner 或 distributed peer owner。来源计划、epoch、lease、成员候选、M-to-N 完整性
+和联盟 commit/ACK 均为硬条件。失败时直接拒绝，不由 D3改变降级层级。模块测试覆盖
+两个 secondary owner、distributed committed、缺 ACK、旧 epoch、过期 lease 和 stale
+source；main/D4 运行时映射尚未完成。
+
+本轮 D3 全量共 182 项，结果为 `181 passed, 1 skipped`。下一步仅需 main 接入 D4
+区域裁决、复跑四个 module-stack 场景并由 D6记录 owner/epoch/lease/commit 指标；D3
+不继续扩展新的求解器或区域决策策略。

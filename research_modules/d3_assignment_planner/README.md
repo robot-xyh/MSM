@@ -484,3 +484,53 @@ study. `gymnasium` and `stable_baselines3` are absent and are not required by
 this implementation. The analytic reachability baseline does not replace D7
 dynamics, obstacle/path planning, regional quota policy, or AirSim physical
 validation.
+
+## 2026-07-20 200×200 成本构造与区域计划合同
+
+### 稀疏成本构造
+
+此前的 top-k 只压缩了求解和证据输出，规则成本仍先对全部 `N×M` 资源目标对执行
+Python 几何计算，并为随后被剪枝的边构造完整字典。同区域 200 resource × 200 target、
+每目标 32 条候选边时，实际仍执行 40,000 次边成本和 80,000 次截获量计算。
+
+`PlannerConfig.scalable_3d()` 现默认启用 `enable_vectorized_sparse_costs`。核心三维
+位置、速度、协方差、资源状态、区域许可、截获时间和距离由 NumPy 批量计算；规则排序
+仍按“成本、resource_id”确定性排序。最终只为 6,400 条候选边生成完整 breakdown，
+剪枝边共享拒绝模板。带资源目标字典覆盖或复杂时间窗的输入继续走旧参考路径，保持既有
+约束优先级和解释字段。学习残差、有界修正、规则回退和硬门控没有改变。
+
+SciPy `linear_sum_assignment` 仍是默认确定性求解器。候选图不连通时，求解器按二部图
+连通分量构造局部矩阵并分别运行 Hungarian；无候选目标直接按未分配成本处理。该分解
+不改变全局最优值，因为分量之间没有共享资源边。
+
+2026-07-20 同一进程、同一 200×200 输入、top-32、各重复 5 次的 D3 独立基准如下。
+结果保存在 `results/scalable_3d_assignment_benchmark_20260720.json`。
+
+| 路径 | 中位耗时 | 完整边 | 候选边 | Python 全边成本调用 | 分配数 |
+|---|---:|---:|---:|---:|---:|
+| 旧参考路径 | 1904.261 ms | 40,000 | 6,400 | 40,000 | 200 |
+| 向量化稀疏路径 | 85.367 ms | 40,000 | 6,400 | 0 | 200 |
+
+中位加速为 22.307 倍。20×23 逐边语义对照中，矩阵、候选掩码和拒绝原因一致，候选
+breakdown 的浮点差在 `1e-11` 容差内。该数据是 D3 独立确定性基准，不代表 D1-D7
+全栈实时性能，也不替代多 seed 或 AirSim 物理验收。
+
+### 区域计划
+
+新增 `RegionalAuthorityInput`、`RegionalAuthorityGrant` 和
+`RegionalCoalitionCommitEvidence`。D3 不判断是否降级，只接受 D4 已裁决的区域
+owner 和成员结果，生成一个普通、可版本校验的 `AssignmentPlan`。同一计划可携带
+多个 secondary owner，也可携带 fully distributed peer owner；每条 assignment
+记录 region、owner、epoch、lease 和 commit 状态。
+
+发布前必须满足：D4 输入引用当前 `plan_id/version`；区域 epoch 不回退；lease 在
+发布时间后有效；每个资源只属于一个目标；成员边仍在 D3 规则候选中；M-to-N 需求
+完整；分布式目标和所有 `k>1` 目标具有 committed、完整 ACK、成员一致且未过期的
+联盟证据。任一条件失败均抛出带 reason 的 `RegionalPlanAuthorityError`，不发布
+可执行计划。计划执行变化继续严格递增版本，旧 previous plan 仍由 `StalePlanError`
+拒绝；成员变化仍经过现有迟滞，不能借降级绕过。
+
+本轮 D3 全量验收为 `181 passed, 1 skipped`，唯一 skip 是 optional OR-Tools。
+区域合同已完成模块级测试，main 尚未把 D4 `RegionalFailoverDecision` 转换并接入
+`plan_regional_authority()`；因此多 owner secondary 和 distributed 运行时闭环仍是
+待集成，不得写成完整系统已通过。

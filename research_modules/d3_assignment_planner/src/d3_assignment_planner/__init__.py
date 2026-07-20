@@ -126,6 +126,14 @@ from .solver import (
     HungarianAssignmentSolver,
     HungarianDemandSlotSolver,
 )
+from .regional import (
+    REGIONAL_ASSIGNMENT_PLAN_SCHEMA_V1,
+    REGIONAL_AUTHORITY_INPUT_SCHEMA_V1,
+    RegionalAuthorityGrant,
+    RegionalAuthorityInput,
+    RegionalCoalitionCommitEvidence,
+    RegionalPlanAuthorityError,
+)
 
 __all__ = [
     "ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1",
@@ -194,6 +202,12 @@ __all__ = [
     "P1_PRIMARY_ARRIVAL_WINDOW_WIDTHS_S",
     "P1_TERMINAL_HANDOFF_RANGES_M",
     "RankedCooperativeCandidate",
+    "REGIONAL_ASSIGNMENT_PLAN_SCHEMA_V1",
+    "REGIONAL_AUTHORITY_INPUT_SCHEMA_V1",
+    "RegionalAuthorityGrant",
+    "RegionalAuthorityInput",
+    "RegionalCoalitionCommitEvidence",
+    "RegionalPlanAuthorityError",
     "ResidualPrediction",
     "ResourceState",
     "SECONDARY_PLAN_ACTIVE_STATE",

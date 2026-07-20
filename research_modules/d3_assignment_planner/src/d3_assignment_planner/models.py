@@ -309,6 +309,7 @@ class PlannerConfig:
     feedback_profile_version: str = DEFAULT_FEEDBACK_PROFILE_VERSION
     transient_feedback_dwell_frames: int = 2
     enable_candidate_sparsification: bool = False
+    enable_vectorized_sparse_costs: bool = False
     max_candidate_edges_per_target: int | None = None
     enforce_region_compatibility: bool = False
     max_intercept_time_s: float | None = None
@@ -323,6 +324,7 @@ class PlannerConfig:
 
         values: dict[str, Any] = {
             "enable_candidate_sparsification": True,
+            "enable_vectorized_sparse_costs": True,
             "max_candidate_edges_per_target": 12,
             "enforce_region_compatibility": True,
             "max_intercept_time_s": 900.0,
@@ -586,6 +588,13 @@ _PLAN_EXECUTION_METADATA_KEYS = (
     "activation_state",
     "activation_at_s",
     "executable",
+    "regional_plan_schema",
+    "regional_authorities",
+    "regional_owner_layers",
+    "regional_owner_node_ids",
+    "regional_min_lease_expires_at_s",
+    "regional_max_epoch",
+    "regional_execution_allowed",
 )
 
 _ASSIGNMENT_EXECUTION_METADATA_KEYS = (
@@ -606,6 +615,11 @@ _ASSIGNMENT_EXECUTION_METADATA_KEYS = (
     "activation_state",
     "activation_at_s",
     "executable",
+    "regional_owner_layer",
+    "regional_region_id",
+    "regional_epoch",
+    "regional_lease_expires_at_s",
+    "regional_commit_state",
 )
 
 

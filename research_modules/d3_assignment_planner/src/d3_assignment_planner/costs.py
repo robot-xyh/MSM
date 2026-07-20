@@ -76,6 +76,34 @@ class CostModel:
     ) -> CostMatrixResult:
         """Build the rule matrix and its deterministic sparse candidate mask."""
 
+        if (
+            self.config.enable_candidate_sparsification
+            and self.config.enable_vectorized_sparse_costs
+            and self.config.max_candidate_edges_per_target is not None
+        ):
+            return self._build_vectorized_sparse_matrix(
+                tracks,
+                resources,
+                timestamp,
+                preserved_candidate_edges=preserved_candidate_edges or {},
+            )
+        return self._build_matrix_legacy(
+            tracks,
+            resources,
+            timestamp,
+            preserved_candidate_edges=preserved_candidate_edges,
+        )
+
+    def _build_matrix_legacy(
+        self,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        resources: list[ResourceState] | tuple[ResourceState, ...],
+        timestamp: float,
+        *,
+        preserved_candidate_edges: Mapping[str, tuple[str, ...]] | None = None,
+    ) -> CostMatrixResult:
+        """Reference object-per-edge implementation used for regression checks."""
+
         self._validate_scalable_config()
         target_ids = tuple(track.track_id for track in tracks)
         resource_ids = tuple(resource.resource_id for resource in resources)
@@ -136,6 +164,9 @@ class CostModel:
             candidate_mask=candidate_mask,
             metadata={
                 "candidate_graph_schema": "d3_sparse_candidate_graph_v1",
+                "cost_build_path": "legacy_python_all_pairs",
+                "python_full_pair_cost_evaluation_count": full_edge_count,
+                "candidate_breakdown_materialization_count": full_edge_count,
                 "candidate_graph_sparse": bool(
                     self.config.enable_candidate_sparsification
                 ),
@@ -154,6 +185,607 @@ class CostModel:
                 "candidate_policy_action_space": "shared_edge_residual",
             },
         )
+
+    def _build_vectorized_sparse_matrix(
+        self,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        resources: list[ResourceState] | tuple[ResourceState, ...],
+        timestamp: float,
+        *,
+        preserved_candidate_edges: Mapping[str, tuple[str, ...]],
+    ) -> CostMatrixResult:
+        """Build exact core rule costs in arrays and materialize sparse evidence.
+
+        Pair-specific dictionaries and time-window overrides remain on the
+        reference path.  This keeps their established precedence unchanged
+        while removing the object-per-pair loop from the scalable 3-D profile.
+        """
+
+        self._validate_scalable_config()
+        if not self._supports_vectorized_sparse_path(tracks, resources):
+            legacy = self._build_matrix_legacy(
+                tracks,
+                resources,
+                timestamp,
+                preserved_candidate_edges=preserved_candidate_edges,
+            )
+            return CostMatrixResult(
+                matrix=legacy.matrix,
+                breakdowns=legacy.breakdowns,
+                target_ids=legacy.target_ids,
+                resource_ids=legacy.resource_ids,
+                unassigned_costs=legacy.unassigned_costs,
+                target_threat_scores=legacy.target_threat_scores,
+                reject_reasons=legacy.reject_reasons,
+                candidate_mask=legacy.candidate_mask,
+                metadata={
+                    **dict(legacy.metadata),
+                    "cost_build_path": "legacy_complex_constraint_fallback",
+                    "vectorized_sparse_fallback": True,
+                },
+            )
+
+        target_count = len(tracks)
+        resource_count = len(resources)
+        shape = (target_count, resource_count)
+        target_ids = tuple(track.track_id for track in tracks)
+        resource_ids = tuple(resource.resource_id for resource in resources)
+        full_edge_count = target_count * resource_count
+
+        target_covariance = np.asarray(
+            [_clamp01(track.covariance) for track in tracks],
+            dtype=float,
+        )
+        target_covariance_trace = np.asarray(
+            [
+                np.nan
+                if (value := _covariance_trace(track.position_covariance_ned)) is None
+                else value
+                for track in tracks
+            ],
+            dtype=float,
+        )
+        resource_covariance_trace = np.asarray(
+            [
+                np.nan
+                if (value := _covariance_trace(resource.position_covariance_ned)) is None
+                else value
+                for resource in resources
+            ],
+            dtype=float,
+        )
+        combined_covariance = np.nan_to_num(
+            target_covariance_trace[:, None], nan=0.0
+        ) + np.nan_to_num(resource_covariance_trace[None, :], nan=0.0)
+        covariance_score = np.maximum(
+            target_covariance[:, None],
+            np.clip(
+                combined_covariance / self.config.covariance_trace_scale,
+                0.0,
+                1.0,
+            ),
+        )
+        both_covariance_missing = (
+            np.isnan(target_covariance_trace)[:, None]
+            & np.isnan(resource_covariance_trace)[None, :]
+        )
+        covariance_score = np.where(
+            both_covariance_missing,
+            target_covariance[:, None],
+            covariance_score,
+        )
+
+        resource_components = tuple(
+            self.resource_state_components(resource) for resource in resources
+        )
+        resource_component_arrays = {
+            key: np.asarray([item[key] for item in resource_components], dtype=float)
+            for key in (
+                "total",
+                "status",
+                "health",
+                "load_penalty",
+                "energy",
+                "availability",
+                "current_load",
+                "history_failure",
+            )
+        }
+        fov_score = np.broadcast_to(
+            np.asarray([_clamp01(item.fov_difficulty) for item in resources])[None, :],
+            shape,
+        )
+        conflict_score = np.broadcast_to(
+            np.asarray([_clamp01(item.conflict_risk) for item in resources])[None, :],
+            shape,
+        )
+        intercept_score = np.ones(shape, dtype=float)
+
+        target_positions, target_position_valid = _vector_matrix(
+            [track.position_ned for track in tracks]
+        )
+        target_velocities, _ = _vector_matrix(
+            [track.velocity_ned for track in tracks],
+            missing_as_zero=True,
+        )
+        resource_positions, resource_position_valid = _vector_matrix(
+            [resource.position_ned for resource in resources]
+        )
+        resource_velocities, _ = _vector_matrix(
+            [resource.velocity_ned for resource in resources],
+            missing_as_zero=True,
+        )
+        launch_delay = np.maximum(
+            0.0,
+            np.asarray([float(item.busy_until) for item in resources]) - float(timestamp),
+        )
+        relative = (
+            target_positions[:, None, :]
+            + target_velocities[:, None, :] * launch_delay[None, :, None]
+            - resource_positions[None, :, :]
+            - resource_velocities[None, :, :] * launch_delay[None, :, None]
+        )
+        position_pair_valid = (
+            target_position_valid[:, None] & resource_position_valid[None, :]
+        )
+        distance = np.full(shape, np.nan, dtype=float)
+        if full_edge_count:
+            distance[position_pair_valid] = np.linalg.norm(
+                relative[position_pair_valid],
+                axis=1,
+            )
+
+        resource_speed = np.asarray(
+            [
+                np.nan
+                if (speed := (
+                    resource.max_speed_mps
+                    if resource.max_speed_mps is not None
+                    else self.config.default_resource_speed_mps
+                ))
+                is None
+                else float(speed)
+                for resource in resources
+            ],
+            dtype=float,
+        )
+        intercept_time, intercept_reachable = _vectorized_intercept_time(
+            relative,
+            target_velocities,
+            resource_speed,
+            launch_delay,
+            position_pair_valid,
+        )
+        max_range = np.asarray(
+            [
+                np.nan
+                if resource.max_intercept_range_m is None
+                else float(resource.max_intercept_range_m)
+                for resource in resources
+            ],
+            dtype=float,
+        )
+        range_score = np.zeros(shape, dtype=float)
+        normalizable_range = np.isfinite(max_range) & (max_range != 0.0)
+        if np.any(normalizable_range):
+            range_score[:, normalizable_range] = np.clip(
+                distance[:, normalizable_range]
+                / max_range[None, normalizable_range],
+                0.0,
+                1.0,
+            )
+            range_score[~np.isfinite(range_score)] = 0.0
+        time_score = np.where(
+            np.isfinite(intercept_time),
+            np.clip(
+                intercept_time / self.config.reachability_time_scale_s,
+                0.0,
+                1.0,
+            ),
+            0.0,
+        )
+        reachability_score = np.maximum.reduce(
+            (time_score, range_score, 1.0 - intercept_score)
+        )
+
+        region_compatible, region_score = self._vectorized_region_terms(
+            tracks,
+            resources,
+        )
+        window_cost = np.asarray(
+            [self.weights.window * _clamp01(track.window_cost) for track in tracks],
+            dtype=float,
+        )
+        threat_cost = np.asarray(
+            [
+                self.weights.threat * (1.0 - _clamp01(track.threat_score))
+                for track in tracks
+            ],
+            dtype=float,
+        )
+        covariance_cost = self.weights.covariance * covariance_score
+        resource_cost = self.weights.resource_state * resource_component_arrays["total"]
+        fov_cost = self.weights.fov * fov_score
+        conflict_cost = self.weights.conflict * conflict_score
+        reachability_cost = self.weights.reachability_3d * reachability_score
+        region_cost = self.weights.region * region_score
+        matrix = (
+            window_cost[:, None]
+            + covariance_cost
+            + threat_cost[:, None]
+            + resource_cost[None, :]
+            + fov_cost
+            + conflict_cost
+            + reachability_cost
+            + region_cost
+        )
+
+        reject_reasons = np.empty(shape, dtype=object)
+        reject_reasons.fill(None)
+        available = np.ones(shape, dtype=bool)
+
+        def reject(mask: np.ndarray, reason: str) -> None:
+            selected = available & np.broadcast_to(mask, shape)
+            if np.any(selected):
+                reject_reasons[selected] = reason
+                available[selected] = False
+
+        reject(
+            ~np.asarray([bool(track.assignable) for track in tracks])[:, None],
+            "target_not_assignable",
+        )
+        reject(
+            np.asarray([bool(item.operator_hold) for item in resources])[None, :],
+            "resource_operator_hold",
+        )
+        reject(
+            np.asarray([item.status == "unavailable" for item in resources])[None, :],
+            "resource_unavailable",
+        )
+        reject(
+            np.asarray(
+                [_clamp01(item.availability_score) <= 0.0 for item in resources]
+            )[None, :],
+            "resource_availability_zero",
+        )
+        reject(
+            np.asarray([_clamp01(item.energy_fraction) <= 0.0 for item in resources])[
+                None, :
+            ],
+            "resource_energy_depleted",
+        )
+        reject(
+            np.asarray(
+                [
+                    item.status == "busy" and float(timestamp) < float(item.busy_until)
+                    for item in resources
+                ]
+            )[None, :],
+            "resource_busy",
+        )
+        reject(
+            np.asarray([int(item.assignment_capacity) <= 0 for item in resources])[
+                None, :
+            ],
+            "resource_capacity_exhausted",
+        )
+        reject(~region_compatible, "region_incompatible")
+        reject(
+            np.isfinite(distance)
+            & np.isfinite(max_range)[None, :]
+            & (distance > max_range[None, :]),
+            "intercept_range_exceeded",
+        )
+        reject(intercept_reachable == 0, "intercept_unreachable_3d")
+        if self.config.max_intercept_time_s is not None:
+            reject(
+                np.isfinite(intercept_time)
+                & (intercept_time > float(self.config.max_intercept_time_s)),
+                "intercept_time_exceeded",
+            )
+
+        candidate_mask = self._vectorized_candidate_mask(
+            tracks=tracks,
+            resources=resources,
+            matrix=matrix,
+            feasible_mask=available,
+            preserved_candidate_edges=preserved_candidate_edges,
+        )
+        pruned = available & ~candidate_mask
+        reject_reasons[pruned] = "candidate_pruned_sparse"
+        matrix = np.asarray(matrix, dtype=float)
+        matrix[~candidate_mask] = self.config.infeasible_penalty
+
+        candidate_rows, candidate_columns = np.nonzero(candidate_mask)
+        candidate_edge_count = int(len(candidate_rows))
+        breakdown_array = np.empty(shape, dtype=object)
+        for reason in sorted(
+            {str(value) for value in reject_reasons.flat if value is not None}
+        ):
+            breakdown = self._infeasible_breakdown(reason)
+            if reason == "candidate_pruned_sparse":
+                breakdown["candidate_pruned_sparse"] = 1.0
+            breakdown_array[reject_reasons == reason] = breakdown
+
+        for target_index, resource_index in zip(candidate_rows, candidate_columns):
+            total = float(matrix[target_index, resource_index])
+            breakdown_array[target_index, resource_index] = {
+                "window": float(window_cost[target_index]),
+                "covariance": float(covariance_cost[target_index, resource_index]),
+                "covariance_3d_score": float(
+                    covariance_score[target_index, resource_index]
+                ),
+                "threat": float(threat_cost[target_index]),
+                "resource_state": float(resource_cost[resource_index]),
+                "resource_status": float(
+                    self.weights.resource_state
+                    * resource_component_arrays["status"][resource_index]
+                ),
+                "resource_health": float(
+                    self.weights.resource_state
+                    * resource_component_arrays["health"][resource_index]
+                ),
+                "resource_load_penalty": float(
+                    self.weights.resource_state
+                    * resource_component_arrays["load_penalty"][resource_index]
+                ),
+                "resource_energy": float(
+                    self.weights.resource_state
+                    * resource_component_arrays["energy"][resource_index]
+                ),
+                "resource_availability": float(
+                    self.weights.resource_state
+                    * resource_component_arrays["availability"][resource_index]
+                ),
+                "resource_current_load": float(
+                    self.weights.resource_state
+                    * resource_component_arrays["current_load"][resource_index]
+                ),
+                "resource_history_failure": float(
+                    self.weights.resource_state
+                    * resource_component_arrays["history_failure"][resource_index]
+                ),
+                "fov": float(fov_cost[target_index, resource_index]),
+                "conflict": float(conflict_cost[target_index, resource_index]),
+                "reachability_3d": float(
+                    reachability_cost[target_index, resource_index]
+                ),
+                "reachability_3d_score": float(
+                    reachability_score[target_index, resource_index]
+                ),
+                "intercept_time_s": (
+                    -1.0
+                    if not np.isfinite(intercept_time[target_index, resource_index])
+                    else float(intercept_time[target_index, resource_index])
+                ),
+                "intercept_distance_m": (
+                    -1.0
+                    if not np.isfinite(distance[target_index, resource_index])
+                    else float(distance[target_index, resource_index])
+                ),
+                "region": float(region_cost[target_index, resource_index]),
+                "region_score": float(region_score[target_index, resource_index]),
+                "reassignment_switch_penalty": 0.0,
+                "intercept_feasibility": 0.0,
+                "infeasible": 0.0,
+                "total": total,
+                "reason": 0.0,
+            }
+
+        breakdown_rows = tuple(
+            tuple(row.tolist()) for row in breakdown_array
+        )
+        reject_reason_rows = tuple(
+            tuple(row.tolist()) for row in reject_reasons
+        )
+        reason_counts = _reason_counts(reject_reasons)
+        unassigned_costs = np.asarray(
+            [self.unassigned_cost(track) for track in tracks],
+            dtype=float,
+        )
+        return CostMatrixResult(
+            matrix=matrix,
+            breakdowns=breakdown_rows,
+            target_ids=target_ids,
+            resource_ids=resource_ids,
+            unassigned_costs=unassigned_costs,
+            target_threat_scores=tuple(
+                _clamp01(track.threat_score) for track in tracks
+            ),
+            reject_reasons=reject_reason_rows,
+            candidate_mask=candidate_mask,
+            metadata={
+                "candidate_graph_schema": "d3_sparse_candidate_graph_v1",
+                "cost_build_path": "vectorized_sparse_candidates",
+                "vectorized_sparse_fallback": False,
+                "python_full_pair_cost_evaluation_count": 0,
+                "vectorized_rule_pair_count": full_edge_count,
+                "candidate_breakdown_materialization_count": candidate_edge_count,
+                "candidate_graph_sparse": True,
+                "candidate_edge_count": candidate_edge_count,
+                "candidate_full_edge_count": full_edge_count,
+                "candidate_density": (
+                    0.0
+                    if full_edge_count == 0
+                    else candidate_edge_count / full_edge_count
+                ),
+                "candidate_max_edges_per_target": (
+                    self.config.max_candidate_edges_per_target
+                ),
+                "candidate_reject_reason_counts": tuple(sorted(reason_counts.items())),
+                "candidate_policy_action_count": candidate_edge_count,
+                "candidate_policy_action_space": "shared_edge_residual",
+            },
+        )
+
+    @staticmethod
+    def _supports_vectorized_sparse_path(
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        resources: list[ResourceState] | tuple[ResourceState, ...],
+    ) -> bool:
+        """Return whether all pair-dependent rules use the core array contract."""
+
+        for track in tracks:
+            if (
+                track.fov_difficulty_by_resource
+                or track.conflict_risk_by_resource
+                or track.feasibility_by_resource
+                or track.friendly_conflict_by_resource
+                or track.time_window_by_resource
+                or track.hard_time_window
+                or track.time_window_open_at_s is not None
+                or track.time_window_close_at_s is not None
+                or track.time_window_state is not None
+            ):
+                return False
+            if any(
+                key in track.metadata
+                for key in (
+                    "time_window_by_resource",
+                    "time_windows_by_resource",
+                    "hard_time_window_by_resource",
+                    "time_window_closed_by_resource",
+                    "time_window_state",
+                    "window_state",
+                    "state",
+                    "time_window_closed",
+                    "hard_time_window_closed",
+                    "window_closed",
+                    "closed",
+                    "time_window_open",
+                    "hard_time_window_open",
+                    "window_open",
+                    "open",
+                    "hard_time_window",
+                    "time_window_hard",
+                    "hard_window",
+                    "enforce_time_window",
+                    "time_window_open_at_s",
+                    "window_open_at_s",
+                    "opens_at_s",
+                    "not_before_s",
+                    "time_window_close_at_s",
+                    "window_close_at_s",
+                    "closes_at_s",
+                    "deadline_s",
+                    "not_after_s",
+                )
+            ):
+                return False
+        return not any(
+            resource.intercept_feasibility_by_target
+            or resource.intercept_feasibility_score_by_target
+            for resource in resources
+        )
+
+    def _vectorized_region_terms(
+        self,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        resources: list[ResourceState] | tuple[ResourceState, ...],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        target_regions = np.asarray(
+            [_optional_text(track.region_id) for track in tracks],
+            dtype=object,
+        )
+        resource_regions = np.asarray(
+            [_optional_text(resource.region_id) for resource in resources],
+            dtype=object,
+        )
+        target_missing = np.equal(target_regions, None)[:, None]
+        resource_missing = np.equal(resource_regions, None)[None, :]
+        same_region = target_regions[:, None] == resource_regions[None, :]
+        if self.config.enforce_region_compatibility:
+            compatible = target_missing | resource_missing | same_region
+        else:
+            compatible = np.ones(same_region.shape, dtype=bool)
+
+        explicit_target_rows: set[int] = set()
+        for target_index, track in enumerate(tracks):
+            if not track.candidate_resource_region_ids:
+                continue
+            explicit_target_rows.add(target_index)
+            compatible[target_index, :] = np.isin(
+                resource_regions,
+                np.asarray(
+                    [str(value) for value in track.candidate_resource_region_ids],
+                    dtype=object,
+                ),
+            )
+
+        reachable_groups: dict[tuple[str, ...], list[int]] = {}
+        for resource_index, resource in enumerate(resources):
+            if resource.reachable_target_region_ids:
+                key = tuple(str(value) for value in resource.reachable_target_region_ids)
+                reachable_groups.setdefault(key, []).append(resource_index)
+        ordinary_rows = np.asarray(
+            [index not in explicit_target_rows for index in range(len(tracks))],
+            dtype=bool,
+        )
+        ordinary_indices = np.flatnonzero(ordinary_rows)
+        for region_ids, columns in reachable_groups.items():
+            allowed_targets = np.isin(
+                target_regions,
+                np.asarray(region_ids, dtype=object),
+            )
+            compatible[np.ix_(ordinary_indices, np.asarray(columns, dtype=int))] = (
+                allowed_targets[ordinary_indices, None]
+            )
+
+        region_score = np.where(
+            target_missing | resource_missing | same_region,
+            0.0,
+            _clamp01(self.config.cross_region_cost),
+        )
+        return compatible, np.asarray(region_score, dtype=float)
+
+    def _vectorized_candidate_mask(
+        self,
+        *,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        resources: list[ResourceState] | tuple[ResourceState, ...],
+        matrix: np.ndarray,
+        feasible_mask: np.ndarray,
+        preserved_candidate_edges: Mapping[str, tuple[str, ...]],
+    ) -> np.ndarray:
+        target_count, resource_count = matrix.shape
+        if target_count == 0 or resource_count == 0:
+            return np.zeros(matrix.shape, dtype=bool)
+        configured_limit = int(self.config.max_candidate_edges_per_target or 0)
+        row_limits = np.asarray(
+            [
+                max(configured_limit, track.effective_demand.required_resource_count)
+                for track in tracks
+            ],
+            dtype=int,
+        )
+        resource_ids = np.asarray([resource.resource_id for resource in resources])
+        resource_id_order = np.argsort(resource_ids, kind="stable")
+        local_cost_order = np.argsort(
+            matrix[:, resource_id_order],
+            axis=1,
+            kind="stable",
+        )
+        ordered_columns = resource_id_order[local_cost_order]
+        row_indices = np.arange(target_count)[:, None]
+        ordered_feasible = feasible_mask[row_indices, ordered_columns]
+        feasible_rank = np.cumsum(ordered_feasible, axis=1)
+        ordered_keep = ordered_feasible & (feasible_rank <= row_limits[:, None])
+        candidate_mask = np.zeros(matrix.shape, dtype=bool)
+        candidate_mask[row_indices, ordered_columns] = ordered_keep
+
+        resource_index = {
+            resource.resource_id: index for index, resource in enumerate(resources)
+        }
+        target_index = {track.track_id: index for index, track in enumerate(tracks)}
+        for target_id, resource_id_values in preserved_candidate_edges.items():
+            row = target_index.get(target_id)
+            if row is None:
+                continue
+            for resource_id in resource_id_values:
+                column = resource_index.get(resource_id)
+                if column is not None and feasible_mask[row, column]:
+                    candidate_mask[row, column] = True
+        return candidate_mask
 
     def _validate_scalable_config(self) -> None:
         max_edges = self.config.max_candidate_edges_per_target
@@ -644,6 +1276,112 @@ def _vector3(value: Any) -> np.ndarray | None:
     if vector.size != 3 or not np.all(np.isfinite(vector)):
         raise ValueError("NED position and velocity values must be finite 3-vectors")
     return vector
+
+
+def _vector_matrix(
+    values: list[Any] | tuple[Any, ...],
+    *,
+    missing_as_zero: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Validate NED vectors once per entity instead of once per candidate pair."""
+
+    output = np.zeros((len(values), 3), dtype=float)
+    valid = np.zeros(len(values), dtype=bool)
+    for index, value in enumerate(values):
+        vector = _vector3(value)
+        if vector is None:
+            if missing_as_zero:
+                valid[index] = True
+            continue
+        output[index] = vector
+        valid[index] = True
+    return output, valid
+
+
+def _vectorized_intercept_time(
+    relative_position: np.ndarray,
+    target_velocity: np.ndarray,
+    resource_speed: np.ndarray,
+    launch_delay: np.ndarray,
+    position_pair_valid: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Vectorized equivalent of ``_earliest_intercept_time`` for core edges.
+
+    The reachability array uses ``1`` for reachable, ``0`` for known
+    unreachable, and ``-1`` when position or speed is unavailable.  Unknown
+    reachability preserves the legacy permissive behavior.
+    """
+
+    shape = position_pair_valid.shape
+    intercept_after_launch = np.full(shape, np.nan, dtype=float)
+    reachable = np.full(shape, -1, dtype=np.int8)
+    if not shape[0] or not shape[1]:
+        return intercept_after_launch, reachable
+
+    speed = resource_speed[None, :]
+    known = position_pair_valid & np.isfinite(speed)
+    c = np.einsum("ijk,ijk->ij", relative_position, relative_position)
+    at_target = known & (c <= 1.0e-12)
+    intercept_after_launch[at_target] = 0.0
+    reachable[at_target] = 1
+
+    unresolved = known & ~at_target
+    nonpositive_speed = unresolved & (speed <= 0.0)
+    reachable[nonpositive_speed] = 0
+
+    positive_speed = unresolved & (speed > 0.0)
+    if np.any(positive_speed):
+        target_speed_sq = np.einsum(
+            "ij,ij->i",
+            target_velocity,
+            target_velocity,
+        )[:, None]
+        a = target_speed_sq - speed**2
+        b = 2.0 * np.einsum(
+            "ijk,ik->ij",
+            relative_position,
+            target_velocity,
+        )
+        reachable[positive_speed] = 0
+
+        linear = positive_speed & (np.abs(a) <= 1.0e-12) & (b < 0.0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            linear_time = -c / b
+        valid_linear = linear & np.isfinite(linear_time) & (linear_time >= 0.0)
+        intercept_after_launch[valid_linear] = linear_time[valid_linear]
+        reachable[valid_linear] = 1
+
+        quadratic = positive_speed & (np.abs(a) > 1.0e-12)
+        discriminant = b * b - 4.0 * a * c
+        quadratic &= discriminant >= 0.0
+        root = np.sqrt(np.maximum(0.0, discriminant))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            first = (-b - root) / (2.0 * a)
+            second = (-b + root) / (2.0 * a)
+        first = np.where(first >= 0.0, first, np.inf)
+        second = np.where(second >= 0.0, second, np.inf)
+        quadratic_time = np.minimum(first, second)
+        valid_quadratic = quadratic & np.isfinite(quadratic_time)
+        intercept_after_launch[valid_quadratic] = quadratic_time[valid_quadratic]
+        reachable[valid_quadratic] = 1
+
+    intercept_time = np.where(
+        np.isfinite(intercept_after_launch),
+        intercept_after_launch + launch_delay[None, :],
+        np.nan,
+    )
+    return intercept_time, reachable
+
+
+def _reason_counts(reject_reasons: np.ndarray) -> dict[str, int]:
+    values = np.asarray(
+        [str(value) for value in reject_reasons.flat if value is not None],
+        dtype=object,
+    )
+    if values.size == 0:
+        return {}
+    unique, counts = np.unique(values, return_counts=True)
+    return {str(reason): int(count) for reason, count in zip(unique, counts)}
 
 
 def _covariance_trace(value: Any) -> float | None:

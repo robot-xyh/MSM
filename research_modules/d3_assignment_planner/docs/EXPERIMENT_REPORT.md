@@ -269,3 +269,31 @@ top-4 候选保留了 perfect matching，不证明所有密集/交叉/资源失�
 可执行。当前无真实轨迹训练集、checkpoint、未见 seed、收益对照、PPO 或大规模训练
 验收；gymnasium/stable_baselines3 未安装。后续必须由 main 接入 scalable simulation
 总线并由 D6 做多 seed 非退化、时延和物理结果统计后，才能更新能力等级。
+
+## 2026-07-20 200×200 性能与区域合同验收
+
+### 实验设置
+
+性能样本固定为 200 个资源、200 个目标和每目标最多 32 条候选边。旧参考路径与向量化
+路径在同一 Python 进程、同一输入上各运行 5 次，以中位耗时比较。验收要求两条路径
+均完成 200 个分配，规则语义对照一致，新路径不再逐个调用全部 40,000 条 Python 边
+规则。原始结果记录在 `results/scalable_3d_assignment_benchmark_20260720.json`。
+
+| 路径 | 中位耗时 | Python 全边规则调用 | 完整解释物化 | 候选边 | 分配数 |
+|---|---:|---:|---:|---:|---:|
+| 旧参考路径 | 1904.261 ms | 40,000 | 40,000 | 6,400 | 200 |
+| 向量化稀疏路径 | 85.367 ms | 0 | 6,400 | 6,400 | 200 |
+
+中位加速为 22.307 倍。另用 20 个目标、23 个资源逐边比较矩阵、候选掩码、拒绝原因和
+候选解释，浮点容差设为 `1e-11`，结果通过。该基准没有包含 D1、D2、D4-D7、网络、
+AirSim 或控制循环，因此不作为系统实时指标。
+
+区域合同专项共 6 个测试，覆盖同一计划中的两个 secondary owner、fully distributed
+committed、缺 ACK、旧 epoch、过期 lease 和 stale source。稀疏求解专项同时覆盖两个
+不连通候选分量和无候选目标。D3 全量共收集 182 项，结果为 `181 passed, 1 skipped`，
+接受阈值为零失败；唯一跳过项为未安装的可选 OR-Tools 对照。
+
+本批没有运行 AirSim 或多 seed。区域接口尚未由 main 接入 D4 运行时裁决，因而没有
+center failure、multiple secondary owner、secondary failure 或网络分区的全栈结果。
+后续验收应记录 plan version 单调性、stale 拒绝、lease 过期执行数、缺 ACK 执行数和
+每阶段耗时，再由 D6 汇总。

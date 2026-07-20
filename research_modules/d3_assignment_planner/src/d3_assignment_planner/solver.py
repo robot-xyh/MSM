@@ -45,6 +45,20 @@ class HungarianAssignmentSolver:
         self,
         cost_matrix: np.ndarray,
         unassigned_costs: np.ndarray,
+        candidate_mask: np.ndarray | None = None,
+    ) -> SolverResult:
+        if candidate_mask is not None:
+            return self._solve_sparse_components(
+                cost_matrix,
+                unassigned_costs,
+                candidate_mask,
+            )
+        return self._solve_dense(cost_matrix, unassigned_costs)
+
+    def _solve_dense(
+        self,
+        cost_matrix: np.ndarray,
+        unassigned_costs: np.ndarray,
     ) -> SolverResult:
         prepared = _prepare_optional_assignment(cost_matrix, unassigned_costs)
         if prepared.target_count == 0:
@@ -65,6 +79,71 @@ class HungarianAssignmentSolver:
 
         return self.fallback.solve(cost_matrix, unassigned_costs)
 
+    def _solve_sparse_components(
+        self,
+        cost_matrix: np.ndarray,
+        unassigned_costs: np.ndarray,
+        candidate_mask: np.ndarray,
+    ) -> SolverResult:
+        """Solve disconnected candidate components with local Hungarian matrices."""
+
+        matrix = np.asarray(cost_matrix, dtype=float)
+        mask = np.asarray(candidate_mask, dtype=bool)
+        if matrix.ndim != 2 or mask.shape != matrix.shape:
+            raise ValueError("candidate_mask shape must match cost_matrix")
+        target_count, _ = matrix.shape
+        if len(unassigned_costs) != target_count:
+            raise ValueError("unassigned_costs length must match target count")
+        if target_count == 0:
+            return SolverResult((), (), 0.0, "hungarian", "optimal")
+
+        assignments: list[SolverAssignment] = []
+        unassigned: list[int] = []
+        objective = 0.0
+        component_solver_names: set[str] = set()
+        for target_indices, resource_indices in _candidate_components(mask):
+            if not resource_indices:
+                for target_index in target_indices:
+                    unassigned.append(target_index)
+                    objective += float(unassigned_costs[target_index])
+                continue
+            local_matrix = matrix[np.ix_(target_indices, resource_indices)].copy()
+            local_mask = mask[np.ix_(target_indices, resource_indices)]
+            local_matrix[~local_mask] = np.inf
+            local_unassigned = np.asarray(unassigned_costs, dtype=float)[
+                list(target_indices)
+            ]
+            result = self._solve_dense(local_matrix, local_unassigned)
+            component_solver_names.add(result.solver_name)
+            objective += result.objective_value
+            assignments.extend(
+                SolverAssignment(
+                    target_index=target_indices[item.target_index],
+                    resource_index=resource_indices[item.resource_index],
+                    cost=item.cost,
+                )
+                for item in result.assignments
+            )
+            unassigned.extend(
+                target_indices[index]
+                for index in result.unassigned_target_indices
+            )
+        return SolverResult(
+            assignments=tuple(sorted(assignments, key=lambda item: item.target_index)),
+            unassigned_target_indices=tuple(sorted(unassigned)),
+            objective_value=float(objective),
+            solver_name=(
+                next(iter(component_solver_names))
+                if len(component_solver_names) == 1
+                else (
+                    "scipy_hungarian"
+                    if not component_solver_names and self.allow_scipy
+                    else "fallback_dp"
+                )
+            ),
+            status="optimal",
+        )
+
 
 class HungarianDemandSlotSolver:
     """Hungarian backend for planner-expanded role/wave demand slots."""
@@ -78,8 +157,13 @@ class HungarianDemandSlotSolver:
         self,
         cost_matrix: np.ndarray,
         unassigned_costs: np.ndarray,
+        candidate_mask: np.ndarray | None = None,
     ) -> SolverResult:
-        result = self.base_solver.solve(cost_matrix, unassigned_costs)
+        result = self.base_solver.solve(
+            cost_matrix,
+            unassigned_costs,
+            candidate_mask=candidate_mask,
+        )
         return SolverResult(
             assignments=result.assignments,
             unassigned_target_indices=result.unassigned_target_indices,
@@ -167,3 +251,48 @@ def _decode_solution(
         solver_name=solver_name,
         status="optimal",
     )
+
+
+def _candidate_components(
+    candidate_mask: np.ndarray,
+) -> tuple[tuple[tuple[int, ...], tuple[int, ...]], ...]:
+    """Return deterministic connected components of a bipartite candidate graph."""
+
+    target_count, resource_count = candidate_mask.shape
+    target_neighbors = tuple(
+        tuple(int(value) for value in np.flatnonzero(candidate_mask[row]))
+        for row in range(target_count)
+    )
+    resource_neighbors: list[list[int]] = [[] for _ in range(resource_count)]
+    rows, columns = np.nonzero(candidate_mask)
+    for row, column in zip(rows, columns):
+        resource_neighbors[int(column)].append(int(row))
+
+    visited_targets: set[int] = set()
+    visited_resources: set[int] = set()
+    components: list[tuple[tuple[int, ...], tuple[int, ...]]] = []
+    for start in range(target_count):
+        if start in visited_targets:
+            continue
+        pending_targets = [start]
+        component_targets: set[int] = set()
+        component_resources: set[int] = set()
+        while pending_targets:
+            target = pending_targets.pop()
+            if target in component_targets:
+                continue
+            component_targets.add(target)
+            visited_targets.add(target)
+            for resource in target_neighbors[target]:
+                if resource in component_resources:
+                    continue
+                component_resources.add(resource)
+                visited_resources.add(resource)
+                pending_targets.extend(resource_neighbors[resource])
+        components.append(
+            (
+                tuple(sorted(component_targets)),
+                tuple(sorted(component_resources)),
+            )
+        )
+    return tuple(components)

@@ -30,6 +30,12 @@ from .models import (
     TargetTrack,
 )
 from .solver import HungarianAssignmentSolver, HungarianDemandSlotSolver
+from .regional import (
+    REGIONAL_ASSIGNMENT_PLAN_SCHEMA_V1,
+    RegionalAuthorityGrant,
+    RegionalAuthorityInput,
+    RegionalPlanAuthorityError,
+)
 
 
 @dataclass(frozen=True)
@@ -189,6 +195,416 @@ class AssignmentPlanner:
             timestamp=timestamp,
             forced_replan=forced_replan,
             publish=publish,
+        )
+
+    def plan_regional_authority(
+        self,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        resources: list[ResourceState] | tuple[ResourceState, ...],
+        timestamp: float,
+        *,
+        previous_plan: AssignmentPlan,
+        authority: RegionalAuthorityInput,
+        expected_previous_version: int | None = None,
+        window_id: int | None = None,
+        publish: bool = True,
+    ) -> AssignmentPlan:
+        """Publish a D4-adjudicated multi-owner regional assignment plan.
+
+        D3 does not select the fallback layer or owner.  It validates D4's
+        current generation, lease, membership and atomic commit evidence, then
+        materializes one ordinary versioned ``AssignmentPlan``.  Any incomplete
+        authority input is rejected rather than converted into an executable
+        plan.
+        """
+
+        self._validate_previous_plan(previous_plan, expected_previous_version)
+        track_items = tuple(tracks)
+        resource_items = tuple(resources)
+        self._validate_regional_authority(
+            authority,
+            tracks=track_items,
+            previous_plan=previous_plan,
+            timestamp=timestamp,
+        )
+        matrix_result = self._build_search_matrix(
+            track_items,
+            resource_items,
+            timestamp,
+            previous_plan,
+        )
+        assignments, coalitions = self._regional_assignments(
+            authority=authority,
+            tracks=track_items,
+            resources=resource_items,
+            matrix_result=matrix_result,
+            previous_plan=previous_plan,
+            timestamp=timestamp,
+        )
+        objective = float(sum(item.cost for item in assignments))
+        candidate = self._build_plan(
+            matrix_result=matrix_result,
+            solver_result=SolverResult(
+                assignments=(),
+                unassigned_target_indices=(),
+                objective_value=objective,
+                solver_name="regional_authority_validated",
+                status="committed",
+            ),
+            timestamp=timestamp,
+            previous_plan=previous_plan,
+            window_id=window_id,
+            decision_state="accepted_regional_authority",
+            changed=True,
+            assignments=assignments,
+            unassigned_target_ids=(),
+            coalitions=coalitions,
+            incomplete_target_ids=(),
+            demand_summaries=tuple(item.summary for item in coalitions),
+            reported_target_count=len(track_items),
+        )
+        candidate = self._annotate_regional_authority(candidate, authority)
+        candidate = self._filter_candidate(
+            candidate=candidate,
+            previous_plan=previous_plan,
+            matrix_result=matrix_result,
+            timestamp=timestamp,
+            window_id=window_id,
+            tracks=track_items,
+        )
+        if candidate.metadata.get("regional_plan_schema") != (
+            REGIONAL_ASSIGNMENT_PLAN_SCHEMA_V1
+        ):
+            raise RegionalPlanAuthorityError(
+                "regional_candidate_held_by_hysteresis"
+            )
+        candidate = self._annotate_input_snapshot(
+            candidate,
+            track_items,
+            resource_items,
+        )
+        return self._finalize_and_publish(
+            candidate,
+            previous_plan=previous_plan,
+            timestamp=timestamp,
+            forced_replan=False,
+            publish=publish,
+        )
+
+    def _validate_regional_authority(
+        self,
+        authority: RegionalAuthorityInput,
+        *,
+        tracks: tuple[TargetTrack, ...],
+        previous_plan: AssignmentPlan,
+        timestamp: float,
+    ) -> None:
+        if authority.adjudicated_at_s > float(timestamp):
+            raise RegionalPlanAuthorityError("regional_authority_from_future")
+        track_ids = {track.track_id for track in tracks}
+        granted_target_ids = {
+            target_id for grant in authority.grants for target_id in grant.target_ids
+        }
+        if granted_target_ids != track_ids:
+            raise RegionalPlanAuthorityError("regional_authority_target_set_mismatch")
+
+        previous_epoch_by_region: dict[str, int] = {}
+        previous_records = previous_plan.metadata.get("regional_authorities", ())
+        if isinstance(previous_records, (list, tuple)):
+            for record in previous_records:
+                if not isinstance(record, Mapping):
+                    continue
+                region_id = record.get("region_id")
+                epoch = record.get("epoch")
+                if region_id is None or epoch is None:
+                    continue
+                previous_epoch_by_region[str(region_id)] = int(epoch)
+
+        for grant in authority.grants:
+            if (
+                grant.source_plan_id != previous_plan.plan_id
+                or grant.source_plan_version != previous_plan.version
+            ):
+                raise RegionalPlanAuthorityError("regional_authority_stale_source_plan")
+            if not grant.execution_allowed or grant.fail_closed:
+                raise RegionalPlanAuthorityError("regional_authority_execution_not_allowed")
+            if float(timestamp) >= grant.lease_expires_at_s:
+                raise RegionalPlanAuthorityError("regional_authority_lease_expired")
+            minimum_epoch = previous_epoch_by_region.get(
+                grant.region_id,
+                previous_plan.version,
+            )
+            if grant.epoch < minimum_epoch:
+                raise RegionalPlanAuthorityError("regional_authority_old_epoch")
+
+    def _regional_assignments(
+        self,
+        *,
+        authority: RegionalAuthorityInput,
+        tracks: tuple[TargetTrack, ...],
+        resources: tuple[ResourceState, ...],
+        matrix_result: CostMatrixResult,
+        previous_plan: AssignmentPlan,
+        timestamp: float,
+    ) -> tuple[tuple[Assignment, ...], tuple[CoalitionPlan, ...]]:
+        grant_by_target = {
+            target_id: grant
+            for grant in authority.grants
+            for target_id in grant.target_ids
+        }
+        target_index = {
+            target_id: index for index, target_id in enumerate(matrix_result.target_ids)
+        }
+        resource_index = {
+            resource_id: index
+            for index, resource_id in enumerate(matrix_result.resource_ids)
+        }
+        resource_by_id = {resource.resource_id: resource for resource in resources}
+        previous_coalition_by_target = {
+            coalition.target_id: coalition for coalition in previous_plan.coalitions
+        }
+        used_resources: set[str] = set()
+        assignments: list[Assignment] = []
+        coalitions: list[CoalitionPlan] = []
+
+        for track in tracks:
+            grant = grant_by_target[track.track_id]
+            assigned_resource_ids = grant.assigned_resource_ids_by_target[
+                track.track_id
+            ]
+            demand = track.effective_demand
+            if len(assigned_resource_ids) != demand.required_resource_count:
+                raise RegionalPlanAuthorityError(
+                    "regional_authority_demand_unsatisfied"
+                )
+            if used_resources.intersection(assigned_resource_ids):
+                raise RegionalPlanAuthorityError(
+                    "regional_authority_duplicate_resource_assignment"
+                )
+            used_resources.update(assigned_resource_ids)
+
+            slots = self._demand_slots((track,))
+            members: list[CoalitionMember] = []
+            target_assignments: list[Assignment] = []
+            for slot, resource_id in zip(slots, assigned_resource_ids):
+                resource = resource_by_id.get(resource_id)
+                column = resource_index.get(resource_id)
+                if resource is None or column is None:
+                    raise RegionalPlanAuthorityError(
+                        "regional_authority_unknown_resource"
+                    )
+                row = target_index[track.track_id]
+                reject_reason = matrix_result.reject_reasons[row][column]
+                if reject_reason is not None:
+                    raise RegionalPlanAuthorityError(
+                        f"regional_authority_edge_rejected:{reject_reason}"
+                    )
+                if (
+                    slot.required_capability_class is not None
+                    and not self._resource_has_capability(
+                        resource,
+                        slot.required_capability_class,
+                    )
+                ):
+                    raise RegionalPlanAuthorityError(
+                        "regional_authority_capability_unsatisfied"
+                    )
+                members.append(self._coalition_member(slot, resource, True))
+                target_assignments.append(
+                    Assignment(
+                        target_id=track.track_id,
+                        resource_id=resource_id,
+                        cost=float(matrix_result.matrix[row, column]),
+                        cost_breakdown=dict(matrix_result.breakdowns[row][column]),
+                        feasibility_state="feasible",
+                        member_role=slot.member_role,
+                        wave_id=slot.wave_id,
+                        arrival_window_start_s=slot.arrival_window_start_s,
+                        arrival_window_end_s=slot.arrival_window_end_s,
+                        required_resource_count=demand.required_resource_count,
+                        terminal_authorization_scope=(
+                            demand.terminal_authorization_scope
+                        ),
+                        arrival_coordination_required=(
+                            demand.arrival_coordination_required
+                        ),
+                        metadata={
+                            "required_capability_class": (
+                                slot.required_capability_class
+                            ),
+                            "coordination_mode": demand.coordination_mode,
+                            "primary_resource_count": demand.primary_resource_count,
+                            "minimum_separation_s": demand.minimum_separation_s,
+                        },
+                    )
+                )
+
+            coalition = self._coalition_plan(
+                track=track,
+                members=tuple(members),
+                complete=True,
+                previous=previous_coalition_by_target.get(track.track_id),
+                timestamp=timestamp,
+            )
+            commit = grant.commit_by_target.get(track.track_id)
+            commit_required = (
+                grant.owner_layer == "distributed"
+                or demand.required_resource_count > 1
+            )
+            if commit_required and commit is None:
+                raise RegionalPlanAuthorityError("regional_coalition_commit_missing")
+            if commit is not None:
+                reason = commit.fail_closed_reason(now_s=timestamp)
+                if reason is not None:
+                    raise RegionalPlanAuthorityError(reason)
+                if commit.coordinator_id != grant.owner_node_id:
+                    raise RegionalPlanAuthorityError(
+                        "regional_coalition_coordinator_mismatch"
+                    )
+                if commit.epoch != grant.epoch:
+                    raise RegionalPlanAuthorityError("regional_coalition_epoch_mismatch")
+                if set(commit.required_member_ids) != set(assigned_resource_ids):
+                    raise RegionalPlanAuthorityError(
+                        "regional_coalition_membership_mismatch"
+                    )
+                if commit.lease_expires_at_s > grant.lease_expires_at_s:
+                    raise RegionalPlanAuthorityError(
+                        "regional_coalition_lease_exceeds_authority"
+                    )
+                if (
+                    commit.coalition_id is not None
+                    and commit.coalition_id != coalition.coalition_id
+                ):
+                    raise RegionalPlanAuthorityError(
+                        "regional_coalition_identity_mismatch"
+                    )
+                if (
+                    commit.coalition_version is not None
+                    and commit.coalition_version != coalition.version
+                ):
+                    raise RegionalPlanAuthorityError(
+                        "regional_coalition_version_mismatch"
+                    )
+
+            coalition = replace(
+                coalition,
+                metadata={
+                    **dict(coalition.metadata),
+                    "regional_owner_layer": grant.owner_layer,
+                    "regional_owner_node_id": grant.owner_node_id,
+                    "regional_region_id": grant.region_id,
+                    "regional_epoch": grant.epoch,
+                    "regional_lease_expires_at_s": grant.lease_expires_at_s,
+                    "regional_commit_state": (
+                        None if commit is None else commit.state
+                    ),
+                },
+            )
+            coalitions.append(coalition)
+            for assignment in target_assignments:
+                assignments.append(
+                    replace(
+                        assignment,
+                        coalition_id=coalition.coalition_id,
+                        coalition_version=coalition.version,
+                    )
+                )
+        return tuple(assignments), tuple(coalitions)
+
+    def _annotate_regional_authority(
+        self,
+        plan: AssignmentPlan,
+        authority: RegionalAuthorityInput,
+    ) -> AssignmentPlan:
+        grant_by_target = {
+            target_id: grant
+            for grant in authority.grants
+            for target_id in grant.target_ids
+        }
+        regional_records = tuple(
+            {
+                "region_id": grant.region_id,
+                "owner_layer": grant.owner_layer,
+                "owner_node_id": grant.owner_node_id,
+                "owner_role": grant.owner_role,
+                "epoch": grant.epoch,
+                "source_plan_id": grant.source_plan_id,
+                "source_plan_version": grant.source_plan_version,
+                "lease_expires_at_s": grant.lease_expires_at_s,
+                "target_ids": grant.target_ids,
+                "decision_reason": grant.decision_reason,
+                "coalition_commit_count": len(grant.coalition_commits),
+            }
+            for grant in sorted(authority.grants, key=lambda item: item.region_id)
+        )
+        owner_ids = tuple(sorted({grant.owner_node_id for grant in authority.grants}))
+        layers = tuple(sorted({grant.owner_layer for grant in authority.grants}))
+        minimum_lease = min(grant.lease_expires_at_s for grant in authority.grants)
+        maximum_epoch = max(grant.epoch for grant in authority.grants)
+        assignments = tuple(
+            replace(
+                assignment,
+                source_node_id=grant_by_target[assignment.target_id].owner_node_id,
+                link_type=(
+                    f"regional_{grant_by_target[assignment.target_id].owner_layer}"
+                ),
+                metadata={
+                    **dict(assignment.metadata),
+                    "plan_owner": "regional",
+                    "active_plan_owner": "regional",
+                    "owner_node_id": (
+                        grant_by_target[assignment.target_id].owner_node_id
+                    ),
+                    "regional_owner_layer": (
+                        grant_by_target[assignment.target_id].owner_layer
+                    ),
+                    "regional_region_id": (
+                        grant_by_target[assignment.target_id].region_id
+                    ),
+                    "regional_epoch": grant_by_target[assignment.target_id].epoch,
+                    "regional_lease_expires_at_s": (
+                        grant_by_target[assignment.target_id].lease_expires_at_s
+                    ),
+                    "regional_commit_state": "committed",
+                    "activation_state": "active",
+                    "executable": True,
+                },
+            )
+            for assignment in plan.assignments
+        )
+        metadata = {
+            **dict(plan.metadata),
+            "regional_plan_schema": REGIONAL_ASSIGNMENT_PLAN_SCHEMA_V1,
+            "regional_authority_input_schema": authority.schema,
+            "regional_authority_adjudicated_at_s": authority.adjudicated_at_s,
+            "regional_authorities": regional_records,
+            "regional_owner_layers": layers,
+            "regional_owner_node_ids": owner_ids,
+            "regional_execution_allowed": True,
+            "regional_fail_closed": False,
+            "regional_min_lease_expires_at_s": minimum_lease,
+            "regional_max_epoch": maximum_epoch,
+            "plan_owner": "regional",
+            "active_plan_owner": "regional",
+            "owner_node_id": (
+                owner_ids[0] if len(owner_ids) == 1 else "regional_multi_owner"
+            ),
+            "current_plan_owner": "regional",
+            "current_plan_owner_node_id": (
+                owner_ids[0] if len(owner_ids) == 1 else "regional_multi_owner"
+            ),
+            "secondary_lease_expires_at_s": minimum_lease,
+            "secondary_leader_epoch": maximum_epoch,
+            "activation_state": "active",
+            "activation_at_s": authority.adjudicated_at_s,
+            "executable": True,
+        }
+        return replace(
+            plan,
+            assignments=assignments,
+            metadata=metadata,
+            source_node_id="d3_regional_router",
+            link_type="regional_multi_owner",
         )
 
     def plan_incremental(
@@ -409,6 +825,7 @@ class AssignmentPlanner:
             solver_result = self.solver.solve(
                 matrix_result.matrix,
                 matrix_result.unassigned_costs,
+                candidate_mask=matrix_result.candidate_mask,
             )
             candidate = self._build_plan(
                 matrix_result=matrix_result,
@@ -727,17 +1144,16 @@ class AssignmentPlanner:
         resource_neighbors: dict[str, set[str]] = {
             resource_id: set() for resource_id in matrix_result.resource_ids
         }
-        for target_index, target_id in enumerate(matrix_result.target_ids):
-            for resource_index, resource_id in enumerate(matrix_result.resource_ids):
-                reject_reason = matrix_result.reject_reasons[target_index][resource_index]
-                if (
-                    reject_reason is not None
-                    or float(matrix_result.matrix[target_index, resource_index])
-                    >= self.config.infeasible_penalty * 0.5
-                ):
-                    continue
-                target_neighbors[target_id].add(resource_id)
-                resource_neighbors[resource_id].add(target_id)
+        for target_index, resource_index in matrix_result.candidate_edge_indices:
+            if (
+                float(matrix_result.matrix[target_index, resource_index])
+                >= self.config.infeasible_penalty * 0.5
+            ):
+                continue
+            target_id = matrix_result.target_ids[target_index]
+            resource_id = matrix_result.resource_ids[resource_index]
+            target_neighbors[target_id].add(resource_id)
+            resource_neighbors[resource_id].add(target_id)
 
         previous_by_resource = {
             assignment.resource_id: assignment.target_id
@@ -1725,7 +2141,16 @@ class AssignmentPlanner:
             active_order = tuple(sorted(active_slots))
             sub_matrix = slot_matrix_result.matrix[list(active_order), :]
             sub_unassigned = slot_matrix_result.unassigned_costs[list(active_order)]
-            result = self.demand_solver.solve(sub_matrix, sub_unassigned)
+            sub_candidate_mask = (
+                None
+                if slot_matrix_result.candidate_mask is None
+                else slot_matrix_result.candidate_mask[list(active_order), :]
+            )
+            result = self.demand_solver.solve(
+                sub_matrix,
+                sub_unassigned,
+                candidate_mask=sub_candidate_mask,
+            )
             pairs = tuple(
                 (active_order[item.target_index], item.resource_index)
                 for item in result.assignments
@@ -3511,38 +3936,34 @@ class AssignmentPlanner:
         }
         matrix = matrix_result.matrix.copy()
         breakdown_rows = [
-            [dict(breakdown) for breakdown in row]
+            list(row)
             for row in matrix_result.breakdowns
         ]
-        reject_reasons = matrix_result.reject_reasons
+        candidate_columns_by_target: dict[int, list[int]] = {}
+        for target_index, resource_index in matrix_result.candidate_edge_indices:
+            candidate_columns_by_target.setdefault(target_index, []).append(resource_index)
 
         for target_index, target_id in enumerate(matrix_result.target_ids):
             previous_resource_ids = previous_resources_by_target.get(target_id)
             if not previous_resource_ids:
                 continue
-            for resource_index, resource_id in enumerate(matrix_result.resource_ids):
+            for resource_index in candidate_columns_by_target.get(target_index, ()):
+                resource_id = matrix_result.resource_ids[resource_index]
                 if resource_id in previous_resource_ids:
                     continue
-                reject_reason = None
-                if target_index < len(reject_reasons):
-                    row = reject_reasons[target_index]
-                    if resource_index < len(row):
-                        reject_reason = row[resource_index]
                 base_cost = float(matrix[target_index, resource_index])
-                if (
-                    reject_reason is not None
-                    or base_cost >= self.config.infeasible_penalty * 0.5
-                ):
+                if base_cost >= self.config.infeasible_penalty * 0.5:
                     continue
 
                 adjusted_cost = base_cost + penalty
                 matrix[target_index, resource_index] = adjusted_cost
-                breakdown = breakdown_rows[target_index][resource_index]
+                breakdown = dict(breakdown_rows[target_index][resource_index])
                 breakdown["reassignment_switch_penalty"] = (
                     float(breakdown.get("reassignment_switch_penalty", 0.0))
                     + penalty
                 )
                 breakdown["total"] = adjusted_cost
+                breakdown_rows[target_index][resource_index] = breakdown
 
         return replace(
             matrix_result,
@@ -3746,33 +4167,51 @@ class AssignmentPlanner:
         edges: list[dict[str, object]] = []
         rejected_edges: list[dict[str, object]] = []
         reject_reasons = matrix_result.reject_reasons
-        reject_reason_counts: dict[str, int] = {}
-        for target_index, target_id in enumerate(matrix_result.target_ids):
-            for resource_index, resource_id in enumerate(matrix_result.resource_ids):
-                reject_reason = None
-                if target_index < len(reject_reasons):
-                    row = reject_reasons[target_index]
-                    if resource_index < len(row):
-                        reject_reason = row[resource_index]
-                if reject_reason is not None:
-                    reject_reason_counts[reject_reason] = (
-                        reject_reason_counts.get(reject_reason, 0) + 1
-                    )
-                if sparse and reject_reason is not None:
-                    continue
-                edge = {
-                    "target_id": target_id,
-                    "resource_id": resource_id,
-                    "cost": float(matrix_result.matrix[target_index, resource_index]),
-                    "cost_breakdown": dict(
-                        matrix_result.breakdowns[target_index][resource_index]
-                    ),
-                    "feasible": reject_reason is None,
-                    "reject_reason": reject_reason,
-                }
-                edges.append(edge)
-                if reject_reason is not None:
-                    rejected_edges.append(edge)
+        reject_reason_counts = (
+            {
+                str(reason): int(count)
+                for reason, count in matrix_result.metadata.get(
+                    "candidate_reject_reason_counts",
+                    (),
+                )
+            }
+            if sparse
+            else {}
+        )
+        edge_indices = (
+            matrix_result.candidate_edge_indices
+            if sparse
+            else tuple(
+                (target_index, resource_index)
+                for target_index in range(len(matrix_result.target_ids))
+                for resource_index in range(len(matrix_result.resource_ids))
+            )
+        )
+        for target_index, resource_index in edge_indices:
+            target_id = matrix_result.target_ids[target_index]
+            resource_id = matrix_result.resource_ids[resource_index]
+            reject_reason = None
+            if target_index < len(reject_reasons):
+                row = reject_reasons[target_index]
+                if resource_index < len(row):
+                    reject_reason = row[resource_index]
+            if not sparse and reject_reason is not None:
+                reject_reason_counts[reject_reason] = (
+                    reject_reason_counts.get(reject_reason, 0) + 1
+                )
+            edge = {
+                "target_id": target_id,
+                "resource_id": resource_id,
+                "cost": float(matrix_result.matrix[target_index, resource_index]),
+                "cost_breakdown": dict(
+                    matrix_result.breakdowns[target_index][resource_index]
+                ),
+                "feasible": reject_reason is None,
+                "reject_reason": reject_reason,
+            }
+            edges.append(edge)
+            if reject_reason is not None:
+                rejected_edges.append(edge)
         hard_reject_reason_counts = {
             reason: count
             for reason, count in reject_reason_counts.items()
@@ -3835,6 +4274,9 @@ class AssignmentPlanner:
             "unassigned_base_cost": float(self.config.unassigned_base_cost),
             "enable_candidate_sparsification": bool(
                 self.config.enable_candidate_sparsification
+            ),
+            "enable_vectorized_sparse_costs": bool(
+                self.config.enable_vectorized_sparse_costs
             ),
             "max_candidate_edges_per_target": (
                 self.config.max_candidate_edges_per_target

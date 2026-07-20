@@ -588,3 +588,49 @@ mask/fallback/version cases，以及 1 个 32-edge synthetic BC batch。接受�
   动力学、障碍/航路规划、友方轨迹解冲和 AirSim 物理闭环。
 - 200v200 当前仍构造确定性 dense solver matrix，并以 infeasible penalty 表示稀疏
   图外边；策略和 evidence 已稀疏，但更大规模的 sparse flow/auction 仍是后续研究。
+
+## 19. 200×200 性能收敛与区域计划合同（2026-07-20）
+
+### 本轮目标
+
+1. 复现 200 resource × 200 target、top-32 时约 1.97 s 的 D3 耗时，区分成本构造、
+   求解和证据输出。
+2. 保持规则代价、不可达约束、M-to-N demand slot、迟滞、学习有界修正和规则回退，
+   去除全 `N×M` Python 边对象计算。
+3. 保留 SciPy Hungarian 默认路径，在稀疏候选图上按连通分量构造局部求解矩阵。
+4. 为 D4 已裁决的多 secondary owner 和 distributed peer coalition 提供 D3-owned
+   区域计划发布合同。D3 只验证并发布，不自行决定降级。
+
+### 已完成
+
+- `CostModel` 增加可开关的向量化稀疏路径。可扩展 profile 默认启用；复杂资源目标
+  字典覆盖和时间窗输入自动回退旧参考实现。
+- NumPy 批量计算三维截获、协方差、区域和资源状态；top-k 排序保持成本和资源编号
+  的确定性顺序。候选 breakdown 物化数由 40,000 降到 6,400。
+- Hungarian 支持候选二部图连通分量的局部矩阵；SciPy 仍为默认，未增加强制依赖。
+- 新增区域 authority/commit DTO 和 `plan_regional_authority()`。来源计划不匹配、
+  旧 epoch、过期 lease、重复资源、非候选边、需求不足、缺 ACK 和未 committed
+  coalition 均 fail closed。
+- 多 owner 只记录在同一版本化 `AssignmentPlan` 及每条 assignment 上，不创建本地
+  `global_track_id`，也不改变 D7 的 current binding 规则。
+
+### 验证证据
+
+验证日期为 2026-07-20。D3 独立 200×200、top-32、5 次同输入基准中，旧路径中位
+`1904.261 ms`，新路径中位 `85.367 ms`，加速 `22.307×`；两条路径均完成 200 个
+assignment。结构检查证明新路径 Python 全边成本调用为 0。20×23 逐边对照验证规则
+矩阵、候选掩码、拒绝原因和 breakdown 一致。
+
+区域专项覆盖 2 个 secondary owner，以及 distributed committed、缺 ACK、旧 epoch、
+过期 lease 和 stale source。求解专项覆盖不连通局部矩阵和无候选目标。D3 全量结果
+为 `181 passed, 1 skipped`，接受阈值为零失败；skip 仅为 optional OR-Tools。
+
+### 后续集成
+
+1. main 将 D4 `RegionalFailoverDecision.region_decisions` 映射为 D3
+   `RegionalAuthorityInput`，不得把 D4 truth 或本地身份写入 D3。
+2. main 在 center failure、多 secondary owner 和 secondary failure 场景中验证
+   `plan_version` 严格单调、stale=0、过期 lease 执行数=0、缺 ACK 执行数=0。
+3. D6 消费区域 owner/epoch/lease/commit 和 D3 阶段耗时，完成 5/20/50/100/200
+   多 seed 报告。当前模块基准不等于全栈实时验收。
+4. AirSim adapter、actor、控制或话题接口本轮未改变；相关集成计划检查后无需修改。
