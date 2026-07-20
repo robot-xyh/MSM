@@ -682,7 +682,8 @@ covariance/NIS/NEES 持续阈值、D1/D2-confirmed 协同融合与 3->2->1 节�
 
 复核确认历史风险来自两条旁路：普通 legacy reader 可产生 `covariance=None`，而
 `FusionAdapter` 会用 modality default 替换缺失/非法矩阵。现已统一为正式路径 fail closed：
-radar/acoustic/EO/lidar 分别要求 `4x4/1x1/2x2/3x3`，并校验有限、对称和半正定；测量模型、
+radar/legacy acoustic/`acoustic_3d`/EO/lidar 分别要求
+`4x4/1x1/2x2/2x2/3x3`，并校验有限、对称和半正定；测量模型、
 在线融合、governed replay 和 AirSim freeze 不再修复坏输入。
 
 历史兼容被隔离到显式 `migrate_offline_legacy_sensor_observation()`。provenance 固定记录
@@ -717,3 +718,27 @@ seed-001 前 40 帧共 786 条持久化 observation，逐条 18.05 s/1267 replay
 评审结论：D1-owned 批量接口和最少 replay P1 已闭合；main/runtime call site、完整 245/248
 帧及多 seed 100 ms loop 验收仍开放。不得将 D1-only persisted replay 的 3.17 倍加速写成系统
 实时预算已经达成。Stone Soup、FilterPy、ROS 2 等 P2/P3 状态不变。
+
+## 24. Scalable 3D 扫描级融合评审（2026-07-20）
+
+旧 `process_batch()` 的目标是与逐条流式处理等价，因此同一雷达 scan 仍逐条关联。密集首扫中，
+第一条点迹 birth 后，其他近邻点迹可能先命中同航迹的固定门限，再被 observer-scan uniqueness
+判为重复；航迹数于是由门限空间 packing 决定，而不是由可分点迹数量决定。该语义必须保留给
+历史回归，但不适合作为新三维总线的扫描级起始器。
+
+本轮增加独立 `process_scan_batch()`：所有点迹只与 scan 前航迹比较，使用三维马氏代价和
+Hungarian 做一对一匹配，随后让每个未匹配 radar 点迹独立 birth。main 的三维球坐标 covariance
+通过解析 Jacobian 传播到 NED 六状态；无径向速度时显式保留未观测速度不确定性。适配器不导入
+main 模块，且在读取业务字段前拒绝任何 truth/actor/object/entity/target ID。输出继续使用 D1
+六维 `GlobalTrack`，数量不含 2/5/200 常量。
+
+新增 `acoustic_3d` 处理 `[azimuth,elevation]` 与 `2x2` covariance。它是 bearing-only 弱约束，
+不能起始三维航迹；soundprint 只保留归一化类别概率，`soundprint_is_identity=False` 被转换为
+category-only 治理证据，不参与匹配或稳定 ID。该边界与 cooperative bearing WLS/CI 不同：
+本轮没有把单节点声学方位伪装成三维定位，也没有实现跨节点身份确认。
+
+2026-07-20 模块验证使用 seed 7：5/20/50/100/200 各两次扫描，共 750 条匿名 radar
+measurement，首扫和次扫均 100% birth/update，200 档保持 200 个 ID；另验证 2 条 delayed
+OOSM、5 条 acoustic 无先验 0 birth/有先验 5 update，以及注入 truth/actor/object ID 100%
+拒绝。专项 `9/9`、全量 `120/120`。评审结论为 D1-owned scalable scan path 已实现；main bus
+接线、D2 六维 continuity、D6 至少 20 个未见 seed 的召回/IDSW/一致性和复杂生命周期仍开放。

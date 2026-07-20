@@ -82,6 +82,13 @@ from .replay import (
     write_sensor_observations_csv,
     write_sensor_observations_jsonl,
 )
+from .scalable_3d import (
+    SCALABLE_3D_FUSION_SCHEMA_VERSION,
+    Scalable3DFusionAdapter,
+    assert_scalable_online_payload_identity_free,
+    sensor_observation_from_online_measurement,
+    sensor_observations_from_online_batch,
+)
 from .types import (
     CISourceWeight,
     CooperativeBearingObservation,
@@ -147,6 +154,8 @@ __all__ = [
     "RadarCovarianceConfig",
     "ReconCueSummary",
     "ReplayProvenance",
+    "SCALABLE_3D_FUSION_SCHEMA_VERSION",
+    "Scalable3DFusionAdapter",
     "SensorHealthSummary",
     "SensorObservation",
     "SensorTimingExpectation",
@@ -154,6 +163,7 @@ __all__ = [
     "TrackUncertaintySummary",
     "annotate_covariance_growth_rates",
     "anonymize_online_observations",
+    "assert_scalable_online_payload_identity_free",
     "assert_online_observations_identity_free",
     "build_governed_replay_manifest",
     "build_long_replay_scenario",
@@ -177,6 +187,8 @@ __all__ = [
     "sensor_observation_from_csv_row",
     "sensor_observation_from_jsonl_record",
     "sensor_observation_from_local_image_track",
+    "sensor_observation_from_online_measurement",
+    "sensor_observations_from_online_batch",
     "sensor_observation_to_replay_record",
     "serialize_governed_replay",
     "serialize_offline_governed_replay",

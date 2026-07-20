@@ -572,7 +572,7 @@ replay 与 sensor-specific latency/health，区域/covariance/NIS/NEES 持续阈
 
 | 项目 | 当前状态 | D1 证据 | 剩余边界 |
 | --- | --- | --- | --- |
-| 正式 online covariance | D1-owned 缺口已关闭 | `FusionAdapter`/在线匿名 validator 统一拒绝缺失、非有限、非对称、非半正定及 radar 4x4/acoustic 1x1/EO 2x2/lidar 3x3 维度错误；拒绝发生在滤波状态修改前 | main/runtime 仍须调用 D1 正式入口，不得旁路构造内部滤波更新 |
+| 正式 online covariance | D1-owned 缺口已关闭 | `FusionAdapter`/在线匿名 validator 统一拒绝缺失、非有限、非对称、非半正定及 radar 4x4/legacy acoustic 1x1/`acoustic_3d` 2x2/EO 2x2/lidar 3x3 维度错误；拒绝发生在滤波状态修改前 | main/runtime 仍须调用 D1 正式入口，不得旁路构造内部滤波更新 |
 | versioned governed replay | 已关闭 | reader、writer、manifest/serializer 共用严格 numeric contract；不再把一维数组静默 reshape | schema 新版本仍须保持相同或更强合同 |
 | AirSim freeze | 已关闭并保持回归 | 缺/坏 covariance candidate 被拒绝，不生成在线 observation；现有七条合法 freeze record 保持通过 | 本轮未运行真实 AirSim episode，真实采集仍由 main 负责 |
 | legacy 缺 covariance | 仅显式 offline migration 可用 | `migrate_offline_legacy_sensor_observation()` 写完整 imputation provenance；普通 reader 和所有在线/governed/AirSim 入口拒绝 migration object | migration default 仅供历史离线重放，不是传感器标定结果 |
@@ -596,3 +596,21 @@ ceiling 只在合法输入通过后生效，不再承担输入修复。
 2026-07-14 D1 专项 `6 passed`、全量 `98 passed`，`git diff --check` 通过。当前仍无 D1 P0
 blocker。该批关闭“D1 没有最少重放批处理能力”的 P1 实现缺口，不关闭完整 AirSim 实时预算、
 真实 sensor-specific covariance/NIS/NEES、多 seed 长时阈值和 D1/D2-confirmed 协同融合。
+
+## 23. 2026-07-20 可扩展三维扫描融合 GAP 状态
+
+| GAP/合同 | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| 匿名 scalable bus adapter | 已实现 | `Scalable3DFusionAdapter` 鸭子类型消费 `OnlineSensorBatch`/等价 measurement；递归拒绝 truth/actor/object/entity/target ID 和 offline truth 对象 | main 将 bus topic 正式接线并验证 episode manifest/schema |
+| 200 点迹批量起始 | D1 实现缺口已关闭 | 扫描前航迹与全扫描点迹做一对一 Hungarian；未匹配 radar 全部独立 birth；seed 7 的 200 首扫为 `200/200`，不再约 34 | 多 seed 漏检/虚警/dense crossing 的长期 recall/false-track 生命周期由 main/D2/D6 联验 |
+| 六维 NED/covariance | 已关闭并回归 | 球坐标解析 Jacobian；状态 `[pN,pE,pD,vN,vE,vD]`、`6x6` covariance；原 `3x3` covariance 左上块严格保留，双时间戳同时发布 | 真实 sensor-specific NIS/NEES 与噪声标定仍开放 |
+| 扫描级更新与 OOSM | 已实现 | 五档次扫全部一对一 update；2 目标延迟扫描的 2 条 OOSM 均重放且 ID/数量不变 | 长时极端乱序、fixed-lag archive 内存和吞吐继续验证 |
+| 二维 acoustic bearing | 已实现弱约束 | `acoustic_3d=[azimuth,elevation]` 只更新既有 radar track；无先验时 5 条 bearing 为 0 birth | 多声学节点异步几何、误关联率和真实噪声标定开放 |
+| 声纹身份边界 | 已关闭合同层 | 强制 `soundprint_is_identity=False`，转为 `soundprint_category_only=True`；类别概率不进入关联/birth/ID/truth hint | 后续若增加声纹类别标签，仍不得把类别或 embedding 当稳定目标身份 |
+| 旧 baseline | 保持关闭 | 旧 `process()`/`process_batch()` 语义未改；D1 全量 `120 passed` | main 继续执行 2v2/5v5/M5N2 集成回归 |
+
+验收日期 2026-07-20。五档各 2 个 scan，共 10 batch/750 条匿名 radar measurement；首扫与
+次扫分别达到 `5/20/50/100/200` 全量 birth/update，未接受数均为 0。专项 `9 passed`，全量
+`120 passed`。本轮证据是 seed 7 的确定性模块回归，不是 20 个未见 seed 的系统统计，也未
+运行 AirSim。当前 D1-owned P0/P1 实现阻塞项已关闭；main 接线、D2 六维身份连续、D6 多 seed
+recall/IDSW/RMSE/NIS/NEES 和长期性能仍开放。

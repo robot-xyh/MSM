@@ -851,7 +851,8 @@ AirSim seed 尚未复跑，因此历史 episode 的第三航迹和状态跳变�
 ## 16. Covariance 必须先合法再治理（2026-07-14）
 
 正式在线、versioned governed replay 和 AirSim freeze 的 observation covariance 是硬输入，
-不是可选质量提示。radar/acoustic/EO/lidar 必须分别提供 `4x4/1x1/2x2/3x3` 的有限、对称、
+不是可选质量提示。radar/legacy acoustic/`acoustic_3d`/EO/lidar 必须分别提供
+`4x4/1x1/2x2/2x2/3x3` 的有限、对称、
 半正定矩阵；缺失或非法时在滤波更新前 fail closed。质量缩放与 floor/ceiling 只能治理已通过
 合同的合法矩阵，不能用于修复来源不明的缺值或坏值。
 
@@ -875,3 +876,25 @@ arrival time 仍用于 OOSM/延迟审计，covariance、NED/pixel frame、modali
 2026-07-14 构造回归中重放减少 74.7%，M5N2 seed-001 前 40 帧持久化输入 D1-only 加速
 3.17 倍，逐条与 batch 的最终 state/covariance 差为 0，D1 全量 `98/98`。main 尚需完成正式
 runtime 接线和完整多 seed 预算验收。
+
+## 18. 扫描级关联与逐条等价批处理必须分离（2026-07-20）
+
+`process_batch()` 与 `process_scan_batch()` 解决不同问题，不能互换口径：
+
+- `process_batch()` 保持调用顺序和逐条关联结果，用于历史 2v2/5v5/M5N2 数值等价回归；
+- `process_scan_batch()` 把同一 observer 的整次扫描视为一个集合，所有点迹只与 scan 前航迹
+  比较，强制一条航迹最多匹配一个点迹、一个点迹最多匹配一条航迹；
+- 一对一匹配后，未匹配 radar 点迹可分别起始，不能因为它们同时落入某条新航迹的宽门限而
+  被 observer-scan 规则压成少量航迹；
+- 未匹配 acoustic/EO 等非测距观测不能单独制造三维航迹。
+
+新总线适配器必须先执行身份字段治理，再转换数值。在线 payload 中的 truth/actor/object/
+entity/target ID 和 offline truth 对象一律拒绝；匿名 observation ID、sensor ID、scan ID 只作
+来源和去重，不表示目标身份。雷达球坐标及 covariance 使用解析 Jacobian 转到 NED 六状态，
+无径向速度时必须保留足够大的未观测速度不确定性，不能把补零解释为已测得零速度。
+
+二维 `acoustic_bearing` 同时约束方位和俯仰，但仍没有距离。其 soundprint 概率只能描述类别，
+必须由 `soundprint_is_identity=False` 治理并在 D1 内改写为 category-only 标志；滤波和关联不能
+把类别向量作为稳定目标 ID。2026-07-20 的 seed 7 回归在 5/20/50/100/200 五档首扫/次扫中
+分别保持全部航迹，200 档为 `200 birth -> 200 update`；专项 `9/9`、全量 `120/120`。这证明
+D1 模块合同，不代表复杂场景多 seed recall、ID continuity 或实时预算已经闭合。

@@ -909,3 +909,69 @@ checkpoint_dirty_track_ids                                    -> set
 cache hit/miss 和合并的发布重放。2026-07-14 的 5 航迹/15 观测测试中 replay 为 95 -> 24；
 真实 M5N2 seed-001 前 40 帧 D1-only 为 1267 -> 351，最终数值完全一致。完整 D1 回归为
 `98 passed`。
+
+## 26. 可扩展三维扫描级一对一融合算法（2026-07-20）
+
+### 26.1 总线适配与球坐标 covariance 传播
+
+`Scalable3DFusionAdapter` 通过字段合同而非 Python 类型依赖读取 `OnlineSensorBatch`。适配前
+递归遍历字段名并拒绝在线身份真值。三维雷达量测为
+
+```text
+z = [rho, azimuth, elevation]
+```
+
+当 producer 未提供径向速度时，D1 扩展为四维 radar measurement，并按距离模型给未观测径向
+速度配置方差。位置转换为：
+
+```text
+pN = sN + rho cos(elevation) cos(azimuth)
+pE = sE + rho cos(elevation) sin(azimuth)
+pD = sD - rho sin(elevation)
+```
+
+实现构造完整 `6x4` 状态 Jacobian `J`，计算 `P = J R J^T`；未观测切向速度再沿
+`I - uu^T` 加入方差，sensor position covariance 可选叠加到位置块。输入原 `3x3` spherical
+covariance 不被默认模型替换，canonical observation 的左上块逐元素保留。最终 track 始终是
+`[pN,pE,pD,vN,vE,vD]` 和 `6x6` covariance。
+
+### 26.2 扫描级关联与批量 birth
+
+设扫描前航迹数为 `T`、点迹数为 `O`。radar 路径先把所有航迹传播/重放到统一
+measurement time，把每个点迹转为 NED 位置和 covariance，再向量化计算：
+
+```text
+d(i,j) = (z_j - x_i)^T (P_i + R_j)^-1 (z_j - x_i)
+```
+
+门外项设为大代价，使用 `scipy.optimize.linear_sum_assignment` 求一对一最小代价；SciPy
+不可用时退化为确定性门内贪心匹配。求解后再次检查原始门限。所有匹配只针对 scan 前航迹，
+随后再应用 measurement-time EKF/OOSM 更新；未匹配 radar 点迹逐条调用合法起始器。这样第一
+条 birth 不会参与同一 scan 后续点迹的竞争，从算法上消除固定门限造成的空间 packing 上限。
+
+更新仍使用 `_BatchProcessingContext`：同测量时刻的 track state 只重放一次，dirty track 在
+批末各重放一次到 arrival watermark。历史 scan 迟到时写入原 observation history，并按既有
+fixed-lag/origin/archive 规则重建；track 输出同时保留 measurement/arrival timestamp。
+
+### 26.3 三维声学弱约束
+
+`acoustic_3d` 的观测函数为：
+
+```text
+h(x) = [atan2(rE, rN), atan2(-rD, sqrt(rN^2 + rE^2))]
+```
+
+两个角度残差均 wrap，Jacobian 数值计算，输入 `2x2` covariance。该模态只进入已有航迹的
+创新和 EKF 更新，不属于 radar 起始器。soundprint 概率先检查有限、非负、和大于零，再归一化
+并仅作为 category metadata 保存；它不进入代价矩阵，也不作为 truth hint。
+
+### 26.4 回归证据与复杂度边界
+
+2026-07-20、seed 7，5/20/50/100/200 各两次 scan，共 750 条匿名 radar measurement：首扫
+全部 birth，次扫全部一对一 update，200 档航迹数保持 200；状态有限、`6x6` covariance 半
+正定。2 目标 delayed scan 验证 2 条 OOSM 重放；声学验证 0 birth/5 update 类别边界；身份注入
+全部拒绝。专项 `9 passed`、模块全量 `120 passed`。
+
+radar 关联的矩阵规模为 `O(T*O)`，200x200 当前可接受，但本轮没有给出长 episode、多 sensor、
+虚警增长下的正式实时上界。track confirmation/deletion、跨 scan ID continuity 和至少 20 个
+未见 seed 的 recall/NIS/NEES 由后续 D2/D6/main 集成验收。

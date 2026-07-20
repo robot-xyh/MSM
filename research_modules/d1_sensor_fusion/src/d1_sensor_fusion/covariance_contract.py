@@ -9,6 +9,7 @@ import numpy as np
 OBSERVATION_MEASUREMENT_DIMENSIONS = {
     "radar": 4,
     "acoustic": 1,
+    "acoustic_3d": 2,
     "eo": 2,
     "lidar": 3,
 }

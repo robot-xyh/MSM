@@ -204,3 +204,15 @@ pair 均未物理命中，不能用于关闭协同定位或物理拦截。D1 typ
 数值基础已完成，但 D2-confirmed runtime adapter、真实多 seed 三机机动/遮挡/成员退出
 replay 和 RMSE/NIS/NEES consistency 仍需验证。P2 只做隔离 benchmark，不替换 NumPy
 默认路径。
+
+## 11. Scalable 3D 声学方位接口补充（2026-07-20）
+
+新三维质点总线的单个声学节点输出匿名 `[azimuth,elevation]`、`2x2` covariance、双时间戳、
+节点 NED 位置和类别级 soundprint 概率。D1 将其映射为 `acoustic_3d` bearing-only 约束：只能
+更新已有 radar `GlobalTrack`，没有距离/多视角几何时不单独 birth。`soundprint_is_identity`
+必须为 `False`，类别向量不参与跨节点同目标确认，也不创建或改写 `global_track_id`。
+
+2026-07-20 构造回归中，单声学 scan 的 5 条观测在无 radar 先验时产生 0 条航迹，在 5 条
+radar 先验存在时更新 5/5 且 ID 集不变。该结果只关闭输入适配和保守单节点更新合同，不关闭
+本评审的 M 对 N 协同定位 GAP：跨声学节点 bearing 分组仍需 D2-confirmed identity，几何定位
+仍需 WLS/CI 的 observer lineage、基线/交会角和多 seed RMSE/NIS/NEES 验收。

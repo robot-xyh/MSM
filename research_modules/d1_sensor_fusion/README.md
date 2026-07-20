@@ -541,7 +541,7 @@ elimination of the historical third birth and 31.8 s state jump remains a P1 epi
 
 Every observation entering `FusionAdapter`, online anonymization validation, versioned replay writing/
 reading, or AirSim persisted-input freezing must now carry a modality-sized covariance: radar `4x4`,
-acoustic `1x1`, EO `2x2`, and lidar `3x3`. The matrix must be finite, symmetric, and positive
+legacy acoustic `1x1`, scalable `acoustic_3d` `2x2`, EO `2x2`, and lidar `3x3`. The matrix must be finite, symmetric, and positive
 semidefinite. Invalid or missing input raises `ValueError` before a filter update; D1 no longer repairs
 it with a default model, reshapes flat arrays, symmetrizes it, or resets it silently. Existing quality
 scaling and covariance floor/ceiling handling still apply after a legal input passes this gate.
@@ -588,3 +588,36 @@ D1-only 重放，逐条为 18.05 s/1267 次重放，批处理为 5.70 s/351 次�
 
 这些证据关闭 D1-owned 的批量 API 与最少重放实现缺口，但 main/runtime 尚未改用该接口，
 完整 245/248 帧控制循环、多 seed 增益和 100 ms 预算仍是系统 P1 验收项。
+
+## 可扩展三维扫描融合入口（2026-07-20）
+
+`Scalable3DFusionAdapter` 是面向 `scalable_3d_simulation` 在线总线的 D1-owned 入口。它以
+鸭子类型消费 `OnlineSensorBatch` 或同合同 `SensorMeasurement` 扫描，不导入 main-owned
+模块；递归拒绝 truth/actor/object/entity/target ID 和 offline truth sidecar。雷达输入
+`[range, azimuth, elevation]` 在 D1 内补充未观测径向速度及距离相关方差，通过解析雅可比
+传播到 NED 六状态和 `6x6` covariance。原始 `3x3` 球坐标 covariance、
+`measurement_timestamp`、`arrival_timestamp`、sensor position 和匿名 observation lineage
+均被保留。
+
+新 `process_scan_batch()` 与旧 `process_batch()` 语义不同。旧入口继续保证逐条处理等价，供
+2v2、5v5、M5N2 回归使用；新入口先针对扫描前航迹和整扫描点迹构造三维马氏代价矩阵，再用
+一对一匈牙利匹配更新，每个未匹配雷达点迹都可独立 birth。这样不会再因同 observer scan 的
+固定门限把多个可分点迹误当成对同一航迹的重复更新。数量完全由输入扫描长度决定。
+
+main 新增的二维 `acoustic_bearing=[azimuth,elevation]` 映射为 `acoustic_3d` NED 弱约束；
+它只能更新既有雷达航迹，不能单独 birth。输入 `soundprint_is_identity` 必须为 `False`，随后
+转换为 `soundprint_category_only=True`；类别概率只进入 track metadata/类别提示，不进入几何
+关联、航迹 ID 或 truth hint。`Scalable3DFusionAdapter` 禁止启用
+`use_truth_hints_for_association`。
+
+2026-07-20 使用 `scalable3d-world-v1`/`scalable3d-observation-v1`、seed 7，在
+5/20/50/100/200 五档各运行两次无漏检雷达扫描，共 10 个 batch、750 条匿名雷达量测。首扫
+birth 和次扫 update 均为 `5/5、20/20、50/50、100/100、200/200`；200 规模不再收缩为约
+34 条，track ID 集保持不变。另有 2 目标、6 条量测的迟到扫描回归，2 条 OOSM 均在量测时刻
+重放且航迹数保持 2；二维声学专项证明无雷达先验时 `0` birth、有先验时只更新 5 条航迹。
+新增专项 `9 passed`，D1 全量 `120 passed`。一次本机非门限化探针中 200 点首扫约 0.108 s、
+次扫约 0.392 s；该单次耗时不是实时性能验收。
+
+当前 D1-owned 实现和合同回归已完成，但 main orchestrator 尚未接入此 adapter，D2 的原生
+六维关联、漏检/虚警下的航迹确认与删除、多 seed dense crossing 的 recall/ID continuity、
+长期 NIS/NEES 和实时预算仍需跨模块验收。本轮不涉及 AirSim runtime。

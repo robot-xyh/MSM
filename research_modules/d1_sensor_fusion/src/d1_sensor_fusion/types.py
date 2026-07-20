@@ -10,6 +10,7 @@ import numpy as np
 CANONICAL_OBSERVATION_FRAMES = {
     "radar": {"ned"},
     "acoustic": {"ned"},
+    "acoustic_3d": {"ned"},
     "eo": {"pixel"},
     "lidar": {"ned"},
 }

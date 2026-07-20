@@ -158,3 +158,29 @@ batch summary 在构造场景记录 61 次 cache hit、19 次 miss、5 次终结
 并保持当前逐条路径的数值结果。该结论仅针对 D1-only 重放；main 尚未改用接口，完整 AirSim
 循环的 RPC、观测生成、日志和 D6 报告耗时未包含。下一步由 main 接线后复测完整 245/248 帧
 和多 seed，若仍超 100 ms，应继续按分项 profile 治理，不能通过丢观测或改时间戳达标。
+
+## 2026-07-20 可扩展三维扫描融合合同报告
+
+本轮没有启动 AirSim。输入来自 main-owned 三维质点 producer，schema 为
+`scalable3d-world-v1`/`scalable3d-observation-v1`，固定 seed 7；雷达探测率仅为合同验收设为
+1.0。5/20/50/100/200 五档各运行初始扫描和 0.2 s 后第二扫描，共 10 batch、750 条在线匿名
+radar measurement。接受阈值为：首扫航迹数等于点迹数、第二扫 100% 一对一更新且不新建、
+ID 集不变、状态有限、covariance 为半正定 `6x6`、在线身份真值读取为 0。
+
+| 规模 | 首扫 birth/track | 次扫 update/track | 未接受量测 |
+| ---: | ---: | ---: | ---: |
+| 5 | 5/5 | 5/5 | 0 |
+| 20 | 20/20 | 20/20 | 0 |
+| 50 | 50/50 | 50/50 | 0 |
+| 100 | 100/100 | 100/100 | 0 |
+| 200 | 200/200 | 200/200 | 0 |
+
+补充合同包括：2 目标、3 scan/6 measurement 中 2 条迟到量测被识别并按 OOSM 重放，航迹数
+保持 2；单声学节点 5 条二维 bearing 在无雷达先验时 0 birth、有先验时 5 update；注入
+truth/actor/object ID 全部 fail closed；球坐标原 `3x3` covariance 在 canonical radar
+observation 中逐元素保留并传播为 `6x6` NED covariance。专项 `9/9`、D1 全量 `120/120`。
+
+开发期间一次本机非门限化探针记录 200 点首扫约 0.108 s、次扫约 0.392 s。该单次结果没有
+预热、重复统计或置信区间，不能作为实时验收。当前结论只关闭 D1 扫描级适配、批量 birth/
+update、OOSM 和类别声纹边界；多 seed 漏检/虚警/交叉场景 recall、false-track 生命周期、
+IDSW、RMSE/NIS/NEES、D2 六维关联和 main 总线接线仍开放。

@@ -188,6 +188,16 @@ def radar_state_from_observation(
         observation,
         context="D1 radar state initialization",
     )
+    if observation.metadata.get("spherical_covariance_to_ned") == "analytic_jacobian":
+        return state, _radar_state_covariance_from_spherical(
+            rho=float(rho),
+            azimuth=float(azimuth),
+            elevation=float(elevation),
+            radial_velocity=radial_velocity,
+            measurement_covariance=r,
+            metadata=observation.metadata,
+        )
+
     sigma_rho, sigma_az, sigma_el, sigma_rv = np.sqrt(np.diag(r))
     tangential = max(float(rho), 1.0) * max(float(sigma_az), float(sigma_el))
     covariance = np.diag(
@@ -203,9 +213,105 @@ def radar_state_from_observation(
     return state, covariance
 
 
+def _radar_state_covariance_from_spherical(
+    *,
+    rho: float,
+    azimuth: float,
+    elevation: float,
+    radial_velocity: float,
+    measurement_covariance: np.ndarray,
+    metadata: dict[str, Any],
+) -> np.ndarray:
+    """Propagate spherical radar covariance into the six-state NED frame."""
+
+    cos_azimuth = np.cos(azimuth)
+    sin_azimuth = np.sin(azimuth)
+    cos_elevation = np.cos(elevation)
+    sin_elevation = np.sin(elevation)
+    unit = np.array(
+        [
+            cos_elevation * cos_azimuth,
+            cos_elevation * sin_azimuth,
+            -sin_elevation,
+        ],
+        dtype=float,
+    )
+    jacobian = np.zeros((6, 4), dtype=float)
+    jacobian[:3, 0] = unit
+    jacobian[:3, 1] = np.array(
+        [
+            -rho * cos_elevation * sin_azimuth,
+            rho * cos_elevation * cos_azimuth,
+            0.0,
+        ],
+        dtype=float,
+    )
+    jacobian[:3, 2] = np.array(
+        [
+            -rho * sin_elevation * cos_azimuth,
+            -rho * sin_elevation * sin_azimuth,
+            -rho * cos_elevation,
+        ],
+        dtype=float,
+    )
+    jacobian[3:, 1] = radial_velocity * np.array(
+        [
+            -cos_elevation * sin_azimuth,
+            cos_elevation * cos_azimuth,
+            0.0,
+        ],
+        dtype=float,
+    )
+    jacobian[3:, 2] = radial_velocity * np.array(
+        [
+            -sin_elevation * cos_azimuth,
+            -sin_elevation * sin_azimuth,
+            -cos_elevation,
+        ],
+        dtype=float,
+    )
+    jacobian[3:, 3] = unit
+    covariance = jacobian @ measurement_covariance @ jacobian.T
+
+    sensor_covariance = metadata.get("sensor_position_covariance_ned")
+    if sensor_covariance is not None:
+        sensor_covariance = np.asarray(sensor_covariance, dtype=float)
+        if sensor_covariance.shape != (3, 3) or not np.isfinite(sensor_covariance).all():
+            raise ValueError("sensor_position_covariance_ned must be a finite 3x3 matrix")
+        covariance[:3, :3] += sensor_covariance
+
+    tangential_variance = float(
+        metadata.get("unobserved_tangential_velocity_variance_m2ps2", 100.0)
+    )
+    if not np.isfinite(tangential_variance) or tangential_variance <= 0.0:
+        raise ValueError(
+            "unobserved_tangential_velocity_variance_m2ps2 must be positive and finite"
+        )
+    covariance[3:, 3:] += tangential_variance * (
+        np.eye(3, dtype=float) - np.outer(unit, unit)
+    )
+    covariance = 0.5 * (covariance + covariance.T)
+    minimum_eigenvalue = float(np.linalg.eigvalsh(covariance).min())
+    if minimum_eigenvalue < 0.0:
+        covariance += np.eye(6, dtype=float) * (-minimum_eigenvalue + 1.0e-9)
+    return covariance
+
+
 def acoustic_h(state: np.ndarray, sensor_position: np.ndarray) -> np.ndarray:
     rel = np.asarray(state[:3], dtype=float) - sensor_position
     return np.array([np.arctan2(rel[1], rel[0])], dtype=float)
+
+
+def acoustic_3d_h(state: np.ndarray, sensor_position: np.ndarray) -> np.ndarray:
+    rel = np.asarray(state[:3], dtype=float) - sensor_position
+    horizontal = max(float(np.linalg.norm(rel[:2])), 1.0e-9)
+    return np.array(
+        [
+            np.arctan2(rel[1], rel[0]),
+            np.arctan2(-rel[2], horizontal),
+        ],
+        dtype=float,
+    )
 
 
 def acoustic_covariance(confidence: float) -> np.ndarray:
@@ -290,6 +396,23 @@ def measurement_model_for(
             h_fn=h_fn,
             h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
             angle_indices=(0,),
+        )
+
+    if modality == "acoustic_3d":
+        sensor_position = sensor_position_from_metadata(observation)
+
+        def h_fn(x: np.ndarray) -> np.ndarray:
+            return acoustic_3d_h(x, sensor_position)
+
+        z = observation.measurement.reshape(-1).copy()
+        z[0] = wrap_angle(float(z[0]))
+        z[1] = wrap_angle(float(z[1]))
+        return MeasurementModel(
+            z=z,
+            r=covariance,
+            h_fn=h_fn,
+            h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
+            angle_indices=(0, 1),
         )
 
     if modality == "eo":

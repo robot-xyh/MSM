@@ -75,6 +75,18 @@ OBSERVATION_METADATA_LINEAGE_KEYS = (
     "covariance_limit_applied",
     "covariance_scale_reason",
     "observation_covariance_anomaly",
+    "scan_id",
+    "online_batch_id",
+    "source_frame_id",
+    "source_modality",
+    "source_measurement_dimension",
+    "measurement_order",
+    "range_dependent_covariance",
+    "radial_velocity_observed",
+    "spherical_covariance_to_ned",
+    "d1_fusion_schema_version",
+    "soundprint_class_probabilities",
+    "soundprint_category_only",
 )
 LOW_QUALITY_FLAGS = frozenset(
     {
@@ -98,6 +110,7 @@ MEASUREMENT_COVARIANCE_CEILING = 1.0e6
 MEASUREMENT_COVARIANCE_FLOORS = {
     "radar": np.array([1.0e-2, 1.0e-8, 1.0e-8, 1.0e-4], dtype=float),
     "acoustic": np.array([1.0e-8], dtype=float),
+    "acoustic_3d": np.array([1.0e-8, 1.0e-8], dtype=float),
     "eo": np.array([0.25, 0.25], dtype=float),
     "lidar": np.array([1.0e-2, 1.0e-2, 1.0e-2], dtype=float),
 }
@@ -400,6 +413,147 @@ class FusionAdapter:
             observation_count=len(prepared),
             accepted_observation_count=context.accepted_observation_count,
             unaccepted_observation_count=unaccepted_count,
+            duplicate_observation_count=duplicate_count,
+            created_track_count=context.created_track_count,
+            updated_observation_count=context.accepted_update_count,
+            updated_track_count=len(
+                context.affected_track_ids - context.created_track_ids
+            ),
+            affected_track_ids=tuple(sorted(context.affected_track_ids)),
+            history_replay_count=context.history_replay_count,
+            origin_replay_count=context.origin_replay_count,
+            state_cache_hit_count=context.state_cache_hit_count,
+            state_cache_miss_count=context.state_cache_miss_count,
+            finalization_replay_count=context.finalization_replay_count,
+            deferred_update_replay_avoidance_count=max(
+                0,
+                context.accepted_update_count - context.finalization_replay_count,
+            ),
+            published_at=float(self.current_time),
+        )
+        return FusionBatchResult(tracks=tracks, summary=summary)
+
+    def process_scan_batch(
+        self,
+        observations: Iterable[SensorObservation],
+    ) -> FusionBatchResult:
+        """Fuse one identity-free observer scan with one-to-one association.
+
+        Unlike :meth:`process_batch`, this entry point intentionally does not
+        emulate sequential association. All observations are associated against
+        the pre-scan track set at once, and every unmatched radar detection may
+        start its own track. This prevents a loose single-observation gate from
+        suppressing nearby but distinct detections during dense-track birth.
+        """
+
+        if self._batch_context is not None:
+            raise RuntimeError("nested FusionAdapter batch calls are not supported")
+
+        prepared = tuple(self._prepare_observation(item) for item in observations)
+        if not prepared:
+            raise ValueError("scan batch must contain at least one observation")
+        first = prepared[0]
+        for observation in prepared[1:]:
+            if observation.sensor_id != first.sensor_id:
+                raise ValueError("scan batch observations must share sensor_id")
+            if observation.modality != first.modality:
+                raise ValueError("scan batch observations must share modality")
+            if abs(observation.measurement_timestamp - first.measurement_timestamp) > 1.0e-9:
+                raise ValueError("scan batch observations must share measurement_timestamp")
+            if abs(observation.arrival_timestamp - first.arrival_timestamp) > 1.0e-9:
+                raise ValueError("scan batch observations must share arrival_timestamp")
+            if self._observer_scan_key(observation) != self._observer_scan_key(first):
+                raise ValueError("scan batch observations must share one observer scan key")
+
+        duplicate_before = self.duplicate_observation_count
+        context = _BatchProcessingContext()
+        self._batch_context = context
+        try:
+            previous_time = float(self.current_time)
+            current_time = max(
+                self.current_time,
+                max(float(item.arrival_timestamp) for item in prepared),
+            )
+            self.current_time = current_time
+            effective: list[SensorObservation] = []
+            for observation in prepared:
+                is_oosm, is_stale = self._record_latency_audit(
+                    observation,
+                    previous_time,
+                    current_time,
+                )
+                self._record_sensor_observation(
+                    observation,
+                    is_oosm=is_oosm,
+                    is_stale=is_stale,
+                )
+                candidate = observation
+                if not self.latency_compensation:
+                    candidate = observation.with_measurement_timestamp(
+                        observation.arrival_timestamp
+                    )
+                if self._is_duplicate_observation(candidate):
+                    self.duplicate_observation_count += 1
+                    self._record_sensor_fault(
+                        candidate,
+                        "duplicate_observation",
+                        rejected=True,
+                    )
+                    continue
+                effective.append(candidate)
+
+            self._predict_all_to(current_time)
+            pre_scan_track_ids = tuple(sorted(self.tracks))
+            assignments = self._scan_one_to_one_assignments(
+                effective,
+                pre_scan_track_ids,
+            )
+            for observation_index, observation in enumerate(effective):
+                track_id = assignments.get(observation_index)
+                if track_id is not None:
+                    if self._apply_associated_observation(
+                        self.tracks[track_id],
+                        observation,
+                        current_time,
+                        defer_replay=True,
+                    ):
+                        context.accepted_observation_count += 1
+                        context.accepted_update_count += 1
+                        context.affected_track_ids.add(track_id)
+                    continue
+
+                record = self._create_track(observation, current_time)
+                if record is None:
+                    self._record_sensor_fault(
+                        observation,
+                        "unsupported_track_initializer",
+                        rejected=True,
+                    )
+                    self._mark_observation_processed(observation)
+                    continue
+                context.accepted_observation_count += 1
+                context.created_track_count += 1
+                context.affected_track_ids.add(record.track_id)
+                context.created_track_ids.add(record.track_id)
+
+            for track_id in sorted(context.dirty_track_ids):
+                record = self.tracks[track_id]
+                self._ensure_batch_checkpoint_current(record)
+                self._finalize_record_replay(record, self.current_time)
+                context.finalization_replay_count += 1
+            self._predict_all_to(self.current_time)
+            tracks = tuple(self.global_tracks())
+        finally:
+            self._batch_context = None
+
+        duplicate_count = self.duplicate_observation_count - duplicate_before
+        summary = FusionBatchSummary(
+            observation_count=len(prepared),
+            accepted_observation_count=context.accepted_observation_count,
+            unaccepted_observation_count=max(
+                0,
+                len(prepared) - context.accepted_observation_count,
+            ),
             duplicate_observation_count=duplicate_count,
             created_track_count=context.created_track_count,
             updated_observation_count=context.accepted_update_count,
@@ -1018,6 +1172,103 @@ class FusionAdapter:
                     record.association_diagnostics["observer_scan_conflict"] += 1
         return None
 
+    def _scan_one_to_one_assignments(
+        self,
+        observations: list[SensorObservation],
+        pre_scan_track_ids: tuple[str, ...],
+    ) -> dict[int, str]:
+        if not observations or not pre_scan_track_ids:
+            return {}
+
+        track_items = [
+            (track_id, self.tracks[track_id])
+            for track_id in pre_scan_track_ids
+            if not self._record_has_observer_scan(
+                self.tracks[track_id],
+                observations[0],
+            )
+        ]
+        if not track_items:
+            return {}
+
+        if all(observation.modality == "radar" for observation in observations):
+            measurement_timestamp = observations[0].measurement_timestamp
+            track_states = [
+                self._state_at(record, measurement_timestamp)
+                for _, record in track_items
+            ]
+            observation_states = [
+                radar_state_from_observation(observation, self.radar_covariance_config)
+                for observation in observations
+            ]
+            track_positions = np.stack([item.state[:3] for item in track_states])
+            track_covariances = np.stack(
+                [item.covariance[:3, :3] for item in track_states]
+            )
+            observation_positions = np.stack([item[0][:3] for item in observation_states])
+            observation_covariances = np.stack(
+                [item[1][:3, :3] for item in observation_states]
+            )
+            differences = (
+                observation_positions[None, :, :] - track_positions[:, None, :]
+            )
+            innovation_covariances = (
+                track_covariances[:, None, :, :]
+                + observation_covariances[None, :, :, :]
+                + np.eye(3, dtype=float)[None, None, :, :] * 1.0e-6
+            )
+            inverses = np.linalg.pinv(innovation_covariances)
+            cost_matrix = np.einsum(
+                "toi,toij,toj->to",
+                differences,
+                inverses,
+                differences,
+            )
+        else:
+            cost_matrix = np.empty((len(track_items), len(observations)), dtype=float)
+            for row, (_, record) in enumerate(track_items):
+                for column, observation in enumerate(observations):
+                    cost_matrix[row, column] = self._association_score(
+                        record,
+                        observation,
+                    )
+
+        valid = np.isfinite(cost_matrix) & (cost_matrix <= self.association_gate)
+        if not np.any(valid):
+            return {}
+        penalty = max(1.0e9, abs(self.association_gate) * 1.0e6)
+        gated_cost = np.where(valid, cost_matrix, penalty)
+        try:
+            from scipy.optimize import linear_sum_assignment
+
+            rows, columns = linear_sum_assignment(gated_cost)
+            pairs = zip(rows.tolist(), columns.tolist())
+        except ImportError:
+            ordered_pairs = sorted(
+                (
+                    (float(cost_matrix[row, column]), row, column)
+                    for row, column in zip(*np.nonzero(valid))
+                ),
+                key=lambda item: (item[0], item[1], item[2]),
+            )
+            used_rows: set[int] = set()
+            used_columns: set[int] = set()
+            greedy_pairs: list[tuple[int, int]] = []
+            for _, row, column in ordered_pairs:
+                if row in used_rows or column in used_columns:
+                    continue
+                used_rows.add(row)
+                used_columns.add(column)
+                greedy_pairs.append((row, column))
+            pairs = iter(greedy_pairs)
+
+        assignments: dict[int, str] = {}
+        for row, column in pairs:
+            if not valid[row, column]:
+                continue
+            assignments[int(column)] = track_items[int(row)][0]
+        return assignments
+
     def _record_has_observer_scan(
         self,
         record: TrackRecord,
@@ -1079,7 +1330,7 @@ class FusionAdapter:
         record: TrackRecord,
         observation: SensorObservation,
     ) -> float | None:
-        if observation.modality not in {"eo", "acoustic"}:
+        if observation.modality not in {"eo", "acoustic", "acoustic_3d"}:
             return None
         if record.source_support.get("radar", 0) < self.non_range_correction_min_radar_hits:
             return None
@@ -1825,6 +2076,8 @@ def _metadata_from_observation(observation: SensorObservation) -> dict:
         "latest_modality": observation.modality,
         "latest_measurement_timestamp": observation.measurement_timestamp,
         "latest_arrival_timestamp": observation.arrival_timestamp,
+        "measurement_timestamp": observation.measurement_timestamp,
+        "arrival_timestamp": observation.arrival_timestamp,
         "latest_observation_latency_s": observation.latency,
         "latest_timestamp_uncertainty_s": float(observation.timestamp_uncertainty_s or 0.0),
         "timestamp_uncertainty_s": float(observation.timestamp_uncertainty_s or 0.0),

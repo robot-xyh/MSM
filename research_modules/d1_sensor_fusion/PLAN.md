@@ -351,7 +351,7 @@ schema/version 字段，仍需更长 episode 和 D6 批量 schema 审计。
 ### 9.1 已实现能力
 
 - **时间戳合同**: `SensorObservation` 强制保留 `measurement_timestamp` 和 `arrival_timestamp`；`FusionAdapter` 用测量时刻做滤波更新，用到达时刻推进当前时间、记录延迟和排序 replay。`GlobalTrack.metadata` 与 `TrackUncertaintySummary` 已暴露最新测量/到达时间。
-- **协方差合同**: 观测侧支持 radar 4x4、acoustic 1x1、EO 2x2、synthetic lidar 3x3 协方差；航迹侧输出 6x6 状态协方差；分级与摘要使用水平 95% 误差椭圆 `a95_m`、协方差迹和 NIS。
+- **协方差合同**: 观测侧支持 radar 4x4、legacy acoustic 1x1、scalable `acoustic_3d` 2x2、EO 2x2、synthetic lidar 3x3 协方差；航迹侧输出 6x6 状态协方差；分级与摘要使用水平 95% 误差椭圆 `a95_m`、协方差迹和 NIS。
 - **NED 工作帧**: 雷达、声学和 lidar 观测在 `frame_id="ned"` 下进入融合；EO 以 `frame_id="pixel"` 和相机模型元数据作为投影约束；`GlobalTrack` 固定输出 NED 六维状态。WGS84/ENU 仅作为上游外部参考，不在 D1 内直接滤波。
 - **雷达观测适配**: 已实现 `[range, azimuth, elevation, radial_velocity]` 观测模型、角度 wrap、雷达初始化航迹、距离相关测量协方差和 radar observation 到六维初始状态/协方差转换。
 - **声学观测适配**: 已实现粗方位角观测、置信度相关角度协方差和 `classification_hint` 累计；声学不会单独初始化三维航迹，也不会单独把航迹提升为 `handover`。
@@ -842,3 +842,53 @@ batch_summary = result.summary.to_dict()
 D1-owned P1 实现已完成。剩余系统 P1 由 main 把逐条调用替换为每 tick 一次 batch，复测完整
 245/248 帧、记录 D1 与总 loop 分项耗时并做多 seed；在该证据完成前不能宣称 100 ms 实时预算
 闭合。
+
+## 26. 可扩展三维扫描级融合（2026-07-20）
+
+### 26.1 已实现合同
+
+1. `Scalable3DFusionAdapter.process_online_sensor_batch()` 以鸭子类型消费 main bus 的匿名
+   `OnlineSensorBatch`，`process_measurement_scan()` 接受等价量测序列；D1 不导入或修改
+   `scalable_3d_simulation`。
+2. 输入在字段解引用前递归审计，truth/actor/object/entity/target ID、world snapshot 和
+   offline truth label fail closed；`use_truth_hints_for_association=True` 被显式拒绝。
+3. `radar_spherical` 的三维球坐标及原始 covariance 转为 D1 radar 规范量测；缺少径向速度时
+   补零但给出距离相关径向方差和未观测切向速度方差。解析雅可比传播到
+   `[pN,pE,pD,vN,vE,vD]` 与 `6x6` covariance。
+4. `process_scan_batch()` 对扫描前航迹和整扫描点迹一次性构造三维马氏代价矩阵，执行一对一
+   匈牙利匹配；未匹配 radar 点迹批量起始，非测距点迹不单独起始。旧 `process_batch()` 的
+   逐条等价语义保持不变。
+5. 二维 `acoustic_bearing=[azimuth,elevation]` 转为 `acoustic_3d` 弱约束。声纹向量必须带
+   `soundprint_is_identity=False`，转换后仅以 `soundprint_category_only` 类别证据保留，不参与
+   关联、birth、`global_track_id` 或 truth hint。
+6. `GlobalTrack.metadata` 同时发布 `measurement_timestamp`/`arrival_timestamp` 及既有
+   `latest_*` 别名，状态固定六维、covariance 固定 `6x6`，可供 D2 adapter 消费。
+
+### 26.2 2026-07-20 验收
+
+测试使用新主环境默认 seed 7，并把雷达探测率设为 1.0。五档规模各运行首扫和 0.2 s 后次扫：
+
+| 目标数 | 首扫量测/birth/航迹 | 次扫量测/update/航迹 | ID 集 |
+| ---: | ---: | ---: | --- |
+| 5 | 5/5/5 | 5/5/5 | 保持 |
+| 20 | 20/20/20 | 20/20/20 | 保持 |
+| 50 | 50/50/50 | 50/50/50 | 保持 |
+| 100 | 100/100/100 | 100/100/100 | 保持 |
+| 200 | 200/200/200 | 200/200/200 | 保持 |
+
+合计 10 个 scan batch、750 条匿名雷达量测，接受阈值为每档首扫 100% birth、次扫 100%
+一对一 update、0 个未接受量测、有限状态和半正定 `6x6` covariance，全部满足。另以 2 目标
+3 个 scan/6 条量测验证延迟到达：2 条历史量测均计为 OOSM 并按 measurement time 重放，
+航迹数和 ID 集不变。声学测试验证无雷达先验时 5 条二维 bearing 产生 0 birth，有雷达先验时
+5/5 只更新既有航迹。专项 `9 passed`、D1 全量 `120 passed`。
+
+### 26.3 开放项
+
+1. main 将真实 episode bus topic 接入 adapter，并冻结 bus/model/schema version 与 batch audit；
+2. D2 完成原生六维稀疏关联后，联合验证 5/20/50/100/200 多 seed recall、ID switch 和连续性；
+3. 在漏检、虚警、交叉、分裂和长时 OOSM 下增加 tentative/confirmed/deletion 生命周期证据，
+   避免把“首扫 200/200 birth”误写成复杂场景长期 95% recall 已关闭；
+4. 由 D6 至少汇总 20 个未见 seed 的 RMSE/NIS/NEES、recall、耗时和置信区间；单次本机
+   0.108 s 首扫/0.392 s 次扫仅是开发探针，不是实时验收；
+5. main-owned 系统文档和跨模块状态由 main 在接线后同步。本批不修改 AirSim 计划，因为新
+   能力只面向三维质点总线，未改变 AirSim producer/runtime。
