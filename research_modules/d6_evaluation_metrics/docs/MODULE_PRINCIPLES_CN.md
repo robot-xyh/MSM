@@ -1,5 +1,34 @@
 # D6 系统级离线评估模块原理
 
+## 主动视觉的命令、执行和归因分层（2026-07-20）
+
+D5 主动视觉输出属于观察管理，不等于相机已经执行。D6 将每次运行拆成五层：确定性规则命令、影子
+模型建议、经安全外壳采用的辅助动作、main runtime 的 applied/rejected ACK、离线物理结果。前一层
+不能替代后一层。shadow 模式下模型建议只用于比较，实际命令仍由规则策略给出；assist 模式只有在
+D5 选择模型动作且 main 返回 applied ACK 后，才能称为已执行辅助动作。
+
+命令与 ACK 的身份由 camera ID、resource ID、issued timestamp、plan version、coalition version、
+communication version、intent 和 mode 共同确定。只比较 camera ID 会把旧计划 ACK 接到新命令；只
+比较时间会混淆同帧多个相机。D6 保留未 ACK、意外 ACK、延迟和拒绝原因，不从 applied 子集缩小分母。
+日志缺失时指标 unavailable，summary 的零不能替代逐条命令证据。
+
+主动视觉只能引用中心维护的 `global_track_id`。D6 在命令时刻向前查找最近的 D2 中心航迹集合，核对
+每个目标引用；ACK 必须返回同一编号。多个相机引用同一航迹在协同观察中是合法行为，未知编号或 ACK
+改写才是违规。D6 只审计，不创建、不合并、不重绑定编号。主动视觉 command/ACK 同时参加递归在线
+truth-like 字段检查，仿真真值仍只允许进入离线标签和评估产物。
+
+因果归因需要配对实验。一次 assist applied 后出现五米接近，只能说明事件先后发生，不能排除初始
+几何、随机机动、其他模块或规则安全外壳的作用。正式归因必须使用同 seed、同场景、同配置的规则控制
+组和 assist 处理组，并保存模型版本和实际采用证据。在此之前 attribution 保持 null/unavailable。
+
+2026-07-20 验证为 8 项主动视觉 deterministic tests，显式规模 T/R/Rc/Cam=`6/4/1/5`，报告测试含
+2 个不同 seed；与既有 scalable 测试合计 `25 passed`，D6 全量 `297 passed`。这些结果证明 consumer
+合同和缺值规则可运行，不证明主动视觉性能。
+
+同日的 main-runtime 临时 smoke 使用 6v6、1 个 recon、7 台 camera、seed 37、2.2 s，D6 读取到 133
+条规则命令和 133 条 applied ACK，拒绝、中心航迹引用违规和在线 truth 字段均为 0。该单 seed 输入的
+worktree 为 dirty，因此只能补充端到端文件合同证据，不能进入正式统计。
+
 ## Scalable 3D 学习证据分层与缺值原则（2026-07-20）
 
 D6 对 main-owned scalable 3D episode 只做持久化文件消费。learning runtime metadata 与 D4 advice

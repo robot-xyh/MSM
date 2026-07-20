@@ -108,6 +108,15 @@ from .metrics import (
     TrackRecord,
 )
 from .jsonl import dump_episode_log_jsonl, load_episode_log_jsonl
+from .active_vision_offline import (
+    ACTIVE_VISION_NUMERIC_METRIC_FIELDS,
+    ACTIVE_VISION_RUNTIME_SCHEMA,
+    ACTIVE_VISION_TOPIC,
+    CAMERA_COMMAND_ACK_SCHEMA,
+    CAMERA_COMMAND_ACK_TOPIC,
+    ActiveVisionOfflineEvidence,
+    evaluate_active_vision_runtime_evidence,
+)
 from .reporting import ReportGenerator
 from .scenario_library import (
     ScenarioDefinition,
@@ -272,6 +281,13 @@ __all__ = [
     "render_stage_timing_markdown",
     "render_clock_speed_comparison_markdown",
     "render_scalable_3d_offline_markdown",
+    "ACTIVE_VISION_NUMERIC_METRIC_FIELDS",
+    "ACTIVE_VISION_RUNTIME_SCHEMA",
+    "ACTIVE_VISION_TOPIC",
+    "CAMERA_COMMAND_ACK_SCHEMA",
+    "CAMERA_COMMAND_ACK_TOPIC",
+    "ActiveVisionOfflineEvidence",
+    "evaluate_active_vision_runtime_evidence",
     "stage_timing_csv_rows",
     "summarize_d3_canonical_history",
     "summarize_terminal_closure_case_evidence",

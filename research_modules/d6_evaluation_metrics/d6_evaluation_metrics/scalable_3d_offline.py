@@ -24,9 +24,14 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .active_vision_offline import (
+    ACTIVE_VISION_NUMERIC_METRIC_FIELDS,
+    evaluate_active_vision_runtime_evidence,
+)
+
 
 SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION = (
-    "d6-scalable3d-offline-evaluation-v2"
+    "d6-scalable3d-offline-evaluation-v3"
 )
 SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-20"
 DEFAULT_SCALABLE_3D_BOOTSTRAP_RESAMPLES = 2_000
@@ -146,6 +151,7 @@ _METRIC_FIELDS = (
     "offline_proximity_identity_evaluable_count",
     "offline_proximity_identity_correct_count",
     "offline_proximity_identity_correct_rate",
+    *ACTIVE_VISION_NUMERIC_METRIC_FIELDS,
 )
 
 class Scalable3DOfflineEvaluationError(ValueError):
@@ -314,6 +320,14 @@ def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
     _extract_d4_metrics(row, ordered_online)
     _extract_d4_region_advice_metrics(row, ordered_online)
     _extract_d5_metrics(row, ordered_online)
+    active_vision_evidence = evaluate_active_vision_runtime_evidence(
+        ordered_online,
+        summary,
+        online_unavailable_reason=online_reason,
+        forbidden_field_counter=_count_forbidden_online_fields,
+    )
+    row.update(active_vision_evidence.metrics)
+    row["_failure_reasons"].extend(active_vision_evidence.failure_reasons)
     _extract_d7_metrics(row, ordered_online)
     _extract_camera_count(row, config, ordered_online)
     _extract_proximity_metrics(
@@ -456,6 +470,30 @@ def aggregate_scalable_3d_episodes(
                     group_rows, "d5_learning_fallback_reason"
                 )
             ),
+            "d5_active_vision_requested_mode_distribution": (
+                _counter_from_mapping_field(
+                    group_rows,
+                    "d5_active_vision_requested_mode_distribution_json",
+                )
+            ),
+            "d5_active_vision_effective_mode_distribution": (
+                _counter_from_mapping_field(
+                    group_rows,
+                    "d5_active_vision_effective_mode_distribution_json",
+                )
+            ),
+            "d5_active_vision_intent_distribution": (
+                _counter_from_mapping_field(
+                    group_rows,
+                    "d5_active_vision_intent_distribution_json",
+                )
+            ),
+            "d5_active_vision_rejection_reason_distribution": (
+                _counter_from_mapping_field(
+                    group_rows,
+                    "d5_active_vision_rejection_reason_distribution_json",
+                )
+            ),
             "d7_reject_reason_distribution": _counter_from_mapping_field(
                 group_rows, "d7_reject_reason_distribution_json"
             ),
@@ -528,6 +566,19 @@ def aggregate_scalable_3d_episodes(
             "current_d4_contract": (
                 "region_resource_advice leaves the formal D4 decision unchanged"
             ),
+            "d5_active_vision": {
+                "rule_command": "actual deterministic command issued by D5",
+                "shadow_suggestion": (
+                    "model output observed without replacing the issued rule command"
+                ),
+                "assist_adopted": (
+                    "safety-screened model action selected by D5; runtime ACK remains separate"
+                ),
+                "ack_applied": "main runtime applied the versioned camera command",
+                "physical_attribution": (
+                    "null unless paired episodes and applied assist evidence exist"
+                ),
+            },
         },
     }
 
@@ -678,6 +729,64 @@ def render_scalable_3d_offline_markdown(
     lines.extend(
         [
             "",
+            "## D5 主动视觉运行证据",
+            "",
+            "规则命令是实际发布的确定性动作。影子建议只记录模型产生但未替换规则动作的建议。辅助采用表示 D5 通过安全门后选择模型动作，主运行时仍需返回 applied ACK 才能证明动作实际生效。",
+            "目标航迹编号只按此前 D2 发布的中心航迹集合做只读核对。缺少 D2 快照、命令日志或 ACK 时，对应比率和延迟保持 unavailable。物理结果不从同一 episode 的接近事件归因给主动视觉。",
+            "",
+            "| seed | rule/shadow/assist adopted | issued/ACK/applied/rejected | ACK P50/P95 ms | expired/stale/camera/other | track refs consistent/evaluable | truth fields | summary match | physical attribution |",
+            "| ---: | --- | --- | --- | --- | --- | ---: | --- | --- |",
+        ]
+    )
+    for row in rows:
+        lines.append(
+            "| {seed} | {rule}/{shadow}/{assist} | {issued}/{acks}/{applied}/{rejected} | "
+            "{p50}/{p95} | {expired}/{stale}/{camera}/{other} | {consistent}/{evaluable} | "
+            "{truth} | {summary} | {attribution} |".format(
+                seed=_fmt(row.get("seed")),
+                rule=_fmt_available(row, "d5_active_vision_rule_command_count"),
+                shadow=_fmt_available(
+                    row, "d5_active_vision_shadow_suggestion_count"
+                ),
+                assist=_fmt_available(row, "d5_active_vision_assist_adopted_count"),
+                issued=_fmt_available(row, "d5_active_vision_command_issued_count"),
+                acks=_fmt_available(row, "d5_active_vision_ack_count"),
+                applied=_fmt_available(row, "d5_active_vision_ack_applied_count"),
+                rejected=_fmt_available(row, "d5_active_vision_ack_rejected_count"),
+                p50=_fmt_available(row, "d5_active_vision_ack_latency_p50_ms"),
+                p95=_fmt_available(row, "d5_active_vision_ack_latency_p95_ms"),
+                expired=_fmt_available(
+                    row, "d5_active_vision_rejected_expired_count"
+                ),
+                stale=_fmt_available(
+                    row, "d5_active_vision_rejected_stale_version_count"
+                ),
+                camera=_fmt_available(
+                    row, "d5_active_vision_rejected_camera_unavailable_count"
+                ),
+                other=_fmt_available(row, "d5_active_vision_rejected_other_count"),
+                consistent=_fmt_available(
+                    row, "d5_active_vision_target_reference_consistent_count"
+                ),
+                evaluable=_fmt_available(
+                    row, "d5_active_vision_target_reference_evaluable_count"
+                ),
+                truth=_fmt_available(
+                    row,
+                    "d5_active_vision_online_truth_field_violation_count",
+                ),
+                summary=_fmt_available(
+                    row, "d5_active_vision_summary_counter_consistent"
+                ),
+                attribution=_fmt_available(
+                    row, "d5_active_vision_physical_outcome_attribution"
+                ),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
             "## 聚合与不确定性",
             "",
             f"Bootstrap 使用固定 rng_seed={aggregate.get('bootstrap', {}).get('rng_seed')}、resamples={aggregate.get('bootstrap', {}).get('resamples')}，抽样单位为不同 seed 的 episode 均值。",
@@ -751,6 +860,8 @@ def render_scalable_3d_offline_markdown(
             "- bundle 未加载时，学习模型 fingerprint/version 保持 null/unavailable；规则路径的 runtime version 不冒充学习模型版本。",
             "- D4 advice 的旧 schema、缺版本、过期 authority/plan/lease、非守恒 quota、非法 projection 或 digest 篡改均 fail closed，不以合法记录子集缩小分母。",
             "- 当前 D4 advice 没有控制采用字段；即使 `assist_eligible=true` 且 recommendation 有输出，也不能报告控制已采用。",
+            "- D5 主动视觉必须由命令与 `runtime.camera_command_ack` 复合版本键闭合；命令发布、影子建议、辅助采用和 ACK applied 分层统计。",
+            "- 即使辅助动作已 applied 且同一 episode 出现五米接近，没有同 seed 配对控制组时，主动视觉物理归因仍为 null/unavailable。",
             "- 报告不把五米接近登记为任务成功；任务成功仍需身份、D4 授权、D7 控制和任务合同的独立证据。",
         ]
     )
@@ -3177,6 +3288,18 @@ def _finalize_episode_status(row: dict[str, Any]) -> None:
         failures.append("online_truth_use_nonzero")
     if int(row.get("online_truth_field_violation_count", 0)) > 0:
         failures.append("online_truth_field_violation")
+    if (
+        row.get("d5_active_vision_target_reference_violation_count_availability")
+        == "available"
+        and int(row.get("d5_active_vision_target_reference_violation_count", 0)) > 0
+    ):
+        failures.append("d5_active_vision_unknown_center_track_reference")
+    if (
+        row.get("d5_active_vision_ack_target_mismatch_count_availability")
+        == "available"
+        and int(row.get("d5_active_vision_ack_target_mismatch_count", 0)) > 0
+    ):
+        failures.append("d5_active_vision_ack_target_reference_mismatch")
     if row.get("repository_dirty") is True:
         failures.append("repository_dirty_not_formal_evidence")
     if row.get("config_hash_match") is False:
@@ -3220,6 +3343,7 @@ def _finalize_episode_status(row: dict[str, Any]) -> None:
                     "d4_advice_version_evidence_issue",
                     "d4_advice_resource_quota_conservation_violation",
                     "d4_advice_formal_decision_mutation",
+                    "d5_active_vision_",
                 )
             )
             for reason in failures

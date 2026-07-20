@@ -1,5 +1,32 @@
 # D6 系统级评估指标实验报告
 
+## 2.2 2026-07-20 scalable 3D 主动视觉证据验收
+
+本节验证 D6 对 D5 主动视觉命令和 main runtime ACK 的离线消费，不记录真实飞行、AirSim 或模型性能。
+8 项测试共创建 9 个 deterministic episode fixture。单 episode 显式规模为 target/resource/recon/
+camera=`6/4/1/5`；聚合测试使用 seed 1 和 seed 2，不从场景名推断规模。
+
+验证矩阵包括 rule、shadow 和 assist 三类命令；applied/rejected ACK；10、20、30 ms 延迟；command
+expired、stale coalition version、camera/resource unavailable 和 degenerate aim point 四类拒绝；
+未知 D2 中心航迹引用、ACK target 改写、在线 truth 字段、active log 缺失和 summary count conflict。
+另设 assist applied 加五米 proximity 的正例，确认 attribution 仍因缺少配对控制组而 unavailable。
+
+接受门限为：三种模式不互相回填；命令和 ACK 按完整版本键关联；拒绝分类及 summary counters 一致；
+未知 ID、ACK 改写和 truth 污染使正式证据 fail closed；缺日志不写 0；双 seed 报告保留显式规模；同一
+episode 物理事件不产生因果归因。上述门限全部满足。主动视觉与既有 scalable 专项共 `25 passed`，
+D6 全量 `297 passed`，仅有既有 Matplotlib `Axes3D` warning。
+
+当前结果关闭 D6 consumer 和报告口径缺口。main 尚未提供 clean worktree 下至少 20 个未见 seed 的
+rule/shadow/assist 正式 episode；assist 也没有同 seed 配对规则控制组。因此本节没有主动视觉提升率、
+物理效果或默认路径准入结论。
+
+接口测试后又运行了一个当前 main-runtime 临时 smoke。参数为 6 个 target、6 个 interceptor、1 个
+recon、7 台 camera、seed 37、duration 2.2 s；finite=true、RTF=4.740。D6 v3 读取 133 条 disabled/rule
+command、133 条 matched ACK，全部 applied；rejected、target-reference violation 和 online truth
+field violation 均为 0，summary counter match=true。该 worktree 为 dirty，且只有一个 seed，所以
+formal acceptance=false、bootstrap unavailable。本条只说明实际 producer 文件能够被 consumer 解析，
+不构成 AirSim、模型或物理性能证据。
+
 ## 2.1 2026-07-20 scalable 3D 学习运行时确定性验收
 
 本节只记录 D6 consumer/report 的接口与口径测试，不记录真实飞行、质点仿真或学习模型性能。输入均为

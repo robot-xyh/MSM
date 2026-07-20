@@ -1,5 +1,29 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-20 Scalable 3D 主动视觉证据评审
+
+评审确认 D6 v3 只消费持久化主动视觉命令、运行时 ACK 和 summary counters，不调用 D5 policy 或 main
+控制接口。命令层分为规则实际动作、影子模型建议和经安全外壳采用的 assist 动作；ACK 层再区分 applied
+与 rejected。shadow 输出不替换规则动作，assist adopted 也不能替代 main runtime applied。
+
+命令与 ACK 使用 camera/resource、issued timestamp、plan/coalition/communication version、intent 和
+requested/effective mode 关联。任何 schema、数量、版本键或 summary reason distribution 冲突都保留
+失败原因；过期、过时版本、相机不可用和其他拒绝分别统计。目标航迹编号只核对此前 D2 中心航迹快照，
+ACK 改写或引用未知编号使正式 evidence fail closed。该检查不授予 D6 任何重绑定权。
+
+物理层继续保持不可归因。一个 assist 命令 applied 后出现五米接近，只能证明两个事件都发生；没有同
+seed 的规则控制组、相同配置和模型版本证据时，物理 attribution 必须为 null。正式主动视觉效果比较
+至少需要 20 个未见 seed 的配对输入，再按 seed 聚合，不允许用帧数扩大样本量。
+
+2026-07-20 的 8 项确定性测试和既有 17 项 scalable 测试合计 `25 passed`，D6 全量 `297 passed`。
+覆盖显式 T/R/Rc/Cam=`6/4/1/5`、双 seed 报告和全部主要负例；上述 fixture 本身未启动 runtime/AirSim。当前可
+关闭 D6 consumer/report 缺口，不能关闭 main producer 持久化、assist 准入或物理性能 P1。
+
+当前 main runtime 的 6v6/recon1/camera7、seed 37、2.2 s 临时 smoke 进一步产生 133 条 command 与
+133 条 applied ACK，零 reject、零中心航迹引用违规、零 truth field violation，summary 一致。该
+worktree 为 dirty 且只有单 seed，因此评审只确认 producer/consumer 接线，不把它列为正式模型或物理
+证据。
+
 ## 2026-07-20 Scalable 3D 学习运行时与 D4 advice 评审
 
 评审确认 `d6-scalable3d-offline-evaluation-v2` 保持 D6 被动边界：只读取 main 已写盘 episode，

@@ -1,5 +1,24 @@
 # D6 M 对 N 协同拦截评估框架审查
 
+## 2026-07-20 M 对 N 主动视觉证据审查
+
+主动视觉指标按显式 target/resource/recon/camera 数量归一化，与 2v2、5v5 或 M 对 N 场景名称无关。
+每台相机每次命令是评估机会，命令和 ACK 通过完整版本键连接；未 ACK 命令、意外 ACK 和拒绝均保留，
+不能只统计 applied 子集。规则、shadow、assist 和物理结果使用不同分母。
+
+M 对 N 下多个资源可能引用同一中心航迹。D6 允许多个合法 command 只读引用同一
+`global_track_id`，但每条引用都必须存在于当时最近的 D2 中心航迹集合，并在 ACK 中保持不变。该规则
+既不把多资源协同误报为重复身份，也不允许本地相机用另一个编号替代中心编号。缺 D2 快照时引用一致率
+unavailable，不能填 0 或 1。
+
+2026-07-20 确定性验证使用实际规模 T/R/Rc/Cam=`6/4/1/5`，并通过双 seed 报告确认聚合不依赖场景名。
+主动视觉专项 8 项、scalable 合并专项 `25 passed`、D6 全量 `297 passed`。真实 20-unseen-seed 的 M 对 N
+rule/assist 配对尚未执行，因此当前没有主动视觉提升率、物理因果效应或默认路径准入结论。
+
+补充的 6v6 单 seed main-runtime smoke 有 133/133 command-ACK 闭合且全部 applied，证明任意 N 入口没有
+按 2v2/5v5 名称分支。该 episode 为 dirty descriptive evidence，不替代 M 对 N 的 20-unseen-seed
+配对验收。
+
 ## 2026-07-20 Scalable 3D 学习 advice 分层审查
 
 Scalable 3D 的 M/N 规模继续由显式 target/resource/recon/camera 字段决定，不从场景名推断。D3/D4/D5

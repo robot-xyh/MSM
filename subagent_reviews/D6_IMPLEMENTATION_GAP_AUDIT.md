@@ -1,5 +1,31 @@
 # D6 实现差距审计
 
+## 2026-07-20 Scalable 3D 主动视觉运行证据 GAP 状态
+
+- **D6 consumer P1 已关闭**：离线评估 v3 已消费 D5 主动视觉命令和 main camera-command ACK，保持
+  D6 只读边界。规则动作、影子建议、辅助采用、ACK applied/rejected 和物理结果不互相回填。
+- **命令执行证据 GAP 已关闭**：复合键关联 camera/resource、issued timestamp、plan/coalition/
+  communication version、intent 和 mode；输出 issued、matched/unacknowledged/unexpected ACK、完成率、
+  P50/P95/max latency、rule/assist applied 以及拒绝原因分布。缺日志、坏 schema、数量冲突和不完整关联
+  均为 unavailable 或正式证据失败，不补零。
+- **身份与真值隔离 GAP 已关闭**：target reference 只读核对命令之前最近的 D2 中心航迹集合，ACK 必须
+  返回同一编号；未知引用和 ACK 改写均 fail closed。主动视觉在线记录另有 truth-like 字段违规计数。
+- **归因边界 GAP 已关闭**：同一 episode 的 assist applied 与五米接近不能形成因果归因；没有同 seed
+  配对规则控制组时 attribution 固定 null/unavailable。
+- **2026-07-20 验证**：8 项确定性主动视觉测试覆盖三模式、ACK latency、四类 reject、中心航迹引用、
+  ACK 改写、truth 污染、缺日志、summary conflict、五米非归因和双 seed 聚合。合并 scalable 专项
+  `25 passed`；D6 全量 `297 passed`，仅既有 Matplotlib warning。场景显式规模为 T/R/Rc/Cam=
+  `6/4/1/5`，报告测试使用 2 个不同 seed；上述 fixture 本身未启动 simulator/AirSim。
+- **当前 main 接线 smoke**：6v6/recon1/camera7、seed 37、2.2 s，133 issued/matched/applied ACK，0 reject、
+  0 target-reference violation、0 truth violation，summary 一致，RTF=4.740。worktree dirty 且单 seed，
+  formal acceptance=false，只关闭接口兼容风险，不关闭正式多 seed 或模型性能 P1。
+- **仍开放 main/D5 P1**：clean 多规模、至少 20 个未见 seed 的真实运行产物尚未提供；assist 尚无正式
+  paired control/treatment 验收，因此不能发布主动视觉物理提升。main 还需确认当前未提交 runtime 合同
+  落盘后与 v3 consumer 一致。
+- **文档同步**：D6 README、PLAN、三份 review/GAP、docs 原理/算法/index 和实验报告已更新。
+  `AIRSIM_INTEGRATION_PLAN.md` 已检查；本轮只涉及 scalable 3D 文件合同，没有改变 AirSim 话题、Blocks
+  调度或产物路径，故不修改。
+
 ## 2026-07-20 Scalable 3D 学习运行时离线评估 GAP 状态
 
 - **D6 consumer GAP 已关闭**：`d6-scalable3d-offline-evaluation-v2` 纯文件消费 config/summary 的

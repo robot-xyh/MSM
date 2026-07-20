@@ -1,5 +1,39 @@
 # D6 Evaluation Metrics
 
+## 2026-07-20 scalable 3D 主动视觉命令与 ACK 离线评估
+
+`d6-scalable3d-offline-evaluation-v3` 已接入 D5 主动视觉运行证据。D6 仍只读取 main 写盘的
+`online_observations.jsonl` 和 `summary.json`，不导入运行时、不控制相机，也不读取在线真值。consumer
+只接受 `modules.d5.active_vision` 的 `d5.active-vision-runtime.v1` 和
+`runtime.camera_command_ack` 的 `scalable3d-camera-command-ack-v1`。
+
+评估把五层证据分开记录：规则命令、影子建议、D5 辅助动作采用、main ACK applied/rejected、物理
+结果。shadow 模式发布的实际命令仍归入规则命令；只有有效模型建议且没有 fallback 的记录才计 shadow
+suggestion。`effective_mode=assist` 只说明 D5 经安全外壳选用了模型动作，必须再与同 camera/resource、
+issued timestamp、plan/coalition/communication version、intent 和 mode 的 ACK 关联，才能计为运行时
+applied。命令与 ACK 缺失、schema 非法、数量冲突或关联不完整时，对应指标为 null/unavailable，不能
+补零。
+
+新增指标包括 issued/ACK/applied/rejected、ACK 完成率与 P50/P95/max 延迟、过期/过时版本/相机不可用/
+其他拒绝原因，以及 rule/assist 实际 applied 数。summary 的 issued/applied/rejected/ACK 和拒绝原因
+计数必须与在线日志一致。目标航迹编号只与命令之前最近的 D2 `associated_tracks` 中心航迹集合核对，
+ACK 也必须原样返回同一 `target_global_track_id`；D6 不创建、重绑定或修正该编号。主动视觉相关在线
+记录另做递归 truth-like 字段审计。
+
+物理归因继续 fail closed。即使 assist 命令获得 applied ACK，且同一 episode 存在五米接近事件，缺少
+同 seed、同场景的规则控制组和实际采用证据时，`d5_active_vision_physical_outcome_attribution` 仍为
+null/unavailable。聚合使用显式 target/resource/recon/camera 数量，不从 2v2/5v5 名称推断规模。
+
+2026-07-20 的 8 项主动视觉确定性测试覆盖 rule/shadow/assist 分层、ACK 延迟、四类拒绝、未知中心
+航迹、ACK 身份改写、在线 truth 污染、缺日志、summary 冲突、五米非归因和双 seed 报告。主动视觉与
+既有 scalable 专项共 `25 passed`；D6 全量 `297 passed`，仅有既有 Matplotlib `Axes3D` warning。
+同日使用当前 main runtime 做了一个临时接线 smoke：6v6、recon=1、camera=7、seed=37、duration=2.2 s，
+共 133 条 disabled/rule command、133 条 matched/applied ACK、0 rejected、0 target-reference violation、
+0 online truth field violation，summary counters 一致，RTF=4.740。该 episode 来自 dirty worktree，只有
+1 个 seed，bootstrap 不可用，正式 acceptance 因 `repository_dirty_not_formal_evidence` 为 false；未
+运行 AirSim。main 仍需提供 clean、多规模、多 seed 运行数据和配对控制/处理实验，才能评估主动视觉
+对物理结果的贡献。
+
 ## 2026-07-20 scalable 3D 学习运行时与 D4 advice 离线评估
 
 `d6-scalable3d-offline-evaluation-v2` 继续只读 main-owned episode 文件，不导入 scalable runtime，

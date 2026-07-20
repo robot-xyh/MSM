@@ -1,5 +1,17 @@
 # D6 文档索引
 
+2026-07-20 已同步 scalable 3D 主动视觉离线 consumer v3。新增
+`modules.d5.active_vision` 与 `runtime.camera_command_ack` 的规则/影子/辅助采用、issued/applied/
+rejected、复合版本键关联、ACK latency、拒绝原因、D2 中心航迹只读引用和 truth-like 字段审计。缺
+日志保持 null/unavailable；同 episode 的 assist applied 与五米接近不形成物理归因。主动视觉专项
+8 项、合并 scalable 专项 `25 passed`、D6 全量 `297 passed`；上述 fixture 未启动 runtime/AirSim。
+原理见 `MODULE_PRINCIPLES_CN.md`，字段与算法见 `ALGORITHM_AND_IMPLEMENTATION.md`，测试证据见
+`../EXPERIMENT_REPORT.md` 2.2 节。
+
+同日另以当前 main runtime 运行 6v6/recon1/camera7、seed 37、2.2 s 临时 smoke。D6 读取 133 条规则
+命令和 133 条 applied ACK，零拒绝、零中心航迹引用违规、零 truth 字段违规；summary 一致。该输入为
+dirty 单 seed，只用于接线检查。
+
 2026-07-20 已同步 scalable 3D 学习运行时离线 consumer v2。稳定入口仍是
 `../scripts/run_scalable_3d_offline_evaluation.py`；新增 D3/D4/D5 bundle/fallback/fingerprint/version
 availability 与 `modules.d4.region_resource_advice` 的 mode、assist、fallback、latency、quota 守恒、

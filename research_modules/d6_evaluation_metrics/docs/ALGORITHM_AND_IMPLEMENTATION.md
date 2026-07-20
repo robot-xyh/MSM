@@ -1,5 +1,50 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## Scalable 3D 主动视觉运行证据算法（2026-07-20）
+
+`active_vision_offline.py` 由 `evaluate_scalable_3d_episode()` 调用，只处理已经写盘的 bus envelope 和
+summary。active-vision publication 必须使用 `d5.active-vision-runtime.v1`，ACK 必须使用
+`scalable3d-camera-command-ack-v1`。每条命令校验 camera/resource、issued/expires timestamp、
+plan/coalition/communication version、intent、target reference、requested/effective mode 和 reason；
+publication 的 command count、effective mode count 和 intent count 必须与列表一致。任一记录非法时，
+命令派生统计整体 unavailable，不使用合法记录子集。
+
+命令分类如下：
+
+1. `effective_mode != assist` 的实际发布动作计 rule command。shadow 模式仍执行规则动作。
+2. `requested_mode=shadow`、`effective_mode=shadow` 且没有 fallback 标记时，另计一条 shadow
+   suggestion。该计数与 rule command 可以同时增加。
+3. `effective_mode=assist` 计 assist adopted，表示模型动作通过 D5 安全门并成为待执行命令。
+4. 只有复合键匹配且 `status=applied` 的 ACK 才计运行时 applied。assist adopted 被 rejected 时不计
+   assist applied。
+
+关联键为
+`(camera_id, resource_id, issued_timestamp, plan_version, coalition_version, communication_version,
+intent, requested_mode, effective_mode)`。target ID 不放入关联键，以便显式检测 ACK 是否改写引用；
+匹配后再比较 `target_global_track_id`。延迟按
+`(ack_timestamp-issued_timestamp)*1000` 计算 P50、P95 和最大值。拒绝原因分为 command expired/future、
+stale plan/coalition/communication version、camera/resource unavailable 和 other。summary 的
+issued/applied/rejected/ACK 计数及 rejection reason distribution 必须与逐条日志一致。
+
+中心身份核对按有序在线记录执行。对每条带目标的命令，选择其之前最近一条
+`modules.d2.associated_tracks`，从完整 track list 构建只读中心 ID 集合。缺快照时该引用不可评估；未知
+ID 计 violation；ACK 返回不同 ID 另计 mismatch。多个资源合法引用同一 ID 不计冲突。主动视觉相关
+记录再递归扫描 truth/actor/object 等禁止键，结果与 episode 级 truth audit 并列输出。
+
+`d5_active_vision_physical_outcome_attribution` 当前始终遵守证据门：没有 assist applied 时原因为
+`no_assist_action_applied`；有 applied 但没有配对控制/处理 episode 时原因为
+`paired_control_treatment_episode_evidence_missing`。同 episode 的五米 proximity 不参与回填。
+
+聚合沿用显式 scenario/version/target/resource/recon/camera 和 distinct seed。新增 mode、intent 与
+rejection reason 分布，数值指标进入固定随机种子 bootstrap。2026-07-20 新增 8 项专项测试；与原
+scalable suite 合计 `25 passed`，D6 全量 `297 passed`。上述 fixture 未启动 simulator/AirSim；正式
+main producer 多 seed 持久化和配对归因仍待验证。
+
+当前 main runtime 的 6v6/recon1/camera7、seed 37、2.2 s 临时 smoke 已由同一 CLI 读取：133 issued、
+133 matched/applied ACK、0 rejected、0 target-reference violation、0 truth violation，summary counter
+match=true。该结果为 dirty 单 seed descriptive evidence，bootstrap 和 formal acceptance 均不可用；
+它只验证当前未提交 producer schema 与 consumer v3 的兼容性。
+
 ## Scalable 3D episode 与学习 advice 文件评估算法（2026-07-20）
 
 实现位于 `d6_evaluation_metrics/scalable_3d_offline.py`。`evaluate_scalable_3d_episode()` 只读 manifest、

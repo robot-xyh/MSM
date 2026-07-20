@@ -1,5 +1,31 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-20 scalable 3D 主动视觉证据闭环状态
+
+- [x] 将 D5 active-vision publication 与 main camera-command ACK 作为两层独立写盘证据消费；D6 不
+  导入 scalable runtime，不参与相机控制。
+- [x] 区分 rule command、有效 shadow suggestion、assist adopted、ACK applied/rejected 和 physical
+  outcome；shadow 实际发布的规则动作不误计为 assist，assist adopted 不自动成为 applied。
+- [x] 以 camera/resource、issued timestamp、plan/coalition/communication version、intent 和 mode
+  关联命令与 ACK，统计完成率、未 ACK、意外 ACK、P50/P95/max 延迟和拒绝原因。
+- [x] 拒绝原因拆分为过期/未来命令、过时计划/联盟/通信版本、相机或资源不可用和其他原因；summary
+  四项计数及 reason distribution 与日志交叉校验。
+- [x] `target_global_track_id` 只与此前 D2 中心航迹快照核对，并检查 ACK 原样回传；缺 D2 快照为
+  evidence incomplete，未知引用或 ACK 改写使正式证据 fail closed。
+- [x] 单独统计主动视觉在线 truth-like 字段违规；缺 active-vision/ACK 日志时指标为
+  null/unavailable，不用 summary 的零替代缺失日志。
+- [x] 物理归因保持 null/unavailable。assist applied 与同 episode 五米接近不能替代同 seed 配对规则
+  控制组；当前 producer 尚无正式 paired-experiment 合同。
+- [x] 按实际 target/resource/recon/camera 数量和不同 seed 聚合。2026-07-20 主动视觉专项 8 项、合并
+  scalable 专项 `25 passed`、D6 全量 `297 passed`，仅既有 Matplotlib warning；未运行 AirSim。
+- [x] 用当前 main runtime 运行 6v6/recon1/camera7、seed 37、2.2 s 临时 smoke；133 issued=133 matched
+  ACK=133 applied，reject/target-reference violation/truth violation 均为 0，summary match=true。该输入
+  `repository_dirty=true` 且只有单 seed，仅证明 v3 consumer 与当前未提交合同兼容，不计正式 evidence。
+- [ ] main 在 clean worktree 生成至少 20 个未见 seed 的 rule/shadow/assist episode，确认命令、ACK、
+  summary 和拒绝原因分布在真实持久化产物中闭合。
+- [ ] main/D5 若正式开展效果归因，冻结同 seed 配对的规则控制组/assist 处理组、模型 bundle/hash、
+  场景配置和实际 adopted+applied 证据；D6 再增加跨 episode 配对效应与置信区间，当前不得先写提升值。
+
 ## 2026-07-20 scalable 3D 学习运行时离线评估状态
 
 - [x] 保持纯文件、只读、无控制边界；交叉消费 config/summary 的
