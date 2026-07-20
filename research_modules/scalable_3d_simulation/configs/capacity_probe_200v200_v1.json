@@ -1,0 +1,92 @@
+{
+  "schema_version": "scalable3d-learning-generation-plan-v1",
+  "schedule_id": "scalable3d-capacity-probe-200v200-v1",
+  "description": "Clean-tree capacity and runtime probe with one unique development seed for each 200v200 curriculum scenario.",
+  "design": {
+    "purpose": "capacity_probe_only",
+    "scenario_count": 9,
+    "scale": 200,
+    "unique_probe_seed_count": 9,
+    "episode_count": 9,
+    "duration_s": 2,
+    "formal_training_evidence": false
+  },
+  "reserved_evaluation_seeds": [
+    1000,
+    1001,
+    1002,
+    1003,
+    1004,
+    1005,
+    1006,
+    1007,
+    1008,
+    1009,
+    1010,
+    1011,
+    1012,
+    1013,
+    1014,
+    1015,
+    1016,
+    1017,
+    1018,
+    1019
+  ],
+  "cells": [
+    {
+      "scenario": "nominal",
+      "scale": 200,
+      "seeds": [920],
+      "duration_s": 2
+    },
+    {
+      "scenario": "dense_crossing",
+      "scale": 200,
+      "seeds": [921],
+      "duration_s": 2
+    },
+    {
+      "scenario": "formation_split",
+      "scale": 200,
+      "seeds": [922],
+      "duration_s": 2
+    },
+    {
+      "scenario": "evasive_multilevel",
+      "scale": 200,
+      "seeds": [923],
+      "duration_s": 2
+    },
+    {
+      "scenario": "delayed_noisy",
+      "scale": 200,
+      "seeds": [924],
+      "duration_s": 2
+    },
+    {
+      "scenario": "communication_degraded",
+      "scale": 200,
+      "seeds": [925],
+      "duration_s": 2
+    },
+    {
+      "scenario": "center_failure",
+      "scale": 200,
+      "seeds": [926],
+      "duration_s": 2
+    },
+    {
+      "scenario": "secondary_failure",
+      "scale": 200,
+      "seeds": [927],
+      "duration_s": 2
+    },
+    {
+      "scenario": "high_threat_m_to_n",
+      "scale": 200,
+      "seeds": [928],
+      "duration_s": 2
+    }
+  ]
+}

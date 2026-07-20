@@ -174,6 +174,24 @@ def test_committed_balanced_schedule_meets_formal_preflight() -> None:
     )
 
 
+def test_committed_capacity_probe_schedule_covers_each_scenario_once() -> None:
+    cells, reserved = _load_schedule_plan(
+        SCALABLE_ROOT / "configs" / "capacity_probe_200v200_v1.json",
+        default_duration_s=2.0,
+    )
+
+    assert len(cells) == len(AVAILABLE_SCENARIOS) == 9
+    assert {scenario for scenario, _, _, _ in cells} == set(AVAILABLE_SCENARIOS)
+    assert {scale for _, scale, _, _ in cells} == {200}
+    assert len({seed for _, _, seed, _ in cells}) == 9
+    assert reserved == tuple(range(1000, 1020))
+    _validate_generation_plan(
+        cells,
+        reserved_evaluation_seeds=reserved,
+        formal=False,
+    )
+
+
 def test_training_seed_registry_is_separate_versioned_and_disjoint() -> None:
     registry = _build_training_seed_registry(
         (2, 1, 2),
