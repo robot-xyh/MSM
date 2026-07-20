@@ -66,7 +66,7 @@ D2/D6 的系统规则必须保留：`id_switch_count` 是强制显式指标，�
 
 - **JPDA**：`JPDAAssociator` 已能枚举小规模联合假设、计算边缘概率并输出接口兼容 `AssociationResult`。它是可执行研究对照，不是完整 JPDA filter；当前没有概率混合状态更新、完整协方差融合、track coalescence 抑制或大规模分簇策略。
 - **MHT**：`MHTAssociator` 已维护有界 branch、短历史、漏检/虚警惩罚和 pruning 参数。它是 MHT-compatible research placeholder，不是完整 MHT；当前没有 N-scan pruning、长期假设树管理、分簇或中心算力策略。
-- **3D NED 适配**：D2 可消费 D1 6D NED 输入并投影到水平面，但 D2 原生状态仍是二维 `[x,y,vx,vy]`，不是三维 tracker。
+- **3D NED 双路径**：旧 D1 adapter/`Tracker` 继续投影到二维；2026-07-20 新增独立 `Detection3D`/`GlobalTrack3D`/`Scalable3DTracker`，固定六维 NED、3D 马氏门控和稀疏 GNN/Hungarian。main scalable bus 接入尚未完成。
 - **D6 集成**：D2 summary/logs 已含 IDSW、continuity、duplicate、risk/profile version、gate pass/reject、motion/quality 和 dense/crossing sensitivity 字段，并有 D2/D6 `id_switch_count` 合同测试。当前 P1 CV 批次已由 main/runtime/D6 生产与评分；后续专用 dense/crossing 分组标定属性能研究，不是 P1 合同缺口。
 
 ### 2.3 未实现
@@ -76,7 +76,7 @@ D2/D6 的系统规则必须保留：`id_switch_count` 是强制显式指标，�
 - **FilterPy 高阶/端到端追踪**：已创建 CV KalmanFilter object adapter，但没有跨帧关联 tracker、EKF、UKF 或 IMMEstimator。
 - **自动算法升级**：当前由 CLI 或调用方显式选择 GNN/JPDA/MHT，`Tracker` 未按风险阈值自动切换。
 - **真实 AirSim runtime 采集链路**：D2 已能消费离线 JSON/JSONL AirSim-like replay，但不连接 AirSim runtime，不采集真实 `simGetDetections`/ComputerVision 图像 metadata，也不负责 main/D6 episode JSONL 生产。
-- **原生 3D tracker 和 OOSM 回溯**：当前 D2 不维护 6D 状态，不做异步量测回溯平滑。
+- **OOSM 与六维高阶跟踪**：六维线性 CV 已实现；异步量测回溯平滑、六维 JPDA/MHT、EKF/UKF/IMM 和极端高密度预算未实现。
 
 ---
 
@@ -356,7 +356,7 @@ PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_da
 
 ### P2
 
-- 决定是否升级原生 3D NED tracker；若升级，先定义三维状态、协方差、门控和 D1/D5 投影合同。
+- 将已实现的六维 NED 稀疏 tracker 接入 main-owned scalable bus，冻结 D1/D3/D5/D6 schema、模型版本和多 seed 性能预算。
 - optional probe、Stone Soup Detection adapter、FilterPy CV filter adapter 和 comparison JSON 已完成。
 - 完整 Stone Soup JPDA/MHT、FilterPy EKF/UKF/IMM 与 optional 端到端 IDSW/continuity 对照仍未实现。
 - 设计 JPDA/MHT 自动升级阈值和迟滞，但必须先通过 D4/D6 回放证据证明收益。
@@ -537,7 +537,8 @@ alignment summary 随 FrozenReplayCase 进入 screening、confirmation、逐 see
   `99 passed, 1 warning`。本机 Matplotlib `Axes3D` warning 不影响 D2 功能。
 - 下一轮 P1 使用更长时窗和 OOSM/遮挡/漏检/杂波组合，标定 gate/risk、M-of-N、
   false-track、NIS/NEES 和 track lifecycle。完整 JPDA/MHT、Stone Soup/FilterPy
-  端到端 tracker 与原生 3D 继续保持 P2 optional/offline 边界。
+  端到端 tracker 继续保持 P2 optional/offline 边界；六维规则基线已实现，但跨模块接入和
+  多 seed 标定仍保持 P2 边界。
 
 ## 21. 2026-07-14 Truth Policy 与 Lifecycle 评审
 
@@ -633,3 +634,39 @@ rejection=`2/4`，多 seed 均值=`1/1/3`。完整 D2 结果为
 lifecycle 和 risk thresholds 不变。本轮没有 AirSim 实跑或真实统计证据。真实至少 10 个
 受治理扰动 case、false suppression/recall 和 offline identity 置信区间继续列为 P1，
 main/D1 负责生产可信 namespaced lineage 与 upstream audit metadata。
+
+## 26. 2026-07-20 六维稀疏路径评审
+
+### 26.1 设计决定
+
+- 保持既有二维 `GNNHungarianAssociator`、`Tracker`、replay 和 JPDA/MHT 行为不变；六维
+  路径使用独立 DTO/Tracker，避免为新规模需求破坏历史基线。
+- `Sparse3DGNNHungarianAssociator` 中 GNN 明确为 Global Nearest Neighbor。候选图是
+  确定性稀疏优化结构，不是 Graph Neural Network；D5 的学习式跨视角关联不在 D2 冒名
+  实现。
+- 状态固定 `[pN,pE,pD,vN,vE,vD]`，gate 固定三维位置 innovation。速度提示只作 birth
+  和交叉 tie-break，不改变 gate 自由度。
+- KD-tree 使用协方差最大特征值构造保守查询半径；精确门控后按候选图连通分量运行
+  Hungarian。不同分量无可行边，因此合并后保持全局最近邻语义。
+- `GT3D-*` 只由 D2 创建。上游 D1 `global_track_id` 值被 adapter 忽略；online DTO
+  递归拒绝 truth/actor/object/entity/canonical identity。
+- D1 fused-track adapter 以 state-valid timestamp 作为关联 epoch，并把原始 sensor
+  measurement/arrival timestamp 保存在 source metadata，避免状态时刻与量测时刻错配。
+
+### 26.2 结果
+
+- 专项 13 个测试覆盖 5/20/50/100/200、Down 轴门控、交叉、两帧漏检、15 个虚警、
+  truth fail-closed、D2 ID ownership 和有界 history/log；完整 D2 为
+  `136 passed, 1 warning`。
+- 200 目标执行 3 个 trial、共 90 个测量帧：候选/全对始终为 `200/40,000`，component
+  pair `200`，peak component `1`，裁剪 `99.5%`；聚合关联/tracker-step P95 为
+  `7.056/26.797 ms`，max 为 `22.471/41.613 ms`。
+- 在线 `id_switch_count`/continuity 仍为 `None + unavailable`，risk summary 可用；独立
+  offline evaluator 对 crossing/漏检/虚警得到 IDSW 0，且 truth 不回写关联路径。
+
+### 26.3 评审结论
+
+D2-owned 原生六维规则关联 GAP 关闭，状态从“未实现”改为“局部基线已实现、集成与
+标定开放”。当前证据只有单一确定性布局，不构成 200v200 全链路、实时 SLA、AirSim 或
+多 seed 结论。main bus 接入、20 未见 seed、极端大分量预算、六维 JPDA/MHT/OOSM 与
+高阶滤波继续开放；默认二维路径不变。

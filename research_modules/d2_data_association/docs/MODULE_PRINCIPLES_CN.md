@@ -1,6 +1,6 @@
 # D2 数据关联模块原理与当前实现说明
 
-**状态日期**：2026-07-15
+**状态日期**：2026-07-20
 
 **适用范围**：科研仿真、受治理日志回放、离线评估与跨节点航迹注册基础
 
@@ -73,7 +73,7 @@ D2 当前边界如下：
 - 不生成 D3 的 `AssignmentPlan`（分配计划），不维护其版本，也不判断旧版本是否可执行；
 - 不决定 D4 的中心、二级或分布式模式切换，只发布关联风险证据；
 - 不实现原始乱序量测（Out-of-Sequence Measurement，OOSM）的回溯、重放或平滑；
-- 不把二维关联器表述为原生三维跟踪器；
+- 不把旧二维 `Tracker` 与独立六维 `Scalable3DTracker` 混成同一个默认入口；
 - 不把可选库对象适配器表述为端到端多目标跟踪系统。
 
 ## 2. 当前能力状态总览
@@ -114,12 +114,14 @@ D1 受治理观测或二维 Detection
 - 固定 54 组 GNN 参数筛选、20 种子确认和同输入轻量 JPDA 对照；
 - 跨节点局部航迹到规范航迹的中心注册基础；
 - 可选第三方库的对象转换与延时冒烟测试。
+- 六维 NED 常速度航迹、3D 马氏门控、KD-tree 稀疏候选图和分量级 Hungarian；
+- 六维在线 truth-free 合同、中心 `GT3D-*` 所有权、有界历史和独立离线身份评分。
 
 ### 2.3 部分实现
 
 1. **JPDA**：能输出边缘概率和非冲突匹配，但 `Tracker` 仍对选出的单个匹配做普通卡尔曼更新；没有完整概率混合状态更新、协方差混合、航迹合并抑制和生产级分簇。
 2. **MHT**：能保留有限分支和有限历史，但没有 N 扫描剪枝、长期假设树、分簇、确认逻辑和中心算力调度。
-3. **三维输入适配**：D1 的六维北-东-地状态可投影到二维北-东平面；D2 默认 `GlobalTrack`（全局航迹）仍是四维状态。
+3. **双路径维度**：D1 的六维北-东-地状态仍可投影到旧二维 `GlobalTrack`；显式选择的 `GlobalTrack3D` 已维护六维状态，但尚未接入 main-owned scalable episode bus。
 4. **跨节点注册**：中心规范注册、相关性决策和融合请求已实现；数值状态融合结果没有在 D2 内计算或回写。
 5. **质量感知门控**：已实现轻量、带上下界的门限调整；它不是经过完整多场景标定的通用自适应门控框架。
 
@@ -127,7 +129,7 @@ D1 受治理观测或二维 Detection
 
 - 完整 JPDA 滤波器和完整 MHT；
 - 根据在线风险自动切换 GNN、JPDA 或 MHT，以及该切换所需的迟滞；
-- 原生三维北-东-地（North-East-Down，NED）D2 跟踪器；
+- 六维路径的 main episode-bus 编排、跨模块版本化输出、真实多 seed 标定和极端密度预算；
 - 扩展卡尔曼滤波（Extended Kalman Filter，EKF）、无迹卡尔曼滤波（Unscented Kalman Filter，UKF）和交互多模型（Interacting Multiple Model，IMM）预测；
 - Stone Soup 多目标跟踪研究框架的端到端 JPDA/MHT 跟踪器；
 - FilterPy 滤波算法库的端到端数据关联跟踪器；
@@ -141,7 +143,7 @@ D1 受治理观测或二维 Detection
 
 ### 3.1 D1 受治理输入
 
-D2 有两类 D1 输入适配路径。
+D2 有三类 D1 输入适配路径。
 
 第一类是 D1 `GlobalTrack`（D1 全局航迹对象）投影：
 
@@ -149,7 +151,7 @@ D2 有两类 D1 输入适配路径。
 - D1 协方差为 `6 x 6`；
 - D2 取状态前两维作为二维北-东位置，取协方差左上 `2 x 2` 子矩阵；
 - `measurement_timestamp`、`arrival_timestamp`、来源 `global_track_id` 和 metadata（元数据）被保留；
-- 该路径是二维投影，不是 D2 原生三维滤波。
+- 该路径是旧兼容入口的二维投影，不改变其四维状态。
 
 第二类是 D1 受治理回放清单：
 
@@ -160,6 +162,13 @@ D2 有两类 D1 输入适配路径。
 - 一维声学方位和光电（Electro-Optical，EO）像素观测因量测空间不同而显式跳过，不会错误混入北-东平面；
 - 输出按 `(measurement_timestamp, frame_index)`（量测时间与帧号）聚合，并生成匿名在线观测 ID；
 - `arrival_timestamp` 取本帧已接受观测的最大到达时间，仍保留每条观测自己的到达时间元数据。
+
+第三类是显式六维稀疏入口：`Detection3D` 使用 NED 三维位置、3x3 covariance、双
+时间戳和可选速度提示；`GlobalTrack3D` 使用
+`[pN,pE,pD,vN,vE,vD]` 与 6x6 covariance。D1 对象中的上游 `global_track_id` 不被
+复制为规范身份，`GT3D-*` 只由 D2 创建。adapter 以 D1 state-valid timestamp 对齐
+关联 epoch，并把原始 sensor measurement/arrival timestamp 保留在 source metadata；
+原始雷达球坐标和视觉像素仍必须先经 D1。
 
 雷达水平投影为：
 
@@ -982,7 +991,7 @@ PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_da
 
 ## 14. 当前结论
 
-截至 2026-07-13，D2 已形成可运行、可审计、按动态输入规模工作的二维数据关联主线，并闭合了 D1 受治理输入、在线真值隔离、离线身份评分、风险可用性、固定矩阵校准和中心跨节点注册基础。严格真实 AirSim 标定证明参数候选可以降低 IDSW，但没有同时达到冻结的身份连续性晋级门限。因此，当前正确工程结论是继续使用 GNN/匈牙利默认主线，并把 JPDA、MHT、第三方框架、原生三维、自动切换和跨节点数值融合保持在明确的可选或未实现边界内。
+截至 2026-07-20，D2 保留可运行、可审计、按动态输入规模工作的二维默认主线，并已实现显式选择的六维稀疏规则路径。两条路径都坚持 GNN 表示 Global Nearest Neighbor、中心拥有 `global_track_id`、在线不读取真值。六维路径的 D2-owned 状态/门控/稀疏求解/风险/离线评分已闭合；main 总线接入、多 seed 高密度证据、JPDA/MHT 高阶版本、自动切换和跨节点数值融合仍处于明确的待集成或未实现边界。
 
 ### 14.1 2026-07-14 truth 与 lifecycle 原则补充
 
@@ -1034,3 +1043,30 @@ audit、非法 metadata 和 legacy 回归均通过；两个 3-frame synthetic se
 conflict=`1/1`、quarantine=`1/1`、upstream rejection=`2/4`，全量结果为
 `123 passed, 1 warning`，验收阈值零失败。该证据是模块合同/回放证据，不是实际
 AirSim 受扰运行证据；真实至少 10 个来源扰动 case 仍待标定。
+
+## 15. 六维稀疏关联原则
+
+1. **坐标和状态唯一**：工作坐标固定 NED，状态顺序固定
+   `[pN,pE,pD,vN,vE,vD]`；高度解释为 `-pD`，D2 不在内部切换 WGS84 或 ENU。
+2. **门控只用三维创新**：候选是否可行由位置 residual 和 3x3 innovation covariance
+   的马氏距离决定。速度提示可以打破交叉平局，但不能偷偷改变 gate 自由度。
+3. **先稀疏后求解**：KD-tree 只生成保守候选；精确门控后按二部图连通分量做 Hungarian。
+   分量解合并仍是候选图上的全局最近邻，不是贪心局部最近邻。
+4. **GNN 不改含义**：`GNNHungarianAssociator` 和
+   `Sparse3DGNNHungarianAssociator` 中 GNN 均为 Global Nearest Neighbor。D2 不实现、
+   不命名伪装、也不训练 D5 所属的跨视角 Graph Neural Network。
+5. **中心身份不可借用**：上游 observation/local track ID 只能作 namespaced source
+   evidence；D1 对象的 `global_track_id` 不进入六维 canonical namespace。只有 D2
+   tracker 创建 `GT3D-*`。
+6. **在线不猜 truth 指标**：在线风险摘要只基于候选重叠、cost margin、漏配和 lifecycle；
+   `id_switch_count`、continuity 保留显式字段但为 unavailable。truth sidecar 只能在
+   `Sparse3DOfflineEvaluator` 中事后评分。
+7. **历史和矩阵有预算**：不保存全密集 cost/distance history；每条 track history 和
+   frame log 有硬上限。极端大连通分量必须通过统计字段暴露，不能声称空间索引使最坏
+   情况天然线性。
+
+2026-07-20 验收覆盖 5/20/50/100/200、交叉、漏检、虚警、truth 拒绝和历史上限；
+全量为 `136 passed, 1 warning`。200 目标 3 个 trial、共 90 个测量帧的候选均为
+`200/40,000`，裁剪 `99.5%`，聚合关联/tracker-step P95 为
+`7.056/26.797 ms`，max 为 `22.471/41.613 ms`。证据来自单一确定性合成布局，尾值
+包含系统调度抖动，不能外推为真实多 seed、AirSim 或端到端实时保证。

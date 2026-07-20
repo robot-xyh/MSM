@@ -35,7 +35,7 @@ Expected offline files:
 - D1 `serialize_governed_replay()` JSON bundle with `d1.governed_replay_manifest.v1` manifest and `d1.sensor_observation.v1` records.
 - Separate `d2-offline-truth-label/v1` JSONL for evaluation; truth never enters online detections/tracks.
 
-The tracker consumes only:
+The legacy AirSim replay tracker consumes only:
 
 - `timestamp`
 - 2D or projected 3D position mapped to the D2 measurement plane
@@ -163,7 +163,7 @@ The 2 m capture is complete and is no longer an open action. P1 AirSim work now 
 - M-of-N initialization, lost/drop lifecycle, false-track, gate/risk, and NIS/NEES calibration;
 - per-seed and aggregate continuity checks under the same truth-isolation rules.
 
-JPDA/MHT, Stone Soup end-to-end tracking, FilterPy EKF/UKF/IMM, and native 3D tracking remain optional P2/offline benchmarks. They must not replace the default GNN/Hungarian path without passing the frozen multi-metric admission contract on the same replay and compute budget.
+JPDA/MHT, Stone Soup end-to-end tracking, and FilterPy EKF/UKF/IMM remain optional P2/offline benchmarks. A D2-owned native 3D sparse rule path now exists, but it is not connected to this legacy AirSim replay adapter and has no real AirSim acceptance evidence. Main must provide a truth-free Cartesian NED D1 product and versioned bus integration before that path can be used in an AirSim-derived representative subscenario; it must not consume raw radar spherical measurements, pixels, actor IDs, or object names.
 
 ## Acceptance Checks
 

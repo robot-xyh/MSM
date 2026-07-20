@@ -82,7 +82,7 @@ python3 research_modules/d2_data_association/scripts/run_simulation.py --steps 3
 
 ## 7. 结论
 
-D2 当前默认路线是 `GNN/Hungarian + 二维常速度 Kalman fallback`。当候选门内观测数量升高、目标轨迹交叉或 `identity_continuity` 快速下降时，再启用 JPDA/MHT 做离线对照；IMM/EKF/UKF、Stone Soup 和 FilterPy 仍是未来 optional benchmark 或 adapter 方向，不是当前默认代码路径。D2 输出的 `global_track_id` 是后续 D3 分配、D4 主动降级证据、D5 终端配准和 D6 指标评估的核心键，不能由下游模块改写。D2/D6 必须保留显式 `id_switch_count`。
+D2 兼容默认路线是 `GNN/Hungarian + 二维常速度 Kalman fallback`；另有显式选择的六维稀疏规则路径，不自动替换旧 replay。候选门内观测数量升高、目标轨迹交叉或 `identity_continuity` 快速下降时，JPDA/MHT 仍只做离线对照；IMM/EKF/UKF、Stone Soup 和 FilterPy 仍是 optional benchmark。D2 输出的 `global_track_id` 是后续 D3 分配、D4 主动降级证据、D5 终端配准和 D6 指标评估的核心键，不能由下游模块改写。D2/D6 必须保留显式 `id_switch_count`。
 
 ## 8. 2026-07-14 Truthless 与 Lifecycle 回归
 
@@ -275,3 +275,54 @@ upstream rejection 只增加审计数，track 数和 birth 数保持 0。负数�
 该专项证明的是接口、计数与 fail-closed 行为，不是实际 AirSim 场景的统计性能。至少
 10 个真实 duplicate-source/teleport/dropout/clutter/合法新目标 case 的 recall、false
 suppression、offline IDSW/continuity 和置信区间仍不可用，继续作为 P1 验收限制。
+
+## 14. 2026-07-20 六维稀疏规模实验
+
+### 14.1 场景与验收
+
+本批是 D2-owned 合成规则测试，不启动 AirSim。状态采用
+`[pN,pE,pD,vN,vE,vD]`，目标位于 100 m 间隔三维网格并作匀速运动；位置 covariance
+为单位阵，速度提示 covariance 为 `0.25 I`。规模依次为 5、20、50、100、200。
+
+验收条件：
+
+- 第二帧匹配数等于输入目标数，state/covariance 维度为 6/6x6；
+- gate 的 innovation dimension 为 3，Down 轴统计不一致会被拒绝；
+- 候选图不分配全局 cost/distance matrix，candidate/component 数显式可审计；
+- crossing、连续两帧漏检和 15 个匿名虚警不造成离线 ID switch；
+- 在线对象无 truth 字段，上游 `global_track_id` 不成为 D2 canonical ID；
+- track history 和 frame log 不超过配置上限；完整 D2 测试零失败。
+
+### 14.2 结果
+
+| 目标数 | 候选边 | 潜在全对 | 分量矩阵元素 | 裁剪率 |
+| ---: | ---: | ---: | ---: | ---: |
+| 5 | 5 | 25 | 5 | 80.0% |
+| 20 | 20 | 400 | 20 | 95.0% |
+| 50 | 50 | 2,500 | 50 | 98.0% |
+| 100 | 100 | 10,000 | 100 | 99.0% |
+| 200 | 200 | 40,000 | 200 | 99.5% |
+
+专项 13 个测试通过；完整命令结果为 `136 passed, 1 warning`，验收阈值零失败。
+warning 是环境 Matplotlib `Axes3D` 导入，不影响本批三维数值代码。
+
+200 目标另做 3 个独立 trial，每个 trial 预热 1 帧后连续测量 30 帧。90 个测量帧的
+候选边始终为 200，最大单分量矩阵元素为 1；下表为 90 帧聚合值：
+
+| 阶段 | Mean | P50 | P95 | Max |
+| --- | ---: | ---: | ---: | ---: |
+| 稀疏关联 | 6.683 ms | 6.306 ms | 7.056 ms | 22.471 ms |
+| Tracker step | 25.491 ms | 25.016 ms | 26.797 ms | 41.613 ms |
+
+crossing 用例在同位置时形成 4 条候选边，通过门内速度一致性打破平局，离线
+`id_switch_count=0`、continuity 1.0；漏检用例 20 目标中 1 个目标连续缺失两帧，重获后
+IDSW 0，identity/coverage continuity 均为 0.98；虚警用例 50 个真目标叠加 15 个无标签
+虚警，真目标 IDSW 0、continuity 1.0，15 个虚警 assignment 只在离线 evaluator 计数。
+
+### 14.3 证据限制
+
+上述性能只来自当前主机、单进程、一个确定性网格和 3 x 30 个测量帧，尾值包含系统
+调度抖动；它不是多 seed 置信区间、实时 SLA、AirSim 或 200v200 全链路结果。KD-tree
+避免无条件全对扩张，但极端全重叠目标
+仍会形成大连通分量；候选预算、分区与召回率需要联合标定。main-owned scalable bus
+尚未接入，六维 JPDA/MHT、OOSM 和高机动滤波也未实现。

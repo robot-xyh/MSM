@@ -4,9 +4,9 @@
 
 **审计边界**：仅评估 D2 离线科研仿真与数据关联模块，不涉及真实飞控、硬件、火控、毁伤或自动处置逻辑。
 
-**本轮状态同步来源**：commit `33e6fa0` 后当前 D2 代码与测试、`subagent_reviews/MAIN_IMPLEMENTATION_GAP_AUDIT.md`、`research_modules/airsim_runtime/outputs/PNG_DELIVERY_ENHANCEMENT_AIRSIM_VALIDATION_REPORT_20260712.md`、`subagent_reviews/MAIN_M5N2_TIMING_AND_SECOND_PRIMARY_REPORT_20260715.md`，并保留既有 EVAL 审计结论。
+**本轮状态同步来源**：截至 2026-07-20 的 D2 代码与测试、`scalable_3d_simulation` 合同、六维稀疏专项与性能采样，并保留既有 AirSim/EVAL 审计结论。
 
-**结论摘要**：截至 2026-07-15，D2 P0 无运行级 blocker。P1 continuity admission 的不可达门限及其冻结证据缺口均已关闭：使用六档真实 AirSim replay/truth manifest 完成 6x10 screening、6x20 confirmation 的 `d2-p1-identity-calibration/v2` 离线重算，耗时 `2501.32 s`，本批未启动 AirSim。候选 `gnn-g5.99-qa1-ld3_7-mw0.5x` 的总体 IDSW 下降 `54.6012%`、continuity error reduction `15.3448%`、false-track 0、P95 `15.470 ms`、truth leakage 0，五项联合 gate 全部通过，形成 `promotion_recommended=true`。这只是评审建议；`default_online_path_changed=false`，默认在线 GNN/Hungarian 不变。分档只有 clutter/combined 完整通过，另外四档因 baseline IDSW=0 fail-closed；dropout truth alignment 为 partial。后续普通 M5N2 又完成 20 case 并补齐 D2 阶段时延，但没有显式 duplicate-source/teleport/dropout/clutter 扰动和该批 offline identity 评分；这些针对性 P1、完整 JPDA/MHT、Stone Soup/FilterPy 端到端 tracker 和原生 3D 状态不变。
+**结论摘要**：截至 2026-07-20，D2 P0 无运行级 blocker。既有二维默认 GNN/Hungarian 与历史 AirSim replay 证据保持不变；新增显式六维稀疏规则路径，已闭合 D2-owned `[pN,pE,pD,vN,vE,vD]`、3D 马氏门控、KD-tree 候选图、分量 Hungarian、中心 ID、在线 truth 隔离、风险摘要与离线 IDSW/continuity。5/20/50/100/200、交叉、漏检、虚警测试和完整回归通过。200 目标 3 个 trial、共 90 个测量帧均为 `200/40,000` 候选/全对、99.5% 裁剪，聚合关联 P95 `7.056 ms`、tracker step P95 `26.797 ms`。该证据不是 main 总线、AirSim、200v200 全链路或多 seed SLA；完整 JPDA/MHT、Stone Soup/FilterPy 端到端 tracker、高机动滤波与跨模块接入仍开放。
 
 ## 0. 2026-07-15 M5N2 20-case GAP 判定
 
@@ -29,7 +29,7 @@
 
 ## 1. 总体判断
 
-D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再用 JPDA/MHT/BP、SORT/ByteTrack-style fallback 做研究对照或增强”的主流共识。P1 replay governance 的 D1 governed input、online/offline truth 隔离、版本化 M-of-N、false-track、NIS/NEES 接口和 10/20-seed runner 已回归，首轮 strict 4 m/2 m 真实标定已完成。后续 backlog 是扩展真实 OOSM/遮挡/杂波、生命周期和统计一致性标定；完整 JPDA/MHT、外部框架 tracker、高阶运动模型和原生 3D 保持 P2 optional，不影响默认 GNN/Hungarian 主线。
+D2 当前实现符合“先用规则 GNN/Hungarian 做工程主线，密集交叉再用 JPDA/MHT 做研究对照”的共识。二维兼容路径与六维稀疏路径均坚持 GNN=Global Nearest Neighbor；D2 未实现图神经网络。后续 backlog 是 main scalable bus 接入、真实 OOSM/遮挡/杂波、极端密度、生命周期和统计一致性标定；完整 JPDA/MHT、外部框架 tracker 和高阶运动模型保持 optional，不影响既有默认路径。
 
 ### 1.1 本轮 P0/P1 复核结论
 
@@ -40,6 +40,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - **2026-07-13 历史权威模块回归**：当时完整回归为 `93 passed`。当前权威结果已更新为 2026-07-14 的 `99 passed, 1 warning`；warning 不影响本轮结论。
 - **2026-07-14 当前权威模块回归**：Post-batch 审计后完整 D2 suite 为 `99 passed, 1 warning`，专项 source-lineage teleport 测试为 `1 passed, 1 warning`。
 - **2026-07-15 strict v2 完整重算**：六档真实 D1 replay 的 screening/confirmation 均 available，阶段内 digest 唯一，全部在线 truth leakage 为 0。总体候选五项 gate 全部通过并形成 promotion review recommendation；轻量 JPDA 的 IDSW/continuity gate 失败。默认 GNN/Hungarian 不变。
+- **2026-07-20 当前权威模块回归**：六维专项 13 个测试及完整 D2 suite 通过，完整结果为 `136 passed, 1 warning`；warning 是环境 Matplotlib `Axes3D`，不影响代码生成的 3D 数值状态。
 - **2026-07-12 AirSim 证据**：PNG delivery candidate 的 2v2 10 seeds 为 20/20 pair、在线 truth 使用为 0；锁定后两帧 dropout 沿原 global/local track 和原计划上下文预测，没有 truth ID 或本地 ID 重写。M5N2 8 s 短窗口为 0/9，报告明确其几何与时间窗不足且不可与长时高净空基线直接比较。这些是 D2 下游合同的非退化证据，不是 D2 新算法或长期标定完成证据。
 - **P0/P1 开放项**：P0 无开放 blocker。P1 synthetic long replay、独立 offline truth、至少 10-seed 的 IDSW/continuity/false-track/RMSE/NIS/NEES availability、版本治理和 strict 4 m/2 m 各 20-seed 首轮真实标定已闭合；仍开放更长 OOSM/遮挡/杂波 replay 下的 gate/risk/M-of-N 生命周期参数冻结，以及跨节点 D1 exact/CI posterior 回写、高歧义 replay 和 owner/epoch failover 验证。
 - **下一验收条件**：沿 2026-07-13 冻结 replay/truth/profile/预算合同扩展困难度和时间窗；逐 seed 及聚合报告 IDSW、identity/coverage continuity、duplicate、false-track、初始化延迟、NIS/NEES availability/coverage、runtime 和在线 truth 泄漏数。任何候选必须同时满足全部门限，不能只凭 IDSW 改善晋级。跨节点验收还必须证明 canonical ID 连续、duplicate payload 拒绝、owner/epoch 切换可恢复，并由 D1/D6 给出融合 posterior 与 NEES/ANEES。
@@ -51,7 +52,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - **P1 闭合与后续研究边界**：D2 已形成覆盖 dense crossing、连续漏检/遮挡和虚警的动态 N replay，并冻结独立 truth JSONL；同 seed 复现、truth 隔离和 availability 已有测试。strict 4 m/2 m 真实 AirSim dense crossing 首轮标定已完成；更长 OOSM/遮挡/杂波以及 gate/risk/NIS/NEES 深度标定仍是 P1 性能研究，不是合同断链。
 - **M 对 N P1 状态**：D2 已实现跨节点 local-track namespace、公共时刻传播、track-to-track Mahalanobis/Hungarian、公共信息谱系防重、canonical multi-source binding/history 和 exact/unknown/duplicate 决策基础。多个节点观测同一目标不会增加目标基数，也不会被误记为合法协同资源的 duplicate assignment。数值 CI/相关融合仍由 D1 owner 实现；高歧义多帧关联、owner failover 和融合一致性标定尚未闭合。专项证据见 `D2_M_TO_N_TRACK_FUSION_REVIEW.md`。
 - **D4 P1 仲裁语义复核**：2026-07-07 main runtime bus / D4 P1 修复后，D4 已区分 D2 软风险和硬风险。`association_ambiguity`、cost margin risk、candidate overlap 和短时 D5 disagreement 是观察/二级 cue 证据；`id_switch_count` 增量、`duplicate_assignment_count`/`duplicate_track_risk` 和可用的 `track_continuity` 低于阈值才是 D4 主动仲裁的硬风险证据。2026-07-10 D2 P1 修复后，无 offline truth label 时 `truth_metrics_available=false`、`continuity_available=false`，兼容数值 `0.0` 不再触发 `duplicate_track_risk`、`continuity_collapse` 或 hard risk；旧 replay 未携带 availability 字段时同样保守按不可用处理。
-- **P2 边界复核**：P2 v2 在同一 frozen replay digest 下比较默认 GNN、模块内 JPDA/MHT research adapter 和 Stone Soup/FilterPy object adapter，统一输出 IDSW、continuity、latency 与 `unavailable_reason`。GNN/JPDA/MHT 的身份指标来自运行后的隔离 evaluator；外部对象 adapter 的身份指标明确 unavailable。模块内轻量 JPDA/MHT 仍是研究近似；完整外部 JPDA/MHT/UKF/IMM、optional 端到端 tracking 和原生 3D 仍未实现。benchmark 没有替换默认在线路径或 requirements。
+- **P2 边界复核**：P2 v2 的第三方/高阶 benchmark 状态不变。模块内轻量 JPDA/MHT 仍是研究近似；完整外部 JPDA/MHT/UKF/IMM 和 optional 端到端 tracking 未实现。六维规则基线已在 D2 内实现，但没有替换二维默认入口，也没有进入第三方 benchmark 或 main 总线。
 
 ## 2. 明确状态分区
 
@@ -75,13 +76,14 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - **弱证据风险摘要**：`AssociationRiskSummary`、`AssociationRiskSummaryWindowGenerator`、`RiskThresholds` 和 `classify_risk_summary()` 已把 cost margin、candidate overlap、ID switch delta、duplicate delta、continuity、D5 disagreement、source node/link type 汇总为 D4/D6 可消费的风险证据。
 - **M 对 N canonical registry 基础**：`SourceTrackSummary` 固化 source/local/epoch namespace、measurement/arrival timestamp、6D NED state/covariance、quality、lineage/correlation status 和 canonical hints；`CrossNodeTrackAssociator`/`CrossNodeTrackRegistry` 完成公共时刻传播、covariance-aware gate、按 source Hungarian、one canonical-to-many source binding/history 与 duplicate/stale governance。source hints 不具备 canonical 身份权威。
 - **M 对 N 指标与 truth 隔离**：在线 `CrossNodeRegistryMetrics` 输出 operational cross-node rebind、duplicate payload rejection 和 transport/queue/fusion latency，且不接受 truth；独立 `OfflineCrossNodeMetricsEvaluator` 通过 source-key truth mapping 计算 cross-node IDSW、`canonical_duplicate_count` 和 association precision/recall。
+- **六维稀疏 detection-to-track 基线**：`Detection3D`/`GlobalTrack3D`、`Sparse3DGNNHungarianAssociator`、`Scalable3DTracker` 和 `Sparse3DOfflineEvaluator` 已实现；在线无 truth 字段，`GT3D-*` 只由 D2 分配，候选/分量/耗时/risk 和 unavailable identity metrics 显式输出。
 
 ### 2.2 部分实现
 
 - **JPDA**：`JPDAAssociator` 已能枚举小规模联合假设、计算边缘概率并输出接口兼容结果；但它不是完整 JPDA 滤波器，没有概率混合状态更新、完整协方差融合或生产级参数标定。
 - **MHT**：`MHTAssociator` 已有 bounded branch、短历史和 pruning 参数，能作为 MHT-compatible research placeholder；但不是完整 MHT，没有 N-scan pruning、分簇、长期假设树管理和中心算力策略。
 - **EKF 表述**：D2 当前只有二维线性 Kalman fallback。主审计中“EKF/滤波主线 P0 可用”在 D2 侧应理解为轻量 Kalman 航迹预测可用，不代表 D2 已实现非线性 EKF。
-- **3D NED 支持**：D2 可消费 D1 6D NED 输入并投影到水平 N-E 平面，但 D2 原生状态仍固定为 `[x,y,vx,vy]`，不是 `[px,py,pz,vx,vy,vz]` 三维跟踪器。
+- **3D NED 支持**：旧 `Tracker` 仍固定 `[x,y,vx,vy]`；显式 `Scalable3DTracker` 已固定 `[pN,pE,pD,vN,vE,vD]`。部分实现项是 main 总线接入、版本化跨模块输出和真实多 seed 标定，不再是 D2 状态/门控代码缺失。
 - **D6/集成输出**：D2 summary 与 association logs 已具备 IDSW、continuity、duplicate、risk/profile version、gate pass/reject、motion/quality 和 dense/crossing sensitivity 字段，且有 D2/D6 `id_switch_count` 口径测试。2026-07-11 P1 CV 批次已由 main/runtime/D6 生产和评分；2026-07-12 PNG delivery 报告没有新增 D2 offline IDSW/continuity。
 - **D6 bundle 对齐**：D6 标准 AirSim calibration bundle 已由 main runtime 自动调用；D2 只保证 report/log/profile 字段可被分组读取，不在模块内重复生成 D6 report。
 
@@ -91,7 +93,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - **完整非线性 EKF**：代码中无雷达球坐标、相机投影或三维非线性量测雅可比。
 - **完整外部框架 tracker**：`compat.py` 已返回 Stone Soup Detection 与 FilterPy KalmanFilter，`p2_benchmark.py` 已建立可运行 smoke comparison；但没有 Stone Soup Track/JPDA/MHT 或 FilterPy 端到端关联器。
 - **JPDA/MHT 自动升级触发**：当前由调用方或仿真 CLI 显式选择 associator，未在 `Tracker` 内按风险阈值自动切换。
-- **原生 3D NED D2 跟踪**：`Detection` 固定二维 position/covariance，`GlobalTrack` 固定四维状态和 4x4 covariance。
+- **六维跨模块接入**：D2-owned 规则 tracker 已实现；main 尚未把 D1 六维输出、D2 结果和 D3/D5/D6 合同接入 scalable episode bus。
 - **AirSim runtime 职责边界**：D2 消费 main/runtime 导出的 governed JSON/JSONL replay 与隔离 truth，不连接 AirSim SDK，不采集 `simGetDetections`/CV 图像 metadata，也不编排 episode。
 - **后续研究增强**：JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控、N/M 初始化参数网格和 NEES/NIS 深度标定仍未完成；这些不是 P1 合同 blocker。
 
@@ -99,7 +101,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 
 - **轻依赖优先**：当前默认测试要求只依赖 NumPy/SciPy/pytest，避免 Stone Soup、FilterPy、AirSim SDK、ROS 或 GPU 依赖进入基础回归。
 - **接口先于高阶算法**：D2 先固化 `DataAssociator`、`AssociationResult`、ID 指标、风险摘要和 D1/D6 合同，避免在总线未稳定时引入重型框架对象。
-- **场景证据不足**：UKF/IMM、完整 JPDA/MHT 和原生 3D 跟踪需要强机动、遮挡、密集交叉、真实 replay 等场景证明收益，否则会增加参数和复杂度但不一定降低 IDSW。
+- **场景证据不足**：UKF/IMM、完整 JPDA/MHT 和六维路径的高机动/密集场景升级需要强机动、遮挡、密集交叉、真实 replay 等证据证明收益，否则会增加参数和复杂度但不一定降低 IDSW。
 - **职责边界**：真实 AirSim 启停、episode JSONL、CV detector metadata 和跨模块 runtime bus 由 main/runtime 负责；D2 只维护模块内 adapter 和离线关联能力。
 
 ### 2.5 缺少条件
@@ -114,7 +116,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - **P0 维护**：保持 GNN/Hungarian、门控、指标、D1 adapter、dry-run adapter、5v5 fixture、航迹质量评分、运动一致性约束和 quality-aware gate baseline 测试稳定；严禁把 2v2/5v5 写成算法常量。
 - **P0 工程化硬化**：已新增每条 track 的 `track_quality`/`association_risk`，已把速度方向、加速度异常和短时历史一致性作为 GNN/Hungarian 代价项与 score 输出，并已实现 quality-aware gate baseline；继续维护这些字段的 D3/D5/D6 可消费性。当前无 D2 运行级 P0 blocker。
 - **P1 闭合维护**：持续回归 replay/report、D1 governed adapter、冻结 truth JSONL、动态 N fixture、至少 10-seed runner、availability、threshold/risk split、covariance 治理和 IDSW/continuity 评分边界。完整 adaptive gate、JPDA 对照和真实 dense/NIS/NEES 标定作为后续性能研究。
-- **P2**：决定 D2 是否升级原生 3D 状态；若升级，先实现 3D NED state/covariance/gating，再考虑 EKF/UKF/IMM。
+- **P2**：维护已实现的六维规则路径并完成 main bus/多 seed/极端密度标定；EKF/UKF/IMM 只有在规则 CV 瓶颈有证据时再考虑。
 - **P2 benchmark 已收敛**：dependency version/reason probe、对象 adapter、frozen replay digest、GNN/JPDA/MHT 同 Tracker 对照、五行 JSON、统一 `unavailable_reason`、truth-free 在线输入和隔离 venv smoke 已覆盖；默认 requirements/在线路径不变。
 - **D1 governed schema 支持**：这是已闭合的 P1 输入合同。D2 loader 识别 `d1.governed_replay_manifest.v1`/`d1.sensor_observation.v1`，匿名 observation identity，按 frame/time 聚合 radar 球坐标并传播 covariance 到水平 N/E；声学 bearing 与 EO pixel 按原因跳过。
 - **P2/P3 剩余**：完整 Stone Soup JPDA/MHT、FilterPy EKF/UKF/IMM、端到端身份指标与真实 replay 对照。
@@ -155,7 +157,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 | AirSim-like replay、冻结 truth JSONL 与 multi-seed summary | 已实现 D2 P1 合同。`d2-offline-truth-label/v1` 固定 episode/frame/timestamp/truth ID/position 和可选匹配注释；在线帧与 track/log 不携带 truth。通用 N-target fixture 和至少 10-seed runner 输出每 seed/聚合 IDSW、continuity、NIS/NEES availability、gate/risk version、runtime 和确定性签名 | `offline_truth.py`；`calibration.py`；`replay.py`；`tests/test_calibration.py`；`tests/test_replay.py` | D2 不连接 AirSim SDK | 可选扩展专用真实 dense/crossing 性能标定 | P1 合同/runner 已闭合 |
 | D1 governed frozen replay loader | 已实现。manifest/records 转为 timestamp-grouped radar N/E detections，使用球坐标 Jacobian 传播 covariance；源 observation ID/lineage 不进入在线帧，声学/EO 有 skip diagnostics，旧 AirSim frames 保持兼容 | `d1_governed_adapter.py`；`replay.py`；`tests/test_p2_benchmark.py` | D2 当前关联平面是水平 N/E，不能直接混合 bearing-only 或 pixel measurements | 非 radar 模态需先由 D1 融合成 GlobalTrack，不能在 D2 loader 中伪转换 | P1 governed input 合同已闭合 |
 | D1 `GlobalTrack` 到 D2 `Detection` | 已实现 P1 基线。D2 dry-run adapter 支持 `tracks` 字段和 3D covariance 投影到 2D；模块内提供 D1 `GlobalTrack` -> D2 `Detection` 转换入口，集成层仍保留 `CanonicalTrack`/`d2_detection_kwargs()` 合同测试 | `dry_run_adapter.py`；`tests/test_dry_run_adapter.py`；`integration_contracts.py`；`integration_tests/test_cross_module_contracts.py`；`integrated_simulation/adapters.py` | 不适用；当前转换仍保持 duck typing，避免 D2 强依赖 D1 包 | 后续需冻结真实 replay schema、坐标轴投影规则、timestamp 透传字段和阈值版本记录 | P1 已完成基线 |
-| 原生 3D NED D2 跟踪 | 未实现。D2 状态固定 `[x,y,vx,vy]` | `models.py`；`tracker.py`；`dry_run_adapter.py` | Phase-1 D2 聚焦二维关联和 ID 保持 | 需要 3D 量测模型、D1/D5 投影接口、三维协方差门控 | P2 |
+| 原生 3D NED D2 跟踪 | D2-owned 规则基线已实现：六维 CV、3D 位置创新/马氏门控、KD-tree 候选、分量 Hungarian、中心 ID、在线风险与离线身份评分 | `scalable_3d_models.py`；`sparse_3d.py`；`scalable_3d_offline.py`；`tests/test_sparse_3d_association.py` | 为兼容旧 replay，未替换二维 `Tracker`；不消费原始 radar/pixel | main bus 接入、真实多 seed、极端大分量预算和跨模块 schema | D2 P2 局部基线闭合；集成/标定开放 |
 | 5v5 crossing/dense 专用测试 | 已实现 P1 基线。D2 自模块新增 deterministic `crossing_dense_5v5` fixture，并可同场比较 GNN、JPDA、MHT 的 IDSW、continuity 和 runtime；该场景是 baseline fixture，不是关联器固定数量假设 | `simulation.py`；`tests/test_simulation.py`；`docs/benchmark_results.json` | 不适用；当前是二维质点观测压力测试，不是 AirSim 图像回放 | 后续应补真实 AirSim CV replay 输入和更多遮挡/漏检/虚警 sweep | P1 已完成基线 |
 | JPDA/MHT 自动升级触发 | 未实现。文档定义触发条件，代码需调用方手动选择 associator | `simulation.py` 的 `make_associator()`；`docs/ALGORITHM_AND_IMPLEMENTATION.md` | 自动切换会影响可比性和测试稳定，先保留显式对照 | 需要 D4/D6 认可风险阈值、切换迟滞和实验矩阵 | P2 |
 | Stone Soup 对照测试 | adapter smoke 已实现。缺依赖明确 unavailable；available 分支转换 frozen replay Detection 并记录 latency，IDSW/continuity unavailable | `p2_benchmark.py`；`tests/test_p2_benchmark.py` | 未实现完整 tracker，禁止宣称 JPDA/MHT 成功 | 需要 Stone Soup tracker pipeline 才能产生身份指标 | P2 基础完成 |
@@ -191,7 +193,7 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - `AssociationRiskSummaryWindowGenerator` 已能从 cost margin、candidate overlap、ID switch delta、duplicate delta、continuity 和 D5 disagreement 自动生成滑窗风险。
 - `RiskThresholds`/`classify_risk_summary()` 已把 D2 风险证据分为软风险和硬风险。
 - `run_airsim_replay_association()`、`run_threshold_sensitivity()` 与 `summarize_multi_seed_risk_calibration()` 已能输出 5 目标 AirSim-like replay 的 association logs、metrics、risk summary、replay metadata、risk profile version、`association_risk_threshold_version`、gate pass/reject count、motion/quality risk summary、dense/crossing 阈值敏感性行和多 seed 推荐阈值摘要。
-- D1 `GlobalTrack` 到 D2 `Detection` 的模块内 adapter 基线已经可用，仍保持松耦合字段读取；当前是 NED 6D 到 D2 2D 水平面的投影，不是 D2 原生 3D tracker。
+- D1 `GlobalTrack` 到旧 D2 `Detection` 的二维 adapter 保持兼容；新增 adapter 可产生 truth-free `Detection3D`，保留 NED 位置/速度提示并忽略上游 canonical ID。
 - 2026-07-11 P1 CV 批次已沿隔离 truth 边界完成评分；2026-07-12 PNG delivery 报告没有新增 D2 offline IDSW/continuity。如扩展专用真实 dense/crossing 数据集，main/runtime/D6 应继续沿用 `d2-offline-truth-label/v1` 与已冻结 profile。
 - EVAL 同步后的航迹质量评分、运动一致性约束和 quality-aware gate baseline 已作为 P0 工程化硬化闭合并保持回归；这些项增强 GNN/Hungarian 主线，不替换默认关联器，也不得改写 D1/D3/D5 合同字段。
 - JPDA/MHT/BP 选型对照、SORT/ByteTrack-style fallback、完整自适应门控、N/M 参数优化和 NEES/NIS 深度标定保留为后续研究增强，不再写成 P1 合同未闭合。
@@ -202,13 +204,13 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 - **多目标交叉**：GNN/Hungarian 是单帧硬判决。交叉窗口内最优/次优代价 margin 过小时，硬关联可能任意打破平局，并在后续 Kalman update 中吸收错误观测。JPDA/MHT 可用于对照和风险暴露，但当前 JPDA 没有概率混合状态更新，MHT 没有完整 N-scan 和长期假设管理，不能宣称已消除交叉 ID Switch。
 - **密集编队**：多条航迹共享门内候选时，`candidate_counts_by_track`、`candidate_counts_by_detection` 和协方差重叠会升高。当前 feature cost 是简单向量差异；若外观、类别或声纹特征不稳定，仍可能发生 ID 交换或重复航迹解释。
 - **ID Switch 可观测性**：`id_switch_count` 依赖离线 `truth_id`。真实在线路径没有 truth label 时，D2 只能发布风险摘要和弱证据，不能把在线风险摘要当成真实 IDSW ground truth。D6 应在带 truth 的仿真或 replay 中计算最终 IDSW。
-- **规模风险**：D2 不写死 2v2/5v5，但 GNN 仍有 Hungarian 复杂度，JPDA/MHT 仍会随候选数增长。更大 N 需要分簇、预算、截断或只做离线对照。
+- **规模风险**：D2 不写死 2v2/5v5。六维路径通常只对稀疏连通分量运行 Hungarian，但极端全重叠仍可能退化为大分量；JPDA/MHT 仍会随候选数增长。更大 N 需要候选预算、分区和召回率联合标定。
 
 ### 4.4 暂不实现的合理项
 
 - Stone Soup/FilterPy object adapter 已隔离实现，但不得进入核心运行路径；完整 tracker 仍只能作为未来研究对照。
 - 完整 MHT 不适合资源节点，当前有界 MHT placeholder 满足离线接口验证；生产级 MHT 需要中心算力、剪枝策略和更完整的场景基准。
-- EKF/UKF/IMM 需要更复杂的三维/机动量测模型。当前二维线性 Kalman 对 phase-1 数据关联验证足够。
+- EKF/UKF/IMM 需要更复杂的机动/非线性量测证据；当前二维兼容和六维线性 CV 两条规则路径不构成这些高阶滤波器已实现。
 
 ## 5. 下一步建议
 
@@ -224,15 +226,15 @@ D2 当前实现符合“先用 GNN/Hungarian 做工程主线，密集交叉再�
 
 **M 对 N 评估状态**：已实现 `canonical_duplicate_count`、cross-node IDSW、track-to-track association precision/recall、重复消息拒绝数和 fusion latency；online registry 不读取 simulator truth。fusion NEES/ANEES 和通信字节仍需 D1/D6 离线评分与 replay schema。
 
-5. **P2：引入三维状态或三维到二维的统一策略**
-   如果 D5 终端投影、D7 中段 PN 都需要三维状态，D2 需要升级为 3D `[px,py,pz,vx,vy,vz]` 或明确只输出二维关联 ID、三维状态由 D1 提供。
+5. **P2：接入已实现六维路径**
+   由 main 冻结 D1 -> D2 -> D3/D5/D6 的 scalable bus schema、模型版本和性能预算；D2 继续保证中心 ID、三维门控与 truth isolation。
 
 6. **P2/P3：外部库增强**
    对象 adapter/frozen replay smoke 已完成。后续只有在真实 replay 和计算预算冻结后才实现 Stone Soup JPDA/MHT 或 FilterPy EKF/UKF/IMM 端到端对照；否则保持 unavailable，不以 adapter latency 代替 IDSW/continuity。
 
 ## 6. 审计结论
 
-D2 已具备 P1 合同闭合所需的模块能力：D1 governed input 进入 truth-isolated GNN/Hungarian，源 identity 被匿名化，中心 `global_track_id` 稳定；在线 innovation 提供 NIS，隔离 evaluator 计算 IDSW、M-of-N、false-track、RMSE 和 NEES。2026-07-13 strict 4 m/2 m 各 20-seed 真实回放证明当前候选能显著降低 IDSW，但不能同时达到冻结 continuity 晋级门限，因此默认 GNN/Hungarian 不变。完整自适应门控的进一步标定、高阶关联/运动对照、原生 3D 和 D2 owner failover 仍是后续研究；P2 保持隔离 adapter benchmark。
+D2 已具备既有 P1 合同和六维稀疏 D2-owned 基线：在线 identity 匿名、中心 `global_track_id`、3D innovation、稀疏候选、风险摘要和隔离 evaluator 均有代码/测试。默认二维 GNN/Hungarian 不变；六维规则路径是 scalable 场景的显式入口。进一步开放项是 main 总线、真实多 seed/极端密度、高阶关联/运动对照和 D2 owner failover；P2 第三方 adapter 继续隔离。
 
 ## 7. 2026-07-12 P1 长 Replay 增量复核
 
@@ -402,8 +404,9 @@ P0 仍无 blocker；完整 JPDA/MHT 和 Stone Soup 端到端后端仍为 P2。
 
 ### P2 Optional 边界
 
-轻量 JPDA 本轮退化；完整 JPDA/MHT、Stone Soup 端到端 tracker、FilterPy
-EKF/UKF/IMM 和原生 3D 仍只允许隔离 benchmark。它们没有替换默认 GNN/Hungarian，
+轻量 JPDA 本轮退化；完整 JPDA/MHT、Stone Soup 端到端 tracker 和 FilterPy
+EKF/UKF/IMM 仍只允许隔离 benchmark。当时尚未实现的六维规则路径已在 2026-07-20
+作为独立入口补齐，但没有替换默认 GNN/Hungarian，
 也不得写入默认 requirements、在线自动切换或跨模块运行合同。
 
 ### 权威回归状态
@@ -452,8 +455,8 @@ EKF/UKF/IMM 和原生 3D 仍只允许隔离 benchmark。它们没有替换默认
   `T001/T002`，`birth=2`、`lost/drop/rebirth=0`，未再出现 `T008`。2026-07-15 的
   后续普通 M5N2 已完成 20 case，但显式 teleport/影子扰动和该批 offline identity
   仍未执行，针对性系统级 P1 因而保持开放。
-- **P2 不变**：JPDA/MHT、Stone Soup/FilterPy 和原生三维仍是隔离 benchmark，未因
-  本专项进入主线。
+- **历史 P2 状态**：本专项当时 JPDA/MHT、Stone Soup/FilterPy 和原生三维均未进入
+  主线；原生六维规则基线随后于 2026-07-20 以独立入口实现，旧结论不再代表当前代码。
 
 ## 14. 2026-07-14 Post-batch M5N2 D2 证据复核
 
@@ -559,3 +562,37 @@ false track 0、online truth isolation violation 0。对 main 实际 track recor
   受治理 case 的 false-suppression/recall、offline IDSW/continuity 与置信区间仍为 P1。
 - main/D1 的 namespaced `source_track_ids` 与可信 upstream rejection metadata 生产、
   D6 跨模块总报告接入由各 owner/main 后续完成；本轮未修改默认关联器、门限或风险分类。
+
+## 17. 2026-07-20 六维稀疏关联 GAP 判定
+
+### 已关闭的 D2-owned GAP
+
+- 六维 NED state/covariance、三维位置 innovation/Mahalanobis gate；
+- 面向 200 目标的 KD-tree 空间索引、稀疏候选边和分量级 Hungarian；
+- 不分配/保存无条件全密集 cost/distance history，有界 track/frame 审计；
+- D2/中心创建 `GT3D-*`，上游 canonical ID、truth/actor/object identity 不具备权威；
+- D1 fused-track adapter 对齐 state-valid association epoch，并保留原始 source
+  measurement/arrival timestamp 供延迟审计；
+- 在线显式 unavailable 的 IDSW/continuity、identity-free risk summary，以及隔离 offline
+  evaluator 的可用 IDSW/identity/coverage continuity；
+- 5/20/50/100/200、crossing、连续漏检、虚警和无固定 2v2/5v5 测试。
+
+### 证据
+
+- 2026-07-20 专项 `13 passed`；完整 D2 `136 passed, 1 warning`，验收阈值零失败。
+- 200 目标规则网格：3 个独立 trial，每个预热 1 帧后测量 30 帧；90 个测量帧的
+  候选/全对均为 `200/40,000`，分量矩阵 `200`，peak component `1`，裁剪 `99.5%`。
+- 聚合关联 mean/P50/P95/max `6.683/6.306/7.056/22.471 ms`；tracker step
+  `25.491/25.016/26.797/41.613 ms`。
+- crossing、漏检和虚警专项离线 IDSW 均 0；在线层未读取 truth，在线身份指标为
+  `None + unavailable`。
+
+### 未关闭
+
+- main-owned `scalable_3d_simulation` episode-bus 接入和 D1/D3/D5/D6 版本化 schema；
+- 至少 20 个未见 seed、密集交叉/编队分裂/多高度/协方差膨胀下的候选召回与置信区间；
+- 极端大连通分量的候选预算/区域分解及其 identity recall 损失控制；
+- 六维 JPDA/MHT、OOSM、EKF/UKF/IMM、真实 AirSim 子场景和端到端 200v200 证据。
+
+本轮只关闭 D2-owned 规则基线，不把单布局性能写成实时 SLA，也不重分类跨模块 owner 的
+集成 GAP。

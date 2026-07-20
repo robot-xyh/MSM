@@ -2,7 +2,7 @@
 
 **调研范围**：面向“一个高威胁目标由多架拦截无人机共同承担”的 M 对 N 协同拦截场景，研究同一物理目标被中心节点、二级侦察节点和多个拦截节点重复观测时，D2 如何识别同目标航迹、抑制重复建轨和公共信息双重计数，并保持中心拥有的 `global_track_id` 连续性。
 
-**调研性质**：第 1-8.4 节保留文献与开源实现审计结论；第 8.5 节同步 2026-07-11 D2 后续实现状态，不把论文能力与本地已实现能力混淆。
+**调研性质**：第 1-8.4 节保留文献与开源实现审计结论；第 8.5、11-13 节同步截至 2026-07-20 的 D2 后续实现与验证状态，不把论文能力、detection-to-track 能力和 cross-node track fusion 能力混淆。
 
 **检索日期**：2026-07-11。
 
@@ -334,3 +334,42 @@ binding/quarantine 明细累计为 `source_binding_conflict_count` 与
 quarantine 均 1、upstream rejection 为 2/4，完整 D2 回归为
 `123 passed, 1 warning`。本轮没有真实跨节点 AirSim 数据，因此 owner/epoch failover、
 高歧义多帧注册、false suppression/recall 和 fusion NEES/ANEES 缺口均不重分类。
+
+## 13. 2026-07-20 六维稀疏关联与跨节点融合边界
+
+本轮新增的是单中心航迹链中的六维 **detection-to-track** 规则路径，不是跨平台
+track-to-track 数值融合器。两条路径共享中心身份原则，但输入、候选图和输出职责不同：
+
+| 路径 | 输入与状态 | 已实现关联 | 身份/融合职责 |
+| --- | --- | --- | --- |
+| 六维 detection-to-track | truth-free `Detection3D`；`GlobalTrack3D` 固定 `[pN,pE,pD,vN,vE,vD]` 与 6x6 covariance | KD-tree 空间候选、3D 位置创新/马氏门控、候选图连通分量级 GNN/Hungarian | `Scalable3DTracker` 创建并维护 `GT3D-*`；不执行跨节点 CI/exact fusion |
+| cross-node track registry | namespaced `SourceTrackSummary` 与中心 canonical snapshot | 公共时刻传播、按 source track-to-track Hungarian、binding/lineage/stale 治理 | 维护 one canonical-to-many source binding 并输出 fusion directive；数值 posterior 仍由 D1 负责 |
+
+这里两处 GNN 均表示 **Global Nearest Neighbor**。D5 的跨视角图神经网络使用匿名局部
+tracklet 并输出同目标概率，不在 D2 实现，也不能创建或改写 `global_track_id`。六维
+adapter 忽略 D1 对象携带的上游 `global_track_id`；source/local key 只作为命名空间化
+连续性证据，不能成为 canonical identity。D1 fused-track state 按其 state-valid
+timestamp 进入关联，原始 sensor measurement/arrival timestamp 另存为 source 审计字段；
+这不替代 cross-node registry 对各 source track 的公共时刻传播。
+
+在线六维结果显式保留 `id_switch_count` 和 continuity 字段，但在没有离线标签时写为
+`None + unavailable`；风险摘要只使用候选重叠、cost margin、漏配和生命周期等在线
+证据。`Sparse3DOfflineEvaluator` 在关联完成后单独消费 truth sidecar，计算 IDSW、
+identity/coverage continuity、duplicate 和 false-alarm assignment，评分结果不回写
+候选边、滤波状态或 ID binding。
+
+**2026-07-20 D2-owned 验证证据**：
+
+- 专项 13 个测试覆盖 5/20/50/100/200、Down 轴门控、三维交叉、连续两帧漏检、
+  15 个匿名虚警、truth fail-closed、上游 ID 非权威和有界历史；完整 D2 为
+  `136 passed, 1 warning`，验收阈值为零失败；
+- 200 目标确定性三维规则网格执行 3 个独立 trial，每个预热 1 帧后采样 30 帧；90 个
+  测量帧的候选/潜在全对均为 `200/40,000`，component matrix pair 为 `200`，peak
+  component pair 为 `1`，裁剪率 `99.5%`；
+- 聚合关联 mean/P50/P95/max 为 `6.683/6.306/7.056/22.471 ms`，tracker step 为
+  `25.491/25.016/26.797/41.613 ms`。
+
+该性能数据只证明单进程、单一稀疏布局下避免了无条件全密集候选历史扩张，不是
+多 seed、AirSim、实时 SLA 或 200v200 全链路结论。极端全重叠或协方差过度膨胀仍会
+形成大连通分量；main-owned scalable episode bus 接入、候选预算与召回率联合标定、
+高歧义跨节点 JPDA/MHT、owner/epoch failover 和数值 CI/exact posterior 均保持开放。

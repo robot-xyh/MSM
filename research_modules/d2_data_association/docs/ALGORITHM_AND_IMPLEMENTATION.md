@@ -1,7 +1,7 @@
 # D2 多目标数据关联算法与实施方案
 
-**状态日期**：2026-07-15
-**适用范围**：科研仿真、受治理日志回放、离线评估和跨节点航迹注册基础
+**状态日期**：2026-07-20
+**适用范围**：科研仿真、受治理日志回放、六维稀疏规则关联、离线评估和跨节点航迹注册基础
 **默认主线**：全局最近邻（Global Nearest Neighbor，GNN）与匈牙利算法的一对一硬关联
 **安全边界**：本文不包含真实飞控、自动处置、毁伤评估或绕过人工授权的能力
 
@@ -58,14 +58,14 @@ D2 不承担以下工作：
 - 不直接决定 D4 是否切换到二级节点或完全分布式模式；
 - 不允许 D5、D7、源节点本地航迹或仿真对象名称改写 `global_track_id`；
 - 不实现原始乱序量测（Out-of-Sequence Measurement，OOSM）的回溯、重放和平滑；
-- 不把当前二维跟踪器表述成原生三维跟踪器；
+- 不把旧二维 `Tracker` 与新增六维 `Scalable3DTracker` 混为同一默认入口；
 - 不把第三方对象转换适配器表述成端到端多目标跟踪系统。
 
 代码中的 `engageable` 只表示航迹质量足以供下游科研实验使用，不表示授权、处置或控制许可。
 
 ### 1.3 动态规模原则
 
-当前活动航迹数记为 `N_t`，本帧观测数记为 `N_z`。D2 按实际输入构造 `N_t x N_z` 代价矩阵，不从场景名推断目标数量，不写死 2 对 2 或 5 对 5。固定规模场景只用于可重复的基准回放。
+当前活动航迹数记为 `N_t`，本帧观测数记为 `N_z`。旧二维路径按实际输入构造 `N_t x N_z` 代价矩阵；六维路径按实际输入建立空间索引和稀疏候选图，仅对候选连通分量分配局部矩阵。两者都不从场景名推断目标数量，不写死 2 对 2 或 5 对 5。固定规模场景只用于可重复的基准回放。
 
 因此，目标出生、漏检、虚警、丢失和删除造成的 `N_t != N_z` 是正常输入，不需要填充虚拟目标或截断观测。
 
@@ -74,6 +74,8 @@ D2 不承担以下工作：
 | 能力 | 当前状态 | 是否默认 | 准确边界 |
 | --- | --- | --- | --- |
 | 二维常速度预测 | 已实现 | 是 | 状态为位置和速度四维向量 |
+| 六维 NED 常速度预测与 3D 位置更新 | 已实现 | 显式选择 | `[pN,pE,pD,vN,vE,vD]`，不替换旧二维入口 |
+| KD-tree 稀疏 GNN/匈牙利 | 已实现 | 六维路径 | 3D 马氏门控后按候选图连通分量求解 |
 | 协方差输入治理 | 已实现 | 是 | 拒绝非有限、明显非对称或明显非半正定输入 |
 | 马氏距离门控 | 已实现 | 是 | 基础门限默认 `9.21` |
 | 质量感知门限 | 已实现轻量基线 | 是 | 有界规则，不是完整通用自适应门控框架 |
@@ -90,7 +92,8 @@ D2 不承担以下工作：
 | 联合概率数据关联 | 轻量研究近似 | 否 | 没有概率混合状态和协方差更新 |
 | 多假设跟踪 | 有界研究近似 | 否 | 没有完整长期假设树和 N 次扫描剪枝 |
 | Stone Soup/FilterPy | 对象适配和冒烟测试 | 否 | 不是端到端关联跟踪器 |
-| 三维跟踪、扩展/无迹滤波、交互多模型 | 未实现 | 否 | 只能作为后续研究项 |
+| 六维规则跟踪 | 已实现基础 | 显式选择 | main 总线接入、真实多 seed 和极端密度预算未完成 |
+| 扩展/无迹滤波、交互多模型 | 未实现 | 否 | 只能作为后续研究项 |
 
 优先级零、优先级一和优先级二（Priority 0 / Priority 1 / Priority 2，P0 / P1 / P2）表示工程优先级，不表示算法自动进入默认主线。
 
@@ -100,13 +103,13 @@ D2 不承担以下工作：
 
 D2 支持两类 D1 输入适配路径。
 
-第一类是 D1 六维北-东-地坐标系（North-East-Down，NED）`GlobalTrack` 的二维投影：
+第一类是兼容路径中 D1 六维北-东-地坐标系（North-East-Down，NED）`GlobalTrack` 的二维投影：
 
 - D1 状态顺序为 `[north, east, down, vn, ve, vd]`；
 - D1 协方差为 `6 x 6`；
 - D2 取北、东位置作为二维观测，取协方差左上 `2 x 2` 子矩阵；
 - 保留 `measurement_timestamp`、`arrival_timestamp`、来源 ID 和元数据；
-- 该适配只做二维投影，不把 D2 转换成三维跟踪器。
+- 该适配只做二维投影，不改变旧 `Tracker` 的状态维度。
 
 第二类是 D1 受治理回放：
 
@@ -116,6 +119,17 @@ D2 支持两类 D1 输入适配路径。
 - 声学方位和光电（Electro-Optical，EO）像素观测因量测空间不同而显式跳过；
 - 跳过数量及原因写入报告元数据，不能把不同量纲直接混入同一位置代价矩阵；
 - 按量测时间和 AirSim 帧号聚合为 D2 帧。
+
+第三类是 2026-07-20 新增的六维稀疏路径：
+
+- 在线输入 `Detection3D` 只包含匿名 ID、NED 三维位置、3x3 covariance、双时间戳、
+  置信度及可选速度提示；没有 truth 字段；
+- `detections3d_from_d1_global_tracks()` 读取六维状态/协方差但忽略上游对象的
+  `global_track_id` 值，D2 重新分配规范 ID；D1 航迹 state-valid timestamp 作为关联
+  epoch，原始 sensor measurement/arrival timestamp 保留在 source metadata；
+- `detection3d_from_position_measurement()` 只接受 Cartesian NED 三维位置；原始 radar
+  `[range,azimuth,elevation]` 和 visual pixel 不得冒充笛卡尔位置，必须先经 D1；
+- 当前 scan 必须共享 state-valid association epoch；乱序量测回溯仍未实现。
 
 ### 3.2 雷达球坐标到北-东平面的投影
 
@@ -142,6 +156,12 @@ R_{ne}=J R_{rae}J^T.
 - `arrival_timestamp` 表示观测到达处理链路的时刻。
 
 D2 受治理适配器保留二者。当前主跟踪器假定输入已按量测时间整理，并以量测时间推进状态。`dt` 被限制为非负数只能防止反向传播，不等于已经实现 OOSM 回溯。
+
+当输入是 D1 已传播到 `valid_at/published_at` 的融合航迹时，六维 adapter 不把该状态
+误标为更早的原始传感器量测状态：`Detection3D.measurement_timestamp` 使用 state-valid
+epoch，原始 sensor measurement/arrival timestamp 另存为
+`source_measurement_timestamp/source_arrival_timestamp`。main 接线仍需同时传递这些
+字段，供 D6 做延迟与 OOSM 审计。
 
 ### 3.4 二维 `Detection`
 
@@ -958,14 +978,14 @@ pytest -q research_modules/d2_data_association/tests
 - 完整 MHT 假设树、分簇和 N 次扫描剪枝；
 - Stone Soup 端到端跟踪对照；
 - FilterPy 扩展卡尔曼、无迹卡尔曼和交互多模型对照；
-- 原生三维 NED 跟踪；
+- 六维路径的 main episode-bus 接入、多 seed 高密度标定与最坏情况候选预算；
 - 基于风险且带迟滞的 GNN/JPDA/MHT 自动切换。
 
 这些研究只能在冻结回放和独立可选环境中进行。在同输入、同评估、同算力预算下未证明身份收益前，不进入默认依赖或在线控制路径。
 
 ## 17. 结论
 
-截至 2026-07-13，D2 已形成一条可运行、可审计、按动态输入规模工作的二维多目标关联主线：D1 受治理输入经过二维常速度预测、协方差治理、马氏门控、质量感知门限、GNN/匈牙利分配、卡尔曼更新和生命周期管理，生成中心权威 `global_track_id`，并通过在线真值隔离、风险摘要和离线 IDSW/连续性/NIS/NEES 评估维持证据可信度。
+截至 2026-07-20，D2 同时保留可运行、可审计的二维兼容主线，并新增按动态输入规模工作的六维稀疏规则路径。新路径完成 NED 六维 CV、3D 马氏门控、空间候选图、分量级 GNN/匈牙利、中心 ID、在线真值隔离、风险摘要和独立离线 IDSW/连续性评分；它尚未替换旧 replay/AirSim 默认入口，也尚未形成 scalable 3D 全链路多 seed 证据。
 
 严格 4 米/2 米、40 回合 AirSim 结果证明参数候选可以降低 IDSW，但没有同时达到冻结的身份连续性准入门限。因此当前正确实施结论是：继续保持 GNN/匈牙利为默认主线；轻量 JPDA、有界 MHT 和第三方框架只作为显式、隔离的研究对照；跨节点注册只负责规范身份和融合请求，不越权承担 D1 数值融合或 D4 模式切换。
 
@@ -1058,3 +1078,75 @@ seed 7/8 精确得到 conflict=`1/1`、quarantine=`1/1`、upstream rejection=`2/
 多 seed 均值为 `1/1/3`。全量 `123 passed, 1 warning`，验收阈值为零失败、非法输入
 零状态副作用。默认 GNN/Hungarian、gate、source weight 和 lifecycle 均未变化；未运行
 AirSim，真实扰动召回率与误抑制率仍不可用。
+
+## 22. 六维稀疏全局最近邻路径
+
+### 22.1 状态、预测与三维创新
+
+六维路径使用状态
+
+\[
+x=[p_N,p_E,p_D,v_N,v_E,v_D]^T,
+\]
+
+常速度转移矩阵为
+
+\[
+F(\Delta t)=\begin{bmatrix}I_3&\Delta t I_3\\0&I_3\end{bmatrix},
+\]
+
+过程噪声采用三轴独立白加速度离散形式。位置量测矩阵为
+`H=[I_3,0]`，创新、创新协方差和门控距离分别为
+
+\[
+r=z-H\hat{x},\qquad S=HPH^T+R,\qquad d^2=r^TS^{-1}r.
+\]
+
+默认门限 `11.344866730144373` 是三自由度 99% 卡方门限。可选速度提示只进入 birth 和
+门内 tie-break cost，不把 gate 改成六维创新；因此文档、日志和测试固定输出
+`innovation_dimension=3` 与 `gate_metric=3d_position_mahalanobis_squared`。
+
+### 22.2 空间索引与稀疏 Hungarian
+
+对第 `i` 条预测航迹，设其位置协方差最大特征值为 `lambda_i`，本帧所有量测位置
+协方差最大特征值上界为 `lambda_z`。KD-tree 查询半径取
+
+\[
+r_i=\sqrt{\gamma(\lambda_i+\lambda_z)},
+\]
+
+其中 `gamma` 为马氏门限。若某边满足 `d^2<=gamma`，则其欧氏残差必不超过该保守
+半径，因此正常半正定 covariance 下不会因空间预筛漏掉门内边。查询结果再执行精确
+3D 马氏门控，形成二部候选图。
+
+候选图按连通分量拆分，每个分量使用 `scipy.optimize.linear_sum_assignment`。不同分量
+之间没有可行边，因此分量最优解之和等价于整个稀疏候选图上的全局最近邻解。实现不
+创建或持久化无条件 `N_t x N_z` cost/distance matrix；仍输出潜在全对数、空间查询边、
+门内候选边、局部分量矩阵元素和 peak component 大小供预算审计。极端全重叠目标会
+形成大分量，故稀疏性是数据相关性质，不是无条件复杂度保证。
+
+### 22.3 身份、风险与真值边界
+
+`Detection3D` 没有 truth 字段，metadata 递归拒绝 truth/actor/object/entity 和上游
+canonical identity。`Scalable3DTracker` 是 `GT3D-*` 的唯一创建者；D1 六维对象的
+`global_track_id` 被 adapter 忽略，namespaced source key 只能作为连续性弱证据。
+
+在线结果显式记录：
+
+- `id_switch_count=None` 和 `id_switch_count_available=false`；
+- `track_continuity=None` 和 continuity unavailable；
+- `AssociationRiskSummary` 中的候选重叠、cost margin、漏配率、风险分值和稀疏统计。
+
+`Sparse3DOfflineEvaluator` 是单独模块，只接收已完成的 `AssociationResult` 和外部 truth
+sidecar，计算 IDSW、identity/coverage continuity、duplicate 和 false-alarm assignment。
+truth 结果不回写 tracker、候选图、ID binding 或风险代价。
+
+### 22.4 2026-07-20 验证
+
+专项 13 个测试覆盖 5/20/50/100/200、D 轴门控、三维交叉、两帧漏检、15 个虚警、
+truth 拒绝、上游 ID 非权威及 history/log 上限；完整 D2 为
+`136 passed, 1 warning`，验收阈值零失败。200 目标规则网格执行 3 个独立 trial，每个
+trial 预热 1 帧后测量 30 帧；90 个测量帧的候选边均为 `200/40,000`，候选裁剪率
+`99.5%`，聚合关联/tracker-step P95 为 `7.056/26.797 ms`，max 为
+`22.471/41.613 ms`。该结果仅是当前主机、单进程、确定性合成布局的工程证据，包含
+系统调度尾值，不代表实时 SLA、AirSim、200v200 全链路或多 seed 置信区间。

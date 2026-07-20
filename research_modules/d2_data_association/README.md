@@ -6,6 +6,31 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 
 规模边界：D2 消费每帧传入的 `tracks`、`detections` 和当前 `active_tracks` 集合，不从场景名推断目标数量，不写死 2v2 或 5v5。`crossing_dense_5v5` 等名称只是可重复 baseline fixture；main runtime 的 `--drone-count N` 只应体现为传入 D2 的输入集合长度。
 
+### 2026-07-20 六维稀疏关联路径
+
+- 新增显式选择的 `Scalable3DTracker`：航迹状态和协方差采用
+  `[pN,pE,pD,vN,vE,vD]` / `6x6`，位置更新使用 3D NED 量测和 Joseph 形式；旧二维
+  `Tracker`、replay、JPDA/MHT 与默认 `GNNHungarianAssociator` 均未改变。
+- `Sparse3DGNNHungarianAssociator` 先用 `scipy.spatial.cKDTree` 生成保守空间候选，
+  再计算 3D 位置创新马氏距离，并对稀疏二部图的每个连通分量运行 Hungarian。这里及
+  旧类名中的 GNN 都表示 Global Nearest Neighbor，不是图神经网络；D5 的跨视角图网络
+  不在 D2 实现。
+- 在线 `Detection3D` 合同没有 truth 字段，并递归拒绝 truth/actor/object/entity、上游
+  `global_track_id` 等身份元数据。D1 六维对象适配器忽略上游 canonical 值，只有 D2
+  `Scalable3DTracker` 分配 `GT3D-*`；adapter 以 D1 state-valid timestamp 作为关联
+  epoch，并另存原始 measurement/arrival timestamp 供延迟审计。在线结果显式输出
+  `id_switch_count=None`、continuity unavailable 和 `AssociationRiskSummary`；独立
+  `Sparse3DOfflineEvaluator` 只在关联结束后读取 truth sidecar。
+- 2026-07-20 单元验收覆盖 5/20/50/100/200、D 轴门控、两目标三维交叉、连续漏检、
+  15 个匿名虚警、truth 拒绝和有界历史。完整 D2 回归为 `136 passed, 1 warning`，
+  验收阈值为零失败；warning 是环境 Matplotlib `Axes3D` 导入问题。
+- 同日 200 目标确定性规则网格做 3 个独立 trial，每个 trial 预热 1 帧后测量 30 帧；
+  90 个测量帧的候选边均为 `200`，潜在全对 `40,000`，分量矩阵元素 `200`，最大单
+  分量元素 `1`，候选裁剪率 `99.5%`。聚合关联 mean/P95/max 为
+  `6.683/7.056/22.471 ms`，含预测与更新的 tracker step 为
+  `25.491/26.797/41.613 ms`。这是当前主机单进程合成样本，包含系统调度尾值，不是
+  实时 SLA、真实 AirSim 或多 seed 统计；极端全重叠场景仍可能形成大连通分量。
+
 ### 2026-07-15 M5N2 真实 AirSim 20-case 证据同步
 
 - 本批为 SimpleFlight M5N2：baseline 10 seed、candidate 10 seed，共 20 case；M5N2 达到
@@ -27,7 +52,8 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 
 - GNN/Hungarian 默认关联器，底层使用 SciPy `linear_sum_assignment`。
 - `DataAssociator` 可插拔接口，当前有 GNN、JPDA、MHT 三条接口兼容路径。
-- 马氏门控、二维 `[x,y,vx,vy]` 常速度 Kalman fallback 和 4x4 covariance；Detection/GlobalTrack covariance 在输入和门控边界拒绝非有限、明显非对称或明显非 PSD 矩阵，仅对数值容差内缺陷做对称化/特征值 floor。`covariance_consistency` 表示最新检查，`covariance_regularized`/`regularization_ever_applied` 与 `last_regularization` 保留历史正则化证据。
+- 兼容基线保留马氏门控、二维 `[x,y,vx,vy]` 常速度 Kalman fallback 和 4x4 covariance；Detection/GlobalTrack covariance 在输入和门控边界拒绝非有限、明显非对称或明显非 PSD 矩阵，仅对数值容差内缺陷做对称化/特征值 floor。`covariance_consistency` 表示最新检查，`covariance_regularized`/`regularization_ever_applied` 与 `last_regularization` 保留历史正则化证据。
+- 六维稀疏路径使用 `Detection3D`、`GlobalTrack3D`、3D 马氏门控、KD-tree 候选图和分量级 Hungarian；航迹事件历史与逐帧审计均有配置上限，不保存无条件全密集代价/距离历史。
 - GNN/Hungarian 主线在保留马氏门控和 `linear_sum_assignment` 的基础上，加入速度方向、短时历史和加速度异常组成的轻量运动一致性代价，并输出 motion consistency diagnostics。
 - 在线 D1 track-to-track 输入增加非真值 `source_global_track_id` 连续性代价和来源谱系治理：已落入现有门限但未被一对一分配的上游影子航迹不立即 birth，仍绑定活动 D2 航迹但发生统计大跳的同源输入先隔离并记录原因；该保护不读取 actor/truth ID，不替代马氏门控或 GNN/Hungarian。
 - quality-aware gate baseline：按 track quality、局部目标密度、位置协方差和上一帧 association risk 对每条 track 的 gate 做保守放宽或收紧；这不是完整自适应门控框架。
@@ -36,7 +62,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - `id_switch_count`、`track_continuity`、`identity_continuity`、`coverage_continuity`、`duplicate_assignment_count`、RMSE、confusion matrix 和 runtime 指标；无 truth assignment 时 IDSW、continuity 和 RMSE 字段仍存在，但值为 `None`，并分别输出一致的 `available=false` 与 `reason=truth_assignment_unavailable`。truth 可用且 IDSW 确实为零时输出可用的整数 `0`，不再用伪零表示 unavailable。
 - `AssociationRiskSummaryWindowGenerator` 滑窗风险摘要，汇总代价 margin、候选重叠、IDSW delta、duplicate delta、可用 continuity、D5 disagreement、source node 和 link type；不可用 continuity 不参与 `duplicate_track_risk`、`continuity_collapse` 或 hard risk 计算。
 - `RiskThresholds` / `classify_risk_summary()` 软/硬风险分层，按 D4 口径区分 ambiguity/cost margin/candidate overlap 与 IDSW/duplicate/continuity collapse。
-- D1 6D NED `GlobalTrack` 到 D2 2D `Detection` 的投影 adapter，保留 `measurement_timestamp`、`arrival_timestamp`、covariance 和 metadata。
+- D1 6D NED `GlobalTrack` 到 D2 2D `Detection` 的旧投影 adapter，保留 `measurement_timestamp`、`arrival_timestamp`、covariance 和 metadata；新 `detections3d_from_d1_global_tracks()` 保留 NED 三维位置/速度提示，以 state-valid timestamp 对齐关联 epoch，把原始双时间戳留在 source metadata，并忽略上游 canonical ID。
 - AirSim-style dry-run/replay adapter，不 import 或调用 `airsim`，并在 bus message 中导出当前活动 `global_track_ids`。
 - `load_airsim_replay_frames()`、`run_airsim_replay_association()`、`run_threshold_sensitivity()` 和 `summarize_multi_seed_risk_calibration()` 支持离线 JSON/JSONL replay 读取、association log/report 输出、seed/episode/scenario/frame/offline truth label 校准元数据透传、`RiskThresholds.profile_version` 与 `association_risk_threshold_version` 记录、gate pass/reject count、motion/quality risk summary、dense/crossing threshold sensitivity summary 和多 seed 推荐阈值摘要；无 truth label 的 N-v-N replay 会用输入观测数或显式 count 字段给出 `target_count` fallback。
 - `OfflineTruthLabel` 冻结 `d2-offline-truth-label/v1` JSONL 合同，每条记录包含 `episode_id/frame_index/timestamp/truth_id/position` 和可选离线匹配注释；读写器拒绝重复键和非法坐标。`strip_offline_truth_from_frames()` 生成不含 truth 的在线帧，`run_airsim_replay_association(..., offline_truth_labels=...)` 只在在线关联结束后构造 evaluator-only 评分视图。
@@ -110,7 +136,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 
 - `JPDAAssociator` 可执行小规模联合假设枚举和 marginal probability 对照，但不是完整 JPDA filter。
 - `MHTAssociator` 可执行有界 branch 和短历史对照，但不是完整 MHT。
-- D2 可投影 D1 3D/NED 输入，但原生 tracker 仍是二维状态。
+- 旧 `Tracker` 继续投影 D1 3D/NED 输入；独立 `Scalable3DTracker` 已实现原生六维状态，main-owned scalable 总线自动接入与多 seed 标定尚未完成。
 - cross-node registry 已完成低歧义 GNN/Hungarian 注册基础，但尚无多帧 JPDA/MHT 歧义保持、owner/epoch failover 或数值融合回写。
 - Stone Soup `Detection` adapter 与 FilterPy CV `KalmanFilter` adapter 已可选执行并记录对象转换/更新 latency；它们是 adapter smoke，不是端到端 tracker，IDSW/continuity 必须标记 unavailable。
 
@@ -118,7 +144,7 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 
 - Stone Soup 完整 JPDA/MHT tracker benchmark。
 - FilterPy EKF/UKF/IMM 或端到端数据关联 tracker。
-- 原生 3D NED tracker。
+- `scalable_3d_simulation` 到六维 D2 路径的 main-owned episode-bus 编排、版本化输出 schema 和端到端多 seed 验收。
 - JPDA/MHT 自动升级触发。
 - D2 不直连 AirSim SDK，不负责 ComputerVision 图像/metadata 采集或 episode 编排；它只消费 main/runtime 导出的 governed replay 与隔离 offline truth。
 - D1-owned 数值 CI、已知交叉协方差融合、fusion NEES/ANEES 和通信字节统计；D2 当前只发布相关性决策与融合请求。
@@ -133,6 +159,9 @@ D2 是 C-UAS 多目标数据关联研究模块，目标是在离线仿真和日�
 - `d2_data_association/cross_node_models.py`：source-track、canonical binding/history、相关性和融合请求合同。
 - `d2_data_association/cross_node_registry.py`：公共时刻传播、track-to-track Hungarian 和中心 canonical registry。
 - `d2_data_association/cross_node_metrics.py`：truth-free registry 指标和隔离的 offline cross-node evaluator。
+- `d2_data_association/scalable_3d_models.py`：truth-free `Detection3D`、六维 `GlobalTrack3D` 和松耦合 D1/scalable 量测适配器。
+- `d2_data_association/sparse_3d.py`：KD-tree 稀疏 GNN/Hungarian、六维 CV Tracker、风险摘要和有界审计。
+- `d2_data_association/scalable_3d_offline.py`：关联完成后才可调用的 3D truth sidecar IDSW/continuity evaluator。
 - `d2_data_association/dry_run_adapter.py`：D1/AirSim-style dry-run 输入适配和 bus message 输出。
 - `d2_data_association/d1_governed_adapter.py`：D1 frozen manifest/records 到在线安全 D2 radar/N-E frames 的转换和跳过诊断。
 - `d2_data_association/replay.py`：离线 JSON/JSONL replay 读取、association report/log 输出和阈值敏感性 helper。

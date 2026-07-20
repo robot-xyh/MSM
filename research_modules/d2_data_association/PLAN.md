@@ -10,7 +10,7 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 
 ## 2. 当前代码状态概览
 
-当前 D2 可运行路径依赖 NumPy、SciPy 和 pytest。默认在线工程主线仍是 `GNNHungarianAssociator` + 马氏门控 + 二维常速度 Kalman fallback + `Tracker` 生命周期状态机，本轮 P2 benchmark 没有替换该路径。JPDA 和 MHT 已有接口兼容、可执行的研究近似，但不是完整生产级 JPDA filter 或 MHT hypothesis manager。Stone Soup、FilterPy 已有 optional 版本/原因探测、对象 adapter 和 frozen replay smoke benchmark，但不进入默认运行路径或 requirements。
+当前 D2 可运行路径依赖 NumPy、SciPy 和 pytest。兼容默认在线工程主线仍是 `GNNHungarianAssociator` + 马氏门控 + 二维常速度 Kalman fallback + `Tracker` 生命周期状态机；2026-07-20 新增的 `Scalable3DTracker` + `Sparse3DGNNHungarianAssociator` 是显式选择的六维稀疏路径，不替换旧 replay/AirSim 默认入口。JPDA 和 MHT 已有接口兼容、可执行的研究近似，但不是完整生产级 JPDA filter 或 MHT hypothesis manager。Stone Soup、FilterPy 已有 optional 版本/原因探测、对象 adapter 和 frozen replay smoke benchmark，但不进入默认运行路径或 requirements。
 
 代码和测试已覆盖：
 
@@ -19,6 +19,8 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 - `build_gated_cost_matrix()` 支持 quality-aware gate baseline，按 track quality、局部目标密度、位置协方差和上一帧 association risk 对每条 track 的 gate 做轻量调整。
 - `DataAssociator` 抽象接口支持替换 GNN、JPDA、MHT。
 - `Tracker` 使用 `[x, y, vx, vy]` 状态、4x4 covariance、Joseph update 和确定性状态机。
+- `Scalable3DTracker` 使用 `[pN,pE,pD,vN,vE,vD]`、6x6 covariance、3D NED 位置 Joseph update 和中心分配的 `GT3D-*`；每条航迹历史和逐帧审计均有配置上限。
+- `Sparse3DGNNHungarianAssociator` 用 KD-tree 生成保守空间候选，执行 3D 位置创新马氏门控，再按稀疏二部图连通分量运行 Hungarian；不分配全局 `N_t x N_z` 代价/距离矩阵。GNN 仅表示 Global Nearest Neighbor，未在 D2 引入图神经网络。
 - `TrackLifecycleState` 当前枚举为 `tentative -> confirmed -> engageable -> lost -> dropped`，没有 `engaged` 状态。
 - 每条 `GlobalTrack` 输出 `track_quality`、`association_risk` 和 `quality_metadata`；`AssociationResult.metadata`、association logs、risk summary metadata 与 `MetricsRecorder.summary()` 同步输出 track-level 质量/风险字段。
 - `MetricsRecorder.summary()` 输出 `id_switch_count`、`track_continuity`、`identity_continuity`、`coverage_continuity`、`truth_metrics_available`、`continuity_available`、`duplicate_assignment_count`、RMSE、confusion matrix、runtime 和关联风险字段；无 offline truth label 时 continuity 数值只为报告兼容，不参与硬风险，旧 replay 缺 availability 字段时也按不可用处理。
@@ -39,6 +41,7 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 - M 对 N cross-node 注册基础已实现：6D NED `SourceTrackSummary`、source-local namespace、公共时刻 CV 传播、协方差感知 track-to-track gate、按 source 分组 Hungarian、canonical multi-source binding/history、payload/lineage/stale 防重，以及 exact/unknown/duplicate 三类相关性决策。
 - `CrossNodeRegistryMetrics` 保持 truth-free，只统计 operational rebind、duplicate rejection 和 latency；`OfflineCrossNodeMetricsEvaluator` 通过独立 source-key truth mapping 计算 cross-node IDSW、canonical duplicate 和 association precision/recall。
 - D2 回归覆盖 D1 governed manifest/records、匿名化、radar projection、模态跳过、offline position matching、旧 replay 兼容，以及 P2 五行输出、truth-free tracker 输入、缺依赖和未知 adapter 拒绝。
+- 六维专项回归覆盖 5/20/50/100/200、D 轴门控、交叉、连续漏检、虚警、truth 拒绝、D2 ID 所有权、离线 IDSW/continuity 和有界历史；2026-07-20 完整 D2 为 `136 passed, 1 warning`。
 
 ### 2.1 P0/P1 缺口快照
 
@@ -64,12 +67,13 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 - **历史过渡证据，2026-07-11 早期**：truth-isolated 短 episode 及 seeds 7/17/27 当时只证明 D2 -> D3/D6 通路与单 primary 合同收敛，T001 双 primary 尚未通过。本段不是当前结论。
 - **2026-07-11 合同验收证据**：M=5、N=2 ComputerVision 的 T001 双 primary 共识/计划授权为 8/10；`id_switch_count=0`、错误 duplicate=0、`global_track_id` 改写/重绑=0 均为 10/10。二级与完全分布式 commit 正例通过，缺 ACK 时 fail-closed；这验证下游使用 D2 中心 ID 的合同，不表示 D2 本地重绑 ID。
 - **P2 边界保持原状态**：P2 仅是隔离 benchmark；模块内 JPDA/MHT 是显式研究近似，Stone Soup 1.9.1/FilterPy 1.4.5 仅对象 adapter smoke，默认在线 GNN 路径未替换。
+- **2026-07-20 六维局部基线闭合**：D2-owned 六维 CV、3D 马氏门控、空间索引、稀疏分量 Hungarian、truth-free 在线合同和离线身份评分已实现；main-owned episode-bus 接入、真实多 seed 标定和极端高密度预算仍开放。
 
 ## 3. 输入输出合同
 
 ### 3.1 D2 输入
 
-当前可执行实现的核心输入是二维 `Detection`：
+兼容基线的核心输入仍是二维 `Detection`：
 
 - `detection_id`：单帧观测 ID。
 - `timestamp`：量测时间，适配 D1 时来自 `measurement_timestamp`。
@@ -79,15 +83,18 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 - `feature`：可选外观、类别、声纹或其他 embedding，当前用简单欧氏差异参与代价。
 - `metadata`：保留来源、frame、timestamp、truth_position、`global_track_id` 等调试和回放信息。
 
-D2 假设输入已经被调用方整理到可处理的帧序列。OOSM、异步传感器回溯和三维传感器原始融合主要属于 D1/main 集成责任；D2 当前只保留投影和 metadata 透传能力。
+六维路径输入为不含 truth 字段的 `Detection3D`：3D NED 位置、3x3 位置协方差、双时间戳、置信度，以及可选速度/速度协方差和 namespaced source key。元数据递归拒绝 truth/actor/object/entity、上游 canonical ID；D1 fused-track adapter 使用 state-valid timestamp 作为关联 epoch，并保留原始 source measurement/arrival timestamp。原始 radar 球坐标和 visual pixel 必须先由 D1 投影或融合。
+
+D2 假设输入已经被调用方整理到共同量测时刻。OOSM、异步量测回溯和原始多传感器融合仍属于 D1/main 集成责任；六维路径遇到乱序 scan 会 fail closed。
 
 ### 3.2 D2 输出
 
-D2 输出包括 `GlobalTrack`、`AssociationResult`、`AssociationLogEntry` 和 metrics summary：
+D2 输出包括兼容 `GlobalTrack`、六维 `GlobalTrack3D`、`AssociationResult`、`AssociationLogEntry` 和 metrics summary：
 
 - `GlobalTrack.global_track_id`：D2 维护的稳定身份键。
 - `GlobalTrack.state`：当前实现固定为 `[x, y, vx, vy]`。
 - `GlobalTrack.covariance`：4x4 状态协方差。
+- `GlobalTrack3D.state/covariance`：固定 `[pN,pE,pD,vN,vE,vD]` 与 6x6；只由 D2 tracker 创建 `global_track_id`。
 - `GlobalTrack.lifecycle_state`：`tentative/confirmed/engageable/lost/dropped`。
 - `GlobalTrack.track_quality` / `association_risk` / `quality_metadata`：D2-owned track-level 质量、关联风险和解释字段。
 - `AssociationResult.matched_pairs`：`(track_id, detection_id, cost, probability)`。
@@ -231,9 +238,9 @@ IMM、EKF、UKF 目前是研究计划项，不是已落地代码。D2 的 `Track
 - 雷达球坐标、相机投影或三维 NED 量测雅可比/无迹变换定义。
 - 与 GNN/JPDA/MHT 共同评估的机动场景。
 
-### 6.3 其他未实现项
+### 6.3 其他未实现或待集成项
 
-- 原生 3D NED tracker：当前 `Detection` 固定二维，`GlobalTrack` 固定四维状态。
+- 原生 3D NED 的 D2-owned 稀疏基线已实现；尚未完成 main-owned scalable episode bus 自动编排、版本化跨模块输出、真实多 seed 标定和最坏情况大连通分量预算。
 - JPDA/MHT 自动升级：当前由仿真 CLI 或调用方显式选择 associator，`Tracker` 内没有按风险阈值自动切换。
 - 真实 AirSim runtime 采集链路：D2 已能消费离线 JSON/JSONL AirSim-like replay 并输出 association report/log，但不接 AirSim SDK、不采集 ComputerVision 图像/metadata，也不负责 main/D6 episode JSONL 生产。
 - OOSM 回溯和平滑：当前假设输入帧已按时间整理。
@@ -283,7 +290,7 @@ GNN 是硬关联，交叉帧的最优/次优代价 margin 可能很小。一旦�
 
 ### 8.4 N 规模性能风险
 
-虽然 D2 不写死 2v2/5v5，算法复杂度仍随输入规模增长。GNN 的 Hungarian 求解约为 `O(max(N,M)^3)`；JPDA 联合假设枚举会组合爆炸；MHT 分支扩展随时间和候选数增长。更大 N 需要调用方设置预算、截断、分簇或只在离线对照中启用高阶算法。
+虽然 D2 不写死 2v2/5v5，算法复杂度仍随输入规模增长。旧二维 GNN 分配全矩阵，Hungarian 求解约为 `O(max(N,M)^3)`；新六维路径通常按 KD-tree 候选图分量求解，但极端全重叠目标仍可能形成单个稠密分量。JPDA 联合假设枚举和 MHT 分支扩展仍可能组合爆炸，更大 N 的高歧义路径需要预算、截断和标定。
 
 ## 9. 下一步
 
@@ -301,7 +308,7 @@ P1 闭合证据区分两层：在线层只使用 innovation、候选重叠、cos
 
 ### P2
 
-- 决定 D2 是否升级原生 3D NED tracker；若升级，先定义 `[px, py, pz, vx, vy, vz]`、6x6 covariance、三维门控和 D1/D5 投影合同。
+- 将已实现的六维稀疏 D2 路径接入 main-owned `scalable_3d_simulation` bus，冻结输出 schema、模型版本、延迟预算和 D1/D3/D5 消费合同；接入前旧默认路径不变。
 - **已完成 benchmark 合同**：v2 固定 frozen replay digest，默认 GNN baseline 与可选 JPDA/MHT research adapter 走同一 Tracker/offline evaluator；Stone Soup/FilterPy object adapter 按依赖可用性执行。五类结果统一输出 IDSW、continuity、latency 和 `unavailable_reason`，并回归在线输入无 truth。
 - **未完成的 P2 增强**：Stone Soup 完整 JPDA/MHT、FilterPy EKF/UKF/IMM、optional 端到端 tracker 及其 IDSW/continuity 对照；模块内轻量 JPDA/MHT 仍只是研究近似，不能当作这些完整算法已实现。
 - 设计 JPDA/MHT 自动升级策略，但必须包含切换迟滞、D4/D6 阈值认可和回放证据，避免算法抖动。
@@ -475,7 +482,8 @@ MHT、Stone Soup/FilterPy 仅保留为 P2 optional/offline benchmark，不进入
 - **P1 跨节点开放**：继续验证高歧义 canonical registration、owner/epoch failover，
   并由 D1/D6 完成 exact/CI posterior 与 NEES/ANEES 闭环。
 - **P2 optional**：完整 JPDA/MHT、Stone Soup 端到端 tracker、FilterPy EKF/UKF/IMM
-  和原生 3D 只做隔离对照；没有同预算、同 replay 的明确收益不得进入主线。
+  和六维路径的高机动/非线性升级只做隔离对照；没有同预算、同 replay 的明确收益不得
+  替换规则 GNN/Hungarian。
 
 ### 14.4 权威回归状态
 
@@ -566,3 +574,44 @@ MHT、Stone Soup/FilterPy 仅保留为 P2 optional/offline benchmark，不进入
   D2 replay 审计”的 D2-owned 缺口。真实 AirSim 至少 10 个显式扰动 case、
   false-suppression/recall 与独立 offline IDSW/continuity 仍为 P1；main/D1 仍负责提供
   namespaced `source_track_ids` 和可信 frame-level rejection count。
+
+## 17. 2026-07-20 六维稀疏 200 目标路径
+
+### 17.1 已实现
+
+1. `Detection3D` 在线 DTO 不含 truth 字段，保留 NED 位置、3x3 covariance、
+   measurement/arrival timestamp、置信度及可选速度提示；递归拒绝 evaluator、actor、
+   object、entity 和上游 canonical identity。
+2. `GlobalTrack3D` 与 `Scalable3DTracker` 固定状态顺序
+   `[pN,pE,pD,vN,vE,vD]`，执行三维 CV 预测与位置 Joseph update。新 `GT3D-*` 只由
+   D2 tracker 分配，D1 对象的 `global_track_id` 在 adapter 中被忽略。
+3. `Sparse3DGNNHungarianAssociator` 使用 KD-tree 保守查询半径、三维位置创新马氏门控、
+   可选速度一致性代价及二部候选图连通分量 Hungarian。GNN 的含义固定为 Global
+   Nearest Neighbor；`graph_neural_network_used=false`。
+4. `AssociationResult` 不保存全密集 cost/distance matrix，显式输出候选边、潜在全对、
+   空间裁剪、分量矩阵元素、阶段耗时和风险摘要。track history 与 frame log 均为有界。
+5. 在线 summary 保留 `id_switch_count`、continuity 字段但值为 `None + unavailable`；
+   `Sparse3DOfflineEvaluator` 仅在在线关联完成后消费独立 truth label，计算可用的
+   IDSW、identity/coverage continuity、duplicate 和 false-alarm assignment。
+
+### 17.2 验证证据
+
+- 日期：2026-07-20；专项测试：13 个，覆盖规模 5/20/50/100/200、三维 D 轴门控、
+  crossing、两帧连续漏检、15 个虚警、truth fail-closed、upstream ID 非权威和有界历史。
+- 验收阈值：全部规模匹配数等于输入目标数；无固定 2/5 shape；在线 truth 字段使用为
+  0；交叉/漏检/虚警离线 IDSW 为 0；全量测试零失败。结果：`136 passed, 1 warning`；
+  warning 仅为环境 Matplotlib `Axes3D`。
+- 200 目标性能采样：确定性三维规则网格，单进程，3 个独立 trial，每个 trial 预热
+  1 帧后测量 30 帧。90 个测量帧的候选边均为 `200/40,000`，component matrix pair
+  `200`，peak component pair `1`，裁剪率 `99.5%`。聚合关联 mean/P50/P95/max 为
+  `6.683/6.306/7.056/22.471 ms`；tracker step 为
+  `25.491/25.016/26.797/41.613 ms`。
+
+### 17.3 剩余缺口
+
+- 本次性能数据只有一个确定性布局和 3 x 30 个连续帧，不是多 seed 置信区间、实时 SLA、
+  真实 AirSim 或 200v200 全链路证据。
+- main 尚未把 D1 六维输出、D2 六维结果和 D3/D5/D6 合同接入
+  `scalable_3d_simulation` episode bus；该跨模块工作不在 D2 owned paths。
+- 极端全重叠或过度膨胀协方差可形成大连通分量，仍需候选预算/分区策略与召回率联合
+  标定；六维 JPDA/MHT、OOSM、EKF/UKF/IMM 和 learned association 均未实现。
