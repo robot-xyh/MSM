@@ -26,6 +26,10 @@ from research_modules.d2_data_association.d2_data_association import (
 from research_modules.d3_assignment_planner.src.d3_assignment_planner import (
     AssignmentPlanner,
     PlannerConfig,
+    RegionalAuthorityGrant,
+    RegionalAuthorityInput,
+    RegionalCoalitionCommitEvidence,
+    RegionalPlanAuthorityError,
     ResourceState,
     TargetDemand,
     TargetTrack,
@@ -137,7 +141,9 @@ class IntegratedScalableModuleStack:
         self._next_association_s = 0.0
         self._next_assignment_s = 0.0
         self._last_center_health = C2Health.NORMAL
+        self._last_secondary_failed = False
         self._fault_generation_changed = False
+        self._regional_plan_rejection_reason: str | None = None
         self._stage_wall_time_s: dict[str, float] = {}
         self._stage_call_count: dict[str, int] = {}
 
@@ -178,7 +184,9 @@ class IntegratedScalableModuleStack:
         self._next_association_s = 0.0
         self._next_assignment_s = 0.0
         self._last_center_health = C2Health.NORMAL
+        self._last_secondary_failed = False
         self._fault_generation_changed = False
+        self._regional_plan_rejection_reason = None
         self._stage_wall_time_s.clear()
         self._stage_call_count.clear()
 
@@ -253,8 +261,13 @@ class IntegratedScalableModuleStack:
             publications.append(self._d5_publication(now))
 
         center_health, secondary_failed = self._fault_state(now)
-        self._fault_generation_changed = center_health != self._last_center_health
+        self._fault_generation_changed = bool(
+            self._fault_generation_changed
+            or center_health != self._last_center_health
+            or secondary_failed != self._last_secondary_failed
+        )
         self._last_center_health = center_health
+        self._last_secondary_failed = secondary_failed
         if (
             self.latest_d2_tracks
             and now + _EPS >= self._next_assignment_s
@@ -267,6 +280,7 @@ class IntegratedScalableModuleStack:
             )
             publications.append(self._d3_publication(now))
             publications.append(self._d4_publication(now))
+            self._fault_generation_changed = False
             self._next_assignment_s = _advance_schedule(
                 self._next_assignment_s,
                 config.assignment_period_s,
@@ -338,11 +352,39 @@ class IntegratedScalableModuleStack:
                 self.latest_bindings = ()
                 self.latest_d4_decision = None
                 return
-            if selected_secondary is None:
-                # Region-specific or distributed D3 plans are not represented by
-                # the current single-owner AssignmentPlan contract.
+            regional_authority: RegionalAuthorityInput | None = None
+            regional_authority_attempted = self._has_fallback_authority_decision()
+            if regional_authority_attempted:
+                try:
+                    regional_authority = self._regional_authority_from_d4(
+                        previous_plan,
+                        target_ids=current_target_ids,
+                        now=now,
+                    )
+                except RegionalPlanAuthorityError as error:
+                    self._regional_plan_rejection_reason = error.reason
+
+            if regional_authority is not None:
+                started = perf_counter()
+                try:
+                    self.latest_plan = self.d3.plan_regional_authority(
+                        tracks,
+                        resources,
+                        timestamp=now,
+                        previous_plan=previous_plan,
+                        authority=regional_authority,
+                        expected_previous_version=previous_plan.version,
+                    )
+                    self._regional_plan_rejection_reason = None
+                except RegionalPlanAuthorityError as error:
+                    self.latest_plan = previous_plan
+                    self._regional_plan_rejection_reason = error.reason
+                self._record_timing("d3_regional_assignment", perf_counter() - started)
+            elif regional_authority_attempted:
+                # A malformed or incomplete regional authority must not fall
+                # through to a different owner path.
                 self.latest_plan = previous_plan
-            else:
+            elif selected_secondary is not None:
                 started = perf_counter()
                 candidate = self.d3.plan(
                     tracks,
@@ -390,6 +432,22 @@ class IntegratedScalableModuleStack:
                     )
                 self.latest_plan = self.d3.publish_plan(self.latest_plan)
                 self._record_timing("d3_assignment", perf_counter() - started)
+                self._regional_plan_rejection_reason = None
+            elif self._fault_generation_changed:
+                # Multi-owner fallback requires D4 to observe a strictly newer
+                # D3 generation before authority can change.  This center-owned
+                # fence plan is immediately gated by the D4 decision below.
+                started = perf_counter()
+                self.latest_plan = self.d3.advance_authority_generation(
+                    previous_plan,
+                    timestamp=now,
+                    expected_previous_version=previous_plan.version,
+                    fence_reason="fault_generation_before_regional_adjudication",
+                )
+                self._record_timing("d3_authority_fence", perf_counter() - started)
+                self._regional_plan_rejection_reason = None
+            else:
+                self.latest_plan = previous_plan
         else:
             started = perf_counter()
             self.latest_plan = self.d3.plan(
@@ -406,6 +464,7 @@ class IntegratedScalableModuleStack:
                 ),
             )
             self._record_timing("d3_assignment", perf_counter() - started)
+            self._regional_plan_rejection_reason = None
         self.latest_bindings = guidance_bindings_from_assignment_plan(
             self.latest_plan,
             resource_vehicle_map={
@@ -458,6 +517,208 @@ class IntegratedScalableModuleStack:
                 return None
             selected_ids.add(decision.selected_secondary_id)
         return next(iter(selected_ids)) if len(selected_ids) == 1 else None
+
+    def _has_fallback_authority_decision(self) -> bool:
+        if self.latest_d4_decision is None:
+            return False
+        fallback_layers = {
+            RegionalAuthorityLayer.SECONDARY,
+            RegionalAuthorityLayer.DISTRIBUTED,
+        }
+        return any(
+            decision.task_ids and decision.selected_layer in fallback_layers
+            for decision in self.latest_d4_decision.region_decisions
+        )
+
+    def _regional_authority_from_d4(
+        self,
+        previous_plan: Any,
+        *,
+        target_ids: set[str],
+        now: float,
+    ) -> RegionalAuthorityInput:
+        """Translate one complete D4 frame into D3-owned authority DTOs.
+
+        The adapter never invents an owner, membership, epoch, lease or global
+        track identity.  Missing coverage and inconsistent source generations
+        are rejected before D3 is called.
+        """
+
+        frame = self.latest_d4_decision
+        if frame is None:
+            raise RegionalPlanAuthorityError("regional_d4_decision_missing")
+        if float(frame.timestamp_s) > float(now) + _EPS:
+            raise RegionalPlanAuthorityError("regional_d4_decision_from_future")
+
+        assignments_by_target = previous_plan.assignments_by_target()
+        coalition_by_target = {
+            coalition.target_id: coalition for coalition in previous_plan.coalitions
+        }
+        task_to_target = {
+            f"task:{target_id}": target_id for target_id in sorted(target_ids)
+        }
+        covered_targets: set[str] = set()
+        grants: list[RegionalAuthorityGrant] = []
+        fallback_layers = {
+            RegionalAuthorityLayer.SECONDARY,
+            RegionalAuthorityLayer.DISTRIBUTED,
+        }
+
+        for decision in frame.region_decisions:
+            regional_task_ids = tuple(
+                task_id for task_id in decision.task_ids if task_id in task_to_target
+            )
+            if not regional_task_ids:
+                continue
+            if len(regional_task_ids) != len(decision.task_ids):
+                raise RegionalPlanAuthorityError("regional_d4_unknown_task_id")
+            if decision.selected_layer not in fallback_layers:
+                raise RegionalPlanAuthorityError("regional_d4_target_not_fallback_owned")
+            ownership = decision.ownership
+            if (
+                not decision.execution_allowed
+                or decision.fail_closed
+                or not ownership.active
+            ):
+                raise RegionalPlanAuthorityError("regional_d4_execution_not_allowed")
+            if (
+                ownership.owner_layer is not decision.selected_layer
+                or not ownership.owner_id
+                or not ownership.owner_role
+            ):
+                raise RegionalPlanAuthorityError("regional_d4_owner_contract_mismatch")
+            if (
+                ownership.plan_id != previous_plan.plan_id
+                or ownership.plan_version != previous_plan.version
+            ):
+                raise RegionalPlanAuthorityError("regional_d4_stale_source_plan")
+            if set(ownership.task_ids) != set(decision.task_ids):
+                raise RegionalPlanAuthorityError("regional_d4_owner_task_set_mismatch")
+            if float(now) >= float(ownership.lease_expires_at_s):
+                raise RegionalPlanAuthorityError("regional_d4_authority_lease_expired")
+
+            commit_by_target = {
+                commit.global_track_id: commit
+                for commit in decision.coalition_commits
+            }
+            grant_targets: list[str] = []
+            assigned_by_target: dict[str, tuple[str, ...]] = {}
+            commit_evidence: list[RegionalCoalitionCommitEvidence] = []
+            grant_lease = float(ownership.lease_expires_at_s)
+
+            for task_id in regional_task_ids:
+                target_id = task_to_target[task_id]
+                if target_id in covered_targets:
+                    raise RegionalPlanAuthorityError(
+                        "regional_d4_duplicate_target_authority"
+                    )
+                previous_assignments = assignments_by_target.get(target_id, ())
+                if not previous_assignments:
+                    raise RegionalPlanAuthorityError(
+                        "regional_d4_target_assignment_missing"
+                    )
+                assigned_resource_ids = tuple(
+                    decision.fallback_assignments.get(task_id, ())
+                )
+                required_count = int(
+                    previous_assignments[0].required_resource_count
+                )
+                if len(assigned_resource_ids) != required_count:
+                    raise RegionalPlanAuthorityError(
+                        "regional_d4_required_member_count_unsatisfied"
+                    )
+                commit = commit_by_target.get(target_id)
+                if commit is None:
+                    raise RegionalPlanAuthorityError(
+                        "regional_d4_commit_evidence_missing"
+                    )
+                if bool(commit.commit_required) != (required_count > 1):
+                    raise RegionalPlanAuthorityError(
+                        "regional_d4_commit_requirement_mismatch"
+                    )
+                if set(commit.required_member_ids) != set(assigned_resource_ids):
+                    raise RegionalPlanAuthorityError(
+                        "regional_d4_commit_membership_mismatch"
+                    )
+
+                coalition_id: str | None = None
+                coalition_version: int | None = None
+                if required_count > 1:
+                    coalition = coalition_by_target.get(target_id)
+                    previous_member_ids = {
+                        assignment.resource_id for assignment in previous_assignments
+                    }
+                    if coalition is None or previous_member_ids != set(
+                        assigned_resource_ids
+                    ):
+                        raise RegionalPlanAuthorityError(
+                            "regional_coalition_version_transition_unadjudicated"
+                        )
+                    coalition_id = coalition.coalition_id
+                    coalition_version = coalition.version
+
+                evidence_lease = min(
+                    float(commit.lease_expires_at_s),
+                    float(ownership.lease_expires_at_s),
+                )
+                grant_lease = min(grant_lease, evidence_lease)
+                commit_evidence.append(
+                    RegionalCoalitionCommitEvidence(
+                        target_id=target_id,
+                        coordinator_id=commit.coordinator_id,
+                        epoch=int(ownership.epoch),
+                        lease_expires_at_s=evidence_lease,
+                        required_member_ids=tuple(commit.required_member_ids),
+                        acked_member_ids=tuple(commit.acked_member_ids),
+                        commit_required=bool(commit.commit_required),
+                        state=commit.state,
+                        atomic_committed=bool(commit.atomic_committed),
+                        execution_authorized=bool(commit.execution_authorized),
+                        coalition_id=coalition_id,
+                        coalition_version=coalition_version,
+                        metadata={
+                            "d4_reason": commit.reason,
+                            "formation_algorithm": commit.formation_algorithm,
+                            "rejected_ack_reasons": tuple(
+                                commit.rejected_ack_reasons
+                            ),
+                        },
+                    )
+                )
+                grant_targets.append(target_id)
+                assigned_by_target[target_id] = assigned_resource_ids
+                covered_targets.add(target_id)
+
+            grants.append(
+                RegionalAuthorityGrant(
+                    region_id=decision.region_id,
+                    owner_layer=decision.selected_layer.value,
+                    owner_node_id=str(ownership.owner_id),
+                    owner_role=str(ownership.owner_role),
+                    epoch=int(ownership.epoch),
+                    source_plan_id=previous_plan.plan_id,
+                    source_plan_version=previous_plan.version,
+                    lease_expires_at_s=grant_lease,
+                    target_ids=tuple(grant_targets),
+                    assigned_resource_ids_by_target=assigned_by_target,
+                    execution_allowed=True,
+                    fail_closed=False,
+                    coalition_commits=tuple(commit_evidence),
+                    decision_reason=decision.reason,
+                    metadata={
+                        "d4_schema": frame.schema,
+                        "d4_action": decision.action.value,
+                        "d4_adjudicated_at_s": float(frame.timestamp_s),
+                    },
+                )
+            )
+
+        if covered_targets != target_ids:
+            raise RegionalPlanAuthorityError("regional_d4_target_set_incomplete")
+        return RegionalAuthorityInput(
+            adjudicated_at_s=float(frame.timestamp_s),
+            grants=tuple(grants),
+        )
 
     def _d3_tracks(self) -> tuple[TargetTrack, ...]:
         config = self._require_ready()
@@ -563,6 +824,11 @@ class IntegratedScalableModuleStack:
             config.assignment_period_s * self.stack_config.assignment_lease_multiplier,
             config.region_policy_period_s,
         )
+        snapshot_epoch = self._plan_authority_epoch(plan)
+        if self._fault_generation_changed:
+            # A new failure generation must advance the fencing epoch before D4
+            # can move authority to a different layer or owner.
+            snapshot_epoch = max(snapshot_epoch, int(plan.version))
         track_by_id = {
             track.global_track_id: track for track in self.latest_d2_tracks
         }
@@ -608,7 +874,7 @@ class IntegratedScalableModuleStack:
                     ),
                     d3_plan_id=plan.plan_id,
                     d3_plan_version=plan.version,
-                    d3_epoch=plan.version,
+                    d3_epoch=snapshot_epoch,
                     d3_lease_expires_at_s=lease_expires_at,
                     required_member_count=required_count,
                     required_capabilities=("intercept",),
@@ -627,7 +893,8 @@ class IntegratedScalableModuleStack:
                     d3_is_current=True,
                     d3_resource_feasible=all(
                         item.feasibility_state == "feasible" for item in assignments
-                    ),
+                    )
+                    and self._regional_plan_rejection_reason is None,
                     d5_consistency=consistency,
                     d5_support_member_ids=support_ids,
                 )
@@ -640,7 +907,7 @@ class IntegratedScalableModuleStack:
             step_input.recon,
             scenario.region_ids,
             now=now,
-            epoch=plan.version,
+            epoch=snapshot_epoch,
             lease_expires_at=lease_expires_at,
         )
         acks = self._d4_acks(tasks, step_input.interceptors, now, lease_expires_at)
@@ -651,7 +918,7 @@ class IntegratedScalableModuleStack:
             center_node_id="d3_central",
             plan_id=plan.plan_id,
             plan_version=plan.version,
-            epoch=plan.version,
+            epoch=snapshot_epoch,
             lease_expires_at_s=lease_expires_at,
             regions=regions,
             tasks=tuple(tasks),
@@ -659,6 +926,15 @@ class IntegratedScalableModuleStack:
             fallback_members=members,
             coalition_acks=acks,
         )
+
+    @staticmethod
+    def _plan_authority_epoch(plan: Any) -> int:
+        metadata = dict(plan.metadata)
+        for key in ("regional_max_epoch", "secondary_leader_epoch"):
+            value = metadata.get(key)
+            if value is not None:
+                return int(value)
+        return int(plan.version)
 
     def _d4_members(
         self,
@@ -879,84 +1155,100 @@ class IntegratedScalableModuleStack:
                 reason=("region_decision_missing" if decision is None else decision.reason),
                 requires_human_review=True,
             )
-        if decision.selected_layer is RegionalAuthorityLayer.SECONDARY:
-            plan_owner = str(
-                self.latest_plan.metadata.get("active_plan_owner", "center")
+        assignment = next(
+            (
+                item
+                for item in self.latest_plan.assignments
+                if item.target_id == target_id
+            ),
+            None,
+        )
+        if assignment is None:
+            return D4GuidancePermission(
+                action="hold_for_review",
+                reason="d3_target_assignment_missing",
+                requires_human_review=True,
             )
-            owner_node_id = str(
-                self.latest_plan.metadata.get("owner_node_id", "")
+        task_commit = next(
+            (
+                commit
+                for commit in decision.coalition_commits
+                if commit.global_track_id == target_id
+            ),
+            None,
+        )
+        required_count = int(assignment.required_resource_count)
+        commit_required = required_count > 1
+        if commit_required and (
+            task_commit is None
+            or not task_commit.commit_required
+            or not task_commit.execution_authorized
+        ):
+            return D4GuidancePermission(
+                action="hold_for_review",
+                mode=decision.selected_layer.value,
+                reason="d4_atomic_coalition_commit_missing",
+                requires_human_review=True,
             )
-            if (
-                plan_owner != "secondary"
-                or not owner_node_id
-                or owner_node_id != decision.ownership.owner_id
-            ):
+
+        if decision.selected_layer in {
+            RegionalAuthorityLayer.SECONDARY,
+            RegionalAuthorityLayer.DISTRIBUTED,
+        }:
+            mismatch = self._fallback_plan_mismatch_reason(
+                assignment,
+                decision,
+                region_id=str(region_id),
+            )
+            if mismatch:
                 return D4GuidancePermission(
                     action="hold_for_review",
-                    mode="secondary",
-                    reason="secondary_owner_plan_mismatch",
+                    mode=decision.selected_layer.value,
+                    reason=mismatch,
                     requires_human_review=True,
                 )
-            task_commit = next(
-                (
-                    commit
-                    for commit in decision.coalition_commits
-                    if commit.global_track_id == target_id
-                ),
-                None,
+            commit_fields = self._guidance_commit_fields(
+                target_id,
+                task_commit,
+                commit_required=commit_required,
+                assignment=assignment,
             )
             return D4GuidancePermission(
                 action="continue",
-                mode="secondary",
+                mode=decision.selected_layer.value,
                 reason=decision.reason,
-                target_node_id=owner_node_id,
+                target_node_id=str(decision.ownership.owner_id),
                 terminal_consistent=True,
                 new_plan_id=self.latest_plan.plan_id,
                 new_plan_version=self.latest_plan.version,
-                secondary_capability_class="mobile_high_recon",
-                secondary_readiness_class="takeover_ready",
+                secondary_capability_class=(
+                    "mobile_high_recon"
+                    if decision.selected_layer is RegionalAuthorityLayer.SECONDARY
+                    else None
+                ),
+                secondary_readiness_class=(
+                    "takeover_ready"
+                    if decision.selected_layer is RegionalAuthorityLayer.SECONDARY
+                    else None
+                ),
                 visual_png_allowed=True,
-                coalition_id=_coalition_id_for(self.latest_plan, target_id),
-                coalition_version=_coalition_version_for(self.latest_plan, target_id),
                 center_available=False,
-                atomic_coalition_formed=(
-                    None if task_commit is None else task_commit.atomic_committed
-                ),
-                coalition_commit_state=(
-                    None if task_commit is None else task_commit.state
-                ),
-                coalition_epoch=self.latest_plan.version,
-                coalition_lease_expires_at_s=(
-                    None if task_commit is None else task_commit.lease_expires_at_s
-                ),
-                coalition_required_member_ids=(
-                    () if task_commit is None else task_commit.required_member_ids
-                ),
-                coalition_acked_member_ids=(
-                    () if task_commit is None else task_commit.acked_member_ids
-                ),
-                commit_plan_id=(
-                    None if task_commit is None else self.latest_plan.plan_id
-                ),
-                commit_plan_version=(
-                    None if task_commit is None else self.latest_plan.version
-                ),
-                commit_coalition_id=(
-                    None
-                    if task_commit is None
-                    else _coalition_id_for(self.latest_plan, target_id)
-                ),
-                commit_coalition_version=(
-                    None
-                    if task_commit is None
-                    else _coalition_version_for(self.latest_plan, target_id)
-                ),
+                metadata={
+                    "required_resource_count": required_count,
+                    "commit_required": commit_required,
+                    "regional_region_id": region_id,
+                    "regional_owner_layer": decision.selected_layer.value,
+                    "regional_owner_node_id": decision.ownership.owner_id,
+                    "regional_epoch": decision.ownership.epoch,
+                },
+                **commit_fields,
             )
+
         if decision.selected_layer is not RegionalAuthorityLayer.CENTER:
             return D4GuidancePermission(
                 action="hold_for_review",
                 mode=decision.selected_layer.value,
-                reason="fallback_plan_not_yet_reissued_by_d3",
+                reason="d4_region_not_executable",
                 requires_human_review=True,
             )
         action = decision.action.value
@@ -969,13 +1261,11 @@ class IntegratedScalableModuleStack:
                 reason=decision.reason,
                 requires_human_review=True,
             )
-        task_commit = next(
-            (
-                commit
-                for commit in decision.coalition_commits
-                if commit.global_track_id == target_id
-            ),
-            None,
+        commit_fields = self._guidance_commit_fields(
+            target_id,
+            task_commit,
+            commit_required=commit_required,
+            assignment=assignment,
         )
         return D4GuidancePermission(
             action=action,
@@ -984,27 +1274,119 @@ class IntegratedScalableModuleStack:
             new_plan_id=self.latest_plan.plan_id,
             new_plan_version=self.latest_plan.version,
             visual_png_allowed=True,
-            coalition_id=(None if task_commit is None else _coalition_id_for(self.latest_plan, target_id)),
-            coalition_version=(None if task_commit is None else _coalition_version_for(self.latest_plan, target_id)),
-            atomic_coalition_formed=(
-                None if task_commit is None else task_commit.atomic_committed
-            ),
-            coalition_commit_state=(None if task_commit is None else task_commit.state),
-            coalition_epoch=(None if task_commit is None else self.latest_plan.version),
-            coalition_lease_expires_at_s=(
-                None if task_commit is None else task_commit.lease_expires_at_s
-            ),
-            coalition_required_member_ids=(
-                () if task_commit is None else task_commit.required_member_ids
-            ),
-            coalition_acked_member_ids=(
-                () if task_commit is None else task_commit.acked_member_ids
-            ),
-            commit_plan_id=(None if task_commit is None else self.latest_plan.plan_id),
-            commit_plan_version=(None if task_commit is None else self.latest_plan.version),
-            commit_coalition_id=(None if task_commit is None else _coalition_id_for(self.latest_plan, target_id)),
-            commit_coalition_version=(None if task_commit is None else _coalition_version_for(self.latest_plan, target_id)),
+            center_available=True,
+            metadata={
+                "required_resource_count": required_count,
+                "commit_required": commit_required,
+            },
+            **commit_fields,
         )
+
+    def _fallback_plan_mismatch_reason(
+        self,
+        assignment: Any,
+        decision: Any,
+        *,
+        region_id: str,
+    ) -> str:
+        plan = self.latest_plan
+        ownership = decision.ownership
+        if (
+            ownership.plan_id != plan.plan_id
+            or ownership.plan_version != plan.version
+        ):
+            return "regional_d4_plan_version_mismatch"
+        plan_owner = str(plan.metadata.get("active_plan_owner", "center"))
+        assignment_metadata = dict(assignment.metadata)
+        if plan_owner == "regional":
+            if (
+                str(assignment_metadata.get("regional_owner_layer", ""))
+                != decision.selected_layer.value
+            ):
+                return "regional_owner_layer_mismatch"
+            if str(assignment_metadata.get("regional_region_id", "")) != region_id:
+                return "regional_owner_region_mismatch"
+            owner_node_id = str(assignment_metadata.get("owner_node_id", ""))
+            if owner_node_id != str(ownership.owner_id):
+                return "regional_owner_node_mismatch"
+            if int(assignment_metadata.get("regional_epoch", -1)) != int(
+                ownership.epoch
+            ):
+                return "regional_owner_epoch_mismatch"
+            lease = float(
+                assignment_metadata.get("regional_lease_expires_at_s", -math.inf)
+            )
+        elif (
+            plan_owner == "secondary"
+            and decision.selected_layer is RegionalAuthorityLayer.SECONDARY
+        ):
+            owner_node_id = str(plan.metadata.get("owner_node_id", ""))
+            if owner_node_id != str(ownership.owner_id):
+                return "secondary_owner_plan_mismatch"
+            if int(plan.metadata.get("secondary_leader_epoch", -1)) != int(
+                ownership.epoch
+            ):
+                return "secondary_owner_epoch_mismatch"
+            lease = float(
+                plan.metadata.get("secondary_lease_expires_at_s", -math.inf)
+            )
+        else:
+            return "fallback_plan_not_yet_reissued_by_d3"
+        if float(self.latest_d4_decision.timestamp_s) >= lease:
+            return "regional_plan_lease_expired"
+        if float(self.latest_d4_decision.timestamp_s) >= float(
+            ownership.lease_expires_at_s
+        ):
+            return "regional_d4_lease_expired"
+        return ""
+
+    def _guidance_commit_fields(
+        self,
+        target_id: str,
+        task_commit: Any | None,
+        *,
+        commit_required: bool,
+        assignment: Any,
+    ) -> dict[str, Any]:
+        coalition_id = _coalition_id_for(self.latest_plan, target_id)
+        coalition_version = _coalition_version_for(self.latest_plan, target_id)
+        coalition_epoch = _coalition_epoch_for(self.latest_plan, target_id)
+        if task_commit is None:
+            return {
+                "coalition_id": coalition_id,
+                "coalition_version": coalition_version,
+                "atomic_coalition_formed": None,
+                "coalition_commit_state": None,
+                "coalition_epoch": coalition_epoch,
+            }
+        lease_values = [float(task_commit.lease_expires_at_s)]
+        assignment_lease = assignment.metadata.get("regional_lease_expires_at_s")
+        if assignment_lease is not None:
+            lease_values.append(float(assignment_lease))
+        secondary_lease = self.latest_plan.metadata.get(
+            "secondary_lease_expires_at_s"
+        )
+        if secondary_lease is not None:
+            lease_values.append(float(secondary_lease))
+        effective_lease = min(lease_values)
+        return {
+            "coalition_id": coalition_id,
+            "coalition_version": coalition_version,
+            "atomic_coalition_formed": (
+                bool(task_commit.atomic_committed) if commit_required else None
+            ),
+            "coalition_commit_state": task_commit.state,
+            "coalition_epoch": coalition_epoch,
+            "coalition_lease_expires_at_s": effective_lease,
+            "coalition_required_member_ids": tuple(
+                task_commit.required_member_ids
+            ),
+            "coalition_acked_member_ids": tuple(task_commit.acked_member_ids),
+            "commit_plan_id": self.latest_plan.plan_id,
+            "commit_plan_version": self.latest_plan.version,
+            "commit_coalition_id": coalition_id,
+            "commit_coalition_version": coalition_version,
+        }
 
     def _terminal_pairs_from_d5(
         self,
@@ -1183,6 +1565,17 @@ class IntegratedScalableModuleStack:
                         "coalition_id": item.coalition_id,
                         "coalition_version": item.coalition_version,
                         "member_role": item.member_role,
+                        "owner_node_id": item.metadata.get("owner_node_id"),
+                        "regional_owner_layer": item.metadata.get(
+                            "regional_owner_layer"
+                        ),
+                        "regional_region_id": item.metadata.get(
+                            "regional_region_id"
+                        ),
+                        "regional_epoch": item.metadata.get("regional_epoch"),
+                        "regional_commit_mode": item.metadata.get(
+                            "regional_commit_mode"
+                        ),
                     }
                     for item in plan.assignments
                 ],
@@ -1217,6 +1610,7 @@ class IntegratedScalableModuleStack:
                 "probability_source": association.probability_source,
                 "scoring_status": association.scoring_status,
                 "fallback_reason": association.fallback_reason,
+                "diagnostics": dict(association.diagnostics),
                 "bindings": [
                     {
                         "cluster_key": item.cluster_key,
@@ -1286,6 +1680,9 @@ class IntegratedScalableModuleStack:
                 0
                 if self.latest_guidance_batch is None
                 else len(self.latest_guidance_batch.pair_commands)
+            ),
+            "regional_plan_rejection_reason": (
+                self._regional_plan_rejection_reason
             ),
             "online_truth_use_count": 0,
             "stage_timings": {
@@ -1405,3 +1802,13 @@ def _coalition_version_for(plan: Any, target_id: str) -> int | None:
         None,
     )
     return None if coalition is None else coalition.version
+
+
+def _coalition_epoch_for(plan: Any, target_id: str) -> int | None:
+    coalition = next(
+        (item for item in plan.coalitions if item.target_id == target_id),
+        None,
+    )
+    if coalition is None:
+        return None
+    return int(coalition.metadata.get("coalition_epoch", coalition.version))
