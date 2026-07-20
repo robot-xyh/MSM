@@ -177,6 +177,30 @@ def test_action_mask_covers_reachability_capacity_friend_conflict_and_version() 
     assert stale.action_count == 0
     assert dict(stale.reason_counts)["version_constraint"] == 1
 
+    inconsistent = replace(
+        result,
+        candidate_mask=np.ones(result.matrix.shape, dtype=bool),
+    )
+    fail_closed = build_learning_action_mask(
+        inconsistent,
+        expected_previous_version=2,
+        current_plan_version=2,
+    )
+    assert fail_closed.mask.tolist() == [[True, False, False, False]]
+    assert inconsistent.candidate_edge_indices == ((0, 0),)
+
+    assisted = LearningCostAssistant(
+        _FixedPredictor(-100.0),
+        config=LearningAssistConfig(mode="assist", alpha=100.0),
+    ).apply(
+        inconsistent,
+        [track],
+        resources,
+        expected_previous_version=2,
+        current_plan_version=2,
+    )
+    assert assisted.candidate_mask.tolist() == [[True, False, False, False]]
+
 
 @pytest.mark.parametrize(
     ("predictor", "assist_config", "expected_reason"),

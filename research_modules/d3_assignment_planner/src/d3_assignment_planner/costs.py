@@ -26,23 +26,36 @@ class CostMatrixResult:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     @property
+    def hard_safe_candidate_mask(self) -> np.ndarray:
+        """Return candidate hints intersected with every hard-rejected edge."""
+
+        matrix_shape = np.asarray(self.matrix).shape
+        mask = self.candidate_mask
+        if mask is None:
+            mask = np.ones(matrix_shape, dtype=bool)
+        else:
+            mask = np.asarray(mask, dtype=bool)
+            if mask.shape != matrix_shape:
+                raise ValueError("candidate_mask shape must match the cost matrix")
+            mask = mask.copy()
+        if self.reject_reasons:
+            reject_allowed = np.asarray(
+                [
+                    [reason is None for reason in row]
+                    for row in self.reject_reasons
+                ],
+                dtype=bool,
+            )
+            if reject_allowed.shape != matrix_shape:
+                raise ValueError("reject_reasons shape must match the cost matrix")
+            mask &= reject_allowed
+        return mask
+
+    @property
     def candidate_edge_indices(self) -> tuple[tuple[int, int], ...]:
         """Return deterministic sparse policy/solver candidate indices."""
 
-        mask = self.candidate_mask
-        if mask is None:
-            if self.reject_reasons:
-                mask = np.asarray(
-                    [
-                        [reason is None for reason in row]
-                        for row in self.reject_reasons
-                    ],
-                    dtype=bool,
-                ).reshape(self.matrix.shape)
-            else:
-                mask = np.ones(self.matrix.shape, dtype=bool)
-        else:
-            mask = np.asarray(mask, dtype=bool).reshape(self.matrix.shape)
+        mask = self.hard_safe_candidate_mask
         rows, columns = np.nonzero(mask)
         return tuple((int(row), int(column)) for row, column in zip(rows, columns))
 

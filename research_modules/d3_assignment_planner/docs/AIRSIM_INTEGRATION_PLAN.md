@@ -312,6 +312,31 @@ for every requested seed, verify no missing/duplicated frame index, validate
 anonymous schema and split hash, aggregate unavailable reasons, and compare
 rule/shadow pairs before any assist trial.
 
+### Numeric-seed v2 dataset finalization
+
+The recorder now emits `split=unassigned`; neither an AirSim scenario name nor
+a scale may assign a split independently. Main must finish staging the complete
+numeric-seed catalog, then call the v2 writer once. The writer assigns every
+reuse of one numeric seed across all scenarios, scales, episodes, and frames to
+one split and fails when fewer than three unique seeds or fewer than the
+declared unseen test seeds are available. Main's globally reserved evaluation
+seed set must remain disjoint from any train/validation generation set.
+
+For scalable 200v200 export, main should pass
+`iter_learning_frame_records(staging_path)` directly to
+`write_learning_dataset(...)`. Its current `read_text().splitlines()` plus full
+tuple construction retains the complete staged file and all records before the
+D3 writer starts. A dense fixture measured 5,854,691 serialized bytes per frame;
+40 frames already imply a conservative text-plus-record lower bound above
+about 440 MB, excluding JSON parse temporaries. D3 now performs disk-backed,
+batched finalization with split and frame SHA auditing, but the main-owned call
+site must adopt the iterator to realize bounded end-to-end memory.
+
+No AirSim adapter, Blocks setting, actor, camera, control algorithm, Hungarian
+solver, reward formula, or action space changed in this v2 contract task. No
+AirSim episode or model-performance experiment was run; module evidence is
+software-contract validation only.
+
 ## 2026-07-20 Regional Resource Hint Integration Contract
 
 No AirSim runtime, adapter, settings, actor, camera, or control file changed in
@@ -338,3 +363,26 @@ hard-edge resurrection, and zero unauthorized D7 execution. Performance and
 physical interception non-degradation require a separate multi-seed AirSim
 report; the current 14 fixtures and `239 passed, 1 skipped` module result do not
 satisfy that requirement.
+
+## 2026-07-20 Learning Evidence Safety Review
+
+This review changed no AirSim adapter, Blocks setting, actor/detection path,
+episode order, camera, or flight-control code, and no AirSim episode was run.
+The D3-only contract now requires BC/PPO training to exclude test frames and
+permits test seeds only through an explicit independent shadow/evaluation
+entry. A full dataset load during a training command validates canonical file
+content, split integrity, and hashes only; it must not feed test features or
+labels into normalization, updates, or training metrics.
+
+Any future main-owned recorder must preserve the strict v2 anonymous frame
+allow-list and recursively reject truth/actor/identity fields. Any promotion
+artifact must bind the dataset split hash, canonical frame-content SHA256, and
+model-state SHA256 and must come from eligible paired `test` evidence. Rule and
+residual assignments must both be rescored on `rule_cost_matrix_v1`; the model
+output remains a proposal and cannot authorize an AssignmentPlan or D7 action.
+
+The module acceptance result is 252 collected, `251 passed, 1 skipped`, with
+zero failures; the skip is the optional OR-Tools installed-only benchmark.
+There is still no formal model weight, no eligible >=20 unseen real/high-
+fidelity test-seed shadow report, no assist promotion decision, and no AirSim
+model-benefit or 200v200 full-stack validation.

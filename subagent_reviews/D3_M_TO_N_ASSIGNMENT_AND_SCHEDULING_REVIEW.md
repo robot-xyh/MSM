@@ -365,13 +365,13 @@ PPO rollout 将 bounded residual 写入候选成本副本后，必须调用同�
 资源唯一和 demand 上限；不满足时计 safety rejection 并使用 solver 结果。策略不能
 输出 coalition member list、primary/reserve role 或 assignment index。
 
-当前 synthetic smoke 只交替覆盖 independent-demand 3v5/5v3；已有 high-threat k=3
+legacy v1 synthetic smoke 只交替覆盖 independent-demand 3v5/5v3；已有 high-threat k=3
 稀疏/all-or-none 单测继续作为 M-to-N 安全回归。尚未使用真实动态 demand、能力异构、
 primary/reserve feedback 或资源失效序列训练，也没有 20 个未见 M-to-N test seed。
 因此 pipeline implemented 不等于 M-to-N 学习策略或协同物理收益已验收；默认
 Hungarian demand-slot 和既有 `8/10` 物理门限均不改变。
 
-包括该安全边界在内，新增学习管线专项测试 16 项；D3 最终全量为
+包括该 legacy 安全边界在内，当时新增学习管线专项测试 16 项；D3 全量为
 `214 passed, 1 skipped`（215 项收集、6.95 s），唯一 skip 是 optional OR-Tools。
 
 ## 22. 单帧证据对 M-to-N 学习记录的约束（2026-07-20）
@@ -413,3 +413,31 @@ main 写盘和 M-to-N shadow 非退化仍未验证。
 hard edge + learning assist case 验证被禁资源不进入联盟。14 个新增 case 后 D3 全量为
 `239 passed, 1 skipped`（240 项）；seed 不适用，未运行真实动态 demand、多 seed AirSim
 或协同物理完成，因此只关闭 D3 候选图和 cardinality 合同缺口。
+
+## 24. 数值 Seed v2 对 M-to-N 学习证据的约束（2026-07-20）
+
+M-to-N roster、role/wave、demand-slot 和 coalition 仍由确定性 planner 处理，本批未改
+算法。学习数据的 split identity 改为全局数值 seed：同一 seed 在 independent 2v2/5v5、
+非等量规模和 M-to-N scenario 中复用时必须进入同一 split，不能把不同规模当成新的未见
+seed。whole-seed 与 shadow unseen 计数也按该身份跨 scenario 聚合。
+
+测试覆盖双 scenario/scale、多 episode、逆序输入、三 split 零交集和篡改拒绝；D3 全量
+为 `243 passed, 1 skipped`（244 项）。这只关闭 M-to-N 学习数据隔离合同，不提供新的
+动态 demand、联盟协同、模型收益或 AirSim 物理证据。
+
+## 25. Learning 安全补正对 M-to-N 的影响（2026-07-20）
+
+本轮不改变 demand-slot、role/wave、resource uniqueness、all-or-none admission、
+coalition version 或 stale gate。BC/PPO 训练现在不能消费 test seed；test 只进入独立
+shadow/evaluation。frame parser 的递归 identity 拒绝覆盖嵌套 M-to-N 匿名实体，普通
+扩展需要 schema bump，不允许借 role/member/actor 字段恢复真实 roster 身份。
+
+M-to-N slot 复制前的 target-resource candidate mask 必须与 hard reject reasons 求交，
+因此 residual 不能重开 capability、D5、容量、冲突或可达性边。rule coalition 与 residual
+proposal coalition 分别求解后，都用原始 `C_rule + unassigned_costs` 按最终选边和 unmet
+slot 重评分；`rule_cost_matrix_v1` 是 promotion 的唯一成本非退化口径。bundle/evidence
+还必须绑定 split、完整 frame 内容和 model-state 三摘要，并通过 eligible 正式 test gate。
+
+最新 D3 全量 252 项为 `251 passed, 1 skipped`，零失败通过，skip 是 optional OR-Tools。
+这只关闭 M-to-N 学习外环的软件安全缺口；仍无动态 demand 真实训练、20 个未见真实/高
+保真 M-to-N test seed、正式权重/promotion、AirSim 协同收益或 `8/10` 物理门限新证据。

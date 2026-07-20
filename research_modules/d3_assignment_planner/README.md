@@ -567,16 +567,23 @@ target/resource index、联盟成员、owner、plan version 或 D7 控制量。
 
 ### 数据与模型合同
 
-- `learning_data.py` 按 `scenario_version + seed` 整体分配 train/validation/test；同一
-  seed 的所有 episode 和 frame 不得跨 split。每帧保存匿名 ordinal target/resource
-  摘要、`E x 12` 候选边特征、完整 action mask、规则成本/选边、前一计划版本、反馈/
-  迟滞结果及高威胁覆盖、规则成本、demand shortfall、churn、过期和安全拒绝 reward
-  分量。原始 track/resource ID、truth actor ID 和任意上游 metadata 均不落盘。
-- `learning_bundle.py` 保存 `manifest.json`、`state_dict.pt` 和 SHA256。manifest 固化
-  feature/schema/policy version、split hash、train normalization、alpha、confidence、
-  OOD、deadline、模型结构、训练结果和 promotion 结论。加载先校验版本/特征/SHA，再
-  调用 `torch.load(..., weights_only=True)`；缺失、损坏或不匹配均返回逐元素相同的
-  `C_rule`。
+- `learning_data.py` 当前合同为 `d3_learning_dataset_v2`，split policy 为
+  `d3_numeric_seed_atomic_split_v2`。采集帧显式标记 `unassigned`；finalize 取得完整唯一
+  数值 seed catalog 后，按 seed 数量确定 train/validation/test，scenario version、规模和
+  episode 不参与 seed 身份。同一数值 seed 的所有 scenario/scale/episode/frame 必须原子
+  进入一个 split，三个数值 seed 集合两两不交。少于 3 个唯一 seed 或 test 少于声明的
+  unseen 数时不写 manifest；正式默认声明 20，synthetic smoke 必须显式降为 1。
+- v2 manifest 固化唯一 seed 数、逐 split seed/episode/frame 数、split 参数、split hash 和
+  canonical `frames.jsonl` SHA256。loader 重算分配与统计并校验完整文件 SHA；v1 dataset、
+  v1 scenario/seed split、冲突预分配和任何篡改均明确拒绝，不做静默迁移。
+- `write_learning_dataset()` 用临时 SQLite 有界批次暂存一遍输入迭代器，再按稳定键输出；
+  `iter_learning_frame_records()` 可逐行消费 staged JSONL。每帧仍只保存匿名 ordinal
+  target/resource 摘要、`E x 12` 候选边特征、mask、规则成本/选边、版本、反馈/迟滞和
+  reward 分量，不保存原始 ID、truth actor 或上游 metadata。
+- `learning_bundle.py` 当前为 `d3_learning_model_bundle_v2`。manifest 除 feature/policy、
+  split hash、归一化和 guardrail 外，还显式绑定 dataset schema v2 与 split policy v2。
+  v1 bundle 稳定回退为 `model_bundle_schema_unsupported`；缺失、损坏、SHA、特征或合同
+  不匹配均返回逐元素相同的 `C_rule`，权重只用 `torch.load(..., weights_only=True)`。
 - shadow 可加载未晋级 bundle。assist 必须显式调用 `load_model_bundle(...,
   mode="assist")`，且 promotion manifest 同时满足 recommended、至少 20 个未见 test
   seed、安全/成本非退化和零 fallback；仅写一个 true 布尔值不能绕过门控。
@@ -593,7 +600,8 @@ clip；每次动作经确定性 mask 与 Hungarian demand-slot solver 后，才�
 
 `shadow_evaluation.py` 在相同 scenario/seed/frame 上复制同一规则矩阵，分别求解 rule
 和 bounded proposal，报告 assignment cost、高威胁 unmet、churn、duplicate/hard
-violation、推理 P50/P95 和 fallback reason。shadow 从不改写规则矩阵，也不发布计划。
+violation、推理 P50/P95 和 fallback reason。unseen 与 whole-seed 指标按全局数值 seed
+跨 scenario 聚合，输入必须先通过完整三分合同；shadow 从不改写规则矩阵，也不发布计划。
 
 四个 CLI 子命令为：
 
@@ -606,19 +614,26 @@ PYTHONPATH=research_modules/d3_assignment_planner/src python3 -m d3_assignment_p
 
 ### 当前证据边界
 
-2026-07-20 的可复现 smoke 使用 30 个 synthetic seed、30 episode、60 frame；按整 seed
-切分为 train/validation/test=`23/1/6`，frame=`46/2/12`。5-epoch BC train loss 从
-`1.1001` 降至 `0.5014`，validation loss 为 `0.3768`；一次 46-transition、2-epoch PPO
-更新的全部指标有限。12 个 test frame 的 shadow 推理 P50/P95 为 `0.281/0.350 ms`，
-fallback、duplicate 和 hard violation 均为 0，但 assignment-cost 非退化未通过，且
-数据源仅为 synthetic smoke，因此 `promotion_recommended=false`、状态 `unavailable`。
+此前 30-seed synthetic smoke 的 `23/1/6` split、loss 和 shadow 时延来自 v1
+scenario/seed policy，只保留为历史开发记录；v2 loader 与 bundle loader 均拒绝把该产物
+解释为当前合同。本次没有重训模型或复测模型收益，因此不提供新的 loss、成本或时延结论。
+
+软件合同回归覆盖同一数值 seed 在 2v2/5v5 风格 scenario、多个规模和 episode 中复用、
+输入逆序确定性、三 split 零交集、唯一 seed/unseen 数不足、split/frame/hash 篡改、v1
+dataset/bundle 拒绝、训练和 shadow 的全局 seed 计数。D3 全量收集 244 项，结果为
+`243 passed, 1 skipped`；唯一 skip 是 optional OR-Tools installed-only case。
+
+200v200 dense fixture 单帧含 40,000 candidate edge，canonical JSON 约 5,854,691 bytes；
+NumPy payload 加 edge tuple 浅层约 5,161,640 bytes。D3 writer 已不再全量持有数据，但
+main 当前 batch finalize 仍先执行 `read_text().splitlines()` 并构造完整 tuple；40 帧仅
+文本与上述对象保守下界已超过约 440 MB，未计 JSON 临时对象。main 必须改为把
+`iter_learning_frame_records(staging_path)` 直接传给 writer，才能关闭调用侧内存缺口。
 
 本批没有提交正式权重，没有真实 D2/D3 轨迹训练，没有至少 20 个未见真实/高保真 seed，
 也没有 CPU/GPU deadline 分布、AirSim 物理收益或可抢占 timeout 证据。当前结论仅为
 管线实现和合成 smoke；规则 Hungarian 继续是唯一默认路径。
 
-新增 16 个专项测试后，D3 共收集 215 项，最终为 `214 passed, 1 skipped`（6.95 s）；
-接受门限为零失败，唯一 skip 是既有 optional OR-Tools installed-only case。
+本次结果是软件数据合同证据，不是模型性能、AirSim 物理收益或 assist promotion 证据。
 
 ## 2026-07-20 单帧只读规划证据
 
@@ -699,3 +714,35 @@ D3 共收集 240 项，结果为 `239 passed, 1 skipped`，skip 是既有 option
 installed-only case。本批没有运行 AirSim、正式多 seed 性能或物理拦截；main 仍需把
 D4 `RegionResourceRecommendation` 显式映射为 D3 DTO，并在 reset-separated episode
 中验证时间基准、owner/epoch/lease 和 D6 指标。
+
+## 2026-07-20 Learning 安全复核补正
+
+本轮对可选 BC/PPO/shadow/assist 路径做 fail-closed 复核，不改变默认 Hungarian、
+`hungarian_demand_slots`、联盟准入、计划版本或 D7 授权链：
+
+- BC 训练入口只接受 `train`/`validation`，PPO 只接受 `train`；任一训练 API 收到
+  `test` frame 都拒绝。CLI 对完整 dataset 的读取只用于内容、哈希和三分合同校验，
+  test frame 不进入训练 batch、normalization 或训练期 whole-seed metric；test 仅由显式
+  `shadow-eval --split test` 入口消费。
+- `LearningFrameRecord.from_dict()` 对 v2 使用完整字段 allow-list；普通扩展必须升级
+  schema。解析前递归拒绝 truth/actor/identity、实体 ID、UUID 和 vehicle-name 类字段，
+  同时保留已知匿名 ordinal、数值/布尔字段及语义性 hard-reject reason 的兼容策略。
+- `candidate_mask` 是候选提示，不是授权。候选索引、assistant 返回 mask 和 solver 消费
+  mask 都始终与 `reject_reasons is None` 求交，shape 不一致失败关闭，不能重开 D5、
+  可达性、容量或友方冲突 hard edge。
+- bundle v2 同时绑定 split hash、canonical `frames.jsonl` SHA256 和
+  `state_dict.pt` SHA256。assist 不允许关闭 promotion gate；promotion evidence 必须是
+  `d3_shadow_promotion_evidence_v1`、正式 `test` split、`evidence_eligible=true`、
+  `paired_rule_residual_shadow`、`rule_cost_matrix_v1`，且三项摘要与 bundle 完全一致。
+  布尔和计数字段采用严格类型校验，错配或伪装均回退 `C_rule`。
+- residual proposal 仍按 `C_final=C_rule+alpha*tanh(delta_C)` 产生候选方案，但 rule 与
+  proposal assignment 的非退化指标都按同一个最终 `C_rule + unassigned_costs` 基准
+  重新评分，禁止比较不同矩阵各自的 solver objective。学习输出始终只是受约束提案，
+  不能直接授权 assignment、coalition 或 D7 执行。
+
+2026-07-20 全量收集 252 项，结果为 `251 passed, 1 skipped`，接受门限为零失败；唯一
+skip 是未安装 optional OR-Tools 的 installed-only benchmark。新增负例覆盖 test-seed
+训练拒绝、训练指标隔离、递归 identity/未知字段拒绝、hard-reject mask 求交、frame SHA/
+promotion 证据错配、validation/非 eligible/bypass 拒绝和共同规则代价重评分。本轮未训练
+或提交正式权重，未运行 AirSim，也没有至少 20 个未见真实/高保真 test seed、正式
+promotion、模型收益或物理闭环结论。

@@ -142,19 +142,7 @@ def build_learning_action_mask(
 ) -> LearningActionMask:
     """Mask unreachable, capacity, conflict, sparse-pruned, and stale actions."""
 
-    if matrix_result.candidate_mask is None:
-        if matrix_result.reject_reasons:
-            mask = np.asarray(
-                [
-                    [reason is None for reason in row]
-                    for row in matrix_result.reject_reasons
-                ],
-                dtype=bool,
-            ).reshape(matrix_result.matrix.shape)
-        else:
-            mask = np.ones(matrix_result.matrix.shape, dtype=bool)
-    else:
-        mask = np.asarray(matrix_result.candidate_mask, dtype=bool).copy()
+    mask = matrix_result.hard_safe_candidate_mask
     reason_counts: dict[str, int] = {}
     for row in matrix_result.reject_reasons:
         for reason in row:
@@ -272,6 +260,12 @@ class LearningCostAssistant:
             expected_previous_version=expected_previous_version,
             current_plan_version=current_plan_version,
             previous_plan=previous_plan,
+        )
+        # Every assistant result, including fallback, carries the fail-closed
+        # action set used for inference.
+        matrix_result = replace(
+            matrix_result,
+            candidate_mask=batch.action_mask.mask.copy(),
         )
         common = {
             "learning_residual_schema": LEARNING_RESIDUAL_SCHEMA_V1,

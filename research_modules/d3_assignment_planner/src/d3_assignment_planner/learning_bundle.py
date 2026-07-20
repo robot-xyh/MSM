@@ -19,6 +19,10 @@ from .learning import (
     LearningCostAssistant,
     ResidualPrediction,
 )
+from .learning_data import (
+    LEARNING_DATASET_SCHEMA_V2,
+    LEARNING_DATASET_SPLIT_POLICY_V2,
+)
 from .native_ppo import (
     SHARED_EDGE_ACTOR_CRITIC_POLICY_V1,
     SharedEdgeActorCriticPolicy,
@@ -27,17 +31,24 @@ from .native_ppo import (
 
 
 MODEL_BUNDLE_SCHEMA_V1 = "d3_learning_model_bundle_v1"
+MODEL_BUNDLE_SCHEMA_V2 = "d3_learning_model_bundle_v2"
 MODEL_BUNDLE_MANIFEST_FILENAME = "manifest.json"
 MODEL_BUNDLE_STATE_DICT_FILENAME = "state_dict.pt"
+PROMOTION_EVIDENCE_SCHEMA_V1 = "d3_shadow_promotion_evidence_v1"
+PROMOTION_EVIDENCE_KIND = "paired_rule_residual_shadow"
+PROMOTION_COST_BASIS = "rule_cost_matrix_v1"
 
 
 @dataclass(frozen=True)
 class ModelBundleManifest:
     bundle_schema_version: str
+    dataset_schema_version: str
+    split_policy_version: str
     feature_schema_version: str
     feature_names: tuple[str, ...]
     policy_version: str
     split_hash: str
+    dataset_frames_sha256: str
     normalization_mean: tuple[float, ...]
     normalization_scale: tuple[float, ...]
     alpha: float
@@ -51,16 +62,27 @@ class ModelBundleManifest:
     state_dict_sha256: str
 
     def __post_init__(self) -> None:
-        if self.bundle_schema_version != MODEL_BUNDLE_SCHEMA_V1:
+        if self.bundle_schema_version != MODEL_BUNDLE_SCHEMA_V2:
             raise ValueError("unsupported D3 model bundle schema")
+        if self.dataset_schema_version != LEARNING_DATASET_SCHEMA_V2:
+            raise ValueError("unsupported D3 model bundle dataset schema")
+        if self.split_policy_version != LEARNING_DATASET_SPLIT_POLICY_V2:
+            raise ValueError("unsupported D3 model bundle split policy")
         if self.feature_schema_version != LEARNING_RESIDUAL_SCHEMA_V1:
             raise ValueError("unsupported D3 model feature schema")
         if self.feature_names != EDGE_FEATURE_NAMES:
             raise ValueError("model bundle feature names do not match D3")
         if self.policy_version != SHARED_EDGE_ACTOR_CRITIC_POLICY_V1:
             raise ValueError("unsupported D3 model policy version")
-        if not self.split_hash or len(self.state_dict_sha256) != 64:
-            raise ValueError("split hash and state_dict SHA256 are required")
+        if not all(
+            _is_sha256(value)
+            for value in (
+                self.split_hash,
+                self.dataset_frames_sha256,
+                self.state_dict_sha256,
+            )
+        ):
+            raise ValueError("split, dataset frame, and state_dict SHA256 are required")
         mean = np.asarray(self.normalization_mean, dtype=float)
         scale = np.asarray(self.normalization_scale, dtype=float)
         if mean.shape != (len(EDGE_FEATURE_NAMES),) or scale.shape != mean.shape:
@@ -87,10 +109,13 @@ class ModelBundleManifest:
     def to_dict(self) -> dict[str, Any]:
         return {
             "bundle_schema_version": self.bundle_schema_version,
+            "dataset_schema_version": self.dataset_schema_version,
+            "split_policy_version": self.split_policy_version,
             "feature_schema_version": self.feature_schema_version,
             "feature_names": list(self.feature_names),
             "policy_version": self.policy_version,
             "split_hash": self.split_hash,
+            "dataset_frames_sha256": self.dataset_frames_sha256,
             "normalization": {
                 "mean": [float(value) for value in self.normalization_mean],
                 "scale": [float(value) for value in self.normalization_scale],
@@ -118,10 +143,13 @@ class ModelBundleManifest:
         state_dict = value["state_dict"]
         return cls(
             bundle_schema_version=str(value["bundle_schema_version"]),
+            dataset_schema_version=str(value["dataset_schema_version"]),
+            split_policy_version=str(value["split_policy_version"]),
             feature_schema_version=str(value["feature_schema_version"]),
             feature_names=tuple(str(item) for item in value["feature_names"]),
             policy_version=str(value["policy_version"]),
             split_hash=str(value["split_hash"]),
+            dataset_frames_sha256=str(value["dataset_frames_sha256"]),
             normalization_mean=tuple(float(item) for item in normalization["mean"]),
             normalization_scale=tuple(float(item) for item in normalization["scale"]),
             alpha=float(guardrails["alpha"]),
@@ -186,9 +214,13 @@ class RuleFallbackLearningAssistant:
             if int(expected_previous_version) != int(current_plan_version)
             else self.reason
         )
+        candidate_mask = matrix_result.hard_safe_candidate_mask
+        if reason == "version_constraint":
+            candidate_mask.fill(False)
         return replace(
             matrix_result,
             matrix=np.asarray(matrix_result.matrix, dtype=float).copy(),
+            candidate_mask=candidate_mask,
             metadata={
                 **dict(matrix_result.metadata),
                 "learning_residual_schema": LEARNING_RESIDUAL_SCHEMA_V1,
@@ -203,13 +235,33 @@ class RuleFallbackLearningAssistant:
         )
 
 
-def unavailable_promotion_manifest(reason: str = "insufficient_unseen_seed_evidence") -> dict[str, Any]:
+def unavailable_promotion_manifest(
+    reason: str = "insufficient_unseen_seed_evidence",
+    *,
+    split_hash: str = "",
+    dataset_frames_sha256: str = "",
+    model_state_dict_sha256: str = "",
+) -> dict[str, Any]:
     return {
+        "evidence_schema_version": PROMOTION_EVIDENCE_SCHEMA_V1,
+        "evidence_kind": PROMOTION_EVIDENCE_KIND,
+        "cost_basis": PROMOTION_COST_BASIS,
+        "dataset_schema_version": LEARNING_DATASET_SCHEMA_V2,
+        "split_policy_version": LEARNING_DATASET_SPLIT_POLICY_V2,
+        "seed_identity_scope": "numeric_seed_global_across_scenarios",
+        "evaluated_split": "none",
+        "evidence_eligible": False,
+        "evidence_hashes_bound": False,
+        "split_hash": str(split_hash),
+        "dataset_frames_sha256": str(dataset_frames_sha256),
+        "model_state_dict_sha256": str(model_state_dict_sha256),
         "promotion_recommended": False,
         "promotion_status": "unavailable",
         "unseen_seed_count": 0,
         "minimum_unseen_seed_count": 20,
         "safety_non_degradation": False,
+        "assignment_cost_non_degradation": False,
+        "fallback_frame_count": 0,
         "reason": str(reason),
     }
 
@@ -219,6 +271,9 @@ def save_model_bundle(
     policy: SharedEdgeActorCriticPolicy,
     *,
     split_hash: str,
+    dataset_frames_sha256: str,
+    dataset_schema_version: str = LEARNING_DATASET_SCHEMA_V2,
+    split_policy_version: str = LEARNING_DATASET_SPLIT_POLICY_V2,
     normalization_mean: Sequence[float],
     normalization_scale: Sequence[float],
     training_results: Mapping[str, Any],
@@ -242,11 +297,14 @@ def save_model_bundle(
     torch.save(state_dict, state_path)
     state_sha = _file_sha256(state_path)
     manifest = ModelBundleManifest(
-        bundle_schema_version=MODEL_BUNDLE_SCHEMA_V1,
+        bundle_schema_version=MODEL_BUNDLE_SCHEMA_V2,
+        dataset_schema_version=str(dataset_schema_version),
+        split_policy_version=str(split_policy_version),
         feature_schema_version=LEARNING_RESIDUAL_SCHEMA_V1,
         feature_names=EDGE_FEATURE_NAMES,
         policy_version=SHARED_EDGE_ACTOR_CRITIC_POLICY_V1,
         split_hash=str(split_hash),
+        dataset_frames_sha256=str(dataset_frames_sha256),
         normalization_mean=tuple(float(value) for value in normalization_mean),
         normalization_scale=tuple(float(value) for value in normalization_scale),
         alpha=float(alpha),
@@ -255,7 +313,12 @@ def save_model_bundle(
         deadline_s=float(deadline_s),
         training_results=dict(training_results),
         promotion_manifest=dict(
-            promotion_manifest or unavailable_promotion_manifest()
+            promotion_manifest
+            or unavailable_promotion_manifest(
+                split_hash=str(split_hash),
+                dataset_frames_sha256=str(dataset_frames_sha256),
+                model_state_dict_sha256=state_sha,
+            )
         ),
         model_config={
             "feature_count": int(policy.feature_count),
@@ -279,6 +342,7 @@ def load_model_bundle(
     *,
     mode: str = "shadow",
     expected_split_hash: str | None = None,
+    expected_dataset_frames_sha256: str | None = None,
     require_promotion_for_assist: bool = True,
 ) -> ModelBundleLoadResult:
     """Safely load a bundle or return an exact-rule fallback assistant."""
@@ -288,7 +352,10 @@ def load_model_bundle(
         raise ValueError("bundle mode must be shadow or assist")
     path = Path(bundle_dir)
 
-    def fallback(reason: str, manifest: ModelBundleManifest | None = None) -> ModelBundleLoadResult:
+    def fallback(
+        reason: str,
+        manifest: ModelBundleManifest | None = None,
+    ) -> ModelBundleLoadResult:
         return ModelBundleLoadResult(
             loaded=False,
             fallback_reason=reason,
@@ -303,15 +370,34 @@ def load_model_bundle(
     try:
         with manifest_path.open(encoding="utf-8") as stream:
             raw_manifest = json.load(stream)
+        if not isinstance(raw_manifest, Mapping):
+            raise TypeError("model bundle manifest must be a JSON object")
+        if raw_manifest.get("bundle_schema_version") != MODEL_BUNDLE_SCHEMA_V2:
+            return fallback("model_bundle_schema_unsupported")
+        if (
+            raw_manifest.get("dataset_schema_version") != LEARNING_DATASET_SCHEMA_V2
+            or raw_manifest.get("split_policy_version")
+            != LEARNING_DATASET_SPLIT_POLICY_V2
+        ):
+            return fallback("model_dataset_contract_unsupported")
         manifest = ModelBundleManifest.from_dict(raw_manifest)
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         return fallback("model_manifest_invalid")
     if expected_split_hash is not None and manifest.split_hash != expected_split_hash:
         return fallback("split_hash_mismatch", manifest)
     if (
+        expected_dataset_frames_sha256 is not None
+        and manifest.dataset_frames_sha256 != expected_dataset_frames_sha256
+    ):
+        return fallback("dataset_frames_sha256_mismatch", manifest)
+    if (
         normalized_mode == "assist"
-        and require_promotion_for_assist
-        and not _promotion_is_authorized(manifest.promotion_manifest)
+        and require_promotion_for_assist is not True
+    ):
+        return fallback("promotion_bypass_forbidden", manifest)
+    if (
+        normalized_mode == "assist"
+        and not _promotion_is_authorized(manifest.promotion_manifest, manifest)
     ):
         return fallback("promotion_not_recommended", manifest)
     state_path = path / manifest.state_dict_file
@@ -375,23 +461,47 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _promotion_is_authorized(value: Mapping[str, Any]) -> bool:
-    try:
-        unseen_seed_count = int(value.get("unseen_seed_count", 0))
-        minimum_seed_count = max(
-            20, int(value.get("minimum_unseen_seed_count", 20))
-        )
-        fallback_frame_count = int(value.get("fallback_frame_count", 0))
-    except (TypeError, ValueError):
+def _promotion_is_authorized(
+    value: Mapping[str, Any],
+    manifest: ModelBundleManifest,
+) -> bool:
+    raw_counts = (
+        value.get("unseen_seed_count"),
+        value.get("minimum_unseen_seed_count"),
+        value.get("fallback_frame_count"),
+    )
+    if any(isinstance(item, bool) or not isinstance(item, int) for item in raw_counts):
+        return False
+    unseen_seed_count, minimum_seed_count, fallback_frame_count = raw_counts
+    if minimum_seed_count < 20 or unseen_seed_count < 0 or fallback_frame_count < 0:
         return False
     return bool(
-        value.get("promotion_recommended", False)
+        value.get("evidence_schema_version") == PROMOTION_EVIDENCE_SCHEMA_V1
+        and value.get("evidence_kind") == PROMOTION_EVIDENCE_KIND
+        and value.get("cost_basis") == PROMOTION_COST_BASIS
+        and value.get("dataset_schema_version") == LEARNING_DATASET_SCHEMA_V2
+        and value.get("split_policy_version") == LEARNING_DATASET_SPLIT_POLICY_V2
+        and value.get("seed_identity_scope")
+        == "numeric_seed_global_across_scenarios"
+        and value.get("evaluated_split") == "test"
+        and value.get("evidence_eligible") is True
+        and value.get("evidence_hashes_bound") is True
+        and value.get("split_hash") == manifest.split_hash
+        and value.get("dataset_frames_sha256")
+        == manifest.dataset_frames_sha256
+        and value.get("model_state_dict_sha256") == manifest.state_dict_sha256
+        and value.get("promotion_recommended") is True
         and value.get("promotion_status") == "recommended"
-        and value.get("safety_non_degradation", False)
-        and value.get("assignment_cost_non_degradation", False)
+        and value.get("safety_non_degradation") is True
+        and value.get("assignment_cost_non_degradation") is True
         and unseen_seed_count >= minimum_seed_count
         and fallback_frame_count == 0
     )
+
+
+def _is_sha256(value: Any) -> bool:
+    text = str(value)
+    return len(text) == 64 and set(text).issubset(frozenset("0123456789abcdef"))
 
 
 def _json_safe(value: Any) -> Any:

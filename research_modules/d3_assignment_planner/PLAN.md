@@ -694,36 +694,38 @@ main 后续在 50v50、`recon_count=2`、中心故障路径中调用接口，并
 
 ### 已完成的 D3-owned 能力
 
-1. 数据集 schema 已实现。split 单元为 `scenario_version + seed`，因此一个 seed 下的
-   episode/frame 只能出现在一个 split；manifest 保存 episode/frame/seed 数和 split
-   hash。帧记录只含匿名 ordinal entity 摘要和 D3 派生字段，禁止 truth/actor/upstream
-   metadata。
-2. bundle schema 已实现。`manifest.json + state_dict.pt + SHA256` 包含 feature/schema/
-   policy version、split hash、归一化统计、alpha/confidence/OOD/deadline、结构、训练
-   结果和 promotion manifest。只允许 weights-only load；缺失、损坏、SHA、版本、特征
-   或 split 不匹配均构造 rule fallback assistant。
-3. 多 episode BC 已实现。训练按 frame mini-batch，不把 edge 随机拆到不同 split；同时
+1. 数据集合同已升级到 `d3_learning_dataset_v2` 和
+   `d3_numeric_seed_atomic_split_v2`。采集帧先标记 `unassigned`，finalize 使用完整唯一
+   数值 seed catalog 按数量分配；同一 seed 跨 scenario、规模和 episode 原子进入同一
+   split。少于 3 个唯一 seed、任一 split 为空或 test 少于声明 unseen 数均失败关闭。
+   manifest 固化逐 split seed/episode/frame 数、split hash 与 frame-file SHA256。
+2. bundle 已升级到 `d3_learning_model_bundle_v2`，显式绑定 dataset/split policy v2。
+   `manifest.json + state_dict.pt + SHA256` 继续包含 feature/policy、split hash、归一化、
+   guardrail、结构、训练和 promotion。v1 dataset/bundle 不兼容并稳定拒绝；只允许
+   weights-only load，其他缺失、损坏或合同不匹配均构造 rule fallback assistant。
+3. 多 episode BC 已实现。训练先验证三个全局数值 seed 集合两两不交，再按 frame
+   mini-batch 训练，不把 edge 随机拆到不同 split；同时
    学习规则选边、规则 residual teacher 和低频 hold/replan，输出 train/validation loss
    及 whole-seed accuracy。
 4. 原生 PyTorch clipped PPO 已实现。共享边 actor 支持变长 `E`，value 使用 masked
    pooled context；动作仅为 bounded residual 和低频建议。counterfactual rollout 必须
    先经 deterministic mask/Hungarian demand-slot solver，再用高威胁覆盖、规则成本、
    unmet slot、churn、计划过期和安全拒绝形成 reward。PPO 不输出 assignment。
-5. paired shadow evaluator 和 CLI 已实现。报告同 seed 的 rule/proposal 成本、高威胁
+5. paired shadow evaluator 和 CLI 已实现。unseen 与 whole-seed 指标按数值 seed 跨
+   scenario 聚合，报告同 seed 的 rule/proposal 成本、高威胁
    unmet、churn、duplicate/hard violation、P50/P95 与 fallback。promotion 必须使用
    test split、至少 20 个未见 seed、零 fallback，并同时满足安全和成本非退化。
 6. 默认 planner 不变。`learning_assistant=None` 仍是构造默认；shadow/assist 都需显式
    注入。bundle assist loader 只有通过完整 promotion manifest 才返回可用 assistant。
+7. writer 流式边界已下沉到 D3 API：`iter_learning_frame_records()` 逐行解析 staging，
+   `write_learning_dataset()` 通过临时 SQLite 和可配置批次完成确定性排序、split finalize、
+   split hash 与完整 frame SHA，不再把全量 record 保存在 D3 进程内存。
 
 ### 2026-07-20 合成 smoke
 
-固定 30 个 seed、每 seed 1 episode/2 frame，roster 在 3v5 与 5v3 间确定性交替。整体
-切分为 23 train、1 validation、6 test seed，即 46/2/12 frame。5-epoch BC 的 train
-loss 为 `1.1001 -> 0.5014`，validation=`0.3768`；46-transition PPO 单次更新、2 个
-optimization epoch 的 policy/value/entropy/KL/gradient 指标均有限。test shadow 的
-推理 P50/P95=`0.281/0.350 ms`，fallback=0、duplicate=0、hard violation=0；但
-assignment-cost non-degradation=false，且 synthetic source 不具 promotion 资格，故
-`promotion_recommended=false/unavailable`。
+原 30-seed、60-frame smoke 的 `23/1/6` split、BC/PPO 数值和 shadow 时延由 v1
+scenario/seed policy 生成，现仅作为历史开发记录。v2 loader/bundle 不接受这些产物，
+本次未重训或生成新的模型性能数据，不据此声明 v2 模型 loss、成本或时延表现。
 
 本地阶段耗时样本为数据生成 `0.375 s`、BC `0.920 s`、PPO `0.132 s`、12-frame
 shadow `0.006 s`。这些是单机 smoke，不是吞吐、实时、收益或系统验收。专项测试另用
@@ -735,8 +737,9 @@ shadow `0.006 s`。这些是单机 smoke，不是吞吐、实时、收益或系�
 1. main 提供 truth-isolated 的真实 D2/D3 sequential frames，并给出稳定
    `scenario_version`、seed、episode 和 frame 时钟；不得把 AirSim actor/truth ID 写入
    online feature 或训练记录。
-2. 至少 20 个从未参与 normalization、BC、PPO 或 threshold 调整的 test seed；train、
-   validation、test 的 scenario/seed 集合必须不相交，split hash 随 bundle 固化。
+2. 至少 20 个从未参与 normalization、BC、PPO 或 threshold 调整的 test 数值 seed；
+   train、validation、test 数值 seed 集合必须两两不相交，同一值在任何 scenario/scale
+   都沿用同一 split，split hash 和 policy version 随 bundle 固化。
 3. 在目标新增/消失、3v5、5v3、资源失效、M-to-N demand 变化和 stale/timeout/OOD
    故障注入下完成 paired shadow；duplicate、hard violation、未授权执行和 stale 接受
    必须为 0，高威胁 unmet 与 assignment cost 不退化。
@@ -745,9 +748,14 @@ shadow `0.006 s`。这些是单机 smoke，不是吞吐、实时、收益或系�
 5. 只有上述证据写入 promotion manifest 后才允许 assist。任何正式权重、长期训练、
    AirSim runtime 接线和 D6 系统报告均不属于本次 synthetic smoke。
 
-验证门限为 D3 全量零失败、bundle/mask/fallback fail closed、BC loss 下降、PPO 更新
-有限、少于 20 seed 必须拒绝 promotion。新增 16 个专项测试后共收集 215 项，最终为
-`214 passed, 1 skipped`（6.95 s）；唯一 skip 是 optional OR-Tools installed-only case。
+当前 v2 验证门限为 D3 全量零失败、逆序输入同 hash/同文件、三 split 数值 seed 零交集、
+少于 3 个唯一 seed 或声明 unseen 不足失败、dataset/bundle v1 和篡改稳定拒绝。全量共
+收集 244 项，结果为 `243 passed, 1 skipped`；唯一 skip 是 optional OR-Tools。
+
+200v200 fixture 的单帧 canonical JSON 为 5,854,691 bytes，NumPy payload 加 edge tuple
+浅层约 5,161,640 bytes。D3 writer 的全量内存缺口已关闭；main 当前仍在调用前用
+`read_text().splitlines()` 构造完整 tuple，40 帧保守下界超过约 440 MB，未计 JSON
+临时对象。main 改用 D3 iterator 是正式导出的剩余 cross-module P1，不在本任务修改。
 
 ## 23. 单帧规划证据与真实 Episode Recorder 接口（2026-07-20）
 
@@ -778,7 +786,8 @@ shadow/assist/fallback。全量收集 226 项，结果 `225 passed, 1 skipped`�
 行为由既有全量回归保护。
 
 下一步由 main 在 `IntegratedScalableModuleStack` 每个真实 planning tick 后调用公开
-helper，按完整 scenario/seed/episode 保存连续 frame，并由 D6 检查帧数、split hash、
+helper，按完整 scenario/seed/episode 保存 `unassigned` 连续 frame，在完整数值 seed
+catalog 结束后用 D3 iterator 一次 finalize，并由 D6 检查帧数、split/frame hash、
 缺帧/不可用 reason 和 truth-isolation。D3 本轮没有修改 main/runtime，也没有生成真实
 AirSim seed；真实数据训练、>=20 未见 seed、paired shadow 非退化和 assist promotion
 继续开放。
@@ -820,3 +829,37 @@ AirSim seed；真实数据训练、>=20 未见 seed、paired shadow 非退化和
    unmet demand、churn 和求解时延，并在动态 N/M 的正式多 seed/AirSim 批次做非退化比较。
 4. `plan_regional_authority()` 继续承担 D4 已裁决 owner/成员的执行计划物化；新 hint 入口
    不选择 owner、不授权 D7，也不替代 D4 failover/coalition commit。
+
+## 25. Learning 数据、训练与 Promotion 安全补正（2026-07-20）
+
+### 已完成
+
+1. 训练入口按用途收窄 split：BC 仅使用 train/validation，PPO 仅使用 train；test frame
+   进入任一训练 API 都报错。完整 dataset loader 仍校验三分、canonical 内容和摘要，但
+   test 不进入 normalization、梯度更新或训练期 whole-seed metric，只能由独立
+   shadow/evaluation 入口使用。
+2. frame v2 改为严格字段集合并在构造前递归检查未知嵌套内容；truth、actor、identity、
+   `*_id`/`*_ids`、UUID 和 vehicle-name 类字段失败关闭。兼容范围只包括已声明匿名
+   ordinal、强类型数值/布尔字段和 hard-reject 语义计数，新增普通字段必须升级 schema。
+3. `CostMatrixResult.candidate_edge_indices`、assistant 返回值和最终 solver mask 都把
+   candidate hint 与 hard reject reasons 求交；mask/reason shape 不一致拒绝。学习残差
+   不能重新开放物理、D5、容量或冲突禁边。
+4. bundle/promotion 证据链同时绑定 split SHA、完整 dataset frame SHA 和 model-state
+   SHA。assist 必须使用 eligible 的正式 test paired shadow，证据 schema/kind、
+   `rule_cost_matrix_v1` 口径、三摘要、至少 20 未见 seed、零 fallback、安全与成本非退化
+   全部匹配；promotion bypass、类型伪装和摘要错配均失败关闭。
+5. shadow 对 rule/proposal 分别求解后，使用同一原始 `C_rule` 和 unassigned costs 重算
+   两个 assignment 的最终 objective。proposal 矩阵只影响候选选边，不能用不同矩阵的
+   solver objective 直接宣称非退化，也不能直接形成执行授权。
+
+### 验证与开放项
+
+2026-07-20 D3 全量收集 252 项，结果 `251 passed, 1 skipped`；接受门限零失败达到，
+唯一 skip 是 optional OR-Tools installed-only benchmark。负例覆盖上述五项合同及
+validation/non-eligible/bypass/hash/type mismatch。
+
+本项只把 software safety/data contract 从部分闭合更新为 D3-owned implemented/tested。
+仍无正式权重、真实 D2/D3 训练集、至少 20 个未见真实/高保真 test seed、正式 assist
+promotion、可抢占 timeout、AirSim 模型收益或 200v200 全栈学习性能结论。后续证据必须
+由 main 的 truth-isolated recorder 与独立 test shadow 批次产生，学习输出继续不得被
+下游解释为授权。

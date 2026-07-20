@@ -885,9 +885,10 @@ coalition、owner 或授权会被拒绝。该计划本身不是 D4 decision，�
 
 ## 20. 学习研究数据、策略与晋级原则（2026-07-20）
 
-1. **切分先于训练**：数据按 `scenario_version + seed` 分组，组内所有 episode/frame
-   进入同一 train、validation 或 test split。禁止对候选边随机切分，也禁止同一 seed
-   同时参与 normalization、阈值选择和未见测试。split hash 必须写入模型 bundle。
+1. **完整 catalog 先于切分**：采集帧只能标记 `unassigned`；finalize 取得全部唯一数值
+   seed 后，按 seed 数量一次性分配 train、validation 和 test。scenario、规模、episode
+   均不得改变 seed 身份，同一数值 seed 的所有帧必须原子进入同一 split，三组数值 seed
+   两两不交。少于 3 个唯一 seed 或 test 少于声明 unseen 数时失败关闭。
 2. **只存匿名派生状态**：帧记录使用 `target_0000/resource_0000` ordinal token，保存
    TargetTrack/ResourceState 的允许字段摘要、候选边特征、action mask、规则成本/选边、
    前序版本、反馈/迟滞和离线 reward 分量。不得保存 truth actor ID、原始 track/resource
@@ -898,16 +899,20 @@ coalition、owner 或授权会被拒绝。该计划本身不是 D4 decision，�
 4. **变长边而非固定动作表**：actor 输入为 `E x 12`，`E` 是当前帧候选边数；同一
    参数处理 3v5、5v3、200 edges 或更大稀疏图。value 从 masked mean-pooled edge context
    计算，不定义固定 200x200 head。
-5. **模型文件必须可审计**：bundle 由 manifest、state dict 和 SHA256 组成，加载使用
-   weights-only。schema、feature、policy、split、SHA 或 state shape 任一不匹配均回退
-   逐元素相同的 `C_rule`，不得尝试宽松反序列化或部分加载。
+5. **数据和模型版本必须绑定**：dataset/frame 为 `d3_learning_dataset_v2`，split policy
+   为 `d3_numeric_seed_atomic_split_v2`，bundle 为 `d3_learning_model_bundle_v2`。manifest
+   固化 split 参数、逐 split 数量、split hash 和完整 frame SHA；bundle 再绑定 dataset/
+   split policy。v1 不兼容并稳定拒绝，模型加载只用 weights-only，不宽松或部分加载。
 6. **shadow 先于 assist**：shadow 在同一 scenario/seed/frame 上比较规则与 proposal，
    但不改规则矩阵或发布计划。assist 需要显式配置，并且 manifest 必须证明至少 20 个
-   未见 test seed、零 fallback、安全和 assignment-cost 非退化；不足时 promotion 为
-   false/unavailable。
-7. **能力按证据分层**：当前已实现数据、bundle、多 episode BC、原生 clipped PPO、
-   paired evaluator 和 CLI；仅完成 30-seed synthetic smoke。没有正式权重、真实 D2/D3
-   训练、AirSim 物理收益或 20 未见真实 seed 准入。
+   全局数值未见 test seed、零 fallback、安全和 assignment-cost 非退化；unseen 计数
+   不得把同一 seed 在多个 scenario 重复累计，不足时 promotion 为 false/unavailable。
+7. **导出内存必须有界**：D3 writer 逐条消费 iterator，使用磁盘暂存完成全局 seed
+   finalize 和稳定排序。frame SHA 与 split audit 不因流式写出而降低。调用方不得先把
+   staging JSONL 整体 `read_text().splitlines()` 后再构造全量 record tuple。
+8. **能力按证据分层**：当前已实现 v2 数据、bundle、多 episode BC、原生 clipped PPO、
+   paired evaluator 和 CLI；历史 30-seed smoke 属于 v1，不是 v2 性能证据。没有正式
+   权重、真实 D2/D3 训练、AirSim 物理收益或 20 未见真实 seed 准入。
 
 hold/replan head 当前用于 BC/PPO 和离线 counterfactual rollout，未接入在线 planner
 发布状态机。在线 `LearningCostAssistant` 仍只消费 residual，并执行
@@ -961,3 +966,28 @@ AirSim seed，也不改变 shadow/assist 的准入边界。
 2026-07-20 的 14 个确定性 fixture case 和 240 项全量回归结果为
 `239 passed, 1 skipped`，门限为零失败；这不是 main/D4 接线、多 seed 性能、AirSim 或
 物理拦截证据。
+
+## 23. 学习数据与晋级必须保持双重真值隔离（2026-07-20）
+
+1. **test 不是训练数据**：BC 只允许 train/validation，PPO 只允许 train；训练入口看到
+   test frame 必须拒绝。dataset loader 可以读取完整文件以验证 canonical SHA、split 和
+   统计合同，但 test 的特征、标签和 seed 不得进入 normalization、更新或训练期指标。
+2. **匿名 schema 必须正向声明**：frame v2 只接受固定字段集合。未知普通字段需要新
+   schema；任意层级的 truth/actor/identity、实体 ID、UUID、vehicle name 类键均拒绝。
+   兼容项仅为 ordinal token、声明过的强类型匿名字段和不携带实体身份的 hard-reject
+   reason 计数。
+3. **candidate 不是 permission**：candidate mask/hint 在候选索引、assistant 返回和
+   solver 消费处都必须与 hard reject reasons 求交，形状不一致宁可 unavailable。学习只
+   处理最终允许边，不能恢复 D5、可达性、容量、友方冲突或版本禁边。
+4. **完整内容与模型共同绑定**：bundle 和 promotion evidence 必须同时绑定 split hash、
+   canonical frame SHA256 与 state-dict SHA256。assist 只接受严格类型、eligible、正式
+   test、paired rule/residual、`rule_cost_matrix_v1` 口径且摘要一致的证据；任何 bypass、
+   validation、synthetic/non-eligible 或错配都回退规则。
+5. **非退化只能在共同代价坐标系声明**：proposal 用
+   `C_rule+alpha*tanh(delta_C)` 选边；rule/proposal 的最终 assignment 都必须用同一
+   `C_rule + unassigned_costs` 重新评分。模型输出不是 assignment、coalition、计划版本
+   或 D7 授权。
+
+本轮 252 项全量回归为 `251 passed, 1 skipped`，零失败门限通过，skip 仅 optional
+OR-Tools。该证据关闭 D3-owned 的上述软件合同缺口，但没有正式模型权重、至少 20 个
+未见真实/高保真 test seed、promotion 结论、AirSim 收益或物理执行证据。

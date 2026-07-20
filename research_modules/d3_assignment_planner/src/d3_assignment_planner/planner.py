@@ -1305,7 +1305,7 @@ class AssignmentPlanner:
             solver_result = self.solver.solve(
                 matrix_result.matrix,
                 matrix_result.unassigned_costs,
-                candidate_mask=matrix_result.candidate_mask,
+                candidate_mask=matrix_result.hard_safe_candidate_mask,
             )
             candidate = self._build_plan(
                 matrix_result=matrix_result,
@@ -1759,17 +1759,7 @@ class AssignmentPlanner:
             resource_id: index
             for index, resource_id in enumerate(matrix_result.resource_ids)
         }
-        candidate_mask = (
-            np.asarray(matrix_result.candidate_mask, dtype=bool).copy()
-            if matrix_result.candidate_mask is not None
-            else np.asarray(
-                [
-                    [reason is None for reason in row]
-                    for row in matrix_result.reject_reasons
-                ],
-                dtype=bool,
-            ).reshape(matrix_result.matrix.shape)
-        )
+        candidate_mask = matrix_result.hard_safe_candidate_mask
 
         selected_ids_by_route: dict[tuple[str, str], tuple[str, ...]] = {}
         used_transfer_resource_ids: set[str] = set()
@@ -3410,9 +3400,7 @@ class AssignmentPlanner:
             sub_matrix = slot_matrix_result.matrix[list(active_order), :]
             sub_unassigned = slot_matrix_result.unassigned_costs[list(active_order)]
             sub_candidate_mask = (
-                None
-                if slot_matrix_result.candidate_mask is None
-                else slot_matrix_result.candidate_mask[list(active_order), :]
+                slot_matrix_result.hard_safe_candidate_mask[list(active_order), :]
             )
             result = self.demand_solver.solve(
                 sub_matrix,

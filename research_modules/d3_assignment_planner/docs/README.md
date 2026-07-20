@@ -37,3 +37,17 @@ rule/effective/shadow/fallback 矩阵、版本和匿名输入快照留在 planne
 算法、审计字段和 fail-safe 回退见 `ALGORITHM_AND_IMPLEMENTATION.md`，main 时序与 D6
 验收条件见 `AIRSIM_INTEGRATION_PLAN.md`，测试边界见 `EXPERIMENT_REPORT.md`。该状态不
 代表 D4-main-D3 已接线，也没有新增 AirSim 或正式多 seed 性能证据。
+
+同日学习数据合同升级为 numeric-seed-atomic v2：同一数值 seed 跨 scenario、规模和
+episode 原子切分，dataset/bundle/shadow schema 同步升级并稳定拒绝 v1。D3 writer 已支持
+逐行 iterator、磁盘暂存和完整 frame SHA；main 仍需移除 batch finalize 的全量
+`read_text().splitlines()`。最新 D3 全量收集 244 项，结果为
+`243 passed, 1 skipped`。该结果仅证明软件合同，不含新训练、AirSim 或模型性能结论。
+
+同日 D3 owner 完成 learning 安全复核补正：训练 API 明确拒绝 test frame，frame v2
+递归拒绝未知 truth/actor/identity 字段，candidate mask 始终与 hard reject 求交，bundle/
+promotion 同时绑定 split、完整 frame 内容和 model-state 三摘要，paired shadow 在统一
+`rule_cost_matrix_v1` 上重评分。最新全量收集 252 项，结果为
+`251 passed, 1 skipped`。详见 `ALGORITHM_AND_IMPLEMENTATION.md` 的共同评分与证据合同、
+`EXPERIMENT_REPORT.md` 的负例结果以及 `AIRSIM_INTEGRATION_PLAN.md` 的运行时边界。本批
+仍无正式权重、eligible promotion、AirSim episode 或模型收益结论。

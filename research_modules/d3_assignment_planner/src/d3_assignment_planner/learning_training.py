@@ -9,7 +9,7 @@ from typing import Any, Iterable, Mapping, Sequence
 import numpy as np
 
 from .learning import EDGE_FEATURE_NAMES, FeatureDistributionGuard
-from .learning_data import LearningFrameRecord, validate_split_integrity
+from .learning_data import LearningFrameRecord
 from .native_ppo import (
     ClippedPPOTrainer,
     PPOUpdateResult,
@@ -89,8 +89,7 @@ def train_behavior_cloning(
 
     if torch is None or nn is None:  # pragma: no cover
         raise ImportError("PyTorch is required for behavior cloning")
-    items = tuple(records)
-    validate_split_integrity(items)
+    items = _training_records(records, allowed_splits={"train", "validation"})
     train_records = tuple(
         item for item in items if item.split == "train" and len(item.candidate_edge_indices)
     )
@@ -170,8 +169,7 @@ def train_native_ppo(
 
     if torch is None or nn is None:  # pragma: no cover
         raise ImportError("PyTorch is required for native PPO")
-    items = tuple(records)
-    validate_split_integrity(items)
+    items = _training_records(records, allowed_splits={"train"})
     train_records = tuple(
         item for item in items if item.split == "train" and len(item.candidate_edge_indices)
     )
@@ -288,16 +286,14 @@ def _whole_seed_metrics(
     mean: np.ndarray,
     scale: np.ndarray,
 ) -> dict[str, Mapping[str, float | int | str]]:
-    groups: dict[tuple[str, int, str], list[LearningFrameRecord]] = {}
+    groups: dict[tuple[int, str], list[LearningFrameRecord]] = {}
     for record in records:
-        groups.setdefault((record.scenario_version, record.seed, record.split), []).append(
-            record
-        )
+        groups.setdefault((record.seed, record.split), []).append(record)
     metrics: dict[str, Mapping[str, float | int | str]] = {}
     device = next(policy.parameters()).device
     policy.eval()
     with torch.no_grad():
-        for (scenario, seed, split), frames in sorted(groups.items()):
+        for (seed, split), frames in sorted(groups.items()):
             edge_correct = 0
             edge_count = 0
             advice_correct = 0
@@ -319,11 +315,11 @@ def _whole_seed_metrics(
                     target = 1 if record.hold_label else 2 if record.replan_label else 0
                     advice_correct += int(int(torch.argmax(advice_logits).item()) == target)
                     advice_count += 1
-            key = f"{scenario}:{seed}"
+            key = f"seed:{seed}"
             metrics[key] = {
-                "scenario_version": scenario,
                 "seed": int(seed),
                 "split": split,
+                "scenario_count": len({frame.scenario_version for frame in frames}),
                 "frame_count": len(frames),
                 "edge_count": edge_count,
                 "edge_accuracy": (
@@ -346,3 +342,35 @@ def _assert_disjoint_seed_groups(
     overlap = first_groups & second_groups
     if overlap:
         raise ValueError(f"train/validation seed leakage detected: {sorted(overlap)}")
+
+
+def _training_records(
+    records: Iterable[LearningFrameRecord],
+    *,
+    allowed_splits: set[str],
+) -> tuple[LearningFrameRecord, ...]:
+    """Materialize only explicit training splits and reject test consumption."""
+
+    items = tuple(records)
+    if not items:
+        raise ValueError("at least one training frame is required")
+    seen_frames: set[tuple[str, int, str, int]] = set()
+    seed_splits: dict[int, str] = {}
+    for item in items:
+        if item.split == "test":
+            raise ValueError(
+                "training entry points cannot consume test seed frames; "
+                "use the independent shadow evaluation entry point"
+            )
+        if item.split not in allowed_splits:
+            raise ValueError(
+                f"training entry point received unsupported split: {item.split}"
+            )
+        frame_key = (*item.episode_group, int(item.frame_index))
+        if frame_key in seen_frames:
+            raise ValueError(f"duplicate training frame: {frame_key}")
+        seen_frames.add(frame_key)
+        prior = seed_splits.setdefault(item.seed_group, item.split)
+        if prior != item.split:
+            raise ValueError("one numeric seed appears in multiple training splits")
+    return items

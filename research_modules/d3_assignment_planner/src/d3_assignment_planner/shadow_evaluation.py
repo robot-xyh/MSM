@@ -14,13 +14,23 @@ import numpy as np
 from .learning import FeatureDistributionGuard, ResidualPrediction
 from .learning_bundle import (
     MODEL_BUNDLE_MANIFEST_FILENAME,
+    PROMOTION_COST_BASIS,
+    PROMOTION_EVIDENCE_KIND,
+    PROMOTION_EVIDENCE_SCHEMA_V1,
     ModelBundleManifest,
 )
-from .learning_data import LearningFrameRecord, validate_split_integrity
+from .learning_data import (
+    LEARNING_DATASET_SCHEMA_V2,
+    LEARNING_DATASET_SPLIT_POLICY_V2,
+    LearningFrameRecord,
+    compute_split_hash,
+    validate_split_integrity,
+)
 from .solver import HungarianDemandSlotSolver
 
 
 SHADOW_EVALUATION_SCHEMA_V1 = "d3_shadow_paired_evaluation_v1"
+SHADOW_EVALUATION_SCHEMA_V2 = "d3_shadow_paired_evaluation_v2"
 
 
 @dataclass(frozen=True)
@@ -65,6 +75,9 @@ class ShadowFrameMetrics:
 
 @dataclass(frozen=True)
 class ShadowEvaluationReport:
+    split_hash: str
+    dataset_frames_sha256: str
+    model_state_dict_sha256: str
     evaluated_split: str
     frame_count: int
     unseen_seed_count: int
@@ -88,7 +101,14 @@ class ShadowEvaluationReport:
 
     def to_dict(self, *, include_frames: bool = True) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "schema_version": SHADOW_EVALUATION_SCHEMA_V1,
+            "schema_version": SHADOW_EVALUATION_SCHEMA_V2,
+            "dataset_schema_version": LEARNING_DATASET_SCHEMA_V2,
+            "split_policy_version": LEARNING_DATASET_SPLIT_POLICY_V2,
+            "seed_identity_scope": "numeric_seed_global_across_scenarios",
+            "split_hash": self.split_hash,
+            "dataset_frames_sha256": self.dataset_frames_sha256,
+            "model_state_dict_sha256": self.model_state_dict_sha256,
+            "cost_basis": PROMOTION_COST_BASIS,
             "evaluated_split": self.evaluated_split,
             "frame_count": int(self.frame_count),
             "unseen_seed_count": int(self.unseen_seed_count),
@@ -148,12 +168,23 @@ def evaluate_shadow_pairs(
     ood_z_threshold: float = 6.0,
     minimum_unseen_seeds: int = 20,
     evidence_eligible: bool = True,
+    dataset_frames_sha256: str | None = None,
+    model_state_dict_sha256: str | None = None,
     cost_tolerance: float = 1.0e-9,
 ) -> ShadowEvaluationReport:
     """Evaluate paired matrices; the policy never emits assignment indices."""
 
     items = tuple(records)
     validate_split_integrity(items)
+    split_hash = compute_split_hash(items)
+    dataset_sha = "" if dataset_frames_sha256 is None else str(dataset_frames_sha256)
+    model_sha = "" if model_state_dict_sha256 is None else str(model_state_dict_sha256)
+    for name, value in (
+        ("dataset_frames_sha256", dataset_sha),
+        ("model_state_dict_sha256", model_sha),
+    ):
+        if value and not _is_sha256(value):
+            raise ValueError(f"{name} must be a lowercase hexadecimal SHA256")
     selected = tuple(item for item in items if item.split == split)
     if not selected:
         raise ValueError(f"shadow evaluation split is empty: {split}")
@@ -259,7 +290,7 @@ def evaluate_shadow_pairs(
     shadow_duplicate = sum(item.shadow_duplicate_count for item in frame_metrics)
     rule_hard = sum(item.rule_hard_violation_count for item in frame_metrics)
     shadow_hard = sum(item.shadow_hard_violation_count for item in frame_metrics)
-    unseen_seed_count = len({item.seed_group for item in selected})
+    unseen_seed_count = len({int(item.seed) for item in selected})
     safety_non_degradation = (
         shadow_unmet <= rule_unmet
         and shadow_duplicate <= rule_duplicate
@@ -269,6 +300,10 @@ def evaluate_shadow_pairs(
     )
     cost_non_degradation = shadow_cost_mean <= rule_cost_mean + float(cost_tolerance)
     promotion = _promotion_manifest(
+        evaluated_split=str(split),
+        split_hash=split_hash,
+        dataset_frames_sha256=dataset_sha,
+        model_state_dict_sha256=model_sha,
         unseen_seed_count=unseen_seed_count,
         minimum_unseen_seeds=minimum_unseen_seeds,
         evidence_eligible=evidence_eligible,
@@ -277,6 +312,9 @@ def evaluate_shadow_pairs(
         fallback_frame_count=sum(fallback_counts.values()),
     )
     return ShadowEvaluationReport(
+        split_hash=split_hash,
+        dataset_frames_sha256=dataset_sha,
+        model_state_dict_sha256=model_sha,
         evaluated_split=str(split),
         frame_count=len(frame_metrics),
         unseen_seed_count=unseen_seed_count,
@@ -317,6 +355,25 @@ def update_bundle_promotion_manifest(
     path = Path(bundle_dir) / MODEL_BUNDLE_MANIFEST_FILENAME
     with path.open(encoding="utf-8") as stream:
         manifest = ModelBundleManifest.from_dict(json.load(stream))
+    if (
+        promotion_manifest.get("evidence_schema_version")
+        != PROMOTION_EVIDENCE_SCHEMA_V1
+        or promotion_manifest.get("evidence_kind") != PROMOTION_EVIDENCE_KIND
+        or promotion_manifest.get("cost_basis") != PROMOTION_COST_BASIS
+        or promotion_manifest.get("dataset_schema_version")
+        != manifest.dataset_schema_version
+        or promotion_manifest.get("split_policy_version")
+        != manifest.split_policy_version
+        or promotion_manifest.get("seed_identity_scope")
+        != "numeric_seed_global_across_scenarios"
+        or promotion_manifest.get("split_hash") != manifest.split_hash
+        or promotion_manifest.get("dataset_frames_sha256")
+        != manifest.dataset_frames_sha256
+        or promotion_manifest.get("model_state_dict_sha256")
+        != manifest.state_dict_sha256
+        or promotion_manifest.get("evidence_hashes_bound") is not True
+    ):
+        raise ValueError("promotion evidence hashes or dataset contract do not match bundle")
     updated = replace(manifest, promotion_manifest=dict(promotion_manifest))
     with path.open("w", encoding="utf-8", newline="\n") as stream:
         json.dump(updated.to_dict(), stream, ensure_ascii=True, indent=2, sort_keys=True)
@@ -359,8 +416,15 @@ def _solve_frame(
         not bool(record.action_mask[row, column]) for row, column in selected_edges
     )
     churn = len(set(selected_edges).symmetric_difference(record.previous_selected_edges))
+    rule_basis_objective = sum(
+        float(record.rule_cost_matrix[row, column]) for row, column in selected_edges
+    ) + sum(
+        max(0, int(demand) - assigned_counts[index])
+        * float(record.unassigned_costs[index])
+        for index, demand in enumerate(record.target_demand_slots)
+    )
     return _SolvedFrame(
-        objective=float(result.objective_value),
+        objective=float(rule_basis_objective),
         selected_edges=selected_edges,
         high_threat_unmet=int(high_threat_unmet),
         churn=int(churn),
@@ -372,14 +436,14 @@ def _solve_frame(
 def _aggregate_per_seed(
     frames: Sequence[ShadowFrameMetrics],
 ) -> dict[str, Mapping[str, Any]]:
-    groups: dict[tuple[str, int], list[ShadowFrameMetrics]] = {}
+    groups: dict[int, list[ShadowFrameMetrics]] = {}
     for frame in frames:
-        groups.setdefault((frame.scenario_version, frame.seed), []).append(frame)
+        groups.setdefault(int(frame.seed), []).append(frame)
     result: dict[str, Mapping[str, Any]] = {}
-    for (scenario, seed), items in sorted(groups.items()):
-        key = f"{scenario}:{seed}"
+    for seed, items in sorted(groups.items()):
+        key = f"seed:{seed}"
         result[key] = {
-            "scenario_version": scenario,
+            "scenario_versions": sorted({item.scenario_version for item in items}),
             "seed": int(seed),
             "frame_count": len(items),
             "rule_assignment_cost_mean": float(
@@ -403,6 +467,10 @@ def _aggregate_per_seed(
 
 def _promotion_manifest(
     *,
+    evaluated_split: str,
+    split_hash: str,
+    dataset_frames_sha256: str,
+    model_state_dict_sha256: str,
     unseen_seed_count: int,
     minimum_unseen_seeds: int,
     evidence_eligible: bool,
@@ -412,9 +480,17 @@ def _promotion_manifest(
 ) -> dict[str, Any]:
     enough_seeds = unseen_seed_count >= minimum_unseen_seeds
     no_fallback = fallback_frame_count == 0
+    test_evidence = str(evaluated_split) == "test"
+    evidence_hashes_bound = bool(
+        _is_sha256(split_hash)
+        and _is_sha256(dataset_frames_sha256)
+        and _is_sha256(model_state_dict_sha256)
+    )
     recommended = bool(
         enough_seeds
         and evidence_eligible
+        and test_evidence
+        and evidence_hashes_bound
         and safety_non_degradation
         and cost_non_degradation
         and no_fallback
@@ -425,9 +501,15 @@ def _promotion_manifest(
     elif not evidence_eligible:
         status = "unavailable"
         reason = "evidence_source_not_promotion_eligible"
+    elif not test_evidence:
+        status = "unavailable"
+        reason = "formal_promotion_requires_test_split"
     elif not enough_seeds:
         status = "unavailable"
         reason = "insufficient_unseen_seed_count"
+    elif not evidence_hashes_bound:
+        status = "unavailable"
+        reason = "promotion_evidence_hashes_unbound"
     elif not no_fallback:
         status = "rejected"
         reason = "shadow_fallback_present"
@@ -438,6 +520,17 @@ def _promotion_manifest(
         status = "rejected"
         reason = "assignment_cost_non_degradation_failed"
     return {
+        "evidence_schema_version": PROMOTION_EVIDENCE_SCHEMA_V1,
+        "evidence_kind": PROMOTION_EVIDENCE_KIND,
+        "cost_basis": PROMOTION_COST_BASIS,
+        "dataset_schema_version": LEARNING_DATASET_SCHEMA_V2,
+        "split_policy_version": LEARNING_DATASET_SPLIT_POLICY_V2,
+        "seed_identity_scope": "numeric_seed_global_across_scenarios",
+        "evaluated_split": str(evaluated_split),
+        "split_hash": str(split_hash),
+        "dataset_frames_sha256": str(dataset_frames_sha256),
+        "model_state_dict_sha256": str(model_state_dict_sha256),
+        "evidence_hashes_bound": evidence_hashes_bound,
         "promotion_recommended": recommended,
         "promotion_status": status,
         "reason": reason,
@@ -448,6 +541,11 @@ def _promotion_manifest(
         "assignment_cost_non_degradation": bool(cost_non_degradation),
         "fallback_frame_count": int(fallback_frame_count),
     }
+
+
+def _is_sha256(value: Any) -> bool:
+    text = str(value)
+    return len(text) == 64 and set(text).issubset(frozenset("0123456789abcdef"))
 
 
 def _coerce_prediction(value: Any) -> ResidualPrediction:

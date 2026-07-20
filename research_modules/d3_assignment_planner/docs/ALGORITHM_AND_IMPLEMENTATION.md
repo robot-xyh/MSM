@@ -1087,11 +1087,24 @@ fail closed。正常 evaluation refresh 的身份规则没有放宽。
 
 ### 29.1 帧与切分 schema
 
-`LearningFrameRecord` 是逐帧 JSONL 合同。manifest schema 为
-`d3_learning_dataset_v1`，split policy 为 `d3_scenario_seed_group_split_v1`。split 函数
-接收 `scenario_version/seed/episode`，但哈希分组键只使用 scenario version 与 seed，
-保证同 seed 的多个 episode 不能泄漏到不同 split；frame 仅继承组结果。loader 同时
-验证 frame 唯一性、episode split 和 seed split，并重算 split hash。
+`LearningFrameRecord` 是逐帧 JSONL 合同。当前 frame/manifest schema 为
+`d3_learning_dataset_v2`，split policy 为 `d3_numeric_seed_atomic_split_v2`。在线采集
+helper 不知道完整 catalog，只能生成 `split=unassigned` 的 staging record；训练、shadow
+和 finalized loader 均拒绝把 staging record 当成数据集。
+
+finalize 先收集唯一数值 seed，按
+`SHA256(policy_version | split_seed | numeric_seed)` 的稳定顺序排列，再根据唯一 seed 数量
+计算 test、validation、train 的精确数量。scenario version、2v2/5v5 名称、规模和 episode
+均不进入 seed 身份，因此同一数值 seed 在所有 scenario/scale/episode/frame 中只有一个
+split。少于 3 个唯一 seed、任一 split 为空、test 少于声明 unseen 数或输入已声明冲突
+split 时直接失败。正式 writer 默认 `minimum_unseen_seed_count=20`；synthetic smoke 必须
+显式使用 1，且不获得 promotion 资格。
+
+manifest 记录 split seed/fraction、唯一 seed 数、逐 split seed/episode/frame 数、split
+hash 和 canonical frame-file SHA256。split hash 的 payload 显式含 v2 policy、全局数值
+seed->split 映射和排序后的完整 episode membership。loader 先校验 frame SHA，再验证
+frame 唯一性、episode 原子性、三组数值 seed 两两不交、按 manifest 参数重算分配和全部
+统计。v1 manifest/frame 明确拒绝，不自动迁移或解释。
 
 每个 frame 保存：
 
@@ -1141,7 +1154,7 @@ L_BC = BCE(rule_selected_edge, selection_logit)
 
 规则选边的 teacher residual 对 selected edge 为负、未选候选为正，只用于 warm start，
 不构成最终 assignment label。输出同时给出初始/最终 train loss、validation loss，以及
-每个完整 scenario/seed 的 edge/advice accuracy；不输出边级随机 holdout 指标。
+按数值 seed 跨 scenario 聚合的 edge/advice accuracy；不输出边级随机 holdout 指标。
 
 ### 29.4 原生 clipped PPO
 
@@ -1172,24 +1185,41 @@ R = 2.0 * high_threat_coverage
 
 ### 29.5 Bundle 与 fail-safe load
 
-bundle schema `d3_learning_model_bundle_v1` 固定 `manifest.json` 和 `state_dict.pt`。
-manifest 含 feature/schema/policy version、split hash、normalization mean/scale、模型
+bundle schema `d3_learning_model_bundle_v2` 固定 `manifest.json` 和 `state_dict.pt`，并
+显式绑定 `d3_learning_dataset_v2` 与 `d3_numeric_seed_atomic_split_v2`。manifest 含
+feature/schema/policy version、split hash、normalization mean/scale、模型
 结构、alpha、confidence、OOD z threshold、deadline、训练结果、promotion manifest 和
 state SHA256。loader 顺序为：解析纯 JSON、校验合同、检查 assist promotion、检查文件
 与 SHA、`torch.load(weights_only=True)`、严格 `load_state_dict(strict=True)`。任何失败
-都返回 `RuleFallbackLearningAssistant`，保留规则矩阵；version mismatch 的优先原因仍
-是 `version_constraint`。
+都返回 `RuleFallbackLearningAssistant`，保留规则矩阵；旧 bundle v1 的稳定原因是
+`model_bundle_schema_unsupported`，dataset/split 合同错误为
+`model_dataset_contract_unsupported`，version mismatch 的优先原因仍是
+`version_constraint`。
 
 ### 29.6 Paired shadow 与晋级
 
 shadow evaluator 为每帧保留 `rule_snapshot`，从副本生成 proposal，再对两者调用同一
-demand-slot solver。输出 frame、seed 和 aggregate 三层成本、高威胁 unmet、churn、
+demand-slot solver。输出 frame、数值 seed 和 aggregate 三层成本、高威胁 unmet、churn、
 duplicate、hard violation、fallback 和 inference percentile。promotion 条件全部满足
-才为 true：test split、证据源 eligible、未见 seed 数不少于 20、fallback=0、安全非
+才为 true：test split、证据源 eligible、全局数值未见 seed 数不少于 20、fallback=0、安全非
 退化、assignment cost 非退化。synthetic CLI 自动标为 evidence-ineligible。
 
 当前在线 assistant 只消费 residual。advice head 尚未接入 planner 的迟滞/发布状态机，
 因此文档不得把离线 hold/replan 训练写成在线策略部署。
+
+### 29.7 有界写出与 200v200 边界
+
+`write_learning_dataset()` 不再对输入执行 `tuple(sorted(records))`。它逐条序列化到临时
+SQLite，以 `(scenario_version, seed, episode, frame_index)` 唯一键拒绝重复；取得完整
+seed catalog 后逐条反序列化、注入 v2 split，并按同一稳定键写 canonical JSONL，同时
+增量计算 frame SHA。`staging_batch_size` 只控制提交批次，不改变 split/hash。
+`iter_learning_frame_records()` 提供逐行 staging 解析，因此调用者可保持一帧级内存。
+
+实测单个 dense 200v200 fixture 有 40,000 candidate edge，canonical JSON 为 5,854,691
+bytes；NumPy payload 和 edge tuple 浅层约 5,161,640 bytes。main 当前 batch finalize 仍
+在调用 D3 前执行 `read_text().splitlines()` 并构造完整 tuple，40 帧仅文本和上述对象的
+保守下界已超过约 440 MB，未计 JSON 临时对象。D3 API 已具备有界路径，但 main 必须改用
+iterator 才能关闭全链路内存 GAP。
 
 ## 30. 单帧 PlanningFrameEvidence 实现（2026-07-20）
 
@@ -1293,3 +1323,62 @@ actual cross-region total 和 limit-satisfied。无提示调用仅追加 unavail
 14 个新增确定性 case 覆盖 1-to-1、M-to-N、D5 hard edge、learning assist、commit/
 reserve 和非法回退。2026-07-20 全量收集 240 项，结果 `239 passed, 1 skipped`；没有
 AirSim、正式多 seed 性能或物理结果。
+
+## 32. Learning 安全补正：Split、Evidence 与共同评分（2026-07-20）
+
+### 32.1 训练与评估入口
+
+`train_behavior_cloning(records)` 只物化 `train` 和 `validation`，并检查数值 seed 不跨
+split；`train_native_ppo(records)` 只物化 `train`。两者在遍历输入时一旦遇到 `test`
+立即报错，因此 BC validation/whole-seed metric 和 PPO transition 都不能观察 test。
+CLI 先调用 dataset loader 验证完整 canonical 文件、三分合同及摘要，随后只把上述允许
+split 传入训练 API。`test` 仅由显式 `shadow-eval --split test` 独立入口使用。
+
+### 32.2 Frame 与动作集合
+
+`LearningFrameRecord.from_dict()` 在类型转换前递归检查输入，并要求字段集合精确等于
+v2 allow-list。truth/actor/identity、`id`、`*_id`、`*_ids`、UUID、vehicle name 类键在
+任意嵌套层级都失败关闭；匿名 target/resource 字段采用固定 schema 和数值/整数/布尔
+强校验。兼容 hard-reject reason 可保留 `identity_conflict` 这类纯语义计数，但不能携带
+actor/truth/entity ID；其他扩展需要新 schema 版本。
+
+对规则矩阵形状为 `T x R`，最终 learning mask 为：
+
+```text
+M_learning = M_candidate AND (reject_reason is None) AND M_version
+```
+
+`CostMatrixResult.hard_safe_candidate_mask` 统一执行前两项求交，并由候选索引、assistant
+返回值及一对一/M-to-N solver 入口共同消费；任一 mask/reason shape 不一致即报错。版本
+不兼容时 learning 返回再把全部边清零。candidate mask 因而只是稀疏/区域提示，不能恢复
+hard reject。
+
+### 32.3 Bundle 与 Promotion 证据
+
+`d3_learning_model_bundle_v2` 固化 `split_hash`、`dataset_frames_sha256` 和
+`state_dict_sha256`。正式 promotion 使用 `d3_shadow_promotion_evidence_v1`，kind 为
+`paired_rule_residual_shadow`，cost basis 为 `rule_cost_matrix_v1`，并重复绑定这三项
+摘要。`update_bundle_promotion_manifest()` 拒绝摘要或合同错配；assist loader 还要求
+`evaluated_split=test`、`evidence_eligible is True`、严格布尔/整型字段、至少 20 个未见
+数值 seed、零 fallback、安全和成本非退化。`require_promotion_for_assist=False` 明确返回
+`promotion_bypass_forbidden`，不能绕过。
+
+### 32.4 共同最终代价重评分
+
+proposal 仅用于选择 assignment：
+
+```text
+C_proposal = C_rule + alpha * tanh(delta_C)
+A_rule     = solve(C_rule, mask, U)
+A_proposal = solve(C_proposal, mask, U)
+J(A)       = sum((t,r) in A, C_rule[t,r])
+             + sum(t, unmet_slots(t,A) * U[t])
+```
+
+promotion 比较 `J(A_rule)` 与 `J(A_proposal)`；禁止直接比较两个 solver 在各自矩阵上返回的
+objective。安全、高威胁 unmet、duplicate、hard violation 和 fallback 仍独立门控。无论
+shadow 或 assist，模型均不输出执行授权，最终计划仍经过 demand-slot、all-or-none、迟滞、
+版本和下游 gate。
+
+本轮全量 252 项为 `251 passed, 1 skipped`，门限零失败通过；skip 是 optional OR-Tools。
+没有产生正式权重、真实/高保真 20-seed promotion evidence、AirSim 或 200v200 模型收益。

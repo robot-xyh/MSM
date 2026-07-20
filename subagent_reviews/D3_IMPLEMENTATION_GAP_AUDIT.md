@@ -352,7 +352,7 @@ main 另行接线，D3 不跨模块修改。
 
 | GAP/能力 | 当前状态 | 证据与剩余边界 |
 |---|---|---|
-| 可复现学习数据 schema | D3-owned implemented/tested | scenario+seed 整体 split，episode/frame 不拆分；匿名 entity、候选特征/mask/规则选边/前序版本/反馈迟滞/reward 均可 JSONL 往返 |
+| 可复现学习数据 schema | legacy v1 superseded by section 23 | 原 scenario+seed split 存在跨场景同数值 seed 泄漏；v1 不再接受 |
 | truth/edge leakage | deterministic fail-closed | allow-list entity schema，不保存原 ID/metadata；同 seed 跨 split 和重复 frame 均拒绝 |
 | model bundle | D3-owned implemented/tested | manifest+state_dict+SHA256；feature/schema/policy/split/normalization/guardrail/training/promotion 完整，weights-only strict load |
 | bundle fallback | P0/P1 safety done | missing、SHA、feature/policy mismatch 和 version constraint 返回逐元素相同规则矩阵 |
@@ -363,7 +363,7 @@ main 另行接线，D3 不跨模块修改。
 | assist promotion gate | fail-closed implemented | manifest 必须 >=20 unseen test seed、零 fallback、安全和成本非退化；19 seed 即使手写 recommended 也拒绝 |
 | 真实训练/准入 | P1 open/unavailable | 无真实 D2/D3 trajectory、正式权重、>=20 未见真实/高保真 seed、AirSim outcome 或 deadline calibration |
 
-30-seed、60-frame synthetic smoke 的 split 为 23/1/6 seed 和 46/2/12 frame。BC train
+以下 30-seed、60-frame synthetic smoke 属于 legacy v1：split 为 23/1/6 seed 和 46/2/12 frame。BC train
 loss `1.1001 -> 0.5014`、validation `0.3768`；46-transition PPO 更新指标有限；test
 shadow P50/P95=`0.281/0.350 ms`，fallback/duplicate/hard violation 均为 0。但
 assignment-cost non-degradation=false，test 只有 6 seed，且 source synthetic，所以
@@ -421,3 +421,49 @@ seed/frame/result。
 系统接线待完成”。新增 14 个 fixture case；2026-07-20 全量收集 240 项，结果为
 `239 passed, 1 skipped`，接受门限为零失败，skip 是 optional OR-Tools。该证据不关闭
 main-owned 时序接线、D6 多 seed 非退化、AirSim 或物理拦截 GAP。
+
+## 23. 跨场景数值 Seed 隔离与流式写出 GAP 更新（2026-07-20）
+
+| GAP/能力 | 当前状态 | 证据与剩余边界 |
+|---|---|---|
+| 同 seed 跨 scenario/scale 泄漏 | D3-owned closed | split identity 改为纯数值 seed；2v2/5v5 风格双 scenario、多 episode/多 frame 复用测试通过 |
+| episode/frame 原子性 | deterministic closed | 完整 catalog finalize；同 seed 任一 frame 改 split 即拒绝，重复 frame 由唯一键拒绝 |
+| 三 split 数量与零交集 | fail-closed closed | 按唯一数值 seed 数量分配；少于 3、任一 split 空、声明 unseen 不足均拒绝 |
+| dataset/split schema | v2 implemented/tested | `d3_learning_dataset_v2` + `d3_numeric_seed_atomic_split_v2`；manifest 固化 split 参数、逐 split seed/episode/frame 数、split hash、frame SHA |
+| bundle/shadow schema | v2 implemented/tested | bundle v2 绑定 dataset/split v2；shadow report v2 按数值 seed 聚合；v1 稳定拒绝 |
+| hash/loader 篡改 | deterministic fail-closed | 逆序输入同 canonical frames/manifest/hash；frame SHA、split 映射、统计和 policy 均重算 |
+| training/shadow unseen 计数 | closed | BC/PPO/shadow 先验完整三分；whole-seed/unseen 不再把同一 seed 的多个 scenario 重复计数 |
+| D3 writer 全量内存 | D3-owned closed | iterator + 临时 SQLite + 批次提交 + 增量 SHA；输入不再 `tuple(sorted(...))` |
+| main batch finalize 全量内存 | cross-module P1 open | main 仍 `read_text().splitlines()` 后构造完整 tuple；需改传 `iter_learning_frame_records(...)` |
+| 正式模型与性能 | P1 open/unavailable | 本批未训练、未跑 AirSim、无模型 loss/成本/时延/物理收益结论 |
+
+200v200 dense fixture 有 40,000 candidate edge；单帧 canonical JSON 为 5,854,691 bytes，
+NumPy payload 加 edge tuple 浅层约 5,161,640 bytes。40 帧时，main 现有文本加上述对象的
+保守下界超过约 440 MB，尚未计 `read_text`/`splitlines` 重复和 JSON 临时对象。因此
+D3 API 的有界写出已实现，但正式 200v200 全链路内存 GAP 只有 main 调用 iterator 后才能
+关闭。
+
+2026-07-20 D3 全量收集 244 项，结果为 `243 passed, 1 skipped`，接受门限零失败达到；
+唯一 skip 是 optional OR-Tools installed-only benchmark。`README.md`、`PLAN.md`、D3
+review/GAP、模块内 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md`、
+`AIRSIM_INTEGRATION_PLAN.md`、`EXPERIMENT_REPORT.md` 和 docs index 已同步。AirSim 文档
+明确本批未改 adapter/settings/actor/control、未运行 episode；实验文档只记录软件合同。
+根级 `docs/**`、main/scalable 调用点不在 D3 owned paths，由 main 汇总同步。
+
+## 24. Learning 训练与 Promotion Fail-Closed GAP 更新（2026-07-20）
+
+| GAP/能力 | 当前状态 | 证据与剩余边界 |
+|---|---|---|
+| BC/PPO 消费 test seed | D3-owned closed | BC 只接收 train/validation、PPO 只接收 train；任一训练 API 遇 test 报错，BC whole-seed metric 无 test |
+| frame truth/identity 泄漏 | deterministic closed | v2 完整字段 allow-list；任意层级 truth/actor/identity/entity-ID/UUID/vehicle-name 键拒绝，匿名字段强类型校验 |
+| candidate hint 重开 hard reject | safety closed | 候选索引、assistant 返回与 solver mask 均和 reject-reason allow mask 求交；shape 错误失败关闭 |
+| bundle 与数据内容脱钩 | integrity closed | bundle/promotion evidence 同时绑定 split SHA、canonical frame SHA、state-dict SHA；错配拒绝 |
+| promotion 口径可绕过 | safety closed | assist 强制 eligible 正式 test paired evidence、严格类型、>=20 unseen seed、零 fallback、安全/成本非退化；bypass/validation/non-eligible 拒绝 |
+| shadow objective 不可比 | metric closed | rule/proposal 方案统一按 `rule_cost_matrix_v1 + unassigned_costs` 重评分，不比较不同矩阵 objective |
+| 正式权重/promotion | P1 open/unavailable | 无真实 D2/D3 训练、>=20 未见真实/高保真 test seed、正式权重或 assist promotion 结论 |
+| AirSim/200v200 模型收益 | P1 open/unavailable | 本轮未运行 AirSim 或全栈模型性能实验；同步 timeout 仍不可抢占 |
+
+负例覆盖 test-seed 输入、指标隔离、递归字段、mask 不一致、frame/evidence hash、证据
+split/eligibility/bypass/type 和共同成本基准。2026-07-20 D3 全量收集 252 项，结果为
+`251 passed, 1 skipped`，零失败达到门限；唯一 skip 是 optional OR-Tools installed-only
+benchmark。上述关闭项是 D3 software contract，不把模型提案升级为计划或执行授权。

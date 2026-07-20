@@ -329,20 +329,20 @@ identity/version。没有运行 scalable 3D 全栈、AirSim 或多 seed。
 门控可执行，不证明 main 已修复 50v50 故障流程。下一项系统验收是 main 在 D4 裁决前
 调用 fence，并确认所有区域不再出现 `authority_generation_not_advanced`。
 
-## 2026-07-20 可复现学习管线 Synthetic Smoke
+## 2026-07-20 可复现学习管线 Synthetic Smoke（Legacy v1）
 
 ### 设置与门限
 
-本批只运行 D3 本地 synthetic smoke，不运行 AirSim，不使用 truth actor ID，不提交
-正式权重。固定 30 个 seed、每 seed 1 episode/2 frame；3v5 与 5v3 roster 交替。split
-按 `scenario_version + seed` 整体哈希，实际 train/validation/test seed 为 `23/1/6`，
-frame 为 `46/2/12`。训练固定 torch/NumPy seed `20260720`，policy hidden size 16。
+本节记录旧 `d3_learning_dataset_v1` / `d3_scenario_seed_group_split_v1` 的历史开发
+smoke，不是当前 v2 证据。该批未运行 AirSim、未使用 truth actor ID、未提交正式权重。
+固定 30 个 seed、每 seed 1 episode/2 frame；旧 split 按 `scenario_version + seed` 哈希，
+实际 train/validation/test seed 为 `23/1/6`，frame 为 `46/2/12`。
 
 接受门限如下：
 
 | 项目 | 门限 |
 |---|---|
-| split | 同一 scenario/seed 不得跨 split |
+| split | legacy v1 同一 scenario/seed 不得跨 split |
 | BC | final train loss < initial，validation loss 有限 |
 | PPO | policy/value/entropy/KL/clip/gradient 指标均有限 |
 | mask/solver | duplicate=0、hard violation=0、mask 外动作不可生效 |
@@ -358,10 +358,11 @@ frame 为 `46/2/12`。训练固定 torch/NumPy seed `20260720`，policy hidden s
 | PPO | 46 transitions、1 update、2 optimization epoch | 所有更新指标有限；smoke clip fraction=0 | 0.132 s |
 | shadow | 6 test seed、12 frame | fallback=0、duplicate=0、hard violation=0 | 0.006 s |
 
-shadow inference P50/P95 为 `0.281/0.350 ms`。安全非退化为 true，但 assignment-cost
+legacy shadow inference P50/P95 为 `0.281/0.350 ms`。安全非退化为 true，但 assignment-cost
 非退化为 false；同时 test 只有 6 个未见 seed，且数据源是 synthetic。因此 promotion
 manifest 为 `promotion_recommended=false`、`promotion_status=unavailable`、reason
-`evidence_source_not_promotion_eligible`。这不是模型收益证据。
+`evidence_source_not_promotion_eligible`。v2 loader/bundle 会稳定拒绝该产物；这不是当前
+模型收益证据。
 
 专项测试共新增 16 项：dataset/bundle 8 项、PPO/shadow 7 项、四命令 CLI 1 项。覆盖
 3v5、5v3、200 candidate edge shape、整 seed 泄漏拒绝、BC loss、PPO clipped-ratio、
@@ -379,6 +380,37 @@ skip 是 optional OR-Tools installed-only case。
 - paired assignment cost、高威胁 unmet、churn 和系统物理结果全部非退化。
 
 在这些条件满足前，assist 不得晋级；默认继续使用规则 Hungarian/demand-slot。
+
+## 2026-07-20 数值 Seed 隔离 v2 软件合同验收
+
+### 设置与门限
+
+本批只运行 D3 单元和全量回归，不运行 AirSim、不训练新模型、不比较拦截或 assignment
+性能。dataset fixture 使用 8 个唯一数值 seed；每个 seed 同时出现在 2v2/5v5 风格的两个
+scenario/scale 中，每个 scenario 含两个 episode、每 episode 两帧。相同记录分别按正序、
+逆序和逐行 iterator 输入 finalize。
+
+| 验收项 | 门限 |
+|---|---|
+| seed 原子性 | 同一数值 seed 的全部 scenario/scale/episode/frame 只有一个 split |
+| split 隔离 | train/validation/test 数值 seed 集合两两零交集且均非空 |
+| 数量门 | 少于 3 个唯一 seed 或 test 少于声明 unseen 数必须失败 |
+| 确定性 | 正序/逆序的 canonical frames、split hash、frame SHA 和 manifest 完全一致 |
+| 篡改/版本 | 修改 frame/split/hash、冲突预分配、dataset v1、bundle v1 均稳定拒绝 |
+| 下游 | BC/PPO/shadow 先验证完整三分；whole-seed/unseen 按数值 seed 跨 scenario 计数 |
+
+### 结果
+
+专项正负例全部通过。D3 全量收集 244 项，结果为 `243 passed, 1 skipped`，接受门限为
+零失败；唯一 skip 是环境未安装 optional OR-Tools 的 installed-only benchmark。schema
+结果为 `d3_learning_dataset_v2`、`d3_numeric_seed_atomic_split_v2`、
+`d3_learning_model_bundle_v2` 和 `d3_shadow_paired_evaluation_v2`。这是软件合同结果，
+不表示模型 loss、成本、时延或物理拦截性能改善。
+
+写出边界另用一个 dense 200v200 fixture 量化：40,000 candidate edge，单帧 canonical
+JSON 5,854,691 bytes，NumPy payload 加 edge tuple 浅层约 5,161,640 bytes。D3 writer
+已改为 iterator + 临时 SQLite + 增量 SHA；main 当前全量 `read_text().splitlines()` 调用
+仍是 cross-module P1，40 帧保守下界超过约 440 MB 且未计 JSON 临时对象。
 
 ## 2026-07-20 单帧规划证据确定性验收
 
@@ -438,3 +470,28 @@ shadow non-degradation 数据。
 `239 passed, 1 skipped`，接受门限为零失败；skip 是 optional OR-Tools installed-only
 case。该结果证明 D3 DTO、候选约束、fallback 和审计合同，不证明 main 已接入 D4，也
 没有正式多 seed、AirSim 时延/非退化或物理拦截结果。
+
+## 2026-07-20 Learning 数据与 Promotion 安全负例验收
+
+### 设置与门限
+
+本批只运行 D3 pytest，不启动 AirSim，也不训练或发布模型。接受门限为：训练入口对
+test frame 零消费；BC 训练期指标不含 test seed；递归 identity/未知 frame 字段全部拒绝；
+candidate hint 不能恢复 hard reject；assist 只接受 eligible 正式 test paired evidence，
+dataset split/frame/model 三摘要完全匹配；rule/proposal 非退化在同一
+`rule_cost_matrix_v1 + unassigned_costs` 基准计算；全量零失败。
+
+### 结果
+
+| 验收项 | 负例/样本 | 结果 |
+|---|---|---|
+| seed 隔离 | BC 输入 train/validation/test；PPO 输入 train/test | 训练 API 拒绝 test，BC whole-seed metric 仅含 train/validation |
+| frame 真值隔离 | 顶层/嵌套 truth、actor、identity、未知扩展、数值字段 actor 字符串 | 全部 fail closed；v2 兼容字段保持显式 allow-list |
+| action mask | 人为设置 `candidate_mask=True` 重开 D5/容量/冲突禁边 | 候选索引、assistant 返回和 solver mask 都继续拒绝 hard edge |
+| bundle/evidence | frame SHA 错配、validation、non-eligible、promotion bypass、证据摘要/类型伪装 | assist 均回退规则 |
+| cost non-degradation | residual 诱导选择较贵的规则边 | 共同 `C_rule` 重评分识别成本退化并拒绝 promotion |
+
+D3 全量收集 252 项，结果 `251 passed, 1 skipped`；零失败达到门限，唯一 skip 是环境
+未安装 optional OR-Tools。本批没有正式权重、真实 D2/D3 训练、至少 20 个未见真实/高
+保真 test seed、eligible promotion 或 assist 准入结论。没有运行 AirSim，因此也不形成
+模型时延、物理收益、拦截率或 200v200 全栈实验结论。

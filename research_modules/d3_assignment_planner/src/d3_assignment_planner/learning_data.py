@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 import json
 from math import isfinite
+import os
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+import sqlite3
+import tempfile
+from types import MappingProxyType
+from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 import numpy as np
 
@@ -18,9 +22,58 @@ from .planner import AssignmentPlanner
 
 LEARNING_DATASET_SCHEMA_V1 = "d3_learning_dataset_v1"
 LEARNING_DATASET_SPLIT_POLICY_V1 = "d3_scenario_seed_group_split_v1"
+LEARNING_DATASET_SCHEMA_V2 = "d3_learning_dataset_v2"
+LEARNING_DATASET_SPLIT_POLICY_V2 = "d3_numeric_seed_atomic_split_v2"
 DATASET_MANIFEST_FILENAME = "dataset_manifest.json"
 DATASET_FRAMES_FILENAME = "frames.jsonl"
 DATASET_SPLITS = ("train", "validation", "test")
+UNASSIGNED_DATASET_SPLIT = "unassigned"
+DEFAULT_DATASET_SPLIT_SEED = 20260720
+DEFAULT_VALIDATION_FRACTION = 0.2
+DEFAULT_TEST_FRACTION = 0.2
+DEFAULT_MINIMUM_UNSEEN_SEED_COUNT = 20
+
+_OFFLINE_REWARD_FIELDS = frozenset(
+    {
+        "high_threat_coverage",
+        "rule_total_cost",
+        "unmet_demand_slots",
+        "reassignment_churn",
+        "plan_expired",
+        "safety_rejections",
+    }
+)
+_LEARNING_FRAME_FIELDS = frozenset(
+    {
+        "schema_version",
+        "scenario_version",
+        "seed",
+        "episode",
+        "frame_index",
+        "timestamp_s",
+        "split",
+        "anonymous_targets",
+        "anonymous_resources",
+        "candidate_edge_indices",
+        "candidate_features",
+        "action_mask",
+        "rule_cost_matrix",
+        "rule_costs",
+        "unassigned_costs",
+        "rule_selected_edges",
+        "previous_selected_edges",
+        "previous_plan_version",
+        "feedback_result",
+        "hysteresis_result",
+        "hold_label",
+        "replan_label",
+        "advice_allowed",
+        "target_threat_scores",
+        "target_demand_slots",
+        "hard_reject_reason_counts",
+        "reward_components",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -84,6 +137,8 @@ class OfflineRewardComponents:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "OfflineRewardComponents":
+        if not isinstance(value, Mapping) or set(value) != _OFFLINE_REWARD_FIELDS:
+            raise ValueError("offline reward component fields do not match schema v2")
         return cls(
             high_threat_coverage=float(value["high_threat_coverage"]),
             rule_total_cost=float(value["rule_total_cost"]),
@@ -131,8 +186,11 @@ class LearningFrameRecord:
         split = str(self.split).strip().lower()
         if not scenario_version or not episode:
             raise ValueError("scenario_version and episode are required")
-        if split not in DATASET_SPLITS:
+        if split not in (*DATASET_SPLITS, UNASSIGNED_DATASET_SPLIT):
             raise ValueError(f"unsupported dataset split: {split}")
+        seed = int(self.seed)
+        if seed < 0:
+            raise ValueError("dataset seed must be non-negative")
         if int(self.frame_index) < 0 or int(self.previous_plan_version) < 0:
             raise ValueError("frame and plan versions must be non-negative")
         if not isfinite(float(self.timestamp_s)):
@@ -179,6 +237,7 @@ class LearningFrameRecord:
         _validate_anonymous_entities(self.anonymous_targets, "target")
         _validate_anonymous_entities(self.anonymous_resources, "resource")
         object.__setattr__(self, "scenario_version", scenario_version)
+        object.__setattr__(self, "seed", seed)
         object.__setattr__(self, "episode", episode)
         object.__setattr__(self, "split", split)
         object.__setattr__(self, "candidate_features", features)
@@ -192,8 +251,10 @@ class LearningFrameRecord:
         return (self.scenario_version, int(self.seed), self.episode)
 
     @property
-    def seed_group(self) -> tuple[str, int]:
-        return (self.scenario_version, int(self.seed))
+    def seed_group(self) -> int:
+        """Return the v2 split identity, global across scenario and scale."""
+
+        return int(self.seed)
 
     @property
     def selected_edge_labels(self) -> np.ndarray:
@@ -205,7 +266,7 @@ class LearningFrameRecord:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema_version": LEARNING_DATASET_SCHEMA_V1,
+            "schema_version": LEARNING_DATASET_SCHEMA_V2,
             "scenario_version": self.scenario_version,
             "seed": int(self.seed),
             "episode": self.episode,
@@ -239,8 +300,20 @@ class LearningFrameRecord:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "LearningFrameRecord":
-        if value.get("schema_version") != LEARNING_DATASET_SCHEMA_V1:
-            raise ValueError("unsupported D3 learning dataset frame schema")
+        if not isinstance(value, Mapping):
+            raise ValueError("D3 learning dataset frame must be a JSON object")
+        _reject_identity_fields(value)
+        if set(value) != _LEARNING_FRAME_FIELDS:
+            raise ValueError(
+                "learning frame fields do not match schema v2; "
+                "extensions require a new schema version"
+            )
+        schema_version = value.get("schema_version")
+        if schema_version != LEARNING_DATASET_SCHEMA_V2:
+            raise ValueError(
+                "unsupported D3 learning dataset frame schema: "
+                f"{schema_version!r}; {LEARNING_DATASET_SCHEMA_V2} is required"
+            )
         return cls(
             scenario_version=str(value["scenario_version"]),
             seed=int(value["seed"]),
@@ -292,11 +365,78 @@ class LearningDatasetManifest:
     split_policy_version: str
     feature_names: tuple[str, ...]
     split_hash: str
+    frames_sha256: str
     frame_count: int
     episode_count: int
+    unique_seed_count: int
     split_frame_counts: Mapping[str, int]
-    split_seed_groups: Mapping[str, tuple[str, ...]]
+    split_episode_counts: Mapping[str, int]
+    split_seed_values: Mapping[str, tuple[int, ...]]
+    split_seed: int
+    validation_fraction: float
+    test_fraction: float
+    minimum_unseen_seed_count: int
+    unseen_test_seed_count: int
     source_kind: str
+
+    def __post_init__(self) -> None:
+        if self.schema_version != LEARNING_DATASET_SCHEMA_V2:
+            raise ValueError("unsupported D3 learning dataset manifest schema")
+        if self.split_policy_version != LEARNING_DATASET_SPLIT_POLICY_V2:
+            raise ValueError("unsupported D3 learning dataset split policy")
+        if self.feature_names != EDGE_FEATURE_NAMES:
+            raise ValueError("dataset feature schema does not match this D3 build")
+        if len(self.split_hash) != 64 or len(self.frames_sha256) != 64:
+            raise ValueError("dataset split and frame SHA256 values are required")
+        lowercase_hex = frozenset("0123456789abcdef")
+        if (
+            not set(self.split_hash).issubset(lowercase_hex)
+            or not set(self.frames_sha256).issubset(lowercase_hex)
+        ):
+            raise ValueError("dataset hashes must be lowercase hexadecimal SHA256")
+        if self.frame_count < 1 or self.episode_count < 1 or self.unique_seed_count < 3:
+            raise ValueError("dataset manifest counts are invalid")
+        if not str(self.source_kind).strip():
+            raise ValueError("dataset source_kind is required")
+        _validate_split_parameters(
+            validation_fraction=self.validation_fraction,
+            test_fraction=self.test_fraction,
+            minimum_unseen_seed_count=self.minimum_unseen_seed_count,
+        )
+        seed_sets = {
+            split: set(int(seed) for seed in self.split_seed_values.get(split, ()))
+            for split in DATASET_SPLITS
+        }
+        if any(
+            tuple(self.split_seed_values.get(split, ()))
+            != tuple(sorted(seed_sets[split]))
+            for split in DATASET_SPLITS
+        ):
+            raise ValueError("dataset manifest split seed values must be unique and sorted")
+        if any(not values for values in seed_sets.values()):
+            raise ValueError("dataset manifest requires non-empty train/validation/test seeds")
+        if any(
+            seed_sets[left] & seed_sets[right]
+            for index, left in enumerate(DATASET_SPLITS)
+            for right in DATASET_SPLITS[index + 1 :]
+        ):
+            raise ValueError("dataset manifest seed values overlap across splits")
+        if len(set().union(*seed_sets.values())) != self.unique_seed_count:
+            raise ValueError("dataset manifest unique seed count is inconsistent")
+        if len(seed_sets["test"]) != self.unseen_test_seed_count:
+            raise ValueError("dataset manifest unseen test seed count is inconsistent")
+        if self.unseen_test_seed_count < self.minimum_unseen_seed_count:
+            raise ValueError("dataset manifest has insufficient unseen test seeds")
+        frame_counts = tuple(
+            int(self.split_frame_counts.get(split, 0)) for split in DATASET_SPLITS
+        )
+        episode_counts = tuple(
+            int(self.split_episode_counts.get(split, 0)) for split in DATASET_SPLITS
+        )
+        if any(count < 1 for count in frame_counts) or sum(frame_counts) != self.frame_count:
+            raise ValueError("dataset manifest split frame counts are inconsistent")
+        if any(count < 1 for count in episode_counts) or sum(episode_counts) != self.episode_count:
+            raise ValueError("dataset manifest split episode counts are inconsistent")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -304,15 +444,30 @@ class LearningDatasetManifest:
             "split_policy_version": self.split_policy_version,
             "feature_names": list(self.feature_names),
             "split_hash": self.split_hash,
+            "frames_sha256": self.frames_sha256,
             "frame_count": int(self.frame_count),
             "episode_count": int(self.episode_count),
+            "unique_seed_count": int(self.unique_seed_count),
             "split_frame_counts": {
                 split: int(self.split_frame_counts.get(split, 0))
                 for split in DATASET_SPLITS
             },
-            "split_seed_groups": {
-                split: list(self.split_seed_groups.get(split, ()))
+            "split_episode_counts": {
+                split: int(self.split_episode_counts.get(split, 0))
                 for split in DATASET_SPLITS
+            },
+            "split_seed_values": {
+                split: [int(seed) for seed in self.split_seed_values.get(split, ())]
+                for split in DATASET_SPLITS
+            },
+            "split_policy": {
+                "unit": "whole_episode_grouped_by_numeric_seed_across_scenarios",
+                "shared_seed_values_atomic_across_scenarios": True,
+                "split_seed": int(self.split_seed),
+                "validation_fraction": float(self.validation_fraction),
+                "test_fraction": float(self.test_fraction),
+                "minimum_unseen_seed_count": int(self.minimum_unseen_seed_count),
+                "unseen_test_seed_count": int(self.unseen_test_seed_count),
             },
             "source_kind": self.source_kind,
             "identity_policy": "anonymous_ordinal_tokens_no_truth_metadata",
@@ -320,21 +475,52 @@ class LearningDatasetManifest:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "LearningDatasetManifest":
+        if value.get("identity_policy") != "anonymous_ordinal_tokens_no_truth_metadata":
+            raise ValueError("unsupported D3 learning dataset identity policy")
+        split_policy = value["split_policy"]
+        if not isinstance(split_policy, Mapping):
+            raise ValueError("D3 learning dataset split policy must be a JSON object")
+        expected_policy_fields = {
+            "unit",
+            "shared_seed_values_atomic_across_scenarios",
+            "split_seed",
+            "validation_fraction",
+            "test_fraction",
+            "minimum_unseen_seed_count",
+            "unseen_test_seed_count",
+        }
+        if set(split_policy) != expected_policy_fields:
+            raise ValueError("D3 learning dataset split policy fields are invalid")
+        if split_policy.get("unit") != "whole_episode_grouped_by_numeric_seed_across_scenarios":
+            raise ValueError("unsupported D3 learning dataset split unit")
+        if split_policy.get("shared_seed_values_atomic_across_scenarios") is not True:
+            raise ValueError("numeric seed atomicity is required across all scenarios")
         return cls(
             schema_version=str(value["schema_version"]),
             split_policy_version=str(value["split_policy_version"]),
             feature_names=tuple(str(item) for item in value["feature_names"]),
             split_hash=str(value["split_hash"]),
+            frames_sha256=str(value["frames_sha256"]),
             frame_count=int(value["frame_count"]),
             episode_count=int(value["episode_count"]),
+            unique_seed_count=int(value["unique_seed_count"]),
             split_frame_counts={
                 str(key): int(item)
                 for key, item in value["split_frame_counts"].items()
             },
-            split_seed_groups={
-                str(key): tuple(str(item) for item in items)
-                for key, items in value["split_seed_groups"].items()
+            split_episode_counts={
+                str(key): int(item)
+                for key, item in value["split_episode_counts"].items()
             },
+            split_seed_values={
+                str(key): tuple(int(item) for item in items)
+                for key, items in value["split_seed_values"].items()
+            },
+            split_seed=int(split_policy["split_seed"]),
+            validation_fraction=float(split_policy["validation_fraction"]),
+            test_fraction=float(split_policy["test_fraction"]),
+            minimum_unseen_seed_count=int(split_policy["minimum_unseen_seed_count"]),
+            unseen_test_seed_count=int(split_policy["unseen_test_seed_count"]),
             source_kind=str(value["source_kind"]),
         )
 
@@ -344,33 +530,100 @@ def assign_episode_split(
     seed: int,
     episode: str | int,
     *,
-    train_fraction: float = 0.7,
-    validation_fraction: float = 0.15,
+    seed_values: Iterable[int],
+    split_seed: int = DEFAULT_DATASET_SPLIT_SEED,
+    validation_fraction: float = DEFAULT_VALIDATION_FRACTION,
+    test_fraction: float = DEFAULT_TEST_FRACTION,
+    minimum_unseen_seed_count: int = 1,
 ) -> str:
-    """Assign every episode from one scenario/seed to the same stable split."""
+    """Resolve one episode from a complete numeric-seed catalog under v2."""
 
     if not str(scenario_version).strip() or not str(episode).strip():
         raise ValueError("scenario_version and episode are required")
-    if not 0.0 < train_fraction < 1.0:
-        raise ValueError("train_fraction must be in (0, 1)")
-    if not 0.0 <= validation_fraction < 1.0 - train_fraction:
-        raise ValueError("validation_fraction leaves no test split")
-    group = f"{LEARNING_DATASET_SPLIT_POLICY_V1}|{scenario_version}|{int(seed)}"
-    unit = int.from_bytes(sha256(group.encode("utf-8")).digest()[:8], "big") / 2**64
-    if unit < train_fraction:
-        return "train"
-    if unit < train_fraction + validation_fraction:
-        return "validation"
-    return "test"
+    split_by_seed = assign_seed_splits(
+        seed_values,
+        split_seed=split_seed,
+        validation_fraction=validation_fraction,
+        test_fraction=test_fraction,
+        minimum_unseen_seed_count=minimum_unseen_seed_count,
+    )
+    try:
+        return split_by_seed[int(seed)]
+    except KeyError as exc:
+        raise ValueError("seed is absent from the complete dataset seed catalog") from exc
 
 
-def validate_split_integrity(records: Iterable[LearningFrameRecord]) -> None:
+def assign_seed_splits(
+    seed_values: Iterable[int],
+    *,
+    split_seed: int = DEFAULT_DATASET_SPLIT_SEED,
+    validation_fraction: float = DEFAULT_VALIDATION_FRACTION,
+    test_fraction: float = DEFAULT_TEST_FRACTION,
+    minimum_unseen_seed_count: int = 1,
+) -> Mapping[int, str]:
+    """Allocate exact split counts over unique numeric seeds, independent of input order."""
+
+    _validate_split_parameters(
+        validation_fraction=validation_fraction,
+        test_fraction=test_fraction,
+        minimum_unseen_seed_count=minimum_unseen_seed_count,
+    )
+    seeds = sorted({int(seed) for seed in seed_values})
+    if any(seed < 0 for seed in seeds):
+        raise ValueError("dataset seeds must be non-negative")
+    if len(seeds) < 3:
+        raise ValueError("at least three unique numeric seeds are required for dataset splits")
+    ordered = sorted(
+        seeds,
+        key=lambda seed: (
+            sha256(
+                f"{LEARNING_DATASET_SPLIT_POLICY_V2}|{int(split_seed)}\0{seed}".encode(
+                    "utf-8"
+                )
+            ).hexdigest(),
+            seed,
+        ),
+    )
+    test_count = max(1, min(len(seeds) - 2, round(len(seeds) * test_fraction)))
+    validation_count = max(
+        1,
+        min(
+            len(seeds) - test_count - 1,
+            round(len(seeds) * validation_fraction),
+        ),
+    )
+    if test_count < int(minimum_unseen_seed_count):
+        raise ValueError(
+            "test split has fewer unique numeric seeds than the declared unseen minimum"
+        )
+    split_by_seed = {
+        seed: (
+            "test"
+            if index < test_count
+            else "validation"
+            if index < test_count + validation_count
+            else "train"
+        )
+        for index, seed in enumerate(ordered)
+    }
+    return MappingProxyType(split_by_seed)
+
+
+def validate_split_integrity(
+    records: Iterable[LearningFrameRecord],
+    *,
+    minimum_unseen_seed_count: int = 1,
+) -> None:
     """Reject frame/episode splitting and all cross-split seed leakage."""
 
+    if int(minimum_unseen_seed_count) < 1:
+        raise ValueError("minimum unseen seed count must be positive")
     episode_splits: dict[tuple[str, int, str], str] = {}
-    seed_splits: dict[tuple[str, int], str] = {}
+    seed_splits: dict[int, str] = {}
     seen_frames: set[tuple[str, int, str, int]] = set()
     for record in records:
+        if record.split == UNASSIGNED_DATASET_SPLIT:
+            raise ValueError("unassigned staging records are not a finalized dataset")
         frame_key = (*record.episode_group, int(record.frame_index))
         if frame_key in seen_frames:
             raise ValueError(f"duplicate dataset frame: {frame_key}")
@@ -380,20 +633,30 @@ def validate_split_integrity(records: Iterable[LearningFrameRecord]) -> None:
             raise ValueError("one episode appears in multiple dataset splits")
         prior_seed = seed_splits.setdefault(record.seed_group, record.split)
         if prior_seed != record.split:
-            raise ValueError("one scenario/seed appears in multiple dataset splits")
+            raise ValueError("one numeric seed appears in multiple dataset splits")
+    if len(seed_splits) < 3:
+        raise ValueError("at least three unique numeric seeds are required")
+    if set(seed_splits.values()) != set(DATASET_SPLITS):
+        raise ValueError("train, validation, and test must all contain numeric seeds")
+    test_seed_count = sum(split == "test" for split in seed_splits.values())
+    if test_seed_count < int(minimum_unseen_seed_count):
+        raise ValueError("test split has insufficient declared unseen numeric seeds")
 
 
 def compute_split_hash(records: Iterable[LearningFrameRecord]) -> str:
     items = tuple(records)
     validate_split_integrity(items)
-    groups = sorted(
+    seed_splits = {
+        int(record.seed): record.split
+        for record in items
+    }
+    episode_splits = sorted(
         {
             (record.scenario_version, int(record.seed), record.episode, record.split)
             for record in items
         }
     )
-    payload = json.dumps(groups, ensure_ascii=True, separators=(",", ":"))
-    return sha256(payload.encode("utf-8")).hexdigest()
+    return _split_hash_from_metadata(seed_splits, episode_splits)
 
 
 def build_learning_frame_record(
@@ -476,14 +739,13 @@ def build_learning_frame_record(
         plan_expired=int("stale" in decision or "expired" in decision),
         safety_rejections=int(bool(plan.duplicate_terminal_lock_risk)),
     )
-    split = assign_episode_split(scenario_version, seed, episode)
     return LearningFrameRecord(
         scenario_version=scenario_version,
         seed=int(seed),
         episode=str(episode),
         frame_index=int(frame_index),
         timestamp_s=float(timestamp_s),
-        split=split,
+        split=UNASSIGNED_DATASET_SPLIT,
         anonymous_targets=tuple(
             {
                 "token": f"target_{index:04d}",
@@ -583,69 +845,180 @@ def write_learning_dataset(
     records: Iterable[LearningFrameRecord],
     *,
     source_kind: str,
+    split_seed: int = DEFAULT_DATASET_SPLIT_SEED,
+    validation_fraction: float = DEFAULT_VALIDATION_FRACTION,
+    test_fraction: float = DEFAULT_TEST_FRACTION,
+    minimum_unseen_seed_count: int = DEFAULT_MINIMUM_UNSEEN_SEED_COUNT,
+    staging_batch_size: int = 128,
 ) -> LearningDatasetManifest:
-    """Write canonical JSONL and a split manifest without model artifacts."""
+    """Finalize an iterable into canonical v2 JSONL with bounded process memory."""
 
-    items = tuple(
-        sorted(
-            records,
-            key=lambda item: (
-                item.scenario_version,
-                int(item.seed),
-                item.episode,
-                int(item.frame_index),
-            ),
-        )
+    source = str(source_kind).strip()
+    if not source:
+        raise ValueError("source_kind is required")
+    if int(staging_batch_size) < 1:
+        raise ValueError("staging_batch_size must be positive")
+    _validate_split_parameters(
+        validation_fraction=validation_fraction,
+        test_fraction=test_fraction,
+        minimum_unseen_seed_count=minimum_unseen_seed_count,
     )
-    if not items:
-        raise ValueError("at least one dataset frame is required")
-    validate_split_integrity(items)
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
-    frame_path = output / DATASET_FRAMES_FILENAME
-    with frame_path.open("w", encoding="utf-8", newline="\n") as stream:
-        for record in items:
-            stream.write(
-                json.dumps(
+    with tempfile.TemporaryDirectory(prefix=".d3_dataset_staging_", dir=output) as staging:
+        staging_path = Path(staging)
+        database_path = staging_path / "frames.sqlite3"
+        connection = sqlite3.connect(database_path)
+        try:
+            connection.execute("PRAGMA temp_store=FILE")
+            connection.execute(
+                """
+                CREATE TABLE frames (
+                    scenario_version TEXT NOT NULL,
+                    seed INTEGER NOT NULL,
+                    episode TEXT NOT NULL,
+                    frame_index INTEGER NOT NULL,
+                    supplied_split TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    PRIMARY KEY (scenario_version, seed, episode, frame_index)
+                )
+                """
+            )
+            frame_count = 0
+            for record in records:
+                if not isinstance(record, LearningFrameRecord):
+                    raise TypeError("records must contain LearningFrameRecord values")
+                payload = json.dumps(
                     record.to_dict(),
                     ensure_ascii=True,
                     sort_keys=True,
                     separators=(",", ":"),
                 )
+                try:
+                    connection.execute(
+                        "INSERT INTO frames VALUES (?, ?, ?, ?, ?, ?)",
+                        (
+                            record.scenario_version,
+                            int(record.seed),
+                            record.episode,
+                            int(record.frame_index),
+                            record.split,
+                            payload,
+                        ),
+                    )
+                except sqlite3.IntegrityError as exc:
+                    raise ValueError(
+                        f"duplicate dataset frame: {(*record.episode_group, record.frame_index)}"
+                    ) from exc
+                frame_count += 1
+                if frame_count % int(staging_batch_size) == 0:
+                    connection.commit()
+            connection.commit()
+            if frame_count == 0:
+                raise ValueError("at least one dataset frame is required")
+
+            seed_values = tuple(
+                int(row[0])
+                for row in connection.execute("SELECT DISTINCT seed FROM frames ORDER BY seed")
             )
-            stream.write("\n")
-    split_counts = {
-        split: sum(record.split == split for record in items) for split in DATASET_SPLITS
-    }
-    split_seed_groups = {
-        split: tuple(
-            sorted(
-                {
-                    f"{record.scenario_version}:{record.seed}"
-                    for record in items
-                    if record.split == split
-                }
+            split_by_seed = assign_seed_splits(
+                seed_values,
+                split_seed=split_seed,
+                validation_fraction=validation_fraction,
+                test_fraction=test_fraction,
+                minimum_unseen_seed_count=minimum_unseen_seed_count,
             )
-        )
-        for split in DATASET_SPLITS
-    }
-    manifest = LearningDatasetManifest(
-        schema_version=LEARNING_DATASET_SCHEMA_V1,
-        split_policy_version=LEARNING_DATASET_SPLIT_POLICY_V1,
-        feature_names=EDGE_FEATURE_NAMES,
-        split_hash=compute_split_hash(items),
-        frame_count=len(items),
-        episode_count=len({record.episode_group for record in items}),
-        split_frame_counts=split_counts,
-        split_seed_groups=split_seed_groups,
-        source_kind=str(source_kind),
-    )
-    with (output / DATASET_MANIFEST_FILENAME).open(
-        "w", encoding="utf-8", newline="\n"
-    ) as stream:
-        json.dump(manifest.to_dict(), stream, ensure_ascii=True, indent=2, sort_keys=True)
-        stream.write("\n")
-    return manifest
+            for seed, supplied_split in connection.execute(
+                "SELECT DISTINCT seed, supplied_split FROM frames"
+            ):
+                expected_split = split_by_seed[int(seed)]
+                if supplied_split not in {UNASSIGNED_DATASET_SPLIT, expected_split}:
+                    raise ValueError(
+                        "record split conflicts with the numeric-seed-atomic v2 policy: "
+                        f"seed={seed}, supplied={supplied_split}, expected={expected_split}"
+                    )
+
+            episode_splits = [
+                (str(scenario), int(seed), str(episode), split_by_seed[int(seed)])
+                for scenario, seed, episode in connection.execute(
+                    """
+                    SELECT DISTINCT scenario_version, seed, episode
+                    FROM frames
+                    ORDER BY scenario_version COLLATE BINARY, seed, episode COLLATE BINARY
+                    """
+                )
+            ]
+            split_frame_counts = {split: 0 for split in DATASET_SPLITS}
+            split_episode_counts = {split: 0 for split in DATASET_SPLITS}
+            for _, _, _, split in episode_splits:
+                split_episode_counts[split] += 1
+
+            temporary_frames = staging_path / DATASET_FRAMES_FILENAME
+            frames_digest = sha256()
+            with temporary_frames.open("wb") as stream:
+                rows = connection.execute(
+                    """
+                    SELECT seed, payload FROM frames
+                    ORDER BY scenario_version COLLATE BINARY, seed,
+                             episode COLLATE BINARY, frame_index
+                    """
+                )
+                for seed, payload in rows:
+                    record = LearningFrameRecord.from_dict(json.loads(str(payload)))
+                    finalized = replace(record, split=split_by_seed[int(seed)])
+                    line = (
+                        json.dumps(
+                            finalized.to_dict(),
+                            ensure_ascii=True,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        )
+                        + "\n"
+                    ).encode("ascii")
+                    stream.write(line)
+                    frames_digest.update(line)
+                    split_frame_counts[finalized.split] += 1
+
+            split_seed_values = {
+                split: tuple(
+                    sorted(seed for seed, assigned in split_by_seed.items() if assigned == split)
+                )
+                for split in DATASET_SPLITS
+            }
+            manifest = LearningDatasetManifest(
+                schema_version=LEARNING_DATASET_SCHEMA_V2,
+                split_policy_version=LEARNING_DATASET_SPLIT_POLICY_V2,
+                feature_names=EDGE_FEATURE_NAMES,
+                split_hash=_split_hash_from_metadata(split_by_seed, episode_splits),
+                frames_sha256=frames_digest.hexdigest(),
+                frame_count=frame_count,
+                episode_count=len(episode_splits),
+                unique_seed_count=len(seed_values),
+                split_frame_counts=split_frame_counts,
+                split_episode_counts=split_episode_counts,
+                split_seed_values=split_seed_values,
+                split_seed=int(split_seed),
+                validation_fraction=float(validation_fraction),
+                test_fraction=float(test_fraction),
+                minimum_unseen_seed_count=int(minimum_unseen_seed_count),
+                unseen_test_seed_count=len(split_seed_values["test"]),
+                source_kind=source,
+            )
+            temporary_manifest = staging_path / DATASET_MANIFEST_FILENAME
+            with temporary_manifest.open("w", encoding="utf-8", newline="\n") as stream:
+                json.dump(
+                    manifest.to_dict(),
+                    stream,
+                    ensure_ascii=True,
+                    indent=2,
+                    sort_keys=True,
+                )
+                stream.write("\n")
+            os.replace(temporary_frames, output / DATASET_FRAMES_FILENAME)
+            os.replace(temporary_manifest, output / DATASET_MANIFEST_FILENAME)
+            return manifest
+        finally:
+            connection.close()
 
 
 def load_learning_dataset(
@@ -653,27 +1026,90 @@ def load_learning_dataset(
 ) -> tuple[LearningDatasetManifest, tuple[LearningFrameRecord, ...]]:
     input_path = Path(input_dir)
     with (input_path / DATASET_MANIFEST_FILENAME).open(encoding="utf-8") as stream:
-        manifest = LearningDatasetManifest.from_dict(json.load(stream))
-    if manifest.schema_version != LEARNING_DATASET_SCHEMA_V1:
-        raise ValueError("unsupported D3 learning dataset manifest schema")
-    if manifest.feature_names != EDGE_FEATURE_NAMES:
-        raise ValueError("dataset feature schema does not match this D3 build")
-    records: list[LearningFrameRecord] = []
-    with (input_path / DATASET_FRAMES_FILENAME).open(encoding="utf-8") as stream:
+        raw_manifest = json.load(stream)
+    if not isinstance(raw_manifest, Mapping):
+        raise ValueError("D3 learning dataset manifest must be a JSON object")
+    schema_version = raw_manifest.get("schema_version")
+    if schema_version != LEARNING_DATASET_SCHEMA_V2:
+        legacy = (
+            "; v1 scenario/seed splits are not compatible"
+            if schema_version == LEARNING_DATASET_SCHEMA_V1
+            else ""
+        )
+        raise ValueError(
+            "unsupported D3 learning dataset manifest schema: "
+            f"{schema_version!r}{legacy}; {LEARNING_DATASET_SCHEMA_V2} is required"
+        )
+    split_policy_version = raw_manifest.get("split_policy_version")
+    if split_policy_version != LEARNING_DATASET_SPLIT_POLICY_V2:
+        raise ValueError(
+            "unsupported D3 learning dataset split policy: "
+            f"{split_policy_version!r}; {LEARNING_DATASET_SPLIT_POLICY_V2} is required"
+        )
+    manifest = LearningDatasetManifest.from_dict(raw_manifest)
+    frame_path = input_path / DATASET_FRAMES_FILENAME
+    if _file_sha256(frame_path) != manifest.frames_sha256:
+        raise ValueError("dataset frames SHA256 does not match manifest")
+    items = tuple(iter_learning_frame_records(frame_path))
+    validate_split_integrity(
+        items,
+        minimum_unseen_seed_count=manifest.minimum_unseen_seed_count,
+    )
+    if len(items) != manifest.frame_count:
+        raise ValueError("dataset frame count does not match manifest")
+    keys = tuple(
+        (item.scenario_version, item.seed, item.episode, item.frame_index) for item in items
+    )
+    if keys != tuple(sorted(keys)):
+        raise ValueError("dataset frames are not in canonical deterministic order")
+    split_by_seed = assign_seed_splits(
+        (item.seed for item in items),
+        split_seed=manifest.split_seed,
+        validation_fraction=manifest.validation_fraction,
+        test_fraction=manifest.test_fraction,
+        minimum_unseen_seed_count=manifest.minimum_unseen_seed_count,
+    )
+    for item in items:
+        if item.split != split_by_seed[item.seed]:
+            raise ValueError("dataset split assignment does not match the v2 policy")
+    if compute_split_hash(items) != manifest.split_hash:
+        raise ValueError("dataset split hash does not match manifest")
+    episode_splits = {
+        (item.scenario_version, item.seed, item.episode, item.split) for item in items
+    }
+    if len(episode_splits) != manifest.episode_count:
+        raise ValueError("dataset episode count does not match manifest")
+    actual_frame_counts = {
+        split: sum(item.split == split for item in items) for split in DATASET_SPLITS
+    }
+    actual_episode_counts = {
+        split: sum(item[3] == split for item in episode_splits) for split in DATASET_SPLITS
+    }
+    actual_seed_values = {
+        split: tuple(sorted(seed for seed, assigned in split_by_seed.items() if assigned == split))
+        for split in DATASET_SPLITS
+    }
+    if actual_frame_counts != dict(manifest.split_frame_counts):
+        raise ValueError("dataset split frame counts do not match manifest")
+    if actual_episode_counts != dict(manifest.split_episode_counts):
+        raise ValueError("dataset split episode counts do not match manifest")
+    if actual_seed_values != dict(manifest.split_seed_values):
+        raise ValueError("dataset split seed values do not match manifest")
+    return manifest, items
+
+
+def iter_learning_frame_records(path: str | Path) -> Iterator[LearningFrameRecord]:
+    """Parse v2 frame JSONL lazily for staging/finalization pipelines."""
+
+    with Path(path).open(encoding="utf-8") as stream:
         for line_number, line in enumerate(stream, start=1):
             if not line.strip():
                 continue
             try:
-                records.append(LearningFrameRecord.from_dict(json.loads(line)))
-            except (KeyError, TypeError, ValueError) as exc:
+                payload = json.loads(line)
+                yield LearningFrameRecord.from_dict(payload)
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
                 raise ValueError(f"invalid dataset frame at line {line_number}") from exc
-    items = tuple(records)
-    validate_split_integrity(items)
-    if len(items) != manifest.frame_count:
-        raise ValueError("dataset frame count does not match manifest")
-    if compute_split_hash(items) != manifest.split_hash:
-        raise ValueError("dataset split hash does not match manifest")
-    return manifest, items
 
 
 def generate_synthetic_learning_dataset(
@@ -752,7 +1188,55 @@ def generate_synthetic_learning_dataset(
                     )
                 )
                 previous_plan = plan
-    return write_learning_dataset(output_dir, records, source_kind="synthetic_smoke")
+    return write_learning_dataset(
+        output_dir,
+        records,
+        source_kind="synthetic_smoke",
+        minimum_unseen_seed_count=1,
+    )
+
+
+def _validate_split_parameters(
+    *,
+    validation_fraction: float,
+    test_fraction: float,
+    minimum_unseen_seed_count: int,
+) -> None:
+    fractions = (float(validation_fraction), float(test_fraction))
+    if not all(isfinite(value) and 0.0 < value < 1.0 for value in fractions):
+        raise ValueError("validation and test fractions must be finite and in (0, 1)")
+    if sum(fractions) >= 1.0:
+        raise ValueError("validation and test fractions leave no training split")
+    if int(minimum_unseen_seed_count) < 1:
+        raise ValueError("minimum unseen seed count must be positive")
+
+
+def _split_hash_from_metadata(
+    split_by_seed: Mapping[int, str],
+    episode_splits: Sequence[tuple[str, int, str, str]],
+) -> str:
+    payload = {
+        "dataset_schema_version": LEARNING_DATASET_SCHEMA_V2,
+        "split_policy_version": LEARNING_DATASET_SPLIT_POLICY_V2,
+        "seed_identity_scope": "numeric_seed_global_across_scenarios",
+        "seed_assignments": [
+            [int(seed), str(split)] for seed, split in sorted(split_by_seed.items())
+        ],
+        "episode_assignments": [
+            [str(scenario), int(seed), str(episode), str(split)]
+            for scenario, seed, episode, split in sorted(episode_splits)
+        ],
+    }
+    encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    return sha256(encoded.encode("ascii")).hexdigest()
+
+
+def _file_sha256(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _validate_anonymous_entities(
@@ -786,9 +1270,90 @@ def _validate_anonymous_entities(
         token = str(entity["token"])
         if token != f"{prefix}{index:04d}":
             raise ValueError(f"anonymous {kind} token is not ordinal")
-        lowered_keys = {str(key).lower() for key in entity}
-        if any("truth" in key or "actor" in key for key in lowered_keys):
-            raise ValueError("truth and actor identity fields are forbidden")
+        if kind == "target":
+            _bounded_number(entity["threat_score"], "threat_score", 0.0, 1.0)
+            _bounded_number(
+                entity["covariance_squashed"], "covariance_squashed", 0.0, 1.0
+            )
+            _bounded_number(entity["window_cost"], "window_cost", 0.0, 1.0)
+            required = _nonnegative_integer(
+                entity["required_resource_count"], "required_resource_count"
+            )
+            primary = _nonnegative_integer(
+                entity["primary_resource_count"], "primary_resource_count"
+            )
+            if required < 1 or not 1 <= primary <= required:
+                raise ValueError("anonymous target demand counts are invalid")
+            _boolean(entity["assignable"], "assignable")
+        else:
+            _boolean(entity["available"], "available")
+            _bounded_number(entity["health_score"], "health_score", 0.0, 1.0)
+            _bounded_number(
+                entity["energy_fraction"], "energy_fraction", 0.0, 1.0
+            )
+            _bounded_number(
+                entity["availability_score"], "availability_score", 0.0, 1.0
+            )
+            _bounded_number(entity["current_load"], "current_load", 0.0, None)
+            _nonnegative_integer(
+                entity["assignment_capacity"], "assignment_capacity"
+            )
+
+
+def _reject_identity_fields(value: Any, *, path: str = "frame") -> None:
+    """Reject identity-bearing schema fields before unknown fields are discarded."""
+
+    if isinstance(value, Mapping):
+        for raw_key, item in value.items():
+            key = str(raw_key).strip().lower().replace("-", "_")
+            dynamic_reject_reason = path == "frame.hard_reject_reason_counts"
+            forbidden = (
+                "truth" in key
+                or "actor" in key
+                or key in {"id", "uuid", "vehicle_name"}
+                or key.endswith("_id")
+                or key.endswith("_ids")
+                or ("identity" in key and not dynamic_reject_reason)
+            )
+            if forbidden:
+                raise ValueError(f"identity-bearing learning frame field is forbidden: {path}.{key}")
+            _reject_identity_fields(item, path=f"{path}.{key}")
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            _reject_identity_fields(item, path=f"{path}[{index}]")
+
+
+def _bounded_number(
+    value: Any,
+    name: str,
+    minimum: float,
+    maximum: float | None,
+) -> float:
+    if isinstance(value, (bool, np.bool_)) or not isinstance(
+        value, (int, float, np.integer, np.floating)
+    ):
+        raise ValueError(f"anonymous entity {name} must be numeric")
+    number = float(value)
+    if not isfinite(number) or number < minimum or (
+        maximum is not None and number > maximum
+    ):
+        raise ValueError(f"anonymous entity {name} is outside its allowed range")
+    return number
+
+
+def _nonnegative_integer(value: Any, name: str) -> int:
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+        raise ValueError(f"anonymous entity {name} must be an integer")
+    number = int(value)
+    if number < 0:
+        raise ValueError(f"anonymous entity {name} must be non-negative")
+    return number
+
+
+def _boolean(value: Any, name: str) -> bool:
+    if not isinstance(value, (bool, np.bool_)):
+        raise ValueError(f"anonymous entity {name} must be boolean")
+    return bool(value)
 
 
 def _hard_reject_counts(

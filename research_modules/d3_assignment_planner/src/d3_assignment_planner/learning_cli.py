@@ -105,9 +105,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     dataset_manifest, records = load_learning_dataset(args.dataset)
     if args.command == "train-bc":
+        training_records = tuple(
+            item for item in records if item.split in {"train", "validation"}
+        )
         policy = SharedEdgeActorCriticPolicy(hidden_size=args.hidden_size)
         policy, result = train_behavior_cloning(
-            records,
+            training_records,
             policy=policy,
             epochs=args.epochs,
             mini_batch_frames=args.mini_batch_frames,
@@ -118,6 +121,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.bundle,
             policy,
             split_hash=dataset_manifest.split_hash,
+            dataset_frames_sha256=dataset_manifest.frames_sha256,
+            dataset_schema_version=dataset_manifest.schema_version,
+            split_policy_version=dataset_manifest.split_policy_version,
             normalization_mean=result.normalization_mean,
             normalization_scale=result.normalization_scale,
             training_results=result.to_dict(),
@@ -146,6 +152,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.input_bundle,
                 mode="shadow",
                 expected_split_hash=dataset_manifest.split_hash,
+                expected_dataset_frames_sha256=dataset_manifest.frames_sha256,
             )
             if not loaded.loaded or loaded.policy is None or loaded.manifest is None:
                 raise SystemExit(
@@ -158,7 +165,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             policy = SharedEdgeActorCriticPolicy(hidden_size=args.hidden_size)
         policy, result = train_native_ppo(
-            records,
+            tuple(item for item in records if item.split == "train"),
             policy=policy,
             updates=args.updates,
             epochs_per_update=args.epochs_per_update,
@@ -179,6 +186,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.bundle,
             policy,
             split_hash=dataset_manifest.split_hash,
+            dataset_frames_sha256=dataset_manifest.frames_sha256,
+            dataset_schema_version=dataset_manifest.schema_version,
+            split_policy_version=dataset_manifest.split_policy_version,
             normalization_mean=result.normalization_mean,
             normalization_scale=result.normalization_scale,
             training_results=training_results,
@@ -202,6 +212,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.bundle,
             mode="shadow",
             expected_split_hash=dataset_manifest.split_hash,
+            expected_dataset_frames_sha256=dataset_manifest.frames_sha256,
         )
         if not loaded.loaded or loaded.policy is None or loaded.manifest is None:
             raise SystemExit(
@@ -233,6 +244,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             ood_z_threshold=manifest.ood_z_threshold,
             minimum_unseen_seeds=args.minimum_unseen_seeds,
             evidence_eligible=evidence_eligible,
+            dataset_frames_sha256=dataset_manifest.frames_sha256,
+            model_state_dict_sha256=manifest.state_dict_sha256,
         )
         write_shadow_report(args.output, report)
         if not args.no_update_bundle:

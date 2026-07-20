@@ -609,7 +609,7 @@ bounded residual，最终 plan 仍由 Hungarian/demand-slot、all-or-none、迟�
 
 | 复核项 | 状态 | 判断 |
 |---|---|---|
-| scenario/seed/episode 数据合同 | implemented/tested | frame 不拆分且整 seed 无跨 split 泄漏；split hash 固化 |
+| scenario/seed/episode 数据合同 | legacy v1 superseded | 原合同只隔离 scenario+seed，跨 scenario 同数值 seed 风险由 section 26 的 v2 关闭 |
 | 匿名特征 | implemented/tested | ordinal token + allow-list 派生字段；禁止 truth actor 和原 entity ID |
 | BC | synthetic pipeline done | 多 episode frame mini-batch，train/validation loss 和 whole-seed metric 可用 |
 | PPO | native pipeline done, outcome unvalidated | clipped actor-critic、变长 edge、pooled value、低频 advice；只做 synthetic/offline rollout |
@@ -618,7 +618,7 @@ bounded residual，最终 plan 仍由 Hungarian/demand-slot、all-or-none、迟�
 | promotion | unavailable | synthetic test 仅 6 unseen seed 且 cost non-degradation=false；false/unavailable 正确 |
 | online hold/replan | not integrated | advice head 只进入离线 BC/PPO；在线 assistant 当前仅消费 residual |
 
-30-seed/60-frame smoke 中 BC loss `1.1001 -> 0.5014`、validation `0.3768`；PPO 46
+以下 30-seed/60-frame smoke 属于 legacy v1：BC loss `1.1001 -> 0.5014`、validation `0.3768`；PPO 46
 transitions 的一次更新有限。12-frame test shadow inference P50/P95=`0.281/0.350 ms`，
 fallback、duplicate、hard violation 均为 0。该规模和时延不构成实时或收益结论。
 
@@ -627,7 +627,7 @@ fallback、duplicate、hard violation 均为 0。该规模和时延不构成实�
 M-to-N demand、stale/timeout/OOD paired shadow。安全、成本、高威胁 unmet 和 churn 全部
 非退化后才能生成 recommended manifest。正式权重、AirSim 接线和 D6 系统报告均未完成。
 
-新增 16 个专项测试后 D3 共收集 215 项，最终为 `214 passed, 1 skipped`（6.95 s），
+该 v1 批次新增 16 个专项测试后 D3 共收集 215 项，结果为 `214 passed, 1 skipped`（6.95 s），
 零失败满足门限；唯一 skip 是既有 optional OR-Tools installed-only case。
 
 ## 24. 最近单帧规划证据接口复核（2026-07-20）
@@ -675,3 +675,52 @@ hard reject、能力、三维可达性和稀疏 mask 仍优先。非法/过期/�
 source/lease/region/conservation/transfer 错误和 commit/reserve 保护，seed 不适用。复核
 结论为 D3-owned 合同已实现并测试；main 尚未映射 D4 recommendation，D6 尚未形成正式
 多 seed 指标，AirSim 和物理拦截本轮均未运行。
+
+## 26. 数值 Seed 原子切分与 v2 Bundle 复核（2026-07-20）
+
+本次改动只修学习研究数据边界，不修改 Hungarian、demand-slot、BC/PPO reward 公式、
+动作空间、安全外壳、迟滞、版本或 D7 binding。旧 split 将 `(scenario_version, seed)` 作为
+身份；同一数值 seed 在不同 scenario/scale 下可能进入不同 split，导致所谓 test seed 已
+参与 train/validation。该风险不能靠 episode 哈希补丁解决，必须在完整 catalog 层处理。
+
+当前采集 record 显式为 `unassigned`。finalize 对全部唯一数值 seed 做稳定排序并按数量
+分配三个 split；scenario、规模和 episode 不参与身份。少于 3 个唯一 seed、test 少于声明
+unseen 数、冲突预分配、跨 split seed、重复 frame 或篡改均 fail closed。正序和逆序输入
+产生相同 canonical JSONL、manifest、split hash 与 frame SHA。dataset/split/bundle/shadow
+分别升级到 v2，旧 dataset/bundle v1 明确拒绝，不静默解释。
+
+训练 whole-seed metric 与 shadow unseen/per-seed report 均按数值 seed 跨 scenario 聚合。
+promotion manifest 同时绑定 dataset v2、split policy v2 和
+`numeric_seed_global_across_scenarios`，手写旧语义 recommended 不能授权 assist。规则矩阵、
+求解器和计划发布链未改变。
+
+writer 通过 iterator、临时 SQLite 和增量 SHA 保持审计质量并避免 D3 内部全量常驻。
+200v200 fixture 单帧 JSON 约 5.85 MB，NumPy payload 加 edge tuple 浅层约 5.16 MB；main
+现有 40-frame 全量读取的保守下界超过约 440 MB。D3-owned API 缺口关闭，main 改用
+`iter_learning_frame_records()` 仍是 cross-module P1。
+
+全量收集 244 项，结果 `243 passed, 1 skipped`，零失败门限通过；唯一 skip 是 optional
+OR-Tools。本批没有模型训练、AirSim 运行或性能比较，不能据此宣称模型或物理效果改善。
+
+## 27. Learning Bundle、训练与 Shadow 复核补正（2026-07-20）
+
+复核结论是规则主线与授权边界保持不变，但原 learning 外环需要五项 fail-closed 补正，
+当前均已在 D3 owned code/test 中完成：
+
+1. BC 仅使用 train/validation，PPO 仅使用 train；test frame 在训练 API 边界被拒绝，
+   BC whole-seed metric 不再出现 test seed。CLI 的完整 dataset load 仅验证内容与切分合同。
+2. frame v2 采用精确字段集合并递归拒绝 truth/actor/identity/entity-ID 类未知字段；保留
+   ordinal token、已声明强类型匿名字段和语义 hard-reject reason 的显式兼容范围。
+3. candidate mask/hint 在候选索引、assistant 返回和 solver 消费三层都与 hard reject
+   reasons 求交，因此人为不一致也不能恢复 D5、容量、冲突或可达性禁边。
+4. assist promotion 不能绕过，且必须证明 eligible 正式 test paired shadow；evidence
+   schema/kind、`rule_cost_matrix_v1`、split/frame/state 三摘要、严格布尔/计数、至少 20
+   unseen seed、零 fallback 和安全/成本非退化全部满足。
+5. rule/proposal 可以用不同矩阵选边，但二者最终成本必须在相同 `C_rule` 与 unassigned
+   costs 上重算。学习仍只输出 `C_rule+alpha*tanh(delta_C)` 的受约束 residual proposal，
+   不能输出或授权 AssignmentPlan、coalition member、version 或 D7 action。
+
+全量收集 252 项，结果 `251 passed, 1 skipped`；接受门限零失败通过，skip 仅 optional
+OR-Tools。可提交状态不等于模型可晋级：当前没有正式权重、真实 D2/D3 训练、>=20 未见
+真实/高保真 test seed、eligible promotion、AirSim 收益或 200v200 学习闭环结论。SHA
+提供完整性与错配保护，不是签名式来源认证；同步 timeout 也仍是返回后拒绝。
