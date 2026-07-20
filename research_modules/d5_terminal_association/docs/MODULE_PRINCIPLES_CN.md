@@ -16,19 +16,24 @@ snapshot 内中心提供的 `global_track_id`；D5 不允许用本地 ID 生成�
 outcome、counterfactual 和 causal label 永不回填 snapshot。reward 有界 `[-1,1]`；缺 outcome
 使用 unavailable/null，不能用 0 伪装；causal label 还必须有 counterfactual。
 
-数据切分以完整 `(scenario_version, seed)` group 为不可分单位。少于三个 group、少于声明 unseen
-test seed 或同 group 跨 split 都必须失败关闭。正式默认要求 20 个 unseen seed；单元 smoke 可
-显式降低门，但不能据此形成准入。manifest 必须绑定 schema/version、全部 artifact SHA256、
-split/training-set SHA、source Git/config identity 和 label availability。finalize 后数据只读，
-loader 复算全部哈希并拒绝额外制品。
+数据切分以完整 `(scenario_version, seed)` group 为不可分单位，并以唯一数值 seed 作为跨场景
+原子分配单元。同一 seed 的所有 scenario/scale group 必须进入同一 split，test seed 不得出现在
+train/validation。少于三个唯一 seed、少于声明 unseen test seed 或任一 group/seed 跨 split 都
+必须失败关闭。正式默认要求 20 个 unseen seed；单元 smoke 可显式降低门，但不能据此形成准入。
+manifest 必须绑定 `shared_seed_values_atomic_across_scenarios=true`、schema/version、全部 artifact
+SHA256、split/training-set SHA、source Git/config identity 和 label availability。finalize 后数据
+只读，loader 复算全部哈希并拒绝额外制品。
 
 BC 只能从 online record 提取规则示范，不读取 evaluator label。PPO 只能在每个 selected sample
-都有有界离线 reward 时加载；缺一项即拒绝，不能补 0。模型 bundle v2 绑定 episode dataset v1，
-但仍需正式 paired shadow admission 才能 assist。
+都有有界离线 reward 时加载；缺一项即拒绝，不能补 0。split 持久化语义升级为 learning dataset
+v2 / episode dataset v2，模型 bundle v3 绑定 episode dataset v2；内容级 record/sample/snapshot/
+action schema 保持 v1，且仍需正式 paired shadow admission 才能 assist。
 
-2026-07-20 代码证据为数据管线 `6 passed`、主动视觉组合 `30 passed`、D5 全量
-`382 passed in 10.53s`。全部样本和制品均为 `tmp_path` 合成 fixture；没有 main runtime 改动、
-AirSim 运行、正式训练、20-unseen-seed 性能或模型准入结论。
+2026-07-20 代码证据为数据管线 `7 passed in 2.46s`、主动视觉组合 `33 passed in 5.20s`、D5
+全量 `385 passed in 11.43s`。新增覆盖 8 个唯一 seed 跨 2 个 scenario/scale 复用、同 group 多
+episode、反向输入确定性、三 split seed 交集为 0，以及仅 2 个唯一 seed 时拒绝。全部样本和制品
+均为 `tmp_path` 合成 fixture；没有 main runtime 改动、AirSim 运行、正式训练、20-unseen-seed
+性能或模型准入结论。
 
 ## 2026-07-20 主动视觉最小权限与安全回退原则
 

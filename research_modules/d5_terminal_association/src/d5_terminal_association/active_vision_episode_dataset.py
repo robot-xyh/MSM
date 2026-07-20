@@ -50,7 +50,7 @@ from .active_vision_learning import (
 )
 
 
-ACTIVE_VISION_EPISODE_DATASET_SCHEMA_VERSION = "d5.active-vision-episode-dataset.v1"
+ACTIVE_VISION_EPISODE_DATASET_SCHEMA_VERSION = "d5.active-vision-episode-dataset.v2"
 ACTIVE_VISION_EPISODE_DESCRIPTOR_SCHEMA_VERSION = "d5.active-vision-episode-descriptor.v1"
 ACTIVE_VISION_EPISODE_RECORD_SCHEMA_VERSION = "d5.active-vision-episode-record.v1"
 ACTIVE_VISION_SAMPLE_SCHEMA_VERSION = "d5.active-vision-sample.v1"
@@ -716,6 +716,7 @@ def finalize_active_vision_episode_dataset(
         "split_policy": {
             "unit": "whole_episode_grouped_by_scenario_version_and_seed",
             "sample_or_transition_level_random_split": False,
+            "shared_seed_values_atomic_across_scenarios": True,
             "split_seed": int(split_seed),
             "validation_fraction": float(validation_fraction),
             "test_fraction": float(test_fraction),
@@ -891,6 +892,7 @@ def load_active_vision_episode_dataset(
     expected_split_fields = {
         "unit",
         "sample_or_transition_level_random_split",
+        "shared_seed_values_atomic_across_scenarios",
         "split_seed",
         "validation_fraction",
         "test_fraction",
@@ -907,6 +909,11 @@ def load_active_vision_episode_dataset(
         split_policy["sample_or_transition_level_random_split"],
         False,
         "sample_random_split_forbidden",
+    )
+    _expect_equal(
+        split_policy["shared_seed_values_atomic_across_scenarios"],
+        True,
+        "shared_seed_split_policy_mismatch",
     )
     expected_splits, unseen_count = _split_episode_descriptors(
         raw_episodes,
@@ -1890,38 +1897,42 @@ def _split_episode_descriptors(
             )
         seen_uids.add(uid)
         groups.setdefault((scenario, seed), []).append(uid)
-    if len(groups) < 3:
+    seed_values = sorted({seed for _, seed in groups})
+    if len(seed_values) < 3:
         raise ActiveVisionDatasetValidationError(
             "insufficient_split_groups",
-            "at least three independent (scenario_version, seed) groups are required",
+            "at least three unique seed values are required for independent splits",
         )
-    ordered = sorted(
-        groups,
-        key=lambda key: hashlib.sha256(
-            f"{int(split_seed)}\0{key[0]}\0{key[1]}".encode("utf-8")
-        ).hexdigest(),
+    ordered_seeds = sorted(
+        seed_values,
+        key=lambda seed: (
+            hashlib.sha256(f"{int(split_seed)}\0{seed}".encode("utf-8")).hexdigest(),
+            seed,
+        ),
     )
-    test_count = max(1, min(len(groups) - 2, round(len(groups) * test_fraction)))
+    test_count = max(
+        1,
+        min(len(seed_values) - 2, round(len(seed_values) * test_fraction)),
+    )
     validation_count = max(
         1,
-        min(len(groups) - test_count - 1, round(len(groups) * validation_fraction)),
+        min(
+            len(seed_values) - test_count - 1,
+            round(len(seed_values) * validation_fraction),
+        ),
     )
-    split_by_group: dict[tuple[str, int], str] = {}
-    for index, group in enumerate(ordered):
+    split_by_seed: dict[int, str] = {}
+    for index, seed in enumerate(ordered_seeds):
         if index < test_count:
             split = "test"
         elif index < test_count + validation_count:
             split = "validation"
         else:
             split = "train"
-        split_by_group[group] = split
-    seen_seed_values = {
-        seed for (_, seed), split in split_by_group.items() if split != "test"
-    }
+        split_by_seed[seed] = split
+    split_by_group = {group: split_by_seed[group[1]] for group in groups}
     unseen_test_seeds = {
-        seed
-        for (_, seed), split in split_by_group.items()
-        if split == "test" and seed not in seen_seed_values
+        seed for seed, split in split_by_seed.items() if split == "test"
     }
     if len(unseen_test_seeds) < minimum_unseen:
         raise ActiveVisionDatasetValidationError(

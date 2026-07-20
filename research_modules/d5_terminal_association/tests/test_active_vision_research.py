@@ -526,6 +526,68 @@ def test_whole_seed_split_behavior_cloning_and_native_clipped_ppo_smoke() -> Non
     assert np.all(np.isfinite(ppo.epoch_losses))
 
 
+def test_split_keeps_shared_seed_values_atomic_across_scenarios() -> None:
+    base = _research_episodes()
+    episodes = tuple(
+        replace(
+            episode,
+            scenario_version=scenario,
+            episode_id=f"episode-{episode.seed}-{scenario}",
+        )
+        for episode in base
+        for scenario in ("active-vision-small-v1", "active-vision-large-v1")
+    ) + (
+        replace(
+            base[3],
+            scenario_version="active-vision-small-v1",
+            episode_id="episode-3-repeat",
+        ),
+    )
+
+    forward = split_active_vision_episode_groups(episodes, split_seed=91)
+    reversed_input = split_active_vision_episode_groups(reversed(episodes), split_seed=91)
+
+    assert dict(forward.split_by_group) == dict(reversed_input.split_by_group)
+    assert forward.split_sha256 == reversed_input.split_sha256
+    assert forward.training_set_sha256 == reversed_input.training_set_sha256
+    assert forward.manifest()["schema_version"] == "d5.active-vision-dataset.v2"
+    assert (
+        forward.manifest()["split_policy"]["shared_seed_values_atomic_across_scenarios"]
+        is True
+    )
+
+    splits_by_seed: dict[int, set[str]] = {}
+    for episode in episodes:
+        splits_by_seed.setdefault(episode.seed, set()).add(
+            forward.split_by_group[episode.group_key]
+        )
+    assert all(len(splits) == 1 for splits in splits_by_seed.values())
+    seeds_by_split = {
+        split: {episode.seed for episode in forward.split(split)}
+        for split in ("train", "validation", "test")
+    }
+    assert all(seeds_by_split.values())
+    assert seeds_by_split["test"].isdisjoint(seeds_by_split["train"])
+    assert seeds_by_split["test"].isdisjoint(seeds_by_split["validation"])
+    assert seeds_by_split["train"].isdisjoint(seeds_by_split["validation"])
+
+
+def test_split_fails_closed_with_fewer_than_three_unique_seed_values() -> None:
+    base = _research_episodes(2)
+    repeated = tuple(
+        replace(
+            episode,
+            scenario_version=scenario,
+            episode_id=f"episode-{episode.seed}-{scenario}",
+        )
+        for episode in base
+        for scenario in ("active-vision-small-v1", "active-vision-large-v1")
+    )
+
+    with pytest.raises(ValueError, match="at least three unique seed values"):
+        split_active_vision_episode_groups(repeated)
+
+
 def _write_bundle(path: Path, snapshot: ActiveVisionSnapshotV1) -> None:
     torch.manual_seed(4)
     model = ActiveVisionActorCritic(hidden_dim=8)
@@ -573,6 +635,8 @@ def test_bundle_round_trip_sha_tamper_schema_and_ood_fail_closed(tmp_path: Path)
     loaded = load_active_vision_model_bundle(valid)
     assert loaded.available is True
     assert loaded.assist_admitted is False
+    assert loaded.manifest["schema_version"] == "d5.active-vision-model-bundle.v3"
+    assert loaded.manifest["dataset_schema_version"] == "d5.active-vision-episode-dataset.v2"
     assert loaded.model_fingerprint == active_vision_model_fingerprint(loaded.model)
 
     changed = _snapshot(camera_count=3)

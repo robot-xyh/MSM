@@ -13,22 +13,27 @@ finalizer、loader 和 audit CLI/API。每个样本完整保存 truth-free `Acti
 完全匹配的 `sample_key + observation_key` 写入独立目录；loader 不把 label 回填 snapshot。未知
 中心引用、相机对另一个中心候选的局部换绑、中心 track version/timestamp 回退均失败关闭。
 
-**split、availability 与制品审计：** 完整 `(scenario_version, seed)` group 是唯一切分单元；少于
-三个独立 group 或少于声明的 unseen test seed 时拒绝 finalize，正式默认 unseen 门为 20。reward
-范围固定 `[-1,1]`；无 outcome 时必须 unavailable/null，不能用 0 补位；causal label 需要 outcome
-和 counterfactual 同时可用。manifest 固化 schema/version、generation config、逐文件/split/
-training-set SHA256、source Git/config identity 和 availability；`SHA256SUMS` 精确覆盖数据目录，
-finalize 后文件只读。BC loader 只取规则示范，PPO loader 在任一 reward unavailable 时拒绝。
+**split、availability 与制品审计：** 完整 `(scenario_version, seed)` group 保持不可分；唯一数值
+seed 是跨 scenario/scale 的原子分配单元，test seed 不会出现在 train/validation。split 数量按唯一
+seed 计算；少于三个唯一 seed 或少于声明的 unseen test seed 时拒绝 finalize，正式默认 unseen 门
+为 20。reward 范围固定 `[-1,1]`；无 outcome 时必须 unavailable/null，不能用 0 补位；causal label
+需要 outcome 和 counterfactual 同时可用。manifest 固化共享 seed 原子策略、schema/version、
+generation config、逐文件/split/training-set SHA256、source Git/config identity 和 availability；
+`SHA256SUMS` 精确覆盖数据目录，finalize 后文件只读。BC loader 只取规则示范，PPO loader 在任一
+reward unavailable 时拒绝。
 
-**bundle 与准入：** 主动视觉 bundle 升级为 `d5.active-vision-model-bundle.v2` 并声明 episode
-dataset v1。现有 model fingerprint、dataset manifest/split/training-set SHA 和 paired admission
-绑定保持；没有正式 admission report 的 bundle 仍不能 assist。
+**schema、bundle 与准入：** split assignment 和哈希语义不向后兼容，因此 learning dataset 与
+episode dataset 升为 v2，主动视觉 bundle 升为 `d5.active-vision-model-bundle.v3` 并声明 episode
+dataset v2；record/sample/snapshot/action 内容 schema 保持 v1。现有 model fingerprint、dataset
+manifest/split/training-set SHA 和 paired admission 绑定保持；旧 schema 失败关闭，没有正式
+admission report 的 bundle 仍不能 assist。
 
-**验证与证据边界：** 2026-07-20 新数据管线 `6 passed`，主动视觉组合 `30 passed`，D5 全量
-`382 passed in 10.53s`，接受阈值为零失败。覆盖动态规模、ACK present/absent、真值物理分流、
-整 group split、unseen seed 不足、reward unavailable/null、offline join、未知/换绑中心 ID、只读
-制品和 SHA 篡改。全部制品为 `tmp_path` 合成 fixture；未运行 AirSim、未正式训练、没有 20 个
-未见 seed 的正式结果或性能收益。
+**验证与证据边界：** 2026-07-20 数据管线 `7 passed in 2.46s`，主动视觉组合
+`33 passed in 5.20s`，D5 全量 `385 passed in 11.43s`，接受阈值为零失败。覆盖动态规模、ACK
+present/absent、真值物理分流、8 个唯一 seed 跨 2 个场景原子 split、同 group 多 episode、两份
+目录确定性、三 split seed 交集为 0、唯一 seed/unseen 不足、reward unavailable/null、offline
+join、未知/换绑中心 ID、只读制品和 SHA 篡改。全部制品为 `tmp_path` 合成 fixture；未运行
+AirSim、未正式训练、没有 20 个未见 seed 的正式结果或性能收益。
 
 **剩余跨模块/数据 GAP：** main 尚需在统一三维 episode 中累计并关闭 record、随后分流写入
 online/offline 文件，传入真实 source Git commit/dirty 与 source config SHA，并保存正式 detached
@@ -42,8 +47,9 @@ counterfactual、困难场景、paired shadow 非退化和 checkpoint 审批。D
 
 **已关闭的软件缺口：** D5 现有版本化 truth-free 主动视觉 snapshot/action、确定性
 look-at/reacquire/scan、有限动作候选、安全投影、`disabled/shadow/assist` 仲裁、完整
-`(scenario_version, seed)` split、行为克隆、原生 PyTorch clipped PPO、严格 bundle 和 paired
-shadow evaluator。策略权限仅为相机观察意图；没有飞控、D3 分配或 ID 生成接口。library 默认
+`(scenario_version, seed)` group 与共享 seed 跨场景原子 split、行为克隆、原生 PyTorch clipped
+PPO、严格 bundle 和 paired shadow evaluator。策略权限仅为相机观察意图；没有飞控、D3 分配或
+ID 生成接口。library 默认
 disabled，CLI 默认 shadow，shadow 的 effective action 固定为规则动作。
 
 **安全与准入门：** plan/coalition/communication version、候选成员、projection freshness、FOV、

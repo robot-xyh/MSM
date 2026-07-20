@@ -27,26 +27,33 @@ observation_key` 写独立 evaluator 文件。reward、outcome、counterfactual 
 snapshot。reward 固定在 `[-1,1]`；缺少离线 outcome 时 `reward_available=false/value=null`，不能用
 `0` 补位；causal label 还要求 factual outcome 与 counterfactual 同时可用。
 
-`finalize_active_vision_episode_dataset()` 只按完整 `(scenario_version, seed)` group 切分；少于三个
-独立 group、少于声明的 unseen test seed 或任一 group 跨 split 均失败关闭。CLI/API 的正式默认
-门为 20 个 unseen seed，单测 smoke 仅显式使用 1。manifest 固化全部 schema/version、逐文件
-SHA256、split/training-set SHA、source Git commit/dirty 状态、source config SHA 和 availability。
-finalize 后全部制品去除写权限；loader 要求 `SHA256SUMS` 精确覆盖目录并复算哈希、版本、split、
-source identity、键连接、奖励边界和中心 ID 引用。未知中心引用、相机对中心 ID 的局部换绑、
-版本回退或额外未审计文件均拒绝。
+`finalize_active_vision_episode_dataset()` 保持完整 `(scenario_version, seed)` group 不可分，并先以
+唯一数值 seed 做确定性分配：共享同一 seed 的所有 scenario/scale group 必须原子进入同一
+train/validation/test，因而 test seed 对 train/validation 完全未见。split 数量按唯一 seed 数计算；
+少于三个唯一 seed、少于声明的 unseen test seed 或任一 group/seed 跨 split 均失败关闭。CLI/API
+正式默认门为 20 个 unseen seed，单测 smoke 仅显式使用 1。manifest 固化
+`shared_seed_values_atomic_across_scenarios=true`、全部 schema/version、逐文件 SHA256、split/
+training-set SHA、source Git commit/dirty 状态、source config SHA 和 availability。finalize 后全部
+制品去除写权限；loader 要求 `SHA256SUMS` 精确覆盖目录并复算哈希、版本、split、source
+identity、键连接、奖励边界和中心 ID 引用。未知中心引用、相机对中心 ID 的局部换绑、版本回退
+或额外未审计文件均拒绝。
 
 `LoadedActiveVisionEpisodeDataset.behavior_cloning_episodes()` 只加载规则示范，不接触 evaluator
 label；`ppo_episodes()` 只加载 effective action，并要求每个样本都有有界离线 reward，否则失败
-关闭。旧 `ActiveVisionTransition.reward` 的 unavailable 表达已从默认 `0.0` 改为 `None`。主动视觉
-模型 bundle 升级为 `d5.active-vision-model-bundle.v2`，明确绑定
-`d5.active-vision-episode-dataset.v1`；没有正式 admission report 时仍不能 assist。
+关闭。旧 `ActiveVisionTransition.reward` 的 unavailable 表达已从默认 `0.0` 改为 `None`。split
+持久化语义变化将学习 dataset 升为 `d5.active-vision-dataset.v2`、episode dataset 升为
+`d5.active-vision-episode-dataset.v2`，绑定它的模型 bundle 升为
+`d5.active-vision-model-bundle.v3`；record/sample/snapshot/action 内容 schema 保持 v1。旧数据集
+和 bundle 不会被新 loader 静默接纳；没有正式 admission report 时仍不能 assist。
 
-2026-07-20 验证：新增数据管线专项 `6 passed`，主动视觉合同/学习/bundle/数据组合 `30 passed`，
-D5 全量 `382 passed in 10.53s`，接受阈值为零失败。测试数据全部位于 `tmp_path`，只构成代码和
-失败关闭证据；本轮没有修改 main runtime、没有运行 AirSim、没有正式数据集/checkpoint、没有
-正式训练或 20-unseen-seed 性能结果。main 后续仍需在统一 episode 结束时调用 writer、传入真实
-source Git/config identity、提供独立 evaluator outcome/counterfactual，并完成正式 split、训练和
-paired shadow 准入。
+2026-07-20 验证：数据管线专项 `7 passed in 2.46s`，主动视觉合同/学习/bundle/数据组合
+`33 passed in 5.20s`，D5 全量 `385 passed in 11.43s`，接受阈值为零失败。新增 fixture 覆盖 8 个
+唯一 seed 在 2 个 scenario/scale 中复用、同 group 多 episode、反向写入的两份独立目录、三 split
+seed 交集为 0，以及 4 个 group 但仅 2 个唯一 seed 的失败关闭。测试数据全部位于 `tmp_path`，
+只构成代码和失败关闭证据；本轮没有修改 main runtime、没有运行 AirSim、没有正式数据集/
+checkpoint、没有正式训练或 20-unseen-seed 性能结果。main 后续仍需在统一 episode 结束时调用
+writer、传入真实 source Git/config identity、提供独立 evaluator outcome/counterfactual，并完成
+正式 split、训练和 paired shadow 准入。
 
 ## 2026-07-20 统一三维 episode 主动视觉接线状态
 
@@ -93,7 +100,8 @@ inference latency、model fingerprint、plan/coalition/communication version、�
 数值全为正例也固定不能授予正式准入。
 
 研究训练 API 位于 `active_vision_learning.py`：完整 `(scenario_version, seed)` group 进入唯一
-train/validation/test split；`train_behavior_cloning()` 和 `train_clipped_ppo()` 使用原生
+train/validation/test split，共享数值 seed 的跨场景 group 同样原子分配；
+`train_behavior_cloning()` 和 `train_clipped_ppo()` 使用原生
 PyTorch actor-critic，不依赖 `torch_geometric`。bundle 为
 `manifest.json + weights.pt + SHA256SUMS`，只通过 `torch.load(weights_only=True)` 加载。
 仓库未提交主动视觉 checkpoint，也没有已准入模型。

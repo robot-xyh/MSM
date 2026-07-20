@@ -15,13 +15,15 @@ episode snapshot、相机命令或关联路径。
 
 source identity 必须来自实际 episode：完整 Git commit、dirty 状态和实际 runtime/settings config
 SHA256。收齐数据后由 `finalize_active_vision_episode_dataset()` 按完整 `(scenario_version, seed)`
-group 切分；正式运行保留默认 minimum 20 unseen seeds。少于三个 group、unseen 不足或任一 hash/
-join/ID 审计失败时不得生成可训练 dataset。
+group 切分，并把共享同一数值 seed 的所有 scenario/scale group 原子放入同一 split；正式运行
+保留默认 minimum 20 unseen seeds。少于三个唯一 seed、test unseen seed 不足、seed 跨 split 或
+任一 hash/join/ID 审计失败时不得生成可训练 dataset。落盘语义使用 episode dataset v2，后续
+训练 bundle 使用 v3；record/sample/snapshot/action 内容合同仍为 v1。
 
-本轮模块验证为数据管线 `6 passed`、主动视觉组合 `30 passed`、D5 全量
-`382 passed in 10.53s`。测试只使用合成 `tmp_path`，未启动 AirSim、未生成 settings、未收集正式
-episode，也没有真实云台 ACK、正式 BC/PPO、20-seed 性能或 assist 准入。真实 AirSim 接线仍由
-main 负责，D5 不在本轮修改 launcher/reset/episode order。
+本轮模块验证为数据管线 `7 passed in 2.46s`、主动视觉组合 `33 passed in 5.20s`、D5 全量
+`385 passed in 11.43s`。共享 seed 多场景与确定性测试只使用合成 `tmp_path`，未启动 AirSim、未
+生成 settings、未收集正式 episode，也没有真实云台 ACK、正式 BC/PPO、20-seed 性能或 assist
+准入。真实 AirSim 接线仍由 main 负责，D5 本轮未修改 launcher/reset/episode order。
 
 ## 2026-07-20 主动视觉 v1 统一三维接线与 AirSim 后续工作
 

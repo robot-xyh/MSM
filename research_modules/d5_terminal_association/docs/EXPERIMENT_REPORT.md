@@ -8,18 +8,21 @@ checkpoint、20-unseen-seed test 或性能结论。接受阈值为全部测试�
 | 实验 | 样本/故障注入 | 实测 | 接受阈值 | 判定 |
 | --- | --- | --- | --- | --- |
 | 整 episode round-trip | 8 个 `(scenario_version, seed)` group；每组动态 1-4 camera、1-6 center track；ACK present/absent | online record、offline label、descriptor、manifest、`SHA256SUMS` 严格回载；train/validation/test 均非空 | group 跨 split=0；未知制品=0；加载错误=0 | 通过 |
+| 多场景共享 seed split | 8 个唯一 seed x 2 个 scenario/scale，外加同 group 重复 episode；两份目录按正序/逆序写入 | 同 seed 的全部 group/episode 仅有一个 split；两目录 assignment、split SHA、training-set SHA 一致 | train/validation/test seed 两两交集=0；非确定 assignment=0 | 通过 |
 | 在线/离线真值分流 | online snapshot/action/feedback/ACK；offline `truth_entity_id` outcome | online 文件 truth 字段 occurrence=0；truth 只存在于 `offline/` | online truth occurrence=0；label 回流 snapshot=0 | 通过 |
 | BC/PPO 视图 | 规则示范、effective action；reward available 与全 unavailable 两组 | BC reward 全为 null；PPO available 组读到 `0.5`；unavailable 组稳定拒绝 | 缺 reward 补 0 次数=0；unavailable PPO 执行=0 | 通过 |
-| split fail-closed | 2 group；5 group 且声明 minimum unseen=2 | 分别返回 `insufficient_split_groups`、`insufficient_unseen_test_seeds` | 不伪造 split；错误 finalize=0 | 通过 |
+| split fail-closed | 2 group；4 group 但仅 2 个唯一 seed；5 个唯一 seed 且声明 minimum unseen=2 | 前两组返回 `insufficient_split_groups`，后一组返回 `insufficient_unseen_test_seeds` | 不伪造 split；错误 finalize=0 | 通过 |
 | ID 与 truth 注入 | online 额外 truth 字段、未知中心 ID、另一个中心候选局部换绑 | 分别由 truth guard、`unknown_center_reference`、`global_track_id_local_rewrite` 拒绝 | 污染/未知/换绑接受数=0 | 通过 |
 | reward/join/hash 审计 | observation key 错配、unavailable reward 填 0、无 outcome reward、无 counterfactual causal、在线文件字节篡改 | 全部失败关闭；缺失数字保持 null；SHA 篡改由 checksum 拒绝 | 错配/占位/篡改接受数=0 | 通过 |
-| 新数据管线专项 | 6 项测试 | `6 passed` | 零失败 | 通过 |
-| 主动视觉组合 | contracts、BC/PPO、evaluation、bundle v2、episode dataset | `30 passed` | 零失败 | 通过 |
-| D5 全量回归 | 全部 D5 tests | `382 passed in 10.53s` | 零失败 | 通过 |
+| 新数据管线专项 | 7 项测试 | `7 passed in 2.46s` | 零失败 | 通过 |
+| 主动视觉组合 | contracts、BC/PPO、evaluation、bundle v3、episode dataset v2 | `33 passed in 5.20s` | 零失败 | 通过 |
+| D5 全量回归 | 全部 D5 tests | `385 passed in 11.43s` | 零失败 | 通过 |
 
-bundle schema 已升级为 `d5.active-vision-model-bundle.v2` 并绑定 episode dataset v1；测试中的
-bundle/checkpoint 仍只位于 `tmp_path`。正式 assist 继续要求与正式 dataset/split/training-set SHA
-及模型指纹一致的 paired shadow report，并至少包含 20 个完全未见 seed 的非合成非退化证据。
+共享 seed 原子 split 改变持久化语义，因此 learning dataset/episode dataset 分别升级到 v2，
+bundle schema 升级为 `d5.active-vision-model-bundle.v3` 并绑定 episode dataset v2；内容级 record/
+sample/snapshot/action schema 保持 v1。测试中的 bundle/checkpoint 仍只位于 `tmp_path`。正式 assist
+继续要求与正式 dataset/split/training-set SHA 及模型指纹一致的 paired shadow report，并至少
+包含 20 个完全未见 seed 的非合成非退化证据。
 
 下一步不是从本表推导收益，而是由 main 在真实统一 episode 中接入 online/offline writer，记录
 实际 Git/config identity，收集代表性 outcome/counterfactual，再执行正式 split、BC/PPO、paired

@@ -28,18 +28,25 @@ counterfactual 同时可用时才允许。`ActiveVisionTransition.reward` 因此
 训练入口和 dataset PPO view 遇到 `None` 均拒绝。
 
 目录由 `dataset_config.json`、`online/`、`offline/`、`episodes/`、`manifest.json` 和
-`SHA256SUMS` 组成。finalizer 按完整 `(scenario_version, seed)` group 计算确定性 split，少于三个
-group 或不足声明 unseen seed 时不写 manifest。manifest 固化全部 schema/version、artifact/
-split/training-set SHA、source Git commit/dirty、source config SHA 与 availability。完成后所有文件
-去除写权限；loader 要求 checksum 集合与实际文件集合完全一致，并重算 split 和汇总。
+`SHA256SUMS` 组成。finalizer 先收集完整 `(scenario_version, seed)` group，再按唯一数值 seed 的
+SHA256 确定性顺序计算 split；一个 seed 下所有 scenario/scale group 和 episode 传播同一 split。
+少于三个唯一 seed 或不足声明 unseen test seed 时不写 manifest。manifest 固化
+`shared_seed_values_atomic_across_scenarios=true`、全部 schema/version、artifact/split/training-set
+SHA、source Git commit/dirty、source config SHA 与 availability。完成后所有文件去除写权限；
+loader 要求 checksum 集合与实际文件集合完全一致，复算 split，并拒绝 group 或 seed 泄漏。
 
-`active_vision_bundle.py` 的 bundle schema 升为 v2，并将 dataset schema 固定为
-`d5.active-vision-episode-dataset.v1`。已有 model fingerprint、weights-only、dataset/split/
-training-set SHA 和 paired admission 检查不变；schema 升级不等于模型准入。
+该 split 变化会改变持久化 assignment 与哈希，故 `active_vision_learning.py` 的 dataset schema
+升为 `d5.active-vision-dataset.v2`，episode dataset 升为
+`d5.active-vision-episode-dataset.v2`，`active_vision_bundle.py` 的 bundle schema 升为
+`d5.active-vision-model-bundle.v3` 并绑定 episode dataset v2。record/sample/snapshot/action 内容
+schema 不变。已有 model fingerprint、weights-only、dataset/split/training-set SHA 和 paired
+admission 检查不变；旧 schema 失败关闭，版本升级不等于模型准入。
 
-2026-07-20 验证为新数据管线 `6 passed`、主动视觉组合 `30 passed`、D5 全量
-`382 passed in 10.53s`。这是合成 `tmp_path` 下的代码证据；没有 main writer 接线、正式数据、
-正式 BC/PPO、20 个未见 seed 的性能结果、AirSim 或 checkpoint。
+2026-07-20 验证为数据管线 `7 passed in 2.46s`、主动视觉组合 `33 passed in 5.20s`、D5 全量
+`385 passed in 11.43s`。新增测试使用 8 个唯一 seed、2 个 scenario/scale、17 个 episode，并在
+两份反向写入目录得到相同 assignment/split/training hashes；train/validation/test seed 两两交集
+为 0，4 个 group 但仅 2 个唯一 seed 时失败关闭。这是合成 `tmp_path` 下的代码证据；没有 main
+writer 接线、正式数据、正式 BC/PPO、20 个未见 seed 的性能结果、AirSim 或 checkpoint。
 
 ## 2026-07-20 主动视觉 BC/PPO 与安全执行实现
 
@@ -47,8 +54,8 @@ training-set SHA 和 paired admission 检查不变；schema 升级不等于模�
 
 - `active_vision_contracts.py`：v1 snapshot/action、规则 look-at/reacquire/scan、有限动作枚举、
   safety projection 和 mode controller；
-- `active_vision_learning.py`：整 `(scenario_version, seed)` split、固定 feature order、原生
-  PyTorch actor-critic、behavior cloning 和 clipped PPO；
+- `active_vision_learning.py`：整 `(scenario_version, seed)` group 与跨场景共享 seed 原子 split、
+  固定 feature order、原生 PyTorch actor-critic、behavior cloning 和 clipped PPO；
 - `active_vision_bundle.py`：manifest、state_dict、SHA256、模型指纹、OOD bounds、
   `weights_only=True` 加载和 runtime unavailable policy；
 - `active_vision_evaluation.py`：至少 20 个完全未见 seed 的 paired shadow 非退化门；
@@ -81,8 +88,9 @@ effective mode、rule/requested/effective action、fallback reason、latency、f
 
 ### 数据、训练、bundle 与准入
 
-`split_active_vision_episode_groups()` 以整个 `(scenario_version, seed)` group 切分，并输出 dataset
-manifest、split 和 training-set SHA。BC 使用规则/行为 action 的离散交叉熵；PPO 对已安全投影的
+`split_active_vision_episode_groups()` 保持整个 `(scenario_version, seed)` group，并先按唯一
+数值 seed 切分，使共享 seed 的跨场景 group 同处一个 split；随后输出 dataset manifest、split 和
+training-set SHA。BC 使用规则/行为 action 的离散交叉熵；PPO 对已安全投影的
 rollout 计算 discounted return、旧 log probability、clipped ratio、value loss 和 entropy，使用
 原生 PyTorch，不依赖 PyG。网络只输出候选 logits/value，不输出 ID 或连续飞控。
 

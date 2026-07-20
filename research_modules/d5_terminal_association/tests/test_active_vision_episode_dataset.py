@@ -122,7 +122,10 @@ def _record(
     *,
     camera_count: int | None = None,
     track_count: int | None = None,
+    scenario_version: str = "unified-3d-v1",
+    episode_suffix: str | None = None,
 ) -> ActiveVisionEpisodeRecordV1:
+    suffix = "" if episode_suffix is None else f"-{episode_suffix}"
     snapshot = _snapshot(
         seed=seed,
         camera_count=camera_count or (seed % 4) + 1,
@@ -153,7 +156,7 @@ def _record(
             communication_version=snapshot.communication.communication_version,
         )
         command_version = seed * 100 + index
-        sample_key = f"sample-{seed:03d}-{index:03d}"
+        sample_key = f"sample-{seed:03d}{suffix}-{index:03d}"
         feedback = ActiveVisionCameraFeedbackV1(
             camera_state=replace(camera, state_timestamp=snapshot.snapshot_timestamp + 0.02),
             last_accepted_command_version=command_version,
@@ -172,7 +175,7 @@ def _record(
         samples.append(
             active_vision_sample_from_decision(
                 sample_key=sample_key,
-                observation_key=f"observation-{seed:03d}-{index:03d}",
+                observation_key=f"observation-{seed:03d}{suffix}-{index:03d}",
                 sequence_index=index,
                 camera_id=camera.camera_id,
                 snapshot=snapshot,
@@ -182,9 +185,9 @@ def _record(
             )
         )
     return ActiveVisionEpisodeRecordV1(
-        scenario_version="unified-3d-v1",
+        scenario_version=scenario_version,
         seed=seed,
-        episode_id=f"episode-{seed:03d}",
+        episode_id=f"episode-{seed:03d}{suffix}",
         source_identity=ActiveVisionSourceIdentityV1(
             git_commit="a" * 40,
             git_dirty=False,
@@ -247,6 +250,8 @@ def test_detached_episode_dataset_round_trip_dynamic_counts_and_training_views(
     )
     dataset = load_active_vision_episode_dataset(root)
 
+    assert manifest["schema_version"] == "d5.active-vision-episode-dataset.v2"
+    assert manifest["split_policy"]["shared_seed_values_atomic_across_scenarios"] is True
     assert {item.split for item in dataset.episodes} == {"train", "validation", "test"}
     groups = {}
     for item in dataset.episodes:
@@ -320,11 +325,112 @@ def test_unavailable_reward_is_null_and_ppo_fails_closed(tmp_path: Path) -> None
     assert payload["labels"][0]["reward"]["value"] is None
 
 
-def test_split_fails_closed_for_too_few_groups_or_declared_unseen_seeds(tmp_path: Path) -> None:
+def test_split_is_seed_atomic_across_scenarios_and_deterministic(tmp_path: Path) -> None:
+    scenarios = ("unified-3d-2v2-v1", "unified-3d-5v5-v1")
+    records = [
+        _record(
+            seed,
+            scenario_version=scenario,
+            episode_suffix=f"{scenario[-6:-3]}-a",
+        )
+        for seed in range(8)
+        for scenario in scenarios
+    ]
+    records.append(
+        _record(
+            3,
+            scenario_version=scenarios[0],
+            episode_suffix="2v2-b",
+        )
+    )
+
+    manifests = []
+    for root, ordered_records in (
+        (tmp_path / "ordered", records),
+        (tmp_path / "reversed", list(reversed(records))),
+    ):
+        for record in ordered_records:
+            stage_active_vision_episode_record(
+                root,
+                record,
+                generation_config=GENERATION_CONFIG,
+            )
+            stage_active_vision_offline_labels(
+                root,
+                record.episode_uid,
+                _available_labels(record),
+            )
+        manifests.append(
+            finalize_active_vision_episode_dataset(
+                root,
+                split_seed=71,
+                minimum_unseen_seed_count=1,
+            )
+        )
+        load_active_vision_episode_dataset(root)
+
+    assignments = [
+        {
+            (item["scenario_version"], item["seed"], item["episode_id"]): item["split"]
+            for item in manifest["episodes"]
+        }
+        for manifest in manifests
+    ]
+    assert assignments[0] == assignments[1]
+    assert manifests[0]["split_sha256"] == manifests[1]["split_sha256"]
+    assert manifests[0]["training_set_sha256"] == manifests[1]["training_set_sha256"]
+
+    split_by_seed: dict[int, set[str]] = {}
+    split_by_group: dict[tuple[str, int], set[str]] = {}
+    for item in manifests[0]["episodes"]:
+        split_by_seed.setdefault(item["seed"], set()).add(item["split"])
+        group = (item["scenario_version"], item["seed"])
+        split_by_group.setdefault(group, set()).add(item["split"])
+    assert all(len(splits) == 1 for splits in split_by_seed.values())
+    assert all(len(splits) == 1 for splits in split_by_group.values())
+
+    seeds_by_split = {
+        split: {
+            item["seed"]
+            for item in manifests[0]["episodes"]
+            if item["split"] == split
+        }
+        for split in ("train", "validation", "test")
+    }
+    assert all(seeds_by_split.values())
+    assert seeds_by_split["test"].isdisjoint(seeds_by_split["train"])
+    assert seeds_by_split["test"].isdisjoint(seeds_by_split["validation"])
+    assert seeds_by_split["train"].isdisjoint(seeds_by_split["validation"])
+
+
+def test_split_fails_closed_for_too_few_unique_or_declared_unseen_seeds(
+    tmp_path: Path,
+) -> None:
     too_few = tmp_path / "too-few"
     _stage_records(too_few, 2)
     with pytest.raises(ActiveVisionDatasetValidationError) as exc_info:
         finalize_active_vision_episode_dataset(too_few, minimum_unseen_seed_count=1)
+    assert exc_info.value.code == "insufficient_split_groups"
+
+    reused = tmp_path / "reused"
+    reused_records = [
+        _record(seed, scenario_version=scenario, episode_suffix=f"{seed}-{index}")
+        for seed in (10, 11)
+        for index, scenario in enumerate(("scale-small-v1", "scale-large-v1"))
+    ]
+    for record in reused_records:
+        stage_active_vision_episode_record(
+            reused,
+            record,
+            generation_config=GENERATION_CONFIG,
+        )
+        stage_active_vision_offline_labels(
+            reused,
+            record.episode_uid,
+            _available_labels(record),
+        )
+    with pytest.raises(ActiveVisionDatasetValidationError) as exc_info:
+        finalize_active_vision_episode_dataset(reused, minimum_unseen_seed_count=1)
     assert exc_info.value.code == "insufficient_split_groups"
 
     unseen = tmp_path / "unseen"

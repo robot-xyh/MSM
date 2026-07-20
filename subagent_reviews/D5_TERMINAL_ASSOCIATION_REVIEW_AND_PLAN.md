@@ -12,20 +12,25 @@ reward/outcome/counterfactual/causal label 只能在 episode 关闭后写入独�
 `sample_key + observation_key` 连接。snapshot 不接收 joined label。loader 另检查全部 ID 引用均
 来自同一中心 snapshot，拒绝未知引用、相机局部换绑及中心版本/量测时间回退。
 
-数据审查通过：finalizer 只以完整 `(scenario_version, seed)` group 切分；group 少于 3 或 test
-少于声明 unseen seed 时失败关闭，正式默认门为 20。reward 有界 `[-1,1]`；无 outcome 必须
-unavailable/null，causal label 还要求 counterfactual，禁止缺失值补 0。manifest、descriptor、
-`SHA256SUMS` 固化 schema/version、逐文件/split/training-set SHA、generation config、Git/config
-identity 和 availability；finalize 后文件只读且额外文件也会导致 audit 失败。
+数据审查通过：finalizer 保持完整 `(scenario_version, seed)` group，并以唯一数值 seed 做跨场景
+原子分配；共享 seed 的 scenario/scale group 只能处于同一 split，test seed 与 train/validation
+两两隔离。少于 3 个唯一 seed 或 test 少于声明 unseen seed 时失败关闭，正式默认门为 20。reward
+有界 `[-1,1]`；无 outcome 必须 unavailable/null，causal label 还要求 counterfactual，禁止缺失值
+补 0。manifest、descriptor、`SHA256SUMS` 固化原子策略、schema/version、逐文件/split/training-set
+SHA、generation config、Git/config identity 和 availability；finalize 后文件只读且额外文件也会
+导致 audit 失败。
 
 训练视图审查通过：BC 只读取规则示范且不消费 evaluator label；PPO 使用 effective action，并在
-任一样本 reward unavailable 时拒绝。bundle 升级为 v2、声明 episode dataset v1，但原正式 paired
-admission 门不变；新 schema 与哈希不能自行授予 assist。
+任一样本 reward unavailable 时拒绝。split 持久化语义变化已将 learning dataset/episode dataset
+升为 v2，bundle 升为 v3 并声明 episode dataset v2；record/sample/snapshot/action 保持 v1，原
+正式 paired admission 门不变，新 schema 与哈希不能自行授予 assist。
 
-2026-07-20 新数据管线 `6 passed`，主动视觉组合 `30 passed`，D5 全量
-`382 passed in 10.53s`，零失败。审查结论只关闭 writer/loader/audit 软件 GAP。测试均为
-`tmp_path` 合成 fixture；没有 AirSim、正式数据、正式训练、20-unseen-seed 性能结果或 checkpoint。
-main 仍需完成统一 episode 的 sample 累计、episode-end 双文件写入和真实 source/outcome 数据接线。
+2026-07-20 数据管线 `7 passed in 2.46s`，主动视觉组合 `33 passed in 5.20s`，D5 全量
+`385 passed in 11.43s`，零失败。新增测试覆盖 8 个唯一 seed 跨 2 个 scenario/scale 复用、同 group
+多 episode、反向输入确定性、三 split seed 交集为 0、4 个 group 但仅 2 个唯一 seed 的拒绝。审查
+结论只关闭 writer/loader/audit 软件 GAP。测试均为 `tmp_path` 合成 fixture；没有 AirSim、正式
+数据、正式训练、20-unseen-seed 性能结果或 checkpoint。main 仍需完成统一 episode 的 sample
+累计、episode-end 双文件写入和真实 source/outcome 数据接线。
 
 ## 2026-07-20 主动视觉研究路径与 source-observation 审查
 
@@ -41,8 +46,9 @@ action 只表达 observe/search/hold/reacquire、有限 yaw/pitch 和 wide/zoom�
 CLI 默认 shadow；shadow 不改变规则动作。输出具有 requested/effective mode、fallback、latency、
 fingerprint 和版本 provenance。
 
-训练审查确认 split 单元为完整 `(scenario_version, seed)`，已提供 behavior cloning 与原生
-PyTorch clipped PPO，不引入 PyTorch Geometric。bundle 只加载 weights-only state_dict。assist
+训练审查确认完整 `(scenario_version, seed)` group 不可分，共享数值 seed 的跨场景 group 也原子
+分配；已提供 behavior cloning 与原生 PyTorch clipped PPO，不引入 PyTorch Geometric。bundle 只
+加载 weights-only state_dict。assist
 报告绑定模型和 dataset/split/training-set SHA，准入门不少于 20 个完全未见 seed，并要求正式
 非合成、逐 episode/总体 safety、visibility、reacquisition delay 非退化。单测中的 20-seed
 fixture 只验证门控逻辑，合成标志会阻止正式准入。

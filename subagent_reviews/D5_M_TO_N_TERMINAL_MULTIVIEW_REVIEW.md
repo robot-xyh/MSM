@@ -8,16 +8,20 @@
 结束后通过 `sample_key + observation_key` 连接，物理文件与 online record 分离。
 
 复核确认 loader 会拒绝 truth/actor/object identity、未知中心 `global_track_id`、相机局部换绑、
-版本回退、非完整 group split、unseen seed 不足、SHA/schema/source identity/label join 错误。
-reward 只允许 `[-1,1]`；缺 outcome 使用 unavailable/null 而非 0。BC 只加载规则示范；PPO 对任一
-缺 reward 样本失败关闭。manifest 与 `SHA256SUMS` 固化逐文件、split、training-set、Git/config
-identity；finalize 后制品只读。bundle v2 仍须正式 paired admission 才能 assist。
+版本回退、非完整 group split、共享 seed 跨 scenario/scale 泄漏、唯一 seed/unseen seed 不足、
+SHA/schema/source identity/label join 错误。同一数值 seed 下的全部 group 原子进入同一 split，
+test seed 对 train/validation 未见。reward 只允许 `[-1,1]`；缺 outcome 使用 unavailable/null 而非
+0。BC 只加载规则示范；PPO 对任一缺 reward 样本失败关闭。manifest 与 `SHA256SUMS` 固化共享
+seed 原子策略、逐文件、split、training-set、Git/config identity；finalize 后制品只读。split 语义
+使用 learning/episode dataset v2，bundle v3 绑定 episode dataset v2，仍须正式 paired admission
+才可 assist；内容级 record/sample/snapshot/action 保持 v1。
 
-2026-07-20 数据管线专项 `6 passed`、主动视觉组合 `30 passed`、D5 全量
-`382 passed in 10.53s`。这是动态规模合同和审计失败关闭证据；全部数据均为 `tmp_path` 合成
-fixture。本轮没有 main runtime 改动、AirSim 运行、正式 BC/PPO、20 个未见 seed 的正式 test、
-性能结果或模型准入。main 后续需在统一 episode 结束时接入双 writer 并提供真实 source identity
-及独立 outcome/counterfactual。
+2026-07-20 数据管线专项 `7 passed in 2.46s`、主动视觉组合 `33 passed in 5.20s`、D5 全量
+`385 passed in 11.43s`。新增覆盖 8 个唯一 seed 在 2 个场景复用、同 group 多 episode、反向输入
+确定性、三 split seed 交集为 0 和唯一 seed 不足拒绝。这是动态规模合同和审计失败关闭证据；
+全部数据均为 `tmp_path` 合成 fixture。本轮没有 main runtime 改动、AirSim 运行、正式 BC/PPO、
+20 个未见 seed 的正式 test、性能结果或模型准入。main 后续需在统一 episode 结束时接入双 writer
+并提供真实 source identity 及独立 outcome/counterfactual。
 
 ## 2026-07-20 M 对 N 主动视觉调度研究接口复核
 
@@ -27,8 +31,9 @@ fixture。本轮没有 main runtime 改动、AirSim 运行、正式 BC/PPO、20 
 reacquire、否则确定性扫描；候选缺失、版本旧、友方冲突、证据过期、云台/FOV 越界、OOD、
 低置信、超时或 bundle 错误都不允许学习动作生效。
 
-研究训练与评估软件已覆盖完整 `(scenario_version, seed)` split、behavior cloning、原生 PyTorch
-clipped PPO、weights-only bundle 和 paired shadow。assist 需要至少 20 个完全未见 seed 的正式
+研究训练与评估软件已覆盖完整 `(scenario_version, seed)` group 与共享 seed 跨场景原子 split、
+behavior cloning、原生 PyTorch clipped PPO、weights-only bundle 和 paired shadow。assist 需要
+至少 20 个完全未见 seed 的正式
 非合成 paired 结果，且 safety、visibility、reacquisition delay 逐 episode 和总体均不退化；
 合成 20-seed fixture 不可晋级。库默认 disabled，CLI 默认 shadow，当前没有正式 checkpoint。
 

@@ -11,18 +11,22 @@
   `sample_key + observation_key` 精确连接。
 - [x] reward 固定 `[-1,1]` 并带 availability/provenance；无 outcome 时 reward 为 unavailable/null，
   无 outcome+counterfactual 时 causal label 为 unavailable/null，禁止用 `0` 伪装缺失值。
-- [x] finalize/loader 固定按完整 `(scenario_version, seed)` group 切分，少于三个 group、少于声明
-  unseen seed、group 跨 split、未知中心 ID、局部换绑、版本回退、SHA/schema/source identity/
+- [x] finalize/loader 保持完整 `(scenario_version, seed)` group，并把共享同一数值 seed 的所有
+  scenario/scale group 原子分到同一 split；数量按唯一 seed 计算。少于三个唯一 seed、少于声明
+  unseen seed、group/seed 跨 split、未知中心 ID、局部换绑、版本回退、SHA/schema/source identity/
   offline join 错误均失败关闭；正式默认 minimum unseen seed 为 20。
 - [x] manifest 固化 schema/version、dataset config、逐文件/split/training-set SHA256、source Git
-  commit/dirty 与 source config SHA、availability；`SHA256SUMS` 精确覆盖目录，finalize 后文件只读。
+  commit/dirty 与 source config SHA、availability 和共享 seed 原子策略；`SHA256SUMS` 精确覆盖目录，
+  finalize 后文件只读。
 - [x] loader 输出不可变对象；BC 视图只取规则示范且不加载 evaluator label，PPO 视图只取 effective
   action 并要求每个样本 reward available。`ActiveVisionTransition.reward=None` 是唯一缺失表达。
-- [x] 主动视觉 bundle 升级为 `d5.active-vision-model-bundle.v2` 并绑定 episode dataset v1；没有
-  正式 admission report 时仍为 research candidate，不能 assist。
-- [x] 2026-07-20：新增数据管线专项 `6 passed`，主动视觉组合 `30 passed`，D5 全量
-  `382 passed in 10.53s`，接受阈值为零失败；动态 camera/target/resource、ACK 可选、真值分流、
-  split/unseen、reward unavailable、未知/换绑中心 ID 和哈希篡改均有回归。
+- [x] split 语义升级为 learning dataset v2 / episode dataset v2，主动视觉 bundle 升为
+  `d5.active-vision-model-bundle.v3` 并绑定 episode dataset v2；record/sample/snapshot/action 仍为
+  v1，没有正式 admission report 时仍为 research candidate，不能 assist。
+- [x] 2026-07-20：数据管线专项 `7 passed in 2.46s`，主动视觉组合 `33 passed in 5.20s`，D5
+  全量 `385 passed in 11.43s`，接受阈值为零失败；覆盖动态数量、ACK 可选、真值分流、共享 seed
+  跨场景原子分配、确定性、三 split seed 零交集、唯一 seed/unseen 不足、reward unavailable、
+  未知/换绑中心 ID 和哈希篡改。
 - [ ] main 接线：在统一三维 episode 中累计 sample，episode 关闭后分别调用 online/offline writer，
   传入真实 source Git/config identity，并保存 detached dataset；本轮不改 main runtime。
 - [ ] 正式数据与准入：收集代表性 train/validation/test、至少 20 个完全未见 seed、真实 outcome/
@@ -45,8 +49,9 @@
   timeout、低置信、OOD、非有限输出和 bundle SHA/schema 错误。
 - [x] 实现 library `disabled` 默认、CLI `shadow` 默认和 `disabled/shadow/assist` 决策输出；输出
   包含 requested/effective mode、fallback、latency、fingerprint 和三个版本。shadow 不改变规则动作。
-- [x] 实现完整 `(scenario_version, seed)` group split、原生 PyTorch behavior cloning 和 clipped
-  PPO；学习模型只对有限安全动作候选评分，不增加 `torch_geometric` 依赖。
+- [x] 实现完整 `(scenario_version, seed)` group split，并把共享数值 seed 的跨场景 group 原子
+  分配；提供原生 PyTorch behavior cloning 和 clipped PPO，学习模型只对有限安全动作候选评分，
+  不增加 `torch_geometric` 依赖。
 - [x] 实现主动视觉 manifest/state_dict/SHA256 bundle 与 `weights_only=True` 严格加载；paired
   shadow report 绑定模型、dataset manifest、split 和 training-set SHA。
 - [x] assist 门固定为至少 20 个完全未见 seed、正式非合成证据，以及逐 episode/总体 safety、

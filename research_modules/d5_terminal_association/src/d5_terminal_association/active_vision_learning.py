@@ -1,6 +1,7 @@
 """Native PyTorch behavior-cloning and clipped-PPO research workflow.
 
-Episodes are split only as whole ``(scenario_version, seed)`` groups.  The
+Episodes are split only as whole ``(scenario_version, seed)`` groups, and all
+groups sharing one numeric seed remain in the same split across scenarios.  The
 network scores a finite set of safety-bounded camera intents; it never predicts
 an identity, assignment, or continuous vehicle command.
 """
@@ -32,7 +33,7 @@ from .active_vision_contracts import (
 )
 
 
-ACTIVE_VISION_DATASET_SCHEMA_VERSION = "d5.active-vision-dataset.v1"
+ACTIVE_VISION_DATASET_SCHEMA_VERSION = "d5.active-vision-dataset.v2"
 ACTIVE_VISION_MODEL_SEMANTIC_VERSION = "1.0.0"
 ACTIVE_VISION_REWARD_MINIMUM = -1.0
 ACTIVE_VISION_REWARD_MAXIMUM = 1.0
@@ -172,6 +173,7 @@ class ActiveVisionDatasetSplit:
                 "split_policy": {
                     "unit": "whole_episode_grouped_by_scenario_version_and_seed",
                     "edge_or_transition_level_random_split": False,
+                    "shared_seed_values_atomic_across_scenarios": True,
                     "split_seed": self.split_seed,
                     "validation_fraction": self.validation_fraction,
                     "test_fraction": self.test_fraction,
@@ -297,7 +299,7 @@ def split_active_vision_episode_groups(
     test_fraction: float = 0.2,
     minimum_unseen_seed_count: int = 1,
 ) -> ActiveVisionDatasetSplit:
-    """Assign complete scenario/seed groups to exactly one dataset split."""
+    """Assign complete groups and shared seed values to exactly one split."""
 
     items = tuple(episodes)
     if not items:
@@ -310,35 +312,39 @@ def split_active_vision_episode_groups(
     if minimum_unseen < 1:
         raise ValueError("minimum_unseen_seed_count must be positive")
     groups = sorted({item.group_key for item in items})
-    if len(groups) < 3:
-        raise ValueError("at least three scenario/seed groups are required")
-    ordered = sorted(
-        groups,
-        key=lambda key: hashlib.sha256(
-            f"{int(split_seed)}\0{key[0]}\0{key[1]}".encode("utf-8")
-        ).hexdigest(),
+    seed_values = sorted({seed for _, seed in groups})
+    if len(seed_values) < 3:
+        raise ValueError("at least three unique seed values are required")
+    ordered_seeds = sorted(
+        seed_values,
+        key=lambda seed: (
+            hashlib.sha256(f"{int(split_seed)}\0{seed}".encode("utf-8")).hexdigest(),
+            seed,
+        ),
     )
-    test_count = max(1, min(len(groups) - 2, round(len(groups) * test_fraction)))
+    test_count = max(
+        1,
+        min(len(seed_values) - 2, round(len(seed_values) * test_fraction)),
+    )
     validation_count = max(
         1,
-        min(len(groups) - test_count - 1, round(len(groups) * validation_fraction)),
+        min(
+            len(seed_values) - test_count - 1,
+            round(len(seed_values) * validation_fraction),
+        ),
     )
-    split_by_group: dict[tuple[str, int], str] = {}
-    for index, group in enumerate(ordered):
+    split_by_seed: dict[int, str] = {}
+    for index, seed in enumerate(ordered_seeds):
         if index < test_count:
             split = "test"
         elif index < test_count + validation_count:
             split = "validation"
         else:
             split = "train"
-        split_by_group[group] = split
-    seen_seed_values = {
-        seed for (scenario, seed), split in split_by_group.items() if split != "test"
-    }
+        split_by_seed[seed] = split
+    split_by_group = {group: split_by_seed[group[1]] for group in groups}
     unseen_test_seed_values = {
-        seed
-        for (scenario, seed), split in split_by_group.items()
-        if split == "test" and seed not in seen_seed_values
+        seed for seed, split in split_by_seed.items() if split == "test"
     }
     if len(unseen_test_seed_values) < minimum_unseen:
         raise ValueError(
@@ -356,6 +362,7 @@ def split_active_vision_episode_groups(
         "split_seed": int(split_seed),
         "validation_fraction": float(validation_fraction),
         "test_fraction": float(test_fraction),
+        "shared_seed_values_atomic_across_scenarios": True,
         "minimum_unseen_seed_count": minimum_unseen,
         "unseen_test_seed_count": len(unseen_test_seed_values),
         "groups": group_payload,
