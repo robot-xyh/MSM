@@ -414,3 +414,48 @@ pytest -q research_modules/d2_data_association/tests
 至少 20 个未见 seed 的 CI weight sweep、持续加速度/协调转弯/漏检、不同交叉 covariance
 结构以及 main 修复后 50v50/200v200 与 D3 reachability 复跑仍未完成。上述合成数据不是
 AirSim、实时 SLA 或端到端物理拦截证据。
+
+## 16. Scalable 3D 离线身份合同回归（2026-07-20）
+
+### 16.1 目的与场景
+
+本批只验证 evaluator 合同，不比较关联参数性能。23 个专项覆盖：稳定 identity、真实
+ID switch、一个 truth 对多 track、一个 track 对多 truth、缺 lineage、同帧重复
+lineage、跨 track 冲突、显式/未标记 replay、冲突 truth label、标签文件篡改、label/ref
+timestamp 不一致、未来/超窗 observation、dropped 后 canonical ID 复用、无 truth、在线
+truth 字段泄漏、未知 record sequence、schema 拒绝、artifact round-trip、非六维 source
+track、非 D2-owned ID、在线 IDSW 伪零、矛盾 availability，以及 37 目标两帧输入规模。
+
+### 16.2 验收结果
+
+| 验收项 | 结果 |
+| --- | --- |
+| 稳定 identity | IDSW 0，track/identity/coverage continuity 1.0 |
+| 真实换轨 | IDSW 1，identity continuity 0.5 |
+| 一个 truth / 两条有效 track | duplicate 1，mapping 均 available |
+| 一条 track / 两个 truth | ambiguous，全部 identity values `None` |
+| 缺失、冲突、时间/lifecycle 不一致 | unavailable/ambiguous 且带原因，不填 0 |
+| 显式 replay generation | 去重审计 1 次，稳定 mapping available |
+| truth 文件篡改、在线 actor identity、未知 sequence | evaluator 入口 fail closed |
+| 非六维 source、非 D2-owned ID、在线 IDSW 伪零 | evaluator 入口 fail closed |
+| public IDSW availability 与值/reason 矛盾 | artifact loader fail closed |
+| 动态规模 | 37 目标 x 2 帧共 74 mappings，无 2/5 固定维度 |
+
+专项命令结果为 `23 passed in 0.71s`。完整命令：
+
+```bash
+PYTHONPATH=research_modules/d2_data_association \
+pytest -q research_modules/d2_data_association/tests
+```
+
+结果 `162 passed, 1 warning in 30.63s`；warning 为本机 Matplotlib `Axes3D` 环境问题，
+不影响 evaluator。相关 Python 入口 `py_compile` 通过。
+
+### 16.3 证据限制
+
+本批输入是确定性 DTO/文件 fixture，没有启动 AirSim、没有 point-mass episode、没有
+正式 seed，也没有修改在线算法。因此它只关闭 schema、hash、lineage mapping、指标
+availability 和 main/D6 公共 artifact 的 D2-owned 合同缺口；不能声明 scalable 3D
+IDSW 性能、多 seed continuity、门限收益或实时性。main producer 当前会跳过无 lineage
+的 D2 track/frame，尚不满足完整 evidence 集合合同；修正后仍需使用独立 sidecar 生成
+正式 episode artifact。

@@ -1089,3 +1089,33 @@ seed 41、10 帧更新中，候选/全对保持 `200/40,000`，输入/输出速�
 `8.097/5.980 m/s`，IDSW 0、continuity 1.0。在线 tracker 未读取离线标签；固定 CI
 权重的至少 20 未见 seed、六维 NIS/NEES coverage、高机动和 main 修复后端到端复跑
 仍是必需的后续验收。
+
+## 十八、scalable 3D 离线身份映射原则（2026-07-20）
+
+1. **真值只在 evaluator join**：在线 D1/D2 records 和 association evidence 只能保留
+   observation/source lineage、时间戳、lifecycle 与 D2 canonical ID；不得新增
+   `truth_target_id`、actor/object identity 或在线 truth map。
+2. **唯一允许的身份连接是 observation lineage**：truth sidecar 只提供
+   `observation_id -> truth_target_id`。名称、actor ID、终态邻近、最近距离、位置
+   Hungarian 均不是本合同的身份来源。
+3. **来源先验完整性优先于部分数值**：evidence bundle、D1 records、D2 records 和 truth
+   sidecar 必须经过 schema、SHA-256、record sequence 和在线 truth-isolation 校验。
+   sequence 必须进一步绑定 D1 lineage 与 D2-owned canonical ID、六维 state、6x6
+   covariance、frame/lifecycle/association，并覆盖完整 D2 track-frame；校验失败不产出
+   指标，校验通过但 lineage 不足时输出带原因的 unavailable/ambiguous。
+4. **重复和重放必须区分**：同 lineage 跨帧重用必须显式递增 `replay_generation`；同帧
+   重复、未标记跨帧重复、跨 global track 重绑、同 observation 的不同 lineage 均不能
+   被静默去重为有效身份。
+5. **多重关系不强制一一化**：一个 truth 对多条由不同 observation 支持的 track 是可
+   审计 duplicate；一条 track 的完整证据指向多个 truth 则 ambiguous。D2 evaluator
+   不用全局 Hungarian 强制选一个 truth。
+6. **availability 是指标合同组成部分**：IDSW、track/identity/coverage continuity、
+   duplicate 和 confusion matrix 只在全部相关 mapping 可验证时可用。不可验证时值为
+   `None`，不能写 0。可用时口径与 `MetricsRecorder` 一致。
+7. **生命周期不能被 truth 修补**：dropped 后同 canonical ID 复用、非法 lifecycle
+   回退、inactive track 带当前关联 lineage 都会阻断身份指标；truth sidecar 不允许改写
+   `global_track_id` 或在线状态机。
+
+上述原则由五个 `v1` schema 和 23 个专项测试约束；2026-07-20 完整 D2 回归为
+`162 passed, 1 warning in 30.63s`。本轮不改变默认 GNN/Hungarian、JPDA/MHT、门限、
+owner 或控制链路，也不构成 AirSim/point-mass 多 seed 性能证据。

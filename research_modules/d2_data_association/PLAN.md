@@ -649,3 +649,43 @@ MHT、Stone Soup/FilterPy 仅保留为 P2 optional/offline benchmark，不进入
   加速度/转弯和漏检；在线报告六维 velocity NIS coverage，独立 offline evaluator
   报告六维 NEES coverage。main 修复后 50v50/200v200 和 D3 reachability 复跑也必须
   单独报告，不能由本模块合成结果代替。
+
+## 18. 2026-07-20 evaluator-only global-track truth 合同
+
+### 18.1 D2-owned 已实现
+
+1. 冻结 `d2.scalable3d_identity_evidence.v1`：每条 frame/global-track evidence 明示
+   lifecycle、association state、source observation lineage、measurement timestamp、
+   replay generation 和所引用的 D1/D2 record sequence，不含 truth。
+2. 冻结 observation truth、逐帧 mapping、identity metrics 和 evaluation artifact 的
+   `v1` schema；writer/loader 使用确定性 JSON/JSONL，输出并验证 `sha256:` digest。
+3. 文件 evaluator 绑定 D1 online records、D2 online records、association evidence 和
+   独立 truth sidecar。除 schema/hash/sequence/truth-isolation 外，还逐项验证 D1 lineage
+   与 D2 frame/canonical ID/六维 state/6x6 covariance/lifecycle/association，并要求
+   evidence 覆盖完整 D2 track-frame 集合；任一失败即 fail closed，语义证据不完整时
+   生成 `ambiguous/unavailable`，而不是猜测或抛出伪零。
+4. 支持一对多/多对一、同帧和跨帧 lineage 冲突、显式 replay generation、缺标签、
+   truth label 冲突、frame/measurement 时间窗、birth/lost/drop/rebirth 生命周期。
+5. 只对完整验证 mapping 计算 `id_switch_count`、track/identity/coverage continuity、
+   `duplicate_truth_to_track_count` 和 confusion matrix；first-assignment、稳定帧和 duplicate
+   口径与 `MetricsRecorder` 专项对照一致。
+
+### 18.2 验证与后续接线
+
+- 新增 23 个合同测试；完整结果 `162 passed, 1 warning in 30.63s`，验收为零失败、
+  unavailable 不得填 0、规模按输入长度。本轮没有 AirSim 或正式 seed 性能运行。
+- main 需为每条 evidence 提供 `episode_id/frame_index/frame_timestamp/global_track_id/`
+  `lifecycle_state/association_state/source_observations[]/d1_record_sequences/`
+  `d2_record_sequence`；每个 source observation 必须有
+  `observation_id/measurement_timestamp/source_lineage/replay_generation`，且 lineage 最后
+  一项为 observation ID。只发布本帧实际关联证据；累计历史重复使用必须递增 replay
+  generation。
+- main episode manifest 需保存 evidence bundle SHA-256；bundle 自身绑定 D1、D2、truth
+  三个源文件 SHA-256。D6 后续只加载 `d2.scalable3d_identity_evaluation.v1` public
+  artifact，不解析 tracker 私有 metadata。
+- main 当前 `_identity_evidence_records()` 会跳过无 lineage 的 D2 track/frame，与完整性
+  校验不一致；需保留这些记录并以 unavailable/unassigned 语义发布，不能通过删行得到
+  假可用 IDSW。
+- 本项关闭“D2 没有可审计 global-track-to-truth 离线映射及 availability identity metrics
+  合同”的模块缺口。main producer 接线、D6 汇总字段、真实多 seed IDSW/continuity 与
+  阈值性能结论仍开放，不能因合成合同测试通过而升级。

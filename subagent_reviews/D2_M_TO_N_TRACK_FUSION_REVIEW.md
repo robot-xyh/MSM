@@ -373,3 +373,21 @@ identity/coverage continuity、duplicate 和 false-alarm assignment，评分结�
 多 seed、AirSim、实时 SLA 或 200v200 全链路结论。极端全重叠或协方差过度膨胀仍会
 形成大连通分量；main-owned scalable episode bus 接入、候选预算与召回率联合标定、
 高歧义跨节点 JPDA/MHT、owner/epoch failover 和数值 CI/exact posterior 均保持开放。
+
+## 14. 2026-07-20 M-to-N 离线身份指标合同补充
+
+M-to-N 不改变 identity join 的基数规则。evaluator 按输入记录长度处理任意数量的
+global tracks 和 observations：一个 truth 可对应多条由不同 lineage 支持的 track，作为
+duplicate 计数；一条 track 指向多个 truth 时保持 ambiguous。资源数、目标数、2v2/5v5
+场景名均不参与 mapping shape 或 truth 选择。
+
+新增 `d2.scalable3d_identity_evaluation.v1` public artifact 让 main/D6 后续只消费 D2
+公开合同，不需要读取 canonical registry 或 tracker 私有状态。文件 evaluator 对 D1/D2
+records、evidence、truth sidecar 的 hash/schema/sequence/truth isolation 统一 fail
+closed，并要求 sequence 绑定六维 D2-owned track 与完整 track-frame 集合。23 个专项含
+37 目标 x 2 帧动态规模，完整 D2 为 `162 passed, 1 warning in 30.63s`。
+
+该变化只关闭单中心 scalable 3D 的 evaluator mapping/metrics 合同，不实现跨节点 owner
+failover、分布式临时 ID 共识或数值 CI/exact fusion，也没有形成 M-to-N AirSim 多 seed
+身份性能证据。main producer 跳过无 lineage track/frame 的接线仍需修正；默认
+GNN/Hungarian 与 one canonical-to-many source 原则不变。

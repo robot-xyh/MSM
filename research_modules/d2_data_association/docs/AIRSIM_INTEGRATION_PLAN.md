@@ -247,3 +247,31 @@ passed 123 tests with one environment-only Matplotlib warning. No AirSim
 Blocks episode was launched for this change, so real duplicate-source,
 teleport, clutter, and legitimate-new-target acceptance remains the existing
 P1 targeted-suite requirement.
+
+## 2026-07-20 Scalable 3D Offline Identity Artifact
+
+The AirSim impact was reviewed without changing the runtime adapter or launching
+Blocks. D2 now owns a versioned evaluator-only artifact that can be used after
+main persists truth-free D1/D2 records and the independent observation truth
+sidecar. Main must provide frame/global-track lineage evidence with source
+observation IDs, measurement timestamps, replay generations, lifecycle states,
+and referenced D1/D2 bus sequences. It must also record the evidence-bundle
+SHA-256 in the episode manifest.
+
+`evaluate_scalable_3d_identity_files()` verifies the bundle and its bound D1,
+D2, and truth files before joining `observation_id` to evaluator truth. Record
+sequences must bind exact D1 lineage and the same D2-owned six-state track,
+6x6 covariance, frame, lifecycle, association state, and source observations;
+all persisted D2 track frames must be represented. Track kinematics are audited
+for provenance but never used to select truth. It does not use AirSim actor
+names/IDs, final proximity, or nearest distance. Ambiguous or incomplete lineage
+leaves IDSW, continuity, and duplicate identity metrics unavailable rather than
+zero.
+
+The D2 contract passed 23 focused tests and the full
+`162 passed, 1 warning in 30.63s` module suite on 2026-07-20. This is interface
+evidence only. Main currently skips D2 track frames without lineage and must
+retain them as unavailable/unassigned evidence before the producer wiring meets
+this contract. Real AirSim-derived artifacts and formal multi-seed identity
+performance remain open; the default GNN/Hungarian, gates, and control path are
+unchanged.

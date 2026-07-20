@@ -667,3 +667,39 @@ false track 0、online truth isolation violation 0。对 main 实际 track recor
   D3 reachable count 和端到端时延；模块合成证据不能替代该验收。
 - 本内部 CI 处理同一 source posterior 的未知时序相关性，不改变跨节点 exact/CI 数值
   融合仍由 D1 owner 执行的职责边界。
+
+## 2026-07-20 Scalable 3D evaluator identity GAP 重分类
+
+### D2-owned 缺口关闭
+
+此前 scalable 3D online publication 只能正确声明 IDSW/continuity unavailable，缺少
+可审计 `global_track_id -> truth_target_id` 事后映射。D2 现新增五个 `v1` schema、
+truth-free lineage evidence bundle、严格 observation truth adapter、逐帧 mapping、
+MetricsRecorder-compatible identity metrics 和 public evaluation writer/loader。
+
+映射只允许 observation lineage join，不使用名称、actor ID、终态邻近或最近距离；处理
+one-to-many/many-to-one、label/lineage 冲突、缺标签、显式 replay、重复 lineage、时间窗
+和 lifecycle。任何歧义不强选 truth，任何身份指标不可验证时值为 `None`。文件入口对
+evidence bundle、D1、D2、truth 四类 SHA-256、在线 schema、truth isolation 和 record
+sequence fail closed；sequence 还必须语义绑定 D1 lineage 与同 frame 的 D2-owned
+canonical ID、六维 state/6x6 covariance、lifecycle、association/source observations，
+并覆盖完整 D2 track-frame 集合。
+
+2026-07-20 验证为 23 个专项和完整 `162 passed, 1 warning in 30.63s`，验收阈值零失败；
+warning 仅为环境 Matplotlib `Axes3D`。覆盖稳定身份、真实 IDSW、一对多/多对一、缺失/
+重复/冲突 lineage、replay、标签篡改、时间/lifecycle、无 truth、37 目标动态规模和
+artifact round-trip，并增加非六维 source、非 D2-owned ID、在线 IDSW 伪零和矛盾
+availability 拒绝。没有 AirSim 或正式多 seed 运行。
+
+### 仍开放且不得混写为已完成
+
+- main 需按 public DTO 持久化 source observation lineage、record sequence 和 evidence
+  bundle hash；当前 producer 会跳过无 lineage 的 D2 track/frame，必须保留其
+  unavailable/unassigned evidence 才满足完整性合同。D2 不跨模块代改 producer。
+- D6 需只消费 `d2.scalable3d_identity_evaluation.v1`，不得解析 D2 tracker 私有状态。
+- 正式 scalable 3D episode 的多 seed IDSW/continuity/duplicate 性能、阈值对照和置信区间
+  未完成。
+- 在线 GNN/Hungarian、门限、`global_track_id` owner、JPDA/MHT、控制路径和 online truth
+  isolation 均未改变。
+
+因此本项状态为“D2-owned 离线映射与指标合同关闭；main/D6 集成和性能证据开放”。

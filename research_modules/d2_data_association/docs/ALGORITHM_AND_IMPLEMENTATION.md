@@ -1205,3 +1205,72 @@ continuity 1.0。seed 29 双目标交叉中的速度离群值触发 update NIS g
 量测周期和机动强度报告在线 velocity NIS coverage；仅在隔离 offline truth state 可用时
 报告六维 NEES coverage；补充持续加速度、协调转弯、漏检和 main 修复后 50v50/200v200
 端到端复跑。当前合成结果不能替代这些标定。
+
+## 18. Scalable 3D evaluator-only 身份映射
+
+### 18.1 输入与哈希边界
+
+`Scalable3DIdentityEvidenceBundle` 使用
+`d2.scalable3d_identity_evidence.v1`。每条
+`GlobalTrackLineageEvidence` 对应一个 frame/global track，包含：
+
+```text
+episode_id, frame_index, frame_timestamp,
+global_track_id, lifecycle_state, association_state,
+source_observations[observation_id, measurement_timestamp,
+                    source_lineage, replay_generation],
+d1_record_sequences, d2_record_sequence
+```
+
+这些字段全部 truth-free。bundle 绑定 `online_d1_records`、`online_d2_records` 和
+`observation_truth_labels` 的 SHA-256；episode manifest 另存 bundle 自身 SHA-256。
+`evaluate_scalable_3d_identity_files()` 先核验四个文件 hash，再严格核验 D1/D2 schema、
+record sequence 和递归在线 identity 隔离。sequence 引用还必须语义绑定对应 D1
+observation lineage，以及 D2 record 中同 frame、同 D2-owned `global_track_id` 的六维
+`state_ned`、`6x6 covariance`、lifecycle、association 和 source observations；evidence
+必须覆盖被持久化的完整 D2 track-frame 集合。状态/协方差只用于证明来源记录合同完整，
+不进入 truth identity 选择。现有 producer
+`scalable3d-offline-truth-v1` 的 `truth_entity_id` 仅在 loader 中规范化为 evaluator 的
+`truth_target_id`，包含 `global_track_id` 或未知身份字段的 sidecar 被拒绝。
+
+### 18.2 逐帧映射算法
+
+对每个 source ref，evaluator 要求 `source_lineage[-1] == observation_id`，并用
+observation ID 精确索引 truth label；label timestamp 必须与 ref timestamp 在容差内，
+ref 不得来自未来且不得超过配置的 lineage window。算法不读取状态位置或目标名称。
+
+同一 track 的全部有效 ref 只支持一个 truth 时 mapping available。多个 truth 候选、同
+lineage/observation 被多个 track 声明、冲突 label 或 replay payload 冲突时 ambiguous；
+缺 lineage/label、时间窗不符、未标记 replay、非法 lifecycle 时 unavailable。显式
+replay 必须在原 lineage 后使用更大的 generation。同一 truth 被多条 track 通过不同
+observation 支持时保留全部 mapping，随后计入 duplicate，不用一一 Hungarian 消掉。
+
+输出 `d2.scalable3d_global_track_truth_mapping.v1`，逐 frame 含 mapping status、truth
+候选、source observation IDs、lineage hashes、evidence/labeled/replay/duplicate 数量和
+原因计数。顶层 evaluation 同时保留四类 source hashes 与禁止使用的 identity heuristic
+审计。
+
+### 18.3 指标口径
+
+`d2.scalable3d_identity_metrics.v1` 按 frame evidence 的持久化顺序选择每个 truth 的
+first assignment，和 `MetricsRecorder` 相同：
+
+- 前一可见 frame 的 representative track 改变，`id_switch_count += 1`；
+- 首次或保持同 representative 的 frame 计入 stable frame；
+- `identity_continuity` 为各 truth 的 `stable_frames / present_frames` 均值，
+  `track_continuity` 是同义字段；
+- `coverage_continuity` 为各 truth 的 `assigned_frames / present_frames` 均值；
+- 同 frame 同 truth 的额外 unique track 累计
+  `duplicate_truth_to_track_count`，并映射为兼容字段 `duplicate_assignment_count`。
+
+任何影响身份的 mapping 不完整都会使上述值和 confusion matrix 全部为 `None`，同时输出
+availability/reason；已知存在 truth frame 但无 assignment 时的可验证 0 除外。专项测试
+直接与 `MetricsRecorder` 对照 IDSW、continuity 和 duplicate 数值。
+
+### 18.4 兼容与限制
+
+旧 `Sparse3DOfflineEvaluator` 的内存 sidecar 接口继续兼容；新文件合同供 main/D6
+持久化接线使用。在线 `Detection3D`、`GlobalTrack3D`、association result、门限和默认
+GNN/Hungarian 没有改动。当前 main producer 仍跳过无 source lineage 的 D2 track/frame，
+必须补齐 unavailable/unassigned evidence 后才满足完整性校验。当前只有合同/合成回归，
+不是正式多 seed 身份性能结果。

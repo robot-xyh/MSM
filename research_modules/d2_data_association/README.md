@@ -465,3 +465,44 @@ baseline/candidate 分别得到 IDSW 0、continuity 0.985915/0.985816；差异�
   `bright_hungarian`，也没有改变默认 GNN/Hungarian、马氏门限、来源连续性权重、
   lifecycle 门限或风险阈值。三项计数当前是审计证据，不自动新增 soft/hard risk 原因；
   至少 10 个真实 duplicate-source/teleport/合法新目标受治理 case 的统计标定仍开放。
+
+## 2026-07-20 scalable 3D 离线身份映射合同
+
+D2 新增 `scalable_3d_identity.py`，只用于在线关联结束后的 evaluator。公开版本为：
+
+- evidence bundle：`d2.scalable3d_identity_evidence.v1`；
+- observation truth adapter：`d2.scalable3d_observation_truth.v1`，并严格适配现有
+  `scalable3d-offline-truth-v1` 的 `observation_id -> truth_entity_id` sidecar；
+- frame mapping：`d2.scalable3d_global_track_truth_mapping.v1`；
+- metrics：`d2.scalable3d_identity_metrics.v1`；
+- evaluation artifact：`d2.scalable3d_identity_evaluation.v1`。
+
+公开入口包括 `ObservationLineageRef`、`GlobalTrackLineageEvidence`、
+`create_scalable_3d_identity_evidence_bundle()`、
+`evaluate_scalable_3d_identity[_files]()` 以及 evidence/truth/evaluation 的确定性
+writer/loader。文件入口要求 evidence bundle 的外部 SHA-256，同时校验其绑定的 D1
+records、D2 records、truth sidecar 三个 SHA-256、在线 schema、truth-isolation audit
+和 record sequence。sequence 不是仅做存在性检查：每条 mapping 还必须逐项绑定被哈希
+D2 record 中同一 frame 的 D2-owned canonical ID、六维 `state_ned`、`6x6 covariance`、
+lifecycle/association/source lineage，并回查对应 D1 observation lineage；任一不一致直接
+拒绝。逐帧输出 mapping status、候选 truth、证据/replay/重复计数、冲突原因和 source
+hashes。
+
+身份只沿 `source_lineage` 最终的 `observation_id` 连接独立 truth label。一个 truth 对应
+多条有效 global track 会计入 `duplicate_truth_to_track_count`；一条 track 的证据指向
+多个 truth、同 lineage 被多 track 声明、标签冲突、缺标签、未标记重放、时间窗冲突或
+lifecycle 冲突时为 `ambiguous/unavailable`，不会按名称、actor ID、终态邻近或最近距离
+选 truth。IDSW、identity/coverage continuity 和 duplicate 采用 `MetricsRecorder` 的
+逐帧 first-assignment 口径；只要身份完整性不足，值就是 `None + availability=false`，
+不以 0 填补。
+
+2026-07-20 新增 23 个专项，覆盖稳定身份、真实 ID switch、一对多/多对一、缺失/重复/
+冲突 lineage、显式 replay generation、标签冲突与篡改、时间窗、dropped 后复用、无
+truth、37 目标动态规模、schema/hash/在线 truth 隔离、六维 source binding、D2 ID owner、
+在线 IDSW null/unavailable 和 public artifact availability round-trip。完整 D2 回归为
+`162 passed, 1 warning in 30.63s`；warning 仍为环境 Matplotlib
+`Axes3D`。本轮未修改在线 association、`global_track_id` owner、门限、JPDA/MHT、控制
+路径或默认 GNN/Hungarian。当前只关闭 D2-owned 离线合同；main 持久化 evidence 与 D6
+接线、AirSim/point-mass 正式多 seed 身份性能仍开放。当前 main producer 会跳过无
+source lineage 的 D2 track/frame；在其按完整 D2 frame 集合持久化 available/unavailable
+evidence 前，不能把现有接线写成端到端 identity metrics 已可用。

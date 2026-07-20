@@ -714,3 +714,28 @@ baseline 关闭。固定 CI track weight `0.5` 只获得当前确定性样本的
 频率/covariance 分组的 velocity NIS coverage、隔离 offline 六维 NEES coverage、持续
 加速度/协调转弯/漏检/OOSM，以及 main 修复后 50v50/200v200、D3 reachable count 和
 端到端时延复跑。本轮也不改变跨节点多 source 数值 CI 仍由 D1 owner 执行的职责边界。
+
+## 28. 2026-07-20 Scalable 3D evaluator identity 合同评审
+
+评审决定把“在线 truth-free association”和“离线 identity join”保持为两条物理分离的
+数据路径。在线 D2 继续发布 `None + unavailable` identity 状态；离线 evidence 只记录
+D2 canonical ID、frame/lifecycle/association state、source observation lineage、replay
+generation 和 D1/D2 record sequence。truth sidecar 不得出现 global track map。
+
+D2 冻结 evidence、observation truth、frame mapping、metrics、evaluation 五个 `v1`
+schema，并提供 deterministic writer/loader 和 file evaluator。bundle 绑定三个源文件
+hash，episode manifest 再绑定 bundle hash；schema/hash/sequence/online truth isolation
+之外，sequence 还逐项绑定 D1 lineage 与 D2-owned ID、六维 state/6x6 covariance、frame、
+lifecycle/association，并检查完整 D2 track-frame 集合。任一失败不产出 artifact；语义
+不完整则逐 mapping 输出 ambiguous/unavailable 和原因，且 IDSW/continuity/duplicate
+为 `None`。
+
+算法评审确认：多 source observation 全指向同一 truth 才可形成 track mapping；一 track
+多 truth 不做强制 Hungarian，一 truth 多 track 保留并计 duplicate。显式 replay 需
+递增 generation；未标记重复和跨 track lineage 重绑阻断指标。IDSW、稳定帧、coverage
+和 duplicate 已由专项直接与 `MetricsRecorder` 数值对照。
+
+23 个专项和完整 `162 passed, 1 warning in 30.63s` 通过。本轮没有修改 tracker、
+associator、gate、owner、JPDA/MHT 或控制代码，没有 AirSim/多 seed 性能证据。评审结论
+是 D2-owned contract GAP 关闭；main evidence producer 当前跳过无 lineage track/frame，
+与完整性合同不一致，D6 正式消费和 episode 统计继续开放。
