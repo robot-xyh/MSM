@@ -181,6 +181,16 @@ def _write_episode_report(path: Path, result: EpisodeResult) -> Path:
             "当前结果只覆盖向量化三维环境、合成传感器、异步到达和日志隔离。",
             "D1-D7 算法能力未在本次 episode 中执行。",
         ]
+    if bool(summary.get("communication_enabled", False)):
+        communication_line = (
+            "传感器到融合中心的通信队列发送 "
+            f"{int(summary.get('communication_sent_count', 0))} 个批次，投递 "
+            f"{int(summary.get('communication_delivered_count', 0))} 个，丢弃 "
+            f"{int(summary.get('communication_dropped_count', 0))} 个，结束时仍在途 "
+            f"{int(summary.get('communication_pending_count', 0))} 个。"
+        )
+    else:
+        communication_line = "本次关闭传感器通信队列，批次在传感器处理完成后直接交付融合中心。"
     lines = [
         "# 三维质点单次实验报告",
         "",
@@ -202,6 +212,8 @@ def _write_episode_report(path: Path, result: EpisodeResult) -> Path:
         f"离线真值标签单独写入 {summary['offline_truth_label_count']} 条；在线真值使用计数为 "
         f"{summary['online_truth_use_count']}。",
         "在线观测保留量测时间、到达时间和协方差。真值状态及观测标签只保存在离线评估文件。",
+        communication_line,
+        "当前通信队列覆盖传感器到融合中心的批次传输。D1-D7 进程内调用尚未拆成独立网络节点。",
         "",
         "## 阶段耗时",
         "",

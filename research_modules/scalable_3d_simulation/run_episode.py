@@ -21,6 +21,7 @@ from research_modules.scalable_3d_simulation.learning_runtime import (
     resolve_learning_runtime,
 )
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
+from research_modules.scalable_3d_simulation.module_stack import IntegratedStackConfig
 
 
 DEFAULT_CONFIG = Path(__file__).with_name("configs") / "nominal_200v200.json"
@@ -52,6 +53,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--gif", action="store_true", help="write a 3D GIF from offline truth")
     parser.add_argument("--mp4", action="store_true", help="write a 3D MP4 when ffmpeg is available")
+    parser.add_argument(
+        "--export-learning-data",
+        action="store_true",
+        help="write truth-isolated D3/D4/D5 offline training artifacts",
+    )
     add_learning_runtime_arguments(parser)
     return parser.parse_args()
 
@@ -96,11 +102,19 @@ def main() -> int:
     learning_options = learning_runtime_options_from_args(args)
     module_stack = None
     if args.integrated_stack:
-        resolved_runtime = resolve_learning_runtime(config, learning_options)
+        resolved_runtime = resolve_learning_runtime(
+            config,
+            learning_options,
+            stack_config=IntegratedStackConfig(
+                capture_learning_artifacts=args.export_learning_data
+            ),
+        )
         config = resolved_runtime.config
         module_stack = resolved_runtime.stack
     elif learning_options.requested:
         raise ValueError("optional learning bundles require --integrated-stack")
+    elif args.export_learning_data:
+        raise ValueError("--export-learning-data requires --integrated-stack")
     animation_formats = tuple(
         name for name, enabled in (("gif", args.gif), ("mp4", args.mp4)) if enabled
     )
@@ -110,6 +124,7 @@ def main() -> int:
         write_plot=args.plot,
         animation_formats=animation_formats,
         module_stack=module_stack,
+        write_learning_data=args.export_learning_data,
     )
     print(f"episode_id={result.manifest.episode_id}")
     print(f"scale={config.resource_count}v{config.target_count}")

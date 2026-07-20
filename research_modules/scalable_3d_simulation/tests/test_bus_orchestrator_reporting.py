@@ -114,6 +114,71 @@ def test_small_episode_writes_separate_online_and_truth_artifacts(tmp_path: Path
     assert "本次未启用 D1-D7 集成栈" in report
 
 
+def test_episode_routes_sensor_batches_through_configured_network() -> None:
+    config = ScenarioConfig(
+        scenario_name="networked_sensor_delivery",
+        scenario_version="networked-sensor-delivery-v1",
+        target_count=1,
+        resource_count=1,
+        recon_count=0,
+        duration_s=0.25,
+        radar_period_s=1.0,
+        radar_latency_s=0.05,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_latency_s=0.10,
+        communication_jitter_s=0.0,
+        communication_drop_probability=0.0,
+        communication_bandwidth_bytes_per_s=1_000_000_000.0,
+    )
+
+    result = run_episode(config)
+
+    batches = [
+        message.payload
+        for message in result.online_messages
+        if message.topic == "sensor.observations"
+    ]
+    assert len(batches) == 1
+    assert batches[0].measurement_timestamp == pytest.approx(0.0)
+    assert 0.15 <= batches[0].arrival_timestamp <= 0.20
+    assert all(
+        measurement.arrival_timestamp == batches[0].arrival_timestamp
+        for measurement in batches[0].measurements
+    )
+    assert result.summary["communication_sent_count"] == 1
+    assert result.summary["communication_delivered_count"] == 1
+    assert result.summary["communication_dropped_count"] == 0
+    assert result.summary["communication_pending_count"] == 0
+
+
+def test_episode_network_drop_removes_batch_from_online_consumer() -> None:
+    config = ScenarioConfig(
+        scenario_name="network_drop",
+        scenario_version="network-drop-v1",
+        target_count=1,
+        resource_count=1,
+        recon_count=0,
+        duration_s=0.20,
+        radar_period_s=1.0,
+        radar_latency_s=0.05,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_latency_s=0.0,
+        communication_jitter_s=0.0,
+        communication_drop_probability=1.0,
+    )
+
+    result = run_episode(config)
+
+    assert result.summary["radar_observation_count"] == 0
+    assert result.summary["communication_sent_count"] == 1
+    assert result.summary["communication_delivered_count"] == 0
+    assert result.summary["communication_dropped_count"] == 1
+
+
 def test_200v200_episode_has_finite_states_without_array_limits() -> None:
     config = ScenarioConfig(
         scenario_name="smoke_200v200",
@@ -124,6 +189,7 @@ def test_200v200_episode_has_finite_states_without_array_limits() -> None:
         duration_s=0.2,
         radar_enabled=True,
         visual_enabled=False,
+        communication_enabled=False,
     )
     result = run_episode(config)
     assert result.intruder_state_history.shape == (5, 200, 6)

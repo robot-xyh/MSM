@@ -47,9 +47,17 @@ from .runtime_ports import (
     ScalableModuleStack,
 )
 from .module_stack import (
+    D4RegionLearningFrame,
+    D5GraphLearningFrame,
     INTEGRATED_STACK_SCHEMA_VERSION,
+    IntegratedLearningArtifacts,
     IntegratedScalableModuleStack,
     IntegratedStackConfig,
+)
+from .learning_export import (
+    BatchLearningArtifactWriter,
+    LEARNING_EXPORT_SCHEMA_VERSION,
+    write_episode_learning_artifacts,
 )
 from .learning_runtime import (
     LearningRuntimeOptions,
@@ -61,6 +69,7 @@ from .animation import write_trajectory_animation
 
 __all__ = [
     "BUS_SCHEMA_VERSION",
+    "BatchLearningArtifactWriter",
     "AVAILABLE_SCENARIOS",
     "CameraIntrinsics",
     "CameraPose",
@@ -68,6 +77,8 @@ __all__ = [
     "CommunicationStats",
     "DeliveredMessage",
     "DeterministicCommunicationNetwork",
+    "D4RegionLearningFrame",
+    "D5GraphLearningFrame",
     "EntityKind",
     "EntitySnapshot",
     "EpisodeManifest",
@@ -75,10 +86,12 @@ __all__ = [
     "InMemoryEpisodeBus",
     "INTEGRATED_STACK_SCHEMA_VERSION",
     "IntegratedScalableModuleStack",
+    "IntegratedLearningArtifacts",
     "IntegratedStackConfig",
     "KinematicLimits",
     "LinkProfile",
     "LearningRuntimeOptions",
+    "LEARNING_EXPORT_SCHEMA_VERSION",
     "ObservationBatch",
     "OnlineSensorBatch",
     "OFFLINE_TRUTH_SCHEMA_VERSION",
@@ -110,4 +123,5 @@ __all__ = [
     "resolve_learning_runtime",
     "run_episode",
     "write_trajectory_animation",
+    "write_episode_learning_artifacts",
 ]

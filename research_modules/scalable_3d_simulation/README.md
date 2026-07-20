@@ -3,8 +3,9 @@
 该 main-owned 模块提供可复现、真值隔离的三维质点环境，用于逐步建设 200 架拦截无人机
 对 200 个来袭目标的 D1-D7 完整闭环。现有 `integrated_simulation` 保留为小规模回归基线。
 
-当前阶段已实现世界状态、三维动力学、透视投影、传感器场景、通信模型、版本化 episode
-总线和确定性环境基线。`IntegratedScalableModuleStack` 已把 D1 六维融合、D2 稀疏关联、
+当前阶段已实现世界状态、三维动力学、透视投影、传感器场景、传感器到融合中心的通信
+队列、版本化 episode 总线和确定性环境基线。通信队列按配置施加时延、抖动、批次丢失和
+序列化带宽开销，并把网络投递时刻写回观测 `arrival_timestamp`。`IntegratedScalableModuleStack` 已把 D1 六维融合、D2 稀疏关联、
 D3 稀疏分配、D4 区域权限、D5 匿名跨视角配准和 D7 三维比例导引接入同一在线时钟。
 模块栈只做接口转换与调度，各算法仍由 D1-D7 原模块维护。
 
@@ -28,8 +29,14 @@ python3 research_modules/scalable_3d_simulation/run_batch.py \
   --scales 5 20 50 100 200 \
   --seeds 7 17 27 \
   --scenarios nominal dense_crossing formation_split evasive_multilevel \
-  --integrated-stack
+  --integrated-stack --export-learning-data
 ```
+
+`--export-learning-data` 只在集成栈下可用。单次运行输出 D3 匿名规划帧、D4 区域图和 D5
+图/标签 staging；D5 不会在单一 seed 上伪造训练、验证和测试集。批量运行把完整
+`(scenario_version, seed)` 组汇总到 `learning_dataset/`，至少有三个组时才最终化 D5
+数据集。D5 数值图与 `truth_entity_id` 标签保存为不同文件，图特征和在线总线均不含
+真值编号。
 
 学习模型默认关闭。显式研究运行可增加下列参数；bundle 缺失、校验失败、分布外、低置信或
 超时均保留规则路径：
@@ -57,6 +64,12 @@ D3 的 `assist` 只有在 bundle 内准入清单证明至少 20 个未见 seed�
 标签。远距离投影只有达到相机类型对应的最小 bbox 面积后才形成在线视觉观测，避免把
 亚像素投影误报为可用检测。高频状态写入压缩 NPZ，事件写入 JSONL，汇总写入 JSON、
 CSV 和中文 Markdown。
+
+传感器自身处理时延与网络传输时延分开计算。批次先在 `measurement_timestamp + sensor
+latency` 时刻进入通信队列，再按链路时延、抖动、带宽和丢包结果到达融合中心。episode
+汇总记录发送、投递、丢弃、在途批次数和字节数。当前 D1-D7 仍作为同一进程内的组合栈
+执行，模块间发布消息尚未拆成独立通信节点；报告不把传感器链路验证写成全分布式网络
+闭环。
 
 传感器场景包含中心雷达、分布式声学阵列和拦截/侦察相机。声学观测输出粗方位、协方差
 和类别级声纹概率，`soundprint_is_identity=False`，不能作为目标身份编号使用。
@@ -131,6 +144,7 @@ paired shadow evaluator；D4 已具备变长区域图、规则基线、行为克
 - 在线观测：`scalable3d-observation-v1`
 - 离线真值：`scalable3d-offline-truth-v1`
 - D4 区域策略：`d4-region-resource-rule-v1` 或带权重 SHA256 的显式模型版本
+- 学习导出：`scalable3d-learning-export-v1`
 
 每个 episode 的 `manifest.json` 记录上述版本、Git commit、配置 SHA256、seed、模型版本和
 阈值版本。在线总线拒绝任何包含 truth/actor/object identity 字段的观测负载。

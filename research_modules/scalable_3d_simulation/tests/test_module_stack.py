@@ -94,6 +94,7 @@ def test_200v200_stack_uses_sparse_candidates_and_commands_every_assignment() ->
         radar_detection_probability=1.0,
         acoustic_enabled=False,
         visual_enabled=False,
+        communication_enabled=False,
     )
     stack = IntegratedScalableModuleStack()
 

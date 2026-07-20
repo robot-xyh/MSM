@@ -89,6 +89,7 @@ class IntegratedStackConfig:
     terminal_switch_range_m: float = 120.0
     secondary_coverage_ratio: float = 0.90
     secondary_network_full_view_rate: float = 0.90
+    capture_learning_artifacts: bool = False
 
     def __post_init__(self) -> None:
         if self.assignment_lease_multiplier <= 1.0:
@@ -103,6 +104,35 @@ class IntegratedStackConfig:
             value = float(getattr(self, name))
             if not 0.0 <= value <= 1.0:
                 raise ValueError(f"{name} must be in [0, 1]")
+
+
+@dataclass(frozen=True)
+class D4RegionLearningFrame:
+    """One truth-free regional snapshot and its optional advisory output."""
+
+    frame_index: int
+    timestamp_s: float
+    snapshot: Any
+    recommendation: Any | None
+
+
+@dataclass(frozen=True)
+class D5GraphLearningFrame:
+    """One anonymous cross-camera graph with measurement-to-tracklet links."""
+
+    frame_index: int
+    timestamp_s: float
+    graph: Any
+    source_observation_links: tuple[Any, ...]
+
+
+@dataclass(frozen=True)
+class IntegratedLearningArtifacts:
+    """Detached, truth-free episode artifacts for offline dataset construction."""
+
+    d3_planning_frames: tuple[Any, ...]
+    d4_region_frames: tuple[D4RegionLearningFrame, ...]
+    d5_graph_frames: tuple[D5GraphLearningFrame, ...]
 
 
 class IntegratedScalableModuleStack:
@@ -147,6 +177,7 @@ class IntegratedScalableModuleStack:
         self.latest_plan: Any | None = None
         self.latest_bindings: tuple[Any, ...] = ()
         self.latest_d4_decision: Any | None = None
+        self.latest_d4_region_snapshot: Any | None = None
         self.latest_d4_region_advice: Any | None = None
         self.latest_d5_result: Any | None = None
         self.latest_guidance_batch: Any | None = None
@@ -159,6 +190,9 @@ class IntegratedScalableModuleStack:
         self._last_secondary_failed = False
         self._fault_generation_changed = False
         self._regional_plan_rejection_reason: str | None = None
+        self._d3_learning_frames: list[Any] = []
+        self._d4_learning_frames: list[D4RegionLearningFrame] = []
+        self._d5_learning_frames: list[D5GraphLearningFrame] = []
         self._stage_wall_time_s: dict[str, float] = {}
         self._stage_call_count: dict[str, int] = {}
 
@@ -192,6 +226,7 @@ class IntegratedScalableModuleStack:
         self.latest_plan = None
         self.latest_bindings = ()
         self.latest_d4_decision = None
+        self.latest_d4_region_snapshot = None
         self.latest_d4_region_advice = None
         self.latest_d5_result = None
         self.latest_guidance_batch = None
@@ -204,6 +239,9 @@ class IntegratedScalableModuleStack:
         self._last_secondary_failed = False
         self._fault_generation_changed = False
         self._regional_plan_rejection_reason = None
+        self._d3_learning_frames.clear()
+        self._d4_learning_frames.clear()
+        self._d5_learning_frames.clear()
         self._stage_wall_time_s.clear()
         self._stage_call_count.clear()
 
@@ -274,6 +312,17 @@ class IntegratedScalableModuleStack:
             self._latest_terminal_by_pair = self._terminal_pairs_from_d5(
                 self.latest_d5_result
             )
+            if self.stack_config.capture_learning_artifacts:
+                self._d5_learning_frames.append(
+                    D5GraphLearningFrame(
+                        frame_index=len(self._d5_learning_frames),
+                        timestamp_s=now,
+                        graph=self.latest_d5_result.association.graph,
+                        source_observation_links=tuple(
+                            self.latest_d5_result.source_observation_links
+                        ),
+                    )
+                )
             self._record_timing("d5_terminal_association", perf_counter() - started)
             publications.append(self._d5_publication(now))
 
@@ -295,6 +344,8 @@ class IntegratedScalableModuleStack:
                 center_health=center_health,
                 secondary_failed=secondary_failed,
             )
+            if self.stack_config.capture_learning_artifacts:
+                self._d3_learning_frames.append(self.d3.latest_planning_evidence)
             publications.append(self._d3_publication(now))
             publications.append(self._d4_publication(now))
             if self.latest_d4_region_advice is not None:
@@ -522,7 +573,12 @@ class IntegratedScalableModuleStack:
     ) -> None:
         """Publish aggregate advice without mutating D4 authority or D3 plans."""
 
-        if self.d4_region_advisor is None or self.latest_d4_decision is None:
+        if self.latest_d4_decision is None:
+            return
+        if (
+            self.d4_region_advisor is None
+            and not self.stack_config.capture_learning_artifacts
+        ):
             return
         started = perf_counter()
         regional_snapshot = self._d4_region_resource_snapshot(
@@ -530,14 +586,36 @@ class IntegratedScalableModuleStack:
             formal_snapshot=formal_snapshot,
             now=now,
         )
-        self.latest_d4_region_advice = self.d4_region_advisor.advise(
-            regional_snapshot,
-            formal_decision=self.latest_d4_decision,
-            unseen_seed_count=self.d4_unseen_seed_count,
-        )
+        self.latest_d4_region_snapshot = regional_snapshot
+        recommendation = None
+        if self.d4_region_advisor is not None:
+            recommendation = self.d4_region_advisor.advise(
+                regional_snapshot,
+                formal_decision=self.latest_d4_decision,
+                unseen_seed_count=self.d4_unseen_seed_count,
+            )
+            self.latest_d4_region_advice = recommendation
+        if self.stack_config.capture_learning_artifacts:
+            self._d4_learning_frames.append(
+                D4RegionLearningFrame(
+                    frame_index=len(self._d4_learning_frames),
+                    timestamp_s=now,
+                    snapshot=regional_snapshot,
+                    recommendation=recommendation,
+                )
+            )
         self._record_timing(
             "d4_region_resource_advisor",
             perf_counter() - started,
+        )
+
+    def learning_artifacts(self) -> IntegratedLearningArtifacts:
+        """Return detached truth-free frames; evaluator labels remain outside the stack."""
+
+        return IntegratedLearningArtifacts(
+            d3_planning_frames=tuple(self._d3_learning_frames),
+            d4_region_frames=tuple(self._d4_learning_frames),
+            d5_graph_frames=tuple(self._d5_learning_frames),
         )
 
     def _d4_region_resource_snapshot(

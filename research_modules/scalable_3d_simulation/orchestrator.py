@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import heapq
 from pathlib import Path
 import time
@@ -10,6 +10,7 @@ from typing import Any
 
 import numpy as np
 
+from .communication import DeterministicCommunicationNetwork, LinkProfile
 from .episode_bus import (
     EpisodeManifest,
     InMemoryEpisodeBus,
@@ -101,6 +102,15 @@ class Scalable3DEpisodeRunner:
         self.world = VectorizedPointMassWorld(config)
         self.sensor_scene = SensorScene(config)
         self.bus = InMemoryEpisodeBus()
+        self.communication = DeterministicCommunicationNetwork(
+            seed=config.seed + 20_000,
+            default_profile=LinkProfile(
+                latency_s=config.communication_latency_s,
+                jitter_s=config.communication_jitter_s,
+                drop_probability=config.communication_drop_probability,
+                bandwidth_bytes_per_s=config.communication_bandwidth_bytes_per_s,
+            ),
+        )
         self.manifest = build_episode_manifest(config)
         self.module_stack = module_stack
 
@@ -110,11 +120,13 @@ class Scalable3DEpisodeRunner:
         self.world.reset()
         self.sensor_scene.reset()
         self.bus.clear()
+        self.communication.reset(seed=self.config.seed + 20_000)
         if self.module_stack is not None:
             self.module_stack.reset(self.config)
         timing = _TimingAccumulator()
         pending: list[tuple[float, int, OnlineSensorBatch]] = []
         pending_counter = 0
+        transport_sequence = 0
         offline_labels: list[OfflineTruthLabel] = []
         timestamps = self.config.timestamps()
         step_count = timestamps.size
@@ -187,6 +199,40 @@ class Scalable3DEpisodeRunner:
             started = time.perf_counter()
             while pending and pending[0][0] <= current_time + 1.0e-12:
                 _, _, online_batch = heapq.heappop(pending)
+                if self.config.communication_enabled:
+                    transport_sequence += 1
+                    self.communication.send(
+                        source=online_batch.sensor_id,
+                        destination="FUSION-CENTER",
+                        send_timestamp=online_batch.arrival_timestamp,
+                        envelope=VersionedEnvelope(
+                            sequence=transport_sequence,
+                            topic="sensor.observations",
+                            source=online_batch.sensor_id,
+                            timestamp=online_batch.arrival_timestamp,
+                            schema_version=ONLINE_OBSERVATION_SCHEMA_VERSION,
+                            payload=online_batch,
+                        ),
+                    )
+                else:
+                    arrived_batches.append(online_batch)
+            if self.config.communication_enabled:
+                arrived_batches.extend(
+                    _retime_sensor_batch(
+                        delivered.envelope.payload,
+                        arrival_timestamp=delivered.arrival_timestamp,
+                    )
+                    for delivered in self.communication.deliver(current_time)
+                )
+            arrived_batches.sort(
+                key=lambda item: (
+                    item.arrival_timestamp,
+                    item.measurement_timestamp,
+                    item.sensor_id,
+                    item.batch_id,
+                )
+            )
+            for online_batch in arrived_batches:
                 self.bus.publish(
                     topic="sensor.observations",
                     source=online_batch.sensor_id,
@@ -195,7 +241,6 @@ class Scalable3DEpisodeRunner:
                     payload=online_batch,
                     copy_payload=False,
                 )
-                arrived_batches.append(online_batch)
             timing.add("episode_bus", time.perf_counter() - started)
 
             if step_index + 1 < step_count:
@@ -253,7 +298,9 @@ class Scalable3DEpisodeRunner:
 
         elapsed = time.perf_counter() - episode_start
         diagnostics = self.world.diagnostics()
+        communication_stats = self.communication.stats()
         messages = self.bus.messages()
+        learning_artifact_counts = _learning_artifact_counts(self.module_stack)
         radar_count = sum(
             len(message.payload.measurements)
             for message in messages
@@ -304,6 +351,14 @@ class Scalable3DEpisodeRunner:
             ),
             "offline_truth_label_count": len(offline_labels),
             "pending_after_episode_count": len(pending),
+            "communication_enabled": self.config.communication_enabled,
+            "communication_sent_count": communication_stats.sent_count,
+            "communication_delivered_count": communication_stats.delivered_count,
+            "communication_dropped_count": communication_stats.dropped_count,
+            "communication_pending_count": communication_stats.pending_count,
+            "communication_sent_bytes": communication_stats.sent_bytes,
+            "communication_delivered_bytes": communication_stats.delivered_bytes,
+            **learning_artifact_counts,
             "online_truth_use_count": 0,
             "module_stack_enabled": self.module_stack is not None,
             "module_publication_count": module_publication_count,
@@ -340,11 +395,14 @@ def run_episode(
     write_plot: bool = False,
     animation_formats: tuple[str, ...] = (),
     module_stack: ScalableModuleStack | None = None,
+    write_learning_data: bool = False,
 ) -> EpisodeResult:
     """Run one baseline episode and optionally persist its reproducibility bundle."""
 
     result = Scalable3DEpisodeRunner(config, module_stack=module_stack).run()
     if output_dir is None:
+        if write_learning_data:
+            raise ValueError("write_learning_data requires output_dir")
         return result
     from .reporting import write_episode_outputs
 
@@ -354,6 +412,34 @@ def run_episode(
         write_plot=write_plot,
         animation_formats=animation_formats,
     )
+    if write_learning_data:
+        artifact_provider = getattr(module_stack, "learning_artifacts", None)
+        if not callable(artifact_provider):
+            raise ValueError(
+                "write_learning_data requires an integrated stack with artifact capture"
+            )
+        if not bool(
+            getattr(
+                getattr(module_stack, "stack_config", None),
+                "capture_learning_artifacts",
+                False,
+            )
+        ):
+            raise ValueError(
+                "write_learning_data requires capture_learning_artifacts=True"
+            )
+        from .learning_export import write_episode_learning_artifacts
+
+        learning_paths = write_episode_learning_artifacts(
+            Path(output_dir) / "learning_data",
+            config=result.config,
+            manifest=result.manifest,
+            artifacts=artifact_provider(),
+            offline_truth_labels=result.offline_truth_labels,
+        )
+        paths.update(
+            {f"learning_{key}": value for key, value in learning_paths.items()}
+        )
     return EpisodeResult(
         config=result.config,
         manifest=result.manifest,
@@ -400,6 +486,27 @@ def _group_sensor_batches(
     return tuple(batches)
 
 
+def _retime_sensor_batch(
+    batch: OnlineSensorBatch,
+    *,
+    arrival_timestamp: float,
+) -> OnlineSensorBatch:
+    """Set the consumer arrival time after sensor processing and network transport."""
+
+    actual_arrival = float(arrival_timestamp)
+    if actual_arrival + 1.0e-12 < batch.arrival_timestamp:
+        raise ValueError("network arrival must not precede sensor-ready timestamp")
+    measurements = tuple(
+        replace(measurement, arrival_timestamp=actual_arrival)
+        for measurement in batch.measurements
+    )
+    return replace(
+        batch,
+        arrival_timestamp=actual_arrival,
+        measurements=measurements,
+    )
+
+
 def _platform_navigation_batch(
     platform_kind: str,
     snapshot: Any,
@@ -418,3 +525,24 @@ def _platform_navigation_batch(
         covariance=covariance,
         active=snapshot.active,
     )
+
+
+def _learning_artifact_counts(module_stack: ScalableModuleStack | None) -> dict[str, int | bool]:
+    provider = getattr(module_stack, "learning_artifacts", None)
+    if not callable(provider):
+        return {
+            "learning_artifact_capture_enabled": False,
+            "d3_learning_frame_count": 0,
+            "d4_learning_frame_count": 0,
+            "d5_learning_graph_frame_count": 0,
+        }
+    artifacts = provider()
+    enabled = bool(
+        getattr(getattr(module_stack, "stack_config", None), "capture_learning_artifacts", False)
+    )
+    return {
+        "learning_artifact_capture_enabled": enabled,
+        "d3_learning_frame_count": len(artifacts.d3_planning_frames),
+        "d4_learning_frame_count": len(artifacts.d4_region_frames),
+        "d5_learning_graph_frame_count": len(artifacts.d5_graph_frames),
+    }

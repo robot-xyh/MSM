@@ -41,6 +41,7 @@ main
 | 场景配置 | `scalable3d-scenario-v1` | 配置字段语义或默认场景改变 |
 | 在线观测 | `scalable3d-observation-v1` | 观测字段、单位或时序语义改变 |
 | 离线真值 | `scalable3d-offline-truth-v1` | 标签结构或评分口径改变 |
+| 学习导出 | `scalable3d-learning-export-v1` | D3/D4/D5 训练制品布局或真值隔离规则改变 |
 | D5 模型 | `d5-crossview-gnn-v0.1.0` | 网络、特征、权重或训练集改变 |
 | D3 策略 | `d3-rl-cost-policy-v0.1.0` | 策略结构、权重或动作定义改变 |
 | D4 区域策略 | `d4-region-resource-rule-v1` 或模型版本加权重 SHA 前缀 | 区域特征、动作、安全投影或权重改变 |

@@ -19,8 +19,12 @@ from research_modules.scalable_3d_simulation.learning_runtime import (
     learning_runtime_options_from_args,
     resolve_learning_runtime,
 )
+from research_modules.scalable_3d_simulation.learning_export import (
+    BatchLearningArtifactWriter,
+)
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
 from research_modules.scalable_3d_simulation.reporting import write_batch_outputs
+from research_modules.scalable_3d_simulation.module_stack import IntegratedStackConfig
 from research_modules.scalable_3d_simulation.scenarios import (
     AVAILABLE_SCENARIOS,
     make_curriculum_scenario,
@@ -47,6 +51,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("research_modules/scalable_3d_simulation/outputs/curriculum"),
     )
+    parser.add_argument(
+        "--export-learning-data",
+        action="store_true",
+        help="write split-safe multi-seed D3/D4/D5 training artifacts",
+    )
     add_learning_runtime_arguments(parser)
     return parser.parse_args()
 
@@ -59,7 +68,14 @@ def main() -> int:
     learning_options = learning_runtime_options_from_args(args)
     if learning_options.requested and not args.integrated_stack:
         raise ValueError("optional learning bundles require --integrated-stack")
+    if args.export_learning_data and not args.integrated_stack:
+        raise ValueError("--export-learning-data requires --integrated-stack")
     results = []
+    learning_writer = (
+        BatchLearningArtifactWriter(args.output / "learning_dataset")
+        if args.export_learning_data
+        else None
+    )
     for scenario in args.scenarios:
         for scale in args.scales:
             for seed in args.seeds:
@@ -75,6 +91,9 @@ def main() -> int:
                     resolved_runtime = resolve_learning_runtime(
                         config,
                         learning_options,
+                        stack_config=IntegratedStackConfig(
+                            capture_learning_artifacts=args.export_learning_data
+                        ),
                     )
                     config = resolved_runtime.config
                     module_stack = resolved_runtime.stack
@@ -84,6 +103,16 @@ def main() -> int:
                     output_dir=episode_dir,
                     module_stack=module_stack,
                 )
+                if learning_writer is not None:
+                    artifact_provider = getattr(module_stack, "learning_artifacts", None)
+                    if not callable(artifact_provider):
+                        raise RuntimeError("integrated stack did not expose learning artifacts")
+                    learning_writer.stage_episode(
+                        config=result.config,
+                        manifest=result.manifest,
+                        artifacts=artifact_provider(),
+                        offline_truth_labels=result.offline_truth_labels,
+                    )
                 results.append(result)
                 print(
                     f"scenario={scenario} scale={scale} seed={seed} "
@@ -91,9 +120,12 @@ def main() -> int:
                     f"rtf={result.summary['real_time_factor']:.3f}"
                 )
     paths = write_batch_outputs(results, args.output)
+    learning_paths = {} if learning_writer is None else learning_writer.finalize()
     print(f"episodes={len(results)}")
     print(f"summary={paths['episode_summary_csv'].resolve()}")
     print(f"report={paths['report'].resolve()}")
+    if learning_paths:
+        print(f"learning_summary={learning_paths['summary'].resolve()}")
     return 0
 
 

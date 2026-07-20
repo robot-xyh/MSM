@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .models import ScenarioConfig
-from .module_stack import IntegratedScalableModuleStack
+from .module_stack import IntegratedScalableModuleStack, IntegratedStackConfig
 
 
 _LEARNING_MODES = frozenset({"disabled", "shadow", "assist"})
@@ -81,6 +81,8 @@ class _UnavailableEdgeModel:
 def resolve_learning_runtime(
     config: ScenarioConfig,
     options: LearningRuntimeOptions | None = None,
+    *,
+    stack_config: IntegratedStackConfig | None = None,
 ) -> ResolvedLearningRuntime:
     """Load optional bundles and preserve exact-rule fallback on every failure."""
 
@@ -235,6 +237,7 @@ def resolve_learning_runtime(
         metadata=metadata,
     )
     stack = IntegratedScalableModuleStack(
+        config=stack_config,
         d3_learning_assistant=d3_assistant,
         d4_region_advisor=d4_advisor,
         d4_unseen_seed_count=0,
