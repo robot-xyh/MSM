@@ -60,10 +60,13 @@ v(k+1) = clip(v(k) + a(k) * dt)
 VectorizedPointMassWorld
   -> SensorScene
   -> VersionedEpisodeBus
-  -> D1 -> D2 -> D3 -> D4 -> D5 -> D7
+  -> ScalableModuleStack(D1 -> D2 -> D3 -> D4 -> D5 -> D7)
   -> world state feedback
   -> D6 offline evaluation
 ```
+
+模块栈输入只含匿名传感器批次和资源自身导航状态，不能读取目标世界状态。D7 返回的 NED
+三维加速度由 main 回写统一世界；模块发布记录再次经过在线真值字段拦截。
 
 main 维护本目录。D1-D7 的算法实现、README、PLAN、GAP 和 review 仍由对应 subagent
 维护。共享合同包含世界/总线/场景/模型/阈值版本，以及每次运行的配置 SHA256 和 Git

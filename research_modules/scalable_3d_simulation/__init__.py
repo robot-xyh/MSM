@@ -39,6 +39,13 @@ from .models import (
 from .orchestrator import EpisodeResult, Scalable3DEpisodeRunner, run_episode
 from .sensor_scene import CameraView, SensorScene
 from .scenarios import AVAILABLE_SCENARIOS, SCENARIO_CATALOG_VERSION, make_curriculum_scenario
+from .runtime_ports import (
+    PlatformNavigationBatch,
+    RuntimePublication,
+    RuntimeStepInput,
+    RuntimeStepOutput,
+    ScalableModuleStack,
+)
 from .world import VectorizedPointMassWorld
 from .animation import write_trajectory_animation
 
@@ -64,9 +71,14 @@ __all__ = [
     "OfflineTruthLabel",
     "ONLINE_OBSERVATION_SCHEMA_VERSION",
     "ProjectionBatch",
+    "PlatformNavigationBatch",
+    "RuntimePublication",
+    "RuntimeStepInput",
+    "RuntimeStepOutput",
     "SCENARIO_SCHEMA_VERSION",
     "SCENARIO_CATALOG_VERSION",
     "Scalable3DEpisodeRunner",
+    "ScalableModuleStack",
     "ScenarioConfig",
     "SensorMeasurement",
     "SensorScene",

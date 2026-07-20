@@ -24,6 +24,11 @@ from .models import (
     SensorMeasurement,
 )
 from .sensor_scene import SensorScene
+from .runtime_ports import (
+    PlatformNavigationBatch,
+    RuntimeStepInput,
+    ScalableModuleStack,
+)
 from .world import VectorizedPointMassWorld
 
 
@@ -77,12 +82,18 @@ class _TimingAccumulator:
 class Scalable3DEpisodeRunner:
     """Advance the world and asynchronous sensor clocks on one deterministic timeline."""
 
-    def __init__(self, config: ScenarioConfig) -> None:
+    def __init__(
+        self,
+        config: ScenarioConfig,
+        *,
+        module_stack: ScalableModuleStack | None = None,
+    ) -> None:
         self.config = config
         self.world = VectorizedPointMassWorld(config)
         self.sensor_scene = SensorScene(config)
         self.bus = InMemoryEpisodeBus()
         self.manifest = build_episode_manifest(config)
+        self.module_stack = module_stack
 
     def run(self) -> EpisodeResult:
         """Run a world/sensor baseline without D1-D7 algorithm shortcuts."""
@@ -90,6 +101,8 @@ class Scalable3DEpisodeRunner:
         self.world.reset()
         self.sensor_scene.reset()
         self.bus.clear()
+        if self.module_stack is not None:
+            self.module_stack.reset(self.config)
         timing = _TimingAccumulator()
         pending: list[tuple[float, int, OnlineSensorBatch]] = []
         pending_counter = 0
@@ -108,6 +121,8 @@ class Scalable3DEpisodeRunner:
         next_acoustic_time = 0.0
         next_visual_time = 0.0
         episode_start = time.perf_counter()
+        module_publication_count = 0
+        control_command_tick_count = 0
 
         for step_index in range(step_count):
             snapshot = self.world.snapshot()
@@ -156,6 +171,7 @@ class Scalable3DEpisodeRunner:
                     )
                 next_visual_time += self.config.visual_period_s
 
+            arrived_batches: list[OnlineSensorBatch] = []
             started = time.perf_counter()
             while pending and pending[0][0] <= current_time + 1.0e-12:
                 _, _, online_batch = heapq.heappop(pending)
@@ -167,11 +183,47 @@ class Scalable3DEpisodeRunner:
                     payload=online_batch,
                     copy_payload=False,
                 )
+                arrived_batches.append(online_batch)
             timing.add("episode_bus", time.perf_counter() - started)
 
             if step_index + 1 < step_count:
+                interceptor_command = None
+                recon_command = None
+                if self.module_stack is not None:
+                    started = time.perf_counter()
+                    module_output = self.module_stack.step(
+                        RuntimeStepInput(
+                            timestamp=current_time,
+                            arrived_sensor_batches=tuple(arrived_batches),
+                            interceptors=_platform_navigation_batch(
+                                "interceptor", snapshot.interceptors, current_time
+                            ),
+                            recon=_platform_navigation_batch(
+                                "recon", snapshot.recon, current_time
+                            ),
+                        )
+                    ).validated(
+                        resource_count=self.config.resource_count,
+                        recon_count=self.config.recon_count,
+                    )
+                    interceptor_command = module_output.interceptor_acceleration_ned
+                    recon_command = module_output.recon_acceleration_ned
+                    for publication in module_output.publications:
+                        self.bus.publish(
+                            topic=publication.topic,
+                            source=publication.source,
+                            timestamp=current_time,
+                            schema_version=publication.schema_version,
+                            payload=publication.payload,
+                        )
+                        module_publication_count += 1
+                    control_command_tick_count += 1
+                    timing.add("module_stack", time.perf_counter() - started)
                 started = time.perf_counter()
-                diagnostics = self.world.step()
+                diagnostics = self.world.step(
+                    interceptor_acceleration_ned=interceptor_command,
+                    recon_acceleration_ned=recon_command,
+                )
                 timing.add("world_dynamics", time.perf_counter() - started)
                 if not diagnostics.finite_state:
                     raise FloatingPointError(f"non-finite world state at {diagnostics.timestamp:.3f}s")
@@ -182,17 +234,20 @@ class Scalable3DEpisodeRunner:
         radar_count = sum(
             len(message.payload.measurements)
             for message in messages
-            if message.payload.measurements[0].modality == "radar_spherical"
+            if isinstance(message.payload, OnlineSensorBatch)
+            and message.payload.measurements[0].modality == "radar_spherical"
         )
         acoustic_count = sum(
             len(message.payload.measurements)
             for message in messages
-            if message.payload.measurements[0].modality == "acoustic_bearing"
+            if isinstance(message.payload, OnlineSensorBatch)
+            and message.payload.measurements[0].modality == "acoustic_bearing"
         )
         visual_count = sum(
             len(message.payload.measurements)
             for message in messages
-            if message.payload.measurements[0].modality == "vision_bbox"
+            if isinstance(message.payload, OnlineSensorBatch)
+            and message.payload.measurements[0].modality == "vision_bbox"
         )
         summary: dict[str, Any] = {
             "episode_id": self.manifest.episode_id,
@@ -211,10 +266,15 @@ class Scalable3DEpisodeRunner:
             "acoustic_observation_count": acoustic_count,
             "visual_observation_count": visual_count,
             "online_observation_count": radar_count + acoustic_count + visual_count,
-            "online_batch_count": len(messages),
+            "online_batch_count": sum(
+                isinstance(message.payload, OnlineSensorBatch) for message in messages
+            ),
             "offline_truth_label_count": len(offline_labels),
             "pending_after_episode_count": len(pending),
             "online_truth_use_count": 0,
+            "module_stack_enabled": self.module_stack is not None,
+            "module_publication_count": module_publication_count,
+            "control_command_tick_count": control_command_tick_count,
             "intercepted_target_count": len(self.world.intercepted_target_indices),
             "max_target_speed_mps": diagnostics.max_target_speed_mps,
             "max_interceptor_speed_mps": diagnostics.max_interceptor_speed_mps,
@@ -241,10 +301,11 @@ def run_episode(
     output_dir: str | Path | None = None,
     write_plot: bool = False,
     animation_formats: tuple[str, ...] = (),
+    module_stack: ScalableModuleStack | None = None,
 ) -> EpisodeResult:
     """Run one baseline episode and optionally persist its reproducibility bundle."""
 
-    result = Scalable3DEpisodeRunner(config).run()
+    result = Scalable3DEpisodeRunner(config, module_stack=module_stack).run()
     if output_dir is None:
         return result
     from .reporting import write_episode_outputs
@@ -298,3 +359,23 @@ def _group_sensor_batches(
             )
         )
     return tuple(batches)
+
+
+def _platform_navigation_batch(
+    platform_kind: str,
+    snapshot: Any,
+    timestamp: float,
+) -> PlatformNavigationBatch:
+    count = len(snapshot.entity_ids)
+    covariance = np.broadcast_to(
+        np.diag([0.25, 0.25, 0.25, 0.04, 0.04, 0.04]),
+        (count, 6, 6),
+    ).copy()
+    return PlatformNavigationBatch(
+        platform_kind=platform_kind,
+        platform_ids=tuple(snapshot.entity_ids),
+        timestamp=float(timestamp),
+        state_ned=snapshot.state,
+        covariance=covariance,
+        active=snapshot.active,
+    )

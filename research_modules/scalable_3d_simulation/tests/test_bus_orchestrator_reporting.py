@@ -21,6 +21,10 @@ from research_modules.scalable_3d_simulation.models import (
     ScenarioConfig,
 )
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
+from research_modules.scalable_3d_simulation.runtime_ports import (
+    RuntimePublication,
+    RuntimeStepOutput,
+)
 
 
 def test_recursive_truth_guard_rejects_nested_fields_and_truth_dataclasses() -> None:
@@ -127,3 +131,67 @@ def test_offline_truth_history_can_render_three_dimensional_gif(tmp_path: Path) 
     result = run_episode(config)
     path = write_trajectory_animation(result, tmp_path / "trajectory.gif", fps=5)
     assert path.read_bytes()[:6] in {b"GIF87a", b"GIF89a"}
+
+
+class _ConstantCommandStack:
+    def __init__(self, *, publish_truth: bool = False) -> None:
+        self.publish_truth = publish_truth
+        self.config: ScenarioConfig | None = None
+
+    def reset(self, config: ScenarioConfig) -> None:
+        self.config = config
+
+    def step(self, step_input: object) -> RuntimeStepOutput:
+        assert self.config is not None
+        payload = {"plan_version": 1, "status": "coast"}
+        if self.publish_truth:
+            payload["actor_id"] = "TargetActor_1"
+        return RuntimeStepOutput(
+            interceptor_acceleration_ned=np.tile(
+                np.array([0.0, 0.5, 0.0]),
+                (self.config.resource_count, 1),
+            ),
+            recon_acceleration_ned=np.zeros((self.config.recon_count, 3)),
+            publications=(
+                RuntimePublication(
+                    topic="modules.test",
+                    source="TEST-STACK",
+                    schema_version="test-stack-v1",
+                    payload=payload,
+                ),
+            ),
+        )
+
+
+def test_truth_free_module_stack_can_write_commands_back_to_world() -> None:
+    config = ScenarioConfig(
+        target_count=2,
+        resource_count=2,
+        recon_count=1,
+        duration_s=0.1,
+        radar_enabled=False,
+        acoustic_enabled=False,
+        visual_enabled=False,
+    )
+    result = run_episode(config, module_stack=_ConstantCommandStack())
+    assert result.summary["module_stack_enabled"] is True
+    assert result.summary["control_command_tick_count"] == 2
+    assert result.summary["module_publication_count"] == 2
+    assert len(result.online_messages) == 2
+    assert not np.array_equal(
+        result.interceptor_state_history[0], result.interceptor_state_history[-1]
+    )
+
+
+def test_module_stack_publication_cannot_leak_actor_identity() -> None:
+    config = ScenarioConfig(
+        target_count=1,
+        resource_count=1,
+        recon_count=0,
+        duration_s=0.05,
+        radar_enabled=False,
+        acoustic_enabled=False,
+        visual_enabled=False,
+    )
+    with pytest.raises(ValueError, match="truth fields"):
+        run_episode(config, module_stack=_ConstantCommandStack(publish_truth=True))
