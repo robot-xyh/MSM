@@ -9,7 +9,7 @@
 - `../reports/EXPERIMENT_REPORT.md`：当前实验结果、指标表和丢包率曲线。
 - `../reports/AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放数据如何映射到 D4 摘要模型。
 
-当前 D4 侧状态见 `../PLAN.md` 的“已实现 / 部分实现 / 未实现 / P1/P2 下一步”：已补二级节点 lifecycle、主动降级迟滞/防抖、D6-compatible event metadata、D5 distributed visual evidence、原子联盟提交和 N 规模输入。2026-07-20 新增 `regional_failover.py`，冻结 scalable3d 场景元数据、逐区域唯一 authority、机动高空二级 coverage/readiness、epoch+plan version+最早 lease、全层 `k>1` 原子门和受约束 distributed fallback 合同；23 项区域测试与 D4 全量 303/303 通过。该结果是纯 Python 合同验证，不是 200v200 动力学、AirSim、真实网络或完整 CCBBA 证据。2026-07-15 的 20-case M5N2 仍只是 `active degradation=0` 的中心负对照，coalition 和第二 primary 5 m 均为 `0/20`。MIT/CA-CBBA、真实通信/视频链路和 Contract Net 不属当前默认路径。
+当前 D4 侧状态见 `../PLAN.md` 的“已实现 / 部分实现 / 未实现 / P1/P2 下一步”：`regional_failover.py` 已冻结动态区域 authority、二级 coverage/readiness、epoch+plan version+最早 lease、全层原子门和受约束 distributed fallback；main-owned 质点模块栈现已消费该合同并覆盖单二级、多二级 owner、distributed D3 plan 与 D7 fencing，定向测试 8/8。新增 `region_resource.py`/`region_resource_learning.py` 提供默认 disabled/shadow 的 truth-free 区域配额/邻区转移建议、确定性安全投影、共享图 actor-critic、BC/PPO、bundle/SHA 和 paired evaluator；专项 32/32、D4 全量 335/335。以上不是 AirSim、真实网络、已训练 checkpoint 或至少 20 个未见 seed 收益证据。2026-07-15 的 20-case M5N2 仍只是 `active degradation=0` 的中心负对照，coalition 和第二 primary 5 m 均为 `0/20`。MIT/CA-CBBA、真实通信/视频链路和 Contract Net 不属当前默认路径。
 
 ## 阅读顺序
 

@@ -4,9 +4,13 @@
 **范围**：中心 C2、二级侦察节点和完全无中心三种运行层级下，面向 `k_j > 1` 协同任务的联盟形成、通信、一致性、成员退出和中心恢复。
 **模块边界**：D4 研究“谁组成联盟、谁协调、何时重构以及如何保持版本一致”；D3 拥有中心化资源分配，D7 拥有到达时序和导引，D5/D2 提供身份与关联证据。本文不运行 AirSim；2026-07-11 已在调研结论上补充第一阶段 fail-closed 安全实现。
 
-**2026-07-20 区域合同同步**：`regional_failover.py` 已把中心 -> 机动高空二级 -> distributed 顺序扩展为逐区域 authority，并仅为无有效二级节点的区域加入能力/跨区域 capacity 受约束 bid selection。该 selection 从动态 member/task 集合形成候选，允许单成员覆盖多项 capability，D5 support/hold/ambiguity 参与排序或排除；中心、二级和 distributed 的 `k_j>1` 候选都必须全部 required ACK、current plan/coalition version、epoch 和最早 lease 后原子 `committed`。commit metadata 依次标记 `d3_center_assignment`、`d3_assignment_secondary_coordination`、`bounded_constrained_bid_selection`。23 项区域测试使 D4 全量达到 303/303。该增量不实现 CBBA 多轮消息共识、全局组合最优、CCBBA coupled timing、reserve 激活或在线成员重构，也无 AirSim/scalable3d episode 或物理证据。
+**2026-07-20 区域建议边界同步**：新增全局区域资源建议层不改变联盟形成职责。`RegionResourceSnapshot` 只保留需求/积压和资源/通信/authority 的区域聚合，不含 actor truth ID、目标 ID、成员列表或 resource-target assignment；建议只调整区域 quota、邻边 transfer、备用、侦察和 hold/replan。formal committed member、owner/epoch/lease、fault fence 和 ACK 由确定性投影保护，学习策略不能形成/解散联盟或替代 D3 assignment。共享图 actor-critic、BC/PPO、bundle/SHA 和 shadow evaluator 管线已通过 32 项专项，D4 全量 335/335；少于 20 个实际未见 seed 不得 assist，当前无训练后模型或真实网络证据。
 
-**2026-07-15 历史合同同步**：secondary coordinator proposal 与两个公开 secondary plan helper 均已 fail-closed；helper active/maintained 路径要求 readiness exact-true、expected/actual source、plan/required lease epoch 和严格未过期时间证据。此前 278/278 不含 helper 的逐字段 `None`，不能证明全部公开入口；当日 280/280 已补齐，当前全量以 2026-07-20 的 303/303 为准。distributed peer commit 继续只受 member/双版本/epoch/lease/digest/partition 合同约束，不套用二级视觉门。
+**2026-07-20 main 质点接线事实**：单一二级、多二级区域 owner 和中心/二级连续失效后的 distributed D3 plan 已进入 main-owned scalable 3D 质点模块栈，D7 按 owner/epoch/lease/commit/fault fence 执行；定向测试 8/8。该事实不是 AirSim、真实网络、完整 CCBBA 或自主重构证据。
+
+**2026-07-20 区域合同同步**：`regional_failover.py` 已把中心 -> 机动高空二级 -> distributed 顺序扩展为逐区域 authority，并仅为无有效二级节点的区域加入能力/跨区域 capacity 受约束 bid selection。该 selection 从动态 member/task 集合形成候选，允许单成员覆盖多项 capability，D5 support/hold/ambiguity 参与排序或排除；中心、二级和 distributed 的 `k_j>1` 候选都必须全部 required ACK、current plan/coalition version、epoch 和最早 lease 后原子 `committed`。commit metadata 依次标记 `d3_center_assignment`、`d3_assignment_secondary_coordination`、`bounded_constrained_bid_selection`。23 项区域测试使当时 D4 全量达到 303/303，当前为 335/335。该增量不实现 CBBA 多轮消息共识、全局组合最优、CCBBA coupled timing、reserve 激活或在线成员重构；main 后续只有质点接口接线，仍无 AirSim/真实网络或物理证据。
+
+**2026-07-15 历史合同同步**：secondary coordinator proposal 与两个公开 secondary plan helper 均已 fail-closed；helper active/maintained 路径要求 readiness exact-true、expected/actual source、plan/required lease epoch 和严格未过期时间证据。此前 278/278 不含 helper 的逐字段 `None`，不能证明全部公开入口；当日 280/280 已补齐，当前全量为 335/335。distributed peer commit 继续只受 member/双版本/epoch/lease/digest/partition 合同约束，不套用二级视觉门。
 
 ## 1. 问题定义与关键结论
 

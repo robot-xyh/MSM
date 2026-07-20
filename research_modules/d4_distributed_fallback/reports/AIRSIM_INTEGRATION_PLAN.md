@@ -12,11 +12,12 @@ AirSim episode clock 只提供统一的仿真时间基准。已通过的 delay/l
 
 该证据没有运行二级或完全分布式接管，故真实 secondary/distributed 多 seed 仍为 P1。后续 AirSim 集成必须构造与中心负对照配对的故障 case，并让 D4 从 D1/D2/D3/D5 摘要得出动作，不得由 `collision_stop` 标签直接注入动作。
 
-D4 当前具备两层 AirSim episode 接口，以及一个尚未接入 main 的 scalable3d 区域接口：
+D4 当前具备两层 AirSim episode 接口、一个已接入 main 质点模块栈的 scalable3d 区域接口，以及一个默认 disabled/shadow 的区域资源建议接口：
 
 - `d4_airsim_episode_communication_v1`：main 按严格递增的 episode timestamp 逐 tick 输入 heartbeat、消息 delay/drop、ACK、partition、digest、恢复授权，以及按 secondary node keyed 的 `SecondaryReadinessEvidence`。readiness DTO 必须显式携带 current time、lease epoch/expiry、heartbeat/cue/communication 时间、gimbal、coverage/full-view 和 sustained window；heartbeat 单独存在不得 propose secondary owner。
 - `d4_p1_episode_fault_validation_matrix_v1`：覆盖 normal、center failure、center+secondary failure、missing ACK、stale epoch、expired lease 和 partition 的规范合同验收。
-- `d4-regional-failover-v1`：D4-owned truth-free payload，包含动态 scenario/node/region/task metadata、逐区域 ownership、D1/D2/D3/D5 risk、机动高空二级 coverage/readiness、最早 lease、跨区域 capacity fallback assignment 和全层 coalition commit。当前只有纯 Python 模块测试，尚未进入 AirSim 或 scalable3d main bus。
+- `d4-regional-failover-v1`：D4-owned truth-free payload，包含动态 scenario/node/region/task metadata、逐区域 ownership、D1/D2/D3/D5 risk、机动高空二级 coverage/readiness、最早 lease、跨区域 capacity fallback assignment 和全层 coalition commit。main-owned scalable 3D 质点模块栈已消费该接口并发布 secondary/distributed D3 plan；AirSim 区域 episode 仍未验证。
+- `d4-region-resource-snapshot-v1` / `d4-region-resource-recommendation-v1`：只传区域聚合图与配额/邻区转移/备用/侦察/hold-replan 建议，不传 actor truth ID 或具体 assignment。所有输出经 formal owner/epoch/lease/commit/fault fence 投影，不能替代 D4 仲裁、D3 plan 或 D7 gate。
 
 main/runtime 已按 AirSim episode clock 对以下六类场景各运行 10 seeds，共 60 case：
 
@@ -35,11 +36,13 @@ main/runtime 已按 AirSim episode clock 对以下六类场景各运行 10 seeds
 | false degradation | 0 |
 | duplicate owner | 0 |
 | split-brain prevention failure | 0 |
-| D4 模块回归 | 303/303 passed |
+| D4 模块回归 | 335/335 passed |
+| 区域资源建议专项 | 32/32 passed |
+| scalable 3D 质点接口定向测试 | 8/8 passed |
 
 30% loss 场景中，7 个缺 ACK case 保守阻断，只有 3 个完整 ACK case 执行。该结果关闭 episode-clock 多 seed 安全矩阵缺口，不关闭真实网络 P1。
 
-2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。2026-07-20 新增 23 项区域合同测试后，全量为 303/303；五档 5/20/50/100/200 区域元数据、声明节点数上限、中心/二级连续失效、全层原子 ACK/partition、D5 member hold、单成员多能力、跨区域 capacity 和旧 generation/最早 lease 均通过。该新增结果未启动 AirSim 或 main-owned scalable3d episode，不能写成新的 episode、200v200 动力学或真实网络证据；真实 RF/mesh/socket、带宽、时钟漂移、排队/乱序/重传和硬件链路继续作为 P1。
+2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段新增 23 项后为 303/303；当前增加区域资源建议专项 32 项后为 335/335。main 后续质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。该结果只更新 scalable 接口状态；本轮没有启动 AirSim，也不是真实 RF/mesh/socket、带宽、时钟漂移、排队/乱序/重传或硬件证据。
 
 ## 3. 状态与所有权规则
 
@@ -89,7 +92,7 @@ main 每个 tick 至少提供：
 
 所有输入按实际资源和任务列表长度运行，不写死 2v2 或 5v5。
 
-scalable3d 区域接线还需 main 按 `region_policy_period_s` 提供 scenario/region definition、逐任务 D1/D2/D3/D5 evidence、逐区域 secondary readiness 和 member ACK。D4 不从真值位置推导 region 或 ID，也不生成 D3 系统计划。
+scalable3d 质点接线现已由 main 按在线时钟提供 scenario/region definition、D1/D2/D3/D5 evidence、逐区域 secondary readiness 和 member ACK，并消费 D4 ownership 生成 D3 secondary/distributed plan。D4 仍不从真值位置推导 region 或 ID，也不生成 D3 系统计划；后续缺口是长时 200v200、多 seed、D6 区域趋势和 AirSim 区域 episode，而不是接口“未接线”。
 
 ## 6. Episode 输出
 
@@ -118,7 +121,8 @@ D4 每个 tick 输出：
 1. 在相同 M5N2 几何和 seeds 下增加中心失效、中心与二级连续失效两组 paired case，验证 secondary/distributed owner、版本、epoch、lease、完整 ACK 和物理连续性。
 2. 增加可审计主动风险 case：D1 协方差/陈旧、D2 关联冲突、D3 stale/infeasible、D5 current binding/身份/跨视角不一致；单纯物理未命中或 `collision_stop` 不得直接触发降级。
 3. 在控制日志中持久化 collision object/source lineage，用于区分成员碰撞、环境碰撞和 AirSim 状态异常；该字段只供诊断和 D6 评分，不绕过 D4 仲裁。
-4. main 将 `d4-regional-failover-v1` 接入 scalable3d versioned envelope，运行 5/20/50/100/200 课程规模与 200v200 多 seed episode，记录逐区域 owner、generation、lease、commit、stage timing 和分区恢复；该工作属于 main-owned 集成，不由 D4 修改。
+4. 保持已完成的 scalable3d versioned envelope 接线回归，扩展 5/20/50/100/200 长时多 seed episode，记录逐区域 owner、generation、lease、commit、fault fence、stage timing、churn 和分区恢复；该工作属于 main-owned 集成，不由 D4 修改。
+5. 区域资源学习建议先在 shadow 中运行至少 20 个未见 seed，paired 报告 backlog、transfer、churn、communication、fail-closed、安全违规和 P50/P95 latency。未满足门槛前不进入 assist；即使满足也不绕过正式 D4/D3/D7 gate。
 
 以下项目仍为 P1，不能由当前 episode-clock 结果替代：
 
@@ -142,9 +146,11 @@ D4 每个 tick 输出：
 ## 10. 验收命令
 
 ```bash
-git diff --check -- \
-  subagent_reviews/D4_DISTRIBUTED_FALLBACK_REVIEW_AND_PLAN.md \
-  research_modules/d4_distributed_fallback/reports/AIRSIM_INTEGRATION_PLAN.md
+python3 -m py_compile \
+  research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource.py \
+  research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_learning.py
+PYTHONPATH=research_modules/d4_distributed_fallback \
+python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 ```
 
-本轮新增 D4 区域合同、模块测试和文档，不运行 AirSim/scalable3d episode，也不修改 main/runtime、D3、D5、D6 或 D7。
+本轮新增 D4 区域资源建议代码、测试和文档，不启动 AirSim，也不修改 main/runtime、scalable_3d_simulation、D3、D5、D6 或 D7；只读运行 main-owned 质点集成测试用于同步接口事实。

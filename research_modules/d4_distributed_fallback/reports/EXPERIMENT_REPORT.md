@@ -4,7 +4,7 @@
 
 本报告覆盖两类离线降级逻辑：中心节点失效后的被动降级连续性仿真，以及中心节点未失效但局部不确定性升高时的主动降级仲裁规则测试。节点通过内存网络交换粗粒度摘要，不涉及真实无线通信、火控参数、毁伤逻辑、实机飞控、硬件驱动、自动处置或绕过人工授权的流程。
 
-2026-07-15 AirSim 证据严格限定为已完成的 20 个真实 M5N2 case。2026-07-20 新增证据严格限定为 23 个 D4 区域合同单元 test case；没有新增 AirSim/scalable3d episode、随机 seed、真实网络或物理样本。终止命令生效前额外完成的 `png_ttc_2v2_seed001` 不纳入 M5N2 聚合；其余 tuned case 未执行，dropout case 完成数为 0，缺失项保持 unavailable。
+2026-07-15 AirSim 证据严格限定为已完成的 20 个真实 M5N2 case。2026-07-20 D4-owned 新增证据为 23 个区域 authority 合同测试和 32 个区域资源建议/学习管线测试；main-owned scalable 3D 定向接口测试为 8/8。后者只证明质点模块栈已接入单一二级、多二级区域 owner、distributed D3 plan 和 D7 fencing，不是 AirSim、真实网络、硬件或长时多 seed 证据。本轮没有启动新 AirSim episode。终止命令生效前额外完成的 `png_ttc_2v2_seed001` 不纳入 M5N2 聚合；其余 tuned case 未执行，dropout case 完成数为 0，缺失项保持 unavailable。
 
 ## 2. 实验目的
 
@@ -87,13 +87,21 @@ D4 验证中心节点异常时的保底策略：
 | 验收项 | 门限 | 结果 |
 |---|---:|---:|
 | 新增区域合同测试 | 23/23 | 23/23 passed |
-| D4 全量测试 | 零失败 | 303/303 passed |
+| D4 全量测试（区域合同阶段） | 零失败 | 303/303 passed |
 | 五档 metadata region/task 完整性 | 5/20/50/100/200 全部匹配 | 5/5 scales passed |
 | 中心正常时 owner 转移 | 0 | 0 |
 | `k>1` 缺 ACK 部分提交 | 0 | 0 |
 | 旧 epoch/version、过期 lease、分区后执行 | 0 | 0 |
 
-完整 `k=2` ACK 用例在中心、二级与 distributed 三层都只在两成员 ACK 均匹配 plan/coalition version、epoch 且最早 lease 有效后进入 `committed`；缺一 ACK 为 `aborted`，任一层级分区闭锁，已提交 coalition 遇分区转为 `reconfiguring`。该结果关闭 D4 模块内区域 authority 和安全合同，不关闭 main bus 接线、完整 CBBA/CCBBA 共识、全局组合最优性、reserve/补位/缩编/重构、真实网络或物理拦截。
+完整 `k=2` ACK 用例在中心、二级与 distributed 三层都只在两成员 ACK 均匹配 plan/coalition version、epoch 且最早 lease 有效后进入 `committed`；缺一 ACK 为 `aborted`，任一层级分区闭锁，已提交 coalition 遇分区转为 `reconfiguring`。该结果关闭 D4 模块内区域 authority 和安全合同；main 后续已经完成质点模块栈接口接线，但完整 CBBA/CCBBA 共识、全局组合最优性、reserve/补位/缩编/重构、AirSim、真实网络和物理拦截仍未关闭。
+
+### 4.4 2026-07-20 区域资源建议与质点接口验证
+
+新增 `test_region_resource_advisor.py` 32 个 test case，验收阈值零失败，结果 32/32；D4 全量为 335/335。参数化规模为 3、5、8、32 个区域，不固定 8 区或 200 架资源。安全用例覆盖资源守恒、最低备用、断边/网络分区、中心 owner、两个二级 owner、完全 distributed owner、旧 epoch、过期 lease、缺 ACK、fault fence 和 formal committed member 保护。研究管线用例覆盖 BC loss/update、原生 clipped PPO 有限更新、manifest/state_dict/SHA256、整 scenario/seed split、版本/SHA/OOD/timeout/低置信/非有限回退和 shadow formal verdict 不变。
+
+paired evaluator 的合成 19-seed case 按门槛拒绝 assist；合成 20-seed case 报告 backlog、transfer time、plan churn、communication load、fail-closed、安全违规和 candidate latency P50/P95。该 20-seed fixture 只测试 evaluator 逻辑，不是已训练模型的未见 seed 实验，不能作为 assist 推荐证据。当前仍无训练后独立 checkpoint、实际至少 20 个未见 seed paired suite、AirSim 或真实网络收益，默认保持 disabled/shadow。
+
+同日只读运行 main-owned `scalable_3d_simulation/tests/test_module_stack.py` 为 8/8 passed。已有测试验证：单一二级接管后 D3 plan version 提升且 owner 为 `RECON-001`；两个二级节点发布多 owner 区域 plan；中心和二级连续失效后发布 distributed 区域 plan；D7 仅在当前 owner、epoch、lease、commit 和 fault fence 下继续质点导引。该结果是接口/质点证据，不写成 AirSim、真实网络或实飞结果。
 
 ## 5. 默认被动降级场景
 
