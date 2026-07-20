@@ -1,5 +1,31 @@
 # D7 比例导引架构评审与补充方案
 
+## 2026-07-20 scalable 3D 闭环评审
+
+D7-owned 新增 `scalable_3d_guidance.py` 和
+`test_scalable_3d_guidance.py`，没有修改既有二维 `pn.py`、`vision_png.py` 或
+`png_guidance_delivery`。新 controller 直接消费 D2 `GlobalTrack3D` 六维 NED 状态/
+6x6 协方差、D3 版本化 binding、D4 permission 和 D5 TerminalAssociation；每个
+`resource_id/global_track_id` pair 独立保存航迹滤波/外推、LOS KF、TTC、coast 和模式，
+按资源索引输出完整 `(resource_count,3)` finite NED 加速度矩阵。
+
+安全评审结论为通过：stale active plan 与 D4 replan/secondary/distributed pending
+均输出零命令 hold；D5 non-locked、D5 plan/assignment version mismatch、camera
+recognition unavailable、maneuver unavailable 均阻断 fresh visual switch。短时 coast
+只允许已有视觉命令的同 pair 在 D5 `reacquire` 且其余合同仍一致时最多 2 帧/0.25s；
+controller 不分配、不授权、不改写 `global_track_id`，metadata 明确端到端 RL 未使用。
+
+2026-07-20 新增 14 个确定性测试，D7 全量 `204 passed`，门槛为零失败。覆盖 1、7、
+200 pair、实际 D2/D3 DTO、三维高度差、D5 metadata 视觉入口、TTC、dropout、D4/
+version/capability 负例，以及 2-resource/1-target 无随机 seed 质点闭环。后者在任一
+resource 先进入三维 5 米时通过，另一 resource 仍在阈值外，不要求同时到达。
+
+原“online/default 3D PN 只在 P2 benchmark”的差距已对 scalable point-mass runtime
+部分关闭；仍开放的 3D 标定缺口是 main episode-bus 集成、5/20/50/100/200 多 seed
+闭环与耗时、world realized acceleration/turn/climb saturation、AirSim/SimpleFlight
+姿态推力和控制延迟、相机外参/曝光姿态同步，以及 D6 三维统计。True PN/APN/FRPN、
+MPC/NMPC、协同 impact-time/避碰仍未进入默认路径。下文旧状态保留为历史审计。
+
 ## 2026-07-15 M5N2 20-case 实测评审
 
 main 已完成 baseline 与 `soft_prediction + trend_coast` candidate 各 10 seeds。M5N2 `20/20` 后 TERM 生效前仅额外完成 `p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed001`；该单 seed 不纳入本次 M5N2 统计，也不用于分析或候选晋级，其余 tuned case 和全部 dropout 均未执行。两组合计 pair/target/coalition 为 `12/60`、`12/40`、`0/20`。第二 primary 按各 case 的 active membership 动态识别，不固定资源编号，物理结果为 `0/20`。baseline/candidate 第二 primary 最近距离均值分别为 `12.736/12.573 m`，平均改善仅 `0.163 m`。paired active-pair 成功有 6 持平、2 改善、2 退化，逐 seed non-degradation=false。

@@ -1,5 +1,39 @@
 # D7 比例导引与末端视觉导引算法及实施方案
 
+## 2026-07-20 可扩展三维实现
+
+新增实现位于 `d7_proportional_guidance/scalable_3d_guidance.py`，公开
+`ScalableGuidanceConfig3D`、`AssignmentPairGuidanceInput3D`、
+`TerminalVisualObservation3D`、`ScalableGuidanceController3D`、
+`GuidanceCommand3D` 和 `GuidanceBatch3D`。该文件独立于二维 `pn.py`，没有修改
+既有位置 PN、`png_vm/png_ttc`、LOS replay 或 delivery 代码。
+
+每个 pair 的 key 为 `(resource_id, assigned_global_track_id)`，状态包含：D3 plan
+context、六维 GlobalTrack 的确定性滤波状态、最长 0.50 秒目标外推、六状态 LOS KF、
+bbox TTC 窗口、local visual track、稳定/丢失帧计数、近期视觉命令窗口和当前模式。
+plan id/version 变化创建新的上下文；旧 active plan、航迹时间回退、航迹 age 超过
+0.75 秒或非有限输入均 fail closed。controller 不修改传入对象。
+
+中段按三维位置/速度计算 LOS-normal PN，并增加限幅 LOS 速度保持以适配可从静止
+起步的共享质点。末端先逐帧验证 active plan、binding、D4 和 D5 双版本，再把 bbox
+中心射线从 camera frame 旋转到 NED；LOS KF 和面积 TTC 有效后才计算三维视觉 PNG。
+raw lateral acceleration 超出声明的 `available_accel_mps2` 或使 maneuver margin 低于
+0.15 时，候选视觉命令被丢弃并回退三维中段 PN。D4 replan/degrade pending 或 stale
+active plan 则不回退旧计划控制，而是输出零加速度 `hold`。
+
+批量入口先按 `resource_index` 稳定排序，拒绝重复/越界索引，并创建完整
+`(resource_count,3)` 数组；无 assignment 的资源保持零。这样 main 可直接把
+`GuidanceBatch3D.to_world_acceleration()` 写入
+`VectorizedPointMassWorld.step(...)`，D7 不需要导入或拥有 world。
+
+2026-07-20 测试矩阵为 14 个新增确定性用例：1/7/200 pair、实际 D2
+`GlobalTrack3D` 与 D3 binding、非零高度差、D5 metadata 视觉观测、TTC fresh switch、
+2 帧/0.25 秒 dropout coast、D4 三类 pending、stale active plan、D5 plan mismatch、
+camera/maneuver gate，以及 2-resource/1-target 的 5 米任一首达闭环。D7 全量结果为
+`204 passed`，验收门槛为零失败。尚未执行 AirSim 三维闭环、多 seed 统计、200 对
+实时性能或姿态/推力/相机时延标定，因此实现状态必须写成“scalable point-mass
+implemented and tested”，不能写成“AirSim/platform calibrated”。
+
 ## 2026-07-15 实现边界与真实 M5N2 证据更新
 
 本轮没有修改本文后续给出的位置比例导引（PN）、速度矢量视觉比例导引（VM-PNG）、碰撞时间视觉比例导引（TTC-PNG）、视线（LOS）滤波和有界外推公式。`p1_terminal_timing_funnel_10seed_20260715_m5n2_*` 只为现有实现提供了 baseline/candidate 各 10 seeds 的真实 SimpleFlight 证据。M5N2 后额外完成的 `png_ttc_2v2_seed001` 已排除，dropout 执行数为 0。

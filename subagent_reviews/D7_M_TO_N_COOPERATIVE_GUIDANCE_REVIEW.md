@@ -1,5 +1,26 @@
 # D7 M 对 N 多无人机协同导引与到达时序综述
 
+## 2026-07-20 三维 N-pair 执行边界补充
+
+新增 `ScalableGuidanceController3D.command_batch()` 可在一次调用中处理任意长度的
+已分配 pair，并输出按 main resource index 排列的完整 NED 加速度数组；确定性测试
+已覆盖 7 pair 和 200 pair，命令均 finite 且不越配置上限。多个资源可以合法地消费
+同一个 center-owned `global_track_id`，但各自的航迹滤波、LOS KF、TTC、dropout
+coast 和模式状态按 `(resource_id, global_track_id)` 隔离，D7 不由此形成或修改联盟。
+
+2-resource/1-target 质点 fixture 使用 NED 三维 5 米判据：任一资源首达即满足本测试
+的 target intercept，首达时另一资源仍在 5 米外。这与当前 per-primary/无需同时到达
+合同一致，也再次说明“N 个独立三维 PN pair 并行”不是 cooperative impact-time
+guidance。本轮没有 coalition clock、time-to-go consensus、同步/序贯到达控制、终端
+扇区协调或成员防碰撞；这些能力仍保持未实现。
+
+2026-07-20 验证为 14 个新增确定性场景、D7 全量 `204 passed`，无 AirSim 运行。
+scalable point-mass 3D 路径已从 isolated benchmark 晋级为 D7-owned executable
+baseline，但 M-to-N 协同结论不变：D3 决定成员和版本，D4 决定许可，D5 提供每个
+资源的视觉锁，D7 只执行各 pair 的有界命令。后续若研究同时到达，必须另建明确的
+coalition-level 时钟、通信、可行性和安全约束，不能复用本轮“任一首达 5 米”结果
+宣称协同控制完成。
+
 ## 2026-07-15 M5N2 baseline/candidate 各 10 seeds 复核
 
 本轮只复核 20 个已完成的真实 AirSim SimpleFlight M5N2 case。M5N2 `20/20` 后 TERM 生效前仅额外完成 `p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed001`；该单 seed 不纳入本次 M5N2 统计，也不用于分析或晋级，其余 tuned case 和全部 dropout 均未执行。高威胁目标的联盟仍为 2 个 active primary + 1 个 standby reserve，验收仍是每个 active primary 在同 case 分别进入 NED 三维 5 米，不要求同时到达。

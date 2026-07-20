@@ -1,5 +1,41 @@
 # D7 比例导引与末端视觉 PNG 模块
 
+## 2026-07-20 可扩展三维质点闭环
+
+D7 新增独立的 `d7_proportional_guidance/scalable_3d_guidance.py`，为 main-owned
+`scalable_3d_simulation` 提供确定性三维闭环。该路径不修改既有
+`compute_proportional_navigation_command()` 二维公式，也不修改
+`vision_png.py` 或 `png_guidance_delivery`。输入合同为 D2
+`GlobalTrack3D.state=[pN,pE,pD,vN,vE,vD]` 与 `6x6 covariance`、D3 当前版本
+binding、D4 permission、D5 `TerminalAssociation`，以及 main 提供的本机六维
+状态和资源索引；输出 `GuidanceBatch3D.acceleration_ned_mps2` 的形状固定为
+`(resource_count, 3)`，未分配索引为零，可直接传给
+`VectorizedPointMassWorld.step(interceptor_acceleration_ned=...)`。
+
+`ScalableGuidanceController3D` 按 `(resource_id, assigned_global_track_id)` 保存互不
+共享的航迹滤波/外推、六状态 LOS KF、bbox 面积 TTC、视觉稳定帧、短时命令 coast
+和模式状态。中段命令由经典三维 LOS-normal PN
+`a_perp=N*max(Vc,0)*lambda_dot` 与质点推进所需的有界 LOS 速度保持项组成；末端
+把相机光学射线通过 `camera_to_ned_rotation` 转到 NED，使用 delivery 同口径的 LOS
+滤波、面积扩张 TTC、`N*Vc_visual*lambda_dot`、机动裕度和向量模限幅。视觉丢帧
+只在同一 pair 已建立视觉命令、D5 明确 `reacquire`、D3/D4/身份/版本仍一致时，
+允许最多 2 帧且不超过 `0.25 s` 的指数衰减 coast；它不是 fresh visual switch。
+
+门控保持 fail closed：active plan id/version 与 binding 不一致时输出零加速度
+`hold`；D4 `request_center_replan/degrade_to_secondary/degrade_to_distributed`、D5
+非 `locked`、D5 plan/assignment version 不一致、相机识别能力不可用或机动裕度
+不足时均不能进入三维视觉 PNG。D7 只复制并核对 center-owned
+`global_track_id`，不分配、不授权、不本地重绑，也不使用端到端强化学习。
+
+2026-07-20 验证为 14 个新增确定性场景、D7 全量 `204 passed`。覆盖单 pair、7
+pair、200 pair、三维高度差、实际 D2/D3 DTO、D5 metadata 视觉输入、TTC 切换、
+丢帧 coast、D4 三类 pending action、stale active plan、D5 version mismatch，以及
+一个无随机 seed 的 2-resource/1-target 质点 fixture。该 fixture 在任一资源先进入
+NED 三维 `<=5 m` 时通过，且另一资源仍 `>5 m`，明确不要求同时到达。该证据只
+关闭可扩展质点世界的接口和确定性闭环，不等于 AirSim 多旋翼、姿态/推力、相机
+时延或 200 对实时性能已标定。下文 2026-07-15 及更早关于“在线 3D deferred”的
+段落保留为历史状态，不能覆盖本节的新实现边界。
+
 ## 2026-07-15 真实 AirSim M5N2 20-case 复核
 
 main 已完成并停止 `p1_terminal_timing_funnel_10seed_20260715_m5n2_*` 的 20 个 SimpleFlight case：baseline 与 `soft_prediction + trend_coast` candidate 各 10 seeds，每个 case 有 3 个 active primary，物理成功按 NED 三维距离不大于 5 米的离线真值评分。两组 active-primary 均为 `6/30`，target 均为 `6/20`，coalition 均为 `0/10`；合计 pair/target/coalition 为 `12/60`、`12/40`、`0/20`。高威胁目标的第二 primary 按各 case 的 active membership 动态识别，不写死资源编号，两组均为 `0/10`、合计 `0/20`。baseline 第二 primary 最近距离均值为 `12.736 m`，candidate 为 `12.573 m`，但 paired seeds 中物理 pair 结果为 6 组持平、2 组改善、2 组退化，不构成稳定收益。

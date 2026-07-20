@@ -1,5 +1,39 @@
 # D7 AirSim 集成计划
 
+## 2026-07-20 三维共享世界接入状态
+
+D7 已提供 `ScalableGuidanceController3D.command_batch(...)`，但本轮没有启动 AirSim，
+也没有修改 main-owned `scalable_3d_simulation` 或 `airsim_runtime`。main 接入时应从
+`PlatformNavigationBatch.state_ned[resource_index]` 取得本机六维状态，从 D2 总线取
+同一时刻可用的 `GlobalTrack3D`，再注入 D3 current binding、D4 permission 和 D5
+TerminalAssociation。返回的 `GuidanceBatch3D.acceleration_ned_mps2` 已满足 main
+`RuntimeStepOutput.interceptor_acceleration_ned` 的 `(resource_count,3)`/finite 合同。
+
+推荐调用顺序为：
+
+```text
+main active plan/version + resource-index map
+  -> D2 GlobalTrack3D + D3 binding + D4 permission + D5 association
+  -> AssignmentPairGuidanceInput3D[]
+  -> ScalableGuidanceController3D.command_batch(resource_count=N)
+  -> RuntimeStepOutput.interceptor_acceleration_ned
+  -> VectorizedPointMassWorld.step(...)
+  -> main/offline 3D <= 5 m scorer
+```
+
+视觉 observation 可由 main 显式构造 `TerminalVisualObservation3D`，也可放在 D5
+`TerminalAssociation.metadata.visual_observation`；两种方式都必须包含 bbox、图像
+尺寸、`3x3` 内参、`camera_to_ned_rotation`、曝光时间、置信度、local track id 和原
+binding 的 global track id。缺字段、时延超限、D5 non-locked、D5/active plan version
+失配、D4 replan/degrade pending 或平台机动能力不足均禁止 fresh visual switch。
+
+2026-07-20 仅完成无 AirSim 的确定性代码验收：14 个新增用例、D7 全量
+`204 passed`；其中 200 pair 命令均 finite，2-resource/1-target fixture 在任一资源先
+进入三维 5 米时通过且不要求同时到达。main 后续仍需完成 episode-bus 接线、
+5/20/50/100/200 多 seed 运行、阶段耗时、world 动力学 realized acceleration、转率/
+垂向速度饱和、相机姿态同步和 AirSim/SimpleFlight 参数标定。未完成前不得把本节
+写成真实 AirSim 或 PX4 三维验证。
+
 ## 2026-07-15 M5N2 集成证据收口
 
 `p1_terminal_timing_funnel_10seed_20260715_m5n2_*` 已完成 baseline/candidate 各 10 seeds，所有 20 个 case 均有 `intercept_summary.json`、`control_commands.csv`、`d7_actual_execution_metrics.json`、control-tick timing 和 main-bus stage timing。M5N2 `20/20` 后 TERM 生效前仅额外完成 `p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed001` 的 1 个 `intercept_summary.json`；该单 seed 不纳入本次 M5N2 统计，也不用于分析或晋级。其余 tuned case 和全部 dropout 均未执行，不得以缺失值或0 写入本轮结论。

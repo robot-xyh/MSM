@@ -1,5 +1,44 @@
 # 比例导引模块中文原理
 
+## 2026-07-20 三维可扩展闭环原理增量
+
+`scalable_3d_guidance.py` 新增与既有二维接口并列的确定性三维路径。工作状态固定为
+NED 六维向量 `x=[pN,pE,pD,vN,vE,vD]`；D2 提供 center-owned
+`GlobalTrack3D` 和 `6x6` 协方差，D3 提供当前 plan id/version 与资源-航迹 binding，
+D4 提供是否可继续执行的许可，D5 只提供末端本地视觉航迹对既有
+`global_track_id` 的保守关联。D7 不从像素、本地 track id 或距离重新生成全局身份。
+
+设相对位置和速度为 `r=p_t-p_i`、`v=v_t-v_i`，则
+
+```text
+R = ||r||
+lambda = r / R
+Vc = -dot(v, lambda)
+lambda_dot = (v - dot(v, lambda) * lambda) / R
+a_PN = N * max(Vc, 0) * lambda_dot
+```
+
+`a_PN` 位于 LOS 法平面。由于共享世界是受限三维质点而不是自带恒定推力的导弹，
+实现另加一个沿 LOS 的有界速度保持项，使静止或低速资源也能建立闭合速度；两个
+分量分别限幅后再按平台可用加速度限幅。该推进项是明确记录的质点执行适配，不
+改写二维 `a_n=N*Vc*lambda_dot` 公式。
+
+末端相机使用光学坐标 `x-right/y-down/z-forward`。bbox 中心经针孔内参形成相机
+射线，再由同步的 `camera_to_ned_rotation` 转到 NED。每个 assignment pair 自己的
+六状态 LOS KF 估计 `lambda/lambda_dot`，bbox 面积 EMA 和窗口斜率给出
+`TTC=2A/A_dot`，随后采用 `a_visual=N*(R/TTC)*lambda_dot`，并执行 TTC 范围、
+识别置信度、边界裁剪、稳定帧、视觉时延、LOS innovation、机动裕度和向量模限幅。
+这些思想来自 `png_guidance_delivery` 已验证的 LOS KF、ScaleExpansionTTC、
+strapdown PNG 和 terminal command decay；交付目录原代码未修改。
+
+丢帧 coast 不是新的视觉切换。只有当前 pair 先前已有已接受视觉命令、D5 明确进入
+`reacquire`、当前 D3/D4/身份/版本仍全部一致，才把近期命令均值按指数衰减保持最多
+2 帧且不超过 0.25 秒；任一合同失配立即清空。2026-07-20 的 14 个新增场景和 D7
+全量 `204 passed` 验证上述不变量，并以 2-resource/1-target 无随机 seed 质点 fixture
+证明任一资源独立进入 NED 三维 5 米即可结束，另一资源无需同时到达。该证据不包含
+AirSim 姿态/推力、真实相机时序或平台饱和标定；本文后续“默认在线仍为二维”的旧句
+只适用于 2026-07-15 及更早历史路径。
+
 ## 2026-07-15 M5N2 真实证据的原理解读
 
 20 个真实 AirSim SimpleFlight M5N2 case 使用同一原理边界：D7 对每个 active primary 独立运行雷达中段 PN 与末端视觉 PNG，联盟完成只表示所有必要 primary 各自进入 NED 三维 5 米范围，不要求同时到达。baseline/candidate 各 10 seeds 均只完成 `6/30` active pair 和 `6/20` target opportunity，联盟均为 `0/10`；合计 pair/target/coalition 为 `12/60`、`12/40`、`0/20`。第二 primary 按每个 case 的 active membership 动态识别，不固定资源编号，合计为 `0/20`。这说明“某目标至少被一个资源拦截”不能替代“高威胁目标的全部必要 primary 完成”。

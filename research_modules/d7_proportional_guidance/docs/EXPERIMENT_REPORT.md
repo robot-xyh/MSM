@@ -1,5 +1,35 @@
 # D7 末端切换诊断实验记录
 
+## 2026-07-20 可扩展三维闭环确定性验收
+
+本轮验证对象为新增 `scalable_3d_guidance.py`，未启动 AirSim。测试日期
+2026-07-20；新增场景 14 个，均为确定性输入，其中质点闭环 fixture 无随机 seed；
+D7 全量结果为 `204 passed`，验收阈值为零失败。
+
+| 场景 | 样本/规模 | 验收条件 | 结果 |
+| --- | ---: | --- | --- |
+| 单 pair 重复执行 | 2 个独立 controller | 三维命令逐元素一致、finite、模不超过 16 m/s2 | 通过 |
+| N pair 独立状态 | 7 pair / 9 资源槽 | 每 pair filter timestamp/mode 独立，空槽为零 | 通过 |
+| 规模压力 | 200 pair | 输出形状 `(200,3)`，全部 finite，命令模不越限 | 通过 |
+| 三维高度差 | 1 pair | NED 垂向 LOS 与加速度非零且方向正确 | 通过 |
+| 实际 DTO | D2 `GlobalTrack3D` + D3 binding | 六维状态、6x6 协方差和版本直接可消费 | 通过 |
+| 末端视觉 | 3 帧面积扩张 | D5 locked/双版本一致后 TTC 有效并进入 visual PNG | 通过 |
+| D5 metadata 入口 | 3 帧 | 不提供额外 observation 参数也可形成同一视觉输入 | 通过 |
+| 丢帧 | 3 个 reacquire tick | 前 2 帧为有界衰减 coast，第 3 帧超时回中段 | 通过 |
+| D4/stale plan | 3 类 pending + 1 stale active version | 零命令 hold，fresh visual switch 为 false | 通过 |
+| D5/camera/maneuver | non-locked、version mismatch、两类 capability false | 均不能进入视觉模式且 global id 不变 | 通过 |
+| 5 米质点闭环 | 2 resources / 1 target / 1 deterministic fixture | 任一资源三维距离 `<=5m` 即通过，首达时另一资源 `>5m` | 通过 |
+
+该结果证明：D7 可按资源索引为 main-owned 六维质点世界形成确定性有限三维命令，
+assignment pair 的滤波、外推、TTC、coast 和模式不会共享，且成功判据不含同时到达。
+它不证明 AirSim 多旋翼实际轨迹、相机识别率、控制时延、姿态/推力饱和、碰撞安全、
+200 对实时速度或多 seed 成功率。剩余标定必须在 main/D6 的真实 episode 和离线 truth
+scorer 中完成；D7 在线仍只能消费 D2 estimate，不能把 truth 反馈到控制。
+
+借鉴 `png_guidance_delivery` 的内容限于 LOS 6D KF、bbox ScaleExpansionTTC、
+strapdown camera-to-inertial/NED LOS、导航增益和向量/命令限幅、短时命令均值与指数
+衰减 coast。交付目录、既有二维 PN/VM/TTC 公式及其历史实验结果均未修改。
+
 ## 2026-07-15 真实 AirSim M5N2 20-case 复核
 
 ### 实验范围

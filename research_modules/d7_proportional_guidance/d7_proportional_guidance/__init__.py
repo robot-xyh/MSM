@@ -99,6 +99,17 @@ from .replay import (
     evaluate_bbox_los_replay,
     vision_observations_from_bbox_replay,
 )
+from .scalable_3d_guidance import (
+    SCALABLE_3D_GUIDANCE_BOUNDARY,
+    AssignmentPairGuidanceInput3D,
+    GuidanceBatch3D,
+    GuidanceCommand3D,
+    GuidanceMode3D,
+    PairGuidanceStateSnapshot3D,
+    ScalableGuidanceConfig3D,
+    ScalableGuidanceController3D,
+    TerminalVisualObservation3D,
+)
 from .selector import (
     GuidanceLawSelection,
     RuntimeGuidanceLaw,
@@ -199,6 +210,15 @@ __all__ = [
     "PNG_TTC_REQUIRED_REJECT_CLASSES",
     "PngGuidanceCommand",
     "PngGuidanceConfig",
+    "SCALABLE_3D_GUIDANCE_BOUNDARY",
+    "AssignmentPairGuidanceInput3D",
+    "GuidanceBatch3D",
+    "GuidanceCommand3D",
+    "GuidanceMode3D",
+    "PairGuidanceStateSnapshot3D",
+    "ScalableGuidanceConfig3D",
+    "ScalableGuidanceController3D",
+    "TerminalVisualObservation3D",
     "RuntimeGuidanceLaw",
     "SimpleFlightPngGuidanceFilter",
     "TerminalPngContractDecision",

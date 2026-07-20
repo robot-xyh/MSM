@@ -1,5 +1,37 @@
 # D7 比例导引与末端视觉 PNG 实现差距审计
 
+## 2026-07-20 GAP 重分类：scalable point-mass 3D runtime 已实现
+
+此前表中“online/default 3D PN 控制律仅有 P2 benchmark”的描述已被本轮部分取代。
+`scalable_3d_guidance.py` 现提供独立、确定性、可执行的三维质点路径：D2 六维
+GlobalTrack + covariance、D3 current binding/version、D4 permission、D5
+TerminalAssociation -> per-pair 三维 PN/视觉 PNG/coast -> resource-indexed NED
+acceleration。legacy 二维 API 与 delivery 公式保持原样，因此这不是以新路径替换
+历史 AirSim/SimpleFlight 默认链路。
+
+关闭证据日期为 2026-07-20。新增 14 个确定性场景全部通过，D7 全量
+`204 passed`；覆盖 1/7/200 pair finite 命令、实际 D2/D3 DTO、高度差、TTC/LOS、D5
+metadata、2 帧/0.25s dropout、D4 三类 pending、stale active plan、D5 version、camera/
+maneuver gate，以及 1 个无随机 seed 的 2-resource/1-target 质点 fixture。5 米验收为
+任一 pair 独立首达，首达时另一 pair 仍 `>5m`。安全违规预期值和实测值均为 0：
+stale plan 接受 0、D4 pending 视觉切换 0、non-locked/capability-failed 视觉切换 0、
+`global_track_id` rewrite 0、端到端 RL 使用 0。
+
+GAP 状态更新如下：
+
+| GAP | 新状态 | 剩余限制 |
+| --- | --- | --- |
+| 六维 NED 3D PN 与世界回写 | D7-owned implemented/tested | main 尚未接 episode bus，也未做 200 对闭环耗时 |
+| 末端三维 strapdown TTC PNG | D7-owned deterministic path implemented/tested | 真实 D5 相机流、姿态同步、识别率和 AirSim 外参未标定 |
+| per-pair filter/extrapolation/coast | implemented/tested | 仅 2 帧/0.25s 固定默认，尚无多 seed 平台调参 |
+| 5 米闭环 | point-mass fixture passed | 不是 AirSim truth-isolated 多 seed 物理成功率 |
+| 真实平台三维机动能力 | open calibration | 姿态/推力、转率、爬升率、延迟、碰撞与 realized command 待测 |
+| cooperative 3D guidance | not implemented | 仍无 impact-time consensus、同步到达或成员避碰；本轮明确不要求同时到达 |
+
+因此该 GAP 不能再写成“3D runtime 未实现”，也不能写成“3D AirSim 已闭合”。准确
+口径是“scalable point-mass runtime 实现并单测完成，main/AirSim/D6 标定开放”。
+下文 2026-07-15 及更早条目保留为当时审计快照。
+
 ## 2026-07-15 M5N2 20-case GAP 复核
 
 20 个 truth-isolated 真实 AirSim SimpleFlight M5N2 case 已完成，baseline/candidate 各 10 seeds。M5N2 `20/20` 后 TERM 生效前仅额外完成 `p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed001`；该单 seed 不纳入本次 M5N2 GAP 统计，也不用于分析或晋级，其余 tuned case 和全部 dropout 均未执行。P0 仍无新 blocker：20 个 M5N2 case 的 online truth identity/state 使用数均为 0，在线目标状态来自 D2 估计，本轮未改 PN/PNG/LOS/外推公式、`global_track_id` 或 D3/D4/D5 gate。

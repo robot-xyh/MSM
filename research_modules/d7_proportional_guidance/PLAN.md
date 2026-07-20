@@ -1,5 +1,30 @@
 # D7 经典比例导引架构计划
 
+## 2026-07-20 可扩展三维闭环计划完成
+
+本轮完成 `scalable_3d_guidance.py` 与
+`tests/test_scalable_3d_guidance.py`。新路径接入 D2 六维 NED GlobalTrack、D3
+版本化 binding、D4 permission 和 D5 TerminalAssociation，按 assignment pair
+独立维护航迹滤波/外推、LOS KF、TTC、coast 和模式状态，并按资源索引输出完整
+`(resource_count,3)` NED 加速度数组。既有二维 `pn.py`、`vision_png.py` 与
+`png_guidance_delivery` 核心公式均未修改；D7 仍不分配、不授权、不改写
+`global_track_id`，不采用端到端 RL。
+
+本轮验收日期为 2026-07-20，新增 14 个确定性测试，D7 全量为 `204 passed`，门槛
+为全量零失败。规模样本覆盖 1、7 和 200 个 pair；三维场景覆盖非零高度差；门控
+覆盖 D4 replan/secondary/distributed pending、D5 non-locked、active/D5 plan
+version mismatch、相机识别 unavailable 和 maneuver unavailable；末端覆盖 bbox
+面积扩张 TTC 与 2 帧/0.25s coast。单个无随机 seed 的 2-resource/1-target 质点
+fixture 以“任一 pair 首次进入 NED 三维 5 米”为成功，首达时另一 pair 仍在 5 米
+外，因此不引入同时到达条件。
+
+该事项从“仅 P2 隔离 benchmark”重分类为“scalable point-mass runtime 已实现并
+单测”；剩余计划不是再次实现三维公式，而是由 main 接入统一 episode bus、在
+5/20/50/100/200 课程规模做多 seed 闭环和耗时统计，并标定 AirSim/SimpleFlight
+的三维转率、垂向速度、姿态/推力、控制延迟与相机外参时序。True PN、APN、FRPN、
+MPC/NMPC 和 cooperative impact-time control 仍不进入该确定性默认路径。下文旧
+计划中“online/default 3D PN deferred”只描述 2026-07-15 及更早状态。
+
 ## 2026-07-15 M5N2 20-case 证据收口与后续计划
 
 main 已完成 baseline/candidate 各 10 seeds 的 20 个真实 AirSim SimpleFlight M5N2 case。M5N2 `20/20` 后 TERM 生效前仅额外完成 `p1_terminal_timing_funnel_10seed_20260715_png_ttc_2v2_seed001`；该单 seed不纳入本次 M5N2 统计，也不用于分析或候选晋级，其余 tuned case 和全部 dropout 均未执行。两组合计 pair/target/coalition 为 `12/60`、`12/40`、`0/20`；第二 primary 按各 case 的 active membership 动态识别，不写死资源编号，物理结果为 `0/20`。candidate 的逐 seed non-degradation=false、trend coast 触发=0、soft-specific duration=0，故继续 default-off，不进入主线。
