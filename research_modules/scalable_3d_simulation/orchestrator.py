@@ -229,6 +229,7 @@ class Scalable3DEpisodeRunner:
                             timestamp=current_time,
                             schema_version=publication.schema_version,
                             payload=publication.payload,
+                            copy_payload=publication.copy_payload,
                         )
                         module_publication_count += 1
                         module_publication_topic_counts[publication.topic] = (

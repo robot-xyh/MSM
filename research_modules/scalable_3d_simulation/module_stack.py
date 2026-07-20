@@ -1112,6 +1112,7 @@ class IntegratedScalableModuleStack:
                 "tracks": [_track_summary(track) for track in result.tracks],
                 "summary": result.summary.to_dict(),
             },
+            copy_payload=False,
         )
 
     def _d2_publication(self, now: float) -> RuntimePublication:
@@ -1158,6 +1159,7 @@ class IntegratedScalableModuleStack:
                 "id_switch_count": None,
                 "id_switch_count_available": False,
             },
+            copy_payload=False,
         )
 
     def _d3_publication(self, now: float) -> RuntimePublication:
@@ -1188,6 +1190,7 @@ class IntegratedScalableModuleStack:
                 "solver_name": plan.solver_name,
                 "metadata": dict(plan.metadata),
             },
+            copy_payload=False,
         )
 
     def _d4_publication(self, now: float) -> RuntimePublication:
@@ -1196,6 +1199,7 @@ class IntegratedScalableModuleStack:
             source="D4",
             schema_version="d4-regional-failover-v1",
             payload=self.latest_d4_decision.to_bus_payload(),
+            copy_payload=False,
         )
 
     def _d5_publication(self, now: float) -> RuntimePublication:
@@ -1224,6 +1228,7 @@ class IntegratedScalableModuleStack:
                     for item in association.bindings
                 ],
             },
+            copy_payload=False,
         )
 
     def _d7_publication(self, now: float) -> RuntimePublication:
@@ -1252,6 +1257,7 @@ class IntegratedScalableModuleStack:
                     for command in commands
                 ],
             },
+            copy_payload=False,
         )
 
     def _diagnostics(self, now: float) -> dict[str, Any]:

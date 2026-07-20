@@ -47,10 +47,13 @@ class PlatformNavigationBatch:
 
 @dataclass(frozen=True)
 class RuntimePublication:
+    """One online publication; zero-copy requires producer ownership transfer."""
+
     topic: str
     source: str
     schema_version: str
     payload: Any
+    copy_payload: bool = True
 
 
 @dataclass(frozen=True)

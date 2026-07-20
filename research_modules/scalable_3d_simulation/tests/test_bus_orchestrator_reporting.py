@@ -172,6 +172,16 @@ class _ConstantCommandStack:
         )
 
 
+def test_runtime_publication_keeps_safe_copy_as_the_default() -> None:
+    publication = RuntimePublication(
+        topic="modules.test",
+        source="TEST-STACK",
+        schema_version="test-stack-v1",
+        payload={"status": "coast"},
+    )
+    assert publication.copy_payload is True
+
+
 def test_truth_free_module_stack_can_write_commands_back_to_world() -> None:
     config = ScenarioConfig(
         target_count=2,
