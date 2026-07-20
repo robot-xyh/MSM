@@ -702,7 +702,9 @@ unavailable，不与异批 case/seed 混合。system-evidence 专项 `31 passed`
 
 main 后续应在同一 episode 目录持久化：
 
-1. D1 `OfflineConsistencyResult` JSON，并在 manifest 记录文件 SHA-256；
+1. D1 `OfflineConsistencyResult` JSON，并在 manifest 记录文件 SHA-256；其规范映射摘要字段为
+   `input_digests.d2_lineage_mapping`，aggregation row 对应
+   `d2_lineage_mapping_digest`；
 2. D2 `Scalable3DIdentityEvaluation` JSON，并在 manifest 记录文件 SHA-256和其四类 source
    hash；
 3. actual scenario/version/run/seed 与 target/resource/recon/camera count；
@@ -714,6 +716,10 @@ D2 文件路径还必须携带完整四类 expected source hash。
 任何文件缺失时相应指标保持 unavailable；文件存在但 SHA-256、schema、episode identity 或
 真值隔离审计不一致时直接拒绝。D6 不通过 AirSim object name、actor ID、detect 返回的真实
 名称或最近距离恢复 D2 身份。
+
+D6 仅为历史 D1 制品读取 `canonical_mapping/canonical_mapping_digest` 别名；输出 CSV、JSON
+和中文报告统一写为 `d2_lineage_mapping`。新旧字段同时出现但摘要不同，或 truth metrics
+可用却两者均缺失时拒绝制品。
 
 2026-07-20 的 5/20/50/100/200 仅为离线结构 fixture。真实 AirSim 仍按 5～20 架代表性
 子场景运行；200 对 200 的正式验证由三维质点环境承担。当前工作树的 main-owned scalable

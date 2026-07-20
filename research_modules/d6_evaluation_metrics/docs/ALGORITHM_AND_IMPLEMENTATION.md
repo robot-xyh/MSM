@@ -1408,7 +1408,19 @@ nis_gate_coverage = sum(I[nis_i <= gate_i]) / n_gate
 
 各分母独立。缺位置真值不影响已有 NIS 样本；缺 gate 不进入 NIS coverage 分母。每个结果
 同时保存 sample count、不可用原因分布、D1 result digest、online evidence digest、truth
-sidecar digest 和 D2 canonical mapping digest。
+sidecar digest 和 D2 lineage mapping digest。
+
+D1 当前规范字段为 `input_digests.d2_lineage_mapping`，aggregation record 为
+`d2_lineage_mapping_digest`。兼容解析器只在输入侧接受旧
+`canonical_mapping/canonical_mapping_digest`，并统一输出为 `d2_lineage_mapping`：
+
+```text
+current only -> accept current digest
+legacy only -> accept and normalize to d2_lineage_mapping
+both equal -> accept and normalize once
+both different -> reject
+both absent with available truth metrics -> reject
+```
 
 ### 17.2 D2 身份指标
 
@@ -1454,7 +1466,8 @@ main 提供 episode context 和两个公开制品。D6 校验 D1 scenario/versio
 episode builder、batch aggregator 和 report generator。输出固定包含逐 seed CSV、D1
 sensor-range CSV、aggregate JSON 和中文 Markdown。
 
-2026-07-20 专项 11 项和 D6 全量 331 项测试通过。测试覆盖 5/20/50/100/200、DTO、外部
+2026-07-20 专项 14 项和 D6 全量 334 项测试通过。测试覆盖 5/20/50/100/200、DTO、D1
+lineage mapping 新字段、旧字段兼容、冲突/缺失 fail-closed、外部
 文件/来源 SHA-256、内部摘要篡改、跨 episode 混用、缺制品、D1 availability 冲突、D2
 零帧假零和真值隔离 fail-closed。本轮没有
 AirSim 或正式训练/评估数据，不能形成算法性能结论。

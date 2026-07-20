@@ -147,7 +147,7 @@ def _d1_payload(
         "input_digests": {
             "online_evidence": _sha("a"),
             "truth_sidecar": _sha("b"),
-            "canonical_mapping": _sha("c"),
+            "d2_lineage_mapping": _sha("c"),
         },
         "record_count": len(records),
         "records": records,
@@ -252,8 +252,15 @@ class _D1PublicDTO:
             "offline_result_digest": self.payload["content_digest"],
             "online_evidence_digest": input_digests["online_evidence"],
             "truth_sidecar_digest": input_digests["truth_sidecar"],
-            "canonical_mapping_digest": input_digests["canonical_mapping"],
         }
+        if "d2_lineage_mapping" in input_digests:
+            context["d2_lineage_mapping_digest"] = input_digests[
+                "d2_lineage_mapping"
+            ]
+        if "canonical_mapping" in input_digests:
+            context["canonical_mapping_digest"] = input_digests[
+                "canonical_mapping"
+            ]
         records = self.payload["records"]
         assert isinstance(records, list)
         return tuple({**record, **context} for record in records)
@@ -298,7 +305,12 @@ def test_public_dto_adapters_preserve_d1_d2_metrics() -> None:
     assert group.metrics["position_rmse_m"].value == pytest.approx(5.0**0.5)
     assert group.metrics["position_rmse_m"].sample_count == 2
     assert group.metrics["nis_gate_coverage"].value == pytest.approx(0.5)
-    assert group.input_hashes["canonical_mapping"] == _sha("c")
+    assert group.input_digests["d2_lineage_mapping"] == _sha("c")
+    assert set(d1.to_dict()["input_digests"]) == {
+        "online_evidence",
+        "truth_sidecar",
+        "d2_lineage_mapping",
+    }
 
     assert d2.truth_isolation_verified is True
     assert d2.metrics["id_switch_count"].value == 1
@@ -404,6 +416,52 @@ def test_d1_record_availability_cannot_be_overridden_by_a_value() -> None:
     with pytest.raises(
         TruthIsolatedEvaluationError,
         match="unavailable D1 record field must be null",
+    ):
+        adapt_d1_offline_consistency(payload)
+
+
+def test_d1_legacy_canonical_mapping_digest_is_normalized() -> None:
+    payload = _d1_payload()
+    input_digests = payload["input_digests"]
+    assert isinstance(input_digests, dict)
+    digest = input_digests.pop("d2_lineage_mapping")
+    input_digests["canonical_mapping"] = digest
+    _resign_d1(payload)
+
+    record = adapt_d1_offline_consistency(_D1PublicDTO(payload))
+
+    assert record.input_digests["d2_lineage_mapping"] == _sha("c")
+    assert "canonical_mapping" not in record.input_digests
+    assert (
+        record.sensor_range_records[0].input_digests["d2_lineage_mapping"]
+        == _sha("c")
+    )
+
+
+def test_d1_mapping_digest_alias_conflict_fails_closed() -> None:
+    payload = _d1_payload()
+    input_digests = payload["input_digests"]
+    assert isinstance(input_digests, dict)
+    input_digests["canonical_mapping"] = _sha("9")
+    _resign_d1(payload)
+
+    with pytest.raises(
+        TruthIsolatedEvaluationError,
+        match="conflicting d2_lineage_mapping and canonical_mapping",
+    ):
+        adapt_d1_offline_consistency(payload)
+
+
+def test_d1_available_truth_metrics_require_lineage_mapping_digest() -> None:
+    payload = _d1_payload()
+    input_digests = payload["input_digests"]
+    assert isinstance(input_digests, dict)
+    input_digests.pop("d2_lineage_mapping")
+    _resign_d1(payload)
+
+    with pytest.raises(
+        TruthIsolatedEvaluationError,
+        match="source digests: d2_lineage_mapping",
     ):
         adapt_d1_offline_consistency(payload)
 
@@ -520,6 +578,18 @@ def test_report_bundle_writes_csv_json_and_chinese_markdown(tmp_path: Path) -> N
     assert rows[0]["d2_id_switch_count"] == "0"
     assert rows[1]["d2_id_switch_count"] == ""
     assert rows[1]["d2_id_switch_count_availability"] == "unavailable"
+    d1_input_digests = json.loads(rows[0]["d1_input_digests_json"])
+    assert d1_input_digests["d2_lineage_mapping"] == _sha("c")
+    assert "canonical_mapping" not in d1_input_digests
+
+    with paths["d1_sensor_range_per_seed_csv"].open(
+        encoding="utf-8-sig",
+        newline="",
+    ) as handle:
+        d1_rows = list(csv.DictReader(handle))
+    assert json.loads(d1_rows[0]["input_digests_json"])[
+        "d2_lineage_mapping"
+    ] == _sha("c")
 
     aggregate = json.loads(paths["aggregate_json"].read_text(encoding="utf-8"))
     idsw = aggregate["groups"][0]["metrics"]["d2.id_switch_count"]
@@ -535,6 +605,8 @@ def test_report_bundle_writes_csv_json_and_chinese_markdown(tmp_path: Path) -> N
         }
     ]
     provenance = aggregate["groups"][0]["source_provenance_by_episode"]
+    assert provenance[0]["d1_input_digests"]["d2_lineage_mapping"] == _sha("c")
+    assert "canonical_mapping" not in provenance[0]["d1_input_digests"]
     assert provenance[0]["d2_source_hashes"]["online_d1_records"] == _sha("d")
     assert provenance[1]["d2_truth_metric_evidence_verified"] is False
     markdown = paths["markdown"].read_text(encoding="utf-8")
@@ -542,4 +614,6 @@ def test_report_bundle_writes_csv_json_and_chinese_markdown(tmp_path: Path) -> N
     assert "缺证据时不会写成零" in markdown
     assert "单 seed 分组只给描述统计" in markdown
     assert "## 来源摘要" in markdown
+    assert "d2_lineage_mapping=`sha256:" in markdown
+    assert "canonical_mapping" not in markdown
     assert "online_d1_records=`sha256:" in markdown

@@ -628,5 +628,6 @@ sensor/range 提供 RMSE、NEES、NIS，D2 可提供显式 IDSW、continuity、d
 
 接口支持任意正整数 actual target/resource count，已用 5/20/50/100/200 结构 fixture
 回归。高威胁多成员联盟仍必须由 D3/D4/D5/D7 的 coalition/member 记录评估，不能由 D2
-duplicate 指标反推。2026-07-20 D6 全量 `331 passed`；本轮未运行 M 对 N AirSim 或正式
+duplicate 指标反推。D1 来源摘要现规范为 `d2_lineage_mapping`，旧名称只输入兼容，不改变
+M 对 N 分母或指标定义。2026-07-20 D6 全量 `334 passed`；本轮未运行 M 对 N AirSim 或正式
 多 seed 物理闭环，M 对 N 性能状态保持原结论。

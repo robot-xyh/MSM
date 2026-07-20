@@ -154,5 +154,6 @@ D1/D2 公共离线制品入口，提供 DTO/哈希文件适配、episode/batch �
 JSON、中文 Markdown 输出。算法边界见 `ALGORITHM_AND_IMPLEMENTATION.md` 第 17 节，原则
 与证据边界见 `MODULE_PRINCIPLES_CN.md` 第 11 节，AirSim/main 写盘要求见
 `../AIRSIM_INTEGRATION_PLAN.md` 第 11 节。文件模式强制校验制品 SHA-256 和 D2 四类来源
-摘要，零帧/无 truth-frame 不得产生 available IDSW=0。专项 `11 passed`、D6 全量
-`331 passed`；本轮只验证合同和报告，不代表正式多 seed 性能达标。
+摘要，零帧/无 truth-frame 不得产生 available IDSW=0。D1 规范字段为
+`d2_lineage_mapping`，旧 `canonical_mapping` 仅输入兼容且冲突 fail-closed。专项
+`14 passed`、D6 全量 `334 passed`；本轮只验证合同和报告，不代表正式多 seed 性能达标。

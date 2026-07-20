@@ -673,6 +673,10 @@ Matplotlib `Axes3D` 本机环境 warning。本批没有 AirSim 图像或曲线�
 | 验证项 | 样本 | 结果 |
 | --- | ---: | --- |
 | D1 公共 DTO 与 sensor/range 聚合 | 2 条逐观测记录 | RMSE、NEES、NIS、样本数和摘要保留正确 |
+| D1 `d2_lineage_mapping` | 1 个规范字段正例 | result、aggregation、CSV/JSON/中文报告均成功且名称稳定 |
+| D1 legacy `canonical_mapping` | 1 个兼容正例 | 输入成功，输出规范化为 `d2_lineage_mapping` |
+| D1 新旧字段冲突 | 1 个负例 | 摘要不同时制品被拒绝 |
+| D1 映射摘要缺失 | 1 个负例 | truth metrics 可用时制品被拒绝 |
 | D2 公共 DTO | 10 帧汇总 fixture | IDSW、连续率、重复和混淆矩阵保留正确 |
 | D2 真值隔离未验证 | 1 个负例 | 身份指标全部 `None/unavailable` |
 | unavailable IDSW 携带零值 | 1 个负例 | 制品被拒绝 |
@@ -684,6 +688,6 @@ Matplotlib `Axes3D` 本机环境 warning。本批没有 AirSim 图像或曲线�
 | 五档动态规模 | 5 个 episode fixture | 均按实际规模独立分组 |
 | CSV/JSON/中文 Markdown | 2 个 episode fixture | 空值、显式零、原因和来源摘要保持分离 |
 
-专项测试为 `11 passed`，D6 全量为 `331 passed`，另有一条既有 Matplotlib `Axes3D` 环境
+专项测试为 `14 passed`，D6 全量为 `334 passed`，另有一条既有 Matplotlib `Axes3D` 环境
 warning。验收门限是全部合同测试通过，当前已经满足。正式 D1 RMSE/NEES/NIS、D2 IDSW/
 continuity 和 200 对 200 运行性能没有证据，仍待 main 按至少 20 个未见 seed 评估。

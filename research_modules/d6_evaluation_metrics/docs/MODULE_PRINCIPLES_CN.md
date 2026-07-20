@@ -1269,6 +1269,11 @@ D6 校验内部内容摘要，再按 scenario、sensor、range 对公开 aggrega
 制品已经由 evaluator-only observation lineage 形成真值映射。D6 只消费发布后的指标、混淆
 矩阵和覆盖计数，不重新匹配全局航迹与真值。
 
+D1 当前规范来源名是 `input_digests.d2_lineage_mapping` 和 aggregation row 的
+`d2_lineage_mapping_digest`。旧 `canonical_mapping` 仅用于历史输入兼容；D6 对外 DTO、
+逐 seed CSV、aggregate JSON 和中文报告始终归一化为 `d2_lineage_mapping`。新旧字段并存且
+摘要不同时 fail-closed，不允许按字段优先级掩盖冲突。
+
 ### 11.2 可用性原则
 
 RMSE、NEES 和 NIS 分别有独立 availability 和 sample count。某组只有 NIS 而没有离线真值
@@ -1287,6 +1292,6 @@ episode context 直接记录实际目标、资源、侦察节点和相机数量�
 重复 episode 先求 seed 内均值，再跨不同 seed 统计。至少两个独立 seed 才输出 95% 自助法
 置信区间；单 seed 只给描述统计。
 
-2026-07-20 的验证覆盖五档规模和 11 项专项用例，D6 全量为 `331 passed`。本轮仅证明公共
+2026-07-20 的验证覆盖五档规模和 14 项专项用例，D6 全量为 `334 passed`。本轮仅证明公共
 合同、哈希校验、availability 和报告输出可用，没有运行 AirSim 或正式多 seed，因此不能
 据此判断 D1 精度、D2 身份连续率或 200 对 200 性能达标。

@@ -1061,8 +1061,10 @@ SHA-256 的持久化制品。该路径不导入 D1/D2 在线 tracker，不读取
 公开入口包括：
 
 - `adapt_d1_offline_consistency()`：保留 D1 总体 RMSE、NEES、NIS、sample count、
-  availability、不可用原因、结果摘要和三类输入摘要，并按显式 scenario/sensor/range
-  重新汇总公开逐观测记录；
+  availability、不可用原因、结果摘要和 `online_evidence/truth_sidecar/d2_lineage_mapping`
+  三类输入摘要，并按显式 scenario/sensor/range 重新汇总公开逐观测记录；当前 D1 字段
+  `d2_lineage_mapping` 是规范名称，旧 `canonical_mapping` 只在输入侧兼容，双字段摘要不一致
+  时 fail-closed；
 - `adapt_d2_scalable_3d_identity()`：保留显式 `id_switch_count`、三类 continuity、
   duplicate、confusion matrix、coverage counts、来源摘要和审计字段；D2 未同时证明原始
   来源摘要/record sequence 已验证、在线真值隔离已验证且未使用身份启发式时，全部身份
@@ -1073,10 +1075,11 @@ SHA-256 的持久化制品。该路径不导入 D1/D2 在线 tracker，不读取
   `TruthIsolatedOfflineReportGenerator`：按实际目标/资源/侦察节点/相机数量与 seed 输出
   逐 seed CSV、D1 sensor-range CSV、聚合 JSON 和中文 Markdown。
 
-验证日期为 2026-07-20。专项测试 `11 passed`，D6 全量测试 `331 passed`；另有一条既有
+验证日期为 2026-07-20。专项测试 `14 passed`，D6 全量测试 `334 passed`；另有一条既有
 Matplotlib `Axes3D` 环境 warning。结构回归覆盖 5、20、50、100、200 五档规模、DTO、
 文件及四类来源 SHA-256、内容篡改、跨 episode 混用、缺制品、D1 availability 冲突、
-D2 零帧假零和未验证真值隔离。逐 seed CSV、聚合 JSON 和中文 Markdown 均保留来源摘要。
+D1 新旧 lineage 字段兼容/冲突/缺失、D2 零帧假零和未验证真值隔离。逐 seed CSV、聚合
+JSON 和中文 Markdown 均使用稳定的 `input_digests.d2_lineage_mapping` 来源名称。
 该验证使用最小
 离线 fixture，没有启动 AirSim，没有运行正式多 seed，也没有形成 D1 精度或 D2 身份连续
 性能结论。

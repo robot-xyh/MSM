@@ -820,7 +820,8 @@ git diff --check -- research_modules/d6_evaluation_metrics subagent_reviews/D6_*
 
 1. D1 `OfflineConsistencyResult` 和 `aggregation_records()` 已有公共 adapter。总体和
    scenario/sensor/range 指标保留 RMSE、NEES、NIS、sample count、availability、不可用
-   原因、result digest 和三类 input digest。
+   原因、result digest 和三类 input digest。D1 当前规范 `d2_lineage_mapping` 已接入；旧
+   `canonical_mapping` 仅兼容读取，新旧冲突和 truth metrics 可用但摘要缺失均 fail-closed。
 2. D2 `Scalable3DIdentityEvaluation` 已有公共 adapter。`id_switch_count`、continuity、
    duplicate、confusion 和 coverage 显式保留；缺身份评估时 IDSW 为 `None/unavailable`，
    不能补零；零帧、无 truth-frame、来源摘要不完整或隔离未验证时 truth details 不聚合。
@@ -828,7 +829,7 @@ git diff --check -- research_modules/d6_evaluation_metrics subagent_reviews/D6_*
    在线真值隔离未完整验证时 fail-closed。
 4. episode/batch 接口和逐 seed CSV、D1 sensor-range CSV、aggregate JSON、中文 Markdown
    已实现，actual scale 支持 5/20/50/100/200 及其他正整数规模。
-5. 2026-07-20 专项 `11 passed`，D6 全量 `331 passed`；一条既有 Matplotlib `Axes3D`
+5. 2026-07-20 专项 `14 passed`，D6 全量 `334 passed`；一条既有 Matplotlib `Axes3D`
    环境 warning 不影响本轮无图报告。
 
 ### 仍开放的 P1

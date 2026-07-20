@@ -1170,7 +1170,9 @@ D6 已离线消费 `preflight_rows.json`、`range_rows.json` 和 `confirm_rows.j
    adapter、truth-isolated episode 和 batch summary。
 2. D1 入口校验公开 result schema、record schema、内部 content digest、record count、
    `truth_usage=offline_evaluation_only`、aggregation provenance 和逐记录内容一致性。总体
-   metric 由 D1 原样保留，sensor/range 统计只基于 D1 公开 aggregation records。
+   metric 由 D1 原样保留，sensor/range 统计只基于 D1 公开 aggregation records。输入和
+   输出以 `d2_lineage_mapping` 为规范字段；旧 `canonical_mapping` 显式兼容，双字段冲突
+   或可用 truth metrics 缺映射摘要时拒绝。
 3. D2 入口校验 evaluation/metrics/policy schema 和四类来源摘要。D6 不读取 frame mapping
    来猜测身份，只保留 D2 已发布的指标；文件输入缺任一 expected source hash 时拒绝，在线
    真值隔离或有效 frame/truth-frame 证据不完整时指标和 truth counts 均 fail-closed。
@@ -1183,8 +1185,9 @@ D6 已离线消费 `preflight_rows.json`、`range_rows.json` 和 `confirm_rows.j
 
 ### 验证
 
-2026-07-20 使用最小公开制品 fixture 覆盖 5/20/50/100/200，专项 `11 passed`，D6 全量
-`331 passed`。测试验收为接口、文件/来源哈希、availability、假零拒绝和规模分组正确；未运行 AirSim，未运行
+2026-07-20 使用最小公开制品 fixture 覆盖 5/20/50/100/200，专项 `14 passed`，D6 全量
+`334 passed`。测试验收为接口、D1 lineage 新字段/旧字段/冲突/缺失、文件/来源哈希、
+availability、假零拒绝和规模分组正确；未运行 AirSim，未运行
 正式 20 个未见 seed，未验证任何工程阈值。
 
 ### 后续计划

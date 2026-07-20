@@ -220,7 +220,7 @@ class D1SensorRangeConsistencyRecord:
     range_bin: str
     metrics: Mapping[str, PublicMetricEvidence]
     offline_result_digest: str
-    input_hashes: Mapping[str, str | None]
+    input_digests: Mapping[str, str | None]
     record_count: int
     schema_version: str = D6_D1_SENSOR_RANGE_RECORD_SCHEMA_VERSION
 
@@ -244,7 +244,7 @@ class D1SensorRangeConsistencyRecord:
         if int(self.record_count) <= 0:
             raise ValueError("D1 grouped record_count must be positive")
         object.__setattr__(self, "metrics", dict(sorted(metrics.items())))
-        object.__setattr__(self, "input_hashes", dict(self.input_hashes))
+        object.__setattr__(self, "input_digests", dict(self.input_digests))
         object.__setattr__(self, "record_count", int(self.record_count))
 
     def to_dict(self) -> dict[str, Any]:
@@ -260,7 +260,7 @@ class D1SensorRangeConsistencyRecord:
             "range_bin": self.range_bin,
             "record_count": self.record_count,
             "offline_result_digest": self.offline_result_digest,
-            "input_hashes": dict(self.input_hashes),
+            "input_digests": dict(self.input_digests),
             "metrics": {
                 name: metric.to_dict() for name, metric in self.metrics.items()
             },
@@ -280,7 +280,7 @@ class D1ConsistencyEvaluationRecord:
     sensor_range_records: tuple[D1SensorRangeConsistencyRecord, ...]
     artifact_digest: str | None
     external_file_sha256: str | None
-    input_hashes: Mapping[str, str | None]
+    input_digests: Mapping[str, str | None]
     failure_reasons: tuple[str, ...]
     verification_mode: str
     schema_version: str = D6_D1_CONSISTENCY_ADAPTER_SCHEMA_VERSION
@@ -295,7 +295,7 @@ class D1ConsistencyEvaluationRecord:
             raise ValueError("D1 result metric set is incomplete")
         object.__setattr__(self, "metrics", dict(sorted(metrics.items())))
         object.__setattr__(self, "sensor_range_records", tuple(self.sensor_range_records))
-        object.__setattr__(self, "input_hashes", dict(self.input_hashes))
+        object.__setattr__(self, "input_digests", dict(self.input_digests))
         object.__setattr__(
             self,
             "failure_reasons",
@@ -313,7 +313,7 @@ class D1ConsistencyEvaluationRecord:
             "status": self.status,
             "artifact_digest": self.artifact_digest,
             "external_file_sha256": self.external_file_sha256,
-            "input_hashes": dict(self.input_hashes),
+            "input_digests": dict(self.input_digests),
             "verification_mode": self.verification_mode,
             "failure_reasons": list(self.failure_reasons),
             "metrics": {
@@ -561,15 +561,24 @@ def adapt_d1_offline_consistency(
         raise TruthIsolatedEvaluationError(
             "D1 offline consistency content digest mismatch"
         )
+    input_digests = _normalized_d1_input_digests(
+        _mapping(payload.get("input_digests"), "D1 input digests")
+    )
 
     records = _mapping_sequence(payload.get("records"), "D1 consistency records")
     if int(payload.get("record_count", -1)) != len(records):
         raise TruthIsolatedEvaluationError("D1 consistency record_count mismatch")
-    aggregations = _d1_aggregation_records(source, payload, records)
+    aggregations = _d1_aggregation_records(
+        source,
+        payload,
+        records,
+        input_digests=input_digests,
+    )
     _validate_d1_aggregation_records(
         aggregations,
         payload,
         content_digest,
+        input_digests=input_digests,
         source_records=records,
     )
     if payload.get("truth_usage") != "offline_evaluation_only":
@@ -584,23 +593,15 @@ def adapt_d1_offline_consistency(
         name: _metric_from_d1_summary(result_metrics_payload[name], name)
         for name in _D1_METRIC_NAMES
     }
-    input_digests = _mapping(payload.get("input_digests"), "D1 input digests")
-    input_hashes = {
-        "online_evidence": _optional_sha256(input_digests.get("online_evidence")),
-        "truth_sidecar": _optional_sha256(input_digests.get("truth_sidecar")),
-        "canonical_mapping": _optional_sha256(
-            input_digests.get("canonical_mapping")
-        ),
-    }
     status = str(payload.get("status", ""))
     _validate_d1_result_availability(
         status=status,
         metrics=result_metrics,
-        input_hashes=input_hashes,
+        input_digests=input_digests,
     )
     grouped = _group_d1_consistency_records(
         aggregations,
-        input_hashes=input_hashes,
+        input_digests=input_digests,
         offline_result_digest=content_digest,
     )
     failure_reasons_payload = payload.get("failure_reasons", ())
@@ -623,7 +624,7 @@ def adapt_d1_offline_consistency(
         sensor_range_records=grouped,
         artifact_digest=content_digest,
         external_file_sha256=external_hash,
-        input_hashes=input_hashes,
+        input_digests=input_digests,
         failure_reasons=failure_reasons,
         verification_mode=verification_mode,
     )
@@ -1104,7 +1105,7 @@ def render_truth_isolated_markdown(
                 d1_artifact=_fmt_hash(
                     record.d1.external_file_sha256 or record.d1.artifact_digest
                 ),
-                d1_sources=_fmt_hash_mapping(record.d1.input_hashes),
+                d1_sources=_fmt_hash_mapping(record.d1.input_digests),
                 d2_artifact=_fmt_hash(
                     record.d2.external_file_sha256 or record.d2.artifact_digest
                 ),
@@ -1242,10 +1243,55 @@ def _public_payload(
     return dict(_mapping(to_dict(), artifact_name)), None, "public_dto_validated"
 
 
+def _normalized_d1_input_digests(
+    payload: Mapping[str, Any],
+) -> dict[str, str | None]:
+    return {
+        "online_evidence": _optional_sha256(payload.get("online_evidence")),
+        "truth_sidecar": _optional_sha256(payload.get("truth_sidecar")),
+        "d2_lineage_mapping": _resolve_d1_lineage_mapping_digest(
+            payload,
+            current_name="d2_lineage_mapping",
+            legacy_name="canonical_mapping",
+            context="D1 input_digests",
+        ),
+    }
+
+
+def _resolve_d1_lineage_mapping_digest(
+    payload: Mapping[str, Any],
+    *,
+    current_name: str,
+    legacy_name: str,
+    context: str,
+) -> str | None:
+    """Normalize the current D1 field while accepting one frozen legacy alias."""
+
+    current_present = current_name in payload
+    legacy_present = legacy_name in payload
+    current = (
+        _optional_sha256(payload.get(current_name))
+        if current_present
+        else None
+    )
+    legacy = (
+        _optional_sha256(payload.get(legacy_name))
+        if legacy_present
+        else None
+    )
+    if current_present and legacy_present and current != legacy:
+        raise TruthIsolatedEvaluationError(
+            f"{context} has conflicting {current_name} and {legacy_name}"
+        )
+    return current if current_present else legacy
+
+
 def _d1_aggregation_records(
     source: object | Mapping[str, Any] | str | Path,
     payload: Mapping[str, Any],
     records: Sequence[Mapping[str, Any]],
+    *,
+    input_digests: Mapping[str, str | None],
 ) -> tuple[Mapping[str, Any], ...]:
     method = getattr(source, "aggregation_records", None)
     if callable(method):
@@ -1260,15 +1306,9 @@ def _d1_aggregation_records(
         "run_id": payload.get("run_id"),
         "seed": payload.get("seed"),
         "offline_result_digest": payload.get("content_digest"),
-        "online_evidence_digest": _mapping(
-            payload.get("input_digests"), "D1 input digests"
-        ).get("online_evidence"),
-        "truth_sidecar_digest": _mapping(
-            payload.get("input_digests"), "D1 input digests"
-        ).get("truth_sidecar"),
-        "canonical_mapping_digest": _mapping(
-            payload.get("input_digests"), "D1 input digests"
-        ).get("canonical_mapping"),
+        "online_evidence_digest": input_digests["online_evidence"],
+        "truth_sidecar_digest": input_digests["truth_sidecar"],
+        "d2_lineage_mapping_digest": input_digests["d2_lineage_mapping"],
     }
     return tuple({**dict(record), **context} for record in records)
 
@@ -1278,6 +1318,7 @@ def _validate_d1_aggregation_records(
     payload: Mapping[str, Any],
     content_digest: str,
     *,
+    input_digests: Mapping[str, str | None],
     source_records: Sequence[Mapping[str, Any]],
 ) -> None:
     if len(records) != int(payload.get("record_count", -1)):
@@ -1288,15 +1329,8 @@ def _validate_d1_aggregation_records(
         "run_id": payload.get("run_id"),
         "seed": payload.get("seed"),
         "offline_result_digest": content_digest,
-        "online_evidence_digest": _mapping(
-            payload.get("input_digests"), "D1 input digests"
-        ).get("online_evidence"),
-        "truth_sidecar_digest": _mapping(
-            payload.get("input_digests"), "D1 input digests"
-        ).get("truth_sidecar"),
-        "canonical_mapping_digest": _mapping(
-            payload.get("input_digests"), "D1 input digests"
-        ).get("canonical_mapping"),
+        "online_evidence_digest": input_digests["online_evidence"],
+        "truth_sidecar_digest": input_digests["truth_sidecar"],
     }
     for record, source_record in zip(records, source_records):
         if record.get("schema_version") != D1_OFFLINE_CONSISTENCY_AGGREGATION_SCHEMA_VERSION:
@@ -1315,6 +1349,17 @@ def _validate_d1_aggregation_records(
                 raise TruthIsolatedEvaluationError(
                     f"D1 aggregation provenance mismatch for {name}"
                 )
+        mapping_digest = _resolve_d1_lineage_mapping_digest(
+            record,
+            current_name="d2_lineage_mapping_digest",
+            legacy_name="canonical_mapping_digest",
+            context="D1 aggregation record",
+        )
+        if mapping_digest != input_digests["d2_lineage_mapping"]:
+            raise TruthIsolatedEvaluationError(
+                "D1 aggregation provenance mismatch for "
+                "d2_lineage_mapping_digest"
+            )
         for name, expected in source_record.items():
             if name == "schema_version":
                 continue
@@ -1327,7 +1372,7 @@ def _validate_d1_aggregation_records(
 def _group_d1_consistency_records(
     records: Sequence[Mapping[str, Any]],
     *,
-    input_hashes: Mapping[str, str | None],
+    input_digests: Mapping[str, str | None],
     offline_result_digest: str,
 ) -> tuple[D1SensorRangeConsistencyRecord, ...]:
     grouped: dict[tuple[str, ...], list[Mapping[str, Any]]] = defaultdict(list)
@@ -1414,7 +1459,7 @@ def _group_d1_consistency_records(
                 range_bin=range_bin,
                 metrics=metrics,
                 offline_result_digest=offline_result_digest,
-                input_hashes=input_hashes,
+                input_digests=input_digests,
                 record_count=len(group_records),
             )
         )
@@ -1524,7 +1569,7 @@ def _validate_d1_result_availability(
     *,
     status: str,
     metrics: Mapping[str, PublicMetricEvidence],
-    input_hashes: Mapping[str, str | None],
+    input_digests: Mapping[str, str | None],
 ) -> None:
     available_count = sum(metric.available for metric in metrics.values())
     expected_status = (
@@ -1538,15 +1583,15 @@ def _validate_d1_result_availability(
         raise TruthIsolatedEvaluationError(
             "D1 status does not match metric availability"
         )
-    if available_count and input_hashes.get("online_evidence") is None:
+    if available_count and input_digests.get("online_evidence") is None:
         raise TruthIsolatedEvaluationError(
             "available D1 metrics require online_evidence digest"
         )
     if any(metrics[name].available for name in _D1_TRUTH_METRIC_NAMES):
         missing = [
             name
-            for name in ("truth_sidecar", "canonical_mapping")
-            if input_hashes.get(name) is None
+            for name in ("truth_sidecar", "d2_lineage_mapping")
+            if input_digests.get(name) is None
         ]
         if missing:
             raise TruthIsolatedEvaluationError(
@@ -1650,10 +1695,10 @@ def _missing_d1_record(
         sensor_range_records=(),
         artifact_digest=None,
         external_file_sha256=None,
-        input_hashes={
+        input_digests={
             "online_evidence": None,
             "truth_sidecar": None,
-            "canonical_mapping": None,
+            "d2_lineage_mapping": None,
         },
         failure_reasons=(reason,),
         verification_mode="artifact_missing",
@@ -1805,7 +1850,7 @@ def _episode_source_provenance(
         "seed": record.context.seed,
         "d1_artifact_digest": record.d1.artifact_digest,
         "d1_external_file_sha256": record.d1.external_file_sha256,
-        "d1_input_hashes": dict(record.d1.input_hashes),
+        "d1_input_digests": dict(record.d1.input_digests),
         "d1_verification_mode": record.d1.verification_mode,
         "d2_artifact_digest": record.d2.artifact_digest,
         "d2_external_file_sha256": record.d2.external_file_sha256,
@@ -1830,7 +1875,7 @@ def _episode_csv_row(record: TruthIsolatedEpisodeEvaluationRecord) -> dict[str, 
         "d1_artifact_digest": record.d1.artifact_digest,
         "d1_external_file_sha256": record.d1.external_file_sha256,
         "d1_verification_mode": record.d1.verification_mode,
-        "d1_input_hashes_json": record.d1.input_hashes,
+        "d1_input_digests_json": record.d1.input_digests,
         "d2_artifact_digest": record.d2.artifact_digest,
         "d2_external_file_sha256": record.d2.external_file_sha256,
         "d2_verification_mode": record.d2.verification_mode,
@@ -1876,7 +1921,7 @@ def _d1_group_csv_row(
         "range_bin": record.range_bin,
         "record_count": record.record_count,
         "offline_result_digest": record.offline_result_digest,
-        "input_hashes_json": record.input_hashes,
+        "input_digests_json": record.input_digests,
     }
     for name, metric in record.metrics.items():
         row[name] = metric.value
