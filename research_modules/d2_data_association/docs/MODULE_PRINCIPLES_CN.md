@@ -116,12 +116,16 @@ D1 受治理观测或二维 Detection
 - 可选第三方库的对象转换与延时冒烟测试。
 - 六维 NED 常速度航迹、3D 马氏门控、KD-tree 稀疏候选图和分量级 Hungarian；
 - 六维在线 truth-free 合同、中心 `GT3D-*` 所有权、有界历史和独立离线身份评分。
+- D1 六维 source posterior 的完整 6x6 covariance、固定权重 CI 更新、速度创新 NIS 门控
+  和有限速度 tie-break cost。
 
 ### 2.3 部分实现
 
 1. **JPDA**：能输出边缘概率和非冲突匹配，但 `Tracker` 仍对选出的单个匹配做普通卡尔曼更新；没有完整概率混合状态更新、协方差混合、航迹合并抑制和生产级分簇。
 2. **MHT**：能保留有限分支和有限历史，但没有 N 扫描剪枝、长期假设树、分簇、确认逻辑和中心算力调度。
-3. **双路径维度**：D1 的六维北-东-地状态仍可投影到旧二维 `GlobalTrack`；显式选择的 `GlobalTrack3D` 已维护六维状态，但尚未接入 main-owned scalable episode bus。
+3. **双路径维度**：D1 的六维北-东-地状态仍可投影到旧二维 `GlobalTrack`；显式选择的
+   `GlobalTrack3D` 已维护六维状态，main-owned scalable point-mass bus 已有只读运行
+   诊断，但修复后跨模块 schema、多 seed 和端到端验收仍未冻结。
 4. **跨节点注册**：中心规范注册、相关性决策和融合请求已实现；数值状态融合结果没有在 D2 内计算或回写。
 5. **质量感知门控**：已实现轻量、带上下界的门限调整；它不是经过完整多场景标定的通用自适应门控框架。
 
@@ -129,7 +133,8 @@ D1 受治理观测或二维 Detection
 
 - 完整 JPDA 滤波器和完整 MHT；
 - 根据在线风险自动切换 GNN、JPDA 或 MHT，以及该切换所需的迟滞；
-- 六维路径的 main episode-bus 编排、跨模块版本化输出、真实多 seed 标定和极端密度预算；
+- 六维路径修复后的跨模块版本化输出、真实多 seed 标定和极端密度预算；基础 point-mass
+  episode-bus 编排已有 main 只读证据，不再列为完全未接入。
 - 扩展卡尔曼滤波（Extended Kalman Filter，EKF）、无迹卡尔曼滤波（Unscented Kalman Filter，UKF）和交互多模型（Interacting Multiple Model，IMM）预测；
 - Stone Soup 多目标跟踪研究框架的端到端 JPDA/MHT 跟踪器；
 - FilterPy 滤波算法库的端到端数据关联跟踪器；
@@ -981,7 +986,7 @@ PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_da
 | NEES | 用状态协方差归一化的估计状态与离线真值状态误差平方 |
 | M-of-N 初始化 | N 次扫描内至少 M 次命中的初始化评估口径；当前只用于离线治理 |
 | OOSM | 到达或处理顺序与量测时间顺序不一致的乱序量测 |
-| CI | 未知交叉相关时的保守协方差融合方法；当前由 D2 请求、D1 数值执行 |
+| CI | 未知交叉相关时的保守协方差融合方法；跨节点多 source 数值融合仍由 D2 请求、D1 执行，D2 六维 tracker 内另用固定权重 CI 处理同一 source posterior 的未知时序相关性 |
 | 规范航迹 | 跨节点注册表维护的中心全局目标表示 |
 | 来源航迹 | 某个节点本地跟踪器产生、带节点和纪元命名空间的航迹摘要 |
 | 信息谱系 | 描述观测或航迹由哪些来源信息产生的 lineage，用于防止重复使用 |
@@ -991,7 +996,7 @@ PYTHONPATH=research_modules/d2_data_association pytest -q research_modules/d2_da
 
 ## 14. 当前结论
 
-截至 2026-07-20，D2 保留可运行、可审计、按动态输入规模工作的二维默认主线，并已实现显式选择的六维稀疏规则路径。两条路径都坚持 GNN 表示 Global Nearest Neighbor、中心拥有 `global_track_id`、在线不读取真值。六维路径的 D2-owned 状态/门控/稀疏求解/风险/离线评分已闭合；main 总线接入、多 seed 高密度证据、JPDA/MHT 高阶版本、自动切换和跨节点数值融合仍处于明确的待集成或未实现边界。
+截至 2026-07-20，D2 保留可运行、可审计、按动态输入规模工作的二维默认主线，并已实现显式选择的六维稀疏规则路径。两条路径都坚持 GNN 表示 Global Nearest Neighbor、中心拥有 `global_track_id`、在线不读取真值。六维路径的 D2-owned 状态/门控/稀疏求解/风险/离线评分和 source-posterior 速度稳定性基线已闭合；main 修复后端到端复跑、多 seed 高密度证据、CI 权重与 NIS/NEES 标定、JPDA/MHT 高阶版本、自动切换和跨节点数值融合仍处于明确的待验证或未实现边界。
 
 ### 14.1 2026-07-14 truth 与 lifecycle 原则补充
 
@@ -1049,7 +1054,8 @@ AirSim 受扰运行证据；真实至少 10 个来源扰动 case 仍待标定。
 1. **坐标和状态唯一**：工作坐标固定 NED，状态顺序固定
    `[pN,pE,pD,vN,vE,vD]`；高度解释为 `-pD`，D2 不在内部切换 WGS84 或 ENU。
 2. **门控只用三维创新**：候选是否可行由位置 residual 和 3x3 innovation covariance
-   的马氏距离决定。速度提示可以打破交叉平局，但不能偷偷改变 gate 自由度。
+   的马氏距离决定。速度只以封顶代价打破交叉平局，不能改变 gate 自由度或把速度
+   离群值变成位置拒配。
 3. **先稀疏后求解**：KD-tree 只生成保守候选；精确门控后按二部图连通分量做 Hungarian。
    分量解合并仍是候选图上的全局最近邻，不是贪心局部最近邻。
 4. **GNN 不改含义**：`GNNHungarianAssociator` 和
@@ -1064,9 +1070,22 @@ AirSim 受扰运行证据；真实至少 10 个来源扰动 case 仍待标定。
 7. **历史和矩阵有预算**：不保存全密集 cost/distance history；每条 track history 和
    frame log 有硬上限。极端大连通分量必须通过统计字段暴露，不能声称空间索引使最坏
    情况天然线性。
+8. **相关 posterior 不重复计数**：D1 六维 posterior 必须携带完整 6x6 covariance。
+   同一 source 的时序交叉相关未知时使用 CI，不得再作为独立位置量测重复收缩 Pvv；
+   速度创新 NIS 超门只通过 covariance inflation 降权，不按速度模长或场景名硬裁剪。
+   当前 CI track weight `0.5` 仅是待标定 baseline，不是最优性结论，也不等同于跨节点
+   多 source 的 D1-owned 数值融合。
 
-2026-07-20 验收覆盖 5/20/50/100/200、交叉、漏检、虚警、truth 拒绝和历史上限；
-全量为 `136 passed, 1 warning`。200 目标 3 个 trial、共 90 个测量帧的候选均为
+2026-07-20 验收覆盖 5/20/50/100/200、交叉、漏检、虚警、truth 拒绝、历史上限和
+六维速度稳定性；全量为 `139 passed, 1 warning`。200 目标 3 个 trial、共 90 个测量帧的候选均为
 `200/40,000`，裁剪 `99.5%`，聚合关联/tracker-step P95 为
 `7.056/26.797 ms`，max 为 `22.471/41.613 ms`。证据来自单一确定性合成布局，尾值
 包含系统调度抖动，不能外推为真实多 seed、AirSim 或端到端实时保证。
+
+同日速度专项的 50 条 seed 17、12 帧输入速度 P50/P90/max 为
+`5.415/7.960/12.274 m/s`，修复后为 `5.082/6.401/7.218 m/s`，Pvv trace 为
+`101.181`，位置 RMSE `52.634 -> 48.364 m`，离线 IDSW 0、continuity 1.0。200 条
+seed 41、10 帧更新中，候选/全对保持 `200/40,000`，输入/输出速度 P90
+`8.097/5.980 m/s`，IDSW 0、continuity 1.0。在线 tracker 未读取离线标签；固定 CI
+权重的至少 20 未见 seed、六维 NIS/NEES coverage、高机动和 main 修复后端到端复跑
+仍是必需的后续验收。

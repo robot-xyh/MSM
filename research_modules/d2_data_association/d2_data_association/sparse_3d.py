@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
 from math import exp, sqrt
 from time import perf_counter
@@ -18,6 +18,7 @@ from .models import (
     MatchedPair,
     RejectedPair,
     TrackLifecycleState,
+    govern_covariance,
 )
 from .scalable_3d_models import (
     POSITION_H_3D,
@@ -39,6 +40,7 @@ class _SparseEdge:
     cost: float
     mahalanobis_squared: float
     velocity_mahalanobis_squared: float | None
+    velocity_cost_gated: bool
 
 
 @dataclass(slots=True)
@@ -52,12 +54,17 @@ class Sparse3DGNNHungarianAssociator:
 
     gate_threshold: float = CHI2_GATE_3D_99_PERCENT
     velocity_weight: float = 0.25
+    velocity_cost_gate_threshold: float = CHI2_GATE_3D_99_PERCENT
     source_continuity_bias: float = 2.0
     minimum_query_radius_m: float = 0.0
     large_cost: float = LARGE_SPARSE_COST
 
     def __post_init__(self) -> None:
-        for name in ("gate_threshold", "large_cost"):
+        for name in (
+            "gate_threshold",
+            "velocity_cost_gate_threshold",
+            "large_cost",
+        ):
             value = float(getattr(self, name))
             if not np.isfinite(value) or value <= 0.0:
                 raise ValueError(f"{name} must be positive and finite")
@@ -139,8 +146,15 @@ class Sparse3DGNNHungarianAssociator:
                         detection,
                     )
                     cost = distance
+                    velocity_cost_gated = False
                     if velocity_distance is not None:
-                        cost += self.velocity_weight * velocity_distance
+                        velocity_cost_gated = (
+                            velocity_distance > self.velocity_cost_gate_threshold
+                        )
+                        cost += self.velocity_weight * min(
+                            velocity_distance,
+                            self.velocity_cost_gate_threshold,
+                        )
                     if (
                         detection.source_key is not None
                         and detection.source_key in track.source_track_keys
@@ -152,6 +166,7 @@ class Sparse3DGNNHungarianAssociator:
                         cost=float(cost),
                         mahalanobis_squared=distance,
                         velocity_mahalanobis_squared=velocity_distance,
+                        velocity_cost_gated=velocity_cost_gated,
                     )
                     edges[(track_index, detection_index)] = edge
                     candidate_counts_by_track[track.global_track_id] += 1
@@ -240,6 +255,9 @@ class Sparse3DGNNHungarianAssociator:
         )
         runtime_seconds = perf_counter() - started
         candidate_edge_count = len(edges)
+        velocity_cost_gated_edge_count = sum(
+            int(edge.velocity_cost_gated) for edge in edges.values()
+        )
         candidate_density = _rate(candidate_edge_count, dense_pair_count)
         metadata: dict[str, Any] = {
             "state_order": list(STATE_ORDER_3D),
@@ -247,6 +265,8 @@ class Sparse3DGNNHungarianAssociator:
             "innovation_dimension": 3,
             "gate_metric": "3d_position_mahalanobis_squared",
             "gate_threshold": self.gate_threshold,
+            "velocity_cost_gate_threshold": self.velocity_cost_gate_threshold,
+            "velocity_cost_gated_edge_count": velocity_cost_gated_edge_count,
             "candidate_generation": "scipy.spatial.cKDTree",
             "solver": "componentwise_scipy.optimize.linear_sum_assignment",
             "gnn_meaning": "global_nearest_neighbor",
@@ -365,6 +385,8 @@ class Scalable3DTracker:
     )
     process_noise_acceleration: float = 1.0
     initial_velocity_variance: float = 25.0
+    correlated_state_ci_track_weight: float = 0.5
+    velocity_innovation_gate_threshold: float = CHI2_GATE_3D_99_PERCENT
     confirmation_hits: int = 2
     engageable_hits: int = 4
     lost_miss_threshold: int = 2
@@ -386,6 +408,10 @@ class Scalable3DTracker:
     _drop_count: int = field(default=0, init=False)
     _total_candidate_edges: int = field(default=0, init=False)
     _total_dense_pairs: int = field(default=0, init=False)
+    _state_update_mode_counts: Counter[str] = field(
+        default_factory=Counter, init=False
+    )
+    _velocity_innovation_gate_count: int = field(default=0, init=False)
     _latest_risk_summary: AssociationRiskSummary | None = field(
         default=None, init=False
     )
@@ -399,6 +425,17 @@ class Scalable3DTracker:
             value = float(getattr(self, name))
             if not np.isfinite(value) or value < 0.0:
                 raise ValueError(f"{name} must be finite and non-negative")
+        if not 0.0 < float(self.correlated_state_ci_track_weight) < 1.0:
+            raise ValueError(
+                "correlated_state_ci_track_weight must be strictly within (0, 1)"
+            )
+        if (
+            not np.isfinite(self.velocity_innovation_gate_threshold)
+            or self.velocity_innovation_gate_threshold <= 0.0
+        ):
+            raise ValueError(
+                "velocity_innovation_gate_threshold must be positive and finite"
+            )
         for name in (
             "confirmation_hits",
             "engageable_hits",
@@ -456,11 +493,12 @@ class Scalable3DTracker:
         detections_by_id = {item.detection_id: item for item in detection_list}
         detection_to_track: dict[str, str] = {}
         source_binding_conflicts: list[dict[str, str]] = []
+        state_update_diagnostics: list[dict[str, Any]] = []
 
         for pair in result.matched_pairs:
             track = self.tracks[pair.track_id]
             detection = detections_by_id[pair.detection_id]
-            self._kalman_update(track, detection)
+            state_update_diagnostics.append(self._update_track(track, detection))
             detection_to_track[detection.detection_id] = track.global_track_id
             conflict = self._bind_source(track, detection)
             if conflict is not None:
@@ -484,6 +522,15 @@ class Scalable3DTracker:
                     source_binding_conflicts.append(conflict)
 
         self._refresh_track_quality(result, set(created_track_ids_by_detection.values()))
+        update_mode_counts = Counter(
+            str(item["mode"]) for item in state_update_diagnostics
+        )
+        velocity_gate_count = sum(
+            int(bool(item["velocity_innovation_gated"]))
+            for item in state_update_diagnostics
+        )
+        self._state_update_mode_counts.update(update_mode_counts)
+        self._velocity_innovation_gate_count += velocity_gate_count
         tracker_runtime = perf_counter() - started
         result.metadata.update(
             {
@@ -498,6 +545,31 @@ class Scalable3DTracker:
                 "track_history_limit": self.track_history_limit,
                 "frame_log_limit": self.frame_log_limit,
                 "global_track_id_owner": "D2_center",
+                "state_update_mode_counts": dict(sorted(update_mode_counts.items())),
+                "velocity_innovation_gate_count": velocity_gate_count,
+                "velocity_innovation_nis_summary": _finite_value_summary(
+                    item["velocity_innovation_nis"]
+                    for item in state_update_diagnostics
+                ),
+                "velocity_covariance_inflation_summary": _finite_value_summary(
+                    item["velocity_covariance_inflation"]
+                    for item in state_update_diagnostics
+                ),
+                "input_velocity_speed_summary_mps": _finite_value_summary(
+                    float(np.linalg.norm(item.velocity_ned))
+                    for item in detection_list
+                    if item.velocity_ned is not None
+                ),
+                "active_track_speed_summary_mps": _finite_value_summary(
+                    float(np.linalg.norm(item.velocity_ned))
+                    for item in self.active_tracks()
+                ),
+                "active_track_velocity_covariance_trace_summary": (
+                    _finite_value_summary(
+                        float(np.trace(item.covariance[3:, 3:]))
+                        for item in self.active_tracks()
+                    )
+                ),
                 "id_switch_count": None,
                 "id_switch_count_available": False,
                 "track_continuity": None,
@@ -520,6 +592,10 @@ class Scalable3DTracker:
                     "created_track_count": len(created_track_ids_by_detection),
                     "source_binding_conflict_count": len(source_binding_conflicts),
                     "global_track_id_owner": "D2_center",
+                    "state_update_mode_counts": dict(
+                        sorted(update_mode_counts.items())
+                    ),
+                    "velocity_innovation_gate_count": velocity_gate_count,
                     "id_switch_count": None,
                     "track_continuity": None,
                     "identity_continuity": None,
@@ -542,6 +618,8 @@ class Scalable3DTracker:
                 "candidate_edge_count": int(result.metadata["candidate_edge_count"]),
                 "dense_pair_count": int(result.metadata["dense_pair_count"]),
                 "risk_score": float(result.metadata["risk_score"]),
+                "state_update_mode_counts": dict(sorted(update_mode_counts.items())),
+                "velocity_innovation_gate_count": velocity_gate_count,
                 "tracker_runtime_seconds": tracker_runtime,
             }
         )
@@ -593,6 +671,22 @@ class Scalable3DTracker:
             "global_track_id_owner": "D2_center",
             "state_order": list(STATE_ORDER_3D),
             "innovation_dimension": 3,
+            "state_update_mode_counts": dict(
+                sorted(self._state_update_mode_counts.items())
+            ),
+            "velocity_innovation_gate_count": (
+                self._velocity_innovation_gate_count
+            ),
+            "active_track_speed_summary_mps": _finite_value_summary(
+                float(np.linalg.norm(item.velocity_ned))
+                for item in self.active_tracks()
+            ),
+            "active_track_velocity_covariance_trace_summary": (
+                _finite_value_summary(
+                    float(np.trace(item.covariance[3:, 3:]))
+                    for item in self.active_tracks()
+                )
+            ),
             "candidate_edge_count": self._total_candidate_edges,
             "dense_pair_count": self._total_dense_pairs,
             "candidate_density": candidate_density,
@@ -614,23 +708,59 @@ class Scalable3DTracker:
             "track_history_limit": self.track_history_limit,
         }
 
-    def _kalman_update(self, track: GlobalTrack3D, detection: Detection3D) -> None:
-        residual = detection.position_ned - POSITION_H_3D @ track.state
-        innovation = (
-            POSITION_H_3D @ track.covariance @ POSITION_H_3D.T
-            + detection.covariance
+    def _update_track(
+        self,
+        track: GlobalTrack3D,
+        detection: Detection3D,
+    ) -> dict[str, Any]:
+        velocity_nis, velocity_inflation = self._velocity_model_gate(
+            track,
+            detection,
         )
-        try:
-            gain = track.covariance @ POSITION_H_3D.T @ np.linalg.inv(innovation)
-        except np.linalg.LinAlgError:
-            gain = track.covariance @ POSITION_H_3D.T @ np.linalg.pinv(innovation)
-        identity = np.eye(6, dtype=float)
-        track.state = track.state + gain @ residual
-        joseph = identity - gain @ POSITION_H_3D
-        track.covariance = (
-            joseph @ track.covariance @ joseph.T
-            + gain @ detection.covariance @ gain.T
-        )
+        if detection.state_estimate_covariance is not None:
+            source_state = detection.state_estimate
+            assert source_state is not None
+            source_covariance = _inflate_velocity_covariance(
+                detection.state_estimate_covariance,
+                velocity_inflation,
+            )
+            track.state, track.covariance = _covariance_intersection(
+                track.state,
+                track.covariance,
+                source_state,
+                source_covariance,
+                first_weight=self.correlated_state_ci_track_weight,
+            )
+            mode = "correlated_6d_covariance_intersection"
+        elif detection.velocity_ned is not None:
+            measurement_state = detection.state_estimate
+            assert measurement_state is not None
+            measurement_covariance = np.zeros((6, 6), dtype=float)
+            measurement_covariance[:3, :3] = detection.covariance
+            assert detection.velocity_covariance is not None
+            measurement_covariance[3:, 3:] = detection.velocity_covariance
+            measurement_covariance = _inflate_velocity_covariance(
+                measurement_covariance,
+                velocity_inflation,
+            )
+            track.state, track.covariance = _linear_joseph_update(
+                track.state,
+                track.covariance,
+                measurement_state,
+                np.eye(6, dtype=float),
+                measurement_covariance,
+            )
+            mode = "independent_6d_joseph"
+        else:
+            track.state, track.covariance = _linear_joseph_update(
+                track.state,
+                track.covariance,
+                detection.position_ned,
+                POSITION_H_3D,
+                detection.covariance,
+            )
+            mode = "position_3d_joseph"
+
         track.ensure_covariance_consistency()
         track.timestamp = detection.measurement_timestamp
         track.last_update_time = detection.measurement_timestamp
@@ -642,6 +772,30 @@ class Scalable3DTracker:
             1.0, track.consecutive_hits / max(self.engageable_hits, 1)
         )
         track.append_history("update", detection)
+        return {
+            "mode": mode,
+            "velocity_innovation_nis": velocity_nis,
+            "velocity_covariance_inflation": (
+                velocity_inflation if velocity_nis is not None else None
+            ),
+            "velocity_innovation_gated": bool(
+                velocity_nis is not None
+                and velocity_nis > self.velocity_innovation_gate_threshold
+            ),
+        }
+
+    def _velocity_model_gate(
+        self,
+        track: GlobalTrack3D,
+        detection: Detection3D,
+    ) -> tuple[float | None, float]:
+        if detection.velocity_ned is None or detection.velocity_covariance is None:
+            return None, 1.0
+        residual = detection.velocity_ned - track.velocity_ned
+        innovation = track.covariance[3:, 3:] + detection.velocity_covariance
+        nis = _quadratic_form(innovation, residual)
+        inflation = max(1.0, nis / self.velocity_innovation_gate_threshold)
+        return nis, inflation
 
     def _create_track(self, detection: Detection3D) -> GlobalTrack3D:
         track_id = f"{self.global_track_id_prefix}{self._next_track_number:06d}"
@@ -656,9 +810,12 @@ class Scalable3DTracker:
             if detection.velocity_covariance is None
             else detection.velocity_covariance.copy()
         )
-        covariance = np.zeros((6, 6), dtype=float)
-        covariance[:3, :3] = detection.covariance
-        covariance[3:, 3:] = velocity_covariance
+        if detection.state_estimate_covariance is not None:
+            covariance = detection.state_estimate_covariance.copy()
+        else:
+            covariance = np.zeros((6, 6), dtype=float)
+            covariance[:3, :3] = detection.covariance
+            covariance[3:, 3:] = velocity_covariance
         track = GlobalTrack3D(
             global_track_id=track_id,
             state=np.concatenate((detection.position_ned, velocity)),
@@ -801,6 +958,123 @@ class Scalable3DTracker:
         result.metadata["max_track_association_risk"] = (
             max(risk_by_track.values()) if risk_by_track else 0.0
         )
+
+
+def _linear_joseph_update(
+    state: np.ndarray,
+    covariance: np.ndarray,
+    measurement: np.ndarray,
+    measurement_matrix: np.ndarray,
+    measurement_covariance: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    residual = measurement - measurement_matrix @ state
+    innovation = (
+        measurement_matrix @ covariance @ measurement_matrix.T
+        + measurement_covariance
+    )
+    covariance_measurement_transpose = covariance @ measurement_matrix.T
+    try:
+        gain = np.linalg.solve(
+            innovation,
+            covariance_measurement_transpose.T,
+        ).T
+    except np.linalg.LinAlgError:
+        gain = covariance_measurement_transpose @ np.linalg.pinv(innovation)
+    identity = np.eye(covariance.shape[0], dtype=float)
+    joseph = identity - gain @ measurement_matrix
+    updated_state = state + gain @ residual
+    updated_covariance = (
+        joseph @ covariance @ joseph.T
+        + gain @ measurement_covariance @ gain.T
+    )
+    return updated_state, updated_covariance
+
+
+def _covariance_intersection(
+    first_state: np.ndarray,
+    first_covariance: np.ndarray,
+    second_state: np.ndarray,
+    second_covariance: np.ndarray,
+    *,
+    first_weight: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fuse correlated estimates without assuming independent information."""
+
+    first_precision = _symmetric_inverse(first_covariance)
+    second_precision = _symmetric_inverse(second_covariance)
+    second_weight = 1.0 - first_weight
+    combined_precision = (
+        first_weight * first_precision + second_weight * second_precision
+    )
+    combined_covariance = _symmetric_inverse(combined_precision)
+    information_state = (
+        first_weight * first_precision @ first_state
+        + second_weight * second_precision @ second_state
+    )
+    combined_state = combined_covariance @ information_state
+    combined_covariance, _ = govern_covariance(
+        combined_covariance,
+        (6, 6),
+        "covariance-intersection posterior",
+    )
+    return combined_state, combined_covariance
+
+
+def _inflate_velocity_covariance(
+    covariance: np.ndarray,
+    inflation: float,
+) -> np.ndarray:
+    if inflation <= 1.0:
+        return covariance.copy()
+    transform = np.eye(6, dtype=float)
+    transform[3:, 3:] *= sqrt(inflation)
+    inflated = transform @ covariance @ transform.T
+    governed, _ = govern_covariance(
+        inflated,
+        (6, 6),
+        "velocity-gated six-state covariance",
+    )
+    return governed
+
+
+def _symmetric_inverse(covariance: np.ndarray) -> np.ndarray:
+    symmetric = 0.5 * (covariance + covariance.T)
+    try:
+        inverse = np.linalg.inv(symmetric)
+    except np.linalg.LinAlgError:
+        inverse = np.linalg.pinv(symmetric)
+    return 0.5 * (inverse + inverse.T)
+
+
+def _quadratic_form(covariance: np.ndarray, residual: np.ndarray) -> float:
+    try:
+        solved = np.linalg.solve(covariance, residual)
+    except np.linalg.LinAlgError:
+        solved = np.linalg.pinv(covariance) @ residual
+    return float(max(0.0, residual.T @ solved))
+
+
+def _finite_value_summary(values: Iterable[float | None]) -> dict[str, Any]:
+    array = np.asarray(
+        [float(value) for value in values if value is not None],
+        dtype=float,
+    )
+    array = array[np.isfinite(array)]
+    if not array.size:
+        return {
+            "count": 0,
+            "minimum": None,
+            "median": None,
+            "p90": None,
+            "maximum": None,
+        }
+    return {
+        "count": int(array.size),
+        "minimum": float(np.min(array)),
+        "median": float(np.median(array)),
+        "p90": float(np.percentile(array, 90.0)),
+        "maximum": float(np.max(array)),
+    }
 
 
 def mahalanobis_squared_3d(

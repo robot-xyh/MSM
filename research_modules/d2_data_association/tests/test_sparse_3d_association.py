@@ -325,7 +325,12 @@ def test_online_contract_rejects_truth_and_upstream_global_id_is_not_authority()
     d1_track = SimpleNamespace(
         global_track_id="UPSTREAM-MUST-NOT-BECOME-CANONICAL",
         state=np.array([1.0, 2.0, -3.0, 4.0, 5.0, 6.0]),
-        covariance=np.eye(6),
+        covariance=np.block(
+            [
+                [np.eye(3), np.eye(3) * 0.2],
+                [np.eye(3) * 0.2, np.eye(3) * 2.0],
+            ]
+        ),
         timestamp=1.25,
         metadata={
             "frame_id": "NED",
@@ -345,6 +350,14 @@ def test_online_contract_rejects_truth_and_upstream_global_id_is_not_authority()
         1.0
     )
     assert detections[0].metadata["source_arrival_timestamp"] == pytest.approx(1.2)
+    assert np.array_equal(
+        detections[0].state_estimate_covariance,
+        d1_track.covariance,
+    )
+    assert np.array_equal(
+        detections[0].state_estimate_covariance[:3, 3:],
+        np.eye(3) * 0.2,
+    )
     assert detections[0].detection_id.startswith("d1-3d-")
     assert "UPSTREAM" not in str(detections[0].to_dict())
     assert result.metadata["detection_to_track"][detections[0].detection_id].startswith(

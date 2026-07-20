@@ -303,7 +303,8 @@ suppression、offline IDSW/continuity 和置信区间仍不可用，继续作为
 | 100 | 100 | 10,000 | 100 | 99.0% |
 | 200 | 200 | 40,000 | 200 | 99.5% |
 
-专项 13 个测试通过；完整命令结果为 `136 passed, 1 warning`，验收阈值零失败。
+原六维专项 13 个测试通过；增加 3 个速度稳定性专项后，完整命令结果为
+`139 passed, 1 warning`，验收阈值零失败。
 warning 是环境 Matplotlib `Axes3D` 导入，不影响本批三维数值代码。
 
 200 目标另做 3 个独立 trial，每个 trial 预热 1 帧后连续测量 30 帧。90 个测量帧的
@@ -324,5 +325,92 @@ IDSW 0，identity/coverage continuity 均为 0.98；虚警用例 50 个真目标
 上述性能只来自当前主机、单进程、一个确定性网格和 3 x 30 个测量帧，尾值包含系统
 调度抖动；它不是多 seed 置信区间、实时 SLA、AirSim 或 200v200 全链路结果。KD-tree
 避免无条件全对扩张，但极端全重叠目标
-仍会形成大连通分量；候选预算、分区与召回率需要联合标定。main-owned scalable bus
-尚未接入，六维 JPDA/MHT、OOSM 和高机动滤波也未实现。
+仍会形成大连通分量；候选预算、分区与召回率需要联合标定。main-owned scalable
+point-mass bus 已有只读运行诊断，但修复后跨模块复跑和多 seed 验收未完成；六维
+JPDA/MHT、OOSM 和高机动滤波也未实现。
+
+## 15. 2026-07-20 六维速度状态稳定性实验
+
+### 15.1 问题与实现前证据
+
+main 在不向 D2 暴露 truth/actor/object ID 的只读诊断中运行 50v50、seed 17、2.2 s、
+radar-only。D1 与旧 D2 的帧末分布为：
+
+| 指标 | D1 输入 | 旧 D2 输出 |
+| --- | ---: | ---: |
+| 速度 P50 | 6.28 m/s | 8.89 m/s |
+| 速度 P90 | 12.16 m/s | 17.43 m/s |
+| 速度 max | 21.03 m/s | 27.49 m/s |
+| Pvv trace P50 | 101.24 | 62.95 |
+| Pvv trace P90 | 110.31 | 69.37 |
+| Pvv trace max | 112.32 | 70.86 |
+
+速度均值放大的同时 covariance 反而收缩，说明不是单纯保守预测。代码审计确认旧 D1
+adapter 只传位置和速度 marginal，丢弃完整 6x6 的 position-velocity cross block；旧
+tracker 出生时复制一次 D1 速度，后续只把每帧 D1 posterior 当作独立位置量测。CV 预测
+生成的 Ppv 令位置 random-walk residual 持续修正速度，Joseph update 又把 Pvv 伪收缩。
+
+修复后，D1 source posterior 携带完整 covariance，并使用固定
+`correlated_state_ci_track_weight=0.5` 的 6D covariance intersection。速度创新 NIS
+超过三自由度 99% 门限时，以 `NIS/gate` 膨胀速度 covariance；关联速度项在相同门限
+封顶。3D 位置马氏门控、稀疏候选、中心 ID 和离线 truth 隔离不变，没有按 4.7 m/s、
+场景名或速度模长硬裁剪。
+
+### 15.2 50 条多帧噪声验收
+
+测试使用 seed 17、50 条、12 帧、0.2 s 周期，即时间戳 0.0--2.2 s。在线 Detection3D
+只有匿名六维 source posterior、timestamp 和 covariance；离线标签只在每帧关联完成后
+进入 `Sparse3DOfflineEvaluator`。验收要求输出速度 P50/P90/max 不高于相应输入分位数
+的 `1.05/1.05/1.00` 倍，Pvv trace 中位数不少于输入 trace 的 90%，位置 RMSE 不劣于
+输入 posterior，活动航迹 50、IDSW 0、continuity 1.0。
+
+| 指标 | 匿名输入 | 旧 D2 复现 | 修复后 D2 |
+| --- | ---: | ---: | ---: |
+| 速度 P50 | 5.415 m/s | 9.41 m/s | 5.082 m/s |
+| 速度 P90 | 7.960 m/s | 14.31 m/s | 6.401 m/s |
+| 速度 max | 12.274 m/s | 21.88 m/s | 7.218 m/s |
+| Pvv trace | 102 | 62.76 | 101.181 |
+| 最终位置 RMSE | 52.634 m | 未作为旧门限 | 48.364 m |
+| 离线 IDSW / continuity | evaluator-only | 0 / 1.0 | 0 / 1.0 |
+
+全部门限通过。该结果证明当前固定输入下 D2 不再把位置 residual 解释成过大的高置信
+速度，不表示输出速度已接近某个场景真值或 CI 参数已最优。
+
+### 15.3 交叉和 200 条批量验收
+
+seed 29 双目标交叉运行 21 帧、0.2 s 周期，在交叉帧向一条六维 posterior 注入一次
+速度离群值。交叉帧仍有 4 条三维位置门内候选；update velocity NIS gate 和有限速度
+tie-break 均触发，最终活动航迹 2、IDSW 0、continuity 1.0。速度离群值没有被当作位置
+拒配依据，也没有创建新 canonical ID。
+
+seed 41 的 200 条批量回归运行 10 帧、0.2 s 周期：
+
+| 指标 | 结果 |
+| --- | ---: |
+| 每更新帧 candidate / dense pair | 200 / 40,000 |
+| component matrix pair | 200 |
+| 活动航迹 | 200 |
+| 输入 / 输出速度 P90 | 8.097 / 5.980 m/s |
+| 输入 / 输出 Pvv trace 中位数 | 75 / 69.685 |
+| 离线 IDSW / continuity | 0 / 1.0 |
+
+这同时通过速度稳定性、位置/身份连续性和稀疏规模验收，没有按目标数量建立固定 shape。
+
+### 15.4 回归与证据限制
+
+执行命令为：
+
+```bash
+PYTHONPATH=research_modules/d2_data_association \
+pytest -q research_modules/d2_data_association/tests
+```
+
+结果 `139 passed, 1 warning in 27.49s`；warning 是本机 Matplotlib `Axes3D` 多版本导入
+提示，不影响六维数值测试。相关 Python 入口 `py_compile` 通过。
+
+固定 CI track weight `0.5` 只是本轮一致性基线，尚无多 seed 最优性证据。当前专项只
+检查速度 NIS gate 是否按模型冲突触发，没有形成按距离、covariance、量测频率分组的
+六维 NIS coverage；离线标签只用于身份和位置验收，没有形成六维 NEES coverage。
+至少 20 个未见 seed 的 CI weight sweep、持续加速度/协调转弯/漏检、不同交叉 covariance
+结构以及 main 修复后 50v50/200v200 与 D3 reachability 复跑仍未完成。上述合成数据不是
+AirSim、实时 SLA 或端到端物理拦截证据。

@@ -19,9 +19,11 @@ POSITION_H_3D = np.hstack((np.eye(3, dtype=float), np.zeros((3, 3), dtype=float)
 class Detection3D:
     """Anonymous Cartesian NED position observation for the online D2 path.
 
-    The optional velocity is a kinematic hint used for track birth and crossing
-    tie-breaking. Association gating always uses the three-dimensional position
-    innovation and its 3x3 covariance.
+    The optional velocity can be an independent kinematic measurement or part
+    of a correlated six-state source posterior. ``state_estimate_covariance``
+    explicitly marks the latter case and preserves its position/velocity cross
+    covariance. Association gating always uses the three-dimensional position
+    innovation and its 3x3 marginal covariance.
     """
 
     detection_id: str
@@ -32,11 +34,15 @@ class Detection3D:
     confidence: float = 1.0
     velocity_ned: np.ndarray | None = None
     velocity_covariance: np.ndarray | None = None
+    state_estimate_covariance: np.ndarray | None = None
     source_node_id: str | None = None
     source_track_id: str | None = None
     frame_id: str = "NED"
     metadata: dict[str, Any] = field(default_factory=dict)
     covariance_consistency: dict[str, Any] = field(default_factory=dict)
+    state_estimate_covariance_consistency: dict[str, Any] = field(
+        default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         self.detection_id = str(self.detection_id).strip()
@@ -75,8 +81,39 @@ class Detection3D:
                 (3, 3),
                 "3D detection velocity covariance",
             )
+            if self.state_estimate_covariance is not None:
+                (
+                    self.state_estimate_covariance,
+                    self.state_estimate_covariance_consistency,
+                ) = govern_covariance(
+                    self.state_estimate_covariance,
+                    (6, 6),
+                    "3D source state-estimate covariance",
+                )
+                if not np.allclose(
+                    self.state_estimate_covariance[:3, :3],
+                    self.covariance,
+                    rtol=1.0e-9,
+                    atol=1.0e-10,
+                ):
+                    raise ValueError(
+                        "state_estimate_covariance position marginal must match "
+                        "covariance"
+                    )
+                if not np.allclose(
+                    self.state_estimate_covariance[3:, 3:],
+                    self.velocity_covariance,
+                    rtol=1.0e-9,
+                    atol=1.0e-10,
+                ):
+                    raise ValueError(
+                        "state_estimate_covariance velocity marginal must match "
+                        "velocity_covariance"
+                    )
         elif self.velocity_covariance is not None:
             raise ValueError("velocity_covariance requires velocity_ned")
+        elif self.state_estimate_covariance is not None:
+            raise ValueError("state_estimate_covariance requires velocity_ned")
 
         self.source_node_id = _optional_identifier(self.source_node_id)
         self.source_track_id = _optional_identifier(self.source_track_id)
@@ -107,6 +144,14 @@ class Detection3D:
             return None
         return f"{self.source_node_id}::{self.source_track_id}"
 
+    @property
+    def state_estimate(self) -> np.ndarray | None:
+        """Return the six-state source estimate when velocity is available."""
+
+        if self.velocity_ned is None:
+            return None
+        return np.concatenate((self.position_ned, self.velocity_ned))
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "detection_id": self.detection_id,
@@ -124,10 +169,18 @@ class Detection3D:
                 if self.velocity_covariance is None
                 else self.velocity_covariance.tolist()
             ),
+            "state_estimate_covariance": (
+                None
+                if self.state_estimate_covariance is None
+                else self.state_estimate_covariance.tolist()
+            ),
             "source_node_id": self.source_node_id,
             "source_track_id": self.source_track_id,
             "metadata": _json_ready(self.metadata),
             "covariance_consistency": _json_ready(self.covariance_consistency),
+            "state_estimate_covariance_consistency": _json_ready(
+                self.state_estimate_covariance_consistency
+            ),
         }
 
 
@@ -397,6 +450,7 @@ def detections3d_from_d1_global_tracks(
                 confidence=float(metadata.get("confidence", 1.0)),
                 velocity_ned=state[3:],
                 velocity_covariance=covariance[3:, 3:],
+                state_estimate_covariance=covariance,
                 source_node_id=_optional_identifier(metadata.get("source_node_id")),
                 source_track_id=_optional_identifier(metadata.get("source_track_id")),
                 frame_id=frame_id,

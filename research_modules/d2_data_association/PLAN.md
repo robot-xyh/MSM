@@ -19,7 +19,10 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 - `build_gated_cost_matrix()` 支持 quality-aware gate baseline，按 track quality、局部目标密度、位置协方差和上一帧 association risk 对每条 track 的 gate 做轻量调整。
 - `DataAssociator` 抽象接口支持替换 GNN、JPDA、MHT。
 - `Tracker` 使用 `[x, y, vx, vy]` 状态、4x4 covariance、Joseph update 和确定性状态机。
-- `Scalable3DTracker` 使用 `[pN,pE,pD,vN,vE,vD]`、6x6 covariance、3D NED 位置 Joseph update 和中心分配的 `GT3D-*`；每条航迹历史和逐帧审计均有配置上限。
+- `Scalable3DTracker` 使用 `[pN,pE,pD,vN,vE,vD]` 和 6x6 covariance；位置-only
+  使用 3D NED Joseph update，独立六维量测使用 6D Joseph update，相关 D1 source
+  posterior 使用固定权重 CI 和速度创新 NIS 门控；`GT3D-*` 仍只由中心 D2 分配，每条
+  航迹历史和逐帧审计均有配置上限。
 - `Sparse3DGNNHungarianAssociator` 用 KD-tree 生成保守空间候选，执行 3D 位置创新马氏门控，再按稀疏二部图连通分量运行 Hungarian；不分配全局 `N_t x N_z` 代价/距离矩阵。GNN 仅表示 Global Nearest Neighbor，未在 D2 引入图神经网络。
 - `TrackLifecycleState` 当前枚举为 `tentative -> confirmed -> engageable -> lost -> dropped`，没有 `engaged` 状态。
 - 每条 `GlobalTrack` 输出 `track_quality`、`association_risk` 和 `quality_metadata`；`AssociationResult.metadata`、association logs、risk summary metadata 与 `MetricsRecorder.summary()` 同步输出 track-level 质量/风险字段。
@@ -41,7 +44,9 @@ D2 只负责离线科研仿真、日志回放和多目标数据关联评估。�
 - M 对 N cross-node 注册基础已实现：6D NED `SourceTrackSummary`、source-local namespace、公共时刻 CV 传播、协方差感知 track-to-track gate、按 source 分组 Hungarian、canonical multi-source binding/history、payload/lineage/stale 防重，以及 exact/unknown/duplicate 三类相关性决策。
 - `CrossNodeRegistryMetrics` 保持 truth-free，只统计 operational rebind、duplicate rejection 和 latency；`OfflineCrossNodeMetricsEvaluator` 通过独立 source-key truth mapping 计算 cross-node IDSW、canonical duplicate 和 association precision/recall。
 - D2 回归覆盖 D1 governed manifest/records、匿名化、radar projection、模态跳过、offline position matching、旧 replay 兼容，以及 P2 五行输出、truth-free tracker 输入、缺依赖和未知 adapter 拒绝。
-- 六维专项回归覆盖 5/20/50/100/200、D 轴门控、交叉、连续漏检、虚警、truth 拒绝、D2 ID 所有权、离线 IDSW/continuity 和有界历史；2026-07-20 完整 D2 为 `136 passed, 1 warning`。
+- 六维专项回归覆盖 5/20/50/100/200、D 轴门控、交叉、连续漏检、虚警、truth 拒绝、
+  D2 ID 所有权、离线 IDSW/continuity、有界历史和速度状态稳定性；2026-07-20 完整
+  D2 为 `139 passed, 1 warning`。
 
 ### 2.1 P0/P1 缺口快照
 
@@ -580,14 +585,17 @@ MHT、Stone Soup/FilterPy 仅保留为 P2 optional/offline benchmark，不进入
 ### 17.1 已实现
 
 1. `Detection3D` 在线 DTO 不含 truth 字段，保留 NED 位置、3x3 covariance、
-   measurement/arrival timestamp、置信度及可选速度提示；递归拒绝 evaluator、actor、
-   object、entity 和上游 canonical identity。
+   measurement/arrival timestamp、置信度及可选速度；D1 source posterior 额外保留
+   完整 6x6 covariance 和 position-velocity cross block。DTO 递归拒绝 evaluator、
+   actor、object、entity 和上游 canonical identity。
 2. `GlobalTrack3D` 与 `Scalable3DTracker` 固定状态顺序
-   `[pN,pE,pD,vN,vE,vD]`，执行三维 CV 预测与位置 Joseph update。新 `GT3D-*` 只由
-   D2 tracker 分配，D1 对象的 `global_track_id` 在 adapter 中被忽略。
+   `[pN,pE,pD,vN,vE,vD]`，执行三维 CV 预测；相关 source posterior 走 6D covariance
+   intersection，独立六维量测走 Joseph update，位置-only 输入保留 3D Joseph update。
+   新 `GT3D-*` 只由 D2 tracker 分配，D1 对象的 `global_track_id` 在 adapter 中被忽略。
 3. `Sparse3DGNNHungarianAssociator` 使用 KD-tree 保守查询半径、三维位置创新马氏门控、
-   可选速度一致性代价及二部候选图连通分量 Hungarian。GNN 的含义固定为 Global
-   Nearest Neighbor；`graph_neural_network_used=false`。
+   有限速度一致性代价及二部候选图连通分量 Hungarian。速度创新 NIS 超门时通过
+   covariance inflation 降权，不拒绝位置门内 pair。GNN 的含义固定为 Global Nearest
+   Neighbor；`graph_neural_network_used=false`。
 4. `AssociationResult` 不保存全密集 cost/distance matrix，显式输出候选边、潜在全对、
    空间裁剪、分量矩阵元素、阶段耗时和风险摘要。track history 与 frame log 均为有界。
 5. 在线 summary 保留 `id_switch_count`、continuity 字段但值为 `None + unavailable`；
@@ -596,10 +604,11 @@ MHT、Stone Soup/FilterPy 仅保留为 P2 optional/offline benchmark，不进入
 
 ### 17.2 验证证据
 
-- 日期：2026-07-20；专项测试：13 个，覆盖规模 5/20/50/100/200、三维 D 轴门控、
-  crossing、两帧连续漏检、15 个虚警、truth fail-closed、upstream ID 非权威和有界历史。
+- 日期：2026-07-20；原六维专项 13 个，加 3 个速度稳定性专项，覆盖规模
+  5/20/50/100/200、三维 D 轴门控、crossing、两帧连续漏检、15 个虚警、truth
+  fail-closed、upstream ID 非权威、有界历史、完整 covariance、速度离群值和多帧噪声。
 - 验收阈值：全部规模匹配数等于输入目标数；无固定 2/5 shape；在线 truth 字段使用为
-  0；交叉/漏检/虚警离线 IDSW 为 0；全量测试零失败。结果：`136 passed, 1 warning`；
+  0；交叉/漏检/虚警离线 IDSW 为 0；全量测试零失败。结果：`139 passed, 1 warning`；
   warning 仅为环境 Matplotlib `Axes3D`。
 - 200 目标性能采样：确定性三维规则网格，单进程，3 个独立 trial，每个 trial 预热
   1 帧后测量 30 帧。90 个测量帧的候选边均为 `200/40,000`，component matrix pair
@@ -611,7 +620,32 @@ MHT、Stone Soup/FilterPy 仅保留为 P2 optional/offline benchmark，不进入
 
 - 本次性能数据只有一个确定性布局和 3 x 30 个连续帧，不是多 seed 置信区间、实时 SLA、
   真实 AirSim 或 200v200 全链路证据。
-- main 尚未把 D1 六维输出、D2 六维结果和 D3/D5/D6 合同接入
-  `scalable_3d_simulation` episode bus；该跨模块工作不在 D2 owned paths。
+- main-owned `scalable_3d_simulation` 已提供 D1/D2/D3 六维 point-mass 只读运行诊断；
+  修复后 50v50/200v200 复跑、版本化跨模块输出和多 seed 端到端验收仍由 main 负责。
 - 极端全重叠或过度膨胀协方差可形成大连通分量，仍需候选预算/分区策略与召回率联合
   标定；六维 JPDA/MHT、OOSM、EKF/UKF/IMM 和 learned association 均未实现。
+
+### 17.4 速度状态稳定性收口与下一验收
+
+- **触发证据**：main 只读 50v50、seed 17、2.2 s、radar-only 中，D1 速度
+  P50/P90/max `6.28/12.16/21.03 m/s`、Pvv trace
+  `101.24/110.31/112.32`；旧 D2 变为 `8.89/17.43/27.49 m/s`、trace
+  `62.95/69.37/70.86`。D2 定位为完整 covariance 丢失及相关 posterior 被重复按独立
+  位置量测消费，不是 D3 reachability 或场景速度上限问题。
+- **已实现**：D1 adapter 传递完整 6x6 covariance；相关 source posterior 使用
+  `correlated_state_ci_track_weight=0.5` 的 CI；速度创新 NIS 超过三自由度 99% 门限时
+  按 `NIS/gate` 膨胀速度 covariance；关联速度代价在同一门限处封顶。位置 3D 马氏
+  gate、稀疏候选、中心 ID 和 truth isolation 均不变，没有按速度模长硬限速。
+- **50 条验收**：seed 17、12 帧、0.2 s 周期。匿名输入速度 P50/P90/max
+  `5.415/7.960/12.274 m/s`；旧 D2 复现 `9.41/14.31/21.88 m/s`、trace `62.76`；
+  修复后 `5.082/6.401/7.218 m/s`、trace `101.181`。最终位置 RMSE
+  `52.634 -> 48.364 m`，离线 IDSW 0、continuity 1.0。
+- **200 条验收**：seed 41、10 帧、0.2 s 周期；更新帧 candidate/dense pair
+  `200/40,000`，活动航迹 200，输入/输出速度 P90 `8.097/5.980 m/s`，输入/输出 Pvv
+  trace 中位数 `75/69.685`，离线 IDSW 0、continuity 1.0。seed 29 的 21 帧双目标
+  crossing 加一次速度离群值后同样 IDSW 0、continuity 1.0。
+- **未关闭**：固定 CI weight `0.5` 只是一致性 baseline，不能写为最优。下一验收至少
+  20 个未见 seed，联合扫描 CI 权重、不同 position-velocity correlation、量测频率、
+  加速度/转弯和漏检；在线报告六维 velocity NIS coverage，独立 offline evaluator
+  报告六维 NEES coverage。main 修复后 50v50/200v200 和 D3 reachability 复跑也必须
+  单独报告，不能由本模块合成结果代替。

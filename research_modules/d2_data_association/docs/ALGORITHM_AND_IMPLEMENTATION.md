@@ -1102,9 +1102,16 @@ F(\Delta t)=\begin{bmatrix}I_3&\Delta t I_3\\0&I_3\end{bmatrix},
 r=z-H\hat{x},\qquad S=HPH^T+R,\qquad d^2=r^TS^{-1}r.
 \]
 
-默认门限 `11.344866730144373` 是三自由度 99% 卡方门限。可选速度提示只进入 birth 和
-门内 tie-break cost，不把 gate 改成六维创新；因此文档、日志和测试固定输出
-`innovation_dimension=3` 与 `gate_metric=3d_position_mahalanobis_squared`。
+默认门限 `11.344866730144373` 是三自由度 99% 卡方门限。速度只以封顶代价进入门内
+tie-break，不把 gate 改成六维创新，也不因速度离群拒绝位置门内 pair；因此文档、日志
+和测试固定输出 `innovation_dimension=3` 与
+`gate_metric=3d_position_mahalanobis_squared`。
+
+状态更新按输入统计语义分三类：位置-only 量测使用 `H=[I_3,0]` 的 Joseph update；明确
+独立的六维量测使用 `H=I_6` 的 Joseph update；D1 fused-track 是已使用历史量测形成的
+source posterior，和 D2 预测之间的相关性未知，必须保留其完整 6x6 covariance 并走
+covariance intersection。D1 adapter 不读取或复制上游 `global_track_id`，也不丢弃
+position-velocity cross block。
 
 ### 22.2 空间索引与稀疏 Hungarian
 
@@ -1143,10 +1150,58 @@ truth 结果不回写 tracker、候选图、ID binding 或风险代价。
 
 ### 22.4 2026-07-20 验证
 
-专项 13 个测试覆盖 5/20/50/100/200、D 轴门控、三维交叉、两帧漏检、15 个虚警、
-truth 拒绝、上游 ID 非权威及 history/log 上限；完整 D2 为
-`136 passed, 1 warning`，验收阈值零失败。200 目标规则网格执行 3 个独立 trial，每个
+原六维专项 13 个，加 3 个速度稳定性专项，覆盖 5/20/50/100/200、D 轴门控、三维
+交叉、两帧漏检、15 个虚警、truth 拒绝、上游 ID 非权威、history/log 上限、完整
+covariance 和速度离群值；完整 D2 为 `139 passed, 1 warning`，验收阈值零失败。
+200 目标规则网格执行 3 个独立 trial，每个
 trial 预热 1 帧后测量 30 帧；90 个测量帧的候选边均为 `200/40,000`，候选裁剪率
 `99.5%`，聚合关联/tracker-step P95 为 `7.056/26.797 ms`，max 为
 `22.471/41.613 ms`。该结果仅是当前主机、单进程、确定性合成布局的工程证据，包含
 系统调度尾值，不代表实时 SLA、AirSim、200v200 全链路或多 seed 置信区间。
+
+### 22.5 相关六维 posterior 更新与速度模型门控
+
+设预测状态/协方差为 `(x_p,P_p)`，D1 source posterior 为 `(x_s,P_s)`。在不知道两者
+交叉相关的情况下，当前实现使用 covariance intersection：
+
+\[
+P_{CI}^{-1}=\omega P_p^{-1}+(1-\omega)P_s^{-1},
+\]
+
+\[
+x_{CI}=P_{CI}\left(\omega P_p^{-1}x_p+(1-\omega)P_s^{-1}x_s\right).
+\]
+
+当前 `correlated_state_ci_track_weight=0.5`，即 `omega=0.5`。这是保守、确定性的工程
+baseline，只证明当前专项下不再重复消费相关 posterior；没有多 seed 优化、置信区间或
+最优性证明，文档和报告不得写成“最佳权重”。该 CI 只处理 D1 source posterior 与 D2
+预测的时序相关性，不代表跨节点多 source 的数值融合已经从 D1 移交给 D2。
+
+速度创新和归一化创新平方为
+
+\[
+\nu_v=z_v-\hat v,\qquad S_v=P_{vv}+R_{vv},\qquad
+\eta_v=\nu_v^TS_v^{-1}\nu_v.
+\]
+
+当 `eta_v` 超过三自由度 99% 门限 `gamma_v=11.344866730144373` 时，令
+`alpha=max(1,eta_v/gamma_v)`，并用
+`D=diag(1,1,1,sqrt(alpha),sqrt(alpha),sqrt(alpha))` 形成
+`R'=D R D^T`。该相似变换同时保留并一致缩放 position-velocity cross block，再用
+`R'` 做 CI/Joseph update。关联速度代价为
+`w_v min(eta_v,gamma_v)`，所以速度仍可打破交叉平局，但不会无限主导位置门内分配。
+这些规则没有读取 truth/actor/object ID，也没有设置速度模长上限。
+
+2026-07-20 的 seed 17、50 条、12 帧合成回归中，输入速度 P50/P90/max
+`5.415/7.960/12.274 m/s`，旧 position-only 重复更新复现
+`9.41/14.31/21.88 m/s`、Pvv trace `62.76`；新路径输出
+`5.082/6.401/7.218 m/s`、trace `101.181`，位置 RMSE
+`52.634 -> 48.364 m`，离线 IDSW 0、continuity 1.0。seed 41 的 200 条、10 帧回归
+保持每更新帧 `200/40,000` 候选/全对，输入/输出速度 P90 `8.097/5.980 m/s`，IDSW 0、
+continuity 1.0。seed 29 双目标交叉中的速度离群值触发 update NIS gate 和有限速度
+代价后仍保持 IDSW 0。
+
+剩余统计一致性验收包括：至少 20 个未见 seed 的 CI weight sweep；按 covariance 结构、
+量测周期和机动强度报告在线 velocity NIS coverage；仅在隔离 offline truth state 可用时
+报告六维 NEES coverage；补充持续加速度、协调转弯、漏检和 main 修复后 50v50/200v200
+端到端复跑。当前合成结果不能替代这些标定。

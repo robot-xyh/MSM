@@ -644,8 +644,9 @@ main/D1 负责生产可信 namespaced lineage 与 upstream audit metadata。
 - `Sparse3DGNNHungarianAssociator` 中 GNN 明确为 Global Nearest Neighbor。候选图是
   确定性稀疏优化结构，不是 Graph Neural Network；D5 的学习式跨视角关联不在 D2 冒名
   实现。
-- 状态固定 `[pN,pE,pD,vN,vE,vD]`，gate 固定三维位置 innovation。速度提示只作 birth
-  和交叉 tie-break，不改变 gate 自由度。
+- 状态固定 `[pN,pE,pD,vN,vE,vD]`，gate 固定三维位置 innovation。相关 D1 source
+  posterior 保留完整 6x6 covariance 并走 CI；独立六维/位置-only 输入分别走 Joseph
+  update。速度只作有限交叉 tie-break，不改变 gate 自由度。
 - KD-tree 使用协方差最大特征值构造保守查询半径；精确门控后按候选图连通分量运行
   Hungarian。不同分量无可行边，因此合并后保持全局最近邻语义。
 - `GT3D-*` 只由 D2 创建。上游 D1 `global_track_id` 值被 adapter 忽略；online DTO
@@ -655,9 +656,9 @@ main/D1 负责生产可信 namespaced lineage 与 upstream audit metadata。
 
 ### 26.2 结果
 
-- 专项 13 个测试覆盖 5/20/50/100/200、Down 轴门控、交叉、两帧漏检、15 个虚警、
-  truth fail-closed、D2 ID ownership 和有界 history/log；完整 D2 为
-  `136 passed, 1 warning`。
+- 原六维专项 13 个和新增速度稳定性专项 3 个覆盖 5/20/50/100/200、Down 轴门控、
+  交叉、两帧漏检、15 个虚警、truth fail-closed、D2 ID ownership、有界 history/log、
+  完整 covariance 和速度离群值；完整 D2 为 `139 passed, 1 warning`。
 - 200 目标执行 3 个 trial、共 90 个测量帧：候选/全对始终为 `200/40,000`，component
   pair `200`，peak component `1`，裁剪 `99.5%`；聚合关联/tracker-step P95 为
   `7.056/26.797 ms`，max 为 `22.471/41.613 ms`。
@@ -667,6 +668,49 @@ main/D1 负责生产可信 namespaced lineage 与 upstream audit metadata。
 ### 26.3 评审结论
 
 D2-owned 原生六维规则关联 GAP 关闭，状态从“未实现”改为“局部基线已实现、集成与
-标定开放”。当前证据只有单一确定性布局，不构成 200v200 全链路、实时 SLA、AirSim 或
-多 seed 结论。main bus 接入、20 未见 seed、极端大分量预算、六维 JPDA/MHT/OOSM 与
-高阶滤波继续开放；默认二维路径不变。
+标定开放”。当前证据不构成修复后 200v200 全链路、实时 SLA、AirSim 或多 seed 结论。
+main point-mass bus 已有只读诊断，但修复后复跑、20 未见 seed、CI 权重/NIS-NEES、
+极端大分量预算、六维 JPDA/MHT/OOSM 与高阶滤波继续开放；默认二维路径不变。
+
+## 27. 2026-07-20 六维速度状态稳定性评审
+
+### 27.1 根因与设计决定
+
+main 只读 50v50、seed 17、2.2 s、radar-only 诊断显示，D1 速度 P50/P90/max
+`6.28/12.16/21.03 m/s`、Pvv trace `101.24/110.31/112.32`，旧 D2 却变为
+`8.89/17.43/27.49 m/s`、trace `62.95/69.37/70.86`。评审确认旧路径不是每帧直接
+复制速度：只在 birth 复制一次，之后反复把 D1 六维 posterior 当作独立三维位置量测。
+adapter 丢弃 Ppv，D2 预测又生成自身 Ppv，导致位置 residual 持续注入速度并错误收缩
+Pvv。
+
+本轮设计决定如下：
+
+- `Detection3D.state_estimate_covariance` 明确表示相关 source posterior 并保留完整 6x6
+  covariance；marginal 不匹配 fail closed。
+- 相关 posterior 使用 covariance intersection，当前 track weight 固定 `0.5`；独立
+  六维量测和位置-only 量测分别使用 6D/3D Joseph update。
+- velocity NIS 超三自由度 99% 门限时通过相似变换膨胀速度 covariance，完整 cross
+  block 随之缩放；关联速度 cost 在门限处封顶，位置 3D Mahalanobis gate 不变。
+- 不读取 truth/actor/object ID，不按 4.7 m/s、速度模长或场景名裁剪，也不复制或重绑
+  上游 `global_track_id`。
+
+### 27.2 验收结果
+
+| 场景 | 速度结果 | covariance / 稀疏结果 | 身份与位置 |
+| --- | --- | --- | --- |
+| seed 17，50 条，12 帧，0.2 s | 输入 `5.415/7.960/12.274`，输出 `5.082/6.401/7.218 m/s` | 旧/新 Pvv trace `62.76/101.181` | RMSE `52.634 -> 48.364 m`，IDSW 0，continuity 1.0 |
+| seed 29，2 条 crossing，21 帧 | 注入一次速度离群值，NIS/cost gate 均触发 | 交叉帧候选 4 | 活动 2，IDSW 0，continuity 1.0 |
+| seed 41，200 条，10 帧，0.2 s | 输入/输出 P90 `8.097/5.980 m/s` | 每更新帧 `200/40,000`，Pvv trace `75/69.685` | 活动 200，IDSW 0，continuity 1.0 |
+
+原六维专项加本轮 3 个专项均通过，D2 全量结果为 `139 passed, 1 warning`；warning 是
+环境 Matplotlib `Axes3D`，不影响数值结果。在线 tracker 输入无 truth；IDSW/continuity
+由关联完成后的隔离 offline evaluator 评分。
+
+### 27.3 评审结论与限制
+
+D2-owned“速度均值放大且 covariance 伪收缩”缺口以协方差一致的 source-posterior
+baseline 关闭。固定 CI track weight `0.5` 只获得当前确定性样本的通过状态，没有参数
+最优性或 promotion 结论。后续至少需要 20 个未见 seed 的 CI weight sweep、按距离/
+频率/covariance 分组的 velocity NIS coverage、隔离 offline 六维 NEES coverage、持续
+加速度/协调转弯/漏检/OOSM，以及 main 修复后 50v50/200v200、D3 reachable count 和
+端到端时延复跑。本轮也不改变跨节点多 source 数值 CI 仍由 D1 owner 执行的职责边界。
