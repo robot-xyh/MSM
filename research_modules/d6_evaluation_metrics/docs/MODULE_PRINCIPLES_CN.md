@@ -1,5 +1,21 @@
 # D6 系统级离线评估模块原理
 
+## 当前 schema 与历史可读性（2026-07-20）
+
+schema 字段非空只能证明 producer 写入了一个名称，不能证明该名称与当前 evaluator 合同一致。D6 使用
+本地版本化 registry 精确核对 world、episode bus、scenario、online observation 和 offline truth，
+同时核对 scenario config 自身 schema。registry 不从 main runtime 导入，避免离线 evaluator 因运行
+模块安装状态改变判断。
+
+当前 online observation 合同是 `scalable3d-observation-v1`。旧 fixture 中的
+`scalable3d-online-observation-v1` 不属于当前 producer 合同。D6 仍保留每个原始 schema 字段，并为其
+补充 expected current、match、status 和 reason。这样历史数据可以继续解释，但旧、未知、篡改或缺失
+schema 不会被误列为正式 clean evidence。
+
+整体 `current_schema_contract_match` 是 formal acceptance 必需项。全部字段存在时，不匹配产生可用的
+false 和明确失败原因；字段缺失时整体结果为 unavailable。验证包括一个全匹配正例、五项 manifest
+不匹配和一个缺字段负例；专项 `32 passed`、D6 全量 `304 passed`。
+
 ## 主动视觉的命令、执行和归因分层（2026-07-20）
 
 D5 主动视觉输出属于观察管理，不等于相机已经执行。D6 将每次运行拆成五层：确定性规则命令、影子

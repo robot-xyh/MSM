@@ -1,5 +1,19 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-20 scalable 3D schema registry 窄修复状态
+
+- [x] 将两套 D6 fixture 的 online observation schema 对齐真实 producer：
+  `scalable3d-observation-v1`。
+- [x] 增加 D6-owned `d6-scalable3d-schema-registry-v1`，核对 world、bus、scenario、online observation、
+  offline truth 和 scenario config schema，不导入 main runtime。
+- [x] 保留原始 schema 字段；另输出逐项 expected/match/status/reason、整体 match 和 registry version。
+- [x] 将整体 current-schema match 纳入 formal acceptance；旧、未知、篡改或缺失 schema fail closed，
+  但仍可作为 descriptive historical row 展示。
+- [x] 增加当前匹配、五项 manifest 不匹配和缺字段测试；专项 `32 passed`、D6 全量 `304 passed`。
+- [x] 复读 6v6/seed37 当前 producer smoke，schema match=true；formal 仍只因
+  `repository_dirty=true` 被拒绝。
+- [ ] 后续新增 producer schema 时，必须先更新 registry 版本和迁移说明；未知版本不得自动准入。
+
 ## 2026-07-20 scalable 3D 主动视觉证据闭环状态
 
 - [x] 将 D5 active-vision publication 与 main camera-command ACK 作为两层独立写盘证据消费；D6 不

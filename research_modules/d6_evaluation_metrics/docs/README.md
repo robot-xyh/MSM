@@ -1,5 +1,11 @@
 # D6 文档索引
 
+2026-07-20 已同步 scalable 3D schema registry 窄修复。D6 offline v4 固定核对当前 world/bus/scenario/
+online observation/offline truth 和 config schema；真实 online observation 名称为
+`scalable3d-observation-v1`。原始值继续展示，旧、未知、篡改或缺失值不能进入 formal acceptance。
+专项 `32 passed`、D6 全量 `304 passed`。原理见 `MODULE_PRINCIPLES_CN.md`，实现见
+`ALGORITHM_AND_IMPLEMENTATION.md`，验证见 `../EXPERIMENT_REPORT.md` 2.3 节。
+
 2026-07-20 已同步 scalable 3D 主动视觉离线 consumer v3。新增
 `modules.d5.active_vision` 与 `runtime.camera_command_ack` 的规则/影子/辅助采用、issued/applied/
 rejected、复合版本键关联、ACK latency、拒绝原因、D2 中心航迹只读引用和 truth-like 字段审计。缺

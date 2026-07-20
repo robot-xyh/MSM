@@ -31,9 +31,18 @@ from .active_vision_offline import (
 
 
 SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION = (
-    "d6-scalable3d-offline-evaluation-v3"
+    "d6-scalable3d-offline-evaluation-v4"
 )
 SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-20"
+SCALABLE_3D_SCHEMA_REGISTRY_VERSION = "d6-scalable3d-schema-registry-v1"
+SCALABLE_3D_CURRENT_SCHEMA_REGISTRY = {
+    "world_schema": "scalable3d-world-v1",
+    "bus_schema": "scalable3d-episode-bus-v1",
+    "scenario_schema": "scalable3d-scenario-v1",
+    "online_observation_schema": "scalable3d-observation-v1",
+    "offline_truth_schema": "scalable3d-offline-truth-v1",
+    "scenario_config_schema": "scalable3d-scenario-v1",
+}
 DEFAULT_SCALABLE_3D_BOOTSTRAP_RESAMPLES = 2_000
 DEFAULT_SCALABLE_3D_BOOTSTRAP_RNG_SEED = 20260720
 FIVE_METER_THRESHOLD_M = 5.0
@@ -82,6 +91,7 @@ _FORBIDDEN_ONLINE_KEYS = frozenset(
 _METRIC_FIELDS = (
     "finite_state",
     "formal_acceptance_eligible",
+    "current_schema_contract_match",
     "online_truth_use_count",
     "online_truth_field_violation_count",
     "d1_track_count",
@@ -601,12 +611,13 @@ def render_scalable_3d_offline_markdown(
         "",
         f"本次离线读取 {len(rows)} 个 main-owned episode。评估按 scenario/version、实际 target/resource/recon/camera 数量和 seed 组织，不从 2v2/5v5 名称推断规模。",
         f"正式 provenance 条件可用的 episode 为 {aggregate.get('formal_acceptance_eligible_episode_count', 0)}/{len(rows)}；dirty episode 为 {aggregate.get('repository_dirty_episode_count', 0)}。",
+        f"当前 schema 合同由 `{SCALABLE_3D_SCHEMA_REGISTRY_VERSION}` 核对；原始 schema 字段始终保留，旧值、未知值、篡改值或缺字段不得进入正式 clean acceptance。",
         "五米接近仅是离线物理诊断，不自动代表身份正确、合同许可、控制成功或任务成功。",
         "",
         "## Episode 明细",
         "",
-        "| scenario/version | scale T/R/Rc/Cam | seed | finite | dirty | online truth | D1/D2 tracks | D2 IDSW | D3 coverage/backlog | D4 fail-closed | D5 fallback | D7 cmd/hold/reject | <=5m / identity |",
-        "| --- | --- | ---: | :---: | :---: | ---: | --- | --- | --- | ---: | --- | --- | --- |",
+        "| scenario/version | scale T/R/Rc/Cam | seed | finite | dirty | schema current | online truth | D1/D2 tracks | D2 IDSW | D3 coverage/backlog | D4 fail-closed | D5 fallback | D7 cmd/hold/reject | <=5m / identity |",
+        "| --- | --- | ---: | :---: | :---: | :---: | ---: | --- | --- | --- | ---: | --- | --- | --- |",
     ]
     for row in rows:
         scale = "/".join(
@@ -616,7 +627,7 @@ def render_scalable_3d_offline_markdown(
         idsw = _fmt_available(row, "d2_id_switch_count")
         identity = _fmt_available(row, "offline_proximity_identity_correct_rate")
         lines.append(
-            "| {scenario}/{version} | {scale} | {seed} | {finite} | {dirty} | {truth} | "
+            "| {scenario}/{version} | {scale} | {seed} | {finite} | {dirty} | {schema} | {truth} | "
             "{d1}/{d2} | {idsw} | {coverage}/{backlog} | {fail_closed} | {fallback} | "
             "{commands}/{holds}/{rejects} | {proximity}/{identity} |".format(
                 scenario=_fmt(row.get("scenario_name")),
@@ -625,6 +636,7 @@ def render_scalable_3d_offline_markdown(
                 seed=_fmt(row.get("seed")),
                 finite=_fmt_available(row, "finite_state"),
                 dirty=_fmt_available(row, "repository_dirty"),
+                schema=_fmt_available(row, "current_schema_contract_match"),
                 truth=_fmt_available(row, "online_truth_use_count"),
                 d1=_fmt_available(row, "d1_track_count"),
                 d2=_fmt_available(row, "d2_track_count"),
@@ -792,8 +804,8 @@ def render_scalable_3d_offline_markdown(
             f"Bootstrap 使用固定 rng_seed={aggregate.get('bootstrap', {}).get('rng_seed')}、resamples={aggregate.get('bootstrap', {}).get('resamples')}，抽样单位为不同 seed 的 episode 均值。",
             "单 seed 分组只标记 descriptive，不生成 bootstrap 置信区间或推断性结论。",
             "",
-            "| scenario/version | scale T/R/Rc/Cam | episodes | seeds | 状态 | finite mean | D3 coverage mean | D7 reject mean |",
-            "| --- | --- | ---: | ---: | --- | ---: | ---: | ---: |",
+            "| scenario/version | scale T/R/Rc/Cam | episodes | seeds | 状态 | schema match mean | finite mean | D3 coverage mean | D7 reject mean |",
+            "| --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: |",
         ]
     )
     for group in aggregate.get("groups", []):
@@ -803,13 +815,14 @@ def render_scalable_3d_offline_markdown(
             for field in ("target_count", "resource_count", "recon_count", "camera_count")
         )
         lines.append(
-            "| {scenario}/{version} | {scale} | {episodes} | {seeds} | {status} | {finite} | {coverage} | {reject} |".format(
+            "| {scenario}/{version} | {scale} | {episodes} | {seeds} | {status} | {schema} | {finite} | {coverage} | {reject} |".format(
                 scenario=_fmt(group.get("scenario_name")),
                 version=_fmt(group.get("scenario_version")),
                 scale=scale,
                 episodes=group.get("episode_count", 0),
                 seeds=group.get("seed_count", 0),
                 status=group.get("inference_status", "unavailable"),
+                schema=_fmt_stat(metrics.get("current_schema_contract_match")),
                 finite=_fmt_stat(metrics.get("finite_state")),
                 coverage=_fmt_stat(metrics.get("d3_plan_coverage_rate")),
                 reject=_fmt_stat(metrics.get("d7_reject_count")),
@@ -855,6 +868,7 @@ def render_scalable_3d_offline_markdown(
             "## 当前限制",
             "",
             "- 当前 producer 的 offline truth label 只含 observation-to-truth 映射，未显式提供 global_track_id-to-truth 映射时，五米接近身份正确性保持 unavailable。",
+            "- 当前 schema registry 固定核对 world/bus/scenario/online observation/offline truth，并交叉核对 scenario config schema；旧值继续展示，但 formal acceptance 必须为 false。",
             "- D2 明确声明 IDSW unavailable 时，D6 不从轨迹数量、名称或离线真值补算 0。",
             "- D5 `model_missing` 表示确定性几何规则回退，不是学习模型性能证据。",
             "- bundle 未加载时，学习模型 fingerprint/version 保持 null/unavailable；规则路径的 runtime version 不冒充学习模型版本。",
@@ -938,6 +952,7 @@ def _extract_provenance(
         _put_available(row, "scenario_config_schema", config["schema_version"])
     else:
         _put_unavailable(row, "scenario_config_schema", "scenario_config_schema_missing")
+    _extract_current_schema_contract(row)
     if summary is not None:
         diagnostics = summary.get("module_final_diagnostics")
         if isinstance(diagnostics, Mapping) and diagnostics.get("schema_version") is not None:
@@ -3313,6 +3328,7 @@ def _finalize_episode_status(row: dict[str, Any]) -> None:
         "finite_state",
         "repository_dirty",
         "config_hash_match",
+        "current_schema_contract_match",
         "d4_policy_version",
         "online_truth_use_count",
         "online_truth_field_violation_count",
@@ -3325,12 +3341,14 @@ def _finalize_episode_status(row: dict[str, Any]) -> None:
         and row.get("finite_state") is True
         and row.get("repository_dirty") is False
         and row.get("config_hash_match") is True
+        and row.get("current_schema_contract_match") is True
         and row.get("online_truth_use_count") == 0
         and row.get("online_truth_field_violation_count") == 0
         and not any(
             reason.startswith(
                 (
                     "provenance_field_mismatch:",
+                    "schema_contract_",
                     "d1_track_count_mismatch",
                     "d2_track_count_mismatch",
                     "learning_runtime_metadata_mismatch",
@@ -3396,6 +3414,84 @@ def _validate_provenance_consistency(
         ]
         if values and any(value != values[0] for value in values[1:]):
             row["_failure_reasons"].append(f"provenance_field_mismatch:{field}")
+
+
+def _extract_current_schema_contract(row: dict[str, Any]) -> None:
+    """Compare persisted schema provenance with D6's versioned current registry.
+
+    Raw manifest/config fields remain untouched for historical inspection.  A
+    syntactically present but old, unknown, or tampered value is available as a
+    raw value while its current-contract match is explicitly false.
+    """
+
+    details: dict[str, dict[str, Any]] = {}
+    failure_reasons: list[str] = []
+    unavailable_fields: list[str] = []
+    for field, expected in SCALABLE_3D_CURRENT_SCHEMA_REGISTRY.items():
+        match_field = f"{field}_current_contract_match"
+        observed_available = row.get(f"{field}_availability") == "available"
+        observed = row.get(field)
+        if not observed_available:
+            reason = f"schema_contract_unavailable:{field}"
+            unavailable_fields.append(field)
+            failure_reasons.append(reason)
+            _put_unavailable(row, match_field, reason)
+            details[field] = {
+                "observed": observed,
+                "expected_current": expected,
+                "match": None,
+                "status": "unavailable",
+                "reason": reason,
+            }
+            continue
+
+        match = isinstance(observed, str) and observed == expected
+        reason = None
+        if not match:
+            reason = (
+                f"schema_contract_mismatch:{field}:"
+                f"expected={expected}:observed={observed}"
+            )
+            failure_reasons.append(reason)
+        _put_available(row, match_field, match)
+        row[f"{match_field}_failure_reason"] = reason
+        details[field] = {
+            "observed": observed,
+            "expected_current": expected,
+            "match": match,
+            "status": "current" if match else "historical_or_unknown_read_only",
+            "reason": reason,
+        }
+
+    _put_available(
+        row,
+        "schema_contract_registry_version",
+        SCALABLE_3D_SCHEMA_REGISTRY_VERSION,
+    )
+    _put_available(
+        row,
+        "current_schema_registry_json",
+        SCALABLE_3D_CURRENT_SCHEMA_REGISTRY,
+    )
+    _put_available(row, "current_schema_contract_details_json", details)
+    _put_available(
+        row,
+        "current_schema_contract_failure_reasons_json",
+        failure_reasons,
+    )
+    if unavailable_fields:
+        _put_unavailable(
+            row,
+            "current_schema_contract_match",
+            "schema_contract_fields_unavailable:" + ",".join(unavailable_fields),
+        )
+    else:
+        _put_available(
+            row,
+            "current_schema_contract_match",
+            not failure_reasons,
+        )
+    row["_failure_reasons"].extend(failure_reasons)
 
 
 def _load_json_object(path: Path) -> tuple[dict[str, Any] | None, str | None]:
@@ -4011,8 +4107,10 @@ __all__ = [
     "DEFAULT_SCALABLE_3D_BOOTSTRAP_RESAMPLES",
     "DEFAULT_SCALABLE_3D_BOOTSTRAP_RNG_SEED",
     "FIVE_METER_THRESHOLD_M",
+    "SCALABLE_3D_CURRENT_SCHEMA_REGISTRY",
     "SCALABLE_3D_OFFLINE_EVALUATION_DATE",
     "SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION",
+    "SCALABLE_3D_SCHEMA_REGISTRY_VERSION",
     "Scalable3DOfflineEvaluationError",
     "Scalable3DOfflineEvaluationInputs",
     "Scalable3DOfflineReportGenerator",

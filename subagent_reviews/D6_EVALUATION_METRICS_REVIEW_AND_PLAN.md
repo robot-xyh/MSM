@@ -1,5 +1,15 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-20 Scalable 3D schema 合同复核
+
+评审确认真实 online observation schema 为 `scalable3d-observation-v1`。D6 fixture 已对齐；离线
+consumer v4 使用独立、版本化 registry 精确核对 world、bus、scenario、online observation、offline
+truth 和 config schema。该 registry 只描述评估器当前支持合同，不调用 main 运行逻辑。
+
+历史 row 继续展示原始 schema 值。当前匹配状态单独输出；旧值、未知值和篡改值为 match=false 并保留
+failure reason，缺字段为 unavailable。整体 match 已进入 clean formal acceptance，避免“字段非空即
+合法”。专项 `32 passed`、D6 全量 `304 passed`；当前 6v6 producer smoke match=true。
+
 ## 2026-07-20 Scalable 3D 主动视觉证据评审
 
 评审确认 D6 v3 只消费持久化主动视觉命令、运行时 ACK 和 summary counters，不调用 D5 policy 或 main

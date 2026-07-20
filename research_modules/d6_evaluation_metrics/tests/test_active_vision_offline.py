@@ -161,7 +161,7 @@ def _write_episode(
         "world_schema": "scalable3d-world-v1",
         "bus_schema": "scalable3d-episode-bus-v1",
         "scenario_schema": "scalable3d-scenario-v1",
-        "online_observation_schema": "scalable3d-online-observation-v1",
+        "online_observation_schema": "scalable3d-observation-v1",
         "offline_truth_schema": "scalable3d-offline-truth-v1",
         "d1_model_version": "d1-v1",
         "d2_model_version": "d2-v1",

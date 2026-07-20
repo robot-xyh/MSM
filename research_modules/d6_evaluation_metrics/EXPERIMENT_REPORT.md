@@ -1,5 +1,20 @@
 # D6 系统级评估指标实验报告
 
+## 2.3 2026-07-20 scalable 3D schema 合同回归
+
+本节修正 D6 fixture 与真实 producer 的 online observation schema 偏差。真实值是
+`scalable3d-observation-v1`；旧 fixture 值 `scalable3d-online-observation-v1` 已删除。评估器 v4 新增
+本地 schema registry，不依赖 main runtime import。
+
+正例同时匹配 world、bus、scenario、online observation、offline truth 和 config schema。负例分别
+替换五项 manifest schema，并删除 bus schema。接受门限为：raw 字段仍原样可见；匹配值为 true；旧、
+未知和篡改值为 false 且带明确 reason；缺字段为 unavailable；任一负例 formal acceptance=false；
+Markdown 显示 registry 和 schema current 状态。全部满足。
+
+scalable 与 active-vision 专项 `32 passed`，D6 全量 `304 passed`，仅有既有 Matplotlib `Axes3D`
+warning。复读当前 6v6、seed 37 dirty producer smoke 时，schema match=true；formal=false 的唯一原因是
+repository dirty。该复读不构成新的性能实验。
+
 ## 2.2 2026-07-20 scalable 3D 主动视觉证据验收
 
 本节验证 D6 对 D5 主动视觉命令和 main runtime ACK 的离线消费，不记录真实飞行、AirSim 或模型性能。

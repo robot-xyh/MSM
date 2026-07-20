@@ -1,5 +1,21 @@
 # D6 实现差距审计
 
+## 2026-07-20 Scalable 3D schema provenance P0 窄修复
+
+- **P0 准入缺口已关闭**：旧 evaluator 只检查五项 manifest schema 非空，无法阻止未知或篡改值进入
+  clean formal acceptance。v4 现用 D6-owned registry 做精确当前合同匹配，并额外核对 config schema。
+- **fixture 偏差已关闭**：`test_scalable_3d_offline.py` 和 `test_active_vision_offline.py` 均改用真实
+  producer 的 `scalable3d-observation-v1`，不再使用不存在的
+  `scalable3d-online-observation-v1`。
+- **历史解释保留**：原始 world/bus/scenario/online/offline schema 字段不改写。旧或未知值的 raw
+  availability 仍可用，但 current-contract match=false 并带明确 failure reason；缺字段为 unavailable。
+- **正式门已关闭**：`current_schema_contract_match` 是 formal acceptance critical field。五项不匹配或
+  任一缺失均不能通过 clean acceptance。
+- **验证**：当前匹配、五类旧/未知/篡改 schema、缺 bus schema、报告展示均通过；专项 `32 passed`、
+  D6 全量 `304 passed`。真实 6v6 dirty smoke schema match=true，formal 仅因 dirty 被拒绝。
+- **剩余限制**：registry 只声明当前 v1 合同。未来 producer 变更需显式升级 registry 和迁移文档，D6
+  不把未知版本自动视为向后兼容。
+
 ## 2026-07-20 Scalable 3D 主动视觉运行证据 GAP 状态
 
 - **D6 consumer P1 已关闭**：离线评估 v3 已消费 D5 主动视觉命令和 main camera-command ACK，保持

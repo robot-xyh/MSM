@@ -1,5 +1,23 @@
 # D6 Evaluation Metrics
 
+## 2026-07-20 scalable 3D 当前 schema 合同准入
+
+`d6-scalable3d-offline-evaluation-v4` 在 D6 内维护
+`d6-scalable3d-schema-registry-v1`，不导入 main 控制或仿真运行逻辑。当前合同固定为 world
+`scalable3d-world-v1`、bus `scalable3d-episode-bus-v1`、scenario
+`scalable3d-scenario-v1`、online observation `scalable3d-observation-v1`、offline truth
+`scalable3d-offline-truth-v1`，并要求 scenario config 自身 schema 同为
+`scalable3d-scenario-v1`。
+
+manifest 和 config 的原始 schema 字段继续原样输出，便于读取历史数据。每项另输出 expected、match、
+status 和 failure reason；旧值、未知值、篡改值或缺字段只能作为 descriptive evidence，不能通过 clean
+formal acceptance。此前 fixture 使用的 `scalable3d-online-observation-v1` 已改为真实 producer 的
+`scalable3d-observation-v1`。
+
+验证覆盖当前合同匹配、五个 manifest schema 分别不匹配和缺失 bus schema。scalable/active-vision
+专项 `32 passed`，D6 全量 `304 passed`，仅有既有 Matplotlib `Axes3D` warning。既有 6v6、seed 37
+producer smoke 复读得到 schema match=true；formal=false 的唯一原因仍是 worktree dirty。
+
 ## 2026-07-20 scalable 3D 主动视觉命令与 ACK 离线评估
 
 `d6-scalable3d-offline-evaluation-v3` 已接入 D5 主动视觉运行证据。D6 仍只读取 main 写盘的

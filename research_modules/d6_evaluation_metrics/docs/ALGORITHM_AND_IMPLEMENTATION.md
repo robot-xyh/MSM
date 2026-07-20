@@ -1,5 +1,32 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## Scalable 3D schema registry 审计算法（2026-07-20）
+
+`SCALABLE_3D_CURRENT_SCHEMA_REGISTRY` 由 D6 自主管理，版本为
+`d6-scalable3d-schema-registry-v1`。当前映射为：
+
+- `world_schema = scalable3d-world-v1`
+- `bus_schema = scalable3d-episode-bus-v1`
+- `scenario_schema = scalable3d-scenario-v1`
+- `online_observation_schema = scalable3d-observation-v1`
+- `offline_truth_schema = scalable3d-offline-truth-v1`
+- `scenario_config_schema = scalable3d-scenario-v1`
+
+`_extract_provenance()` 先按原逻辑保存 manifest/config 原始字段和 availability，再调用
+`_extract_current_schema_contract()`。每项生成 `<field>_current_contract_match`，并在 details JSON 中
+保存 observed、expected、match、status 和 reason。原始字段可用但值不同，match 为 false，reason 为
+`schema_contract_mismatch:<field>:expected=...:observed=...`；原始字段缺失时 match unavailable，reason
+为 `schema_contract_unavailable:<field>`。
+
+全部字段有值时，整体 match 是逐项逻辑与；只要一项缺失，整体 match 为 unavailable。该整体字段加入
+formal acceptance critical set，并要求值严格为 true。CSV、aggregate JSON 和中文 Markdown 均保留
+raw schema 与 current match，未知值不会被改写为当前值。
+
+两套 fixture 的 online observation schema 已改为真实 producer 的 `scalable3d-observation-v1`。
+参数化回归逐项注入 world/bus/scenario/online/offline 的旧值或篡改值，并删除 bus schema 验证缺值；
+所有负例均保持 raw 可见且 formal=false。专项 `32 passed`，D6 全量 `304 passed`。6v6 dirty producer
+smoke 的 current match=true，说明当前 registry 与实际写盘合同一致。
+
 ## Scalable 3D 主动视觉运行证据算法（2026-07-20）
 
 `active_vision_offline.py` 由 `evaluate_scalable_3d_episode()` 调用，只处理已经写盘的 bus envelope 和

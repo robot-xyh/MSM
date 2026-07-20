@@ -11,6 +11,9 @@ import sys
 import pytest
 
 from d6_evaluation_metrics.scalable_3d_offline import (
+    SCALABLE_3D_CURRENT_SCHEMA_REGISTRY,
+    SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION,
+    SCALABLE_3D_SCHEMA_REGISTRY_VERSION,
     Scalable3DOfflineEvaluationInputs,
     Scalable3DOfflineReportGenerator,
     aggregate_scalable_3d_episodes,
@@ -339,7 +342,7 @@ def _write_episode(
         "world_schema": "scalable3d-world-v1",
         "bus_schema": "scalable3d-episode-bus-v1",
         "scenario_schema": "scalable3d-scenario-v1",
-        "online_observation_schema": "scalable3d-online-observation-v1",
+        "online_observation_schema": "scalable3d-observation-v1",
         "offline_truth_schema": "scalable3d-offline-truth-v1",
         "d1_model_version": "d1-scalable3d-fusion-v1",
         "d2_model_version": "d2-scalable3d-association-v1",
@@ -763,6 +766,123 @@ def test_normal_50v50_uses_explicit_scale_and_records_module_metrics(tmp_path: P
     assert row["online_truth_use_count"] == 0
 
 
+def test_current_schema_registry_matches_real_producer_contract(tmp_path: Path) -> None:
+    episode = _write_episode(tmp_path / "current_schema_contract")
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert SCALABLE_3D_SCHEMA_REGISTRY_VERSION == "d6-scalable3d-schema-registry-v1"
+    assert SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION == (
+        "d6-scalable3d-offline-evaluation-v4"
+    )
+    assert SCALABLE_3D_CURRENT_SCHEMA_REGISTRY == {
+        "world_schema": "scalable3d-world-v1",
+        "bus_schema": "scalable3d-episode-bus-v1",
+        "scenario_schema": "scalable3d-scenario-v1",
+        "online_observation_schema": "scalable3d-observation-v1",
+        "offline_truth_schema": "scalable3d-offline-truth-v1",
+        "scenario_config_schema": "scalable3d-scenario-v1",
+    }
+    assert row["schema_contract_registry_version"] == (
+        SCALABLE_3D_SCHEMA_REGISTRY_VERSION
+    )
+    assert row["current_schema_registry_json"] == (
+        SCALABLE_3D_CURRENT_SCHEMA_REGISTRY
+    )
+    assert row["current_schema_contract_match"] is True
+    assert row["current_schema_contract_match_availability"] == "available"
+    assert row["current_schema_contract_failure_reasons_json"] == []
+    for field, expected in SCALABLE_3D_CURRENT_SCHEMA_REGISTRY.items():
+        assert row[field] == expected
+        assert row[f"{field}_current_contract_match"] is True
+        assert row[f"{field}_current_contract_match_availability"] == "available"
+        assert row[f"{field}_current_contract_match_failure_reason"] is None
+        assert row["current_schema_contract_details_json"][field] == {
+            "observed": expected,
+            "expected_current": expected,
+            "match": True,
+            "status": "current",
+            "reason": None,
+        }
+    assert row["formal_acceptance_eligible"] is True
+
+
+@pytest.mark.parametrize(
+    ("field", "observed"),
+    (
+        ("world_schema", "scalable3d-world-v0"),
+        ("bus_schema", "scalable3d-episode-bus-v9"),
+        ("scenario_schema", "scalable3d-scenario-unknown"),
+        (
+            "online_observation_schema",
+            "scalable3d-online-observation-v1",
+        ),
+        ("offline_truth_schema", "tampered-offline-truth-v1"),
+    ),
+)
+def test_old_unknown_or_tampered_manifest_schema_is_descriptive_only(
+    tmp_path: Path,
+    field: str,
+    observed: str,
+) -> None:
+    episode = _write_episode(tmp_path / f"mismatch_{field}")
+    manifest_path = episode / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest[field] = observed
+    _write_json(manifest_path, manifest)
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    expected = SCALABLE_3D_CURRENT_SCHEMA_REGISTRY[field]
+    failure = (
+        f"schema_contract_mismatch:{field}:"
+        f"expected={expected}:observed={observed}"
+    )
+    assert row[field] == observed
+    assert row[f"{field}_availability"] == "available"
+    assert row[f"{field}_current_contract_match"] is False
+    assert row[f"{field}_current_contract_match_availability"] == "available"
+    assert row[f"{field}_current_contract_match_failure_reason"] == failure
+    assert row["current_schema_contract_match"] is False
+    assert row["current_schema_contract_match_availability"] == "available"
+    assert row["current_schema_contract_details_json"][field]["observed"] == observed
+    assert row["current_schema_contract_details_json"][field]["status"] == (
+        "historical_or_unknown_read_only"
+    )
+    assert failure in row["current_schema_contract_failure_reasons_json"]
+    assert failure in row["episode_failure_reasons_json"]
+    assert row["formal_acceptance_eligible"] is False
+
+
+def test_missing_manifest_schema_is_unavailable_and_not_formal_acceptance(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "missing_bus_schema")
+    manifest_path = episode / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    del manifest["bus_schema"]
+    _write_json(manifest_path, manifest)
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["bus_schema"] is None
+    assert row["bus_schema_availability"] == "unavailable"
+    assert row["bus_schema_current_contract_match"] is None
+    assert row["bus_schema_current_contract_match_availability"] == "unavailable"
+    assert row["bus_schema_current_contract_match_unavailable_reason"] == (
+        "schema_contract_unavailable:bus_schema"
+    )
+    assert row["current_schema_contract_match"] is None
+    assert row["current_schema_contract_match_availability"] == "unavailable"
+    assert row["current_schema_contract_match_unavailable_reason"] == (
+        "schema_contract_fields_unavailable:bus_schema"
+    )
+    assert "schema_contract_unavailable:bus_schema" in row[
+        "episode_failure_reasons_json"
+    ]
+    assert row["formal_acceptance_eligible"] is False
+
+
 def test_initial_195_then_200_min_dwell_hold_reports_five_track_backlog(
     tmp_path: Path,
 ) -> None:
@@ -1181,6 +1301,7 @@ def test_report_bundle_bootstraps_distinct_seeds_and_writes_all_artifacts(
         group["metric_statistics"]["d1_track_count"]["bootstrap_availability"]
         == "available"
     )
+    assert group["metric_statistics"]["current_schema_contract_match"]["mean"] == 1.0
     assert group["d4_advice_requested_mode_distribution"] == {"assist": 2}
     assert group["d4_advice_effective_mode_distribution"] == {"shadow": 2}
     assert (
@@ -1206,6 +1327,8 @@ def test_report_bundle_bootstraps_distinct_seeds_and_writes_all_artifacts(
     assert "bundle 能加载" in markdown
     assert "`assist_eligible` 不是控制生效" in markdown
     assert "控制采用字段保持 unavailable" in markdown
+    assert "d6-scalable3d-schema-registry-v1" in markdown
+    assert "schema current" in markdown
 
 
 def test_cli_accepts_episode_root_and_generates_bundle(tmp_path: Path) -> None:
