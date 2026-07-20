@@ -2,6 +2,55 @@
 
 离线科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块只输出 `TerminalAssociation` 决策，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-20 匿名多相机 tracklet 稀疏图主线
+
+新增 `sparse_tracklet_graph.py`、`tracklet_gnn.py` 和 `active_vision.py`。图节点严格为
+`resource_id/camera_id:local_track_id` 命名空间内的 camera-local tracklet；节点合同
+不含 truth、actor、object 或 `global_track_id` 字段，递归 metadata guard 和本地 ID
+别名 guard 会在入图前失败关闭。本地 ID guard 除拒绝 `truth/actor/object` 字样外，还拒绝
+`TGT-0001`、嵌入式 `camera:TGT-002`、`TargetDrone_1`、`Target_UAV_7` 和
+`intruder-003` 等仿真真值式编号；递归 payload guard 对 `local_track_id`、`tracklet_id`、
+`track_id` 和 `detection_id` 等 local-ID 字段执行同一检查。正常
+`cam01-track-0001`、`local-001` 与 detector sequence ID 保持可用。中心 `GlobalTrack`
+仅作为只读投影假设传入，不进入节点身份，也不能由 D5 创建或改写。
+
+稀疏候选边按以下顺序生成：双时间戳窗口、各自视场、双向极线距离、世界射线最近交会、
+三角中点重投影、像素协方差马氏门、中心 GlobalTrack 投影与协方差门，最后执行确定性的
+per-node degree cap。每条边至少携带时间差、像素马氏距离、重投影误差、射线最近距离、
+bbox 尺度差和尺度变化率差、角速度差、相机基线及外参协方差；另携带极线误差、交会角、
+中心投影马氏距离、置信度乘积和共享中心候选数。
+
+`NativeTrackletEdgeClassifier` 只输出每条现有边的“同一目标”概率。模型使用原生
+PyTorch MLP 和 `index_add_` 对两个端点聚合消息，不依赖 `torch_geometric`，也不输出
+全局 ID。`OfflineTrackletTruthLabel` 是独立 evaluator-only 流；训练批只在在线图完成后
+连接真值，按最小几何 gate score 选择困难负样本，并通过 `positive_weight` 处理类别不平衡。
+最终身份仍由 `constrained_tracklet_clusters()` 保证同一相机每簇最多一个 tracklet，再由
+`bind_clusters_to_center_tracks()` 对中心输入 ID 做 Hungarian 一对一绑定；输出 ID 集合被
+运行时断言限制为中心输入集合的子集。
+
+`SafeRuleScanPolicy` 提供主动视觉环境/策略安全接口。动作枚举仅含观察中心目标、搜索扇区、
+云台增量和 FOV/变焦；观测超时、低置信或中心 binding 无效时轮转规则扫描扇区。它不包含
+飞行动作、目标分配或火控动作，尚未接入 AirSim 云台，也没有训练或验收学习策略。
+
+2026-07-20 固定 seed 代码证据：
+
+| 场景 | 结果 | 代码验收门 |
+| --- | --- | --- |
+| seed 200，200 目标，4 相机 | 800 节点；240000 个跨相机可能对；极线门后 20398；中心投影门后/degree cap 前 2953；最终 1923 边；密度 0.006017；最大度 6；本机 1.585 s | 800 节点；密度 `<0.01`；最大度 `<=6`；中心投影候选 `<2%`；运行 `<15 s` |
+| seed 4，8 目标，3 相机小样本 | 24 节点、192 边；24 正样本、72 困难负样本；`positive_weight=3.0`；60 epoch loss `1.038521 -> 0.011535`，训练集准确率 1.0 | loss 至少下降 50%；训练集准确率 `>=0.90`；困难负样本非空 |
+| D5 全量回归 | `315 passed in 8.71s` | 零失败 |
+
+上述压力结果只证明 **最终输出边集稀疏**。当前 `build_sparse_tracklet_graph()` 仍枚举全部非空
+camera pair，并为每对构造 `n_left x n_right` 的时间/视场/极线矩阵；尚未运行 200-camera
+benchmark。因此 main 后续接入 200-camera 场景前，camera overlap/index bucket、pair budget
+及对应内存/时延压力测试仍是开放 P1，不能由 4-camera 结果宣称闭合。
+
+小样本结果只证明原生 PyTorch 前向、反向、困难负样本和不平衡损失可运行，是过拟合 smoke，
+不是独立验证、概率校准或模型准入。当前没有默认图模型 checkpoint；图主线尚未接入 main 的
+`scalable_3d_simulation.sensor_scene` 在线总线或真实 AirSim。后续必须用独立训练/验证/测试
+划分、困难遮挡和近邻交叉、多 seed 200v200 episode、阈值校准及真实时延预算完成准入，
+期间既有几何 Hungarian/`TerminalAssociator` 默认路径保持不变。
+
 ## 2026-07-16 AirSim ComputerVision 5+1 单种子仿真证据
 
 报告入口：

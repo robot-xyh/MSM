@@ -1,5 +1,33 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-20 匿名稀疏图审查
+
+审查确认新路径没有把图节点定义成目标或全局航迹，而是严格的 camera-local tracklet。
+在线节点合同不含 truth/actor/object/global ID；中心 GlobalTrack 仅参与投影门和最终只读
+binding。候选边在学习前经过时间、视场、极线、射线、重投影和协方差门，并受每节点度数
+上限约束，最终输出边集在 200 目标/4 相机场景保持稀疏。P0 复审补强了 local-ID 防线：
+构造器和递归 payload guard 现在拒绝 `TGT-0001`、嵌入式 `camera:TGT-002`、
+`TargetDrone_1`、`Target_UAV_7` 和 `intruder-003` 等 truth-like 编号，但
+`cam01-track-0001` 仍合法。
+
+原生 PyTorch 模型使用 `index_add_` 消息聚合且只输出同目标边概率，不依赖
+`torch_geometric`。最终聚类强制同一 camera namespace 最多一个 tracklet，Hungarian 只能
+选择中心提供的 ID。独立离线 truth 流、困难负样本和正类权重边界清晰，未发现在线标签泄漏
+或 D5 创建/改写 `global_track_id` 的路径。
+
+2026-07-20 seed 200 压力测试为 800 节点、1923 最终边、密度 `0.006017`、最大度 6、
+本机 `1.585 s`；seed 4 小样本训练将 loss 从 `1.038521` 降至 `0.011535`，训练准确率 1.0；
+D5 全量 `315 passed`。审查只接受其为代码/训练管线证据。构图仍遍历全部非空 camera pair，
+并为每对形成 `n_left x n_right` 中间矩阵，因此 4-camera 稀疏输出不得外推为 200-camera
+性能闭合；camera overlap/index bucket、pair budget 和 200-camera benchmark 保持开放 P1。
+由于没有独立验证、概率校准、
+多 seed episode、默认 checkpoint 或真实 AirSim 接线，GNN 不得声明准入或替换现有默认路径。
+
+主动视觉 API 的动作集只有观察中心目标、规则扇区扫描、云台增量和 FOV/变焦；timeout、
+低置信和无效 binding 回退规则扫描。该接口不等于已训练 RL policy 或已执行云台闭环。
+后续审查必须由 main 提供在线 truth use=0、global ID rewrite=0、多 seed 准确率/时延和 ACK/
+fallback 证据，再决定是否晋级。
+
 ## 2026-07-16 ComputerVision 5+1 真实专项审查
 
 main 已在独立分支完成两个真实 AirSim episode：5 个 `1920x1080`/60 度局部相机、

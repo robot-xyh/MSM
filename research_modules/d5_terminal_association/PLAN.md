@@ -1,5 +1,41 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-20 匿名稀疏 tracklet 图与主动视觉接口
+
+- [x] 新增严格匿名 `CameraLocalTracklet`：节点仅使用 camera-local namespace、双时间戳、
+  bbox/中心、像素协方差、角速度、尺度变化和置信度；metadata 与本地 ID 中的
+  truth/actor/object/global identity 失败关闭；构造器和递归 payload guard 另拒绝
+  `TGT-0001`、`TargetDrone_1`、`Target_UAV_7`、`intruder-003` 等 truth-like local ID，
+  并保留 `cam01-track-0001` 等正常 camera-local sequence。
+- [x] 新增时序、视场、极线、射线交会、重投影、像素马氏、中心 GlobalTrack 投影和
+  外参/航迹协方差逐级门控；按 `max_neighbors_per_node` 确定性截断，避免构造全连接图。
+- [x] 边特征覆盖时间差、像素马氏距离、重投影误差、射线最近距离、bbox 尺度/变化、
+  角速度、基线、外参协方差，并补充极线误差、交会角和中心投影支持。
+- [x] 使用原生 PyTorch 实现 `NativeTrackletEdgeClassifier`，通过 `index_add_` 聚合消息；
+  forward 只输出同目标边概率，不引入或依赖 `torch_geometric`。
+- [x] 独立 `OfflineTrackletTruthLabel` 仅在在线图完成后构造训练标签；困难负样本按几何
+  gate score 选择，BCE 使用正类权重处理不平衡。
+- [x] 最终决策保持分层：受约束聚类保证每相机每簇最多一个 tracklet，中心 Hungarian
+  binding 只能引用输入 `GlobalTrack.global_track_id`，运行时检查输出 ID 是输入集合子集。
+- [x] 主动视觉动作域限制为观察目标、搜索扇区、云台增量、FOV/变焦；超时、低置信和
+  无效中心 binding 回退确定性规则扫描。接口不包含飞行、分配、处置或授权动作。
+- [x] 2026-07-20 seed 200 压力回归：200 目标、4 相机、800 节点，240000 可能跨相机对
+  收缩到 2953 个 degree-cap 前候选和 1923 条最终边，密度 `0.006017`、最大度 6、
+  本机 `1.585 s`；接受门为密度 `<0.01`、最大度 `<=6`、运行 `<15 s`。
+- [x] seed 4 小样本 smoke：8 目标、3 相机、24 节点/192 边，24 正样本与 72 困难负样本，
+  60 epoch loss `1.038521 -> 0.011535`、训练集准确率 1.0；D5 全量 `315 passed`。
+- [ ] P1：当前 200 目标/4 相机测试只验证最终输出图稀疏。构图仍通过全部非空 camera pair，
+  并为每对建立 `n_left x n_right` 时间/视场/极线矩阵；main 接入 200-camera 前需增加相机
+  overlap/index bucket、camera-pair budget 与专门的内存/P50/P95 benchmark，不得将本项标为闭合。
+- [ ] P1：main 将 scalable 3D 匿名 `vision_bbox`、camera projection metadata 和本地 MOT
+  tracklet 接入该图路径，并保持 `OfflineTruthLabel` 在独立 evaluator 流；D5 不越界修改
+  main-owned `scalable_3d_simulation`。
+- [ ] P1：建立独立训练/验证/测试集、近邻交叉与遮挡困难负样本、多 seed 200v200 episode、
+  概率校准、阈值冻结和 CPU/GPU 时延预算。当前小样本仅为过拟合 smoke，不构成准入，
+  不生成默认 checkpoint，也不替换既有几何 Hungarian 主线。
+- [ ] P2：由 main-owned runtime 接入真实云台/FOV 执行和 ACK/timeout；学习型主动视觉策略
+  尚未训练、未验证、未验收，当前只有安全接口与规则扫描 fallback。
+
 ## 2026-07-16 ComputerVision 5+1 独立专项状态
 
 - [x] 完成 5 个 `1920x1080`/60 度局部相机、1 个 `3840x2160`/75 度侦察相机、

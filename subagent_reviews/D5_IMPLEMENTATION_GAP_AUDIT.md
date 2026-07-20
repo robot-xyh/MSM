@@ -1,5 +1,37 @@
 # D5 实现差距审计
 
+## 2026-07-20 匿名稀疏图 GAP 状态
+
+**代码级已完成：** camera-local tracklet 匿名节点、truth/global identity 递归隔离、时间/视场/
+极线/射线/重投影/GlobalTrack 投影/协方差门、确定性 degree cap、14 维边特征、原生 PyTorch
+`index_add_` 消息传递、独立离线标签、困难负样本、正类权重、同相机互斥聚类、中心
+Hungarian binding 及主动视觉规则 fallback 已进入 D5-owned 代码和回归。D5 输出中心 ID 的
+集合被限制为输入中心 ID 集合的子集。P0 复审发现的 local-ID 漏项已修复：构造器及递归
+payload guard 现在除 `truth/actor/object` 外，还拒绝 `TGT-0001`、嵌入式
+`camera:TGT-002`、`TargetDrone_1`、`Target_UAV_7`、`intruder-003` 等 truth-like 编号；
+`cam01-track-0001` 等正常 camera-local sequence 有正向回归。
+
+**代码证据：** 2026-07-20 D5 全量 `315 passed in 8.71s`。seed 200 的 200 目标/4 相机
+场景为 800 节点、240000 可能跨相机 pair、2953 个 cap 前候选、1923 条最终边、密度
+`0.006017`、最大度 6、本机 `1.585 s`，通过密度 `<0.01`、度数 `<=6` 和 `<15 s` 门。
+seed 4 的 8 目标/3 相机训练 smoke 为 24 节点/192 边、24 正边/72 困难负边、正类权重
+3.0，60 epoch loss `1.038521 -> 0.011535`、训练准确率 1.0。truth-like ID 专项新增
+5 个构造拒绝、3 个递归拒绝和 4 个正常 ID 正例，接受门为拒绝/放行均无误判，12/12 通过。
+
+**GAP 判定：** truth-like local ID 的 P0 防线已在 D5 构造与递归入口关闭并保持回归。
+“匿名稀疏输出图、原生前向、真值隔离训练接口和 200 目标/4 相机代码压力回归”在 D5 范围内
+已有证据；但不能写成“200-camera 构图性能已闭合”。当前 `build_sparse_tracklet_graph()` 仍枚举
+全部非空 camera pair，并为每对形成 `n_left x n_right` 时间/视场/极线矩阵。相机
+overlap/index bucket、pair budget 和 200-camera 内存/P50/P95 benchmark 明确保持开放 P1。
+已训练并校准的跨视角模型、main/scalable 3D 在线接线、真实 AirSim 多 seed 性能和学习型
+主动视觉闭环仍为开放 P1/P2。小样本是同集过拟合 smoke，不能关闭模型准入 GAP；当前无
+默认 checkpoint，既有几何 Hungarian/`TerminalAssociator` 继续默认。
+
+**跨模块待办：** main 需在其 ownership 内把匿名 `vision_bbox` 和 local MOT tracklet 接入
+图路径，并确保 `OfflineTruthLabel` 只进入 evaluator；main 的 200-camera 接线还需给出可达
+camera-pair 候选合同和压力 benchmark。D6 后续需定义边 precision/recall、PR/ROC、校准误差、
+IDSW 和多 seed 统计。D5 本轮未修改 main-owned runtime 或根级 docs。
+
 ## 2026-07-16 ComputerVision 5+1 最终证据与 GAP 状态
 
 **真实样本：** main 的独立专项分支使用 5 个 `1920x1080`/60 度局部相机、

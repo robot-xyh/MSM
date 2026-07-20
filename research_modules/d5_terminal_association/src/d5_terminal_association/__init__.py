@@ -40,6 +40,17 @@ from .airsim_geometry import (
     intrinsics_from_width_height_fov,
     rotation_world_to_opencv_camera_from_quaternion,
 )
+from .active_vision import (
+    ActiveVisionAction,
+    ActiveVisionActionType,
+    ActiveVisionEnvironment,
+    ActiveVisionObservation,
+    ActiveVisionPolicy,
+    ActiveVisionSafetyConfig,
+    SafeRuleScanPolicy,
+    run_active_vision_step,
+    validate_active_vision_action,
+)
 from .consistency import (
     TerminalConsistencyConfig,
     TerminalConsistencyTracker,
@@ -117,6 +128,30 @@ from .terminal_cross_view_fusion import (
 from .secondary_frame_evidence import (
     SecondaryFrameAssociationEvidence,
     build_secondary_frame_association_evidence,
+)
+from .sparse_tracklet_graph import (
+    EDGE_FEATURE_NAMES,
+    NODE_FEATURE_NAMES,
+    CameraLocalTracklet,
+    CenterTrackBindingDecision,
+    SparseCandidateEdge,
+    SparseTrackletGraph,
+    SparseTrackletGraphConfig,
+    TrackletCameraGeometry,
+    TrackletCluster,
+    assert_anonymous_online_payload,
+    bind_clusters_to_center_tracks,
+    build_sparse_tracklet_graph,
+    constrained_tracklet_clusters,
+)
+from .tracklet_gnn import (
+    NativeTrackletEdgeClassifier,
+    OfflineEdgeTrainingBatch,
+    OfflineTrackletTruthLabel,
+    SmallSampleTrainingEvidence,
+    build_offline_edge_training_batch,
+    graph_tensors,
+    train_small_sample,
 )
 from .observation_bus import TerminalObservationBus
 from .p1_visual_robustness import (
@@ -263,4 +298,33 @@ __all__ = [
     "summarize_secondary_visual_coverage_funnel",
     "summarize_terminal_consistency",
     "write_p1_visual_robustness_summary",
+    "ActiveVisionAction",
+    "ActiveVisionActionType",
+    "ActiveVisionEnvironment",
+    "ActiveVisionObservation",
+    "ActiveVisionPolicy",
+    "ActiveVisionSafetyConfig",
+    "CameraLocalTracklet",
+    "CenterTrackBindingDecision",
+    "EDGE_FEATURE_NAMES",
+    "NODE_FEATURE_NAMES",
+    "NativeTrackletEdgeClassifier",
+    "OfflineEdgeTrainingBatch",
+    "OfflineTrackletTruthLabel",
+    "SafeRuleScanPolicy",
+    "SmallSampleTrainingEvidence",
+    "SparseCandidateEdge",
+    "SparseTrackletGraph",
+    "SparseTrackletGraphConfig",
+    "TrackletCameraGeometry",
+    "TrackletCluster",
+    "assert_anonymous_online_payload",
+    "bind_clusters_to_center_tracks",
+    "build_offline_edge_training_batch",
+    "build_sparse_tracklet_graph",
+    "constrained_tracklet_clusters",
+    "graph_tensors",
+    "run_active_vision_step",
+    "train_small_sample",
+    "validate_active_vision_action",
 ]

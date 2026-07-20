@@ -11,6 +11,16 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 7. `AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放接入计划。
 8. `../reports/D5_MANUAL_VIDEO_TRACKING_B_20260715.md`：人工初始化五目标视频 local MOT 实测报告。
 
+2026-07-20 新增匿名稀疏 tracklet 图文档：实现入口为
+`../src/d5_terminal_association/sparse_tracklet_graph.py`、`tracklet_gnn.py` 和
+`active_vision.py`；原理、算法、AirSim 待接线和代码级实验分别同步在
+`MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION.md`、
+`AIRSIM_INTEGRATION_PLAN.md` 与 `EXPERIMENT_REPORT.md`。小样本训练仅为 smoke，
+当前没有已验收 checkpoint 或学习型主动视觉策略。2026-07-20 P0 复审后，构造器与递归
+payload guard 已进一步拒绝 `TGT-0001`、`TargetDrone_1` 等 truth-like local ID，同时保留
+`cam01-track-0001`。4-camera 压力结果只证明输出边集稀疏；全 camera-pair 及每对
+`n_left x n_right` 枚举的 200-camera 优化仍为开放 P1。
+
 `../scripts/generate_multicamera_report.py` 用于生成中文原理图、中文仿真图表和
 Word 技术报告。默认从 `assets/d5_multicamera_association/` 读取稳定截图与
 绘图数据；只有显式使用 `--sync-formal-assets` 时才从正式 AirSim 输出同步副本。

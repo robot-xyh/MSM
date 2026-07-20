@@ -1,8 +1,61 @@
 # D5 终端视觉配准与身份认证算法原理与实施文档
 
-**状态日期：2026-07-16**
+**状态日期：2026-07-20**
 
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
+
+## 2026-07-20 稀疏 tracklet 图实现
+
+实现文件：
+
+- `sparse_tracklet_graph.py`：匿名节点、相机外参与协方差、几何候选边、degree cap、
+  同相机互斥聚类和中心 Hungarian binding；
+- `tracklet_gnn.py`：原生 PyTorch 消息传递、边概率、独立离线标签、困难负样本、
+  正类权重和小样本训练 helper；
+- `active_vision.py`：camera-only 环境/策略 protocol、动作 envelope 和规则扫描 fallback。
+
+`CameraLocalTracklet` 不定义 `global_track_id`、truth 或 actor/object 字段，构造时递归审计
+metadata，并拒绝含 AirSim identity 别名的本地 ID。identity alias 检查除
+`truth/actor/object` 字样外，还识别 `TGT-0001`、嵌入式 `camera:TGT-002`、
+`TargetDrone_1`、`Target_UAV_7` 和 `intruder-003` 等 truth-like 编号；同一 helper 用于
+递归 payload 中的 local-ID 字段，`cam01-track-0001` 保持合法。`TrackletCameraGeometry` 使用 D5
+`CameraModel(K,R,t)`，其中 `P_c = R P_ned + t`，另显式携带位置与姿态协方差。实现与
+`scalable_3d_simulation.camera_projection` 的 NED 到 optical frame 约定一致。
+
+对于不同相机节点 `i,j`，先计算时间差和视场有效性，再由相对外参构造
+`F = K_j^{-T}[t_ji]_x R_ji K_i^{-1}`，计算双向 point-to-epipolar-line 距离。像素反投影为
+世界射线后，要求两个射线最近点参数均为正、交会角大于下限、最近距离小于协方差膨胀门；
+最近点中点分别重投影到两个相机，检查 RMS 像素误差和像素马氏距离。
+
+中心 GlobalTrack 按各节点 `measurement_timestamp` 用常速度预测，协方差按时间差和过程噪声
+膨胀，再通过投影 Jacobian 传播到像面，并叠加节点像素协方差、相机位置协方差和姿态像素
+方差。提供中心航迹时，只有共享至少一个门内中心投影的节点 pair 才保留。边的 14 维特征
+固定为时间差、像素马氏距离、重投影误差、射线最近距离、bbox 对数尺度差、尺度变化率差、
+角速度差、基线、外参协方差 trace、极线误差、交会角、中心投影马氏距离、置信度乘积和
+共享中心候选数。
+
+`NativeTrackletEdgeClassifier` 对节点和边分别编码。每轮将两个端点状态与边状态编码为消息，
+使用 `aggregate.index_add_(0, source, message)` 和 `index_add_(0, target, message)` 聚合并按度数
+归一化。最终对端点和、绝对差、乘积及边状态做对称分类，公开 forward 只返回边概率。
+实现未导入 `torch_geometric`。
+
+边概率不直接绑定身份。`constrained_tracklet_clusters()` 按概率降序合并且检查 camera set
+不相交；`bind_clusters_to_center_tracks()` 对匿名簇到中心航迹的平均投影马氏代价执行
+Hungarian，并对 margin 不足输出 `ambiguous`。输出 `global_track_id` 必须属于中心输入集合。
+
+验证日期为 2026-07-20。seed 200 的 200 目标/4 相机压力测试为 800 节点、240000 可能 pair、
+2953 个 cap 前候选、1923 条最终边、最大度 6、密度 `0.006017`，本机 `1.585 s`，通过
+`<15 s`、密度 `<0.01` 和最大度 `<=6` 的代码门。seed 4 的 24 节点/192 边训练 smoke
+包含 24 正边和 72 困难负边，正类权重 3.0，60 epoch loss
+`1.038521 -> 0.011535`，训练准确率 1.0。D5 全量 `315 passed in 8.71s`。
+
+最终 1923 条边证明输出图稀疏，但当前构图仍对全部非空 camera pair 执行枚举，并为每对
+分配 `n_left x n_right` 时间/视场/极线中间矩阵。本轮没有 200-camera benchmark；main
+接线前所需的相机 overlap/index bucket、pair budget 和内存/P50/P95 验证仍为开放 P1。
+
+该训练结果仅为管线和可过拟合性测试，未做独立验证、概率校准、多 seed 或真实图像评估，
+没有默认 checkpoint，不能解释为已验收 GNN。现有 `TerminalAssociator`/几何 Hungarian 仍是
+默认运行路径；scalable 3D 在线适配、真实 AirSim 和学习型主动视觉训练均未完成。
 
 ## 2026-07-16 真实 ComputerVision 5+1 实现证据
 

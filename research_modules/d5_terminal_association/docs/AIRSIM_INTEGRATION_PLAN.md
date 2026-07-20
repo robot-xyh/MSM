@@ -1,5 +1,34 @@
 # AirSim 离线集成计划
 
+## 2026-07-20 稀疏 tracklet 图接线状态
+
+D5 已实现匿名稀疏图、原生 PyTorch 边评分、受约束聚类、中心 Hungarian binding 和
+camera-only 主动视觉接口，但本轮没有启动或修改 AirSim，也没有修改 main-owned
+`scalable_3d_simulation`。当前默认 AirSim detect/几何注册和 `TerminalAssociator` 保持不变。
+
+后续 main 接线必须保持三路分离：
+
+1. 在线 `vision_bbox` 及本地 MOT 只形成 camera-local tracklet，保留 measurement/arrival
+   timestamp、像素协方差和 camera projection metadata；D5 入图构造器与递归 payload guard
+   继续拒绝 truth/actor/object/global identity，并拒绝 `TGT-0001`、`TargetDrone_1` 等
+   truth-like local ID；`cam01-track-0001` 等 camera-local sequence 保持合法。
+2. 中心 GlobalTrack 作为只读投影输入；图模型只输出边概率，受约束聚类后才用 Hungarian
+   引用中心 ID。任何未绑定簇保持 anonymous/unbound，不得生成 `global_track_id`。
+3. `OfflineTruthLabel` 只路由到训练/评估进程，不能并入 tracklet、图特征、云台动作或
+   online bus。困难负样本挖掘也必须在在线图已经冻结后执行。
+
+主动视觉接线只允许 `observe_target/search_sector/gimbal_increment/set_fov_zoom` 四类 camera
+intent。main-owned runtime 负责实际云台/FOV 命令、ACK、速率限制和 timeout；低置信或超时
+必须执行规则扫描。学习型策略当前未训练和验收，不得替换规则 fallback。
+
+进入真实 AirSim 前的最低门槛为：独立 train/validation/test split，多 seed 200v200 的边
+precision/recall、ROC/PR 与校准误差，近邻交叉/遮挡/时延/外参漂移困难集，CPU/GPU P50/P95，
+以及 online truth use 和 `global_track_id` rewrite 均为 0。本轮 seed 200 合成投影压力测试
+仅证明 800 节点/1923 边可在本机约 `1.585 s` 构图，不构成 AirSim runtime 性能或模型准入。
+此外，当前实现仍枚举全部非空 camera pair 并构造每对 `n_left x n_right` 中间矩阵；main
+接入 200-camera 前必须增加相机 overlap/index bucket、pair budget 及专门的内存/P50/P95
+benchmark。该 P1 尚未闭合。
+
 ## 2026-07-16 独立 ComputerVision 5+1 专项接线结果
 
 main 已完成真实 AirSim 接线：5 个 `1920x1080`、60 度局部相机，1 个

@@ -1,8 +1,47 @@
 # 第五研究模块末端视觉关联（Terminal Association, D5）原理
 
-**状态日期：2026-07-16**
+**状态日期：2026-07-20**
 
 **适用范围：** 本文描述第五研究模块（D5）当前代码、测试和主运行链路已经具备的能力。文中将默认主线、已实现但非默认的辅助/离线能力、尚未实现能力严格分开。计划项不能据此解释为已上线能力。
+
+## 2026-07-20 匿名稀疏跨视角图原则
+
+跨视角图的基本节点不是目标、actor 或全局航迹，而是唯一命名空间
+`resource_id/camera_id:local_track_id` 下的 camera-local tracklet。在线节点只携带双时间戳、
+像素中心、bbox、像素协方差、角速度、尺度变化和置信度；truth/actor/object identity 以及
+`global_track_id` 均不允许进入节点或 metadata。local ID 也不是可信身份字段：构造器和递归
+payload guard 会拒绝 `TGT-0001`、嵌入式 `camera:TGT-002`、`TargetDrone_1`、
+`Target_UAV_7`、`intruder-003` 等仿真真值式编号，但不会拒绝正常
+`cam01-track-0001`。中心航迹是只读几何先验，不是节点标签。
+
+候选边遵循“先物理可行、后学习评分”：时间窗和本机视场先排除无效 pair，随后检查极线、
+射线正深度与最近距离、交会角、三角中点重投影、像素协方差马氏距离，最后检查两个节点
+是否被同一个中心 GlobalTrack 投影及其协方差支持。degree cap 对门内边按确定性几何 score
+排序，保证边数相对全连接图保持稀疏。GNN 不得绕过这些门，也不得从被拒绝 pair 创建边。
+这里的稀疏性只描述保留边：当前实现仍枚举全部非空 camera pair，并为每对形成
+`n_left x n_right` 的时间/视场/极线矩阵。4-camera 结果不能外推为 200-camera 可扩展性；
+相机 overlap/index bucket、pair budget 和 200-camera benchmark 仍是开放 P1。
+
+原生 PyTorch 模型只学习 `P(same target | candidate edge)`。消息使用 `index_add_` 同时聚合到
+两个端点；模型看不到 truth ID 或全局 ID，也不输出 cluster ID/global ID。truth 只在图构建
+结束后从独立离线流生成二元边标签；几何最相似的异目标边作为困难负样本，正类权重处理
+类别不平衡。小样本 loss 下降只验证训练管线可运行，不代表泛化、校准或准入。
+
+边概率之后仍需受约束聚类：任意合并不得让同一 camera namespace 出现两个 tracklet。
+匿名簇再与中心提供的 GlobalTrack 做一对一 Hungarian binding；D5 输出只能引用输入中心 ID，
+不得为未绑定簇制造替代 `global_track_id`。低 margin 输出 `ambiguous`，门外输出 `unbound`。
+
+主动视觉接口同样保持最小权限。策略只能请求观察一个既有中心目标、扫描扇区、有限云台增量
+或 FOV/变焦。当前观测超时、关联置信度不足或中心 binding 无效时，必须回退到确定性规则
+扫描；接口不表达平台机动、重新分配或终端授权。当前没有已训练或已验收的学习型主动视觉
+策略，也没有真实 AirSim 云台闭环。
+
+2026-07-20 的代码证据为 D5 全量 `315 passed in 8.71s`。seed 200 的 200 目标/4 相机合成投影场景
+形成 800 节点，240000 个跨相机可能 pair 经门控后为 2953 个 degree-cap 前候选、1923 条
+最终边，密度 `0.006017`、最大度 6、本机 `1.585 s`。seed 4 的 8 目标/3 相机小样本训练
+使用 24 正边、72 困难负边和正类权重 3.0，60 epoch loss 从 `1.038521` 降到
+`0.011535`、训练集准确率 1.0。后者是过拟合 smoke，不是模型验收；独立数据、多 seed、
+概率校准、runtime 接线和真实图像性能仍为开放项。
 
 ## 2026-07-16 真实 ComputerVision 5+1 注册原则复核
 

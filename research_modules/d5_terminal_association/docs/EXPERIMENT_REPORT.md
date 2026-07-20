@@ -1,5 +1,33 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-20 稀疏图代码级实验
+
+本轮未运行 AirSim。几何样本由 `scalable_3d_simulation.camera_projection` 的 NED 针孔投影和
+协方差合同生成，节点只使用匿名 local ID；中心 ID 只作为只读投影/binding 输入，离线
+truth 仅在图构建后生成训练边标签。
+
+| 实验 | 样本与 seed | 实测 | 接受阈值 | 判定 |
+| --- | --- | --- | --- | --- |
+| 200 目标稀疏压力 | seed 200；200 目标；4 相机；800 节点 | 240000 可能跨相机 pair；极线门 20398；中心投影门/degree cap 前 2953；最终 1923 边；密度 0.006017；最大度 6；1.585 s | 密度 `<0.01`；最大度 `<=6`；中心投影候选 `<2%`；`<15 s` | 代码门通过 |
+| 原生 PyTorch 训练 smoke | seed 4；8 目标；3 相机；24 节点；192 边 | 24 正边；72 困难负边；正类权重 3.0；60 epoch loss `1.038521 -> 0.011535`；训练准确率 1.0；2.594 s | loss 降低至少 50%；训练准确率 `>=0.90`；困难负样本非空 | 训练管线通过，不是模型准入 |
+| D5 回归 | 全量测试 | `315 passed in 8.71s` | 零失败 | 通过 |
+
+几何专项另验证了三相机/三目标正确边、全部要求的边特征、逐级 gate count、同相机互斥聚类、
+Hungarian 只回显中心 ID、递归 truth/actor/object/global identity 拒绝、原生 `index_add_`
+前向及四类主动视觉动作。P0 复审新增构造与嵌套 payload 回归，确认 `TGT-0001`、
+`TargetDrone_1` 及同类 truth-like local ID 失败关闭，`cam01-track-0001` 不被误伤。超时、
+低置信或无效中心 binding 均回退规则扫描。
+新增样本共 12 个参数化 case：5 个构造拒绝、3 个递归嵌套拒绝、4 个正常 local-ID 正例；
+接受门为 truth-like case 全部拒绝且正常 case 全部构造/递归通过，实测 12/12 满足。
+
+压力测试中的最终边集是稀疏的，但实现仍枚举全部非空 camera pair，并为每对建立
+`n_left x n_right` 中间矩阵。本轮只有 4-camera 证据，没有 200-camera 性能数据；相机索引/
+overlap bucket、pair budget 与 200-camera 内存/时延 benchmark 保持开放 P1。
+
+训练 smoke 使用同一小样本拟合和评估，预期可过拟合，不能提供泛化、概率校准、IDF1/IDSW、
+真实遮挡恢复或 200v200 episode 准确率证据。当前无默认 checkpoint、无 scalable 3D 在线总线
+接线、无 AirSim 云台闭环、无学习型主动视觉策略验收，因此既有几何默认路径不变。
+
 ## 2026-07-16 真实 AirSim ComputerVision 5+1 专项报告
 
 样本为单个 seed（seed 7）的两个 reset-separated episode，每个 12 秒、49 帧。
