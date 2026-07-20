@@ -6,6 +6,17 @@ from typing import Any, Iterable
 
 import numpy as np
 
+from .consistency_evidence import (
+    ConsistencySourceProvenance,
+    OnlineConsistencyEvidenceBundle,
+    OnlineConsistencyEvidenceRecord,
+    export_online_consistency_evidence,
+    initialization_consistency_evidence,
+    mark_consistency_evidence_duplicate,
+    mark_consistency_evidence_oosm,
+    unavailable_consistency_evidence,
+    update_consistency_evidence,
+)
 from .covariance_contract import validate_online_sensor_observation
 from .ekf import EKFState, ekf_update, predict_to
 from .motion import wrap_residual
@@ -322,6 +333,9 @@ class FusionAdapter:
         self._last_association_rejection_reason: str | None = None
         self._last_association_rejection_track_ids: tuple[str, ...] = ()
         self._batch_context: _BatchProcessingContext | None = None
+        self._consistency_evidence: dict[str, OnlineConsistencyEvidenceRecord] = {}
+        self._consistency_replay_revision = 0
+        self._consistency_capture_context: tuple[str, int] | None = None
 
     def _bucket(self, timestamp: float) -> int:
         """Return the fixed-lag cache bucket for a timestamp."""
@@ -817,7 +831,10 @@ class FusionAdapter:
         return True
 
     def _finalize_record_replay(self, record: TrackRecord, current_time: float) -> None:
-        state, nises, gated_observation_ids = self._replay_record(record, current_time)
+        state, nises, gated_observation_ids = self._capture_replay_record(
+            record,
+            current_time,
+        )
         record.current_state = state
         record.recent_nis = deque(nises[-50:], maxlen=50)
         self._update_filter_gate_metadata(
@@ -855,7 +872,10 @@ class FusionAdapter:
                 context = self._require_batch_context()
                 context.dirty_track_ids.add(record.track_id)
         else:
-            checkpoint, _, _ = self._replay_from_origin(record, checkpoint_timestamp)
+            checkpoint, _, _ = self._capture_replay_from_origin(
+                record,
+                checkpoint_timestamp,
+            )
             record.initial_state = checkpoint
             self._finalize_record_replay(record, current_time)
 
@@ -883,6 +903,33 @@ class FusionAdapter:
 
     def global_tracks(self) -> list[GlobalTrack]:
         return [self._to_global_track(record) for record in self.tracks.values()]
+
+    def consistency_evidence_records(
+        self,
+    ) -> tuple[OnlineConsistencyEvidenceRecord, ...]:
+        """Return the current truth-free per-observation evidence snapshot."""
+
+        return tuple(
+            sorted(
+                self._consistency_evidence.values(),
+                key=lambda item: (
+                    item.arrival_timestamp,
+                    item.measurement_timestamp,
+                    item.observation_id,
+                ),
+            )
+        )
+
+    def export_consistency_evidence(
+        self,
+        provenance: ConsistencySourceProvenance,
+    ) -> OnlineConsistencyEvidenceBundle:
+        """Freeze current online evidence with episode/source hashes."""
+
+        return export_online_consistency_evidence(
+            self.consistency_evidence_records(),
+            provenance,
+        )
 
     def track_uncertainty_summaries(self) -> list[TrackUncertaintySummary]:
         return [self.track_uncertainty_summary(track) for track in self.global_tracks()]
@@ -1098,6 +1145,7 @@ class FusionAdapter:
         self.tracks[track_id] = record
         record.accepted_observer_scan_keys.add(self._observer_scan_key(observation))
         self._mark_observation_processed(observation)
+        self._capture_consistency_initialization(record, observation, initial)
         return record
 
     def _predict_all_to(self, timestamp: float) -> None:
@@ -1330,6 +1378,7 @@ class FusionAdapter:
     ) -> None:
         self._last_association_rejection_reason = str(reason)
         self._last_association_rejection_track_ids = tuple(str(item) for item in track_ids)
+        self._mark_consistency_unavailable(observation, str(reason))
         if reason == "observer_scan_conflict":
             self.observer_scan_suppression_count += 1
         elif reason == "ambiguous_radar_birth_suppressed":
@@ -1469,7 +1518,10 @@ class FusionAdapter:
         if context is None or record.track_id not in context.checkpoint_dirty_track_ids:
             return
         checkpoint_timestamp = float(record.initial_state.timestamp)
-        checkpoint, _, _ = self._replay_from_origin(record, checkpoint_timestamp)
+        checkpoint, _, _ = self._capture_replay_from_origin(
+            record,
+            checkpoint_timestamp,
+        )
         record.initial_state = checkpoint
         context.checkpoint_dirty_track_ids.remove(record.track_id)
 
@@ -1477,6 +1529,117 @@ class FusionAdapter:
         if self._batch_context is None:
             raise RuntimeError("deferred fusion replay requires an active process_batch call")
         return self._batch_context
+
+    def _capture_replay_record(
+        self,
+        record: TrackRecord,
+        until_time: float,
+    ) -> tuple[EKFState, list[float], tuple[str, ...]]:
+        previous = self._consistency_capture_context
+        self._consistency_replay_revision += 1
+        self._consistency_capture_context = (
+            record.track_id,
+            self._consistency_replay_revision,
+        )
+        try:
+            return self._replay_record(record, until_time)
+        finally:
+            self._consistency_capture_context = previous
+
+    def _capture_replay_from_origin(
+        self,
+        record: TrackRecord,
+        until_time: float,
+    ) -> tuple[EKFState, list[float], tuple[str, ...]]:
+        previous = self._consistency_capture_context
+        self._consistency_replay_revision += 1
+        self._consistency_capture_context = (
+            record.track_id,
+            self._consistency_replay_revision,
+        )
+        try:
+            return self._replay_from_origin(record, until_time)
+        finally:
+            self._consistency_capture_context = previous
+
+    def _capture_consistency_initialization(
+        self,
+        record: TrackRecord,
+        observation: SensorObservation,
+        state: EKFState,
+    ) -> None:
+        self._consistency_replay_revision += 1
+        self._consistency_evidence[observation.observation_id] = (
+            initialization_consistency_evidence(
+                observation,
+                source_global_track_id=record.track_id,
+                state=state.state,
+                covariance=state.covariance,
+                replay_revision=self._consistency_replay_revision,
+                previous=self._consistency_evidence.get(observation.observation_id),
+            )
+        )
+
+    def _capture_consistency_initialization_if_enabled(
+        self,
+        record: TrackRecord,
+        observation: SensorObservation | None,
+        state: EKFState,
+    ) -> None:
+        context = self._consistency_capture_context
+        if observation is None or context is None or context[0] != record.track_id:
+            return
+        self._consistency_evidence[observation.observation_id] = (
+            initialization_consistency_evidence(
+                observation,
+                source_global_track_id=record.track_id,
+                state=state.state,
+                covariance=state.covariance,
+                replay_revision=context[1],
+                previous=self._consistency_evidence.get(observation.observation_id),
+            )
+        )
+
+    def _capture_consistency_update_if_enabled(
+        self,
+        record: TrackRecord,
+        observation: SensorObservation,
+        state: EKFState,
+        nis: float,
+        gated: bool,
+    ) -> None:
+        context = self._consistency_capture_context
+        if context is None or context[0] != record.track_id:
+            return
+        model = measurement_model_for(observation, self.radar_covariance_config)
+        self._consistency_evidence[observation.observation_id] = (
+            update_consistency_evidence(
+                observation,
+                source_global_track_id=record.track_id,
+                state=state.state,
+                covariance=state.covariance,
+                innovation_dimension=int(model.z.size),
+                nis=nis,
+                gated=gated,
+                replay_revision=context[1],
+                previous=self._consistency_evidence.get(observation.observation_id),
+            )
+        )
+
+    def _mark_consistency_unavailable(
+        self,
+        observation: SensorObservation,
+        reason: str,
+    ) -> None:
+        previous = self._consistency_evidence.get(observation.observation_id)
+        self._consistency_evidence[observation.observation_id] = (
+            unavailable_consistency_evidence(
+                observation,
+                reason,
+                oosm_replayed=False if previous is None else previous.oosm_replayed,
+                previous=previous,
+            )
+        )
 
     def _replay_from_origin(
         self,
@@ -1498,6 +1661,11 @@ class FusionAdapter:
             observations_by_id.values(),
             key=lambda obs: (obs.measurement_timestamp, obs.arrival_timestamp, obs.observation_id),
         )
+        self._capture_consistency_initialization_if_enabled(
+            record,
+            observations_by_id.get(record.origin_observation_id),
+            state,
+        )
         for observation in sorted_observations:
             if observation.observation_id == record.origin_observation_id:
                 continue
@@ -1507,6 +1675,13 @@ class FusionAdapter:
                 continue
             state = predict_to(state, observation.measurement_timestamp, self.process_noise)
             state, nis, gated = self._filter_update(state, observation)
+            self._capture_consistency_update_if_enabled(
+                record,
+                observation,
+                state,
+                nis,
+                gated,
+            )
             nises.append(nis)
             if gated:
                 gated_observation_ids.append(observation.observation_id)
@@ -1528,6 +1703,19 @@ class FusionAdapter:
             record.observations,
             key=lambda obs: (obs.measurement_timestamp, obs.arrival_timestamp, obs.observation_id),
         )
+        initial_observation = next(
+            (
+                item
+                for item in sorted_observations
+                if item.observation_id == record.initial_observation_id
+            ),
+            None,
+        )
+        self._capture_consistency_initialization_if_enabled(
+            record,
+            initial_observation,
+            state,
+        )
         for observation in sorted_observations:
             if observation.observation_id == record.initial_observation_id:
                 continue
@@ -1537,6 +1725,13 @@ class FusionAdapter:
                 continue
             state = predict_to(state, observation.measurement_timestamp, self.process_noise)
             state, nis, gated = self._filter_update(state, observation)
+            self._capture_consistency_update_if_enabled(
+                record,
+                observation,
+                state,
+                nis,
+                gated,
+            )
             nises.append(nis)
             if gated:
                 gated_observation_ids.append(observation.observation_id)
@@ -1917,6 +2112,19 @@ class FusionAdapter:
         is_oosm: bool,
         is_stale: bool,
     ) -> None:
+        previous_evidence = self._consistency_evidence.get(observation.observation_id)
+        if previous_evidence is None:
+            self._consistency_evidence[observation.observation_id] = (
+                unavailable_consistency_evidence(
+                    observation,
+                    "observation_not_yet_processed",
+                    oosm_replayed=is_oosm,
+                )
+            )
+        elif is_oosm and not previous_evidence.oosm_replayed:
+            self._consistency_evidence[observation.observation_id] = (
+                mark_consistency_evidence_oosm(previous_evidence)
+            )
         state = self._sensor_health_state_for(observation)
         state.observation_count += 1
         state.latest_observation_timestamp = float(observation.arrival_timestamp)
@@ -1968,6 +2176,24 @@ class FusionAdapter:
         *,
         rejected: bool,
     ) -> None:
+        if rejected:
+            previous = self._consistency_evidence.get(observation.observation_id)
+            if (
+                reason == "duplicate_observation"
+                and previous is not None
+                and previous.disposition != "observation_not_yet_processed"
+            ):
+                self._consistency_evidence[observation.observation_id] = (
+                    mark_consistency_evidence_duplicate(previous)
+                )
+            else:
+                self._mark_consistency_unavailable(observation, str(reason))
+                if reason == "duplicate_observation":
+                    self._consistency_evidence[observation.observation_id] = (
+                        mark_consistency_evidence_duplicate(
+                            self._consistency_evidence[observation.observation_id]
+                        )
+                    )
         state = self.sensor_health.setdefault(
             observation.sensor_id,
             SensorHealthState(sensor_id=observation.sensor_id),

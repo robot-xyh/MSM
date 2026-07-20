@@ -644,3 +644,35 @@ birth 和次扫 update 均为 `5/5、20/20、50/50、100/100、200/200`；200 �
 当前限制是零均值先验会在短时间窗内收缩速度均值；其方差仍需至少 20 个未见 seed 的
 NIS/NEES 与速度误差覆盖率标定。D2 会再次滤波 D1 六维状态，D2 速度均值和 D3 可达性/分配
 数量必须由 main 用当前代码正式复测。本轮没有启动或修改 AirSim runtime。
+
+## Versioned consistency evidence contract（2026-07-20）
+
+D1 现提供独立于 track metadata 的逐观测 consistency evidence。在线 schema 为
+`d1.consistency.online_evidence_record.v1` 和
+`d1.consistency.online_evidence_bundle.v1`；`FusionAdapter.consistency_evidence_records()`
+返回当前最终 replay 口径的 DTO，`export_consistency_evidence(provenance)` 冻结 episode
+bundle。记录保留匿名 `observation_id`、opaque source-lineage digest、sensor ID/type、双时间戳、
+innovation 维数、NIS、gate/accepted、直接 radar range 与 versioned range bin、confidence/
+quality/covariance scale reason、可用时的 D1 `source_global_track_id`、六维 NED
+estimate/covariance、OOSM
+和 replay revision。未关联 acoustic/EO、重复和其他拒绝项保留显式 unavailable reason，不补零。
+
+在线 bundle 固定 `source_schema_version/source_digest/config_digest`，并分别计算 records SHA-256
+与 bundle SHA-256。固定字段中不含 truth target、actor 或 object identity。在线结果和离线结果
+是两个物理 artifact：`build_offline_truth_state_sidecar()` 构建独立 truth state sidecar；D2 先按
+source observation lineage 形成 canonical-ID 决策，再用
+`build_d2_lineage_mapping_sidecar()` 输出 digest-bound evaluator adapter。adapter 以
+`observation_id + measurement_timestamp` 连接 D1 evidence，同时保留 D2-owned
+`global_track_id`，不把 D1 source ID 提升为 canonical ID；`evaluate_offline_consistency()` 才计算 position/velocity
+RMSE、NEES、normalized NEES、NIS/normalized NIS 和 gate coverage。缺 sidecar/mapping、未知或重叠
+映射、hash/provenance、六维、精确 measurement-time 对齐失败时对应 truth metric unavailable；
+不使用近邻、名称或目标顺序猜测。奇异 estimate covariance 只使 NEES fail closed，RMSE 仍可用。
+
+两个 bundle 的 `aggregation_records()` 输出含 scenario/run/seed、sensor、range bin 和输入 digest
+的扁平有限 JSON rows，供 main writer 持久化和 D6 分组。2026-07-20 构造合同回归新增 `12`
+项：接受/拒绝创新、顺序/OOSM、四档 radar range、acoustic/EO availability、1/4/7 输入规模、
+缺失/错误 lineage mapping、额外在线 truth 字段拒绝、truth 篡改、维数/时间错位、奇异
+covariance 和 non-finite fail-closed；
+已知误差夹具得到 position RMSE `5 m`、velocity RMSE `12 m/s`、NIS gate coverage `0.5`。
+main 复跑 D1 全量为 `136 passed`。这些结果只关闭 evidence/evaluator 合同，不是正式多 seed
+精度、coverage 或 covariance 标定达标结论；现有 NumPy EKF、量测模型、门限和 track ID 未改。

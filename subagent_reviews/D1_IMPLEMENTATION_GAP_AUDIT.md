@@ -634,3 +634,19 @@ median/P90/max=`6.28/12.16/21.03 m/s`，而速度 covariance trace 仍为
 `3.99/6.12/9.69 m/s`，速度 covariance trace 仍为 `58.22/60.43/60.90`；这关闭的是 D1
 短基线均值放大代码缺口，不代表速度已经高精度收敛。D2 二次滤波和 D3 第二轮分配必须由 main
 使用当前代码正式复测。AirSim 集成计划已检查，本轮没有 AirSim 接口或运行证据变化，无需修改。
+
+## 25. 2026-07-20 Scalable consistency evidence GAP 状态
+
+| GAP/合同 | 当前状态 | D1-owned 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| 逐更新 NIS/门控 DTO | 已关闭 | versioned truth-free record 覆盖 birth/update/gate reject/OOSM/未关联；保留 lineage、sensor、双时间戳、dimension/NIS/gate、range/quality/covariance reason、D1 source-track/estimate availability | main episode writer 持久化正式 artifacts |
+| Schema/hash/provenance | 已关闭 | source/config、records、bundle digest；tamper、额外在线 truth 字段与 non-finite fail closed；online/offline aggregation rows 可按 scenario/sensor/range 分组 | main/D6 冻结跨模块文件名和 retention policy |
+| Offline truth 与 D2 mapping 隔离 | 已关闭 D1 adapter 合同 | 独立六维 NED truth sidecar；D2 evaluator-only adapter 按 `observation_id + measurement_timestamp` 绑定 online/truth digest，并分离 D1 `source_global_track_id` 与 D2 canonical `global_track_id`；无 mapping 不算 RMSE/NEES | main/D2 将正式 D2 `source_observation_ids` artifact 转成该 adapter 并验证完整覆盖 |
+| RMSE/NEES/NIS coverage evaluator | 已关闭公式/API | 精确 measurement-time 对齐；RMSE、NEES、normalized metrics、NIS gate coverage；无近邻/名称猜测；奇异 covariance 不算 NEES | D6 接线并冻结多 seed 统计阈值 |
+| 正式多 seed consistency | 仍开放 P1 | 本轮只有确定性 oracle；`5 m/12 m/s/0.5` 仅验证公式 | 至少 20 个未见 seed，按 sensor/range/scenario 统计 CI/coverage 并通过预注册阈值 |
+
+验收日期 2026-07-20。新增合同专项 `12 passed`，main 复跑 D1 全量 `136 passed`。该批只关闭
+“episode producer 没有可持久化 consistency evidence DTO”和“无严格离线 evaluator 合同”两个
+D1-owned 评估接口缺口；不关闭真实 covariance 标定、滤波一致性、速度/位置精度、复杂场景
+生命周期、D2 identity continuity 或系统实时预算。AirSim 影响已检查并在模块计划中记录：未接线、
+未运行、历史 availability 不变。

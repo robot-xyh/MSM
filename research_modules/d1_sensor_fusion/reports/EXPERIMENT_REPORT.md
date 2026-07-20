@@ -221,3 +221,39 @@ D1-owned 的补零径向速度误用和短基线速度均值放大缺口已关�
 未见 seed 的速度误差 coverage、NIS/NEES、机动、漏检/虚警和门控率仍未完成。D2 会再次滤波
 D1 六维输出，D2 速度和 D3 第二轮分配数量需由 main 使用当前代码正式复测。本轮未改变 AirSim
 producer/runtime、launch/reset/episode 顺序或持久化 schema。
+
+## 2026-07-20 Scalable 3D consistency evidence 合同报告
+
+### 场景、样本与接受条件
+
+本报告验证 evaluator contract，不做正式精度标定。构造 provenance 使用 scenario
+`scalable-consistency-contract`、run `seed-019`；测试是确定性 oracle，不是随机 seed-19
+性能样本。新增 12 项覆盖：3 条 radar 初始化/接受/门控拒绝、顺序与迟到 OOSM、四档 range、
+acoustic/EO available/unavailable、1/4/7 输入规模、缺失/错误 D2 observation-lineage mapping、
+在线额外 truth 字段拒绝、truth/hash 篡改、
+六维与时间错位、奇异 covariance 和 non-finite 输入。
+
+接受条件为：在线字段无 truth/actor/object identity key；records/content hash 可验证；OOSM 最终
+state/covariance 与顺序处理差 `<=1e-9`；缺失或不一致输入不产生 truth metric；奇异 covariance
+不产生 NEES；所有 bundle 可由 `json.dumps(..., allow_nan=False)` 序列化；记录数量等于输入，
+不依赖 2v2/5v5。
+
+### 结果
+
+| 项目 | 结果 |
+| --- | --- |
+| innovation evidence | 一条 accepted、一条 rejected，均保留 3 维 NIS/gate；初始化 NIS unavailable |
+| OOSM | 迟到记录标记 replay，最终 update state/covariance 与顺序路径 `<=1e-9` |
+| range/multimodal | 四档 radar range 正确；无 track acoustic/EO 显式 unavailable；acoustic update NIS available、gate coverage unavailable |
+| evaluator oracle | position RMSE `5 m`；velocity RMSE `12 m/s`；两条 gated update coverage `0.5`；NEES 有限 |
+| fail closed | 缺 lineage mapping、未知 truth、digest mismatch、在线额外 truth 字段、truth 篡改、维数/时间错位全部拒绝或 unavailable |
+| singular/finite | RMSE 保持 available，NEES unavailable；NaN online artifact 整体拒绝且输出无 NaN |
+| tests | 新增专项 `12 passed`；main 复跑 D1 全量 `136 passed` |
+
+### 结论与限制
+
+D1-owned 的逐更新持久化 DTO、schema/hash/source provenance、基于 observation lineage 的
+离线严格对齐和聚合 row 合同已
+关闭。没有修改 EKF/量测模型/门限/track ID，也没有执行 AirSim 或正式多 seed 实验。上述
+`5 m/12 m/s/0.5` 是故意设置的 oracle，不是算法表现。按 sensor/range/scenario 的正式多 seed
+RMSE、NEES、NIS coverage、置信区间和验收阈值仍未闭合。

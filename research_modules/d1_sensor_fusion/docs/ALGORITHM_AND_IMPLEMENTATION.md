@@ -1018,3 +1018,58 @@ trace=`57.97/60.69/61.19`；数量和 ID 全程保持 200。专项 `13 passed`�
 该结果只证明短基线噪声不再被当前 D1 路径过度写入速度均值，且不确定性仍显式存在。固定
 零均值先验会收缩早期速度；过程噪声仍为现有 CV 参数。多 seed 速度误差 coverage、NIS/NEES、
 机动和漏检/虚警，以及 D2 二次滤波/D3 分配仍需后续正式验证。
+
+## 27. 逐更新 consistency evidence 与纯离线 evaluator（2026-07-20）
+
+### 27.1 在线 evidence 采集
+
+`FusionAdapter` 为每个 observation 建立固定 schema record。track birth 写六维初始化 estimate，
+不伪造 innovation；正式 `_finalize_record_replay()` 和 checkpoint 前 origin replay 在已有
+`_filter_update()` 返回后记录 posterior/prediction、NIS 与 gated 标志。采集不参与 association
+candidate 的临时 `_state_at()` 查询，因此不会把代价矩阵内部探针误写成 episode evidence。
+OOSM 触发新 replay 时，同一 observation record 按 revision 更新；算法仍调用原 NumPy EKF 和
+原 gate，evidence 不反馈状态、门限或 track ID。
+
+online record 使用 opaque lineage SHA-256，保留 sensor 和 lineage 等价关系但不复制潜在身份
+值。radar 直接 range 按 `d1.consistency.range_bins.v1` 输出 `[0,1000)`、`[1000,3000)`、
+`[3000,5000)`、`[5000,+inf)`；同时保留 `range_m`，D6 可按正式实验另行重分箱。records digest
+覆盖排序后的所有 DTO，bundle digest 覆盖 schema、range profile、provenance、count 和 records
+digest。所有序列化均要求 `allow_nan=False` 可通过。
+
+### 27.2 离线严格对齐与指标
+
+truth sidecar 的键为 `(truth_id, timestamp)`，state 必须是六维 NED；D2 先用 source
+observation lineage 形成 canonical identity，再输出以
+`(observation_id, measurement_timestamp) -> (D2 global_track_id, truth_id)` 表示的 adapter，
+并绑定 online/truth digest。D1 evidence 内的航迹键明确命名为 `source_global_track_id`，不进入
+D2 canonical namespace。对每个 available estimate，evaluator 要求：
+
+```text
+estimate_timestamp == measurement_timestamp
+exactly_one_lineage_mapping(observation_id, measurement_timestamp)
+exactly_one_truth_sample(truth_id, estimate_timestamp)
+```
+
+容差默认 `1e-9 s`，不插值、不外推、不做 proximity matching。对误差 `e=x_est-x_truth`：
+
+```text
+position_rmse = sqrt(mean(||e_position||^2))
+velocity_rmse = sqrt(mean(||e_velocity||^2))
+NEES = e^T P^-1 e
+normalized_nees = NEES / 6
+nis_gate_coverage = mean(NIS <= configured_gate)
+```
+
+NEES 先对 `P` 做 Cholesky 正定检查，再使用 `solve`；任一样本奇异则 episode-level NEES
+unavailable，不能仅挑选可逆样本形成偏置统计。NIS 与 gate coverage 不依赖 truth，因此缺失
+mapping/truth 时仍可单独 available。result 不嵌入 online state 或完整 truth，只保留误差、
+metric availability 与三个输入 digest，形成物理分离的离线 artifact。
+
+### 27.3 输出和验证边界
+
+online/offline `aggregation_records()` 均输出 scenario/version/run/seed、sensor ID/type、range、
+observation/update 指标和 source/input digest，记录数随输入变化，无 2v2/5v5 常量。2026-07-20
+新增 `12` 项合同测试，包含额外在线 truth 字段 fail-closed；main 复跑 D1 全量
+`136 passed`。oracle 夹具为 position RMSE `5 m`、
+velocity RMSE `12 m/s`、NIS gate coverage `0.5`；其目的仅是验证公式和 fail-closed 路径。
+正式多 seed 精度、统计 coverage 和传感器 covariance 校准尚无新证据。

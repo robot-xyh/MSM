@@ -932,3 +932,48 @@ D1-owned P1 实现已完成。剩余系统 P1 由 main 把逐条调用替换为�
 
 已检查 `docs/AIRSIM_INTEGRATION_PLAN.md`：本轮仅修改 scalable 3D 质点总线内的 D1 量测模型，
 未改变 AirSim producer、Blocks 启停、reset、episode 顺序或持久化 schema，因此无需修改。
+
+## 28. Scalable 3D consistency evidence 与离线评估合同（2026-07-20）
+
+### 28.1 D1-owned 已完成项
+
+1. `FusionAdapter` 对每条已见观测保留 versioned、truth-free DTO；track initialization、正式
+   replay update、innovation gate rejection、OOSM、duplicate、association/initializer rejection
+   均有明确 disposition 和 metric availability。
+2. `OnlineConsistencyEvidenceBundle` 冻结 scenario/run/seed、producer/source/config provenance、
+   records hash 与 content hash；online aggregation rows 可按 scenario/sensor/range 聚合。
+3. `OfflineTruthStateSidecar` 与 `D2LineageMappingSidecar` 是独立 artifact。D2 必须先用
+   observation lineage 形成 evaluator-only canonical 决策；adapter 绑定在线 evidence digest
+   和 truth digest，并严格区分 D1 `source_global_track_id` 与 D2 `global_track_id`。
+4. `evaluate_offline_consistency()` 只做离线精确对齐；不使用 proximity、名称、数组索引或
+   observation ID 猜 truth identity。输出 position/velocity RMSE、NEES、NIS gate coverage 和
+   每更新 aggregation rows。
+5. 时间、维数、hash、provenance、mapping coverage 或 finite 检查失败时 fail closed；奇异
+   covariance 不使用 pseudo-inverse 伪造 NEES。
+
+### 28.2 验收状态
+
+2026-07-20 的构造合同测试使用 provenance seed 19，但不是随机多 seed 精度实验。专项新增
+`12 passed`，覆盖 3 条 radar 接受/拒绝序列、顺序与一条迟到 OOSM、四个 range bin、acoustic/
+EO available/unavailable、1/4/7 输入规模、缺失和错误 D2 lineage mapping、在线额外 truth 字段
+拒绝、truth/hash 篡改、六维和时间错位、奇异 covariance 与 NaN。OOSM 最终
+state/covariance 与顺序路径容差 `1e-9`；已知误差
+夹具的 RMSE 为 `5 m` 和 `12 m/s`，两条 gated innovation 中一条通过，coverage 为 `0.5`。
+main 复跑 D1 全量 `136 passed`。接受阈值是合同、hash、availability 和 fail-closed 行为全部
+满足，不以这些构造数值判定算法精度达标。
+
+### 28.3 Main/D2/D6 接线与仍开放项
+
+1. main 在每个 episode 结束后用真实 source/config digest 调用
+   `adapter.export_consistency_evidence(provenance)`，分别持久化 bundle 与
+   `aggregation_records()`；在线控制循环不得读取 truth sidecar。
+2. D2 离线 evaluator 以 `source_observation_ids` 谱系生成 canonical identity；main/D2 再形成
+   `d1.consistency.d2_lineage_mapping_sidecar.v1` adapter，覆盖所有带 estimate 的
+   `observation_id + measurement_timestamp`。不得把 D1 source track ID 当作 D2 canonical ID，
+   也不得从距离或名称补映射。
+3. main 将独立 truth sidecar、D2 mapping 和 online bundle 交给
+   `evaluate_offline_consistency()`；D6 仅消费 result/aggregation rows，并严格尊重 availability。
+4. 正式多 seed sensor/range/scenario RMSE、NEES、NIS coverage、置信区间和验收阈值仍开放；
+   至少 20 个未见 seed、复杂 crossing/漏检/虚警/机动及真实 covariance 标定尚未执行。
+5. AirSim producer/runtime 未接线该 artifact，本轮未运行 AirSim；现有 AirSim episode 不能因
+   API 存在而改写为 consistency metrics available。

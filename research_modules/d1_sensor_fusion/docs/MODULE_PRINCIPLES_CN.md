@@ -920,3 +920,29 @@ ID；末帧速度 median/P90/max=`3.87/6.43/8.54 m/s`，速度 covariance trace=
 `57.97/60.69/61.19`。顺序/乱序 OOSM 对照在 `1e-9` 容差内保持 state/covariance 等价。
 专项 `13/13`、D1 全量 `124/124`。这些是模块回归，不是多 seed 速度精度、D2/D3 集成或真实
 AirSim 标定结论。
+
+## 20. 一致性证据必须在线无真值、离线显式对齐（2026-07-20）
+
+NIS 来自在线滤波创新，可以在不读取 truth 的情况下逐更新记录；RMSE 和 NEES 依赖状态真值与
+身份对应，只能在 episode 结束后的离线 evaluator 计算。二者不得写入同一在线 payload，也不能
+让 truth sidecar 或 canonical mapping 进入 `FusionAdapter`。
+
+在线 DTO 的最小可审计单位是 observation/update，而不是最终 track 的一个 `last_nis`。它必须
+保留双时间戳、sensor/source lineage、innovation dimension、NIS、gate 与 accepted、距离和质量/
+covariance scale、D1 `source_global_track_id` availability，以及该更新时刻的六维
+estimate/covariance。D2-owned `global_track_id` 只能由离线 lineage adapter 带入结果。
+OOSM 到达后，以最终 measurement-time replay 结果覆盖该 observation 的 evidence revision；
+未产生 innovation 的初始化、未关联 acoustic/EO 和拒绝项必须写 unavailable reason，不能写 0。
+
+离线对齐采用三个独立且互相绑定 hash 的 artifact：online evidence、truth state sidecar、D2
+evaluator-only observation-lineage mapping adapter。每个带 estimate 的记录必须按
+`observation_id + measurement_timestamp` 获得唯一 D2 canonical mapping 和唯一六维 NED truth
+sample；不得把 D1 source track ID 直接复制成 D2 canonical ID。缺失、重复、未知 truth、时间错位、schema/hash 或
+provenance 不一致均停止全部 truth-dependent aggregation。禁止 nearest-neighbor、名称、actor/
+object ID、列表顺序和目标数量推断。NEES 只在 estimate covariance 正定时用线性求解计算；奇异
+矩阵不使用 pseudo-inverse，availability 设为 false。
+
+2026-07-20 的 `12` 个新增构造测试还验证在线 artifact 注入额外 truth 字段会 fail closed；与
+main 复跑的 D1 全量 `136 passed` 共同证明上述合同可执行、
+JSON 有限且原有滤波回归保持。已知误差 `5 m/12 m/s` 和 coverage `0.5` 是 evaluator oracle，
+不是传感器精度指标。正式多 seed RMSE/NEES/NIS coverage 与阈值仍由 main/D2/D6 后续实验闭合。

@@ -784,3 +784,29 @@ update 数、gate rejection 数和匿名 observation IDs。构造用例让离群
 `3.99/6.12/9.69 m/s`，但 trace 仍为 `58.22/60.43/60.90`，所以评审结论是 D1-owned
 噪声放大缺口已关闭、短基线速度仍是高不确定度估计。至少 20 个未见 seed 的 NIS/NEES 和
 coverage、机动/漏检/虚警、D2 二次滤波与 D3 分配正式复验仍开放。本轮不影响 AirSim 文档。
+
+## 26. Consistency evidence 与离线 evaluator 评审（2026-07-20）
+
+此前 scalable path 的 NIS 只以 `last_nis` 和 replay metadata 摘要存在，无法让 main/D6 按
+observation、sensor、range 和 scenario 复算；RMSE/NEES 又必须等待 D2 canonical identity，
+把二者混在 episode producer 会破坏 truth 隔离。本轮评审采用两个物理 artifact：在线 D1
+evidence bundle 与离线 D1 result，中间仅由独立 truth sidecar 和 D2 evaluator-only
+observation-lineage mapping adapter 连接。
+
+在线采集挂在已有 track birth 和正式 replay 结果后，不参与候选 association，也不改变 EKF、
+measurement model、gate 或 ID。每条 record 给出 metric-specific availability；初始化没有 NIS，
+acoustic/EO 无 track 时不补 estimate，未配置 innovation gate 的已接受模态可有 NIS 但 coverage
+不可用。OOSM 以最终 replay revision 为准，从而避免把到达时的临时后验当正式证据。
+
+离线 evaluator 对所有 available estimate 要求按 `observation_id + measurement_timestamp` 获得
+唯一 D2 canonical mapping 和同 measurement time 唯一六维 truth sample。D1 evidence 仅输出
+`source_global_track_id`，不会被当作 D2 `global_track_id`。任何 mapping coverage、truth ID、timestamp、schema、hash、
+scenario/run/seed/config provenance 不一致都会停止 truth-dependent aggregation；没有 proximity 或
+名称 fallback。NEES 要求正定 covariance，奇异时 episode NEES unavailable，但不影响独立 RMSE
+和 NIS。flat rows 带全部输入 digest，D6 可追溯每个聚合值的来源。
+
+2026-07-20 新增 `12` 个构造合同测试，包含在线额外 truth 字段拒绝；main 复跑 D1 全量
+`136 passed`。评审结论是 D1-owned
+评估合同已关闭，正式效果证据仍开放：至少 20 个未见 seed、复杂 crossing/漏检/虚警/机动、
+按 sensor/range/scenario 的 RMSE/NEES/NIS coverage 与置信区间、D2 canonical mapping 完整率和
+D6 阈值均未验收。AirSim runtime 未改也未运行，历史 AirSim 指标 availability 不变。

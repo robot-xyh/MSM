@@ -265,3 +265,17 @@ D1-only 接入前验证使用既有 M5N2 baseline seed-001 前 40 帧、786 条 
 降至 5.70 s，history replay 1267 降至 351，状态和 covariance 最大差为 0。main 验收仍需覆盖
 完整 245/248 帧及至少 10 seeds，并拆分 observation generation、D1、D2-D7、日志和 D6 离线
 报告耗时。只有完整 loop 达到项目预算后才能关闭系统实时性能 P1。
+
+## 13. Consistency evidence 合同影响检查（2026-07-20）
+
+D1 已实现通用 `export_consistency_evidence()`、独立 truth sidecar、D2 evaluator-only
+observation-lineage mapping adapter
+输入和离线 RMSE/NEES/NIS coverage evaluator，但本轮目标是 scalable 3D 质点总线合同，没有
+修改 `research_modules/airsim_runtime/**`、Blocks launch/reset/episode 顺序、相机截图策略或
+AirSim persisted observation schema，也没有启动 AirSim。
+
+因此 2026-07-15 M5N2 20-case 和现有 AirSim freeze 报告中的 NIS/NEES/RMSE availability 结论
+不变：main writer 尚未持久化 online evidence bundle，D2 尚未为这些 episode 产出 digest-bound
+lineage mapping adapter，不能回填为 available。后续若接线，main 应在每个 episode 结束后单独写
+online bundle、truth sidecar、D2 mapping 和 offline result；在线文件不得包含 truth/actor/object
+字段，D6 必须按 availability 聚合。该后续接线和真实 AirSim 多 seed 标定均为 main-owned 开放项。
