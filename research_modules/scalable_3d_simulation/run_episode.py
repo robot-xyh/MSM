@@ -15,6 +15,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
+from research_modules.scalable_3d_simulation.module_stack import (
+    IntegratedScalableModuleStack,
+)
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
 
 
@@ -40,6 +43,11 @@ def parse_args() -> argparse.Namespace:
         default=Path("research_modules/scalable_3d_simulation/outputs/episode"),
     )
     parser.add_argument("--plot", action="store_true")
+    parser.add_argument(
+        "--integrated-stack",
+        action="store_true",
+        help="run the truth-free D1-D7 rule baseline and write commands back to the world",
+    )
     parser.add_argument("--gif", action="store_true", help="write a 3D GIF from offline truth")
     parser.add_argument("--mp4", action="store_true", help="write a 3D MP4 when ffmpeg is available")
     return parser.parse_args()
@@ -56,13 +64,31 @@ def main() -> int:
     target_count = args.target_count
     if args.drone_count is not None and target_count is None:
         target_count = args.drone_count
+    resolved_resource_count = (
+        config.resource_count if args.drone_count is None else args.drone_count
+    )
+    resolved_target_count = config.target_count if target_count is None else target_count
+    scale_overridden = args.drone_count is not None or args.target_count is not None
     updates = {
-        "resource_count": config.resource_count if args.drone_count is None else args.drone_count,
-        "target_count": config.target_count if target_count is None else target_count,
+        "resource_count": resolved_resource_count,
+        "target_count": resolved_target_count,
         "recon_count": config.recon_count if args.recon_count is None else args.recon_count,
         "duration_s": config.duration_s if args.duration is None else args.duration,
         "seed": config.seed if args.seed is None else args.seed,
     }
+    if scale_overridden:
+        updates.update(
+            {
+                "scenario_name": (
+                    f"{config.scenario_name}_cli_"
+                    f"{resolved_resource_count}v{resolved_target_count}"
+                ),
+                "scenario_version": (
+                    f"{config.scenario_version}-cli-"
+                    f"{resolved_resource_count}v{resolved_target_count}"
+                ),
+            }
+        )
     config = replace(config, **updates)
     animation_formats = tuple(
         name for name, enabled in (("gif", args.gif), ("mp4", args.mp4)) if enabled
@@ -72,12 +98,14 @@ def main() -> int:
         output_dir=args.output,
         write_plot=args.plot,
         animation_formats=animation_formats,
+        module_stack=(IntegratedScalableModuleStack() if args.integrated_stack else None),
     )
     print(f"episode_id={result.manifest.episode_id}")
     print(f"scale={config.resource_count}v{config.target_count}")
     print(f"finite_state={result.summary['finite_state']}")
     print(f"online_truth_use_count={result.summary['online_truth_use_count']}")
     print(f"online_observation_count={result.summary['online_observation_count']}")
+    print(f"module_stack_enabled={result.summary['module_stack_enabled']}")
     print(f"real_time_factor={result.summary['real_time_factor']:.3f}")
     print(f"output={args.output.resolve()}")
     return 0

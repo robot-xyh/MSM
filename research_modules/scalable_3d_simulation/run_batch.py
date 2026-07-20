@@ -14,6 +14,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
+from research_modules.scalable_3d_simulation.module_stack import (
+    IntegratedScalableModuleStack,
+)
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
 from research_modules.scalable_3d_simulation.reporting import write_batch_outputs
 from research_modules.scalable_3d_simulation.scenarios import (
@@ -32,6 +35,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seeds", type=int, nargs="+", default=[7, 17, 27])
     parser.add_argument("--scenarios", nargs="+", default=["nominal"], choices=AVAILABLE_SCENARIOS)
     parser.add_argument("--duration", type=float, default=2.0)
+    parser.add_argument(
+        "--integrated-stack",
+        action="store_true",
+        help="run each episode through the truth-free D1-D7 rule baseline",
+    )
     parser.add_argument(
         "--output",
         type=Path,
@@ -57,7 +65,15 @@ def main() -> int:
                     base=base,
                 )
                 episode_dir = args.output / scenario / f"{scale}v{scale}" / f"seed_{seed}"
-                result = run_episode(config, output_dir=episode_dir)
+                result = run_episode(
+                    config,
+                    output_dir=episode_dir,
+                    module_stack=(
+                        IntegratedScalableModuleStack()
+                        if args.integrated_stack
+                        else None
+                    ),
+                )
                 results.append(result)
                 print(
                     f"scenario={scenario} scale={scale} seed={seed} "

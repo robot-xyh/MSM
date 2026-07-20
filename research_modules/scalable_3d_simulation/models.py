@@ -110,11 +110,11 @@ class ScenarioConfig:
     acoustic_enabled: bool = True
     visual_enabled: bool = True
     communication_enabled: bool = True
-    d1_model_version: str = "d1-rule-baseline-v1"
-    d2_model_version: str = "d2-gnn-hungarian-2d-legacy"
-    d3_policy_version: str = "d3-rule-cost-v1"
-    d5_model_version: str = "d5-rule-geometry-v1"
-    d7_model_version: str = "d7-3d-point-mass-pending"
+    d1_model_version: str = "d1-scalable3d-fusion-v1"
+    d2_model_version: str = "d2-scalable3d-association-v1"
+    d3_policy_version: str = "d3-scalable3d-rule-cost-v1"
+    d5_model_version: str = "d5-scalable3d-geometry-rule-v1"
+    d7_model_version: str = "d7-scalable3d-guidance-v1"
     threshold_version: str = DEFAULT_THRESHOLD_VERSION
     metadata: dict[str, Any] = field(default_factory=dict)
 

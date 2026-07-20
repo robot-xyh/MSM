@@ -123,6 +123,8 @@ class Scalable3DEpisodeRunner:
         next_visual_time = 0.0
         episode_start = time.perf_counter()
         module_publication_count = 0
+        module_publication_topic_counts: dict[str, int] = {}
+        last_module_diagnostics: dict[str, Any] = {}
         control_command_tick_count = 0
         proximity_intercepts: list[ProximityInterceptEvent] = []
 
@@ -210,6 +212,7 @@ class Scalable3DEpisodeRunner:
                     )
                     interceptor_command = module_output.interceptor_acceleration_ned
                     recon_command = module_output.recon_acceleration_ned
+                    last_module_diagnostics = dict(module_output.diagnostics)
                     for publication in module_output.publications:
                         self.bus.publish(
                             topic=publication.topic,
@@ -219,6 +222,9 @@ class Scalable3DEpisodeRunner:
                             payload=publication.payload,
                         )
                         module_publication_count += 1
+                        module_publication_topic_counts[publication.topic] = (
+                            module_publication_topic_counts.get(publication.topic, 0) + 1
+                        )
                     control_command_tick_count += 1
                     timing.add("module_stack", time.perf_counter() - started)
                 started = time.perf_counter()
@@ -277,6 +283,10 @@ class Scalable3DEpisodeRunner:
             "online_truth_use_count": 0,
             "module_stack_enabled": self.module_stack is not None,
             "module_publication_count": module_publication_count,
+            "module_publication_topic_counts": dict(
+                sorted(module_publication_topic_counts.items())
+            ),
+            "module_final_diagnostics": last_module_diagnostics,
             "control_command_tick_count": control_command_tick_count,
             "intercepted_target_count": len(self.world.intercepted_target_indices),
             "max_target_speed_mps": diagnostics.max_target_speed_mps,

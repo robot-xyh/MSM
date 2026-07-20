@@ -46,6 +46,11 @@ from .runtime_ports import (
     RuntimeStepOutput,
     ScalableModuleStack,
 )
+from .module_stack import (
+    INTEGRATED_STACK_SCHEMA_VERSION,
+    IntegratedScalableModuleStack,
+    IntegratedStackConfig,
+)
 from .world import ProximityInterceptEvent, VectorizedPointMassWorld
 from .animation import write_trajectory_animation
 
@@ -63,6 +68,9 @@ __all__ = [
     "EpisodeManifest",
     "EpisodeResult",
     "InMemoryEpisodeBus",
+    "INTEGRATED_STACK_SCHEMA_VERSION",
+    "IntegratedScalableModuleStack",
+    "IntegratedStackConfig",
     "KinematicLimits",
     "LinkProfile",
     "ObservationBatch",

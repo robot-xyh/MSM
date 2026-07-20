@@ -3,8 +3,10 @@
 该 main-owned 模块提供可复现、真值隔离的三维质点环境，用于逐步建设 200 架拦截无人机
 对 200 个来袭目标的 D1-D7 完整闭环。现有 `integrated_simulation` 保留为小规模回归基线。
 
-当前阶段实现世界状态、三维动力学、透视投影、传感器场景、通信模型、版本化 episode
-总线和确定性环境基线。D1-D7 算法扩展由各模块 subagent 在原目录实施。
+当前阶段已实现世界状态、三维动力学、透视投影、传感器场景、通信模型、版本化 episode
+总线和确定性环境基线。`IntegratedScalableModuleStack` 已把 D1 六维融合、D2 稀疏关联、
+D3 稀疏分配、D4 区域权限、D5 匿名跨视角配准和 D7 三维比例导引接入同一在线时钟。
+模块栈只做接口转换与调度，各算法仍由 D1-D7 原模块维护。
 
 ## 运行
 
@@ -12,6 +14,7 @@
 python3 research_modules/scalable_3d_simulation/run_episode.py \
   --drone-count 200 \
   --duration 10 \
+  --integrated-stack \
   --output research_modules/scalable_3d_simulation/outputs/smoke_200v200
 ```
 
@@ -24,12 +27,13 @@ python3 research_modules/scalable_3d_simulation/run_episode.py \
 python3 research_modules/scalable_3d_simulation/run_batch.py \
   --scales 5 20 50 100 200 \
   --seeds 7 17 27 \
-  --scenarios nominal dense_crossing formation_split evasive_multilevel
+  --scenarios nominal dense_crossing formation_split evasive_multilevel \
+  --integrated-stack
 ```
 
-场景目录还包含时延噪声、通信退化、中心失效、二级失效和高威胁多机需求配置。故障与
-多机需求场景在 D3/D4 运行时端口接入前明确标记为待执行，配置文件存在不等同于闭环已
-验证。
+场景目录还包含时延噪声、通信退化、中心失效、二级失效和高威胁多机需求配置。单一二级
+节点接管已接入；区域多二级计划和完全分布式 D3 计划仍保持闭锁，配置文件存在不等同于
+相应能力已经验收。
 
 默认不生成 200 路图像。相机模块只输出匿名 bbox、像素中心、投影协方差和独立离线真值
 标签。远距离投影只有达到相机类型对应的最小 bbox 面积后才形成在线视觉观测，避免把
@@ -42,6 +46,23 @@ CSV 和中文 Markdown。
 `ScalableModuleStack` 是后续 D1-D7 的统一在线端口。输入只包含本时刻到达的匿名传感器
 批次以及拦截机、侦察机自身导航状态；输出为 NED 三维加速度和版本化模块记录。目标真值
 状态不会通过该端口传入在线模块，模块记录仍经过递归真值字段检查。
+
+## 当前验证
+
+2026-07-20 的 main 集成回归为 **30/30 passed**。其中 5v5、seed 7、1.2 秒场景形成
+5 条 D1 航迹、5 条 D2 中心航迹、5 项 D3 分配和 5 路 D7 中段指令，在线真值字段使用为
+0。200v200、seed 17、0.25 秒雷达烟测形成 200 条 D1/D2 航迹和 200 项分配；D3 从
+40000 个完整 pair 中保留 6400 条候选边，D7 输出 `(200, 3)` 有限加速度。
+
+中心失效场景已验证单一高空侦察节点覆盖全部活动区域时，D3 计划由版本 1 更新为版本 2，
+owner 切换为 `RECON-001`，D4 八个区域允许继续执行。二级节点再次失效时，D4 能进入
+distributed candidate，但当前没有与其匹配的 D3 分布式计划合同，因此八个区域和 D7 均
+fail closed。该结果是接口和质点仿真证据，不是 AirSim、真实网络或实飞证据。
+
+当前 200v200 短时集成烟测实时因子约 0.09，尚未完成阶段耗时优化、长时多 seed 或
+200-camera 图构建。D5 默认使用几何规则回退；现有图网络只有训练管线 smoke，没有独立
+验证 checkpoint。区域多二级 owner、完全分布式 D3 计划、D6 规模评估和学习策略验收仍是
+后续 P1/P2 工作。
 
 每个物理步结束后，离线评估侧按三维 5 米门限登记唯一接近事件。事件中的真值目标号只
 写入 `offline_proximity_intercepts.jsonl`，不进入在线总线；D6 还需结合分配与身份映射
