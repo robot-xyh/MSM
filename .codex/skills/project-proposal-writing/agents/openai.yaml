@@ -1,0 +1,4 @@
+interface:
+  display_name: "项目建议书编写"
+  short_description: "编写有权威证据、量化指标和技术路线图的中文项目建议书"
+  default_prompt: "Use $project-proposal-writing to draft a sourced Chinese project proposal with measurable indicators and a technical roadmap diagram."
