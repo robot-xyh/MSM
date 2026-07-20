@@ -87,6 +87,8 @@ class ScenarioConfig:
     radar_angle_std_deg: float = 0.20
     visual_detection_probability: float = 0.92
     visual_false_alarm_rate: float = 0.02
+    visual_min_bbox_area_px2: float = 4.0
+    recon_visual_min_bbox_area_px2: float = 2.0
     camera_width_px: int = 1920
     camera_height_px: int = 1080
     camera_horizontal_fov_deg: float = 90.0
@@ -143,6 +145,8 @@ class ScenarioConfig:
             "recon_camera_horizontal_fov_deg",
             "target_proxy_width_m",
             "target_proxy_height_m",
+            "visual_min_bbox_area_px2",
+            "recon_visual_min_bbox_area_px2",
         )
         for name in positive_fields:
             value = float(getattr(self, name))

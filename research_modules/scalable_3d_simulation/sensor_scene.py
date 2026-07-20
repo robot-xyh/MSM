@@ -155,7 +155,20 @@ class SensorScene:
                 ),
                 pixel_noise_std=0.8 if view.platform_kind == "recon" else 1.5,
             )
-            visible_local = np.flatnonzero(projection.visible)
+            projected_bbox = projection.bbox_xyxy
+            projected_area = np.maximum(
+                0.0,
+                (projected_bbox[:, 2] - projected_bbox[:, 0])
+                * (projected_bbox[:, 3] - projected_bbox[:, 1]),
+            )
+            minimum_area = (
+                self.config.recon_visual_min_bbox_area_px2
+                if view.platform_kind == "recon"
+                else self.config.visual_min_bbox_area_px2
+            )
+            visible_local = np.flatnonzero(
+                projection.visible & (projected_area >= minimum_area)
+            )
             retained = visible_local[
                 self.visual_rng.random(visible_local.size)
                 < self.config.visual_detection_probability

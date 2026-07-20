@@ -54,6 +54,8 @@ def test_radar_and_visual_online_measurements_do_not_encode_truth_identity() -> 
         radar_detection_probability=1.0,
         visual_detection_probability=1.0,
         visual_false_alarm_rate=0.0,
+        visual_min_bbox_area_px2=1.0e-6,
+        recon_visual_min_bbox_area_px2=1.0e-6,
     )
     world = VectorizedPointMassWorld(config)
     snapshot = world.snapshot()
@@ -85,6 +87,8 @@ def test_visual_noise_is_seed_reproducible() -> None:
         duration_s=0.1,
         visual_detection_probability=1.0,
         visual_false_alarm_rate=0.0,
+        visual_min_bbox_area_px2=1.0e-6,
+        recon_visual_min_bbox_area_px2=1.0e-6,
     )
     snapshot = VectorizedPointMassWorld(config).snapshot()
     aim = {"CAM-INT-0001": snapshot.intruders.position_ned[0]}

@@ -24,7 +24,9 @@ python3 research_modules/scalable_3d_simulation/run_batch.py \
 ```
 
 默认不生成 200 路图像。相机模块只输出匿名 bbox、像素中心、投影协方差和独立离线真值
-标签。高频状态写入压缩 NPZ，事件写入 JSONL，汇总写入 JSON、CSV 和中文 Markdown。
+标签。远距离投影只有达到相机类型对应的最小 bbox 面积后才形成在线视觉观测，避免把
+亚像素投影误报为可用检测。高频状态写入压缩 NPZ，事件写入 JSONL，汇总写入 JSON、
+CSV 和中文 Markdown。
 
 ## 版本
 

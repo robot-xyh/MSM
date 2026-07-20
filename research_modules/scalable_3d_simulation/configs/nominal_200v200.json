@@ -32,6 +32,8 @@
   "radar_angle_std_deg": 0.2,
   "visual_detection_probability": 0.92,
   "visual_false_alarm_rate": 0.02,
+  "visual_min_bbox_area_px2": 4.0,
+  "recon_visual_min_bbox_area_px2": 2.0,
   "camera_width_px": 1920,
   "camera_height_px": 1080,
   "camera_horizontal_fov_deg": 90.0,
