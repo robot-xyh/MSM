@@ -42,6 +42,7 @@ main
 | 在线观测 | `scalable3d-observation-v1` | 观测字段、单位或时序语义改变 |
 | 离线真值 | `scalable3d-offline-truth-v1` | 标签结构或评分口径改变 |
 | 学习导出 | `scalable3d-learning-export-v1` | D3/D4/D5 训练制品布局或真值隔离规则改变 |
+| 实验矩阵 | `scalable3d-experiment-matrix-v1` | 变体语义、配对键或正式准入条件改变 |
 | D5 模型 | `d5-crossview-gnn-v0.1.0` | 网络、特征、权重或训练集改变 |
 | D5 主动视觉 | `d5-active-vision-rule-v1` 或模型语义版本加指纹 | 特征、动作空间、权重或准入报告改变 |
 | D3 策略 | `d3-rl-cost-policy-v0.1.0` | 策略结构、权重或动作定义改变 |
@@ -76,6 +77,11 @@ bundle 的本地绝对路径不写入 manifest。解析成功后记录语义版�
 保留规则版本，并在 scenario metadata 与在线诊断中记录请求模式、实际模式和稳定回退原因。
 
 正式验收只使用 `repository_dirty=false` 的结果。开发期脏工作树结果可以用于调试，但报告必须明确标注，不能作为阶段标签依据。
+
+正式实验矩阵还必须记录 R0/G1/A1/A2/A3/C1/F1、完整场景目录、5/20/50/100/200
+规模、至少 20 个测试 seed 和训练 seed 注册表摘要。测试 seed 与训练 seed 有交集、模型
+bundle 未加载、assist 未准入或运行时回退规则时，相关学习变体不得进入正式比较。矩阵
+manifest 只记录版本和摘要，不记录 bundle 的本地绝对路径。
 
 ## 模型文件
 

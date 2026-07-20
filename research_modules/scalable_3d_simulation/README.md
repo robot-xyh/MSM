@@ -91,6 +91,23 @@ latency` 时刻进入通信队列，再按链路时延、抖动、带宽和丢�
 批次以及拦截机、侦察机自身导航状态；输出为 NED 三维加速度和版本化模块记录。目标真值
 状态不会通过该端口传入在线模块，模块记录仍经过递归真值字段检查。
 
+## 实验矩阵
+
+`run_experiment_matrix.py` 统一编排 R0 纯规则、G1 跨视角图网络、A1 D3 代价修正、A2
+D4 区域策略、A3 主动视觉、C1 学习组合和 F1 故障/高威胁完整体系。可比较变体使用相同的
+场景、规模和 seed 形成 `comparison_key`。F1 只运行中心失效、二级失效和高威胁 M 对 N
+场景，避免把与 C1 相同的模型组合重复解释为一种新算法。
+
+学习变体必须提供对应 bundle，且运行时诊断必须证明模型实际加载、辅助模式获准并生效。
+缺 bundle、未准入或规则回退会阻断声明的学习变体，不能把规则结果记到学习组。正式模式
+还要求完整 R0/G1/A1/A2/A3/C1/F1、完整场景目录、5/20/50/100/200 五档规模、至少
+20 个唯一 seed、独立训练 seed 注册表、训练/测试 seed 零重叠和干净工作树。每个 episode
+写盘后由 D6 从离线目录统一评分，矩阵本身不读取在线真值。
+
+2026-07-20 使用 2v2、nominal、seed 101、0.25 秒完成一次脏工作树 R0 开发冒烟，有限状态
+为真、在线真值使用为 0，并成功生成矩阵 manifest、逐 cell CSV 和 D6 离线报告。该结果只
+验证编排与写盘，不属于正式消融或性能证据。
+
 ## 当前验证
 
 2026-07-20 的 main 集成回归为 **47/47 passed**。其中 5v5、seed 7、1.2 秒场景形成
@@ -167,6 +184,7 @@ paired shadow evaluator；D4 已具备变长区域图、规则基线、行为克
 - 主动视觉快照/动作：`d5.active-vision-snapshot.v1` / `d5.active-vision-action.v1`
 - 主动视觉策略：`d5-active-vision-rule-v1` 或模型语义版本加权重指纹
 - 相机命令确认：`scalable3d-camera-command-ack-v1`
+- 实验矩阵：`scalable3d-experiment-matrix-v1`
 
 每个 episode 的 `manifest.json` 记录上述版本、Git commit、配置 SHA256、seed、模型版本和
 阈值版本。在线总线拒绝任何包含 truth/actor/object identity 字段的观测负载。
