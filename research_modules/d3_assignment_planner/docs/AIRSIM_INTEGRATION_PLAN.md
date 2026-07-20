@@ -286,3 +286,28 @@ The 2026-07-20 module evidence is 13 new deterministic tests and a full result
 of `170 passed, 1 skipped`; the 200v200 sample used 800 candidate actions and
 one invocation took 0.621 s. These are not AirSim, real-time, PPO, or multi-seed
 acceptance results.
+
+## 2026-07-20 Real-Episode Learning Frame Recorder Contract
+
+D3 now exposes `planner.latest_planning_evidence` and
+`build_latest_learning_frame_record(...)`. Main should call the helper once,
+immediately after each successful planning tick, with the stable scenario
+version, seed, episode, and monotonic frame index. It must not call
+`_build_search_matrix()` or reconstruct costs in `IntegratedScalableModuleStack`.
+The evidence already contains the exact rule/effective matrices, current
+timestamp, previous version, and anonymous plan/input snapshots used by D3.
+
+The evidence object is local-only and must not be published on an AirSim, D4,
+or D7 bus. IDs are ordinalized and upstream metadata plus truth/actor/object
+aliases are absent. `available=false` is a real frame outcome: main should log
+its reason and must not substitute the prior frame. Expected examples include
+stale calls, rejected regional authority, an authority-generation fence with no
+new cost input, and snapshot-consistency failure.
+
+This D3 task did not edit the runtime stack, launch Blocks, or write real
+episode data. Module validation added 11 focused tests and collected 226 total:
+`225 passed, 1 skipped`, with zero failures required and the optional OR-Tools
+case skipped. Main-owned acceptance remains: export complete sequential frames
+for every requested seed, verify no missing/duplicated frame index, validate
+anonymous schema and split hash, aggregate unavailable reasons, and compare
+rule/shadow pairs before any assist trial.

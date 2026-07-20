@@ -619,3 +619,50 @@ fallback、duplicate 和 hard violation 均为 0，但 assignment-cost 非退化
 
 新增 16 个专项测试后，D3 共收集 215 项，最终为 `214 passed, 1 skipped`（6.95 s）；
 接受门限为零失败，唯一 skip 是既有 optional OR-Tools installed-only case。
+
+## 2026-07-20 单帧只读规划证据
+
+`AssignmentPlanner.latest_planning_evidence` 现返回
+`PlanningFrameEvidence`（schema `d3_planning_frame_evidence_v1`）。planner 只保留最近
+一次规划尝试：每次 `plan()`、`plan_incremental()` 或
+`plan_regional_authority()` 开始时先替换旧帧，成功后保存与该次输入一致的 rule
+`CostMatrixResult`、实际送入 solver 的 effective `CostMatrixResult`、计划
+`plan_id/version`、规划时间、前序版本，以及构造 `LearningFrameRecord` 所需的
+tracks/resources/plan 安全副本。新 episode 仍按既有合同创建新 planner；新实例初始
+状态为 `available=False, reason="no_planning_frame"`。
+
+证据明确区分四种 learning 状态：`rule_only`、`shadow_proposal`、
+`assist_effective` 和 `rule_fallback`。shadow 的 proposal 是独立只读矩阵，effective
+矩阵仍逐元素等于 rule；assist 只把有界 residual 后矩阵标为 effective；timeout、低
+置信、OOD、bundle/version 等 fallback 必须保持 effective 与 rule 逐元素相同并给出
+`fallback_reason`。solver 名称单独记录，因此 SciPy Hungarian 与 `fallback_dp` 也可
+审计，默认 `learning_assistant=None` 和 Hungarian 行为未改变。
+
+该接口只存在于 planner 本地对象，不写入 `AssignmentPlan.metadata`，不定义线上 DTO，
+也不上 D4/D7 总线。快照把输入 ID 重映射为 `target_0000/resource_0000`，剥离上游
+metadata、node/actor/object/truth alias；NumPy 数据来自独立不可写 buffer，嵌套 mapping
+也只读。held、unchanged、forced-replan ack 和有效 regional authority 均保存当前输入
+帧；stale/区域拒绝、无矩阵 authority fence、证据不一致或无匹配成本帧的外部 publish
+只返回 `available=False` 和明确 reason，不回退到上一帧。
+
+main 可直接调用：
+
+```python
+record = build_latest_learning_frame_record(
+    planner,
+    scenario_version=scenario_version,
+    seed=seed,
+    episode=episode,
+    frame_index=frame_index,
+)
+```
+
+helper 使用证据中的 timestamp 和 rule matrix，继续输出匿名 ordinal token；调用方不再
+调用私有 `_build_search_matrix()`，也不重复构造可能与真实规划不一致的成本矩阵。
+2026-07-20 新增 11 个专项测试，覆盖首帧、held/unchanged/forced replan、shadow、
+assist、learning/solver fallback、regional 成功与拒绝、失败清旧帧、外部修改隔离及
+1x3、3x2、7x4 roster。D3 全量共收集 226 项，结果为
+`225 passed, 1 skipped`，零失败达到门限；skip 仍是未安装 optional OR-Tools 的
+installed-only case。main 尚未用真实 AirSim episode 导出整 seed 数据，因此这里只
+关闭 D3-owned recorder 接口缺口，不构成真实数据、shadow non-degradation 或 assist
+晋级证据。

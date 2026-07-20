@@ -748,3 +748,37 @@ shadow `0.006 s`。这些是单机 smoke，不是吞吐、实时、收益或系�
 验证门限为 D3 全量零失败、bundle/mask/fallback fail closed、BC loss 下降、PPO 更新
 有限、少于 20 seed 必须拒绝 promotion。新增 16 个专项测试后共收集 215 项，最终为
 `214 passed, 1 skipped`（6.95 s）；唯一 skip 是 optional OR-Tools installed-only case。
+
+## 23. 单帧规划证据与真实 Episode Recorder 接口（2026-07-20）
+
+### 已完成
+
+1. `AssignmentPlanner` 公开最近一帧 `latest_planning_evidence`，不保留历史列表。regular、
+   incremental 和 D4 裁决后的 regional path 均在调用开始时清除旧 payload，成功后才
+   发布当前输入快照；失败保留 unavailable reason。
+2. 成本链拆分为精确 `C_rule` 和 solver 实际消费的 `C_effective`。shadow proposal、
+   assist effective、rule fallback 和无 learning 的 rule-only 状态使用不同字段/枚举，
+   不从 plan metadata 反推矩阵。
+3. 快照内 target/resource/assignment ID 全部 ordinal 化，metadata 与 node/actor/object/
+   truth alias 被剥离；矩阵使用独立不可写 buffer，mapping 使用只读视图。证据不进入
+   `AssignmentPlan` 或在线消息合同。
+4. `build_latest_learning_frame_record(...)` 只要求 main 提供
+   `scenario_version/seed/episode/frame_index`，直接复用当前证据生成既有
+   `LearningFrameRecord`。synthetic dataset generator 已改用该公开 helper，不再调用
+   planner 私有矩阵构造函数。
+5. held、unchanged、forced replan ack 和有效 regional authority 可形成一致帧；stale、
+   invalid authority、authority-generation fence、unmatched external publish 或快照一致性
+   失败显式 unavailable，禁止返回上一帧。
+
+### 验证与下一步
+
+2026-07-20 新增 11 个专项测试，样本覆盖 1x3、3x2、7x4 roster 及 regular/regional、
+shadow/assist/fallback。全量收集 226 项，结果 `225 passed, 1 skipped`，接受门限为零
+失败；唯一 skip 为 optional OR-Tools。默认 Hungarian、需求槽、迟滞、版本和 stale
+行为由既有全量回归保护。
+
+下一步由 main 在 `IntegratedScalableModuleStack` 每个真实 planning tick 后调用公开
+helper，按完整 scenario/seed/episode 保存连续 frame，并由 D6 检查帧数、split hash、
+缺帧/不可用 reason 和 truth-isolation。D3 本轮没有修改 main/runtime，也没有生成真实
+AirSim seed；真实数据训练、>=20 未见 seed、paired shadow 非退化和 assist promotion
+继续开放。

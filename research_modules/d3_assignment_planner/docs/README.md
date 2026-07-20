@@ -24,3 +24,10 @@ D3 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 同日新增故障代际 fence 接口及 5 个专项测试，最新 D3 全量为
 `198 passed, 1 skipped`。该接口只完成 D3 发布代际隔离，50v50 中心故障的 main/D4
 接线和系统结果仍待验证。
+
+同日最新增量为单帧只读规划证据与公开 learning-frame helper。接口把实际规划使用的
+rule/effective/shadow/fallback 矩阵、版本和匿名输入快照留在 planner 本地，拒绝路径不
+复用旧帧。新增 11 个专项测试后共收集 226 项，结果为 `225 passed, 1 skipped`。
+`ALGORITHM_AND_IMPLEMENTATION.md` 记录 schema/捕获点，`AIRSIM_INTEGRATION_PLAN.md`
+记录 main 接线要求，`EXPERIMENT_REPORT.md` 记录模块验收。本批未运行 AirSim 或生成
+真实 seed 数据。

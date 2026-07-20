@@ -30,6 +30,10 @@ from .models import (
     TargetTrack,
 )
 from .solver import HungarianAssignmentSolver, HungarianDemandSlotSolver
+from .planning_evidence import (
+    PlanningFrameEvidence,
+    build_planning_frame_evidence,
+)
 from .regional import (
     REGIONAL_ASSIGNMENT_PLAN_SCHEMA_V1,
     RegionalAuthorityGrant,
@@ -169,6 +173,81 @@ class AssignmentPlanner:
         self._latest_version = 0
         self._latest_plan_id: str | None = None
         self._latest_published_plan: AssignmentPlan | None = None
+        self._latest_planning_evidence = PlanningFrameEvidence.unavailable(
+            reason="no_planning_frame",
+            planning_path="none",
+        )
+
+    @property
+    def latest_planning_evidence(self) -> PlanningFrameEvidence:
+        """Return the one detached offline-recording snapshot retained by D3."""
+
+        return self._latest_planning_evidence
+
+    def _begin_planning_evidence(self, planning_path: str) -> None:
+        self._latest_planning_evidence = PlanningFrameEvidence.unavailable(
+            reason="planning_in_progress",
+            planning_path=planning_path,
+        )
+
+    def _fail_planning_evidence(
+        self,
+        planning_path: str,
+        error: Exception,
+    ) -> None:
+        detail = getattr(error, "reason", None)
+        if detail is None:
+            detail = type(error).__name__
+        self._latest_planning_evidence = PlanningFrameEvidence.unavailable(
+            reason=f"{planning_path}_failed:{detail}",
+            planning_path=planning_path,
+        )
+
+    def _capture_planning_evidence(
+        self,
+        *,
+        planning_path: str,
+        selection_source: str,
+        timestamp: float,
+        rule_matrix_result: CostMatrixResult,
+        effective_matrix_result: CostMatrixResult,
+        tracks: tuple[TargetTrack, ...],
+        resources: tuple[ResourceState, ...],
+        plan: AssignmentPlan,
+        previous_plan: AssignmentPlan | None,
+    ) -> None:
+        try:
+            evidence = build_planning_frame_evidence(
+                planning_path=planning_path,
+                selection_source=selection_source,
+                timestamp_s=timestamp,
+                rule_matrix_result=rule_matrix_result,
+                effective_matrix_result=effective_matrix_result,
+                tracks=tracks,
+                resources=resources,
+                plan=plan,
+                previous_plan=previous_plan,
+            )
+        except Exception as exc:
+            evidence = PlanningFrameEvidence.unavailable(
+                reason=f"evidence_snapshot_failed:{type(exc).__name__}",
+                planning_path=planning_path,
+            )
+        self._latest_planning_evidence = evidence
+
+    def _invalidate_evidence_for_unmatched_publish(
+        self,
+        plan: AssignmentPlan,
+    ) -> None:
+        evidence = self._latest_planning_evidence
+        if not evidence.available:
+            return
+        if evidence.plan_id == plan.plan_id and evidence.plan_version == plan.version:
+            return
+        self._latest_planning_evidence = PlanningFrameEvidence.unavailable(
+            reason="published_plan_has_no_matching_cost_frame",
+            planning_path="publish_plan",
+        )
 
     def plan(
         self,
@@ -183,22 +262,46 @@ class AssignmentPlanner:
     ) -> AssignmentPlan:
         """Return a candidate plan and optionally publish its identity."""
 
-        self._validate_previous_plan(previous_plan, expected_previous_version)
-        result = self._plan_candidate(
-            tracks=tracks,
-            resources=resources,
+        planning_path = "central_plan"
+        self._begin_planning_evidence(planning_path)
+        track_items = tuple(tracks)
+        resource_items = tuple(resources)
+        try:
+            self._validate_previous_plan(previous_plan, expected_previous_version)
+            result, rule_matrix, effective_matrix = self._plan_candidate(
+                tracks=track_items,
+                resources=resource_items,
+                timestamp=timestamp,
+                previous_plan=previous_plan,
+                window_id=window_id,
+            )
+            result = self._annotate_input_snapshot(
+                result,
+                track_items,
+                resource_items,
+            )
+            result = self._finalize_and_publish(
+                result,
+                previous_plan=previous_plan,
+                timestamp=timestamp,
+                forced_replan=forced_replan,
+                publish=publish,
+            )
+        except Exception as exc:
+            self._fail_planning_evidence(planning_path, exc)
+            raise
+        self._capture_planning_evidence(
+            planning_path=planning_path,
+            selection_source="central_solver",
             timestamp=timestamp,
+            rule_matrix_result=rule_matrix,
+            effective_matrix_result=effective_matrix,
+            tracks=track_items,
+            resources=resource_items,
+            plan=result,
             previous_plan=previous_plan,
-            window_id=window_id,
         )
-        result = self._annotate_input_snapshot(result, tracks, resources)
-        return self._finalize_and_publish(
-            result,
-            previous_plan=previous_plan,
-            timestamp=timestamp,
-            forced_replan=forced_replan,
-            publish=publish,
-        )
+        return result
 
     def advance_authority_generation(
         self,
@@ -216,6 +319,10 @@ class AssignmentPlanner:
         immediately reject the fenced source generation.
         """
 
+        self._latest_planning_evidence = PlanningFrameEvidence.unavailable(
+            reason="authority_generation_fence_has_no_cost_frame",
+            planning_path="authority_generation_fence",
+        )
         self._validate_previous_plan(previous_plan, expected_previous_version)
         latest = self._latest_published_plan
         if latest is None:
@@ -328,6 +435,53 @@ class AssignmentPlanner:
         window_id: int | None = None,
         publish: bool = True,
     ) -> AssignmentPlan:
+        """Validate and publish one D4-adjudicated regional planning frame."""
+
+        planning_path = "regional_authority"
+        self._begin_planning_evidence(planning_path)
+        track_items = tuple(tracks)
+        resource_items = tuple(resources)
+        try:
+            result, rule_matrix, effective_matrix = (
+                self._plan_regional_authority_with_evidence(
+                    track_items,
+                    resource_items,
+                    timestamp,
+                    previous_plan=previous_plan,
+                    authority=authority,
+                    expected_previous_version=expected_previous_version,
+                    window_id=window_id,
+                    publish=publish,
+                )
+            )
+        except Exception as exc:
+            self._fail_planning_evidence(planning_path, exc)
+            raise
+        self._capture_planning_evidence(
+            planning_path=planning_path,
+            selection_source="regional_authority",
+            timestamp=timestamp,
+            rule_matrix_result=rule_matrix,
+            effective_matrix_result=effective_matrix,
+            tracks=track_items,
+            resources=resource_items,
+            plan=result,
+            previous_plan=previous_plan,
+        )
+        return result
+
+    def _plan_regional_authority_with_evidence(
+        self,
+        tracks: tuple[TargetTrack, ...],
+        resources: tuple[ResourceState, ...],
+        timestamp: float,
+        *,
+        previous_plan: AssignmentPlan,
+        authority: RegionalAuthorityInput,
+        expected_previous_version: int | None = None,
+        window_id: int | None = None,
+        publish: bool = True,
+    ) -> tuple[AssignmentPlan, CostMatrixResult, CostMatrixResult]:
         """Publish a D4-adjudicated multi-owner regional assignment plan.
 
         D3 does not select the fallback layer or owner.  It validates D4's
@@ -346,7 +500,7 @@ class AssignmentPlanner:
             previous_plan=previous_plan,
             timestamp=timestamp,
         )
-        matrix_result = self._build_search_matrix(
+        rule_matrix_result, matrix_result = self._build_search_matrices(
             track_items,
             resource_items,
             timestamp,
@@ -402,13 +556,14 @@ class AssignmentPlanner:
             track_items,
             resource_items,
         )
-        return self._finalize_and_publish(
+        result = self._finalize_and_publish(
             candidate,
             previous_plan=previous_plan,
             timestamp=timestamp,
             forced_replan=False,
             publish=publish,
         )
+        return result, rule_matrix_result, matrix_result
 
     def _validate_regional_authority(
         self,
@@ -827,6 +982,57 @@ class AssignmentPlanner:
         forced_replan: bool = False,
         publish: bool = True,
     ) -> AssignmentPlan:
+        """Run the conservative incremental path and retain its full-frame evidence."""
+
+        planning_path = "incremental_plan"
+        self._begin_planning_evidence(planning_path)
+        track_items = tuple(tracks)
+        resource_items = tuple(resources)
+        try:
+            result, rule_matrix, effective_matrix = (
+                self._plan_incremental_with_evidence(
+                    track_items,
+                    resource_items,
+                    timestamp,
+                    previous_plan=previous_plan,
+                    changed_track_ids=changed_track_ids,
+                    changed_resource_ids=changed_resource_ids,
+                    window_id=window_id,
+                    expected_previous_version=expected_previous_version,
+                    forced_replan=forced_replan,
+                    publish=publish,
+                )
+            )
+        except Exception as exc:
+            self._fail_planning_evidence(planning_path, exc)
+            raise
+        self._capture_planning_evidence(
+            planning_path=planning_path,
+            selection_source="incremental_solver",
+            timestamp=timestamp,
+            rule_matrix_result=rule_matrix,
+            effective_matrix_result=effective_matrix,
+            tracks=track_items,
+            resources=resource_items,
+            plan=result,
+            previous_plan=previous_plan,
+        )
+        return result
+
+    def _plan_incremental_with_evidence(
+        self,
+        tracks: tuple[TargetTrack, ...],
+        resources: tuple[ResourceState, ...],
+        timestamp: float,
+        *,
+        previous_plan: AssignmentPlan,
+        changed_track_ids: list[str] | tuple[str, ...] | set[str] = (),
+        changed_resource_ids: list[str] | tuple[str, ...] | set[str] = (),
+        window_id: int | None = None,
+        expected_previous_version: int | None = None,
+        forced_replan: bool = False,
+        publish: bool = True,
+    ) -> tuple[AssignmentPlan, CostMatrixResult, CostMatrixResult]:
         """Replan one independent target-resource component when it is safe.
 
         The changed-id sets are declarations, not hints. Input fingerprints on
@@ -842,7 +1048,7 @@ class AssignmentPlanner:
         changed_resources = frozenset(str(value) for value in changed_resource_ids)
         started_at = perf_counter()
 
-        matrix_result = self._build_search_matrix(
+        rule_matrix_result, matrix_result = self._build_search_matrices(
             track_items,
             resource_items,
             timestamp,
@@ -921,7 +1127,7 @@ class AssignmentPlanner:
             affected_target_ids=affected_targets,
             affected_resource_ids=affected_resources,
         )
-        sub_candidate, _ = self._solve_candidate(
+        sub_candidate, _, _ = self._solve_candidate(
             tracks=affected_track_items,
             resources=affected_resource_items,
             timestamp=timestamp,
@@ -966,13 +1172,14 @@ class AssignmentPlanner:
             },
         )
         result = self._annotate_input_snapshot(result, track_items, resource_items)
-        return self._finalize_and_publish(
+        result = self._finalize_and_publish(
             result,
             previous_plan=previous_plan,
             timestamp=timestamp,
             forced_replan=forced_replan,
             publish=publish,
         )
+        return result, rule_matrix_result, matrix_result
 
     def _plan_candidate(
         self,
@@ -982,17 +1189,17 @@ class AssignmentPlanner:
         timestamp: float,
         previous_plan: AssignmentPlan | None,
         window_id: int | None,
-    ) -> AssignmentPlan:
+    ) -> tuple[AssignmentPlan, CostMatrixResult, CostMatrixResult]:
         """Build and hysteresis-filter a plan without identity publication."""
 
-        candidate, matrix_result = self._solve_candidate(
+        candidate, rule_matrix_result, matrix_result = self._solve_candidate(
             tracks=tracks,
             resources=resources,
             timestamp=timestamp,
             previous_plan=previous_plan,
             window_id=window_id,
         )
-        return self._filter_candidate(
+        result = self._filter_candidate(
             candidate=candidate,
             previous_plan=previous_plan,
             matrix_result=matrix_result,
@@ -1000,6 +1207,7 @@ class AssignmentPlanner:
             window_id=window_id,
             tracks=tracks,
         )
+        return result, rule_matrix_result, matrix_result
 
     def _solve_candidate(
         self,
@@ -1009,10 +1217,10 @@ class AssignmentPlanner:
         timestamp: float,
         previous_plan: AssignmentPlan | None,
         window_id: int | None,
-    ) -> tuple[AssignmentPlan, CostMatrixResult]:
+    ) -> tuple[AssignmentPlan, CostMatrixResult, CostMatrixResult]:
         """Solve one input set without hysteresis or identity finalization."""
 
-        matrix_result = self._build_search_matrix(
+        rule_matrix_result, matrix_result = self._build_search_matrices(
             tracks,
             resources,
             timestamp,
@@ -1042,7 +1250,39 @@ class AssignmentPlanner:
                 decision_state="accepted",
                 changed=True,
             )
-        return candidate, matrix_result
+        return candidate, rule_matrix_result, matrix_result
+
+    def _build_search_matrices(
+        self,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        resources: list[ResourceState] | tuple[ResourceState, ...],
+        timestamp: float,
+        previous_plan: AssignmentPlan | None,
+    ) -> tuple[CostMatrixResult, CostMatrixResult]:
+        """Return the exact rule matrix and the matrix actually sent to the solver."""
+
+        rule_matrix_result = self.cost_model.build_matrix(
+            tracks,
+            resources,
+            timestamp,
+            preserved_candidate_edges=self._preserved_candidate_edges(previous_plan),
+        )
+        rule_matrix_result = self._apply_switch_penalty_to_matrix(
+            rule_matrix_result,
+            previous_plan,
+        )
+        if self.learning_assistant is None:
+            return rule_matrix_result, rule_matrix_result
+        expected_version = 0 if previous_plan is None else previous_plan.version
+        effective_matrix_result = self.learning_assistant.apply(
+            rule_matrix_result,
+            tracks,
+            resources,
+            expected_previous_version=expected_version,
+            current_plan_version=self._latest_version,
+            previous_plan=previous_plan,
+        )
+        return rule_matrix_result, effective_matrix_result
 
     def _build_search_matrix(
         self,
@@ -1051,29 +1291,15 @@ class AssignmentPlanner:
         timestamp: float,
         previous_plan: AssignmentPlan | None,
     ) -> CostMatrixResult:
-        """Build rule costs, search shaping, and an optional guarded residual."""
+        """Backward-compatible internal accessor for the effective solver matrix."""
 
-        matrix_result = self.cost_model.build_matrix(
+        _, effective_matrix_result = self._build_search_matrices(
             tracks,
             resources,
             timestamp,
-            preserved_candidate_edges=self._preserved_candidate_edges(previous_plan),
-        )
-        matrix_result = self._apply_switch_penalty_to_matrix(
-            matrix_result,
             previous_plan,
         )
-        if self.learning_assistant is None:
-            return matrix_result
-        expected_version = 0 if previous_plan is None else previous_plan.version
-        return self.learning_assistant.apply(
-            matrix_result,
-            tracks,
-            resources,
-            expected_previous_version=expected_version,
-            current_plan_version=self._latest_version,
-            previous_plan=previous_plan,
-        )
+        return effective_matrix_result
 
     @staticmethod
     def _preserved_candidate_edges(
@@ -1207,8 +1433,8 @@ class AssignmentPlanner:
         forced_replan: bool,
         publish: bool,
         started_at: float,
-    ) -> AssignmentPlan:
-        result = self._plan_candidate(
+    ) -> tuple[AssignmentPlan, CostMatrixResult, CostMatrixResult]:
+        result, rule_matrix_result, matrix_result = self._plan_candidate(
             tracks=tracks,
             resources=resources,
             timestamp=timestamp,
@@ -1233,13 +1459,14 @@ class AssignmentPlanner:
             },
         )
         result = self._annotate_input_snapshot(result, tracks, resources)
-        return self._finalize_and_publish(
+        result = self._finalize_and_publish(
             result,
             previous_plan=previous_plan,
             timestamp=timestamp,
             forced_replan=forced_replan,
             publish=publish,
         )
+        return result, rule_matrix_result, matrix_result
 
     def _incremental_fallback_reason(
         self,
@@ -1822,6 +2049,7 @@ class AssignmentPlanner:
                         "published plan cannot change execution semantics without a new identity"
                     )
                 self._latest_published_plan = plan
+                self._invalidate_evidence_for_unmatched_publish(plan)
                 return plan
             if declared_authority_fence:
                 self._validate_authority_generation_fence(plan, latest)
@@ -1851,6 +2079,7 @@ class AssignmentPlanner:
         self._latest_version = plan.version
         self._latest_plan_id = plan.plan_id
         self._latest_published_plan = plan
+        self._invalidate_evidence_for_unmatched_publish(plan)
         return plan
 
     @staticmethod

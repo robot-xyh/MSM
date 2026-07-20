@@ -375,3 +375,29 @@ promotion 为 `false/unavailable`。该结果把旧“数据/checkpoint/PPO 管�
 `research_modules/d3_assignment_planner/docs/AIRSIM_INTEGRATION_PLAN.md` 已检查：没有修改
 adapter、actor、settings、控制、D7 或 runtime 接口，因此无需变更。实验文档只记录
 synthetic smoke，并明确不是 AirSim、正式 PPO 收益或 promotion 证据。
+
+## 21. 真实 Episode 学习帧证据 GAP 更新（2026-07-20）
+
+| GAP/能力 | 当前状态 | 证据与剩余边界 |
+|---|---|---|
+| main 无法取得真实规划矩阵 | D3-owned closed | 公开 `latest_planning_evidence` 同时保存 rule/effective `CostMatrixResult` 和计划上下文 |
+| main 重建私有矩阵可能漂移 | D3-owned closed | `build_latest_learning_frame_record()` 直接消费 planner 最近成功帧；synthetic generator 已移除私有调用 |
+| shadow/assist/fallback 混淆 | deterministic closed | `rule_only/shadow_proposal/assist_effective/rule_fallback` 分离；fallback 要求 effective 与 rule 完全一致 |
+| held/unchanged/forced replan | deterministic closed | 当前 timestamp/previous version 与当前输入矩阵可记录，不复用旧矩阵 |
+| regional authority | D3 interface done | 有效 authority 记录 `selection_source=regional_authority`；拒绝路径清空旧 payload 并给 reason |
+| 失败后返回陈旧帧 | fail-closed done | stale、invalid regional、fence、unmatched publish 和一致性失败均 `available=False`、payload 为空 |
+| 外部反向修改 planner | deterministic closed | ID 匿名化，array 为 immutable buffer，mapping 只读；修改生成 record 不影响 retained evidence |
+| 在线总线/仿真身份泄漏 | D3-owned closed | 证据不进 plan metadata/DTO；track/resource/assignment 仅 ordinal token，无 truth/actor/object/upstream metadata |
+| 真实整 seed 导出 | cross-module P1 open | main 尚未在 IntegratedScalableModuleStack 调 helper，也未形成 AirSim sequential dataset |
+| 真实 shadow/assist 准入 | P1 open/unavailable | 仍缺 >=20 未见真实/高保真 seed、paired non-degradation、deadline/OOD/confidence 标定 |
+
+本轮把“D3 已有 frame builder 但无法取得真实调用使用的矩阵”从接口 GAP 改为
+implemented/tested；它不关闭真实数据与系统 outcome GAP。新增 11 个专项测试覆盖首帧、
+held/unchanged/forced replan、shadow、assist、learning/solver fallback、regional 正负例、
+失败清旧帧、外部修改隔离和 1x3/3x2/7x4。2026-07-20 D3 全量收集 226 项，结果
+`225 passed, 1 skipped`，零失败达到门限；唯一 skip 是 optional OR-Tools。
+
+`README.md`、`PLAN.md`、三份 D3 review/GAP 和模块内四份主题文档已同步。AirSim 文档
+只新增 recorder 接线计划，明确本轮未修改 adapter、settings、actor/control 或运行真实
+episode。根级 main/system 文档不在 D3 owned paths，由 main 在集成 helper 后同步实际
+seed/frame/result。

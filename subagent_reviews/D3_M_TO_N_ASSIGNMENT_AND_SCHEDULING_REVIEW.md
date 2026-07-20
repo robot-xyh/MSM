@@ -373,3 +373,23 @@ Hungarian demand-slot 和既有 `8/10` 物理门限均不改变。
 
 包括该安全边界在内，新增学习管线专项测试 16 项；D3 最终全量为
 `214 passed, 1 skipped`（215 项收集、6.95 s），唯一 skip 是 optional OR-Tools。
+
+## 22. 单帧证据对 M-to-N 学习记录的约束（2026-07-20）
+
+最近帧证据保留原始 target-resource rule/effective 矩阵，而不是把展开后的 demand slot
+伪装成固定动作矩阵。匿名 track snapshot 仍携带
+`required_resource_count/primary_resource_count`，最终 plan snapshot 保留实际选边；现有
+`LearningFrameRecord` 因而可继续计算 demand shortfall、高威胁覆盖、前序选边和 churn。
+role/wave/capability 展开、all-or-none admission 与 coalition 发布仍由在线 deterministic
+planner 完成，不交给 recorder 或模型。
+
+held、unchanged 和 forced-replan ack 的 frame 使用本 tick 成本矩阵和前序版本，可区分
+“candidate 变化但联盟 roster 被迟滞保持”与“无变化”。regional authority frame 通过
+`selection_source` 标识，不把 D4 owner 决策冒充中心 Hungarian。invalid authority、
+stale 或无法将 plan assignment 映射到当前 roster 时直接 unavailable，不会用上一帧
+补数。
+
+专项测试包含非等量 1x3、3x2、7x4，证明证据 shape 随输入规模变化，没有 2v2/5v5
+或固定 M-to-N 动作头。D3 全量 226 项为 `225 passed, 1 skipped`。该结果只完成
+D3 recorder 合同；真实动态 demand、primary/reserve feedback、资源故障连续 seed、
+main 写盘和 M-to-N shadow 非退化仍未验证。

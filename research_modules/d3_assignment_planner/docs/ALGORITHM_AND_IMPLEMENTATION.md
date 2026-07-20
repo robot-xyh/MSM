@@ -1190,3 +1190,50 @@ duplicate、hard violation、fallback 和 inference percentile。promotion 条�
 
 当前在线 assistant 只消费 residual。advice head 尚未接入 planner 的迟滞/发布状态机，
 因此文档不得把离线 hold/replan 训练写成在线策略部署。
+
+## 30. 单帧 PlanningFrameEvidence 实现（2026-07-20）
+
+### 30.1 成本链捕获点
+
+`AssignmentPlanner._build_search_matrices()` 一次返回两个 D3-owned 结果：
+
+```text
+C_rule      = cost_model + candidate sparsification + switch penalty
+C_effective = learning_assistant(C_rule) or C_rule
+plan        = solver/state_machine(C_effective, previous_plan)
+```
+
+regular、incremental 和 regional 入口把二者与最终 plan 一起交给本地 snapshot builder。
+证据不是从 plan metadata 反序列化，因此能保持 shadow proposal、assist effective 和
+fallback 的真实区别。default planner 没有 assistant，两个结果数值相同，solver 和
+版本状态机代码不变。
+
+### 30.2 值对象与一致性门
+
+公开 schema 为 `d3_planning_frame_evidence_v1`，主要字段是
+`available/reason/planning_path/selection_source/timestamp_s/plan_id/plan_version/
+previous_plan_version`、rule/effective `CostMatrixResult`、可选 shadow proposal、learning
+state/fallback reason、solver name 及匿名 tracks/resources/plan snapshot。
+
+snapshot builder 验证：输入 ID 唯一；rule/effective 的 ID 顺序与 roster 相同；矩阵和
+unassigned cost shape 正确；plan 的 N/M 等于当前输入；每条 assignment 都能映射到当前
+target/resource。shadow 必须保持 effective 与 rule 相同且 proposal 数量等于 candidate
+mask；fallback 也必须保持两矩阵相同。任一条件失败返回 unavailable，不抛错影响在线
+规划结果。
+
+### 30.3 隔离与 helper
+
+匿名化以矩阵顺序生成 `target_0000/resource_0000`，同时重映射 plan assignments。输入
+metadata、区域 node、actor/object/truth alias 和原 ID 不保留；只复制 frame builder
+所需数值。array 由 immutable bytes buffer 重建，mapping 使用只读视图。证据不实现
+online `to_dict()`，也不写入 `AssignmentPlan.metadata`。
+
+`build_latest_learning_frame_record(planner, scenario_version=..., seed=..., episode=...,
+frame_index=...)` 检查 availability 后，把证据的 rule result、匿名 snapshot 和 timestamp
+传给现有 `build_learning_frame_record()`。synthetic generator 已使用该 helper，删除了
+私有 `_build_search_matrix()` 预计算，因此同一帧不会再规划一次矩阵。
+
+规划入口在验证 previous plan 前先置 `planning_in_progress`。失败 reason、invalid
+regional、authority fence 和 unmatched publish 都没有 payload；成功后只替换这一帧，
+不累计 history。2026-07-20 新增 11 个专项测试；全量收集 226 项，结果
+`225 passed, 1 skipped`，门限为零失败。main/runtime 真实整 seed 写盘尚未完成。

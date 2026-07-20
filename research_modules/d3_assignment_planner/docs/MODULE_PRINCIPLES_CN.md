@@ -913,3 +913,28 @@ hold/replan head 当前用于 BC/PPO 和离线 counterfactual rollout，未接�
 发布状态机。在线 `LearningCostAssistant` 仍只消费 residual，并执行
 `C_final=C_rule+alpha*tanh(delta_C)`；这一限制避免研究建议绕过既有迟滞、版本或人工
 授权链。
+
+## 21. 单帧只读规划证据原则（2026-07-20）
+
+1. **矩阵必须来自同一次规划**：`C_rule` 在规则成本、候选稀疏化和换绑 penalty 完成后
+   固化；`C_effective` 是 shadow/assist/fallback 处理后真正交给 solver 的矩阵。main
+   不得再次调用私有成本函数重建标签。
+2. **四种学习结果不可混写**：无模型为 `rule_only`；shadow proposal 单独保存且
+   `C_effective == C_rule`；assist 才允许 `C_effective` 含有界 residual；fallback 必须
+   逐元素回到 rule 并携带 reason。
+3. **只保留一帧且先清旧帧**：新 planning attempt 开始即替换旧证据。只有矩阵、输入
+   roster 和最终 plan 一致时 `available=true`；异常、stale、invalid regional 或无成本
+   fence 只留 unavailable reason，禁止退回上一成功帧。
+4. **证据不是在线消息**：它只存于 `AssignmentPlanner` 本地，不附加到 plan metadata，
+   不改变 D4/D7 DTO。所有实体 ID 在快照时变为 ordinal token，上游 metadata 与
+   truth/actor/object/node alias 全部剥离。
+5. **调用者不能反向修改规划器**：矩阵来自独立不可写 buffer，mapping 只读，plan 和
+   entity 是最小安全副本。由 helper 生成的 `LearningFrameRecord` 即使被离线调用方修改，
+   也不影响 planner retained evidence 或已发布计划。
+6. **状态机结果必须可审计**：held、unchanged 和 forced-replan ack 使用当前 tick 的
+   矩阵/timestamp；regional 另标 selection source。无法映射当前 roster 时宁可
+   unavailable，也不生成看似完整的学习标签。
+
+2026-07-20 的 11 个专项测试覆盖上述原则及 1x3、3x2、7x4 动态 shape。D3 全量
+226 项结果为 `225 passed, 1 skipped`，零失败达到门限；这不代表 main 已导出真实
+AirSim seed，也不改变 shadow/assist 的准入边界。

@@ -538,6 +538,46 @@ def build_learning_frame_record(
     )
 
 
+def build_latest_learning_frame_record(
+    planner: AssignmentPlanner,
+    *,
+    scenario_version: str,
+    seed: int,
+    episode: str | int,
+    frame_index: int,
+    feedback_result: str | None = None,
+    advice_interval: int = 5,
+) -> LearningFrameRecord:
+    """Convert the planner's latest complete local evidence into one record."""
+
+    evidence = planner.latest_planning_evidence
+    if not evidence.available:
+        raise RuntimeError(
+            f"latest D3 planning evidence is unavailable: {evidence.reason}"
+        )
+    required = (
+        evidence.timestamp_s,
+        evidence.rule_matrix_result,
+        evidence.plan,
+    )
+    if any(value is None for value in required):
+        raise RuntimeError("latest D3 planning evidence is incomplete")
+    return build_learning_frame_record(
+        scenario_version=scenario_version,
+        seed=seed,
+        episode=episode,
+        frame_index=frame_index,
+        timestamp_s=float(evidence.timestamp_s),
+        matrix_result=evidence.rule_matrix_result,
+        tracks=evidence.tracks,
+        resources=evidence.resources,
+        plan=evidence.plan,
+        previous_plan=evidence.previous_plan,
+        feedback_result=feedback_result,
+        advice_interval=advice_interval,
+    )
+
+
 def write_learning_dataset(
     output_dir: str | Path,
     records: Iterable[LearningFrameRecord],
@@ -693,9 +733,6 @@ def generate_synthetic_learning_dataset(
                     )
                     for index in range(resource_count)
                 ]
-                matrix_result = planner._build_search_matrix(
-                    tracks, resources, timestamp_s, previous_plan
-                )
                 plan = planner.plan(
                     tracks,
                     resources,
@@ -706,17 +743,12 @@ def generate_synthetic_learning_dataset(
                     ),
                 )
                 records.append(
-                    build_learning_frame_record(
+                    build_latest_learning_frame_record(
+                        planner,
                         scenario_version=scenario_version,
                         seed=seed,
                         episode=f"episode_{episode_index:03d}",
                         frame_index=frame_index,
-                        timestamp_s=timestamp_s,
-                        matrix_result=matrix_result,
-                        tracks=tracks,
-                        resources=resources,
-                        plan=plan,
-                        previous_plan=previous_plan,
                     )
                 )
                 previous_plan = plan

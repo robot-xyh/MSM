@@ -78,6 +78,10 @@ from .planner import (
     AssignmentPlanner,
     StalePlanError,
 )
+from .planning_evidence import (
+    PLANNING_FRAME_EVIDENCE_SCHEMA_V1,
+    PlanningFrameEvidence,
+)
 from .calibration import (
     P1AssignmentCalibrationRow,
     P1AssignmentCalibrationSummary,
@@ -137,6 +141,7 @@ from .learning_data import (
     LearningFrameRecord,
     OfflineRewardComponents,
     assign_episode_split,
+    build_latest_learning_frame_record,
     build_learning_frame_record,
     compute_split_hash,
     generate_synthetic_learning_dataset,
@@ -265,6 +270,8 @@ __all__ = [
     "OrToolsUnavailableError",
     "P2_CAPACITY_BENCHMARK_SCHEMA",
     "PlannerConfig",
+    "PLANNING_FRAME_EVIDENCE_SCHEMA_V1",
+    "PlanningFrameEvidence",
     "PlanningTickHistoryRecord",
     "P1_ASSIGNMENT_FIXTURE_PROFILE_ID",
     "P1_ASSIGNMENT_FIXTURE_PROFILE_VERSION",
@@ -314,6 +321,7 @@ __all__ = [
     "assignment_validity_summary_from_plan",
     "behavior_clone_warmup",
     "assign_episode_split",
+    "build_latest_learning_frame_record",
     "build_learning_frame_record",
     "build_candidate_edge_batch",
     "build_learning_action_mask",

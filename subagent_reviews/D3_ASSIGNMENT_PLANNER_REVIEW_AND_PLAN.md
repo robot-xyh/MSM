@@ -629,3 +629,29 @@ M-to-N demand、stale/timeout/OOD paired shadow。安全、成本、高威胁 un
 
 新增 16 个专项测试后 D3 共收集 215 项，最终为 `214 passed, 1 skipped`（6.95 s），
 零失败满足门限；唯一 skip 是既有 optional OR-Tools installed-only case。
+
+## 24. 最近单帧规划证据接口复核（2026-07-20）
+
+本次补齐 planner 与既有 `LearningFrameRecord` 之间的所有权断点。rule matrix 在 switch
+penalty 后、learning assistant 前冻结；effective matrix 是实际送入 Hungarian/demand-slot
+solver 的结果。shadow proposal 单列且不改变 effective，assist effective 单列，任意
+fallback 都必须逐元素返回 rule。计划选择来源另分 `central_solver`、
+`incremental_solver` 和 `regional_authority`，避免把区域授权选边误写成中心 solver 决策。
+
+`PlanningFrameEvidence` 只保留一帧，值对象 frozen，数组使用不可写独立 buffer。快照
+不是输入对象引用：所有实体和 assignment 先映射为 ordinal token，再只保留 frame
+builder 必需字段；上游 metadata、node、actor、object、truth alias 不进入证据。它也
+不附加到 `AssignmentPlan.metadata`，因此不改变在线发布合同或默认 Hungarian 行为。
+
+失败语义是本次复核重点。每次 planning attempt 先替换上一帧；stale、区域 authority
+拒绝、证据形状/roster 不一致和没有匹配成本帧的发布均留下 unavailable reason 和空
+payload。authority-generation fence 只有版本隔离，没有当前成本输入，因此明确不可
+转成学习帧。有效 held、unchanged、forced-replan ack 和 regional plan 仍可记录当前
+输入，而不是复用旧矩阵。
+
+公开 `build_latest_learning_frame_record()` 已替换 synthetic generator 对
+`_build_search_matrix()` 的私有调用。main 后续只提供 scenario version、seed、episode
+和 frame index 即可写既有匿名 schema。11 个新增专项测试和 226 项全量回归结果为
+`225 passed, 1 skipped`；零失败门限通过，skip 仅 optional OR-Tools。尚未完成的是
+main/runtime 的真实 episode 接线、连续整 seed 数据、D6 可用性统计和真实 shadow
+promotion 证据。

@@ -379,3 +379,34 @@ skip 是 optional OR-Tools installed-only case。
 - paired assignment cost、高威胁 unmet、churn 和系统物理结果全部非退化。
 
 在这些条件满足前，assist 不得晋级；默认继续使用规则 Hungarian/demand-slot。
+
+## 2026-07-20 单帧规划证据确定性验收
+
+### 设置与门限
+
+本批只运行 D3 单元/回归测试，不运行 AirSim，不导出真实 seed。新增测试直接调用
+`AssignmentPlanner.plan()` 和 `plan_regional_authority()`，构造包含 truth/actor/object
+metadata 的输入，检查 retained evidence 不出现原 ID；同时覆盖 mutable input、只读
+matrix/mapping、失败调用替换旧帧和公开 frame helper。
+
+接受门限为：默认 Hungarian assignment/版本结果不变；rule/effective 与实际 learning
+模式一致；shadow proposal 不进入 solver；fallback effective 逐元素等于 rule；所有
+失败路径不返回陈旧 payload；动态 roster shape 不固定；全量零失败。
+
+### 结果
+
+| 验收项 | 样本 | 结果 |
+|---|---|---|
+| regular lifecycle | initial、held、unchanged、forced-replan ack、stale | 通过；timestamp/previous version 对应当前 tick |
+| learning matrix state | shadow、assist、low-confidence fallback | 通过；三类矩阵/状态明确分离 |
+| solver fallback | SciPy disabled | `fallback_dp` 可审计，规则矩阵不变 |
+| regional authority | 1 个有效、1 个 target-set mismatch | 有效帧可记录；拒绝后 unavailable 且无旧 payload |
+| 隔离 | 原输入 metadata、plan/record 外部修改 | retained snapshot 不受影响；无原 truth/actor/object ID |
+| 动态规模 | 1x3、3x2、7x4 | matrix 和 snapshot shape 均跟随输入 |
+| 公开 helper | scenario/seed/episode/frame index | 生成既有匿名 `LearningFrameRecord` |
+
+专项测试 11 项全部通过。D3 全量共收集 226 项，结果为
+`225 passed, 1 skipped`；接受门限零失败达到，唯一 skip 是环境未安装 optional
+OR-Tools 的 installed-only benchmark。该结果只证明 D3 recorder API 与 fail-closed
+生命周期，尚无 main 集成、真实 episode frame 数、真实 seed split、AirSim outcome 或
+shadow non-degradation 数据。
