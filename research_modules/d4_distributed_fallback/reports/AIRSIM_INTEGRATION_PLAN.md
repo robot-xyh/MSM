@@ -17,7 +17,7 @@ D4 当前具备两层 AirSim episode 接口、一个已接入 main 质点模块�
 - `d4_airsim_episode_communication_v1`：main 按严格递增的 episode timestamp 逐 tick 输入 heartbeat、消息 delay/drop、ACK、partition、digest、恢复授权，以及按 secondary node keyed 的 `SecondaryReadinessEvidence`。readiness DTO 必须显式携带 current time、lease epoch/expiry、heartbeat/cue/communication 时间、gimbal、coverage/full-view 和 sustained window；heartbeat 单独存在不得 propose secondary owner。
 - `d4_p1_episode_fault_validation_matrix_v1`：覆盖 normal、center failure、center+secondary failure、missing ACK、stale epoch、expired lease 和 partition 的规范合同验收。
 - `d4-regional-failover-v1`：D4-owned truth-free payload，包含动态 scenario/node/region/task metadata、逐区域 ownership、D1/D2/D3/D5 risk、机动高空二级 coverage/readiness、最早 lease、跨区域 capacity fallback assignment 和全层 coalition commit。main-owned scalable 3D 质点模块栈已消费该接口并发布 secondary/distributed D3 plan；AirSim 区域 episode 仍未验证。
-- `d4-region-resource-snapshot-v1` / `d4-region-resource-recommendation-v1`：只传区域聚合图与配额/邻区转移/备用/侦察/hold-replan 建议，不传 actor truth ID 或具体 assignment。所有输出经 formal owner/epoch/lease/commit/fault fence 投影，不能替代 D4 仲裁、D3 plan 或 D7 gate。
+- `d4-region-resource-snapshot-v1` / `d4-region-resource-recommendation-v1` / `d4-region-resource-advisory-v1`：只传区域聚合图与配额/邻区转移/备用/侦察/hold-replan 建议，不传 actor/truth/object identity 或具体 assignment。advisory 在确定性投影后增加内容 ID、严格有效期、逐区域/transfer source generation、资源与 edge proof；main 下一轮消费时还必须对 current snapshot/formal verdict 重验，并拒绝 replay。它不能替代 D4 仲裁、D3 plan 或 D7 gate。
 
 main/runtime 已按 AirSim episode clock 对以下六类场景各运行 10 seeds，共 60 case：
 
@@ -36,13 +36,13 @@ main/runtime 已按 AirSim episode clock 对以下六类场景各运行 10 seeds
 | false degradation | 0 |
 | duplicate owner | 0 |
 | split-brain prevention failure | 0 |
-| D4 模块回归 | 335/335 passed |
-| 区域资源建议专项 | 32/32 passed |
+| D4 模块回归 | 350/350 passed |
+| 区域资源建议/消费合同专项 | 47/47 passed |
 | scalable 3D 质点接口定向测试 | 8/8 passed |
 
 30% loss 场景中，7 个缺 ACK case 保守阻断，只有 3 个完整 ACK case 执行。该结果关闭 episode-clock 多 seed 安全矩阵缺口，不关闭真实网络 P1。
 
-2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段新增 23 项后为 303/303；当前增加区域资源建议专项 32 项后为 335/335。main 后续质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。该结果只更新 scalable 接口状态；本轮没有启动 AirSim，也不是真实 RF/mesh/socket、带宽、时钟漂移、排队/乱序/重传或硬件证据。
+2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。区域合同阶段新增 23 项后为 303/303；区域资源建议/学习专项原 32 项后为 335/335；新增 15 个 next-cycle 消费合同 case 后为 350/350、专项 47/47。main 既有质点模块栈定向 8/8 覆盖单一二级、多二级区域 owner、连续失效后的 distributed D3 plan，以及 D7 owner/epoch/lease/commit/fault fence。新增 15 项只更新 D4 Python 合同状态；本轮没有启动 AirSim，也没有新增正式多 seed、真实 RF/mesh/socket、带宽、时钟漂移、排队/乱序/重传或硬件证据。
 
 ## 3. 状态与所有权规则
 
@@ -123,6 +123,7 @@ D4 每个 tick 输出：
 3. 在控制日志中持久化 collision object/source lineage，用于区分成员碰撞、环境碰撞和 AirSim 状态异常；该字段只供诊断和 D6 评分，不绕过 D4 仲裁。
 4. 保持已完成的 scalable3d versioned envelope 接线回归，扩展 5/20/50/100/200 长时多 seed episode，记录逐区域 owner、generation、lease、commit、fault fence、stage timing、churn 和分区恢复；该工作属于 main-owned 集成，不由 D4 修改。
 5. 区域资源学习建议先在 shadow 中运行至少 20 个未见 seed，paired 报告 backlog、transfer、churn、communication、fail-closed、安全违规和 P50/P95 latency。未满足门槛前不进入 assist；即使满足也不绕过正式 D4/D3/D7 gate。
+6. main 如在 AirSim planning loop 消费区域资源建议，只接受 `d4-region-resource-advisory-v1`，在每个 D3 planning boundary 使用 current snapshot/formal verdict 重验，并跨进程持久化 consumed advisory ID。不得直接消费 raw/non-projected recommendation；D4 不修改 main/D3-owned 实现。
 
 以下项目仍为 P1，不能由当前 episode-clock 结果替代：
 
@@ -153,4 +154,4 @@ PYTHONPATH=research_modules/d4_distributed_fallback \
 python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 ```
 
-本轮新增 D4 区域资源建议代码、测试和文档，不启动 AirSim，也不修改 main/runtime、scalable_3d_simulation、D3、D5、D6 或 D7；只读运行 main-owned 质点集成测试用于同步接口事实。
+本轮新增 D4 后投影 advisory contract、消费门、测试和文档，不启动 AirSim，也不修改 main/runtime、scalable_3d_simulation、D3、D5、D6 或 D7。既有 main-owned 质点集成 8/8 仅作为此前接口事实保留，本轮未把 D4 单元测试外推为新的 AirSim 或多 seed 证据。

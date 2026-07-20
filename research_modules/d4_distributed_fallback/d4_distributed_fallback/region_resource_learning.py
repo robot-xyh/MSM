@@ -20,6 +20,7 @@ from .region_resource import (
     REGION_RESOURCE_FEATURE_SCHEMA,
     RecommendationSource,
     RegionResourceAction,
+    RegionResourceAdvisoryContract,
     RegionResourceProjectionConfig,
     RegionResourceRecommendation,
     RegionResourceSnapshot,
@@ -997,6 +998,7 @@ class RegionResourceAdvisoryResult:
     formal_decision_digest_before: str | None
     formal_decision_digest_after: str | None
     formal_decision_unchanged: bool
+    advisory_contract: RegionResourceAdvisoryContract | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1004,6 +1006,11 @@ class RegionResourceAdvisoryResult:
             "effective_mode": self.effective_mode.value,
             "recommendation": (
                 self.recommendation.to_dict() if self.recommendation is not None else None
+            ),
+            "advisory_contract": (
+                self.advisory_contract.to_dict()
+                if self.advisory_contract is not None
+                else None
             ),
             "fallback_used": self.fallback_used,
             "fallback_reason": self.fallback_reason,
@@ -1029,9 +1036,12 @@ class RegionResourceAdvisor:
         self.config = config or RegionResourceAdvisorConfig()
         self.learned_policy = learned_policy
         self.bundle_error = bundle_error
-        rule_config = RuleRegionResourcePolicyConfig(projection=self.config.projection)
-        self.rule_policy = RuleRegionResourcePolicy(rule_config)
         self.projector = DeterministicResourceProjector(self.config.projection)
+        rule_config = RuleRegionResourcePolicyConfig(projection=self.config.projection)
+        self.rule_policy = RuleRegionResourcePolicy(
+            rule_config,
+            projector=self.projector,
+        )
 
     @classmethod
     def from_bundle(
@@ -1075,6 +1085,7 @@ class RegionResourceAdvisor:
                 inference_latency_ms=0.0,
                 formal_decision=formal_decision,
                 digest_before=digest_before,
+                advisory_contract=None,
             )
 
         fallback_reason: str | None = None
@@ -1141,6 +1152,11 @@ class RegionResourceAdvisor:
                         "fallback_reason": gate_reason,
                     }
                 )
+        advisory_contract = self.projector.build_advisory_contract(
+            snapshot,
+            recommendation,
+            formal_decision=formal_decision,
+        )
         return self._result(
             recommendation=recommendation,
             effective_mode=effective_mode,
@@ -1150,6 +1166,7 @@ class RegionResourceAdvisor:
             inference_latency_ms=elapsed_s * 1000.0,
             formal_decision=formal_decision,
             digest_before=digest_before,
+            advisory_contract=advisory_contract,
         )
 
     def _result(
@@ -1163,6 +1180,7 @@ class RegionResourceAdvisor:
         inference_latency_ms: float,
         formal_decision: RegionalFailoverDecision | None,
         digest_before: str | None,
+        advisory_contract: RegionResourceAdvisoryContract | None,
     ) -> RegionResourceAdvisoryResult:
         digest_after = formal_decision_digest(formal_decision)
         unchanged = digest_before == digest_after
@@ -1181,6 +1199,7 @@ class RegionResourceAdvisor:
             formal_decision_digest_before=digest_before,
             formal_decision_digest_after=digest_after,
             formal_decision_unchanged=unchanged,
+            advisory_contract=advisory_contract,
         )
 
 

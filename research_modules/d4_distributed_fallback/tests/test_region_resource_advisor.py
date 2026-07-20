@@ -14,6 +14,8 @@ from d4_distributed_fallback.region_resource import (
     DeterministicResourceProjector,
     RecommendationSource,
     RegionResourceAction,
+    RegionResourceAdvisoryContract,
+    RegionResourceAdvisoryGate,
     RegionResourceEdge,
     RegionResourceNode,
     RegionResourceRecommendation,
@@ -226,7 +228,8 @@ def test_projection_conserves_resources_and_protects_reserve_and_commit() -> Non
         ),
     )
 
-    projected = DeterministicResourceProjector().project(snapshot, raw)
+    projector = DeterministicResourceProjector()
+    projected = projector.project(snapshot, raw)
 
     assert projected.total_quota_delta == 0
     assert projected.transfers[0].resource_count == 5
@@ -265,13 +268,25 @@ def test_projection_rejects_broken_or_partitioned_edges(
         ),
     )
 
-    projected = DeterministicResourceProjector().project(snapshot, raw)
+    projector = DeterministicResourceProjector()
+    projected = projector.project(snapshot, raw)
+    advisory = projector.build_advisory_contract(snapshot, projected)
+    consumption = projector.validate_for_consumption(
+        advisory,
+        snapshot,
+        evaluated_at_s=snapshot.timestamp_s,
+    )
 
     assert projected.transfers == ()
     assert projected.total_quota_delta == 0
     assert any(
         "edge_unavailable_or_partitioned" in reason
         for reason in projected.projection_rejections
+    )
+    assert not consumption.consumable
+    assert any(
+        "edge_unavailable_or_partitioned" in reason
+        for reason in consumption.rejection_reasons
     )
 
 
@@ -332,7 +347,14 @@ def test_epoch_lease_and_ack_fences_block_transfer(fence: str) -> None:
         action_changes=changes,
     )
 
-    projected = DeterministicResourceProjector().project(snapshot, raw)
+    projector = DeterministicResourceProjector()
+    projected = projector.project(snapshot, raw)
+    advisory = projector.build_advisory_contract(snapshot, projected)
+    consumption = projector.validate_for_consumption(
+        advisory,
+        snapshot,
+        evaluated_at_s=snapshot.timestamp_s,
+    )
 
     assert projected.transfers == ()
     assert projected.total_quota_delta == 0
@@ -343,6 +365,8 @@ def test_epoch_lease_and_ack_fences_block_transfer(fence: str) -> None:
         "missing_ack": "coalition_ack_incomplete",
     }[fence]
     assert any(expected in reason for action in projected.actions for reason in action.reasons)
+    assert not consumption.consumable
+    assert any(expected in reason for reason in consumption.rejection_reasons)
 
 
 def test_fault_fence_blocks_all_resource_motion_for_the_region() -> None:
@@ -789,5 +813,393 @@ def test_cli_demo_supports_32_regions_and_remains_shadow(tmp_path: Path) -> None
     assert exit_code == 0
     assert payload["snapshot"]["schema"] == "d4-region-resource-snapshot-v1"
     assert len(result["recommendation"]["actions"]) == 32
+    assert result["advisory_contract"]["schema"] == "d4-region-resource-advisory-v1"
+    assert result["advisory_contract"]["projected"] is True
     assert result["effective_mode"] == "shadow"
     assert result["formal_decision_unchanged"] is True
+
+
+def test_advisory_contract_contains_versioned_safety_and_resource_proofs() -> None:
+    snapshot = _snapshot(3)
+    projector = DeterministicResourceProjector()
+    recommendation = RuleRegionResourcePolicy().recommend(snapshot)
+
+    advisory = projector.build_advisory_contract(snapshot, recommendation)
+    payload = json.loads(json.dumps(advisory.to_dict(), sort_keys=True))
+    restored = RegionResourceAdvisoryContract.from_dict(payload)
+    tampered = dict(payload)
+    tampered["policy_version"] = "tampered"
+    with pytest.raises(ValueError, match="advisory_id"):
+        RegionResourceAdvisoryContract.from_dict(tampered)
+    view = projector.validate_for_consumption(
+        restored,
+        snapshot,
+        evaluated_at_s=1.5,
+    )
+
+    assert advisory.schema == "d4-region-resource-advisory-v1"
+    assert advisory.advisory_id.startswith("d4-rr-advisory-")
+    assert restored.advisory_id == advisory.advisory_id
+    assert advisory.projected is True
+    assert advisory.snapshot_id == snapshot.snapshot_id
+    assert advisory.snapshot_version == snapshot.snapshot_version
+    assert advisory.authority_digest == snapshot.authority_digest
+    assert advisory.created_at_s == snapshot.timestamp_s
+    assert advisory.valid_from_s == 1.0
+    assert advisory.valid_until_s == 2.0
+    assert advisory.source_plan_versions == (("regional-plan", 3),)
+    assert advisory.policy_name == RuleRegionResourcePolicy.policy_name
+    assert advisory.policy_version == RuleRegionResourcePolicy.policy_version
+    assert advisory.source == RecommendationSource.RULE
+    assert advisory.model_sha256 is None
+    assert advisory.total_quota_delta == 0
+    assert advisory.total_resources_before == advisory.total_resources_after
+    assert not advisory.publication_rejections
+    assert advisory.transfers
+    assert all(
+        region.resources_after
+        >= region.protected_reserve_resources
+        + region.protected_committed_resources
+        for region in advisory.regions
+    )
+    recommendation_by_region = {
+        action.region_id: action for action in recommendation.actions
+    }
+    assert all(
+        region.hold == recommendation_by_region[region.region_id].hold
+        and region.request_replan
+        == recommendation_by_region[region.region_id].request_replan
+        for region in advisory.regions
+    )
+    assert all(
+        region.source_version.snapshot_id == snapshot.snapshot_id
+        and region.source_version.plan_id == "regional-plan"
+        and region.source_version.plan_version == 3
+        and region.source_version.epoch == 2
+        and region.source_version.lease_expires_at_s == 20.0
+        for region in advisory.regions
+    )
+    assert all(
+        transfer.resource_count <= transfer.edge_capacity_resources
+        and transfer.communication_available
+        and transfer.maneuver_available
+        and not transfer.partitioned
+        and transfer.source_version.snapshot_version == snapshot.snapshot_version
+        and transfer.target_version.snapshot_version == snapshot.snapshot_version
+        for transfer in advisory.transfers
+    )
+    assert view.consumable
+    serialized = json.dumps(view.to_dict(), sort_keys=True)
+    assert "global_track_id" not in serialized
+    assert "actor_truth_id" not in serialized
+    assert '"target_id"' not in serialized
+
+
+def test_next_cycle_gate_rejects_repeated_advisory_consumption() -> None:
+    snapshot = _snapshot(3)
+    policy = RuleRegionResourcePolicy()
+    advisory = policy.recommend_contract(snapshot)
+    gate = RegionResourceAdvisoryGate(policy.projector)
+
+    first = gate.consume(advisory, snapshot, evaluated_at_s=1.25)
+    repeated = gate.consume(advisory, snapshot, evaluated_at_s=1.50)
+
+    assert first.consumable
+    assert advisory.advisory_id in gate.consumed_advisory_ids
+    assert not repeated.consumable
+    assert "advisory_already_consumed" in repeated.rejection_reasons
+
+
+def test_advisory_expiry_is_strict_at_valid_until_boundary() -> None:
+    snapshot = _snapshot(3)
+    policy = RuleRegionResourcePolicy()
+    advisory = policy.recommend_contract(snapshot)
+
+    expired = policy.projector.validate_for_consumption(
+        advisory,
+        snapshot,
+        evaluated_at_s=advisory.valid_until_s,
+    )
+
+    assert not expired.consumable
+    assert "advisory_expired" in expired.rejection_reasons
+
+
+@pytest.mark.parametrize(
+    ("stale_kind", "expected_reason"),
+    [
+        ("snapshot", "source_snapshot_id_stale"),
+        ("plan", "plan_version_stale"),
+        ("epoch", "epoch_stale"),
+    ],
+)
+def test_consumption_rejects_stale_snapshot_plan_or_epoch(
+    stale_kind: str,
+    expected_reason: str,
+) -> None:
+    snapshot = _snapshot(3)
+    policy = RuleRegionResourcePolicy()
+    advisory = policy.recommend_contract(snapshot)
+    current = snapshot
+    if stale_kind == "snapshot":
+        current = replace(snapshot, snapshot_id="snapshot-next-cycle")
+    else:
+        first = snapshot.regions[0]
+        first = replace(
+            first,
+            plan_version=first.plan_version + (stale_kind == "plan"),
+            epoch=first.epoch + (stale_kind == "epoch"),
+        )
+        current = replace(
+            snapshot,
+            regions=(first, *snapshot.regions[1:]),
+            authority_digest="",
+        )
+
+    view = policy.projector.validate_for_consumption(
+        advisory,
+        current,
+        evaluated_at_s=1.25,
+    )
+
+    assert not view.consumable
+    assert any(expected_reason in reason for reason in view.rejection_reasons)
+
+
+@pytest.mark.parametrize(
+    ("fence", "expected_reason"),
+    [
+        ("ack", "coalition_ack_incomplete"),
+        ("fault", "fault_fence_active"),
+    ],
+)
+def test_consumption_rechecks_ack_and_fault_fence(
+    fence: str,
+    expected_reason: str,
+) -> None:
+    snapshot = _snapshot(3)
+    policy = RuleRegionResourcePolicy()
+    advisory = policy.recommend_contract(snapshot)
+    first = replace(
+        snapshot.regions[0],
+        coalition_ack_complete=fence != "ack",
+        fault_fenced=fence == "fault",
+    )
+    current = replace(
+        snapshot,
+        regions=(first, *snapshot.regions[1:]),
+        authority_digest="",
+    )
+
+    view = policy.projector.validate_for_consumption(
+        advisory,
+        current,
+        evaluated_at_s=1.25,
+    )
+
+    assert not view.consumable
+    assert any(expected_reason in reason for reason in view.rejection_reasons)
+
+
+def test_non_projected_non_conserving_recommendation_is_not_consumable() -> None:
+    snapshot = _snapshot(3)
+    projector = DeterministicResourceProjector()
+    raw = _raw_proposal(snapshot, ())
+    changed_actions = (
+        replace(raw.actions[0], resource_quota_delta=1),
+        *raw.actions[1:],
+    )
+    raw = replace(raw, actions=changed_actions, projected=False)
+
+    advisory = projector.build_advisory_contract(snapshot, raw)
+    view = projector.validate_for_consumption(
+        advisory,
+        snapshot,
+        evaluated_at_s=1.25,
+    )
+
+    assert not view.consumable
+    assert "recommendation_not_projected" in view.rejection_reasons
+    assert "total_resource_quota_not_conserved" in view.rejection_reasons
+
+
+@pytest.mark.parametrize("invalid_transfer", ["unknown", "non_adjacent"])
+def test_unknown_or_non_adjacent_transfer_cannot_become_consumable(
+    invalid_transfer: str,
+) -> None:
+    snapshot = _snapshot(3)
+    projector = DeterministicResourceProjector()
+    if invalid_transfer == "unknown":
+        transfer = RegionTransferSuggestion(
+            source_region_id="region-001",
+            target_region_id="unknown-region",
+            resource_count=1,
+            edge_id="unknown-edge",
+            expected_transfer_time_s=1.0,
+        )
+        raw = replace(_raw_proposal(snapshot, ()), transfers=(transfer,))
+    else:
+        transfer = RegionTransferSuggestion(
+            source_region_id="region-002",
+            target_region_id="region-000",
+            resource_count=1,
+            edge_id="edge-000",
+            expected_transfer_time_s=20.0,
+        )
+        raw = _raw_proposal(snapshot, (transfer,))
+
+    projected = projector.project(snapshot, raw)
+    advisory = projector.build_advisory_contract(snapshot, projected)
+    view = projector.validate_for_consumption(
+        advisory,
+        snapshot,
+        evaluated_at_s=1.25,
+    )
+
+    assert projected.projected
+    assert projected.transfers == ()
+    assert not view.consumable
+    assert any(
+        "unknown_region" in reason or "non_adjacent_edge" in reason
+        for reason in view.rejection_reasons
+    )
+
+
+@pytest.mark.parametrize("edge_failure", ["partition", "communication"])
+def test_partitioned_or_unavailable_edge_advice_is_not_consumable(
+    edge_failure: str,
+) -> None:
+    snapshot = _snapshot(
+        2,
+        partitioned_edge=0 if edge_failure == "partition" else None,
+        communication_available=edge_failure != "communication",
+    )
+    edge = snapshot.edges[0]
+    transfer = RegionTransferSuggestion(
+        source_region_id="region-001",
+        target_region_id="region-000",
+        resource_count=1,
+        edge_id=edge.edge_id,
+        expected_transfer_time_s=edge.transfer_time_s,
+    )
+    projector = DeterministicResourceProjector()
+    projected = projector.project(snapshot, _raw_proposal(snapshot, (transfer,)))
+    advisory = projector.build_advisory_contract(snapshot, projected)
+    view = projector.validate_for_consumption(
+        advisory,
+        snapshot,
+        evaluated_at_s=1.25,
+    )
+
+    assert projected.transfers == ()
+    assert not view.consumable
+    assert any(
+        "edge_unavailable_or_partitioned" in reason
+        for reason in view.rejection_reasons
+    )
+
+
+def test_advisory_proof_preserves_k_greater_than_one_committed_members() -> None:
+    snapshot = _snapshot(2)
+    formal = _formal_decision(snapshot)
+    committed = CoalitionCommitSummary(
+        task_id="formal-aggregate-only",
+        global_track_id="formal-scope-only",
+        commit_required=True,
+        state="committed",
+        coordinator_id="CENTER",
+        required_member_ids=tuple(f"INT-{index}" for index in range(8)),
+        acked_member_ids=tuple(f"INT-{index}" for index in range(8)),
+        missing_member_ids=(),
+        lease_expires_at_s=20.0,
+        atomic_committed=True,
+        execution_authorized=True,
+        reason="all_members_acked",
+    )
+    source_decision = replace(formal.region_decisions[1], coalition_commits=(committed,))
+    formal = replace(
+        formal,
+        region_decisions=(formal.region_decisions[0], source_decision),
+    )
+    edge = snapshot.edges[0]
+    transfer = RegionTransferSuggestion(
+        source_region_id="region-001",
+        target_region_id="region-000",
+        resource_count=5,
+        edge_id=edge.edge_id,
+        expected_transfer_time_s=edge.transfer_time_s,
+    )
+    projector = DeterministicResourceProjector()
+    raw = replace(
+        _raw_proposal(snapshot, (transfer,)),
+        model_sha256="b" * 64,
+    )
+    projected = projector.project(
+        snapshot,
+        raw,
+        formal_decision=formal,
+    )
+    advisory = projector.build_advisory_contract(
+        snapshot,
+        projected,
+        formal_decision=formal,
+    )
+    view = projector.validate_for_consumption(
+        advisory,
+        snapshot,
+        evaluated_at_s=1.25,
+        formal_decision=formal,
+    )
+    source = next(
+        region for region in advisory.regions if region.region_id == "region-001"
+    )
+
+    assert projected.transfers[0].resource_count == 1
+    assert source.protected_committed_resources == 8
+    assert source.protected_reserve_resources == 1
+    assert source.resources_after == 9
+    assert view.consumable
+    serialized = json.dumps(advisory.to_dict(), sort_keys=True)
+    assert "global_track_id" not in serialized
+    assert "formal-scope-only" not in serialized
+
+
+class _SafeLearnedPolicy:
+    def recommend_raw(
+        self,
+        snapshot: RegionResourceSnapshot,
+    ) -> RegionResourceRecommendation:
+        return replace(
+            _raw_proposal(snapshot, ()),
+            model_sha256="a" * 64,
+        )
+
+
+def test_rule_and_learning_advisor_share_the_same_projector_gate() -> None:
+    snapshot = _snapshot(3)
+    learned = RegionResourceAdvisor(
+        config=RegionResourceAdvisorConfig(
+            mode=AdvisorMode.SHADOW,
+            minimum_confidence=0.0,
+        ),
+        learned_policy=_SafeLearnedPolicy(),
+    )
+    learned_result = learned.advise(snapshot)
+    fallback = RegionResourceAdvisor(
+        config=RegionResourceAdvisorConfig(mode=AdvisorMode.SHADOW)
+    )
+    fallback_result = fallback.advise(snapshot)
+
+    assert learned.rule_policy.projector is learned.projector
+    assert learned_result.recommendation is not None
+    assert learned_result.recommendation.projected
+    assert learned_result.recommendation.source == RecommendationSource.LEARNED
+    assert learned_result.advisory_contract is not None
+    assert not learned_result.advisory_contract.publication_rejections
+    assert learned_result.advisory_contract.model_sha256 == "a" * 64
+    assert learned_result.advisory_contract.source == RecommendationSource.LEARNED
+    assert fallback.rule_policy.projector is fallback.projector
+    assert fallback_result.recommendation is not None
+    assert fallback_result.recommendation.projected
+    assert fallback_result.recommendation.source == RecommendationSource.RULE
+    assert fallback_result.advisory_contract is not None

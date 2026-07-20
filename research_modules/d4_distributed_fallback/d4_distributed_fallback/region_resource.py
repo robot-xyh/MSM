@@ -24,8 +24,12 @@ from .regional_failover import (
 
 REGION_RESOURCE_SNAPSHOT_SCHEMA = "d4-region-resource-snapshot-v1"
 REGION_RESOURCE_RECOMMENDATION_SCHEMA = "d4-region-resource-recommendation-v1"
+REGION_RESOURCE_ADVISORY_SCHEMA = "d4-region-resource-advisory-v1"
+REGION_RESOURCE_CONSUMPTION_SCHEMA = "d4-region-resource-consumption-v1"
 REGION_RESOURCE_SHADOW_REPORT_SCHEMA = "d4-region-resource-shadow-report-v1"
 REGION_RESOURCE_FEATURE_SCHEMA = "d4-region-resource-features-v1"
+DETERMINISTIC_RESOURCE_PROJECTOR_NAME = "d4-deterministic-resource-projector"
+DETERMINISTIC_RESOURCE_PROJECTOR_VERSION = "v1"
 
 _FORBIDDEN_ID_KEYS = {
     "actor_id",
@@ -513,15 +517,342 @@ class RegionResourceRecommendation:
 
 
 @dataclass(frozen=True)
+class RegionResourceSourceVersion:
+    """Authority and plan generation used by one advisory item."""
+
+    region_id: str
+    snapshot_id: str
+    snapshot_version: int
+    authority_digest: str
+    owner_id: str | None
+    owner_layer: RegionalAuthorityLayer | str
+    plan_id: str
+    plan_version: int
+    epoch: int
+    lease_expires_at_s: float
+    coalition_ack_complete: bool
+    owner_active: bool
+    fault_fenced: bool
+    fault_fence_epoch: int | None = None
+
+    def __post_init__(self) -> None:
+        if not self.region_id or not self.snapshot_id or not self.authority_digest:
+            raise ValueError("source region, snapshot, and authority identity must not be empty")
+        if not self.plan_id:
+            raise ValueError("source plan identity must not be empty")
+        layer = (
+            self.owner_layer
+            if isinstance(self.owner_layer, RegionalAuthorityLayer)
+            else RegionalAuthorityLayer(str(self.owner_layer))
+        )
+        object.__setattr__(self, "owner_layer", layer)
+        if layer == RegionalAuthorityLayer.HOLD:
+            if self.owner_id is not None:
+                raise ValueError("hold source versions must not expose an owner id")
+        elif not self.owner_id:
+            raise ValueError("active source versions require an owner id")
+        if int(self.snapshot_version) <= 0:
+            raise ValueError("source snapshot_version must be positive")
+        if int(self.plan_version) < 0 or int(self.epoch) < 0:
+            raise ValueError("source plan_version and epoch must be non-negative")
+        if not _finite_non_negative(self.lease_expires_at_s):
+            raise ValueError("source lease must be finite and non-negative")
+        if self.fault_fence_epoch is not None and int(self.fault_fence_epoch) < 0:
+            raise ValueError("source fault_fence_epoch must be non-negative")
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_jsonable(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "RegionResourceSourceVersion":
+        _reject_truth_identifiers(value, path="advisory.source_version")
+        return cls(**dict(value))
+
+
+@dataclass(frozen=True)
+class RegionResourceAdvisoryRegion:
+    """Self-contained resource and safety proof for one regional action."""
+
+    source_version: RegionResourceSourceVersion
+    resources_before: int
+    resource_quota_delta: int
+    resources_after: int
+    protected_reserve_resources: int
+    protected_committed_resources: int
+    reserve_ratio: float
+    reconnaissance_priority: float
+    hold: bool
+    request_replan: bool
+    reasons: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        for name in (
+            "resources_before",
+            "protected_reserve_resources",
+            "protected_committed_resources",
+        ):
+            if int(getattr(self, name)) < 0:
+                raise ValueError(f"{name} must be non-negative")
+        if self.resources_after != self.resources_before + self.resource_quota_delta:
+            raise ValueError("regional resource proof does not match its quota delta")
+        if not _unit_interval(self.reserve_ratio):
+            raise ValueError("advisory reserve_ratio must be in [0, 1]")
+        if not _unit_interval(self.reconnaissance_priority):
+            raise ValueError("advisory reconnaissance_priority must be in [0, 1]")
+        object.__setattr__(self, "reasons", _unique(self.reasons))
+
+    @property
+    def region_id(self) -> str:
+        return self.source_version.region_id
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_jsonable(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "RegionResourceAdvisoryRegion":
+        _reject_truth_identifiers(value, path="advisory.region")
+        payload = dict(value)
+        payload["source_version"] = RegionResourceSourceVersion.from_dict(
+            payload["source_version"]
+        )
+        return cls(**payload)
+
+
+@dataclass(frozen=True)
+class RegionResourceAdvisoryTransfer:
+    """One adjacent transfer with endpoint generations and edge-capacity proof."""
+
+    source_version: RegionResourceSourceVersion
+    target_version: RegionResourceSourceVersion
+    resource_count: int
+    edge_id: str
+    edge_source_region_id: str
+    edge_target_region_id: str
+    edge_capacity_resources: int
+    expected_transfer_time_s: float
+    bandwidth_mbps: float
+    communication_available: bool
+    maneuver_available: bool
+    partitioned: bool
+    bidirectional: bool
+    reasons: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.edge_id or not self.edge_source_region_id or not self.edge_target_region_id:
+            raise ValueError("advisory transfer edge identity must not be empty")
+        if self.source_version.region_id == self.target_version.region_id:
+            raise ValueError("advisory transfers must cross regions")
+        if int(self.resource_count) <= 0:
+            raise ValueError("advisory transfer resource_count must be positive")
+        if int(self.edge_capacity_resources) < 0:
+            raise ValueError("advisory edge capacity must be non-negative")
+        if not _finite_non_negative(self.expected_transfer_time_s):
+            raise ValueError("advisory transfer time must be finite and non-negative")
+        if not _finite_non_negative(self.bandwidth_mbps):
+            raise ValueError("advisory bandwidth must be finite and non-negative")
+        object.__setattr__(self, "reasons", _unique(self.reasons))
+
+    @property
+    def source_region_id(self) -> str:
+        return self.source_version.region_id
+
+    @property
+    def target_region_id(self) -> str:
+        return self.target_version.region_id
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_jsonable(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "RegionResourceAdvisoryTransfer":
+        _reject_truth_identifiers(value, path="advisory.transfer")
+        payload = dict(value)
+        payload["source_version"] = RegionResourceSourceVersion.from_dict(
+            payload["source_version"]
+        )
+        payload["target_version"] = RegionResourceSourceVersion.from_dict(
+            payload["target_version"]
+        )
+        return cls(**payload)
+
+
+@dataclass(frozen=True)
+class RegionResourceAdvisoryContract:
+    """Versioned, truth-free advice eligible for a later D3 planning input."""
+
+    advisory_id: str
+    snapshot_id: str
+    snapshot_version: int
+    snapshot_timestamp_s: float
+    scenario_id: str
+    scenario_version: str
+    seed: int
+    authority_digest: str
+    created_at_s: float
+    valid_from_s: float
+    valid_until_s: float
+    source_plan_versions: tuple[tuple[str, int], ...]
+    projected: bool
+    projector_name: str
+    projector_version: str
+    minimum_reserve_ratio: float
+    minimum_reserve_resources: int
+    advisory_ttl_s: float
+    policy_name: str
+    policy_version: str
+    source: RecommendationSource | str
+    confidence: float
+    model_sha256: str | None
+    fallback_reason: str | None
+    total_resources_before: int
+    total_quota_delta: int
+    total_resources_after: int
+    regions: tuple[RegionResourceAdvisoryRegion, ...]
+    transfers: tuple[RegionResourceAdvisoryTransfer, ...]
+    projection_rejections: tuple[str, ...]
+    publication_rejections: tuple[str, ...]
+    formal_decision_required: bool
+    recommendation_schema: str = REGION_RESOURCE_RECOMMENDATION_SCHEMA
+    schema: str = REGION_RESOURCE_ADVISORY_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != REGION_RESOURCE_ADVISORY_SCHEMA:
+            raise ValueError(f"unsupported advisory schema: {self.schema}")
+        if self.recommendation_schema != REGION_RESOURCE_RECOMMENDATION_SCHEMA:
+            raise ValueError(
+                f"unsupported recommendation schema: {self.recommendation_schema}"
+            )
+        if not self.snapshot_id or not self.scenario_id or not self.scenario_version:
+            raise ValueError("advisory snapshot and scenario identity must not be empty")
+        if not self.authority_digest or not self.policy_name or not self.policy_version:
+            raise ValueError("advisory authority and policy identity must not be empty")
+        if not self.projector_name or not self.projector_version:
+            raise ValueError("advisory projector identity must not be empty")
+        source = (
+            self.source
+            if isinstance(self.source, RecommendationSource)
+            else RecommendationSource(str(self.source))
+        )
+        object.__setattr__(self, "source", source)
+        if int(self.snapshot_version) <= 0 or int(self.seed) < 0:
+            raise ValueError("advisory snapshot_version must be positive and seed non-negative")
+        for name in (
+            "snapshot_timestamp_s",
+            "created_at_s",
+            "valid_from_s",
+            "valid_until_s",
+            "advisory_ttl_s",
+        ):
+            if not _finite_non_negative(getattr(self, name)):
+                raise ValueError(f"{name} must be finite and non-negative")
+        if not _unit_interval(self.minimum_reserve_ratio):
+            raise ValueError("minimum_reserve_ratio must be in [0, 1]")
+        if int(self.minimum_reserve_resources) < 0:
+            raise ValueError("minimum_reserve_resources must be non-negative")
+        if not _unit_interval(self.confidence):
+            raise ValueError("advisory confidence must be in [0, 1]")
+        for name in (
+            "total_resources_before",
+            "total_resources_after",
+        ):
+            if int(getattr(self, name)) < 0:
+                raise ValueError(f"{name} must be non-negative")
+
+        regions = tuple(self.regions)
+        transfers = tuple(self.transfers)
+        if len({region.region_id for region in regions}) != len(regions):
+            raise ValueError("advisory regions must be unique")
+        object.__setattr__(self, "regions", regions)
+        object.__setattr__(self, "transfers", transfers)
+        source_plans = tuple(
+            sorted(
+                {(str(plan_id), int(plan_version)) for plan_id, plan_version in self.source_plan_versions}
+            )
+        )
+        if any(not plan_id or plan_version < 0 for plan_id, plan_version in source_plans):
+            raise ValueError("advisory source plan identity is invalid")
+        object.__setattr__(self, "source_plan_versions", source_plans)
+        object.__setattr__(
+            self, "projection_rejections", _unique(self.projection_rejections)
+        )
+        object.__setattr__(
+            self, "publication_rejections", _unique(self.publication_rejections)
+        )
+        expected_id = _region_resource_advisory_id(self)
+        if self.advisory_id and self.advisory_id != expected_id:
+            raise ValueError("advisory_id does not match advisory content")
+        object.__setattr__(self, "advisory_id", expected_id)
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_jsonable(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "RegionResourceAdvisoryContract":
+        _reject_truth_identifiers(value, path="advisory")
+        payload = dict(value)
+        payload["source_plan_versions"] = tuple(
+            (str(item[0]), int(item[1]))
+            for item in payload.get("source_plan_versions", ())
+        )
+        payload["regions"] = tuple(
+            RegionResourceAdvisoryRegion.from_dict(item)
+            for item in payload.get("regions", ())
+        )
+        payload["transfers"] = tuple(
+            RegionResourceAdvisoryTransfer.from_dict(item)
+            for item in payload.get("transfers", ())
+        )
+        return cls(**payload)
+
+
+@dataclass(frozen=True)
+class RegionResourceConsumptionView:
+    """Point-in-time fail-closed verdict for one advisory consumption attempt."""
+
+    advisory: RegionResourceAdvisoryContract
+    evaluated_at_s: float
+    current_snapshot_id: str
+    current_snapshot_version: int
+    current_authority_digest: str
+    consumable: bool
+    rejection_reasons: tuple[str, ...]
+    schema: str = REGION_RESOURCE_CONSUMPTION_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != REGION_RESOURCE_CONSUMPTION_SCHEMA:
+            raise ValueError(f"unsupported advisory consumption schema: {self.schema}")
+        if not _finite_non_negative(self.evaluated_at_s):
+            raise ValueError("consumption evaluation time must be finite and non-negative")
+        if not self.current_snapshot_id or not self.current_authority_digest:
+            raise ValueError("current snapshot and authority identity must not be empty")
+        if int(self.current_snapshot_version) <= 0:
+            raise ValueError("current_snapshot_version must be positive")
+        reasons = _unique(self.rejection_reasons)
+        if self.consumable and reasons:
+            raise ValueError("a consumable advisory must not have rejection reasons")
+        object.__setattr__(self, "rejection_reasons", reasons)
+
+    @property
+    def advisory_id(self) -> str:
+        return self.advisory.advisory_id
+
+    def to_dict(self) -> dict[str, Any]:
+        return to_jsonable(self)
+
+
+@dataclass(frozen=True)
 class RegionResourceProjectionConfig:
     minimum_reserve_ratio: float = 0.10
     minimum_reserve_resources: int = 1
+    advisory_ttl_s: float = 1.0
 
     def __post_init__(self) -> None:
         if not _unit_interval(self.minimum_reserve_ratio):
             raise ValueError("minimum_reserve_ratio must be in [0, 1]")
         if int(self.minimum_reserve_resources) < 0:
             raise ValueError("minimum_reserve_resources must be non-negative")
+        if not _finite_non_negative(self.advisory_ttl_s) or self.advisory_ttl_s <= 0.0:
+            raise ValueError("advisory_ttl_s must be finite and positive")
 
 
 class DeterministicResourceProjector:
@@ -575,6 +906,10 @@ class DeterministicResourceProjector:
                 reasons.append("formal_region_set_mismatch")
             if reasons:
                 blocked[region_id] = list(_unique(reasons))
+        for region_id in sorted(blocked):
+            rejections.extend(
+                f"region:{region_id}:{reason}" for reason in blocked[region_id]
+            )
 
         edge_by_id = {edge.edge_id: edge for edge in snapshot.edges}
         protected_committed = {
@@ -737,6 +1072,600 @@ class DeterministicResourceProjector:
             projection_rejections=_unique(rejections),
         )
 
+    def build_advisory_contract(
+        self,
+        snapshot: RegionResourceSnapshot,
+        recommendation: RegionResourceRecommendation,
+        *,
+        formal_decision: RegionalFailoverDecision | None = None,
+    ) -> RegionResourceAdvisoryContract:
+        """Freeze projected advice with the evidence needed by a later consumer."""
+
+        nodes = snapshot.region_by_id
+        actions = {action.region_id: action for action in recommendation.actions}
+        publication_rejections: list[str] = []
+        if not recommendation.projected:
+            publication_rejections.append("recommendation_not_projected")
+        if (
+            recommendation.snapshot_id != snapshot.snapshot_id
+            or recommendation.scenario_id != snapshot.scenario_id
+            or recommendation.scenario_version != snapshot.scenario_version
+            or int(recommendation.seed) != int(snapshot.seed)
+            or recommendation.authority_digest != snapshot.authority_digest
+        ):
+            publication_rejections.append("source_snapshot_or_authority_mismatch")
+        if recommendation.created_at_s < snapshot.timestamp_s:
+            publication_rejections.append("recommendation_created_before_snapshot")
+
+        action_regions = set(actions)
+        snapshot_regions = set(nodes)
+        for region_id in sorted(snapshot_regions - action_regions):
+            publication_rejections.append(f"region:{region_id}:action_missing")
+        for region_id in sorted(action_regions - snapshot_regions):
+            publication_rejections.append(f"region:{region_id}:unknown_action_region")
+
+        formal_by_region = (
+            {item.region_id: item for item in formal_decision.region_decisions}
+            if formal_decision is not None
+            else {}
+        )
+        publication_rejections.extend(
+            self._formal_snapshot_rejections(snapshot, formal_decision)
+        )
+        protected_committed = {
+            region_id: max(
+                node.committed_resources,
+                self._formal_committed_resource_count(formal_by_region.get(region_id)),
+            )
+            for region_id, node in nodes.items()
+        }
+        source_versions = {
+            region_id: self._source_version(snapshot, node)
+            for region_id, node in nodes.items()
+        }
+
+        advisory_regions: list[RegionResourceAdvisoryRegion] = []
+        for region_id in sorted(nodes):
+            node = nodes[region_id]
+            action = actions.get(region_id)
+            block_reasons = self._node_block_reasons(
+                snapshot,
+                node,
+                action,
+                formal_by_region.get(region_id),
+                formal_decision_supplied=formal_decision is not None,
+            )
+            publication_rejections.extend(
+                f"region:{region_id}:{reason}" for reason in block_reasons
+            )
+            if recommendation.created_at_s >= node.lease_expires_at_s:
+                publication_rejections.append(f"region:{region_id}:lease_expired_at_creation")
+
+            reserve_floor = self._reserve_floor(node)
+            if action is None:
+                delta = 0
+                reserve_ratio = reserve_floor / max(1, node.available_resources)
+                reconnaissance_priority = 0.0
+                hold = True
+                request_replan = True
+                action_reasons = ("region_action_missing",)
+            else:
+                delta = int(action.resource_quota_delta)
+                reserve_ratio = float(action.reserve_ratio)
+                reconnaissance_priority = float(action.reconnaissance_priority)
+                hold = bool(action.hold)
+                request_replan = bool(action.request_replan)
+                action_reasons = action.reasons
+            resources_after = int(node.available_resources) + delta
+            if resources_after < 0:
+                publication_rejections.append(
+                    f"region:{region_id}:negative_post_advisory_resources"
+                )
+            if (
+                resources_after
+                < protected_committed[region_id] + reserve_floor
+            ):
+                publication_rejections.append(
+                    f"region:{region_id}:reserve_or_committed_resources_unprotected"
+                )
+            if resources_after > 0:
+                recommended_reserve = reserve_ratio * resources_after
+                if recommended_reserve + 1e-12 < reserve_floor:
+                    publication_rejections.append(
+                        f"region:{region_id}:reserve_ratio_below_protected_floor"
+                    )
+                if (
+                    recommended_reserve + protected_committed[region_id]
+                    > resources_after + 1e-12
+                ):
+                    publication_rejections.append(
+                        f"region:{region_id}:reserve_ratio_conflicts_with_commitment"
+                    )
+            advisory_regions.append(
+                RegionResourceAdvisoryRegion(
+                    source_version=source_versions[region_id],
+                    resources_before=int(node.available_resources),
+                    resource_quota_delta=delta,
+                    resources_after=resources_after,
+                    protected_reserve_resources=reserve_floor,
+                    protected_committed_resources=protected_committed[region_id],
+                    reserve_ratio=reserve_ratio,
+                    reconnaissance_priority=reconnaissance_priority,
+                    hold=hold,
+                    request_replan=request_replan,
+                    reasons=action_reasons,
+                )
+            )
+
+        edge_by_id = {edge.edge_id: edge for edge in snapshot.edges}
+        edge_usage = {edge.edge_id: 0 for edge in snapshot.edges}
+        source_usage = {region_id: 0 for region_id in nodes}
+        net_transfer = {region_id: 0 for region_id in nodes}
+        advisory_transfers: list[RegionResourceAdvisoryTransfer] = []
+        for transfer in recommendation.transfers:
+            prefix = f"transfer:{transfer.source_region_id}->{transfer.target_region_id}"
+            if (
+                transfer.source_region_id not in nodes
+                or transfer.target_region_id not in nodes
+            ):
+                publication_rejections.append(f"{prefix}:unknown_region")
+                continue
+            edge = edge_by_id.get(transfer.edge_id)
+            if edge is None:
+                publication_rejections.append(f"{prefix}:unknown_edge")
+                continue
+            advisory_transfers.append(
+                RegionResourceAdvisoryTransfer(
+                    source_version=source_versions[transfer.source_region_id],
+                    target_version=source_versions[transfer.target_region_id],
+                    resource_count=int(transfer.resource_count),
+                    edge_id=edge.edge_id,
+                    edge_source_region_id=edge.source_region_id,
+                    edge_target_region_id=edge.target_region_id,
+                    edge_capacity_resources=int(edge.transferable_resources),
+                    expected_transfer_time_s=float(transfer.expected_transfer_time_s),
+                    bandwidth_mbps=float(edge.bandwidth_mbps),
+                    communication_available=bool(edge.communication_available),
+                    maneuver_available=bool(edge.maneuver_available),
+                    partitioned=bool(edge.partitioned),
+                    bidirectional=bool(edge.bidirectional),
+                    reasons=transfer.reasons,
+                )
+            )
+            if not edge.permits(
+                transfer.source_region_id, transfer.target_region_id
+            ):
+                publication_rejections.append(f"{prefix}:non_adjacent_edge")
+            if not edge.open_for_transfer:
+                publication_rejections.append(
+                    f"{prefix}:edge_unavailable_or_partitioned"
+                )
+            if transfer.expected_transfer_time_s != edge.transfer_time_s:
+                publication_rejections.append(f"{prefix}:edge_transfer_time_mismatch")
+            edge_usage[edge.edge_id] += int(transfer.resource_count)
+            source_usage[transfer.source_region_id] += int(transfer.resource_count)
+            net_transfer[transfer.source_region_id] -= int(transfer.resource_count)
+            net_transfer[transfer.target_region_id] += int(transfer.resource_count)
+
+        for edge in snapshot.edges:
+            if edge_usage[edge.edge_id] > int(edge.transferable_resources):
+                publication_rejections.append(
+                    f"edge:{edge.edge_id}:capacity_exceeded"
+                )
+        advisory_region_by_id = {
+            item.region_id: item for item in advisory_regions
+        }
+        for region_id, node in nodes.items():
+            budget = self._transfer_budget(
+                node,
+                committed_resources=protected_committed[region_id],
+            )
+            if source_usage[region_id] > budget:
+                publication_rejections.append(
+                    f"region:{region_id}:transfer_budget_exceeded"
+                )
+            advisory_region = advisory_region_by_id[region_id]
+            if advisory_region.resource_quota_delta != net_transfer[region_id]:
+                publication_rejections.append(
+                    f"region:{region_id}:transfer_quota_mismatch"
+                )
+
+        total_before = int(snapshot.total_resources)
+        total_delta = sum(item.resource_quota_delta for item in advisory_regions)
+        total_after = sum(item.resources_after for item in advisory_regions)
+        if total_delta != 0 or total_after != total_before:
+            publication_rejections.append("total_resource_quota_not_conserved")
+        for rejection in recommendation.projection_rejections:
+            if not rejection.endswith(":clipped_by_safety_projection"):
+                publication_rejections.append(f"unsafe_projection_rejection:{rejection}")
+        if recommendation.source == RecommendationSource.LEARNED and not _valid_sha256(
+            recommendation.model_sha256
+        ):
+            publication_rejections.append("learned_model_identity_missing_or_invalid")
+
+        valid_until_s = min(
+            recommendation.created_at_s + self.config.advisory_ttl_s,
+            *(node.lease_expires_at_s for node in snapshot.regions),
+        )
+        if valid_until_s <= recommendation.created_at_s:
+            publication_rejections.append("advisory_has_no_validity_window")
+        return RegionResourceAdvisoryContract(
+            advisory_id="",
+            snapshot_id=snapshot.snapshot_id,
+            snapshot_version=snapshot.snapshot_version,
+            snapshot_timestamp_s=snapshot.timestamp_s,
+            scenario_id=snapshot.scenario_id,
+            scenario_version=snapshot.scenario_version,
+            seed=snapshot.seed,
+            authority_digest=snapshot.authority_digest,
+            created_at_s=recommendation.created_at_s,
+            valid_from_s=recommendation.created_at_s,
+            valid_until_s=valid_until_s,
+            source_plan_versions=tuple(
+                (node.plan_id, node.plan_version) for node in snapshot.regions
+            ),
+            projected=bool(recommendation.projected),
+            projector_name=DETERMINISTIC_RESOURCE_PROJECTOR_NAME,
+            projector_version=DETERMINISTIC_RESOURCE_PROJECTOR_VERSION,
+            minimum_reserve_ratio=self.config.minimum_reserve_ratio,
+            minimum_reserve_resources=self.config.minimum_reserve_resources,
+            advisory_ttl_s=self.config.advisory_ttl_s,
+            policy_name=recommendation.policy_name,
+            policy_version=recommendation.policy_version,
+            source=recommendation.source,
+            confidence=recommendation.confidence,
+            model_sha256=recommendation.model_sha256,
+            fallback_reason=recommendation.fallback_reason,
+            total_resources_before=total_before,
+            total_quota_delta=total_delta,
+            total_resources_after=total_after,
+            regions=tuple(advisory_regions),
+            transfers=tuple(advisory_transfers),
+            projection_rejections=recommendation.projection_rejections,
+            publication_rejections=_unique(publication_rejections),
+            formal_decision_required=formal_decision is not None,
+        )
+
+    def validate_for_consumption(
+        self,
+        advisory: RegionResourceAdvisoryContract,
+        current_snapshot: RegionResourceSnapshot,
+        *,
+        evaluated_at_s: float,
+        consumed_advisory_ids: Iterable[str] = (),
+        formal_decision: RegionalFailoverDecision | None = None,
+    ) -> RegionResourceConsumptionView:
+        """Revalidate an advisory at the next planning boundary."""
+
+        if not _finite_non_negative(evaluated_at_s):
+            raise ValueError("evaluated_at_s must be finite and non-negative")
+        reasons: list[str] = list(advisory.publication_rejections)
+        if not advisory.projected:
+            reasons.append("recommendation_not_projected")
+        if (
+            advisory.projector_name != DETERMINISTIC_RESOURCE_PROJECTOR_NAME
+            or advisory.projector_version != DETERMINISTIC_RESOURCE_PROJECTOR_VERSION
+        ):
+            reasons.append("projector_identity_mismatch")
+        if (
+            advisory.minimum_reserve_ratio != self.config.minimum_reserve_ratio
+            or advisory.minimum_reserve_resources
+            != self.config.minimum_reserve_resources
+            or advisory.advisory_ttl_s != self.config.advisory_ttl_s
+        ):
+            reasons.append("projector_config_mismatch")
+        if advisory.advisory_id in set(consumed_advisory_ids):
+            reasons.append("advisory_already_consumed")
+        if evaluated_at_s < advisory.valid_from_s:
+            reasons.append("advisory_not_yet_valid")
+        if evaluated_at_s >= advisory.valid_until_s:
+            reasons.append("advisory_expired")
+        if evaluated_at_s < current_snapshot.timestamp_s:
+            reasons.append("evaluation_precedes_current_snapshot")
+
+        if advisory.scenario_id != current_snapshot.scenario_id:
+            reasons.append("source_scenario_id_stale")
+        if advisory.scenario_version != current_snapshot.scenario_version:
+            reasons.append("source_scenario_version_stale")
+        if int(advisory.seed) != int(current_snapshot.seed):
+            reasons.append("source_scenario_seed_stale")
+        if advisory.snapshot_id != current_snapshot.snapshot_id:
+            reasons.append("source_snapshot_id_stale")
+        if advisory.snapshot_version != current_snapshot.snapshot_version:
+            reasons.append("source_snapshot_version_stale")
+        if advisory.snapshot_timestamp_s != current_snapshot.timestamp_s:
+            reasons.append("source_snapshot_timestamp_stale")
+        if advisory.authority_digest != current_snapshot.authority_digest:
+            reasons.append("source_authority_digest_stale")
+
+        current_nodes = current_snapshot.region_by_id
+        advisory_regions = {region.region_id: region for region in advisory.regions}
+        if set(advisory_regions) != set(current_nodes):
+            reasons.append("advisory_region_set_mismatch")
+        formal_by_region = (
+            {item.region_id: item for item in formal_decision.region_decisions}
+            if formal_decision is not None
+            else {}
+        )
+        if advisory.formal_decision_required and formal_decision is None:
+            reasons.append("current_formal_decision_missing")
+        reasons.extend(
+            self._formal_snapshot_rejections(current_snapshot, formal_decision)
+            if formal_decision is not None
+            else ()
+        )
+
+        expected_net = {region_id: 0 for region_id in current_nodes}
+        edge_usage = {edge.edge_id: 0 for edge in current_snapshot.edges}
+        source_usage = {region_id: 0 for region_id in current_nodes}
+        current_edges = {edge.edge_id: edge for edge in current_snapshot.edges}
+        for transfer in advisory.transfers:
+            prefix = f"transfer:{transfer.source_region_id}->{transfer.target_region_id}"
+            if (
+                transfer.source_region_id not in current_nodes
+                or transfer.target_region_id not in current_nodes
+            ):
+                reasons.append(f"{prefix}:unknown_region")
+                continue
+            edge = current_edges.get(transfer.edge_id)
+            if edge is None:
+                reasons.append(f"{prefix}:unknown_edge")
+                continue
+            if not edge.permits(
+                transfer.source_region_id, transfer.target_region_id
+            ):
+                reasons.append(f"{prefix}:non_adjacent_edge")
+            if not edge.open_for_transfer:
+                reasons.append(f"{prefix}:edge_unavailable_or_partitioned")
+            if (
+                transfer.edge_source_region_id != edge.source_region_id
+                or transfer.edge_target_region_id != edge.target_region_id
+                or transfer.edge_capacity_resources != edge.transferable_resources
+                or transfer.expected_transfer_time_s != edge.transfer_time_s
+                or transfer.bandwidth_mbps != edge.bandwidth_mbps
+                or transfer.communication_available != edge.communication_available
+                or transfer.maneuver_available != edge.maneuver_available
+                or transfer.partitioned != edge.partitioned
+                or transfer.bidirectional != edge.bidirectional
+            ):
+                reasons.append(f"{prefix}:edge_version_mismatch")
+            reasons.extend(
+                self._source_version_rejections(
+                    transfer.source_version,
+                    current_snapshot,
+                    current_nodes[transfer.source_region_id],
+                    evaluated_at_s=evaluated_at_s,
+                    prefix=f"{prefix}:source",
+                )
+            )
+            reasons.extend(
+                self._source_version_rejections(
+                    transfer.target_version,
+                    current_snapshot,
+                    current_nodes[transfer.target_region_id],
+                    evaluated_at_s=evaluated_at_s,
+                    prefix=f"{prefix}:target",
+                )
+            )
+            edge_usage[edge.edge_id] += transfer.resource_count
+            source_usage[transfer.source_region_id] += transfer.resource_count
+            expected_net[transfer.source_region_id] -= transfer.resource_count
+            expected_net[transfer.target_region_id] += transfer.resource_count
+
+        for edge in current_snapshot.edges:
+            if edge_usage[edge.edge_id] > edge.transferable_resources:
+                reasons.append(f"edge:{edge.edge_id}:capacity_exceeded")
+
+        total_before = 0
+        total_delta = 0
+        total_after = 0
+        current_source_plans: set[tuple[str, int]] = set()
+        for region_id, region in advisory_regions.items():
+            node = current_nodes.get(region_id)
+            if node is None:
+                continue
+            current_source_plans.add((node.plan_id, int(node.plan_version)))
+            reasons.extend(
+                self._source_version_rejections(
+                    region.source_version,
+                    current_snapshot,
+                    node,
+                    evaluated_at_s=evaluated_at_s,
+                    prefix=f"region:{region_id}",
+                )
+            )
+            formal_region = formal_by_region.get(region_id)
+            if formal_decision is not None:
+                action = RegionResourceAction(
+                    region_id=region_id,
+                    resource_quota_delta=region.resource_quota_delta,
+                    reserve_ratio=region.reserve_ratio,
+                    reconnaissance_priority=region.reconnaissance_priority,
+                    hold=region.hold,
+                    request_replan=region.request_replan,
+                    expected_owner_id=region.source_version.owner_id,
+                    expected_owner_layer=region.source_version.owner_layer,
+                    expected_plan_id=region.source_version.plan_id,
+                    expected_plan_version=region.source_version.plan_version,
+                    expected_epoch=region.source_version.epoch,
+                    expected_lease_expires_at_s=(
+                        region.source_version.lease_expires_at_s
+                    ),
+                    reasons=region.reasons,
+                )
+                reasons.extend(
+                    f"region:{region_id}:{reason}"
+                    for reason in self._node_block_reasons(
+                        current_snapshot,
+                        node,
+                        action,
+                        formal_region,
+                        formal_decision_supplied=True,
+                    )
+                )
+            current_committed = max(
+                node.committed_resources,
+                self._formal_committed_resource_count(formal_region),
+            )
+            current_reserve = self._reserve_floor(node)
+            if region.resources_before != node.available_resources:
+                reasons.append(f"region:{region_id}:resource_snapshot_stale")
+            if region.protected_committed_resources != current_committed:
+                reasons.append(f"region:{region_id}:committed_resources_stale")
+            if region.protected_reserve_resources != current_reserve:
+                reasons.append(f"region:{region_id}:reserve_resources_stale")
+            if region.resources_after != (
+                region.resources_before + region.resource_quota_delta
+            ):
+                reasons.append(f"region:{region_id}:resource_proof_mismatch")
+            if region.resources_after < current_committed + current_reserve:
+                reasons.append(
+                    f"region:{region_id}:reserve_or_committed_resources_unprotected"
+                )
+            if region.resource_quota_delta != expected_net.get(region_id, 0):
+                reasons.append(f"region:{region_id}:transfer_quota_mismatch")
+            budget = self._transfer_budget(
+                node,
+                committed_resources=current_committed,
+            )
+            if source_usage.get(region_id, 0) > budget:
+                reasons.append(f"region:{region_id}:transfer_budget_exceeded")
+            if region.resources_after > 0:
+                recommended_reserve = region.reserve_ratio * region.resources_after
+                if recommended_reserve + 1e-12 < current_reserve:
+                    reasons.append(f"region:{region_id}:reserve_ratio_below_floor")
+                if (
+                    recommended_reserve + current_committed
+                    > region.resources_after + 1e-12
+                ):
+                    reasons.append(
+                        f"region:{region_id}:reserve_ratio_conflicts_with_commitment"
+                    )
+            total_before += region.resources_before
+            total_delta += region.resource_quota_delta
+            total_after += region.resources_after
+
+        if tuple(sorted(current_source_plans)) != advisory.source_plan_versions:
+            reasons.append("source_plan_versions_stale")
+        if (
+            total_delta != 0
+            or total_after != total_before
+            or advisory.total_quota_delta != total_delta
+            or advisory.total_resources_before != total_before
+            or advisory.total_resources_after != total_after
+        ):
+            reasons.append("total_resource_quota_not_conserved")
+        if advisory.source == RecommendationSource.LEARNED and not _valid_sha256(
+            advisory.model_sha256
+        ):
+            reasons.append("learned_model_identity_missing_or_invalid")
+
+        unique_reasons = _unique(reasons)
+        return RegionResourceConsumptionView(
+            advisory=advisory,
+            evaluated_at_s=float(evaluated_at_s),
+            current_snapshot_id=current_snapshot.snapshot_id,
+            current_snapshot_version=current_snapshot.snapshot_version,
+            current_authority_digest=current_snapshot.authority_digest,
+            consumable=not unique_reasons,
+            rejection_reasons=unique_reasons,
+        )
+
+    @staticmethod
+    def _source_version(
+        snapshot: RegionResourceSnapshot,
+        node: RegionResourceNode,
+    ) -> RegionResourceSourceVersion:
+        return RegionResourceSourceVersion(
+            region_id=node.region_id,
+            snapshot_id=snapshot.snapshot_id,
+            snapshot_version=snapshot.snapshot_version,
+            authority_digest=snapshot.authority_digest,
+            owner_id=node.current_owner_id,
+            owner_layer=node.current_owner_layer,
+            plan_id=node.plan_id,
+            plan_version=node.plan_version,
+            epoch=node.epoch,
+            lease_expires_at_s=node.lease_expires_at_s,
+            coalition_ack_complete=node.coalition_ack_complete,
+            owner_active=node.owner_active,
+            fault_fenced=node.fault_fenced,
+            fault_fence_epoch=node.fault_fence_epoch,
+        )
+
+    @staticmethod
+    def _formal_snapshot_rejections(
+        snapshot: RegionResourceSnapshot,
+        formal_decision: RegionalFailoverDecision | None,
+    ) -> tuple[str, ...]:
+        if formal_decision is None:
+            return ()
+        reasons: list[str] = []
+        if formal_decision.schema != REGIONAL_FAILOVER_SCHEMA:
+            reasons.append("formal_decision_schema_mismatch")
+        if formal_decision.timestamp_s != snapshot.timestamp_s:
+            reasons.append("formal_decision_timestamp_mismatch")
+        if formal_decision.scenario.scenario_name != snapshot.scenario_id:
+            reasons.append("formal_decision_scenario_id_mismatch")
+        if formal_decision.scenario.scenario_version != snapshot.scenario_version:
+            reasons.append("formal_decision_scenario_version_mismatch")
+        if {
+            item.region_id for item in formal_decision.region_decisions
+        } != set(snapshot.region_by_id):
+            reasons.append("formal_region_set_mismatch")
+        return _unique(reasons)
+
+    @staticmethod
+    def _source_version_rejections(
+        source: RegionResourceSourceVersion,
+        snapshot: RegionResourceSnapshot,
+        node: RegionResourceNode,
+        *,
+        evaluated_at_s: float,
+        prefix: str,
+    ) -> tuple[str, ...]:
+        reasons: list[str] = []
+        if source.region_id != node.region_id:
+            reasons.append(f"{prefix}:region_id_stale")
+        if source.snapshot_id != snapshot.snapshot_id:
+            reasons.append(f"{prefix}:snapshot_id_stale")
+        if source.snapshot_version != snapshot.snapshot_version:
+            reasons.append(f"{prefix}:snapshot_version_stale")
+        if source.authority_digest != snapshot.authority_digest:
+            reasons.append(f"{prefix}:authority_digest_stale")
+        if source.owner_id != node.current_owner_id:
+            reasons.append(f"{prefix}:owner_id_stale")
+        if source.owner_layer != node.current_owner_layer:
+            reasons.append(f"{prefix}:owner_layer_stale")
+        if source.plan_id != node.plan_id:
+            reasons.append(f"{prefix}:plan_id_stale")
+        if source.plan_version != node.plan_version:
+            reasons.append(f"{prefix}:plan_version_stale")
+        if source.epoch != node.epoch:
+            reasons.append(f"{prefix}:epoch_stale")
+        if source.lease_expires_at_s != node.lease_expires_at_s:
+            reasons.append(f"{prefix}:lease_version_stale")
+        if evaluated_at_s >= node.lease_expires_at_s:
+            reasons.append(f"{prefix}:lease_expired")
+        if not node.coalition_ack_complete:
+            reasons.append(f"{prefix}:coalition_ack_incomplete")
+        if not node.owner_active or node.current_owner_layer == RegionalAuthorityLayer.HOLD:
+            reasons.append(f"{prefix}:authority_not_active")
+        if node.fault_fenced or (
+            node.fault_fence_epoch is not None and node.epoch < node.fault_fence_epoch
+        ):
+            reasons.append(f"{prefix}:fault_fence_active")
+        if source.coalition_ack_complete != node.coalition_ack_complete:
+            reasons.append(f"{prefix}:coalition_ack_version_stale")
+        if source.owner_active != node.owner_active:
+            reasons.append(f"{prefix}:owner_active_version_stale")
+        if (
+            source.fault_fenced != node.fault_fenced
+            or source.fault_fence_epoch != node.fault_fence_epoch
+        ):
+            reasons.append(f"{prefix}:fault_fence_version_stale")
+        return _unique(reasons)
+
     def _node_block_reasons(
         self,
         snapshot: RegionResourceSnapshot,
@@ -832,6 +1761,40 @@ class DeterministicResourceProjector:
         return len(member_ids)
 
 
+class RegionResourceAdvisoryGate:
+    """One-shot in-process gate for next-cycle advisory consumption."""
+
+    def __init__(
+        self,
+        projector: DeterministicResourceProjector | None = None,
+    ) -> None:
+        self.projector = projector or DeterministicResourceProjector()
+        self._consumed_advisory_ids: set[str] = set()
+
+    @property
+    def consumed_advisory_ids(self) -> frozenset[str]:
+        return frozenset(self._consumed_advisory_ids)
+
+    def consume(
+        self,
+        advisory: RegionResourceAdvisoryContract,
+        current_snapshot: RegionResourceSnapshot,
+        *,
+        evaluated_at_s: float,
+        formal_decision: RegionalFailoverDecision | None = None,
+    ) -> RegionResourceConsumptionView:
+        view = self.projector.validate_for_consumption(
+            advisory,
+            current_snapshot,
+            evaluated_at_s=evaluated_at_s,
+            consumed_advisory_ids=self._consumed_advisory_ids,
+            formal_decision=formal_decision,
+        )
+        if view.consumable:
+            self._consumed_advisory_ids.add(advisory.advisory_id)
+        return view
+
+
 @dataclass(frozen=True)
 class RuleRegionResourcePolicyConfig:
     projection: RegionResourceProjectionConfig = field(
@@ -848,9 +1811,18 @@ class RuleRegionResourcePolicy:
     policy_name = "d4-region-resource-rule"
     policy_version = "v1"
 
-    def __init__(self, config: RuleRegionResourcePolicyConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: RuleRegionResourcePolicyConfig | None = None,
+        *,
+        projector: DeterministicResourceProjector | None = None,
+    ) -> None:
         self.config = config or RuleRegionResourcePolicyConfig()
-        self.projector = DeterministicResourceProjector(self.config.projection)
+        if projector is not None and projector.config != self.config.projection:
+            raise ValueError("rule policy and projector configuration must match")
+        self.projector = projector or DeterministicResourceProjector(
+            self.config.projection
+        )
 
     def recommend(
         self,
@@ -938,6 +1910,24 @@ class RuleRegionResourcePolicy:
         )
         return self.projector.project(
             snapshot, raw, formal_decision=formal_decision
+        )
+
+    def recommend_contract(
+        self,
+        snapshot: RegionResourceSnapshot,
+        *,
+        formal_decision: RegionalFailoverDecision | None = None,
+        fallback_reason: str | None = None,
+    ) -> RegionResourceAdvisoryContract:
+        recommendation = self.recommend(
+            snapshot,
+            formal_decision=formal_decision,
+            fallback_reason=fallback_reason,
+        )
+        return self.projector.build_advisory_contract(
+            snapshot,
+            recommendation,
+            formal_decision=formal_decision,
         )
 
     def _pressure(self, node: RegionResourceNode) -> float:
@@ -1251,6 +2241,28 @@ class ShadowPairedEvaluator:
                 raise ValueError("duplicate scenario/seed record in shadow evaluation")
             indexed[record.group] = record
         return indexed
+
+
+def _region_resource_advisory_id(
+    advisory: RegionResourceAdvisoryContract,
+) -> str:
+    payload = to_jsonable(advisory)
+    payload.pop("advisory_id", None)
+    serialized = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return f"d4-rr-advisory-{sha256(serialized).hexdigest()}"
+
+
+def _valid_sha256(value: str | None) -> bool:
+    return bool(
+        value
+        and len(value) == 64
+        and all(character in "0123456789abcdefABCDEF" for character in value)
+    )
 
 
 def formal_decision_digest(decision: RegionalFailoverDecision | None) -> str | None:
