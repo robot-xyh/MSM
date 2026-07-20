@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections import Counter
+from datetime import datetime, timezone
 import json
 from pathlib import Path
+import shutil
 from typing import Any, Iterable, Mapping
 
 from .episode_bus import EpisodeManifest, jsonable
@@ -18,12 +20,14 @@ LEARNING_EXPORT_SCHEMA_VERSION = "scalable3d-learning-export-v2"
 class BatchLearningArtifactWriter:
     """Stage whole episodes and finalize split-safe multi-seed learning datasets."""
 
-    def __init__(self, output_dir: str | Path) -> None:
+    def __init__(self, output_dir: str | Path, *, formal: bool = False) -> None:
         self.root = Path(output_dir)
         self.root.mkdir(parents=True, exist_ok=True)
+        self._formal = bool(formal)
         self._staging_root = self.root / "_staging"
         self._staging_root.mkdir(parents=True, exist_ok=True)
         self._d3_staging_path = self._staging_root / "d3_frames.jsonl"
+        self._d4_staging_root = self._staging_root / "d4_region_episodes"
         self._episode_index_path = self._staging_root / "episodes.jsonl"
         if self._d3_staging_path.exists() or self._episode_index_path.exists():
             raise FileExistsError(
@@ -56,11 +60,12 @@ class BatchLearningArtifactWriter:
                 stream.write(
                     json.dumps(record.to_dict(), ensure_ascii=False, sort_keys=True) + "\n"
                 )
-        d4_path, d4_summary = _write_d4_frames(
-            self.root / "d4_region" / f"{manifest.episode_id}.jsonl",
-            artifacts.d4_region_frames,
+        _, d4_summary = _stage_d4_learning_episode(
+            self._d4_staging_root,
+            config=config,
+            manifest=manifest,
+            frames=artifacts.d4_region_frames,
         )
-        del d4_path
         _, d5_summary = _write_d5_frames(
             self.root / "d5_tracklet_graph",
             config=config,
@@ -117,31 +122,54 @@ class BatchLearningArtifactWriter:
 
         if self._episode_count == 0:
             raise ValueError("cannot finalize an empty batch learning export")
-        paths: dict[str, Path] = {"episode_index": self._episode_index_path}
+        paths: dict[str, Path] = {}
         d3_split_counts: Mapping[str, int] = {}
         if self._d3_frame_count:
             from research_modules.d3_assignment_planner.src.d3_assignment_planner import (
-                LearningFrameRecord,
+                iter_learning_frame_records,
                 write_learning_dataset,
             )
 
-            records = tuple(
-                LearningFrameRecord.from_dict(json.loads(line))
-                for line in self._d3_staging_path.read_text(encoding="utf-8").splitlines()
-                if line.strip()
-            )
             manifest = write_learning_dataset(
                 self.root / "d3_assignment",
-                records,
+                iter_learning_frame_records(self._d3_staging_path),
                 source_kind="scalable_3d_multi_seed_batch",
+                minimum_unseen_seed_count=20 if self._formal else 1,
             )
             d3_split_counts = dict(manifest.split_frame_counts)
             paths["d3_manifest"] = self.root / "d3_assignment" / "dataset_manifest.json"
             paths["d3_frames"] = self.root / "d3_assignment" / "frames.jsonl"
 
+        d4_finalized = False
+        d4_reason: str | None = None
+        d4_availability: Mapping[str, Any] = {}
+        if self._d4_frame_count and len({seed for _, seed in self._seed_groups}) >= 3:
+            from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
+                finalize_region_learning_dataset,
+            )
+
+            d4_manifest = finalize_region_learning_dataset(
+                self._d4_staging_root,
+                self.root / "d4_region",
+                created_at_utc=_utc_now(),
+                split_seed=20260720,
+                minimum_unseen_seeds=20 if self._formal else 2,
+            )
+            paths["d4_manifest"] = self.root / "d4_region" / "manifest.json"
+            d4_availability = d4_manifest.availability.to_dict()
+            d4_finalized = True
+            shutil.rmtree(self._d4_staging_root)
+        elif self._d4_frame_count:
+            d4_reason = "requires_at_least_three_unique_numeric_seeds"
+        else:
+            d4_reason = "no_d4_region_learning_frames"
+
         d5_finalized = False
         d5_reason: str | None = None
-        if self._d5_frame_count and len(self._seed_groups) >= 3:
+        d5_graph_seed_count = _staged_d5_graph_seed_count(
+            self.root / "d5_tracklet_graph"
+        )
+        if self._d5_frame_count and d5_graph_seed_count >= 3:
             from research_modules.d5_terminal_association.src.d5_terminal_association.tracklet_dataset import (
                 finalize_tracklet_dataset,
             )
@@ -152,7 +180,7 @@ class BatchLearningArtifactWriter:
             )
             d5_finalized = True
         elif self._d5_frame_count:
-            d5_reason = "requires_at_least_three_scenario_seed_groups"
+            d5_reason = "requires_at_least_three_unique_nonempty_graph_seeds"
         else:
             d5_reason = "no_nonempty_d5_graph_frames"
 
@@ -185,7 +213,11 @@ class BatchLearningArtifactWriter:
             "d3_frame_count": self._d3_frame_count,
             "d3_split_frame_counts": dict(d3_split_counts),
             "d4_frame_count": self._d4_frame_count,
+            "d4_dataset_finalized": d4_finalized,
+            "d4_dataset_finalization_reason": d4_reason,
+            "d4_dataset_availability": dict(d4_availability),
             "d5_staged_frame_count": self._d5_frame_count,
+            "d5_nonempty_graph_seed_count": d5_graph_seed_count,
             "d5_dataset_finalized": d5_finalized,
             "d5_dataset_finalization_reason": d5_reason,
             "d5_active_vision_frame_count": self._d5_active_vision_frame_count,
@@ -197,6 +229,17 @@ class BatchLearningArtifactWriter:
         summary_path = self.root / "batch_learning_export_summary.json"
         _write_json(summary_path, summary)
         paths["summary"] = summary_path
+
+        if self._d3_staging_path.exists():
+            self._d3_staging_path.unlink()
+        episode_index_path = self.root / "episodes.jsonl"
+        self._episode_index_path.replace(episode_index_path)
+        paths["episode_index"] = episode_index_path
+        try:
+            self._staging_root.rmdir()
+        except OSError:
+            # Unfinalized D4 episode data remains recoverable in staging.
+            pass
         return paths
 
 
@@ -274,10 +317,6 @@ def _write_d3_frames(
     manifest: EpisodeManifest,
     planning_frames: tuple[Any, ...],
 ) -> tuple[dict[str, Path], dict[str, Any]]:
-    from research_modules.d3_assignment_planner.src.d3_assignment_planner import (
-        write_learning_dataset,
-    )
-
     records, unavailable_reasons = _build_d3_records(
         config=config,
         manifest=manifest,
@@ -289,18 +328,20 @@ def _write_d3_frames(
             "exported_frame_count": 0,
             "unavailable_reason_counts": dict(sorted(unavailable_reasons.items())),
         }
-    dataset_manifest = write_learning_dataset(
-        root,
-        records,
-        source_kind="scalable_3d_integrated_episode",
-    )
+    root.mkdir(parents=True, exist_ok=True)
+    staging_path = root / "staging_frames.jsonl"
+    with staging_path.open("w", encoding="utf-8") as stream:
+        for record in records:
+            stream.write(
+                json.dumps(record.to_dict(), ensure_ascii=True, sort_keys=True) + "\n"
+            )
     return {
-        "frames": root / "frames.jsonl",
-        "manifest": root / "dataset_manifest.json",
+        "staging_frames": staging_path,
     }, {
         "captured_frame_count": len(planning_frames),
         "exported_frame_count": len(records),
-        "split_frame_counts": dict(dataset_manifest.split_frame_counts),
+        "dataset_finalized": False,
+        "dataset_finalization_reason": "requires_complete_multi_seed_catalog",
         "unavailable_reason_counts": dict(sorted(unavailable_reasons.items())),
     }
 
@@ -378,6 +419,90 @@ def _write_d4_frames(
         "captured_frame_count": len(frames),
         "recommendation_frame_count": recommendation_count,
         "formal_decision_mutation_count": 0,
+    }
+
+
+def _stage_d4_learning_episode(
+    root: Path,
+    *,
+    config: ScenarioConfig,
+    manifest: EpisodeManifest,
+    frames: tuple[Any, ...],
+) -> tuple[Path | None, dict[str, Any]]:
+    """Stage one truth-free D4 episode with explicit target/reward availability."""
+
+    if not frames:
+        return None, {
+            "captured_frame_count": 0,
+            "target_available_count": 0,
+            "target_unavailable_count": 0,
+            "reward_available_count": 0,
+            "reward_unavailable_count": 0,
+        }
+    from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
+        RecommendationSource,
+        RegionLearningEpisodeSource,
+        RegionLearningFrame,
+        RegionLearningReward,
+        RegionLearningTarget,
+        RegionLearningTargetKind,
+        stage_region_learning_episode,
+    )
+
+    source = RegionLearningEpisodeSource(
+        scenario_id=config.scenario_name,
+        scenario_version=config.scenario_version,
+        scenario_scale=f"M{config.target_count}N{config.resource_count}",
+        seed=config.seed,
+        episode_id=manifest.episode_id,
+        git_commit=manifest.git_commit,
+        git_dirty=manifest.repository_dirty,
+        config_sha256=manifest.config_sha256,
+    )
+    records = []
+    target_available_count = 0
+    for frame in sorted(frames, key=lambda item: int(item.frame_index)):
+        advisory_result = frame.recommendation
+        recommendation = (
+            None
+            if advisory_result is None
+            else getattr(advisory_result, "recommendation", None)
+        )
+        if (
+            recommendation is not None
+            and recommendation.source == RecommendationSource.RULE
+        ):
+            target = RegionLearningTarget.available(
+                RegionLearningTargetKind.RULE,
+                recommendation,
+            )
+            target_available_count += 1
+        else:
+            target = RegionLearningTarget.unavailable(
+                "rule_target_not_emitted"
+                if recommendation is None
+                else "non_rule_target_not_admitted"
+            )
+        records.append(
+            RegionLearningFrame(
+                frame_index=int(frame.frame_index),
+                timestamp_s=float(frame.timestamp_s),
+                snapshot=frame.snapshot,
+                target=target,
+                reward=RegionLearningReward.unavailable(
+                    "d6_episode_outcome_not_joined"
+                ),
+                recommendation=recommendation,
+            )
+        )
+    staged = stage_region_learning_episode(root, source, records)
+    frame_count = len(records)
+    return staged.path, {
+        "captured_frame_count": frame_count,
+        "target_available_count": target_available_count,
+        "target_unavailable_count": frame_count - target_available_count,
+        "reward_available_count": 0,
+        "reward_unavailable_count": frame_count,
     }
 
 
@@ -589,6 +714,22 @@ def _write_json(path: Path, payload: Any) -> None:
         json.dumps(jsonable(payload), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
+        "+00:00", "Z"
+    )
+
+
+def _staged_d5_graph_seed_count(root: Path) -> int:
+    seeds: set[int] = set()
+    for path in sorted((root / "episodes").glob("*.episode.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, Mapping) or "seed" not in payload:
+            raise ValueError(f"invalid D5 staged episode descriptor: {path}")
+        seeds.add(int(payload["seed"]))
+    return len(seeds)
 
 
 __all__ = [

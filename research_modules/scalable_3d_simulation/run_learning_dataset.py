@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -34,8 +35,10 @@ from research_modules.scalable_3d_simulation.scenarios import (
 
 
 GENERATION_PLAN_SCHEMA_VERSION = "scalable3d-learning-generation-plan-v1"
+TRAINING_SEED_REGISTRY_SCHEMA_VERSION = "scalable3d-training-seed-registry-v1"
 DEFAULT_CONFIG = Path(__file__).with_name("configs") / "nominal_200v200.json"
 FORMAL_SCALES = frozenset({5, 20, 50, 100, 200})
+FORMAL_MINIMUM_SEEDS_PER_SCENARIO_SCALE = 20
 D5_ACTIVE_VISION_TEST_FRACTION = 0.2
 D5_ACTIVE_VISION_MINIMUM_UNSEEN_SEEDS = 20
 
@@ -54,7 +57,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=["nominal"],
     )
     parser.add_argument("--duration", type=float, default=2.0)
-    parser.add_argument("--reserved-evaluation-seeds", type=int, nargs="*", default=[])
+    parser.add_argument("--reserved-evaluation-seeds", type=int, nargs="*", default=None)
     parser.add_argument("--minimum-free-gb", type=float, default=5.0)
     parser.add_argument("--formal", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -68,14 +71,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.minimum_free_gb < 0.0:
         raise ValueError("--minimum-free-gb must be non-negative")
     output = args.output.resolve()
-    _prepare_fresh_output(output)
     base = ScenarioConfig.from_dict(json.loads(args.config.read_text(encoding="utf-8")))
-    cells = (
-        _load_schedule(args.schedule, default_duration_s=args.duration)
-        if args.schedule is not None
-        else _cartesian_cells(args.scenarios, args.scales, args.seeds, args.duration)
+    if args.schedule is not None:
+        cells, schedule_reserved = _load_schedule_plan(
+            args.schedule,
+            default_duration_s=args.duration,
+        )
+    else:
+        cells = _cartesian_cells(args.scenarios, args.scales, args.seeds, args.duration)
+        schedule_reserved = ()
+    cli_reserved = (
+        None
+        if args.reserved_evaluation_seeds is None
+        else tuple(sorted(set(int(seed) for seed in args.reserved_evaluation_seeds)))
     )
-    reserved = tuple(sorted(set(int(seed) for seed in args.reserved_evaluation_seeds)))
+    if cli_reserved is not None and schedule_reserved and cli_reserved != schedule_reserved:
+        raise ValueError(
+            "CLI reserved evaluation seeds do not match the versioned schedule"
+        )
+    reserved = schedule_reserved if cli_reserved is None else cli_reserved
     _validate_generation_plan(
         cells,
         reserved_evaluation_seeds=reserved,
@@ -91,22 +105,31 @@ def main(argv: list[str] | None = None) -> int:
     if args.formal and not _is_git_ignored(output):
         raise RuntimeError("formal output must be under a git-ignored artifact directory")
     _require_free_space(output.parent, args.minimum_free_gb)
+    _prepare_fresh_output(output)
 
-    writer = BatchLearningArtifactWriter(output / "learning_dataset")
+    writer = BatchLearningArtifactWriter(
+        output / "learning_dataset",
+        formal=bool(args.formal),
+    )
+    git_commit = _git_output(["rev-parse", "HEAD"])
+    schedule_sha256 = None if args.schedule is None else _sha256_file(args.schedule)
+    generation_seeds = tuple(sorted({seed for _, _, seed, _ in cells}))
     plan = {
         "schema_version": GENERATION_PLAN_SCHEMA_VERSION,
         "formal": bool(args.formal),
-        "git_commit": _git_output(["rev-parse", "HEAD"]),
+        "git_commit": git_commit,
         "repository_dirty": repository_dirty,
         "base_config": str(args.config.resolve()),
+        "schedule": None if args.schedule is None else str(args.schedule.resolve()),
+        "schedule_sha256": schedule_sha256,
         "cell_count": len(cells),
-        "generation_seed_count": len({seed for _, _, seed, _ in cells}),
+        "generation_seed_count": len(generation_seeds),
         "reserved_evaluation_seeds": list(reserved),
         "d5_active_vision_split_preflight": {
             "test_fraction": D5_ACTIVE_VISION_TEST_FRACTION,
             "minimum_unseen_seed_count": D5_ACTIVE_VISION_MINIMUM_UNSEEN_SEEDS,
             "planned_test_seed_count": _active_vision_test_seed_count(
-                len({seed for _, _, seed, _ in cells})
+                len(generation_seeds)
             ),
         },
         "cells": [
@@ -120,6 +143,14 @@ def main(argv: list[str] | None = None) -> int:
         ],
     }
     _write_json(output / "generation_plan.json", plan)
+    registry = _build_training_seed_registry(
+        generation_seeds,
+        reserved_evaluation_seeds=reserved,
+        git_commit=git_commit,
+        repository_dirty=repository_dirty,
+        schedule_sha256=schedule_sha256,
+    )
+    _write_json(output / "training_seed_registry.json", registry)
     progress_path = output / "episode_progress.jsonl"
     rows: list[dict[str, Any]] = []
     for index, (scenario, scale, seed, duration_s) in enumerate(cells):
@@ -171,12 +202,14 @@ def main(argv: list[str] | None = None) -> int:
     summary = json.loads(paths["summary"].read_text(encoding="utf-8"))
     if args.formal:
         required = (
+            summary.get("d4_dataset_finalized") is True,
             summary.get("d5_dataset_finalized") is True,
             summary.get("d5_active_vision_dataset_finalized") is True,
         )
         if not all(required):
             raise RuntimeError(
                 "formal dataset finalization failed: "
+                f"d4_region={summary.get('d4_dataset_finalization_reason')}, "
                 f"d5_graph={summary.get('d5_dataset_finalization_reason')}, "
                 "d5_active_vision="
                 f"{summary.get('d5_active_vision_dataset_finalization_reason')}"
@@ -187,6 +220,10 @@ def main(argv: list[str] | None = None) -> int:
         {
             **plan,
             "completed_episode_count": len(rows),
+            "training_seed_registry": "training_seed_registry.json",
+            "training_seed_registry_sha256": _sha256_file(
+                output / "training_seed_registry.json"
+            ),
             "learning_export_summary": summary,
         },
     )
@@ -213,6 +250,18 @@ def _load_schedule(
     *,
     default_duration_s: float,
 ) -> tuple[tuple[str, int, int, float], ...]:
+    cells, _ = _load_schedule_plan(
+        path,
+        default_duration_s=default_duration_s,
+    )
+    return cells
+
+
+def _load_schedule_plan(
+    path: Path,
+    *,
+    default_duration_s: float,
+) -> tuple[tuple[tuple[str, int, int, float], ...], tuple[int, ...]]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, Mapping) or payload.get("schema_version") != GENERATION_PLAN_SCHEMA_VERSION:
         raise ValueError("unsupported learning generation schedule schema")
@@ -230,7 +279,11 @@ def _load_schedule(
         if not isinstance(seeds, list) or not seeds:
             raise ValueError("schedule cell seeds must be a non-empty list")
         cells.extend((scenario, scale, int(seed), duration) for seed in seeds)
-    return tuple(cells)
+    raw_reserved = payload.get("reserved_evaluation_seeds", [])
+    if not isinstance(raw_reserved, list):
+        raise ValueError("schedule reserved_evaluation_seeds must be a list")
+    reserved = tuple(sorted(set(int(seed) for seed in raw_reserved)))
+    return tuple(cells), reserved
 
 
 def _validate_generation_plan(
@@ -252,14 +305,46 @@ def _validate_generation_plan(
             raise ValueError(f"duplicate generation cell: {key}")
         keys.add(key)
     generation_seeds = {seed for _, _, seed, _ in cells}
+    if any(seed < 0 for seed in reserved_evaluation_seeds):
+        raise ValueError("reserved evaluation seeds must be non-negative")
     overlap = generation_seeds & set(reserved_evaluation_seeds)
     if overlap:
         raise ValueError(f"generation and reserved evaluation seeds overlap: {sorted(overlap)}")
     if formal:
-        if {scale for _, scale, _, _ in cells} != FORMAL_SCALES:
-            raise ValueError("formal generation requires scales 5/20/50/100/200")
-        if {scenario for scenario, _, _, _ in cells} != set(AVAILABLE_SCENARIOS):
-            raise ValueError("formal generation requires the complete scenario catalog")
+        expected_catalog = {
+            (scenario, scale)
+            for scenario in AVAILABLE_SCENARIOS
+            for scale in FORMAL_SCALES
+        }
+        observed_catalog = {(scenario, scale) for scenario, scale, _, _ in cells}
+        if observed_catalog != expected_catalog:
+            missing = sorted(expected_catalog - observed_catalog)
+            extra = sorted(observed_catalog - expected_catalog)
+            raise ValueError(
+                "formal generation requires the complete scenario/scale catalog; "
+                f"missing={missing}, extra={extra}"
+            )
+        seed_count_by_cell = {
+            key: len(
+                {
+                    seed
+                    for scenario, scale, seed, _ in cells
+                    if (scenario, scale) == key
+                }
+            )
+            for key in expected_catalog
+        }
+        insufficient_cells = {
+            f"{scenario}/{scale}": count
+            for (scenario, scale), count in sorted(seed_count_by_cell.items())
+            if count < FORMAL_MINIMUM_SEEDS_PER_SCENARIO_SCALE
+        }
+        if insufficient_cells:
+            raise ValueError(
+                "formal generation requires at least "
+                f"{FORMAL_MINIMUM_SEEDS_PER_SCENARIO_SCALE} seeds per scenario/scale; "
+                f"insufficient={insufficient_cells}"
+            )
         if len(reserved_evaluation_seeds) < 20:
             raise ValueError("formal generation requires at least 20 reserved evaluation seeds")
         planned_test_seed_count = _active_vision_test_seed_count(len(generation_seeds))
@@ -279,6 +364,36 @@ def _active_vision_test_seed_count(unique_seed_count: int) -> int:
         1,
         min(count - 2, round(count * D5_ACTIVE_VISION_TEST_FRACTION)),
     )
+
+
+def _build_training_seed_registry(
+    training_seeds: Iterable[int],
+    *,
+    reserved_evaluation_seeds: Iterable[int],
+    git_commit: str,
+    repository_dirty: bool,
+    schedule_sha256: str | None,
+) -> dict[str, Any]:
+    training = tuple(sorted(set(int(seed) for seed in training_seeds)))
+    reserved = tuple(sorted(set(int(seed) for seed in reserved_evaluation_seeds)))
+    overlap = sorted(set(training) & set(reserved))
+    if not training or any(seed < 0 for seed in training):
+        raise ValueError("training seed registry requires non-negative training seeds")
+    if any(seed < 0 for seed in reserved):
+        raise ValueError("training seed registry requires non-negative reserved seeds")
+    if overlap:
+        raise ValueError(f"training seed registry overlap: {overlap}")
+    return {
+        "schema_version": TRAINING_SEED_REGISTRY_SCHEMA_VERSION,
+        "git_commit": str(git_commit),
+        "repository_dirty": bool(repository_dirty),
+        "schedule_sha256": schedule_sha256,
+        "training_seed_count": len(training),
+        "training_seeds": list(training),
+        "reserved_evaluation_seed_count": len(reserved),
+        "reserved_evaluation_seeds": list(reserved),
+        "overlap_count": 0,
+    }
 
 
 def _prepare_fresh_output(path: Path) -> None:
@@ -320,6 +435,14 @@ def _git_output(args: list[str]) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def _write_progress_csv(path: Path, rows: list[dict[str, Any]]) -> None:
