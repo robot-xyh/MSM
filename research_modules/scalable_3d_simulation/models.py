@@ -106,6 +106,7 @@ class ScenarioConfig:
     communication_latency_s: float = 0.04
     communication_jitter_s: float = 0.01
     communication_drop_probability: float = 0.01
+    communication_bandwidth_bytes_per_s: float = 5_000_000.0
     radar_enabled: bool = True
     acoustic_enabled: bool = True
     visual_enabled: bool = True
@@ -113,6 +114,7 @@ class ScenarioConfig:
     d1_model_version: str = "d1-scalable3d-fusion-v1"
     d2_model_version: str = "d2-scalable3d-association-v1"
     d3_policy_version: str = "d3-scalable3d-rule-cost-v1"
+    d4_policy_version: str = "d4-region-resource-rule-v1"
     d5_model_version: str = "d5-scalable3d-geometry-rule-v1"
     d7_model_version: str = "d7-scalable3d-guidance-v1"
     threshold_version: str = DEFAULT_THRESHOLD_VERSION
@@ -157,6 +159,7 @@ class ScenarioConfig:
             "target_proxy_height_m",
             "visual_min_bbox_area_px2",
             "recon_visual_min_bbox_area_px2",
+            "communication_bandwidth_bytes_per_s",
         )
         for name in positive_fields:
             value = float(getattr(self, name))
@@ -207,6 +210,17 @@ class ScenarioConfig:
             self.assignment_period_s,
         ):
             raise ValueError("physics_dt_s must not exceed a scheduled module period")
+        for name in (
+            "d1_model_version",
+            "d2_model_version",
+            "d3_policy_version",
+            "d4_policy_version",
+            "d5_model_version",
+            "d7_model_version",
+            "threshold_version",
+        ):
+            if not str(getattr(self, name)).strip():
+                raise ValueError(f"{name} must be non-empty")
 
     @property
     def entity_count(self) -> int:

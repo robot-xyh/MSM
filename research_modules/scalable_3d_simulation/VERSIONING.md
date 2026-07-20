@@ -43,6 +43,7 @@ main
 | 离线真值 | `scalable3d-offline-truth-v1` | 标签结构或评分口径改变 |
 | D5 模型 | `d5-crossview-gnn-v0.1.0` | 网络、特征、权重或训练集改变 |
 | D3 策略 | `d3-rl-cost-policy-v0.1.0` | 策略结构、权重或动作定义改变 |
+| D4 区域策略 | `d4-region-resource-rule-v1` 或模型版本加权重 SHA 前缀 | 区域特征、动作、安全投影或权重改变 |
 | 阈值配置 | `scalable3d-thresholds-v1` | 门限和回退条件改变 |
 | 分配计划 | 递增 `plan_version` | 每次发布新计划 |
 | 联盟状态 | `epoch + lease + version` | 所有权、成员或有效期改变 |
@@ -64,9 +65,13 @@ main
   "bus_schema": "scalable3d-episode-bus-v1",
   "d5_model_version": "d5-crossview-gnn-v0.1.0",
   "d3_policy_version": "d3-rl-cost-policy-v0.1.0",
+  "d4_policy_version": "d4-region-resource-rule-v1",
   "threshold_version": "scalable3d-thresholds-v1"
 }
 ```
+
+bundle 的本地绝对路径不写入 manifest。解析成功后记录语义版本和权重 SHA256；解析失败时
+保留规则版本，并在 scenario metadata 与在线诊断中记录请求模式、实际模式和稳定回退原因。
 
 正式验收只使用 `repository_dirty=false` 的结果。开发期脏工作树结果可以用于调试，但报告必须明确标注，不能作为阶段标签依据。
 

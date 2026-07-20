@@ -51,6 +51,11 @@ from .module_stack import (
     IntegratedScalableModuleStack,
     IntegratedStackConfig,
 )
+from .learning_runtime import (
+    LearningRuntimeOptions,
+    ResolvedLearningRuntime,
+    resolve_learning_runtime,
+)
 from .world import ProximityInterceptEvent, VectorizedPointMassWorld
 from .animation import write_trajectory_animation
 
@@ -73,6 +78,7 @@ __all__ = [
     "IntegratedStackConfig",
     "KinematicLimits",
     "LinkProfile",
+    "LearningRuntimeOptions",
     "ObservationBatch",
     "OnlineSensorBatch",
     "OFFLINE_TRUTH_SCHEMA_VERSION",
@@ -84,6 +90,7 @@ __all__ = [
     "RuntimePublication",
     "RuntimeStepInput",
     "RuntimeStepOutput",
+    "ResolvedLearningRuntime",
     "SCENARIO_SCHEMA_VERSION",
     "SCENARIO_CATALOG_VERSION",
     "Scalable3DEpisodeRunner",
@@ -100,6 +107,7 @@ __all__ = [
     "look_at_rotation_ned_to_camera",
     "make_curriculum_scenario",
     "project_points",
+    "resolve_learning_runtime",
     "run_episode",
     "write_trajectory_animation",
 ]

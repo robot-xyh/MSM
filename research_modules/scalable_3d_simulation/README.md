@@ -31,6 +31,24 @@ python3 research_modules/scalable_3d_simulation/run_batch.py \
   --integrated-stack
 ```
 
+学习模型默认关闭。显式研究运行可增加下列参数；bundle 缺失、校验失败、分布外、低置信或
+超时均保留规则路径：
+
+```bash
+python3 research_modules/scalable_3d_simulation/run_episode.py \
+  --drone-count 20 --duration 3 --integrated-stack \
+  --d3-learning-mode shadow --d3-model-bundle <d3_bundle> \
+  --d4-learning-mode shadow --d4-model-bundle <d4_bundle> \
+  --d5-model-bundle <d5_bundle> \
+  --output <episode_output>
+```
+
+D3 的 `assist` 只有在 bundle 内准入清单证明至少 20 个未见 seed、成本与安全非退化且
+无回退帧时才可能生效。D4 当前只发布经资源守恒、通信邻接、owner、epoch、lease、故障
+围栏和联盟提交约束投影的区域建议；它不修改正式 D4 裁决，也不直接授权 D7。D4 尚无正式
+未见 seed 准入制品，因此即使请求 `assist`，main 仍将实际模式保持为 `shadow`。D5 只有
+显式给出校验通过的 bundle 才使用图边概率，异常时继续采用几何规则。
+
 场景目录还包含时延噪声、通信退化、中心失效、二级失效和高威胁多机需求配置。单一二级
 接管、多二级区域所有权和二级再次失效后的完全分布式计划已经接入质点模块栈。所有路径
 仍校验计划版本、区域所有者、故障代际、租约和提交模式；证据缺失或过期时保持闭锁。
@@ -49,7 +67,7 @@ CSV 和中文 Markdown。
 
 ## 当前验证
 
-2026-07-20 的 main 集成回归为 **36/36 passed**。其中 5v5、seed 7、1.2 秒场景形成
+2026-07-20 的 main 集成回归为 **39/39 passed**。其中 5v5、seed 7、1.2 秒场景形成
 5 条 D1 航迹、5 条 D2 中心航迹、5 项 D3 分配和 5 路 D7 中段指令，在线真值字段使用为
 0。200v200、seed 17、0.25 秒雷达烟测形成 200 条 D1/D2 航迹和 200 项分配；D3 从
 40000 个完整 pair 中保留 6400 条候选边，D7 输出 `(200, 3)` 有限加速度。
@@ -94,8 +112,12 @@ seed 17 复测：
 稀疏分配优化前的历史短测，仅保留作性能演进参照。
 
 当前尚未完成至少 20 个未见 seed 的 NIS/NEES、门控率和长期速度 coverage，也未完成
-200-camera 图构建。D5 默认使用几何规则回退；现有图网络只有训练管线 smoke，没有独立
-验证 checkpoint。D6 规模评估、D5 模型验收和 D3/区域/主动视觉学习策略验收仍是后续工作。
+200-camera 图构建。D3 已具备整 seed 数据集、行为克隆、原生近端策略优化、bundle 和
+paired shadow evaluator；D4 已具备变长区域图、规则基线、行为克隆、近端策略优化和安全
+投影；D5 已具备真值物理隔离的数据集、原生图网络训练、校准和校验加载；D6 已能离线消费
+规模化 episode 并输出逐 seed、聚合、中文报告和曲线。上述结果只证明研究管线和回退机制，
+没有独立验证 checkpoint，也没有模型准入结论。D5 主动视觉策略、正式训练数据和至少 20 个
+未见 seed 的联合验收仍未完成。
 
 每个物理步结束后，离线评估侧按三维 5 米门限登记唯一接近事件。事件中的真值目标号只
 写入 `offline_proximity_intercepts.jsonl`，不进入在线总线；D6 还需结合分配与身份映射
@@ -108,6 +130,7 @@ seed 17 复测：
 - 场景：`scalable3d-scenario-v1`
 - 在线观测：`scalable3d-observation-v1`
 - 离线真值：`scalable3d-offline-truth-v1`
+- D4 区域策略：`d4-region-resource-rule-v1` 或带权重 SHA256 的显式模型版本
 
 每个 episode 的 `manifest.json` 记录上述版本、Git commit、配置 SHA256、seed、模型版本和
 阈值版本。在线总线拒绝任何包含 truth/actor/object identity 字段的观测负载。

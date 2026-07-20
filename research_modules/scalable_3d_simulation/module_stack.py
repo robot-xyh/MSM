@@ -48,6 +48,8 @@ from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
     RegionalFailoverCoordinator,
     RegionalFailoverSnapshot,
     RegionalFallbackMember,
+    RegionResourceEdge,
+    RegionResourceSnapshot,
     RegionalScenarioMetadata,
     RegionalTaskEvidence,
     SecondaryReadinessEvidence,
@@ -116,10 +118,22 @@ class IntegratedScalableModuleStack:
         self,
         config: IntegratedStackConfig | None = None,
         *,
+        d3_learning_assistant: Any | None = None,
+        d4_region_advisor: Any | None = None,
+        d4_unseen_seed_count: int = 0,
         d5_edge_model: Any | None = None,
+        learning_runtime_diagnostics: Mapping[str, Any] | None = None,
     ) -> None:
         self.stack_config = config or IntegratedStackConfig()
+        if int(d4_unseen_seed_count) < 0:
+            raise ValueError("d4_unseen_seed_count must be non-negative")
+        self.d3_learning_assistant = d3_learning_assistant
+        self.d4_region_advisor = d4_region_advisor
+        self.d4_unseen_seed_count = int(d4_unseen_seed_count)
         self.d5_edge_model = d5_edge_model
+        self.learning_runtime_diagnostics = dict(
+            learning_runtime_diagnostics or {}
+        )
         self.config: ScenarioConfig | None = None
         self.d1: Scalable3DFusionAdapter | None = None
         self.d2: Scalable3DTracker | None = None
@@ -133,6 +147,7 @@ class IntegratedScalableModuleStack:
         self.latest_plan: Any | None = None
         self.latest_bindings: tuple[Any, ...] = ()
         self.latest_d4_decision: Any | None = None
+        self.latest_d4_region_advice: Any | None = None
         self.latest_d5_result: Any | None = None
         self.latest_guidance_batch: Any | None = None
         self._latest_terminal_by_pair: dict[tuple[str, str], tuple[dict[str, Any], Any]] = {}
@@ -160,7 +175,8 @@ class IntegratedScalableModuleStack:
                 human_authorization_state=(
                     self.stack_config.d3_human_authorization_state
                 ),
-            )
+            ),
+            learning_assistant=self.d3_learning_assistant,
         )
         self.d4 = RegionalFailoverCoordinator()
         self.d5 = Scalable3DTerminalAdapter()
@@ -176,6 +192,7 @@ class IntegratedScalableModuleStack:
         self.latest_plan = None
         self.latest_bindings = ()
         self.latest_d4_decision = None
+        self.latest_d4_region_advice = None
         self.latest_d5_result = None
         self.latest_guidance_batch = None
         self._latest_terminal_by_pair.clear()
@@ -280,6 +297,8 @@ class IntegratedScalableModuleStack:
             )
             publications.append(self._d3_publication(now))
             publications.append(self._d4_publication(now))
+            if self.latest_d4_region_advice is not None:
+                publications.append(self._d4_region_advice_publication(now))
             self._fault_generation_changed = False
             self._next_assignment_s = _advance_schedule(
                 self._next_assignment_s,
@@ -315,6 +334,7 @@ class IntegratedScalableModuleStack:
         secondary_failed: bool,
     ) -> None:
         config = self._require_ready()
+        self.latest_d4_region_advice = None
         adapter_started = perf_counter()
         tracks = self._d3_tracks()
         resources = self._d3_resources(step_input.interceptors)
@@ -487,6 +507,246 @@ class IntegratedScalableModuleStack:
         started = perf_counter()
         self.latest_d4_decision = self.d4.evaluate(snapshot)
         self._record_timing("d4_regional_failover", perf_counter() - started)
+        self._run_d4_region_resource_advisor(
+            step_input,
+            formal_snapshot=snapshot,
+            now=now,
+        )
+
+    def _run_d4_region_resource_advisor(
+        self,
+        step_input: RuntimeStepInput,
+        *,
+        formal_snapshot: RegionalFailoverSnapshot,
+        now: float,
+    ) -> None:
+        """Publish aggregate advice without mutating D4 authority or D3 plans."""
+
+        if self.d4_region_advisor is None or self.latest_d4_decision is None:
+            return
+        started = perf_counter()
+        regional_snapshot = self._d4_region_resource_snapshot(
+            step_input,
+            formal_snapshot=formal_snapshot,
+            now=now,
+        )
+        self.latest_d4_region_advice = self.d4_region_advisor.advise(
+            regional_snapshot,
+            formal_decision=self.latest_d4_decision,
+            unseen_seed_count=self.d4_unseen_seed_count,
+        )
+        self._record_timing(
+            "d4_region_resource_advisor",
+            perf_counter() - started,
+        )
+
+    def _d4_region_resource_snapshot(
+        self,
+        step_input: RuntimeStepInput,
+        *,
+        formal_snapshot: RegionalFailoverSnapshot,
+        now: float,
+    ) -> RegionResourceSnapshot:
+        """Aggregate online estimates into a truth-free regional graph."""
+
+        config = self._require_ready()
+        region_ids = tuple(item.region_id for item in formal_snapshot.regions)
+        tasks_by_region: dict[str, list[RegionalTaskEvidence]] = {
+            region_id: [] for region_id in region_ids
+        }
+        for task in formal_snapshot.tasks:
+            tasks_by_region.setdefault(task.region_id, []).append(task)
+
+        assigned_region_by_resource: dict[str, str] = {}
+        for task in formal_snapshot.tasks:
+            for resource_id in task.d3_assigned_member_ids:
+                assigned_region_by_resource.setdefault(resource_id, task.region_id)
+        active_resources_by_region = {region_id: 0 for region_id in region_ids}
+        for index, resource_id in enumerate(step_input.interceptors.platform_ids):
+            if not bool(step_input.interceptors.active[index]):
+                continue
+            region_id = assigned_region_by_resource.get(
+                resource_id,
+                _region_for_position(
+                    step_input.interceptors.state_ned[index, :3],
+                    config.region_count,
+                ),
+            )
+            if region_id in active_resources_by_region:
+                active_resources_by_region[region_id] += 1
+
+        decision_by_region = {
+            item.region_id: item for item in self.latest_d4_decision.region_decisions
+        }
+        region_signals: dict[str, dict[str, Any]] = {}
+        for region_id in region_ids:
+            tasks = tasks_by_region.get(region_id, [])
+            decision = decision_by_region[region_id]
+            committed_ids = {
+                resource_id
+                for task in tasks
+                for resource_id in task.d3_assigned_member_ids
+            }
+            available = max(
+                active_resources_by_region.get(region_id, 0),
+                len(committed_ids),
+            )
+            reserve = min(
+                max(0, available - len(committed_ids)),
+                int(math.ceil(0.10 * available)),
+            )
+            applicable = [
+                task
+                for task in tasks
+                if task.d5_consistency != D5Consistency.NOT_APPLICABLE
+            ]
+            required_visual = sum(task.required_member_count for task in applicable)
+            supported_visual = sum(len(task.d5_support_member_ids) for task in applicable)
+            d5_visibility = (
+                1.0
+                if required_visual == 0
+                else min(1.0, supported_visual / required_visual)
+            )
+            consistency_score = {
+                D5Consistency.CONSISTENT: 1.0,
+                D5Consistency.UNKNOWN: 0.5,
+                D5Consistency.INCONSISTENT: 0.0,
+                D5Consistency.NOT_APPLICABLE: 1.0,
+            }
+            d5_consistency = (
+                1.0
+                if not applicable
+                else float(
+                    np.mean(
+                        [consistency_score[task.d5_consistency] for task in applicable]
+                    )
+                )
+            )
+            readiness_records = tuple(decision.secondary_readiness.values())
+            secondary_coverage = max(
+                (float(item.get("coverage_ratio", 0.0)) for item in readiness_records),
+                default=0.0,
+            )
+            secondary_readiness = max(
+                (float(bool(item.get("ready", False))) for item in readiness_records),
+                default=0.0,
+            )
+            unresolved_demand = sum(
+                max(0, task.required_member_count - len(task.d3_assigned_member_ids))
+                + int(not task.d3_resource_feasible)
+                for task in tasks
+            )
+            region_signals[region_id] = {
+                "target_demand": float(
+                    sum(task.required_member_count for task in tasks)
+                ),
+                "high_threat_backlog": float(unresolved_demand),
+                "d1_uncertainty": float(
+                    np.mean([task.d1_covariance_trace for task in tasks])
+                    if tasks
+                    else 0.0
+                ),
+                "d2_uncertainty": float(
+                    np.mean([task.d2_ambiguity_score for task in tasks])
+                    if tasks
+                    else 0.0
+                ),
+                "d5_visibility": d5_visibility,
+                "d5_consistency": d5_consistency,
+                "available_resources": available,
+                "reserve_resources": reserve,
+                "secondary_coverage": secondary_coverage,
+                "secondary_readiness": secondary_readiness,
+                "communication_capacity": (
+                    config.communication_bandwidth_bytes_per_s * 8.0 / 1_000_000.0
+                    if config.communication_enabled
+                    else 0.0
+                ),
+                "communication_latency_s": config.communication_latency_s,
+                "packet_loss_rate": config.communication_drop_probability,
+                "committed_resources": len(committed_ids),
+                "coalition_ack_complete": all(
+                    (not commit.commit_required) or commit.execution_authorized
+                    for commit in decision.coalition_commits
+                ),
+                "fault_fenced": bool(
+                    decision.fail_closed or not decision.execution_allowed
+                ),
+                "fault_fence_epoch": (
+                    int(formal_snapshot.epoch)
+                    if decision.fail_closed or not decision.execution_allowed
+                    else None
+                ),
+                "assignment_conflict_count": sum(
+                    "conflict" in str(reason)
+                    for reason in decision.risk_factors
+                ),
+                "degradation_failed": bool(decision.fail_closed),
+            }
+
+        edges = self._d4_region_resource_edges(
+            region_ids,
+            region_signals,
+        )
+        return RegionResourceSnapshot.from_regional_decision(
+            self.latest_d4_decision,
+            snapshot_id=(
+                f"{config.scenario_name}-s{config.seed}-"
+                f"p{formal_snapshot.plan_version}-t{now:.6f}"
+            ),
+            scenario_id=config.scenario_name,
+            scenario_version=config.scenario_version,
+            seed=config.seed,
+            region_signals=region_signals,
+            edges=edges,
+        )
+
+    def _d4_region_resource_edges(
+        self,
+        region_ids: tuple[str, ...],
+        region_signals: Mapping[str, Mapping[str, Any]],
+    ) -> tuple[RegionResourceEdge, ...]:
+        config = self._require_ready()
+        if len(region_ids) <= 1:
+            return ()
+        arc_distance = 2.0 * math.pi * config.protected_radius_m / len(region_ids)
+        transfer_time = arc_distance / config.interceptor_speed_mps
+        bandwidth_mbps = (
+            config.communication_bandwidth_bytes_per_s * 8.0 / 1_000_000.0
+            if config.communication_enabled
+            else 0.0
+        )
+        directed_pairs: set[tuple[str, str]] = set()
+        for index, source in enumerate(region_ids):
+            directed_pairs.add((source, region_ids[(index + 1) % len(region_ids)]))
+            directed_pairs.add((source, region_ids[(index - 1) % len(region_ids)]))
+        edges: list[RegionResourceEdge] = []
+        for source, target in sorted(directed_pairs):
+            signal = region_signals[source]
+            transferable = max(
+                0,
+                int(signal["available_resources"])
+                - int(signal["reserve_resources"])
+                - int(signal["committed_resources"]),
+            )
+            edges.append(
+                RegionResourceEdge(
+                    source_region_id=source,
+                    target_region_id=target,
+                    transferable_resources=transferable,
+                    distance_m=arc_distance,
+                    transfer_time_s=transfer_time,
+                    bandwidth_mbps=bandwidth_mbps,
+                    communication_available=config.communication_enabled,
+                    maneuver_available=True,
+                    partitioned=(
+                        not config.communication_enabled
+                        or config.communication_drop_probability >= 1.0
+                    ),
+                    bidirectional=False,
+                )
+            )
+        return tuple(edges)
 
     def _selected_secondary_for_active_regions(self, plan: Any) -> str | None:
         """Return one D4-vetted owner only when it covers every active region."""
@@ -1595,6 +1855,18 @@ class IntegratedScalableModuleStack:
             copy_payload=False,
         )
 
+    def _d4_region_advice_publication(self, now: float) -> RuntimePublication:
+        return RuntimePublication(
+            topic="modules.d4.region_resource_advice",
+            source="D4",
+            schema_version="d4-region-resource-advisory-runtime-v1",
+            payload={
+                "timestamp": now,
+                **self.latest_d4_region_advice.to_dict(),
+            },
+            copy_payload=False,
+        )
+
     def _d5_publication(self, now: float) -> RuntimePublication:
         association = self.latest_d5_result.association
         return RuntimePublication(
@@ -1684,6 +1956,18 @@ class IntegratedScalableModuleStack:
             "regional_plan_rejection_reason": (
                 self._regional_plan_rejection_reason
             ),
+            "d4_region_advice_available": self.latest_d4_region_advice is not None,
+            "d4_region_advice_effective_mode": (
+                None
+                if self.latest_d4_region_advice is None
+                else self.latest_d4_region_advice.effective_mode.value
+            ),
+            "d4_region_advice_fallback_reason": (
+                None
+                if self.latest_d4_region_advice is None
+                else self.latest_d4_region_advice.fallback_reason
+            ),
+            "learning_runtime": dict(self.learning_runtime_diagnostics),
             "online_truth_use_count": 0,
             "stage_timings": {
                 stage: {

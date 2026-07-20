@@ -15,8 +15,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
-from research_modules.scalable_3d_simulation.module_stack import (
-    IntegratedScalableModuleStack,
+from research_modules.scalable_3d_simulation.learning_runtime import (
+    add_learning_runtime_arguments,
+    learning_runtime_options_from_args,
+    resolve_learning_runtime,
 )
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
 
@@ -50,6 +52,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--gif", action="store_true", help="write a 3D GIF from offline truth")
     parser.add_argument("--mp4", action="store_true", help="write a 3D MP4 when ffmpeg is available")
+    add_learning_runtime_arguments(parser)
     return parser.parse_args()
 
 
@@ -90,6 +93,14 @@ def main() -> int:
             }
         )
     config = replace(config, **updates)
+    learning_options = learning_runtime_options_from_args(args)
+    module_stack = None
+    if args.integrated_stack:
+        resolved_runtime = resolve_learning_runtime(config, learning_options)
+        config = resolved_runtime.config
+        module_stack = resolved_runtime.stack
+    elif learning_options.requested:
+        raise ValueError("optional learning bundles require --integrated-stack")
     animation_formats = tuple(
         name for name, enabled in (("gif", args.gif), ("mp4", args.mp4)) if enabled
     )
@@ -98,7 +109,7 @@ def main() -> int:
         output_dir=args.output,
         write_plot=args.plot,
         animation_formats=animation_formats,
-        module_stack=(IntegratedScalableModuleStack() if args.integrated_stack else None),
+        module_stack=module_stack,
     )
     print(f"episode_id={result.manifest.episode_id}")
     print(f"scale={config.resource_count}v{config.target_count}")

@@ -14,8 +14,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
-from research_modules.scalable_3d_simulation.module_stack import (
-    IntegratedScalableModuleStack,
+from research_modules.scalable_3d_simulation.learning_runtime import (
+    add_learning_runtime_arguments,
+    learning_runtime_options_from_args,
+    resolve_learning_runtime,
 )
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
 from research_modules.scalable_3d_simulation.reporting import write_batch_outputs
@@ -45,6 +47,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("research_modules/scalable_3d_simulation/outputs/curriculum"),
     )
+    add_learning_runtime_arguments(parser)
     return parser.parse_args()
 
 
@@ -53,6 +56,9 @@ def main() -> int:
     base = ScenarioConfig.from_dict(
         json.loads(args.config.read_text(encoding="utf-8"))
     )
+    learning_options = learning_runtime_options_from_args(args)
+    if learning_options.requested and not args.integrated_stack:
+        raise ValueError("optional learning bundles require --integrated-stack")
     results = []
     for scenario in args.scenarios:
         for scale in args.scales:
@@ -64,15 +70,19 @@ def main() -> int:
                     duration_s=args.duration,
                     base=base,
                 )
+                module_stack = None
+                if args.integrated_stack:
+                    resolved_runtime = resolve_learning_runtime(
+                        config,
+                        learning_options,
+                    )
+                    config = resolved_runtime.config
+                    module_stack = resolved_runtime.stack
                 episode_dir = args.output / scenario / f"{scale}v{scale}" / f"seed_{seed}"
                 result = run_episode(
                     config,
                     output_dir=episode_dir,
-                    module_stack=(
-                        IntegratedScalableModuleStack()
-                        if args.integrated_stack
-                        else None
-                    ),
+                    module_stack=module_stack,
                 )
                 results.append(result)
                 print(
