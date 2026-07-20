@@ -782,3 +782,41 @@ helper，按完整 scenario/seed/episode 保存连续 frame，并由 D6 检查�
 缺帧/不可用 reason 和 truth-isolation。D3 本轮没有修改 main/runtime，也没有生成真实
 AirSim seed；真实数据训练、>=20 未见 seed、paired shadow 非退化和 assist promotion
 继续开放。
+
+## 24. D4 区域资源建议到 D3 候选图合同（2026-07-20）
+
+### 已完成的 D3-owned 能力
+
+1. 新增冻结、版本化的 `RegionalPlanningHint`、`RegionalPlanningConstraint` 和
+   `RegionalTransferAllowance`，公共 schema 为 `d3_regional_planning_hint_v1`。严格
+   mapping 工厂不依赖 D4 包，并拒绝未知字段及 truth/actor/object/target/resource ID。
+2. `AssignmentPlanner.plan(..., regional_planning_hint=...)` 只接受精确引用
+   `previous_plan.plan_id/version`、未过期且已 projected 的提示。逐区域 source、owner、
+   epoch、lease、当前区域集合、quota 守恒和 transfer 净额均显式验证。
+3. 前一计划 assignment 和 coalition 成员全部计入 committed protection；源区按
+   post-quota 的 `ceil(reserve_ratio * resource_count)` 保护 reserve。许可资源不足、
+   hold 区域被 transfer、或候选物理/反馈边不足均给稳定 reason，并重跑无提示规则规划。
+4. 合法提示在 learning assistant 前约束 candidate mask。同区候选保留原规则结果；每条
+   跨区 route 预选固定大小、互斥且未承诺的资源池，Hungarian 资源唯一性保证实际使用数
+   不超过 allowance。M-to-N demand slot、D5 hard feedback、学习 residual、迟滞和版本
+   发布继续复用既有实现。
+5. plan metadata 输出 hint available/considered/applied/rejected、advisory/source identity、
+   projected、fallback/rejection reason、hold/request-replan region、route allowed/actual 和
+   actual cross-region resource count。非法提示不会静默折算为零建议。
+
+### 验证与剩余集成
+
+验证日期为 2026-07-20。新增 14 个模块 fixture case，覆盖无提示等价、1-to-1、M-to-N、
+8 类拒绝回退、commit/reserve、D5 hard edge 和 learning assist；seed 不适用。全量收集
+240 项，结果为 `239 passed, 1 skipped`，门限为零失败，skip 是 optional OR-Tools。
+
+该状态是 D3 模块合同已实现并测试，不是 D4-main-D3 运行闭环或多 seed 性能结论。后续：
+
+1. main 将上一轮 D4 `RegionResourceRecommendation` 的 projected actions/transfers 映射
+   为 D3 DTO，同时明确生成 `expires_at_s` 和 advisory version；禁止透传 D4 控制对象。
+2. main 保证调用顺序为 D3 plan N -> D4 advice N -> D3 plan N+1，并使用同一 episode
+   单调时钟；stale source、过期 lease 和 reset 后旧 advisory 必须被审计拒绝。
+3. D6 统计 considered/applied/rejected、reason、allowed/actual transfer、跨区资源数、
+   unmet demand、churn 和求解时延，并在动态 N/M 的正式多 seed/AirSim 批次做非退化比较。
+4. `plan_regional_authority()` 继续承担 D4 已裁决 owner/成员的执行计划物化；新 hint 入口
+   不选择 owner、不授权 D7，也不替代 D4 failover/coalition commit。

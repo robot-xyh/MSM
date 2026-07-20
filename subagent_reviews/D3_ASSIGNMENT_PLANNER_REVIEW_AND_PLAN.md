@@ -655,3 +655,23 @@ payload。authority-generation fence 只有版本隔离，没有当前成本输�
 `225 passed, 1 skipped`；零失败门限通过，skip 仅 optional OR-Tools。尚未完成的是
 main/runtime 的真实 episode 接线、连续整 seed 数据、D6 可用性统计和真实 shadow
 promotion 证据。
+
+## 25. 区域资源提示候选图入口复核（2026-07-20）
+
+本轮新增能力与既有 `plan_regional_authority()` 分工明确：后者物化 D4 已裁决的 owner 和
+成员；新 `plan(..., regional_planning_hint=...)` 只把上一轮聚合区域资源建议转换成下一
+轮 D3 candidate graph 约束。DTO、schema、严格 mapping 解析和错误 reason 全部由 D3
+拥有，不导入 D4 控制类，也不接受 target/resource/truth/actor/object 身份字段。
+
+应用顺序为 rule cost/switch penalty -> regional mask -> optional learning residual ->
+Hungarian/demand-slot -> feedback/hysteresis/version。每条 transfer allowance 对应一个固定
+大小、与其他 route 互斥的未承诺资源池；资源唯一性使实际跨区数不超过许可。上一计划的
+所有 assignment/coalition member 和按 post-quota 计算的 reserve floor 不进入该池。D5
+hard reject、能力、三维可达性和稀疏 mask 仍优先。非法/过期/不可满足提示记录 reason 后
+调用同帧无提示 `_plan_candidate()`，不把非法值解释为零建议。
+
+14 个新增 fixture case 与 240 项全量回归结果为 `239 passed, 1 skipped`，零失败门限
+通过；skip 是 optional OR-Tools。覆盖 1-to-1、M-to-N、learning assist、D5 hard edge、
+source/lease/region/conservation/transfer 错误和 commit/reserve 保护，seed 不适用。复核
+结论为 D3-owned 合同已实现并测试；main 尚未映射 D4 recommendation，D6 尚未形成正式
+多 seed 指标，AirSim 和物理拦截本轮均未运行。

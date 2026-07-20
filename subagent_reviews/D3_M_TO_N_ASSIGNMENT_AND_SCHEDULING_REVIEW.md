@@ -393,3 +393,23 @@ stale 或无法将 plan assignment 映射到当前 roster 时直接 unavailable�
 或固定 M-to-N 动作头。D3 全量 226 项为 `225 passed, 1 skipped`。该结果只完成
 D3 recorder 合同；真实动态 demand、primary/reserve feedback、资源故障连续 seed、
 main 写盘和 M-to-N shadow 非退化仍未验证。
+
+## 23. 区域 transfer allowance 与 M-to-N 需求槽（2026-07-20）
+
+区域提示约束原始 target-resource candidate mask，不创建独立的固定规模 transfer solver。
+同一目标展开为多个 role/wave/capability slot 后，每个 slot 复制该 mask；所有 slot 仍共享
+一组资源列并交给 `HungarianDemandSlotSolver`，因此一个资源不能被多个成员或目标重复
+使用。每条 source-region -> target-region allowance 先绑定固定大小、互斥且未承诺的
+资源池，故 M-to-N 实际跨区成员数不会超过许可。
+
+上一计划的 primary、reserve、retry 及 coalition 成员均视为 protected，不进入新跨区
+池；aggregate reserve ratio 另按 post-quota 计算 floor。提示不会重开 D5 hard edge、
+能力不匹配或三维不可达边，也不改变 complete coalition 的 all-or-none admission、成员
+角色、epoch、迟滞和 plan version。提示无效时整个 M-to-N 求解回到原 candidate graph，
+不是在受损图上把 transfer count 置零。
+
+专项 fixture 以一个 `required_resource_count=2` 的 simultaneous 目标验证两个 A 区空闲
+资源经 allowance 成为 B 区候选并组成完整 coalition，actual/allowed 均为 2；另有 D5
+hard edge + learning assist case 验证被禁资源不进入联盟。14 个新增 case 后 D3 全量为
+`239 passed, 1 skipped`（240 项）；seed 不适用，未运行真实动态 demand、多 seed AirSim
+或协同物理完成，因此只关闭 D3 候选图和 cardinality 合同缺口。

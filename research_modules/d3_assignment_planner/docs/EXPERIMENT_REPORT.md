@@ -410,3 +410,31 @@ matrix/mapping、失败调用替换旧帧和公开 frame helper。
 OR-Tools 的 installed-only benchmark。该结果只证明 D3 recorder API 与 fail-closed
 生命周期，尚无 main 集成、真实 episode frame 数、真实 seed split、AirSim outcome 或
 shadow non-degradation 数据。
+
+## 2026-07-20 区域资源提示候选约束确定性验收
+
+### 设置与门限
+
+本批使用 D3 本地 pytest fixture，不启动 AirSim，不运行性能 benchmark。输入覆盖普通
+1-to-1 和 `required_resource_count=2` 的 M-to-N；构造 A/B 两区域、上一计划已承诺成员、
+空闲源区资源、目标区资源失效、reserve ratio、D5 hard edge 和 learning assist。seed
+不适用。接受门限为：无提示求解同解；合法提示真实改变 candidate edge；每 route actual
+不超过 allowance；committed/coalition/reserve 不被 transfer；非法提示 reason 非空且
+结果等于同帧无提示基线；全量零失败。
+
+### 结果
+
+| 验收项 | 样本 | 结果 |
+|---|---|---|
+| DTO/mapping | frozen、未知字段、truth/actor/object identity | 严格解析和拒绝 reason 通过 |
+| 无提示 | 隐式缺省与显式 `None` | assignment、成本、solver 和候选数一致 |
+| 1-to-1 transfer | A -> B allowance=1 | 原 region-incompatible 资源成为候选并被 Hungarian 选择；actual=1 |
+| 非法/过时提示 | source、expiry、region、conservation、transfer net、projected、lease、truth | 8 类均回退原规则且 reason 明确 |
+| commit/reserve | previous assignment + post-quota reserve | 超额 transfer 整体拒绝 |
+| M-to-N | simultaneous k=2、allowance=2 | 两个跨区成员组成 complete coalition；actual=2 |
+| D5 + learning | 1 条 hard edge、assist residual | hard edge 未恢复，另一许可边进入 Hungarian，learning 正常执行 |
+
+新增 14 个 case 全部通过。D3 全量收集 240 项，结果为
+`239 passed, 1 skipped`，接受门限为零失败；skip 是 optional OR-Tools installed-only
+case。该结果证明 D3 DTO、候选约束、fallback 和审计合同，不证明 main 已接入 D4，也
+没有正式多 seed、AirSim 时延/非退化或物理拦截结果。

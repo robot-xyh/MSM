@@ -1237,3 +1237,59 @@ frame_index=...)` 检查 availability 后，把证据的 rule result、匿名 sn
 regional、authority fence 和 unmatched publish 都没有 payload；成功后只替换这一帧，
 不累计 history。2026-07-20 新增 11 个专项测试；全量收集 226 项，结果
 `225 passed, 1 skipped`，门限为零失败。main/runtime 真实整 seed 写盘尚未完成。
+
+## 31. RegionalPlanningHint 候选图约束（2026-07-20）
+
+### 31.1 公共合同与回退
+
+schema `d3_regional_planning_hint_v1` 包含 advisory id/version、created/expiry、source
+plan id/version、projected、逐区域 owner/layer/epoch/lease、quota delta、reserve ratio、
+hold/request-replan，以及有向邻区 transfer allowance。DTO 为 frozen dataclass；严格
+mapping 工厂要求完整且仅允许已知字段，并递归拒绝 truth/actor/object/target/resource
+身份键。D3 不导入 D4 类。
+
+运行校验依次检查 previous plan 精确匹配、时间窗、当前 region roster、区域 authority
+摘要（若 source plan 含该摘要）、总资源守恒和 transfer 净额。对源区 `r`：
+
+```text
+post_r = current_r + quota_delta_r
+reserve_r = ceil(reserve_ratio_r * post_r)
+transferable_r = current_r - protected_committed_r - reserve_r
+outgoing_allowance_r <= transferable_r
+```
+
+`protected_committed_r` 包括上一计划全部 assignment 和 coalition member。任一校验失败或
+后续找不到足量物理可行候选时抛出内部稳定 `RegionalPlanningHintError.reason`；公共
+`plan()` 捕获该提示错误，重新调用未携带 context 的原 `_plan_candidate()`，并把 reason
+写入最终 plan。stale `previous_plan` 本身仍由 `StalePlanError` fail closed，不被提示回退
+吞掉。
+
+### 31.2 候选 mask 与基数上限
+
+提示分支先让成本模型只计算原同区和被许可源区，并把潜在 transfer 边加入 sparse
+preservation；资源状态、D5 pair feasibility、能力、距离、时间和 friendly conflict 仍按
+原规则拒绝。随后每条 route 按最小可行规则成本和 resource id 稳定排序，从未承诺资源中
+选出恰好 `resource_count` 个互斥 pool member。最终 mask 为：
+
+```text
+candidate(t, r) = base_rule_feasible(t, r)
+                  and (same_region_base_allowed(t, r)
+                       or r in transfer_pool[source_region, target_region])
+```
+
+受保护的历史跨区资源只允许保留其原 edge，且也计入该 route allowance。不同 route 的
+pool 不共享资源。Hungarian 每列最多选一次，因此每条 route 的实际跨区 assignment 数
+天然不超过 pool 大小。M-to-N 展开只复制该 mask 到 demand slot；资源列仍全局共享，
+all-or-none coalition admission 不变。learning assistant 在 mask 之后执行，不能恢复被
+删边。
+
+### 31.3 审计与验证
+
+plan metadata 输出 hint 生命周期布尔值、advisory/source identity、projected、明确
+fallback/rejection reason、hold/request-replan region、逐 route allowed/actual count、
+actual cross-region total 和 limit-satisfied。无提示调用仅追加 unavailable 审计值，成本
+构造、学习和 solver 分支保持原调用顺序。
+
+14 个新增确定性 case 覆盖 1-to-1、M-to-N、D5 hard edge、learning assist、commit/
+reserve 和非法回退。2026-07-20 全量收集 240 项，结果 `239 passed, 1 skipped`；没有
+AirSim、正式多 seed 性能或物理结果。

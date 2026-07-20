@@ -31,3 +31,9 @@ rule/effective/shadow/fallback 矩阵、版本和匿名输入快照留在 planne
 `ALGORITHM_AND_IMPLEMENTATION.md` 记录 schema/捕获点，`AIRSIM_INTEGRATION_PLAN.md`
 记录 main 接线要求，`EXPERIMENT_REPORT.md` 记录模块验收。本批未运行 AirSim 或生成
 真实 seed 数据。
+
+同日新增上一轮 D4 区域资源建议到下一轮 D3 candidate graph 的可选合同。最新模块
+全量收集 240 项，结果为 `239 passed, 1 skipped`；14 个新增 case 仅为确定性 fixture。
+算法、审计字段和 fail-safe 回退见 `ALGORITHM_AND_IMPLEMENTATION.md`，main 时序与 D6
+验收条件见 `AIRSIM_INTEGRATION_PLAN.md`，测试边界见 `EXPERIMENT_REPORT.md`。该状态不
+代表 D4-main-D3 已接线，也没有新增 AirSim 或正式多 seed 性能证据。

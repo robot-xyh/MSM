@@ -195,6 +195,13 @@ from .regional import (
     RegionalCoalitionCommitEvidence,
     RegionalPlanAuthorityError,
 )
+from .regional_hint import (
+    REGIONAL_PLANNING_HINT_SCHEMA_V1,
+    RegionalPlanningConstraint,
+    RegionalPlanningHint,
+    RegionalPlanningHintError,
+    RegionalTransferAllowance,
+)
 
 __all__ = [
     "ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1",
@@ -284,10 +291,15 @@ __all__ = [
     "RankedCooperativeCandidate",
     "REGIONAL_ASSIGNMENT_PLAN_SCHEMA_V1",
     "REGIONAL_AUTHORITY_INPUT_SCHEMA_V1",
+    "REGIONAL_PLANNING_HINT_SCHEMA_V1",
     "RegionalAuthorityGrant",
     "RegionalAuthorityInput",
     "RegionalCoalitionCommitEvidence",
+    "RegionalPlanningConstraint",
+    "RegionalPlanningHint",
+    "RegionalPlanningHintError",
     "RegionalPlanAuthorityError",
+    "RegionalTransferAllowance",
     "ResidualPrediction",
     "ResourceState",
     "RuleFallbackLearningAssistant",

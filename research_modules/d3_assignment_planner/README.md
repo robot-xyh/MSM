@@ -666,3 +666,36 @@ assist、learning/solver fallback、regional 成功与拒绝、失败清旧帧�
 installed-only case。main 尚未用真实 AirSim episode 导出整 seed 数据，因此这里只
 关闭 D3-owned recorder 接口缺口，不构成真实数据、shadow non-degradation 或 assist
 晋级证据。
+
+## 2026-07-20 上一轮区域资源提示约束下一轮候选图
+
+普通入口现支持可选关键字 `regional_planning_hint`。D3 自有且冻结的
+`RegionalPlanningHint`、`RegionalPlanningConstraint` 和
+`RegionalTransferAllowance` 使用 schema `d3_regional_planning_hint_v1`；调用方也可
+传入中性 mapping，由严格 `from_mapping()` 解析。该解析不导入 D4 类型，拒绝未知字段
+以及 truth/actor/object/target/resource 身份字段。提示携带 advisory identity/version、
+created/expiry、精确 source plan、逐区域 owner/epoch/lease、projected、quota delta、
+reserve ratio、hold/request-replan 和邻区 transfer allowance。
+
+提示只在显式提供时进入普通规划。D3 要求 source `plan_id/version` 与
+`previous_plan` 完全一致，当前 timestamp 同时落在提示与全部区域 lease 内，当前 target/
+resource 区域集合可解释，projected quota 总和守恒且与 transfer 净额一致。每个源区按
+当前资源数、上一计划全部 assignment/coalition 成员和 post-quota reserve floor 计算
+可转移容量；不满足时不把 transfer 当成 0，而是写入明确 fallback reason 后重新执行
+原规则路径。
+
+合法提示在规则矩阵和 switch penalty 之后、learning residual 之前约束候选 mask。同区
+边保持原规则门控；跨区只开放给该 route 固定大小且互斥的未承诺资源池，因此普通
+Hungarian 的资源唯一性直接形成 transfer count 上限。M-to-N role/wave slot 继续复制同一
+mask，D5 hard edge、能力/可达性、学习有界代价、迟滞和版本发布均不被绕过。最终
+`AssignmentPlan.metadata` 记录 available/considered/applied/rejected、advisory/source
+identity、fallback reason、逐 route allowed/actual count 和实际跨区资源总数，供 D6
+审计。无提示时规则矩阵、learning 调用和 Hungarian 路径不变。
+
+2026-07-20 新增 14 个确定性 pytest case，覆盖严格解析、无提示等价、1-to-1 实际跨区
+选边、8 类非法/过时回退、commit/reserve 保护、M-to-N 两资源 transfer 上限，以及 D5
+hard edge 与 learning assist 共存。seed 不适用于该模块 fixture；接受门限为全量零失败。
+D3 共收集 240 项，结果为 `239 passed, 1 skipped`，skip 是既有 optional OR-Tools
+installed-only case。本批没有运行 AirSim、正式多 seed 性能或物理拦截；main 仍需把
+D4 `RegionResourceRecommendation` 显式映射为 D3 DTO，并在 reset-separated episode
+中验证时间基准、owner/epoch/lease 和 D6 指标。

@@ -401,3 +401,23 @@ held/unchanged/forced replan、shadow、assist、learning/solver fallback、regi
 只新增 recorder 接线计划，明确本轮未修改 adapter、settings、actor/control 或运行真实
 episode。根级 main/system 文档不在 D3 owned paths，由 main 在集成 helper 后同步实际
 seed/frame/result。
+
+## 22. 区域资源提示到候选图 GAP 更新（2026-07-20）
+
+| GAP/能力 | 当前状态 | 证据与剩余边界 |
+|---|---|---|
+| D4 recommendation 无 D3 公共入口 | D3-owned closed | `regional_planning_hint` 可接 DTO 或严格中性 mapping；不导入 D4 |
+| 提示来源与时效 | deterministic fail-closed | source plan 精确匹配，created/expiry 和逐区域 lease 同时有效 |
+| quota/transfer 资源守恒 | deterministic fail-closed | projected、总 delta=0、逐区域 transfer 净额一致；非法提示有 reason 并回退 |
+| committed/coalition/reserve 保护 | deterministic closed | previous assignments/coalition members 全保护，reserve 按 post-quota 向上取整 |
+| 跨区许可只写 metadata | closed | 合法 route 真实修改 candidate mask，1-to-1/M-to-N 均由 Hungarian 选中 |
+| transfer cardinality | deterministic closed | route 固定互斥资源池 + 全局资源唯一性，actual 不超过 allowance |
+| D5/learning/迟滞兼容 | regression covered | hard edge 不重开，learning 只见受约束 mask，既有反馈/版本路径保留 |
+| D6 审计字段 | D3 interface done | available/considered/applied/rejected、identity/reason、allowed/actual 和跨区总数 |
+| main/D4 映射 | cross-module P1 open | 尚未把 `RegionResourceRecommendation` 映射为 DTO，也未处理 reset 后 advisory 生命周期 |
+| AirSim/多 seed/性能 | P1 open | 无新 episode、正式多 seed、时延分位数或物理结果 |
+
+本轮把“D4 区域聚合建议只能停留在 metadata/离线报告”改为“D3 候选约束合同已实现，
+系统接线待完成”。新增 14 个 fixture case；2026-07-20 全量收集 240 项，结果为
+`239 passed, 1 skipped`，接受门限为零失败，skip 是 optional OR-Tools。该证据不关闭
+main-owned 时序接线、D6 多 seed 非退化、AirSim 或物理拦截 GAP。

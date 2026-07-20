@@ -938,3 +938,26 @@ hold/replan head 当前用于 BC/PPO 和离线 counterfactual rollout，未接�
 2026-07-20 的 11 个专项测试覆盖上述原则及 1x3、3x2、7x4 动态 shape。D3 全量
 226 项结果为 `225 passed, 1 skipped`，零失败达到门限；这不代表 main 已导出真实
 AirSim seed，也不改变 shadow/assist 的准入边界。
+
+## 22. 区域建议只能约束候选，不能取得规划权（2026-07-20）
+
+1. **提示必须属于上一计划**：区域提示的 source `plan_id/version` 必须与调用时的
+   `previous_plan` 完全一致；created/expiry、逐区域 epoch/lease 和当前 episode 时钟必须
+   同时有效。reset、旧 generation 或区域集合不一致均视为 rejected hint。
+2. **只接收 D3-owned 值对象**：公共 DTO 和 schema 由 D3 定义，mapping 采用字段 allow
+   list，禁止 D4 控制对象以及 truth/actor/object/target/resource identity 泄漏。
+3. **projected 才可影响候选**：quota delta 必须总量守恒并与邻区 transfer 净额逐区域
+   一致；hold、reserve、owner 和 request-replan 都是显式合同字段。非法输入必须记录
+   reason 并完整回退原规则规划，禁止静默解释为零。
+4. **commit 和 reserve 先于 transfer**：上一计划 assignment/coalition 成员不得进入新
+   跨区资源池；post-quota reserve floor 也必须留下。许可数超过可安全解释资源时拒绝
+   整个提示。
+5. **Hungarian 保留最终裁决**：同区边沿用原规则，跨区边只对固定大小且互斥的许可池
+   开放；学习只能修改这些候选的有界成本。资源唯一性、M-to-N all-or-none、D5 hard
+   feedback、迟滞和版本状态机继续由 D3 决定。
+6. **建议不等于授权**：该入口不选择区域 owner、不提交 coalition、不授权 D7，也不
+   替代 `plan_regional_authority()`。metadata 的 applied 只表示候选约束生效。
+
+2026-07-20 的 14 个确定性 fixture case 和 240 项全量回归结果为
+`239 passed, 1 skipped`，门限为零失败；这不是 main/D4 接线、多 seed 性能、AirSim 或
+物理拦截证据。

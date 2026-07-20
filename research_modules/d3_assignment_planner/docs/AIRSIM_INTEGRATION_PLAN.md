@@ -311,3 +311,30 @@ case skipped. Main-owned acceptance remains: export complete sequential frames
 for every requested seed, verify no missing/duplicated frame index, validate
 anonymous schema and split hash, aggregate unavailable reasons, and compare
 rule/shadow pairs before any assist trial.
+
+## 2026-07-20 Regional Resource Hint Integration Contract
+
+No AirSim runtime, adapter, settings, actor, camera, or control file changed in
+this D3 task. The new `regional_planning_hint` entry is module-tested only.
+Main must construct the D3-owned neutral DTO after D4 emits one projected
+`RegionResourceRecommendation`; it must not pass a D4 control object or any
+truth/actor/object/target/resource identity field.
+
+The required episode order is D3 plan generation N, D4 regional advice derived
+from generation N, then D3 plan generation N+1 with the exact generation-N
+`previous_plan`. `created_at_s`, `expires_at_s`, every regional lease, and the
+D3 planning timestamp must use the same monotonic episode clock. AirSim reset
+must clear cached advice. A stale source, expired lease, region roster change,
+non-conserving quota, or unsafe transfer capacity must produce a rejected hint
+with a non-empty fallback reason while the ordinary D3 plan still completes.
+
+Main/D6 integration acceptance must cover dynamic N/M and both one-to-one and
+M-to-N demand over formal unseen seeds. Persist advisory/source identity,
+available/considered/applied/rejected, rejection reason, allowed/actual transfer
+count, total cross-region assignments, demand shortfall, churn, plan version,
+solver latency, and D4/D7 gate state. Required safety thresholds are zero stale
+hint application, zero allowance overflow, zero protected member transfer, zero
+hard-edge resurrection, and zero unauthorized D7 execution. Performance and
+physical interception non-degradation require a separate multi-seed AirSim
+report; the current 14 fixtures and `239 passed, 1 skipped` module result do not
+satisfy that requirement.

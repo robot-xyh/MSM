@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from math import ceil
 from time import perf_counter
 from typing import Any
 from uuid import uuid4
@@ -40,6 +41,12 @@ from .regional import (
     RegionalAuthorityInput,
     RegionalPlanAuthorityError,
 )
+from .regional_hint import (
+    REGIONAL_PLANNING_HINT_SCHEMA_V1,
+    RegionalPlanningConstraint,
+    RegionalPlanningHint,
+    RegionalPlanningHintError,
+)
 
 
 @dataclass(frozen=True)
@@ -65,6 +72,18 @@ class _WindowChangeBudget:
     allowed: bool
     remaining_before: int | None
     remaining_if_accepted: int | None
+
+
+@dataclass(frozen=True)
+class _RegionalHintContext:
+    hint: RegionalPlanningHint
+    constraint_by_region: Mapping[str, RegionalPlanningConstraint]
+    resource_ids_by_region: Mapping[str, tuple[str, ...]]
+    protected_resource_ids: frozenset[str]
+    protected_assignment_edges: frozenset[tuple[str, str]]
+    protected_cross_resource_ids_by_route: Mapping[
+        tuple[str, str], tuple[str, ...]
+    ]
 
 
 _HYSTERESIS_COST_BASIS_SCHEMA = "d3_hysteresis_current_objective_v1"
@@ -259,21 +278,64 @@ class AssignmentPlanner:
         expected_previous_version: int | None = None,
         forced_replan: bool = False,
         publish: bool = True,
+        regional_planning_hint: RegionalPlanningHint | Mapping[str, Any] | None = None,
     ) -> AssignmentPlan:
-        """Return a candidate plan and optionally publish its identity."""
+        """Return a candidate plan, optionally considering prior D4 region advice."""
 
         planning_path = "central_plan"
         self._begin_planning_evidence(planning_path)
         track_items = tuple(tracks)
         resource_items = tuple(resources)
+        hint: RegionalPlanningHint | None = None
+        hint_rejection_reason: str | None = None
+        hint_available = regional_planning_hint is not None
         try:
             self._validate_previous_plan(previous_plan, expected_previous_version)
-            result, rule_matrix, effective_matrix = self._plan_candidate(
+            if hint_available:
+                try:
+                    hint = self._coerce_regional_planning_hint(
+                        regional_planning_hint
+                    )
+                    hint_context = self._prepare_regional_hint_context(
+                        hint,
+                        tracks=track_items,
+                        resources=resource_items,
+                        previous_plan=previous_plan,
+                        timestamp=timestamp,
+                    )
+                    result, rule_matrix, effective_matrix = self._plan_candidate(
+                        tracks=track_items,
+                        resources=resource_items,
+                        timestamp=timestamp,
+                        previous_plan=previous_plan,
+                        window_id=window_id,
+                        regional_hint_context=hint_context,
+                    )
+                except RegionalPlanningHintError as error:
+                    hint_rejection_reason = error.reason
+                    result, rule_matrix, effective_matrix = self._plan_candidate(
+                        tracks=track_items,
+                        resources=resource_items,
+                        timestamp=timestamp,
+                        previous_plan=previous_plan,
+                        window_id=window_id,
+                    )
+            else:
+                result, rule_matrix, effective_matrix = self._plan_candidate(
+                    tracks=track_items,
+                    resources=resource_items,
+                    timestamp=timestamp,
+                    previous_plan=previous_plan,
+                    window_id=window_id,
+                )
+            result = self._annotate_regional_hint_audit(
+                result,
                 tracks=track_items,
                 resources=resource_items,
-                timestamp=timestamp,
-                previous_plan=previous_plan,
-                window_id=window_id,
+                raw_hint=regional_planning_hint,
+                hint=hint,
+                applied=hint_available and hint_rejection_reason is None,
+                rejection_reason=hint_rejection_reason,
             )
             result = self._annotate_input_snapshot(
                 result,
@@ -1189,6 +1251,7 @@ class AssignmentPlanner:
         timestamp: float,
         previous_plan: AssignmentPlan | None,
         window_id: int | None,
+        regional_hint_context: _RegionalHintContext | None = None,
     ) -> tuple[AssignmentPlan, CostMatrixResult, CostMatrixResult]:
         """Build and hysteresis-filter a plan without identity publication."""
 
@@ -1198,6 +1261,7 @@ class AssignmentPlanner:
             timestamp=timestamp,
             previous_plan=previous_plan,
             window_id=window_id,
+            regional_hint_context=regional_hint_context,
         )
         result = self._filter_candidate(
             candidate=candidate,
@@ -1217,6 +1281,7 @@ class AssignmentPlanner:
         timestamp: float,
         previous_plan: AssignmentPlan | None,
         window_id: int | None,
+        regional_hint_context: _RegionalHintContext | None = None,
     ) -> tuple[AssignmentPlan, CostMatrixResult, CostMatrixResult]:
         """Solve one input set without hysteresis or identity finalization."""
 
@@ -1225,6 +1290,7 @@ class AssignmentPlanner:
             resources,
             timestamp,
             previous_plan,
+            regional_hint_context=regional_hint_context,
         )
         if self._uses_demand_slots(tracks):
             candidate = self._build_demand_plan(
@@ -1258,19 +1324,43 @@ class AssignmentPlanner:
         resources: list[ResourceState] | tuple[ResourceState, ...],
         timestamp: float,
         previous_plan: AssignmentPlan | None,
+        *,
+        regional_hint_context: _RegionalHintContext | None = None,
     ) -> tuple[CostMatrixResult, CostMatrixResult]:
         """Return the exact rule matrix and the matrix actually sent to the solver."""
 
+        matrix_tracks = (
+            tracks
+            if regional_hint_context is None
+            else self._regional_hint_matrix_tracks(
+                tracks,
+                regional_hint_context,
+            )
+        )
+        preserved_candidate_edges = self._preserved_candidate_edges(previous_plan)
+        if regional_hint_context is not None:
+            preserved_candidate_edges = self._regional_hint_preserved_candidate_edges(
+                tracks=tracks,
+                context=regional_hint_context,
+                preserved_candidate_edges=preserved_candidate_edges,
+            )
         rule_matrix_result = self.cost_model.build_matrix(
-            tracks,
+            matrix_tracks,
             resources,
             timestamp,
-            preserved_candidate_edges=self._preserved_candidate_edges(previous_plan),
+            preserved_candidate_edges=preserved_candidate_edges,
         )
         rule_matrix_result = self._apply_switch_penalty_to_matrix(
             rule_matrix_result,
             previous_plan,
         )
+        if regional_hint_context is not None:
+            rule_matrix_result = self._apply_regional_hint_to_matrix(
+                rule_matrix_result,
+                tracks=tracks,
+                resources=resources,
+                context=regional_hint_context,
+            )
         if self.learning_assistant is None:
             return rule_matrix_result, rule_matrix_result
         expected_version = 0 if previous_plan is None else previous_plan.version
@@ -1311,6 +1401,688 @@ class AssignmentPlanner:
             target_id: tuple(item.resource_id for item in assignments)
             for target_id, assignments in previous_plan.assignments_by_target().items()
         }
+
+    @staticmethod
+    def _coerce_regional_planning_hint(
+        value: RegionalPlanningHint | Mapping[str, Any] | None,
+    ) -> RegionalPlanningHint:
+        if isinstance(value, RegionalPlanningHint):
+            return value
+        if isinstance(value, Mapping):
+            return RegionalPlanningHint.from_mapping(value)
+        raise RegionalPlanningHintError("regional_hint_input_type_invalid")
+
+    def _prepare_regional_hint_context(
+        self,
+        hint: RegionalPlanningHint,
+        *,
+        tracks: tuple[TargetTrack, ...],
+        resources: tuple[ResourceState, ...],
+        previous_plan: AssignmentPlan | None,
+        timestamp: float,
+    ) -> _RegionalHintContext:
+        if previous_plan is None:
+            raise RegionalPlanningHintError(
+                "regional_hint_previous_plan_required"
+            )
+        if (
+            hint.source_plan_id != previous_plan.plan_id
+            or hint.source_plan_version != previous_plan.version
+        ):
+            raise RegionalPlanningHintError(
+                "regional_hint_source_plan_mismatch"
+            )
+        now = float(timestamp)
+        if not np.isfinite(now) or now < 0.0:
+            raise RegionalPlanningHintError("regional_hint_timestamp_invalid")
+        if hint.created_at_s < float(previous_plan.created_at):
+            raise RegionalPlanningHintError(
+                "regional_hint_created_before_source_plan"
+            )
+        if now < hint.created_at_s:
+            raise RegionalPlanningHintError("regional_hint_not_yet_active")
+        if now >= hint.expires_at_s:
+            raise RegionalPlanningHintError("regional_hint_expired")
+        if not hint.projected:
+            raise RegionalPlanningHintError("regional_hint_not_projected")
+
+        target_ids = tuple(track.track_id for track in tracks)
+        resource_ids = tuple(resource.resource_id for resource in resources)
+        if len(set(target_ids)) != len(target_ids):
+            raise RegionalPlanningHintError("regional_hint_duplicate_target_id")
+        if len(set(resource_ids)) != len(resource_ids):
+            raise RegionalPlanningHintError("regional_hint_duplicate_resource_id")
+        if any(not str(value).strip() for value in target_ids):
+            raise RegionalPlanningHintError("regional_hint_target_id_invalid")
+        if any(not str(value).strip() for value in resource_ids):
+            raise RegionalPlanningHintError("regional_hint_resource_id_invalid")
+
+        target_region_by_id = {
+            track.track_id: self._regional_entity_region(
+                track.region_id,
+                entity="target",
+            )
+            for track in tracks
+        }
+        resource_region_by_id = {
+            resource.resource_id: self._regional_entity_region(
+                resource.region_id,
+                entity="resource",
+            )
+            for resource in resources
+        }
+        active_regions = set(target_region_by_id.values()) | set(
+            resource_region_by_id.values()
+        )
+        constraint_by_region = hint.constraint_by_region
+        if set(constraint_by_region) != active_regions:
+            raise RegionalPlanningHintError("regional_hint_region_set_mismatch")
+
+        for constraint in hint.constraints:
+            if now >= constraint.lease_expires_at_s:
+                raise RegionalPlanningHintError(
+                    "regional_hint_region_lease_expired"
+                )
+            if hint.expires_at_s > constraint.lease_expires_at_s:
+                raise RegionalPlanningHintError(
+                    "regional_hint_expiry_exceeds_region_lease"
+                )
+        self._validate_regional_hint_previous_authority(
+            previous_plan,
+            constraint_by_region,
+        )
+
+        quota_delta = {
+            region_id: constraint.resource_quota_delta
+            for region_id, constraint in constraint_by_region.items()
+        }
+        if sum(quota_delta.values()) != 0:
+            raise RegionalPlanningHintError(
+                "regional_hint_resource_conservation_violation"
+            )
+        transfer_net = {region_id: 0 for region_id in active_regions}
+        outgoing = {region_id: 0 for region_id in active_regions}
+        for transfer in hint.transfer_allowances:
+            if (
+                transfer.source_region_id not in active_regions
+                or transfer.target_region_id not in active_regions
+            ):
+                raise RegionalPlanningHintError(
+                    "regional_hint_transfer_unknown_region"
+                )
+            if (
+                constraint_by_region[transfer.source_region_id].hold
+                or constraint_by_region[transfer.target_region_id].hold
+            ):
+                raise RegionalPlanningHintError(
+                    "regional_hint_transfer_touches_hold_region"
+                )
+            outgoing[transfer.source_region_id] += transfer.resource_count
+            transfer_net[transfer.source_region_id] -= transfer.resource_count
+            transfer_net[transfer.target_region_id] += transfer.resource_count
+        if transfer_net != quota_delta:
+            raise RegionalPlanningHintError(
+                "regional_hint_transfer_quota_mismatch"
+            )
+        for constraint in hint.constraints:
+            if constraint.hold and constraint.resource_quota_delta != 0:
+                raise RegionalPlanningHintError(
+                    "regional_hint_hold_region_quota_nonzero"
+                )
+
+        resource_ids_by_region = {
+            region_id: tuple(
+                sorted(
+                    resource_id
+                    for resource_id, resource_region in resource_region_by_id.items()
+                    if resource_region == region_id
+                )
+            )
+            for region_id in sorted(active_regions)
+        }
+        protected_assignment_edges = frozenset(
+            (assignment.target_id, assignment.resource_id)
+            for assignment in previous_plan.assignments
+        )
+        protected_resource_ids = {
+            assignment.resource_id for assignment in previous_plan.assignments
+        }
+        protected_resource_ids.update(
+            member.resource_id
+            for coalition in previous_plan.coalitions
+            for member in coalition.members
+        )
+        missing_protected = protected_resource_ids - set(resource_region_by_id)
+        if missing_protected:
+            raise RegionalPlanningHintError(
+                "regional_hint_previous_protected_resource_missing"
+            )
+
+        for region_id in sorted(active_regions):
+            constraint = constraint_by_region[region_id]
+            current_count = len(resource_ids_by_region[region_id])
+            post_count = current_count + constraint.resource_quota_delta
+            if post_count < 0:
+                raise RegionalPlanningHintError(
+                    "regional_hint_negative_post_quota"
+                )
+            protected_count = sum(
+                resource_id in protected_resource_ids
+                for resource_id in resource_ids_by_region[region_id]
+            )
+            reserve_count = int(ceil(constraint.reserve_ratio * post_count))
+            if post_count < protected_count + reserve_count:
+                raise RegionalPlanningHintError(
+                    "regional_hint_protected_or_reserve_quota_violation"
+                )
+            transferable_count = max(
+                0,
+                current_count - protected_count - reserve_count,
+            )
+            if outgoing[region_id] > transferable_count:
+                raise RegionalPlanningHintError(
+                    "regional_hint_transfer_capacity_unsatisfied"
+                )
+
+        allowance_by_route = {
+            (item.source_region_id, item.target_region_id): item.resource_count
+            for item in hint.transfer_allowances
+        }
+        protected_cross: dict[tuple[str, str], list[str]] = {}
+        for assignment in previous_plan.assignments:
+            target_region = target_region_by_id.get(assignment.target_id)
+            resource_region = resource_region_by_id.get(assignment.resource_id)
+            if (
+                target_region is None
+                or resource_region is None
+                or target_region == resource_region
+            ):
+                continue
+            route = (resource_region, target_region)
+            protected_cross.setdefault(route, []).append(assignment.resource_id)
+        for route, protected_ids in protected_cross.items():
+            if len(set(protected_ids)) > allowance_by_route.get(route, 0):
+                raise RegionalPlanningHintError(
+                    "regional_hint_previous_cross_region_commit_exceeds_allowance"
+                )
+
+        return _RegionalHintContext(
+            hint=hint,
+            constraint_by_region=constraint_by_region,
+            resource_ids_by_region=resource_ids_by_region,
+            protected_resource_ids=frozenset(protected_resource_ids),
+            protected_assignment_edges=protected_assignment_edges,
+            protected_cross_resource_ids_by_route={
+                route: tuple(sorted(set(resource_ids)))
+                for route, resource_ids in protected_cross.items()
+            },
+        )
+
+    @staticmethod
+    def _regional_entity_region(value: str | None, *, entity: str) -> str:
+        region_id = "" if value is None else str(value).strip()
+        if not region_id:
+            raise RegionalPlanningHintError(
+                f"regional_hint_{entity}_region_missing"
+            )
+        return region_id
+
+    @staticmethod
+    def _validate_regional_hint_previous_authority(
+        previous_plan: AssignmentPlan,
+        constraint_by_region: Mapping[str, RegionalPlanningConstraint],
+    ) -> None:
+        records = previous_plan.metadata.get("regional_authorities")
+        if not isinstance(records, (tuple, list)) or not records:
+            return
+        prior_by_region = {
+            str(record.get("region_id")): record
+            for record in records
+            if isinstance(record, Mapping) and record.get("region_id") is not None
+        }
+        if not prior_by_region:
+            return
+        if set(prior_by_region) != set(constraint_by_region):
+            raise RegionalPlanningHintError(
+                "regional_hint_previous_authority_region_set_mismatch"
+            )
+        for region_id, constraint in constraint_by_region.items():
+            prior = prior_by_region[region_id]
+            if (
+                str(prior.get("owner_node_id") or "")
+                != str(constraint.owner_id or "")
+                or str(prior.get("owner_layer") or "").lower()
+                != constraint.owner_layer
+                or int(prior.get("epoch", -1)) != constraint.owner_epoch
+            ):
+                raise RegionalPlanningHintError(
+                    "regional_hint_previous_authority_identity_mismatch"
+                )
+            prior_lease = float(prior.get("lease_expires_at_s", -1.0))
+            if constraint.lease_expires_at_s > prior_lease:
+                raise RegionalPlanningHintError(
+                    "regional_hint_previous_authority_lease_extension"
+                )
+
+    @staticmethod
+    def _regional_hint_matrix_tracks(
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        context: _RegionalHintContext,
+    ) -> tuple[TargetTrack, ...]:
+        transfer_sources_by_target_region: dict[str, set[str]] = {}
+        for transfer in context.hint.transfer_allowances:
+            transfer_sources_by_target_region.setdefault(
+                transfer.target_region_id,
+                set(),
+            ).add(transfer.source_region_id)
+        adjusted: list[TargetTrack] = []
+        for track in tracks:
+            target_region = str(track.region_id).strip()
+            original_regions = {
+                str(value).strip()
+                for value in track.candidate_resource_region_ids
+                if str(value).strip()
+            }
+            allowed_regions = set(
+                transfer_sources_by_target_region.get(target_region, set())
+            )
+            if not original_regions or target_region in original_regions:
+                allowed_regions.add(target_region)
+            adjusted.append(
+                replace(
+                    track,
+                    candidate_resource_region_ids=tuple(sorted(allowed_regions)),
+                )
+            )
+        return tuple(adjusted)
+
+    @staticmethod
+    def _regional_hint_preserved_candidate_edges(
+        *,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        context: _RegionalHintContext,
+        preserved_candidate_edges: Mapping[str, tuple[str, ...]],
+    ) -> dict[str, tuple[str, ...]]:
+        source_regions_by_target_region: dict[str, set[str]] = {}
+        for transfer in context.hint.transfer_allowances:
+            source_regions_by_target_region.setdefault(
+                transfer.target_region_id,
+                set(),
+            ).add(transfer.source_region_id)
+        output = {
+            target_id: list(resource_ids)
+            for target_id, resource_ids in preserved_candidate_edges.items()
+        }
+        for track in tracks:
+            target_region = str(track.region_id).strip()
+            values = output.setdefault(track.track_id, [])
+            for source_region in sorted(
+                source_regions_by_target_region.get(target_region, set())
+            ):
+                values.extend(
+                    resource_id
+                    for resource_id in context.resource_ids_by_region[source_region]
+                    if resource_id not in context.protected_resource_ids
+                )
+                values.extend(
+                    context.protected_cross_resource_ids_by_route.get(
+                        (source_region, target_region),
+                        (),
+                    )
+                )
+        return {
+            target_id: tuple(dict.fromkeys(resource_ids))
+            for target_id, resource_ids in output.items()
+        }
+
+    def _apply_regional_hint_to_matrix(
+        self,
+        matrix_result: CostMatrixResult,
+        *,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        resources: list[ResourceState] | tuple[ResourceState, ...],
+        context: _RegionalHintContext,
+    ) -> CostMatrixResult:
+        target_region_by_id = {
+            track.track_id: str(track.region_id).strip() for track in tracks
+        }
+        resource_region_by_id = {
+            resource.resource_id: str(resource.region_id).strip()
+            for resource in resources
+        }
+        target_rows_by_region: dict[str, tuple[int, ...]] = {}
+        for target_index, target_id in enumerate(matrix_result.target_ids):
+            region_id = target_region_by_id[target_id]
+            target_rows_by_region.setdefault(region_id, tuple())
+            target_rows_by_region[region_id] += (target_index,)
+        resource_index = {
+            resource_id: index
+            for index, resource_id in enumerate(matrix_result.resource_ids)
+        }
+        candidate_mask = (
+            np.asarray(matrix_result.candidate_mask, dtype=bool).copy()
+            if matrix_result.candidate_mask is not None
+            else np.asarray(
+                [
+                    [reason is None for reason in row]
+                    for row in matrix_result.reject_reasons
+                ],
+                dtype=bool,
+            ).reshape(matrix_result.matrix.shape)
+        )
+
+        selected_ids_by_route: dict[tuple[str, str], tuple[str, ...]] = {}
+        used_transfer_resource_ids: set[str] = set()
+        for transfer in sorted(
+            context.hint.transfer_allowances,
+            key=lambda item: (
+                item.source_region_id,
+                item.target_region_id,
+                item.edge_id,
+            ),
+        ):
+            route = (transfer.source_region_id, transfer.target_region_id)
+            reserved_ids = context.protected_cross_resource_ids_by_route.get(
+                route,
+                (),
+            )
+            target_rows = target_rows_by_region.get(transfer.target_region_id, ())
+            for resource_id in reserved_ids:
+                exact_rows = tuple(
+                    target_index
+                    for target_index in target_rows
+                    if (
+                        matrix_result.target_ids[target_index],
+                        resource_id,
+                    )
+                    in context.protected_assignment_edges
+                )
+                column = resource_index[resource_id]
+                if not exact_rows or not any(
+                    candidate_mask[row, column] for row in exact_rows
+                ):
+                    raise RegionalPlanningHintError(
+                        "regional_hint_protected_transfer_edge_infeasible"
+                    )
+            needed = transfer.resource_count - len(reserved_ids)
+            candidates: list[tuple[float, str]] = []
+            for resource_id in context.resource_ids_by_region[
+                transfer.source_region_id
+            ]:
+                if (
+                    resource_id in context.protected_resource_ids
+                    or resource_id in used_transfer_resource_ids
+                ):
+                    continue
+                column = resource_index[resource_id]
+                costs = tuple(
+                    float(matrix_result.matrix[row, column])
+                    for row in target_rows
+                    if candidate_mask[row, column]
+                )
+                if costs:
+                    candidates.append((min(costs), resource_id))
+            selected = tuple(
+                resource_id
+                for _, resource_id in sorted(candidates)[:needed]
+            )
+            if len(selected) != needed:
+                raise RegionalPlanningHintError(
+                    "regional_hint_transfer_candidate_count_unsatisfied"
+                )
+            route_ids = tuple((*reserved_ids, *selected))
+            selected_ids_by_route[route] = route_ids
+            used_transfer_resource_ids.update(route_ids)
+
+        matrix = np.asarray(matrix_result.matrix, dtype=float).copy()
+        breakdown_rows = [list(row) for row in matrix_result.breakdowns]
+        reject_reason_rows = [list(row) for row in matrix_result.reject_reasons]
+        newly_rejected = 0
+        for target_index, target_id in enumerate(matrix_result.target_ids):
+            track = tracks[target_index]
+            target_region = target_region_by_id[target_id]
+            for resource_index_value, resource_id in enumerate(
+                matrix_result.resource_ids
+            ):
+                if not candidate_mask[target_index, resource_index_value]:
+                    continue
+                resource = resources[resource_index_value]
+                resource_region = resource_region_by_id[resource_id]
+                if target_region == resource_region:
+                    allowed = self.cost_model.region_compatible(track, resource)
+                    reject_reason = "region_incompatible"
+                else:
+                    route_ids = selected_ids_by_route.get(
+                        (resource_region, target_region),
+                        (),
+                    )
+                    allowed = resource_id in route_ids
+                    if resource_id in context.protected_resource_ids:
+                        allowed = allowed and (
+                            (target_id, resource_id)
+                            in context.protected_assignment_edges
+                        )
+                    reject_reason = "regional_hint_transfer_not_allowed"
+                if allowed:
+                    continue
+                candidate_mask[target_index, resource_index_value] = False
+                reject_reason_rows[target_index][resource_index_value] = reject_reason
+                matrix[target_index, resource_index_value] = (
+                    self.config.infeasible_penalty
+                )
+                breakdown = dict(
+                    breakdown_rows[target_index][resource_index_value]
+                )
+                breakdown["regional_hint_constraint"] = 1.0
+                breakdown["infeasible"] = self.config.infeasible_penalty
+                breakdown["total"] = self.config.infeasible_penalty
+                breakdown_rows[target_index][resource_index_value] = breakdown
+                newly_rejected += 1
+
+        reason_counts: dict[str, int] = {}
+        for row in reject_reason_rows:
+            for reason in row:
+                if reason is not None:
+                    reason_counts[str(reason)] = reason_counts.get(str(reason), 0) + 1
+        candidate_edge_count = int(np.count_nonzero(candidate_mask))
+        full_edge_count = int(candidate_mask.size)
+        transfer_records = tuple(
+            {
+                "source_region_id": transfer.source_region_id,
+                "target_region_id": transfer.target_region_id,
+                "edge_id": transfer.edge_id,
+                "allowed_resource_count": transfer.resource_count,
+                "candidate_resource_pool_count": len(
+                    selected_ids_by_route[
+                        (transfer.source_region_id, transfer.target_region_id)
+                    ]
+                ),
+            }
+            for transfer in sorted(
+                context.hint.transfer_allowances,
+                key=lambda item: (
+                    item.source_region_id,
+                    item.target_region_id,
+                    item.edge_id,
+                ),
+            )
+        )
+        return replace(
+            matrix_result,
+            matrix=matrix,
+            breakdowns=tuple(tuple(row) for row in breakdown_rows),
+            reject_reasons=tuple(tuple(row) for row in reject_reason_rows),
+            candidate_mask=candidate_mask,
+            metadata={
+                **dict(matrix_result.metadata),
+                "regional_planning_hint_schema": REGIONAL_PLANNING_HINT_SCHEMA_V1,
+                "regional_hint_candidate_constraint_applied": True,
+                "regional_hint_candidate_new_reject_count": newly_rejected,
+                "regional_hint_transfer_candidate_pools": transfer_records,
+                "candidate_edge_count": candidate_edge_count,
+                "candidate_full_edge_count": full_edge_count,
+                "candidate_density": (
+                    0.0
+                    if full_edge_count == 0
+                    else candidate_edge_count / full_edge_count
+                ),
+                "candidate_reject_reason_counts": tuple(
+                    sorted(reason_counts.items())
+                ),
+                "candidate_policy_action_count": candidate_edge_count,
+            },
+        )
+
+    @staticmethod
+    def _annotate_regional_hint_audit(
+        plan: AssignmentPlan,
+        *,
+        tracks: tuple[TargetTrack, ...],
+        resources: tuple[ResourceState, ...],
+        raw_hint: RegionalPlanningHint | Mapping[str, Any] | None,
+        hint: RegionalPlanningHint | None,
+        applied: bool,
+        rejection_reason: str | None,
+    ) -> AssignmentPlan:
+        target_region_by_id = {
+            track.track_id: (
+                None if track.region_id is None else str(track.region_id).strip()
+            )
+            for track in tracks
+        }
+        resource_region_by_id = {
+            resource.resource_id: (
+                None
+                if resource.region_id is None
+                else str(resource.region_id).strip()
+            )
+            for resource in resources
+        }
+        actual_by_route: dict[tuple[str, str], int] = {}
+        actual_cross_region_count = 0
+        for assignment in plan.assignments:
+            target_region = target_region_by_id.get(assignment.target_id)
+            resource_region = resource_region_by_id.get(assignment.resource_id)
+            if (
+                not target_region
+                or not resource_region
+                or target_region == resource_region
+            ):
+                continue
+            actual_cross_region_count += 1
+            route = (resource_region, target_region)
+            actual_by_route[route] = actual_by_route.get(route, 0) + 1
+
+        advisory_id: str | None = None
+        advisory_version: int | None = None
+        source_plan_id: str | None = None
+        source_plan_version: int | None = None
+        projected: bool | None = None
+        if hint is not None:
+            advisory_id = hint.advisory_id
+            advisory_version = hint.advisory_version
+            source_plan_id = hint.source_plan_id
+            source_plan_version = hint.source_plan_version
+            projected = hint.projected
+        elif isinstance(raw_hint, Mapping):
+            advisory_id = AssignmentPlanner._safe_hint_text(
+                raw_hint.get("advisory_id")
+            )
+            advisory_version = AssignmentPlanner._safe_hint_int(
+                raw_hint.get("advisory_version")
+            )
+            source_plan_id = AssignmentPlanner._safe_hint_text(
+                raw_hint.get("source_plan_id")
+            )
+            source_plan_version = AssignmentPlanner._safe_hint_int(
+                raw_hint.get("source_plan_version")
+            )
+            raw_projected = raw_hint.get("projected")
+            projected = raw_projected if isinstance(raw_projected, bool) else None
+
+        allowance_by_route = (
+            {}
+            if hint is None
+            else {
+                (item.source_region_id, item.target_region_id): item.resource_count
+                for item in hint.transfer_allowances
+            }
+        )
+        route_records = tuple(
+            {
+                "source_region_id": source_region,
+                "target_region_id": target_region,
+                "allowed_resource_count": allowance_by_route.get(
+                    (source_region, target_region),
+                    0,
+                ),
+                "actual_resource_count": actual_by_route.get(
+                    (source_region, target_region),
+                    0,
+                ),
+            }
+            for source_region, target_region in sorted(
+                set(allowance_by_route) | set(actual_by_route)
+            )
+        )
+        limit_satisfied = None
+        if applied:
+            limit_satisfied = all(
+                actual_by_route.get(route, 0) <= allowed
+                for route, allowed in allowance_by_route.items()
+            ) and not (set(actual_by_route) - set(allowance_by_route))
+
+        metadata = {
+            **dict(plan.metadata),
+            "regional_planning_hint_schema": REGIONAL_PLANNING_HINT_SCHEMA_V1,
+            "regional_hint_available": raw_hint is not None,
+            "regional_hint_considered": raw_hint is not None,
+            "regional_hint_applied": bool(applied),
+            "regional_hint_rejected": bool(raw_hint is not None and not applied),
+            "regional_hint_advisory_id": advisory_id,
+            "regional_hint_advisory_version": advisory_version,
+            "regional_hint_source_plan_id": source_plan_id,
+            "regional_hint_source_plan_version": source_plan_version,
+            "regional_hint_projected": projected,
+            "regional_hint_actual_cross_region_resource_count": (
+                actual_cross_region_count
+            ),
+            "regional_hint_transfer_usage": route_records,
+            "regional_hint_cross_region_limit_satisfied": limit_satisfied,
+            "regional_hint_fallback_reason": rejection_reason,
+            "regional_hint_rejection_reasons": (
+                () if rejection_reason is None else (rejection_reason,)
+            ),
+            "regional_hint_hold_region_ids": (
+                ()
+                if hint is None
+                else tuple(
+                    sorted(
+                        item.region_id for item in hint.constraints if item.hold
+                    )
+                )
+            ),
+            "regional_hint_request_replan_region_ids": (
+                ()
+                if hint is None
+                else tuple(
+                    sorted(
+                        item.region_id
+                        for item in hint.constraints
+                        if item.request_replan
+                    )
+                )
+            ),
+        }
+        return replace(plan, metadata=metadata)
+
+    @staticmethod
+    def _safe_hint_text(value: Any) -> str | None:
+        return value.strip() if isinstance(value, str) and value.strip() else None
+
+    @staticmethod
+    def _safe_hint_int(value: Any) -> int | None:
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
 
     def _filter_candidate(
         self,
