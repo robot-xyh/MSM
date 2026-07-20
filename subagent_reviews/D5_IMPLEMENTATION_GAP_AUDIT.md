@@ -1,5 +1,43 @@
 # D5 实现差距审计
 
+## 2026-07-20 主动视觉整 episode 数据管线 GAP 状态
+
+**D5-owned 软件缺口已关闭：** 新增 `active_vision_episode_dataset.py`，提供版本化 online episode/
+sample、camera feedback、可选 runtime ACK、独立 offline label、descriptor、manifest、writer、
+finalizer、loader 和 audit CLI/API。每个样本完整保存 truth-free `ActiveVisionSnapshotV1`、规则
+示范、requested/effective action 与 mode、plan/coalition/communication version 和反馈。合同按
+输入 camera/target/resource 数量运行，不写死 2v2、5v5 或 200v200。
+
+**在线/离线隔离：** online 文件递归拒绝 truth/actor/object identity，只允许只读引用 snapshot
+中的中心 `global_track_id`。offline reward/outcome/counterfactual/causal label 在 episode 结束后按
+完全匹配的 `sample_key + observation_key` 写入独立目录；loader 不把 label 回填 snapshot。未知
+中心引用、相机对另一个中心候选的局部换绑、中心 track version/timestamp 回退均失败关闭。
+
+**split、availability 与制品审计：** 完整 `(scenario_version, seed)` group 是唯一切分单元；少于
+三个独立 group 或少于声明的 unseen test seed 时拒绝 finalize，正式默认 unseen 门为 20。reward
+范围固定 `[-1,1]`；无 outcome 时必须 unavailable/null，不能用 0 补位；causal label 需要 outcome
+和 counterfactual 同时可用。manifest 固化 schema/version、generation config、逐文件/split/
+training-set SHA256、source Git/config identity 和 availability；`SHA256SUMS` 精确覆盖数据目录，
+finalize 后文件只读。BC loader 只取规则示范，PPO loader 在任一 reward unavailable 时拒绝。
+
+**bundle 与准入：** 主动视觉 bundle 升级为 `d5.active-vision-model-bundle.v2` 并声明 episode
+dataset v1。现有 model fingerprint、dataset manifest/split/training-set SHA 和 paired admission
+绑定保持；没有正式 admission report 的 bundle 仍不能 assist。
+
+**验证与证据边界：** 2026-07-20 新数据管线 `6 passed`，主动视觉组合 `30 passed`，D5 全量
+`382 passed in 10.53s`，接受阈值为零失败。覆盖动态规模、ACK present/absent、真值物理分流、
+整 group split、unseen seed 不足、reward unavailable/null、offline join、未知/换绑中心 ID、只读
+制品和 SHA 篡改。全部制品为 `tmp_path` 合成 fixture；未运行 AirSim、未正式训练、没有 20 个
+未见 seed 的正式结果或性能收益。
+
+**剩余跨模块/数据 GAP：** main 尚需在统一三维 episode 中累计并关闭 record、随后分流写入
+online/offline 文件，传入真实 source Git commit/dirty 与 source config SHA，并保存正式 detached
+dataset。正式 BC/PPO 还需要代表性 train/validation/test、至少 20 个完全未见 seed、真实 outcome/
+counterfactual、困难场景、paired shadow 非退化和 checkpoint 审批。D5 本轮未修改 main runtime。
+
+模块 README/PLAN、三份 D5 review/GAP 及模块内四份 `docs/*` 已同步；同步明确这是数据管线代码
+证据，不是 AirSim、正式训练、20-seed 或 assist 准入结果。
+
 ## 2026-07-20 主动视觉 RL 与量测标签连接 GAP 状态
 
 **已关闭的软件缺口：** D5 现有版本化 truth-free 主动视觉 snapshot/action、确定性

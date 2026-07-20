@@ -1,5 +1,32 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-20 主动视觉整 episode 数据合同审查
+
+审查接受 `active_vision_episode_dataset.py` 为 D5-owned 正式数据合同实现。online episode/sample
+逐字段持久化 truth-free snapshot、规则示范、requested/effective action 与 mode、plan/coalition/
+communication version、相机反馈和可选 runtime ACK；数量由输入 camera/target/resource 决定。
+source identity 固化完整 Git object ID、dirty 标志和外部 source config SHA256。
+
+在线/离线隔离审查通过：online writer 和 loader 都递归拒绝 truth/actor/object identity；offline
+reward/outcome/counterfactual/causal label 只能在 episode 关闭后写入独立文件，并以完全匹配的
+`sample_key + observation_key` 连接。snapshot 不接收 joined label。loader 另检查全部 ID 引用均
+来自同一中心 snapshot，拒绝未知引用、相机局部换绑及中心版本/量测时间回退。
+
+数据审查通过：finalizer 只以完整 `(scenario_version, seed)` group 切分；group 少于 3 或 test
+少于声明 unseen seed 时失败关闭，正式默认门为 20。reward 有界 `[-1,1]`；无 outcome 必须
+unavailable/null，causal label 还要求 counterfactual，禁止缺失值补 0。manifest、descriptor、
+`SHA256SUMS` 固化 schema/version、逐文件/split/training-set SHA、generation config、Git/config
+identity 和 availability；finalize 后文件只读且额外文件也会导致 audit 失败。
+
+训练视图审查通过：BC 只读取规则示范且不消费 evaluator label；PPO 使用 effective action，并在
+任一样本 reward unavailable 时拒绝。bundle 升级为 v2、声明 episode dataset v1，但原正式 paired
+admission 门不变；新 schema 与哈希不能自行授予 assist。
+
+2026-07-20 新数据管线 `6 passed`，主动视觉组合 `30 passed`，D5 全量
+`382 passed in 10.53s`，零失败。审查结论只关闭 writer/loader/audit 软件 GAP。测试均为
+`tmp_path` 合成 fixture；没有 AirSim、正式数据、正式训练、20-unseen-seed 性能结果或 checkpoint。
+main 仍需完成统一 episode 的 sample 累计、episode-end 双文件写入和真实 source/outcome 数据接线。
+
 ## 2026-07-20 主动视觉研究路径与 source-observation 审查
 
 审查确认新增 `ActiveVisionSnapshotV1/ActiveVisionActionV1` 是版本化最小权限合同。snapshot

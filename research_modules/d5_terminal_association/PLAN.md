@@ -1,5 +1,38 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-20 主动视觉整 episode 数据合同
+
+- [x] 新增 `d5.active-vision-episode-record.v1` / `sample.v1` / camera-feedback/runtime-ACK /
+  offline-label / episode-dataset 合同；每个样本持久化 truth-free snapshot、规则示范、requested/
+  effective action、三个版本、相机反馈和可选 ACK。
+- [x] 新增 `stage_active_vision_episode_record()` 与 `stage_active_vision_offline_labels()`：在线
+  `online/*.online.json` 递归拒绝 truth/actor/object identity，evaluator reward/outcome/
+  counterfactual/causal label 只存在于物理独立 `offline/*.offline.json`，并在 episode 结束后按
+  `sample_key + observation_key` 精确连接。
+- [x] reward 固定 `[-1,1]` 并带 availability/provenance；无 outcome 时 reward 为 unavailable/null，
+  无 outcome+counterfactual 时 causal label 为 unavailable/null，禁止用 `0` 伪装缺失值。
+- [x] finalize/loader 固定按完整 `(scenario_version, seed)` group 切分，少于三个 group、少于声明
+  unseen seed、group 跨 split、未知中心 ID、局部换绑、版本回退、SHA/schema/source identity/
+  offline join 错误均失败关闭；正式默认 minimum unseen seed 为 20。
+- [x] manifest 固化 schema/version、dataset config、逐文件/split/training-set SHA256、source Git
+  commit/dirty 与 source config SHA、availability；`SHA256SUMS` 精确覆盖目录，finalize 后文件只读。
+- [x] loader 输出不可变对象；BC 视图只取规则示范且不加载 evaluator label，PPO 视图只取 effective
+  action 并要求每个样本 reward available。`ActiveVisionTransition.reward=None` 是唯一缺失表达。
+- [x] 主动视觉 bundle 升级为 `d5.active-vision-model-bundle.v2` 并绑定 episode dataset v1；没有
+  正式 admission report 时仍为 research candidate，不能 assist。
+- [x] 2026-07-20：新增数据管线专项 `6 passed`，主动视觉组合 `30 passed`，D5 全量
+  `382 passed in 10.53s`，接受阈值为零失败；动态 camera/target/resource、ACK 可选、真值分流、
+  split/unseen、reward unavailable、未知/换绑中心 ID 和哈希篡改均有回归。
+- [ ] main 接线：在统一三维 episode 中累计 sample，episode 关闭后分别调用 online/offline writer，
+  传入真实 source Git/config identity，并保存 detached dataset；本轮不改 main runtime。
+- [ ] 正式数据与准入：收集代表性 train/validation/test、至少 20 个完全未见 seed、真实 outcome/
+  counterfactual、困难场景和 paired shadow；完成正式 BC/PPO、冻结指标门与 checkpoint 审批。
+
+本轮证据仅为代码与 `tmp_path` 单测，不是正式训练、20-seed 实验、AirSim 运行、可见率/重捕获
+收益或 assist 准入。模块内 `docs/MODULE_PRINCIPLES_CN.md`、
+`docs/ALGORITHM_AND_IMPLEMENTATION.md`、`docs/AIRSIM_INTEGRATION_PLAN.md` 和
+`docs/EXPERIMENT_REPORT.md` 已按相同边界同步。
+
 ## 2026-07-20 主动视觉学习研究路径与 source observation 审计
 
 - [x] 定义 `d5.active-vision-snapshot.v1` / `d5.active-vision-action.v1`；输入只含中心航迹和

@@ -4,6 +4,43 @@
 
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
 
+## 2026-07-20 主动视觉整 episode 数据实现
+
+新增 `active_vision_episode_dataset.py`，实现以下版本化合同和 API：
+
+- `ActiveVisionEpisodeRecordV1` / `ActiveVisionEpisodeSampleV1`：truth-free 整 episode 与逐决策记录；
+- `ActiveVisionCameraFeedbackV1` / `ActiveVisionRuntimeAckV1`：执行反馈与可选 ACK；
+- `ActiveVisionOfflineLabelV1`：独立 evaluator reward/outcome/counterfactual/causal label；
+- `stage_active_vision_episode_record()` / `stage_active_vision_offline_labels()`：episode-end 双流写入；
+- `finalize_active_vision_episode_dataset()` / `load_active_vision_episode_dataset()` / audit CLI：
+  完整 group split、不可变制品和失败关闭加载；
+- `behavior_cloning_episodes()` / `ppo_episodes()`：规则示范 BC 与 reward-gated PPO 视图。
+
+online JSON 严格逐字段编码 `ActiveVisionSnapshotV1`、rule/requested/effective action、三个版本、
+相机反馈和可选 ACK，不接受任意 metadata。离线 JSON 仅通过 `sample_key + observation_key` 连接。
+构造和加载均验证 action camera、当前 assignment、中心候选集合、版本单调性及中心 track version/
+measurement timestamp 不回退；未知中心引用或局部换绑给出稳定失败码。camera/target/resource
+列表均按实际长度处理。
+
+reward 合同固定 `[-1,1]`。`reward_available=true` 要求离线 outcome 与 provenance；否则 value 和
+provenance 必须为 null。counterfactual 独立带 availability；causal label 只有 outcome 和
+counterfactual 同时可用时才允许。`ActiveVisionTransition.reward` 因此改为 `float | None`，PPO
+训练入口和 dataset PPO view 遇到 `None` 均拒绝。
+
+目录由 `dataset_config.json`、`online/`、`offline/`、`episodes/`、`manifest.json` 和
+`SHA256SUMS` 组成。finalizer 按完整 `(scenario_version, seed)` group 计算确定性 split，少于三个
+group 或不足声明 unseen seed 时不写 manifest。manifest 固化全部 schema/version、artifact/
+split/training-set SHA、source Git commit/dirty、source config SHA 与 availability。完成后所有文件
+去除写权限；loader 要求 checksum 集合与实际文件集合完全一致，并重算 split 和汇总。
+
+`active_vision_bundle.py` 的 bundle schema 升为 v2，并将 dataset schema 固定为
+`d5.active-vision-episode-dataset.v1`。已有 model fingerprint、weights-only、dataset/split/
+training-set SHA 和 paired admission 检查不变；schema 升级不等于模型准入。
+
+2026-07-20 验证为新数据管线 `6 passed`、主动视觉组合 `30 passed`、D5 全量
+`382 passed in 10.53s`。这是合成 `tmp_path` 下的代码证据；没有 main writer 接线、正式数据、
+正式 BC/PPO、20 个未见 seed 的性能结果、AirSim 或 checkpoint。
+
 ## 2026-07-20 主动视觉 BC/PPO 与安全执行实现
 
 新增实现文件：

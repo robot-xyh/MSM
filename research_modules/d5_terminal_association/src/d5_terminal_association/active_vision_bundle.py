@@ -26,8 +26,8 @@ from .active_vision_evaluation import (
     ActiveVisionAdmissionReport,
     admission_report_from_manifest,
 )
+from .active_vision_episode_dataset import ACTIVE_VISION_EPISODE_DATASET_SCHEMA_VERSION
 from .active_vision_learning import (
-    ACTIVE_VISION_DATASET_SCHEMA_VERSION,
     ACTIVE_VISION_FEATURE_NAMES,
     ACTIVE_VISION_MODEL_SEMANTIC_VERSION,
     ActiveVisionActorCritic,
@@ -36,7 +36,7 @@ from .active_vision_learning import (
 )
 
 
-ACTIVE_VISION_BUNDLE_SCHEMA_VERSION = "d5.active-vision-model-bundle.v1"
+ACTIVE_VISION_BUNDLE_SCHEMA_VERSION = "d5.active-vision-model-bundle.v2"
 ACTIVE_VISION_WEIGHTS_FILENAME = "weights.pt"
 ACTIVE_VISION_MANIFEST_FILENAME = "manifest.json"
 ACTIVE_VISION_CHECKSUMS_FILENAME = "SHA256SUMS"
@@ -231,7 +231,7 @@ def write_active_vision_model_bundle(
     manifest = {
         "schema_version": ACTIVE_VISION_BUNDLE_SCHEMA_VERSION,
         "model_semantic_version": semantic_version,
-        "dataset_schema_version": ACTIVE_VISION_DATASET_SCHEMA_VERSION,
+        "dataset_schema_version": ACTIVE_VISION_EPISODE_DATASET_SCHEMA_VERSION,
         "feature_schema_version": ACTIVE_VISION_FEATURE_SCHEMA_VERSION,
         "action_space_version": ACTIVE_VISION_ACTION_SPACE_VERSION,
         "feature_names": list(ACTIVE_VISION_FEATURE_NAMES),
@@ -329,7 +329,11 @@ def load_active_vision_model_bundle(
         expected_model_semantic_version,
         "model_semantic_version_mismatch",
     )
-    _expect(manifest.get("dataset_schema_version"), ACTIVE_VISION_DATASET_SCHEMA_VERSION, "dataset_schema_mismatch")
+    _expect(
+        manifest.get("dataset_schema_version"),
+        ACTIVE_VISION_EPISODE_DATASET_SCHEMA_VERSION,
+        "dataset_schema_mismatch",
+    )
     _expect(manifest.get("feature_schema_version"), ACTIVE_VISION_FEATURE_SCHEMA_VERSION, "feature_schema_mismatch")
     _expect(manifest.get("action_space_version"), ACTIVE_VISION_ACTION_SPACE_VERSION, "action_space_mismatch")
     _expect(tuple(manifest.get("feature_names", ())), ACTIVE_VISION_FEATURE_NAMES, "feature_order_mismatch")

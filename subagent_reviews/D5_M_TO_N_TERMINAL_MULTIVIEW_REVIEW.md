@@ -1,5 +1,24 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-20 M 对 N 主动视觉整 episode 数据复核
+
+新增 episode dataset 合同按实际 camera、target 和 resource 数组保存每个决策样本，不假设 2v2、
+5v5 或 200v200。online record 包含 truth-free snapshot、规则示范、requested/effective action、
+三个版本、相机反馈和可选 ACK；offline reward/outcome/counterfactual/causal label 只在 episode
+结束后通过 `sample_key + observation_key` 连接，物理文件与 online record 分离。
+
+复核确认 loader 会拒绝 truth/actor/object identity、未知中心 `global_track_id`、相机局部换绑、
+版本回退、非完整 group split、unseen seed 不足、SHA/schema/source identity/label join 错误。
+reward 只允许 `[-1,1]`；缺 outcome 使用 unavailable/null 而非 0。BC 只加载规则示范；PPO 对任一
+缺 reward 样本失败关闭。manifest 与 `SHA256SUMS` 固化逐文件、split、training-set、Git/config
+identity；finalize 后制品只读。bundle v2 仍须正式 paired admission 才能 assist。
+
+2026-07-20 数据管线专项 `6 passed`、主动视觉组合 `30 passed`、D5 全量
+`382 passed in 10.53s`。这是动态规模合同和审计失败关闭证据；全部数据均为 `tmp_path` 合成
+fixture。本轮没有 main runtime 改动、AirSim 运行、正式 BC/PPO、20 个未见 seed 的正式 test、
+性能结果或模型准入。main 后续需在统一 episode 结束时接入双 writer 并提供真实 source identity
+及独立 outcome/counterfactual。
+
 ## 2026-07-20 M 对 N 主动视觉调度研究接口复核
 
 新增主动视觉路径按输入相机数和当前目标子集工作，不写死 2v2/5v5。每个 camera 的 snapshot

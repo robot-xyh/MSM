@@ -34,6 +34,8 @@ from .active_vision_contracts import (
 
 ACTIVE_VISION_DATASET_SCHEMA_VERSION = "d5.active-vision-dataset.v1"
 ACTIVE_VISION_MODEL_SEMANTIC_VERSION = "1.0.0"
+ACTIVE_VISION_REWARD_MINIMUM = -1.0
+ACTIVE_VISION_REWARD_MAXIMUM = 1.0
 
 ACTIVE_VISION_FEATURE_NAMES = (
     "camera_yaw_normalized",
@@ -79,13 +81,17 @@ class ActiveVisionTransition:
     snapshot: ActiveVisionSnapshotV1
     camera_id: str
     selected_action: ActiveVisionActionV1
-    reward: float = 0.0
+    reward: float | None = None
     done: bool = False
 
     def __post_init__(self) -> None:
-        reward = float(self.reward)
-        if not np.isfinite(reward):
-            raise ValueError("active-vision reward must be finite")
+        reward = None if self.reward is None else float(self.reward)
+        if reward is not None and not np.isfinite(reward):
+            raise ValueError("active-vision reward must be finite when available")
+        if reward is not None and not (
+            ACTIVE_VISION_REWARD_MINIMUM <= reward <= ACTIVE_VISION_REWARD_MAXIMUM
+        ):
+            raise ValueError("active-vision reward must be in [-1, 1]")
         self.snapshot.camera(self.camera_id)
         object.__setattr__(self, "camera_id", str(self.camera_id))
         object.__setattr__(self, "reward", reward)
@@ -124,6 +130,8 @@ class ActiveVisionDatasetSplit:
     split_seed: int
     validation_fraction: float
     test_fraction: float
+    minimum_unseen_seed_count: int
+    unseen_test_seed_count: int
     manifest_sha256: str
     split_sha256: str
     training_set_sha256: str
@@ -167,6 +175,8 @@ class ActiveVisionDatasetSplit:
                     "split_seed": self.split_seed,
                     "validation_fraction": self.validation_fraction,
                     "test_fraction": self.test_fraction,
+                    "minimum_unseen_seed_count": self.minimum_unseen_seed_count,
+                    "unseen_test_seed_count": self.unseen_test_seed_count,
                 },
                 "groups": groups,
                 "manifest_sha256": self.manifest_sha256,
@@ -285,6 +295,7 @@ def split_active_vision_episode_groups(
     split_seed: int = 20260720,
     validation_fraction: float = 0.2,
     test_fraction: float = 0.2,
+    minimum_unseen_seed_count: int = 1,
 ) -> ActiveVisionDatasetSplit:
     """Assign complete scenario/seed groups to exactly one dataset split."""
 
@@ -295,6 +306,9 @@ def split_active_vision_episode_groups(
         raise ValueError("validation/test fractions must be in (0, 1)")
     if validation_fraction + test_fraction >= 1.0:
         raise ValueError("validation and test fractions leave no training data")
+    minimum_unseen = int(minimum_unseen_seed_count)
+    if minimum_unseen < 1:
+        raise ValueError("minimum_unseen_seed_count must be positive")
     groups = sorted({item.group_key for item in items})
     if len(groups) < 3:
         raise ValueError("at least three scenario/seed groups are required")
@@ -318,6 +332,18 @@ def split_active_vision_episode_groups(
         else:
             split = "train"
         split_by_group[group] = split
+    seen_seed_values = {
+        seed for (scenario, seed), split in split_by_group.items() if split != "test"
+    }
+    unseen_test_seed_values = {
+        seed
+        for (scenario, seed), split in split_by_group.items()
+        if split == "test" and seed not in seen_seed_values
+    }
+    if len(unseen_test_seed_values) < minimum_unseen:
+        raise ValueError(
+            "test split does not contain the required number of unseen seed values"
+        )
     group_payload = [
         {"scenario_version": key[0], "seed": key[1], "split": split_by_group[key]}
         for key in sorted(groups)
@@ -330,6 +356,8 @@ def split_active_vision_episode_groups(
         "split_seed": int(split_seed),
         "validation_fraction": float(validation_fraction),
         "test_fraction": float(test_fraction),
+        "minimum_unseen_seed_count": minimum_unseen,
+        "unseen_test_seed_count": len(unseen_test_seed_values),
         "groups": group_payload,
     }
     split_sha = _sha256_json(group_payload)
@@ -343,6 +371,8 @@ def split_active_vision_episode_groups(
         split_seed=int(split_seed),
         validation_fraction=float(validation_fraction),
         test_fraction=float(test_fraction),
+        minimum_unseen_seed_count=minimum_unseen,
+        unseen_test_seed_count=len(unseen_test_seed_values),
         manifest_sha256=manifest_sha,
         split_sha256=split_sha,
         training_set_sha256=training_sha,
@@ -525,7 +555,13 @@ def train_clipped_ppo(
                 safety_config=safety_config,
             )
             selected_index = _selected_action_index(batch.actions, transition.selected_action)
-            examples.append((batch.features, selected_index, transition.reward, transition.done))
+            if transition.reward is None:
+                raise ValueError(
+                    "PPO reward is unavailable; offline outcome labels must not be replaced by zero"
+                )
+            examples.append(
+                (batch.features, selected_index, float(transition.reward), transition.done)
+            )
         episode_lengths.append(len(examples) - before)
     if not examples:
         raise ValueError("PPO requires at least one transition")
@@ -655,6 +691,8 @@ __all__ = [
     "ACTIVE_VISION_DATASET_SCHEMA_VERSION",
     "ACTIVE_VISION_FEATURE_NAMES",
     "ACTIVE_VISION_MODEL_SEMANTIC_VERSION",
+    "ACTIVE_VISION_REWARD_MAXIMUM",
+    "ACTIVE_VISION_REWARD_MINIMUM",
     "ActiveVisionActorCritic",
     "ActiveVisionCandidateBatch",
     "ActiveVisionDatasetSplit",

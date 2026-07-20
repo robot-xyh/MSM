@@ -2,6 +2,52 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-20 主动视觉整 episode 数据合同与审计管线
+
+新增 `active_vision_episode_dataset.py`，把统一三维 episode 的主动视觉决策形成正式版本化数据
+合同。每个 `ActiveVisionEpisodeSampleV1` 保存 truth-free `ActiveVisionSnapshotV1`、规则示范动作、
+requested/effective action 与 mode、plan/coalition/communication version、相机反馈和可选 runtime
+ACK。`active_vision_sample_from_decision()` 可直接从现有 `ActiveVisionDecisionV1` 构造样本；相机、
+目标和资源均按输入数组工作，不存在 2v2、5v5 或 200v200 常量。
+
+数据目录固定分流为：
+
+```text
+dataset_config.json
+online/<episode_uid>.online.json
+offline/<episode_uid>.offline.json
+episodes/<episode_uid>.episode.json
+manifest.json
+SHA256SUMS
+```
+
+`stage_active_vision_episode_record()` 只写在线文件并递归拒绝 truth/actor/object identity；
+`stage_active_vision_offline_labels()` 必须在 episode 关闭后，以完全匹配的 `sample_key +
+observation_key` 写独立 evaluator 文件。reward、outcome、counterfactual 和 causal label 不会复制回
+snapshot。reward 固定在 `[-1,1]`；缺少离线 outcome 时 `reward_available=false/value=null`，不能用
+`0` 补位；causal label 还要求 factual outcome 与 counterfactual 同时可用。
+
+`finalize_active_vision_episode_dataset()` 只按完整 `(scenario_version, seed)` group 切分；少于三个
+独立 group、少于声明的 unseen test seed 或任一 group 跨 split 均失败关闭。CLI/API 的正式默认
+门为 20 个 unseen seed，单测 smoke 仅显式使用 1。manifest 固化全部 schema/version、逐文件
+SHA256、split/training-set SHA、source Git commit/dirty 状态、source config SHA 和 availability。
+finalize 后全部制品去除写权限；loader 要求 `SHA256SUMS` 精确覆盖目录并复算哈希、版本、split、
+source identity、键连接、奖励边界和中心 ID 引用。未知中心引用、相机对中心 ID 的局部换绑、
+版本回退或额外未审计文件均拒绝。
+
+`LoadedActiveVisionEpisodeDataset.behavior_cloning_episodes()` 只加载规则示范，不接触 evaluator
+label；`ppo_episodes()` 只加载 effective action，并要求每个样本都有有界离线 reward，否则失败
+关闭。旧 `ActiveVisionTransition.reward` 的 unavailable 表达已从默认 `0.0` 改为 `None`。主动视觉
+模型 bundle 升级为 `d5.active-vision-model-bundle.v2`，明确绑定
+`d5.active-vision-episode-dataset.v1`；没有正式 admission report 时仍不能 assist。
+
+2026-07-20 验证：新增数据管线专项 `6 passed`，主动视觉合同/学习/bundle/数据组合 `30 passed`，
+D5 全量 `382 passed in 10.53s`，接受阈值为零失败。测试数据全部位于 `tmp_path`，只构成代码和
+失败关闭证据；本轮没有修改 main runtime、没有运行 AirSim、没有正式数据集/checkpoint、没有
+正式训练或 20-unseen-seed 性能结果。main 后续仍需在统一 episode 结束时调用 writer、传入真实
+source Git/config identity、提供独立 evaluator outcome/counterfactual，并完成正式 split、训练和
+paired shadow 准入。
+
 ## 2026-07-20 统一三维 episode 主动视觉接线状态
 
 main-owned `scalable_3d_simulation` 已把 D5 主动视觉合同接入统一 episode。每个决策时刻由

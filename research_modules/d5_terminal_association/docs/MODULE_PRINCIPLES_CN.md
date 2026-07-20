@@ -4,6 +4,32 @@
 
 **适用范围：** 本文描述第五研究模块（D5）当前代码、测试和主运行链路已经具备的能力。文中将默认主线、已实现但非默认的辅助/离线能力、尚未实现能力严格分开。计划项不能据此解释为已上线能力。
 
+## 2026-07-20 主动视觉 episode 数据最小权限原则
+
+整 episode 数据记录仍必须遵守在线最小权限。`ActiveVisionEpisodeSampleV1` 可以保存 snapshot、
+规则示范、requested/effective camera action、plan/coalition/communication version、相机反馈和
+runtime ACK，但在线文件不能出现 truth、actor、object identity。所有目标引用都必须是同一
+snapshot 内中心提供的 `global_track_id`；D5 不允许用本地 ID 生成、替换或换绑中心 ID。
+
+在线 observation 与离线 evaluator 结果必须物理分离。episode 先关闭 truth-free online record，
+再由 evaluator 通过稳定且一一匹配的 `sample_key + observation_key` 写 offline label。reward、
+outcome、counterfactual 和 causal label 永不回填 snapshot。reward 有界 `[-1,1]`；缺 outcome
+使用 unavailable/null，不能用 0 伪装；causal label 还必须有 counterfactual。
+
+数据切分以完整 `(scenario_version, seed)` group 为不可分单位。少于三个 group、少于声明 unseen
+test seed 或同 group 跨 split 都必须失败关闭。正式默认要求 20 个 unseen seed；单元 smoke 可
+显式降低门，但不能据此形成准入。manifest 必须绑定 schema/version、全部 artifact SHA256、
+split/training-set SHA、source Git/config identity 和 label availability。finalize 后数据只读，
+loader 复算全部哈希并拒绝额外制品。
+
+BC 只能从 online record 提取规则示范，不读取 evaluator label。PPO 只能在每个 selected sample
+都有有界离线 reward 时加载；缺一项即拒绝，不能补 0。模型 bundle v2 绑定 episode dataset v1，
+但仍需正式 paired shadow admission 才能 assist。
+
+2026-07-20 代码证据为数据管线 `6 passed`、主动视觉组合 `30 passed`、D5 全量
+`382 passed in 10.53s`。全部样本和制品均为 `tmp_path` 合成 fixture；没有 main runtime 改动、
+AirSim 运行、正式训练、20-unseen-seed 性能或模型准入结论。
+
 ## 2026-07-20 主动视觉最小权限与安全回退原则
 
 学习型主动视觉是可选研究支线，不改变 D5 几何关联和确定性规则观察默认主线。版本化 snapshot 只允许中心

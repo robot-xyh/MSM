@@ -1,5 +1,28 @@
 # AirSim 离线集成计划
 
+## 2026-07-20 主动视觉 episode dataset 接线边界
+
+D5 已完成整 episode writer/loader/audit 代码，但本轮没有修改 main runtime。main 后续应在每个
+统一三维主动视觉 decision 后，用 `active_vision_sample_from_decision()` 保存 truth-free snapshot、
+规则示范、requested/effective action、三个版本和相机反馈；有 `runtime.camera_command_ack` 时
+附加 `ActiveVisionRuntimeAckV1`，没有 ACK 时保持 null，不伪造 accepted。
+
+episode 结束后先调用 `stage_active_vision_episode_record()` 写 `online/`，再从独立 evaluator
+结果调用 `stage_active_vision_offline_labels()` 写 `offline/`。main 不得把 actor/object/truth
+identity、AirSim detection object identity 或 world snapshot 合并进 online record。offline join
+只使用 `sample_key + observation_key`；reward/outcome/counterfactual/causal label 不得回流下一
+episode snapshot、相机命令或关联路径。
+
+source identity 必须来自实际 episode：完整 Git commit、dirty 状态和实际 runtime/settings config
+SHA256。收齐数据后由 `finalize_active_vision_episode_dataset()` 按完整 `(scenario_version, seed)`
+group 切分；正式运行保留默认 minimum 20 unseen seeds。少于三个 group、unseen 不足或任一 hash/
+join/ID 审计失败时不得生成可训练 dataset。
+
+本轮模块验证为数据管线 `6 passed`、主动视觉组合 `30 passed`、D5 全量
+`382 passed in 10.53s`。测试只使用合成 `tmp_path`，未启动 AirSim、未生成 settings、未收集正式
+episode，也没有真实云台 ACK、正式 BC/PPO、20-seed 性能或 assist 准入。真实 AirSim 接线仍由
+main 负责，D5 不在本轮修改 launcher/reset/episode order。
+
 ## 2026-07-20 主动视觉 v1 统一三维接线与 AirSim 后续工作
 
 D5 已提供 `ActiveVisionSnapshotV1 -> ActiveVisionDecisionV1`，main-owned
