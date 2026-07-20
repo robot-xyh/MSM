@@ -4,6 +4,37 @@
 
 **适用范围：** 本文描述第五研究模块（D5）当前代码、测试和主运行链路已经具备的能力。文中将默认主线、已实现但非默认的辅助/离线能力、尚未实现能力严格分开。计划项不能据此解释为已上线能力。
 
+## 2026-07-20 主动视觉最小权限与安全回退原则
+
+主动视觉是可选研究支线，不改变 D5 几何关联默认主线。版本化 snapshot 只允许中心
+GlobalTrack/AssignmentPlan 只读引用、相机云台/FOV 状态、投影不确定度、可见/遮挡统计、通信
+状态及 plan/coalition/communication version。truth、actor、object identity 不得进入策略输入；
+`global_track_id` 只能从输入候选与当前相机分配交集中只读选择，模型无权创建、改写或换绑。
+
+动作遵循相机意图最小权限：observe target、search sector、hold、reacquire，外加有限 yaw/pitch
+增量和 wide/zoom。动作合同没有平台速度、航向、加速度、航点、D3 assignment 或处置字段。
+学习模型也不回归任意连续控制量，只能在基于投影和规则扇区生成的有限候选中评分选择。
+
+规则 look-at/reacquire/scan 在所有模式下先计算。学习请求随后必须通过计划/联盟/通信版本、
+候选成员、FOV 支持、云台机械角、当前与请求速率、slew、友方 exclusive reservation、证据
+freshness 和 action timeout。模型/bundle 缺失、SHA/schema/state 错误、OOD、低置信、非有限、
+异常或慢推理均直接采用同 tick 规则动作。shadow 的最终动作永远是规则动作。库默认 disabled；
+CLI 默认 shadow preflight，不代表 actuator 已连接。
+
+assist 准入必须来自与模型指纹及 dataset manifest/split/training-set SHA 绑定的 paired shadow
+报告。test 至少包含 20 个在 train/validation 中完全未见的 seed，数据必须正式且非合成，
+safety、visibility、reacquisition delay 必须逐 episode 和总体均不退化。合成 fixture 即便 20 个
+seed 全部为正，也只能证明门控代码可运行，不能授予准入。当前没有正式 checkpoint、正式
+paired 报告或真实云台闭环，故 assist 未准入。
+
+`source_observation_id` 是量测审计键而非身份。scalable adapter 可从在线 observation 只读传播
+该键，使 evaluator 在图冻结后连接 truth label；tracker 匹配、local ID、tracklet key、图特征、
+聚类和 global binding 均不得使用它。同一帧一个 observation 最多连接一个 tracklet；假目标
+没有 evaluator label 时必须报告 labels incomplete。
+
+2026-07-20 验证为主动视觉专项 `17 passed`、D5 全量 `376 passed in 9.94s`。BC/PPO 仅在
+8 个合成 seed group 上各跑 1 epoch smoke；本轮未运行 AirSim，不产生性能或准入结论。
+
 ## 2026-07-20 训练数据与模型制品安全原则
 
 离线训练不得改变在线图的语义。每个数据 episode 必须先由在线 D5 匿名构图完成，再将
@@ -39,7 +70,8 @@ tracklet 的约束，中心投影/Hungarian 继续只引用中心输入 ID。模
 2026-07-20 代码验证为新管线 `12 passed`、组合专项 `46 passed`、D5 全量
 `355 passed in 9.48s`，零失败；checkpoint 均在 `tmp_path` 生成。本轮只关闭训练/校准/评估/
 制品软件管线，不构成模型准入。至少 20 个未见 seed、代表性困难场景、冻结门限和默认
-checkpoint 均开放，几何规则仍是默认。未运行 AirSim，AirSim 集成计划已检查无需修改。
+checkpoint 均开放，几何规则仍是默认。未运行 AirSim；本轮主动视觉合同已在集成计划文首同步，
+但没有实际接线或实验。
 
 ## 2026-07-20 匿名稀疏跨视角图原则
 
@@ -82,7 +114,8 @@ payload guard 会拒绝 `TGT-0001`、嵌入式 `camera:TGT-002`、`TargetDrone_1
 策略，也没有真实 AirSim 云台闭环。
 
 scalable 3D 在线入口遵循“先隔离、后更新状态”。整个 duck-typed batch 在进入任何 tracker
-前先递归检查字段和值；transport `observation_id` 不进入输出。每个 resource/camera 有独立的
+前先递归检查字段和值；transport `observation_id` 只读进入 `source_observation_id` 审计字段，
+不进入身份或模型特征。每个 resource/camera 有独立的
 匿名序列和有限漏检状态，episode reset 清空该序列。`vision_bbox` 的中心与 bbox covariance
 分别保留为 `2x2` 节点协方差和 `4x4` 审计 metadata；像素位移按 `fx/fy/dt` 转成角速度，bbox
 面积比按对数尺度率记录。空扫描只老化本相机 tracker，不伪造预测量测；缺少当前 camera

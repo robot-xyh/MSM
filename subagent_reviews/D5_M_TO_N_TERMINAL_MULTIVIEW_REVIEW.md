@@ -1,5 +1,24 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-20 M 对 N 主动视觉调度研究接口复核
+
+新增主动视觉路径按输入相机数和当前目标子集工作，不写死 2v2/5v5。每个 camera 的 snapshot
+只引用中心候选和当前 assignment，模型在 observe/search/hold/reacquire 的有限候选中选择，并
+携带安全投影后的 yaw/pitch 与 wide/zoom。规则基线按新鲜可见投影 look-at、短时丢失
+reacquire、否则确定性扫描；候选缺失、版本旧、友方冲突、证据过期、云台/FOV 越界、OOD、
+低置信、超时或 bundle 错误都不允许学习动作生效。
+
+研究训练与评估软件已覆盖完整 `(scenario_version, seed)` split、behavior cloning、原生 PyTorch
+clipped PPO、weights-only bundle 和 paired shadow。assist 需要至少 20 个完全未见 seed 的正式
+非合成 paired 结果，且 safety、visibility、reacquisition delay 逐 episode 和总体均不退化；
+合成 20-seed fixture 不可晋级。库默认 disabled，CLI 默认 shadow，当前没有正式 checkpoint。
+
+多视角数据导出同步增加匿名 `source_observation_id -> tracklet_key` 审计连接，允许 main 在
+episode 结束后连接 evaluator-only truth。该键不成为 MOT 身份或 global ID，同一帧只能属于一个
+tracklet，假目标缺 label 时完整性为 false。2026-07-20 主动视觉专项 `17 passed`、D5 全量
+`376 passed in 9.94s`。这些是接口和失败关闭证据，不是 M 对 N 真实可见性提升、时延改善或
+AirSim 云台执行证据；main 后续仍需统一三维 episode 注入和正式 paired shadow。
+
 ## 2026-07-20 多视角图训练制品复核
 
 D5 现已提供版本化 graph/label 分流、完整 `(scenario_version, seed)` episode group split、
@@ -15,7 +34,8 @@ hard-negative provenance。bundle 用 SHA256 校验并只做 `weights_only=True`
 
 该结果只关闭训练与模型制品代码管线，不关闭多视角模型准入。至少 20 个未见 seed 的整
 episode test、遮挡/近邻交叉/时延/外参漂移、冻结阈值、默认 checkpoint 和真实 AirSim 模型
-证据继续开放；几何规则仍是默认。AirSim 集成计划已检查，本轮无 runtime 接线变化无需修改。
+证据继续开放；几何规则仍是默认。该阶段无 runtime 变化；本轮主动视觉合同已另同步到 AirSim
+集成计划，但尚未实际接线。
 
 ## 2026-07-20 匿名 tracklet 图多视角实现复核
 

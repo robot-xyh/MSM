@@ -1,5 +1,30 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-20 主动视觉与 source-observation 代码级实验
+
+本节仅记录确定性单元/训练 smoke。没有运行 AirSim、没有真实云台动作、没有正式 checkpoint，
+也没有形成可用于 assist 准入的 paired report。
+
+| 实验 | 样本/注入 | 实测 | 接受阈值 | 判定 |
+| --- | --- | --- | --- | --- |
+| v1 snapshot/action 与规则基线 | 1/3/6 相机、不同 assignment 目标子集 | 按输入规模生成 observe 或 scan/hold；输出 ID 始终来自中心候选 | 无 truth/control/assignment 输出；ID rewrite=0 | 通过 |
+| safety fail-closed | 缺候选、旧 plan、云台限位、FOV、友方冲突、stale evidence、action timeout、低置信、OOD、NaN、慢推理 | 全部保留规则动作并给出稳定 fallback reason；shadow effective=rule | 任一无效学习动作执行数=0 | 通过 |
+| BC/PPO smoke | 8 个合成 `(scenario_version, seed)` group；BC/PPO 各 1 epoch | 整 group 进入唯一 split；loss 均有限；原生 PyTorch actor-critic 可前后向 | seed 跨 split=0；非有限 loss=0 | 管线通过，不是策略质量证据 |
+| bundle | 临时 state_dict；SHA tamper、schema mismatch、OOD | weights-only round-trip 通过；篡改/schema 全拒绝；OOD 返回 unavailable proposal | 错误制品执行数=0 | 通过 |
+| paired admission gate | 20-seed 合同 fixture；含 synthetic 标志反例 | 正向合同分支要求 20 unseen/non-degrading；synthetic fixture 明确 `assist_admitted=false` | 合成证据正式准入数=0 | 门控通过，不是正式准入 |
+| source observation join | 两 detection/同帧、重复 observation、无 label 假目标 | source key 一对一导出；重复在 tracker 更新前拒绝；假目标令 labels incomplete | source key 不等于 local/global ID；补造 truth=0 | 通过 |
+| 主动视觉专项 | 17 项参数化测试 | `17 passed in 3.79s` | 零失败 | 通过 |
+| D5 全量回归 | 全部 D5 tests | `376 passed in 9.94s` | 零失败 | 通过 |
+
+模型只对有限 camera action 候选评分，不能输出飞控/D3 assignment/global ID。bundle/admission
+报告绑定 model fingerprint、dataset manifest、split 和 training-set SHA。正式 assist 仍需至少
+20 个完全未见 seed 的真实/代表性 paired shadow 数据，并证明逐 episode/总体 safety、visibility、
+reacquisition delay 非退化。当前上述证据全部缺失，因此 library 默认 disabled、CLI 默认 shadow，
+规则观察策略不变。
+
+`source_observation_id` 是在线 truth-free 审计键。离线 join 后的 `truth_entity_id` 只存在于
+evaluator label，不进入 tracklet graph feature、主动视觉 snapshot 或在线 binding。
+
 ## 2026-07-20 训练与模型制品代码级实验
 
 本轮没有运行 AirSim，也没有使用正式图像数据。全部新增实验为 D5-owned 确定性合成图和
@@ -29,8 +54,9 @@ bundle 已随 `tmp_path` 清理，仓库没有新增正式 checkpoint。至少 2
 代表性近邻交叉/遮挡/时延/外参漂移、冻结质量/时延门限和默认 checkpoint 均未执行或批准。
 因此本轮只关闭训练/制品管线 GAP，几何规则继续默认。
 
-`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮没有 settings、相机、detector、runtime episode、
-云台或 handoff 接线变化，故不修改该文档。
+该训练制品阶段没有 settings、相机、detector、runtime episode、云台或 handoff 接线变化。
+本轮新增主动视觉/source-observation 合同后，`docs/AIRSIM_INTEGRATION_PLAN.md` 已同步未来接线
+边界；仍没有新增 AirSim 实验结论。
 
 ## 2026-07-20 稀疏图代码级实验
 

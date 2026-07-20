@@ -13,6 +13,7 @@ from d5_terminal_association.scalable_3d_adapter import (
     global_tracks3d_to_projection_tracks,
     run_scalable_3d_online_association,
 )
+from d5_terminal_association.tracklet_dataset import join_offline_observation_labels
 from research_modules.scalable_3d_simulation.camera_projection import (
     CameraIntrinsics,
     CameraPose,
@@ -281,6 +282,9 @@ def test_cross_frame_local_id_is_tracker_owned_and_kinematics_are_computed() -> 
         "anonymous-observation-a",
         "unrelated-observation-b",
     }
+    assert first_track.source_observation_id == "anonymous-observation-a"
+    assert second_track.source_observation_id == "unrelated-observation-b"
+    assert first_track.tracklet_key == second_track.tracklet_key
     intrinsics = _intrinsics()
     expected_velocity = np.array(
         [10.0 / intrinsics.fx / 0.1, 5.0 / intrinsics.fy / 0.1]
@@ -584,4 +588,143 @@ def test_adapter_module_has_no_main_d2_or_optional_graph_imports() -> None:
     assert "torch_geometric" not in source
     assert "OfflineTruthLabel" not in source
     assert "WorldSnapshot" not in source
-    assert "observation_id=" not in source
+    assert "local_track_id=detection.source_observation_id" not in source
+    assert "global_track_id=detection.source_observation_id" not in source
+
+
+def test_source_observation_link_is_one_to_one_and_does_not_drive_tracker_identity() -> None:
+    adapter = Scalable3DTerminalAdapter()
+    centers, boxes = _projected_boxes(0, (0, 1))
+    measurements = tuple(
+        _measurement(
+            camera_index=0,
+            center=centers[index],
+            bbox=boxes[index],
+            timestamp=6.0,
+            frame_index=1,
+            detection_index=index,
+            observation_id=f"source-measurement-{index}",
+        )
+        for index in range(2)
+    )
+    result = adapter.process(
+        (_batch(0, measurements, timestamp=6.0, frame_index=1),),
+        _center_tracks(),
+    )
+
+    links = result.source_observation_links
+    assert {item.source_observation_id for item in links} == {
+        "source-measurement-0",
+        "source-measurement-1",
+    }
+    assert {item.tracklet_key for item in links} == {
+        item.tracklet_key for item in result.tracklets
+    }
+    assert all(
+        tracklet.local_track_id != tracklet.source_observation_id
+        for tracklet in result.tracklets
+    )
+    assert result.association.graph.node_features.shape[0] == len(result.tracklets)
+
+
+def test_duplicate_source_observation_is_rejected_before_tracker_state_changes() -> None:
+    adapter = Scalable3DTerminalAdapter()
+    centers, boxes = _projected_boxes(0, (0, 1))
+    duplicated = tuple(
+        _measurement(
+            camera_index=0,
+            center=centers[index],
+            bbox=boxes[index],
+            timestamp=7.0,
+            frame_index=1,
+            detection_index=index,
+            observation_id="same-source-observation",
+        )
+        for index in range(2)
+    )
+
+    with pytest.raises(ValueError, match="only one detection per frame"):
+        adapter.adapt_batch(_batch(0, duplicated, timestamp=7.0, frame_index=1))
+    clean = adapter.adapt_batch(
+        _batch(0, (duplicated[0],), timestamp=7.0, frame_index=1)
+    )
+    assert clean.tracklets[0].local_track_id == "trk-000001"
+
+
+def test_source_observation_cannot_map_to_two_cameras_in_the_same_frame() -> None:
+    adapter = Scalable3DTerminalAdapter()
+    batches = []
+    for camera_index in (0, 1):
+        centers, boxes = _projected_boxes(camera_index, (0,))
+        measurement = _measurement(
+            camera_index=camera_index,
+            center=centers[0],
+            bbox=boxes[0],
+            timestamp=7.5,
+            frame_index=1,
+            detection_index=0,
+            observation_id="cross-camera-duplicate-source",
+        )
+        batches.append(
+            _batch(
+                camera_index,
+                (measurement,),
+                timestamp=7.5,
+                frame_index=1,
+            )
+        )
+
+    with pytest.raises(ValueError, match="only one tracklet per frame"):
+        adapter.adapt_batches(batches)
+    clean = adapter.adapt_batch(batches[0])
+    assert clean.tracklets[0].local_track_id == "trk-000001"
+
+
+def test_offline_observation_join_marks_unlabeled_false_alarm_incomplete() -> None:
+    adapter = Scalable3DTerminalAdapter()
+    centers, boxes = _projected_boxes(0, (0,))
+    real = _measurement(
+        camera_index=0,
+        center=centers[0],
+        bbox=boxes[0],
+        timestamp=8.0,
+        frame_index=1,
+        detection_index=0,
+        observation_id="observation-with-label",
+    )
+    false_alarm = _measurement(
+        camera_index=0,
+        center=np.array([80.0, 80.0]),
+        bbox=np.array([70.0, 70.0, 90.0, 90.0]),
+        timestamp=8.0,
+        frame_index=1,
+        detection_index=1,
+        observation_id="false-alarm-without-label",
+        confidence=0.1,
+    )
+    result = adapter.process(
+        (_batch(0, (real, false_alarm), timestamp=8.0, frame_index=1),),
+        _center_tracks(),
+    )
+    joined = join_offline_observation_labels(
+        result.association.graph,
+        (
+            SimpleNamespace(
+                observation_id="observation-with-label",
+                truth_entity_id="EVALUATOR-ENTITY-1",
+                measurement_timestamp=8.0,
+            ),
+        ),
+    )
+
+    assert joined.labels_complete is False
+    assert len(joined.tracklet_labels) == 1
+    assert len(joined.missing_tracklet_keys) == 1
+    assert joined.unmatched_observation_ids == ()
+    labeled_tracklet = next(
+        item
+        for item in result.tracklets
+        if item.source_observation_id == "observation-with-label"
+    )
+    assert joined.tracklet_labels[0].tracklet_key == labeled_tracklet.tracklet_key
+    assert joined.tracklet_labels[0].truth_entity_id == "EVALUATOR-ENTITY-1"

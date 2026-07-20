@@ -175,6 +175,90 @@ class LoadedTrackletDataset:
         return tuple(episode for episode in self.episodes if episode.split == name)
 
 
+@dataclass(frozen=True)
+class OfflineObservationLabelJoinResult:
+    """Audited offline join from source observations to anonymous tracklets."""
+
+    tracklet_labels: tuple[OfflineTrackletTruthLabel, ...]
+    labels_complete: bool
+    missing_tracklet_keys: tuple[str, ...]
+    unmatched_observation_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "tracklet_labels", tuple(self.tracklet_labels))
+        object.__setattr__(self, "missing_tracklet_keys", tuple(self.missing_tracklet_keys))
+        object.__setattr__(
+            self,
+            "unmatched_observation_ids",
+            tuple(self.unmatched_observation_ids),
+        )
+
+
+def join_offline_observation_labels(
+    graph: SparseTrackletGraph,
+    evaluator_observation_labels: Iterable[Any],
+    *,
+    max_timestamp_delta_s: float = 1.0e-6,
+) -> OfflineObservationLabelJoinResult:
+    """Join main's evaluator-only ``observation_id`` labels after graph build.
+
+    ``source_observation_id`` remains an audit key only.  It is never copied to
+    ``local_track_id`` or ``global_track_id`` and is absent from model features.
+    """
+
+    tolerance = float(max_timestamp_delta_s)
+    if not np.isfinite(tolerance) or tolerance < 0.0:
+        raise ValueError("max_timestamp_delta_s must be finite and non-negative")
+    by_observation_id: dict[str, tuple[str, float]] = {}
+    for item in evaluator_observation_labels:
+        observation_id = str(_offline_field(item, "observation_id")).strip()
+        truth_entity_id = str(_offline_field(item, "truth_entity_id")).strip()
+        timestamp = float(_offline_field(item, "measurement_timestamp"))
+        if not observation_id or not truth_entity_id or not np.isfinite(timestamp):
+            raise ValueError("offline observation label fields must be non-empty and finite")
+        if observation_id in by_observation_id:
+            raise ValueError(f"duplicate offline observation label: {observation_id}")
+        by_observation_id[observation_id] = (truth_entity_id, timestamp)
+
+    frame_links: set[tuple[float, str]] = set()
+    consumed: set[str] = set()
+    missing: list[str] = []
+    labels: list[OfflineTrackletTruthLabel] = []
+    for node in graph.nodes:
+        source_id = node.source_observation_id
+        if source_id is None:
+            missing.append(node.tracklet_key)
+            continue
+        frame_link = (node.measurement_timestamp, source_id)
+        if frame_link in frame_links:
+            raise ValueError("one source observation maps to multiple tracklets in one frame")
+        frame_links.add(frame_link)
+        offline = by_observation_id.get(source_id)
+        if offline is None:
+            missing.append(node.tracklet_key)
+            continue
+        truth_entity_id, label_timestamp = offline
+        if abs(label_timestamp - node.measurement_timestamp) > tolerance:
+            raise ValueError(
+                f"offline observation label timestamp does not align with {node.tracklet_key}"
+            )
+        consumed.add(source_id)
+        labels.append(
+            OfflineTrackletTruthLabel(
+                tracklet_key=node.tracklet_key,
+                truth_entity_id=truth_entity_id,
+                measurement_timestamp=node.measurement_timestamp,
+            )
+        )
+    unmatched = tuple(sorted(set(by_observation_id) - consumed))
+    return OfflineObservationLabelJoinResult(
+        tracklet_labels=tuple(sorted(labels, key=lambda item: item.tracklet_key)),
+        labels_complete=not missing and len(labels) == graph.node_count,
+        missing_tracklet_keys=tuple(sorted(missing)),
+        unmatched_observation_ids=unmatched,
+    )
+
+
 def stage_tracklet_dataset_episode(
     dataset_dir: str | Path,
     graph: SparseTrackletGraph,
@@ -1030,6 +1114,15 @@ def _reject_json_constant(token: str) -> None:
     raise ValueError(f"non-finite JSON constant: {token}")
 
 
+def _offline_field(value: Any, name: str) -> Any:
+    if isinstance(value, Mapping):
+        if name in value:
+            return value[name]
+    elif hasattr(value, name):
+        return getattr(value, name)
+    raise ValueError(f"offline observation label is missing {name}")
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Finalize or validate a D5 tracklet graph dataset")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1082,10 +1175,12 @@ __all__ = [
     "LoadedTrackletEpisode",
     "LoadedTrackletGraph",
     "NODE_FEATURE_VERSION",
+    "OfflineObservationLabelJoinResult",
     "TrackletDatasetValidationError",
     "edge_targets",
     "finalize_tracklet_dataset",
     "load_tracklet_dataset",
+    "join_offline_observation_labels",
     "sha256_file",
     "sha256_json",
     "split_episode_groups",

@@ -161,6 +161,7 @@ class CameraLocalTracklet:
     bbox_scale_rate_s: float = 0.0
     confidence: float = 1.0
     tracklet_start_timestamp: float | None = None
+    source_observation_id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
     tracklet_key: str = field(default="", init=False)
     camera_key: str = field(default="", init=False)
@@ -194,6 +195,17 @@ class CameraLocalTracklet:
         bbox = _optional_bbox(self.bbox_xyxy)
         scale_rate = _finite_float(self.bbox_scale_rate_s, "bbox_scale_rate_s")
         confidence = float(np.clip(_finite_float(self.confidence, "confidence"), 0.0, 1.0))
+        source_observation_id = (
+            None
+            if self.source_observation_id is None
+            else str(self.source_observation_id).strip()
+        )
+        if self.source_observation_id is not None and not source_observation_id:
+            raise ValueError("source_observation_id must be non-empty when present")
+        if source_observation_id is not None and is_truth_like_local_track_id(
+            source_observation_id
+        ):
+            raise ValueError("source_observation_id must be an anonymous measurement key")
         metadata = dict(self.metadata)
         assert_anonymous_online_payload(metadata)
 
@@ -210,6 +222,7 @@ class CameraLocalTracklet:
         object.__setattr__(self, "bbox_xyxy", bbox)
         object.__setattr__(self, "bbox_scale_rate_s", scale_rate)
         object.__setattr__(self, "confidence", confidence)
+        object.__setattr__(self, "source_observation_id", source_observation_id)
         object.__setattr__(self, "metadata", MappingProxyType(metadata))
         object.__setattr__(self, "camera_key", camera_key)
         object.__setattr__(self, "tracklet_key", f"{camera_key}:{local_track_id}")

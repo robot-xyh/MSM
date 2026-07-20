@@ -4,6 +4,70 @@
 
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
 
+## 2026-07-20 主动视觉 BC/PPO 与安全执行实现
+
+新增实现文件：
+
+- `active_vision_contracts.py`：v1 snapshot/action、规则 look-at/reacquire/scan、有限动作枚举、
+  safety projection 和 mode controller；
+- `active_vision_learning.py`：整 `(scenario_version, seed)` split、固定 feature order、原生
+  PyTorch actor-critic、behavior cloning 和 clipped PPO；
+- `active_vision_bundle.py`：manifest、state_dict、SHA256、模型指纹、OOD bounds、
+  `weights_only=True` 加载和 runtime unavailable policy；
+- `active_vision_evaluation.py`：至少 20 个完全未见 seed 的 paired shadow 非退化门；
+- `active_vision_cli.py`：默认 shadow 的非执行 preflight；库内 controller 默认 disabled。
+
+### Snapshot 与动作编码
+
+`ActiveVisionSnapshotV1` 按 camera/track 数组工作。Track reference 只含中心 ID、track version 和
+timestamp；Plan reference 只含 plan/coalition version 与 `(resource,camera,global_track_id)` 成员；
+camera state 含当前角度/速率、机械限位、最大轴速/slew 和 FOV 能力；projection evidence 含
+yaw/pitch error、`2x2` covariance、visibility、occlusion、association confidence、双时间戳和
+in-FOV；communication state 含版本、健康度和友方 exclusive reservation。递归 guard 拒绝
+truth/actor/object 字段。
+
+`ActiveVisionActionV1` 的 intent 为 observe/search/hold/reacquire，并总是携带有限 yaw/pitch 增量、
+wide/zoom、issued/expiry timestamp 和三个版本。目标动作必须引用 snapshot 候选及当前 camera
+assignment；search sector 先与相机机械角范围求交。合同没有飞控或 assignment 输出。
+
+### 规则基线与统一安全投影
+
+规则策略优先选择新鲜、可见、低遮挡且高置信的 assigned projection；短时丢失使用最后投影
+reacquire；没有可用候选时按 camera/plan 确定性轮转扫描扇区，全部扇区有友方冲突时 hold。
+增量同时裁剪单步角、yaw/pitch rate、合成 slew 和最终机械角。
+
+模型只对 `enumerate_safe_action_candidates()` 的有限候选打分。controller 再验证 snapshot/action
+plan、coalition、communication version，目标成员、projection age、FOV、当前 actuator busy/
+slew 状态、轴速、友方冲突和 timeout。bundle unavailable、SHA/schema/state mismatch、OOD、
+低置信、NaN/Inf、异常和推理超时均保留规则动作。输出 `ActiveVisionDecisionV1` 含 requested/
+effective mode、rule/requested/effective action、fallback reason、latency、fingerprint 和版本。
+
+### 数据、训练、bundle 与准入
+
+`split_active_vision_episode_groups()` 以整个 `(scenario_version, seed)` group 切分，并输出 dataset
+manifest、split 和 training-set SHA。BC 使用规则/行为 action 的离散交叉熵；PPO 对已安全投影的
+rollout 计算 discounted return、旧 log probability、clipped ratio、value loss 和 entropy，使用
+原生 PyTorch，不依赖 PyG。网络只输出候选 logits/value，不输出 ID 或连续飞控。
+
+bundle 精确校验顶层字段、feature/action schema/order、architecture、feature bounds、训练数据
+SHA、weights SHA/size、稳定 tensor fingerprint、admission report 和 strict state_dict shape；权重
+只用 `torch.load(weights_only=True)`。paired evaluator 排除 train/validation 已见 seed，并要求
+至少 20 个唯一 test seed、正式非合成、逐 episode/总体 safety/visibility/delay 非退化。报告与
+模型及三类 dataset SHA 不一致时 bundle 拒绝加载。
+
+### Scalable observation-label 连接
+
+`_PreparedDetection -> CameraLocalTracklet` 传播只读 `source_observation_id`。tracker 排序和
+`_match()` 不读取该字段，local ID 仍由 per-camera `trk-*` sequence 分配；同帧 duplicate source
+ID 在 commit 前拒绝。`SourceObservationTrackletLink` 导出 observation、tracklet key、camera key
+和 timestamp。在线图冻结后，`join_offline_observation_labels()` 才读取 evaluator-only
+`observation_id -> truth_entity_id`；无标签节点进入 `missing_tracklet_keys` 并令
+`labels_complete=false`。
+
+2026-07-20 主动视觉专项 `17 passed`，D5 全量 `376 passed in 9.94s`。训练 smoke 是 8 个
+合成 seed、BC/PPO 各 1 epoch；bundle/checkpoint 仅在 `tmp_path`，没有正式模型。20-seed fixture
+只验证准入门及合成拒绝，不能作为可见性、时延或 safety 性能证据。本轮未运行 AirSim。
+
 ## 2026-07-20 版本化离线训练与 bundle 实现
 
 新增实现文件：
@@ -107,7 +171,8 @@ metadata，并拒绝含 AirSim identity 别名的本地 ID。identity alias 检�
 
 `Scalable3DTerminalAdapter` 不静态依赖 main 或 D2 类型。它从 duck-typed batch 读取
 `measurements`、双时间戳和单一 `sensor_id`，从每条 `vision_bbox` 的
-`[u,v,xmin,ymin,xmax,ymax] + covariance` 构造检测。`observation_id` 只参与整批安全审计；
+`[u,v,xmin,ymin,xmax,ymax] + covariance` 构造检测。`observation_id` 参与整批安全审计并只读
+传播为 `source_observation_id`；
 tracker 先按空间顺序规范化检测，再用 IoU/中心距离一对一匹配，并在每个
 `(resource_id,camera_id)` 内分配 `trk-%06d`。匹配历史生成
 `angular_velocity=[du/fx,dv/fy]/dt` 和 `0.5*log(area_t/area_prev)/dt`。

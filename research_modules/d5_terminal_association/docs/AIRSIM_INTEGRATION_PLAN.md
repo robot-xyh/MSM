@@ -1,5 +1,33 @@
 # AirSim 离线集成计划
 
+## 2026-07-20 主动视觉 v1 与离线标签下一轮接线
+
+D5 已提供 main 可调用但尚未接入 AirSim 的 `ActiveVisionSnapshotV1 -> ActiveVisionDecisionV1`
+接口。main 下一轮应在每个统一三维 decision tick 注入：当前 center GlobalTrack 候选、当前
+AssignmentPlan/coalition version、recon/interceptor camera 与 gimbal angle/rate/limit/FOV、每个
+候选的 projection covariance、visibility/occlusion/freshness、communication version 和友方
+exclusive observation reservation。不得注入 actor/object/truth identity。
+
+main 只执行 `effective_action`，并持久化 requested/effective mode、rule/requested/effective action、
+fallback reason、inference latency、model fingerprint 和 plan/coalition/communication version。
+库默认 disabled；CLI 默认 shadow。shadow 必须继续执行规则动作，不发送模型动作。assist 在
+没有绑定同一模型和 dataset SHA 的正式 20-unseen-seed paired non-degradation 报告前不得启用。
+当前仓库没有正式主动视觉 checkpoint。
+
+实际云台命令、ACK、硬件速率、action timeout 和 reset 顺序仍由 main-owned runtime 负责。D5
+动作只有 observe/search/hold/reacquire、有限 yaw/pitch 和 wide/zoom，不得转换成飞行控制或 D3
+重分配。D5 safety projection 与 runtime actuator gate 应同时保留；任一拒绝都执行规则观察策略。
+
+在线 `SensorMeasurement.observation_id` 现在由 D5 只读导出为 `source_observation_id ->
+tracklet_key` 审计连接。main 应在 episode 内保存该 truth-free link，episode 结束后再与独立
+`OfflineTruthLabel(observation_id -> truth_entity_id)` 合并并调用
+`join_offline_observation_labels()`。offline label 不得回流在线 graph/policy；假目标无标签时必须
+保持 labels incomplete。同帧同 observation 多 tracklet 会由 D5 拒绝。
+
+本轮只实现和测试 D5-owned 接口，没有启动 AirSim，没有修改 settings、相机、detector、actor、
+episode/reset、真实云台/FOV/ACK 或 handoff。2026-07-20 主动视觉专项 `17 passed`、D5 全量
+`376 passed in 9.94s`；这些不是 AirSim 执行或性能证据。
+
 ## 2026-07-20 稀疏 tracklet 图接线状态
 
 D5 已实现匿名稀疏图、相机视锥/时间/空间桶索引、相机对与 tracklet 候选预算、原生 PyTorch
@@ -24,9 +52,10 @@ DTO 缺少 covariance，D5 只使用带 provenance 的 configured fallback。
 3. `OfflineTruthLabel` 只路由到训练/评估进程，不能并入 tracklet、图特征、云台动作或
    online bus。困难负样本挖掘也必须在在线图已经冻结后执行。
 
-主动视觉接线只允许 `observe_target/search_sector/gimbal_increment/set_fov_zoom` 四类 camera
-intent。main-owned runtime 负责实际云台/FOV 命令、ACK、速率限制和 timeout；低置信或超时
-必须执行规则扫描。学习型策略当前未训练和验收，不得替换规则 fallback。
+主动视觉 v1 接线只允许 `observe_target/search_sector/hold/reacquire` camera intent，并在同一
+action 中携带安全投影后的 yaw/pitch 增量和 wide/zoom。main-owned runtime 负责实际云台/FOV
+命令、ACK、速率限制和 timeout；低置信或超时必须执行规则扫描。学习型策略当前未正式训练和
+验收，不得替换规则 fallback。
 
 进入真实 AirSim 前的最低门槛为：独立 train/validation/test split，多 seed 200v200 的边
 precision/recall、ROC/PR 与校准误差，近邻交叉/遮挡/时延/外参漂移困难集，CPU/GPU P50/P95，

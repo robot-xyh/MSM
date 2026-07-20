@@ -1,5 +1,36 @@
 # D5 实现差距审计
 
+## 2026-07-20 主动视觉 RL 与量测标签连接 GAP 状态
+
+**已关闭的软件缺口：** D5 现有版本化 truth-free 主动视觉 snapshot/action、确定性
+look-at/reacquire/scan、有限动作候选、安全投影、`disabled/shadow/assist` 仲裁、完整
+`(scenario_version, seed)` split、行为克隆、原生 PyTorch clipped PPO、严格 bundle 和 paired
+shadow evaluator。策略权限仅为相机观察意图；没有飞控、D3 分配或 ID 生成接口。library 默认
+disabled，CLI 默认 shadow，shadow 的 effective action 固定为规则动作。
+
+**安全与准入门：** plan/coalition/communication version、候选成员、projection freshness、FOV、
+云台角/当前及请求速率、slew、友方 exclusive reservation、action timeout、低置信、OOD、非有限
+输出、模型异常和 bundle SHA/schema/state 错误全部 fail closed。assist report 必须绑定模型指纹、
+dataset manifest、split 和 training-set SHA，并具有至少 20 个完全未见 seed、正式非合成来源、
+逐 episode/总体 safety/visibility/reacquisition-delay 非退化。合成 fixture 不能授予准入。
+
+**scalable label join 已关闭：** `SensorMeasurement.observation_id` 现在只读成为
+`CameraLocalTracklet.source_observation_id`，在线 tracker 仍独立分配 `trk-*`。source key 不进入
+匹配、`tracklet_key`、图特征、cluster 或 `global_track_id` binding；同帧重复 key 在状态更新前
+拒绝。在线图冻结后，`join_offline_observation_labels()` 才把 evaluator-only observation label
+连接到匿名 tracklet。无离线标签的假目标使 `labels_complete=false`，不补 truth。
+
+**验证与边界：** 2026-07-20 主动视觉专项 `17 passed`，D5 全量
+`376 passed in 9.94s`，零失败。训练 smoke 只有 8 个合成 seed group、BC/PPO 各 1 epoch；
+20-seed 数据只测试 admission gate 的正/反分支，没有正式数据报告。仓库未新增主动视觉
+checkpoint，本轮未运行 AirSim。故“主动视觉软件研究管线不可用”和“observation label 无法稳定
+连接 tracklet”两个 D5-owned 子项关闭；真实统一三维 episode 接线、真实云台 ACK、至少 20 个
+未见 seed 的正式 paired non-degradation 和 assist 准入继续为开放 P1/P2。
+
+`docs/MODULE_PRINCIPLES_CN.md`、`docs/ALGORITHM_AND_IMPLEMENTATION.md`、
+`docs/AIRSIM_INTEGRATION_PLAN.md` 和 `docs/EXPERIMENT_REPORT.md` 已同步。AirSim 文档只增加后续
+接线边界，没有新增 AirSim 实验结论。
+
 ## 2026-07-20 训练与模型制品管线 GAP 状态
 
 **本轮关闭范围：** D5 已实现从匿名在线 `SparseTrackletGraph` 到版本化离线数据集、正式
@@ -33,7 +64,7 @@ checkpoint；本轮没有运行 AirSim。
 **GAP 判定：** 仅“训练/校准/评估/制品软件管线不可用”这一 D5-owned 子项关闭。代表性正式
 数据、近邻交叉/遮挡/时延/外参漂移覆盖、至少 20 个未见 seed 的独立 test、冻结准入门限和
 默认 checkpoint 均继续作为开放 P1。没有这些证据时不得声明模型准入，几何规则继续默认。
-`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查；因 AirSim/runtime 接线未变化无需修改。
+该阶段 AirSim/runtime 未变化；本轮主动视觉合同已另同步到 AirSim 集成计划，仍无实际运行证据。
 
 ## 2026-07-20 匿名稀疏图 GAP 状态
 
@@ -49,8 +80,8 @@ payload guard 现在除 `truth/actor/object` 外，还拒绝 `TGT-0001`、嵌入
 
 **scalable 3D 模块入口已完成：** `scalable_3d_adapter.py` 以 duck typing 消费在线
 camera batch 和 `vision_bbox`，不导入 main/D2/evaluator 类型。所有 payload 在 tracker 更新前
-完成字段及 truth-like 值审计；local ID 只由 per-resource/camera tracker 分配，不复制
-`observation_id`。输出包含双时间戳、中心与 bbox covariance、角速度、尺度变化和完整
+完成字段及 truth-like 值审计；local ID 只由 per-resource/camera tracker 分配，`observation_id`
+仅只读复制到 `source_observation_id` 作离线审计，不作为身份。输出包含双时间戳、中心与 bbox covariance、角速度、尺度变化和完整
 `TrackletCameraGeometry`。metadata 缺少独立 pose covariance 时使用带来源标记的配置 fallback。
 六维 D2 状态只读转换保留中心 ID；端到端路径显式区分注入模型与 missing/error/low-confidence
 规则 fallback。

@@ -1,5 +1,37 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-20 主动视觉学习研究路径与 source observation 审计
+
+- [x] 定义 `d5.active-vision-snapshot.v1` / `d5.active-vision-action.v1`；输入只含中心航迹和
+  AssignmentPlan 只读引用、相机/云台/FOV、投影不确定度、可见/遮挡、通信和版本信息，递归
+  拒绝 truth/actor/object identity。
+- [x] 动作限制为 observe/search/hold/reacquire、有限 yaw/pitch 增量和 wide/zoom；无飞行控制、
+  D3 分配、处置或授权字段，目标 ID 只能引用当前候选与相机分配交集。
+- [x] 实现确定性 look-at/reacquire/scan 基线及统一 safety projection，覆盖 plan/coalition/
+  communication version、候选成员、证据 age、FOV、机械角/当前与请求速率、slew、友方冲突、
+  timeout、低置信、OOD、非有限输出和 bundle SHA/schema 错误。
+- [x] 实现 library `disabled` 默认、CLI `shadow` 默认和 `disabled/shadow/assist` 决策输出；输出
+  包含 requested/effective mode、fallback、latency、fingerprint 和三个版本。shadow 不改变规则动作。
+- [x] 实现完整 `(scenario_version, seed)` group split、原生 PyTorch behavior cloning 和 clipped
+  PPO；学习模型只对有限安全动作候选评分，不增加 `torch_geometric` 依赖。
+- [x] 实现主动视觉 manifest/state_dict/SHA256 bundle 与 `weights_only=True` 严格加载；paired
+  shadow report 绑定模型、dataset manifest、split 和 training-set SHA。
+- [x] assist 门固定为至少 20 个完全未见 seed、正式非合成证据，以及逐 episode/总体 safety、
+  visibility、reacquisition delay 非退化；20-seed 合成 fixture 正例明确拒绝正式准入。
+- [x] scalable adapter 只读传播 `source_observation_id`，同帧一 observation 对一 tracklet；新增
+  evaluator-only observation label join，缺失假目标标签时 `labels_complete=false`。该键不参与
+  tracker、图特征、tracklet/global ID 或 binding。
+- [x] 2026-07-20：主动视觉专项 `17 passed`，D5 全量 `376 passed in 9.94s`；BC/PPO 为 8 个
+  合成 seed 的 1-epoch smoke，checkpoint/bundle 只在 `tmp_path` 生成。
+- [ ] main 下一轮将 snapshot 接到统一三维 episode 的相机/云台状态、recon/interceptor 调度和
+  ACK；在此之前没有真实动作执行，library 保持 disabled，CLI 只默认 shadow。
+- [ ] 收集代表性 train/validation/test 和至少 20 个完全未见 seed 的正式 paired shadow 结果；
+  当前无正式 checkpoint、无 assist 准入，不得把单测 fixture 写成性能或晋级证据。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已同步未来接线合同；`docs/EXPERIMENT_REPORT.md` 已同步本轮
+代码级 smoke 和“不构成正式准入”的边界。本轮没有 AirSim episode、settings、detector、相机
+外参来源或真实云台/FOV/ACK 变化。
+
 ## 2026-07-20 版本化数据、训练、校准与制品管线
 
 - [x] 新增 `tracklet_dataset.py`：在线匿名图和 evaluator label 分文件写入；图归档不保存
@@ -29,8 +61,8 @@
 - [ ] 默认 checkpoint 仍开放：本轮只关闭训练/制品代码管线，不授予默认模型资格，不改变
   几何规则默认路径。
 
-`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查：本轮没有 AirSim episode、settings、detector、相机
-外参来源、runtime 调度或 handoff 接线变化，因此无需修改。
+该阶段未改变 AirSim runtime；本轮新增主动视觉/source-observation 合同后，
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已在文首同步下一轮接线边界，仍未新增 AirSim 运行证据。
 
 ## 2026-07-20 匿名稀疏 tracklet 图与主动视觉接口
 
@@ -42,7 +74,7 @@
 - [x] 新增 `scalable_3d_adapter.py` duck-typed 在线入口：直接消费真实
   `OnlineSensorBatch`/`vision_bbox` 字段形状，不导入 main/D2/evaluator 类型；在 tracker 更新前
   拒绝 truth/actor/object/target/entity 字段和 truth-like 字符串，local ID 仅由 per-camera
-  tracker 产生，不使用 `observation_id`。
+  tracker 产生；`observation_id` 只读传播为审计键，不用于身份、匹配或 binding。
 - [x] 按 `(resource_id,camera_id)` 隔离 IoU/中心门 tracker，输出双时间戳、中心/bbox 协方差、
   角速度和 bbox 尺度变化；支持有限漏检、空扫描、stream/episode reset。相机 metadata 生成
   `K/R/t` 及外参协方差；缺失独立 pose covariance 时只允许显式 configured fallback 并标源。
@@ -83,8 +115,8 @@
 - [ ] P1 数据/准入：独立整 episode 切分、困难负样本、校准、阈值和指标的软件管线已完成；
   仍需真实代表性数据、至少 20 个未见 seed、近邻交叉与遮挡/漂移场景及 CPU/GPU 时延预算。
   当前没有默认 checkpoint，不替换既有几何 Hungarian 主线。
-- [ ] P2：由 main-owned runtime 接入真实云台/FOV 执行和 ACK/timeout；学习型主动视觉策略
-  尚未训练、未验证、未验收，当前只有安全接口与规则扫描 fallback。
+- [ ] P2：由 main-owned runtime 接入真实云台/FOV 执行和 ACK/timeout；BC/PPO 软件流程已有
+  合成 smoke，但学习型主动视觉策略尚未用正式数据训练、验证或验收，规则 fallback 保持默认。
 
 ## 2026-07-16 ComputerVision 5+1 独立专项状态
 

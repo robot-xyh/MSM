@@ -2,6 +2,58 @@
 
 离线科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块只输出 `TerminalAssociation` 决策，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-20 可选主动视觉 BC/PPO 研究路径与量测审计连接
+
+本轮在既有匿名 tracklet 图之外新增独立、默认不执行的主动视觉研究路径。版本化
+`ActiveVisionSnapshotV1` 只包含中心 `GlobalTrack` 候选的只读 ID/version/timestamp、当前
+`AssignmentPlan` 的 plan/coalition version 与成员引用、相机/云台角度和速率、wide/zoom FOV
+能力、目标投影协方差、可见率/遮挡率/关联置信度、通信版本和友方 exclusive reservation。
+合同没有 actor/object/truth identity、飞行控制或 D3 分配字段；递归 guard 拒绝任何此类输入。
+策略输出的 `target_global_track_id` 只能从 snapshot 的中心候选和当前相机分配交集中选择，D5
+不能创建、改写或重新绑定 ID。
+
+`ActiveVisionActionV1` 统一表达 `observe_target/search_sector/hold/reacquire`，并携带有限
+yaw/pitch 增量及 `wide/zoom` 模式。`DeterministicLookAtScanPolicy` 是始终可用的 look-at、
+last-projection reacquire 和规则扇区扫描基线。学习策略只在规则构造的有限动作候选中选择；
+`validate_active_vision_action_v1()` 对 plan/coalition/communication version、候选成员、证据时效、
+FOV 支持、云台机械角、当前/请求速率、slew、友方冲突和 action timeout 再做安全投影。bundle
+缺失或损坏、schema/SHA 错误、OOD、低置信、非有限输出、异常或推理超时均使用已经计算好的
+规则动作。shadow 的 `effective_action` 永远等于 `rule_action`。
+
+`ActiveVisionControllerV1` 的库默认模式是 `disabled`；`active_vision_cli.py` 默认请求
+`shadow`，只做非执行 preflight。决策固定输出 requested/effective mode、fallback reason、
+inference latency、model fingerprint、plan/coalition/communication version、规则动作、模型请求
+动作和最终动作。`assist` 只有在 bundle 绑定的 paired shadow 报告满足至少 20 个完全未见 seed、
+正式且非合成、逐 episode/总体 safety、visibility 和 reacquisition delay 均不退化时才可生效。
+报告同时绑定 dataset manifest、split、training-set 和模型指纹 SHA。20-seed 合成 fixture 即使
+数值全为正例也固定不能授予正式准入。
+
+研究训练 API 位于 `active_vision_learning.py`：完整 `(scenario_version, seed)` group 进入唯一
+train/validation/test split；`train_behavior_cloning()` 和 `train_clipped_ppo()` 使用原生
+PyTorch actor-critic，不依赖 `torch_geometric`。bundle 为
+`manifest.json + weights.pt + SHA256SUMS`，只通过 `torch.load(weights_only=True)` 加载。
+仓库未提交主动视觉 checkpoint，也没有已准入模型。
+
+scalable adapter 同步将在线 `SensorMeasurement.observation_id` 复制为只读审计字段
+`CameraLocalTracklet.source_observation_id`。该键不参与 tracker 匹配、`local_track_id` 分配、
+`tracklet_key`、图特征、聚类或中心 binding；同一帧重复 source ID 在 tracker 更新前拒绝。
+`join_offline_observation_labels()` 仅在在线图冻结后，把 main 的 evaluator-only
+`observation_id -> truth_entity_id` 转为匿名 tracklet label，并显式返回 `labels_complete`、缺标签
+tracklet 和未消费 observation。假目标没有离线标签时必须是 incomplete，不能补造 truth。
+
+CLI preflight：
+
+```bash
+PYTHONPATH=research_modules/d5_terminal_association/src \
+python3 -m d5_terminal_association.active_vision_cli
+```
+
+2026-07-20 代码验证：主动视觉研究专项 `17 passed`；新增能力并入后 D5 全量
+`376 passed in 9.94s`，接受门为零失败。BC/PPO smoke 使用 8 个合成 seed group、各 1 epoch；
+20-seed paired 数据仅验证门控代码，并明确覆盖合成证据拒绝，不是正式准入结果。本轮未运行
+AirSim、未连接真实云台/FOV/ACK，也没有 visibility/delay 的真实非退化证据；默认几何关联与
+规则观察路径保持不变。
+
 ## 2026-07-20 版本化训练与模型制品管线
 
 本轮新增 `tracklet_dataset.py`、`tracklet_training.py` 和 `tracklet_model_bundle.py`，关闭的是
@@ -79,8 +131,9 @@ test、困难遮挡/近邻交叉/漂移覆盖、冻结验收阈值以及默认 c
 新增 `scalable_3d_adapter.py` 作为 main scalable 3D 在线 DTO 的模块-owned 入口。模块采用
 duck typing，只依赖 D5 数据合同，不导入 simulator、D2 实现类或 evaluator truth 类型。
 `Scalable3DTerminalAdapter` 在任何 tracker 状态更新前递归拒绝 truth/actor/object/target/entity
-字段及 `TGT-*`、`TargetDrone_*`、`intruder-*` 值；`observation_id` 只接受安全审计，绝不复制为
-local ID。匿名 `trk-000001...` 由每个 `(resource_id,camera_id)` tracker 独立分配，支持 IoU/
+字段及 `TGT-*`、`TargetDrone_*`、`intruder-*` 值；`observation_id` 只读传播为
+`source_observation_id` 审计键，绝不复制为 local/global ID，也不参与匹配。匿名
+`trk-000001...` 由每个 `(resource_id,camera_id)` tracker 独立分配，支持 IoU/
 中心距离匹配、有限漏检、episode/stream reset，并计算像素角速度、bbox 对数尺度变化、中心
 协方差和 bbox `4x4` 协方差。
 

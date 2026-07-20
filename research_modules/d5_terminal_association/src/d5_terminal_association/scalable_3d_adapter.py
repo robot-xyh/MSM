@@ -131,6 +131,10 @@ class Scalable3DAdaptedCameraBatch:
         object.__setattr__(self, "tracklets", tuple(self.tracklets))
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
+    @property
+    def source_observation_links(self) -> tuple["SourceObservationTrackletLink", ...]:
+        return source_observation_tracklet_links(self.tracklets)
+
 
 @dataclass(frozen=True)
 class Scalable3DAssociationResult:
@@ -191,9 +195,36 @@ class Scalable3DStepResult:
             if batch.camera_geometry is not None
         )
 
+    @property
+    def source_observation_links(self) -> tuple["SourceObservationTrackletLink", ...]:
+        return source_observation_tracklet_links(self.tracklets)
+
+
+@dataclass(frozen=True)
+class SourceObservationTrackletLink:
+    """Truth-free audit link from one source measurement to one frame tracklet."""
+
+    source_observation_id: str
+    tracklet_key: str
+    camera_key: str
+    measurement_timestamp: float
+
+    def __post_init__(self) -> None:
+        for name in ("source_observation_id", "tracklet_key", "camera_key"):
+            value = str(getattr(self, name)).strip()
+            if not value:
+                raise ValueError(f"{name} must be non-empty")
+            object.__setattr__(self, name, value)
+        object.__setattr__(
+            self,
+            "measurement_timestamp",
+            _finite_float(self.measurement_timestamp, "measurement_timestamp"),
+        )
+
 
 @dataclass(frozen=True)
 class _PreparedDetection:
+    source_observation_id: str | None
     center_px: np.ndarray
     bbox_xyxy: tuple[float, float, float, float]
     center_covariance_px: np.ndarray
@@ -353,6 +384,7 @@ class _AnonymousCameraTracker:
                     bbox_scale_rate_s=bbox_scale_rate,
                     confidence=detection.confidence,
                     tracklet_start_timestamp=state.tracklet_start_timestamp,
+                    source_observation_id=detection.source_observation_id,
                     metadata={
                         "source": "scalable_3d_online_vision_bbox",
                         "tracker_backend": "d5_anonymous_iou_center",
@@ -415,6 +447,14 @@ class Scalable3DTerminalAdapter:
         for batch in raw_batches:
             _assert_truth_isolated_transport(batch)
         prepared = tuple(_prepare_camera_batch(batch, self.config) for batch in raw_batches)
+        frame_source_keys = tuple(
+            (item.measurement_timestamp, detection.source_observation_id)
+            for item in prepared
+            for detection in item.detections
+            if detection.source_observation_id is not None
+        )
+        if len(frame_source_keys) != len(set(frame_source_keys)):
+            raise ValueError("one source observation may belong to only one tracklet per frame")
         stream_keys = tuple(item.stream_key for item in prepared)
         if len(stream_keys) != len(set(stream_keys)):
             raise ValueError("one adapt_batches call may contain at most one batch per camera stream")
@@ -785,6 +825,14 @@ def _prepare_camera_batch(batch: Any, config: Scalable3DAdapterConfig) -> _Prepa
         detections.append(_prepare_detection(measurement, metadata, config))
         measurement_metadata.append(merged_metadata)
 
+    source_ids = tuple(
+        item.source_observation_id
+        for item in detections
+        if item.source_observation_id is not None
+    )
+    if len(source_ids) != len(set(source_ids)):
+        raise ValueError("one source observation may belong to only one detection per frame")
+
     center_covariance = (
         np.mean(np.stack([item.center_covariance_px for item in detections]), axis=0)
         if detections
@@ -856,7 +904,18 @@ def _prepare_detection(
     confidence = _finite_float(_field(measurement, "confidence", 1.0), "confidence")
     if not 0.0 <= confidence <= 1.0:
         raise ValueError("confidence must be in [0, 1]")
+    raw_observation_id = _field(measurement, "observation_id", None)
+    source_observation_id = (
+        None if raw_observation_id is None else str(raw_observation_id).strip()
+    )
+    if raw_observation_id is not None and not source_observation_id:
+        raise ValueError("observation_id must be non-empty when present")
+    if source_observation_id is not None and is_truth_like_local_track_id(
+        source_observation_id
+    ):
+        raise ValueError("observation_id must be an anonymous measurement key")
     return _PreparedDetection(
+        source_observation_id=source_observation_id,
         center_px=center,
         bbox_xyxy=bbox,
         center_covariance_px=center_covariance,
@@ -1090,6 +1149,39 @@ def _field(value: Any, name: str, default: Any = _MISSING) -> Any:
     raise ValueError(f"required field is missing: {name}")
 
 
+def source_observation_tracklet_links(
+    tracklets: Iterable[CameraLocalTracklet],
+) -> tuple[SourceObservationTrackletLink, ...]:
+    """Export one-to-one frame links without using the key as track identity."""
+
+    links = tuple(
+        SourceObservationTrackletLink(
+            source_observation_id=tracklet.source_observation_id,
+            tracklet_key=tracklet.tracklet_key,
+            camera_key=tracklet.camera_key,
+            measurement_timestamp=tracklet.measurement_timestamp,
+        )
+        for tracklet in tracklets
+        if tracklet.source_observation_id is not None
+    )
+    frame_keys = tuple(
+        (link.measurement_timestamp, link.source_observation_id)
+        for link in links
+    )
+    if len(frame_keys) != len(set(frame_keys)):
+        raise ValueError("one source observation maps to multiple tracklets in one frame")
+    return tuple(
+        sorted(
+            links,
+            key=lambda item: (
+                item.measurement_timestamp,
+                item.camera_key,
+                item.source_observation_id,
+            ),
+        )
+    )
+
+
 def _first_present(
     mapping: Mapping[str, Any],
     names: Sequence[str],
@@ -1158,7 +1250,9 @@ __all__ = [
     "Scalable3DAssociationResult",
     "Scalable3DStepResult",
     "Scalable3DTerminalAdapter",
+    "SourceObservationTrackletLink",
     "global_track3d_to_projection_track",
     "global_tracks3d_to_projection_tracks",
     "run_scalable_3d_online_association",
+    "source_observation_tracklet_links",
 ]

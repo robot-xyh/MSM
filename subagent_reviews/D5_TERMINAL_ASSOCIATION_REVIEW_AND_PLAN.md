@@ -1,5 +1,32 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-20 主动视觉研究路径与 source-observation 审查
+
+审查确认新增 `ActiveVisionSnapshotV1/ActiveVisionActionV1` 是版本化最小权限合同。snapshot
+只接收中心 `GlobalTrack` 和当前 `AssignmentPlan` 的只读候选/成员/version、相机云台/FOV、
+投影协方差、可见/遮挡、通信状态及友方 reservation；递归拒绝 truth/actor/object identity。
+action 只表达 observe/search/hold/reacquire、有限 yaw/pitch 和 wide/zoom，不存在飞控或重新分配
+接口，任何目标引用必须属于输入中心候选与当前相机 assignment 的交集。
+
+安全审查确认模型只能选择规则生成的有限候选，之后仍检查 plan/coalition/communication version、
+候选成员、证据 age、FOV、云台机械角与速率、slew、友方冲突和 timeout。OOD、低置信、非有限、
+异常、慢推理及 bundle SHA/schema/state 错误均回退同 tick 已计算的规则动作。库默认 disabled，
+CLI 默认 shadow；shadow 不改变规则动作。输出具有 requested/effective mode、fallback、latency、
+fingerprint 和版本 provenance。
+
+训练审查确认 split 单元为完整 `(scenario_version, seed)`，已提供 behavior cloning 与原生
+PyTorch clipped PPO，不引入 PyTorch Geometric。bundle 只加载 weights-only state_dict。assist
+报告绑定模型和 dataset/split/training-set SHA，准入门不少于 20 个完全未见 seed，并要求正式
+非合成、逐 episode/总体 safety、visibility、reacquisition delay 非退化。单测中的 20-seed
+fixture 只验证门控逻辑，合成标志会阻止正式准入。
+
+scalable adapter 审查确认 `observation_id` 现在只读传播为 `source_observation_id`，用于 episode
+结束后的 evaluator label join。它不进入 tracker cost、local/tracklet/global ID、图特征、聚类或
+中心 binding；同帧重复 observation 在 tracker 更新前拒绝。缺少离线标签的假目标显式造成
+labels incomplete。2026-07-20 主动视觉专项 `17 passed`，D5 全量
+`376 passed in 9.94s`。当前没有正式 checkpoint、正式 20-seed 报告或 AirSim 云台闭环，故审查
+只接受软件路径和数据连接闭合，不接受 assist/默认路径晋级。
+
 ## 2026-07-20 版本化训练与制品管线审查
 
 审查确认 `tracklet_dataset.py` 把匿名 graph NPZ 与 evaluator label JSON 分流：图中只保存在线
@@ -26,8 +53,8 @@ mismatch 均失败关闭。在线 scorer 仍只输出 candidate-edge probability
 2026-07-20 验证为新专项 `12 passed`、组合 `46 passed`、D5 全量
 `355 passed in 9.48s`，接受阈值为零失败；checkpoint 仅在 `tmp_path` 生成。本轮审查只接受
 训练/校准/评估/制品代码管线闭合，不接受模型准入。至少 20 个未见 seed、代表性困难场景、
-冻结门限和默认 checkpoint 均开放；几何规则继续默认。本轮未运行 AirSim，
-`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查无需修改。
+冻结门限和默认 checkpoint 均开放；几何规则继续默认。该阶段未运行 AirSim；本轮新增主动视觉
+合同后，AirSim 集成计划已同步未来接线边界，但仍无新增 AirSim 证据。
 
 ## 2026-07-20 匿名稀疏图审查
 
@@ -41,7 +68,7 @@ binding。候选边在学习前经过时间、视场、极线、射线、重投�
 
 审查新增 `scalable_3d_adapter.py`：实现不导入 main/D2/evaluator 类型，以 duck typing 接收
 真实在线 DTO 字段形状；整批 truth guard 先于 tracker 更新。local ID 由每
-`resource/camera` 独立 tracker 分配，`observation_id` 不传播；相机 metadata 形成 K/R/t 与
+`resource/camera` 独立 tracker 分配，`observation_id` 只读传播为审计键而不参与身份；相机 metadata 形成 K/R/t 与
 协方差，六维中心状态只读形成投影假设。在线封装依次执行构图、规则或注入模型边概率、受约束
 聚类和中心 binding，并把 model missing/error/low certainty 标成规则 fallback。
 
@@ -205,7 +232,7 @@ GlobalTrack 的 `uav` 与 detector 的 `drone/intruder` 原本可能被解释为
 
 同一 AirSim frame 可同时运行在线 YOLO/MOT 与离线 `simGetDetections` 评价，但两路职责严格分离。在线输出先生成匿名 camera-local track；随后 evaluator 用 AirSim bbox 计算 match/miss 和 local IDSW，actor/object ID 只保存在 evaluator 私有状态。D5 汇总现显式区分 online YOLO bbox、online MOT track、offline AirSim reference matched/missed、native tracker 和 IoU fallback，且对 `1920x1080` 与 `3840x2160` 两类输入均保留各自 `image_size`。该合同不允许离线 truth 改变几何关联、决策状态或 `global_track_id`。
 
-**定位**: 分配完成后，资源节点末端视场内可能同时出现多个目标、友方资源和未知飞行物。本模块负责把局部视觉目标配准回中心分配的 `global_track_id`。  
+**定位**: 分配完成后，资源节点末端视场内可能同时出现多个目标、友方资源和未知飞行物。本模块负责把局部视觉目标配准回中心分配的 `global_track_id`。
 **边界**: 本文只讨论视觉配准、协同身份认证和保守决策，不包含真实火控参数、毁伤逻辑、自动处置控制律或绕过人工授权的流程。
 
 ---

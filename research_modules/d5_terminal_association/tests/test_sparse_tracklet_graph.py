@@ -187,6 +187,8 @@ def test_truth_and_actor_identity_are_rejected_from_online_tracklets() -> None:
         CameraLocalTracklet(**base, metadata={"nested": {"actor_id": "TargetActor_1"}})
     with pytest.raises(ValueError, match="anonymous"):
         CameraLocalTracklet(**{**base, "local_track_id": "TargetActor_1"})
+    with pytest.raises(ValueError, match="anonymous measurement key"):
+        CameraLocalTracklet(**base, source_observation_id="TargetDrone_1")
     with pytest.raises(ValueError, match="identity fields"):
         assert_anonymous_online_payload({"track": {"global_track_id": "GT-0001"}})
 
@@ -194,6 +196,7 @@ def test_truth_and_actor_identity_are_rejected_from_online_tracklets() -> None:
     assert "truth_entity_id" not in field_names
     assert "global_track_id" not in field_names
     assert "assigned_global_track_id" not in field_names
+    assert "source_observation_id" in field_names
 
 
 @pytest.mark.parametrize(
