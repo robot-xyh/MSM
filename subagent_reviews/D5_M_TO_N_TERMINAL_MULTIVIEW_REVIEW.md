@@ -1,5 +1,22 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
+## 2026-07-20 多视角图训练制品复核
+
+D5 现已提供版本化 graph/label 分流、完整 `(scenario_version, seed)` episode group split、
+多图训练、validation-only temperature/threshold、test 指标和安全 bundle。离线图只保存匿名
+在线节点、候选边和固定 feature order；`truth_entity_id` 仅存在于 evaluator label 文件。
+manifest 记录 config/split/training-set SHA256、class balance、candidate-recall availability 和
+hard-negative provenance。bundle 用 SHA256 校验并只做 `weights_only=True` state_dict 加载。
+
+在线模型仍只给候选边 same-target probability。bundle 缺失/损坏、版本/feature mismatch、
+非有限输出、超时或低 certainty 均回退几何规则；同相机唯一约束、中心投影/Hungarian 和
+`global_track_id` 所有权不变。2026-07-20 新专项 `12 passed`，D5 全量
+`355 passed in 9.48s`；测试 checkpoint 仅生成于 `tmp_path`。
+
+该结果只关闭训练与模型制品代码管线，不关闭多视角模型准入。至少 20 个未见 seed 的整
+episode test、遮挡/近邻交叉/时延/外参漂移、冻结阈值、默认 checkpoint 和真实 AirSim 模型
+证据继续开放；几何规则仍是默认。AirSim 集成计划已检查，本轮无 runtime 接线变化无需修改。
+
 ## 2026-07-20 匿名 tracklet 图多视角实现复核
 
 原调研中“本地 MOT 与跨相机身份分层”和“先几何门控、后关联评分”的建议已形成 D5 代码：
@@ -29,15 +46,15 @@ seed 200 的 200 目标、4 相机回归从 240000 个跨相机可能 pair 收�
 2953 个最终 cap 前候选和 1923 条边，密度 `0.006017`、最大度 6，本次 `0.442 s`。seed 4
 小样本为 24 正边、72
 困难负边，60 epoch loss `1.038521 -> 0.011535`、训练准确率 1.0。adapter 专项
-保持通过、D5 全量 `343 passed`。5/20/50/100/200 相机结构矩阵中，200 相机只检查/保留
+保持通过、D5 全量在本轮同步后为 `355 passed`。5/20/50/100/200 相机结构矩阵中，200 相机只检查/保留
 400/19900 个相机对，预算丢弃 19500，tracklet 候选 397，全部相机均有候选覆盖。该证据关闭
 D5-owned 索引代码缺口，不关闭真实跨视角泛化、模型准入、内存峰值或多 seed P50/P95。
 
 主动视觉只增加 camera-intent 环境/策略接口和 timeout/低置信规则扫描 fallback。尚无学习型
 策略训练、真实云台 ACK、AirSim episode 或物理闭环证据。D5 adapter 已能接收 scalable 3D
-匿名观测，main scalable module stack 已调用 adapter；后续仍需持久化新增诊断，并完成独立
-数据划分、多 seed 200v200、
-遮挡/交叉/外参漂移、概率校准与算力预算；在此之前几何
+匿名观测，main scalable module stack 已调用 adapter；独立数据划分、概率校准和算力指标的
+软件管线现已完成，后续仍需持久化新增诊断，并用至少 20 个未见 seed 的 200v200/代表性整
+episode 数据覆盖遮挡、交叉和外参漂移；在此之前几何
 Hungarian/`TerminalAssociator` 保持默认。
 
 ## 2026-07-16 真实 ComputerVision 5+1 多视角复核

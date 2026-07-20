@@ -1,5 +1,34 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
+## 2026-07-20 版本化训练与制品管线审查
+
+审查确认 `tracklet_dataset.py` 把匿名 graph NPZ 与 evaluator label JSON 分流：图中只保存在线
+D5 已产生的节点、候选边和固定顺序数值特征，不保存 `truth_entity_id` 或共享中心 ID 列表；
+truth 只在独立 label 文件中按匿名 tracklet key/timestamp 离线连接。dataset manifest 记录
+schema、feature names/version、generation config SHA256、class balance、candidate-recall
+availability、hard-negative provenance、split hash 和 training-set hash，加载器使用
+`allow_pickle=False` 并校验文件 SHA、shape、有限值和 feature order。
+
+split 审查通过：切分以完整 `(scenario_version, seed)` group 为不可分单元，同 seed 的多个
+episode 不跨 split，不存在 edge-level random split。训练按完整图做确定性梯度累积，困难负样本
+来自几何门内低 gate-score 异目标边，BCE 使用正类权重。模型选择、temperature calibration 和
+F1 threshold selection 仅使用 validation；test 报告 precision/recall/F1、constrained-cluster
+false merge、candidate recall、Brier/ECE、P50/P95 latency 和 model size。真值不完整时相关
+指标保持 unavailable/null。
+
+bundle 审查通过：`manifest.json + weights.pt + SHA256SUMS` 固化模型/图/feature 版本与顺序、
+hidden dim、message steps、训练集/split hash、validation temperature/threshold 和验证结果；
+加载只使用 `torch.load(weights_only=True)`。缺失、损坏、SHA/schema/feature/version/state
+mismatch 均失败关闭。在线 scorer 仍只输出 candidate-edge probability；非有限输出、超时、
+低 certainty 或 bundle 不可用回退确定性几何规则。受约束聚类、同相机唯一、中心 Hungarian
+和 `global_track_id` 所有权保持原合同。
+
+2026-07-20 验证为新专项 `12 passed`、组合 `46 passed`、D5 全量
+`355 passed in 9.48s`，接受阈值为零失败；checkpoint 仅在 `tmp_path` 生成。本轮审查只接受
+训练/校准/评估/制品代码管线闭合，不接受模型准入。至少 20 个未见 seed、代表性困难场景、
+冻结门限和默认 checkpoint 均开放；几何规则继续默认。本轮未运行 AirSim，
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查无需修改。
+
 ## 2026-07-20 匿名稀疏图审查
 
 审查确认新路径没有把图节点定义成目标或全局航迹，而是严格的 camera-local tracklet。
@@ -31,13 +60,14 @@ binding。候选边在学习前经过时间、视场、极线、射线、重投�
 索引后 tracklet 候选 3050，本次实测 `0.442 s`；seed 4 小样本训练将 loss 从 `1.038521`
 降至 `0.011535`，训练准确率 1.0。5/20/50/100/200 相机结构矩阵中，200 相机总对 19900，
 只检查/保留 400 对、预算丢弃 19500、tracklet 候选 397，全部相机均得到候选覆盖。
-D5 全量 `343 passed`。审查接受相机索引和候选上界为 D5-owned P1 代码闭合，不把单次时延
+D5 全量在本轮训练/制品同步后为 `355 passed`。审查接受相机索引和候选上界为 D5-owned P1 代码闭合，不把单次时延
 当作 200-camera episode 性能门。
 
-由于没有独立验证、概率校准、多 seed episode、默认 checkpoint 或
-真实 AirSim 接线，GNN 不得声明准入或替换现有默认路径。模块 DTO adapter 通过不等于 episode
-或 checkpoint 验收。main scalable module stack 已调用 adapter，但新增候选与模型路径诊断
-仍需由 main/D6 持久化并做多 seed 预算召回、内存和 P50/P95 评估。
+独立整 episode 数据合同、validation-only 校准、test 指标和 bundle 软件现已实现，但尚无
+至少 20 个未见 seed 的正式 test、默认 checkpoint 或真实 AirSim 模型接线，因此 GNN 不得
+声明准入或替换现有默认路径。模块 DTO adapter 和训练制品代码通过不等于 episode 或
+checkpoint 验收。main scalable module stack 已调用 adapter，但新增候选与模型路径诊断仍需
+由 main/D6 持久化并做多 seed 预算召回、内存和 P50/P95 评估。
 
 主动视觉 API 的动作集只有观察中心目标、规则扇区扫描、云台增量和 FOV/变焦；timeout、
 低置信和无效 binding 回退规则扫描。该接口不等于已训练 RL policy 或已执行云台闭环。

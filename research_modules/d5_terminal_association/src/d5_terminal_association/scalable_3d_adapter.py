@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, fields, is_dataclass
 import math
 import re
+import time
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -67,6 +68,7 @@ class Scalable3DAdapterConfig:
     rule_single_projection_probability_floor: float = 0.75
     edge_probability_threshold: float = 0.50
     model_min_mean_certainty: float = 0.15
+    model_inference_timeout_ms: float = 50.0
     max_binding_mahalanobis: float = 6.0
     binding_ambiguity_margin: float = 0.5
     graph_config: SparseTrackletGraphConfig = field(default_factory=SparseTrackletGraphConfig)
@@ -90,6 +92,7 @@ class Scalable3DAdapterConfig:
             "default_position_variance_m2",
             "default_attitude_variance_rad2",
             "rule_probability_temperature",
+            "model_inference_timeout_ms",
             "max_binding_mahalanobis",
         )
         for name in positive:
@@ -563,7 +566,14 @@ def run_scalable_3d_online_association(
         center_tracks=center_items,
         config=cfg.graph_config,
     )
-    probabilities, status, source, fallback_reason = _score_graph_edges(
+    (
+        probabilities,
+        status,
+        source,
+        fallback_reason,
+        probability_threshold,
+        inference_latency_ms,
+    ) = _score_graph_edges(
         graph,
         cfg,
         edge_model,
@@ -571,7 +581,7 @@ def run_scalable_3d_online_association(
     clusters = constrained_tracklet_clusters(
         graph,
         probabilities,
-        probability_threshold=cfg.edge_probability_threshold,
+        probability_threshold=probability_threshold,
     )
     bindings = bind_clusters_to_center_tracks(
         graph,
@@ -592,6 +602,10 @@ def run_scalable_3d_online_association(
         scoring_status=status,
         probability_source=source,
         fallback_reason=fallback_reason,
+        diagnostics={
+            "edge_probability_threshold": probability_threshold,
+            "model_inference_latency_ms": inference_latency_ms,
+        },
     )
 
 
@@ -599,7 +613,7 @@ def _score_graph_edges(
     graph: SparseTrackletGraph,
     config: Scalable3DAdapterConfig,
     edge_model: Any | None,
-) -> tuple[np.ndarray, str, str, str | None]:
+) -> tuple[np.ndarray, str, str, str | None, float, float | None]:
     rule_probabilities = _deterministic_edge_probabilities(graph, config)
     if edge_model is None:
         return (
@@ -607,24 +621,70 @@ def _score_graph_edges(
             "rule_fallback_model_missing",
             "deterministic_geometry_rule",
             "model_missing",
+            config.edge_probability_threshold,
+            None,
         )
+    if getattr(edge_model, "available", True) is not True:
+        reason = str(getattr(edge_model, "failure_reason", "model_unavailable"))
+        return (
+            rule_probabilities,
+            "rule_fallback_model_unavailable",
+            "deterministic_geometry_rule",
+            reason,
+            config.edge_probability_threshold,
+            None,
+        )
+    started = time.perf_counter()
     try:
         raw = edge_model.forward_graph(graph)
         if hasattr(raw, "detach") and callable(raw.detach):
             raw = raw.detach().cpu().numpy()
         probabilities = np.asarray(raw, dtype=float).reshape(-1)
         if probabilities.shape != (graph.edge_count,):
-            raise ValueError("model returned the wrong number of edge probabilities")
-        if not np.all(np.isfinite(probabilities)) or np.any(
-            (probabilities < 0.0) | (probabilities > 1.0)
-        ):
-            raise ValueError("model returned invalid edge probabilities")
+            return (
+                rule_probabilities,
+                "rule_fallback_model_invalid_output",
+                "deterministic_geometry_rule",
+                "model_output_shape_mismatch",
+                config.edge_probability_threshold,
+                (time.perf_counter() - started) * 1000.0,
+            )
+        if not np.all(np.isfinite(probabilities)):
+            return (
+                rule_probabilities,
+                "rule_fallback_model_invalid_output",
+                "deterministic_geometry_rule",
+                "model_output_non_finite",
+                config.edge_probability_threshold,
+                (time.perf_counter() - started) * 1000.0,
+            )
+        if np.any((probabilities < 0.0) | (probabilities > 1.0)):
+            return (
+                rule_probabilities,
+                "rule_fallback_model_invalid_output",
+                "deterministic_geometry_rule",
+                "model_output_out_of_range",
+                config.edge_probability_threshold,
+                (time.perf_counter() - started) * 1000.0,
+            )
     except Exception as exc:
         return (
             rule_probabilities,
             "rule_fallback_model_error",
             "deterministic_geometry_rule",
             f"model_error:{type(exc).__name__}",
+            config.edge_probability_threshold,
+            (time.perf_counter() - started) * 1000.0,
+        )
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+    if elapsed_ms > config.model_inference_timeout_ms:
+        return (
+            rule_probabilities,
+            "rule_fallback_model_timeout",
+            "deterministic_geometry_rule",
+            "model_inference_timeout",
+            config.edge_probability_threshold,
+            elapsed_ms,
         )
     if graph.edge_count:
         mean_certainty = float(np.mean(np.abs(probabilities - 0.5) * 2.0))
@@ -634,8 +694,32 @@ def _score_graph_edges(
                 "rule_fallback_low_confidence",
                 "deterministic_geometry_rule",
                 "model_low_mean_certainty",
+                config.edge_probability_threshold,
+                elapsed_ms,
             )
-    return probabilities, "model_scored", "loaded_edge_model", None
+    probability_threshold = config.edge_probability_threshold
+    if hasattr(edge_model, "decision_threshold"):
+        try:
+            probability_threshold = float(edge_model.decision_threshold)
+        except (TypeError, ValueError):
+            probability_threshold = math.nan
+        if not np.isfinite(probability_threshold) or not 0.0 <= probability_threshold <= 1.0:
+            return (
+                rule_probabilities,
+                "rule_fallback_model_invalid_threshold",
+                "deterministic_geometry_rule",
+                "model_decision_threshold_invalid",
+                config.edge_probability_threshold,
+                elapsed_ms,
+            )
+    return (
+        probabilities,
+        "model_scored",
+        "loaded_edge_model",
+        None,
+        probability_threshold,
+        elapsed_ms,
+    )
 
 
 def _deterministic_edge_probabilities(

@@ -2,6 +2,68 @@
 
 离线科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块只输出 `TerminalAssociation` 决策，不修改、重写或重新分配任何全局轨迹 ID。
 
+## 2026-07-20 版本化训练与模型制品管线
+
+本轮新增 `tracklet_dataset.py`、`tracklet_training.py` 和 `tracklet_model_bundle.py`，关闭的是
+“匿名稀疏图无法形成可复核数据集、正式训练/校准和安全制品”的代码管线缺口，不是图模型
+准入。`stage_tracklet_dataset_episode()` 只能从已经构造完成的匿名在线
+`SparseTrackletGraph` 写图归档；图文件固定保存节点特征、候选边索引、边特征、匿名
+tracklet/camera key、双时间戳、gate score 和候选计数，不保存 evaluator
+`truth_entity_id` 或 `shared_global_track_ids`。真值只写入独立 `*.labels.json`，加载时以
+tracklet key 和 measurement timestamp 离线对齐。
+
+数据集 manifest 固化 dataset/graph/label schema、节点/边特征版本与精确顺序、生成配置
+SHA256、逐 split class balance、candidate-recall availability 和困难负样本 provenance。
+切分单元固定为完整 `(scenario_version, seed)` group；同一 group 下的所有 episode 只能处于
+同一 `train/validation/test` split，禁止边级随机切分。manifest 另记录 split SHA256 和训练集
+SHA256；加载使用 `np.load(..., allow_pickle=False)` 并逐文件校验 SHA、版本、shape、有限值、
+feature order、label completeness 和 seed 泄漏。
+
+正式训练按多个完整图做梯度累积，固定 Python/NumPy/PyTorch seed，按最小 geometry gate
+score 选择困难负样本，并用 `pos_weight` 处理类别不平衡。模型选择、scalar temperature
+calibration 和 F1 threshold selection 全部只使用 validation；test 才输出 edge
+precision/recall/F1、受约束聚类后的 false-merge rate、candidate recall、Brier/ECE、P50/P95
+推理时延和权重大小。缺少完整 evaluator truth 时相关指标写为
+`{"available": false, "value": null, "reason": ...}`，不补零。
+
+模型制品固定为 `manifest.json + weights.pt + SHA256SUMS`。manifest 包含模型语义版本、图/节点/
+边特征版本与顺序、hidden dim、message-passing steps、训练数据及 split hash、validation-only
+temperature/threshold 和验证结果；状态只用 `torch.load(..., weights_only=True)` 加载。SHA、
+schema、feature order、state_dict shape 或有限值任一不符即失败关闭。在线 bundle scorer 仍只
+输出现有 candidate edge 的 same-target probability；模型缺失/bundle 无效、异常、错误 shape、
+非有限/越界输出、推理超时、低平均 certainty 或无效阈值均显式回退原确定性几何规则。模型
+阈值之后仍由原 `constrained_tracklet_clusters()` 保证同相机唯一，再由中心投影/Hungarian
+引用输入 `global_track_id`；模型不能创建、改写或换绑 ID。
+
+CLI：
+
+```bash
+PYTHONPATH=research_modules/d5_terminal_association/src \
+python3 -m d5_terminal_association.tracklet_dataset finalize \
+  --dataset-dir <dataset-dir> --split-seed 20260720
+PYTHONPATH=research_modules/d5_terminal_association/src \
+python3 -m d5_terminal_association.tracklet_dataset validate --dataset-dir <dataset-dir>
+PYTHONPATH=research_modules/d5_terminal_association/src \
+python3 -m d5_terminal_association.tracklet_training train \
+  --dataset-dir <dataset-dir> --bundle-dir <bundle-dir> --report <training-report.json>
+PYTHONPATH=research_modules/d5_terminal_association/src \
+python3 -m d5_terminal_association.tracklet_training evaluate \
+  --dataset-dir <dataset-dir> --bundle-dir <bundle-dir> --report <test-report.json>
+```
+
+episode 生成端在每个在线图冻结后调用 `stage_tracklet_dataset_episode()`，再运行 `finalize`；
+不能把 graph 与 evaluator labels 合成一个输入文件。
+
+2026-07-20 验证：新增管线专项 `12 passed`，原稀疏图/adapter/新管线组合
+`46 passed`，D5 全量 `355 passed in 9.48s`，接受门为零失败。测试覆盖整 seed 无泄漏、
+图/真值分流、训练到评估、checkpoint round-trip、SHA/schema/feature/version mismatch、缺失
+bundle、非有限输出、超时、无模型、同相机唯一和中心 ID 不变；checkpoint 均在 `tmp_path`
+生成，仓库未新增正式或默认 checkpoint。
+
+当前仍没有来自代表性场景的正式训练数据和准入结果。至少 20 个未见 seed 的整 episode
+test、困难遮挡/近邻交叉/漂移覆盖、冻结验收阈值以及默认 checkpoint 审批均继续开放；在这些
+条件完成前，几何规则仍是默认路径，本轮不得解释为模型准入。
+
 ## 2026-07-20 匿名多相机 tracklet 稀疏图主线
 
 新增 `sparse_tracklet_graph.py`、`tracklet_gnn.py` 和 `active_vision.py`。图节点严格为
@@ -61,7 +123,7 @@ PyTorch MLP 和 `index_add_` 对两个端点聚合消息，不依赖 `torch_geom
 | 5/20/50/100/200 相机结构矩阵 | 每相机 1 个匿名 tracklet；预算为 `2C`；200 相机总对数 19900，只检查/保留 400 对，预算丢弃 19500；tracklet 候选 397；本次实测约 59.2 ms | 实际检查 `<=pair budget`；每 tracklet 候选度 `<=4`；全部相机至少进入一个候选对；不设窄绝对时延门 |
 | seed 4，8 目标，3 相机小样本 | 24 节点、192 边；24 正样本、72 困难负样本；`positive_weight=3.0`；60 epoch loss `1.038521 -> 0.011535`，训练集准确率 1.0 | loss 至少下降 50%；训练集准确率 `>=0.90`；困难负样本非空 |
 | scalable 3D adapter 专项 | `17 passed in 2.27s`；2/3/4 相机部分可见、跨帧稳定、假目标/漏检、7 类污染、中心 ID、reset、空扫描、model/rule 状态及真实 DTO 形状 | 零失败；污染不得改变 tracker 序列；输出 ID 只能来自中心输入 |
-| D5 全量回归 | `343 passed in 9.29s` | 零失败 |
+| D5 全量回归 | 本轮训练/制品管线同步后 `355 passed in 9.48s` | 零失败 |
 
 相机 overlap/index bucket、camera-pair budget、tracklet 候选上限和 200-camera 结构测试已在
 D5 范围内关闭原平方级候选构造缺口。诊断显式输出总相机对、索引对、检查对、预算丢弃、
@@ -70,12 +132,14 @@ tracklet 候选、各几何拒绝原因以及模型/规则路径。该证据是�
 作为 main/D6 集成与模型准入 P1，而不是本索引代码缺口。
 
 小样本结果只证明原生 PyTorch 前向、反向、困难负样本和不平衡损失可运行，是过拟合 smoke，
-不是独立验证、概率校准或模型准入。当前没有默认图模型 checkpoint。D5 模块入口已能消费
+不是独立验证、概率校准或模型准入。版本化数据、训练、validation-only calibration、test
+评估和 bundle 校验代码现已实现，但尚无 20 个未见 seed 的正式数据结果，也没有默认图模型
+checkpoint。D5 模块入口已能消费
 `OnlineSensorBatch`/`vision_bbox` 和六维中心航迹的真实 DTO 形状，main scalable module stack
 已经调用该 adapter；新增 `association.diagnostics` 仍需由 main 持久化到 episode/D6 输出。
-后续必须用独立训练/验证/测试
-划分、困难遮挡和近邻交叉、多 seed 200v200 episode、阈值校准及真实时延预算完成准入；模型
-缺失、异常或平均 certainty 不足时明确回退确定性几何规则，既有默认主线不被替换。
+后续必须用该整 episode 合同收集困难遮挡和近邻交叉数据，并以至少 20 个未见 seed 的 test、
+真实时延预算和冻结门限完成准入；模型缺失、损坏、版本不符、异常、超时或平均 certainty
+不足时明确回退确定性几何规则，既有默认主线不被替换。
 
 ## 2026-07-16 AirSim ComputerVision 5+1 单种子仿真证据
 

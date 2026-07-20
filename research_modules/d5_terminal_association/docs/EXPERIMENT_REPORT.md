@@ -1,5 +1,37 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-20 训练与模型制品代码级实验
+
+本轮没有运行 AirSim，也没有使用正式图像数据。全部新增实验为 D5-owned 确定性合成图和
+`tmp_path` 临时制品，接受阈值均为零测试失败、truth 不进入 graph/online scorer、输出
+`global_track_id` 不变。结果只验收软件管线，不验收模型质量或默认准入。
+
+| 实验 | 样本/故障注入 | 实测 | 接受阈值 | 判定 |
+| --- | --- | --- | --- | --- |
+| 整 episode split | 4 个 `(scenario_version, seed)` group，其中一个 seed 含 2 个 episode | 同 group 全部进入同一 split；train/validation/test 均非空；manifest 明确 edge random split=false | 同 seed 跨 split 为 0 | 通过 |
+| graph/label 分流 | 3 相机、2 匿名 tracklet/相机、12 candidate edges | graph NPZ 无 truth 字段、无 `shared_global_track_ids`、无 `ENTITY-*`；truth 只在 label JSON | graph truth occurrence=0 | 通过 |
+| 正式训练到评估 | 5 个 synthetic seed group；2 epoch；多图累积；validation calibration | 生成并严格回载 manifest/state_dict/SHA256；test 报告 10 类必需指标字段；admission=`research_candidate_not_default` | 训练/校准只读 train/validation；test 不调参；bundle 可回载 | 管线通过，不是质量准入 |
+| bundle fail-closed | 权重追加损坏；graph/model/edge-feature version 和 node feature order 共 4 类 manifest mismatch | SHA 损坏及 4 类版本/顺序错误全部拒绝；runtime wrapper 标记 unavailable | 5/5 拒绝 | 通过 |
+| 在线安全回退 | 3 相机、1 中心目标；无模型、缺 bundle、NaN 概率、5 ms 慢模型/0.1 ms 门 | 分别记录 missing/unavailable/invalid-output/timeout，并全部使用 deterministic geometry rule | 不使用无效模型结果；中心 ID 不变 | 通过 |
+| D5 新管线专项 | 12 项测试 | `12 passed` | 零失败 | 通过 |
+| 稀疏图/adapter/新管线组合 | 46 项测试 | `46 passed` | 零失败 | 通过 |
+| D5 全量回归 | 全部 D5 tests | `355 passed in 9.48s` | 零失败 | 通过 |
+
+数据 manifest 现可记录 graph schema、node/edge feature names/version、generation config
+SHA256、candidate-recall availability、class balance、hard-negative provenance、split hash 和
+training-set hash。加载使用 `allow_pickle=False`，bundle 使用
+`torch.load(weights_only=True)`。test 指标实现 precision/recall/F1、false-merge rate、candidate
+recall、Brier/ECE、P50/P95 inference latency 和 model size；不完整 truth fixture 验证这些
+身份/校准指标均为 unavailable/null，而不是 0。
+
+checkpoint round-trip 只证明 state_dict、temperature 和 threshold 可一致恢复；测试生成的
+bundle 已随 `tmp_path` 清理，仓库没有新增正式 checkpoint。至少 20 个未见 seed 的独立 test、
+代表性近邻交叉/遮挡/时延/外参漂移、冻结质量/时延门限和默认 checkpoint 均未执行或批准。
+因此本轮只关闭训练/制品管线 GAP，几何规则继续默认。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查。本轮没有 settings、相机、detector、runtime episode、
+云台或 handoff 接线变化，故不修改该文档。
+
 ## 2026-07-20 稀疏图代码级实验
 
 本轮未运行 AirSim。几何样本由 `scalable_3d_simulation.camera_projection` 的 NED 针孔投影和
@@ -12,7 +44,7 @@ truth 仅在图构建后生成训练边标签。
 | 相机规模结构矩阵 | 5/20/50/100/200 相机；每相机 1 tracklet；预算 `2C` | 200 相机总对 19900；检查/保留 400；预算丢弃 19500；tracklet 候选 397；全部相机有候选覆盖；本次约 59.2 ms | 检查数不超过预算；每节点候选度 `<=4`；顺序确定；预算不足不猜身份；不设窄时延门 | 结构门通过，不是 episode 性能验收 |
 | 原生 PyTorch 训练 smoke | seed 4；8 目标；3 相机；24 节点；192 边 | 24 正边；72 困难负边；正类权重 3.0；60 epoch loss `1.038521 -> 0.011535`；训练准确率 1.0；2.594 s | loss 降低至少 50%；训练准确率 `>=0.90`；困难负样本非空 | 训练管线通过，不是模型准入 |
 | scalable DTO adapter | 17 个确定性 case；2/3/4 相机；3 个中心目标 | `17 passed in 2.27s`；部分可见均绑定 3 个输入中心 ID；7 类污染全拒绝 | 零失败；污染后首 ID 仍为 `trk-000001`；中心 ID 不变 | 模块入口通过，不是 episode 验收 |
-| D5 回归 | 全量测试 | `343 passed in 9.29s` | 零失败 | 通过 |
+| D5 回归 | 全量测试 | 训练/制品同步后 `355 passed in 9.48s` | 零失败 | 通过 |
 
 几何专项另验证了三相机/三目标正确边、全部要求的边特征、逐级 gate count、同相机互斥聚类、
 Hungarian 只回显中心 ID、递归 truth/actor/object/global identity 拒绝、原生 `index_add_`
@@ -35,8 +67,9 @@ adapter 专项另覆盖跨帧角速度/尺度变化、中心与 bbox covariance�
 该结构结果不代表真实 200 路图像已达实时。真实 checkpoint、跨场景候选召回、内存峰值、
 多随机种子 P50/P95 和跨视角准确率仍需 main/D6 运行集成 episode 后确认。
 
-训练 smoke 使用同一小样本拟合和评估，预期可过拟合，不能提供泛化、概率校准、IDF1/IDSW、
-真实遮挡恢复或 200v200 episode 准确率证据。当前无默认 checkpoint；D5 DTO adapter 已实现，
+训练 smoke 使用同一小样本拟合和评估，预期可过拟合，不能提供泛化、IDF1/IDSW、真实遮挡
+恢复或 200v200 episode 准确率证据。独立 split、概率校准和 test 指标的软件管线现已实现，
+但没有 20 个未见 seed 的正式结果或默认 checkpoint；D5 DTO adapter 已实现，
 main scalable module stack 已调用该 adapter，但新增诊断尚未持久化到 episode/D6；也无真实
 大规模 AirSim 云台闭环或学习型
 主动视觉策略验收，因此既有几何默认路径不变。

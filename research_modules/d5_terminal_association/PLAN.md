@@ -1,5 +1,37 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-20 版本化数据、训练、校准与制品管线
+
+- [x] 新增 `tracklet_dataset.py`：在线匿名图和 evaluator label 分文件写入；图归档不保存
+  `truth_entity_id`/`shared_global_track_ids`，标签只在独立 evaluator JSON 中出现。
+- [x] 固化 dataset/graph/label schema、节点/边 feature version 与精确顺序、generation config
+  SHA256、class balance、candidate-recall availability、hard-negative provenance、split hash 和
+  training-set hash；加载时以 `allow_pickle=False` 校验 SHA、shape、有限值、版本和 feature order。
+- [x] 切分固定以 `(scenario_version, seed)` 为 group，完整 episode 随 group 进入
+  train/validation/test；禁止 edge-level random split，同 seed 跨 split 直接失败关闭。
+- [x] 新增多图梯度累积训练：固定 Python/NumPy/PyTorch seed，按 geometry gate score 选择
+  hard negative，BCE `pos_weight` 处理类别不平衡；validation 独占模型选择、temperature
+  calibration 和 F1 threshold selection，test 不参与调参。
+- [x] test 输出 precision/recall/F1、constrained-cluster false-merge rate、candidate recall、
+  Brier/ECE、P50/P95 inference latency 和 model size；完整真值不足时相应指标明确
+  `unavailable/value=null`，不得补零。
+- [x] 新增 `manifest.json + weights.pt + SHA256SUMS` bundle；manifest 固化模型语义版本、
+  graph/node/edge feature 版本与顺序、hidden dim、message steps、训练数据/split hash、
+  validation-only temperature/threshold 和验证结果。加载只允许 `torch.load(weights_only=True)`。
+- [x] 在线 bundle scorer 仍只输出 candidate-edge same-target probability。bundle 缺失/损坏、
+  SHA/schema/feature/version/state mismatch、非有限或越界输出、超时、低 certainty、无效阈值均
+  回退现有 deterministic geometry rule；受约束聚类、同相机唯一、中心投影/Hungarian 和
+  `global_track_id` 所有权不变。
+- [x] 2026-07-20 验证：新管线 `12 passed`，稀疏图/adapter/新管线组合 `46 passed`，D5 全量
+  `355 passed in 9.48s`；checkpoint 只在 `tmp_path` 生成，没有提交正式 checkpoint。
+- [ ] P1 数据与准入仍开放：按本合同收集代表性 train/validation/test，test 至少包含
+  20 个未见 seed，并覆盖近邻交叉、遮挡、时延和外参漂移；冻结门限后才能形成候选准入报告。
+- [ ] 默认 checkpoint 仍开放：本轮只关闭训练/制品代码管线，不授予默认模型资格，不改变
+  几何规则默认路径。
+
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查：本轮没有 AirSim episode、settings、detector、相机
+外参来源、runtime 调度或 handoff 接线变化，因此无需修改。
+
 ## 2026-07-20 匿名稀疏 tracklet 图与主动视觉接口
 
 - [x] 新增严格匿名 `CameraLocalTracklet`：节点仅使用 camera-local namespace、双时间戳、
@@ -39,7 +71,7 @@
   `0.006017`、最大度 6，本次 `0.442 s`；接受门为密度 `<0.01`、最大度 `<=6`、运行 `<15 s`。
 - [x] seed 4 小样本 smoke：8 目标、3 相机、24 节点/192 边，24 正样本与 72 困难负样本，
   60 epoch loss `1.038521 -> 0.011535`、训练集准确率 1.0。
-- [x] adapter 专项保持通过，D5 全量 `343 passed in 9.29s`；覆盖 2/3/4 相机
+- [x] adapter 专项保持通过，训练/制品同步后 D5 全量 `355 passed in 9.48s`；覆盖 2/3/4 相机
   部分可见、跨帧 ID、假目标/漏检、7 类真值污染、中心 ID 不变、reset、空扫描与模型回退。
 - [x] 5/20/50/100/200 相机结构矩阵：每相机 1 个匿名 tracklet、相机对预算 `2C`；200 相机
   的 19900 个总对只检查/保留 400，对预算丢弃 19500，tracklet 候选为 397，全部相机至少进入
@@ -48,9 +80,9 @@
   `association.diagnostics` 持久化到 episode/D6，并在真实 scalable 3D 多 seed 下报告相机对预算
   命中率、漏配率、内存峰值和 P50/P95。camera pose covariance 仍应显式放入在线 metadata，
   evaluator truth 流继续物理分离。
-- [ ] P1：建立独立训练/验证/测试集、近邻交叉与遮挡困难负样本、多 seed 200v200 episode、
-  概率校准、阈值冻结和 CPU/GPU 时延预算。当前小样本仅为过拟合 smoke，不构成准入，
-  不生成默认 checkpoint，也不替换既有几何 Hungarian 主线。
+- [ ] P1 数据/准入：独立整 episode 切分、困难负样本、校准、阈值和指标的软件管线已完成；
+  仍需真实代表性数据、至少 20 个未见 seed、近邻交叉与遮挡/漂移场景及 CPU/GPU 时延预算。
+  当前没有默认 checkpoint，不替换既有几何 Hungarian 主线。
 - [ ] P2：由 main-owned runtime 接入真实云台/FOV 执行和 ACK/timeout；学习型主动视觉策略
   尚未训练、未验证、未验收，当前只有安全接口与规则扫描 fallback。
 

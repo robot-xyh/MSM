@@ -4,6 +4,87 @@
 
 **适用范围：** 本文依据第五研究模块（D5）的当前代码、README、PLAN、模块原理文档和系统总汇总，同步说明算法原理、数据合同、代码实施路径与验证结果。文中严格区分默认在线主线、已实现但非默认的辅助/离线能力，以及尚未实现能力；计划项不能据此解释为已上线能力。
 
+## 2026-07-20 版本化离线训练与 bundle 实现
+
+新增实现文件：
+
+- `tracklet_dataset.py`：graph/label 分流、episode staging、整 seed split、manifest/hash 和
+  fail-closed loader；
+- `tracklet_training.py`：多图梯度累积、固定 seed、困难负样本、不平衡损失、validation-only
+  temperature/threshold、test metrics 及 train/evaluate CLI；
+- `tracklet_model_bundle.py`：manifest/state_dict/SHA256 制品、`weights_only=True` 严格加载和
+  不向在线主线抛错的 runtime unavailable scorer；
+- `scalable_3d_adapter.py`：在原模型评分边界增加 bundle-unavailable、invalid-output、timeout
+  和 invalid-threshold 回退，聚类与中心 binding 未改。
+
+### 数据合同
+
+`stage_tracklet_dataset_episode()` 的输入是已经冻结的 `SparseTrackletGraph` 和独立
+`OfflineTrackletTruthLabel[]`。graph NPZ 只包含：schema/feature version、精确 feature names、
+episode key、`node_features`、`edge_index`、`edge_features`、匿名 tracklet/camera key、
+measurement/arrival timestamp、gate score 和 candidate counts。它不序列化 edge 的
+`shared_global_track_ids`，更不包含 `truth_entity_id`。label JSON 单独保存 tracklet key、
+measurement timestamp 和 evaluator truth；加载时拒绝未知 key、重复 label 和 timestamp 错位。
+
+`dataset_config.json` 使用 canonical JSON，manifest 保存其 SHA256。每个 episode descriptor
+另保存 graph/label SHA256、class balance、truth completeness、candidate-recall availability 和
+hard-negative provenance。`finalize_tracklet_dataset()` 只在 `(scenario_version, seed)` group
+层面切分，同 group 的全部 episode 同 split；manifest 明确
+`edge_level_random_split=false`，并对 split assignment 与 train artifact 列表分别计算 hash。
+`load_tracklet_dataset()` 使用 `np.load(allow_pickle=False)`，逐项验证所有 hash、schema、feature
+order、dtype/shape、有限值、canonical edge、label completeness 和 seed leakage。
+
+### 训练、校准与评估
+
+`train_tracklet_edge_model()` 固定 Python、NumPy、PyTorch CPU/GPU seed，并以完整图为梯度累积
+单元。每图保留全部已标正边；负边按 `gate_score` 从小到大选择，数量由
+`hard_negative_ratio` 控制。每图 BCE 使用 `max(1, negative_count/positive_count)` 正类权重，
+每个 optimizer step 对有限数量图损失取均值。每 epoch 仅用 validation BCE 选择 state_dict。
+
+选定模型后，对 validation logits 在固定正温度网格上最小化 NLL；校准后概率再按 validation
+F1 选择 threshold，precision 和较高 threshold 依次用于 tie break。test 不进入任何选择。
+`evaluate_tracklet_edge_model()` 计算 candidate-edge precision/recall/F1、受同相机唯一约束的
+cluster 内跨 truth pair false-merge rate、几何候选对同目标跨相机 pair 的 candidate recall、
+Brier、ECE、逐图多次前向的 P50/P95 和权重文件大小。只要 split 中存在不完整 evaluator truth，
+上述身份/校准指标整体标记 unavailable/null；时延与模型大小仍可独立报告。
+
+### 模型 bundle 与在线回退
+
+bundle 包含 `manifest.json`、`weights.pt` 和 `SHA256SUMS`。manifest 记录
+`MODEL_SEMANTIC_VERSION`、graph/node/edge feature version/order、模型维度、训练 dataset
+manifest/split/training-set/config hash、validation temperature/threshold/results，并固定
+`admission.status=research_candidate_not_default`。loader 先校验 manifest/weights SHA，再验证
+版本和结构，最后调用 `torch.load(map_location="cpu", weights_only=True)`；只接受 string-to-tensor
+state_dict，要求全部 tensor 有限且 `load_state_dict(strict=True)` 成功。
+
+`CalibratedTrackletEdgeScorer` 只把 graph 的三个数值 tensor送入模型并输出已校准 edge
+probability。`load_tracklet_model_bundle_for_runtime()` 将任何 bundle 错误转成带原因的 unavailable
+scorer。adapter 对缺模型、unavailable、exception、shape mismatch、NaN/Inf、越界概率、超过
+`model_inference_timeout_ms`、低 mean certainty 或无效 decision threshold 全部丢弃模型结果并
+使用原 geometry-rule probability。只有有效模型可提供 bundle threshold；后续仍由
+`constrained_tracklet_clusters()` 和 `bind_clusters_to_center_tracks()` 处理，输出 ID 集合继续是
+中心输入 ID 集合的子集。
+
+CLI：
+
+```bash
+PYTHONPATH=research_modules/d5_terminal_association/src \
+python3 -m d5_terminal_association.tracklet_dataset finalize --dataset-dir <dataset-dir>
+PYTHONPATH=research_modules/d5_terminal_association/src \
+python3 -m d5_terminal_association.tracklet_dataset validate --dataset-dir <dataset-dir>
+PYTHONPATH=research_modules/d5_terminal_association/src \
+python3 -m d5_terminal_association.tracklet_training train \
+  --dataset-dir <dataset-dir> --bundle-dir <bundle-dir> --report <training-report.json>
+PYTHONPATH=research_modules/d5_terminal_association/src \
+python3 -m d5_terminal_association.tracklet_training evaluate \
+  --dataset-dir <dataset-dir> --bundle-dir <bundle-dir> --report <test-report.json>
+```
+
+2026-07-20 验证结果为新管线 `12 passed`、组合专项 `46 passed`、D5 全量
+`355 passed in 9.48s`。所有 checkpoint 位于测试 `tmp_path`。该结果只证明数据/训练/校准/
+评估/bundle/回退实现可运行并失败关闭；没有正式数据结果、20 个未见 seed、冻结准入阈值或
+默认 checkpoint，故默认仍为几何规则。本轮未运行或修改 AirSim。
+
 ## 2026-07-20 稀疏 tracklet 图实现
 
 实现文件：
@@ -94,15 +175,16 @@ actor 或 object identity。
 `1.038521 -> 0.011535`，训练准确率 1.0。5/20/50/100/200 相机结构矩阵中，每相机一个
 匿名 tracklet、相机对预算为 `2C`；200 相机的 19900 总对只检查/保留 400 对，预算丢弃
 19500，tracklet 候选 397，全部相机至少进入一个候选对。本次 200 相机结构诊断约 59.2 ms，
-测试不设置窄绝对时延阈值。D5 全量 `343 passed in 9.29s`。
+测试不设置窄绝对时延阈值。训练/制品同步后的 D5 全量为 `355 passed in 9.48s`。
 
 上述结果关闭 D5 代码内的全相机对和全 tracklet 矩阵缺口。它仍是合成结构验证，不能说明
 真实 200 路相机的检测召回、跨视角边准确率、模型概率校准、内存峰值和多 seed P50/P95 已
 达标。main/D6 还需持久化新增诊断，量化预算造成的候选召回损失。
 
-该训练结果仅为管线和可过拟合性测试，未做独立验证、概率校准、多 seed 或真实图像评估，
-没有默认 checkpoint，不能解释为已验收 GNN。D5 模块-owned scalable 3D DTO 适配已完成，
-main scalable module stack 已调用该 adapter；真实 checkpoint、多 seed scalable episode、
+该小样本训练结果仍仅为可过拟合性测试；独立数据切分、概率校准和 test 评估的软件已经实现，
+但未产生至少 20 个未见 seed 或真实图像的正式结果，也没有默认 checkpoint，不能解释为已
+验收 GNN。D5 模块-owned scalable 3D DTO 适配已完成，main scalable module stack 已调用该
+adapter；正式 checkpoint、多 seed scalable episode、
 真实 AirSim 大规模接线和学习型主动视觉训练仍未完成。现有几何规则、约束聚类和 Hungarian
 绑定仍是默认运行路径。
 

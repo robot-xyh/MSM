@@ -4,6 +4,43 @@
 
 **适用范围：** 本文描述第五研究模块（D5）当前代码、测试和主运行链路已经具备的能力。文中将默认主线、已实现但非默认的辅助/离线能力、尚未实现能力严格分开。计划项不能据此解释为已上线能力。
 
+## 2026-07-20 训练数据与模型制品安全原则
+
+离线训练不得改变在线图的语义。每个数据 episode 必须先由在线 D5 匿名构图完成，再将
+node feature、candidate edge、edge feature、匿名 tracklet/camera key 和双时间戳写入 graph
+NPZ；`truth_entity_id` 只能写入独立 evaluator label JSON。graph 不持久化 evaluator truth 或
+`shared_global_track_ids`，模型也只消费固定顺序数值 tensor。graph/label 不能合成单一文件，
+在线 scorer 不接收 evaluator label。
+
+数据切分的最小单元是完整 `(scenario_version, seed)` group。一个 seed 下的多个 episode 必须
+进入同一 train、validation 或 test；禁止 edge-level random split。dataset manifest 必须记录
+schema、node/edge feature names/version、generation config SHA256、class balance、candidate
+recall 是否可算、困难负样本来源、split SHA256 和 training-set SHA256。加载必须使用
+`allow_pickle=False`，并验证文件 SHA、shape、有限值、feature order、label completeness 和
+seed 泄漏。
+
+训练可按多图梯度累积，但随机 seed 必须固定。困难负样本只从匿名在线候选边中产生，truth
+在图冻结后只决定二元训练 target；不平衡损失使用显式正类权重。模型选择、scalar temperature
+calibration 和 decision threshold 只能读取 validation；test 只用于最终报告，不得回流调参。
+test 输出 edge precision/recall/F1、受同相机唯一约束后的 false-merge rate、candidate recall、
+Brier/ECE、P50/P95 inference latency 和 model size。对应完整 truth 不可用时指标必须是
+unavailable/null，不能填 0。
+
+模型 bundle 固定为 manifest、纯 state_dict 和 SHA256 校验文件。manifest 固化模型语义版本、
+图/feature 版本与顺序、hidden dim、message steps、训练集/split hash、validation-only
+temperature/threshold 和验证结果；加载只允许 `torch.load(weights_only=True)`。任一文件缺失、
+损坏、版本/顺序不匹配、权重或输出非有限、推理超时、低 certainty 或 threshold 无效，都必须
+回退现有 deterministic geometry rule，且保留明确 provenance。
+
+学习模型的权限止于 candidate-edge same-target probability。聚类继续执行同相机最多一个
+tracklet 的约束，中心投影/Hungarian 继续只引用中心输入 ID。模型不能创建、改写或换绑
+`global_track_id`，也不能绕过几何候选门创建新边。
+
+2026-07-20 代码验证为新管线 `12 passed`、组合专项 `46 passed`、D5 全量
+`355 passed in 9.48s`，零失败；checkpoint 均在 `tmp_path` 生成。本轮只关闭训练/校准/评估/
+制品软件管线，不构成模型准入。至少 20 个未见 seed、代表性困难场景、冻结门限和默认
+checkpoint 均开放，几何规则仍是默认。未运行 AirSim，AirSim 集成计划已检查无需修改。
+
 ## 2026-07-20 匿名稀疏跨视角图原则
 
 跨视角图的基本节点不是目标、actor 或全局航迹，而是唯一命名空间
@@ -57,7 +94,7 @@ metadata 时也不复用旧外参冒充新时刻几何。
 原样保留。边模型仅为调用方可选注入；缺失、异常或低 certainty 时使用确定性几何规则并输出
 回退原因，不能把 fallback 写成模型推理。
 
-2026-07-20 的代码证据为 D5 全量 `343 passed in 9.29s`。其中 scalable adapter 专项
+2026-07-20 的最新代码证据为 D5 全量 `355 passed in 9.48s`。其中 scalable adapter 专项
 `17 passed in 2.27s`，覆盖 2/3/4 相机部分可见、跨帧匿名 ID、假目标/漏检、污染拒绝、中心
 ID 不变、reset、空扫描、真实 DTO 字段形状和 model/rule 状态。seed 200 的 200 目标/4 相机
 合成投影场景形成 800 节点，240000 个跨相机可能 pair 经两级索引后为 3050 个 tracklet
@@ -65,8 +102,8 @@ ID 不变、reset、空扫描、真实 DTO 字段形状和 model/rule 状态。s
 `0.442 s`。另有 5/20/50/100/200 相机结构矩阵；200 相机检查 400/19900 个相机对，预算
 丢弃 19500，形成 397 个 tracklet 候选。seed 4 的 8 目标/3 相机小样本训练
 使用 24 正边、72 困难负边和正类权重 3.0，60 epoch loss 从 `1.038521` 降到
-`0.011535`、训练集准确率 1.0。后者是过拟合 smoke，不是模型验收；独立数据、多 seed、
-概率校准、runtime 接线和真实图像性能仍为开放项。
+`0.011535`、训练集准确率 1.0。后者仍是过拟合 smoke，不是模型验收；独立数据/校准软件
+管线已实现，但至少 20 个未见 seed、runtime 模型接线和真实图像性能仍为开放项。
 
 ## 2026-07-16 真实 ComputerVision 5+1 注册原则复核
 

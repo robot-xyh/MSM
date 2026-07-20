@@ -1,5 +1,40 @@
 # D5 实现差距审计
 
+## 2026-07-20 训练与模型制品管线 GAP 状态
+
+**本轮关闭范围：** D5 已实现从匿名在线 `SparseTrackletGraph` 到版本化离线数据集、正式
+多图训练、validation-only calibration/threshold、test 评估、校验 bundle 和在线安全回退的
+完整代码管线。graph NPZ 与 evaluator label JSON 物理分离；`truth_entity_id` 只存在于 label
+文件，图归档不持久化 truth 或 `shared_global_track_ids`。manifest 固化 graph schema、节点/边
+feature names/version、candidate-recall availability、class balance、hard-negative provenance、
+generation config SHA256、split SHA256 和 training-set SHA256。
+
+**切分与评估合同：** split 单元为完整 `(scenario_version, seed)` group，同 group 的多个
+episode 不得跨 train/validation/test，edge-level random split 固定为 false。训练使用固定随机
+seed、按 geometry gate score 的困难负样本和不平衡 BCE；模型选择、temperature 和 F1
+threshold 只读取 validation。test 输出 precision/recall/F1、false-merge rate、candidate recall、
+Brier/ECE、P50/P95 inference latency 和 model size。真值不完整时身份/校准指标明确 unavailable
+且 value 为 null，不补零。
+
+**制品与在线边界：** bundle 为 `manifest.json + weights.pt + SHA256SUMS`，权重只通过
+`torch.load(..., weights_only=True)` 加载。SHA、模型/图/feature 版本与顺序、state_dict shape、
+权重有限值任一不符均 fail closed。安全 runtime loader 将缺失/损坏 bundle 转为显式不可用
+scorer；在线 adapter 对缺模型、bundle 无效、异常、错误 shape、非有限/越界概率、超时、低
+certainty 和无效 threshold 均回退原 deterministic geometry rule。模型只给 candidate edge
+same-target probability；受约束聚类、同相机唯一、中心 Hungarian 及 `global_track_id` 所有权
+未改变。
+
+**验证：** 2026-07-20 新增专项 `12 passed`，稀疏图/adapter/新管线组合 `46 passed`，D5
+全量 `355 passed in 9.48s`，接受阈值为零失败。覆盖整 seed 无泄漏、图/真值分流、正式训练到
+评估、checkpoint round-trip、SHA/schema/feature/version mismatch、bundle 缺失、非有限概率、
+超时、无模型、同相机唯一和中心 ID 不变。checkpoint 全部在 `tmp_path` 生成，没有提交正式
+checkpoint；本轮没有运行 AirSim。
+
+**GAP 判定：** 仅“训练/校准/评估/制品软件管线不可用”这一 D5-owned 子项关闭。代表性正式
+数据、近邻交叉/遮挡/时延/外参漂移覆盖、至少 20 个未见 seed 的独立 test、冻结准入门限和
+默认 checkpoint 均继续作为开放 P1。没有这些证据时不得声明模型准入，几何规则继续默认。
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查；因 AirSim/runtime 接线未变化无需修改。
+
 ## 2026-07-20 匿名稀疏图 GAP 状态
 
 **代码级已完成：** camera-local tracklet 匿名节点、truth/global identity 递归隔离、相机
@@ -20,7 +55,7 @@ camera batch 和 `vision_bbox`，不导入 main/D2/evaluator 类型。所有 pay
 六维 D2 状态只读转换保留中心 ID；端到端路径显式区分注入模型与 missing/error/low-confidence
 规则 fallback。
 
-**代码证据：** 2026-07-20 D5 全量 `343 passed in 9.29s`。adapter 专项
+**代码证据：** 2026-07-20 训练/制品同步后 D5 全量 `355 passed in 9.48s`。adapter 专项
 `17 passed in 2.27s`，覆盖 2/3/4 相机部分可见、跨帧 ID、假目标/漏检、7 类污染、中心 ID
 不变、episode reset、空扫描、真实 DTO 字段形状和模型回退状态。seed 200 的 200 目标/4 相机
 场景为 800 节点、240000 可能跨相机 pair、3050 个索引后 tracklet 候选、2953 个最终 cap
@@ -42,15 +77,16 @@ seed 4 的 8 目标/3 相机训练 smoke 为 24 节点/192 边、24 正边/72 �
 聚类和模型缺失回退未改变。预算不足只增加 unbound，不产生身份猜测。
 
 尚未关闭的是 200-camera 真实 episode 的内存峰值、P50/P95、预算召回损失、跨场景准确率和
-多随机种子证据。已训练并校准的跨视角模型、真实 checkpoint、真实 AirSim 多 seed 性能和
-学习型主动视觉闭环仍为开放 P1/P2。
-D5-owned DTO/tracker/association adapter 缺口已关闭；小样本是同集过拟合 smoke，不能关闭
-模型准入 GAP。当前无默认 checkpoint，既有几何 Hungarian/`TerminalAssociator` 继续默认。
+多随机种子证据。训练、validation 校准、test 指标与 bundle 代码现已可用，但尚无代表性正式
+数据、至少 20 个未见 seed 的 test、已验收跨视角模型或默认 checkpoint；真实 AirSim 多 seed
+性能和学习型主动视觉闭环仍为开放 P1/P2。D5-owned DTO/tracker/association 与训练制品管线
+缺口已关闭；既有几何 Hungarian/`TerminalAssociator` 继续默认。
 
 **跨模块待办：** main scalable module stack 已调用本 adapter；main 需把新增
 `association.diagnostics` 原样持久化，把 camera pose covariance 放入在线 metadata，并继续
-确保 evaluator truth 只进入 evaluator。D6 后续需定义预算召回、边 precision/recall、PR/ROC、
-校准误差、IDSW 和多 seed 统计。D5 本轮未修改 main-owned runtime 或根级 docs。
+确保 evaluator truth 只进入 evaluator。D5 已提供 candidate recall、边 precision/recall、
+Brier/ECE 和时延的模块级输出；D6 后续仍需做 PR/ROC、IDSW 和至少 20 个未见 seed 的跨场景
+汇总。D5 本轮未修改 main-owned runtime 或其他模块。
 
 ## 2026-07-16 ComputerVision 5+1 最终证据与 GAP 状态
 

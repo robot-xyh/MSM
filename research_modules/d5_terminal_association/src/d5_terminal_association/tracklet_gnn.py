@@ -193,6 +193,7 @@ class NativeTrackletEdgeClassifier(nn.Module):
         self.edge_feature_dim = int(edge_feature_dim)
         self.hidden_dim = int(hidden_dim)
         self.message_passing_steps = int(message_passing_steps)
+        self.dropout = float(dropout)
         self.uses_native_index_add = True
 
         self.node_encoder = nn.Sequential(
