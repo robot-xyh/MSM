@@ -21,15 +21,23 @@ binding。候选边在学习前经过时间、视场、极线、射线、重投�
 选择中心提供的 ID。独立离线 truth 流、困难负样本和正类权重边界清晰，未发现在线标签泄漏
 或 D5 创建/改写 `global_track_id` 的路径。
 
+本轮审查确认原实现确实先遍历全部非空相机对，并建立每对 tracklet 笛卡尔矩阵。现已改为
+两级索引：相机位姿、截断视锥 AABB、相机量测时间和三维覆盖桶先产生可检查相机对；
+`camera_pair_budget` 限制实际检查数。同桶间隔轮转和跨桶对角线轮转保证裁剪确定且不只偏向
+低编号相机。第二级按中心投影支持或时间近邻形成 tracklet 候选，并在几何计算前限制每节点
+候选度。预算耗尽后的节点保持 anonymous/unbound，不允许模型或规则补猜身份。
+
 2026-07-20 seed 200 压力测试为 800 节点、1923 最终边、密度 `0.006017`、最大度 6、
-本机 `1.585 s`；seed 4 小样本训练将 loss 从 `1.038521` 降至 `0.011535`，训练准确率 1.0；
-D5 adapter 专项 `17 passed`、全量 `332 passed`。审查只接受其为代码/训练管线证据。构图仍
-遍历全部非空 camera pair，
-并为每对形成 `n_left x n_right` 中间矩阵，因此 4-camera 稀疏输出不得外推为 200-camera
-性能闭合；camera overlap/index bucket、pair budget 和 200-camera benchmark 保持开放 P1。
-由于没有独立验证、概率校准、多 seed episode、默认 checkpoint、main orchestrator 调用或
+索引后 tracklet 候选 3050，本次实测 `0.442 s`；seed 4 小样本训练将 loss 从 `1.038521`
+降至 `0.011535`，训练准确率 1.0。5/20/50/100/200 相机结构矩阵中，200 相机总对 19900，
+只检查/保留 400 对、预算丢弃 19500、tracklet 候选 397，全部相机均得到候选覆盖。
+D5 全量 `343 passed`。审查接受相机索引和候选上界为 D5-owned P1 代码闭合，不把单次时延
+当作 200-camera episode 性能门。
+
+由于没有独立验证、概率校准、多 seed episode、默认 checkpoint 或
 真实 AirSim 接线，GNN 不得声明准入或替换现有默认路径。模块 DTO adapter 通过不等于 episode
-或 checkpoint 验收。
+或 checkpoint 验收。main scalable module stack 已调用 adapter，但新增候选与模型路径诊断
+仍需由 main/D6 持久化并做多 seed 预算召回、内存和 P50/P95 评估。
 
 主动视觉 API 的动作集只有观察中心目标、规则扇区扫描、云台增量和 FOV/变焦；timeout、
 低置信和无效 binding 回退规则扫描。该接口不等于已训练 RL policy 或已执行云台闭环。

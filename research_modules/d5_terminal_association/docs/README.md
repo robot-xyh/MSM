@@ -18,14 +18,15 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 `AIRSIM_INTEGRATION_PLAN.md` 与 `EXPERIMENT_REPORT.md`。小样本训练仅为 smoke，
 当前没有已验收 checkpoint 或学习型主动视觉策略。2026-07-20 P0 复审后，构造器与递归
 payload guard 已进一步拒绝 `TGT-0001`、`TargetDrone_1` 等 truth-like local ID，同时保留
-`cam01-track-0001`。4-camera 压力结果只证明输出边集稀疏；全 camera-pair 及每对
-`n_left x n_right` 枚举的 200-camera 优化仍为开放 P1。
+`cam01-track-0001`。当前构图已用视锥/时间/空间桶索引和相机对预算替代全 camera-pair，
+并用每 tracklet 候选上限替代每对 `n_left x n_right` 矩阵。
 
 同日新增 `../src/d5_terminal_association/scalable_3d_adapter.py`：这是 D5-owned、duck-typed
 scalable 3D 在线 DTO 入口，负责匿名 per-camera tracking、相机 metadata 几何/协方差转换、
-六维中心航迹只读投影和带显式规则 fallback 的图关联。专项 `17 passed`、D5 全量
-`332 passed`。main orchestrator 调用点、200-camera pair indexing、独立数据划分及训练
-checkpoint 仍为 P1，不得把模块适配器通过解释为 episode 或模型验收。
+六维中心航迹只读投影和带显式规则 fallback 的图关联。2026-07-20 D5 全量
+`343 passed`；5/20/50/100/200 相机结构矩阵已通过。main scalable module stack 已调用 adapter，
+但新增诊断持久化、真实多 seed、独立数据划分及训练 checkpoint 仍为 P1，不得把结构测试
+解释为 episode 或模型验收。
 
 `../scripts/generate_multicamera_report.py` 用于生成中文原理图、中文仿真图表和
 Word 技术报告。默认从 `assets/d5_multicamera_association/` 读取稳定截图与

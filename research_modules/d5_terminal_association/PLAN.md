@@ -19,6 +19,11 @@
   异常或低 certainty 有明确 fallback 状态，D5 不加载默认 checkpoint、不创建/改写中心 ID。
 - [x] 新增时序、视场、极线、射线交会、重投影、像素马氏、中心 GlobalTrack 投影和
   外参/航迹协方差逐级门控；按 `max_neighbors_per_node` 确定性截断，避免构造全连接图。
+- [x] 在几何门前增加相机 overlap/index：由位姿、截断视锥 AABB、量测时间窗和三维覆盖桶
+  生成相机对；用 `camera_pair_budget` 限制实际检查数。预算后同桶间隔轮转和跨桶对角线轮转
+  保持确定性和相机覆盖，未检查对保持 unbound。
+- [x] 增加 `max_tracklet_candidate_edges_per_node`，优先按中心投影支持/时间近邻构造有界
+  tracklet 候选，再执行极线、射线和重投影；不再构造每相机对 `n_left x n_right` 矩阵。
 - [x] 边特征覆盖时间差、像素马氏距离、重投影误差、射线最近距离、bbox 尺度/变化、
   角速度、基线、外参协方差，并补充极线误差、交会角和中心投影支持。
 - [x] 使用原生 PyTorch 实现 `NativeTrackletEdgeClassifier`，通过 `index_add_` 聚合消息；
@@ -30,18 +35,19 @@
 - [x] 主动视觉动作域限制为观察目标、搜索扇区、云台增量、FOV/变焦；超时、低置信和
   无效中心 binding 回退确定性规则扫描。接口不包含飞行、分配、处置或授权动作。
 - [x] 2026-07-20 seed 200 压力回归：200 目标、4 相机、800 节点，240000 可能跨相机对
-  收缩到 2953 个 degree-cap 前候选和 1923 条最终边，密度 `0.006017`、最大度 6、
-  本机 `1.585 s`；接受门为密度 `<0.01`、最大度 `<=6`、运行 `<15 s`。
+  经两级索引形成 3050 个 tracklet 候选、2953 个最终 cap 前候选和 1923 条最终边，密度
+  `0.006017`、最大度 6，本次 `0.442 s`；接受门为密度 `<0.01`、最大度 `<=6`、运行 `<15 s`。
 - [x] seed 4 小样本 smoke：8 目标、3 相机、24 节点/192 边，24 正样本与 72 困难负样本，
   60 epoch loss `1.038521 -> 0.011535`、训练集准确率 1.0。
-- [x] adapter 专项 `17 passed in 2.27s`，D5 全量 `332 passed in 10.92s`；覆盖 2/3/4 相机
+- [x] adapter 专项保持通过，D5 全量 `343 passed in 9.29s`；覆盖 2/3/4 相机
   部分可见、跨帧 ID、假目标/漏检、7 类真值污染、中心 ID 不变、reset、空扫描与模型回退。
-- [ ] P1：当前 200 目标/4 相机测试只验证最终输出图稀疏。构图仍通过全部非空 camera pair，
-  并为每对建立 `n_left x n_right` 时间/视场/极线矩阵；main 接入 200-camera 前需增加相机
-  overlap/index bucket、camera-pair budget 与专门的内存/P50/P95 benchmark，不得将本项标为闭合。
-- [ ] P1：main 在其 ownership 内把现有 module stack/orchestrator 调用点接到 D5 adapter，并将
-  camera pose covariance 显式放入在线 metadata；继续保证 evaluator truth 流物理分离。
-  D5 本轮只提供并验证模块入口，没有修改或运行 main-owned `scalable_3d_simulation` episode。
+- [x] 5/20/50/100/200 相机结构矩阵：每相机 1 个匿名 tracklet、相机对预算 `2C`；200 相机
+  的 19900 个总对只检查/保留 400，对预算丢弃 19500，tracklet 候选为 397，全部相机至少进入
+  一个候选对。测试只约束结构上界，不使用易抖动的窄绝对时延阈值。
+- [ ] P1：main scalable module stack 已调用 D5 adapter；main 需把新增扁平诊断
+  `association.diagnostics` 持久化到 episode/D6，并在真实 scalable 3D 多 seed 下报告相机对预算
+  命中率、漏配率、内存峰值和 P50/P95。camera pose covariance 仍应显式放入在线 metadata，
+  evaluator truth 流继续物理分离。
 - [ ] P1：建立独立训练/验证/测试集、近邻交叉与遮挡困难负样本、多 seed 200v200 episode、
   概率校准、阈值冻结和 CPU/GPU 时延预算。当前小样本仅为过拟合 smoke，不构成准入，
   不生成默认 checkpoint，也不替换既有几何 Hungarian 主线。

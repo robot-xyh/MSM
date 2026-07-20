@@ -28,9 +28,16 @@ local ID。匿名 `trk-000001...` 由每个 `(resource_id,camera_id)` tracker �
 metadata 实测协方差。D2 六维 `[pN,pE,pD,vN,vE,vD] + 6x6 covariance` 只读复制为 D5
 投影假设，原中心 `global_track_id` 原样保留。
 
-稀疏候选边按以下顺序生成：双时间戳窗口、各自视场、双向极线距离、世界射线最近交会、
+稀疏候选采用两级索引。第一级根据相机位姿、内参、截断视锥包围盒、相机量测时间和三维
+覆盖桶生成相机对；总相机对只按 `C(C-1)/2` 计数，不构造完整列表。相机对检查受
+`camera_pair_budget` 限制，同桶按索引间隔轮转、跨桶按对角线轮转，使有限预算先覆盖更多
+相机。未检查相机对记录为预算丢弃并保持未绑定，不补猜身份。第二级以中心航迹投影支持和
+时间近邻生成 tracklet 候选，按 `max_tracklet_candidate_edges_per_node` 在昂贵几何计算前
+确定性裁剪，不再为每个相机对建立 `n_left x n_right` 中间矩阵。
+
+保留候选边按以下顺序验证：双时间戳窗口、各自视场、双向极线距离、世界射线最近交会、
 三角中点重投影、像素协方差马氏门、中心 GlobalTrack 投影与协方差门，最后执行确定性的
-per-node degree cap。每条边至少携带时间差、像素马氏距离、重投影误差、射线最近距离、
+最终 degree cap。每条边至少携带时间差、像素马氏距离、重投影误差、射线最近距离、
 bbox 尺度差和尺度变化率差、角速度差、相机基线及外参协方差；另携带极线误差、交会角、
 中心投影马氏距离、置信度乘积和共享中心候选数。
 
@@ -50,20 +57,23 @@ PyTorch MLP 和 `index_add_` 对两个端点聚合消息，不依赖 `torch_geom
 
 | 场景 | 结果 | 代码验收门 |
 | --- | --- | --- |
-| seed 200，200 目标，4 相机 | 800 节点；240000 个跨相机可能对；极线门后 20398；中心投影门后/degree cap 前 2953；最终 1923 边；密度 0.006017；最大度 6；本机 1.585 s | 800 节点；密度 `<0.01`；最大度 `<=6`；中心投影候选 `<2%`；运行 `<15 s` |
+| seed 200，200 目标，4 相机 | 800 节点；240000 个跨相机可能对；索引后 3050 个 tracklet 候选；中心投影门/最终 cap 前 2953；最终 1923 边；密度 0.006017；最大度 6；本次实测 0.442 s | 800 节点；密度 `<0.01`；最大度 `<=6`；中心投影候选 `<2%`；运行 `<15 s` |
+| 5/20/50/100/200 相机结构矩阵 | 每相机 1 个匿名 tracklet；预算为 `2C`；200 相机总对数 19900，只检查/保留 400 对，预算丢弃 19500；tracklet 候选 397；本次实测约 59.2 ms | 实际检查 `<=pair budget`；每 tracklet 候选度 `<=4`；全部相机至少进入一个候选对；不设窄绝对时延门 |
 | seed 4，8 目标，3 相机小样本 | 24 节点、192 边；24 正样本、72 困难负样本；`positive_weight=3.0`；60 epoch loss `1.038521 -> 0.011535`，训练集准确率 1.0 | loss 至少下降 50%；训练集准确率 `>=0.90`；困难负样本非空 |
 | scalable 3D adapter 专项 | `17 passed in 2.27s`；2/3/4 相机部分可见、跨帧稳定、假目标/漏检、7 类污染、中心 ID、reset、空扫描、model/rule 状态及真实 DTO 形状 | 零失败；污染不得改变 tracker 序列；输出 ID 只能来自中心输入 |
-| D5 全量回归 | `332 passed in 10.92s` | 零失败 |
+| D5 全量回归 | `343 passed in 9.29s` | 零失败 |
 
-上述压力结果只证明 **最终输出边集稀疏**。当前 `build_sparse_tracklet_graph()` 仍枚举全部非空
-camera pair，并为每对构造 `n_left x n_right` 的时间/视场/极线矩阵；尚未运行 200-camera
-benchmark。因此 main 后续接入 200-camera 场景前，camera overlap/index bucket、pair budget
-及对应内存/时延压力测试仍是开放 P1，不能由 4-camera 结果宣称闭合。
+相机 overlap/index bucket、camera-pair budget、tracklet 候选上限和 200-camera 结构测试已在
+D5 范围内关闭原平方级候选构造缺口。诊断显式输出总相机对、索引对、检查对、预算丢弃、
+tracklet 候选、各几何拒绝原因以及模型/规则路径。该证据是确定性合成结构测试，尚未覆盖
+真实 200 路图像、真实 checkpoint、跨场景准确率、内存峰值或多随机种子 P50/P95；这些继续
+作为 main/D6 集成与模型准入 P1，而不是本索引代码缺口。
 
 小样本结果只证明原生 PyTorch 前向、反向、困难负样本和不平衡损失可运行，是过拟合 smoke，
 不是独立验证、概率校准或模型准入。当前没有默认图模型 checkpoint。D5 模块入口已能消费
-`OnlineSensorBatch`/`vision_bbox` 和六维中心航迹的真实 DTO 形状，但 main orchestrator 尚未增加
-模块调用点，也未运行 scalable 3D 或真实 AirSim 在线 episode。后续必须用独立训练/验证/测试
+`OnlineSensorBatch`/`vision_bbox` 和六维中心航迹的真实 DTO 形状，main scalable module stack
+已经调用该 adapter；新增 `association.diagnostics` 仍需由 main 持久化到 episode/D6 输出。
+后续必须用独立训练/验证/测试
 划分、困难遮挡和近邻交叉、多 seed 200v200 episode、阈值校准及真实时延预算完成准入；模型
 缺失、异常或平均 certainty 不足时明确回退确定性几何规则，既有默认主线不被替换。
 

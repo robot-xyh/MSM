@@ -43,6 +43,23 @@ camera metadata 时输出几何，否则标记 `empty_geometry_unavailable`；�
 `rule_fallback_model_error/low_confidence`；只有调用方注入且输出有效、足够确定的模型才标记
 `model_scored`。规则概率只使用已通过物理门的 edge gate score 和共享中心投影数量。
 
+构图先建立相机覆盖索引。对每个相机，从 `K` 的四个像面角点反投影近、远两个深度平面，
+转换到北东地坐标系后得到截断视锥的轴对齐包围盒；相机位置协方差按三倍标准差扩张包围盒。
+视轴在近远深度中点的位置作为覆盖锚点，按 `camera_index_cell_size_m` 进入三维空间桶。视锥
+跨度决定需要查询的邻桶半径，并受配置上限约束。只有时间差不超过
+`camera_pair_time_window_s` 且两个视锥包围盒相交的相机对进入下一层。
+
+全部相机对数量通过 `C(C-1)/2` 算术计算，程序不创建完整相机对列表。每个空间桶只与索引
+可达邻桶组合；同桶候选按相机索引间隔从小到大轮转，跨桶候选按二维索引对角线轮转。
+`camera_pair_budget` 约束实际检查次数。预算耗尽时，剩余索引候选计入
+`camera_pair_budget_dropped`，不调用几何门，不进入模型，相关 tracklet 保持单例或未绑定。
+
+入选相机对不再建立 `n_left x n_right` 矩阵。存在中心航迹时，右相机 tracklet 先按中心
+投影支持编号建桶；左 tracklet 只读取共享支持桶中距离最小的有限候选。没有中心航迹时，
+右侧时间戳有序表通过二分查找返回有限时间近邻。候选按共享中心支持数、投影距离、双时间差、
+置信度和 tracklet key 排序，`max_tracklet_candidate_edges_per_node` 同时约束两个端点的候选度。
+此后才执行极线、射线、重投影和协方差计算。
+
 对于不同相机节点 `i,j`，先计算时间差和视场有效性，再由相对外参构造
 `F = K_j^{-T}[t_ji]_x R_ji K_i^{-1}`，计算双向 point-to-epipolar-line 距离。像素反投影为
 世界射线后，要求两个射线最近点参数均为正、交会角大于下限、最近距离小于协方差膨胀门；
@@ -64,21 +81,30 @@ camera metadata 时输出几何，否则标记 `empty_geometry_unavailable`；�
 不相交；`bind_clusters_to_center_tracks()` 对匿名簇到中心航迹的平均投影马氏代价执行
 Hungarian，并对 margin 不足输出 `ambiguous`。输出 `global_track_id` 必须属于中心输入集合。
 
+`Scalable3DAssociationResult.diagnostics` 合并构图计数与评分来源。字段覆盖全部可能相机对、
+空间索引 pair space、实际检查/保留相机对、预算丢弃、tracklet 候选、时间/视场/极线/射线/
+重投影/协方差/中心投影拒绝原因，以及 `model_scored` 或规则回退路径。该诊断不包含 truth、
+actor 或 object identity。
+
 验证日期为 2026-07-20。seed 200 的 200 目标/4 相机压力测试为 800 节点、240000 可能 pair、
-2953 个 cap 前候选、1923 条最终边、最大度 6、密度 `0.006017`，本机 `1.585 s`，通过
+3050 个索引后 tracklet 候选、2953 个最终 cap 前候选、1923 条最终边、最大度 6、密度
+`0.006017`，本次实测 `0.442 s`，通过
 `<15 s`、密度 `<0.01` 和最大度 `<=6` 的代码门。seed 4 的 24 节点/192 边训练 smoke
 包含 24 正边和 72 困难负边，正类权重 3.0，60 epoch loss
-`1.038521 -> 0.011535`，训练准确率 1.0。adapter 专项 `17 passed in 2.27s`，D5 全量
-`332 passed in 10.92s`。
+`1.038521 -> 0.011535`，训练准确率 1.0。5/20/50/100/200 相机结构矩阵中，每相机一个
+匿名 tracklet、相机对预算为 `2C`；200 相机的 19900 总对只检查/保留 400 对，预算丢弃
+19500，tracklet 候选 397，全部相机至少进入一个候选对。本次 200 相机结构诊断约 59.2 ms，
+测试不设置窄绝对时延阈值。D5 全量 `343 passed in 9.29s`。
 
-最终 1923 条边证明输出图稀疏，但当前构图仍对全部非空 camera pair 执行枚举，并为每对
-分配 `n_left x n_right` 时间/视场/极线中间矩阵。本轮没有 200-camera benchmark；main
-接线前所需的相机 overlap/index bucket、pair budget 和内存/P50/P95 验证仍为开放 P1。
+上述结果关闭 D5 代码内的全相机对和全 tracklet 矩阵缺口。它仍是合成结构验证，不能说明
+真实 200 路相机的检测召回、跨视角边准确率、模型概率校准、内存峰值和多 seed P50/P95 已
+达标。main/D6 还需持久化新增诊断，量化预算造成的候选召回损失。
 
 该训练结果仅为管线和可过拟合性测试，未做独立验证、概率校准、多 seed 或真实图像评估，
 没有默认 checkpoint，不能解释为已验收 GNN。D5 模块-owned scalable 3D DTO 适配已完成，
-但 main orchestrator 调用点、真实 scalable episode、真实 AirSim 和学习型主动视觉训练均未
-完成；现有 `TerminalAssociator`/几何 Hungarian 仍是默认运行路径。
+main scalable module stack 已调用该 adapter；真实 checkpoint、多 seed scalable episode、
+真实 AirSim 大规模接线和学习型主动视觉训练仍未完成。现有几何规则、约束聚类和 Hungarian
+绑定仍是默认运行路径。
 
 ## 2026-07-16 真实 ComputerVision 5+1 实现证据
 

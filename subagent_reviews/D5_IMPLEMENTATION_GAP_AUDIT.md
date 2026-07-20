@@ -2,8 +2,9 @@
 
 ## 2026-07-20 匿名稀疏图 GAP 状态
 
-**代码级已完成：** camera-local tracklet 匿名节点、truth/global identity 递归隔离、时间/视场/
-极线/射线/重投影/GlobalTrack 投影/协方差门、确定性 degree cap、14 维边特征、原生 PyTorch
+**代码级已完成：** camera-local tracklet 匿名节点、truth/global identity 递归隔离、相机
+overlap/index、相机对预算、tracklet 候选度预算、时间/视场/极线/射线/重投影/GlobalTrack
+投影/协方差门、确定性最终 degree cap、14 维边特征、原生 PyTorch
 `index_add_` 消息传递、独立离线标签、困难负样本、正类权重、同相机互斥聚类、中心
 Hungarian binding 及主动视觉规则 fallback 已进入 D5-owned 代码和回归。D5 输出中心 ID 的
 集合被限制为输入中心 ID 集合的子集。P0 复审发现的 local-ID 漏项已修复：构造器及递归
@@ -19,28 +20,36 @@ camera batch 和 `vision_bbox`，不导入 main/D2/evaluator 类型。所有 pay
 六维 D2 状态只读转换保留中心 ID；端到端路径显式区分注入模型与 missing/error/low-confidence
 规则 fallback。
 
-**代码证据：** 2026-07-20 D5 全量 `332 passed in 10.92s`。adapter 专项
+**代码证据：** 2026-07-20 D5 全量 `343 passed in 9.29s`。adapter 专项
 `17 passed in 2.27s`，覆盖 2/3/4 相机部分可见、跨帧 ID、假目标/漏检、7 类污染、中心 ID
 不变、episode reset、空扫描、真实 DTO 字段形状和模型回退状态。seed 200 的 200 目标/4 相机
-场景为 800 节点、240000 可能跨相机 pair、2953 个 cap 前候选、1923 条最终边、密度
-`0.006017`、最大度 6、本机 `1.585 s`，通过密度 `<0.01`、度数 `<=6` 和 `<15 s` 门。
+场景为 800 节点、240000 可能跨相机 pair、3050 个索引后 tracklet 候选、2953 个最终 cap
+前候选、1923 条最终边、密度 `0.006017`、最大度 6，本次实测 `0.442 s`，通过密度
+`<0.01`、度数 `<=6` 和 `<15 s` 门。
 seed 4 的 8 目标/3 相机训练 smoke 为 24 节点/192 边、24 正边/72 困难负边、正类权重
 3.0，60 epoch loss `1.038521 -> 0.011535`、训练准确率 1.0。truth-like ID 专项新增
 5 个构造拒绝、3 个递归拒绝和 4 个正常 ID 正例，接受门为拒绝/放行均无误判，12/12 通过。
 
-**GAP 判定：** truth-like local ID 的 P0 防线已在 D5 构造与递归入口关闭并保持回归。
-“匿名稀疏输出图、原生前向、真值隔离训练接口和 200 目标/4 相机代码压力回归”在 D5 范围内
-已有证据；但不能写成“200-camera 构图性能已闭合”。当前 `build_sparse_tracklet_graph()` 仍枚举
-全部非空 camera pair，并为每对形成 `n_left x n_right` 时间/视场/极线矩阵。相机
-overlap/index bucket、pair budget 和 200-camera 内存/P50/P95 benchmark 明确保持开放 P1。
-已训练并校准的跨视角模型、main orchestrator 调用与真实 scalable 3D episode、真实 AirSim
-多 seed 性能和学习型主动视觉闭环仍为开放 P1/P2。D5-owned DTO/tracker/association adapter
-缺口已关闭；小样本是同集过拟合 smoke，不能关闭模型准入 GAP。当前无默认 checkpoint，
-既有几何 Hungarian/`TerminalAssociator` 继续默认。
+新增 5/20/50/100/200 相机结构矩阵，每相机 1 个匿名 tracklet、相机对预算为 `2C`。200 相机
+总对数 19900，只检查/保留 400，对预算丢弃 19500，tracklet 候选 397；全部相机至少进入一个
+候选对。非重叠、重叠、预算截断、输入顺序确定性、预算耗尽 unbound、truth 隔离和中心 ID
+不变均有回归。结构测试不设窄绝对时延门；单次 200 相机诊断约 59.2 ms 只作记录。
 
-**跨模块待办：** main 需在其 ownership 内调用本 adapter，把 camera pose covariance 放入
-在线 metadata，并继续确保 evaluator truth 只进入 evaluator。main 的 200-camera 接线还需
-给出可达 camera-pair 候选合同和压力 benchmark。D6 后续需定义边 precision/recall、PR/ROC、
+**GAP 判定：** truth-like local ID 的 P0 防线已在 D5 构造与递归入口关闭并保持回归。
+原来的“全部非空 camera pair + 每对 `n_left x n_right` 矩阵”P1 已由 D5-owned 两级索引关闭。
+`all_possible_camera_pairs` 只算术计数；视锥/时间/空间桶给出索引相机对，预算耗尽后不再检查；
+中心投影支持/时间近邻给出有界 tracklet 候选。几何规则默认路径、可选模型、Hungarian、约束
+聚类和模型缺失回退未改变。预算不足只增加 unbound，不产生身份猜测。
+
+尚未关闭的是 200-camera 真实 episode 的内存峰值、P50/P95、预算召回损失、跨场景准确率和
+多随机种子证据。已训练并校准的跨视角模型、真实 checkpoint、真实 AirSim 多 seed 性能和
+学习型主动视觉闭环仍为开放 P1/P2。
+D5-owned DTO/tracker/association adapter 缺口已关闭；小样本是同集过拟合 smoke，不能关闭
+模型准入 GAP。当前无默认 checkpoint，既有几何 Hungarian/`TerminalAssociator` 继续默认。
+
+**跨模块待办：** main scalable module stack 已调用本 adapter；main 需把新增
+`association.diagnostics` 原样持久化，把 camera pose covariance 放入在线 metadata，并继续
+确保 evaluator truth 只进入 evaluator。D6 后续需定义预算召回、边 precision/recall、PR/ROC、
 校准误差、IDSW 和多 seed 统计。D5 本轮未修改 main-owned runtime 或根级 docs。
 
 ## 2026-07-16 ComputerVision 5+1 最终证据与 GAP 状态

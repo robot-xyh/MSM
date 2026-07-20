@@ -20,18 +20,23 @@ P0 复审后，local-ID guard 还会在构造器和递归 payload 中拒绝 `TGT
 binding 只能引用既有 `global_track_id`；未绑定簇保持 anonymous。训练 truth 来自独立离线
 流，在线图构建完成后才生成标签，并选几何相近的异目标边作为困难负样本。
 
-seed 200 的 200 目标、4 相机回归从 240000 个跨相机可能 pair 收缩为 2953 个 cap 前候选和
-1923 条边，密度 `0.006017`、最大度 6、本机 `1.585 s`。seed 4 小样本为 24 正边、72
+当前候选生成先按相机位姿、截断视锥 AABB、量测时间和三维覆盖桶建立相机索引，再以
+`camera_pair_budget` 限制实际相机对检查。入选相机对按中心投影支持或时间近邻生成 tracklet
+候选，并在几何门前限制每节点候选度；不再形成全相机对或每相机对全 tracklet 矩阵。预算
+耗尽时节点保持 unbound，不允许图模型补猜身份。
+
+seed 200 的 200 目标、4 相机回归从 240000 个跨相机可能 pair 收缩为 3050 个索引后候选、
+2953 个最终 cap 前候选和 1923 条边，密度 `0.006017`、最大度 6，本次 `0.442 s`。seed 4
+小样本为 24 正边、72
 困难负边，60 epoch loss `1.038521 -> 0.011535`、训练准确率 1.0。adapter 专项
-`17 passed`、D5 全量 `332 passed`。这些结果验证 DTO 入口、最终输出图稀疏、原生前向和
-4-camera 压力路径，不关闭真实跨视角泛化或模型准入，也不关闭 200-camera 性能。当前仍
-枚举全部 camera pair，并为每对
-构造 `n_left x n_right` 中间矩阵；相机索引/overlap bucket、pair budget 和 200-camera
-benchmark 是 main 接线后的开放 P1。
+保持通过、D5 全量 `343 passed`。5/20/50/100/200 相机结构矩阵中，200 相机只检查/保留
+400/19900 个相机对，预算丢弃 19500，tracklet 候选 397，全部相机均有候选覆盖。该证据关闭
+D5-owned 索引代码缺口，不关闭真实跨视角泛化、模型准入、内存峰值或多 seed P50/P95。
 
 主动视觉只增加 camera-intent 环境/策略接口和 timeout/低置信规则扫描 fallback。尚无学习型
 策略训练、真实云台 ACK、AirSim episode 或物理闭环证据。D5 adapter 已能接收 scalable 3D
-匿名观测，后续仍需 main 增加 orchestrator 调用点，并完成独立数据划分、多 seed 200v200、
+匿名观测，main scalable module stack 已调用 adapter；后续仍需持久化新增诊断，并完成独立
+数据划分、多 seed 200v200、
 遮挡/交叉/外参漂移、概率校准与算力预算；在此之前几何
 Hungarian/`TerminalAssociator` 保持默认。
 

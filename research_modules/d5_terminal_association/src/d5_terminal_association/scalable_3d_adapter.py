@@ -140,6 +140,7 @@ class Scalable3DAssociationResult:
     scoring_status: str
     probability_source: str
     fallback_reason: str | None = None
+    diagnostics: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         probabilities = np.asarray(self.edge_probabilities, dtype=float).reshape(-1).copy()
@@ -153,6 +154,18 @@ class Scalable3DAssociationResult:
         object.__setattr__(self, "edge_probabilities", probabilities)
         object.__setattr__(self, "clusters", tuple(self.clusters))
         object.__setattr__(self, "bindings", tuple(self.bindings))
+        diagnostics = dict(self.graph.candidate_counts)
+        diagnostics.update(dict(self.diagnostics))
+        diagnostics.update(
+            {
+                "scoring_status": str(self.scoring_status),
+                "probability_source": str(self.probability_source),
+                "fallback_reason": (
+                    "none" if self.fallback_reason is None else str(self.fallback_reason)
+                ),
+            }
+        )
+        object.__setattr__(self, "diagnostics", MappingProxyType(diagnostics))
 
 
 @dataclass(frozen=True)

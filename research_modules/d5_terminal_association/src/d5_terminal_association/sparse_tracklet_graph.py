@@ -9,9 +9,9 @@ one-to-one center-track assignment.
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections import defaultdict
 from dataclasses import dataclass, field, fields, is_dataclass
-from itertools import combinations
 import math
 import re
 from types import MappingProxyType
@@ -281,6 +281,13 @@ class SparseTrackletGraphConfig:
     global_process_noise_m2_s4: float = 1.0
     max_tracklet_covariance_trace_px2: float = 10_000.0
     max_extrinsics_covariance_trace: float = 1_000.0
+    camera_overlap_near_m: float = 1.0
+    camera_overlap_far_m: float = 3_000.0
+    camera_index_cell_size_m: float = 1_000.0
+    camera_pair_time_window_s: float = 0.35
+    camera_pair_budget: int = 4_096
+    camera_index_max_search_radius_cells: int = 8
+    max_tracklet_candidate_edges_per_node: int = 24
     max_neighbors_per_node: int = 8
     covariance_regularization: float = 1.0e-6
 
@@ -297,6 +304,10 @@ class SparseTrackletGraphConfig:
             "max_global_projection_mahalanobis",
             "max_tracklet_covariance_trace_px2",
             "max_extrinsics_covariance_trace",
+            "camera_overlap_near_m",
+            "camera_overlap_far_m",
+            "camera_index_cell_size_m",
+            "camera_pair_time_window_s",
             "covariance_regularization",
         )
         for name in positive_names:
@@ -312,9 +323,70 @@ class SparseTrackletGraphConfig:
         for name in non_negative_names:
             if not np.isfinite(getattr(self, name)) or float(getattr(self, name)) < 0.0:
                 raise ValueError(f"{name} must be finite and non-negative")
+        if self.camera_overlap_far_m <= self.camera_overlap_near_m:
+            raise ValueError("camera_overlap_far_m must exceed camera_overlap_near_m")
+        if int(self.camera_pair_budget) < 0:
+            raise ValueError("camera_pair_budget must be non-negative")
+        if int(self.camera_index_max_search_radius_cells) <= 0:
+            raise ValueError("camera_index_max_search_radius_cells must be positive")
+        if int(self.max_tracklet_candidate_edges_per_node) <= 0:
+            raise ValueError("max_tracklet_candidate_edges_per_node must be positive")
         if int(self.max_neighbors_per_node) <= 0:
             raise ValueError("max_neighbors_per_node must be positive")
+        object.__setattr__(self, "camera_pair_budget", int(self.camera_pair_budget))
+        object.__setattr__(
+            self,
+            "camera_index_max_search_radius_cells",
+            int(self.camera_index_max_search_radius_cells),
+        )
+        object.__setattr__(
+            self,
+            "max_tracklet_candidate_edges_per_node",
+            int(self.max_tracklet_candidate_edges_per_node),
+        )
         object.__setattr__(self, "max_neighbors_per_node", int(self.max_neighbors_per_node))
+
+
+@dataclass(frozen=True)
+class CameraOverlapIndex:
+    """Bounded camera pairs selected by time and spatial frustum overlap.
+
+    ``all_possible_camera_pairs`` is counted arithmetically.  It is never
+    materialised as a complete pair list.  Pairs omitted by the configured
+    budget are deliberately absent, so downstream association leaves their
+    tracklets unbound instead of inferring an identity without evidence.
+    """
+
+    camera_pairs: tuple[tuple[str, str], ...]
+    candidate_counts: Mapping[str, int]
+
+    def __post_init__(self) -> None:
+        pairs = tuple((str(left), str(right)) for left, right in self.camera_pairs)
+        if any(not left or not right or left >= right for left, right in pairs):
+            raise ValueError("camera overlap pairs must be canonical non-empty keys")
+        if len(pairs) != len(set(pairs)):
+            raise ValueError("camera overlap pairs must be unique")
+        object.__setattr__(self, "camera_pairs", pairs)
+        object.__setattr__(
+            self,
+            "candidate_counts",
+            MappingProxyType(
+                {str(key): int(value) for key, value in self.candidate_counts.items()}
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class _CameraCoverageDescriptor:
+    camera_key: str
+    measurement_timestamp: float
+    center_ned: np.ndarray
+    coverage_anchor_ned: np.ndarray
+    aabb_min_ned: np.ndarray
+    aabb_max_ned: np.ndarray
+    bucket: tuple[int, int, int]
+    search_radius_cells: int
+    radius_clipped: bool
 
 
 @dataclass(frozen=True)
@@ -442,6 +514,437 @@ class CenterTrackBindingDecision:
             object.__setattr__(self, "cost", _finite_float(self.cost, "cost"))
 
 
+def build_camera_overlap_index(
+    camera_geometries: Iterable[TrackletCameraGeometry],
+    *,
+    camera_keys: Iterable[str] | None = None,
+    config: SparseTrackletGraphConfig | None = None,
+) -> CameraOverlapIndex:
+    """Select a bounded set of camera pairs from time-stamped frustum buckets.
+
+    Each camera is assigned to one deterministic bucket at the midpoint of its
+    configured viewing range.  Its complete truncated-frustum AABB determines
+    how far neighbouring buckets are queried.  Only inspected pairs whose
+    timestamps and AABBs overlap are returned.  The inspection budget bounds a
+    dense same-bucket case without constructing ``C choose 2`` pairs.
+    """
+
+    cfg = config or SparseTrackletGraphConfig()
+    cameras = tuple(camera_geometries)
+    camera_by_key = {camera.camera_key: camera for camera in cameras}
+    if len(camera_by_key) != len(cameras):
+        raise ValueError("camera geometry keys must be unique")
+    selected_keys = (
+        tuple(sorted(camera_by_key))
+        if camera_keys is None
+        else tuple(sorted(dict.fromkeys(str(key) for key in camera_keys)))
+    )
+    unknown = tuple(key for key in selected_keys if key not in camera_by_key)
+    if unknown:
+        raise ValueError(f"camera overlap index references unknown cameras: {unknown}")
+    descriptors = tuple(
+        _camera_coverage_descriptor(camera_by_key[key], cfg) for key in selected_keys
+    )
+    descriptor_by_key = {item.camera_key: item for item in descriptors}
+    buckets: dict[tuple[int, int, int], list[str]] = defaultdict(list)
+    bucket_radius: dict[tuple[int, int, int], int] = defaultdict(int)
+    for descriptor in descriptors:
+        buckets[descriptor.bucket].append(descriptor.camera_key)
+        bucket_radius[descriptor.bucket] = max(
+            bucket_radius[descriptor.bucket],
+            descriptor.search_radius_cells,
+        )
+    for values in buckets.values():
+        values.sort()
+
+    occupied = frozenset(buckets)
+    max_radius = max(bucket_radius.values(), default=0)
+    bucket_pairs: set[
+        tuple[tuple[int, int, int], tuple[int, int, int]]
+    ] = set()
+    for left_bucket in sorted(occupied):
+        search_radius = min(
+            cfg.camera_index_max_search_radius_cells,
+            bucket_radius[left_bucket] + max_radius,
+        )
+        for north_offset in range(-search_radius, search_radius + 1):
+            for east_offset in range(-search_radius, search_radius + 1):
+                for down_offset in range(-search_radius, search_radius + 1):
+                    right_bucket = (
+                        left_bucket[0] + north_offset,
+                        left_bucket[1] + east_offset,
+                        left_bucket[2] + down_offset,
+                    )
+                    if right_bucket not in occupied or right_bucket < left_bucket:
+                        continue
+                    bucket_pairs.add((left_bucket, right_bucket))
+
+    ordered_bucket_pairs = sorted(
+        bucket_pairs,
+        key=lambda item: (
+            max(abs(item[0][axis] - item[1][axis]) for axis in range(3)),
+            sum(abs(item[0][axis] - item[1][axis]) for axis in range(3)),
+            item[0],
+            item[1],
+        ),
+    )
+    indexed_pair_space = sum(
+        (
+            len(buckets[left]) * max(0, len(buckets[left]) - 1) // 2
+            if left == right
+            else len(buckets[left]) * len(buckets[right])
+        )
+        for left, right in ordered_bucket_pairs
+    )
+    budget = cfg.camera_pair_budget
+    inspected = 0
+    time_rejected = 0
+    overlap_rejected = 0
+    retained: list[tuple[str, str]] = []
+    stop = False
+
+    for left_bucket, right_bucket in ordered_bucket_pairs:
+        left_keys = buckets[left_bucket]
+        right_keys = buckets[right_bucket]
+        if left_bucket == right_bucket:
+            pair_iter = (
+                (left_keys[left_index], left_keys[right_index])
+                for separation in range(1, len(left_keys))
+                for left_index in range(0, len(left_keys) - separation)
+                for right_index in (left_index + separation,)
+            )
+        else:
+            pair_iter = (
+                tuple(sorted((left_key, right_key)))
+                for diagonal in range(len(left_keys) + len(right_keys) - 1)
+                for left_index in range(len(left_keys))
+                for right_index in (diagonal - left_index,)
+                if 0 <= right_index < len(right_keys)
+                for left_key in (left_keys[left_index],)
+                for right_key in (right_keys[right_index],)
+            )
+        for left_key, right_key in pair_iter:
+            if inspected >= budget:
+                stop = True
+                break
+            inspected += 1
+            left = descriptor_by_key[left_key]
+            right = descriptor_by_key[right_key]
+            if (
+                abs(left.measurement_timestamp - right.measurement_timestamp)
+                > cfg.camera_pair_time_window_s
+            ):
+                time_rejected += 1
+                continue
+            if not _aabb_intersects(
+                left.aabb_min_ned,
+                left.aabb_max_ned,
+                right.aabb_min_ned,
+                right.aabb_max_ned,
+            ):
+                overlap_rejected += 1
+                continue
+            retained.append((left_key, right_key))
+        if stop:
+            break
+
+    all_possible = len(descriptors) * max(0, len(descriptors) - 1) // 2
+    budget_dropped = max(0, indexed_pair_space - inspected)
+    counts = {
+        "all_possible_camera_pairs": all_possible,
+        "camera_index_bucket_count": len(buckets),
+        "camera_index_bucket_pair_count": len(ordered_bucket_pairs),
+        "camera_index_pair_space": indexed_pair_space,
+        "camera_index_rejected_pairs": max(0, all_possible - indexed_pair_space),
+        "camera_pair_budget": budget,
+        "camera_pairs_inspected": inspected,
+        "camera_pair_budget_dropped": budget_dropped,
+        "camera_pair_budget_exhausted": int(budget_dropped > 0),
+        "camera_time_rejected_pairs": time_rejected,
+        "camera_overlap_rejected_pairs": overlap_rejected,
+        "indexed_camera_pairs": len(retained),
+        "camera_index_radius_clipped_count": sum(
+            int(item.radius_clipped) for item in descriptors
+        ),
+        "camera_index_max_bucket_population": max(
+            (len(values) for values in buckets.values()),
+            default=0,
+        ),
+    }
+    return CameraOverlapIndex(
+        camera_pairs=tuple(sorted(retained)),
+        candidate_counts=counts,
+    )
+
+
+def _camera_coverage_descriptor(
+    geometry: TrackletCameraGeometry,
+    config: SparseTrackletGraphConfig,
+) -> _CameraCoverageDescriptor:
+    camera = geometry.camera
+    center = geometry.camera_center_ned
+    width, height = camera.image_size
+    inverse_intrinsics = np.linalg.inv(camera.K)
+    corners_world: list[np.ndarray] = []
+    for depth in (config.camera_overlap_near_m, config.camera_overlap_far_m):
+        for horizontal in (0.0, float(width)):
+            for vertical in (0.0, float(height)):
+                direction_camera = inverse_intrinsics @ np.array(
+                    [horizontal, vertical, 1.0],
+                    dtype=float,
+                )
+                if direction_camera[2] <= _EPS:
+                    raise ValueError("camera intrinsics produce a non-forward frustum corner")
+                point_camera = direction_camera * (depth / direction_camera[2])
+                corners_world.append(center + camera.R.T @ point_camera)
+    corners = np.vstack(corners_world)
+    position_sigma = 3.0 * np.sqrt(
+        np.maximum(0.0, np.diag(geometry.position_covariance_ned))
+    )
+    aabb_min = np.min(corners, axis=0) - position_sigma
+    aabb_max = np.max(corners, axis=0) + position_sigma
+    midpoint_depth = 0.5 * (
+        config.camera_overlap_near_m + config.camera_overlap_far_m
+    )
+    optical_axis_ned = camera.R.T @ np.array([0.0, 0.0, 1.0], dtype=float)
+    optical_axis_ned /= max(float(np.linalg.norm(optical_axis_ned)), _EPS)
+    anchor = center + midpoint_depth * optical_axis_ned
+    cell_size = config.camera_index_cell_size_m
+    bucket_array = np.floor(anchor / cell_size).astype(int)
+    required_radius = int(
+        math.ceil(
+            max(
+                float(np.max(np.abs(aabb_min - anchor))),
+                float(np.max(np.abs(aabb_max - anchor))),
+            )
+            / cell_size
+        )
+    ) + 1
+    clipped_radius = min(
+        required_radius,
+        config.camera_index_max_search_radius_cells,
+    )
+    return _CameraCoverageDescriptor(
+        camera_key=geometry.camera_key,
+        measurement_timestamp=geometry.measurement_timestamp,
+        center_ned=_read_only(center.copy()),
+        coverage_anchor_ned=_read_only(anchor.copy()),
+        aabb_min_ned=_read_only(aabb_min.copy()),
+        aabb_max_ned=_read_only(aabb_max.copy()),
+        bucket=tuple(int(value) for value in bucket_array),
+        search_radius_cells=clipped_radius,
+        radius_clipped=(clipped_radius < required_radius),
+    )
+
+
+def _aabb_intersects(
+    left_min: np.ndarray,
+    left_max: np.ndarray,
+    right_min: np.ndarray,
+    right_max: np.ndarray,
+) -> bool:
+    return bool(np.all(left_max >= right_min) and np.all(right_max >= left_min))
+
+
+def _indexed_tracklet_candidate_pairs(
+    nodes: Sequence[CameraLocalTracklet],
+    nodes_by_camera: Mapping[str, Sequence[int]],
+    camera_pairs: Sequence[tuple[str, str]],
+    support_by_node: Sequence[Mapping[int, float]],
+    *,
+    center_tracks_present: bool,
+    config: SparseTrackletGraphConfig,
+) -> tuple[tuple[tuple[int, int], ...], dict[str, int]]:
+    """Generate bounded deterministic tracklet pairs before expensive geometry."""
+
+    per_node_cap = config.max_tracklet_candidate_edges_per_node
+    probe_limit = max(per_node_cap, 2 * per_node_cap)
+    candidate_priority: dict[tuple[int, int], tuple[Any, ...]] = {}
+    selected_pair_space = 0
+    time_rejected = 0
+    source_cap_dropped = 0
+    probe_dropped = 0
+
+    for left_camera_key, right_camera_key in camera_pairs:
+        left_indices = tuple(nodes_by_camera.get(left_camera_key, ()))
+        right_indices = tuple(nodes_by_camera.get(right_camera_key, ()))
+        selected_pair_space += len(left_indices) * len(right_indices)
+        if not left_indices or not right_indices:
+            continue
+        right_by_support: dict[int, list[tuple[float, float, str, int]]] = defaultdict(list)
+        if center_tracks_present:
+            for right_index in right_indices:
+                right = nodes[right_index]
+                for track_index, distance in support_by_node[right_index].items():
+                    right_by_support[int(track_index)].append(
+                        (
+                            float(distance),
+                            right.measurement_timestamp,
+                            right.tracklet_key,
+                            right_index,
+                        )
+                    )
+            for values in right_by_support.values():
+                values.sort()
+        else:
+            right_time_order = tuple(
+                sorted(
+                    right_indices,
+                    key=lambda index: (
+                        nodes[index].measurement_timestamp,
+                        nodes[index].arrival_timestamp,
+                        nodes[index].tracklet_key,
+                    ),
+                )
+            )
+            right_time_values = tuple(
+                nodes[index].measurement_timestamp for index in right_time_order
+            )
+
+        for left_index in left_indices:
+            left = nodes[left_index]
+            proposed_right: set[int] = set()
+            if center_tracks_present:
+                left_support = sorted(
+                    support_by_node[left_index].items(),
+                    key=lambda item: (float(item[1]), int(item[0])),
+                )[:per_node_cap]
+                for track_index, _ in left_support:
+                    options = right_by_support.get(int(track_index), ())
+                    probe_dropped += max(0, len(options) - probe_limit)
+                    proposed_right.update(item[3] for item in options[:probe_limit])
+            else:
+                proposed_right.update(
+                    _nearest_time_tracklets(
+                        left,
+                        right_time_order,
+                        right_time_values,
+                        nodes,
+                        max_items=probe_limit,
+                    )
+                )
+
+            ranked: list[tuple[tuple[Any, ...], int]] = []
+            for right_index in proposed_right:
+                right = nodes[right_index]
+                measurement_delta = abs(
+                    left.measurement_timestamp - right.measurement_timestamp
+                )
+                arrival_delta = abs(left.arrival_timestamp - right.arrival_timestamp)
+                if (
+                    measurement_delta > config.max_time_delta_s
+                    or arrival_delta > config.max_arrival_time_delta_s
+                ):
+                    time_rejected += 1
+                    continue
+                shared_support = set(support_by_node[left_index]).intersection(
+                    support_by_node[right_index]
+                )
+                if center_tracks_present and not shared_support:
+                    continue
+                support_cost = (
+                    min(
+                        support_by_node[left_index][track_index]
+                        + support_by_node[right_index][track_index]
+                        for track_index in shared_support
+                    )
+                    if shared_support
+                    else 0.0
+                )
+                priority = (
+                    -len(shared_support),
+                    float(support_cost),
+                    measurement_delta,
+                    arrival_delta,
+                    -(left.confidence * right.confidence),
+                    left.tracklet_key,
+                    right.tracklet_key,
+                )
+                ranked.append((priority, right_index))
+            ranked.sort()
+            source_cap_dropped += max(0, len(ranked) - per_node_cap)
+            for priority, right_index in ranked[:per_node_cap]:
+                source_index, target_index = sorted((left_index, right_index))
+                pair = (source_index, target_index)
+                previous = candidate_priority.get(pair)
+                if previous is None or priority < previous:
+                    candidate_priority[pair] = priority
+
+    degrees = np.zeros(len(nodes), dtype=np.int64)
+    retained: list[tuple[int, int]] = []
+    degree_cap_dropped = 0
+    ordered = sorted(
+        candidate_priority.items(),
+        key=lambda item: (*item[1], item[0]),
+    )
+    for (source_index, target_index), _ in ordered:
+        if (
+            degrees[source_index] >= per_node_cap
+            or degrees[target_index] >= per_node_cap
+        ):
+            degree_cap_dropped += 1
+            continue
+        degrees[source_index] += 1
+        degrees[target_index] += 1
+        retained.append((source_index, target_index))
+
+    retained.sort()
+    counts = {
+        "selected_camera_tracklet_pair_space": selected_pair_space,
+        "tracklet_index_time_rejected": time_rejected,
+        "tracklet_probe_budget_dropped": probe_dropped,
+        "tracklet_source_cap_dropped": source_cap_dropped,
+        "tracklet_degree_cap_dropped": degree_cap_dropped,
+        "tracklet_candidate_budget_dropped": (
+            probe_dropped + source_cap_dropped + degree_cap_dropped
+        ),
+        "candidate_tracklet_edges_before_degree_cap": len(candidate_priority),
+        "candidate_tracklet_edges": len(retained),
+        "max_tracklet_candidate_edges_per_node": per_node_cap,
+    }
+    return tuple(retained), counts
+
+
+def _nearest_time_tracklets(
+    source: CameraLocalTracklet,
+    ordered_indices: Sequence[int],
+    ordered_timestamps: Sequence[float],
+    nodes: Sequence[CameraLocalTracklet],
+    *,
+    max_items: int,
+) -> tuple[int, ...]:
+    """Return a bounded timestamp-nearest prefix without a Cartesian product."""
+
+    if not ordered_indices or max_items <= 0:
+        return ()
+    insertion = bisect_left(ordered_timestamps, source.measurement_timestamp)
+    left = insertion - 1
+    right = insertion
+    output: list[int] = []
+    while len(output) < max_items and (left >= 0 or right < len(ordered_indices)):
+        left_key = (
+            abs(
+                nodes[ordered_indices[left]].measurement_timestamp
+                - source.measurement_timestamp
+            ),
+            nodes[ordered_indices[left]].tracklet_key,
+        ) if left >= 0 else (math.inf, "")
+        right_key = (
+            abs(
+                nodes[ordered_indices[right]].measurement_timestamp
+                - source.measurement_timestamp
+            ),
+            nodes[ordered_indices[right]].tracklet_key,
+        ) if right < len(ordered_indices) else (math.inf, "")
+        if left_key <= right_key:
+            output.append(ordered_indices[left])
+            left -= 1
+        else:
+            output.append(ordered_indices[right])
+            right += 1
+    return tuple(output)
+
+
 def build_sparse_tracklet_graph(
     tracklets: Iterable[CameraLocalTracklet],
     camera_geometries: Iterable[TrackletCameraGeometry],
@@ -488,8 +991,31 @@ def build_sparse_tracklet_graph(
         dtype=bool,
     )
 
+    nodes_by_camera: dict[str, list[int]] = defaultdict(list)
+    for index, node in enumerate(nodes):
+        nodes_by_camera[node.camera_key].append(index)
+    possible_tracklet_pairs = (
+        len(nodes) * len(nodes)
+        - sum(len(indices) * len(indices) for indices in nodes_by_camera.values())
+    ) // 2
+    camera_overlap = build_camera_overlap_index(
+        cameras,
+        camera_keys=nodes_by_camera,
+        config=cfg,
+    )
+    tracklet_pairs, tracklet_index_counts = _indexed_tracklet_candidate_pairs(
+        nodes,
+        nodes_by_camera,
+        camera_overlap.camera_pairs,
+        support_by_node,
+        center_tracks_present=bool(tracks),
+        config=cfg,
+    )
+
     counts: dict[str, int] = {
-        "possible_cross_camera_pairs": 0,
+        # Kept for compatibility: this is the arithmetic all-tracklet pair
+        # space, not a materialised Cartesian product.
+        "possible_cross_camera_pairs": int(possible_tracklet_pairs),
         "time_gate_pass": 0,
         "fov_gate_pass": 0,
         "epipolar_gate_pass": 0,
@@ -499,65 +1025,70 @@ def build_sparse_tracklet_graph(
         "global_projection_gate_pass": 0,
         "pre_cap_edges": 0,
         "retained_edges": 0,
+        "rejected_tracklet_time": 0,
+        "rejected_tracklet_fov": 0,
+        "rejected_epipolar": 0,
+        "rejected_ray_geometry": 0,
+        "rejected_ray_gate": 0,
+        "rejected_reprojection_geometry": 0,
+        "rejected_reprojection_gate": 0,
+        "rejected_covariance": 0,
+        "rejected_pixel_mahalanobis": 0,
+        "rejected_global_projection": 0,
+        "rejected_final_degree_cap": 0,
     }
+    counts.update(camera_overlap.candidate_counts)
+    counts.update(tracklet_index_counts)
     candidate_edges: list[SparseCandidateEdge] = []
-    nodes_by_camera: dict[str, list[int]] = defaultdict(list)
-    for index, node in enumerate(nodes):
-        nodes_by_camera[node.camera_key].append(index)
+    fundamental_by_camera_pair: dict[tuple[str, str], np.ndarray] = {}
 
-    for left_camera_key, right_camera_key in combinations(sorted(nodes_by_camera), 2):
-        left_indices = np.asarray(nodes_by_camera[left_camera_key], dtype=np.int64)
-        right_indices = np.asarray(nodes_by_camera[right_camera_key], dtype=np.int64)
-        if not left_indices.size or not right_indices.size:
-            continue
-        counts["possible_cross_camera_pairs"] += int(left_indices.size * right_indices.size)
-        left_times = np.array([nodes[index].measurement_timestamp for index in left_indices])
-        right_times = np.array([nodes[index].measurement_timestamp for index in right_indices])
-        left_arrivals = np.array([nodes[index].arrival_timestamp for index in left_indices])
-        right_arrivals = np.array([nodes[index].arrival_timestamp for index in right_indices])
-        time_mask = (
-            np.abs(left_times[:, None] - right_times[None, :]) <= cfg.max_time_delta_s
-        ) & (
-            np.abs(left_arrivals[:, None] - right_arrivals[None, :])
-            <= cfg.max_arrival_time_delta_s
-        )
-        counts["time_gate_pass"] += int(np.count_nonzero(time_mask))
-        view_mask = fov_valid[left_indices, None] & fov_valid[right_indices][None, :]
-        staged_mask = time_mask & view_mask
-        counts["fov_gate_pass"] += int(np.count_nonzero(staged_mask))
-        if not np.any(staged_mask):
-            continue
-
-        left_camera = camera_by_key[left_camera_key]
-        right_camera = camera_by_key[right_camera_key]
-        epipolar_error = _epipolar_error_matrix(
-            np.vstack([nodes[index].center_px for index in left_indices]),
-            np.vstack([nodes[index].center_px for index in right_indices]),
-            left_camera.camera,
-            right_camera.camera,
-        )
-        left_cov_sigma = np.sqrt(
-            np.maximum(0.0, np.array([np.trace(nodes[index].covariance_px) for index in left_indices]))
-        )
-        right_cov_sigma = np.sqrt(
-            np.maximum(0.0, np.array([np.trace(nodes[index].covariance_px) for index in right_indices]))
-        )
-        epipolar_limit = cfg.max_epipolar_error_px + cfg.epipolar_covariance_sigma * np.sqrt(
-            left_cov_sigma[:, None] ** 2 + right_cov_sigma[None, :] ** 2
-        )
-        staged_mask &= epipolar_error <= epipolar_limit
-        counts["epipolar_gate_pass"] += int(np.count_nonzero(staged_mask))
-
-        for left_local, right_local in np.argwhere(staged_mask):
-            left_index = int(left_indices[left_local])
-            right_index = int(right_indices[right_local])
-            source_index, target_index = sorted((left_index, right_index))
+    for source_index, target_index in tracklet_pairs:
             source = nodes[source_index]
             target = nodes[target_index]
             source_camera = camera_by_key[source.camera_key]
             target_camera = camera_by_key[target.camera_key]
+            if (
+                abs(source.measurement_timestamp - target.measurement_timestamp)
+                > cfg.max_time_delta_s
+                or abs(source.arrival_timestamp - target.arrival_timestamp)
+                > cfg.max_arrival_time_delta_s
+            ):
+                counts["rejected_tracklet_time"] += 1
+                continue
+            counts["time_gate_pass"] += 1
+            if not fov_valid[source_index] or not fov_valid[target_index]:
+                counts["rejected_tracklet_fov"] += 1
+                continue
+            counts["fov_gate_pass"] += 1
+
+            camera_pair = tuple(sorted((source.camera_key, target.camera_key)))
+            fundamental = fundamental_by_camera_pair.get(camera_pair)
+            if fundamental is None:
+                fundamental = _fundamental_matrix(
+                    camera_by_key[camera_pair[0]].camera,
+                    camera_by_key[camera_pair[1]].camera,
+                )
+                fundamental_by_camera_pair[camera_pair] = fundamental
+            pair_epipolar_error = _epipolar_error_pair(
+                source.center_px,
+                target.center_px,
+                fundamental,
+                source_is_left=(source.camera_key == camera_pair[0]),
+            )
+            epipolar_limit = cfg.max_epipolar_error_px + cfg.epipolar_covariance_sigma * math.sqrt(
+                max(
+                    0.0,
+                    float(np.trace(source.covariance_px) + np.trace(target.covariance_px)),
+                )
+            )
+            if pair_epipolar_error > epipolar_limit:
+                counts["rejected_epipolar"] += 1
+                continue
+            counts["epipolar_gate_pass"] += 1
+
             ray_geometry = _ray_pair_geometry(source, target, source_camera, target_camera)
             if ray_geometry is None:
+                counts["rejected_ray_geometry"] += 1
                 continue
             ray_distance, midpoint, baseline, angle = ray_geometry
             ray_limit = cfg.max_ray_closest_distance_m + cfg.ray_covariance_sigma * math.sqrt(
@@ -570,12 +1101,14 @@ def build_sparse_tracklet_graph(
                 )
             )
             if angle < math.radians(cfg.min_triangulation_angle_deg) or ray_distance > ray_limit:
+                counts["rejected_ray_gate"] += 1
                 continue
             counts["ray_gate_pass"] += 1
 
             source_reprojection = _project_world_point(midpoint, source_camera.camera)
             target_reprojection = _project_world_point(midpoint, target_camera.camera)
             if source_reprojection is None or target_reprojection is None:
+                counts["rejected_reprojection_geometry"] += 1
                 continue
             source_residual = source.center_px - source_reprojection
             target_residual = target.center_px - target_reprojection
@@ -590,6 +1123,7 @@ def build_sparse_tracklet_graph(
                 max(0.0, float(np.trace(source.covariance_px) + np.trace(target.covariance_px)))
             )
             if reprojection_error > reprojection_limit:
+                counts["rejected_reprojection_gate"] += 1
                 continue
             counts["reprojection_gate_pass"] += 1
 
@@ -601,6 +1135,7 @@ def build_sparse_tracklet_graph(
                 or target_camera.extrinsics_covariance_trace
                 > cfg.max_extrinsics_covariance_trace
             ):
+                counts["rejected_covariance"] += 1
                 continue
             pixel_mahalanobis = math.sqrt(
                 max(
@@ -613,6 +1148,7 @@ def build_sparse_tracklet_graph(
                 )
             )
             if not np.isfinite(pixel_mahalanobis) or pixel_mahalanobis > cfg.max_pixel_mahalanobis:
+                counts["rejected_pixel_mahalanobis"] += 1
                 continue
             counts["covariance_gate_pass"] += 1
 
@@ -620,6 +1156,7 @@ def build_sparse_tracklet_graph(
                 set(support_by_node[source_index]).intersection(support_by_node[target_index])
             )
             if tracks and not shared_track_indices:
+                counts["rejected_global_projection"] += 1
                 continue
             counts["global_projection_gate_pass"] += 1
             if shared_track_indices:
@@ -647,7 +1184,6 @@ def build_sparse_tracklet_graph(
                 source_camera.extrinsics_covariance_trace
                 + target_camera.extrinsics_covariance_trace
             )
-            pair_epipolar_error = float(epipolar_error[left_local, right_local])
             feature_values = (
                 abs(source.measurement_timestamp - target.measurement_timestamp),
                 pixel_mahalanobis,
@@ -687,6 +1223,7 @@ def build_sparse_tracklet_graph(
     counts["pre_cap_edges"] = len(candidate_edges)
     retained = _degree_limited_edges(candidate_edges, len(nodes), cfg.max_neighbors_per_node)
     counts["retained_edges"] = len(retained)
+    counts["rejected_final_degree_cap"] = len(candidate_edges) - len(retained)
     edge_index = (
         np.asarray([(edge.source_index, edge.target_index) for edge in retained], dtype=np.int64).T
         if retained
@@ -985,6 +1522,33 @@ def _epipolar_error_matrix(
         _EPS,
     )[None, :]
     return 0.5 * (residual / right_denominator + residual / left_denominator)
+
+
+def _epipolar_error_pair(
+    source_pixel: np.ndarray,
+    target_pixel: np.ndarray,
+    fundamental_left_to_right: np.ndarray,
+    *,
+    source_is_left: bool,
+) -> float:
+    """Compute one symmetric epipolar distance without an outer-product matrix."""
+
+    if source_is_left:
+        left_pixel = source_pixel
+        right_pixel = target_pixel
+    else:
+        left_pixel = target_pixel
+        right_pixel = source_pixel
+    left_h = np.array([left_pixel[0], left_pixel[1], 1.0], dtype=float)
+    right_h = np.array([right_pixel[0], right_pixel[1], 1.0], dtype=float)
+    right_line = fundamental_left_to_right @ left_h
+    left_line = fundamental_left_to_right.T @ right_h
+    residual = abs(float(right_h @ right_line))
+    right_denominator = max(float(np.linalg.norm(right_line[:2])), _EPS)
+    left_denominator = max(float(np.linalg.norm(left_line[:2])), _EPS)
+    return 0.5 * residual * (
+        1.0 / right_denominator + 1.0 / left_denominator
+    )
 
 
 def _fundamental_matrix(left: CameraModel, right: CameraModel) -> np.ndarray:
