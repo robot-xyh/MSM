@@ -73,6 +73,14 @@ class _TimingAccumulator:
         self.total[stage] = self.total.get(stage, 0.0) + float(elapsed_s)
         self.calls[stage] = self.calls.get(stage, 0) + 1
 
+    def merge_total(self, stage: str, *, wall_time_s: float, call_count: int) -> None:
+        """Merge a cumulative child-stage record without losing its call count."""
+
+        if call_count < 0 or wall_time_s < 0.0:
+            raise ValueError("timing totals must be non-negative")
+        self.total[stage] = self.total.get(stage, 0.0) + float(wall_time_s)
+        self.calls[stage] = self.calls.get(stage, 0) + int(call_count)
+
     def records(self) -> tuple[StageTiming, ...]:
         return tuple(
             StageTiming(stage, self.calls[stage], self.total[stage])
@@ -258,6 +266,16 @@ class Scalable3DEpisodeRunner:
             if isinstance(message.payload, OnlineSensorBatch)
             and message.payload.measurements[0].modality == "vision_bbox"
         )
+        module_stage_timings = last_module_diagnostics.get("stage_timings", {})
+        if isinstance(module_stage_timings, dict):
+            for stage, record in module_stage_timings.items():
+                if not isinstance(record, dict):
+                    continue
+                timing.merge_total(
+                    f"module.{stage}",
+                    wall_time_s=float(record.get("wall_time_s", 0.0)),
+                    call_count=int(record.get("call_count", 0)),
+                )
         summary: dict[str, Any] = {
             "episode_id": self.manifest.episode_id,
             "scenario_name": self.config.scenario_name,

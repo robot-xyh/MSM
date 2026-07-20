@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 import math
+from time import perf_counter
 from typing import Any, Iterable, Mapping
 
 import numpy as np
@@ -137,6 +138,8 @@ class IntegratedScalableModuleStack:
         self._next_assignment_s = 0.0
         self._last_center_health = C2Health.NORMAL
         self._fault_generation_changed = False
+        self._stage_wall_time_s: dict[str, float] = {}
+        self._stage_call_count: dict[str, int] = {}
 
     def reset(self, config: ScenarioConfig) -> None:
         self.config = config
@@ -176,6 +179,8 @@ class IntegratedScalableModuleStack:
         self._next_assignment_s = 0.0
         self._last_center_health = C2Health.NORMAL
         self._fault_generation_changed = False
+        self._stage_wall_time_s.clear()
+        self._stage_call_count.clear()
 
     def step(self, step_input: RuntimeStepInput) -> RuntimeStepOutput:
         config = self._require_ready()
@@ -206,7 +211,9 @@ class IntegratedScalableModuleStack:
         )
         d1_updated = False
         for batch in arrived:
+            started = perf_counter()
             result = self.d1.process_online_sensor_batch(batch)
+            self._record_timing("d1_fusion", perf_counter() - started)
             self.latest_d1_tracks = tuple(result.tracks)
             d1_updated = True
             publications.append(self._d1_publication(result, batch, now))
@@ -216,6 +223,7 @@ class IntegratedScalableModuleStack:
             and self.latest_d1_tracks
             and now + _EPS >= self._next_association_s
         ):
+            started = perf_counter()
             _, detections = detections3d_from_d1_global_tracks(
                 self.latest_d1_tracks
             )
@@ -224,6 +232,7 @@ class IntegratedScalableModuleStack:
                 self.latest_d2_result = self.d2.step(detections, d2_timestamp)
                 self.latest_d2_tracks = tuple(self.d2.active_tracks())
                 publications.append(self._d2_publication(now))
+            self._record_timing("d2_association", perf_counter() - started)
             self._next_association_s = _advance_schedule(
                 self._next_association_s,
                 config.association_period_s,
@@ -231,6 +240,7 @@ class IntegratedScalableModuleStack:
             )
 
         if vision_batches:
+            started = perf_counter()
             self.latest_d5_result = self.d5.process(
                 vision_batches,
                 self.latest_d2_tracks,
@@ -239,6 +249,7 @@ class IntegratedScalableModuleStack:
             self._latest_terminal_by_pair = self._terminal_pairs_from_d5(
                 self.latest_d5_result
             )
+            self._record_timing("d5_terminal_association", perf_counter() - started)
             publications.append(self._d5_publication(now))
 
         center_health, secondary_failed = self._fault_state(now)
@@ -264,12 +275,14 @@ class IntegratedScalableModuleStack:
 
         interceptor_acceleration = np.zeros((config.resource_count, 3), dtype=float)
         if self.latest_plan is not None and self.latest_d2_tracks:
+            started = perf_counter()
             pair_inputs = self._guidance_inputs(step_input, now)
             self.latest_guidance_batch = self.d7.command_batch(
                 pair_inputs,
                 resource_count=config.resource_count,
             )
             interceptor_acceleration = self.latest_guidance_batch.to_world_acceleration()
+            self._record_timing("d7_guidance", perf_counter() - started)
             publications.append(self._d7_publication(now))
 
         return RuntimeStepOutput(
@@ -288,8 +301,10 @@ class IntegratedScalableModuleStack:
         secondary_failed: bool,
     ) -> None:
         config = self._require_ready()
+        adapter_started = perf_counter()
         tracks = self._d3_tracks()
         resources = self._d3_resources(step_input.interceptors)
+        self._record_timing("main_d3_adapter", perf_counter() - adapter_started)
         previous_plan = self.latest_plan
         current_target_ids = {track.track_id for track in tracks}
         previous_target_ids = (
@@ -328,6 +343,7 @@ class IntegratedScalableModuleStack:
                 # the current single-owner AssignmentPlan contract.
                 self.latest_plan = previous_plan
             else:
+                started = perf_counter()
                 candidate = self.d3.plan(
                     tracks,
                     resources,
@@ -373,7 +389,9 @@ class IntegratedScalableModuleStack:
                         leader_epoch=previous_plan.version + 1,
                     )
                 self.latest_plan = self.d3.publish_plan(self.latest_plan)
+                self._record_timing("d3_assignment", perf_counter() - started)
         else:
+            started = perf_counter()
             self.latest_plan = self.d3.plan(
                 tracks,
                 resources,
@@ -387,6 +405,7 @@ class IntegratedScalableModuleStack:
                     or current_target_ids != previous_target_ids
                 ),
             )
+            self._record_timing("d3_assignment", perf_counter() - started)
         self.latest_bindings = guidance_bindings_from_assignment_plan(
             self.latest_plan,
             resource_vehicle_map={
@@ -398,13 +417,17 @@ class IntegratedScalableModuleStack:
             current_plan_id=self.latest_plan.plan_id,
             current_plan_version=self.latest_plan.version,
         )
+        adapter_started = perf_counter()
         snapshot = self._d4_snapshot(
             step_input,
             now=now,
             center_health=center_health,
             secondary_failed=secondary_failed,
         )
+        self._record_timing("main_d4_adapter", perf_counter() - adapter_started)
+        started = perf_counter()
         self.latest_d4_decision = self.d4.evaluate(snapshot)
+        self._record_timing("d4_regional_failover", perf_counter() - started)
 
     def _selected_secondary_for_active_regions(self, plan: Any) -> str | None:
         """Return one D4-vetted owner only when it covers every active region."""
@@ -1259,7 +1282,25 @@ class IntegratedScalableModuleStack:
                 else len(self.latest_guidance_batch.pair_commands)
             ),
             "online_truth_use_count": 0,
+            "stage_timings": {
+                stage: {
+                    "call_count": self._stage_call_count[stage],
+                    "wall_time_s": self._stage_wall_time_s[stage],
+                    "mean_wall_time_ms": (
+                        1_000.0
+                        * self._stage_wall_time_s[stage]
+                        / self._stage_call_count[stage]
+                    ),
+                }
+                for stage in sorted(self._stage_wall_time_s)
+            },
         }
+
+    def _record_timing(self, stage: str, elapsed_s: float) -> None:
+        self._stage_wall_time_s[stage] = (
+            self._stage_wall_time_s.get(stage, 0.0) + float(elapsed_s)
+        )
+        self._stage_call_count[stage] = self._stage_call_count.get(stage, 0) + 1
 
     def _validate_navigation(
         self,

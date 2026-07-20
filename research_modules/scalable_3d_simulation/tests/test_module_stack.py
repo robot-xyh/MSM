@@ -57,6 +57,10 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity() -> None:
         for binding in stack.latest_d5_result.association.bindings
         if binding.global_track_id is not None
     }.issubset(center_ids)
+    timings = {item.stage: item for item in result.stage_timings}
+    assert timings["module.d1_fusion"].call_count > 0
+    assert timings["module.d3_assignment"].wall_time_s > 0.0
+    assert timings["module.main_d4_adapter"].mean_wall_time_ms > 0.0
 
 
 def test_200v200_stack_uses_sparse_candidates_and_commands_every_assignment() -> None:
