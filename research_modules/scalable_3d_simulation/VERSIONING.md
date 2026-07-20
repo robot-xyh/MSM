@@ -42,9 +42,12 @@ main
 | 在线观测 | `scalable3d-observation-v1` | 观测字段、单位或时序语义改变 |
 | 离线真值 | `scalable3d-offline-truth-v1` | 标签结构或评分口径改变 |
 | 学习导出 | `scalable3d-learning-export-v2` | D3/D4/D5 训练制品布局或真值隔离规则改变；v2 增加 D5 主动视觉整 episode 在线记录与独立离线标签 |
+| 学习生成计划 | `scalable3d-learning-generation-plan-v1` | 场景、规模、seed、正式预检或保留评估 seed 规则改变 |
 | 实验矩阵 | `scalable3d-experiment-matrix-v1` | 变体语义、配对键或正式准入条件改变 |
 | D5 模型 | `d5-crossview-gnn-v0.1.0` | 网络、特征、权重或训练集改变 |
 | D5 主动视觉 | `d5-active-vision-rule-v1` 或模型语义版本加指纹 | 特征、动作空间、权重或准入报告改变 |
+| D5 主动视觉数据 | `d5.active-vision-episode-dataset.v2` | split、episode、在线/离线标签或哈希语义改变；v2 固定共享数值 seed 跨场景原子划分 |
+| D5 主动视觉 bundle | `d5.active-vision-model-bundle.v3` | 模型、特征、数据集 schema 绑定或权重改变 |
 | D3 策略 | `d3-rl-cost-policy-v0.1.0` | 策略结构、权重或动作定义改变 |
 | D4 区域策略 | `d4-region-resource-rule-v1` 或模型版本加权重 SHA 前缀 | 区域特征、动作、安全投影或权重改变 |
 | 阈值配置 | `scalable3d-thresholds-v1` | 门限和回退条件改变 |
@@ -77,6 +80,10 @@ bundle 的本地绝对路径不写入 manifest。解析成功后记录语义版�
 保留规则版本，并在 scenario metadata 与在线诊断中记录请求模式、实际模式和稳定回退原因。
 
 正式验收只使用 `repository_dirty=false` 的结果。开发期脏工作树结果可以用于调试，但报告必须明确标注，不能作为阶段标签依据。
+
+正式学习数据生成必须在启动 episode 前验证训练 seed 与保留评估 seed 零重叠，并验证
+D5 主动视觉默认 20% 测试切分可提供至少 20 个唯一未见 seed。生成过程中逐 episode 检查
+剩余磁盘；容量不足时停止，不删除或覆盖既有制品。
 
 正式实验矩阵还必须记录 R0/G1/A1/A2/A3/C1/F1、完整场景目录、5/20/50/100/200
 规模、至少 20 个测试 seed 和训练 seed 注册表摘要。测试 seed 与训练 seed 有交集、模型

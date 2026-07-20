@@ -17,13 +17,24 @@ regional authority 路径均 fail closed。定向 4/4 及 scalable 3D 全量 55/
 真值使用为 0。开放项是跨进程 consumed advisory ledger、正式 D4 checkpoint、20 个未见
 seed paired shadow 和长时/真实通信验证。
 
-D5 owner 提供的主动视觉整 episode 合同已由 main 接入统一学习导出。`scalable3d-learning-
-export-v2` 逐决策保存 truth-free snapshot、规则示范、requested/effective action、计划/
-联盟/通信版本和同帧相机反馈；在线文件与离线 reward/outcome/counterfactual 文件物理分离。
-当前 main 只写 unavailable/null，不用 0 代替缺失 reward，也不伪造 ACK 或因果标签。单
-episode 和三 seed staging 回归通过；三 seed 因不满足 20 个完全未见 seed 而拒绝最终化。
-开放项是 D6 独立 outcome/counterfactual 回填、正式 clean-tree 数据、行为克隆/近端策略
-优化、模型准入和至少 20 个未见 seed 的收益证据。
+D5 owner 提供的主动视觉整 episode 合同已由 main 接入统一学习导出。数据集 split 语义已
+升级为 learning/episode dataset v2 和 bundle v3：完整 `(scenario_version, seed)` group 不可分，
+同一数值 seed 跨场景和规模原子进入同一 train/validation/test split。main 的
+`scalable3d-learning-export-v2` 逐决策保存 truth-free snapshot、规则示范、requested/effective
+action、计划/联盟/通信版本和同帧相机反馈；在线文件与离线 reward/outcome/counterfactual
+文件物理分离。缺失 reward 保持 unavailable/null，不伪造 ACK 或因果标签。
+
+main 新增 `scalable3d-learning-generation-plan-v1` 流式生成入口。nominal 2v2/5v5、seed
+1/2/3、6 个 2 秒开发 episode 全部有限且在线真值使用为 0；D3/D4/D5 图成功落盘，主动视觉
+107 帧因测试 seed 只有 1 个按预期不最终化。正式模式已在启动前检查完整场景/规模、训练与
+保留评估 seed 零重叠、干净工作树、忽略输出目录及 D5 至少 20 个未见测试 seed。开放 P1
+是 D6 outcome/counterfactual 回填、正式 clean-tree 数据、训练与模型准入。容量也是当前前置
+缺口：本 smoke 4.4 MB 中主动视觉占 3.6 MB，而根分区仅约 11 GB 可用；必须先完成各规模
+容量测量、压缩/采样策略和制品存储位置确认，不能直接启动完整正式批次。
+
+D6 已接入 `scalable3d-experiment-matrix-v1` 的独立离线审计，按 R0/G1/A1/A2/A3/C1/F1
+验证运行时实际采用证据、固定 cell 分母、同 comparison key 配对差值和 bootstrap 置信区间。
+D6 全量 320 项测试通过；当前只有 dirty producer smoke，尚无 clean 完整矩阵和算法准入结论。
 
 ## 2026-07-20 规模化学习运行时接线
 

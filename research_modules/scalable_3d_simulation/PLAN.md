@@ -130,14 +130,20 @@ commit。
   调用，尚不能据此宣称模块间分布式网络已经闭合。
 - main 已接入真实 episode 学习制品导出。D3 使用模块公开的单帧只读规划证据生成匿名
   代价帧；D4 保存区域图和可选建议；D5 数值图与 `observation_id -> truth label` 离线
-  连接结果分文件保存。批量导出按完整场景/seed 分组，D5 少于三个组时只保留 staging，
-  不生成不成立的数据集划分。该能力解决了训练数据接线问题，尚未形成正式 checkpoint
-  或至少 20 个未见 seed 的模型准入证据。
+  连接结果分文件保存。`run_learning_dataset.py` 在每个 episode 结束后立即写 staging，不保留
+  完整 episode 状态；生成计划检查重复 cell、训练/保留评估 seed 交集、干净工作树、输出目录
+  和剩余磁盘。正式模式还会在运行前计算 D5 主动视觉测试 seed 数，少于 20 时直接拒绝。
+  nominal 2v2/5v5、3 seed、6 episode 开发 smoke 已通过，在线真值使用为 0。
 - D5 主动视觉已新增整 episode 数据导出。每个决策保存真值隔离快照、规则示范、请求/
   实际动作和同帧相机反馈；在线记录与离线 outcome/reward/counterfactual 文件物理分离。
-  main 当前只写显式 unavailable/null 标签，不伪造 reward、反事实或 ACK。三 seed 集成
-  测试因少于 20 个完全未见 seed 而拒绝最终化，符合失败关闭要求；正式 D6 标签回填、
-  行为克隆、近端策略优化和 checkpoint 准入仍待完成。
+  main 当前只写显式 unavailable/null 标签，不伪造 reward、反事实或 ACK。D5 已将
+  learning/episode dataset 升为 v2、bundle 升为 v3；完整 `(scenario_version, seed)` group
+  不可分，同一数值 seed 跨所有场景和规模保持同一 split。三 seed smoke 的主动视觉 107 帧
+  因测试 seed 仅 1 个而拒绝最终化，符合失败关闭；正式 D6 标签回填、行为克隆、近端策略
+  优化和 checkpoint 准入仍待完成。
+- 流式 smoke 总输出 4.4 MB，主动视觉占 3.6 MB。该数据只覆盖 2v2/5v5，不能用于估算
+  200v200。当前根分区约剩 11 GB，正式生成前需先按 5/20/50/100/200 分档测量每 episode
+  容量，确定压缩、保留频率和外部制品位置；未完成容量门控前不得启动全目录正式批次。
 - main 已持久化相机指向和视场，D5 每个视觉周期输出带计划、联盟、通信版本和有效期的
   相机命令。相机执行器只接受非过时命令并发布 ACK；学习 disabled/shadow/assist 均保留
   确定性规则安全外壳。5v5 开发冒烟的 84 条命令及 200v200 单 seed 开发诊断的 1872 条

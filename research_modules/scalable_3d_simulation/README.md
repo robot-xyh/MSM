@@ -47,6 +47,24 @@ ACK。批量运行把完整 `(scenario_version, seed)` 组汇总到 `learning_da
 的自身准入条件。D5 数值图与 `truth_entity_id` 标签保存为不同文件，主动视觉在线记录与
 离线结果标签也物理分离，图特征和在线总线均不含真值编号。
 
+大量训练 episode 使用流式入口，避免保存每个 episode 的完整世界状态：
+
+```bash
+python3 research_modules/scalable_3d_simulation/run_learning_dataset.py \
+  --output research_modules/scalable_3d_simulation/outputs/learning_generation \
+  --scenarios nominal dense_crossing \
+  --scales 5 20 50 100 200 \
+  --seeds 1 2 3 \
+  --reserved-evaluation-seeds 1001 1002 1003 \
+  --duration 2
+```
+
+该入口每个 episode 结束后立即写入 D3/D4/D5 staging，只在内存中保留轻量进度行。正式
+模式要求完整场景目录、五档规模、训练 seed 与保留评估 seed 零重叠、干净工作树和 Git
+忽略的输出目录。D5 主动视觉按数值 seed 跨场景/规模原子切分；默认 20% 测试比例和至少
+20 个未见测试 seed，因此正式计划还必须提供足够的唯一生成 seed。该条件在 episode 启动
+前检查，不能等批量运行结束后再失败。
+
 学习模型默认关闭。显式研究运行可增加下列参数；bundle 缺失、校验失败、分布外、低置信或
 超时均保留规则路径：
 
@@ -184,6 +202,13 @@ D5 主动视觉整 episode 数据已接入 main 学习导出。单 episode 和�
 因此数据集按预期不最终化。该结果只证明数据合同和失败关闭，尚无 D6 outcome/
 counterfactual 回填、正式行为克隆或近端策略优化结果。
 
+同日新增 `run_learning_dataset.py` 流式生成入口，并以 nominal、2v2/5v5、seed 1/2/3、
+每例 2 秒完成 6 个开发 episode。6/6 均为有限状态，在线真值使用为 0；导出 D3 12 帧、
+D4 12 帧、D5 图 11 帧和主动视觉 107 帧。D5 图数据集成功最终化；主动视觉因计划测试
+seed 只有 1 个而以 `insufficient_unseen_test_seeds` 保留 staging，符合失败关闭。开发输出
+共 4.4 MB，其中主动视觉约 3.6 MB。该样本规模不能外推正式容量；当前磁盘只剩约 11 GB，
+正式五档、全场景数据生成前必须完成按规模的容量实测、压缩/采样策略和存储位置确认。
+
 每个物理步结束后，离线评估侧按三维 5 米门限登记唯一接近事件。事件中的真值目标号只
 写入 `offline_proximity_intercepts.jsonl`，不进入在线总线；D6 还需结合分配与身份映射
 判断该物理接近是否属于正确任务。
@@ -197,6 +222,9 @@ counterfactual 回填、正式行为克隆或近端策略优化结果。
 - 离线真值：`scalable3d-offline-truth-v1`
 - D4 区域策略：`d4-region-resource-rule-v1` 或带权重 SHA256 的显式模型版本
 - 学习导出：`scalable3d-learning-export-v2`
+- 学习生成计划：`scalable3d-learning-generation-plan-v1`
+- D5 主动视觉数据集：`d5.active-vision-episode-dataset.v2`
+- D5 主动视觉模型 bundle：`d5.active-vision-model-bundle.v3`
 - 主动视觉快照/动作：`d5.active-vision-snapshot.v1` / `d5.active-vision-action.v1`
 - 主动视觉策略：`d5-active-vision-rule-v1` 或模型语义版本加权重指纹
 - 相机命令确认：`scalable3d-camera-command-ack-v1`
