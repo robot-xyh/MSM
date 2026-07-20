@@ -10,6 +10,7 @@ from research_modules.scalable_3d_simulation.communication import (
     DeterministicCommunicationNetwork,
     LinkProfile,
 )
+from research_modules.scalable_3d_simulation.animation import write_trajectory_animation
 from research_modules.scalable_3d_simulation.episode_bus import (
     InMemoryEpisodeBus,
     assert_online_payload_truth_free,
@@ -112,3 +113,17 @@ def test_200v200_episode_has_finite_states_without_array_limits() -> None:
     assert result.interceptor_state_history.shape == (5, 200, 6)
     assert result.summary["finite_state"] is True
     assert result.summary["radar_observation_count"] > 0
+
+
+def test_offline_truth_history_can_render_three_dimensional_gif(tmp_path: Path) -> None:
+    config = ScenarioConfig(
+        target_count=2,
+        resource_count=2,
+        recon_count=1,
+        duration_s=0.1,
+        radar_enabled=False,
+        visual_enabled=False,
+    )
+    result = run_episode(config)
+    path = write_trajectory_animation(result, tmp_path / "trajectory.gif", fps=5)
+    assert path.read_bytes()[:6] in {b"GIF87a", b"GIF89a"}

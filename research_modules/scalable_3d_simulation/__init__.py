@@ -39,6 +39,7 @@ from .models import (
 from .orchestrator import EpisodeResult, Scalable3DEpisodeRunner, run_episode
 from .sensor_scene import CameraView, SensorScene
 from .world import VectorizedPointMassWorld
+from .animation import write_trajectory_animation
 
 __all__ = [
     "BUS_SCHEMA_VERSION",
@@ -75,4 +76,5 @@ __all__ = [
     "look_at_rotation_ned_to_camera",
     "project_points",
     "run_episode",
+    "write_trajectory_animation",
 ]

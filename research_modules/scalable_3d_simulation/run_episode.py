@@ -40,6 +40,8 @@ def parse_args() -> argparse.Namespace:
         default=Path("research_modules/scalable_3d_simulation/outputs/episode"),
     )
     parser.add_argument("--plot", action="store_true")
+    parser.add_argument("--gif", action="store_true", help="write a 3D GIF from offline truth")
+    parser.add_argument("--mp4", action="store_true", help="write a 3D MP4 when ffmpeg is available")
     return parser.parse_args()
 
 
@@ -62,7 +64,15 @@ def main() -> int:
         "seed": config.seed if args.seed is None else args.seed,
     }
     config = replace(config, **updates)
-    result = run_episode(config, output_dir=args.output, write_plot=args.plot)
+    animation_formats = tuple(
+        name for name, enabled in (("gif", args.gif), ("mp4", args.mp4)) if enabled
+    )
+    result = run_episode(
+        config,
+        output_dir=args.output,
+        write_plot=args.plot,
+        animation_formats=animation_formats,
+    )
     print(f"episode_id={result.manifest.episode_id}")
     print(f"scale={config.resource_count}v{config.target_count}")
     print(f"finite_state={result.summary['finite_state']}")

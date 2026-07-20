@@ -18,6 +18,7 @@ def write_episode_outputs(
     output_dir: Path,
     *,
     write_plot: bool = False,
+    animation_formats: tuple[str, ...] = (),
 ) -> dict[str, Path]:
     """Write online logs and evaluator truth into explicitly separate artifacts."""
 
@@ -47,6 +48,17 @@ def write_episode_outputs(
         paths["trajectory_plot"] = _write_trajectory_plot(
             output_dir / "trajectories_3d.png", result
         )
+    if animation_formats:
+        from .animation import write_trajectory_animation
+
+        for raw_format in animation_formats:
+            animation_format = str(raw_format).lower().lstrip(".")
+            if animation_format not in {"gif", "mp4"}:
+                raise ValueError("animation formats must be gif or mp4")
+            paths[f"trajectory_{animation_format}"] = write_trajectory_animation(
+                result,
+                output_dir / f"trajectories_3d.{animation_format}",
+            )
     return paths
 
 
@@ -185,6 +197,9 @@ def _write_trajectory_plot(path: Path, result: EpisodeResult) -> Path:
     import matplotlib
 
     matplotlib.use("Agg")
+    from .animation import ensure_mplot3d
+
+    ensure_mplot3d(matplotlib)
     import matplotlib.pyplot as plt
 
     figure = plt.figure(figsize=(10, 7))

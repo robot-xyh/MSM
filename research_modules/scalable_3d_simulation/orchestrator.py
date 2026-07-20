@@ -220,6 +220,7 @@ def run_episode(
     *,
     output_dir: str | Path | None = None,
     write_plot: bool = False,
+    animation_formats: tuple[str, ...] = (),
 ) -> EpisodeResult:
     """Run one baseline episode and optionally persist its reproducibility bundle."""
 
@@ -228,7 +229,12 @@ def run_episode(
         return result
     from .reporting import write_episode_outputs
 
-    paths = write_episode_outputs(result, Path(output_dir), write_plot=write_plot)
+    paths = write_episode_outputs(
+        result,
+        Path(output_dir),
+        write_plot=write_plot,
+        animation_formats=animation_formats,
+    )
     return EpisodeResult(
         config=result.config,
         manifest=result.manifest,

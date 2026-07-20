@@ -15,6 +15,9 @@ python3 research_modules/scalable_3d_simulation/run_episode.py \
   --output research_modules/scalable_3d_simulation/outputs/smoke_200v200
 ```
 
+三维静态图、GIF 和 MP4 只在需要时显式增加 `--plot`、`--gif` 或 `--mp4`。动画读取离线
+真值状态文件，不进入在线 D1-D7 总线。
+
 批量课程测试：
 
 ```bash
