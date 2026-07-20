@@ -6,6 +6,7 @@
 
 - `leadership_report/`：体系方案与阶段进展报告，包含 Markdown 源文档、生成脚本、证据清单和发布版 Word/PDF。
 - `background/`：威胁、探测、指控、拦截和验证背景材料。章节稿与分册稿分别保留，不能混作同一套定稿。
+- `project_proposals/`：无人机协同探测、无人机协同拦截和大模型辅助评估三个项目建议书。
 - `system_improvement_argument/`：体系改进论证图及其适用范围说明。
 
 ## 使用原则
