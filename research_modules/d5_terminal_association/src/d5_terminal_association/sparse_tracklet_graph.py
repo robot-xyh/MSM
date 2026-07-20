@@ -172,6 +172,9 @@ class CameraLocalTracklet:
         local_track_id = str(self.local_track_id).strip()
         if not resource_id or not camera_id or not local_track_id:
             raise ValueError("resource_id, camera_id, and local_track_id must be non-empty")
+        for name, value in (("resource_id", resource_id), ("camera_id", camera_id)):
+            if is_truth_like_local_track_id(value):
+                raise ValueError(f"{name} must be anonymous and camera-local")
         if is_truth_like_local_track_id(local_track_id):
             raise ValueError("local_track_id must be anonymous and camera-local")
         measurement_timestamp = _finite_float(self.measurement_timestamp, "measurement_timestamp")

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import gzip
 import hashlib
 import json
 import os
@@ -18,7 +19,7 @@ from pathlib import Path
 import re
 import stat
 from types import MappingProxyType
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 import numpy as np
 
@@ -50,16 +51,17 @@ from .active_vision_learning import (
 )
 
 
-ACTIVE_VISION_EPISODE_DATASET_SCHEMA_VERSION = "d5.active-vision-episode-dataset.v2"
-ACTIVE_VISION_EPISODE_DESCRIPTOR_SCHEMA_VERSION = "d5.active-vision-episode-descriptor.v1"
-ACTIVE_VISION_EPISODE_RECORD_SCHEMA_VERSION = "d5.active-vision-episode-record.v1"
-ACTIVE_VISION_SAMPLE_SCHEMA_VERSION = "d5.active-vision-sample.v1"
+ACTIVE_VISION_EPISODE_DATASET_SCHEMA_VERSION = "d5.active-vision-episode-dataset.v3"
+ACTIVE_VISION_EPISODE_DESCRIPTOR_SCHEMA_VERSION = "d5.active-vision-episode-descriptor.v2"
+ACTIVE_VISION_EPISODE_RECORD_SCHEMA_VERSION = "d5.active-vision-episode-record.v2"
+ACTIVE_VISION_SAMPLE_SCHEMA_VERSION = "d5.active-vision-sample.v2"
 ACTIVE_VISION_CAMERA_FEEDBACK_SCHEMA_VERSION = "d5.active-vision-camera-feedback.v1"
 ACTIVE_VISION_RUNTIME_ACK_SCHEMA_VERSION = "d5.active-vision-runtime-ack.v1"
 ACTIVE_VISION_OFFLINE_LABELS_SCHEMA_VERSION = "d5.active-vision-offline-labels.v1"
 ACTIVE_VISION_OFFLINE_LABEL_SCHEMA_VERSION = "d5.active-vision-offline-label.v1"
 ACTIVE_VISION_SOURCE_IDENTITY_SCHEMA_VERSION = "d5.active-vision-source-identity.v1"
 ACTIVE_VISION_DATASET_CONFIG_SCHEMA_VERSION = "d5.active-vision-dataset-config.v1"
+ACTIVE_VISION_ONLINE_STORAGE_LAYOUT = "deduplicated-reference-stream-jsonl-gzip-v1"
 
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _GIT_COMMIT_PATTERN = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
@@ -72,6 +74,23 @@ class ActiveVisionDatasetValidationError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = str(code)
+
+
+@dataclass(frozen=True)
+class _OnlineEpisodeAudit:
+    episode_uid: str
+    scenario_version: str
+    seed: int
+    episode_id: str
+    source_identity: ActiveVisionSourceIdentityV1
+    synthetic_fixture: bool
+    sample_keys: Mapping[str, str]
+    sample_count: int
+    unique_snapshot_count: int
+    unique_camera_feedback_count: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "sample_keys", MappingProxyType(dict(self.sample_keys)))
 
 
 @dataclass(frozen=True)
@@ -156,7 +175,7 @@ class ActiveVisionRuntimeAckV1:
 
 
 @dataclass(frozen=True)
-class ActiveVisionEpisodeSampleV1:
+class ActiveVisionEpisodeSampleV2:
     """One audited camera decision from a whole unified 3D episode."""
 
     sample_key: str
@@ -241,6 +260,7 @@ class ActiveVisionEpisodeSampleV1:
             raise ValueError("rule demonstration is outside the finite active-vision action set")
         if self.effective_action.action_key not in candidate_keys:
             raise ValueError("effective action is outside the finite active-vision action set")
+        _validate_recorded_decision_state(self)
         feedback = self.camera_feedback
         if not isinstance(feedback, ActiveVisionCameraFeedbackV1):
             raise TypeError("camera_feedback must be ActiveVisionCameraFeedbackV1")
@@ -272,14 +292,14 @@ class ActiveVisionEpisodeSampleV1:
 
 
 @dataclass(frozen=True)
-class ActiveVisionEpisodeRecordV1:
+class ActiveVisionEpisodeRecordV2:
     """Complete online, truth-free record for one episode."""
 
     scenario_version: str
     seed: int
     episode_id: str
     source_identity: ActiveVisionSourceIdentityV1
-    samples: tuple[ActiveVisionEpisodeSampleV1, ...]
+    samples: tuple[ActiveVisionEpisodeSampleV2, ...]
     synthetic_fixture: bool = False
     schema_version: str = ACTIVE_VISION_EPISODE_RECORD_SCHEMA_VERSION
 
@@ -344,6 +364,11 @@ class ActiveVisionEpisodeRecordV1:
     @property
     def episode_uid(self) -> str:
         return _episode_uid(self.scenario_version, self.seed, self.episode_id)
+
+
+# Source compatibility aliases. They construct v2 contracts and do not read v1 files.
+ActiveVisionEpisodeSampleV1 = ActiveVisionEpisodeSampleV2
+ActiveVisionEpisodeRecordV1 = ActiveVisionEpisodeRecordV2
 
 
 @dataclass(frozen=True)
@@ -464,6 +489,68 @@ class LoadedActiveVisionEpisodeDataset:
         return tuple(_ppo_episode(item) for item in self.split(split))
 
 
+@dataclass(frozen=True)
+class LazyActiveVisionEpisodeDataset:
+    """Audited dataset handle that materializes at most one episode per iterator step."""
+
+    root: Path
+    manifest: Mapping[str, Any]
+    manifest_sha256: str
+    episode_descriptors: tuple[Mapping[str, Any], ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "root", Path(self.root))
+        object.__setattr__(self, "manifest", _freeze_json(self.manifest))
+        object.__setattr__(
+            self,
+            "episode_descriptors",
+            tuple(_freeze_json(item) for item in self.episode_descriptors),
+        )
+
+    def split_descriptors(self, name: str) -> tuple[Mapping[str, Any], ...]:
+        split = _dataset_split_name(name)
+        return tuple(
+            item for item in self.episode_descriptors if str(item["split"]) == split
+        )
+
+    def iter_episodes(self, split: str | None = None) -> Iterator[LoadedActiveVisionEpisode]:
+        """Load one complete episode at a time, including its offline labels."""
+
+        descriptors = (
+            self.episode_descriptors
+            if split is None
+            else self.split_descriptors(split)
+        )
+        for descriptor in descriptors:
+            record, labels = _load_staged_episode(self.root, descriptor)
+            yield LoadedActiveVisionEpisode(
+                record=record,
+                offline_labels=labels,
+                split=str(descriptor["split"]),
+                online_sha256=str(descriptor["online_sha256"]),
+                offline_sha256=str(descriptor["offline_sha256"]),
+            )
+
+    def iter_behavior_cloning_episodes(
+        self,
+        split: str = "train",
+    ) -> Iterator[ActiveVisionResearchEpisode]:
+        """Load one online rule-demonstration episode without importing offline labels."""
+
+        for descriptor in self.split_descriptors(split):
+            record = _load_online_staged_episode(self.root, descriptor)
+            yield _behavior_cloning_episode_from_record(record)
+
+    def iter_ppo_episodes(
+        self,
+        split: str = "train",
+    ) -> Iterator[ActiveVisionResearchEpisode]:
+        """Load one reward-complete effective-action rollout at a time."""
+
+        for item in self.iter_episodes(split):
+            yield _ppo_episode(item)
+
+
 def active_vision_sample_from_decision(
     *,
     sample_key: str,
@@ -525,27 +612,19 @@ def stage_active_vision_episode_record(
 
     if not isinstance(record, ActiveVisionEpisodeRecordV1):
         raise TypeError("record must be ActiveVisionEpisodeRecordV1")
-    root = Path(dataset_dir)
+    root = Path(dataset_dir).resolve()
     _ensure_not_finalized(root)
     root.mkdir(parents=True, exist_ok=True)
     config_sha256 = _ensure_generation_config(root, generation_config)
     uid = record.episode_uid
-    online_relative = Path("online") / f"{uid}.online.json"
+    online_relative = Path("online") / f"{uid}.online.jsonl.gz"
     descriptor_relative = Path("episodes") / f"{uid}.episode.json"
     for relative in (online_relative, descriptor_relative):
         path = root / relative
         if path.exists():
             raise FileExistsError(f"active-vision episode artifact already exists: {path}")
         path.parent.mkdir(parents=True, exist_ok=True)
-    online_payload = _episode_record_to_payload(record)
-    try:
-        assert_truth_free_active_vision_payload(online_payload)
-    except ValueError as exc:
-        raise ActiveVisionDatasetValidationError(
-            "online_truth_identity_forbidden",
-            "online active-vision episode contains evaluator/simulator identity",
-        ) from exc
-    _write_json_atomic(root / online_relative, online_payload)
+    online_audit = _write_episode_record_stream_atomic(root / online_relative, record)
     _make_read_only(root / online_relative)
     descriptor = {
         "schema_version": ACTIVE_VISION_EPISODE_DESCRIPTOR_SCHEMA_VERSION,
@@ -558,6 +637,9 @@ def stage_active_vision_episode_record(
         "dataset_config_sha256": config_sha256,
         "online_file": online_relative.as_posix(),
         "online_sha256": sha256_file(root / online_relative),
+        "online_storage_layout": ACTIVE_VISION_ONLINE_STORAGE_LAYOUT,
+        "unique_snapshot_count": online_audit.unique_snapshot_count,
+        "unique_camera_feedback_count": online_audit.unique_camera_feedback_count,
         "offline_file": None,
         "offline_sha256": None,
         "sample_count": len(record.samples),
@@ -575,7 +657,7 @@ def stage_active_vision_offline_labels(
 ) -> Mapping[str, Any]:
     """Join evaluator labels after online episode closure by both stable keys."""
 
-    root = Path(dataset_dir)
+    root = Path(dataset_dir).resolve()
     _ensure_not_finalized(root)
     uid = _key(episode_uid, "episode_uid")
     descriptor_path = root / "episodes" / f"{uid}.episode.json"
@@ -591,13 +673,49 @@ def stage_active_vision_offline_labels(
         raise FileExistsError(f"offline labels already exist for active-vision episode {uid}")
     online_path = _safe_relative_file(root, descriptor["online_file"])
     _expect_sha(online_path, descriptor["online_sha256"], "online_sha_mismatch")
-    record = load_active_vision_episode_record(online_path)
+    online_audit, _ = _read_episode_record_stream(online_path, materialize=False)
+    expected_identity = (
+        str(descriptor["episode_uid"]),
+        str(descriptor["scenario_version"]),
+        int(descriptor["seed"]),
+        str(descriptor["episode_id"]),
+    )
+    actual_identity = (
+        online_audit.episode_uid,
+        online_audit.scenario_version,
+        online_audit.seed,
+        online_audit.episode_id,
+    )
+    _expect_equal(actual_identity, expected_identity, "online_episode_identity_mismatch")
+    _expect_equal(
+        _source_identity_to_payload(online_audit.source_identity),
+        descriptor["source_identity"],
+        "source_identity_mismatch",
+    )
+    _expect_equal(
+        online_audit.synthetic_fixture,
+        descriptor["synthetic_fixture"],
+        "fixture_flag_mismatch",
+    )
+    _expect_equal(
+        online_audit.sample_count,
+        int(descriptor["sample_count"]),
+        "sample_count_mismatch",
+    )
+    _expect_equal(
+        online_audit.unique_snapshot_count,
+        int(descriptor["unique_snapshot_count"]),
+        "snapshot_count_mismatch",
+    )
+    _expect_equal(
+        online_audit.unique_camera_feedback_count,
+        int(descriptor["unique_camera_feedback_count"]),
+        "camera_feedback_count_mismatch",
+    )
     items = tuple(labels)
     if any(not isinstance(item, ActiveVisionOfflineLabelV1) for item in items):
         raise TypeError("labels must contain ActiveVisionOfflineLabelV1")
-    online_keys = {
-        sample.sample_key: sample.observation_key for sample in record.samples
-    }
+    online_keys = dict(online_audit.sample_keys)
     label_keys: dict[str, str] = {}
     for item in items:
         if item.sample_key in label_keys:
@@ -616,9 +734,9 @@ def stage_active_vision_offline_labels(
     offline_payload = {
         "schema_version": ACTIVE_VISION_OFFLINE_LABELS_SCHEMA_VERSION,
         "episode_uid": uid,
-        "scenario_version": record.scenario_version,
-        "seed": record.seed,
-        "episode_id": record.episode_id,
+        "scenario_version": online_audit.scenario_version,
+        "seed": online_audit.seed,
+        "episode_id": online_audit.episode_id,
         "reward_bounds": {
             "minimum": ACTIVE_VISION_REWARD_MINIMUM,
             "maximum": ACTIVE_VISION_REWARD_MAXIMUM,
@@ -644,7 +762,7 @@ def finalize_active_vision_episode_dataset(
 ) -> Mapping[str, Any]:
     """Freeze staged episodes into deterministic whole-group dataset splits."""
 
-    root = Path(dataset_dir)
+    root = Path(dataset_dir).resolve()
     _ensure_not_finalized(root)
     config_path = root / "dataset_config.json"
     if not config_path.is_file():
@@ -670,7 +788,7 @@ def finalize_active_vision_episode_dataset(
             raise ActiveVisionDatasetValidationError(
                 "episode_config_sha_mismatch", "episode generation config hash mismatch"
             )
-        _load_staged_episode(root, descriptor)
+        _audit_staged_episode(root, descriptor)
     split_by_uid, unseen_count = _split_episode_descriptors(
         descriptors,
         split_seed=split_seed,
@@ -702,6 +820,9 @@ def finalize_active_vision_episode_dataset(
         "storage_contract": {
             "online_truth_free": True,
             "offline_labels_physically_separate": True,
+            "online_storage_layout": ACTIVE_VISION_ONLINE_STORAGE_LAYOUT,
+            "shared_objects_referenced_by_sha256_key": True,
+            "offline_join_uses_stream_audit": True,
             "detached": True,
             "immutable": True,
             "missing_numeric_labels_use_null": True,
@@ -746,8 +867,8 @@ def finalize_active_vision_episode_dataset(
     _write_bytes_atomic(checksums_path, "".join(checksum_lines).encode("ascii"))
     for path in (*artifact_paths, checksums_path):
         _make_read_only(path)
-    loaded = load_active_vision_episode_dataset(root)
-    if len(loaded.episodes) != len(finalized_descriptors):
+    audit = audit_active_vision_episode_dataset(root)
+    if int(audit["episode_count"]) != len(finalized_descriptors):
         raise RuntimeError("finalized active-vision dataset episode count changed during audit")
     return MappingProxyType(manifest)
 
@@ -755,30 +876,53 @@ def finalize_active_vision_episode_dataset(
 def load_active_vision_episode_record(path: str | Path) -> ActiveVisionEpisodeRecordV1:
     """Load and audit one standalone truth-free online episode artifact."""
 
-    payload = _read_json(Path(path))
-    try:
-        assert_truth_free_active_vision_payload(payload)
-    except ValueError as exc:
+    source = Path(path)
+    if not source.name.endswith(".online.jsonl.gz"):
         raise ActiveVisionDatasetValidationError(
-            "online_truth_identity_forbidden",
-            "online active-vision episode contains evaluator/simulator identity",
-        ) from exc
-    try:
-        return _episode_record_from_payload(payload)
-    except ActiveVisionDatasetValidationError:
-        raise
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ActiveVisionDatasetValidationError(
-            "online_record_invalid", "online active-vision episode failed contract validation"
-        ) from exc
+            "online_record_schema_unsupported",
+            "only deduplicated active-vision episode record v2 streams are supported",
+        )
+    _, record = _read_episode_record_stream(source, materialize=True)
+    if record is None:  # pragma: no cover - guarded by materialize=True.
+        raise RuntimeError("active-vision record stream was not materialized")
+    return record
 
 
-def load_active_vision_episode_dataset(
+def audit_active_vision_episode_record(path: str | Path) -> Mapping[str, Any]:
+    """Stream-audit one online record without retaining the complete episode."""
+
+    source = Path(path)
+    if not source.name.endswith(".online.jsonl.gz"):
+        raise ActiveVisionDatasetValidationError(
+            "online_record_schema_unsupported",
+            "only deduplicated active-vision episode record v2 streams are supported",
+        )
+    audit, _ = _read_episode_record_stream(source, materialize=False)
+    return MappingProxyType(
+        {
+            "schema_version": ACTIVE_VISION_EPISODE_RECORD_SCHEMA_VERSION,
+            "storage_layout": ACTIVE_VISION_ONLINE_STORAGE_LAYOUT,
+            "episode_uid": audit.episode_uid,
+            "scenario_version": audit.scenario_version,
+            "seed": audit.seed,
+            "episode_id": audit.episode_id,
+            "source_identity": _source_identity_to_payload(audit.source_identity),
+            "synthetic_fixture": audit.synthetic_fixture,
+            "sample_count": audit.sample_count,
+            "unique_snapshot_count": audit.unique_snapshot_count,
+            "unique_camera_feedback_count": audit.unique_camera_feedback_count,
+            "online_sha256": sha256_file(source),
+            "truth_free": True,
+        }
+    )
+
+
+def load_active_vision_episode_dataset_lazy(
     dataset_dir: str | Path,
     *,
     expected_generation_config_sha256: str | None = None,
-) -> LoadedActiveVisionEpisodeDataset:
-    """Audit hashes, versions, split isolation, identities, and offline joins."""
+) -> LazyActiveVisionEpisodeDataset:
+    """Audit the complete dataset without retaining materialized episode records."""
 
     root = Path(dataset_dir).resolve()
     manifest_path = root / "manifest.json"
@@ -848,6 +992,9 @@ def load_active_vision_episode_dataset(
     expected_storage = {
         "online_truth_free": True,
         "offline_labels_physically_separate": True,
+        "online_storage_layout": ACTIVE_VISION_ONLINE_STORAGE_LAYOUT,
+        "shared_objects_referenced_by_sha256_key": True,
+        "offline_join_uses_stream_audit": True,
         "detached": True,
         "immutable": True,
         "missing_numeric_labels_use_null": True,
@@ -927,7 +1074,6 @@ def load_active_vision_episode_dataset(
         int(split_policy["unseen_test_seed_count"]),
         "unseen_seed_count_mismatch",
     )
-    loaded: list[LoadedActiveVisionEpisode] = []
     seen_uids: set[str] = set()
     groups_to_split: dict[tuple[str, int], str] = {}
     for descriptor in raw_episodes:
@@ -950,16 +1096,7 @@ def load_active_vision_episode_dataset(
             raise ActiveVisionDatasetValidationError(
                 "seed_group_leakage", f"scenario/seed group appears in multiple splits: {group}"
             )
-        loaded_episode = _load_staged_episode(root, descriptor)
-        loaded.append(
-            LoadedActiveVisionEpisode(
-                record=loaded_episode[0],
-                offline_labels=loaded_episode[1],
-                split=split,
-                online_sha256=str(descriptor["online_sha256"]),
-                offline_sha256=str(descriptor["offline_sha256"]),
-            )
-        )
+        _audit_staged_episode(root, descriptor)
     if set(groups_to_split.values()) != {"train", "validation", "test"}:
         raise ActiveVisionDatasetValidationError(
             "split_empty", "train, validation, and test splits must all be non-empty"
@@ -981,36 +1118,705 @@ def load_active_vision_episode_dataset(
         manifest["availability"],
         "availability_summary_mismatch",
     )
-    return LoadedActiveVisionEpisodeDataset(
+    ordered_descriptors = tuple(
+        sorted(raw_episodes, key=lambda item: str(item["episode_uid"]))
+    )
+    return LazyActiveVisionEpisodeDataset(
         root=root,
         manifest=manifest,
         manifest_sha256=sha256_file(manifest_path),
-        episodes=tuple(sorted(loaded, key=lambda item: item.record.episode_uid)),
+        episode_descriptors=ordered_descriptors,
+    )
+
+
+def load_active_vision_episode_dataset(
+    dataset_dir: str | Path,
+    *,
+    expected_generation_config_sha256: str | None = None,
+) -> LoadedActiveVisionEpisodeDataset:
+    """Compatibility loader that explicitly materializes every audited episode."""
+
+    lazy_dataset = load_active_vision_episode_dataset_lazy(
+        dataset_dir,
+        expected_generation_config_sha256=expected_generation_config_sha256,
+    )
+    return LoadedActiveVisionEpisodeDataset(
+        root=lazy_dataset.root,
+        manifest=lazy_dataset.manifest,
+        manifest_sha256=lazy_dataset.manifest_sha256,
+        episodes=tuple(lazy_dataset.iter_episodes()),
     )
 
 
 def audit_active_vision_episode_dataset(dataset_dir: str | Path) -> Mapping[str, Any]:
-    """Return an immutable high-level audit after full fail-closed loading."""
+    """Return a fail-closed audit while retaining at most one episode at a time."""
 
-    dataset = load_active_vision_episode_dataset(dataset_dir)
+    dataset = load_active_vision_episode_dataset_lazy(dataset_dir)
     split_counts = {
-        split: len(dataset.split(split)) for split in ("train", "validation", "test")
+        split: len(dataset.split_descriptors(split))
+        for split in ("train", "validation", "test")
     }
-    sample_count = sum(len(item.record.samples) for item in dataset.episodes)
+    sample_count = sum(
+        int(item["sample_count"]) for item in dataset.episode_descriptors
+    )
     return MappingProxyType(
         {
             "schema_version": ACTIVE_VISION_EPISODE_DATASET_SCHEMA_VERSION,
             "manifest_sha256": dataset.manifest_sha256,
-            "episode_count": len(dataset.episodes),
+            "episode_count": len(dataset.episode_descriptors),
             "sample_count": sample_count,
             "split_episode_counts": split_counts,
             "availability": dataset.manifest["availability"],
+            "episode_loading": "streaming_one_episode_at_a_time",
             "status": "valid_detached_immutable_dataset",
         }
     )
 
 
-def _episode_record_to_payload(record: ActiveVisionEpisodeRecordV1) -> dict[str, Any]:
+def _write_episode_record_stream_atomic(
+    path: Path,
+    record: ActiveVisionEpisodeRecordV1,
+) -> _OnlineEpisodeAudit:
+    snapshot_key_by_identity: dict[int, str] = {}
+    snapshot_objects: dict[str, ActiveVisionSnapshotV1] = {}
+    samples_by_snapshot: dict[
+        str, list[tuple[ActiveVisionEpisodeSampleV1, str]]
+    ] = {}
+    feedback_key_by_identity: dict[int, str] = {}
+    feedback_objects: dict[str, ActiveVisionCameraFeedbackV1] = {}
+    sample_index: list[dict[str, Any]] = []
+
+    for sample in record.samples:
+        snapshot_identity = id(sample.snapshot)
+        snapshot_key = snapshot_key_by_identity.get(snapshot_identity)
+        if snapshot_key is None:
+            snapshot_payload = _snapshot_to_payload(sample.snapshot)
+            _assert_online_truth_free(snapshot_payload)
+            snapshot_key = _stream_object_key("snapshot", snapshot_payload)
+            snapshot_key_by_identity[snapshot_identity] = snapshot_key
+            snapshot_objects.setdefault(snapshot_key, sample.snapshot)
+
+        feedback_identity = id(sample.camera_feedback)
+        feedback_key = feedback_key_by_identity.get(feedback_identity)
+        if feedback_key is None:
+            feedback_payload = _feedback_to_payload(sample.camera_feedback)
+            _assert_online_truth_free(feedback_payload)
+            feedback_key = _stream_object_key("camera-feedback", feedback_payload)
+            feedback_key_by_identity[feedback_identity] = feedback_key
+            feedback_objects.setdefault(feedback_key, sample.camera_feedback)
+
+        samples_by_snapshot.setdefault(snapshot_key, []).append((sample, feedback_key))
+        sample_index.append(
+            _stream_sample_index_entry(sample, snapshot_key, feedback_key)
+        )
+
+    header = {
+        "record_type": "header",
+        "schema_version": record.schema_version,
+        "sample_schema_version": ACTIVE_VISION_SAMPLE_SCHEMA_VERSION,
+        "storage_layout": ACTIVE_VISION_ONLINE_STORAGE_LAYOUT,
+        "episode_uid": record.episode_uid,
+        "scenario_version": record.scenario_version,
+        "seed": record.seed,
+        "episode_id": record.episode_id,
+        "source_identity": _source_identity_to_payload(record.source_identity),
+        "synthetic_fixture": record.synthetic_fixture,
+    }
+    footer = {
+        "record_type": "footer",
+        "schema_version": record.schema_version,
+        "sample_count": len(record.samples),
+        "unique_snapshot_count": len(snapshot_objects),
+        "unique_camera_feedback_count": len(feedback_objects),
+        "sample_index_sha256": sha256_json(sample_index),
+    }
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    try:
+        with temporary.open("wb") as raw_handle:
+            with gzip.GzipFile(
+                filename="",
+                mode="wb",
+                compresslevel=6,
+                fileobj=raw_handle,
+                mtime=0,
+            ) as stream:
+                _write_episode_stream_row(stream, header)
+                for feedback_key, feedback in feedback_objects.items():
+                    feedback_payload = _feedback_to_payload(feedback)
+                    _expect_equal(
+                        _stream_object_key("camera-feedback", feedback_payload),
+                        feedback_key,
+                        "camera_feedback_key_mismatch",
+                    )
+                    _write_episode_stream_row(
+                        stream,
+                        {
+                            "record_type": "camera_feedback",
+                            "object_key": feedback_key,
+                            "value": feedback_payload,
+                        },
+                    )
+                for snapshot_key, grouped_samples in samples_by_snapshot.items():
+                    snapshot_payload = _snapshot_to_payload(snapshot_objects[snapshot_key])
+                    _expect_equal(
+                        _stream_object_key("snapshot", snapshot_payload),
+                        snapshot_key,
+                        "snapshot_key_mismatch",
+                    )
+                    _write_episode_stream_row(
+                        stream,
+                        {
+                            "record_type": "snapshot",
+                            "object_key": snapshot_key,
+                            "value": snapshot_payload,
+                        },
+                    )
+                    for sample, feedback_key in grouped_samples:
+                        _write_episode_stream_row(
+                            stream,
+                            _sample_reference_to_payload(
+                                sample,
+                                snapshot_key=snapshot_key,
+                                feedback_key=feedback_key,
+                            ),
+                        )
+                _write_episode_stream_row(stream, footer)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+    return _OnlineEpisodeAudit(
+        episode_uid=record.episode_uid,
+        scenario_version=record.scenario_version,
+        seed=record.seed,
+        episode_id=record.episode_id,
+        source_identity=record.source_identity,
+        synthetic_fixture=record.synthetic_fixture,
+        sample_keys={sample.sample_key: sample.observation_key for sample in record.samples},
+        sample_count=len(record.samples),
+        unique_snapshot_count=len(snapshot_objects),
+        unique_camera_feedback_count=len(feedback_objects),
+    )
+
+
+def _write_episode_stream_row(stream: Any, payload: Mapping[str, Any]) -> None:
+    _assert_online_truth_free(payload)
+    stream.write(_canonical_json_bytes(payload))
+
+
+def _read_episode_record_stream(
+    path: Path,
+    *,
+    materialize: bool,
+) -> tuple[_OnlineEpisodeAudit, ActiveVisionEpisodeRecordV1 | None]:
+    header: Mapping[str, Any] | None = None
+    footer: Mapping[str, Any] | None = None
+    feedback_by_key: dict[str, ActiveVisionCameraFeedbackV1] = {}
+    referenced_feedback_keys: set[str] = set()
+    snapshot_keys: set[str] = set()
+    snapshot_track_state: dict[str, tuple[tuple[str, int, float], ...]] = {}
+    current_snapshot_key: str | None = None
+    current_snapshot: ActiveVisionSnapshotV1 | None = None
+    current_snapshot_sample_count = 0
+    sample_keys: dict[str, str] = {}
+    observation_keys: set[str] = set()
+    sample_index_by_sequence: dict[int, dict[str, Any]] = {}
+    sample_audit_by_sequence: dict[
+        int, tuple[float, tuple[int, int, int], str]
+    ] = {}
+    materialized_samples: list[ActiveVisionEpisodeSampleV1] = []
+    phase = "header"
+
+    try:
+        with gzip.open(path, mode="rt", encoding="utf-8", newline="") as stream:
+            for line_number, line in enumerate(stream, start=1):
+                row = _read_episode_stream_row(line, line_number=line_number)
+                record_type = row.get("record_type")
+                if footer is not None:
+                    raise ActiveVisionDatasetValidationError(
+                        "online_stream_trailing_record",
+                        "online record stream contains data after its footer",
+                    )
+                if record_type == "header":
+                    if header is not None or phase != "header":
+                        raise ActiveVisionDatasetValidationError(
+                            "online_stream_header_invalid",
+                            "online record stream must contain exactly one leading header",
+                        )
+                    _expect_fields(
+                        row,
+                        {
+                            "record_type",
+                            "schema_version",
+                            "sample_schema_version",
+                            "storage_layout",
+                            "episode_uid",
+                            "scenario_version",
+                            "seed",
+                            "episode_id",
+                            "source_identity",
+                            "synthetic_fixture",
+                        },
+                        "online_stream_header_fields_mismatch",
+                    )
+                    _expect_equal(
+                        row["schema_version"],
+                        ACTIVE_VISION_EPISODE_RECORD_SCHEMA_VERSION,
+                        "online_record_schema_mismatch",
+                    )
+                    _expect_equal(
+                        row["sample_schema_version"],
+                        ACTIVE_VISION_SAMPLE_SCHEMA_VERSION,
+                        "sample_schema_mismatch",
+                    )
+                    _expect_equal(
+                        row["storage_layout"],
+                        ACTIVE_VISION_ONLINE_STORAGE_LAYOUT,
+                        "online_storage_layout_mismatch",
+                    )
+                    scenario = _key(row["scenario_version"], "scenario_version")
+                    seed = int(row["seed"])
+                    episode_id = _key(row["episode_id"], "episode_id")
+                    _expect_equal(
+                        row["episode_uid"],
+                        _episode_uid(scenario, seed, episode_id),
+                        "episode_uid_mismatch",
+                    )
+                    _source_identity_from_payload(_mapping(row["source_identity"]))
+                    _strict_bool(row["synthetic_fixture"], "synthetic_fixture")
+                    header = row
+                    phase = "feedback"
+                    continue
+                if header is None:
+                    raise ActiveVisionDatasetValidationError(
+                        "online_stream_header_missing",
+                        "online record stream does not start with a header",
+                    )
+                if record_type == "camera_feedback":
+                    if phase != "feedback":
+                        raise ActiveVisionDatasetValidationError(
+                            "online_stream_order_invalid",
+                            "camera feedback objects must precede snapshot/sample groups",
+                        )
+                    _expect_fields(
+                        row,
+                        {"record_type", "object_key", "value"},
+                        "camera_feedback_record_fields_mismatch",
+                    )
+                    feedback_payload = _mapping(row["value"])
+                    feedback_key = _key(row["object_key"], "camera_feedback_key")
+                    _expect_equal(
+                        feedback_key,
+                        _stream_object_key("camera-feedback", feedback_payload),
+                        "camera_feedback_key_mismatch",
+                    )
+                    if feedback_key in feedback_by_key:
+                        raise ActiveVisionDatasetValidationError(
+                            "camera_feedback_duplicate",
+                            "online stream contains duplicate camera feedback objects",
+                        )
+                    feedback_by_key[feedback_key] = _feedback_from_payload(feedback_payload)
+                    continue
+                if record_type == "snapshot":
+                    if phase not in {"feedback", "samples"}:
+                        raise ActiveVisionDatasetValidationError(
+                            "online_stream_order_invalid",
+                            "snapshot object appears outside a sample group",
+                        )
+                    phase = "samples"
+                    if current_snapshot_key is not None and current_snapshot_sample_count == 0:
+                        raise ActiveVisionDatasetValidationError(
+                            "snapshot_unreferenced",
+                            "each online snapshot object must be referenced by at least one sample",
+                        )
+                    _expect_fields(
+                        row,
+                        {"record_type", "object_key", "value"},
+                        "snapshot_record_fields_mismatch",
+                    )
+                    snapshot_payload = _mapping(row["value"])
+                    snapshot_key = _key(row["object_key"], "snapshot_key")
+                    _expect_equal(
+                        snapshot_key,
+                        _stream_object_key("snapshot", snapshot_payload),
+                        "snapshot_key_mismatch",
+                    )
+                    if snapshot_key in snapshot_keys:
+                        raise ActiveVisionDatasetValidationError(
+                            "snapshot_duplicate",
+                            "online stream contains a duplicate snapshot object",
+                        )
+                    current_snapshot = _snapshot_from_payload(snapshot_payload)
+                    current_snapshot_key = snapshot_key
+                    current_snapshot_sample_count = 0
+                    snapshot_keys.add(snapshot_key)
+                    snapshot_track_state[snapshot_key] = tuple(
+                        (
+                            track.global_track_id,
+                            track.track_version,
+                            track.measurement_timestamp,
+                        )
+                        for track in current_snapshot.tracks
+                    )
+                    continue
+                if record_type == "sample":
+                    if phase != "samples" or current_snapshot is None or current_snapshot_key is None:
+                        raise ActiveVisionDatasetValidationError(
+                            "online_stream_order_invalid",
+                            "sample record must follow its unique snapshot object",
+                        )
+                    feedback_key = _key(row.get("camera_feedback_key"), "camera_feedback_key")
+                    feedback = feedback_by_key.get(feedback_key)
+                    if feedback is None:
+                        raise ActiveVisionDatasetValidationError(
+                            "camera_feedback_reference_unknown",
+                            "sample references unknown camera feedback",
+                        )
+                    _expect_equal(
+                        row.get("snapshot_key"),
+                        current_snapshot_key,
+                        "snapshot_reference_unknown",
+                    )
+                    sample = _sample_from_reference_payload(
+                        row,
+                        snapshot=current_snapshot,
+                        camera_feedback=feedback,
+                    )
+                    if sample.sample_key in sample_keys:
+                        raise ActiveVisionDatasetValidationError(
+                            "sample_key_duplicate",
+                            "online stream contains a duplicate sample key",
+                        )
+                    if sample.observation_key in observation_keys:
+                        raise ActiveVisionDatasetValidationError(
+                            "observation_key_duplicate",
+                            "online stream contains a duplicate observation key",
+                        )
+                    if sample.sequence_index in sample_index_by_sequence:
+                        raise ActiveVisionDatasetValidationError(
+                            "sample_sequence_duplicate",
+                            "online stream contains a duplicate sample sequence index",
+                        )
+                    sample_keys[sample.sample_key] = sample.observation_key
+                    observation_keys.add(sample.observation_key)
+                    referenced_feedback_keys.add(feedback_key)
+                    current_snapshot_sample_count += 1
+                    sample_index_by_sequence[sample.sequence_index] = _stream_sample_index_entry(
+                        sample,
+                        current_snapshot_key,
+                        feedback_key,
+                    )
+                    sample_audit_by_sequence[sample.sequence_index] = (
+                        sample.snapshot.snapshot_timestamp,
+                        (
+                            sample.plan_version,
+                            sample.coalition_version,
+                            sample.communication_version,
+                        ),
+                        current_snapshot_key,
+                    )
+                    if materialize:
+                        materialized_samples.append(sample)
+                    continue
+                if record_type == "footer":
+                    if phase != "samples" or current_snapshot_sample_count == 0:
+                        raise ActiveVisionDatasetValidationError(
+                            "online_stream_footer_invalid",
+                            "online stream footer requires at least one snapshot/sample group",
+                        )
+                    _expect_fields(
+                        row,
+                        {
+                            "record_type",
+                            "schema_version",
+                            "sample_count",
+                            "unique_snapshot_count",
+                            "unique_camera_feedback_count",
+                            "sample_index_sha256",
+                        },
+                        "online_stream_footer_fields_mismatch",
+                    )
+                    footer = row
+                    phase = "footer"
+                    continue
+                raise ActiveVisionDatasetValidationError(
+                    "online_stream_record_type_invalid",
+                    f"unsupported online stream record type: {record_type!r}",
+                )
+    except ActiveVisionDatasetValidationError:
+        raise
+    except (EOFError, OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        raise ActiveVisionDatasetValidationError(
+            "online_record_invalid",
+            "online active-vision stream failed contract validation",
+        ) from exc
+
+    if header is None or footer is None:
+        raise ActiveVisionDatasetValidationError(
+            "online_stream_incomplete",
+            "online record stream is missing its header or footer",
+        )
+    if not sample_index_by_sequence:
+        raise ActiveVisionDatasetValidationError(
+            "online_samples_invalid",
+            "online episode stream must contain at least one sample",
+        )
+    _expect_equal(
+        referenced_feedback_keys,
+        set(feedback_by_key),
+        "camera_feedback_unreferenced",
+    )
+    ordered_indices = sorted(sample_index_by_sequence)
+    if ordered_indices != list(range(len(ordered_indices))):
+        raise ActiveVisionDatasetValidationError(
+            "sample_sequence_invalid",
+            "online sample sequence indices must be contiguous from zero",
+        )
+    ordered_index = [sample_index_by_sequence[index] for index in ordered_indices]
+    _expect_equal(
+        footer["schema_version"],
+        ACTIVE_VISION_EPISODE_RECORD_SCHEMA_VERSION,
+        "online_record_schema_mismatch",
+    )
+    _expect_equal(int(footer["sample_count"]), len(ordered_indices), "sample_count_mismatch")
+    _expect_equal(
+        int(footer["unique_snapshot_count"]),
+        len(snapshot_keys),
+        "snapshot_count_mismatch",
+    )
+    _expect_equal(
+        int(footer["unique_camera_feedback_count"]),
+        len(feedback_by_key),
+        "camera_feedback_count_mismatch",
+    )
+    _expect_equal(
+        footer["sample_index_sha256"],
+        sha256_json(ordered_index),
+        "sample_index_sha_mismatch",
+    )
+    _validate_stream_record_order(sample_audit_by_sequence, snapshot_track_state)
+
+    source_identity = _source_identity_from_payload(_mapping(header["source_identity"]))
+    audit = _OnlineEpisodeAudit(
+        episode_uid=str(header["episode_uid"]),
+        scenario_version=str(header["scenario_version"]),
+        seed=int(header["seed"]),
+        episode_id=str(header["episode_id"]),
+        source_identity=source_identity,
+        synthetic_fixture=_strict_bool(header["synthetic_fixture"], "synthetic_fixture"),
+        sample_keys=sample_keys,
+        sample_count=len(ordered_indices),
+        unique_snapshot_count=len(snapshot_keys),
+        unique_camera_feedback_count=len(feedback_by_key),
+    )
+    if not materialize:
+        return audit, None
+    samples_by_sequence = sorted(materialized_samples, key=lambda item: item.sequence_index)
+    record = ActiveVisionEpisodeRecordV1(
+        scenario_version=audit.scenario_version,
+        seed=audit.seed,
+        episode_id=audit.episode_id,
+        source_identity=source_identity,
+        samples=tuple(samples_by_sequence),
+        synthetic_fixture=audit.synthetic_fixture,
+        schema_version=str(header["schema_version"]),
+    )
+    _expect_equal(record.episode_uid, audit.episode_uid, "episode_uid_mismatch")
+    return audit, record
+
+
+def _read_episode_stream_row(line: str, *, line_number: int) -> Mapping[str, Any]:
+    if not line.endswith("\n"):
+        raise ActiveVisionDatasetValidationError(
+            "online_stream_line_truncated",
+            f"online stream line {line_number} is not newline terminated",
+        )
+    value = json.loads(
+        line,
+        parse_constant=lambda token: _reject_json_constant(token),
+    )
+    if not isinstance(value, dict):
+        raise ActiveVisionDatasetValidationError(
+            "online_stream_row_invalid",
+            f"online stream line {line_number} is not a JSON object",
+        )
+    if _canonical_json_bytes(value) != line.encode("utf-8"):
+        raise ActiveVisionDatasetValidationError(
+            "online_stream_noncanonical",
+            f"online stream line {line_number} is not canonical JSON",
+        )
+    _assert_online_truth_free(value)
+    return value
+
+
+def _sample_reference_to_payload(
+    sample: ActiveVisionEpisodeSampleV1,
+    *,
+    snapshot_key: str,
+    feedback_key: str,
+) -> dict[str, Any]:
+    return {
+        "record_type": "sample",
+        "schema_version": sample.schema_version,
+        "sample_key": sample.sample_key,
+        "observation_key": sample.observation_key,
+        "sequence_index": sample.sequence_index,
+        "camera_id": sample.camera_id,
+        "snapshot_key": snapshot_key,
+        "rule_demonstration_action": _action_to_payload(sample.rule_demonstration_action),
+        "requested_action": (
+            None if sample.requested_action is None else _action_to_payload(sample.requested_action)
+        ),
+        "effective_action": _action_to_payload(sample.effective_action),
+        "requested_mode": sample.requested_mode.value,
+        "effective_mode": sample.effective_mode.value,
+        "fallback_reason": sample.fallback_reason,
+        "plan_version": sample.plan_version,
+        "coalition_version": sample.coalition_version,
+        "communication_version": sample.communication_version,
+        "camera_feedback_key": feedback_key,
+        "runtime_ack": None if sample.runtime_ack is None else _ack_to_payload(sample.runtime_ack),
+    }
+
+
+def _sample_from_reference_payload(
+    payload: Mapping[str, Any],
+    *,
+    snapshot: ActiveVisionSnapshotV1,
+    camera_feedback: ActiveVisionCameraFeedbackV1,
+) -> ActiveVisionEpisodeSampleV1:
+    _expect_fields(
+        payload,
+        {
+            "record_type",
+            "schema_version",
+            "sample_key",
+            "observation_key",
+            "sequence_index",
+            "camera_id",
+            "snapshot_key",
+            "rule_demonstration_action",
+            "requested_action",
+            "effective_action",
+            "requested_mode",
+            "effective_mode",
+            "fallback_reason",
+            "plan_version",
+            "coalition_version",
+            "communication_version",
+            "camera_feedback_key",
+            "runtime_ack",
+        },
+        "sample_fields_mismatch",
+    )
+    _expect_equal(payload["record_type"], "sample", "sample_record_type_mismatch")
+    _expect_equal(
+        payload["schema_version"],
+        ACTIVE_VISION_SAMPLE_SCHEMA_VERSION,
+        "sample_schema_mismatch",
+    )
+    requested_payload = payload["requested_action"]
+    ack_payload = payload["runtime_ack"]
+    return ActiveVisionEpisodeSampleV1(
+        sample_key=str(payload["sample_key"]),
+        observation_key=str(payload["observation_key"]),
+        sequence_index=int(payload["sequence_index"]),
+        camera_id=str(payload["camera_id"]),
+        snapshot=snapshot,
+        rule_demonstration_action=_action_from_payload(
+            _mapping(payload["rule_demonstration_action"])
+        ),
+        requested_action=(
+            None
+            if requested_payload is None
+            else _action_from_payload(_mapping(requested_payload))
+        ),
+        effective_action=_action_from_payload(_mapping(payload["effective_action"])),
+        requested_mode=ActiveVisionRuntimeMode(str(payload["requested_mode"])),
+        effective_mode=ActiveVisionRuntimeMode(str(payload["effective_mode"])),
+        fallback_reason=(
+            None if payload["fallback_reason"] is None else str(payload["fallback_reason"])
+        ),
+        plan_version=int(payload["plan_version"]),
+        coalition_version=int(payload["coalition_version"]),
+        communication_version=int(payload["communication_version"]),
+        camera_feedback=camera_feedback,
+        runtime_ack=None if ack_payload is None else _ack_from_payload(_mapping(ack_payload)),
+        schema_version=str(payload["schema_version"]),
+    )
+
+
+def _stream_object_key(kind: str, payload: Mapping[str, Any]) -> str:
+    return f"{kind}-sha256-{sha256_json(payload)}"
+
+
+def _stream_sample_index_entry(
+    sample: ActiveVisionEpisodeSampleV1,
+    snapshot_key: str,
+    feedback_key: str,
+) -> dict[str, Any]:
+    return {
+        "sequence_index": sample.sequence_index,
+        "sample_key": sample.sample_key,
+        "observation_key": sample.observation_key,
+        "snapshot_key": snapshot_key,
+        "camera_feedback_key": feedback_key,
+    }
+
+
+def _validate_stream_record_order(
+    sample_audit_by_sequence: Mapping[int, tuple[float, tuple[int, int, int], str]],
+    snapshot_track_state: Mapping[str, tuple[tuple[str, int, float], ...]],
+) -> None:
+    previous_timestamp = -float("inf")
+    previous_versions = (-1, -1, -1)
+    center_track_state: dict[str, tuple[int, float]] = {}
+    for sequence_index in range(len(sample_audit_by_sequence)):
+        timestamp, versions, snapshot_key = sample_audit_by_sequence[sequence_index]
+        if timestamp + 1.0e-9 < previous_timestamp:
+            raise ActiveVisionDatasetValidationError(
+                "sample_timestamp_regression",
+                "online sample timestamps regress within the episode",
+            )
+        if any(current < previous for current, previous in zip(versions, previous_versions)):
+            raise ActiveVisionDatasetValidationError(
+                "sample_version_regression",
+                "online sample plan/coalition/communication versions regress",
+            )
+        previous_timestamp = timestamp
+        previous_versions = versions
+        for global_track_id, track_version, measurement_timestamp in snapshot_track_state[
+            snapshot_key
+        ]:
+            previous = center_track_state.get(global_track_id)
+            if previous is not None and (
+                track_version < previous[0]
+                or measurement_timestamp + 1.0e-9 < previous[1]
+            ):
+                raise ActiveVisionDatasetValidationError(
+                    "center_track_regression",
+                    "center-owned track reference regresses within the episode",
+                )
+            center_track_state[global_track_id] = (track_version, measurement_timestamp)
+
+
+def _assert_online_truth_free(payload: Any) -> None:
+    try:
+        assert_truth_free_active_vision_payload(payload)
+    except ValueError as exc:
+        raise ActiveVisionDatasetValidationError(
+            "online_truth_identity_forbidden",
+            "online active-vision episode contains evaluator/simulator identity",
+        ) from exc
+
+
+def _legacy_embedded_episode_record_payload_for_size_test(
+    record: ActiveVisionEpisodeRecordV1,
+) -> dict[str, Any]:
+    """Reproduce the removed nested layout for bounded regression fixtures only."""
+
     return {
         "schema_version": record.schema_version,
         "episode_uid": record.episode_uid,
@@ -1019,41 +1825,11 @@ def _episode_record_to_payload(record: ActiveVisionEpisodeRecordV1) -> dict[str,
         "episode_id": record.episode_id,
         "source_identity": _source_identity_to_payload(record.source_identity),
         "synthetic_fixture": record.synthetic_fixture,
-        "samples": [_sample_to_payload(item) for item in record.samples],
+        "samples": [
+            _legacy_embedded_sample_payload_for_size_test(item)
+            for item in record.samples
+        ],
     }
-
-
-def _episode_record_from_payload(payload: Mapping[str, Any]) -> ActiveVisionEpisodeRecordV1:
-    _expect_fields(
-        payload,
-        {
-            "schema_version",
-            "episode_uid",
-            "scenario_version",
-            "seed",
-            "episode_id",
-            "source_identity",
-            "synthetic_fixture",
-            "samples",
-        },
-        "online_record_fields_mismatch",
-    )
-    raw_samples = payload["samples"]
-    if not isinstance(raw_samples, list) or not raw_samples:
-        raise ActiveVisionDatasetValidationError(
-            "online_samples_invalid", "online episode samples must be a non-empty list"
-        )
-    record = ActiveVisionEpisodeRecordV1(
-        scenario_version=str(payload["scenario_version"]),
-        seed=int(payload["seed"]),
-        episode_id=str(payload["episode_id"]),
-        source_identity=_source_identity_from_payload(_mapping(payload["source_identity"])),
-        samples=tuple(_sample_from_payload(_mapping(item)) for item in raw_samples),
-        synthetic_fixture=_strict_bool(payload["synthetic_fixture"], "synthetic_fixture"),
-        schema_version=str(payload["schema_version"]),
-    )
-    _expect_equal(record.episode_uid, payload["episode_uid"], "episode_uid_mismatch")
-    return record
 
 
 def _source_identity_to_payload(value: ActiveVisionSourceIdentityV1) -> dict[str, Any]:
@@ -1079,7 +1855,9 @@ def _source_identity_from_payload(payload: Mapping[str, Any]) -> ActiveVisionSou
     )
 
 
-def _sample_to_payload(sample: ActiveVisionEpisodeSampleV1) -> dict[str, Any]:
+def _legacy_embedded_sample_payload_for_size_test(
+    sample: ActiveVisionEpisodeSampleV1,
+) -> dict[str, Any]:
     return {
         "schema_version": sample.schema_version,
         "sample_key": sample.sample_key,
@@ -1101,63 +1879,6 @@ def _sample_to_payload(sample: ActiveVisionEpisodeSampleV1) -> dict[str, Any]:
         "camera_feedback": _feedback_to_payload(sample.camera_feedback),
         "runtime_ack": None if sample.runtime_ack is None else _ack_to_payload(sample.runtime_ack),
     }
-
-
-def _sample_from_payload(payload: Mapping[str, Any]) -> ActiveVisionEpisodeSampleV1:
-    _expect_fields(
-        payload,
-        {
-            "schema_version",
-            "sample_key",
-            "observation_key",
-            "sequence_index",
-            "camera_id",
-            "snapshot",
-            "rule_demonstration_action",
-            "requested_action",
-            "effective_action",
-            "requested_mode",
-            "effective_mode",
-            "fallback_reason",
-            "plan_version",
-            "coalition_version",
-            "communication_version",
-            "camera_feedback",
-            "runtime_ack",
-        },
-        "sample_fields_mismatch",
-    )
-    requested_payload = payload["requested_action"]
-    ack_payload = payload["runtime_ack"]
-    return ActiveVisionEpisodeSampleV1(
-        sample_key=str(payload["sample_key"]),
-        observation_key=str(payload["observation_key"]),
-        sequence_index=int(payload["sequence_index"]),
-        camera_id=str(payload["camera_id"]),
-        snapshot=_snapshot_from_payload(_mapping(payload["snapshot"])),
-        rule_demonstration_action=_action_from_payload(
-            _mapping(payload["rule_demonstration_action"])
-        ),
-        requested_action=(
-            None
-            if requested_payload is None
-            else _action_from_payload(_mapping(requested_payload))
-        ),
-        effective_action=_action_from_payload(_mapping(payload["effective_action"])),
-        requested_mode=ActiveVisionRuntimeMode(str(payload["requested_mode"])),
-        effective_mode=ActiveVisionRuntimeMode(str(payload["effective_mode"])),
-        fallback_reason=(
-            None if payload["fallback_reason"] is None else str(payload["fallback_reason"])
-        ),
-        plan_version=int(payload["plan_version"]),
-        coalition_version=int(payload["coalition_version"]),
-        communication_version=int(payload["communication_version"]),
-        camera_feedback=_feedback_from_payload(_mapping(payload["camera_feedback"])),
-        runtime_ack=None if ack_payload is None else _ack_from_payload(_mapping(ack_payload)),
-        schema_version=str(payload["schema_version"]),
-    )
-
-
 def _snapshot_to_payload(snapshot: ActiveVisionSnapshotV1) -> dict[str, Any]:
     return {
         "schema_version": snapshot.schema_version,
@@ -1697,6 +2418,56 @@ def _load_staged_episode(
     root: Path,
     descriptor: Mapping[str, Any],
 ) -> tuple[ActiveVisionEpisodeRecordV1, tuple[ActiveVisionOfflineLabelV1, ...]]:
+    online_path, offline_path = _episode_artifact_paths(root, descriptor)
+    _expect_sha(online_path, descriptor["online_sha256"], "online_sha_mismatch")
+    _expect_sha(offline_path, descriptor["offline_sha256"], "offline_sha_mismatch")
+    record = load_active_vision_episode_record(online_path)
+    _validate_materialized_record_against_descriptor(record, descriptor)
+    labels = _load_offline_labels(offline_path, record)
+    _expect_equal(
+        _availability_summary(labels),
+        descriptor["availability"],
+        "episode_availability_mismatch",
+    )
+    return record, labels
+
+
+def _load_online_staged_episode(
+    root: Path,
+    descriptor: Mapping[str, Any],
+) -> ActiveVisionEpisodeRecordV1:
+    online_path, _ = _episode_artifact_paths(root, descriptor)
+    _expect_sha(online_path, descriptor["online_sha256"], "online_sha_mismatch")
+    record = load_active_vision_episode_record(online_path)
+    _validate_materialized_record_against_descriptor(record, descriptor)
+    return record
+
+
+def _audit_staged_episode(root: Path, descriptor: Mapping[str, Any]) -> None:
+    online_path, offline_path = _episode_artifact_paths(root, descriptor)
+    _expect_sha(online_path, descriptor["online_sha256"], "online_sha_mismatch")
+    _expect_sha(offline_path, descriptor["offline_sha256"], "offline_sha_mismatch")
+    online_audit, _ = _read_episode_record_stream(online_path, materialize=False)
+    _validate_online_audit_against_descriptor(online_audit, descriptor)
+    labels = _load_offline_labels_for_join(
+        offline_path,
+        episode_uid=online_audit.episode_uid,
+        scenario_version=online_audit.scenario_version,
+        seed=online_audit.seed,
+        episode_id=online_audit.episode_id,
+        expected_keys=online_audit.sample_keys,
+    )
+    _expect_equal(
+        _availability_summary(labels),
+        descriptor["availability"],
+        "episode_availability_mismatch",
+    )
+
+
+def _episode_artifact_paths(
+    root: Path,
+    descriptor: Mapping[str, Any],
+) -> tuple[Path, Path]:
     online_path = _safe_relative_file(root, descriptor["online_file"])
     offline_path = _safe_relative_file(root, descriptor["offline_file"])
     if online_path.parent.name != "online" or offline_path.parent.name != "offline":
@@ -1707,9 +2478,49 @@ def _load_staged_episode(
         raise ActiveVisionDatasetValidationError(
             "physical_separation_invalid", "online and offline artifacts cannot be the same file"
         )
-    _expect_sha(online_path, descriptor["online_sha256"], "online_sha_mismatch")
-    _expect_sha(offline_path, descriptor["offline_sha256"], "offline_sha_mismatch")
-    record = load_active_vision_episode_record(online_path)
+    return online_path, offline_path
+
+
+def _validate_online_audit_against_descriptor(
+    audit: _OnlineEpisodeAudit,
+    descriptor: Mapping[str, Any],
+) -> None:
+    expected_identity = (
+        str(descriptor["episode_uid"]),
+        str(descriptor["scenario_version"]),
+        int(descriptor["seed"]),
+        str(descriptor["episode_id"]),
+    )
+    actual_identity = (
+        audit.episode_uid,
+        audit.scenario_version,
+        audit.seed,
+        audit.episode_id,
+    )
+    _expect_equal(actual_identity, expected_identity, "online_episode_identity_mismatch")
+    _expect_equal(
+        _source_identity_to_payload(audit.source_identity),
+        descriptor["source_identity"],
+        "source_identity_mismatch",
+    )
+    _expect_equal(audit.synthetic_fixture, descriptor["synthetic_fixture"], "fixture_flag_mismatch")
+    _expect_equal(audit.sample_count, int(descriptor["sample_count"]), "sample_count_mismatch")
+    _expect_equal(
+        audit.unique_snapshot_count,
+        int(descriptor["unique_snapshot_count"]),
+        "snapshot_count_mismatch",
+    )
+    _expect_equal(
+        audit.unique_camera_feedback_count,
+        int(descriptor["unique_camera_feedback_count"]),
+        "camera_feedback_count_mismatch",
+    )
+
+
+def _validate_materialized_record_against_descriptor(
+    record: ActiveVisionEpisodeRecordV1,
+    descriptor: Mapping[str, Any],
+) -> None:
     expected_identity = (
         str(descriptor["episode_uid"]),
         str(descriptor["scenario_version"]),
@@ -1730,18 +2541,42 @@ def _load_staged_episode(
     )
     _expect_equal(record.synthetic_fixture, descriptor["synthetic_fixture"], "fixture_flag_mismatch")
     _expect_equal(len(record.samples), int(descriptor["sample_count"]), "sample_count_mismatch")
-    labels = _load_offline_labels(offline_path, record)
     _expect_equal(
-        _availability_summary(labels),
-        descriptor["availability"],
-        "episode_availability_mismatch",
+        len({id(sample.snapshot) for sample in record.samples}),
+        int(descriptor["unique_snapshot_count"]),
+        "snapshot_count_mismatch",
     )
-    return record, labels
+    _expect_equal(
+        len({id(sample.camera_feedback) for sample in record.samples}),
+        int(descriptor["unique_camera_feedback_count"]),
+        "camera_feedback_count_mismatch",
+    )
 
 
 def _load_offline_labels(
     path: Path,
     record: ActiveVisionEpisodeRecordV1,
+) -> tuple[ActiveVisionOfflineLabelV1, ...]:
+    return _load_offline_labels_for_join(
+        path,
+        episode_uid=record.episode_uid,
+        scenario_version=record.scenario_version,
+        seed=record.seed,
+        episode_id=record.episode_id,
+        expected_keys={
+            sample.sample_key: sample.observation_key for sample in record.samples
+        },
+    )
+
+
+def _load_offline_labels_for_join(
+    path: Path,
+    *,
+    episode_uid: str,
+    scenario_version: str,
+    seed: int,
+    episode_id: str,
+    expected_keys: Mapping[str, str],
 ) -> tuple[ActiveVisionOfflineLabelV1, ...]:
     payload = _read_json(path)
     _expect_fields(
@@ -1762,10 +2597,10 @@ def _load_offline_labels(
         ACTIVE_VISION_OFFLINE_LABELS_SCHEMA_VERSION,
         "offline_labels_schema_mismatch",
     )
-    _expect_equal(payload["episode_uid"], record.episode_uid, "offline_episode_mismatch")
-    _expect_equal(payload["scenario_version"], record.scenario_version, "offline_episode_mismatch")
-    _expect_equal(int(payload["seed"]), record.seed, "offline_episode_mismatch")
-    _expect_equal(payload["episode_id"], record.episode_id, "offline_episode_mismatch")
+    _expect_equal(payload["episode_uid"], episode_uid, "offline_episode_mismatch")
+    _expect_equal(payload["scenario_version"], scenario_version, "offline_episode_mismatch")
+    _expect_equal(int(payload["seed"]), seed, "offline_episode_mismatch")
+    _expect_equal(payload["episode_id"], episode_id, "offline_episode_mismatch")
     _expect_equal(
         payload["reward_bounds"],
         {
@@ -1787,7 +2622,6 @@ def _load_offline_labels(
         raise ActiveVisionDatasetValidationError(
             "offline_label_invalid", "offline label failed contract validation"
         ) from exc
-    expected_keys = {sample.sample_key: sample.observation_key for sample in record.samples}
     actual_keys: dict[str, str] = {}
     for label in labels:
         if label.sample_key in actual_keys:
@@ -1813,6 +2647,9 @@ def _validate_descriptor(descriptor: Mapping[str, Any], *, finalized: bool) -> N
             "dataset_config_sha256",
             "online_file",
             "online_sha256",
+            "online_storage_layout",
+            "unique_snapshot_count",
+            "unique_camera_feedback_count",
             "offline_file",
             "offline_sha256",
             "sample_count",
@@ -1834,10 +2671,32 @@ def _validate_descriptor(descriptor: Mapping[str, Any], *, finalized: bool) -> N
     _strict_bool(descriptor["synthetic_fixture"], "synthetic_fixture")
     _sha256(descriptor["dataset_config_sha256"], "dataset_config_sha256")
     _sha256(descriptor["online_sha256"], "online_sha256")
+    _expect_equal(
+        descriptor["online_storage_layout"],
+        ACTIVE_VISION_ONLINE_STORAGE_LAYOUT,
+        "online_storage_layout_mismatch",
+    )
+    if not str(descriptor["online_file"]).endswith(".online.jsonl.gz"):
+        raise ActiveVisionDatasetValidationError(
+            "online_record_schema_unsupported",
+            "episode descriptor must reference an active-vision record v2 stream",
+        )
     sample_count = int(descriptor["sample_count"])
     if sample_count <= 0:
         raise ActiveVisionDatasetValidationError(
             "sample_count_invalid", "episode sample_count must be positive"
+        )
+    unique_snapshot_count = int(descriptor["unique_snapshot_count"])
+    unique_feedback_count = int(descriptor["unique_camera_feedback_count"])
+    if not 1 <= unique_snapshot_count <= sample_count:
+        raise ActiveVisionDatasetValidationError(
+            "snapshot_count_invalid",
+            "unique snapshot count must be positive and no greater than sample_count",
+        )
+    if not 1 <= unique_feedback_count <= sample_count:
+        raise ActiveVisionDatasetValidationError(
+            "camera_feedback_count_invalid",
+            "unique camera feedback count must be positive and no greater than sample_count",
         )
     offline_values = (descriptor["offline_file"], descriptor["offline_sha256"])
     if (offline_values[0] is None) != (offline_values[1] is None):
@@ -2064,23 +2923,36 @@ def _availability_status(available_count: int, total_count: int) -> str:
     return "partial"
 
 
+def _dataset_split_name(name: str) -> str:
+    split = str(name)
+    if split not in {"train", "validation", "test"}:
+        raise ValueError("split must be train, validation, or test")
+    return split
+
+
 def _behavior_cloning_episode(item: LoadedActiveVisionEpisode) -> ActiveVisionResearchEpisode:
+    return _behavior_cloning_episode_from_record(item.record)
+
+
+def _behavior_cloning_episode_from_record(
+    record: ActiveVisionEpisodeRecordV1,
+) -> ActiveVisionResearchEpisode:
     transitions = tuple(
         ActiveVisionTransition(
             snapshot=sample.snapshot,
             camera_id=sample.camera_id,
             selected_action=sample.rule_demonstration_action,
             reward=None,
-            done=index == len(item.record.samples) - 1,
+            done=index == len(record.samples) - 1,
         )
-        for index, sample in enumerate(item.record.samples)
+        for index, sample in enumerate(record.samples)
     )
     return ActiveVisionResearchEpisode(
-        scenario_version=item.record.scenario_version,
-        seed=item.record.seed,
-        episode_id=item.record.episode_id,
+        scenario_version=record.scenario_version,
+        seed=record.seed,
+        episode_id=record.episode_id,
         transitions=transitions,
-        synthetic_fixture=item.record.synthetic_fixture,
+        synthetic_fixture=record.synthetic_fixture,
     )
 
 
@@ -2174,6 +3046,47 @@ def _validate_action_reference(
         snapshot.communication.communication_version,
     ):
         raise ValueError(f"{field_name} versions do not match the center snapshot")
+
+
+def _validate_recorded_decision_state(sample: ActiveVisionEpisodeSampleV2) -> None:
+    """Keep recorded mode transitions aligned with controller rule fallback."""
+
+    requested_mode = sample.requested_mode
+    effective_mode = sample.effective_mode
+    requested_action = sample.requested_action
+    fallback_reason = sample.fallback_reason
+
+    if requested_mode is ActiveVisionRuntimeMode.DISABLED:
+        if (
+            effective_mode is not ActiveVisionRuntimeMode.DISABLED
+            or requested_action is not None
+            or fallback_reason is None
+        ):
+            raise ValueError("disabled mode must record an explicit rule fallback")
+    elif requested_mode is ActiveVisionRuntimeMode.SHADOW:
+        if effective_mode is not ActiveVisionRuntimeMode.SHADOW:
+            raise ValueError("shadow mode cannot change the effective runtime mode")
+        if requested_action is None and fallback_reason is None:
+            raise ValueError("shadow mode requires a proposal or an explicit fallback reason")
+    elif effective_mode not in {
+        ActiveVisionRuntimeMode.DISABLED,
+        ActiveVisionRuntimeMode.ASSIST,
+    }:
+        raise ValueError("assist mode may only remain assist or fall back to disabled")
+
+    if effective_mode is ActiveVisionRuntimeMode.ASSIST:
+        if (
+            requested_mode is not ActiveVisionRuntimeMode.ASSIST
+            or requested_action is None
+            or sample.effective_action != requested_action
+            or fallback_reason is not None
+        ):
+            raise ValueError("effective assist must apply the accepted requested action")
+    elif sample.effective_action != sample.rule_demonstration_action:
+        raise ValueError("non-assist modes must preserve the deterministic rule action")
+
+    if effective_mode is ActiveVisionRuntimeMode.DISABLED and fallback_reason is None:
+        raise ValueError("disabled effective mode requires an explicit fallback reason")
 
 
 def _ensure_generation_config(root: Path, generation_config: Mapping[str, Any]) -> str:
@@ -2520,6 +3433,7 @@ __all__ = [
     "ACTIVE_VISION_EPISODE_RECORD_SCHEMA_VERSION",
     "ACTIVE_VISION_OFFLINE_LABEL_SCHEMA_VERSION",
     "ACTIVE_VISION_OFFLINE_LABELS_SCHEMA_VERSION",
+    "ACTIVE_VISION_ONLINE_STORAGE_LAYOUT",
     "ACTIVE_VISION_REWARD_MAXIMUM",
     "ACTIVE_VISION_REWARD_MINIMUM",
     "ACTIVE_VISION_RUNTIME_ACK_SCHEMA_VERSION",
@@ -2528,16 +3442,21 @@ __all__ = [
     "ActiveVisionCameraFeedbackV1",
     "ActiveVisionDatasetValidationError",
     "ActiveVisionEpisodeRecordV1",
+    "ActiveVisionEpisodeRecordV2",
     "ActiveVisionEpisodeSampleV1",
+    "ActiveVisionEpisodeSampleV2",
     "ActiveVisionOfflineLabelV1",
     "ActiveVisionRuntimeAckV1",
     "ActiveVisionSourceIdentityV1",
+    "LazyActiveVisionEpisodeDataset",
     "LoadedActiveVisionEpisode",
     "LoadedActiveVisionEpisodeDataset",
     "active_vision_sample_from_decision",
+    "audit_active_vision_episode_record",
     "audit_active_vision_episode_dataset",
     "finalize_active_vision_episode_dataset",
     "load_active_vision_episode_dataset",
+    "load_active_vision_episode_dataset_lazy",
     "load_active_vision_episode_record",
     "sha256_file",
     "sha256_json",

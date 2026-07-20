@@ -2,30 +2,59 @@
 
 科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
 
-## 2026-07-20 主动视觉整 episode 数据合同与审计管线
+## 2026-07-20 200v200 主动视觉数据容量与跨视角 seed 隔离
 
 新增 `active_vision_episode_dataset.py`，把统一三维 episode 的主动视觉决策形成正式版本化数据
-合同。每个 `ActiveVisionEpisodeSampleV1` 保存 truth-free `ActiveVisionSnapshotV1`、规则示范动作、
+合同。每个 `ActiveVisionEpisodeSampleV2` 保存 truth-free `ActiveVisionSnapshotV1`、规则示范动作、
 requested/effective action 与 mode、plan/coalition/communication version、相机反馈和可选 runtime
 ACK。`active_vision_sample_from_decision()` 可直接从现有 `ActiveVisionDecisionV1` 构造样本；相机、
-目标和资源均按输入数组工作，不存在 2v2、5v5 或 200v200 常量。
+目标和资源均按输入数组工作，不存在 2v2、5v5 或 200v200 常量。原 V1 Python 类名保留为源码
+兼容别名，但构造的是 v2 合同，不能读取旧 v1 嵌套文件。
+
+容量修复前的 nominal seed 91、每档 2 s 实测 online JSON 为 5v5 `0.91 MB`、20v20
+`8.84 MB`、50v50 `52.58 MB`、100v100 `218.17 MB`、200v200 `815.36 MB`（约 778 MiB）；
+200v200 在 offline staging 重载并递归扫描整 record 时 RSS 约 4.2 GB，7 分钟仍未完成后由 main
+主动终止。根因是同一 decision cycle 的完整 snapshot 被每个 camera sample 重复嵌入。
 
 数据目录固定分流为：
 
 ```text
 dataset_config.json
-online/<episode_uid>.online.json
+online/<episode_uid>.online.jsonl.gz
 offline/<episode_uid>.offline.json
 episodes/<episode_uid>.episode.json
 manifest.json
 SHA256SUMS
 ```
 
-`stage_active_vision_episode_record()` 只写在线文件并递归拒绝 truth/actor/object identity；
+record v2 改为确定性 gzip JSONL：header 后写一次 SHA256-keyed camera feedback；每个唯一 snapshot
+只写一次，随后写引用该 snapshot/feedback key 的 sample，最后以 footer 固化对象数、样本数和
+sample-index SHA。没有删减 snapshot、action、feedback、ACK 或版本字段。16→64 camera 高基数
+fixture 的旧嵌套/去重解压/gzip 字节分别为 `302709/59617/3995` 与
+`4336869/234721/13084`；输入规模 4 倍时去重解压增长 3.94 倍、gzip 增长 3.28 倍，而旧嵌套增长
+14.33 倍。另一个 200-camera/400-track 单 snapshot fixture 为解压 `731412` 字节、gzip `37004`
+字节，`200` samples 只保存 `1` 个 snapshot。以上均为合成容量合同证据。
+
+main 随后用新 v3 格式完成 nominal、seed 91、每档 2 s 容量复测。5/20/50/100/200v200 的 D5
+active-vision 总制品约为 `0.086/0.295/0.733/1.543/2.884 MB`；200v200 中 online `1.064 MB`、
+offline `1.818 MB`、`3536` samples、进程 RSS 约 `1.04 GB`，online truth occurrence 为 `0`。
+该单 seed 实测关闭去重存储的容量门，但不代表 900-episode 正式数据集、训练吞吐或模型性能。
+
+`stage_active_vision_episode_record()` 逐行写入并拒绝 truth/actor/object identity；
 `stage_active_vision_offline_labels()` 必须在 episode 关闭后，以完全匹配的 `sample_key +
-observation_key` 写独立 evaluator 文件。reward、outcome、counterfactual 和 causal label 不会复制回
-snapshot。reward 固定在 `[-1,1]`；缺少离线 outcome 时 `reward_available=false/value=null`，不能用
-`0` 补位；causal label 还要求 factual outcome 与 counterfactual 同时可用。
+observation_key` 写独立 evaluator 文件。offline staging 先流式校验 online SHA、episode/source
+identity、truth-free 边界、对象 key、引用、完整 sample 合同及 join keys，只保留一个当前 snapshot
+和小型索引，不再调用完整 record loader。reward、outcome、counterfactual 和 causal label 不会
+复制回 snapshot。reward 固定在 `[-1,1]`；缺少离线 outcome 时
+`reward_available=false/value=null`，不能用 `0` 补位；causal label 还要求 factual outcome 与
+counterfactual 同时可用。
+
+`finalize_active_vision_episode_dataset()` 的 staged 与最终审计均逐 episode 调用
+`_read_episode_record_stream(..., materialize=False)`，不再调用全量 dataset loader 或保留跨 episode
+record。公共 `load_active_vision_episode_dataset_lazy()` 返回
+`LazyActiveVisionEpisodeDataset`：`iter_episodes()`、`iter_behavior_cloning_episodes()` 和
+`iter_ppo_episodes()` 仅在迭代推进时物化当前 episode；其中 BC 不读取 offline label，PPO 逐 episode
+核验 reward availability。原 `load_active_vision_episode_dataset()` 保留为小数据兼容全量路径。
 
 `finalize_active_vision_episode_dataset()` 保持完整 `(scenario_version, seed)` group 不可分，并先以
 唯一数值 seed 做确定性分配：共享同一 seed 的所有 scenario/scale group 必须原子进入同一
@@ -41,19 +70,31 @@ identity、键连接、奖励边界和中心 ID 引用。未知中心引用、�
 `LoadedActiveVisionEpisodeDataset.behavior_cloning_episodes()` 只加载规则示范，不接触 evaluator
 label；`ppo_episodes()` 只加载 effective action，并要求每个样本都有有界离线 reward，否则失败
 关闭。旧 `ActiveVisionTransition.reward` 的 unavailable 表达已从默认 `0.0` 改为 `None`。split
-持久化语义变化将学习 dataset 升为 `d5.active-vision-dataset.v2`、episode dataset 升为
-`d5.active-vision-episode-dataset.v2`，绑定它的模型 bundle 升为
-`d5.active-vision-model-bundle.v3`；record/sample/snapshot/action 内容 schema 保持 v1。旧数据集
-和 bundle 不会被新 loader 静默接纳；没有正式 admission report 时仍不能 assist。
+seed split 的学习 dataset 保持 `d5.active-vision-dataset.v2`；新存储将 episode dataset 升为
+`d5.active-vision-episode-dataset.v3`、descriptor/record/sample 升为 v2，绑定它的模型 bundle
+升为 `d5.active-vision-model-bundle.v4`。snapshot/action/camera-feedback/runtime-ACK/offline-label
+仍为 v1。旧 dataset/record/bundle 稳定失败关闭，不会被新 loader 静默解释；没有正式 admission
+report 时仍不能 assist。
 
-2026-07-20 验证：数据管线专项 `7 passed in 2.46s`，主动视觉合同/学习/bundle/数据组合
-`33 passed in 5.20s`，D5 全量 `385 passed in 11.43s`，接受阈值为零失败。新增 fixture 覆盖 8 个
-唯一 seed 在 2 个 scenario/scale 中复用、同 group 多 episode、反向写入的两份独立目录、三 split
-seed 交集为 0，以及 4 个 group 但仅 2 个唯一 seed 的失败关闭。测试数据全部位于 `tmp_path`，
-只构成代码和失败关闭证据；本轮没有修改 main runtime、没有运行 AirSim、没有正式数据集/
-checkpoint、没有正式训练或 20-unseen-seed 性能结果。main 后续仍需在统一 episode 结束时调用
-writer、传入真实 source Git/config identity、提供独立 evaluator outcome/counterfactual，并完成
-正式 split、训练和 paired shadow 准入。
+复核 `tracklet_dataset.py` 确认旧实现会按 `(scenario_version, seed)` 独立 shuffle，数值 seed 在
+多个 scenario/scale 复用时可能跨 split。现改为唯一 seed 的 SHA256 确定性原子分配，dataset 升为
+`d5.tracklet-dataset.v2`，tracklet bundle 升为 `d5.tracklet-model-bundle.v2` 并显式绑定 dataset
+schema；loader 复算并拒绝跨场景 seed 泄漏。
+
+本次 D5 复核补强三项失败关闭边界：dataset root 在 staging/finalize 时先正规化，故相对目录与
+绝对目录行为一致；recorded decision 强制执行 controller 的 mode/action 矩阵，所有非 assist
+effective action 必须保持同 tick 规则动作；匿名 tracklet 的 resource、camera 和 local ID 均拒绝
+truth/actor/object-like 命名。
+
+2026-07-20 最终验证：数据管线 `14 passed in 20.56s`、tracklet 管线 `14 passed`、匿名稀疏图
+`19 passed in 5.41s`、D5 全量 `396 passed in 30.02s`，接受阈值为零失败。新增 12 episode ×
+48 camera × 96 track（`576`
+samples）回归在 finalize 与独立 audit 中拦截所有完整 record/dataset loader，并确认在线流读取的
+`materialize` 始终为 false；lazy BC/PPO 测试确认 handle 创建不物化 episode，迭代每推进一次才
+加载一个 episode。既有动态数量、ACK 可选、真值分流、未知/换绑中心 ID、SHA 篡改、reward null、
+共享 seed 原子 split 和不足样本失败关闭回归均保留。D5 本轮没有修改 main/runtime；尚未执行
+900-episode 正式集峰值/吞吐、正式 BC/PPO、20-unseen-seed 性能、checkpoint 或 paired shadow
+准入。main 后续仍需以真实 source Git/config identity 和独立 outcome/counterfactual 生成正式集。
 
 ## 2026-07-20 统一三维 episode 主动视觉接线状态
 

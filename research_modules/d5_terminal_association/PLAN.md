@@ -1,14 +1,20 @@
 # D5 终端视觉配准与身份认证计划
 
-## 2026-07-20 主动视觉整 episode 数据合同
+## 2026-07-20 200v200 主动视觉容量与跨视角 seed 隔离
 
-- [x] 新增 `d5.active-vision-episode-record.v1` / `sample.v1` / camera-feedback/runtime-ACK /
-  offline-label / episode-dataset 合同；每个样本持久化 truth-free snapshot、规则示范、requested/
-  effective action、三个版本、相机反馈和可选 ACK。
+- [x] 将 active-vision online record 升为 record/sample v2：确定性 `.online.jsonl.gz` 按 SHA256 key
+  去重 snapshot/camera feedback，sample 只保存稳定引用；全部动作、版本、反馈和 ACK 字段保留。
+  `ActiveVisionEpisodeRecordV2/SampleV2` 为正式名称，V1 Python 名称仅是源码兼容别名。
 - [x] 新增 `stage_active_vision_episode_record()` 与 `stage_active_vision_offline_labels()`：在线
-  `online/*.online.json` 递归拒绝 truth/actor/object identity，evaluator reward/outcome/
+  `online/*.online.jsonl.gz` 逐行拒绝 truth/actor/object identity，evaluator reward/outcome/
   counterfactual/causal label 只存在于物理独立 `offline/*.offline.json`，并在 episode 结束后按
   `sample_key + observation_key` 精确连接。
+- [x] offline staging 改为 SHA+逐行 contract audit，只保留一个当前 snapshot 和紧凑 key/index；
+  不调用完整 record loader。校验 episode UID、source identity、对象哈希/引用、完整 sample 合同，
+  online 字节篡改以 `online_sha_mismatch` 失败关闭。
+- [x] finalize 的 staged/final audit 改为逐 episode `materialize=False`，不调用兼容全量 dataset loader，
+  不跨 episode 累积 record/sample；公共 lazy handle 提供逐 split 的 episode、BC 和 PPO iterator。
+  BC 只物化当前 online 规则示范，PPO 只物化当前 episode 并逐项核验离线 reward availability。
 - [x] reward 固定 `[-1,1]` 并带 availability/provenance；无 outcome 时 reward 为 unavailable/null，
   无 outcome+counterfactual 时 causal label 为 unavailable/null，禁止用 `0` 伪装缺失值。
 - [x] finalize/loader 保持完整 `(scenario_version, seed)` group，并把共享同一数值 seed 的所有
@@ -20,20 +26,30 @@
   finalize 后文件只读。
 - [x] loader 输出不可变对象；BC 视图只取规则示范且不加载 evaluator label，PPO 视图只取 effective
   action 并要求每个样本 reward available。`ActiveVisionTransition.reward=None` 是唯一缺失表达。
-- [x] split 语义升级为 learning dataset v2 / episode dataset v2，主动视觉 bundle 升为
-  `d5.active-vision-model-bundle.v3` 并绑定 episode dataset v2；record/sample/snapshot/action 仍为
-  v1，没有正式 admission report 时仍为 research candidate，不能 assist。
-- [x] 2026-07-20：数据管线专项 `7 passed in 2.46s`，主动视觉组合 `33 passed in 5.20s`，D5
-  全量 `385 passed in 11.43s`，接受阈值为零失败；覆盖动态数量、ACK 可选、真值分流、共享 seed
-  跨场景原子分配、确定性、三 split seed 零交集、唯一 seed/unseen 不足、reward unavailable、
-  未知/换绑中心 ID 和哈希篡改。
-- [ ] main 接线：在统一三维 episode 中累计 sample，episode 关闭后分别调用 online/offline writer，
-  传入真实 source Git/config identity，并保存 detached dataset；本轮不改 main runtime。
+- [x] active learning dataset 保持 v2；episode dataset 升 v3、descriptor/record/sample 升 v2、主动
+  视觉 bundle 升 v4。旧 v1 嵌套 record 返回稳定 unsupported-schema，snapshot/action/feedback/
+  ACK/offline-label 保持 v1；没有正式 admission report 时仍不能 assist。
+- [x] 复核并修复 tracklet split：共享数值 seed 的跨 scenario/scale group 原子分配，test seed 对
+  train/validation 完全未见；tracklet dataset/bundle 均升 v2，少于三个唯一 seed 失败关闭。
+- [x] D5 最终复核：相对 dataset root 可完成 staging/finalize/load；非 assist mode 只能落盘规则
+  effective action；resource/camera/local tracklet ID 全部拒绝 truth/actor/object-like 命名。
+- [x] 2026-07-20：16→64 camera fixture 的旧嵌套字节 `302709→4336869`，v2 去重解压
+  `59617→234721`，gzip `3995→13084`；200-camera/400-track 单 snapshot 为
+  `731412/37004` 字节（解压/gzip）。12 episode × 48 camera × 96 track 回归共 `576` samples，
+  finalize/audit 的完整 record/dataset loader 调用为 0。数据管线 `14 passed in 20.56s`、tracklet
+  `14 passed`、匿名稀疏图 `19 passed in 5.41s`、D5 全量 `396 passed in 30.02s`，接受阈值为零失败。
+- [x] main 容量复测：nominal seed 91、每档 2 s 的 5/20/50/100/200v200 总制品约
+  `0.086/0.295/0.733/1.543/2.884 MB`；200v200 online/offline 为 `1.064/1.818 MB`、`3536`
+  samples、RSS 约 `1.04 GB`、online truth=0。该结果关闭单 episode 去重容量门。
+- [ ] 正式 corpus 验收：使用真实 source Git/config identity 与独立 evaluator label 生成约
+  900 episode 数据集，实测 finalize/lazy 训练的峰值 RSS、吞吐和故障恢复。本轮没有修改
+  main/scalable runtime，也没有完成该 corpus 级压力验收。
 - [ ] 正式数据与准入：收集代表性 train/validation/test、至少 20 个完全未见 seed、真实 outcome/
   counterfactual、困难场景和 paired shadow；完成正式 BC/PPO、冻结指标门与 checkpoint 审批。
 
-本轮证据仅为代码与 `tmp_path` 单测，不是正式训练、20-seed 实验、AirSim 运行、可见率/重捕获
-收益或 assist 准入。模块内 `docs/MODULE_PRINCIPLES_CN.md`、
+本轮只关闭 D5 软件/容量合同和 split 泄漏，不关闭 nominal 200v200 正式生成验收。证据仅为用户
+提供的旧格式阻塞数据与 `tmp_path` 合成单测，不是正式训练、20-seed 实验、AirSim 运行、可见率/
+重捕获收益或 assist 准入。模块内 `docs/MODULE_PRINCIPLES_CN.md`、
 `docs/ALGORITHM_AND_IMPLEMENTATION.md`、`docs/AIRSIM_INTEGRATION_PLAN.md` 和
 `docs/EXPERIMENT_REPORT.md` 已按相同边界同步。
 

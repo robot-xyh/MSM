@@ -1,47 +1,53 @@
 # D5 实现差距审计
 
-## 2026-07-20 主动视觉整 episode 数据管线 GAP 状态
+## 2026-07-20 主动视觉整 episode 容量与流式训练 GAP 状态
 
-**D5-owned 软件缺口已关闭：** 新增 `active_vision_episode_dataset.py`，提供版本化 online episode/
-sample、camera feedback、可选 runtime ACK、独立 offline label、descriptor、manifest、writer、
-finalizer、loader 和 audit CLI/API。每个样本完整保存 truth-free `ActiveVisionSnapshotV1`、规则
-示范、requested/effective action 与 mode、plan/coalition/communication version 和反馈。合同按
-输入 camera/target/resource 数量运行，不写死 2v2、5v5 或 200v200。
+**D5-owned 软件阻塞已关闭：** `active_vision_episode_dataset.py` 的 online record v2 使用确定性
+gzip JSONL。每个 episode/cycle 的相同 snapshot 与 camera feedback 按 SHA256 key 只保存一次，
+sample 保存引用以及完整规则示范、requested/effective action、三个版本和可选 ACK；没有删字段。
+合同按输入 camera/target/resource 数量运行，不写死 2v2、5v5 或 200v200。
 
-**在线/离线隔离：** online 文件递归拒绝 truth/actor/object identity，只允许只读引用 snapshot
-中的中心 `global_track_id`。offline reward/outcome/counterfactual/causal label 在 episode 结束后按
-完全匹配的 `sample_key + observation_key` 写入独立目录；loader 不把 label 回填 snapshot。未知
-中心引用、相机对另一个中心候选的局部换绑、中心 track version/timestamp 回退均失败关闭。
+**在线/离线隔离保持：** online writer/stream audit 递归拒绝 truth/actor/object identity，只允许
+中心 `global_track_id` 只读引用。offline reward/outcome/counterfactual/causal label 在 episode
+结束后按 `sample_key + observation_key` 写入独立目录。offline staging 核验文件 SHA、episode UID、
+source identity、对象 key/引用、完整 sample 合同和 join key，使用 `materialize=False`，不重建完整
+record。未知中心引用、局部换绑、中心版本/时间回退和篡改均失败关闭。
 
-**split、availability 与制品审计：** 完整 `(scenario_version, seed)` group 保持不可分；唯一数值
-seed 是跨 scenario/scale 的原子分配单元，test seed 不会出现在 train/validation。split 数量按唯一
-seed 计算；少于三个唯一 seed 或少于声明的 unseen test seed 时拒绝 finalize，正式默认 unseen 门
-为 20。reward 范围固定 `[-1,1]`；无 outcome 时必须 unavailable/null，不能用 0 补位；causal label
-需要 outcome 和 counterfactual 同时可用。manifest 固化共享 seed 原子策略、schema/version、
-generation config、逐文件/split/training-set SHA256、source Git/config identity 和 availability；
-`SHA256SUMS` 精确覆盖数据目录，finalize 后文件只读。BC loader 只取规则示范，PPO loader 在任一
-reward unavailable 时拒绝。
+**跨 episode 内存阻塞已关闭：** finalizer 的 staged 与最终审计都逐 episode 调用流式 reader，
+不调用兼容全量 dataset loader，也不跨 episode 累积 record/sample。新增
+`load_active_vision_episode_dataset_lazy()` 与 `LazyActiveVisionEpisodeDataset`；BC/PPO/完整 episode
+均可按 split 迭代，每次只物化当前 episode。BC 不读取 offline label，PPO 每 episode 对任一 reward
+unavailable/null 立即拒绝。旧 `load_active_vision_episode_dataset()` 仅保留小数据兼容。
 
-**schema、bundle 与准入：** split assignment 和哈希语义不向后兼容，因此 learning dataset 与
-episode dataset 升为 v2，主动视觉 bundle 升为 `d5.active-vision-model-bundle.v3` 并声明 episode
-dataset v2；record/sample/snapshot/action 内容 schema 保持 v1。现有 model fingerprint、dataset
-manifest/split/training-set SHA 和 paired admission 绑定保持；旧 schema 失败关闭，没有正式
-admission report 的 bundle 仍不能 assist。
+**split、availability 与制品审计：** 完整 `(scenario_version, seed)` group 保持不可分，同一数值
+seed 的所有 scenario/scale group 原子分配；test seed 对 train/validation 完全未见。少于三个唯一
+seed 或少于声明 unseen test seed 失败关闭，正式默认门为 20。manifest、`SHA256SUMS`、source
+Git/config、split/training-set SHA、只读与 reward null 语义均未削弱。复核 `tracklet_dataset.py` 后
+同样改为共享 seed 原子 split，tracklet dataset/bundle 均为 v2。
 
-**验证与证据边界：** 2026-07-20 数据管线 `7 passed in 2.46s`，主动视觉组合
-`33 passed in 5.20s`，D5 全量 `385 passed in 11.43s`，接受阈值为零失败。覆盖动态规模、ACK
-present/absent、真值物理分流、8 个唯一 seed 跨 2 个场景原子 split、同 group 多 episode、两份
-目录确定性、三 split seed 交集为 0、唯一 seed/unseen 不足、reward unavailable/null、offline
-join、未知/换绑中心 ID、只读制品和 SHA 篡改。全部制品为 `tmp_path` 合成 fixture；未运行
-AirSim、未正式训练、没有 20 个未见 seed 的正式结果或性能收益。
+**schema 与 bundle：** learning dataset 保持 v2；去重落盘不兼容旧文件，故 episode dataset 为
+v3、descriptor/record/sample 为 v2，主动视觉 bundle 为 v4 并绑定 episode dataset v3。
+snapshot/action/feedback/ACK/offline-label 保持 v1；V1 Python record/sample 名称只是源码兼容别名，
+旧 v1 文件稳定失败关闭。lazy/final-audit 只改变读取策略，不改变磁盘合同，因此无需再升版。
 
-**剩余跨模块/数据 GAP：** main 尚需在统一三维 episode 中累计并关闭 record、随后分流写入
-online/offline 文件，传入真实 source Git commit/dirty 与 source config SHA，并保存正式 detached
-dataset。正式 BC/PPO 还需要代表性 train/validation/test、至少 20 个完全未见 seed、真实 outcome/
-counterfactual、困难场景、paired shadow 非退化和 checkpoint 审批。D5 本轮未修改 main runtime。
+**最终复核修正：** dataset root 正规化后相对目录不再被包含检查误拒；record/sample 加入
+controller mode/action 状态矩阵，任何非 assist effective action 都必须是规则动作；匿名 tracklet
+的 resource、camera、local ID 均执行 truth-like guard。三项均是既有安全声明的缺陷修复，不改变
+GAP 分级、磁盘 schema 或默认规则主线。
 
-模块 README/PLAN、三份 D5 review/GAP 及模块内四份 `docs/*` 已同步；同步明确这是数据管线代码
-证据，不是 AirSim、正式训练、20-seed 或 assist 准入结果。
+**实测与回归：** main 的 nominal seed 91、每档 2 s 新格式总制品为
+5/20/50/100/200v200 `0.086/0.295/0.733/1.543/2.884 MB`；200v200 online/offline
+`1.064/1.818 MB`、`3536` samples、RSS约 `1.04 GB`、online truth=0，单 episode 去重容量门通过。
+D5 数据管线 `14 passed in 20.56s`，匿名稀疏图 `19 passed in 5.41s`，全量
+`396 passed in 30.02s`。12 episode × 48 camera ×
+96 track（576 samples）回归把完整 record、staged materialize 和全量 dataset loader 设为一调用即
+失败，finalize/audit 全程只出现 `materialize=False`；lazy iterator 创建时 episode load=0，之后每次
+推进只加载一个。
+
+**剩余数据/准入 GAP：** 尚未用约 900 episode 正式 corpus 实测 finalize/lazy 训练峰值 RSS、吞吐
+与恢复；也没有正式 BC/PPO、至少 20 个未见 seed 的性能、paired shadow、checkpoint 或 assist
+准入。main 仍需提供实际 source Git/config identity、独立 outcome/counterfactual 和代表性困难场景。
+D5 本轮未修改 main/runtime；模块 README/PLAN、三份 D5 review/GAP 及模块内四份 `docs/*` 已同步。
 
 ## 2026-07-20 主动视觉 RL 与量测标签连接 GAP 状态
 

@@ -8,19 +8,28 @@
 
 新增 `active_vision_episode_dataset.py`，实现以下版本化合同和 API：
 
-- `ActiveVisionEpisodeRecordV1` / `ActiveVisionEpisodeSampleV1`：truth-free 整 episode 与逐决策记录；
+- `ActiveVisionEpisodeRecordV2` / `ActiveVisionEpisodeSampleV2`：truth-free 整 episode 与逐决策记录；
 - `ActiveVisionCameraFeedbackV1` / `ActiveVisionRuntimeAckV1`：执行反馈与可选 ACK；
 - `ActiveVisionOfflineLabelV1`：独立 evaluator reward/outcome/counterfactual/causal label；
 - `stage_active_vision_episode_record()` / `stage_active_vision_offline_labels()`：episode-end 双流写入；
-- `finalize_active_vision_episode_dataset()` / `load_active_vision_episode_dataset()` / audit CLI：
-  完整 group split、不可变制品和失败关闭加载；
-- `behavior_cloning_episodes()` / `ppo_episodes()`：规则示范 BC 与 reward-gated PPO 视图。
+- `audit_active_vision_episode_record()` / `audit_active_vision_episode_dataset()`：不保留完整 record 或
+  dataset 的逐 episode 流式审计；
+- `load_active_vision_episode_dataset_lazy()`：返回 `LazyActiveVisionEpisodeDataset`，提供逐 split 的
+  `iter_episodes()`、`iter_behavior_cloning_episodes()` 和 `iter_ppo_episodes()`；
+- `load_active_vision_episode_dataset()`：为既有小数据调用保留的显式全量物化兼容入口。
 
-online JSON 严格逐字段编码 `ActiveVisionSnapshotV1`、rule/requested/effective action、三个版本、
-相机反馈和可选 ACK，不接受任意 metadata。离线 JSON 仅通过 `sample_key + observation_key` 连接。
-构造和加载均验证 action camera、当前 assignment、中心候选集合、版本单调性及中心 track version/
-measurement timestamp 不回退；未知中心引用或局部换绑给出稳定失败码。camera/target/resource
-列表均按实际长度处理。
+online record v2 使用确定性 `.online.jsonl.gz`。header 固化 episode/source identity；camera feedback
+按内容 SHA256 key 写一次；每个唯一 snapshot 写一次，随后写引用 snapshot/feedback key 的 sample；
+footer 固化对象数、样本数与 sample-index SHA。sample 的 rule/requested/effective action、三个版本、
+可选 ACK 均完整保留，不接受任意 metadata。构造、流式审计与物化加载都验证 action camera、当前
+assignment、中心候选、对象 key/引用、版本单调性和中心 track version/timestamp 不回退；未知中心
+引用或局部换绑给出稳定失败码。camera/target/resource 列表均按实际长度处理。
+
+offline JSON 仅通过 `sample_key + observation_key` 连接。offline staging 先验证 descriptor 中的
+online SHA、episode UID、source identity、sample/object count，再以
+`_read_episode_record_stream(..., materialize=False)` 完成 truth-free、对象引用和 sample 合同审计，
+不重新构造完整 online record。finalize 的 staged 审计和写完 `manifest.json + SHA256SUMS` 后的最终
+审计使用同一路径；内存中只保留当前 episode 的紧凑在线索引和离线标签，不累计跨 episode DTO。
 
 reward 合同固定 `[-1,1]`。`reward_available=true` 要求离线 outcome 与 provenance；否则 value 和
 provenance 必须为 null。counterfactual 独立带 availability；causal label 只有 outcome 和
@@ -35,18 +44,38 @@ SHA256 确定性顺序计算 split；一个 seed 下所有 scenario/scale group 
 SHA、source Git commit/dirty、source config SHA 与 availability。完成后所有文件去除写权限；
 loader 要求 checksum 集合与实际文件集合完全一致，复算 split，并拒绝 group 或 seed 泄漏。
 
+lazy loader 的构造阶段仍完整验证 artifact 集合、逐文件 SHA、只读位、schema、source identity、
+online/offline join、availability 和 seed split，但不保存 episode record。BC iterator 每次只物化
+一个 online record，完全不读 evaluator label；PPO iterator 每次只物化一个 record 及对应 offline
+labels，任一 reward unavailable/null 立即失败关闭。调用方若把 iterator 全部转成 tuple/list，内存
+累积由调用方显式承担；正式大数据训练必须直接消费 iterator。
+
+复核修正后，staging/finalize 先把 dataset root 正规化为绝对路径，避免合法相对目录被包含检查
+误判。`ActiveVisionEpisodeSampleV2` 同时验证 controller mode/action 状态矩阵：disabled/shadow 及
+assist fallback 的 effective action 必须等于规则示范，只有无 fallback 的有效 assist 才能执行
+requested action。`CameraLocalTracklet` 对 resource、camera、local 三层 ID 使用同一 truth-like guard。
+
 该 split 变化会改变持久化 assignment 与哈希，故 `active_vision_learning.py` 的 dataset schema
 升为 `d5.active-vision-dataset.v2`，episode dataset 升为
-`d5.active-vision-episode-dataset.v2`，`active_vision_bundle.py` 的 bundle schema 升为
-`d5.active-vision-model-bundle.v3` 并绑定 episode dataset v2。record/sample/snapshot/action 内容
-schema 不变。已有 model fingerprint、weights-only、dataset/split/training-set SHA 和 paired
-admission 检查不变；旧 schema 失败关闭，版本升级不等于模型准入。
+`d5.active-vision-episode-dataset.v3`，record/descriptor/sample 升为 v2；
+`active_vision_bundle.py` 的 bundle schema 升为 `d5.active-vision-model-bundle.v4` 并绑定 episode
+dataset v3。snapshot/action/feedback/ACK/offline-label 仍为 v1。V1 Python record/sample 名称只是
+源码兼容别名，旧 v1 嵌套文件稳定返回 unsupported-schema。新增 lazy API 不改变磁盘语义，因此
+不再升级 v3/v4。已有 model fingerprint、weights-only、dataset/split/training-set SHA 和 paired
+admission 检查不变；版本升级不等于模型准入。
 
-2026-07-20 验证为数据管线 `7 passed in 2.46s`、主动视觉组合 `33 passed in 5.20s`、D5 全量
-`385 passed in 11.43s`。新增测试使用 8 个唯一 seed、2 个 scenario/scale、17 个 episode，并在
-两份反向写入目录得到相同 assignment/split/training hashes；train/validation/test seed 两两交集
-为 0，4 个 group 但仅 2 个唯一 seed 时失败关闭。这是合成 `tmp_path` 下的代码证据；没有 main
-writer 接线、正式数据、正式 BC/PPO、20 个未见 seed 的性能结果、AirSim 或 checkpoint。
+合成容量 fixture 的 16→64 camera 结果为旧嵌套 `302709→4336869` 字节、v2 去重解压
+`59617→234721`、gzip `3995→13084`；200-camera/400-track 单 snapshot 为
+`731412/37004` 字节（解压/gzip）。main 的 nominal seed 91、2 s 新格式复测中，200v200 总制品
+`2.884 MB`，online/offline `1.064/1.818 MB`、`3536` samples、RSS 约 `1.04 GB`、online truth=0。
+
+2026-07-20 验证为数据管线 `14 passed in 20.56s`、匿名稀疏图 `19 passed in 5.41s`、D5 全量
+`396 passed in 30.02s`。新增
+12 episode × 48 camera × 96 track、共 `576` samples 的回归同时 monkeypatch 完整 record、全量
+dataset 和 staged materialize loader，finalize/audit 全程只观察到 `materialize=False`；lazy BC/PPO
+在 handle 创建时加载 episode 数为 0，每次 `next()` 只增加 1。该证据关闭 D5-owned 容量/加载软件
+阻塞，但尚未执行 900-episode 正式 corpus、正式 BC/PPO、20 个未见 seed 的性能、AirSim 或模型
+准入。本轮没有修改 main/runtime。
 
 ## 2026-07-20 主动视觉 BC/PPO 与安全执行实现
 

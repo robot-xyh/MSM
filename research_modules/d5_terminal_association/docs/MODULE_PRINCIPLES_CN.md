@@ -6,10 +6,16 @@
 
 ## 2026-07-20 主动视觉 episode 数据最小权限原则
 
-整 episode 数据记录仍必须遵守在线最小权限。`ActiveVisionEpisodeSampleV1` 可以保存 snapshot、
-规则示范、requested/effective camera action、plan/coalition/communication version、相机反馈和
-runtime ACK，但在线文件不能出现 truth、actor、object identity。所有目标引用都必须是同一
-snapshot 内中心提供的 `global_track_id`；D5 不允许用本地 ID 生成、替换或换绑中心 ID。
+整 episode 数据记录仍必须遵守在线最小权限。正式 `ActiveVisionEpisodeSampleV2` 保存完整
+snapshot、规则示范、requested/effective camera action、plan/coalition/communication version、
+相机反馈和 runtime ACK，但在线文件不能出现 truth、actor、object identity。所有目标引用都必须
+是同一 snapshot 内中心提供的 `global_track_id`；D5 不允许用本地 ID 生成、替换或换绑中心 ID。
+V1 Python 类名仅为源码兼容别名，不表示旧 v1 嵌套文件可读。
+
+同一决策周期的 snapshot 与 camera feedback 必须按 SHA256 对象 key 在 episode 内只保存一次，
+sample 只保存稳定引用。确定性 gzip JSONL 的 header/object/sample/footer 逐行接受 truth-free 与引用
+审计，不得通过删字段降低证据质量。online record v2、sample v2 和 descriptor v2 构成 episode
+dataset v3；旧文件必须稳定失败关闭。
 
 在线 observation 与离线 evaluator 结果必须物理分离。episode 先关闭 truth-free online record，
 再由 evaluator 通过稳定且一一匹配的 `sample_key + observation_key` 写 offline label。reward、
@@ -26,14 +32,27 @@ SHA256、split/training-set SHA、source Git/config identity 和 label availabil
 
 BC 只能从 online record 提取规则示范，不读取 evaluator label。PPO 只能在每个 selected sample
 都有有界离线 reward 时加载；缺一项即拒绝，不能补 0。split 持久化语义升级为 learning dataset
-v2 / episode dataset v2，模型 bundle v3 绑定 episode dataset v2；内容级 record/sample/snapshot/
-action schema 保持 v1，且仍需正式 paired shadow admission 才能 assist。
+v2；episode dataset 为 v3，模型 bundle v4 绑定 episode dataset v3。snapshot/action/feedback/ACK/
+offline-label 保持 v1，且仍需正式 paired shadow admission 才能 assist。跨视角 tracklet 数据集和
+bundle 同步升为 v2，同一数值 seed 的所有 scenario/scale graph 必须进入同一 split。
 
-2026-07-20 代码证据为数据管线 `7 passed in 2.46s`、主动视觉组合 `33 passed in 5.20s`、D5
-全量 `385 passed in 11.43s`。新增覆盖 8 个唯一 seed 跨 2 个 scenario/scale 复用、同 group 多
-episode、反向输入确定性、三 split seed 交集为 0，以及仅 2 个唯一 seed 时拒绝。全部样本和制品
-均为 `tmp_path` 合成 fixture；没有 main runtime 改动、AirSim 运行、正式训练、20-unseen-seed
-性能或模型准入结论。
+finalize 和 dataset audit 必须逐 episode 流式审计，不能调用兼容全量 loader 或跨 episode 保留
+record/sample。`LazyActiveVisionEpisodeDataset` 只在 iterator 前进时物化当前 episode；BC iterator
+不读取 offline label，PPO iterator 逐 episode 检查 reward availability。兼容全量 loader 只适用于
+明确有界的小数据集。
+
+落盘证据必须忠实反映 controller 的规则回退：所有非 assist effective mode 的 effective action
+必须与同 tick rule action 完全一致；assist 只有在 requested/effective action 一致且无 fallback 时
+成立。数据集相对路径与绝对路径必须具有相同行为。匿名节点命名空间的 resource、camera 和 local
+track ID 都不得携带 truth/actor/object-like 标识。
+
+2026-07-20 main 容量实测为 nominal seed 91、每档 2 s：5/20/50/100/200v200 总制品约
+`0.086/0.295/0.733/1.543/2.884 MB`；200v200 online/offline `1.064/1.818 MB`、`3536` samples、
+RSS 约 `1.04 GB`、online truth=0，单 episode 容量门通过。D5 代码证据为数据管线
+`14 passed in 20.56s`、匿名稀疏图 `19 passed in 5.41s`、全量 `396 passed in 30.02s`；12 episode ×
+48 camera × 96 track 回归确认
+finalize/audit 的物化调用为 0。尚未运行 900-episode 正式集、正式训练、20-unseen-seed 性能或
+模型准入；本轮未修改 main/runtime。
 
 ## 2026-07-20 主动视觉最小权限与安全回退原则
 

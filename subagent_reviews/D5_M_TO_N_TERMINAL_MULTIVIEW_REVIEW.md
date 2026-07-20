@@ -1,27 +1,32 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
-## 2026-07-20 M 对 N 主动视觉整 episode 数据复核
+## 2026-07-20 M 对 N 主动视觉容量与流式数据复核
 
-新增 episode dataset 合同按实际 camera、target 和 resource 数组保存每个决策样本，不假设 2v2、
-5v5 或 200v200。online record 包含 truth-free snapshot、规则示范、requested/effective action、
-三个版本、相机反馈和可选 ACK；offline reward/outcome/counterfactual/causal label 只在 episode
-结束后通过 `sample_key + observation_key` 连接，物理文件与 online record 分离。
+episode dataset 按实际 camera、target 和 resource 数组工作，不假设 2v2、5v5 或 200v200。
+record v2 将同一 cycle 的 snapshot/camera feedback 按 SHA256 key 在 gzip JSONL 中只写一次，sample
+保存稳定引用以及规则示范、requested/effective action、三个版本和可选 ACK，不删减证据。offline
+reward/outcome/counterfactual/causal label 仍只在 episode 结束后通过
+`sample_key + observation_key` 连接，与 online 文件物理分离。
 
-复核确认 loader 会拒绝 truth/actor/object identity、未知中心 `global_track_id`、相机局部换绑、
-版本回退、非完整 group split、共享 seed 跨 scenario/scale 泄漏、唯一 seed/unseen seed 不足、
-SHA/schema/source identity/label join 错误。同一数值 seed 下的全部 group 原子进入同一 split，
-test seed 对 train/validation 未见。reward 只允许 `[-1,1]`；缺 outcome 使用 unavailable/null 而非
-0。BC 只加载规则示范；PPO 对任一缺 reward 样本失败关闭。manifest 与 `SHA256SUMS` 固化共享
-seed 原子策略、逐文件、split、training-set、Git/config identity；finalize 后制品只读。split 语义
-使用 learning/episode dataset v2，bundle v3 绑定 episode dataset v2，仍须正式 paired admission
-才可 assist；内容级 record/sample/snapshot/action 保持 v1。
+复核确认流式/物化 loader 都拒绝 truth/actor/object identity、未知中心 `global_track_id`、局部换绑、
+版本回退、SHA/schema/source identity/label join 错误。finalize 和 audit 逐 episode 使用
+`materialize=False`，不再跨 episode 累积 record。lazy dataset 的 episode/BC/PPO iterator 每次只
+物化当前 episode；BC 不读 offline label，PPO 对 reward unavailable/null 失败关闭。
 
-2026-07-20 数据管线专项 `7 passed in 2.46s`、主动视觉组合 `33 passed in 5.20s`、D5 全量
-`385 passed in 11.43s`。新增覆盖 8 个唯一 seed 在 2 个场景复用、同 group 多 episode、反向输入
-确定性、三 split seed 交集为 0 和唯一 seed 不足拒绝。这是动态规模合同和审计失败关闭证据；
-全部数据均为 `tmp_path` 合成 fixture。本轮没有 main runtime 改动、AirSim 运行、正式 BC/PPO、
-20 个未见 seed 的正式 test、性能结果或模型准入。main 后续需在统一 episode 结束时接入双 writer
-并提供真实 source identity 及独立 outcome/counterfactual。
+完整 `(scenario_version, seed)` group 及共享数值 seed 跨 scenario/scale 原子进入同一 split，test
+seed 对 train/validation 未见；唯一 seed 或 unseen seed 不足时拒绝。active learning dataset v2、
+episode dataset v3、record/descriptor/sample v2、bundle v4；tracklet dataset/bundle 也为 v2，并
+执行同一共享 seed 隔离。snapshot/action/feedback/ACK/offline-label 保持 v1；旧嵌套文件失败关闭。
+
+最终复核确认相对 dataset root 可用，recorded mode/action 不能把模型动作伪装成规则 fallback，且
+resource/camera/local tracklet ID 都拒绝 truth-like 命名；这些修正不改变 M 对 N 数量语义或 schema。
+
+main nominal seed 91、2 s 的 5/20/50/100/200v200 总制品约
+`0.086/0.295/0.733/1.543/2.884 MB`；200v200 为 `3536` samples、online/offline
+`1.064/1.818 MB`、RSS约 `1.04 GB`、online truth=0。D5 数据管线 `14 passed in 20.56s`，全量
+`396 passed in 30.02s`；12 episode × 48 camera × 96 track 回归证明 finalize/audit 全量物化调用
+为 0。这关闭 M 对 N 数据软件和单 episode 容量阻塞，不等于 900-episode corpus、正式 BC/PPO、
+20-unseen-seed 性能或模型准入；D5 本轮未修改 main/runtime。
 
 ## 2026-07-20 M 对 N 主动视觉调度研究接口复核
 

@@ -1,36 +1,42 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
-## 2026-07-20 主动视觉整 episode 数据合同审查
+## 2026-07-20 主动视觉整 episode 容量与 lazy 数据合同审查
 
-审查接受 `active_vision_episode_dataset.py` 为 D5-owned 正式数据合同实现。online episode/sample
-逐字段持久化 truth-free snapshot、规则示范、requested/effective action 与 mode、plan/coalition/
-communication version、相机反馈和可选 runtime ACK；数量由输入 camera/target/resource 决定。
-source identity 固化完整 Git object ID、dirty 标志和外部 source config SHA256。
+审查接受 record v2 的确定性 gzip JSONL 为 D5 正式 online 存储。每个唯一 snapshot/camera
+feedback 按 SHA256 key 只写一次，sample 保存稳定引用以及完整规则示范、requested/effective
+action/mode、plan/coalition/communication version 和可选 ACK；数量由输入 camera/target/resource
+决定。source identity 继续固化 Git object ID、dirty 标志和外部 config SHA256。
 
-在线/离线隔离审查通过：online writer 和 loader 都递归拒绝 truth/actor/object identity；offline
-reward/outcome/counterfactual/causal label 只能在 episode 关闭后写入独立文件，并以完全匹配的
-`sample_key + observation_key` 连接。snapshot 不接收 joined label。loader 另检查全部 ID 引用均
-来自同一中心 snapshot，拒绝未知引用、相机局部换绑及中心版本/量测时间回退。
+在线/离线隔离审查通过：writer、stream audit 和 materialized loader 均拒绝 truth/actor/object
+identity；offline label 只在 episode 关闭后按 `sample_key + observation_key` 写独立文件，永不回填
+snapshot。offline staging 与 finalize 核对 online 文件 SHA、episode/source identity、对象 key/引用、
+完整 sample 合同、中心 ID 只读引用和 join 完整性；未知引用、局部换绑、版本/时间回退和篡改均
+失败关闭。
 
-数据审查通过：finalizer 保持完整 `(scenario_version, seed)` group，并以唯一数值 seed 做跨场景
-原子分配；共享 seed 的 scenario/scale group 只能处于同一 split，test seed 与 train/validation
-两两隔离。少于 3 个唯一 seed 或 test 少于声明 unseen seed 时失败关闭，正式默认门为 20。reward
-有界 `[-1,1]`；无 outcome 必须 unavailable/null，causal label 还要求 counterfactual，禁止缺失值
-补 0。manifest、descriptor、`SHA256SUMS` 固化原子策略、schema/version、逐文件/split/training-set
-SHA、generation config、Git/config identity 和 availability；finalize 后文件只读且额外文件也会
-导致 audit 失败。
+跨 episode 内存审查通过：finalize 的 staged/final audit 与独立 dataset audit 均逐 episode 使用
+`materialize=False`，不调用 `load_active_vision_episode_dataset()`，也不保留整个 dataset 的 record。
+新增 `load_active_vision_episode_dataset_lazy()`；其 `iter_episodes()`、BC 和 PPO iterator 每推进一次
+仅物化当前 episode。BC 不读 offline label；PPO 对任一 reward unavailable/null 立即失败关闭。
+兼容全量 loader 仍可用于小数据，但不作为正式 900-episode 训练入口。
 
-训练视图审查通过：BC 只读取规则示范且不消费 evaluator label；PPO 使用 effective action，并在
-任一样本 reward unavailable 时拒绝。split 持久化语义变化已将 learning dataset/episode dataset
-升为 v2，bundle 升为 v3 并声明 episode dataset v2；record/sample/snapshot/action 保持 v1，原
-正式 paired admission 门不变，新 schema 与哈希不能自行授予 assist。
+split/制品审查保持：完整 `(scenario_version, seed)` group 不可分，同一数值 seed 跨 scenario/scale
+原子分配，test 对 train/validation 完全未见；唯一 seed 或声明 unseen seed 不足即拒绝。manifest、
+逐文件/split/training-set SHA、source identity、只读、额外文件拒绝和 reward `[-1,1]`/null 语义均
+未削弱。tracklet graph 同样修复共享 seed 泄漏，dataset/bundle 为 v2。
 
-2026-07-20 数据管线 `7 passed in 2.46s`，主动视觉组合 `33 passed in 5.20s`，D5 全量
-`385 passed in 11.43s`，零失败。新增测试覆盖 8 个唯一 seed 跨 2 个 scenario/scale 复用、同 group
-多 episode、反向输入确定性、三 split seed 交集为 0、4 个 group 但仅 2 个唯一 seed 的拒绝。审查
-结论只关闭 writer/loader/audit 软件 GAP。测试均为 `tmp_path` 合成 fixture；没有 AirSim、正式
-数据、正式训练、20-unseen-seed 性能结果或 checkpoint。main 仍需完成统一 episode 的 sample
-累计、episode-end 双文件写入和真实 source/outcome 数据接线。
+去重语义对应 active episode dataset v3、descriptor/record/sample v2 和 bundle v4；learning
+dataset 保持 v2，snapshot/action/feedback/ACK/offline-label 保持 v1。旧嵌套文件不兼容；V1 Python
+名称仅为源码别名。lazy 读取变化不改变磁盘语义，因此不再升版。
+
+最终复核补强了既有合同而未升版：相对 dataset root 可正常 staging/finalize/load；非 assist
+effective mode 必须保持规则动作；resource/camera/local tracklet ID 使用同一 truth-like guard。
+
+main nominal seed 91、每档 2 s 复测的 5/20/50/100/200v200 总制品约
+`0.086/0.295/0.733/1.543/2.884 MB`；200v200 online/offline `1.064/1.818 MB`、`3536`
+samples、RSS约 `1.04 GB`、online truth=0。D5 数据管线 `14 passed in 20.56s`，全量
+`396 passed in 30.02s`；12 episode/576 sample 高基数回归证明 finalize/audit 完整物化调用为 0，
+lazy iterator 按 episode 推进。审查只关闭 D5-owned 软件/单 episode 容量阻塞；尚无 900-episode
+正式 corpus 峰值、正式训练、20-unseen-seed 性能、checkpoint 或 assist 准入。D5 未修改 main。
 
 ## 2026-07-20 主动视觉研究路径与 source-observation 审查
 

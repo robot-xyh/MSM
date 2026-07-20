@@ -13,7 +13,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import random
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -27,7 +26,7 @@ from .sparse_tracklet_graph import (
 from .tracklet_gnn import OfflineTrackletTruthLabel
 
 
-DATASET_SCHEMA_VERSION = "d5.tracklet-dataset.v1"
+DATASET_SCHEMA_VERSION = "d5.tracklet-dataset.v2"
 EPISODE_DESCRIPTOR_SCHEMA_VERSION = "d5.tracklet-episode.v1"
 GRAPH_SCHEMA_VERSION = "d5.sparse-tracklet-graph.v1"
 EVALUATOR_LABEL_SCHEMA_VERSION = "d5.tracklet-evaluator-labels.v1"
@@ -395,7 +394,7 @@ def finalize_tracklet_dataset(
     validation_fraction: float = 0.2,
     test_fraction: float = 0.2,
 ) -> Mapping[str, Any]:
-    """Assign whole ``(scenario_version, seed)`` groups and write manifest."""
+    """Assign whole groups and shared seed values, then write the manifest."""
 
     root = Path(dataset_dir)
     descriptors = tuple(
@@ -456,6 +455,7 @@ def finalize_tracklet_dataset(
         "split_policy": {
             "unit": "whole_episode_grouped_by_scenario_version_and_seed",
             "edge_level_random_split": False,
+            "shared_seed_values_atomic_across_scenarios": True,
             "split_seed": int(split_seed),
             "validation_fraction": float(validation_fraction),
             "test_fraction": float(test_fraction),
@@ -501,27 +501,33 @@ def split_episode_groups(
             raise ValueError(f"duplicate episode_uid: {episode_uid}")
         seen_episode_uids.add(episode_uid)
         groups.setdefault((scenario, seed), []).append(episode_uid)
-    if len(groups) < 3:
-        raise ValueError("at least three scenario_version+seed groups are required")
+    seed_values = sorted({seed for _, seed in groups})
+    if len(seed_values) < 3:
+        raise ValueError("at least three unique seed values are required")
 
-    ordered_groups = sorted(groups)
-    rng = random.Random(int(split_seed))
-    rng.shuffle(ordered_groups)
-    group_count = len(ordered_groups)
-    validation_count = max(1, int(round(group_count * validation_fraction)))
-    test_count = max(1, int(round(group_count * test_fraction)))
-    while validation_count + test_count >= group_count:
+    ordered_seeds = sorted(
+        seed_values,
+        key=lambda seed: (
+            hashlib.sha256(f"{int(split_seed)}\0{seed}".encode("utf-8")).hexdigest(),
+            seed,
+        ),
+    )
+    seed_count = len(ordered_seeds)
+    validation_count = max(1, int(round(seed_count * validation_fraction)))
+    test_count = max(1, int(round(seed_count * test_fraction)))
+    while validation_count + test_count >= seed_count:
         if validation_count >= test_count and validation_count > 1:
             validation_count -= 1
         elif test_count > 1:
             test_count -= 1
         else:
             raise ValueError("split fractions leave no training group")
-    validation_groups = set(ordered_groups[:validation_count])
-    test_groups = set(ordered_groups[validation_count : validation_count + test_count])
+    validation_seeds = set(ordered_seeds[:validation_count])
+    test_seeds = set(ordered_seeds[validation_count : validation_count + test_count])
     assignments: dict[str, str] = {}
     for group, episode_uids in groups.items():
-        split = "validation" if group in validation_groups else "test" if group in test_groups else "train"
+        seed = group[1]
+        split = "validation" if seed in validation_seeds else "test" if seed in test_seeds else "train"
         for episode_uid in episode_uids:
             assignments[episode_uid] = split
     return MappingProxyType(assignments)
@@ -564,6 +570,18 @@ def load_tracklet_dataset(
     if not isinstance(split_policy, Mapping):
         raise TrackletDatasetValidationError("split_policy_missing", "dataset split policy is missing")
     _expect_equal(
+        set(split_policy),
+        {
+            "unit",
+            "edge_level_random_split",
+            "shared_seed_values_atomic_across_scenarios",
+            "split_seed",
+            "validation_fraction",
+            "test_fraction",
+        },
+        "split_policy_fields_mismatch",
+    )
+    _expect_equal(
         split_policy.get("unit"),
         "whole_episode_grouped_by_scenario_version_and_seed",
         "split_unit_mismatch",
@@ -572,6 +590,11 @@ def load_tracklet_dataset(
         split_policy.get("edge_level_random_split"),
         False,
         "edge_random_split_forbidden",
+    )
+    _expect_equal(
+        split_policy.get("shared_seed_values_atomic_across_scenarios"),
+        True,
+        "shared_seed_split_policy_mismatch",
     )
     try:
         split_seed = int(split_policy["split_seed"])
@@ -587,6 +610,7 @@ def load_tracklet_dataset(
     )
     loaded: list[LoadedTrackletEpisode] = []
     groups_to_split: dict[tuple[str, int], str] = {}
+    seeds_to_split: dict[int, str] = {}
     seen_uids: set[str] = set()
     for descriptor in raw_episodes:
         if not isinstance(descriptor, Mapping):
@@ -607,6 +631,13 @@ def load_tracklet_dataset(
             raise TrackletDatasetValidationError(
                 "seed_leakage",
                 f"scenario/seed group {group} appears in multiple splits",
+            )
+        seed = group[1]
+        previous_seed_split = seeds_to_split.setdefault(seed, split)
+        if previous_seed_split != split:
+            raise TrackletDatasetValidationError(
+                "seed_leakage",
+                f"seed value {seed} appears in multiple splits",
             )
         graph_path = _safe_relative_path(root, descriptor["graph_file"])
         labels_path = _safe_relative_path(root, descriptor["labels_file"])

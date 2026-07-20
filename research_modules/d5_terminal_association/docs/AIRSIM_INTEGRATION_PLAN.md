@@ -17,13 +17,26 @@ source identity 必须来自实际 episode：完整 Git commit、dirty 状态和
 SHA256。收齐数据后由 `finalize_active_vision_episode_dataset()` 按完整 `(scenario_version, seed)`
 group 切分，并把共享同一数值 seed 的所有 scenario/scale group 原子放入同一 split；正式运行
 保留默认 minimum 20 unseen seeds。少于三个唯一 seed、test unseen seed 不足、seed 跨 split 或
-任一 hash/join/ID 审计失败时不得生成可训练 dataset。落盘语义使用 episode dataset v2，后续
-训练 bundle 使用 v3；record/sample/snapshot/action 内容合同仍为 v1。
+任一 hash/join/ID 审计失败时不得生成可训练 dataset。落盘语义使用 episode dataset v3、
+record/descriptor/sample v2，后续训练 bundle 使用 v4；snapshot/action/feedback/ACK/offline-label
+保持 v1。旧 v1 嵌套 record 不兼容读取。
 
-本轮模块验证为数据管线 `7 passed in 2.46s`、主动视觉组合 `33 passed in 5.20s`、D5 全量
-`385 passed in 11.43s`。共享 seed 多场景与确定性测试只使用合成 `tmp_path`，未启动 AirSim、未
-生成 settings、未收集正式 episode，也没有真实云台 ACK、正式 BC/PPO、20-seed 性能或 assist
-准入。真实 AirSim 接线仍由 main 负责，D5 本轮未修改 launcher/reset/episode order。
+finalize 和 audit 现在逐 episode 流式检查 online record，并在处理完当前 offline 文件后释放对象；
+不再调用 `load_active_vision_episode_dataset()` 累积全部 episode。正式训练应使用
+`load_active_vision_episode_dataset_lazy()` 及其 split/BC/PPO iterator；兼容全量 loader 只用于
+明确有界的小数据。该 API 变化不改变 v3 磁盘合同，故不再升版。
+
+record loader 还强制 mode/action 一致：shadow、disabled 和 assist fallback 只能保留规则 effective
+action，不能把模型请求伪装成已执行动作。dataset root 可使用相对或绝对路径；该修正不改变
+launcher/reset/episode order，也不形成新的 AirSim 执行证据。
+
+main 已用新格式完成 nominal seed 91、每档 2 s 容量复测：5/20/50/100/200v200 总制品约
+`0.086/0.295/0.733/1.543/2.884 MB`；200v200 online/offline `1.064/1.818 MB`、`3536` samples、
+RSS约 `1.04 GB`、online truth=0。该结果关闭单 episode 去重容量门，不关闭约 900 episode corpus
+的 finalize/训练峰值与吞吐验收。D5 数据管线 `14 passed in 20.56s`、全量
+`396 passed in 30.02s`；12 episode/576 sample 回归确认 finalize/audit 全量物化调用为 0。
+本轮 D5 未修改 launcher/reset/episode order；没有新增 AirSim 云台、正式 BC/PPO、20-seed 性能
+或 assist 准入结论。
 
 ## 2026-07-20 主动视觉 v1 统一三维接线与 AirSim 后续工作
 

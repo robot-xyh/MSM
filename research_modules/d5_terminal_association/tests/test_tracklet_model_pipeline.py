@@ -24,9 +24,11 @@ from d5_terminal_association.sparse_tracklet_graph import (
     TrackletCameraGeometry,
 )
 from d5_terminal_association.tracklet_dataset import (
+    DATASET_SCHEMA_VERSION,
     GRAPH_SCHEMA_VERSION,
     finalize_tracklet_dataset,
     load_tracklet_dataset,
+    split_episode_groups,
     stage_tracklet_dataset_episode,
 )
 from d5_terminal_association.tracklet_gnn import (
@@ -34,6 +36,7 @@ from d5_terminal_association.tracklet_gnn import (
     OfflineTrackletTruthLabel,
 )
 from d5_terminal_association.tracklet_model_bundle import (
+    MODEL_BUNDLE_SCHEMA_VERSION,
     ModelBundleValidationError,
     load_tracklet_model_bundle,
     load_tracklet_model_bundle_for_runtime,
@@ -188,22 +191,27 @@ def _rewrite_manifest_checksum(
 
 
 def test_whole_scenario_seed_groups_never_leak_across_splits(tmp_path: Path) -> None:
-    graph, labels = _anonymous_graph(1)
-    grouped_episodes = (
-        (1, ("episode-a", "episode-b")),
-        (2, ("episode-a",)),
-        (3, ("episode-a",)),
-        (4, ("episode-a",)),
-    )
-    for seed, episode_ids in grouped_episodes:
-        for episode_id in episode_ids:
+    for seed in range(1, 7):
+        graph, labels = _anonymous_graph(seed)
+        for scenario in ("scenario-small-v3", "scenario-large-v3"):
             stage_tracklet_dataset_episode(
                 tmp_path,
                 graph,
                 labels,
-                scenario_version="scenario-v3",
+                scenario_version=scenario,
                 seed=seed,
-                episode_id=episode_id,
+                episode_id="episode-a",
+                generation_config={"graph": "v1"},
+                labels_complete=True,
+            )
+        if seed == 1:
+            stage_tracklet_dataset_episode(
+                tmp_path,
+                graph,
+                labels,
+                scenario_version="scenario-small-v3",
+                seed=seed,
+                episode_id="episode-b",
                 generation_config={"graph": "v1"},
                 labels_complete=True,
             )
@@ -211,13 +219,59 @@ def test_whole_scenario_seed_groups_never_leak_across_splits(tmp_path: Path) -> 
     dataset = load_tracklet_dataset(tmp_path)
 
     group_splits: dict[tuple[str, int], set[str]] = {}
+    seed_splits: dict[int, set[str]] = {}
     for episode in dataset.episodes:
         key = (episode.graph.scenario_version, episode.graph.seed)
         group_splits.setdefault(key, set()).add(episode.split)
+        seed_splits.setdefault(episode.graph.seed, set()).add(episode.split)
     assert all(len(splits) == 1 for splits in group_splits.values())
+    assert all(len(splits) == 1 for splits in seed_splits.values())
     assert {episode.split for episode in dataset.episodes} == {"train", "validation", "test"}
+    seeds_by_split = {
+        split: {
+            episode.graph.seed for episode in dataset.episodes if episode.split == split
+        }
+        for split in ("train", "validation", "test")
+    }
+    assert seeds_by_split["test"].isdisjoint(seeds_by_split["train"])
+    assert seeds_by_split["test"].isdisjoint(seeds_by_split["validation"])
     assert manifest["split_policy"]["edge_level_random_split"] is False
+    assert manifest["split_policy"]["shared_seed_values_atomic_across_scenarios"] is True
     assert manifest["split_policy"]["unit"] == "whole_episode_grouped_by_scenario_version_and_seed"
+    assert manifest["schema_version"] == "d5.tracklet-dataset.v2"
+
+
+def test_tracklet_split_is_deterministic_and_requires_three_unique_seeds() -> None:
+    descriptors = [
+        {
+            "scenario_version": scenario,
+            "seed": seed,
+            "episode_uid": f"episode-{scenario}-{seed}",
+        }
+        for seed in range(8)
+        for scenario in ("scale-small-v1", "scale-large-v1")
+    ]
+    forward = split_episode_groups(
+        descriptors,
+        split_seed=31,
+        validation_fraction=0.2,
+        test_fraction=0.2,
+    )
+    reversed_input = split_episode_groups(
+        list(reversed(descriptors)),
+        split_seed=31,
+        validation_fraction=0.2,
+        test_fraction=0.2,
+    )
+    assert dict(forward) == dict(reversed_input)
+
+    with pytest.raises(ValueError, match="at least three unique seed values"):
+        split_episode_groups(
+            [item for item in descriptors if item["seed"] < 2],
+            split_seed=31,
+            validation_fraction=0.2,
+            test_fraction=0.2,
+        )
 
 
 def test_online_graph_and_evaluator_truth_are_physically_separate(tmp_path: Path) -> None:
@@ -286,6 +340,8 @@ def test_formal_training_bundle_round_trip_and_evaluation_cli_api(tmp_path: Path
 
     assert report["admission_status"] == "research_candidate_not_default"
     assert scorer.manifest["admission"]["default_model"] is False
+    assert scorer.manifest["schema_version"] == MODEL_BUNDLE_SCHEMA_VERSION
+    assert scorer.manifest["dataset_schema_version"] == DATASET_SCHEMA_VERSION
     assert scorer.manifest["graph_schema_version"] == GRAPH_SCHEMA_VERSION
     assert scorer.manifest["calibration"]["source_split"] == "validation"
     assert report["test"]["metrics"]["model_size"]["available"] is True
@@ -323,6 +379,10 @@ def test_checkpoint_round_trip_preserves_calibrated_probabilities(tmp_path: Path
 @pytest.mark.parametrize(
     ("update", "error_code"),
     [
+        (
+            lambda manifest: manifest.__setitem__("dataset_schema_version", "wrong-v9"),
+            "dataset_schema_mismatch",
+        ),
         (lambda manifest: manifest.__setitem__("graph_schema_version", "wrong-v9"), "graph_schema_mismatch"),
         (lambda manifest: manifest.__setitem__("model_semantic_version", "9.0.0"), "model_semantic_version_mismatch"),
         (

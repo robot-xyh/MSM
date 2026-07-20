@@ -2,8 +2,9 @@
 
 ## 2026-07-20 主动视觉整 episode 数据管线代码实验
 
-本节只报告 D5-owned 合成单元测试。没有修改或运行 main/AirSim，没有正式 episode 数据、训练、
-checkpoint、20-unseen-seed test 或性能结论。接受阈值为全部测试零失败。
+本节同时记录 D5-owned 合成合同测试与 main 提供的新格式 nominal 容量复测。D5 本轮没有修改
+main/AirSim；容量数值只证明单 seed 数据生成，不是训练、checkpoint、20-unseen-seed test 或
+模型性能结论。代码接受阈值为全部测试零失败。
 
 | 实验 | 样本/故障注入 | 实测 | 接受阈值 | 判定 |
 | --- | --- | --- | --- | --- |
@@ -14,19 +15,24 @@ checkpoint、20-unseen-seed test 或性能结论。接受阈值为全部测试�
 | split fail-closed | 2 group；4 group 但仅 2 个唯一 seed；5 个唯一 seed 且声明 minimum unseen=2 | 前两组返回 `insufficient_split_groups`，后一组返回 `insufficient_unseen_test_seeds` | 不伪造 split；错误 finalize=0 | 通过 |
 | ID 与 truth 注入 | online 额外 truth 字段、未知中心 ID、另一个中心候选局部换绑 | 分别由 truth guard、`unknown_center_reference`、`global_track_id_local_rewrite` 拒绝 | 污染/未知/换绑接受数=0 | 通过 |
 | reward/join/hash 审计 | observation key 错配、unavailable reward 填 0、无 outcome reward、无 counterfactual causal、在线文件字节篡改 | 全部失败关闭；缺失数字保持 null；SHA 篡改由 checksum 拒绝 | 错配/占位/篡改接受数=0 | 通过 |
-| 新数据管线专项 | 7 项测试 | `7 passed in 2.46s` | 零失败 | 通过 |
-| 主动视觉组合 | contracts、BC/PPO、evaluation、bundle v3、episode dataset v2 | `33 passed in 5.20s` | 零失败 | 通过 |
-| D5 全量回归 | 全部 D5 tests | `385 passed in 11.43s` | 零失败 | 通过 |
+| 去重体量 | 16/64 camera，track 数为 camera 两倍；另有 200 camera/400 track | 旧嵌套 `302709/4336869` B；v2 解压 `59617/234721` B；gzip `3995/13084` B；200 camera 为 `731412/37004` B | 4 倍输入下 v2 解压和 gzip 增长 `<6x`；200 camera snapshot count=1 | 通过 |
+| main nominal 容量复测 | seed 91、每档 2 s、5/20/50/100/200v200 | 总制品约 `0.086/0.295/0.733/1.543/2.884 MB`；200v200 online/offline `1.064/1.818 MB`、`3536` samples、RSS约 `1.04 GB` | online truth=0；去重容量门 | 通过，非 corpus/模型性能 |
+| 多 episode finalize/audit | 6 个唯一 seed × 2 scenario、每 episode 48 camera/96 track，共 12 episode/576 samples | 完整 record、staged materialize、全量 dataset loader 均设为一调用即失败；所有 online audit 均为 `materialize=False` | 全量物化调用=0；episode/sample count 精确 | 通过 |
+| lazy BC/PPO | 8 episode；逐次推进 iterator | lazy handle 创建加载 episode=0；BC/PPO 每次 `next()` 只加载当前 episode；BC 不读 offline label | 跨 episode 累积=0；PPO reward 均为 `0.5` | 通过 |
+| 最终合同复核 | 相对 dataset root、伪造 fallback effective action、truth-like resource/camera ID | 相对 staging/finalize/load 成功；伪造动作和污染命名全部拒绝 | 误拒合法路径=0；错误动作/身份接受=0 | 通过 |
+| 新数据管线专项 | 14 项测试 | `14 passed in 20.56s` | 零失败 | 通过 |
+| D5 全量回归 | 全部 D5 tests | `396 passed in 30.02s` | 零失败 | 通过 |
 
-共享 seed 原子 split 改变持久化语义，因此 learning dataset/episode dataset 分别升级到 v2，
-bundle schema 升级为 `d5.active-vision-model-bundle.v3` 并绑定 episode dataset v2；内容级 record/
-sample/snapshot/action schema 保持 v1。测试中的 bundle/checkpoint 仍只位于 `tmp_path`。正式 assist
-继续要求与正式 dataset/split/training-set SHA 及模型指纹一致的 paired shadow report，并至少
-包含 20 个完全未见 seed 的非合成非退化证据。
+共享 seed 原子 split 将 learning dataset 升为 v2；去重磁盘合同将 episode dataset 升为 v3、
+record/descriptor/sample 升为 v2，bundle 升为 `d5.active-vision-model-bundle.v4` 并绑定 episode
+dataset v3。snapshot/action/feedback/ACK/offline-label 保持 v1。lazy/final-audit 修改不改变磁盘
+语义，故不再升版。测试中的 bundle/checkpoint 仍只位于 `tmp_path`。正式 assist 继续要求与正式
+dataset/split/training-set SHA 及模型指纹一致的 paired shadow report，并至少包含 20 个完全未见
+seed 的非合成非退化证据。
 
-下一步不是从本表推导收益，而是由 main 在真实统一 episode 中接入 online/offline writer，记录
-实际 Git/config identity，收集代表性 outcome/counterfactual，再执行正式 split、BC/PPO、paired
-shadow 和准入审查。
+下一步不是从本表推导收益，而是由 main 用实际 Git/config identity 与独立 evaluator 构建约
+900 episode 正式 corpus，实测 finalize/lazy 训练峰值 RSS、吞吐和恢复，再执行正式 split、BC/PPO、
+paired shadow 和准入审查。当前单 seed nominal 容量通过不能代替该验收。
 
 ## 2026-07-20 统一三维 episode 主动视觉接口冒烟
 
@@ -82,7 +88,7 @@ evaluator label，不进入 tracklet graph feature、主动视觉 snapshot 或�
 | 正式训练到评估 | 5 个 synthetic seed group；2 epoch；多图累积；validation calibration | 生成并严格回载 manifest/state_dict/SHA256；test 报告 10 类必需指标字段；admission=`research_candidate_not_default` | 训练/校准只读 train/validation；test 不调参；bundle 可回载 | 管线通过，不是质量准入 |
 | bundle fail-closed | 权重追加损坏；graph/model/edge-feature version 和 node feature order 共 4 类 manifest mismatch | SHA 损坏及 4 类版本/顺序错误全部拒绝；runtime wrapper 标记 unavailable | 5/5 拒绝 | 通过 |
 | 在线安全回退 | 3 相机、1 中心目标；无模型、缺 bundle、NaN 概率、5 ms 慢模型/0.1 ms 门 | 分别记录 missing/unavailable/invalid-output/timeout，并全部使用 deterministic geometry rule | 不使用无效模型结果；中心 ID 不变 | 通过 |
-| D5 新管线专项 | 12 项测试 | `12 passed` | 零失败 | 通过 |
+| D5 新管线专项 | 14 项测试 | `14 passed` | 零失败 | 通过 |
 | 稀疏图/adapter/新管线组合 | 46 项测试 | `46 passed` | 零失败 | 通过 |
 | D5 全量回归 | 全部 D5 tests | `355 passed in 9.48s` | 零失败 | 通过 |
 

@@ -635,8 +635,8 @@ def test_bundle_round_trip_sha_tamper_schema_and_ood_fail_closed(tmp_path: Path)
     loaded = load_active_vision_model_bundle(valid)
     assert loaded.available is True
     assert loaded.assist_admitted is False
-    assert loaded.manifest["schema_version"] == "d5.active-vision-model-bundle.v3"
-    assert loaded.manifest["dataset_schema_version"] == "d5.active-vision-episode-dataset.v2"
+    assert loaded.manifest["schema_version"] == "d5.active-vision-model-bundle.v4"
+    assert loaded.manifest["dataset_schema_version"] == "d5.active-vision-episode-dataset.v3"
     assert loaded.model_fingerprint == active_vision_model_fingerprint(loaded.model)
 
     changed = _snapshot(camera_count=3)

@@ -15,6 +15,7 @@ import torch
 
 from .sparse_tracklet_graph import EDGE_FEATURE_NAMES, NODE_FEATURE_NAMES, SparseTrackletGraph
 from .tracklet_dataset import (
+    DATASET_SCHEMA_VERSION,
     EDGE_FEATURE_VERSION,
     GRAPH_SCHEMA_VERSION,
     NODE_FEATURE_VERSION,
@@ -23,7 +24,7 @@ from .tracklet_dataset import (
 from .tracklet_gnn import NativeTrackletEdgeClassifier, graph_tensors
 
 
-MODEL_BUNDLE_SCHEMA_VERSION = "d5.tracklet-model-bundle.v1"
+MODEL_BUNDLE_SCHEMA_VERSION = "d5.tracklet-model-bundle.v2"
 MODEL_SEMANTIC_VERSION = "1.0.0"
 WEIGHTS_FILENAME = "weights.pt"
 MANIFEST_FILENAME = "manifest.json"
@@ -132,6 +133,7 @@ def write_tracklet_model_bundle(
     manifest = {
         "schema_version": MODEL_BUNDLE_SCHEMA_VERSION,
         "model_semantic_version": semantic_version,
+        "dataset_schema_version": DATASET_SCHEMA_VERSION,
         "graph_schema_version": GRAPH_SCHEMA_VERSION,
         "node_feature_version": NODE_FEATURE_VERSION,
         "edge_feature_version": EDGE_FEATURE_VERSION,
@@ -221,6 +223,11 @@ def load_tracklet_model_bundle(
         manifest.get("model_semantic_version"),
         expected_model_semantic_version,
         "model_semantic_version_mismatch",
+    )
+    _expect_equal(
+        manifest.get("dataset_schema_version"),
+        DATASET_SCHEMA_VERSION,
+        "dataset_schema_mismatch",
     )
     _expect_equal(manifest.get("graph_schema_version"), GRAPH_SCHEMA_VERSION, "graph_schema_mismatch")
     _expect_equal(manifest.get("node_feature_version"), NODE_FEATURE_VERSION, "node_feature_version_mismatch")

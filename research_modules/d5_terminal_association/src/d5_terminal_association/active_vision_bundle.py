@@ -36,7 +36,7 @@ from .active_vision_learning import (
 )
 
 
-ACTIVE_VISION_BUNDLE_SCHEMA_VERSION = "d5.active-vision-model-bundle.v3"
+ACTIVE_VISION_BUNDLE_SCHEMA_VERSION = "d5.active-vision-model-bundle.v4"
 ACTIVE_VISION_WEIGHTS_FILENAME = "weights.pt"
 ACTIVE_VISION_MANIFEST_FILENAME = "manifest.json"
 ACTIVE_VISION_CHECKSUMS_FILENAME = "SHA256SUMS"

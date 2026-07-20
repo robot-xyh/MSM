@@ -200,6 +200,32 @@ def test_truth_and_actor_identity_are_rejected_from_online_tracklets() -> None:
 
 
 @pytest.mark.parametrize(
+    ("field_name", "truth_like_id"),
+    [
+        ("resource_id", "MSM_TargetActor_1"),
+        ("camera_id", "object-camera-1"),
+    ],
+)
+def test_truth_like_resource_and_camera_names_are_rejected(
+    field_name: str,
+    truth_like_id: str,
+) -> None:
+    values = {
+        "resource_id": "RESOURCE",
+        "camera_id": "CAM-0",
+        "local_track_id": "local-001",
+        "measurement_timestamp": 1.0,
+        "arrival_timestamp": 1.1,
+        "center_px": np.array([20.0, 30.0]),
+        "covariance_px": np.eye(2),
+    }
+    values[field_name] = truth_like_id
+
+    with pytest.raises(ValueError, match=f"{field_name} must be anonymous"):
+        CameraLocalTracklet(**values)
+
+
+@pytest.mark.parametrize(
     "truth_like_id",
     [
         "TGT-0001",
