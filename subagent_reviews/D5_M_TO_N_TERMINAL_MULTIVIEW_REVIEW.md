@@ -17,7 +17,8 @@ clipped PPO、weights-only bundle 和 paired shadow。assist 需要至少 20 个
 episode 结束后连接 evaluator-only truth。该键不成为 MOT 身份或 global ID，同一帧只能属于一个
 tracklet，假目标缺 label 时完整性为 false。2026-07-20 主动视觉专项 `17 passed`、D5 全量
 `376 passed in 9.94s`。这些是接口和失败关闭证据，不是 M 对 N 真实可见性提升、时延改善或
-AirSim 云台执行证据；main 后续仍需统一三维 episode 注入和正式 paired shadow。
+AirSim 云台执行证据。main 随后已完成统一三维 episode 注入、规则相机命令、版本门控、下一帧
+应用和 runtime ACK；正式 paired shadow、真实 AirSim 云台和因果收益仍未完成。
 
 ## 2026-07-20 多视角图训练制品复核
 
@@ -34,8 +35,8 @@ hard-negative provenance。bundle 用 SHA256 校验并只做 `weights_only=True`
 
 该结果只关闭训练与模型制品代码管线，不关闭多视角模型准入。至少 20 个未见 seed 的整
 episode test、遮挡/近邻交叉/时延/外参漂移、冻结阈值、默认 checkpoint 和真实 AirSim 模型
-证据继续开放；几何规则仍是默认。该阶段无 runtime 变化；本轮主动视觉合同已另同步到 AirSim
-集成计划，但尚未实际接线。
+证据继续开放；几何规则仍是默认。该训练制品阶段本身没有 runtime 变化；其后主动视觉规则
+合同已接入统一三维 episode，但没有模型准入或真实 AirSim 执行证据。
 
 ## 2026-07-20 匿名 tracklet 图多视角实现复核
 
@@ -70,10 +71,12 @@ seed 200 的 200 目标、4 相机回归从 240000 个跨相机可能 pair 收�
 400/19900 个相机对，预算丢弃 19500，tracklet 候选 397，全部相机均有候选覆盖。该证据关闭
 D5-owned 索引代码缺口，不关闭真实跨视角泛化、模型准入、内存峰值或多 seed P50/P95。
 
-主动视觉只增加 camera-intent 环境/策略接口和 timeout/低置信规则扫描 fallback。尚无学习型
-策略训练、真实云台 ACK、AirSim episode 或物理闭环证据。D5 adapter 已能接收 scalable 3D
-匿名观测，main scalable module stack 已调用 adapter；独立数据划分、概率校准和算力指标的
-软件管线现已完成，后续仍需持久化新增诊断，并用至少 20 个未见 seed 的 200v200/代表性整
+主动视觉已在 camera-intent 环境/策略接口和 timeout/低置信规则扫描 fallback 之外，接通统一
+三维 episode 的模拟相机/FOV 命令及 runtime ACK。5v5 `84/84` 和 200v200 seed 17、1.2 s
+`1872/1872` applied 只证明单 seed 接口闭环；尚无正式学习策略、真实 AirSim 云台、实机或
+物理收益证据。D5 adapter 已能接收 scalable 3D 匿名观测，main scalable module stack 已调用
+adapter；独立数据划分、概率校准和算力指标的软件管线现已完成，后续仍需用至少 20 个未见
+seed 的 200v200/代表性整
 episode 数据覆盖遮挡、交叉和外参漂移；在此之前几何
 Hungarian/`TerminalAssociator` 保持默认。
 

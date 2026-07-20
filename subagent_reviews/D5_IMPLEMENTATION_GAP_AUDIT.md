@@ -23,13 +23,19 @@ dataset manifest、split 和 training-set SHA，并具有至少 20 个完全未�
 **验证与边界：** 2026-07-20 主动视觉专项 `17 passed`，D5 全量
 `376 passed in 9.94s`，零失败。训练 smoke 只有 8 个合成 seed group、BC/PPO 各 1 epoch；
 20-seed 数据只测试 admission gate 的正/反分支，没有正式数据报告。仓库未新增主动视觉
-checkpoint，本轮未运行 AirSim。故“主动视觉软件研究管线不可用”和“observation label 无法稳定
-连接 tracklet”两个 D5-owned 子项关闭；真实统一三维 episode 接线、真实云台 ACK、至少 20 个
-未见 seed 的正式 paired non-degradation 和 assist 准入继续为开放 P1/P2。
+checkpoint，本轮未运行 AirSim。随后 main 已把 truth-free snapshot、规则 look-at/reacquire/scan、
+版本化相机/FOV 命令、下一视觉帧应用和 `runtime.camera_command_ack` 接到统一三维 episode。
+5v5 开发冒烟为 `84/84` applied，200v200 seed 17、1.2 s 为 `1872/1872` applied；两者都是单
+seed、脏工作树接口证据。故“主动视觉软件研究管线不可用”“observation label 无法稳定连接
+tracklet”和“统一三维 episode 尚未接线”三个子项关闭。
+
+开放 P1/P2 仍包括：正式训练数据/checkpoint、至少 20 个未见 seed 的 paired non-degradation、
+assist 准入、主动视觉对可见率/重捕获/物理拦截的因果收益，以及真实 AirSim 云台和实机命令/
+ACK。模拟 runtime ACK 不能替代真实执行证据。
 
 `docs/MODULE_PRINCIPLES_CN.md`、`docs/ALGORITHM_AND_IMPLEMENTATION.md`、
-`docs/AIRSIM_INTEGRATION_PLAN.md` 和 `docs/EXPERIMENT_REPORT.md` 已同步。AirSim 文档只增加后续
-接线边界，没有新增 AirSim 实验结论。
+`docs/AIRSIM_INTEGRATION_PLAN.md` 和 `docs/EXPERIMENT_REPORT.md` 已同步。文档明确区分已完成的
+统一三维模拟接线和仍未完成的真实 AirSim/实机接线，没有新增 AirSim 性能结论。
 
 ## 2026-07-20 训练与模型制品管线 GAP 状态
 

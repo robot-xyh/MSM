@@ -27,6 +27,13 @@ labels incomplete。2026-07-20 主动视觉专项 `17 passed`，D5 全量
 `376 passed in 9.94s`。当前没有正式 checkpoint、正式 20-seed 报告或 AirSim 云台闭环，故审查
 只接受软件路径和数据连接闭合，不接受 assist/默认路径晋级。
 
+main 后续已把上述合同接入统一三维 episode：snapshot 由 D2 中心航迹、D3 当前计划、D5 几何
+证据和模拟相机 yaw/pitch/FOV/最近接受版本构造；规则 look-at/reacquire/scan 生成版本化相机
+命令，经 plan/coalition/communication version、有效期和资源一致性复核后在下一视觉帧应用，
+并发布 runtime ACK。5v5 `84/84` 和 200v200 seed 17、1.2 s `1872/1872` applied 只构成单
+seed、脏工作树接口证据，不构成 AirSim 云台、实机或主动视觉收益证据。shadow 仍不控制，
+assist 未正式准入时仍回退规则。
+
 ## 2026-07-20 版本化训练与制品管线审查
 
 审查确认 `tracklet_dataset.py` 把匿名 graph NPZ 与 evaluator label JSON 分流：图中只保存在线
@@ -98,8 +105,9 @@ checkpoint 验收。main scalable module stack 已调用 adapter，但新增候�
 
 主动视觉 API 的动作集只有观察中心目标、规则扇区扫描、云台增量和 FOV/变焦；timeout、
 低置信和无效 binding 回退规则扫描。该接口不等于已训练 RL policy 或已执行云台闭环。
-后续审查必须由 main 提供在线 truth use=0、global ID rewrite=0、多 seed 准确率/时延和 ACK/
-fallback 证据，再决定是否晋级。
+统一三维 runtime 已提供命令 ACK/fallback 的接口证据；后续审查仍需提供在线 truth use=0、
+global ID rewrite=0、至少 20 个未见 seed 的 paired 准确率/时延/非退化结果，以及真实 AirSim
+云台或实机 ACK，才能决定学习路径是否晋级。
 
 ## 2026-07-16 ComputerVision 5+1 真实专项审查
 

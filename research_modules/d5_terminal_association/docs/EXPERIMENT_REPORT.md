@@ -1,5 +1,21 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-20 统一三维 episode 主动视觉接口冒烟
+
+main-owned 统一三维 episode 已消费 D5 truth-free snapshot 和规则 look-at/reacquire/scan 输出，
+生成带 plan/coalition/communication version 与有效期的相机/FOV 命令。命令通过资源一致性复核
+后在下一视觉帧应用，并形成 `runtime.camera_command_ack`。在线目标引用只来自 D2 中心
+`GlobalTrack` 和 D3 当前计划，D5 没有创建或改写 `global_track_id`。
+
+| 场景 | 范围 | 命令结果 | 证据等级 |
+| --- | --- | ---: | --- |
+| 5v5 开发冒烟 | 单 seed、脏工作树 | `84/84` applied | 接口与 ACK 证据 |
+| 200v200 开发诊断 | seed 17、1.2 s、脏工作树 | `1872/1872` applied | 规模接口证据 |
+
+两组结果不用于证明主动视觉提高可见率、缩短重捕获或改善物理拦截。当前没有正式主动视觉
+训练数据/checkpoint、至少 20 个未见 seed 的 paired 准入、真实 AirSim 云台或实机执行证据。
+默认执行路径仍是确定性规则；shadow 只记录建议，assist 未准入时回退规则。
+
 ## 2026-07-20 主动视觉与 source-observation 代码级实验
 
 本节仅记录确定性单元/训练 smoke。没有运行 AirSim、没有真实云台动作、没有正式 checkpoint，
@@ -54,9 +70,8 @@ bundle 已随 `tmp_path` 清理，仓库没有新增正式 checkpoint。至少 2
 代表性近邻交叉/遮挡/时延/外参漂移、冻结质量/时延门限和默认 checkpoint 均未执行或批准。
 因此本轮只关闭训练/制品管线 GAP，几何规则继续默认。
 
-该训练制品阶段没有 settings、相机、detector、runtime episode、云台或 handoff 接线变化。
-本轮新增主动视觉/source-observation 合同后，`docs/AIRSIM_INTEGRATION_PLAN.md` 已同步未来接线
-边界；仍没有新增 AirSim 实验结论。
+该训练制品阶段本身没有 settings、相机、detector、runtime episode、云台或 handoff 接线变化。
+其后 main 完成统一三维模拟相机接线；仍没有新增真实 AirSim 实验结论。
 
 ## 2026-07-20 稀疏图代码级实验
 

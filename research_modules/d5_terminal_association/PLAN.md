@@ -23,14 +23,19 @@
   tracker、图特征、tracklet/global ID 或 binding。
 - [x] 2026-07-20：主动视觉专项 `17 passed`，D5 全量 `376 passed in 9.94s`；BC/PPO 为 8 个
   合成 seed 的 1-epoch smoke，checkpoint/bundle 只在 `tmp_path` 生成。
-- [ ] main 下一轮将 snapshot 接到统一三维 episode 的相机/云台状态、recon/interceptor 调度和
-  ACK；在此之前没有真实动作执行，library 保持 disabled，CLI 只默认 shadow。
+- [x] main 已将 snapshot 接到统一三维 episode 的 recon/interceptor 模拟相机状态和调度；输入
+  包含实际 yaw/pitch/FOV、最近接受版本、D2 中心航迹、D3 计划和 D5 几何证据。规则动作经
+  plan/coalition/communication version、有效期和资源一致性复核后在下一视觉帧应用，并发布
+  `runtime.camera_command_ack`。5v5 开发冒烟为 `84/84` applied，200v200 seed 17、1.2 s 为
+  `1872/1872` applied；两者仅是单 seed、脏工作树接口证据。
 - [ ] 收集代表性 train/validation/test 和至少 20 个完全未见 seed 的正式 paired shadow 结果；
   当前无正式 checkpoint、无 assist 准入，不得把单测 fixture 写成性能或晋级证据。
+- [ ] 在真实 AirSim 云台和后续实机上验证命令/ACK、机械速率、时延、reset 和失败回退；当前
+  模拟相机接线不得写成真实执行或主动视觉因果收益。
 
-`docs/AIRSIM_INTEGRATION_PLAN.md` 已同步未来接线合同；`docs/EXPERIMENT_REPORT.md` 已同步本轮
-代码级 smoke 和“不构成正式准入”的边界。本轮没有 AirSim episode、settings、detector、相机
-外参来源或真实云台/FOV/ACK 变化。
+`docs/AIRSIM_INTEGRATION_PLAN.md` 已同步“统一三维模拟接线已完成、真实 AirSim/实机仍待接入”
+的边界；`docs/EXPERIMENT_REPORT.md` 已同步代码级 smoke 和“不构成正式准入”的口径。本阶段
+没有新增 AirSim episode、settings、detector、相机外参来源或真实云台/FOV/ACK 证据。
 
 ## 2026-07-20 版本化数据、训练、校准与制品管线
 
@@ -115,8 +120,10 @@
 - [ ] P1 数据/准入：独立整 episode 切分、困难负样本、校准、阈值和指标的软件管线已完成；
   仍需真实代表性数据、至少 20 个未见 seed、近邻交叉与遮挡/漂移场景及 CPU/GPU 时延预算。
   当前没有默认 checkpoint，不替换既有几何 Hungarian 主线。
-- [ ] P2：由 main-owned runtime 接入真实云台/FOV 执行和 ACK/timeout；BC/PPO 软件流程已有
-  合成 smoke，但学习型主动视觉策略尚未用正式数据训练、验证或验收，规则 fallback 保持默认。
+- [x] main-owned scalable runtime 已接入模拟相机/FOV 命令、版本门控、下一帧应用和 ACK/timeout
+  记录；规则 fallback 保持默认。
+- [ ] P2：接入真实 AirSim 云台和实机执行反馈；BC/PPO 软件流程已有合成 smoke，但学习型主动
+  视觉策略尚未用正式数据训练、验证或验收。
 
 ## 2026-07-16 ComputerVision 5+1 独立专项状态
 

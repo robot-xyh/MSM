@@ -6,7 +6,7 @@
 
 ## 2026-07-20 主动视觉最小权限与安全回退原则
 
-主动视觉是可选研究支线，不改变 D5 几何关联默认主线。版本化 snapshot 只允许中心
+学习型主动视觉是可选研究支线，不改变 D5 几何关联和确定性规则观察默认主线。版本化 snapshot 只允许中心
 GlobalTrack/AssignmentPlan 只读引用、相机云台/FOV 状态、投影不确定度、可见/遮挡统计、通信
 状态及 plan/coalition/communication version。truth、actor、object identity 不得进入策略输入；
 `global_track_id` 只能从输入候选与当前相机分配交集中只读选择，模型无权创建、改写或换绑。
@@ -19,7 +19,9 @@ GlobalTrack/AssignmentPlan 只读引用、相机云台/FOV 状态、投影不确
 候选成员、FOV 支持、云台机械角、当前与请求速率、slew、友方 exclusive reservation、证据
 freshness 和 action timeout。模型/bundle 缺失、SHA/schema/state 错误、OOD、低置信、非有限、
 异常或慢推理均直接采用同 tick 规则动作。shadow 的最终动作永远是规则动作。库默认 disabled；
-CLI 默认 shadow preflight，不代表 actuator 已连接。
+CLI 默认 shadow preflight。main-owned 统一三维 episode 已连接模拟相机执行器：规则动作经版本、
+有效期和资源复核后在下一视觉帧更新 yaw/pitch/FOV，并生成 runtime ACK；这不等于真实 AirSim
+云台或实机执行器已经连接。
 
 assist 准入必须来自与模型指纹及 dataset manifest/split/training-set SHA 绑定的 paired shadow
 报告。test 至少包含 20 个在 train/validation 中完全未见的 seed，数据必须正式且非合成，
@@ -33,7 +35,9 @@ paired 报告或真实云台闭环，故 assist 未准入。
 没有 evaluator label 时必须报告 labels incomplete。
 
 2026-07-20 验证为主动视觉专项 `17 passed`、D5 全量 `376 passed in 9.94s`。BC/PPO 仅在
-8 个合成 seed group 上各跑 1 epoch smoke；本轮未运行 AirSim，不产生性能或准入结论。
+8 个合成 seed group 上各跑 1 epoch smoke。统一三维 episode 后续完成 5v5 `84/84` 和
+200v200 seed 17、1.2 s `1872/1872` 命令 applied 冒烟；均为单 seed、脏工作树接口证据，
+不产生 AirSim、实机、性能收益或模型准入结论。
 
 ## 2026-07-20 训练数据与模型制品安全原则
 
@@ -71,7 +75,7 @@ tracklet 的约束，中心投影/Hungarian 继续只引用中心输入 ID。模
 `355 passed in 9.48s`，零失败；checkpoint 均在 `tmp_path` 生成。本轮只关闭训练/校准/评估/
 制品软件管线，不构成模型准入。至少 20 个未见 seed、代表性困难场景、冻结门限和默认
 checkpoint 均开放，几何规则仍是默认。未运行 AirSim；本轮主动视觉合同已在集成计划文首同步，
-但没有实际接线或实验。
+随后已完成统一三维模拟接线，但没有新增真实 AirSim 实验或模型准入证据。
 
 ## 2026-07-20 匿名稀疏跨视角图原则
 
@@ -110,8 +114,9 @@ payload guard 会拒绝 `TGT-0001`、嵌入式 `camera:TGT-002`、`TargetDrone_1
 
 主动视觉接口同样保持最小权限。策略只能请求观察一个既有中心目标、扫描扇区、有限云台增量
 或 FOV/变焦。当前观测超时、关联置信度不足或中心 binding 无效时，必须回退到确定性规则
-扫描；接口不表达平台机动、重新分配或终端授权。当前没有已训练或已验收的学习型主动视觉
-策略，也没有真实 AirSim 云台闭环。
+扫描；接口不表达平台机动、重新分配或终端授权。规则路径已在统一三维 episode 驱动模拟相机
+并获得 runtime ACK；当前没有已训练或已验收的学习型主动视觉策略，也没有真实 AirSim 云台
+或实机闭环。
 
 scalable 3D 在线入口遵循“先隔离、后更新状态”。整个 duck-typed batch 在进入任何 tracker
 前先递归检查字段和值；transport `observation_id` 只读进入 `source_observation_id` 审计字段，

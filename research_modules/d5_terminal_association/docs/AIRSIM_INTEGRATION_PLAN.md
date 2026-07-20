@@ -1,12 +1,12 @@
 # AirSim 离线集成计划
 
-## 2026-07-20 主动视觉 v1 与离线标签下一轮接线
+## 2026-07-20 主动视觉 v1 统一三维接线与 AirSim 后续工作
 
-D5 已提供 main 可调用但尚未接入 AirSim 的 `ActiveVisionSnapshotV1 -> ActiveVisionDecisionV1`
-接口。main 下一轮应在每个统一三维 decision tick 注入：当前 center GlobalTrack 候选、当前
-AssignmentPlan/coalition version、recon/interceptor camera 与 gimbal angle/rate/limit/FOV、每个
-候选的 projection covariance、visibility/occlusion/freshness、communication version 和友方
-exclusive observation reservation。不得注入 actor/object/truth identity。
+D5 已提供 `ActiveVisionSnapshotV1 -> ActiveVisionDecisionV1`，main-owned
+`scalable_3d_simulation` 已在每个统一三维 decision tick 注入：当前中心 GlobalTrack 候选、
+AssignmentPlan/coalition version、recon/interceptor 模拟相机的 yaw/pitch/FOV 和最近接受版本、
+候选 projection covariance、visibility/occlusion/freshness、communication version 与友方
+exclusive observation reservation。输入不含 actor/object/truth identity。
 
 main 只执行 `effective_action`，并持久化 requested/effective mode、rule/requested/effective action、
 fallback reason、inference latency、model fingerprint 和 plan/coalition/communication version。
@@ -14,9 +14,15 @@ fallback reason、inference latency、model fingerprint 和 plan/coalition/commu
 没有绑定同一模型和 dataset SHA 的正式 20-unseen-seed paired non-degradation 报告前不得启用。
 当前仓库没有正式主动视觉 checkpoint。
 
-实际云台命令、ACK、硬件速率、action timeout 和 reset 顺序仍由 main-owned runtime 负责。D5
-动作只有 observe/search/hold/reacquire、有限 yaw/pitch 和 wide/zoom，不得转换成飞行控制或 D3
-重分配。D5 safety projection 与 runtime actuator gate 应同时保留；任一拒绝都执行规则观察策略。
+统一三维 runtime 已将 `effective_action` 转成版本化相机/FOV 命令，对 plan/coalition/
+communication version、有效期和资源一致性复核后，在下一视觉帧应用并发布
+`runtime.camera_command_ack`。D5 动作只有 observe/search/hold/reacquire、有限 yaw/pitch 和
+wide/zoom，不得转换成飞行控制或 D3 重分配。D5 safety projection 与 runtime actuator gate
+同时保留；任一拒绝都执行规则观察策略。
+
+开发冒烟中，5v5 命令 `84/84` applied，200v200 seed 17、1.2 s 命令 `1872/1872` applied。
+这些是单 seed、脏工作树下的模拟接口证据。真实 AirSim 云台、硬件速率/ACK、reset、传输时延
+和实机执行仍需后续接线与验证，不能由上述计数推导主动视觉收益。
 
 在线 `SensorMeasurement.observation_id` 现在由 D5 只读导出为 `source_observation_id ->
 tracklet_key` 审计连接。main 应在 episode 内保存该 truth-free link，episode 结束后再与独立
@@ -24,9 +30,9 @@ tracklet_key` 审计连接。main 应在 episode 内保存该 truth-free link，
 `join_offline_observation_labels()`。offline label 不得回流在线 graph/policy；假目标无标签时必须
 保持 labels incomplete。同帧同 observation 多 tracklet 会由 D5 拒绝。
 
-本轮只实现和测试 D5-owned 接口，没有启动 AirSim，没有修改 settings、相机、detector、actor、
-episode/reset、真实云台/FOV/ACK 或 handoff。2026-07-20 主动视觉专项 `17 passed`、D5 全量
-`376 passed in 9.94s`；这些不是 AirSim 执行或性能证据。
+D5-owned 接口开发阶段没有启动 AirSim，也没有修改 settings、detector、actor 或 handoff。
+2026-07-20 主动视觉专项 `17 passed`、D5 全量 `376 passed in 9.94s`。随后完成的统一三维模拟
+接线仍不是 AirSim 执行或性能证据。
 
 ## 2026-07-20 稀疏 tracklet 图接线状态
 

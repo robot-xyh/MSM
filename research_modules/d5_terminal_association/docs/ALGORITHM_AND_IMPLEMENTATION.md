@@ -64,6 +64,19 @@ ID 在 commit 前拒绝。`SourceObservationTrackletLink` 导出 observation、t
 `observation_id -> truth_entity_id`；无标签节点进入 `missing_tracklet_keys` 并令
 `labels_complete=false`。
 
+### 统一三维 episode 接线
+
+main-owned 运行栈已经把 D5 合同接入统一 episode。`RuntimeStepInput` 提供每台模拟相机当前
+yaw/pitch/FOV、最近接受版本、D2 中心航迹、D3 当前计划和 D5 几何证据；D5 构造 truth-free
+snapshot 后，默认由规则 look-at/reacquire/scan 产生相机意图。`shadow` 仅记录模型请求，
+`assist` 未通过正式准入时使用规则动作。
+
+相机观察命令携带 plan/coalition/communication version、issued/expiry timestamp、资源和中心
+目标引用。main 再校验版本、有效期和资源一致性，在下一视觉帧更新模拟相机指向/FOV，并发布
+`runtime.camera_command_ack`。5v5 开发冒烟为 `84/84` applied，200v200 seed 17、1.2 s 为
+`1872/1872` applied。该证据只覆盖接口和状态流，不覆盖真实 AirSim 云台、实机执行、至少 20
+个未见 seed 的非退化、主动视觉可见率/重捕获或物理拦截收益。
+
 2026-07-20 主动视觉专项 `17 passed`，D5 全量 `376 passed in 9.94s`。训练 smoke 是 8 个
 合成 seed、BC/PPO 各 1 epoch；bundle/checkpoint 仅在 `tmp_path`，没有正式模型。20-seed fixture
 只验证准入门及合成拒绝，不能作为可见性、时延或 safety 性能证据。本轮未运行 AirSim。
@@ -248,9 +261,9 @@ actor 或 object identity。
 
 该小样本训练结果仍仅为可过拟合性测试；独立数据切分、概率校准和 test 评估的软件已经实现，
 但未产生至少 20 个未见 seed 或真实图像的正式结果，也没有默认 checkpoint，不能解释为已
-验收 GNN。D5 模块-owned scalable 3D DTO 适配已完成，main scalable module stack 已调用该
-adapter；正式 checkpoint、多 seed scalable episode、
-真实 AirSim 大规模接线和学习型主动视觉训练仍未完成。现有几何规则、约束聚类和 Hungarian
+验收 GNN。D5 模块-owned scalable 3D DTO 适配和规则主动视觉模拟相机接线已完成，main scalable
+module stack 已调用 adapter；正式 checkpoint、至少 20 个未见 seed 的 paired scalable episode、
+真实 AirSim 云台接线和学习型主动视觉训练仍未完成。现有几何规则、约束聚类和 Hungarian
 绑定仍是默认运行路径。
 
 ## 2026-07-16 真实 ComputerVision 5+1 实现证据

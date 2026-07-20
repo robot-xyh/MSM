@@ -1,10 +1,28 @@
 # D5 Terminal Association
 
-离线科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块只输出 `TerminalAssociation` 决策，不修改、重写或重新分配任何全局轨迹 ID。
+科研模块，用于把末端相机视场中的本地视觉轨迹保守关联到中心分配的 `global_track_id`。模块可在统一三维 episode 中在线运行；训练标签和真值评分仍保持离线。D5 只输出视觉关联与相机观察意图，不修改、重写或重新分配任何全局轨迹 ID。
+
+## 2026-07-20 统一三维 episode 主动视觉接线状态
+
+main-owned `scalable_3d_simulation` 已把 D5 主动视觉合同接入统一 episode。每个决策时刻由
+D2 中心 `GlobalTrack`、D3 当前 `AssignmentPlan`、D5 几何关联证据和相机反馈构造
+`ActiveVisionSnapshotV1`；相机反馈包含当前 yaw/pitch/FOV 和最近接受的命令版本。在线输入继续
+排除 actor/object/truth identity，`global_track_id` 只读引用中心候选。
+
+库配置为 `disabled` 时仍执行 `DeterministicLookAtScanPolicy` 的 look-at、短时 reacquire 和
+确定性 scan。`shadow` 只记录模型建议，最终命令仍来自规则路径；`assist` 未通过正式准入时也
+回退规则。`RuntimeStepOutput` 已输出版本化相机观察命令，main 对 plan/coalition/communication
+version、有效期和资源一致性复核后，在下一视觉帧更新模拟相机指向/FOV，并发布
+`runtime.camera_command_ack`。这关闭了“统一三维 episode 尚未接线”的接口缺口。
+
+开发冒烟中，5v5 的相机命令为 `84/84` applied；200v200 seed 17、1.2 s 诊断为
+`1872/1872` applied。两组均为单 seed、脏工作树下的接口证据，只证明命令生成、门控、应用和
+ACK 链路可运行，不证明可见率、重捕获时延或物理拦截收益。真实 AirSim 云台、实机执行、正式
+训练数据/checkpoint、至少 20 个未见 seed 的 paired 准入和因果非退化结论仍未完成。
 
 ## 2026-07-20 可选主动视觉 BC/PPO 研究路径与量测审计连接
 
-本轮在既有匿名 tracklet 图之外新增独立、默认不执行的主动视觉研究路径。版本化
+本轮在既有匿名 tracklet 图之外新增独立、默认不执行学习控制的主动视觉研究路径。版本化
 `ActiveVisionSnapshotV1` 只包含中心 `GlobalTrack` 候选的只读 ID/version/timestamp、当前
 `AssignmentPlan` 的 plan/coalition version 与成员引用、相机/云台角度和速率、wide/zoom FOV
 能力、目标投影协方差、可见率/遮挡率/关联置信度、通信版本和友方 exclusive reservation。
@@ -50,9 +68,9 @@ python3 -m d5_terminal_association.active_vision_cli
 
 2026-07-20 代码验证：主动视觉研究专项 `17 passed`；新增能力并入后 D5 全量
 `376 passed in 9.94s`，接受门为零失败。BC/PPO smoke 使用 8 个合成 seed group、各 1 epoch；
-20-seed paired 数据仅验证门控代码，并明确覆盖合成证据拒绝，不是正式准入结果。本轮未运行
-AirSim、未连接真实云台/FOV/ACK，也没有 visibility/delay 的真实非退化证据；默认几何关联与
-规则观察路径保持不变。
+20-seed paired 数据仅验证门控代码，并明确覆盖合成证据拒绝，不是正式准入结果。随后 main 已
+接通统一三维 episode 的模拟相机/FOV 命令与运行时 ACK，但未运行真实 AirSim 云台或实机，
+也没有 visibility/delay 的正式非退化证据；默认几何关联与规则观察路径保持不变。
 
 ## 2026-07-20 版本化训练与模型制品管线
 
@@ -166,7 +184,8 @@ PyTorch MLP 和 `index_add_` 对两个端点聚合消息，不依赖 `torch_geom
 
 `SafeRuleScanPolicy` 提供主动视觉环境/策略安全接口。动作枚举仅含观察中心目标、搜索扇区、
 云台增量和 FOV/变焦；观测超时、低置信或中心 binding 无效时轮转规则扫描扇区。它不包含
-飞行动作、目标分配或火控动作，尚未接入 AirSim 云台，也没有训练或验收学习策略。
+飞行动作、目标分配或火控动作。该规则路径已接入统一三维 episode 的模拟相机命令和 ACK，
+尚未接入真实 AirSim 云台或实机，也没有训练或验收学习策略。
 
 2026-07-20 固定 seed 代码证据：
 
