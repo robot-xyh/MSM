@@ -73,7 +73,11 @@ from .models import (
     summarize_incremental_planning_comparison,
     summarize_terminal_feedback_calibration,
 )
-from .planner import AssignmentPlanner, StalePlanError
+from .planner import (
+    FAULT_AUTHORITY_GENERATION_FENCE_SCHEMA_V1,
+    AssignmentPlanner,
+    StalePlanError,
+)
 from .calibration import (
     P1AssignmentCalibrationRow,
     P1AssignmentCalibrationSummary,
@@ -182,6 +186,7 @@ __all__ = [
     "EDGE_FEATURE_NAMES",
     "FallbackAssignmentSolver",
     "FeatureDistributionGuard",
+    "FAULT_AUTHORITY_GENERATION_FENCE_SCHEMA_V1",
     "HungarianAssignmentSolver",
     "HungarianDemandSlotSolver",
     "LEARNING_RESIDUAL_SCHEMA_V1",

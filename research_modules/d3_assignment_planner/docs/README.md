@@ -20,3 +20,7 @@ D3 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 以及多 secondary owner、single-member authority 和 atomic coalition commit 区域
 计划合同单测。该批全量结果为 `193 passed, 1 skipped`。这些结果没有重跑 AirSim；
 区域裁决仍待 main/D4 接线，不得替代上述 M5N2 运行证据或写成全栈闭环完成。
+
+同日新增故障代际 fence 接口及 5 个专项测试，最新 D3 全量为
+`198 passed, 1 skipped`。该接口只完成 D3 发布代际隔离，50v50 中心故障的 main/D4
+接线和系统结果仍待验证。

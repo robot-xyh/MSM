@@ -65,6 +65,9 @@ class _WindowChangeBudget:
 
 _HYSTERESIS_COST_BASIS_SCHEMA = "d3_hysteresis_current_objective_v1"
 _WINDOW_CHANGE_BUDGET_SCHEMA = "d3_cumulative_window_change_budget_v1"
+FAULT_AUTHORITY_GENERATION_FENCE_SCHEMA_V1 = (
+    "d3_fault_authority_generation_fence_v1"
+)
 _PLAN_OWNER_CONTROL_KEYS = (
     "plan_owner",
     "active_plan_owner",
@@ -196,6 +199,122 @@ class AssignmentPlanner:
             forced_replan=forced_replan,
             publish=publish,
         )
+
+    def advance_authority_generation(
+        self,
+        previous_plan: AssignmentPlan,
+        timestamp: float,
+        *,
+        expected_previous_version: int,
+        fence_reason: str,
+    ) -> AssignmentPlan:
+        """Advance only the published D3 generation before D4 owner arbitration.
+
+        This is a fencing operation, not replanning or execution authorization.
+        Assignment membership, coalition identity, owner and authorization state
+        remain unchanged.  The returned plan is always published so stale checks
+        immediately reject the fenced source generation.
+        """
+
+        self._validate_previous_plan(previous_plan, expected_previous_version)
+        latest = self._latest_published_plan
+        if latest is None:
+            raise StalePlanError(
+                "authority generation fence requires a registered published plan",
+                reason="authority_fence_requires_published_plan",
+                previous_plan_id=previous_plan.plan_id,
+                previous_version=previous_plan.version,
+                expected_previous_version=expected_previous_version,
+            )
+        if previous_plan.execution_signature() != latest.execution_signature():
+            raise StalePlanError(
+                "authority generation fence source semantics are not current",
+                reason="authority_fence_source_semantics_mismatch",
+                previous_plan_id=previous_plan.plan_id,
+                previous_version=previous_plan.version,
+                expected_previous_version=expected_previous_version,
+                latest_plan_id=latest.plan_id,
+                latest_version=latest.version,
+            )
+
+        evaluated_at_s = float(timestamp)
+        latest_evaluated_at_s = float(
+            latest.metadata.get("last_evaluated_at_s", latest.created_at)
+        )
+        if not np.isfinite(evaluated_at_s) or evaluated_at_s < max(
+            float(latest.created_at),
+            latest_evaluated_at_s,
+        ):
+            raise ValueError(
+                "authority generation fence timestamp must be finite and monotonic"
+            )
+        reason = str(fence_reason).strip()
+        if not reason:
+            raise ValueError("fence_reason must not be empty")
+
+        version = latest.version + 1
+        plan_id = f"d3-plan-{uuid4().hex[:12]}"
+        fence_generation = int(
+            latest.metadata.get("fault_authority_fence_generation", 0)
+        ) + 1
+        fence_metadata = {
+            "fault_authority_fence_schema": (
+                FAULT_AUTHORITY_GENERATION_FENCE_SCHEMA_V1
+            ),
+            "fault_authority_generation_fence": True,
+            "fault_authority_fence_generation": fence_generation,
+            "fault_authority_fence_reason": reason,
+            "fault_authority_fence_source_plan_id": latest.plan_id,
+            "fault_authority_fence_source_plan_version": latest.version,
+            "fault_authority_fence_non_reassignment": True,
+            "fault_authority_fence_execution_authorization": False,
+            "fault_authority_fence_requires_d4_gate": True,
+            "fault_authority_fence_d7_directive": "defer_to_d4_hold_or_continue",
+        }
+        assignments = tuple(
+            replace(
+                assignment,
+                plan_version=version,
+                metadata={
+                    **dict(assignment.metadata),
+                    "plan_version": version,
+                    "current_plan_id": plan_id,
+                    "current_plan_version": version,
+                    "identity_created_at_s": evaluated_at_s,
+                    "last_evaluated_at_s": evaluated_at_s,
+                },
+            )
+            for assignment in latest.assignments
+        )
+        metadata = {
+            **dict(latest.metadata),
+            **fence_metadata,
+            "current_plan_id": plan_id,
+            "current_plan_version": version,
+            "plan_version": version,
+            "identity_created_at_s": evaluated_at_s,
+            "last_evaluated_at_s": evaluated_at_s,
+            "execution_signature_changed": False,
+            "plan_published": True,
+            "plan_refresh_only": False,
+            "evaluation_refresh_only": False,
+            "forced_replan": False,
+            "reassignment_applied": False,
+            "execution_authorization_changed": False,
+        }
+        fenced = replace(
+            latest,
+            plan_id=plan_id,
+            version=version,
+            assignments=assignments,
+            created_at=evaluated_at_s,
+            last_changed_at=latest.last_changed_at,
+            previous_plan_id=latest.plan_id,
+            changed=False,
+            decision_state="authority_generation_fenced",
+            metadata=metadata,
+        )
+        return self.publish_plan(fenced)
 
     def plan_regional_authority(
         self,
@@ -1682,20 +1801,35 @@ class AssignmentPlanner:
         )
         latest = self._latest_published_plan
         if latest is not None:
+            declared_authority_fence = self._declares_authority_generation_fence(
+                plan
+            )
             same_identity = (
                 plan.plan_id == latest.plan_id and plan.version == latest.version
             )
             if same_identity:
+                if declared_authority_fence:
+                    raise StalePlanError(
+                        "authority generation fence must advance plan identity",
+                        reason="authority_fence_duplicate_version",
+                        previous_plan_id=plan.previous_plan_id,
+                        previous_version=plan.version,
+                        latest_plan_id=latest.plan_id,
+                        latest_version=latest.version,
+                    )
                 if plan.execution_signature() != latest.execution_signature():
                     raise ValueError(
                         "published plan cannot change execution semantics without a new identity"
                     )
                 self._latest_published_plan = plan
                 return plan
+            if declared_authority_fence:
+                self._validate_authority_generation_fence(plan, latest)
             if plan.execution_signature() == latest.execution_signature():
-                raise ValueError(
-                    "evaluation-only refresh cannot advance executable plan identity"
-                )
+                if not declared_authority_fence:
+                    raise ValueError(
+                        "evaluation-only refresh cannot advance executable plan identity"
+                    )
             if plan.version != latest.version + 1:
                 raise StalePlanError(
                     "published plan version must extend the latest published plan",
@@ -1718,6 +1852,52 @@ class AssignmentPlanner:
         self._latest_plan_id = plan.plan_id
         self._latest_published_plan = plan
         return plan
+
+    @staticmethod
+    def _declares_authority_generation_fence(plan: AssignmentPlan) -> bool:
+        return bool(
+            plan.metadata.get("fault_authority_generation_fence")
+            or plan.metadata.get("fault_authority_fence_schema")
+        )
+
+    @staticmethod
+    def _validate_authority_generation_fence(
+        plan: AssignmentPlan,
+        latest: AssignmentPlan,
+    ) -> None:
+        metadata = plan.metadata
+        required_metadata = {
+            "fault_authority_fence_schema": (
+                FAULT_AUTHORITY_GENERATION_FENCE_SCHEMA_V1
+            ),
+            "fault_authority_generation_fence": True,
+            "fault_authority_fence_source_plan_id": latest.plan_id,
+            "fault_authority_fence_source_plan_version": latest.version,
+            "fault_authority_fence_non_reassignment": True,
+            "fault_authority_fence_execution_authorization": False,
+            "fault_authority_fence_requires_d4_gate": True,
+        }
+        if any(metadata.get(key) != value for key, value in required_metadata.items()):
+            raise ValueError("invalid fault authority generation fence metadata")
+        if plan.changed or plan.decision_state != "authority_generation_fenced":
+            raise ValueError("authority generation fence cannot represent reassignment")
+        if plan.assignment_signature() != latest.assignment_signature():
+            raise ValueError("authority generation fence cannot change assignments")
+        if plan.coalitions != latest.coalitions:
+            raise ValueError("authority generation fence cannot change coalitions")
+        if plan.total_cost != latest.total_cost:
+            raise ValueError("authority generation fence cannot change assignment cost")
+        if (
+            plan.human_authorization_state != latest.human_authorization_state
+            or plan.source_node_id != latest.source_node_id
+            or plan.target_node_id != latest.target_node_id
+            or plan.link_type != latest.link_type
+        ):
+            raise ValueError("authority generation fence cannot change owner or authorization")
+        if plan.execution_signature() != latest.execution_signature():
+            raise ValueError(
+                "authority generation fence cannot change execution semantics"
+            )
 
     def _finalize_identity(
         self,

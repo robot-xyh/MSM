@@ -306,3 +306,25 @@ k=1 正例的 assignment metadata 为 `commit_required=False`、模式
 center failure、multiple secondary owner、secondary failure 或网络分区的全栈结果。
 后续验收应记录 plan version 单调性、stale 拒绝、lease 过期执行数、缺 ACK 执行数和
 每阶段耗时，再由 D6 汇总。
+
+## 2026-07-20 故障代际 Fence 确定性验收
+
+本批针对 50v50 中心故障时 `authority_generation_not_advanced` 阻塞增加 D3 模块级
+测试。测试使用一个显式 k=3 混合联盟，以同时检查 assignment 成员和 coalition
+identity/version。没有运行 scalable 3D 全栈、AirSim 或多 seed。
+
+| 验收项 | 门限 | 结果 |
+|---|---|---|
+| 单次 fence | version 严格 +1，正常 publish | 通过 |
+| assignment/目标身份 | 成员和 target 不变 | 通过 |
+| coalition | identity/version/成员不变 | 通过 |
+| owner/授权 | 不改变 | 通过 |
+| expected version 错误 | fail closed | `expected_previous_version_mismatch` |
+| 连续 fence | v1 -> v2 -> v3 | 通过 |
+| 重复 fence 版本 | fail closed | `authority_fence_duplicate_version` |
+| 伪造 coalition | fail closed | 通过 |
+
+新增专项测试 5 个。D3 全量共收集 199 项，结果为 `198 passed, 1 skipped`，接受门限
+为零失败；唯一 skip 是未安装的 optional OR-Tools。该结果证明 D3 fence 接口和发布
+门控可执行，不证明 main 已修复 50v50 故障流程。下一项系统验收是 main 在 D4 裁决前
+调用 fence，并确认所有区域不再出现 `authority_generation_not_advanced`。

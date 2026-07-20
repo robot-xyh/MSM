@@ -329,3 +329,21 @@ AirSim、多 seed 或全栈实时验收。
 需求数区分 single-member authority 与 atomic coalition commit；k>1 的 committed、
 atomic committed、全 ACK、成员/协调者/epoch/lease 一致性门限保持不变。main 仍需
 把 D4 `CoalitionCommitSummary.commit_required` 原样映射并运行 module-stack 回归。
+
+## 19. 故障代际 Fence GAP 更新（2026-07-20）
+
+| GAP/能力 | 当前状态 | 证据与边界 |
+|---|---|---|
+| 分配未变时 forced replan 不升版 | 语义保持 | 普通重规划仍正确返回原 identity，不用于故障隔离 |
+| D4 owner change generation fence | D3-owned closed | `advance_authority_generation()` 严格 +1 并正常 publish |
+| assignment/coalition 不变 | deterministic done | k=3 成员、角色、coalition id/version 和执行签名一致 |
+| stale/rollback/重复版本 | fail-closed done | expected mismatch、旧 source 和 duplicate fence 均拒绝 |
+| fence 伪造执行变化 | fail-closed done | coalition 篡改及 owner/授权变化不允许进入 fence 路径 |
+| D4/D7 安全边界 | interface done | metadata 标记非授权并要求 D4 gate；D7 不得仅凭 fence continue |
+| 50v50 中心故障接线 | cross-module blocker open | main 尚未在 D4 裁决前调用接口和复跑场景 |
+
+发现时该问题阻断 50v50 中心故障区域裁决，属于运行级 P0 集成阻塞。D3-owned 接口和
+发布门控已关闭，系统级状态仍为 main/D4 接线待验。新增 5 个测试后全量共 199 项，
+`198 passed, 1 skipped`，零失败达到门限。AirSim 集成文档已检查：本轮没有修改
+AirSim adapter、settings、actor 或控制合同，因此无需更新；scalable 3D runtime 由
+main 另行接线，D3 不跨模块修改。

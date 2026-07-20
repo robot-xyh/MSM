@@ -660,3 +660,32 @@ owner/epoch/member 不一致、错误 atomic/commit-required 标记、重复资�
 main 应直接映射 D4 `CoalitionCommitSummary.commit_required`，D6 应按该模式分别统计
 单成员授权和原子联盟提交。本轮仅完成 D3 模块合同；main 的 DTO 映射和故障场景集成
 回归仍待执行。
+
+## 21. 故障代际 Fence（2026-07-20）
+
+### 已实现
+
+1. 新增 `advance_authority_generation()`，输入当前已发布计划、timestamp、精确前序
+   version 和 fence reason；接口始终通过 D3 `publish_plan()` 登记。
+2. 新计划只更新 `plan_id/version/created_at` 和 assignment 的计划上下文版本。
+   assignment 成员、目标身份、coalition identity/version、owner、授权状态、总代价和
+   `last_changed_at` 保持不变。
+3. metadata 明确记录 fence schema、reason、source plan、generation、non-reassignment、
+   non-execution-authorization 和 D4 gate requirement。
+4. `publish_plan()` 对同执行签名新身份只开放严格 fence 例外。普通 evaluation refresh
+   仍不得推进 identity；错误来源、重复版本和任何执行语义变化均拒绝。
+5. 连续 fence 按 v1 -> v2 -> v3 单调推进。每次发布后，上一代立即进入 stale 状态。
+
+### 安全边界
+
+Fence 只解决 D4 要求“owner 变化前必须先提升 D3 generation”的前置条件。它不选择
+owner、不改变授权、不执行重分配，也不表示 D4 已允许继续任务。D7 必须继续消费 D4
+hold/continue；任何直接把 fence 当成执行许可的 main 适配都属于合同错误。
+
+### 验证与后续
+
+新增 5 个测试覆盖正例、expected version 错误、成员/coalition 身份不变、连续 fence、
+重复发布和 coalition 篡改。D3 全量 199 项，`198 passed, 1 skipped`，零失败达到门限。
+main 后续在 50v50、`recon_count=2`、中心故障路径中调用接口，并复验 D4
+`authority_generation_not_advanced=0`。本轮未修改 AirSim adapter、actor、settings 或
+控制接口，AirSim 集成文档检查后无需修改。

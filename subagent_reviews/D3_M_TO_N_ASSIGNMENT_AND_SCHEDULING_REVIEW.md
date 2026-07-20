@@ -341,3 +341,14 @@ committed，以及缺 ACK、旧 epoch 和 stale source 拒绝。该结果证明 
 不证明 D4 已完成区域裁决映射，
 也不证明网络分区下的运行时原子提交。main/D4 接线和 D6 按提交模式统计
 latency/abort/reconfigure 仍为 P1。
+
+## 20. M-to-N 联盟的故障代际 Fence（2026-07-20）
+
+故障 fence 不重建 M-to-N 联盟。测试中的 k=3 计划在 fence 前后保持相同成员、角色、
+coalition id/version、到达模式和授权状态，仅 D3 plan id/version 递增。这样 D4 可用
+新 generation 重新裁决 owner，同时不会把故障隔离误计为联盟换员或绕过成员迟滞。
+
+Fence metadata 明确标记 non-reassignment 和 requires-D4-gate。D7 仍按 D4
+hold/continue、当前 owner 和后续区域计划执行；fence 本身不使任何 primary 或 reserve
+获得新授权。该能力已通过模块测试，50v50 中心故障下的区域 owner 重裁决仍待 main
+集成验证。

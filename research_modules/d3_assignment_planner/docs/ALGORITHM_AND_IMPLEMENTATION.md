@@ -1020,3 +1020,65 @@ assignment 的 `regional_commit_required`、`regional_commit_mode`、
 结果为 193 passed、1 optional OR-Tools skipped。main/D4 尚未完成运行时 DTO 映射，
 D6 尚未汇总区域计划形成时间、拒绝原因和 owner/epoch/lease 迁移。因此本节只能声明
 D3 接口已实现并通过模块测试。
+
+## 28. 故障代际 Fence 接口（2026-07-20）
+
+### 28.1 调用位置
+
+中心或二级节点故障发生后，main 先调用：
+
+```text
+fenced_plan = planner.advance_authority_generation(
+    current_published_plan,
+    timestamp,
+    expected_previous_version=current_published_plan.version,
+    fence_reason=故障原因,
+)
+```
+
+D3 发布 fenced plan 后，main 才把新 `plan_id/version` 作为 D4 区域重新裁决的来源。
+该接口不接收 tracks/resources，也不运行成本构造、Hungarian 或迟滞，因此不会因成员
+未变退回旧版本。
+
+### 28.2 构造规则
+
+接口首先执行 `_validate_previous_plan()`，并要求输入与 planner 当前已登记计划的执行
+签名一致。timestamp 必须有限且不早于当前 identity/最近评估时间，fence reason 不得
+为空。输出采用：
+
+```text
+new_version = latest.version + 1
+new_plan_id = fresh D3 identity
+previous_plan_id = latest.plan_id
+assignments = same membership with new plan context version
+coalitions = exact previous coalition objects
+last_changed_at = latest.last_changed_at
+changed = false
+decision_state = authority_generation_fenced
+```
+
+metadata schema 为 `d3_fault_authority_generation_fence_v1`。关键字段包括 source
+plan id/version、fence generation、reason、`non_reassignment=True`、
+`execution_authorization=False`、`requires_d4_gate=True` 和 D7 directive
+`defer_to_d4_hold_or_continue`。
+
+### 28.3 发布门控
+
+既有 `publish_plan()` 在执行签名相同但身份变化时默认报错。Fence 例外仅在以下条件
+全部满足时开放：
+
+- fence schema 和来源计划精确匹配当前 latest；
+- version 严格为 latest + 1，`previous_plan_id` 指向 latest；
+- assignment signature、coalition、总成本、owner 和授权均未改变；
+- `changed=False` 且 decision state 为 `authority_generation_fenced`；
+- metadata 明确声明非重分配、非执行授权和需要 D4 gate。
+
+重复发布同一 fence、错误 expected version、旧 source generation 或伪造执行变化均
+fail closed。正常 evaluation refresh 的身份规则没有放宽。
+
+### 28.4 当前证据
+
+5 个专项测试覆盖一次 fence、M-to-N coalition 身份不变、expected version 错误、两次
+连续 fence、重复发布和伪造 coalition。2026-07-20 D3 全量共 199 项，结果为
+`198 passed, 1 skipped`，唯一 skip 为 optional OR-Tools。尚未由 main 接入 50v50
+中心故障运行时，也未形成 D4/D6 全栈结果。

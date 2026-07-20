@@ -583,3 +583,19 @@ distributed k=3 正负例；main/D4 运行时映射尚未完成。
 本轮 D3 全量共 194 项，结果为 `193 passed, 1 skipped`。下一步仅需 main 接入 D4
 区域裁决、复跑四个 module-stack 场景并由 D6记录 owner/epoch/lease/commit 指标；D3
 不继续扩展新的求解器或区域决策策略。
+
+## 22. 故障代际 Fence 复核（2026-07-20）
+
+50v50 中心故障暴露了重规划与故障隔离的语义差异。普通 `forced_replan=True` 在
+assignment 未变时保留原版本，符合 evaluation refresh 合同；D4 owner 切换则需要
+先建立严格更高的 generation。D3 现用独立 `advance_authority_generation()` 处理后者，
+避免通过伪造 assignment、owner 或授权变化强制升版。
+
+Fence 复制当前已发布计划的 assignment 和 coalition，只推进 D3 identity/version，
+并记录 source lineage、原因和 D4 gate requirement。`publish_plan()` 仍拒绝普通同执行
+签名新身份；fence 只有安全 metadata 和内容不变量全部通过时才获准发布。重复版本、
+错误 expected version 和 coalition 篡改均被拒绝。
+
+新增 5 个测试后 D3 全量为 `198 passed, 1 skipped`。D3-owned 阻塞已关闭。main 尚需
+在 D4 `RegionalFailoverCoordinator` 重新裁决前调用 fence，并在 50v50 中验证 owner
+变化、plan version/epoch 和 D7 hold/continue 的完整链路。

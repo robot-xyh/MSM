@@ -536,3 +536,24 @@ owner 和成员结果，生成一个普通、可版本校验的 `AssignmentPlan`
 区域合同已完成模块级测试，main 尚未把 D4 `RegionalFailoverDecision` 转换并接入
 `plan_regional_authority()`；因此多 owner secondary 和 distributed 运行时闭环仍是
 待集成，不得写成完整系统已通过。
+
+## 2026-07-20 故障代际 Fence
+
+`AssignmentPlanner.advance_authority_generation(...)` 用于中心或二级节点故障后、D4
+重新裁决区域 owner 之前推进 D3 计划代际。调用方必须传入当前已发布计划、单调时间、
+精确 `expected_previous_version` 和非空 `fence_reason`。接口复制原计划的 assignment
+成员、coalition identity/version、目标身份、owner 和授权状态，只生成新的
+`plan_id`、严格递增 `version`，并由 D3 正常发布登记。assignment 中仅同步新的计划
+上下文版本；资源-目标绑定不变。
+
+Fence metadata 使用 `d3_fault_authority_generation_fence_v1`，记录原因、来源计划、
+fence generation、非重分配和非执行授权。`fault_authority_fence_requires_d4_gate=True`
+表示该计划不能自行授权 D7；main/D7 仍必须执行 D4 的 hold/continue 结果。普通相同
+执行签名的新身份继续被 `publish_plan()` 拒绝，只有来源、版本和安全标记完整的 fence
+可推进。错误 expected version、旧来源、重复 fence 版本和篡改 coalition 均 fail
+closed。
+
+2026-07-20 新增 5 个专项测试。D3 全量共 199 项，结果为
+`198 passed, 1 skipped`；唯一 skip 是 optional OR-Tools。该结果关闭 D3-owned fence
+接口缺口；main 尚需在 50v50 中心故障路径调用该接口，再把新 generation 交给 D4
+区域裁决。

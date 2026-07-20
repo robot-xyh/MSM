@@ -861,3 +861,24 @@ summary，D3 只接受 `single_member_authorized`、非 atomic、成员授权完
 计划 metadata 使用 `single_member_authority` 和 `atomic_coalition_commit` 区分两类
 授权，同时记录 `regional_commit_required`、实际状态和 evidence 是否存在。该区分供
 D6 分别统计区域单成员授权与多成员原子提交，不改变 k>1 的全有或全无原则。
+
+## 19. 故障代际隔离原则（2026-07-20）
+
+D4 在中心或二级 owner 变化前要求新的计划 generation，以便旧 owner 的消息、租约和
+授权不能继续引用同一代际。普通 `plan(..., forced_replan=True)` 仍受执行签名和迟滞
+规则约束；分配未变时返回原版本是正确的重规划语义，但不能满足故障隔离。因此 D3
+提供独立的 `advance_authority_generation()`，把“重新求解”与“故障代际隔离”分开。
+
+Fence 具有以下不变量：
+
+1. assignment 的目标、资源、角色、波次和 coalition 绑定不变；
+2. coalition identity、version、成员和状态不变；
+3. owner、human authorization、activation 和 executable 语义不变；
+4. 只生成新的 `plan_id` 和严格递增 `version`，assignment 的上下文版本同步更新；
+5. metadata 声明 non-reassignment、non-execution-authorization 和 D4 gate required；
+6. 发布后旧 generation 立即被 D3 stale 检查拒绝。
+
+`publish_plan()` 仍禁止普通相同执行签名的新身份。只有 schema、来源计划、前序版本、
+非重分配和非授权标记全部匹配的 fence 可以通过该例外。声明 fence 后再篡改 assignment、
+coalition、owner 或授权会被拒绝。该计划本身不是 D4 decision，也不能使 D7 从 hold
+切换为 continue。
