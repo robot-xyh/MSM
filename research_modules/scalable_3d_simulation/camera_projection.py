@@ -199,20 +199,27 @@ def project_points(
     attitude_variance = float(np.trace(camera_pose.attitude_covariance_rad2) / 3.0)
     focal_mean = 0.5 * (intrinsics.fx + intrinsics.fy)
     image_noise_variance = float(pixel_noise_std) ** 2 + focal_mean**2 * attitude_variance
-    for index in np.flatnonzero(in_front):
-        x_camera, y_camera, z_camera = camera_points[index]
-        jacobian_camera = np.array(
-            [
-                [intrinsics.fx / z_camera, 0.0, -intrinsics.fx * x_camera / z_camera**2],
-                [0.0, intrinsics.fy / z_camera, -intrinsics.fy * y_camera / z_camera**2],
-            ],
-            dtype=float,
+    valid_indices = np.flatnonzero(in_front)
+    if valid_indices.size:
+        camera_valid = camera_points[valid_indices]
+        z_camera = camera_valid[:, 2]
+        jacobian_camera = np.zeros((valid_indices.size, 2, 3), dtype=float)
+        jacobian_camera[:, 0, 0] = intrinsics.fx / z_camera
+        jacobian_camera[:, 0, 2] = (
+            -intrinsics.fx * camera_valid[:, 0] / z_camera**2
         )
-        jacobian_ned = jacobian_camera @ rotation
-        spatial_covariance = point_covariance[index] + pose_covariance
-        covariance = jacobian_ned @ spatial_covariance @ jacobian_ned.T
-        covariance += np.eye(2, dtype=float) * image_noise_variance
-        covariance_pixels[index] = 0.5 * (covariance + covariance.T)
+        jacobian_camera[:, 1, 1] = intrinsics.fy / z_camera
+        jacobian_camera[:, 1, 2] = (
+            -intrinsics.fy * camera_valid[:, 1] / z_camera**2
+        )
+        jacobian_ned = np.einsum("nij,jk->nik", jacobian_camera, rotation)
+        spatial_covariance = point_covariance[valid_indices] + pose_covariance[None, :, :]
+        left_product = np.einsum("nij,njk->nik", jacobian_ned, spatial_covariance)
+        covariance = np.einsum("nij,nkj->nik", left_product, jacobian_ned)
+        covariance += np.eye(2, dtype=float)[None, :, :] * image_noise_variance
+        covariance_pixels[valid_indices] = 0.5 * (
+            covariance + np.swapaxes(covariance, 1, 2)
+        )
 
     pixel_centers[~in_front] = np.nan
     bbox[~in_front] = np.nan

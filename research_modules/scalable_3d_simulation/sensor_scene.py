@@ -160,20 +160,30 @@ class SensorScene:
                 self.visual_rng.random(visible_local.size)
                 < self.config.visual_detection_probability
             ]
+            retained_covariance = projection.covariance_pixels[retained]
+            if retained.size:
+                cholesky = np.linalg.cholesky(
+                    retained_covariance
+                    + np.eye(2, dtype=float)[None, :, :] * 1.0e-12
+                )
+                standard_noise = self.visual_rng.normal(size=(retained.size, 2))
+                center_noise = np.einsum("nij,nj->ni", cholesky, standard_noise)
+                noisy_centers = projection.pixel_centers[retained] + center_noise
+                retained_bbox = projection.bbox_xyxy[retained]
+                widths = np.maximum(retained_bbox[:, 2] - retained_bbox[:, 0], 1.0)
+                heights = np.maximum(retained_bbox[:, 3] - retained_bbox[:, 1], 1.0)
+                scale_noise = np.maximum(
+                    0.5,
+                    1.0 + self.visual_rng.normal(0.0, 0.025, retained.size),
+                )
+                widths *= scale_noise
+                heights *= scale_noise
             for local_detection_index, projection_index in enumerate(retained):
                 target_index = int(active_indices[projection_index])
-                center_covariance = projection.covariance_pixels[projection_index]
-                center_noise = self.visual_rng.multivariate_normal(
-                    np.zeros(2, dtype=float),
-                    center_covariance,
-                )
-                center = projection.pixel_centers[projection_index] + center_noise
-                raw_bbox = projection.bbox_xyxy[projection_index]
-                width = max(float(raw_bbox[2] - raw_bbox[0]), 1.0)
-                height = max(float(raw_bbox[3] - raw_bbox[1]), 1.0)
-                scale_noise = float(self.visual_rng.normal(0.0, 0.025))
-                width *= max(0.5, 1.0 + scale_noise)
-                height *= max(0.5, 1.0 + scale_noise)
+                center_covariance = retained_covariance[local_detection_index]
+                center = noisy_centers[local_detection_index]
+                width = float(widths[local_detection_index])
+                height = float(heights[local_detection_index])
                 bbox = np.array(
                     [
                         center[0] - 0.5 * width,
