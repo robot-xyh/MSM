@@ -46,7 +46,7 @@ from .runtime_ports import (
     RuntimeStepOutput,
     ScalableModuleStack,
 )
-from .world import VectorizedPointMassWorld
+from .world import ProximityInterceptEvent, VectorizedPointMassWorld
 from .animation import write_trajectory_animation
 
 __all__ = [
@@ -71,6 +71,7 @@ __all__ = [
     "OfflineTruthLabel",
     "ONLINE_OBSERVATION_SCHEMA_VERSION",
     "ProjectionBatch",
+    "ProximityInterceptEvent",
     "PlatformNavigationBatch",
     "RuntimePublication",
     "RuntimeStepInput",

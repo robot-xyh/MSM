@@ -83,6 +83,28 @@ def test_intercept_registration_uses_three_dimensional_five_meter_radius() -> No
     assert not world.intruder_active[0]
 
 
+def test_proximity_intercepts_are_unique_and_truth_bearing_only_offline() -> None:
+    config = ScenarioConfig(
+        target_count=2,
+        resource_count=2,
+        recon_count=0,
+        duration_s=0.1,
+        intercept_radius_m=5.0,
+    )
+    world = VectorizedPointMassWorld(config)
+    world.interceptor_state[:, :3] = np.array(
+        [[0.0, 0.0, -100.0], [100.0, 0.0, -100.0]], dtype=float
+    )
+    world.intruder_state[:, :3] = np.array(
+        [[3.0, 0.0, -96.0], [104.0, 0.0, -100.0]], dtype=float
+    )
+    events = world.register_proximity_intercepts()
+    assert len(events) == 2
+    assert {event.resource_id for event in events} == {"INT-0001", "INT-0002"}
+    assert {event.truth_target_id for event in events} == {"TGT-0001", "TGT-0002"}
+    assert not np.any(world.intruder_active)
+
+
 @pytest.mark.parametrize(
     ("name", "profile"),
     [

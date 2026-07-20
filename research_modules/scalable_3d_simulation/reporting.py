@@ -35,6 +35,9 @@ def write_episode_outputs(
     paths["offline_truth_labels"] = _write_truth_jsonl(
         output_dir / "offline_truth_labels.jsonl", result
     )
+    paths["offline_intercepts"] = _write_intercepts_jsonl(
+        output_dir / "offline_proximity_intercepts.jsonl", result
+    )
     paths["offline_truth_state"] = _write_truth_state_npz(
         output_dir / "offline_truth_state.npz", result
     )
@@ -112,6 +115,13 @@ def _write_truth_jsonl(path: Path, result: EpisodeResult) -> Path:
     with path.open("w", encoding="utf-8") as stream:
         for label in result.offline_truth_labels:
             stream.write(json.dumps(jsonable(label), ensure_ascii=False, sort_keys=True) + "\n")
+    return path
+
+
+def _write_intercepts_jsonl(path: Path, result: EpisodeResult) -> Path:
+    with path.open("w", encoding="utf-8") as stream:
+        for event in result.proximity_intercepts:
+            stream.write(json.dumps(jsonable(event), ensure_ascii=False, sort_keys=True) + "\n")
     return path
 
 

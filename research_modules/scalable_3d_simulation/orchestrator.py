@@ -29,7 +29,7 @@ from .runtime_ports import (
     RuntimeStepInput,
     ScalableModuleStack,
 )
-from .world import VectorizedPointMassWorld
+from .world import ProximityInterceptEvent, VectorizedPointMassWorld
 
 
 @dataclass(frozen=True)
@@ -56,6 +56,7 @@ class EpisodeResult:
     interceptor_state_history: np.ndarray
     recon_state_history: np.ndarray
     intruder_active_history: np.ndarray
+    proximity_intercepts: tuple[ProximityInterceptEvent, ...]
     online_messages: tuple[VersionedEnvelope, ...]
     offline_truth_labels: tuple[OfflineTruthLabel, ...]
     stage_timings: tuple[StageTiming, ...]
@@ -123,6 +124,7 @@ class Scalable3DEpisodeRunner:
         episode_start = time.perf_counter()
         module_publication_count = 0
         control_command_tick_count = 0
+        proximity_intercepts: list[ProximityInterceptEvent] = []
 
         for step_index in range(step_count):
             snapshot = self.world.snapshot()
@@ -224,6 +226,7 @@ class Scalable3DEpisodeRunner:
                     interceptor_acceleration_ned=interceptor_command,
                     recon_acceleration_ned=recon_command,
                 )
+                proximity_intercepts.extend(self.world.register_proximity_intercepts())
                 timing.add("world_dynamics", time.perf_counter() - started)
                 if not diagnostics.finite_state:
                     raise FloatingPointError(f"non-finite world state at {diagnostics.timestamp:.3f}s")
@@ -288,6 +291,7 @@ class Scalable3DEpisodeRunner:
             interceptor_state_history=interceptor_history,
             recon_state_history=recon_history,
             intruder_active_history=intruder_active_history,
+            proximity_intercepts=tuple(proximity_intercepts),
             online_messages=messages,
             offline_truth_labels=tuple(offline_labels),
             stage_timings=timing.records(),
@@ -324,6 +328,7 @@ def run_episode(
         interceptor_state_history=result.interceptor_state_history,
         recon_state_history=result.recon_state_history,
         intruder_active_history=result.intruder_active_history,
+        proximity_intercepts=result.proximity_intercepts,
         online_messages=result.online_messages,
         offline_truth_labels=result.offline_truth_labels,
         stage_timings=result.stage_timings,

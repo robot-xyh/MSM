@@ -31,6 +31,18 @@ class WorldStepDiagnostics:
     max_recon_speed_mps: float
 
 
+@dataclass(frozen=True)
+class ProximityInterceptEvent:
+    """Evaluator-only physical proximity event; never publish on the online bus."""
+
+    timestamp: float
+    resource_index: int
+    target_index: int
+    resource_id: str
+    truth_target_id: str
+    distance_m: float
+
+
 class VectorizedPointMassWorld:
     """Own all truth-bearing point-mass states for one episode."""
 
@@ -220,6 +232,49 @@ class VectorizedPointMassWorld:
 
         delta = self.interceptor_state[:, None, :3] - self.intruder_state[None, :, :3]
         return np.linalg.norm(delta, axis=2)
+
+    def register_proximity_intercepts(self) -> tuple[ProximityInterceptEvent, ...]:
+        """Register unique physical contacts inside the configured 3D radius."""
+
+        active_resources = np.flatnonzero(self.interceptor_active)
+        active_targets = np.flatnonzero(self.intruder_active)
+        if active_resources.size == 0 or active_targets.size == 0:
+            return ()
+        resource_position = self.interceptor_state[active_resources, :3]
+        target_position = self.intruder_state[active_targets, :3]
+        distance = np.linalg.norm(
+            resource_position[:, None, :] - target_position[None, :, :],
+            axis=2,
+        )
+        candidates = np.argwhere(distance <= self.config.intercept_radius_m)
+        if candidates.size == 0:
+            return ()
+        candidate_distance = distance[candidates[:, 0], candidates[:, 1]]
+        order = np.argsort(candidate_distance, kind="stable")
+        used_resources: set[int] = set()
+        used_targets: set[int] = set()
+        events: list[ProximityInterceptEvent] = []
+        for candidate_index in order:
+            local_resource, local_target = candidates[candidate_index]
+            resource_index = int(active_resources[local_resource])
+            target_index = int(active_targets[local_target])
+            if resource_index in used_resources or target_index in used_targets:
+                continue
+            used_resources.add(resource_index)
+            used_targets.add(target_index)
+            self.intruder_active[target_index] = False
+            self.intercepted_target_indices.add(target_index)
+            events.append(
+                ProximityInterceptEvent(
+                    timestamp=self.timestamp,
+                    resource_index=resource_index,
+                    target_index=target_index,
+                    resource_id=self.interceptor_ids[resource_index],
+                    truth_target_id=self.intruder_ids[target_index],
+                    distance_m=float(distance[local_resource, local_target]),
+                )
+            )
+        return tuple(events)
 
     def _initial_intruders(self) -> np.ndarray:
         count = self.config.target_count
