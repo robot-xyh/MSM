@@ -557,3 +557,65 @@ closed。
 `198 passed, 1 skipped`；唯一 skip 是 optional OR-Tools。该结果关闭 D3-owned fence
 接口缺口；main 尚需在 50v50 中心故障路径调用该接口，再把新 generation 交给 D4
 区域裁决。
+
+## 2026-07-20 可复现 BC/PPO/Shadow 研究管线
+
+本模块现提供完整但默认关闭的学习研究路径。`AssignmentPlanner` 默认仍不构造或加载
+模型；规则 Hungarian/`hungarian_demand_slots`、候选 mask、联盟准入、迟滞、计划版本
+和 stale 拒绝继续拥有最终决定权。模型只处理当前稀疏候选边，不输出 assignment、
+target/resource index、联盟成员、owner、plan version 或 D7 控制量。
+
+### 数据与模型合同
+
+- `learning_data.py` 按 `scenario_version + seed` 整体分配 train/validation/test；同一
+  seed 的所有 episode 和 frame 不得跨 split。每帧保存匿名 ordinal target/resource
+  摘要、`E x 12` 候选边特征、完整 action mask、规则成本/选边、前一计划版本、反馈/
+  迟滞结果及高威胁覆盖、规则成本、demand shortfall、churn、过期和安全拒绝 reward
+  分量。原始 track/resource ID、truth actor ID 和任意上游 metadata 均不落盘。
+- `learning_bundle.py` 保存 `manifest.json`、`state_dict.pt` 和 SHA256。manifest 固化
+  feature/schema/policy version、split hash、train normalization、alpha、confidence、
+  OOD、deadline、模型结构、训练结果和 promotion 结论。加载先校验版本/特征/SHA，再
+  调用 `torch.load(..., weights_only=True)`；缺失、损坏或不匹配均返回逐元素相同的
+  `C_rule`。
+- shadow 可加载未晋级 bundle。assist 必须显式调用 `load_model_bundle(...,
+  mode="assist")`，且 promotion manifest 同时满足 recommended、至少 20 个未见 test
+  seed、安全/成本非退化和零 fallback；仅写一个 true 布尔值不能绕过门控。
+
+### BC、PPO 与 paired shadow
+
+`SharedEdgeActorCriticPolicy` 共享同一 edge encoder，支持任意当前候选数 `E`。每边
+actor 输出 bounded residual；value 使用 masked mean-pooled frame context；hold/replan
+是按 `advice_allowed` 低频开放的建议。BC 按 frame mini-batch 跨多个 episode 学习规则
+选边、规则 residual teacher 和 hold/replan，并输出 train/validation loss 与完整 seed
+指标。原生 PyTorch PPO 使用 clipped objective、GAE、value loss、entropy 和 gradient
+clip；每次动作经确定性 mask 与 Hungarian demand-slot solver 后，才按规则成本、高威胁
+覆盖、未满足槽、churn、过期和安全拒绝重算离线 reward。
+
+`shadow_evaluation.py` 在相同 scenario/seed/frame 上复制同一规则矩阵，分别求解 rule
+和 bounded proposal，报告 assignment cost、高威胁 unmet、churn、duplicate/hard
+violation、推理 P50/P95 和 fallback reason。shadow 从不改写规则矩阵，也不发布计划。
+
+四个 CLI 子命令为：
+
+```bash
+PYTHONPATH=research_modules/d3_assignment_planner/src python3 -m d3_assignment_planner.learning_cli generate-data --output /tmp/d3_data
+PYTHONPATH=research_modules/d3_assignment_planner/src python3 -m d3_assignment_planner.learning_cli train-bc --dataset /tmp/d3_data --bundle /tmp/d3_bc_bundle
+PYTHONPATH=research_modules/d3_assignment_planner/src python3 -m d3_assignment_planner.learning_cli train-ppo --dataset /tmp/d3_data --input-bundle /tmp/d3_bc_bundle --bundle /tmp/d3_ppo_bundle
+PYTHONPATH=research_modules/d3_assignment_planner/src python3 -m d3_assignment_planner.learning_cli shadow-eval --dataset /tmp/d3_data --bundle /tmp/d3_ppo_bundle --output /tmp/d3_shadow.json
+```
+
+### 当前证据边界
+
+2026-07-20 的可复现 smoke 使用 30 个 synthetic seed、30 episode、60 frame；按整 seed
+切分为 train/validation/test=`23/1/6`，frame=`46/2/12`。5-epoch BC train loss 从
+`1.1001` 降至 `0.5014`，validation loss 为 `0.3768`；一次 46-transition、2-epoch PPO
+更新的全部指标有限。12 个 test frame 的 shadow 推理 P50/P95 为 `0.281/0.350 ms`，
+fallback、duplicate 和 hard violation 均为 0，但 assignment-cost 非退化未通过，且
+数据源仅为 synthetic smoke，因此 `promotion_recommended=false`、状态 `unavailable`。
+
+本批没有提交正式权重，没有真实 D2/D3 轨迹训练，没有至少 20 个未见真实/高保真 seed，
+也没有 CPU/GPU deadline 分布、AirSim 物理收益或可抢占 timeout 证据。当前结论仅为
+管线实现和合成 smoke；规则 Hungarian 继续是唯一默认路径。
+
+新增 16 个专项测试后，D3 共收集 215 项，最终为 `214 passed, 1 skipped`（6.95 s）；
+接受门限为零失败，唯一 skip 是既有 optional OR-Tools installed-only case。

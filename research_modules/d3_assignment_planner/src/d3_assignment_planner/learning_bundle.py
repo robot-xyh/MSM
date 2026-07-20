@@ -1,0 +1,412 @@
+"""Versioned and checksum-verified model bundles for optional D3 inference."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from hashlib import sha256
+import json
+from math import isfinite
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+import numpy as np
+
+from .learning import (
+    EDGE_FEATURE_NAMES,
+    LEARNING_RESIDUAL_SCHEMA_V1,
+    FeatureDistributionGuard,
+    LearningAssistConfig,
+    LearningCostAssistant,
+    ResidualPrediction,
+)
+from .native_ppo import (
+    SHARED_EDGE_ACTOR_CRITIC_POLICY_V1,
+    SharedEdgeActorCriticPolicy,
+    torch,
+)
+
+
+MODEL_BUNDLE_SCHEMA_V1 = "d3_learning_model_bundle_v1"
+MODEL_BUNDLE_MANIFEST_FILENAME = "manifest.json"
+MODEL_BUNDLE_STATE_DICT_FILENAME = "state_dict.pt"
+
+
+@dataclass(frozen=True)
+class ModelBundleManifest:
+    bundle_schema_version: str
+    feature_schema_version: str
+    feature_names: tuple[str, ...]
+    policy_version: str
+    split_hash: str
+    normalization_mean: tuple[float, ...]
+    normalization_scale: tuple[float, ...]
+    alpha: float
+    min_confidence: float
+    ood_z_threshold: float
+    deadline_s: float
+    training_results: Mapping[str, Any]
+    promotion_manifest: Mapping[str, Any]
+    model_config: Mapping[str, Any]
+    state_dict_file: str
+    state_dict_sha256: str
+
+    def __post_init__(self) -> None:
+        if self.bundle_schema_version != MODEL_BUNDLE_SCHEMA_V1:
+            raise ValueError("unsupported D3 model bundle schema")
+        if self.feature_schema_version != LEARNING_RESIDUAL_SCHEMA_V1:
+            raise ValueError("unsupported D3 model feature schema")
+        if self.feature_names != EDGE_FEATURE_NAMES:
+            raise ValueError("model bundle feature names do not match D3")
+        if self.policy_version != SHARED_EDGE_ACTOR_CRITIC_POLICY_V1:
+            raise ValueError("unsupported D3 model policy version")
+        if not self.split_hash or len(self.state_dict_sha256) != 64:
+            raise ValueError("split hash and state_dict SHA256 are required")
+        mean = np.asarray(self.normalization_mean, dtype=float)
+        scale = np.asarray(self.normalization_scale, dtype=float)
+        if mean.shape != (len(EDGE_FEATURE_NAMES),) or scale.shape != mean.shape:
+            raise ValueError("bundle normalization statistics have the wrong shape")
+        if not np.all(np.isfinite(mean)) or not np.all(np.isfinite(scale)):
+            raise ValueError("bundle normalization statistics must be finite")
+        if np.any(scale <= 0.0):
+            raise ValueError("bundle normalization scale must be positive")
+        guardrails = (
+            self.alpha,
+            self.min_confidence,
+            self.ood_z_threshold,
+            self.deadline_s,
+        )
+        if not all(isfinite(float(value)) for value in guardrails):
+            raise ValueError("bundle guardrails must be finite")
+        if self.alpha < 0.0 or not 0.0 <= self.min_confidence <= 1.0:
+            raise ValueError("bundle alpha or confidence guardrail is invalid")
+        if self.ood_z_threshold <= 0.0 or self.deadline_s <= 0.0:
+            raise ValueError("bundle OOD and deadline guardrails must be positive")
+        if Path(self.state_dict_file).name != self.state_dict_file:
+            raise ValueError("state_dict_file must be a bundle-local filename")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "bundle_schema_version": self.bundle_schema_version,
+            "feature_schema_version": self.feature_schema_version,
+            "feature_names": list(self.feature_names),
+            "policy_version": self.policy_version,
+            "split_hash": self.split_hash,
+            "normalization": {
+                "mean": [float(value) for value in self.normalization_mean],
+                "scale": [float(value) for value in self.normalization_scale],
+            },
+            "guardrails": {
+                "alpha": float(self.alpha),
+                "min_confidence": float(self.min_confidence),
+                "ood_z_threshold": float(self.ood_z_threshold),
+                "deadline_s": float(self.deadline_s),
+            },
+            "training_results": _json_safe(self.training_results),
+            "promotion_manifest": _json_safe(self.promotion_manifest),
+            "model_config": _json_safe(self.model_config),
+            "state_dict": {
+                "file": self.state_dict_file,
+                "sha256": self.state_dict_sha256,
+                "load_policy": "torch_weights_only_true",
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "ModelBundleManifest":
+        normalization = value["normalization"]
+        guardrails = value["guardrails"]
+        state_dict = value["state_dict"]
+        return cls(
+            bundle_schema_version=str(value["bundle_schema_version"]),
+            feature_schema_version=str(value["feature_schema_version"]),
+            feature_names=tuple(str(item) for item in value["feature_names"]),
+            policy_version=str(value["policy_version"]),
+            split_hash=str(value["split_hash"]),
+            normalization_mean=tuple(float(item) for item in normalization["mean"]),
+            normalization_scale=tuple(float(item) for item in normalization["scale"]),
+            alpha=float(guardrails["alpha"]),
+            min_confidence=float(guardrails["min_confidence"]),
+            ood_z_threshold=float(guardrails["ood_z_threshold"]),
+            deadline_s=float(guardrails["deadline_s"]),
+            training_results=dict(value["training_results"]),
+            promotion_manifest=dict(value["promotion_manifest"]),
+            model_config=dict(value["model_config"]),
+            state_dict_file=str(state_dict["file"]),
+            state_dict_sha256=str(state_dict["sha256"]),
+        )
+
+
+@dataclass(frozen=True)
+class ModelBundleLoadResult:
+    loaded: bool
+    fallback_reason: str | None
+    assistant: Any
+    policy: SharedEdgeActorCriticPolicy | None
+    manifest: ModelBundleManifest | None
+
+
+class NormalizedPolicyPredictor:
+    """Apply train-split normalization before policy residual inference."""
+
+    def __init__(
+        self,
+        policy: SharedEdgeActorCriticPolicy,
+        mean: Sequence[float],
+        scale: Sequence[float],
+    ) -> None:
+        self.policy = policy
+        self.mean = np.asarray(mean, dtype=np.float32).reshape(-1)
+        self.scale = np.asarray(scale, dtype=np.float32).reshape(-1)
+
+    def predict(self, features: np.ndarray) -> ResidualPrediction:
+        matrix = np.asarray(features, dtype=np.float32)
+        return self.policy.predict((matrix - self.mean) / self.scale)
+
+
+class RuleFallbackLearningAssistant:
+    """Preserve exact rule costs while exposing a stable bundle fallback reason."""
+
+    def __init__(self, reason: str, *, mode: str) -> None:
+        self.reason = str(reason)
+        self.mode = str(mode)
+
+    def apply(
+        self,
+        matrix_result: Any,
+        tracks: Any,
+        resources: Any,
+        *,
+        expected_previous_version: int,
+        current_plan_version: int,
+        previous_plan: Any = None,
+    ) -> Any:
+        del tracks, resources, previous_plan
+        reason = (
+            "version_constraint"
+            if int(expected_previous_version) != int(current_plan_version)
+            else self.reason
+        )
+        return replace(
+            matrix_result,
+            matrix=np.asarray(matrix_result.matrix, dtype=float).copy(),
+            metadata={
+                **dict(matrix_result.metadata),
+                "learning_residual_schema": LEARNING_RESIDUAL_SCHEMA_V1,
+                "learning_mode": self.mode,
+                "learning_applied": False,
+                "learning_shadow_only": False,
+                "learning_bundle_loaded": False,
+                "learning_fallback_reason": reason,
+                "learning_expected_previous_version": int(expected_previous_version),
+                "learning_current_plan_version": int(current_plan_version),
+            },
+        )
+
+
+def unavailable_promotion_manifest(reason: str = "insufficient_unseen_seed_evidence") -> dict[str, Any]:
+    return {
+        "promotion_recommended": False,
+        "promotion_status": "unavailable",
+        "unseen_seed_count": 0,
+        "minimum_unseen_seed_count": 20,
+        "safety_non_degradation": False,
+        "reason": str(reason),
+    }
+
+
+def save_model_bundle(
+    output_dir: str | Path,
+    policy: SharedEdgeActorCriticPolicy,
+    *,
+    split_hash: str,
+    normalization_mean: Sequence[float],
+    normalization_scale: Sequence[float],
+    training_results: Mapping[str, Any],
+    promotion_manifest: Mapping[str, Any] | None = None,
+    alpha: float = 0.25,
+    min_confidence: float = 0.6,
+    ood_z_threshold: float = 6.0,
+    deadline_s: float = 0.05,
+) -> ModelBundleManifest:
+    """Save weights and a complete research/promotion manifest."""
+
+    if torch is None:  # pragma: no cover
+        raise ImportError("PyTorch is required to save a D3 model bundle")
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    state_path = output / MODEL_BUNDLE_STATE_DICT_FILENAME
+    state_dict = {
+        str(key): tensor.detach().cpu()
+        for key, tensor in policy.state_dict().items()
+    }
+    torch.save(state_dict, state_path)
+    state_sha = _file_sha256(state_path)
+    manifest = ModelBundleManifest(
+        bundle_schema_version=MODEL_BUNDLE_SCHEMA_V1,
+        feature_schema_version=LEARNING_RESIDUAL_SCHEMA_V1,
+        feature_names=EDGE_FEATURE_NAMES,
+        policy_version=SHARED_EDGE_ACTOR_CRITIC_POLICY_V1,
+        split_hash=str(split_hash),
+        normalization_mean=tuple(float(value) for value in normalization_mean),
+        normalization_scale=tuple(float(value) for value in normalization_scale),
+        alpha=float(alpha),
+        min_confidence=float(min_confidence),
+        ood_z_threshold=float(ood_z_threshold),
+        deadline_s=float(deadline_s),
+        training_results=dict(training_results),
+        promotion_manifest=dict(
+            promotion_manifest or unavailable_promotion_manifest()
+        ),
+        model_config={
+            "feature_count": int(policy.feature_count),
+            "hidden_size": int(policy.hidden_size),
+            "residual_bound": float(policy.residual_bound),
+            "action_space": "current_sparse_candidate_edges_plus_low_frequency_advice",
+            "assignment_output": False,
+        },
+        state_dict_file=MODEL_BUNDLE_STATE_DICT_FILENAME,
+        state_dict_sha256=state_sha,
+    )
+    manifest_path = output / MODEL_BUNDLE_MANIFEST_FILENAME
+    with manifest_path.open("w", encoding="utf-8", newline="\n") as stream:
+        json.dump(manifest.to_dict(), stream, ensure_ascii=True, indent=2, sort_keys=True)
+        stream.write("\n")
+    return manifest
+
+
+def load_model_bundle(
+    bundle_dir: str | Path,
+    *,
+    mode: str = "shadow",
+    expected_split_hash: str | None = None,
+    require_promotion_for_assist: bool = True,
+) -> ModelBundleLoadResult:
+    """Safely load a bundle or return an exact-rule fallback assistant."""
+
+    normalized_mode = str(mode).strip().lower()
+    if normalized_mode not in {"shadow", "assist"}:
+        raise ValueError("bundle mode must be shadow or assist")
+    path = Path(bundle_dir)
+
+    def fallback(reason: str, manifest: ModelBundleManifest | None = None) -> ModelBundleLoadResult:
+        return ModelBundleLoadResult(
+            loaded=False,
+            fallback_reason=reason,
+            assistant=RuleFallbackLearningAssistant(reason, mode=normalized_mode),
+            policy=None,
+            manifest=manifest,
+        )
+
+    manifest_path = path / MODEL_BUNDLE_MANIFEST_FILENAME
+    if not path.is_dir() or not manifest_path.is_file():
+        return fallback("model_bundle_missing")
+    try:
+        with manifest_path.open(encoding="utf-8") as stream:
+            raw_manifest = json.load(stream)
+        manifest = ModelBundleManifest.from_dict(raw_manifest)
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        return fallback("model_manifest_invalid")
+    if expected_split_hash is not None and manifest.split_hash != expected_split_hash:
+        return fallback("split_hash_mismatch", manifest)
+    if (
+        normalized_mode == "assist"
+        and require_promotion_for_assist
+        and not _promotion_is_authorized(manifest.promotion_manifest)
+    ):
+        return fallback("promotion_not_recommended", manifest)
+    state_path = path / manifest.state_dict_file
+    if not state_path.is_file():
+        return fallback("model_state_missing", manifest)
+    try:
+        actual_sha = _file_sha256(state_path)
+    except OSError:
+        return fallback("model_state_unreadable", manifest)
+    if actual_sha != manifest.state_dict_sha256:
+        return fallback("state_dict_sha256_mismatch", manifest)
+    if torch is None:  # pragma: no cover
+        return fallback("pytorch_unavailable", manifest)
+    try:
+        state_dict = torch.load(state_path, map_location="cpu", weights_only=True)
+        if not isinstance(state_dict, Mapping) or not all(
+            isinstance(key, str) and torch.is_tensor(value)
+            for key, value in state_dict.items()
+        ):
+            raise TypeError("state_dict is not a tensor mapping")
+        policy = SharedEdgeActorCriticPolicy(
+            feature_count=int(manifest.model_config["feature_count"]),
+            hidden_size=int(manifest.model_config["hidden_size"]),
+            residual_bound=float(manifest.model_config["residual_bound"]),
+        )
+        policy.load_state_dict(state_dict, strict=True)
+        policy.eval()
+    except (KeyError, RuntimeError, TypeError, ValueError, OSError):
+        return fallback("model_state_invalid", manifest)
+    guard = FeatureDistributionGuard(
+        mean=np.asarray(manifest.normalization_mean, dtype=np.float32),
+        scale=np.asarray(manifest.normalization_scale, dtype=np.float32),
+    )
+    assistant = LearningCostAssistant(
+        NormalizedPolicyPredictor(
+            policy, manifest.normalization_mean, manifest.normalization_scale
+        ),
+        config=LearningAssistConfig(
+            mode=normalized_mode,
+            alpha=manifest.alpha,
+            timeout_s=manifest.deadline_s,
+            min_confidence=manifest.min_confidence,
+            ood_z_threshold=manifest.ood_z_threshold,
+        ),
+        distribution_guard=guard,
+    )
+    return ModelBundleLoadResult(
+        loaded=True,
+        fallback_reason=None,
+        assistant=assistant,
+        policy=policy,
+        manifest=manifest,
+    )
+
+
+def _file_sha256(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _promotion_is_authorized(value: Mapping[str, Any]) -> bool:
+    try:
+        unseen_seed_count = int(value.get("unseen_seed_count", 0))
+        minimum_seed_count = max(
+            20, int(value.get("minimum_unseen_seed_count", 20))
+        )
+        fallback_frame_count = int(value.get("fallback_frame_count", 0))
+    except (TypeError, ValueError):
+        return False
+    return bool(
+        value.get("promotion_recommended", False)
+        and value.get("promotion_status") == "recommended"
+        and value.get("safety_non_degradation", False)
+        and value.get("assignment_cost_non_degradation", False)
+        and unseen_seed_count >= minimum_seed_count
+        and fallback_frame_count == 0
+    )
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, (str, bool, int)) or value is None:
+        return value
+    if isinstance(value, float):
+        if not isfinite(value):
+            raise ValueError("bundle JSON cannot contain non-finite values")
+        return value
+    raise TypeError(f"bundle value is not JSON serializable: {type(value).__name__}")

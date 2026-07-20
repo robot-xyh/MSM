@@ -352,3 +352,24 @@ Fence metadata 明确标记 non-reassignment 和 requires-D4-gate。D7 仍按 D4
 hold/continue、当前 owner 和后续区域计划执行；fence 本身不使任何 primary 或 reserve
 获得新授权。该能力已通过模块测试，50v50 中心故障下的区域 owner 重裁决仍待 main
 集成验证。
+
+## 21. 学习研究管线对 M-to-N 的边界（2026-07-20）
+
+新数据、BC、PPO 和 shadow 管线没有把 M-to-N 联盟原子性转移给模型。dataset 的
+candidate edge 仍是原始 target-resource 边，目标需求数和 primary 数只是特征与 reward
+上下文；role/wave/capability slot 展开、资源唯一性、all-or-none admission、coalition
+version 和 stale 拒绝继续由 deterministic demand-slot planner 处理。
+
+PPO rollout 将 bounded residual 写入候选成本副本后，必须调用同一个
+`HungarianDemandSlotSolver`。hold 建议只能引用前一规则选边，并重新验证 candidate mask、
+资源唯一和 demand 上限；不满足时计 safety rejection 并使用 solver 结果。策略不能
+输出 coalition member list、primary/reserve role 或 assignment index。
+
+当前 synthetic smoke 只交替覆盖 independent-demand 3v5/5v3；已有 high-threat k=3
+稀疏/all-or-none 单测继续作为 M-to-N 安全回归。尚未使用真实动态 demand、能力异构、
+primary/reserve feedback 或资源失效序列训练，也没有 20 个未见 M-to-N test seed。
+因此 pipeline implemented 不等于 M-to-N 学习策略或协同物理收益已验收；默认
+Hungarian demand-slot 和既有 `8/10` 物理门限均不改变。
+
+包括该安全边界在内，新增学习管线专项测试 16 项；D3 最终全量为
+`214 passed, 1 skipped`（215 项收集、6.95 s），唯一 skip 是 optional OR-Tools。

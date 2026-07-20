@@ -1082,3 +1082,111 @@ fail closed。正常 evaluation refresh 的身份规则没有放宽。
 连续 fence、重复发布和伪造 coalition。2026-07-20 D3 全量共 199 项，结果为
 `198 passed, 1 skipped`，唯一 skip 为 optional OR-Tools。尚未由 main 接入 50v50
 中心故障运行时，也未形成 D4/D6 全栈结果。
+
+## 29. 可复现 BC、原生 PPO 与 Shadow 实现（2026-07-20）
+
+### 29.1 帧与切分 schema
+
+`LearningFrameRecord` 是逐帧 JSONL 合同。manifest schema 为
+`d3_learning_dataset_v1`，split policy 为 `d3_scenario_seed_group_split_v1`。split 函数
+接收 `scenario_version/seed/episode`，但哈希分组键只使用 scenario version 与 seed，
+保证同 seed 的多个 episode 不能泄漏到不同 split；frame 仅继承组结果。loader 同时
+验证 frame 唯一性、episode split 和 seed split，并重算 split hash。
+
+每个 frame 保存：
+
+```text
+anonymous target/resource summaries
+candidate_edge_indices[E, 2]
+candidate_features[E, 12]
+action_mask[N_target, N_resource]
+rule_cost_matrix + candidate rule_costs + unassigned_costs
+rule_selected_edges + previous_selected_edges + previous_plan_version
+feedback_result + hysteresis_result + hold/replan labels
+high-threat coverage + rule cost + unmet slots + churn + expiry + safety rejection
+```
+
+匿名 entity schema 是 allow-list，token 必须为 ordinal。序列化路径不复制输入 ID 或
+metadata，因此 actor/truth 字段没有进入训练产物。`build_learning_frame_record()` 从
+已有 `CostMatrixResult`、tracks/resources 和 versioned plans 构造记录；synthetic CLI
+仅用于可复现 smoke。
+
+### 29.2 共享边 actor-critic
+
+`SharedEdgeActorCriticPolicy` 对每条边使用同一两层 MLP。其输出为 residual latent mean、
+共享 log standard deviation 和 rule-selection logit。只对当前 mask 中的 hidden state
+做 mean pooling，再生成三分类 advice logits 和 scalar value：
+
+```text
+h_e = EdgeEncoder(x_e)
+delta_e = residual_bound * tanh(mu(h_e))
+h_frame = mean({h_e | mask_e = true})
+advice = Categorical(neutral, hold, replan | h_frame)
+V(s) = ValueHead(h_frame)
+```
+
+mask 外 residual 在采样时强制为 0，transition 构造器拒绝任何 mask 外非零动作。
+advice 只在 frame 的 `advice_allowed=true` 时进入 log probability；其余帧强制 neutral。
+该结构对 E 可变，不含 target/resource 数相关参数。
+
+### 29.3 多 episode BC
+
+BC 的 split 输入按完整 seed 保持，mini-batch 单元是 frame。训练目标为：
+
+```text
+L_BC = BCE(rule_selected_edge, selection_logit)
+     + 0.25 * SmoothL1(rule_residual_teacher, bounded_residual)
+     + 0.25 * CE(hold/replan/neutral, advice_logit)
+```
+
+规则选边的 teacher residual 对 selected edge 为负、未选候选为正，只用于 warm start，
+不构成最终 assignment label。输出同时给出初始/最终 train loss、validation loss，以及
+每个完整 scenario/seed 的 edge/advice accuracy；不输出边级随机 holdout 指标。
+
+### 29.4 原生 clipped PPO
+
+`ClippedPPOTrainer` 直接使用 PyTorch distribution、Adam、GAE 和 clipped surrogate：
+
+```text
+r_t = exp(log_pi_new - log_pi_old)
+L_policy = -mean(min(r_t * A_t, clip(r_t, 1-epsilon, 1+epsilon) * A_t))
+L = L_policy + c_v * MSE(V_t, return_t) - c_entropy * entropy
+```
+
+rollout 不接受 policy assignment。bounded residual 先仅写入候选边 proposal matrix，
+随后复用 `HungarianDemandSlotSolver` 和 action mask。hold 建议只能引用上一规则选边，且
+必须再次通过 mask、唯一资源和 demand 数检查；失败计为 safety rejection 并使用 solver
+结果。最终在原始规则成本上评价 proposal-selected edges，默认 reward 为：
+
+```text
+R = 2.0 * high_threat_coverage
+  - 0.05 * rule_total_cost
+  - 2.0 * unmet_demand_slots
+  - 0.5 * reassignment_churn
+  - 2.0 * plan_expired
+  - 2.0 * safety_rejections
+```
+
+该实现是小型 offline/synthetic 研究管线，不是正式 on-policy AirSim 环境训练。PPO 不
+替代 Hungarian，也不读取或修改 D7 控制。
+
+### 29.5 Bundle 与 fail-safe load
+
+bundle schema `d3_learning_model_bundle_v1` 固定 `manifest.json` 和 `state_dict.pt`。
+manifest 含 feature/schema/policy version、split hash、normalization mean/scale、模型
+结构、alpha、confidence、OOD z threshold、deadline、训练结果、promotion manifest 和
+state SHA256。loader 顺序为：解析纯 JSON、校验合同、检查 assist promotion、检查文件
+与 SHA、`torch.load(weights_only=True)`、严格 `load_state_dict(strict=True)`。任何失败
+都返回 `RuleFallbackLearningAssistant`，保留规则矩阵；version mismatch 的优先原因仍
+是 `version_constraint`。
+
+### 29.6 Paired shadow 与晋级
+
+shadow evaluator 为每帧保留 `rule_snapshot`，从副本生成 proposal，再对两者调用同一
+demand-slot solver。输出 frame、seed 和 aggregate 三层成本、高威胁 unmet、churn、
+duplicate、hard violation、fallback 和 inference percentile。promotion 条件全部满足
+才为 true：test split、证据源 eligible、未见 seed 数不少于 20、fallback=0、安全非
+退化、assignment cost 非退化。synthetic CLI 自动标为 evidence-ineligible。
+
+当前在线 assistant 只消费 residual。advice head 尚未接入 planner 的迟滞/发布状态机，
+因此文档不得把离线 hold/replan 训练写成在线策略部署。

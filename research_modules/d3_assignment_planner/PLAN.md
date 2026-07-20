@@ -689,3 +689,62 @@ hold/continue；任何直接把 fence 当成执行许可的 main 适配都属于
 main 后续在 50v50、`recon_count=2`、中心故障路径中调用接口，并复验 D4
 `authority_generation_not_advanced=0`。本轮未修改 AirSim adapter、actor、settings 或
 控制接口，AirSim 集成文档检查后无需修改。
+
+## 22. 可复现学习研究管线（2026-07-20）
+
+### 已完成的 D3-owned 能力
+
+1. 数据集 schema 已实现。split 单元为 `scenario_version + seed`，因此一个 seed 下的
+   episode/frame 只能出现在一个 split；manifest 保存 episode/frame/seed 数和 split
+   hash。帧记录只含匿名 ordinal entity 摘要和 D3 派生字段，禁止 truth/actor/upstream
+   metadata。
+2. bundle schema 已实现。`manifest.json + state_dict.pt + SHA256` 包含 feature/schema/
+   policy version、split hash、归一化统计、alpha/confidence/OOD/deadline、结构、训练
+   结果和 promotion manifest。只允许 weights-only load；缺失、损坏、SHA、版本、特征
+   或 split 不匹配均构造 rule fallback assistant。
+3. 多 episode BC 已实现。训练按 frame mini-batch，不把 edge 随机拆到不同 split；同时
+   学习规则选边、规则 residual teacher 和低频 hold/replan，输出 train/validation loss
+   及 whole-seed accuracy。
+4. 原生 PyTorch clipped PPO 已实现。共享边 actor 支持变长 `E`，value 使用 masked
+   pooled context；动作仅为 bounded residual 和低频建议。counterfactual rollout 必须
+   先经 deterministic mask/Hungarian demand-slot solver，再用高威胁覆盖、规则成本、
+   unmet slot、churn、计划过期和安全拒绝形成 reward。PPO 不输出 assignment。
+5. paired shadow evaluator 和 CLI 已实现。报告同 seed 的 rule/proposal 成本、高威胁
+   unmet、churn、duplicate/hard violation、P50/P95 与 fallback。promotion 必须使用
+   test split、至少 20 个未见 seed、零 fallback，并同时满足安全和成本非退化。
+6. 默认 planner 不变。`learning_assistant=None` 仍是构造默认；shadow/assist 都需显式
+   注入。bundle assist loader 只有通过完整 promotion manifest 才返回可用 assistant。
+
+### 2026-07-20 合成 smoke
+
+固定 30 个 seed、每 seed 1 episode/2 frame，roster 在 3v5 与 5v3 间确定性交替。整体
+切分为 23 train、1 validation、6 test seed，即 46/2/12 frame。5-epoch BC 的 train
+loss 为 `1.1001 -> 0.5014`，validation=`0.3768`；46-transition PPO 单次更新、2 个
+optimization epoch 的 policy/value/entropy/KL/gradient 指标均有限。test shadow 的
+推理 P50/P95=`0.281/0.350 ms`，fallback=0、duplicate=0、hard violation=0；但
+assignment-cost non-degradation=false，且 synthetic source 不具 promotion 资格，故
+`promotion_recommended=false/unavailable`。
+
+本地阶段耗时样本为数据生成 `0.375 s`、BC `0.920 s`、PPO `0.132 s`、12-frame
+shadow `0.006 s`。这些是单机 smoke，不是吞吐、实时、收益或系统验收。专项测试另用
+人为偏移 old log probability 覆盖 PPO clipped-ratio 分支；smoke 的实际 clip fraction
+为 0，不据此声明策略收敛。
+
+### 仍开放的真实数据与准入条件
+
+1. main 提供 truth-isolated 的真实 D2/D3 sequential frames，并给出稳定
+   `scenario_version`、seed、episode 和 frame 时钟；不得把 AirSim actor/truth ID 写入
+   online feature 或训练记录。
+2. 至少 20 个从未参与 normalization、BC、PPO 或 threshold 调整的 test seed；train、
+   validation、test 的 scenario/seed 集合必须不相交，split hash 随 bundle 固化。
+3. 在目标新增/消失、3v5、5v3、资源失效、M-to-N demand 变化和 stale/timeout/OOD
+   故障注入下完成 paired shadow；duplicate、hard violation、未授权执行和 stale 接受
+   必须为 0，高威胁 unmet 与 assignment cost 不退化。
+4. 标定 CPU/GPU inference P50/P95/P99、confidence、OOD 和 deadline，并实现或证明
+   可抢占 timeout；当前仍是同步返回后的 deadline 拒绝。
+5. 只有上述证据写入 promotion manifest 后才允许 assist。任何正式权重、长期训练、
+   AirSim runtime 接线和 D6 系统报告均不属于本次 synthetic smoke。
+
+验证门限为 D3 全量零失败、bundle/mask/fallback fail closed、BC loss 下降、PPO 更新
+有限、少于 20 seed 必须拒绝 promotion。新增 16 个专项测试后共收集 215 项，最终为
+`214 passed, 1 skipped`（6.95 s）；唯一 skip 是 optional OR-Tools installed-only case。

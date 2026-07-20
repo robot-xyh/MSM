@@ -328,3 +328,54 @@ identity/version。没有运行 scalable 3D 全栈、AirSim 或多 seed。
 为零失败；唯一 skip 是未安装的 optional OR-Tools。该结果证明 D3 fence 接口和发布
 门控可执行，不证明 main 已修复 50v50 故障流程。下一项系统验收是 main 在 D4 裁决前
 调用 fence，并确认所有区域不再出现 `authority_generation_not_advanced`。
+
+## 2026-07-20 可复现学习管线 Synthetic Smoke
+
+### 设置与门限
+
+本批只运行 D3 本地 synthetic smoke，不运行 AirSim，不使用 truth actor ID，不提交
+正式权重。固定 30 个 seed、每 seed 1 episode/2 frame；3v5 与 5v3 roster 交替。split
+按 `scenario_version + seed` 整体哈希，实际 train/validation/test seed 为 `23/1/6`，
+frame 为 `46/2/12`。训练固定 torch/NumPy seed `20260720`，policy hidden size 16。
+
+接受门限如下：
+
+| 项目 | 门限 |
+|---|---|
+| split | 同一 scenario/seed 不得跨 split |
+| BC | final train loss < initial，validation loss 有限 |
+| PPO | policy/value/entropy/KL/clip/gradient 指标均有限 |
+| mask/solver | duplicate=0、hard violation=0、mask 外动作不可生效 |
+| bundle | SHA/feature/policy/version 错误必须回退规则；weights-only load |
+| promotion | 至少 20 未见 test seed，且零 fallback、安全/成本非退化 |
+
+### 结果
+
+| 阶段 | 样本/配置 | 结果 | 本地耗时 |
+|---|---|---|---:|
+| dataset | 30 seed、30 episode、60 frame | split hash 可复算，无 seed 泄漏 | 0.375 s |
+| BC | 5 epoch、8-frame mini-batch | train `1.1001 -> 0.5014`；validation `0.3768` | 0.920 s |
+| PPO | 46 transitions、1 update、2 optimization epoch | 所有更新指标有限；smoke clip fraction=0 | 0.132 s |
+| shadow | 6 test seed、12 frame | fallback=0、duplicate=0、hard violation=0 | 0.006 s |
+
+shadow inference P50/P95 为 `0.281/0.350 ms`。安全非退化为 true，但 assignment-cost
+非退化为 false；同时 test 只有 6 个未见 seed，且数据源是 synthetic。因此 promotion
+manifest 为 `promotion_recommended=false`、`promotion_status=unavailable`、reason
+`evidence_source_not_promotion_eligible`。这不是模型收益证据。
+
+专项测试共新增 16 项：dataset/bundle 8 项、PPO/shadow 7 项、四命令 CLI 1 项。覆盖
+3v5、5v3、200 candidate edge shape、整 seed 泄漏拒绝、BC loss、PPO clipped-ratio、
+mask 外动作拒绝、bundle missing/SHA/feature/policy mismatch、version fallback、shadow
+规则矩阵不变、少于 20 seed 拒绝和 20-seed gate 正例。最终全量测试结果在本轮复验后
+为 `214 passed, 1 skipped`，共收集 215 项、耗时 6.95 s；接受门限为零失败，唯一
+skip 是 optional OR-Tools installed-only case。
+
+### 尚缺正式证据
+
+- truth-isolated 真实 D2/D3 连续轨迹和反馈标签；
+- 至少 20 个完全未参与训练、归一化、阈值选择的真实或高保真 test seed；
+- 目标增删、资源失效、3v5/5v3、M-to-N demand 变化及 stale/timeout/OOD 故障注入；
+- CPU/GPU P50/P95/P99、可抢占 timeout、confidence/OOD calibration；
+- paired assignment cost、高威胁 unmet、churn 和系统物理结果全部非退化。
+
+在这些条件满足前，assist 不得晋级；默认继续使用规则 Hungarian/demand-slot。

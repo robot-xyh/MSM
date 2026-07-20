@@ -347,3 +347,31 @@ atomic committed、全 ACK、成员/协调者/epoch/lease 一致性门限保持�
 `198 passed, 1 skipped`，零失败达到门限。AirSim 集成文档已检查：本轮没有修改
 AirSim adapter、settings、actor 或控制合同，因此无需更新；scalable 3D runtime 由
 main 另行接线，D3 不跨模块修改。
+
+## 20. BC/PPO/Shadow 研究管线 GAP 更新（2026-07-20）
+
+| GAP/能力 | 当前状态 | 证据与剩余边界 |
+|---|---|---|
+| 可复现学习数据 schema | D3-owned implemented/tested | scenario+seed 整体 split，episode/frame 不拆分；匿名 entity、候选特征/mask/规则选边/前序版本/反馈迟滞/reward 均可 JSONL 往返 |
+| truth/edge leakage | deterministic fail-closed | allow-list entity schema，不保存原 ID/metadata；同 seed 跨 split 和重复 frame 均拒绝 |
+| model bundle | D3-owned implemented/tested | manifest+state_dict+SHA256；feature/schema/policy/split/normalization/guardrail/training/promotion 完整，weights-only strict load |
+| bundle fallback | P0/P1 safety done | missing、SHA、feature/policy mismatch 和 version constraint 返回逐元素相同规则矩阵 |
+| multi-episode BC | pipeline implemented/synthetic tested | frame mini-batch 学习 rule edge/residual/advice，输出 train/validation loss 与 whole-seed metrics |
+| native PyTorch PPO | P2 research pipeline implemented | clipped actor-critic、GAE、pooled value、bounded sparse residual、low-frequency advice；counterfactual reward 仍经 deterministic solver |
+| fixed 200x200 action head | closed | shared edge network 对 3v5、5v3、200 candidate edges 输出同形 residual，无 roster-size 参数 |
+| paired shadow evaluator | pipeline implemented/synthetic tested | 同 seed rule/proposal 成本、high-threat unmet、churn、duplicate/hard violation、P50/P95、fallback 可报告；规则矩阵不变 |
+| assist promotion gate | fail-closed implemented | manifest 必须 >=20 unseen test seed、零 fallback、安全和成本非退化；19 seed 即使手写 recommended 也拒绝 |
+| 真实训练/准入 | P1 open/unavailable | 无真实 D2/D3 trajectory、正式权重、>=20 未见真实/高保真 seed、AirSim outcome 或 deadline calibration |
+
+30-seed、60-frame synthetic smoke 的 split 为 23/1/6 seed 和 46/2/12 frame。BC train
+loss `1.1001 -> 0.5014`、validation `0.3768`；46-transition PPO 更新指标有限；test
+shadow P50/P95=`0.281/0.350 ms`，fallback/duplicate/hard violation 均为 0。但
+assignment-cost non-degradation=false，test 只有 6 seed，且 source synthetic，所以
+promotion 为 `false/unavailable`。该结果把旧“数据/checkpoint/PPO 管线未实现”改为
+“管线已实现、真实数据和准入仍开放”，不关闭 outcome GAP。
+
+新增 16 个专项测试后 D3 全量共收集 215 项，最终为 `214 passed, 1 skipped`
+（6.95 s），零失败达到门限；唯一 skip 是 optional OR-Tools installed-only case。
+`research_modules/d3_assignment_planner/docs/AIRSIM_INTEGRATION_PLAN.md` 已检查：没有修改
+adapter、actor、settings、控制、D7 或 runtime 接口，因此无需变更。实验文档只记录
+synthetic smoke，并明确不是 AirSim、正式 PPO 收益或 promotion 证据。

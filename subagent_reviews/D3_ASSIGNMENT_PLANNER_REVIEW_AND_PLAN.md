@@ -599,3 +599,33 @@ Fence 复制当前已发布计划的 assignment 和 coalition，只推进 D3 ide
 新增 5 个测试后 D3 全量为 `198 passed, 1 skipped`。D3-owned 阻塞已关闭。main 尚需
 在 D4 `RegionalFailoverCoordinator` 重新裁决前调用 fence，并在 50v50 中验证 owner
 变化、plan version/epoch 和 D7 hold/continue 的完整链路。
+
+## 23. 可复现学习研究管线复核（2026-07-20）
+
+本轮补齐的不是新 assignment backend，而是围绕规则 Hungarian 的研究外环。默认
+`AssignmentPlanner` 仍没有模型；模型只对 deterministic candidate mask 中的边输出
+bounded residual，最终 plan 仍由 Hungarian/demand-slot、all-or-none、迟滞和版本链
+产生。PPO 与 BC 均没有 assignment head，也没有修改 D7。
+
+| 复核项 | 状态 | 判断 |
+|---|---|---|
+| scenario/seed/episode 数据合同 | implemented/tested | frame 不拆分且整 seed 无跨 split 泄漏；split hash 固化 |
+| 匿名特征 | implemented/tested | ordinal token + allow-list 派生字段；禁止 truth actor 和原 entity ID |
+| BC | synthetic pipeline done | 多 episode frame mini-batch，train/validation loss 和 whole-seed metric 可用 |
+| PPO | native pipeline done, outcome unvalidated | clipped actor-critic、变长 edge、pooled value、低频 advice；只做 synthetic/offline rollout |
+| bundle | implemented/tested | manifest/state_dict/SHA、weights-only strict load、版本/特征/SHA 回退 |
+| shadow paired report | implemented/tested | 成本、high-threat unmet、churn、安全违规、P50/P95 和 fallback 均可聚合 |
+| promotion | unavailable | synthetic test 仅 6 unseen seed 且 cost non-degradation=false；false/unavailable 正确 |
+| online hold/replan | not integrated | advice head 只进入离线 BC/PPO；在线 assistant 当前仅消费 residual |
+
+30-seed/60-frame smoke 中 BC loss `1.1001 -> 0.5014`、validation `0.3768`；PPO 46
+transitions 的一次更新有限。12-frame test shadow inference P50/P95=`0.281/0.350 ms`，
+fallback、duplicate、hard violation 均为 0。该规模和时延不构成实时或收益结论。
+
+后续顺序保持：先由 main 生成 truth-isolated 真实 sequential records，再按完整 seed
+训练和标定；至少保留 20 个完全未见 test seed，完成动态 3v5/5v3、资源失效、目标增删、
+M-to-N demand、stale/timeout/OOD paired shadow。安全、成本、高威胁 unmet 和 churn 全部
+非退化后才能生成 recommended manifest。正式权重、AirSim 接线和 D6 系统报告均未完成。
+
+新增 16 个专项测试后 D3 共收集 215 项，最终为 `214 passed, 1 skipped`（6.95 s），
+零失败满足门限；唯一 skip 是既有 optional OR-Tools installed-only case。

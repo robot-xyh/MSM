@@ -882,3 +882,34 @@ Fence 具有以下不变量：
 非重分配和非授权标记全部匹配的 fence 可以通过该例外。声明 fence 后再篡改 assignment、
 coalition、owner 或授权会被拒绝。该计划本身不是 D4 decision，也不能使 D7 从 hold
 切换为 continue。
+
+## 20. 学习研究数据、策略与晋级原则（2026-07-20）
+
+1. **切分先于训练**：数据按 `scenario_version + seed` 分组，组内所有 episode/frame
+   进入同一 train、validation 或 test split。禁止对候选边随机切分，也禁止同一 seed
+   同时参与 normalization、阈值选择和未见测试。split hash 必须写入模型 bundle。
+2. **只存匿名派生状态**：帧记录使用 `target_0000/resource_0000` ordinal token，保存
+   TargetTrack/ResourceState 的允许字段摘要、候选边特征、action mask、规则成本/选边、
+   前序版本、反馈/迟滞和离线 reward 分量。不得保存 truth actor ID、原始 track/resource
+   ID 或任意未审核 metadata。
+3. **策略不拥有分配权**：共享边 actor 只输出当前候选边的 bounded residual；低频
+   head 只给出 neutral/hold/replan 建议。容量、友方冲突、不可达、区域、demand slot、
+   stale version 和最终 assignment 始终由 deterministic mask/solver/planner 处理。
+4. **变长边而非固定动作表**：actor 输入为 `E x 12`，`E` 是当前帧候选边数；同一
+   参数处理 3v5、5v3、200 edges 或更大稀疏图。value 从 masked mean-pooled edge context
+   计算，不定义固定 200x200 head。
+5. **模型文件必须可审计**：bundle 由 manifest、state dict 和 SHA256 组成，加载使用
+   weights-only。schema、feature、policy、split、SHA 或 state shape 任一不匹配均回退
+   逐元素相同的 `C_rule`，不得尝试宽松反序列化或部分加载。
+6. **shadow 先于 assist**：shadow 在同一 scenario/seed/frame 上比较规则与 proposal，
+   但不改规则矩阵或发布计划。assist 需要显式配置，并且 manifest 必须证明至少 20 个
+   未见 test seed、零 fallback、安全和 assignment-cost 非退化；不足时 promotion 为
+   false/unavailable。
+7. **能力按证据分层**：当前已实现数据、bundle、多 episode BC、原生 clipped PPO、
+   paired evaluator 和 CLI；仅完成 30-seed synthetic smoke。没有正式权重、真实 D2/D3
+   训练、AirSim 物理收益或 20 未见真实 seed 准入。
+
+hold/replan head 当前用于 BC/PPO 和离线 counterfactual rollout，未接入在线 planner
+发布状态机。在线 `LearningCostAssistant` 仍只消费 residual，并执行
+`C_final=C_rule+alpha*tanh(delta_C)`；这一限制避免研究建议绕过既有迟滞、版本或人工
+授权链。
