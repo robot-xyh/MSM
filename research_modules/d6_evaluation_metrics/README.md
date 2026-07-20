@@ -1,5 +1,40 @@
 # D6 Evaluation Metrics
 
+## 2026-07-20 scalable 3D 真值隔离 episode 独立离线入口
+
+新增 `d6_evaluation_metrics.scalable_3d_offline` 和
+`scripts/run_scalable_3d_offline_evaluation.py`。入口只读 main-owned episode 的
+`manifest.json`、`scenario_config.json`、`summary.json`、`stage_timings.csv`、
+`online_observations.jsonl`、`offline_proximity_intercepts.jsonl`；仅在五米身份评分需要时读取
+`offline_truth_labels.jsonl`，且真值不进入在线指标或控制。报告固定输出逐 episode/seed CSV、按
+scenario/version 与显式 target/resource/recon/camera 数量分组的 aggregate JSON、中文 Markdown 和
+阶段耗时曲线 PNG。场景名中的 `2v2/5v5` 不参与规模推断。
+
+逐 episode 保留 Git commit、dirty、配置 SHA-256 复算、schema、有限状态、online truth 审计，
+D1/D2 航迹速度与速度协方差 trace，D2 IDSW availability，D3 当前航迹/原始 target_count/覆盖率和
+min-dwell backlog，D4 owner/epoch/lease/commit/fail-closed，D5 稀疏图预算与模型回退，D7
+command/hold/reject，以及每阶段 call/wall/mean time。任一缺字段写 `null + unavailable_reason`，
+不补零。五米接近是离线物理诊断，`mission_success` 固定不由该事件推断。
+
+聚合对每个数值输出 mean、描述性 population std、min/max；固定 seed percentile bootstrap 95% CI
+以不同 seed 的 episode 均值为抽样单位。单 seed 只标 `descriptive_only_single_seed`，CI 为 null。
+2026-07-20 确定性临时 fixture 覆盖显式 50/50/4/54（seed 7）、首帧 195 后续 200 且
+`min_dwell_not_met` 保持旧计划的 backlog=5（seed 8）、D2 IDSW unavailable、D4 lease 过期、D5
+`model_missing` 规则回退、有五米证据但身份不可评分、dirty manifest、缺协方差，以及 seeds 1/2
+bootstrap。
+验收门限是 10 个专项用例全部通过、四类报告齐全、缺值不补零、单 seed 不生成 CI；结果为专项
+`10 passed`、D6 全量 `282 passed`，仅有既有 Matplotlib `Axes3D` warning。本轮未运行真实
+scalable 3D 或 AirSim episode。
+
+```bash
+python3 research_modules/d6_evaluation_metrics/scripts/run_scalable_3d_offline_evaluation.py \
+  --episode-root <scalable_3d_batch_root> --output-dir <d6_report_dir>
+```
+
+当前限制：现有 `offline_truth_labels.jsonl` 只有 observation-to-truth 标签，没有显式
+`global_track_id -> truth_target_id` 映射时，五米身份正确性保持 unavailable；D2 producer 明确声明
+IDSW unavailable 时也不离线补算；真实多规模、多 seed producer bundle 仍需 main 调用本入口验证。
+
 ## 2026-07-15 legacy ClockSpeed provenance 兼容与三档实测
 
 ClockSpeed comparator v2 现兼容旧 1.0 suite 的持久化 settings provenance：仅当调用输入是 suite

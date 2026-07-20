@@ -1,5 +1,12 @@
 # D6 文档索引
 
+2026-07-20 已同步 scalable 3D 真值隔离 episode 的独立离线 consumer。稳定入口是
+`../scripts/run_scalable_3d_offline_evaluation.py`，输出逐 episode/seed CSV、按显式规模分组的 JSON、
+中文 Markdown 和阶段耗时曲线；单 seed 仅 descriptive，缺字段为 null/unavailable+reason，五米接近
+不等于任务成功。确定性临时 fixture 专项 `10 passed`、D6 全量 `282 passed`；本轮没有运行真实
+scalable 3D 或 AirSim episode。算法见 `ALGORITHM_AND_IMPLEMENTATION.md`，原则见
+`MODULE_PRINCIPLES_CN.md`，验证边界见 `../EXPERIMENT_REPORT.md` 顶部。
+
 2026-07-15 已同步 legacy 1.0 provenance 兼容与真实三档报告。fallback 只在路径输入且 suite/cases/
 rows 全无显式 ClockSpeed 时读取 20/20 sibling generated settings；不猜目录名、不默认 1.0，缺文件/
 缺键/冲突/非法值 fail closed。真实 1.0/0.2/0.1 共 60 case、20 个跨档配对，合同 56 match/4

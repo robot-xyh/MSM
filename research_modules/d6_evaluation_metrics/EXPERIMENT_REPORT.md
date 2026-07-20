@@ -1,5 +1,21 @@
 # D6 系统级评估指标实验报告
 
+## 2.1 2026-07-20 scalable 3D 离线入口确定性验收
+
+本节只记录接口/口径测试，不记录新的真实飞行或质点仿真性能。临时 fixture 包含显式
+target/resource/recon/camera=`50/50/4/54` seed 7，以及 `200/200/8/208` seed 8；后者首个 D2/D3
+快照为 195 条航迹/分配，后续 D2 为 200，D3 因 `min_dwell_not_met` 保持 195 个执行 target，D6
+报告 coverage=`195/200`、backlog=`5`。场景名故意含 `2v2`，输出仍按显式 50/50 分组。
+
+其余 fixture 覆盖 D2 IDSW unavailable、D4 lease expired/fail-closed、D5 `model_missing` 几何规则
+回退、4.5 m proximity 有物理证据但 observation-only truth label 无法评分身份，以及 dirty manifest。
+seeds 1/2 用于验证固定 RNG bootstrap；单 seed 用于验证 descriptive-only 和 null CI。
+
+接受门限：10 个专项测试全通过（含缺协方差回归）；每个缺字段为 null/unavailable+reason；四类输出均存在；D4/D7 过期
+原因不丢失；五米接近不写成任务成功。结果为专项 `10 passed`、D6 全量 `282 passed`，仅既有
+Matplotlib `Axes3D` warning。当前限制：这些是确定性 fixture，不是正式 50v50/200v200 性能样本；
+现有 producer 没有 global-track-to-truth evaluator mapping，正式多规模、多 seed 调用仍待 main 完成。
+
 ## 2.0 2026-07-15 真实 M5N2 三档 ClockSpeed 对比
 
 输入为 1.0 `p1_terminal_timing_funnel_10seed_20260715_m5n2`、0.2

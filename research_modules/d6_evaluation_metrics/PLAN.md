@@ -1,5 +1,25 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-20 scalable 3D episode 离线评估状态
+
+- [x] 独立只读消费六个必需 episode artifact；`offline_truth_labels.jsonl` 仅在五米身份评分时按需
+  读取，在线总线和控制路径不导入真值。
+- [x] 按显式 scenario/version/seed 与 target/resource/recon/camera 数量输出逐 episode CSV、聚合
+  JSON、中文 Markdown 和阶段耗时 PNG，不从 2v2/5v5 名称推断规模。
+- [x] 覆盖 D1-D7、provenance、finite/truth isolation、逐阶段 timing、五米接近与身份 availability；
+  所有缺字段均为 null/unavailable+reason，不补零，不把五米接近登记为任务成功。
+- [x] 聚合输出 mean/std/min/max，固定 seed bootstrap 95% CI 以不同 seed 均值为单位；单 seed 只做
+  descriptive，不产生 CI。
+- [x] 2026-07-20 临时 fixture：50/50/4/54 seed 7、195->200 min-dwell backlog seed 8、D2 IDSW
+  unavailable、D4 lease expired、D5 model-missing fallback、五米身份 unavailable、dirty manifest、
+  缺协方差，以及 seeds 1/2 bootstrap。接受门限 10/10 专项与四类输出全部通过；实际结果专项 `10 passed`、D6
+  全量 `282 passed`，仅既有 Matplotlib `Axes3D` warning。
+- [ ] main 用正式 scalable 3D 多规模、多 seed bundle 调用新 CLI，并冻结跨提交趋势；fixture 不作为
+  真实物理性能证据。
+- [ ] producer 增加 evaluator-only `global_track_id -> truth_target_id` 显式映射后，再关闭五米身份
+  正确性 availability 缺口；不得从名称或邻近事件重建。
+- [ ] D2 若要发布 IDSW，需 producer 写出显式 available 值；D6 不从终态轨迹补算。
+
 ## 2026-07-15 legacy provenance 与三档 comparator 完成状态
 
 - [x] 对路径输入且 summary/cases/rows 全无 ClockSpeed 的 legacy suite，按 20 个注册 `case_id` 定位

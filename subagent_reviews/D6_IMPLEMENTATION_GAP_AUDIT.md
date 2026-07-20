@@ -1,5 +1,24 @@
 # D6 实现差距审计
 
+## 2026-07-20 Scalable 3D 真值隔离离线评估 GAP 状态
+
+- **D6-owned 入口 GAP 已关闭**：新增纯文件 consumer、公开 API 和 CLI，消费 main-owned 六类必需
+  artifact，按需读取 evaluator truth label，不导入或修改 scalable runtime。
+- **指标 GAP 已关闭**：逐 episode/seed 覆盖 provenance/schema、finite/truth audit、D1-D7 指定诊断、
+  stage call/wall/mean、五米接近和身份 availability；缺字段为 null+reason，D2 IDSW 不补零，五米
+  接近不晋升任务成功。
+- **聚合 GAP 已关闭**：按 scenario/version 与实际 target/resource/recon/camera 分组，保留精确 seed；
+  mean/std/min/max 与固定 seed bootstrap 95% CI 已实现，单 seed descriptive-only。
+- **2026-07-20 验证**：确定性临时 fixture 10 项测试全部通过，包括 50/50/4/54 seed 7、195->200
+  min-dwell backlog=5 seed 8、IDSW unavailable、D4 lease expired、D5 fallback、五米身份 unavailable、
+  dirty、缺协方差和双 seed 聚合。专项 `10 passed`、D6 全量 `282 passed`，仅既有 Matplotlib
+  warning。接受门限为指定边界、四类输出和 availability 规则全部通过；未运行真实 simulator/AirSim。
+- **仍开放的 main/producer P1**：main 尚需用正式多规模、多 seed episode 调用 CLI 并冻结跨提交结果；
+  producer 尚未写 evaluator-only global-track-to-truth mapping，因此五米身份正确性可 unavailable；
+  D2 IDSW 仍由 producer availability 决定。fixture 不能关闭真实系统性能或身份精度 GAP。
+- **文档检查**：README、PLAN、D6 原理/算法、实验报告、GAP/review 已同步。AirSim integration plan
+  与 AirSim 实验内容未受影响，因为新入口不读取 AirSim API/Blocks runtime 特有文件，故不修改。
+
 ## 2026-07-15 legacy ClockSpeed provenance 兼容 GAP 关闭
 
 - **关闭范围**：路径输入且 suite/cases/rows 全无 ClockSpeed 时，按 20 个 case_id 读取固定 sibling

@@ -1,5 +1,26 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-20 Scalable 3D 独立离线入口评审
+
+评审确认 `d6-scalable3d-offline-evaluation-v1` 保持 D6 被动边界：它只读取 main 已写盘 episode，
+不导入 scalable runtime，不回写 D1-D5/D7，不让 offline truth 进入在线路径。manifest/config/summary
+provenance 会交叉检查，配置 hash 复算，recursive online truth-like 字段另行审计；dirty artifact 只作
+descriptive evidence。
+
+规模与统计口径满足系统要求。group key 使用 scenario/version 和显式 target/resource/recon/camera，
+seed 单独保留；名称中的 2v2/5v5 不参与。每个数值都有 availability，D2 IDSW false availability、
+D4 lease/commit、D5 model fallback、D7 hold/reject 和 D3 min-dwell backlog 均保留原 producer reason。
+bootstrap 以独立 seed 均值为单位，单 seed 不产生伪 CI。
+
+2026-07-20 的 10 个临时 fixture 和 D6 全量 `282 passed` 证明接口合同及负例通过，不证明真实
+50v50/200v200 性能。重点 fixture 是 seed 7 的显式 50/50/4/54，以及 seed 8 的 195->200 held plan，
+后者正确给出 coverage=0.975、backlog=5。4.5 m event 在缺 global-track truth mapping 时保持身份
+unavailable，`mission_success` 不生成。现有 Matplotlib warning 仅涉及 Axes3D，二维报告正常。
+
+后续计划由 main 用正式多规模、多 seed bundle 调用 CLI；producer 若要关闭身份正确性缺口，必须在
+offline artifact 中增加无冲突显式映射。D2 IDSW 也必须由 D2/main 明确发布 available 值。D6 不从
+目录名、轨迹终态、邻近标签或物理接近补算这些证据。
+
 ## 2026-07-15 legacy provenance 与真实三档评审
 
 评审确认 legacy fallback 是 case 注册驱动的持久化证据审计，不是目录名推断：仅路径输入且所有

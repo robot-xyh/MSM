@@ -1,5 +1,42 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## Scalable 3D episode 文件评估算法（2026-07-20）
+
+实现位于 `d6_evaluation_metrics/scalable_3d_offline.py`。`evaluate_scalable_3d_episode()` 读取 manifest、
+scenario config、summary、stage CSV、online JSONL 和 offline proximity JSONL，按 envelope 的
+`timestamp/sequence` 排序后提取各模块最后状态和必要时序。它不导入 scalable simulator 或任何控制
+模块。配置以 producer 同口径的 canonical JSON 重算 SHA-256，并交叉检查 manifest/config/summary
+中的 scenario/version/seed 和实际数量。
+
+D1/D2 对最后一份 track list 计算 `||v||` 的 P50/P90/max，以及 6x6 covariance 速度子块
+`trace(P[3:6,3:6])` 的 P50/P90/max；任一 track 缺 state/covariance 时，该组统计整体 unavailable。
+D2 IDSW 仅在 `id_switch_count_available=true` 且值为非负整数时发布。D3 按时间维护最近 D2
+track_count，覆盖率为 unique assigned global track / current D2 tracks；held plan 的 backlog 优先取
+`hysteresis_pending_new_target_ids`，并保留 min-dwell reason/state/dwell。
+
+D4 从最后一份 region decision 保留 owner layer/node、epoch、lease、commit state、execution allowed、
+fail-closed 和 reasons；lease 以 D4 record timestamp 对显式 expiry 比较。D5 graph density 定义为
+`edge_count / (node_count*(node_count-1)/2)`，degree cap 总预算为 `node_count*per_node_cap/2`，同时保留
+dropped count、binding count 与 model/rule provenance。D7 command 是全 episode 所有 command row；
+hold 为 `mode=hold`，reject 是带非空 gate reason 的 hold，reason 单独分布。
+
+五米 scorer 过滤 `distance_m <= 5.0`。只有 offline label 显式提供无冲突的
+`global_track_id/center_global_track_id -> truth_entity_id`，且每个 proximity event 能定位 event
+时刻之前该资源的 D3 assignment 时，才发布身份正确数/率；当前 producer 的 observation-only label
+会得到 `offline_truth_labels_lack_global_track_mapping`。`mission_success` 始终不由此函数计算。
+
+`aggregate_scalable_3d_episodes()` 先按六个显式 group field 分组，再把同 seed episode 求均值。每项
+输出 mean、population std、min/max；至少两个有效 seed 才用固定 base seed 加稳定 SHA-256 offset 做
+percentile bootstrap 95% CI。stage timing 同时输出 call/wall/mean 分布、每 episode share 和 pooled
+share。`Scalable3DOfflineReportGenerator` 写四类 artifact；CLI 可重复传 `--episode-dir`，或用
+`--episode-root` 仅发现含 manifest 的目录。
+
+2026-07-20 验收使用 10 个临时 fixture，门限为正常 50/50 显式分组、195->200 backlog=5、所有指定
+availability/fail-closed/fallback/dirty/缺协方差负例正确、双 seed CI available、单 seed CI null、CSV/JSON/
+Markdown/PNG 全部存在。结果专项 `10 passed`、D6 全量 `282 passed`；未运行真实 simulator/AirSim。
+剩余风险是正式 producer schema 漂移尚无真实 batch 证据、identity mapping 缺失、D2 IDSW unavailable
+以及 bootstrap 不能替代更多独立 seed。
+
 ## Legacy suite ClockSpeed provenance 解析（2026-07-15）
 
 `_clock_speed_from_provenance()` 仍优先解析 suite/case/result 的显式持久化值。仅当输入为文件系统

@@ -1,5 +1,30 @@
 # D6 系统级离线评估模块原理
 
+## Scalable 3D 真值隔离与缺值原则（2026-07-20）
+
+D6 对 main-owned scalable 3D episode 只做持久化文件消费。六个在线/配置/时序 artifact 是证据源；
+`offline_truth_labels.jsonl` 仅在离线身份评分需要时读取。真值标签不能影响 D1-D5/D7 在线结果，
+`online_truth_use_count` 与递归 truth-like 字段审计必须独立为零才能满足正式 provenance 条件。
+
+规模分组来自 `scenario_config.json`、D5 camera batch 或明确的“一资源/侦察节点一相机”producer
+合同，并记录来源；`2v2/5v5` 只允许作为标签。D3 backlog 优先读取
+`hysteresis_pending_new_target_ids`，否则只在当前 D2 航迹和 assignment target ID 均可用时计算；
+`min_dwell_not_met` 与 held state 必须显式存在。D4 owner/epoch/lease/commit、D5 图预算、D7 hold/reject
+同样不能由相邻模块补值。
+
+统计先按 scenario/version 与实际 target/resource/recon/camera 数量分组，再按 seed 组织。mean、
+population std、min/max 是描述统计；bootstrap 以不同 seed 的 episode 均值为单位，固定 RNG 做
+percentile 95% CI。只有一个有效 seed 时 CI 必须 unavailable，不能用 episode 内重复帧伪造推断样本。
+
+五米接近只证明 evaluator-side 几何事件。身份正确性还需要显式 global-track-to-truth 映射；任务成功
+还需要身份、D4 执行授权、D7 控制和任务合同证据。任一层缺失均保持 null/unavailable+reason，不能
+把物理接近自动晋升为任务成功。
+
+2026-07-20 的验证是 10 个确定性临时 fixture，不是真实物理实验：显式 50/50/4/54 seed 7、
+195->200 且 min-dwell backlog=5 seed 8，以及 IDSW/D4/D5/五米/dirty/缺协方差/双 seed 边界全部通过；D6
+全量 `282 passed`，仅有既有 Matplotlib `Axes3D` warning。剩余限制是正式多规模 batch 尚未由 main
+调用、新 producer 尚无 evaluator-only global-track truth 映射，D2 IDSW 仍可能显式 unavailable。
+
 ## Legacy provenance 必须由完整持久化证据闭合（2026-07-15）
 
 目录名缺省值不是 provenance。旧 suite 若 summary/cases/rows 都未持久化 ClockSpeed，只有在调用者
