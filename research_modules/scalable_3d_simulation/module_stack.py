@@ -26,6 +26,7 @@ from research_modules.d2_data_association.d2_data_association import (
 from research_modules.d3_assignment_planner.src.d3_assignment_planner import (
     AssignmentPlanner,
     PlannerConfig,
+    REGIONAL_PLANNING_HINT_SCHEMA_V1,
     RegionalAuthorityGrant,
     RegionalAuthorityInput,
     RegionalCoalitionCommitEvidence,
@@ -38,6 +39,7 @@ from research_modules.d3_assignment_planner.src.d3_assignment_planner import (
     prepare_secondary_takeover_plan,
 )
 from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
+    AdvisorMode,
     C2Health,
     CoalitionMemberAck,
     D5Consistency,
@@ -49,6 +51,10 @@ from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
     RegionalFailoverSnapshot,
     RegionalFallbackMember,
     RegionResourceEdge,
+    RegionResourceAdvisoryGate,
+    RegionResourceAdvisor,
+    RegionResourceAdvisorConfig,
+    RegionResourceProjectionConfig,
     RegionResourceSnapshot,
     RegionalScenarioMetadata,
     RegionalTaskEvidence,
@@ -57,6 +63,7 @@ from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
 from research_modules.d5_terminal_association.src.d5_terminal_association import (
     ActiveVisionAssignmentReference,
     ActiveVisionCameraState,
+    ActiveVisionCameraFeedbackV1,
     ActiveVisionCommunicationState,
     ActiveVisionControllerV1,
     ActiveVisionFovMode,
@@ -98,6 +105,7 @@ class IntegratedStackConfig:
     d3_candidate_edges_per_target: int = 32
     d3_unassigned_base_cost: float = 50.0
     d3_human_authorization_state: str = "approved"
+    d4_advisory_ttl_multiplier: float = 1.5
     terminal_switch_range_m: float = 120.0
     secondary_coverage_ratio: float = 0.90
     secondary_network_full_view_rate: float = 0.90
@@ -113,6 +121,8 @@ class IntegratedStackConfig:
             raise ValueError("d3_candidate_edges_per_target must be positive")
         if self.d3_unassigned_base_cost <= 0.0:
             raise ValueError("d3_unassigned_base_cost must be positive")
+        if self.d4_advisory_ttl_multiplier <= 1.0:
+            raise ValueError("d4_advisory_ttl_multiplier must exceed one")
         if self.terminal_switch_range_m <= 0.0:
             raise ValueError("terminal_switch_range_m must be positive")
         active_mode = str(self.d5_active_vision_mode).strip().lower()
@@ -150,12 +160,24 @@ class D5GraphLearningFrame:
 
 
 @dataclass(frozen=True)
+class D5ActiveVisionLearningFrame:
+    """One truth-free active-vision decision frame and camera feedback."""
+
+    frame_index: int
+    timestamp_s: float
+    snapshot: ActiveVisionSnapshotV1
+    decisions: tuple[Any, ...]
+    camera_feedback: tuple[ActiveVisionCameraFeedbackV1, ...]
+
+
+@dataclass(frozen=True)
 class IntegratedLearningArtifacts:
     """Detached, truth-free episode artifacts for offline dataset construction."""
 
     d3_planning_frames: tuple[Any, ...]
     d4_region_frames: tuple[D4RegionLearningFrame, ...]
     d5_graph_frames: tuple[D5GraphLearningFrame, ...]
+    d5_active_vision_frames: tuple[D5ActiveVisionLearningFrame, ...] = ()
 
 
 class IntegratedScalableModuleStack:
@@ -182,6 +204,7 @@ class IntegratedScalableModuleStack:
         if int(d4_unseen_seed_count) < 0:
             raise ValueError("d4_unseen_seed_count must be non-negative")
         self.d3_learning_assistant = d3_learning_assistant
+        self._configured_d4_region_advisor = d4_region_advisor
         self.d4_region_advisor = d4_region_advisor
         self.d4_unseen_seed_count = int(d4_unseen_seed_count)
         self.d5_edge_model = d5_edge_model
@@ -205,6 +228,7 @@ class IntegratedScalableModuleStack:
         self.latest_d4_decision: Any | None = None
         self.latest_d4_region_snapshot: Any | None = None
         self.latest_d4_region_advice: Any | None = None
+        self.latest_d4_region_consumption: Any | None = None
         self.latest_d5_result: Any | None = None
         self.latest_guidance_batch: Any | None = None
         self.latest_active_vision_snapshot: ActiveVisionSnapshotV1 | None = None
@@ -220,9 +244,15 @@ class IntegratedScalableModuleStack:
         self._last_secondary_failed = False
         self._fault_generation_changed = False
         self._regional_plan_rejection_reason: str | None = None
+        self._d4_region_hint_bridge_rejection_reason: str | None = None
+        self._d4_region_advisory_gate: RegionResourceAdvisoryGate | None = None
+        self._next_d4_region_hint_version = 1
         self._d3_learning_frames: list[Any] = []
         self._d4_learning_frames: list[D4RegionLearningFrame] = []
         self._d5_learning_frames: list[D5GraphLearningFrame] = []
+        self._d5_active_vision_learning_frames: list[
+            D5ActiveVisionLearningFrame
+        ] = []
         self._stage_wall_time_s: dict[str, float] = {}
         self._stage_call_count: dict[str, int] = {}
 
@@ -243,6 +273,24 @@ class IntegratedScalableModuleStack:
             learning_assistant=self.d3_learning_assistant,
         )
         self.d4 = RegionalFailoverCoordinator()
+        if self._configured_d4_region_advisor is None:
+            ttl_s = max(
+                config.assignment_period_s * self.stack_config.d4_advisory_ttl_multiplier,
+                config.assignment_period_s + config.physics_dt_s,
+            )
+            self.d4_region_advisor = RegionResourceAdvisor(
+                config=RegionResourceAdvisorConfig(
+                    mode=AdvisorMode.SHADOW,
+                    projection=RegionResourceProjectionConfig(
+                        advisory_ttl_s=ttl_s,
+                    ),
+                )
+            )
+        else:
+            self.d4_region_advisor = self._configured_d4_region_advisor
+        self._d4_region_advisory_gate = RegionResourceAdvisoryGate(
+            projector=getattr(self.d4_region_advisor, "projector", None)
+        )
         self.d5 = Scalable3DTerminalAdapter()
         self.d7 = ScalableGuidanceController3D(
             ScalableGuidanceConfig3D(
@@ -264,6 +312,7 @@ class IntegratedScalableModuleStack:
         self.latest_d4_decision = None
         self.latest_d4_region_snapshot = None
         self.latest_d4_region_advice = None
+        self.latest_d4_region_consumption = None
         self.latest_d5_result = None
         self.latest_guidance_batch = None
         self.latest_active_vision_snapshot = None
@@ -279,9 +328,12 @@ class IntegratedScalableModuleStack:
         self._last_secondary_failed = False
         self._fault_generation_changed = False
         self._regional_plan_rejection_reason = None
+        self._d4_region_hint_bridge_rejection_reason = None
+        self._next_d4_region_hint_version = 1
         self._d3_learning_frames.clear()
         self._d4_learning_frames.clear()
         self._d5_learning_frames.clear()
+        self._d5_active_vision_learning_frames.clear()
         self._stage_wall_time_s.clear()
         self._stage_call_count.clear()
 
@@ -388,6 +440,8 @@ class IntegratedScalableModuleStack:
                 self._d3_learning_frames.append(self.d3.latest_planning_evidence)
             publications.append(self._d3_publication(now))
             publications.append(self._d4_publication(now))
+            if self.latest_d4_region_consumption is not None:
+                publications.append(self._d4_region_consumption_publication(now))
             if self.latest_d4_region_advice is not None:
                 publications.append(self._d4_region_advice_publication(now))
             self._fault_generation_changed = False
@@ -444,7 +498,12 @@ class IntegratedScalableModuleStack:
         secondary_failed: bool,
     ) -> None:
         config = self._require_ready()
+        previous_region_snapshot = self.latest_d4_region_snapshot
+        previous_region_advice = self.latest_d4_region_advice
+        previous_d4_decision = self.latest_d4_decision
         self.latest_d4_region_advice = None
+        self.latest_d4_region_consumption = None
+        self._d4_region_hint_bridge_rejection_reason = None
         adapter_started = perf_counter()
         tracks = self._d3_tracks()
         resources = self._d3_resources(step_input.interceptors)
@@ -495,6 +554,10 @@ class IntegratedScalableModuleStack:
                     self._regional_plan_rejection_reason = error.reason
 
             if regional_authority is not None:
+                if previous_region_advice is not None:
+                    self._d4_region_hint_bridge_rejection_reason = (
+                        "regional_authority_path_does_not_consume_resource_advice"
+                    )
                 started = perf_counter()
                 try:
                     self.latest_plan = self.d3.plan_regional_authority(
@@ -515,6 +578,14 @@ class IntegratedScalableModuleStack:
                 # through to a different owner path.
                 self.latest_plan = previous_plan
             elif selected_secondary is not None:
+                regional_hint = self._d3_regional_hint_from_previous_d4(
+                    previous_plan=previous_plan,
+                    advice_result=previous_region_advice,
+                    source_snapshot=previous_region_snapshot,
+                    source_decision=previous_d4_decision,
+                    now=now,
+                    fault_generation_changed=self._fault_generation_changed,
+                )
                 started = perf_counter()
                 candidate = self.d3.plan(
                     tracks,
@@ -527,7 +598,9 @@ class IntegratedScalableModuleStack:
                         or current_target_ids != previous_target_ids
                     ),
                     publish=False,
+                    regional_planning_hint=regional_hint,
                 )
+                self._record_d3_regional_hint_outcome(candidate, regional_hint)
                 lease_expires_at = now + max(
                     config.assignment_period_s
                     * self.stack_config.assignment_lease_multiplier,
@@ -564,6 +637,10 @@ class IntegratedScalableModuleStack:
                 self._record_timing("d3_assignment", perf_counter() - started)
                 self._regional_plan_rejection_reason = None
             elif self._fault_generation_changed:
+                if previous_region_advice is not None:
+                    self._d4_region_hint_bridge_rejection_reason = (
+                        "fault_generation_changed_before_advisory_consumption"
+                    )
                 # Multi-owner fallback requires D4 to observe a strictly newer
                 # D3 generation before authority can change.  This center-owned
                 # fence plan is immediately gated by the D4 decision below.
@@ -579,6 +656,14 @@ class IntegratedScalableModuleStack:
             else:
                 self.latest_plan = previous_plan
         else:
+            regional_hint = self._d3_regional_hint_from_previous_d4(
+                previous_plan=previous_plan,
+                advice_result=previous_region_advice,
+                source_snapshot=previous_region_snapshot,
+                source_decision=previous_d4_decision,
+                now=now,
+                fault_generation_changed=self._fault_generation_changed,
+            )
             started = perf_counter()
             self.latest_plan = self.d3.plan(
                 tracks,
@@ -592,6 +677,11 @@ class IntegratedScalableModuleStack:
                     self._fault_generation_changed
                     or current_target_ids != previous_target_ids
                 ),
+                regional_planning_hint=regional_hint,
+            )
+            self._record_d3_regional_hint_outcome(
+                self.latest_plan,
+                regional_hint,
             )
             self._record_timing("d3_assignment", perf_counter() - started)
             self._regional_plan_rejection_reason = None
@@ -621,6 +711,156 @@ class IntegratedScalableModuleStack:
             step_input,
             formal_snapshot=snapshot,
             now=now,
+        )
+
+    def _d3_regional_hint_from_previous_d4(
+        self,
+        *,
+        previous_plan: Any | None,
+        advice_result: Any | None,
+        source_snapshot: Any | None,
+        source_decision: Any | None,
+        now: float,
+        fault_generation_changed: bool,
+    ) -> Mapping[str, Any] | None:
+        """Gate one prior D4 advisory and translate it into a D3-owned DTO.
+
+        The D4 snapshot and formal decision are deliberately frozen with the
+        advisory.  D4 first revalidates that exact authority generation; D3
+        then independently checks the current plan, resources, commitments,
+        reserve and candidate graph before applying the hint.
+        """
+
+        if advice_result is None:
+            return None
+        if fault_generation_changed:
+            self._d4_region_hint_bridge_rejection_reason = (
+                "fault_generation_changed_before_advisory_consumption"
+            )
+            return None
+        if previous_plan is None:
+            self._d4_region_hint_bridge_rejection_reason = (
+                "regional_advisory_previous_plan_missing"
+            )
+            return None
+        effective_mode = getattr(advice_result, "effective_mode", None)
+        effective_mode_value = getattr(effective_mode, "value", effective_mode)
+        if str(effective_mode_value).lower() != AdvisorMode.ASSIST.value or not bool(
+            getattr(advice_result, "assist_eligible", False)
+        ):
+            self._d4_region_hint_bridge_rejection_reason = (
+                "regional_advisory_not_assist_eligible"
+            )
+            return None
+        advisory = getattr(advice_result, "advisory_contract", None)
+        if advisory is None:
+            self._d4_region_hint_bridge_rejection_reason = (
+                "regional_advisory_contract_missing"
+            )
+            return None
+        if source_snapshot is None or source_decision is None:
+            self._d4_region_hint_bridge_rejection_reason = (
+                "regional_advisory_source_evidence_missing"
+            )
+            return None
+        if self._d4_region_advisory_gate is None:
+            self._d4_region_hint_bridge_rejection_reason = (
+                "regional_advisory_gate_unavailable"
+            )
+            return None
+
+        try:
+            consumption = self._d4_region_advisory_gate.consume(
+                advisory,
+                source_snapshot,
+                evaluated_at_s=now,
+                formal_decision=source_decision,
+            )
+        except Exception as exc:
+            self._d4_region_hint_bridge_rejection_reason = (
+                f"regional_advisory_gate_error:{type(exc).__name__}"
+            )
+            return None
+        self.latest_d4_region_consumption = consumption
+        if not consumption.consumable:
+            first_reason = (
+                consumption.rejection_reasons[0]
+                if consumption.rejection_reasons
+                else "unspecified"
+            )
+            self._d4_region_hint_bridge_rejection_reason = (
+                f"regional_advisory_rejected:{first_reason}"
+            )
+            return None
+
+        source_plans = tuple(advisory.source_plan_versions)
+        expected_source = (str(previous_plan.plan_id), int(previous_plan.version))
+        if len(source_plans) != 1 or source_plans[0] != expected_source:
+            self._d4_region_hint_bridge_rejection_reason = (
+                "regional_advisory_source_plan_mismatch"
+            )
+            return None
+
+        advisory_version = self._next_d4_region_hint_version
+        self._next_d4_region_hint_version += 1
+        constraints = tuple(
+            {
+                "region_id": region.region_id,
+                "owner_id": region.source_version.owner_id,
+                "owner_layer": region.source_version.owner_layer.value,
+                "owner_epoch": int(region.source_version.epoch),
+                "lease_expires_at_s": float(
+                    region.source_version.lease_expires_at_s
+                ),
+                "source_plan_id": expected_source[0],
+                "source_plan_version": expected_source[1],
+                "resource_quota_delta": int(region.resource_quota_delta),
+                "reserve_ratio": float(region.reserve_ratio),
+                "hold": bool(region.hold),
+                "request_replan": bool(region.request_replan),
+            }
+            for region in advisory.regions
+        )
+        transfers = tuple(
+            {
+                "source_region_id": transfer.source_region_id,
+                "target_region_id": transfer.target_region_id,
+                "resource_count": int(transfer.resource_count),
+                "edge_id": transfer.edge_id,
+                "expected_transfer_time_s": float(
+                    transfer.expected_transfer_time_s
+                ),
+            }
+            for transfer in advisory.transfers
+        )
+        return {
+            "schema": REGIONAL_PLANNING_HINT_SCHEMA_V1,
+            "advisory_id": advisory.advisory_id,
+            "advisory_version": advisory_version,
+            "created_at_s": float(advisory.created_at_s),
+            "expires_at_s": float(advisory.valid_until_s),
+            "source_plan_id": expected_source[0],
+            "source_plan_version": expected_source[1],
+            "projected": bool(advisory.projected),
+            "constraints": constraints,
+            "transfer_allowances": transfers,
+        }
+
+    def _record_d3_regional_hint_outcome(
+        self,
+        plan: Any,
+        regional_hint: Mapping[str, Any] | None,
+    ) -> None:
+        if regional_hint is None:
+            return
+        metadata = getattr(plan, "metadata", {})
+        if bool(metadata.get("regional_hint_applied", False)):
+            self._d4_region_hint_bridge_rejection_reason = None
+            return
+        reason = metadata.get("regional_hint_fallback_reason")
+        self._d4_region_hint_bridge_rejection_reason = (
+            "d3_regional_hint_rejected:"
+            f"{reason or 'unspecified'}"
         )
 
     def _run_d4_region_resource_advisor(
@@ -675,6 +915,9 @@ class IntegratedScalableModuleStack:
             d3_planning_frames=tuple(self._d3_learning_frames),
             d4_region_frames=tuple(self._d4_learning_frames),
             d5_graph_frames=tuple(self._d5_learning_frames),
+            d5_active_vision_frames=tuple(
+                self._d5_active_vision_learning_frames
+            ),
         )
 
     def _run_active_vision(
@@ -786,6 +1029,19 @@ class IntegratedScalableModuleStack:
         )
         self.latest_active_vision_snapshot = snapshot
         self.latest_active_vision_decisions = decisions
+        if self.stack_config.capture_learning_artifacts:
+            self._d5_active_vision_learning_frames.append(
+                D5ActiveVisionLearningFrame(
+                    frame_index=len(self._d5_active_vision_learning_frames),
+                    timestamp_s=now,
+                    snapshot=snapshot,
+                    decisions=decisions,
+                    camera_feedback=tuple(
+                        ActiveVisionCameraFeedbackV1(camera_state=camera)
+                        for camera in cameras
+                    ),
+                )
+            )
         return commands
 
     def _active_vision_camera_state(
@@ -2272,6 +2528,32 @@ class IntegratedScalableModuleStack:
             copy_payload=False,
         )
 
+    def _d4_region_consumption_publication(
+        self,
+        now: float,
+    ) -> RuntimePublication:
+        consumption = self.latest_d4_region_consumption
+        return RuntimePublication(
+            topic="modules.d4.region_resource_consumption",
+            source="main",
+            schema_version=str(consumption.schema),
+            payload={
+                "timestamp": now,
+                **consumption.to_dict(),
+                "bridge_rejection_reason": (
+                    self._d4_region_hint_bridge_rejection_reason
+                ),
+                "d3_hint_applied": bool(
+                    self.latest_plan is not None
+                    and self.latest_plan.metadata.get(
+                        "regional_hint_applied",
+                        False,
+                    )
+                ),
+            },
+            copy_payload=False,
+        )
+
     def _d5_publication(self, now: float) -> RuntimePublication:
         association = self.latest_d5_result.association
         return RuntimePublication(
@@ -2433,6 +2715,28 @@ class IntegratedScalableModuleStack:
                 None
                 if self.latest_d4_region_advice is None
                 else self.latest_d4_region_advice.fallback_reason
+            ),
+            "d4_region_consumption_available": (
+                self.latest_d4_region_consumption is not None
+            ),
+            "d4_region_consumable": (
+                None
+                if self.latest_d4_region_consumption is None
+                else bool(self.latest_d4_region_consumption.consumable)
+            ),
+            "d4_region_consumption_rejection_reasons": (
+                ()
+                if self.latest_d4_region_consumption is None
+                else tuple(
+                    self.latest_d4_region_consumption.rejection_reasons
+                )
+            ),
+            "d4_region_hint_bridge_rejection_reason": (
+                self._d4_region_hint_bridge_rejection_reason
+            ),
+            "d3_regional_hint_applied": bool(
+                self.latest_plan is not None
+                and self.latest_plan.metadata.get("regional_hint_applied", False)
             ),
             "learning_runtime": dict(self.learning_runtime_diagnostics),
             "online_truth_use_count": 0,

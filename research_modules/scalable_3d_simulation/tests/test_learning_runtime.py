@@ -62,13 +62,18 @@ def test_missing_bundles_fall_back_and_d4_assist_cannot_self_promote(
         d4_bundle_dir=tmp_path / "missing-d4",
         d5_bundle_dir=tmp_path / "missing-d5",
     )
-    resolved = resolve_learning_runtime(_short_integrated_config(), options)
+    config = _short_integrated_config()
+    resolved = resolve_learning_runtime(config, options)
 
     assert resolved.diagnostics["d3"]["effective_mode"] == "rule_fallback"
     assert resolved.diagnostics["d3"]["fallback_reason"] == "model_bundle_missing"
     assert resolved.diagnostics["d4"]["bundle_loaded"] is False
     assert "model_bundle_missing" in resolved.diagnostics["d4"]["fallback_reason"]
     assert resolved.diagnostics["d4"]["formal_unseen_seed_count"] == 0
+    assert (
+        resolved.stack.d4_region_advisor.config.projection.advisory_ttl_s
+        >= config.assignment_period_s + config.physics_dt_s
+    )
     assert resolved.diagnostics["d5"]["effective_mode"] == "rule_fallback"
     assert resolved.config.d3_policy_version.endswith("rule-cost-v1")
     assert resolved.config.d4_policy_version.endswith("rule-v1")

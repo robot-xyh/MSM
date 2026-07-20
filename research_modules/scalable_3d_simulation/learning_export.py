@@ -12,7 +12,7 @@ from .models import OfflineTruthLabel, ScenarioConfig
 from .module_stack import IntegratedLearningArtifacts
 
 
-LEARNING_EXPORT_SCHEMA_VERSION = "scalable3d-learning-export-v1"
+LEARNING_EXPORT_SCHEMA_VERSION = "scalable3d-learning-export-v2"
 
 
 class BatchLearningArtifactWriter:
@@ -33,6 +33,7 @@ class BatchLearningArtifactWriter:
         self._d3_frame_count = 0
         self._d4_frame_count = 0
         self._d5_frame_count = 0
+        self._d5_active_vision_frame_count = 0
         self._seed_groups: set[tuple[str, int]] = set()
 
     def stage_episode(
@@ -72,6 +73,18 @@ class BatchLearningArtifactWriter:
                 "truth_join": "offline_observation_id_to_anonymous_tracklet_v1",
             },
         )
+        _, d5_active_summary = _write_d5_active_vision_episode(
+            self.root / "d5_active_vision",
+            config=config,
+            manifest=manifest,
+            active_vision_frames=artifacts.d5_active_vision_frames,
+            generation_config={
+                "schema_version": LEARNING_EXPORT_SCHEMA_VERSION,
+                "source": "scalable_3d_multi_seed_batch",
+                "recording_mode": "whole_episode",
+                "offline_reward_policy": "explicit_unavailable_until_d6_join",
+            },
+        )
         episode_row = {
             "episode_id": manifest.episode_id,
             "scenario_version": config.scenario_version,
@@ -81,6 +94,9 @@ class BatchLearningArtifactWriter:
             "d3_unavailable_reason_counts": dict(sorted(unavailable.items())),
             "d4_captured_frame_count": int(d4_summary["captured_frame_count"]),
             "d5_staged_frame_count": int(d5_summary["staged_frame_count"]),
+            "d5_active_vision_staged_frame_count": int(
+                d5_active_summary["staged_frame_count"]
+            ),
         }
         with self._episode_index_path.open("a", encoding="utf-8") as stream:
             stream.write(
@@ -90,6 +106,9 @@ class BatchLearningArtifactWriter:
         self._d3_frame_count += len(records)
         self._d4_frame_count += int(d4_summary["captured_frame_count"])
         self._d5_frame_count += int(d5_summary["staged_frame_count"])
+        self._d5_active_vision_frame_count += int(
+            d5_active_summary["staged_frame_count"]
+        )
         self._seed_groups.add((config.scenario_version, int(config.seed)))
         return episode_row
 
@@ -137,6 +156,28 @@ class BatchLearningArtifactWriter:
         else:
             d5_reason = "no_nonempty_d5_graph_frames"
 
+        d5_active_finalized = False
+        d5_active_reason: str | None = None
+        if self._d5_active_vision_frame_count:
+            from research_modules.d5_terminal_association.src.d5_terminal_association import (
+                ActiveVisionDatasetValidationError,
+                finalize_active_vision_episode_dataset,
+            )
+
+            try:
+                finalize_active_vision_episode_dataset(
+                    self.root / "d5_active_vision"
+                )
+            except ActiveVisionDatasetValidationError as exc:
+                d5_active_reason = exc.code
+            else:
+                paths["d5_active_vision_manifest"] = (
+                    self.root / "d5_active_vision" / "manifest.json"
+                )
+                d5_active_finalized = True
+        else:
+            d5_active_reason = "no_active_vision_decision_frames"
+
         summary = {
             "schema_version": LEARNING_EXPORT_SCHEMA_VERSION,
             "episode_count": self._episode_count,
@@ -147,6 +188,9 @@ class BatchLearningArtifactWriter:
             "d5_staged_frame_count": self._d5_frame_count,
             "d5_dataset_finalized": d5_finalized,
             "d5_dataset_finalization_reason": d5_reason,
+            "d5_active_vision_frame_count": self._d5_active_vision_frame_count,
+            "d5_active_vision_dataset_finalized": d5_active_finalized,
+            "d5_active_vision_dataset_finalization_reason": d5_active_reason,
             "online_truth_policy": "forbidden",
             "d5_label_policy": "separate_evaluator_artifact",
         }
@@ -205,6 +249,17 @@ def write_episode_learning_artifacts(
     )
     paths.update({f"d5_{key}": value for key, value in d5_paths.items()})
     summary["d5"] = d5_summary
+
+    d5_active_paths, d5_active_summary = _write_d5_active_vision_episode(
+        root / "d5_active_vision",
+        config=config,
+        manifest=manifest,
+        active_vision_frames=artifacts.d5_active_vision_frames,
+    )
+    paths.update(
+        {f"d5_active_vision_{key}": value for key, value in d5_active_paths.items()}
+    )
+    summary["d5_active_vision"] = d5_active_summary
 
     summary_path = root / "learning_export_summary.json"
     _write_json(summary_path, summary)
@@ -417,6 +472,115 @@ def _write_d5_frames(
         "missing_tracklet_label_count": missing_tracklet_count,
         "dataset_finalized": False,
         "dataset_finalization_reason": "requires_at_least_three_scenario_seed_groups",
+    }
+
+
+def _write_d5_active_vision_episode(
+    root: Path,
+    *,
+    config: ScenarioConfig,
+    manifest: EpisodeManifest,
+    active_vision_frames: tuple[Any, ...],
+    generation_config: Mapping[str, Any] | None = None,
+) -> tuple[dict[str, Path], dict[str, Any]]:
+    """Stage one complete D5 active-vision episode with detached labels."""
+
+    if not active_vision_frames:
+        return {}, {
+            "captured_frame_count": 0,
+            "staged_frame_count": 0,
+            "sample_count": 0,
+            "offline_reward_status": "unavailable",
+        }
+    from research_modules.d5_terminal_association.src.d5_terminal_association import (
+        ActiveVisionEpisodeRecordV1,
+        ActiveVisionSourceIdentityV1,
+        active_vision_sample_from_decision,
+        stage_active_vision_episode_record,
+        stage_active_vision_offline_labels,
+        unavailable_active_vision_offline_labels,
+    )
+
+    samples = []
+    for frame in sorted(
+        active_vision_frames,
+        key=lambda item: (int(item.frame_index), float(item.timestamp_s)),
+    ):
+        feedback_by_camera = {
+            item.camera_state.camera_id: item for item in frame.camera_feedback
+        }
+        for decision in sorted(
+            frame.decisions,
+            key=lambda item: item.effective_action.camera_id,
+        ):
+            camera_id = decision.effective_action.camera_id
+            feedback = feedback_by_camera.get(camera_id)
+            if feedback is None:
+                raise ValueError(
+                    f"active-vision frame is missing camera feedback: {camera_id}"
+                )
+            sequence_index = len(samples)
+            key_prefix = (
+                f"{manifest.episode_id}:active-vision:"
+                f"{int(frame.frame_index):06d}:{camera_id}"
+            )
+            samples.append(
+                active_vision_sample_from_decision(
+                    sample_key=key_prefix,
+                    observation_key=f"{key_prefix}:observation",
+                    sequence_index=sequence_index,
+                    camera_id=camera_id,
+                    snapshot=frame.snapshot,
+                    decision=decision,
+                    camera_feedback=feedback,
+                )
+            )
+    record = ActiveVisionEpisodeRecordV1(
+        scenario_version=config.scenario_version,
+        seed=config.seed,
+        episode_id=manifest.episode_id,
+        source_identity=ActiveVisionSourceIdentityV1(
+            git_commit=manifest.git_commit,
+            git_dirty=manifest.repository_dirty,
+            config_sha256=manifest.config_sha256,
+        ),
+        samples=tuple(samples),
+        synthetic_fixture=True,
+    )
+    descriptor = stage_active_vision_episode_record(
+        root,
+        record,
+        generation_config=(
+            {
+                "schema_version": LEARNING_EXPORT_SCHEMA_VERSION,
+                "source": "scalable_3d_integrated_episode",
+                "recording_mode": "whole_episode",
+                "offline_reward_policy": (
+                    "explicit_unavailable_until_d6_join"
+                ),
+            }
+            if generation_config is None
+            else generation_config
+        ),
+    )
+    descriptor = stage_active_vision_offline_labels(
+        root,
+        record.episode_uid,
+        unavailable_active_vision_offline_labels(record),
+    )
+    return {
+        "config": root / "dataset_config.json",
+        "online_record": root / str(descriptor["online_file"]),
+        "offline_labels": root / str(descriptor["offline_file"]),
+        "descriptor": root / "episodes" / f"{record.episode_uid}.episode.json",
+    }, {
+        "captured_frame_count": len(active_vision_frames),
+        "staged_frame_count": len(active_vision_frames),
+        "sample_count": len(samples),
+        "offline_reward_status": "unavailable",
+        "runtime_ack_status": "not_joined",
+        "dataset_finalized": False,
+        "dataset_finalization_reason": "requires_multi_seed_offline_join",
     }
 
 

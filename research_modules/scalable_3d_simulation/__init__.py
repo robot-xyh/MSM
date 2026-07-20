@@ -62,6 +62,7 @@ from .runtime_ports import (
 from .module_stack import (
     D4RegionLearningFrame,
     D5GraphLearningFrame,
+    D5ActiveVisionLearningFrame,
     INTEGRATED_STACK_SCHEMA_VERSION,
     IntegratedLearningArtifacts,
     IntegratedScalableModuleStack,
@@ -94,6 +95,7 @@ __all__ = [
     "DeterministicCommunicationNetwork",
     "D4RegionLearningFrame",
     "D5GraphLearningFrame",
+    "D5ActiveVisionLearningFrame",
     "EntityKind",
     "EntitySnapshot",
     "EXPERIMENT_MATRIX_SCHEMA_VERSION",

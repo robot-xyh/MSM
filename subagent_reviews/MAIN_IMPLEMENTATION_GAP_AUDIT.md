@@ -6,6 +6,25 @@
 
 **P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。2026-07-14 canonical actual-execution 证据链已完成真实 AirSim seed-1 复验：tuned 2v2 与 M5N2 均生成并通过校验的 `d7-actual-execution-metrics-v2`，不存在 unavailable artifact；`control_commands.csv`、`intercept_summary.json` 和 actual envelope 的物理成功数一致，控制计划 ID 与同一个 canonical D3 history 一致，身份和状态在线真值使用计数均为 0。2026-07-15 main/D6 进一步关闭“只有总耗时、无法定位预算违例阶段”的 P1 可观测性实现缺口；随后复核并关闭 D4 多入口二级接管证据不一致的系统级 P0 边界，以及 D2 continuity 固定 `+0.10` 在高基线下不可达的 P1 准入规则缺口。同日第二次只读审计发现 D4 两个公开 helper 仍把部分缺失证据 `None` 当成“非 False”放行；D4 owner 已改为 exact-true/fail-closed，补齐逐字段缺失负例并完成跨模块回归。D2/D6 随后已用原冻结 replay 生成 ceiling-aware v2 正式联合证据：总体 GNN 候选五项 gate 通过，但只有 `clutter`、`combined` 两个 difficulty 通过，dropout truth alignment 仍为 partial，JPDA 不准入，因此只形成 promotion review，默认 GNN/Hungarian 不变。最新相关回归为 D2 `113`、D4 `280`、D6 `272`、AirSim runtime `157`、integrated point-mass `7`；当前无开放运行级或证据级 P0 blocker。P1 继续包括 D3 长期 churn、M5N2 第二 primary/物理联盟、candidate `3/2/1` 机会合同、ClockSpeed 与顺序控制 RPC 解耦、D5 30/50 m 与 native MOT 准入、真实二级网络时序、D2 候选的跨 difficulty/完整系统评审，以及基于新分阶段证据达到 100 ms 实时预算。P2 仍只在隔离环境评估，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
 
+## 2026-07-20 D4 下一周期消费与 D5 主动视觉整 episode 导出
+
+main 已闭合 `plan N -> D4 advisory N -> plan N+1` 的单进程受控桥接。D4 只有实际
+`assist` 且包含后投影 `d4-region-resource-advisory-v1` 时才进入消费候选；main 使用建议
+生成时冻结的区域快照和正式 D4 裁决调用一次性 gate。通过后转换为 D3-owned
+`d3_regional_planning_hint_v1`，D3 再按当前 previous plan、资源区域、已提交成员、备用和
+transfer candidate 校验。shadow、无准入、replay、严格到期、fault generation 变化和
+regional authority 路径均 fail closed。定向 4/4 及 scalable 3D 全量 55/55 通过，在线
+真值使用为 0。开放项是跨进程 consumed advisory ledger、正式 D4 checkpoint、20 个未见
+seed paired shadow 和长时/真实通信验证。
+
+D5 owner 提供的主动视觉整 episode 合同已由 main 接入统一学习导出。`scalable3d-learning-
+export-v2` 逐决策保存 truth-free snapshot、规则示范、requested/effective action、计划/
+联盟/通信版本和同帧相机反馈；在线文件与离线 reward/outcome/counterfactual 文件物理分离。
+当前 main 只写 unavailable/null，不用 0 代替缺失 reward，也不伪造 ACK 或因果标签。单
+episode 和三 seed staging 回归通过；三 seed 因不满足 20 个完全未见 seed 而拒绝最终化。
+开放项是 D6 独立 outcome/counterfactual 回填、正式 clean-tree 数据、行为克隆/近端策略
+优化、模型准入和至少 20 个未见 seed 的收益证据。
+
 ## 2026-07-20 规模化学习运行时接线
 
 D3、D4、D5 和 D6 owner 已分别完成规模化研究管线，并由 main 分四次提交。D3 提供整
@@ -26,10 +45,11 @@ SHA256 和回退原因，不记录不可复现的本地绝对路径。
 `model_bundle_missing`，D4 `assist -> shadow` 且正式裁决摘要前后相同，D5 回退几何规则。
 该 smoke 来自 dirty 开发工作树，只验证接线和失败关闭，不属于正式模型证据。
 
-当前没有新增 P0。开放 P1 为：main 导出真实整 seed D3/D4/D5 数据；D5 主动视觉策略；
-D4 区域建议到资源机动/下一轮 D3 候选约束的受控闭环；通信带宽排队、分区和乱序进入统一
-episode；D6 消费区域建议与学习回退指标；完成 5/20/50/100/200 规模和至少 20 个未见 seed
-的规则、图网络、强化学习及组合对照。合成 fixture 和单 seed smoke 不得用于模型准入。
+当前没有新增 P0。D4 到下一轮 D3 的单进程消费闭环和 D5 主动视觉整 episode staging 已
+关闭到接口/确定性回归层。开放 P1 为：生成 clean-tree 真实整 seed D3/D4/D5 数据；由 D6
+回填主动视觉 outcome/counterfactual；持久化跨进程 D4 consumed-ID ledger；完成通信分区/
+乱序、5/20/50/100/200 规模和至少 20 个未见 seed 的规则、图网络、强化学习及组合对照。
+合成 fixture、三 seed staging 和单 seed smoke 不得用于模型准入。
 
 ## 2026-07-16 D5 5+1 ComputerVision 多相机专项
 

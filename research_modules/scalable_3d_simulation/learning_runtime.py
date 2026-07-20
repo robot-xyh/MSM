@@ -96,6 +96,7 @@ def resolve_learning_runtime(
     """Load optional bundles and preserve exact-rule fallback on every failure."""
 
     selected = options or LearningRuntimeOptions()
+    base_stack_config = stack_config or IntegratedStackConfig()
     d3_assistant: Any | None = None
     d4_advisor: Any | None = None
     d5_edge_model: Any | None = None
@@ -160,9 +161,20 @@ def resolve_learning_runtime(
         from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
             RegionResourceAdvisor,
             RegionResourceAdvisorConfig,
+            RegionResourceProjectionConfig,
         )
 
-        advisor_config = RegionResourceAdvisorConfig(mode=selected.d4_mode)
+        advisory_ttl_s = max(
+            config.assignment_period_s
+            * base_stack_config.d4_advisory_ttl_multiplier,
+            config.assignment_period_s + config.physics_dt_s,
+        )
+        advisor_config = RegionResourceAdvisorConfig(
+            mode=selected.d4_mode,
+            projection=RegionResourceProjectionConfig(
+                advisory_ttl_s=advisory_ttl_s,
+            ),
+        )
         if (
             selected.d4_bundle_dir is None
             or not selected.d4_bundle_dir.is_dir()
@@ -327,7 +339,7 @@ def resolve_learning_runtime(
         metadata=metadata,
     )
     resolved_stack_config = replace(
-        stack_config or IntegratedStackConfig(),
+        base_stack_config,
         d5_active_vision_mode=selected.d5_active_vision_mode,
     )
     stack = IntegratedScalableModuleStack(

@@ -96,18 +96,20 @@ commit。
 
 ### 2026-07-20 阶段状态
 
-- 阶段 1-3 已完成，世界、传感器、真值隔离和集成合同由当前 47 项测试覆盖。
+- 阶段 1-3 已完成，世界、传感器、真值隔离和集成合同由当前 55 项测试覆盖。
 - D1、D2、D3、D4、D5、D7 的 scalable 3D 模块入口已接入 main-owned
-  `IntegratedScalableModuleStack`；当前 main 集成测试总计 47 项通过。
+  `IntegratedScalableModuleStack`；当前 main 集成测试总计 55 项通过。
 - 5v5 规则闭环和 200v200 的 0.25 秒雷达烟测已通过。后者形成 200 条中心航迹、200 项
   分配和 200 路三维导引命令，候选边为 6400/40000；该短时结果不能替代长时多 seed。
 - 单一二级、多二级区域 owner 和二级再次失效后的完全分布式 D3 计划已在质点模块栈闭合。
   D7 按区域核对 owner layer、owner node、epoch、lease 和提交模式；缺失或过期证据继续
   fail closed。
 - D3、D4 和 D5 的可选学习 bundle 已由 main 显式装配。默认模式仍为 disabled；D3 未通过
-  promotion manifest 时精确回退规则代价，D4 区域建议只以独立总线消息输出且不修改正式
-  裁决，D5 bundle 异常时回退几何规则。模型路径不进入实验版本，manifest 记录解析后的
-  语义版本和权重 SHA256。当前没有通过正式准入的 checkpoint。
+  promotion manifest 时精确回退规则代价。D4 后投影建议只有在实际 `assist`、来源
+  snapshot/formal decision、有效期、故障代际和一次性 gate 均通过时，才转换为下一周期
+  D3 区域提示；D3 再校验当前计划、资源、commit/reserve 和候选边。shadow、重放、严格
+  到期和故障代际变化均不生效。D5 bundle 异常时回退几何规则。当前没有通过正式准入的
+  checkpoint。
 - 5/20/50/100/200 的 0.25 秒雷达短测实时因子依次约为 8.54、2.32、0.61、0.28、
   0.09。200v200 的 D3 分配累计耗时约 1.97 秒，明显高于 D1、D2 和 D7，是当前首要
   性能瓶颈。分阶段耗时已进入 episode 诊断和 `stage_timings.csv`；在线发布总线单列
@@ -131,6 +133,11 @@ commit。
   连接结果分文件保存。批量导出按完整场景/seed 分组，D5 少于三个组时只保留 staging，
   不生成不成立的数据集划分。该能力解决了训练数据接线问题，尚未形成正式 checkpoint
   或至少 20 个未见 seed 的模型准入证据。
+- D5 主动视觉已新增整 episode 数据导出。每个决策保存真值隔离快照、规则示范、请求/
+  实际动作和同帧相机反馈；在线记录与离线 outcome/reward/counterfactual 文件物理分离。
+  main 当前只写显式 unavailable/null 标签，不伪造 reward、反事实或 ACK。三 seed 集成
+  测试因少于 20 个完全未见 seed 而拒绝最终化，符合失败关闭要求；正式 D6 标签回填、
+  行为克隆、近端策略优化和 checkpoint 准入仍待完成。
 - main 已持久化相机指向和视场，D5 每个视觉周期输出带计划、联盟、通信版本和有效期的
   相机命令。相机执行器只接受非过时命令并发布 ACK；学习 disabled/shadow/assist 均保留
   确定性规则安全外壳。5v5 开发冒烟的 84 条命令及 200v200 单 seed 开发诊断的 1872 条

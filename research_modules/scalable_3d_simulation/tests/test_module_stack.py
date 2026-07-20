@@ -8,12 +8,58 @@ import pytest
 from research_modules.d3_assignment_planner.src.d3_assignment_planner import (
     RegionalPlanAuthorityError,
 )
+from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
+    AdvisorMode,
+    RecommendationSource,
+    RegionResourceAdvisor,
+    RegionResourceAdvisorConfig,
+    RegionResourceProjectionConfig,
+    RuleRegionResourcePolicy,
+    RuleRegionResourcePolicyConfig,
+)
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
 from research_modules.scalable_3d_simulation.module_stack import (
     IntegratedScalableModuleStack,
 )
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
 from research_modules.scalable_3d_simulation.scenarios import make_curriculum_scenario
+
+
+class _FiniteLearnedRegionPolicy:
+    """Deterministic learned-policy stand-in for main bridge tests."""
+
+    def __init__(self, projection: RegionResourceProjectionConfig) -> None:
+        self._rule = RuleRegionResourcePolicy(
+            RuleRegionResourcePolicyConfig(projection=projection)
+        )
+
+    def is_ood(self, snapshot, *, margin: float) -> bool:
+        del snapshot, margin
+        return False
+
+    def recommend_raw(self, snapshot):
+        rule = self._rule.recommend(snapshot)
+        return replace(
+            rule,
+            policy_name="test-finite-region-policy",
+            policy_version="v1",
+            source=RecommendationSource.LEARNED,
+            projected=False,
+            model_sha256="a" * 64,
+            fallback_reason=None,
+        )
+
+
+def _assist_region_advisor(*, ttl_s: float = 1.5) -> RegionResourceAdvisor:
+    projection = RegionResourceProjectionConfig(advisory_ttl_s=ttl_s)
+    return RegionResourceAdvisor(
+        config=RegionResourceAdvisorConfig(
+            mode=AdvisorMode.ASSIST,
+            minimum_unseen_seeds=1,
+            projection=projection,
+        ),
+        learned_policy=_FiniteLearnedRegionPolicy(projection),
+    )
 
 
 def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> None:
@@ -309,3 +355,145 @@ def test_regional_authority_adapter_rejects_incomplete_d4_evidence(
             now=now,
         )
     assert error.value.reason == expected_reason
+
+
+def test_d4_assist_advisory_is_consumed_once_by_next_center_plan() -> None:
+    config = ScenarioConfig(
+        scenario_name="d4_d3_next_cycle_bridge",
+        scenario_version="d4-d3-next-cycle-bridge-v1",
+        target_count=5,
+        resource_count=5,
+        recon_count=1,
+        region_count=2,
+        duration_s=1.2,
+        seed=41,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+    )
+    stack = IntegratedScalableModuleStack(
+        d4_region_advisor=_assist_region_advisor(),
+        d4_unseen_seed_count=1,
+    )
+
+    result = run_episode(config, module_stack=stack)
+
+    assert result.summary["online_truth_use_count"] == 0
+    assert stack.latest_d4_region_consumption is not None
+    assert stack.latest_d4_region_consumption.consumable is True
+    assert stack.latest_plan.metadata["regional_hint_applied"] is True
+    assert stack.latest_plan.metadata["regional_hint_advisory_version"] == 1
+    consumption_payloads = [
+        item.payload
+        for item in result.online_messages
+        if item.topic == "modules.d4.region_resource_consumption"
+    ]
+    assert len(consumption_payloads) == 1
+    assert consumption_payloads[0]["consumable"] is True
+    assert consumption_payloads[0]["d3_hint_applied"] is True
+    assert consumption_payloads[0]["bridge_rejection_reason"] is None
+
+
+def test_d4_advisory_bridge_rejects_replay_and_strict_expiry() -> None:
+    config = ScenarioConfig(
+        scenario_name="d4_advisory_replay",
+        scenario_version="d4-advisory-replay-v1",
+        target_count=2,
+        resource_count=2,
+        recon_count=1,
+        region_count=1,
+        duration_s=0.8,
+        seed=42,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+    )
+    stack = IntegratedScalableModuleStack(
+        d4_region_advisor=_assist_region_advisor(),
+        d4_unseen_seed_count=1,
+    )
+    run_episode(config, module_stack=stack)
+    advice = stack.latest_d4_region_advice
+    snapshot = stack.latest_d4_region_snapshot
+    decision = stack.latest_d4_decision
+    plan = stack.latest_plan
+    advisory = advice.advisory_contract
+
+    hint = stack._d3_regional_hint_from_previous_d4(
+        previous_plan=plan,
+        advice_result=advice,
+        source_snapshot=snapshot,
+        source_decision=decision,
+        now=advisory.created_at_s + 0.1,
+        fault_generation_changed=False,
+    )
+    assert hint is not None
+    replay = stack._d3_regional_hint_from_previous_d4(
+        previous_plan=plan,
+        advice_result=advice,
+        source_snapshot=snapshot,
+        source_decision=decision,
+        now=advisory.created_at_s + 0.2,
+        fault_generation_changed=False,
+    )
+    assert replay is None
+    assert "advisory_already_consumed" in (
+        stack._d4_region_hint_bridge_rejection_reason or ""
+    )
+
+    expiry_stack = IntegratedScalableModuleStack(
+        d4_region_advisor=_assist_region_advisor(),
+        d4_unseen_seed_count=1,
+    )
+    run_episode(config, module_stack=expiry_stack)
+    expiry_advice = expiry_stack.latest_d4_region_advice
+    expired = expiry_stack._d3_regional_hint_from_previous_d4(
+        previous_plan=expiry_stack.latest_plan,
+        advice_result=expiry_advice,
+        source_snapshot=expiry_stack.latest_d4_region_snapshot,
+        source_decision=expiry_stack.latest_d4_decision,
+        now=expiry_advice.advisory_contract.valid_until_s,
+        fault_generation_changed=False,
+    )
+    assert expired is None
+    assert "advisory_expired" in (
+        expiry_stack._d4_region_hint_bridge_rejection_reason or ""
+    )
+
+
+def test_fault_generation_blocks_d4_advisory_before_gate_consumption() -> None:
+    config = ScenarioConfig(
+        scenario_name="d4_advisory_fault_fence",
+        scenario_version="d4-advisory-fault-fence-v1",
+        target_count=2,
+        resource_count=2,
+        recon_count=1,
+        region_count=1,
+        duration_s=0.8,
+        seed=43,
+        radar_detection_probability=1.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+    )
+    stack = IntegratedScalableModuleStack(
+        d4_region_advisor=_assist_region_advisor(),
+        d4_unseen_seed_count=1,
+    )
+    run_episode(config, module_stack=stack)
+    advice = stack.latest_d4_region_advice
+
+    hint = stack._d3_regional_hint_from_previous_d4(
+        previous_plan=stack.latest_plan,
+        advice_result=advice,
+        source_snapshot=stack.latest_d4_region_snapshot,
+        source_decision=stack.latest_d4_decision,
+        now=advice.advisory_contract.created_at_s + 0.1,
+        fault_generation_changed=True,
+    )
+
+    assert hint is None
+    assert stack.latest_d4_region_consumption is None
+    assert stack._d4_region_advisory_gate.consumed_advisory_ids == frozenset()
+    assert stack._d4_region_hint_bridge_rejection_reason == (
+        "fault_generation_changed_before_advisory_consumption"
+    )

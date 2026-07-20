@@ -38,11 +38,14 @@ python3 research_modules/scalable_3d_simulation/run_batch.py \
   --integrated-stack --export-learning-data
 ```
 
-`--export-learning-data` 只在集成栈下可用。单次运行输出 D3 匿名规划帧、D4 区域图和 D5
-图/标签 staging；D5 不会在单一 seed 上伪造训练、验证和测试集。批量运行把完整
-`(scenario_version, seed)` 组汇总到 `learning_dataset/`，至少有三个组时才最终化 D5
-数据集。D5 数值图与 `truth_entity_id` 标签保存为不同文件，图特征和在线总线均不含
-真值编号。
+`--export-learning-data` 只在集成栈下可用。单次运行输出 D3 匿名规划帧、D4 区域图、
+D5 跨视角图和 D5 主动视觉整 episode staging；D5 不会在单一 seed 上伪造训练、验证和
+测试集。主动视觉在线记录保存快照、规则示范、请求/实际动作和同帧相机反馈，离线文件
+明确把 reward/outcome/counterfactual 标成 unavailable，不以数值零填充，也不伪造运行时
+ACK。批量运行把完整 `(scenario_version, seed)` 组汇总到 `learning_dataset/`，至少有
+三个组时才最终化 D5 跨视角图数据集；主动视觉数据集还必须满足至少 20 个完全未见 seed
+的自身准入条件。D5 数值图与 `truth_entity_id` 标签保存为不同文件，主动视觉在线记录与
+离线结果标签也物理分离，图特征和在线总线均不含真值编号。
 
 学习模型默认关闭。显式研究运行可增加下列参数；bundle 缺失、校验失败、分布外、低置信或
 超时均保留规则路径：
@@ -59,10 +62,13 @@ python3 research_modules/scalable_3d_simulation/run_episode.py \
 ```
 
 D3 的 `assist` 只有在 bundle 内准入清单证明至少 20 个未见 seed、成本与安全非退化且
-无回退帧时才可能生效。D4 当前只发布经资源守恒、通信邻接、owner、epoch、lease、故障
-围栏和联盟提交约束投影的区域建议；它不修改正式 D4 裁决，也不直接授权 D7。D4 尚无正式
-未见 seed 准入制品，因此即使请求 `assist`，main 仍将实际模式保持为 `shadow`。D5 只有
-显式给出校验通过的 bundle 才使用图边概率，异常时继续采用几何规则。
+无回退帧时才可能生效。D4 建议先经过资源守恒、通信邻接、owner、epoch、lease、故障
+围栏和联盟提交约束投影。只有运行时实际进入 `assist` 的后投影建议，main 才会在下一分配
+周期使用冻结的来源快照和正式裁决进行一次性重验，再转换为 D3-owned 区域提示。D3 仍会
+按当前计划、资源、已提交成员、备用和候选边二次校验。shadow 建议、重放、严格到期、
+fault generation 变化和 regional authority 路径都不生效。D4 不修改正式裁决，也不直接
+授权 D7。当前没有正式 D4 未见 seed 准入制品，实际研究运行仍保持 disabled/shadow。
+D5 只有显式给出校验通过的 bundle 才使用图边概率，异常时继续采用几何规则。
 
 主动视觉即使在学习模式 `disabled` 下也运行确定性 look-at/reacquire/scan 策略；这里的
 `disabled` 只表示学习模型关闭。`shadow` 记录学习建议但实际执行规则动作，`assist` 仅在
@@ -110,7 +116,7 @@ D4 区域策略、A3 主动视觉、C1 学习组合和 F1 故障/高威胁完整
 
 ## 当前验证
 
-2026-07-20 的 main 集成回归为 **47/47 passed**。其中 5v5、seed 7、1.2 秒场景形成
+2026-07-20 的 main 集成回归为 **55/55 passed**。其中 5v5、seed 7、1.2 秒场景形成
 5 条 D1 航迹、5 条 D2 中心航迹、5 项 D3 分配和 5 路 D7 中段指令，在线真值字段使用为
 0。200v200、seed 17、0.25 秒雷达烟测形成 200 条 D1/D2 航迹和 200 项分配；D3 从
 40000 个完整 pair 中保留 6400 条候选边，D7 输出 `(200, 3)` 有限加速度。
@@ -168,6 +174,16 @@ paired shadow evaluator；D4 已具备变长区域图、规则基线、行为克
 定位。D1、D2、D3 累计耗时分别约 7.76、3.50、3.82 秒，仍是主要开销，主动视觉不是本次
 实时性下降的首要来源。
 
+同日补齐 D4 区域建议的下一周期消费桥接。定向回归验证一次正常消费与 D3 应用，以及
+advisory replay、严格到期和 fault generation 变化三类闭锁；在线真值使用仍为 0。该结果
+关闭的是单进程质点 planning-loop 接线，不代表已有可准入 D4 checkpoint，也不包含跨进程
+持久化 consumed-ID ledger、长时 200v200 或真实通信验证。
+
+D5 主动视觉整 episode 数据已接入 main 学习导出。单 episode 和三 seed staging 测试证明
+在线记录与离线标签分目录写入，奖励不可用时保持 null；三 seed 不满足 20 个未见 seed，
+因此数据集按预期不最终化。该结果只证明数据合同和失败关闭，尚无 D6 outcome/
+counterfactual 回填、正式行为克隆或近端策略优化结果。
+
 每个物理步结束后，离线评估侧按三维 5 米门限登记唯一接近事件。事件中的真值目标号只
 写入 `offline_proximity_intercepts.jsonl`，不进入在线总线；D6 还需结合分配与身份映射
 判断该物理接近是否属于正确任务。
@@ -180,7 +196,7 @@ paired shadow evaluator；D4 已具备变长区域图、规则基线、行为克
 - 在线观测：`scalable3d-observation-v1`
 - 离线真值：`scalable3d-offline-truth-v1`
 - D4 区域策略：`d4-region-resource-rule-v1` 或带权重 SHA256 的显式模型版本
-- 学习导出：`scalable3d-learning-export-v1`
+- 学习导出：`scalable3d-learning-export-v2`
 - 主动视觉快照/动作：`d5.active-vision-snapshot.v1` / `d5.active-vision-action.v1`
 - 主动视觉策略：`d5-active-vision-rule-v1` 或模型语义版本加权重指纹
 - 相机命令确认：`scalable3d-camera-command-ack-v1`

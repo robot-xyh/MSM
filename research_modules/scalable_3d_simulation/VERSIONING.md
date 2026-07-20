@@ -41,7 +41,7 @@ main
 | 场景配置 | `scalable3d-scenario-v1` | 配置字段语义或默认场景改变 |
 | 在线观测 | `scalable3d-observation-v1` | 观测字段、单位或时序语义改变 |
 | 离线真值 | `scalable3d-offline-truth-v1` | 标签结构或评分口径改变 |
-| 学习导出 | `scalable3d-learning-export-v1` | D3/D4/D5 训练制品布局或真值隔离规则改变 |
+| 学习导出 | `scalable3d-learning-export-v2` | D3/D4/D5 训练制品布局或真值隔离规则改变；v2 增加 D5 主动视觉整 episode 在线记录与独立离线标签 |
 | 实验矩阵 | `scalable3d-experiment-matrix-v1` | 变体语义、配对键或正式准入条件改变 |
 | D5 模型 | `d5-crossview-gnn-v0.1.0` | 网络、特征、权重或训练集改变 |
 | D5 主动视觉 | `d5-active-vision-rule-v1` 或模型语义版本加指纹 | 特征、动作空间、权重或准入报告改变 |

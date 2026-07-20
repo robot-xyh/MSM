@@ -591,6 +591,7 @@ def _learning_artifact_counts(module_stack: ScalableModuleStack | None) -> dict[
             "d3_learning_frame_count": 0,
             "d4_learning_frame_count": 0,
             "d5_learning_graph_frame_count": 0,
+            "d5_active_vision_learning_frame_count": 0,
         }
     artifacts = provider()
     enabled = bool(
@@ -601,6 +602,9 @@ def _learning_artifact_counts(module_stack: ScalableModuleStack | None) -> dict[
         "d3_learning_frame_count": len(artifacts.d3_planning_frames),
         "d4_learning_frame_count": len(artifacts.d4_region_frames),
         "d5_learning_graph_frame_count": len(artifacts.d5_graph_frames),
+        "d5_active_vision_learning_frame_count": len(
+            getattr(artifacts, "d5_active_vision_frames", ())
+        ),
     }
 
 
