@@ -158,6 +158,7 @@ D1 仍以北-东-地（North-East-Down，NED）坐标系作为融合工作坐标
 | `RegionResourceRecommendation`（区域资源建议） | main、D6、shadow evaluator | 只含区域配额增减、邻区转移、备用比例、侦察优先级和 hold/replan；不是 D3 assignment，也不授权 D7 |
 | `RegionResourceAdvisoryContract`（后投影建议合同） | main 下一轮规划边界 | 内容寻址 ID、创建时间/有效期、scenario/snapshot/authority、source plan、policy/model/projector identity，以及逐区域/transfer generation、资源和 edge 安全证明；不含目标级分配 |
 | `RegionResourceConsumptionView`（消费判定视图） | main | 在 current snapshot/formal verdict 上输出 `consumable` 与稳定拒绝原因；`true` 只表示可作为 D3 下一轮输入，不表示已生成计划或获执行授权 |
+| `RegionLearningEpisodeSource/Frame`（区域学习 episode 数据） | main writer、离线训练 | source 固化 scenario/version/scale、seed、episode/Git/config identity；frame 固化 truth-free snapshot、显式 target/reward availability 和可选 recommendation |
 
 ### 3.7 区域资源快照与动作边界
 
@@ -168,6 +169,12 @@ D1 仍以北-东-地（North-East-Down，NED）坐标系作为融合工作坐标
 规则 fallback 与学习候选在 `RegionResourceAdvisor` 内共享同一 `DeterministicResourceProjector` 实例；学习模型只能返回 `projected=false` 的 raw proposal。投影器随后生成 `d4-region-resource-advisory-v1`：`advisory_id` 是合同内容的 SHA256 幂等键；默认有效期为创建后 1.0 episode-clock 秒，并取所有区域 authority lease 的最早截止。每个区域记录 source snapshot/version/authority、owner/layer、plan id/version、epoch/lease、ACK/fault、资源前后量、protected reserve/committed；每个 transfer 还记录两端 generation、edge 端点、capacity、transfer time、bandwidth 和通信/机动/partition 状态。
 
 消费门严格使用 `evaluated_at < valid_until`。旧 snapshot/plan/epoch、lease 到期、非 projected、ACK 不完整、fault fence、formal verdict 变化、资源不守恒、reserve/committed 保护失败、未知/非邻接/不可用/超 capacity transfer，或已在 gate 中成功消费过的 `advisory_id`，均输出 `consumable=false`。当前 gate 的 replay ledger 是进程内集合；跨进程运行时由 main 持久化。D4 不借此创建或修改 D3 `AssignmentPlan`。
+
+### 3.8 区域学习 episode 数据治理
+
+`d4-region-learning-dataset-v1` 以完整 episode 为最小持久化和 split 单元。source 必须记录 scenario/version/scale、数值 seed、episode ID、Git commit/dirty 与 config SHA256；每帧 target 只能是区域级 `rule|formal` 投影建议或带原因的 unavailable，reward 同样必须显式 available/unavailable，可选 recommendation 只作记录。任何 target/actor/global-track/evaluator/offline truth key 都被拒绝，不能进入在线特征。
+
+stage 产物使用 canonical JSONL header/frame/footer 和 frame SHA；finalizer 再固化逐 episode SHA、dataset SHA、feature/target/reward semantics、全部 source identity 和 availability。同一数值 seed 下的不同场景、规模和多个 episode 原子进入同一 train/validation/test split，三份 seed 两两零交集；唯一 seed 少于 3 或实际 unseen 少于声明下限时不生成 dataset。BC loader 缺 target 即失败，PPO loader 缺 target 或 reward 即失败，二者默认拒绝 dirty source，不以 0 填补。`model-bundle-v2` 可嵌入并验证 dataset/split manifest；这些数据治理能力不改变 D4 authority、lease、epoch、CBBA、联盟或降级状态机。
 
 ## 4. 数学模型与核心公式
 
@@ -607,7 +614,8 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 | CBBA 与中心化代价差距 | 辅助函数已实现；只有 D3/main 提供同场景代价矩阵时才有结果 |
 | 外部能力探测 | 只探测本地参考路径和源码能力，不导入、不执行、不增加默认依赖 |
 | 区域资源规则建议与投影 | 已实现 truth-free 变长区域图、守恒/邻边/备用/authority/commit/fault 安全投影；只输出建议 |
-| 共享区域图学习研究管线 | 已实现共享节点/边 actor-critic、行为克隆、原生 clipped PPO、整 scenario/seed 划分、manifest + state_dict + SHA256、OOD/timeout/低置信/非有限回退；默认 disabled/shadow |
+| 共享区域图学习研究管线 | 已实现共享节点/边 actor-critic、行为克隆、原生 clipped PPO、数值 seed 口径 evaluator、bundle-v2/state_dict/SHA256、OOD/timeout/低置信/非有限回退；默认 disabled/shadow |
+| 区域学习 episode dataset | 已实现 dataset-v1 source/frame、完整 episode stage/finalize/load、数值 seed 原子 split、manifest/availability/hash 和严格 BC/PPO loader；main 正式 writer 尚待接线 |
 | paired shadow evaluator | 已报告 backlog、transfer、churn、communication、fail-closed、安全违规和 P50/P95 latency；少于 20 个未见 seed 不推荐 assist |
 
 ### 8.3 未实现或明确不作为 D4 主线
@@ -636,7 +644,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 
 根据 2026-07-13 主验证报告与 D4 审计：
 
-- 2026-07-20 D4 全量模块回归为 **350/350 项通过**，验收阈值为零失败。区域 authority 阶段的 23 项测试覆盖 5/20/50/100/200 metadata 和全层 fencing；原 32 项区域资源建议/学习管线测试覆盖 3/5/8/32 变长图、守恒、断边/分区、中心/多二级/distributed owner、旧 epoch/过期 lease/缺 ACK/fault fence、BC、PPO、bundle SHA、OOD/timeout/低置信/非有限回退和 shadow verdict 不变；新增 15 个消费合同 case 覆盖 ID/有效期/回读、重放、旧 snapshot/plan/epoch、非投影/不守恒、未知/非邻接 transfer、不可用 edge、ACK/fault 和 `k>1` committed protection。新增 15 项只是纯 Python 合同/接口测试，没有新增正式多 seed 或 AirSim 样本。2026-07-15 的 280/280、区域阶段 303/303、建议管线阶段 335/335 与更早 278/278 保留为历史证据。
+- 2026-07-20 D4 全量模块回归为 **365/365 项通过**，验收阈值为零失败。区域 authority 23 项；区域建议/学习/消费合同 49 项；episode dataset 13 项。新增复核覆盖 200-region 图、训练 target 的 projector/owner/plan/version/epoch/lease/edge 证明、三层 owner 回读，以及 manifest inventory/split 一致性；96 episode/192 frame 高基数样本仍为纯 Python 合成合同测试，没有新增正式训练数据、checkpoint、多 seed 性能或 AirSim 样本。历史阶段计数保持不变。
 - `build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 当前统一要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格 `current_time < expiry`。逐字段 `None`、完整正例和同 id/version 维持路径均有回归；未运行新 AirSim episode。
 - 完全分布式 interceptor/peer 选择不套用二级视觉 readiness 门；动态 N/M、版本/epoch/lease、ACK 和 `global_track_id` 所有权规则未改变。
 - 二级 resource 和 plan lease 只有在 expiry/current time 均存在且严格 `current_time < expiry` 时有效；等于边界按过期处理。缺字段分别输出可审计原因并 fail-closed，不能发布或维持 executable secondary plan。
@@ -664,11 +672,13 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 10. **区域 authority 合同**：动态 region/task/node metadata、声明数量上限、中心保持、二级 coverage 接管、跨区域 capacity candidate、双 generation、最早 lease 和全层原子 ACK/partition 门控已完成模块测试。
 11. **区域资源建议安全边界**：资源守恒、邻边/分区、最低备用、formal owner/epoch/lease/fault/commit fence、模型回退和 shadow 不变性已完成模块测试；正式降级裁决仍归确定性 D4 状态机。
 12. **下一周期 advisory 消费合同**：版本化内容 ID、严格有效期、逐区域/transfer 来源版本、安全证明、旧 generation/重放/ACK/fault/守恒/edge fail-closed 已完成模块测试；main/D3 实际消费尚未接线。
+13. **区域学习 episode 数据合同**：truth-free source/frame、完整 episode、数值 seed 原子 split、多层 SHA、availability 和严格 BC/PPO loader 已完成模块测试；main 正式 episode writer 尚未接线。
 
 ### 9.3 剩余局限
 
 - 真实 secondary takeover 和完全分布式 commit 尚未在与上述 M5N2 相同的多 seed 几何中执行，继续是 P1。
 - `d4-region-resource-advisory-v1` 目前只有 D4 单元/接口证据；main 尚未在真实 planning loop 持久化 consumed ID 或将合同接入下一轮 D3，不能据此声称在线规划收益。
+- `d4-region-learning-dataset-v1` 目前只有合成合同证据；main 尚未补 source identity、target/reward availability 并调用公开 stage/finalize API，不能据此声称已有正式训练集或 checkpoint。
 - 20 个 `collision_stop` 缺少 collision object/source lineage，无法区分成员间碰撞、环境碰撞或 AirSim 状态异常；在证据补齐前不得把它设为主动降级硬触发。
 
 1. **真实网络未验证**：带宽、拥塞、时钟漂移、操作系统/网络排队、抖动、乱序、重传、实际二级节点到执行资源链路和对等节点图分裂仍开放。
@@ -719,8 +729,9 @@ PYTHONPATH=research_modules/d4_distributed_fallback python3 -m pytest -q researc
 - `cbba.py`：轻量 CBBA、视觉风险修正和离线代价差距；
 - `coalition_safety.py`：多成员 ACK、原子提交与联盟安全证据；
 - `regional_failover.py`：scalable3d 区域元数据、逐区域 authority、机动高空二级覆盖和受约束原子 fallback；
-- `region_resource.py`：区域资源快照、规则基线、确定性安全投影、reward、整 scenario/seed 划分与 paired evaluator；
-- `region_resource_learning.py`：共享区域图 actor-critic、BC、原生 PPO、bundle/SHA/OOD 和 fail-closed advisor；
+- `region_resource.py`：区域资源快照、规则基线、确定性安全投影、reward、数值 seed 原子划分与 paired evaluator；
+- `region_resource_dataset.py`：episode source/frame、stage/finalize/load、数值 seed split、manifest/availability/hash；
+- `region_resource_learning.py`：共享区域图 actor-critic、严格 BC/PPO loader、bundle-v2/SHA/OOD 和 fail-closed advisor；
 - `region_resource_cli.py`、`scripts/run_region_resource_advisor.py`：默认 shadow 的建议/paired evaluation CLI；
 - `episode_communication.py`：单次试验时钟通信接口与七场景验收；
 - `communication_fault_replay.py`、`p1_failover_replay.py`：P1 内存通信与确定性扰动回放；

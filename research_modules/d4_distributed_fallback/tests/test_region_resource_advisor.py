@@ -177,7 +177,7 @@ def _raw_proposal(
     )
 
 
-@pytest.mark.parametrize("region_count", [3, 5, 8, 32])
+@pytest.mark.parametrize("region_count", [3, 5, 8, 32, 200])
 def test_variable_region_graph_and_rule_policy_do_not_assume_fixed_scale(
     region_count: int,
 ) -> None:
@@ -438,6 +438,28 @@ def test_scenario_seed_split_keeps_complete_groups_together() -> None:
     groups = [set(split.train_groups), set(split.validation_groups), set(split.test_groups)]
 
     assert not (groups[0] & groups[1] or groups[0] & groups[2] or groups[1] & groups[2])
+    seed_sets = [set(split.train_seeds), set(split.validation_seeds), set(split.test_seeds)]
+    assert not (
+        seed_sets[0] & seed_sets[1]
+        or seed_sets[0] & seed_sets[2]
+        or seed_sets[1] & seed_sets[2]
+    )
+    assert split.unique_seed_count == 20
+    assert all(
+        len(
+            {
+                bucket_name
+                for bucket_name, bucket_seeds in (
+                    ("train", split.train_seeds),
+                    ("validation", split.validation_seeds),
+                    ("test", split.test_seeds),
+                )
+                if seed in bucket_seeds
+            }
+        )
+        == 1
+        for seed in range(20)
+    )
     assert sum(len(item) for item in (split.train, split.validation, split.test)) == len(records)
     for bucket, bucket_groups in (
         (split.train, groups[0]),
@@ -791,6 +813,29 @@ def test_shadow_paired_evaluator_reports_required_metrics_and_seed_gate() -> Non
     assert sufficient.safety_violations.candidate_mean == 0.0
     assert sufficient.latency_p50_ms == pytest.approx(10.5)
     assert sufficient.latency_p95_ms == pytest.approx(19.05)
+
+
+def test_shadow_evaluator_counts_unseen_numeric_seeds_across_scenarios() -> None:
+    baseline = tuple(
+        replace(record, scenario_id=scenario_id)
+        for scenario_id in ("scale-2", "scale-5")
+        for record in _shadow_records(3, candidate=False)
+    )
+    candidate = tuple(
+        replace(record, scenario_id=scenario_id)
+        for scenario_id in ("scale-2", "scale-5")
+        for record in _shadow_records(3, candidate=True)
+    )
+
+    report = ShadowPairedEvaluator(minimum_unseen_seeds=2).evaluate(
+        baseline,
+        candidate,
+        training_groups=(("training-scale", 0),),
+    )
+
+    assert report.pair_count == 6
+    assert report.unseen_seed_count == 2
+    assert report.assist_recommended
 
 
 def test_cli_demo_supports_32_regions_and_remains_shadow(tmp_path: Path) -> None:

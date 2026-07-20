@@ -30,6 +30,16 @@ from .region_resource import (
     formal_decision_digest,
 )
 from .regional_failover import RegionalAuthorityLayer, RegionalFailoverDecision
+from .region_resource_dataset import (
+    REGION_LEARNING_DATASET_SCHEMA,
+    LoadedRegionLearningDataset,
+    RegionLearningAvailability,
+    RegionLearningDataUnavailableError,
+    RegionLearningDatasetManifest,
+    RegionLearningEpisodeSource,
+    RegionLearningSplit,
+    load_region_learning_dataset,
+)
 
 
 try:  # The default deterministic D4 path does not require torch.
@@ -40,7 +50,7 @@ except ImportError:  # pragma: no cover - exercised only in minimal deployments.
     nn = None
 
 
-REGION_RESOURCE_MODEL_BUNDLE_SCHEMA = "d4-region-resource-model-bundle-v1"
+REGION_RESOURCE_MODEL_BUNDLE_SCHEMA = "d4-region-resource-model-bundle-v2"
 REGION_GRAPH_ARCHITECTURE = "shared-region-graph-actor-critic-v1"
 
 NODE_FEATURE_NAMES = (
@@ -552,6 +562,133 @@ def behavior_cloning_step(
 
 
 @dataclass(frozen=True)
+class RegionPPOTrainingFrame:
+    """Verified offline frame for PPO rollout/return preprocessing.
+
+    This is not a fabricated ``GraphPPOTransition``: old log probability,
+    value, advantage, and return must still come from the rollout/trainer.
+    """
+
+    graph: RegionGraph
+    target: RegionPolicyTarget
+    reward: float
+    frame_index: int
+    timestamp_s: float
+    target_recommendation: RegionResourceRecommendation
+    recommendation: RegionResourceRecommendation | None = None
+
+    def __post_init__(self) -> None:
+        if not isfinite(float(self.reward)):
+            raise ValueError("PPO training reward must be finite")
+
+
+@dataclass(frozen=True)
+class RegionPPOTrainingEpisode:
+    source: RegionLearningEpisodeSource
+    frames: tuple[RegionPPOTrainingFrame, ...]
+
+    def __post_init__(self) -> None:
+        if not self.frames:
+            raise ValueError("PPO training episode must not be empty")
+
+
+def load_region_behavior_cloning_samples(
+    dataset: str | Path | LoadedRegionLearningDataset,
+    *,
+    split: RegionLearningSplit | str = RegionLearningSplit.TRAIN,
+    device: Any = None,
+    allow_dirty_source: bool = False,
+) -> tuple[BehaviorCloningSample, ...]:
+    """Build BC samples only when every selected frame has a real target."""
+
+    loaded = _resolve_region_learning_dataset(dataset)
+    episodes = _training_episodes(
+        loaded,
+        split=split,
+        allow_dirty_source=allow_dirty_source,
+        purpose="behavior_cloning",
+    )
+    samples: list[BehaviorCloningSample] = []
+    for episode in episodes:
+        for frame in episode.frames:
+            if (
+                frame.target.availability != RegionLearningAvailability.AVAILABLE
+                or frame.target.recommendation is None
+            ):
+                raise RegionLearningDataUnavailableError(
+                    f"target_unavailable:{episode.source.episode_id}:{frame.frame_index}"
+                )
+            graph = snapshot_to_region_graph(frame.snapshot, device=device)
+            samples.append(
+                BehaviorCloningSample(
+                    graph=graph,
+                    target=recommendation_to_policy_target(
+                        frame.snapshot,
+                        graph,
+                        frame.target.recommendation,
+                    ),
+                )
+            )
+    return tuple(samples)
+
+
+def load_region_ppo_training_episodes(
+    dataset: str | Path | LoadedRegionLearningDataset,
+    *,
+    split: RegionLearningSplit | str = RegionLearningSplit.TRAIN,
+    device: Any = None,
+    allow_dirty_source: bool = False,
+) -> tuple[RegionPPOTrainingEpisode, ...]:
+    """Load complete PPO episodes without target or reward imputation."""
+
+    loaded = _resolve_region_learning_dataset(dataset)
+    episodes = _training_episodes(
+        loaded,
+        split=split,
+        allow_dirty_source=allow_dirty_source,
+        purpose="ppo",
+    )
+    result: list[RegionPPOTrainingEpisode] = []
+    for episode in episodes:
+        frames: list[RegionPPOTrainingFrame] = []
+        for frame in episode.frames:
+            if (
+                frame.target.availability != RegionLearningAvailability.AVAILABLE
+                or frame.target.recommendation is None
+            ):
+                raise RegionLearningDataUnavailableError(
+                    f"target_unavailable:{episode.source.episode_id}:{frame.frame_index}"
+                )
+            if (
+                frame.reward.availability != RegionLearningAvailability.AVAILABLE
+                or frame.reward.value is None
+            ):
+                raise RegionLearningDataUnavailableError(
+                    f"reward_unavailable:{episode.source.episode_id}:{frame.frame_index}"
+                )
+            graph = snapshot_to_region_graph(frame.snapshot, device=device)
+            frames.append(
+                RegionPPOTrainingFrame(
+                    graph=graph,
+                    target=recommendation_to_policy_target(
+                        frame.snapshot,
+                        graph,
+                        frame.target.recommendation,
+                    ),
+                    reward=float(frame.reward.value),
+                    frame_index=frame.frame_index,
+                    timestamp_s=frame.timestamp_s,
+                    target_recommendation=frame.target.recommendation,
+                    recommendation=frame.recommendation,
+                )
+            )
+        result.append(
+            RegionPPOTrainingEpisode(source=episode.source, frames=tuple(frames))
+        )
+    return tuple(result)
+
+
+@dataclass(frozen=True)
 class GraphPolicyAction:
     node_action: Any
     edge_action: Any
@@ -722,6 +859,12 @@ class RegionResourceModelManifest:
     feature_bounds: RegionFeatureBounds
     training_groups: tuple[tuple[str, int], ...]
     created_at_utc: str
+    training_dataset_available: bool = False
+    training_dataset_schema: str | None = None
+    training_dataset_sha256: str | None = None
+    training_split_sha256: str | None = None
+    training_manifest_file: str | None = None
+    training_manifest_sha256: str | None = None
     architecture: str = REGION_GRAPH_ARCHITECTURE
     feature_schema: str = REGION_RESOURCE_FEATURE_SCHEMA
     node_feature_dim: int = len(NODE_FEATURE_NAMES)
@@ -751,8 +894,35 @@ class RegionResourceModelManifest:
             raise ValueError("manifest action dimension mismatch")
         if self.hidden_dim <= 0 or self.message_passing_steps <= 0:
             raise ValueError("manifest model dimensions must be positive")
-        groups = tuple(sorted({(str(item[0]), int(item[1])) for item in self.training_groups}))
+        groups = tuple(
+            sorted({(str(item[0]), int(item[1])) for item in self.training_groups})
+        )
         object.__setattr__(self, "training_groups", groups)
+        provenance = (
+            self.training_dataset_schema,
+            self.training_dataset_sha256,
+            self.training_split_sha256,
+            self.training_manifest_file,
+            self.training_manifest_sha256,
+        )
+        if self.training_dataset_available:
+            if any(value is None for value in provenance):
+                raise ValueError("available training dataset provenance must be complete")
+            if self.training_dataset_schema != REGION_LEARNING_DATASET_SCHEMA:
+                raise ValueError("unsupported training dataset schema")
+            if Path(str(self.training_manifest_file)).name != self.training_manifest_file:
+                raise ValueError("training_manifest_file must be a bundle-local basename")
+            for name, digest in (
+                ("training_dataset_sha256", self.training_dataset_sha256),
+                ("training_split_sha256", self.training_split_sha256),
+                ("training_manifest_sha256", self.training_manifest_sha256),
+            ):
+                if digest is None or len(digest) != 64 or not all(
+                    character in "0123456789abcdefABCDEF" for character in digest
+                ):
+                    raise ValueError(f"{name} must be a SHA256 hex digest")
+        elif any(value is not None for value in provenance):
+            raise ValueError("unavailable training dataset must not carry provenance")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -773,6 +943,12 @@ class RegionResourceModelManifest:
                 {"scenario_id": scenario_id, "seed": seed}
                 for scenario_id, seed in self.training_groups
             ],
+            "training_dataset_available": self.training_dataset_available,
+            "training_dataset_schema": self.training_dataset_schema,
+            "training_dataset_sha256": self.training_dataset_sha256,
+            "training_split_sha256": self.training_split_sha256,
+            "training_manifest_file": self.training_manifest_file,
+            "training_manifest_sha256": self.training_manifest_sha256,
             "created_at_utc": self.created_at_utc,
         }
 
@@ -794,6 +970,7 @@ class LoadedRegionResourceModelBundle:
     model: SharedRegionGraphActorCritic
     manifest: RegionResourceModelManifest
     bundle_dir: Path
+    training_dataset_manifest: RegionLearningDatasetManifest | None = None
 
 
 def save_region_resource_model_bundle(
@@ -802,8 +979,9 @@ def save_region_resource_model_bundle(
     *,
     model_version: str,
     training_graphs: Sequence[RegionGraph],
-    training_groups: Iterable[tuple[str, int]],
+    training_groups: Iterable[tuple[str, int]] = (),
     created_at_utc: str,
+    training_dataset_manifest: RegionLearningDatasetManifest | None = None,
 ) -> RegionResourceModelManifest:
     _require_torch()
     destination = Path(bundle_dir)
@@ -813,6 +991,48 @@ def save_region_resource_model_bundle(
     torch.save(model.state_dict(), temporary_state_path)
     temporary_state_path.replace(state_path)
     digest = _sha256_file(state_path)
+    resolved_training_groups = tuple(training_groups)
+    training_manifest_file: str | None = None
+    training_manifest_sha256: str | None = None
+    if training_dataset_manifest is not None:
+        dataset_training_groups = tuple(
+            sorted(
+                {
+                    (episode.source.scenario_id, int(episode.source.seed))
+                    for episode in training_dataset_manifest.episodes
+                    if episode.split == RegionLearningSplit.TRAIN
+                }
+            )
+        )
+        supplied_groups = tuple(
+            sorted(
+                {
+                    (str(scenario), int(seed))
+                    for scenario, seed in resolved_training_groups
+                }
+            )
+        )
+        if supplied_groups and supplied_groups != dataset_training_groups:
+            raise ValueError("training_groups do not match dataset train split")
+        resolved_training_groups = dataset_training_groups
+        training_manifest_path = destination / "training_dataset_manifest.json"
+        temporary_training_manifest_path = (
+            destination / "training_dataset_manifest.json.tmp"
+        )
+        temporary_training_manifest_path.write_text(
+            json.dumps(
+                training_dataset_manifest.to_dict(),
+                indent=2,
+                sort_keys=True,
+                ensure_ascii=True,
+                allow_nan=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        temporary_training_manifest_path.replace(training_manifest_path)
+        training_manifest_file = training_manifest_path.name
+        training_manifest_sha256 = _sha256_file(training_manifest_path)
     manifest = RegionResourceModelManifest(
         model_version=model_version,
         hidden_dim=model.hidden_dim,
@@ -820,8 +1040,26 @@ def save_region_resource_model_bundle(
         state_dict_file=state_path.name,
         state_dict_sha256=digest,
         feature_bounds=RegionFeatureBounds.from_graphs(training_graphs),
-        training_groups=tuple(training_groups),
+        training_groups=resolved_training_groups,
         created_at_utc=created_at_utc,
+        training_dataset_available=training_dataset_manifest is not None,
+        training_dataset_schema=(
+            training_dataset_manifest.schema
+            if training_dataset_manifest is not None
+            else None
+        ),
+        training_dataset_sha256=(
+            training_dataset_manifest.dataset_sha256
+            if training_dataset_manifest is not None
+            else None
+        ),
+        training_split_sha256=(
+            training_dataset_manifest.split.split_sha256
+            if training_dataset_manifest is not None
+            else None
+        ),
+        training_manifest_file=training_manifest_file,
+        training_manifest_sha256=training_manifest_sha256,
     )
     manifest_path = destination / "manifest.json"
     temporary_manifest_path = destination / "manifest.json.tmp"
@@ -839,6 +1077,7 @@ def load_region_resource_model_bundle(
     expected_model_version: str | None = None,
     expected_state_dict_sha256: str | None = None,
     map_location: Any = "cpu",
+    require_training_dataset_manifest: bool = False,
 ) -> LoadedRegionResourceModelBundle:
     _require_torch()
     source = Path(bundle_dir)
@@ -861,6 +1100,45 @@ def load_region_resource_model_bundle(
         raise ModelBundleValidationError("state_dict_missing") from exc
     if actual_digest != manifest.state_dict_sha256:
         raise ModelBundleValidationError("state_dict_sha256_mismatch")
+    training_dataset_manifest: RegionLearningDatasetManifest | None = None
+    if manifest.training_dataset_available:
+        training_manifest_path = source / str(manifest.training_manifest_file)
+        try:
+            actual_training_digest = _sha256_file(training_manifest_path)
+            if actual_training_digest != manifest.training_manifest_sha256:
+                raise ModelBundleValidationError("training_manifest_sha256_mismatch")
+            training_payload = json.loads(
+                training_manifest_path.read_text(encoding="utf-8")
+            )
+            training_dataset_manifest = RegionLearningDatasetManifest.from_dict(
+                training_payload
+            )
+        except ModelBundleValidationError:
+            raise
+        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+            raise ModelBundleValidationError(
+                f"training_manifest_invalid:{type(exc).__name__}"
+            ) from exc
+        if (
+            training_dataset_manifest.dataset_sha256
+            != manifest.training_dataset_sha256
+            or training_dataset_manifest.split.split_sha256
+            != manifest.training_split_sha256
+        ):
+            raise ModelBundleValidationError("training_dataset_provenance_mismatch")
+        embedded_training_groups = tuple(
+            sorted(
+                {
+                    (episode.source.scenario_id, int(episode.source.seed))
+                    for episode in training_dataset_manifest.episodes
+                    if episode.split == RegionLearningSplit.TRAIN
+                }
+            )
+        )
+        if embedded_training_groups != manifest.training_groups:
+            raise ModelBundleValidationError("training_groups_provenance_mismatch")
+    elif require_training_dataset_manifest:
+        raise ModelBundleValidationError("training_dataset_manifest_unavailable")
     model = SharedRegionGraphActorCritic(
         hidden_dim=manifest.hidden_dim,
         message_passing_steps=manifest.message_passing_steps,
@@ -877,6 +1155,7 @@ def load_region_resource_model_bundle(
         model=model,
         manifest=manifest,
         bundle_dir=source,
+        training_dataset_manifest=training_dataset_manifest,
     )
 
 
@@ -1201,6 +1480,40 @@ class RegionResourceAdvisor:
             formal_decision_unchanged=unchanged,
             advisory_contract=advisory_contract,
         )
+
+
+def _resolve_region_learning_dataset(
+    dataset: str | Path | LoadedRegionLearningDataset,
+) -> LoadedRegionLearningDataset:
+    if isinstance(dataset, LoadedRegionLearningDataset):
+        return dataset
+    return load_region_learning_dataset(dataset)
+
+
+def _training_episodes(
+    dataset: LoadedRegionLearningDataset,
+    *,
+    split: RegionLearningSplit | str,
+    allow_dirty_source: bool,
+    purpose: str,
+) -> tuple[Any, ...]:
+    resolved_split = (
+        split
+        if isinstance(split, RegionLearningSplit)
+        else RegionLearningSplit(str(split))
+    )
+    episodes = dataset.episodes(resolved_split)
+    if not episodes:
+        raise RegionLearningDataUnavailableError(
+            f"{purpose}_split_empty:{resolved_split.value}"
+        )
+    if not allow_dirty_source:
+        dirty = next((item for item in episodes if item.source.git_dirty), None)
+        if dirty is not None:
+            raise RegionLearningDataUnavailableError(
+                f"dirty_source:{dirty.source.episode_id}"
+            )
+    return episodes
 
 
 def _require_torch() -> None:

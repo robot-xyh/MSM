@@ -434,6 +434,11 @@ class RegionResourceAction:
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)
 
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "RegionResourceAction":
+        _reject_truth_identifiers(value, path="recommendation.action")
+        return cls(**dict(value))
+
 
 @dataclass(frozen=True)
 class RegionTransferSuggestion:
@@ -457,6 +462,11 @@ class RegionTransferSuggestion:
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "RegionTransferSuggestion":
+        _reject_truth_identifiers(value, path="recommendation.transfer")
+        return cls(**dict(value))
 
 
 @dataclass(frozen=True)
@@ -514,6 +524,19 @@ class RegionResourceRecommendation:
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "RegionResourceRecommendation":
+        _reject_truth_identifiers(value, path="recommendation")
+        payload = dict(value)
+        payload["actions"] = tuple(
+            RegionResourceAction.from_dict(item) for item in payload.get("actions", ())
+        )
+        payload["transfers"] = tuple(
+            RegionTransferSuggestion.from_dict(item)
+            for item in payload.get("transfers", ())
+        )
+        return cls(**payload)
 
 
 @dataclass(frozen=True)
@@ -2044,6 +2067,14 @@ class ScenarioSeedSplit:
     train_groups: tuple[tuple[str, int], ...]
     validation_groups: tuple[tuple[str, int], ...]
     test_groups: tuple[tuple[str, int], ...]
+    train_seeds: tuple[int, ...]
+    validation_seeds: tuple[int, ...]
+    test_seeds: tuple[int, ...]
+    unique_seed_count: int
+    minimum_unseen_seeds: int
+    split_seed: int
+    split_sha256: str
+    split_algorithm: str = "d4-numeric-seed-atomic-sha256-v1"
 
 
 def split_scenario_seed_groups(
@@ -2053,8 +2084,15 @@ def split_scenario_seed_groups(
     validation_fraction: float = 0.15,
     split_seed: int = 0,
     group_getter: Callable[[Any], tuple[str, int]] | None = None,
+    minimum_unique_seeds: int = 3,
+    minimum_unseen_seeds: int = 2,
 ) -> ScenarioSeedSplit:
-    """Split complete ``(scenario, seed)`` groups without transition leakage."""
+    """Split complete episodes by numeric seed without cross-scenario leakage.
+
+    Every ``(scenario, seed)`` group remains intact, while all groups sharing the
+    same numeric seed are assigned to the same bucket.  The hash order is used
+    only to order seeds; deterministic counts keep every split non-empty.
+    """
 
     if not 0.0 < train_fraction < 1.0:
         raise ValueError("train_fraction must be in (0, 1)")
@@ -2062,6 +2100,10 @@ def split_scenario_seed_groups(
         raise ValueError("validation_fraction must be in [0, 1)")
     if train_fraction + validation_fraction >= 1.0:
         raise ValueError("train and validation fractions must leave a test split")
+    if int(minimum_unique_seeds) < 3:
+        raise ValueError("minimum_unique_seeds must be at least 3")
+    if int(minimum_unseen_seeds) < 2:
+        raise ValueError("minimum_unseen_seeds must leave validation and test seeds")
     getter = group_getter or _record_group
     groups: dict[tuple[str, int], list[Any]] = {}
     for record in records:
@@ -2069,6 +2111,43 @@ def split_scenario_seed_groups(
         if not key[0] or int(key[1]) < 0:
             raise ValueError("scenario/seed groups require non-empty scenario and seed >= 0")
         groups.setdefault((str(key[0]), int(key[1])), []).append(record)
+    unique_seeds = sorted({seed for _, seed in groups})
+    if len(unique_seeds) < int(minimum_unique_seeds):
+        raise ValueError("fewer_than_minimum_unique_seeds")
+    if len(unique_seeds) - 1 < int(minimum_unseen_seeds):
+        raise ValueError("fewer_than_minimum_unseen_seeds")
+
+    ordered_seeds = sorted(
+        unique_seeds,
+        key=lambda seed: (
+            sha256(f"{int(split_seed)}:{seed}".encode("utf-8")).digest(),
+            seed,
+        ),
+    )
+    train_count = max(1, min(len(ordered_seeds) - 2, round(len(ordered_seeds) * train_fraction)))
+    train_count = min(train_count, len(ordered_seeds) - int(minimum_unseen_seeds))
+    unseen_count = len(ordered_seeds) - train_count
+    validation_count = max(
+        1,
+        min(unseen_count - 1, round(len(ordered_seeds) * validation_fraction)),
+    )
+    seed_buckets = {
+        "train": tuple(sorted(ordered_seeds[:train_count])),
+        "validation": tuple(
+            sorted(ordered_seeds[train_count : train_count + validation_count])
+        ),
+        "test": tuple(sorted(ordered_seeds[train_count + validation_count :])),
+    }
+    if any(not seeds for seeds in seed_buckets.values()):
+        raise ValueError("seed split must leave train, validation, and test non-empty")
+    if len(seed_buckets["validation"]) + len(seed_buckets["test"]) < int(
+        minimum_unseen_seeds
+    ):
+        raise ValueError("fewer_than_minimum_unseen_seeds")
+    seed_to_bucket = {
+        seed: bucket for bucket, seeds in seed_buckets.items() for seed in seeds
+    }
+
     buckets: dict[str, list[Any]] = {"train": [], "validation": [], "test": []}
     bucket_groups: dict[str, list[tuple[str, int]]] = {
         "train": [],
@@ -2076,16 +2155,24 @@ def split_scenario_seed_groups(
         "test": [],
     }
     for key in sorted(groups):
-        digest = sha256(f"{split_seed}:{key[0]}:{key[1]}".encode("utf-8")).digest()
-        unit = int.from_bytes(digest[:8], "big") / float(2**64)
-        if unit < train_fraction:
-            bucket = "train"
-        elif unit < train_fraction + validation_fraction:
-            bucket = "validation"
-        else:
-            bucket = "test"
+        bucket = seed_to_bucket[key[1]]
         buckets[bucket].extend(groups[key])
         bucket_groups[bucket].append(key)
+    split_payload = {
+        "algorithm": "d4-numeric-seed-atomic-sha256-v1",
+        "split_seed": int(split_seed),
+        "train": list(seed_buckets["train"]),
+        "validation": list(seed_buckets["validation"]),
+        "test": list(seed_buckets["test"]),
+    }
+    split_sha256 = sha256(
+        json.dumps(
+            split_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("utf-8")
+    ).hexdigest()
     return ScenarioSeedSplit(
         train=tuple(buckets["train"]),
         validation=tuple(buckets["validation"]),
@@ -2093,6 +2180,13 @@ def split_scenario_seed_groups(
         train_groups=tuple(bucket_groups["train"]),
         validation_groups=tuple(bucket_groups["validation"]),
         test_groups=tuple(bucket_groups["test"]),
+        train_seeds=seed_buckets["train"],
+        validation_seeds=seed_buckets["validation"],
+        test_seeds=seed_buckets["test"],
+        unique_seed_count=len(unique_seeds),
+        minimum_unseen_seeds=int(minimum_unseen_seeds),
+        split_seed=int(split_seed),
+        split_sha256=split_sha256,
     )
 
 
@@ -2183,8 +2277,8 @@ class ShadowPairedEvaluator:
         if not baseline_by_group:
             raise ValueError("shadow evaluation requires at least one pair")
         ordered = sorted(baseline_by_group)
-        training = {(str(scenario), int(seed)) for scenario, seed in training_groups}
-        unseen = [group for group in ordered if group not in training]
+        training_seeds = {int(seed) for _, seed in training_groups}
+        unseen_seeds = {seed for _, seed in ordered if seed not in training_seeds}
 
         def summary(field_name: str) -> PairedMetricSummary:
             base_values = [float(getattr(baseline_by_group[key], field_name)) for key in ordered]
@@ -2207,7 +2301,7 @@ class ShadowPairedEvaluator:
         safety = summary("safety_violation_count")
         candidate_latency = [candidate_by_group[key].latency_ms for key in ordered]
         reasons: list[str] = []
-        if len(unseen) < self.minimum_unseen_seeds:
+        if len(unseen_seeds) < self.minimum_unseen_seeds:
             reasons.append("fewer_than_minimum_unseen_seeds")
         if safety.candidate_mean > 0.0 or safety.mean_delta > 0.0:
             reasons.append("candidate_safety_violation")
@@ -2217,7 +2311,7 @@ class ShadowPairedEvaluator:
             reasons.append("candidate_backlog_regression")
         return ShadowPairedEvaluationReport(
             pair_count=len(ordered),
-            unseen_seed_count=len(unseen),
+            unseen_seed_count=len(unseen_seeds),
             minimum_unseen_seeds=self.minimum_unseen_seeds,
             backlog=backlog,
             transfer=transfer,

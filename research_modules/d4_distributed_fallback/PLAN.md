@@ -9,16 +9,17 @@
 - 动作域只含区域配额增减、相邻区域转移、备用比例、侦察优先级和 hold/replan，不生成 resource-target assignment。确定性投影重新计算配额变化并硬性保证总资源守恒、只走可通信/可机动邻边、最低备用、当前 owner/epoch/lease、fault fence 和已提交联盟资源不被破坏。
 - `d4-region-resource-advisory-v1` 将 projected recommendation 固化为 main 可在下一轮 D3 规划边界重验的只读合同。内容寻址 `advisory_id` 是一次性消费键；默认 TTL 1.0 episode-clock 秒并收缩到最早 authority lease。顶层携带 scenario/snapshot/authority、创建时间、source plan 集合、policy/model/projector identity；逐区域和 transfer 携带 source snapshot/plan/epoch/lease、owner、ACK/fault、资源前后/protected reserve/committed 以及 edge 端点/capacity。
 - `validate_for_consumption()`/`RegionResourceAdvisoryGate` 对 current snapshot 再执行 fail-closed 校验。旧 snapshot/plan/epoch、严格到期 lease、非 projected、ACK 不完整、fault fence、总 quota 不守恒、未知/非邻接/不可用/超 capacity transfer 或 advisory 重放均为 `consumable=false`。该布尔值只表示可作为下一轮规划输入，不发布或修改 D3 plan，也不授权 D7。
-- 研究管线包含规则基线、共享节点/边网络的变长区域图 actor-critic、行为克隆、原生 clipped PPO、包含 SHA256 的 manifest + `state_dict` bundle、整 `(scenario, seed)` 划分和 paired shadow evaluator。reward 显式惩罚高威胁积压、跨区转移耗时、通信负载、备用不足、分配冲突、降级失败和计划抖动。
+- 研究管线包含规则基线、共享节点/边网络的变长区域图 actor-critic、行为克隆、原生 clipped PPO、包含 SHA256 的 manifest + `state_dict` bundle、完整 episode/数值 seed 原子划分和 paired shadow evaluator。reward 显式惩罚高威胁积压、跨区转移耗时、通信负载、备用不足、分配冲突、降级失败和计划抖动。
 - 默认 API 为 `disabled`，CLI 为 `shadow`。超时、低置信、OOD、非有限、版本/SHA 不匹配均回退规则建议；规则 fallback 与学习候选必须通过同一 `DeterministicResourceProjector` 实例，学习模型只允许返回 raw proposal。少于 20 个未见 seed 不得进入 assist。正式 D4 健康检测、leader 选择、epoch/lease fencing、联盟 ACK/commit、D3 assignment 与 D7 gate 不受学习层替代。
-- 2026-07-20 验收：原区域资源建议/学习专项 32/32，新增消费合同 15 个 case 后专项 47/47、D4 全量 350/350；此前 main-owned scalable 3D 定向集成为 8/8，阈值均为零失败。新增 15 项是纯 Python 合同/接口测试，不是新的多 seed 或 AirSim 证据。尚无训练后独立 checkpoint、20 个未见 seed paired 结果、AirSim 学习评估或真实网络证据。
+- 新增 `d4-region-learning-dataset-v1`：source 固化 scenario/version/scale、seed、episode ID、Git commit/dirty 和 config SHA；frame 固化 snapshot、`rule|formal|unavailable` target、reward/unavailable 与可选 recommendation。训练 target 由固定 projector 重验 authority generation、lease、reserve、edge 和 quota 证明；manifest 重验 canonical episode inventory、availability 和可重放 split。stage 只发布完整 episode，同一数值 seed 的所有场景/规模/episode 必须同 split。BC/PPO loader 默认拒绝 dirty、缺 target/reward，`d4-region-resource-model-bundle-v2` 可嵌入数据 manifest。
+- 2026-07-20 验收：建议/消费合同 `test_region_resource_advisor.py` 为 49/49，数据合同 13/13，合计 62/62，D4 全量 365/365；此前 main-owned scalable 3D 定向集成为 8/8，阈值均为零失败。复核新增 200-region 图路径、三层 owner 回读和训练数据负向门。96-episode/192-frame 高基数样本是纯 Python 合成合同回归，不是正式训练数据、多 seed 性能或 AirSim 证据。尚无训练后独立 checkpoint、20 个未见 seed paired 结果、AirSim 学习评估或真实网络证据。
 
 - `regional_failover.py` 新增 `RegionalScenarioMetadata`、`RegionDefinition`、`RegionalTaskEvidence`、`MobileReconSecondary`、`RegionalFallbackMember`、`RegionOwnershipMetadata` 和 `RegionalFailoverCoordinator`，不导入 main-owned `scalable_3d_simulation`，通过 mapping/`to_dict()` 只读适配 `scalable3d-scenario-v1`。
 - 每个区域最多一个 active authority。中心 health 未进入 `failed` 时始终保留中心 owner；D1/D2/D3/D5 风险只改变 `continue_center|request_secondary_assist|request_center_replan|hold_for_review`，不把主动降级变成所有权转移。
 - 中心 `failed` 后，逐区域只从显式 coverage 且 strict readiness 完整的 `mobile_high_recon` 中选择二级协调者；排序为 takeover priority、coverage ratio、lease epoch、node id。二级节点保持 `coordinator_only`，不作为拦截成员。
 - 没有有效二级节点时才执行受约束 bid fallback：按 region、availability、communication、operator hold、跨区域 capacity、capability demand 和 D5 support/hold/ambiguity 形成确定性候选成员集；一个成员可同时覆盖多项 capability。该实现是可审计保底 heuristic，不是完整 CBBA 消息共识、CCBBA、reserve 激活或动态联盟重构。
 - authority 切换必须同时提升 `epoch` 和 `plan_version`；租约严格满足 `timestamp < expiry`，并收缩到 authority、D3 task 与二级 lease 的最早 expiry。中心、二级和 distributed 三层的 `k>1` 任务均复用 `CoalitionCommitCoordinator`，只有 required-member ACK 全集对同一 target/coalition/plan/version/epoch 有效时才原子 `committed`；缺 ACK、旧 ACK/authority generation、过期 lease 和任一层级分区全部 fail closed。
-- 2026-07-20 区域合同阶段新增 23 项确定性单元测试：5/20/50/100/200 个 region/task/resource 元数据与中心 ownership，声明 resource/recon 数量上限，D1/D2 主动证据、D3/D5 硬门控、中心失效、二级失效、双区域 coverage、中心/二级/distributed 完整与缺失 ACK、旧 ACK epoch、全层网络分区、旧 authority epoch/plan version、最早 task/authority lease、旧 secondary lease epoch、D5 member hold、单成员多能力与跨区域 capacity。当时 D4 全量为 303/303，当前已由 **350/350 passed** 覆盖。
+- 2026-07-20 区域合同阶段新增 23 项确定性单元测试：5/20/50/100/200 个 region/task/resource 元数据与中心 ownership，声明 resource/recon 数量上限，D1/D2 主动证据、D3/D5 硬门控、中心失效、二级失效、双区域 coverage、中心/二级/distributed 完整与缺失 ACK、旧 ACK epoch、全层网络分区、旧 authority epoch/plan version、最早 task/authority lease、旧 secondary lease epoch、D5 member hold、单成员多能力与跨区域 capacity。当时 D4 全量为 303/303，当前已由 **365/365 passed** 覆盖。
 - 验证边界：23 项合同用例本身无随机 seed、AirSim episode、真实 RF/mesh/socket、带宽/时钟漂移或物理命中证据。main 后续已完成质点模块栈接线，但这不把合同单元测试升级为 AirSim/真实网络证据；根级系统文档仍由 main 同步。
 
 ### 0.1 2026-07-15 P0 公开二级接管入口统一（已完成）
@@ -27,7 +28,7 @@
 - 二级 owner 必须证明显式 current time、正 lease epoch、严格 `current_time < lease_expiry`、fresh heartbeat/cue/communication、gimbal=true、coverage >= 0.65、network full-view >= 0.80，以及至少 3 次/0.2 s 的 sustained readiness。缺失、陈旧、等于 expiry 或低于门限均阻断二级 proposal/execution。
 - `FailoverCoordinator.plan_degraded()` 只对 secondary candidate 应用该门；interceptor/cluster-representative peer 的 distributed election 保持独立，不要求二级视觉 evidence。动态 N/M、plan/coalition version、epoch/lease、ACK、partition/recovery 和 upstream `global_track_id` 合同不变。
 - 278/278 历史回归未覆盖 `build_d7_secondary_handoff()` 和 `build_secondary_takeover_plan_metadata()` 对 sustained/source/lease epoch 的 `None`，此前“所有公开入口已闭锁”的说法撤回。两个 helper 现要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格未过期；同一已激活 plan 的维持路径不豁免。
-- 当日验收结果：D4 全量 280/280 passed，两个 helper 的逐字段 `None`、完整正例、same-plan 维持和 distributed bypass 均通过；`build_coalition_commit_d6_metadata()` 缺 current time 时仍 lease invalid/atomic false。该历史结果先由 303/303、再由当前 350/350 回归取代；P0 判定不变。
+- 当日验收结果：D4 全量 280/280 passed，两个 helper 的逐字段 `None`、完整正例、same-plan 维持和 distributed bypass 均通过；`build_coalition_commit_d6_metadata()` 缺 current time 时仍 lease invalid/atomic false。该历史结果先由 303/303、再由当前 365/365 回归取代；P0 判定不变。
 
 ### 0.2 2026-07-15 M5N2 中心负对照（已完成，非降级验收）
 
@@ -411,7 +412,8 @@ D4 已完成 fail-closed 与本地 commit 合同：`CoalitionSafetyEvidence` 读
 | `C2Health` | `normal/degraded/suspect/failed`、heartbeat warning/stale/failure、sliding window/miss threshold/dwell、peer quorum、digest conflict、center epoch stale、恢复待合并 | `coordinator.py`、`models.py`、`tests/test_health.py` |
 | scalable3d 区域 authority | 动态 scenario/resource/recon/region/task 元数据，逐区域中心/机动高空二级/distributed 顺序，唯一 ownership，epoch+plan version+lease，D1/D2/D3/D5 evidence，truth-free bus payload | `regional_failover.py`、`tests/test_regional_failover.py` |
 | 区域资源规则、安全投影与消费合同 | 版本化聚合区域图、规则基线、资源守恒、邻边通信/机动约束、最低备用、owner/version/epoch/lease/fault/ACK/commit fence、内容寻址 ID、有效期、来源版本和一次性 next-cycle consumption gate | `region_resource.py`、`tests/test_region_resource_advisor.py` |
-| 可选共享图学习研究管线 | 共享 node/edge 网络、变长图 actor-critic、BC、原生 clipped PPO、manifest/state_dict/SHA256、OOD/timeout/低置信/非有限回退、整 scenario/seed 划分与 shadow paired evaluator；默认 disabled/shadow | `region_resource_learning.py`、`region_resource_cli.py`、`scripts/run_region_resource_advisor.py`、`tests/test_region_resource_advisor.py` |
+| 可选共享图学习研究管线 | 共享 node/edge 网络、变长图 actor-critic、BC、原生 clipped PPO、bundle v2/SHA256、OOD/timeout/低置信/非有限回退、数值 seed 口径 shadow paired evaluator；默认 disabled/shadow | `region_resource_learning.py`、`region_resource_cli.py`、`scripts/run_region_resource_advisor.py`、`tests/test_region_resource_advisor.py` |
+| 区域学习 episode 数据合同 | `dataset-v1` source/frame、truth-key 拒绝、完整 episode stage、数值 seed 原子 split、manifest/availability/多层 SHA、严格 BC/PPO loader 和 bundle v2 provenance | `region_resource_dataset.py`、`region_resource_learning.py`、`tests/test_region_resource_dataset.py` |
 | 被动降级 | 中心 failed 后才执行 `plan_degraded()`；可选 ground backup/fixed tethered secondary/mobile high recon/representative；不收敛不发布有效 assignments | `coordinator.py`、`tests/test_coordinator.py` |
 | 二级节点 lifecycle | heartbeat age/stale、lease epoch/expiry、coverage、requested coverage match、video/cue freshness、cue stale、gimbal pointing、coverage ratio、network full-view rate、stable registration/not-registered count、固定/机动二级分类、link stale/fresh、`secondary_available`、visible/registered/takeover_capable、`secondary_readiness_class`、capability score 和 score inputs | `active_degradation.py`、`models.py`、`tests/test_active_degradation.py` |
 | 主动降级仲裁 | 中心可用时输出 `continue_center`、`request_center_replan`、`request_secondary_assist` 或 `hold_for_review`；`degrade_to_secondary/degrade_to_distributed` 仅由中心 failed 的被动链路输出。`terminal_evidence_applicable=false` 且中心正常时，窗口外视觉软证据及 D1/D2/D3 非 hard-active 风险不拉起视觉辅助；hard-active 和安全/绑定冲突仍保持原动作 | `active_degradation.py`、`adapter.py`、`tests/test_active_degradation.py`、`tests/test_arbitration_adapter.py` |
@@ -440,7 +442,7 @@ D4 已完成 fail-closed 与本地 commit 合同：`CoalitionSafetyEvidence` 读
 | D5 distributed visual evidence 运行时合流 | D4 模块内可把 D5 多 peer evidence merge 到 `TrackSummary.visual_evidence` | 真实多 seed no-center case 中 D5 多 peer 输出到 D4 `TrackSummary.visual_evidence` 的合流频率和风险权重仍需标定 | main 在 no-center case 持续调用 `merge_distributed_visual_evidence_into_tracks()` 或等价接线 |
 | CBBA 与中心化最优 gap | D4 已有 `CBBACostGapBenchmark`、`build_cbba_cost_gap_benchmark()` 和 `build_cbba_d6_metadata()`，可对 D3/main 提供的中心 plan/cost matrix 计算 cost/completion/conflict/message gap 并输出 D6 多 seed 报告字段 | 真实 episode 还未持续保存同场景 D3 cost matrix/current plan，也未由 D6 汇总多 seed gap | main/D3 保存中心化 cost matrix/current plan，D6 聚合 benchmark 输出 |
 | scalable3d 区域运行时接线 | main-owned 质点模块栈已发布区域 evidence、消费 ownership payload，并闭合单二级、多二级和 distributed D3 plan；D7 按 owner/epoch/lease/commit/fault fence 门控 | 仅有接口/质点集成测试；未完成 AirSim、真实网络、长时 200v200 多 seed 与 D6 区域趋势报告 | 保持 8/8 定向集成回归，补 20 个未见 seed、stage timing、transition/churn、分区恢复和安全违规统计 |
-| 区域资源建议消费与学习效果 | 后投影 advisory、一次性门、规则、BC/PPO 有限更新、bundle 和 fail-closed 回退已实现；专项 47/47、全量 350/350 | main/D3 尚未消费该 DTO，跨进程 replay ledger 未接线；未训练可推广 checkpoint，未达到 20 个未见 seed，未有 AirSim/真实网络 paired 收益 | main 仅在 owned 集成层接 `advisory_contract` 并持久化 consumed ID；学习路径先整 scenario/seed 训练/验证/测试，再用至少 20 个未见 seed shadow paired evaluator；通过前不得 assist |
+| 区域资源建议消费与学习效果 | 后投影 advisory、一次性门、规则、BC/PPO 有限更新、dataset-v1、bundle-v2 和 fail-closed 回退已实现；训练标签与 manifest 均重验安全/来源一致性；建议专项 49/49、数据合同 13/13、全量 365/365 | main/D3 尚未消费 advisory，main episode writer 尚未调用 D4 dataset API；未训练可推广 checkpoint，未达到 20 个未见 seed，未有 AirSim/真实网络 paired 收益 | main 在 owned 集成层接 `advisory_contract`，并用公开 stage/finalize/load 写正式数据；训练/验证/测试按数值 seed 原子划分，再用至少 20 个未见 seed shadow paired evaluator；通过前不得 assist |
 
 ## 13. 未实现
 
@@ -469,7 +471,7 @@ P1：
 8. 复用已完成的 M5N2 20-case 几何/seeds 运行 secondary/distributed paired 故障场景，并补充 collision object/source lineage；不得以 `collision_stop` 或未进入 5 m 直接触发主动降级。
 9. scalable3d episode bus 的单二级、多二级和 distributed D3 plan 接线已完成；下一步保持 owner/epoch/lease/commit/fault fence 回归，并补长时 200v200、多 seed stage timing、分区恢复、transition/churn 和 D6 汇总。D4 不越权修改 main-owned 文件。
 10. main 后续如消费区域资源建议，只接 `d4-region-resource-advisory-v1`，每个 D3 planning boundary 用 current snapshot/formal verdict 重验并持久化 consumed advisory ID；不得直接消费 raw/non-projected recommendation。该工作属于 main/D3-owned 集成，本轮 D4 不越界修改。
-11. 区域资源学习路径先以规则 teacher 做 BC，再运行原生 clipped PPO 研究；数据必须按完整 `(scenario, seed)` 分组，bundle 必须验证版本和 SHA。至少 20 个未见 seed 的 paired shadow 报告满足零安全违规且 backlog/fail-closed 不回归前，不得推荐 assist，更不得改变正式 D4/D3/D7 裁决。
+11. main episode writer 改用 `RegionLearningEpisodeSource`、`RegionLearningFrame`、`stage_region_learning_episode()` 和 `finalize_region_learning_dataset()`；旧的 frame_index/timestamp/snapshot/recommendation JSONL 必须补 source identity、显式 target/reward availability，不能由 main 解析 D4 私有结构。学习路径先以规则 teacher 做 BC，再运行原生 clipped PPO；数据按完整 episode 和数值 seed 原子 split，bundle v2 验证 dataset/split/state SHA。至少 20 个未见 seed 的 paired shadow 报告满足零安全违规且 backlog/fail-closed 不回归前，不得推荐 assist，更不得改变正式 D4/D3/D7 裁决。
 
 P2：
 
@@ -484,6 +486,7 @@ P2：
 ```bash
 python3 -m py_compile \
   research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource.py \
+  research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_dataset.py \
   research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_learning.py \
   research_modules/d4_distributed_fallback/d4_distributed_fallback/region_resource_cli.py
 PYTHONPATH=research_modules/d4_distributed_fallback python3 -m pytest -q research_modules/d4_distributed_fallback/tests
