@@ -108,6 +108,10 @@ def test_small_episode_writes_separate_online_and_truth_artifacts(tmp_path: Path
     assert manifest["config_sha256"] == result.manifest.config_sha256
     with np.load(tmp_path / "offline_truth_state.npz") as payload:
         assert payload["intruder_state"].shape[1:] == (5, 6)
+    report = (tmp_path / "SCALABLE_3D_EPISODE_REPORT_CN.md").read_text(
+        encoding="utf-8"
+    )
+    assert "本次未启用 D1-D7 集成栈" in report
 
 
 def test_200v200_episode_has_finite_states_without_array_limits() -> None:

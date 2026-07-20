@@ -159,6 +159,28 @@ def _write_stage_timings(path: Path, result: EpisodeResult) -> Path:
 def _write_episode_report(path: Path, result: EpisodeResult) -> Path:
     summary = result.summary
     timings = {item.stage: item for item in result.stage_timings}
+    module_enabled = bool(summary.get("module_stack_enabled", False))
+    module_diagnostics = summary.get("module_final_diagnostics", {})
+    if module_enabled and isinstance(module_diagnostics, dict):
+        module_conclusion = (
+            "本次启用 D1-D7 规则集成栈。episode 结束时 D1/D2 航迹数分别为 "
+            f"{int(module_diagnostics.get('d1_track_count', 0))}/"
+            f"{int(module_diagnostics.get('d2_track_count', 0))}，D3 分配数为 "
+            f"{int(module_diagnostics.get('d3_assignment_count', 0))}，D7 指令数为 "
+            f"{int(module_diagnostics.get('d7_command_count', 0))}。"
+        )
+        boundary_lines = [
+            "当前结果覆盖合成传感器、D1-D5 在线处理、D7 三维命令和世界状态回写。",
+            "D5 学习模型、D3 学习策略、D6 正式离线评分和多随机种子统计仍需独立验收。",
+        ]
+    else:
+        module_conclusion = (
+            "本次未启用 D1-D7 集成栈，拦截数量不能作为体系闭环结果使用。"
+        )
+        boundary_lines = [
+            "当前结果只覆盖向量化三维环境、合成传感器、异步到达和日志隔离。",
+            "D1-D7 算法能力未在本次 episode 中执行。",
+        ]
     lines = [
         "# 三维质点单次实验报告",
         "",
@@ -169,7 +191,8 @@ def _write_episode_report(path: Path, result: EpisodeResult) -> Path:
         f"`{summary['finite_state']}`。",
         f"仿真推进 {summary['simulated_duration_s']:.2f} 秒，墙钟耗时 "
         f"{summary['wall_time_s']:.3f} 秒，实时倍率为 {summary['real_time_factor']:.3f}。",
-        "本阶段尚未接入 D1-D7 扩展算法，拦截数量不能作为体系闭环结果使用。",
+        module_conclusion,
+        f"离线评估侧登记 {summary['intercepted_target_count']} 个五米内唯一接近目标。该计数不自动代表任务身份正确、合同许可或控制成功。",
         "",
         "## 数据合同",
         "",
@@ -196,8 +219,7 @@ def _write_episode_report(path: Path, result: EpisodeResult) -> Path:
             "",
             "## 当前边界",
             "",
-            "当前结果只覆盖向量化三维环境、合成传感器、异步到达和日志隔离。",
-            "D1 六维融合、D2 稀疏关联、D3 分配、D4 降级、D5 图关联、D7 三维导引及 D6 指标仍需后续接入。",
+            *boundary_lines,
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
