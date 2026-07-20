@@ -742,3 +742,45 @@ measurement，首扫和次扫均 100% birth/update，200 档保持 200 个 ID；
 OOSM、5 条 acoustic 无先验 0 birth/有先验 5 update，以及注入 truth/actor/object ID 100%
 拒绝。专项 `9/9`、全量 `120/120`。评审结论为 D1-owned scalable scan path 已实现；main bus
 接线、D2 六维 continuity、D6 至少 20 个未见 seed 的召回/IDSW/一致性和复杂生命周期仍开放。
+
+## 25. Scalable 3D 六维速度稳定性评审（2026-07-20）
+
+### 25.1 根因与设计判定
+
+main 在 radar-only、seed 17 的 50/200 条链路中观察到 D1/D2 航迹数量完整，但速度均值明显
+高于短 episode 的物理运动尺度。D1 复核确认没有显式位置差分代码；放大来自两个统计环节：
+
+1. scalable producer 只提供 `[range, azimuth, elevation]`，旧适配器却把 canonical 补零的
+   radial velocity 继续送入四维 EKF，等价于反复声明径向速度为 0；
+2. 0.2 s 内真实位移小于单帧球坐标位置噪声，CV 的位置-速度交叉协方差会把短基线噪声写入
+   速度后验。速度 covariance 很大，因此这不是“假装高精度”，但下游直接使用均值仍会受影响。
+
+本轮采用统计先验而非硬限速。canonical observation 继续保持 4 维/`4x4` 兼容合同，但
+`radial_velocity_observed=False` 时滤波只消费前三维；起始状态使用 `v0=0`、
+`Pvv=25I m2/s2`、`Ppv=0`。该方差与 3 自由度 99.9% NIS 门限均公开可配置，不读取 truth、
+actor/object ID、`target_speed_max_mps` 或 4.7 m/s 上界。
+
+### 25.2 门控、OOSM 与审计
+
+位置-only radar 的更新门限为 `chi2_3(0.999)=16.26623619623813`。超门限量测不修改预测状态，
+但仍保留 observation history 和原始双时间戳，使后续 replay 在相同 measurement-time 顺序下
+确定地得到同一拒绝结果。航迹 metadata 显式记录 `latest_replay_innovation_count`、实际 filter
+update 数、gate rejection 数和匿名 observation IDs。构造用例让离群点仍在扫描关联门限 40
+之内，以证明拒绝发生在滤波创新层，而不是通过新建/丢失航迹绕开。
+
+### 25.3 证据与边界
+
+2026-07-20 自动化场景如下：
+
+- 一个无多普勒 radar 样本验证 3 维滤波模型、零均值速度和 `25I` 方差；
+- 一个 3 scan 离群序列验证 1 次创新拒绝及全部审计字段；
+- 两条航迹的顺序/乱序 3 scan 对照验证 2 条 OOSM，state/covariance 容差 `1e-9`、双时间戳和
+  `6x6` covariance；
+- seed 17、200 条、10 scan、2,000 条匿名 radar measurement，数量和 ID 全程为 200，末帧
+  速度 median/P90/max=`3.87/6.43/8.54 m/s`，速度 covariance trace=
+  `57.97/60.69/61.19`。
+
+专项 `13/13`，D1 全量 `124/124`。50 条开发探针从 `6.28/12.16/21.03` 改善为
+`3.99/6.12/9.69 m/s`，但 trace 仍为 `58.22/60.43/60.90`，所以评审结论是 D1-owned
+噪声放大缺口已关闭、短基线速度仍是高不确定度估计。至少 20 个未见 seed 的 NIS/NEES 和
+coverage、机动/漏检/虚警、D2 二次滤波与 D3 分配正式复验仍开放。本轮不影响 AirSim 文档。

@@ -184,3 +184,40 @@ observation 中逐元素保留并传播为 `6x6` NED covariance。专项 `9/9`�
 预热、重复统计或置信区间，不能作为实时验收。当前结论只关闭 D1 扫描级适配、批量 birth/
 update、OOSM 和类别声纹边界；多 seed 漏检/虚警/交叉场景 recall、false-track 生命周期、
 IDSW、RMSE/NIS/NEES、D2 六维关联和 main 总线接线仍开放。
+
+## 2026-07-20 无多普勒六维速度稳定性报告
+
+### 场景与方法
+
+本轮没有启动 AirSim。输入为 scalable 3D radar-only 匿名批次，radar detection probability
+设为 1.0 以隔离速度滤波行为。正式自动化规模为 seed 17、200 条航迹、10 个 scan（measurement
+time `0.0..1.8 s`，周期 0.2 s），共 2,000 条 measurement。D1 在线路径只接收 range、
+azimuth、elevation、covariance、双时间戳、sensor/scan lineage，不接收 truth/actor/object ID，
+也不读取场景 4.7 m/s 上界。
+
+修复将无多普勒量测从“补零后四维更新”改为“canonical 四维占位、滤波三维更新”，速度起始为
+`v0=0`、`Pvv=25I m2/s2`、`Ppv=0`。三维更新使用 `chi2_3(0.999)=16.2662` NIS 门限，并输出
+replay innovation/update/rejection 审计。
+
+### 验收与结果
+
+| 项目 | 样本/阈值 | 结果 |
+| --- | --- | --- |
+| 量测/先验合同 | 1 条三值 radar；滤波维数必须为 3，`Pvv=25I`、`Ppv=0` | 通过 |
+| 创新门控 | 3 scan；离群点保持在关联门限 40 内但超过 NIS 16.2662；必须 1 次拒绝并留审计 | 通过 |
+| OOSM 等价 | 2 航迹、顺序/乱序各 3 scan；共同发布时刻 state/covariance 差 `<=1e-9` | 通过，2 条 OOSM，双时间戳和 `6x6` covariance 保持 |
+| 200 条多帧 | seed 17、10 scan、2,000 条匿名 measurement；数量/ID/有限性全程保持 | 200/200，ID 集不变 |
+| 末帧速度 | 不使用真实速度上界；检查均值相对显式 covariance 不发散 | median/P90/max=`3.87/6.43/8.54 m/s` |
+| 末帧速度 covariance trace | 不得坍缩或隐藏 | median/P90/max=`57.97/60.69/61.19` |
+
+同一 seed 的 50 条开发探针用于对照根因，修复前后 D1 速度由
+`6.28/12.16/21.03` 变为 `3.99/6.12/9.69 m/s`；修复后速度 covariance trace 仍为
+`58.22/60.43/60.90`。专项测试 `13/13`，D1 全量 `124/124`。
+
+### 结论与限制
+
+D1-owned 的补零径向速度误用和短基线速度均值放大缺口已关闭。结果不是硬限速：速度状态仍可
+超过任意场景速度，后验同时携带较大的显式方差。零均值固定先验会收缩早期速度，至少 20 个
+未见 seed 的速度误差 coverage、NIS/NEES、机动、漏检/虚警和门控率仍未完成。D2 会再次滤波
+D1 六维输出，D2 速度和 D3 第二轮分配数量需由 main 使用当前代码正式复测。本轮未改变 AirSim
+producer/runtime、launch/reset/episode 顺序或持久化 schema。

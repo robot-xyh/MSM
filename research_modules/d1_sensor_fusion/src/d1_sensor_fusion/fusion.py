@@ -83,6 +83,11 @@ OBSERVATION_METADATA_LINEAGE_KEYS = (
     "measurement_order",
     "range_dependent_covariance",
     "radial_velocity_observed",
+    "radial_velocity_placeholder_ignored",
+    "filter_measurement_dimension",
+    "filter_innovation_gate_chi2",
+    "unobserved_velocity_variance_m2ps2",
+    "velocity_initialization_model",
     "spherical_covariance_to_ned",
     "d1_fusion_schema_version",
     "soundprint_class_probabilities",
@@ -812,9 +817,14 @@ class FusionAdapter:
         return True
 
     def _finalize_record_replay(self, record: TrackRecord, current_time: float) -> None:
-        state, nises = self._replay_record(record, current_time)
+        state, nises, gated_observation_ids = self._replay_record(record, current_time)
         record.current_state = state
         record.recent_nis = deque(nises[-50:], maxlen=50)
+        self._update_filter_gate_metadata(
+            record,
+            nises,
+            gated_observation_ids,
+        )
         self._limit_record_covariance(record)
         self._prune_record(record, current_time)
 
@@ -845,7 +855,7 @@ class FusionAdapter:
                 context = self._require_batch_context()
                 context.dirty_track_ids.add(record.track_id)
         else:
-            checkpoint, _ = self._replay_from_origin(record, checkpoint_timestamp)
+            checkpoint, _, _ = self._replay_from_origin(record, checkpoint_timestamp)
             record.initial_state = checkpoint
             self._finalize_record_replay(record, current_time)
 
@@ -1376,6 +1386,47 @@ class FusionAdapter:
         s = 0.5 * (s + s.T) + 1e-9 * np.eye(s.shape[0])
         return float(residual.T @ np.linalg.pinv(s) @ residual)
 
+    def _filter_update(
+        self,
+        state: EKFState,
+        observation: SensorObservation,
+    ) -> tuple[EKFState, float, bool]:
+        model = measurement_model_for(observation, self.radar_covariance_config)
+        updated, nis = ekf_update(
+            state,
+            model.z,
+            model.h_fn,
+            model.h_jacobian_fn,
+            model.r,
+            model.angle_indices,
+        )
+        gate = observation.metadata.get("filter_innovation_gate_chi2")
+        gated = gate is not None and nis > float(gate)
+        return (state.copy() if gated else updated), nis, bool(gated)
+
+    def _update_filter_gate_metadata(
+        self,
+        record: TrackRecord,
+        nises: list[float],
+        gated_observation_ids: tuple[str, ...],
+    ) -> None:
+        if record.metadata.get("filter_innovation_gate_chi2") is None:
+            return
+        record.metadata.update(
+            {
+                "latest_replay_innovation_count": len(nises),
+                "latest_replay_filter_update_count": (
+                    len(nises) - len(gated_observation_ids)
+                ),
+                "latest_replay_innovation_gate_rejection_count": len(
+                    gated_observation_ids
+                ),
+                "latest_replay_innovation_gate_rejected_observation_ids": (
+                    gated_observation_ids
+                ),
+            }
+        )
+
     def _state_at(self, record: TrackRecord, timestamp: float) -> EKFState:
         context = self._batch_context
         if context is not None:
@@ -1395,7 +1446,7 @@ class FusionAdapter:
         if record.checkpoint_active and timestamp < record.initial_state.timestamp - 1e-9:
             state = self._replay_from_origin(record, timestamp)[0]
         else:
-            state, _ = self._replay_record(record, timestamp)
+            state, _, _ = self._replay_record(record, timestamp)
         if context is not None:
             context.state_cache[key] = state.copy()
         return state
@@ -1418,7 +1469,7 @@ class FusionAdapter:
         if context is None or record.track_id not in context.checkpoint_dirty_track_ids:
             return
         checkpoint_timestamp = float(record.initial_state.timestamp)
-        checkpoint, _ = self._replay_from_origin(record, checkpoint_timestamp)
+        checkpoint, _, _ = self._replay_from_origin(record, checkpoint_timestamp)
         record.initial_state = checkpoint
         context.checkpoint_dirty_track_ids.remove(record.track_id)
 
@@ -1431,13 +1482,14 @@ class FusionAdapter:
         self,
         record: TrackRecord,
         until_time: float,
-    ) -> tuple[EKFState, list[float]]:
+    ) -> tuple[EKFState, list[float], tuple[str, ...]]:
         if self._batch_context is not None:
             self._batch_context.origin_replay_count += 1
         if record.origin_state is None or record.origin_observation_id is None:
             raise RuntimeError("track origin is unavailable for historical OOSM replay")
         state = record.origin_state.copy()
         nises: list[float] = []
+        gated_observation_ids: list[str] = []
         observations_by_id = {
             observation.observation_id: observation
             for observation in (*record.archived_observations, *record.observations)
@@ -1454,29 +1506,24 @@ class FusionAdapter:
             if observation.measurement_timestamp > until_time + 1e-9:
                 continue
             state = predict_to(state, observation.measurement_timestamp, self.process_noise)
-            model = measurement_model_for(observation, self.radar_covariance_config)
-            state, nis = ekf_update(
-                state,
-                model.z,
-                model.h_fn,
-                model.h_jacobian_fn,
-                model.r,
-                model.angle_indices,
-            )
+            state, nis, gated = self._filter_update(state, observation)
             nises.append(nis)
+            if gated:
+                gated_observation_ids.append(observation.observation_id)
         state = predict_to(state, until_time, self.process_noise)
-        return state, nises
+        return state, nises, tuple(gated_observation_ids)
 
     def _replay_record(
         self,
         record: TrackRecord,
         until_time: float,
-    ) -> tuple[EKFState, list[float]]:
+    ) -> tuple[EKFState, list[float], tuple[str, ...]]:
         if self._batch_context is not None:
             self._batch_context.history_replay_count += 1
         self._refresh_initial(record)
         state = record.initial_state.copy()
         nises: list[float] = []
+        gated_observation_ids: list[str] = []
         sorted_observations = sorted(
             record.observations,
             key=lambda obs: (obs.measurement_timestamp, obs.arrival_timestamp, obs.observation_id),
@@ -1489,18 +1536,12 @@ class FusionAdapter:
             if observation.measurement_timestamp > until_time + 1e-9:
                 continue
             state = predict_to(state, observation.measurement_timestamp, self.process_noise)
-            model = measurement_model_for(observation, self.radar_covariance_config)
-            state, nis = ekf_update(
-                state,
-                model.z,
-                model.h_fn,
-                model.h_jacobian_fn,
-                model.r,
-                model.angle_indices,
-            )
+            state, nis, gated = self._filter_update(state, observation)
             nises.append(nis)
+            if gated:
+                gated_observation_ids.append(observation.observation_id)
         state = predict_to(state, until_time, self.process_noise)
-        return state, nises
+        return state, nises, tuple(gated_observation_ids)
 
     def _refresh_initial(self, record: TrackRecord) -> None:
         if record.checkpoint_active:
@@ -1551,7 +1592,7 @@ class FusionAdapter:
             return
 
         state_before_rebase = record.current_state.copy()
-        checkpoint, _ = self._replay_record(record, checkpoint_timestamp)
+        checkpoint, _, _ = self._replay_record(record, checkpoint_timestamp)
         discarded = [
             observation
             for observation in record.observations
@@ -1579,9 +1620,17 @@ class FusionAdapter:
         record.checkpoint_active = True
         record.checkpoint_count += 1
 
-        rebased_state, rebased_nises = self._replay_record(record, current_time)
+        rebased_state, rebased_nises, gated_observation_ids = self._replay_record(
+            record,
+            current_time,
+        )
         record.current_state = rebased_state
         record.recent_nis = deque(rebased_nises[-50:], maxlen=50)
+        self._update_filter_gate_metadata(
+            record,
+            rebased_nises,
+            gated_observation_ids,
+        )
         continuity_error_m = float(
             np.linalg.norm(rebased_state.state[:3] - state_before_rebase.state[:3])
         )
@@ -1729,6 +1778,14 @@ class FusionAdapter:
     def _prepare_observation(self, observation: SensorObservation) -> SensorObservation:
         covariance, reasons, anomaly = self._limited_observation_covariance(observation)
         metadata = dict(observation.metadata)
+        innovation_gate = metadata.get("filter_innovation_gate_chi2")
+        if innovation_gate is not None:
+            innovation_gate = float(innovation_gate)
+            if not np.isfinite(innovation_gate) or innovation_gate <= 0.0:
+                raise ValueError(
+                    "filter_innovation_gate_chi2 must be positive and finite"
+                )
+            metadata["filter_innovation_gate_chi2"] = innovation_gate
         metadata["timestamp_uncertainty_s"] = float(observation.timestamp_uncertainty_s or 0.0)
         metadata["timing_uncertainty_s"] = float(observation.timestamp_uncertainty_s or 0.0)
         if reasons:

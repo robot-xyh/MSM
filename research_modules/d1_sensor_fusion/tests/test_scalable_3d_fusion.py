@@ -8,10 +8,15 @@ import numpy as np
 import pytest
 
 from d1_sensor_fusion import (
+    SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE,
+    SCALABLE_3D_UNOBSERVED_VELOCITY_VARIANCE_M2PS2,
     Scalable3DFusionAdapter,
     sensor_observation_from_online_measurement,
 )
-from d1_sensor_fusion.observations import radar_state_from_observation
+from d1_sensor_fusion.observations import (
+    measurement_model_for,
+    radar_state_from_observation,
+)
 from research_modules.scalable_3d_simulation.models import (
     OnlineSensorBatch,
     ScenarioConfig,
@@ -168,6 +173,83 @@ def test_spherical_radar_to_ned_preserves_covariance_and_dual_timestamps() -> No
     assert track.metadata["range_dependent_covariance"] is True
 
 
+def test_position_only_radar_ignores_placeholder_and_uses_velocity_prior() -> None:
+    measurement = _radar_measurement(
+        "radar-position-only",
+        np.array([1_400.0, -320.0, -180.0]),
+        measurement_timestamp=3.0,
+        arrival_timestamp=3.2,
+    )
+    observation = sensor_observation_from_online_measurement(
+        measurement,
+        batch_id="radar-position-only-scan",
+    )
+    state, covariance = radar_state_from_observation(observation)
+    model = measurement_model_for(observation)
+
+    assert observation.measurement.shape == (4,)
+    assert observation.measurement[3] == pytest.approx(0.0)
+    assert observation.metadata["radial_velocity_observed"] is False
+    assert observation.metadata["radial_velocity_placeholder_ignored"] is True
+    assert observation.metadata["filter_measurement_dimension"] == 3
+    assert model.z.shape == (3,)
+    assert model.r.shape == (3, 3)
+    assert model.h_fn(np.concatenate((state[:3], [30.0, -20.0, 10.0]))).shape == (3,)
+    assert np.array_equal(state[3:], np.zeros(3))
+    assert np.allclose(covariance[:3, 3:], 0.0, atol=1.0e-12)
+    assert np.allclose(covariance[3:, :3], 0.0, atol=1.0e-12)
+    assert np.allclose(
+        covariance[3:, 3:],
+        np.eye(3) * SCALABLE_3D_UNOBSERVED_VELOCITY_VARIANCE_M2PS2,
+        atol=1.0e-12,
+    )
+    assert observation.metadata["velocity_initialization_model"] == (
+        "zero_mean_isotropic_gaussian"
+    )
+
+
+def test_position_only_radar_innovation_gate_rejects_outlier_with_audit() -> None:
+    adapter = Scalable3DFusionAdapter(association_gate=40.0)
+    scans = (
+        ("gate-scan-000", 0.0, np.array([1_000.0, 0.0, -100.0])),
+        ("gate-scan-001", 0.2, np.array([1_000.8, 0.0, -100.0])),
+        ("gate-scan-002-outlier", 0.4, np.array([1_001.6, 20.0, -100.0])),
+    )
+    results = []
+    for label, measurement_time, position in scans:
+        measurement = _radar_measurement(
+            label,
+            position,
+            measurement_timestamp=measurement_time,
+            arrival_timestamp=measurement_time + 0.2,
+        )
+        results.append(
+            adapter.process_online_sensor_batch(_online_batch(label, (measurement,)))
+        )
+
+    before_outlier = results[1].tracks[0]
+    after_outlier = results[2].tracks[0]
+    assert len(results[2].tracks) == 1
+    assert results[2].summary.created_track_count == 0
+    assert results[2].summary.updated_track_count == 1
+    assert np.allclose(after_outlier.state[3:], before_outlier.state[3:], atol=1.0e-12)
+    assert after_outlier.metadata["filter_innovation_gate_chi2"] == pytest.approx(
+        SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE
+    )
+    assert after_outlier.metadata["latest_replay_innovation_count"] == 2
+    assert after_outlier.metadata["latest_replay_filter_update_count"] == 1
+    assert (
+        after_outlier.metadata["latest_replay_innovation_gate_rejection_count"]
+        == 1
+    )
+    assert after_outlier.metadata[
+        "latest_replay_innovation_gate_rejected_observation_ids"
+    ] == ("gate-scan-002-outlier",)
+    assert adapter.tracks[after_outlier.global_track_id].recent_nis[-1] > (
+        SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE
+    )
+
+
 def test_delayed_scan_is_replayed_as_oosm_without_changing_track_count() -> None:
     base_positions = np.array(
         [[1_200.0, -250.0, -120.0], [1_050.0, 380.0, -180.0]],
@@ -201,6 +283,135 @@ def test_delayed_scan_is_replayed_as_oosm_without_changing_track_count() -> None
     assert adapter.oosm_observation_count == 2
     assert all(track.timestamp == pytest.approx(1.4) for track in delayed.tracks)
     assert all(np.isfinite(track.covariance).all() for track in delayed.tracks)
+
+
+def test_oosm_replay_matches_in_order_state_and_preserves_dual_timestamps() -> None:
+    base_positions = np.array(
+        [[1_200.0, -250.0, -120.0], [1_050.0, 380.0, -180.0]],
+        dtype=float,
+    )
+    velocities = np.array([[3.0, 1.0, -0.2], [-2.0, 1.5, 0.1]], dtype=float)
+
+    def run_schedule(
+        schedule: tuple[tuple[str, float, float], ...],
+    ) -> tuple[Scalable3DFusionAdapter, tuple]:
+        adapter = Scalable3DFusionAdapter(association_gate=40.0)
+        result = None
+        for label, measurement_time, arrival_time in schedule:
+            measurements = tuple(
+                _radar_measurement(
+                    f"{label}-d{index:03d}",
+                    position + velocity * measurement_time,
+                    measurement_timestamp=measurement_time,
+                    arrival_timestamp=arrival_time,
+                )
+                for index, (position, velocity) in enumerate(
+                    zip(base_positions, velocities)
+                )
+            )
+            result = adapter.process_online_sensor_batch(
+                _online_batch(label, measurements)
+            )
+        assert result is not None
+        return adapter, result.tracks
+
+    _, in_order_tracks = run_schedule(
+        (
+            ("scan-000", 0.0, 0.2),
+            ("scan-050", 0.5, 0.7),
+            ("scan-100", 1.0, 1.4),
+        )
+    )
+    delayed_adapter, delayed_tracks = run_schedule(
+        (
+            ("scan-000", 0.0, 0.2),
+            ("scan-100", 1.0, 1.2),
+            ("scan-050", 0.5, 1.4),
+        )
+    )
+
+    assert delayed_adapter.oosm_observation_count == len(delayed_tracks)
+    assert [track.global_track_id for track in delayed_tracks] == [
+        track.global_track_id for track in in_order_tracks
+    ]
+    for in_order, delayed in zip(in_order_tracks, delayed_tracks):
+        assert np.allclose(delayed.state, in_order.state, atol=1.0e-9)
+        assert np.allclose(delayed.covariance, in_order.covariance, atol=1.0e-9)
+        assert delayed.state.shape == (6,)
+        assert delayed.covariance.shape == (6, 6)
+        assert delayed.timestamp == pytest.approx(1.4)
+        assert delayed.metadata["measurement_timestamp"] == pytest.approx(0.5)
+        assert delayed.metadata["arrival_timestamp"] == pytest.approx(1.4)
+        assert delayed.metadata["latest_measurement_timestamp"] == pytest.approx(0.5)
+        assert delayed.metadata["latest_arrival_timestamp"] == pytest.approx(1.4)
+        assert np.linalg.eigvalsh(delayed.covariance).min() >= -1.0e-8
+
+
+def test_two_hundred_position_only_tracks_remain_stable_over_ten_scans() -> None:
+    target_count = 200
+    config = ScenarioConfig(
+        seed=17,
+        target_count=target_count,
+        resource_count=target_count,
+        recon_count=0,
+        duration_s=1.8,
+        radar_detection_probability=1.0,
+        radar_range_limit_m=8_000.0,
+        acoustic_enabled=False,
+        visual_enabled=False,
+        communication_enabled=False,
+    )
+    world = VectorizedPointMassWorld(config)
+    scene = SensorScene(config)
+    adapter = Scalable3DFusionAdapter(association_gate=40.0)
+    track_ids: set[str] | None = None
+    median_speeds: list[float] = []
+    median_velocity_covariance_traces: list[float] = []
+
+    for scan_index in range(10):
+        measurements = scene.radar_scan(world.snapshot()).measurements
+        result = adapter.process_online_sensor_batch(
+            _online_batch(f"radar-200-{scan_index:03d}", measurements)
+        )
+        current_ids = {track.global_track_id for track in result.tracks}
+        if track_ids is None:
+            track_ids = current_ids
+        assert len(measurements) == target_count
+        assert len(result.tracks) == target_count
+        assert current_ids == track_ids
+        assert all(np.isfinite(track.state).all() for track in result.tracks)
+        assert all(np.isfinite(track.covariance).all() for track in result.tracks)
+        assert all(track.state.shape == (6,) for track in result.tracks)
+        assert all(track.covariance.shape == (6, 6) for track in result.tracks)
+
+        speeds = np.array(
+            [np.linalg.norm(track.state[3:]) for track in result.tracks]
+        )
+        velocity_covariance_traces = np.array(
+            [np.trace(track.covariance[3:, 3:]) for track in result.tracks]
+        )
+        median_speeds.append(float(np.median(speeds)))
+        median_velocity_covariance_traces.append(
+            float(np.median(velocity_covariance_traces))
+        )
+        assert np.isfinite(speeds).all()
+        assert np.isfinite(velocity_covariance_traces).all()
+        assert np.max(speeds**2 / velocity_covariance_traces) < 2.0
+
+        if scan_index < 9:
+            for _ in range(4):
+                world.step()
+
+    assert track_ids is not None and len(track_ids) == target_count
+    assert max(median_speeds) < math.sqrt(
+        max(median_velocity_covariance_traces)
+    )
+    assert median_velocity_covariance_traces[-1] > (
+        0.5 * median_velocity_covariance_traces[0]
+    )
+    assert median_velocity_covariance_traces[-1] < (
+        1.1 * median_velocity_covariance_traces[0]
+    )
 
 
 def test_online_adapter_rejects_truth_actor_and_object_identifiers() -> None:

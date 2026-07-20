@@ -898,3 +898,25 @@ entity/target ID 和 offline truth 对象一律拒绝；匿名 observation ID、
 把类别向量作为稳定目标 ID。2026-07-20 的 seed 7 回归在 5/20/50/100/200 五档首扫/次扫中
 分别保持全部航迹，200 档为 `200 birth -> 200 update`；专项 `9/9`、全量 `120/120`。这证明
 D1 模块合同，不代表复杂场景多 seed recall、ID continuity 或实时预算已经闭合。
+
+## 19. 未观测速度不能伪装成零速度量测（2026-07-20）
+
+三值 radar 的 producer 只观测 range、azimuth 和 elevation。为保持 D1 既有 radar `4x4`
+canonical 合同，可以在第 4 维放置零和距离相关方差，但必须同时标记
+`radial_velocity_observed=False`，并遵守以下原则：
+
+1. 滤波 `z/R/h/H` 只使用前三维；补零是合同占位，不是 0 m/s 多普勒证据；
+2. 六维起始状态应显式给出速度先验。本实现采用 `v0=0`、`Pvv=25I m2/s2`、`Ppv=0`，它是
+   可配置高斯分布而非速度上限，不能读取场景 truth 或 `target_speed_max_mps`；
+3. 位置-only radar 使用与量测维数一致的 3 自由度 NIS。默认 99.9% 卡方门限为 `16.2662`，
+   门外观测不做后验更新，但保留原始 measurement/arrival timestamp 和 replay history；
+4. 门控必须可审计。输出至少区分本次 replay 的 innovation、实际 update 和 rejection 数，
+   不能把关联接受数等同于滤波更新数；
+5. 速度均值下降不能以隐藏 covariance 为代价。测试必须同时检查有限六维状态、`6x6`
+   covariance、速度均值相对方差的尺度，以及多帧 covariance 不坍缩。
+
+2026-07-20、radar-only、seed 17 的 200 航迹/10 scan/2,000 条匿名量测回归始终保持 200 个
+ID；末帧速度 median/P90/max=`3.87/6.43/8.54 m/s`，速度 covariance trace=
+`57.97/60.69/61.19`。顺序/乱序 OOSM 对照在 `1e-9` 容差内保持 state/covariance 等价。
+专项 `13/13`、D1 全量 `124/124`。这些是模块回归，不是多 seed 速度精度、D2/D3 集成或真实
+AirSim 标定结论。

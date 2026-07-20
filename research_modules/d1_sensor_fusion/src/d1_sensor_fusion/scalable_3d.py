@@ -13,6 +13,8 @@ from .types import FusionBatchResult, SensorObservation
 
 
 SCALABLE_3D_FUSION_SCHEMA_VERSION = "d1-scalable3d-fusion-v1"
+SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE = 16.26623619623813
+SCALABLE_3D_UNOBSERVED_VELOCITY_VARIANCE_M2PS2 = 25.0
 
 _FORBIDDEN_IDENTITY_KEYS = frozenset(
     {
@@ -44,17 +46,37 @@ _MISSING = object()
 class Scalable3DFusionAdapter(FusionAdapter):
     """Identity-free scan fusion adapter for the scalable 3D episode bus."""
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *,
+        unobserved_velocity_variance_m2ps2: float = (
+            SCALABLE_3D_UNOBSERVED_VELOCITY_VARIANCE_M2PS2
+        ),
+        position_only_radar_nis_gate: float = SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE,
+        **kwargs: Any,
+    ) -> None:
         if bool(kwargs.pop("use_truth_hints_for_association", False)):
             raise ValueError(
                 "Scalable3DFusionAdapter forbids truth-assisted online association"
             )
+        self.unobserved_velocity_variance_m2ps2 = _positive_finite(
+            unobserved_velocity_variance_m2ps2,
+            "unobserved_velocity_variance_m2ps2",
+        )
+        self.position_only_radar_nis_gate = _positive_finite(
+            position_only_radar_nis_gate,
+            "position_only_radar_nis_gate",
+        )
         super().__init__(use_truth_hints_for_association=False, **kwargs)
 
     def process_online_sensor_batch(self, batch: Any) -> FusionBatchResult:
         observations = sensor_observations_from_online_batch(
             batch,
             radar_covariance_config=self.radar_covariance_config,
+            unobserved_velocity_variance_m2ps2=(
+                self.unobserved_velocity_variance_m2ps2
+            ),
+            position_only_radar_nis_gate=self.position_only_radar_nis_gate,
         )
         return self.process_scan_batch(observations)
 
@@ -82,6 +104,10 @@ def sensor_observations_from_online_batch(
     batch: Any,
     *,
     radar_covariance_config: RadarCovarianceConfig | Mapping[str, Any] | None = None,
+    unobserved_velocity_variance_m2ps2: float = (
+        SCALABLE_3D_UNOBSERVED_VELOCITY_VARIANCE_M2PS2
+    ),
+    position_only_radar_nis_gate: float = SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE,
 ) -> tuple[SensorObservation, ...]:
     """Convert an OnlineSensorBatch-compatible payload without importing main."""
 
@@ -118,6 +144,10 @@ def sensor_observations_from_online_batch(
                 measurement,
                 batch_id=batch_id,
                 radar_covariance_config=radar_covariance_config,
+                unobserved_velocity_variance_m2ps2=(
+                    unobserved_velocity_variance_m2ps2
+                ),
+                position_only_radar_nis_gate=position_only_radar_nis_gate,
             )
         )
 
@@ -130,6 +160,10 @@ def sensor_observation_from_online_measurement(
     *,
     batch_id: str,
     radar_covariance_config: RadarCovarianceConfig | Mapping[str, Any] | None = None,
+    unobserved_velocity_variance_m2ps2: float = (
+        SCALABLE_3D_UNOBSERVED_VELOCITY_VARIANCE_M2PS2
+    ),
+    position_only_radar_nis_gate: float = SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE,
 ) -> SensorObservation:
     """Convert one identity-free bus measurement to D1's canonical contract."""
 
@@ -165,6 +199,8 @@ def sensor_observation_from_online_measurement(
             metadata,
             common,
             radar_covariance_config,
+            unobserved_velocity_variance_m2ps2,
+            position_only_radar_nis_gate,
         )
     if modality in {"vision_bbox", "eo", "camera_bbox"}:
         return _eo_observation(raw_value, raw_covariance, metadata, common)
@@ -222,6 +258,8 @@ def _radar_observation(
     metadata: dict[str, Any],
     common: dict[str, Any],
     covariance_config: RadarCovarianceConfig | Mapping[str, Any] | None,
+    unobserved_velocity_variance_m2ps2: float,
+    position_only_radar_nis_gate: float,
 ) -> SensorObservation:
     if value.size not in {3, 4}:
         raise ValueError("radar_spherical measurement must contain 3 or 4 values")
@@ -230,6 +268,17 @@ def _radar_observation(
     if value[0] <= 0.0:
         raise ValueError("radar range must be positive")
     if value.size == 3:
+        velocity_variance = _positive_finite(
+            metadata.get(
+                "unobserved_velocity_variance_m2ps2",
+                unobserved_velocity_variance_m2ps2,
+            ),
+            "unobserved_velocity_variance_m2ps2",
+        )
+        innovation_gate = _positive_finite(
+            position_only_radar_nis_gate,
+            "position_only_radar_nis_gate",
+        )
         canonical_value = np.concatenate((value, np.zeros(1, dtype=float)))
         canonical_covariance = np.zeros((4, 4), dtype=float)
         canonical_covariance[:3, :3] = covariance
@@ -238,10 +287,21 @@ def _radar_observation(
             covariance_config,
         )[3, 3]
         radial_velocity_observed = False
+        filter_metadata = {
+            "filter_measurement_dimension": 3,
+            "filter_innovation_gate_chi2": innovation_gate,
+            "radial_velocity_placeholder_ignored": True,
+            "unobserved_velocity_variance_m2ps2": velocity_variance,
+            "velocity_initialization_model": "zero_mean_isotropic_gaussian",
+        }
     else:
         canonical_value = value.copy()
         canonical_covariance = covariance.copy()
         radial_velocity_observed = True
+        filter_metadata = {
+            "filter_measurement_dimension": 4,
+            "radial_velocity_placeholder_ignored": False,
+        }
 
     metadata.update(
         {
@@ -252,6 +312,7 @@ def _radar_observation(
                 "radial_velocity_mps",
             ),
             "radial_velocity_observed": radial_velocity_observed,
+            **filter_metadata,
             "range_dependent_covariance": bool(
                 metadata.get("range_dependent_covariance", value.size == 3)
             ),
@@ -401,3 +462,10 @@ def _is_forbidden_identity_key(value: str) -> bool:
         components & {"object", "entity"}
         and components & {"id", "ids", "name", "names"}
     )
+
+
+def _positive_finite(value: Any, name: str) -> float:
+    normalized = float(value)
+    if not np.isfinite(normalized) or normalized <= 0.0:
+        raise ValueError(f"{name} must be positive and finite")
+    return normalized

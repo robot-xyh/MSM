@@ -921,8 +921,17 @@ cache hit/miss 和合并的发布重放。2026-07-14 的 5 航迹/15 观测测�
 z = [rho, azimuth, elevation]
 ```
 
-当 producer 未提供径向速度时，D1 扩展为四维 radar measurement，并按距离模型给未观测径向
-速度配置方差。位置转换为：
+当 producer 未提供径向速度时，D1 为兼容 canonical radar 合同扩展为：
+
+```text
+z_contract = [rho, azimuth, elevation, 0]
+R_contract = block_diag(R_spherical_3x3, sigma_rdot_placeholder^2)
+radial_velocity_observed = false
+```
+
+第 4 维只是序列化/接口占位。`measurement_model_for()` 在该标志为 false 时构造
+`z_filter=z_contract[:3]`、`R_filter=R_contract[:3,:3]`，观测函数也只返回 range/azimuth/
+elevation；因此补零径向速度不会进入创新。位置转换为：
 
 ```text
 pN = sN + rho cos(elevation) cos(azimuth)
@@ -930,10 +939,18 @@ pE = sE + rho cos(elevation) sin(azimuth)
 pD = sD - rho sin(elevation)
 ```
 
-实现构造完整 `6x4` 状态 Jacobian `J`，计算 `P = J R J^T`；未观测切向速度再沿
-`I - uu^T` 加入方差，sensor position covariance 可选叠加到位置块。输入原 `3x3` spherical
-covariance 不被默认模型替换，canonical observation 的左上块逐元素保留。最终 track 始终是
-`[pN,pE,pD,vN,vE,vD]` 和 `6x6` covariance。
+位置 Jacobian `Jp` 只对前三维球坐标求导。无多普勒起始状态和 covariance 为：
+
+```text
+x0 = [pN, pE, pD, 0, 0, 0]
+P0 = [[Jp R_spherical Jp^T + P_sensor, 0],
+      [0,                                  25 I3]]
+```
+
+`25 m2/s2` 是公开可配置的各轴零均值高斯先验，不是速度裁剪，也不读取场景真实速度。若 producer
+确实提供第 4 维多普勒且标为 observed，则保留原四维量测路径，并仅对未观测切向速度增加方差。
+输入原 `3x3` spherical covariance 不被默认模型替换，canonical observation 的左上块逐元素
+保留。最终 track 始终是 `[pN,pE,pD,vN,vE,vD]` 和 `6x6` covariance。
 
 ### 26.2 扫描级关联与批量 birth
 
@@ -975,3 +992,29 @@ h(x) = [atan2(rE, rN), atan2(-rD, sqrt(rN^2 + rE^2))]
 radar 关联的矩阵规模为 `O(T*O)`，200x200 当前可接受，但本轮没有给出长 episode、多 sensor、
 虚警增长下的正式实时上界。track confirmation/deletion、跨 scan ID continuity 和至少 20 个
 未见 seed 的 recall/NIS/NEES 由后续 D2/D6/main 集成验收。
+
+### 26.5 位置-only radar 创新门控与速度稳定性
+
+对于预测状态 `x-`、covariance `P-` 和三维量测模型，先计算：
+
+```text
+nu = z_filter - h_filter(x-)
+S = H P- H^T + R_filter
+NIS = nu^T S^-1 nu
+```
+
+默认门限 `gamma=chi2_3(0.999)=16.26623619623813`。若 `NIS>gamma`，replay 保留预测状态和预测
+covariance，不应用该 measurement update；量测仍保留在按 measurement timestamp 排序的历史
+中，所以顺序处理与 OOSM 重放会得到相同的门控判定。metadata 记录本次 replay 的创新数、
+实际滤波更新数、拒绝数及匿名 observation IDs。扫描关联接受数和滤波更新数因此是两个不同
+审计口径。
+
+2026-07-20 的自动化证据包括：无多普勒三维模型/`25I` 先验、一个门内关联但超 NIS 阈值的
+离群点、2 航迹顺序/乱序 3 scan 数值等价，以及 seed 17 的 200 航迹/10 scan/2,000 条匿名
+radar measurement。200 条末帧速度 median/P90/max=`3.87/6.43/8.54 m/s`，速度 covariance
+trace=`57.97/60.69/61.19`；数量和 ID 全程保持 200。专项 `13 passed`、模块全量
+`124 passed`。
+
+该结果只证明短基线噪声不再被当前 D1 路径过度写入速度均值，且不确定性仍显式存在。固定
+零均值先验会收缩早期速度；过程噪声仍为现有 CV 参数。多 seed 速度误差 coverage、NIS/NEES、
+机动和漏检/虚警，以及 D2 二次滤波/D3 分配仍需后续正式验证。

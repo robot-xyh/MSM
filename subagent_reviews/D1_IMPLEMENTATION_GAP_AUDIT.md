@@ -614,3 +614,23 @@ blocker。该批关闭“D1 没有最少重放批处理能力”的 P1 实现缺
 `120 passed`。本轮证据是 seed 7 的确定性模块回归，不是 20 个未见 seed 的系统统计，也未
 运行 AirSim。当前 D1-owned P0/P1 实现阻塞项已关闭；main 接线、D2 六维身份连续、D6 多 seed
 recall/IDSW/RMSE/NIS/NEES 和长期性能仍开放。
+
+## 24. 2026-07-20 无多普勒速度稳定性 GAP 状态
+
+main 的只读诊断显示，radar-only、seed 17、50 条短 episode 中，D1 速度模长
+median/P90/max=`6.28/12.16/21.03 m/s`，而速度 covariance trace 仍为
+`101.24/110.31/112.32`。根因不是隐藏的低方差，而是三值雷达在 canonical 合同中补成四值后，
+补零径向速度仍被量测模型消费，加上 0.2 s 短基线位置噪声通过 CV 交叉协方差进入速度均值。
+
+| GAP/合同 | 当前状态 | 2026-07-20 D1-owned 证据 | 剩余关闭条件 |
+| --- | --- | --- | --- |
+| 未观测径向速度语义 | 已关闭 | canonical 仍为 4 维/`4x4`，但 `radial_velocity_observed=False` 时滤波严格使用前三维；测试直接检查 `z/R/h` 维数 | 真实 producer 若提供 Doppler，必须显式标为 observed 并单独标定四维模型 |
+| 六维速度起始 | 已关闭代码缺口 | `v0=0`、`Pvv=25I m2/s2`、`Ppv=0`，参数公开可配置；无 truth/actor/object ID 和场景速度上界读取 | 多 seed 速度误差 coverage 和先验敏感性仍需 D6 标定 |
+| 更新级创新门控 | 已关闭最小实现 | 三自由度 99.9% 卡方阈值 `16.2662`；构造离群点关联到既有航迹但滤波更新被拒绝，metadata 保留 innovation/update/rejection 审计 | 漏检、虚警、机动场景下误拒/漏拒率尚未冻结 |
+| OOSM 与双时间戳 | 保持关闭 | 2 航迹、顺序/乱序 3 scan 在共同发布时刻 state/covariance 差 `<=1e-9`；2 条 OOSM、双时间戳与 `6x6` covariance 保持 | 长 fixed-lag/archive 内存和极端乱序吞吐开放 |
+| 200 条多帧稳定性 | D1 模块缺口关闭 | seed 17、10 scan、2,000 条匿名 radar measurement 始终为 200 个 ID；末帧速度 `3.87/6.43/8.54 m/s`，速度 trace `57.97/60.69/61.19` | 20 个未见 seed、漏检/虚警/crossing 与 D2/D3 正式集成仍开放 |
+
+专项由 `9` 增至 `13 passed`，D1 全量由 `120` 增至 `124 passed`。50 条开发探针修复后速度为
+`3.99/6.12/9.69 m/s`，速度 covariance trace 仍为 `58.22/60.43/60.90`；这关闭的是 D1
+短基线均值放大代码缺口，不代表速度已经高精度收敛。D2 二次滤波和 D3 第二轮分配必须由 main
+使用当前代码正式复测。AirSim 集成计划已检查，本轮没有 AirSim 接口或运行证据变化，无需修改。

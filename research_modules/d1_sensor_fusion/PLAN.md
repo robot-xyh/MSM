@@ -853,8 +853,9 @@ D1-owned P1 实现已完成。剩余系统 P1 由 main 把逐条调用替换为�
 2. 输入在字段解引用前递归审计，truth/actor/object/entity/target ID、world snapshot 和
    offline truth label fail closed；`use_truth_hints_for_association=True` 被显式拒绝。
 3. `radar_spherical` 的三维球坐标及原始 covariance 转为 D1 radar 规范量测；缺少径向速度时
-   补零但给出距离相关径向方差和未观测切向速度方差。解析雅可比传播到
-   `[pN,pE,pD,vN,vE,vD]` 与 `6x6` covariance。
+   仅在 canonical `4x4` 合同中补零并标为未观测，滤波只消费 range/azimuth/elevation 三维；
+   位置解析 Jacobian 与零均值、各轴 `25 m2/s2` 的独立速度先验共同形成
+   `[pN,pE,pD,vN,vE,vD]` 和 `6x6` covariance。
 4. `process_scan_batch()` 对扫描前航迹和整扫描点迹一次性构造三维马氏代价矩阵，执行一对一
    匈牙利匹配；未匹配 radar 点迹批量起始，非测距点迹不单独起始。旧 `process_batch()` 的
    逐条等价语义保持不变。
@@ -892,3 +893,42 @@ D1-owned P1 实现已完成。剩余系统 P1 由 main 把逐条调用替换为�
    0.108 s 首扫/0.392 s 次扫仅是开发探针，不是实时验收；
 5. main-owned 系统文档和跨模块状态由 main 在接线后同步。本批不修改 AirSim 计划，因为新
    能力只面向三维质点总线，未改变 AirSim producer/runtime。
+
+## 27. 无多普勒六维速度稳定性（2026-07-20）
+
+### 27.1 已完成
+
+1. 无多普勒 radar observation 保持 canonical `4` 维与 `4x4` covariance，兼容现有在线合同；
+   `radial_velocity_observed=False` 时 `measurement_model_for()` 只构造三维 `z/R/h/H`，补零
+   径向速度不参与滤波。
+2. 起始状态使用 `v0=0`、`Pvv=25I m2/s2`、`Ppv=0` 的显式高斯先验。该参数不来自场景
+   `target_speed_max_mps`，不是 4.7 m/s 或任何其他速度上界。
+3. 位置-only radar 默认使用 `chi2_3(0.999)=16.26623619623813` 创新门控。门控拒绝不会更新
+   后验，但 observation history、measurement/arrival timestamp 和 OOSM replay 顺序继续保留；
+   metadata 输出 replay innovation/update/rejection 审计。
+4. 新增四个自动化回归：量测维数和先验块、门内关联但超 NIS 阈值的离群点、顺序/乱序 OOSM
+   数值等价，以及 seed 17 的 200 航迹/10 scan/2,000 条匿名雷达量测。
+
+### 27.2 验收结果
+
+- 专项 `test_scalable_3d_fusion.py`：`13 passed in 7.82s`；D1 全量：
+  `124 passed in 29.88s`。
+- 200 条多帧回归在 10 scan 内始终保持 200 个 ID，状态和 `6x6` covariance 全部有限；末帧
+  速度 median/P90/max=`3.87/6.43/8.54 m/s`，速度 covariance trace=
+  `57.97/60.69/61.19`。
+- 50 条、seed 17 开发探针的速度由修复前 `6.28/12.16/21.03` 降为
+  `3.99/6.12/9.69 m/s`；修复后 covariance trace 仍为 `58.22/60.43/60.90`，不把短基线
+  估计写成高精度速度。
+- 2 航迹 OOSM 回归中，2 条迟到量测被合法重放；与顺序输入在共同发布时刻的 state/covariance
+  绝对差不超过 `1e-9`，输出仍为双时间戳和 `6x6` covariance。
+
+### 27.3 仍开放
+
+1. 至少 20 个未见 seed 的速度误差、NIS/NEES、门控误拒/漏拒和 covariance coverage 标定；
+2. 漏检、虚警、交叉、机动和更长 OOSM 下的生命周期与速度稳定性；
+3. main 用当前实现正式复测 D1 -> D2 -> D3，确认 D2 二次滤波不会重新放大速度均值，并记录
+   第二轮分配数量；开发原型结果不得替代该验收；
+4. CV 过程噪声和速度先验仍是固定研究参数，尚未实现 IMM/自适应噪声或真实传感器标定。
+
+已检查 `docs/AIRSIM_INTEGRATION_PLAN.md`：本轮仅修改 scalable 3D 质点总线内的 D1 量测模型，
+未改变 AirSim producer、Blocks 启停、reset、episode 顺序或持久化 schema，因此无需修改。

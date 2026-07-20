@@ -594,8 +594,10 @@ D1-only 重放，逐条为 18.05 s/1267 次重放，批处理为 5.70 s/351 次�
 `Scalable3DFusionAdapter` 是面向 `scalable_3d_simulation` 在线总线的 D1-owned 入口。它以
 鸭子类型消费 `OnlineSensorBatch` 或同合同 `SensorMeasurement` 扫描，不导入 main-owned
 模块；递归拒绝 truth/actor/object/entity/target ID 和 offline truth sidecar。雷达输入
-`[range, azimuth, elevation]` 在 D1 内补充未观测径向速度及距离相关方差，通过解析雅可比
-传播到 NED 六状态和 `6x6` covariance。原始 `3x3` 球坐标 covariance、
+`[range, azimuth, elevation]` 在 canonical 合同中保留一个补零径向速度和对应方差，但同时
+标记 `radial_velocity_observed=False`；滤波量测模型只消费前三维，补零值不进入 EKF 更新。
+位置 covariance 通过解析 Jacobian 传播，速度以零均值、各轴方差 `25 m2/s2` 的独立高斯
+先验起始，位置-速度交叉块为零。原始 `3x3` 球坐标 covariance、
 `measurement_timestamp`、`arrival_timestamp`、sensor position 和匿名 observation lineage
 均被保留。
 
@@ -621,3 +623,24 @@ birth 和次扫 update 均为 `5/5、20/20、50/50、100/100、200/200`；200 �
 当前 D1-owned 实现和合同回归已完成，但 main orchestrator 尚未接入此 adapter，D2 的原生
 六维关联、漏检/虚警下的航迹确认与删除、多 seed dense crossing 的 recall/ID continuity、
 长期 NIS/NEES 和实时预算仍需跨模块验收。本轮不涉及 AirSim runtime。
+
+### 无多普勒速度稳定性修复（2026-07-20）
+
+`Scalable3DFusionAdapter` 对位置-only radar 使用 3 自由度 NIS 门控，默认阈值为
+`chi2_3(0.999)=16.26623619623813`。门外观测保留在合法 observation history 中供确定性 OOSM
+重放，但不修改该时刻的预测状态；航迹 metadata 记录本次 replay 的创新数、实际滤波更新数、
+拒绝数和匿名 observation ID。速度先验方差和门限均为显式可配置参数，不读取场景目标速度，
+也不对状态做速度裁剪。
+
+自动化验证使用 2026-07-20、radar-only、seed 17。200 条航迹连续 10 个 scan，共 2,000 条
+匿名 radar measurement，数量和 ID 集始终保持 200，所有速度有限、covariance 保持 `6x6`；
+末帧速度模长 median/P90/max 为 `3.87/6.43/8.54 m/s`，速度 covariance trace 为
+`57.97/60.69/61.19`。50 条开发探针的修复前后速度分别为
+`6.28/12.16/21.03 -> 3.99/6.12/9.69 m/s`，修复后 covariance trace 仍为
+`58.22/60.43/60.90`，没有通过隐藏方差宣称精确速度。顺序/乱序 2 航迹、3 scan 回归在共同
+发布时刻的 state/covariance 差不超过 `1e-9`，并保留原始双时间戳。专项 `13 passed`，D1
+全量 `124 passed`。
+
+当前限制是零均值先验会在短时间窗内收缩速度均值；其方差仍需至少 20 个未见 seed 的
+NIS/NEES 与速度误差覆盖率标定。D2 会再次滤波 D1 六维状态，D2 速度均值和 D3 可达性/分配
+数量必须由 main 用当前代码正式复测。本轮没有启动或修改 AirSim runtime。

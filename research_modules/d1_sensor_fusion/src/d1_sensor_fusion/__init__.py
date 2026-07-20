@@ -84,6 +84,8 @@ from .replay import (
 )
 from .scalable_3d import (
     SCALABLE_3D_FUSION_SCHEMA_VERSION,
+    SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE,
+    SCALABLE_3D_UNOBSERVED_VELOCITY_VARIANCE_M2PS2,
     Scalable3DFusionAdapter,
     assert_scalable_online_payload_identity_free,
     sensor_observation_from_online_measurement,
@@ -155,6 +157,8 @@ __all__ = [
     "ReconCueSummary",
     "ReplayProvenance",
     "SCALABLE_3D_FUSION_SCHEMA_VERSION",
+    "SCALABLE_3D_POSITION_ONLY_RADAR_NIS_GATE",
+    "SCALABLE_3D_UNOBSERVED_VELOCITY_VARIANCE_M2PS2",
     "Scalable3DFusionAdapter",
     "SensorHealthSummary",
     "SensorObservation",

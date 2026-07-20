@@ -169,7 +169,12 @@ def radar_state_from_observation(
     sensor_position = sensor_position_from_metadata(observation)
     z = observation.measurement.reshape(-1)
     rho, azimuth, elevation = z[:3]
-    radial_velocity = float(z[3]) if z.size >= 4 else 0.0
+    radial_velocity_observed = bool(
+        observation.metadata.get("radial_velocity_observed", z.size >= 4)
+    )
+    radial_velocity = (
+        float(z[3]) if radial_velocity_observed and z.size >= 4 else 0.0
+    )
     horizontal = rho * np.cos(elevation)
     rel = np.array(
         [
@@ -194,22 +199,28 @@ def radar_state_from_observation(
             azimuth=float(azimuth),
             elevation=float(elevation),
             radial_velocity=radial_velocity,
+            radial_velocity_observed=radial_velocity_observed,
             measurement_covariance=r,
             metadata=observation.metadata,
         )
 
     sigma_rho, sigma_az, sigma_el, sigma_rv = np.sqrt(np.diag(r))
     tangential = max(float(rho), 1.0) * max(float(sigma_az), float(sigma_el))
-    covariance = np.diag(
-        [
-            max(sigma_rho**2, tangential**2),
-            max(sigma_rho**2, tangential**2),
-            max(sigma_rho**2, (rho * sigma_el) ** 2),
+    position_variances = [
+        max(sigma_rho**2, tangential**2),
+        max(sigma_rho**2, tangential**2),
+        max(sigma_rho**2, (rho * sigma_el) ** 2),
+    ]
+    if radial_velocity_observed:
+        velocity_variances = [
             max(25.0, sigma_rv**2),
             max(25.0, (2.0 * sigma_rv) ** 2),
             max(25.0, (2.0 * sigma_rv) ** 2),
         ]
-    )
+    else:
+        unobserved_variance = _unobserved_velocity_variance(observation.metadata)
+        velocity_variances = [unobserved_variance] * 3
+    covariance = np.diag([*position_variances, *velocity_variances])
     return state, covariance
 
 
@@ -219,6 +230,7 @@ def _radar_state_covariance_from_spherical(
     azimuth: float,
     elevation: float,
     radial_velocity: float,
+    radial_velocity_observed: bool,
     measurement_covariance: np.ndarray,
     metadata: dict[str, Any],
 ) -> np.ndarray:
@@ -254,24 +266,36 @@ def _radar_state_covariance_from_spherical(
         ],
         dtype=float,
     )
-    jacobian[3:, 1] = radial_velocity * np.array(
-        [
-            -cos_elevation * sin_azimuth,
-            cos_elevation * cos_azimuth,
-            0.0,
-        ],
-        dtype=float,
-    )
-    jacobian[3:, 2] = radial_velocity * np.array(
-        [
-            -sin_elevation * cos_azimuth,
-            -sin_elevation * sin_azimuth,
-            -cos_elevation,
-        ],
-        dtype=float,
-    )
-    jacobian[3:, 3] = unit
-    covariance = jacobian @ measurement_covariance @ jacobian.T
+    if radial_velocity_observed:
+        jacobian[3:, 1] = radial_velocity * np.array(
+            [
+                -cos_elevation * sin_azimuth,
+                cos_elevation * cos_azimuth,
+                0.0,
+            ],
+            dtype=float,
+        )
+        jacobian[3:, 2] = radial_velocity * np.array(
+            [
+                -sin_elevation * cos_azimuth,
+                -sin_elevation * sin_azimuth,
+                -cos_elevation,
+            ],
+            dtype=float,
+        )
+        jacobian[3:, 3] = unit
+        covariance = jacobian @ measurement_covariance @ jacobian.T
+    else:
+        covariance = np.zeros((6, 6), dtype=float)
+        position_jacobian = jacobian[:3, :3]
+        covariance[:3, :3] = (
+            position_jacobian
+            @ measurement_covariance[:3, :3]
+            @ position_jacobian.T
+        )
+        covariance[3:, 3:] = (
+            np.eye(3, dtype=float) * _unobserved_velocity_variance(metadata)
+        )
 
     sensor_covariance = metadata.get("sensor_position_covariance_ned")
     if sensor_covariance is not None:
@@ -280,21 +304,36 @@ def _radar_state_covariance_from_spherical(
             raise ValueError("sensor_position_covariance_ned must be a finite 3x3 matrix")
         covariance[:3, :3] += sensor_covariance
 
-    tangential_variance = float(
-        metadata.get("unobserved_tangential_velocity_variance_m2ps2", 100.0)
-    )
-    if not np.isfinite(tangential_variance) or tangential_variance <= 0.0:
-        raise ValueError(
-            "unobserved_tangential_velocity_variance_m2ps2 must be positive and finite"
+    if radial_velocity_observed:
+        tangential_variance = float(
+            metadata.get("unobserved_tangential_velocity_variance_m2ps2", 100.0)
         )
-    covariance[3:, 3:] += tangential_variance * (
-        np.eye(3, dtype=float) - np.outer(unit, unit)
-    )
+        if not np.isfinite(tangential_variance) or tangential_variance <= 0.0:
+            raise ValueError(
+                "unobserved_tangential_velocity_variance_m2ps2 must be positive and finite"
+            )
+        covariance[3:, 3:] += tangential_variance * (
+            np.eye(3, dtype=float) - np.outer(unit, unit)
+        )
     covariance = 0.5 * (covariance + covariance.T)
     minimum_eigenvalue = float(np.linalg.eigvalsh(covariance).min())
     if minimum_eigenvalue < 0.0:
         covariance += np.eye(6, dtype=float) * (-minimum_eigenvalue + 1.0e-9)
     return covariance
+
+
+def _unobserved_velocity_variance(metadata: dict[str, Any]) -> float:
+    variance = float(
+        metadata.get(
+            "unobserved_velocity_variance_m2ps2",
+            metadata.get("unobserved_tangential_velocity_variance_m2ps2", 100.0),
+        )
+    )
+    if not np.isfinite(variance) or variance <= 0.0:
+        raise ValueError(
+            "unobserved_velocity_variance_m2ps2 must be positive and finite"
+        )
+    return variance
 
 
 def acoustic_h(state: np.ndarray, sensor_position: np.ndarray) -> np.ndarray:
@@ -371,13 +410,20 @@ def measurement_model_for(
     )
     if modality == "radar":
         sensor_position = sensor_position_from_metadata(observation)
+        radial_velocity_observed = bool(
+            observation.metadata.get(
+                "radial_velocity_observed",
+                observation.measurement.size >= 4,
+            )
+        )
+        measurement_dimension = 4 if radial_velocity_observed else 3
 
         def h_fn(x: np.ndarray) -> np.ndarray:
-            return radar_h(x, sensor_position)
+            return radar_h(x, sensor_position)[:measurement_dimension]
 
         return MeasurementModel(
-            z=observation.measurement.reshape(-1),
-            r=covariance,
+            z=observation.measurement.reshape(-1)[:measurement_dimension],
+            r=covariance[:measurement_dimension, :measurement_dimension],
             h_fn=h_fn,
             h_jacobian_fn=lambda x: numerical_jacobian(h_fn, x),
             angle_indices=(1, 2),
