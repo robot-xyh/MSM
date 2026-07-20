@@ -21,6 +21,12 @@ payload guard 已进一步拒绝 `TGT-0001`、`TargetDrone_1` 等 truth-like loc
 `cam01-track-0001`。4-camera 压力结果只证明输出边集稀疏；全 camera-pair 及每对
 `n_left x n_right` 枚举的 200-camera 优化仍为开放 P1。
 
+同日新增 `../src/d5_terminal_association/scalable_3d_adapter.py`：这是 D5-owned、duck-typed
+scalable 3D 在线 DTO 入口，负责匿名 per-camera tracking、相机 metadata 几何/协方差转换、
+六维中心航迹只读投影和带显式规则 fallback 的图关联。专项 `17 passed`、D5 全量
+`332 passed`。main orchestrator 调用点、200-camera pair indexing、独立数据划分及训练
+checkpoint 仍为 P1，不得把模块适配器通过解释为 episode 或模型验收。
+
 `../scripts/generate_multicamera_report.py` 用于生成中文原理图、中文仿真图表和
 Word 技术报告。默认从 `assets/d5_multicamera_association/` 读取稳定截图与
 绘图数据；只有显式使用 `--sync-formal-assets` 时才从正式 AirSim 输出同步副本。

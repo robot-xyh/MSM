@@ -10,7 +10,8 @@ truth 仅在图构建后生成训练边标签。
 | --- | --- | --- | --- | --- |
 | 200 目标稀疏压力 | seed 200；200 目标；4 相机；800 节点 | 240000 可能跨相机 pair；极线门 20398；中心投影门/degree cap 前 2953；最终 1923 边；密度 0.006017；最大度 6；1.585 s | 密度 `<0.01`；最大度 `<=6`；中心投影候选 `<2%`；`<15 s` | 代码门通过 |
 | 原生 PyTorch 训练 smoke | seed 4；8 目标；3 相机；24 节点；192 边 | 24 正边；72 困难负边；正类权重 3.0；60 epoch loss `1.038521 -> 0.011535`；训练准确率 1.0；2.594 s | loss 降低至少 50%；训练准确率 `>=0.90`；困难负样本非空 | 训练管线通过，不是模型准入 |
-| D5 回归 | 全量测试 | `315 passed in 8.71s` | 零失败 | 通过 |
+| scalable DTO adapter | 17 个确定性 case；2/3/4 相机；3 个中心目标 | `17 passed in 2.27s`；部分可见均绑定 3 个输入中心 ID；7 类污染全拒绝 | 零失败；污染后首 ID 仍为 `trk-000001`；中心 ID 不变 | 模块入口通过，不是 episode 验收 |
+| D5 回归 | 全量测试 | `332 passed in 10.92s` | 零失败 | 通过 |
 
 几何专项另验证了三相机/三目标正确边、全部要求的边特征、逐级 gate count、同相机互斥聚类、
 Hungarian 只回显中心 ID、递归 truth/actor/object/global identity 拒绝、原生 `index_add_`
@@ -20,13 +21,19 @@ Hungarian 只回显中心 ID、递归 truth/actor/object/global identity 拒绝�
 新增样本共 12 个参数化 case：5 个构造拒绝、3 个递归嵌套拒绝、4 个正常 local-ID 正例；
 接受门为 truth-like case 全部拒绝且正常 case 全部构造/递归通过，实测 12/12 满足。
 
+adapter 专项另覆盖跨帧角速度/尺度变化、中心与 bbox covariance、per-camera 重名 namespace、
+假目标消失、单帧空扫描恢复、episode reset、六维中心航迹 copy isolation、无模型/低 certainty/
+有效注入模型三种 scoring provenance，以及真实 scalable DTO 类形状。当前 DTO 类形状测试没有
+运行 world/orchestrator；其 pose covariance 缺失路径按合同记录 configured fallback。
+
 压力测试中的最终边集是稀疏的，但实现仍枚举全部非空 camera pair，并为每对建立
 `n_left x n_right` 中间矩阵。本轮只有 4-camera 证据，没有 200-camera 性能数据；相机索引/
 overlap bucket、pair budget 与 200-camera 内存/时延 benchmark 保持开放 P1。
 
 训练 smoke 使用同一小样本拟合和评估，预期可过拟合，不能提供泛化、概率校准、IDF1/IDSW、
-真实遮挡恢复或 200v200 episode 准确率证据。当前无默认 checkpoint、无 scalable 3D 在线总线
-接线、无 AirSim 云台闭环、无学习型主动视觉策略验收，因此既有几何默认路径不变。
+真实遮挡恢复或 200v200 episode 准确率证据。当前无默认 checkpoint；D5 DTO adapter 已实现，
+但 main orchestrator 调用和真实 scalable 3D episode 尚未执行，也无 AirSim 云台闭环或学习型
+主动视觉策略验收，因此既有几何默认路径不变。
 
 ## 2026-07-16 真实 AirSim ComputerVision 5+1 专项报告
 

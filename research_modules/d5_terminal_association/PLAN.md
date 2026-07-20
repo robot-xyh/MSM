@@ -7,6 +7,16 @@
   truth/actor/object/global identity 失败关闭；构造器和递归 payload guard 另拒绝
   `TGT-0001`、`TargetDrone_1`、`Target_UAV_7`、`intruder-003` 等 truth-like local ID，
   并保留 `cam01-track-0001` 等正常 camera-local sequence。
+- [x] 新增 `scalable_3d_adapter.py` duck-typed 在线入口：直接消费真实
+  `OnlineSensorBatch`/`vision_bbox` 字段形状，不导入 main/D2/evaluator 类型；在 tracker 更新前
+  拒绝 truth/actor/object/target/entity 字段和 truth-like 字符串，local ID 仅由 per-camera
+  tracker 产生，不使用 `observation_id`。
+- [x] 按 `(resource_id,camera_id)` 隔离 IoU/中心门 tracker，输出双时间戳、中心/bbox 协方差、
+  角速度和 bbox 尺度变化；支持有限漏检、空扫描、stream/episode reset。相机 metadata 生成
+  `K/R/t` 及外参协方差；缺失独立 pose covariance 时只允许显式 configured fallback 并标源。
+- [x] 六维 D2 center track 只读转换为现有 D5 `GlobalTrack` 投影假设；在线封装完成
+  构图、确定性规则/注入模型边概率、同相机互斥聚类和中心 Hungarian binding。模型缺失、
+  异常或低 certainty 有明确 fallback 状态，D5 不加载默认 checkpoint、不创建/改写中心 ID。
 - [x] 新增时序、视场、极线、射线交会、重投影、像素马氏、中心 GlobalTrack 投影和
   外参/航迹协方差逐级门控；按 `max_neighbors_per_node` 确定性截断，避免构造全连接图。
 - [x] 边特征覆盖时间差、像素马氏距离、重投影误差、射线最近距离、bbox 尺度/变化、
@@ -23,13 +33,15 @@
   收缩到 2953 个 degree-cap 前候选和 1923 条最终边，密度 `0.006017`、最大度 6、
   本机 `1.585 s`；接受门为密度 `<0.01`、最大度 `<=6`、运行 `<15 s`。
 - [x] seed 4 小样本 smoke：8 目标、3 相机、24 节点/192 边，24 正样本与 72 困难负样本，
-  60 epoch loss `1.038521 -> 0.011535`、训练集准确率 1.0；D5 全量 `315 passed`。
+  60 epoch loss `1.038521 -> 0.011535`、训练集准确率 1.0。
+- [x] adapter 专项 `17 passed in 2.27s`，D5 全量 `332 passed in 10.92s`；覆盖 2/3/4 相机
+  部分可见、跨帧 ID、假目标/漏检、7 类真值污染、中心 ID 不变、reset、空扫描与模型回退。
 - [ ] P1：当前 200 目标/4 相机测试只验证最终输出图稀疏。构图仍通过全部非空 camera pair，
   并为每对建立 `n_left x n_right` 时间/视场/极线矩阵；main 接入 200-camera 前需增加相机
   overlap/index bucket、camera-pair budget 与专门的内存/P50/P95 benchmark，不得将本项标为闭合。
-- [ ] P1：main 将 scalable 3D 匿名 `vision_bbox`、camera projection metadata 和本地 MOT
-  tracklet 接入该图路径，并保持 `OfflineTruthLabel` 在独立 evaluator 流；D5 不越界修改
-  main-owned `scalable_3d_simulation`。
+- [ ] P1：main 在其 ownership 内把现有 module stack/orchestrator 调用点接到 D5 adapter，并将
+  camera pose covariance 显式放入在线 metadata；继续保证 evaluator truth 流物理分离。
+  D5 本轮只提供并验证模块入口，没有修改或运行 main-owned `scalable_3d_simulation` episode。
 - [ ] P1：建立独立训练/验证/测试集、近邻交叉与遮挡困难负样本、多 seed 200v200 episode、
   概率校准、阈值冻结和 CPU/GPU 时延预算。当前小样本仅为过拟合 smoke，不构成准入，
   不生成默认 checkpoint，也不替换既有几何 Hungarian 主线。

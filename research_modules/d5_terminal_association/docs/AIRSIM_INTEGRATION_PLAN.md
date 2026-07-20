@@ -2,9 +2,15 @@
 
 ## 2026-07-20 稀疏 tracklet 图接线状态
 
-D5 已实现匿名稀疏图、原生 PyTorch 边评分、受约束聚类、中心 Hungarian binding 和
-camera-only 主动视觉接口，但本轮没有启动或修改 AirSim，也没有修改 main-owned
-`scalable_3d_simulation`。当前默认 AirSim detect/几何注册和 `TerminalAssociator` 保持不变。
+D5 已实现匿名稀疏图、原生 PyTorch 边评分、受约束聚类、中心 Hungarian binding、
+camera-only 主动视觉接口及 `scalable_3d_adapter.py` 模块入口。本轮没有启动或修改 AirSim，
+也没有修改 main-owned `scalable_3d_simulation`；当前默认 AirSim detect/几何注册和
+`TerminalAssociator` 保持不变。
+
+新增 adapter 已用真实 `OnlineSensorBatch`/`SensorMeasurement` 类型形状做合成输入测试，但
+main orchestrator 尚未调用它。接线时必须把 bus payload 原样交给 adapter，不得把同批
+evaluator labels 或 world snapshot 合并；camera pose covariance 应显式放入 metadata。若当前
+DTO 缺少 covariance，D5 只使用带 provenance 的 configured fallback。
 
 后续 main 接线必须保持三路分离：
 

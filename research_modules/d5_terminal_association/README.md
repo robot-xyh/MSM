@@ -14,6 +14,20 @@
 `cam01-track-0001`、`local-001` 与 detector sequence ID 保持可用。中心 `GlobalTrack`
 仅作为只读投影假设传入，不进入节点身份，也不能由 D5 创建或改写。
 
+新增 `scalable_3d_adapter.py` 作为 main scalable 3D 在线 DTO 的模块-owned 入口。模块采用
+duck typing，只依赖 D5 数据合同，不导入 simulator、D2 实现类或 evaluator truth 类型。
+`Scalable3DTerminalAdapter` 在任何 tracker 状态更新前递归拒绝 truth/actor/object/target/entity
+字段及 `TGT-*`、`TargetDrone_*`、`intruder-*` 值；`observation_id` 只接受安全审计，绝不复制为
+local ID。匿名 `trk-000001...` 由每个 `(resource_id,camera_id)` tracker 独立分配，支持 IoU/
+中心距离匹配、有限漏检、episode/stream reset，并计算像素角速度、bbox 对数尺度变化、中心
+协方差和 bbox `4x4` 协方差。
+
+相机 metadata 被转换为 `CameraModel(K,R,t)` 和 `TrackletCameraGeometry`，其中
+`t=-R@camera_position_ned`；显式位置/姿态协方差按原值使用。当前 main `sensor_scene` DTO 形状
+没有单独发布这两项协方差时使用可配置保守 fallback，并在 batch metadata 标明来源，不能写成
+metadata 实测协方差。D2 六维 `[pN,pE,pD,vN,vE,vD] + 6x6 covariance` 只读复制为 D5
+投影假设，原中心 `global_track_id` 原样保留。
+
 稀疏候选边按以下顺序生成：双时间戳窗口、各自视场、双向极线距离、世界射线最近交会、
 三角中点重投影、像素协方差马氏门、中心 GlobalTrack 投影与协方差门，最后执行确定性的
 per-node degree cap。每条边至少携带时间差、像素马氏距离、重投影误差、射线最近距离、
@@ -38,7 +52,8 @@ PyTorch MLP 和 `index_add_` 对两个端点聚合消息，不依赖 `torch_geom
 | --- | --- | --- |
 | seed 200，200 目标，4 相机 | 800 节点；240000 个跨相机可能对；极线门后 20398；中心投影门后/degree cap 前 2953；最终 1923 边；密度 0.006017；最大度 6；本机 1.585 s | 800 节点；密度 `<0.01`；最大度 `<=6`；中心投影候选 `<2%`；运行 `<15 s` |
 | seed 4，8 目标，3 相机小样本 | 24 节点、192 边；24 正样本、72 困难负样本；`positive_weight=3.0`；60 epoch loss `1.038521 -> 0.011535`，训练集准确率 1.0 | loss 至少下降 50%；训练集准确率 `>=0.90`；困难负样本非空 |
-| D5 全量回归 | `315 passed in 8.71s` | 零失败 |
+| scalable 3D adapter 专项 | `17 passed in 2.27s`；2/3/4 相机部分可见、跨帧稳定、假目标/漏检、7 类污染、中心 ID、reset、空扫描、model/rule 状态及真实 DTO 形状 | 零失败；污染不得改变 tracker 序列；输出 ID 只能来自中心输入 |
+| D5 全量回归 | `332 passed in 10.92s` | 零失败 |
 
 上述压力结果只证明 **最终输出边集稀疏**。当前 `build_sparse_tracklet_graph()` 仍枚举全部非空
 camera pair，并为每对构造 `n_left x n_right` 的时间/视场/极线矩阵；尚未运行 200-camera
@@ -46,10 +61,11 @@ benchmark。因此 main 后续接入 200-camera 场景前，camera overlap/index
 及对应内存/时延压力测试仍是开放 P1，不能由 4-camera 结果宣称闭合。
 
 小样本结果只证明原生 PyTorch 前向、反向、困难负样本和不平衡损失可运行，是过拟合 smoke，
-不是独立验证、概率校准或模型准入。当前没有默认图模型 checkpoint；图主线尚未接入 main 的
-`scalable_3d_simulation.sensor_scene` 在线总线或真实 AirSim。后续必须用独立训练/验证/测试
-划分、困难遮挡和近邻交叉、多 seed 200v200 episode、阈值校准及真实时延预算完成准入，
-期间既有几何 Hungarian/`TerminalAssociator` 默认路径保持不变。
+不是独立验证、概率校准或模型准入。当前没有默认图模型 checkpoint。D5 模块入口已能消费
+`OnlineSensorBatch`/`vision_bbox` 和六维中心航迹的真实 DTO 形状，但 main orchestrator 尚未增加
+模块调用点，也未运行 scalable 3D 或真实 AirSim 在线 episode。后续必须用独立训练/验证/测试
+划分、困难遮挡和近邻交叉、多 seed 200v200 episode、阈值校准及真实时延预算完成准入；模型
+缺失、异常或平均 certainty 不足时明确回退确定性几何规则，既有默认主线不被替换。
 
 ## 2026-07-16 AirSim ComputerVision 5+1 单种子仿真证据
 

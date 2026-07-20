@@ -62,8 +62,14 @@ _FORBIDDEN_ONLINE_KEYS = frozenset(
         "ground_truth",
         "actor_id",
         "actor_name",
+        "entity_id",
+        "entity_name",
+        "intruder_id",
+        "intruder_name",
         "object_id",
         "object_name",
+        "target_id",
+        "target_name",
         "airsim_id",
         "global_track_id",
         "assigned_global_track_id",
@@ -108,7 +114,7 @@ def assert_anonymous_online_payload(payload: Any) -> None:
                 child_path = f"{path}.{item.name}"
                 if _is_forbidden_online_key(key):
                     violations.append(child_path)
-                elif _is_local_id_key(key) and _is_truth_like_local_track_id(
+                elif _is_local_id_key(key) and is_truth_like_local_track_id(
                     getattr(value, item.name)
                 ):
                     violations.append(child_path)
@@ -121,7 +127,7 @@ def assert_anonymous_online_payload(payload: Any) -> None:
                 child_path = f"{path}.{raw_key}"
                 if _is_forbidden_online_key(key):
                     violations.append(child_path)
-                elif _is_local_id_key(key) and _is_truth_like_local_track_id(item):
+                elif _is_local_id_key(key) and is_truth_like_local_track_id(item):
                     violations.append(child_path)
                 else:
                     visit(item, child_path)
@@ -129,6 +135,9 @@ def assert_anonymous_online_payload(payload: Any) -> None:
         if isinstance(value, (list, tuple, set, frozenset)):
             for index, item in enumerate(value):
                 visit(item, f"{path}[{index}]")
+            return
+        if hasattr(value, "__dict__") and not isinstance(value, type):
+            visit(vars(value), path)
 
     visit(payload, "payload")
     if violations:
@@ -162,7 +171,7 @@ class CameraLocalTracklet:
         local_track_id = str(self.local_track_id).strip()
         if not resource_id or not camera_id or not local_track_id:
             raise ValueError("resource_id, camera_id, and local_track_id must be non-empty")
-        if _is_truth_like_local_track_id(local_track_id):
+        if is_truth_like_local_track_id(local_track_id):
             raise ValueError("local_track_id must be anonymous and camera-local")
         measurement_timestamp = _finite_float(self.measurement_timestamp, "measurement_timestamp")
         arrival_timestamp = _finite_float(self.arrival_timestamp, "arrival_timestamp")
@@ -1209,7 +1218,15 @@ def _is_forbidden_online_key(key: str) -> bool:
         key.startswith("truth_")
         or key.endswith("_truth_id")
         or key.endswith("_actor_id")
+        or key.endswith("_actor_name")
+        or key.endswith("_entity_id")
+        or key.endswith("_entity_name")
+        or key.endswith("_intruder_id")
+        or key.endswith("_intruder_name")
         or key.endswith("_object_id")
+        or key.endswith("_object_name")
+        or key.endswith("_target_id")
+        or key.endswith("_target_name")
     )
 
 
@@ -1221,7 +1238,7 @@ def _is_local_id_key(key: str) -> bool:
     )
 
 
-def _is_truth_like_local_track_id(value: Any) -> bool:
+def is_truth_like_local_track_id(value: Any) -> bool:
     if not isinstance(value, str):
         return False
     local_track_id = value.strip()
@@ -1248,4 +1265,5 @@ __all__ = [
     "bind_clusters_to_center_tracks",
     "build_sparse_tracklet_graph",
     "constrained_tracklet_clusters",
+    "is_truth_like_local_track_id",
 ]

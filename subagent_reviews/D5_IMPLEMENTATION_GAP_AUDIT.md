@@ -11,7 +11,17 @@ payload guard 现在除 `truth/actor/object` 外，还拒绝 `TGT-0001`、嵌入
 `camera:TGT-002`、`TargetDrone_1`、`Target_UAV_7`、`intruder-003` 等 truth-like 编号；
 `cam01-track-0001` 等正常 camera-local sequence 有正向回归。
 
-**代码证据：** 2026-07-20 D5 全量 `315 passed in 8.71s`。seed 200 的 200 目标/4 相机
+**scalable 3D 模块入口已完成：** `scalable_3d_adapter.py` 以 duck typing 消费在线
+camera batch 和 `vision_bbox`，不导入 main/D2/evaluator 类型。所有 payload 在 tracker 更新前
+完成字段及 truth-like 值审计；local ID 只由 per-resource/camera tracker 分配，不复制
+`observation_id`。输出包含双时间戳、中心与 bbox covariance、角速度、尺度变化和完整
+`TrackletCameraGeometry`。metadata 缺少独立 pose covariance 时使用带来源标记的配置 fallback。
+六维 D2 状态只读转换保留中心 ID；端到端路径显式区分注入模型与 missing/error/low-confidence
+规则 fallback。
+
+**代码证据：** 2026-07-20 D5 全量 `332 passed in 10.92s`。adapter 专项
+`17 passed in 2.27s`，覆盖 2/3/4 相机部分可见、跨帧 ID、假目标/漏检、7 类污染、中心 ID
+不变、episode reset、空扫描、真实 DTO 字段形状和模型回退状态。seed 200 的 200 目标/4 相机
 场景为 800 节点、240000 可能跨相机 pair、2953 个 cap 前候选、1923 条最终边、密度
 `0.006017`、最大度 6、本机 `1.585 s`，通过密度 `<0.01`、度数 `<=6` 和 `<15 s` 门。
 seed 4 的 8 目标/3 相机训练 smoke 为 24 节点/192 边、24 正边/72 困难负边、正类权重
@@ -23,14 +33,15 @@ seed 4 的 8 目标/3 相机训练 smoke 为 24 节点/192 边、24 正边/72 �
 已有证据；但不能写成“200-camera 构图性能已闭合”。当前 `build_sparse_tracklet_graph()` 仍枚举
 全部非空 camera pair，并为每对形成 `n_left x n_right` 时间/视场/极线矩阵。相机
 overlap/index bucket、pair budget 和 200-camera 内存/P50/P95 benchmark 明确保持开放 P1。
-已训练并校准的跨视角模型、main/scalable 3D 在线接线、真实 AirSim 多 seed 性能和学习型
-主动视觉闭环仍为开放 P1/P2。小样本是同集过拟合 smoke，不能关闭模型准入 GAP；当前无
-默认 checkpoint，既有几何 Hungarian/`TerminalAssociator` 继续默认。
+已训练并校准的跨视角模型、main orchestrator 调用与真实 scalable 3D episode、真实 AirSim
+多 seed 性能和学习型主动视觉闭环仍为开放 P1/P2。D5-owned DTO/tracker/association adapter
+缺口已关闭；小样本是同集过拟合 smoke，不能关闭模型准入 GAP。当前无默认 checkpoint，
+既有几何 Hungarian/`TerminalAssociator` 继续默认。
 
-**跨模块待办：** main 需在其 ownership 内把匿名 `vision_bbox` 和 local MOT tracklet 接入
-图路径，并确保 `OfflineTruthLabel` 只进入 evaluator；main 的 200-camera 接线还需给出可达
-camera-pair 候选合同和压力 benchmark。D6 后续需定义边 precision/recall、PR/ROC、校准误差、
-IDSW 和多 seed 统计。D5 本轮未修改 main-owned runtime 或根级 docs。
+**跨模块待办：** main 需在其 ownership 内调用本 adapter，把 camera pose covariance 放入
+在线 metadata，并继续确保 evaluator truth 只进入 evaluator。main 的 200-camera 接线还需
+给出可达 camera-pair 候选合同和压力 benchmark。D6 后续需定义边 precision/recall、PR/ROC、
+校准误差、IDSW 和多 seed 统计。D5 本轮未修改 main-owned runtime 或根级 docs。
 
 ## 2026-07-16 ComputerVision 5+1 最终证据与 GAP 状态
 

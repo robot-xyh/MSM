@@ -36,7 +36,22 @@ payload guard 会拒绝 `TGT-0001`、嵌入式 `camera:TGT-002`、`TargetDrone_1
 扫描；接口不表达平台机动、重新分配或终端授权。当前没有已训练或已验收的学习型主动视觉
 策略，也没有真实 AirSim 云台闭环。
 
-2026-07-20 的代码证据为 D5 全量 `315 passed in 8.71s`。seed 200 的 200 目标/4 相机合成投影场景
+scalable 3D 在线入口遵循“先隔离、后更新状态”。整个 duck-typed batch 在进入任何 tracker
+前先递归检查字段和值；transport `observation_id` 不进入输出。每个 resource/camera 有独立的
+匿名序列和有限漏检状态，episode reset 清空该序列。`vision_bbox` 的中心与 bbox covariance
+分别保留为 `2x2` 节点协方差和 `4x4` 审计 metadata；像素位移按 `fx/fy/dt` 转成角速度，bbox
+面积比按对数尺度率记录。空扫描只老化本相机 tracker，不伪造预测量测；缺少当前 camera
+metadata 时也不复用旧外参冒充新时刻几何。
+
+相机内参、NED 位置和 `R_camera_from_ned` 由 metadata 构造，平移固定为 `t=-R C`。metadata
+显式给出 position/attitude covariance 时原样使用；当前 DTO 未给出时采用配置 fallback 并标明
+来源，不冒充实测。D2 六维中心状态只复制 position、velocity 和 position covariance，中心 ID
+原样保留。边模型仅为调用方可选注入；缺失、异常或低 certainty 时使用确定性几何规则并输出
+回退原因，不能把 fallback 写成模型推理。
+
+2026-07-20 的代码证据为 D5 全量 `332 passed in 10.92s`。其中 scalable adapter 专项
+`17 passed in 2.27s`，覆盖 2/3/4 相机部分可见、跨帧匿名 ID、假目标/漏检、污染拒绝、中心
+ID 不变、reset、空扫描、真实 DTO 字段形状和 model/rule 状态。seed 200 的 200 目标/4 相机合成投影场景
 形成 800 节点，240000 个跨相机可能 pair 经门控后为 2953 个 degree-cap 前候选、1923 条
 最终边，密度 `0.006017`、最大度 6、本机 `1.585 s`。seed 4 的 8 目标/3 相机小样本训练
 使用 24 正边、72 困难负边和正类权重 3.0，60 epoch loss 从 `1.038521` 降到

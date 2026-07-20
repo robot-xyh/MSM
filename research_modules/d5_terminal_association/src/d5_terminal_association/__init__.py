@@ -143,6 +143,17 @@ from .sparse_tracklet_graph import (
     bind_clusters_to_center_tracks,
     build_sparse_tracklet_graph,
     constrained_tracklet_clusters,
+    is_truth_like_local_track_id,
+)
+from .scalable_3d_adapter import (
+    Scalable3DAdaptedCameraBatch,
+    Scalable3DAdapterConfig,
+    Scalable3DAssociationResult,
+    Scalable3DStepResult,
+    Scalable3DTerminalAdapter,
+    global_track3d_to_projection_track,
+    global_tracks3d_to_projection_tracks,
+    run_scalable_3d_online_association,
 )
 from .tracklet_gnn import (
     NativeTrackletEdgeClassifier,
@@ -312,6 +323,11 @@ __all__ = [
     "OfflineEdgeTrainingBatch",
     "OfflineTrackletTruthLabel",
     "SafeRuleScanPolicy",
+    "Scalable3DAdaptedCameraBatch",
+    "Scalable3DAdapterConfig",
+    "Scalable3DAssociationResult",
+    "Scalable3DStepResult",
+    "Scalable3DTerminalAdapter",
     "SmallSampleTrainingEvidence",
     "SparseCandidateEdge",
     "SparseTrackletGraph",
@@ -324,7 +340,11 @@ __all__ = [
     "build_sparse_tracklet_graph",
     "constrained_tracklet_clusters",
     "graph_tensors",
+    "global_track3d_to_projection_track",
+    "global_tracks3d_to_projection_tracks",
+    "is_truth_like_local_track_id",
     "run_active_vision_step",
+    "run_scalable_3d_online_association",
     "train_small_sample",
     "validate_active_vision_action",
 ]

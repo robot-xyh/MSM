@@ -13,6 +13,8 @@
 - `tracklet_gnn.py`：原生 PyTorch 消息传递、边概率、独立离线标签、困难负样本、
   正类权重和小样本训练 helper；
 - `active_vision.py`：camera-only 环境/策略 protocol、动作 envelope 和规则扫描 fallback。
+- `scalable_3d_adapter.py`：duck-typed 在线 batch、匿名 per-camera tracker、相机 metadata、
+  六维中心轨迹投影及端到端 sparse graph/cluster/center-binding 封装。
 
 `CameraLocalTracklet` 不定义 `global_track_id`、truth 或 actor/object 字段，构造时递归审计
 metadata，并拒绝含 AirSim identity 别名的本地 ID。identity alias 检查除
@@ -21,6 +23,25 @@ metadata，并拒绝含 AirSim identity 别名的本地 ID。identity alias 检�
 递归 payload 中的 local-ID 字段，`cam01-track-0001` 保持合法。`TrackletCameraGeometry` 使用 D5
 `CameraModel(K,R,t)`，其中 `P_c = R P_ned + t`，另显式携带位置与姿态协方差。实现与
 `scalable_3d_simulation.camera_projection` 的 NED 到 optical frame 约定一致。
+
+`Scalable3DTerminalAdapter` 不静态依赖 main 或 D2 类型。它从 duck-typed batch 读取
+`measurements`、双时间戳和单一 `sensor_id`，从每条 `vision_bbox` 的
+`[u,v,xmin,ymin,xmax,ymax] + covariance` 构造检测。`observation_id` 只参与整批安全审计；
+tracker 先按空间顺序规范化检测，再用 IoU/中心距离一对一匹配，并在每个
+`(resource_id,camera_id)` 内分配 `trk-%06d`。匹配历史生成
+`angular_velocity=[du/fx,dv/fy]/dt` 和 `0.5*log(area_t/area_prev)/dt`。
+
+相机 metadata 支持字典或 `3x3 K` 内参、NED camera center、world-to-camera rotation、位置
+与姿态协方差；旋转必须为 proper orthonormal matrix。当前 main DTO 缺少单独 pose covariance
+时使用配置 fallback，输出 provenance 为 `configured_fallback`。空扫描只在当前 batch 自带
+camera metadata 时输出几何，否则标记 `empty_geometry_unavailable`；不复用旧外参冒充当前
+几何，也不输出 stale tracklet。六维中心轨迹 adapter 要求 `state(6)` 与 `covariance(6,6)`，复制前三维
+位置/协方差和后三维速度，保留同一 `global_track_id`。
+
+端到端路径固定为 graph -> edge probability -> constrained cluster -> center Hungarian binding。
+无模型时状态为 `rule_fallback_model_missing`；模型异常或平均 `2*abs(p-0.5)` 低于门限分别为
+`rule_fallback_model_error/low_confidence`；只有调用方注入且输出有效、足够确定的模型才标记
+`model_scored`。规则概率只使用已通过物理门的 edge gate score 和共享中心投影数量。
 
 对于不同相机节点 `i,j`，先计算时间差和视场有效性，再由相对外参构造
 `F = K_j^{-T}[t_ji]_x R_ji K_i^{-1}`，计算双向 point-to-epipolar-line 距离。像素反投影为
@@ -47,15 +68,17 @@ Hungarian，并对 margin 不足输出 `ambiguous`。输出 `global_track_id` �
 2953 个 cap 前候选、1923 条最终边、最大度 6、密度 `0.006017`，本机 `1.585 s`，通过
 `<15 s`、密度 `<0.01` 和最大度 `<=6` 的代码门。seed 4 的 24 节点/192 边训练 smoke
 包含 24 正边和 72 困难负边，正类权重 3.0，60 epoch loss
-`1.038521 -> 0.011535`，训练准确率 1.0。D5 全量 `315 passed in 8.71s`。
+`1.038521 -> 0.011535`，训练准确率 1.0。adapter 专项 `17 passed in 2.27s`，D5 全量
+`332 passed in 10.92s`。
 
 最终 1923 条边证明输出图稀疏，但当前构图仍对全部非空 camera pair 执行枚举，并为每对
 分配 `n_left x n_right` 时间/视场/极线中间矩阵。本轮没有 200-camera benchmark；main
 接线前所需的相机 overlap/index bucket、pair budget 和内存/P50/P95 验证仍为开放 P1。
 
 该训练结果仅为管线和可过拟合性测试，未做独立验证、概率校准、多 seed 或真实图像评估，
-没有默认 checkpoint，不能解释为已验收 GNN。现有 `TerminalAssociator`/几何 Hungarian 仍是
-默认运行路径；scalable 3D 在线适配、真实 AirSim 和学习型主动视觉训练均未完成。
+没有默认 checkpoint，不能解释为已验收 GNN。D5 模块-owned scalable 3D DTO 适配已完成，
+但 main orchestrator 调用点、真实 scalable episode、真实 AirSim 和学习型主动视觉训练均未
+完成；现有 `TerminalAssociator`/几何 Hungarian 仍是默认运行路径。
 
 ## 2026-07-16 真实 ComputerVision 5+1 实现证据
 
