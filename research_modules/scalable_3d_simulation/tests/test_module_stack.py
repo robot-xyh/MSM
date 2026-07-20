@@ -50,6 +50,7 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
         "modules.d3.assignment_plan",
         "modules.d4.regional_failover",
         "modules.d5.terminal_association",
+        "modules.d5.active_vision",
         "modules.d7.guidance_commands",
     }.issubset(topics)
     d5_payload = next(
@@ -70,6 +71,35 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
         for binding in stack.latest_d5_result.association.bindings
         if binding.global_track_id is not None
     }.issubset(center_ids)
+    active_vision_payloads = [
+        message.payload
+        for message in result.online_messages
+        if message.topic == "modules.d5.active_vision"
+    ]
+    assert active_vision_payloads
+    assert result.summary["camera_command_issued_count"] > 0
+    assert result.summary["camera_command_applied_count"] == result.summary[
+        "camera_command_issued_count"
+    ]
+    assert result.summary["camera_command_rejected_count"] == 0
+    assert all(
+        command["target_global_track_id"] is None
+        or command["target_global_track_id"] in center_ids
+        for payload in active_vision_payloads
+        for command in payload["commands"]
+    )
+    assert all(
+        not str(command["target_global_track_id"]).startswith("TGT-")
+        for payload in active_vision_payloads
+        for command in payload["commands"]
+    )
+    camera_acks = [
+        message.payload
+        for message in result.online_messages
+        if message.topic == "runtime.camera_command_ack"
+    ]
+    assert len(camera_acks) == result.summary["camera_command_ack_count"]
+    assert {ack["status"] for ack in camera_acks} == {"applied"}
     timings = {item.stage: item for item in result.stage_timings}
     assert timings["module.d1_fusion"].call_count > 0
     assert timings["module.d3_assignment"].wall_time_s > 0.0

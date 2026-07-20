@@ -40,6 +40,8 @@ from .orchestrator import EpisodeResult, Scalable3DEpisodeRunner, run_episode
 from .sensor_scene import CameraView, SensorScene
 from .scenarios import AVAILABLE_SCENARIOS, SCENARIO_CATALOG_VERSION, make_curriculum_scenario
 from .runtime_ports import (
+    CameraObservationCommand,
+    CameraRuntimeState,
     PlatformNavigationBatch,
     RuntimePublication,
     RuntimeStepInput,
@@ -72,7 +74,9 @@ __all__ = [
     "BatchLearningArtifactWriter",
     "AVAILABLE_SCENARIOS",
     "CameraIntrinsics",
+    "CameraObservationCommand",
     "CameraPose",
+    "CameraRuntimeState",
     "CameraView",
     "CommunicationStats",
     "DeliveredMessage",

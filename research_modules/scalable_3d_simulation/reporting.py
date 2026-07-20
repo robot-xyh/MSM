@@ -166,12 +166,13 @@ def _write_episode_report(path: Path, result: EpisodeResult) -> Path:
             "本次启用 D1-D7 规则集成栈。episode 结束时 D1/D2 航迹数分别为 "
             f"{int(module_diagnostics.get('d1_track_count', 0))}/"
             f"{int(module_diagnostics.get('d2_track_count', 0))}，D3 分配数为 "
-            f"{int(module_diagnostics.get('d3_assignment_count', 0))}，D7 指令数为 "
+            f"{int(module_diagnostics.get('d3_assignment_count', 0))}，D5 当前主动视觉指令数为 "
+            f"{int(module_diagnostics.get('d5_active_vision_command_count', 0))}，D7 指令数为 "
             f"{int(module_diagnostics.get('d7_command_count', 0))}。"
         )
         boundary_lines = [
             "当前结果覆盖合成传感器、D1-D5 在线处理、D7 三维命令和世界状态回写。",
-            "D5 学习模型、D3 学习策略、D6 正式离线评分和多随机种子统计仍需独立验收。",
+            "D5 主动视觉当前执行确定性观察/搜索策略；学习模型、D3 学习策略、D6 正式离线评分和多随机种子统计仍需独立验收。",
         ]
     else:
         module_conclusion = (
@@ -214,6 +215,10 @@ def _write_episode_report(path: Path, result: EpisodeResult) -> Path:
         "在线观测保留量测时间、到达时间和协方差。真值状态及观测标签只保存在离线评估文件。",
         communication_line,
         "当前通信队列覆盖传感器到融合中心的批次传输。D1-D7 进程内调用尚未拆成独立网络节点。",
+        "相机调度发出 "
+        f"{int(summary.get('camera_command_issued_count', 0))} 条命令，确认应用 "
+        f"{int(summary.get('camera_command_applied_count', 0))} 条，拒绝 "
+        f"{int(summary.get('camera_command_rejected_count', 0))} 条。命令只调整相机指向与视场，不生成分配或全局航迹编号。",
         "",
         "## 阶段耗时",
         "",

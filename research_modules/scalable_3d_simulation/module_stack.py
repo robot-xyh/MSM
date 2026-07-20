@@ -55,6 +55,16 @@ from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
     SecondaryReadinessEvidence,
 )
 from research_modules.d5_terminal_association.src.d5_terminal_association import (
+    ActiveVisionAssignmentReference,
+    ActiveVisionCameraState,
+    ActiveVisionCommunicationState,
+    ActiveVisionControllerV1,
+    ActiveVisionFovMode,
+    ActiveVisionPlanReference,
+    ActiveVisionProjectionEvidence,
+    ActiveVisionRuntimeMode,
+    ActiveVisionSnapshotV1,
+    ActiveVisionTrackReference,
     Scalable3DTerminalAdapter,
 )
 from research_modules.d7_proportional_guidance.d7_proportional_guidance import (
@@ -67,6 +77,8 @@ from research_modules.d7_proportional_guidance.d7_proportional_guidance import (
 
 from .models import OnlineSensorBatch, ScenarioConfig
 from .runtime_ports import (
+    CameraObservationCommand,
+    CameraRuntimeState,
     PlatformNavigationBatch,
     RuntimePublication,
     RuntimeStepInput,
@@ -90,6 +102,9 @@ class IntegratedStackConfig:
     secondary_coverage_ratio: float = 0.90
     secondary_network_full_view_rate: float = 0.90
     capture_learning_artifacts: bool = False
+    d5_active_vision_enabled: bool = True
+    d5_active_vision_mode: str = "disabled"
+    d5_active_vision_zoom_fov_deg: float = 30.0
 
     def __post_init__(self) -> None:
         if self.assignment_lease_multiplier <= 1.0:
@@ -100,6 +115,14 @@ class IntegratedStackConfig:
             raise ValueError("d3_unassigned_base_cost must be positive")
         if self.terminal_switch_range_m <= 0.0:
             raise ValueError("terminal_switch_range_m must be positive")
+        active_mode = str(self.d5_active_vision_mode).strip().lower()
+        if active_mode not in {"disabled", "shadow", "assist"}:
+            raise ValueError(
+                "d5_active_vision_mode must be disabled, shadow, or assist"
+            )
+        object.__setattr__(self, "d5_active_vision_mode", active_mode)
+        if not 1.0 < float(self.d5_active_vision_zoom_fov_deg) < 179.0:
+            raise ValueError("d5_active_vision_zoom_fov_deg must be in (1, 179)")
         for name in ("secondary_coverage_ratio", "secondary_network_full_view_rate"):
             value = float(getattr(self, name))
             if not 0.0 <= value <= 1.0:
@@ -152,6 +175,7 @@ class IntegratedScalableModuleStack:
         d4_region_advisor: Any | None = None,
         d4_unseen_seed_count: int = 0,
         d5_edge_model: Any | None = None,
+        d5_active_vision_policy: Any | None = None,
         learning_runtime_diagnostics: Mapping[str, Any] | None = None,
     ) -> None:
         self.stack_config = config or IntegratedStackConfig()
@@ -161,6 +185,7 @@ class IntegratedScalableModuleStack:
         self.d4_region_advisor = d4_region_advisor
         self.d4_unseen_seed_count = int(d4_unseen_seed_count)
         self.d5_edge_model = d5_edge_model
+        self.d5_active_vision_policy = d5_active_vision_policy
         self.learning_runtime_diagnostics = dict(
             learning_runtime_diagnostics or {}
         )
@@ -171,6 +196,7 @@ class IntegratedScalableModuleStack:
         self.d4: RegionalFailoverCoordinator | None = None
         self.d5: Scalable3DTerminalAdapter | None = None
         self.d7: ScalableGuidanceController3D | None = None
+        self.d5_active_vision: ActiveVisionControllerV1 | None = None
         self.latest_d1_tracks: tuple[Any, ...] = ()
         self.latest_d2_tracks: tuple[Any, ...] = ()
         self.latest_d2_result: Any | None = None
@@ -181,11 +207,15 @@ class IntegratedScalableModuleStack:
         self.latest_d4_region_advice: Any | None = None
         self.latest_d5_result: Any | None = None
         self.latest_guidance_batch: Any | None = None
+        self.latest_active_vision_snapshot: ActiveVisionSnapshotV1 | None = None
+        self.latest_active_vision_decisions: tuple[Any, ...] = ()
         self._latest_terminal_by_pair: dict[tuple[str, str], tuple[dict[str, Any], Any]] = {}
         self._track_region_by_id: dict[str, str] = {}
         self._resource_index_by_id: dict[str, int] = {}
         self._next_association_s = 0.0
         self._next_assignment_s = 0.0
+        self._next_active_vision_s = 0.0
+        self._active_vision_communication_version = 0
         self._last_center_health = C2Health.NORMAL
         self._last_secondary_failed = False
         self._fault_generation_changed = False
@@ -220,6 +250,12 @@ class IntegratedScalableModuleStack:
                 intercept_radius_m=config.intercept_radius_m,
             )
         )
+        self.d5_active_vision = ActiveVisionControllerV1(
+            learned_policy=self.d5_active_vision_policy,
+            default_mode=ActiveVisionRuntimeMode(
+                self.stack_config.d5_active_vision_mode
+            ),
+        )
         self.latest_d1_tracks = ()
         self.latest_d2_tracks = ()
         self.latest_d2_result = None
@@ -230,11 +266,15 @@ class IntegratedScalableModuleStack:
         self.latest_d4_region_advice = None
         self.latest_d5_result = None
         self.latest_guidance_batch = None
+        self.latest_active_vision_snapshot = None
+        self.latest_active_vision_decisions = ()
         self._latest_terminal_by_pair.clear()
         self._track_region_by_id.clear()
         self._resource_index_by_id.clear()
         self._next_association_s = 0.0
         self._next_assignment_s = 0.0
+        self._next_active_vision_s = 0.0
+        self._active_vision_communication_version = 0
         self._last_center_health = C2Health.NORMAL
         self._last_secondary_failed = False
         self._fault_generation_changed = False
@@ -357,6 +397,24 @@ class IntegratedScalableModuleStack:
                 now,
             )
 
+        camera_commands: tuple[CameraObservationCommand, ...] = ()
+        if (
+            self.stack_config.d5_active_vision_enabled
+            and self.latest_plan is not None
+            and self.latest_d2_tracks
+            and step_input.cameras
+            and now + _EPS >= self._next_active_vision_s
+        ):
+            started = perf_counter()
+            camera_commands = self._run_active_vision(step_input, now)
+            self._record_timing("d5_active_vision", perf_counter() - started)
+            publications.append(self._d5_active_vision_publication(now, camera_commands))
+            self._next_active_vision_s = _advance_schedule(
+                self._next_active_vision_s,
+                config.visual_period_s,
+                now,
+            )
+
         interceptor_acceleration = np.zeros((config.resource_count, 3), dtype=float)
         if self.latest_plan is not None and self.latest_d2_tracks:
             started = perf_counter()
@@ -372,6 +430,7 @@ class IntegratedScalableModuleStack:
         return RuntimeStepOutput(
             interceptor_acceleration_ned=interceptor_acceleration,
             recon_acceleration_ned=np.zeros((config.recon_count, 3), dtype=float),
+            camera_commands=camera_commands,
             publications=tuple(publications),
             diagnostics=self._diagnostics(now),
         )
@@ -616,6 +675,274 @@ class IntegratedScalableModuleStack:
             d3_planning_frames=tuple(self._d3_learning_frames),
             d4_region_frames=tuple(self._d4_learning_frames),
             d5_graph_frames=tuple(self._d5_learning_frames),
+        )
+
+    def _run_active_vision(
+        self,
+        step_input: RuntimeStepInput,
+        now: float,
+    ) -> tuple[CameraObservationCommand, ...]:
+        """Build a truth-free D5 snapshot and emit bounded camera-only commands."""
+
+        if self.d5_active_vision is None or self.latest_plan is None:
+            return ()
+        self._active_vision_communication_version += 1
+        plan_version = int(self.latest_plan.version)
+        coalition_version = max(
+            (
+                int(assignment.coalition_version or 0)
+                for assignment in self.latest_plan.assignments
+            ),
+            default=0,
+        )
+        track_by_id = {
+            track.global_track_id: track for track in self.latest_d2_tracks
+        }
+        camera_by_resource = {
+            camera.resource_id: camera for camera in step_input.cameras
+        }
+        assignments = tuple(
+            ActiveVisionAssignmentReference(
+                resource_id=assignment.resource_id,
+                camera_id=camera_by_resource[assignment.resource_id].camera_id,
+                global_track_id=assignment.target_id,
+            )
+            for assignment in self.latest_plan.assignments
+            if assignment.resource_id in camera_by_resource
+            and assignment.target_id in track_by_id
+        )
+        tracks = tuple(
+            ActiveVisionTrackReference(
+                global_track_id=track.global_track_id,
+                track_version=max(0, int(track.age)),
+                measurement_timestamp=min(now, float(track.timestamp)),
+            )
+            for track in sorted(
+                self.latest_d2_tracks,
+                key=lambda item: item.global_track_id,
+            )
+        )
+        cameras = tuple(
+            self._active_vision_camera_state(camera)
+            for camera in sorted(step_input.cameras, key=lambda item: item.camera_id)
+        )
+        projections = tuple(
+            self._active_vision_projection(
+                assignment,
+                camera_by_resource[assignment.resource_id],
+                track_by_id[assignment.target_id],
+                step_input,
+                now,
+            )
+            for assignment in self.latest_plan.assignments
+            if assignment.resource_id in camera_by_resource
+            and assignment.target_id in track_by_id
+        )
+        snapshot = ActiveVisionSnapshotV1(
+            snapshot_timestamp=now,
+            plan=ActiveVisionPlanReference(
+                plan_version=plan_version,
+                coalition_version=coalition_version,
+                assignments=assignments,
+            ),
+            communication=ActiveVisionCommunicationState(
+                communication_version=self._active_vision_communication_version,
+                plan_version=plan_version,
+                coalition_version=coalition_version,
+                update_timestamp=now,
+                healthy=not bool(
+                    getattr(self.latest_d4_decision, "fail_closed", False)
+                ),
+            ),
+            tracks=tracks,
+            cameras=cameras,
+            projections=projections,
+        )
+        decisions = tuple(
+            self.d5_active_vision.decide(
+                snapshot,
+                camera_id=camera.camera_id,
+                current_timestamp=now,
+                expected_plan_version=plan_version,
+                expected_coalition_version=coalition_version,
+                expected_communication_version=(
+                    self._active_vision_communication_version
+                ),
+                requested_mode=self.stack_config.d5_active_vision_mode,
+            )
+            for camera in cameras
+        )
+        commands = tuple(
+            self._active_vision_command(
+                decision,
+                runtime_camera=next(
+                    item
+                    for item in step_input.cameras
+                    if item.camera_id == decision.effective_action.camera_id
+                ),
+                step_input=step_input,
+            )
+            for decision in decisions
+        )
+        self.latest_active_vision_snapshot = snapshot
+        self.latest_active_vision_decisions = decisions
+        return commands
+
+    def _active_vision_camera_state(
+        self,
+        camera: CameraRuntimeState,
+    ) -> ActiveVisionCameraState:
+        config = self._require_ready()
+        wide_fov = (
+            config.camera_horizontal_fov_deg
+            if camera.platform_kind == "interceptor"
+            else config.recon_camera_horizontal_fov_deg
+        )
+        zoom_fov = min(
+            float(self.stack_config.d5_active_vision_zoom_fov_deg),
+            float(wide_fov) * 0.75,
+        )
+        return ActiveVisionCameraState(
+            camera_id=camera.camera_id,
+            resource_id=camera.resource_id,
+            state_timestamp=camera.timestamp,
+            yaw_deg=camera.yaw_deg,
+            pitch_deg=camera.pitch_deg,
+            yaw_rate_deg_s=0.0,
+            pitch_rate_deg_s=0.0,
+            yaw_limits_deg=(-180.0, 180.0),
+            pitch_limits_deg=(-89.9, 89.9),
+            max_yaw_rate_deg_s=60.0,
+            max_pitch_rate_deg_s=60.0,
+            max_slew_deg_s=80.0,
+            current_fov_mode=ActiveVisionFovMode(camera.fov_mode),
+            wide_horizontal_fov_deg=float(wide_fov),
+            zoom_horizontal_fov_deg=float(zoom_fov),
+        )
+
+    def _active_vision_projection(
+        self,
+        assignment: Any,
+        camera: CameraRuntimeState,
+        track: Any,
+        step_input: RuntimeStepInput,
+        now: float,
+    ) -> ActiveVisionProjectionEvidence:
+        camera_position = _active_camera_position(camera, step_input)
+        predicted_position, predicted_covariance = _predict_track_position(
+            track,
+            now,
+        )
+        relative = predicted_position - camera_position
+        target_yaw, target_pitch = _yaw_pitch_from_ned(relative)
+        yaw_error = _wrap_degrees(target_yaw - camera.yaw_deg)
+        pitch_error = float(target_pitch - camera.pitch_deg)
+        angular_covariance = _angular_covariance_deg2(
+            relative,
+            predicted_covariance,
+            attitude_std_deg=(0.08 if camera.platform_kind == "interceptor" else 0.04),
+        )
+        vertical_fov = _vertical_fov_deg(
+            camera.horizontal_fov_deg,
+            platform_kind=camera.platform_kind,
+            config=self._require_ready(),
+        )
+        in_fov = bool(
+            abs(yaw_error) <= 0.5 * camera.horizontal_fov_deg
+            and abs(pitch_error) <= 0.5 * vertical_fov
+            and relative.dot(relative) > 1.0e-9
+        )
+        terminal = self._latest_terminal_by_pair.get(
+            (assignment.resource_id, assignment.target_id)
+        )
+        if terminal is None:
+            association_confidence = float(
+                np.clip(
+                    float(track.track_quality)
+                    * (1.0 - float(track.association_risk)),
+                    0.0,
+                    1.0,
+                )
+            )
+        else:
+            association_confidence = float(
+                np.clip(terminal[0]["association_confidence"], 0.0, 1.0)
+            )
+        visibility_probability = float(
+            np.clip(
+                (0.35 + 0.65 * float(track.track_quality))
+                * (1.0 if in_fov else 0.15),
+                0.0,
+                1.0,
+            )
+        )
+        return ActiveVisionProjectionEvidence(
+            camera_id=camera.camera_id,
+            global_track_id=assignment.target_id,
+            measurement_timestamp=min(now, float(track.timestamp)),
+            arrival_timestamp=now,
+            yaw_error_deg=yaw_error,
+            pitch_error_deg=pitch_error,
+            projection_covariance_deg2=tuple(
+                float(value) for value in angular_covariance.reshape(-1)
+            ),
+            visibility_probability=visibility_probability,
+            occlusion_fraction=0.0,
+            association_confidence=association_confidence,
+            in_fov=in_fov,
+        )
+
+    def _active_vision_command(
+        self,
+        decision: Any,
+        *,
+        runtime_camera: CameraRuntimeState,
+        step_input: RuntimeStepInput,
+    ) -> CameraObservationCommand:
+        action = decision.effective_action
+        yaw = _wrap_degrees(runtime_camera.yaw_deg + action.yaw_delta_deg)
+        pitch = float(
+            np.clip(
+                runtime_camera.pitch_deg + action.pitch_delta_deg,
+                -89.9,
+                89.9,
+            )
+        )
+        position = _active_camera_position(runtime_camera, step_input)
+        aim_point = position + _direction_from_yaw_pitch(yaw, pitch) * 1_000.0
+        config = self._require_ready()
+        wide_fov = (
+            config.camera_horizontal_fov_deg
+            if runtime_camera.platform_kind == "interceptor"
+            else config.recon_camera_horizontal_fov_deg
+        )
+        horizontal_fov = (
+            float(wide_fov)
+            if action.fov_mode is ActiveVisionFovMode.WIDE
+            else min(
+                float(self.stack_config.d5_active_vision_zoom_fov_deg),
+                float(wide_fov) * 0.75,
+            )
+        )
+        reason = action.reason
+        if decision.fallback_reason is not None:
+            reason = f"{reason}|fallback={decision.fallback_reason}"
+        return CameraObservationCommand(
+            camera_id=action.camera_id,
+            resource_id=runtime_camera.resource_id,
+            issued_timestamp=action.issued_timestamp,
+            expires_timestamp=action.expires_timestamp,
+            plan_version=action.plan_version,
+            coalition_version=action.coalition_version,
+            communication_version=action.communication_version,
+            intent=action.intent.value,
+            aim_point_ned=aim_point,
+            horizontal_fov_deg=horizontal_fov,
+            fov_mode=action.fov_mode.value,
+            target_global_track_id=action.target_global_track_id,
+            requested_mode=decision.requested_mode.value,
+            effective_mode=decision.effective_mode.value,
+            reason=reason,
         )
 
     def _d4_region_resource_snapshot(
@@ -1975,6 +2302,45 @@ class IntegratedScalableModuleStack:
             copy_payload=False,
         )
 
+    def _d5_active_vision_publication(
+        self,
+        now: float,
+        commands: tuple[CameraObservationCommand, ...],
+    ) -> RuntimePublication:
+        mode_counts = Counter(command.effective_mode for command in commands)
+        intent_counts = Counter(command.intent for command in commands)
+        return RuntimePublication(
+            topic="modules.d5.active_vision",
+            source="D5",
+            schema_version="d5.active-vision-runtime.v1",
+            payload={
+                "timestamp": now,
+                "command_count": len(commands),
+                "effective_mode_counts": dict(sorted(mode_counts.items())),
+                "intent_counts": dict(sorted(intent_counts.items())),
+                "commands": [
+                    {
+                        "camera_id": command.camera_id,
+                        "resource_id": command.resource_id,
+                        "issued_timestamp": command.issued_timestamp,
+                        "expires_timestamp": command.expires_timestamp,
+                        "plan_version": command.plan_version,
+                        "coalition_version": command.coalition_version,
+                        "communication_version": command.communication_version,
+                        "intent": command.intent,
+                        "horizontal_fov_deg": command.horizontal_fov_deg,
+                        "fov_mode": command.fov_mode,
+                        "target_global_track_id": command.target_global_track_id,
+                        "requested_mode": command.requested_mode,
+                        "effective_mode": command.effective_mode,
+                        "reason": command.reason,
+                    }
+                    for command in commands
+                ],
+            },
+            copy_payload=False,
+        )
+
     def _d7_publication(self, now: float) -> RuntimePublication:
         commands = self.latest_guidance_batch.pair_commands
         mode_counts = Counter(command.mode.value for command in commands)
@@ -2024,6 +2390,29 @@ class IntegratedScalableModuleStack:
                 else sum(
                     item.global_track_id is not None
                     for item in self.latest_d5_result.association.bindings
+                )
+            ),
+            "d5_active_vision_command_count": len(
+                self.latest_active_vision_decisions
+            ),
+            "d5_active_vision_requested_mode": (
+                self.stack_config.d5_active_vision_mode
+            ),
+            "d5_active_vision_effective_mode_counts": dict(
+                sorted(
+                    Counter(
+                        decision.effective_mode.value
+                        for decision in self.latest_active_vision_decisions
+                    ).items()
+                )
+            ),
+            "d5_active_vision_fallback_reason_counts": dict(
+                sorted(
+                    Counter(
+                        decision.fallback_reason
+                        for decision in self.latest_active_vision_decisions
+                        if decision.fallback_reason is not None
+                    ).items()
                 )
             ),
             "d7_command_count": (
@@ -2087,6 +2476,122 @@ class IntegratedScalableModuleStack:
         assert self.d5 is not None
         assert self.d7 is not None
         return self.config
+
+
+def _active_camera_position(
+    camera: CameraRuntimeState,
+    step_input: RuntimeStepInput,
+) -> np.ndarray:
+    navigation = (
+        step_input.interceptors
+        if camera.platform_kind == "interceptor"
+        else step_input.recon
+    )
+    try:
+        index = navigation.platform_ids.index(camera.resource_id)
+    except ValueError as exc:
+        raise ValueError(
+            f"active-vision camera resource is unavailable: {camera.resource_id}"
+        ) from exc
+    if not bool(navigation.active[index]):
+        raise ValueError(
+            f"active-vision camera resource is inactive: {camera.resource_id}"
+        )
+    return np.asarray(navigation.state_ned[index, :3], dtype=float)
+
+
+def _predict_track_position(track: Any, now: float) -> tuple[np.ndarray, np.ndarray]:
+    state = np.asarray(track.state, dtype=float).reshape(6)
+    covariance = np.asarray(track.covariance, dtype=float).reshape(6, 6)
+    dt = max(0.0, float(now) - float(track.timestamp))
+    position = state[:3] + state[3:] * dt
+    transition = np.eye(6, dtype=float)
+    transition[:3, 3:] = np.eye(3, dtype=float) * dt
+    propagated = transition @ covariance @ transition.T
+    position_covariance = 0.5 * (
+        propagated[:3, :3] + propagated[:3, :3].T
+    )
+    return position, position_covariance
+
+
+def _yaw_pitch_from_ned(direction_ned: np.ndarray) -> tuple[float, float]:
+    vector = np.asarray(direction_ned, dtype=float).reshape(3)
+    horizontal = float(np.linalg.norm(vector[:2]))
+    if not np.all(np.isfinite(vector)) or float(np.linalg.norm(vector)) < 1.0e-9:
+        return 0.0, 0.0
+    yaw = math.degrees(math.atan2(float(vector[1]), float(vector[0])))
+    pitch = math.degrees(math.atan2(float(-vector[2]), max(horizontal, 1.0e-9)))
+    return _wrap_degrees(yaw), float(np.clip(pitch, -89.9, 89.9))
+
+
+def _direction_from_yaw_pitch(yaw_deg: float, pitch_deg: float) -> np.ndarray:
+    yaw = math.radians(float(yaw_deg))
+    pitch = math.radians(float(pitch_deg))
+    return np.array(
+        [
+            math.cos(pitch) * math.cos(yaw),
+            math.cos(pitch) * math.sin(yaw),
+            -math.sin(pitch),
+        ],
+        dtype=float,
+    )
+
+
+def _wrap_degrees(value: float) -> float:
+    return float((float(value) + 180.0) % 360.0 - 180.0)
+
+
+def _angular_covariance_deg2(
+    relative_ned: np.ndarray,
+    position_covariance_ned: np.ndarray,
+    *,
+    attitude_std_deg: float,
+) -> np.ndarray:
+    relative = np.asarray(relative_ned, dtype=float).reshape(3)
+    covariance = np.asarray(position_covariance_ned, dtype=float).reshape(3, 3)
+    north, east, down = (float(value) for value in relative)
+    horizontal_squared = north * north + east * east
+    range_squared = horizontal_squared + down * down
+    if range_squared < 1.0e-8 or horizontal_squared < 1.0e-8:
+        return np.eye(2, dtype=float) * 1.0e6
+    horizontal = math.sqrt(horizontal_squared)
+    jacobian = np.array(
+        [
+            [-east / horizontal_squared, north / horizontal_squared, 0.0],
+            [
+                down * north / (range_squared * horizontal),
+                down * east / (range_squared * horizontal),
+                -horizontal / range_squared,
+            ],
+        ],
+        dtype=float,
+    )
+    radians_covariance = jacobian @ covariance @ jacobian.T
+    degrees_covariance = radians_covariance * (180.0 / math.pi) ** 2
+    degrees_covariance += np.eye(2, dtype=float) * float(attitude_std_deg) ** 2
+    degrees_covariance = 0.5 * (degrees_covariance + degrees_covariance.T)
+    minimum_eigenvalue = float(np.linalg.eigvalsh(degrees_covariance).min())
+    if minimum_eigenvalue < 0.0:
+        degrees_covariance += np.eye(2, dtype=float) * (-minimum_eigenvalue + 1.0e-9)
+    return degrees_covariance
+
+
+def _vertical_fov_deg(
+    horizontal_fov_deg: float,
+    *,
+    platform_kind: str,
+    config: ScenarioConfig,
+) -> float:
+    if platform_kind == "interceptor":
+        width = config.camera_width_px
+        height = config.camera_height_px
+    else:
+        width = config.recon_camera_width_px
+        height = config.recon_camera_height_px
+    horizontal = math.radians(float(horizontal_fov_deg))
+    return math.degrees(
+        2.0 * math.atan(math.tan(0.5 * horizontal) * float(height) / float(width))
+    )
 
 
 def _batch_modality(batch: OnlineSensorBatch) -> str:

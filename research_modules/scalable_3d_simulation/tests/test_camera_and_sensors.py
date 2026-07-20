@@ -100,6 +100,30 @@ def test_visual_noise_is_seed_reproducible() -> None:
         assert np.array_equal(left.measurement, right.measurement)
 
 
+def test_camera_view_accepts_per_camera_fov_without_changing_other_cameras() -> None:
+    config = ScenarioConfig(
+        target_count=2,
+        resource_count=2,
+        recon_count=1,
+        duration_s=0.1,
+    )
+    snapshot = VectorizedPointMassWorld(config).snapshot()
+    scene = SensorScene(config)
+
+    baseline = {view.sensor_id: view for view in scene.camera_views(snapshot)}
+    overridden = {
+        view.sensor_id: view
+        for view in scene.camera_views(
+            snapshot,
+            camera_horizontal_fov_deg={"CAM-INT-0001": 30.0},
+        )
+    }
+
+    assert overridden["CAM-INT-0001"].intrinsics.fx > baseline["CAM-INT-0001"].intrinsics.fx
+    assert overridden["CAM-INT-0002"].intrinsics.fx == baseline["CAM-INT-0002"].intrinsics.fx
+    assert overridden["CAM-RECON-001"].intrinsics.fx == baseline["CAM-RECON-001"].intrinsics.fx
+
+
 def test_acoustic_bearing_has_class_hint_but_no_online_identity() -> None:
     config = ScenarioConfig(
         target_count=2,

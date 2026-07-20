@@ -91,6 +91,7 @@ class EpisodeManifest:
     d3_policy_version: str
     d4_policy_version: str
     d5_model_version: str
+    d5_active_vision_policy_version: str
     d7_model_version: str
     threshold_version: str
 
@@ -237,6 +238,7 @@ def build_episode_manifest(
         d3_policy_version=config.d3_policy_version,
         d4_policy_version=config.d4_policy_version,
         d5_model_version=config.d5_model_version,
+        d5_active_vision_policy_version=config.d5_active_vision_policy_version,
         d7_model_version=config.d7_model_version,
         threshold_version=config.threshold_version,
     )

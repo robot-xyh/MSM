@@ -32,16 +32,23 @@ def test_default_resolution_preserves_rule_versions_and_disabled_models() -> Non
     assert resolved.config.d3_policy_version == config.d3_policy_version
     assert resolved.config.d4_policy_version == config.d4_policy_version
     assert resolved.config.d5_model_version == config.d5_model_version
+    assert (
+        resolved.config.d5_active_vision_policy_version
+        == config.d5_active_vision_policy_version
+    )
     assert resolved.stack.d3_learning_assistant is None
     assert resolved.stack.d4_region_advisor is None
     assert resolved.stack.d5_edge_model is None
+    assert resolved.stack.d5_active_vision_policy is None
     assert resolved.diagnostics["default_rule_path_preserved"] is True
     assert resolved.diagnostics["d3"]["effective_mode"] == "disabled"
     assert resolved.diagnostics["d4"]["effective_mode"] == "disabled"
     assert resolved.diagnostics["d5"]["effective_mode"] == "disabled"
+    assert resolved.diagnostics["d5_active_vision"]["effective_mode"] == "disabled"
 
     manifest = build_episode_manifest(resolved.config)
     assert manifest.d4_policy_version == "d4-region-resource-rule-v1"
+    assert manifest.d5_active_vision_policy_version == "d5-active-vision-rule-v1"
     assert resolved.config.metadata["learning_runtime"] == resolved.diagnostics
 
 
@@ -109,3 +116,46 @@ def test_learning_runtime_rejects_invalid_modes() -> None:
         assert "d3_mode" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("invalid mode was accepted")
+
+    try:
+        LearningRuntimeOptions(d5_active_vision_mode="online")
+    except ValueError as exc:
+        assert "d5_active_vision_mode" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("invalid active-vision mode was accepted")
+
+
+def test_missing_active_vision_bundle_falls_back_to_rule_camera_actions(
+    tmp_path: Path,
+) -> None:
+    options = LearningRuntimeOptions(
+        d5_active_vision_mode="assist",
+        d5_active_vision_bundle_dir=tmp_path / "missing-active-vision",
+    )
+    resolved = resolve_learning_runtime(_short_integrated_config(), options)
+
+    diagnostics = resolved.diagnostics["d5_active_vision"]
+    assert diagnostics["bundle_loaded"] is False
+    assert diagnostics["effective_mode"] == "rule_fallback"
+    assert diagnostics["fallback_reason"].startswith("bundle_")
+    assert diagnostics["assist_admitted"] is False
+
+    result = run_episode(resolved.config, module_stack=resolved.stack)
+    messages = [
+        message.payload
+        for message in result.online_messages
+        if message.topic == "modules.d5.active_vision"
+    ]
+    assert messages
+    assert result.summary["camera_command_applied_count"] > 0
+    assert result.summary["camera_command_rejected_count"] == 0
+    assert {
+        command["effective_mode"]
+        for payload in messages
+        for command in payload["commands"]
+    } == {"disabled"}
+    assert all(
+        "bundle_" in command["reason"]
+        for payload in messages
+        for command in payload["commands"]
+    )

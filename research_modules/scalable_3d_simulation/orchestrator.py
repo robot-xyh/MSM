@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, replace
 import heapq
 from pathlib import Path
@@ -26,6 +27,8 @@ from .models import (
 )
 from .sensor_scene import SensorScene
 from .runtime_ports import (
+    CameraObservationCommand,
+    CameraRuntimeState,
     PlatformNavigationBatch,
     RuntimeStepInput,
     ScalableModuleStack,
@@ -147,10 +150,22 @@ class Scalable3DEpisodeRunner:
         last_module_diagnostics: dict[str, Any] = {}
         control_command_tick_count = 0
         proximity_intercepts: list[ProximityInterceptEvent] = []
+        camera_states: dict[str, CameraRuntimeState] = {}
+        camera_command_issued_count = 0
+        camera_command_applied_count = 0
+        camera_command_rejected_count = 0
+        camera_command_rejection_reasons: Counter[str] = Counter()
+        camera_command_ack_count = 0
 
         for step_index in range(step_count):
             snapshot = self.world.snapshot()
             current_time = snapshot.timestamp
+            _refresh_camera_runtime_states(
+                camera_states,
+                config=self.config,
+                snapshot=snapshot,
+                timestamp=current_time,
+            )
             intruder_history[step_index] = snapshot.intruders.state
             interceptor_history[step_index] = snapshot.interceptors.state
             recon_history[step_index] = snapshot.recon.state
@@ -184,7 +199,14 @@ class Scalable3DEpisodeRunner:
 
             if self.config.visual_enabled and current_time + 1.0e-12 >= next_visual_time:
                 started = time.perf_counter()
-                batch = self.sensor_scene.visual_scan(snapshot)
+                batch = self.sensor_scene.visual_scan(
+                    snapshot,
+                    camera_aim_points=_camera_aim_points(camera_states, snapshot),
+                    camera_horizontal_fov_deg={
+                        camera_id: state.horizontal_fov_deg
+                        for camera_id, state in camera_states.items()
+                    },
+                )
                 timing.add("visual_scene", time.perf_counter() - started)
                 offline_labels.extend(batch.offline_truth_labels)
                 for online_batch in _group_sensor_batches(batch.measurements):
@@ -258,6 +280,10 @@ class Scalable3DEpisodeRunner:
                             recon=_platform_navigation_batch(
                                 "recon", snapshot.recon, current_time
                             ),
+                            cameras=tuple(
+                                camera_states[camera_id]
+                                for camera_id in sorted(camera_states)
+                            ),
                         )
                     ).validated(
                         resource_count=self.config.resource_count,
@@ -265,6 +291,28 @@ class Scalable3DEpisodeRunner:
                     )
                     interceptor_command = module_output.interceptor_acceleration_ned
                     recon_command = module_output.recon_acceleration_ned
+                    camera_command_issued_count += len(module_output.camera_commands)
+                    camera_acks = _apply_camera_commands(
+                        camera_states,
+                        module_output.camera_commands,
+                        snapshot=snapshot,
+                        current_timestamp=current_time,
+                    )
+                    for ack in camera_acks:
+                        camera_command_ack_count += 1
+                        if ack["status"] == "applied":
+                            camera_command_applied_count += 1
+                        else:
+                            camera_command_rejected_count += 1
+                            camera_command_rejection_reasons[str(ack["reason"])] += 1
+                        self.bus.publish(
+                            topic="runtime.camera_command_ack",
+                            source="MAIN-RUNTIME",
+                            timestamp=current_time,
+                            schema_version="scalable3d-camera-command-ack-v1",
+                            payload=ack,
+                            copy_payload=False,
+                        )
                     last_module_diagnostics = dict(module_output.diagnostics)
                     publication_started = time.perf_counter()
                     for publication in module_output.publications:
@@ -367,6 +415,14 @@ class Scalable3DEpisodeRunner:
             ),
             "module_final_diagnostics": last_module_diagnostics,
             "control_command_tick_count": control_command_tick_count,
+            "camera_command_issued_count": camera_command_issued_count,
+            "camera_command_applied_count": camera_command_applied_count,
+            "camera_command_rejected_count": camera_command_rejected_count,
+            "camera_command_ack_count": camera_command_ack_count,
+            "camera_command_rejection_reason_counts": dict(
+                sorted(camera_command_rejection_reasons.items())
+            ),
+            "camera_state_count": len(camera_states),
             "intercepted_target_count": len(self.world.intercepted_target_indices),
             "max_target_speed_mps": diagnostics.max_target_speed_mps,
             "max_interceptor_speed_mps": diagnostics.max_interceptor_speed_mps,
@@ -546,3 +602,177 @@ def _learning_artifact_counts(module_stack: ScalableModuleStack | None) -> dict[
         "d4_learning_frame_count": len(artifacts.d4_region_frames),
         "d5_learning_graph_frame_count": len(artifacts.d5_graph_frames),
     }
+
+
+def _refresh_camera_runtime_states(
+    states: dict[str, CameraRuntimeState],
+    *,
+    config: ScenarioConfig,
+    snapshot: Any,
+    timestamp: float,
+) -> None:
+    active_ids: set[str] = set()
+    for platform_kind, platform_snapshot, prefix, default_fov in (
+        (
+            "interceptor",
+            snapshot.interceptors,
+            "CAM-INT-",
+            config.camera_horizontal_fov_deg,
+        ),
+        (
+            "recon",
+            snapshot.recon,
+            "CAM-RECON-",
+            config.recon_camera_horizontal_fov_deg,
+        ),
+    ):
+        digits = 4 if platform_kind == "interceptor" else 3
+        for index, (resource_id, active) in enumerate(
+            zip(platform_snapshot.entity_ids, platform_snapshot.active)
+        ):
+            if not bool(active):
+                continue
+            camera_id = f"{prefix}{index + 1:0{digits}d}"
+            active_ids.add(camera_id)
+            existing = states.get(camera_id)
+            if existing is not None:
+                states[camera_id] = replace(existing, timestamp=float(timestamp))
+                continue
+            position = np.asarray(platform_snapshot.position_ned[index], dtype=float)
+            if platform_kind == "interceptor":
+                direction = np.asarray(platform_snapshot.velocity_ned[index], dtype=float)
+                if float(np.linalg.norm(direction)) < 1.0e-9:
+                    direction = np.array([1.0, 0.0, 0.0], dtype=float)
+            else:
+                direction = np.array([0.0, 0.0, -150.0], dtype=float) - position
+            yaw_deg, pitch_deg = _angles_from_direction(direction)
+            states[camera_id] = CameraRuntimeState(
+                camera_id=camera_id,
+                resource_id=str(resource_id),
+                platform_kind=platform_kind,
+                timestamp=float(timestamp),
+                yaw_deg=yaw_deg,
+                pitch_deg=pitch_deg,
+                horizontal_fov_deg=float(default_fov),
+            )
+    for camera_id in tuple(states):
+        if camera_id not in active_ids:
+            del states[camera_id]
+
+
+def _camera_aim_points(
+    states: dict[str, CameraRuntimeState],
+    snapshot: Any,
+) -> dict[str, np.ndarray]:
+    result: dict[str, np.ndarray] = {}
+    for camera_id, state in states.items():
+        position = _camera_platform_position(state, snapshot)
+        result[camera_id] = position + _direction_from_angles(
+            state.yaw_deg,
+            state.pitch_deg,
+        ) * 1_000.0
+    return result
+
+
+def _apply_camera_commands(
+    states: dict[str, CameraRuntimeState],
+    commands: tuple[CameraObservationCommand, ...],
+    *,
+    snapshot: Any,
+    current_timestamp: float,
+) -> tuple[dict[str, Any], ...]:
+    acknowledgements: list[dict[str, Any]] = []
+    for command in commands:
+        state = states.get(command.camera_id)
+        reason: str | None = None
+        if state is None or state.resource_id != command.resource_id:
+            reason = "camera_or_resource_unavailable"
+        elif current_timestamp + 1.0e-9 < command.issued_timestamp:
+            reason = "command_issued_in_future"
+        elif current_timestamp >= command.expires_timestamp - 1.0e-9:
+            reason = "command_expired"
+        elif command.plan_version < state.last_plan_version:
+            reason = "stale_plan_version"
+        elif (
+            command.plan_version == state.last_plan_version
+            and command.coalition_version < state.last_coalition_version
+        ):
+            reason = "stale_coalition_version"
+        elif command.communication_version < state.last_communication_version:
+            reason = "stale_communication_version"
+
+        if reason is None and state is not None:
+            platform_position = _camera_platform_position(state, snapshot)
+            direction = command.aim_point_ned - platform_position
+            if float(np.linalg.norm(direction)) < 1.0e-6:
+                reason = "degenerate_aim_point"
+            else:
+                yaw_deg, pitch_deg = _angles_from_direction(direction)
+                states[command.camera_id] = CameraRuntimeState(
+                    camera_id=state.camera_id,
+                    resource_id=state.resource_id,
+                    platform_kind=state.platform_kind,
+                    timestamp=float(current_timestamp),
+                    yaw_deg=yaw_deg,
+                    pitch_deg=pitch_deg,
+                    horizontal_fov_deg=command.horizontal_fov_deg,
+                    fov_mode=command.fov_mode,
+                    last_plan_version=command.plan_version,
+                    last_coalition_version=command.coalition_version,
+                    last_communication_version=command.communication_version,
+                )
+
+        acknowledgements.append(
+            {
+                "camera_id": command.camera_id,
+                "resource_id": command.resource_id,
+                "issued_timestamp": command.issued_timestamp,
+                "ack_timestamp": float(current_timestamp),
+                "expires_timestamp": command.expires_timestamp,
+                "plan_version": command.plan_version,
+                "coalition_version": command.coalition_version,
+                "communication_version": command.communication_version,
+                "intent": command.intent,
+                "target_global_track_id": command.target_global_track_id,
+                "requested_mode": command.requested_mode,
+                "effective_mode": command.effective_mode,
+                "status": "applied" if reason is None else "rejected",
+                "reason": "accepted" if reason is None else reason,
+            }
+        )
+    return tuple(acknowledgements)
+
+
+def _camera_platform_position(state: CameraRuntimeState, snapshot: Any) -> np.ndarray:
+    platform = snapshot.interceptors if state.platform_kind == "interceptor" else snapshot.recon
+    try:
+        index = tuple(platform.entity_ids).index(state.resource_id)
+    except ValueError as exc:
+        raise ValueError(f"camera resource is absent from world snapshot: {state.resource_id}") from exc
+    return np.asarray(platform.position_ned[index], dtype=float)
+
+
+def _angles_from_direction(direction_ned: np.ndarray) -> tuple[float, float]:
+    vector = np.asarray(direction_ned, dtype=float).reshape(3)
+    norm = float(np.linalg.norm(vector))
+    if not np.isfinite(norm) or norm < 1.0e-9:
+        raise ValueError("camera direction must be finite and non-zero")
+    unit = vector / norm
+    yaw_deg = float(np.degrees(np.arctan2(unit[1], unit[0])))
+    pitch_deg = float(np.degrees(np.arctan2(-unit[2], np.linalg.norm(unit[:2]))))
+    return float(np.clip(yaw_deg, -180.0, 180.0)), float(
+        np.clip(pitch_deg, -89.9, 89.9)
+    )
+
+
+def _direction_from_angles(yaw_deg: float, pitch_deg: float) -> np.ndarray:
+    yaw = np.radians(float(yaw_deg))
+    pitch = np.radians(float(pitch_deg))
+    return np.array(
+        [
+            np.cos(pitch) * np.cos(yaw),
+            np.cos(pitch) * np.sin(yaw),
+            -np.sin(pitch),
+        ],
+        dtype=float,
+    )

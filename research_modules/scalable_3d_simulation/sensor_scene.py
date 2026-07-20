@@ -217,12 +217,17 @@ class SensorScene:
         snapshot: WorldSnapshot,
         *,
         camera_aim_points: Mapping[str, np.ndarray] | None = None,
+        camera_horizontal_fov_deg: Mapping[str, float] | None = None,
     ) -> ObservationBatch:
         """Project active intruders into all interceptor and recon cameras."""
 
         self._visual_scan_index += 1
         timestamp = float(snapshot.timestamp)
-        views = self.camera_views(snapshot, camera_aim_points=camera_aim_points)
+        views = self.camera_views(
+            snapshot,
+            camera_aim_points=camera_aim_points,
+            camera_horizontal_fov_deg=camera_horizontal_fov_deg,
+        )
         active_indices = np.flatnonzero(snapshot.intruders.active)
         active_positions = snapshot.intruders.position_ned[active_indices]
         point_covariance = np.broadcast_to(
@@ -346,21 +351,13 @@ class SensorScene:
         snapshot: WorldSnapshot,
         *,
         camera_aim_points: Mapping[str, np.ndarray] | None = None,
+        camera_horizontal_fov_deg: Mapping[str, float] | None = None,
     ) -> tuple[CameraView, ...]:
         """Build current camera extrinsics without exposing target identity."""
 
         aim_points = camera_aim_points or {}
+        fov_overrides = camera_horizontal_fov_deg or {}
         views: list[CameraView] = []
-        interceptor_intrinsics = CameraIntrinsics.from_horizontal_fov(
-            width_px=self.config.camera_width_px,
-            height_px=self.config.camera_height_px,
-            horizontal_fov_deg=self.config.camera_horizontal_fov_deg,
-        )
-        recon_intrinsics = CameraIntrinsics.from_horizontal_fov(
-            width_px=self.config.recon_camera_width_px,
-            height_px=self.config.recon_camera_height_px,
-            horizontal_fov_deg=self.config.recon_camera_horizontal_fov_deg,
-        )
         for index, (position, velocity, active) in enumerate(
             zip(
                 snapshot.interceptors.position_ned,
@@ -381,6 +378,15 @@ class SensorScene:
                 aim_points.get(sensor_id, camera_position + direction * 1_000.0),
                 dtype=float,
             )
+            intrinsics = CameraIntrinsics.from_horizontal_fov(
+                width_px=self.config.camera_width_px,
+                height_px=self.config.camera_height_px,
+                horizontal_fov_deg=_camera_fov(
+                    fov_overrides,
+                    sensor_id,
+                    self.config.camera_horizontal_fov_deg,
+                ),
+            )
             views.append(
                 CameraView(
                     sensor_id=sensor_id,
@@ -393,7 +399,7 @@ class SensorScene:
                         attitude_covariance_rad2=np.eye(3, dtype=float)
                         * math.radians(0.08) ** 2,
                     ),
-                    intrinsics=interceptor_intrinsics,
+                    intrinsics=intrinsics,
                 )
             )
         for index, (position, active) in enumerate(
@@ -405,6 +411,15 @@ class SensorScene:
             target = np.asarray(
                 aim_points.get(sensor_id, np.array([0.0, 0.0, -150.0], dtype=float)),
                 dtype=float,
+            )
+            intrinsics = CameraIntrinsics.from_horizontal_fov(
+                width_px=self.config.recon_camera_width_px,
+                height_px=self.config.recon_camera_height_px,
+                horizontal_fov_deg=_camera_fov(
+                    fov_overrides,
+                    sensor_id,
+                    self.config.recon_camera_horizontal_fov_deg,
+                ),
             )
             views.append(
                 CameraView(
@@ -418,7 +433,7 @@ class SensorScene:
                         attitude_covariance_rad2=np.eye(3, dtype=float)
                         * math.radians(0.04) ** 2,
                     ),
-                    intrinsics=recon_intrinsics,
+                    intrinsics=intrinsics,
                 )
             )
         return tuple(views)
@@ -471,6 +486,9 @@ class SensorScene:
 
 
 def _camera_metadata(view: CameraView, bbox_area: float, scan_index: int) -> dict[str, object]:
+    horizontal_fov_deg = math.degrees(
+        2.0 * math.atan(view.intrinsics.width_px / (2.0 * view.intrinsics.fx))
+    )
     return {
         "measurement_order": ["u", "v", "xmin", "ymin", "xmax", "ymax"],
         "camera_position_ned": view.pose.position_ned.tolist(),
@@ -484,6 +502,7 @@ def _camera_metadata(view: CameraView, bbox_area: float, scan_index: int) -> dic
             "cy": view.intrinsics.cy,
         },
         "camera_kind": view.platform_kind,
+        "camera_horizontal_fov_deg": float(horizontal_fov_deg),
         "bbox_area_px2": float(bbox_area),
         "scan_index": int(scan_index),
     }
@@ -491,3 +510,14 @@ def _camera_metadata(view: CameraView, bbox_area: float, scan_index: int) -> dic
 
 def _wrap_angle(value: float) -> float:
     return float((value + np.pi) % (2.0 * np.pi) - np.pi)
+
+
+def _camera_fov(
+    overrides: Mapping[str, float],
+    sensor_id: str,
+    default_fov_deg: float,
+) -> float:
+    value = float(overrides.get(sensor_id, default_fov_deg))
+    if not np.isfinite(value) or not 1.0 < value < 179.0:
+        raise ValueError(f"invalid horizontal FOV for {sensor_id}")
+    return value

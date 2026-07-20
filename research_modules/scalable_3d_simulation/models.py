@@ -116,6 +116,7 @@ class ScenarioConfig:
     d3_policy_version: str = "d3-scalable3d-rule-cost-v1"
     d4_policy_version: str = "d4-region-resource-rule-v1"
     d5_model_version: str = "d5-scalable3d-geometry-rule-v1"
+    d5_active_vision_policy_version: str = "d5-active-vision-rule-v1"
     d7_model_version: str = "d7-scalable3d-guidance-v1"
     threshold_version: str = DEFAULT_THRESHOLD_VERSION
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -216,6 +217,7 @@ class ScenarioConfig:
             "d3_policy_version",
             "d4_policy_version",
             "d5_model_version",
+            "d5_active_vision_policy_version",
             "d7_model_version",
             "threshold_version",
         ):

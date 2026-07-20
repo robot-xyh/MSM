@@ -33,15 +33,22 @@ class LearningRuntimeOptions:
     d4_mode: str = "disabled"
     d4_bundle_dir: Path | None = None
     d5_bundle_dir: Path | None = None
+    d5_active_vision_mode: str = "disabled"
+    d5_active_vision_bundle_dir: Path | None = None
     device: str = "cpu"
 
     def __post_init__(self) -> None:
-        for name in ("d3_mode", "d4_mode"):
+        for name in ("d3_mode", "d4_mode", "d5_active_vision_mode"):
             value = str(getattr(self, name)).strip().lower()
             if value not in _LEARNING_MODES:
                 raise ValueError(f"{name} must be disabled, shadow, or assist")
             object.__setattr__(self, name, value)
-        for name in ("d3_bundle_dir", "d4_bundle_dir", "d5_bundle_dir"):
+        for name in (
+            "d3_bundle_dir",
+            "d4_bundle_dir",
+            "d5_bundle_dir",
+            "d5_active_vision_bundle_dir",
+        ):
             value = getattr(self, name)
             if value is not None:
                 object.__setattr__(self, name, Path(value))
@@ -56,6 +63,8 @@ class LearningRuntimeOptions:
             self.d3_mode != "disabled"
             or self.d4_mode != "disabled"
             or self.d5_bundle_dir is not None
+            or self.d5_active_vision_mode != "disabled"
+            or self.d5_active_vision_bundle_dir is not None
         )
 
 
@@ -90,9 +99,11 @@ def resolve_learning_runtime(
     d3_assistant: Any | None = None
     d4_advisor: Any | None = None
     d5_edge_model: Any | None = None
+    d5_active_vision_policy: Any | None = None
     d3_version = config.d3_policy_version
     d4_version = config.d4_policy_version
     d5_version = config.d5_model_version
+    d5_active_vision_version = config.d5_active_vision_policy_version
 
     d3_diagnostics: dict[str, Any] = {
         "requested_mode": selected.d3_mode,
@@ -219,12 +230,90 @@ def resolve_learning_runtime(
             )
             d5_version = f"d5-crossview-gnn-v{semantic_version}+{fingerprint[:12]}"
 
+    d5_active_vision_diagnostics: dict[str, Any] = {
+        "requested_mode": selected.d5_active_vision_mode,
+        "effective_mode": "disabled",
+        "bundle_requested": selected.d5_active_vision_bundle_dir is not None,
+        "bundle_loaded": False,
+        "assist_admitted": False,
+        "fallback_reason": None,
+        "model_semantic_version": None,
+        "model_fingerprint": None,
+        "bundle_manifest_sha256": None,
+        "bundle_weights_sha256": None,
+    }
+    if (
+        selected.d5_active_vision_mode != "disabled"
+        or selected.d5_active_vision_bundle_dir is not None
+    ):
+        from research_modules.d5_terminal_association.src.d5_terminal_association import (
+            UnavailableActiveVisionPolicy,
+            load_active_vision_model_bundle_for_runtime,
+        )
+
+        if selected.d5_active_vision_bundle_dir is None:
+            d5_active_vision_policy = UnavailableActiveVisionPolicy(
+                failure_reason="model_bundle_missing"
+            )
+        else:
+            d5_active_vision_policy = load_active_vision_model_bundle_for_runtime(
+                selected.d5_active_vision_bundle_dir,
+                device=selected.device,
+            )
+        available = bool(getattr(d5_active_vision_policy, "available", False))
+        admitted = bool(
+            getattr(d5_active_vision_policy, "assist_admitted", False)
+        )
+        fallback_reason = None
+        if not available:
+            fallback_reason = str(
+                getattr(
+                    d5_active_vision_policy,
+                    "failure_reason",
+                    "model_unavailable",
+                )
+            )
+        elif selected.d5_active_vision_mode == "assist" and not admitted:
+            fallback_reason = "assist_not_admitted"
+        effective_mode = selected.d5_active_vision_mode
+        if fallback_reason is not None:
+            effective_mode = "rule_fallback"
+        elif selected.d5_active_vision_mode == "disabled":
+            effective_mode = "disabled"
+        d5_active_vision_diagnostics.update(
+            effective_mode=effective_mode,
+            bundle_loaded=available,
+            assist_admitted=admitted,
+            fallback_reason=fallback_reason,
+        )
+        if available:
+            manifest = getattr(d5_active_vision_policy, "manifest", {})
+            semantic_version = str(
+                manifest.get("model_semantic_version", "unknown")
+            )
+            fingerprint = str(d5_active_vision_policy.model_fingerprint)
+            d5_active_vision_diagnostics.update(
+                model_semantic_version=semantic_version,
+                model_fingerprint=fingerprint,
+                bundle_manifest_sha256=str(
+                    d5_active_vision_policy.bundle_manifest_sha256
+                ),
+                bundle_weights_sha256=str(
+                    d5_active_vision_policy.bundle_weights_sha256
+                ),
+            )
+            d5_active_vision_version = (
+                f"d5-active-vision-v{semantic_version}+"
+                f"{fingerprint.removeprefix('sha256:')[:12]}"
+            )
+
     diagnostics = {
         "schema_version": "scalable3d-learning-runtime-v1",
         "device": selected.device,
         "d3": d3_diagnostics,
         "d4": d4_diagnostics,
         "d5": d5_diagnostics,
+        "d5_active_vision": d5_active_vision_diagnostics,
         "default_rule_path_preserved": True,
     }
     metadata = dict(config.metadata)
@@ -234,14 +323,20 @@ def resolve_learning_runtime(
         d3_policy_version=d3_version,
         d4_policy_version=d4_version,
         d5_model_version=d5_version,
+        d5_active_vision_policy_version=d5_active_vision_version,
         metadata=metadata,
     )
+    resolved_stack_config = replace(
+        stack_config or IntegratedStackConfig(),
+        d5_active_vision_mode=selected.d5_active_vision_mode,
+    )
     stack = IntegratedScalableModuleStack(
-        config=stack_config,
+        config=resolved_stack_config,
         d3_learning_assistant=d3_assistant,
         d4_region_advisor=d4_advisor,
         d4_unseen_seed_count=0,
         d5_edge_model=d5_edge_model,
+        d5_active_vision_policy=d5_active_vision_policy,
         learning_runtime_diagnostics=diagnostics,
     )
     return ResolvedLearningRuntime(
@@ -267,6 +362,12 @@ def add_learning_runtime_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--d4-model-bundle", type=Path)
     parser.add_argument("--d5-model-bundle", type=Path)
+    parser.add_argument(
+        "--d5-active-vision-mode",
+        choices=tuple(sorted(_LEARNING_MODES)),
+        default="disabled",
+    )
+    parser.add_argument("--d5-active-vision-bundle", type=Path)
     parser.add_argument("--learning-device", default="cpu")
 
 
@@ -277,6 +378,8 @@ def learning_runtime_options_from_args(args: argparse.Namespace) -> LearningRunt
         d4_mode=args.d4_learning_mode,
         d4_bundle_dir=args.d4_model_bundle,
         d5_bundle_dir=args.d5_model_bundle,
+        d5_active_vision_mode=args.d5_active_vision_mode,
+        d5_active_vision_bundle_dir=args.d5_active_vision_bundle,
         device=args.learning_device,
     )
 

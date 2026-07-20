@@ -22,7 +22,9 @@ from research_modules.scalable_3d_simulation.models import (
 )
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
 from research_modules.scalable_3d_simulation.runtime_ports import (
+    CameraObservationCommand,
     RuntimePublication,
+    RuntimeStepInput,
     RuntimeStepOutput,
 )
 
@@ -54,6 +56,7 @@ def test_manifest_hash_and_episode_id_change_with_configuration() -> None:
     assert first.config_sha256 != second.config_sha256
     assert first.episode_id != second.episode_id
     assert first.world_schema == "scalable3d-world-v1"
+    assert first.d5_active_vision_policy_version == "d5-active-vision-rule-v1"
 
 
 def test_bus_sequences_messages_and_network_applies_transport_delay() -> None:
@@ -242,6 +245,42 @@ class _ConstantCommandStack:
         )
 
 
+class _StaleCameraCommandStack:
+    def __init__(self) -> None:
+        self.config: ScenarioConfig | None = None
+        self.calls = 0
+
+    def reset(self, config: ScenarioConfig) -> None:
+        self.config = config
+        self.calls = 0
+
+    def step(self, step_input: RuntimeStepInput) -> RuntimeStepOutput:
+        assert self.config is not None
+        self.calls += 1
+        camera = step_input.cameras[0]
+        position = step_input.interceptors.state_ned[0, :3]
+        plan_version = 2 if self.calls == 1 else 1
+        return RuntimeStepOutput(
+            interceptor_acceleration_ned=np.zeros((self.config.resource_count, 3)),
+            recon_acceleration_ned=np.zeros((self.config.recon_count, 3)),
+            camera_commands=(
+                CameraObservationCommand(
+                    camera_id=camera.camera_id,
+                    resource_id=camera.resource_id,
+                    issued_timestamp=step_input.timestamp,
+                    expires_timestamp=step_input.timestamp + 0.2,
+                    plan_version=plan_version,
+                    coalition_version=0,
+                    communication_version=self.calls,
+                    intent="search_sector",
+                    aim_point_ned=position + np.array([1_000.0, 0.0, 0.0]),
+                    horizontal_fov_deg=30.0,
+                    fov_mode="zoom",
+                ),
+            ),
+        )
+
+
 def test_runtime_publication_keeps_safe_copy_as_the_default() -> None:
     publication = RuntimePublication(
         topic="modules.test",
@@ -284,3 +323,34 @@ def test_module_stack_publication_cannot_leak_actor_identity() -> None:
     )
     with pytest.raises(ValueError, match="truth fields"):
         run_episode(config, module_stack=_ConstantCommandStack(publish_truth=True))
+
+
+def test_runtime_applies_current_camera_command_and_rejects_stale_plan() -> None:
+    config = ScenarioConfig(
+        target_count=1,
+        resource_count=1,
+        recon_count=0,
+        duration_s=0.15,
+        radar_enabled=False,
+        acoustic_enabled=False,
+        visual_enabled=False,
+    )
+
+    result = run_episode(config, module_stack=_StaleCameraCommandStack())
+
+    assert result.summary["camera_command_issued_count"] == 3
+    assert result.summary["camera_command_applied_count"] == 1
+    assert result.summary["camera_command_rejected_count"] == 2
+    assert result.summary["camera_command_rejection_reason_counts"] == {
+        "stale_plan_version": 2
+    }
+    acknowledgements = [
+        message.payload
+        for message in result.online_messages
+        if message.topic == "runtime.camera_command_ack"
+    ]
+    assert [item["status"] for item in acknowledgements] == [
+        "applied",
+        "rejected",
+        "rejected",
+    ]
