@@ -59,11 +59,27 @@ python3 research_modules/scalable_3d_simulation/run_learning_dataset.py \
   --duration 2
 ```
 
-该入口每个 episode 结束后立即写入 D3/D4/D5 staging，只在内存中保留轻量进度行。正式
-模式要求完整场景目录、五档规模、训练 seed 与保留评估 seed 零重叠、干净工作树和 Git
+该入口每个 episode 结束后立即写入 D3/D4/D5 staging，只在内存中保留轻量进度行。批次
+成功最终化后，根目录保留 `episodes.jsonl`，已经转换为正式 D3 数据集的重复 staging 会被
+删除；finalizer 异常或 D4 数据条件不足时保留相应 staging 供诊断和恢复。正式模式要求完整
+场景目录、五档规模、训练 seed 与保留评估 seed 零重叠、干净工作树和 Git
 忽略的输出目录。D5 主动视觉按数值 seed 跨场景/规模原子切分；默认 20% 测试比例和至少
 20 个未见测试 seed，因此正式计划还必须提供足够的唯一生成 seed。该条件在 episode 启动
 前检查，不能等批量运行结束后再失败。
+
+冻结的首版训练计划为 `configs/learning_generation_balanced_v1.json`。它使用 100 个生成
+seed，按五个 20-seed 分块均衡分配到 9 类场景和 5 档规模；每个场景/规模 cell 有 20 个
+episode，总计 900 个。seed 1000-1019 完全保留给最终评估。正式运行命令为：
+
+```bash
+python3 research_modules/scalable_3d_simulation/run_learning_dataset.py \
+  --schedule research_modules/scalable_3d_simulation/configs/learning_generation_balanced_v1.json \
+  --formal \
+  --output research_modules/scalable_3d_simulation/outputs/learning_generation_v1
+```
+
+正式预检要求完整 45 个场景/规模组合且每个组合至少 20 个 seed，同时记录 schedule SHA256。
+当前容量门尚未通过，以上命令不得启动完整批次。
 
 学习模型默认关闭。显式研究运行可增加下列参数；bundle 缺失、校验失败、分布外、低置信或
 超时均保留规则路径：
@@ -134,10 +150,21 @@ D4 区域策略、A3 主动视觉、C1 学习组合和 F1 故障/高威胁完整
 
 ## 当前验证
 
-2026-07-20 的 main 集成回归为 **55/55 passed**。其中 5v5、seed 7、1.2 秒场景形成
+2026-07-20 的 main 集成回归为 **68/68 passed**。其中 5v5、seed 7、1.2 秒场景形成
 5 条 D1 航迹、5 条 D2 中心航迹、5 项 D3 分配和 5 路 D7 中段指令，在线真值字段使用为
 0。200v200、seed 17、0.25 秒雷达烟测形成 200 条 D1/D2 航迹和 200 项分配；D3 从
 40000 个完整 pair 中保留 6400 条候选边，D7 输出 `(200, 3)` 有限加速度。
+
+同日补齐 D1/D2/D6 真值隔离评估链。D1 最终在线证据按观测保存创新平方和、门控、
+六维估计、协方差、距离分档和乱序重放版本；D2 只依据 D1 源观测谱系生成逐帧中心航迹
+真值映射。main 以 `observation_id + measurement_timestamp` 将每条 D1 在线证据精确连接
+到 D2 `global_track_id` 和离线 `truth_id`，不使用航迹区间前向填充。连接不完整时相关
+身份指标保持 unavailable。在线证据、离线真值状态、规范映射和结果文件分别写盘并绑定
+真实文件 SHA256。D6 再通过公开适配器
+输出逐 seed CSV、传感器/距离分档 CSV、聚合 JSON 和中文报告。5v5、seed 7、1.2 秒
+回归中 D1 位置/速度 RMSE、NEES、NIS 均为 available，D2 `id_switch_count=0` 是有证据
+的零；无模块栈时该字段保持 null/unavailable。该结果验证合同和写盘链，不是多 seed
+精度达标结论。
 
 中心失效场景已验证单一高空侦察节点覆盖全部活动区域时，D3 发布严格更新版本且 owner
 切换为 `RECON-001`。两个二级节点可发布一份多 owner 区域计划；中心和二级先后失效时，
@@ -206,8 +233,15 @@ counterfactual 回填、正式行为克隆或近端策略优化结果。
 每例 2 秒完成 6 个开发 episode。6/6 均为有限状态，在线真值使用为 0；导出 D3 12 帧、
 D4 12 帧、D5 图 11 帧和主动视觉 107 帧。D5 图数据集成功最终化；主动视觉因计划测试
 seed 只有 1 个而以 `insufficient_unseen_test_seeds` 保留 staging，符合失败关闭。开发输出
-共 4.4 MB，其中主动视觉约 3.6 MB。该样本规模不能外推正式容量；当前磁盘只剩约 11 GB，
-正式五档、全场景数据生成前必须完成按规模的容量实测、压缩/采样策略和存储位置确认。
+共 4.4 MB，其中主动视觉约 3.6 MB。
+
+随后使用 nominal、2 秒、seed 903-905 对五档规模完成脏工作树容量探针。三个 episode 的
+目录大小依次为 0.53、2.30、6.83、14.33 和 31.71 MB；200v200 三次实时因子为
+0.033、0.048 和 0.037。旧探针的 200v200 目录中有约 11.75 MB 已消费 D3 staging，本版
+finalizer 已删除该重复副本，但尚未在干净提交上重测。该证据说明名义容量可能可控，同时
+证明 100/200 档远低于实时。当前约 10.7 GB 可用空间不能直接承担 900 episode 正式生成。
+仍需覆盖其余八类场景，测量密集视觉、通信退化和故障场景的最坏容量，再冻结压缩、采样和
+外部制品位置。
 
 每个物理步结束后，离线评估侧按三维 5 米门限登记唯一接近事件。事件中的真值目标号只
 写入 `offline_proximity_intercepts.jsonl`，不进入在线总线；D6 还需结合分配与身份映射
@@ -229,6 +263,9 @@ seed 只有 1 个而以 `insufficient_unseen_test_seeds` 保留 staging，符合
 - 主动视觉策略：`d5-active-vision-rule-v1` 或模型语义版本加权重指纹
 - 相机命令确认：`scalable3d-camera-command-ack-v1`
 - 实验矩阵：`scalable3d-experiment-matrix-v1`
+- D1 离线一致性清单：`scalable3d-offline-consistency-evaluation-manifest-v1`
+- D2 身份评估清单：`scalable3d-offline-identity-evaluation-manifest-v1`
+- D6 真值隔离清单：`scalable3d-d6-truth-isolated-manifest-v1`
 
 每个 episode 的 `manifest.json` 记录上述版本、Git commit、配置 SHA256、seed、模型版本和
 阈值版本。在线总线拒绝任何包含 truth/actor/object identity 字段的观测负载。

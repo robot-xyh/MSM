@@ -96,9 +96,9 @@ commit。
 
 ### 2026-07-20 阶段状态
 
-- 阶段 1-3 已完成，世界、传感器、真值隔离和集成合同由当前 55 项测试覆盖。
+- 阶段 1-3 已完成，世界、传感器、真值隔离和集成合同由当前 68 项测试覆盖。
 - D1、D2、D3、D4、D5、D7 的 scalable 3D 模块入口已接入 main-owned
-  `IntegratedScalableModuleStack`；当前 main 集成测试总计 55 项通过。
+  `IntegratedScalableModuleStack`；当前 main 集成测试总计 68 项通过。
 - 5v5 规则闭环和 200v200 的 0.25 秒雷达烟测已通过。后者形成 200 条中心航迹、200 项
   分配和 200 路三维导引命令，候选边为 6400/40000；该短时结果不能替代长时多 seed。
 - 单一二级、多二级区域 owner 和二级再次失效后的完全分布式 D3 计划已在质点模块栈闭合。
@@ -124,6 +124,12 @@ commit。
   优化、bundle 和运行时相机 ACK 已接线，但尚无正式训练数据、checkpoint 或至少 20 个
   未见 seed 准入证据。正式结论至少使用 20 个未见 seed。D1/D2 仍需在同批次完成
   NIS/NEES、门控率和高机动 coverage 标定。
+- D1/D2/D6 公共评估制品已经接入每个持久化 episode。D1 在线证据、离线真值状态和
+  D2 规范映射分别绑定来源 SHA256；D2 身份评估保持显式 `id_switch_count` 和 availability；
+  D6 自动生成单 episode 与批量逐 seed/聚合/中文报告。当前 5v5 和双 seed 3v3 回归通过，
+  D1 证据通过 `observation_id + measurement_timestamp` 与 D2 规范身份精确联接，不按
+  航迹时间区间前向填充。上述回归只证明证据链、真值隔离和聚合合同，尚未完成五档规模
+  各 20 个未见 seed 的正式统计。
 - 传感器到融合中心的实际批次已经接入确定性通信队列。传感器处理完成时间与网络到达
   时间分离，通信时延、抖动、带宽序列化和丢包会改变 D1 实际收到的批次及
   `arrival_timestamp`，episode 同步输出通信计数和字节统计。D1-D7 组合栈仍为进程内
@@ -132,8 +138,10 @@ commit。
   代价帧；D4 保存区域图和可选建议；D5 数值图与 `observation_id -> truth label` 离线
   连接结果分文件保存。`run_learning_dataset.py` 在每个 episode 结束后立即写 staging，不保留
   完整 episode 状态；生成计划检查重复 cell、训练/保留评估 seed 交集、干净工作树、输出目录
-  和剩余磁盘。正式模式还会在运行前计算 D5 主动视觉测试 seed 数，少于 20 时直接拒绝。
-  nominal 2v2/5v5、3 seed、6 episode 开发 smoke 已通过，在线真值使用为 0。
+  和剩余磁盘。批次成功最终化后将 episode 索引固化到根目录，并删除已消费的 D3 重复
+  staging；finalizer 失败时保留暂存供恢复。正式模式还会在运行前计算 D5 主动视觉测试 seed
+  数，少于 20 时直接拒绝。nominal 2v2/5v5、3 seed、6 episode 开发 smoke 已通过，在线
+  真值使用为 0。
 - D5 主动视觉已新增整 episode 数据导出。每个决策保存真值隔离快照、规则示范、请求/
   实际动作和同帧相机反馈；在线记录与离线 outcome/reward/counterfactual 文件物理分离。
   main 当前只写显式 unavailable/null 标签，不伪造 reward、反事实或 ACK。D5 已将
@@ -141,9 +149,16 @@ commit。
   不可分，同一数值 seed 跨所有场景和规模保持同一 split。三 seed smoke 的主动视觉 107 帧
   因测试 seed 仅 1 个而拒绝最终化，符合失败关闭；正式 D6 标签回填、行为克隆、近端策略
   优化和 checkpoint 准入仍待完成。
-- 流式 smoke 总输出 4.4 MB，主动视觉占 3.6 MB。该数据只覆盖 2v2/5v5，不能用于估算
-  200v200。当前根分区约剩 11 GB，正式生成前需先按 5/20/50/100/200 分档测量每 episode
-  容量，确定压缩、保留频率和外部制品位置；未完成容量门控前不得启动全目录正式批次。
+- 五档 nominal、2 秒、seed 903-905 的脏工作树容量探针已经完成。三个 episode 的目录大小
+  依次约为 0.53、2.30、6.83、14.33 和 31.71 MB；200v200 实时因子范围为 0.033-0.048。
+  旧探针包含约 11.75 MB 已消费 D3 staging，本版 finalizer 已消除该重复副本。当前证据仍
+  缺少干净提交复测和其余八类场景，尤其是密集视觉、通信退化与故障条件的最坏容量。
+  根分区约剩 10.7 GB；完成九场景容量门、压缩/采样策略和外部制品位置确认前，不启动
+  900 episode 正式批次。
+- 首版正式训练 schedule 已冻结为 `learning_generation_balanced_v1.json`：100 个生成 seed
+  通过五个分块按场景/规模均衡轮换，每个 45 个 cell 各有 20 个 seed，共 900 episode；
+  seed 1000-1019 保留为最终评估集。runner 在开始前核对完整笛卡尔目录、逐 cell 分母、
+  全局 seed 隔离和 schedule SHA256。该 schedule 只冻结实验设计，不表示容量门或训练已完成。
 - main 已持久化相机指向和视场，D5 每个视觉周期输出带计划、联盟、通信版本和有效期的
   相机命令。相机执行器只接受非过时命令并发布 ACK；学习 disabled/shadow/assist 均保留
   确定性规则安全外壳。5v5 开发冒烟的 84 条命令及 200v200 单 seed 开发诊断的 1872 条

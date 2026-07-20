@@ -6,6 +6,24 @@
 
 **P0/P1 状态入口**：本文是 main 层唯一的实现差距与 P0/P1 状态入口，集中维护 owner、当前状态、缺少条件和验收口径。2026-07-14 canonical actual-execution 证据链已完成真实 AirSim seed-1 复验：tuned 2v2 与 M5N2 均生成并通过校验的 `d7-actual-execution-metrics-v2`，不存在 unavailable artifact；`control_commands.csv`、`intercept_summary.json` 和 actual envelope 的物理成功数一致，控制计划 ID 与同一个 canonical D3 history 一致，身份和状态在线真值使用计数均为 0。2026-07-15 main/D6 进一步关闭“只有总耗时、无法定位预算违例阶段”的 P1 可观测性实现缺口；随后复核并关闭 D4 多入口二级接管证据不一致的系统级 P0 边界，以及 D2 continuity 固定 `+0.10` 在高基线下不可达的 P1 准入规则缺口。同日第二次只读审计发现 D4 两个公开 helper 仍把部分缺失证据 `None` 当成“非 False”放行；D4 owner 已改为 exact-true/fail-closed，补齐逐字段缺失负例并完成跨模块回归。D2/D6 随后已用原冻结 replay 生成 ceiling-aware v2 正式联合证据：总体 GNN 候选五项 gate 通过，但只有 `clutter`、`combined` 两个 difficulty 通过，dropout truth alignment 仍为 partial，JPDA 不准入，因此只形成 promotion review，默认 GNN/Hungarian 不变。最新相关回归为 D2 `113`、D4 `280`、D6 `272`、AirSim runtime `157`、integrated point-mass `7`；当前无开放运行级或证据级 P0 blocker。P1 继续包括 D3 长期 churn、M5N2 第二 primary/物理联盟、candidate `3/2/1` 机会合同、ClockSpeed 与顺序控制 RPC 解耦、D5 30/50 m 与 native MOT 准入、真实二级网络时序、D2 候选的跨 difficulty/完整系统评审，以及基于新分阶段证据达到 100 ms 实时预算。P2 仍只在隔离环境评估，不替换默认 NumPy/SciPy/PN/PNG/detect 路径。
 
+## 2026-07-20 三维 D1/D2/D6 真值隔离评估闭环
+
+main 已将 D1 最终一致性证据带到 episode 离线边界，并保存在线证据、离线真值状态、D2
+规范映射和离线结果。D2 映射只读取 D1 源观测谱系；代码路径不使用最近距离、目标名称、
+actor ID 或末端接近结果。在线总线文件、真值状态 NPZ 和 D2 身份评估文件均以真实
+SHA256 写入来源证明，D6 消费前再次校验结果和 D2 四类原始来源。缺失或冲突映射会使
+RMSE/NEES unavailable，NIS 仍按在线证据独立统计；`id_switch_count` 缺证据时保持 null，
+不会转成零。
+
+D6 owner 已完成公开 D1/D2 适配器、逐 seed CSV、传感器/距离分档 CSV、聚合 JSON 和
+中文 Markdown，D6 全量 `334 passed`。main 的 5v5 单 episode、无模块栈负例和双 seed
+3v3 聚合均通过，scalable 3D 全量 `68 passed`。D1 在线证据通过
+`observation_id + measurement_timestamp` 与 D2 规范身份精确联接，不使用航迹区间前向
+填充。该工作关闭了“真实 episode 制品没有接入
+D6”的接口级 P1 缺口。开放项转为实验级 P1：在 clean tree 上按 5/20/50/100/200 和至少
+20 个未见 seed 生成正式统计，冻结 NIS/NEES、航迹连续性、身份交换和分阶段耗时门限；
+当前单 seed/双 seed 结果不得作为性能达标结论。
+
 ## 2026-07-20 D4 下一周期消费与 D5 主动视觉整 episode 导出
 
 main 已闭合 `plan N -> D4 advisory N -> plan N+1` 的单进程受控桥接。D4 只有实际
@@ -13,7 +31,7 @@ main 已闭合 `plan N -> D4 advisory N -> plan N+1` 的单进程受控桥接。
 生成时冻结的区域快照和正式 D4 裁决调用一次性 gate。通过后转换为 D3-owned
 `d3_regional_planning_hint_v1`，D3 再按当前 previous plan、资源区域、已提交成员、备用和
 transfer candidate 校验。shadow、无准入、replay、严格到期、fault generation 变化和
-regional authority 路径均 fail closed。定向 4/4 及 scalable 3D 全量 55/55 通过，在线
+regional authority 路径均 fail closed。定向 4/4 及 scalable 3D 全量 68/68 通过，在线
 真值使用为 0。开放项是跨进程 consumed advisory ledger、正式 D4 checkpoint、20 个未见
 seed paired shadow 和长时/真实通信验证。
 
@@ -28,13 +46,21 @@ main 新增 `scalable3d-learning-generation-plan-v1` 流式生成入口。nomina
 1/2/3、6 个 2 秒开发 episode 全部有限且在线真值使用为 0；D3/D4/D5 图成功落盘，主动视觉
 107 帧因测试 seed 只有 1 个按预期不最终化。正式模式已在启动前检查完整场景/规模、训练与
 保留评估 seed 零重叠、干净工作树、忽略输出目录及 D5 至少 20 个未见测试 seed。开放 P1
-是 D6 outcome/counterfactual 回填、正式 clean-tree 数据、训练与模型准入。容量也是当前前置
-缺口：本 smoke 4.4 MB 中主动视觉占 3.6 MB，而根分区仅约 11 GB 可用；必须先完成各规模
-容量测量、压缩/采样策略和制品存储位置确认，不能直接启动完整正式批次。
+是 D6 outcome/counterfactual 回填、正式 clean-tree 数据、训练与模型准入。五档 nominal、
+2 秒、seed 903-905 的脏工作树容量探针已完成：三个 episode 输出依次约 0.53、2.30、6.83、
+14.33 和 31.71 MB；200v200 实时因子为 0.033-0.048。旧 200v200 输出含约 11.75 MB 已消费
+D3 staging，本版 finalizer 已在成功汇总后删除该重复副本，并在异常时保留恢复数据。容量
+P1 现收敛为：在干净提交上重测五档，并覆盖其余八类场景的密集视觉、通信退化和故障最坏
+条件；当前约 10.7 GB 可用空间仍不足以无门控启动 900 episode 正式批次。
+
+main 已冻结 `scalable3d-balanced-curriculum-v1`：100 个生成 seed 均衡进入 45 个场景/规模
+cell，每 cell 20 个、总计 900 episode；seed 1000-1019 只用于最终评估。正式预检现会拒绝
+缺失交叉 cell、cell 分母不足、训练/评估 seed 交集和 D5 未见 seed 不足，并记录 schedule
+SHA256。该计划只解决实验设计与版本治理；D5 大规模序列化容量缺口关闭前不得执行完整批次。
 
 D6 已接入 `scalable3d-experiment-matrix-v1` 的独立离线审计，按 R0/G1/A1/A2/A3/C1/F1
 验证运行时实际采用证据、固定 cell 分母、同 comparison key 配对差值和 bootstrap 置信区间。
-D6 全量 320 项测试通过；当前只有 dirty producer smoke，尚无 clean 完整矩阵和算法准入结论。
+D6 全量 334 项测试通过；当前只有 dirty producer smoke，尚无 clean 完整矩阵和算法准入结论。
 
 ## 2026-07-20 规模化学习运行时接线
 

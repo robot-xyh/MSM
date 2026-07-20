@@ -43,7 +43,11 @@ main
 | 离线真值 | `scalable3d-offline-truth-v1` | 标签结构或评分口径改变 |
 | 学习导出 | `scalable3d-learning-export-v2` | D3/D4/D5 训练制品布局或真值隔离规则改变；v2 增加 D5 主动视觉整 episode 在线记录与独立离线标签 |
 | 学习生成计划 | `scalable3d-learning-generation-plan-v1` | 场景、规模、seed、正式预检或保留评估 seed 规则改变 |
+| 训练 seed 注册表 | `scalable3d-training-seed-registry-v1` | 训练/保留评估 seed 身份、来源或隔离规则改变 |
 | 实验矩阵 | `scalable3d-experiment-matrix-v1` | 变体语义、配对键或正式准入条件改变 |
+| D1 一致性评估清单 | `scalable3d-offline-consistency-evaluation-manifest-v1` | 在线证据、真值状态、D2 映射或哈希绑定改变 |
+| D2 身份评估清单 | `scalable3d-offline-identity-evaluation-manifest-v1` | 谱系映射、身份指标或来源校验改变 |
+| D6 真值隔离清单 | `scalable3d-d6-truth-isolated-manifest-v1` | D1/D2 适配、availability 或批量聚合口径改变 |
 | D5 模型 | `d5-crossview-gnn-v0.1.0` | 网络、特征、权重或训练集改变 |
 | D5 主动视觉 | `d5-active-vision-rule-v1` 或模型语义版本加指纹 | 特征、动作空间、权重或准入报告改变 |
 | D5 主动视觉数据 | `d5.active-vision-episode-dataset.v2` | split、episode、在线/离线标签或哈希语义改变；v2 固定共享数值 seed 跨场景原子划分 |
@@ -85,10 +89,19 @@ bundle 的本地绝对路径不写入 manifest。解析成功后记录语义版�
 D5 主动视觉默认 20% 测试切分可提供至少 20 个唯一未见 seed。生成过程中逐 episode 检查
 剩余磁盘；容量不足时停止，不删除或覆盖既有制品。
 
+批次学习导出在成功最终化后把 episode 索引固化为根目录 `episodes.jsonl`，并删除已经转换
+为正式 D3 数据集的重复 staging。任一 finalizer 异常时保留尚未消费的 staging；D4 因 seed
+或标签条件未最终化时，其暂存目录继续保留。临时 `_staging/` 路径不属于长期消费合同。
+
 正式实验矩阵还必须记录 R0/G1/A1/A2/A3/C1/F1、完整场景目录、5/20/50/100/200
 规模、至少 20 个测试 seed 和训练 seed 注册表摘要。测试 seed 与训练 seed 有交集、模型
 bundle 未加载、assist 未准入或运行时回退规则时，相关学习变体不得进入正式比较。矩阵
 manifest 只记录版本和摘要，不记录 bundle 的本地绝对路径。
+
+每个持久化 episode 的 D1、D2 和 D6 子目录分别保存独立 manifest。D1 结果必须绑定在线
+总线、离线真值状态和 D2 规范映射；D2 结果必须绑定原始 D1/D2 记录、观测真值标签和身份
+证据；D6 在消费前重新校验结果文件及 D2 四类来源文件 SHA256。缺文件、哈希不一致或真值
+隔离未验证时，指标保持 unavailable，不能填零。
 
 ## 模型文件
 
