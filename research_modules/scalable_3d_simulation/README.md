@@ -36,3 +36,5 @@ python3 research_modules/scalable_3d_simulation/run_batch.py \
 
 每个 episode 的 `manifest.json` 记录上述版本、Git commit、配置 SHA256、seed、模型版本和
 阈值版本。在线总线拒绝任何包含 truth/actor/object identity 字段的观测负载。
+
+分支、提交、模型制品和阶段标签规则见 [VERSIONING.md](VERSIONING.md)。
