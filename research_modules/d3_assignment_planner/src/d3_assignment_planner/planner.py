@@ -212,10 +212,10 @@ class AssignmentPlanner:
         """Publish a D4-adjudicated multi-owner regional assignment plan.
 
         D3 does not select the fallback layer or owner.  It validates D4's
-        current generation, lease, membership and atomic commit evidence, then
-        materializes one ordinary versioned ``AssignmentPlan``.  Any incomplete
-        authority input is rejected rather than converted into an executable
-        plan.
+        current generation, lease, membership and the demand-appropriate commit
+        evidence, then materializes one ordinary versioned ``AssignmentPlan``.
+        Single-member grants rely on D4 ownership authorization; multi-member
+        coalitions still require atomic commit and complete ACK evidence.
         """
 
         self._validate_previous_plan(previous_plan, expected_previous_version)
@@ -447,13 +447,14 @@ class AssignmentPlanner:
                 timestamp=timestamp,
             )
             commit = grant.commit_by_target.get(track.track_id)
-            commit_required = (
-                grant.owner_layer == "distributed"
-                or demand.required_resource_count > 1
-            )
+            commit_required = demand.required_resource_count > 1
             if commit_required and commit is None:
                 raise RegionalPlanAuthorityError("regional_coalition_commit_missing")
             if commit is not None:
+                if commit.commit_required != commit_required:
+                    raise RegionalPlanAuthorityError(
+                        "regional_commit_requirement_mismatch"
+                    )
                 reason = commit.fail_closed_reason(now_s=timestamp)
                 if reason is not None:
                     raise RegionalPlanAuthorityError(reason)
@@ -495,9 +496,18 @@ class AssignmentPlanner:
                     "regional_region_id": grant.region_id,
                     "regional_epoch": grant.epoch,
                     "regional_lease_expires_at_s": grant.lease_expires_at_s,
-                    "regional_commit_state": (
-                        None if commit is None else commit.state
+                    "regional_commit_required": commit_required,
+                    "regional_commit_mode": (
+                        "atomic_coalition_commit"
+                        if commit_required
+                        else "single_member_authority"
                     ),
+                    "regional_commit_state": (
+                        "single_member_authority"
+                        if commit is None
+                        else commit.state
+                    ),
+                    "regional_commit_evidence_present": commit is not None,
                 },
             )
             coalitions.append(coalition)
@@ -521,6 +531,45 @@ class AssignmentPlanner:
             for grant in authority.grants
             for target_id in grant.target_ids
         }
+        required_count_by_target = {
+            assignment.target_id: assignment.required_resource_count
+            for assignment in plan.assignments
+        }
+        commit_by_target = {
+            commit.target_id: commit
+            for grant in authority.grants
+            for commit in grant.coalition_commits
+        }
+
+        def commit_contract(target_id: str) -> dict[str, Any]:
+            required_count = required_count_by_target[target_id]
+            commit_required = required_count > 1
+            commit = commit_by_target.get(target_id)
+            return {
+                "target_id": target_id,
+                "required_resource_count": required_count,
+                "commit_required": commit_required,
+                "commit_mode": (
+                    "atomic_coalition_commit"
+                    if commit_required
+                    else "single_member_authority"
+                ),
+                "commit_state": (
+                    "single_member_authority" if commit is None else commit.state
+                ),
+                "commit_evidence_present": commit is not None,
+                "atomic_committed": bool(
+                    commit is not None and commit.atomic_committed
+                ),
+                "execution_authorized": bool(
+                    commit is None or commit.execution_authorized
+                ),
+            }
+
+        target_commit_contracts = {
+            target_id: commit_contract(target_id)
+            for target_id in sorted(required_count_by_target)
+        }
         regional_records = tuple(
             {
                 "region_id": grant.region_id,
@@ -534,6 +583,10 @@ class AssignmentPlanner:
                 "target_ids": grant.target_ids,
                 "decision_reason": grant.decision_reason,
                 "coalition_commit_count": len(grant.coalition_commits),
+                "target_commit_contracts": tuple(
+                    target_commit_contracts[target_id]
+                    for target_id in sorted(grant.target_ids)
+                ),
             }
             for grant in sorted(authority.grants, key=lambda item: item.region_id)
         )
@@ -541,6 +594,22 @@ class AssignmentPlanner:
         layers = tuple(sorted({grant.owner_layer for grant in authority.grants}))
         minimum_lease = min(grant.lease_expires_at_s for grant in authority.grants)
         maximum_epoch = max(grant.epoch for grant in authority.grants)
+        commit_modes = tuple(
+            sorted(
+                {
+                    str(contract["commit_mode"])
+                    for contract in target_commit_contracts.values()
+                }
+            )
+        )
+        single_member_authority_count = sum(
+            contract["commit_mode"] == "single_member_authority"
+            for contract in target_commit_contracts.values()
+        )
+        atomic_coalition_commit_count = sum(
+            contract["commit_mode"] == "atomic_coalition_commit"
+            for contract in target_commit_contracts.values()
+        )
         assignments = tuple(
             replace(
                 assignment,
@@ -565,7 +634,18 @@ class AssignmentPlanner:
                     "regional_lease_expires_at_s": (
                         grant_by_target[assignment.target_id].lease_expires_at_s
                     ),
-                    "regional_commit_state": "committed",
+                    "regional_commit_required": target_commit_contracts[
+                        assignment.target_id
+                    ]["commit_required"],
+                    "regional_commit_mode": target_commit_contracts[
+                        assignment.target_id
+                    ]["commit_mode"],
+                    "regional_commit_state": target_commit_contracts[
+                        assignment.target_id
+                    ]["commit_state"],
+                    "regional_commit_evidence_present": target_commit_contracts[
+                        assignment.target_id
+                    ]["commit_evidence_present"],
                     "activation_state": "active",
                     "executable": True,
                 },
@@ -584,6 +664,13 @@ class AssignmentPlanner:
             "regional_fail_closed": False,
             "regional_min_lease_expires_at_s": minimum_lease,
             "regional_max_epoch": maximum_epoch,
+            "regional_commit_modes": commit_modes,
+            "regional_single_member_authority_count": (
+                single_member_authority_count
+            ),
+            "regional_atomic_coalition_commit_count": (
+                atomic_coalition_commit_count
+            ),
             "plan_owner": "regional",
             "active_plan_owner": "regional",
             "owner_node_id": (

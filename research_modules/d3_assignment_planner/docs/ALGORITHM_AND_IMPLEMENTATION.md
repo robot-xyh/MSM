@@ -984,22 +984,39 @@ k_effective = max(configured_top_k, required_resource_count)
 
 `AssignmentPlanner.plan_regional_authority()` 先执行既有 previous plan/version 校验，
 再验证完整目标范围、来源身份、epoch 单调性、lease、资源唯一性和执行许可。指定成员
-必须存在于本轮资源输入中，并通过规则候选、能力和 M-to-N 需求完整性检查。以下目标
-必须提供原子提交证据：
+必须存在于本轮资源输入中，并通过规则候选、能力和 M-to-N 需求完整性检查。提交要求
+由 `required_resource_count` 决定，不由 owner 层级决定。
 
-- owner 层级为 fully distributed；
-- `required_resource_count > 1`。
+`k=1` 可以只依赖 D4 grant：来源计划 current、区域 owner/epoch/lease 有效、
+`execution_allowed=True`、资源数恰为 1 且边可行。若 main 同时映射 D4
+`CoalitionCommitSummary`，`RegionalCoalitionCommitEvidence` 必须满足：
 
-提交状态不是 committed、ACK 不完整、协调者/epoch/成员不一致、联盟 lease 超出区域
-lease、联盟身份或版本不匹配时，接口抛出 `RegionalPlanAuthorityError`。通过验证后，
-普通 `Assignment`、`CoalitionPlan` 和 `AssignmentPlan` 写入区域 owner、epoch、lease、
-commit metadata，并继续进入迟滞和严格版本发布。D3 不改写 `global_track_id`，也不
-把缺证据的区域输入降级成可执行计划。
+```text
+commit_required = false
+state = single_member_authorized
+atomic_committed = false
+execution_authorized = true
+required_member_ids = acked_member_ids = assigned member
+timestamp < evidence lease <= regional grant lease
+```
+
+`k>1` 必须提供 `commit_required=True` 的证据。提交状态不是 committed、未 atomic
+committed、ACK 不完整、协调者/epoch/成员不一致、联盟 lease 超出区域 lease、联盟
+身份或版本不匹配时，接口抛出 `RegionalPlanAuthorityError`。通过验证后，普通
+`Assignment`、`CoalitionPlan` 和 `AssignmentPlan` 写入区域 owner、epoch、lease 及
+commit metadata，并继续进入迟滞和严格版本发布。D3 不改写 `global_track_id`。
+
+计划级 `regional_commit_modes` 和计数字段、区域记录中的 target contract，以及每条
+assignment 的 `regional_commit_required`、`regional_commit_mode`、
+`regional_commit_state`、`regional_commit_evidence_present` 使 D6 能区分单成员授权与
+原子联盟提交。
 
 ### 27.3 当前边界
 
-模块测试覆盖两个 secondary owner，以及 distributed committed、缺 ACK、旧 epoch、
-过期 lease 和 stale source。2026-07-20 D3 全量共收集 182 项，结果为 181 passed、
-1 optional OR-Tools skipped。main/D4 尚未完成运行时 DTO 映射，D6 尚未汇总区域计划
-形成时间、拒绝原因和 owner/epoch/lease 迁移。因此本节只能声明 D3 接口已实现并通过
-模块测试，不能声明二级或完全分布式全流程已经闭合。
+模块测试覆盖 secondary/distributed k=1、D4 `single_member_authorized` summary、
+单成员无授权、过期 lease、owner/epoch/member 不一致、错误 atomic/commit-required
+标记和重复资源，以及 distributed k=3 committed、缺 ACK、旧 epoch 和 stale source。
+2026-07-20 D3 全量共收集 194 项，
+结果为 193 passed、1 optional OR-Tools skipped。main/D4 尚未完成运行时 DTO 映射，
+D6 尚未汇总区域计划形成时间、拒绝原因和 owner/epoch/lease 迁移。因此本节只能声明
+D3 接口已实现并通过模块测试。

@@ -288,10 +288,19 @@ top-4 候选保留了 perfect matching，不证明所有密集/交叉/资源失�
 候选解释，浮点容差设为 `1e-11`，结果通过。该基准没有包含 D1、D2、D4-D7、网络、
 AirSim 或控制循环，因此不作为系统实时指标。
 
-区域合同专项共 6 个测试，覆盖同一计划中的两个 secondary owner、fully distributed
-committed、缺 ACK、旧 epoch、过期 lease 和 stale source。稀疏求解专项同时覆盖两个
-不连通候选分量和无候选目标。D3 全量共收集 182 项，结果为 `181 passed, 1 skipped`，
-接受阈值为零失败；唯一跳过项为未安装的可选 OR-Tools 对照。
+区域合同专项现有 18 个测试，覆盖同一计划中的两个 secondary owner、secondary 和
+distributed k=1、D4 `single_member_authorized` summary、单成员无授权、证据过期、
+owner/epoch/member 不一致、错误 atomic/commit-required 标记、grant 禁止执行、重复
+资源，以及 distributed k=3 committed、缺 ACK、旧 epoch、grant 过期和 stale source。
+稀疏求解专项同时覆盖两个
+不连通候选分量和无候选目标。D3 全量共收集 194 项，结果为
+`193 passed, 1 skipped`，接受阈值为零失败；唯一跳过项为未安装的可选 OR-Tools 对照。
+
+k=1 正例的 assignment metadata 为 `commit_required=False`、模式
+`single_member_authority`。无 summary 时 state 为 `single_member_authority`；D4 提供
+有效 summary 时 state 为 `single_member_authorized`，且 evidence-present 为真。k=3
+正例仍为 `commit_required=True`、模式 `atomic_coalition_commit`、state committed。
+该结果验证了合同分类，没有降低多成员全 ACK 和原子提交门限。
 
 本批没有运行 AirSim 或多 seed。区域接口尚未由 main 接入 D4 运行时裁决，因而没有
 center failure、multiple secondary owner、secondary failure 或网络分区的全栈结果。

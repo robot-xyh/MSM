@@ -525,12 +525,14 @@ owner 和成员结果，生成一个普通、可版本校验的 `AssignmentPlan`
 
 发布前必须满足：D4 输入引用当前 `plan_id/version`；区域 epoch 不回退；lease 在
 发布时间后有效；每个资源只属于一个目标；成员边仍在 D3 规则候选中；M-to-N 需求
-完整；分布式目标和所有 `k>1` 目标具有 committed、完整 ACK、成员一致且未过期的
-联盟证据。任一条件失败均抛出带 reason 的 `RegionalPlanAuthorityError`，不发布
-可执行计划。计划执行变化继续严格递增版本，旧 previous plan 仍由 `StalePlanError`
-拒绝；成员变化仍经过现有迟滞，不能借降级绕过。
+完整。`k=1` 由 D4 已裁决的区域 ownership、epoch、lease、execution_allowed 和唯一
+资源成员授权，不要求原子联盟提交；若 D4 同时提供 summary，只接受
+`commit_required=False`、`single_member_authorized`、非 atomic、成员授权完整且租约
+有效的证据。`k>1` 继续强制 committed、atomic committed、完整 ACK、成员一致且租约
+有效。任一条件失败均抛出带 reason 的 `RegionalPlanAuthorityError`，不发布可执行
+计划。计划执行变化继续严格递增版本，旧 previous plan 仍由 `StalePlanError` 拒绝。
 
-本轮 D3 全量验收为 `181 passed, 1 skipped`，唯一 skip 是 optional OR-Tools。
+本轮 D3 全量验收为 `193 passed, 1 skipped`，唯一 skip 是 optional OR-Tools。
 区域合同已完成模块级测试，main 尚未把 D4 `RegionalFailoverDecision` 转换并接入
 `plan_regional_authority()`；因此多 owner secondary 和 distributed 运行时闭环仍是
 待集成，不得写成完整系统已通过。

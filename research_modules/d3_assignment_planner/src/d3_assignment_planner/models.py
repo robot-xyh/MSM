@@ -595,6 +595,9 @@ _PLAN_EXECUTION_METADATA_KEYS = (
     "regional_min_lease_expires_at_s",
     "regional_max_epoch",
     "regional_execution_allowed",
+    "regional_commit_modes",
+    "regional_single_member_authority_count",
+    "regional_atomic_coalition_commit_count",
 )
 
 _ASSIGNMENT_EXECUTION_METADATA_KEYS = (
@@ -620,6 +623,9 @@ _ASSIGNMENT_EXECUTION_METADATA_KEYS = (
     "regional_epoch",
     "regional_lease_expires_at_s",
     "regional_commit_state",
+    "regional_commit_required",
+    "regional_commit_mode",
+    "regional_commit_evidence_present",
 )
 
 

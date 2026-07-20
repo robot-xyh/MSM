@@ -30,6 +30,7 @@ class RegionalCoalitionCommitEvidence:
     lease_expires_at_s: float
     required_member_ids: tuple[str, ...]
     acked_member_ids: tuple[str, ...]
+    commit_required: bool = True
     state: str = "committed"
     atomic_committed: bool = True
     execution_authorized: bool = True
@@ -52,6 +53,11 @@ class RegionalCoalitionCommitEvidence:
             raise ValueError("commit required_member_ids must not be empty")
         if not set(acked).issubset(set(required)):
             raise ValueError("commit ACK members must be required members")
+        commit_required = bool(self.commit_required)
+        if not commit_required and len(required) != 1:
+            raise ValueError(
+                "single-member authority evidence must contain exactly one member"
+            )
         coalition_version = self.coalition_version
         if coalition_version is not None and int(coalition_version) <= 0:
             raise ValueError("coalition_version must be positive when provided")
@@ -61,6 +67,7 @@ class RegionalCoalitionCommitEvidence:
         object.__setattr__(self, "lease_expires_at_s", lease)
         object.__setattr__(self, "required_member_ids", required)
         object.__setattr__(self, "acked_member_ids", acked)
+        object.__setattr__(self, "commit_required", commit_required)
         object.__setattr__(self, "state", str(self.state).strip().lower())
         object.__setattr__(self, "metadata", dict(self.metadata))
 
@@ -70,14 +77,27 @@ class RegionalCoalitionCommitEvidence:
         return tuple(value for value in self.required_member_ids if value not in acked)
 
     def fail_closed_reason(self, *, now_s: float) -> str | None:
-        if self.state != "committed" or not self.atomic_committed:
-            return "regional_coalition_not_committed"
+        if self.commit_required:
+            if self.state != "committed" or not self.atomic_committed:
+                return "regional_coalition_not_committed"
+            if not self.execution_authorized:
+                return "regional_coalition_execution_not_authorized"
+            if self.missing_member_ids:
+                return "regional_coalition_missing_ack"
+            if float(now_s) >= self.lease_expires_at_s:
+                return "regional_coalition_lease_expired"
+            return None
+
+        if self.state != "single_member_authorized":
+            return "regional_single_member_not_authorized"
+        if self.atomic_committed:
+            return "regional_single_member_atomic_commit_invalid"
         if not self.execution_authorized:
-            return "regional_coalition_execution_not_authorized"
+            return "regional_single_member_execution_not_authorized"
         if self.missing_member_ids:
-            return "regional_coalition_missing_ack"
+            return "regional_single_member_missing_authorization"
         if float(now_s) >= self.lease_expires_at_s:
-            return "regional_coalition_lease_expired"
+            return "regional_single_member_lease_expired"
         return None
 
 

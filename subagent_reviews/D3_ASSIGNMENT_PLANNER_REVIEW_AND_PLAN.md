@@ -574,11 +574,12 @@ M-to-N demand slot、迟滞、硬门控和学习有界残差保持不变。
 不能替代 main 的 module-stack、多 seed、通信和 AirSim 时延验收。
 
 区域计划接口遵循“D4 裁决、D3 验证和发布”。一个版本化计划可承载多个 secondary
-owner 或 distributed peer owner。来源计划、epoch、lease、成员候选、M-to-N 完整性
-和联盟 commit/ACK 均为硬条件。失败时直接拒绝，不由 D3改变降级层级。模块测试覆盖
-两个 secondary owner、distributed committed、缺 ACK、旧 epoch、过期 lease 和 stale
-source；main/D4 运行时映射尚未完成。
+owner 或 distributed peer owner。来源计划、epoch、lease、成员候选和 M-to-N 完整性
+均为硬条件。k=1 使用 D4 单成员区域授权；提供 summary 时只接受
+`single_member_authorized` 且非 atomic。k>1 继续强制 committed、atomic committed 和
+全 ACK。失败时直接拒绝，不由 D3 改变降级层级。模块测试覆盖两种层级的 k=1 和
+distributed k=3 正负例；main/D4 运行时映射尚未完成。
 
-本轮 D3 全量共 182 项，结果为 `181 passed, 1 skipped`。下一步仅需 main 接入 D4
+本轮 D3 全量共 194 项，结果为 `193 passed, 1 skipped`。下一步仅需 main 接入 D4
 区域裁决、复跑四个 module-stack 场景并由 D6记录 owner/epoch/lease/commit 指标；D3
 不继续扩展新的求解器或区域决策策略。

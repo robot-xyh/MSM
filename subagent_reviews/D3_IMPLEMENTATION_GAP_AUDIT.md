@@ -309,12 +309,13 @@ OR-Tools。`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查：本批未接 AirSim ada
 | 稀疏 Hungarian | D3-owned closed | SciPy 默认；候选二部图按连通分量求解，无候选目标走未分配代价 |
 | 复杂 pair-specific 约束 | regression protected | 自动回退旧路径；尚未向量化，不影响既有语义 |
 | D4 裁决的多个 secondary owner | D3 interface done | 单计划、多区域 owner、epoch/lease/source 校验通过；main/D4 尚待映射 |
-| fully distributed coalition | D3 interface done | committed、完整 ACK、成员/epoch/lease 一致才发布；运行时闭环仍 open |
+| secondary/distributed k=1 | D3 contract aligned | 区域授权可不建原子联盟；显式 summary 只接受 single_member_authorized、非 atomic、完整成员和当前 lease |
+| fully distributed k>1 coalition | D3 interface done | commit_required、committed、atomic、完整 ACK、成员/epoch/lease 一致才发布；运行时闭环仍 open |
 | stale/old epoch/expired lease/missing ACK | D3 fail-closed done | 专项测试均拒绝；尚需 main 故障注入复验 |
 | 区域计划 D6 指标 | cross-module P1 open | 尚缺 owner transition、commit latency、reject reason 和 lease violation 汇总 |
 | AirSim/多 seed | P1 open | 本批未运行，不以模块 benchmark 替代系统证据 |
 
-本轮没有新增 D3 P0。D3 全量共收集 182 项，`181 passed, 1 skipped`，零失败满足门限；
+本轮没有新增 D3 P0。D3 全量共收集 194 项，`193 passed, 1 skipped`，零失败满足门限；
 唯一 skip 为 optional OR-Tools。main 需要复跑施工中间态曾失败的 5v5、200v200、中心
 失效和二级失效 module-stack 回归，并把 D4 区域裁决接入
 `plan_regional_authority()`。在该接线完成前，多 owner 和 fully distributed 仍标为
@@ -323,3 +324,8 @@ OR-Tools。`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查：本批未接 AirSim ada
 `docs/AIRSIM_INTEGRATION_PLAN.md` 已复核。本轮未改变 AirSim adapter、actor、控制、
 话题或 settings，因此不改该文件。实验文档已新增本地性能和合同证据，并明确未运行
 AirSim、多 seed 或全栈实时验收。
+
+本次 D4-D3 复审关闭了 distributed k=1 被误判为缺少原子提交的合同缺口。修复只按
+需求数区分 single-member authority 与 atomic coalition commit；k>1 的 committed、
+atomic committed、全 ACK、成员/协调者/epoch/lease 一致性门限保持不变。main 仍需
+把 D4 `CoalitionCommitSummary.commit_required` 原样映射并运行 module-stack 回归。

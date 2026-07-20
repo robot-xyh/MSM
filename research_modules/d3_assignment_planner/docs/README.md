@@ -17,6 +17,6 @@ D3 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 `png_ttc_2v2_seed001` 不属于该 M5N2 聚合，未运行 case 不补零。
 
 2026-07-20 新增的 D3 独立证据包括 200×200、top-32、重复 5 次的向量化性能基准，
-以及多 secondary owner 和 fully distributed 区域计划合同单测。该批全量结果为
-`181 passed, 1 skipped`。这些结果没有重跑 AirSim；区域裁决仍待 main/D4 接线，
-不得替代上述 M5N2 运行证据或写成全栈闭环完成。
+以及多 secondary owner、single-member authority 和 atomic coalition commit 区域
+计划合同单测。该批全量结果为 `193 passed, 1 skipped`。这些结果没有重跑 AirSim；
+区域裁决仍待 main/D4 接线，不得替代上述 M5N2 运行证据或写成全栈闭环完成。

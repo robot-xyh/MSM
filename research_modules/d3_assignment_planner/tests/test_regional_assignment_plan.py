@@ -128,6 +128,235 @@ def test_multiple_secondary_owners_publish_one_monotonic_regional_plan() -> None
         item.target_id: item.metadata["owner_node_id"] for item in regional.assignments
     }
     assert assignment_owners == {"T-A": "RECON-A", "T-B": "RECON-B"}
+    assert regional.metadata["regional_commit_modes"] == (
+        "single_member_authority",
+    )
+    assert regional.metadata["regional_single_member_authority_count"] == 2
+    assert regional.metadata["regional_atomic_coalition_commit_count"] == 0
+    assert all(
+        item.metadata["regional_commit_required"] is False
+        and item.metadata["regional_commit_mode"] == "single_member_authority"
+        and item.metadata["regional_commit_state"] == "single_member_authority"
+        and item.metadata["regional_commit_evidence_present"] is False
+        for item in regional.assignments
+    )
+
+
+@pytest.mark.parametrize(
+    ("owner_layer", "owner_node_id"),
+    (("secondary", "RECON-A"), ("distributed", "R")),
+)
+def test_single_member_region_authority_does_not_require_atomic_commit(
+    owner_layer: str,
+    owner_node_id: str,
+) -> None:
+    planner = _planner()
+    tracks = (_track("T", "A", 100.0),)
+    resources = (_resource("R", "A", 0.0),)
+    previous = planner.plan(tracks, resources, timestamp=0.0)
+    grant = _grant(
+        previous,
+        region_id="A",
+        target_id="T",
+        resource_ids=("R",),
+        owner_layer=owner_layer,
+        owner_node_id=owner_node_id,
+    )
+
+    plan = planner.plan_regional_authority(
+        tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        authority=RegionalAuthorityInput(1.0, (grant,)),
+        expected_previous_version=previous.version,
+    )
+
+    assert plan.version == previous.version + 1
+    assert plan.metadata["regional_commit_modes"] == (
+        "single_member_authority",
+    )
+    assignment = plan.assignments[0]
+    assert assignment.metadata["regional_commit_required"] is False
+    assert assignment.metadata["regional_commit_state"] == "single_member_authority"
+    assert assignment.metadata["regional_commit_evidence_present"] is False
+
+
+def test_d4_single_member_authorized_summary_is_accepted_without_atomic_commit() -> None:
+    planner = _planner()
+    tracks = (_track("T", "A", 100.0),)
+    resources = (_resource("R", "A", 0.0),)
+    previous = planner.plan(tracks, resources, timestamp=0.0)
+    commit = RegionalCoalitionCommitEvidence(
+        target_id="T",
+        coordinator_id="R",
+        epoch=previous.version,
+        lease_expires_at_s=8.0,
+        required_member_ids=("R",),
+        acked_member_ids=("R",),
+        commit_required=False,
+        state="single_member_authorized",
+        atomic_committed=False,
+        execution_authorized=True,
+    )
+    grant = _grant(
+        previous,
+        region_id="A",
+        target_id="T",
+        resource_ids=("R",),
+        owner_layer="distributed",
+        owner_node_id="R",
+        lease=8.0,
+        commit=commit,
+    )
+
+    plan = planner.plan_regional_authority(
+        tracks,
+        resources,
+        timestamp=1.0,
+        previous_plan=previous,
+        authority=RegionalAuthorityInput(1.0, (grant,)),
+        expected_previous_version=previous.version,
+    )
+
+    assignment = plan.assignments[0]
+    assert assignment.metadata["regional_commit_mode"] == "single_member_authority"
+    assert assignment.metadata["regional_commit_state"] == "single_member_authorized"
+    assert assignment.metadata["regional_commit_evidence_present"] is True
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_reason"),
+    (
+        ("not_authorized", "regional_single_member_not_authorized"),
+        ("expired_lease", "regional_single_member_lease_expired"),
+        ("owner_mismatch", "regional_coalition_coordinator_mismatch"),
+        ("epoch_mismatch", "regional_coalition_epoch_mismatch"),
+        ("member_mismatch", "regional_coalition_membership_mismatch"),
+        ("atomic_masquerade", "regional_single_member_atomic_commit_invalid"),
+        ("commit_required_mismatch", "regional_commit_requirement_mismatch"),
+    ),
+)
+def test_single_member_invalid_authorization_is_fail_closed(
+    mutation: str,
+    expected_reason: str,
+) -> None:
+    planner = _planner()
+    tracks = (_track("T", "A", 100.0),)
+    resources = (_resource("R", "A", 0.0),)
+    previous = planner.plan(tracks, resources, timestamp=0.0)
+    evidence_member_ids = (
+        ("R-OTHER",) if mutation == "member_mismatch" else ("R",)
+    )
+    commit = RegionalCoalitionCommitEvidence(
+        target_id="T",
+        coordinator_id="OTHER" if mutation == "owner_mismatch" else "R",
+        epoch=(
+            previous.version + 1
+            if mutation == "epoch_mismatch"
+            else previous.version
+        ),
+        lease_expires_at_s=1.0 if mutation == "expired_lease" else 8.0,
+        required_member_ids=evidence_member_ids,
+        acked_member_ids=(
+            () if mutation == "not_authorized" else evidence_member_ids
+        ),
+        commit_required=mutation == "commit_required_mismatch",
+        state=(
+            "committed"
+            if mutation == "commit_required_mismatch"
+            else (
+                "aborted"
+                if mutation == "not_authorized"
+                else "single_member_authorized"
+            )
+        ),
+        atomic_committed=mutation in {
+            "atomic_masquerade",
+            "commit_required_mismatch",
+        },
+        execution_authorized=mutation != "not_authorized",
+    )
+    grant = _grant(
+        previous,
+        region_id="A",
+        target_id="T",
+        resource_ids=("R",),
+        owner_layer="distributed",
+        owner_node_id="R",
+        lease=8.0,
+        commit=commit,
+    )
+
+    with pytest.raises(RegionalPlanAuthorityError) as error:
+        planner.plan_regional_authority(
+            tracks,
+            resources,
+            timestamp=1.0,
+            previous_plan=previous,
+            authority=RegionalAuthorityInput(1.0, (grant,)),
+            expected_previous_version=previous.version,
+        )
+    assert error.value.reason == expected_reason
+
+
+def test_single_member_grant_without_execution_permission_is_fail_closed() -> None:
+    planner = _planner()
+    tracks = (_track("T", "A", 100.0),)
+    resources = (_resource("R", "A", 0.0),)
+    previous = planner.plan(tracks, resources, timestamp=0.0)
+    grant = replace(
+        _grant(
+            previous,
+            region_id="A",
+            target_id="T",
+            resource_ids=("R",),
+            owner_layer="distributed",
+            owner_node_id="R",
+        ),
+        execution_allowed=False,
+    )
+
+    with pytest.raises(RegionalPlanAuthorityError) as error:
+        planner.plan_regional_authority(
+            tracks,
+            resources,
+            timestamp=1.0,
+            previous_plan=previous,
+            authority=RegionalAuthorityInput(1.0, (grant,)),
+            expected_previous_version=previous.version,
+        )
+    assert error.value.reason == "regional_authority_execution_not_allowed"
+
+
+def test_single_resource_cannot_be_authorized_for_two_regional_targets() -> None:
+    planner = _planner()
+    tracks = (_track("T-1", "A", 100.0), _track("T-2", "A", 120.0))
+    resources = (_resource("R", "A", 0.0),)
+    previous = planner.plan(tracks, resources, timestamp=0.0)
+    grant = RegionalAuthorityGrant(
+        region_id="A",
+        owner_layer="distributed",
+        owner_node_id="R",
+        owner_role="cluster_representative",
+        epoch=previous.version,
+        source_plan_id=previous.plan_id,
+        source_plan_version=previous.version,
+        lease_expires_at_s=8.0,
+        target_ids=("T-1", "T-2"),
+        assigned_resource_ids_by_target={"T-1": ("R",), "T-2": ("R",)},
+    )
+
+    with pytest.raises(RegionalPlanAuthorityError) as error:
+        planner.plan_regional_authority(
+            tracks,
+            resources,
+            timestamp=1.0,
+            previous_plan=previous,
+            authority=RegionalAuthorityInput(1.0, (grant,)),
+            expected_previous_version=previous.version,
+        )
+    assert error.value.reason == "regional_authority_duplicate_resource_assignment"
 
 
 def _distributed_fixture():
@@ -180,7 +409,19 @@ def test_fully_distributed_committed_coalition_is_published() -> None:
     assert len(plan.assignments) == 3
     assert plan.coalitions[0].complete is True
     assert plan.metadata["regional_owner_layers"] == ("distributed",)
-    assert all(item.metadata["regional_commit_state"] == "committed" for item in plan.assignments)
+    assert plan.metadata["regional_commit_modes"] == (
+        "atomic_coalition_commit",
+    )
+    assert plan.metadata["regional_single_member_authority_count"] == 0
+    assert plan.metadata["regional_atomic_coalition_commit_count"] == 1
+    assert all(
+        item.metadata["regional_commit_state"] == "committed"
+        for item in plan.assignments
+    )
+    assert all(
+        item.metadata["regional_commit_required"] is True
+        for item in plan.assignments
+    )
 
 
 def test_distributed_missing_ack_is_fail_closed() -> None:

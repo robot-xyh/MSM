@@ -325,15 +325,19 @@ target-resource 候选边共享输出 residual，展开后的 role/wave/capabili
 
 中心、二级或完全分布式层级变化不能降低 M-to-N 的全有或全无要求。D4 先裁决区域
 owner 和成员，D3 再检查成员数量是否等于 `required_resource_count`、资源是否重复、
-每条边是否仍可行及能力是否满足。任何 `k>1` 目标均必须附带 committed 联盟证据；
-完全分布式层级即使 `k=1` 也要求 commit，以防不同网络分区分别发布可执行任务。
+每条边是否仍可行及能力是否满足。`k=1` 使用 D4 已裁决的区域 owner、epoch、lease、
+执行许可和唯一成员，不建立多成员原子联盟；该规则同时适用于 secondary 和完全分布式
+层级。任何 `k>1` 目标均必须附带 committed、atomic committed 和完整 ACK 联盟证据。
 
 联盟证据必须与区域 owner、epoch、成员集合和 lease 一致，并包含全部必要成员 ACK。
 缺 ACK、未 committed、过期 lease、旧 epoch、协调者不一致或成员不一致均 fail closed。
 通过后仍生成普通 `CoalitionPlan` 和版本化 `AssignmentPlan`，角色、波次、备用成员和
 既有迟滞语义不变。D3 不自行选择二级节点，也不在分布式状态下本地重写目标身份。
 
-模块测试已覆盖两个 secondary owner、distributed 三成员 committed，以及缺 ACK、
-旧 epoch、过期 lease 和 stale source 拒绝。该结果证明 D3 发布合同可执行，不证明
-D4 已完成区域裁决映射，也不证明网络分区下的运行时原子提交。main/D4 接线和 D6
-commit latency/abort/reconfigure 统计仍为 P1。
+模块测试已覆盖 secondary/distributed 单成员授权、D4 显式
+`single_member_authorized`、单成员无授权/过期 lease、owner/epoch/member 不一致、
+错误 atomic/commit-required 标记、grant 禁止执行和重复资源，distributed 三成员
+committed，以及缺 ACK、旧 epoch 和 stale source 拒绝。该结果证明 D3 发布合同可执行，
+不证明 D4 已完成区域裁决映射，
+也不证明网络分区下的运行时原子提交。main/D4 接线和 D6 按提交模式统计
+latency/abort/reconfigure 仍为 P1。

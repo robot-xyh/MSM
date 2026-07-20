@@ -609,8 +609,9 @@ mask/fallback/version cases，以及 1 个 32-edge synthetic BC batch。接受�
   的确定性顺序。候选 breakdown 物化数由 40,000 降到 6,400。
 - Hungarian 支持候选二部图连通分量的局部矩阵；SciPy 仍为默认，未增加强制依赖。
 - 新增区域 authority/commit DTO 和 `plan_regional_authority()`。来源计划不匹配、
-  旧 epoch、过期 lease、重复资源、非候选边、需求不足、缺 ACK 和未 committed
-  coalition 均 fail closed。
+  旧 epoch、过期 lease、重复资源、非候选边和需求不足均 fail closed。`k=1` 依赖
+  D4 已裁决的单成员区域授权；`k>1` 的缺 ACK、未 committed 或非 atomic coalition
+  继续 fail closed。
 - 多 owner 只记录在同一版本化 `AssignmentPlan` 及每条 assignment 上，不创建本地
   `global_track_id`，也不改变 D7 的 current binding 规则。
 
@@ -621,9 +622,12 @@ mask/fallback/version cases，以及 1 个 32-edge synthetic BC batch。接受�
 assignment。结构检查证明新路径 Python 全边成本调用为 0。20×23 逐边对照验证规则
 矩阵、候选掩码、拒绝原因和 breakdown 一致。
 
-区域专项覆盖 2 个 secondary owner，以及 distributed committed、缺 ACK、旧 epoch、
-过期 lease 和 stale source。求解专项覆盖不连通局部矩阵和无候选目标。D3 全量结果
-为 `181 passed, 1 skipped`，接受阈值为零失败；skip 仅为 optional OR-Tools。
+区域专项覆盖 2 个 secondary owner、secondary/distributed k=1、D4
+`single_member_authorized` summary，以及 distributed k=3 committed、缺 ACK、无授权、
+owner/epoch/member 不一致、错误 atomic/commit-required 标记、重复资源、旧 epoch、
+过期 lease 和 stale source。求解专项覆盖不连通局部矩阵和无候选目标。D3 全量结果为
+`193 passed, 1 skipped`，接受阈值
+为零失败；skip 仅为 optional OR-Tools。
 
 ### 后续集成
 
@@ -634,3 +638,25 @@ assignment。结构检查证明新路径 Python 全边成本调用为 0。20×23
 3. D6 消费区域 owner/epoch/lease/commit 和 D3 阶段耗时，完成 5/20/50/100/200
    多 seed 报告。当前模块基准不等于全栈实时验收。
 4. AirSim adapter、actor、控制或话题接口本轮未改变；相关集成计划检查后无需修改。
+
+## 20. D4-D3 单成员区域授权合同对齐（2026-07-20）
+
+### 对齐原则
+
+- `required_resource_count == 1` 表示区域 owner 对一个资源成员的授权，不建立多成员
+  原子联盟。secondary 和 distributed 层级使用同一规则。
+- D4 未提供 commit summary 时，D3 依赖 grant 的 current source plan、epoch、lease、
+  `execution_allowed`、唯一资源和规则可行性发布。
+- D4 提供 k=1 summary 时，D3 只接受 `commit_required=False`、状态
+  `single_member_authorized`、`atomic_committed=False`、执行授权有效、成员完整和
+  当前租约。
+- `required_resource_count > 1` 继续要求 `commit_required=True`、committed、atomic
+  committed 和全 ACK。该安全门没有放宽。
+
+### 审计和待集成
+
+计划、区域记录、联盟和每条 assignment 现在区分 `single_member_authority` 与
+`atomic_coalition_commit`，并记录 commit 是否必需、是否提供 evidence 和实际 state。
+main 应直接映射 D4 `CoalitionCommitSummary.commit_required`，D6 应按该模式分别统计
+单成员授权和原子联盟提交。本轮仅完成 D3 模块合同；main 的 DTO 映射和故障场景集成
+回归仍待执行。

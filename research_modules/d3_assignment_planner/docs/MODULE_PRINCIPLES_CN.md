@@ -847,11 +847,17 @@ D4 负责判断中心、二级节点或完全分布式层级，并裁决区域 o
 
 区域发布采用 fail-closed 原则。D4 输入必须引用当前 `plan_id/version`，区域 epoch
 不得回退，lease 必须覆盖发布时间，资源不能重复分配，指定成员必须仍通过 D3 规则
-候选和能力门控。完全分布式目标及任何所需资源数大于 1 的目标，还必须提供 committed
-联盟、完整成员确认、同一 epoch、匹配成员集合和未过期 lease。任一条件不满足时，
-D3 抛出明确拒绝原因，不产生可执行区域计划。
+候选和能力门控。所需资源数为 1 时，D4 的区域所有权、epoch、lease、执行许可和唯一
+成员构成单成员授权；distributed 层级也不把它伪装成原子联盟。若 D4 提供单成员
+summary，D3 只接受 `single_member_authorized`、非 atomic、成员授权完整且租约有效的
+证据。所需资源数大于 1 时仍必须提供 committed、atomic committed、完整成员确认、
+同一 epoch、匹配成员集合和未过期 lease。任一条件不满足时，D3 抛出明确拒绝原因。
 
 区域计划继续使用现有计划版本和迟滞机制。真实执行身份改变时版本严格递增；旧来源
 计划由 `StalePlanError` 拒绝；候选若被迟滞保持且没有形成区域合同，也不得伪装为
 已提交计划。当前只完成 D3 模块级合同和单元测试。main 尚需把 D4 区域裁决映射到该
 接口，并在中心失效、多个二级 owner、二级失效和网络分区场景中完成运行时验收。
+
+计划 metadata 使用 `single_member_authority` 和 `atomic_coalition_commit` 区分两类
+授权，同时记录 `regional_commit_required`、实际状态和 evidence 是否存在。该区分供
+D6 分别统计区域单成员授权与多成员原子提交，不改变 k>1 的全有或全无原则。
