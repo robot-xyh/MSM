@@ -841,3 +841,91 @@ churn，不能直接把 `membership_change_records` 数量或 `changed=true` 数
 物理层的 `collision_stop` 只作为外部 outcome 进入 D6。当前 D3 history 没有碰撞对象
 和控制状态，因此不依据该字段自动修改 switch penalty、`delta` 或成员角色。后续如需
 调整代价，必须先由 main/runtime 提供可区分的 collision lineage，再做配对标定。
+
+## 20. 可扩展三维稀疏分配与学习残差（2026-07-20）
+
+### 20.1 三维规则边
+
+`PlannerConfig.scalable_3d()` 只扩展规则成本，不替换 Hungarian 主线。对目标位置
+`p_t`、速度 `v_t`、资源位置 `p_r` 和资源最大速率 `s_r`，忽略路径障碍的解析基线求
+最早非负根：
+
+```text
+||(p_t - p_r) + v_t * tau||^2 = (s_r * tau)^2
+```
+
+若无非负根、超过 `max_intercept_time_s` 或资源声明的最大截获距离，则边 hard reject。
+该模型是 constant-speed reachability screening，不是 D7 动力学或轨迹规划。可行边的
+`reachability_3d` 使用截获时间/距离归一化值，并与上游
+`intercept_feasibility_score_by_target` 的不足取最大值。
+
+目标与资源可携带 3x3/6x6 NED 位置协方差。规则项采用双方位置 block trace 之和除以
+`covariance_trace_scale`，再与旧的标量 `TargetTrack.covariance` 取较大值，保证旧合同
+不被丢弃。区域相同成本为零；显式允许跨区时使用 `cross_region_cost`，启用区域硬门控
+且无邻区许可时跨区边直接拒绝。
+
+当前边代价为：
+
+```text
+C_rule = C_window + C_covariance + C_threat + C_resource
+       + C_fov + C_conflict + C_reachability_3d + C_region
+       + C_switch_search
+```
+
+`assignment_capacity <= 0`、`friendly_conflict_by_resource=true`、区域不兼容和三维不可达
+均在学习前 hard reject。Hungarian 继续保证一个资源最多进入一个 executable assignment；
+M-to-N 继续通过目标需求槽表达，不把资源容量交给学习模型决定。
+
+### 20.2 稀疏候选图
+
+规则先计算硬可行边，再按每目标 `(C_rule, resource_id)` 确定性排序并保留 top-k。
+实际保留数为：
+
+```text
+k_effective = max(max_candidate_edges_per_target, required_resource_count)
+```
+
+上一 current plan 中仍可行的成员边额外保留，因此 top-k 变化本身不会把旧计划伪造为
+不可行。图外边在 solver dense matrix 中写入 `infeasible_penalty`，所以最终仍调用
+SciPy Hungarian/现有 demand-slot solver；策略输入和大规模 evidence 只枚举候选边。
+200v200、每目标 4 边时，策略 batch 为 `800 x 12`，不是 40,000 个独立动作。
+
+### 20.3 学习辅助和动作掩码
+
+`SharedCandidateEdgeResidualPolicy` 对每条候选边共享同一两层 MLP，输出 `delta_C` 和
+selection confidence。12 个输入特征是压缩后的规则总成本、威胁、窗口、协方差、
+三维可达性、区域、资源状态、FOV、冲突、需求数、primary 数和 previous-binding 标志。
+模型不输出 resource index、target index、coalition、plan version 或 assignment。
+
+`LearningActionMask` 继承规则 reject mask，并额外比较
+`expected_previous_version == current_plan_version`。不可达、容量耗尽、友方冲突、区域
+拒绝、top-k 裁剪和版本不匹配的边均不进入模型。planner 自身仍先执行
+`_validate_previous_plan`，因此 published stale plan 是异常拒绝，不会通过学习回退继续执行。
+
+assist 模式唯一允许的成本变换为：
+
+```text
+C_final = C_rule + alpha * tanh(delta_C)
+```
+
+没有额外缩放、离散动作或模型直接换绑。shadow 模式计算同一 proposed cost 但把原始
+`C_rule` 交给 solver。timeout、低于 `min_confidence`、OOD、非有限/错误维度输出和
+模型异常均逐元素保留 `C_rule`。当前 timeout 是同步调用返回后的 deadline 检查；超时
+输出不生效，但尚不是可抢占推理。
+
+### 20.4 最小训练接口和能力边界
+
+`behavior_clone_warmup()` 使用 masked BCE 预热共享 selection head，并可用 teacher
+`delta_C` 做附加 MSE。该接口只用于最小可测 BC/shadow pipeline。2026-07-20 的测试
+仅含 1 个 32-edge synthetic batch，证明 loss 可下降和输出 shape 可变；没有真实标签、
+checkpoint、离线 policy evaluation 或 PPO。
+
+本轮 13 个新增确定性测试覆盖 3v5、5v3、200v200、M-to-N、三维成本、四类 mask、
+严格公式、shadow、timeout/低置信/OOD、版本推进/stale 和 BC。200v200 为单样本，
+结果 200/200、800 候选边、2% 密度，单次本地调用 0.621 s；不作为实时或多 seed
+统计。全量 `170 passed, 1 skipped`，接受阈值零失败，skip 仅 optional OR-Tools。
+
+后续必须用真实 D2/D3 序列建立 train/validation/未见 seed 数据集，保存模型与特征
+统计，标定 confidence/OOD/deadline，并完成 shadow paired non-degradation。当前环境
+没有 gymnasium/stable_baselines3，本轮也未实现大规模 PPO；不得把 BC 单测或随机
+初始化 shadow 写成强化学习验收完成。

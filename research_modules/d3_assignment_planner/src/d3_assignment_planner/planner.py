@@ -11,6 +11,7 @@ from uuid import uuid4
 import numpy as np
 
 from .costs import CostMatrixResult, CostModel
+from .learning import LearningCostAssistant
 from .models import (
     ASSIGNMENT_CALIBRATION_PROFILE_SCHEMA_V1,
     ASSIGNMENT_PLAN_SCHEMA_V2,
@@ -149,11 +150,13 @@ class AssignmentPlanner:
         cost_model: CostModel | None = None,
         solver: HungarianAssignmentSolver | None = None,
         config: PlannerConfig | None = None,
+        learning_assistant: LearningCostAssistant | None = None,
     ) -> None:
         self.config = config or PlannerConfig()
         self.cost_model = cost_model or CostModel(config=self.config)
         self.solver = solver or HungarianAssignmentSolver()
         self.demand_solver = HungarianDemandSlotSolver(self.solver)
+        self.learning_assistant = learning_assistant
         self._latest_version = 0
         self._latest_plan_id: str | None = None
         self._latest_published_plan: AssignmentPlan | None = None
@@ -217,10 +220,11 @@ class AssignmentPlanner:
         changed_resources = frozenset(str(value) for value in changed_resource_ids)
         started_at = perf_counter()
 
-        matrix_result = self.cost_model.build_matrix(
+        matrix_result = self._build_search_matrix(
             track_items,
             resource_items,
             timestamp,
+            previous_plan,
         )
         fallback_reason = self._incremental_fallback_reason(
             tracks=track_items,
@@ -314,14 +318,10 @@ class AssignmentPlanner:
             changed_resource_ids=changed_resources,
             elapsed_ms=(perf_counter() - started_at) * 1000.0,
         )
-        switched_matrix_result = self._apply_switch_penalty_to_matrix(
-            matrix_result,
-            previous_plan,
-        )
         result = self._filter_candidate(
             candidate=candidate,
             previous_plan=previous_plan,
-            matrix_result=switched_matrix_result,
+            matrix_result=matrix_result,
             timestamp=timestamp,
             window_id=window_id,
             tracks=track_items,
@@ -390,9 +390,10 @@ class AssignmentPlanner:
     ) -> tuple[AssignmentPlan, CostMatrixResult]:
         """Solve one input set without hysteresis or identity finalization."""
 
-        matrix_result = self.cost_model.build_matrix(tracks, resources, timestamp)
-        matrix_result = self._apply_switch_penalty_to_matrix(
-            matrix_result,
+        matrix_result = self._build_search_matrix(
+            tracks,
+            resources,
+            timestamp,
             previous_plan,
         )
         if self._uses_demand_slots(tracks):
@@ -419,6 +420,48 @@ class AssignmentPlanner:
                 changed=True,
             )
         return candidate, matrix_result
+
+    def _build_search_matrix(
+        self,
+        tracks: list[TargetTrack] | tuple[TargetTrack, ...],
+        resources: list[ResourceState] | tuple[ResourceState, ...],
+        timestamp: float,
+        previous_plan: AssignmentPlan | None,
+    ) -> CostMatrixResult:
+        """Build rule costs, search shaping, and an optional guarded residual."""
+
+        matrix_result = self.cost_model.build_matrix(
+            tracks,
+            resources,
+            timestamp,
+            preserved_candidate_edges=self._preserved_candidate_edges(previous_plan),
+        )
+        matrix_result = self._apply_switch_penalty_to_matrix(
+            matrix_result,
+            previous_plan,
+        )
+        if self.learning_assistant is None:
+            return matrix_result
+        expected_version = 0 if previous_plan is None else previous_plan.version
+        return self.learning_assistant.apply(
+            matrix_result,
+            tracks,
+            resources,
+            expected_previous_version=expected_version,
+            current_plan_version=self._latest_version,
+            previous_plan=previous_plan,
+        )
+
+    @staticmethod
+    def _preserved_candidate_edges(
+        previous_plan: AssignmentPlan | None,
+    ) -> dict[str, tuple[str, ...]]:
+        if previous_plan is None:
+            return {}
+        return {
+            target_id: tuple(item.resource_id for item in assignments)
+            for target_id, assignments in previous_plan.assignments_by_target().items()
+        }
 
     def _filter_candidate(
         self,
@@ -1033,6 +1076,12 @@ class AssignmentPlanner:
             track.time_window_state,
             cls._stable_input_value(track.time_window_by_resource),
             cls._demand_signature(track.effective_demand),
+            cls._stable_input_value(track.position_ned),
+            cls._stable_input_value(track.velocity_ned),
+            cls._stable_input_value(track.position_covariance_ned),
+            track.region_id,
+            cls._stable_input_value(track.candidate_resource_region_ids),
+            cls._stable_input_value(track.friendly_conflict_by_resource),
         )
 
     @classmethod
@@ -1055,6 +1104,14 @@ class AssignmentPlanner:
                 resource.intercept_feasibility_score_by_target
             ),
             cls._stable_input_value(resource.metadata),
+            cls._stable_input_value(resource.position_ned),
+            cls._stable_input_value(resource.velocity_ned),
+            cls._stable_input_value(resource.position_covariance_ned),
+            resource.max_speed_mps,
+            resource.max_intercept_range_m,
+            resource.region_id,
+            cls._stable_input_value(resource.reachable_target_region_ids),
+            int(resource.assignment_capacity),
         )
 
     @classmethod
@@ -1982,6 +2039,20 @@ class AssignmentPlanner:
                 matrix_result.target_threat_scores[slot.target_index] for slot in slots
             ),
             reject_reasons=tuple(reject_reasons),
+            candidate_mask=np.asarray(
+                [
+                    [reason is None for reason in row]
+                    for row in reject_reasons
+                ],
+                dtype=bool,
+            ).reshape(len(slots), len(resources)),
+            metadata={
+                **dict(matrix_result.metadata),
+                "candidate_demand_slot_edge_count": sum(
+                    reason is None for row in reject_reasons for reason in row
+                ),
+                "candidate_demand_slot_count": len(slots),
+            },
         )
 
     @staticmethod
@@ -3663,13 +3734,19 @@ class AssignmentPlanner:
     def _matrix_evidence_metadata(
         matrix_result: CostMatrixResult,
     ) -> dict[str, object]:
-        cost_matrix = tuple(
-            tuple(float(value) for value in row)
-            for row in matrix_result.matrix.tolist()
+        sparse = bool(matrix_result.metadata.get("candidate_graph_sparse", False))
+        cost_matrix = (
+            ()
+            if sparse
+            else tuple(
+                tuple(float(value) for value in row)
+                for row in matrix_result.matrix.tolist()
+            )
         )
         edges: list[dict[str, object]] = []
         rejected_edges: list[dict[str, object]] = []
         reject_reasons = matrix_result.reject_reasons
+        reject_reason_counts: dict[str, int] = {}
         for target_index, target_id in enumerate(matrix_result.target_ids):
             for resource_index, resource_id in enumerate(matrix_result.resource_ids):
                 reject_reason = None
@@ -3677,10 +3754,16 @@ class AssignmentPlanner:
                     row = reject_reasons[target_index]
                     if resource_index < len(row):
                         reject_reason = row[resource_index]
+                if reject_reason is not None:
+                    reject_reason_counts[reject_reason] = (
+                        reject_reason_counts.get(reject_reason, 0) + 1
+                    )
+                if sparse and reject_reason is not None:
+                    continue
                 edge = {
                     "target_id": target_id,
                     "resource_id": resource_id,
-                    "cost": cost_matrix[target_index][resource_index],
+                    "cost": float(matrix_result.matrix[target_index, resource_index]),
                     "cost_breakdown": dict(
                         matrix_result.breakdowns[target_index][resource_index]
                     ),
@@ -3690,26 +3773,35 @@ class AssignmentPlanner:
                 edges.append(edge)
                 if reject_reason is not None:
                     rejected_edges.append(edge)
-        hard_reject_reasons = tuple(
-            sorted(
-                {
-                    str(edge["reject_reason"])
-                    for edge in rejected_edges
-                    if edge.get("reject_reason")
-                }
-            )
-        )
+        hard_reject_reason_counts = {
+            reason: count
+            for reason, count in reject_reason_counts.items()
+            if reason != "candidate_pruned_sparse"
+        }
+        hard_reject_reasons = tuple(sorted(hard_reject_reason_counts))
         return {
+            **dict(matrix_result.metadata),
             "current_plan_evidence_schema": "d3_assignment_evidence_v1",
             "cost_matrix_target_ids": matrix_result.target_ids,
             "cost_matrix_resource_ids": matrix_result.resource_ids,
             "cost_matrix": cost_matrix,
             "current_cost_matrix": cost_matrix,
+            "cost_matrix_storage": (
+                "sparse_candidate_edges" if sparse else "dense"
+            ),
             "cost_breakdowns_by_edge": tuple(edges),
             "current_cost_breakdowns_by_edge": tuple(edges),
             "rejected_edges": tuple(rejected_edges),
-            "hard_reject_count": len(rejected_edges),
+            "solver_reject_count": sum(reject_reason_counts.values()),
+            "candidate_pruned_edge_count": reject_reason_counts.get(
+                "candidate_pruned_sparse",
+                0,
+            ),
+            "hard_reject_count": sum(hard_reject_reason_counts.values()),
             "hard_reject_reasons": hard_reject_reasons,
+            "hard_reject_reason_counts": tuple(
+                sorted(hard_reject_reason_counts.items())
+            ),
         }
 
     def _cost_weights_metadata(self) -> dict[str, float]:
@@ -3721,6 +3813,8 @@ class AssignmentPlanner:
             "resource_state": float(weights.resource_state),
             "fov": float(weights.fov),
             "conflict": float(weights.conflict),
+            "reachability_3d": float(weights.reachability_3d),
+            "region": float(weights.region),
         }
 
     def _planner_thresholds_metadata(self) -> dict[str, object]:
@@ -3739,6 +3833,21 @@ class AssignmentPlanner:
             ),
             "infeasible_penalty": float(self.config.infeasible_penalty),
             "unassigned_base_cost": float(self.config.unassigned_base_cost),
+            "enable_candidate_sparsification": bool(
+                self.config.enable_candidate_sparsification
+            ),
+            "max_candidate_edges_per_target": (
+                self.config.max_candidate_edges_per_target
+            ),
+            "enforce_region_compatibility": bool(
+                self.config.enforce_region_compatibility
+            ),
+            "max_intercept_time_s": self.config.max_intercept_time_s,
+            "default_resource_speed_mps": self.config.default_resource_speed_mps,
+            "reachability_time_scale_s": float(
+                self.config.reachability_time_scale_s
+            ),
+            "covariance_trace_scale": float(self.config.covariance_trace_scale),
         }
 
     @staticmethod

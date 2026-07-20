@@ -543,3 +543,48 @@ runtime reserve demotion 和 M5N2 `8/10` 物理门限仍是剩余 P1。
 计算；`python3 -m pytest -q research_modules/d3_assignment_planner/tests` 为
 `157 passed, 1 skipped`，零失败达到门限。物理 5 m 和 coalition 门限未达到，继续
 按上述 P1 执行。
+
+## 18. 可扩展三维规则与学习辅助计划（2026-07-20）
+
+### 已实现范围
+
+1. `PlannerConfig.scalable_3d()` 显式开启三维规则 profile；旧 profile 和无三维字段
+   输入保持原代价语义。
+2. 规则边增加解析三维截获时间/距离、NED 位置协方差和区域项。不可达、容量为零、
+   友方冲突、区域不兼容继续作为硬约束，不允许学习残差覆盖。
+3. 候选图按区域/可达性过滤，再按每目标规则成本 top-k 稀疏化。每目标保留数不低于
+   `required_resource_count`，并额外保留上一 current plan 中仍可行的成员边。
+4. 最终求解器仍为 Hungarian 或 `hungarian_demand_slots`；高威胁 M-to-N 继续通过
+   显式 `TargetDemand`、角色/波次和 all-or-none admission 表达。
+5. 学习只在稀疏边上输出共享 `delta_C`，assist 公式固定为
+   `C_final=C_rule+alpha*tanh(delta_C)`。动作掩码覆盖规则不可达、容量、友方冲突和
+   plan version；timeout、低置信、OOD、非有限/错误形状和模型异常均回退 `C_rule`。
+6. `shadow` 只记录候选修正，不改变 solver 输入；`assist` 也无权直接输出 assignment。
+   `AssignmentPlan` 的 execution identity、递增版本和 stale rejection 沿用现有合同。
+7. 原生 PyTorch `SharedCandidateEdgeResidualPolicy` 使用共享 MLP 处理 `E x 12` 特征，
+   `E` 为稀疏边数；`behavior_clone_warmup` 提供最小监督预热。没有 40,000 维自由
+   动作头，也没有引入 gymnasium/stable_baselines3。
+
+### 确定性验收
+
+验证日期为 2026-07-20。新增 13 个测试，样本包括 1 个 3-target/5-resource、1 个
+5-target/3-resource、1 个 200v200、1 个 2-target/5-resource M-to-N、规则成本与
+mask/fallback/version cases，以及 1 个 32-edge synthetic BC batch。接受阈值为测试
+零失败、200v200 完整分配、候选动作严格少于 40,000、stale 不得接受、所有 fallback
+与规则矩阵逐元素相同。
+
+实际结果为 200/200 分配、800 条候选边/动作、候选密度 2%；单次本地调用 0.621 s，
+仅作为功能时延样本，不据此宣称实时。D3 全量为 `170 passed, 1 skipped`，唯一 skip
+为当前环境未安装 optional OR-Tools。
+
+### 开放训练与系统缺口
+
+- 尚无真实轨迹上的 BC 数据集、checkpoint、train/validation/未见 seed 划分和收益
+  指标；32-edge synthetic batch 只证明接口可训练。
+- 尚未完成 shadow 多 seed 非退化、置信/OOD 标定、GPU/CPU deadline 分布和可抢占
+  timeout。当前 timeout 是调用返回后的 deadline 检查，超时结果不进入 solver。
+- 未实现或验收大规模 PPO；不得把本批写成 PPO、强化学习收益或 20-seed 验收完成。
+- 区域划分/邻区许可由上游提供；D3 未实现跨区域配额 RL。解析可达性也不代替 D7
+  动力学、障碍/航路规划、友方轨迹解冲和 AirSim 物理闭环。
+- 200v200 当前仍构造确定性 dense solver matrix，并以 infeasible penalty 表示稀疏
+  图外边；策略和 evidence 已稀疏，但更大规模的 sparse flow/auction 仍是后续研究。

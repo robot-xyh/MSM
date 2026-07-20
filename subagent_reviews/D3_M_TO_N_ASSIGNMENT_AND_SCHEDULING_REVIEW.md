@@ -303,3 +303,20 @@ paired non-degradation 失败也不构成 D3 demand-slot 退化证据。
 
 额外完成的 `png_ttc_2v2_seed001` 排除在 M5N2 20-case 之外；全部 dropout case 未
 执行。未执行结果保持 `unavailable`，不补零。
+
+## 18. Scalable-3D 稀疏候选对 M-to-N 的影响（2026-07-20）
+
+稀疏化在目标需求槽展开之前执行，但每目标候选数使用
+`max(configured_top_k, required_resource_count)`，因此配置 top-2 时显式 k=3 高威胁
+目标仍至少保留 3 条可行边。上一 current coalition 中仍可行的成员也额外保留，避免
+top-k 排名轻微变化直接制造联盟 hard infeasible。
+
+新增的 2-target/5-resource 确定性 case 保持 high-threat `2 primary + 1 reserve`，
+最终仍由 `hungarian_demand_slots` 完成 all-or-none admission；学习策略只对原始
+target-resource 候选边共享输出 residual，展开后的 role/wave/capability mask、容量和
+联盟原子性不交给模型。版本变化和 stale rejection 沿用 `AssignmentPlan` 合同。
+
+该单测关闭“top-k 小于 k_j 导致实现性 shortfall”的 D3-owned 缺口，但不证明密集
+200v200 M-to-N、能力异构、动态资源失效或 AirSim 协同物理完成。全量结果为
+`170 passed, 1 skipped`；真实 M5N2 第二 primary/coalition、多 seed 和 PPO 均保持
+开放或未实现状态。

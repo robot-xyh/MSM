@@ -11,6 +11,7 @@ Boundary: this module only supports offline simulation, evaluation, and human-re
 - `src/d3_assignment_planner/fixtures.py`: versioned non-equal, dynamic-event, D5-feedback, and hard-window fixtures.
 - `src/d3_assignment_planner/calibration.py`: reusable full/incremental P1 matrix runner and D6-friendly summaries.
 - `src/d3_assignment_planner/cooperative_prescreen.py`: versioned M-to-N cooperative candidate grid, observed-result ranking, and current-plan metadata export.
+- `src/d3_assignment_planner/learning.py`: optional shared candidate-edge PyTorch residual, behavior-cloning warm-up, shadow/assist inference, masks, and rule fallback.
 - `tests/`: unit tests.
 - `simulations/run_rolling_assignment.py`: 100 s, 2 Hz rolling simulation.
 - `docs/ALGORITHM_AND_IMPLEMENTATION.md`: Chinese algorithm principles and implementation guide.
@@ -432,3 +433,54 @@ M5N2 聚合；其余 tuned case 未执行，dropout case 数为 0，缺失结果
 plan/member/owner churn 可计算，且模块测试零失败；结果满足。物理验收门限仍为每个
 active primary 进入 5 m，第二 primary 与 coalition 未满足。D3 全量测试为
 `157 passed, 1 skipped`，唯一 skip 是 optional OR-Tools installed-only case。
+
+## Scalable 3D Rule And Learning-Assist Path (2026-07-20)
+
+`PlannerConfig.scalable_3d(...)` is an opt-in profile around the existing rule
+planner. `TargetTrack` and `ResourceState` accept NED position/velocity,
+position covariance, region identifiers, and resource speed/range fields. The
+rule cost adds analytic constant-speed 3D intercept time/range, normalized NED
+covariance, and region cost. Unreachable edges, exhausted assignment capacity,
+declared friendly conflicts, and incompatible regions are hard-masked.
+
+Candidate generation first applies the region/reachability gates and then
+retains a deterministic per-target top-k. The effective k is never below the
+target's `required_resource_count`, and still-feasible members of the current
+published plan are retained so sparsification alone does not force churn. The
+solver input remains a deterministic Hungarian/demand-slot matrix with pruned
+edges set to the infeasible penalty. For sparse profiles, plan evidence stores
+candidate-edge records and reject counts rather than a dense 40,000-edge audit
+bundle.
+
+The optional learning interface is `LearningCostAssistant`. It runs one shared
+PyTorch MLP over a variable-length candidate-edge feature batch and supports
+`shadow` and `assist` modes. Assist mode uses exactly:
+
+```text
+C_final = C_rule + alpha * tanh(delta_C)
+```
+
+The policy cannot emit assignments or a dense target-by-resource action vector;
+Hungarian/demand-slot solving, all-or-none coalition admission, capacity, friend
+conflict, and version checks remain deterministic. A stale version is rejected
+by `AssignmentPlanner`; standalone residual inference masks a version mismatch.
+Model timeout, low confidence, OOD features, invalid output, or model exception
+returns the unchanged `C_rule`. `behavior_clone_warmup(...)` is a minimal native
+PyTorch supervised warm-up interface, not PPO training or acceptance evidence.
+
+Deterministic validation on 2026-07-20 added 13 tests: 3-target/5-resource,
+5-target/3-resource, one 200v200 fixture, sparse high-threat M-to-N, 3D cost,
+mask/fallback/version cases, and one 32-edge synthetic behavior-cloning batch.
+The 200v200 sample assigned 200/200 with 800 candidate edges (2% density) and
+800 shared-edge policy actions; one local invocation took 0.621 s. This is a
+single functional timing sample, not a real-time benchmark. The full D3 suite
+is `170 passed, 1 skipped`, with zero failures as the acceptance threshold and
+only the optional OR-Tools installed-only test skipped.
+
+Remaining learning gaps are real D2/D3 trajectory datasets, train/validation
+splits, persisted checkpoints, calibrated OOD/confidence thresholds, bounded
+preemptive inference, shadow multi-seed non-degradation, and any large-scale PPO
+study. `gymnasium` and `stable_baselines3` are absent and are not required by
+this implementation. The analytic reachability baseline does not replace D7
+dynamics, obstacle/path planning, regional quota policy, or AirSim physical
+validation.

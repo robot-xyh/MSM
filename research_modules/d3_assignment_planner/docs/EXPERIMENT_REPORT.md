@@ -243,3 +243,29 @@ coalition 分母 20。缺失 case 不补零，也不把 canonical target 成功�
 本批满足；物理验收要求 active primary 进入 5 m，第二 primary 和 coalition 不满足。
 文档同步后 D3 回归为 `157 passed, 1 skipped`，唯一 skip 是未安装 optional OR-Tools
 的 installed-only 对照，接受门限为零测试失败。
+
+## 2026-07-20 可扩展三维与学习辅助确定性验收
+
+本批没有运行 AirSim，也没有使用 truth label 或 PPO。新增测试样本为：1 个 3v5、
+1 个 5v3、1 个 200v200、1 个 2-target/5-resource 高威胁 M-to-N、三维规则成本、
+mask/fallback/version cases，以及 1 个 32-edge synthetic behavior-cloning batch。
+
+| 指标 | 接受阈值 | 结果 |
+|---|---:|---:|
+| 新增测试 | 零失败 | 13/13 通过 |
+| D3 全量 | 零失败 | 170 passed、1 optional skip |
+| 200v200 executable assignment | 200/200 | 200/200 |
+| 200v200 策略候选动作 | `< 40000` | 800 |
+| 候选密度 | 记录实际值 | 2% |
+| fallback cost | 与 `C_rule` 逐元素相同 | timeout/低置信/OOD 均通过 |
+| stale previous plan | 必须拒绝 | `StalePlanError` 通过 |
+| BC 最小接口 | final loss 小于 initial | 32-edge synthetic batch 通过 |
+
+200v200 单次本地调用耗时 0.621 s。该数字没有 warm-up 分布、重复样本、置信区间或
+阶段归因，只作为本机功能样本，不设实时通过结论。完整分配也只证明该确定性几何中
+top-4 候选保留了 perfect matching，不证明所有密集/交叉/资源失效场景都能用相同 k。
+
+学习侧只证明共享候选边网络、严格残差公式、shadow/assist 和 fail-safe fallback
+可执行。当前无真实轨迹训练集、checkpoint、未见 seed、收益对照、PPO 或大规模训练
+验收；gymnasium/stable_baselines3 未安装。后续必须由 main 接入 scalable simulation
+总线并由 D6 做多 seed 非退化、时延和物理结果统计后，才能更新能力等级。

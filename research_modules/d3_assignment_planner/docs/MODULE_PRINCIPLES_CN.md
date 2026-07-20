@@ -787,3 +787,24 @@ D3 的职责是形成 current coalition 和抑制无依据换员，D5/D7/runtime
 `cooperative target diagnosis` 指 T001 的两个 primary、第二 primary 和 coalition
 诊断。前者不能替代后者。额外 `png_ttc_2v2_seed001` 和未执行 dropout case 不进入
 本节样本，缺失项保持不可用。
+
+## 2026-07-20 三维稀疏与学习辅助原则
+
+1. **规则和确定性求解器是主线**：三维可达性、NED 协方差、区域、容量和友方冲突
+   先形成 `C_rule` 与 hard mask；最终仍由 Hungarian/demand-slot solver 生成计划。
+2. **学习只能修正候选边成本**：唯一公式是
+   `C_final=C_rule+alpha*tanh(delta_C)`。模型不得直接输出 assignment、联盟成员、
+   `global_track_id`、plan owner 或 version。
+3. **稀疏动作而非固定大动作头**：策略按共享网络处理候选边集合 `E x 12`。200v200
+   的确定性样本只有 800 条策略边，不定义 40,000 个自由动作。
+4. **硬约束不可学习绕过**：不可达、容量耗尽、友方冲突、区域拒绝和版本不匹配全部
+   mask；published stale plan 仍由 planner 抛出 `StalePlanError`。
+5. **回退必须逐元素等于规则矩阵**：timeout、低置信、OOD、模型异常和非法输出均
+   返回 `C_rule`；shadow 建议不进入 solver。
+6. **能力声明按证据分层**：2026-07-20 只完成 13 个新增确定性测试和 32-edge synthetic
+   BC 预热。全量为 `170 passed, 1 skipped`；尚无真实训练集、checkpoint、PPO、
+   多 seed shadow 非退化或 AirSim 物理验收。
+
+解析 constant-speed reachability 只用于候选预筛，不代替 D7 三维动力学、障碍规划、
+友方轨迹解冲或区域配额策略。区域编号和邻区许可必须来自上游合同，D3 不根据 truth
+自行创建区域或改写中心航迹身份。

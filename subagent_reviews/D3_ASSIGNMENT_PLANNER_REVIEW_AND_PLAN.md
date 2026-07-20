@@ -537,3 +537,27 @@ baseline 与 candidate 的 D3 plan/member churn 同为 0，不能写成 D3 算�
 
 本次只改 D3 文档。模块全量测试为 `157 passed, 1 skipped`，零失败达到门限；
 optional OR-Tools installed-only case 是唯一 skip，owned-path diff 检查通过。
+
+## 20. Scalable-3D 与学习辅助复核（2026-07-20）
+
+| 复核项 | 状态 | 结论 |
+|---|---|---|
+| 三维规则成本 | implemented/tested | 解析截获时间/距离、NED 协方差和区域项进入 breakdown |
+| 稀疏候选图 | implemented/tested | 区域/可达性 hard gate + per-target top-k；保留 current 可行成员 |
+| 3v5 / 5v3 | deterministic done | 同一 planner path，分别 3/3 和 3/5 target 获得 assignment |
+| 200v200 | deterministic single sample | 200/200，800 candidates/actions，2% density；非实时验收 |
+| 高威胁 M-to-N | regression done | top-k 不低于 demand，仍走 `hungarian_demand_slots` 和 all-or-none |
+| 学习残差 | interface done | 仅 `C_rule+alpha*tanh(delta_C)`；shared edge MLP，不直接分配 |
+| mask/fallback | deterministic done | reachability/capacity/friend/version；timeout/low confidence/OOD 回规则 |
+| 版本/stale | regression done | 执行变化递增；旧 published plan 继续抛 `StalePlanError` |
+| BC | minimal interface only | 32-edge synthetic warm-up；没有真实数据或 checkpoint |
+| PPO | unavailable/unvalidated | 无 gymnasium/SB3，不得写成大规模 PPO 完成 |
+
+规则主线未替换。学习 assistant 默认为可选，shadow 不改变 solver matrix；assist 也只
+修正候选边成本，最终计划仍由 Hungarian/demand-slot、迟滞和版本发布链产生。硬约束
+先于模型，模型不能解除不可达、容量、友方冲突、区域或 stale gate。
+
+验证样本共新增 13 个确定性测试；全量 `170 passed, 1 skipped`，接受阈值为零失败，
+skip 仅 optional OR-Tools。200v200 单次本地调用 0.621 s 只记录为单样本功能时延。
+开放 P1/P2 是真实轨迹 BC 数据、checkpoint、confidence/OOD/deadline 标定、多 seed
+shadow paired non-degradation、scalable simulation/AirSim 物理闭环和任何 PPO 研究。

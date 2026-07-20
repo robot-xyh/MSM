@@ -275,3 +275,26 @@ plan 的 target/role 识别，不能固定资源编号。`png_ttc_2v2_seed001` �
 
 验收命令 `python3 -m pytest -q research_modules/d3_assignment_planner/tests` 返回
 `157 passed, 1 skipped`，零失败达到门限；owned-path `git diff --check` 通过。
+
+## 17. Scalable-3D / Learning-Assist GAP（2026-07-20）
+
+| GAP/能力 | 当前状态 | 证据与边界 |
+|---|---|---|
+| 三维 rule cost | P1 interface done | NED position/velocity/covariance、解析 reachability、region cost/hard gate 单测通过 |
+| 稀疏候选 | P1 deterministic done | per-target top-k、不低于 demand、保留 previous feasible edge；200v200=800 edges |
+| 非等量 N/M | deterministic support done | 3v5、5v3 同路径通过；真实多 seed 仍 open |
+| M-to-N 稀疏槽 | regression done | 2-target/5-resource、high-threat k=3 完整联盟；all-or-none 不变 |
+| action mask | P0/P1 safety done | 不可达、capacity=0、friendly conflict、version mismatch 均不可学习绕过 |
+| residual formula | P1 interface done | 严格 `C_final=C_rule+alpha*tanh(delta_C)`，最终 Hungarian 不变 |
+| fail-safe fallback | P0/P1 deterministic done | timeout、low confidence、OOD、invalid/error 返回逐元素相同 `C_rule` |
+| shared PyTorch edge policy | minimal tested | 32-edge synthetic BC loss 下降；无固定 40,000-action head |
+| 真实 BC 数据/checkpoint | P1 open | 尚无 D2/D3 trajectory labels、split、版本化 artifact 和 replay evaluation |
+| shadow non-degradation | P1 open | 尚无未见 seed、收益/安全配对统计和 confidence/OOD threshold calibration |
+| PPO | P2 unavailable | gymnasium/SB3 不在环境；未实现、未训练、未验收 |
+| 200v200 系统性能 | P1 open | 单样本 200/200、0.621 s；无重复分布/阶段归因/闭环实时结论 |
+
+本轮关闭的是 D3-owned 规则/接口/确定性安全 GAP，不关闭真实训练或系统 outcome GAP。
+新增 13 个测试后全量为 `170 passed, 1 skipped`，零失败达到门限；skip 仍是 optional
+OR-Tools。`docs/AIRSIM_INTEGRATION_PLAN.md` 已检查：本批未接 AirSim adapter、runtime
+或 actor/control 合同，因此不改其已验证/未验证状态。`docs/EXPERIMENT_REPORT.md` 只
+记录本地确定性样本，并明确不是 AirSim/PPO 证据。

@@ -225,6 +225,12 @@ class TargetTrack:
         default_factory=dict
     )
     demand: TargetDemand | None = None
+    position_ned: tuple[float, float, float] | None = None
+    velocity_ned: tuple[float, float, float] | None = None
+    position_covariance_ned: Any = None
+    region_id: str | None = None
+    candidate_resource_region_ids: tuple[str, ...] = ()
+    friendly_conflict_by_resource: Mapping[str, bool] = field(default_factory=dict)
 
     @property
     def effective_demand(self) -> TargetDemand:
@@ -255,6 +261,14 @@ class ResourceState:
         default_factory=dict
     )
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    position_ned: tuple[float, float, float] | None = None
+    velocity_ned: tuple[float, float, float] | None = None
+    position_covariance_ned: Any = None
+    max_speed_mps: float | None = None
+    max_intercept_range_m: float | None = None
+    region_id: str | None = None
+    reachable_target_region_ids: tuple[str, ...] = ()
+    assignment_capacity: int = 1
 
 
 @dataclass(frozen=True)
@@ -267,6 +281,8 @@ class CostWeights:
     resource_state: float = 1.0
     fov: float = 1.0
     conflict: float = 1.0
+    reachability_3d: float = 1.0
+    region: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -292,6 +308,32 @@ class PlannerConfig:
     feedback_profile_id: str = DEFAULT_FEEDBACK_PROFILE_ID
     feedback_profile_version: str = DEFAULT_FEEDBACK_PROFILE_VERSION
     transient_feedback_dwell_frames: int = 2
+    enable_candidate_sparsification: bool = False
+    max_candidate_edges_per_target: int | None = None
+    enforce_region_compatibility: bool = False
+    max_intercept_time_s: float | None = None
+    default_resource_speed_mps: float | None = None
+    reachability_time_scale_s: float = 60.0
+    covariance_trace_scale: float = 100.0
+    cross_region_cost: float = 0.5
+
+    @classmethod
+    def scalable_3d(cls, **overrides: Any) -> "PlannerConfig":
+        """Return the opt-in sparse three-dimensional rule profile."""
+
+        values: dict[str, Any] = {
+            "enable_candidate_sparsification": True,
+            "max_candidate_edges_per_target": 12,
+            "enforce_region_compatibility": True,
+            "max_intercept_time_s": 900.0,
+            "default_resource_speed_mps": 14.0,
+            "reachability_time_scale_s": 300.0,
+            "covariance_trace_scale": 100.0,
+            "cost_profile_id": "d3_scalable_3d_rule",
+            "cost_profile_version": "1.0.0",
+        }
+        values.update(overrides)
+        return cls(**values)
 
 
 @dataclass(frozen=True)

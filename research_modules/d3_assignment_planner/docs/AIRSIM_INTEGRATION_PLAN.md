@@ -264,3 +264,25 @@ The physical aggregate remains pair 12/60, canonical target 12/40, coalition
 0/20, and second-primary 0/20. The candidate's paired non-degradation failure
 does not demonstrate D3 planner degradation because D3 plan/member stability is
 the same in both profiles.
+
+## 2026-07-20 Scalable-3D Adapter Status
+
+D3 now has an opt-in NED 3D rule profile, sparse candidate graph, and optional
+shared-edge learning residual. This task did not modify or run the AirSim
+adapter/runtime, so these capabilities remain **module-tested, AirSim-unwired**.
+No 200v200 or learning outcome in this document should be inferred from the
+local deterministic tests.
+
+Future main-owned integration must map D2 track NED state/covariance and current
+resource NED state/speed/range/region into the new fields, pass only online
+identity-safe data, and persist candidate count, fallback reason, confidence,
+latency, rule/final cost, plan identity, and solver result. Shadow mode must be
+run before assist mode and compared over unseen seeds; hard reject, stale,
+duplicate, and authorization violations must remain zero. D3 still emits the
+final Hungarian/demand-slot plan, and D7/AirSim remains responsible for physical
+dynamics and intercept outcomes.
+
+The 2026-07-20 module evidence is 13 new deterministic tests and a full result
+of `170 passed, 1 skipped`; the 200v200 sample used 800 candidate actions and
+one invocation took 0.621 s. These are not AirSim, real-time, PPO, or multi-seed
+acceptance results.
