@@ -293,19 +293,17 @@ class SensorScene:
                 center = noisy_centers[local_detection_index]
                 width = float(widths[local_detection_index])
                 height = float(heights[local_detection_index])
-                bbox = np.array(
-                    [
-                        center[0] - 0.5 * width,
-                        center[1] - 0.5 * height,
-                        center[0] + 0.5 * width,
-                        center[1] + 0.5 * height,
-                    ],
-                    dtype=float,
+                clipped = _clip_noisy_bbox(
+                    center,
+                    width,
+                    height,
+                    view.intrinsics,
                 )
-                bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0.0, view.intrinsics.width_px - 1.0)
-                bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0.0, view.intrinsics.height_px - 1.0)
+                if clipped is None:
+                    continue
+                center, bbox, bbox_area = clipped
                 measurement = np.concatenate((center, bbox))
-                bbox_variance = max(1.0, 0.0025 * width * height)
+                bbox_variance = max(1.0, 0.0025 * bbox_area)
                 covariance = np.zeros((6, 6), dtype=float)
                 covariance[:2, :2] = center_covariance
                 covariance[2:, 2:] = np.eye(4, dtype=float) * bbox_variance
@@ -316,7 +314,7 @@ class SensorScene:
                 confidence = float(
                     np.clip(
                         self.config.visual_detection_probability
-                        * min(1.0, math.sqrt(max(width * height, 1.0)) / 16.0),
+                        * min(1.0, math.sqrt(max(bbox_area, 1.0)) / 16.0),
                         0.05,
                         1.0,
                     )
@@ -333,7 +331,11 @@ class SensorScene:
                         covariance=covariance,
                         confidence=confidence,
                         classification_hint="unmanned_aircraft",
-                        metadata=_camera_metadata(view, width * height, self._visual_scan_index),
+                        metadata=_camera_metadata(
+                            view,
+                            bbox_area,
+                            self._visual_scan_index,
+                        ),
                     )
                 )
                 labels.append(
@@ -506,6 +508,43 @@ def _camera_metadata(view: CameraView, bbox_area: float, scan_index: int) -> dic
         "bbox_area_px2": float(bbox_area),
         "scan_index": int(scan_index),
     }
+
+
+def _clip_noisy_bbox(
+    center: np.ndarray,
+    width: float,
+    height: float,
+    intrinsics: CameraIntrinsics,
+) -> tuple[np.ndarray, np.ndarray, float] | None:
+    pixel_center = np.asarray(center, dtype=float).reshape(2)
+    bbox = np.array(
+        [
+            pixel_center[0] - 0.5 * float(width),
+            pixel_center[1] - 0.5 * float(height),
+            pixel_center[0] + 0.5 * float(width),
+            pixel_center[1] + 0.5 * float(height),
+        ],
+        dtype=float,
+    )
+    bbox[[0, 2]] = np.clip(
+        bbox[[0, 2]],
+        0.0,
+        float(intrinsics.width_px - 1),
+    )
+    bbox[[1, 3]] = np.clip(
+        bbox[[1, 3]],
+        0.0,
+        float(intrinsics.height_px - 1),
+    )
+    clipped_width = float(bbox[2] - bbox[0])
+    clipped_height = float(bbox[3] - bbox[1])
+    if clipped_width <= 0.0 or clipped_height <= 0.0:
+        return None
+    clipped_center = np.array(
+        [0.5 * (bbox[0] + bbox[2]), 0.5 * (bbox[1] + bbox[3])],
+        dtype=float,
+    )
+    return clipped_center, bbox, clipped_width * clipped_height
 
 
 def _wrap_angle(value: float) -> float:

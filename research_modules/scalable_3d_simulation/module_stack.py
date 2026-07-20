@@ -253,6 +253,9 @@ class IntegratedScalableModuleStack:
         self._d5_active_vision_learning_frames: list[
             D5ActiveVisionLearningFrame
         ] = []
+        self._d2_identity_lineage_by_track: dict[str, tuple[dict[str, Any], ...]] = {}
+        self._d2_observation_replay_generation: dict[str, int] = {}
+        self._d1_latest_lineage_by_observation: dict[str, dict[str, Any]] = {}
         self._stage_wall_time_s: dict[str, float] = {}
         self._stage_call_count: dict[str, int] = {}
 
@@ -334,6 +337,9 @@ class IntegratedScalableModuleStack:
         self._d4_learning_frames.clear()
         self._d5_learning_frames.clear()
         self._d5_active_vision_learning_frames.clear()
+        self._d2_identity_lineage_by_track.clear()
+        self._d2_observation_replay_generation.clear()
+        self._d1_latest_lineage_by_observation.clear()
         self._stage_wall_time_s.clear()
         self._stage_call_count.clear()
 
@@ -386,6 +392,10 @@ class IntegratedScalableModuleStack:
                 d2_timestamp = max(item.measurement_timestamp for item in detections)
                 self.latest_d2_result = self.d2.step(detections, d2_timestamp)
                 self.latest_d2_tracks = tuple(self.d2.active_tracks())
+                self._update_d2_identity_lineage(
+                    self.latest_d2_result,
+                    detections,
+                )
                 publications.append(self._d2_publication(now))
             self._record_timing("d2_association", perf_counter() - started)
             self._next_association_s = _advance_schedule(
@@ -919,6 +929,13 @@ class IntegratedScalableModuleStack:
                 self._d5_active_vision_learning_frames
             ),
         )
+
+    def d1_consistency_evidence_records(self) -> tuple[Any, ...]:
+        """Return the final truth-free D1 evidence snapshot for offline scoring."""
+
+        if self.d1 is None:
+            return ()
+        return tuple(self.d1.consistency_evidence_records())
 
     def _run_active_vision(
         self,
@@ -2403,6 +2420,60 @@ class IntegratedScalableModuleStack:
         return center, secondary_failed
 
     def _d1_publication(self, result: Any, batch: OnlineSensorBatch, now: float) -> RuntimePublication:
+        evidence_by_observation = {
+            item.observation_id: item
+            for item in self.d1.consistency_evidence_records()
+        }
+        observation_timestamps = {
+            str(measurement.observation_id): float(
+                measurement.measurement_timestamp
+            )
+            for measurement in batch.measurements
+        }
+        for track in result.tracks:
+            metadata = getattr(track, "metadata", {})
+            observation_id = str(
+                metadata.get("latest_observation_id", "")
+                if isinstance(metadata, Mapping)
+                else ""
+            ).strip()
+            if not observation_id or observation_id in observation_timestamps:
+                continue
+            evidence = evidence_by_observation.get(observation_id)
+            observation_timestamps[observation_id] = float(
+                getattr(track, "timestamp", now)
+                if evidence is None
+                else evidence.measurement_timestamp
+            )
+
+        observation_lineage = []
+        for observation_id, measurement_timestamp in observation_timestamps.items():
+            evidence = evidence_by_observation.get(observation_id)
+            lineage = (
+                (observation_id,)
+                if evidence is None
+                else _lineage_ending_in_observation(
+                    evidence.source_lineage,
+                    observation_id,
+                )
+            )
+            replay_generation = (
+                self._d2_observation_replay_generation.get(
+                    observation_id,
+                    -1,
+                )
+                + 1
+            )
+            lineage_record = {
+                "observation_id": observation_id,
+                "measurement_timestamp": float(measurement_timestamp),
+                "source_lineage": list(lineage),
+                "replay_generation": replay_generation,
+            }
+            observation_lineage.append(lineage_record)
+            self._d1_latest_lineage_by_observation[observation_id] = dict(
+                lineage_record
+            )
         return RuntimePublication(
             topic="modules.d1.fused_tracks",
             source="D1",
@@ -2414,6 +2485,7 @@ class IntegratedScalableModuleStack:
                 "track_count": len(result.tracks),
                 "tracks": [_track_summary(track) for track in result.tracks],
                 "summary": result.summary.to_dict(),
+                "observation_lineage": observation_lineage,
             },
             copy_payload=False,
         )
@@ -2461,9 +2533,79 @@ class IntegratedScalableModuleStack:
                 },
                 "id_switch_count": None,
                 "id_switch_count_available": False,
+                "identity_lineage": self._d2_identity_lineage_payload(result),
+                "identity_lineage_policy": (
+                    "d2_center_track_to_d1_source_observation_v1"
+                ),
             },
             copy_payload=False,
         )
+
+    def _update_d2_identity_lineage(
+        self,
+        result: Any,
+        detections: list[Any],
+    ) -> None:
+        """Retain truth-free D1 observation lineage for each D2-owned track."""
+
+        self._d2_identity_lineage_by_track.clear()
+        detection_by_id = {item.detection_id: item for item in detections}
+        for detection_id, global_track_id in dict(
+            result.metadata.get("detection_to_track", {})
+        ).items():
+            detection = detection_by_id.get(str(detection_id))
+            if detection is None:
+                continue
+            observation_id = str(
+                detection.metadata.get("latest_observation_id", "")
+            ).strip()
+            if not observation_id:
+                continue
+            lineage_record = self._d1_latest_lineage_by_observation.get(
+                observation_id
+            )
+            if lineage_record is None:
+                continue
+            self._d2_observation_replay_generation[observation_id] = int(
+                lineage_record["replay_generation"]
+            )
+            self._d2_identity_lineage_by_track[str(global_track_id)] = (
+                dict(lineage_record),
+            )
+
+    def _d2_identity_lineage_payload(self, result: Any) -> list[dict[str, Any]]:
+        detection_to_track = dict(result.metadata.get("detection_to_track", {}))
+        created = set(result.metadata.get("created_track_ids_by_detection", {}).values())
+        updated_track_ids = set(str(item) for item in detection_to_track.values())
+        payload = []
+        for track in self.latest_d2_tracks:
+            global_track_id = str(track.global_track_id)
+            lifecycle_state = _enum_value(track.lifecycle_state)
+            if global_track_id in created:
+                association_state = "created"
+            elif global_track_id in updated_track_ids:
+                association_state = "matched"
+            elif lifecycle_state == "lost":
+                association_state = "lost"
+            elif lifecycle_state == "dropped":
+                association_state = "dropped"
+            else:
+                association_state = "unmatched"
+            payload.append(
+                {
+                    "global_track_id": global_track_id,
+                    "lifecycle_state": lifecycle_state,
+                    "association_state": association_state,
+                    "source_observations": [
+                        dict(item)
+                        for item in self._d2_identity_lineage_by_track.get(
+                            global_track_id,
+                            (),
+                        )
+                    ],
+                }
+            )
+        return payload
 
     def _d3_publication(self, now: float) -> RuntimePublication:
         plan = self.latest_plan
@@ -2952,6 +3094,18 @@ def _track_summary(track: Any) -> dict[str, Any]:
         "covariance": np.asarray(track.covariance, dtype=float).tolist(),
         "track_state": _enum_value(lifecycle),
     }
+
+
+def _lineage_ending_in_observation(
+    lineage: Any,
+    observation_id: str,
+) -> tuple[str, ...]:
+    items = tuple(str(item) for item in lineage)
+    if not items:
+        return (str(observation_id),)
+    if items[-1] == str(observation_id):
+        return items
+    return (*items, str(observation_id))
 
 
 def _enum_value(value: Any) -> str:

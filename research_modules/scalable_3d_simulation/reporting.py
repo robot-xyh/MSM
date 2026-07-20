@@ -35,14 +35,53 @@ def write_episode_outputs(
     paths["offline_truth_labels"] = _write_truth_jsonl(
         output_dir / "offline_truth_labels.jsonl", result
     )
-    paths["offline_intercepts"] = _write_intercepts_jsonl(
-        output_dir / "offline_proximity_intercepts.jsonl", result
-    )
     paths["offline_truth_state"] = _write_truth_state_npz(
         output_dir / "offline_truth_state.npz", result
     )
+    from .offline_evaluation import (
+        write_offline_consistency_evaluation,
+        write_offline_identity_evaluation,
+    )
+
+    identity_paths = write_offline_identity_evaluation(
+        output_dir / "offline_identity",
+        episode_id=result.manifest.episode_id,
+        messages=result.online_messages,
+        offline_truth_labels=result.offline_truth_labels,
+        lineage_time_window_s=_identity_evaluation_window_s(result),
+        truth_presence_window_s=_identity_evaluation_window_s(result),
+    )
+    paths.update(identity_paths)
+    paths.update(
+        write_offline_consistency_evaluation(
+            output_dir / "offline_consistency",
+            manifest=result.manifest,
+            consistency_records=result.d1_consistency_evidence_records,
+            identity_evaluation_path=identity_paths.get(
+                "offline_identity_evaluation"
+            ),
+            online_source_path=paths["online_observations"],
+            truth_state_source_path=paths["offline_truth_state"],
+            intruder_ids=result.intruder_ids,
+            timestamps=result.timestamps,
+            intruder_state_history=result.intruder_state_history,
+            timestamp_tolerance_s=_consistency_evaluation_tolerance_s(result),
+        )
+    )
+    paths["offline_intercepts"] = _write_intercepts_jsonl(
+        output_dir / "offline_proximity_intercepts.jsonl", result
+    )
     paths["stage_timings"] = _write_stage_timings(
         output_dir / "stage_timings.csv", result
+    )
+    from .d6_integration import write_episode_truth_isolated_outputs
+
+    paths.update(
+        write_episode_truth_isolated_outputs(
+            result,
+            output_dir / "d6_truth_isolated",
+            artifact_paths=paths,
+        )
     )
     paths["report"] = _write_episode_report(
         output_dir / "SCALABLE_3D_EPISODE_REPORT_CN.md", result
@@ -82,6 +121,14 @@ def write_batch_outputs(results: Iterable[EpisodeResult], output_dir: Path) -> d
     paths["episode_summary_csv"] = csv_path
     aggregate = _aggregate_rows(rows)
     paths["aggregate_json"] = _write_json(output_dir / "aggregate.json", aggregate)
+    from .d6_integration import write_batch_truth_isolated_outputs
+
+    paths.update(
+        write_batch_truth_isolated_outputs(
+            episodes,
+            output_dir / "d6_truth_isolated_batch",
+        )
+    )
     report_path = output_dir / "SCALABLE_3D_BATCH_REPORT_CN.md"
     lines = [
         "# 三维质点批量实验报告",
@@ -130,6 +177,7 @@ def _write_truth_state_npz(path: Path, result: EpisodeResult) -> Path:
         path,
         timestamps=result.timestamps,
         intruder_state=result.intruder_state_history,
+        intruder_ids=np.asarray(result.intruder_ids, dtype="U"),
         interceptor_state=result.interceptor_state_history,
         recon_state=result.recon_state_history,
         intruder_active=result.intruder_active_history,
@@ -154,6 +202,20 @@ def _write_stage_timings(path: Path, result: EpisodeResult) -> Path:
                 }
             )
     return path
+
+
+def _identity_evaluation_window_s(result: EpisodeResult) -> float:
+    config = result.config
+    return max(
+        config.radar_period_s + config.radar_latency_s,
+        config.acoustic_period_s + config.acoustic_latency_s,
+        config.visual_period_s + config.visual_latency_s,
+        config.association_period_s,
+    ) + config.communication_latency_s + abs(config.communication_jitter_s)
+
+
+def _consistency_evaluation_tolerance_s(result: EpisodeResult) -> float:
+    return max(1.0e-9, min(1.0e-6, result.config.physics_dt_s * 1.0e-4))
 
 
 def _write_episode_report(path: Path, result: EpisodeResult) -> Path:

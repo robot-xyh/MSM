@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import replace
+import json
 
 import pytest
 
@@ -22,6 +23,7 @@ from research_modules.scalable_3d_simulation.module_stack import (
     IntegratedScalableModuleStack,
 )
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
+from research_modules.scalable_3d_simulation.reporting import write_batch_outputs
 from research_modules.scalable_3d_simulation.scenarios import make_curriculum_scenario
 
 
@@ -80,6 +82,7 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
 
     assert result.summary["finite_state"] is True
     assert result.summary["online_truth_use_count"] == 0
+    assert result.d1_consistency_evidence_records
     assert len(stack.latest_d1_tracks) == 5
     assert len(stack.latest_d2_tracks) == 5
     assert len(stack.latest_plan.assignments) == 5
@@ -155,6 +158,86 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
     )
     assert "本次启用 D1-D7 规则集成栈" in report
     assert "D1/D2 航迹数分别为 5/5" in report
+    consistency_manifest = json.loads(
+        (tmp_path / "offline_consistency" / "manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    consistency_result = json.loads(
+        (tmp_path / "offline_consistency" / "offline_result.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    d2_lineage_mapping = json.loads(
+        (tmp_path / "offline_consistency" / "d2_lineage_mapping.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert consistency_manifest["status"] == "available"
+    assert consistency_manifest["truth_metrics_available"] is True
+    assert consistency_manifest["mapping_audit"]["available"] is True
+    assert consistency_manifest["mapping_audit"]["policy"] == (
+        "d2_source_observation_exact_join_v1"
+    )
+    assert all(
+        value.startswith("sha256:")
+        for value in consistency_manifest["source_hashes"].values()
+    )
+    assert consistency_result["metrics"]["position_rmse_m"]["available"] is True
+    assert consistency_result["metrics"]["mean_nees"]["available"] is True
+    assert d2_lineage_mapping["producer_role"] == "d2_evaluator_only"
+    assert d2_lineage_mapping["mapping_count"] >= 5
+    d6_record = json.loads(
+        (tmp_path / "d6_truth_isolated" / "episode_record.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert d6_record["d1_consistency"]["status"] == "available"
+    assert d6_record["d2_identity"]["id_switch_count"] == 0
+    assert d6_record["d2_identity"]["id_switch_count_availability"] == (
+        "available"
+    )
+    assert d6_record["d2_identity"]["truth_isolation_verified"] is True
+
+
+def test_d6_batch_aggregates_distinct_seed_episode_artifacts(tmp_path) -> None:
+    results = []
+    for seed in (31, 32):
+        config = ScenarioConfig(
+            scenario_name="d6_batch_3v3",
+            scenario_version="d6-batch-3v3-v1",
+            target_count=3,
+            resource_count=3,
+            recon_count=1,
+            duration_s=0.8,
+            seed=seed,
+            radar_detection_probability=1.0,
+            visual_detection_probability=1.0,
+            visual_false_alarm_rate=0.0,
+            communication_enabled=False,
+        )
+        results.append(
+            run_episode(
+                config,
+                module_stack=IntegratedScalableModuleStack(),
+                output_dir=tmp_path / f"seed_{seed}",
+            )
+        )
+
+    paths = write_batch_outputs(results, tmp_path / "batch")
+
+    aggregate = json.loads(
+        paths["d6_truth_isolated_batch_aggregate_json"].read_text(
+            encoding="utf-8"
+        )
+    )
+    assert aggregate["episode_count"] == 2
+    assert aggregate["scale_values"] == [3]
+    assert len(aggregate["groups"]) == 1
+    group = aggregate["groups"][0]
+    assert group["episode_count"] == 2
+    assert group["seed_count"] == 2
+    assert group["metrics"]["d2.id_switch_count"]["episode_value_count"] == 2
 
 
 def test_200v200_stack_uses_sparse_candidates_and_commands_every_assignment() -> None:

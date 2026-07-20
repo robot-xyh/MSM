@@ -13,6 +13,7 @@ from research_modules.scalable_3d_simulation.communication import (
 from research_modules.scalable_3d_simulation.animation import write_trajectory_animation
 from research_modules.scalable_3d_simulation.episode_bus import (
     InMemoryEpisodeBus,
+    VersionedEnvelope,
     assert_online_payload_truth_free,
     build_episode_manifest,
 )
@@ -21,6 +22,9 @@ from research_modules.scalable_3d_simulation.models import (
     ScenarioConfig,
 )
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
+from research_modules.scalable_3d_simulation.offline_evaluation import (
+    write_offline_identity_evaluation,
+)
 from research_modules.scalable_3d_simulation.runtime_ports import (
     CameraObservationCommand,
     RuntimePublication,
@@ -111,10 +115,120 @@ def test_small_episode_writes_separate_online_and_truth_artifacts(tmp_path: Path
     assert manifest["config_sha256"] == result.manifest.config_sha256
     with np.load(tmp_path / "offline_truth_state.npz") as payload:
         assert payload["intruder_state"].shape[1:] == (5, 6)
+        assert payload["intruder_ids"].tolist() == [
+            f"TGT-{index:04d}" for index in range(1, 6)
+        ]
+    consistency_manifest = json.loads(
+        (tmp_path / "offline_consistency" / "manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert consistency_manifest["available"] is False
+    assert consistency_manifest["reason"] == "d1_consistency_evidence_unavailable"
+    d6_record = json.loads(
+        (tmp_path / "d6_truth_isolated" / "episode_record.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert d6_record["d2_identity"]["id_switch_count"] is None
+    assert d6_record["d2_identity"]["id_switch_count_availability"] == (
+        "unavailable"
+    )
     report = (tmp_path / "SCALABLE_3D_EPISODE_REPORT_CN.md").read_text(
         encoding="utf-8"
     )
     assert "本次未启用 D1-D7 集成栈" in report
+
+
+def test_offline_identity_marks_incomplete_lineage_unavailable(tmp_path: Path) -> None:
+    messages = (
+        VersionedEnvelope(
+            sequence=1,
+            topic="modules.d1.fused_tracks",
+            source="D1",
+            timestamp=0.1,
+            schema_version="d1-scalable3d-fusion-v1",
+            payload={
+                "timestamp": 0.1,
+                "track_count": 1,
+                "tracks": [
+                    {
+                        "global_track_id": "D1-TRACK-0001",
+                        "state_ned": [0.0] * 6,
+                        "covariance": np.eye(6).tolist(),
+                        "timestamp": 0.0,
+                        "track_state": "tentative",
+                    }
+                ],
+                "observation_lineage": [
+                    {
+                        "observation_id": "OBS-0001",
+                        "measurement_timestamp": 0.0,
+                        "source_lineage": ["OBS-0001"],
+                        "replay_generation": 0,
+                    }
+                ]
+            },
+        ),
+        VersionedEnvelope(
+            sequence=2,
+            topic="modules.d2.associated_tracks",
+            source="D2",
+            timestamp=0.1,
+            schema_version="d2-scalable3d-association-v1",
+            payload={
+                "timestamp": 0.1,
+                "track_count": 1,
+                "tracks": [
+                    {
+                        "global_track_id": "GT-0001",
+                        "state_ned": [0.0] * 6,
+                        "covariance": np.eye(6).tolist(),
+                        "timestamp": 0.0,
+                        "track_state": "tentative",
+                    }
+                ],
+                "association": {"timestamp": 0.0},
+                "id_switch_count": None,
+                "id_switch_count_available": False,
+                "identity_lineage_policy": (
+                    "d2_center_track_to_d1_source_observation_v1"
+                ),
+                "identity_lineage": [
+                    {
+                        "global_track_id": "GT-0001",
+                        "lifecycle_state": "tentative",
+                        "association_state": "matched",
+                        "source_observations": [],
+                    }
+                ],
+            },
+        ),
+    )
+
+    paths = write_offline_identity_evaluation(
+        tmp_path,
+        episode_id="episode-incomplete-lineage",
+        messages=messages,
+        offline_truth_labels=(
+            OfflineTruthLabel("OBS-0001", "TGT-0001", 0.0),
+        ),
+    )
+
+    manifest = json.loads(
+        paths["offline_identity_manifest"].read_text(encoding="utf-8")
+    )
+    evaluation = json.loads(
+        paths["offline_identity_evaluation"].read_text(encoding="utf-8")
+    )
+    assert manifest["available"] is True
+    assert manifest["identity_metrics_available"] is False
+    assert manifest["evidence_record_count"] == 1
+    assert manifest["lineage_incomplete_record_count"] == 1
+    assert evaluation["metrics"]["truth_metrics_available"] is False
+    assert "source_lineage_missing" in evaluation["audit"][
+        "identity_metrics_blocking_reasons"
+    ]
 
 
 def test_episode_routes_sensor_batches_through_configured_network() -> None:

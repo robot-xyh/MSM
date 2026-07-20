@@ -14,7 +14,10 @@ from research_modules.scalable_3d_simulation.episode_bus import (
     assert_online_payload_truth_free,
 )
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
-from research_modules.scalable_3d_simulation.sensor_scene import SensorScene
+from research_modules.scalable_3d_simulation.sensor_scene import (
+    SensorScene,
+    _clip_noisy_bbox,
+)
 from research_modules.scalable_3d_simulation.world import VectorizedPointMassWorld
 
 
@@ -98,6 +101,34 @@ def test_visual_noise_is_seed_reproducible() -> None:
     for left, right in zip(first.measurements, second.measurements):
         assert left.observation_id == right.observation_id
         assert np.array_equal(left.measurement, right.measurement)
+
+
+def test_noisy_bbox_clipping_drops_outside_boxes_and_keeps_positive_geometry() -> None:
+    intrinsics = CameraIntrinsics.from_horizontal_fov(
+        width_px=640,
+        height_px=480,
+        horizontal_fov_deg=90.0,
+    )
+
+    assert _clip_noisy_bbox(
+        np.array([-20.0, 200.0]),
+        10.0,
+        10.0,
+        intrinsics,
+    ) is None
+    clipped = _clip_noisy_bbox(
+        np.array([2.0, 200.0]),
+        10.0,
+        12.0,
+        intrinsics,
+    )
+
+    assert clipped is not None
+    center, bbox, area = clipped
+    assert bbox[2] > bbox[0]
+    assert bbox[3] > bbox[1]
+    assert np.allclose(center, [(bbox[0] + bbox[2]) / 2.0, 200.0])
+    assert area == (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
 
 
 def test_camera_view_accepts_per_camera_fov_without_changing_other_cameras() -> None:

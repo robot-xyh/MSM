@@ -60,9 +60,11 @@ class EpisodeResult:
     interceptor_state_history: np.ndarray
     recon_state_history: np.ndarray
     intruder_active_history: np.ndarray
+    intruder_ids: tuple[str, ...]
     proximity_intercepts: tuple[ProximityInterceptEvent, ...]
     online_messages: tuple[VersionedEnvelope, ...]
     offline_truth_labels: tuple[OfflineTruthLabel, ...]
+    d1_consistency_evidence_records: tuple[Any, ...]
     stage_timings: tuple[StageTiming, ...]
     summary: dict[str, Any]
     output_paths: dict[str, Path] | None = None
@@ -348,6 +350,9 @@ class Scalable3DEpisodeRunner:
         diagnostics = self.world.diagnostics()
         communication_stats = self.communication.stats()
         messages = self.bus.messages()
+        d1_consistency_records = _d1_consistency_evidence_records(
+            self.module_stack
+        )
         learning_artifact_counts = _learning_artifact_counts(self.module_stack)
         radar_count = sum(
             len(message.payload.measurements)
@@ -436,9 +441,11 @@ class Scalable3DEpisodeRunner:
             interceptor_state_history=interceptor_history,
             recon_state_history=recon_history,
             intruder_active_history=intruder_active_history,
+            intruder_ids=tuple(self.world.intruder_ids),
             proximity_intercepts=tuple(proximity_intercepts),
             online_messages=messages,
             offline_truth_labels=tuple(offline_labels),
+            d1_consistency_evidence_records=d1_consistency_records,
             stage_timings=timing.records(),
             summary=summary,
         )
@@ -504,9 +511,13 @@ def run_episode(
         interceptor_state_history=result.interceptor_state_history,
         recon_state_history=result.recon_state_history,
         intruder_active_history=result.intruder_active_history,
+        intruder_ids=result.intruder_ids,
         proximity_intercepts=result.proximity_intercepts,
         online_messages=result.online_messages,
         offline_truth_labels=result.offline_truth_labels,
+        d1_consistency_evidence_records=(
+            result.d1_consistency_evidence_records
+        ),
         stage_timings=result.stage_timings,
         summary=result.summary,
         output_paths=paths,
@@ -606,6 +617,15 @@ def _learning_artifact_counts(module_stack: ScalableModuleStack | None) -> dict[
             getattr(artifacts, "d5_active_vision_frames", ())
         ),
     }
+
+
+def _d1_consistency_evidence_records(
+    module_stack: ScalableModuleStack | None,
+) -> tuple[Any, ...]:
+    provider = getattr(module_stack, "d1_consistency_evidence_records", None)
+    if not callable(provider):
+        return ()
+    return tuple(provider())
 
 
 def _refresh_camera_runtime_states(
