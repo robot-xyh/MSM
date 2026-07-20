@@ -98,3 +98,25 @@ def test_visual_noise_is_seed_reproducible() -> None:
     for left, right in zip(first.measurements, second.measurements):
         assert left.observation_id == right.observation_id
         assert np.array_equal(left.measurement, right.measurement)
+
+
+def test_acoustic_bearing_has_class_hint_but_no_online_identity() -> None:
+    config = ScenarioConfig(
+        target_count=2,
+        resource_count=2,
+        recon_count=1,
+        duration_s=0.1,
+        acoustic_detection_probability=1.0,
+        acoustic_range_limit_m=5_000.0,
+    )
+    world = VectorizedPointMassWorld(config)
+    world.intruder_state[:, :3] = np.array(
+        [[1_000.0, 0.0, -120.0], [0.0, 1_100.0, -140.0]], dtype=float
+    )
+    batch = SensorScene(config).acoustic_scan(world.snapshot())
+    assert batch.measurements
+    for measurement in batch.measurements:
+        assert measurement.modality == "acoustic_bearing"
+        assert measurement.classification_hint == "unmanned_aircraft"
+        assert measurement.metadata["soundprint_is_identity"] is False
+        assert_online_payload_truth_free(measurement)

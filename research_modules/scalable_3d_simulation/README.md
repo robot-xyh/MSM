@@ -36,6 +36,9 @@ python3 research_modules/scalable_3d_simulation/run_batch.py \
 亚像素投影误报为可用检测。高频状态写入压缩 NPZ，事件写入 JSONL，汇总写入 JSON、
 CSV 和中文 Markdown。
 
+传感器场景包含中心雷达、分布式声学阵列和拦截/侦察相机。声学观测输出粗方位、协方差
+和类别级声纹概率，`soundprint_is_identity=False`，不能作为目标身份编号使用。
+
 ## 版本
 
 - 世界：`scalable3d-world-v1`

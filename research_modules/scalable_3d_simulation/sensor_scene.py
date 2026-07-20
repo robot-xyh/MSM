@@ -37,17 +37,21 @@ class SensorScene:
 
     def __init__(self, config: ScenarioConfig) -> None:
         self.config = config
-        seeds = np.random.SeedSequence(config.seed + 10_000).spawn(2)
+        seeds = np.random.SeedSequence(config.seed + 10_000).spawn(3)
         self.radar_rng = np.random.default_rng(seeds[0])
-        self.visual_rng = np.random.default_rng(seeds[1])
+        self.acoustic_rng = np.random.default_rng(seeds[1])
+        self.visual_rng = np.random.default_rng(seeds[2])
         self._radar_scan_index = 0
+        self._acoustic_scan_index = 0
         self._visual_scan_index = 0
 
     def reset(self) -> None:
-        seeds = np.random.SeedSequence(self.config.seed + 10_000).spawn(2)
+        seeds = np.random.SeedSequence(self.config.seed + 10_000).spawn(3)
         self.radar_rng = np.random.default_rng(seeds[0])
-        self.visual_rng = np.random.default_rng(seeds[1])
+        self.acoustic_rng = np.random.default_rng(seeds[1])
+        self.visual_rng = np.random.default_rng(seeds[2])
         self._radar_scan_index = 0
+        self._acoustic_scan_index = 0
         self._visual_scan_index = 0
 
     def radar_scan(self, snapshot: WorldSnapshot) -> ObservationBatch:
@@ -119,6 +123,93 @@ class SensorScene:
                     measurement_timestamp=timestamp,
                 )
             )
+        return ObservationBatch(tuple(measurements), tuple(labels))
+
+    def acoustic_scan(self, snapshot: WorldSnapshot) -> ObservationBatch:
+        """Generate coarse azimuth/elevation and class-level soundprint hints."""
+
+        self._acoustic_scan_index += 1
+        timestamp = float(snapshot.timestamp)
+        measurements: list[SensorMeasurement] = []
+        labels: list[OfflineTruthLabel] = []
+        positions = snapshot.intruders.position_ned
+        active = snapshot.intruders.active
+        sensor_angles = np.arange(self.config.acoustic_sensor_count, dtype=float) * (
+            2.0 * np.pi / self.config.acoustic_sensor_count
+        )
+        sensor_radius = self.config.protected_radius_m * 0.8
+        sensor_positions = np.column_stack(
+            (
+                sensor_radius * np.cos(sensor_angles),
+                sensor_radius * np.sin(sensor_angles),
+                np.zeros(self.config.acoustic_sensor_count, dtype=float),
+            )
+        )
+        angle_std = math.radians(self.config.acoustic_angle_std_deg)
+        covariance = np.diag([angle_std**2, angle_std**2])
+        for sensor_index, sensor_position in enumerate(sensor_positions):
+            relative = positions - sensor_position[None, :]
+            ranges = np.linalg.norm(relative, axis=1)
+            candidate = active & (ranges <= self.config.acoustic_range_limit_m)
+            detected = candidate & (
+                self.acoustic_rng.random(positions.shape[0])
+                < self.config.acoustic_detection_probability
+            )
+            for local_index, target_index in enumerate(np.flatnonzero(detected)):
+                vector = relative[target_index]
+                horizontal = float(np.linalg.norm(vector[:2]))
+                noiseless = np.array(
+                    [
+                        math.atan2(float(vector[1]), float(vector[0])),
+                        math.atan2(float(-vector[2]), max(horizontal, 1.0e-9)),
+                    ],
+                    dtype=float,
+                )
+                value = noiseless + self.acoustic_rng.multivariate_normal(
+                    np.zeros(2, dtype=float), covariance
+                )
+                value[0] = _wrap_angle(value[0])
+                value[1] = float(np.clip(value[1], -0.5 * np.pi, 0.5 * np.pi))
+                soundprint = np.clip(
+                    np.array([0.72, 0.19, 0.09], dtype=float)
+                    + self.acoustic_rng.normal(0.0, 0.025, 3),
+                    0.0,
+                    1.0,
+                )
+                soundprint /= max(float(np.sum(soundprint)), 1.0e-9)
+                observation_id = (
+                    f"acoustic-s{self._acoustic_scan_index:06d}-"
+                    f"a{sensor_index + 1:02d}-d{local_index:04d}"
+                )
+                sensor_id = f"ACOUSTIC-{sensor_index + 1:02d}"
+                measurements.append(
+                    SensorMeasurement(
+                        observation_id=observation_id,
+                        sensor_id=sensor_id,
+                        modality="acoustic_bearing",
+                        measurement_timestamp=timestamp,
+                        arrival_timestamp=timestamp + self.config.acoustic_latency_s,
+                        frame_id=f"acoustic_{sensor_index + 1:02d}_frame",
+                        measurement=value,
+                        covariance=covariance,
+                        confidence=float(self.config.acoustic_detection_probability),
+                        classification_hint="unmanned_aircraft",
+                        metadata={
+                            "measurement_order": ["azimuth_rad", "elevation_rad"],
+                            "sensor_position_ned": sensor_position.tolist(),
+                            "soundprint_class_probabilities": soundprint.tolist(),
+                            "soundprint_is_identity": False,
+                            "scan_index": self._acoustic_scan_index,
+                        },
+                    )
+                )
+                labels.append(
+                    OfflineTruthLabel(
+                        observation_id=observation_id,
+                        truth_entity_id=snapshot.intruders.entity_ids[target_index],
+                        measurement_timestamp=timestamp,
+                    )
+                )
         return ObservationBatch(tuple(measurements), tuple(labels))
 
     def visual_scan(

@@ -105,6 +105,7 @@ class Scalable3DEpisodeRunner:
             (step_count, self.config.target_count), dtype=bool
         )
         next_radar_time = 0.0
+        next_acoustic_time = 0.0
         next_visual_time = 0.0
         episode_start = time.perf_counter()
 
@@ -128,6 +129,19 @@ class Scalable3DEpisodeRunner:
                         (online_batch.arrival_timestamp, pending_counter, online_batch),
                     )
                 next_radar_time += self.config.radar_period_s
+
+            if self.config.acoustic_enabled and current_time + 1.0e-12 >= next_acoustic_time:
+                started = time.perf_counter()
+                batch = self.sensor_scene.acoustic_scan(snapshot)
+                timing.add("acoustic_scene", time.perf_counter() - started)
+                offline_labels.extend(batch.offline_truth_labels)
+                for online_batch in _group_sensor_batches(batch.measurements):
+                    pending_counter += 1
+                    heapq.heappush(
+                        pending,
+                        (online_batch.arrival_timestamp, pending_counter, online_batch),
+                    )
+                next_acoustic_time += self.config.acoustic_period_s
 
             if self.config.visual_enabled and current_time + 1.0e-12 >= next_visual_time:
                 started = time.perf_counter()
@@ -170,6 +184,11 @@ class Scalable3DEpisodeRunner:
             for message in messages
             if message.payload.measurements[0].modality == "radar_spherical"
         )
+        acoustic_count = sum(
+            len(message.payload.measurements)
+            for message in messages
+            if message.payload.measurements[0].modality == "acoustic_bearing"
+        )
         visual_count = sum(
             len(message.payload.measurements)
             for message in messages
@@ -189,8 +208,9 @@ class Scalable3DEpisodeRunner:
             "real_time_factor": float(timestamps[-1] / elapsed) if elapsed > 0.0 else None,
             "finite_state": diagnostics.finite_state,
             "radar_observation_count": radar_count,
+            "acoustic_observation_count": acoustic_count,
             "visual_observation_count": visual_count,
-            "online_observation_count": radar_count + visual_count,
+            "online_observation_count": radar_count + acoustic_count + visual_count,
             "online_batch_count": len(messages),
             "offline_truth_label_count": len(offline_labels),
             "pending_after_episode_count": len(pending),

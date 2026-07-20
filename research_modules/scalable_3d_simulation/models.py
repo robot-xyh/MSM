@@ -65,6 +65,7 @@ class ScenarioConfig:
     duration_s: float = 10.0
     physics_dt_s: float = 0.05
     radar_period_s: float = 0.2
+    acoustic_period_s: float = 0.5
     visual_period_s: float = 0.1
     association_period_s: float = 0.2
     assignment_period_s: float = 1.0
@@ -79,12 +80,17 @@ class ScenarioConfig:
     intercept_radius_m: float = 5.0
     motion_profile: MotionProfile = MotionProfile.CONSTANT_VELOCITY
     radar_latency_s: float = 0.2
+    acoustic_latency_s: float = 0.35
     visual_latency_s: float = 0.08
     radar_range_limit_m: float = 7_500.0
     radar_detection_probability: float = 0.98
     radar_range_std_base_m: float = 3.0
     radar_range_std_per_km_m: float = 1.5
     radar_angle_std_deg: float = 0.20
+    acoustic_sensor_count: int = 4
+    acoustic_range_limit_m: float = 2_500.0
+    acoustic_detection_probability: float = 0.80
+    acoustic_angle_std_deg: float = 3.0
     visual_detection_probability: float = 0.92
     visual_false_alarm_rate: float = 0.02
     visual_min_bbox_area_px2: float = 4.0
@@ -101,6 +107,7 @@ class ScenarioConfig:
     communication_jitter_s: float = 0.01
     communication_drop_probability: float = 0.01
     radar_enabled: bool = True
+    acoustic_enabled: bool = True
     visual_enabled: bool = True
     communication_enabled: bool = True
     d1_model_version: str = "d1-rule-baseline-v1"
@@ -125,6 +132,7 @@ class ScenarioConfig:
             "duration_s",
             "physics_dt_s",
             "radar_period_s",
+            "acoustic_period_s",
             "visual_period_s",
             "association_period_s",
             "assignment_period_s",
@@ -141,6 +149,8 @@ class ScenarioConfig:
             "radar_range_std_base_m",
             "radar_range_std_per_km_m",
             "radar_angle_std_deg",
+            "acoustic_range_limit_m",
+            "acoustic_angle_std_deg",
             "camera_horizontal_fov_deg",
             "recon_camera_horizontal_fov_deg",
             "target_proxy_width_m",
@@ -158,6 +168,7 @@ class ScenarioConfig:
             raise ValueError("target_speed_max_mps must not be below target_speed_min_mps")
         for name in (
             "radar_detection_probability",
+            "acoustic_detection_probability",
             "visual_detection_probability",
             "communication_drop_probability",
         ):
@@ -168,6 +179,7 @@ class ScenarioConfig:
             raise ValueError("visual_false_alarm_rate must be non-negative")
         for name in (
             "radar_latency_s",
+            "acoustic_latency_s",
             "visual_latency_s",
             "communication_latency_s",
             "communication_jitter_s",
@@ -176,6 +188,7 @@ class ScenarioConfig:
             if not np.isfinite(value) or value < 0.0:
                 raise ValueError(f"{name} must be finite and non-negative")
         for name in (
+            "acoustic_sensor_count",
             "camera_width_px",
             "camera_height_px",
             "recon_camera_width_px",
@@ -188,6 +201,7 @@ class ScenarioConfig:
                 raise ValueError(f"{name} must be in (1, 179) degrees")
         if self.physics_dt_s > min(
             self.radar_period_s,
+            self.acoustic_period_s,
             self.visual_period_s,
             self.association_period_s,
             self.assignment_period_s,

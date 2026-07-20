@@ -164,7 +164,8 @@ def _write_episode_report(path: Path, result: EpisodeResult) -> Path:
         "## 数据合同",
         "",
         f"在线总线写入 {summary['online_observation_count']} 条匿名观测，其中雷达 "
-        f"{summary['radar_observation_count']} 条、视觉 {summary['visual_observation_count']} 条。",
+        f"{summary['radar_observation_count']} 条、声学 {summary['acoustic_observation_count']} 条、"
+        f"视觉 {summary['visual_observation_count']} 条。",
         f"离线真值标签单独写入 {summary['offline_truth_label_count']} 条；在线真值使用计数为 "
         f"{summary['online_truth_use_count']}。",
         "在线观测保留量测时间、到达时间和协方差。真值状态及观测标签只保存在离线评估文件。",
