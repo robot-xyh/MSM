@@ -3,7 +3,9 @@
 **模块定位**：D4 负责中心 C2 异常、二级节点接管、主动降级仲裁和完全无中心协商的离线科研仿真方案。
 **核心边界**：本文只讨论摘要交换、状态机、故障注入、降级协同和评估日志；不包含真实通信链路、飞控控制、火控参数、毁伤逻辑、自动处置或授权绕过。
 
-**2026-07-15 P0 更新**：此前 278/278 只覆盖 coordinator、episode adapter、secondary coalition proposal、resource lease 和 D6 metadata，把它写成所有公开入口已闭锁属于过度声明。`build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 现要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格未过期；同一 active plan 维持路径也复核。D4 全量 280/280 passed，阈值零失败；未运行新 AirSim。distributed peer 不套用二级视觉门，真实网络/硬件与自主联盟重构仍为 P1。
+**2026-07-20 区域化更新**：D4 新增 `d4-regional-failover-v1` 和 scalable3d mapping adapter，按动态 region/task/node 列表维护逐区域唯一 authority。中心未 `failed` 时主动 D1/D2/D3/D5 证据不转 owner；中心 `failed` 后只选择对 region 有显式 coverage、strict readiness 和有效 lease epoch 的 `mobile_high_recon`；二级不可用后才执行能力/跨区域 capacity 受约束 bid selection。中心、二级和 distributed 三层的 `k>1` 都必须 required ACK 全集、current plan/coalition version、epoch 和最早 lease 后原子 `committed`，commit metadata 分别标记 `d3_center_assignment`、`d3_assignment_secondary_coordination` 和 `bounded_constrained_bid_selection`，只有最后一种属于 distributed formation。缺 ACK、旧 generation、过期 lease 和任一层级分区均闭锁。新增 23 项测试覆盖 5/20/50/100/200 区域 metadata、声明节点数上限和安全边界，D4 全量 **303/303 passed**。本轮无 AirSim/scalable3d episode、随机 seed、真实网络或物理证据；受约束 selection 不等于完整 CBBA/CCBBA、全局组合最优或自主重构。
+
+**2026-07-15 P0 历史更新**：此前 278/278 只覆盖 coordinator、episode adapter、secondary coalition proposal、resource lease 和 D6 metadata，把它写成所有公开入口已闭锁属于过度声明。`build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 后续要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格未过期；同一 active plan 维持路径也复核。当日 D4 全量 280/280 passed，已由 2026-07-20 的 303/303 回归取代。
 
 **2026-07-15 M5N2 证据更新**：baseline/candidate 各 10 seeds、共 20/20 case 已完成，但全部是中心继续执行负对照，`active degradation=0`。coalition completion `0/20`、第二 primary 进入 5 m `0/20`，20 个第二 primary 均为 `collision_stop`；因 collision object 缺失，不把失败标签自动升级为主动降级。D4 仍联合 D1/D2/D3/D5 证据仲裁。D4 main-bus 阶段 mean/P95/max 约 `5.59/6.70/94.10 ms`。额外 `png_ttc_2v2_seed001` 排除，dropout=0。该批不能关闭 secondary/distributed 多 seed P1。
 
@@ -35,7 +37,7 @@ SimpleFlight 15 s 只用于诊断，30 个 active pair 物理命中为 0，系�
 
 M 对 N 联盟专项调研已完成，详见 [D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md](D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md)。审计覆盖 11 篇主要论文和 5 个公开仓库/归档，确认基础 CBBA 只提供 single-winner 基线，不能通过复制目标任务实现 `k_j=3` 的原子联盟。中心正常时应由 D3 生成联盟，D4 维护健康、lease、epoch 和重构；中心失效优先二级节点接管完整联盟摘要；完全无中心的 CCBBA/consensus grouping/coalition formation 仍属于 P1 合同研究和后续可插拔算法路线。成员退出必须按“满足最低需求则缩编、reserve 可达则补位、否则整盟重组”处理；同时/序贯/混合只由联盟合同表达，实际可达性由 D7 验证。
 
-M-to-N 安全实现已扩展到本地原子提交合同：D4 通过 `CoalitionSafetyEvidence` 消费 D3 schema v2 coalition/member/version/demand，并通过冻结 `CoalitionMemberAck`、`CoalitionCommitState` 和轻量 `CoalitionCommitCoordinator` 管理 ACK/commit lifecycle。中心正常路径保持不变；中心失效时，secondary 或 distributed commit 必须通过 target、coalition/plan 双版本、epoch、成员、lease 和 digest 校验，全部 required ACK 后才设置 `atomic_coalition_formed=true`。无 commit、缺 ACK、过期、旧 epoch、分区或冲突仍输出 hold/reconfigure。合法联盟多个授权资源锁同一 `global_track_id` 不视为 duplicate；第四个成员、超额锁、旧 plan 或旧 coalition version 均拒绝。
+M-to-N 安全实现已扩展到本地原子提交合同：D4 通过 `CoalitionSafetyEvidence` 消费 D3 schema v2 coalition/member/version/demand，并通过冻结 `CoalitionMemberAck`、`CoalitionCommitState` 和轻量 `CoalitionCommitCoordinator` 管理 ACK/commit lifecycle。当前区域合同要求中心、secondary 和 distributed 三层 `k>1` 都通过 target、coalition/plan 双版本、epoch、成员、lease 和 digest 校验，全部 required ACK 后才原子 `committed`；中心与二级沿用 D3 给定成员，仅 distributed fallback 使用 `bounded_constrained_bid_selection`。无 commit、缺 ACK、过期、旧 epoch、分区或冲突仍输出 hold/reconfigure。合法联盟多个授权资源锁同一 `global_track_id` 不视为 duplicate；第四个成员、超额锁、旧 plan 或旧 coalition version 均拒绝。完整 CBBA/CCBBA 多轮共识、全局组合最优和在线联盟重构仍未实现。
 
 上述两个合同已在 D4 模块内实现：`CoalitionMemberAck` 记录 member/target/coalition/plan version、epoch、能力状态、证据时间和有效期；`CoalitionCommitState` 使用 `proposed -> collecting_acks -> committed -> executing -> reconfiguring/aborted` 状态并记录 required/acked members、lease、时间戳和失败原因。下一步 P1 是由 main/D3/D5/D6/D7 在真实 episode 中生产和消费这些 DTO，验证二级 active plan、完全无中心三成员 commit、成员退出重构和同 seed 分区负例，而不是继续修改本地状态语义。
 
@@ -548,9 +550,23 @@ BidState
 - constraints_hash
 - epoch
 - round_id
+
+RegionalFailoverSnapshot
+- scalable scenario name/version + dynamic node/region/task counts
+- region definitions and partitioned region ids
+- D1 covariance/age, D2 ambiguity/IDSW/duplicate
+- D3 plan id/version/epoch/lease/current/feasible
+- D5 consistency/binding/friend/duplicate and member evidence
+- mobile_high_recon readiness by region
+- fallback members and coalition ACKs
+
+RegionOwnershipMetadata
+- region_id + one owner_id/layer/role
+- plan_id/plan_version + epoch + lease expiry
+- active flag + scoped task ids
 ```
 
-摘要必须粗粒度、带版本、带 epoch。D4 不应接收未经 D1/D2/D3/D5 校验的完整高精度态势，也不应让局部节点直接覆盖 `global_track_id`。
+摘要必须粗粒度、带版本、带 epoch。区域 owner/layer 改变要求 epoch 与 plan version 同时前进；同 generation 换 owner、过期 lease 或分区均 fail closed。D4 不应接收未经 D1/D2/D3/D5 校验的完整高精度态势，也不应让局部节点直接覆盖 `global_track_id`。
 
 ---
 
@@ -565,6 +581,8 @@ CBBA 通过 winner/bid 向量扩散和一致性消解，在连通图、确定仲
 工程共识是：中心正常时不主动全分布式；二级节点可用时不直接全分布式；完全无中心只作为中心和二级节点均不可用后的保底能力。
 
 对于 `k_j>1`，上述基础结论需要增加限制：普通 CBBA 的一个 task 只有一个 winner，不等于 coalition formation。CCBBA 可表达 assignment/temporal coupling，consensus-based grouping 和 distributed coalition formation 可表达多个异构成员共同完成任务，但目前未发现同时具备明确许可证、维护、联盟时序、成员退出重构和可直接接入 MSM summary bus 的成熟 Python 库。因此当前 D4 轻量 CBBA 只能继续作为 single-winner/候选成员研究基线，不能宣称已经支持三机协同拦截。
+
+2026-07-20 区域合同仅在 distributed fallback 增加能力/跨区域 capacity 受约束 bid selection，可从动态区域 member 集合生成候选、允许单成员覆盖多项 capability，并叠加全层原子 commit。中心和二级分别沿用 D3 中心成员与 D3 二级协调成员，不运行该 selection；三层 `k>1` 都执行完整 ACK 原子门。distributed selection 按 region id 确定性贪心，不提供全局组合最优；也没有 CBBA 多轮消息传播/收敛状态或 CCBBA 的任务耦合与时间窗优化，因此只缩小“候选集合形成”工程缺口，不关闭上述完整算法差距。
 
 ---
 

@@ -450,6 +450,22 @@ C=I_{members}I_{plan}I_{coalition}I_{epoch}I_{lease}I_{digest}I_{network}.
 - D5 只认可当前 committed/executing 联盟中的成员锁定；
 - D7 只执行当前 committed/executing 联盟及当前计划。
 
+### 10.4 区域 authority 与受约束候选形成
+
+设区域集合为 \(R\)，每个区域 \(r\) 在任一时刻最多有一个可执行 authority：
+
+\[
+\sum_{o \in O} I[owner(r)=o \land active(r)] \le 1.
+\]
+
+中心 health 不为 `failed` 时，\(owner(r)=center\)。主动证据可以请求侦察辅助或中心重规划，但不改变该等式中的 owner；若中心计划包含 \(k>1\) 任务，中心 owner 也只有在 required-member ACK 完整后才 active。中心失效后，二级候选必须同时满足 region coverage、strict readiness、`lease_epoch >= authority_epoch` 和未过期租约；候选按 priority、coverage、lease epoch 和 node id 确定性排序。owner/layer 改变要求：
+
+\[
+epoch_{new}>epoch_{old}\quad\land\quad planVersion_{new}>planVersion_{old}.
+\]
+
+二级不可用时，对每个区域任务按 member availability、communication、operator hold、跨区域 capacity、required capability 和 D5 member evidence 进行 bounded bid selection。一个成员可覆盖多项 required capability；按 region id 的确定性顺序记账，已在前一区域达到 capacity 的成员不会在后一区域重复获权。该步骤只产生候选成员集合；若 \(k>1\)，可执行性仍由第 10.1 节的完整 ACK 原子条件决定。区域 authority/commit lease 取 authority、D3 task 和二级 lease 的最早到期值。候选不足、能力并集不满足、D2 已观察到身份切换/重复航迹、D5 一致性未确认、D5 member hold、分区或旧 generation 都输出 `hold_for_review`。该 bounded selection 没有多轮网络共识和耦合时序最优性保证，不能称为完整 CCBBA。
+
 ## 11. 中心恢复与双轨校验
 
 中心恢复后同时存在两条状态轨迹：
@@ -504,6 +520,7 @@ D4 只决定协调权和计划状态，不决定比例导引或视觉导引公�
 | `coordinator.py` | 中心健康、协调者选择、被动接管和基础恢复合并 |
 | `cbba.py` | 轻量 CBBA、D5 视觉风险修正和中心代价差距辅助计算 |
 | `coalition_safety.py` | 多成员计划、联盟版本、ACK、时期、租约和摘要安全门控 |
+| `regional_failover.py` | scalable3d 场景元数据适配、逐区域唯一 authority、机动高空二级覆盖接管、主动证据和受约束原子 fallback |
 | `network.py` | 内存丢包和延迟模型、消息数量和估计字节统计 |
 | `episode_communication.py` | AirSim 单次试验时钟驱动的中心、二级、peer 顺序接管接口 |
 | `communication_fault_replay.py` | 多随机种子通信故障矩阵 |
@@ -597,7 +614,7 @@ main/runtime 负责：
 
 截至当前同步基线，D4 验证记录包括：
 
-- 2026-07-15 D4 全量模块回归为 **280/280 项通过**，验收阈值为零失败；此前 278/278 未覆盖两个公开 secondary plan helper 的 sustained/source/epoch `None`，不能作为所有公开入口闭锁证据；
+- 2026-07-20 D4 全量模块回归为 **303/303 项通过**，验收阈值为零失败；新增 23 项区域化合同测试，2026-07-15 的 280/280 与更早 278/278 保留为历史阶段证据；
 - `SecondaryReadinessEvidence` 统一要求 current time、lease epoch/expiry、fresh heartbeat/cue/communication、gimbal、coverage、network full-view 和 sustained readiness；coordinator、episode adapter 与 coalition proposal 任一缺字段均拒绝 secondary owner；
 - `build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 对 active secondary plan 要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且有效、`current_time < expiry`；逐字段缺失给出稳定 reject reason，同 id/version 维持路径不豁免；
 - distributed interceptor/peer 路径不消费上述二级视觉 readiness，原 ACK/lease/epoch/commit 合同保持；
@@ -645,6 +662,14 @@ D4 的 60/60 安全通过不等于整个拦截闭环完成。系统级多资源�
 
 D4 main-bus 阶段 timing 样本的 mean/P95/max 约为 `5.59/6.70/94.10 ms`。该阶段不是当前约 1 s control tick 的主要瓶颈，后续优化应保持 D4 合同门控，不以放宽仲裁换取性能。终止多 seed suite 前额外完成的 `png_ttc_2v2_seed001` 不纳入上述统计，dropout case 数为 0。
 
+### 16.6 2026-07-20 scalable3d 区域化合同验证
+
+本轮新增 `d4-regional-failover-v1`。输入由 `RegionalScenarioMetadata`、区域 definition、逐任务 D1/D2/D3/D5 evidence、机动高空二级节点逐区域 readiness、fallback member 和 coalition ACK 组成；输出逐区域 `selected_layer`、唯一 ownership、action、risk、candidate assignment、commit 和 reject reason。中心未 `failed` 时风险证据不会转移 owner；中心 `failed` 后只选择覆盖当前区域且 readiness/lease epoch 完整的 `mobile_high_recon`；二级也不可用时才形成 distributed candidate。
+
+测试样本为 23 个确定性 pytest case，无随机 seed。规模参数覆盖 5、20、50、100、200 个 region，每档同时构造同数量 active task 与 resource metadata；验收门限为每档 region/task count 完整、全部 region 只有中心 active owner、无数组或固定规模假设，并拒绝超过 scenario 声明的 resource/recon summaries。故障与边界测试覆盖中心失效后二级接管、二级失效后 distributed、双区域 coverage 隔离、中心/二级/distributed 完整 ACK 原子 `committed`、缺 ACK `aborted`、旧 ACK epoch、中心健康及 fallback 分区闭锁、旧 authority epoch/plan version、最早 task/authority lease、旧 secondary lease epoch、D5 member hold、单成员多能力和跨区域 capacity。23/23 新测试及 303/303 全量均通过，零失败。
+
+该验证只关闭 D4 模块内的区域 metadata、authority 顺序和安全门控缺口。它没有运行 main-owned scalable3d orchestrator、200v200 质点动力学、AirSim、真实网络或物理拦截。distributed member formation 是按 region、跨区域 capacity、capability 和 D5 member evidence 的 bounded deterministic bid selection；没有 CBBA 多轮通信/收敛证明、CCBBA 耦合时序、全局组合最优性、reserve 激活、补位/缩编或整盟重构。
+
 ## 17. 真实网络限制与后续实施
 
 当前 `SimulatedNetwork` 和 episode 故障接口只模拟或记录：
@@ -675,6 +700,7 @@ D4 main-bus 阶段 timing 样本的 mean/P95/max 约为 `5.59/6.70/94.10 ms`。�
 | 类别 | 能力 | 当前状态 |
 |---|---|---|
 | 默认主线 | C2Health 四态、心跳窗口和恢复待校验 | 已实现 |
+| 默认主线 | scalable3d 动态区域 metadata 与逐区域 authority/epoch/version/最早 lease | D4 合同已实现；main bus 尚未接线 |
 | 默认主线 | D1-D5 风险摘要和主动仲裁 | 已实现 |
 | 默认主线 | 中心重规划请求生命周期 | 已实现 |
 | 默认主线 | 二级四级就绪、持续窗口和计划元数据 | 已实现 |
@@ -687,13 +713,13 @@ D4 main-bus 阶段 timing 样本的 mean/P95/max 约为 `5.59/6.70/94.10 ms`。�
 | 离线可选 | 外部 CBBA 能力探测 | 只探测路径，不导入、不执行 |
 | 未实现 | 麻省理工学院 CBBA 生产适配器 | 未集成 |
 | 未实现 | 通信感知 CBBA、独立拍卖和合同网完整状态机 | 未实现 |
-| 未实现 | 多成员能力组合搜索和自主联盟形成 | 未实现，当前只提交上游给定成员集 |
+| 部分实现 | 区域多成员候选形成 | 仅 distributed fallback 的能力/跨区域 capacity 受约束 bid selection 已实现；中心和二级沿用 D3 成员，三层 `k>1` 均需完整 ACK 原子提交；完整 CBBA/CCBBA 共识、全局组合最优、时序约束和动态重构未实现 |
 | 未实现 | 完整恢复摘要校验 | 尚未覆盖 D1-D7 全部状态 |
 | 未实现 | 真实无线、视频和安全认证链路 | 未实现 |
 
 ## 19. 复核命令与证据入口
 
-本次只修改算法与实施文档，不改代码，因此无需运行全量测试。代码能力复核命令为：
+本次新增区域化代码、测试和文档，并已运行全量测试。复核命令为：
 
 ```bash
 PYTHONPATH=research_modules/d4_distributed_fallback \
@@ -710,6 +736,7 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 - `research_modules/d4_distributed_fallback/d4_distributed_fallback/coordinator.py`
 - `research_modules/d4_distributed_fallback/d4_distributed_fallback/cbba.py`
 - `research_modules/d4_distributed_fallback/d4_distributed_fallback/coalition_safety.py`
+- `research_modules/d4_distributed_fallback/d4_distributed_fallback/regional_failover.py`
 - `research_modules/d4_distributed_fallback/d4_distributed_fallback/episode_communication.py`
 - `subagent_reviews/D4_DISTRIBUTED_FALLBACK_REVIEW_AND_PLAN.md`
 - `C_UAS_D1_D7_MODULE_PRINCIPLES_SUMMARY_CN.md`

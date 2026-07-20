@@ -9,7 +9,7 @@
 - `../reports/EXPERIMENT_REPORT.md`：当前实验结果、指标表和丢包率曲线。
 - `../reports/AIRSIM_INTEGRATION_PLAN.md`：AirSim 离线回放数据如何映射到 D4 摘要模型。
 
-当前 D4 侧状态见 `../PLAN.md` 的“已实现 / 部分实现 / 未实现 / P1/P2 下一步”：已补二级节点 lifecycle、主动降级迟滞/防抖、D6-compatible event metadata、D6-compatible CBBA report metadata、D5 distributed visual evidence -> CBBA 风险加权、`assignment_audit` 和 N 规模输入；轻量 CBBA 仍是完全无中心保底，不构造虚拟中心 Hungarian。2026-07-15 的 20-case M5N2 是 `active degradation=0` 的中心继续执行负对照，coalition 和第二 primary 5 m 均为 `0/20`，不能替代真实 secondary/distributed 多 seed 验收。MIT/CA-CBBA、真实通信/视频链路、Contract Net 和 SCRIMMAGE 不属本轮范围；独立 auction baseline 后置为可选对照，不替代当前 CBBA 保底。
+当前 D4 侧状态见 `../PLAN.md` 的“已实现 / 部分实现 / 未实现 / P1/P2 下一步”：已补二级节点 lifecycle、主动降级迟滞/防抖、D6-compatible event metadata、D5 distributed visual evidence、原子联盟提交和 N 规模输入。2026-07-20 新增 `regional_failover.py`，冻结 scalable3d 场景元数据、逐区域唯一 authority、机动高空二级 coverage/readiness、epoch+plan version+最早 lease、全层 `k>1` 原子门和受约束 distributed fallback 合同；23 项区域测试与 D4 全量 303/303 通过。该结果是纯 Python 合同验证，不是 200v200 动力学、AirSim、真实网络或完整 CCBBA 证据。2026-07-15 的 20-case M5N2 仍只是 `active degradation=0` 的中心负对照，coalition 和第二 primary 5 m 均为 `0/20`。MIT/CA-CBBA、真实通信/视频链路和 Contract Net 不属当前默认路径。
 
 ## 阅读顺序
 

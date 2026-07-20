@@ -1,5 +1,14 @@
 # D4 实现差距审计：分布式协同与降级接管
 
+## 2026-07-20 scalable3d 区域化增量
+
+- **已关闭的 D4 模块缺口**：新增 `d4-regional-failover-v1`，不导入 main-owned simulator 即可消费 `scalable3d-scenario-v1` mapping，按动态 resource/recon/region/task 数量输出 truth-free 逐区域 authority payload，并拒绝 schema 或声明节点数量溢出。中心未 `failed` 时保持中心 owner；中心失效后按区域 coverage + strict readiness + lease epoch 选择 `mobile_high_recon`；无有效二级节点时才进入 bounded capability/跨区域 capacity bid fallback。
+- **安全合同**：owner/layer 变化要求 `epoch` 与 `plan_version` 同时提升，租约严格 `timestamp < expiry` 并收缩到 authority、D3 task 和二级 lease 的最早 expiry。中心、二级、distributed 任一 `k>1` candidate 都必须 required ACK 完整且 target/coalition/plan version、epoch、lease 一致后原子 `committed`；commit metadata 分别使用 `d3_center_assignment`、`d3_assignment_secondary_coordination` 和 `bounded_constrained_bid_selection`，只有 distributed fallback 使用最后一种 formation。缺 ACK、旧 authority/ACK epoch、旧 plan version、过期 lease 和任一层级网络分区均 fail closed。
+- **输入证据**：逐任务显式消费 D1 covariance/measurement age、D2 ambiguity/IDSW/duplicate、D3 plan id/version/epoch/lease/current/feasible、D5 consistent/inconsistent/binding/friend/duplicate 及 member support/hold/ambiguity；D4 只复制上游 `global_track_id`。
+- **验证日期/样本/结果**：2026-07-20，23 个确定性 pytest case，无随机 seed。五档参数分别为 5/20/50/100/200 region，每档构造相同数量 active task/resource metadata；其余 case 覆盖声明节点数上限、中心/二级连续失效、双区域 coverage、全层完整/缺失 ACK、D5 member hold、单成员多能力、跨区域 capacity、旧 generation、最早 lease 和全层分区。新增 23/23、D4 全量 **303/303 passed**，验收阈值零失败。
+- **仍开放**：main-owned scalable3d episode-bus 接线、200v200 质点动力学与多 seed 性能、真实 AirSim/RF/mesh/socket/时钟漂移/队列、D6 区域统计、物理拦截。bounded candidate formation 是确定性贪心，不是 CBBA 多轮共识或 CCBBA，也无全局组合最优、timing coupling、reserve 激活、补位/缩编/整盟重构。
+- **所有权边界**：根级系统文档与 scalable3d/main 文件不在 D4 owned paths，本轮未修改，需 main 在集成时同步。
+
 ## 2026-07-15 M5N2 中心负对照增量
 
 - 真实 AirSim M5N2 baseline/candidate 各 10 seeds，共 20/20 case 完成；`active degradation=0`，中心 owner 持续有效。
@@ -17,13 +26,13 @@
 
 P0 已关闭：`FailoverCoordinator`、`AirSimEpisodeCommunicationAdapter` 和 `CoalitionCommitCoordinator` 的 secondary proposal 统一消费 strict readiness evidence；current time、lease epoch/expiry、fresh heartbeat/cue/communication、gimbal=true、coverage >=0.65、network full-view >=0.80 和 sustained readiness 缺一不可。`build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 也已改为 active secondary evidence exact-true：expected/actual source、plan/required lease epoch、expiry/current time 必须显式存在并满足合同，同一 active plan 维持不豁免。
 
-2026-07-15 D4 全量验收阈值为零失败，结果 280/280 passed。此前 278/278 未覆盖两个公开 helper 的 sustained/source/epoch `None`，不能证明所有公开入口闭锁；本次新增逐字段 `None`、完整正例、same-plan 维持和 distributed bypass 后才关闭该 P0。distributed interceptor peer 不套用二级视觉门，动态 N/M、版本/epoch/lease/ACK/partition/recovery 和 `global_track_id` 合同保持。未运行新 AirSim；真实网络/硬件时序、物理连续性和自主重构仍为 P1。
+2026-07-15 当日 D4 全量验收阈值为零失败，结果 280/280 passed。此前 278/278 未覆盖两个公开 helper 的 sustained/source/epoch `None`，不能证明所有公开入口闭锁；新增逐字段 `None`、完整正例、same-plan 维持和 distributed bypass 后才关闭该 P0。该历史计数已由 2026-07-20 的 303/303 回归取代，P0 判定不变。
 
 ## 2026-07-14 P0 secondary lease fail-closed 闭合
 
 新确认的 P0 边界已关闭：secondary resource candidate、plan 发布/维持、active owner 消费和 D7 handoff 统一要求 expiry/current time 均存在且严格 `current_time < expiry`。缺 expiry、缺 current time、`now == expiry`、`now > expiry`、旧 lease epoch 和 source mismatch 均不可发布或维持 executable secondary plan；active secondary owner 失效时转为 `hold_review`。中心健康、主动降级策略及 heartbeat/readiness/cue/gimbal/link 门控未改变。
 
-该轮 2026-07-14 历史验收为 211/211 passed；2026-07-15 的 278/278 也是本次 helper 修复前的历史结果，当前统一入口验收以 280/280 为准。未运行新 AirSim episode。member replacement 仍只是测试手工给定替换成员后的 replay，不是自主 reserve 激活、补位、缩编或整盟重组。
+该轮 2026-07-14 历史验收为 211/211 passed；2026-07-15 的 278/278 与 280/280 也都是阶段性历史结果，当前 D4 全量以 2026-07-20 的 303/303 为准。未运行新 AirSim episode。member replacement 仍只是测试手工给定替换成员后的 replay，不是自主 reserve 激活、补位、缩编或整盟重组。
 
 ## 2026-07-13 P1 episode-time 故障验收增量
 
@@ -43,6 +52,7 @@ D4 所属 P1 合同层已闭合。最新验证中 ComputerVision 总体验收为
 
 | 层级 | 状态 | 审计边界 |
 |---|---|---|
+| scalable3d 区域合同 | **D4 模块内已完成** | 23/23 新测试、303/303 全量通过；覆盖五档 metadata、声明数量、逐区域 owner、二级 coverage/readiness、跨区域 capacity fallback 和全层 atomic fail-closed，不等于 main bus、200v200 动力学、全局组合最优或完整 CCBBA 已完成 |
 | P1 合同层 | **已完成** | 已关闭 secondary/peer 3/3 ACK `executing` 正例和 missing ACK 2/3 `aborted` fail-closed；不等于自主成员形成或物理执行完成 |
 | P1 扰动合同矩阵 | **模块 replay 已完成** | `d4_p1_failover_disturbance_replay_v1` 九场景 9/9 通过，覆盖正常中心、secondary takeover、missing ACK、member replacement、partition recovery、stale epoch、expired lease、digest conflict 和 center recovery dual-track audit；不生成 `AssignmentPlan`，不降低外部 gate |
 | P1 episode-time 批量验收 | **已完成** | `d4_airsim_episode_communication_v1` 支持逐 tick 输入；2026-07-13 六类、10-seed、60-case 矩阵为 60/60 safety outcome，误降级、重复 owner 和 split-brain prevention failure 均为 0。该结果仅覆盖 AirSim episode clock 故障注入 |
@@ -53,13 +63,13 @@ P2 后续只允许隔离式 benchmark，不替换本地轻量 CBBA、commit life
 
 D4 当前已具备 `C2Health`、被动降级、主动降级仲裁、固定系留/机动高空二级节点摘要、二级节点 lifecycle、secondary takeover plan lifecycle metadata、通信 freshness、D1/D2/D3/D5 evidence adapter、主动降级 review label、plan activation delay、D5 distributed visual evidence 风险加权、CBBA cost gap helper、D6-compatible metadata、轻量 CBBA、中心恢复合并、按输入列表长度运行的仿真入口和 main 可复用的逐 tick episode 通信状态接口。
 
-2026-07-13 主动降级层级已按当前系统策略闭合：中心可用时，低风险保持 `continue_center`；进入末端窗口后的持续 D5 视觉软不一致先输出 `request_secondary_assist`，event 明确区分 `secondary_assist_requested` 与 `secondary_takeover_candidate`，并保持中心 plan owner/version。只有形成明确硬失配或当前计划不可继续时才输出 `request_center_replan`，D4 仍不直接转移 owner。新增 `terminal_evidence_applicable` 后，远距未进入末端窗口的视觉软证据和 streak 不再逐帧请求辅助；中心正常/current/feasible 且 binding 安全时，仅含 D1/D2/D3 非 hard-active 因子的组合也继续中心并保留风险审计。只有 C2 health 进入 `failed` 才允许 secondary 接管，二级随后失效或不可用才进入 distributed；任一 fallback generation 缺完整 ACK、epoch 不一致或 lease 无效时均 fail closed。该阶段 D4 全量测试为 193 项通过，最新 episode-time 增量后的总数见本文顶部。
+2026-07-13 主动降级层级已按当前系统策略闭合：中心可用时，低风险保持 `continue_center`；进入末端窗口后的持续 D5 视觉软不一致先输出 `request_secondary_assist`，event 明确区分 `secondary_assist_requested` 与 `secondary_takeover_candidate`，并保持中心 plan owner/version。只有形成明确硬失配或当前计划不可继续时才输出 `request_center_replan`，D4 仍不直接转移 owner。新增 `terminal_evidence_applicable` 后，远距未进入末端窗口的视觉软证据和 streak 不再逐帧请求辅助；中心正常/current/feasible 且 binding 安全时，仅含 D1/D2/D3 非 hard-active 因子的组合也继续中心并保留风险审计。只有 C2 health 进入 `failed` 才允许 secondary 接管，二级随后失效或不可用才进入 distributed。该阶段只记录 fallback generation 的 ACK 门，D4 全量测试为 193 项；2026-07-20 区域合同已将完整 ACK、epoch 和 lease 原子门扩展到中心、二级、distributed 三层全部 `k>1`，当前总数见本文顶部。
 
 ### 历史实施记录（不作为当前状态）
 
 历史状态（2026-07-11 原子 commit 实施前）：高威胁目标要求 `k_j=3` 时，single-winner `CBBANegotiator` 不能被解释为多机联盟分配。基础 CBBA 是成熟分布式基线，但 CCBBA、consensus-based grouping 和 distributed coalition formation 的公开代码成熟度不足。当时该项作为跨 D3/D4/D6/D7/main 的 P1 合同缺口；当前原子 commit 合同已关闭，成员形成、重构、恢复和时序可达性仍开放。证据见 `D4_M_TO_N_DISTRIBUTED_COALITION_REVIEW.md`。
 
-2026-07-11 原子联盟安全语义已落地：`CoalitionSafetyEvidence` 可序列化输出 D3 schema v2 的 plan/coalition version、需求、完整性、授权成员、锁成员和冲突原因，并可选消费 `CoalitionCommitState`。冻结 `CoalitionMemberAck`、`CoalitionCommitState` 和轻量 `CoalitionCommitCoordinator` 已实现版本/epoch 单调、成员 ACK、lease、分区和 digest 门控；全部 required ACK 且 lease 有效后才允许 secondary/distributed `atomic_coalition_formed=true`。无有效 commit 保持 `coalition_fallback_unsupported`/`hold_or_revoke`。合法联盟内多个授权资源锁同一 `global_track_id` 不再计 duplicate；联盟外/超额成员及旧 plan/coalition version fail closed。最新真实 episode 已关闭 secondary/peer commit 正例与缺 ACK 负例；reserve 激活、成员补位/缩编、完整重构/恢复矩阵仍是后续 P1。
+2026-07-11 原子联盟安全语义已落地：`CoalitionSafetyEvidence` 可序列化输出 D3 schema v2 的 plan/coalition version、需求、完整性、授权成员、锁成员和冲突原因，并可选消费 `CoalitionCommitState`。冻结 `CoalitionMemberAck`、`CoalitionCommitState` 和轻量 `CoalitionCommitCoordinator` 已实现版本/epoch 单调、成员 ACK、lease、分区和 digest 门控；该历史阶段先要求 secondary/distributed 全部 required ACK 且 lease 有效。2026-07-20 区域合同进一步要求中心、二级和 distributed 三层全部 `k>1` 原子提交，并分别记录真实 assignment/formation source。无有效 commit 保持 `coalition_fallback_unsupported`/`hold_or_revoke`。合法联盟内多个授权资源锁同一 `global_track_id` 不再计 duplicate；联盟外/超额成员及旧 plan/coalition version fail closed。最新真实 episode 已关闭 secondary/peer commit 正例与缺 ACK 负例；中心层新增证据仍是模块测试。reserve 激活、成员补位/缩编、完整重构/恢复矩阵仍是后续 P1。
 
 真实 AirSim 目录 `blocks_cv_m5_n2_cooperative_live_20260711` 证明需要对“最终动作”再次门控：中心 alive/owner=center，T001 demand required/assigned 为 3/3、coalition complete、version current，但 D5 长期 reacquire 后 D4 曾输出 `degrade_to_distributed`。该结果不能解释为可执行联盟 fallback，因为现有 distributed 仍是 single-winner；修正后同类候选在中心可用时请求 D3 重规划。
 

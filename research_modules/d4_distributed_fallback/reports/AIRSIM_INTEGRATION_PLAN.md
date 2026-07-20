@@ -6,16 +6,17 @@
 
 AirSim episode clock 只提供统一的仿真时间基准。已通过的 delay/loss/partition case 是时间轴上的可复现故障注入，不代表真实吞吐带宽、无线传播、节点时钟漂移、操作系统排队、乱序、重传或硬件链路已经验证。
 
-## 2. 2026-07-15 当前状态
+## 2. 2026-07-20 当前状态
 
 最新 M5N2 baseline/candidate 各 10 seeds 已完成，共 20/20 case。该批中心 owner 始终有效且 `active degradation=0`，是中心继续执行负对照：coalition completion `0/20`、第二 primary 进入 5 m `0/20`，20 个第二 primary 均为 `collision_stop`。由于 collision object 未写盘，runtime 后续必须补充碰撞对象/来源字段，D4 不能把该终态自动转换成主动降级事件。D4 main-bus 阶段 mean/P95/max 约 `5.59/6.70/94.10 ms`。`png_ttc_2v2_seed001` 排除在 M5N2 聚合之外，dropout case 完成数为 0。
 
 该证据没有运行二级或完全分布式接管，故真实 secondary/distributed 多 seed 仍为 P1。后续 AirSim 集成必须构造与中心负对照配对的故障 case，并让 D4 从 D1/D2/D3/D5 摘要得出动作，不得由 `collision_stop` 标签直接注入动作。
 
-D4 当前具备两层 episode 接口：
+D4 当前具备两层 AirSim episode 接口，以及一个尚未接入 main 的 scalable3d 区域接口：
 
 - `d4_airsim_episode_communication_v1`：main 按严格递增的 episode timestamp 逐 tick 输入 heartbeat、消息 delay/drop、ACK、partition、digest、恢复授权，以及按 secondary node keyed 的 `SecondaryReadinessEvidence`。readiness DTO 必须显式携带 current time、lease epoch/expiry、heartbeat/cue/communication 时间、gimbal、coverage/full-view 和 sustained window；heartbeat 单独存在不得 propose secondary owner。
 - `d4_p1_episode_fault_validation_matrix_v1`：覆盖 normal、center failure、center+secondary failure、missing ACK、stale epoch、expired lease 和 partition 的规范合同验收。
+- `d4-regional-failover-v1`：D4-owned truth-free payload，包含动态 scenario/node/region/task metadata、逐区域 ownership、D1/D2/D3/D5 risk、机动高空二级 coverage/readiness、最早 lease、跨区域 capacity fallback assignment 和全层 coalition commit。当前只有纯 Python 模块测试，尚未进入 AirSim 或 scalable3d main bus。
 
 main/runtime 已按 AirSim episode clock 对以下六类场景各运行 10 seeds，共 60 case：
 
@@ -34,11 +35,11 @@ main/runtime 已按 AirSim episode clock 对以下六类场景各运行 10 seeds
 | false degradation | 0 |
 | duplicate owner | 0 |
 | split-brain prevention failure | 0 |
-| D4 模块回归 | 280/280 passed |
+| D4 模块回归 | 303/303 passed |
 
 30% loss 场景中，7 个缺 ACK case 保守阻断，只有 3 个完整 ACK case 执行。该结果关闭 episode-clock 多 seed 安全矩阵缺口，不关闭真实网络 P1。
 
-2026-07-15 早先的 278/278 模块回归覆盖 coordinator、episode adapter、coalition proposal 和 D6 metadata，但未覆盖 `build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 对 sustained/source/epoch 的缺失值；因此不得再把 278/278 写成“所有公开 secondary owner 入口已关闭”。本次 280/280 回归新增两个 helper 的逐字段 `None`、完整正例、same-plan 维持和 distributed bypass：active secondary plan 仅在 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且 `current_time < expiry` 时可执行。interceptor/peer 仍只执行 distributed ACK/lease/epoch/commit 合同。本次未启动 AirSim，不能写成新的 episode 或真实网络证据；真实 RF/mesh/socket、带宽、时钟漂移、排队/乱序/重传和硬件链路继续作为 P1。
+2026-07-15 的 280/280 回归关闭了公开 secondary plan helper 的 readiness/source/epoch/time 缺失门控，更早 278/278 不再作为全部入口证据。2026-07-20 新增 23 项区域合同测试后，全量为 303/303；五档 5/20/50/100/200 区域元数据、声明节点数上限、中心/二级连续失效、全层原子 ACK/partition、D5 member hold、单成员多能力、跨区域 capacity 和旧 generation/最早 lease 均通过。该新增结果未启动 AirSim 或 main-owned scalable3d episode，不能写成新的 episode、200v200 动力学或真实网络证据；真实 RF/mesh/socket、带宽、时钟漂移、排队/乱序/重传和硬件链路继续作为 P1。
 
 ## 3. 状态与所有权规则
 
@@ -88,6 +89,8 @@ main 每个 tick 至少提供：
 
 所有输入按实际资源和任务列表长度运行，不写死 2v2 或 5v5。
 
+scalable3d 区域接线还需 main 按 `region_policy_period_s` 提供 scenario/region definition、逐任务 D1/D2/D3/D5 evidence、逐区域 secondary readiness 和 member ACK。D4 不从真值位置推导 region 或 ID，也不生成 D3 系统计划。
+
 ## 6. Episode 输出
 
 D4 每个 tick 输出：
@@ -115,6 +118,7 @@ D4 每个 tick 输出：
 1. 在相同 M5N2 几何和 seeds 下增加中心失效、中心与二级连续失效两组 paired case，验证 secondary/distributed owner、版本、epoch、lease、完整 ACK 和物理连续性。
 2. 增加可审计主动风险 case：D1 协方差/陈旧、D2 关联冲突、D3 stale/infeasible、D5 current binding/身份/跨视角不一致；单纯物理未命中或 `collision_stop` 不得直接触发降级。
 3. 在控制日志中持久化 collision object/source lineage，用于区分成员碰撞、环境碰撞和 AirSim 状态异常；该字段只供诊断和 D6 评分，不绕过 D4 仲裁。
+4. main 将 `d4-regional-failover-v1` 接入 scalable3d versioned envelope，运行 5/20/50/100/200 课程规模与 200v200 多 seed episode，记录逐区域 owner、generation、lease、commit、stage timing 和分区恢复；该工作属于 main-owned 集成，不由 D4 修改。
 
 以下项目仍为 P1，不能由当前 episode-clock 结果替代：
 
@@ -143,4 +147,4 @@ git diff --check -- \
   research_modules/d4_distributed_fallback/reports/AIRSIM_INTEGRATION_PLAN.md
 ```
 
-本轮修改 D4 lease fail-closed 代码和模块测试，不运行 AirSim，也不修改 main/runtime 或 D7。
+本轮新增 D4 区域合同、模块测试和文档，不运行 AirSim/scalable3d episode，也不修改 main/runtime、D3、D5、D6 或 D7。

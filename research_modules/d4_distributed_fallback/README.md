@@ -2,7 +2,9 @@
 
 本模块用于离线科研仿真：当中心 C2 节点不可用时，评估区域二级节点接管、完全无中心协商、中心恢复合并等被动降级机制；当中心仍可用但 D1/D2/D3/D5 的不确定性或末端视觉不一致升高时，评估主动降级仲裁机制。模块只使用内存网络和粗粒度摘要，不包含真实通信、飞控、硬件、火控、毁伤、自动处置或授权绕过逻辑。
 
-**2026-07-15 P0 状态**：本轮重新确认的二级接管 P0 已关闭。此前 278/278 回归覆盖 coordinator、episode adapter、secondary coalition proposal 和 D6 metadata，但把它表述为“所有公开 secondary owner 入口均已闭锁”属于过度声明：`build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 仍会把缺失的 sustained readiness、expected/actual source 或 plan/required lease epoch 当成“不是 False”而放行。当前两个 helper 及 adapter 均要求这些字段显式存在，`secondary_readiness_sustained is True`、source 相等、plan epoch 不低于 required epoch，且 current time/expiry 存在并严格满足 `current_time < expiry`；同 id/version 的已激活 secondary plan 维持路径也执行同一复核。D4 单元测试 280/280 通过，阈值为零失败；未新增 AirSim 实测。distributed interceptor/peer 不套用二级视觉 readiness，真实 RF/mesh/socket/硬件网络、物理执行和自主联盟重构仍为 P1。
+**2026-07-20 区域化合同状态**：新增 `d4-regional-failover-v1`，面向 scalable3d 场景按输入长度维护逐区域唯一 authority。中心未 `failed` 时保持中心 owner，仅根据 D1 协方差/时效、D2 ambiguity/IDSW/duplicate、D3 plan/version/epoch/lease/current/feasible 和 D5 consistent/inconsistent/binding/friend/duplicate 证据输出继续中心、请求机动高空侦察辅助、中心重规划或保持复核；中心 `failed` 后只选择对该区域具有完整持续 readiness、coverage 和有效 lease epoch 的 `mobile_high_recon`，没有有效二级节点时才进入受约束 bid fallback。任一层级的 `k>1` 任务都必须由全部 required member 对同一 plan/coalition version、epoch 和有效 lease 完成 ACK 才成为 `committed`；区域 authority/commit lease 取 authority、D3 task 和二级 lease 的最早到期值。缺 ACK、旧 epoch/version、过期 lease 或分区均闭锁。2026-07-20 纯 Python 验收新增 23 项，覆盖 5/20/50/100/200 区域元数据、声明节点数上限、中心与二级连续失效、双区域 coverage、中心/二级/distributed 原子门、分区、D5 member hold、跨区域 capacity、单成员多能力、旧 generation 和 lease；D4 全量 **303/303** 通过，阈值为零失败。本轮没有 AirSim、真实网络或物理拦截样本；受约束成员选择是确定性基线，不等于完整 CCBBA、reserve 激活或在线联盟重构。
+
+**2026-07-15 P0 历史状态**：当日重新确认的二级接管 P0 已关闭。此前 278/278 回归覆盖 coordinator、episode adapter、secondary coalition proposal 和 D6 metadata，但把它表述为“所有公开 secondary owner 入口均已闭锁”属于过度声明：`build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 仍会把缺失的 sustained readiness、expected/actual source 或 plan/required lease epoch 当成“不是 False”而放行。两个 helper 及 adapter 后续均要求这些字段显式存在，`secondary_readiness_sustained is True`、source 相等、plan epoch 不低于 required epoch，且 current time/expiry 存在并严格满足 `current_time < expiry`；同 id/version 的已激活 secondary plan 维持路径也执行同一复核。当日 D4 单元测试 280/280 通过；该历史数字已由 2026-07-20 的 303/303 回归取代。
 
 **2026-07-15 M5N2 负对照同步**：真实 AirSim M5N2 baseline/candidate 各 10 seeds，共 20/20 case 完成。该批全程保持中心 owner，`active degradation=0`，因此只用于验证“中心继续执行时不误降级”和定位协同末端断点，不能宣称二级接管或完全分布式联盟性能闭合。聚合结果为 coalition completion `0/20`、第二 primary 进入 5 m `0/20`，20 个第二 primary 均以 `collision_stop` 结束；当前产物未记录碰撞对象，不能把该状态自动解释为成员冲突，也不能把它作为主动降级触发。D4 仍必须联合 D1 不确定度、D2 关联风险、D3 plan/version/可行性和 D5 当前绑定/身份/视觉一致性证据进行仲裁。D4 main-bus 阶段 mean/P95/max 约为 `5.59/6.70/94.10 ms`，不是本批约 1 s control tick 的主要耗时。终止前额外完成的 `png_ttc_2v2_seed001` 不纳入 M5N2 聚合，dropout case 完成数为 0。真实 secondary/distributed 多 seed 仍为 P1。
 
@@ -17,6 +19,7 @@
 - `scripts/run_p1_communication_fault_replay.py`：六场景、多 seed 的 P1 通信故障矩阵。
 - `scripts/run_p1_episode_fault_replay.py`：使用 AirSim 兼容 episode 时钟运行 P1 故障注入验收矩阵；不启动 AirSim，也不模拟真实 RF 网络。
 - `d4_distributed_fallback/episode_communication.py`：供 main 按真实 AirSim episode 时钟逐 tick 调用的通信故障状态接口及七场景纯 Python replay。
+- `d4_distributed_fallback/regional_failover.py`：scalable3d 兼容的区域场景元数据、逐区域 authority、主动证据、二级 readiness/coverage 和原子 fallback 合同。
 - `scripts/run_p2_coalition_replay.py`：隔离式 P2 联盟故障 replay；不接入在线 D4。
 - `tests/`：状态机、CBBA、接管和仿真测试。
 - `reports/EXPERIMENT_REPORT.md`：实验报告与曲线。
@@ -72,6 +75,7 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 
 ## 当前能力
 
+- 区域化 scalable3d 合同：`RegionalScenarioMetadata.from_scalable_scenario()` 只读消费 `scalable3d-scenario-v1` 的 target/resource/recon/region count，并拒绝 schema 或声明数量溢出；`RegionalFailoverCoordinator` 按实际 region/task/node 列表运行并输出 truth-free `d4-regional-failover-v1` bus payload。逐区域 owner 变更必须同时提升 `epoch` 和 `plan_version`，租约严格使用 `timestamp < expiry` 且收缩到最早 D3 task/secondary expiry，同 generation 不允许换 owner，分区时所有层级闭锁。
 - `C2Health` 状态机：`normal -> degraded -> suspect -> failed`，heartbeat 使用滑动窗口和 `degraded/suspect` 防抖确认，中心恢复需双轨合并，不能只靠单次 heartbeat。
 - 被动降级链路：中心 C2 失效 -> 固定系留或机动高空二级侦察节点/地面备份 -> 完全无中心 CBBA。
 - 主动降级仲裁：中心未失效时只输出继续中心、请求中心重分配、请求二级观测辅助或安全保持；`degrade_to_secondary/degrade_to_distributed` 只属于中心失效后的被动接管链路。
@@ -132,7 +136,7 @@ python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 - P1 联盟合同结论仍以 `p1_p2_validation_20260711/P1_P2_VALIDATION_SUMMARY_CN.md` 为准：D4 所属合同层已闭合。2026-07-12 PNG delivery 的 M5N2 `0/9` 是历史短窗口结果；2026-07-15 已完成中心继续执行的 baseline/candidate 各 10 seeds，最新同口径负对照为 coalition `0/20`、第二 primary 5 m `0/20`、`active degradation=0`。该更新不关闭 D4 物理协同、真实 fallback 扰动、成员重构/恢复或误降级标定缺口。
 - `d4_p1_failover_disturbance_replay_v1` 已形成版本化九场景矩阵：正常中心无误降级、二级完整 ACK 接管、缺 ACK、手工预编排的成员丢失/替换、分区/恢复、旧 epoch、过期 lease、digest conflict 和中心恢复双轨审计均通过。replay 中替换后的联盟必须提升 epoch/plan/coalition version 并全员重新 ACK；这不代表在线 D4 已实现自主 reserve 发现、激活、缩编、补位或整盟重组。中心恢复不立即夺权，D4 不生成 `AssignmentPlan`，不降低 D3/D5/D7 gate。
 - `d4_p1_communication_fault_replay_v1` 已完成 10 seeds x 6 场景的 60/60 安全结果：正常中心误降级为 0；0.5 s 延迟 10/10 完整提交；30% 丢包下 3/10 完整 ACK 后执行、7/10 缺 ACK 后 fail-closed；中心失效 10/10 降到二级，中心和二级连续失效 10/10 降到 distributed；分区恢复 10/10 使用新 epoch/version 全量 re-ACK，并拒绝旧 owner。重复 owner 和 split-brain prevention failure 均为 0。
-- 2026-07-15 当前 D4 全量测试为 280/280 项通过；除 coordinator、episode DTO、coalition proposal 和 D6 metadata 外，两个公开 secondary plan helper 已新增逐字段 `None`、完整 evidence、同 plan 维持和 distributed bypass 回归。此前 278/278 不能再作为全部公开入口闭锁证据。未运行新 AirSim episode；真实链路、误降级率、恢复时间和物理任务连续性仍由 main/D6 开放。
+- 2026-07-20 当前 D4 全量测试为 303/303 项通过；其中 23 项区域化合同测试覆盖五档 region/task/resource 元数据、节点数量上限、中心/二级连续失效、主动证据、coverage ownership、全层 `k>1` 原子 ACK、全层分区、D5 member hold、单成员多能力、跨区域 capacity 和旧 generation/lease 拒绝。2026-07-15 的 280/280 和更早 278/278 保留为历史阶段证据。未运行新 AirSim episode；真实链路、误降级率、恢复时间和物理任务连续性仍由 main/D6 开放。
 - 二级接管正例：协调者 `Secondary_Recon_1`，required-member ACK 3/3，最终 `executing`，D4 动作为 `degrade_to_secondary`。
 - 完全分布式正例：协调者为 `INT-02` peer，required-member ACK 3/3，最终 `executing`，D4 动作为 `degrade_to_distributed`。
 - 缺 ACK 负例：ACK 2/3，最终 `aborted`；T001 三个成员保持 `hold_for_review`，D7 许可为 0。该结果确认 fail-closed；有有效 commit 的二级/分布式路径已获正例验证。

@@ -371,6 +371,16 @@ G_j=
 
 其中 \(C_{CBBA}\) 是 D4 保底分配总代价，\(C_{center}\) 是中心化计划总代价。若任一已分配任务/资源对缺少代价，总代价和差距保持不可用，不补造数值。该辅助函数（helper）只做离线比较，不在无中心路径运行匈牙利算法（Hungarian algorithm）或最小费用流（Minimum Cost Flow）。
 
+### 4.11 区域所有权与世代
+
+scalable3d 区域集合记为 \(\mathcal{R}\)。每个区域只能有一个 active owner：
+
+\[
+\forall r\in\mathcal{R},\quad \sum_o \mathbf{1}[owner(r)=o\land active(r)]\le 1.
+\]
+
+中心未失效时 owner 保持中心，D1/D2/D3/D5 主动证据只能请求辅助、重规划或保持复核；中心计划中的 \(k>1\) 任务也必须完整 ACK 后才把 owner 标为 active。中心失效后，机动高空二级节点必须对区域具有显式 coverage，并满足完整 strict readiness 与 `secondary_lease_epoch >= authority_epoch`。只有无有效二级节点时才进入受约束 distributed candidate formation。owner/layer 切换要求 `epoch` 与 `plan_version` 同时严格递增；同 generation 换 owner、过期租约或任一层级分区都闭锁。区域 authority/commit lease 取 authority、D3 task 和二级 lease 的最早 expiry。区域候选形成按 capability、跨区域 capacity、communication 和 D5 member evidence 做确定性选择，一个成员可覆盖多项 capability，但 \(k>1\) 的可执行性仍由第 4.9 节完整 ACK 决定。
+
 ## 5. 算法步骤
 
 ### 5.1 每次仲裁的默认步骤
@@ -419,6 +429,15 @@ G_j=
 7. 中心恢复时连续校验双轨 digest，且必须收到显式恢复授权，之后再以新世代恢复中心。
 
 该适配器的 `owner_id`（所有者标识）是层级/计划发布提示，main 仍负责生成系统级计划。
+
+### 5.5 scalable3d 区域仲裁步骤
+
+1. 从 `scalable3d-scenario-v1` mapping 读取 target/resource/recon/region count，不导入 main 模块。
+2. 校验 schema、scenario 声明数量、region definition、active task、secondary coverage 和 fallback member region scope。
+3. 按区域聚合 D1 covariance/age、D2 ambiguity/IDSW/duplicate、D3 plan/version/epoch/lease/current/feasible 和 D5 consistency/binding/friend/duplicate。
+4. 中心未 `failed` 时保留中心 owner；中心 `failed` 时选 valid `mobile_high_recon`；没有有效二级节点时才形成 distributed candidate。
+5. 校验 authority generation 与最早 lease；对中心、二级和 distributed 三层的 \(k>1\) 候选逐成员记录 ACK，并在完整 ACK 后一次性进入 `committed`；分区时三层均闭锁。
+6. 输出 `d4-regional-failover-v1` truth-free payload，包含逐区域 ownership、selected layer、action、risk、readiness、assignment、commit 和 reject reason。
 
 ## 6. 状态机、门控与身份安全规则
 
@@ -542,6 +561,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 | 能力 | 当前事实 |
 |---|---|
 | 中心健康与被动接管 | 四态健康、滑动窗口、缺失阈值、peer 多数、digest/epoch 检查、中心 -> 二级 -> 分布式顺序 |
+| scalable3d 区域 authority | 动态 scenario/region/task/node metadata、声明数量上限、逐区域唯一 owner、机动高空二级 coverage/readiness、epoch+plan version+最早 lease 和全层原子门控 |
 | 主动降级仲裁 | 中心可用时只继续中心、请求辅助、请求重规划或保持复核；末端适用性、硬/软风险和按绑定隔离迟滞已实现 |
 | 二级接管门控 | 四级瞬时就绪、综合评分、默认 3 次/0.2 秒持续窗口、来源/版本/租约严格校验和待生效/已激活状态 |
 | 原子联盟安全合同 | 双版本、epoch、成员 ACK、租约、digest、分区和 fail-closed；已有二级与 peer 正例及缺 ACK 负例 |
@@ -568,13 +588,13 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 | 耦合约束一致性捆绑算法（Coupled-Constraint Consensus-Based Bundle Algorithm，CCBBA） | 只作为研究方向，未进入默认或在线路径 |
 | 独立单轮拍卖 | 未实现；当前 CBBA 含获胜者/出价思想，但不是独立拍卖状态机 |
 | 合同网协议（Contract Net Protocol，CNP） | 未实现管理者/承包者（manager/contractor）公告、投标、授标和失败重招标状态机 |
-| 自主多成员形成与完整重构 | 未实现基于能力的成员形成、预留成员激活、缩编、补位和整盟重组；现有代码只对上游给定成员集合做原子提交 |
+| 自主多成员形成与完整重构 | 区域能力与跨区域容量约束的确定性 bid selection 已实现；仅 distributed fallback 使用该算法。完整 CBBA/CCBBA 共识、全局组合最优、时序约束、预留激活、缩编、补位和整盟重组未实现 |
 | 完整中心恢复审计 | 当前 `merge_recovery()` 只比较分配所有者与 epoch；完整航迹、计划、末端锁定、通信和 D5/D7 门控 digest 尚未合并 |
 | 真实通信和视频链路 | 未实现真实 RF、网状网络（mesh）、带宽、时钟漂移、操作系统队列、乱序、重传和硬件故障认证 |
 | 虚拟中心优化 | 明确不在无中心路径运行中心匈牙利算法或最小费用流；只允许离线对照 |
 | D4 直接生成系统计划 | 明确不做；D3/main 拥有 `AssignmentPlan` |
 
-## 9. 2026-07-15 验证状态
+## 9. 2026-07-20 验证状态
 
 ### 9.1 当前结果
 
@@ -584,7 +604,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 
 根据 2026-07-13 主验证报告与 D4 审计：
 
-- 2026-07-15 D4 全量模块回归为 **280/280 项通过**，验收阈值为零失败。此前 278/278 只证明 coordinator、episode、coalition、D6 和既有 lease 边界，未覆盖两个公开 plan helper 对 sustained/source/epoch 的 `None`；“所有公开入口均已闭锁”的旧说法属于过度声明，现已纠正。
+- 2026-07-20 D4 全量模块回归为 **303/303 项通过**，验收阈值为零失败。新增 23 项区域化测试覆盖 5/20/50/100/200 region/task/resource metadata、声明节点数上限、中心与二级连续失效、coverage ownership、全层完整/缺失 ACK、D5 member hold、单成员多能力、跨区域 capacity、旧 epoch/version、最早 lease 和全层分区。2026-07-15 的 280/280 与更早 278/278 保留为历史阶段证据。
 - `build_d7_secondary_handoff()` 与 `build_secondary_takeover_plan_metadata()` 当前统一要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格 `current_time < expiry`。逐字段 `None`、完整正例和同 id/version 维持路径均有回归；未运行新 AirSim episode。
 - 完全分布式 interceptor/peer 选择不套用二级视觉 readiness 门；动态 N/M、版本/epoch/lease、ACK 和 `global_track_id` 所有权规则未改变。
 - 二级 resource 和 plan lease 只有在 expiry/current time 均存在且严格 `current_time < expiry` 时有效；等于边界按过期处理。缺字段分别输出可审计原因并 fail-closed，不能发布或维持 executable secondary plan。
@@ -593,6 +613,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 - 主编排器/运行时又按 AirSim 单次试验时钟（episode clock）运行六类场景、每类 10 个随机种子（seed），共 **60 个试验用例（case）**：安全结果 **60/60**，误降级 0，重复所有者 0，脑裂防护失败 0。
 - 30% 消息丢失下，7/10 因缺 ACK 保守闭锁，只有 3/10 在 ACK 完整后执行。这证明“缺确认不执行”，不是通信性能优良的证明。
 - 更早的 D4 P1 合同层正负例中，二级协调者和完全分布式对等节点都以 3/3 ACK 进入 `executing`，缺 ACK 场景以 2/3 进入 `aborted`（已中止）并保持复核。
+- 区域化验证为 23 个确定性单元 test case，无随机 seed；它关闭 D4 模块内 metadata/authority/安全门控，不构成 scalable3d 200v200 动力学、AirSim、真实网络或物理拦截证据。
 
 这些结果验证的是单次试验时间轴上的顺序接管、版本/租约/ACK 门控和唯一所有者，不代表真实 RF、真实吞吐带宽、节点时钟漂移、网络设备或硬件故障已经验证。
 
@@ -607,6 +628,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 7. **二级计划执行边界**：来源、版本单调、租约世代、租约到期和持续就绪已纳入待生效/已激活门控。
 8. **多成员降级保底原子性**：完整 ACK、双版本、epoch、lease 和 digest 合同已实现；缺 ACK、旧世代、过期租约和分区保持闭锁。
 9. **单次试验多随机种子安全矩阵**：六类、10 个随机种子、60 个试验用例的误降级、重复所有者和脑裂安全结果已闭合。
+10. **区域 authority 合同**：动态 region/task/node metadata、声明数量上限、中心保持、二级 coverage 接管、跨区域 capacity candidate、双 generation、最早 lease 和全层原子 ACK/partition 门控已完成模块测试。
 
 ### 9.3 剩余局限
 
@@ -615,7 +637,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 
 1. **真实网络未验证**：带宽、拥塞、时钟漂移、操作系统/网络排队、抖动、乱序、重传、实际二级节点到执行资源链路和对等节点图分裂仍开放。
 2. **恢复合并不完整**：当前基础合并没有覆盖完整航迹摘要校验值、计划摘要校验值、末端锁定、通信链路、联盟执行前缀和 D5/D7 门控。
-3. **自主联盟形成未实现**：现有原子提交验证上游给定成员集合；member-loss/replacement replay 也由测试手工给定替换成员，只验证新 generation 全量 ACK，不解决 \(k_j>1\) 的能力组合搜索、预留激活、缩编、补位和整盟重构。
+3. **完整自主联盟形成未实现**：区域合同已有仅用于 distributed fallback 的能力与跨区域容量约束 candidate；中心和二级使用 D3 给定成员，三层 `k>1` 都执行完整 ACK 原子提交。当前仍没有 CBBA 网络图多轮共识、全局组合最优性、CCBBA 时序耦合或 D7 arrival feasibility；member-loss/replacement replay 仍由测试手工给定替换成员，只验证新 generation 全量 ACK，也不解决预留激活、缩编、补位和整盟重构。
 4. **CBBA 是合成基线**：评分函数未与 D3 的真实中心代价完全对齐；真实单次试验尚未持续保存同场景中心代价矩阵并由 D6 做多随机种子差距聚合。
 5. **D5 分布式视觉合流仍需标定**：模块内辅助函数已实现，但真实无中心多随机种子下的合流频率、风险权重和覆盖小区切换仍未闭合。
 6. **物理闭环不能由 D4 合同结果替代**：2026-07-15 中心负对照的五资源对二目标（Five Resources to Two Targets，M5N2）20-case 聚合中，联盟完成率为 0/20、第二主资源进入 5 米为 0/20。较早的 5/10 结果属于不同批次历史证据，不覆盖本次同口径聚合。当前物理缺口不能归因于或由 D4 的 60/60 安全门控结果关闭。
@@ -651,7 +673,7 @@ main/runtime 负责 AirSim 启停与 episode 顺序、故障注入时间轴、D3
 PYTHONPATH=research_modules/d4_distributed_fallback python3 -m pytest -q research_modules/d4_distributed_fallback/tests
 ```
 
-本次只新增文档，没有重跑该全量测试。主要源码证据：
+本次新增区域化代码、测试和文档，并已重跑全量测试。主要源码证据：
 
 - `models.py`：共享数据结构、中心健康、资源/航迹/通信/结果模型；
 - `active_degradation.py`：风险规则、二级评分、动作仲裁、二级计划与 D7 交接门控；
@@ -659,6 +681,7 @@ PYTHONPATH=research_modules/d4_distributed_fallback python3 -m pytest -q researc
 - `coordinator.py`：中心健康、协调负责人（leader）选择、被动保底和基础恢复合并；
 - `cbba.py`：轻量 CBBA、视觉风险修正和离线代价差距；
 - `coalition_safety.py`：多成员 ACK、原子提交与联盟安全证据；
+- `regional_failover.py`：scalable3d 区域元数据、逐区域 authority、机动高空二级覆盖和受约束原子 fallback；
 - `episode_communication.py`：单次试验时钟通信接口与七场景验收；
 - `communication_fault_replay.py`、`p1_failover_replay.py`：P1 内存通信与确定性扰动回放；
 - `p2_coalition_replay.py`：隔离式 P2 原生回放和外部能力探测。

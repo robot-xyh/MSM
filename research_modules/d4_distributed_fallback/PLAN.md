@@ -1,14 +1,24 @@
 # D4 分布式协同与降级接管计划
 
-## 0. 2026-07-15 P0 公开二级接管入口统一（已完成）
+## 0. 2026-07-20 scalable3d 区域化合同（模块内已完成）
+
+- `regional_failover.py` 新增 `RegionalScenarioMetadata`、`RegionDefinition`、`RegionalTaskEvidence`、`MobileReconSecondary`、`RegionalFallbackMember`、`RegionOwnershipMetadata` 和 `RegionalFailoverCoordinator`，不导入 main-owned `scalable_3d_simulation`，通过 mapping/`to_dict()` 只读适配 `scalable3d-scenario-v1`。
+- 每个区域最多一个 active authority。中心 health 未进入 `failed` 时始终保留中心 owner；D1/D2/D3/D5 风险只改变 `continue_center|request_secondary_assist|request_center_replan|hold_for_review`，不把主动降级变成所有权转移。
+- 中心 `failed` 后，逐区域只从显式 coverage 且 strict readiness 完整的 `mobile_high_recon` 中选择二级协调者；排序为 takeover priority、coverage ratio、lease epoch、node id。二级节点保持 `coordinator_only`，不作为拦截成员。
+- 没有有效二级节点时才执行受约束 bid fallback：按 region、availability、communication、operator hold、跨区域 capacity、capability demand 和 D5 support/hold/ambiguity 形成确定性候选成员集；一个成员可同时覆盖多项 capability。该实现是可审计保底 heuristic，不是完整 CBBA 消息共识、CCBBA、reserve 激活或动态联盟重构。
+- authority 切换必须同时提升 `epoch` 和 `plan_version`；租约严格满足 `timestamp < expiry`，并收缩到 authority、D3 task 与二级 lease 的最早 expiry。中心、二级和 distributed 三层的 `k>1` 任务均复用 `CoalitionCommitCoordinator`，只有 required-member ACK 全集对同一 target/coalition/plan/version/epoch 有效时才原子 `committed`；缺 ACK、旧 ACK/authority generation、过期 lease 和任一层级分区全部 fail closed。
+- 2026-07-20 新增 23 项确定性单元测试：5/20/50/100/200 个 region/task/resource 元数据与中心 ownership，声明 resource/recon 数量上限，D1/D2 主动证据、D3/D5 硬门控、中心失效、二级失效、双区域 coverage、中心/二级/distributed 完整与缺失 ACK、旧 ACK epoch、全层网络分区、旧 authority epoch/plan version、最早 task/authority lease、旧 secondary lease epoch、D5 member hold、单成员多能力与跨区域 capacity。验收阈值为零失败；D4 全量结果为 **303/303 passed**。
+- 验证边界：本轮 sample 是 23 个纯 Python test case，无随机 seed、AirSim episode、真实 RF/mesh/socket、带宽/时钟漂移或物理命中证据。`d4-regional-failover-v1` 尚待 main 接入 scalable3d episode bus；根级系统文档由 main 同步。
+
+### 0.1 2026-07-15 P0 公开二级接管入口统一（已完成）
 
 - 抽取 `SecondaryReadinessEvidence`/`assess_secondary_readiness()`，统一 coordinator election、episode communication 和 secondary coalition proposal；旧式裸 `takeover_ready=true` 不再授权接管。
 - 二级 owner 必须证明显式 current time、正 lease epoch、严格 `current_time < lease_expiry`、fresh heartbeat/cue/communication、gimbal=true、coverage >= 0.65、network full-view >= 0.80，以及至少 3 次/0.2 s 的 sustained readiness。缺失、陈旧、等于 expiry 或低于门限均阻断二级 proposal/execution。
 - `FailoverCoordinator.plan_degraded()` 只对 secondary candidate 应用该门；interceptor/cluster-representative peer 的 distributed election 保持独立，不要求二级视觉 evidence。动态 N/M、plan/coalition version、epoch/lease、ACK、partition/recovery 和 upstream `global_track_id` 合同不变。
 - 278/278 历史回归未覆盖 `build_d7_secondary_handoff()` 和 `build_secondary_takeover_plan_metadata()` 对 sustained/source/lease epoch 的 `None`，此前“所有公开入口已闭锁”的说法撤回。两个 helper 现要求 readiness exact-true、expected/actual source 均存在且匹配、plan/required lease epoch 均存在且满足、expiry/current time 均存在且严格未过期；同一已激活 plan 的维持路径不豁免。
-- 验收结果：D4 全量 280/280 passed，两个 helper 的逐字段 `None`、完整正例、same-plan 维持和 distributed bypass 均通过；`build_coalition_commit_d6_metadata()` 缺 current time 时仍 lease invalid/atomic false。P0 已关闭；未运行新 AirSim，真实网络/硬件时序、物理执行和自主联盟重构仍为 P1。
+- 当日验收结果：D4 全量 280/280 passed，两个 helper 的逐字段 `None`、完整正例、same-plan 维持和 distributed bypass 均通过；`build_coalition_commit_d6_metadata()` 缺 current time 时仍 lease invalid/atomic false。该历史结果已由 2026-07-20 的 303/303 回归取代；P0 判定不变。
 
-### 0.1 2026-07-15 M5N2 中心负对照（已完成，非降级验收）
+### 0.2 2026-07-15 M5N2 中心负对照（已完成，非降级验收）
 
 - 已完成真实 AirSim M5N2 baseline/candidate 各 10 seeds，共 20/20 case；该批 `active degradation=0`，中心 owner 持续有效。
 - 验收口径分层：中心负对照要求 `active degradation=0` 且 center owner 保持 current，本批满足；物理闭环要求第二 primary 进入 5 m 且 coalition 完成，本批未满足；secondary/distributed 因未执行而为 unavailable，不能补零或判定通过。
@@ -35,6 +45,7 @@ D4 只负责 C-UAS 工作流中的离线科研仿真、降级仲裁、二级节�
 - D5 distributed visual evidence 如何在完全无中心模式下影响 CBBA 出价，而不是构造虚拟中心或重新绑定 `global_track_id`。
 - 中心恢复时如何通过双轨合并避免短暂 heartbeat 恢复导致双主。
 - D4 输出如何进入 D6 event metadata 和后续 main runtime bus。
+- 如何把 scalable3d 的动态 resource/recon/region/target 数量映射为逐区域唯一 authority，并在区域之间隔离 coverage、generation、lease 和 coalition commit。
 
 ## 3. 当前总体状态
 
@@ -45,6 +56,7 @@ D4 所属的 P1 合同层已闭合。最新 2026-07-11 验证中，ComputerVisio
 | 层级 | 当前状态 | 不得外推为 |
 |---|---|---|
 | P0 secondary evidence/lease fail-closed | **2026-07-15 已关闭**：280/280 回归覆盖 coordinator/episode/coalition/D6 及两个公开 plan helper；readiness/source/epoch/time 任一缺失均阻断，历史 278/278 过度声明已纠正 | 新 AirSim 网络证据或 P1 自主联盟重构 |
+| scalable3d 区域 authority 合同 | **2026-07-20 D4 模块内已实现**：5/20/50/100/200 区域元数据、中心保持、机动高空二级覆盖接管、二级失效后受约束 fallback、原子 ACK、旧 generation/lease 和分区闭锁均有测试 | main episode-bus 接线、200v200 动力学运行、完整 CCBBA 或物理任务闭环 |
 | P1 合同层 | **已完成**：secondary ACK 3/3 `executing`、peer ACK 3/3 `executing`、缺 ACK 2/3 `aborted`/`hold_for_review` 已有真实 ComputerVision 正负例 | 自主成员形成、完整重构或物理拦截 |
 | P1 通信 replay | **D4 模块内已完成**：九场景合同 replay 加六场景、10-seed 内存通信矩阵，覆盖 0.5 s delay、30% loss、中心/二级连续失效、分区恢复、乱序旧版本和 split-brain 防护 | 真实 AirSim 网络时序或物理任务连续性 |
 | P1 episode 时钟接口 | **D4 模块侧已完成并通过批量验收**：除 7 类规范合同 replay 外，2026-07-13 已完成六类、10-seed、60-case AirSim episode clock 故障注入；逐 case 保留 owner/version、ACK、epoch、lease 和恢复记录 | 该结果不是实际 RF、mesh、socket、带宽、时钟漂移或硬件网络验证 |
@@ -355,15 +367,26 @@ D4 不写死 2v2 或 5v5。当前行为：
 
 2026-07-11 文献和开源实现审计确认：目标需求 `k_j > 1` 时，问题不再是当前 single-winner CBBA 的普通 N 规模扩展。当前 `TrackSummary -> one owner` 合同只能表示一对一保底分配；将高威胁目标复制成三条任务无法原子保证成员集合、异构能力、共同/波次到达窗口和成员退出后的重构一致性。
 
-D4 已完成 fail-closed 与本地 commit 合同：`CoalitionSafetyEvidence` 读取 D3 schema v2 的 coalition/member/version/demand，中心可用且完整合法时允许中心路径继续；中心失效后可选消费 `CoalitionCommitState`。`CoalitionCommitCoordinator` 只有在 target、双版本、epoch、成员身份、全部 ACK、lease 和 digest 均有效时才形成 atomic fallback；否则输出 hold/reconfigure。`FailoverCoordinator` 仍不对 `k_j>1` 运行 single-winner CBBA，避免把成员选择与原子提交混为一谈。合法联盟内多个授权成员锁同一 `global_track_id` 不算 duplicate；越权/超额成员和旧版本均拒绝。reserve 激活、补位/缩编、基于能力的成员形成算法和真实 episode DTO 路由保持 deferred。D4 不替代 D7 到达可达性判定，也不改写 `global_track_id`。
+D4 已完成 fail-closed 与本地 commit 合同：`CoalitionSafetyEvidence` 读取 D3 schema v2 的 coalition/member/version/demand；区域合同中的中心、二级和完全分布式三层 `k_j>1` 任务都必须通过 `CoalitionCommitCoordinator`，只有 target、双版本、epoch、成员身份、全部 ACK、lease 和 digest 均有效时才原子 `committed`，否则输出 hold/reconfigure。中心和二级路径沿用 D3 给定成员，commit metadata 分别标记 `d3_center_assignment` 与 `d3_assignment_secondary_coordination`；仅完全分布式路径使用 `bounded_constrained_bid_selection` 形成候选。`FailoverCoordinator` 仍不把 single-winner CBBA 冒充多成员原子联盟。合法联盟内多个授权成员锁同一 `global_track_id` 不算 duplicate；越权/超额成员和旧版本均拒绝。当前已实现区域能力与跨区域容量约束的确定性成员候选；完整 CBBA/CCBBA 多轮共识、全局组合最优、耦合时序、reserve 激活、补位/缩编、在线整盟重构和 main-owned episode DTO 路由仍保持 deferred。D4 不替代 D7 到达可达性判定，也不改写 `global_track_id`。
 
 真实证据 `airsim_runtime/outputs/blocks_cv_m5_n2_cooperative_live_20260711` 暴露了原门控缺口：中心 owner 仍为 `center`，T001 coalition `k=3`、complete、plan/coalition version current，但 D5 长期 `reacquire` 后 arbiter 候选进入 `degrade_to_distributed`。静态 `coalition_center_plan_valid` 不等于 single-winner distributed path 已支持原子联盟；本轮修正将该候选改为中心重规划。
+
+### 10.2 区域化 200v200 合同
+
+`RegionalScenarioMetadata.from_scalable_scenario()` 消费 scalable3d 场景中的 `target_count`、`resource_count`、`recon_count`、`region_count`、scenario name/version 和 schema version；区域 ID 可由 main 显式传入，缺省只按输入 `region_count` 生成稳定编号。`RegionalFailoverSnapshot` 要求 region definition 与 scenario region 集合一致，active task 数不得超过 scenario target count，节点、区域和任务均按输入列表长度处理。
+
+每个 `RegionalTaskEvidence` 保留上游 `global_track_id`，并同时携带 D1 covariance/age、D2 ambiguity/IDSW/duplicate、D3 plan id/version/epoch/lease/current/feasible、D5 consistency/binding/friend/duplicate 和可选 member support/hold/ambiguity。D4 不创建或重绑定 `global_track_id`。输出 `d4-regional-failover-v1` 包含 scenario/node/resource/recon/region/task counts、逐区域 action、selected layer、唯一 ownership、readiness、candidate assignment、coalition commit 和 reject reason，可直接作为 main-owned `VersionedEnvelope.payload` 的 truth-free 数据。
+
+状态顺序固定为：中心非 `failed` 时保持中心；中心 `failed` 后选择覆盖当前 region 且 strict readiness/lease epoch 有效的机动高空二级节点；只有不存在有效二级节点时才形成 distributed candidate。owner/layer 变更要求 `epoch` 与 `plan_version` 同时递增，同 generation 的 owner 变化视为冲突。分区会撤销已提交区域 coalition 的执行资格并进入 `reconfiguring`；恢复必须由调用方提供新 generation。
+
+当前 distributed candidate formation 只实现确定性、能力和跨区域容量受约束的 bid selection。它能从动态 member/task 集合形成一个候选集合并叠加原子 commit，但不含 CBBA 多轮消息传播、网络图收敛证明、全局组合最优、耦合时序优化、reserve 激活或 member-loss 在线重构，因此不能宣称区域化 CBBA/CCBBA 算法差距已关闭。中心与二级不使用该 formation algorithm，而是分别审计 D3 中心成员和 D3 二级协调成员；三层 `k>1` 的 ACK 原子门一致。
 
 ## 11. 已实现
 
 | 能力 | 当前状态 | 代码/测试证据 |
 |---|---|---|
 | `C2Health` | `normal/degraded/suspect/failed`、heartbeat warning/stale/failure、sliding window/miss threshold/dwell、peer quorum、digest conflict、center epoch stale、恢复待合并 | `coordinator.py`、`models.py`、`tests/test_health.py` |
+| scalable3d 区域 authority | 动态 scenario/resource/recon/region/task 元数据，逐区域中心/机动高空二级/distributed 顺序，唯一 ownership，epoch+plan version+lease，D1/D2/D3/D5 evidence，truth-free bus payload | `regional_failover.py`、`tests/test_regional_failover.py` |
 | 被动降级 | 中心 failed 后才执行 `plan_degraded()`；可选 ground backup/fixed tethered secondary/mobile high recon/representative；不收敛不发布有效 assignments | `coordinator.py`、`tests/test_coordinator.py` |
 | 二级节点 lifecycle | heartbeat age/stale、lease epoch/expiry、coverage、requested coverage match、video/cue freshness、cue stale、gimbal pointing、coverage ratio、network full-view rate、stable registration/not-registered count、固定/机动二级分类、link stale/fresh、`secondary_available`、visible/registered/takeover_capable、`secondary_readiness_class`、capability score 和 score inputs | `active_degradation.py`、`models.py`、`tests/test_active_degradation.py` |
 | 主动降级仲裁 | 中心可用时输出 `continue_center`、`request_center_replan`、`request_secondary_assist` 或 `hold_for_review`；`degrade_to_secondary/degrade_to_distributed` 仅由中心 failed 的被动链路输出。`terminal_evidence_applicable=false` 且中心正常时，窗口外视觉软证据及 D1/D2/D3 非 hard-active 风险不拉起视觉辅助；hard-active 和安全/绑定冲突仍保持原动作 | `active_degradation.py`、`adapter.py`、`tests/test_active_degradation.py`、`tests/test_arbitration_adapter.py` |
@@ -391,6 +414,7 @@ D4 已完成 fail-closed 与本地 commit 合同：`CoalitionSafetyEvidence` 读
 | D4/D5 stress 统一口径 | 历史 60-case freshness 基线、最新二级/peer commit 正例和缺 ACK 负例均可审计 | 仍缺完整扰动矩阵、coverage-cell 切换、成员退出/重构和多 seed 恢复统计 | main/runtime 使用同一 schema 增加成对扰动 case，统计 readiness 驻留、回落和恢复 |
 | D5 distributed visual evidence 运行时合流 | D4 模块内可把 D5 多 peer evidence merge 到 `TrackSummary.visual_evidence` | 真实多 seed no-center case 中 D5 多 peer 输出到 D4 `TrackSummary.visual_evidence` 的合流频率和风险权重仍需标定 | main 在 no-center case 持续调用 `merge_distributed_visual_evidence_into_tracks()` 或等价接线 |
 | CBBA 与中心化最优 gap | D4 已有 `CBBACostGapBenchmark`、`build_cbba_cost_gap_benchmark()` 和 `build_cbba_d6_metadata()`，可对 D3/main 提供的中心 plan/cost matrix 计算 cost/completion/conflict/message gap 并输出 D6 多 seed 报告字段 | 真实 episode 还未持续保存同场景 D3 cost matrix/current plan，也未由 D6 汇总多 seed gap | main/D3 保存中心化 cost matrix/current plan，D6 聚合 benchmark 输出 |
+| scalable3d 区域运行时接线 | D4 已冻结 `d4-regional-failover-v1`，并在 5/20/50/100/200 region/task/resource 纯 Python 元数据测试中保持中心唯一 owner；中心/二级故障与安全负例已覆盖 | main-owned scalable3d orchestrator 尚未发布 D1/D2/D3/D5 区域 evidence 或消费 ownership payload；未运行 200v200 动力学 episode | main 按 `region_policy_period_s` 接线 versioned envelope，D6 记录逐区域 transition/latency/conflict，之后运行多 seed 200v200 |
 
 ## 13. 未实现
 
@@ -402,7 +426,7 @@ D4 已完成 fail-closed 与本地 commit 合同：`CoalitionSafetyEvidence` 读
 | 真实通信/视频链路 | 未实现 socket、ROS 2 topic、mesh、视频帧传输或无线协议 | D4 边界是摘要和内存网络，真实链路属于 main/runtime/D5/D1 | runtime 生成 LinkRecord/video metadata；D5/D1 处理图像、检测、标定和 cue schema | P2/P3 |
 | 虚拟中心 Hungarian | 明确不实现为 no-center fallback | 完全无中心模式不能伪造中心权威或改写 `global_track_id`；中心化最优属于 D3/main | 若要对照，只能做离线 benchmark，不得替代 D4 CBBA 保底 | 不做主线 |
 | D4 直接生成系统级 `AssignmentPlan` | 不作为 D4 能力实现；D4 只输出仲裁/metadata/CBBA 保底结果 | D3/main 拥有 plan schema、plan owner、版本策略和 stale rejection；main P1 已接入 secondary owner/version 消费基线 | D4 继续保持不生成系统级计划，必要字段通过 `SecondaryTakeoverPlanMetadata` 输出 | 非 D4 主线 |
-| 自主成员形成与联盟重构算法 | 二级/peer 原子 commit 与缺 ACK fail-closed 正负例已通过；member-loss/replacement 仅为手工 replay 输入。尚未实现自主 `k_j>1` 成员形成、reserve 激活、补位/缩编/整盟重构或 CCBBA/grouping | 当前 single-winner CBBA 和预编排 replay 都不能替代在线成员形成与时序可达性 | P1 保持现有 commit 合同和 replay 回归，不在本次 P0 修复中扩展实现 | P1 保持开放 |
+| 完整自主成员形成与联盟重构算法 | 区域合同仅在 distributed fallback 使用 bounded constrained bid selection，可按 region、跨区域 capacity、capability 和 D5 member evidence 形成确定性候选；中心/二级/distributed 三层原子 commit 与缺 ACK fail-closed 正负例已通过 | 尚无 CBBA/CCBBA 多轮区域共识、全局组合最优、时序可达性、reserve 激活、补位/缩编/整盟重构；member-loss/replacement replay 仍由测试手工给定 | 保持当前 commit 合同，后续增加网络图、耦合任务、reserve 和成员变化的新 generation 状态机 | P1 保持开放 |
 
 ## 14. P1/P2 下一步
 
@@ -417,6 +441,7 @@ P1：
 6. 在完全无中心 case 中持续把 D5 distributed visual evidence 合流到 `TrackSummary.visual_evidence`，并用多 seed 报告确认 CBBA completion/conflict/cost gap/round/message 指标。
 7. main/D3 继续保存同场景中心化 cost matrix/current plan，D6 聚合 D4 `CBBACostGapBenchmark` 多 seed 指标；轻量 CBBA 仍为默认保底。
 8. 复用已完成的 M5N2 20-case 几何/seeds 运行 secondary/distributed paired 故障场景，并补充 collision object/source lineage；不得以 `collision_stop` 或未进入 5 m 直接触发主动降级。
+9. main 将 `d4-regional-failover-v1` 接入 scalable3d episode bus：按 `region_policy_period_s` 提供区域 definition、D1/D2/D3/D5 evidence、机动高空二级 readiness 和 member ACK，验证 200v200 下唯一 owner、stage timing、分区恢复和多 seed 统计。接线不得由 D4 越权修改 main-owned 文件。
 
 P2：
 

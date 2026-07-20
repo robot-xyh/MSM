@@ -4,7 +4,9 @@
 **范围**：中心 C2、二级侦察节点和完全无中心三种运行层级下，面向 `k_j > 1` 协同任务的联盟形成、通信、一致性、成员退出和中心恢复。
 **模块边界**：D4 研究“谁组成联盟、谁协调、何时重构以及如何保持版本一致”；D3 拥有中心化资源分配，D7 拥有到达时序和导引，D5/D2 提供身份与关联证据。本文不运行 AirSim；2026-07-11 已在调研结论上补充第一阶段 fail-closed 安全实现。
 
-**2026-07-15 合同同步**：secondary coordinator proposal 与两个公开 secondary plan helper 均已 fail-closed；helper active/maintained 路径要求 readiness exact-true、expected/actual source、plan/required lease epoch 和严格未过期时间证据。此前 278/278 不含 helper 的逐字段 `None`，不能证明全部公开入口；当前 280/280 已补齐。distributed peer commit 继续只受 member/双版本/epoch/lease/digest/partition 合同约束，不套用二级视觉门。未运行新 AirSim；真实网络和自主成员形成仍为 P1。
+**2026-07-20 区域合同同步**：`regional_failover.py` 已把中心 -> 机动高空二级 -> distributed 顺序扩展为逐区域 authority，并仅为无有效二级节点的区域加入能力/跨区域 capacity 受约束 bid selection。该 selection 从动态 member/task 集合形成候选，允许单成员覆盖多项 capability，D5 support/hold/ambiguity 参与排序或排除；中心、二级和 distributed 的 `k_j>1` 候选都必须全部 required ACK、current plan/coalition version、epoch 和最早 lease 后原子 `committed`。commit metadata 依次标记 `d3_center_assignment`、`d3_assignment_secondary_coordination`、`bounded_constrained_bid_selection`。23 项区域测试使 D4 全量达到 303/303。该增量不实现 CBBA 多轮消息共识、全局组合最优、CCBBA coupled timing、reserve 激活或在线成员重构，也无 AirSim/scalable3d episode 或物理证据。
+
+**2026-07-15 历史合同同步**：secondary coordinator proposal 与两个公开 secondary plan helper 均已 fail-closed；helper active/maintained 路径要求 readiness exact-true、expected/actual source、plan/required lease epoch 和严格未过期时间证据。此前 278/278 不含 helper 的逐字段 `None`，不能证明全部公开入口；当日 280/280 已补齐，当前全量以 2026-07-20 的 303/303 为准。distributed peer commit 继续只受 member/双版本/epoch/lease/digest/partition 合同约束，不套用二级视觉门。
 
 ## 1. 问题定义与关键结论
 
@@ -171,16 +173,17 @@ P2 隔离合同 replay 已实现并保持上述边界：member loss/replacement 
 - 单 owner `TrackSummary` 的轻量 CBBA、通信轮次/字节/冲突统计。
 - 成员级 D5 视觉风险对 bid 的保守加权。
 - `CoalitionSafetyEvidence` 对 D3 schema v2 的中心联盟做 demand/member/plan version/coalition version 校验，并序列化给 main/D6/D7。
-- 中心有效且联盟合法时允许中心路径继续；secondary/distributed 有效 commit 可形成 atomic fallback，无有效 commit 时中心可用则 `request_center_replan`、中心不可用则 `coalition_fallback_unsupported`/`hold_or_revoke`；event 保留 candidate/gated action，`k_j>1` 成员形成不交给 single-winner CBBA。
+- 中心、secondary、distributed 三层 `k_j>1` 都只有在 required ACK 完整且 generation/lease 有效后才原子 `committed`；中心和二级审计 D3 给定成员，仅 distributed fallback 形成受约束候选。无有效 commit 时中心可用则 `request_center_replan`、中心不可用则 `coalition_fallback_unsupported`/`hold_or_revoke`；event 保留 candidate/gated action，`k_j>1` 原子联盟不交给 single-winner CBBA。
 - 合法联盟内授权多资源锁同一 `global_track_id` 不算 duplicate；联盟外/超额成员和旧 plan/coalition version fail closed。
 - center replan lifecycle 已消费 D5 current-coalition summary：只有 track/plan/coalition scope current、全部 primary 稳定 locked、visual consensus 无冲突且 required commit 完整时，旧 soft pending 才输出 no-change/continue；同一 summary 对所有 current primary 产生一致 D4 action。
 - main 当前已传递所需 summary。D4 的最小字段是双版本 scope、primary required/locked/complete、consensus/conflict，以及 commit-required 时 state、required/acked IDs、valid/conflict reasons；缺字段不推断 recovery。
 - D2 continuous `duplicate_track_risk` 只作为 soft 候选/协方差重叠证据；只有显式 duplicate count/delta/observed flag 才是 hard observed duplicate。该区分防止合法 current coalition consensus 被非事件型 score 错误阻断，同时保留真实重复事件 fail closed。
+- scalable3d 区域合同已能按 region、member availability/communication/跨区域 capacity、required capability 和 D5 member evidence 形成 bounded deterministic candidate，并对三层候选执行完整 atomic commit；owner/layer 变更要求 epoch 与 plan version 同时提升，lease 取各上游范围的最早 expiry。
 
 ### P1 缺口
 
 - 已读取 coalition id、target demand、member role 和双版本，并实现 required-member ACK bitmap、commit lifecycle、lease/epoch、digest、分区和恢复审计；真实 episode 的二级/peer commit 正例与缺 ACK 负例已通过。模块级分区恢复及手工 member-replacement replay 已版本化，但自主补位未实现；D7 timing feasibility 和真实 AirSim 多 seed 扰动仍开放。
-- 完全无中心路径可对上游已经给定的 `k_j=3` 成员集合做本地原子 commit，但尚不能自主完成成员形成，也没有 reserve 激活、缩编/补位/整盟重组状态机。
+- 完全无中心路径除可对上游给定 `k_j=3` 集合做本地原子 commit 外，现有区域合同还能形成能力/跨区域 capacity 受约束 candidate；但该 region-id 顺序贪心没有全局组合最优，也没有 CBBA 网络图共识、CCBBA 时序耦合、D7 arrival feasibility、reserve 激活、缩编/补位/整盟重组状态机，不能称为完整自主成员形成。中心和二级不运行该 candidate formation，但使用相同的完整 ACK 原子门。
 - 二级接管已证明协调者与 required-member 3/3 ACK 可进入 `executing`；该合同证据不等于成员运动学可达或物理拦截完成。
 - 中心正常路径的 D5 visual consensus recovery 已校验 current coalition scope 和 primary 集合；中心失效后的恢复仍只比较 assignment owner，尚未比较完整 coalition digest、成员执行前缀、波次和 reserve 状态。
 - D6 现有 completion/conflict 指标没有区分“目标被一个资源覆盖”和“目标需求被完整联盟满足”。
