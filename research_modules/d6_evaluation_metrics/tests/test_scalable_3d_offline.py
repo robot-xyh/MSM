@@ -11,6 +11,8 @@ import sys
 import pytest
 
 from d6_evaluation_metrics.scalable_3d_offline import (
+    EXPERIMENT_MATRIX_SCHEMA_VERSION,
+    EXPERIMENT_MATRIX_VARIANTS,
     SCALABLE_3D_CURRENT_SCHEMA_REGISTRY,
     SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION,
     SCALABLE_3D_SCHEMA_REGISTRY_VERSION,
@@ -627,6 +629,188 @@ def _write_episode(
     return directory
 
 
+def _apply_producer_matrix_contract(
+    episode: Path,
+    *,
+    variant: str = "R0",
+    scenario_family: str = "nominal",
+    schema: str = "scalable3d-experiment-matrix-v1",
+    omit_fields: tuple[str, ...] = (),
+    fallback_component: str | None = None,
+    d5_binding_count: int = 10,
+) -> None:
+    """Rewrite a base fixture with the persisted contract emitted by main."""
+
+    config_path = episode / "scenario_config.json"
+    summary_path = episode / "summary.json"
+    manifest_path = episode / "manifest.json"
+    online_path = episode / "online_observations.jsonl"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    online = [
+        json.loads(line)
+        for line in online_path.read_text(encoding="utf-8").splitlines()
+    ]
+    seed = int(config["seed"])
+    scale = int(config["target_count"])
+    scenario_name = f"{scenario_family}_{scale}v{scale}"
+    scenario_version = f"{scenario_family}-{scale}v{scale}-v1"
+    required = {
+        "R0": (),
+        "G1": ("d5",),
+        "A1": ("d3",),
+        "A2": ("d4",),
+        "A3": ("d5_active_vision",),
+        "C1": ("d3", "d4", "d5", "d5_active_vision"),
+        "F1": ("d3", "d4", "d5", "d5_active_vision"),
+    }.get(variant, ())
+    fingerprints = {
+        "d3": "a" * 64,
+        "d4": "b" * 64,
+        "d5": "c" * 64,
+        "d5_active_vision": "sha256:" + "d" * 64,
+    }
+    runtime: dict[str, object] = {
+        "schema_version": "scalable3d-learning-runtime-v1",
+        "device": "cpu",
+        "default_rule_path_preserved": True,
+    }
+    for component in ("d3", "d4", "d5", "d5_active_vision"):
+        enabled = component in required
+        component_runtime: dict[str, object] = {
+            "requested_mode": "assist" if enabled else "disabled",
+            "effective_mode": "assist" if enabled else "disabled",
+            "bundle_requested": enabled,
+            "bundle_loaded": enabled,
+            "fallback_reason": None,
+            "model_fingerprint": fingerprints[component] if enabled else None,
+        }
+        if component == "d4":
+            component_runtime["formal_unseen_seed_count"] = 20 if enabled else 0
+        if component == "d5_active_vision":
+            component_runtime.update(
+                assist_admitted=enabled,
+                model_semantic_version="1.0.0" if enabled else None,
+                bundle_manifest_sha256=("e" * 64 if enabled else None),
+                bundle_weights_sha256=("d" * 64 if enabled else None),
+            )
+        if component == fallback_component:
+            component_runtime.update(
+                effective_mode="rule_fallback",
+                bundle_loaded=False,
+                fallback_reason="model_bundle_missing",
+            )
+            if component == "d5_active_vision":
+                component_runtime["assist_admitted"] = False
+        runtime[component] = component_runtime
+
+    metadata = dict(config.get("metadata", {}))
+    metadata.update(
+        {
+            "catalog_version": "scalable3d-catalog-v1",
+            "scenario_family": scenario_family,
+            "experiment_matrix_schema": schema,
+            "algorithm_variant": variant,
+            "comparison_key": f"{scenario_family}|{scale}|{seed}",
+            "full_system_validation": variant == "F1",
+            "learning_runtime": copy.deepcopy(runtime),
+        }
+    )
+    for field in omit_fields:
+        metadata.pop(field, None)
+    config.update(
+        scenario_name=scenario_name,
+        scenario_version=scenario_version,
+        metadata=metadata,
+        d3_policy_version=(
+            f"d3-shared-edge-v1+{'a' * 12}"
+            if "d3" in required and fallback_component != "d3"
+            else "d3-scalable3d-rule-cost-v1"
+        ),
+        d4_policy_version=(
+            f"d4-region-graph-v1+{'b' * 12}"
+            if "d4" in required and fallback_component != "d4"
+            else "d4-region-resource-rule-v1"
+        ),
+        d5_model_version=(
+            f"d5-crossview-gnn-v1.0.0+{'c' * 12}"
+            if "d5" in required and fallback_component != "d5"
+            else "d5-scalable3d-geometry-rule-v1"
+        ),
+        d5_active_vision_policy_version=(
+            f"d5-active-vision-v1.0.0+{'d' * 12}"
+            if "d5_active_vision" in required
+            and fallback_component != "d5_active_vision"
+            else "d5-active-vision-rule-v1"
+        ),
+    )
+    summary.update(
+        scenario_name=scenario_name,
+        scenario_version=scenario_version,
+    )
+    summary["module_final_diagnostics"]["learning_runtime"] = copy.deepcopy(runtime)
+
+    for record in online:
+        payload = record.get("payload", {})
+        if record.get("topic") == "modules.d3.assignment_plan" and "d3" in required:
+            payload.setdefault("metadata", {}).update(
+                learning_mode="assist",
+                learning_applied=fallback_component != "d3",
+                learning_bundle_loaded=fallback_component != "d3",
+                learning_fallback_reason=(
+                    "model_bundle_missing" if fallback_component == "d3" else None
+                ),
+                learning_shadow_only=False,
+            )
+        if record.get("topic") == "modules.d5.terminal_association":
+            bindings = list(payload.get("bindings", []))
+            if d5_binding_count > len(bindings):
+                bindings.extend(
+                    {
+                        "cluster_key": f"matrix-cluster-{index}",
+                        "global_track_id": f"GT-{index + 1:04d}",
+                        "decision_state": "bound",
+                        "cost": 0.1,
+                        "supporting_tracklet_keys": [f"matrix-trk-{index}"],
+                    }
+                    for index in range(len(bindings), d5_binding_count)
+                )
+            payload["bindings"] = bindings[:d5_binding_count]
+            if "d5" in required and fallback_component != "d5":
+                payload.update(
+                    probability_source="loaded_edge_model",
+                    scoring_status="model_scored",
+                    fallback_reason=None,
+                )
+
+    canonical = json.dumps(
+        config,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    config_hash = hashlib.sha256(canonical).hexdigest()
+    episode_id = f"{scenario_name}-s{seed}-{config_hash[:12]}"
+    manifest.update(
+        episode_id=episode_id,
+        config_sha256=config_hash,
+        scenario_name=scenario_name,
+        scenario_version=scenario_version,
+        d3_policy_version=config["d3_policy_version"],
+        d4_policy_version=config["d4_policy_version"],
+        d5_model_version=config["d5_model_version"],
+        d5_active_vision_policy_version=config[
+            "d5_active_vision_policy_version"
+        ],
+    )
+    summary["episode_id"] = episode_id
+    _write_json(config_path, config)
+    _write_json(summary_path, summary)
+    _write_json(manifest_path, manifest)
+    _write_jsonl(online_path, online)
+
+
 def _d4_advice_payload(
     episode: Path,
     *,
@@ -660,7 +844,7 @@ def _d4_advice_payload(
     learned = d4_runtime["bundle_loaded"] is True
     digest_before = "d" * 64
     digest_after = "e" * 64 if formal_mutated else digest_before
-    return {
+    payload: dict[str, object] = {
         "timestamp": timestamp,
         "requested_mode": requested_mode,
         "effective_mode": effective_mode,
@@ -714,6 +898,90 @@ def _d4_advice_payload(
         "formal_decision_digest_after": digest_after,
         "formal_decision_unchanged": not formal_mutated,
     }
+    recommendation = payload["recommendation"]
+    assert isinstance(recommendation, dict)
+    snapshot_id = str(recommendation["snapshot_id"])
+    authority_digest = str(recommendation["authority_digest"])
+    plan_id = str(ownership["plan_id"])
+    plan_version = int(ownership["plan_version"])
+    resources_before = int(config["resource_count"])
+    contract_without_id: dict[str, object] = {
+        "snapshot_id": snapshot_id,
+        "snapshot_version": 1,
+        "snapshot_timestamp_s": timestamp,
+        "scenario_id": config["scenario_name"],
+        "scenario_version": config["scenario_version"],
+        "seed": config["seed"],
+        "authority_digest": authority_digest,
+        "created_at_s": timestamp,
+        "valid_from_s": timestamp,
+        "valid_until_s": timestamp + 1.5,
+        "source_plan_versions": [[plan_id, plan_version]],
+        "projected": True,
+        "projector_name": "d4-deterministic-resource-projector",
+        "projector_version": "v1",
+        "minimum_reserve_ratio": 0.1,
+        "minimum_reserve_resources": 1,
+        "advisory_ttl_s": 1.5,
+        "policy_name": recommendation["policy_name"],
+        "policy_version": recommendation["policy_version"],
+        "source": recommendation["source"],
+        "confidence": recommendation["confidence"],
+        "model_sha256": recommendation["model_sha256"],
+        "fallback_reason": fallback_reason,
+        "total_resources_before": resources_before,
+        "total_quota_delta": quota_delta,
+        "total_resources_after": resources_before + quota_delta,
+        "regions": [
+            {
+                "source_version": {
+                    "region_id": region["region_id"],
+                    "snapshot_id": snapshot_id,
+                    "snapshot_version": 1,
+                    "authority_digest": authority_digest,
+                    "owner_id": ownership["owner_id"],
+                    "owner_layer": ownership["owner_layer"],
+                    "plan_id": plan_id,
+                    "plan_version": plan_version,
+                    "epoch": ownership["epoch"],
+                    "lease_expires_at_s": ownership["lease_expires_at_s"],
+                    "coalition_ack_complete": True,
+                    "owner_active": True,
+                    "fault_fenced": False,
+                    "fault_fence_epoch": None,
+                },
+                "resources_before": resources_before,
+                "resource_quota_delta": quota_delta,
+                "resources_after": resources_before + quota_delta,
+                "protected_reserve_resources": 1,
+                "protected_committed_resources": max(resources_before - 1, 0),
+                "reserve_ratio": 0.1,
+                "reconnaissance_priority": 0.5,
+                "hold": False,
+                "request_replan": False,
+                "reasons": [],
+            }
+        ],
+        "transfers": [],
+        "projection_rejections": projection_rejections or [],
+        "publication_rejections": [],
+        "formal_decision_required": True,
+        "recommendation_schema": "d4-region-resource-recommendation-v1",
+        "schema": "d4-region-resource-advisory-v1",
+    }
+    contract_digest = hashlib.sha256(
+        json.dumps(
+            contract_without_id,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    payload["advisory_contract"] = {
+        "advisory_id": f"d4-rr-advisory-{contract_digest}",
+        **contract_without_id,
+    }
+    return payload
 
 
 def _append_d4_advice(
@@ -734,6 +1002,73 @@ def _append_d4_advice(
         )
     )
     _write_jsonl(path, records)
+
+
+def _append_d4_consumption(
+    episode: Path,
+    *,
+    consumable: bool = True,
+    d3_hint_applied: bool = True,
+    rejection_reasons: list[str] | None = None,
+    bridge_rejection_reason: str | None = None,
+    envelope_schema: str = "d4-region-resource-consumption-v1",
+    payload_schema: str = "d4-region-resource-consumption-v1",
+    source: str = "main",
+    unknown_advisory: bool = False,
+    mutate_advisory_contract: bool = False,
+    summary_mismatch: bool = False,
+) -> None:
+    path = episode / "online_observations.jsonl"
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    advice_record = next(
+        record
+        for record in reversed(records)
+        if record["topic"] == "modules.d4.region_resource_advice"
+    )
+    advisory = copy.deepcopy(advice_record["payload"]["advisory_contract"])
+    if unknown_advisory:
+        advisory["advisory_id"] = "d4-rr-advisory-" + "f" * 64
+    if mutate_advisory_contract:
+        advisory["authority_digest"] = "f" * 64
+    evaluated_at_s = float(advice_record["payload"]["timestamp"]) + 0.75
+    reasons = list(rejection_reasons or [])
+    payload: dict[str, object] = {
+        "timestamp": evaluated_at_s,
+        "advisory": advisory,
+        "evaluated_at_s": evaluated_at_s,
+        "current_snapshot_id": advisory["snapshot_id"],
+        "current_snapshot_version": advisory["snapshot_version"],
+        "current_authority_digest": advisory["authority_digest"],
+        "consumable": consumable,
+        "rejection_reasons": reasons,
+        "schema": payload_schema,
+        "bridge_rejection_reason": bridge_rejection_reason,
+        "d3_hint_applied": d3_hint_applied,
+    }
+    record = _envelope(
+        max(int(item["sequence"]) for item in records) + 1,
+        "modules.d4.region_resource_consumption",
+        evaluated_at_s,
+        payload,
+        schema_version=envelope_schema,
+    )
+    record["source"] = source
+    records.append(record)
+    _write_jsonl(path, records)
+
+    summary_path = episode / "summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    diagnostics = summary.setdefault("module_final_diagnostics", {})
+    diagnostics.update(
+        d4_region_consumption_available=True,
+        d4_region_consumable=consumable,
+        d4_region_consumption_rejection_reasons=reasons,
+        d4_region_hint_bridge_rejection_reason=bridge_rejection_reason,
+        d3_regional_hint_applied=(
+            not d3_hint_applied if summary_mismatch else d3_hint_applied
+        ),
+    )
+    _write_json(summary_path, summary)
 
 
 def test_normal_50v50_uses_explicit_scale_and_records_module_metrics(tmp_path: Path) -> None:
@@ -773,7 +1108,7 @@ def test_current_schema_registry_matches_real_producer_contract(tmp_path: Path) 
 
     assert SCALABLE_3D_SCHEMA_REGISTRY_VERSION == "d6-scalable3d-schema-registry-v1"
     assert SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION == (
-        "d6-scalable3d-offline-evaluation-v4"
+        "d6-scalable3d-offline-evaluation-v5"
     )
     assert SCALABLE_3D_CURRENT_SCHEMA_REGISTRY == {
         "world_schema": "scalable3d-world-v1",
@@ -881,6 +1216,295 @@ def test_missing_manifest_schema_is_unavailable_and_not_formal_acceptance(
         "episode_failure_reasons_json"
     ]
     assert row["formal_acceptance_eligible"] is False
+
+
+def test_real_producer_style_r0_matrix_contract_is_audited_without_path_inference(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "arbitrary_directory_name", seed=17)
+    _apply_producer_matrix_contract(episode, variant="R0")
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert EXPERIMENT_MATRIX_SCHEMA_VERSION == "scalable3d-experiment-matrix-v1"
+    assert EXPERIMENT_MATRIX_VARIANTS == ("R0", "G1", "A1", "A2", "A3", "C1", "F1")
+    assert row["experiment_matrix_declared"] is True
+    assert row["experiment_matrix_schema"] == EXPERIMENT_MATRIX_SCHEMA_VERSION
+    assert row["algorithm_variant"] == "R0"
+    assert row["comparison_key"] == "nominal|50|17"
+    assert row["experiment_matrix_effective_comparison_key"] == "nominal|50|17"
+    assert row["experiment_matrix_effective_comparison_key_source"] == (
+        "scenario_config.metadata.comparison_key"
+    )
+    assert row["experiment_matrix_metadata_valid"] is True
+    assert row["variant_runtime_resolution_valid"] is True
+    assert row["variant_execution_valid"] is True
+    assert row["variant_execution_failure_reasons_json"] == []
+    assert row["experiment_matrix_formal_acceptance_eligible"] is True
+    assert row["experiment_matrix_evidence_class"] == "clean_formal"
+
+
+def test_historical_episode_stays_evaluable_with_matrix_fields_unavailable(
+    tmp_path: Path,
+) -> None:
+    row = evaluate_scalable_3d_episode(_write_episode(tmp_path / "historical"))
+
+    assert row["d1_track_count"] == 50
+    assert row["formal_acceptance_eligible"] is True
+    assert row["experiment_matrix_declared"] is False
+    assert row["algorithm_variant"] is None
+    assert row["algorithm_variant_availability"] == "unavailable"
+    assert row["comparison_key"] is None
+    assert row["variant_execution_valid"] is None
+    assert row["experiment_matrix_formal_acceptance_eligible"] is None
+
+
+@pytest.mark.parametrize(
+    "missing_field",
+    ("experiment_matrix_schema", "algorithm_variant", "comparison_key"),
+)
+def test_missing_matrix_identity_field_is_unavailable_without_path_guessing(
+    tmp_path: Path,
+    missing_field: str,
+) -> None:
+    missing = _write_episode(tmp_path / f"looks_like_G1_but_missing_{missing_field}")
+    _apply_producer_matrix_contract(
+        missing,
+        variant="R0",
+        omit_fields=(missing_field,),
+    )
+
+    row = evaluate_scalable_3d_episode(missing)
+
+    assert row[missing_field] is None
+    assert row[f"{missing_field}_availability"] == "unavailable"
+    assert row["variant_execution_valid"] is False
+    assert row["experiment_matrix_formal_acceptance_eligible"] is False
+    if missing_field == "comparison_key":
+        assert row["experiment_matrix_effective_comparison_key"] == "nominal|50|1"
+        assert row["experiment_matrix_effective_comparison_key_source"] == (
+            "scenario_config.metadata.scenario_family+explicit_scale+seed"
+        )
+
+
+def test_fake_variant_cannot_pass_matrix_acceptance(tmp_path: Path) -> None:
+    fake = _write_episode(tmp_path / "fake_variant")
+    _apply_producer_matrix_contract(fake, variant="X9")
+
+    fake_row = evaluate_scalable_3d_episode(fake)
+
+    assert fake_row["algorithm_variant"] == "X9"
+    assert fake_row["algorithm_variant_known"] is False
+    assert fake_row["variant_execution_valid"] is False
+    assert "algorithm_variant_unknown:X9" in fake_row[
+        "variant_execution_failure_reasons_json"
+    ]
+    assert fake_row["experiment_matrix_formal_acceptance_eligible"] is False
+
+
+def test_f1_is_expected_only_for_declared_full_system_scenario(tmp_path: Path) -> None:
+    nominal = _write_episode(tmp_path / "nominal_f1", seed=13)
+    _apply_producer_matrix_contract(nominal, variant="F1")
+    high_threat = _write_episode(tmp_path / "high_threat_r0", seed=14)
+    _apply_producer_matrix_contract(
+        high_threat,
+        variant="R0",
+        scenario_family="high_threat_m_to_n",
+    )
+
+    nominal_row = evaluate_scalable_3d_episode(nominal)
+    high_threat_row = evaluate_scalable_3d_episode(high_threat)
+    matrix = aggregate_scalable_3d_episodes(
+        [nominal_row, high_threat_row],
+        bootstrap_resamples=50,
+    )["experiment_matrix"]
+
+    assert nominal_row["full_system_validation_contract_match"] is False
+    assert "f1_scenario_not_full_system:nominal" in nominal_row[
+        "variant_execution_failure_reasons_json"
+    ]
+    by_key = {
+        item["comparison_key"]: item for item in matrix["completeness"]["details"]
+    }
+    assert by_key["nominal|50|13"]["expected_cell_count"] == 6
+    assert "F1" in by_key["nominal|50|13"]["unexpected_variants"]
+    assert by_key["high_threat_m_to_n|50|14"]["expected_cell_count"] == 7
+    assert "F1" in by_key["high_threat_m_to_n|50|14"]["missing_variants"]
+
+
+def test_loaded_variant_that_falls_back_to_rule_is_execution_invalid(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "g1_fallback")
+    _apply_producer_matrix_contract(
+        episode,
+        variant="G1",
+        fallback_component="d5",
+    )
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["experiment_matrix_metadata_valid"] is True
+    assert row["variant_runtime_resolution_valid"] is False
+    assert row["variant_execution_valid"] is False
+    reasons = row["variant_execution_failure_reasons_json"]
+    assert "variant_required_bundle_not_loaded:d5" in reasons
+    assert "variant_required_assist_not_effective:d5:rule_fallback" in reasons
+    assert (
+        "variant_required_component_rule_fallback:d5:model_bundle_missing" in reasons
+    )
+    assert row["experiment_matrix_formal_acceptance_eligible"] is False
+
+
+def test_a2_requires_and_accepts_valid_d4_consumption_evidence(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "a2_consumed", seed=19)
+    _apply_producer_matrix_contract(episode, variant="A2")
+    _append_d4_advice(
+        episode,
+        _d4_advice_payload(
+            episode,
+            effective_mode="assist",
+            assist_eligible=True,
+            unseen_seed_count=20,
+        ),
+    )
+    _append_d4_consumption(episode)
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["d4_region_consumption_publication_count"] == 1
+    assert row["d4_region_consumption_valid_publication_count"] == 1
+    assert row["d4_region_consumption_invalid_publication_count"] == 0
+    assert row["d4_region_consumption_summary_consistent"] is True
+    assert row["d4_region_consumable_count"] == 1
+    assert row["d4_region_d3_hint_applied_count"] == 1
+    assert row["d4_advice_control_adoption_count"] == 1
+    assert row["variant_component_audit_json"]["d4"][
+        "adoption_evidence_valid"
+    ] is True
+    assert row["variant_execution_valid"] is True
+    assert row["experiment_matrix_formal_acceptance_eligible"] is True
+
+
+def test_matrix_completeness_keeps_missing_cells_in_fixed_denominator(
+    tmp_path: Path,
+) -> None:
+    rows = []
+    for variant, bindings in (("R0", 10), ("G1", 12), ("A1", 10)):
+        episode = _write_episode(tmp_path / variant, seed=23)
+        _apply_producer_matrix_contract(
+            episode,
+            variant=variant,
+            d5_binding_count=bindings,
+        )
+        rows.append(evaluate_scalable_3d_episode(episode))
+
+    aggregate = aggregate_scalable_3d_episodes(
+        rows,
+        bootstrap_resamples=100,
+        bootstrap_rng_seed=91,
+    )
+    matrix = aggregate["experiment_matrix"]
+    completeness = matrix["completeness"]
+
+    assert completeness["comparison_key_count"] == 1
+    assert completeness["expected_cell_count"] == 6
+    assert completeness["present_expected_cell_count"] == 3
+    assert completeness["execution_valid_cell_count"] == 3
+    assert completeness["missing_expected_cell_count"] == 3
+    assert completeness["cell_presence_rate"] == pytest.approx(0.5)
+    detail = completeness["details"][0]
+    assert detail["missing_variants"] == ["A2", "A3", "C1"]
+    g1_pair = next(
+        item
+        for item in matrix["descriptive_paired_deltas_vs_r0"]
+        if item["algorithm_variant"] == "G1"
+    )
+    assert g1_pair["expected_pair_count"] == 1
+    assert g1_pair["complete_execution_pair_count"] == 1
+    binding_delta = g1_pair["metric_deltas_variant_minus_r0"]["d5_binding_count"]
+    assert binding_delta["mean_delta_variant_minus_r0"] == pytest.approx(2.0)
+    assert binding_delta["bootstrap_availability"] == "unavailable"
+
+
+def test_two_seed_r0_pairing_outputs_bootstrap_ci_and_separates_dirty_evidence(
+    tmp_path: Path,
+) -> None:
+    rows = []
+    episodes = []
+    for seed in (31, 32):
+        for variant, bindings in (("R0", 8), ("G1", 10 + seed - 31)):
+            episode = _write_episode(
+                tmp_path / f"{variant}_{seed}",
+                seed=seed,
+                dirty=(seed == 32),
+            )
+            _apply_producer_matrix_contract(
+                episode,
+                variant=variant,
+                d5_binding_count=bindings,
+            )
+            episodes.append(episode)
+            rows.append(evaluate_scalable_3d_episode(episode))
+
+    matrix = aggregate_scalable_3d_episodes(
+        rows,
+        bootstrap_resamples=200,
+        bootstrap_rng_seed=20260720,
+    )["experiment_matrix"]
+    assert matrix["clean_formal_episode_count"] == 2
+    assert matrix["dirty_development_episode_count"] == 2
+    descriptive = next(
+        item
+        for item in matrix["descriptive_paired_deltas_vs_r0"]
+        if item["algorithm_variant"] == "G1"
+    )
+    formal = next(
+        item
+        for item in matrix["clean_formal_paired_deltas_vs_r0"]
+        if item["algorithm_variant"] == "G1"
+    )
+    delta = descriptive["metric_deltas_variant_minus_r0"]["d5_binding_count"]
+    assert descriptive["complete_execution_pair_count"] == 2
+    assert delta["mean_delta_variant_minus_r0"] == pytest.approx(2.5)
+    assert delta["bootstrap_availability"] == "available"
+    assert delta["bootstrap_ci95_low"] is not None
+    assert delta["bootstrap_ci95_high"] is not None
+    assert formal["complete_execution_pair_count"] == 1
+    assert formal["pairing_status"] == "descriptive_single_pair_no_bootstrap_ci"
+    assert descriptive["causal_attribution"] is False
+    g1_group = next(
+        item
+        for item in matrix["variant_groups"]
+        if item["algorithm_variant"] == "G1"
+    )
+    assert g1_group["clean_formal_episode_count"] == 1
+    assert g1_group["dirty_development_episode_count"] == 1
+    assert "module.d1_fusion" in g1_group["stage_timing"]
+    assert matrix["metric_categories"]["hard_constraints"] == [
+        "d4_advice_resource_quota_conservation_violation_count",
+        "d4_advice_formal_decision_mutation_count",
+        "d4_region_consumption_invalid_publication_count",
+        "d4_region_consumption_summary_consistent",
+        "d5_active_vision_target_reference_violation_count",
+        "d5_active_vision_online_truth_field_violation_count",
+    ]
+    assert matrix["causal_attribution"]["availability"] == "unavailable"
+
+    outputs = Scalable3DOfflineReportGenerator().write_report_bundle(
+        tmp_path / "matrix_report",
+        inputs=Scalable3DOfflineEvaluationInputs(tuple(episodes)),
+        bootstrap_resamples=100,
+        bootstrap_rng_seed=20260720,
+    )
+    written = json.loads(outputs["aggregate_json"].read_text(encoding="utf-8"))
+    markdown = outputs["markdown"].read_text(encoding="utf-8")
+    assert written["experiment_matrix"]["dirty_development_episode_count"] == 2
+    assert "## 算法实验矩阵" in markdown
+    assert "当前没有 clean/formal 矩阵证据" not in markdown
+    assert "目录名不参与变体和配对身份判断" in markdown
 
 
 def test_initial_195_then_200_min_dwell_hold_reports_five_track_backlog(
@@ -1072,7 +1696,7 @@ def test_loaded_bundle_shadow_output_is_not_control_adoption_or_physical_result(
     assert row["d4_advice_formal_decision_unchanged_count"] == 1
     assert row["d4_advice_control_adoption_count"] is None
     assert row["d4_advice_control_adoption_count_unavailable_reason"] == (
-        "d4_advice_schema_has_no_control_adoption_evidence"
+        "d4_region_consumption_publication_missing"
     )
     assert row["offline_proximity_within_5m_count"] == 1
     assert row["mission_success"] is None
@@ -1102,6 +1726,128 @@ def test_assist_eligible_is_a_gate_and_formal_decision_still_remains_unchanged(
     assert row["d4_advice_formal_decision_unchanged_count"] == 1
     assert row["d4_advice_formal_decision_mutation_count"] == 0
     assert row["d4_advice_control_adoption_count"] is None
+
+
+def test_rejected_d4_consumption_is_valid_zero_adoption_evidence(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(
+        tmp_path / "d4_consumption_rejected",
+        learning_profile="assist_shadow",
+    )
+    _append_d4_advice(
+        episode,
+        _d4_advice_payload(
+            episode,
+            effective_mode="assist",
+            assist_eligible=True,
+            unseen_seed_count=20,
+        ),
+    )
+    _append_d4_consumption(
+        episode,
+        consumable=False,
+        d3_hint_applied=False,
+        rejection_reasons=["advisory_expired"],
+        bridge_rejection_reason=(
+            "regional_advisory_rejected:advisory_expired"
+        ),
+    )
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["d4_region_consumption_valid_publication_count"] == 1
+    assert row["d4_region_consumption_invalid_publication_count"] == 0
+    assert row["d4_region_consumable_count"] == 0
+    assert row["d4_region_d3_hint_applied_count"] == 0
+    assert row["d4_advice_control_adoption_count"] == 0
+    assert row["d4_region_consumption_rejection_reason_distribution_json"] == {
+        "advisory_expired": 1
+    }
+    assert row[
+        "d4_region_consumption_bridge_rejection_reason_distribution_json"
+    ] == {"regional_advisory_rejected:advisory_expired": 1}
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_reason"),
+    (
+        ("old_schema", "consumption_envelope_schema_mismatch"),
+        ("unknown_advisory", "consumption_advisory_not_previously_published"),
+        ("contract_mismatch", "consumption_advisory_contract_mismatch"),
+    ),
+)
+def test_invalid_d4_consumption_contract_fails_closed(
+    tmp_path: Path,
+    mutation: str,
+    expected_reason: str,
+) -> None:
+    episode = _write_episode(
+        tmp_path / mutation,
+        learning_profile="assist_shadow",
+    )
+    _append_d4_advice(
+        episode,
+        _d4_advice_payload(
+            episode,
+            effective_mode="assist",
+            assist_eligible=True,
+            unseen_seed_count=20,
+        ),
+    )
+    _append_d4_consumption(
+        episode,
+        envelope_schema=(
+            "d4-region-resource-consumption-v0"
+            if mutation == "old_schema"
+            else "d4-region-resource-consumption-v1"
+        ),
+        unknown_advisory=mutation == "unknown_advisory",
+        mutate_advisory_contract=mutation == "contract_mismatch",
+    )
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["d4_region_consumption_valid_publication_count"] == 0
+    assert row["d4_region_consumption_invalid_publication_count"] == 1
+    assert row["d4_region_consumption_invalid_reason_distribution_json"] == {
+        expected_reason: 1
+    }
+    assert row["d4_advice_control_adoption_count"] is None
+    assert row["formal_acceptance_eligible"] is False
+    assert "d4_region_consumption_payload_invalid" in row[
+        "episode_failure_reasons_json"
+    ]
+
+
+def test_d4_consumption_summary_mismatch_fails_closed(tmp_path: Path) -> None:
+    episode = _write_episode(
+        tmp_path / "summary_mismatch",
+        learning_profile="assist_shadow",
+    )
+    _append_d4_advice(
+        episode,
+        _d4_advice_payload(
+            episode,
+            effective_mode="assist",
+            assist_eligible=True,
+            unseen_seed_count=20,
+        ),
+    )
+    _append_d4_consumption(episode, summary_mismatch=True)
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["d4_region_consumption_valid_publication_count"] == 1
+    assert row["d4_region_consumption_summary_consistent"] is False
+    assert row["d4_advice_control_adoption_count"] is None
+    assert row[
+        "d4_advice_control_adoption_count_unavailable_reason"
+    ] == "d4_region_consumption_summary_mismatch"
+    assert row["formal_acceptance_eligible"] is False
+    assert "d4_region_consumption_summary_mismatch" in row[
+        "episode_failure_reasons_json"
+    ]
 
 
 def test_nonconserving_projected_advice_is_counted_and_fails_formal_evidence(
@@ -1326,7 +2072,7 @@ def test_report_bundle_bootstraps_distinct_seeds_and_writes_all_artifacts(
     assert "不从 2v2/5v5 名称推断规模" in markdown
     assert "bundle 能加载" in markdown
     assert "`assist_eligible` 不是控制生效" in markdown
-    assert "控制采用字段保持 unavailable" in markdown
+    assert "control adoption 只接受通过合同与 summary 审计" in markdown
     assert "d6-scalable3d-schema-registry-v1" in markdown
     assert "schema current" in markdown
 

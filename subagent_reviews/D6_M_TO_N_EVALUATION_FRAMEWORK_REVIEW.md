@@ -26,15 +26,15 @@ learning runtime provenance 与 D4 advice 指标按相同实际规模和 seed �
 bootstrap CI，单 seed 不给出模型提升或准入推断。
 
 M 对 N 学习证据按五层审查：bundle loaded、shadow recommendation、assist eligible、control adoption、
-physical outcome。前一层不能回填后一层。当前 D4 advice 不改变正式 region failover decision，且没有
-control-adoption 字段，所以 assist 数和 shadow 输出数不能进入控制成功分母；五米 proximity 也不能
-作为 advice 的物理效果。quota delta 必须在全部 region action 上守恒，plan/version/epoch/lease 必须
-与 advice 之前最近的正式 D4 region contract 一致。
+physical outcome。前一层不能回填后一层。D4 advice 不改变正式 region failover decision，assist 数和
+shadow 输出数不能进入控制成功分母；control adoption 只来自通过完整建议引用与 summary 一致性审计的
+main 消费合同及 D3 hint applied。五米 proximity 不作为 advice 的物理效果。
 
 2026-07-20 deterministic fixtures 覆盖 disabled、missing bundle、assist-to-shadow、assist gate、守恒/
 非守恒、旧/缺版本、digest 篡改、缺 advice 和 seeds 1/2 聚合；专项 `17 passed`、D6 全量 `289 passed`。
-这些结果只验证动态规模无关的 consumer 与报告合同，不是模型验收或 M 对 N 物理性能证据。正式结论
-仍需 main 提供 `repository_dirty=false` 的多规模、多 seed bundle 和独立 control-adoption evidence。
+这些结果只验证动态规模无关的 consumer 与报告合同，不是模型验收或 M 对 N 物理性能证据。消费合同
+与矩阵专项现为 scalable `40 passed`、D6 全量 `320 passed`；正式结论仍需 main 提供
+`repository_dirty=false` 的多规模、多 seed 完整矩阵。
 
 ## 2026-07-15 legacy 1.0 provenance 与真实三档审查
 

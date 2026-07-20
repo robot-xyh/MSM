@@ -28,10 +28,18 @@ from .active_vision_offline import (
     ACTIVE_VISION_NUMERIC_METRIC_FIELDS,
     evaluate_active_vision_runtime_evidence,
 )
+from .experiment_matrix_offline import (
+    EXPERIMENT_MATRIX_SCHEMA_VERSION,
+    EXPERIMENT_MATRIX_VARIANTS,
+    aggregate_experiment_matrix,
+    extract_experiment_matrix_evidence,
+    finalize_experiment_matrix_evidence,
+    render_experiment_matrix_markdown_lines,
+)
 
 
 SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION = (
-    "d6-scalable3d-offline-evaluation-v4"
+    "d6-scalable3d-offline-evaluation-v5"
 )
 SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-20"
 SCALABLE_3D_SCHEMA_REGISTRY_VERSION = "d6-scalable3d-schema-registry-v1"
@@ -50,7 +58,10 @@ FIVE_METER_THRESHOLD_M = 5.0
 _LEARNING_RUNTIME_SCHEMA = "scalable3d-learning-runtime-v1"
 _D4_REGION_ADVICE_TOPIC = "modules.d4.region_resource_advice"
 _D4_REGION_ADVICE_SCHEMA = "d4-region-resource-advisory-runtime-v1"
+_D4_REGION_ADVISORY_SCHEMA = "d4-region-resource-advisory-v1"
 _D4_REGION_RECOMMENDATION_SCHEMA = "d4-region-resource-recommendation-v1"
+_D4_REGION_CONSUMPTION_TOPIC = "modules.d4.region_resource_consumption"
+_D4_REGION_CONSUMPTION_SCHEMA = "d4-region-resource-consumption-v1"
 _LEARNING_MODULE_VERSION_FIELDS = {
     "d3": "d3_policy_version",
     "d4": "d4_policy_version",
@@ -91,6 +102,10 @@ _FORBIDDEN_ONLINE_KEYS = frozenset(
 _METRIC_FIELDS = (
     "finite_state",
     "formal_acceptance_eligible",
+    "experiment_matrix_metadata_valid",
+    "variant_runtime_resolution_valid",
+    "variant_execution_valid",
+    "experiment_matrix_formal_acceptance_eligible",
     "current_schema_contract_match",
     "online_truth_use_count",
     "online_truth_field_violation_count",
@@ -143,6 +158,12 @@ _METRIC_FIELDS = (
     "d4_advice_missing_version_evidence_count",
     "d4_advice_version_evidence_issue_count",
     "d4_advice_control_adoption_count",
+    "d4_region_consumption_publication_count",
+    "d4_region_consumption_valid_publication_count",
+    "d4_region_consumption_invalid_publication_count",
+    "d4_region_consumable_count",
+    "d4_region_d3_hint_applied_count",
+    "d4_region_consumption_summary_consistent",
     "d4_learning_bundle_loaded",
     "d4_learning_formal_unseen_seed_count",
     "d5_candidate_edge_count",
@@ -329,6 +350,7 @@ def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
     _extract_d3_learning_metrics(row, ordered_online)
     _extract_d4_metrics(row, ordered_online)
     _extract_d4_region_advice_metrics(row, ordered_online)
+    _extract_d4_region_consumption_metrics(row, ordered_online, summary)
     _extract_d5_metrics(row, ordered_online)
     active_vision_evidence = evaluate_active_vision_runtime_evidence(
         ordered_online,
@@ -352,6 +374,7 @@ def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
         "mission_success",
         "five_meter_proximity_is_not_mission_success",
     )
+    extract_experiment_matrix_evidence(row, config, summary)
     _add_stage_columns(row, sorted((stages or {}).keys()))
     _finalize_episode_status(row)
     return row
@@ -522,6 +545,11 @@ def aggregate_scalable_3d_episodes(
             }
         )
 
+    experiment_matrix = aggregate_experiment_matrix(
+        rows,
+        bootstrap_resamples=int(bootstrap_resamples),
+        bootstrap_rng_seed=int(bootstrap_rng_seed),
+    )
     return {
         "schema_version": SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION,
         "evaluation_date": SCALABLE_3D_OFFLINE_EVALUATION_DATE,
@@ -549,6 +577,7 @@ def aggregate_scalable_3d_episodes(
         ),
         "groups": groups,
         "scale_stage_time_shares": scale_stage_shares,
+        "experiment_matrix": experiment_matrix,
         "physical_outcome_semantics": {
             "offline_proximity_within_5m_count": (
                 "offline physical diagnostic only; not mission success"
@@ -653,13 +682,17 @@ def render_scalable_3d_offline_markdown(
             )
         )
 
+    lines.extend(["", *render_experiment_matrix_markdown_lines(
+        aggregate.get("experiment_matrix", {})
+    )])
+
     lines.extend(
         [
             "",
             "## 学习运行时与 D4 Advice 分层",
             "",
             "以下五层不能互相回填：bundle 能加载只说明版本化产物可用；shadow 有输出只说明产生了合法且经过安全投影的 recommendation；assist 获准只说明门控通过；控制实际采用必须有独立 producer 证据；物理结果仍是离线结果层。",
-            "当前 `d4-region-resource-advisory-runtime-v1` 不改变正式 D4 裁决，因此 `assist_eligible` 不是控制生效，控制采用字段保持 unavailable。",
+            "`d4-region-resource-advisory-runtime-v1` 不改变正式 D4 裁决，因此 `assist_eligible` 不是控制生效；control adoption 只接受通过合同与 summary 审计的 main 消费记录及 D3 hint applied 证据。",
             "",
             "| seed | D3 bundle/fingerprint/version | D4 bundle/fingerprint/version | D5 bundle/fingerprint/version | D4 advice pub | shadow output | assist eligible | formal unchanged/mutation | control adopted | physical <=5m |",
             "| ---: | --- | --- | --- | ---: | ---: | ---: | --- | --- | ---: |",
@@ -873,7 +906,7 @@ def render_scalable_3d_offline_markdown(
             "- D5 `model_missing` 表示确定性几何规则回退，不是学习模型性能证据。",
             "- bundle 未加载时，学习模型 fingerprint/version 保持 null/unavailable；规则路径的 runtime version 不冒充学习模型版本。",
             "- D4 advice 的旧 schema、缺版本、过期 authority/plan/lease、非守恒 quota、非法 projection 或 digest 篡改均 fail closed，不以合法记录子集缩小分母。",
-            "- 当前 D4 advice 没有控制采用字段；即使 `assist_eligible=true` 且 recommendation 有输出，也不能报告控制已采用。",
+            "- D4 advice 单独不证明控制采用；只有通过完整合同与 summary 一致性审计的 main 消费记录，且 D3 明确应用 hint，才计 control adoption。",
             "- D5 主动视觉必须由命令与 `runtime.camera_command_ack` 复合版本键闭合；命令发布、影子建议、辅助采用和 ACK applied 分层统计。",
             "- 即使辅助动作已 applied 且同一 episode 出现五米接近，没有同 seed 配对控制组时，主动视觉物理归因仍为 null/unavailable。",
             "- 报告不把五米接近登记为任务成功；任务成功仍需身份、D4 授权、D7 控制和任务合同的独立证据。",
@@ -2235,6 +2268,289 @@ def _extract_d4_region_advice_metrics(
         row["_failure_reasons"].append("d4_advice_formal_decision_mutation")
 
 
+def _extract_d4_region_consumption_metrics(
+    row: dict[str, Any],
+    records: Sequence[Mapping[str, Any]],
+    summary: Mapping[str, Any] | None,
+) -> None:
+    consumption_records = [
+        record
+        for record in records
+        if record.get("topic") == _D4_REGION_CONSUMPTION_TOPIC
+    ]
+    _put_available(
+        row,
+        "d4_region_consumption_publication_count",
+        len(consumption_records),
+    )
+    if not consumption_records:
+        _put_available(row, "d4_region_consumption_valid_publication_count", 0)
+        _put_available(row, "d4_region_consumption_invalid_publication_count", 0)
+        for field in (
+            "d4_region_consumable_count",
+            "d4_region_d3_hint_applied_count",
+            "d4_region_consumption_summary_consistent",
+            "d4_region_consumption_rejection_reason_distribution_json",
+            "d4_region_consumption_bridge_rejection_reason_distribution_json",
+            "d4_region_consumption_evidence_status",
+            "d4_advice_control_adoption_count",
+        ):
+            _put_unavailable(
+                row,
+                field,
+                "d4_region_consumption_publication_missing",
+            )
+        return
+
+    known_advisory_contracts: dict[str, Mapping[str, Any]] = {}
+    conflicting_advisory_ids: set[str] = set()
+    audits: list[dict[str, Any]] = []
+    for record in records:
+        if record.get("topic") == _D4_REGION_ADVICE_TOPIC:
+            payload = _payload(record)
+            contract = payload.get("advisory_contract")
+            if isinstance(contract, Mapping):
+                advisory_id = contract.get("advisory_id")
+                if isinstance(advisory_id, str) and advisory_id.strip():
+                    normalized_id = advisory_id.strip()
+                    previous = known_advisory_contracts.get(normalized_id)
+                    if (
+                        previous is not None
+                        and _json_ready(previous) != _json_ready(contract)
+                    ):
+                        conflicting_advisory_ids.add(normalized_id)
+                    else:
+                        known_advisory_contracts[normalized_id] = contract
+        elif record.get("topic") == _D4_REGION_CONSUMPTION_TOPIC:
+            audits.append(
+                _audit_d4_region_consumption(
+                    record,
+                    known_advisory_contracts,
+                    conflicting_advisory_ids,
+                )
+            )
+
+    invalid_reasons = Counter(
+        reason for audit in audits for reason in audit["invalid_reasons"]
+    )
+    invalid_count = sum(bool(audit["invalid_reasons"]) for audit in audits)
+    _put_available(
+        row,
+        "d4_region_consumption_valid_publication_count",
+        len(audits) - invalid_count,
+    )
+    _put_available(
+        row,
+        "d4_region_consumption_invalid_publication_count",
+        invalid_count,
+    )
+    _put_available(
+        row,
+        "d4_region_consumption_invalid_reason_distribution_json",
+        dict(sorted(invalid_reasons.items())),
+    )
+
+    summary_consistent, summary_reason = _audit_d4_consumption_summary(
+        summary,
+        audits[-1] if audits else None,
+    )
+    if summary_consistent is None:
+        _put_unavailable(
+            row,
+            "d4_region_consumption_summary_consistent",
+            summary_reason or "d4_region_consumption_summary_evidence_missing",
+        )
+    else:
+        _put_available(
+            row,
+            "d4_region_consumption_summary_consistent",
+            summary_consistent,
+        )
+
+    if invalid_count or summary_consistent is not True:
+        reason = (
+            "d4_region_consumption_payload_invalid"
+            if invalid_count
+            else summary_reason or "d4_region_consumption_summary_mismatch"
+        )
+        for field in (
+            "d4_region_consumable_count",
+            "d4_region_d3_hint_applied_count",
+            "d4_region_consumption_rejection_reason_distribution_json",
+            "d4_region_consumption_bridge_rejection_reason_distribution_json",
+            "d4_region_consumption_evidence_status",
+            "d4_advice_control_adoption_count",
+        ):
+            _put_unavailable(row, field, reason)
+        row["_failure_reasons"].append(reason)
+        return
+
+    consumable_count = sum(audit["consumable"] is True for audit in audits)
+    hint_applied_count = sum(audit["d3_hint_applied"] is True for audit in audits)
+    adoption_count = sum(
+        audit["consumable"] is True
+        and audit["d3_hint_applied"] is True
+        and audit["bridge_rejection_reason"] is None
+        for audit in audits
+    )
+    rejection_reasons = Counter(
+        reason for audit in audits for reason in audit["rejection_reasons"]
+    )
+    bridge_reasons = Counter(
+        str(audit["bridge_rejection_reason"])
+        for audit in audits
+        if audit["bridge_rejection_reason"] is not None
+    )
+    _put_available(row, "d4_region_consumable_count", consumable_count)
+    _put_available(row, "d4_region_d3_hint_applied_count", hint_applied_count)
+    _put_available(row, "d4_advice_control_adoption_count", adoption_count)
+    _put_available(
+        row,
+        "d4_region_consumption_rejection_reason_distribution_json",
+        dict(sorted(rejection_reasons.items())),
+    )
+    _put_available(
+        row,
+        "d4_region_consumption_bridge_rejection_reason_distribution_json",
+        dict(sorted(bridge_reasons.items())),
+    )
+    _put_available(row, "d4_region_consumption_evidence_status", "valid")
+
+
+def _audit_d4_region_consumption(
+    record: Mapping[str, Any],
+    known_advisory_contracts: Mapping[str, Mapping[str, Any]],
+    conflicting_advisory_ids: set[str],
+) -> dict[str, Any]:
+    payload = _payload(record)
+    invalid: list[str] = []
+    if record.get("schema_version") != _D4_REGION_CONSUMPTION_SCHEMA:
+        invalid.append("consumption_envelope_schema_mismatch")
+    if record.get("source") != "main":
+        invalid.append("consumption_source_not_main")
+    if payload.get("schema") != _D4_REGION_CONSUMPTION_SCHEMA:
+        invalid.append("consumption_payload_schema_mismatch")
+    for field in ("timestamp", "evaluated_at_s"):
+        if not (
+            _is_finite_number(payload.get(field))
+            and float(payload[field]) >= 0.0
+        ):
+            invalid.append(f"consumption_{field}_invalid")
+    if (
+        _is_finite_number(payload.get("timestamp"))
+        and _is_finite_number(payload.get("evaluated_at_s"))
+        and abs(float(payload["timestamp"]) - float(payload["evaluated_at_s"]))
+        > 1e-9
+    ):
+        invalid.append("consumption_timestamp_mismatch")
+    if not (
+        _is_int_like(payload.get("current_snapshot_version"))
+        and int(payload["current_snapshot_version"]) > 0
+    ):
+        invalid.append("consumption_snapshot_version_invalid")
+    for field in ("current_snapshot_id", "current_authority_digest"):
+        if not isinstance(payload.get(field), str) or not str(payload[field]).strip():
+            invalid.append(f"consumption_{field}_invalid")
+
+    advisory = payload.get("advisory")
+    advisory_id = None
+    if not isinstance(advisory, Mapping):
+        invalid.append("consumption_advisory_missing")
+    else:
+        if advisory.get("schema") != _D4_REGION_ADVISORY_SCHEMA:
+            invalid.append("consumption_advisory_schema_mismatch")
+        raw_advisory_id = advisory.get("advisory_id")
+        if isinstance(raw_advisory_id, str) and raw_advisory_id.strip():
+            advisory_id = raw_advisory_id.strip()
+            published_contract = known_advisory_contracts.get(advisory_id)
+            if published_contract is None:
+                invalid.append("consumption_advisory_not_previously_published")
+            elif advisory_id in conflicting_advisory_ids:
+                invalid.append("consumption_advisory_publication_conflict")
+            elif _json_ready(advisory) != _json_ready(published_contract):
+                invalid.append("consumption_advisory_contract_mismatch")
+        else:
+            invalid.append("consumption_advisory_id_invalid")
+
+    consumable = payload.get("consumable")
+    if not isinstance(consumable, bool):
+        invalid.append("consumption_consumable_not_boolean")
+        consumable = None
+    raw_rejections = payload.get("rejection_reasons")
+    if not isinstance(raw_rejections, list) or not all(
+        isinstance(reason, str) and reason.strip() for reason in raw_rejections
+    ):
+        invalid.append("consumption_rejection_reasons_invalid")
+        rejection_reasons: list[str] = []
+    else:
+        rejection_reasons = [str(reason) for reason in raw_rejections]
+    if consumable is True and rejection_reasons:
+        invalid.append("consumable_consumption_has_rejection_reasons")
+
+    hint_applied = payload.get("d3_hint_applied")
+    if not isinstance(hint_applied, bool):
+        invalid.append("consumption_d3_hint_applied_not_boolean")
+        hint_applied = None
+    bridge_reason = payload.get("bridge_rejection_reason")
+    if bridge_reason is not None and not (
+        isinstance(bridge_reason, str) and bridge_reason.strip()
+    ):
+        invalid.append("consumption_bridge_rejection_reason_invalid")
+        bridge_reason = None
+    if hint_applied is True and consumable is not True:
+        invalid.append("d3_hint_applied_without_consumable_advisory")
+    if hint_applied is True and bridge_reason is not None:
+        invalid.append("d3_hint_applied_with_bridge_rejection")
+    return {
+        "advisory_id": advisory_id,
+        "consumable": consumable,
+        "d3_hint_applied": hint_applied,
+        "rejection_reasons": rejection_reasons,
+        "bridge_rejection_reason": bridge_reason,
+        "invalid_reasons": list(dict.fromkeys(invalid)),
+    }
+
+
+def _audit_d4_consumption_summary(
+    summary: Mapping[str, Any] | None,
+    latest: Mapping[str, Any] | None,
+) -> tuple[bool | None, str | None]:
+    diagnostics = (
+        summary.get("module_final_diagnostics")
+        if isinstance(summary, Mapping)
+        else None
+    )
+    if not isinstance(diagnostics, Mapping) or latest is None:
+        return None, "d4_region_consumption_summary_evidence_missing"
+    required = (
+        "d4_region_consumption_available",
+        "d4_region_consumable",
+        "d4_region_consumption_rejection_reasons",
+        "d4_region_hint_bridge_rejection_reason",
+        "d3_regional_hint_applied",
+    )
+    if any(field not in diagnostics for field in required):
+        return None, "d4_region_consumption_summary_fields_missing"
+    raw_reasons = diagnostics.get("d4_region_consumption_rejection_reasons")
+    if not isinstance(raw_reasons, list) or not all(
+        isinstance(reason, str) for reason in raw_reasons
+    ):
+        return False, "d4_region_consumption_summary_rejections_invalid"
+    consistent = (
+        diagnostics.get("d4_region_consumption_available") is True
+        and diagnostics.get("d4_region_consumable") is latest.get("consumable")
+        and list(raw_reasons) == list(latest.get("rejection_reasons", ()))
+        and diagnostics.get("d4_region_hint_bridge_rejection_reason")
+        == latest.get("bridge_rejection_reason")
+        and diagnostics.get("d3_regional_hint_applied")
+        is latest.get("d3_hint_applied")
+    )
+    return (
+        consistent,
+        None if consistent else "d4_region_consumption_summary_mismatch",
+    )
+
+
 def _d4_advice_substantive_fields() -> tuple[str, ...]:
     return (
         "d4_advice_recommendation_output_count",
@@ -3361,6 +3677,7 @@ def _finalize_episode_status(row: dict[str, Any]) -> None:
                     "d4_advice_version_evidence_issue",
                     "d4_advice_resource_quota_conservation_violation",
                     "d4_advice_formal_decision_mutation",
+                    "d4_region_consumption_",
                     "d5_active_vision_",
                 )
             )
@@ -3368,6 +3685,8 @@ def _finalize_episode_status(row: dict[str, Any]) -> None:
         )
     )
     _put_available(row, "formal_acceptance_eligible", eligible)
+    failures.extend(finalize_experiment_matrix_evidence(row))
+    failures = list(dict.fromkeys(str(value) for value in failures if str(value)))
     row["episode_failure_reasons_json"] = failures
     unavailable_reasons = sorted(
         {
@@ -4107,6 +4426,8 @@ __all__ = [
     "DEFAULT_SCALABLE_3D_BOOTSTRAP_RESAMPLES",
     "DEFAULT_SCALABLE_3D_BOOTSTRAP_RNG_SEED",
     "FIVE_METER_THRESHOLD_M",
+    "EXPERIMENT_MATRIX_SCHEMA_VERSION",
+    "EXPERIMENT_MATRIX_VARIANTS",
     "SCALABLE_3D_CURRENT_SCHEMA_REGISTRY",
     "SCALABLE_3D_OFFLINE_EVALUATION_DATE",
     "SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION",
@@ -4114,8 +4435,12 @@ __all__ = [
     "Scalable3DOfflineEvaluationError",
     "Scalable3DOfflineEvaluationInputs",
     "Scalable3DOfflineReportGenerator",
+    "aggregate_experiment_matrix",
     "aggregate_scalable_3d_episodes",
     "discover_scalable_3d_episode_dirs",
     "evaluate_scalable_3d_episode",
+    "extract_experiment_matrix_evidence",
+    "finalize_experiment_matrix_evidence",
+    "render_experiment_matrix_markdown_lines",
     "render_scalable_3d_offline_markdown",
 ]

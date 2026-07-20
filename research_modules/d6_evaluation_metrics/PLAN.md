@@ -1,5 +1,26 @@
 # D6 Evaluation Metrics Plan
 
+## 2026-07-20 scalable 3D 实验矩阵审计状态
+
+- [x] 只从 `scenario_config.metadata` 读取矩阵 schema、variant、comparison key 和 full-system flag；
+  历史 episode 的矩阵字段保持 unavailable，不从目录名补值。
+- [x] 独立核对 R0/G1/A1/A2/A3/C1/F1 与 learning runtime diagnostics，bundle 未加载、effective mode
+  非 assist、实际采用缺失或规则回退时 `variant_execution_valid=false`。
+- [x] 固定每个 comparison identity 的 R0/G1/A1/A2/A3/C1 分母；仅三个完整体系场景增加 F1，缺 cell
+  和重复 cell 均显式保留。
+- [x] 按 variant 输出 episode/seed、有限性、在线真值、硬约束、ID switch、分配、跨视角、主动视觉、
+  五米事件和阶段耗时的 availability-aware 描述统计。
+- [x] 对完整 R0 配对输出 variant-minus-R0 delta；至少两个比较键才生成 bootstrap CI。clean/formal 与
+  dirty development 分开，所有 paired delta 保持非因果口径。
+- [x] producer 风格矩阵专项 `40 passed`，D6 全量 `320 passed`；真实 R0/nominal/2v2/seed101 dirty
+  smoke 复读为执行有效、cell 完整性 1/6、正式矩阵资格 false；临时 5v5 producer smoke 的 D4 消费、
+  D3 hint applied 和 control adoption 均为 1。
+- [ ] main 尚未运行 clean、完整 R0/G1/A1/A2/A3/C1/F1 矩阵。没有正式算法优劣或准入结论。
+- [x] D4 advice 与 main 消费证据分层审计；缺消费、旧 schema、未知或篡改 advice、summary 冲突均
+  fail closed。有效消费且 D3 明确应用 hint 时，A2 可形成实际采用证据。
+- [ ] 若要发现整个 comparison key 完全缺失，main 需把 matrix manifest 作为显式 D6 输入；D6 不从
+  目录结构重建未出现的 key。
+
 ## 2026-07-20 scalable 3D schema registry 窄修复状态
 
 - [x] 将两套 D6 fixture 的 online observation schema 对齐真实 producer：
@@ -54,8 +75,8 @@
 - [x] 对 recommendation schema、scenario/version/seed、authority digest、plan/version/epoch/lease、
   action/transfer/projection、digest flag 做 fail-closed 审计；非法或旧 schema 不缩小分母。
 - [x] 报告五层证据：bundle load、shadow output、assist gate、control adoption、physical outcome。
-  当前 advice 不改变正式 D4 裁决且无 control-adoption 字段，因此 `assist_eligible` 不晋升为控制生效，
-  control adoption 保持 unavailable。
+  advice 不改变正式 D4 裁决，`assist_eligible` 不晋升为控制生效；control adoption 只来自通过完整合同
+  和 summary 一致性审计的 main 消费记录及 `d3_hint_applied=true`。
 - [x] 聚合继续按实际 target/resource/recon/camera 和不同 seed；单 seed descriptive-only。正式证据
   继续要求 `repository_dirty=false`，并校验 config hash、D4 policy version、finite/truth isolation。
 - [x] 2026-07-20 确定性 fixture 覆盖 disabled、D3/D4/D5 missing-bundle fallback、assist-to-shadow、
@@ -64,8 +85,8 @@
   仅既有 Matplotlib `Axes3D` warning。
 - [ ] main 用 `repository_dirty=false` 的正式多规模、多 seed 学习 bundle 运行 CLI，冻结 bundle、
   shadow、assist、control 和 physical 五层跨提交趋势；fixture 或 dirty smoke 不作为模型验收。
-- [ ] producer 若实际采用 advice，新增独立 versioned control-adoption evidence，并明确采用对象、
-  plan/version、时间戳和 D7 命令关联；在此之前 D6 不推断控制采用。
+- [x] producer 已发布独立 `d4-region-resource-consumption-v1`，携带完整建议合同、当前 snapshot、时间、
+  consumable/rejection、bridge reason 和 D3 hint applied；D6 不从 advice 或模式字段推断采用。
 - [ ] producer 增加 evaluator-only `global_track_id -> truth_target_id` 显式映射；D2 IDSW 继续只接受
   producer 明确 available 值，二者均不得从名称、终态或邻近事件补算。
 

@@ -1,8 +1,35 @@
 # D6 Evaluation Metrics
 
+## 2026-07-20 scalable 3D 算法实验矩阵离线审计
+
+`d6-scalable3d-offline-evaluation-v5` 新增 D6-owned
+`scalable3d-experiment-matrix-v1` 审计，不导入 main 的矩阵生成器或控制代码。评估器只从
+`scenario_config.metadata` 读取 `experiment_matrix_schema`、`algorithm_variant`、
+`comparison_key` 和 `full_system_validation`。历史 episode 仍按原指标评估，但矩阵字段保持
+null/unavailable；目录名不参与变体、规模或配对身份判断。
+
+R0、G1、A1、A2、A3、C1、F1 分别对应纯规则、D5 跨视角图模型、D3 学习分配、D4 区域策略、D5
+主动视觉以及四项组合。变体执行同时核对 config/summary 中一致的 learning runtime、bundle loaded、
+requested/effective assist、fallback 和实际采用证据。D3 要求 `learning_applied`，D5 图模型要求
+`loaded_edge_model` 且无规则回退，D5 主动视觉要求 assist adopted。D4 advice 本身仍不证明采用；只有
+main 发布的消费合同通过 schema、来源、先前建议引用和 summary 一致性审计，且
+`consumable=true`、`d3_hint_applied=true`，A2/C1/F1 才能取得 D4 实际采用证据。
+
+完整性按每个显式 comparison identity 固定要求 R0/G1/A1/A2/A3/C1；F1 只在中心失效、二级失效和
+高威胁 M-to-N 场景进入分母。按变体输出 availability-aware 指标和阶段耗时；有完整 R0 配对时计算
+变体减 R0 的 paired delta，至少两个配对键才生成 bootstrap 置信区间。clean/formal、dirty development
+和其他 descriptive evidence 分开统计，配对差值不自动解释为因果效果。
+
+2026-07-20 的 producer 风格 fixture 覆盖 R0 正例、三个矩阵标识缺失、伪变体、bundle 回退、F1 场景
+限制、固定 cell 分母、双 seed 配对、dirty 分层及 D4 消费正反例。scalable 专项 `40 passed`，D6 全量
+`320 passed`，仅有既有 Matplotlib `Axes3D` warning。真实 producer 的
+R0/nominal/2v2/seed101 开发 smoke 复读结果为 metadata/execution valid=true、present/expected=1/6；
+该 episode `repository_dirty=true`，不属于正式矩阵。另一个临时 5v5 producer smoke 的 D4 消费为
+1 条合法、1 次 D3 hint applied、1 次 control adoption。正式全矩阵尚未运行。
+
 ## 2026-07-20 scalable 3D 当前 schema 合同准入
 
-`d6-scalable3d-offline-evaluation-v4` 在 D6 内维护
+当前 `d6-scalable3d-offline-evaluation-v5` 延续 D6 内维护的
 `d6-scalable3d-schema-registry-v1`，不导入 main 控制或仿真运行逻辑。当前合同固定为 world
 `scalable3d-world-v1`、bus `scalable3d-episode-bus-v1`、scenario
 `scalable3d-scenario-v1`、online observation `scalable3d-observation-v1`、offline truth
@@ -70,10 +97,11 @@ eligible 数、fallback 数与原因、推理延迟 P50/P95、quota delta 守恒
 旧 schema、字段非法、digest flag 篡改、非守恒 projected payload 或版本栅栏不一致均 fail closed；
 不会用合法记录子集缩小分母。
 
-报告严格区分五层：bundle 能加载、shadow 有输出、assist 获准、控制实际采用、物理结果。当前 D4
-advice 只提供建议并保持正式 D4 裁决不变；`assist_eligible` 不是控制生效。producer 未发布独立控制
-采用字段，因此 `d4_advice_control_adoption_count` 固定为 `null/unavailable`；五米接近仍只是一层
-离线物理诊断，不归因于 advice，也不生成 `mission_success`。
+报告严格区分五层：bundle 能加载、shadow 有输出、assist 获准、控制实际采用、物理结果。D4 advice
+只提供建议并保持正式 D4 裁决不变；`assist_eligible` 不是控制生效。当前 producer 另行发布
+`d4-region-resource-consumption-v1`。D6 只有在消费合同引用先前已发布的完整 advice、main 来源和
+summary 重复证据一致，且 D3 明确应用 hint 时才记录 control adoption；缺消费证据仍为
+`null/unavailable`。五米接近仍只是一层离线物理诊断，不归因于 advice，也不生成 `mission_success`。
 
 聚合仍按 scenario/version 和显式 target/resource/recon/camera 数量分组，以不同 seed 的 episode
 均值做固定 RNG percentile bootstrap；单 seed 仅 descriptive，不产生 CI 或推断结论。正式 evidence
@@ -93,8 +121,8 @@ python3 research_modules/d6_evaluation_metrics/scripts/run_scalable_3d_offline_e
 
 当前限制：现有 `offline_truth_labels.jsonl` 只有 observation-to-truth 标签，没有显式
 `global_track_id -> truth_target_id` 映射时，五米身份正确性保持 unavailable；D2 producer 明确声明
-IDSW unavailable 时也不离线补算；控制采用缺独立 producer evidence；真实 clean、多规模、多 seed
-学习 bundle 与物理结果仍需 main 调用本入口验证。
+IDSW unavailable 时也不离线补算；D4 消费接口已有单 episode 接线证据，但真实 clean、多规模、多 seed
+学习 bundle、完整矩阵与物理结果仍需 main 调用本入口验证。
 
 ## 2026-07-15 legacy ClockSpeed provenance 兼容与三档实测
 

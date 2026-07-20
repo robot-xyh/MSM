@@ -1,5 +1,32 @@
 # D6 系统级离线评估：算法原理与实施说明
 
+## Scalable 3D 实验矩阵评估算法（2026-07-20）
+
+`experiment_matrix_offline.py` 在 D6 内维护 `scalable3d-experiment-matrix-v1` 和七个变体的支持表，不
+导入 main 矩阵 runner。`extract_experiment_matrix_evidence()` 读取配置 metadata，保留 raw schema、
+variant、comparison key 和 full-system flag，并生成 current-match、known、contract-match、effective
+comparison identity、metadata-valid、runtime-resolution-valid 和 execution-valid 字段。历史 episode
+统一返回 matrix unavailable，不影响原有 formal provenance 字段。
+
+执行审计先比较 config 与 summary 的 `scalable3d-learning-runtime-v1`。R0 要求四个组件 disabled；
+G1/A1/A2/A3 分别只允许 D5 graph、D3、D4、D5 active vision assist；C1/F1 要求四项同时 assist。
+所需组件必须 bundle loaded、无 fallback。第二层检查 D3 applied、D4 control adoption、D5
+`loaded_edge_model` 且 fallback count=0、D5 active-vision assist-adopted count。任一层缺失都输出
+false 和逐项原因；没有证据时不以 requested mode 替代执行。
+
+`aggregate_experiment_matrix()` 以配置内 comparison identity 建立固定期望 cell。nominal 等普通场景
+分母为六个变体，三个完整体系场景分母为七个。variant group 对有限性、在线真值、硬约束、IDSW、
+分配、跨视角、主动视觉、五米事件和动态 stage timing 调用 availability-aware 统计。每个 group 同时
+保存全量描述、clean/formal 和 dirty development 子集。
+
+配对聚合按 comparison key 取唯一 R0 和唯一执行有效变体，逐指标计算 `variant - R0`。两个及以上配对
+键使用固定随机种子的 percentile bootstrap；单配对只返回描述差值和 unavailable CI。指标缺失只减少
+该指标的可用 pair 数，不改变 expected pair denominator。输出始终带 `causal_attribution=false`。
+
+producer 风格测试覆盖正例、缺字段、伪变体、回退、F1 场景约束、固定分母、两 seed bootstrap、
+clean/dirty 分层和 D4 消费证据，scalable 专项 `40 passed`、D6 全量 `320 passed`。真实 R0 dirty
+smoke 仅确认接口，正式矩阵未运行。
+
 ## Scalable 3D schema registry 审计算法（2026-07-20）
 
 `SCALABLE_3D_CURRENT_SCHEMA_REGISTRY` 由 D6 自主管理，版本为
@@ -115,9 +142,10 @@ episode 的 mode/fallback/latency/shadow/assist 派生统计整体 unavailable�
 
 逐 episode 数值包括 publication/valid/invalid、requested/effective mode 分布、recommendation 和
 shadow output、assist eligible、fallback/reason、latency P50/P95、quota conservation violation、
-projection rejection、formal mutation/unchanged 和 stale/missing version evidence。当前 schema 没有
-control adoption 字段，`d4_advice_control_adoption_count` 因而是 null/unavailable；不能从
-`assist_eligible` 或 unchanged digest 推断控制采用。
+projection rejection、formal mutation/unchanged 和 stale/missing version evidence。control adoption
+不从 advice 字段推断。评估器另读 main 的 `d4-region-resource-consumption-v1`，核对来源、schema、
+此前发布的完整建议合同、消费结果与 summary；仅合法消费、无桥接拒绝且
+`d3_hint_applied=true` 时计一次 adoption，缺失或审计失败时为 null/unavailable。
 
 ### 既有模块与聚合
 

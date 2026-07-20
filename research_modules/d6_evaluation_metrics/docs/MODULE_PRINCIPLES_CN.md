@@ -1,5 +1,24 @@
 # D6 系统级离线评估模块原理
 
+## 算法实验矩阵证据边界（2026-07-20）
+
+算法变体是实验配置，不是目录标签。D6 只读取 episode 内持久化的 matrix schema、variant、comparison
+key、场景族、显式规模和 seed。字段缺失时保留原有 D1-D7 指标，但矩阵身份为 unavailable。显式
+comparison key 可直接使用；缺 key 时只能由配置内的场景族、对称规模和 seed 形成审计键，不能使用
+路径名称。当前 v1 的对称 scale 要求 target_count 与 resource_count 相等；不对称输入保持 key
+unavailable，等待 producer 给出明确 scale 合同。
+
+变体执行分为“运行时解析”和“实际采用”两层。运行时解析要求 config 与 summary diagnostics 一致，
+所需组件 bundle loaded、requested/effective mode 均为 assist、fallback 为空，未声明组件保持 disabled。
+实际采用继续使用模块证据：D3 读取学习代价实际 applied，D5 图模型读取 loaded model scoring，主动
+视觉读取 assist adopted。D4 advice 单独不证明采用；main 消费合同必须通过完整引用和 summary 一致性
+审计，并明确 `d3_hint_applied=true`。R0 还要确认四个组件没有 assist 或实际采用泄漏。
+
+每个比较键固定要求 R0/G1/A1/A2/A3/C1 六个 cell；中心失效、二级失效和高威胁 M-to-N 再要求 F1。
+缺 cell、重复 cell 和执行无效 cell 分别统计。按变体的描述统计保留每项 availability。paired delta
+只使用同键唯一 R0 与唯一有效变体，方向为变体减 R0；至少两个独立键才 bootstrap。clean/formal 与
+dirty development 使用独立子集，配对存在也不自动形成因果结论。
+
 ## 当前 schema 与历史可读性（2026-07-20）
 
 schema 字段非空只能证明 producer 写入了一个名称，不能证明该名称与当前 evaluator 合同一致。D6 使用
@@ -61,8 +80,9 @@ D6 对 main-owned scalable 3D episode 只做持久化文件消费。learning run
 5. **物理结果**：是独立离线结果层，不能仅凭时间相邻归因于 advice。
 
 当前 `d4-region-resource-advisory-runtime-v1` 保持正式 D4 decision digest unchanged，也没有 control
-adoption 字段。因此 `assist_eligible=true` 不能解释为控制生效；D6 将 control adoption 保持
-null/unavailable。五米 proximity 同样不自动成为 advice 效果、身份正确或任务成功。
+adoption 字段。因此 `assist_eligible=true` 不能解释为控制生效。独立证据来自 main 发布的
+`d4-region-resource-consumption-v1`；缺消费、旧 schema、未知或篡改建议引用及 summary 冲突时，D6
+将 control adoption 保持 null/unavailable。五米 proximity 同样不自动成为 advice 效果或任务成功。
 
 availability 先于数值。bundle 未加载时 model fingerprint/version 为 unavailable，规则 runtime
 version 不冒充模型证据；字段缺失不能补零。D3/D5 fallback 只有 producer 显式写出 null/none 或原因
@@ -75,9 +95,9 @@ version 不冒充模型证据；字段缺失不能补零。D3/D5 fallback 只有
 
 2026-07-20 的验证是 17 个 deterministic scalable fixtures，不是真实模型或物理实验。覆盖 disabled、
 missing bundle、assist-to-shadow、assist gate、守恒/非守恒、projection、formal mutation/unchanged、
-digest 篡改、旧/缺版本、缺 advice、既有规模/缺值和双 seed 聚合；专项 `17 passed`、D6 全量
-`289 passed`。正式 clean、多规模、多 seed bundle、control-adoption evidence、global-track truth 映射
-和真实物理效果仍是 main/producer P1。
+digest 篡改、旧/缺版本、缺 advice、既有规模/缺值和双 seed 聚合；后续消费合同与矩阵专项扩展到
+scalable `40 passed`、D6 全量 `320 passed`。正式 clean、多规模、多 seed 矩阵、global-track truth
+映射和真实物理效果仍是 main/producer P1。
 
 ## Legacy provenance 必须由完整持久化证据闭合（2026-07-15）
 

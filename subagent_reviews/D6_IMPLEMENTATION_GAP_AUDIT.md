@@ -1,5 +1,22 @@
 # D6 实现差距审计
 
+## 2026-07-20 Scalable 3D 实验矩阵 P1 状态
+
+- **D6 consumer 已实现**：独立读取并验证 matrix schema、variant、comparison key 和 full-system flag；
+  历史 episode 保持可评估，矩阵字段 unavailable，目录名不参与补值。
+- **执行审计已实现**：R0/G1/A1/A2/A3/C1/F1 与四项 learning runtime 和模块实际采用证据交叉核对。
+  bundle 缺失、assist 未采用或规则回退均为 execution invalid，并保留逐项原因。
+- **完整性与统计已实现**：每个比较键固定六个基础 cell；三个完整体系场景固定增加 F1。按 variant
+  输出 availability-aware 指标和阶段耗时；完整 R0 配对输出 delta，两个及以上配对键输出 bootstrap CI。
+- **证据分层已实现**：matrix formal 必须同时满足通用 clean formal、当前 metadata 和执行有效；dirty
+  development 单独统计。paired delta 明确不是因果归因。
+- **验证**：producer 风格专项 `40 passed`、D6 全量 `320 passed`；真实
+  R0/nominal/2v2/seed101 dirty smoke 为
+  metadata/execution valid=true、cell=1/6、matrix formal=false。临时 5v5 producer smoke 的 D4 合法
+  消费、D3 hint applied 和 control adoption 均为 1。
+- **P1 仍开放**：main 尚未运行 clean 完整矩阵。D4 消费合同已可形成 A2 实际采用证据，但尚无正式
+  多 seed A2/C1/F1 运行。整个 comparison key 完全缺失时，还需显式 matrix manifest 才能审计。
+
 ## 2026-07-20 Scalable 3D schema provenance P0 窄修复
 
 - **P0 准入缺口已关闭**：旧 evaluator 只检查五项 manifest schema 非空，无法阻止未知或篡改值进入
@@ -57,16 +74,16 @@
   transfer 非法、projected quota 非守恒和 digest flag 篡改均阻止正式证据，不以剩余合法 advice 缩小
   分母。正式 acceptance 仍强制 `repository_dirty=false`。
 - **语义分层 GAP 已关闭**：报告明确区分 bundle loaded、shadow output、assist eligible、control
-  adoption 和 physical outcome。当前 advice 保持正式 D4 裁决不变且未提供 control-adoption 字段，故
-  `assist_eligible` 不解释为控制生效，物理接近也不归因于模型。
+  adoption 和 physical outcome。advice 保持正式 D4 裁决不变；独立 main 消费合同必须引用先前完整
+  advice，并与 summary 和 D3 hint applied 一致，才形成 control adoption。物理接近仍不归因于模型。
 - **2026-07-20 实现验证**：17 个 deterministic scalable fixtures 覆盖 disabled、三模块 missing-bundle
   fallback、assist-to-shadow、assist gate、守恒/非守恒、projection rejection、formal mutation/
   unchanged、digest 篡改、旧 schema、缺 plan version、缺 advice、dirty 和 seeds 1/2 bootstrap。接受
   门限全部满足；专项 `17 passed`、D6 全量 `289 passed`，仅既有 Matplotlib warning。未运行真实
   simulator/AirSim，不形成模型性能或准入结论。
-- **仍开放的 main/producer P1**：clean 正式多规模、多 seed 学习 bundle 与跨提交趋势尚未提供；
-  producer 尚无独立 control-adoption evidence 和 evaluator-only global-track-to-truth mapping；D2 IDSW
-  仍由 producer availability 决定。fixture 与 dirty smoke 均不能关闭模型、控制或物理性能 GAP。
+- **仍开放的 main/producer P1**：clean 正式多规模、多 seed 学习 bundle、完整矩阵与跨提交趋势尚未
+  提供；D4 消费只有单 episode 接线证据；evaluator-only global-track-to-truth mapping 仍缺失，D2
+  IDSW 仍由 producer availability 决定。fixture 与 dirty smoke 不能关闭模型或物理性能 GAP。
 - **文档检查**：README、PLAN、D6 原理/算法、实验报告、docs index、GAP 和两份 D6 review 已同步。
   `AIRSIM_INTEGRATION_PLAN.md` 已检查；本次不读取 AirSim API/Blocks 特有产物，也不改变 AirSim 接线，
   因此不修改。root `docs/*` 不属于本 D6 owned paths，由 main 负责跨模块同步。

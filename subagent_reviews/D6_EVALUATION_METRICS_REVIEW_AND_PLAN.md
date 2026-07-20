@@ -1,5 +1,21 @@
 # D6 系统评估指标综述及子方案
 
+## 2026-07-20 Scalable 3D 实验矩阵评审
+
+评审确认 D6 v5 保持只读边界。矩阵身份仅来自 scenario config metadata；D6 不导入 main runner，不按
+R0/G1 等目录名识别变体。R0/G1/A1/A2/A3/C1/F1 的 runtime 解析和实际采用分开审计，规则回退或采用
+证据缺失时不报告执行有效。
+
+完整性按每个显式比较键使用固定六 cell 分母，三个完整体系场景增加 F1。variant 统计覆盖有限状态、
+在线真值、硬约束、ID switch、分配、跨视角、主动视觉、五米事件和阶段耗时。R0 配对差值按同键计算，
+至少两个键才产生 bootstrap CI；clean/formal 与 dirty development 使用不同统计子集，报告不做无配对
+或仅开发证据的因果归因。
+
+producer 风格专项 `40 passed`、D6 全量 `320 passed`。既有 R0 dirty smoke 仅有 1/6 cell，不能形成
+算法比较。D4 advice 单独仍不证明采用；main 消费合同通过完整引用、summary 一致性和 D3 hint applied
+审计后可形成 A2 adoption evidence。正式完整矩阵尚未运行，后续由 main 提供 clean、多场景、多规模和
+未见 seed 的 episode 集合及显式 matrix manifest。
+
 ## 2026-07-20 Scalable 3D schema 合同复核
 
 评审确认真实 online observation schema 为 `scalable3d-observation-v1`。D6 fixture 已对齐；离线
@@ -50,8 +66,9 @@ transfer、quota conservation、projection rejection 及 formal decision digest�
 
 证据解释分为五层：bundle loaded 只证明可加载；shadow output 只证明产生合法 recommendation；assist
 eligible 只证明准入门；control adoption 需要独立 producer evidence；physical outcome 仍是离线几何
-结果。当前 D4 advice 的正式裁决 digest 保持 unchanged，schema 没有 control-adoption 字段，因此即使
-`assist_eligible=true` 也不能报告控制生效，更不能把后续五米事件归因于 advice。
+结果。D4 advice 的正式裁决 digest 保持 unchanged，`assist_eligible=true` 不能报告控制生效。当前
+独立证据是 `d4-region-resource-consumption-v1`；合法消费且 D3 明确应用 hint 才计 adoption，后续五米
+事件仍不归因于 advice。
 
 规模与统计口径未改变：按 scenario/version 和实际 target/resource/recon/camera 分组，以不同 seed 的
 episode 均值 bootstrap；单 seed descriptive-only。正式 evidence 继续要求 `repository_dirty=false`，
@@ -60,8 +77,9 @@ episode 均值 bootstrap；单 seed descriptive-only。正式 evidence 继续要
 2026-07-20 的 deterministic fixture 验收覆盖 disabled、三模块 missing bundle、assist-to-shadow、
 assist gate、守恒/非守恒、projection、mutation/unchanged、digest 篡改、旧 schema、缺 plan version、
 缺 advice 和 seeds 1/2 聚合；scalable 专项 `17 passed`、D6 全量 `289 passed`。结果只关闭 D6 consumer/
-report GAP，不证明真实模型性能。后续由 main 提供 clean、多规模、多 seed 正式 bundle 和独立控制采用
-证据；D6 不从 mode、终态、目录名或物理接近推断缺失层。
+report GAP，不证明真实模型性能。消费合同扩展后的 scalable 专项为 `40 passed`、D6 全量
+`320 passed`；临时 5v5 producer smoke 的合法消费与 adoption 均为 1。后续由 main 提供 clean、多规模、
+多 seed 正式矩阵；D6 不从 mode、终态、目录名或物理接近推断缺失层。
 
 ## 2026-07-15 legacy provenance 与真实三档评审
 

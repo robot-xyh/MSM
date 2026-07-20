@@ -1,5 +1,12 @@
 # D6 文档索引
 
+2026-07-20 已接入 scalable 3D 算法实验矩阵离线审计。D6 v5 从配置 metadata 读取
+R0/G1/A1/A2/A3/C1/F1，核对 learning runtime 与实际采用证据，按固定 cell 分母和 variant 汇总，并在
+完整 R0 配对上输出 delta/bootstrap CI。专项 `34 passed`、D6 全量 `314 passed`；clean/formal 与
+dirty development 分开，正式矩阵尚未运行。
+原理见 `MODULE_PRINCIPLES_CN.md`，实现见 `ALGORITHM_AND_IMPLEMENTATION.md`，接口验收见
+`../EXPERIMENT_REPORT.md` 2.4 节。
+
 2026-07-20 已同步 scalable 3D schema registry 窄修复。D6 offline v4 固定核对当前 world/bus/scenario/
 online observation/offline truth 和 config schema；真实 online observation 名称为
 `scalable3d-observation-v1`。原始值继续展示，旧、未知、篡改或缺失值不能进入 formal acceptance。
@@ -22,8 +29,8 @@ dirty 单 seed，只用于接线检查。
 `../scripts/run_scalable_3d_offline_evaluation.py`；新增 D3/D4/D5 bundle/fallback/fingerprint/version
 availability 与 `modules.d4.region_resource_advice` 的 mode、assist、fallback、latency、quota 守恒、
 projection、formal mutation 和 stale/missing version 审计。报告严格区分 bundle loaded、shadow
-output、assist gate、control adoption 和 physical outcome；当前 advice 不改变正式 D4 裁决且无控制采用
-字段，所以 `assist_eligible` 不等于控制生效。聚合按显式规模和不同 seed，单 seed 仅 descriptive；
+output、assist gate、control adoption 和 physical outcome；advice 不改变正式 D4 裁决，独立 main
+消费合同和 D3 hint applied 才能证明控制采用。聚合按显式规模和不同 seed，单 seed 仅 descriptive；
 正式 evidence 要求 `repository_dirty=false`。deterministic scalable 专项 `17 passed`、D6 全量
 `289 passed`；未运行真实 scalable 3D/AirSim，也未形成模型验收。算法见
 `ALGORITHM_AND_IMPLEMENTATION.md`，原则见 `MODULE_PRINCIPLES_CN.md`，验证边界见

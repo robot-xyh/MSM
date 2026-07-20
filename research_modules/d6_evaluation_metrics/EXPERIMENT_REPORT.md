@@ -1,5 +1,29 @@
 # D6 系统级评估指标实验报告
 
+## 2.4 2026-07-20 scalable 3D 算法实验矩阵接口验收
+
+本节验证 D6 对 `scalable3d-experiment-matrix-v1` 持久化 episode 的只读审计。输入是确定性 fixture 和
+一个既有 producer 开发 smoke，不包含 AirSim、正式训练结果或算法性能实验。
+
+fixture 按真实 producer 结构在 scenario metadata 写入 schema、R0/G1/A1/A2/A3/C1/F1、comparison
+key、full-system flag 和四项 learning runtime diagnostics。负例删除三个矩阵标识字段，注入 X9 伪
+变体和 G1 bundle 回退。完整性用 nominal 同键 R0/G1/A1 三个 cell 验证固定 6-cell 分母；另用两个
+seed 的 R0/G1 配对验证 variant-minus-R0 delta 和 bootstrap CI。一个 seed 标为 dirty，用于检查
+clean/formal 与开发证据分层。F1 在 nominal 中被列为 unexpected，在高威胁 M-to-N 中进入第七个
+期望 cell。
+
+接受门限为：历史 episode 不因缺矩阵字段失去原有可评估性；当前矩阵字段缺失或未知时不得补目录名；
+runtime 双来源必须一致；bundle、assist effective mode、无 fallback 和模块实际采用证据同时成立；缺
+cell 不缩小分母；无 R0 配对不计算差值；单配对不生成置信区间；dirty 数据不进入 clean/formal 统计；
+任何 paired delta 不直接写成因果效果。加入 D4 消费合同正反例后，上述接口门限均通过，scalable 专项
+`40 passed`，D6 全量 `320 passed`，仅有既有 Matplotlib `Axes3D` warning。
+
+既有 `/tmp` producer smoke 为 R0、nominal、2v2、seed101。D6 复读得到 metadata valid=true、execution
+valid=true，完整性为 present/expected=`1/6`。该运行来自 dirty worktree，matrix formal=false，只能
+证明 producer/consumer 接口接通。另一个临时 5v5 producer smoke 中，D4 合法消费、D3 hint applied
+和 control adoption 均为 1。main 尚未运行 clean 的完整矩阵，本节没有变体性能排序、提升率或主线
+准入结论。D4 advice 单独仍不证明采用；只有合法消费且 D3 明确应用 hint 才形成 adoption evidence。
+
 ## 2.3 2026-07-20 scalable 3D schema 合同回归
 
 本节修正 D6 fixture 与真实 producer 的 online observation schema 偏差。真实值是
@@ -56,7 +80,8 @@ formal acceptance=false、bootstrap unavailable。本条只说明实际 producer
 | disabled | bundle loaded=false；model fingerprint/version unavailable；无 advice 属于 not expected |
 | D3/D4/D5 missing bundle | 三模块 fallback 原因保留；模型 fingerprint/version 不补值 |
 | D4 assist-to-shadow | loaded bundle 与合法 shadow recommendation 可用；assist eligible=0 |
-| D4 assist gate | assist eligible=1，但 formal decision unchanged，control adoption unavailable |
+| D4 assist gate | assist eligible=1，但 formal decision unchanged；advice 单独不计 control adoption |
+| D4 consumption | 合法消费计 adoption；拒绝消费计 0；旧 schema、未知或篡改合同及 summary 冲突 fail closed |
 | quota/projection | 守恒零、非守恒违规和 projection rejection 分别可审计 |
 | mutation/tamper | mutation/unchanged 分开；digest flag 篡改使 payload invalid |
 | old/missing evidence | 旧 advice schema、缺 plan version、缺 advice 均 fail closed，不补零 |
@@ -72,8 +97,9 @@ quota 总和为零；formal digest flag 一致；控制采用不由 `assist_elig
 没有运行真实 scalable 3D 或 AirSim episode，也没有模型 acceptance 样本；任何 dirty smoke 只可做
 人工兼容检查，不进入本节验收结果。
 
-剩余限制：main 尚需提供 clean、多规模、多 seed 正式学习 bundle；producer 尚无独立 control-adoption
-evidence 和 global-track-to-truth evaluator mapping；D2 IDSW 继续由 producer availability 决定。
+剩余限制：main 尚需提供 clean、多规模、多 seed 正式学习 bundle和完整实验矩阵；当前只有单 episode
+D4 消费接线证据，尚无模型效果结论；global-track-to-truth evaluator mapping 仍缺失，D2 IDSW 继续由
+producer availability 决定。
 
 ## 2.0 2026-07-15 真实 M5N2 三档 ClockSpeed 对比
 
