@@ -1,24 +1,33 @@
 # D6 Evaluation Metrics Plan
 
-## 2026-07-20 scalable 3D episode 离线评估状态
+## 2026-07-20 scalable 3D 学习运行时离线评估状态
 
-- [x] 独立只读消费六个必需 episode artifact；`offline_truth_labels.jsonl` 仅在五米身份评分时按需
-  读取，在线总线和控制路径不导入真值。
-- [x] 按显式 scenario/version/seed 与 target/resource/recon/camera 数量输出逐 episode CSV、聚合
-  JSON、中文 Markdown 和阶段耗时 PNG，不从 2v2/5v5 名称推断规模。
-- [x] 覆盖 D1-D7、provenance、finite/truth isolation、逐阶段 timing、五米接近与身份 availability；
-  所有缺字段均为 null/unavailable+reason，不补零，不把五米接近登记为任务成功。
-- [x] 聚合输出 mean/std/min/max，固定 seed bootstrap 95% CI 以不同 seed 均值为单位；单 seed 只做
-  descriptive，不产生 CI。
-- [x] 2026-07-20 临时 fixture：50/50/4/54 seed 7、195->200 min-dwell backlog seed 8、D2 IDSW
-  unavailable、D4 lease expired、D5 model-missing fallback、五米身份 unavailable、dirty manifest、
-  缺协方差，以及 seeds 1/2 bootstrap。接受门限 10/10 专项与四类输出全部通过；实际结果专项 `10 passed`、D6
-  全量 `282 passed`，仅既有 Matplotlib `Axes3D` warning。
-- [ ] main 用正式 scalable 3D 多规模、多 seed bundle 调用新 CLI，并冻结跨提交趋势；fixture 不作为
-  真实物理性能证据。
-- [ ] producer 增加 evaluator-only `global_track_id -> truth_target_id` 显式映射后，再关闭五米身份
-  正确性 availability 缺口；不得从名称或邻近事件重建。
-- [ ] D2 若要发布 IDSW，需 producer 写出显式 available 值；D6 不从终态轨迹补算。
+- [x] 保持纯文件、只读、无控制边界；交叉消费 config/summary 的
+  `scalable3d-learning-runtime-v1`，不读取在线真值，不导入 scalable runtime。
+- [x] D3/D4/D5 分别发布 requested/effective mode、bundle requested/loaded、fallback、runtime
+  version、学习模型 fingerprint/version availability；缺字段或 bundle 未加载为 null/unavailable，
+  不用规则 version 冒充模型 version。
+- [x] 只接受 topic `modules.d4.region_resource_advice` 的
+  `d4-region-resource-advisory-runtime-v1`；逐 episode 统计发布/合法/非法、mode 分布、shadow 输出、
+  assist eligible、fallback/reason、latency P50/P95、quota 守恒、projection rejection、正式裁决
+  unchanged/mutation 和 stale/missing version evidence。
+- [x] 对 recommendation schema、scenario/version/seed、authority digest、plan/version/epoch/lease、
+  action/transfer/projection、digest flag 做 fail-closed 审计；非法或旧 schema 不缩小分母。
+- [x] 报告五层证据：bundle load、shadow output、assist gate、control adoption、physical outcome。
+  当前 advice 不改变正式 D4 裁决且无 control-adoption 字段，因此 `assist_eligible` 不晋升为控制生效，
+  control adoption 保持 unavailable。
+- [x] 聚合继续按实际 target/resource/recon/camera 和不同 seed；单 seed descriptive-only。正式证据
+  继续要求 `repository_dirty=false`，并校验 config hash、D4 policy version、finite/truth isolation。
+- [x] 2026-07-20 确定性 fixture 覆盖 disabled、D3/D4/D5 missing-bundle fallback、assist-to-shadow、
+  assist gate、守恒/非守恒、projection rejection、mutation/unchanged、digest 篡改、旧 schema、缺
+  plan version、缺 advice 和 seeds 1/2 bootstrap；scalable 专项 `17 passed`、D6 全量 `289 passed`，
+  仅既有 Matplotlib `Axes3D` warning。
+- [ ] main 用 `repository_dirty=false` 的正式多规模、多 seed 学习 bundle 运行 CLI，冻结 bundle、
+  shadow、assist、control 和 physical 五层跨提交趋势；fixture 或 dirty smoke 不作为模型验收。
+- [ ] producer 若实际采用 advice，新增独立 versioned control-adoption evidence，并明确采用对象、
+  plan/version、时间戳和 D7 命令关联；在此之前 D6 不推断控制采用。
+- [ ] producer 增加 evaluator-only `global_track_id -> truth_target_id` 显式映射；D2 IDSW 继续只接受
+  producer 明确 available 值，二者均不得从名称、终态或邻近事件补算。
 
 ## 2026-07-15 legacy provenance 与三档 comparator 完成状态
 

@@ -1,23 +1,33 @@
 # D6 实现差距审计
 
-## 2026-07-20 Scalable 3D 真值隔离离线评估 GAP 状态
+## 2026-07-20 Scalable 3D 学习运行时离线评估 GAP 状态
 
-- **D6-owned 入口 GAP 已关闭**：新增纯文件 consumer、公开 API 和 CLI，消费 main-owned 六类必需
-  artifact，按需读取 evaluator truth label，不导入或修改 scalable runtime。
-- **指标 GAP 已关闭**：逐 episode/seed 覆盖 provenance/schema、finite/truth audit、D1-D7 指定诊断、
-  stage call/wall/mean、五米接近和身份 availability；缺字段为 null+reason，D2 IDSW 不补零，五米
-  接近不晋升任务成功。
-- **聚合 GAP 已关闭**：按 scenario/version 与实际 target/resource/recon/camera 分组，保留精确 seed；
-  mean/std/min/max 与固定 seed bootstrap 95% CI 已实现，单 seed descriptive-only。
-- **2026-07-20 验证**：确定性临时 fixture 10 项测试全部通过，包括 50/50/4/54 seed 7、195->200
-  min-dwell backlog=5 seed 8、IDSW unavailable、D4 lease expired、D5 fallback、五米身份 unavailable、
-  dirty、缺协方差和双 seed 聚合。专项 `10 passed`、D6 全量 `282 passed`，仅既有 Matplotlib
-  warning。接受门限为指定边界、四类输出和 availability 规则全部通过；未运行真实 simulator/AirSim。
-- **仍开放的 main/producer P1**：main 尚需用正式多规模、多 seed episode 调用 CLI 并冻结跨提交结果；
-  producer 尚未写 evaluator-only global-track-to-truth mapping，因此五米身份正确性可 unavailable；
-  D2 IDSW 仍由 producer availability 决定。fixture 不能关闭真实系统性能或身份精度 GAP。
-- **文档检查**：README、PLAN、D6 原理/算法、实验报告、GAP/review 已同步。AirSim integration plan
-  与 AirSim 实验内容未受影响，因为新入口不读取 AirSim API/Blocks runtime 特有文件，故不修改。
+- **D6 consumer GAP 已关闭**：`d6-scalable3d-offline-evaluation-v2` 纯文件消费 config/summary 的
+  learning runtime metadata、manifest/config 的 D3/D4/D5 version，以及在线日志中的 D3 learning、
+  D4 region-resource advice 和 D5 fallback 字段；不导入或修改 scalable runtime，不参与控制。
+- **模型 provenance GAP 已关闭**：三模块分别保留 requested/effective mode、bundle requested/loaded、
+  fallback、runtime version、model fingerprint/version availability。bundle 未加载、旧 schema、缺字段
+  或 fingerprint/version 不匹配均为 null/unavailable+reason，不补零。
+- **D4 advice 指标 GAP 已关闭**：逐 episode 统计发布/合法/非法、requested/effective 分布、shadow
+  output、assist eligible、fallback/reason、latency P50/P95、quota 守恒违规、projection rejection、
+  formal mutation/unchanged、stale/missing version evidence；聚合继续按显式规模和不同 seed。
+- **fail-closed GAP 已关闭**：旧 advice schema、缺 scenario/seed/policy/plan/version/epoch/lease、action/
+  transfer 非法、projected quota 非守恒和 digest flag 篡改均阻止正式证据，不以剩余合法 advice 缩小
+  分母。正式 acceptance 仍强制 `repository_dirty=false`。
+- **语义分层 GAP 已关闭**：报告明确区分 bundle loaded、shadow output、assist eligible、control
+  adoption 和 physical outcome。当前 advice 保持正式 D4 裁决不变且未提供 control-adoption 字段，故
+  `assist_eligible` 不解释为控制生效，物理接近也不归因于模型。
+- **2026-07-20 实现验证**：17 个 deterministic scalable fixtures 覆盖 disabled、三模块 missing-bundle
+  fallback、assist-to-shadow、assist gate、守恒/非守恒、projection rejection、formal mutation/
+  unchanged、digest 篡改、旧 schema、缺 plan version、缺 advice、dirty 和 seeds 1/2 bootstrap。接受
+  门限全部满足；专项 `17 passed`、D6 全量 `289 passed`，仅既有 Matplotlib warning。未运行真实
+  simulator/AirSim，不形成模型性能或准入结论。
+- **仍开放的 main/producer P1**：clean 正式多规模、多 seed 学习 bundle 与跨提交趋势尚未提供；
+  producer 尚无独立 control-adoption evidence 和 evaluator-only global-track-to-truth mapping；D2 IDSW
+  仍由 producer availability 决定。fixture 与 dirty smoke 均不能关闭模型、控制或物理性能 GAP。
+- **文档检查**：README、PLAN、D6 原理/算法、实验报告、docs index、GAP 和两份 D6 review 已同步。
+  `AIRSIM_INTEGRATION_PLAN.md` 已检查；本次不读取 AirSim API/Blocks 特有产物，也不改变 AirSim 接线，
+  因此不修改。root `docs/*` 不属于本 D6 owned paths，由 main 负责跨模块同步。
 
 ## 2026-07-15 legacy ClockSpeed provenance 兼容 GAP 关闭
 

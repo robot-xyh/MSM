@@ -1,41 +1,68 @@
 # D6 系统级离线评估：算法原理与实施说明
 
-## Scalable 3D episode 文件评估算法（2026-07-20）
+## Scalable 3D episode 与学习 advice 文件评估算法（2026-07-20）
 
-实现位于 `d6_evaluation_metrics/scalable_3d_offline.py`。`evaluate_scalable_3d_episode()` 读取 manifest、
+实现位于 `d6_evaluation_metrics/scalable_3d_offline.py`。`evaluate_scalable_3d_episode()` 只读 manifest、
 scenario config、summary、stage CSV、online JSONL 和 offline proximity JSONL，按 envelope 的
-`timestamp/sequence` 排序后提取各模块最后状态和必要时序。它不导入 scalable simulator 或任何控制
-模块。配置以 producer 同口径的 canonical JSON 重算 SHA-256，并交叉检查 manifest/config/summary
-中的 scenario/version/seed 和实际数量。
+`timestamp/sequence` 排序；不导入 simulator 或控制模块。配置以 producer 同口径 canonical JSON
+复算 SHA-256，并交叉检查 scenario/version/seed、实际数量和 D3/D4/D5 runtime version。
 
-D1/D2 对最后一份 track list 计算 `||v||` 的 P50/P90/max，以及 6x6 covariance 速度子块
-`trace(P[3:6,3:6])` 的 P50/P90/max；任一 track 缺 state/covariance 时，该组统计整体 unavailable。
-D2 IDSW 仅在 `id_switch_count_available=true` 且值为非负整数时发布。D3 按时间维护最近 D2
-track_count，覆盖率为 unique assigned global track / current D2 tracks；held plan 的 backlog 优先取
-`hysteresis_pending_new_target_ids`，并保留 min-dwell reason/state/dwell。
+### Learning runtime provenance
 
-D4 从最后一份 region decision 保留 owner layer/node、epoch、lease、commit state、execution allowed、
-fail-closed 和 reasons；lease 以 D4 record timestamp 对显式 expiry 比较。D5 graph density 定义为
-`edge_count / (node_count*(node_count-1)/2)`，degree cap 总预算为 `node_count*per_node_cap/2`，同时保留
-dropped count、binding count 与 model/rule provenance。D7 command 是全 episode 所有 command row；
-hold 为 `mode=hold`，reject 是带非空 gate reason 的 hold，reason 单独分布。
+consumer 比较 `scenario_config.metadata.learning_runtime` 与
+`summary.module_final_diagnostics.learning_runtime`。schema 必须为
+`scalable3d-learning-runtime-v1`。D3/D4/D5 各自解析 requested/effective mode、bundle requested/loaded、
+fallback reason 和 model fingerprint；fingerprint 必须是 64 位 SHA-256。`bundle_loaded=true` 时，
+manifest/config runtime version 必须一致，且包含 fingerprint 前 12 位，才发布 learning model version。
+bundle 未加载、字段缺失、旧 schema 或不一致均写 null/unavailable+reason。runtime rule version 可以
+单独 available，但不升级为 learning model version。
 
-五米 scorer 过滤 `distance_m <= 5.0`。只有 offline label 显式提供无冲突的
-`global_track_id/center_global_track_id -> truth_entity_id`，且每个 proximity event 能定位 event
-时刻之前该资源的 D3 assignment 时，才发布身份正确数/率；当前 producer 的 observation-only label
-会得到 `offline_truth_labels_lack_global_track_mapping`。`mission_success` 始终不由此函数计算。
+D3 在线 assignment metadata 的 `learning_mode`、`learning_applied`、`learning_bundle_loaded` 和
+`learning_fallback_reason` 只有在记录完整时才聚合 publication/applied/fallback 和原因分布；部分记录
+缺字段时整项 unavailable，不缩小分母。D5 同样要求每条 association 显式带 fallback field，显式
+null/`none` 才能形成可用的零 fallback。
 
-`aggregate_scalable_3d_episodes()` 先按六个显式 group field 分组，再把同 seed episode 求均值。每项
-输出 mean、population std、min/max；至少两个有效 seed 才用固定 base seed 加稳定 SHA-256 offset 做
-percentile bootstrap 95% CI。stage timing 同时输出 call/wall/mean 分布、每 episode share 和 pooled
-share。`Scalable3DOfflineReportGenerator` 写四类 artifact；CLI 可重复传 `--episode-dir`，或用
-`--episode-root` 仅发现含 manifest 的目录。
+### D4 region-resource advice 审计
 
-2026-07-20 验收使用 10 个临时 fixture，门限为正常 50/50 显式分组、195->200 backlog=5、所有指定
-availability/fail-closed/fallback/dirty/缺协方差负例正确、双 seed CI available、单 seed CI null、CSV/JSON/
-Markdown/PNG 全部存在。结果专项 `10 passed`、D6 全量 `282 passed`；未运行真实 simulator/AirSim。
-剩余风险是正式 producer schema 漂移尚无真实 batch 证据、identity mapping 缺失、D2 IDSW unavailable
-以及 bootstrap 不能替代更多独立 seed。
+只接受 topic `modules.d4.region_resource_advice`、envelope schema
+`d4-region-resource-advisory-runtime-v1` 和 recommendation schema
+`d4-region-resource-recommendation-v1`。每条 advice 校验：
+
+- requested/effective mode、assist/fallback 布尔关系、非负 unseen seed 和有限非负 latency；
+- payload/envelope timestamp、scenario/version/seed、snapshot/authority/policy version；
+- action region 唯一性、quota integer、reserve/recon range、plan/version/epoch/lease 和 owner fence；
+- transfer source/target/count/edge/time 与 action quota delta 一致；
+- recommendation 已安全投影，全部 action 的 `sum(resource_quota_delta)=0`；
+- formal decision before/after digest 与 `formal_decision_unchanged` 一致。
+
+action fence 与 advice 之前最近一条正式 D4 region publication 比较。lease 已过期、owner/plan/version/
+epoch/lease 不一致记为 stale version evidence；字段缺失记为 missing version evidence。旧 schema、非法
+payload、非守恒 quota 或 digest flag 篡改记为 invalid。任一 invalid/stale/missing publication 会使该
+episode 的 mode/fallback/latency/shadow/assist 派生统计整体 unavailable，不用合法子集缩小分母；错误、
+版本问题、守恒和 mutation 计数仍单独保留。
+
+逐 episode 数值包括 publication/valid/invalid、requested/effective mode 分布、recommendation 和
+shadow output、assist eligible、fallback/reason、latency P50/P95、quota conservation violation、
+projection rejection、formal mutation/unchanged 和 stale/missing version evidence。当前 schema 没有
+control adoption 字段，`d4_advice_control_adoption_count` 因而是 null/unavailable；不能从
+`assist_eligible` 或 unchanged digest 推断控制采用。
+
+### 既有模块与聚合
+
+D1/D2 继续计算速度和速度协方差 trace 分布，D2 IDSW 只接受显式 availability。D3 覆盖率、backlog
+和 min-dwell，正式 D4 owner/epoch/lease/commit，D5 graph budget/binding，D7 command/hold/reject 均
+保留原算法。五米 scorer 仍只发布 evaluator-side proximity；缺显式 global-track-to-truth mapping 时
+身份 unavailable，`mission_success` 不由 proximity 或 advice 生成。
+
+`aggregate_scalable_3d_episodes()` 按 scenario/version 与显式 target/resource/recon/camera 分组，再
+按 seed 求 episode 均值。至少两个有效 seed 才做固定 RNG percentile bootstrap 95% CI；单 seed 只做
+描述统计。正式 acceptance 要求 `repository_dirty=false`、config hash、D4 policy version、finite 和
+online truth isolation 均有效，并拒绝 learning/advice integrity failure。
+
+2026-07-20 验收为 17 个 deterministic scalable fixtures，覆盖 disabled、三模块 missing bundle、
+assist-to-shadow、assist gate、守恒/非守恒、projection、formal mutation/unchanged、digest 篡改、旧
+schema、缺 plan version、缺 advice、既有规模/缺值和 seeds 1/2 bootstrap。专项 `17 passed`、D6 全量
+`289 passed`；未运行真实 simulator/AirSim，也不构成模型验收。
 
 ## Legacy suite ClockSpeed provenance 解析（2026-07-15）
 

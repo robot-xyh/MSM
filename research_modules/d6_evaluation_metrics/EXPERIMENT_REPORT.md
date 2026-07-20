@@ -1,20 +1,37 @@
 # D6 系统级评估指标实验报告
 
-## 2.1 2026-07-20 scalable 3D 离线入口确定性验收
+## 2.1 2026-07-20 scalable 3D 学习运行时确定性验收
 
-本节只记录接口/口径测试，不记录新的真实飞行或质点仿真性能。临时 fixture 包含显式
-target/resource/recon/camera=`50/50/4/54` seed 7，以及 `200/200/8/208` seed 8；后者首个 D2/D3
-快照为 195 条航迹/分配，后续 D2 为 200，D3 因 `min_dwell_not_met` 保持 195 个执行 target，D6
-报告 coverage=`195/200`、backlog=`5`。场景名故意含 `2v2`，输出仍按显式 50/50 分组。
+本节只记录 D6 consumer/report 的接口与口径测试，不记录真实飞行、质点仿真或学习模型性能。输入均为
+测试创建的 deterministic fixture。既有规模样本包括显式 target/resource/recon/camera=
+`50/50/4/54` seed 7 和 `200/200/8/208` seed 8；后者保持 195->200 min-dwell backlog=`5`。场景名
+故意含 `2v2`，分组仍来自显式数量。
 
-其余 fixture 覆盖 D2 IDSW unavailable、D4 lease expired/fail-closed、D5 `model_missing` 几何规则
-回退、4.5 m proximity 有物理证据但 observation-only truth label 无法评分身份，以及 dirty manifest。
-seeds 1/2 用于验证固定 RNG bootstrap；单 seed 用于验证 descriptive-only 和 null CI。
+学习运行时矩阵覆盖：
 
-接受门限：10 个专项测试全通过（含缺协方差回归）；每个缺字段为 null/unavailable+reason；四类输出均存在；D4/D7 过期
-原因不丢失；五米接近不写成任务成功。结果为专项 `10 passed`、D6 全量 `282 passed`，仅既有
-Matplotlib `Axes3D` warning。当前限制：这些是确定性 fixture，不是正式 50v50/200v200 性能样本；
-现有 producer 没有 global-track-to-truth evaluator mapping，正式多规模、多 seed 调用仍待 main 完成。
+| Fixture | 预期证据边界 |
+| --- | --- |
+| disabled | bundle loaded=false；model fingerprint/version unavailable；无 advice 属于 not expected |
+| D3/D4/D5 missing bundle | 三模块 fallback 原因保留；模型 fingerprint/version 不补值 |
+| D4 assist-to-shadow | loaded bundle 与合法 shadow recommendation 可用；assist eligible=0 |
+| D4 assist gate | assist eligible=1，但 formal decision unchanged，control adoption unavailable |
+| quota/projection | 守恒零、非守恒违规和 projection rejection 分别可审计 |
+| mutation/tamper | mutation/unchanged 分开；digest flag 篡改使 payload invalid |
+| old/missing evidence | 旧 advice schema、缺 plan version、缺 advice 均 fail closed，不补零 |
+| seeds 1/2 | 按实际规模形成 distinct-seed bootstrap；单 seed CI 仍为 null |
+
+逐 episode 接受门限为：learning runtime 双来源一致；loaded bundle 的 64 位 fingerprint 与 runtime
+version 后缀一致；advice schema/mode/action/transfer/authority/plan/version/epoch/lease 合法；projected
+quota 总和为零；formal digest flag 一致；控制采用不由 `assist_eligible` 回填。正式 evidence 另要求
+`repository_dirty=false`、配置 hash、D4 policy version、finite 和 online truth isolation 可用。
+
+结果为 scalable 专项 `17 passed`、D6 全量 `289 passed`，仅有既有 Matplotlib `Axes3D` warning。
+四类报告均生成，旧/非法/缺失字段均保持 null/unavailable+reason，single-seed 不产生推断结论。本轮
+没有运行真实 scalable 3D 或 AirSim episode，也没有模型 acceptance 样本；任何 dirty smoke 只可做
+人工兼容检查，不进入本节验收结果。
+
+剩余限制：main 尚需提供 clean、多规模、多 seed 正式学习 bundle；producer 尚无独立 control-adoption
+evidence 和 global-track-to-truth evaluator mapping；D2 IDSW 继续由 producer availability 决定。
 
 ## 2.0 2026-07-15 真实 M5N2 三档 ClockSpeed 对比
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import csv
 import hashlib
 import json
@@ -60,15 +61,114 @@ def _envelope(
     topic: str,
     timestamp: float,
     payload: dict[str, object],
+    *,
+    schema_version: str | None = None,
 ) -> dict[str, object]:
     return {
         "sequence": sequence,
         "topic": topic,
         "source": topic.split(".")[1].upper() if topic.startswith("modules.") else "SENSOR",
         "timestamp": timestamp,
-        "schema_version": f"fixture-{topic.replace('.', '-')}-v1",
+        "schema_version": schema_version or f"fixture-{topic.replace('.', '-')}-v1",
         "payload": payload,
     }
+
+
+def _learning_runtime(profile: str) -> tuple[dict[str, object], dict[str, str]]:
+    fingerprints = {
+        "d3": "a" * 64,
+        "d4": "b" * 64,
+        "d5": "c" * 64,
+    }
+    versions = {
+        "d3_policy_version": "d3-scalable3d-rule-cost-v1",
+        "d4_policy_version": "d4-region-resource-rule-v1",
+        "d5_model_version": "d5-scalable3d-geometry-rule-v1",
+    }
+    modules: dict[str, dict[str, object]] = {
+        "d3": {
+            "requested_mode": "disabled",
+            "effective_mode": "disabled",
+            "bundle_requested": False,
+            "bundle_loaded": False,
+            "fallback_reason": None,
+            "model_fingerprint": None,
+        },
+        "d4": {
+            "requested_mode": "disabled",
+            "effective_mode": "disabled",
+            "bundle_requested": False,
+            "bundle_loaded": False,
+            "fallback_reason": None,
+            "model_fingerprint": None,
+            "formal_unseen_seed_count": 0,
+        },
+        "d5": {
+            "requested_mode": "disabled",
+            "effective_mode": "disabled",
+            "bundle_requested": False,
+            "bundle_loaded": False,
+            "fallback_reason": None,
+            "model_fingerprint": None,
+        },
+    }
+    if profile == "missing_bundle":
+        modules["d3"].update(
+            requested_mode="shadow",
+            effective_mode="rule_fallback",
+            bundle_requested=True,
+            fallback_reason="model_bundle_missing",
+        )
+        modules["d4"].update(
+            requested_mode="assist",
+            effective_mode="pending_runtime_shadow_gate",
+            bundle_requested=True,
+            fallback_reason="model_bundle_missing",
+        )
+        modules["d5"].update(
+            requested_mode="assist",
+            effective_mode="rule_fallback",
+            bundle_requested=True,
+            fallback_reason="bundle_missing",
+        )
+    elif profile == "assist_shadow":
+        modules["d3"].update(
+            requested_mode="shadow",
+            effective_mode="shadow",
+            bundle_requested=True,
+            bundle_loaded=True,
+            model_fingerprint=fingerprints["d3"],
+        )
+        modules["d4"].update(
+            requested_mode="assist",
+            effective_mode="pending_runtime_shadow_gate",
+            bundle_requested=True,
+            bundle_loaded=True,
+            model_fingerprint=fingerprints["d4"],
+        )
+        modules["d5"].update(
+            requested_mode="assist",
+            effective_mode="assist",
+            bundle_requested=True,
+            bundle_loaded=True,
+            model_fingerprint=fingerprints["d5"],
+        )
+        versions = {
+            "d3_policy_version": f"d3-shared-edge-v1+{fingerprints['d3'][:12]}",
+            "d4_policy_version": f"d4-region-graph-v1+{fingerprints['d4'][:12]}",
+            "d5_model_version": f"d5-crossview-gnn-v1.0.0+{fingerprints['d5'][:12]}",
+        }
+    elif profile != "disabled":
+        raise ValueError(f"unsupported learning fixture profile: {profile}")
+    return (
+        {
+            "schema_version": "scalable3d-learning-runtime-v1",
+            "device": "cpu",
+            **modules,
+            "default_rule_path_preserved": True,
+        },
+        versions,
+    )
 
 
 def _d3_payload(
@@ -76,6 +176,7 @@ def _d3_payload(
     target_count: int,
     assignment_count: int,
     metadata: dict[str, object] | None = None,
+    learning_metadata: dict[str, object] | None = None,
 ) -> dict[str, object]:
     assignments = [
         {
@@ -92,6 +193,19 @@ def _d3_payload(
         }
         for index in range(assignment_count)
     ]
+    resolved_metadata = dict(
+        metadata
+        or {
+            "hysteresis_state": "unchanged",
+            "hysteresis_reason": "same_assignment",
+            "hysteresis_reasons": ["same_assignment"],
+            "hysteresis_dwell_time_s": 0.8,
+            "hysteresis_min_dwell_s": 2.0,
+            "hysteresis_dwell_ok": True,
+        }
+    )
+    if learning_metadata is not None:
+        resolved_metadata.update(learning_metadata)
     return {
         "timestamp": 0.8,
         "plan_id": "PLAN-0001",
@@ -103,14 +217,7 @@ def _d3_payload(
         "assignments": assignments,
         "unassigned_global_track_ids": [],
         "solver_name": "fixture_sparse_solver",
-        "metadata": metadata or {
-            "hysteresis_state": "unchanged",
-            "hysteresis_reason": "same_assignment",
-            "hysteresis_reasons": ["same_assignment"],
-            "hysteresis_dwell_time_s": 0.8,
-            "hysteresis_min_dwell_s": 2.0,
-            "hysteresis_dwell_ok": True,
-        },
+        "metadata": resolved_metadata,
     }
 
 
@@ -196,9 +303,11 @@ def _write_episode(
     d2_id_switch_available: bool = False,
     d4_lease_expired: bool = False,
     physical_proximity: bool = False,
+    learning_profile: str = "disabled",
 ) -> Path:
     directory.mkdir(parents=True)
     camera_count = resource_count + recon_count
+    learning_runtime, learning_versions = _learning_runtime(learning_profile)
     config = {
         "scenario_name": "misleading_2v2_label",
         "scenario_version": "explicit-scale-fixture-v1",
@@ -208,7 +317,8 @@ def _write_episode(
         "recon_count": recon_count,
         "region_count": 1,
         "visual_enabled": True,
-        "metadata": {},
+        **learning_versions,
+        "metadata": {"learning_runtime": copy.deepcopy(learning_runtime)},
         "schema_version": "scalable3d-scenario-v1",
     }
     canonical = json.dumps(
@@ -233,8 +343,7 @@ def _write_episode(
         "offline_truth_schema": "scalable3d-offline-truth-v1",
         "d1_model_version": "d1-scalable3d-fusion-v1",
         "d2_model_version": "d2-scalable3d-association-v1",
-        "d3_policy_version": "d3-scalable3d-rule-cost-v1",
-        "d5_model_version": "d5-scalable3d-geometry-rule-v1",
+        **learning_versions,
         "d7_model_version": "d7-scalable3d-guidance-v1",
         "threshold_version": "scalable3d-thresholds-v1",
     }
@@ -250,6 +359,7 @@ def _write_episode(
         "online_truth_use_count": 0,
         "module_final_diagnostics": {
             "schema_version": "scalable3d-module-stack-v1",
+            "learning_runtime": copy.deepcopy(learning_runtime),
             "regional_plan_rejection_reason": (
                 "regional_d4_authority_lease_expired" if d4_lease_expired else None
             ),
@@ -260,6 +370,17 @@ def _write_episode(
     d1_tracks = [_track(index) for index in range(target_count)]
     initial_d2_tracks = [_track(index, speed_offset=0.5) for index in range(initial_d2_count)]
     final_d2_tracks = [_track(index, speed_offset=0.5) for index in range(final_d2_count)]
+    d3_learning_metadata = None
+    if learning_profile != "disabled":
+        d3_runtime = learning_runtime["d3"]
+        assert isinstance(d3_runtime, dict)
+        d3_learning_metadata = {
+            "learning_mode": d3_runtime["requested_mode"],
+            "learning_applied": False,
+            "learning_bundle_loaded": d3_runtime["bundle_loaded"],
+            "learning_fallback_reason": d3_runtime["fallback_reason"],
+            "learning_shadow_only": learning_profile == "assist_shadow",
+        }
     sequence = 1
     online: list[dict[str, object]] = []
     online.append(
@@ -296,6 +417,7 @@ def _write_episode(
             _d3_payload(
                 target_count=initial_d2_count,
                 assignment_count=first_assignment_count,
+                learning_metadata=d3_learning_metadata,
             ),
         )
     )
@@ -337,7 +459,12 @@ def _write_episode(
                 sequence,
                 "modules.d3.assignment_plan",
                 0.8,
-                _d3_payload(target_count=200, assignment_count=195, metadata=metadata),
+                _d3_payload(
+                    target_count=200,
+                    assignment_count=195,
+                    metadata=metadata,
+                    learning_metadata=d3_learning_metadata,
+                ),
             )
         )
         sequence += 1
@@ -367,9 +494,29 @@ def _write_episode(
                 "tracklet_count": 20,
                 "graph_node_count": 20,
                 "graph_edge_count": 40,
-                "probability_source": "deterministic_geometry_rule",
-                "scoring_status": "rule_fallback_model_missing",
-                "fallback_reason": "model_missing",
+                "probability_source": (
+                    "loaded_edge_model"
+                    if learning_profile == "assist_shadow"
+                    else "deterministic_geometry_rule"
+                ),
+                "scoring_status": (
+                    "model_scored"
+                    if learning_profile == "assist_shadow"
+                    else (
+                        "rule_fallback_model_unavailable"
+                        if learning_profile == "missing_bundle"
+                        else "rule_fallback_model_missing"
+                    )
+                ),
+                "fallback_reason": (
+                    None
+                    if learning_profile == "assist_shadow"
+                    else (
+                        "bundle_missing"
+                        if learning_profile == "missing_bundle"
+                        else "model_missing"
+                    )
+                ),
                 "diagnostics": {
                     "all_possible_camera_pairs": 1_431,
                     "candidate_tracklet_edges": 40,
@@ -475,6 +622,115 @@ def _write_episode(
             ]
         )
     return directory
+
+
+def _d4_advice_payload(
+    episode: Path,
+    *,
+    requested_mode: str = "assist",
+    effective_mode: str = "shadow",
+    assist_eligible: bool = False,
+    fallback_used: bool = False,
+    fallback_reason: str | None = None,
+    inference_latency_ms: float = 2.0,
+    quota_delta: int = 0,
+    projection_rejections: list[str] | None = None,
+    formal_mutated: bool = False,
+    unseen_seed_count: int = 0,
+) -> dict[str, object]:
+    config = json.loads((episode / "scenario_config.json").read_text(encoding="utf-8"))
+    records = [
+        json.loads(line)
+        for line in (episode / "online_observations.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    formal = next(
+        record["payload"]
+        for record in reversed(records)
+        if record["topic"] == "modules.d4.regional_failover"
+    )
+    region = formal["regions"][0]
+    ownership = region["ownership"]
+    timestamp = float(formal["timestamp_s"])
+    d4_runtime = config["metadata"]["learning_runtime"]["d4"]
+    learned = d4_runtime["bundle_loaded"] is True
+    digest_before = "d" * 64
+    digest_after = "e" * 64 if formal_mutated else digest_before
+    return {
+        "timestamp": timestamp,
+        "requested_mode": requested_mode,
+        "effective_mode": effective_mode,
+        "recommendation": {
+            "schema": "d4-region-resource-recommendation-v1",
+            "snapshot_id": f"fixture-s{config['seed']}-t{timestamp:.1f}",
+            "scenario_id": config["scenario_name"],
+            "scenario_version": config["scenario_version"],
+            "seed": config["seed"],
+            "authority_digest": "a" * 64,
+            "created_at_s": timestamp,
+            "policy_name": (
+                "d4-region-resource-learned" if learned else "d4-region-resource-rule"
+            ),
+            "policy_version": (
+                str(config["d4_policy_version"]).rsplit("+", 1)[0]
+                if learned
+                else "v1"
+            ),
+            "source": "learned" if learned else "rule",
+            "confidence": 0.9,
+            "actions": [
+                {
+                    "region_id": region["region_id"],
+                    "resource_quota_delta": quota_delta,
+                    "reserve_ratio": 0.1,
+                    "reconnaissance_priority": 0.5,
+                    "hold": False,
+                    "request_replan": False,
+                    "expected_owner_id": ownership["owner_id"],
+                    "expected_owner_layer": ownership["owner_layer"],
+                    "expected_plan_id": ownership["plan_id"],
+                    "expected_plan_version": ownership["plan_version"],
+                    "expected_epoch": ownership["epoch"],
+                    "expected_lease_expires_at_s": ownership["lease_expires_at_s"],
+                    "reasons": [],
+                }
+            ],
+            "transfers": [],
+            "projected": True,
+            "fallback_reason": fallback_reason,
+            "model_sha256": d4_runtime["model_fingerprint"] if learned else None,
+            "projection_rejections": projection_rejections or [],
+        },
+        "fallback_used": fallback_used,
+        "fallback_reason": fallback_reason,
+        "assist_eligible": assist_eligible,
+        "unseen_seed_count": unseen_seed_count,
+        "inference_latency_ms": inference_latency_ms,
+        "formal_decision_digest_before": digest_before,
+        "formal_decision_digest_after": digest_after,
+        "formal_decision_unchanged": not formal_mutated,
+    }
+
+
+def _append_d4_advice(
+    episode: Path,
+    payload: dict[str, object],
+    *,
+    schema_version: str = "d4-region-resource-advisory-runtime-v1",
+) -> None:
+    path = episode / "online_observations.jsonl"
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    records.append(
+        _envelope(
+            max(int(record["sequence"]) for record in records) + 1,
+            "modules.d4.region_resource_advice",
+            float(payload["timestamp"]),
+            payload,
+            schema_version=schema_version,
+        )
+    )
+    _write_jsonl(path, records)
 
 
 def test_normal_50v50_uses_explicit_scale_and_records_module_metrics(tmp_path: Path) -> None:
@@ -597,6 +853,244 @@ def test_d5_model_missing_rule_fallback_is_not_model_evidence(tmp_path: Path) ->
     assert row["d5_graph_budget_utilization"] == pytest.approx(0.5)
 
 
+def test_disabled_learning_runtime_keeps_model_evidence_unavailable(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(tmp_path / "learning_disabled")
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["learning_runtime_schema_version"] == "scalable3d-learning-runtime-v1"
+    assert row["learning_runtime_metadata_consistent"] is True
+    for module in ("d3", "d4", "d5"):
+        assert row[f"{module}_learning_requested_mode"] == "disabled"
+        assert row[f"{module}_learning_bundle_loaded"] is False
+        assert row[f"{module}_learning_model_fingerprint"] is None
+        assert row[f"{module}_learning_model_fingerprint_availability"] == "unavailable"
+        assert row[f"{module}_learning_model_version"] is None
+    assert row["d3_learning_publication_count"] == 0
+    assert row["d3_learning_applied_count"] is None
+    assert row["d4_advice_publication_count"] == 0
+    assert row["d4_advice_evidence_status"] == "not_expected_disabled"
+    assert row["d4_advice_shadow_output_count"] is None
+    assert row["d4_advice_control_adoption_count"] is None
+    assert row["formal_acceptance_eligible"] is True
+
+
+def test_missing_bundle_fallback_consumes_d3_d4_d5_fields_without_model_evidence(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(
+        tmp_path / "missing_bundle",
+        learning_profile="missing_bundle",
+    )
+    _append_d4_advice(
+        episode,
+        _d4_advice_payload(
+            episode,
+            fallback_used=True,
+            fallback_reason="bundle_validation_failed:model_bundle_missing",
+            inference_latency_ms=0.0,
+        ),
+    )
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["d3_learning_publication_count"] == 1
+    assert row["d3_learning_applied_count"] == 0
+    assert row["d3_learning_fallback_event_count"] == 1
+    assert row["d3_learning_fallback_reason_distribution_json"] == {
+        "model_bundle_missing": 1
+    }
+    assert row["d4_learning_bundle_loaded"] is False
+    assert row["d4_learning_model_fingerprint"] is None
+    assert row["d4_learning_model_version"] is None
+    assert row["d4_advice_publication_count"] == 1
+    assert row["d4_advice_requested_mode_distribution_json"] == {"assist": 1}
+    assert row["d4_advice_effective_mode_distribution_json"] == {"shadow": 1}
+    assert row["d4_advice_fallback_count"] == 1
+    assert row["d4_advice_fallback_reason_distribution_json"] == {
+        "bundle_validation_failed:model_bundle_missing": 1
+    }
+    assert row["d4_advice_inference_latency_p50_ms"] == 0.0
+    assert row["d4_advice_formal_decision_unchanged_count"] == 1
+    assert row["d5_learning_bundle_loaded"] is False
+    assert row["d5_model_fallback_event_count"] == 1
+    assert row["d5_fallback_reason_distribution_json"] == {"bundle_missing": 1}
+
+
+def test_loaded_bundle_shadow_output_is_not_control_adoption_or_physical_result(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(
+        tmp_path / "assist_to_shadow",
+        learning_profile="assist_shadow",
+        physical_proximity=True,
+    )
+    _append_d4_advice(
+        episode,
+        _d4_advice_payload(
+            episode,
+            projection_rejections=["authority_fenced", "capacity_clipped"],
+            inference_latency_ms=4.0,
+        ),
+    )
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    for module, fingerprint in (("d3", "a" * 64), ("d4", "b" * 64), ("d5", "c" * 64)):
+        assert row[f"{module}_learning_bundle_loaded"] is True
+        assert row[f"{module}_learning_model_fingerprint"] == fingerprint
+        assert row[f"{module}_learning_model_version_availability"] == "available"
+        assert fingerprint[:12] in row[f"{module}_learning_model_version"]
+    assert row["d4_advice_recommendation_output_count"] == 1
+    assert row["d4_advice_shadow_output_count"] == 1
+    assert row["d4_advice_assist_eligible_count"] == 0
+    assert row["d4_advice_projection_rejection_count"] == 2
+    assert row["d4_advice_resource_quota_conservation_violation_count"] == 0
+    assert row["d4_advice_formal_decision_mutation_count"] == 0
+    assert row["d4_advice_formal_decision_unchanged_count"] == 1
+    assert row["d4_advice_control_adoption_count"] is None
+    assert row["d4_advice_control_adoption_count_unavailable_reason"] == (
+        "d4_advice_schema_has_no_control_adoption_evidence"
+    )
+    assert row["offline_proximity_within_5m_count"] == 1
+    assert row["mission_success"] is None
+
+
+def test_assist_eligible_is_a_gate_and_formal_decision_still_remains_unchanged(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(
+        tmp_path / "assist_eligible",
+        learning_profile="assist_shadow",
+    )
+    _append_d4_advice(
+        episode,
+        _d4_advice_payload(
+            episode,
+            effective_mode="assist",
+            assist_eligible=True,
+            unseen_seed_count=20,
+        ),
+    )
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["d4_advice_assist_eligible_count"] == 1
+    assert row["d4_advice_effective_mode_distribution_json"] == {"assist": 1}
+    assert row["d4_advice_formal_decision_unchanged_count"] == 1
+    assert row["d4_advice_formal_decision_mutation_count"] == 0
+    assert row["d4_advice_control_adoption_count"] is None
+
+
+def test_nonconserving_projected_advice_is_counted_and_fails_formal_evidence(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(
+        tmp_path / "nonconserving",
+        learning_profile="assist_shadow",
+    )
+    _append_d4_advice(
+        episode,
+        _d4_advice_payload(episode, quota_delta=1),
+    )
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["d4_advice_invalid_publication_count"] == 1
+    assert row["d4_advice_resource_quota_conservation_violation_count"] == 1
+    assert row["d4_advice_invalid_reason_distribution_json"] == {
+        "projected_recommendation_not_resource_conserving": 1
+    }
+    assert row["d4_advice_shadow_output_count"] is None
+    assert row["formal_acceptance_eligible"] is False
+
+
+def test_tampered_digest_flag_is_invalid_and_does_not_hide_mutation(
+    tmp_path: Path,
+) -> None:
+    episode = _write_episode(
+        tmp_path / "tampered",
+        learning_profile="assist_shadow",
+    )
+    payload = _d4_advice_payload(episode, formal_mutated=True)
+    payload["formal_decision_unchanged"] = True
+    payload["recommendation"]["model_sha256"] = "f" * 64
+    _append_d4_advice(episode, payload)
+
+    row = evaluate_scalable_3d_episode(episode)
+
+    assert row["d4_advice_invalid_publication_count"] == 1
+    assert row["d4_advice_formal_decision_mutation_count"] == 1
+    assert row["d4_advice_formal_decision_unchanged_count"] == 0
+    assert row["d4_advice_invalid_reason_distribution_json"] == {
+        "formal_decision_digest_flag_mismatch": 1
+    }
+    assert row["d4_advice_stale_version_evidence_count"] == 1
+    assert row["d4_advice_version_evidence_issue_reasons_json"] == {
+        "recommendation_model_fingerprint_mismatch": 1
+    }
+    assert row["d4_advice_control_adoption_count"] is None
+    assert row["formal_acceptance_eligible"] is False
+
+
+def test_old_advice_schema_and_missing_advice_remain_unavailable_not_zero(
+    tmp_path: Path,
+) -> None:
+    old = _write_episode(tmp_path / "old_schema", learning_profile="assist_shadow")
+    _append_d4_advice(
+        old,
+        _d4_advice_payload(old),
+        schema_version="d4-region-resource-advisory-runtime-v0",
+    )
+    missing = _write_episode(
+        tmp_path / "missing_advice",
+        learning_profile="assist_shadow",
+    )
+    missing_online_path = missing / "online_observations.jsonl"
+    missing_online = [
+        json.loads(line)
+        for line in missing_online_path.read_text(encoding="utf-8").splitlines()
+    ]
+    d5_missing_fallback = next(
+        record
+        for record in missing_online
+        if record["topic"] == "modules.d5.terminal_association"
+    )
+    del d5_missing_fallback["payload"]["fallback_reason"]
+    _write_jsonl(missing_online_path, missing_online)
+    missing_version = _write_episode(
+        tmp_path / "missing_version",
+        learning_profile="assist_shadow",
+    )
+    missing_version_payload = _d4_advice_payload(missing_version)
+    del missing_version_payload["recommendation"]["actions"][0][
+        "expected_plan_version"
+    ]
+    _append_d4_advice(missing_version, missing_version_payload)
+
+    old_row = evaluate_scalable_3d_episode(old)
+    missing_row = evaluate_scalable_3d_episode(missing)
+    missing_version_row = evaluate_scalable_3d_episode(missing_version)
+
+    assert old_row["d4_advice_publication_count"] == 1
+    assert old_row["d4_advice_invalid_publication_count"] == 1
+    assert old_row["d4_advice_stale_version_evidence_count"] == 1
+    assert old_row["d4_advice_shadow_output_count"] is None
+    assert missing_row["d4_advice_publication_count"] == 0
+    assert missing_row["d4_advice_shadow_output_count"] is None
+    assert missing_row["d4_advice_shadow_output_count_unavailable_reason"] == (
+        "d4_region_resource_advice_missing"
+    )
+    assert missing_row["d5_model_fallback_event_count"] is None
+    assert missing_row["d5_model_fallback_event_count_availability"] == "unavailable"
+    assert missing_row["formal_acceptance_eligible"] is False
+    assert missing_version_row["d4_advice_missing_version_evidence_count"] == 1
+    assert missing_version_row["d4_advice_version_evidence_issue_count"] == 1
+    assert missing_version_row["d4_advice_shadow_output_count"] is None
+
+
 def test_five_meter_evidence_does_not_imply_success_or_identity_correctness(
     tmp_path: Path,
 ) -> None:
@@ -647,8 +1141,18 @@ def test_dirty_manifest_is_descriptive_and_not_formal_evidence(tmp_path: Path) -
 def test_report_bundle_bootstraps_distinct_seeds_and_writes_all_artifacts(
     tmp_path: Path,
 ) -> None:
-    first = _write_episode(tmp_path / "suite" / "seed_1", seed=1)
-    second = _write_episode(tmp_path / "suite" / "seed_2", seed=2)
+    first = _write_episode(
+        tmp_path / "suite" / "seed_1",
+        seed=1,
+        learning_profile="assist_shadow",
+    )
+    second = _write_episode(
+        tmp_path / "suite" / "seed_2",
+        seed=2,
+        learning_profile="assist_shadow",
+    )
+    _append_d4_advice(first, _d4_advice_payload(first, inference_latency_ms=1.0))
+    _append_d4_advice(second, _d4_advice_payload(second, inference_latency_ms=3.0))
     discovered = discover_scalable_3d_episode_dirs(episode_roots=[tmp_path / "suite"])
 
     outputs = Scalable3DOfflineReportGenerator().write_report_bundle(
@@ -677,6 +1181,14 @@ def test_report_bundle_bootstraps_distinct_seeds_and_writes_all_artifacts(
         group["metric_statistics"]["d1_track_count"]["bootstrap_availability"]
         == "available"
     )
+    assert group["d4_advice_requested_mode_distribution"] == {"assist": 2}
+    assert group["d4_advice_effective_mode_distribution"] == {"shadow": 2}
+    assert (
+        group["metric_statistics"]["d4_advice_inference_latency_p50_ms"][
+            "bootstrap_availability"
+        ]
+        == "available"
+    )
     assert set(group["stage_timing"]) == {
         "module.d1_fusion",
         "module.d3_assignment",
@@ -691,6 +1203,9 @@ def test_report_bundle_bootstraps_distinct_seeds_and_writes_all_artifacts(
     markdown = outputs["markdown"].read_text(encoding="utf-8")
     assert "五米接近仅是离线物理诊断" in markdown
     assert "不从 2v2/5v5 名称推断规模" in markdown
+    assert "bundle 能加载" in markdown
+    assert "`assist_eligible` 不是控制生效" in markdown
+    assert "控制采用字段保持 unavailable" in markdown
 
 
 def test_cli_accepts_episode_root_and_generates_bundle(tmp_path: Path) -> None:

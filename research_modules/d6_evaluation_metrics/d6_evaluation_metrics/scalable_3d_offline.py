@@ -26,12 +26,23 @@ import numpy as np
 
 
 SCALABLE_3D_OFFLINE_EVALUATION_SCHEMA_VERSION = (
-    "d6-scalable3d-offline-evaluation-v1"
+    "d6-scalable3d-offline-evaluation-v2"
 )
 SCALABLE_3D_OFFLINE_EVALUATION_DATE = "2026-07-20"
 DEFAULT_SCALABLE_3D_BOOTSTRAP_RESAMPLES = 2_000
 DEFAULT_SCALABLE_3D_BOOTSTRAP_RNG_SEED = 20260720
 FIVE_METER_THRESHOLD_M = 5.0
+
+_LEARNING_RUNTIME_SCHEMA = "scalable3d-learning-runtime-v1"
+_D4_REGION_ADVICE_TOPIC = "modules.d4.region_resource_advice"
+_D4_REGION_ADVICE_SCHEMA = "d4-region-resource-advisory-runtime-v1"
+_D4_REGION_RECOMMENDATION_SCHEMA = "d4-region-resource-recommendation-v1"
+_LEARNING_MODULE_VERSION_FIELDS = {
+    "d3": "d3_policy_version",
+    "d4": "d4_policy_version",
+    "d5": "d5_model_version",
+}
+_ADVISOR_MODES = frozenset({"disabled", "shadow", "assist"})
 
 _OPTIONAL_TRUTH_ARTIFACT = "offline_truth_labels.jsonl"
 _GROUP_FIELDS = (
@@ -91,11 +102,34 @@ _METRIC_FIELDS = (
     "d3_backlog_count",
     "d3_min_dwell_hold_event_count",
     "d3_min_dwell_backlog_max",
+    "d3_learning_publication_count",
+    "d3_learning_applied_count",
+    "d3_learning_fallback_event_count",
+    "d3_learning_bundle_loaded",
     "d4_region_count",
     "d4_execution_allowed_region_count",
     "d4_fail_closed_region_count",
     "d4_lease_expired_region_count",
     "d4_commit_count",
+    "d4_advice_publication_count",
+    "d4_advice_valid_publication_count",
+    "d4_advice_invalid_publication_count",
+    "d4_advice_recommendation_output_count",
+    "d4_advice_shadow_output_count",
+    "d4_advice_assist_eligible_count",
+    "d4_advice_fallback_count",
+    "d4_advice_inference_latency_p50_ms",
+    "d4_advice_inference_latency_p95_ms",
+    "d4_advice_resource_quota_conservation_violation_count",
+    "d4_advice_projection_rejection_count",
+    "d4_advice_formal_decision_mutation_count",
+    "d4_advice_formal_decision_unchanged_count",
+    "d4_advice_stale_version_evidence_count",
+    "d4_advice_missing_version_evidence_count",
+    "d4_advice_version_evidence_issue_count",
+    "d4_advice_control_adoption_count",
+    "d4_learning_bundle_loaded",
+    "d4_learning_formal_unseen_seed_count",
     "d5_candidate_edge_count",
     "d5_graph_density",
     "d5_graph_edge_budget",
@@ -103,6 +137,7 @@ _METRIC_FIELDS = (
     "d5_graph_budget_dropped_count",
     "d5_binding_count",
     "d5_model_fallback_event_count",
+    "d5_learning_bundle_loaded",
     "d7_command_count",
     "d7_hold_count",
     "d7_reject_count",
@@ -112,6 +147,7 @@ _METRIC_FIELDS = (
     "offline_proximity_identity_correct_count",
     "offline_proximity_identity_correct_rate",
 )
+
 class Scalable3DOfflineEvaluationError(ValueError):
     """Raised when a persisted episode artifact is malformed or contradictory."""
 
@@ -262,6 +298,7 @@ def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
     }
 
     _extract_provenance(row, manifest, config, summary)
+    _extract_learning_runtime_metrics(row, manifest, config, summary)
     ordered_online = _ordered_online_records(online or [])
     _extract_online_truth_audit(
         row,
@@ -273,7 +310,9 @@ def evaluate_scalable_3d_episode(episode_dir: str | Path) -> dict[str, Any]:
     _extract_track_metrics(row, ordered_online, module="d2")
     _extract_d2_id_switch(row, ordered_online)
     _extract_d3_metrics(row, ordered_online)
+    _extract_d3_learning_metrics(row, ordered_online)
     _extract_d4_metrics(row, ordered_online)
+    _extract_d4_region_advice_metrics(row, ordered_online)
     _extract_d5_metrics(row, ordered_online)
     _extract_d7_metrics(row, ordered_online)
     _extract_camera_count(row, config, ordered_online)
@@ -361,8 +400,61 @@ def aggregate_scalable_3d_episodes(
             "d4_fail_closed_reason_distribution": _counter_from_mapping_field(
                 group_rows, "d4_fail_closed_reasons_json"
             ),
+            "d3_learning_requested_mode_distribution": _counter_from_scalar_field(
+                group_rows, "d3_learning_requested_mode"
+            ),
+            "d3_learning_effective_mode_distribution": _counter_from_scalar_field(
+                group_rows, "d3_learning_effective_mode"
+            ),
+            "d3_learning_runtime_fallback_reason_distribution": (
+                _counter_from_scalar_field(
+                    group_rows, "d3_learning_fallback_reason"
+                )
+            ),
+            "d3_learning_fallback_reason_distribution": _counter_from_mapping_field(
+                group_rows, "d3_learning_fallback_reason_distribution_json"
+            ),
+            "d4_learning_requested_mode_distribution": _counter_from_scalar_field(
+                group_rows, "d4_learning_requested_mode"
+            ),
+            "d4_learning_effective_mode_distribution": _counter_from_scalar_field(
+                group_rows, "d4_learning_effective_mode"
+            ),
+            "d4_learning_runtime_fallback_reason_distribution": (
+                _counter_from_scalar_field(
+                    group_rows, "d4_learning_fallback_reason"
+                )
+            ),
+            "d4_advice_requested_mode_distribution": _counter_from_mapping_field(
+                group_rows, "d4_advice_requested_mode_distribution_json"
+            ),
+            "d4_advice_effective_mode_distribution": _counter_from_mapping_field(
+                group_rows, "d4_advice_effective_mode_distribution_json"
+            ),
+            "d4_advice_fallback_reason_distribution": _counter_from_mapping_field(
+                group_rows, "d4_advice_fallback_reason_distribution_json"
+            ),
+            "d4_advice_invalid_reason_distribution": _counter_from_mapping_field(
+                group_rows, "d4_advice_invalid_reason_distribution_json"
+            ),
+            "d4_advice_version_evidence_issue_reason_distribution": (
+                _counter_from_mapping_field(
+                    group_rows, "d4_advice_version_evidence_issue_reasons_json"
+                )
+            ),
             "d5_fallback_reason_distribution": _counter_from_mapping_field(
                 group_rows, "d5_fallback_reason_distribution_json"
+            ),
+            "d5_learning_requested_mode_distribution": _counter_from_scalar_field(
+                group_rows, "d5_learning_requested_mode"
+            ),
+            "d5_learning_effective_mode_distribution": _counter_from_scalar_field(
+                group_rows, "d5_learning_effective_mode"
+            ),
+            "d5_learning_runtime_fallback_reason_distribution": (
+                _counter_from_scalar_field(
+                    group_rows, "d5_learning_fallback_reason"
+                )
             ),
             "d7_reject_reason_distribution": _counter_from_mapping_field(
                 group_rows, "d7_reject_reason_distribution_json"
@@ -415,6 +507,26 @@ def aggregate_scalable_3d_episodes(
             ),
             "identity_correctness": (
                 "available only with explicit evaluator-side global-track-to-truth mapping"
+            ),
+        },
+        "learning_evidence_layers": {
+            "bundle_loaded": (
+                "runtime metadata only; proves that a versioned bundle loaded"
+            ),
+            "shadow_output": (
+                "valid projected recommendation publication; not control adoption"
+            ),
+            "assist_eligible": (
+                "advisor gate eligibility only; not control adoption"
+            ),
+            "control_adoption": (
+                "unavailable unless a separate producer field explicitly records adoption"
+            ),
+            "physical_outcome": (
+                "offline proximity diagnostic; no causal attribution to learning advice"
+            ),
+            "current_d4_contract": (
+                "region_resource_advice leaves the formal D4 decision unchanged"
             ),
         },
     }
@@ -475,6 +587,91 @@ def render_scalable_3d_offline_markdown(
                 rejects=_fmt_available(row, "d7_reject_count"),
                 proximity=_fmt_available(row, "offline_proximity_within_5m_count"),
                 identity=identity,
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 学习运行时与 D4 Advice 分层",
+            "",
+            "以下五层不能互相回填：bundle 能加载只说明版本化产物可用；shadow 有输出只说明产生了合法且经过安全投影的 recommendation；assist 获准只说明门控通过；控制实际采用必须有独立 producer 证据；物理结果仍是离线结果层。",
+            "当前 `d4-region-resource-advisory-runtime-v1` 不改变正式 D4 裁决，因此 `assist_eligible` 不是控制生效，控制采用字段保持 unavailable。",
+            "",
+            "| seed | D3 bundle/fingerprint/version | D4 bundle/fingerprint/version | D5 bundle/fingerprint/version | D4 advice pub | shadow output | assist eligible | formal unchanged/mutation | control adopted | physical <=5m |",
+            "| ---: | --- | --- | --- | ---: | ---: | ---: | --- | --- | ---: |",
+        ]
+    )
+    for row in rows:
+        module_evidence = {}
+        for module in ("d3", "d4", "d5"):
+            module_evidence[module] = "/".join(
+                (
+                    _fmt_available(row, f"{module}_learning_bundle_loaded"),
+                    _fmt_available(row, f"{module}_learning_model_fingerprint"),
+                    _fmt_available(row, f"{module}_learning_model_version"),
+                )
+            )
+        lines.append(
+            "| {seed} | {d3} | {d4} | {d5} | {published} | {shadow} | {assist} | "
+            "{unchanged}/{mutation} | {adopted} | {physical} |".format(
+                seed=_fmt(row.get("seed")),
+                d3=module_evidence["d3"],
+                d4=module_evidence["d4"],
+                d5=module_evidence["d5"],
+                published=_fmt_available(row, "d4_advice_publication_count"),
+                shadow=_fmt_available(row, "d4_advice_shadow_output_count"),
+                assist=_fmt_available(row, "d4_advice_assist_eligible_count"),
+                unchanged=_fmt_available(
+                    row, "d4_advice_formal_decision_unchanged_count"
+                ),
+                mutation=_fmt_available(
+                    row, "d4_advice_formal_decision_mutation_count"
+                ),
+                adopted=_fmt_available(row, "d4_advice_control_adoption_count"),
+                physical=_fmt_available(row, "offline_proximity_within_5m_count"),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "| seed | requested modes | effective modes | fallback/reasons | latency P50/P95 ms | quota conservation violations | projection rejections | stale/missing version evidence | invalid advice |",
+            "| ---: | --- | --- | --- | --- | ---: | ---: | --- | ---: |",
+        ]
+    )
+    for row in rows:
+        fallback = "{}/{}".format(
+            _fmt_available(row, "d4_advice_fallback_count"),
+            _fmt_available(row, "d4_advice_fallback_reason_distribution_json"),
+        )
+        lines.append(
+            "| {seed} | {requested} | {effective} | {fallback} | {p50}/{p95} | "
+            "{quota} | {rejections} | {stale}/{missing} | {invalid} |".format(
+                seed=_fmt(row.get("seed")),
+                requested=_fmt_available(
+                    row, "d4_advice_requested_mode_distribution_json"
+                ),
+                effective=_fmt_available(
+                    row, "d4_advice_effective_mode_distribution_json"
+                ),
+                fallback=fallback,
+                p50=_fmt_available(row, "d4_advice_inference_latency_p50_ms"),
+                p95=_fmt_available(row, "d4_advice_inference_latency_p95_ms"),
+                quota=_fmt_available(
+                    row,
+                    "d4_advice_resource_quota_conservation_violation_count",
+                ),
+                rejections=_fmt_available(
+                    row, "d4_advice_projection_rejection_count"
+                ),
+                stale=_fmt_available(
+                    row, "d4_advice_stale_version_evidence_count"
+                ),
+                missing=_fmt_available(
+                    row, "d4_advice_missing_version_evidence_count"
+                ),
+                invalid=_fmt_available(row, "d4_advice_invalid_publication_count"),
             )
         )
 
@@ -551,6 +748,9 @@ def render_scalable_3d_offline_markdown(
             "- 当前 producer 的 offline truth label 只含 observation-to-truth 映射，未显式提供 global_track_id-to-truth 映射时，五米接近身份正确性保持 unavailable。",
             "- D2 明确声明 IDSW unavailable 时，D6 不从轨迹数量、名称或离线真值补算 0。",
             "- D5 `model_missing` 表示确定性几何规则回退，不是学习模型性能证据。",
+            "- bundle 未加载时，学习模型 fingerprint/version 保持 null/unavailable；规则路径的 runtime version 不冒充学习模型版本。",
+            "- D4 advice 的旧 schema、缺版本、过期 authority/plan/lease、非守恒 quota、非法 projection 或 digest 篡改均 fail closed，不以合法记录子集缩小分母。",
+            "- 当前 D4 advice 没有控制采用字段；即使 `assist_eligible=true` 且 recommendation 有输出，也不能报告控制已采用。",
             "- 报告不把五米接近登记为任务成功；任务成功仍需身份、D4 授权、D7 控制和任务合同的独立证据。",
         ]
     )
@@ -606,6 +806,7 @@ def _extract_provenance(
         "d1_model_version",
         "d2_model_version",
         "d3_policy_version",
+        "d4_policy_version",
         "d5_model_version",
         "d7_model_version",
         "threshold_version",
@@ -665,6 +866,283 @@ def _extract_provenance(
             _put_unavailable(row, "finite_state", "summary_finite_state_not_boolean")
     else:
         _put_unavailable(row, "finite_state", "summary_finite_state_missing")
+
+
+def _extract_learning_runtime_metrics(
+    row: dict[str, Any],
+    manifest: Mapping[str, Any] | None,
+    config: Mapping[str, Any] | None,
+    summary: Mapping[str, Any] | None,
+) -> None:
+    config_metadata = config.get("metadata") if isinstance(config, Mapping) else None
+    config_runtime = (
+        config_metadata.get("learning_runtime")
+        if isinstance(config_metadata, Mapping)
+        else None
+    )
+    summary_diagnostics = (
+        summary.get("module_final_diagnostics")
+        if isinstance(summary, Mapping)
+        else None
+    )
+    summary_runtime = (
+        summary_diagnostics.get("learning_runtime")
+        if isinstance(summary_diagnostics, Mapping)
+        else None
+    )
+    config_runtime = config_runtime if isinstance(config_runtime, Mapping) else None
+    summary_runtime = summary_runtime if isinstance(summary_runtime, Mapping) else None
+
+    if config_runtime is not None and summary_runtime is not None:
+        consistent = _json_ready(config_runtime) == _json_ready(summary_runtime)
+        _put_available(row, "learning_runtime_metadata_consistent", consistent)
+        if not consistent:
+            row["_failure_reasons"].append("learning_runtime_metadata_mismatch")
+        runtime = config_runtime
+        source = "scenario_config.metadata.learning_runtime"
+    elif config_runtime is not None:
+        _put_unavailable(
+            row,
+            "learning_runtime_metadata_consistent",
+            "summary_learning_runtime_metadata_missing",
+        )
+        runtime = config_runtime
+        source = "scenario_config.metadata.learning_runtime"
+    elif summary_runtime is not None:
+        _put_unavailable(
+            row,
+            "learning_runtime_metadata_consistent",
+            "scenario_config_learning_runtime_metadata_missing",
+        )
+        runtime = summary_runtime
+        source = "summary.module_final_diagnostics.learning_runtime"
+    else:
+        _put_unavailable(
+            row,
+            "learning_runtime_metadata_consistent",
+            "learning_runtime_metadata_missing",
+        )
+        _put_unavailable(
+            row,
+            "learning_runtime_schema_version",
+            "learning_runtime_metadata_missing",
+        )
+        _put_unavailable(
+            row,
+            "learning_runtime_metadata_source",
+            "learning_runtime_metadata_missing",
+        )
+        for module in _LEARNING_MODULE_VERSION_FIELDS:
+            _put_learning_module_unavailable(
+                row, module, "learning_runtime_metadata_missing"
+            )
+        return
+
+    _put_available(row, "learning_runtime_metadata_source", source)
+    schema = runtime.get("schema_version")
+    if not isinstance(schema, str) or not schema.strip():
+        _put_unavailable(
+            row,
+            "learning_runtime_schema_version",
+            "learning_runtime_schema_version_missing",
+        )
+        reason = "learning_runtime_schema_version_missing"
+    else:
+        _put_available(row, "learning_runtime_schema_version", schema)
+        reason = (
+            None
+            if schema == _LEARNING_RUNTIME_SCHEMA
+            else f"unsupported_learning_runtime_schema:{schema}"
+        )
+    if reason is not None:
+        for module in _LEARNING_MODULE_VERSION_FIELDS:
+            _put_learning_module_unavailable(row, module, reason)
+        return
+
+    for module, version_field in _LEARNING_MODULE_VERSION_FIELDS.items():
+        diagnostics = runtime.get(module)
+        if not isinstance(diagnostics, Mapping):
+            _put_learning_module_unavailable(
+                row, module, f"learning_runtime_module_metadata_missing:{module}"
+            )
+            continue
+        _extract_learning_module_metrics(
+            row,
+            module=module,
+            diagnostics=diagnostics,
+            version_field=version_field,
+            manifest=manifest,
+            config=config,
+        )
+
+
+def _extract_learning_module_metrics(
+    row: dict[str, Any],
+    *,
+    module: str,
+    diagnostics: Mapping[str, Any],
+    version_field: str,
+    manifest: Mapping[str, Any] | None,
+    config: Mapping[str, Any] | None,
+) -> None:
+    prefix = f"{module}_learning"
+    for field in ("requested_mode", "effective_mode"):
+        value = diagnostics.get(field)
+        if isinstance(value, str) and value.strip():
+            _put_available(row, f"{prefix}_{field}", value.strip())
+        else:
+            _put_unavailable(
+                row,
+                f"{prefix}_{field}",
+                f"learning_runtime_field_missing_or_invalid:{module}:{field}",
+            )
+    for field in ("bundle_requested", "bundle_loaded"):
+        value = diagnostics.get(field)
+        if isinstance(value, bool):
+            _put_available(row, f"{prefix}_{field}", value)
+        else:
+            _put_unavailable(
+                row,
+                f"{prefix}_{field}",
+                f"learning_runtime_field_missing_or_invalid:{module}:{field}",
+            )
+
+    if "fallback_reason" not in diagnostics:
+        _put_unavailable(
+            row,
+            f"{prefix}_fallback_reason",
+            f"learning_runtime_field_missing:{module}:fallback_reason",
+        )
+    else:
+        fallback = diagnostics.get("fallback_reason")
+        if fallback is None or (isinstance(fallback, str) and fallback.strip()):
+            _put_available(row, f"{prefix}_fallback_reason", fallback)
+        else:
+            _put_unavailable(
+                row,
+                f"{prefix}_fallback_reason",
+                f"learning_runtime_field_invalid:{module}:fallback_reason",
+            )
+
+    fingerprint = diagnostics.get("model_fingerprint")
+    if fingerprint is None:
+        _put_unavailable(
+            row,
+            f"{prefix}_model_fingerprint",
+            f"producer_declared_model_fingerprint_unavailable:{module}",
+        )
+    elif isinstance(fingerprint, str) and re.fullmatch(r"[0-9a-fA-F]{64}", fingerprint):
+        fingerprint = fingerprint.lower()
+        _put_available(row, f"{prefix}_model_fingerprint", fingerprint)
+    else:
+        _put_unavailable(
+            row,
+            f"{prefix}_model_fingerprint",
+            f"learning_model_fingerprint_invalid:{module}",
+        )
+        row["_failure_reasons"].append(f"learning_model_fingerprint_invalid:{module}")
+
+    version_values = [
+        str(source[version_field]).strip()
+        for source in (config, manifest)
+        if isinstance(source, Mapping)
+        and source.get(version_field) is not None
+        and str(source[version_field]).strip()
+    ]
+    if not version_values:
+        _put_unavailable(
+            row,
+            f"{prefix}_runtime_version",
+            f"learning_runtime_version_missing:{module}:{version_field}",
+        )
+    elif any(value != version_values[0] for value in version_values[1:]):
+        _put_unavailable(
+            row,
+            f"{prefix}_runtime_version",
+            f"learning_runtime_version_mismatch:{module}:{version_field}",
+        )
+        row["_failure_reasons"].append(
+            f"learning_runtime_version_mismatch:{module}:{version_field}"
+        )
+    else:
+        _put_available(row, f"{prefix}_runtime_version", version_values[0])
+
+    loaded = row.get(f"{prefix}_bundle_loaded")
+    loaded_available = row.get(f"{prefix}_bundle_loaded_availability") == "available"
+    fingerprint_available = (
+        row.get(f"{prefix}_model_fingerprint_availability") == "available"
+    )
+    version_available = row.get(f"{prefix}_runtime_version_availability") == "available"
+    if loaded_available and loaded is False:
+        _put_unavailable(
+            row,
+            f"{prefix}_model_version",
+            f"learning_bundle_not_loaded:{module}",
+        )
+    elif loaded_available and loaded is True and not fingerprint_available:
+        _put_unavailable(
+            row,
+            f"{prefix}_model_version",
+            f"loaded_learning_bundle_fingerprint_unavailable:{module}",
+        )
+        row["_failure_reasons"].append(
+            f"loaded_learning_bundle_fingerprint_unavailable:{module}"
+        )
+    elif loaded_available and loaded is True and not version_available:
+        _put_unavailable(
+            row,
+            f"{prefix}_model_version",
+            f"loaded_learning_bundle_version_unavailable:{module}",
+        )
+    elif loaded_available and loaded is True:
+        runtime_version = str(row[f"{prefix}_runtime_version"])
+        if str(row[f"{prefix}_model_fingerprint"])[:12] not in runtime_version:
+            _put_unavailable(
+                row,
+                f"{prefix}_model_version",
+                f"learning_model_version_fingerprint_mismatch:{module}",
+            )
+            row["_failure_reasons"].append(
+                f"learning_model_version_fingerprint_mismatch:{module}"
+            )
+        else:
+            _put_available(row, f"{prefix}_model_version", runtime_version)
+    else:
+        _put_unavailable(
+            row,
+            f"{prefix}_model_version",
+            f"learning_bundle_loaded_availability_missing:{module}",
+        )
+
+    if module == "d4":
+        unseen = diagnostics.get("formal_unseen_seed_count")
+        if _is_int_like(unseen) and int(unseen) >= 0:
+            _put_available(row, "d4_learning_formal_unseen_seed_count", int(unseen))
+        else:
+            _put_unavailable(
+                row,
+                "d4_learning_formal_unseen_seed_count",
+                "learning_runtime_field_missing_or_invalid:d4:formal_unseen_seed_count",
+            )
+
+
+def _put_learning_module_unavailable(
+    row: dict[str, Any], module: str, reason: str
+) -> None:
+    prefix = f"{module}_learning"
+    for field in (
+        "requested_mode",
+        "effective_mode",
+        "bundle_requested",
+        "bundle_loaded",
+        "fallback_reason",
+        "model_fingerprint",
+        "runtime_version",
+        "model_version",
+    ):
+        _put_unavailable(row, f"{prefix}_{field}", reason)
+    if module == "d4":
+        _put_unavailable(row, "d4_learning_formal_unseen_seed_count", reason)
 
 
 def _extract_online_truth_audit(
@@ -1056,6 +1534,146 @@ def _d3_snapshot(payload: Mapping[str, Any], current_d2_count: int | None) -> di
     }
 
 
+def _extract_d3_learning_metrics(
+    row: dict[str, Any], records: Sequence[Mapping[str, Any]]
+) -> None:
+    d3_records = [
+        record
+        for record in records
+        if record.get("topic") == "modules.d3.assignment_plan"
+    ]
+    fields = (
+        "d3_learning_publication_count",
+        "d3_learning_applied_count",
+        "d3_learning_fallback_event_count",
+        "d3_learning_mode_distribution_json",
+        "d3_learning_fallback_reason_distribution_json",
+        "d3_online_learning_mode",
+        "d3_online_learning_applied",
+        "d3_online_learning_bundle_loaded",
+        "d3_online_learning_fallback_reason",
+    )
+    if not d3_records:
+        for field in fields:
+            _put_unavailable(row, field, "d3_publication_missing")
+        return
+
+    metadata_rows = []
+    for record in d3_records:
+        metadata = _payload(record).get("metadata")
+        metadata_rows.append(dict(metadata) if isinstance(metadata, Mapping) else {})
+    learning_rows = [
+        metadata
+        for metadata in metadata_rows
+        if any(str(key).startswith("learning_") for key in metadata)
+    ]
+    _put_available(row, "d3_learning_publication_count", len(learning_rows))
+    if not learning_rows:
+        for field in fields[1:]:
+            _put_unavailable(row, field, "d3_learning_metadata_missing")
+        return
+
+    required = (
+        "learning_mode",
+        "learning_applied",
+        "learning_bundle_loaded",
+        "learning_fallback_reason",
+    )
+    complete = all(all(field in metadata for field in required) for metadata in learning_rows)
+    latest = learning_rows[-1]
+    for output_field, source_field, validator in (
+        ("d3_online_learning_mode", "learning_mode", lambda value: isinstance(value, str) and bool(value.strip())),
+        ("d3_online_learning_applied", "learning_applied", lambda value: isinstance(value, bool)),
+        ("d3_online_learning_bundle_loaded", "learning_bundle_loaded", lambda value: isinstance(value, bool)),
+    ):
+        value = latest.get(source_field)
+        if validator(value):
+            _put_available(row, output_field, value)
+        else:
+            _put_unavailable(
+                row,
+                output_field,
+                f"d3_learning_field_missing_or_invalid:{source_field}",
+            )
+    if "learning_fallback_reason" in latest:
+        fallback = latest.get("learning_fallback_reason")
+        if fallback is None or (isinstance(fallback, str) and fallback.strip()):
+            _put_available(row, "d3_online_learning_fallback_reason", fallback)
+        else:
+            _put_unavailable(
+                row,
+                "d3_online_learning_fallback_reason",
+                "d3_learning_field_invalid:learning_fallback_reason",
+            )
+    else:
+        _put_unavailable(
+            row,
+            "d3_online_learning_fallback_reason",
+            "d3_learning_field_missing:learning_fallback_reason",
+        )
+
+    if not complete:
+        for field in (
+            "d3_learning_applied_count",
+            "d3_learning_fallback_event_count",
+            "d3_learning_mode_distribution_json",
+            "d3_learning_fallback_reason_distribution_json",
+        ):
+            _put_unavailable(row, field, "d3_learning_metadata_incomplete")
+        return
+    modes = [metadata["learning_mode"] for metadata in learning_rows]
+    applied = [metadata["learning_applied"] for metadata in learning_rows]
+    bundle_loaded = [metadata["learning_bundle_loaded"] for metadata in learning_rows]
+    fallbacks = [metadata["learning_fallback_reason"] for metadata in learning_rows]
+    if not all(isinstance(value, str) and value.strip() for value in modes):
+        _put_unavailable(
+            row,
+            "d3_learning_mode_distribution_json",
+            "d3_learning_mode_invalid",
+        )
+    else:
+        _put_available(
+            row,
+            "d3_learning_mode_distribution_json",
+            dict(sorted(Counter(str(value) for value in modes).items())),
+        )
+    if not all(isinstance(value, bool) for value in applied):
+        _put_unavailable(row, "d3_learning_applied_count", "d3_learning_applied_invalid")
+    else:
+        _put_available(row, "d3_learning_applied_count", sum(applied))
+    if not all(isinstance(value, bool) for value in bundle_loaded):
+        row["_failure_reasons"].append("d3_learning_bundle_loaded_invalid")
+    elif (
+        row.get("d3_learning_bundle_loaded_availability") == "available"
+        and any(value != row["d3_learning_bundle_loaded"] for value in bundle_loaded)
+    ):
+        row["_failure_reasons"].append(
+            "d3_online_learning_bundle_loaded_runtime_mismatch"
+        )
+    if not all(
+        value is None or (isinstance(value, str) and value.strip())
+        for value in fallbacks
+    ):
+        _put_unavailable(
+            row,
+            "d3_learning_fallback_event_count",
+            "d3_learning_fallback_reason_invalid",
+        )
+        _put_unavailable(
+            row,
+            "d3_learning_fallback_reason_distribution_json",
+            "d3_learning_fallback_reason_invalid",
+        )
+    else:
+        counter = Counter(str(value) for value in fallbacks if value is not None)
+        _put_available(row, "d3_learning_fallback_event_count", sum(counter.values()))
+        _put_available(
+            row,
+            "d3_learning_fallback_reason_distribution_json",
+            dict(sorted(counter.items())),
+        )
+
+
 def _extract_d4_metrics(
     row: dict[str, Any], records: Sequence[Mapping[str, Any]]
 ) -> None:
@@ -1252,6 +1870,828 @@ def _extract_d4_metrics(
     row["d4_latest_timestamp_s"] = timestamp_value
 
 
+def _extract_d4_region_advice_metrics(
+    row: dict[str, Any], records: Sequence[Mapping[str, Any]]
+) -> None:
+    advice_records = [
+        record for record in records if record.get("topic") == _D4_REGION_ADVICE_TOPIC
+    ]
+    _put_available(row, "d4_advice_publication_count", len(advice_records))
+    _put_unavailable(
+        row,
+        "d4_advice_control_adoption_count",
+        "d4_advice_schema_has_no_control_adoption_evidence",
+    )
+    if not advice_records:
+        _put_available(row, "d4_advice_valid_publication_count", 0)
+        _put_available(row, "d4_advice_invalid_publication_count", 0)
+        _put_available(row, "d4_advice_invalid_reason_distribution_json", {})
+        _put_available(row, "d4_advice_version_evidence_issue_reasons_json", {})
+        requested = row.get("d4_learning_requested_mode")
+        requested_available = (
+            row.get("d4_learning_requested_mode_availability") == "available"
+        )
+        if requested_available and requested == "disabled":
+            _put_available(row, "d4_advice_evidence_status", "not_expected_disabled")
+            missing_reason = "d4_advice_not_published_for_disabled_runtime"
+        else:
+            _put_available(row, "d4_advice_evidence_status", "missing")
+            missing_reason = "d4_region_resource_advice_missing"
+            if requested_available and requested != "disabled":
+                row["_failure_reasons"].append(
+                    "d4_advice_missing_for_requested_runtime"
+                )
+        for field in _d4_advice_substantive_fields():
+            _put_unavailable(row, field, missing_reason)
+        return
+
+    audits: list[dict[str, Any]] = []
+    latest_formal: Mapping[str, Any] | None = None
+    for record in records:
+        topic = record.get("topic")
+        if topic == "modules.d4.regional_failover":
+            latest_formal = _payload(record)
+        elif topic == _D4_REGION_ADVICE_TOPIC:
+            audits.append(
+                _audit_d4_advice_publication(
+                    record,
+                    row=row,
+                    latest_formal=latest_formal,
+                )
+            )
+
+    invalid_reasons = Counter(
+        reason for audit in audits for reason in audit["invalid_reasons"]
+    )
+    version_reasons = Counter(
+        reason
+        for audit in audits
+        for reason in (*audit["missing_version_reasons"], *audit["stale_version_reasons"])
+    )
+    invalid_count = sum(bool(audit["invalid_reasons"]) for audit in audits)
+    missing_version_count = sum(
+        bool(audit["missing_version_reasons"]) for audit in audits
+    )
+    stale_version_count = sum(bool(audit["stale_version_reasons"]) for audit in audits)
+    version_issue_count = sum(
+        bool(audit["missing_version_reasons"] or audit["stale_version_reasons"])
+        for audit in audits
+    )
+    _put_available(
+        row,
+        "d4_advice_valid_publication_count",
+        len(audits) - sum(
+            bool(
+                audit["invalid_reasons"]
+                or audit["missing_version_reasons"]
+                or audit["stale_version_reasons"]
+            )
+            for audit in audits
+        ),
+    )
+    _put_available(row, "d4_advice_invalid_publication_count", invalid_count)
+    _put_available(
+        row,
+        "d4_advice_invalid_reason_distribution_json",
+        dict(sorted(invalid_reasons.items())),
+    )
+    _put_available(
+        row,
+        "d4_advice_stale_version_evidence_count",
+        stale_version_count,
+    )
+    _put_available(
+        row,
+        "d4_advice_missing_version_evidence_count",
+        missing_version_count,
+    )
+    _put_available(
+        row,
+        "d4_advice_version_evidence_issue_count",
+        version_issue_count,
+    )
+    _put_available(
+        row,
+        "d4_advice_version_evidence_issue_reasons_json",
+        dict(sorted(version_reasons.items())),
+    )
+
+    quota_violations = [audit.get("quota_conservation_violation") for audit in audits]
+    if all(isinstance(value, bool) for value in quota_violations):
+        _put_available(
+            row,
+            "d4_advice_resource_quota_conservation_violation_count",
+            sum(quota_violations),
+        )
+    else:
+        _put_unavailable(
+            row,
+            "d4_advice_resource_quota_conservation_violation_count",
+            "d4_advice_quota_delta_evidence_invalid",
+        )
+
+    mutation_values = [audit.get("formal_decision_mutated") for audit in audits]
+    if all(isinstance(value, bool) for value in mutation_values):
+        _put_available(
+            row,
+            "d4_advice_formal_decision_mutation_count",
+            sum(mutation_values),
+        )
+        _put_available(
+            row,
+            "d4_advice_formal_decision_unchanged_count",
+            len(mutation_values) - sum(mutation_values),
+        )
+    else:
+        for field in (
+            "d4_advice_formal_decision_mutation_count",
+            "d4_advice_formal_decision_unchanged_count",
+        ):
+            _put_unavailable(
+                row, field, "d4_advice_formal_decision_digest_evidence_invalid"
+            )
+
+    projection_counts = [audit.get("projection_rejection_count") for audit in audits]
+    if all(_is_int_like(value) and int(value) >= 0 for value in projection_counts):
+        _put_available(
+            row,
+            "d4_advice_projection_rejection_count",
+            sum(int(value) for value in projection_counts),
+        )
+    else:
+        _put_unavailable(
+            row,
+            "d4_advice_projection_rejection_count",
+            "d4_advice_projection_rejection_evidence_invalid",
+        )
+
+    if invalid_count or version_issue_count:
+        reason = (
+            "d4_advice_payload_invalid"
+            if invalid_count
+            else "d4_advice_version_evidence_issue"
+        )
+        for field in _d4_advice_full_validity_fields():
+            _put_unavailable(row, field, reason)
+        _put_available(row, "d4_advice_evidence_status", "invalid_or_stale")
+        if invalid_count:
+            row["_failure_reasons"].append("d4_advice_payload_invalid")
+        if version_issue_count:
+            row["_failure_reasons"].append("d4_advice_version_evidence_issue")
+    else:
+        requested_modes = Counter(str(audit["requested_mode"]) for audit in audits)
+        effective_modes = Counter(str(audit["effective_mode"]) for audit in audits)
+        fallback_reasons = Counter(
+            str(audit["fallback_reason"])
+            for audit in audits
+            if audit["fallback_used"] is True and audit["fallback_reason"] is not None
+        )
+        _put_available(
+            row,
+            "d4_advice_requested_mode_distribution_json",
+            dict(sorted(requested_modes.items())),
+        )
+        _put_available(
+            row,
+            "d4_advice_effective_mode_distribution_json",
+            dict(sorted(effective_modes.items())),
+        )
+        _put_available(
+            row,
+            "d4_advice_fallback_reason_distribution_json",
+            dict(sorted(fallback_reasons.items())),
+        )
+        _put_available(
+            row,
+            "d4_advice_recommendation_output_count",
+            sum(audit["recommendation_output"] is True for audit in audits),
+        )
+        _put_available(
+            row,
+            "d4_advice_shadow_output_count",
+            sum(
+                audit["recommendation_output"] is True
+                and audit["effective_mode"] == "shadow"
+                for audit in audits
+            ),
+        )
+        _put_available(
+            row,
+            "d4_advice_assist_eligible_count",
+            sum(audit["assist_eligible"] is True for audit in audits),
+        )
+        _put_available(
+            row,
+            "d4_advice_fallback_count",
+            sum(audit["fallback_used"] is True for audit in audits),
+        )
+        latencies = np.asarray(
+            [float(audit["inference_latency_ms"]) for audit in audits],
+            dtype=float,
+        )
+        _put_available(
+            row,
+            "d4_advice_inference_latency_p50_ms",
+            float(np.percentile(latencies, 50.0)),
+        )
+        _put_available(
+            row,
+            "d4_advice_inference_latency_p95_ms",
+            float(np.percentile(latencies, 95.0)),
+        )
+        _put_available(row, "d4_advice_evidence_status", "valid_read_only_advice")
+
+    if row.get("d4_advice_resource_quota_conservation_violation_count", 0):
+        row["_failure_reasons"].append(
+            "d4_advice_resource_quota_conservation_violation"
+        )
+    if row.get("d4_advice_formal_decision_mutation_count", 0):
+        row["_failure_reasons"].append("d4_advice_formal_decision_mutation")
+
+
+def _d4_advice_substantive_fields() -> tuple[str, ...]:
+    return (
+        "d4_advice_recommendation_output_count",
+        "d4_advice_shadow_output_count",
+        "d4_advice_assist_eligible_count",
+        "d4_advice_fallback_count",
+        "d4_advice_inference_latency_p50_ms",
+        "d4_advice_inference_latency_p95_ms",
+        "d4_advice_resource_quota_conservation_violation_count",
+        "d4_advice_projection_rejection_count",
+        "d4_advice_formal_decision_mutation_count",
+        "d4_advice_formal_decision_unchanged_count",
+        "d4_advice_stale_version_evidence_count",
+        "d4_advice_missing_version_evidence_count",
+        "d4_advice_version_evidence_issue_count",
+        "d4_advice_requested_mode_distribution_json",
+        "d4_advice_effective_mode_distribution_json",
+        "d4_advice_fallback_reason_distribution_json",
+    )
+
+
+def _d4_advice_full_validity_fields() -> tuple[str, ...]:
+    return (
+        "d4_advice_recommendation_output_count",
+        "d4_advice_shadow_output_count",
+        "d4_advice_assist_eligible_count",
+        "d4_advice_fallback_count",
+        "d4_advice_inference_latency_p50_ms",
+        "d4_advice_inference_latency_p95_ms",
+        "d4_advice_requested_mode_distribution_json",
+        "d4_advice_effective_mode_distribution_json",
+        "d4_advice_fallback_reason_distribution_json",
+    )
+
+
+def _audit_d4_advice_publication(
+    record: Mapping[str, Any],
+    *,
+    row: Mapping[str, Any],
+    latest_formal: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    audit: dict[str, Any] = {
+        "invalid_reasons": [],
+        "missing_version_reasons": [],
+        "stale_version_reasons": [],
+        "requested_mode": None,
+        "effective_mode": None,
+        "recommendation_output": None,
+        "assist_eligible": None,
+        "fallback_used": None,
+        "fallback_reason": None,
+        "inference_latency_ms": None,
+        "quota_conservation_violation": None,
+        "projection_rejection_count": None,
+        "formal_decision_mutated": None,
+    }
+    schema = record.get("schema_version")
+    if schema is None or not str(schema).strip():
+        audit["missing_version_reasons"].append("advice_envelope_schema_missing")
+        audit["invalid_reasons"].append("advice_envelope_schema_missing")
+        return audit
+    if schema != _D4_REGION_ADVICE_SCHEMA:
+        audit["stale_version_reasons"].append(
+            f"advice_envelope_schema_unsupported:{schema}"
+        )
+        audit["invalid_reasons"].append("advice_envelope_schema_unsupported")
+        return audit
+    if record.get("source") != "D4":
+        audit["invalid_reasons"].append("advice_envelope_source_not_d4")
+    payload = record.get("payload")
+    if not isinstance(payload, Mapping):
+        audit["invalid_reasons"].append("advice_payload_not_object")
+        return audit
+
+    requested = payload.get("requested_mode")
+    effective = payload.get("effective_mode")
+    if requested not in _ADVISOR_MODES:
+        audit["invalid_reasons"].append("advice_requested_mode_invalid")
+    else:
+        audit["requested_mode"] = requested
+    if effective not in _ADVISOR_MODES:
+        audit["invalid_reasons"].append("advice_effective_mode_invalid")
+    else:
+        audit["effective_mode"] = effective
+
+    assist_eligible = payload.get("assist_eligible")
+    fallback_used = payload.get("fallback_used")
+    if not isinstance(assist_eligible, bool):
+        audit["invalid_reasons"].append("advice_assist_eligible_not_boolean")
+    else:
+        audit["assist_eligible"] = assist_eligible
+    if not isinstance(fallback_used, bool):
+        audit["invalid_reasons"].append("advice_fallback_used_not_boolean")
+    else:
+        audit["fallback_used"] = fallback_used
+    if "fallback_reason" not in payload:
+        audit["invalid_reasons"].append("advice_fallback_reason_field_missing")
+    else:
+        fallback_reason = payload.get("fallback_reason")
+        if fallback_reason is None or (
+            isinstance(fallback_reason, str) and fallback_reason.strip()
+        ):
+            audit["fallback_reason"] = fallback_reason
+        else:
+            audit["invalid_reasons"].append("advice_fallback_reason_invalid")
+    unseen = payload.get("unseen_seed_count")
+    if not (_is_int_like(unseen) and int(unseen) >= 0):
+        audit["invalid_reasons"].append("advice_unseen_seed_count_invalid")
+    latency = payload.get("inference_latency_ms")
+    if not (_is_finite_number(latency) and float(latency) >= 0.0):
+        audit["invalid_reasons"].append("advice_inference_latency_invalid")
+    else:
+        audit["inference_latency_ms"] = float(latency)
+
+    if (
+        isinstance(assist_eligible, bool)
+        and effective in _ADVISOR_MODES
+        and assist_eligible != (effective == "assist")
+    ):
+        audit["invalid_reasons"].append("advice_assist_eligibility_mode_mismatch")
+    if effective == "assist" and requested != "assist":
+        audit["invalid_reasons"].append("advice_assist_self_promotion")
+    if requested == "disabled" and effective != "disabled":
+        audit["invalid_reasons"].append("advice_disabled_mode_not_preserved")
+    if fallback_used is True and audit["fallback_reason"] is None:
+        audit["invalid_reasons"].append("advice_fallback_reason_missing_when_used")
+    if fallback_used is True and effective == "assist":
+        audit["invalid_reasons"].append("advice_fallback_cannot_be_assist")
+
+    payload_timestamp = payload.get("timestamp")
+    envelope_timestamp = record.get("timestamp")
+    if not (_is_finite_number(payload_timestamp) and float(payload_timestamp) >= 0.0):
+        audit["invalid_reasons"].append("advice_payload_timestamp_invalid")
+        payload_timestamp_value = None
+    else:
+        payload_timestamp_value = float(payload_timestamp)
+    if not (_is_finite_number(envelope_timestamp) and float(envelope_timestamp) >= 0.0):
+        audit["invalid_reasons"].append("advice_envelope_timestamp_invalid")
+    elif (
+        payload_timestamp_value is not None
+        and not math.isclose(
+            payload_timestamp_value,
+            float(envelope_timestamp),
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        )
+    ):
+        audit["stale_version_reasons"].append(
+            "advice_payload_envelope_timestamp_mismatch"
+        )
+
+    recommendation = payload.get("recommendation")
+    if recommendation is None:
+        audit["recommendation_output"] = False
+        audit["quota_conservation_violation"] = False
+        audit["projection_rejection_count"] = 0
+        if effective != "disabled":
+            audit["invalid_reasons"].append(
+                "advice_recommendation_missing_for_active_mode"
+            )
+    elif not isinstance(recommendation, Mapping):
+        audit["invalid_reasons"].append("advice_recommendation_not_object")
+    else:
+        audit["recommendation_output"] = True
+        recommendation_audit = _audit_d4_recommendation(
+            recommendation,
+            row=row,
+            advice_timestamp=payload_timestamp_value,
+            latest_formal=latest_formal,
+        )
+        for key in (
+            "invalid_reasons",
+            "missing_version_reasons",
+            "stale_version_reasons",
+        ):
+            audit[key].extend(recommendation_audit[key])
+        audit["quota_conservation_violation"] = recommendation_audit[
+            "quota_conservation_violation"
+        ]
+        audit["projection_rejection_count"] = recommendation_audit[
+            "projection_rejection_count"
+        ]
+    if effective == "disabled" and recommendation is not None:
+        audit["invalid_reasons"].append(
+            "advice_disabled_mode_has_recommendation_output"
+        )
+
+    unchanged = payload.get("formal_decision_unchanged")
+    before = payload.get("formal_decision_digest_before")
+    after = payload.get("formal_decision_digest_after")
+    if not isinstance(unchanged, bool):
+        audit["invalid_reasons"].append("formal_decision_unchanged_not_boolean")
+    if not (isinstance(before, str) and before.strip()):
+        audit["missing_version_reasons"].append(
+            "formal_decision_digest_before_missing"
+        )
+    if not (isinstance(after, str) and after.strip()):
+        audit["missing_version_reasons"].append("formal_decision_digest_after_missing")
+    if (
+        isinstance(unchanged, bool)
+        and isinstance(before, str)
+        and before.strip()
+        and isinstance(after, str)
+        and after.strip()
+    ):
+        digest_unchanged = before == after
+        audit["formal_decision_mutated"] = not digest_unchanged
+        if unchanged != digest_unchanged:
+            audit["invalid_reasons"].append(
+                "formal_decision_digest_flag_mismatch"
+            )
+
+    for key in ("invalid_reasons", "missing_version_reasons", "stale_version_reasons"):
+        audit[key] = list(dict.fromkeys(audit[key]))
+    return audit
+
+
+def _audit_d4_recommendation(
+    recommendation: Mapping[str, Any],
+    *,
+    row: Mapping[str, Any],
+    advice_timestamp: float | None,
+    latest_formal: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    output: dict[str, Any] = {
+        "invalid_reasons": [],
+        "missing_version_reasons": [],
+        "stale_version_reasons": [],
+        "quota_conservation_violation": None,
+        "projection_rejection_count": None,
+    }
+    schema = recommendation.get("schema")
+    if schema is None or not str(schema).strip():
+        output["missing_version_reasons"].append("recommendation_schema_missing")
+        output["invalid_reasons"].append("recommendation_schema_missing")
+    elif schema != _D4_REGION_RECOMMENDATION_SCHEMA:
+        output["stale_version_reasons"].append(
+            f"recommendation_schema_unsupported:{schema}"
+        )
+        output["invalid_reasons"].append("recommendation_schema_unsupported")
+
+    for field in (
+        "snapshot_id",
+        "scenario_id",
+        "scenario_version",
+        "authority_digest",
+        "policy_name",
+        "policy_version",
+    ):
+        value = recommendation.get(field)
+        if not isinstance(value, str) or not value.strip():
+            output["missing_version_reasons"].append(
+                f"recommendation_{field}_missing"
+            )
+            output["invalid_reasons"].append(f"recommendation_{field}_invalid")
+    seed = recommendation.get("seed")
+    if not (_is_int_like(seed) and int(seed) >= 0):
+        output["missing_version_reasons"].append("recommendation_seed_missing")
+        output["invalid_reasons"].append("recommendation_seed_invalid")
+    created_at = recommendation.get("created_at_s")
+    if not (_is_finite_number(created_at) and float(created_at) >= 0.0):
+        output["invalid_reasons"].append("recommendation_created_at_invalid")
+    elif advice_timestamp is not None and not math.isclose(
+        float(created_at), advice_timestamp, rel_tol=0.0, abs_tol=1e-9
+    ):
+        output["stale_version_reasons"].append(
+            "recommendation_snapshot_timestamp_stale"
+        )
+    confidence = recommendation.get("confidence")
+    if not (
+        _is_finite_number(confidence) and 0.0 <= float(confidence) <= 1.0
+    ):
+        output["invalid_reasons"].append("recommendation_confidence_invalid")
+    if not isinstance(recommendation.get("source"), str) or not str(
+        recommendation.get("source", "")
+    ).strip():
+        output["invalid_reasons"].append("recommendation_source_invalid")
+    if not isinstance(recommendation.get("projected"), bool):
+        output["invalid_reasons"].append("recommendation_projected_not_boolean")
+    elif recommendation.get("projected") is not True:
+        output["invalid_reasons"].append("recommendation_not_safety_projected")
+    fallback = recommendation.get("fallback_reason")
+    if fallback is not None and not (isinstance(fallback, str) and fallback.strip()):
+        output["invalid_reasons"].append("recommendation_fallback_reason_invalid")
+    model_sha = recommendation.get("model_sha256")
+    if model_sha is not None and not (
+        isinstance(model_sha, str) and re.fullmatch(r"[0-9a-fA-F]{64}", model_sha)
+    ):
+        output["invalid_reasons"].append("recommendation_model_sha256_invalid")
+    if recommendation.get("source") == "learned" and model_sha is None:
+        output["missing_version_reasons"].append(
+            "recommendation_learned_model_sha256_missing"
+        )
+    if recommendation.get("source") == "learned":
+        runtime_fingerprint_available = (
+            row.get("d4_learning_model_fingerprint_availability") == "available"
+        )
+        runtime_version_available = (
+            row.get("d4_learning_model_version_availability") == "available"
+        )
+        if not runtime_fingerprint_available:
+            output["missing_version_reasons"].append(
+                "d4_runtime_model_fingerprint_unavailable_for_learned_advice"
+            )
+        elif model_sha != row.get("d4_learning_model_fingerprint"):
+            output["stale_version_reasons"].append(
+                "recommendation_model_fingerprint_mismatch"
+            )
+        if not runtime_version_available:
+            output["missing_version_reasons"].append(
+                "d4_runtime_model_version_unavailable_for_learned_advice"
+            )
+        else:
+            runtime_model_version = str(row["d4_learning_model_version"])
+            expected_policy_version = runtime_model_version.rsplit("+", 1)[0]
+            if recommendation.get("policy_version") != expected_policy_version:
+                output["stale_version_reasons"].append(
+                    "recommendation_policy_version_mismatch"
+                )
+
+    if (
+        row.get("scenario_name_availability") == "available"
+        and recommendation.get("scenario_id") != row.get("scenario_name")
+    ):
+        output["stale_version_reasons"].append("recommendation_scenario_id_mismatch")
+    if (
+        row.get("scenario_version_availability") == "available"
+        and recommendation.get("scenario_version") != row.get("scenario_version")
+    ):
+        output["stale_version_reasons"].append(
+            "recommendation_scenario_version_mismatch"
+        )
+    if (
+        row.get("seed_availability") == "available"
+        and _is_int_like(seed)
+        and int(seed) != int(row["seed"])
+    ):
+        output["stale_version_reasons"].append("recommendation_seed_mismatch")
+
+    formal_regions = _d4_formal_region_contracts(latest_formal)
+    if latest_formal is None:
+        output["missing_version_reasons"].append(
+            "formal_d4_publication_missing_before_advice"
+        )
+    actions = recommendation.get("actions")
+    action_deltas: dict[str, int] = {}
+    if not isinstance(actions, list):
+        output["invalid_reasons"].append("recommendation_actions_not_list")
+    else:
+        for index, action in enumerate(actions):
+            _audit_d4_action(
+                action,
+                index=index,
+                advice_timestamp=advice_timestamp,
+                formal_regions=formal_regions,
+                action_deltas=action_deltas,
+                output=output,
+            )
+        if len(action_deltas) != len(actions):
+            output["invalid_reasons"].append(
+                "recommendation_action_region_ids_not_unique"
+            )
+        if all(
+            isinstance(action, Mapping)
+            and _is_int_like(action.get("resource_quota_delta"))
+            for action in actions
+        ):
+            total_delta = sum(int(action["resource_quota_delta"]) for action in actions)
+            output["quota_conservation_violation"] = total_delta != 0
+            if total_delta != 0:
+                output["invalid_reasons"].append(
+                    "projected_recommendation_not_resource_conserving"
+                )
+
+    transfers = recommendation.get("transfers")
+    transfer_deltas: Counter[str] = Counter()
+    transfers_valid = isinstance(transfers, list)
+    if not transfers_valid:
+        output["invalid_reasons"].append("recommendation_transfers_not_list")
+    else:
+        for index, transfer in enumerate(transfers):
+            if not isinstance(transfer, Mapping):
+                output["invalid_reasons"].append(
+                    f"recommendation_transfer_not_object:{index}"
+                )
+                transfers_valid = False
+                continue
+            source = transfer.get("source_region_id")
+            target = transfer.get("target_region_id")
+            count = transfer.get("resource_count")
+            edge_id = transfer.get("edge_id")
+            transfer_time = transfer.get("expected_transfer_time_s")
+            if not isinstance(source, str) or not source.strip():
+                output["invalid_reasons"].append(
+                    f"recommendation_transfer_source_invalid:{index}"
+                )
+                transfers_valid = False
+            if not isinstance(target, str) or not target.strip() or target == source:
+                output["invalid_reasons"].append(
+                    f"recommendation_transfer_target_invalid:{index}"
+                )
+                transfers_valid = False
+            if not (_is_int_like(count) and int(count) > 0):
+                output["invalid_reasons"].append(
+                    f"recommendation_transfer_resource_count_invalid:{index}"
+                )
+                transfers_valid = False
+            if not isinstance(edge_id, str) or not edge_id.strip():
+                output["invalid_reasons"].append(
+                    f"recommendation_transfer_edge_id_invalid:{index}"
+                )
+                transfers_valid = False
+            if not (
+                _is_finite_number(transfer_time) and float(transfer_time) >= 0.0
+            ):
+                output["invalid_reasons"].append(
+                    f"recommendation_transfer_time_invalid:{index}"
+                )
+                transfers_valid = False
+            if (
+                isinstance(source, str)
+                and source.strip()
+                and isinstance(target, str)
+                and target.strip()
+                and source != target
+                and _is_int_like(count)
+                and int(count) > 0
+            ):
+                transfer_deltas[source] -= int(count)
+                transfer_deltas[target] += int(count)
+    if (
+        transfers_valid
+        and isinstance(actions, list)
+        and output["quota_conservation_violation"] is not None
+        and any(transfer_deltas)
+        and {
+            region_id: delta
+            for region_id, delta in action_deltas.items()
+            if delta != 0
+        }
+        != {region_id: delta for region_id, delta in transfer_deltas.items() if delta != 0}
+    ):
+        output["invalid_reasons"].append(
+            "recommendation_transfer_action_quota_delta_mismatch"
+        )
+
+    rejections = recommendation.get("projection_rejections")
+    if not isinstance(rejections, list) or not all(
+        isinstance(value, str) and value.strip() for value in rejections
+    ):
+        output["invalid_reasons"].append(
+            "recommendation_projection_rejections_invalid"
+        )
+    else:
+        output["projection_rejection_count"] = len(rejections)
+
+    for key in ("invalid_reasons", "missing_version_reasons", "stale_version_reasons"):
+        output[key] = list(dict.fromkeys(output[key]))
+    return output
+
+
+def _audit_d4_action(
+    action: Any,
+    *,
+    index: int,
+    advice_timestamp: float | None,
+    formal_regions: Mapping[str, Mapping[str, Any]],
+    action_deltas: dict[str, int],
+    output: dict[str, Any],
+) -> None:
+    if not isinstance(action, Mapping):
+        output["invalid_reasons"].append(f"recommendation_action_not_object:{index}")
+        return
+    region_id = action.get("region_id")
+    if not isinstance(region_id, str) or not region_id.strip():
+        output["invalid_reasons"].append(
+            f"recommendation_action_region_id_invalid:{index}"
+        )
+        return
+    delta = action.get("resource_quota_delta")
+    if not _is_int_like(delta):
+        output["invalid_reasons"].append(
+            f"recommendation_action_quota_delta_invalid:{region_id}"
+        )
+    else:
+        action_deltas[region_id] = int(delta)
+    for field in ("reserve_ratio", "reconnaissance_priority"):
+        value = action.get(field)
+        if not (_is_finite_number(value) and 0.0 <= float(value) <= 1.0):
+            output["invalid_reasons"].append(
+                f"recommendation_action_{field}_invalid:{region_id}"
+            )
+    for field in ("hold", "request_replan"):
+        if not isinstance(action.get(field), bool):
+            output["invalid_reasons"].append(
+                f"recommendation_action_{field}_invalid:{region_id}"
+            )
+    for field in (
+        "expected_owner_id",
+        "expected_owner_layer",
+        "expected_plan_id",
+    ):
+        if not isinstance(action.get(field), str) or not str(action.get(field, "")).strip():
+            output["missing_version_reasons"].append(
+                f"recommendation_action_{field}_missing:{region_id}"
+            )
+    for field in ("expected_plan_version", "expected_epoch"):
+        if not (_is_int_like(action.get(field)) and int(action[field]) >= 0):
+            output["missing_version_reasons"].append(
+                f"recommendation_action_{field}_missing:{region_id}"
+            )
+    lease = action.get("expected_lease_expires_at_s")
+    if not (_is_finite_number(lease) and float(lease) >= 0.0):
+        output["missing_version_reasons"].append(
+            f"recommendation_action_expected_lease_missing:{region_id}"
+        )
+    elif advice_timestamp is not None and float(lease) <= advice_timestamp:
+        output["stale_version_reasons"].append(
+            f"recommendation_action_lease_expired:{region_id}"
+        )
+
+    formal = formal_regions.get(region_id)
+    if formal_regions and formal is None:
+        output["stale_version_reasons"].append(
+            f"recommendation_action_formal_region_missing:{region_id}"
+        )
+    elif formal is not None:
+        comparisons = (
+            ("expected_owner_id", "owner_id"),
+            ("expected_owner_layer", "owner_layer"),
+            ("expected_plan_id", "plan_id"),
+            ("expected_plan_version", "plan_version"),
+            ("expected_epoch", "epoch"),
+            ("expected_lease_expires_at_s", "lease_expires_at_s"),
+        )
+        for action_field, formal_field in comparisons:
+            action_value = action.get(action_field)
+            formal_value = formal.get(formal_field)
+            if action_value is None or formal_value is None:
+                continue
+            matches = (
+                math.isclose(
+                    float(action_value),
+                    float(formal_value),
+                    rel_tol=0.0,
+                    abs_tol=1e-9,
+                )
+                if _is_finite_number(action_value) and _is_finite_number(formal_value)
+                else action_value == formal_value
+            )
+            if not matches:
+                output["stale_version_reasons"].append(
+                    f"recommendation_action_formal_{formal_field}_mismatch:{region_id}"
+                )
+
+
+def _d4_formal_region_contracts(
+    payload: Mapping[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    if not isinstance(payload, Mapping):
+        return {}
+    regions = payload.get("regions")
+    if not isinstance(regions, list):
+        return {}
+    output: dict[str, dict[str, Any]] = {}
+    for region in regions:
+        if not isinstance(region, Mapping):
+            continue
+        region_id = region.get("region_id")
+        ownership = region.get("ownership")
+        if not isinstance(region_id, str) or not isinstance(ownership, Mapping):
+            continue
+        output[region_id] = {
+            "owner_id": ownership.get("owner_id"),
+            "owner_layer": ownership.get("owner_layer"),
+            "plan_id": ownership.get("plan_id"),
+            "plan_version": ownership.get("plan_version"),
+            "epoch": ownership.get("epoch"),
+            "lease_expires_at_s": ownership.get("lease_expires_at_s"),
+        }
+    return output
+
+
 def _extract_d5_metrics(
     row: dict[str, Any], records: Sequence[Mapping[str, Any]]
 ) -> None:
@@ -1361,17 +2801,40 @@ def _extract_d5_metrics(
             _put_available(row, "d5_fallback_reason", "none")
         else:
             _put_unavailable(row, f"d5_{field}", f"d5_{field}_missing")
-    fallbacks = Counter(
-        str(_payload(record).get("fallback_reason"))
+    fallback_values = [
+        _payload(record).get("fallback_reason")
+        if "fallback_reason" in _payload(record)
+        else ...
         for record in d5_records
-        if _payload(record).get("fallback_reason") not in (None, "none", "")
-    )
-    _put_available(row, "d5_model_fallback_event_count", sum(fallbacks.values()))
-    _put_available(
-        row,
-        "d5_fallback_reason_distribution_json",
-        dict(sorted(fallbacks.items())),
-    )
+    ]
+    if not all(
+        value is None
+        or value is ...
+        or (isinstance(value, str) and (value == "none" or bool(value.strip())))
+        for value in fallback_values
+    ) or any(value is ... for value in fallback_values):
+        _put_unavailable(
+            row,
+            "d5_model_fallback_event_count",
+            "d5_fallback_reason_field_missing_or_invalid",
+        )
+        _put_unavailable(
+            row,
+            "d5_fallback_reason_distribution_json",
+            "d5_fallback_reason_field_missing_or_invalid",
+        )
+    else:
+        fallbacks = Counter(
+            str(value)
+            for value in fallback_values
+            if value not in (None, "none", "")
+        )
+        _put_available(row, "d5_model_fallback_event_count", sum(fallbacks.values()))
+        _put_available(
+            row,
+            "d5_fallback_reason_distribution_json",
+            dict(sorted(fallbacks.items())),
+        )
     row["d5_camera_batch_count"] = latest.get("camera_batch_count")
     row["d5_diagnostics_json"] = dict(diagnostics)
 
@@ -1727,6 +3190,7 @@ def _finalize_episode_status(row: dict[str, Any]) -> None:
         "finite_state",
         "repository_dirty",
         "config_hash_match",
+        "d4_policy_version",
         "online_truth_use_count",
         "online_truth_field_violation_count",
     )
@@ -1746,6 +3210,16 @@ def _finalize_episode_status(row: dict[str, Any]) -> None:
                     "provenance_field_mismatch:",
                     "d1_track_count_mismatch",
                     "d2_track_count_mismatch",
+                    "learning_runtime_metadata_mismatch",
+                    "learning_runtime_version_mismatch:",
+                    "learning_model_fingerprint_invalid:",
+                    "loaded_learning_bundle_fingerprint_unavailable:",
+                    "learning_model_version_fingerprint_mismatch:",
+                    "d4_advice_missing_for_requested_runtime",
+                    "d4_advice_payload_invalid",
+                    "d4_advice_version_evidence_issue",
+                    "d4_advice_resource_quota_conservation_violation",
+                    "d4_advice_formal_decision_mutation",
                 )
             )
             for reason in failures
@@ -1777,6 +3251,16 @@ def _validate_provenance_consistency(
             value[field]
             for value in (manifest, config, summary)
             if isinstance(value, Mapping) and field in value and value[field] is not None
+        ]
+        if values and any(value != values[0] for value in values[1:]):
+            row["_failure_reasons"].append(f"provenance_field_mismatch:{field}")
+    for field in _LEARNING_MODULE_VERSION_FIELDS.values():
+        values = [
+            value[field]
+            for value in (manifest, config)
+            if isinstance(value, Mapping)
+            and field in value
+            and value[field] is not None
         ]
         if values and any(value != values[0] for value in values[1:]):
             row["_failure_reasons"].append(f"provenance_field_mismatch:{field}")
@@ -2312,6 +3796,19 @@ def _counter_from_mapping_field(
             for key, count in value.items():
                 if _is_int_like(count):
                     counter[str(key)] += int(count)
+    return dict(sorted(counter.items()))
+
+
+def _counter_from_scalar_field(
+    rows: Sequence[Mapping[str, Any]], field: str
+) -> dict[str, int]:
+    counter: Counter[str] = Counter()
+    for row in rows:
+        if row.get(f"{field}_availability") != "available":
+            continue
+        value = row.get(field)
+        if value is not None:
+            counter[str(value)] += 1
     return dict(sorted(counter.items()))
 
 

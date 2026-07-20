@@ -1,29 +1,38 @@
 # D6 系统级离线评估模块原理
 
-## Scalable 3D 真值隔离与缺值原则（2026-07-20）
+## Scalable 3D 学习证据分层与缺值原则（2026-07-20）
 
-D6 对 main-owned scalable 3D episode 只做持久化文件消费。六个在线/配置/时序 artifact 是证据源；
-`offline_truth_labels.jsonl` 仅在离线身份评分需要时读取。真值标签不能影响 D1-D5/D7 在线结果，
-`online_truth_use_count` 与递归 truth-like 字段审计必须独立为零才能满足正式 provenance 条件。
+D6 对 main-owned scalable 3D episode 只做持久化文件消费。learning runtime metadata 与 D4 advice
+来自写盘 config/summary/online JSONL；D6 不导入 runtime、不回写总线、不参与控制，也不读取在线真值。
+`online_truth_use_count` 与递归 truth-like 字段审计仍必须为零，正式 evidence 还必须满足
+`repository_dirty=false`、配置 hash 和 D4 policy version 可用。
 
-规模分组来自 `scenario_config.json`、D5 camera batch 或明确的“一资源/侦察节点一相机”producer
-合同，并记录来源；`2v2/5v5` 只允许作为标签。D3 backlog 优先读取
-`hysteresis_pending_new_target_ids`，否则只在当前 D2 航迹和 assignment target ID 均可用时计算；
-`min_dwell_not_met` 与 held state 必须显式存在。D4 owner/epoch/lease/commit、D5 图预算、D7 hold/reject
-同样不能由相邻模块补值。
+学习能力必须分成五个不可互相替代的证据层：
 
-统计先按 scenario/version 与实际 target/resource/recon/camera 数量分组，再按 seed 组织。mean、
-population std、min/max 是描述统计；bootstrap 以不同 seed 的 episode 均值为单位，固定 RNG 做
-percentile 95% CI。只有一个有效 seed 时 CI 必须 unavailable，不能用 episode 内重复帧伪造推断样本。
+1. **bundle 能加载**：只证明 producer 成功加载了有 fingerprint/version 的 bundle。
+2. **shadow 有输出**：只证明生成了结构合法、版本新鲜且经过安全投影的 recommendation。
+3. **assist 获准**：只证明 unseen-seed/fallback 等 advisor gate 允许 assist。
+4. **控制实际采用**：必须由独立、版本化 producer evidence 说明哪个 plan/command 采用了 advice。
+5. **物理结果**：是独立离线结果层，不能仅凭时间相邻归因于 advice。
 
-五米接近只证明 evaluator-side 几何事件。身份正确性还需要显式 global-track-to-truth 映射；任务成功
-还需要身份、D4 执行授权、D7 控制和任务合同证据。任一层缺失均保持 null/unavailable+reason，不能
-把物理接近自动晋升为任务成功。
+当前 `d4-region-resource-advisory-runtime-v1` 保持正式 D4 decision digest unchanged，也没有 control
+adoption 字段。因此 `assist_eligible=true` 不能解释为控制生效；D6 将 control adoption 保持
+null/unavailable。五米 proximity 同样不自动成为 advice 效果、身份正确或任务成功。
 
-2026-07-20 的验证是 10 个确定性临时 fixture，不是真实物理实验：显式 50/50/4/54 seed 7、
-195->200 且 min-dwell backlog=5 seed 8，以及 IDSW/D4/D5/五米/dirty/缺协方差/双 seed 边界全部通过；D6
-全量 `282 passed`，仅有既有 Matplotlib `Axes3D` warning。剩余限制是正式多规模 batch 尚未由 main
-调用、新 producer 尚无 evaluator-only global-track truth 映射，D2 IDSW 仍可能显式 unavailable。
+availability 先于数值。bundle 未加载时 model fingerprint/version 为 unavailable，规则 runtime
+version 不冒充模型证据；字段缺失不能补零。D3/D5 fallback 只有 producer 显式写出 null/none 或原因
+时才能形成可用零/正计数。D4 advice 的旧 schema、非法类型、过期 scenario/plan/version/epoch/lease、
+非守恒 quota、projection 非法或 digest flag 篡改均 fail closed，且不能用合法 advice 子集缩分母。
+
+规模分组仍来自显式 scenario/version 与 target/resource/recon/camera 数量，`2v2/5v5` 只允许作标签。
+统计按 seed 组织；bootstrap 以不同 seed 的 episode 均值为单位。单 seed 只做 descriptive，不用 episode
+内帧数伪造模型推断样本。
+
+2026-07-20 的验证是 17 个 deterministic scalable fixtures，不是真实模型或物理实验。覆盖 disabled、
+missing bundle、assist-to-shadow、assist gate、守恒/非守恒、projection、formal mutation/unchanged、
+digest 篡改、旧/缺版本、缺 advice、既有规模/缺值和双 seed 聚合；专项 `17 passed`、D6 全量
+`289 passed`。正式 clean、多规模、多 seed bundle、control-adoption evidence、global-track truth 映射
+和真实物理效果仍是 main/producer P1。
 
 ## Legacy provenance 必须由完整持久化证据闭合（2026-07-15）
 

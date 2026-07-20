@@ -1,30 +1,38 @@
 # D6 Evaluation Metrics
 
-## 2026-07-20 scalable 3D 真值隔离 episode 独立离线入口
+## 2026-07-20 scalable 3D 学习运行时与 D4 advice 离线评估
 
-新增 `d6_evaluation_metrics.scalable_3d_offline` 和
-`scripts/run_scalable_3d_offline_evaluation.py`。入口只读 main-owned episode 的
-`manifest.json`、`scenario_config.json`、`summary.json`、`stage_timings.csv`、
-`online_observations.jsonl`、`offline_proximity_intercepts.jsonl`；仅在五米身份评分需要时读取
-`offline_truth_labels.jsonl`，且真值不进入在线指标或控制。报告固定输出逐 episode/seed CSV、按
-scenario/version 与显式 target/resource/recon/camera 数量分组的 aggregate JSON、中文 Markdown 和
-阶段耗时曲线 PNG。场景名中的 `2v2/5v5` 不参与规模推断。
+`d6-scalable3d-offline-evaluation-v2` 继续只读 main-owned episode 文件，不导入 scalable runtime，
+不发布总线消息，也不参与控制。除既有 provenance、D1-D7、阶段 timing 和五米离线物理诊断外，
+现在交叉消费 `scenario_config.metadata.learning_runtime` 与
+`summary.module_final_diagnostics.learning_runtime`，并读取 manifest/config 中 D3/D4/D5 的 runtime
+version。三模块分别报告 requested/effective mode、bundle requested/loaded、fallback reason、模型
+fingerprint 和模型 version availability；bundle 未加载或字段缺失时，学习模型 fingerprint/version
+均为 `null/unavailable+reason`，规则 runtime version 不冒充学习模型版本。
 
-逐 episode 保留 Git commit、dirty、配置 SHA-256 复算、schema、有限状态、online truth 审计，
-D1/D2 航迹速度与速度协方差 trace，D2 IDSW availability，D3 当前航迹/原始 target_count/覆盖率和
-min-dwell backlog，D4 owner/epoch/lease/commit/fail-closed，D5 稀疏图预算与模型回退，D7
-command/hold/reject，以及每阶段 call/wall/mean time。任一缺字段写 `null + unavailable_reason`，
-不补零。五米接近是离线物理诊断，`mission_success` 固定不由该事件推断。
+D4 新增只读消费 `modules.d4.region_resource_advice`，只接受
+`d4-region-resource-advisory-runtime-v1` 与 `d4-region-resource-recommendation-v1`。逐 episode 输出
+advice 发布/合法/非法数、requested/effective mode 分布、recommendation/shadow 输出数、assist
+eligible 数、fallback 数与原因、推理延迟 P50/P95、quota delta 守恒违规、projection rejection、
+正式裁决 unchanged/mutation，以及过期或缺失 schema/scenario/seed/authority/plan/epoch/lease evidence。
+旧 schema、字段非法、digest flag 篡改、非守恒 projected payload 或版本栅栏不一致均 fail closed；
+不会用合法记录子集缩小分母。
 
-聚合对每个数值输出 mean、描述性 population std、min/max；固定 seed percentile bootstrap 95% CI
-以不同 seed 的 episode 均值为抽样单位。单 seed 只标 `descriptive_only_single_seed`，CI 为 null。
-2026-07-20 确定性临时 fixture 覆盖显式 50/50/4/54（seed 7）、首帧 195 后续 200 且
-`min_dwell_not_met` 保持旧计划的 backlog=5（seed 8）、D2 IDSW unavailable、D4 lease 过期、D5
-`model_missing` 规则回退、有五米证据但身份不可评分、dirty manifest、缺协方差，以及 seeds 1/2
-bootstrap。
-验收门限是 10 个专项用例全部通过、四类报告齐全、缺值不补零、单 seed 不生成 CI；结果为专项
-`10 passed`、D6 全量 `282 passed`，仅有既有 Matplotlib `Axes3D` warning。本轮未运行真实
-scalable 3D 或 AirSim episode。
+报告严格区分五层：bundle 能加载、shadow 有输出、assist 获准、控制实际采用、物理结果。当前 D4
+advice 只提供建议并保持正式 D4 裁决不变；`assist_eligible` 不是控制生效。producer 未发布独立控制
+采用字段，因此 `d4_advice_control_adoption_count` 固定为 `null/unavailable`；五米接近仍只是一层
+离线物理诊断，不归因于 advice，也不生成 `mission_success`。
+
+聚合仍按 scenario/version 和显式 target/resource/recon/camera 数量分组，以不同 seed 的 episode
+均值做固定 RNG percentile bootstrap；单 seed 仅 descriptive，不产生 CI 或推断结论。正式 evidence
+继续强制 `repository_dirty=false`，并校验配置 hash、D4 policy version、finite 和 online truth 隔离。
+
+2026-07-20 确定性 fixture 覆盖既有规模/缺值边界，以及 learning disabled、D3/D4/D5 missing-bundle
+fallback、loaded bundle 的 assist-to-shadow、assist gate、守恒与非守恒 quota、projection rejection、
+正式裁决 unchanged/mutation、digest 篡改、旧 advice schema、缺 plan version、缺 advice 和 seeds 1/2
+聚合。接受门限为全部字段 availability、五层语义、fail-closed、四类报告和 single-seed 规则通过；
+结果为 scalable 专项 `17 passed`、D6 全量 `289 passed`，仅有既有 Matplotlib `Axes3D` warning。本轮
+未运行真实 scalable 3D 或 AirSim episode，也没有形成学习模型验收结论。
 
 ```bash
 python3 research_modules/d6_evaluation_metrics/scripts/run_scalable_3d_offline_evaluation.py \
@@ -33,7 +41,8 @@ python3 research_modules/d6_evaluation_metrics/scripts/run_scalable_3d_offline_e
 
 当前限制：现有 `offline_truth_labels.jsonl` 只有 observation-to-truth 标签，没有显式
 `global_track_id -> truth_target_id` 映射时，五米身份正确性保持 unavailable；D2 producer 明确声明
-IDSW unavailable 时也不离线补算；真实多规模、多 seed producer bundle 仍需 main 调用本入口验证。
+IDSW unavailable 时也不离线补算；控制采用缺独立 producer evidence；真实 clean、多规模、多 seed
+学习 bundle 与物理结果仍需 main 调用本入口验证。
 
 ## 2026-07-15 legacy ClockSpeed provenance 兼容与三档实测
 

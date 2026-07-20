@@ -1,11 +1,15 @@
 # D6 文档索引
 
-2026-07-20 已同步 scalable 3D 真值隔离 episode 的独立离线 consumer。稳定入口是
-`../scripts/run_scalable_3d_offline_evaluation.py`，输出逐 episode/seed CSV、按显式规模分组的 JSON、
-中文 Markdown 和阶段耗时曲线；单 seed 仅 descriptive，缺字段为 null/unavailable+reason，五米接近
-不等于任务成功。确定性临时 fixture 专项 `10 passed`、D6 全量 `282 passed`；本轮没有运行真实
-scalable 3D 或 AirSim episode。算法见 `ALGORITHM_AND_IMPLEMENTATION.md`，原则见
-`MODULE_PRINCIPLES_CN.md`，验证边界见 `../EXPERIMENT_REPORT.md` 顶部。
+2026-07-20 已同步 scalable 3D 学习运行时离线 consumer v2。稳定入口仍是
+`../scripts/run_scalable_3d_offline_evaluation.py`；新增 D3/D4/D5 bundle/fallback/fingerprint/version
+availability 与 `modules.d4.region_resource_advice` 的 mode、assist、fallback、latency、quota 守恒、
+projection、formal mutation 和 stale/missing version 审计。报告严格区分 bundle loaded、shadow
+output、assist gate、control adoption 和 physical outcome；当前 advice 不改变正式 D4 裁决且无控制采用
+字段，所以 `assist_eligible` 不等于控制生效。聚合按显式规模和不同 seed，单 seed 仅 descriptive；
+正式 evidence 要求 `repository_dirty=false`。deterministic scalable 专项 `17 passed`、D6 全量
+`289 passed`；未运行真实 scalable 3D/AirSim，也未形成模型验收。算法见
+`ALGORITHM_AND_IMPLEMENTATION.md`，原则见 `MODULE_PRINCIPLES_CN.md`，验证边界见
+`../EXPERIMENT_REPORT.md` 顶部。
 
 2026-07-15 已同步 legacy 1.0 provenance 兼容与真实三档报告。fallback 只在路径输入且 suite/cases/
 rows 全无显式 ClockSpeed 时读取 20/20 sibling generated settings；不猜目录名、不默认 1.0，缺文件/

@@ -1,25 +1,33 @@
 # D6 系统评估指标综述及子方案
 
-## 2026-07-20 Scalable 3D 独立离线入口评审
+## 2026-07-20 Scalable 3D 学习运行时与 D4 advice 评审
 
-评审确认 `d6-scalable3d-offline-evaluation-v1` 保持 D6 被动边界：它只读取 main 已写盘 episode，
-不导入 scalable runtime，不回写 D1-D5/D7，不让 offline truth 进入在线路径。manifest/config/summary
-provenance 会交叉检查，配置 hash 复算，recursive online truth-like 字段另行审计；dirty artifact 只作
-descriptive evidence。
+评审确认 `d6-scalable3d-offline-evaluation-v2` 保持 D6 被动边界：只读取 main 已写盘 episode，
+不导入 scalable runtime、不发布总线消息、不参与控制，也不读取在线真值。config/summary 的
+`scalable3d-learning-runtime-v1` 必须按来源保留并做一致性检查；manifest/config 的 D3/D4/D5 runtime
+version 交叉验证。模型 fingerprint/version 只有 bundle loaded 且 fingerprint 与 version 后缀一致时
+才 available，规则 fallback version 不作为学习模型证据。
 
-规模与统计口径满足系统要求。group key 使用 scenario/version 和显式 target/resource/recon/camera，
-seed 单独保留；名称中的 2v2/5v5 不参与。每个数值都有 availability，D2 IDSW false availability、
-D4 lease/commit、D5 model fallback、D7 hold/reject 和 D3 min-dwell backlog 均保留原 producer reason。
-bootstrap 以独立 seed 均值为单位，单 seed 不产生伪 CI。
+D4 advice consumer 只准入 `d4-region-resource-advisory-runtime-v1` 和经过安全投影的 recommendation。
+审计覆盖 schema/scenario/version/seed、authority digest、policy、plan/version、epoch、lease、action、
+transfer、quota conservation、projection rejection 及 formal decision digest。任一旧 schema、缺版本、
+过期栅栏、非法字段、非守恒 quota 或 digest flag 篡改均 fail closed；报告同时保留非法/版本原因，
+不从合法子集计算看似可用的 mode、fallback 或 latency 分布。
 
-2026-07-20 的 10 个临时 fixture 和 D6 全量 `282 passed` 证明接口合同及负例通过，不证明真实
-50v50/200v200 性能。重点 fixture 是 seed 7 的显式 50/50/4/54，以及 seed 8 的 195->200 held plan，
-后者正确给出 coverage=0.975、backlog=5。4.5 m event 在缺 global-track truth mapping 时保持身份
-unavailable，`mission_success` 不生成。现有 Matplotlib warning 仅涉及 Axes3D，二维报告正常。
+证据解释分为五层：bundle loaded 只证明可加载；shadow output 只证明产生合法 recommendation；assist
+eligible 只证明准入门；control adoption 需要独立 producer evidence；physical outcome 仍是离线几何
+结果。当前 D4 advice 的正式裁决 digest 保持 unchanged，schema 没有 control-adoption 字段，因此即使
+`assist_eligible=true` 也不能报告控制生效，更不能把后续五米事件归因于 advice。
 
-后续计划由 main 用正式多规模、多 seed bundle 调用 CLI；producer 若要关闭身份正确性缺口，必须在
-offline artifact 中增加无冲突显式映射。D2 IDSW 也必须由 D2/main 明确发布 available 值。D6 不从
-目录名、轨迹终态、邻近标签或物理接近补算这些证据。
+规模与统计口径未改变：按 scenario/version 和实际 target/resource/recon/camera 分组，以不同 seed 的
+episode 均值 bootstrap；单 seed descriptive-only。正式 evidence 继续要求 `repository_dirty=false`，
+并校验 config hash、D4 policy version、finite 和 online truth 隔离。
+
+2026-07-20 的 deterministic fixture 验收覆盖 disabled、三模块 missing bundle、assist-to-shadow、
+assist gate、守恒/非守恒、projection、mutation/unchanged、digest 篡改、旧 schema、缺 plan version、
+缺 advice 和 seeds 1/2 聚合；scalable 专项 `17 passed`、D6 全量 `289 passed`。结果只关闭 D6 consumer/
+report GAP，不证明真实模型性能。后续由 main 提供 clean、多规模、多 seed 正式 bundle 和独立控制采用
+证据；D6 不从 mode、终态、目录名或物理接近推断缺失层。
 
 ## 2026-07-15 legacy provenance 与真实三档评审
 
