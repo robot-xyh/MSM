@@ -38,11 +38,13 @@ from .models import (
 )
 from .orchestrator import EpisodeResult, Scalable3DEpisodeRunner, run_episode
 from .sensor_scene import CameraView, SensorScene
+from .scenarios import AVAILABLE_SCENARIOS, SCENARIO_CATALOG_VERSION, make_curriculum_scenario
 from .world import VectorizedPointMassWorld
 from .animation import write_trajectory_animation
 
 __all__ = [
     "BUS_SCHEMA_VERSION",
+    "AVAILABLE_SCENARIOS",
     "CameraIntrinsics",
     "CameraPose",
     "CameraView",
@@ -63,6 +65,7 @@ __all__ = [
     "ONLINE_OBSERVATION_SCHEMA_VERSION",
     "ProjectionBatch",
     "SCENARIO_SCHEMA_VERSION",
+    "SCENARIO_CATALOG_VERSION",
     "Scalable3DEpisodeRunner",
     "ScenarioConfig",
     "SensorMeasurement",
@@ -74,6 +77,7 @@ __all__ = [
     "assert_online_payload_truth_free",
     "build_episode_manifest",
     "look_at_rotation_ned_to_camera",
+    "make_curriculum_scenario",
     "project_points",
     "run_episode",
     "write_trajectory_animation",

@@ -6,6 +6,7 @@ import pytest
 from research_modules.scalable_3d_simulation.dynamics import integrate_point_masses
 from research_modules.scalable_3d_simulation.models import KinematicLimits, ScenarioConfig
 from research_modules.scalable_3d_simulation.world import VectorizedPointMassWorld
+from research_modules.scalable_3d_simulation.scenarios import make_curriculum_scenario
 
 
 def test_ned_altitude_and_seeded_reset_are_consistent() -> None:
@@ -80,3 +81,27 @@ def test_intercept_registration_uses_three_dimensional_five_meter_radius() -> No
     world.intruder_state[0, :3] = np.array([3.0, 0.0, -96.0])
     assert world.register_intercepts(np.array([[0, 0]], dtype=int)) == (0,)
     assert not world.intruder_active[0]
+
+
+@pytest.mark.parametrize(
+    ("name", "profile"),
+    [
+        ("nominal", "constant_velocity"),
+        ("dense_crossing", "crossing"),
+        ("formation_split", "formation_split"),
+        ("evasive_multilevel", "evasive"),
+    ],
+)
+def test_scenario_catalog_freezes_scale_seed_and_motion(name: str, profile: str) -> None:
+    config = make_curriculum_scenario(name, scale=50, seed=19, duration_s=3.0)
+    assert config.target_count == 50
+    assert config.resource_count == 50
+    assert config.seed == 19
+    assert config.motion_profile.value == profile
+    assert config.metadata["catalog_version"] == "scalable3d-catalog-v1"
+
+
+def test_fault_scenario_is_explicitly_marked_as_runtime_pending() -> None:
+    config = make_curriculum_scenario("secondary_failure", scale=20, seed=7, duration_s=9.0)
+    assert len(config.metadata["fault_schedule"]) == 2
+    assert config.metadata["fault_schedule_runtime_required"] is True

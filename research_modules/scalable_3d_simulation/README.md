@@ -23,8 +23,13 @@ python3 research_modules/scalable_3d_simulation/run_episode.py \
 ```bash
 python3 research_modules/scalable_3d_simulation/run_batch.py \
   --scales 5 20 50 100 200 \
-  --seeds 7 17 27
+  --seeds 7 17 27 \
+  --scenarios nominal dense_crossing formation_split evasive_multilevel
 ```
+
+场景目录还包含时延噪声、通信退化、中心失效、二级失效和高威胁多机需求配置。故障与
+多机需求场景在 D3/D4 运行时端口接入前明确标记为待执行，配置文件存在不等同于闭环已
+验证。
 
 默认不生成 200 路图像。相机模块只输出匿名 bbox、像素中心、投影协方差和独立离线真值
 标签。远距离投影只有达到相机类型对应的最小 bbox 面积后才形成在线视觉观测，避免把

@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import replace
 import json
-import math
 from pathlib import Path
 import sys
 
@@ -18,6 +16,10 @@ if str(ROOT) not in sys.path:
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
 from research_modules.scalable_3d_simulation.reporting import write_batch_outputs
+from research_modules.scalable_3d_simulation.scenarios import (
+    AVAILABLE_SCENARIOS,
+    make_curriculum_scenario,
+)
 
 
 DEFAULT_CONFIG = Path(__file__).with_name("configs") / "nominal_200v200.json"
@@ -28,6 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--scales", type=int, nargs="+", default=[5, 20, 50, 100, 200])
     parser.add_argument("--seeds", type=int, nargs="+", default=[7, 17, 27])
+    parser.add_argument("--scenarios", nargs="+", default=["nominal"], choices=AVAILABLE_SCENARIOS)
     parser.add_argument("--duration", type=float, default=2.0)
     parser.add_argument(
         "--output",
@@ -43,25 +46,24 @@ def main() -> int:
         json.loads(args.config.read_text(encoding="utf-8"))
     )
     results = []
-    for scale in args.scales:
-        for seed in args.seeds:
-            config = replace(
-                base,
-                scenario_name=f"nominal_{scale}v{scale}",
-                scenario_version=f"{scale}v{scale}-nominal-v1",
-                target_count=scale,
-                resource_count=scale,
-                recon_count=max(1, int(math.ceil(scale / 25.0))),
-                seed=seed,
-                duration_s=args.duration,
-            )
-            episode_dir = args.output / f"{scale}v{scale}" / f"seed_{seed}"
-            result = run_episode(config, output_dir=episode_dir)
-            results.append(result)
-            print(
-                f"scale={scale} seed={seed} finite={result.summary['finite_state']} "
-                f"rtf={result.summary['real_time_factor']:.3f}"
-            )
+    for scenario in args.scenarios:
+        for scale in args.scales:
+            for seed in args.seeds:
+                config = make_curriculum_scenario(
+                    scenario,
+                    scale=scale,
+                    seed=seed,
+                    duration_s=args.duration,
+                    base=base,
+                )
+                episode_dir = args.output / scenario / f"{scale}v{scale}" / f"seed_{seed}"
+                result = run_episode(config, output_dir=episode_dir)
+                results.append(result)
+                print(
+                    f"scenario={scenario} scale={scale} seed={seed} "
+                    f"finite={result.summary['finite_state']} "
+                    f"rtf={result.summary['real_time_factor']:.3f}"
+                )
     paths = write_batch_outputs(results, args.output)
     print(f"episodes={len(results)}")
     print(f"summary={paths['episode_summary_csv'].resolve()}")
