@@ -618,3 +618,15 @@ collision_or_constraint_violation_count
 - 三个中心层级均报告 demand、formation/reconfiguration、digest/stale、messages/bytes/rounds/latency。
 - 缺失证据保持 unavailable，真实零保持 0；not-applicable 不进入分母。
 - 当前任务已实现并运行 D6 离线单元测试；未运行 AirSim，也未修改上游控制或日志生产代码。
+
+## 10. 三维规模化身份证据接口影响（2026-07-20）
+
+新增 D1/D2 真值隔离 adapter 不改变本文件的 M 对 N 指标定义、联盟分母、同时/分批到达
+路线或安全判据。它补充了 M 对 N 场景所需的上游定位一致性和身份连续性证据：D1 可按
+sensor/range 提供 RMSE、NEES、NIS，D2 可提供显式 IDSW、continuity、duplicate、confusion
+和 coverage。
+
+接口支持任意正整数 actual target/resource count，已用 5/20/50/100/200 结构 fixture
+回归。高威胁多成员联盟仍必须由 D3/D4/D5/D7 的 coalition/member 记录评估，不能由 D2
+duplicate 指标反推。2026-07-20 D6 全量 `331 passed`；本轮未运行 M 对 N AirSim 或正式
+多 seed 物理闭环，M 对 N 性能状态保持原结论。

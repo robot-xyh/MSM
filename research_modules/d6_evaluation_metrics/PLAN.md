@@ -1161,3 +1161,39 @@ D6 已离线消费 `preflight_rows.json`、`range_rows.json` 和 `confirm_rows.j
 4. main 后续只需调用合并函数并写盘；D6 不导入 AirSim runtime，也不修改在线 episode 状态。
 
 后续回归要求：真实样本 replay `cross_view_association_count=0`、main bus `=55` 时最终值必须为 55；execution 缺失时不得制造执行值；帧数两层必须分别有 provenance。
+
+## 14. 三维规模化 D1/D2 离线制品接入（2026-07-20）
+
+### 已完成
+
+1. 新增版本化 D6 公共记录：D1 consistency adapter、D1 sensor-range record、D2 identity
+   adapter、truth-isolated episode 和 batch summary。
+2. D1 入口校验公开 result schema、record schema、内部 content digest、record count、
+   `truth_usage=offline_evaluation_only`、aggregation provenance 和逐记录内容一致性。总体
+   metric 由 D1 原样保留，sensor/range 统计只基于 D1 公开 aggregation records。
+3. D2 入口校验 evaluation/metrics/policy schema 和四类来源摘要。D6 不读取 frame mapping
+   来猜测身份，只保留 D2 已发布的指标；文件输入缺任一 expected source hash 时拒绝，在线
+   真值隔离或有效 frame/truth-frame 证据不完整时指标和 truth counts 均 fail-closed。
+4. episode context 显式携带 scenario/version/run/seed 和实际 target/resource/recon/camera
+   数量。D1 provenance 或 D2 episode ID 不一致时拒绝合并。
+5. batch 按 scenario/version/actual scale 分组，distinct seed 计算描述统计与固定随机种子
+   percentile bootstrap。单 seed 只给描述统计。
+6. 报告输出逐 seed CSV、D1 sensor-range CSV、聚合 JSON 和中文 Markdown；所有输出均
+   显式包含 `id_switch_count`，缺证据时值为空且原因可追溯。
+
+### 验证
+
+2026-07-20 使用最小公开制品 fixture 覆盖 5/20/50/100/200，专项 `11 passed`，D6 全量
+`331 passed`。测试验收为接口、文件/来源哈希、availability、假零拒绝和规模分组正确；未运行 AirSim，未运行
+正式 20 个未见 seed，未验证任何工程阈值。
+
+### 后续计划
+
+1. 当前工作树 main-owned reporting 已持久化 D1/D2 公开制品并调用 D6 episode/batch builder；
+   D6 不接入在线总线，也不在本任务修改该接线。
+2. main 仍需冻结正式 producer 文件名、manifest key 和跨制品 source hash 关系，并将 D6
+   结果纳入最终统一 scalable 3D 总报告，而不复制 producer 私有 schema。
+3. 在 5/20/50/100/200 正式多 seed 数据具备后，报告 sensor/range RMSE、NEES、NIS 与
+   IDSW/continuity/duplicate 的置信区间和不可用原因分布。
+4. 在以上证据完成前，GAP 状态为“D6 适配合同与当前工作树接线已闭合、正式多 seed
+   性能验收和最终统一报告仍开放”。

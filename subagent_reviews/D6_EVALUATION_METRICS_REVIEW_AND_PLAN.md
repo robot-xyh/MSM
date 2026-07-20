@@ -1050,3 +1050,24 @@ D6 新增 `d6.execution-metrics-merge.v1`。该接口解决历史 integrated rep
 3. 缺失 execution 时 `execution_metrics_merged=false`，缺失指标为 unavailable，不因 `EpisodeMetrics` 默认字段而制造执行证据。
 4. 持久化 11 帧与包含 warmup 的 12 帧按两个字段记录，D6 不假设两者固定相差一帧。
 5. main 仍负责调用和写盘；本轮 D6 只提供纯函数、包导出、单元测试和文档合同。
+
+## 16. 三维规模化 D1/D2 公共制品评审（2026-07-20）
+
+本轮新增 `truth_isolated_offline.py`，目标是让 D6 消费 D1/D2 已完成真值隔离的公开离线
+结果。评审结论如下：
+
+1. D1 adapter 同时验证 schema、内部 content digest、record count、offline-only truth 声明、
+   aggregation provenance 和逐记录内容；不会把不一致的聚合记录带入报告。
+2. D2 adapter 不解析逐帧 mapping 来生成新身份，只保留 producer 指标。来源摘要与 record
+   sequence、完整四类 expected source hash、在线真值隔离、无身份启发式和正数 frame/
+   truth-frame 证据缺一时，IDSW/continuity/duplicate 与 truth counts 全部 fail-closed。
+3. `id_switch_count` 在 DTO、CSV、JSON 和 Markdown 中为固定字段。真实零与缺证据空值已经
+   由单元测试分开。
+4. context 对齐阻止 D1 和 D2 跨 scenario/run/seed/episode 混用。规模按 actual
+   target/resource/recon/camera count 分组，不从场景名推断。
+5. batch 对不同 seed 统计；单 seed 不输出置信区间。输出包含 D2 confusion/coverage 与 D1
+   sensor/range 指标，评估 truth 不进入在线链路。
+
+2026-07-20 专项 `11 passed`、D6 全量 `331 passed`。该结果只支持“D6 公共适配合同已完成”。
+当前工作树 main-owned reporting 已调用 episode/batch API；20 个未见 seed 尚未运行，D1/D2
+性能未作闭合声明。下一步由 main 冻结文件名、manifest/hash 关系并接入最终统一规模化报告。

@@ -813,3 +813,32 @@ git diff --check -- research_modules/d6_evaluation_metrics subagent_reviews/D6_*
 - **仍开放的是 main 集成项**：main 需在 AirSim episode 完成后实际调用该纯函数并把 bundle 写入规范输出；D6 不修改 `airsim_runtime`，因此历史输出不会自动回填。
 
 测试证据：`tests/test_execution_metrics_merge.py` 覆盖 cross-view `55 vs 0`、execution 缺失和 `11 persisted vs 12 warmup-inclusive`。
+
+## 2026-07-20 三维规模化 D1/D2 离线评估 GAP
+
+### 已闭合的 D6-owned 项
+
+1. D1 `OfflineConsistencyResult` 和 `aggregation_records()` 已有公共 adapter。总体和
+   scenario/sensor/range 指标保留 RMSE、NEES、NIS、sample count、availability、不可用
+   原因、result digest 和三类 input digest。
+2. D2 `Scalable3DIdentityEvaluation` 已有公共 adapter。`id_switch_count`、continuity、
+   duplicate、confusion 和 coverage 显式保留；缺身份评估时 IDSW 为 `None/unavailable`，
+   不能补零；零帧、无 truth-frame、来源摘要不完整或隔离未验证时 truth details 不聚合。
+3. D6 不解析 D1/D2 私有 tracker 状态，不重建 `global_track_id -> truth`。D2 原始来源和
+   在线真值隔离未完整验证时 fail-closed。
+4. episode/batch 接口和逐 seed CSV、D1 sensor-range CSV、aggregate JSON、中文 Markdown
+   已实现，actual scale 支持 5/20/50/100/200 及其他正整数规模。
+5. 2026-07-20 专项 `11 passed`，D6 全量 `331 passed`；一条既有 Matplotlib `Axes3D`
+   环境 warning 不影响本轮无图报告。
+
+### 仍开放的 P1
+
+1. 当前工作树 main-owned scalable 3D reporting 已写出 D1/D2 制品并调用 D6 episode/batch
+   接口；稳定文件名、manifest/hash 关系和最终统一报告仍由 main 冻结。
+2. D1/D2 尚未提供覆盖 5/20/50/100/200、至少 20 个未见 seed 的正式制品，因此 RMSE、
+   NEES、NIS、IDSW、continuity 和 duplicate 没有可验收的性能统计。
+3. 现有 `Scalable3DOfflineReportGenerator` 与新公共制品报告尚未由 main 合并为最终一份
+   200 对 200报告。合并时必须保留 source hash 和 availability，不能回到旧在线记录猜测。
+
+当前无新增 P0。P2 外部 evaluator 状态不变；本轮没有引入 Stone Soup、TrackEval、HOTA、
+OSPA/GOSPA 或 AirSim 原生 recording parser。

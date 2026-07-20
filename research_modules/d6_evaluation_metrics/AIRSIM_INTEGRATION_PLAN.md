@@ -694,3 +694,28 @@ actual/required/error-reduction 和 `all_thresholds_passed`。D6 只在 episode 
 20-seed、六 difficulty v2 artifact；D6 本批未新启动 AirSim。D2-only bundle 保留总体/分档
 decision、dropout partial truth alignment、JPDA research-only 和默认路径未变，其他六源明确
 unavailable，不与异批 case/seed 混合。system-evidence 专项 `31 passed`、D6 全量 `243 passed`。
+
+## 11. 三维规模化 D1/D2 制品接线（2026-07-20）
+
+本轮没有启动 AirSim。新增接口同时适用于三维质点和后续小规模 AirSim episode，因为 D6
+只读取 episode 结束后写盘的公共评估制品，不依赖仿真后端。
+
+main 后续应在同一 episode 目录持久化：
+
+1. D1 `OfflineConsistencyResult` JSON，并在 manifest 记录文件 SHA-256；
+2. D2 `Scalable3DIdentityEvaluation` JSON，并在 manifest 记录文件 SHA-256和其四类 source
+   hash；
+3. actual scenario/version/run/seed 与 target/resource/recon/camera count；
+4. D1/D2 在线源文件和 evaluator-only truth sidecar 的独立路径，truth 文件不得进入在线
+   runtime bus。
+
+D6 通过 `build_truth_isolated_episode_record()` 接收上述 context 和 hash-verified artifact；
+D2 文件路径还必须携带完整四类 expected source hash。
+任何文件缺失时相应指标保持 unavailable；文件存在但 SHA-256、schema、episode identity 或
+真值隔离审计不一致时直接拒绝。D6 不通过 AirSim object name、actor ID、detect 返回的真实
+名称或最近距离恢复 D2 身份。
+
+2026-07-20 的 5/20/50/100/200 仅为离线结构 fixture。真实 AirSim 仍按 5～20 架代表性
+子场景运行；200 对 200 的正式验证由三维质点环境承担。当前工作树的 main-owned scalable
+3D reporting 已调用 D6 生成单 episode/batch bundle；AirSim 正式 producer、稳定文件名/
+manifest key 和真实多 seed 证据仍待 main 冻结与验收。

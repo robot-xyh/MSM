@@ -1254,3 +1254,39 @@ baseline IDSW=0 无可测 reduction evidence 而 fail-closed。dropout screening
 为 10/20 个 partial case；JPDA research adapter 不准入，默认在线 GNN/Hungarian 未改变。
 该 D2-only bundle 的其他六源 unavailable，所以全系统判决是 `not_evaluated`。回归为专项
 `31 passed`、全量 `243 passed`，本批未运行 AirSim。
+
+## 11. 三维规模化一致性与身份证据（2026-07-20）
+
+### 11.1 输入边界
+
+D1 与 D2 负责形成规范评估制品，D6 负责验证、归一化和汇总。D6 不访问在线融合器或关联
+器内部状态。D1 输入必须是公开 `OfflineConsistencyResult`，D2 输入必须是公开
+`Scalable3DIdentityEvaluation`。文件输入还必须由 main 提供外部 SHA-256；只有路径而没有
+期望摘要时拒绝读取，D2 路径还必须提供四类完整 expected source hash。
+
+D1 制品同时保留测量时间、到达时间、传感器、距离分档、误差、一致性统计和来源摘要。
+D6 校验内部内容摘要，再按 scenario、sensor、range 对公开 aggregation records 分组。D2
+制品已经由 evaluator-only observation lineage 形成真值映射。D6 只消费发布后的指标、混淆
+矩阵和覆盖计数，不重新匹配全局航迹与真值。
+
+### 11.2 可用性原则
+
+RMSE、NEES 和 NIS 分别有独立 availability 和 sample count。某组只有 NIS 而没有离线真值
+时，NIS 可以有效，RMSE/NEES 保持不可用。D2 必须同时满足来源摘要及记录序列验证、在线
+真值隔离验证和“未使用身份启发式”三项审计，身份指标才可进入统计。
+
+`id_switch_count=0` 只在 D2 明确给出可用身份评估且 `evaluated_frame_count>0`、存在 truth-frame
+证据时成立。制品缺失、lineage 冲突、零帧/无 truth-frame 或真值
+隔离未验证时，D6 输出 `id_switch_count=None`、`availability=unavailable` 和具体原因。该
+规则防止把“没有评估”解释成“没有身份切换”；对应 truth counts/confusion 也不进入聚合。
+
+### 11.3 规模与统计
+
+episode context 直接记录实际目标、资源、侦察节点和相机数量。5、20、50、100、200 是
+验收规模，不是数组长度限制。批量统计按 scenario/version/actual scale 分组，同一 seed 的
+重复 episode 先求 seed 内均值，再跨不同 seed 统计。至少两个独立 seed 才输出 95% 自助法
+置信区间；单 seed 只给描述统计。
+
+2026-07-20 的验证覆盖五档规模和 11 项专项用例，D6 全量为 `331 passed`。本轮仅证明公共
+合同、哈希校验、availability 和报告输出可用，没有运行 AirSim 或正式多 seed，因此不能
+据此判断 D1 精度、D2 身份连续率或 200 对 200 性能达标。

@@ -148,3 +148,11 @@ schema mismatch 回归已同步到下列文档；main runtime 的 D7 路径登�
 - 2026-07-08 起，main runtime P1 calibration sweep 已自动调用 D6 `AirSimCalibrationReportGenerator.write_report_bundle()`，输出 AirSim calibration records/summary/Markdown；报告字段覆盖 coverage、projection/gate、stable registration、`not_registered_count`、active degradation review label 和 D7 guidance reject reason。
 - PNG 截图不是默认指标输入；bbox、相机参数、timestamp、ID 和 gate metadata 才是指标主线。
 - py-motmetrics 已作为隔离式 P2 benchmark 输出 IDF1/MOTA/MOTP，HOTA unavailable；Stone Soup、OSPA/GOSPA、TrackEval、AirSim 原生 recording replay 和 SCRIMMAGE bridge 仍是未实现的可选项，live AirSim replay/API 仍是禁止在线控制项。
+
+2026-07-20 新增 `../d6_evaluation_metrics/truth_isolated_offline.py`。该文件是三维规模化
+D1/D2 公共离线制品入口，提供 DTO/哈希文件适配、episode/batch 记录和逐 seed CSV、聚合
+JSON、中文 Markdown 输出。算法边界见 `ALGORITHM_AND_IMPLEMENTATION.md` 第 17 节，原则
+与证据边界见 `MODULE_PRINCIPLES_CN.md` 第 11 节，AirSim/main 写盘要求见
+`../AIRSIM_INTEGRATION_PLAN.md` 第 11 节。文件模式强制校验制品 SHA-256 和 D2 四类来源
+摘要，零帧/无 truth-frame 不得产生 available IDSW=0。专项 `11 passed`、D6 全量
+`331 passed`；本轮只验证合同和报告，不代表正式多 seed 性能达标。

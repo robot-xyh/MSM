@@ -661,3 +661,29 @@ D6 独立批准候选；历史 artifact 若缺 false-track 或完整 gate eviden
 测试结果：`test_p1_system_evidence.py` 为 `29 passed`；D6 全量为 `241 passed`，另有一条
 Matplotlib `Axes3D` 本机环境 warning。本批没有 AirSim 图像或曲线，因为能力变化仅涉及
 离线 schema 兼容，不应伪造新的仿真证据。
+
+## 9. 三维规模化真值隔离接口验证（2026-07-20）
+
+本批是 D6 公共合同测试，不是算法性能实验。输入为最小 D1/D2 公开制品 fixture，覆盖
+5、20、50、100、200 五档实际目标/资源数量。测试没有启动 AirSim，没有生成三维运动
+样本，也没有使用正式训练或未见 seed。
+
+验证项目和结果如下：
+
+| 验证项 | 样本 | 结果 |
+| --- | ---: | --- |
+| D1 公共 DTO 与 sensor/range 聚合 | 2 条逐观测记录 | RMSE、NEES、NIS、样本数和摘要保留正确 |
+| D2 公共 DTO | 10 帧汇总 fixture | IDSW、连续率、重复和混淆矩阵保留正确 |
+| D2 真值隔离未验证 | 1 个负例 | 身份指标全部 `None/unavailable` |
+| unavailable IDSW 携带零值 | 1 个负例 | 制品被拒绝 |
+| D2 零帧且 IDSW=0 | 1 个负例 | IDSW 为 `None/unavailable`，truth counts 不聚合 |
+| D1 availability=false 但残留数值 | 1 个负例 | 制品被拒绝 |
+| 外部文件 SHA-256 篡改 | 1 个负例 | 制品被拒绝 |
+| D1 内部 content digest 篡改 | 1 个负例 | 制品被拒绝 |
+| 跨 episode 混用 | 1 个负例 | context 校验拒绝 |
+| 五档动态规模 | 5 个 episode fixture | 均按实际规模独立分组 |
+| CSV/JSON/中文 Markdown | 2 个 episode fixture | 空值、显式零、原因和来源摘要保持分离 |
+
+专项测试为 `11 passed`，D6 全量为 `331 passed`，另有一条既有 Matplotlib `Axes3D` 环境
+warning。验收门限是全部合同测试通过，当前已经满足。正式 D1 RMSE/NEES/NIS、D2 IDSW/
+continuity 和 200 对 200 运行性能没有证据，仍待 main 按至少 20 个未见 seed 评估。

@@ -1050,3 +1050,37 @@ screening/confirmation 为 `10/10`、`20/20` partial；JPDA research adapter 不
 
 验证日期 2026-07-15：system-evidence 专项 `31 passed`，D6 全量 `243 passed`；本批未启动
 AirSim，另有一条既有 Matplotlib `Axes3D` 环境 warning。
+
+## 三维规模化 D1/D2 真值隔离制品（2026-07-20）
+
+`truth_isolated_offline.py` 已实现 D1、D2 公共离线评估制品的 D6 适配入口。D6 只调用
+公开 DTO 的 `to_dict()`、D1 的 `aggregation_records()`，或读取由 main 提供期望
+SHA-256 的持久化制品。该路径不导入 D1/D2 在线 tracker，不读取私有滤波状态，也不根据
+距离、名称或后验结果重建 `global_track_id` 与真值的对应关系。
+
+公开入口包括：
+
+- `adapt_d1_offline_consistency()`：保留 D1 总体 RMSE、NEES、NIS、sample count、
+  availability、不可用原因、结果摘要和三类输入摘要，并按显式 scenario/sensor/range
+  重新汇总公开逐观测记录；
+- `adapt_d2_scalable_3d_identity()`：保留显式 `id_switch_count`、三类 continuity、
+  duplicate、confusion matrix、coverage counts、来源摘要和审计字段；D2 未同时证明原始
+  来源摘要/record sequence 已验证、在线真值隔离已验证且未使用身份启发式时，全部身份
+  指标保持 `None/unavailable`，truth coverage/count 也不进入聚合；文件输入必须同时提供
+  制品 SHA-256 和完整四类 expected source hash；
+- `build_truth_isolated_episode_record()`、
+  `aggregate_truth_isolated_episode_records()` 和
+  `TruthIsolatedOfflineReportGenerator`：按实际目标/资源/侦察节点/相机数量与 seed 输出
+  逐 seed CSV、D1 sensor-range CSV、聚合 JSON 和中文 Markdown。
+
+验证日期为 2026-07-20。专项测试 `11 passed`，D6 全量测试 `331 passed`；另有一条既有
+Matplotlib `Axes3D` 环境 warning。结构回归覆盖 5、20、50、100、200 五档规模、DTO、
+文件及四类来源 SHA-256、内容篡改、跨 episode 混用、缺制品、D1 availability 冲突、
+D2 零帧假零和未验证真值隔离。逐 seed CSV、聚合 JSON 和中文 Markdown 均保留来源摘要。
+该验证使用最小
+离线 fixture，没有启动 AirSim，没有运行正式多 seed，也没有形成 D1 精度或 D2 身份连续
+性能结论。
+
+当前工作树的 main-owned scalable 3D reporting 已写出 D1/D2 制品、校验 manifest/source
+hash 并调用本接口生成单 episode/batch bundle；该接线不属于 D6 owned path，本轮未代改。
+D6 侧公共合同已实现；20 个未见 seed 的正式阈值、置信区间和性能结论仍开放。

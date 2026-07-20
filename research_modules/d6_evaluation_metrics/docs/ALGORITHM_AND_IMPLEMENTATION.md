@@ -1386,3 +1386,75 @@ legacy 缺 source decision 时这些字段为 `None/unavailable`。aggregate 固
 2026-07-15 正式 D2 v2 bundle 验证总体 GNN 五 gate 通过、仅 clutter/combined 分档通过、四档
 baseline IDSW=0 fail-closed、dropout partial、JPDA 不准入和默认路径未变；其他六源 unavailable，
 全系统判决未评估。专项 `31 passed`，D6 全量 `243 passed`。本批未运行 AirSim。
+
+## 17. D1/D2 真值隔离制品适配算法（2026-07-20）
+
+### 17.1 D1 一致性统计
+
+D6 先验证 D1 公共结果的 schema、内部内容摘要、输入摘要以及 status/metric/record
+availability 一致性，再校验
+`aggregation_records()` 与原始公开 record 数量、顺序、内容和 provenance 一致。D6 不从
+filter state 重新计算 innovation 或 covariance。
+
+同一 scenario、sensor 和 range bin 内，公开误差样本按以下方式汇总：
+
+```text
+position_rmse = sqrt(sum(position_error_i^2) / n_position)
+velocity_rmse = sqrt(sum(velocity_error_i^2) / n_velocity)
+mean_nees = sum(nees_i) / n_nees
+mean_nis = sum(nis_i) / n_nis
+nis_gate_coverage = sum(I[nis_i <= gate_i]) / n_gate
+```
+
+各分母独立。缺位置真值不影响已有 NIS 样本；缺 gate 不进入 NIS coverage 分母。每个结果
+同时保存 sample count、不可用原因分布、D1 result digest、online evidence digest、truth
+sidecar digest 和 D2 canonical mapping digest。
+
+### 17.2 D2 身份指标
+
+D2 输出已经包含 evaluator-only mapping，D6 不读取 frame mapping 来生成新的
+`global_track_id -> truth_target_id` 对应关系。适配器直接保留下列发布指标：
+
+```text
+id_switch_count
+track_continuity
+identity_continuity
+coverage_continuity
+duplicate_truth_to_track_count
+confusion_matrix
+truth/assigned/stable frame counts
+```
+
+身份指标的允许条件为：原始 D1/D2/truth 文件摘要与 record sequence 已验证，D2 路径的
+四类 expected source hash 完整匹配，在线 D1/D2 记录通过真值字段隔离检查，D2 审计明确
+没有使用身份启发式，并且存在正数 evaluated frame 和 truth-frame 证据。任何条件缺失时，
+五项身份指标全部为 `None/unavailable`，truth counts/confusion 不进入聚合。D6 保留 producer 的原因和 audit，不使用距离最近、目标名称、
+actor ID 或末端接近结果补齐身份。
+
+### 17.3 Episode 与批量聚合
+
+main 提供 episode context 和两个公开制品。D6 校验 D1 scenario/version/run/seed 与 context
+一致，并校验 D2 episode ID。跨 episode 汇总键为：
+
+```text
+(scenario_id, scenario_version,
+ target_count, resource_count, recon_count, camera_count)
+```
+
+每项指标先按 seed 聚合，再计算不同 seed 均值、标准差、最小值、最大值和总和。至少两个
+不同 seed 时使用固定随机种子和 2000 次 percentile bootstrap 输出均值的 95% 置信区间。
+无可用 seed 时保留不可用原因分布。`id_switch_count` 在 CSV、JSON 和 Markdown 中始终显式
+存在，空值不写成零。逐 seed CSV、aggregate JSON 和中文 Markdown 均保留逐 episode 来源
+摘要。D2 confusion matrix 和逐目标 coverage count 只在证据可用时按 episode 分开保存；
+不同 seed 中重复出现的 `T-0001` 或 `GT-0001` 不视为跨 episode 同一身份。
+
+### 17.4 实现与证据
+
+实现文件为 `d6_evaluation_metrics/truth_isolated_offline.py`，公开 API 包括两个 adapter、
+episode builder、batch aggregator 和 report generator。输出固定包含逐 seed CSV、D1
+sensor-range CSV、aggregate JSON 和中文 Markdown。
+
+2026-07-20 专项 11 项和 D6 全量 331 项测试通过。测试覆盖 5/20/50/100/200、DTO、外部
+文件/来源 SHA-256、内部摘要篡改、跨 episode 混用、缺制品、D1 availability 冲突、D2
+零帧假零和真值隔离 fail-closed。本轮没有
+AirSim 或正式训练/评估数据，不能形成算法性能结论。
