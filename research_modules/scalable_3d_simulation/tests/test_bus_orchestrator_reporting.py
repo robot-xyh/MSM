@@ -35,6 +35,15 @@ def test_recursive_truth_guard_rejects_nested_fields_and_truth_dataclasses() -> 
         assert_online_payload_truth_free(OfflineTruthLabel("obs", "TGT-0001", 0.0))
 
 
+def test_recursive_truth_guard_handles_cycles_without_weakening_nested_checks() -> None:
+    cyclic: dict[str, object] = {}
+    cyclic["self"] = cyclic
+    assert_online_payload_truth_free(cyclic)
+    cyclic["nested"] = [{"object-id": "TargetActor_1"}]
+    with pytest.raises(ValueError, match="truth fields"):
+        assert_online_payload_truth_free(cyclic)
+
+
 def test_manifest_hash_and_episode_id_change_with_configuration() -> None:
     first = build_episode_manifest(
         ScenarioConfig(target_count=5, resource_count=5, recon_count=1, seed=7)

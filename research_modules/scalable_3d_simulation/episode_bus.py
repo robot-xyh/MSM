@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, fields, is_dataclass
 import copy
+from functools import lru_cache
 import hashlib
 import json
 from pathlib import Path
 import subprocess
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable
 
 import numpy as np
 
@@ -150,39 +152,48 @@ class InMemoryEpisodeBus:
 def assert_online_payload_truth_free(payload: Any) -> None:
     """Reject truth-bearing fields anywhere in an online payload tree."""
 
-    violations: list[str] = []
-
-    def visit(value: Any, path: str) -> None:
+    pending = [payload]
+    visited: set[int] = set()
+    while pending:
+        value = pending.pop()
         type_name = type(value).__name__
         if type_name in _FORBIDDEN_ONLINE_TYPES:
-            violations.append(f"{path}<{type_name}>")
-            return
+            raise ValueError(
+                "online payload contains evaluator-only truth fields: "
+                f"<{type_name}>"
+            )
+        if value is None or isinstance(
+            value,
+            (str, bytes, int, float, complex, np.generic, np.ndarray),
+        ):
+            continue
+        value_id = id(value)
+        if value_id in visited:
+            continue
         if is_dataclass(value) and not isinstance(value, type):
-            for item in fields(value):
-                key = _normalise_key(item.name)
-                child_path = f"{path}.{item.name}"
+            visited.add(value_id)
+            for name, key in _dataclass_field_keys(type(value)):
                 if _is_forbidden_key(key):
-                    violations.append(child_path)
-                else:
-                    visit(getattr(value, item.name), child_path)
-            return
+                    raise ValueError(
+                        "online payload contains evaluator-only truth fields: "
+                        f"{name}"
+                    )
+                pending.append(getattr(value, name))
+            continue
         if isinstance(value, Mapping):
+            visited.add(value_id)
             for raw_key, item in value.items():
                 key = _normalise_key(str(raw_key))
-                child_path = f"{path}.{raw_key}"
                 if _is_forbidden_key(key):
-                    violations.append(child_path)
-                else:
-                    visit(item, child_path)
-            return
+                    raise ValueError(
+                        "online payload contains evaluator-only truth fields: "
+                        f"{raw_key}"
+                    )
+                pending.append(item)
+            continue
         if isinstance(value, (list, tuple, set, frozenset)):
-            for index, item in enumerate(value):
-                visit(item, f"{path}[{index}]")
-
-    visit(payload, "payload")
-    if violations:
-        joined = ", ".join(sorted(set(violations)))
-        raise ValueError(f"online payload contains evaluator-only truth fields: {joined}")
+            visited.add(value_id)
+            pending.extend(value)
 
 
 def build_episode_manifest(
@@ -245,8 +256,14 @@ def jsonable(value: Any) -> Any:
     return value
 
 
+@lru_cache(maxsize=2048)
 def _normalise_key(value: str) -> str:
     return value.strip().lower().replace("-", "_").replace(" ", "_")
+
+
+@lru_cache(maxsize=256)
+def _dataclass_field_keys(cls: type[Any]) -> tuple[tuple[str, str], ...]:
+    return tuple((item.name, _normalise_key(item.name)) for item in fields(cls))
 
 
 def _is_forbidden_key(key: str) -> bool:

@@ -221,6 +221,7 @@ class Scalable3DEpisodeRunner:
                     interceptor_command = module_output.interceptor_acceleration_ned
                     recon_command = module_output.recon_acceleration_ned
                     last_module_diagnostics = dict(module_output.diagnostics)
+                    publication_started = time.perf_counter()
                     for publication in module_output.publications:
                         self.bus.publish(
                             topic=publication.topic,
@@ -233,6 +234,10 @@ class Scalable3DEpisodeRunner:
                         module_publication_topic_counts[publication.topic] = (
                             module_publication_topic_counts.get(publication.topic, 0) + 1
                         )
+                    timing.add(
+                        "module_publication_bus",
+                        time.perf_counter() - publication_started,
+                    )
                     control_command_tick_count += 1
                     timing.add("module_stack", time.perf_counter() - started)
                 started = time.perf_counter()
