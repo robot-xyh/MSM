@@ -441,3 +441,17 @@ slot 重评分；`rule_cost_matrix_v1` 是 promotion 的唯一成本非退化口
 最新 D3 全量 252 项为 `251 passed, 1 skipped`，零失败通过，skip 是 optional OR-Tools。
 这只关闭 M-to-N 学习外环的软件安全缺口；仍无动态 demand 真实训练、20 个未见真实/高
 保真 M-to-N test seed、正式权重/promotion、AirSim 协同收益或 `8/10` 物理门限新证据。
+
+## 26. M-to-N 运行绑定确认（2026-07-21）
+
+新 runtime ACK 消费器按资源验证 binding，因此允许多个资源合法指向同一
+`global_track_id`，同时禁止同一资源重复出现或被重绑。每条 M-to-N binding 必须与预期
+`AssignmentPlan` 的 coalition id/version 和 member role 精确一致。primary、reserve
+或 retry 不能由 D7 ACK 临时改写；缺失、额外、重复成员和旧计划版本均失败关闭。
+
+专项正例使用两个资源指向同一中心航迹，分别携带 primary 和 reserve 角色，并验证一个
+中段命令和一个 hold 命令。24 项专项测试通过，其中包含两种合法 D3 包导入组合和任意
+鸭子类型拒绝。自动化 3v3、seed 7、1.2 秒真实 main 集成测试另验证 3 条普通 binding
+的来源哈希和控制统计，但不是高威胁 M-to-N 物理协同试验。consumer 源码不导入 main；
+main 集成栈只在 D3 测试中导入。冻结 900-episode 数据仍无运行 ACK；多成员 outcome、
+联盟协同完成和 reward 继续 unavailable，PPO/assist 不开放。

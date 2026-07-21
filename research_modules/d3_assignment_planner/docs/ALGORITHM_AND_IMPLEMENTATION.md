@@ -1657,3 +1657,51 @@ episode 进度文件逐行绑定 `(scenario_version, seed, episode_id)` 和导�
 `partial`。存在任何结构、哈希或约束违规时，数据状态和总体状态都降为 `pending`。所有
 状态下 `model_training_performed=false`、`weights_written=false`、`ppo=false`、
 `assist=false`、`online_authority=false`，并要求规则回退。
+
+## 38. Runtime Plan ACK 验证算法（2026-07-21）
+
+### 38.1 输入与输出
+
+`validate_assignment_plan_runtime_ack()` 接收五项输入：ACK envelope schema、ACK
+mapping、D3 来源 envelope mapping、可选 D7 来源 envelope mapping 和预期
+`AssignmentPlan`。来源 mapping 必须使用 `VersionedEnvelope.to_dict()` 的完整结构，
+因为裸 payload 无法独立验证 bus sequence。输出为 frozen
+`AssignmentPlanRuntimeAckEvidence`，binding 使用 tuple 保存，`to_dict()` 每次返回
+新的序列化对象。
+
+### 38.2 验证步骤
+
+1. 对 ACK 和来源 envelope 执行字段白名单、类型、正整数序号及有限时间检查。
+2. 独立规范化来源 payload，并复算 SHA-256。D3 来源序号必须与 ACK 一致；存在 D7
+   来源时，其序号和摘要必须成对提供，并且序号晚于同 tick D3 计划。
+3. 从预期计划构造 `resource_id -> binding`。逐项比较 plan id/version/schema、
+   target/resource/assignment count、solver、metadata、未分配目标和 assignment 顺序。
+4. 从 D7 命令构造 `(resource_id, global_track_id) -> command`。命令必须引用当前
+   plan id/version，同资源不得重复，额外绑定直接拒绝。
+5. 解析 ACK binding rows。每个资源必须且只能出现一次，中心航迹、coalition id/version
+   和 member role 必须等于预期计划。随后根据 D7 来源重算 command-present、mode、
+   gate reason、control-applied 和 held。
+6. 重算 aggregate count 和 fully-bound。ACK 自报统计与逐行结果不一致时失败关闭。
+7. 将学习和区域提示元数据与 D3 来源计划比较。缺失学习字段归为 unavailable；
+   assist/applied/bundle-loaded 条件未同时满足时不得输出学习 applied ACK。
+8. 强制 `physical_outcome_available=false` 和 `reward_available=false`。D6 独立
+   sidecar 尚未接入本函数，ACK 自报 true 使用
+   `physical_outcome_sidecar_required` 或 `reward_sidecar_required` 拒绝。
+
+### 38.3 验证结果
+
+稳定错误码覆盖 schema/hash/sequence/version、重复/缺失/额外 binding、
+`global_track_id_mismatch`、联盟语义、统计、学习证据和 availability。验证器不调用
+`AssignmentPlanner`、`publish_plan()` 或训练入口，不改变规则代价、Hungarian、
+迟滞和 D7 binding。
+
+类型兼容采用受约束结构验证。consumer 仅接受项目现有两种 D3 包导入路径对应的明确
+模块名和类名，并要求数据类字段集合与本地合同完全相同、计划 schema 为受支持版本。
+这解决同一源码经顶层和 namespaced 路径载入后 Python 类对象不相等的问题，同时拒绝
+`SimpleNamespace` 等任意鸭子类型。consumer 源码不导入 main；真实 main 集成栈只由
+D3 自动化测试导入，避免形成运行时耦合或循环导入。
+
+专项 24 项全部通过。自动化真实 main 集成测试运行 3v3、seed 7、1.2 秒，最后一条 ACK
+含 3 条 assignment，全部 binding 到 D7，验证后 control-applied=3、held=0；在线 truth
+use=0。D3 全量为 `303 passed, 1 skipped`。冻结 900-episode 数据仍没有该 ACK，不能
+用于 PPO 或 assist 准入。

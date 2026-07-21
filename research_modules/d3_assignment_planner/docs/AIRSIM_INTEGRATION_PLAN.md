@@ -432,3 +432,22 @@ shortfall, churn, and D7 gate state. Until D6 verifies those records, rule cost
 plus demand-slot Hungarian remains the only default path and assist/authority
 stay disabled. This audit changed no AirSim adapter, settings, actor, camera,
 episode order, or control command.
+
+## 运行计划 ACK 接入边界（2026-07-21）
+
+D3 已实现 `scalable3d-assignment-plan-runtime-ack-v1` 的独立只读消费者。main 在保存
+episode 日志时，应同时保留 ACK envelope、其引用的 D3 计划 envelope 和可选 D7 命令
+envelope；只保存 ACK payload 无法验证来源 bus sequence 和 payload SHA-256。D6 离线
+回放前先调用 D3 验证器，再按 plan id/version、source sequence 和时间窗连接控制与结果
+sidecar。
+
+接口已由 D3 自动化测试用 main 三维质点集成栈的 3v3、seed 7、1.2 秒场景验证：公开
+consumer 校验最后一条 ACK，最终 3 条 binding 全部进入 D7，在线真值使用为 0。consumer
+源码不导入 main，测试侧导入 main 集成栈用于覆盖顶层与 namespaced D3 类型组合。该次
+没有启动 Blocks，也没有 AirSim actor、相机或 SimpleFlight 控制，因此不能写成 AirSim
+证据。后续 AirSim runtime 若采用同一 ACK schema，仍需导出完整来源 envelope，并保持
+truth ID 只进入 D6 离线评分。
+
+冻结 900-episode 数据没有该 ACK，不能原地回填。新的 AirSim 或三维质点 episode 可以
+生成 ACK sidecar，但 physical outcome 和 reward 必须由 D6 独立生成；运行 ACK 自报
+这两项会被 D3 拒绝。当前 PPO、assist 和在线 authority 均不启用。

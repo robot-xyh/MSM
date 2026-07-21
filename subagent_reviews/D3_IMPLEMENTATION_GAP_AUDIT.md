@@ -598,3 +598,37 @@ C1 是否可启动由 main 汇总 D4/D5 数据条件后决定。
   全样本证据合并。该项由 main/D6 负责，不回写或修改正式 D3 数据。
 
 当前没有新增 P0。D3 全样本数据 GAP 已关闭，跨模块总体准入仍为 `partial`。
+
+## 30. 运行计划 ACK GAP 更新（2026-07-21）
+
+### 已关闭
+
+- **D3-owned ACK 消费接口**：已实现
+  `d3_assignment_plan_runtime_ack_evidence_v1`，不依赖 main 包，不发布或修改计划。
+- **来源序号和哈希验证**：D3/D7 完整 envelope 的正整数 sequence 和规范 payload
+  SHA-256 必须与 ACK 一致；错误或缺少来源失败关闭。
+- **current plan/binding 验证**：plan id/version/schema、decision id、assignment
+  inventory、资源/`global_track_id`、coalition/version/role、owner 和统计逐项复核。
+- **学习采用口径**：只有 assist + applied + bundle-loaded 且整个来源链通过才标为
+  available；shadow、规则教师分量和 accepted plan 均为 unavailable。
+- **结果自报隔离**：ACK 中 physical outcome/reward 必须为 false；无独立 D6 sidecar 时
+  自报 true 被拒绝。
+
+跨导入路径类身份问题已关闭。consumer 接受项目现有顶层与 namespaced 两种明确 D3
+模块/类身份，同时要求精确数据类字段集合和受支持计划 schema；任意鸭子类型继续失败
+关闭。consumer 源码不导入 main，main 集成栈只在 D3 自动化测试中导入。
+
+专项 24 项和自动化 3v3、seed 7、1.2 秒真实 main 集成测试通过。集成测试最终
+assignment/binding/control 为 3/3/3，held=0，online truth use=0。D3 全量 304 项，结果
+`303 passed, 1 skipped`。
+
+### 仍开放
+
+- **冻结正式数据 ACK 覆盖**：900 episode/1604 frame 生成于 producer 之前，逐样本
+  runtime ACK 仍为 unavailable，不能回填该 3v3 自动化集成测试。
+- **D6 离线 join**：需按 source sequence/hash、plan id/version 和时间窗连接 D3
+  evidence、D7 控制、独立 outcome/reward sidecar，并保留 availability。
+- **学习与策略准入**：可归因 reward、因果/反事实证据、同 seed paired shadow 和外部
+  保留 seed 未闭合。PPO、assist、online authority 继续 false。
+
+当前没有新增 P0。原“D3 无严格 ACK 消费器”已关闭；跨模块正式采用与结果归因仍为 P1。

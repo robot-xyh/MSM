@@ -1021,3 +1021,47 @@ OR-Tools，零失败满足门限。
 4. 下一步由 main 将本审计 JSON 及文件 SHA 交给 D6 复核。未来 producer 需另外生成运行时
    owner/version/applied-ACK/outcome 记录和同 seed paired shadow；这些记录不得回填到本批
    已冻结的正式数据。
+
+## 31. 运行计划 ACK 只读验证（2026-07-21）
+
+### 已完成
+
+1. 新增 D3-owned `d3_assignment_plan_runtime_ack_evidence_v1` 消费合同。输入为 main
+   ACK schema、ACK mapping、D3 来源 envelope、可选 D7 来源 envelope 和预期
+   `AssignmentPlan`；实现不依赖 main 包。
+2. 规范哈希算法与 main 对齐：UTF-8、`sort_keys=true`、紧凑分隔符、
+   `allow_nan=false`。来源 sequence 必须为正整数，D7 sequence 必须位于同 tick 的
+   D3 sequence 之后。
+3. 精确验证 plan id/version/schema、decision id、计划创建和确认时间、计数、solver、
+   metadata、assignment inventory、未分配清单、资源/中心航迹 binding、
+   coalition/version/role 和区域 owner 字段。
+4. 根据 D7 来源命令独立计算 command-present、fully-bound、control-applied 和 held。
+   重复、缺失、额外绑定，旧版本，来源哈希/序号错误，非有限时间和
+   `global_track_id` 不一致均使用稳定 reason/code 失败关闭。
+5. 学习证据缺字段保持 unavailable。只有 assist、applied 和 bundle-loaded 三条件同时
+   明确为真，且整个来源链验证通过，才形成 runtime learning applied ACK。shadow、规则
+   教师诊断或 accepted plan 均不形成该证据。
+6. 物理 outcome 和 reward 在 v1 ACK 中必须为 false。独立 D6 sidecar 尚未作为该接口
+   输入，因此任何自报 true 都被拒绝。返回值为 frozen dataclass 和 tuple，只支持新建
+   序列化对象，不修改或重新发布 `AssignmentPlan`。
+
+### 验证
+
+- 专项测试 24 项，覆盖正常路径，以及 schema、D3/D7 hash、旧版本、非正序号、重复、
+  缺失、额外、中心航迹重绑、统计错误、非有限时间、自报 outcome/reward、shadow
+  冒充 applied、两种合法 D3 包导入身份组合和非约束鸭子类型拒绝。
+- 自动化真实 main 集成测试运行三维集成栈 3v3、seed 7、1.2 秒并产生 2 条 ACK；公开
+  consumer 验证最后一条 ACK，最终 3 条 binding 全部进入 D7，control-applied=3、
+  held=0、online truth use=0。consumer 源码不导入 main，main 仅由 D3 测试导入。
+  学习、物理 outcome 和 reward 均保持 unavailable。
+- D3 全量 304 项，结果 `303 passed, 1 skipped`；接受门限为零失败，skip 仅 optional
+  OR-Tools。
+
+### 保持关闭的条件
+
+1. 冻结的正式 900 episode 不含新 ACK，不能把当前 3v3 自动化集成测试回填或外推为
+   正式逐样本 applied evidence。
+2. D6 仍需实现按 source sequence/hash、plan id/version 和时间窗的离线 join，并从独立
+   sidecar 提供 outcome/reward。D3 验证器只证明来源与绑定一致。
+3. 同 seed paired shadow、可归因 reward、外部保留 seed 和 promotion gate 未闭合。
+   PPO、assist、authority 保持 false；默认规划和安全外壳不变。

@@ -918,3 +918,44 @@ episode、0 个脏 episode、0 次在线真值使用，以及 194 个明确未�
 `954f3e96d563412644ec88d1b621e2a58c781af8af99de79b859d22079fc1867`。新增 10 个负例和
 正常路径测试；D3 全量收集 280 项，结果为 `279 passed, 1 skipped`，唯一 skip 为可选
 OR-Tools 安装检查。
+
+## 2026-07-21 运行计划确认消费合同
+
+D3 新增独立的 `runtime_plan_ack.py`，用于只读消费 main 发布的
+`scalable3d-assignment-plan-runtime-ack-v1`。调用方必须同时提供确认载荷、D3 来源
+计划的完整总线 envelope、可选 D7 来源命令 envelope 和内存中的预期
+`AssignmentPlan`。验证器不导入 main 模块，也不调用规划器或发布计划。
+
+验证链按以下顺序失败关闭：
+
+1. 检查 ACK schema、字段白名单、有限时间和正整数来源序号。
+2. 使用 UTF-8、键排序、紧凑分隔符和 `allow_nan=false` 复算 D3/D7 payload
+   SHA-256，并与 ACK 中的来源摘要逐项核对。
+3. 将 D3 来源计划与预期计划的 plan id/version/schema、目标和资源计数、未分配清单、
+   solver、metadata 及全部 assignment 对齐。
+4. 对每个资源精确核对 `global_track_id`、coalition id/version、member role 和区域
+   owner 字段；重复、缺失、额外或重绑均返回稳定错误码。
+5. 将 D7 命令与每条 binding ACK 对齐，再独立重算 fully-bound、control-applied 和
+   held 统计。D7 不能借 ACK 改写 D3 的中心航迹身份。
+
+`d3_learning_evidence` 缺字段时保持 unavailable。只有来源计划明确记录
+`mode=assist`、`applied=true`、`bundle_loaded=true`，并且上述来源、计划和绑定
+检查全部通过时，结果才标记 `runtime_learning_applied_ack_available=true`。
+`shadow`、规则教师 `reward_components` 和单纯的运行时计划接受均不满足该条件。
+运行 ACK 自报物理结果或 reward 会被拒绝；这两类证据只能由后续 D6 独立 sidecar 提供。
+
+2026-07-21 增加自动化真实 main 集成回归：当前三维集成栈执行 3v3、seed 7、1.2 秒，
+总线产生 2 条计划 ACK，公开 D3 consumer 验证最后一条 ACK。最终计划 3 条 binding
+全部进入 D7，control-applied 为 3、held 为 0，在线真值使用为 0。该次计划没有学习
+mode，验证结果因此保持学习 applied ACK unavailable；物理 outcome 和 reward 也为
+unavailable。consumer 源码不导入 main；只有 D3 测试导入 main 集成栈，以避免运行时
+耦合和循环导入。
+
+consumer 同时兼容项目现有顶层与 namespaced 两种合法 D3 包路径。兼容检查限定模块名、
+类名、精确数据类字段集合和 AssignmentPlan schema，不接受任意鸭子类型。专项 24 项
+测试和 D3 全量 304 项均完成，全量结果为 `303 passed, 1 skipped`，唯一 skip 仍是可选
+OR-Tools。
+
+该接口已经实现并经当前 producer smoke 验证，但冻结的 900-episode 正式数据生成于
+ACK producer 之前，仍没有 current owner/version、applied ACK、outcome 或 reward。
+PPO、assist 和在线 authority 继续关闭，规则代价与需求槽 Hungarian 仍是默认执行路径。

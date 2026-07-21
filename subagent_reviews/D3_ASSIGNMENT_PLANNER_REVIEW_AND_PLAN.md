@@ -859,3 +859,26 @@ version、真实 applied ACK、outcome 或 stale runtime record。规则教师
 `279 passed, 1 skipped`，唯一 skip 为 optional OR-Tools。下一步由 main/D6 使用审计
 JSON 文件 SHA `62a47df8...17fb` 和内容 SHA `954f3e96...1867` 做跨模块复核；运行时
 owner/version/ACK/outcome 和 paired shadow 应作为新证据生产，不得回填本批正式数据。
+
+## 30. Runtime ACK 消费复核（2026-07-21）
+
+D3 已增加版本化、只读的运行计划 ACK 验证器。接口不依赖 main 包，要求提供 ACK、
+D3 来源 envelope、可选 D7 来源 envelope 和预期 `AssignmentPlan`。它复算规范
+payload SHA-256，核对正整数 bus sequence、当前 plan id/version/schema、assignment
+inventory、资源与中心航迹 binding、coalition/version/role，并从 D7 来源独立重算
+fully-bound、control-applied 和 held。
+
+原始实现用单一 `isinstance` 检查预期计划，无法接受同一 D3 源码经顶层与 namespaced
+包路径载入后形成的另一类对象。本轮改为受约束身份验证：模块名、类名、精确数据类字段
+集合和计划 schema 必须全部匹配。普通外观相同对象仍以稳定错误码失败关闭。consumer
+源码不导入 main，跨包集成仅由测试导入 main，运行时依赖方向不变。
+
+24 项专项测试覆盖全部要求的正负例和两种合法跨包组合。自动化真实 main 集成测试运行
+3v3、seed 7、1.2 秒，产生 2 条 ACK；公开 consumer 验证最后一条 ACK，最终 3 条 binding
+全部通过，在线 truth use=0。缺失 learning mode 时结果保持 unavailable。冻结 900-episode
+数据不含新 ACK，当前 D3 consumer 完成不等于正式 applied/outcome/reward join 完成。
+
+评审结论：D3-owned runtime ACK 消费接口为 implemented/tested；D6 离线 join、独立
+outcome/reward sidecar 和同 seed paired shadow 仍开放。规则教师 `reward_components`
+不再能被误写为运行 reward，shadow 或 accepted plan 不再能被误写为学习 applied ACK。
+PPO、assist、authority 保持 false。D3 全量结果为 `303 passed, 1 skipped`。

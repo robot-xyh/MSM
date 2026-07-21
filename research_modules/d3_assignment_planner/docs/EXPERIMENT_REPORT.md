@@ -733,3 +733,28 @@ applied ACK、outcome 归因、因果/反事实 reward 和同 seed paired shadow
 专项测试覆盖正常数据、非有限值、split 错误、truth 泄漏、版本/索引/容量错误、文件篡改、
 描述文件哈希变化和输出路径保护。D3 全量收集 280 项，结果 `279 passed, 1 skipped`；
 唯一 skip 为可选 OR-Tools 安装检查。
+
+## 30. 运行计划 ACK 验证试验（2026-07-21）
+
+本次试验验证 D3 能否在不依赖 main Python 包的条件下，复核 main 发布的运行计划确认。
+专项用例构造两资源协同指向同一中心航迹的 M-to-N 计划，覆盖 primary、reserve、联盟
+版本、一个中段导引命令和一个 hold 命令。验收门限为所有正例通过、所有篡改负例失败
+关闭、`AssignmentPlan` 与输入 mapping 前后不变。
+
+专项共 24 项，全部通过。负例覆盖错误 ACK schema、D3/D7 来源 SHA、旧 plan version、
+非正来源 sequence、重复/缺失/额外 binding、ACK 和来源计划的中心航迹替换、错误
+fully-bound、自报物理 outcome、自报 reward、非有限时间、shadow 冒充 applied，以及
+非约束鸭子类型。另以正例覆盖顶层 consumer 对 namespaced plan、namespaced consumer
+对顶层 plan 两种导入组合。序列化结果通过 `json.dumps(..., allow_nan=False)`。
+
+自动化真实 main 集成测试使用当前三维集成栈运行 3v3、seed 7、1.2 秒。总线产生 2 条
+`runtime.assignment_plan_ack`；测试通过公开 consumer 验证最后一条 ACK。最终计划版本
+1，assignment=3、binding ACK=3、control-applied=3、held=0、fully-bound=true，在线
+真值使用为 0。最终 ACK 的学习 mode 为空，验证器输出 runtime learning applied ACK
+unavailable；物理 outcome 和 reward 也为 unavailable。consumer 源码不导入 main，
+main 集成栈只在 D3 测试中导入。该场景是三维质点软件测试，不是 AirSim 或实飞试验。
+
+D3 全量收集 304 项，结果 `303 passed, 1 skipped`，唯一 skip 为 optional OR-Tools。
+冻结正式数据仍是 900 episode、1604 决策帧，生成时间早于 ACK producer，因此正式逐样本
+ACK 覆盖率仍为 0。当前结论只证明验证接口和新 producer 的小规模对接可用，不证明学习
+动作收益、物理拦截结果或 reward 归因。

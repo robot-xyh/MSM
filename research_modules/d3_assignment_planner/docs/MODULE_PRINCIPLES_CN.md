@@ -1089,3 +1089,36 @@ version，因此不能证明 stale plan 已被运行时拒绝。匿名 token 及
 分量。这些分量来自规则教师帧，不是实际执行结果，也没有 applied ACK、反事实基线或
 因果归因。正式全样本结构审计完成后，PPO、assist、在线权限和权重写入仍关闭。规则代价
 与需求槽匈牙利继续作为默认路径，直到运行绑定和配对非退化证据单独通过。
+
+## 30. 运行计划确认的信任链（2026-07-21）
+
+运行确认不能只凭 `accepted=true` 判断计划已执行。D3 将证据拆成四个相互绑定的对象：
+预期 `AssignmentPlan`、D3 计划来源 envelope、可选 D7 命令来源 envelope 和 main ACK。
+来源 payload 的摘要为：
+
+\[
+h=\operatorname{SHA256}(\operatorname{JSON}_{canonical}(payload))
+\]
+
+规范 JSON 使用 UTF-8、键排序、紧凑分隔符和禁止非有限数值。ACK 中的来源序号和摘要
+必须与 envelope 一致，D3 计划内容还必须与预期计划逐 binding 一致。这样可以区分“某个
+计划被接受”和“当前这一版计划的指定资源-航迹绑定进入了同 tick 的 D7 命令”。
+
+身份所有权保持不变。D3 以 `resource_id` 为主键，核对中心拥有的
+`global_track_id`、联盟编号、联盟版本和成员角色。D5/D7 或离线消费者不能增加、
+删除或替换绑定。M-to-N 场景允许多个资源指向同一个中心航迹，但一个资源只能出现一次。
+重复、缺失、额外资源和同资源目标替换均失败关闭。
+
+学习采用证据采用更窄口径。只有源计划明确处于 assist、实际 residual 被应用且已加载
+合格 bundle，才可在完整验证后标记 applied ACK available。shadow proposal、规则教师
+成本分量、计划被 main 接收、D7 收到规则命令都不代表学习动作被采用。物理接近结果和
+reward 也不属于运行 ACK 自证范围，后续必须由 D6 独立结果 sidecar 与该信任链关联。
+
+同一 D3 数据类可能经顶层或 namespaced 包路径载入，Python 会为其生成不同类对象。
+consumer 因此按明确模块名、类名、精确数据类字段和受支持 schema 验证合法身份，不使用
+不受约束的鸭子类型。consumer 源码仍不导入 main，跨包组合由 D3 测试负责验证。
+
+当前接口已通过 24 项专项测试和自动化 3v3、seed 7、1.2 秒真实 main 集成测试。测试中
+最后一条 ACK 的 3 条 binding 均被核对，但没有学习 mode、物理 outcome 或 reward，
+所以三类学习/结果可用性仍为 false。D3 全量结果为 `303 passed, 1 skipped`。冻结
+900-episode 数据不含该 schema，保持 unavailable；PPO、assist 和 authority 不开放。
