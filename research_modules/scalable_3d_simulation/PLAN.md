@@ -96,9 +96,9 @@ commit。
 
 ### 2026-07-20 阶段状态
 
-- 阶段 1-3 已完成，世界、传感器、真值隔离和集成合同由当前 71 项测试覆盖。
+- 阶段 1-3 已完成，世界、传感器、真值隔离和集成合同由当前 72 项测试覆盖。
 - D1、D2、D3、D4、D5、D7 的 scalable 3D 模块入口已接入 main-owned
-  `IntegratedScalableModuleStack`；当前 main 集成测试总计 71 项通过。
+  `IntegratedScalableModuleStack`；当前 main 集成测试总计 72 项通过。
 - 5v5 规则闭环和 200v200 的 0.25 秒雷达烟测已通过。后者形成 200 条中心航迹、200 项
   分配和 200 路三维导引命令，候选边为 6400/40000；该短时结果不能替代长时多 seed。
 - 单一二级、多二级区域 owner 和二级再次失效后的完全分布式 D3 计划已在质点模块栈闭合。
@@ -157,8 +157,9 @@ commit。
   `225.9→126.5 s`，批次 finalization `116.6→7.7 s`；episode run `125.2→128.0 s`。
   D3、D4 和 D5 图三 seed staging 合计不足 0.5 秒，D5 主动视觉 writer/压缩为 126.1 秒，
   占 staging 99.7%。因此最终化门已通过，正式生成吞吐门仍开放；不得通过降低采样、删除
-  特征或放松真值隔离缩短时间。先优化 writer，并为 runner 增加可恢复的分块执行，再启动
-  900 episode 正式批次。
+  特征或放松真值隔离缩短时间。runner 已实现 episode 边界暂停、同计划/同提交恢复、连续
+  progress 与 staging index 复核；3-episode `1+2` 分块回归及计划/重复 index 篡改负例通过。
+  下一步先优化 writer，再用首个正式代表分块验证恢复合同，然后启动后续 900 episode。
 - 首版正式训练 schedule 已冻结为 `learning_generation_balanced_v1.json`：100 个生成 seed
   通过五个分块按场景/规模均衡轮换，每个 45 个 cell 各有 20 个 seed，共 900 episode；
   seed 1000-1019 保留为最终评估集。runner 在开始前核对完整笛卡尔目录、逐 cell 分母、

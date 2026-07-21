@@ -19,10 +19,13 @@ seed 而保留 staging。九个 episode 的最终学习目录为 55.36 MB；全�
 staging 为 `0.0917/0.1129/0.0999 s`，D5 graph 为 `0.0250/0.0259/0.0290 s`；D5
 active-vision writer/压缩为 `41.5623/43.2639/41.2271 s`，占总 staging 99.7%。D3 重复
 编码和 D5 重复 finalization 审计子项已关闭，正式生成吞吐 P1 仍由 D5 active-vision writer
-以及 runner 缺少可恢复分块执行阻塞。不得以降低采样、删除特征或放松真值隔离换取耗时。
+阻塞。runner 已实现 episode 边界暂停、同计划/同提交恢复、连续 progress 与 staging index
+复核；3-episode `1+2` 分块回归和计划/重复 index 篡改负例通过。不得以降低采样、删除特征
+或放松真值隔离换取耗时。
 
 当前无新增 P0。900 episode、行为克隆/近端策略优化、20 个未见 seed、checkpoint、paired
-shadow 和模型准入仍未执行。main 在关闭 writer 与恢复能力两项 P1 后再启动冻结 schedule。
+shadow 和模型准入仍未执行。main 在关闭 writer 并用首个正式代表分块验证恢复合同后，再连续
+执行冻结 schedule。
 
 ## 2026-07-20 三维 D1/D2/D6 真值隔离评估闭环
 
@@ -35,7 +38,7 @@ RMSE/NEES unavailable，NIS 仍按在线证据独立统计；`id_switch_count` �
 
 D6 owner 已完成公开 D1/D2 适配器、逐 seed CSV、传感器/距离分档 CSV、聚合 JSON 和
 中文 Markdown，D6 全量 `334 passed`。main 的 5v5 单 episode、无模块栈负例和双 seed
-3v3 聚合均通过，scalable 3D 全量 `71 passed`。D1 在线证据通过
+3v3 聚合均通过，scalable 3D 全量 `72 passed`。D1 在线证据通过
 `observation_id + measurement_timestamp` 与 D2 规范身份精确联接，不使用航迹区间前向
 填充。该工作关闭了“真实 episode 制品没有接入
 D6”的接口级 P1 缺口。开放项转为实验级 P1：在 clean tree 上按 5/20/50/100/200 和至少
@@ -49,7 +52,7 @@ main 已闭合 `plan N -> D4 advisory N -> plan N+1` 的单进程受控桥接。
 生成时冻结的区域快照和正式 D4 裁决调用一次性 gate。通过后转换为 D3-owned
 `d3_regional_planning_hint_v1`，D3 再按当前 previous plan、资源区域、已提交成员、备用和
 transfer candidate 校验。shadow、无准入、replay、严格到期、fault generation 变化和
-regional authority 路径均 fail closed。定向 4/4 及 scalable 3D 全量 71/71 通过，在线
+regional authority 路径均 fail closed。定向 4/4 及 scalable 3D 全量 72/72 通过，在线
 真值使用为 0。开放项是跨进程 consumed advisory ledger、正式 D4 checkpoint、20 个未见
 seed paired shadow 和长时/真实通信验证。
 
@@ -66,12 +69,13 @@ main 新增 `scalable3d-learning-generation-plan-v1` 流式生成入口。nomina
 保留评估 seed 零重叠、干净工作树、忽略输出目录及 D5 至少 20 个未见测试 seed。开放 P1
 是 D6 outcome/counterfactual 回填、训练与模型准入。后续 clean-tree 九场景和三 seed 优化
 复测已经关闭存储与 finalization 子项；当前容量/吞吐状态以本文顶部专项为准。剩余 P1 是
-D5 active-vision writer/压缩、可恢复分块执行，以及正式 900 episode 的运行与训练。
+D5 active-vision writer/压缩、正式分块恢复证据，以及 900 episode 的运行与训练。
 
 main 已冻结 `scalable3d-balanced-curriculum-v1`：100 个生成 seed 均衡进入 45 个场景/规模
 cell，每 cell 20 个、总计 900 episode；seed 1000-1019 只用于最终评估。正式预检现会拒绝
 缺失交叉 cell、cell 分母不足、训练/评估 seed 交集和 D5 未见 seed 不足，并记录 schedule
-SHA256。该计划只解决实验设计与版本治理；D5 writer 与可恢复执行缺口关闭前不得执行完整批次。
+SHA256。runner 的可恢复分块软件合同已完成；D5 writer 收敛和首个正式代表分块验证前不得连续
+执行完整批次。
 
 D6 已接入 `scalable3d-experiment-matrix-v1` 的独立离线审计，按 R0/G1/A1/A2/A3/C1/F1
 验证运行时实际采用证据、固定 cell 分母、同 comparison key 配对差值和 bootstrap 置信区间。

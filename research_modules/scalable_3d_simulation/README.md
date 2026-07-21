@@ -75,13 +75,20 @@ episode，总计 900 个。seed 1000-1019 完全保留给最终评估。正式�
 python3 research_modules/scalable_3d_simulation/run_learning_dataset.py \
   --schedule research_modules/scalable_3d_simulation/configs/learning_generation_balanced_v1.json \
   --formal \
+  --max-episodes-per-run 25 \
   --output research_modules/scalable_3d_simulation/outputs/learning_generation_v1
 ```
 
+每个分块完成后保留 `generation_checkpoint.json`、`episode_progress.jsonl` 和模块 staging。
+继续下一块时使用相同参数并增加 `--resume`。恢复入口逐字比较生成计划和训练 seed 注册表，
+校验 Git 提交、计划 SHA256、连续 sequence、在线安全结果和 batch episode index；计划变化、
+重复 episode、未索引或不完整制品均失败关闭。全部 900 个 cell 完成后才执行统一最终化。
+当前 3-episode 开发回归已验证 `1 + 2` 分块续跑和篡改拒绝，正式规模恢复仍需首个代表分块验证。
+
 正式预检要求完整 45 个场景/规模组合且每个组合至少 20 个 seed，同时记录 schedule SHA256。
 九场景存储门和三 seed 批次最终化门已经通过；正式生成吞吐门仍保持开放。当前 D5 主动
-视觉 writer/压缩占 200v200 staging 的 99% 以上，runner 还缺少正式批次可恢复的分块执行。
-在这两项关闭前，不直接启动上述完整批次。
+视觉 writer/压缩占 200v200 staging 的 99% 以上。在 writer 收敛并完成首个正式代表分块前，
+不连续启动上述完整批次。
 
 学习模型默认关闭。显式研究运行可增加下列参数；bundle 缺失、校验失败、分布外、低置信或
 超时均保留规则路径：
@@ -152,7 +159,7 @@ D4 区域策略、A3 主动视觉、C1 学习组合和 F1 故障/高威胁完整
 
 ## 当前验证
 
-2026-07-20 的 main 集成回归为 **71/71 passed**。其中 5v5、seed 7、1.2 秒场景形成
+2026-07-20 的 main 集成回归为 **72/72 passed**。其中 5v5、seed 7、1.2 秒场景形成
 5 条 D1 航迹、5 条 D2 中心航迹、5 项 D3 分配和 5 路 D7 中段指令，在线真值字段使用为
 0。200v200、seed 17、0.25 秒雷达烟测形成 200 条 D1/D2 航迹和 200 项分配；D3 从
 40000 个完整 pair 中保留 6400 条候选边，D7 输出 `(200, 3)` 有限加速度。
@@ -246,7 +253,8 @@ staging，符合失败关闭。
 由 225.9 秒降至 126.5 秒，批次最终化由 116.6 秒降至 7.7 秒；episode 运行保持在约
 125-128 秒。优化后 D3、D4、D5 图的三 seed staging 合计不足 0.5 秒，D5 主动视觉写入为
 126.1 秒，占 staging 的 99.7%。因此存储和最终化门已关闭，吞吐门仍由主动视觉 writer/
-压缩及批次恢复能力阻塞。详细证据见 `docs/SCALABLE_3D_CAPACITY_AND_RUNTIME_REPORT_CN.md`。
+压缩阻塞。runner 已支持 episode 边界分块暂停和严格恢复，正式规模恢复证据仍待首个代表
+分块取得。详细证据见 `docs/SCALABLE_3D_CAPACITY_AND_RUNTIME_REPORT_CN.md`。
 
 每个物理步结束后，离线评估侧按三维 5 米门限登记唯一接近事件。事件中的真值目标号只
 写入 `offline_proximity_intercepts.jsonl`，不进入在线总线；D6 还需结合分配与身份映射
