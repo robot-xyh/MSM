@@ -562,6 +562,11 @@ def test_runtime_acknowledges_d3_plan_binding_consumed_by_d7() -> None:
     assert acknowledgement["plan_version"] == 3
     assert acknowledgement["accepted"] is True
     assert acknowledgement["fully_bound_to_guidance"] is True
+    assert acknowledgement["decision_id"] == "PLAN-ACK-TEST:v3"
+    assert acknowledgement["source_plan_bus_sequence"] == 1
+    assert acknowledgement["source_guidance_bus_sequence"] == 2
+    assert len(acknowledgement["source_plan_payload_sha256"]) == 64
+    assert len(acknowledgement["source_guidance_payload_sha256"]) == 64
     assert acknowledgement["physical_outcome_available"] is False
     assert acknowledgement["reward_available"] is False
     assert acknowledgement["binding_acks"] == [

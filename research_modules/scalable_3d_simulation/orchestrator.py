@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, replace
 import heapq
+import hashlib
+import json
 from pathlib import Path
 import time
 from typing import Any, Mapping
@@ -17,6 +19,7 @@ from .episode_bus import (
     InMemoryEpisodeBus,
     VersionedEnvelope,
     build_episode_manifest,
+    jsonable,
 )
 from .models import (
     ONLINE_OBSERVATION_SCHEMA_VERSION,
@@ -335,14 +338,17 @@ class Scalable3DEpisodeRunner:
                         )
                     last_module_diagnostics = dict(module_output.diagnostics)
                     publication_started = time.perf_counter()
+                    publication_envelopes: list[VersionedEnvelope] = []
                     for publication in module_output.publications:
-                        self.bus.publish(
-                            topic=publication.topic,
-                            source=publication.source,
-                            timestamp=current_time,
-                            schema_version=publication.schema_version,
-                            payload=publication.payload,
-                            copy_payload=publication.copy_payload,
+                        publication_envelopes.append(
+                            self.bus.publish(
+                                topic=publication.topic,
+                                source=publication.source,
+                                timestamp=current_time,
+                                schema_version=publication.schema_version,
+                                payload=publication.payload,
+                                copy_payload=publication.copy_payload,
+                            )
                         )
                         module_publication_count += 1
                         module_publication_topic_counts[publication.topic] = (
@@ -350,6 +356,7 @@ class Scalable3DEpisodeRunner:
                         )
                     plan_ack = _assignment_plan_runtime_ack(
                         module_output.publications,
+                        source_envelopes=tuple(publication_envelopes),
                         ack_timestamp=current_time,
                     )
                     if plan_ack is not None:
@@ -823,6 +830,7 @@ def _apply_camera_commands(
 def _assignment_plan_runtime_ack(
     publications: tuple[Any, ...],
     *,
+    source_envelopes: tuple[VersionedEnvelope, ...],
     ack_timestamp: float,
 ) -> dict[str, Any] | None:
     """Bind one newly published D3 plan to the D7 commands consumed by main.
@@ -844,6 +852,11 @@ def _assignment_plan_runtime_ack(
         raise RuntimeError("one scheduler tick published multiple D3 plans")
     d3_publication = d3_publications[0]
     plan = _runtime_publication_payload(d3_publication, "D3 plan")
+    d3_envelope = _single_source_envelope(
+        source_envelopes,
+        topic="modules.d3.assignment_plan",
+        required=True,
+    )
     assignments = plan.get("assignments")
     if not isinstance(assignments, list):
         raise ValueError("D3 plan publication assignments must be a list")
@@ -864,6 +877,11 @@ def _assignment_plan_runtime_ack(
         if not isinstance(raw_commands, list):
             raise ValueError("D7 guidance publication commands must be a list")
         d7_commands = raw_commands
+    d7_envelope = _single_source_envelope(
+        source_envelopes,
+        topic="modules.d7.guidance_commands",
+        required=bool(d7_publications),
+    )
 
     plan_id = str(plan.get("plan_id", "")).strip()
     plan_version = _nonnegative_int(plan.get("plan_version"), "plan_version")
@@ -933,12 +951,23 @@ def _assignment_plan_runtime_ack(
     )
     held_count = sum(bool(item["held"]) for item in binding_acks)
     return {
+        "decision_id": f"{plan_id}:v{plan_version}",
         "ack_timestamp": float(ack_timestamp),
         "plan_id": plan_id,
         "plan_version": plan_version,
         "plan_created_at": float(plan.get("created_at", ack_timestamp)),
         "plan_schema_version": str(
             getattr(d3_publication, "schema_version", "")
+        ),
+        "source_plan_bus_sequence": int(d3_envelope.sequence),
+        "source_plan_payload_sha256": _runtime_payload_sha256(plan),
+        "source_guidance_bus_sequence": (
+            None if d7_envelope is None else int(d7_envelope.sequence)
+        ),
+        "source_guidance_payload_sha256": (
+            None
+            if d7_envelope is None
+            else _runtime_payload_sha256(d7_envelope.payload)
         ),
         "accepted": True,
         "status_code": "accepted_by_main_runtime",
@@ -965,6 +994,33 @@ def _runtime_mapping(value: Any, name: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError(f"{name} must be a mapping")
     return value
+
+
+def _single_source_envelope(
+    envelopes: tuple[VersionedEnvelope, ...],
+    *,
+    topic: str,
+    required: bool,
+) -> VersionedEnvelope | None:
+    matches = tuple(item for item in envelopes if item.topic == topic)
+    if len(matches) > 1:
+        raise RuntimeError(f"one scheduler tick published multiple {topic} envelopes")
+    if not matches:
+        if required:
+            raise RuntimeError(f"runtime ACK is missing source envelope: {topic}")
+        return None
+    return matches[0]
+
+
+def _runtime_payload_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        jsonable(value),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _nonnegative_int(value: Any, name: str) -> int:
