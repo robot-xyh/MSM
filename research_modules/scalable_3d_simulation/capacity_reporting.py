@@ -27,10 +27,14 @@ def write_capacity_probe_report(
     timed_output: str | Path,
     report_dir: str | Path,
     *,
+    baseline_timed_output: str | Path | None = None,
     write_plots: bool = True,
 ) -> dict[str, Path]:
     scenario_root = Path(scenario_output)
     timed_root = Path(timed_output)
+    baseline_timed_root = (
+        None if baseline_timed_output is None else Path(baseline_timed_output)
+    )
     destination = Path(report_dir)
     destination.mkdir(parents=True, exist_ok=True)
     figures = destination / "figures"
@@ -38,8 +42,17 @@ def write_capacity_probe_report(
         figures.mkdir(parents=True, exist_ok=True)
 
     rows = _read_progress_rows(scenario_root / "episode_progress.csv")
+    timed_rows_path = timed_root / "episode_progress.csv"
+    timed_rows = (
+        _read_progress_rows(timed_rows_path) if timed_rows_path.is_file() else []
+    )
     scenario_summary = _read_json(scenario_root / "generation_summary.json")
     timed_summary = _read_json(timed_root / "generation_summary.json")
+    baseline_timed_summary = (
+        None
+        if baseline_timed_root is None
+        else _read_json(baseline_timed_root / "generation_summary.json")
+    )
     dataset_bytes = int(
         scenario_summary.get(
             "learning_dataset_size_bytes",
@@ -63,6 +76,7 @@ def write_capacity_probe_report(
         paths["timing_plot"] = _write_timing_plot(
             figures / "capacity_probe_generation_timing.png",
             timed_summary,
+            baseline_summary=baseline_timed_summary,
         )
         paths["storage_plot"] = _write_storage_plot(
             figures / "capacity_probe_storage_components.png",
@@ -75,6 +89,8 @@ def write_capacity_probe_report(
         rows=rows,
         scenario_summary=scenario_summary,
         timed_summary=timed_summary,
+        baseline_timed_summary=baseline_timed_summary,
+        timed_rows=timed_rows,
         dataset_bytes=dataset_bytes,
         component_bytes=component_bytes,
         include_plots=write_plots,
@@ -205,7 +221,12 @@ def _write_scenario_plot(path: Path, rows: list[Mapping[str, Any]]) -> Path:
     return path
 
 
-def _write_timing_plot(path: Path, summary: Mapping[str, Any]) -> Path:
+def _write_timing_plot(
+    path: Path,
+    summary: Mapping[str, Any],
+    *,
+    baseline_summary: Mapping[str, Any] | None = None,
+) -> Path:
     plt = _configure_matplotlib()
     timing = summary["timing_summary"]
     labels = ["仿真运行", "制品写入", "批次最终化"]
@@ -214,25 +235,56 @@ def _write_timing_plot(path: Path, summary: Mapping[str, Any]) -> Path:
         float(timing["artifact_stage_wall_s"]),
         float(timing["finalization_wall_s"]),
     ]
-    colors = ["#577590", "#f3722c", "#90be6d"]
-    figure, axis = plt.subplots(figsize=(9.0, 3.4), constrained_layout=True)
-    left = 0.0
-    total = sum(values)
-    for label, value, color in zip(labels, values, colors):
-        axis.barh([0], [value], left=left, label=label, color=color)
-        axis.text(
-            left + value / 2,
-            0,
-            f"{value:.1f} 秒\n{value / total:.1%}",
-            ha="center",
-            va="center",
-            fontsize=9,
+    figure, axis = plt.subplots(figsize=(9.0, 4.2), constrained_layout=True)
+    if baseline_summary is None:
+        colors = ["#577590", "#f3722c", "#90be6d"]
+        left = 0.0
+        total = sum(values)
+        for label, value, color in zip(labels, values, colors):
+            axis.barh([0], [value], left=left, label=label, color=color)
+            axis.text(
+                left + value / 2,
+                0,
+                f"{value:.1f} 秒\n{value / total:.1%}",
+                ha="center",
+                va="center",
+                fontsize=9,
+            )
+            left += value
+        axis.set_yticks([])
+        axis.set_title("名义场景三 seed 学习数据生成耗时")
+        axis.legend(loc="upper center", ncol=3, bbox_to_anchor=(0.5, -0.18))
+    else:
+        baseline_timing = baseline_summary["timing_summary"]
+        baseline_values = [
+            float(baseline_timing["episode_run_wall_s"]),
+            float(baseline_timing["artifact_stage_wall_s"]),
+            float(baseline_timing["finalization_wall_s"]),
+        ]
+        positions = list(range(len(labels)))
+        height = 0.34
+        baseline_bars = axis.barh(
+            [position - height / 2 for position in positions],
+            baseline_values,
+            height=height,
+            label="优化前",
+            color="#9aa0a6",
         )
-        left += value
-    axis.set_yticks([])
+        optimized_bars = axis.barh(
+            [position + height / 2 for position in positions],
+            values,
+            height=height,
+            label="优化后",
+            color="#277da1",
+        )
+        axis.set_yticks(positions, labels)
+        axis.invert_yaxis()
+        axis.bar_label(baseline_bars, fmt="%.1f", padding=3)
+        axis.bar_label(optimized_bars, fmt="%.1f", padding=3)
+        axis.set_title("名义场景三 seed 生成耗时对比")
+        axis.legend(loc="lower right")
+        axis.grid(axis="x", alpha=0.25)
     axis.set_xlabel("墙钟时间（秒）")
-    axis.set_title("名义场景三 seed 学习数据生成耗时")
-    axis.legend(loc="upper center", ncol=3, bbox_to_anchor=(0.5, -0.18))
     figure.savefig(path, dpi=180, bbox_inches="tight")
     plt.close(figure)
     return path
@@ -260,13 +312,65 @@ def _write_report(
     rows: list[Mapping[str, Any]],
     scenario_summary: Mapping[str, Any],
     timed_summary: Mapping[str, Any],
+    baseline_timed_summary: Mapping[str, Any] | None,
+    timed_rows: list[Mapping[str, Any]],
     dataset_bytes: int,
     component_bytes: Mapping[str, int],
     include_plots: bool,
 ) -> None:
     learning = scenario_summary["learning_export_summary"]
     timing = timed_summary["timing_summary"]
+    baseline_timing = (
+        None
+        if baseline_timed_summary is None
+        else baseline_timed_summary["timing_summary"]
+    )
     upper_bound_bytes = dataset_bytes / len(rows) * 900
+    all_200_runtime_upper_hours = (
+        float(timing["generation_wall_s"])
+        / max(1, int(timed_summary.get("completed_episode_count", 1)))
+        * 900
+        / 3600.0
+    )
+    stage_components = _stage_component_totals(timed_rows)
+    active_stage_share = (
+        0.0
+        if not stage_components or float(timing["artifact_stage_wall_s"]) <= 0.0
+        else stage_components["D5 主动视觉"]
+        / float(timing["artifact_stage_wall_s"])
+    )
+    if baseline_timing is None:
+        timing_conclusion = (
+            f"名义场景三 seed 的完整生成耗时为 "
+            f"{float(timing['generation_wall_s']):.1f} 秒，其中仿真运行 "
+            f"{float(timing['episode_run_wall_s']):.1f} 秒、制品写入 "
+            f"{float(timing['artifact_stage_wall_s']):.1f} 秒、批次最终化 "
+            f"{float(timing['finalization_wall_s']):.1f} 秒。"
+        )
+        gate_conclusion = "该结果尚无同条件优化前基线，吞吐门保持开放。"
+    else:
+        total_reduction = _reduction_fraction(
+            float(baseline_timing["generation_wall_s"]),
+            float(timing["generation_wall_s"]),
+        )
+        timing_conclusion = (
+            f"同一名义场景三 seed 的完整生成耗时由 "
+            f"{float(baseline_timing['generation_wall_s']):.1f} 秒降至 "
+            f"{float(timing['generation_wall_s']):.1f} 秒，下降 {total_reduction:.1%}。"
+            f"制品写入由 {float(baseline_timing['artifact_stage_wall_s']):.1f} 秒降至 "
+            f"{float(timing['artifact_stage_wall_s']):.1f} 秒，批次最终化由 "
+            f"{float(baseline_timing['finalization_wall_s']):.1f} 秒降至 "
+            f"{float(timing['finalization_wall_s']):.1f} 秒。仿真运行由 "
+            f"{float(baseline_timing['episode_run_wall_s']):.1f} 秒变为 "
+            f"{float(timing['episode_run_wall_s']):.1f} 秒，基本不变。"
+        )
+        gate_conclusion = (
+            "存储门和批次最终化门已通过。正式生成吞吐门暂不关闭："
+            f"D5 主动视觉写入占本轮 staging 的 {active_stage_share:.1%}，"
+            "若 900 个 episode 全部按 200 对 200 计，运行时间保守上界约 "
+            f"{all_200_runtime_upper_hours:.1f} 小时。启动正式批次前先收敛主动视觉写入，"
+            "并补齐可恢复的分块运行策略。"
+        )
     lines = [
         "# 三维规模化仿真容量与运行时报告",
         "",
@@ -275,9 +379,11 @@ def _write_report(
         "九类 200 对 200 场景全部完成，有限状态检查通过，在线真值使用次数为 0。",
         "D3、D4 和 D5 跨视角图数据集完成最终化；D5 主动视觉因未达到 20 个未见测试 seed 而保留 staging，符合准入规则。",
         "",
-        f"九个 episode 的最终学习目录为 {dataset_bytes / 1_000_000:.2f} MB。按全部 900 个 episode 都采用本轮 200 对 200 平均值计算，保守上界约为 {upper_bound_bytes / 1_000_000_000:.2f} GB。正式计划包含更小规模，实际值应低于该上界，但当前磁盘余量不足以取消 5 GB 停止门。",
+        f"九个 episode 的最终学习目录为 {dataset_bytes / 1_000_000:.2f} MB。按全部 900 个 episode 都采用本轮 200 对 200 平均值计算，保守上界约为 {upper_bound_bytes / 1_000_000_000:.2f} GB。正式计划包含更小规模，实际值应低于该上界；5 GB 停止门继续保留。",
         "",
-        f"名义场景三 seed 的完整生成耗时为 {float(timing['generation_wall_s']):.1f} 秒，其中仿真运行 {float(timing['episode_run_wall_s']):.1f} 秒、制品写入 {float(timing['artifact_stage_wall_s']):.1f} 秒、批次最终化 {float(timing['finalization_wall_s']):.1f} 秒。制品处理超过仿真本体，是正式数据生成前需要处理的 P1。",
+        timing_conclusion,
+        "",
+        gate_conclusion,
         "",
         "## 场景配置",
         "",
@@ -290,7 +396,7 @@ def _write_report(
         "| 学习模式 | 规则路径采样，学习模型未准入 |",
         "| 真值边界 | 在线 D1-D5 禁止真值编号，真值仅用于离线标签 |",
         f"| 九场景 producer commit | `{scenario_summary['git_commit']}` |",
-        f"| timed producer commit | `{timed_summary['git_commit']}` |",
+        f"| 优化后 timed producer commit | `{timed_summary['git_commit']}` |",
         "",
         "## 算法流程",
         "",
@@ -338,14 +444,9 @@ def _write_report(
             "",
             "## 运行时间",
             "",
-            "| 阶段 | 时间/秒 | 比例 |",
-            "| --- | ---: | ---: |",
+            "| 阶段 | 优化前/秒 | 优化后/秒 | 变化 |",
+            "| --- | ---: | ---: | ---: |",
         ]
-    )
-    measured_total = (
-        float(timing["episode_run_wall_s"])
-        + float(timing["artifact_stage_wall_s"])
-        + float(timing["finalization_wall_s"])
     )
     for label, key in (
         ("仿真运行", "episode_run_wall_s"),
@@ -353,11 +454,33 @@ def _write_report(
         ("批次最终化", "finalization_wall_s"),
     ):
         value = float(timing[key])
-        lines.append(f"| {label} | {value:.1f} | {value / measured_total:.1%} |")
+        if baseline_timing is None:
+            lines.append(f"| {label} | - | {value:.1f} | - |")
+        else:
+            baseline_value = float(baseline_timing[key])
+            lines.append(
+                f"| {label} | {baseline_value:.1f} | {value:.1f} | "
+                f"{_format_change(baseline_value, value)} |"
+            )
+    if stage_components:
+        lines.extend(
+            [
+                "",
+                "### 写入归因",
+                "",
+                "| 组件 | 三 seed 时间/秒 | 占 staging |",
+                "| --- | ---: | ---: |",
+            ]
+        )
+        for label, value in stage_components.items():
+            lines.append(
+                f"| {label} | {value:.3f} | "
+                f"{value / float(timing['artifact_stage_wall_s']):.1%} |"
+            )
     lines.extend(
         [
             "",
-            "三组 nominal seed 的单例制品写入时间为 75.7、74.3 和 75.9 秒，波动较小。D3 大矩阵特征转储和 D5 主动视觉压缩均需继续剖析。九场景长跑中出现一次约 51 分钟的异常停顿，未能从现有日志判定是系统抢占还是写盘阻塞，因此不把该停顿线性外推到正式批次。",
+            "优化后三组 nominal seed 的单例制品写入时间为 41.7、43.4 和 41.4 秒。D3、D4 和 D5 跨视角图写入合计不足 0.2 秒，剩余时间集中在 D5 主动视觉在线记录的构造和压缩。九场景旧长跑中曾出现一次约 51 分钟的异常停顿，现有日志不能判定为系统抢占还是写盘阻塞，不将该停顿线性外推。",
             "",
             "## 图表",
             "",
@@ -378,21 +501,52 @@ def _write_report(
         [
             "## 后续工作",
             "",
-            "1. D3 对大规模候选边和代价帧执行模块内剖析，消除重复对象转换和重复序列化。",
-            "2. D5 复用主动视觉 stream audit 结果，减少同一 finalization 内重复解压、反序列化和哈希。",
-            "3. 优化后复跑五档规模和九类场景，冻结每个场景/规模 cell 的容量与时间预算。",
-            "4. 容量门通过后再启动 900 episode。正式数据仍使用 100 个训练 seed，1000-1019 只用于最终评估。",
+            "1. 保持 D3 当前导出路径和 D5 最终化复核，继续作为回归门。",
+            "2. 剖析并优化 D5 主动视觉 episode writer/压缩，不降低采样、不删除特征、不放松真值隔离。",
+            "3. 为正式计划增加可恢复的分块执行，再复跑五档规模和九类场景的代表 cell。",
+            "4. 吞吐门通过后启动 900 episode；100 个生成 seed 用于训练，1000-1019 只用于最终评估。",
             "",
             "## 文件索引",
             "",
             "- 九场景进度：`outputs/capacity_probe_v2/all_scenarios_200v200/episode_progress.csv`",
             "- 九场景汇总：`outputs/capacity_probe_v2/all_scenarios_200v200/generation_summary.json`",
-            "- timed 进度：`outputs/capacity_probe_v2/nominal_timed/episode_progress.csv`",
-            "- timed 汇总：`outputs/capacity_probe_v2/nominal_timed/generation_summary.json`",
+            "- 优化前 timed 汇总：`outputs/capacity_probe_v2/nominal_timed/generation_summary.json`",
+            "- 优化后 timed 进度：`outputs/capacity_probe_v2/nominal_timed_postopt/episode_progress.csv`",
+            "- 优化后 timed 汇总：`outputs/capacity_probe_v2/nominal_timed_postopt/generation_summary.json`",
             "- 固化结果表：`docs/SCALABLE_3D_CAPACITY_PROBE_RESULTS.csv`",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _stage_component_totals(
+    rows: list[Mapping[str, Any]],
+) -> dict[str, float]:
+    fields = (
+        ("D3 分配", "d3_stage_wall_s"),
+        ("D4 区域", "d4_stage_wall_s"),
+        ("D5 跨视角图", "d5_graph_stage_wall_s"),
+        ("D5 主动视觉", "d5_active_vision_stage_wall_s"),
+    )
+    if not rows or any(field not in row for row in rows for _, field in fields):
+        return {}
+    return {
+        label: sum(float(row[field]) for row in rows)
+        for label, field in fields
+    }
+
+
+def _reduction_fraction(before: float, after: float) -> float:
+    if before <= 0.0:
+        return 0.0
+    return (before - after) / before
+
+
+def _format_change(before: float, after: float) -> str:
+    change = _reduction_fraction(before, after)
+    if change >= 0.0:
+        return f"下降 {change:.1%}"
+    return f"增加 {-change:.1%}"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -405,6 +559,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--timed-output",
+        type=Path,
+        default=module_root / "outputs" / "capacity_probe_v2" / "nominal_timed_postopt",
+    )
+    parser.add_argument(
+        "--baseline-timed-output",
         type=Path,
         default=module_root / "outputs" / "capacity_probe_v2" / "nominal_timed",
     )
@@ -419,6 +578,7 @@ def main(argv: list[str] | None = None) -> int:
         args.scenario_output,
         args.timed_output,
         args.report_dir,
+        baseline_timed_output=args.baseline_timed_output,
         write_plots=not args.no_plots,
     )
     print(paths["report"])

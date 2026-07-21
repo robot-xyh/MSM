@@ -11,9 +11,11 @@ from research_modules.scalable_3d_simulation.capacity_reporting import (
 def test_capacity_report_preserves_measured_results_without_plots(tmp_path) -> None:
     scenario_root = tmp_path / "scenario"
     timed_root = tmp_path / "timed"
+    baseline_timed_root = tmp_path / "baseline_timed"
     report_root = tmp_path / "report"
     scenario_root.mkdir()
     timed_root.mkdir()
+    baseline_timed_root.mkdir()
     rows = [
         {
             "scenario": "nominal",
@@ -58,6 +60,7 @@ def test_capacity_report_preserves_measured_results_without_plots(tmp_path) -> N
         json.dumps(
             {
                 "git_commit": "b" * 40,
+                "completed_episode_count": 2,
                 "timing_summary": {
                     "episode_run_wall_s": 2.0,
                     "artifact_stage_wall_s": 3.0,
@@ -68,6 +71,35 @@ def test_capacity_report_preserves_measured_results_without_plots(tmp_path) -> N
         ),
         encoding="utf-8",
     )
+    (baseline_timed_root / "generation_summary.json").write_text(
+        json.dumps(
+            {
+                "git_commit": "c" * 40,
+                "completed_episode_count": 2,
+                "timing_summary": {
+                    "episode_run_wall_s": 2.5,
+                    "artifact_stage_wall_s": 6.0,
+                    "finalization_wall_s": 3.5,
+                    "generation_wall_s": 12.0,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    timed_rows = [
+        {
+            "d3_stage_wall_s": 0.1,
+            "d4_stage_wall_s": 0.1,
+            "d5_graph_stage_wall_s": 0.1,
+            "d5_active_vision_stage_wall_s": 2.7,
+        }
+    ]
+    with (timed_root / "episode_progress.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as stream:
+        writer = csv.DictWriter(stream, fieldnames=tuple(timed_rows[0]))
+        writer.writeheader()
+        writer.writerows(timed_rows)
     for name, payload in (
         ("d3_assignment", b"a"),
         ("d4_region", b"bb"),
@@ -82,13 +114,16 @@ def test_capacity_report_preserves_measured_results_without_plots(tmp_path) -> N
         scenario_root,
         timed_root,
         report_root,
+        baseline_timed_output=baseline_timed_root,
         write_plots=False,
     )
 
     report = paths["report"].read_text(encoding="utf-8")
     assert "九类 200 对 200 场景" in report
     assert "延迟噪声" in report
-    assert "制品写入 3.0 秒" in report
+    assert "由 12.0 秒降至 9.0 秒" in report
+    assert "D5 主动视觉" in report
+    assert "正式生成吞吐门暂不关闭" in report
     assert paths["results_csv"].read_text(encoding="utf-8-sig").startswith(
         "场景,seed,实时因子"
     )
