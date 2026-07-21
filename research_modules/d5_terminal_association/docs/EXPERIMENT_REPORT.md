@@ -1,5 +1,34 @@
 # D5 末端视觉配准与身份认证实验报告
 
+## 2026-07-20 clean-tree 200v200 postopt2 系统复测
+
+main 在提交 `45b36500dc3c6935b1f116614993e291041eb12d` 上，以 nominal 200v200、2 s、
+seed 930-932 运行 writer 优化后的完整生成链。证据目录为
+`capacity_probe_v2/nominal_timed_postopt2/`。三场 `repository_dirty=false`、
+`online_truth_use_count=0`，状态均有限；D5 graph dataset 正常最终化。
+
+| seed | episode run | artifact staging | D5 active-vision staging | 状态 |
+| ---: | ---: | ---: | ---: | --- |
+| 930 | 34.3668 s | 4.1704 s | 4.0494 s | finite，truth use=0 |
+| 931 | 41.8854 s | 4.1311 s | 3.9898 s | finite，truth use=0 |
+| 932 | 48.4893 s | 4.1357 s | 3.9995 s | finite，truth use=0 |
+
+| 三 seed 合计 | postopt1 | postopt2 | 判定 |
+| --- | ---: | ---: | --- |
+| episode run | 127.9871 s | 124.7415 s | 基本持平，不作在线加速结论 |
+| artifact staging | 126.4682 s | 12.4372 s | writer 系统级热点关闭 |
+| finalization | 7.7377 s | 7.2777 s | 基本持平 |
+| generation total | 262.2866 s | 144.5513 s | 离线生成总墙钟下降 |
+
+D5 active-vision staging 从 postopt1 的 `41.5623/43.2639/41.2271 s` 降到
+`4.0494/3.9898/3.9995 s`。接受依据为同配置、同 seed、干净工作树、三场有限、online truth use=0
+和 D5 graph 正常最终化，以上条件均满足。该证据关闭 D5 writer P1 的系统级复跑项；本次没有修改
+末端关联算法，不能据此宣称在线实时、关联精度提高或主动视觉收益。
+
+active-vision 数据只有 3 个唯一 seed，规划测试集只有 1 个 seed。finalizer 返回
+`insufficient_unseen_test_seeds` 并保留未最终化 staging。正式 900-episode corpus、至少 20 个未见
+测试 seed、正式 BC/PPO、checkpoint、paired shadow 和 assist 准入均未完成。
+
 ## 2026-07-20 active-vision staging 专项
 
 实验使用 200 camera、400 center track、1 个共享 snapshot、200 个 camera sample 的确定性 fixture，
@@ -29,10 +58,11 @@ SHA256 为 `b5d1c5e9...f0b28d3`，解压流 SHA256 为 `45d5179e...1409ec`。既
 `truth_entity_id` 时，writer 在产生正式 online 文件前以 `online_truth_identity_forbidden` 拒绝。
 数据专项 `18 passed`，D5 全量 `400 passed in 9.74s`，接受阈值为零失败。
 
-本专项关闭 D5-owned sample/writer 重复处理。尚未完成 main clean-tree seed 930-932 端到端复跑、
-900-episode corpus、正式 BC/PPO、20 个未见 seed、checkpoint、paired shadow 和 assist 准入。
+本专项关闭 D5-owned sample/writer 重复处理。main clean-tree seed 930-932 端到端复跑已在上节
+完成并关闭 writer P1；900-episode corpus、正式 BC/PPO、20 个未见 seed、checkpoint、paired
+shadow 和 assist 准入仍未完成。
 
-## 2026-07-20 clean-tree 200v200 三 seed 性能复测
+## 2026-07-20 clean-tree 200v200 postopt1 历史复测
 
 本次实验使用 nominal 200v200、2 s、seed 930-932。优化后产物由提交
 `4052d9411363c39d52100c0e3a4f60ee88443cab` 生成，三场 `repository_dirty=false`。基线为
@@ -56,8 +86,8 @@ SHA256 为 `b5d1c5e9...f0b28d3`，解压流 SHA256 为 `45d5179e...1409ec`。既
 D5 graph dataset 正常最终化。active-vision 只有 3 个唯一 seed，预检只规划出 1 个测试 seed，低于
 正式要求的 20 个未见测试 seed；finalizer 返回 `insufficient_unseen_test_seeds`，没有伪造正式
 manifest。该结果证明重复 finalization 审计热点已经关闭，并形成上节 writer 专项的历史基线。
-当前 D5-owned 重复处理已修复，但 main 尚未复跑同一三 seed。当前数据不能用于声明正式
-BC/PPO、checkpoint、paired shadow、
+当前 D5-owned 重复处理已经修复，并已用上节 postopt2 同三 seed 复跑确认。postopt1 数据继续
+作为历史基线，不能用于声明正式 BC/PPO、checkpoint、paired shadow、
 assist 准入或 200v200 实时运行；900-episode 正式 corpus 也尚未生成。
 
 后续性能优化的接受条件是同一输入生成同一 schema、样本数、特征、动作/ACK、版本、在线/离线

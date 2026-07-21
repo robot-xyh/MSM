@@ -1,35 +1,29 @@
 # D5 实现差距审计
 
-## 2026-07-20 clean-tree 200v200 复测后的 P1 判定
+## 2026-07-20 clean-tree 200v200 postopt2 后的 P1 判定
 
-main 使用 nominal 200v200、2 s、seed 930-932，在生产提交
-`4052d9411363c39d52100c0e3a4f60ee88443cab` 上完成 clean-tree 复测。三场 manifest 均为
-`repository_dirty=false`，在线 truth use 为 0。基线与优化后目录分别为
-`capacity_probe_v2/nominal_timed/` 和 `capacity_probe_v2/nominal_timed_postopt/`。
+main 使用 nominal 200v200、2 s、seed 930-932，在提交
+`45b36500dc3c6935b1f116614993e291041eb12d` 上完成 clean-tree postopt2 复测。证据目录为
+`capacity_probe_v2/nominal_timed_postopt2/`。三场均为有限状态，
+`repository_dirty=false`、online truth use=0；D5 graph dataset 正常最终化。
 
-**已关闭 P1 子项：重复 finalization 审计热点。** finalization 总墙钟由 `116.5624 s` 降至
-`7.7377 s`，降低约 93.4%；D5 graph staging 仅为 `0.0250/0.0259/0.0290 s`，并完成正式
-graph dataset 最终化。该证据把先前仅有调用计数和合成辅助墙钟的结论提升为三 seed、clean-tree、
-真实 200v200 生成链路证据。
+**D5 writer P1 已系统级关闭。** active-vision staging 从 postopt1 的
+`41.5623/43.2639/41.2271 s` 降至 `4.0494/3.9898/3.9995 s`。每场 artifact staging 为
+`4.1704/4.1311/4.1357 s`，三场合计由 `126.4682 s` 降至 `12.4372 s`。同配置、同 seed、干净
+工作树和真值隔离均保持，D5 微基准结论已经得到真实 episode 端到端计时确认。
 
-**D5-owned P1 子项已关闭：active-vision sample/writer 重复处理。** 专项剖析确认 gzip level 6
-不是主因。共享 snapshot 此前在每个 camera sample 构造和物化时重复执行中心引用及递归
-truth-free 审计；writer 还重复规范化 snapshot/feedback。修复后 200-camera/400-track fixture
-构造 `2.3597→0.1097 s`、online stage `0.0634→0.0432 s`、materialized load
-`2.3948→0.1802 s`。构造 truth-audit 调用 `80,601→1,001`，online canonical JSON
-`809→407`，object-key helper `402→0`。既有 3,536-sample/17-snapshot 制品 writer
-`3.5529→0.7313 s`、load `38.0052→2.8435 s`，writer 字节完全相同。
+**历史两个子项均保持关闭。** postopt1 已把总 finalization 从 `116.5624 s` 降至 `7.7377 s`；
+postopt2 为 `7.2777 s`。D5-owned writer 修复此前已证明 200-camera/400-track fixture 构造
+`2.3597→0.1097 s`、materialized load `2.3948→0.1802 s`，且 3,536-sample 制品 writer
+`3.5529→0.7313 s`、输出字节完全相同。postopt2 将该软件证据提升为系统级关闭证据。schema、
+采样、snapshot/action/feedback/ACK、truth-free、离线标签分离、SHA256、只读和 whole-seed split
+均未改变。
 
-**系统级 P1 复跑仍开放。** 历史三场 active-vision staging `41.5623/43.2639/41.2271 s` 继续作为
-main clean-tree seed 930-932 的复跑基线。D5 微基准不能替代真实 episode 端到端计时。schema、
-采样、全部 snapshot/action/feedback/ACK、truth-free、离线标签分离、SHA256、只读和 whole-seed
-split 未改变；公共 audit 仍独立读盘并失败关闭。
-
-**仍未关闭的准入项：** 总生成由 `467.8007 s` 降至 `262.2866 s`，episode run 基本持平
-（`125.2205→127.9871 s`），因此不能声明 200v200 已达到实时。三 seed 只能形成 1 个测试 seed；
-active-vision finalizer 以 `insufficient_unseen_test_seeds` 拒绝正式最终化并保留数据，行为符合合同。
-正式 900-episode corpus、BC/PPO、20 个未见 seed、checkpoint、paired shadow 和 assist 准入均保持
-开放 P1。
+**仍开放的正式数据与准入 P1：** postopt1 到 postopt2 的总生成由 `262.2866 s` 降至
+`144.5513 s`，episode run 为 `127.9871→124.7415 s`。这不是在线仿真实时性证据。三 seed 只能
+形成 1 个测试 seed，active-vision finalizer 以 `insufficient_unseen_test_seeds` 失败关闭并保留
+staging。正式 900-episode corpus、BC/PPO、至少 20 个未见测试 seed、checkpoint、paired shadow
+和 assist 准入均保持开放 P1。
 
 ## 2026-07-20 主动视觉 staging/finalization 开销 GAP 状态
 

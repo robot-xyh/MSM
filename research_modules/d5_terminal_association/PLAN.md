@@ -13,8 +13,12 @@
   重复规范化对象。200-camera/400-track fixture 构造 `2.3597→0.1097 s`、materialized load
   `2.3948→0.1802 s`；既有 3,536-sample 制品 writer `3.5529→0.7313 s`。gzip/解压字节和 SHA256
   修改前后完全相同，采样、特征、在线/离线分流、版本/ACK、只读和失败关闭合同保持。
-- [ ] 由 main 在 clean-tree 下复跑 nominal 200v200 seed 930-932，确认历史 active-vision staging
-  `41.5623/43.2639/41.2271 s` 的端到端下降幅度。D5 微基准不得替代该系统级结果。
+- [x] main 在提交 `45b36500dc3c6935b1f116614993e291041eb12d` 上完成同一 nominal 200v200、
+  2 s、seed 930-932 的 clean-tree postopt2 复跑。三场均 finite、`repository_dirty=false`、online
+  truth use=0，D5 graph 正常最终化；active-vision staging 从历史
+  `41.5623/43.2639/41.2271 s` 降至 `4.0494/3.9898/3.9995 s`。总 staging
+  `126.4682→12.4372 s`，总生成 `262.2866→144.5513 s`。该系统级证据关闭 D5 writer P1，
+  但不构成在线实时性或模型准入结论。
 - [ ] 生成并最终化正式 900-episode corpus，随后运行正式 BC/PPO、checkpoint 制品、paired shadow
   与 assist 准入。当前仅 3 个 seed，因不足 20 个未见测试 seed 返回
   `insufficient_unseen_test_seeds`，该失败关闭状态符合合同但不构成训练准入。
@@ -73,9 +77,10 @@
 - [ ] 正式数据与准入：收集代表性 train/validation/test、至少 20 个完全未见 seed、真实 outcome/
   counterfactual、困难场景和 paired shadow；完成正式 BC/PPO、冻结指标门与 checkpoint 审批。
 
-本轮只关闭 D5 软件/容量合同和 split 泄漏，不关闭 nominal 200v200 正式生成验收。证据仅为用户
-提供的旧格式阻塞数据与 `tmp_path` 合成单测，不是正式训练、20-seed 实验、AirSim 运行、可见率/
-重捕获收益或 assist 准入。模块内 `docs/MODULE_PRINCIPLES_CN.md`、
+本轮已关闭 D5 软件/容量合同、split 泄漏和 writer 的三 seed clean-tree 系统级复跑项，不关闭
+nominal 200v200 正式 corpus/训练验收。postopt2 是 3 个 2 s episode 的离线制品计时，不是正式
+训练、20-seed 实验、AirSim 运行、可见率/重捕获收益、在线实时性或 assist 准入。模块内
+`docs/MODULE_PRINCIPLES_CN.md`、
 `docs/ALGORITHM_AND_IMPLEMENTATION.md`、`docs/AIRSIM_INTEGRATION_PLAN.md` 和
 `docs/EXPERIMENT_REPORT.md` 已按相同边界同步。
 

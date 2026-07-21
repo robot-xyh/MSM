@@ -1,27 +1,25 @@
 # D5 末端视觉配准与协同身份认证综述及子方案
 
-## 2026-07-20 clean-tree 200v200 性能复核
+## 2026-07-20 clean-tree 200v200 postopt2 性能复核
 
-main 在提交 `4052d9411363c39d52100c0e3a4f60ee88443cab` 上完成 nominal 200v200、2 s、
-seed 930-932 的 clean-tree 复测，三场均记录 `repository_dirty=false` 与 online truth use=0。
-相对优化前基线，总生成 `467.8007→262.2866 s`，artifact staging
-`225.9243→126.4682 s`，finalization `116.5624→7.7377 s`；episode run
-`125.2205→127.9871 s`，未产生在线仿真加速结论。
+main 在提交 `45b36500dc3c6935b1f116614993e291041eb12d` 上完成 nominal 200v200、2 s、
+seed 930-932 的 clean-tree postopt2 复测。三场均为有限状态，记录
+`repository_dirty=false` 与 online truth use=0；D5 graph dataset 正常最终化。
 
-D5 graph staging 仅 `0.0250/0.0259/0.0290 s`，且 graph dataset 正常最终化，重复 finalization
-审计热点可判为关闭。历史 active-vision staging 为 `41.5623/43.2639/41.2271 s`，占每场 artifact
-staging 的 99.6% 以上，因此完成了 sample 构造、writer、对象序列化、真值审计、SHA 和 gzip 的
-专项剖析。主因是共享 snapshot 的逐 camera 重复审计，不是 gzip。
+每 seed episode run 为 `34.3668/41.8854/48.4893 s`，artifact staging 为
+`4.1704/4.1311/4.1357 s`。D5 active-vision staging 从 postopt1 的
+`41.5623/43.2639/41.2271 s` 降至 `4.0494/3.9898/3.9995 s`。总 staging
+`126.4682→12.4372 s`，总生成 `262.2866→144.5513 s`，finalization
+`7.7377→7.2777 s`，episode run `127.9871→124.7415 s`。
 
-修复后 200-camera/400-track fixture 构造 `2.3597→0.1097 s`，materialized load
-`2.3948→0.1802 s`；既有 3,536-sample 制品 writer `3.5529→0.7313 s`。gzip level 6、压缩字节、
-解压 JSONL、SHA256、schema、采样、特征、动作/ACK、真值隔离和公共独立 audit 均保持。数据专项
-`18 passed`、全量 `400 passed in 9.74s`。D5-owned 重复处理子项关闭；main clean-tree 三 seed
-端到端复跑仍开放。
+这组同配置、同 seed、干净工作树的系统计时关闭 D5 writer P1。先前 200-camera/400-track
+fixture 和 3,536-sample 制品结果继续作为根因与等价性证据；gzip level 6、schema、采样、特征、
+动作/ACK、真值隔离、SHA256、只读和公共独立 audit 未改变。该结论只针对离线制品写入，不是在线
+关联、主动视觉收益或实时运行结论。
 
-三 seed 不满足 20 个未见测试 seed 的正式门，active-vision dataset 以
-`insufficient_unseen_test_seeds` 保持未最终化。审查不接受由该结果推导 BC/PPO、checkpoint、
-paired shadow 或 assist 准入；900-episode 正式 corpus 也尚未生成。
+三 seed 只规划出 1 个测试 seed，不满足 20 个未见测试 seed 的正式门。active-vision dataset 以
+`insufficient_unseen_test_seeds` 保持未最终化。正式 900-episode corpus、BC/PPO、checkpoint、
+paired shadow 和 assist 准入仍开放。
 
 ## 2026-07-20 主动视觉数据开销复核
 

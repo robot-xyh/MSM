@@ -32,13 +32,37 @@ fixture 的 gzip 仍为 level 6、`37,001` 字节，解压后为 `732,814` 字�
 接受阈值为零失败。schema、公开 DTO、采样、特征、压缩级别、中心 ID 只读、版本/ACK、SHA256、
 只读和 whole-seed split 合同均未改变。
 
-该结果关闭 D5-owned writer/sample 重复处理子项。main 尚需在 clean-tree 下复跑 nominal 200v200
-seed 930-932，确认此前每场 `41.2-43.3 s` 的 active-vision staging 在真实 episode 中同步下降。正式
+该结果关闭 D5-owned writer/sample 重复处理子项。main 随后在 clean-tree 下复跑同一 nominal
+200v200、2 s、seed 930-932，系统级结果见下一节；D5 writer P1 已由真实 episode 计时关闭。正式
 900-episode corpus、BC/PPO、20 个未见 seed、checkpoint、paired shadow 和 assist 准入仍未完成。
 本次没有改变 AirSim 相机、检测器、云台或运行接口，`docs/AIRSIM_INTEGRATION_PLAN.md` 检查后无需
 修改。
 
-## 2026-07-20 200v200 clean-tree 三 seed 复测
+## 2026-07-20 200v200 clean-tree postopt2 系统复测
+
+main 在提交 `45b36500dc3c6935b1f116614993e291041eb12d` 上运行 nominal 200v200、2 s、
+seed 930-932。证据目录为
+`outputs/capacity_probe_v2/nominal_timed_postopt2/`。三场均为有限状态，
+`repository_dirty=false`、`online_truth_use_count=0`；D5 匿名 tracklet graph 正常最终化。
+
+| seed | episode run | artifact staging | D5 active-vision staging |
+| ---: | ---: | ---: | ---: |
+| 930 | 34.3668 s | 4.1704 s | 4.0494 s |
+| 931 | 41.8854 s | 4.1311 s | 3.9898 s |
+| 932 | 48.4893 s | 4.1357 s | 3.9995 s |
+
+相对 postopt1，总 artifact staging 由 `126.4682 s` 降至 `12.4372 s`，总生成由
+`262.2866 s` 降至 `144.5513 s`。批次 finalization 由 `7.7377 s` 降至 `7.2777 s`，episode run
+由 `127.9871 s` 变为 `124.7415 s`。D5 active-vision staging 从历史
+`41.5623/43.2639/41.2271 s` 降至 `4.0494/3.9898/3.9995 s`。这组同配置、同 seed、干净工作树
+证据关闭 D5 writer P1 的系统级复跑项；它是离线学习制品写入改进，不是在线关联或仿真实时性
+结论。
+
+本批只有 3 个唯一 seed，预检只得到 1 个测试 seed。active-vision dataset 因
+`insufficient_unseen_test_seeds` 保持未最终化；正式 900-episode corpus、至少 20 个未见测试
+seed、正式训练、checkpoint、paired shadow 和 assist 准入继续开放。
+
+## 2026-07-20 200v200 clean-tree postopt1 历史复测
 
 main 在提交 `4052d9411363c39d52100c0e3a4f60ee88443cab` 上复跑 nominal 200v200、2 s、
 seed 930-932。产物记录 `repository_dirty=false`，可与优化前
@@ -52,10 +76,10 @@ seed 930-932。产物记录 `repository_dirty=false`，可与优化前
 | finalization | 116.5624 s | 7.7377 s | 降低约 93.4% |
 | generation total | 467.8007 s | 262.2866 s | 降低约 43.9% |
 
-三场 D5 graph staging 分别为 `0.0250/0.0259/0.0290 s`，图数据正常最终化。该次复测的 D5
+三场 D5 graph staging 分别为 `0.0250/0.0259/0.0290 s`，图数据正常最终化。该次历史复测的 D5
 active-vision staging 分别为 `41.5623/43.2639/41.2271 s`，占对应 episode artifact staging 的
 99.6% 以上，因而触发了上节专项剖析。D5-owned writer/sample 重复处理现已修复；这组三 seed
-历史数据保留为 main clean-tree 复跑基线，不用微基准直接回填端到端结果。
+数据保留为 postopt2 的直接基线，不能再解释为当前 writer 性能。
 
 三 seed 只能规划出 1 个测试 seed，未达到正式准入要求的 20 个未见测试 seed，因此 active-vision
 dataset 以 `insufficient_unseen_test_seeds` 失败关闭并保留未最终化 episode/online/offline 数据。

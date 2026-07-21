@@ -14,7 +14,11 @@ D5 文档遵循 `research_modules/DOCUMENTATION_STANDARD.md`。推荐阅读顺�
 2026-07-20 active-vision staging 专项的复现入口为
 `../simulations/profile_active_vision_episode_staging.py`，对照 JSON 和 cProfile 文本位于
 `../results/active_vision_staging_profile_*`。该专项保持 gzip level 6 和磁盘 schema，关闭 D5-owned
-共享 snapshot 重复审计/编码热点；main clean-tree 三 seed 与正式 900 episode 验收仍未完成。
+共享 snapshot 重复审计/编码热点。main 已在提交
+`45b36500dc3c6935b1f116614993e291041eb12d` 上完成同配置 clean-tree 三 seed postopt2 复跑：
+D5 active-vision staging 从 `41.5623/43.2639/41.2271 s` 降至
+`4.0494/3.9898/3.9995 s`，writer P1 的系统级复跑项已关闭。正式 900 episode、20 个未见测试
+seed、训练和 assist 准入仍未完成；该离线写入结果不代表在线实时性。
 
 2026-07-20 新增匿名稀疏 tracklet 图文档：实现入口为
 `../src/d5_terminal_association/sparse_tracklet_graph.py`、`tracklet_gnn.py` 和

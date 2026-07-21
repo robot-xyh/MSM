@@ -1,17 +1,19 @@
 # D5 M 对 N 末端多视角配准与协同定位调研
 
-## 2026-07-20 200v200 M 对 N 数据链 clean-tree 复测
+## 2026-07-20 200v200 M 对 N 数据链 clean-tree postopt2 复测
 
 nominal 200v200、2 s、seed 930-932 在提交
-`4052d9411363c39d52100c0e3a4f60ee88443cab` 上完成 clean-tree 复测。三场在线 truth use 为 0，
-D5 graph 均完成最终化；graph staging 分别为 `0.0250/0.0259/0.0290 s`。总 finalization 从
-`116.5624 s` 降到 `7.7377 s`，确认 M 对 N 数据终结阶段的重复审计热点已经关闭。
+`45b36500dc3c6935b1f116614993e291041eb12d` 上完成 clean-tree postopt2 复测。三场均为有限状态，
+online truth use=0，D5 graph 均正常最终化。
 
-active-vision 写入/压缩仍分别耗时 `41.5623/43.2639/41.2271 s`，占各 episode artifact staging
-的 99.6% 以上。该项是下一 P1 性能热点，优化不得改变动态 M/N 数量语义，不得减少样本或训练特征，
-也不得绕过在线真值隔离、独立离线标签、共享 seed 原子切分和哈希审计。当前只有 3 个 seed，
-active-vision finalizer 因不足 20 个未见测试 seed 失败关闭；正式 900-episode corpus、BC/PPO、
-checkpoint 与模型准入仍未完成。
+D5 active-vision staging 从 postopt1 的 `41.5623/43.2639/41.2271 s` 降至
+`4.0494/3.9898/3.9995 s`；每场 artifact staging 为 `4.1704/4.1311/4.1357 s`。总 staging
+`126.4682→12.4372 s`，总生成 `262.2866→144.5513 s`。该同配置系统证据关闭 writer P1；
+gzip/schema/采样/特征/版本/ACK/真值隔离和动态 camera/target/resource 数量合同未改变。
+
+active-vision finalizer 仍因只有 3 个 seed、1 个测试 seed 而以 `insufficient_unseen_test_seeds`
+失败关闭。正式 900-episode corpus、20 个未见测试 seed、BC/PPO、checkpoint、paired shadow 和
+assist 准入继续开放。该离线写入复测不改变 M 对 N 的成员、到达窗口、执行许可或在线实时性语义。
 
 ## 2026-07-20 M 对 N 数据终结开销复核
 
@@ -19,7 +21,8 @@ checkpoint 与模型准入仍未完成。
 重复扫描共享 snapshot；同一次 finalize 复用一次 stream/offline audit 和实际文件 SHA256，公开
 audit 仍独立复核。6-episode 计数中 parse `12/12→6/6`、SHA256 `67→20`；D5 全量
 `398 passed in 15.75s`。磁盘 schema、全部训练特征、真值隔离、整 seed 切分及中心 ID 所有权不变。
-正式 900-episode M 对 N corpus 的 clean-tree 吞吐和恢复仍需 main 复测。
+正式 900-episode M 对 N corpus 的峰值、吞吐和恢复仍需 main 验收；三 seed postopt2 只关闭 writer
+系统级热点，不替代正式 corpus 验收。
 
 ## 2026-07-20 M 对 N 主动视觉容量与流式数据复核
 

@@ -18,22 +18,30 @@ SHA256 对象键和 JSONL 写入，gzip 等级、格式和字节保持不变。
 200-camera/400-track fixture 构造由 `2.3597 s` 降至 `0.1097 s`，materialized load 由
 `2.3948 s` 降至 `0.1802 s`；既有 3,536-sample 制品 writer 由 `3.5529 s` 降至
 `0.7313 s`。修改前后 gzip 和解压流 SHA256 相同。D5 全量 `400 passed in 9.74s`。该证据关闭
-D5-owned 重复处理子项，不替代 main 的 clean-tree 三 seed 或 900 episode 验收。
+D5-owned 重复处理子项。main 随后完成同配置 clean-tree 三 seed 系统复测，writer P1 已获得系统级
+关闭证据；正式 900 episode、训练与准入验收仍未完成。
 
 ## 2026-07-20 规模化数据性能判定原则
 
 规模化数据优化必须分别核算 episode run、artifact staging 和 finalization，不能用总墙钟掩盖单项
-热点。main 在提交 `4052d9411363c39d52100c0e3a4f60ee88443cab` 上运行 nominal 200v200、2 s、
+热点。postopt1 在提交 `4052d9411363c39d52100c0e3a4f60ee88443cab` 上运行 nominal 200v200、2 s、
 seed 930-932，三场均为 clean tree 且 online truth use=0。相对基线，总墙钟
 `467.8007→262.2866 s`，staging `225.9243→126.4682 s`，finalization
 `116.5624→7.7377 s`；episode run `125.2205→127.9871 s`，应判为基本持平。
 
 D5 graph staging 为 `0.0250/0.0259/0.0290 s` 并正常最终化，重复 finalization 审计热点已经关闭。
-D5 active-vision staging 为 `41.5623/43.2639/41.2271 s`，占每场 staging 的 99.6% 以上。后续只能
-在等价对象编码、流式写入、gzip 参数和落盘实现上优化，不能降低采样、删减特征，或弱化在线
-truth-free、离线标签物理隔离、哈希和失败关闭原则。
+D5 active-vision staging 为 `41.5623/43.2639/41.2271 s`，占每场 staging 的 99.6% 以上。这是
+writer 优化前的历史基线。优化只能采用等价对象编码、流式写入和落盘实现，不能降低采样、删减
+特征，或弱化在线 truth-free、离线标签物理隔离、哈希和失败关闭原则。
 
-数据可生成不等于学习能力准入。三 seed 只产生 1 个规划测试 seed，未达到 20 个未见测试 seed；
+main 在提交 `45b36500dc3c6935b1f116614993e291041eb12d` 上用相同 nominal 200v200、2 s、
+seed 930-932 完成 postopt2。三场均为有限状态、clean tree、online truth use=0；D5 graph 正常
+最终化。active-vision staging 降至 `4.0494/3.9898/3.9995 s`，总 staging
+`126.4682→12.4372 s`，总生成 `262.2866→144.5513 s`。episode run 为 `124.7415 s`，因此该
+结果只关闭离线 writer P1，不证明在线关联或 200v200 仿真实时运行。
+
+数据可生成不等于学习能力准入。postopt2 的三 seed 只产生 1 个规划测试 seed，未达到 20 个未见
+测试 seed；
 active-vision dataset 因此保持未最终化，理由为 `insufficient_unseen_test_seeds`。正式 900-episode
 corpus、BC/PPO、checkpoint、paired shadow 与 assist 准入均仍是待完成项。
 

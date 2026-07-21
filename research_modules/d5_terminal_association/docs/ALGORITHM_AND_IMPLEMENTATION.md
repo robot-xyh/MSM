@@ -26,11 +26,36 @@ gzip 累计耗时较小，因此保持 level 6。
 load `2.3948→0.1802 s`；既有 3,536-sample 制品 writer `3.5529→0.7313 s`。数据专项
 `18 passed`，D5 全量 `400 passed in 9.74s`。schema、公开 DTO、采样和特征未改变。
 
-## 2026-07-20 clean-tree 200v200 数据链验证
+## 2026-07-20 clean-tree 200v200 postopt2 验证
+
+main 在提交 `45b36500dc3c6935b1f116614993e291041eb12d` 上，以固定 nominal 200v200、2 s、
+seed 930-932 复跑 writer 优化后的完整生成链。证据目录为
+`capacity_probe_v2/nominal_timed_postopt2/`。三场均为有限状态，
+`repository_dirty=false`、`online_truth_use_count=0`；D5 graph dataset 正常最终化。
+
+| seed | episode run | artifact staging | D5 active-vision staging |
+| ---: | ---: | ---: | ---: |
+| 930 | 34.3668 s | 4.1704 s | 4.0494 s |
+| 931 | 41.8854 s | 4.1311 s | 3.9898 s |
+| 932 | 48.4893 s | 4.1357 s | 3.9995 s |
+
+postopt1 到 postopt2 的总 artifact staging 为 `126.4682→12.4372 s`，总 generation 为
+`262.2866→144.5513 s`，finalization 为 `7.7377→7.2777 s`，episode run 为
+`127.9871→124.7415 s`。D5 active-vision staging 从
+`41.5623/43.2639/41.2271 s` 降至 `4.0494/3.9898/3.9995 s`。同配置、同 seed、干净工作树和
+真值隔离证据共同关闭 D5 writer P1 的系统级复跑项。算法、schema、采样、特征和门控未改变，
+因此不能将该结果解释为在线关联加速或实时能力。
+
+active-vision 仍只有 3 个 seed 和 1 个测试 seed。finalizer 以
+`insufficient_unseen_test_seeds` 失败关闭并保留 staging；正式 900-episode corpus、20 个未见测试
+seed、BC/PPO、checkpoint、paired shadow 和 assist 准入仍开放。
+
+## 2026-07-20 clean-tree 200v200 postopt1 历史验证
 
 main 使用固定 nominal 200v200 配置运行 3 个 2 s episode，seed 为 930-932。生产提交为
 `4052d9411363c39d52100c0e3a4f60ee88443cab`，三场 `repository_dirty=false`。基线和优化后产物
-分别保存在 `capacity_probe_v2/nominal_timed/` 与 `nominal_timed_postopt/`。
+分别保存在 `capacity_probe_v2/nominal_timed/` 与 `nominal_timed_postopt/`。本节保存 writer
+优化前的历史归因，不代表 postopt2 当前性能。
 
 | 计时项 | 基线 | 优化后 | 变化 |
 | --- | ---: | ---: | ---: |
@@ -41,10 +66,9 @@ main 使用固定 nominal 200v200 配置运行 3 个 2 s episode，seed 为 930-
 
 分项计时把 D5 两条路径区分开。匿名 tracklet graph 每场 staging 仅
 `0.0250/0.0259/0.0290 s`，并完成 dataset 最终化。active-vision 整 episode 记录每场仍需
-`41.5623/43.2639/41.2271 s`，占对应 artifact staging 的 99.6% 以上。由此可确认，重复
-finalization 审计已不再是主热点；下一实现重点是 active-vision writer 中的对象序列化、逐行 gzip
-压缩和落盘。优化必须产生同一 schema、同一采样、同一特征与同一真值隔离结果，不能通过减少
-训练证据取得表面加速。
+`41.5623/43.2639/41.2271 s`，占对应 artifact staging 的 99.6% 以上。由此确认当时重复
+finalization 审计已不再是主热点，并把 active-vision writer 定位为下一热点。该 writer 热点已经由
+上节 postopt2 系统复测关闭；优化保持了同一 schema、采样、特征和真值隔离结果。
 
 三场在线 truth use 都为 0。active-vision finalizer 因测试 seed 规划数为 1、低于正式门限 20，
 返回 `insufficient_unseen_test_seeds` 并保留未最终化数据；这是预期的失败关闭。该实验尚未生成
