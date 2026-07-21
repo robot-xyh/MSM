@@ -113,6 +113,7 @@ class IntegratedStackConfig:
     d5_active_vision_enabled: bool = True
     d5_active_vision_mode: str = "disabled"
     d5_active_vision_zoom_fov_deg: float = 30.0
+    d5_recon_track_cues_enabled: bool = False
 
     def __post_init__(self) -> None:
         if self.assignment_lease_multiplier <= 1.0:
@@ -233,6 +234,7 @@ class IntegratedScalableModuleStack:
         self.latest_guidance_batch: Any | None = None
         self.latest_active_vision_snapshot: ActiveVisionSnapshotV1 | None = None
         self.latest_active_vision_decisions: tuple[Any, ...] = ()
+        self.latest_active_vision_recon_cue_count = 0
         self._latest_terminal_by_pair: dict[tuple[str, str], tuple[dict[str, Any], Any]] = {}
         self._track_region_by_id: dict[str, str] = {}
         self._resource_index_by_id: dict[str, int] = {}
@@ -320,6 +322,7 @@ class IntegratedScalableModuleStack:
         self.latest_guidance_batch = None
         self.latest_active_vision_snapshot = None
         self.latest_active_vision_decisions = ()
+        self.latest_active_vision_recon_cue_count = 0
         self._latest_terminal_by_pair.clear()
         self._track_region_by_id.clear()
         self._resource_index_by_id.clear()
@@ -1025,7 +1028,7 @@ class IntegratedScalableModuleStack:
         camera_by_resource = {
             camera.resource_id: camera for camera in step_input.cameras
         }
-        assignments = tuple(
+        interceptor_assignments = tuple(
             ActiveVisionAssignmentReference(
                 resource_id=assignment.resource_id,
                 camera_id=camera_by_resource[assignment.resource_id].camera_id,
@@ -1035,6 +1038,12 @@ class IntegratedScalableModuleStack:
             if assignment.resource_id in camera_by_resource
             and assignment.target_id in track_by_id
         )
+        recon_assignments = self._active_vision_recon_track_cues(
+            step_input,
+            track_by_id=track_by_id,
+            camera_by_resource=camera_by_resource,
+        )
+        assignments = interceptor_assignments + recon_assignments
         tracks = tuple(
             ActiveVisionTrackReference(
                 global_track_id=track.global_track_id,
@@ -1052,15 +1061,16 @@ class IntegratedScalableModuleStack:
         )
         projections = tuple(
             self._active_vision_projection(
-                assignment,
-                camera_by_resource[assignment.resource_id],
-                track_by_id[assignment.target_id],
-                step_input,
-                now,
+                resource_id=assignment.resource_id,
+                target_id=assignment.global_track_id,
+                camera=camera_by_resource[assignment.resource_id],
+                track=track_by_id[assignment.global_track_id],
+                step_input=step_input,
+                now=now,
             )
-            for assignment in self.latest_plan.assignments
+            for assignment in assignments
             if assignment.resource_id in camera_by_resource
-            and assignment.target_id in track_by_id
+            and assignment.global_track_id in track_by_id
         )
         snapshot = ActiveVisionSnapshotV1(
             snapshot_timestamp=now,
@@ -1110,6 +1120,7 @@ class IntegratedScalableModuleStack:
         )
         self.latest_active_vision_snapshot = snapshot
         self.latest_active_vision_decisions = decisions
+        self.latest_active_vision_recon_cue_count = len(recon_assignments)
         if self.stack_config.capture_learning_artifacts:
             runtime_camera_by_id = {
                 camera.camera_id: camera for camera in step_input.cameras
@@ -1138,6 +1149,102 @@ class IntegratedScalableModuleStack:
                 )
             )
         return commands
+
+    def _active_vision_recon_track_cues(
+        self,
+        step_input: RuntimeStepInput,
+        *,
+        track_by_id: Mapping[str, Any],
+        camera_by_resource: Mapping[str, CameraRuntimeState],
+    ) -> tuple[ActiveVisionAssignmentReference, ...]:
+        """Select truth-free observation cues for recon cameras.
+
+        D3 continues to own interceptor allocation. These references only tell
+        D5 which already assigned global track a recon camera should observe so
+        an interceptor/recon overlap can be formed for cross-view association.
+        """
+
+        if not self.stack_config.d5_recon_track_cues_enabled:
+            return ()
+        target_ids = tuple(
+            sorted(
+                {
+                    assignment.target_id
+                    for assignment in self.latest_plan.assignments
+                    if assignment.target_id in track_by_id
+                }
+            )
+        )
+        recon_cameras = tuple(
+            sorted(
+                (
+                    camera
+                    for camera in step_input.cameras
+                    if camera.platform_kind == "recon"
+                    and camera.resource_id in camera_by_resource
+                ),
+                key=lambda item: item.camera_id,
+            )
+        )
+        if not target_ids or not recon_cameras:
+            return ()
+
+        interceptor_cameras_by_target: dict[str, list[CameraRuntimeState]] = {}
+        for assignment in self.latest_plan.assignments:
+            camera = camera_by_resource.get(assignment.resource_id)
+            if (
+                assignment.target_id in track_by_id
+                and camera is not None
+                and camera.platform_kind == "interceptor"
+            ):
+                interceptor_cameras_by_target.setdefault(
+                    assignment.target_id, []
+                ).append(camera)
+
+        def camera_angular_offset(
+            camera: CameraRuntimeState,
+            global_track_id: str,
+        ) -> float:
+            camera_position = _active_camera_position(camera, step_input)
+            predicted_position, _ = _predict_track_position(
+                track_by_id[global_track_id],
+                float(step_input.timestamp),
+            )
+            yaw_deg, pitch_deg = _yaw_pitch_from_ned(
+                predicted_position - camera_position
+            )
+            return abs(_wrap_degrees(yaw_deg - camera.yaw_deg)) + abs(
+                float(pitch_deg - camera.pitch_deg)
+            )
+
+        unused_target_ids = set(target_ids)
+        cues: list[ActiveVisionAssignmentReference] = []
+        for camera in recon_cameras:
+            candidate_ids = unused_target_ids or set(target_ids)
+
+            def overlap_offset(global_track_id: str) -> tuple[float, str]:
+                interceptor_offsets = tuple(
+                    camera_angular_offset(item, global_track_id)
+                    for item in interceptor_cameras_by_target.get(
+                        global_track_id, ()
+                    )
+                )
+                return (
+                    camera_angular_offset(camera, global_track_id)
+                    + min(interceptor_offsets, default=360.0),
+                    global_track_id,
+                )
+
+            selected_target_id = min(candidate_ids, key=overlap_offset)
+            unused_target_ids.discard(selected_target_id)
+            cues.append(
+                ActiveVisionAssignmentReference(
+                    resource_id=camera.resource_id,
+                    camera_id=camera.camera_id,
+                    global_track_id=selected_target_id,
+                )
+            )
+        return tuple(cues)
 
     def _active_vision_camera_state(
         self,
@@ -1173,7 +1280,9 @@ class IntegratedScalableModuleStack:
 
     def _active_vision_projection(
         self,
-        assignment: Any,
+        *,
+        resource_id: str,
+        target_id: str,
         camera: CameraRuntimeState,
         track: Any,
         step_input: RuntimeStepInput,
@@ -1204,7 +1313,7 @@ class IntegratedScalableModuleStack:
             and relative.dot(relative) > 1.0e-9
         )
         terminal = self._latest_terminal_by_pair.get(
-            (assignment.resource_id, assignment.target_id)
+            (resource_id, target_id)
         )
         if terminal is None:
             association_confidence = float(
@@ -1229,7 +1338,7 @@ class IntegratedScalableModuleStack:
         )
         return ActiveVisionProjectionEvidence(
             camera_id=camera.camera_id,
-            global_track_id=assignment.target_id,
+            global_track_id=target_id,
             measurement_timestamp=min(now, float(track.timestamp)),
             arrival_timestamp=now,
             yaw_error_deg=yaw_error,
@@ -2818,6 +2927,9 @@ class IntegratedScalableModuleStack:
             payload={
                 "timestamp": now,
                 "command_count": len(commands),
+                "recon_track_cue_count": (
+                    self.latest_active_vision_recon_cue_count
+                ),
                 "effective_mode_counts": dict(sorted(mode_counts.items())),
                 "intent_counts": dict(sorted(intent_counts.items())),
                 "commands": [
@@ -2896,6 +3008,9 @@ class IntegratedScalableModuleStack:
             ),
             "d5_active_vision_command_count": len(
                 self.latest_active_vision_decisions
+            ),
+            "d5_active_vision_recon_cue_count": (
+                self.latest_active_vision_recon_cue_count
             ),
             "d5_active_vision_requested_mode": (
                 self.stack_config.d5_active_vision_mode

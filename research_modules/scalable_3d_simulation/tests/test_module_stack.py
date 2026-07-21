@@ -21,6 +21,7 @@ from research_modules.d4_distributed_fallback.d4_distributed_fallback import (
 from research_modules.scalable_3d_simulation.models import ScenarioConfig
 from research_modules.scalable_3d_simulation.module_stack import (
     IntegratedScalableModuleStack,
+    IntegratedStackConfig,
 )
 from research_modules.scalable_3d_simulation.orchestrator import run_episode
 from research_modules.scalable_3d_simulation.reporting import write_batch_outputs
@@ -64,6 +65,10 @@ def _assist_region_advisor(*, ttl_s: float = 1.5) -> RegionResourceAdvisor:
     )
 
 
+def test_recon_track_cues_are_fail_closed_by_default() -> None:
+    assert IntegratedStackConfig().d5_recon_track_cues_enabled is False
+
+
 def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> None:
     config = ScenarioConfig(
         scenario_name="integrated_5v5",
@@ -76,7 +81,9 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
         seed=7,
         radar_detection_probability=1.0,
     )
-    stack = IntegratedScalableModuleStack()
+    stack = IntegratedScalableModuleStack(
+        IntegratedStackConfig(d5_recon_track_cues_enabled=True)
+    )
 
     result = run_episode(config, module_stack=stack, output_dir=tmp_path)
 
@@ -142,6 +149,14 @@ def test_5v5_online_stack_connects_d1_to_d7_without_truth_identity(tmp_path) -> 
         for payload in active_vision_payloads
         for command in payload["commands"]
     )
+    assert stack.latest_active_vision_snapshot is not None
+    recon_targets = stack.latest_active_vision_snapshot.assigned_target_ids(
+        "CAM-RECON-001"
+    )
+    assert len(recon_targets) == 1
+    assert set(recon_targets).issubset(center_ids)
+    assert stack.latest_active_vision_recon_cue_count == 1
+    assert all(not target_id.startswith("TGT-") for target_id in recon_targets)
     camera_acks = [
         message.payload
         for message in result.online_messages

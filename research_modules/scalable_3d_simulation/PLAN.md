@@ -100,16 +100,24 @@ commit。
   场景/规模 cell 为 20 episode。来源提交干净，在线真值使用为 0，保留 seed
   `1000-1019` 未进入数据集。此前 209/900 的失败目录不参与训练。
 - D3 已完成完整数据行为克隆，当前为 development/shadow-only。D4 已完成行为克隆，但
-  正式规则动作缺少 quota、hold、replan 和 transfer 正样本。D5 跨视角图已完成数据审计
-  和开发训练，但 97.52% 图帧无候选边且困难负样本不足。三者均未获得 assist 准入。
+  正式规则动作缺少 quota、hold、replan 和 transfer 正样本。D4 已用独立 clean 课程补齐
+  四类规则示范覆盖并形成 canonical 行为克隆只读视图；该课程没有 reward，不能用于 PPO
+  或 assist。D5 跨视角图已完成数据审计和开发训练，但 97.52% 图帧无候选边且困难负样本
+  不足。三者均未获得 assist 准入。
+- D5 主动视觉已完成 1,153,242 样本的完整行为克隆。总体测试精确动作准确率为
+  `0.955978`，但 `observe_target` 测试召回率为 0、hold 无正样本、侦察相机精确动作
+  准确率为 `0.621823`，因此 bundle 仅允许 development shadow。
 - D6 已完成正式数据 outcome/reward 分层和 detached sidecar。D4、D5 有相邻观测结果，
   但缺版本化动作采用/运行 ACK，reward 均为 0 条可用；PPO、反事实和因果训练保持关闭。
 - main 已新增 `scalable3d-shared-seed-split-registry-v1`。100 个训练 seed 使用与 D3 v2
   一致的确定性 `60/20/20` 映射，并绑定原训练 seed 注册表 SHA。原 D4/D5 数据不改写；
   它们需要建立源外 canonical view 并通过 D6 审计后，C1 联合训练才可开始。
-- main scalable 测试当前为 `80 passed`。下一阶段先关闭 shared split、D4 动作覆盖、D5
+- main scalable 测试当前为 `82 passed`。下一阶段先关闭 shared split、D4 动作覆盖、D5
   重叠视场/困难负样本和主动视觉 ACK producer 缺口，再运行 R0/G1/A1/A2/A3/C1/F1 及
   seed `1000-1019` 验收。
+- main 已增加默认关闭的侦察观察线索开关。5v5、3 秒、5 seed 对照中，线索使视觉观测
+  增加，但候选边由 128 降至 64；在 D5 完成宽视场保持和跨视角稳定门控前，不进入默认
+  生成路径或正式实验矩阵。
 
 ### 2026-07-20 阶段状态
 

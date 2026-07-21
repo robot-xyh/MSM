@@ -29,6 +29,16 @@ from research_modules.scalable_3d_simulation.scenarios import AVAILABLE_SCENARIO
 SCALABLE_ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_recon_track_cues_require_an_explicit_generation_flag() -> None:
+    default_args = learning_runner.parse_args(["--output", "/tmp/unused"])
+    enabled_args = learning_runner.parse_args(
+        ["--output", "/tmp/unused", "--d5-recon-track-cues"]
+    )
+
+    assert default_args.d5_recon_track_cues is False
+    assert enabled_args.d5_recon_track_cues is True
+
+
 def test_schedule_expands_cells_and_rejects_duplicates(tmp_path) -> None:
     path = tmp_path / "schedule.json"
     path.write_text(

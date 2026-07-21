@@ -56,6 +56,14 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="write split-safe multi-seed D3/D4/D5 training artifacts",
     )
+    parser.add_argument(
+        "--d5-recon-track-cues",
+        action="store_true",
+        help=(
+            "give recon cameras truth-free observation cues from the current "
+            "versioned assignment plan; disabled by default"
+        ),
+    )
     add_learning_runtime_arguments(parser)
     return parser.parse_args()
 
@@ -92,7 +100,10 @@ def main() -> int:
                         config,
                         learning_options,
                         stack_config=IntegratedStackConfig(
-                            capture_learning_artifacts=args.export_learning_data
+                            capture_learning_artifacts=args.export_learning_data,
+                            d5_recon_track_cues_enabled=(
+                                args.d5_recon_track_cues
+                            ),
                         ),
                     )
                     config = resolved_runtime.config

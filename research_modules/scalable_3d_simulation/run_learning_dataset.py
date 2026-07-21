@@ -76,6 +76,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=int,
         help="Pause cleanly after this many new episodes; resume with --resume.",
     )
+    parser.add_argument(
+        "--d5-recon-track-cues",
+        action="store_true",
+        help=(
+            "give recon cameras truth-free observation cues from the current "
+            "versioned assignment plan; disabled by default"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -137,6 +145,7 @@ def main(argv: list[str] | None = None) -> int:
         "cell_count": len(cells),
         "generation_seed_count": len(generation_seeds),
         "reserved_evaluation_seeds": list(reserved),
+        "d5_recon_track_cues_enabled": bool(args.d5_recon_track_cues),
         "d5_active_vision_split_preflight": {
             "test_fraction": D5_ACTIVE_VISION_TEST_FRACTION,
             "minimum_unseen_seed_count": D5_ACTIVE_VISION_MINIMUM_UNSEEN_SEEDS,
@@ -241,7 +250,10 @@ def main(argv: list[str] | None = None) -> int:
         resolved = resolve_learning_runtime(
             config,
             LearningRuntimeOptions(),
-            stack_config=IntegratedStackConfig(capture_learning_artifacts=True),
+            stack_config=IntegratedStackConfig(
+                capture_learning_artifacts=True,
+                d5_recon_track_cues_enabled=args.d5_recon_track_cues,
+            ),
         )
         episode_started = time.perf_counter()
         result = run_episode(resolved.config, module_stack=resolved.stack)
