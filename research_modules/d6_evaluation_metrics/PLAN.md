@@ -1,6 +1,42 @@
 # D6 Evaluation Metrics Plan
 
-## 2026-07-21 canonical seed split readiness 状态
+## 2026-07-21 跨模块学习数据联合准入状态
+
+- [x] 新增 D6-owned 只读联合审计 API 与 CLI。显式输入 training/shared registry、D3 formal
+  manifest、D4 formal manifest 与独立 canonical view、D5 tracklet/active-vision formal
+  manifest/view/readiness，以及 D4/D5 supplemental summary；不修改任何 producer artifact。
+- [x] 对 schema、来源身份、文件与内容 SHA-256、dirty source、缺失输入、100 个训练 seed、
+  train/validation/test=`60/20/20` 和保留 seed `1000-1019` 零泄漏执行 fail-closed 校验。
+- [x] 将 D4 900-episode formal canonical view 与 D4 100-episode/300-frame supplemental
+  curriculum 分层。formal view 文件 SHA-256 为
+  `73a365d32b0439fbf805f40ea7941b8e992fe4c68687cbc5496704f230440b11`，不得由 supplemental view
+  替代。
+- [x] 将证据固定分为 formal observation corpus、supplemental rule-teacher curriculum、offline
+  evaluator labels 和 runtime ACK evidence。D5 synthetic ACK applied/rejected/missing 各 400 仅作
+  测试覆盖，不作 runtime attribution。
+- [x] 汇总 D4 hold/request-replan/nonzero quota/transfer=`100/200/200/100`；D5 intent
+  hold/observe-target/reacquire/search-sector=`200/600/200/200`，wide/zoom=`1000/200`，
+  interceptor/recon=`600/600`。
+- [x] 精确校验 D4 supplemental canonical episode=`60/20/20`、frame=`180/60/60`。汇总 D5 tracklet
+  480 条候选边的正/负/未标注=`362/19/99`，发布 `381 labeled/99 unlabeled`、`complete=false`、
+  `status=partial`，不把部分标签声明为完整监督集。
+- [x] 报告写盘前拒绝 output directory 等于或位于 training registry 所属正式 generation 根下；D6 自有
+  `outputs/` 仍是允许路径，`source_mutation_performed=false` 仅在该隔离约束下成立。
+- [x] 准入矩阵固定为 BC canonical view available、BC full-sample audit pending、PPO=false、
+  assist=false、authority=false、rule fallback required=true。补充课程和 synthetic ACK 不得提升资格。
+- [x] 2026-07-21 使用真实 900 episode 冻结制品运行 CLI，规范 seed 为 60/20/20，reserved leakage=0，
+  online truth=0。专项 `16 passed`，D6 全量 `380 passed`，仅有既有 Matplotlib `Axes3D` warning。
+- [ ] 对 D3/D4/D5 canonical views 执行逐样本内容、身份和文件集合审计，关闭
+  `behavior_cloning_full_sample_audit=pending`。完成前仅开放开发期行为克隆视图读取。
+- [ ] producer 持久化真实 action adoption、版本绑定、runtime ACK、可归因 reward/outcome 和终局结果；
+  D6 不从 synthetic ACK、相邻状态变化或 unavailable 标签补造这些证据。
+- [ ] 形成同 seed paired shadow 非退化证据，并使用保留 seed `1000-1019` 做独立模型验收。上述条件未
+  完成前继续关闭 PPO、在线 assist 和 authority，并强制规则回退。
+
+## 2026-07-21 历史 canonical seed split readiness 状态
+
+以下清单记录 detached canonical views 生成前的原始 manifest 审计。当前状态以上一节为准，正式
+900 episode 源 manifest 继续冻结。
 
 - [x] 新增 D6 自有、纯文件的 canonical split 审计，不导入 main runtime，不修改 D3/D4/D5 manifest。
 - [x] 校验 `scalable3d-shared-seed-split-registry-v1` schema、policy、content SHA-256、assignment
@@ -19,8 +55,8 @@
 - [x] 测试覆盖 exact、content/assignment tamper、source SHA mismatch、registry missing/extra/reserved
   seed、D3/D4/D5 mismatch、模块 missing/extra/reserved 和无 registry 兼容。2026-07-21 D6 全量
   `364 passed`；接受门限为注册表八项 validation 全真且四模块 exact，本次联合门未通过。
-- [ ] main/D4/D5 采用 detached registry 生成新的规范 split view 或新版本数据。正式 900 episode 源
-  manifest 保持冻结；在四模块 exact 前，C1 等跨模块联合训练继续 fail closed。
+- [x] main/D4/D5 已采用 detached registry 生成规范 split views。正式 900 episode 源 manifest 保持
+  冻结；D6 已通过顶部联合审计核对这些视图，但跨模块全样本审计仍 pending。
 - [ ] 共享 split 只关闭数据泄漏治理条件。D4/D5 reward、runtime ACK、动作多样性和 PPO 条件仍按原
   GAP 独立开放，不能由 split exact 自动晋升。
 

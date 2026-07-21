@@ -1,6 +1,94 @@
 # D6 系统级离线评估：算法原理与实施说明
 
-## 共享数值种子划分审计（2026-07-21）
+## 跨模块学习数据联合准入实现（2026-07-21）
+
+### 输入与身份绑定
+
+`audit_cross_module_learning_data_admission()` 接收一组显式文件路径，不搜索邻近目录，也不从文件名
+推断用途。输入包括 training/shared seed registry、D3 formal manifest、D4 formal manifest、D4
+formal canonical view 及其带外文件 SHA-256、D5 tracklet 和 active-vision 的 formal
+manifest/view/readiness，以及 D4/D5 supplemental summary。CLI
+`run_cross_module_learning_admission.py` 使用同一组必填参数并输出中文 JSON 和 Markdown。
+
+审计先复用 D6 自有注册表验证器，复算 shared registry 的规范 JSON 内容哈希、assignment 哈希和冻结
+seed 排序。随后校验每个 canonical view 的 source manifest 文件哈希、去除 split 后的内容哈希、
+training-set 哈希、consumer schema 和 readiness 绑定。D4 formal view 还要求调用方提供带外文件
+SHA-256；真实值为
+`73a365d32b0439fbf805f40ea7941b8e992fe4c68687cbc5496704f230440b11`，内部
+`binding.view_sha256` 为
+`e6a84861de6e7f0ef8fcf787ec3e28a59c2e7b5504faaaa4c75344db21f6128d`。文件哈希和内部内容
+哈希承担不同校验作用，两者均须通过。
+
+对全部 canonical view，D6 独立重建 seed assignment 并要求
+
+\[
+S_m^{train}=S_r^{train},\quad
+S_m^{validation}=S_r^{validation},\quad
+S_m^{test}=S_r^{test}
+\]
+
+其中 \(S_m\) 是模块视图中的 seed 集，\(S_r\) 是 shared registry。真实输入包含 900 episode、100 个
+训练 seed，三类数量为 60/20/20；保留 seed `1000-1019` 与三类集合交集必须为空。schema/hash
+tamper、错误 assignment、reserved leakage、dirty source、missing input 或 formal/supplemental 来源
+混用均抛出稳定错误码并停止报告生成。
+
+### 证据分层与动作覆盖
+
+输出将输入分成 `formal_observation_corpus`、`supplemental_rule_teacher_curriculum`、
+`offline_evaluator_labels` 和 `runtime_ack_evidence`。D4 formal 900-episode view 与 D4 supplemental
+100-episode/300-frame view 分开保存身份。D4 补充动作计数为 hold 100、request-replan 200、nonzero
+quota 200、transfer 100。D5 补充数据为 100 episode/800 segment/1200 sample，intent
+hold/observe-target/reacquire/search-sector=`200/600/200/200`，FOV wide/zoom=`1000/200`，camera
+role interceptor/recon=`600/600`。
+
+D4 supplemental canonical split 还必须精确包含 episode counts=`60/20/20` 和 frame
+counts=`180/60/60`。D5 tracklet 的 class balance 按三个 split 汇总，并验证 candidate edge 等于正、
+负和未标注三类之和，也等于 manifest edge inventory。真实 480 条边得到 positive=362、negative=19、
+unlabeled=99，因此输出 `labeled_count=381`、`complete=false`、`status=partial`。
+
+D5 synthetic ACK applied/rejected/missing 各 400。实现强制要求其
+`runtime_distribution_evidence=false`，并在输出中标记
+`deterministic_fault_injection_coverage_only`。若补充 summary 尝试把该计数声明为 runtime evidence，
+审计以 `synthetic_ack_claims_runtime_ack` 失败关闭。unavailable 的 reward、outcome、counterfactual 和
+causal 标签必须保留零 available count 与明确 unavailable 状态，不能补零为可用标签。
+
+### 准入矩阵
+
+准入矩阵分别发布数据视图、全样本、策略训练和在线权限：
+
+```text
+BC canonical view available = true
+BC full-sample audit = pending
+PPO allowed = false
+assist allowed = false
+authority allowed = false
+rule fallback required = true
+```
+
+`BC canonical view available` 只说明 detached seed 视图的 manifest/view/readiness 绑定通过。
+`full-sample audit pending` 说明 D6 尚未读取并核对 D3/D4/D5 的全部样本文件，因而不发布完整训练语料
+资格。synthetic ACK、补充课程动作多样性和离线 evaluator 标签均不会改变 PPO 或在线权限。当前输出
+没有模型性能或收益结论。
+
+### 输出与验证
+
+写盘函数使用同目录临时文件和 `os.replace` 原子发布
+`cross_module_learning_admission.json` 与 `cross_module_learning_admission_cn.md`。真实报告基于
+2026-07-21 冻结输入生成。写盘前先把 training registry 的父目录解析为正式 generation root；目标
+目录与该根相等或位于其下时，以 `output_inside_formal_generation_root` 失败，且不调用 `mkdir`。
+源 900 episode 未修改。专项 16 项覆盖正例 CLI、schema/hash tamper、错误 seed、reserved leakage、
+formal/supplemental 混用、synthetic ACK 冒充 runtime ACK、unavailable 标签补零、formal/training 与
+supplemental dirty source、D4 episode/frame split 篡改、正式树内输出和 missing input；结果为
+`16 passed`。D6 全量为 `380 passed`，仅有既有 Matplotlib `Axes3D` warning。
+
+后续准入需要完成 canonical views 全样本审计；由 producer 写入真实 action adoption、版本绑定、
+runtime ACK、后续反馈、明确终局结果和归因窗；形成同 seed paired shadow；最后使用保留 seed
+`1000-1019` 验收。PPO 还需要 on-policy log probability/value，反事实和因果训练需要配对重放或受控
+干预。在这些证据形成前，规则路径保持默认。
+
+## 历史共享数值种子划分审计（2026-07-21）
+
+以下实现说明对应 detached canonical views 生成前的原始 manifest 比较。当前准入结论以上一节为准。
 
 入口 `audit_canonical_seed_split_readiness()` 接收学习数据目录和 detached registry 路径。实现只使用
 标准库读取 JSON 和计算 SHA-256，不导入 main-owned `shared_seed_split.py`。这样可以独立发现 main

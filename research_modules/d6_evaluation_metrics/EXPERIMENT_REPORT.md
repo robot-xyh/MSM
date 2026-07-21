@@ -1,6 +1,55 @@
 # D6 系统级评估指标实验报告
 
-## 2.5 2026-07-21 正式共享 seed 划分审计
+## 2.6 2026-07-21 跨模块学习数据联合准入审计
+
+本次实验使用冻结的 training seed registry、shared registry、D3 formal manifest、D4 formal
+manifest 与独立 canonical view、D5 tracklet/active-vision formal manifest、canonical view、readiness，
+以及 D4/D5 2026-07-21 supplemental summary。审计通过显式路径读取，不搜索邻近目录，不修改正式
+producer artifact。D4 formal view 文件 SHA-256 为
+`73a365d32b0439fbf805f40ea7941b8e992fe4c68687cbc5496704f230440b11`，内部
+`binding.view_sha256` 为
+`e6a84861de6e7f0ef8fcf787ec3e28a59c2e7b5504faaaa4c75344db21f6128d`。
+
+正式语料覆盖 900 episode 和 100 个训练 seed。规范 train/validation/test 为 60/20/20，保留 seed
+`1000-1019` 泄漏为 0，online truth 使用为 0。D3 为 900 episode/1604 frame，D4 为 900
+episode/1798 frame，D5 active vision 为 900 episode/1,153,242 sample。D5 tracklet 为 12,851 graph
+episode 和 480 candidate edge。
+
+| 证据 | 规模或计数 | 审计结论 |
+|---|---:|---|
+| D4 supplemental | 100 episode，300 frame | canonical episode 60/20/20，frame 180/60/60 |
+| D4 动作 | hold 100；request-replan 200；nonzero quota 200；transfer 100 | 规则教师覆盖，不是运行时执行证据 |
+| D5 supplemental | 100 episode，800 segment，1200 sample | canonical sample 720/240/240 |
+| D5 intent | hold 200；observe-target 600；reacquire 200；search-sector 200 | 规则教师覆盖 |
+| D5 视场与角色 | wide/zoom 1000/200；interceptor/recon 600/600 | 覆盖计数通过 |
+| D5 tracklet 标签 | positive 362；negative 19；unlabeled 99 | labeled 381，complete=false，status=partial |
+| D5 synthetic ACK | applied/rejected/missing 各 400 | 仅故障注入覆盖，不计 runtime ACK attribution |
+
+证据层被分为正式观测语料、补充规则教师课程、离线评估标签和 runtime ACK。D5 tracklet 有 381 条已
+标注边，但 99 条边未标注，因此不能报告为完整监督标签集。D5 synthetic ACK 没有实际运行时来源，
+不能用于动作归因、奖励计算或在线准入。
+
+当前准入矩阵为：BC canonical view available=true；BC full-sample audit=pending；PPO=false；
+assist=false；authority=false；rule fallback required=true。前一项只说明 manifest/view/readiness 和
+规范 seed 身份通过，后一项说明逐样本文件集合及内容尚未完成统一复核。reward、outcome、
+counterfactual、causal、runtime ACK 和 paired shadow 均 unavailable。本次没有训练模型，也没有模型
+收益结论。
+
+报告输出位于 D6 自有的
+`outputs/cross_module_learning_admission_20260721/`，JSON 和中文 Markdown SHA-256 分别为
+`f5dcddc4e84644a5c83146f11b3fdd8ff2b72a342bc6547091d13fd0618370d2` 和
+`b6ceefb6e0ef6264b2b389c1bacb77a1499f0a286fd3bf8443d0ca1cb89890f1`。写盘入口会在创建目录前拒绝
+正式 generation 根及其子目录，避免评估产物改变正式数据树。专项测试 `16 passed`，D6 全量
+`380 passed`；仅有既有 Matplotlib `Axes3D` 环境 warning。
+
+后续需完成 canonical views 全样本审计；由 producer 持久化真实 action adoption、版本绑定、runtime
+ACK、可归因 reward/outcome 和终局结果；形成同 seed paired shadow；最后使用保留 seed
+`1000-1019` 做独立验收。上述条件未满足前，PPO、在线 assist 和 authority 保持关闭。
+
+## 2.5 2026-07-21 历史正式共享 seed 划分审计
+
+本节记录 detached canonical views 生成前对原始 manifest 的直接比较。当前联合准入结论以 2.6 节为
+准；历史 mismatch 用于保留原始数据治理过程，正式源没有被改写。
 
 本次对 `learning_generation_v1_multibatchfix` 的 900 episode 学习导出执行全量只读 readiness。输入为
 100 个训练 seed 和 20 个保留评估 seed。训练/保留交集为 0，全部已注册源文件哈希验证通过，正式源

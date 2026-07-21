@@ -1,6 +1,43 @@
 # D6 系统评估指标综述及子方案
 
-## 2026-07-21 共享种子划分评审
+## 2026-07-21 跨模块学习数据联合准入评审
+
+D6 已实现独立、只读的联合准入入口。输入包括 training/shared seed registry、D3 正式 manifest、D4
+正式 manifest 与 main 生成的独立 canonical view、D5 tracklet 和 active-vision 的正式
+manifest/view/readiness，以及 D4/D5 supplemental summary。入口验证 schema、来源身份、文件与内容
+SHA-256、dirty source、缺失输入和 seed assignment，不调用 main runtime，也不修改生产者制品。
+
+真实审计覆盖 900 episode 和 100 个训练 seed。规范 train/validation/test 为 60/20/20，保留 seed
+`1000-1019` 泄漏为 0。D4 formal view 文件 SHA-256 为
+`73a365d32b0439fbf805f40ea7941b8e992fe4c68687cbc5496704f230440b11`，与 D4 supplemental
+canonical view 分层。D4 补充课程覆盖 hold 100、request-replan 200、nonzero quota 200、transfer
+100，canonical episode/frame 切分为 `60/20/20` 和 `180/60/60`。D5 补充课程覆盖
+hold/observe-target/reacquire/search-sector=`200/600/200/200`、
+wide/zoom=`1000/200`、interceptor/recon=`600/600`。
+
+D5 tracklet 的 480 条候选边中，362 条为正标签、19 条为负标签、99 条未标注。D6 发布
+`labeled_count=381`、`unlabeled_count=99`、`complete=false` 和 `status=partial`，不再用单一
+`available=true` 表述部分标签。
+
+D5 synthetic ACK 的 applied/rejected/missing 各 400，只能说明故障注入分支被测试，不能归因到运行时
+动作执行。当前 reward、outcome、counterfactual、causal、runtime ACK 和 paired shadow 证据均
+unavailable。报告准入矩阵因此保持 BC canonical view available、BC full-sample audit pending、
+PPO=false、assist=false、authority=false、rule fallback required=true。
+
+评审区分“规范视图可读”和“全样本可用”。前者允许行为克隆数据准备；后者仍需逐样本校验 detached
+views 的文件集合、身份和内容哈希。当前没有训练结果或模型收益结论。下一步由 producer 补齐真实动作
+采用、版本绑定、runtime ACK、可归因 reward/outcome 和终局结果；由 main 组织同 seed paired shadow
+与保留 seed `1000-1019` 独立验收。上述证据形成前，PPO、在线 assist 和控制 authority 不开放。
+
+报告写盘前会拒绝 output directory 等于或位于正式 generation 根下，避免审计输出改变正式树却仍声明
+source mutation 为 false。2026-07-21 联合审计专项 `16 passed`，D6 全量 `380 passed`，只有既有
+Matplotlib `Axes3D` 环境 warning。真实 JSON 与中文 Markdown 已写入 D6 自有输出目录，正式 900
+episode 源数据未修改。
+
+## 2026-07-21 历史共享种子划分评审
+
+以下内容记录 detached canonical views 生成前，对原始 manifest 的直接比较结果。当前联合准入结论
+以上一节为准，历史 mismatch 仍用于说明原始 split 来源。
 
 D6 已形成独立的 canonical split consumer。它从 detached registry 和源 training registry 读取证据，
 复算内容哈希、assignment 哈希和冻结数值 seed 排序，不调用 main 仿真或学习运行时。模块 manifest 只读，

@@ -1,6 +1,55 @@
 # D6 实现差距审计
 
-## 2026-07-21 canonical seed split GAP 状态
+## 2026-07-21 跨模块学习数据联合准入 GAP
+
+### 已关闭的 D6-owned P0
+
+- 已实现独立的跨模块只读审计入口和 CLI，显式接收 training/shared registry、D3 formal manifest、
+  D4 formal manifest 与独立 canonical view、D5 tracklet/active-vision formal
+  manifest/view/readiness，以及 D4/D5 supplemental summary。生产者制品保持只读。
+- 已实现 schema、来源身份、文件/内容 SHA-256、dirty source、missing input、seed assignment 和 reserved
+  leakage 的失败关闭校验。负例覆盖 schema/hash 篡改、错误切分、保留 seed 泄漏、formal/supplemental
+  混用、synthetic ACK 冒充 runtime ACK、unavailable 标签补零和外部 D4 view 哈希不一致。
+- 已将 formal observation corpus、supplemental rule-teacher curriculum、offline evaluator labels 和
+  runtime ACK evidence 分层。D4 独立 formal view 的文件 SHA-256 为
+  `73a365d32b0439fbf805f40ea7941b8e992fe4c68687cbc5496704f230440b11`，不会被 D4 supplemental
+  canonical view 替代。
+- 已禁止报告输出目录等于或位于正式 generation 根下，检查发生在目录创建和文件写入之前；D6 自有
+  outputs 路径保持可用。
+- 已输出中文 JSON/Markdown 准入报告。2026-07-21 专项 `16 passed`、D6 全量 `380 passed`；仅有既有
+  Matplotlib `Axes3D` warning。
+
+### 真实证据与当前准入
+
+- 正式观测数据为 900 episode、100 个训练 seed；规范 train/validation/test=`60/20/20`，保留 seed
+  `1000-1019` 泄漏为 0，online truth 使用为 0。
+- D4 supplemental 为 100 episode/300 frame，hold 100、request-replan 200、nonzero quota 200、
+  transfer 100；canonical episode=`60/20/20`、frame=`180/60/60`。D5 supplemental 为 100
+  episode/800 segment/1200 sample，intent
+  `200/600/200/200`，wide/zoom=`1000/200`，interceptor/recon=`600/600`。
+- D5 tracklet 480 条 candidate edge 中正标签 362、负标签 19、未标注 99。离线关联标签状态为
+  `partial`，`labeled_count=381`、`complete=false`，不具备完整监督标签口径。
+- D5 synthetic ACK applied/rejected/missing 各 400，只是确定性故障注入覆盖，runtime ACK attribution
+  仍 unavailable。reward、outcome、counterfactual、causal 和 paired shadow 同样 unavailable。
+- 当前只开放 **BC canonical view available**。**BC full-sample audit pending** 表示尚未逐样本核验
+  detached views，不得解释为行为克隆模型已训练或有效。PPO、assist 和 authority 均关闭，规则回退
+  强制启用；没有模型收益证据。
+
+### 仍开放的 P1 前置条件
+
+1. D6 需要对 D3/D4/D5 canonical views 的逐样本内容、完整文件集合、身份和哈希做统一 full-sample
+   audit。当前只完成 manifest/view/readiness/summary 层准入。
+2. producer 需要持久化真实动作采用、plan/coalition/communication 版本绑定、applied/rejected runtime
+   ACK、后续反馈和明确终局结果。synthetic ACK 不能用于关闭该条件。
+3. reward/outcome 需有明确归因窗；PPO 还需 on-policy log probability/value。counterfactual/causal 需
+   同初态配对重放、随机干预或等价识别证据。
+4. 需要同 seed paired shadow 非退化实验，并在训练完成后使用保留 seed `1000-1019` 做独立验收。
+   条件未关闭前，不开放在线 assist、控制 authority 或 PPO。
+
+## 2026-07-21 历史 canonical seed split GAP 状态
+
+以下内容记录 detached canonical views 生成前，直接审计原始 manifest 得到的 mismatch。当前准入状态
+以上一节为准；原始 900 episode manifest 未被改写。
 
 ### 已关闭的 D6-owned P0/P1 consumer 缺口
 

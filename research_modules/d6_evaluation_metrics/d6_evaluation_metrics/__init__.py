@@ -213,10 +213,23 @@ from .canonical_seed_split_readiness import (
     CanonicalSeedSplitAuditError,
     audit_canonical_seed_split_readiness,
 )
+from .cross_module_learning_admission import (
+    CROSS_MODULE_LEARNING_ADMISSION_DATE,
+    CROSS_MODULE_LEARNING_ADMISSION_SCHEMA_VERSION,
+    CrossModuleLearningAdmissionError,
+    CrossModuleLearningAdmissionInputs,
+    audit_cross_module_learning_data_admission,
+    render_cross_module_learning_data_admission_markdown,
+    write_cross_module_learning_data_admission_report,
+)
 
 __all__ = [
     "CANONICAL_SEED_SPLIT_READINESS_SCHEMA_VERSION",
     "CanonicalSeedSplitAuditError",
+    "CROSS_MODULE_LEARNING_ADMISSION_DATE",
+    "CROSS_MODULE_LEARNING_ADMISSION_SCHEMA_VERSION",
+    "CrossModuleLearningAdmissionError",
+    "CrossModuleLearningAdmissionInputs",
     "AirSimCalibrationRecord",
     "AirSimCalibrationReportGenerator",
     "aggregate_cross_seed_airsim_calibration_records",
@@ -228,6 +241,7 @@ __all__ = [
     "ClockSpeedComparisonReportGenerator",
     "ClockSpeedComparisonValidationError",
     "audit_canonical_seed_split_readiness",
+    "audit_cross_module_learning_data_admission",
     "CASE_AWARE_SUITE_TIMING_MODE",
     "CASE_AWARE_TIMING_METADATA_FIELDS",
     "COOPERATIVE_CLOSURE_SCHEMA_VERSION",
@@ -388,6 +402,8 @@ __all__ = [
     "audit_learning_label_sidecar_bundle",
     "build_truth_isolated_episode_record",
     "render_truth_isolated_markdown",
+    "render_cross_module_learning_data_admission_markdown",
+    "write_cross_module_learning_data_admission_report",
     "write_learning_label_readiness",
     "write_learning_label_sidecars",
 ]

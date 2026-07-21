@@ -1,6 +1,47 @@
 # D6 系统级离线评估模块原理
 
-## 共享种子划分治理（2026-07-21）
+## 跨模块学习数据联合准入（2026-07-21）
+
+联合准入解决两个不同问题。第一项是规范 seed 视图是否一致，即 D3、D4、D5 是否把同一个数值 seed
+放入相同的训练、验证或测试集合。第二项是视图中的全部样本是否已经逐条核验。当前第一项通过，状态为
+`BC canonical view available`；第二项尚未完成，状态为 `BC full-sample audit pending`。规范视图可读
+不等于模型已训练，也不等于数据已满足策略优化条件。
+
+D6 只读接收训练 seed 注册表、共享 seed 注册表、D3 正式 manifest、D4 正式 manifest 与独立
+canonical view、D5 tracklet/active-vision 正式 manifest、canonical view、readiness，以及 D4/D5
+补充课程 summary。每个输入都核对 schema、来源身份、文件或内容 SHA-256、clean source 和缺失状态。
+任一身份不一致、哈希篡改、dirty source、错误 seed assignment 或保留 seed 泄漏都会失败关闭。
+
+真实审计使用 2026-07-21 冻结的 900 episode、100 个训练 seed。规范
+train/validation/test=`60/20/20`，保留 seed `1000-1019` 泄漏为 0。D4 formal canonical view 的
+文件 SHA-256 为 `73a365d32b0439fbf805f40ea7941b8e992fe4c68687cbc5496704f230440b11`。该
+文件是正式 900 episode 的 detached view；D4 的 100-episode 补充课程具有另一份 canonical view，
+两者用途不同，不能互相替代。
+
+证据分为四层。正式观测语料保存原始观测和规范 seed 身份；补充规则教师课程扩大规则动作覆盖；离线
+评估标签描述可供 evaluator 使用的 truth 隔离标签；runtime ACK evidence 证明建议动作确实被运行时
+接收或拒绝。D4 补充课程覆盖 hold 100、request-replan 200、nonzero quota 200、transfer 100。D5
+补充课程覆盖 hold/observe-target/reacquire/search-sector=`200/600/200/200`、wide/zoom=`1000/200`、
+interceptor/recon=`600/600`。这些动作覆盖不能替代正式语料或运行时执行证据。
+
+D4 supplemental 的 canonical episode 切分为 60/20/20，frame 切分为 180/60/60。D5 tracklet 的
+480 条候选边中有 362 条正标签、19 条负标签和 99 条未标注边。标签状态因此是 `partial`，而非完整
+可用；381 条已标注边可用于离线评估准备，99 条未标注边必须保留在分母和完整性说明中。
+
+D5 synthetic ACK 的 applied/rejected/missing 各 400，是对 ACK 分支的确定性故障注入。它没有实际
+运行时动作归因，因此不能生成 reward、不能证明相机动作被执行，也不能提升在线准入。当前 reward、
+outcome、counterfactual、causal、runtime ACK 和 paired shadow 均不可用。PPO、在线 assist 和控制
+authority 保持关闭，规则回退强制启用。该审计没有模型收益结论。
+
+剩余工作是逐样本复核 canonical views，补齐真实动作采用与版本绑定、runtime ACK、可归因终局结果和
+奖励，形成同 seed paired shadow 非退化证据，并使用保留 seed `1000-1019` 做独立验收。2026-07-21
+联合审计专项 `16 passed`，D6 全量 `380 passed`；仅有既有 Matplotlib `Axes3D` 环境 warning。报告
+只能写到正式 generation 根之外，防止离线评估产物改变正式数据树。
+
+## 历史共享种子划分治理（2026-07-21）
+
+以下内容说明 detached canonical views 形成前的原始 manifest mismatch。当前准入状态以上一节为准，
+生产者 manifest 没有被回写。
 
 跨模块联合训练要求同一个数值 seed 在 D3、D4 和 D5 中承担相同角色。若 seed 7 在 D3 属于训练集，
 在 D5 属于测试集，联合调参会把同一仿真随机条件同时用于训练和测试。模型指标因此失去独立测试含义。
