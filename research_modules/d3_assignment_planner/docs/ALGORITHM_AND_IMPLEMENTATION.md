@@ -1465,5 +1465,76 @@ split 替换已用于 main 的实际三维质点生成链。
 
 `finalization_wall_s` 是 D3、D4、D5 数据集收口的联合计时。它从 116.5624 s 降到
 7.7377 s 的变化不能由 D3 单独认领；D3 的直接耗时证据是三个 `d3_stage_wall_s`。
-这次运行也没有训练模型、运行 AirSim 或证明 assignment 收益。900 episode 正式生成、
-正式 BC/PPO 和至少 20 个未见 seed 的 shadow 评估仍未完成。
+这节 clean-tree probe 本身没有训练模型。其后正式 900 episode 与 BC 开发训练已完成，
+见第 35 节；AirSim、PPO、外部保留 seed 和 assist promotion 仍未完成。
+
+## 35. 正式 BC 开发训练与 Bundle v3（2026-07-20）
+
+### 35.1 数据审计
+
+训练入口先调用 v2 loader 完成 canonical frame SHA、split hash、排序和完整对象校验，再
+单独重算 episode/seed 原子性与五档规模。正式清单为 900 episode、1604 帧、100 seed；
+train/validation/internal-test 分别有 962/320/322 帧。seed 1000-1019 必须与三分集合零
+交集，且状态写为 `excluded_not_evaluated`。
+
+### 35.2 加权行为克隆
+
+每条候选边标签为规则计划是否选择该边。正式数据候选边 3658815 条，规则已选边 117304
+条，正类比例约 3.206%。对单帧正边使用
+
+```text
+w_pos = min(w_cap, max(1, N_negative / max(1, N_positive)))
+```
+
+正式配置 `w_cap=16`。相同权重同时作用于选边二元交叉熵和 residual 平滑 L1，避免大量
+未选边压倒少数已选边。低频 hold/replan head 保持既有监督；在线 assistant 仍只消费
+residual，不把 advice 接入状态机。
+
+残差 teacher 对规则已选边为 -1，对未选边为 +1。网络输出先被自身 residual bound 限制，
+运行矩阵再按下式更新：
+
+```text
+C_final(i,j) = C_rule(i,j) + alpha * tanh(delta_C(i,j))
+```
+
+正式开发配置 `alpha=0.25`。只有 `action_mask=true` 的候选边可更新；硬拒绝、容量、
+不可达、友方冲突、D5 反馈和版本禁边不进入模型动作空间。更新后仍由
+`HungarianDemandSlotSolver` 求解，计划发布、迟滞和 D7 binding 沿用原实现。
+
+### 35.3 开发评估
+
+新增 evaluator 对 train、validation 和 internal-test 分开输出：残差平滑 L1/MSE、选边
+BCE、边排序 AUC、计划 exact/Jaccard、共同规则成本差、全部及高威胁需求满足、duplicate、
+hard violation、相对上一计划的对称差 churn、模型和 solver 时延、confidence 与 fallback。
+边排序 AUC 使用正负边秩和计算，不构造正负边笛卡尔积，因而可处理 200×200 候选图。
+
+名义规模由场景版本解析，实际目标数可因新增/消失变化，不用于写死网络 shape。5/20/50/
+100/200 的模型推理 P95 分别为 0.247/0.433/0.860/1.434/2.793 ms。internal-test 排序 AUC
+0.8031、计划 exact 0.6770、成本均值差 +0.022345、需求满足 0.975689，duplicate/hard
+violation 为 0。当前任一候选边任一特征超过 6σ 即整帧 OOD，导致 163/322 帧回退。
+
+### 35.4 Bundle v3 与准入
+
+v3 manifest 在 v2 的 data/split/state SHA、feature、normalization、guardrails 和 config
+之外，新增：
+
+- provenance：Git 基线提交及其角色、训练工作树状态、训练日期、dataset manifest SHA、
+  训练源码 SHA、入口；
+- admission：stage、allowed modes、assist authorization、外部保留 seed/status、规则回退。
+
+development admission 只接受 `allowed_modes=[shadow]`、`assist_authorized=false`、
+`external_holdout_status=not_evaluated`。`load_model_bundle(mode=assist)` 先检查 admission，
+失败时返回 `bundle_shadow_only`，随后才可能检查 promotion。旧 v2 bundle 保留原兼容
+加载语义，新正式开发产物使用 v3。
+
+权重 SHA 为 `e3da9fd5...f8e0b2`。`.pt` 和完整 bundle 保存在 ignored `outputs/`；tracked
+results 保存数据审计、训练命令/配置、评估 JSON、中文报告和权重定位。当前环境未配置
+Git LFS，长期归档需 main 使用 Git LFS 可用环境或独立制品存储。
+
+### 35.5 能力边界
+
+训练日期按任务冻结为 2026-07-20。训练 12 epoch 用时 23.81 s，开发评估 8.42 s，整条
+命令 wall 73.43 s，峰值 RSS 约 1.58 GB。该计时是当前 CPU 环境开发结果，不是硬实时
+保证。PPO 没有启动；内部 test 不作为 1000-1019 最终准入；本轮没有 AirSim 或物理收益。
+新增功能纳入 D3 全量回归后结果为 `257 passed, 1 skipped`，唯一 skip 是 optional
+OR-Tools installed-only case。

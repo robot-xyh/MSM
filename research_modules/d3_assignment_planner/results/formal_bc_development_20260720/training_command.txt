@@ -1,0 +1,8 @@
+actual_training_command_2026-07-20:
+research_modules/d3_assignment_planner/simulations/run_formal_bc_development.py --dataset research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/learning_dataset/d3_assignment --output research_modules/d3_assignment_planner/results/formal_bc_development_20260720 --repository-git-commit 39b097e72487567ac915c2297eaa27eed49ef76b --training-date 2026-07-20 --epochs 12 --mini-batch-frames 8 --learning-rate 0.001 --hidden-size 64 --positive-class-weight-cap 16 --seed 20260720 --torch-num-threads 4 --alpha 0.25 --min-confidence 0.0 --ood-z-threshold 6.0 --deadline-s 0.05
+
+post_run_artifact_relocation:
+bundle moved from results/formal_bc_development_20260720/bundle to ignored outputs/formal_bc_development_20260720/bundle without changing either file; manifest and state_dict SHA256 remained unchanged.
+
+current_reproduction_command:
+research_modules/d3_assignment_planner/simulations/run_formal_bc_development.py --dataset research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/learning_dataset/d3_assignment --output research_modules/d3_assignment_planner/results/formal_bc_development_20260720 --bundle-output research_modules/d3_assignment_planner/outputs/formal_bc_development_20260720/bundle --repository-git-commit 39b097e72487567ac915c2297eaa27eed49ef76b --training-date 2026-07-20 --epochs 12 --mini-batch-frames 8 --learning-rate 0.001 --hidden-size 64 --positive-class-weight-cap 16 --seed 20260720 --torch-num-threads 4 --alpha 0.25 --min-confidence 0.0 --ood-z-threshold 6.0 --deadline-s 0.05

@@ -62,5 +62,11 @@ payload sidecar 和 SQLite key/offset 索引。top-32 六帧 finalization 中位
 main 随后完成 clean-tree nominal 200v200 三 seed 集成复测。优化后 D3 stage 为
 0.0917/0.1129/0.0999 s，6 帧正常最终化且在线真值使用为 0；总生成由 467.8007 s 降至
 262.2866 s。联合 finalization 由 116.5624 s 降至 7.7377 s，但该字段汇总 D3/D4/D5，
-不能全部归因 D3。`EXPERIMENT_REPORT.md` 记录完整对照，`PLAN.md` 与 GAP 记录正式
-900 episode、训练和至少 20 个未见 seed 评估仍开放。
+不能全部归因 D3。`EXPERIMENT_REPORT.md` 记录完整对照。
+
+2026-07-20 的正式数据与行为克隆开发训练现已完成。正式数据包含 900 episode、1604 帧，
+100 个数值 seed 按 60/20/20 原子切分，外部保留 seed 1000-1019 未进入数据集。开发
+bundle 使用 `d3_learning_model_bundle_v3`，状态固定为 `development/shadow-only`；内部
+test 只作开发诊断，不是最终准入证据。行为克隆训练、分档时延和 rule-only/BC shadow
+对照见 `EXPERIMENT_REPORT.md`。assist promotion、外部 20-seed 验收、AirSim 收益和 PPO
+仍开放。

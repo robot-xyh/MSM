@@ -580,6 +580,82 @@ D3-owned 重复编码和最终化热点已经关闭，并已在 main 的三维�
 
 ### 剩余工作
 
-正式 900-episode schedule 尚未执行。正式 BC/PPO 权重、至少 20 个未见 seed 的 paired
-shadow 非退化评估和 assist promotion 也未完成。后续报告必须继续分别列出 D3 stage 与
-联合 finalization，避免跨模块误归因。
+本节形成时正式 schedule 尚未执行。其后 900 episode 与 BC 开发训练已完成，见第 16 节。
+PPO、外部保留 seed 1000-1019、AirSim 收益和 assist promotion 仍未完成。后续报告继续
+分别列出 D3 stage 与联合 finalization，避免跨模块误归因。
+
+## 16. 正式 900 Episode 行为克隆开发实验
+
+### 16.1 输入与审计
+
+实验使用三维规模化仿真的正式 D3 数据。文件只读，未原地修改。
+
+| 指标 | 结果 |
+|---|---:|
+| episode | 900 |
+| frame | 1604 |
+| 数值 seed | 100 |
+| train/validation/internal-test frame | 962/320/322 |
+| train/validation/internal-test seed | 60/20/20 |
+| 候选边 | 3658815 |
+| 规则已选边 | 117304 |
+| 外部 seed 1000-1019 重叠 | 0 |
+
+frames SHA256 为 `6761d35d...fdb59a2`，split hash 为 `679a9051...70a2`。schema、完整
+文件哈希、分割重算、episode/seed 原子性和 5/20/50/100/200 覆盖全部通过。
+
+### 16.2 配置
+
+训练日期记录为 2026-07-20。随机 seed `20260720`，12 epoch，mini-batch 8，hidden size
+64，Adam 学习率 0.001，正类权重上限 16，PyTorch CPU 线程 4。残差 `alpha=0.25`，开发
+shadow 的 confidence 下限设为 0，OOD 阈值 6σ，deadline 50 ms。confidence 下限为 0 只
+用于观察原始模型提案；v3 admission 禁止 assist。
+
+训练 loss `1.083713 -> 0.468781`，validation loss `0.469243`。训练 23.81 s，开发评估
+8.42 s，总 wall 73.43 s，峰值 RSS 1577868 KiB。
+
+### 16.3 三分结果
+
+| 分割 | 残差平滑 L1 | 排序 AUC | 计划一致率 | 成本均值差 | 需求满足率 | duplicate | 硬违规 | 推理 P95 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| train | 0.321209 | 0.7999 | 0.6705 | +0.021641 | 0.969966 | 0 | 0 | 2.516 ms |
+| validation | 0.320446 | 0.8097 | 0.6750 | +0.020823 | 0.973180 | 0 | 0 | 2.500 ms |
+| internal-test | 0.315898 | 0.8031 | 0.6770 | +0.022345 | 0.975689 | 0 | 0 | 2.554 ms |
+
+internal-test 的 rule-only 与 BC shadow 高威胁需求满足率均为 0.887165，平均 churn 均为
+70.1149。相同指标说明学习提案没有破坏需求和抖动口径；共同规则成本轻微增加，不能写成
+收益。计划一致率低于边排序 AUC，说明局部边排序变化在 Hungarian 全局竞争中会改变一部分
+完整计划。
+
+### 16.4 规模时延
+
+| 名义规模 | frame | 模型推理 P50 | 模型推理 P95 | BC shadow 总路径 P95 | 成本均值差 |
+|---:|---:|---:|---:|---:|---:|
+| 5 | 320 | 0.226 ms | 0.247 ms | 0.331 ms | +0.000000 |
+| 20 | 324 | 0.338 ms | 0.433 ms | 0.694 ms | +0.005758 |
+| 50 | 320 | 0.707 ms | 0.860 ms | 1.531 ms | +0.015900 |
+| 100 | 320 | 1.134 ms | 1.434 ms | 3.889 ms | +0.034839 |
+| 200 | 320 | 2.064 ms | 2.793 ms | 10.857 ms | +0.051798 |
+
+模型推理在当前 CPU 上低于 50 ms deadline。该值不含跨模块通信、D1-D2 更新或 D7 控制，
+也不构成目标硬件时延保证。
+
+### 16.5 回退与准入
+
+内部 test 有 163/322 帧触发 `out_of_distribution`。原因是当前 guard 对整帧采用最大值：
+任一候选边任一特征超过训练均值 6σ，整帧回退规则。大候选图和稀有离散特征会放大该
+触发概率。规则回退确保 duplicate 和 hard violation 维持 0，但当前门限不适合直接用于
+assist。
+
+开发权重 SHA256 为
+`e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`。bundle admission 为
+`development/shadow-only`，外部 1000-1019 状态为 `not_evaluated`，promotion 为
+`unavailable`。`39b097e...` 记录数据生成和训练基线，训练时 D3 模块改动由独立源码
+SHA256 绑定。权重保存在 ignored `outputs/`，tracked results 不含 `.pt`。PPO 未启动。
+
+结论是正式数据和 BC 开发闭环已经跑通，模型尚未达到 assist 准入。main 后续需要使用
+同一冻结 SHA 在外部 20 seed 上复核，并由 D6 独立判断成本、安全、需求、抖动、OOD 和
+时延。没有这组证据时，规则 Hungarian 保持唯一默认执行路径。
+
+代码验收执行 D3 全量测试，收集 258 项，结果 `257 passed, 1 skipped`。唯一 skip 为未
+安装 optional OR-Tools 的 installed-only benchmark；正式训练入口和修改文件语法检查通过。

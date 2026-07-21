@@ -31,6 +31,7 @@ class BehaviorCloningTrainingResult:
     initial_train_loss: float
     final_train_loss: float
     validation_loss: float
+    positive_class_weight_cap: float
     whole_seed_metrics: Mapping[str, Mapping[str, float | int | str]]
     normalization_mean: tuple[float, ...]
     normalization_scale: tuple[float, ...]
@@ -47,6 +48,7 @@ class BehaviorCloningTrainingResult:
             "initial_train_loss": float(self.initial_train_loss),
             "final_train_loss": float(self.final_train_loss),
             "validation_loss": float(self.validation_loss),
+            "positive_class_weight_cap": float(self.positive_class_weight_cap),
             "whole_seed_metrics": {
                 key: dict(value) for key, value in sorted(self.whole_seed_metrics.items())
             },
@@ -84,6 +86,7 @@ def train_behavior_cloning(
     mini_batch_frames: int = 8,
     learning_rate: float = 1.0e-3,
     seed: int = 0,
+    positive_class_weight_cap: float = 1.0,
 ) -> tuple[SharedEdgeActorCriticPolicy, BehaviorCloningTrainingResult]:
     """Clone rule-selected edges and low-frequency hold/replan suggestions."""
 
@@ -100,7 +103,13 @@ def train_behavior_cloning(
     )
     if not train_records or not validation_records:
         raise ValueError("BC requires non-empty train and validation seed groups")
-    if epochs < 1 or mini_batch_frames < 1 or learning_rate <= 0.0:
+    if (
+        epochs < 1
+        or mini_batch_frames < 1
+        or learning_rate <= 0.0
+        or not isfinite(float(positive_class_weight_cap))
+        or float(positive_class_weight_cap) < 1.0
+    ):
         raise ValueError("BC epochs, mini-batch size, and learning rate must be positive")
     _assert_disjoint_seed_groups(train_records, validation_records)
     torch.manual_seed(int(seed))
@@ -113,7 +122,13 @@ def train_behavior_cloning(
     scale = np.asarray(guard.scale, dtype=np.float32)
     optimizer = torch.optim.Adam(model.parameters(), lr=float(learning_rate))
 
-    initial_train_loss = _evaluate_bc_loss(model, train_records, mean, scale)
+    initial_train_loss = _evaluate_bc_loss(
+        model,
+        train_records,
+        mean,
+        scale,
+        positive_class_weight_cap=float(positive_class_weight_cap),
+    )
     model.train()
     for _ in range(int(epochs)):
         order = rng.permutation(len(train_records))
@@ -123,12 +138,30 @@ def train_behavior_cloning(
                 for index in order[start : start + int(mini_batch_frames)]
             )
             optimizer.zero_grad()
-            loss = _bc_batch_loss(model, batch, mean, scale)
+            loss = _bc_batch_loss(
+                model,
+                batch,
+                mean,
+                scale,
+                positive_class_weight_cap=float(positive_class_weight_cap),
+            )
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-    final_train_loss = _evaluate_bc_loss(model, train_records, mean, scale)
-    validation_loss = _evaluate_bc_loss(model, validation_records, mean, scale)
+    final_train_loss = _evaluate_bc_loss(
+        model,
+        train_records,
+        mean,
+        scale,
+        positive_class_weight_cap=float(positive_class_weight_cap),
+    )
+    validation_loss = _evaluate_bc_loss(
+        model,
+        validation_records,
+        mean,
+        scale,
+        positive_class_weight_cap=float(positive_class_weight_cap),
+    )
     seed_metrics = _whole_seed_metrics(model, items, mean, scale)
     scalars = (initial_train_loss, final_train_loss, validation_loss)
     if not all(isfinite(value) for value in scalars):
@@ -145,6 +178,7 @@ def train_behavior_cloning(
         initial_train_loss=initial_train_loss,
         final_train_loss=final_train_loss,
         validation_loss=validation_loss,
+        positive_class_weight_cap=float(positive_class_weight_cap),
         whole_seed_metrics=seed_metrics,
         normalization_mean=tuple(float(value) for value in mean),
         normalization_scale=tuple(float(value) for value in scale),
@@ -228,6 +262,8 @@ def _bc_batch_loss(
     records: Sequence[LearningFrameRecord],
     mean: np.ndarray,
     scale: np.ndarray,
+    *,
+    positive_class_weight_cap: float = 1.0,
 ) -> Any:
     device = next(policy.parameters()).device
     edge_losses: list[Any] = []
@@ -241,7 +277,28 @@ def _bc_batch_loss(
         labels = torch.as_tensor(
             record.selected_edge_labels, dtype=torch.float32, device=device
         )
-        edge_losses.append(nn.functional.binary_cross_entropy_with_logits(selection, labels))
+        positive_count = int(torch.count_nonzero(labels > 0.5).item())
+        negative_count = int(labels.numel()) - positive_count
+        positive_weight = min(
+            float(positive_class_weight_cap),
+            max(1.0, negative_count / max(1, positive_count)),
+        )
+        edge_weights = torch.where(
+            labels > 0.5,
+            torch.full_like(labels, positive_weight),
+            torch.ones_like(labels),
+        )
+        edge_losses.append(
+            (
+                nn.functional.binary_cross_entropy_with_logits(
+                    selection,
+                    labels,
+                    reduction="none",
+                )
+                * edge_weights
+            ).sum()
+            / edge_weights.sum()
+        )
         teacher_residual = torch.where(
             labels > 0.5,
             torch.full_like(labels, -1.0),
@@ -249,7 +306,15 @@ def _bc_batch_loss(
         )
         predicted_residual = policy.residual_bound * torch.tanh(latent_mean)
         residual_losses.append(
-            nn.functional.smooth_l1_loss(predicted_residual, teacher_residual)
+            (
+                nn.functional.smooth_l1_loss(
+                    predicted_residual,
+                    teacher_residual,
+                    reduction="none",
+                )
+                * edge_weights
+            ).sum()
+            / edge_weights.sum()
         )
         if record.advice_allowed:
             advice_target = 1 if record.hold_label else 2 if record.replan_label else 0
@@ -274,10 +339,20 @@ def _evaluate_bc_loss(
     records: Sequence[LearningFrameRecord],
     mean: np.ndarray,
     scale: np.ndarray,
+    *,
+    positive_class_weight_cap: float = 1.0,
 ) -> float:
     policy.eval()
     with torch.no_grad():
-        return float(_bc_batch_loss(policy, records, mean, scale).item())
+        return float(
+            _bc_batch_loss(
+                policy,
+                records,
+                mean,
+                scale,
+                positive_class_weight_cap=positive_class_weight_cap,
+            ).item()
+        )
 
 
 def _whole_seed_metrics(

@@ -917,5 +917,43 @@ OR-Tools，零失败满足门限。
 - 联合 finalization 同时收口 D3、D4、D5，7.7377 s 的改善不能全部计入 D3。
 - 不再继续改 D3 默认 JSON schema 或 Hungarian 主线来追逐联合阶段耗时。标准库
   `tolist/json.dumps` 只保留为 P2 optional adapter 研究项。
-- 900 episode 正式 schedule、正式 BC/PPO 训练、至少 20 个未见 seed 的 paired shadow
-  非退化评估和 assist promotion 仍未完成，继续作为 P1 主线。
+- 本节形成时，900 episode schedule 与模型训练尚未完成；其后正式数据生成和 BC 开发
+  训练已由第 28 节补齐。PPO、外部保留 seed 1000-1019 配对验收和 assist promotion
+  继续作为开放项。
+
+## 28. 正式 BC 开发训练状态（2026-07-20）
+
+### 已完成
+
+1. 只读加载并复核正式 900 episode D3 数据。1604 帧按 100 个数值 seed 原子切分为
+   962/320/322 帧，5/20/50/100/200 五档均有覆盖。frames SHA、split hash、episode/seed
+   原子性和 manifest 统计全部重算通过；外部保留 seed 1000-1019 未进入当前数据。
+2. 使用既有共享候选边网络完成行为克隆开发训练。固定 seed `20260720`，12 epoch，
+   hidden size 64，Adam 0.001，mini-batch 8；对约 3.2% 的正边使用最大 16 倍权重。模型只
+   学习有界代价 residual，不替换 Hungarian，也不修改需求槽、版本、迟滞、硬门控和 D7
+   binding。
+3. 新增 train/validation/internal-test 开发 evaluator，报告残差损失、边排序、计划一致、
+   共同规则成本差、需求满足、重复/硬违规、churn、fallback 及 5 档时延。internal-test
+   排序一致性 0.8031，计划完全一致 0.6770，成本差 +0.022345，重复和硬违规为 0。
+4. bundle 升级为 v3 provenance/admission 合同。开发权重明确 `shadow-only`，外部保留
+   seed 状态为 `not_evaluated`；assist loader 在 promotion 检查前先拒绝开发 bundle。
+   Git 字段标明基线提交角色，未提交 D3 训练源码另由 SHA256 精确绑定。
+5. 权重迁入模块 ignored `outputs/`。tracked `results/` 只保留数据审计、训练配置与命令、
+   指标、模型定位和 SHA256。当前环境无 Git LFS，不把 `.pt` 放入普通提交。
+6. D3 全量回归收集 258 项，结果 `257 passed, 1 skipped`；唯一 skip 为 optional
+   OR-Tools installed-only case。语法检查通过。
+
+### 下一步
+
+1. main 冻结本地权重 SHA256
+   `e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`，在 seed
+   1000-1019 上运行独立 R0/BC-shadow 配对验收。内部 test 结果不得复用为最终准入。
+2. D6 对每个保留 seed 汇总共同规则成本、需求满足、high-threat unmet、duplicate、hard
+   violation、churn、fallback 和分档 P50/P95/P99。当前 internal-test 有 163/322 OOD
+   回退，必须先定位“任一边超阈值”的帧级 OOD 规则是否过于保守。
+3. 只有外部保留集达到零安全退化、成本非退化、时延预算和已批准 fallback 门限，才允许
+   生成 qualified admission。当前轻微成本退化已使 assist 保持关闭。
+4. PPO 不在本阶段启动。现有 rule demonstration/reward components 尚不能替代可验证的
+   在线或反事实回报，后续需由 D6 明确 reward availability 与因果口径后另行评审。
+5. 长期保留权重使用 Git LFS 或独立制品存储。main 需在全局 `VERSIONING.md` 中记录本机
+   `git-lfs` 不可用状态；D3 不跨模块修改该文件。

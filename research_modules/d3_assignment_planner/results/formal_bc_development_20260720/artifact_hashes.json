@@ -1,0 +1,14 @@
+{
+  "local_ignored_model": {
+    "manifest_sha256": "a9213d65606a9e2f921040e153488c0f4cdebb10882fa16013fce5b59f9314c0",
+    "path": "research_modules/d3_assignment_planner/outputs/formal_bc_development_20260720/bundle",
+    "state_dict_sha256": "e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2"
+  },
+  "tracked_artifacts": {
+    "MODEL_ARTIFACT_LOCATION.md": "e538bdb8637e125d394286e8c518a9b756eaa78b9caf58e3207afbaf0fbb7ae2",
+    "TRAINING_REPORT_CN.md": "0027f1fa889ab8569c9e9b19d6500ff0cd2afde7c0ac18fe1a864f1352da0231",
+    "dataset_audit.json": "c6feb9e39f447ee05e57f822e339ff88343f45425884759404a562a180e01c64",
+    "development_evaluation.json": "cec9d343d8996280c2b93f9e444ff090d8ee5a4e37ffd74b374c2fec388241c6",
+    "training_command.txt": "14979693c78533b4b7c69b31242b384e4ed8a173ab8b76a7c436e9355cf3991d"
+  }
+}

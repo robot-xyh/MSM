@@ -766,5 +766,47 @@ finalize，train/validation/test 各 2 帧，在线真值使用为 0。该结果
 与 finalization 热点状态确认为什么“已关闭”，也证明此前联合 staging 不能归因于 D3。
 联合 finalization 的 7.7377 s 是三个模块的汇总，不得全部记为 D3 改善。
 
-本次证据是三维质点数据生成，不是 AirSim、训练收益或物理拦截结果。正式 900 episode、
-正式模型、至少 20 个未见 seed 的 paired shadow 非退化评估和 assist promotion 仍开放。
+本节形成时只完成三 seed 生成复测。其后正式 900 episode 数据和 BC 开发模型已按第 30 节
+补齐；AirSim、外部 seed 1000-1019、paired 非退化和 assist promotion 仍开放。
+
+## 30. 正式 900 Episode 与 BC Shadow 复核（2026-07-20）
+
+### 数据与训练
+
+正式 D3 数据清单通过完整只读审计：900 episode、1604 帧、100 个数值 seed，三分为
+60/20/20 seed 和 962/320/322 帧。五档规模均覆盖，1000-1019 与训练体系数据零交集。
+frame SHA 为 `6761d35d...fdb59a2`，split hash 为 `679a9051...70a2`。
+
+BC 使用固定 seed `20260720`、12 epoch、hidden size 64、Adam 0.001、mini-batch 8 和
+正类权重上限 16。训练 loss `1.083713 -> 0.468781`，validation loss `0.469243`。
+训练 23.81 s，开发评估 8.42 s，进程总 wall 73.43 s，峰值 RSS 约 1.58 GB。PPO 未启动。
+
+### 开发结果
+
+internal-test 有 322 帧、708188 条候选边。边排序一致性 0.8031，计划完全一致率 0.6770，
+计划边 Jaccard 0.5914。BC shadow 与 rule-only 需求满足率同为 0.975689，高威胁满足率同为
+0.887165，duplicate 与 hard violation 均为 0，平均 churn 同为 70.1149。共同规则成本
+均值由 246.682813 增至 246.705159，平均差 +0.022345，相对 +0.0091%。
+
+推理 P95 在 5/20/50/100/200 档为 0.247/0.433/0.860/1.434/2.793 ms。当前帧级 OOD
+策略只要任一候选边任一特征超过 6σ 就回退，internal-test 有 163/322 帧触发。这个门控
+保证了规则回退，但也说明现有阈值没有完成准入标定。
+
+### 结论与下一步
+
+bundle v3 同时绑定数据、split、feature、配置、state-dict、Git 基线提交/角色、工作树状态
+和训练源码摘要。`39b097e...` 是数据生成与训练基线；未提交 D3 源码以独立 SHA256 固化。
+admission 为 `development/shadow-only`，外部保留状态 `not_evaluated`；assist 加载稳定
+返回 `bundle_shadow_only`。权重 SHA 为
+`e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`。
+
+该模型没有通过性能晋级：成本略有退化，OOD 回退比例高，内部 test 也不等价于 seed
+1000-1019。main 下一阶段应冻结同一权重，由 D6 对 20 个外部 seed 做 rule-only/BC
+shadow 配对，并单独审计 OOD 特征、confidence、P99/timeout。通过前不接 assist，不改变
+Hungarian、计划版本或 D7 binding。
+
+模型权重位于 ignored `research_modules/d3_assignment_planner/outputs/`，普通 Git 仅保留
+审计、配置、指标和 SHA。当前环境无 Git LFS，长期权重归档由 main 处理。
+
+D3 全量回归收集 258 项，结果 `257 passed, 1 skipped`；唯一 skip 为 optional OR-Tools。
+AirSim 集成计划和 M-to-N 专项 review 均已检查，本次离线 BC 开发任务未改变其合同。

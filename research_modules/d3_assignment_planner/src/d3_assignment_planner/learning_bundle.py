@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from datetime import date
 from hashlib import sha256
 import json
 from math import isfinite
@@ -32,6 +33,7 @@ from .native_ppo import (
 
 MODEL_BUNDLE_SCHEMA_V1 = "d3_learning_model_bundle_v1"
 MODEL_BUNDLE_SCHEMA_V2 = "d3_learning_model_bundle_v2"
+MODEL_BUNDLE_SCHEMA_V3 = "d3_learning_model_bundle_v3"
 MODEL_BUNDLE_MANIFEST_FILENAME = "manifest.json"
 MODEL_BUNDLE_STATE_DICT_FILENAME = "state_dict.pt"
 PROMOTION_EVIDENCE_SCHEMA_V1 = "d3_shadow_promotion_evidence_v1"
@@ -47,6 +49,8 @@ class ModelBundleManifest:
     feature_schema_version: str
     feature_names: tuple[str, ...]
     policy_version: str
+    provenance: Mapping[str, Any]
+    admission: Mapping[str, Any]
     split_hash: str
     dataset_frames_sha256: str
     normalization_mean: tuple[float, ...]
@@ -62,7 +66,10 @@ class ModelBundleManifest:
     state_dict_sha256: str
 
     def __post_init__(self) -> None:
-        if self.bundle_schema_version != MODEL_BUNDLE_SCHEMA_V2:
+        if self.bundle_schema_version not in {
+            MODEL_BUNDLE_SCHEMA_V2,
+            MODEL_BUNDLE_SCHEMA_V3,
+        }:
             raise ValueError("unsupported D3 model bundle schema")
         if self.dataset_schema_version != LEARNING_DATASET_SCHEMA_V2:
             raise ValueError("unsupported D3 model bundle dataset schema")
@@ -105,9 +112,12 @@ class ModelBundleManifest:
             raise ValueError("bundle OOD and deadline guardrails must be positive")
         if Path(self.state_dict_file).name != self.state_dict_file:
             raise ValueError("state_dict_file must be a bundle-local filename")
+        if self.bundle_schema_version == MODEL_BUNDLE_SCHEMA_V3:
+            _validate_v3_provenance(self.provenance)
+            _validate_v3_admission(self.admission)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "bundle_schema_version": self.bundle_schema_version,
             "dataset_schema_version": self.dataset_schema_version,
             "split_policy_version": self.split_policy_version,
@@ -135,19 +145,34 @@ class ModelBundleManifest:
                 "load_policy": "torch_weights_only_true",
             },
         }
+        if self.bundle_schema_version == MODEL_BUNDLE_SCHEMA_V3:
+            payload["provenance"] = _json_safe(self.provenance)
+            payload["admission"] = _json_safe(self.admission)
+        return payload
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "ModelBundleManifest":
+        bundle_schema_version = str(value["bundle_schema_version"])
         normalization = value["normalization"]
         guardrails = value["guardrails"]
         state_dict = value["state_dict"]
         return cls(
-            bundle_schema_version=str(value["bundle_schema_version"]),
+            bundle_schema_version=bundle_schema_version,
             dataset_schema_version=str(value["dataset_schema_version"]),
             split_policy_version=str(value["split_policy_version"]),
             feature_schema_version=str(value["feature_schema_version"]),
             feature_names=tuple(str(item) for item in value["feature_names"]),
             policy_version=str(value["policy_version"]),
+            provenance=(
+                dict(value["provenance"])
+                if bundle_schema_version == MODEL_BUNDLE_SCHEMA_V3
+                else {"legacy_bundle_schema": MODEL_BUNDLE_SCHEMA_V2}
+            ),
+            admission=(
+                dict(value["admission"])
+                if bundle_schema_version == MODEL_BUNDLE_SCHEMA_V3
+                else {"stage": "legacy_promotion_contract"}
+            ),
             split_hash=str(value["split_hash"]),
             dataset_frames_sha256=str(value["dataset_frames_sha256"]),
             normalization_mean=tuple(float(item) for item in normalization["mean"]),
@@ -282,6 +307,9 @@ def save_model_bundle(
     min_confidence: float = 0.6,
     ood_z_threshold: float = 6.0,
     deadline_s: float = 0.05,
+    provenance: Mapping[str, Any] | None = None,
+    admission: Mapping[str, Any] | None = None,
+    promotion_unavailable_reason: str = "insufficient_unseen_seed_evidence",
 ) -> ModelBundleManifest:
     """Save weights and a complete research/promotion manifest."""
 
@@ -296,13 +324,22 @@ def save_model_bundle(
     }
     torch.save(state_dict, state_path)
     state_sha = _file_sha256(state_path)
+    if (provenance is None) != (admission is None):
+        raise ValueError("bundle provenance and admission must be provided together")
+    bundle_schema = (
+        MODEL_BUNDLE_SCHEMA_V3
+        if provenance is not None
+        else MODEL_BUNDLE_SCHEMA_V2
+    )
     manifest = ModelBundleManifest(
-        bundle_schema_version=MODEL_BUNDLE_SCHEMA_V2,
+        bundle_schema_version=bundle_schema,
         dataset_schema_version=str(dataset_schema_version),
         split_policy_version=str(split_policy_version),
         feature_schema_version=LEARNING_RESIDUAL_SCHEMA_V1,
         feature_names=EDGE_FEATURE_NAMES,
         policy_version=SHARED_EDGE_ACTOR_CRITIC_POLICY_V1,
+        provenance=dict(provenance or {"legacy_bundle_schema": MODEL_BUNDLE_SCHEMA_V2}),
+        admission=dict(admission or {"stage": "legacy_promotion_contract"}),
         split_hash=str(split_hash),
         dataset_frames_sha256=str(dataset_frames_sha256),
         normalization_mean=tuple(float(value) for value in normalization_mean),
@@ -315,6 +352,7 @@ def save_model_bundle(
         promotion_manifest=dict(
             promotion_manifest
             or unavailable_promotion_manifest(
+                reason=str(promotion_unavailable_reason),
                 split_hash=str(split_hash),
                 dataset_frames_sha256=str(dataset_frames_sha256),
                 model_state_dict_sha256=state_sha,
@@ -372,7 +410,10 @@ def load_model_bundle(
             raw_manifest = json.load(stream)
         if not isinstance(raw_manifest, Mapping):
             raise TypeError("model bundle manifest must be a JSON object")
-        if raw_manifest.get("bundle_schema_version") != MODEL_BUNDLE_SCHEMA_V2:
+        if raw_manifest.get("bundle_schema_version") not in {
+            MODEL_BUNDLE_SCHEMA_V2,
+            MODEL_BUNDLE_SCHEMA_V3,
+        }:
             return fallback("model_bundle_schema_unsupported")
         if (
             raw_manifest.get("dataset_schema_version") != LEARNING_DATASET_SCHEMA_V2
@@ -395,6 +436,12 @@ def load_model_bundle(
         and require_promotion_for_assist is not True
     ):
         return fallback("promotion_bypass_forbidden", manifest)
+    if (
+        normalized_mode == "assist"
+        and manifest.bundle_schema_version == MODEL_BUNDLE_SCHEMA_V3
+        and not _admission_allows_assist(manifest.admission)
+    ):
+        return fallback("bundle_shadow_only", manifest)
     if (
         normalized_mode == "assist"
         and not _promotion_is_authorized(manifest.promotion_manifest, manifest)
@@ -502,6 +549,114 @@ def _promotion_is_authorized(
 def _is_sha256(value: Any) -> bool:
     text = str(value)
     return len(text) == 64 and set(text).issubset(frozenset("0123456789abcdef"))
+
+
+def development_shadow_admission(
+    external_holdout_seed_values: Sequence[int] = tuple(range(1000, 1020)),
+) -> dict[str, Any]:
+    """Return the fail-closed admission state for a development BC bundle."""
+
+    return {
+        "stage": "development",
+        "allowed_modes": ["shadow"],
+        "assist_authorized": False,
+        "external_holdout_status": "not_evaluated",
+        "external_holdout_seed_values": [
+            int(value) for value in external_holdout_seed_values
+        ],
+        "rule_fallback_required": True,
+    }
+
+
+def _validate_v3_provenance(value: Mapping[str, Any]) -> None:
+    expected = {
+        "repository_git_commit",
+        "repository_git_commit_role",
+        "training_worktree_state",
+        "training_date",
+        "dataset_manifest_sha256",
+        "training_source_sha256",
+        "training_entrypoint",
+    }
+    if set(value) != expected:
+        raise ValueError("v3 bundle provenance fields are invalid")
+    commit = str(value["repository_git_commit"])
+    if len(commit) not in {40, 64} or not set(commit).issubset(
+        frozenset("0123456789abcdef")
+    ):
+        raise ValueError("repository_git_commit must be a hexadecimal Git object ID")
+    if value["repository_git_commit_role"] not in {
+        "exact_training_source_commit",
+        "dataset_and_training_base_commit",
+    }:
+        raise ValueError("repository_git_commit_role is invalid")
+    if value["training_worktree_state"] not in {
+        "clean",
+        "module_changes_present_source_sha256_bound",
+    }:
+        raise ValueError("training_worktree_state is invalid")
+    if not _is_sha256(value["dataset_manifest_sha256"]) or not _is_sha256(
+        value["training_source_sha256"]
+    ):
+        raise ValueError("v3 bundle provenance SHA256 values are invalid")
+    try:
+        date.fromisoformat(str(value["training_date"]))
+    except ValueError as exc:
+        raise ValueError("v3 bundle training_date must be ISO-8601") from exc
+    if not str(value["training_entrypoint"]).strip():
+        raise ValueError("v3 bundle training_entrypoint is required")
+
+
+def _validate_v3_admission(value: Mapping[str, Any]) -> None:
+    expected = {
+        "stage",
+        "allowed_modes",
+        "assist_authorized",
+        "external_holdout_status",
+        "external_holdout_seed_values",
+        "rule_fallback_required",
+    }
+    if set(value) != expected:
+        raise ValueError("v3 bundle admission fields are invalid")
+    stage = str(value["stage"])
+    allowed_modes = tuple(str(item) for item in value["allowed_modes"])
+    seeds = tuple(int(item) for item in value["external_holdout_seed_values"])
+    if stage not in {"development", "qualified", "retired"}:
+        raise ValueError("v3 bundle admission stage is invalid")
+    if not allowed_modes or any(item not in {"shadow", "assist"} for item in allowed_modes):
+        raise ValueError("v3 bundle allowed modes are invalid")
+    if tuple(sorted(set(seeds))) != seeds or len(seeds) < 20:
+        raise ValueError("v3 bundle requires at least 20 sorted holdout seeds")
+    if value["rule_fallback_required"] is not True:
+        raise ValueError("v3 bundle must require deterministic rule fallback")
+    if not isinstance(value["assist_authorized"], bool):
+        raise ValueError("v3 bundle assist authorization must be boolean")
+    status = str(value["external_holdout_status"])
+    if stage == "development" and (
+        allowed_modes != ("shadow",)
+        or value["assist_authorized"] is not False
+        or status != "not_evaluated"
+    ):
+        raise ValueError("development bundles must remain shadow-only")
+    if stage == "qualified" and (
+        "assist" not in allowed_modes
+        or value["assist_authorized"] is not True
+        or status != "passed"
+    ):
+        raise ValueError("qualified bundles require passed external holdout evidence")
+
+
+def _admission_allows_assist(value: Mapping[str, Any]) -> bool:
+    try:
+        _validate_v3_admission(value)
+    except (TypeError, ValueError):
+        return False
+    return bool(
+        value.get("stage") == "qualified"
+        and "assist" in value.get("allowed_modes", ())
+        and value.get("assist_authorized") is True
+        and value.get("external_holdout_status") == "passed"
+    )
 
 
 def _json_safe(value: Any) -> Any:

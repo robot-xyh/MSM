@@ -361,7 +361,7 @@ main 另行接线，D3 不跨模块修改。
 | fixed 200x200 action head | closed | shared edge network 对 3v5、5v3、200 candidate edges 输出同形 residual，无 roster-size 参数 |
 | paired shadow evaluator | pipeline implemented/synthetic tested | 同 seed rule/proposal 成本、high-threat unmet、churn、duplicate/hard violation、P50/P95、fallback 可报告；规则矩阵不变 |
 | assist promotion gate | fail-closed implemented | manifest 必须 >=20 unseen test seed、零 fallback、安全和成本非退化；19 seed 即使手写 recommended 也拒绝 |
-| 真实训练/准入 | P1 open/unavailable | 无真实 D2/D3 trajectory、正式权重、>=20 未见真实/高保真 seed、AirSim outcome 或 deadline calibration |
+| 正式训练/准入 | development BC complete; P1 admission open | 正式三维质点数据 900 episode/1604 帧已训练 v3 shadow-only bundle；内部 test 不是外部保留证据，1000-1019、AirSim outcome、OOD/confidence/deadline 准入仍开放 |
 
 以下 30-seed、60-frame synthetic smoke 属于 legacy v1：split 为 23/1/6 seed 和 46/2/12 frame。BC train
 loss `1.1001 -> 0.5014`、validation `0.3768`；46-transition PPO 更新指标有限；test
@@ -388,8 +388,8 @@ synthetic smoke，并明确不是 AirSim、正式 PPO 收益或 promotion 证据
 | 失败后返回陈旧帧 | fail-closed done | stale、invalid regional、fence、unmatched publish 和一致性失败均 `available=False`、payload 为空 |
 | 外部反向修改 planner | deterministic closed | ID 匿名化，array 为 immutable buffer，mapping 只读；修改生成 record 不影响 retained evidence |
 | 在线总线/仿真身份泄漏 | D3-owned closed | 证据不进 plan metadata/DTO；track/resource/assignment 仅 ordinal token，无 truth/actor/object/upstream metadata |
-| 真实整 seed 导出 | cross-module P1 open | main 尚未在 IntegratedScalableModuleStack 调 helper，也未形成 AirSim sequential dataset |
-| 真实 shadow/assist 准入 | P1 open/unavailable | 仍缺 >=20 未见真实/高保真 seed、paired non-degradation、deadline/OOD/confidence 标定 |
+| 真实整 seed 导出 | scalable-3D closed; AirSim open | main 已形成 900 episode、1604 帧三维质点正式数据；尚未形成等价 AirSim sequential dataset |
+| 真实 shadow/assist 准入 | P1 open/unavailable | internal-test 已完成但存在成本轻微退化和 163/322 OOD 回退；仍缺外部 seed 1000-1019、deadline/OOD/confidence 标定和 paired non-degradation |
 
 本轮把“D3 已有 frame builder 但无法取得真实调用使用的矩阵”从接口 GAP 改为
 implemented/tested；它不关闭真实数据与系统 outcome GAP。新增 11 个专项测试覆盖首帧、
@@ -435,7 +435,7 @@ main-owned 时序接线、D6 多 seed 非退化、AirSim 或物理拦截 GAP。
 | training/shadow unseen 计数 | closed | BC/PPO/shadow 先验完整三分；whole-seed/unseen 不再把同一 seed 的多个 scenario 重复计数 |
 | D3 writer 全量内存 | D3-owned closed | iterator + 临时 SQLite + 批次提交 + 增量 SHA；输入不再 `tuple(sorted(...))` |
 | main batch finalize 全量内存 | integrated/closed | scalable main 已把 `iter_learning_frame_records(...)` 直接传给 writer，不再完整读取/构造 tuple |
-| 正式模型与性能 | P1 open/unavailable | 本批未训练、未跑 AirSim、无模型 loss/成本/时延/物理收益结论 |
+| 正式模型与性能 | development evidence complete; P1 promotion open | v3 BC shadow-only 权重、loss、共同规则成本和 5 档时延已生成；无 AirSim/物理收益，internal-test 不构成 assist promotion |
 
 200v200 dense fixture 有 40,000 candidate edge；单帧 canonical JSON 为 5,854,691 bytes，
 NumPy payload 加 edge tuple 浅层约 5,161,640 bytes。40 帧时，main 现有文本加上述对象的
@@ -460,7 +460,7 @@ review/GAP、模块内 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION
 | bundle 与数据内容脱钩 | integrity closed | bundle/promotion evidence 同时绑定 split SHA、canonical frame SHA、state-dict SHA；错配拒绝 |
 | promotion 口径可绕过 | safety closed | assist 强制 eligible 正式 test paired evidence、严格类型、>=20 unseen seed、零 fallback、安全/成本非退化；bypass/validation/non-eligible 拒绝 |
 | shadow objective 不可比 | metric closed | rule/proposal 方案统一按 `rule_cost_matrix_v1 + unassigned_costs` 重评分，不比较不同矩阵 objective |
-| 正式权重/promotion | P1 open/unavailable | 无真实 D2/D3 训练、>=20 未见真实/高保真 test seed、正式权重或 assist promotion 结论 |
+| 正式权重/promotion | development weight complete; P1 promotion open | 本地 ignored v3 权重已冻结并绑定 SHA；1000-1019 未验收，成本轻微退化且 OOD 回退高，assist 明确未授权 |
 | AirSim/200v200 模型收益 | P1 open/unavailable | 本轮未运行 AirSim 或全栈模型性能实验；同步 timeout 仍不可抢占 |
 
 负例覆盖 test-seed 输入、指标隔离、递归字段、mask 不一致、frame/evidence hash、证据
@@ -482,7 +482,7 @@ benchmark。上述关闭项是 D3 software contract，不把模型提案升级�
 | D3 finalization 峰值 | improved, not zero-copy | 匹配 cProfile/Tracemalloc 14,575,699 -> 12,725,690 B，下降 12.69% |
 | 联合 staging 的 D3 归因 | closed by clean-tree integration evidence | postopt 三 seed 的 D3 stage 为 0.0917/0.1129/0.0999 s；其余耗时不归入 D3 |
 | JSON `tolist/dumps` | residual P2 optimization | 已为主要热点；无新依赖和无格式变化条件下保留，后续只能 optional adapter 对照 |
-| 正式数据/模型准入 | P1 open/unavailable | 仍缺正式连续数据、训练、>=20 未见 seed、shadow 非退化和 assist promotion |
+| 正式数据/模型准入 | data/BC development closed; P1 admission open | 900 episode 与 BC 开发训练已完成；仍缺外部 20 seed 非退化、OOD/confidence/deadline 标定和 assist promotion |
 
 本轮没有新增 P0。top-32 单帧约 2.20 MB、九场景 D3 帧约 27.86 MB，因 schema/content
 保持要求没有减少。微基准属于同机开发归因证据，不是硬实时、AirSim 或 200v200 全栈
@@ -503,8 +503,8 @@ settings、actor、camera、control 或 episode 合同。M-to-N 算法和成员�
 | D3 stage 归因 | closed | seed 930/931/932 分别为 0.0917/0.1129/0.0999 s；不是此前 74-76 s 联合耗时来源 |
 | D3 数据收口 | closed for probe | 6 帧正常最终化，train/validation/test 各 2 帧；在线 truth 使用为 0 |
 | 联合 finalization 归因 | protected/open by owner | 总值 `116.5624 -> 7.7377 s` 同时包含 D3/D4/D5，不能全部归因 D3 |
-| 正式 900-episode 生成 | P1 open | 当前仅 nominal 200v200 三 seed、每 seed 2 s；`formal=false` |
-| 正式训练和晋级 | P1 open/unavailable | 尚无正式 BC/PPO 权重、>=20 未见 seed paired shadow、非退化结论或 assist promotion |
+| 正式 900-episode 生成 | closed | 正式目录包含 900 episode、1604 D3 帧、100 seed、五档规模，hash 与切分审计通过 |
+| 正式训练和晋级 | BC development closed; P1 promotion open | BC shadow-only 权重已训练；PPO 未启动，外部 seed 1000-1019 与 assist promotion 未完成 |
 
 同一对照中，总生成 `467.8007 -> 262.2866 s`，artifact stage
 `225.9243 -> 126.4682 s`，episode run `125.2205 -> 127.9871 s`。这些总量用于确认集成
@@ -512,3 +512,30 @@ settings、actor、camera、control 或 episode 合同。M-to-N 算法和成员�
 
 模块 README、PLAN、五份指定主题文档、D3 review/GAP 已同步检查。M-to-N 需求槽、联盟
 成员和调度合同没有变化，专项 M-to-N review 无需修改。
+
+## 27. 正式行为克隆开发模型 GAP 更新（2026-07-20）
+
+| GAP/能力 | 当前状态 | 证据与剩余边界 |
+|---|---|---|
+| 正式数据完整性 | closed | 900 episode、1604 帧、100 seed；train/validation/internal-test 为 962/320/322 帧，frame/split SHA 和 1000-1019 排除均通过 |
+| 五档规模覆盖 | closed for development data | 5/20/50/100/200 均有数据与时延；动态目标数未被写死 |
+| BC 类别不平衡 | implemented/tested | 正边约 3.2%，训练支持绑定到配置的正类权重上限；正式 run 使用 16，不改变硬门控或求解器 |
+| rule-only/BC shadow evaluator | implemented/tested | 输出残差损失、边排序、计划成本、需求满足、duplicate/hard violation、churn、fallback 和分档时延 |
+| bundle provenance | v3 implemented/tested | 绑定 data/split/model SHA、feature schema、训练配置、训练源码 SHA、Git 基线提交/角色、工作树状态和训练日期 |
+| 开发权重误晋级 | P0 safety closed | admission 固定 development/shadow-only；assist 返回 `bundle_shadow_only`，规则路径不变 |
+| 权重版本管理 | local development closed; long-term open | `.pt` 仅在 ignored `outputs/`，tracked results 只存 SHA/定位；当前无 Git LFS，长期制品待 main 归档 |
+| 内部 test 质量 | available, not passing promotion | 排序 AUC 0.8031、计划完全一致 0.6770、成本差 +0.022345；需求满足不变，duplicate/hard violation 为 0 |
+| OOD/置信门限 | P1 open | internal-test 163/322 帧因“任一边超 6σ”回退，min confidence 约 0.5；需外部 seed 标定 |
+| 外部保留集 | P1 open | seed 1000-1019 未消费；内部 test 不能写成最终 20-seed 准入结论 |
+| PPO | unavailable/not started | 本任务没有把行为克隆演示或规则 reward 分量伪装为强化学习回报 |
+| AirSim/物理收益 | P1 open | 本批为三维质点离线训练，无 AirSim、飞行或物理拦截证据 |
+
+本轮没有新增 P0。正式 BC 开发管线和 bundle fail-closed 语义已闭合，P1 卡点转为外部
+1000-1019 配对验证和门限标定。当前结果不支持把学习策略接入 assist：规则成本轻微增加，
+且约一半内部 test 帧回退。main 应先保留 rule-only 默认路径，再调度 D6 对外部批次做
+共同口径验收。
+
+新增测试后 D3 全量收集 258 项，结果 `257 passed, 1 skipped`；唯一 skip 为 optional
+OR-Tools。`AIRSIM_INTEGRATION_PLAN.md` 已检查，本轮没有改变 AirSim adapter、settings、
+actor、episode 或控制接口，无需更新。M-to-N 专项 review 已检查，需求槽、角色和时序合同
+未变化，无需更新。

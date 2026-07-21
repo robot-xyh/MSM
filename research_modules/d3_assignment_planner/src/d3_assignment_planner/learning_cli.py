@@ -52,6 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     bc.add_argument("--learning-rate", type=float, default=1.0e-3)
     bc.add_argument("--hidden-size", type=int, default=64)
     bc.add_argument("--seed", type=int, default=0)
+    bc.add_argument("--positive-class-weight-cap", type=float, default=1.0)
     _add_guardrail_arguments(bc)
 
     ppo = subparsers.add_parser("train-ppo", help="train native clipped PPO bundle")
@@ -116,6 +117,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             mini_batch_frames=args.mini_batch_frames,
             learning_rate=args.learning_rate,
             seed=args.seed,
+            positive_class_weight_cap=args.positive_class_weight_cap,
         )
         bundle = save_model_bundle(
             args.bundle,

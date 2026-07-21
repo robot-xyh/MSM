@@ -581,10 +581,11 @@ target/resource index、联盟成员、owner、plan version 或 D7 控制量。
   `iter_learning_frame_records()` 可逐行消费 staged JSONL。每帧仍只保存匿名 ordinal
   target/resource 摘要、`E x 12` 候选边特征、mask、规则成本/选边、版本、反馈/迟滞和
   reward 分量，不保存原始 ID、truth actor 或上游 metadata。
-- `learning_bundle.py` 当前为 `d3_learning_model_bundle_v2`。manifest 除 feature/policy、
-  split hash、归一化和 guardrail 外，还显式绑定 dataset schema v2 与 split policy v2。
-  v1 bundle 稳定回退为 `model_bundle_schema_unsupported`；缺失、损坏、SHA、特征或合同
-  不匹配均返回逐元素相同的 `C_rule`，权重只用 `torch.load(..., weights_only=True)`。
+- `learning_bundle.py` 保留 `d3_learning_model_bundle_v2` 兼容加载，并对正式开发模型使用
+  `d3_learning_model_bundle_v3`。v3 在 feature/policy、split hash、归一化、guardrail、
+  dataset/split schema 之外增加 provenance 与 admission。v1 bundle 稳定回退为
+  `model_bundle_schema_unsupported`；缺失、损坏、SHA、特征或合同不匹配均返回逐元素相同
+  的 `C_rule`，权重只用 `torch.load(..., weights_only=True)`。
 - shadow 可加载未晋级 bundle。assist 必须显式调用 `load_model_bundle(...,
   mode="assist")`，且 promotion manifest 同时满足 recommended、至少 20 个未见 test
   seed、安全/成本非退化和零 fallback；仅写一个 true 布尔值不能绕过门控。
@@ -617,7 +618,8 @@ PYTHONPATH=research_modules/d3_assignment_planner/src python3 -m d3_assignment_p
 
 此前 30-seed synthetic smoke 的 `23/1/6` split、loss 和 shadow 时延来自 v1
 scenario/seed policy，只保留为历史开发记录；v2 loader 与 bundle loader 均拒绝把该产物
-解释为当前合同。本次没有重训模型或复测模型收益，因此不提供新的 loss、成本或时延结论。
+解释为当前合同。该段记录的是正式训练前的软件合同阶段；最新正式 loss、成本和时延见
+本文末尾的“正式数据行为克隆开发模型”。
 
 软件合同回归覆盖同一数值 seed 在 2v2/5v5 风格 scenario、多个规模和 episode 中复用、
 输入逆序确定性、三 split 零交集、唯一 seed/unseen 数不足、split/frame/hash 篡改、v1
@@ -800,3 +802,52 @@ D3 全量回归收集 255 项，结果 `254 passed, 1 skipped`；唯一 skip 是
 剩余 CPU 热点是标准库 JSON 对 NumPy 数组执行 `tolist()` 和 canonical `json.dumps()`。
 继续减少该部分需要引入新编码依赖或改变持久化格式，因此不在本次无 schema 变化任务中
 处理。
+
+## 2026-07-20 正式数据行为克隆开发模型
+
+正式 D3 数据位于三维规模化仿真学习数据目录，只读审计通过。清单包含 900 episode、
+1604 帧和 100 个数值 seed，train/validation/internal-test 为 962/320/322 帧，对应
+60/20/20 个 seed。canonical frame SHA256 为
+`6761d35d6b48639a5eb4f3306f7b3f12ca72352a1028296a0c39a4b90fdb59a2`，split hash 为
+`679a9051e8637fad38d935eb685f09dd8abc8d43043a28264dab64b077ac70a2`。外部保留 seed
+1000-1019 与当前数据交集为空，也未在本轮评估中消费。
+
+训练使用固定 seed `20260720`、12 epoch、隐藏层 64、Adam 学习率 0.001、8 帧小批次和
+正类权重上限 16。正类加权只处理规则已选边约 3.2% 的类别不平衡；学习输出仍是
+`C_final=C_rule+alpha*tanh(delta_C)`，`alpha=0.25`。不可达边、硬拒绝、需求槽、容量、
+版本、迟滞和 Hungarian 求解不进入学习动作空间。训练损失由 1.083713 降至 0.468781，
+验证损失为 0.469243。内部 test 的边排序一致性为 0.8031，计划完全一致率为 0.6770，
+平均规则成本差为 +0.022345，相对差约 +0.0091%；需求满足率与 rule-only 同为 0.975689，
+重复分配和硬门控违规均为 0，平均重分配 churn 均为 70.1149。
+
+内部 test 模型推理 P50/P95/P99 为 0.506/2.554/2.809 ms。按 5/20/50/100/200 名义规模，
+推理 P95 分别为 0.247/0.433/0.860/1.434/2.793 ms。当前 OOD 规则按“单帧任一候选边任一
+特征超过 6 个标准差”判定，内部 test 有 163/322 帧回退规则路径。该现象和轻微成本退化
+说明模型不能晋级 assist，后续需在外部保留 seed 上重新标定 OOD、confidence 和 deadline。
+
+新 bundle schema 为 `d3_learning_model_bundle_v3`，增加训练日期、数据 manifest SHA、
+训练源码 SHA、Git 基线提交、工作树状态和显式 admission。提交 `39b097e...` 是正式数据
+生成与训练基线；训练时存在 D3 模块改动，精确源码由 training-source SHA256 绑定。当前
+状态固定为 `development/shadow-only`；即使
+有人写入 recommended promotion，loader 仍返回 `bundle_shadow_only`。权重 SHA256 为
+`e3da9fd5b54451da83358405b6051991e0c78bcf9f538b350d459b05faf8e0b2`。权重和 bundle 位于
+ignored `outputs/formal_bc_development_20260720/bundle`，不进入普通 Git 提交；tracked
+`results/formal_bc_development_20260720` 只保留审计、配置、命令、指标报告和定位说明。
+当前环境没有 Git LFS，长期权重需由 main 转存到 Git LFS 可用环境或独立制品存储。
+
+复现入口为：
+
+```bash
+PYTHONPATH=research_modules/d3_assignment_planner/src python3 \
+  research_modules/d3_assignment_planner/simulations/run_formal_bc_development.py \
+  --dataset research_modules/scalable_3d_simulation/outputs/learning_generation_v1_multibatchfix/learning_dataset/d3_assignment \
+  --output research_modules/d3_assignment_planner/results/formal_bc_development_20260720 \
+  --bundle-output research_modules/d3_assignment_planner/outputs/formal_bc_development_20260720/bundle \
+  --repository-git-commit 39b097e72487567ac915c2297eaa27eed49ef76b
+```
+
+本轮没有启动 PPO，没有更改 AssignmentPlan 版本、`global_track_id` 或 D7 binding。内部
+test 是开发集内的独立切分，不是最终 20 个保留 seed 准入。main 下一步必须使用同一冻结
+权重运行 seed 1000-1019，并由 D6 独立汇总安全非退化、成本、需求满足、抖动、回退和时延。
+新增正式审计、v3 bundle、加权 BC 与开发评估测试后，D3 全量收集 258 项，结果为
+`257 passed, 1 skipped`；唯一 skip 仍是 optional OR-Tools installed-only case。
