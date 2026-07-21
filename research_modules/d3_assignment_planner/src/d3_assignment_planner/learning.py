@@ -193,13 +193,17 @@ def build_candidate_edge_batch(
             for assignment in previous_plan.assignments
         }
     )
+    # ``effective_demand`` normalizes and validates a TargetDemand.  Cache it
+    # once per target instead of rebuilding the same object for every sparse
+    # candidate edge at large M-by-N scales.
+    effective_demands = tuple(track.effective_demand for track in tracks)
     feature_rows: list[tuple[float, ...]] = []
     rule_costs: list[float] = []
     for target_index, resource_index in edge_indices:
         track = tracks[target_index]
         resource = resources[resource_index]
         breakdown = matrix_result.breakdowns[target_index][resource_index]
-        demand = track.effective_demand
+        demand = effective_demands[target_index]
         rule_cost = float(matrix_result.matrix[target_index, resource_index])
         feature_rows.append(
             (

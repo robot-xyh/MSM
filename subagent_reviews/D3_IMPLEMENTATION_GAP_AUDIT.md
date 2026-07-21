@@ -434,7 +434,7 @@ main-owned 时序接线、D6 多 seed 非退化、AirSim 或物理拦截 GAP。
 | hash/loader 篡改 | deterministic fail-closed | 逆序输入同 canonical frames/manifest/hash；frame SHA、split 映射、统计和 policy 均重算 |
 | training/shadow unseen 计数 | closed | BC/PPO/shadow 先验完整三分；whole-seed/unseen 不再把同一 seed 的多个 scenario 重复计数 |
 | D3 writer 全量内存 | D3-owned closed | iterator + 临时 SQLite + 批次提交 + 增量 SHA；输入不再 `tuple(sorted(...))` |
-| main batch finalize 全量内存 | cross-module P1 open | main 仍 `read_text().splitlines()` 后构造完整 tuple；需改传 `iter_learning_frame_records(...)` |
+| main batch finalize 全量内存 | integrated/closed | scalable main 已把 `iter_learning_frame_records(...)` 直接传给 writer，不再完整读取/构造 tuple |
 | 正式模型与性能 | P1 open/unavailable | 本批未训练、未跑 AirSim、无模型 loss/成本/时延/物理收益结论 |
 
 200v200 dense fixture 有 40,000 candidate edge；单帧 canonical JSON 为 5,854,691 bytes，
@@ -467,3 +467,30 @@ review/GAP、模块内 `MODULE_PRINCIPLES_CN.md`、`ALGORITHM_AND_IMPLEMENTATION
 split/eligibility/bypass/type 和共同成本基准。2026-07-20 D3 全量收集 252 项，结果为
 `251 passed, 1 skipped`，零失败达到门限；唯一 skip 是 optional OR-Tools installed-only
 benchmark。上述关闭项是 D3 software contract，不把模型提案升级为计划或执行授权。
+
+## 25. 200×200 学习帧导出 CPU/内存 GAP 更新（2026-07-20）
+
+| GAP/能力 | 当前状态 | 证据与剩余边界 |
+|---|---|---|
+| 候选边重复 demand 构造 | D3-owned closed | 6,400 edge 从逐边构造改为 200 target 缓存；frame build 48.19 -> 22.99 ms |
+| reject reason 重复扫描 | D3-owned closed | frame 复用 action-mask reason count；硬拒绝内容不变 |
+| JSONL identity 递归标量调用 | D3-owned closed | 改显式容器栈；递归字段拒绝正负例保持，decode/validate 95.92 -> 56.09 ms |
+| SQLite 保存完整 payload | D3-owned closed | SQLite 只存 key/offset/size；payload 使用临时 JSONL sidecar |
+| finalization 二次 decode/rebuild/encode | D3-owned closed | 受控 split 占位符流式替换；6-frame median 910.20 -> 243.65 ms |
+| 构造后可变状态逃逸校验 | fail-closed closed | writer 重新校验 mask/shape/finite/anonymous schema；真值键和 mask 篡改均拒绝 |
+| schema/content/hash 漂移 | deterministic closed | expected legacy semantic bytes 与优化输出完全相同；正逆序、frame SHA、manifest 回归通过 |
+| D3 finalization 峰值 | improved, not zero-copy | 匹配 cProfile/Tracemalloc 14,575,699 -> 12,725,690 B，下降 12.69% |
+| 74-76 s 总 staging 归因 | cross-module P1 open | D3 六帧完整导出阶段约 0.87 s；main 必须用 D3/D4/D5 分项 wall fields 定位其余耗时 |
+| JSON `tolist/dumps` | residual P2 optimization | 已为主要热点；无新依赖和无格式变化条件下保留，后续只能 optional adapter 对照 |
+| 正式数据/模型准入 | P1 open/unavailable | 仍缺正式连续数据、训练、>=20 未见 seed、shadow 非退化和 assist promotion |
+
+本轮没有新增 P0。top-32 单帧约 2.20 MB、九场景 D3 帧约 27.86 MB，因 schema/content
+保持要求没有减少。微基准属于同机开发归因证据，不是硬实时、AirSim 或 200v200 全栈
+验收。D3 全量收集 255 项，结果 `254 passed, 1 skipped`，唯一 skip 为 optional
+OR-Tools，零失败达到门限。
+
+`README.md`、`PLAN.md`、`MODULE_PRINCIPLES_CN.md`、
+`ALGORITHM_AND_IMPLEMENTATION.md`、`EXPERIMENT_REPORT.md` 和 D3 review 已同步。
+`AIRSIM_INTEGRATION_PLAN.md` 仅纠正 main 已采用 iterator 并记录未运行 AirSim；没有改变
+settings、actor、camera、control 或 episode 合同。M-to-N 算法和成员合同未变化，因此
+`D3_M_TO_N_ASSIGNMENT_AND_SCHEDULING_REVIEW.md` 检查后无需修改。

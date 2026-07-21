@@ -576,7 +576,8 @@ target/resource index、联盟成员、owner、plan version 或 D7 控制量。
 - v2 manifest 固化唯一 seed 数、逐 split seed/episode/frame 数、split 参数、split hash 和
   canonical `frames.jsonl` SHA256。loader 重算分配与统计并校验完整文件 SHA；v1 dataset、
   v1 scenario/seed split、冲突预分配和任何篡改均明确拒绝，不做静默迁移。
-- `write_learning_dataset()` 用临时 SQLite 有界批次暂存一遍输入迭代器，再按稳定键输出；
+- `write_learning_dataset()` 用临时 SQLite 只保存排序键和 payload 偏移，以磁盘 JSONL
+  sidecar 保存单次 canonical 编码结果，再按稳定键流式输出；
   `iter_learning_frame_records()` 可逐行消费 staged JSONL。每帧仍只保存匿名 ordinal
   target/resource 摘要、`E x 12` 候选边特征、mask、规则成本/选边、版本、反馈/迟滞和
   reward 分量，不保存原始 ID、truth actor 或上游 metadata。
@@ -624,10 +625,10 @@ dataset/bundle 拒绝、训练和 shadow 的全局 seed 计数。D3 全量收集
 `243 passed, 1 skipped`；唯一 skip 是 optional OR-Tools installed-only case。
 
 200v200 dense fixture 单帧含 40,000 candidate edge，canonical JSON 约 5,854,691 bytes；
-NumPy payload 加 edge tuple 浅层约 5,161,640 bytes。D3 writer 已不再全量持有数据，但
-main 当前 batch finalize 仍先执行 `read_text().splitlines()` 并构造完整 tuple；40 帧仅
-文本与上述对象保守下界已超过约 440 MB，未计 JSON 临时对象。main 必须改为把
-`iter_learning_frame_records(staging_path)` 直接传给 writer，才能关闭调用侧内存缺口。
+NumPy payload 加 edge tuple 浅层约 5,161,640 bytes。当前 scalable main finalize 已把
+`iter_learning_frame_records(staging_path)` 直接传给 writer，不再在调用侧执行
+`read_text().splitlines()` 和完整 tuple 构造。正式 900-episode 数据容量、故障/密集场景
+最坏值和长期磁盘预算仍需由 main 在 clean tree 上验收。
 
 本批没有提交正式权重，没有真实 D2/D3 轨迹训练，没有至少 20 个未见真实/高保真 seed，
 也没有 CPU/GPU deadline 分布、AirSim 物理收益或可抢占 timeout 证据。当前结论仅为
@@ -746,3 +747,46 @@ skip 是未安装 optional OR-Tools 的 installed-only benchmark。新增负例�
 promotion 证据错配、validation/非 eligible/bypass 拒绝和共同规则代价重评分。本轮未训练
 或提交正式权重，未运行 AirSim，也没有至少 20 个未见真实/高保真 test seed、正式
 promotion、模型收益或物理闭环结论。
+
+## 2026-07-20 200×200 学习帧导出性能复核
+
+本轮只优化 D3 学习帧构造、canonical JSONL 读写和数据集 finalization，不改变
+Hungarian、学习残差、硬拒绝掩码、`plan_version`、truth isolation、dataset schema 或
+任何输出字段。候选特征构造按目标缓存一次 `effective_demand`；学习帧的硬拒绝计数复用
+同一 action-mask 扫描结果。JSONL identity 检查改为迭代遍历容器，避免对密集数值数组
+中的每个标量递归调用。
+
+finalization 仍先验证每个 `LearningFrameRecord` 的当前数组、掩码、匿名实体和身份字段，
+随后只做一次 canonical 编码。临时 SQLite 保存排序键、payload offset 和 size；payload
+写入临时 JSONL。最终排序阶段只读取对应字节并替换唯一受控的 `split=unassigned`
+占位符，不再执行第二轮 `json.loads -> from_dict -> replace -> to_dict -> json.dumps`。
+正序、逆序输入和旧重编码语义输出逐字节相同，frame SHA256 与 manifest 规则不变。
+
+同机开发微基准使用 200 targets、200 resources、top-32、每帧 6,400 candidate edges、
+6 帧。墙钟只作归因证据，不作为单元测试门限。
+
+| 阶段 | 修改前 | 修改后 | 变化 |
+|---|---:|---:|---:|
+| 单帧 frame build 中位数 | 48.19 ms | 22.99 ms | 2.10× |
+| 单帧 JSON decode + validate 中位数 | 95.92 ms | 56.09 ms | 1.71× |
+| 6 帧 dataset finalize 中位数 | 910.20 ms | 243.65 ms | 3.74× |
+| 匹配 cProfile/Tracemalloc 峰值 | 14,575,699 B | 12,725,690 B | -12.69% |
+
+当前 top-32 帧约 2.20 MB；九场景 D3 正式帧证据总计约 27.86 MB，数据内容和存储量按
+要求未压缩或删减。模块局部测得的六帧构造、首次编码、逐行读取和 finalization 合计约
+0.87 s，不能把 main 记录的 D3/D4/D5 每 episode 74-76 s 全部归因于 D3。后续应使用
+main 已记录的 `d3_stage_wall_s`、`d4_stage_wall_s`、`d5_graph_stage_wall_s` 和
+`d5_active_vision_stage_wall_s` 分模块分析。
+
+可复现命令：
+
+```bash
+python3 research_modules/d3_assignment_planner/simulations/run_learning_export_profile.py \
+  --count 200 --max-candidate-edges 32 --frame-count 6 --repeat 5
+```
+
+结果文件为 `results/scalable_3d_learning_export_profile_20260720.json` 和配对比较 JSON。
+D3 全量回归收集 255 项，结果 `254 passed, 1 skipped`；唯一 skip 是 optional OR-Tools。
+剩余 CPU 热点是标准库 JSON 对 NumPy 数组执行 `tolist()` 和 canonical `json.dumps()`。
+继续减少该部分需要引入新编码依赖或改变持久化格式，因此不在本次无 schema 变化任务中
+处理。

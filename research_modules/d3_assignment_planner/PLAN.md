@@ -753,9 +753,9 @@ shadow `0.006 s`。这些是单机 smoke，不是吞吐、实时、收益或系�
 收集 244 项，结果为 `243 passed, 1 skipped`；唯一 skip 是 optional OR-Tools。
 
 200v200 fixture 的单帧 canonical JSON 为 5,854,691 bytes，NumPy payload 加 edge tuple
-浅层约 5,161,640 bytes。D3 writer 的全量内存缺口已关闭；main 当前仍在调用前用
-`read_text().splitlines()` 构造完整 tuple，40 帧保守下界超过约 440 MB，未计 JSON
-临时对象。main 改用 D3 iterator 是正式导出的剩余 cross-module P1，不在本任务修改。
+浅层约 5,161,640 bytes。D3 writer 的全量内存缺口已关闭。当时 main 尚未采用 iterator；
+当前 scalable finalize 已直接传入 `iter_learning_frame_records()`，该调用侧 P1 已关闭。
+正式 900-episode 最坏容量仍由 main 的 clean-tree gate 验收。
 
 ## 23. 单帧规划证据与真实 Episode Recorder 接口（2026-07-20）
 
@@ -863,3 +863,36 @@ validation/non-eligible/bypass/hash/type mismatch。
 promotion、可抢占 timeout、AirSim 模型收益或 200v200 全栈学习性能结论。后续证据必须
 由 main 的 truth-isolated recorder 与独立 test shadow 批次产生，学习输出继续不得被
 下游解释为授权。
+
+## 26. 学习帧构造与数据集收口性能（2026-07-20）
+
+### 已完成
+
+1. `build_candidate_edge_batch()` 将 `effective_demand` 从每条候选边重复构造改为每个目标
+   构造一次；frame builder 复用 demand 和 action-mask reject count，不改变任何特征值。
+2. `LearningFrameRecord` 增加 compact canonical JSONL 编解码入口。identity 扫描采用迭代
+   容器遍历，递归真值字段拒绝范围和 v2 完整字段 allow-list 保持不变。
+3. dataset writer 在写盘前重新运行 dataclass 结构校验，构造后篡改 NumPy mask 或匿名
+   mapping 仍失败关闭。SQLite 只保存排序键和 payload offset/size；单次编码 payload
+   使用临时 JSONL sidecar，排序输出时不再完整解码和重建对象。
+4. split 只在 writer 自己生成的 canonical 顶层占位符上替换。确定性测试证明最终字节与
+   `replace(record, split=...).to_dict()` 旧语义完全一致，schema、字段、排序、frame SHA、
+   split hash 和 manifest 不变。
+5. 新增无墙钟阈值的 CLI 微基准和测试。200×200、top-32、6 帧结果为 frame build
+   `48.19 -> 22.99 ms`，JSON decode/validate `95.92 -> 56.09 ms`，finalize
+   `910.20 -> 243.65 ms`；匹配 cProfile/Tracemalloc 峰值下降 12.69%。
+
+### 下一步与边界
+
+- 当前 main 已逐行调用 `iter_learning_frame_records()`；D3 调用侧全量 materialization
+  缺口不再开放。main 仍需按 `d3_stage_wall_s`、D4 和 D5 分项计时定位每 episode
+  74-76 s 的其余来源，D3 模块结果不能替代这项跨模块归因。
+- top-32 canonical 帧约 2.20 MB，九场景 D3 数据约 27.86 MB。无 schema/content 变化条件
+  下不删除 dense rule matrix、mask 或候选特征；正式 900-episode 容量由 main gate 决定。
+- 标准库 `tolist()` 与 `json.dumps()` 已成为剩余主要 CPU 路径。后续若研究更快编码器，
+  必须作为可选 adapter 做逐字节或逐字段兼容验证，不在当前默认依赖中加入。
+- 正式 D2/D3 数据、模型训练、至少 20 个未见 seed、shadow 非退化和 assist promotion
+  仍为原 P1，不因导出提速而关闭。
+
+本批 D3 全量收集 255 项，结果 `254 passed, 1 skipped`；唯一 skip 为 optional
+OR-Tools，零失败满足门限。

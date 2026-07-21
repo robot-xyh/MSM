@@ -1,0 +1,40 @@
+{
+  "schema": "d3_learning_export_microprofile_v1",
+  "environment": {
+    "python": "3.12.3",
+    "platform": "Linux-6.17.0-40-generic-x86_64-with-glibc2.39",
+    "numpy": "2.5.0"
+  },
+  "fixture": {
+    "target_count": 200,
+    "resource_count": 200,
+    "max_candidate_edges_per_target": 32,
+    "candidate_edge_count": 6400,
+    "frame_count": 6,
+    "canonical_bytes_per_frame": 2198128
+  },
+  "timings_s": {
+    "planner_once": 1.8082612750004046,
+    "frame_build_median": 0.022991579986410215,
+    "to_dict_median": 0.002957927994430065,
+    "canonical_json_encode_median": 0.025113579991739243,
+    "json_decode_and_validate_median": 0.05608987697632983,
+    "dataset_finalize_runs": [
+      0.24364665400935337,
+      0.20376889998442493,
+      0.24546338300569914,
+      0.20294164901133627,
+      0.2472496520204004
+    ],
+    "dataset_finalize_median": 0.24364665400935337
+  },
+  "memory": {
+    "dataset_finalize_tracemalloc_peak_bytes": 13021898
+  },
+  "contract": {
+    "dataset_schema": "d3_learning_dataset_v2",
+    "split_policy": "d3_numeric_seed_atomic_split_v2",
+    "timings_are_acceptance_thresholds": false,
+    "truth_fields_allowed": false
+  }
+}

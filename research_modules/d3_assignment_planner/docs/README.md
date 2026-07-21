@@ -40,8 +40,8 @@ rule/effective/shadow/fallback 矩阵、版本和匿名输入快照留在 planne
 
 同日学习数据合同升级为 numeric-seed-atomic v2：同一数值 seed 跨 scenario、规模和
 episode 原子切分，dataset/bundle/shadow schema 同步升级并稳定拒绝 v1。D3 writer 已支持
-逐行 iterator、磁盘暂存和完整 frame SHA；main 仍需移除 batch finalize 的全量
-`read_text().splitlines()`。最新 D3 全量收集 244 项，结果为
+逐行 iterator、磁盘暂存和完整 frame SHA；当前 scalable main 已移除 batch finalize 的
+全量 `read_text().splitlines()`。最新 D3 全量收集 244 项，结果为
 `243 passed, 1 skipped`。该结果仅证明软件合同，不含新训练、AirSim 或模型性能结论。
 
 同日 D3 owner 完成 learning 安全复核补正：训练 API 明确拒绝 test frame，frame v2
@@ -51,3 +51,10 @@ promotion 同时绑定 split、完整 frame 内容和 model-state 三摘要，pa
 `251 passed, 1 skipped`。详见 `ALGORITHM_AND_IMPLEMENTATION.md` 的共同评分与证据合同、
 `EXPERIMENT_REPORT.md` 的负例结果以及 `AIRSIM_INTEGRATION_PLAN.md` 的运行时边界。本批
 仍无正式权重、eligible promotion、AirSim episode 或模型收益结论。
+
+同日 D3 对 200×200 learning export 做模块内性能复核。frame builder 缓存 target demand，
+JSONL identity 检查改为迭代容器扫描，dataset writer 使用单次 canonical 编码、磁盘
+payload sidecar 和 SQLite key/offset 索引。top-32 六帧 finalization 中位数由 0.910 s
+降至 0.244 s，输出字节、schema 和 hash 不变。最新全量收集 255 项，结果为
+`254 passed, 1 skipped`。详细数据见 `EXPERIMENT_REPORT.md`；该结果没有运行 AirSim，
+也不能解释 D3/D4/D5 组合 staging 的全部耗时。

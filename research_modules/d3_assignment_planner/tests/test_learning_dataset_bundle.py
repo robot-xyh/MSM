@@ -211,6 +211,91 @@ def test_dataset_split_is_whole_seed_and_round_trips_without_identity_leakage(
         )
 
 
+def test_canonical_json_line_and_finalized_dataset_are_byte_equivalent(
+    tmp_path: Path,
+) -> None:
+    record = _record(0, "episode", frame_index=0)
+    expected_line = (
+        json.dumps(
+            record.to_dict(),
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    )
+    assert record.to_json_line() == expected_line
+    assert LearningFrameRecord.from_json_line(expected_line).to_dict() == record.to_dict()
+
+    records = tuple(
+        _record(seed, f"episode_{seed}", frame_index=frame)
+        for seed in range(3)
+        for frame in range(2)
+    )
+    write_learning_dataset(
+        tmp_path / "dataset",
+        iter(reversed(records)),
+        source_kind="synthetic_smoke",
+        minimum_unseen_seed_count=1,
+    )
+    split_by_seed = assign_seed_splits(range(3))
+    expected_bytes = "".join(
+        replace(item, split=split_by_seed[item.seed]).to_json_line()
+        for item in sorted(
+            records,
+            key=lambda value: (
+                value.scenario_version,
+                value.seed,
+                value.episode,
+                value.frame_index,
+            ),
+        )
+    ).encode("ascii")
+    assert (tmp_path / "dataset" / "frames.jsonl").read_bytes() == expected_bytes
+
+
+def test_dataset_writer_revalidates_mutable_frame_state_before_persistence(
+    tmp_path: Path,
+) -> None:
+    mask_mutated = _record(0, "mask_mutated")
+    mask_mutated.action_mask[0, 0] = False
+    with pytest.raises(ValueError, match="candidate edges"):
+        write_learning_dataset(
+            tmp_path / "mask",
+            (mask_mutated,),
+            source_kind="synthetic_smoke",
+            minimum_unseen_seed_count=1,
+        )
+    assert not (tmp_path / "mask" / "frames.jsonl").exists()
+
+    identity_mutated = _record(0, "identity_mutated")
+    assert isinstance(identity_mutated.hard_reject_reason_counts, dict)
+    identity_mutated.hard_reject_reason_counts["truth_track_id"] = 1
+    with pytest.raises(ValueError, match="identity-bearing"):
+        write_learning_dataset(
+            tmp_path / "identity",
+            (identity_mutated,),
+            source_kind="synthetic_smoke",
+            minimum_unseen_seed_count=1,
+        )
+    assert not (tmp_path / "identity" / "frames.jsonl").exists()
+
+    reward_mutated = _record(0, "reward_mutated")
+    object.__setattr__(
+        reward_mutated.reward_components,
+        "rule_total_cost",
+        float("nan"),
+    )
+    with pytest.raises(ValueError, match="reward components"):
+        write_learning_dataset(
+            tmp_path / "reward",
+            (reward_mutated,),
+            source_kind="synthetic_smoke",
+            minimum_unseen_seed_count=1,
+        )
+    assert not (tmp_path / "reward" / "frames.jsonl").exists()
+
+
 def test_dataset_split_fails_closed_for_unique_seed_budget_and_conflicting_split(
     tmp_path: Path,
 ) -> None:

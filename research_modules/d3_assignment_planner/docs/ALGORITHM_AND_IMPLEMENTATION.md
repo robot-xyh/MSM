@@ -1209,17 +1209,17 @@ duplicate、hard violation、fallback 和 inference percentile。promotion 条�
 
 ### 29.7 有界写出与 200v200 边界
 
-`write_learning_dataset()` 不再对输入执行 `tuple(sorted(records))`。它逐条序列化到临时
-SQLite，以 `(scenario_version, seed, episode, frame_index)` 唯一键拒绝重复；取得完整
-seed catalog 后逐条反序列化、注入 v2 split，并按同一稳定键写 canonical JSONL，同时
-增量计算 frame SHA。`staging_batch_size` 只控制提交批次，不改变 split/hash。
+`write_learning_dataset()` 不再对输入执行 `tuple(sorted(records))`。当前实现逐条验证并
+canonical 编码到临时 payload JSONL；SQLite 只保存
+`(scenario_version, seed, episode, frame_index)` 唯一键、supplied split 和 payload
+offset/size。取得完整 seed catalog 后按稳定键读取单帧字节、注入 v2 split，并增量计算
+frame SHA。`staging_batch_size` 只控制索引提交批次，不改变 split/hash。
 `iter_learning_frame_records()` 提供逐行 staging 解析，因此调用者可保持一帧级内存。
 
 实测单个 dense 200v200 fixture 有 40,000 candidate edge，canonical JSON 为 5,854,691
-bytes；NumPy payload 和 edge tuple 浅层约 5,161,640 bytes。main 当前 batch finalize 仍
-在调用 D3 前执行 `read_text().splitlines()` 并构造完整 tuple，40 帧仅文本和上述对象的
-保守下界已超过约 440 MB，未计 JSON 临时对象。D3 API 已具备有界路径，但 main 必须改用
-iterator 才能关闭全链路内存 GAP。
+bytes；NumPy payload 和 edge tuple 浅层约 5,161,640 bytes。此前 main batch finalize 的
+全量 `read_text().splitlines()` 会把文本和 record 同时常驻；当前 scalable finalize 已改为
+直接传入 iterator。剩余边界是正式批量容量和最坏场景，不再是 D3 调用侧 tuple。
 
 ## 30. 单帧 PlanningFrameEvidence 实现（2026-07-20）
 
@@ -1382,3 +1382,65 @@ shadow 或 assist，模型均不输出执行授权，最终计划仍经过 deman
 
 本轮全量 252 项为 `251 passed, 1 skipped`，门限零失败通过；skip 是 optional OR-Tools。
 没有产生正式权重、真实/高保真 20-seed promotion evidence、AirSim 或 200v200 模型收益。
+
+## 33. 学习帧构造与 JSONL 收口实现（2026-07-20）
+
+### 33.1 帧构造
+
+200×200 top-32 一帧包含 6,400 条候选边。旧实现对每条边访问
+`track.effective_demand`，每次都会规范化并构造一个需求对象。当前实现先对 200 个目标
+各构造一次 demand，再由同目标的所有候选边共享。frame builder 同时复用该 demand
+生成目标匿名摘要，并复用 `LearningActionMask.reason_counts`，避免第二次扫描 40,000 个
+reject reason。候选特征公式、顺序、`float32` feature、规则成本和掩码没有变化。
+
+### 33.2 单帧编码和校验
+
+`LearningFrameRecord.to_json_line()` 使用现有 `to_dict()` 生成 compact、ASCII、键排序的
+canonical JSONL。`from_json_line()` 仍经 `from_dict()` 执行 v2 字段集合、truth/actor/
+identity 拒绝、匿名实体强类型、shape、有限值和 candidate-mask 等价校验。identity 扫描
+从递归函数改为显式栈，只对 mapping/list/tuple 容器继续展开；数值标量不再产生递归调用
+和路径字符串，拒绝条件不变。
+
+writer 不能假定 frozen dataclass 内部不可变。NumPy 数组和 mapping 可能在构造后被外部
+修改，因此每个输入先用 dataclass constructor 重新验证当前状态，并单独检查动态 hard
+reject reason 键。任一 mask、edge、匿名 schema、非有限值或身份字段异常都在临时文件
+替换正式输出前失败。
+
+### 33.3 有界 finalization
+
+收口过程如下：
+
+```text
+LearningFrameRecord iterator
+  -> revalidate current state
+  -> canonical encode once with split=unassigned
+  -> append temporary payload JSONL
+  -> SQLite stores sort key + byte offset + byte size
+  -> complete numeric-seed split assignment
+  -> query keys in canonical order
+  -> seek/read one payload line
+  -> replace the unique writer-controlled top-level split token
+  -> write final frames.jsonl and update SHA256
+  -> atomically replace final frames and manifest
+```
+
+SQLite 不再保存 2.20 MB payload text，也不在最终排序阶段执行
+`json.loads -> LearningFrameRecord.from_dict -> dataclasses.replace -> to_dict -> json.dumps`。
+任一 payload 截断、缺换行、占位符缺失/重复或 split 非法均停止输出。临时目录在失败后
+清理；正式 manifest 只在全部帧和 hash 成功后生成。
+
+设帧数为 (F)，单帧序列化字节为 (B_i)。进程内不保存全部 record，主要瞬时内存为
+一帧的字典/JSON 编码临时量，即 (O(\max B_i))；SQLite 内存记录为 (O(F)) 个小型排序
+元组，payload 和最终输出使用磁盘 (O(\sum B_i))。该设计没有减少 schema 数据量。
+
+### 33.4 等价与性能证据
+
+新增测试直接构造旧语义 expected bytes：先按 canonical key 排序，再对每帧执行
+`replace(record, split=assigned_split).to_json_line()`。优化后的 `frames.jsonl` 必须逐字节
+相同。另有负例在构造后修改 action mask、注入 `truth_track_id`，确认 writer 仍失败关闭。
+微基准测试只验证输出结构和非负计时，不用易受机器负载影响的硬墙钟断言。
+
+200×200、top-32、6 帧的开发 profile 显示 frame build 2.10×、逐行 decode/validate
+1.71×、dataset finalize 3.74×；匹配 cProfile/Tracemalloc 峰值降低 12.69%。标准库 JSON
+编码和 NumPy `tolist()` 是剩余主要热点。本批全量为 `254 passed, 1 skipped`，默认
+Hungarian、学习公式、plan version 与安全门控均未改变。

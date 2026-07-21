@@ -324,13 +324,12 @@ seed set must remain disjoint from any train/validation generation set.
 
 For scalable 200v200 export, main should pass
 `iter_learning_frame_records(staging_path)` directly to
-`write_learning_dataset(...)`. Its current `read_text().splitlines()` plus full
-tuple construction retains the complete staged file and all records before the
-D3 writer starts. A dense fixture measured 5,854,691 serialized bytes per frame;
-40 frames already imply a conservative text-plus-record lower bound above
-about 440 MB, excluding JSON parse temporaries. D3 now performs disk-backed,
-batched finalization with split and frame SHA auditing, but the main-owned call
-site must adopt the iterator to realize bounded end-to-end memory.
+`write_learning_dataset(...)`. The current scalable main finalize does this and
+no longer uses `read_text().splitlines()` plus a complete record tuple. D3 uses
+a disk payload sidecar and a SQLite key/offset index, then streams canonical
+output with split and frame SHA auditing. The remaining formal acceptance is
+the clean-tree 900-episode capacity gate and worst-case dense/fault scenarios,
+not another in-memory D3 call-site conversion.
 
 No AirSim adapter, Blocks setting, actor, camera, control algorithm, Hungarian
 solver, reward formula, or action space changed in this v2 contract task. No
@@ -386,3 +385,18 @@ zero failures; the skip is the optional OR-Tools installed-only benchmark.
 There is still no formal model weight, no eligible >=20 unseen real/high-
 fidelity test-seed shadow report, no assist promotion decision, and no AirSim
 model-benefit or 200v200 full-stack validation.
+
+## 2026-07-20 Learning Export Performance Note
+
+This D3-only task changed no AirSim adapter, Blocks setting, actor, camera,
+control command, runtime episode order, or online assignment contract. It did
+not launch AirSim. The module micro-profile used synthetic 200-by-200 planner
+evidence with 6,400 candidate edges per frame and measured only frame export.
+Six-frame dataset finalization decreased from a 0.910 s median to 0.244 s while
+canonical bytes and schema stayed identical.
+
+The result does not explain the 74-76 s combined D3/D4/D5 staging interval.
+Main should retain and aggregate `d3_stage_wall_s`, `d4_stage_wall_s`,
+`d5_graph_stage_wall_s`, and `d5_active_vision_stage_wall_s` before changing an
+AirSim or scalable runtime schedule. D3 tests collected 255 cases and returned
+`254 passed, 1 skipped`; the skip is the optional OR-Tools dependency.

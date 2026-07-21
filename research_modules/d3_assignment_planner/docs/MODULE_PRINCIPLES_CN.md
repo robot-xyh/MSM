@@ -991,3 +991,25 @@ AirSim seed，也不改变 shadow/assist 的准入边界。
 本轮 252 项全量回归为 `251 passed, 1 skipped`，零失败门限通过，skip 仅 optional
 OR-Tools。该证据关闭 D3-owned 的上述软件合同缺口，但没有正式模型权重、至少 20 个
 未见真实/高保真 test seed、promotion 结论、AirSim 收益或物理执行证据。
+
+## 24. 大规模学习记录的流式确定性原则（2026-07-20）
+
+D3 学习记录优化遵守“内容先于速度”。`d3_learning_dataset_v2` 的字段、精度、candidate
+edge、dense rule matrix、action mask、匿名实体、split 和 SHA 均保持不变；不能通过删除
+字段、降低精度或压缩候选数制造性能提升。每个 record 写盘前重新执行结构、有限值、
+掩码、匿名 token 和身份字段校验，构造后修改可变 NumPy 数组或 mapping 仍失败关闭。
+
+数据集收口分成两个有界阶段。采集阶段将每帧只 canonical 编码一次，临时 SQLite 只保留
+稳定排序键和 sidecar 字节偏移。输出阶段按键排序读取单帧字节，替换 writer 自己生成的
+唯一顶层 split 占位符并增量计算 SHA。这样不再为排序把全部 frame 常驻内存，也不再为
+写最终 split 解码密集数组、重建对象并再次编码。正序和逆序输入必须产生逐字节相同的
+`frames.jsonl`、manifest 和 hash。
+
+200×200 top-32 微基准中，每帧 6,400 条候选边、约 2.20 MB。单帧构造中位数由
+48.19 ms 降至 22.99 ms，6 帧 finalization 由 910.20 ms 降至 243.65 ms。该结果只说明
+D3 局部导出路径；它不能解释 main 的 D3/D4/D5 总 staging 时间，也不是模型、AirSim 或
+物理拦截性能。测试不设置墙钟阈值，只校验内容等价、顺序确定、篡改拒绝和失败关闭。
+
+当前主要剩余成本是 NumPy `tolist()` 与标准库 canonical JSON 编码。改变编码格式或引入
+第三方高性能编码器会形成新的兼容和依赖问题，必须另建 optional adapter 并做 schema/
+hash 对照，不能直接替换默认持久化合同。本批全量结果为 `254 passed, 1 skipped`。

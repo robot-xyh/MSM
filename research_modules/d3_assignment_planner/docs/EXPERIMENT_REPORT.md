@@ -409,8 +409,8 @@ scenario/scale 中，每个 scenario 含两个 episode、每 episode 两帧。�
 
 写出边界另用一个 dense 200v200 fixture 量化：40,000 candidate edge，单帧 canonical
 JSON 5,854,691 bytes，NumPy payload 加 edge tuple 浅层约 5,161,640 bytes。D3 writer
-已改为 iterator + 临时 SQLite + 增量 SHA；main 当前全量 `read_text().splitlines()` 调用
-仍是 cross-module P1，40 帧保守下界超过约 440 MB 且未计 JSON 临时对象。
+已改为 iterator + 磁盘 payload + SQLite 索引 + 增量 SHA；当前 scalable main 已直接传入
+iterator，不再执行全量 `read_text().splitlines()`。正式批量最坏容量仍待 main 验收。
 
 ## 2026-07-20 单帧规划证据确定性验收
 
@@ -495,3 +495,51 @@ D3 全量收集 252 项，结果 `251 passed, 1 skipped`；零失败达到门限
 未安装 optional OR-Tools。本批没有正式权重、真实 D2/D3 训练、至少 20 个未见真实/高
 保真 test seed、eligible promotion 或 assist 准入结论。没有运行 AirSim，因此也不形成
 模型时延、物理收益、拦截率或 200v200 全栈实验结论。
+
+## 2026-07-20 学习帧导出微基准
+
+### 目的与设置
+
+本实验只测 D3 在 planner evidence 已存在之后的学习帧构造、JSONL 编解码和 dataset
+finalization。输入为 200 targets、200 resources、top-32 稀疏候选；每帧 6,400 条候选
+边，canonical JSONL 约 2.20 MB。finalization 使用 3 个数值 seed、每 seed 2 帧，共 6 帧。
+同一进程预热后重复测量中位数；cProfile 与 Tracemalloc 另以相同 fixture 比较函数调用和
+峰值。墙钟不进入 pytest 验收门限。
+
+基线 revision 为 `98edde32fa96b4d4c618dcdaf71f004bd17d66f8`。复现实验命令：
+
+```bash
+python3 research_modules/d3_assignment_planner/simulations/run_learning_export_profile.py \
+  --count 200 --max-candidate-edges 32 --frame-count 6 --repeat 5 \
+  --output research_modules/d3_assignment_planner/results/scalable_3d_learning_export_profile_20260720.json
+```
+
+### 结果
+
+| 指标 | 修改前 | 修改后 | 改善 |
+|---|---:|---:|---:|
+| frame build 中位数 | 0.048187 s | 0.022992 s | 2.10× |
+| `to_dict + canonical json.dumps` | 0.025082 s | 0.025794 s | 无实质变化 |
+| JSON decode + v2 validate | 0.095920 s | 0.056090 s | 1.71× |
+| 6-frame finalize 中位数 | 0.910200 s | 0.243647 s | 3.74× |
+| cProfile 函数调用 | 11,848,558 | 51,612 | -99.56% |
+| 匹配 Tracemalloc 峰值 | 14,575,699 B | 12,725,690 B | -12.69% |
+
+函数调用下降主要来自删除 finalization 内的第二轮完整 JSON 解析、递归 identity 扫描、
+record 重建和重编码。frame build 收益主要来自按目标缓存 demand，以及取消重复 reject
+reason 扫描。修改后 cProfile 的主要累计项为 canonical `json.dumps()`、NumPy
+`tolist()` 和写盘前 record revalidation。
+
+### 等价与边界
+
+确定性测试证明优化结果与旧语义逐字节相同，逆序输入仍生成相同 canonical order、frame
+SHA 和 manifest。构造后篡改 mask 或注入真值键仍在写正式文件前拒绝。schema、candidate
+数量、规则矩阵、学习特征、split 和存储字节没有删减；九场景 D3 数据约 27.86 MB。
+
+按本微基准估算，6 帧的 D3 frame build、首次 encode、逐行 decode/validate 和 finalize
+合计约 0.87 s。该范围不含 planner 求解、D4/D5 数据构造、世界传播和 main 编排，因此
+不能把 74-76 s 的总 staging 时间归因于 D3。后续总线优化应使用 main 的分模块 stage
+计时。本批没有运行 AirSim、训练模型或生成物理收益证据。
+
+新增确定性和微基准结构测试后，D3 全量收集 255 项，结果为
+`254 passed, 1 skipped`；唯一 skip 是 optional OR-Tools，零失败满足门限。

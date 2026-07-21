@@ -724,3 +724,25 @@ OR-Tools。本批没有模型训练、AirSim 运行或性能比较，不能据�
 OR-Tools。可提交状态不等于模型可晋级：当前没有正式权重、真实 D2/D3 训练、>=20 未见
 真实/高保真 test seed、eligible promotion、AirSim 收益或 200v200 学习闭环结论。SHA
 提供完整性与错配保护，不是签名式来源认证；同步 timeout 也仍是返回后拒绝。
+
+## 28. 200×200 Learning Export 性能复核（2026-07-20）
+
+本轮修改的是 planner evidence 之后的数据工程路径，不是 assignment backend。旧
+finalization 将每个已验证 record 转字典并编码进 SQLite，排序后再完整解码、递归检查、
+重建 record、替换 split、转字典和重编码。cProfile 中重复 `from_dict()` 和 identity
+递归占主要累计时间；这部分不会提高 Hungarian 质量，也不增加安全证据。
+
+当前实现按 target 缓存需求对象，frame builder 复用 action-mask reject count。writer
+写盘前重新校验 record，随后 canonical 编码一次；SQLite 仅维护稳定键、offset 和 size，
+payload 保存在临时 JSONL。排序输出读取单帧字节并替换唯一受控 split 占位符。该设计没有
+绕开 truth/actor/identity 拒绝，也没有信任外部原始 JSON。
+
+确定性测试用旧语义直接构造 expected bytes，正序、逆序和优化结果完全相同；另有构造后
+mask 篡改和 hard-reject truth key 注入负例。200×200 top-32 六帧微基准显示 frame build
+2.10×、JSON decode/validate 1.71×、finalize 3.74×，匹配峰值下降 12.69%。测试不使用
+墙钟阈值；全量结果为 `254 passed, 1 skipped`。
+
+复核结论为 D3-owned 重复对象/JSON 转换 GAP 已关闭。标准库 `tolist/json.dumps` 是剩余
+热点，九场景 27.86 MB 内容按 schema 要求保留。main 的 D3/D4/D5 staging 74-76 s 仍需
+读取分模块 wall fields，不能由本微基准推断。没有运行 AirSim、训练模型或改变
+Hungarian、残差公式、硬掩码、计划版本、联盟和 D7 授权。

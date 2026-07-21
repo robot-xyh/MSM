@@ -1,0 +1,53 @@
+{
+  "schema": "d3_learning_export_profile_comparison_v1",
+  "evidence_date": "2026-07-20",
+  "evidence_kind": "development_microprofile_not_system_acceptance",
+  "baseline_revision": "98edde32fa96b4d4c618dcdaf71f004bd17d66f8",
+  "fixture": {
+    "target_count": 200,
+    "resource_count": 200,
+    "candidate_edge_count": 6400,
+    "frame_count": 6,
+    "dataset_schema": "d3_learning_dataset_v2",
+    "split_policy": "d3_numeric_seed_atomic_split_v2"
+  },
+  "baseline": {
+    "frame_build_median_s": 0.04818657398573123,
+    "json_decode_and_validate_median_s": 0.09592001399141736,
+    "dataset_finalize_runs_s": [
+      1.0268968690070324,
+      0.9102000069979113,
+      0.9063563850068022
+    ],
+    "dataset_finalize_median_s": 0.9102000069979113,
+    "profiled_function_calls": 11848558,
+    "profiled_tracemalloc_peak_bytes": 14575699
+  },
+  "optimized": {
+    "frame_build_median_s": 0.022991579986410215,
+    "json_decode_and_validate_median_s": 0.05608987697632983,
+    "dataset_finalize_runs_s": [
+      0.24364665400935337,
+      0.20376889998442493,
+      0.24546338300569914,
+      0.20294164901133627,
+      0.2472496520204004
+    ],
+    "dataset_finalize_median_s": 0.24364665400935337,
+    "profiled_function_calls": 51612,
+    "profiled_tracemalloc_peak_bytes": 12725690
+  },
+  "comparison": {
+    "frame_build_speedup": 2.0958356935109803,
+    "json_decode_and_validate_speedup": 1.7101127540696162,
+    "dataset_finalize_speedup": 3.735737766228341,
+    "profiled_function_call_reduction_percent": 99.56440268933991,
+    "profiled_tracemalloc_peak_reduction_percent": 12.692420445839335
+  },
+  "interpretation": {
+    "measured_scope": "D3 learning frame build, JSONL parse and six-frame dataset finalization after planner evidence exists",
+    "excluded_scope": "D1, D2, D4, D5, D6, world propagation and main episode orchestration",
+    "wall_clock_is_acceptance_threshold": false,
+    "canonical_dataset_content_changed": false
+  }
+}

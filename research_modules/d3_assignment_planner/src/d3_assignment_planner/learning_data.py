@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass, replace
 from hashlib import sha256
 import json
@@ -137,7 +138,7 @@ class OfflineRewardComponents:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "OfflineRewardComponents":
-        if not isinstance(value, Mapping) or set(value) != _OFFLINE_REWARD_FIELDS:
+        if not isinstance(value, MappingABC) or set(value) != _OFFLINE_REWARD_FIELDS:
             raise ValueError("offline reward component fields do not match schema v2")
         return cls(
             high_threat_coverage=float(value["high_threat_coverage"]),
@@ -298,9 +299,20 @@ class LearningFrameRecord:
             "reward_components": self.reward_components.to_dict(),
         }
 
+    def to_json_line(self) -> str:
+        """Return the compact canonical JSONL representation of this frame."""
+
+        return _canonical_json(self.to_dict()) + "\n"
+
+    @classmethod
+    def from_json_line(cls, line: str | bytes | bytearray) -> "LearningFrameRecord":
+        """Parse one JSONL frame while retaining all v2 fail-closed checks."""
+
+        return cls.from_dict(json.loads(line))
+
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "LearningFrameRecord":
-        if not isinstance(value, Mapping):
+        if not isinstance(value, MappingABC):
             raise ValueError("D3 learning dataset frame must be a JSON object")
         _reject_identity_fields(value)
         if set(value) != _LEARNING_FRAME_FIELDS:
@@ -478,7 +490,7 @@ class LearningDatasetManifest:
         if value.get("identity_policy") != "anonymous_ordinal_tokens_no_truth_metadata":
             raise ValueError("unsupported D3 learning dataset identity policy")
         split_policy = value["split_policy"]
-        if not isinstance(split_policy, Mapping):
+        if not isinstance(split_policy, MappingABC):
             raise ValueError("D3 learning dataset split policy must be a JSON object")
         expected_policy_fields = {
             "unit",
@@ -704,11 +716,11 @@ def build_learning_frame_record(
 
     selected_edges = plan_edges(plan)
     previous_edges = plan_edges(previous_plan)
-    required = tuple(track.effective_demand.required_resource_count for track in tracks)
-    assigned_by_target = {
-        row: sum(1 for edge in selected_edges if edge[0] == row)
-        for row in range(len(tracks))
-    }
+    effective_demands = tuple(track.effective_demand for track in tracks)
+    required = tuple(demand.required_resource_count for demand in effective_demands)
+    assigned_by_target = [0] * len(tracks)
+    for target_row, _ in selected_edges:
+        assigned_by_target[target_row] += 1
     high_threat_rows = [
         index for index, track in enumerate(tracks) if float(track.threat_score) >= 0.7
     ]
@@ -730,7 +742,7 @@ def build_learning_frame_record(
     decision = str(plan.decision_state)
     hold_label = decision.startswith("held") or decision == "unchanged"
     replan_label = previous_plan is not None and bool(plan.changed) and not hold_label
-    hard_counts = _hard_reject_counts(matrix_result.reject_reasons)
+    hard_counts = dict(batch.action_mask.reason_counts)
     reward = OfflineRewardComponents(
         high_threat_coverage=high_threat_coverage,
         rule_total_cost=max(0.0, float(plan.total_cost)),
@@ -752,15 +764,11 @@ def build_learning_frame_record(
                 "threat_score": float(track.threat_score),
                 "covariance_squashed": _squash_nonnegative(track.covariance),
                 "window_cost": float(track.window_cost),
-                "required_resource_count": int(
-                    track.effective_demand.required_resource_count
-                ),
-                "primary_resource_count": int(
-                    track.effective_demand.primary_resource_count
-                ),
+                "required_resource_count": int(demand.required_resource_count),
+                "primary_resource_count": int(demand.primary_resource_count),
                 "assignable": bool(track.assignable),
             }
-            for index, track in enumerate(tracks)
+            for index, (track, demand) in enumerate(zip(tracks, effective_demands))
         ),
         anonymous_resources=tuple(
             {
@@ -840,6 +848,31 @@ def build_latest_learning_frame_record(
     )
 
 
+def _canonical_json(value: Mapping[str, Any]) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+_PENDING_SPLIT_TOKEN = f'"split":"{UNASSIGNED_DATASET_SPLIT}"'.encode("ascii")
+
+
+def _finalize_staged_frame_line(line: bytes, split: str) -> bytes:
+    """Replace the controlled staging split without decoding dense arrays."""
+
+    if split not in DATASET_SPLITS:
+        raise ValueError(f"unsupported finalized dataset split: {split}")
+    if not line.endswith(b"\n"):
+        raise RuntimeError("staged D3 frame payload is not one complete JSONL line")
+    if line.count(_PENDING_SPLIT_TOKEN) != 1:
+        raise RuntimeError("staged D3 frame split placeholder is invalid")
+    replacement = f'"split":"{split}"'.encode("ascii")
+    return line.replace(_PENDING_SPLIT_TOKEN, replacement, 1)
+
+
 def write_learning_dataset(
     output_dir: str | Path,
     records: Iterable[LearningFrameRecord],
@@ -868,6 +901,7 @@ def write_learning_dataset(
     with tempfile.TemporaryDirectory(prefix=".d3_dataset_staging_", dir=output) as staging:
         staging_path = Path(staging)
         database_path = staging_path / "frames.sqlite3"
+        payload_path = staging_path / "frame_payloads.jsonl"
         connection = sqlite3.connect(database_path)
         try:
             connection.execute("PRAGMA temp_store=FILE")
@@ -879,40 +913,59 @@ def write_learning_dataset(
                     episode TEXT NOT NULL,
                     frame_index INTEGER NOT NULL,
                     supplied_split TEXT NOT NULL,
-                    payload TEXT NOT NULL,
+                    payload_offset INTEGER NOT NULL,
+                    payload_size INTEGER NOT NULL,
                     PRIMARY KEY (scenario_version, seed, episode, frame_index)
                 )
                 """
             )
             frame_count = 0
-            for record in records:
-                if not isinstance(record, LearningFrameRecord):
-                    raise TypeError("records must contain LearningFrameRecord values")
-                payload = json.dumps(
-                    record.to_dict(),
-                    ensure_ascii=True,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
-                try:
-                    connection.execute(
-                        "INSERT INTO frames VALUES (?, ?, ?, ?, ?, ?)",
-                        (
-                            record.scenario_version,
-                            int(record.seed),
-                            record.episode,
-                            int(record.frame_index),
-                            record.split,
-                            payload,
-                        ),
+            with payload_path.open("wb") as payload_stream:
+                for record in records:
+                    if not isinstance(record, LearningFrameRecord):
+                        raise TypeError("records must contain LearningFrameRecord values")
+                    # A frozen dataclass can still contain mutable NumPy arrays
+                    # and mappings.  Re-run the constructor checks before
+                    # persistence so post-construction mutation fails closed,
+                    # without a JSON decode/object-rebuild round trip.
+                    validated_reward = replace(record.reward_components)
+                    validated = replace(
+                        record,
+                        reward_components=validated_reward,
                     )
-                except sqlite3.IntegrityError as exc:
-                    raise ValueError(
-                        f"duplicate dataset frame: {(*record.episode_group, record.frame_index)}"
-                    ) from exc
-                frame_count += 1
-                if frame_count % int(staging_batch_size) == 0:
-                    connection.commit()
+                    payload = validated.to_dict()
+                    _reject_identity_fields(
+                        {
+                            "hard_reject_reason_counts": payload[
+                                "hard_reject_reason_counts"
+                            ]
+                        }
+                    )
+                    payload["split"] = UNASSIGNED_DATASET_SPLIT
+                    line = (_canonical_json(payload) + "\n").encode("ascii")
+                    payload_offset = payload_stream.tell()
+                    try:
+                        connection.execute(
+                            "INSERT INTO frames VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (
+                                validated.scenario_version,
+                                int(validated.seed),
+                                validated.episode,
+                                int(validated.frame_index),
+                                validated.split,
+                                int(payload_offset),
+                                len(line),
+                            ),
+                        )
+                    except sqlite3.IntegrityError as exc:
+                        raise ValueError(
+                            "duplicate dataset frame: "
+                            f"{(*validated.episode_group, validated.frame_index)}"
+                        ) from exc
+                    payload_stream.write(line)
+                    frame_count += 1
+                    if frame_count % int(staging_batch_size) == 0:
+                        connection.commit()
             connection.commit()
             if frame_count == 0:
                 raise ValueError("at least one dataset frame is required")
@@ -955,29 +1008,26 @@ def write_learning_dataset(
 
             temporary_frames = staging_path / DATASET_FRAMES_FILENAME
             frames_digest = sha256()
-            with temporary_frames.open("wb") as stream:
+            with payload_path.open("rb") as payload_stream, temporary_frames.open(
+                "wb"
+            ) as stream:
                 rows = connection.execute(
                     """
-                    SELECT seed, payload FROM frames
+                    SELECT seed, payload_offset, payload_size FROM frames
                     ORDER BY scenario_version COLLATE BINARY, seed,
                              episode COLLATE BINARY, frame_index
                     """
                 )
-                for seed, payload in rows:
-                    record = LearningFrameRecord.from_dict(json.loads(str(payload)))
-                    finalized = replace(record, split=split_by_seed[int(seed)])
-                    line = (
-                        json.dumps(
-                            finalized.to_dict(),
-                            ensure_ascii=True,
-                            sort_keys=True,
-                            separators=(",", ":"),
-                        )
-                        + "\n"
-                    ).encode("ascii")
+                for seed, payload_offset, payload_size in rows:
+                    payload_stream.seek(int(payload_offset))
+                    staged_line = payload_stream.read(int(payload_size))
+                    if len(staged_line) != int(payload_size):
+                        raise RuntimeError("staged D3 frame payload is truncated")
+                    split = split_by_seed[int(seed)]
+                    line = _finalize_staged_frame_line(staged_line, split)
                     stream.write(line)
                     frames_digest.update(line)
-                    split_frame_counts[finalized.split] += 1
+                    split_frame_counts[split] += 1
 
             split_seed_values = {
                 split: tuple(
@@ -1027,7 +1077,7 @@ def load_learning_dataset(
     input_path = Path(input_dir)
     with (input_path / DATASET_MANIFEST_FILENAME).open(encoding="utf-8") as stream:
         raw_manifest = json.load(stream)
-    if not isinstance(raw_manifest, Mapping):
+    if not isinstance(raw_manifest, MappingABC):
         raise ValueError("D3 learning dataset manifest must be a JSON object")
     schema_version = raw_manifest.get("schema_version")
     if schema_version != LEARNING_DATASET_SCHEMA_V2:
@@ -1106,8 +1156,7 @@ def iter_learning_frame_records(path: str | Path) -> Iterator[LearningFrameRecor
             if not line.strip():
                 continue
             try:
-                payload = json.loads(line)
-                yield LearningFrameRecord.from_dict(payload)
+                yield LearningFrameRecord.from_json_line(line)
             except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
                 raise ValueError(f"invalid dataset frame at line {line_number}") from exc
 
@@ -1303,24 +1352,41 @@ def _validate_anonymous_entities(
 def _reject_identity_fields(value: Any, *, path: str = "frame") -> None:
     """Reject identity-bearing schema fields before unknown fields are discarded."""
 
-    if isinstance(value, Mapping):
-        for raw_key, item in value.items():
-            key = str(raw_key).strip().lower().replace("-", "_")
-            dynamic_reject_reason = path == "frame.hard_reject_reason_counts"
-            forbidden = (
-                "truth" in key
-                or "actor" in key
-                or key in {"id", "uuid", "vehicle_name"}
-                or key.endswith("_id")
-                or key.endswith("_ids")
-                or ("identity" in key and not dynamic_reject_reason)
-            )
-            if forbidden:
-                raise ValueError(f"identity-bearing learning frame field is forbidden: {path}.{key}")
-            _reject_identity_fields(item, path=f"{path}.{key}")
-    elif isinstance(value, (list, tuple)):
-        for index, item in enumerate(value):
-            _reject_identity_fields(item, path=f"{path}[{index}]")
+    pending: list[tuple[Any, str]] = [(value, path)]
+    while pending:
+        current, current_path = pending.pop()
+        if isinstance(current, MappingABC):
+            children: list[tuple[Any, str]] = []
+            for raw_key, item in current.items():
+                key = str(raw_key).strip().lower().replace("-", "_")
+                dynamic_reject_reason = (
+                    current_path == "frame.hard_reject_reason_counts"
+                )
+                forbidden = (
+                    "truth" in key
+                    or "actor" in key
+                    or key in {"id", "uuid", "vehicle_name"}
+                    or key.endswith("_id")
+                    or key.endswith("_ids")
+                    or ("identity" in key and not dynamic_reject_reason)
+                )
+                child_path = f"{current_path}.{key}"
+                if forbidden:
+                    raise ValueError(
+                        "identity-bearing learning frame field is forbidden: "
+                        f"{child_path}"
+                    )
+                item_type = type(item)
+                if item_type in (dict, list, tuple) or isinstance(item, MappingABC):
+                    children.append((item, child_path))
+            pending.extend(reversed(children))
+        elif isinstance(current, (list, tuple)):
+            children = []
+            for index, item in enumerate(current):
+                item_type = type(item)
+                if item_type in (dict, list, tuple) or isinstance(item, MappingABC):
+                    children.append((item, f"{current_path}[{index}]"))
+            pending.extend(reversed(children))
 
 
 def _bounded_number(
@@ -1354,17 +1420,6 @@ def _boolean(value: Any, name: str) -> bool:
     if not isinstance(value, (bool, np.bool_)):
         raise ValueError(f"anonymous entity {name} must be boolean")
     return bool(value)
-
-
-def _hard_reject_counts(
-    reject_reasons: Sequence[Sequence[str | None]],
-) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for row in reject_reasons:
-        for reason in row:
-            if reason is not None:
-                counts[str(reason)] = counts.get(str(reason), 0) + 1
-    return dict(sorted(counts.items()))
 
 
 def _squash_nonnegative(value: Any) -> float:
