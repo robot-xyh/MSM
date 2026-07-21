@@ -1,5 +1,25 @@
 # D5 实现差距审计
 
+## 2026-07-21 主动视觉相机执行器 B1a GAP 状态
+
+**模块内执行与 ACK 语义的软件缺口已关闭。** D5 新增确定性 camera command executor。执行器以
+现有 `ActiveVisionSnapshotV1`、`ActiveVisionActionV1` 和 `ActiveVisionCameraFeedbackV1` 为输入，
+先调用既有安全 validator，再检查反馈态、命令版本和可选运行时故障。成功执行才更新相机姿态、FOV
+与 `last_accepted_command_version`，并生成 `accepted=true/status=applied` 的现有 ACK DTO。拒绝时
+返回 `accepted=false/rejected_<reason>`，输入反馈保持不变。ACK 缺失单独标为 `missing`，不更新
+反馈，也不计作 applied。
+
+拒绝覆盖动作过期、计划/联盟/通信版本不一致、相机忙、相机不可用、运行时 FOV 不支持、既有
+validator 判定的非法动作以及非递增 command version。ACK 始终携带 action 的当前计划、联盟和通信
+版本；成功 command version 与反馈最近接受版本一致。applied、rejected 和 missing 均已通过现有
+episode sample 构造合同，其中 missing 保持 `runtime_ack=None`。执行器不创建或改写
+`global_track_id`，truth-like action payload 在执行前失败关闭。
+
+2026-07-21 定向结果为 `18 passed`，D5 全量为 `455 passed in 12.18s`。本阶段未运行 AirSim、未生成
+课程数据、未接真实相机 runtime，也未训练或晋级模型。因此 B1b producer、canonical `60/20/20`、
+clean detached 证据、真实 applied/rejected/missing 分布、执行后 outcome 和因果标签仍为 P1；
+assist、PPO 和相机命令权限继续关闭。
+
 ## 2026-07-21 主动视觉宽视场门 GAP 状态
 
 **规则缩放抖动的软件缺口已关闭。** `DeterministicLookAtScanPolicy` 现在按

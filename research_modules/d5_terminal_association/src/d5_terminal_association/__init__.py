@@ -132,6 +132,13 @@ from .active_vision_episode_dataset import (
     stage_active_vision_offline_labels,
     unavailable_active_vision_offline_labels,
 )
+from .active_vision_camera_executor import (
+    ACTIVE_VISION_CAMERA_EXECUTION_SCHEMA_VERSION,
+    ActiveVisionCameraExecutionOutcome,
+    ActiveVisionCameraExecutionResult,
+    ActiveVisionCameraFault,
+    DeterministicCameraCommandExecutor,
+)
 from .consistency import (
     TerminalConsistencyConfig,
     TerminalConsistencyTracker,
@@ -405,6 +412,7 @@ __all__ = [
     "ActiveVisionPolicy",
     "ActiveVisionSafetyConfig",
     "ACTIVE_VISION_ACTION_SCHEMA_VERSION",
+    "ACTIVE_VISION_CAMERA_EXECUTION_SCHEMA_VERSION",
     "ACTIVE_VISION_EPISODE_DATASET_SCHEMA_VERSION",
     "ACTIVE_VISION_EPISODE_RECORD_SCHEMA_VERSION",
     "ACTIVE_VISION_FEATURE_NAMES",
@@ -421,6 +429,9 @@ __all__ = [
     "ActiveVisionAssignmentReference",
     "ActiveVisionBundleValidationError",
     "ActiveVisionCameraState",
+    "ActiveVisionCameraExecutionOutcome",
+    "ActiveVisionCameraExecutionResult",
+    "ActiveVisionCameraFault",
     "ActiveVisionCameraFeedbackV1",
     "ActiveVisionCommunicationState",
     "ActiveVisionControllerV1",
@@ -459,6 +470,7 @@ __all__ = [
     "OfflineTrackletTruthLabel",
     "SafeRuleScanPolicy",
     "DeterministicLookAtScanPolicy",
+    "DeterministicCameraCommandExecutor",
     "FriendlyObservationReservation",
     "LoadedActiveVisionPolicy",
     "LoadedActiveVisionEpisode",

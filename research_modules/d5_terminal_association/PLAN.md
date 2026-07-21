@@ -1,5 +1,21 @@
 # D5 终端视觉配准与身份认证计划
 
+## 2026-07-21 主动视觉相机执行器阶段 B1a
+
+- [x] 新增无隐藏状态的 `DeterministicCameraCommandExecutor`。输入沿用现有 snapshot、action 和
+  camera feedback，并显式携带执行时刻、期望计划/联盟/通信版本及可选故障注入。
+- [x] 每个动作先通过 `validate_active_vision_action_v1()`；随后只允许反馈态和运行时故障增加拒绝，
+  不允许绕过或放宽既有版本、身份、投影、友方、云台和 FOV 门。
+- [x] 冻结三态结果：`applied` 生成 `accepted=true/status=applied` ACK 并更新动作后反馈；
+  `rejected` 生成稳定拒绝 ACK 且原反馈不变；`missing` 保持 `runtime_ack=None`、反馈不变且
+  `applied=false`。
+- [x] 成功 ACK 的 `command_version` 与反馈 `last_accepted_command_version` 一致；ACK 的计划、联盟和
+  通信版本沿用已验证 action，可直接通过现有 episode sample 合同。旧命令版本失败关闭。
+- [x] 2026-07-21 定向测试 `18 passed`，D5 全量 `455 passed in 12.18s`。覆盖 WIDE/ZOOM/HOLD、
+  过期、三类版本错、相机忙/不可用、FOV 不支持、非法动作、ACK 缺失、truth guard、确定性和输入不变。
+- [ ] 阶段 B1b 再接 supplemental curriculum producer、canonical `60/20/20`、clean detached 重生和
+  统计报告。本阶段未生成数据、未运行 AirSim、未启动 PPO/assist，也未形成相机命令权限。
+
 ## 2026-07-21 主动视觉宽视场稳定门阶段 A
 
 - [x] 在 `DeterministicLookAtScanPolicy` 内建立按相机、中心目标、计划版本和联盟版本隔离的状态键，
