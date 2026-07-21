@@ -980,6 +980,38 @@ def _assignment_plan_runtime_ack(
         "owner_node_id": metadata.get("owner_node_id"),
         "authority_epoch": metadata.get("authority_epoch"),
         "lease_expires_at_s": metadata.get("lease_expires_at_s"),
+        "d3_learning_evidence": {
+            "mode": metadata.get("learning_mode"),
+            "applied": _optional_bool(metadata.get("learning_applied")),
+            "shadow_only": _optional_bool(
+                metadata.get("learning_shadow_only")
+            ),
+            "bundle_loaded": _optional_bool(
+                metadata.get("learning_bundle_loaded")
+            ),
+            "fallback_reason": metadata.get("learning_fallback_reason"),
+            "model_fingerprint": metadata.get("learning_model_fingerprint"),
+        },
+        "d4_regional_hint_evidence": {
+            "considered": _optional_bool(
+                metadata.get("regional_hint_considered")
+            ),
+            "applied": _optional_bool(metadata.get("regional_hint_applied")),
+            "rejected": _optional_bool(
+                metadata.get("regional_hint_rejected")
+            ),
+            "fallback_reason": metadata.get(
+                "regional_hint_fallback_reason"
+            ),
+            "advisory_id": metadata.get("regional_hint_advisory_id"),
+            "advisory_version": metadata.get(
+                "regional_hint_advisory_version"
+            ),
+            "source_plan_id": metadata.get("regional_hint_source_plan_id"),
+            "source_plan_version": metadata.get(
+                "regional_hint_source_plan_version"
+            ),
+        },
         "binding_acks": binding_acks,
         "physical_outcome_available": False,
         "reward_available": False,
@@ -1030,6 +1062,10 @@ def _nonnegative_int(value: Any, name: str) -> int:
     if result < 0:
         raise ValueError(f"{name} must be a non-negative integer")
     return result
+
+
+def _optional_bool(value: Any) -> bool | None:
+    return value if isinstance(value, bool) else None
 
 
 def _camera_platform_position(state: CameraRuntimeState, snapshot: Any) -> np.ndarray:

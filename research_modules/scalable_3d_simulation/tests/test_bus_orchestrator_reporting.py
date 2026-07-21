@@ -434,6 +434,20 @@ class _AssignmentPlanAckStack:
                             "owner_node_id": "C2",
                             "authority_epoch": 4,
                             "lease_expires_at_s": step_input.timestamp + 1.0,
+                            "learning_mode": "shadow",
+                            "learning_applied": False,
+                            "learning_shadow_only": True,
+                            "learning_bundle_loaded": True,
+                            "learning_fallback_reason": None,
+                            "learning_model_fingerprint": "sha256:model",
+                            "regional_hint_considered": True,
+                            "regional_hint_applied": True,
+                            "regional_hint_rejected": False,
+                            "regional_hint_fallback_reason": None,
+                            "regional_hint_advisory_id": "ADV-1",
+                            "regional_hint_advisory_version": 8,
+                            "regional_hint_source_plan_id": "PLAN-OLD",
+                            "regional_hint_source_plan_version": 2,
                         },
                     },
                 ),
@@ -567,6 +581,24 @@ def test_runtime_acknowledges_d3_plan_binding_consumed_by_d7() -> None:
     assert acknowledgement["source_guidance_bus_sequence"] == 2
     assert len(acknowledgement["source_plan_payload_sha256"]) == 64
     assert len(acknowledgement["source_guidance_payload_sha256"]) == 64
+    assert acknowledgement["d3_learning_evidence"] == {
+        "mode": "shadow",
+        "applied": False,
+        "shadow_only": True,
+        "bundle_loaded": True,
+        "fallback_reason": None,
+        "model_fingerprint": "sha256:model",
+    }
+    assert acknowledgement["d4_regional_hint_evidence"] == {
+        "considered": True,
+        "applied": True,
+        "rejected": False,
+        "fallback_reason": None,
+        "advisory_id": "ADV-1",
+        "advisory_version": 8,
+        "source_plan_id": "PLAN-OLD",
+        "source_plan_version": 2,
+    }
     assert acknowledgement["physical_outcome_available"] is False
     assert acknowledgement["reward_available"] is False
     assert acknowledgement["binding_acks"] == [
